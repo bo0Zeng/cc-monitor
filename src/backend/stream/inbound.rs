@@ -150,6 +150,12 @@ pub const COMMANDS: &[&str] = &[
     "drift-report",
     "exit-policy-read",
     "exit-policy-set",
+    // 设置「扩展」页：skill 与 MCP 跨机器一张表 · 装到一台的枢纽（skill / MCP 同一对）· 从一台卸（在被卸那台判、写）。**是新命令** ⇒ `build_id_guard` 红是预期的。
+    "ext-hub-apply",
+    "ext-hub-preview",
+    "ext-list",
+    "ext-uninstall-apply",
+    "ext-uninstall-preview",
     "files-browse",
     "files-chmod",
     "files-commit-text",
@@ -234,9 +240,6 @@ pub const COMMANDS: &[&str] = &[
     "mcp-server-remove",
     // 〔MIG-3a〕MCP 推 / 拉的 I/O 那一半：来源那台交原文 · 要被写那台自己读、判、写。**是新命令** ⇒ `build_id_guard` 红是预期的。
     "mcp-sync-apply",
-    // 〔MIG-3a · 主会话 09-28 裁〕两台之间那几件的枢纽（本机常驻后端向来源那台取、向被写那台写；`assets/hub.rs`）。**是新命令** ⇒ `build_id_guard` 红是预期的。
-    "mcp-sync-hub-apply",
-    "mcp-sync-hub-preview",
     // 〔AS1 · 第四波 4B〕MCP 资产同步的判定（只读；写经文件管理那一面 `files-put`）。
     "mcp-sync-plan",
     "mcp-sync-preview",
@@ -250,7 +253,6 @@ pub const COMMANDS: &[&str] = &[
     "ping",
     // 〔P1〕本机那一份放不放（monitor 自举：放本机后端之前问手上那份字节自己，CLI 面）。**是新命令** ⇒ `build_id_guard` 红是预期的。
     "place-verdict",
-    "plugins-marketplaces",
     // 〔WF1 · L · `设计/99 §2.3`〕PowerShell 执行策略设成当前用户 `RemoteSigned`（用户点了、确认了才发）。**是新命令** ⇒ `build_id_guard` 红是预期的。
     "powershell-policy-set",
     // 〔MIG-3b 续 · ⑬「monitor 零 SSH」〕公钥一键推送：本机后端组请求、读本机那份 `.pub`，经那台后端写或一次 exec。**是新命令**。
@@ -267,23 +269,13 @@ pub const COMMANDS: &[&str] = &[
     "resync",
     // 〔LOC1a · 第四波 4D〕分叉（`fork_write`，本 crate 唯一的 `O_EXCL` 新建写口）：本机远端同一条长连接。
     "session-fork",
-    // 〔MIG-3a〕skill 接入面（收件箱）三条：列 · 读 · 写（声明与围栏住适配层，读写经文件管理面）。**是新命令** ⇒ `build_id_guard` 红是预期的。
-    "skill-host-list",
-    "skill-host-read",
-    "skill-host-write",
     // 〔MIG-3a〕skill 装 / 卸的写那一半进了被写那台（判 · 写 · 记同一台）。**是新命令** ⇒ `build_id_guard` 红是预期的。
     "skill-install-apply",
-    "skill-install-hub-apply",
-    "skill-install-hub-preview",
     // 〔AS2〕skill「装到这台」：来源那台读 · 要被写的那一台判（都只读；写经 `files-put`）。
     "skill-install-plan",
     // 〔SU1 · 第四波 4C · V116〕skill 装记录（第四层）：装完记下写了哪几个 · 卸掉的摘掉。
     "skill-install-record",
-    // 〔SU1〕这台记着的、从别处装来的 skill · 卸的判定（都只读；删经 `files-delete` 带 `expect`）。
-    "skill-installs",
     "skill-read",
-    "skill-uninstall-apply",
-    "skill-uninstall-plan",
     // 〔MIG-1 · `99 §2.1 ⑯`〕`~/.ssh/config` 的解读（`dial/ssh_config.rs`）：界面经 `chan.call(<local>, …)` 问本机常驻后端。
     "ssh-config-aliases",
     "ssh-config-import",
@@ -2001,7 +1993,7 @@ pub const REGISTRY: &[CommandSpec] = &[
         name: "skill-read",
         doc_anchor: Some("#### `skill-read`"),
         codes: &["bad_args", "io_failed", "not_found", "too_large"],
-        fields: &["dir", "files", "name", "root", "skipped"],
+        fields: &["dir", "files", "name", "project", "root", "skipped"],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::assets::skill_install::answer_read(&r.args)
@@ -2025,6 +2017,7 @@ pub const REGISTRY: &[CommandSpec] = &[
             "name",
             "overwrite",
             "prefix",
+            "project",
             "root",
             "rows",
             "source",
@@ -2041,10 +2034,8 @@ pub const REGISTRY: &[CommandSpec] = &[
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
-    // 〔SU1 · 第四波 4C · V116〕**skill 卸**（「要，只删装时写进去的文件」）：
-    //   `skill-install-record` 是装记录 `~/.cc-monitor/skill-installs.json` 的写口（第四层；装完记 `add` · 卸掉的摘 `drop`），
-    //   `skill-installs` 列这台记着的 · `skill-uninstall-plan` 在被卸的那一台判（逐文件四态 ＋ 要不要问 ＋ 删哪几个）。
-    //   后两条只读；删经 `files-delete`（CAS）。三条都是阻塞档（读写一份小文件 · 逐个读盘比摘要）。
+    // 装记录：`skill-install-record` 是 `~/.cc-monitor/skill-installs.json` 的写口（第四层；
+    //   skill 装完记 `add` · 卸掉的摘 `drop`；MCP 那一条 `mcp-add` / `mcp-drop`）。卸在 `ext-uninstall-*`（判 · 删 · 摘同一台）。阻塞档。
     CommandSpec {
         name: "skill-install-record",
         doc_anchor: Some("#### `skill-install-record`"),
@@ -2058,48 +2049,19 @@ pub const REGISTRY: &[CommandSpec] = &[
         fields: &[
             "at",
             "changed",
+            "digest",
             "dir",
+            "file",
             "files",
             "name",
             "op",
             "paths",
+            "project",
             "remaining",
         ],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::assets::skill_ledger::answer_record(&r.args)
-                .map(Some)
-                .map_err(|(c, m)| (c.to_string(), m))
-        }),
-    },
-    CommandSpec {
-        name: "skill-installs",
-        doc_anchor: Some("#### `skill-installs`"),
-        codes: &["io_failed", "ledger_unreadable"],
-        fields: &["installs"],
-        takes_input: false,
-        run: Run::Blocking(|r| {
-            crate::assets::skill_install::answer_installs(&r.args)
-                .map(Some)
-                .map_err(|(c, m)| (c.to_string(), m))
-        }),
-    },
-    CommandSpec {
-        name: "skill-uninstall-plan",
-        doc_anchor: Some("#### `skill-uninstall-plan`"),
-        codes: &[
-            "bad_args",
-            "io_failed",
-            "ledger_unreadable",
-            "needs_consent",
-            "not_found",
-        ],
-        fields: &[
-            "confirm", "delete", "dir", "forget", "name", "rows", "seen", "take",
-        ],
-        takes_input: true,
-        run: Run::Blocking(|r| {
-            crate::assets::skill_install::answer_uninstall_plan(&r.args)
                 .map(Some)
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
@@ -2900,27 +2862,6 @@ pub const REGISTRY: &[CommandSpec] = &[
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
-    // ── 〔RM1b · 第四波〕功能侧只读查询 —— 远端会话的任务列表（`parity_ledger` `session.tasks`）──
-    //
-    // 🔴 此前只有 monitor 直读**本机** `tasks/<sid>/` 那一条路，远端 tab 永远拿不到任务。
-    //   本机后端与远端后端是同一个二进制 ⇒ 读法搬到这里，monitor 按 origin 问（本机也走这里）。
-    // ⚠ 宿主是 `feature_face`，**不是** `read_face`：monitor 侧有一条两向判据数的正是
-    //   「交给 `read_face::answer` 的 == `C1` 那八条」，本族不在其中（理由全文在 `feature_face` 头注）。
-    // ⚠ 阻塞档：读一个目录 ＋ 每个任务文件各一次。`cancel` 命中回 `not_cancellable`（不撒谎）。
-    // 〔RM1b · 第四波〕同族第二条：插件市场只读枚举（`parity_ledger` `plugins.marketplaces`）。
-    //   从 monitor `plugins.rs`（`P8a`）原样搬来，三条出口不变；〔C4b〕应答 = 整份 survey（成品，不再裹成一行）。
-    CommandSpec {
-        name: "plugins-marketplaces",
-        doc_anchor: Some("#### `plugins-marketplaces`"),
-        codes: &["failed", "too_large"],
-        fields: &["entries", "file_absent"],
-        takes_input: false,
-        run: Run::Blocking(|r| {
-            crate::faces::feature_face::answer(&r.cmd, &r.args)
-                .map(Some)
-                .map_err(|(c, m)| (c.to_string(), m))
-        }),
-    },
     // 改账号库的那几条：本体 `accounts/manage/`，帧面宿主 `faces/accounts_face.rs`（建 API 号写 key · 账号表变了重写别名文件）。
     //   写经这台的文件管理面（[`LocalFiles`]）；同步文件 I/O ⇒ 阻塞档。`accounts-verify` / `accounts-login-cmd` 只读。
     CommandSpec {
@@ -3192,90 +3133,38 @@ pub const REGISTRY: &[CommandSpec] = &[
             .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
-    // 〔MIG-3a · 主会话 09-28 裁 · `01 §3.5`〕两台之间那几件的枢纽：界面只问本机一次，本机后端向来源那台取、向被写那台写（`assets/hub.rs`）。
+    // 两台之间「装」那一件的枢纽（skill 与 MCP 同一对）：界面只问本机一次，本机后端向来源那台取、交被写那台判与写（`assets/hub.rs`）。
+    //   依赖本进程的可达表 ⇒ 只在流面上（`cli_control::STREAM_ONLY`）。
     CommandSpec {
-        name: "mcp-sync-hub-preview",
-        doc_anchor: Some("#### `mcp-sync-hub-preview`"),
-        codes: &["bad_args", "refused", "stale", "unreachable", "io_failed"],
-        fields: &["from", "fromDir", "to", "toDir"],
-        takes_input: true,
-        run: Run::Async(|r| {
-            Box::pin(async move {
-                crate::assets::hub::mcp_preview(
-                    &hub_here(),
-                    &r.args,
-                    &crate::stream::remote_ask::REACH,
-                    &crate::stream::remote_ask::DialRemote,
-                )
-                .await
-                .map(Some)
-            })
-        }),
-    },
-    CommandSpec {
-        name: "mcp-sync-hub-apply",
-        doc_anchor: Some("#### `mcp-sync-hub-apply`"),
-        codes: &["bad_args", "refused", "stale", "unreachable", "io_failed"],
-        fields: &[
-            "expectSource",
-            "from",
-            "fromDir",
-            "overwrite",
-            "take",
-            "target",
-            "to",
-            "toDir",
+        name: "ext-hub-preview",
+        doc_anchor: Some("#### `ext-hub-preview`"),
+        codes: &[
+            "bad_args",
+            "bad_file",
+            "missing",
+            "refused",
+            "unreachable",
+            "io_failed",
         ],
-        takes_input: true,
-        run: Run::Async(|r| {
-            Box::pin(async move {
-                crate::assets::hub::mcp_apply(
-                    &hub_here(),
-                    &r.args,
-                    &crate::stream::remote_ask::REACH,
-                    &crate::stream::remote_ask::DialRemote,
-                )
-                .await
-                .map(Some)
-            })
-        }),
-    },
-    CommandSpec {
-        name: "skill-install-hub-preview",
-        doc_anchor: Some("#### `skill-install-hub-preview`"),
-        codes: &["bad_args", "refused", "stale", "unreachable", "io_failed"],
-        fields: &["dir", "from", "name", "rows", "source", "target", "to"],
-        takes_input: true,
-        run: Run::Async(|r| {
-            Box::pin(async move {
-                crate::assets::hub::skill_preview(
-                    &hub_here(),
-                    &r.args,
-                    &crate::stream::remote_ask::REACH,
-                    &crate::stream::remote_ask::DialRemote,
-                )
-                .await
-                .map(Some)
-            })
-        }),
-    },
-    CommandSpec {
-        name: "skill-install-hub-apply",
-        doc_anchor: Some("#### `skill-install-hub-apply`"),
-        codes: &["bad_args", "refused", "stale", "unreachable", "io_failed"],
         fields: &[
-            "expectSource",
+            "config",
             "from",
+            "kind",
             "name",
-            "overwrite",
-            "take",
-            "target",
+            "path",
+            "scope",
+            "slots",
+            "stop",
+            "suspects",
             "to",
+            "tokens",
+            "unchanged",
+            "writes",
         ],
         takes_input: true,
         run: Run::Async(|r| {
             Box::pin(async move {
-                crate::assets::hub::skill_apply(
+                crate::assets::hub::ext_preview(
                     &hub_here(),
                     &r.args,
                     &crate::stream::remote_ask::REACH,
@@ -3284,19 +3173,135 @@ pub const REGISTRY: &[CommandSpec] = &[
                 .await
                 .map(Some)
             })
+        }),
+    },
+    CommandSpec {
+        name: "ext-hub-apply",
+        doc_anchor: Some("#### `ext-hub-apply`"),
+        codes: &[
+            "bad_args",
+            "bad_file",
+            "missing",
+            "needs_input",
+            "refused",
+            "stale",
+            "unreachable",
+            "io_failed",
+        ],
+        fields: &[
+            "changed", "fill", "from", "kind", "name", "note", "path", "scope", "to", "tokens",
+        ],
+        takes_input: true,
+        run: Run::Async(|r| {
+            Box::pin(async move {
+                crate::assets::hub::ext_apply(
+                    &hub_here(),
+                    &r.args,
+                    &crate::stream::remote_ask::REACH,
+                    &crate::stream::remote_ask::DialRemote,
+                )
+                .await
+                .map(Some)
+            })
+        }),
+    },
+    // 扩展页那张表：这台现扫一次、记下（资产目录的写口从这扇门递进去），各台目录合成「条目 × 机器」。
+    //   读可达表认出每台的名字 ⇒ 只在流面上。
+    CommandSpec {
+        name: "ext-list",
+        doc_anchor: Some("#### `ext-list`"),
+        codes: &["bad_args", "catalog_unreadable", "io_failed"],
+        fields: &["machines", "problems", "rows", "visit"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::assets::ext::answer_list(
+                &r.args,
+                &crate::assets::asset_catalog::answer_current,
+                &crate::assets::ext::reach_of(&crate::stream::remote_ask::REACH),
+            )
+            .map(Some)
+            .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    // 从这台卸一个扩展：装记录里有 ⇒ 只撤装时写的；没有 ⇒ 先挪进 `~/.cc-monitor/backups/` 再删。判与写都在这台（写经 [`LocalFiles`]，
+    //   装记录的写口从这扇门递进去）。
+    CommandSpec {
+        name: "ext-uninstall-preview",
+        doc_anchor: Some("#### `ext-uninstall-preview`"),
+        codes: &[
+            "bad_args",
+            "bad_file",
+            "bad_path",
+            "io_failed",
+            "ledger_unreadable",
+            "not_found",
+            "refused",
+        ],
+        fields: &[
+            "at", "backup", "files", "kind", "name", "path", "recorded", "said", "token",
+        ],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::assets::ext::answer_uninstall_preview(
+                &LocalFiles,
+                &crate::assets::ext::Env::here(),
+                &r.args,
+            )
+            .map(Some)
+            .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    CommandSpec {
+        name: "ext-uninstall-apply",
+        doc_anchor: Some("#### `ext-uninstall-apply`"),
+        codes: &[
+            "bad_args",
+            "bad_file",
+            "bad_path",
+            "io_failed",
+            "ledger_unreadable",
+            "needs_consent",
+            "not_found",
+            "refused",
+            "stale",
+        ],
+        fields: &["at", "changed", "kind", "name", "note", "path", "token"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::assets::ext::answer_uninstall_apply(
+                &LocalFiles,
+                &crate::assets::ext::Env::here(),
+                &crate::assets::skill_ledger::answer_record,
+                &r.args,
+            )
+            .map(Some)
+            .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
     // 〔MIG-3a · D 组〕MCP 推 / 拉：每一问只在一台上（`assets/mcp_sync_flow.rs`）；判定原样是 `mcp_sync::answer_with`，写经 [`LocalFiles`]。
     CommandSpec {
         name: "mcp-sync-source",
         doc_anchor: Some("#### `mcp-sync-source`"),
-        codes: &["bad_args", "bad_path", "missing", "refused"],
-        fields: &["path", "projectDir", "text"],
+        codes: &[
+            "bad_args",
+            "bad_file",
+            "bad_path",
+            "io_failed",
+            "missing",
+            "refused",
+        ],
+        fields: &[
+            "at", "def", "field", "key", "name", "path", "slots", "token",
+        ],
         takes_input: true,
         run: Run::Blocking(|r| {
-            crate::assets::mcp_sync_flow::answer_source(&LocalFiles, &r.args)
-                .map(Some)
-                .map_err(|(c, m)| (c.to_string(), m))
+            crate::assets::mcp_sync_flow::answer_source(
+                &LocalFiles,
+                crate::assets::ext::Env::here().user_mcp.as_deref(),
+                &r.args,
+            )
+            .map(Some)
+            .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
     CommandSpec {
@@ -3304,22 +3309,8 @@ pub const REGISTRY: &[CommandSpec] = &[
         doc_anchor: Some("#### `mcp-sync-preview`"),
         codes: &["bad_args", "bad_file", "bad_path", "refused"],
         fields: &[
-            "field",
-            "kind",
-            "name",
-            "projectDir",
-            "rows",
-            "sameMachine",
-            "source",
-            "sourcePath",
-            "sourceText",
-            "state",
-            "suspects",
-            "target",
-            "targetPath",
-            "targetText",
-            "there",
-            "value",
+            "at", "def", "field", "key", "kept", "kind", "name", "path", "slots", "state",
+            "suspects", "target", "there", "value",
         ],
         takes_input: true,
         run: Run::Blocking(|r| {
@@ -3339,17 +3330,17 @@ pub const REGISTRY: &[CommandSpec] = &[
             "bad_args",
             "bad_file",
             "bad_path",
-            "needs_consent",
+            "needs_input",
             "refused",
             "stale",
         ],
         fields: &[
-            "names",
-            "overwrite",
+            "at",
+            "def",
+            "fill",
+            "name",
             "path",
-            "projectDir",
-            "source",
-            "take",
+            "recordFailed",
             "target",
             "written",
         ],
@@ -3357,7 +3348,7 @@ pub const REGISTRY: &[CommandSpec] = &[
         run: Run::Blocking(|r| {
             crate::assets::mcp_sync_flow::answer_apply(
                 &LocalFiles,
-                &crate::assets::mcp_sync::Live::from_env(),
+                &crate::assets::skill_ledger::answer_record,
                 &r.args,
             )
             .map(Some)
@@ -3381,6 +3372,7 @@ pub const REGISTRY: &[CommandSpec] = &[
             "dir",
             "name",
             "overwrite",
+            "project",
             "recordFailed",
             "source",
             "take",
@@ -3392,39 +3384,6 @@ pub const REGISTRY: &[CommandSpec] = &[
             crate::assets::skill_flow::answer_install(
                 &LocalFiles,
                 &crate::assets::mcp_sync::Live::from_env(),
-                None,
-                &crate::assets::skill_ledger::answer_record,
-                &r.args,
-            )
-            .map(Some)
-            .map_err(|(c, m)| (c.to_string(), m))
-        }),
-    },
-    CommandSpec {
-        name: "skill-uninstall-apply",
-        doc_anchor: Some("#### `skill-uninstall-apply`"),
-        codes: &[
-            "bad_args",
-            "io_failed",
-            "ledger_unreadable",
-            "needs_consent",
-            "not_found",
-            "stale",
-        ],
-        fields: &[
-            "confirm",
-            "deleted",
-            "dir",
-            "dirFailed",
-            "dirRemoved",
-            "recordFailed",
-            "seen",
-            "take",
-        ],
-        takes_input: true,
-        run: Run::Blocking(|r| {
-            crate::assets::skill_flow::answer_uninstall(
-                &LocalFiles,
                 None,
                 &crate::assets::skill_ledger::answer_record,
                 &r.args,
@@ -3538,51 +3497,6 @@ pub const REGISTRY: &[CommandSpec] = &[
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::assets::aliases::answer_policy_set(&r.args)
-                .map(Some)
-                .map_err(|(c, m)| (c.to_string(), m))
-        }),
-    },
-    // 〔MIG-3a · D 组〕skill 接入面（收件箱）：`assets/skill_inbox.rs`，声明与围栏在 `agents/claudecode/skill_host.rs`，读写经 [`LocalFiles`]。
-    CommandSpec {
-        name: "skill-host-list",
-        doc_anchor: Some("#### `skill-host-list`"),
-        codes: &["bad_args", "refused"],
-        fields: &[
-            "cwd",
-            "editable",
-            "id",
-            "instances",
-            "label",
-            "missing_reason",
-            "skills",
-        ],
-        takes_input: true,
-        run: Run::Blocking(|r| {
-            crate::assets::skill_inbox::answer_list(&r.args)
-                .map(Some)
-                .map_err(|(c, m)| (c.to_string(), m))
-        }),
-    },
-    CommandSpec {
-        name: "skill-host-read",
-        doc_anchor: Some("#### `skill-host-read`"),
-        codes: &["bad_args", "refused"],
-        fields: &["cwd", "path", "skillId", "text"],
-        takes_input: true,
-        run: Run::Blocking(|r| {
-            crate::assets::skill_inbox::answer_read(&LocalFiles, &r.args)
-                .map(Some)
-                .map_err(|(c, m)| (c.to_string(), m))
-        }),
-    },
-    CommandSpec {
-        name: "skill-host-write",
-        doc_anchor: Some("#### `skill-host-write`"),
-        codes: &["bad_args", "refused", "stale"],
-        fields: &["content", "cwd", "expected", "path", "skillId"],
-        takes_input: true,
-        run: Run::Blocking(|r| {
-            crate::assets::skill_inbox::answer_write(&LocalFiles, &r.args)
                 .map(Some)
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
@@ -3746,6 +3660,13 @@ pub const REGISTRY: &[CommandSpec] = &[
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
+    // ── 〔RM1b · 第四波〕功能侧只读查询 —— 远端会话的任务列表（`parity_ledger` `session.tasks`）──
+    //
+    // 🔴 此前只有 monitor 直读**本机** `tasks/<sid>/` 那一条路，远端 tab 永远拿不到任务。
+    //   本机后端与远端后端是同一个二进制 ⇒ 读法搬到这里，monitor 按 origin 问（本机也走这里）。
+    // ⚠ 宿主是 `feature_face`，**不是** `read_face`：monitor 侧有一条两向判据数的正是
+    //   「交给 `read_face::answer` 的 == `C1` 那八条」，本族不在其中（理由全文在 `feature_face` 头注）。
+    // ⚠ 阻塞档：读一个目录 ＋ 每个任务文件各一次。`cancel` 命中回 `not_cancellable`（不撒谎）。
     CommandSpec {
         name: "tasks-list",
         doc_anchor: Some("#### `tasks-list`"),

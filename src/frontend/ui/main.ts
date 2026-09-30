@@ -32,7 +32,6 @@ import { listen } from "@tauri-apps/api/event";
 import { HistoryView } from "./views/history";
 import { SessionViewer } from "./views/session-viewer"; // F77：点 agent 看记录复用只读会话查看器
 import { PanoramaView } from "./views/panorama";
-import { InboxView } from "./views/inbox-view";
 import { CcBusView } from "./views/cc-bus-view";
 import { GridMonitorView } from "./views/grid-monitor";
 import { CommandBarView, type Command } from "./views/command-bar";
@@ -415,10 +414,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   // Batch15-P2：代码全景入口 —— 顶栏右侧，紧邻历史按钮左边。自挂 body 作 fixed overlay
   // （照 HistoryView），对活跃**本地**会话的 cwd 建 code-picture 索引画代码库地图。
   const panoramaView = new PanoramaView(() => tabs.activeRepoInfo());
-  // devbench F03b：收件箱 overlay —— 与 panorama 同一个 cwd 取法（活跃 tab）。
-  const inboxView = new InboxView(() => tabs.activeRepoInfo());
   overlays.register("panorama", panoramaView);
-  overlays.register("inbox", inboxView);
   // F70（护城河）：右键 tab「在全景高亮本会话改动」→ 切到该会话 → 打开全景 → 高亮它改过的
   // 节点。TabManager 不直接持有 PanoramaView，走注入回调（同 onManualSwitch 范式）。
   tabs.requestPanoramaHighlight = (sid) => {
@@ -482,8 +478,6 @@ window.addEventListener("DOMContentLoaded", async () => {
     const cmds: Command[] = [
       { id: "open-history", title: copyText("main.cmd.openHistory"), keywords: copyText("main.cmd.historyKeywords"), hint: chordHint("app.toggle-history"), run: () => overlays.open("history") },
       { id: "open-panorama", title: copyText("main.cmd.openPanorama"), keywords: copyText("main.cmd.panoramaKeywords"), hint: chordHint("app.toggle-panorama"), run: () => overlays.open("panorama") },
-      // devbench F03b：**开 overlay 属命令面板首刀允许的只读动作**（写发生在 overlay 内的保存上）。
-      { id: "open-inbox", title: copyText("main.cmd.openInbox"), keywords: copyText("main.cmd.inboxKeywords"), run: () => overlays.open("inbox") },
       { id: "open-cc-bus", title: copyText("main.cmd.openCcBus"), keywords: copyText("main.cmd.ccBusKeywords"), run: () => overlays.open("cc-bus") },
       { id: "open-grid", title: copyText("main.cmd.openGrid"), keywords: copyText("main.cmd.gridKeywords"), run: () => overlays.open("grid") },
       { id: "open-settings", title: copyText("main.cmd.openSettings"), keywords: copyText("main.cmd.settingsKeywords"), hint: chordHint("app.open-settings"), run: () => void openSettingsWindow() },

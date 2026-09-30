@@ -307,6 +307,10 @@ const HIDDEN_UNRESOLVED: Readonly<Record<string, string>> = {
   // 〔SE2〕查找面板按模式切大纲清单的开合（大纲那一半的 `hidden` 从 `UserInputPanel` 自己手里交给了面板）。
   "src/frontend/ui/views/session-find.ts:237": // 〔C4b〕行号 −1：两条类型 import 并成一条（`../session-reads`）·〔CP2b〕+1：加了 copyText 的 import
     "`this.outline.panel` —— 大纲清单那块，由 `UserInputPanel` 建（类 `.user-inputs`；`styles.css` 里那条规则头注逐字「绝不许出现 display」）",
+  // 扩展页的抽屉：`this.drawer` 在构造器里由本文件的 `el()` 小工具建（类 `ext-drawer`，经一层参数传进去 ⇒ 推不出；行号按文件现数）；
+  //   `.ext-drawer` 在 `styles/settings.css` 里**没有 display 规则** ⇒ UA 的 `[hidden]` 不会被压过（人工核过）。
+  "src/frontend/ui/settings/ext-section.ts:184": "`this.drawer` —— 构造时收起",
+  "src/frontend/ui/settings/ext-section.ts:268": "`this.drawer` —— 点开一行才拉出来",
   "src/frontend/ui/error-toast.ts:136": // 〔CP2b〕+1：加了 copyText 的 import
     "`existing.countEl` —— `existing` 是从一张 Map 里取回来的旧 toast，它的 countEl 在别处建的",
   // ⚠ 〔2026-09-19〕`606 → 614`：我在这份文件上方加了一段注释，**行号就漂了**。
@@ -336,7 +340,7 @@ const HIDDEN_UNRESOLVED: Readonly<Record<string, string>> = {
   //    `perMachineFallbackHint`，语义一字未动。
   // 〔AS2 · 4B〕`792 → 793` / `1288 → 1297` / `1301 → 1310`：`panel.ts` 多了资产目录那一行 import 与那一块登记，三处语义一字未动。
   // 〔W5-UI ＋ CFG1 合并〕W5-UI 那三处 +4 与 CFG1 +3 叠加（`panel.ts` 785 → 792 · 1289 → 1296 · 1302 → 1309；`history.ts` 1612 → 1616），语义一字未动。原注：〔W5-UI〕`785 → 789` / `1289 → 1293` / `1302 → 1306`：`panel.ts` 多一行 import（应用内对话框）＋ 选目录失败那处 catch 多三行出声，三处语义一字未动。
-  "src/frontend/ui/settings/panel.ts:821": // 账号库收进后端：−1（本机账号读口那一行 import 随「为每个账号加一条」删了）· 〔CP2b〕同上 · 〔LR2〕−7：逃生口 forceLaunchPayloadRenderer 那段缓存字段删了 · 〔FIX2〕+35：openInner 拆出两个私有方法 · 〔FIX4〕+2：多两行 import
+  "src/frontend/ui/settings/panel.ts:823": // 〔合并扩展页 × 账号库〕按合并后的文件现打（扩展页 +2）· 账号库收进后端：−1（本机账号读口那一行 import 随「为每个账号加一条」删了）· 〔CP2b〕同上 · 〔LR2〕−7：逃生口 forceLaunchPayloadRenderer 那段缓存字段删了 · 〔FIX2〕+35：openInner 拆出两个私有方法 · 〔FIX4〕+2：多两行 import
     "`b.el` —— `b` 来自 `this.perMachineBlocks` 数组，元素由各 section 自己建，跨文件",
   // 🔴 〔步 20 · `设计/70 §1.3 C`〕兜底态那块提示的显隐。它的类名是
   //    `skeleton.ts::makeSkeleton` 挂上去的（`settings-hint`），**跨文件** ——
@@ -344,9 +348,9 @@ const HIDDEN_UNRESOLVED: Readonly<Record<string, string>> = {
   //    ⚠ 顺带说清它安不安全：`settings-hint` 在 `src/frontend/ui/styles.css` 里**没有 display 规则**
   //      ⇒ UA 的 `[hidden] { display: none }` 不会被压过，那两句不是空写。
   //      这一条是**人工核过的**，不是这把尺子判的 —— 所以它在登记表里，不在绿里。
-  "src/frontend/ui/settings/panel.ts:1339": // 账号库收进后端：−2 · 〔CP2b〕行号 −6：字面量进表后几段多行拼接收成一行 · 〔LR2〕再 −7（同上） · 〔AL2〕+1（别名管理器多传一行 origin） · 〔FIX2〕+35 · 〔FIX4〕+16：外观「高级」那一折 ＋ 全景卸口那一格 ＋ 认不出 OS 那一分支
+  "src/frontend/ui/settings/panel.ts:1338": // 〔合并扩展页 × 账号库〕按合并后的文件现打（扩展页 −1）· 账号库收进后端：−2 · 〔CP2b〕行号 −6：字面量进表后几段多行拼接收成一行 · 〔LR2〕再 −7（同上） · 〔AL2〕+1（别名管理器多传一行 origin） · 〔FIX2〕+35 · 〔FIX4〕+16：外观「高级」那一折 ＋ 全景卸口那一格 ＋ 认不出 OS 那一分支
     "`this.perMachineFallbackHint` —— 类名由 `skeleton.ts::makeSkeleton` 挂，跨文件",
-  "src/frontend/ui/settings/panel.ts:1352": // 账号库收进后端：−2 · 〔CP2b〕同上 · 〔LR2〕−7 · 〔AL2〕+1 · 〔FIX2〕+35 · 〔FIX4〕+16
+  "src/frontend/ui/settings/panel.ts:1351": // 〔合并扩展页 × 账号库〕按合并后的文件现打（扩展页 −1）· 账号库收进后端：−2 · 〔CP2b〕同上 · 〔LR2〕−7 · 〔AL2〕+1 · 〔FIX2〕+35 · 〔FIX4〕+16
     "`this.perMachineFallbackHint` —— 同上（兜底态亮出来那一支）",
   // 🔴 〔步 20 · `设计/70 §10.1`〕「足迹」那一块里，本机那一整套的显隐包装。
   //    它**刻意不挂任何类**：只负责显隐、不要样式。挂了类就得在 CSS 里给它写规则

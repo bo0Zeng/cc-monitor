@@ -72,6 +72,10 @@ pub struct Install {
 pub struct Ledger {
     pub v: u64,
     pub installs: BTreeMap<String, Install>,
+    /// MCP 装记录：配置文件的绝对路径 → server 名 → 装进去的那一条的摘要（[`mcp_digest`]）。
+    /// 没有一条时不写这一格（旧文件与新文件同形）。
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub mcp: BTreeMap<String, BTreeMap<String, String>>,
 }
 
 impl Default for Ledger {
@@ -79,8 +83,14 @@ impl Default for Ledger {
         Ledger {
             v: FORMAT_V,
             installs: BTreeMap::new(),
+            mcp: BTreeMap::new(),
         }
     }
+}
+
+/// 一条 MCP 定义的摘要（键序无关：按规范写法算）。装的时候记、卸的时候比。
+pub fn mcp_digest(def: &Value) -> String {
+    digest_of(&crate::assets::asset_catalog::canonical(def))
 }
 
 /// 一段原文的摘要（装时记、卸时比，两处同一个函数）。**纯**。
@@ -318,7 +328,7 @@ pub fn drop_paths(
 pub fn record_at(path: &Path, skills_root: Option<&Path>, args: &Value) -> Answer {
     let op = args.get("op").and_then(Value::as_str).ok_or((
         "bad_args",
-        crate::common::contract::malformed("missing `op` (add or drop)"),
+        crate::common::contract::malformed("missing `op` (add, drop, mcp-add or mcp-drop)"),
     ))?;
     // 〔HX2〕先建那一层目录（在就算了），再拿它的跨进程锁，锁住之后才读。
     let lock_dir = path.parent().ok_or((
@@ -361,7 +371,17 @@ pub fn record_at(path: &Path, skills_root: Option<&Path>, args: &Value) -> Answe
             // 〔MIG-3a · 子步 3 · 主会话 09-28 裁〕`at: "home"`（闭集，只此一个值）：装的东西落在家目录底下、不在 skill 根下
             //   ⇒ 键 = 本记录自己所在的那个家（`<家>/.cc-monitor/<本文件>` 的上两层），
             //   `files` 的路径相对它。同一份账、同一个形（主会话：不另立第二份账）。
+            let project = args.get("project").and_then(Value::as_str);
             let dir = match args.get("at").and_then(Value::as_str) {
+                // 项目级 skill：根由适配层按那个项目算（同 `skill-install-plan` 答 `dir` 的那一处）。
+                None if project.is_some() => {
+                    let p = crate::assets::mcp_edit::project_root(project.unwrap_or_default())?;
+                    crate::agents::skill_root_at(Some(Path::new(&p)))
+                        .ok_or(("io_failed", copy_text("beSkillLedger.add.noRoot", &[])))?
+                        .join(&name)
+                        .display()
+                        .to_string()
+                }
                 None => {
                     let root = match skills_root {
                         Some(r) => r.to_path_buf(),
@@ -421,11 +441,57 @@ pub fn record_at(path: &Path, skills_root: Option<&Path>, args: &Value) -> Answe
             let left = drop_paths(&mut ledger, &dir, &paths)?;
             (dir, name, !paths.is_empty(), left)
         }
+        "mcp-add" | "mcp-drop" => {
+            let file = args
+                .get("file")
+                .and_then(Value::as_str)
+                .filter(|f| Path::new(f).is_absolute())
+                .ok_or((
+                    "bad_args",
+                    crate::common::contract::malformed("missing `file` (an absolute path)"),
+                ))?
+                .to_string();
+            let name = args
+                .get("name")
+                .and_then(Value::as_str)
+                .filter(|n| !n.trim().is_empty())
+                .ok_or((
+                    "bad_args",
+                    crate::common::contract::malformed("missing `name`"),
+                ))?
+                .to_string();
+            let changed = if op == "mcp-add" {
+                let digest = args
+                    .get("digest")
+                    .and_then(Value::as_str)
+                    .filter(|d| valid_digest(d))
+                    .ok_or((
+                        "bad_args",
+                        crate::common::contract::malformed(
+                            "`digest` must be 16 lowercase hex digits",
+                        ),
+                    ))?;
+                let slot = ledger.mcp.entry(file.clone()).or_default();
+                slot.insert(name.clone(), digest.to_string()) != Some(digest.to_string())
+            } else {
+                let gone = ledger
+                    .mcp
+                    .get_mut(&file)
+                    .and_then(|m| m.remove(&name))
+                    .is_some();
+                if ledger.mcp.get(&file).is_some_and(BTreeMap::is_empty) {
+                    ledger.mcp.remove(&file);
+                }
+                gone
+            };
+            let left = ledger.mcp.get(&file).map_or(0, BTreeMap::len);
+            (file, name, changed, left)
+        }
         other => {
             return Err((
                 "bad_args",
                 crate::common::contract::malformed(&format!(
-                    "`op` must be add or drop, got {other:?}"
+                    "`op` must be add, drop, mcp-add or mcp-drop, got {other:?}"
                 )),
             ))
         }

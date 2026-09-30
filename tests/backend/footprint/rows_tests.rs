@@ -615,8 +615,12 @@ fn every_host_declaration_is_pinned() {
         ("project-mcp", ".mcp.json", ProjectDir),
         // 〔AS2 · 第四波 4B〕资产目录里「装到这台」的 skill：装到哪台就写哪台（本机页与远端页都能装）⇒ `Either`。
         ("skill-install", "~/.claude/skills", Either),
+        // 装到某个项目里的那一份：写在你在确认卡上选的那个项目目录里 ⇒ 同 `.mcp.json` 那两行，`ProjectDir`。
+        ("skill-install", ".claude/skills", ProjectDir),
         // 〔SU1 · 第四波 4C〕同一格的第二个文件：那台后端自己的装记录（装到哪台就记在哪台）⇒ `Either`。
         ("skill-install", "~/.cc-monitor/skill-installs.json", Either),
+        // 卸掉不是 cc-monitor 装的之前放一份的地方：在被卸的那台 ⇒ `Either`。
+        ("skill-install", "~/.cc-monitor/backups", Either),
         ("powershell-profile", "$PROFILE", Client),
         // 〔`K-R62` 09-11〕本机 POSIX 那一格补上之后升进 `TOOLS` 的那一条。
         // `Client`：它写的是 **cc-monitor 跑着的这台**的 rc（远端那份 rc 归 `ccm` 那两行）。

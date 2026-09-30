@@ -194,6 +194,27 @@ const CHANNELED: &[(&str, &str)] = &[
 /// 操作名集合要把它们算进来：下面那条两向判据的「前端那一侧」== [`CHANNELED`] ⊔ 本表。
 /// 每一条还要**真的**是后端登记的帧命令（从后端 `inbound.rs` 生产段数，异源）、monitor 生产段里**零**字面量。
 const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
+    // 设置「扩展」页（`src/frontend/ui/ext-reads.ts`）：表 · 装（本机后端当枢纽）· 卸（问被卸那台），判定全在后端。
+    (
+        "ext-list",
+        "界面直问本机后端：各台目录合成「条目 × 机器」，每格的态与唯一那个按钮都是后端判的，线上不带摘要",
+    ),
+    (
+        "ext-hub-preview",
+        "只问本机一次：本机后端向来源那台取、交被写那台判，拼成确认卡（带两头的记号）",
+    ),
+    (
+        "ext-hub-apply",
+        "只问本机一次：两头再看一次、记号对不上 ⇒ `stale` 零写；对得上才交被写那台写",
+    ),
+    (
+        "ext-uninstall-preview",
+        "问被卸的那一台：装记录里有 ⇒ 按记录撤；没有 ⇒ 卡上说先备份再删",
+    ),
+    (
+        "ext-uninstall-apply",
+        "问被卸的那一台：记号对不上 ⇒ `stale` 零写；判 · 删 · 摘记录都在那台",
+    ),
     // 〔MOD · `设计/90 §3` 判据 3〕会话正文那几条里生在帧面上的（不是 `C1` 那一族的换壳）：界面经 `src/frontend/ui/record-reads.ts` 直问。
     (
         "history-page",
@@ -344,11 +365,6 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "`BORN_ON_FRAME` 那一条：后端出成品 `{path, size, text, truncated}`（`read_face.rs::log_tail`，读本进程被交的那份诊断文件）；\
          前端 `src/frontend/ui/settings/backend-section.ts::readBackendLog` 按形状收，monitor 这一侧零发送点",
     ),
-    (
-        "plugins-marketplaces",
-        "`feature_face`（RM1b）那一族：后端应答就是整份 survey（成品），monitor 那条命令（`list_plugin_marketplaces`）\
-         只在核「恰一行 ＋ 严格形状」—— 核验搬到唯一的消费者 `settings/plugins-section.ts::decodeSurvey`，命令与 `plugins.rs` 删了",
-    ),
     // 〔C4c · 第四波 4B〕`C4b.md §6.6` A 组第一批：后端已是成品、monitor 只在转的那一条。
     // 〔STC · `设计/90 §4` 阶段 C〕生在帧面上、界面直接问的第二条。
     (
@@ -407,11 +423,6 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "accounts-verify",
         "账号库那一族：生来就走通道（从没过 monitor）—— 那台后端做完回成品，界面 `account-ops.ts` 按生成的线上类型收",
     ),
-    (
-        "assets-catalog",
-        "〔AS2 · 4B · V113〕资产目录：生来就走通道（没有过 monitor 那一条）—— 后端应答就是成品（整份目录 ＋「这台缺什么」的判定），\
-         界面 `settings/assets-section.ts::decodeCatalog` 按形状收",
-    ),
     // 〔C4d · 第四波 4B〕注解三条：读写者换成本机常驻后端（`history_annotations.rs`，文件原地不动）；monitor 那两条命令
     //   （`update_history_metadata` / `list_last_accounts`）与删会话时那一句清注解删了，界面经 `src/frontend/ui/history-reads.ts` 问 `<local>`。
     (
@@ -441,15 +452,6 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "这几个号在那台的表里有没有行 · 那台的中转在不在：monitor 那条命令（`apikey_routing_for`）本机自己读凭据文件 ＋ 连回环口、         远端转 `apikey-read` 的 `rows` ＋ `relay-status`，再调 `acct-core` 那条规则 —— 人群与判准整个搬进后端（`accounts/upstream_select/endpoint.rs`），命令删了",
     ),
     // 〔SU1 · 第四波 4C · V116〕skill 卸的「看」那一半：生来就走通道（没有过 monitor 那一条）。
-    (
-        "skill-installs",
-        "这台记着的、从别处装来的 skill：后端应答就是成品 `{installs}`，界面 `settings/assets-section.ts::decodeInstalls` 按形状收",
-    ),
-    (
-        "skill-uninstall-plan",
-        "卸之前看：逐文件的态与「要不要问」都是那台后端答的成品，界面 `settings/assets-section.ts::decodeUninstallPlan` 按形状收。\
-         〔MIG-3a〕带 `take` 的那一问随卸进了后端（`skill-uninstall-apply` 自己判），monitor 零处问它",
-    ),
     // 〔C4e · 第四波 4C〕`C4c.md §5.6` A 组 `tmux.manage` 第一格：抓一屏。
     (
         "capture-pane",
@@ -521,19 +523,6 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     ),
     // 〔MIG-3a · `99 §2.1 ⑬`〕D 组 MCP：读写与推拉的计算、读、写都进了那台后端（`assets/mcp_edit.rs` · `assets/mcp_sync_flow.rs`），
     //   monitor 那八条 Tauri 命令（`mcp.rs` · `mcp_sync.rs`〔散文墓碑〕）删了；界面经 `src/frontend/ui/mcp-reads.ts` / `src/frontend/ui/mcp-sync-reads.ts` 按形状收。
-    (
-        "mcp-read",
-        "MCP 三段 ＋ 用过的项目目录：后端从来就出成品，monitor 那几条命令（`read_mcp_servers` 等）只在核形状 ＋ 转 —— \
-         核验搬到 `mcp-reads.ts::decodeMcpRead`（金样 `mcp-read.golden.json`）",
-    ),
-    (
-        "mcp-server-put",
-        "新帧命令：项目 `.mcp.json` 增 / 改一条，那台后端自己读 · 规划 · 经自己的文件管理面写；成品 `{path, changed}`",
-    ),
-    (
-        "mcp-server-remove",
-        "新帧命令：删一条，同上",
-    ),
     // 〔MIG-3a · `01 §3.5` · 主会话 09-28 裁〕`mcp-sync-source` / `-preview` / `-apply` 三条界面不再直问（那是经前端中继）：
     //   界面只问本机那两条枢纽命令，枢纽向来源那台取、向被写那台写（内层三条只经枢纽）。
     // 〔MIG-3a · 子步 3〕cc-bus 装到本机：monitor 那两条 Tauri 命令（`deploy_local_cc_bus` / `cc_bus_install_state`〔散文墓碑〕）删了。
@@ -544,14 +533,6 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     (
         "cc-bus-install-state",
         "新帧命令：本机后端答装的是哪一版（三态，只读）",
-    ),
-    (
-        "mcp-sync-hub-preview",
-        "新帧命令：MCP 推 / 拉看差异，只问本机一次（本机常驻后端当枢纽，`assets/hub.rs`）",
-    ),
-    (
-        "mcp-sync-hub-apply",
-        "新帧命令：MCP 推 / 拉写入，只问本机一次（枢纽向来源那台再取一次核对，被写那台判 CAS、`stale` 就停）",
     ),
     // 〔MIG-3a〕D 组 skill 装 / 卸与资产目录同步：monitor 那四条 Tauri 命令（`skill_install_*` · `skill_uninstall_apply` · `assets_sync`〔散文墓碑〕）删了。
     (
@@ -588,31 +569,7 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "〔WF1 · L · `设计/99 §2.3`〕新帧命令：那一代 PowerShell 的执行策略设成当前用户 `RemoteSigned`（`assets/aliases/mod.rs::answer_policy_set`）；\
          前端 `src/frontend/ui/alias-reads.ts::allowLocalScripts` 问（用户点了、确认了之后），monitor 这一侧零发送点",
     ),
-    (
-        "skill-host-list",
-        "〔MIG-3a〕新帧命令：收件箱那一面（声明 ＋ 三道围栏住后端适配层 `skill_host.rs`），monitor 那三条 Tauri 命令删了",
-    ),
-    (
-        "skill-host-read",
-        "〔MIG-3a〕新帧命令：读那份可编辑文件（过围栏、经文件管理面）",
-    ),
-    (
-        "skill-host-write",
-        "〔MIG-3a〕新帧命令：写那份可编辑文件（过围栏、CAS = 打开时那一份）",
-    ),
     // 〔MIG-3a · 主会话 09-28 裁〕`skill-read` / `skill-install-plan` / `skill-install-apply` 界面不再直问：只经本机那两条枢纽命令。
-    (
-        "skill-install-hub-preview",
-        "新帧命令：skill 装到这台看差异，只问本机一次（枢纽向来源那台读、交被写那台判）",
-    ),
-    (
-        "skill-install-hub-apply",
-        "新帧命令：skill 装到这台写入，只问本机一次（枢纽向来源那台再读一次核对，被写那台判 · 写 · 记）",
-    ),
-    (
-        "skill-uninstall-apply",
-        "新帧命令：被卸那台判 · 删 · 摘记录 · 收空目录同一台，`stale` 就停并说清前面删了哪几个",
-    ),
     // 〔OSA · 主会话 09-28 裁〕基数 → 增量 +1：数据位置页 `$PROFILE` 备份那一格（`src/frontend/ui/settings/profile-backups.ts`）问本机后端那几个目录里
     //   有没有 `.ccm-backup-`（候选由 `aliases-read` 答）；monitor 那份探法删了。文件窗口自己也列目录（见 `ASKED_BY_MONITOR_ITSELF`）。
     (

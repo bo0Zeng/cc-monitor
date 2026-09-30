@@ -904,11 +904,6 @@
       "zh": "{dir} 和它的上一级都不在，这台机器上没有放 skill 的地方。",
       "args": ["dir"]
     },
-    "beSkillInstall.ledger.noHome": {
-      "kind": "error",
-      "zh": "找不到家目录，不知道装记录放在哪。",
-      "args": []
-    },
     "beSkillInstall.uninstall.notRecorded": {
       "kind": "error",
       "zh": "这台机器上没有从别处装到 {dir} 的 skill 记录。只能卸装时记下的那几个文件。",
@@ -1807,176 +1802,6 @@
       "zh": "{who} 的 tmux 会话「{name}」已终止。标签稍后显示为已结束。",
       "args": ["who", "name"]
     },
-    "mcpSync.panel.open": {
-      "kind": "action",
-      "zh": "推到 / 拉自另一台机器",
-      "args": []
-    },
-    "mcpSync.panel.hint": {
-      "kind": "body",
-      "zh": "把这个项目的 MCP 配置推到另一台机器，或从那边拉过来。写之前先看差异，勾了哪几条才写哪几条；不会自动同步，也不会改写任何一条。",
-      "args": []
-    },
-    "mcpSync.direction.push": {
-      "kind": "control",
-      "zh": "推到",
-      "args": []
-    },
-    "mcpSync.direction.pull": {
-      "kind": "control",
-      "zh": "拉自",
-      "args": []
-    },
-    "mcpSync.machine.local": {
-      "kind": "body",
-      "zh": "本机",
-      "args": []
-    },
-    "mcpSync.dir.placeholder": {
-      "kind": "control",
-      "zh": "那台机器上的项目目录",
-      "args": []
-    },
-    "mcpSync.dir.missing": {
-      "kind": "error",
-      "zh": "先填那台机器上的项目目录。",
-      "args": []
-    },
-    "mcpSync.machines.none": {
-      "kind": "body",
-      "zh": "还没有配置别的机器。",
-      "args": []
-    },
-    "mcpSync.machines.failed": {
-      "kind": "error",
-      "zh": "读不到机器清单：{reason}",
-      "args": ["reason"]
-    },
-    "mcpSync.preview.action": {
-      "kind": "action",
-      "zh": "看差异",
-      "args": []
-    },
-    "mcpSync.preview.loading": {
-      "kind": "body",
-      "zh": "正在读两边的配置…",
-      "args": []
-    },
-    "mcpSync.preview.failed": {
-      "kind": "error",
-      "zh": "看差异失败：{reason}",
-      "args": ["reason"]
-    },
-    "mcpSync.preview.head": {
-      "kind": "body",
-      "zh": "从 {source} 的 {sourcefile} 拷到 {target} 的 {targetfile}",
-      "args": ["source", "sourcefile", "target", "targetfile"]
-    },
-    "mcpSync.preview.empty": {
-      "kind": "body",
-      "zh": "拷出来的那份配置里没有 MCP 条目。",
-      "args": []
-    },
-    "mcpSync.state.new": {
-      "kind": "body",
-      "zh": "{machine} 上没有",
-      "args": ["machine"]
-    },
-    "mcpSync.state.same": {
-      "kind": "body",
-      "zh": "两边一样",
-      "args": []
-    },
-    "mcpSync.state.differs": {
-      "kind": "body",
-      "zh": "{machine} 上的不一样",
-      "args": ["machine"]
-    },
-    "mcpSync.state.onlyThere": {
-      "kind": "body",
-      "zh": "只在 {machine} 上，不会动它",
-      "args": ["machine"]
-    },
-    "mcpSync.take.copy": {
-      "kind": "control",
-      "zh": "拷过去",
-      "args": []
-    },
-    "mcpSync.take.overwrite": {
-      "kind": "control",
-      "zh": "盖掉 {machine} 上那一条",
-      "args": ["machine"]
-    },
-    "mcpSync.row.showConfig": {
-      "kind": "action",
-      "zh": "看配置",
-      "args": []
-    },
-    "mcpSync.row.sideOf": {
-      "kind": "body",
-      "zh": "{machine} 上的这一条",
-      "args": ["machine"]
-    },
-    "mcpSync.suspect.absPresent": {
-      "kind": "body",
-      "zh": "{field} 里有绝对路径 {value}，{machine} 上也有这个路径。",
-      "args": ["field", "value", "machine"]
-    },
-    "mcpSync.suspect.absAbsent": {
-      "kind": "body",
-      "zh": "{field} 里有绝对路径 {value}，{machine} 上没有这个路径。",
-      "args": ["field", "value", "machine"]
-    },
-    "mcpSync.suspect.absForeign": {
-      "kind": "body",
-      "zh": "{field} 里有绝对路径 {value}，{machine} 的系统不认这种写法。",
-      "args": ["field", "value", "machine"]
-    },
-    "mcpSync.suspect.absUnknown": {
-      "kind": "body",
-      "zh": "{field} 里有绝对路径 {value}，查不到 {machine} 上有没有。",
-      "args": ["field", "value", "machine"]
-    },
-    "mcpSync.suspect.commandMissing": {
-      "kind": "body",
-      "zh": "{machine} 的后端在它的 PATH 上找不到 {value}。你登录后的 shell 可能找得到。",
-      "args": ["machine", "value"]
-    },
-    "mcpSync.suspect.commandUnknown": {
-      "kind": "body",
-      "zh": "查不了 {machine} 上有没有 {value}：它的后端没有 PATH。",
-      "args": ["machine", "value"]
-    },
-    "mcpSync.suspect.commandRelative": {
-      "kind": "body",
-      "zh": "命令 {value} 是相对路径，要看 {machine} 那个项目里有没有这个文件。",
-      "args": ["value", "machine"]
-    },
-    "mcpSync.suspect.other": {
-      "kind": "body",
-      "zh": "留意 {field}：{value}",
-      "args": ["field", "value"]
-    },
-    "mcpSync.apply.action": {
-      "kind": "action",
-      "zh": "写到 {machine}（{n} 条）",
-      "args": ["machine", "n"]
-    },
-    "mcpSync.apply.done": {
-      "kind": "body",
-      "zh": "已写到 {path}：{names}",
-      "args": ["path", "names"]
-    },
-    "mcpSync.apply.unchanged": {
-      "kind": "body",
-      "zh": "{machine} 上那份已经是这样了，没有写。",
-      "args": ["machine"]
-    },
-    "mcpSync.apply.failed": {
-      "kind": "error",
-      "zh": "没写成：{reason}",
-      "args": ["reason"]
-    },
     "deploy.refused.unsupportedMachine": {
       "kind": "error",
       "zh": "{machine} 是 {os} / {arch} 的机器，cc-monitor 没有这种机器用的后端。它的会话不会自动接上。",
@@ -2037,226 +1862,6 @@
       "zh": "这一版 cc-monitor 没有带 {os} / {arch} 的代码全景组件，所以装不到 {machine}。发布版带着它。",
       "args": ["machine", "os", "arch"]
     },
-    "assets.panel.hint": {
-      "kind": "body",
-      "zh": "这里列出别的机器上有、这台还没有或不一样的 skill 和 MCP。目录在各台之间自动对上，装要你点。",
-      "args": []
-    },
-    "assets.panel.refresh": {
-      "kind": "action",
-      "zh": "重新对一遍",
-      "args": []
-    },
-    "assets.load.loading": {
-      "kind": "body",
-      "zh": "正在对目录…",
-      "args": []
-    },
-    "assets.load.failed": {
-      "kind": "error",
-      "zh": "读不到这台的资产目录：{reason}",
-      "args": ["reason"]
-    },
-    "assets.load.tooOld": {
-      "kind": "error",
-      "zh": "这台机器上的后端版本旧，需要更新。",
-      "args": []
-    },
-    "assets.load.shape": {
-      "kind": "error",
-      "zh": "这台的后端回的内容读不懂。多半是版本不一致，需要更新后端。",
-      "args": []
-    },
-    "assets.load.problem": {
-      "kind": "body",
-      "zh": "这台有一处没读出来：{reason}",
-      "args": ["reason"]
-    },
-    "assets.sync.failed": {
-      "kind": "error",
-      "zh": "这次没和别的机器对上：{reason}",
-      "args": ["reason"]
-    },
-    "assets.sync.oneFailed": {
-      "kind": "error",
-      "zh": "和 {machine} 没对上：{reason}",
-      "args": ["machine", "reason"]
-    },
-    "assets.list.empty": {
-      "kind": "body",
-      "zh": "别的机器上有的，这台都有了。",
-      "args": []
-    },
-    "assets.here.missing": {
-      "kind": "body",
-      "zh": "这台没有",
-      "args": []
-    },
-    "assets.here.differs": {
-      "kind": "body",
-      "zh": "这台有同名的，内容不一样",
-      "args": []
-    },
-    "assets.here.same": {
-      "kind": "body",
-      "zh": "这台有一样的",
-      "args": []
-    },
-    "assets.kind.skill": {
-      "kind": "body",
-      "zh": "skill",
-      "args": []
-    },
-    "assets.kind.mcp": {
-      "kind": "body",
-      "zh": "MCP",
-      "args": []
-    },
-    "assets.machine.local": {
-      "kind": "body",
-      "zh": "本机",
-      "args": []
-    },
-    "assets.from.machine": {
-      "kind": "body",
-      "zh": "来自 {machine}",
-      "args": ["machine"]
-    },
-    "assets.from.project": {
-      "kind": "body",
-      "zh": "来自 {machine} 的 {project}",
-      "args": ["machine", "project"]
-    },
-    "assets.from.unreachable": {
-      "kind": "body",
-      "zh": "那台现在没连上，装不了",
-      "args": []
-    },
-    "assets.install.action": {
-      "kind": "action",
-      "zh": "装到这台",
-      "args": []
-    },
-    "assets.mcp.dirPlaceholder": {
-      "kind": "control",
-      "zh": "装进这台的哪个项目目录",
-      "args": []
-    },
-    "assets.mcp.dirMissing": {
-      "kind": "error",
-      "zh": "先填这台机器上的项目目录。",
-      "args": []
-    },
-    "assets.mcp.gone": {
-      "kind": "body",
-      "zh": "来源那份配置里已经没有这一条了。",
-      "args": []
-    },
-    "assets.preview.action": {
-      "kind": "action",
-      "zh": "看差异",
-      "args": []
-    },
-    "assets.preview.loading": {
-      "kind": "body",
-      "zh": "正在读两边…",
-      "args": []
-    },
-    "assets.preview.failed": {
-      "kind": "error",
-      "zh": "看差异失败：{reason}",
-      "args": ["reason"]
-    },
-    "assets.take.overwrite": {
-      "kind": "control",
-      "zh": "盖掉 {machine} 上那一条",
-      "args": ["machine"]
-    },
-    "assets.apply.action": {
-      "kind": "action",
-      "zh": "装到 {machine}",
-      "args": ["machine"]
-    },
-    "assets.apply.mcpDone": {
-      "kind": "body",
-      "zh": "已写到 {path}",
-      "args": ["path"]
-    },
-    "assets.apply.skillDone": {
-      "kind": "body",
-      "zh": "已装到 {dir}，写了 {n} 个文件。",
-      "args": ["dir", "n"]
-    },
-    "assets.apply.unchanged": {
-      "kind": "body",
-      "zh": "{machine} 上已经是这样了，没有写。",
-      "args": ["machine"]
-    },
-    "assets.apply.failed": {
-      "kind": "error",
-      "zh": "没装成：{reason}",
-      "args": ["reason"]
-    },
-    "assets.apply.chmodFailed": {
-      "kind": "error",
-      "zh": "这几个的执行位没设上：{paths}",
-      "args": ["paths"]
-    },
-    "assets.skill.head": {
-      "kind": "body",
-      "zh": "装进 {dir}",
-      "args": ["dir"]
-    },
-    "assets.skill.blocked": {
-      "kind": "error",
-      "zh": "这台上那一份盖不了：{reason}",
-      "args": ["reason"]
-    },
-    "assets.suspect.executable": {
-      "kind": "body",
-      "zh": "这是一个可执行的文件。",
-      "args": []
-    },
-    "assets.suspect.binary": {
-      "kind": "body",
-      "zh": "来源那台读不出它的原文，装不过去。",
-      "args": []
-    },
-    "assets.suspect.absPresent": {
-      "kind": "body",
-      "zh": "里面有绝对路径 {value}，{machine} 上也有这个路径。",
-      "args": ["value", "machine"]
-    },
-    "assets.suspect.absAbsent": {
-      "kind": "body",
-      "zh": "里面有绝对路径 {value}，{machine} 上没有这个路径。",
-      "args": ["value", "machine"]
-    },
-    "assets.suspect.absForeign": {
-      "kind": "body",
-      "zh": "里面有绝对路径 {value}，{machine} 的系统不认这种写法。",
-      "args": ["value", "machine"]
-    },
-    "assets.suspect.absUnknown": {
-      "kind": "body",
-      "zh": "里面有绝对路径 {value}，查不到 {machine} 上有没有。",
-      "args": ["value", "machine"]
-    },
-    "assets.suspect.commandMissing": {
-      "kind": "body",
-      "zh": "{machine} 的后端在它的 PATH 上找不到 {value}。你登录后的 shell 可能找得到。",
-      "args": ["machine", "value"]
-    },
-    "assets.suspect.commandUnknown": {
-      "kind": "body",
-      "zh": "查不了 {machine} 上有没有 {value}：它的后端没有 PATH。",
-      "args": ["machine", "value"]
-    },
-    "assets.suspect.other": {
-      "kind": "body",
-      "zh": "留意：{value}",
-      "args": ["value"]
-    },
     "liveCard.state.streaming": {
       "kind": "body",
       "zh": "生成中…",
@@ -2281,86 +1886,6 @@
       "kind": "body",
       "zh": "…（前面的已省略）",
       "args": []
-    },
-    "assets.uninstall.head": {
-      "kind": "title",
-      "zh": "从别的机器装来的 skill",
-      "args": []
-    },
-    "assets.uninstall.none": {
-      "kind": "body",
-      "zh": "这台还没有从别的机器装来的 skill。",
-      "args": []
-    },
-    "assets.uninstall.loadFailed": {
-      "kind": "error",
-      "zh": "读不出这台的装记录：{reason}",
-      "args": ["reason"]
-    },
-    "assets.uninstall.tooOld": {
-      "kind": "error",
-      "zh": "这台机器上的后端版本旧。重装后端之后才能卸从别处装来的 skill。",
-      "args": []
-    },
-    "assets.uninstall.meta": {
-      "kind": "body",
-      "zh": "{dir} · 装时写进去 {n} 个文件",
-      "args": ["dir", "n"]
-    },
-    "assets.uninstall.action": {
-      "kind": "action",
-      "zh": "卸",
-      "args": []
-    },
-    "assets.uninstall.previewHead": {
-      "kind": "body",
-      "zh": "只删装时写进 {dir} 的这几个文件，目录本身留着：",
-      "args": ["dir"]
-    },
-    "assets.uninstallState.intact": {
-      "kind": "body",
-      "zh": "和装的时候一样",
-      "args": []
-    },
-    "assets.uninstallState.modified": {
-      "kind": "body",
-      "zh": "装完之后被改过，勾上才删",
-      "args": []
-    },
-    "assets.uninstallState.gone": {
-      "kind": "body",
-      "zh": "已经不在了",
-      "args": []
-    },
-    "assets.uninstallState.unreadable": {
-      "kind": "body",
-      "zh": "现在不是一份能比对的文本，不删",
-      "args": []
-    },
-    "assets.uninstall.askOverwrote": {
-      "kind": "body",
-      "zh": "装之前这里就有一份，装的时候被盖掉了。删掉它也回不到装之前那一份。",
-      "args": []
-    },
-    "assets.uninstall.apply": {
-      "kind": "action",
-      "zh": "在 {machine} 上删掉勾了的",
-      "args": ["machine"]
-    },
-    "assets.uninstall.doneDirRemoved": {
-      "kind": "body",
-      "zh": "删了 {n} 个文件，目录 {dir} 空了，也删掉了。",
-      "args": ["n", "dir"]
-    },
-    "assets.uninstall.done": {
-      "kind": "body",
-      "zh": "删了 {n} 个文件，目录 {dir} 还在（里面还有别的东西）。",
-      "args": ["n", "dir"]
-    },
-    "assets.uninstall.failed": {
-      "kind": "error",
-      "zh": "没卸成：{reason}",
-      "args": ["reason"]
     },
     "control.machine.local": {
       "kind": "body",
@@ -3065,76 +2590,6 @@
     "gridMonitor.groups.local": {
       "kind": "title",
       "zh": "本机",
-      "args": []
-    },
-    "inboxView.ensureDom.save": {
-      "kind": "action",
-      "zh": "保存",
-      "args": []
-    },
-    "inboxView.ensureDom.hint": {
-      "kind": "body",
-      "zh": "一行一条：新需求 / 改进 / 纠正。下一轮 agent 会读它、处置它、清空它。",
-      "args": []
-    },
-    "inboxView.ensureDom.close": {
-      "kind": "action",
-      "zh": "关闭",
-      "args": []
-    },
-    "inboxView.ensureDom.title": {
-      "kind": "title",
-      "zh": "收件箱 · 写给下一轮的 agent",
-      "args": []
-    },
-    "inboxView.save.failed": {
-      "kind": "error",
-      "zh": "保存失败",
-      "args": []
-    },
-    "inboxView.save.saved": {
-      "kind": "body",
-      "zh": "已保存",
-      "args": []
-    },
-    "inboxView.reload.readFailed": {
-      "kind": "error",
-      "zh": " ｜ 读文件失败：{e}",
-      "args": ["e"]
-    },
-    "inboxView.reload.noEditable": {
-      "kind": "body",
-      "zh": " ｜ 没有可编辑的收件箱",
-      "args": []
-    },
-    "inboxView.reload.sep": {
-      "kind": "body",
-      "zh": " ｜ ",
-      "args": []
-    },
-    "inboxView.reload.present": {
-      "kind": "body",
-      "zh": "在场（{instancesCount} 个实例）",
-      "args": ["instancesCount"]
-    },
-    "inboxView.reload.listFailed": {
-      "kind": "error",
-      "zh": "读不到 skill 列表：{e}",
-      "args": ["e"]
-    },
-    "inboxView.reload.loading": {
-      "kind": "body",
-      "zh": "读取中…",
-      "args": []
-    },
-    "inboxView.open.noCwd": {
-      "kind": "error",
-      "zh": "当前 tab 没有工作目录。",
-      "args": []
-    },
-    "inboxView.open.failed": {
-      "kind": "error",
-      "zh": "打不开收件箱",
       "args": []
     },
     "sessionFind.runSearch.count": {
@@ -5297,16 +4752,6 @@
       "zh": "打开 cc-bus 驾驶舱",
       "args": []
     },
-    "main.cmd.inboxKeywords": {
-      "kind": "body",
-      "zh": "inbox 收件箱 计划 planned-build 注入",
-      "args": []
-    },
-    "main.cmd.openInbox": {
-      "kind": "action",
-      "zh": "打开收件箱",
-      "args": []
-    },
     "main.cmd.panoramaKeywords": {
       "kind": "body",
       "zh": "panorama 全景 code",
@@ -7295,21 +6740,6 @@
       "zh": "缺",
       "args": []
     },
-    "assets.skill.listSep": {
-      "kind": "body",
-      "zh": "、",
-      "args": []
-    },
-    "assets.row.unreachable": {
-      "kind": "body",
-      "zh": " · {reason}",
-      "args": ["reason"]
-    },
-    "assets.row.sep": {
-      "kind": "body",
-      "zh": " · ",
-      "args": []
-    },
     "unknownKeysNotice.unknownKeysMessage.message": {
       "kind": "body",
       "zh": "配置文件 config.json 里有 {keysCount} 个设置项认不出来：{keys}。它们不起作用（拼错了，或者是已经取消掉的旧名字）；改对或删掉它们，这条提示才会消失。",
@@ -7338,11 +6768,6 @@
     "openSettings.openSettingsWindow.failed": {
       "kind": "error",
       "zh": "打开设置失败",
-      "args": []
-    },
-    "mcpSync.apply.listSep": {
-      "kind": "body",
-      "zh": "、",
       "args": []
     },
     "collapsibleGroup.ctor.arrow": {
@@ -8482,16 +7907,6 @@
       "zh": "cc-bus 钩子",
       "args": []
     },
-    "settingsPanel.group.plugins": {
-      "kind": "title",
-      "zh": "插件（marketplace）",
-      "args": []
-    },
-    "settingsPanel.group.assets": {
-      "kind": "title",
-      "zh": "资产目录",
-      "args": []
-    },
     "settingsPanel.group.aliases": {
       "kind": "title",
       "zh": "别名",
@@ -9284,336 +8699,6 @@
     "ccBusHooks.state.missing": {
       "kind": "body",
       "zh": "未装",
-      "args": []
-    },
-    "mcp.remove.failed": {
-      "kind": "error",
-      "zh": "删除失败",
-      "args": []
-    },
-    "mcp.remove.confirm": {
-      "kind": "body",
-      "zh": "从{where}项目 .mcp.json 删除 MCP server「{name}」？",
-      "args": ["where", "name"]
-    },
-    "mcp.who.remote": {
-      "kind": "body",
-      "zh": "远端 [{machine}]",
-      "args": ["machine"]
-    },
-    "mcp.who.local": {
-      "kind": "body",
-      "zh": "本机",
-      "args": []
-    },
-    "mcp.write.failed": {
-      "kind": "error",
-      "zh": "写入 .mcp.json 失败",
-      "args": []
-    },
-    "mcp.form.editing": {
-      "kind": "body",
-      "zh": "编辑中：{name}（改配置后保存覆盖；改名请删旧新增）",
-      "args": ["name"]
-    },
-    "mcp.form.badConfig": {
-      "kind": "error",
-      "zh": "配置无效",
-      "args": []
-    },
-    "mcp.form.noNameBody": {
-      "kind": "error",
-      "zh": "填一个 MCP server 名再保存。",
-      "args": []
-    },
-    "mcp.form.noName": {
-      "kind": "error",
-      "zh": "缺 server 名",
-      "args": []
-    },
-    "mcp.form.needDir": {
-      "kind": "body",
-      "zh": "先填项目目录并「读取」",
-      "args": []
-    },
-    "mcp.form.save": {
-      "kind": "action",
-      "zh": "添加/更新到 .mcp.json",
-      "args": []
-    },
-    "mcp.form.jsonHint": {
-      "kind": "control",
-      "zh": "{a}  或  {b}",
-      "args": ["a", "b"]
-    },
-    "mcp.form.name": {
-      "kind": "control",
-      "zh": "server 名",
-      "args": []
-    },
-    "mcp.form.cancelEdit": {
-      "kind": "action",
-      "zh": "取消编辑",
-      "args": []
-    },
-    "mcp.scope.delete": {
-      "kind": "action",
-      "zh": "删",
-      "args": []
-    },
-    "mcp.scope.editHint": {
-      "kind": "body",
-      "zh": "把这条填进下方表单改配置后保存（覆盖）。改名请删旧新增。",
-      "args": []
-    },
-    "mcp.scope.edit": {
-      "kind": "action",
-      "zh": "编辑",
-      "args": []
-    },
-    "mcp.scope.detailHint": {
-      "kind": "body",
-      "zh": "看完整配置 JSON + 来源文件",
-      "args": []
-    },
-    "mcp.scope.source": {
-      "kind": "body",
-      "zh": "来源：{sourcePath}",
-      "args": ["sourcePath"]
-    },
-    "mcp.scope.readOnly": {
-      "kind": "body",
-      "zh": " · 只读",
-      "args": []
-    },
-    "mcp.scope.readOnlyRemote": {
-      "kind": "body",
-      "zh": " · 只读（远端）",
-      "args": []
-    },
-    "mcp.remote.reread": {
-      "kind": "action",
-      "zh": "重新读取",
-      "args": []
-    },
-    "mcp.remote.header": {
-      "kind": "body",
-      "zh": "跨机 user scope（机器全局）MCP · 只读。要管理远端项目级的 .mcp.json：在上方项目目录填/选远端项目路径。",
-      "args": []
-    },
-    "mcp.renderRemoteError.retry": {
-      "kind": "action",
-      "zh": "重试",
-      "args": []
-    },
-    "mcp.remote.failed": {
-      "kind": "error",
-      "zh": "读取远端 [{machine}] MCP 失败：{msg}",
-      "args": ["machine", "msg"]
-    },
-    "mcp.remote.empty": {
-      "kind": "body",
-      "zh": "远端 [{machine}] 没有 user scope 的 MCP 配置（或 ~/.claude.json 不在）。",
-      "args": ["machine"]
-    },
-    "mcp.remote.reading": {
-      "kind": "body",
-      "zh": "读取远端 [{machine}] 的 MCP 配置…（走 SSH，可能要几秒）",
-      "args": ["machine"]
-    },
-    "mcp.local.failed": {
-      "kind": "error",
-      "zh": "读取 MCP 配置失败",
-      "args": []
-    },
-    "mcp.local.reading": {
-      "kind": "body",
-      "zh": "读取本机的 MCP 配置…",
-      "args": []
-    },
-    "mcp.remoteProject.writable": {
-      "kind": "body",
-      "zh": "远端 [{machine}] 项目 {dir} · 可增 / 改 / 删（写远端的 .mcp.json）。",
-      "args": ["machine", "dir"]
-    },
-    "mcp.reloadRemoteProject.retry": {
-      "kind": "action",
-      "zh": "重试",
-      "args": []
-    },
-    "mcp.remoteProject.failed": {
-      "kind": "error",
-      "zh": "读取远端 [{machine}] 项目 .mcp.json 失败：{e}",
-      "args": ["machine", "e"]
-    },
-    "mcp.remoteProject.reading": {
-      "kind": "body",
-      "zh": "读取远端 [{machine}] 项目 {dir} 的 .mcp.json…（SSH）",
-      "args": ["machine", "dir"]
-    },
-    "mcp.machine.local": {
-      "kind": "control",
-      "zh": "本机",
-      "args": []
-    },
-    "mcp.machine.label": {
-      "kind": "control",
-      "zh": "机器：",
-      "args": []
-    },
-    "mcp.dirs.none": {
-      "kind": "body",
-      "zh": "这台机器还没有用过的项目目录 —— 上面可以手填任意路径。",
-      "args": []
-    },
-    "mcp.dirs.loading": {
-      "kind": "body",
-      "zh": "读取中…",
-      "args": []
-    },
-    "mcp.dirs.failed": {
-      "kind": "body",
-      "zh": "读不到这台机器的项目清单 —— 上面仍可手填任意路径。",
-      "args": []
-    },
-    "mcp.build.read": {
-      "kind": "action",
-      "zh": "读取",
-      "args": []
-    },
-    "mcp.build.projectDir": {
-      "kind": "control",
-      "zh": "项目目录：含 .mcp.json 的项目根",
-      "args": []
-    },
-    "mcp.build.intro": {
-      "kind": "body",
-      "zh": "读：跨 scope 展示 MCP 服务器（用户 / local / 项目）；配了远端可切「机器」跨机只读看远端 user scope。写：只增改删「本机项目 .mcp.json」——绝不动 ~/.claude.json；跨机器只经项目下面那一块「推 / 拉」。设置窗拿不到当前会话项目，请在下面填/选项目目录。",
-      "args": []
-    },
-    "mcp.scope.project": {
-      "kind": "title",
-      "zh": "项目 .mcp.json",
-      "args": []
-    },
-    "mcp.scope.local": {
-      "kind": "title",
-      "zh": "本项目(local)",
-      "args": []
-    },
-    "mcp.scope.user": {
-      "kind": "title",
-      "zh": "用户",
-      "args": []
-    },
-    "mcp.parse.notObject": {
-      "kind": "error",
-      "zh": "配置必须是 JSON 对象",
-      "args": []
-    },
-    "mcp.parse.badJson": {
-      "kind": "error",
-      "zh": "JSON 无效：{message}",
-      "args": ["message"]
-    },
-    "mcp.parse.empty": {
-      "kind": "error",
-      "zh": "配置为空",
-      "args": []
-    },
-    "mcp.serverSummary.unknown": {
-      "kind": "body",
-      "zh": "未知形态",
-      "args": []
-    },
-    "plugins.render.sep": {
-      "kind": "body",
-      "zh": " · ",
-      "args": []
-    },
-    "plugins.render.locationUnknown": {
-      "kind": "body",
-      "zh": "安装位置：未记",
-      "args": []
-    },
-    "plugins.render.location": {
-      "kind": "body",
-      "zh": "安装位置：{path}",
-      "args": ["path"]
-    },
-    "plugins.render.sourceUnknown": {
-      "kind": "body",
-      "zh": "来源：未记",
-      "args": []
-    },
-    "plugins.render.source": {
-      "kind": "body",
-      "zh": "来源：{source}",
-      "args": ["source"]
-    },
-    "plugins.render.emptyRegistry": {
-      "kind": "body",
-      "zh": "登记表在，但里面一个 marketplace 都没有。",
-      "args": []
-    },
-    "plugins.render.none": {
-      "kind": "body",
-      "zh": "这台机器没有登记任何 marketplace（~/.claude/plugins/known_marketplaces.json 不存在）。",
-      "args": []
-    },
-    "plugins.refresh.failed": {
-      "kind": "error",
-      "zh": "读不到 marketplace 登记表：{message}（这不等于「没有」）",
-      "args": ["message"]
-    },
-    "plugins.build.reread": {
-      "kind": "action",
-      "zh": "重新读取",
-      "args": []
-    },
-    "plugins.build.intro": {
-      "kind": "body",
-      "zh": "这一页列出这台机器上登记的 Claude Code marketplace，和每个 marketplace 声明的插件数。它说的是「有哪些插件可以装」，不是「装了哪些 / 启用了哪些」，后者查不到。只读，打开时读一次。",
-      "args": []
-    },
-    "plugins.updated.date": {
-      "kind": "body",
-      "zh": "更新时间：{d}",
-      "args": ["d"]
-    },
-    "plugins.updated.raw": {
-      "kind": "body",
-      "zh": "更新时间：{lastUpdated}",
-      "args": ["lastUpdated"]
-    },
-    "plugins.updated.unknown": {
-      "kind": "body",
-      "zh": "更新时间：未记",
-      "args": []
-    },
-    "plugins.declared.count": {
-      "kind": "body",
-      "zh": "声明 {declaredPlugins} 个插件",
-      "args": ["declaredPlugins"]
-    },
-    "plugins.declared.unreadable": {
-      "kind": "body",
-      "zh": "读不到插件数：{why}",
-      "args": ["why"]
-    },
-    "plugins.declared.noReason": {
-      "kind": "body",
-      "zh": "原因未知",
-      "args": []
-    },
-    "plugins.fetchSurvey.oldBackend": {
-      "kind": "error",
-      "zh": "那台机器上的后端版本旧，还读不了插件市场。重装后端之后就有。",
-      "args": []
-    },
-    "plugins.bad.shape": {
-      "kind": "error",
-      "zh": "插件市场清单读不懂。多半是那台机器的后端版本不对，需要更新。",
       "args": []
     },
     "remote.save.failed": {
@@ -13685,61 +12770,6 @@
       "zh": "{what} 第 {line} 行有 cc-monitor BEGIN 标记，但其后找不到配对的 END。可能被手动改坏，或上次安装中断了。为避免误删你的内容，已中止；请手动修好该文件后重试。",
       "args": ["what", "line"]
     },
-    "rsSkillHost.skills.plannedBuildLabel": {
-      "kind": "action",
-      "zh": "计划",
-      "args": []
-    },
-    "rsSkillHost.skills.ccBusLabel": {
-      "kind": "action",
-      "zh": "总线",
-      "args": []
-    },
-    "rsSkillHost.write.stale": {
-      "kind": "error",
-      "zh": "收件箱在你打开之后被改过，这次没写，免得冲掉那些改动。多半是 agent 处置了其中几条。先把你的改动复制出来，关掉再打开收件箱，再贴回去。（{why}）",
-      "args": ["why"]
-    },
-    "rsSkillHost.read.missing": {
-      "kind": "error",
-      "zh": "{door} 上没有这份文件：{root}/{rel}（文件必须已存在）",
-      "args": ["door", "root", "rel"]
-    },
-    "rsSkillHost.spec.unknown": {
-      "kind": "error",
-      "zh": "未知 skill：{skillId}",
-      "args": ["skillId"]
-    },
-    "rsSkillHost.target.outside": {
-      "kind": "error",
-      "zh": "拒绝写入：{real} 不在项目目录 {root} 里",
-      "args": ["real", "root"]
-    },
-    "rsSkillHost.target.resolveFailed": {
-      "kind": "error",
-      "zh": "解析项目目录失败：{cwd} — {e}",
-      "args": ["cwd", "e"]
-    },
-    "rsSkillHost.editable.protectedData": {
-      "kind": "error",
-      "zh": "拒绝写入：{real} 是 Claude Code 的数据文件，cc-monitor 不写它。",
-      "args": ["real"]
-    },
-    "rsSkillHost.editable.notInSet": {
-      "kind": "error",
-      "zh": "拒绝写入：{real} 不在 {id} 的可编辑集合里。\n该 skill 声明的可编辑文件是 {editable}（相对 {root}）。",
-      "args": ["real", "id", "editable", "root"]
-    },
-    "rsSkillHost.editable.resolveFailed": {
-      "kind": "error",
-      "zh": "解析路径失败（文件必须已存在）：{requested} — {e}",
-      "args": ["requested", "e"]
-    },
-    "rsSkillHost.describe.missing": {
-      "kind": "body",
-      "zh": "{skill} 的前提没满足：找不到 {expected}",
-      "args": ["skill", "expected"]
-    },
     "rsCcBusDeploy.win.ok": {
       "kind": "body",
       "zh": "cc-monitor 装的 ccm（{at}）是这一版，cc-spawn 需要的 {needs} 都支持。\n{pathCaveat}",
@@ -16355,12 +15385,12 @@
     },
     "rsToolRegistry.tools.skillInstallNote": {
       "kind": "body",
-      "zh": "装到哪台就写哪台，只写 skills 下以这个 skill 为名的目录。只写你勾的那几个文件，不同的要你点了「盖」才盖，别的文件不动。卸的时候只删装时写进去的那几个（装完你改过的、装之前就在的先问你），目录本身留着",
+      "zh": "装到哪台就写哪台，只写 skills 下以这个 skill 为名的目录；原来就有、内容不同的那几个列在确认卡上，你点了确认才盖。卸的时候只删装时写进去的那几个；不是从这里装的，先挪进备份再删",
       "args": []
     },
     "rsToolRegistry.tools.skillInstallWhat": {
       "kind": "body",
-      "zh": "资产目录里你点了「装到这台」的那个 skill。另一台机器上那个 skill 目录里你勾的文件，原样写进这台",
+      "zh": "从设置「扩展」装到这台用户级的 skill。另一台机器上那个 skill 目录里的文件，原样写进这台的用户级 skills 目录",
       "args": []
     },
     "rsToolRegistry.tools.skillInstallName": {
@@ -16370,12 +15400,12 @@
     },
     "rsToolRegistry.tools.mcpSyncNote": {
       "kind": "body",
-      "zh": "相对你选定的项目目录。项目目录在推 / 拉那一块或资产目录的「装到这台」里选；只加或覆盖你勾的那几条，别的条目不动",
+      "zh": "相对你选定的项目目录。项目在确认卡上选；只加或覆盖那一条，别的条目不动",
       "args": []
     },
     "rsToolRegistry.tools.mcpSyncWhat": {
       "kind": "body",
-      "zh": "推 / 拉：另一台机器那份 .mcp.json 里你勾的条目。原样合进这台机器上你选定的项目目录",
+      "zh": "从设置「扩展」装过来的 MCP。另一台机器上那一条，原样合进这台你选定的项目的 .mcp.json；带密钥的值不抄过来，由你在确认卡上填或沿用这台已有的",
       "args": []
     },
     "rsToolRegistry.tools.projectMcpNote": {
@@ -17180,46 +16210,6 @@
       "kind": "error",
       "zh": "会话记录里有一行超过 {lineCap} 字节，读不了（从偏移 {offset} 起）",
       "args": ["lineCap", "offset"]
-    },
-    "bePluginsQuery.surveyMarketplacesIn.noInstallLocation": {
-      "kind": "error",
-      "zh": "known_marketplaces.json 没记这个市场装在哪，数不了",
-      "args": []
-    },
-    "bePluginsQuery.countDeclaredPlugins.noPlugins": {
-      "kind": "error",
-      "zh": "插件市场清单里没有插件列表",
-      "args": []
-    },
-    "bePluginsQuery.countDeclaredPlugins.unparsable": {
-      "kind": "error",
-      "zh": "插件市场清单读不懂：{e}",
-      "args": ["e"]
-    },
-    "bePluginsQuery.countDeclaredPlugins.noManifest": {
-      "kind": "error",
-      "zh": "插件市场目录里没有 {manifest}",
-      "args": ["manifest"]
-    },
-    "bePluginsQuery.parseKnownMarketplaces.notObject": {
-      "kind": "error",
-      "zh": "known_marketplaces.json 的顶层不是一个对象",
-      "args": []
-    },
-    "bePluginsQuery.parseKnownMarketplaces.unparsable": {
-      "kind": "error",
-      "zh": "known_marketplaces.json 读不懂：{e}",
-      "args": ["e"]
-    },
-    "bePluginsQuery.readCapped.unreadable": {
-      "kind": "error",
-      "zh": "读不到 {path}：{e}",
-      "args": ["path", "e"]
-    },
-    "bePluginsQuery.readCapped.tooBig": {
-      "kind": "error",
-      "zh": "{path} 有 {size} 字节，超过上限 {cap}，没有读",
-      "args": ["path", "size", "cap"]
     },
     "beFeatureFace.answerAt.tooLarge": {
       "kind": "error",
@@ -19685,30 +18675,10 @@
       "zh": "这台机器的后端没答出 home 在哪",
       "args": []
     },
-    "mcpReads.read.badShape": {
-      "kind": "error",
-      "zh": "读不懂那台后端回的 MCP 列表，多半是它的版本不对",
-      "args": []
-    },
-    "mcpReads.edit.badShape": {
-      "kind": "error",
-      "zh": "读不懂那台后端回的 MCP 写入结果，多半是它的版本不对",
-      "args": []
-    },
     "mcpReads.backend.tooOld": {
       "kind": "error",
       "zh": "那台机器的后端太旧，重装那台机器的后端之后再试",
       "args": []
-    },
-    "beMcpSyncFlow.preview.sameFile": {
-      "kind": "error",
-      "zh": "两边是同一份文件 —— 换一台机器或换一个项目目录",
-      "args": []
-    },
-    "beMcpSyncFlow.apply.notInCopy": {
-      "kind": "error",
-      "zh": "「{name}」不在拷出来的那一份里，一个字节都没写",
-      "args": ["name"]
     },
     "beMcpSyncFlow.apply.stale": {
       "kind": "error",
@@ -19719,16 +18689,6 @@
       "kind": "error",
       "zh": "来源那台上没有 {path} —— 没有可以拷过去的条目",
       "args": ["path"]
-    },
-    "mcpSyncReads.reply.badShape": {
-      "kind": "error",
-      "zh": "读不懂那台后端回的差异 / 写入结果，多半是它的版本不对。这一趟什么都没写。",
-      "args": []
-    },
-    "mcp.read.problem": {
-      "kind": "body",
-      "zh": "这一份读不出来，当作没有：{what}",
-      "args": ["what"]
     },
     "beSkillFlow.install.noOriginal": {
       "kind": "error",
@@ -19795,11 +18755,6 @@
       "zh": "删「{at}」时停下了：{why}。{done}。",
       "args": ["at", "why", "done"]
     },
-    "skillInstallReads.reply.badShape": {
-      "kind": "error",
-      "zh": "读不懂那台后端回的 skill 差异 / 装卸结果，多半是它的版本不对。这一趟什么都没写。",
-      "args": []
-    },
     "assetsSyncReads.reply.badShape": {
       "kind": "error",
       "zh": "读不懂本机后端回的同步结果，多半是后端版本不对。",
@@ -19808,21 +18763,6 @@
     "beSkillFlow.stopped.listSep": {
       "kind": "body",
       "zh": "、",
-      "args": []
-    },
-    "beSkillInbox.face.none": {
-      "kind": "error",
-      "zh": "这台后端不认得任何带 skill 的 agent，找不到收件箱。",
-      "args": []
-    },
-    "beSkillInbox.door.here": {
-      "kind": "body",
-      "zh": "这台机器",
-      "args": []
-    },
-    "skillInboxReads.reply.badShape": {
-      "kind": "error",
-      "zh": "读不懂那台后端回的收件箱内容，多半是它的版本不对。",
       "args": []
     },
     "rsAccountAliases.dialect.notHere": {
@@ -19850,20 +18790,10 @@
       "zh": "预览",
       "args": []
     },
-    "beAssetsHub.skill.sameMachine": {
-      "kind": "error",
-      "zh": "来源与目标是同一台机器 —— 没有可装的",
-      "args": []
-    },
     "beRemoteAsk.json.unreadable": {
       "kind": "error",
       "zh": "{machine} 回的内容读不懂（{e}）。那台的后端多半太旧，重装它就好。",
       "args": ["machine", "e"]
-    },
-    "beAssetsHub.source.changed": {
-      "kind": "error",
-      "zh": "来源那份在看差异之后变了，一个字节都没写。重新看一次差异再装。",
-      "args": []
     },
     "beCcBusInstall.fence.noParent": {
       "kind": "error",
@@ -20009,6 +18939,496 @@
       "kind": "body",
       "zh": "{reason}：{n} 项做不到",
       "args": ["reason", "n"]
+    },
+    "beExt.suspect.commandMissing": {
+      "kind": "body",
+      "zh": "{machine} 的后端在它的 PATH 上找不到 {value}。你登录后的 shell 可能找得到。",
+      "args": ["machine", "value"]
+    },
+    "beExt.suspect.absForeign": {
+      "kind": "body",
+      "zh": "{field} 里有绝对路径 {value}，{machine} 的系统不认这种写法。",
+      "args": ["field", "value", "machine"]
+    },
+    "beExt.card.binary": {
+      "kind": "body",
+      "zh": "{path} 不是文本文件，装不过去，这一个 skill 就不装了。可以在文件窗口里把它拷过去。",
+      "args": ["path"]
+    },
+    "extPage.card.loading": {
+      "kind": "body",
+      "zh": "正在看要写哪几个…",
+      "args": []
+    },
+    "beExt.suspect.absUnknown": {
+      "kind": "body",
+      "zh": "{field} 里有绝对路径 {value}，查不到 {machine} 上有没有。",
+      "args": ["field", "value", "machine"]
+    },
+    "beExt.uninstall.dropFailed": {
+      "kind": "error",
+      "zh": "卸掉了，但没从装记录里摘掉（{e}）。",
+      "args": ["e"]
+    },
+    "beExt.apply.recordFailed": {
+      "kind": "error",
+      "zh": "装好了，但没记下来（{e}）。以后卸它时会按「不是 cc-monitor 装的」处理：先备份再删。",
+      "args": ["e"]
+    },
+    "beExt.uninstall.backupFailed": {
+      "kind": "error",
+      "zh": "备份没做成（{e}），一个都没删。",
+      "args": ["e"]
+    },
+    "extPage.dot.missing": {
+      "kind": "body",
+      "zh": "○",
+      "args": []
+    },
+    "extPage.button.install": {
+      "kind": "action",
+      "zh": "装上",
+      "args": []
+    },
+    "beExt.suspect.commandUnknown": {
+      "kind": "body",
+      "zh": "查不了 {machine} 上有没有 {value}：它的后端没有 PATH。",
+      "args": ["machine", "value"]
+    },
+    "settingsPanel.nav.ext": {
+      "kind": "title",
+      "zh": "扩展",
+      "args": []
+    },
+    "beExt.note.noProject": {
+      "kind": "body",
+      "zh": "这台还没有开过会话的项目，MCP 只能装进项目里。在这台开一次会话后再来装。",
+      "args": []
+    },
+    "beExt.uninstall.ownedAsk": {
+      "kind": "body",
+      "zh": "这是 cc-monitor 装的：删掉装时写进去的 {n} 个文件。其中有装完之后改过的、或装的时候盖掉了原来那份的，删了回不到从前。",
+      "args": ["n"]
+    },
+    "extPage.status.syncRow": {
+      "kind": "error",
+      "zh": "{machine} 这一趟没对上（{e}），它那一列是上次对上时的样子。",
+      "args": ["machine", "e"]
+    },
+    "extPage.card.cancel": {
+      "kind": "action",
+      "zh": "取消",
+      "args": []
+    },
+    "beExt.done.chmodFailed": {
+      "kind": "error",
+      "zh": "装好了，但这几个没改成可执行：{list}。",
+      "args": ["list"]
+    },
+    "extPage.button.uninstall": {
+      "kind": "action",
+      "zh": "卸载",
+      "args": []
+    },
+    "extPage.dot.differs": {
+      "kind": "body",
+      "zh": "◐",
+      "args": []
+    },
+    "beExt.suspect.absAbsent": {
+      "kind": "body",
+      "zh": "{field} 里有绝对路径 {value}，{machine} 上没有这个路径。",
+      "args": ["field", "value", "machine"]
+    },
+    "beExt.uninstall.mcpModified": {
+      "kind": "body",
+      "zh": "这是 cc-monitor 装的，但装完之后改过；卸掉就是删掉现在这一条，改过的内容不留。",
+      "args": []
+    },
+    "beExt.uninstall.copiedTo": {
+      "kind": "body",
+      "zh": "原来那份配置抄了一份在 {path}。",
+      "args": ["path"]
+    },
+    "extPage.search.placeholder": {
+      "kind": "body",
+      "zh": "按名字或简介搜",
+      "args": []
+    },
+    "extPage.drawer.detail": {
+      "kind": "action",
+      "zh": "看内容",
+      "args": []
+    },
+    "extPage.state.differs": {
+      "kind": "body",
+      "zh": "有，和别处那一版不同",
+      "args": []
+    },
+    "extPage.error.lead": {
+      "kind": "error",
+      "zh": "{machine}没办成：{said}",
+      "args": ["machine", "said"]
+    },
+    "beExt.card.sameMachine": {
+      "kind": "error",
+      "zh": "来源和目标是同一处，没有可装的。",
+      "args": []
+    },
+    "extPage.card.slot": {
+      "kind": "control",
+      "zh": "{field} 里的 {key}",
+      "args": ["field", "key"]
+    },
+    "beExt.detail.files": {
+      "kind": "body",
+      "zh": "文件",
+      "args": []
+    },
+    "beExt.uninstall.noHome": {
+      "kind": "error",
+      "zh": "这台后端找不到家目录，没法卸。",
+      "args": []
+    },
+    "extPage.card.unchanged": {
+      "kind": "body",
+      "zh": "装上之后和现在一样，没有要写的。",
+      "args": []
+    },
+    "beExt.uninstall.changed": {
+      "kind": "error",
+      "zh": "看过之后它又变了，一个字节都没动。重看一次再卸。",
+      "args": []
+    },
+    "extPage.machine.here": {
+      "kind": "body",
+      "zh": "本机",
+      "args": []
+    },
+    "beExt.note.userMcpReadOnly": {
+      "kind": "body",
+      "zh": "这台的用户级 MCP 由 Claude 自己管，这里只读。可以把它装进别的机器的项目里。",
+      "args": []
+    },
+    "extReads.backend.tooOld": {
+      "kind": "error",
+      "zh": "那台后端比这一页旧，认不得这一问。到「机器」里把它的后端更新一下。",
+      "args": []
+    },
+    "beExt.card.blocked": {
+      "kind": "body",
+      "zh": "这台上的 {path} 盖不了（{why}），这一个 skill 就不装了。",
+      "args": ["path", "why"]
+    },
+    "extPage.error.noHostConfig": {
+      "kind": "error",
+      "zh": "找不到{machine}的连接设置，打不开文件窗口。到「机器」里看看这台还在不在。",
+      "args": ["machine"]
+    },
+    "extPage.card.project": {
+      "kind": "control",
+      "zh": "装进哪个项目",
+      "args": []
+    },
+    "extPage.list.sep": {
+      "kind": "body",
+      "zh": "、",
+      "args": []
+    },
+    "extPage.state.project": {
+      "kind": "body",
+      "zh": "只在项目里有：{dirs}",
+      "args": ["dirs"]
+    },
+    "rsDataPaths.backend.extBackups": {
+      "kind": "body",
+      "zh": "从「扩展」卸掉不是 cc-monitor 装的东西之前，原样挪到这里；要找回就从这里拿",
+      "args": []
+    },
+    "extPage.state.same": {
+      "kind": "body",
+      "zh": "有，和别处一致",
+      "args": []
+    },
+    "extPage.dot.project": {
+      "kind": "body",
+      "zh": "◎",
+      "args": []
+    },
+    "extPage.dot.title": {
+      "kind": "body",
+      "zh": "{machine}：{state}",
+      "args": ["machine", "state"]
+    },
+    "beExt.apply.changed": {
+      "kind": "error",
+      "zh": "来源那一份或这台那一份又变了。一个字节都没写，重看一次再装。",
+      "args": []
+    },
+    "extPage.dot.same": {
+      "kind": "body",
+      "zh": "●",
+      "args": []
+    },
+    "beExt.detail.binaryValue": {
+      "kind": "body",
+      "zh": "有，装不到别的机器上",
+      "args": []
+    },
+    "beExt.note.offline": {
+      "kind": "body",
+      "zh": "这台现在没连上。连上之后再来。",
+      "args": []
+    },
+    "beExt.uninstall.owned": {
+      "kind": "body",
+      "zh": "这是 cc-monitor 装的：删掉装时写进去的 {n} 个文件，你后来加的留着。",
+      "args": ["n"]
+    },
+    "extPage.button.openFiles": {
+      "kind": "action",
+      "zh": "在文件窗口里打开",
+      "args": []
+    },
+    "extPage.card.slotEmpty": {
+      "kind": "body",
+      "zh": "待填：来源机上的值不会抄过来",
+      "args": []
+    },
+    "extPage.card.again": {
+      "kind": "action",
+      "zh": "重看",
+      "args": []
+    },
+    "extPage.filter.mcp": {
+      "kind": "action",
+      "zh": "MCP",
+      "args": []
+    },
+    "beExt.note.noSource": {
+      "kind": "body",
+      "zh": "有这一版的机器现在都没连上。连上之后再来装。",
+      "args": []
+    },
+    "extPage.status.failed": {
+      "kind": "error",
+      "zh": "读不出这张表：{e}",
+      "args": ["e"]
+    },
+    "beExt.suspect.other": {
+      "kind": "body",
+      "zh": "留意 {field}：{value}",
+      "args": ["field", "value"]
+    },
+    "extPage.card.bringTitle": {
+      "kind": "body",
+      "zh": "从{from}装到{to}：写入这几个文件",
+      "args": ["from", "to"]
+    },
+    "extPage.filter.skill": {
+      "kind": "action",
+      "zh": "Skill",
+      "args": []
+    },
+    "beExt.uninstall.movedTo": {
+      "kind": "body",
+      "zh": "原来那个目录挪到了 {path}。",
+      "args": ["path"]
+    },
+    "rsToolRegistry.tools.extBackupsNote": {
+      "kind": "body",
+      "zh": "卸掉不是 cc-monitor 装的 skill 或 MCP 之前，原样放一份在这里",
+      "args": []
+    },
+    "extPage.status.problems": {
+      "kind": "body",
+      "zh": "有几份读不出来：{list}",
+      "args": ["list"]
+    },
+    "extPage.done.removed": {
+      "kind": "body",
+      "zh": "卸掉了，删了 {n} 个。",
+      "args": ["n"]
+    },
+    "extPage.card.projectAria": {
+      "kind": "aria",
+      "zh": "装进哪个项目",
+      "args": []
+    },
+    "beExt.detail.binary": {
+      "kind": "body",
+      "zh": "非文本文件",
+      "args": []
+    },
+    "extPage.card.confirm": {
+      "kind": "action",
+      "zh": "确认",
+      "args": []
+    },
+    "beExt.uninstall.foreign": {
+      "kind": "body",
+      "zh": "这不是 cc-monitor 装的：先挪进 {backup}，再从这里删掉。",
+      "args": ["backup"]
+    },
+    "beExt.uninstall.noEntry": {
+      "kind": "error",
+      "zh": "{path} 里没有 {name} 这一条。",
+      "args": ["path", "name"]
+    },
+    "beExt.uninstall.mcpOwned": {
+      "kind": "body",
+      "zh": "这是 cc-monitor 装的：从配置里删掉这一条，别的条目不动。",
+      "args": []
+    },
+    "extPage.state.missing": {
+      "kind": "body",
+      "zh": "没有",
+      "args": []
+    },
+    "extPage.kind.mcp": {
+      "kind": "body",
+      "zh": "MCP",
+      "args": []
+    },
+    "beExt.uninstall.notThere": {
+      "kind": "error",
+      "zh": "{path} 已经不在了。",
+      "args": ["path"]
+    },
+    "extPage.filter.all": {
+      "kind": "action",
+      "zh": "全部",
+      "args": []
+    },
+    "beExt.suspect.commandRelative": {
+      "kind": "body",
+      "zh": "命令 {value} 是相对路径，要看 {machine} 那个项目里有没有这个文件。",
+      "args": ["value", "machine"]
+    },
+    "extPage.row.new": {
+      "kind": "body",
+      "zh": "新",
+      "args": []
+    },
+    "extPage.table.noMatch": {
+      "kind": "body",
+      "zh": "没有对得上的。换个字搜，或者把种类换成「全部」。",
+      "args": []
+    },
+    "extPage.search.aria": {
+      "kind": "aria",
+      "zh": "搜索扩展",
+      "args": []
+    },
+    "extPage.drawer.close": {
+      "kind": "action",
+      "zh": "关上",
+      "args": []
+    },
+    "extPage.status.syncFailed": {
+      "kind": "error",
+      "zh": "没能和别的机器对上（{e}），表里是上次对上时的样子。",
+      "args": ["e"]
+    },
+    "extReads.reply.badShape": {
+      "kind": "error",
+      "zh": "读不懂后端回的这一份，多半是两边版本不一样。这一趟什么都没写。",
+      "args": []
+    },
+    "extPage.card.confirmRemove": {
+      "kind": "action",
+      "zh": "确认卸载",
+      "args": []
+    },
+    "beExt.card.fileLead": {
+      "kind": "body",
+      "zh": "{path}：",
+      "args": ["path"]
+    },
+    "extPage.status.loading": {
+      "kind": "body",
+      "zh": "正在读…",
+      "args": []
+    },
+    "beExt.suspect.executable": {
+      "kind": "body",
+      "zh": "这是一个可执行的文件。",
+      "args": []
+    },
+    "beExt.machine.here": {
+      "kind": "body",
+      "zh": "本机",
+      "args": []
+    },
+    "extPage.card.removeTitle": {
+      "kind": "body",
+      "zh": "从{machine}卸掉：{path}",
+      "args": ["machine", "path"]
+    },
+    "beExt.uninstall.backupOutsideHome": {
+      "kind": "error",
+      "zh": "{path} 不在家目录底下，备份不了，一个都没删。可以在文件窗口里自己处理。",
+      "args": ["path"]
+    },
+    "beExt.suspect.absPresent": {
+      "kind": "body",
+      "zh": "{field} 里有绝对路径 {value}，{machine} 上也有这个路径。",
+      "args": ["field", "value", "machine"]
+    },
+    "rsToolRegistry.tools.projectSkillsNote": {
+      "kind": "body",
+      "zh": "装进某个项目的 skill 落在这里。在那个项目的这个目录下，以 skill 的名字为名",
+      "args": []
+    },
+    "extPage.card.slotKept": {
+      "kind": "body",
+      "zh": "不填就沿用目标机已有的值",
+      "args": []
+    },
+    "extPage.drawer.detailLine": {
+      "kind": "body",
+      "zh": "{label}：{value}",
+      "args": ["label", "value"]
+    },
+    "rsToolRegistry.tools.projectSkillInstallWhat": {
+      "kind": "body",
+      "zh": "从设置「扩展」装进某个项目的 skill。另一台机器上那个 skill 目录里的文件，原样写进这个项目的 skills 目录",
+      "args": []
+    },
+    "beExt.apply.needsValue": {
+      "kind": "error",
+      "zh": "{field} 里的 {key} 还没有值。这台原来没有它，来源机上的值也不会抄过来；在确认卡上填上再装。",
+      "args": ["field", "key"]
+    },
+    "extPage.kind.skill": {
+      "kind": "body",
+      "zh": "Skill",
+      "args": []
+    },
+    "extPage.button.replace": {
+      "kind": "action",
+      "zh": "换成{machine}那一版",
+      "args": ["machine"]
+    },
+    "beExt.detail.filesValue": {
+      "kind": "body",
+      "zh": "{files} 个，共 {bytes} 字节",
+      "args": ["files", "bytes"]
+    },
+    "extPage.done.written": {
+      "kind": "body",
+      "zh": "装好了，写了 {n} 个。",
+      "args": ["n"]
+    },
+    "beExt.suspect.binary": {
+      "kind": "body",
+      "zh": "来源那台读不出它的原文，装不过去。",
+      "args": []
+    },
+    "extPage.table.empty": {
+      "kind": "body",
+      "zh": "这几台机器上还没有 skill 或 MCP。",
+      "args": []
     }
   }
 }

@@ -13,7 +13,7 @@ export interface OverlayView {
   close(): void;
 }
 
-export type OverlayName = "history" | "panorama" | "grid" | "inbox" | "cc-bus";
+export type OverlayName = "history" | "panorama" | "grid" | "cc-bus";
 
 export class OverlayRouter {
   private readonly views = new Map<OverlayName, OverlayView>();

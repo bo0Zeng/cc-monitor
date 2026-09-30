@@ -1291,11 +1291,8 @@ pub const NOT_MANAGED: &[(&str, &str)] = &[
     (
         "planned-build",
         "**不由 cc-monitor 安装** —— 它是用户自己装在 `<agent 家>/skills/planned-build/` 的 \
-         skill，cc-monitor 只**读它的产物**（计划文件）并允许编辑那个收件箱。\n\
-         ⇒ 它在 `skill_host::SKILLS` 里（接入的 skill），**不在**本表里（受管工具）。\
-         ★ 这两个集合**有交集但不是同一张表**（今天交集只有 `cc-bus`）——\
-         devbench 的账本 L4 原写「同一张表的两个视图」是**错的**，已订正。\n\
-         它的 `SkillSpec.install` 如实记 `NotSupported` 并说明归 F06。",
+         skill，cc-monitor 只**读它的产物**（计划文件）。\n\
+         ⇒ 它**不在**本表里（受管工具）。",
     ),
 ];
 

@@ -47,10 +47,6 @@ fn build_fixture(tag: &str) -> PathBuf {
         format!("{{\"trusted\":{{\"{FIXTURE_CWD}\":true}}}}"),
     )
     .expect("写账号配置");
-    // 〔RM1b〕能力 13：一个插件市场落点 ＋ 本层形状的清单。
-    let market = root.join(FIXTURE_MARKET_DIR);
-    std::fs::create_dir_all(&market).expect("建插件市场落点");
-    std::fs::write(marketplace_manifest(&market), "{\"plugins\":[]}\n").expect("写插件市场清单");
     root
 }
 
@@ -177,13 +173,6 @@ fn every_fake_capability_differs_in_shape_from_both_real_agents() {
         resume_command("b", "s"),
         cx::resume::resume_command("b", "s"),
         "resume 命令形与 Codex 同形 —— 那样它就只是第三个 codex"
-    );
-
-    // 13〔RM1b〕插件市场清单：与 Claude 那家的清单住址不同形。
-    assert_ne!(
-        marketplace_manifest(h),
-        cc::paths::marketplace_manifest(h),
-        "插件市场清单的住址与 Claude 同形"
     );
 
     // 能力清单与 `FakeCaps` 的字段**不许漂开**：挖每一个洞都要真的少一种能力。

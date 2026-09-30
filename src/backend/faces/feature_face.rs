@@ -1,4 +1,4 @@
-//! 〔RM1b · 第四波〕**功能侧只读查询的帧面宿主** —— 任务列表 · 插件市场（〔MIG-3b〕＋ cc-bus 钩子诊断）。
+//! 〔RM1b · 第四波〕**功能侧只读查询的帧面宿主** —— 任务列表（〔MIG-3b〕＋ cc-bus 钩子诊断）。
 //!
 //! # 它补的是哪一格
 //!
@@ -18,7 +18,7 @@
 //!
 //! - 住顶层、不住 `observe/`：`inbound.rs` 不许出现 `observe::`；本文件只做换壳，
 //!   读的本体在 `observe/`（那一层今天就是 Claude 专属的）。
-//! - 两条的应答都是**成品**：〔C4b〕`plugins-marketplaces` 整份 survey；〔LOC1a〕`tasks-list` → `{tasks: [...]}`
+//! - 应答都是**成品**：〔LOC1a〕`tasks-list` → `{tasks: [...]}`
 //!   （字段语义住 `observe/tasks_query.rs::task_entry`），界面经通道直接问、按形状收。
 //!   整份超过 [`crate::faces::read_face::LINES_CAP_BYTES`] ⇒ `too_large`（不截断）。
 //! - 不拨号、不起进程、不写盘。
@@ -44,40 +44,6 @@ fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answer {
             ))?;
             // 〔LOC1a · 第四波 4D · C4e 批 4〕应答**是成品** `{tasks: [...]}`（此前是原样对象的 `lines`，字段由 monitor 解）。
             capped(json!({ "tasks": crate::observe::tasks_query::session_tasks(home, sid)? }))
-        }
-        // 〔C4b · 第四波 4B〕应答**就是成品**：整份 survey `{entries, file_absent}`（此前是「恰一行」的 `lines`，
-        //   monitor 那一侧再核一遍「恰一行 ＋ 拒收未知字段 ＋ 必填」—— 那一份解释删了，界面经通道直接问、按形状收，
-        //   `settings/plugins-section.ts::decodeSurvey`）。
-        // 三条出口：文件不在 ⇒ `file_absent: true`（诚实的空）；读 / 解析失败 ⇒ `failed`；
-        // 某一条数不出 ⇒ 那一条 `declared_plugins: null` ＋ 理由（整张表照出）。
-        "plugins-marketplaces" => {
-            let survey = crate::observe::plugins_query::survey_marketplaces_in(home)
-                .map_err(|e| ("failed", e))?;
-            let v = serde_json::to_value(&survey).map_err(|e| {
-                (
-                    "failed",
-                    crate::common::contract::malformed(&format!(
-                        "serializing the marketplace list failed: {e}"
-                    )),
-                )
-            })?;
-            let size = v.to_string().len();
-            if size > crate::faces::read_face::LINES_CAP_BYTES {
-                return Err((
-                    "too_large",
-                    copy_text(
-                        "beFeatureFace.answerAt.tooLarge",
-                        &[
-                            ("size", &size.to_string()),
-                            (
-                                "cap",
-                                &(crate::faces::read_face::LINES_CAP_BYTES).to_string(),
-                            ),
-                        ],
-                    ),
-                ));
-            }
-            Ok(v)
         }
         // 〔SH1〕列这台的 tmux 会话：同 watcher 那一趟 `tmux ls`。〔MIG-1 续 · ⑬〕出成品（`observe/tmux_list.rs`，解析从 monitor 搬来）。
         "tmux-list" => capped(crate::observe::tmux_list::answer()?),

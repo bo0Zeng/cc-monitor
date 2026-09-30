@@ -174,30 +174,55 @@ pub(crate) const TOOLS: &[ToolSpec] = &[
         display_name: Text(|| copy_text("rsToolRegistry.tools.skillInstallName", &[])),
         installable: true,
         uninstallable: true,
-        carriers: &[Carrier {
-            what: Text(|| copy_text("rsToolRegistry.tools.skillInstallWhat", &[])),
-            source: ToolSource::Generated,
-            // 落在 skills 目录下（以那个 skill 为名的那一个子目录；名字由你点的那一条定）—— 与 cc-bus 那一格同一个根。
-            destination: ToolDestination::LocalHomeRelative(SKILLS_DIR_REL),
-            touches: &[
-                TouchedFile {
-                    path: SKILLS_DIR,
-                    host: HostScope::Either,
+        carriers: &[
+            Carrier {
+                what: Text(|| copy_text("rsToolRegistry.tools.skillInstallWhat", &[])),
+                source: ToolSource::Generated,
+                // 落在 skills 目录下（以那个 skill 为名的那一个子目录；名字由你点的那一条定）—— 与 cc-bus 那一格同一个根。
+                destination: ToolDestination::LocalHomeRelative(SKILLS_DIR_REL),
+                touches: &[
+                    TouchedFile {
+                        path: SKILLS_DIR,
+                        host: HostScope::Either,
+                        note: Some(Text(|| {
+                            copy_text("rsToolRegistry.tools.skillInstallNote", &[])
+                        })),
+                        effect: TouchEffect::OwnedFile,
+                    },
+                    TouchedFile {
+                        path: "~/.cc-monitor/skill-installs.json",
+                        host: HostScope::Either,
+                        note: Some(Text(|| {
+                            copy_text("rsToolRegistry.tools.skillInstallsLedgerNote", &[])
+                        })),
+                        effect: TouchEffect::OwnedFile,
+                    },
+                    // 卸掉不是 cc-monitor 装的 skill / MCP 之前，原样挪 / 抄到这里（要找回就从这里拿）。
+                    TouchedFile {
+                        path: "~/.cc-monitor/backups",
+                        host: HostScope::Either,
+                        note: Some(Text(|| {
+                            copy_text("rsToolRegistry.tools.extBackupsNote", &[])
+                        })),
+                        effect: TouchEffect::OwnedFile,
+                    },
+                ],
+            },
+            // 装到某个项目里的那一份：`<项目>/.claude/skills/<名>/`（项目由你在确认卡上选）⇒ 项目相对，同 `.mcp.json` 那一格。
+            Carrier {
+                what: Text(|| copy_text("rsToolRegistry.tools.projectSkillInstallWhat", &[])),
+                source: ToolSource::Generated,
+                destination: ToolDestination::ProjectRelative(".claude/skills"),
+                touches: &[TouchedFile {
+                    path: ".claude/skills",
+                    host: HostScope::ProjectDir,
                     note: Some(Text(|| {
-                        copy_text("rsToolRegistry.tools.skillInstallNote", &[])
+                        copy_text("rsToolRegistry.tools.projectSkillsNote", &[])
                     })),
                     effect: TouchEffect::OwnedFile,
-                },
-                TouchedFile {
-                    path: "~/.cc-monitor/skill-installs.json",
-                    host: HostScope::Either,
-                    note: Some(Text(|| {
-                        copy_text("rsToolRegistry.tools.skillInstallsLedgerNote", &[])
-                    })),
-                    effect: TouchEffect::OwnedFile,
-                },
-            ],
-        }],
+                }],
+            },
+        ],
     },
     // ═══ 〔`K-R60` 09-11 加〕**这一条我们装不了，而它是这张表最吃重的一项。** ═══
     //

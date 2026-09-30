@@ -51,6 +51,6 @@ describe("〔GAP1〕overlay 路由", () => {
     expect(judged(code), "main.ts 又自己判 overlay 开没开了 —— 走 overlays.toggle / open").toBe(0);
     expect(judged(`${code}\nif (historyView.isVisible()) x();`), "正控：量具认得出").toBe(1);
     const names = [...code.matchAll(/overlays\.register\("([^"]+)"/g)].map((m) => m[1]).sort();
-    expect(names).toEqual(["cc-bus", "grid", "history", "inbox", "panorama"]);
+    expect(names).toEqual(["cc-bus", "grid", "history", "panorama"]);
   });
 });

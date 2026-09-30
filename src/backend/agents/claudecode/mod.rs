@@ -52,7 +52,6 @@ pub(crate) mod schema;
 // 〔P1〕记录文本：正文 / 工具内容怎么抽 · CLI 注入怎么剥（原共享 crate `search-core` 的 Claude 那一半）。
 pub(crate) mod text;
 // 〔MIG-3a〕skill 接入面的声明（收件箱那几个人要改的文件 ＋ Claude 数据文件的纵深围栏）：从 monitor 搬来。
-pub(crate) mod skill_host;
 pub(crate) mod turn;
 
 /// 本 agent 在 wire 上的 **`agent_kind` 值**〔`S5`〕。
@@ -125,6 +124,6 @@ pub(crate) const RECORDS: super::RecordFace = super::RecordFace {
 pub(crate) const ASSETS: super::AssetFace = super::AssetFace {
     scan: assets::scan,
     skills_root: assets::skills_root,
-    skill_views: skill_host::views,
-    skill_editable: skill_host::editable_target,
+    project_skills_root: assets::project_skills_root,
+    user_mcp_file: assets::claude_json,
 };

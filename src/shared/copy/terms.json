@@ -87,8 +87,8 @@
       "word": "SSH",
       "tier": "限用",
       "tally": { "re": "\\bssh\\b", "flags": "i" },
-      "inTable": 55,
-      "inTableNote": "〔COPY-R〕58 → 56：讲「远端 SSH 由本机后端来拨」的两句（rsDialHost.local.absent · local.tooOld）删了那段架构交代。",
+      "inTable": 53,
+      "inTableNote": "〔COPY-R〕58 → 56：讲「远端 SSH 由本机后端来拨」的两句（rsDialHost.local.absent · local.tooOld）删了那段架构交代。56 → 53：账号库收进后端 −1；机器页里 MCP · 资产目录两块拿走 −2（跨机器的 skill / MCP 今天在「扩展」页）。",
       "meaning": "连远端用的 ssh。",
       "context": "讲连接、主机、密钥、主机指纹时许说。",
       "source": "设计/91 §4 R1b"
@@ -137,7 +137,8 @@
       "word": "Claude Code",
       "tier": "限用",
       "tally": { "re": "claude\\s*code", "flags": "i" },
-      "inTable": 23,
+      "inTable": 21,
+      "inTableNote": "22 → 21：账号库收进后端 +1；插件只读列表与收件箱编辑面拿掉 −2。",
       "meaning": "Anthropic 的命令行工具；命令名 claude。",
       "context": "产品名，许说。讲它的 hooks、settings.json 等它自己的概念时许用它的原名。",
       "source": "外部产品名"

@@ -25,9 +25,7 @@ import {
 import { claudeDirIn, setClaudeDirOverride } from "../paths";
 import { loadConfig } from "../config";
 import { AccountsSection } from "./accounts-section";
-import { McpSection, assetInstallApi } from "./mcp-section"; // F87：MCP 管理（集成组）· 〔AS2〕「装」那几条从它递给资产目录
-import { AssetsSection } from "./assets-section"; // 〔AS2 · 第四波 4B · V113〕资产目录（别的机器有、这台没有的 skill / MCP，装要你点）
-import { PluginsSection } from "./plugins-section"; // P8a：marketplace 只读枚举（**不声称安装/启用**）
+import { ExtSection } from "./ext-section"; // 顶层「扩展」：跨机器的 skill / MCP，一张表 ＋ 一个抽屉
 import { CcBusHooksSection } from "./cc-bus-hooks-section"; // B04：钩子只读诊断 + 生成待贴文本（绝不写入）
 import { ConfigSurfaceSection } from "./config-surface-section"; // T02：配置面审计（只读、按需一次、不轮询）
 import { DriftLedgerSection } from "./drift-ledger-section"; // U-CC1：数据面漂移记账（只读、按需一次、不轮询）
@@ -208,6 +206,8 @@ const APP_SUBPAGES = () =>
 
 /** S2：落地页 id。主计划 §2.3 指定为「机器」。 */
 const SETTINGS_LANDING_ROUTE = "machines";
+/** 顶层「扩展」页的路由 id。 */
+const EXT_PAGE_ID = "ext";
 
 export class SettingsPanel {
   private el: HTMLElement;
@@ -285,6 +285,8 @@ export class SettingsPanel {
   private dataSection?: DataSection;
   /** `70 §10.3` 改名后的「日志」块。步 2 要在「应用」页首次可见时叫醒它。 */
   private logsSection?: DiagnosticsSection;
+  /** 顶层「扩展」页那一块（构造失败 ⇒ 留 `undefined`，同 `remoteSection` 那一格的约定）。 */
+  private extSection?: ExtSection;
   /** issue #15 (S6): 远端 (SSH) 配置区。打开面板时 refresh 一次拉最新 config */
   private remoteSection?: RemoteSection;
   /** P2s（C8）：backend 开关区。打开面板时 refresh 一次，重拉每台机的状态。 */
@@ -1123,35 +1125,13 @@ export class SettingsPanel {
               });
         }),
       },
-      // F87（#50+#51）：MCP 管理——读跨 scope 展示 / 写只项目 .mcp.json（SS-14）。
-      // 本机与远端都有意义（它自己的机器行第一颗按钮就是本机）。
-      {
-        appliesTo: "both",
-        tab: "tools",
-        ...this.loadableBlock("MCP", () => new McpSection()),
-      },
-      // 〔AS2 · 第四波 4B · V113〕资产目录：别的机器有、这台没有（或不一样）的 skill 与项目级 MCP，装要你点。
-      // 本机与远端都有意义（目录在各台后端之间自动对上；装的那一下经被写那台的后端）。「装」那几条命令从
-      // `mcp-section.ts` 递进来（那里是「装 MCP / skill」在前端的唯一落点）。
-      {
-        appliesTo: "both",
-        tab: "tools",
-        ...this.loadableBlock(copyText("settingsPanel.group.assets"), () => new AssetsSection(() => assetInstallApi())),
-      },
+      // 〔MCP · 资产目录 · 插件〕三块搬走了：skill / MCP 是跨机器的一类对象，住顶层「扩展」页（一张表 ＋ 一个抽屉）；
+      //   插件只读列表没有可做的事，先拿掉。
       // 〔FIX4 · `97 §8`〕代码全景组件的卸口（那台后端 `panorama-uninstall`；本机远端同一条）。
       {
         appliesTo: "both",
         tab: "tools",
         ...this.loadableBlock(copyText("panorama.uninstall.title"), () => new PanoramaSection()),
-      },
-      // P8a：插件面（marketplace）只读枚举。
-      // 〔RM1b · 第四波〕`appliesTo: "local"` → `"both"`：后端补了 `plugins-marketplaces`
-      // （本机与远端同一条路），`PluginsSection` 跟着「当前在看哪台机器」问那一台 ——
-      // 原先那句「挂成 both 会出现一个恒失败的块」的前提（远端没有口）不在了。
-      {
-        appliesTo: "both",
-        tab: "tools",
-        ...this.loadableBlock(copyText("settingsPanel.group.plugins"), () => new PluginsSection()),
       },
       // B04：钩子诊断。**只读**——不替用户改 ~/.claude/settings.json（共享全局配置）。
       // 本机与远端都要诊断（§2.4 表里这一行两栏都写着「诊断 + 待贴片段」）。
@@ -1234,6 +1214,25 @@ export class SettingsPanel {
       title: copyText("settingsPanel.nav.machines"),
       element: machinesPage,
       infoTooltip: MACHINES_PAGE_INFO_TEXT(),
+    });
+
+    // ---- 扩展：改**跨机器的 skill / MCP**（一类被设置的对象，不挂在某台机器下面）----
+    //   每次变可见都重读一趟（第一问算「来看了一次」，「新」按上一次来看算）；构造零 I/O。
+    const extPage = document.createElement("div");
+    extPage.appendChild(
+      this.safeBlock(
+        copyText("settingsPanel.nav.ext"),
+        () => {
+          const sec = new ExtSection();
+          this.extSection = sec;
+          return sec.element;
+        },
+        { untitled: true },
+      ),
+    );
+    router.addRoute({ id: EXT_PAGE_ID, title: copyText("settingsPanel.nav.ext"), element: extPage });
+    router.onNavigate((id) => {
+      if (id === EXT_PAGE_ID) this.extSection?.loadNow();
     });
 
     // 🔴 〔第四波 ST2 · 用户 09-24 裁「并进机器页，删掉顶层页」〕**顶层「改动足迹」页没了。**
