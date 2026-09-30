@@ -579,9 +579,9 @@ CLAIMS_NON_COMMAND_SYMBOLS = {
         "那台后端的帧命令本体（D 组「monitor 算好、后端写」收进后端，界面经通道直问），本来就不是 Tauri 命令",
     "assets/mcp_edit.rs::answer_remove":
         "同上，撤那一侧",
-    # 〔MIG-3a · 09-28 预裁〕cc-acct-iso 装进了那台后端：帧命令 `acct-iso-install` 的本体（字节随后端二进制走）。
-    "acct_iso_install.rs::answer_install":
-        "〔MIG-3a · 09-28 预裁〕`cc-acct-iso` 的装口：那台后端的帧命令 `acct-iso-install` 本体，本来就不是 Tauri 命令",
+    # 账号库由那台后端自己建：`accounts-init` / `accounts-add` 这一族帧命令共用的执行口。
+    "wire.rs::run_change":
+        "账号库的建口：那台后端帧命令 `accounts-init` / `accounts-add` 等共用的执行本体，本来就不是 Tauri 命令",
     # 〔MIG-3a · 子步 3〕cc-bus 装到本机进了本机后端：帧命令 `cc-bus-install` 的本体。
     "cc_bus_install.rs::answer_install":
         "〔MIG-3a〕`cc-bus` 的装口：本机后端的帧命令 `cc-bus-install` 本体（资产的装不算部署），本来就不是 Tauri 命令",

@@ -190,7 +190,7 @@ Single keys, all changeable in Settings → Shortcuts.
 |---|---|
 | `~/.cc-monitor/` | Everything cc-monitor owns: settings, backend, logs, alias files, API keys (readable only by you) |
 | `~/.claude/` | Claude Code's own directory. cc-monitor only reads session records and only writes the skills / MCP servers you choose to install |
-| `~/.claude-alt/` | The multi-account store (managed by cc-acct-iso), one set of login credentials per account |
+| `~/.claude-alt/` | The multi-account store (built and maintained by the backend), one set of login credentials per account |
 
 The "Data locations" page in Settings shows the full path of every file.
 
@@ -200,7 +200,7 @@ The "Data locations" page in Settings shows the full path of every file.
 
 - On Windows, sessions cannot yet be sent to the background, re-attached, previewed or typed into; the local backend exits together with the UI.
 - macOS and Linux arm64 are not supported as the local machine (they work as remote machines).
-- cc-acct-iso, which multi-account relies on, currently supports Linux only.
+- Multi-account currently works on Linux / Unix machines only; the account store cannot be set up on a local Windows machine.
 - Several Windows fixes in 4.0.0 were verified by automated tests only, not on a real Windows machine — see the [CHANGELOG](CHANGELOG.md).
 
 ---

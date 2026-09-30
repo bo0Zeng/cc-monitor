@@ -34,7 +34,7 @@ fn the_lexical_fence_admits_exactly_the_two_roots_and_nothing_else() {
             Some(".cc-monitor/staging"),
         ),
         (
-            ".cc-monitor/bin/cc-acct-iso/scripts",
+            ".cc-monitor/bin/sub/dir",
             Intent::Dir,
             Some(".cc-monitor/bin"),
         ),

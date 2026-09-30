@@ -2395,7 +2395,7 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         ),
         // 〔P6 · 09-29〕`("src/doc/ARCHITECTURE.md", "lookup_by_foreground_pid", 1)` 摘了：开发文档按 4.0.0 重写，「刻意不做的」那一节只讲理由、不再点那个旧名。
         // 〔LOC1b〕`("src/doc/CONTRIBUTING.md", "list_active_session_ids", 1)` 摘了：那段示例改写成读本机活会话表，不再点那个说明性的名字。
-        ("src/doc/INVARIANTS.md", "path_shell_safe", 1),
+        // `("src/doc/INVARIANTS.md", "path_shell_safe", 1)` 摘了：那一句改成点 `acct-core::config_dir_posix_ok`，不再点外部脚本里的旧名。
         ("src/doc/INVARIANTS.md", "snapshot_announced_by_origin", 1),
         ("src/doc/STATE-MATRIX.md", "read_session_jsonl", 1),
         (
@@ -3455,7 +3455,7 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         ("src/frontend/shell/src/sftp.rs", "acct_iso_deploy", 3),
         ("tests/frontend/shell/sftp_tests.rs", "acct_iso_deploy", 1),
         // 〔MIG-3a · 09-28 预裁〕`deploy_remote_acct_iso` 那条 Tauri 命令（与守它的判据文件 `acct_iso_deploy_tests`）删了：点旧名的散文挂墓碑。
-        ("src/frontend/ui/accounts.ts", "deploy_remote_acct_iso", 1),
+        // `("src/frontend/ui/accounts.ts", "deploy_remote_acct_iso", 1)` 摘了：空态那句「只能在终端里做」的理由整条退役（新建由后端执行），墓碑随被守的那句一起走。
         (
             "src/frontend/ui/ipc/commands.ts",
             "deploy_remote_acct_iso",
@@ -5273,7 +5273,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("tests/frontend/shell/write_site_registry_spawn_sites.rs", 3), // 〔SH1〕+1：本机 cc-bus 读那一处出表
         // 〔DUP1 · 4D〕`设计/90 §3` 判据 2：`accounts.ts` 里 `auth_ready` 订阅分支的第二份（带「旧后端」回落的 `authReady()` 包装）删了，
         //   点它的散文各挂一块：`Account.authReady` 字段头注那一处 · KAY4 判据头注第 4 条那一处。
-        ("src/frontend/ui/accounts.ts", 3), // 〔MIG-3a · 09-28 预裁〕2 → 3：点 `deploy_remote_acct_iso` 旧名那几处挂墓碑 // // 〔MIG-2〕1 → 2
+        ("src/frontend/ui/accounts.ts", 2), // 3 → 2：空态那句的墓碑随「只能在终端里做」那条理由退役 // 〔MIG-3a · 09-28 预裁〕2 → 3：点 `deploy_remote_acct_iso` 旧名那几处挂墓碑 // // 〔MIG-2〕1 → 2
         ("tests/frontend/ui/account-availability-guard.vitest.ts", 1),
         // 〔DUP1 · 4D〕同一判据 J2 / J3：TS 的 `isValidConfigDir`（渲染侧 configDir 拒绝集的手抄）与 `sanitizeRemoteLauncher`
         //   （同一字符集、却静默换成默认 launcher）删了，点它们的散文各挂一块。

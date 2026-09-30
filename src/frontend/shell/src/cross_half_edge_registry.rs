@@ -319,8 +319,8 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     // ── backend → monitor（〔RK1〕3 → 4 · 〔US1〕4 → 2：两条对拍随「只剩一份」出列 · 〔MIG-3a · 09-28〕−1：vendored cc-acct-iso 挪去 `src/shared/` · 〔THIN〕2 → 0）：backend 的判据去读 monitor ──
     // 〔MIG-3a〕别名块的 PowerShell 模板随别名块进了那台后端：模板挪去 `src/shared/cc.ps1.tpl`（两棵树都不属于、两侧读同一份，
     //   同 `src/shared/ccm-aliases.sh`）⇒ 不是跨半边的边，不登记。
-    // 〔MIG-3a · 主会话 09-28 预裁〕`iso_tests.rs` → vendored `cc-acct-iso` 那一条出列：cc-acct-iso 的字节随后端二进制走，
-    //   vendored 目录挪去 `src/shared/cc-acct-iso/`（两棵树都不属于，同 `src/shared/cc-bus/`）⇒ 不是跨半边的边，不登记。
+    // 〔MIG-3a · 主会话 09-28 预裁〕`iso_tests.rs` → vendored `cc-acct-iso` 那一条出列：账号库今天由后端自己建（`src/backend/accounts/manage/`），
+    //   那份 vendored 工具整棵删了 ⇒ 没有这条边。
     // 〔THIN〕这里原先还有两条 backend → monitor：`control/gate_tests.rs` 读 monitor 那份 `gate2-golden.tsv`（金表挪去
     //   `tests/__fixtures__/`：两棵树都不属于、后端与 e2e 两侧读同一份 ⇒ 不是跨半边的边）· `control/launch_tests.rs` 抠 monitor
     //   `tmux.rs` 的 `={target}:`（那份跨轨锚点随 monitor 侧的 Gate 残留删了，精确匹配形只剩后端一个家）⇒ 两条出列（2 → 0）。

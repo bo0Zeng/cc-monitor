@@ -16417,7 +16417,7 @@
     },
     "rsToolRegistry.tools.ccBusBinNote": {
       "kind": "body",
-      "zh": "cc-bus 自己的安装脚本建的命令链接，不是 cc-monitor 建的。钩子诊断只查 cc-register 与 cc-bus-stop-hook 在不在；计数会把 cc-acct-iso 同前缀的链接也算进去，多 1",
+      "zh": "cc-bus 自己的安装脚本建的命令链接，不是 cc-monitor 建的。钩子诊断只查 cc-register 与 cc-bus-stop-hook 在不在；计数按 cc- 前缀数，别的工具建的同前缀链接也会算进去",
       "args": []
     },
     "rsToolRegistry.tools.ccBusHooksNote": {
@@ -17673,7 +17673,7 @@
     },
     "beAccountsQuery.listProductAt.noDefault": {
       "kind": "body",
-      "zh": "这台机器的账号清单里缺默认账号。重新部署 cc-acct-iso 后可以补上。",
+      "zh": "这台机器的账号清单里缺默认账号。在账号页的维护里点「修复」可以补上。",
       "args": []
     },
     "bePanorama.classify.badReply": {

@@ -414,8 +414,7 @@ fn every_slot_hangs_on_exactly_one_key_and_one_key_has_one_slot_but_the_one_list
     }
 }
 
-/// B1：`src/frontend/shell/src` 生产段里 `include_bytes!` 住哪几个文件 == {`byte_table.rs`（可执行字节）· `acct_iso_deploy.rs`（vendored 的
-/// cc-acct-iso 脚本）}，两向。后一处嵌的是随部署带过去的文本 / 脚本，不是表 A 的字节。
+/// B1：`src/frontend/shell/src` 生产段里 `include_bytes!` 住哪几个文件 == {`byte_table.rs`（可执行字节）}，两向。
 /// 〔MIG-3a · 子步 3〕`cc_bus_deploy.rs`（cc-bus skill 的文件）出列：装 cc-bus 进了本机后端，字节随它住 `src/backend/assets/cc_bus_install.rs`。
 /// **别的文件长出一槽可执行字节 ⇒ 红**：它就是第二个取字节口（题面「今天两条内嵌路径各按一个错的轴选」的复发形）。
 #[test]
@@ -436,7 +435,7 @@ fn byte_table_is_the_only_home_of_embedded_executables() {
         }
     }
     assert!(scanned > 50, "只扫到 {scanned} 份 .rs —— 扫描口坏了");
-    // 〔MIG-3a · 09-28 预裁〕`acct_iso_deploy.rs`（vendored 脚本）出去了：那份字节随后端二进制走（`src/backend/assets/acct_iso_install.rs`）。
+    // 〔MIG-3a · 09-28 预裁〕`acct_iso_deploy.rs`（vendored 脚本）出去了：账号库改由后端自己建，那份 vendored 脚本整棵删了。
     let want: BTreeSet<String> = ["byte_table.rs"].into_iter().map(String::from).collect();
     assert_eq!(homes, want);
     // 正控：一段带 `include_bytes!` 的合成生产代码认得出来。

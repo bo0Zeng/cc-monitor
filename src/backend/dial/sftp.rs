@@ -46,7 +46,7 @@ use super::{pool, write_line, DialRequest, StageSink};
 /// 🔴 **远端写根：恰好这两处**（home 相对）。`readonly_guard::remote_write_layer` 现读本行源码逐字比。
 ///
 /// - `staging`：上传只写暂存区（`设计/60 §4.3`），落进用户目录由远端后端 `files-commit-upload` 做；
-/// - `bin`：自部署（F08 后端二进制 ＋ `.build_id` · `ccm` 入口 · cc-acct-iso），后端还不在时只能靠它放上去。
+/// - `bin`：自部署（F08 后端二进制 ＋ `.build_id` · `ccm` 入口），后端还不在时只能靠它放上去。
 pub(crate) const REMOTE_WRITE_ROOTS: [&str; 2] = [".cc-monitor/staging", ".cc-monitor/bin"];
 
 /// 暂存区那一根（与 `control/files_commit.rs::STAGING_DIR` 相等 —— 同一个 crate，判据直接比）。

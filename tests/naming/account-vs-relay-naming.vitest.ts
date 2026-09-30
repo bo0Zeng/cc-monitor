@@ -358,7 +358,7 @@ export const RELAY_NAMES: { name: string; re: RegExp; why: string }[] = [
  * 人群：同波别的路新写一句「账号层」/「层 2」/`accounts::apikey`/`account_layer…` ⇒ 本表当场红（合并时对上）。
  *
  * ⚠ 「层 1」**不整词禁**：它在别处另有其义（`设计/15 §3.2` 的层 1 · 只读护栏的层）。只禁中转义的那三种写法。
- * ⚠ 「层 2」按「前面不是 顶 / 卫」禁：`src/shared/cc-acct-iso` 的测试里有「守卫层 2」（vendor，不是本仓的词）。
+ * ⚠ 「层 2」按「前面不是 顶 / 卫」禁：「守卫层 2」「顶层 2 处」是别义，不许认。
  */
 export const UPSTREAM_SELECTION_NAMES: AccountName[] = [
   {
@@ -576,7 +576,7 @@ describe("V114 · 「上游选择」改名（RN1）", () => {
     }
     // 别义：不许认。
     const notMine: [string, string][] = [
-      ["层 2", "cc-acct-iso：守卫层 2:计划执行器"],
+      ["层 2", "守卫层 2:计划执行器"],
       ["层 2", "顶层 2 处"],
       ["层 2", "层 23 格"],
       ["中转（层 1）/ 层 1（中转）/ 中转层 1", "`设计/15 §3.2` 层 1 那一搬"],

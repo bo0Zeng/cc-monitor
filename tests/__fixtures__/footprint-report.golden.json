@@ -172,7 +172,7 @@
       "effect_label": "只读（诊断用），cc-monitor 不写",
       "host_label": "本机或远端",
       "installable": true,
-      "note": "cc-bus 自己的安装脚本建的命令链接，不是 cc-monitor 建的。钩子诊断只查 cc-register 与 cc-bus-stop-hook 在不在；计数会把 cc-acct-iso 同前缀的链接也算进去，多 1",
+      "note": "cc-bus 自己的安装脚本建的命令链接，不是 cc-monitor 建的。钩子诊断只查 cc-register 与 cc-bus-stop-hook 在不在；计数按 cc- 前缀数，别的工具建的同前缀链接也会算进去",
       "path_declared": "~/.local/bin/cc-*",
       "path_resolved": "/nonexistent-footprint-golden/.local/bin/cc-*",
       "source_label": "随 cc-monitor 一起安装",

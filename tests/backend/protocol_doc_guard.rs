@@ -1200,8 +1200,8 @@ mod tests {
     ///
     /// - `resolve_query.rs` 的 4 个：与仓外 aterm **冻结在 2026-07-18** 的一次性契约；
     /// - `fork_write.rs::ForkResult`：**一次性子命令 `--fork-session` 的出参**，不是流协议；
-    /// - `accounts_query.rs::RawAccount`：**根本不是 wire** —— 它在解析 cc-acct-iso
-    ///   写的清单**文件**（文件 schema）。
+    /// - `accounts_query.rs::RawAccount`：**根本不是 wire** —— 它在解析账号库的清单
+    ///   **文件**（文件 schema）。
     ///
     /// ⇒ 目标不变（新增一个上线类型不许溜进来），形状改成 `spawn_registry` 那一套：
     /// **逐条列举 + 写明它是什么 + 机检**。
@@ -1232,7 +1232,7 @@ mod tests {
             (
                 "observe/accounts_query.rs",
                 "RawAccount",
-                "**根本不是 wire**：它在解析 cc-acct-iso 写的清单**文件**（文件 schema）",
+                "**根本不是 wire**：它在解析账号库的清单**文件**（文件 schema）",
             ),
             (
                 "observe/history_query.rs",

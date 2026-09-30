@@ -256,8 +256,8 @@ describe("K-R65：「提示用户装」那一档真的会出声", () => {
   // 〔V161〕那一格的话按文案键取（不再钉「还没有安装入口」原文）；数得出来这一点照旧。
   it("KR65D2：「app 该自带而还没有装口」那一格**在屏幕上数得出来**", async () => {
     const owed = prompted({
-      tool_id: "cc-acct-iso-local",
-      tool_name: "cc-acct-iso 本机那份",
+      tool_id: "example-owed-tool",
+      tool_name: "示例工具本机那份",
       tier: "AppShipsNoInstallerYet",
       state: { kind: "absent" },
     });
@@ -266,7 +266,7 @@ describe("K-R65：「提示用户装」那一档真的会出声", () => {
     const txt = summarizeOwedInstallers([owed])!;
     // 〔ST2 · `§11.3.1`〕数照旧数得出来，措辞不再说「我们欠」；名单挪进展开。〔V161〕按文案键断言。
     expect(txt).toBe(OWED_1);
-    expect(owedInstallerNames([owed, prompted()])).toEqual(["cc-acct-iso 本机那份"]);
+    expect(owedInstallerNames([owed, prompted()])).toEqual(["示例工具本机那份"]);
 
     serve(report({ rows: [owed] }));
     const s = new ConfigSurfaceSection();
@@ -277,7 +277,7 @@ describe("K-R65：「提示用户装」那一档真的会出声", () => {
     expect(el.textContent).toContain(OWED_1);
     const which = el.querySelector<HTMLElement>("[data-owed-names]")!;
     expect(which.querySelector("summary")?.textContent).toBe("哪 1 项");
-    expect(which.textContent).toContain("cc-acct-iso 本机那份");
+    expect(which.textContent).toContain("示例工具本机那份");
   });
 
   it("那句话也要进可复制的诊断文本（贴出去的那一份不含它就等于没说）", () => {
@@ -286,8 +286,8 @@ describe("K-R65：「提示用户装」那一档真的会出声", () => {
         rows: [
           prompted({ state: { kind: "absent" } }),
           prompted({
-            tool_id: "cc-acct-iso-local",
-            tool_name: "cc-acct-iso 本机那份",
+            tool_id: "example-owed-tool",
+            tool_name: "示例工具本机那份",
             tier: "AppShipsNoInstallerYet",
             state: { kind: "absent" },
           }),
@@ -296,7 +296,7 @@ describe("K-R65：「提示用户装」那一档真的会出声", () => {
     );
     expect(txt).toContain("自己装");
     // 〔ST2〕计数与名单都进可复制文本（名单不许只在屏幕上）。
-    expect(txt).toContain(`${OWED_1}：cc-acct-iso 本机那份`);
+    expect(txt).toContain(`${OWED_1}：示例工具本机那份`);
   });
 
   it("〔ST2 · 用户 09-24 裁「一起改」〕可复制诊断文本的首行跟块名一致：「足迹」，不再是「配置面审计」", () => {

@@ -94,7 +94,6 @@ pub const SKILL_LEDGER_REL: &str = ".cc-monitor/skill-installs.json";
 /// 〔P3 · 同上〕资产目录（后端 `assets/asset_catalog.rs` 写；各台机器之间自动对上）。
 pub const ASSET_CATALOG_REL: &str = ".cc-monitor/assets-catalog.json";
 
-
 /// 〔P3 · 同上〕常驻监听口的进程记录的文件名（与 [`LISTEN_TOKEN_FILE_REL`] 同一个目录）：本机宿主与远端
 /// `--resident-ensure` 按同一个口（[`listen_port_for`]）找同一份。
 pub fn listen_pid_file_name(port: u16) -> String {
