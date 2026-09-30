@@ -15,16 +15,6 @@ pub enum AccountKind {
     ApiKey,
 }
 
-impl AccountKind {
-    /// 清单里 `authKind` 那一格该写什么（订阅号不写：缺席就是订阅）。
-    pub fn manifest_value(self) -> Option<&'static str> {
-        match self {
-            AccountKind::Subscription => None,
-            AccountKind::ApiKey => Some(crate::AUTH_KIND_API_KEY),
-        }
-    }
-}
-
 /// `accounts-init`：建账号库，把这台机器现在登录的那个身份收成名叫 `name` 的默认号。
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]

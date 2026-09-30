@@ -526,11 +526,9 @@ export class AccountsSection {
     if (a.configDir && a.mode !== "in-place") {
       const acts = document.createElement("span");
       acts.className = "accounts-local-row-actions";
-      if (a.authKind !== "api-key") {
-        const login = mkBtn(accountLoginActionLabel(a).label);
-        login.addEventListener("click", () => void this.loginAccount(a));
-        acts.appendChild(login);
-      }
+      const login = mkBtn(accountLoginActionLabel(a).label);
+      login.addEventListener("click", () => void this.loginAccount(a));
+      acts.appendChild(login);
       const del = mkBtn(copyText("accounts.row.remove"));
       del.classList.add("danger");
       del.addEventListener("click", () => void this.removeAccount(a));

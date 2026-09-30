@@ -2233,12 +2233,6 @@ body.settings-window-mode .settings-panel {
   gap: 8px;
 }
 
-/* 「建好后自动写 key」还在等的那几个号：一行一个，带「放弃」。 */
-.accounts-new-pending {
-  display: flex;
-  flex-direction: column;
-}
-
 /* 账号那一行展开出来的「配 apikey」一格：跨满整行，挂在那一行紧后面（不算那一行的列）。 */
 .accounts-row-apikey {
   grid-column: 1 / -1;
@@ -2382,14 +2376,7 @@ body.settings-window-mode .settings-panel {
   gap: 8px;
 }
 
-.accounts-wiz-copyrow {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: -2px;
-}
-
 .accounts-wiz-btns button,
-.accounts-wiz-copyrow button,
 .accounts-maint button {
   padding: 5px 10px;
   border: 1px solid var(--border, #444);
@@ -2401,7 +2388,6 @@ body.settings-window-mode .settings-panel {
 }
 
 .accounts-wiz-btns button:hover:not(:disabled),
-.accounts-wiz-copyrow button:hover:not(:disabled),
 .accounts-maint button:hover:not(:disabled) {
   border-color: var(--accent, #c96442);
 }
@@ -2415,12 +2401,6 @@ body.settings-window-mode .settings-panel {
 .accounts-wiz-btns button.danger {
   border-color: var(--error);
   color: var(--error);
-}
-
-.accounts-wiz-note {
-  font-size: 12px;
-  opacity: 0.75;
-  line-height: 1.5;
 }
 
 /* === T02 配置面审计视图 ===
