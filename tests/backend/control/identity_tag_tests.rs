@@ -25,25 +25,29 @@ pub(crate) fn spawn_settled_sleep(
     let mut kid = cmd
         .spawn()
         .expect("起不来 `sleep` —— 夹具坏了，读数一个字都不能信");
+    let pid = kid.id();
     let want = format!("{OWN_ENVIRON_SENTINEL}=1");
     let t0 = std::time::Instant::now();
-    loop {
-        if let Ok(b) = std::fs::read(format!("/proc/{}/environ", kid.id())) {
+    let own = loop {
+        if let Ok(b) = std::fs::read(format!("/proc/{pid}/environ")) {
             if b.split(|c| *c == 0).any(|e| e == want.as_bytes()) {
-                return kid;
+                break true;
             }
         }
         if t0.elapsed() > std::time::Duration::from_secs(10) {
-            let pid = kid.id();
-            let _ = kid.kill();
-            let _ = kid.wait();
-            panic!(
-                "pid {pid} 等了 10 s 仍读不到它自己的 environ —— 夹具坏了，\
-                 此刻任何读数说的都不是这个子进程"
-            );
+            break false;
         }
         std::thread::sleep(std::time::Duration::from_millis(1));
+    };
+    if !own {
+        let _ = kid.kill();
+        let _ = kid.wait();
+        panic!(
+            "pid {pid} 等了 10 s 仍读不到它自己的 environ —— 夹具坏了，\
+             此刻任何读数说的都不是这个子进程"
+        );
     }
+    kid
 }
 
 /// 〔RESYNC · `INVARIANTS §48.3`〕**那个口真的 fail-closed**：没注入 ⇒ `tag` 炸（连 sid 都不看）；
