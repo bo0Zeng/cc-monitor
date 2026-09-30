@@ -18,6 +18,8 @@
 import { existsSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 
+import { toPosix } from "./posix-path.ts";
+
 function findRoot(): string {
   let dir = import.meta.dirname;
   for (let up = 0; up < 8; up++) {
@@ -55,7 +57,7 @@ export const REPO_ROOT: string = findRoot();
  * 同果、这处不一致一直没现形 —— 它属于「判据看起来在守，其实守的是另一件事」那一类。
  */
 export function srcDirOf(testDir: string): string {
-  const norm = testDir.split("\\").join("/");
+  const norm = toPosix(testDir);
   const m = norm.match(/^(.*)\/tests(\/.*)?$/);
   if (!m) {
     throw new Error(
