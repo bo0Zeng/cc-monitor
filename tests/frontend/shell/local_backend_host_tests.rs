@@ -940,7 +940,7 @@ fn the_detach_landing_is_the_host_layer_and_the_injection_is_really_used() {
              `the_backend_half_stays_platform_agnostic` 的禁针里 —— 那一层不认识平台。\n\
              ⇒ 脱离的落点只能是**宿主知识层**（`local_backend_host.rs`），\n\
              照 `platform::fs::make_executable` 那个注入先例把「怎么起」喂进去。\n\
-             ⚠ 「加一条平台例外」这条路走不通：`PLATFORM_EXCEPTIONS.len() <= 1` 是递减棘轮，今天正好 1 条。"
+             ⚠ 「加一条平台例外」这条路走不通：`PLATFORM_EXCEPTIONS` 是递减棘轮（〔P4b〕今天 0 条，〔P4〕上限随之降到 0），壳里平台形态另只许住 `platform/`。"
     );
 
     // ── ② 位置性 ────────────────────────────────────────────────────
@@ -1140,7 +1140,8 @@ fn this_item_loosened_none_of_the_ratchets_it_touched() {
         (
             // 〔步 7c 剖分 2026-09-19 · C 类〕那条棘轮跟着测试段搬进了 `backend_tests.rs`。
             "backend_client_guard_tests.rs",
-            "PLATFORM_EXCEPTIONS.len() <= 1,",
+            // 〔P4 · 合 P4b〕棘轮降到 0：那一行今天是 `is_empty()`（只收紧，不放宽）。
+            "PLATFORM_EXCEPTIONS.is_empty(),",
             1,
             "递减棘轮：平台例外只许少不许多。**本件正是被它堵着**才把脱离放进宿主层的 —— \
                  松掉它，下一个人就能把 `process_group` 直接写进 `backend/`。",

@@ -4,7 +4,7 @@
 /// 别的平台走被监护那条（Windows 那一族没做，`99 §4.4`「本机常驻后端脱离不了」那一行）。
 pub const CAN_DETACH: bool = cfg!(target_os = "linux");
 
-/// 这个平台上可执行文件名的后缀（Windows `.exe`，别处空串）。〔P4〕从 `filewin/proc.rs::window_bin_in` 收来：平台原语只住这一层。
+/// 这个平台上可执行文件名的后缀（Windows `.exe`，别处空串）。〔P4 · P4b〕从 `filewin/proc.rs::window_bin_in` 与 `local_backend.rs::resolve_beside_this_exe` 收来：平台原语只住这一层。
 pub const EXE_SUFFIX: &str = std::env::consts::EXE_SUFFIX;
 
 /// 一次 `wait()` 的结局里**被哪个信号杀的**（unix 才有这一维；别处恒 `None`）。
