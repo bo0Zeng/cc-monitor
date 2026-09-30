@@ -1919,8 +1919,9 @@ monitor **从不**对本机那条连接发 `relay-ensure`（本机那一个就�
 | 字段 | 向 | 说明 |
 |---|---|---|
 | `client` | → | 可选。**本机那一栏**才带：monitor 自己进程独有的几条事实 `{home, agentHome, path?}`（`HostScope::Client` 那一族按它们解；本机后端与 monitor 同一台、同一用户 ⇒ stat 仍由这台做，`05 §14.3` E 组）。不带 ⇒ 远端那一栏：住 monitor 那台的那一族不进人群 |
-| `data` | ← | 整份报告：`rows`（每行 `tool_id` · `tool_name` · `tier` · `source_label` · `path_declared` · `path_resolved` · `note` · `host_label` · `effect_label` · `state{kind: present\|absent\|undetermined, detail?\|why?}` · `installable` · `uninstallable`）· `settings_scopes` · `claude_config_dir` · `home` |
+| `data` | ← | 整份报告：`rows`（每行 `tool_id` · `tool_name` · `tier` · `source_label` · `path_declared` · `path_resolved` · `note` · `host_label` · `effect_label` · `state{kind: present\|absent\|undetermined\|expected_absent, detail?\|why?}` · `installable` · `uninstallable`）· `settings_scopes` · `claude_config_dir` · `home` |
 
+- `expected_absent`（带 `detail`）＝ 该不在、确实不在：旧版遗留那一档（认出是我们放的就删）不在，正是该有的样子 —— 结论由后端给（`footprint/rows.rs::read_absence`），界面照档画、不算缺口。
 - 目录最多列 4096 个名字（超了 ⇒ 列不动，**不截断**）· 查 cc-bus 钩子字样的文件最多 1 MiB，**文件内容一个字节都不回**。
 - 环境是这个**后端进程**的（`HOME`，没有再退 `USERPROFILE`；`PATH`）—— 用户交互 shell 的 rc 改过的环境这里看不见。
 

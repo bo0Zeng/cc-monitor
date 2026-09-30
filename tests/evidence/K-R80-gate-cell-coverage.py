@@ -128,6 +128,7 @@ TREES = [
     "tests/",                # 384  判据本体（frontend/shell/ backend/ common/ views/ settings/ + vitest）
     ".github/",              # 3
     ".cargo/",               # 1
+    "docs/",                 # 5    〔SHOTS 09-29〕README 的产品截图（`tests/evidence/README-shots.ts` 拍）
     ROOTFILES,               # 14
 ]
 
@@ -907,6 +908,21 @@ NO_GATE_NEEDED = {
              "成员": ["config.toml"],
              "why": "它决定构建产物落在哪；改坏它不改变产品行为，但会让一族判据的人群失真。"
                     "该不该给它加门未裁。"},
+        ],
+    },
+    # 〔SHOTS 09-29 · 用户 09-29「readme全面搞一下 … 看看有没有什么截图」〕新出现的一棵树：README 配图。
+    "docs/": {
+        "why": "这棵树今天只有 README 的产品截图（`docs/screenshots/*.png`），由 `tests/evidence/README-shots.ts` "
+               "从合成数据重拍（真前端 ＋ 页里的替身后端 ＋ 无头 Chromium）。它们不进构建、不进运行时、"
+               "不被产品代码读 ⇒ 门禁没有哪一格的分母该含它们，这里判 0 不是漏登。"
+               "⚠ 截图会随界面变旧，那要靠重拍、不是靠门：拍摄脚本在页里抛错 / 状态栏报错 / 超过 300 KB 时作废那一张。",
+        # 钉子：说「由那份脚本拍」，那份脚本就得真把图写进这里（输出目录改了 ⇒ 理由指空 ⇒ 红）。
+        "witness_file": "tests/evidence/README-shots.ts",
+        "witness_text": 'const outDir = resolve(root, "docs/screenshots");',
+        "archive": [
+            {"档": "README 配图", "判": NEED_NONE, "成员": ["screenshots/*.png"],
+             "why": "README 里的产品截图：改坏它们只影响 README 的样子，不改变任何产品行为；"
+                    "界面变了就用 `README-shots.ts` 重拍"},
         ],
     },
     ROOTFILES: {
