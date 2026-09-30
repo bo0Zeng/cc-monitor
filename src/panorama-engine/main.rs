@@ -135,7 +135,10 @@ fn plans_line() -> String {
 }
 
 /// 〔PANO〕本程序**自己的**应答形状（引擎直出之外的那几样）：`status` 那三格。
+/// `stale` = 源文件有改动、索引已陈旧；`indexedAt` = 上次索引的 unix 秒（`null` = 从未建完）；`symbols` = 已索引符号数。
+/// 〔P7〕它与下面那份的 TS 声明进前端生成物 `types.ts`（ts-rs，只在测试构建里派生）。
 #[derive(Serialize, Default)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(rename = "PanoramaStatus"))]
 struct StatusReply {
     stale: bool,
     #[serde(rename = "indexedAt")]
@@ -143,9 +146,11 @@ struct StatusReply {
     symbols: usize,
 }
 
-/// `diagram` 的应答：上游 `Diagram`（形状归 vendored pin）＋ 上游 Mermaid 文本。
+/// `diagram` 的应答：上游 `Diagram`（形状归 vendored pin）＋ 上游 Mermaid 文本（复制给 agent 与「画不出」兜底用，不许解析它）。
 #[derive(Serialize, Default)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(rename = "PanoramaDiagram"))]
 struct DiagramReply {
+    #[cfg_attr(test, ts(type = "Diagram"))]
     diagram: Value,
     mermaid: String,
 }

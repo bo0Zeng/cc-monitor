@@ -180,13 +180,15 @@ describe("computeLayout", () => {
       { file: "src/lonely.ts", score: 20, symbols: 2 },
     ],
     subsystems: [
-      { label: "core", files: ["src/a.ts", "src/b.ts"], size: 2 },
-      { label: "util", files: ["src/c.ts"], size: 1 },
+      { label: "core", files: ["src/a.ts", "src/b.ts"], size: 2, member_hash: "", anchors: [], internal_edges: 0, external_edges: 0 },
+      { label: "util", files: ["src/c.ts"], size: 1, member_hash: "", anchors: [], internal_edges: 0, external_edges: 0 },
     ],
     entry_points: [{ id: "src/a.ts#main", file: "src/a.ts", symbol: "main" }],
     total_symbols: 26,
     total_files: 4,
     unresolved_calls: 5,
+    ambiguous_calls: 0,
+    unresolved_imports: 0,
     parse_errors: 1,
   };
 
