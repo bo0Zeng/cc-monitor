@@ -5,6 +5,8 @@ pub(crate) mod acct_iso_install;
 pub(crate) mod aliases;
 pub(crate) mod cc_bus_install;
 pub(crate) mod door;
+// 设置「扩展」页的后端：跨机器一张表 · 从一台卸（装那一件的枢纽住 `hub`）。
+pub(crate) mod ext;
 pub(crate) mod hub;
 pub(crate) mod mcp_edit;
 pub(crate) mod mcp_sync_flow;

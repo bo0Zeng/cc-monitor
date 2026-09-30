@@ -864,10 +864,6 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--cc-bus-install",
     "--files-link",
     "--cc-bus-install-state",
-    "--mcp-sync-hub-preview",
-    "--mcp-sync-hub-apply",
-    "--skill-install-hub-preview",
-    "--skill-install-hub-apply",
     "--skill-install-apply",
     "--skill-host-list",
     "--aliases-render",
@@ -880,7 +876,6 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--powershell-policy-set",
     "--skill-host-read",
     "--skill-host-write",
-    "--skill-uninstall-apply",
     // 〔AS2 · 第四波 4B〕资产目录那两条（`inbound::REGISTRY` 的 `assets-catalog` / `assets-catalog-merge`）派生的 CLI 面。
     // 加这两行会逼出一次 `BUILD_ID` bump（`build_id_guard`）—— 本路**不 bump**，合并那一拍统一做。
     "--assets-catalog",
@@ -891,11 +886,11 @@ pub const SUBCOMMANDS: &[&str] = &[
     // 〔AS2〕skill「装到这台」那两条（`skill-read` / `skill-install-plan`）派生的 CLI 面。只读，入参从 stdin 读。
     "--skill-read",
     "--skill-install-plan",
-    // 〔SU1 · 第四波 4C〕skill 卸那三条（`skill-install-record` / `skill-installs` / `skill-uninstall-plan`）派生的 CLI 面。
-    // 加这三行会逼出一次 `BUILD_ID` bump（`build_id_guard`）—— 本路**不 bump**，合并那一拍统一做。
+    // 〔SU1 · 第四波 4C〕装记录那一条（`skill-install-record`）派生的 CLI 面。
     "--skill-install-record",
-    "--skill-installs",
-    "--skill-uninstall-plan",
+    // 扩展页「从这台卸」那两条（`ext-uninstall-preview` / `ext-uninstall-apply`）派生的 CLI 面。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
+    "--ext-uninstall-preview",
+    "--ext-uninstall-apply",
     // 〔C4d · 第四波 4B〕可达表登记（`inbound::REGISTRY` 的 `remote-reach`）派生的 CLI 面，入参从 stdin 读。
     // ⚠ 一次性进程的可达表随进程退出就空 —— 真正的用法是常驻后端的帧面。加这一行会逼出一次 `BUILD_ID` bump，本路**不 bump**。
     "--remote-reach",

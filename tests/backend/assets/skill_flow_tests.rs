@@ -65,7 +65,7 @@ fn the_skill_flow_matches_the_cross_language_golden() {
     .unwrap();
     let removed = answer_uninstall(
         &LocalFiles,
-        Some(&ledger),
+        &ledger,
         &record,
         &json!({ "dir": root.join("demo").display().to_string(), "seen": seen["seen"], "take": g["uninstallTake"] }),
     )
@@ -114,11 +114,11 @@ fn a_file_changed_after_the_preview_stops_the_install_there() {
         std::fs::read_to_string(root.join("demo/lib/a.txt")).unwrap(),
         "changed since\n"
     );
-    let installs = crate::assets::skill_install::answer_installs_at(&ledger).unwrap();
+    let l = crate::assets::skill_ledger::load_at(&ledger).unwrap();
     assert_eq!(
-        installs["installs"][0]["files"],
-        json!(1),
-        "写了的那一个没记：{installs}"
+        l.installs.values().next().map(|i| i.files.len()),
+        Some(1),
+        "写了的那一个没记：{l:?}"
     );
     let _ = std::fs::remove_dir_all(&base);
 }

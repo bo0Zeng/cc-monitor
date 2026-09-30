@@ -1721,7 +1721,7 @@ fn claims() -> Vec<Claim> {
             }),
         },
         // 〔AS2 · 第四波 4B · V113〕资产目录里「装到这台」的 skill；〔SU1 · V116〕卸只删装记录里那几个文件。
-        // 〔MIG-3a〕装 / 卸口进了被写那台后端（`skill-install-apply` / `skill-uninstall-apply` 的本体）。
+        // 〔MIG-3a〕装 / 卸口进了被写那台后端（`skill-install-apply` 的本体 · `ext-uninstall-apply` 调的那一份）。
         //   〔墓碑 —— AS2 那一版这里是 `uninstall: None`，负向扫描守着「家里长出 `uninstall…` 就红」；SU1 落卸口那一拍它当场红了（`uninstall_with`），照它说的登记。〕
         Claim {
             tool: "skill-install",
@@ -1736,7 +1736,7 @@ fn claims() -> Vec<Claim> {
             }),
             uninstall: Some(ImplSite {
                 addr: "assets/skill_flow.rs::answer_uninstall",
-                definition: "pub(crate) fn answer_uninstall(\n    d: &dyn Door,\n    ledger: Option<&std::path::Path>,\n    record: Record,\n    args: &Value,\n) -> Answer {",
+                definition: "pub(crate) fn answer_uninstall(\n    d: &dyn Door,\n    ledger: &std::path::Path,\n    record: Record,\n    args: &Value,\n) -> Answer {",
                 elsewhere: None,
             }),
         },

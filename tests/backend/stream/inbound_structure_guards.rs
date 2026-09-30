@@ -254,7 +254,7 @@ fn every_registered_command_declares_its_run_kind() {
                 | "powershell-policy-set"
                 | "skill-host-read"
                 | "skill-host-write"
-                | "skill-uninstall-apply"
+                | "ext-uninstall-apply"
                 | "mcp-server-put"
                 | "mcp-server-remove"
                 | "mcp-sync-source"
@@ -266,10 +266,10 @@ fn every_registered_command_declares_its_run_kind() {
                 // 〔AS2〕skill「装到这台」两条：走 skill 目录、读文件原文、stat 可疑路径（同步文件 I/O）。
                 | "skill-read"
                 | "skill-install-plan"
-                // 〔SU1 · 第四波 4C〕skill 卸三条：原子写装记录 · 读装记录 · 逐个读盘比摘要（同步文件 I/O）。
+                // 〔SU1 · 第四波 4C〕装记录的写口 ＋ 扩展页那张表（扫盘 ＋ 原子写目录文件）＋ 卸之前那张卡（读装记录 · 逐个读盘比摘要），同步文件 I/O。
                 | "skill-install-record"
-                | "skill-installs"
-                | "skill-uninstall-plan"
+                | "ext-list"
+                | "ext-uninstall-preview"
                 // 〔C4d · 第四波 4B〕历史注解三条：读 / 原子写一份小文件（同步文件 I/O）。
                 | "history-annotate"
                 | "history-forget"
@@ -334,15 +334,13 @@ fn every_registered_command_declares_its_run_kind() {
         "history-search-merge",
         // 〔AS2 · 第四波 4B〕资产目录的同步：真异步（拨号 / 等远端 capture），在 await 点可取消。
         "assets-sync",
-        // 〔MIG-3a · 主会话 09-28 裁〕两台之间那几件的枢纽：等远端 capture（真异步，在 await 点可取消），本机那一跳挪到阻塞线程池。
-        "mcp-sync-hub-preview",
-        "mcp-sync-hub-apply",
+        // 两台之间「装」那一件的枢纽：等远端 capture（真异步，在 await 点可取消），本机那一跳挪到阻塞线程池。
+        "ext-hub-preview",
+        "ext-hub-apply",
         "pubkey-push",        // 〔MIG-3b 续〕等远端（问那台后端 / 一次 exec），真异步
         "panorama-edit", // 〔MIG-3b 续〕同 `panorama`（起小程序、等它），落盘那一步挪到阻塞线程池
         "panorama-uninstall", // 〔FIX4〕同上：起小程序认身份、等它；读与删挪到阻塞线程池
         "files-grep",    // 〔FILES3〕可撤：走那一趟在阻塞线程池上、看取消位，future 被丢即收手
-        "skill-install-hub-preview",
-        "skill-install-hub-apply",
         // 〔MIG-3b〕部署计划：真异步（拨号 / 等远端 capture · SFTP），在 await 点可取消。
         "deploy-plan",
         // 〔THIN〕远端常驻后端 hello 的新旧：纯判定，不碰盘不拨号。
@@ -433,8 +431,8 @@ fn every_registered_command_declares_its_run_kind() {
         "skill-install-plan",
         // 〔SU1 · 第四波 4C〕skill 卸三条（阻塞档，理由在上面 `expected_blocking`）。
         "skill-install-record",
-        "skill-installs",
-        "skill-uninstall-plan",
+        "ext-list",
+        "ext-uninstall-preview",
         // 〔C4d · 第四波 4B〕历史注解三条（阻塞档，理由在上面 `expected_blocking`）。
         "history-annotate",
         "history-forget",
@@ -472,7 +470,7 @@ fn every_registered_command_declares_its_run_kind() {
         "powershell-policy-set",
         "skill-host-read",
         "skill-host-write",
-        "skill-uninstall-apply",
+        "ext-uninstall-apply",
         "mcp-server-put",
         "mcp-server-remove",
         "mcp-sync-source",

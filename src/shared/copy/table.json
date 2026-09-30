@@ -15938,12 +15938,12 @@
     },
     "rsToolRegistry.tools.skillInstallNote": {
       "kind": "body",
-      "zh": "装到哪台就写哪台，只写 skills 下以这个 skill 为名的目录。只写你勾的那几个文件，不同的要你点了「盖」才盖，别的文件不动。卸的时候只删装时写进去的那几个（装完你改过的、装之前就在的先问你），目录本身留着",
+      "zh": "装到哪台就写哪台，只写 skills 下以这个 skill 为名的目录；原来就有、内容不同的那几个列在确认卡上，你点了确认才盖。卸的时候只删装时写进去的那几个；不是从这里装的，先挪进备份再删",
       "args": []
     },
     "rsToolRegistry.tools.skillInstallWhat": {
       "kind": "body",
-      "zh": "资产目录里你点了「装到这台」的那个 skill。另一台机器上那个 skill 目录里你勾的文件，原样写进这台",
+      "zh": "设置「扩展」里你点了「装上」或「换成那一版」的 skill：另一台机器上那个 skill 目录里的文件，原样写进这台的用户级 skills 目录",
       "args": []
     },
     "rsToolRegistry.tools.skillInstallName": {
@@ -15953,12 +15953,12 @@
     },
     "rsToolRegistry.tools.mcpSyncNote": {
       "kind": "body",
-      "zh": "相对你选定的项目目录。项目目录在推 / 拉那一块或资产目录的「装到这台」里选；只加或覆盖你勾的那几条，别的条目不动",
+      "zh": "相对你选定的项目目录。项目在确认卡上选；只加或覆盖那一条，别的条目不动",
       "args": []
     },
     "rsToolRegistry.tools.mcpSyncWhat": {
       "kind": "body",
-      "zh": "推 / 拉：另一台机器那份 .mcp.json 里你勾的条目。原样合进这台机器上你选定的项目目录",
+      "zh": "设置「扩展」里装过来的 MCP：另一台机器上那一条，原样合进这台你选定的项目的 .mcp.json；带密钥的值不抄过来，由你在确认卡上填或沿用这台已有的",
       "args": []
     },
     "rsToolRegistry.tools.projectMcpNote": {
@@ -19712,6 +19712,231 @@
       "kind": "body",
       "zh": "{reason}：{n} 项做不到",
       "args": ["reason", "n"]
+    },
+    "beExt.apply.changed": {
+      "kind": "error",
+      "zh": "看过之后，来源那一份或这台那一份又变了，一个字节都没写。重看一次再装。",
+      "args": []
+    },
+    "beExt.apply.needsValue": {
+      "kind": "error",
+      "zh": "{field} 里的 {key} 还没有值：这台原来没有它，来源机上的值也不会抄过来。在确认卡上填上再装。",
+      "args": ["field", "key"]
+    },
+    "beExt.apply.recordFailed": {
+      "kind": "error",
+      "zh": "装好了，但没记下来（{e}）。以后卸它时会按「不是 cc-monitor 装的」处理：先备份再删。",
+      "args": ["e"]
+    },
+    "beExt.card.binary": {
+      "kind": "body",
+      "zh": "{path} 不是文本文件，装不过去，这一个 skill 就不装了。可以在文件窗口里把它拷过去。",
+      "args": ["path"]
+    },
+    "beExt.card.blocked": {
+      "kind": "body",
+      "zh": "这台上的 {path} 盖不了（{why}），这一个 skill 就不装了。",
+      "args": ["path", "why"]
+    },
+    "beExt.card.fileLead": {
+      "kind": "body",
+      "zh": "{path}：",
+      "args": ["path"]
+    },
+    "beExt.card.sameMachine": {
+      "kind": "error",
+      "zh": "来源和目标是同一处，没有可装的。",
+      "args": []
+    },
+    "beExt.detail.binary": {
+      "kind": "body",
+      "zh": "非文本文件",
+      "args": []
+    },
+    "beExt.detail.binaryValue": {
+      "kind": "body",
+      "zh": "有，装不到别的机器上",
+      "args": []
+    },
+    "beExt.detail.files": {
+      "kind": "body",
+      "zh": "文件",
+      "args": []
+    },
+    "beExt.detail.filesValue": {
+      "kind": "body",
+      "zh": "{files} 个，共 {bytes} 字节",
+      "args": ["files", "bytes"]
+    },
+    "beExt.done.chmodFailed": {
+      "kind": "error",
+      "zh": "装好了，但这几个没改成可执行：{list}。",
+      "args": ["list"]
+    },
+    "beExt.machine.here": {
+      "kind": "body",
+      "zh": "本机",
+      "args": []
+    },
+    "beExt.note.noProject": {
+      "kind": "body",
+      "zh": "这台还没有开过会话的项目，MCP 只能装进项目里。在这台开一次会话后再来装。",
+      "args": []
+    },
+    "beExt.note.noSource": {
+      "kind": "body",
+      "zh": "有这一版的机器现在都没连上。连上之后再来装。",
+      "args": []
+    },
+    "beExt.note.offline": {
+      "kind": "body",
+      "zh": "这台现在没连上。连上之后再来。",
+      "args": []
+    },
+    "beExt.note.userMcpReadOnly": {
+      "kind": "body",
+      "zh": "这台的用户级 MCP 由 Claude 自己管，这里只读。可以把它装进别的机器的项目里。",
+      "args": []
+    },
+    "beExt.suspect.absAbsent": {
+      "kind": "body",
+      "zh": "{field} 里有绝对路径 {value}，{machine} 上没有这个路径。",
+      "args": ["field", "value", "machine"]
+    },
+    "beExt.suspect.absForeign": {
+      "kind": "body",
+      "zh": "{field} 里有绝对路径 {value}，{machine} 的系统不认这种写法。",
+      "args": ["field", "value", "machine"]
+    },
+    "beExt.suspect.absPresent": {
+      "kind": "body",
+      "zh": "{field} 里有绝对路径 {value}，{machine} 上也有这个路径。",
+      "args": ["field", "value", "machine"]
+    },
+    "beExt.suspect.absUnknown": {
+      "kind": "body",
+      "zh": "{field} 里有绝对路径 {value}，查不到 {machine} 上有没有。",
+      "args": ["field", "value", "machine"]
+    },
+    "beExt.suspect.binary": {
+      "kind": "body",
+      "zh": "来源那台读不出它的原文，装不过去。",
+      "args": []
+    },
+    "beExt.suspect.commandMissing": {
+      "kind": "body",
+      "zh": "{machine} 的后端在它的 PATH 上找不到 {value}。你登录后的 shell 可能找得到。",
+      "args": ["machine", "value"]
+    },
+    "beExt.suspect.commandRelative": {
+      "kind": "body",
+      "zh": "命令 {value} 是相对路径，要看 {machine} 那个项目里有没有这个文件。",
+      "args": ["value", "machine"]
+    },
+    "beExt.suspect.commandUnknown": {
+      "kind": "body",
+      "zh": "查不了 {machine} 上有没有 {value}：它的后端没有 PATH。",
+      "args": ["machine", "value"]
+    },
+    "beExt.suspect.executable": {
+      "kind": "body",
+      "zh": "这是一个可执行的文件。",
+      "args": []
+    },
+    "beExt.suspect.other": {
+      "kind": "body",
+      "zh": "留意 {field}：{value}",
+      "args": ["field", "value"]
+    },
+    "beExt.uninstall.backupFailed": {
+      "kind": "error",
+      "zh": "备份没做成（{e}），一个都没删。",
+      "args": ["e"]
+    },
+    "beExt.uninstall.backupOutsideHome": {
+      "kind": "error",
+      "zh": "{path} 不在家目录底下，备份不了，一个都没删。可以在文件窗口里自己处理。",
+      "args": ["path"]
+    },
+    "beExt.uninstall.changed": {
+      "kind": "error",
+      "zh": "看过之后它又变了，一个字节都没动。重看一次再卸。",
+      "args": []
+    },
+    "beExt.uninstall.copiedTo": {
+      "kind": "body",
+      "zh": "原来那份配置抄了一份在 {path}。",
+      "args": ["path"]
+    },
+    "beExt.uninstall.dropFailed": {
+      "kind": "error",
+      "zh": "卸掉了，但没从装记录里摘掉（{e}）。",
+      "args": ["e"]
+    },
+    "beExt.uninstall.foreign": {
+      "kind": "body",
+      "zh": "这不是 cc-monitor 装的：先挪进 {backup}，再从这里删掉。",
+      "args": ["backup"]
+    },
+    "beExt.uninstall.mcpModified": {
+      "kind": "body",
+      "zh": "这是 cc-monitor 装的，但装完之后改过；卸掉就是删掉现在这一条，改过的内容不留。",
+      "args": []
+    },
+    "beExt.uninstall.mcpOwned": {
+      "kind": "body",
+      "zh": "这是 cc-monitor 装的：从配置里删掉这一条，别的条目不动。",
+      "args": []
+    },
+    "beExt.uninstall.movedTo": {
+      "kind": "body",
+      "zh": "原来那个目录挪到了 {path}。",
+      "args": ["path"]
+    },
+    "beExt.uninstall.noEntry": {
+      "kind": "error",
+      "zh": "{path} 里没有 {name} 这一条。",
+      "args": ["path", "name"]
+    },
+    "beExt.uninstall.noHome": {
+      "kind": "error",
+      "zh": "这台后端找不到家目录，没法卸。",
+      "args": []
+    },
+    "beExt.uninstall.notThere": {
+      "kind": "error",
+      "zh": "{path} 已经不在了。",
+      "args": ["path"]
+    },
+    "beExt.uninstall.owned": {
+      "kind": "body",
+      "zh": "这是 cc-monitor 装的：删掉装时写进去的 {n} 个文件，你后来加的留着。",
+      "args": ["n"]
+    },
+    "beExt.uninstall.ownedAsk": {
+      "kind": "body",
+      "zh": "这是 cc-monitor 装的：删掉装时写进去的 {n} 个文件。其中有装完之后改过的、或装的时候盖掉了原来那份的，删了回不到从前。",
+      "args": ["n"]
+    },
+    "rsDataPaths.backend.extBackups": {
+      "kind": "body",
+      "zh": "从「扩展」卸掉不是 cc-monitor 装的东西之前，原样挪到这里；要找回就从这里拿",
+      "args": []
+    },
+    "rsToolRegistry.tools.projectSkillsNote": {
+      "kind": "body",
+      "zh": "装到某个项目里的 skill 落在那个项目的这个目录下，以 skill 的名字为名",
+      "args": []
+    },
+    "rsToolRegistry.tools.extBackupsNote": {
+      "kind": "body",
+      "zh": "卸掉不是 cc-monitor 装的 skill 或 MCP 之前，原样放一份在这里",
+      "args": []
+    },
+    "rsToolRegistry.tools.projectSkillInstallWhat": {
+      "kind": "body",
+      "zh": "设置「扩展」里装进某个项目的 skill：另一台机器上那个 skill 目录里的文件，原样写进这个项目的 skills 目录",
+      "args": []
     }
   }
 }

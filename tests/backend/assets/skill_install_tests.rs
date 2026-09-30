@@ -524,25 +524,6 @@ fn the_uninstall_gate_refuses_the_whole_trip() {
         code(answer_uninstall_plan_at(&ledger, &json!({"dir": dir}))),
         "ledger_unreadable"
     );
-    assert_eq!(code(answer_installs_at(&ledger)), "ledger_unreadable");
-    let _ = std::fs::remove_dir_all(&d);
-}
-
-#[test]
-fn installs_lists_what_the_ledger_holds() {
-    let d = temp_dir("installs");
-    let none = answer_installs_at(&d.join("absent.json")).unwrap();
-    assert_eq!(none, json!({"installs": []}), "还没装过 ⇒ 空");
-    let (ledger, dir) = ledger_with(
-        &d,
-        "demo",
-        json!({"a": {"digest": dg("a"), "created": true}, "b": {"digest": dg("b"), "created": false}}),
-    );
-    let v = answer_installs_at(&ledger).unwrap();
-    assert_eq!(
-        v,
-        json!({"installs": [{"dir": dir, "name": "demo", "files": 2}]})
-    );
     let _ = std::fs::remove_dir_all(&d);
 }
 

@@ -77,8 +77,19 @@ fn name_arg(args: &Value) -> Result<String, (&'static str, String)> {
     Ok(name.to_string())
 }
 
-fn skill_dir(name: &str) -> Result<(PathBuf, PathBuf), (&'static str, String)> {
-    let root = crate::agents::skills_root()
+/// skill 的根与目录：`args.project` 给了 ⇒ 那个项目里的（项目目录须是这台上的绝对路径）；没给 ⇒ 用户级。
+fn skill_dir(args: &Value, name: &str) -> Result<(PathBuf, PathBuf), (&'static str, String)> {
+    let project = match args.get("project") {
+        None | Some(Value::Null) => None,
+        Some(Value::String(p)) => Some(crate::assets::mcp_edit::project_root(p)?),
+        Some(_) => {
+            return Err((
+                "bad_args",
+                crate::common::contract::malformed("`project` must be a string or null"),
+            ))
+        }
+    };
+    let root = crate::agents::skill_root_at(project.as_deref().map(Path::new))
         .ok_or(("io_failed", copy_text("beSkillInstall.read.noRoot", &[])))?;
     let dir = root.join(name);
     Ok((root, dir))
@@ -158,7 +169,7 @@ pub fn answer_read_at(root: Option<&Path>, args: &Value) -> Answer {
     let name = name_arg(args)?;
     let (root, dir) = match root {
         Some(r) => (r.to_path_buf(), r.join(&name)),
-        None => skill_dir(&name)?,
+        None => skill_dir(args, &name)?,
     };
     if !std::fs::metadata(&dir).is_ok_and(|m| m.is_dir()) {
         return Err((
@@ -348,7 +359,7 @@ pub(crate) fn answer_plan_with(facts: &dyn Facts, root: Option<&Path>, args: &Va
     let name = name_arg(args)?;
     let (root, dir) = match root {
         Some(r) => (r.to_path_buf(), r.join(&name)),
-        None => skill_dir(&name)?,
+        None => skill_dir(args, &name)?,
     };
     let source = source_arg(args)?;
     let take = mcp_sync::names_arg(args.get("take"), "take")?;
@@ -454,11 +465,14 @@ pub(crate) fn answer_plan_with(facts: &dyn Facts, root: Option<&Path>, args: &Va
     });
     // 只交这一趟拷的那几个路径在这台上的原文（写的时候当 CAS 期望）；只在这台有的那几个不碰，也不回传。
     // 写的落点：`files-put` 的 `root` 必须已在 ⇒ skill 根在就用它，不在就用它的上一层（配置根）、让 `parents` 建出来。
+    // 项目级那一形往上最多两层（`<项目>/.claude/skills` 的 `.claude` 也可能还没有）。
     let base = if root.is_dir() {
         root.clone()
     } else {
-        root.parent()
-            .filter(|p| p.is_dir())
+        root.ancestors()
+            .skip(1)
+            .take(2)
+            .find(|p| p.is_dir())
             .map(Path::to_path_buf)
             .ok_or((
                 "io_failed",
@@ -509,27 +523,6 @@ pub const UNINSTALL_MODIFIED: &str = "modified";
 /// 不是普通文件 / 不是文本 / 读不出来 —— 没法按原文 CAS 删（不删）。
 pub const UNINSTALL_UNREADABLE: &str = "unreadable";
 
-fn ledger_file() -> Result<PathBuf, (&'static str, String)> {
-    crate::assets::skill_ledger::ledger_path()
-        .ok_or(("io_failed", copy_text("beSkillInstall.ledger.noHome", &[])))
-}
-
-/// `skill-installs`：这台记着的、从别的机器装来的 skill。
-pub fn answer_installs(_args: &Value) -> Answer {
-    answer_installs_at(&ledger_file()?)
-}
-
-/// [`answer_installs`] 的本体：记录文件可喂。
-pub fn answer_installs_at(ledger: &Path) -> Answer {
-    let l = crate::assets::skill_ledger::load_at(ledger)?;
-    let installs: Vec<Value> = l
-        .installs
-        .iter()
-        .map(|(dir, i)| json!({ "dir": dir, "name": i.name, "files": i.files.len() }))
-        .collect();
-    Ok(json!({ "installs": installs }))
-}
-
 /// 一个记着的文件现在的样子：`(state, 现有原文)`（原文只在 `intact` / `modified` 上有）。
 fn on_disk_now(
     abs: &Path,
@@ -553,12 +546,7 @@ fn on_disk_now(
     }
 }
 
-/// `skill-uninstall-plan`：帧面入口。
-pub fn answer_uninstall_plan(args: &Value) -> Answer {
-    answer_uninstall_plan_at(&ledger_file()?, args)
-}
-
-/// [`answer_uninstall_plan`] 的本体：记录文件可喂（判据拿临时目录喂）。
+/// 卸的判定（被卸的那一台跑；`ext-uninstall-*` 经它判）：记录文件由调用方给。
 pub fn answer_uninstall_plan_at(ledger: &Path, args: &Value) -> Answer {
     let dir = args.get("dir").and_then(Value::as_str).ok_or((
         "bad_args",

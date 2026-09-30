@@ -94,6 +94,9 @@ pub const SKILL_LEDGER_REL: &str = ".cc-monitor/skill-installs.json";
 /// 〔P3 · 同上〕资产目录（后端 `assets/asset_catalog.rs` 写；各台机器之间自动对上）。
 pub const ASSET_CATALOG_REL: &str = ".cc-monitor/assets-catalog.json";
 
+/// 从一台卸掉不是 cc-monitor 装的扩展之前，先挪（skill 目录）/ 抄（MCP 配置）到这里（后端 `assets/ext.rs` 经文件管理面写）。
+pub const EXT_BACKUPS_DIR_REL: &str = ".cc-monitor/backups";
+
 /// 〔P3 · 同上〕cc-acct-iso 的字节落点（后端 `assets/acct_iso_install.rs` 装）。
 pub const ACCT_ISO_REL: &str = ".cc-monitor/bin/cc-acct-iso";
 

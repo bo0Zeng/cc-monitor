@@ -37,10 +37,12 @@ fn snap(gen: u64, names: &[&str]) -> Snapshot {
                 kind: KIND_SKILL.into(),
                 name: (*n).into(),
                 project: None,
+                dir: None,
                 digest: format!("d-{n}"),
                 summary: json!({}),
             })
             .collect(),
+        project_dirs: vec![],
     }
 }
 
@@ -117,17 +119,23 @@ fn merge_is_idempotent_and_does_not_depend_on_arrival_order() {
 fn refresh_bumps_the_generation_only_when_the_scan_really_changed() {
     let mut c = fresh("me".into());
     let one = snap(0, &["a"]).assets;
-    assert!(refresh_self(&mut c, one.clone(), "u@h", 10));
+    assert!(refresh_self(&mut c, one.clone(), vec![], "u@h", 10));
     assert_eq!((c.machines["me"].gen, c.machines["me"].seen_at), (1, 10));
     assert!(
-        !refresh_self(&mut c, one.clone(), "u@h", 20),
+        !refresh_self(&mut c, one.clone(), vec![], "u@h", 20),
         "没变不许升代"
     );
     assert_eq!((c.machines["me"].gen, c.machines["me"].seen_at), (1, 10));
-    assert!(refresh_self(&mut c, snap(0, &["a", "b"]).assets, "u@h", 30));
+    assert!(refresh_self(
+        &mut c,
+        snap(0, &["a", "b"]).assets,
+        vec![],
+        "u@h",
+        30
+    ));
     assert_eq!(c.machines["me"].gen, 2);
     assert!(
-        refresh_self(&mut c, snap(0, &["a", "b"]).assets, "u@other", 40),
+        refresh_self(&mut c, snap(0, &["a", "b"]).assets, vec![], "u@other", 40),
         "称呼变了也算变了"
     );
     assert_eq!(c.machines["me"].gen, 3);
@@ -139,6 +147,7 @@ fn rows_judge_missing_differs_same_per_kind_and_name() {
         kind: kind.into(),
         name: name.into(),
         project: project.map(str::to_string),
+        dir: None,
         digest: d.into(),
         summary: json!({}),
     };
@@ -153,6 +162,7 @@ fn rows_judge_missing_differs_same_per_kind_and_name() {
             asset(KIND_MCP, "fs", "m1", Some("/p/b")), // 两个项目里有同名的，一个相同 ⇒ same
             asset(KIND_MCP, "only-here", "m9", Some("/p/a")),
         ],
+        project_dirs: vec![],
     };
     let there = Snapshot {
         label: "r".into(),
@@ -167,6 +177,7 @@ fn rows_judge_missing_differs_same_per_kind_and_name() {
             // 同名不同种：不许跟 skill 那一行混
             asset(KIND_MCP, "same-skill", "zz", Some("/home/r/x")),
         ],
+        project_dirs: vec![],
     };
     let c = cat_with("me", &[("me", me), ("r", there)]);
     let got: Vec<(String, String, String)> = rows(&c)
@@ -216,7 +227,7 @@ fn mcp_secrets_never_enter_the_catalog_but_the_digest_sees_them() {
     });
     // 正控：原文的规范写法里真有它
     assert_eq!(canonical(&def).matches(secret).count(), 3);
-    let a = mcp_asset("/p", "x", &def);
+    let a = mcp_asset(Some("/p"), "x", &def, None);
     let on_wire = serde_json::to_string(&a).unwrap();
     assert_eq!(
         on_wire.matches(secret).count(),
@@ -236,7 +247,7 @@ fn mcp_secrets_never_enter_the_catalog_but_the_digest_sees_them() {
     let mut def2 = def.clone();
     def2["env"]["API_KEY"] = json!("FIXTURE-SECRET-VALUE-TWO");
     assert_ne!(
-        mcp_asset("/p", "x", &def2).digest,
+        mcp_asset(Some("/p"), "x", &def2, None).digest,
         a.digest,
         "只差密钥值也必须判得出「不同」"
     );
@@ -245,7 +256,10 @@ fn mcp_secrets_never_enter_the_catalog_but_the_digest_sees_them() {
         r#"{"weird":{"token":"FIXTURE-SECRET-VALUE-ONE"},"headers":{"Authorization":"Bearer FIXTURE-SECRET-VALUE-ONE"},"env":{"MODE":"prod","API_KEY":"FIXTURE-SECRET-VALUE-ONE"},"args":["-y","@x/server"],"command":"npx"}"#,
     )
     .unwrap();
-    assert_eq!(mcp_asset("/p", "x", &reordered).digest, a.digest);
+    assert_eq!(
+        mcp_asset(Some("/p"), "x", &reordered, None).digest,
+        a.digest
+    );
 }
 
 #[test]
@@ -259,7 +273,7 @@ fn skill_digest_sees_paths_and_content_and_the_summary_carries_no_content() {
     )
     .unwrap();
     std::fs::write(s.join("scripts/run.sh"), "echo hi\n").unwrap();
-    let a = skill_asset("demo", &s, Some("x"));
+    let a = skill_asset(None, "demo", &s, Some("x"));
     assert_eq!(a.summary["files"], json!(2));
     assert_eq!(a.summary["binary"], json!(false));
     assert_eq!(
@@ -270,13 +284,13 @@ fn skill_digest_sees_paths_and_content_and_the_summary_carries_no_content() {
         0
     );
     std::fs::write(s.join("scripts/run.sh"), "echo ho\n").unwrap();
-    let b = skill_asset("demo", &s, Some("x"));
+    let b = skill_asset(None, "demo", &s, Some("x"));
     assert_ne!(a.digest, b.digest, "改一个字节，摘要必须变");
     std::fs::rename(s.join("scripts/run.sh"), s.join("scripts/go.sh")).unwrap();
-    let c = skill_asset("demo", &s, Some("x"));
+    let c = skill_asset(None, "demo", &s, Some("x"));
     assert_ne!(b.digest, c.digest, "换个名字，摘要必须变");
     std::fs::write(s.join("blob.bin"), [0u8, 159, 146, 150]).unwrap();
-    let with_blob = skill_asset("demo", &s, None);
+    let with_blob = skill_asset(None, "demo", &s, None);
     assert_eq!(with_blob.summary["binary"], json!(true));
     assert_eq!(with_blob.summary["truncated"], json!(false));
     // 超上限的那一个：只按长度算，并且**说出是哪一个**（降级要说清）
@@ -285,7 +299,7 @@ fn skill_digest_sees_paths_and_content_and_the_summary_carries_no_content() {
         vec![b'x'; SKILL_MAX_FILE_BYTES as usize + 1],
     )
     .unwrap();
-    let huge = skill_asset("demo", &s, None);
+    let huge = skill_asset(None, "demo", &s, None);
     assert_eq!(huge.summary["truncated"], json!(true));
     let notice = huge.summary["notice"].as_array().unwrap();
     assert_eq!(notice.len(), 1, "{notice:?}");
@@ -296,8 +310,11 @@ fn skill_digest_sees_paths_and_content_and_the_summary_carries_no_content() {
     let _ = std::fs::remove_dir_all(&d);
 }
 
-fn scan_of(names: &[&str]) -> (Vec<Asset>, Vec<String>) {
-    (snap(0, names).assets, vec![])
+fn scan_of(names: &[&str]) -> Scanned {
+    Scanned {
+        assets: snap(0, names).assets,
+        ..Scanned::default()
+    }
 }
 
 #[test]
@@ -448,7 +465,7 @@ fn hx2_the_first_catalog_is_born_once_even_when_two_writers_race() {
     let (tx, rx) = std::sync::mpsc::channel();
     let p2 = path.clone();
     let racer = std::thread::spawn(move || {
-        let v = update_at(&p2, (vec![], vec![]), "racer@x", None).expect("另一个写者失败");
+        let v = update_at(&p2, Scanned::default(), "racer@x", None).expect("另一个写者失败");
         tx.send(v).unwrap();
     });
     assert!(
