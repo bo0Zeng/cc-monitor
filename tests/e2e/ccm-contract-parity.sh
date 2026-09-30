@@ -113,7 +113,8 @@ base_env() {
   # `HOME` 也换掉：`--base` 那格会 unset `CLAUDE_CONFIG_DIR`，ccm 的身份回填 poller
   # 于是回落到 `$HOME/.claude/sessions/<pid>.json`。今天只是一次只读 `openat`（ENOENT），
   # 但「测试进程摸到用户真实数据目录」这件事本身不该靠「它恰好只读」来保证。
-  env -u CLAUDE_CONFIG_DIR -u ANTHROPIC_MODEL -u CC_BUS_ID -u CCM_ENV -u CCM_ENV_PROBE \
+  # `ANTHROPIC_BASE_URL` 也摘掉：在经中转起的会话里跑时它是开发者环境漏进来的真值，「不设中转地址」那一格会被它顶掉。
+  env -u CLAUDE_CONFIG_DIR -u ANTHROPIC_MODEL -u ANTHROPIC_BASE_URL -u CC_BUS_ID -u CCM_ENV -u CCM_ENV_PROBE \
       CLAUDECODE=1 CLAUDE_CODE_ENTRYPOINT=cli \
       CLAUDE_CODE_SESSION_ID=fake-sid CLAUDE_CODE_CHILD_SESSION=1 \
       TMUX=/faux/socket,1,0 PATH="$W/bin:$PATH" HOME="$W/home" \

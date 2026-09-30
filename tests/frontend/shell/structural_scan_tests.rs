@@ -3309,8 +3309,16 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             "list_plugin_marketplaces",
             2,
         ),
-        ("src/frontend/shell/src/lib.rs", "list_plugin_marketplaces", 1),
-        ("src/frontend/ui/ipc/commands.ts", "list_plugin_marketplaces", 1),
+        (
+            "src/frontend/shell/src/lib.rs",
+            "list_plugin_marketplaces",
+            1,
+        ),
+        (
+            "src/frontend/ui/ipc/commands.ts",
+            "list_plugin_marketplaces",
+            1,
+        ),
         // 🔴 〔C4b · 第四波 4B〕`accounts.ts` 那个 `"__local__"` 合进 `LOCAL_ORIGIN`（`设计/00 §2.5 ①`），
         //    钉「两者刻意不同」的那条判据随之改成钉合了之后的形状；TS 那一节点它旧名讲来历 ⇒ 第②条出路。
         (
