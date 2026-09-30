@@ -5,6 +5,9 @@
 //! ② monitor 生产段（`[dependencies]` · `[build-dependencies]` · `[target.*.dependencies]`）点名的每个 path 依赖、连同它们自己生产段的
 //!    path 依赖闭包，只许住 `src/common/` 且是契约类；判定类出现即红 —— 唯一例外是 ③ 按符号钉住的 `deploy-core`；
 //! ④〔P4〕「前端宿主原语」类（`host-core`）只许两个前端链：后端生产段闭包里出现即红。
+//! ⑤〔P4 · 主会话 09-29 拍板 Q1〕「前端包」（[`FRONTEND_PACKAGES`]：文件窗口）不住 `src/common/`：monitor 链它**只为**那个 `[[bin]]`
+//!    （生产源码里提到它的恰好是 `filewin/win_main.rs` 一份），它自己的闭包照 ② 判；monitor 的源码人群声明
+//!    （`[package.metadata.guard] population`）== monitor 生产闭包 − 后端生产闭包（两向）。
 //! ③ `deploy-core` 按符号：monitor 生产源码（壳 `src/**` ＋ 它经 `#[path]` 收进来的通信层文件）里每个 `deploy_core::X`
 //!    要么在契约名单 [`DEPLOY_CONTRACT`] 里，要么是 [`DEPLOY_RESIDUAL`] 登记的自举残留（符号 × 住址两向相等：搬走一处，登记当场红）。
 //!
@@ -41,6 +44,13 @@ const CRATES: &[(&str, Class, &str)] = &[
     ("shell-quote-core", Class::Contract, "令牌形状：POSIX 单引号 quote 与标识符放行形状（session id · 启动令牌 · cc-bus id · 路径），两侧拼进 shell 前对上同一份"),
     ("upstream-url-core", Class::Decision, "上游 URL 能不能用是裁决；界面读的是生成器现生成的式子（monitor 只在 dev 侧链它）"),
 ];
+
+/// ⑤〔P4〕前端包：不住 `src/common/`、monitor 生产段只为某个 `[[bin]]` 链它的包 —— (包目录（仓根相对）, 那个 bin 的 crate 根, 理由)。
+const FRONTEND_PACKAGES: &[(&str, &str, &str)] = &[(
+    "src/frontend/filewin",
+    "src/frontend/shell/src/filewin/win_main.rs",
+    "文件窗口（又一个前端，`设计/60 §2.2`）：包里第二个 `[[bin]] cc-monitor-filewin` 一行转调它，打包路线不变（K-R124 ⑭）；monitor 库面一行都不引它",
+)];
 
 /// `deploy-core` 里 monitor 生产段可以用的契约符号：字节表键 · 线上答话的形状 · 身份戳格式 · 落点路径。
 const DEPLOY_CONTRACT: &[(&str, &str)] = &[
@@ -298,6 +308,13 @@ fn the_monitor_production_segment_links_only_contract_crates() {
     let mut bad = Vec::new();
     for (who, name, dir) in &closure {
         let Ok(rel) = dir.strip_prefix(&common) else {
+            // ⑤ 前端包：它自己的生产依赖也在这张闭包里，照同一条规矩判。
+            if FRONTEND_PACKAGES
+                .iter()
+                .any(|(at, _, _)| *dir == root().join(at))
+            {
+                continue;
+            }
             bad.push(format!(
                 "{who} → {name}：path 依赖不在 `src/common/` 下（{}）",
                 dir.display()
@@ -402,4 +419,77 @@ fn deploy_core_is_used_only_through_its_contract_and_the_pinned_bootstrap_residu
         }
     }
     assert!(bad.is_empty(), "{}", bad.join("\n"));
+}
+
+/// 后端生产段的 path 依赖闭包（包目录）。
+fn backend_production_closure() -> BTreeSet<PathBuf> {
+    let mut todo = vec![root().join("src/backend/Cargo.toml")];
+    let mut seen = BTreeSet::new();
+    while let Some(manifest) = todo.pop() {
+        for (_, dir) in production_path_deps(&manifest) {
+            if seen.insert(dir.clone()) {
+                todo.push(dir.join("Cargo.toml"));
+            }
+        }
+    }
+    seen
+}
+
+/// ⑤ 前端包只为它那个 `[[bin]]` 链：monitor 生产源码（壳 `src/` ＋ `#[path]` 收进来的通信层文件，不含人群声明里的兄弟包）里
+/// 提到它 crate 名的文件 == 那个 bin 的 crate 根，恰好一份。
+#[test]
+fn a_frontend_package_is_linked_only_for_its_bin() {
+    let sources = monitor_production_sources();
+    for (at, bin_root, _) in FRONTEND_PACKAGES {
+        let manifest = std::fs::read_to_string(root().join(at).join("Cargo.toml"))
+            .unwrap_or_else(|e| panic!("读 {at}/Cargo.toml：{e}"));
+        let name = manifest
+            .lines()
+            .find_map(|l| l.trim().strip_prefix("name = \""))
+            .and_then(|r| r.split('"').next())
+            .unwrap_or_else(|| panic!("{at}/Cargo.toml 没有包名"))
+            .replace('-', "_");
+        let mentioned: BTreeSet<&str> = sources
+            .iter()
+            .filter(|(rel, _)| {
+                rel.starts_with("src/frontend/shell/") || rel.starts_with("src/comms/")
+            })
+            .filter(|(_, body)| guard_core::contains_word(body, &name))
+            .map(|(rel, _)| rel.as_str())
+            .collect();
+        assert_eq!(
+            mentioned,
+            BTreeSet::from([*bin_root]),
+            "monitor 生产源码里提到 `{name}` 的文件变了 —— 它只许由那个 `[[bin]]` 转调（库面引它 = 两个前端又缠回一个 crate）"
+        );
+    }
+}
+
+/// ⑤ monitor 的源码人群声明（`guard_core::population_trees`：判据按它收兄弟源码树）== monitor 生产闭包 − 后端生产闭包。
+/// 少写一包 ⇒ 按人群扫的判据静默少扫搬进去的那几份；多写一包（后端也链的契约）⇒ 人群被别家的代码撑大。
+#[test]
+fn the_monitor_population_is_exactly_its_frontend_only_closure() {
+    let declared: BTreeSet<PathBuf> =
+        guard_core::population_trees(&root().join("src/frontend/shell/src"))
+            .into_iter()
+            .map(|(_, src)| normalize(src.parent().expect("人群树是 <包>/src")))
+            .collect();
+    let backend = backend_production_closure();
+    assert!(
+        backend.iter().any(|d| d.ends_with("copy-core")),
+        "后端生产闭包一个共享 crate 都没量到（`copy-core` 明明在）—— 量法瞎了"
+    );
+    let frontend_only: BTreeSet<PathBuf> = monitor_production_closure()
+        .into_iter()
+        .map(|(_, _, dir)| dir)
+        .filter(|d| !backend.contains(d))
+        .collect();
+    assert!(
+        !frontend_only.is_empty(),
+        "monitor 生产闭包减掉后端那一份之后是空集 —— 量法瞎了"
+    );
+    assert_eq!(
+        declared, frontend_only,
+        "monitor 的源码人群声明（`src/frontend/shell/Cargo.toml` 的 `[package.metadata.guard] population`）与「只有前端链的包」两向不等"
+    );
 }

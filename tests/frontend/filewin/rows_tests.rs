@@ -748,7 +748,7 @@ fn scenario_b() -> &'static super::testing::xvfb::ChildRun {
             .unwrap_or_else(|e| panic!("起不了 Xvfb ⇒ 这一格判不了，不是过了：{e}"));
         xvfb::run_scenario(
             screen.display(),
-            "filewin::rows::tests::xvfb_worker_real_pointer_events_on_a_row",
+            "rows::tests::xvfb_worker_real_pointer_events_on_a_row",
         )
     })
 }

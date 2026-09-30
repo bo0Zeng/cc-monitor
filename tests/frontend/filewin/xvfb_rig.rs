@@ -708,7 +708,7 @@ pub fn emit(key: &str, value: impl std::fmt::Display) {
 
 /// 在**自己一个进程**里跑一格实景判据。
 ///
-/// `test_path` 是那个工作面测试的**全路径**（`filewin::shell::tests::某某`）。
+/// `test_path` 是那个工作面测试的**全路径**（`shell::tests::某某`；〔P4〕窗口独立成包之后路径从本包根算）。
 /// 那几个工作面都挂着 `#[ignore]`，所以：
 /// - 平时 `cargo test` 里它们是 `ignored`（终端上看得见，不会冒充一条绿）；
 /// - 这里带 `--ignored --exact` 把它们**逐个**点起来。

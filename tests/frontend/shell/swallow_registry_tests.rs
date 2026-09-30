@@ -178,12 +178,12 @@ const ALLOWED: &[(&str, &str, usize, Why, &str)] = &[
     ("src/comms/inward/chan/router.rs", "write_frame(&mut wr, &Head::Denied, &[]).await.ok();", 1, Why::DeadLink, ""),
     ("src/comms/inward/chan/wire.rs", "rx.wait_for(|c| *c).await.ok();", 1, Why::Signal, ""),
     ("src/frontend/shell/src/config.rs", "let _ = std::fs::remove_file(&tmp);", 1, Why::CleanupAfterFailure, "〔CFG1〕原子写的临时件：换名失败之后删它；主错误已在回"),
-    ("src/frontend/shell/src/filewin/scale.rs", "let _ = render_headless(&ctx, rows, screen, off);", 1, Why::NotAnError, "量渲染耗时，只要时间不要画出来的东西"),
+    ("src/frontend/filewin/src/scale.rs", "let _ = render_headless(&ctx, rows, screen, off);", 1, Why::NotAnError, "量渲染耗时，只要时间不要画出来的东西"),
     // 〔FILES2 · 第四波〕窗口那几问的答复送回等答的那一趟（它已收场 ⇒ 没人要）· 暂存件收尾删不掉交孤儿扫（不盖下载 / 复制本身的结局）。
-    ("src/frontend/shell/src/filewin/extract.rs", "tx.send(fresh).ok();", 1, Why::PeerGone, "解压撞名那一问的答复；等答的那一趟已收场就没人要"),
-    ("src/frontend/shell/src/filewin/cross_copy.rs", "tx.send(overwrite).ok();", 1, Why::PeerGone, "复制到另一台「盖不盖」那一问的答复；等答的那一趟已收场就没人要"),
-    ("src/frontend/shell/src/filewin/cross_copy.rs", "let _ = super::source::ask(line, &local, \"files-delete\", &serde_json::json!({ \"root\": staging, \"rel\": rel }), super::wri", 1, Why::CleanupAfterFailure, "清本机暂存件（成败都清）；删不掉只剩一份垃圾，不改复制本身的结局"),
-    ("src/frontend/shell/src/filewin/cross_copy.rs", "let _ = super::source::ask(line, &to, \"files-delete\", &serde_json::json!({ \"root\": bstaging, \"rel\": format!(\"{k}.part\") ", 1, Why::CleanupAfterFailure, "半路失败之后清 B 那头开过单的暂存件；主错误已在回，删不掉交那台的孤儿扫"),
+    ("src/frontend/filewin/src/extract.rs", "tx.send(fresh).ok();", 1, Why::PeerGone, "解压撞名那一问的答复；等答的那一趟已收场就没人要"),
+    ("src/frontend/filewin/src/cross_copy.rs", "tx.send(overwrite).ok();", 1, Why::PeerGone, "复制到另一台「盖不盖」那一问的答复；等答的那一趟已收场就没人要"),
+    ("src/frontend/filewin/src/cross_copy.rs", "let _ = super::source::ask(line, &local, \"files-delete\", &serde_json::json!({ \"root\": staging, \"rel\": rel }), super::wri", 1, Why::CleanupAfterFailure, "清本机暂存件（成败都清）；删不掉只剩一份垃圾，不改复制本身的结局"),
+    ("src/frontend/filewin/src/cross_copy.rs", "let _ = super::source::ask(line, &to, \"files-delete\", &serde_json::json!({ \"root\": bstaging, \"rel\": format!(\"{k}.part\") ", 1, Why::CleanupAfterFailure, "半路失败之后清 B 那头开过单的暂存件；主错误已在回，删不掉交那台的孤儿扫"),
     // 〔MOD〕`history.rs` 那一处（读整份会话末块交前端、前端已走）随那条命令退役。
     ("src/frontend/shell/src/launch.rs", "let _ = child.wait();", 1, Why::Reap, ""),
     ("src/frontend/shell/src/lib.rs", "let _ = AttachThreadInput(fg_thread, cur_thread, false);", 1, Why::WindowBestEffort, ""),
@@ -534,6 +534,9 @@ fn population() -> BTreeMap<(String, String), usize> {
             &[],
         ));
     }
+    // 〔P4〕壳那棵根的人群声明带进来的兄弟包（`chan-core` · `host-core` …）也住 `src/common` 那棵：同一份只数一次。
+    files.sort_by(|a, b| a.0.cmp(&b.0));
+    files.dedup_by(|a, b| a.0 == b.0);
     let test_only = test_only_modules(&files);
     let root = std::fs::canonicalize(&root).unwrap_or(root);
     let mut out: BTreeMap<(String, String), usize> = BTreeMap::new();
@@ -644,6 +647,9 @@ fn w5vis_test_only_modules_are_derived_and_excluded() {
             &[],
         ));
     }
+    // 〔P4〕壳那棵根的人群声明带进来的兄弟包（`chan-core` · `host-core` …）也住 `src/common` 那棵：同一份只数一次。
+    files.sort_by(|a, b| a.0.cmp(&b.0));
+    files.dedup_by(|a, b| a.0 == b.0);
     let derived = test_only_modules(&files);
     for known in [
         "src/backend/alloc_probe.rs",

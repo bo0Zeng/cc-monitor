@@ -50,6 +50,17 @@ homepage = "https://github.com/local/cc-monitor"
 keywords = ["claude", "claude-code", "monitor", "tauri", "viewer"]
 categories = ["development-tools", "visualization"]
 
+# 〔P4 · `设计/90 §0.5.3` ⑰〕「monitor 源码树」的判据人群：本包 `src/` ＋ 下面这几包 —— monitor 的代码搬进去的、只有前端链的兄弟包
+#   （通道 · 前端宿主原语 · 开窗契约 · 文件窗口）。`guard_core::walk_tree` / `module_address` 按它收 / 认，按人群扫的判据搬家前后逐条同一群；
+#   两向对着「monitor 生产闭包 − 后端生产闭包」由 `contract_crate_guard_tests.rs` ⑤ 钉住。
+[package.metadata.guard]
+population = [
+    "../../common/chan-core",
+    "../../common/host-core",
+    "../../common/filewin-contract",
+    "../filewin",
+]
+
 [lib]
 name = "monitor_lib"
 crate-type = ["rlib"]

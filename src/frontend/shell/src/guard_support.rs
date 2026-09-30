@@ -25,8 +25,22 @@ pub(crate) fn crate_root() -> PathBuf {
 
 /// 本 crate 自己的源码树 —— `<repo>/src/frontend/shell/src`。
 /// ⚠ 与 `repo_src_root()` 不是一件事，别混。
+/// 〔P4〕拿它当根交给 `guard_core` 扫的时候，人群还含本包 manifest 明写的兄弟源码树（`[package.metadata.guard] population`：
+/// 通道 · 前端宿主原语 · 开窗契约 · 文件窗口，`guard_core::population_trees`）—— monitor 的代码搬进去了，人群不变；住址 `<包名>/…`。
 pub(crate) fn crate_src_root() -> PathBuf {
     crate_root().join("src")
+}
+
+/// 〔P4〕本 crate 源码人群的全部根：自己的 `src/` ＋ manifest 明写的兄弟包的 `src/`（`guard_core::population_trees`）。
+/// 自己走目录（不经 `guard_core` 遍历器）的那几条判据按它逐棵走 —— 人群与经遍历器的那几条同一群，声明只有 manifest 那一处。
+pub(crate) fn crate_population_roots() -> Vec<PathBuf> {
+    std::iter::once(crate_src_root())
+        .chain(
+            guard_core::population_trees(&crate_src_root())
+                .into_iter()
+                .map(|(_, src)| src),
+        )
+        .collect()
 }
 
 /// 仓根 —— `<repo>`。**`src/frontend/shell` 的上三级**（〔RE〕包根从 `src/bridge` 下沉一级）。
@@ -49,16 +63,6 @@ pub(crate) fn tests_root() -> PathBuf {
 }
 
 /// 后端那一半的源码树 —— `<repo>/src/backend`。
-/// 〔P4〕monitor 这个 crate 之外、也编进前端进程里的源码树（`src/common/host-core`：前端宿主原语 ·
-/// `src/common/chan-core`：通道，它顺 `#[path]` 带进 `src/comms/inward/` 那几份成员）。
-/// 按「这个前端进程里有谁在写盘 / 起目录 / 原子替换 / 走后端」数人群的判据，除本 crate 外还要扫它们。
-pub(crate) fn other_frontend_src_roots() -> Vec<PathBuf> {
-    vec![
-        repo_src_root().join("common/host-core/src"),
-        repo_src_root().join("common/chan-core/src"),
-    ]
-}
-
 pub(crate) fn backend_src_root() -> PathBuf {
     repo_src_root().join("backend")
 }

@@ -281,9 +281,13 @@ fn the_three_policies_each_site_declares_match_the_code() {
     );
 
     let files = corpus();
+    // 〔P4〕语料含壳那棵根的人群声明带进来的兄弟包（`chan-core` · 文件窗口 …）：它们也有 `lib.rs` / `proc.rs`，
+    //   而账本第一列写的是壳里那一份 ⇒ 按名字取时只在壳自己的 `src/` 与 `build.rs` 里取（兄弟包一处都不起进程：上一条判据现数）。
+    let own = |p: &Path| p.starts_with(src_root()) || p.ends_with("build.rs");
     let src_of = |stem: &str| -> String {
         files
             .iter()
+            .filter(|(p, _)| own(p))
             .find(|(p, _)| p.file_name().and_then(|s| s.to_str()) == Some(stem))
             .map(|(_, raw)| guard_core::production_code(raw))
             .unwrap_or_else(|| panic!("语料里找不到 {stem} —— 它搬家了，第五列也就无从对拍"))

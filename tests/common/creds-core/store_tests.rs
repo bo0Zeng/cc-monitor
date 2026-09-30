@@ -762,7 +762,7 @@ const DIRS_HOME_ELSEWHERE: &[(&str, &str)] = &[
         "src/frontend/shell/src/ccm_probe.rs",
         "〔待改调〕P1 写区（本路题面明令避开）：`local_ccm_entry_status` 那一格 `~/.cc-monitor/bin/ccm`，合并 P1 时改调并摘行",
     ),
-    // 〔P4〕`src/frontend/shell/src/filewin/shell.rs` 那一行（`local_home`）摘了：改调本函数（文件窗口包链 `creds-core`，契约类）。
+    // 〔P4〕`src/frontend/filewin/src/shell.rs` 那一行（`local_home`）摘了：改调本函数（文件窗口包链 `creds-core`，契约类）。
 ];
 
 /// 一份源码（原文）的生产段里 `dirs::home_dir(` 几处。
@@ -803,7 +803,18 @@ fn both_halves_read_the_home_through_this_one_function() {
         .contains("creds_core::store::home_dir_from(get)"));
     let mut got: Vec<String> = Vec::new();
     for tree in ["src/frontend", "src/backend"] {
-        let files = guard_core::scan_tree_excluding(&root.join(tree), &["rs"], &[]);
+        let mut files = guard_core::scan_tree_excluding(&root.join(tree), &["rs"], &[]);
+        // 〔P4〕前端那一侧 ＋ monitor 人群声明里住在它外面的兄弟包（通道 · 宿主原语 · 开窗契约）：通道成员从前经壳 `#[path]` 挂在前端树的人群里。
+        let frontend = root.join("src/frontend");
+        if tree == "src/frontend" {
+            for (_, t) in guard_core::population_trees(&frontend.join("shell/src")) {
+                if !t.starts_with(&frontend) {
+                    files.extend(guard_core::scan_tree_excluding(&t, &["rs"], &[]));
+                }
+            }
+            files.sort_by(|a, b| a.0.cmp(&b.0));
+            files.dedup_by(|a, b| a.0 == b.0);
+        }
         assert!(
             files.len() > 50,
             "`{tree}` 只扫到 {} 份 —— 遍历坏了",

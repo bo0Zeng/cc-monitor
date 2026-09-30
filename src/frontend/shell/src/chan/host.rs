@@ -109,9 +109,10 @@ const HOP: u8 = 1;
 
 /// 〔P4〕通道上**由 monitor 自己接**、不按 `origin` 转给那台后端的 op：传输台开单两条（本机常驻后端的传输台，经中继 `sftp_pool.rs`）·
 /// 文件窗口「在此打开终端」（[`terminal_open`]）。其余一切照旧按 `origin` 去 `inbound_client`。
+/// 传输那两条从传输台那一份名单取（`sftp_pool::TRANSFER_OPS`，一份名单一个家）。
 pub(crate) const HOST_OPS: [&str; 3] = [
-    crate::sftp_pool::TRANSFER_UPLOAD,
-    crate::sftp_pool::TRANSFER_DOWNLOAD,
+    crate::sftp_pool::TRANSFER_OPS[0],
+    crate::sftp_pool::TRANSFER_OPS[1],
     filewin_contract::TERMINAL_OPEN_OP,
 ];
 
@@ -132,10 +133,10 @@ impl Backends for InboundBackends {
         //    其余一切照旧按 `origin` 去 `inbound_client`。
         // 〔P4 · 主会话 09-29 拍板 Q2 A〕通道上由 monitor 自己接的那几条（[`HOST_OPS`]，两向登记在 `command_home_registry_tests::CHANNEL_OWN`）。
         if HOST_OPS.contains(&op.0.as_str()) {
-            if op.0 == filewin_contract::TERMINAL_OPEN_OP {
-                return Box::pin(terminal_open(origin, payload, left));
+            if crate::sftp_pool::is_transfer_op(&op.0) {
+                return Box::pin(transfer_open(origin, op, payload));
             }
-            return Box::pin(transfer_open(origin, op, payload));
+            return Box::pin(terminal_open(origin, payload, left));
         }
         // 撤单**不在这里接**：路由器在撤单手柄拨下时直接丢掉本 future（`router::run_call`），
         // `inbound_client` 那次调用随之被丢 —— 本句柄再接一次就是第二份「撤了怎么说」。

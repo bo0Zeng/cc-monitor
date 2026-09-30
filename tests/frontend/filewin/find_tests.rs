@@ -747,8 +747,11 @@ async fn a_warm_rewalk_never_claims_to_be_the_cold_first_build() {
 /// 上一版只扫 `filewin/find.rs`。那是个洞：把 `300` 写进 `shell.rs` / `source.rs`
 /// 的任何一处，上一版**看不见**。今天扫的是 `filewin/` 整棵树的生产段。
 ///
+/// 〔P4〕窗口独立成包之后「`filewin/` 整棵树」是两棵：窗口包 `src/frontend/filewin/src/` ＋ monitor 那一侧 `src/frontend/shell/src/filewin/`
+/// （开窗入口 · 起进程），人群与搬家前逐份相同；键写相对 `src/frontend/` 的路径（两棵里都有 `proc.rs`）。
+///
 /// 加宽之后撞到一个**真的、合法的** `300`，逐条登记在 [`MILLIS_NOT_SECONDS`] 里：
-/// `shell.rs` 的 `EARLY_FAILURE_BUDGET` 是 **300 毫秒**（开窗那一跳的预算）——
+/// monitor 那一侧 `proc.rs` 的 `EARLY_FAILURE_BUDGET` 是 **300 毫秒**（开窗那一跳的预算）——
 /// 与重走周期**不同单位、不同量纲、不同用途**。
 /// ⚠ 本仓为「裸数字不是一把尺子」栽过（`13247 字节` 里有 `13`）⇒ 例外**明写**，
 /// 而且那张表自己也被两向钉着：登记了而盘上没有 ⇒ 也红。
@@ -770,15 +773,30 @@ fn no_rewalk_period_literal_lives_on_this_side() {
     /// 🔴 默认拒绝：不在这张表里的一处 `300` 就是红。
     /// 而这张表**反向也钉**：登记了而盘上没有 ⇒ 说明那一处改了/没了，得回来看一眼。
     const MILLIS_NOT_SECONDS: &[(&str, &str)] = &[(
-        "shell.rs",
+        "shell/src/filewin/proc.rs",
         "`EARLY_FAILURE_BUDGET` = 300 **毫秒** —— 开窗那一跳的预算（人感觉不到 /          毫秒级失败一定抓得到之间的取值）。与重走周期不同单位、不同量纲、不同用途。",
     )];
 
     // 运行时拼，免得命中本行自己。
     let needle = format!("{}{}", 30, 0);
-    let dir = crate::guard_support::crate_src_root();
+    let repo = crate::guard_support::repo_root();
+    let frontend = repo.join("src/frontend");
     // 🔴 走 `guard_core` 而不是裸 `read_dir`（`scanning_guard_registry` 那条纪律）。
-    let files = guard_core::scan_tree!(&dir, &["rs"]);
+    let files: Vec<(String, String)> = [
+        crate::guard_support::crate_src_root(),
+        repo.join("src/frontend/shell/src/filewin"),
+    ]
+    .iter()
+    .flat_map(|dir| guard_core::scan_tree!(dir, &["rs"]))
+    .map(|(p, raw)| {
+        let rel = p
+            .strip_prefix(&frontend)
+            .unwrap_or(&p)
+            .to_string_lossy()
+            .replace('\\', "/");
+        (rel, raw)
+    })
+    .collect();
     // ★ 抽取器自检①：语料塌了 ⇒ 下面那条零命中恒真。
     assert!(
         files.len() >= 14,
@@ -787,12 +805,7 @@ fn no_rewalk_period_literal_lives_on_this_side() {
     );
     let mut hits: Vec<String> = Vec::new();
     let mut scanned = 0usize;
-    for (path, raw) in &files {
-        let stem = path
-            .file_name()
-            .and_then(|s| s.to_str())
-            .unwrap_or_default()
-            .to_string();
+    for (stem, raw) in &files {
         let prod = guard_core::production_code(raw);
         scanned += prod.len();
         for line in prod.lines() {
@@ -801,7 +814,7 @@ fn no_rewalk_period_literal_lives_on_this_side() {
             if code.starts_with("//") || !code.contains(needle.as_str()) {
                 continue;
             }
-            if MILLIS_NOT_SECONDS.iter().any(|(f, _)| *f == stem) {
+            if MILLIS_NOT_SECONDS.iter().any(|(f, _)| *f == stem.as_str()) {
                 continue;
             }
             hits.push(format!("  {stem}: {}", code.trim()));
@@ -825,7 +838,7 @@ fn no_rewalk_period_literal_lives_on_this_side() {
     for (f, what) in MILLIS_NOT_SECONDS {
         let raw = files
             .iter()
-            .find(|(p, _)| p.file_name().and_then(|s| s.to_str()) == Some(*f))
+            .find(|(p, _)| p.as_str() == *f)
             .map(|(_, raw)| guard_core::production_code(raw))
             .unwrap_or_else(|| panic!("例外表点着 `{f}`，而语料里没有这份文件"));
         assert!(

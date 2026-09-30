@@ -151,12 +151,21 @@ fn drawn_files() -> Vec<(String, String)> {
     //   ⚠ 它买不到「`proc.rs` 以后也不会画东西」—— 哪天它真往 `ui.label` 上写字，
     //   这条排除就成了一个洞。如实记；补它要一条「哪些字面量会走到 `ui` 上」的判准，
     //   而那正是本条今天刻意不判的东西。
+    // 〔P4〕窗口独立成包：「`filewin/` 那棵树」今天是两棵 —— 本包 ＋ monitor 那一侧 `src/frontend/shell/src/filewin/`
+    //   （`entry.rs` 在那边，人群与搬家前逐份相同）。`mod.rs` 的躯体成了本包的 `lib.rs`（两份都摘）；两侧各有一份 `proc.rs`（都摘）；
+    //   `guard_support.rs` 是本包的判据住址（`#![cfg(test)]`，一个字都不画），同 `proc.rs` 那条理由摘掉。
+    let monitor_side = crate::guard_support::repo_root().join("src/frontend/shell/src/filewin");
     let mut out: Vec<(String, String)> = guard_core::scan_tree_excluding(
         &dir,
         &["rs"],
-        &["fonts.rs", "mod.rs", "proc.rs", "win_main.rs"],
+        &["fonts.rs", "lib.rs", "proc.rs", "guard_support.rs"],
     )
     .into_iter()
+    .chain(guard_core::scan_tree_excluding(
+        &monitor_side,
+        &["rs"],
+        &["mod.rs", "proc.rs", "win_main.rs"],
+    ))
     .map(|(path, src)| {
         let name = path
             .file_name()

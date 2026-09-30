@@ -328,7 +328,7 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
     //    （`shell.rs` 那一行橙字逐字「没看见的文件不代表它不在」）
     //    ⇒ 正是本表允许的「截断+说清」，而**不是**它明令排除的「静默截断」。
     (
-        "src/frontend/shell/src/filewin/source.rs",
+        "src/frontend/filewin/src/source.rs",
         "LS_LIMIT",
         50_000,
         "一趟 `files-ls` 一屏最多几条目录项（**条目数，不是字节**）",
@@ -342,7 +342,7 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
     //   能存多大改由后端 `files-commit-text` 的天花板定，而它就是 `files/mod.rs::READ_TEXT_MAX_BYTES`
     //   （存得回的要读得回来）⇒ 对 E 改钉这一对。
     (
-        "src/frontend/shell/src/filewin/editor.rs",
+        "src/frontend/filewin/src/editor.rs",
         "MAX_EDIT_BYTES",
         8 * 1024 * 1024,
         "文件窗口编辑器能打开、能存回的文本体量 ＝ 后端 `files-read-text` / `files-commit-text` 的天花板",
@@ -352,7 +352,7 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
     //   每一步都是一趟 `files-read-text`；编辑上限是「点了编辑」那一下的量）。
     //   超了：**不读**，面板上说「有 N，预览只看 M 以内的文件」；不截一半来预览（截断的文本会被当成全文）。
     (
-        "src/frontend/shell/src/filewin/preview.rs",
+        "src/frontend/filewin/src/preview.rs",
         "PREVIEW_MAX_BYTES",
         64 * 1024,
         "文件窗口预览一份文本的体量（每挪一次光标一趟）",
@@ -360,7 +360,7 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
     ),
     // 〔F9c · 第四波 09-24〕存盘时一条请求行最多多长 ＝ 后端入方向一行（对 F 读两侧源码钉相等）。
     (
-        "src/frontend/shell/src/filewin/editor.rs",
+        "src/frontend/filewin/src/editor.rs",
         "SAVE_LINE_CAP",
         1 << 20,
         "窗口存盘时一条请求行（`files-write-text` 整份 / `files-stage-chunk` 一块）序列化后的长度",
@@ -1288,7 +1288,7 @@ fn the_cross_crate_twins_are_machine_checked_not_hand_copied() {
     //   窗口多给 ⇒ 打得开、改得了，存的时候后端 `files-commit-text` 拒（`bytes` 越过天花板）、读的时候
     //   `files-read-text` 拒 `max_bytes`；窗口少给 ⇒ 存得回的文件被本地冤拒。两个方向都是错。
     //   〔F9c〕上一版这一对钉的是「编辑上限 == 后端入方向一行」（那时存盘整份装一行）；那一对换成下面的对 F。
-    let e1 = by("src/frontend/shell/src/filewin/editor.rs", "MAX_EDIT_BYTES");
+    let e1 = by("src/frontend/filewin/src/editor.rs", "MAX_EDIT_BYTES");
     let e2 = by("src/backend/files/mod.rs", "READ_TEXT_MAX_BYTES");
     assert_eq!(
         e1, e2,
@@ -1298,7 +1298,7 @@ fn the_cross_crate_twins_are_machine_checked_not_hand_copied() {
 
     // 对 F〔F9c · 第四波〕：窗口存盘时一行的上限 ＝ 后端入方向一行的上限 ⇒ 钉相等。
     //   窗口多给一个字节 ⇒ 后端整行丢弃（`line_too_long`）；少给 ⇒ 只是多切几块（不错，但两份数漂了就该有人看）。
-    let f1 = by("src/frontend/shell/src/filewin/editor.rs", "SAVE_LINE_CAP");
+    let f1 = by("src/frontend/filewin/src/editor.rs", "SAVE_LINE_CAP");
     let f2 = by("src/backend/stream/inbound.rs", "MAX_LINE_BYTES");
     assert_eq!(
         f1, f2,

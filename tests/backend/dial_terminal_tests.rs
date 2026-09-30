@@ -312,7 +312,7 @@ fn every_remote_command_the_backend_renders_passes_the_terminal_guard() {
     }
 }
 
-// ── 〔P4〕「在此打开终端」的那一串：原住文件窗口 `tests/frontend/shell/filewin/shell_tests.rs`，随拼法搬来（期望串一个字没改） ──
+// ── 〔P4〕「在此打开终端」的那一串：原住文件窗口 `tests/frontend/filewin/shell_tests.rs`，随拼法搬来（期望串一个字没改） ──
 
 /// 🔴 **「在此打开终端」拼出来的那一串 —— 三种形状，期望串手写。**
 ///

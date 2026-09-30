@@ -512,10 +512,18 @@ fn the_window_binary_target_really_hosts_the_body() {
         .unwrap_or_else(|e| panic!("`{rel}` 读不动（{e}）—— `Cargo.toml` 指着一个不存在的入口"));
     // ③ 🔴 它真的调那个躯体。**这一比是本条的全部价值**：
     //    一个空 `main` 会让上面两比照样绿，而窗口永远不出来。
+    //    〔P4〕躯体住独立包 `cc_monitor_filewin`：链多一跳 —— 入口调包的 `run()`，`run()` 调 `proc::child_main()`。
     assert!(
-        guard_core::find_pinned(&body, "child_main()").is_ok(),
-        "`{rel}` 里没有调 `child_main()` —— 那个二进制编得过、也产得出，\
+        guard_core::find_pinned(&body, "cc_monitor_filewin::run()").is_ok(),
+        "`{rel}` 里没有调 `cc_monitor_filewin::run()` —— 那个二进制编得过、也产得出，\
          但起它之后什么都不会发生（窗口永远不出来）。\n它是这样的：{body}"
+    );
+    let lib =
+        guard_core::production_code(include_str!("../../../../src/frontend/filewin/src/lib.rs"));
+    assert!(
+        guard_core::find_pinned(&lib, "pub fn run() -> i32 {").is_ok()
+            && guard_core::find_pinned(&lib, "proc::child_main()").is_ok(),
+        "窗口包的 `run()` 不再转调 `proc::child_main()` —— 入口那一跳接上了，躯体那一跳断了"
     );
 }
 
@@ -661,10 +669,14 @@ fn the_spawn_result_is_never_thrown_away() {
         prod.contains("pub fn open_in_new_process"),
         "剥生产段把那条路一起剥掉了 —— 下面几比此刻不可信"
     );
+    // 〔P4〕定义随「起进程那一侧」搬进本文件（从前住窗口的 `shell.rs`）⇒ 数调用处：总数减掉定义那一行。
     assert_eq!(
-        prod.matches("early_failure(").count(),
-        1,
-        "`proc.rs` 生产段里 `early_failure(` 不是恰好一处 —— \
+        (
+            prod.matches("fn early_failure(").count(),
+            prod.matches("early_failure(").count() - prod.matches("fn early_failure(").count()
+        ),
+        (1, 1),
+        "`proc.rs` 生产段里 `early_failure` 不是「定义一处 ＋ 调用一处」—— \
          这一族轮询全仓只许一处（`rust_timer_registry` 登记的就是它）"
     );
     let spawn_needle = format!("{}_window(", "spawn");

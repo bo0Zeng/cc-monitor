@@ -300,7 +300,7 @@ pub const PROTO_VERSION: u32 = 1;
 ///      ⇒ `files::index::rebuild_once` 与 `files::browse_watch::set_browsing` 至今
 ///      零生产调用方 ⇒ 真机上 `files-find` 恒回 `index_missing: true`。
 ///      〔⚠ 2026-09-21 收窄：**「零生产调用方」这半已假** —— 波 β 的 `P2` 接上了
-///       `src/frontend/shell/src/filewin/find.rs`。而「恒回 `index_missing`」这半**只在没人
+///       `src/frontend/filewin/src/find.rs`。而「恒回 `index_missing`」这半**只在没人
 ///       开那个窗口去搜的时候**还成立。这一段是当时的账，留着当历史。〕
 ///      这是设计面的缺口（要补得先在那张表上裁第五条），**不在本刀里自己长出来**。
 ///   ② **消费侧还没有** —— `src/frontend/shell` 那一头一个字节没动。

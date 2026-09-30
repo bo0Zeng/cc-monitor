@@ -3378,6 +3378,8 @@ fn no_monitor_file_falls_back_to_leaving_block_comments_in() {
         &[
             &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src"),
             &crate::guard_support::tests_root().join("frontend/shell"),
+            // 〔P4〕文件窗口独立成包：它的判据搬到 `tests/frontend/filewin/`（代码随 `src` 那棵根的人群声明收）。
+            &crate::guard_support::tests_root().join("frontend/filewin"),
         ],
         100,
         1200,
@@ -4347,7 +4349,8 @@ fn hx1_every_monitor_dir_creation_is_registered_and_only_one_builds_the_backend_
         ),
         // 〔合并 LOC1b〕`session_map.rs` 那条 watcher 线程那一行摘了：monitor 自己那份本机判活（连同它盯的 sessions 目录）删了。
         (
-            "filewin/bookmarks.rs",
+            // 〔P4〕文件窗口独立成包：住址带包名。
+            "cc-monitor-filewin/bookmarks.rs",
             "lock_store",
             "monitor 数据目录（书签）",
         ),
@@ -4394,31 +4397,9 @@ fn hx1_every_monitor_dir_creation_is_registered_and_only_one_builds_the_backend_
     assert!(files.len() >= 100, "只扫到 {} 份 —— 遍历坏了", files.len());
     let mut found: Vec<(String, String)> = Vec::new();
     for (path, src) in &files {
-        let rel = path
-            .strip_prefix(&root)
-            .unwrap_or(path)
-            .to_string_lossy()
-            .replace('\\', "/");
+        // 〔P4〕按模块住址认：本包 manifest 明写的兄弟源码树（`host-core` · 文件窗口 …）里的键带包名（`host-core/atomic.rs`）。
+        let rel = guard_core::module_address(&root, path);
         found.extend(creations(&rel, &guard_core::production_code(src)));
-    }
-    // 〔P4〕别的前端源码树（`host-core`）：键带 crate 名。
-    for other in crate::guard_support::other_frontend_src_roots() {
-        let name = other
-            .parent()
-            .and_then(|c| c.file_name())
-            .map(|n| n.to_string_lossy().to_string())
-            .unwrap_or_default();
-        for (path, src) in guard_core::scan_tree!(&other, &["rs"]) {
-            let rel = path
-                .strip_prefix(&other)
-                .unwrap_or(&path)
-                .to_string_lossy()
-                .replace('\\', "/");
-            found.extend(creations(
-                &format!("{name}/{rel}"),
-                &guard_core::production_code(&src),
-            ));
-        }
     }
     found.sort();
     found.dedup();

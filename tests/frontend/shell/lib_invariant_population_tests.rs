@@ -490,7 +490,7 @@ const QUOTE_SITES: &[QuoteRow] = &[
         "本侧渲染好的载荷整串 · 〔US1〕中转前缀里的中转口地址与钥匙文件路径（本侧的）",
     ),
     // 〔THIN〕monitor `tmux.rs` 那一行（Gate 1 前检 ＋ `exact_target` 的 quote，只剩跨轨锚点在用）随整份文件删了：门只在后端。
-    // 〔P4〕`src/frontend/shell/src/filewin/shell.rs` 那一行出表：文件窗口只交意图（当前目录），`cd` 那一串随拼法搬进本机后端
+    // 〔P4〕`src/frontend/filewin/src/shell.rs` 那一行出表：文件窗口只交意图（当前目录），`cd` 那一串随拼法搬进本机后端
     //   `dial/terminal.rs::command_for_cwd`（下面那一行 1 → 3，两道放行判定跟着过去）。
     (
         "src/backend/control/launch_render/local.rs",

@@ -352,7 +352,7 @@ cell(
     "winchk",
     anchor="run_gate winchk '不是数出来的数",
     cwd="src-tauri/",
-    cmd="cargo check --locked -p monitor --target x86_64-pc-windows-gnu",
+    cmd="cargo check --locked --all-targets -p monitor -p cc-monitor-filewin --target x86_64-pc-windows-gnu",
     **{
         "tests/": ("无", "〔现打 09-19〕本格是 `-p monitor` **不带 `--all-targets`** ⇒ 只编 lib ＋ bin，test target 一个不编 ⇒ `tests/frontend/shell/` 那 152 份在 Windows 目标下**没人编过**"),
         "src/frontend/shell/": (PART, "`-p monitor` 一个包的**生产段编得过**；7 个共享 crate 作为依赖被编。"
@@ -523,7 +523,8 @@ cell(
     # 〔P4〕新共享 crate `host-core`（前端宿主原语）⇒ 成员 10 → 11，同拍。
     # 〔P4〕新共享 crate `chan-core`（通道）⇒ 成员 11 → 12，同拍。
     # 〔P4〕新共享 crate `filewin-contract`（monitor ↔ 文件窗口进程的契约）⇒ 成员 12 → 13，同拍。
-    anchor="run_gate_sum cargo 13 bash -c",
+    # 〔P4〕文件窗口独立成包 `src/frontend/filewin/`（`cc-monitor-filewin`）⇒ 成员 13 → 14，同拍。
+    anchor="run_gate_sum cargo 14 bash -c",
     cwd="src-tauri/",
     cmd="cargo test --workspace --lib",
     **{
