@@ -1,9 +1,10 @@
 //! **命令那一层**：入参按 `acct_core::wire` 严格收 → 读快照 → 算计划 → 预演就交出那几步、否则交执行器落盘。
 //! 帧面宿主（`faces/accounts_face.rs`）在这之上接 apikey 表与别名文件那两步。
 
+pub(crate) use super::exec::KeyTable;
 use super::exec::{self, Applied};
 use super::layout::{self, AddIntent, Plan, Refusal};
-use super::scan::{self, is_under, join, Snapshot};
+use super::scan::{self, is_under, join, KeyRows, Snapshot};
 use crate::assets::door::{self, Door};
 use acct_core::wire::{
     AccountAddArgs, AccountChange, AccountInitArgs, AccountIsolateArgs, AccountKind,
@@ -144,8 +145,12 @@ fn names_of(m: Option<&super::model::Manifest>) -> Vec<String> {
         .unwrap_or_default()
 }
 
-/// 跑一条改动命令（`Verify` / `LoginCmd` 不走这里）。
-pub(crate) fn run_change(d: &dyn Door, req: &Request) -> Result<Done, Refusal> {
+/// 跑一条改动命令（`Verify` / `LoginCmd` 不走这里）。`keys` = 这台 key 表那两口（删号清它那一行、回滚放回去；门递进来）。
+pub(crate) fn run_change(
+    d: &dyn Door,
+    req: &Request,
+    keys: Option<&KeyTable>,
+) -> Result<Done, Refusal> {
     supported()?;
     let home = home_of(d)?;
     let _held = lock(&home)?;
@@ -176,10 +181,14 @@ pub(crate) fn run_change(d: &dyn Door, req: &Request) -> Result<Done, Refusal> {
         }
         _ => (vec![], vec![], None),
     };
-    let snap = scan::scan(&home, &dirs, &files);
+    let mut snap = scan::scan(&home, &dirs, &files);
     snap.roots().check().map_err(|e| ("refused", e))?;
+    snap.keys = keys.map(|k| KeyRows {
+        path: k.path.clone(),
+        ids: k.ids.clone(),
+    });
     if let Request::Rollback(a) = req {
-        return rollback(d, &snap, a);
+        return rollback(d, &snap, a, keys);
     }
     let (plan, dry, extra): (Plan, bool, AccountChange) = match req {
         Request::Init(a) => (
@@ -256,7 +265,7 @@ pub(crate) fn run_change(d: &dyn Door, req: &Request) -> Result<Done, Refusal> {
         m.render(&r.accts, &r.shared, &zero_email, &exec::utc_stamp(true))
     };
     let Applied { backup, steps } =
-        exec::apply(d, &r, &plan, snap.manifest_text.as_deref(), &render)?;
+        exec::apply(d, &r, &plan, snap.manifest_text.as_deref(), &render, keys)?;
     change.applied = !plan.ops.is_empty();
     change.steps = steps;
     change.backup = backup;
@@ -272,7 +281,12 @@ pub(crate) fn run_change(d: &dyn Door, req: &Request) -> Result<Done, Refusal> {
     })
 }
 
-fn rollback(d: &dyn Door, snap: &Snapshot, a: &AccountRollbackArgs) -> Result<Done, Refusal> {
+fn rollback(
+    d: &dyn Door,
+    snap: &Snapshot,
+    a: &AccountRollbackArgs,
+    keys: Option<&KeyTable>,
+) -> Result<Done, Refusal> {
     let pick = match &a.backup {
         Some(id) => {
             if !exec::backup_id_ok(id) {
@@ -320,7 +334,7 @@ fn rollback(d: &dyn Door, snap: &Snapshot, a: &AccountRollbackArgs) -> Result<Do
             accounts_after: None,
         });
     }
-    let (done, failed) = exec::rollback(d, snap.roots(), &b.path, &steps);
+    let (done, failed) = exec::rollback(d, snap.roots(), &b.path, &steps, keys);
     if !failed.is_empty() {
         return Err((
             "io_failed",

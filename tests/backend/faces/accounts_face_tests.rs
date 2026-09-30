@@ -90,12 +90,44 @@ fn machine(tag: &str) -> Tmp {
 
 type KeyLog = Mutex<Vec<Value>>;
 
-fn call_with(t: &Tmp, keys: &KeyLog, cmd: &str, args: Value) -> Answer {
-    let key_set = |v: &Value| -> file_face::FileFaceAnswer {
-        keys.lock().unwrap().push(v.clone());
-        Ok(json!({ "masked": "sk-…abcd" }))
+/// 这台 key 表落在临时家目录里的那一份。
+fn key_table(t: &Tmp) -> PathBuf {
+    t.p(".cc-monitor/apikey-credentials.json")
+}
+
+/// key 表里现有哪几个号。
+fn key_ids(t: &Tmp) -> Vec<String> {
+    file_face::account_ids_at(&key_table(t)).unwrap()
+}
+
+/// 门：写 key 那一口由调用方给，删 / 放回 / 在哪都落在临时目录那份表上。
+fn call_door(
+    t: &Tmp,
+    set: &dyn Fn(&Value) -> file_face::FileFaceAnswer,
+    cmd: &str,
+    args: Value,
+) -> Answer {
+    let table = key_table(t);
+    let drop = |v: &Value| file_face::answer_drop_at(&table, v);
+    let restore = |v: &Value| file_face::answer_restore_at(&table, v);
+    let path = || Ok(table.clone());
+    let keys = KeyDoor {
+        set,
+        drop: &drop,
+        restore: &restore,
+        path: &path,
     };
-    answer(&HomeDoor(t.0.clone()), cmd, &args, &key_set)
+    answer(&HomeDoor(t.0.clone()), cmd, &args, &keys)
+}
+
+/// 写 key 那一口先记下入参，再真写进临时目录那份表。
+fn call_with(t: &Tmp, keys: &KeyLog, cmd: &str, args: Value) -> Answer {
+    let table = key_table(t);
+    let set = |v: &Value| -> file_face::FileFaceAnswer {
+        keys.lock().unwrap().push(v.clone());
+        file_face::answer_set_at(&table, v)
+    };
+    call_door(t, &set, cmd, args)
 }
 
 fn call(t: &Tmp, cmd: &str, args: Value) -> Answer {
@@ -486,8 +518,13 @@ fn api_key_account_lands_its_key_in_the_apikey_table_not_in_the_manifest() {
         json!({ "name": "k", "kind": "api-key", "key": "sk-secret-abcd", "baseUrl": "https://api.example.test" }),
     )
     .unwrap();
-    assert_eq!(got["keyMasked"], "sk-…abcd");
+    let masked = got["keyMasked"].as_str().unwrap();
+    assert!(
+        masked.ends_with("abcd") && !masked.contains("secret"),
+        "{masked}"
+    );
     assert!(got["keyProblem"].is_null());
+    assert_eq!(key_ids(&t), vec!["k".to_string()]);
     assert!(got["loginCmd"].is_null());
     assert_eq!(
         *keys.lock().unwrap(),
@@ -525,11 +562,11 @@ fn a_key_that_does_not_land_is_said_not_swallowed() {
     ok(&t, "accounts-init", json!({ "name": "d" }));
     let key_set =
         |_: &Value| -> file_face::FileFaceAnswer { Err(("io_failed", "盘满了".to_string())) };
-    let got = answer(
-        &HomeDoor(t.0.clone()),
-        "accounts-add",
-        &json!({ "name": "k", "kind": "api-key", "key": "sk-1" }),
+    let got = call_door(
+        &t,
         &key_set,
+        "accounts-add",
+        json!({ "name": "k", "kind": "api-key", "key": "sk-1" }),
     )
     .unwrap();
     assert!(got["keyMasked"].is_null());
@@ -584,6 +621,74 @@ fn default_moves_on_remove_and_can_be_set() {
     let got = ok(&t, "accounts-remove", json!({ "name": "x", "force": true }));
     assert!(got["notes"].to_string().contains('d'), "{got}");
     assert_eq!(t.manifest()["accounts"][0]["isDefault"], true);
+}
+
+/// 删 API 号：key 表里它那一行跟着清掉（第一步，进同一份备份），表里别的号不动；回滚把那一行原样放回来。
+#[test]
+fn removing_an_api_account_drops_its_key_row_and_rollback_puts_it_back() {
+    let t = machine("rmk");
+    ok(&t, "accounts-init", json!({ "name": "d" }));
+    for (name, key) in [("k1", "sk-first-1111"), ("k2", "sk-second-2222")] {
+        ok(
+            &t,
+            "accounts-add",
+            json!({ "name": name, "kind": "api-key", "key": key, "baseUrl": "https://api.example.test" }),
+        );
+    }
+    assert_eq!(key_ids(&t), vec!["k1".to_string(), "k2".to_string()]);
+    let before = t.read(".cc-monitor/apikey-credentials.json");
+    let preview = ok(
+        &t,
+        "accounts-remove",
+        json!({ "name": "k1", "dryRun": true }),
+    );
+    assert!(
+        preview["steps"][0]
+            .as_str()
+            .unwrap()
+            .contains("apikey-credentials.json"),
+        "{preview}"
+    );
+    assert_eq!(
+        t.read(".cc-monitor/apikey-credentials.json"),
+        before,
+        "预演动了 key 表"
+    );
+
+    let got = ok(&t, "accounts-remove", json!({ "name": "k1" }));
+    assert_eq!(key_ids(&t), vec!["k2".to_string()], "{got}");
+    let table = t.read(".cc-monitor/apikey-credentials.json");
+    assert!(!table.contains("sk-first-1111") && table.contains("sk-second-2222"));
+    assert_eq!(t.mode(".cc-monitor/apikey-credentials.json"), 0o600);
+    assert!(!t.exists(".claude-alt/k1"));
+
+    let back = ok(&t, "accounts-rollback", json!({}));
+    assert_eq!(back["applied"], true, "{back}");
+    assert_eq!(key_ids(&t), vec!["k1".to_string(), "k2".to_string()]);
+    let doc: Value = serde_json::from_str(&t.read(".cc-monitor/apikey-credentials.json")).unwrap();
+    assert_eq!(doc["accounts"]["k1"]["api_key"], "sk-first-1111");
+    assert_eq!(doc["accounts"]["k2"]["api_key"], "sk-second-2222");
+    assert!(t.p(".claude-alt/k1").is_dir());
+}
+
+/// 删订阅号不碰 key 表：表里那几行、那份文件一个字节不变（它本来就没有那个号那一行）。
+#[test]
+fn removing_a_subscription_account_leaves_the_key_table_alone() {
+    let t = two_accounts("rm-sub");
+    ok(
+        &t,
+        "accounts-add",
+        json!({ "name": "k", "kind": "api-key", "key": "sk-only-3333" }),
+    );
+    let before = t.read(".cc-monitor/apikey-credentials.json");
+    assert!(before.contains("sk-only-3333"));
+    let got = ok(&t, "accounts-remove", json!({ "name": "x" }));
+    assert!(
+        !got["steps"].to_string().contains("apikey-credentials"),
+        "{got}"
+    );
+    assert_eq!(t.read(".cc-monitor/apikey-credentials.json"), before);
+    assert_eq!(key_ids(&t), vec!["k".to_string()]);
 }
 
 /// 设默认 · 修复 · 核对的拒绝形：不认得的号 ⇒ `refused`；多给参数 ⇒ `bad_args`；还没有账号库 ⇒ `not_enabled`。被拒的那几趟盘上一个字节不动。

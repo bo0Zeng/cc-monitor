@@ -118,6 +118,11 @@ pub(crate) enum Op {
     },
     /// 写清单（写的是 [`Plan::manifest`]）。
     WriteManifest,
+    /// 删号时清掉 key 表（`table`）里这个号（`config_dir`）那一行 —— 写的是 key 表自己那一口（门递进来）。
+    DropKey {
+        table: String,
+        config_dir: String,
+    },
 }
 
 /// 一份计划。
@@ -373,6 +378,23 @@ pub(crate) fn plan_remove(s: &Snapshot, name: &str, force: bool) -> Result<Plan,
         )));
     }
     let mut plan = Plan::default();
+    // key 表里有这个号那一行 ⇒ 第一步先清它（清不掉 ⇒ 后面一步都不做）；那份表不在家目录底下 ⇒ 备份不了，不动它、说一句。
+    let id = acct_core::apikey_account_id_of_dir(&a.config_dir);
+    if let (Some(k), Some(id)) = (&s.keys, id) {
+        if k.ids.contains(&id) {
+            if is_under(&k.path, &r.home) {
+                plan.ops.push(Op::DropKey {
+                    table: k.path.clone(),
+                    config_dir: a.config_dir.clone(),
+                });
+            } else {
+                plan.notes.push(copy_text(
+                    "beAcctPlan.remove.keyOutside",
+                    &[("path", &k.path), ("name", name)],
+                ));
+            }
+        }
+    }
     if s.dir(&a.config_dir).exists() {
         plan.ops.push(Op::Remove(a.config_dir.clone()));
     }
@@ -558,6 +580,10 @@ pub(crate) fn describe(op: &Op, manifest_path: &str) -> String {
             &[("at", at), ("mode", &format!("{mode:o}"))],
         ),
         Op::WriteManifest => copy_text("beAcctPlan.step.manifest", &[("path", manifest_path)]),
+        Op::DropKey { table, config_dir } => copy_text(
+            "beAcctPlan.step.dropKey",
+            &[("dir", config_dir), ("path", table)],
+        ),
     }
 }
 

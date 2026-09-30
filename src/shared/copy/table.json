@@ -204,6 +204,36 @@
       "zh": "什么都不用改。",
       "args": []
     },
+    "beAcctExec.key.noDoor": {
+      "kind": "error",
+      "zh": "这一步要动 key 表 {path}，可这一趟没拿到它的写口，没有动。",
+      "args": ["path"]
+    },
+    "beAcctExec.rollback.rekey": {
+      "kind": "body",
+      "zh": "把 {dir} 那一行放回 key 表 {path}",
+      "args": ["dir", "path"]
+    },
+    "beAcctFace.key.unreadable": {
+      "kind": "error",
+      "zh": "key 表读不了（{e}），这个号在里面那一行没有跟着清掉。",
+      "args": ["e"]
+    },
+    "beAcctPlan.remove.keyOutside": {
+      "kind": "body",
+      "zh": "key 表 {path} 不在家目录底下，没法先备份，{name} 那一行没有清掉。",
+      "args": ["name", "path"]
+    },
+    "beAcctPlan.step.dropKey": {
+      "kind": "body",
+      "zh": "清掉 key 表 {path} 里 {dir} 那一行",
+      "args": ["dir", "path"]
+    },
+    "beUpstreamFileFace.restore.notSaved": {
+      "kind": "error",
+      "zh": "备份 {from} 里没有 {account} 那一行，没法放回去。",
+      "args": ["account", "from"]
+    },
     "rsToolRegistry.tools.accountsName": {
       "kind": "title",
       "zh": "多账号账号库",

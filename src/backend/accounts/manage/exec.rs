@@ -6,6 +6,10 @@
 //! `DELETE\t<路径>` = 删掉这一趟新建的）⇒ 撤销清单里的每一行都对应一次真发生过的改动，中途停下也能回滚。
 //! 回滚（[`rollback`]）按撤销清单倒着来：先把该还原的都还原（现场的那一份先挪进 `pre-rollback/`，不直接删），
 //! 再删这一趟新建的；每一条自己的错误不挡别的条。
+//!
+//! key 表（上游选择自己的状态）是唯一不经文件管理面写的那一份：删号清它那一行、回滚放回那一行，都经门递进来的
+//! [`KeyTable`] 那两口（写者只有它自己那一处）。备份照旧是整份拷进 `root/`，撤销清单记 `REKEY\t<表>\t<号的目录>`，
+//! 回滚只从备份那一份里取回这一个号那一行，表里别的行不动。
 
 use super::layout::{describe, Op, Plan};
 use super::model::Manifest;
@@ -25,9 +29,22 @@ pub(crate) struct Applied {
 /// 执行失败：那一句（带着「做到第几步 · 用哪份备份回滚」）。
 pub(crate) type Failed = (&'static str, String);
 
+/// 这台 key 表的两口（账号库不认识它的格式、也不自己写它；门递进来）。
+pub(crate) struct KeyTable<'a> {
+    /// 那份文件的绝对路径。
+    pub(crate) path: String,
+    /// 它此刻有哪几个号（账号 id）。
+    pub(crate) ids: Vec<String>,
+    /// 摘掉 `configDir` 那个号那一行。
+    pub(crate) drop: &'a dyn Fn(&str) -> Result<(), String>,
+    /// 从 `from`（备份里那一份）把 `configDir` 那个号那一行放回去。
+    pub(crate) restore: &'a dyn Fn(&str, &str) -> Result<(), String>,
+}
+
 struct Run<'a> {
     d: &'a dyn Door,
     r: &'a Roots,
+    keys: Option<&'a KeyTable<'a>>,
     /// 备份目录（绝对）。
     bk: String,
     undo: String,
@@ -134,6 +151,15 @@ impl Run<'_> {
                 Item::File { .. } | Item::Dir { .. } => self.chmod(at, *mode),
                 _ => Ok(()),
             },
+            Op::DropKey { table, config_dir } => {
+                let k = self
+                    .keys
+                    .filter(|k| k.path == *table)
+                    .ok_or_else(|| copy_text("beAcctExec.key.noDoor", &[("path", table)]))?;
+                self.backup(table)?;
+                (k.drop)(config_dir)?;
+                self.record(&[("REKEY", &format!("{table}\t{config_dir}"))])
+            }
             Op::WriteManifest => {
                 let (text, before) =
                     manifest.ok_or_else(|| copy_text("beAcctExec.manifest.nothing", &[]))?;
@@ -253,6 +279,7 @@ pub(crate) fn apply(
     plan: &Plan,
     manifest_before: Option<&str>,
     render: &dyn Fn(&Manifest) -> String,
+    keys: Option<&KeyTable>,
 ) -> Result<Applied, Failed> {
     let steps: Vec<String> = plan
         .ops
@@ -286,6 +313,7 @@ pub(crate) fn apply(
     let mut run = Run {
         d,
         r,
+        keys,
         bk,
         undo: String::new(),
         undo_written: false,
@@ -364,6 +392,11 @@ fn civil_from_days(z: i64) -> (i64, i64, i64) {
 pub(crate) enum Undo {
     Restore(String),
     Delete(String),
+    /// 把 `config_dir` 那个号那一行放回 key 表 `table`。
+    Rekey {
+        table: String,
+        config_dir: String,
+    },
 }
 
 /// 备份名能不能用：只许 `[0-9A-Za-z._-]`、不含 `..`（挡目录穿越）。
@@ -386,6 +419,15 @@ pub(crate) fn undo_steps(text: &str) -> (Vec<Undo>, Vec<String>) {
                 restore.push(Undo::Restore(p.to_string()))
             }
             Some(("DELETE", p)) if p.starts_with('/') => delete.push(Undo::Delete(p.to_string())),
+            Some(("REKEY", rest)) => match rest.split_once('\t') {
+                Some((t, c)) if t.starts_with('/') && c.starts_with('/') => {
+                    restore.push(Undo::Rekey {
+                        table: t.to_string(),
+                        config_dir: c.to_string(),
+                    })
+                }
+                _ => bad.push(line.to_string()),
+            },
             _ => bad.push(line.to_string()),
         }
     }
@@ -400,6 +442,10 @@ pub(crate) fn describe_undo(u: &Undo) -> String {
     match u {
         Undo::Restore(p) => copy_text("beAcctExec.rollback.restore", &[("path", p)]),
         Undo::Delete(p) => copy_text("beAcctExec.rollback.delete", &[("path", p)]),
+        Undo::Rekey { table, config_dir } => copy_text(
+            "beAcctExec.rollback.rekey",
+            &[("dir", config_dir), ("path", table)],
+        ),
     }
 }
 
@@ -414,6 +460,7 @@ pub(crate) fn rollback(
     r: &Roots,
     bk: &str,
     steps: &[Undo],
+    keys: Option<&KeyTable>,
 ) -> (Vec<String>, Vec<String>) {
     let mut done = Vec::new();
     let mut failed = Vec::new();
@@ -422,6 +469,7 @@ pub(crate) fn rollback(
         let res = match u {
             Undo::Restore(p) => restore_one(d, r, bk, &aside, p),
             Undo::Delete(p) => delete_one(d, r, p),
+            Undo::Rekey { table, config_dir } => rekey_one(r, bk, keys, table, config_dir),
         };
         match res {
             Ok(()) => done.push(describe_undo(u)),
@@ -439,6 +487,33 @@ pub(crate) fn rollback(
         }
     }
     (done, failed)
+}
+
+/// 从备份里那一份 key 表取回一个号那一行（号的目录只许在账号库里；表得是门递进来的那一份）。
+fn rekey_one(
+    r: &Roots,
+    bk: &str,
+    keys: Option<&KeyTable>,
+    table: &str,
+    config_dir: &str,
+) -> Result<(), String> {
+    if !is_under(config_dir, &r.accts) || config_dir == r.accts {
+        return Err(copy_text(
+            "beAcctExec.rollback.outside",
+            &[("path", config_dir)],
+        ));
+    }
+    let k = keys
+        .filter(|k| k.path == table)
+        .ok_or_else(|| copy_text("beAcctExec.key.noDoor", &[("path", table)]))?;
+    let saved = format!("{bk}/root{table}");
+    if !item_at(&saved).exists() {
+        return Err(copy_text(
+            "beAcctExec.rollback.notSaved",
+            &[("path", table)],
+        ));
+    }
+    (k.restore)(config_dir, &saved)
 }
 
 fn restore_one(d: &dyn Door, r: &Roots, bk: &str, aside: &str, p: &str) -> Result<(), String> {

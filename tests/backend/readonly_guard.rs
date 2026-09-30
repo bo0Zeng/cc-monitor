@@ -944,9 +944,11 @@ mod tests {
             "exit_policy::answer_set",
             "stream/inbound.rs",
         ),
+        // 写 key（`answer_set`）· 删号清那一行（`answer_drop`）· 回滚放回那一行（`answer_restore`）同一个前缀 ⇒ 针取前缀；
+        // 读口 `answer_read` 也落在针上，它同样只从 `inbound.rs` 进来（多挡一个读口不伤）。
         (
             "accounts/upstream_select/file_face.rs",
-            "file_face::answer_set",
+            "file_face::answer_",
             "stream/inbound.rs",
         ),
         // 〔AS2〕三条写口同一个前缀（`answer_catalog` 现扫即记 · `answer_merge` 并进来再记，都会写）⇒ 针取前缀：
