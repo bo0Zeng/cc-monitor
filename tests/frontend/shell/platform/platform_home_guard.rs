@@ -33,29 +33,76 @@ const PENDING: &[(&str, &str, Presence)] = &[
     ("cc_bus_deploy.rs", "归 P4b 收（本路）", Presence::Now),
     ("ccm_probe.rs", "归 P4b 收（本路）", Presence::Now),
     ("config.rs", "归 P4 收", Presence::Now),
-    ("dial_host.rs", "待主会话派（不在 P4 / P4b 写区）", Presence::Now),
-    ("filewin/download.rs", "归 P4 收（随窗口包搬走即删）", Presence::Now),
-    ("filewin/fonts.rs", "归 P4 收（随窗口包搬走即删）", Presence::Now),
-    ("filewin/lossy_pull.rs", "归 P4 收（随窗口包搬走即删）", Presence::Now),
+    (
+        "dial_host.rs",
+        "待主会话派（不在 P4 / P4b 写区）",
+        Presence::Now,
+    ),
+    (
+        "filewin/download.rs",
+        "归 P4 收（随窗口包搬走即删）",
+        Presence::Now,
+    ),
+    (
+        "filewin/fonts.rs",
+        "归 P4 收（随窗口包搬走即删）",
+        Presence::Now,
+    ),
+    (
+        "filewin/lossy_pull.rs",
+        "归 P4 收（随窗口包搬走即删）",
+        Presence::Now,
+    ),
     ("filewin/proc.rs", "归 P4 收", Presence::Now),
-    ("filewin/scale.rs", "归 P4 收（随窗口包搬走即删）", Presence::Now),
-    ("filewin/shell.rs", "归 P4 收（随窗口包搬走即删）", Presence::Now),
+    (
+        "filewin/scale.rs",
+        "归 P4 收（随窗口包搬走即删）",
+        Presence::Now,
+    ),
+    (
+        "filewin/shell.rs",
+        "归 P4 收（随窗口包搬走即删）",
+        Presence::Now,
+    ),
     ("launch.rs", "归 P4 收", Presence::Now),
     ("lib.rs", "归 P4 收", Presence::Now),
     ("local_backend.rs", "归 P4b 收（本路）", Presence::Now),
-    ("local_backend_host.rs", "归 P4 收（P4 子步 2 已收，合入即删）", Presence::Now),
+    (
+        "local_backend_host.rs",
+        "归 P4 收（P4 子步 2 已收，合入即删）",
+        Presence::Now,
+    ),
     ("profile_installer.rs", "归 P4b 收（本路）", Presence::Now),
-    ("spawn_managed.rs", "归 P4b 收（本路）", Presence::Now),
     ("utils.rs", "归 P4 收", Presence::Now),
-    ("cc-monitor-filewin/download.rs", "归 P4 收（P4 合入后才出现）", Presence::AfterP4),
-    ("cc-monitor-filewin/fonts.rs", "归 P4 收（P4 合入后才出现）", Presence::AfterP4),
-    ("cc-monitor-filewin/lossy_pull.rs", "归 P4 收（P4 合入后才出现）", Presence::AfterP4),
-    ("cc-monitor-filewin/scale.rs", "归 P4 收（P4 合入后才出现）", Presence::AfterP4),
-    ("cc-monitor-filewin/shell.rs", "归 P4 收（P4 合入后才出现）", Presence::AfterP4),
+    (
+        "cc-monitor-filewin/download.rs",
+        "归 P4 收（P4 合入后才出现）",
+        Presence::AfterP4,
+    ),
+    (
+        "cc-monitor-filewin/fonts.rs",
+        "归 P4 收（P4 合入后才出现）",
+        Presence::AfterP4,
+    ),
+    (
+        "cc-monitor-filewin/lossy_pull.rs",
+        "归 P4 收（P4 合入后才出现）",
+        Presence::AfterP4,
+    ),
+    (
+        "cc-monitor-filewin/scale.rs",
+        "归 P4 收（P4 合入后才出现）",
+        Presence::AfterP4,
+    ),
+    (
+        "cc-monitor-filewin/shell.rs",
+        "归 P4 收（P4 合入后才出现）",
+        Presence::AfterP4,
+    ),
 ];
 
 /// 名单条数的上限，与 [`PENDING`] 恒等：删行时同拍减一；**不许加**（加一行 = 往壳里别处又写了平台代码）。
-const PENDING_LEN: usize = 22;
+const PENDING_LEN: usize = 21;
 
 /// `cfg` 谓词里点了操作系统的词（字符串字面量之外，按整词认）。`target_arch` 不在：那是架构，不是操作系统。
 const CFG_WORDS: &[&str] = &[
@@ -186,7 +233,10 @@ pub(crate) fn platform_forms(prod: &str) -> BTreeSet<String> {
         let inner = &prod[open + 1..close];
         let pred = if attr { first_arg(inner) } else { inner };
         let bare = blank_strings(pred);
-        if CFG_WORDS.iter().any(|w| guard_core::contains_word(&bare, w)) {
+        if CFG_WORDS
+            .iter()
+            .any(|w| guard_core::contains_word(&bare, w))
+        {
             out.insert(format!("cfg({})", pred.trim()));
         }
     }
@@ -305,7 +355,11 @@ fn the_form_matcher_sees_every_form_and_nothing_else() {
         "fn a() { crate::platform::window::exists(1); }".to_string(),
     ];
     for s in &negatives {
-        assert!(platform_forms(s).is_empty(), "把不是平台形态的认成了：{s} ⇒ {:?}", platform_forms(s));
+        assert!(
+            platform_forms(s).is_empty(),
+            "把不是平台形态的认成了：{s} ⇒ {:?}",
+            platform_forms(s)
+        );
     }
 }
 
@@ -318,7 +372,10 @@ fn every_file_in_the_shell_platform_layer_carries_a_platform_form() {
         .iter()
         .filter(|(a, _)| a.starts_with("platform/") && a.as_str() != "platform/mod.rs")
         .collect();
-    assert!(!layer.is_empty(), "人群里一份 `platform/*.rs` 都没有 —— 遍历坏了");
+    assert!(
+        !layer.is_empty(),
+        "人群里一份 `platform/*.rs` 都没有 —— 遍历坏了"
+    );
     for (addr, prod) in layer {
         assert!(
             !platform_forms(prod).is_empty(),

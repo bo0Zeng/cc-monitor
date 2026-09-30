@@ -9,6 +9,7 @@ pub mod console_text;
 pub mod fs;
 pub mod hwnd;
 pub mod pid;
+pub mod spawn;
 
 #[cfg(test)]
 #[path = "../../../../../tests/frontend/shell/platform/platform_home_guard.rs"]

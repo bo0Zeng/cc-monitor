@@ -211,8 +211,9 @@ const ALLOWED: &[(&str, &str, usize, Why, &str)] = &[
     ("src/frontend/shell/src/local_backend_host.rs", "let _ = sock.set_read_timeout(None);", 1, Why::NotAnError, "这条 socket 下一行就转成非阻塞交给 tokio：`SO_RCVTIMEO` / `SO_SNDTIMEO` 对非阻塞读写不起作用，摘不掉也没有残留"),
     ("src/frontend/shell/src/local_backend_host.rs", "let _ = sock.set_write_timeout(None);", 1, Why::NotAnError, "这条 socket 下一行就转成非阻塞交给 tokio：`SO_RCVTIMEO` / `SO_SNDTIMEO` 对非阻塞读写不起作用，摘不掉也没有残留"),
     ("src/frontend/shell/src/logging.rs", "let _ = h.emit(ERROR_EVENT, p);", 1, Why::Diag, "把一条错误日志推给界面；推不上它照样进了日志文件"),
-    ("src/frontend/shell/src/spawn_managed.rs", "let _ = CloseHandle(job);", 2, Why::Reap, "Windows 句柄 / 内存释放"),
-    ("src/frontend/shell/src/spawn_managed.rs", "let _ = windows::Win32::Foundation::CloseHandle(h);", 1, Why::Reap, "Windows 句柄 / 内存释放"),
+    // 〔P4b · 阶段 H〕下面两行随 Job Object 那一段搬进 `platform/spawn.rs`（处数不变）。
+    ("src/frontend/shell/src/platform/spawn.rs", "let _ = CloseHandle(job);", 2, Why::Reap, "Windows 句柄 / 内存释放"),
+    ("src/frontend/shell/src/platform/spawn.rs", "let _ = windows::Win32::Foundation::CloseHandle(h);", 1, Why::Reap, "Windows 句柄 / 内存释放"),
     ("src/frontend/shell/src/ssh_source.rs", "let _ = frame_tx.send(Err(\"ssh backend stdout closed (EOF / connection dropped)\".to_string())).await;", 1, Why::PeerGone, ""),
     ("src/frontend/shell/src/ssh_source.rs", "let _ = frame_tx.send(Err(format!(\"ssh backend stdout read error: {e}\"))).await;", 1, Why::PeerGone, ""),
     ("src/frontend/shell/src/utils.rs", "let _ = std::fs::remove_file(&tmp);", 1, Why::CleanupAfterFailure, "原子写的临时件：换名失败之后删它；主错误已在回，删不掉只剩一份临时件"),
