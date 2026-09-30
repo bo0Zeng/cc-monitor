@@ -47,6 +47,8 @@ cc-monitor 只是观察者和启动器：`claude` 仍然跑在你自己的终端
 
 ![设置 → 机器](docs/screenshots/machines.png)
 
+![机器页的「足迹」：cc-monitor 在这台机器上写过的每个文件](docs/screenshots/footprint.png)
+
 ### 文件管理器
 - 独立窗口，本机和远端都能开
 - 排序、新建、改名、删除、复制、改权限、上传下载、书签、按内容搜索

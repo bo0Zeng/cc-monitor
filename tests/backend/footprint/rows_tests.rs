@@ -1517,3 +1517,68 @@ fn a_local_footprint_path_uses_one_separator_throughout() {
         "/home/u/.cc-monitor/bin/ccm*"
     );
 }
+
+// ===== 〔SHOTS 09-29〕旧版遗留那一档：不在 ＝ 该有的样子 =====
+
+/// 要求住址：`设计/70 §6.1`「旧版放的入口 … 效果档 `RetiredLegacy`（旧版放的入口：认出是我们放的就删）」＋ 主会话 09-29 裁
+/// 「这里不存在算不算正常是判断，按一处后端由后端给结论」。
+///
+/// 空盘（什么都不在）上从远端那台看：读成「该不在、确实不在」的行 == 申报表里效果档是 `RetiredLegacy` 的那几条（两向相等）；
+/// 正控：同一张空盘上别的效果档照旧是「不存在」。另钉 `read_absence` 只改「不在」那一形 —— 旧版那一份**还在**时如实说在。
+#[test]
+fn a_gone_retired_legacy_row_reads_as_expected_absent_not_missing() {
+    use std::collections::BTreeSet;
+    let h = home();
+    let fs = empty_probe();
+    let mut env = env_with(&h, &fs, Some("/usr/bin"));
+    env.vantage = Vantage::Remote;
+    let rows = build_rows(&env, None);
+    let got: BTreeSet<(&str, &str)> = rows
+        .iter()
+        .filter(|r| matches!(r.state, SurfaceState::ExpectedAbsent { .. }))
+        .map(|r| (r.tool_id, r.path_declared))
+        .collect();
+    let want: BTreeSet<(&str, &str)> = TOOLS
+        .iter()
+        .flat_map(|t| t.carrier_touches().map(move |(_, f)| (t, f)))
+        .filter(|(_, f)| f.effect == TouchEffect::RetiredLegacy && f.host != HostScope::Client)
+        .map(|(t, f)| (t.id, f.path))
+        .collect();
+    assert!(
+        !want.is_empty(),
+        "申报表里一条旧版遗留都没有 —— 人群坏了，别改断言"
+    );
+    assert_eq!(
+        got, want,
+        "「该不在、确实不在」那一档的行 ≠ 旧版遗留那几条申报 —— 判定漏了一条或多读了一条"
+    );
+    for r in rows
+        .iter()
+        .filter(|r| matches!(r.state, SurfaceState::ExpectedAbsent { .. }))
+    {
+        assert_eq!(
+            r.state,
+            SurfaceState::ExpectedAbsent {
+                detail: copy_text("rsConfigSurface.observe.retiredGone", &[])
+            },
+            "{} 那一行上屏的那句不是文案表里那一条",
+            r.path_declared
+        );
+    }
+    assert!(
+        rows.iter().any(|r| r.state == SurfaceState::Absent),
+        "正控：同一张空盘上别的效果档该照旧是「不存在」—— 一条都没有 ⇒ 判定把所有「不在」都读成了该不在"
+    );
+    let still_there = SurfaceState::Present {
+        detail: "文件，12 字节".to_string(),
+    };
+    assert_eq!(
+        read_absence(TouchEffect::RetiredLegacy, still_there.clone()),
+        still_there,
+        "旧版那一份还在 ⇒ 如实说在"
+    );
+    assert_eq!(
+        read_absence(TouchEffect::OwnedFile, SurfaceState::Absent),
+        SurfaceState::Absent
+    );
+}
