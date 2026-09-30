@@ -12,6 +12,7 @@ pub mod login_shell;
 pub mod pid;
 pub mod proc;
 pub mod spawn;
+pub mod ssh_agent;
 
 #[cfg(test)]
 #[path = "../../../../../tests/frontend/shell/platform/platform_home_guard.rs"]
