@@ -169,6 +169,9 @@ const ALLOWED: &[(&str, &str, usize, Why, &str)] = &[
     ("src/frontend/shell/src/bind.rs", "let _ = unsafe { GetWindowThreadProcessId(hwnd, Some(&mut owner_pid)) };", 1, Why::NotAnError, "要的是出参里的属主 pid，返回值（线程 id）用不上"),
     ("src/frontend/shell/src/ccm_probe.rs", "let _ = child.kill();", 1, Why::Reap, ""),
     ("src/frontend/shell/src/ccm_probe.rs", "let _ = child.wait();", 1, Why::Reap, ""),
+    // 〔P1〕`capture_full` 交入参那条写线程：对面不读 stdin 就退了 ⇒ 写端断，结局由它的退出码与 stderr 说；等那条线程收尾同理。
+    ("src/frontend/shell/src/ccm_probe.rs", "let _ = w.write_all(&bytes);", 1, Why::DeadLink, ""),
+    ("src/frontend/shell/src/ccm_probe.rs", "let _ = w.join();", 1, Why::Signal, ""),
     ("src/comms/inward/chan/client.rs", "tx.send(Err(hop(0, \"read\", Reach::Unknown, HopFault::Dropped))).ok();", 1, Why::PeerGone, ""),
     ("src/comms/inward/chan/client.rs", "tx.send(Job { head, body: Vec::new(), written: None, }).await.ok();", 1, Why::PeerGone, ""),
     ("src/comms/inward/chan/client.rs", "tx.send(r).ok();", 1, Why::PeerGone, ""),

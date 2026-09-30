@@ -353,28 +353,31 @@ fn the_local_ccm_cell_reports_both_halves_and_names_where_ccm_really_goes() {
     let mine = d.join("mine-ccm");
     std::fs::write(&mine, "#!/bin/sh\necho hi\n").unwrap();
     let s = |p: &std::path::Path| p.to_string_lossy().into_owned();
-    assert_eq!(reach_of(None, Some(&landing)), Reach::Nothing);
+    // 〔P1〕认旧入口的是后端（`deploy-retired` 的 `{text}`，真值表住后端 `deploy_plan_tests`）；这里只钉「交过去的是那个文件的开头原文」。
+    let shim_text = std::fs::read_to_string(&shim).unwrap();
+    let asked = |head: &str| head == shim_text;
+    assert_eq!(reach_of(None, Some(&landing), &asked), Reach::Nothing);
     assert_eq!(
-        reach_of(Some(&s(&link)), Some(&landing)),
+        reach_of(Some(&s(&link)), Some(&landing), &asked),
         Reach::Landing,
         "软链到落点就是它"
     );
     assert_eq!(
-        reach_of(Some(&s(&shim)), Some(&landing)),
+        reach_of(Some(&s(&shim)), Some(&landing), &asked),
         Reach::OtherFile {
             path: s(&shim),
             old_entry: true
         }
     );
     assert_eq!(
-        reach_of(Some(&s(&mine)), Some(&landing)),
+        reach_of(Some(&s(&mine)), Some(&landing), &asked),
         Reach::OtherFile {
             path: s(&mine),
             old_entry: false
         }
     );
     assert_eq!(
-        reach_of(Some("ccm"), Some(&landing)),
+        reach_of(Some("ccm"), Some(&landing), &asked),
         Reach::NotAFile,
         "函数 / 别名不是文件"
     );
@@ -528,4 +531,56 @@ fn wf1_the_windows_probe_script_reports_card_and_where_ccm_resolves() {
         (false, None),
         "没有：{none:?}"
     );
+}
+
+/// 〔P1 · `设计/00 §1.2` 判定只在后端〕[`ask_once`] 读 CLI 面的信封（`control/cli_control.rs` 头注那三条）：
+/// 入参从 stdin 交到（替身原样回显）· exit 0 ⇒ stdout 那行 JSON · exit 2 ⇒ `{code, message}` 成 `Refused` ·
+/// 别的退出码 / 不成 JSON ⇒ `Unreadable` · 上限内不退 ⇒ `TimedOut` · 起不来 ⇒ `Spawn`。替身是一份 sh 脚本（不是后端），
+/// 判的是问法；判词本身住后端（`deploy_plan_tests`）。
+#[cfg(unix)]
+#[test]
+fn ask_once_reads_the_cli_envelope_both_ways() {
+    use std::os::unix::fs::PermissionsExt;
+    let d = std::env::temp_dir().join(format!("ccm-p1-once-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&d);
+    std::fs::create_dir_all(&d).unwrap();
+    let script = |name: &str, body: &str| {
+        let p = d.join(name);
+        std::fs::write(&p, format!("#!/bin/sh\n{body}\n")).unwrap();
+        std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
+        p
+    };
+    let t = std::time::Duration::from_secs(5);
+    let args = serde_json::json!({ "text": "#!/bin/sh\n", "n": 1 });
+    let echo = script("echo", r#"[ "$1" = "--" ] && [ "$2" = "--deploy-retired" ] || exit 9; cat"#);
+    assert_eq!(ask_once(&echo, "deploy-retired", &args, t), Ok(args.clone()));
+    let no = script("no", r#"echo '{"code":"refused","message":"不放"}' >&2; exit 2"#);
+    assert_eq!(
+        ask_once(&no, "x", &args, t),
+        Err(OnceErr::Refused {
+            code: "refused".into(),
+            message: "不放".into()
+        })
+    );
+    for (name, body) in [
+        ("garbage", "echo not-json"),
+        ("exit1", "echo '{}'; exit 1"),
+        ("bad-envelope", "echo '{\"code\":1}' >&2; exit 2"),
+    ] {
+        let p = script(name, body);
+        assert!(
+            matches!(ask_once(&p, "x", &args, t), Err(OnceErr::Unreadable(_))),
+            "{name}"
+        );
+    }
+    let hang = script("hang", "exec sleep 30");
+    assert_eq!(
+        ask_once(&hang, "x", &args, std::time::Duration::from_millis(300)),
+        Err(OnceErr::TimedOut)
+    );
+    assert!(matches!(
+        ask_once(&d.join("absent"), "x", &args, t),
+        Err(OnceErr::Spawn(_))
+    ));
+    let _ = std::fs::remove_dir_all(&d);
 }

@@ -411,15 +411,25 @@ pub fn retired_verdict(at: deploy_core::TargetBinary, bytes: Option<Vec<u8>>) ->
 }
 
 /// 帧面入口：`{dial}` → `{verdict: "absent" | "remove" | "keep", expect, why}`。缺 `dial` ⇒ `bad_args`；SFTP 开不成 ⇒ `unreachable`。
+/// 〔P1 · 第 3 件〕另一形 `{text}`：本机 PATH 上另一个 `ccm` 的开头一截（monitor 读的），同一个 [`retired_verdict`] 认它是不是我们早先放的
+/// （monitor 只拿来说话，不删）。两形恰给一个，都给 / 都不给 ⇒ `bad_args`（不许退成问本机落点）。
 pub async fn answer_retired(
     args: &Value,
     facing: &dyn Facing,
 ) -> Result<Value, (&'static str, String)> {
-    if !args.get("dial").is_some_and(Value::is_object) {
+    let dial = args.get("dial").is_some_and(Value::is_object);
+    let text = args.get("text").and_then(Value::as_str);
+    if dial == text.is_some() {
         return Err((
             "bad_args",
-            crate::common::contract::malformed("missing `dial` (object)"),
+            crate::common::contract::malformed("exactly one of `dial` (object) / `text` (string)"),
         ));
+    }
+    if let Some(t) = text {
+        return Ok(retired_json(retired_verdict(
+            deploy_core::TargetBinary::Present,
+            Some(t.as_bytes().to_vec()),
+        )));
     }
     let rel = deploy_core::LEGACY_ENTRY_REL;
     let (size, exists) = facing.stat(rel).await.map_err(|e| ("unreachable", e))?;
@@ -434,11 +444,16 @@ pub async fn answer_retired(
         }
         _ => None,
     };
-    Ok(match retired_verdict(at, bytes) {
+    Ok(retired_json(retired_verdict(at, bytes)))
+}
+
+/// 去向 → 线上那三格（两形同一个答话形状）。
+fn retired_json(r: Retired) -> Value {
+    match r {
         Retired::Absent => json!({ "verdict": "absent", "expect": null, "why": null }),
         Retired::Remove { expect } => json!({ "verdict": "remove", "expect": expect, "why": null }),
         Retired::Keep { why } => json!({ "verdict": "keep", "expect": null, "why": why }),
-    })
+    }
 }
 
 // ═══ 〔THIN〕那台要哪一格（帧命令 `deploy-slot`）═══════════════════════════════════════════

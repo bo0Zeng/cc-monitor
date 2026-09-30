@@ -1386,11 +1386,12 @@ pub const REGISTRY: &[CommandSpec] = &[
     },
     // 〔THIN〕**那台旧入口的去向**：`{dial}` → `{verdict, expect, why}`（沿池里那条 SSH 开只读 SFTP，stat ＋ 读回，真异步）。
     //   本体 `control/deploy_plan.rs::answer_retired`（与上传残件同一家：落点上该清的东西）。
+    //   〔P1〕另一形 `{text}`：本机 PATH 上另一个 `ccm` 的开头一截，只判不读盘（monitor 本机探针拿来说话）。
     CommandSpec {
         name: "deploy-retired",
         doc_anchor: Some("#### `deploy-retired`"),
         codes: &["bad_args", "unreachable"],
-        fields: &["dial", "expect", "verdict", "why"],
+        fields: &["dial", "expect", "text", "verdict", "why"],
         takes_input: true,
         run: Run::Async(|r| {
             Box::pin(async move {
