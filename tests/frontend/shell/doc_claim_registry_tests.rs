@@ -2,7 +2,7 @@ use super::{
     EnvKeyClaim, Verdict, ENV_KEY_CLAIM_SITES, FALLS_SHORT_CEILING, MEASURE_CENSUS, STATUS_CELLS,
     THIRTY_THREE_B_QUESTIONS,
 };
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 const INVARIANTS: &str = include_str!("../../../src/doc/INVARIANTS.md");
 
@@ -140,12 +140,12 @@ fn the_doc_scan_actually_reads_the_durable_docs() {
         "`doc/` 总共只剩 {total} 行 —— 路径或读法坏了（摸底实测 4158 行）"
     );
     let tables = status_tables();
-    // 〔F19〕1 → **2**：`src/doc/ARCHITECTURE.md` §2.1 新增「backend 四层落地」表。
-    // ⚠ 这不是「为了绿而改数字」——改数字的**前提**是那张表的每一格都已登记进
-    // `STATUS_CELLS` 并配了现场量法（本条的报错文案逐字要求的就是这件事）。
+    // 〔F19〕1 → 2：`src/doc/ARCHITECTURE.md` 新增「backend 四层落地」表。
+    // 〔P6 · 09-29〕2 → **1**：那张表退役（架构文档不放进度），它的四格登记与量法同拍删；
+    //   剩下的一张是 `INVARIANTS §33b` 那张（五格，照旧逐格量）。
     assert_eq!(
         tables.len(),
-        2,
+        1,
         "「表头含状态」的表张数变了（实得 {:?}）—— **这不是让你改数字**：\n\
              新出现一张就把它的每一格登记进 `STATUS_CELLS` 并配一条现场量法；\n\
              少了一张就说明表被删了或表头措辞变了（那本条会零命中地绿，所以它必须红）。",
@@ -517,9 +517,11 @@ fn every_status_cell_measure_is_in_the_census() {
     // 随用量 ③ 轴整轴退役（它量的是「用量探针在不在调载荷内核」，探针没了）。
     // ⚠ **降地板要写清是哪一行、为什么** —— 这一条挡的是「偷偷删行」，
     // 而「那一格量的东西整块不存在了」是唯一正当的降法。
+    // 〔P6 · 09-29〕地板 9 → **5**：`monitor-backend-*-landed` 那四行随 ARCHITECTURE 那张进度表整块退役
+    //   （那四格量的东西在文档里不存在了 —— 同上面那条唯一正当的降法），剩 `INVARIANTS §33b` 的五格。
     assert!(
-        MEASURE_CENSUS.len() >= 9,
-        "普查表只剩 {} 行（`设计/50` 后现打 9 行）—— 少于分母说明有人在偷偷删行",
+        MEASURE_CENSUS.len() >= 5,
+        "普查表只剩 {} 行（P6 后现打 5 行）—— 少于分母说明有人在偷偷删行",
         MEASURE_CENSUS.len()
     );
     for (k, _, _, why) in MEASURE_CENSUS {
@@ -544,131 +546,10 @@ fn every_status_cell_measure_is_in_the_census() {
     );
 }
 
-/// `K-R73` `KR73D2`：`backend/` 下一条能力线**落地了没有**。
-///
-/// # 量的必须是**落地**，不是**有个目录**（`DECISIONS.md#R29` 裁定零）
-///
-/// 这一格原本是裸 `is_dir()`。而**紧挨着上面那几行**的 `control/` 那格逐字警告过：
-/// 「目录空着也算「有目录」，而这一格要主张的是控制面真的住进来了」——
-/// 写下那条警告的人在下面三行里连犯三次它警告的那件事（`observe/` 已由 `K-R71` 收窄，
-/// 这两格归本件）。
-///
-/// # 为什么不像 `control/` / `observe/` 那两格那样钉住一个住户的**文件名**
-///
-/// 那两条线各有「那个唯一的住户」可钉。`platform/` 与 `common/` **今天没有**（目录都还不在）
-/// ⇒ 随手指一个文件名就是**替未来的人做决定**。这里量的是一个说得出口的形：
-/// **目录在 ∧ 里面至少有一个不是 `mod.rs` 的 `.rs`**。
-///
-/// ⚠ **代价写明，别读宽**：这个形分不清「真住户」与「一份占位的 `.rs`」，
-/// 也不像 `control/` 那格那样钉住**是谁**在里面。等这条线真有那个唯一住户的那天，
-/// 换成与 `control/` 同形（钉住住户名）是**更紧**的一格 —— 那是那个人的活，不是本件的。
-///
-/// # 🔴 空目录的答案不是 `false`，是**红**
-///
-/// 目录不存在 ⇒ `false`（今天两格都在这一支，与文档那两格的「待做」对得上）。
-/// 目录**在**、里面却没有住户 ⇒ 直接 panic：那是一份**装饰**，
-/// 而装饰的危险不在它今天算 `true` 还是 `false`，在于**它让下一个人只要顺手改一下文档
-/// 那一格就能把它洗成「已交付」**（`K-R71` 的 `7u` 逮到的正是这一形：
-/// 空的 `observe/` ＋ 文档说「已交付」，monitor lib 1397 条一条不红）。
-/// 〔THIN〕量的是**壳根**下那一层目录：monitor 侧的 `backend` 目录没了（那一组回了壳根），「本机那种宿主」的那几层今天就是壳自己的
-/// 那几层（`platform/` 是 RE 立的那一个）。
-fn a_capability_line_has_landed(root: &Path, line: &str) -> bool {
-    layer_has_landed_at(&root.join("src/frontend/shell/src").join(line))
-}
-
-/// [`a_capability_line_has_landed`] 的**根可注入**版本。
-///
-/// 抽出这一层只为一件事：下面那条反向自检要让**这一份量法本身**（不是它的复刻）
-/// 跑在真目录上 —— 自检若另写一份判断，它证明的是那一份、不是量法。
-fn layer_has_landed_at(dir: &Path) -> bool {
-    if !dir.is_dir() {
-        return false;
-    }
-    let mut residents: Vec<String> = Vec::new();
-    let mut stack = vec![dir.to_path_buf()];
-    while let Some(d) = stack.pop() {
-        for entry in std::fs::read_dir(&d).expect("读能力线目录") {
-            let p = entry.expect("目录项").path();
-            if p.is_dir() {
-                stack.push(p);
-                continue;
-            }
-            if p.extension().and_then(|x| x.to_str()) == Some("rs")
-                && p.file_name().and_then(|x| x.to_str()) != Some("mod.rs")
-            {
-                residents.push(p.to_string_lossy().into_owned());
-            }
-        }
-    }
-    assert!(
-        !residents.is_empty(),
-        "`{}` 建出来了，可里面一个住户都没有（只有 `mod.rs` 也算没有）。\n\
-             ⚠ 一个空的能力线目录是**装饰**：它自己不说假话，但它让下一个人\n\
-             只要顺手把 `src/doc/ARCHITECTURE.md` 那一格改成「已交付」就全绿。\n\
-             两条出路，别默认第一条：① 把那个住户真的搬进来；\n\
-             ② 这一层其实还不需要 ⇒ 把目录删掉，让「待做」继续是真的。",
-        dir.display()
-    );
-    true
-}
-
-/// ★ 反向自检：上面那份量法**真的在量**，两个方向都验。
-///
-/// # 没有这一格会怎样
-///
-/// 把 [`layer_has_landed_at`] 改成恒 `false`，那两格就**永远说「没落地」** ——
-/// 与文档今天的「待做」一直对得上，真落地那天同样没人红。
-/// 反过来改成恒 `true`，今天当场红（那一支由 ② 接住）。
-/// **两个方向都要有刀**，所以这里既有非空对照、也有空对照。
-#[test]
-fn the_capability_line_landing_probe_actually_bites() {
-    let root = repo_root();
-    // ① **非空对照，而且是活体**：`control/` 这条线盘上确实有住户 ⇒ 必须 `true`。
-    //    量法一旦被改成恒 `false`，这一格当场红。
-    //    ⚠ 刻意用 `control/` 而不是 `observe/`：`observe/` 那一格 09-12 刚被 `K-R71`
-    //    按 `R29` 裁定一动过，本件一个字都不碰它。
-    // 〔THIN〕monitor 侧 `backend/control/` 那一层目录没了（那一组回了壳根）⇒ 活体换成壳里一个真住满人的目录 `chan/`。
-    assert!(
-        layer_has_landed_at(&root.join("src/frontend/shell/src/chan")),
-        "`chan/` 这个目录明明住满了人，量法却说它没落地 —— \
-             那说明这份量法此刻是恒 `false`，而恒 `false` 让那两格永远说「没落地」"
-    );
-    // ② 目录不存在 ⇒ `false`（今天 `platform/` 与 `common/` 就在这一支）。
-    //    量法一旦被改成恒 `true`，这一格当场红。
-    let gone = std::env::temp_dir().join(format!("ccm-cl-gone-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&gone);
-    assert!(
-        !layer_has_landed_at(&gone),
-        "一个根本不存在的目录被量成「落地了」"
-    );
-    // ③ 目录在、只有 `mod.rs` ⇒ **装饰，必须红**。
-    //    🔴 这就是件计划那条死值验（「建一个空的 `backend/platform/` 目录」）的活体版：
-    //    真判据跑在真目录上，而不是靠喂字符串。
-    let sham = std::env::temp_dir().join(format!("ccm-cl-sham-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&sham);
-    std::fs::create_dir_all(&sham).expect("造夹具目录");
-    std::fs::write(sham.join("mod.rs"), "//! 什么都不声明\n").expect("写夹具");
-    let r = std::panic::catch_unwind(|| layer_has_landed_at(&sham));
-    assert!(
-        r.is_err(),
-        "只有一份 `mod.rs` 的空壳目录被量成了「没落地」而不是红 —— \
-             那让「建个目录 + 顺手改一下文档」重新变成一条全绿的路"
-    );
-    // ④ 目录在、有一个真住户 ⇒ `true`。这一格与 ③ 一起把「有住户」这个形钉住：
-    //    少了它，量法可以退化成「目录里有 `mod.rs` 就红」这种谁都过不去的东西。
-    let real = std::env::temp_dir().join(format!("ccm-cl-real-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&real);
-    std::fs::create_dir_all(&real).expect("造夹具目录");
-    std::fs::write(real.join("mod.rs"), "//! 说明\n").expect("写夹具");
-    std::fs::write(real.join("one.rs"), "pub fn ok() -> usize { 0 }\n").expect("写夹具");
-    assert!(
-        layer_has_landed_at(&real),
-        "目录里有一个真住户，量法却说它没落地"
-    );
-    for d in [gone, sham, real] {
-        let _ = std::fs::remove_dir_all(&d);
-    }
-}
+// 〔P6 · 09-29 · 主会话裁〕这里原住着那四格「monitor 侧四层落地」的落地探针与它的反向自检：
+//   `a_capability_line_has_landed` · `layer_has_landed_at` · `the_capability_line_landing_probe_actually_bites`〔散文墓碑〕。
+//   它们只服务 ARCHITECTURE 那张进度表；那张表退役（架构文档不放进度，进度住 `调研/设计/99`），四格人群为空，
+//   探针连同自检一起删 —— 留着就是一条没人喂的恒真判据。量法与普查行同拍删（`STATUS_CELLS` / `MEASURE_CENSUS`）。
 
 /// ★★ 逐格跑「现场量法」：**文档里那一格**记的状态今天还对不对。
 ///
@@ -732,49 +613,6 @@ fn each_registered_status_still_matches_reality() {
             "ts-renderer-still-there" => (
                 !root.join("src/session-backend.ts").is_file(),
                 "TS 渲染器已经删了",
-            ),
-            // 〔F19〕四层落地量法。⚠ 量的是「**这一层在 monitor 侧落地了没有**」，
-            // **不是**「它内部已经干净了」——后者各有各的判据（`platform/` 是 C10 的
-            // 跨 target 编译，今天不成立）。把两件事混进一格会让这一格永远说不清。
-            //
-            // ⚠ `control/` 那格刻意不是裸 `is_dir`：目录空着也算「有目录」，
-            // 而这一格要主张的是**控制面真的住进来了** ⇒ 钉住那个唯一的分流器在里面。
-            "monitor-backend-control-landed" => (
-                root.join("src/comms/inward/backend_route.rs")
-                    .is_file(),
-                "monitor 侧 `backend/control/` 在，且那个唯一的回落分流器住在里面",
-            ),
-            // 🔴 〔`K-R71` 09-12，PM 裁定一〕**这一格原本是裸 `is_dir`** —— 原文逐字：
-            // `root.join("src/frontend/shell/src/backend/observe").is_dir()` ＋ 说明串
-            // 「monitor 侧 `backend/observe/` 目录存在」。
-            // ★ 它犯的正是**紧挨着上面那三行警告**说的那件事：目录空着也算「有目录」。
-            //   ⇒ 同一段代码里，写下那条警告的人在下一格就犯了它警告的事（`K-R71` 的 `7u` 逮到：
-            //   把整次搬运掏空、只留一个空的 `observe/` 与一份什么都不声明的 `mod.rs`，
-            //   而文档继续宣称「已交付」—— monitor lib **1397 条一条不红**）。
-            // ⇒ 收窄成与 `control/` 那格同形：钉住那个**唯一的住户**。
-            // ⚠ **这不是新判据，是把一条已有判据收窄到它自己声称守的性质** ——
-            //   本格改动不加任何 `#[test]`，判据条数一格没涨。
-            // 〔LOC1a · 第四波 4D〕那个唯一的住户（`local_query.rs`〔散文墓碑〕）删了 ⇒ 这一格不再有「那一个」可钉，
-            //   量法改成与 `platform/` / `common/` 同形：目录在 ∧ 里面真有住户（空壳 `mod.rs` 不算）。
-            "monitor-backend-observe-landed" => (
-                a_capability_line_has_landed(&root, "observe"),
-                "monitor 侧 `backend/observe/` 在，且里面**真有住户**（至少一个不是 `mod.rs` 的 `.rs`）",
-            ),
-            // 🔴 〔`K-R73` 09-12，PM 裁定二排期到本件〕**这两格原本是裸 `is_dir`** —— 原文逐字：
-            //   `root.join("src/frontend/shell/src/backend/platform").is_dir()` ＋ 说明串
-            //   「monitor 侧 `backend/platform/` 目录存在」（`common/` 同形）。
-            //   它们**今天不说假话**（两个目录都不在，`false` 是真的），**建目录那一刻才会** ——
-            //   与 `observe/` 那一格 09-12 的遭遇逐字同形。
-            // ⚠ **本件不许硬指一个住户**：这两条线今天没有「那个唯一的住户」可钉，
-            //   随手指一个文件名就是替未来的人做决定。⇒ 收窄成一个**说得出口的形**，
-            //   见 [`a_capability_line_has_landed`]：目录在 ∧ 里面真有住户。
-            "monitor-backend-platform-landed" => (
-                a_capability_line_has_landed(&root, "platform"),
-                "monitor 侧 `backend/platform/` 在，且里面**真有住户**（至少一个不是 `mod.rs` 的 `.rs`）",
-            ),
-            "monitor-backend-common-landed" => (
-                a_capability_line_has_landed(&root, "common"),
-                "monitor 侧 `backend/common/` 在，且里面**真有住户**（至少一个不是 `mod.rs` 的 `.rs`）",
             ),
             other => panic!("`{item}` 的量法键 {other:?} 没有实现 —— 登记表与实现漂了"),
         };
