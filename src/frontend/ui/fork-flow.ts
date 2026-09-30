@@ -64,7 +64,7 @@ export interface ForkSourceFacts {
  * - **属于哪个账号** → pidfile（`--session-accounts`）。tmux 清单里**没有**账号信息。
  *
  * 所以「tmux 里找到了、但账号查不到」是一个**真实且常见**的状态（账号功能没启用 /
- * cc-acct-iso 没部署）。此时必须落成 `liveConfigDir: undefined`（= 活着但不知道账号），
+ * 没启用多账号）。此时必须落成 `liveConfigDir: undefined`（= 活着但不知道账号），
  * **不是** `null`（= 确认账号 0）—— 后者会让分叉静默起在账号 0 上。
  */
 export function deriveForkSource(

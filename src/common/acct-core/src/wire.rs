@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 /// 一个号靠什么鉴权。字面量与清单里 `authKind` 那一格同一套（[`crate::AUTH_KIND_SUBSCRIPTION`] · [`crate::AUTH_KIND_API_KEY`]）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(test, ts(export, export_to = "../../../frontend/ui/generated/"))]
 pub enum AccountKind {
     #[serde(rename = "subscription")]
     Subscription,
@@ -29,7 +29,7 @@ impl AccountKind {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(test, ts(export, export_to = "../../../frontend/ui/generated/"))]
 pub struct AccountInitArgs {
     pub name: String,
     /// 真 ⇒ 只算不做（回将要做的那几步）。
@@ -41,7 +41,7 @@ pub struct AccountInitArgs {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(test, ts(export, export_to = "../../../frontend/ui/generated/"))]
 pub struct AccountAddArgs {
     pub name: String,
     pub kind: AccountKind,
@@ -65,7 +65,7 @@ pub struct AccountAddArgs {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(test, ts(export, export_to = "../../../frontend/ui/generated/"))]
 pub struct AccountRemoveArgs {
     pub name: String,
     /// 删的是默认号时必须给真。
@@ -79,7 +79,7 @@ pub struct AccountRemoveArgs {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(test, ts(export, export_to = "../../../frontend/ui/generated/"))]
 pub struct AccountNameArgs {
     pub name: String,
     #[cfg_attr(test, ts(optional))]
@@ -90,7 +90,7 @@ pub struct AccountNameArgs {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(test, ts(export, export_to = "../../../frontend/ui/generated/"))]
 pub struct AccountRepairArgs {
     #[cfg_attr(test, ts(optional))]
     pub dry_run: Option<bool>,
@@ -100,7 +100,7 @@ pub struct AccountRepairArgs {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(test, ts(export, export_to = "../../../frontend/ui/generated/"))]
 pub struct AccountIsolateArgs {
     pub item: String,
     #[cfg_attr(test, ts(optional))]
@@ -111,7 +111,7 @@ pub struct AccountIsolateArgs {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(test, ts(export, export_to = "../../../frontend/ui/generated/"))]
 pub struct AccountRollbackArgs {
     #[cfg_attr(test, ts(optional))]
     pub backup: Option<String>,
@@ -123,7 +123,7 @@ pub struct AccountRollbackArgs {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(test, ts(export, export_to = "../../../frontend/ui/generated/"))]
 pub struct AccountRef {
     pub name: String,
     pub config_dir: String,
@@ -133,7 +133,7 @@ pub struct AccountRef {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(test, ts(export, export_to = "../../../frontend/ui/generated/"))]
 pub struct AliasChange {
     pub path: String,
     /// 这一趟真写了没有（内容没变 ⇒ 一个字节不写）。
@@ -148,7 +148,7 @@ pub struct AliasChange {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Default)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(test, ts(export, export_to = "../../../frontend/ui/generated/"))]
 pub struct AccountChange {
     pub applied: bool,
     /// 做了（或将要做）的每一步，一句一行。
@@ -174,7 +174,7 @@ pub struct AccountChange {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(test, ts(export, export_to = "../../../frontend/ui/generated/"))]
 pub enum CheckLevel {
     Ok,
     Warn,
@@ -186,7 +186,7 @@ pub enum CheckLevel {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(test, ts(export, export_to = "../../../frontend/ui/generated/"))]
 pub struct VerifyCheck {
     pub level: CheckLevel,
     /// 说的是哪个号；全局的那几条 ⇒ `None`。
@@ -198,7 +198,7 @@ pub struct VerifyCheck {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(test, ts(export, export_to = "../../../frontend/ui/generated/"))]
 pub struct VerifyReport {
     /// 没有一条 `fail`。
     pub pass: bool,
@@ -211,7 +211,7 @@ pub struct VerifyReport {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(test, ts(export, export_to = "../../../frontend/ui/generated/"))]
 pub struct AccountLoginCmd {
     pub cmd: String,
 }

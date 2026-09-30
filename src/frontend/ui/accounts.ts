@@ -1,4 +1,4 @@
-// A3：多账号（cc-acct-iso）前端的**账号模型** —— 形状与规则的单一真相（纯，零 IO）。
+// A3：多账号前端的**账号模型** —— 形状与规则的单一真相（纯，零 IO）。
 //
 // 账号 = 一个 CLAUDE_CONFIG_DIR。本模块只装「一个账号长什么样、它能不能选、它该显示成什么」：
 //   形状（`Account` · `AccountsState` · `SessionAccount`）· 降级判定（`deriveUi`）· 可用性唯一出口（`isSelectable`）·
@@ -117,7 +117,7 @@ export interface AccountsState {
   defaultName: string | null;
   /**
    * Z01：**能用但有缺**时的人话说明（`available` 仍是 true）。null = 无缺。
-   * 「绝不静默降级」是它存在的全部理由——旧 backend / 旧 cc-acct-iso 会让账号 0
+   * 「绝不静默降级」是它存在的全部理由——旧 backend / 旧的写清单那一侧会让账号 0
    * 从列表里凭空少一行，用户看不出区别。
    */
   notice: string | null;
