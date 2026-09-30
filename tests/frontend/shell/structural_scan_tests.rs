@@ -2789,8 +2789,9 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         // 〔MIG-1 续〕`tmux.rs` 里 `tmux_raw_for` 那一行摘了：点它的那段文档随本机列会话那条命令（`list_local_tmux`）整条删了。
         ("src/frontend/shell/src/bind.rs", "is_process_alive", 1),
         ("src/frontend/shell/src/lib.rs", "load_with_changes", 1),
+        // 〔P4b · 阶段 H〕`LifetimeGuard` 的 Drop 连同那句「形状照 …」随平台原语搬进 `platform/spawn.rs`。
         (
-            "src/frontend/shell/src/spawn_managed.rs",
+            "src/frontend/shell/src/platform/spawn.rs",
             "is_process_alive",
             1,
         ),
@@ -4990,6 +4991,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/frontend/shell/src/config.rs", 1), // 〔P4 · 阶段 H〕2 → 1：`atomic_replace` 头注里那一处随函数进了 `platform/fs.rs` //〔CFG1〕+1：整份写口 `save_config` 删了，讲来历那一句挂墓碑
         ("src/frontend/shell/src/creds_store.rs", 6), // 〔HX2 · 4D〕+2：两处「GP1 那一版经 `write_key_on`」
         ("src/frontend/shell/src/platform/fs.rs", 2), // 〔P4 · 阶段 H〕1 → 2：`atomic_replace` 从 `config.rs` 搬来，头注那一处随之
+        ("src/frontend/shell/src/platform/spawn.rs", 1), // 〔P4b · 阶段 H〕随 `spawn_managed.rs` 的平台原语搬来的那一块
         ("src/frontend/shell/src/platform/terminal.rs", 6), // 〔P4 · 阶段 H〕0 → 6：开窗的平台臂从 `launch.rs` 搬来，头注里的六处随之
         (
             "tests/backend/accounts/upstream_select/file_face_tests.rs",
@@ -5114,7 +5116,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/backend/agents/claudecode/resume.rs", 1), // 〔P1〕新贴：头注点 monitor 那份适配器的旧住址
         // 〔MOD〕`tests/frontend/shell/adapter_tests.rs` 出表：那份文件随记录解释进后端删了（或墓碑随被守的东西整轴退役）
         ("src/frontend/shell/src/local_origin_registry.rs", 12), // 〔FIX4 · ⑬〕10 → 12：开终端 ssh 外壳进本机后端，点旧名的散文挂墓碑 // 〔MIG-1 收尾〕地址解析 / 组拨号请求搬进后端 dial/machine.rs，点旧名的散文挂墓碑 9 → 10 // 〔合并 MIG-3b × 主线 a7b0b209〕主线 8 ＋ MIG-3b +1（删会话 / 分叉 / 钩子诊断的转交退役，点旧名的散文挂墓碑） // 〔SH1〕+1：MCP 远端那两行还掉处点的旧名 // 〔SH1〕+1：包装层那一格点的 `cfg_of` 随驾驶舱 shell 读删了 // 〔C4e 批 3b〕+1：P4a 变异 M5 那一格点的发消息命令迁到界面 // 〔C4e 批 2〕+2：`K-R56` 还掉的那一条（送键命令）今天整个迁到界面，两处点它 // 〔C4c〕+1：分诊债表里账号面那一行还掉了 // 〔MIG-2〕7 → 8
-        ("src/frontend/shell/src/spawn_managed.rs", 6), // 〔合并 MIG-1 × 主线 8c6cdc0e〕两边各自贴的墓碑相加，按盘上现数（跑出来核过） 4 → 6 // 〔LOC1a〕+2：一次性本机查询那一格删了，点旧名的散文挂墓碑
+        ("src/frontend/shell/src/spawn_managed.rs", 5), // 〔P4b · 阶段 H〕6 → 5：`LifetimeGuard` 的 Drop 那一块随平台原语搬进 `platform/spawn.rs`（那边 +1） // 〔合并 MIG-1 × 主线 8c6cdc0e〕两边各自贴的墓碑相加，按盘上现数（跑出来核过） 4 → 6 // 〔LOC1a〕+2：一次性本机查询那一格删了，点旧名的散文挂墓碑
         ("src/frontend/shell/src/structural_scan.rs", 1),
         ("src/doc/ARCHITECTURE.md", 3), // 〔合并 MIG-1 × 主线 8c6cdc0e〕两边各自贴的墓碑相加，按盘上现数（跑出来核过） 2 → 3 // 〔LOC1a〕+1：本机一次性 exec / 任务行解释 / 分叉 exec 那几条路删了，点旧名的散文挂墓碑
         ("src/doc/INVARIANTS.md", 25), // 〔合并 MIG-1 × 主线 8c6cdc0e〕两边各自贴的墓碑相加，按盘上现数（跑出来核过） 19 → 25 // 〔合并 MIG-3b × 主线 5bb03b34〕两边各自贴的墓碑相加，按盘上现数（跑出来核过） // 〔合并 MIG-3a × 主线 5b52f042〕基数 12 ＋ MIG-3a +2 ＋ 主线 +4 ⇒ 18 // 〔DUP1〕+2：U8c-1「变严的代价」那一节补一句「收口了，收法是删」·「本地路径借 IR 做校验」那一节记 `validateLocalLaunch` 删了 // 〔LOC1b〕+1：§6 探活双重校验那一格搬去后端，点 monitor 旧函数名那句挂一块 // 〔RW1〕+2：§1 例外 3 那道远端删会话守卫 · 例外 1 本机那道路径守卫（`validate_delete_target`） // 〔MIG-2〕12 → 16

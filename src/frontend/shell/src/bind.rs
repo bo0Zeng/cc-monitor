@@ -429,108 +429,28 @@ fn process_await_file(this: &BindRegistry, await_file: &Path) {
     }
 }
 
-/// `find_window_by_marker_substr` 命中的窗口快照（leaf primitive 输出）。
+/// `find_window_by_marker_substr` 命中的窗口快照（〔P4b〕住 `platform::hwnd`，这里再导出）。
 /// `find_window_for_marker`（本地 ps-bind）和 `RemoteHwndCache::try_bind`（远端
 /// sid-bind）共用这同一个 EnumWindows 扫描，只是后续组的 struct 不同。
-#[cfg(windows)]
-pub struct MarkerHit {
-    pub hwnd: isize,
-    pub owner_pid: u32,
-    pub title: String,
+pub use crate::platform::hwnd::MarkerHit;
+
+/// 「这个窗口是不是我们要的那个」：title **子串包含** `marker`（不是相等：WT 会往标题里塞别的东西）；空 marker 不认任何窗口。
+fn title_carries_marker(title: &str, marker: &str) -> bool {
+    !marker.is_empty() && title.contains(marker)
 }
 
-/// EnumWindows 扫一遍所有可见窗口，返回 **title 子串包含 `marker`** 的第一个窗口。
+/// 扫一遍所有可见窗口，返回 **title 子串包含 `marker`** 的第一个窗口。
 ///
-/// 这是从 `find_window_for_marker` 抽出的纯 leaf primitive（code-motion，行为
-/// byte-identical）：同样的 thread_local FOUND/MARKER、同样的 512-u16 buffer、
-/// 同样的 `title.contains(marker)` 子串匹配、同样**不过滤 owner=0**（见下方注释）。
-#[cfg(windows)]
+/// 〔P4b · 阶段 H〕EnumWindows 那一跳（读法）住 `platform::hwnd::first_visible_window`（别处恒 `None`）；
+/// 「哪个标题算命中」这条规则是上面那个 [`title_carries_marker`]，留在这里。
 fn find_window_by_marker_substr(marker: &str) -> Option<MarkerHit> {
-    use std::cell::RefCell;
-    use windows::Win32::Foundation::{BOOL, HWND, LPARAM};
-    use windows::Win32::UI::WindowsAndMessaging::{
-        EnumWindows, GetWindowTextW, GetWindowThreadProcessId, IsWindowVisible,
-    };
-
-    thread_local! {
-        static FOUND: RefCell<Option<MarkerHit>> = const { RefCell::new(None) };
-        static MARKER: RefCell<String> = const { RefCell::new(String::new()) };
-    }
-
-    MARKER.with(|m| *m.borrow_mut() = marker.to_string());
-    FOUND.with(|f| *f.borrow_mut() = None);
-
-    // v1.7.5 修：不再过滤 `GetWindow(hwnd, GW_OWNER) != 0` 的窗口。
-    //
-    // 原本继承自 v1.6.x 4-tier 算法的"只看 top-level 无 owner 窗口"过滤，
-    // 在 v1.7 cc 注入式绑定下导致 bug：WindowsTerminal 的 XAML 子窗口（Microsoft.UI.Xaml.*）
-    // owner != 0（owner = WT 主窗口），会被过滤掉。PowerShell 的
-    // `$Host.UI.RawUI.WindowTitle` 可能同步到这些 XAML 子窗口而非 WT 主窗口
-    // （取决于 WT/conhost 版本）。
-    //
-    // marker 字符串 = "ccm-bind-{PID}-{8 char UUID}" 极独特，不会撞别的窗口
-    // title，不需要 owner=0 这个保险。
-    unsafe extern "system" fn cb(hwnd: HWND, _lp: LPARAM) -> BOOL {
-        if !unsafe { IsWindowVisible(hwnd) }.as_bool() {
-            return BOOL(1);
-        }
-        // v1.7.7：不再用 GetWindowTextLengthW 预查询长度。
-        // 对 Microsoft.UI.Xaml.Controls / WinUI 控件（Windows Terminal 用的），
-        // GetWindowTextLengthW 经常返回 0（WinRT 控件兼容 Win32 API 的 quirk），
-        // 但 GetWindowTextW 直接给 buffer 调用能拿到实际 title。
-        // 固定 512 buffer 跟用户端诊断脚本一致；marker 长 ≤ 50 字符肯定够。
-        let title = unsafe {
-            let mut buf = vec![0u16; 512];
-            let n = GetWindowTextW(hwnd, &mut buf);
-            if n > 0 {
-                String::from_utf16_lossy(&buf[..n as usize])
-            } else {
-                String::new()
-            }
-        };
-        let marker_match = MARKER.with(|m| {
-            let m = m.borrow();
-            !m.is_empty() && title.contains(m.as_str())
-        });
-        if !marker_match {
-            return BOOL(1);
-        }
-        let mut owner_pid: u32 = 0;
-        let _ = unsafe { GetWindowThreadProcessId(hwnd, Some(&mut owner_pid)) };
-        FOUND.with(|f| {
-            *f.borrow_mut() = Some(MarkerHit {
-                hwnd: hwnd.0,
-                owner_pid,
-                title,
-            });
-        });
-        BOOL(0) // 找到了，停止枚举
-    }
-
-    unsafe {
-        let _ = EnumWindows(Some(cb), LPARAM(0));
-    }
-
-    FOUND.with(|f| f.borrow_mut().take())
+    crate::platform::hwnd::first_visible_window(marker, title_carries_marker)
 }
 
-#[cfg(not(windows))]
-fn find_window_by_marker_substr(_marker: &str) -> Option<MarkerHit> {
-    None
-}
-
-#[cfg(not(windows))]
-pub struct MarkerHit {
-    pub hwnd: isize,
-    pub owner_pid: u32,
-    pub title: String,
-}
-
-#[cfg(windows)]
 fn find_window_for_marker(req: &AwaitRequest) -> Option<HwndEntry> {
     let m = find_window_by_marker_substr(&req.marker)?;
     // FileTime → u64（HwndEntry.owner_proc_start 仍 wire u64 保兼容；0 表示拿不到）
-    let owner_proc_start = process_creation_filetime(m.owner_pid)
+    let owner_proc_start = crate::platform::pid::creation_filetime(m.owner_pid)
         .map(|ft| ft.0)
         .unwrap_or(0);
 
@@ -539,147 +459,52 @@ fn find_window_for_marker(req: &AwaitRequest) -> Option<HwndEntry> {
     Some(entry_from_marker_hit(req, m, owner_proc_start))
 }
 
-#[cfg(not(windows))]
-fn find_window_for_marker(_req: &AwaitRequest) -> Option<HwndEntry> {
-    None
-}
-
-/// 拿指定 PID 的 GetProcessTimes creation FILETIME。失败返 None。
-/// 返回 `crate::utils::FileTime` 强类型（避免跟 NetTicks 混用）。
-#[cfg(windows)]
-fn process_creation_filetime(pid: u32) -> Option<crate::utils::FileTime> {
-    use windows::Win32::Foundation::{CloseHandle, FILETIME};
-    use windows::Win32::System::Threading::{
-        GetProcessTimes, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
-    };
-    if pid == 0 {
-        return None;
-    }
-    unsafe {
-        let handle = match OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) {
-            Ok(h) if !h.is_invalid() => h,
-            _ => return None,
-        };
-        let mut creation = FILETIME::default();
-        let mut exit_t = FILETIME::default();
-        let mut kernel = FILETIME::default();
-        let mut user = FILETIME::default();
-        let ok =
-            GetProcessTimes(handle, &mut creation, &mut exit_t, &mut kernel, &mut user).is_ok();
-        let _ = CloseHandle(handle);
-        if !ok {
-            return None;
-        }
-        Some(crate::utils::FileTime::from_win32(&creation))
-    }
-}
-
-#[cfg(not(windows))]
-fn process_creation_filetime(_pid: u32) -> Option<crate::utils::FileTime> {
-    None
-}
-
-/// 用 ToolHelp 拿指定 PID 的 parent_pid。失败返 None。
-#[cfg(windows)]
-pub fn get_parent_pid(pid: u32) -> Option<u32> {
-    use windows::Win32::Foundation::CloseHandle;
-    use windows::Win32::System::Diagnostics::ToolHelp::{
-        CreateToolhelp32Snapshot, Process32First, Process32Next, PROCESSENTRY32, TH32CS_SNAPPROCESS,
-    };
-    unsafe {
-        let snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0).ok()?;
-        if snap.is_invalid() {
-            return None;
-        }
-        let mut entry = PROCESSENTRY32 {
-            dwSize: std::mem::size_of::<PROCESSENTRY32>() as u32,
-            ..Default::default()
-        };
-        let mut result = None;
-        if Process32First(snap, &mut entry).is_ok() {
-            loop {
-                if entry.th32ProcessID == pid {
-                    result = Some(entry.th32ParentProcessID);
-                    break;
-                }
-                if Process32Next(snap, &mut entry).is_err() {
-                    break;
-                }
-            }
-        }
-        let _ = CloseHandle(snap);
-        result
-    }
-}
-
-#[cfg(not(windows))]
-pub fn get_parent_pid(_pid: u32) -> Option<u32> {
-    None
-}
-
 /// 验证 hwnd 仍合法 + 当前 owner_pid 跟绑定时一致 + 该进程 procStart 一致。
 /// 返回 Ok(()) 表示通过，Err(reason) 描述失败原因（给 toast 用）。
-#[cfg(windows)]
+///
+/// 〔P4b · 阶段 H〕三样事实（窗口还在 · 属主 · 属主起始时刻）由 `platform::{hwnd, pid}` 读，三格比对留在这里；
+/// 这台没有桌面窗口那一族 ⇒ 原先非 Windows 那一句。
 pub fn verify_binding(binding: &SidHwndBinding) -> Result<(), String> {
-    use windows::Win32::Foundation::HWND;
-    use windows::Win32::UI::WindowsAndMessaging::{GetWindowThreadProcessId, IsWindow};
-    unsafe {
-        let hwnd = HWND(binding.hwnd);
-        if !IsWindow(hwnd).as_bool() {
-            return Err(copy_text("rsBind.verify.windowGone", &[]));
-        }
-        let mut cur_owner: u32 = 0;
-        let _ = GetWindowThreadProcessId(hwnd, Some(&mut cur_owner));
-        if cur_owner != binding.owner_pid {
-            return Err(copy_text(
-                "rsBind.verify.windowReused",
-                &[
-                    ("curOwner", &cur_owner.to_string()),
-                    ("ownerPid", &binding.owner_pid.to_string()),
-                ],
-            ));
-        }
-        if binding.owner_proc_start != 0 {
-            // 两边都是 FileTime UTC（u64 同零点）→ 直接比 .0 即可
-            let cur_proc_start = process_creation_filetime(cur_owner)
-                .map(|ft| ft.0)
-                .unwrap_or(0);
-            if cur_proc_start != 0 && cur_proc_start != binding.owner_proc_start {
-                return Err(copy_text("rsBind.verify.pidReused", &[]));
-            }
-        }
-        Ok(())
+    use crate::platform::hwnd;
+    if !hwnd::SUPPORTED {
+        return Err("only supported on Windows".into());
     }
-}
-
-#[cfg(not(windows))]
-pub fn verify_binding(_binding: &SidHwndBinding) -> Result<(), String> {
-    Err("only supported on Windows".into())
+    if !hwnd::exists(binding.hwnd) {
+        return Err(copy_text("rsBind.verify.windowGone", &[]));
+    }
+    let cur_owner = hwnd::owner_pid(binding.hwnd);
+    if cur_owner != binding.owner_pid {
+        return Err(copy_text(
+            "rsBind.verify.windowReused",
+            &[
+                ("curOwner", &cur_owner.to_string()),
+                ("ownerPid", &binding.owner_pid.to_string()),
+            ],
+        ));
+    }
+    if binding.owner_proc_start != 0 {
+        // 两边都是 FileTime UTC（u64 同零点）→ 直接比 .0 即可
+        let cur_proc_start = crate::platform::pid::creation_filetime(cur_owner)
+            .map(|ft| ft.0)
+            .unwrap_or(0);
+        if cur_proc_start != 0 && cur_proc_start != binding.owner_proc_start {
+            return Err(copy_text("rsBind.verify.pidReused", &[]));
+        }
+    }
+    Ok(())
 }
 
 /// 把窗口拉到前台。失败时返 Err（不致命，OS 会让窗口在任务栏闪烁）。
-#[cfg(windows)]
+/// 〔P4b〕拉法住 `platform::hwnd::bring_to_front`，这里只答「拉不动说哪句」。
 pub fn activate(hwnd: isize) -> Result<(), String> {
-    use windows::Win32::Foundation::HWND;
-    use windows::Win32::UI::WindowsAndMessaging::{
-        IsIconic, SetForegroundWindow, ShowWindow, SW_RESTORE,
-    };
-    unsafe {
-        let h = HWND(hwnd);
-        if IsIconic(h).as_bool() {
-            let _ = ShowWindow(h, SW_RESTORE);
-        }
-        if SetForegroundWindow(h).as_bool() {
-            Ok(())
-        } else {
-            Err(copy_text("rsBind.activate.refused", &[]).into())
-        }
+    if !crate::platform::hwnd::SUPPORTED {
+        return Err("only supported on Windows".into());
     }
-}
-
-#[cfg(not(windows))]
-pub fn activate(_hwnd: isize) -> Result<(), String> {
-    Err("only supported on Windows".into())
+    if crate::platform::hwnd::bring_to_front(hwnd) {
+        Ok(())
+    } else {
+        Err(copy_text("rsBind.activate.refused", &[]).into())
+    }
 }
 
 /// 持久化的 sid → 拉前信息缓存。SessionMap 在新 session 时 record；
@@ -716,7 +541,7 @@ impl SidHwndCache {
         claude_pid: u32,
         bind: &BindRegistry,
     ) -> Option<SidHwndBinding> {
-        let parent_pid = get_parent_pid(claude_pid)?;
+        let parent_pid = crate::platform::pid::parent_pid(claude_pid)?;
         let entry = bind.lookup_hwnd_for_ps(parent_pid)?;
         let binding = SidHwndBinding {
             hwnd: entry.hwnd,
@@ -779,7 +604,7 @@ impl SidHwndCache {
 /// 加持久化加心跳）；远端走 wrapper 设的窗口标题 `ccm-rbind-<sid>`，monitor 在
 /// session_added 时扫本地窗口找该标题并直接绑 sid。
 ///
-/// **无持久化、无 record/get_parent_pid**：远端绑定是瞬时的（窗口标题在远端 shell
+/// **无持久化、无 record / 父 pid 那一跳**：远端绑定是瞬时的（窗口标题在远端 shell
 /// 存活期间一直在），monitor 重启后 session_added 会重扫重绑；`verify_binding` 是
 /// 运行时安全网（HWND 复用 / 进程换人都会被它拦下）。
 pub struct RemoteHwndCache {
@@ -831,13 +656,12 @@ impl RemoteHwndCache {
     /// 复用本地机制的 leaf primitive（[`find_window_by_marker_substr`]）。组出的
     /// `SidHwndBinding` 里 `ps_pid`/`ps_proc_start` 留空（0 / ""）——远端无 PS 握手，
     /// 而 `verify_binding` 只读 hwnd/owner_pid/owner_proc_start，不读这两个字段。
-    #[cfg(windows)]
     pub fn try_bind(&self, sid: &str) -> bool {
         let marker = format!("ccm-rbind-{sid}");
         let Some(hit) = find_window_by_marker_substr(&marker) else {
             return false;
         };
-        let owner_proc_start = process_creation_filetime(hit.owner_pid)
+        let owner_proc_start = crate::platform::pid::creation_filetime(hit.owner_pid)
             .map(|ft| ft.0)
             .unwrap_or(0);
         let binding = SidHwndBinding {
@@ -853,11 +677,6 @@ impl RemoteHwndCache {
         true
     }
 
-    #[cfg(not(windows))]
-    pub fn try_bind(&self, _sid: &str) -> bool {
-        false
-    }
-
     /// F75（#41 远端拉前不及时）：**带重试**的现扫绑定，供 on-demand（↗ 点击）路径用。
     ///
     /// 单次 [`try_bind`] 对 on-demand 不够：远端标题传播链是「远端 shell → SSH → tmux → 本地
@@ -868,8 +687,11 @@ impl RemoteHwndCache {
     /// `spawn_blocking` 里，sleep 不阻塞主线程。
     ///
     /// ⚠️ **窗口长度待真机实测调**（四跳 + tmux 截断 + 用户点击后的可接受等待，`ON_DEMAND_BIND_*`）。
-    #[cfg(windows)]
+    /// 〔P4b〕这台没有桌面窗口那一族（`platform::hwnd::SUPPORTED`）⇒ 不扫不等，直接回 `false`（原先非 Windows 那一份）。
     pub fn try_bind_with_retry(&self, sid: &str, attempts: u32, step_ms: u64) -> bool {
+        if !crate::platform::hwnd::SUPPORTED {
+            return false;
+        }
         if self.try_bind(sid) {
             return true;
         }
@@ -879,11 +701,6 @@ impl RemoteHwndCache {
                 return true;
             }
         }
-        false
-    }
-
-    #[cfg(not(windows))]
-    pub fn try_bind_with_retry(&self, _sid: &str, _attempts: u32, _step_ms: u64) -> bool {
         false
     }
 }
@@ -1084,33 +901,6 @@ pub fn bring_remote_front(
 pub const ON_DEMAND_BIND_ATTEMPTS: u32 = 40;
 pub const ON_DEMAND_BIND_STEP_MS: u64 = 100;
 
-#[cfg(windows)]
-fn is_pid_alive(pid: u32) -> bool {
-    use windows::Win32::Foundation::CloseHandle;
-    use windows::Win32::System::Threading::{
-        GetExitCodeProcess, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
-    };
-    const STILL_ACTIVE: u32 = 259;
-    if pid == 0 {
-        return false;
-    }
-    unsafe {
-        let handle = match OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) {
-            Ok(h) if !h.is_invalid() => h,
-            _ => return false,
-        };
-        let mut code: u32 = 0;
-        let alive = GetExitCodeProcess(handle, &mut code).is_ok() && code == STILL_ACTIVE;
-        let _ = CloseHandle(handle);
-        alive
-    }
-}
-
-#[cfg(not(windows))]
-fn is_pid_alive(_pid: u32) -> bool {
-    false
-}
-
 fn run_heartbeat(this: Arc<BindRegistry>) {
     loop {
         std::thread::sleep(Duration::from_secs(10));
@@ -1128,7 +918,7 @@ fn cleanup_dead(this: &BindRegistry) {
 
     let dead: Vec<u32> = snapshot
         .into_iter()
-        .filter(|(pid, _)| !is_pid_alive(*pid))
+        .filter(|(pid, _)| !crate::platform::pid::is_alive(*pid))
         .map(|(pid, _)| pid)
         .collect();
 

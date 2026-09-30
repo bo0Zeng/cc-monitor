@@ -31,7 +31,7 @@
 //!
 //! `backend_client_guard_tests.rs::the_backend_half_stays_platform_agnostic` 的禁针含 `#[cfg(windows)`
 //! 与 `std::os::windows` / `std::os::unix` ⇒ 写进 `backend/` 当场红；
-//! 而「加一条平台例外」被**递减棘轮**堵着（`PLATFORM_EXCEPTIONS.len() <= 1`，今天正好 1 条）。
+//! 而「加一条平台例外」被**递减棘轮**堵着（`PLATFORM_EXCEPTIONS.len() <= 1`；〔P4b〕今天 0 条，壳里平台形态另由 `platform_home_guard` 只许住 `platform/`）。
 //! ⇒ `backend/` 的两个落点（`local_backend::supervise_with_stdio` ·
 //! `local_query::run_query`）**只收注入参数**，形状照 `start_or_extract` 的
 //! `make_executable: &dyn Fn(...)` 那个先例（见 [`ManagedSpawn`]）。
@@ -121,112 +121,9 @@ pub enum StderrSink {
     Captured,
 }
 
-// ══════════════════════════════════════════════════════════════════════════
-// 平台原语：**全仓只此一份**
-// ══════════════════════════════════════════════════════════════════════════
-
-/// `CreateProcess` 的 `CREATE_NO_WINDOW`。**不是字节上限**（登记在
-/// `byte_cap_registry` 的排除表里）。
-#[cfg(windows)]
-const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-
-/// `CreateProcess` 的 `CREATE_NEW_CONSOLE`。同上，是位掩码不是尺寸。
-#[cfg(windows)]
-const CREATE_NEW_CONSOLE: u32 = 0x0000_0010;
-
-/// 这三条策略在 Windows 上合成的 creation flags。
-///
-/// ⚠ **合成必须在一处做**：`Command::creation_flags` 是**覆盖**不是或上去，
-/// 两处各调一次的结果是后一次把前一次抹掉 —— 那是一个不会报错、只会静默错的形状。
-#[cfg(windows)]
-fn creation_flags_for(console: ConsolePolicy, _lifetime: Lifetime) -> u32 {
-    match console {
-        ConsolePolicy::Hidden => CREATE_NO_WINDOW,
-        ConsolePolicy::NewVisible => CREATE_NEW_CONSOLE,
-        ConsolePolicy::Inherit => 0,
-    }
-}
-
-/// 收尾凭据：**句柄一关，那棵进程树整体收掉**。
-///
-/// Windows 上它握着一个 Job Object；别处它是个空壳（那边这一格由各落点自己的
-/// `wait` / `kill` 承担，见模块头注的诚实边界 2）。
-#[cfg(windows)]
-pub struct LifetimeGuard(Option<windows::Win32::Foundation::HANDLE>);
-
-/// 见 Windows 那一支。
-#[cfg(not(windows))]
-pub struct LifetimeGuard;
-
-#[cfg(windows)]
-impl Drop for LifetimeGuard {
-    fn drop(&mut self) {
-        if let Some(h) = self.0.take() {
-            // 关掉 Job 的最后一个句柄 = 连同 Job 里**所有**进程一起收掉
-            // （`JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`）。这就是本件要买的那一下。
-            // 形状照 `session_map::is_process_alive`〔散文墓碑〕：一个 `unsafe` 块，句柄显式关。
-            unsafe {
-                let _ = windows::Win32::Foundation::CloseHandle(h);
-            }
-        }
-    }
-}
-
-/// 把一个**已经起来的**子进程连同它自己起的一切收进一个 Job Object。
-///
-/// # ⚠ 它买不到什么（写下来，别读成比它强）
-///
-/// 1. **有一个小竞态**：`AssignProcessToJobObject` 只能在 `spawn()` **之后**做，
-///    而中间那个外壳若已经把真进程起出来了，那个孙子就没进 Job。
-///    真正无窗口的做法要 `CREATE_SUSPENDED` ＋ 拿线程句柄 `ResumeThread`，
-///    而 `std::process::Child` 不给线程句柄 ⇒ 今天做不到。
-///    ⚠ 落进这个窗口时**不比今天坏**（原有的显式 kill / `kill_on_drop` 照旧）。
-/// 2. **失败不静默、但也不失败整条路**：建不出 Job / 认领不上时走 `tracing::error!`
-///    并**明说这台机器上收尾这一格没人守**。刻意**不**回 `Err`：起进程本身没坏，
-///    把它变成 `Err` 会让一台拒绝 Job 的机器**彻底用不了这条路** —— 那是拿一个更大的坏
-///    去换一个小的。
-#[cfg(windows)]
-fn assign_to_job(raw: std::os::windows::io::RawHandle, what: &str) -> LifetimeGuard {
-    use windows::Win32::Foundation::{CloseHandle, HANDLE};
-    use windows::Win32::System::JobObjects::{
-        AssignProcessToJobObject, CreateJobObjectW, JobObjectExtendedLimitInformation,
-        SetInformationJobObject, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
-        JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
-    };
-    unsafe {
-        let job = match CreateJobObjectW(None, windows::core::PCWSTR::null()) {
-            Ok(h) if !h.is_invalid() => h,
-            other => {
-                tracing::error!(
-                    "起 {what}：建不出 Job Object（{other:?}），收尾这一格\
-                     **在这台机器上没人守** —— 它退出/被掐断之后可能漏下子孙进程。"
-                );
-                return LifetimeGuard(None);
-            }
-        };
-        let mut info = JOBOBJECT_EXTENDED_LIMIT_INFORMATION::default();
-        info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
-        let size = std::mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32;
-        let ptr = std::ptr::addr_of!(info) as *const core::ffi::c_void;
-        if let Err(e) = SetInformationJobObject(job, JobObjectExtendedLimitInformation, ptr, size) {
-            let _ = CloseHandle(job);
-            tracing::error!(
-                "起 {what}：Job Object 设不上 KILL_ON_JOB_CLOSE（{e:?}），\
-                 收尾这一格**在这台机器上没人守**。"
-            );
-            return LifetimeGuard(None);
-        }
-        if let Err(e) = AssignProcessToJobObject(job, HANDLE(raw as isize)) {
-            let _ = CloseHandle(job);
-            tracing::error!(
-                "起 {what}：子进程认领不进 Job Object（{e:?}），\
-                 收尾这一格**在这台机器上没人守**。"
-            );
-            return LifetimeGuard(None);
-        }
-        LifetimeGuard(Some(job))
-    }
-}
+// 〔P4b · 阶段 H〕平台原语那一段（creation flags · Job Object · `process_group`）搬进 `platform/spawn.rs`，逐字；
+// 本文件只剩三个策略与唯一出口。收尾凭据 `LifetimeGuard` 住那边，这里用它当 `ManagedChild` 的字段。
+use crate::platform::spawn::LifetimeGuard;
 
 // ══════════════════════════════════════════════════════════════════════════
 // 同步那一侧（`std::process`）
@@ -308,26 +205,9 @@ pub fn spawn_managed_cmd(
 ) -> std::io::Result<ManagedChild> {
     let what = cmd.get_program().to_string_lossy().into_owned();
     apply_stdio(cmd, stderr);
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        cmd.creation_flags(creation_flags_for(console, lifetime));
-    }
-    #[cfg(unix)]
-    {
-        let _ = console; // POSIX 上没有「控制台窗口」这回事 —— 参数照收，签名两边一致。
-        if matches!(lifetime, Lifetime::Detached) {
-            use std::os::unix::process::CommandExt;
-            cmd.process_group(0);
-        }
-    }
-    // 非 Windows 非 Unix（今天没有这样的目标）：参数照收，签名各处一致。
-    #[cfg(not(any(windows, unix)))]
-    {
-        let _ = (console, lifetime);
-    }
+    crate::platform::spawn::prepare(cmd, console, lifetime);
     let mut child = cmd.spawn()?;
-    let guard = attach_lifetime(&child, lifetime, &what);
+    let guard = crate::platform::spawn::attach_lifetime(&child, lifetime, &what);
     if matches!(stderr, StderrSink::ToLog) {
         if let Some(e) = child.stderr.take() {
             let pid = child.id();
@@ -354,26 +234,6 @@ fn apply_stdio(cmd: &mut std::process::Command, stderr: StderrSink) {
         // 不表态 = 不动它（`Command` 的默认就是继承）。
         StderrSink::Inherit => {}
     }
-}
-
-#[cfg(windows)]
-fn attach_lifetime(child: &std::process::Child, lifetime: Lifetime, what: &str) -> LifetimeGuard {
-    use std::os::windows::io::AsRawHandle;
-    match lifetime {
-        Lifetime::JobKillOnClose => assign_to_job(child.as_raw_handle(), what),
-        Lifetime::Detached => LifetimeGuard(None),
-    }
-}
-
-#[cfg(not(windows))]
-fn attach_lifetime(
-    _child: &std::process::Child,
-    _lifetime: Lifetime,
-    _what: &str,
-) -> LifetimeGuard {
-    // POSIX 上「随我死」这一格没有 Job Object 这种东西 —— 见模块头注的诚实边界 2。
-    // `Detached` 那一半已经在 `spawn_managed_cmd` 里用 `process_group(0)` 落过了。
-    LifetimeGuard
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -453,8 +313,8 @@ impl std::ops::DerefMut for ManagedTokioChild {
 /// # 为什么这里非有第二个函数不可（而这**不是**「抄了第二份」）
 ///
 /// sync 与 async 之间跨不过去：`tokio::process::Command` 不是 `std::process::Command`。
-/// ⇒ 真正会漂的两样东西**都只有一份**：creation flags 的合成（[`creation_flags_for`]）
-/// 与 Job 的建法（[`assign_to_job`]）。本函数只是把它们接到另一种 `Command` 上。
+/// ⇒ 真正会漂的两样东西**都只有一份**：creation flags 的合成（`platform/spawn.rs::creation_flags_for`）
+/// 与 Job 的建法（`platform/spawn.rs::assign_to_job`）。本函数只是把它们接到另一种 `Command` 上。
 ///
 /// ⚠ **`JobKillOnClose` 在这一侧比同步那侧多买一样**：`kill_on_drop(true)`。
 /// 那是 tokio 的 `Child` 才有的东西（它默认**不**因句柄被 drop 而杀子进程），
@@ -479,26 +339,13 @@ pub fn spawn_managed_tokio(
         }
         StderrSink::Inherit => {}
     }
-    #[cfg(windows)]
-    {
-        cmd.creation_flags(creation_flags_for(console, lifetime));
-    }
-    #[cfg(unix)]
-    {
-        let _ = console; // 同上。
-        if matches!(lifetime, Lifetime::Detached) {
-            cmd.process_group(0);
-        }
-    }
-    #[cfg(not(any(windows, unix)))]
-    {
-        let _ = console;
-    }
+    // tokio 的 `creation_flags` / `process_group` 都是转给里面那个 std `Command` 的 ⇒ 平台那一半交同一个 `prepare`（只一份）。
+    crate::platform::spawn::prepare(cmd.as_std_mut(), console, lifetime);
     if matches!(lifetime, Lifetime::JobKillOnClose) {
         cmd.kill_on_drop(true);
     }
     let child = cmd.spawn()?;
-    let guard = attach_lifetime_tokio(&child, lifetime, &what);
+    let guard = crate::platform::spawn::attach_lifetime_tokio(&child, lifetime, &what);
     // ⚠ tokio 那一侧今天没有 `ToLog` 的用户；真要接，得再写一条 **async** 的泵
     //   （`drain_child_stderr_into_log` 吃的是 `std::process::ChildStderr`）。
     //   在有人真要之前**不预造**，但也别让它静默变成「丢掉」：
@@ -511,35 +358,6 @@ pub fn spawn_managed_tokio(
         _lifetime: guard,
         child,
     })
-}
-
-#[cfg(windows)]
-#[cfg_attr(not(test), allow(dead_code))]
-fn attach_lifetime_tokio(
-    child: &tokio::process::Child,
-    lifetime: Lifetime,
-    what: &str,
-) -> LifetimeGuard {
-    match lifetime {
-        Lifetime::JobKillOnClose => match child.raw_handle() {
-            Some(raw) => assign_to_job(raw, what),
-            None => {
-                tracing::error!("起 {what}：拿不到子进程句柄，收尾这一格**在这台机器上没人守**。");
-                LifetimeGuard(None)
-            }
-        },
-        Lifetime::Detached => LifetimeGuard(None),
-    }
-}
-
-#[cfg(not(windows))]
-#[cfg_attr(not(test), allow(dead_code))]
-fn attach_lifetime_tokio(
-    _child: &tokio::process::Child,
-    _lifetime: Lifetime,
-    _what: &str,
-) -> LifetimeGuard {
-    LifetimeGuard
 }
 
 #[cfg(test)]

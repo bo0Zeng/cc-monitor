@@ -98,7 +98,7 @@ impl StartOutcome {
 // `process_group(0)` 来自 `std::os::unix::process::CommandExt`，而 `std::os::unix`
 // 在 `backend_client_guard_tests.rs::the_backend_half_stays_platform_agnostic` 的禁针里
 // ⇒ **写进 `backend/` 当场红**；而「加一条平台例外」这条路被**递减棘轮**堵着
-// （`assert!(PLATFORM_EXCEPTIONS.len() <= 1)`，今天正好 1 条）。
+// （`PLATFORM_EXCEPTIONS`：〔P4b · P4〕今天 0 条、上限 0；壳里平台形态另只许住 `platform/`，`platform_home_guard` 钉）。
 // ⇒ 落点只能是这里，形状照 `platform::fs::make_executable` 那个**注入**先例。
 // ══════════════════════════════════════════════════════════════════════════
 
