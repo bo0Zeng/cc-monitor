@@ -179,6 +179,16 @@ export class DataSection {
       }),
     );
 
+    // 〔P3 · V160「一台机器一个家」〕卡片 1b：本机后端住在同一个家里的那几样（只给路径，V66）
+    this.mainBody.appendChild(
+      this.buildBlock({
+        title: copyText("data.card.backend"),
+        subtitle: data.backendHome,
+        subtitlePath: data.backendHome,
+        items: data.backendEntries,
+      }),
+    );
+
     // 卡片 2：WebView2 用户数据
     if (data.webviewUserDataDir) {
       this.mainBody.appendChild(
@@ -293,8 +303,8 @@ export class DataSection {
     }
     li.appendChild(meta);
 
-    if (info.label === LOGS_DIR_LABEL) {
-      // 〔ST2〕日志目录：这一行只给路径，打开去「日志」那一页（见 `LOGS_DIR_LABEL` 头注）。
+    if (info.label.startsWith(LOGS_DIR_LABEL)) {
+      // 〔ST2〕日志目录（〔P3〕连同后端那一份 `logs/backend/`）：这一行只给路径，打开去「日志」那一页（见 `LOGS_DIR_LABEL` 头注）。
       const see = document.createElement("span");
       see.dataset.seeAlso = "logs";
       see.textContent = copyText("data.item.inLogsPage");

@@ -10035,6 +10035,11 @@
       "zh": "界面数据",
       "args": []
     },
+    "data.card.backend": {
+      "kind": "title",
+      "zh": "本机后端的数据",
+      "args": []
+    },
     "data.card.own": {
       "kind": "title",
       "zh": "cc-monitor 自己的数据",
@@ -13706,6 +13711,36 @@
       "waive": {
         "C-T1": "说的是 WebView2 数据目录里放了什么，WebView2 / localStorage / IndexedDB 是产品与存储类型的原名，用户在资源管理器里看到的就是它们"
       }
+    },
+    "rsDataPaths.backend.bin": {
+      "kind": "body",
+      "zh": "cc-monitor 放下的程序：后端、代码全景组件等，缺了会重新放",
+      "args": []
+    },
+    "rsDataPaths.backend.staging": {
+      "kind": "body",
+      "zh": "上传到一半的文件，传完就移走",
+      "args": []
+    },
+    "rsDataPaths.backend.relayKey": {
+      "kind": "body",
+      "zh": "中转用的钥匙，只有你能读；后端重起时没有就新建一把",
+      "args": []
+    },
+    "rsDataPaths.backend.listenToken": {
+      "kind": "body",
+      "zh": "连本机后端用的钥匙，只有你能读；重起后端时没有就新建一把",
+      "args": []
+    },
+    "rsDataPaths.backend.logs": {
+      "kind": "body",
+      "zh": "本机后端的错误输出（每份至多 4 MB，留两份）",
+      "args": []
+    },
+    "rsDataPaths.backend.panorama": {
+      "kind": "body",
+      "zh": "代码全景的索引，删了要重新建立索引",
+      "args": []
     },
     "rsDataPaths.monitor.logs": {
       "kind": "body",

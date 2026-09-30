@@ -74,7 +74,8 @@ use std::path::{Path, PathBuf};
 /// 〔SR1b · 2026-09-24〕往里写的那一侧（SFTP 传输台）**搬进了本 crate**（`dial/sftp.rs::STAGING_ROOT` ·
 /// `control/transfer.rs`）⇒ 从前「桥那一侧一份逐字副本 ＋ 相等断言」那一对收成**同一个 crate 里的两个名字**，
 /// 判据直接比（`dial_sftp_tests::the_declared_write_roots_are_exactly_staging_and_bin`）。
-pub const STAGING_DIR: &str = ".cc-monitor/staging";
+/// 〔P3〕值只住契约 crate（`relay_route_core::STAGING_DIR_REL`：monitor 的数据位置页按同一个常量列出它）。
+pub const STAGING_DIR: &str = relay_route_core::STAGING_DIR_REL;
 
 /// 暂存件的键长（十六进制位数）。造键的那一侧（`control/transfer.rs::staging_key`）同一个数（直接引用）。
 pub const KEY_LEN: usize = 32;

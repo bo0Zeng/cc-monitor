@@ -116,6 +116,10 @@ pub struct DataPathsResponse {
     pub monitor_data_dir: String,
     /// monitor 自己的持久化数据（按类别有序）
     pub entries: Vec<DataPathInfo>,
+    /// 〔P3 · V160「一台机器一个家」〕本机后端的家（`~/.cc-monitor`，按家目录算，不随 `CCM_DATA_DIR` 漂）
+    pub backend_home: String,
+    /// 〔P3〕本机后端住在这个家里的那几样（[`backend_entries`]）
+    pub backend_entries: Vec<DataPathInfo>,
     /// WebView2 用户数据目录推断路径（cache / localStorage / IndexedDB / cookies）
     pub webview_user_data_dir: Option<DataPathInfo>,
     // 〔OSA · 主会话 09-28 裁〕这里原来有 `$PROFILE` 备份目录那一格 —— 「`$PROFILE` 在哪」只由后端方言答，
@@ -133,12 +137,22 @@ pub fn collect(handle: &AppHandle) -> DataPathsResponse {
         crate::config::resolve_monitor_data_dir().unwrap_or_else(|| PathBuf::from("(unknown)"));
 
     let entries = monitor_entries(&monitor_data_dir);
+    // 〔P3〕后端的家按家目录算（它自己也是这么落盘的）；取不到家目录 ⇒ 这一张卡空着，不猜。
+    let (backend_home, backend_entries) = match dirs::home_dir() {
+        Some(home) => (
+            home.join(backend_home_rel()).display().to_string(),
+            backend_entries(&home, &monitor_data_dir),
+        ),
+        None => ("(unknown)".to_string(), Vec::new()),
+    };
 
     let webview_user_data_dir = detect_webview_data_dir(handle);
 
     DataPathsResponse {
         monitor_data_dir: monitor_data_dir.display().to_string(),
         entries,
+        backend_home,
+        backend_entries,
         webview_user_data_dir,
     }
 }
@@ -202,6 +216,84 @@ fn monitor_entries(monitor_data_dir: &Path) -> Vec<DataPathInfo> {
             monitor_data_dir.join("logs"),
             LOGS_DIR_LABEL,
             &copy_text("rsDataPaths.monitor.logs", &[]),
+            DataClass::Cache,
+        ),
+    ]
+}
+
+/// 后端的家（相对家目录的那一段）：取自契约常量里后端落点的第一段（`relay_route_core::BACKEND_LANDING_REL`），不另写一份。
+fn backend_home_rel() -> &'static str {
+    relay_route_core::BACKEND_LANDING_REL
+        .split('/')
+        .next()
+        .unwrap_or(relay_route_core::BACKEND_LANDING_REL)
+}
+
+/// 契约里相对家目录的一段 ⇒ 这一行的名字（去掉后端的家那一段；目录带尾 `/`）。
+fn home_rel_label(rel: &str, dir: bool) -> String {
+    let tail = rel
+        .strip_prefix(backend_home_rel())
+        .unwrap_or(rel)
+        .trim_start_matches('/');
+    if dir {
+        format!("{tail}/")
+    } else {
+        tail.to_string()
+    }
+}
+
+/// 〔P3 · `设计/70 §6.2` · `INVARIANTS §2.1` · V160「一台机器一个家」〕**本机后端住在同一个家里的那几样**（V66：只给路径，不给删）。
+///
+/// 名字各取唯一住址，这里不写字面量：后端的程序目录 = 后端落点的上一层（`BACKEND_LANDING_REL`）· 上传暂存区 · 中转钥匙 ·
+/// 监听钥匙 · 全景索引（`relay_route_core` 的契约常量，后端按同一份落盘）· 后端错误输出 = 宿主交给它的那份文件所在的目录
+/// （`logging::backend_stderr_log_path`，按 monitor 数据目录算）。都能重建 ⇒ 都按缓存记（两把钥匙重起后端时重铸）。
+fn backend_entries(home: &Path, monitor_data_dir: &Path) -> Vec<DataPathInfo> {
+    let bin = relay_route_core::BACKEND_LANDING_REL
+        .rsplit_once('/')
+        .map_or(relay_route_core::BACKEND_LANDING_REL, |(dir, _)| dir);
+    let stderr_dir = crate::logging::backend_stderr_log_path(monitor_data_dir)
+        .parent()
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| monitor_data_dir.to_path_buf());
+    let stderr_label = stderr_dir
+        .strip_prefix(monitor_data_dir)
+        .map(|p| format!("{}/", p.to_string_lossy().replace('\\', "/")))
+        .unwrap_or_else(|_| stderr_dir.display().to_string());
+    vec![
+        probe_dir(
+            home.join(bin),
+            &home_rel_label(bin, true),
+            &copy_text("rsDataPaths.backend.bin", &[]),
+            DataClass::Cache,
+        ),
+        probe_dir(
+            home.join(relay_route_core::STAGING_DIR_REL),
+            &home_rel_label(relay_route_core::STAGING_DIR_REL, true),
+            &copy_text("rsDataPaths.backend.staging", &[]),
+            DataClass::Cache,
+        ),
+        probe_file(
+            home.join(relay_route_core::KEY_FILE_REL),
+            &home_rel_label(relay_route_core::KEY_FILE_REL, false),
+            &copy_text("rsDataPaths.backend.relayKey", &[]),
+            DataClass::Cache,
+        ),
+        probe_file(
+            home.join(relay_route_core::LISTEN_TOKEN_FILE_REL),
+            &home_rel_label(relay_route_core::LISTEN_TOKEN_FILE_REL, false),
+            &copy_text("rsDataPaths.backend.listenToken", &[]),
+            DataClass::Cache,
+        ),
+        probe_dir(
+            stderr_dir,
+            &stderr_label,
+            &copy_text("rsDataPaths.backend.logs", &[]),
+            DataClass::Cache,
+        ),
+        probe_dir(
+            home.join(relay_route_core::PANORAMA_INDEX_REL),
+            &home_rel_label(relay_route_core::PANORAMA_INDEX_REL, true),
+            &copy_text("rsDataPaths.backend.panorama", &[]),
             DataClass::Cache,
         ),
     ]

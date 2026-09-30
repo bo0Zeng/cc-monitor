@@ -114,15 +114,17 @@ fn every_entry_carries_the_class_the_invariants_table_gives_it() {
         "从 §2.1 只抽出 {truths} 条真相 / {caches} 条缓存 —— 抽取器坏了"
     );
     let d = TestDir::new("classes");
+    // 〔P3 · V160〕后端住在同一个家里的那几样也在这张表里（家目录与数据目录在测试里是同一个临时目录，只比名字与类）
     let mut got: Vec<(String, DataClass)> = monitor_entries(d.path())
         .into_iter()
+        .chain(backend_entries(d.path(), d.path()))
         .map(|e| (e.label, e.class))
         .collect();
     got.sort_by(|a, b| a.0.cmp(&b.0));
     assert_eq!(
         got, want,
         "data dir 枚举里的类与 `INVARIANTS §2.1` 那张表对不上。\n\
-         ⇒ 新加的文件要**同拍**两处：`data_paths.rs::monitor_entries` 选类，§2.1 那张表加一行。"
+         ⇒ 新加的文件要**同拍**两处：`data_paths.rs::monitor_entries` / `backend_entries` 选类，§2.1 那张表加一行。"
     );
 }
 
@@ -161,4 +163,58 @@ fn no_entry_description_speaks_our_internal_words() {
         .map(|e| format!("{}：{}", e.label, e.description))
         .collect();
     assert_eq!(bad, Vec::<String>::new(), "条目说明里又出现了 sid / HWND");
+}
+
+/// ★ 〔P3 · `设计/70 §6.2` · V160「一台机器一个家」〕后端那几样的**路径**就是后端落盘用的那一份：
+/// 每一行 == 家目录 ＋ 契约常量（`relay_route_core`，后端 `files_commit::STAGING_DIR` / `panorama::store_dir` 引的就是它），
+/// 错误输出那一行 == 宿主交给后端的那份文件所在的目录。期望逐条手写契约常量名，不从被测函数派生。
+#[test]
+fn backend_rows_point_where_the_backend_itself_writes() {
+    let home = TestDir::new("backend-home");
+    let data = TestDir::new("backend-data");
+    let got: Vec<(String, PathBuf, String)> = backend_entries(home.path(), data.path())
+        .into_iter()
+        .map(|e| (e.label, PathBuf::from(e.path), e.kind))
+        .collect();
+    let h = home.path();
+    let want = vec![
+        (
+            "bin/".to_string(),
+            h.join(".cc-monitor/bin"),
+            "dir".to_string(),
+        ),
+        (
+            "staging/".into(),
+            h.join(relay_route_core::STAGING_DIR_REL),
+            "dir".into(),
+        ),
+        (
+            "relay-key".into(),
+            h.join(relay_route_core::KEY_FILE_REL),
+            "file".into(),
+        ),
+        (
+            "listen-token".into(),
+            h.join(relay_route_core::LISTEN_TOKEN_FILE_REL),
+            "file".into(),
+        ),
+        (
+            "logs/backend/".into(),
+            crate::logging::backend_stderr_log_path(data.path())
+                .parent()
+                .unwrap()
+                .to_path_buf(),
+            "dir".into(),
+        ),
+        (
+            "panorama/".into(),
+            h.join(relay_route_core::PANORAMA_INDEX_REL),
+            "dir".into(),
+        ),
+    ];
+    assert_eq!(got, want);
+    assert!(
+        Path::new(relay_route_core::BACKEND_LANDING_REL).starts_with(".cc-monitor/bin"),
+        "后端落点不在 bin/ 里了 —— 程序目录那一行跟着改"
+    );
 }

@@ -602,12 +602,15 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     // 〔HOST〕常驻监听口的门牌（本机宿主与远端 `--resident-ensure` 同一个函数）；TS 侧没有孪生。
     listen_port_for: NONE,
     LISTEN_TOKEN_FILE_REL: NONE,
+    // 〔P3 · V160〕后端住在家里的暂存区与全景索引（后端按它落盘、monitor 的数据位置页按它列）；TS 侧没有孪生。
+    PANORAMA_INDEX_REL: NONE,
     parse_target: NONE,
     PORT: NONE,
     prefix: NONE,
     route_path: NONE,
     segment_is_safe: NONE,
     split_keyed_base_url: NONE,
+    STAGING_DIR_REL: NONE,
   },
   "search-core": {
     clamp_limit: NONE,
