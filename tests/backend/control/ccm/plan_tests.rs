@@ -1370,6 +1370,8 @@ fn us1_an_inherited_keyed_relay_url_goes_inward_as_a_file_read_not_as_the_key() 
 /// 要求住址：`INVARIANTS §47` ②「走唯一的 quote ＋ 这一种值的形式判定 ＋ 拒绝集」；主会话 09-26 按 V131 裁
 /// 「自由文本路径的拒绝集只收控制字符（NUL / CR / LF）、形式判定按各自语境（cwd / 目录要绝对路径等）、然后唯一一处 quote ——
 /// 不拒 shell 元字符」。模型名与 `--ccm-sid` 不在本条（交 DUP1）。
+/// 交给 agent 的参数与登记备注可以跨行（`shell_quote_core::arg_text_ok`，V138「位置参数原样交给 claude」）：
+/// 多行初始任务那一格正着放、原样进载荷；CR / NUL 照拒。
 #[test]
 fn free_text_values_pass_real_names_and_refuse_what_the_quote_cannot_hold() {
     let build_of = |args: &[&str], e: &Env| {
@@ -1393,6 +1395,31 @@ fn free_text_values_pass_real_names_and_refuse_what_the_quote_cannot_hold() {
     ] {
         build_of(&args, &env()).unwrap_or_else(|e| panic!("真实好值被拒了：{args:?} ⇒ {}", e.0));
     }
+    // 正：多行初始任务（`cc-spawn <目录> "第一行<换行>第二行"` 交过来的那一形）—— 透传参数与备注都放，且原样进 pane 里键入的载荷。
+    let multi = "第一行\n第二行";
+    let mut with_bus = env();
+    with_bus.bus_scripts = Some("/opt/cc-bus/scripts".into());
+    let Plan::Container(c) = build_of(
+        &[
+            "--ccm-tmux=n",
+            "--detach",
+            "--bus-register",
+            "--bus-note",
+            multi,
+            "--",
+            multi,
+        ],
+        &with_bus,
+    )
+    .unwrap_or_else(|e| panic!("多行初始任务被拒了：{}", e.0)) else {
+        panic!("该是容器路")
+    };
+    assert!(
+        c.payload.contains(&sq(multi)),
+        "多行任务没原样进载荷：{}",
+        c.payload
+    );
+    assert_eq!(c.bus.as_ref().map(|b| b.note.as_str()), Some(multi));
     // 用户 09-26：相对 `--cwd` 按当前目录补成绝对、折掉 `.` / `..`（从前这里是「反」那一格）。
     let e0 = env();
     for (rel, want) in [
@@ -1418,19 +1445,20 @@ fn free_text_values_pass_real_names_and_refuse_what_the_quote_cannot_hold() {
         };
         assert_eq!(d.argv, want, "{l:?}");
     }
-    // 反：`..` 段 · 换行 / CR / NUL，分别落在工作目录 · 启动器 · 透传参数 · 备注。
+    // 反：`..` 段 · 换行 / CR / NUL，分别落在工作目录 · 启动器 · 透传参数 · 备注（后两格可以跨行，只拒 CR / NUL）。
     for (args, what) in [
         (vec!["--cwd", "/home/u/../etc"], "--cwd"),
         (vec!["--cwd", "/home/u/x\ny"], "--cwd"),
         (vec!["--launcher", "claude\rrm"], "--launcher"),
         (vec!["--", "ok", "bad\0"], "--"),
+        (vec!["--", "ok", "a\r\nb"], "--"),
         (
             vec![
                 "--ccm-tmux=n",
                 "--detach",
                 "--bus-register",
                 "--bus-note",
-                "a\nb",
+                "a\rb",
             ],
             "--bus-note",
         ),

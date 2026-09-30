@@ -298,6 +298,8 @@ echo "[14] 【08-13】**多行初始任务**：登记与台账都不许丢"
 #   ⇒ 实测 `cc-spawn <目录> "第一行\n第二行"` = **登记上了总线、台账一行没有、一声不吭**。
 #   本仓一路在治的那族：**悄悄丢数据**。
 #   修法是让**格式的主人自己转义**（`\n`/`\t` 写进 TSV），而不是让调用方猜规则。
+# ★ 这一格同时钉着 ccm 的放行判定：透传参数 / 登记备注可以跨行（`shell_quote_core::arg_text_ok`，
+#   只拒 NUL / CR）。那道判定拒过 LF，于是整条起会话被拒、下面四格一起红。
 mkdir -p "$WORK/multi"
 CCM_NO_PRETRUST=1 timeout 30 "$CCSPAWN" "$WORK/multi" "$(printf '第一行\n第二行')" \
   > "$WORK/out-multi.txt" 2>&1
