@@ -98,7 +98,7 @@ pub(crate) fn is_safe_alias(alias: &str) -> bool {
 pub(crate) fn expand_tilde(path: &str) -> std::path::PathBuf {
     if let Some(rest) = path.strip_prefix('~') {
         if rest.is_empty() || rest.starts_with('/') || rest.starts_with('\\') {
-            if let Some(home) = home_dir() {
+            if let Some(home) = crate::platform::paths::home_dir() {
                 let rest = rest.trim_start_matches(['/', '\\']);
                 return if rest.is_empty() {
                     home
@@ -109,11 +109,6 @@ pub(crate) fn expand_tilde(path: &str) -> std::path::PathBuf {
         }
     }
     std::path::PathBuf::from(path)
-}
-
-fn home_dir() -> Option<std::path::PathBuf> {
-    #[allow(deprecated)]
-    std::env::home_dir()
 }
 
 /// `ssh -G <alias>` 的 stdout ⇒ [`ResolvedHost`]（纯逻辑）。`hostname` 缺省回退别名；`identityfile` 取第一个展开后存在的。
@@ -217,7 +212,8 @@ pub(crate) fn aggregate_ssh_hosts(hosts: Vec<(String, ResolvedHost)>) -> Vec<Imp
 
 /// 读 `~/.ssh/config` 列别名。文件不在 / 读不了 ⇒ 空（没有 config 是正常的）。
 pub(crate) fn list_aliases() -> Vec<String> {
-    let Some(path) = home_dir().map(|h| h.join(".ssh").join("config")) else {
+    let Some(path) = crate::platform::paths::home_dir().map(|h| h.join(".ssh").join("config"))
+    else {
         return Vec::new();
     };
     std::fs::read_to_string(path)
