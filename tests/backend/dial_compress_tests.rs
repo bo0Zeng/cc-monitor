@@ -158,8 +158,9 @@ fn the_compression_judge_lives_in_exactly_one_place() {
 }
 
 /// ★ Z4：回环上**内核真量得到**这一跳的往返时间（读不到就是平台那一半坏了），而且它在门槛之下、判准答「不压」。
-/// 异源 = 内核。Linux 之外平台那一支回 `None`，本条只在 Linux 上判得动。
-#[cfg(target_os = "linux")]
+/// 异源 = 内核。Linux 与 Windows（〔P2〕`SIO_TCP_INFO`）两臂读得到；其余平台那一支回 `None`，本条不在那里编。
+/// ⚠ Windows 那一格本机只交叉编译、没在真 Windows 上跑过。
+#[cfg(any(target_os = "linux", windows))]
 #[tokio::test]
 async fn the_kernel_measures_the_loopback_hop_and_the_judge_says_no() {
     let ls = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
