@@ -31,6 +31,8 @@ import type {
   Symbol,
   Edge,
   Confidence,
+  IndexPhase,
+  IndexProgress,
 } from "../panorama/types";
 import {
   computeLayout,
@@ -65,6 +67,20 @@ type FileRef = {
 /** main.ts 注入的活跃仓信息取值器（读活跃 tab 的 cwd/origin）。 */
 type RepoInfoGetter = () => { cwd: string; origin: Origin } | null;
 
+/** 〔P7〕建索引那一阶段的人话（`switch` 穷尽 `IndexPhase`：上游生成物多一个阶段 ⇒ tsc 当场红）。 */
+function phaseLabel(p: IndexPhase): string {
+  switch (p) {
+    case "Parse":
+      return copyText("panorama.indexProgress.parse");
+    case "Link":
+      return copyText("panorama.indexProgress.link");
+    case "Relink":
+      return copyText("panorama.indexProgress.relink");
+    case "Docs":
+      return copyText("panorama.indexProgress.docs");
+  }
+}
+
 export class PanoramaView implements OverlayHandle {
   private root: HTMLElement;
   private mounted = false;
@@ -76,6 +92,8 @@ export class PanoramaView implements OverlayHandle {
   private canvasWrap!: HTMLElement;
   private tooltipEl!: HTMLElement;
   private loadingEl!: HTMLElement;
+  /** 〔P7〕转圈下面那一行进度（建索引时由那台小程序报的格填；别的时候空着）。 */
+  private progressEl: HTMLElement | null = null;
   private messageEl!: HTMLElement;
   private searchInput!: HTMLInputElement;
   private sidebarEl!: HTMLElement;
@@ -366,7 +384,7 @@ export class PanoramaView implements OverlayHandle {
       if (st.stale) {
         const cancel = this.cancelHandle();
         this.showLoading(copyText("panorama.load.stale"), cancel.abort);
-        await api.index(this.at(repo), cancel.signal);
+        await api.index(this.at(repo), cancel.signal, this.progressFor(seq));
         if (seq !== this.loadSeq) return;
       }
       this.showLoading(copyText("panorama.load.loading"));
@@ -392,7 +410,7 @@ export class PanoramaView implements OverlayHandle {
     const cancel = this.cancelHandle();
     this.showLoading(copyText("panorama.enableAndIndex.indexing"), cancel.abort);
     try {
-      await api.index(this.at(repo), cancel.signal);
+      await api.index(this.at(repo), cancel.signal, this.progressFor(seq));
       if (seq !== this.loadSeq) return;
       this.showLoading(copyText("panorama.load.loading"));
       const ov = await api.overview(this.at(repo));
@@ -417,6 +435,18 @@ export class PanoramaView implements OverlayHandle {
   private cancelHandle(): { abort: () => void; signal: AbortSignal } {
     const ctrl = new AbortController();
     return { abort: () => ctrl.abort(), signal: ctrl.signal };
+  }
+
+  /** 〔P7〕这一趟加载的进度去处：那台小程序报一格就写进转圈下面那一行；换仓 / 重载了（`seq` 过期）⇒ 不写。 */
+  private progressFor(seq: number): (p: IndexProgress) => void {
+    return (p) => {
+      if (seq !== this.loadSeq || !this.progressEl) return;
+      this.progressEl.textContent = copyText("panorama.indexProgress.line", {
+        phase: phaseLabel(p.phase),
+        done: p.done,
+        total: p.total,
+      });
+    };
   }
 
   /** 〔RM1f〕建索引被人撤了：那一趟在后端已经停下；给一个重新开始的按钮。 */
@@ -514,7 +544,7 @@ export class PanoramaView implements OverlayHandle {
     const cancel = this.cancelHandle();
     this.showLoading(copyText("panorama.refresh.rebuilding"), cancel.abort);
     try {
-      await api.reindex(this.at(repo), cancel.signal);
+      await api.reindex(this.at(repo), cancel.signal, this.progressFor(seq));
       if (seq !== this.loadSeq) return;
       this.showLoading(copyText("panorama.load.loading"));
       const ov = await api.overview(this.at(repo));
@@ -736,6 +766,12 @@ export class PanoramaView implements OverlayHandle {
     label.className = "panorama-loading-text";
     label.textContent = text;
     this.loadingEl.appendChild(label);
+    // 〔P7〕进度那一行：建索引时那台小程序报的格往这里写（`progressFor`）；别的转圈它空着。
+    const progress = document.createElement("div");
+    progress.className = "panorama-loading-text";
+    progress.dataset.pano = "index-progress";
+    this.loadingEl.appendChild(progress);
+    this.progressEl = progress;
     if (onCancel) {
       const btn = document.createElement("button");
       btn.type = "button";
