@@ -64,7 +64,6 @@ const PENDING: &[(&str, &str, Presence)] = &[
     ),
     ("launch.rs", "归 P4 收", Presence::Now),
     ("lib.rs", "归 P4 收", Presence::Now),
-    ("local_backend.rs", "归 P4b 收（本路）", Presence::Now),
     (
         "local_backend_host.rs",
         "归 P4 收（P4 子步 2 已收，合入即删）",
@@ -99,7 +98,7 @@ const PENDING: &[(&str, &str, Presence)] = &[
 ];
 
 /// 名单条数的上限，与 [`PENDING`] 恒等：删行时同拍减一；**不许加**（加一行 = 往壳里别处又写了平台代码）。
-const PENDING_LEN: usize = 18;
+const PENDING_LEN: usize = 17;
 
 /// `cfg` 谓词里点了操作系统的词（字符串字面量之外，按整词认）。`target_arch` 不在：那是架构，不是操作系统。
 const CFG_WORDS: &[&str] = &[

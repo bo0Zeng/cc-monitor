@@ -31,7 +31,7 @@
 //!
 //! `backend_client_guard_tests.rs::the_backend_half_stays_platform_agnostic` 的禁针含 `#[cfg(windows)`
 //! 与 `std::os::windows` / `std::os::unix` ⇒ 写进 `backend/` 当场红；
-//! 而「加一条平台例外」被**递减棘轮**堵着（`PLATFORM_EXCEPTIONS.len() <= 1`，今天正好 1 条）。
+//! 而「加一条平台例外」被**递减棘轮**堵着（`PLATFORM_EXCEPTIONS.len() <= 1`；〔P4b〕今天 0 条，壳里平台形态另由 `platform_home_guard` 只许住 `platform/`）。
 //! ⇒ `backend/` 的两个落点（`local_backend::supervise_with_stdio` ·
 //! `local_query::run_query`）**只收注入参数**，形状照 `start_or_extract` 的
 //! `make_executable: &dyn Fn(...)` 那个先例（见 [`ManagedSpawn`]）。
