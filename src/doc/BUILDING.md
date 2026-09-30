@@ -1,150 +1,136 @@
-# 生产构建与打包
+# 构建与打包
 
-如何把 cc-monitor 编译成可分发的 NSIS / MSI / `.exe`。
+怎样把 cc-monitor 编成可分发的包：Windows 的 NSIS 安装器 · MSI · 裸 `monitor.exe`，Linux 的 `.deb` · 裸 `monitor`。发版产物由 `.github/workflows/release.yml` 在 CI 上编，本篇讲它由哪几件组成、本机怎么编出同样的东西。
 
-开发环境 / dev mode → [DEVELOPMENT.md](DEVELOPMENT.md)。发版 release SOP → [RELEASING.md](RELEASING.md)。
+开发环境与 dev 模式 → [DEVELOPMENT.md](DEVELOPMENT.md)。发版流程 → [RELEASING.md](RELEASING.md)。
+
+---
+
+## 一个安装包由哪几件组成
+
+| 件 | 是什么 | 怎么来 |
+|---|---|---|
+| 前端 | 三个入口页（主窗 · 设置 · 只读窗）的 JS / CSS | `npm run build`（`tsc && vite build`），产物在 `.build/dist/` |
+| 远端用的字节 | 后端与全景小程序的 musl 静态二进制，x86_64 / aarch64 各一份，编进 monitor，第一次连上远端时部署过去 | `cargo zigbuild --release --locked --target <arch>-unknown-linux-musl`，铺进 `src/frontend/shell/embedded-backends/` |
+| 本机后端 | 本机原生 target 的后端（与全景小程序），随包带上，本机起它 | `cargo build --release --locked`，发版时作 `externalBin` 注入，并铺进 `src/frontend/shell/native-backend/` 供自释放 |
+| monitor 本体 | Tauri 壳 ＋ 打包 | `npx tauri build`（先跑上面的 `npm run build`，再 `cargo build --release`，最后打包） |
+
+- 那三个落点目录都在 `.gitignore` 里，干净 clone 里没有。没有时 monitor 照样编得过，只是那一份能力诚实关闭（不能部署远端 / 起不了本机后端），不会编出一份假装能用的包。
+- `externalBin` 只写在 `src/frontend/shell/tauri.sidecar.conf.json` 里，打包那一步用 `--config` 注入；不进主配置，否则 `cargo test` 也要求当前 target 的二进制在场。
+- Cargo 的输出不落在源码树里：壳在 `.build/shell/`，后端在 `.build/backend/`，全景小程序在 `.build/panorama/`（各自的 `.cargo/config.toml` 定）。
+
+### 内嵌字节与 `BUILD_ID`
+
+后端的身份是 `src/backend/lib.rs` 里的 `BUILD_ID`，编进字节里的身份戳。monitor 编译时（`src/frontend/shell/build.rs`）逐份读内嵌字节的戳，与源码对不上就让编译失败——装出去一份自报旧身份的后端，monitor 会永远判它过期、无限重装。
+
+所以 bump 了 `BUILD_ID` 就同拍重铺内嵌字节：
+
+```bash
+bash tests/scripts/re-embed.sh            # 重编两个 musl arch 并铺回落点（要 cargo-zigbuild 与 zig）
+bash tests/scripts/re-embed.sh --native   # 编本机原生后端与全景小程序，铺进 native-backend/
+bash tests/scripts/re-embed.sh --check    # 只查：盘上的字节与源码的 BUILD_ID 对不对得上，不产字节
+bash tests/scripts/re-embed.sh --clean    # 删掉落点：自动部署诚实关闭，编译立刻恢复
+```
+
+配方与 `release.yml` 产字节那一步同源（门禁 `release-gate` 那一格对拍）。本机编出来的字节够开发期自洽，但不等于发版产物（发版用钉死版本的 zig / cargo-zigbuild）。要在本机编一份起得来本机后端、部署得了远端的包，先跑前两条再打包。
 
 ---
 
 ## 构建命令
 
+### Windows
+
+要 Visual Studio Build Tools 2022（VCTools workload）与 WebView2 Runtime。Tauri 在 Windows 上要靠 MSVC 的 `link.exe` 链接，当前 shell 没注入 vcvars 时会链到 Git Bash 带的同名工具、崩在链接阶段。
+
 ```powershell
-powershell -NoProfile -File scripts\run.ps1 build
-# 等价于（在已注入 vcvars 的 PS 里）：
-npx tauri build
+# 在 Developer PowerShell for VS 2022 里（已注入 vcvars）：
+npm run build
+npx tauri build --config src/frontend/shell/tauri.sidecar.conf.json --bundles nsis,msi
 ```
 
-约 3-8 分钟。输出（`<version>` 是 `tauri.conf.json` 里的版本号）：
+`tests\scripts\run.ps1 build` 会用 `vswhere.exe` 找到 MSVC、注入环境后跑 `npx tauri build`，免去手开 Developer PowerShell。用 sidecar 配置打包前，先把本机后端铺到 `src/frontend/shell/binaries/cc-monitor-backend-<host triple>.exe`（`release.yml` 的 `Stage local backend for externalBin` 那一步照做即可）；只想要一份本机自用的包，去掉 `--config …` 那一段。
+
+### Linux（x86_64）
+
+要 `libwebkit2gtk-4.1-dev` · `libgtk-3-dev` · `libayatana-appindicator3-dev` · `librsvg2-dev`（Debian / Ubuntu 包名，与 CI 同）。
+
+```bash
+npm run build
+npx tauri build --bundles deb
+```
+
+发版那一趟另外带 `--config src/frontend/shell/tauri.sidecar.conf.json`，并先把本机后端铺到 `src/frontend/shell/binaries/cc-monitor-backend-<host triple>`。
+
+### 产物
+
+在 `.build/shell/release/`：
 
 ```
-src/frontend/shell/target/release/
-├── cc-monitor.exe                                       ← 主程序（需 WebView2）
-└── bundle/
-    ├── msi/
-    │   └── cc-monitor_<version>_x64_en-US.msi           ← Windows Installer 包（⚠ 是 en-US 不是 zh-CN）
-    └── nsis/
-        └── cc-monitor_<version>_x64-setup.exe           ← NSIS Setup 安装器
+.build/shell/release/
+├ monitor(.exe)                                     裸二进制（包名 monitor）
+└ bundle/
+  ├ nsis/cc-monitor_<version>_x64-setup.exe         NSIS 安装器
+  ├ msi/cc-monitor_<version>_x64_en-US.msi          MSI（WiX 没配语言 ⇒ en-US）
+  └ deb/cc-monitor_<version>_amd64.deb              Linux 包
 ```
 
----
-
-## 产物对比
-
-| 格式 | 体积（约） | 适合 |
-|---|---|---|
-| **cc-monitor.exe** | ~10 MB | 开发者本机；需 WebView2 已装 |
-| **MSI** | ~5 MB | 企业 IT 部署、Windows 11 原生 |
-| **NSIS Setup** | ~5 MB | 普通用户双击安装、体积小 |
-
-体积关键：`Cargo.toml::[profile.release]` 已配 `opt-level = "z"` + `lto = true` + `strip = true` + `codegen-units = 1` + `panic = "abort"`。
+`<version>` 是 `src/frontend/shell/tauri.conf.json` 里的 `version`。CI 另算校验和 `SHA256SUMS.txt`（Windows）与 `SHA256SUMS-linux.txt`（Linux）。
 
 ---
 
-## NSIS 配置
+## 打包配置
 
-`src/frontend/shell/tauri.conf.json::bundle.windows.nsis` 关键字段：
+### NSIS
 
-- **installMode**: `perMachine`（默认）→ 装到 `C:\Program Files\cc-monitor\` 需管理员
-- 改 `perUser` → 装到 `%LOCALAPPDATA%`，不需要管理员，但每个 user 各自一份
-- **displayLanguageSelector**: `false`（用户安装时不弹语言选择，默认中文）
-- **languages**: `["SimpChinese", "English"]`（NSIS 包内嵌的两种语言资源）
+`src/frontend/shell/tauri.conf.json` 的 `bundle.windows.nsis`：
 
----
+- `installMode: perMachine`：装到 `C:\Program Files\cc-monitor\`，要管理员；改 `perUser` 装到 `%LOCALAPPDATA%`，不要管理员，每个用户各一份。
+- `displayLanguageSelector: false` ＋ `languages: ["SimpChinese", "English"]`：安装时不弹语言选择。
 
-## MSI 配置
+### MSI
 
-通过 WiX 工具链生成。Tauri 首次构建会自动下载 WiX 到 `%LOCALAPPDATA%\tauri\WixTools3`，网络不通时手装。
+由 WiX 工具链生成，Tauri 第一次构建时下载到 `%LOCALAPPDATA%\tauri\WixTools3`，网络不通时手装。适合 Intune / SCCM / 组策略：
 
-MSI **企业部署友好**：
-- 静默安装：`msiexec /i cc-monitor_<ver>_x64_en-US.msi /qn`
-- 卸载：`msiexec /x cc-monitor_<ver>_x64_en-US.msi /qn`
-> ⚠ 〔09-10 订正〕本节先前三处都写 `zh-CN`，而实际产物逐字是 `en-US`（`tauri.conf.json`
-> 没配 WiX 语言 ⇒ 走默认）。**照着敲这两条命令会报「找不到文件」。**
-> 同一个事实 `src/doc/RELEASING.md` 早就写对了 —— 是本文件与 `README.md` 没跟。
-- 适合 Intune / SCCM / Group Policy
+```powershell
+msiexec /i cc-monitor_<version>_x64_en-US.msi /qn   # 静默安装
+msiexec /x cc-monitor_<version>_x64_en-US.msi /qn   # 静默卸载
+```
 
----
+### WebView2 Runtime
 
-## WebView2 Runtime
-
-**默认不内置**（cc-monitor.exe 启动时检查系统是否已装 WebView2 Runtime）。
-
-- Win11 自带 WebView2 → 用户无需任何操作
-- Win10 用户首次启动报"WebView2 Runtime not found" → 需要自己装
-
-**要内置 Bootstrap installer**（首次启动自动下载安装）：在 `src/frontend/shell/tauri.conf.json::bundle.windows` 加：
+默认不内置：Windows 11 自带；Windows 10 大多随 Edge 装过，没有时首次启动报 `WebView2 Runtime not found`。要在首次启动时自动下载安装，在 `bundle.windows` 里加：
 
 ```json
-"webviewInstallMode": {
-  "type": "downloadBootstrapper",
-  "silent": true
-}
+"webviewInstallMode": { "type": "downloadBootstrapper", "silent": true }
 ```
 
-注意会让安装包变大 + 首次启动需网络。当前**默认不内置**理由：99% 目标用户在 Win11；Win10 用户少且通常装过 Edge → Edge 自动装 WebView2。
+代价是首次启动要联网。
 
----
+### 代码签名
 
-## Code Signing（未启用）
-
-未签名 exe 首次启动被 Windows SmartScreen 拦"未知发布者"，用户得点「更多信息 → 仍要运行」。
-
-要消除这个警告，需要 Code Signing 证书：
-
-- **OV 证书**（Organization Validation）≈ $200/年，几小时到几天去除"未知发布者"警告
-- **EV 证书**（Extended Validation）≈ $400/年，立即去 SmartScreen 警告（最佳）
-- **证书来源**：DigiCert / Sectigo / GlobalSign / SSL.com
-
-接入位置：
+不签名：首次运行时 SmartScreen 拦「未知发布者」，用户点「更多信息 → 仍要运行」。要签就买 OV / EV 代码签名证书，在 `bundle.windows` 里填：
 
 ```json
-// src/frontend/shell/tauri.conf.json
-{
-  "bundle": {
-    "windows": {
-      "certificateThumbprint": "<SHA1 thumbprint of code signing cert>",
-      "digestAlgorithm": "sha256",
-      "timestampUrl": "http://timestamp.digicert.com"
-    }
-  }
-}
+"certificateThumbprint": "<证书 SHA1 指纹>",
+"digestAlgorithm": "sha256",
+"timestampUrl": "http://timestamp.digicert.com"
 ```
 
-证书 thumbprint 用 `Get-ChildItem Cert:\CurrentUser\My | Format-List Thumbprint, Subject` 查。
+指纹用 `Get-ChildItem Cert:\CurrentUser\My | Format-List Thumbprint, Subject` 查。
 
-当前 v1.x 决定**不签名**：cc-monitor 是社区工具，签名成本不值得；用户首次运行点一下"仍要运行"可接受。
+### 体积
+
+`src/frontend/shell/Cargo.toml` 的 `[profile.release]` 已经开到头：`opt-level = "z"` · `lto = true` · `strip = true` · `codegen-units = 1` · `panic = "abort"`。
 
 ---
 
-## 典型构建错误
+## 常见构建错误
 
-| 错误 | 原因 | 修复 |
+| 报错 | 原因 | 办法 |
 |---|---|---|
-| `linker link.exe not found` | 没注入 vcvars | 用 `scripts\run.ps1 build` 而非 `cargo build` |
-| `Microsoft Visual C++ 14.0 is required` | 缺 MSVC 或缺 VCTools workload | VS Installer 加 workload |
-| 卡在 `Compiling cc-monitor` | Rust 首次编译慢 ~5 min | 等。后续增量 < 1 min |
-| NSIS `MakeNSIS exited with code 1` | 图标 `.ico` 损坏 / 路径含中文 | 检查 `src/frontend/shell/icons/icon.ico` |
-| MSI 报 `WiX is not installed` | Tauri 自动下载到 `%LOCALAPPDATA%\tauri\WixTools3`；网络不通时手装 | 检查网络或手装 WiX |
-| `EACCES: permission denied ::1:24174`（或任意 dev 端口） | dev 端口被 Hyper-V 保留 | 这是 dev 错误不是 build 错误 → [DEVELOPMENT.md § 端口冲突](DEVELOPMENT.md#端口冲突) |
-
----
-
-## 体积优化
-
-当前 release profile 已经把能开的开关都开了：
-
-```toml
-[profile.release]
-opt-level = "z"      # 优化 size，不优化 speed
-lto = true           # link-time optimization
-strip = true         # 删 debug symbols
-codegen-units = 1    # 牺牲编译速度换最优 codegen
-panic = "abort"      # panic 不 unwind，省 ~100KB
-```
-
-进一步优化方向（如果未来 monitor.exe > 20MB）：
-- 移除 `tauri-plugin-dialog` 如果不用 file picker
-- `tracing` → `log` + `env_logger` 省 ~3MB
-- 替换 `marked` + `katex` + `hljs` 为更轻的 markdown 库（可能影响渲染效果）
-
-**当前体积 ~10MB**，相对 Electron 同等功能 100+ MB 已经很小，不优先优化。
+| `linker link.exe not found` / 链接阶段崩 | 没注入 vcvars | 在 Developer PowerShell 里跑，或用 `tests\scripts\run.ps1` |
+| `Microsoft Visual C++ 14.0 is required` | 缺 MSVC 或 VCTools workload | VS Installer 里加 workload |
+| 编译期 panic「内嵌 backend … 问不出身份」/「半 bump」 | 内嵌字节与源码 `BUILD_ID` 对不上 | `bash tests/scripts/re-embed.sh`（重铺）或 `--clean`（删掉落点） |
+| `MakeNSIS exited with code 1` | 图标损坏或路径问题 | 检查 `src/frontend/shell/icons/icon.ico` |
+| `WiX is not installed` | 自动下载失败 | 检查网络或手装 WiX |
+| `EACCES: permission denied ::1:24174` | dev 端口落进了 Windows 的保留段 | 是 dev 的问题，见 [DEVELOPMENT.md § 端口冲突](DEVELOPMENT.md#端口冲突) |

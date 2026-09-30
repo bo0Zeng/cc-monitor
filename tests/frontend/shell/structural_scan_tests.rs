@@ -1578,8 +1578,7 @@ fn every_symbol_address_in_the_sources_still_resolves() {
                  （同一条例外逐字住在 `doc/` 那条同族判据里，两处口径一致）",
         ),
         // 下面两条是**示例占位符**：`doc_claim_registry.rs` 的头注要讲「地址长什么样」，
-        // 于是逐字写了一个假地址。同族的 `doc/` 判据也有一条同形的例外
-        // （`CONTRIBUTING.md` 里教人「照这样加一行」的那个占位符），口径一致。
+        // 于是逐字写了一个假地址（同族的 `doc/` 判据从前也有一条同形的例外，〔P6 · 09-29〕随 CONTRIBUTING 重写摘了）。
         // ⚠ 例外**按符号名**认 ⇒ 它们同时也遮住了真名叫 `symbol` / `foo` 的符号。
         //   今天全仓这两个名字**一处声明都没有**（现打），所以遮不住任何真东西；
         //   哪天真有人这么命名，上面那条保鲜自检会让这条例外**变成假绿**，如实登记。
@@ -2368,7 +2367,7 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             "daemonless_stream_loop",
             1,
         ),
-        ("src/doc/ARCHITECTURE.md", "lookup_by_foreground_pid", 1),
+        // 〔P6 · 09-29〕`("src/doc/ARCHITECTURE.md", "lookup_by_foreground_pid", 1)` 摘了：开发文档按 4.0.0 重写，「刻意不做的」那一节只讲理由、不再点那个旧名。
         // 〔LOC1b〕`("src/doc/CONTRIBUTING.md", "list_active_session_ids", 1)` 摘了：那段示例改写成读本机活会话表，不再点那个说明性的名字。
         ("src/doc/INVARIANTS.md", "path_shell_safe", 1),
         ("src/doc/INVARIANTS.md", "snapshot_announced_by_origin", 1),
@@ -2933,8 +2932,8 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             "create_remote_branch_session",
             1,
         ),
-        ("src/doc/ARCHITECTURE.md", "create_branch_session", 2),
-        ("src/doc/ARCHITECTURE.md", "create_remote_branch_session", 1),
+        // 〔P6 · 09-29〕ARCHITECTURE 那两行（`create_branch_session` 2 · `create_remote_branch_session` 1）摘了：零侵入那一段按 4.0.0 重写，只讲今天的写口；
+        //   那块墓碑本身（`validate_branch_source`）照留，只是同一行不再捎带这两个旧名。
         ("src/doc/INVARIANTS.md", "delete_remote_history_session", 1),
         ("src/doc/INVARIANTS.md", "validate_delete_target", 1),
         (
@@ -3925,6 +3924,22 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         //    这两句散文说的正是**「那道门原先长什么样、为什么今天不需要它了」** ——
         //    删掉的是线索不是病 ⇒ 按第②条出路：贴 `PROSE_NAME_TOMBSTONE` ＋ 在这里记一笔账。
         ("src/doc/ARCHITECTURE.md", "validate_branch_source", 1),
+        // 〔P6 · 09-29 · 主会话裁〕ARCHITECTURE 那张「monitor 侧四层落地」进度表退役：那四格的落地探针与反向自检删了，原处留墓碑。
+        (
+            "tests/frontend/shell/doc_claim_registry_tests.rs",
+            "a_capability_line_has_landed",
+            1,
+        ),
+        (
+            "tests/frontend/shell/doc_claim_registry_tests.rs",
+            "layer_has_landed_at",
+            1,
+        ),
+        (
+            "tests/frontend/shell/doc_claim_registry_tests.rs",
+            "the_capability_line_landing_probe_actually_bites",
+            1,
+        ),
         ("src/doc/INVARIANTS.md", "validate_branch_source", 1),
         // 🔴 〔`K-R112` 09-13〕同一形，第四件：**cc-bus 三条与抓屏改走后端原语之后，
         //    它们各自那个 shell 命令构造器整块删了**（`build_broadcast_cmd` /
@@ -5270,7 +5285,8 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/backend/observe/tasks_query.rs", 1),
         ("src/backend/control/fork_write.rs", 1),
         ("src/frontend/shell/src/cross_half_edge_registry.rs", 2), // 〔MIG-1 续〕列 tmux 会话那一族搬进后端（tmux-list 出成品），旧名挂墓碑 1 → 2
-        ("src/frontend/shell/src/doc_claim_registry.rs", 1),
+        // 〔P6 · 09-29〕`doc_claim_registry.rs` 那一行（1）摘了：那块墓碑住在「monitor 侧 observe 落地」那一格的普查行里，
+        //   那一格随 ARCHITECTURE 那张进度表整轴退役（被守的那件事不在了）。退役本身的墓碑挂在 `doc_claim_registry_tests.rs` 原处（那一份计数不变：摘一块、挂一块）。
         // 〔MIG-3b〕`tasks.rs` 那一行随文件删了（本机任务 notify 整轴进后端，那几块墓碑守的来历一起走了）。
         // 〔THIN〕`backend_layering.rs` 那一行摘了：monitor 侧的层判据随 `backend` 目录删了。
         ("tests/frontend/shell/spawn_managed_exit_sites.rs", 3), // 〔SH1〕+1：本机 cc-bus 读那一处出表
