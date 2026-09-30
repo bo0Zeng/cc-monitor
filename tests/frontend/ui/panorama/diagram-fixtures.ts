@@ -7,22 +7,22 @@
  * ⚠ 图种 id 故意用假的（`k-…`）：本仓不许写上游图种名，夹具也不借真名蒙混。
  */
 import type {
+  ArchLink,
+  ArchNode,
   CallEdge,
   CallNode,
-  ClusterLink,
-  ClusterNode,
   Diagram,
-  DiagramHonesty,
   DiagramKindInfo,
-  DiagramOmitted,
+  Honesty,
+  Omitted,
   PanoramaDiagram,
   TypeNode,
   TypeRelation,
 } from "../../../../src/frontend/ui/panorama/types";
 
-export const omitted: DiagramOmitted = { nodes: 2, symbols: 9, links: 3 };
+export const omitted: Omitted = { nodes: 2, symbols: 9, links: 3 };
 
-export const honestyFull: DiagramHonesty = {
+export const honestyFull: Honesty = {
   unresolved_calls: 12,
   ambiguous_calls: 5,
   filtered_guess_links: 4,
@@ -31,7 +31,7 @@ export const honestyFull: DiagramHonesty = {
   db_errors: [],
 };
 
-export const honestyTypes: DiagramHonesty = {
+export const honestyTypes: Honesty = {
   unresolved_calls: null,
   ambiguous_calls: null,
   filtered_guess_links: null,
@@ -40,7 +40,7 @@ export const honestyTypes: DiagramHonesty = {
   db_errors: ["all_impls: boom"],
 };
 
-export const clusterA: ClusterNode = {
+export const clusterA: ArchNode = {
   id: "src_a",
   label: "src/a",
   size: 10,
@@ -48,7 +48,7 @@ export const clusterA: ClusterNode = {
   anchors: ["f"],
   member_files: ["src/a/x.rs", "src/a/y.rs"],
 };
-export const clusterB: ClusterNode = {
+export const clusterB: ArchNode = {
   id: "src_b",
   label: "src/b",
   size: 4,
@@ -56,7 +56,7 @@ export const clusterB: ClusterNode = {
   anchors: [],
   member_files: ["src/b/z.rs"],
 };
-export const clusterC: ClusterNode = {
+export const clusterC: ArchNode = {
   id: "src_c",
   label: "src/c",
   size: 3,
@@ -64,9 +64,9 @@ export const clusterC: ClusterNode = {
   anchors: [],
   member_files: ["src/c/w.rs"],
 };
-export const linkExact: ClusterLink = { from: "src_a", to: "src_b", exact: 3, dispatch: 0, guess: 0 };
-export const linkMixed: ClusterLink = { from: "src_a", to: "src_c", exact: 2, dispatch: 0, guess: 1 };
-export const linkGuess: ClusterLink = { from: "src_b", to: "src_c", exact: 0, dispatch: 0, guess: 2 };
+export const linkExact: ArchLink = { from: "src_a", to: "src_b", exact: 3, dispatch: 0, guess: 0 };
+export const linkMixed: ArchLink = { from: "src_a", to: "src_c", exact: 2, dispatch: 0, guess: 1 };
+export const linkGuess: ArchLink = { from: "src_b", to: "src_c", exact: 0, dispatch: 0, guess: 2 };
 
 export const clustersDiagram: Diagram = {
   kind: "k-clusters",

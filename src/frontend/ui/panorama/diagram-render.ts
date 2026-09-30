@@ -23,18 +23,19 @@
  * **买不到**：大图会挤（节点上限就是为这个留的）；真机 WebView2 的性能没量。
  */
 import type {
+  ArchLink,
+  ArchNode,
   CallEdge,
-  CallGraphBody,
   CallNode,
-  ClusterLink,
-  ClusterNode,
-  ClustersBody,
   Confidence,
   DiagramBody,
-  TypeGraphBody,
+  DiagramShape,
   TypeNode,
 } from "./types";
 import { copyText } from "../copy-table";
+
+/** 上游 `DiagramBody` 里某一种形状的那一支（按线上 `shape` 标签取；〔P3〕不给上游类型另起名字）。 */
+export type BodyOf<S extends DiagramShape> = Extract<DiagramBody, { shape: S }>;
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 
@@ -43,7 +44,7 @@ export type LineConf = "exact" | "dispatch" | "guess" | "mixed";
 
 /** 节点被点时交给调用方的东西（下钻由调用方决定）。 */
 export type NodePick =
-  | { shape: "clusters"; node: ClusterNode }
+  | { shape: "clusters"; node: ArchNode }
   | { shape: "call_graph"; node: CallNode }
   | { shape: "type_graph"; node: TypeNode };
 
@@ -99,7 +100,7 @@ export function edgeLabel(e: CallEdge): string {
  * 一捆聚合连接的线型档。🔴 **混着的不许画成干净的粗实线** ——
  * 全确定才给 exact；一掺就是 mixed（细实线 ＋ 标签写出成分）。
  */
-export function linkConf(l: ClusterLink): LineConf {
+export function linkConf(l: ArchLink): LineConf {
   const parts = [l.exact > 0, l.dispatch > 0, l.guess > 0].filter(Boolean).length;
   if (parts !== 1) return "mixed";
   if (l.exact > 0) return "exact";
@@ -107,7 +108,7 @@ export function linkConf(l: ClusterLink): LineConf {
 }
 
 /** 一捆聚合连接的标签：成分写出来。 */
-export function linkLabel(l: ClusterLink): string {
+export function linkLabel(l: ArchLink): string {
   const total = l.exact + l.dispatch + l.guess;
   switch (linkConf(l)) {
     case "exact":
@@ -146,7 +147,7 @@ export function textWidth(s: string, px = 12): number {
 }
 
 /** 团/模块图：节点摆在一个圆上（按上游给的顺序，确定性）。 */
-export function layoutClusters(nodes: ClusterNode[]): { boxes: Box[]; width: number; height: number } {
+export function layoutClusters(nodes: ArchNode[]): { boxes: Box[]; width: number; height: number } {
   const n = nodes.length;
   const sizes = nodes.map((nd) => ({
     w: Math.min(220, Math.max(96, textWidth(nd.label) + 28)),
@@ -168,7 +169,7 @@ export function layoutClusters(nodes: ClusterNode[]): { boxes: Box[]; width: num
  * 这是**摆位置**（离中心几跳就放第几列），不是分析：边与节点一条不增不减。
  * 两个方向都够不着的节点（上游带进来的歧义候选端点）放在第 0 列中心下方。
  */
-export function layoutCallGraph(body: Pick<CallGraphBody, "center" | "nodes" | "edges">): {
+export function layoutCallGraph(body: Pick<BodyOf<"call_graph">, "center" | "nodes" | "edges">): {
   boxes: Box[];
   width: number;
   height: number;
@@ -362,7 +363,7 @@ function nodeGroup(box: Box, lines: string[], onClick: () => void, focus = false
 }
 
 /** 渲染器：团 / 模块（节点 ＋ 带成分的聚合连接）。 */
-export function renderClusters(body: ClustersBody, ctx: RenderContext): SVGSVGElement {
+export function renderClusters(body: BodyOf<"clusters">, ctx: RenderContext): SVGSVGElement {
   const { boxes, width, height } = layoutClusters(body.nodes);
   const byId = new Map(boxes.map((b) => [b.id, b]));
   const { svg, world } = frame(width, height);
@@ -381,7 +382,7 @@ export function renderClusters(body: ClustersBody, ctx: RenderContext): SVGSVGEl
 }
 
 /** 渲染器：符号级调用子图。 */
-export function renderCallGraph(body: CallGraphBody, ctx: RenderContext): SVGSVGElement {
+export function renderCallGraph(body: BodyOf<"call_graph">, ctx: RenderContext): SVGSVGElement {
   const { boxes, width, height } = layoutCallGraph(body);
   const byId = new Map(boxes.map((b) => [b.id, b]));
   const { svg, world } = frame(width, height);
@@ -401,7 +402,7 @@ export function renderCallGraph(body: CallGraphBody, ctx: RenderContext): SVGSVG
 }
 
 /** 渲染器：类型 ＋ 实现/组合关系。 */
-export function renderTypeGraph(body: TypeGraphBody, ctx: RenderContext): SVGSVGElement {
+export function renderTypeGraph(body: BodyOf<"type_graph">, ctx: RenderContext): SVGSVGElement {
   const { boxes, width, height } = layoutTypeGraph(body.types);
   const byId = new Map(boxes.map((b) => [b.id, b]));
   const { svg, world } = frame(width, height);
