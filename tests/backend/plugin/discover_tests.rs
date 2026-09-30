@@ -1,7 +1,6 @@
-//! # 要求住址：`INVARIANTS §42` → `src/doc/IPC-PROTOCOL.md` 的 `panorama` 节与 `--acct-iso-status` 条（按序找，找不到说清查过哪儿）
+//! # 要求住址：`INVARIANTS §42` → `src/doc/IPC-PROTOCOL.md` 的 `panorama` 节（按序找，找不到说清查过哪儿）
 //!
-//! 核原文：`panorama` 节错误码 `not_installed` 逐字「整句说清查过哪儿」；`--acct-iso-status` 条逐字「先查 `$HOME/.local/bin/cc-acct-iso`
-//! （install 脚本的软链落点）、再查 `PATH`」。两处都经本模块兑现 —— 本族判候选按序先中、同名目录不算可执行、
+//! 核原文：`panorama` 节错误码 `not_installed` 逐字「整句说清查过哪儿」。经本模块兑现 —— 本族判候选按序先中、同名目录不算可执行、
 //! 找不到逐条列出查过的位置；「`search_path: false` 真不看 `PATH`」那一条没有逐字原文。〔JA1 点址 2026-09-24〕
 
 use super::*;

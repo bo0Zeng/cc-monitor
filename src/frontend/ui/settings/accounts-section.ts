@@ -1,4 +1,4 @@
-// A3：设置面板「账号」组（多账号 cc-acct-iso）。占用原「远端」空占位组。
+// A3：设置面板「账号」组（多账号；账号库由那台机器的后端建立和维护）。占用原「远端」空占位组。
 //
 // 展示某台远端的账号列表（名/邮箱/mode/登录态/configDir/默认）+ 设为默认 / 复制 configDir /
 // 刷新。**只读 + 改本机默认账号**（写 config.json，不碰远端 manifest、不注入、不重启——A4/A5）。
@@ -754,7 +754,7 @@ export class AccountsSection {
   ): Promise<void> {
     const def = currentWorkingAccount(state);
     this.body.appendChild(this.renderCurrentBanner(def));
-    // Z01：**能用但有缺**（远端 backend / cc-acct-iso 旧到看不见账号 0）。列表本身是好的，
+    // Z01：**能用但有缺**（那台后端旧到看不见账号 0）。列表本身是好的，
     // 所以不走 needs-update 那条整体降级——但也**绝不静默**：少一行账号用户看不出来。
     if (notice) {
       const n = document.createElement("div");

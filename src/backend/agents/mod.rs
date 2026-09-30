@@ -583,7 +583,7 @@ pub(crate) fn skill_asset_face() -> Option<AssetFace> {
 pub(crate) const REGISTRY: &[Adapter] = &[
     Adapter { kind: claudecode::AGENT_KIND, home: claudecode::home, account_env: Some(claudecode::paths::CONFIG_DIR_ENV), assets: Some(claudecode::ASSETS), history: None, upstream: Some(claudecode::UPSTREAM), mcp: Some(claudecode::MCP), footprint: Some(claudecode::footprint::FACE), accounts: Some(claudecode::accounts::FACE), records: Some(claudecode::RECORDS), processes: Some(claudecode::cards::PROCESS_NAMES), launch: Some(claudecode::LAUNCH) },
     // ⚠ codex 那一格**今天借用同一个载体，这是如实登记的耦合、不是设计**：
-    //   账号维度来自 `cc-acct-iso`（机器上只有一套账号库），而那套库切的就是这个变量。
+    //   账号维度来自机器上唯一那一套账号库（`accounts/manage/`），而那套库切的就是这个变量。
     //   `ccm --agent codex --account b` 从来就是这个行为（`shared/ccm` 那侧也是无条件 export）。
     //   codex 自己并不读它 ⇒ 哪天账号维度按家拆开，改的就是这一行。
     // 〔NT2 · V25〕codex **刻意不登记**默认上游：它的默认上游是哪一个、认不认 base URL 覆盖，本仓零证据（`C7`）⇒ 未登记即拒（fail-closed）。

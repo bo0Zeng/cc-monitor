@@ -3,7 +3,7 @@
 use copy_core::copy_text;
 use std::path::{Path, PathBuf};
 
-/// 覆盖配置根的环境变量名。**账号隔离（cc-acct-iso）就是靠切它**，
+/// 覆盖配置根的环境变量名。**账号隔离（后端 `accounts/manage/` 建的账号库）就是靠切它**，
 /// 所以它不只是"一个环境变量"，是账号这个概念在 Claude 侧的载体。
 pub(crate) const CONFIG_DIR_ENV: &str = "CLAUDE_CONFIG_DIR";
 
@@ -125,7 +125,7 @@ pub(crate) fn marketplace_manifest(install_location: &Path) -> PathBuf {
 /// 两条各治一形，任一命中即真：
 ///
 /// 1. **在配置根之下**（含它自己）。根由 [`resolve_home`] 现打解析，所以账号隔离
-///    把根切到一个**不带这个名字**的地方时（`cc-acct-iso` 每天在做的事），
+///    把根切到一个**不带这个名字**的地方时（每个具名账号都是这样），
 ///    这一条仍然认得出来。
 /// 2. **任何一段以 [`HOME_DIR_NAME`] 开头**。它兜的是第 1 条够不着的那些树：
 ///    此刻**没有被选中**的那几个账号目录、同名的备份文件、工程里的那一份。

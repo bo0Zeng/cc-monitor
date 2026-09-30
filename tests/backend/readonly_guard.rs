@@ -2905,9 +2905,7 @@ mod spawn_registry {
              是人回来读了这一段才写下的。下一个使用者同理。\
              ★★ **〔`A3` 第二波 09-24〕第三个使用者到了，逐条记在这里** —— 上游选择 \
              `accounts/iso.rs`经这一处口起**本机 `cc-acct-iso shellinit`**（`--acct-iso-shellinit`）。\
-             写面：**只读** —— `cmd_shellinit` 全是 `printf`，不写任何文件（vendored 那份 \
-             `src/shared/cc-acct-iso/scripts/cc-acct-iso` 逐行可查）；它读 manifest 与 \
-             `~/.cc-acct-iso/config`，要 `HOME` / `PATH`（都在继承白名单里）。\
+             写面：**只读**。今天这个使用者已不在：账号库改由后端自己建，那份外部脚本与 `accounts/iso.rs` 一起删了。\
              ⚠ 同样**加这一条不会红**（键仍是 `<非字面量>`；下面那条「恰好四条」只数 \
              `control/cc_bus.rs`）—— 是人回来读了这一段才写下的。\
              ★★ **〔RM1c · 第四波 09-24〕第四个使用者到了，逐条记在这里** —— 代码全景 \
@@ -6162,7 +6160,7 @@ mod remote_write_layer {
     const REMOTE_WRITE_MODULE: (&str, &str) = (
         "dial/sftp.rs",
         "SFTP 住本机常驻后端（V89）：暂存区的上传件（`control/transfer.rs` 经它写）· \
-         自部署的后端二进制 / `.build_id` / `ccm` 入口 / cc-acct-iso（部署链路 `use:\"files\"` 经它写）。\
+         自部署的后端二进制 / `.build_id` / `ccm` 入口（部署链路 `use:\"files\"` 经它写）。\
          路径由 monitor 给、由本文件的 `fenced_remote` 判：词法（只许两个根）＋ 父目录解链接仍在根下 ＋ \
          开写前 `lstat` 拒链接",
     );

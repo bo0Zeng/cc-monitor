@@ -451,7 +451,7 @@ impl ToolSpec {
 /// 五套既有机制 + cc-bus 的声明。**本轮只声明，不改它们任何行为**
 /// （MASTERPLAN §4 第 3 点：先用已知行为的工具验证抽象，再拿它吃新工具）。
 pub const TOOLS: &[ToolSpec] = &[
-    // 〔MIG-3b 续〕落在 Claude 布局里的那几条（`cc-bus` · `cc-acct-iso` · `skill-install` · `claude-code`）住适配层
+    // 〔MIG-3b 续〕落在 Claude 布局里的那几条（`cc-bus` · `accounts` · `skill-install` · `claude-code`）住适配层
     //   `agents/claudecode/footprint.rs::TOOLS`，经注册表（`agents::Adapter::footprint`）汇进 [`tools`]。
     ToolSpec {
         id: "ccm",
@@ -1034,7 +1034,7 @@ pub enum EnvProbe {
 ///
 /// 🔴 〔`K-R65` 09-11〕**这张表原来「全是第三档」，今天一条都不是** ——
 /// `K38` 之后它分成了两群：9 项通用工具是 [`Provisioning::UserProvides`]，
-/// `cc-acct-iso-local` 是 [`Provisioning::AppShips`]（app 独有、该我们装，而装口还欠着）。
+/// [`Provisioning::AppShips`] 那一群今天是空的（原先那一项是外部账号工具的本机那份；账号库改由后端自己建，它出了表）。
 pub const UNMANAGED_ENV: &[UnmanagedEnv] = &[
     // 〔MIG-3b 续〕`claude-cli` 那一条住适配层（`agents/claudecode/footprint.rs::UNMANAGED_ENV`）。
     UnmanagedEnv {

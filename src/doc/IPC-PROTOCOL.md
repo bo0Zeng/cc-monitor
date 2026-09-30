@@ -3676,7 +3676,7 @@ capture{max_bytes,abort_marker,stdin} · forward{local_port,remote_host,remote_p
 上行每一行一个请求 `{"op":…}`，下行每一行一个应答；`op` ∈ `home` · `read{path,max}` · `put{path,size,mode,verify}`（该行之后紧跟 `size` 个原始字节，
 上限 64 MiB）· `remove{path}` · `mkdirs{path}`（〔MIG-3b 续 · V41〕`stat` 那一问删了：唯一的问者随部署判定进了本机后端）。失败那一形 `{"code","message"}`，`code` ∈ `fenced`（远端写围栏拒）· `io` · `too_big` · `bad_request` · `unknown_op`。
 🔴 **写只许两处**：远端 `~/.cc-monitor/staging/` 与 `~/.cc-monitor/bin/`（用户 V89；`INVARIANTS §41.6` 的 SR1b 订正）。读不受限。
-它服务自部署（F08 后端二进制）：〔MIG-3b〕后端二进制那一路的判定在本机常驻后端（`deploy-plan`），monitor 照计划经它放字节（`dial_host::RemoteFs`）；cc-acct-iso 那一路的判定仍在 monitor。
+它服务自部署（F08 后端二进制）：〔MIG-3b〕后端二进制那一路的判定在本机常驻后端（`deploy-plan`），monitor 照计划经它放字节（`dial_host::RemoteFs`）；账号库不经这里部署，由那台后端自己建（`accounts-init`）。
 `use:"subsystem"`（把原始 SFTP 字节交给客户端）**不开** ⇒ 回 `unsupported_use`：SFTP 协议住后端，客户端只有 `files` 与 `transfer-*` 两条路。
 错误 code：`invalid_args` · `unsupported_use` · `duplicate_link` · `too_many_links`（每连接 256 条）。
 
