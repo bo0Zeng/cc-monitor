@@ -644,6 +644,7 @@ body.settings-window-mode .settings-panel {
 .remote-machine-row .remote-machine-legend {
   align-items: center;
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
 }
 
@@ -660,6 +661,86 @@ body.settings-window-mode .settings-panel {
 
 .remote-machine-open:hover {
   text-decoration: underline;
+}
+
+/* 〔SHOTS 09-29 · `设计/70 §2.3` 每台机器一行四格〕后端那四格：状态 / 操作 / 退出行为 / 健康。
+   表头（`[data-backend-columns]`）与每一行的格子（`[data-backend-cells]`）共用这一张列模板 ⇒ 分列对齐；
+   分栏只认 `data-*`（`backend-section.ts::buildRow` 头注：不为分栏新造类）。列宽可压到 0、内容自己折行 ⇒ 窄窗不撑破。
+   一律挂在 `.remote-machines`（机器列表，只在设置窗）底下：光秃秃的 `[data-*]` 会被当成别的窗口也挂得上（`entry-graphs` 完整性）。 */
+.remote-machines [data-backend-columns="head"],
+.remote-machines [data-backend-cells] {
+  column-gap: 16px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) minmax(0, 2fr) minmax(0, 1.2fr);
+  row-gap: 4px;
+}
+
+/* 窄窗：四栏折成两栏（表头跟着折，对齐不丢）。 */
+@media (width <= 760px) {
+  .remote-machines [data-backend-columns="head"],
+  .remote-machines [data-backend-cells] {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+}
+
+/* 表头与行上的格子左右对齐：行的格子缩在「边框 1 ＋ `.remote-machine` 内边距 12 ＋ legend 内边距 6」里，
+   后端清单里有、列表里没有的那几台（`.backend-row`）照同一个缩进摆。 */
+.remote-machines > [data-backend-columns="head"] {
+  padding: 0 19px;
+}
+
+.backend-row {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 6px 19px;
+}
+
+/* 行上：四格另起一行、占满整行（名字与测过的那几项在上一行），不跟着 legend 的粗体与手形。 */
+.remote-machine-legend > [data-backend-cells],
+.backend-row > [data-backend-cells] {
+  cursor: auto;
+  flex-basis: 100%;
+  font-size: var(--font-size-small);
+  font-weight: normal;
+  order: 1;
+  padding-top: 6px;
+}
+
+.remote-machines [data-backend-cells] > [data-col="ops"] {
+  align-content: start;
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+}
+
+.remote-machines [data-backend-cells] .settings-btn {
+  font-size: var(--font-size-small);
+  padding: 1px 8px;
+  white-space: nowrap;
+}
+
+.backend-row-kill {
+  align-items: center;
+  display: inline-flex;
+  gap: 4px;
+}
+
+.backend-row-exit {
+  color: var(--text-2);
+  font-size: var(--font-size-xs);
+  line-height: 1.5;
+  margin-top: 2px;
+}
+
+.backend-row-state[data-on="true"] {
+  color: var(--success);
+}
+
+.backend-row-health[data-health="crashed"] {
+  color: var(--warn);
 }
 
 /* 导航里的机器子项：缩进一级，与父项「机器」区分开。 */
