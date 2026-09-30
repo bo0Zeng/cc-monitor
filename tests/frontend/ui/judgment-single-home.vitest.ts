@@ -541,6 +541,10 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
   // 〔THIN〕`agent-tools-core` 那一格删了：它收进后端适配层（`agents/claudecode/cards.rs`），不再是共享 crate。
   // 〔THIN〕`branch-core` 那一格删了：它收进后端适配层（`agents/claudecode/branch.rs`），不再是共享 crate。
   // 〔RE〕`codex-token-core` 那一格删了：它搬进后端成模块（`agents/codex/token.rs`），不再是共享 crate，不在本表人群里。
+  // 〔P4〕通道（面 A）的客户端 · 路由器 · 线上词汇 · 拨号与交接件：契约类，零判定；TS 侧那一半是 `src/comms/inward/chan.ts`（同一套线上形状，两侧由通道判据对拍）。
+  "chan-core": {
+    mint_key: NONE,
+  },
   "copy-core": {
     copy_text: "J11",
     TABLE_JSON: NONE,
@@ -596,6 +600,24 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     wide_principals_in_sddl: NONE,
   },
   // 〔THIN〕`gate-core` 那一格删了：它收成后端模块（`control/gate_rules.rs`），不再是共享 crate，不在本表人群里。
+  // 〔P4〕monitor ↔ 文件窗口进程的契约：开窗种子 · 就绪行 · 开终端那一问 · 远端路径的两个切法（窗口与开窗入口共用；TS 侧不切远端路径 ⇒ 无孪生）。
+  "filewin-contract": {
+    BIN_ENV: NONE,
+    TERMINAL_OPEN_OP: NONE,
+    decode_ready: NONE,
+    decode_request: NONE,
+    encode_ready: NONE,
+    encode_request: NONE,
+    parent_dir: NONE,
+    remote_basename: NONE,
+    terminal_open_args: NONE,
+    terminal_open_cwd: NONE,
+  },
+  // 〔P4〕前端宿主原语（两个前端共用、后端不链）：自有状态文件的原子写 · 窗口夹进工作区；TS 侧零孪生。
+  "host-core": {
+    atomic_write_json: NONE,
+    fit_into_work_area: NONE,
+  },
   "relay-route-core": {
     // 〔P3 · 主会话 09-29 裁〕后端住在 `~/.cc-monitor` 里的那几样的相对路径（后端各写者引它、monitor 数据位置页按它列）；TS 侧没有孪生。
     ACCT_ISO_REL: NONE,
@@ -704,9 +726,15 @@ const TEST_INFRA_CRATE = "guard-core";
  * 提到 `guard-core` 的那几份 `Cargo.toml` 之外还有哪些（现核「只作 dev 依赖」的人群）：
  * 两份顶层工作区 ＋ 全景引擎 ＋ 每个 `crates/*` 自己那份（按盘上 crate 目录现生成，见下）。
  */
-const CARGO_TOMLS_TOP = ["src/frontend/shell/Cargo.toml", "src/backend/Cargo.toml", "src/panorama-engine/Cargo.toml"];
-/** 那几份里 `guard-core = …` 依赖行的总数（恒等计数：今天 monitor · 后端 · 全景引擎 · creds-core 各一）。 */
-const GUARD_CORE_DEP_LINES = 4;
+// 〔P4〕文件窗口独立成包，它的清单也是顶层清单（它的 guard-core 只在 dev 侧）。
+const CARGO_TOMLS_TOP = [
+  "src/frontend/shell/Cargo.toml",
+  "src/frontend/filewin/Cargo.toml",
+  "src/backend/Cargo.toml",
+  "src/panorama-engine/Cargo.toml",
+];
+/** 那几份里 `guard-core = …` 依赖行的总数（恒等计数：今天 monitor · 文件窗口 · 后端 · 全景引擎 · creds-core 各一；〔P4〕4 → 5 多的是文件窗口包）。 */
+const GUARD_CORE_DEP_LINES = 5;
 
 const CRATES_ROOT = "src/common";
 

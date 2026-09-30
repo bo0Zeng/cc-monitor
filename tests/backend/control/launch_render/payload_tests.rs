@@ -1383,8 +1383,9 @@ fn the_population_that_renders_env_prefixes_for_the_agent_process_is_enumerated(
         //   针 `export CLAUDE_CONFIG_DIR=${posixQuote(`，登记为「没接」）。那一族零生产调用、按
         //   `设计/00 §2.5 ④` 删了，发射点随之没了 ⇒ 人群 5 → 4（决定点少了一个，方向是对的）。
         Site {
-            what: "E · launch.rs（进程级，开窗那一跳）",
-            src: include_str!("../../../../src/frontend/shell/src/launch.rs"),
+            // 〔P4 · 阶段 H〕开窗的两个平台臂从 `launch.rs` 搬进 `platform/terminal.rs`（壳的平台层），这一格随之换住址，处数不变。
+            what: "E · platform/terminal.rs（进程级，开窗那一跳）",
+            src: include_str!("../../../../src/frontend/shell/src/platform/terminal.rs"),
             // 3 处：POSIX 开窗 1 + Windows 两个 spawn 点各 1（`launch.rs` 自己那条
             // `every_terminal_window_backend_opens_carries_the_backend_path` 也数这个数）。
             needle: ".env(k, v)",
