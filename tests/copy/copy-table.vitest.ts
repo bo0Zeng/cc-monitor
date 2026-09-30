@@ -370,6 +370,40 @@ describe("CP2a · 文案表判据自己会不会死（正控）", () => {
   });
 });
 
+// 〔P3〕`rules.json` C-L5 逐字「插进来的值与相邻汉字之间的空格随值定」（WF2 报备：「lx上报出了这个会话」）。
+describe("[C-L5] 值与汉字之间的空格随值定", () => {
+  const table = loadTable();
+  const HAN = "[\\u3400-\\u4dbf\\u4e00-\\u9fff\\uf900-\\ufaff]";
+  const ASCII = "Q7"; // 表里不会出现的两种值
+  const HANV = "龘"; // 单字：两个值之间只隔空格的那一段（设计上照留）靠「另一边也是它」认出来、不算
+  /** 这条里有没有一道「值 ↔ 汉字」接缝（中间至多一个空格）—— 没有的条目这一格不看。 */
+  const seamed = (zh: string): boolean => new RegExp(`${HAN} ?\\{[A-Za-z][A-Za-z0-9]*\\}|\\{[A-Za-z][A-Za-z0-9]*\\} ?${HAN}`).test(zh);
+  const fill = (e: { args: string[] }, v: string): Record<string, string> => Object.fromEntries(e.args.map((a) => [a, v]));
+
+  it("[C-L5] 全表逐条：ASCII 值挨着汉字 ⇒ 恰一个空格；汉字值挨着汉字 ⇒ 没有空格", () => {
+    const keys = Object.keys(table).filter((k) => seamed(table[k].zh));
+    expect(keys.length, "一条有接缝的都没找到 —— 下面零命中地绿").toBeGreaterThan(900);
+    const tightA = new RegExp(`${HAN}${ASCII}|${ASCII}${HAN}`);
+    const spacedH = new RegExp(`(?!${HANV})${HAN} ${HANV}|${HANV} (?!${HANV})${HAN}`);
+    const bad: string[] = [];
+    for (const k of keys) {
+      const a = copyText(k as CopyKey, fill(table[k], ASCII));
+      if (tightA.test(a)) bad.push(`${k}（ASCII 值紧贴汉字）：${a}`);
+      const h = copyText(k as CopyKey, fill(table[k], HANV));
+      if (spacedH.test(h)) bad.push(`${k}（汉字值与汉字之间多了空格）：${h}`);
+    }
+    expect(bad).toEqual([]);
+  });
+
+  it("[C-L5] 正控：同一套检查对着不经取文口的原样替换逮得住两种错", () => {
+    const raw = (zh: string, v: string): string => zh.replace(/\{[A-Za-z][A-Za-z0-9]*\}/g, v);
+    expect(new RegExp(`${HAN}${ASCII}|${ASCII}${HAN}`).test(raw("在{machine}上", ASCII))).toBe(true);
+    expect(new RegExp(`(?!${HANV})${HAN} ${HANV}|${HANV} (?!${HANV})${HAN}`).test(raw("{machine} 上没有", HANV))).toBe(true);
+    expect(copyText("launchArrival.arrived.body", { machine: ASCII })).toBe(`${ASCII} 上报出了这个会话。`);
+    expect(copyText("mcpSync.preview.head", { source: HANV, sourcefile: "a", target: "b", targetfile: "c" })).toBe(`从${HANV}的 a 拷到 b 的 c`);
+  });
+});
+
 /**
  * 〔DUP2 · `设计/01 §6.9`「前端读口 `copy-table.ts::copyText`；Rust 读口只有一份实现 `copy-core::copy_text`」〕
  * **两个读口的插值对拍（TS 这一侧）**：共用金样 `tests/__fixtures__/copy-interpolation.golden.json` 逐条喂给 `copyText`，
