@@ -26,6 +26,25 @@ fn free_text_refuses_exactly_nul_cr_lf_and_lets_real_names_through() {
     assert_eq!(FREE_TEXT_REFUSED, ['\0', '\r', '\n']);
 }
 
+/// 〔`INVARIANTS §47` ② · V138「位置参数原样交给 claude」〕交给 agent 的参数 / 登记备注的拒绝集：恰好 NUL / CR ——
+/// 多行初始任务正着放（拒 LF 就是 §47「拒过头也算违反」），元字符交给 quote（正反各一格）。
+#[test]
+fn an_agent_argument_may_span_lines_but_never_carries_nul_or_cr() {
+    for good in [
+        "第一行\n第二行",
+        "\n",
+        "a & b; c | d $x `y` *?!<>\"'",
+        "tab\tinside",
+        "",
+    ] {
+        assert!(arg_text_ok(good), "真实好值被拒了：{good:?}");
+    }
+    for bad in ["a\0b", "a\rb", "a\r\nb", "\r"] {
+        assert!(!arg_text_ok(bad), "坏值放行了：{bad:?}");
+    }
+    assert_eq!(ARG_TEXT_REFUSED, ['\0', '\r']);
+}
+
 /// 〔TL3 · `INVARIANTS §47` ②〕POSIX 自由文本路径：形式（绝对 · 无 `..` 段）＋ 拒绝集，**正反各一格**。
 #[test]
 fn a_posix_free_path_is_absolute_without_parent_segments_and_nothing_quote_cannot_hold() {

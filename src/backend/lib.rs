@@ -693,7 +693,9 @@ pub const PROTO_VERSION: u32 = 1;
 /// ★★★ **p6b-deploy-contract**（2026-09-30，P1 合并那一拍）：协议 / 行为 —— `deploy-core` 拆成契约 `deploy-contract` ＋ 后端 `control/deploy_plan.rs` 的判定；本机后端自举改问手上那份字节自己（新一次性子命令 `--place-verdict` · 帧 `place-verdict`）· `deploy-retired` 多入参形 `{text}`（monitor 不再判「是不是我们放的」）· search-core 拆进后端（`agents/claudecode/text.rs` · `observe/search_rules.rs`）· 起会话事实只剩后端一个家（`Adapter.launch`），monitor 画像代码删。
 ///
 /// ★★★ **p6c-filewin-package**（2026-09-30，P4 合并那一拍）：结构 —— 文件窗口独立成包 `src/frontend/filewin/`（`cc-monitor-filewin`，只说 call / subscribe；开终端经通道交 monitor、命令由后端渲）· 新契约 / 宿主 crate `chan-core` · `host-core` · `filewin-contract` · 壳里平台形态全部收进 `platform/`（阶段 H 收完）· 足迹里两个写点住址跟着新住址。行为不变。
-pub const BUILD_ID: &str = "p6c-filewin-package";
+///
+/// p6d-multiline-args：ccm 收的透传给 agent 的参数与登记备注可以跨行（只拒 NUL / CR），多行初始任务起得来。
+pub const BUILD_ID: &str = "p6d-multiline-args";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src/frontend/shell/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），

@@ -654,6 +654,9 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     // 〔合并 TL3 续做〕`INVARIANTS §47` ② 自由文本那一层（拒绝集只收 NUL / CR / LF）进了本 crate：TS 侧零处拼 shell、零处判它 ⇒ NONE。
     FREE_TEXT_REFUSED: NONE,
     free_text_ok: NONE,
+    // 交给 agent 的参数 / 登记备注那一格（可以跨行，只拒 NUL / CR）：TS 侧零处拼 shell、零处判它 ⇒ NONE。
+    ARG_TEXT_REFUSED: NONE,
+    arg_text_ok: NONE,
     posix_free_path_ok: NONE,
     posix_quote: "J4",
     // 〔FILES2〕唯一 quote 的字节形（`$'…'`，非 UTF-8 目录开终端）与它的判定：TS 侧零处拼 shell、零处判它 ⇒ NONE。

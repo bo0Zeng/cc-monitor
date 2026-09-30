@@ -42,11 +42,23 @@
 /// 而这三个字符 quote 挡不住它们的后果：NUL 截断参数、CR / LF 在交互 shell 里（`tmux send-keys` 那一跳）等于按了回车。
 /// 形式判定（绝对路径 · 无 `..` 段 …）**按各自语境**写在调用处（本机 / 远端、POSIX / Windows 的「绝对」不是同一件事）。
 /// 本仓自管的值（配置目录 · 后端落点）不走这一条，走全表（`payload.rs::config_dir_command_safe` 那一族）。
+/// 交给 agent 的参数 · 登记备注也不走这一条：它们可以跨行，走 [`ARG_TEXT_REFUSED`]。
 pub const FREE_TEXT_REFUSED: [char; 3] = ['\0', '\r', '\n'];
 
 /// 见 [`FREE_TEXT_REFUSED`]：这个自由文本值能不能交给唯一的 quote 拼进 shell。
 pub fn free_text_ok(s: &str) -> bool {
     !s.contains(FREE_TEXT_REFUSED)
+}
+
+/// 〔`INVARIANTS §47` ② · V138「位置参数原样交给 claude」〕**交给 agent 的参数 · 登记备注**这一种自由文本可以跨行：
+/// 多行初始任务是真实能力（`cc-spawn <目录> "$(cat 任务.md)"`；后端 `control/launch.rs::check_typed_payload` 为它放行 `\n`）。
+/// LF 在单引号里 quote 挡得住 —— 键进交互 shell 是续行、值原样，`sh -c` 里本来就原样；拒它就是「拒过头」。
+/// 只拒 NUL（截断参数）与 CR（键进终端就是回车键，值里变成 LF，原样不了）。
+pub const ARG_TEXT_REFUSED: [char; 2] = ['\0', '\r'];
+
+/// 见 [`ARG_TEXT_REFUSED`]：这个交给 agent 的参数 / 登记备注能不能交给唯一的 quote 拼进 shell。
+pub fn arg_text_ok(s: &str) -> bool {
+    !s.contains(ARG_TEXT_REFUSED)
 }
 
 /// **POSIX 语境下的自由文本路径**（远端 / 本机 POSIX 的工作目录 · 文件窗口的当前目录）能不能交给 [`posix_quote`]：
