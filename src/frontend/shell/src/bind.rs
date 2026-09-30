@@ -249,9 +249,7 @@ impl BindRegistry {
 // （两侧 `use` 同一份）；本模块是读方：[`BindRegistry::spawn`] 监听那个目录、[`entry_from_marker_hit`] 从 marker 解令牌。
 // 令牌形状同一份（`shell_quote_core::rbind_token_ok`，DUP2）⇒「本地表的键」与「wire 上读回来的串」按构造同源。
 pub(crate) use shell_quote_core::rbind_token_ok as rbind_token_shape_ok;
-pub use shell_quote_core::{
-    rbind_token_from_marker, rbind_token_marker, AWAIT_SUBDIR, RBIND_TOKEN_MARKER_PREFIX,
-};
+pub use shell_quote_core::{rbind_token_from_marker, AWAIT_SUBDIR, RBIND_TOKEN_MARKER_PREFIX};
 
 /// 把一段**可能含启动期令牌**的文本（marker / 窗口标题）变成可以进日志的样子。
 ///
