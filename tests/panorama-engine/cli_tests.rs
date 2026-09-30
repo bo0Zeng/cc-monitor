@@ -305,38 +305,19 @@ fn the_neighborhood_says_how_many_hops_each_symbol_is() {
     assert_eq!(hops("c", 1), vec![(id("b"), 1)], "调它的那一侧也算");
 }
 
-/// 生成物 `types.ts` 的全文：① 上游线上类型（vendored `src/wire.ts` 原样）② 本程序自己的应答（ts-rs）③ 本仓的叫法（别名）。
+/// 生成物 `types.ts` 的全文：① 上游线上类型（vendored `src/wire.ts` 原样）② 本程序自己的应答（ts-rs）。
+/// 〔P3 · 主会话 09-29 裁〕原先的 ③「本仓界面里的叫法」（给上游类型另起的旧名）删了：界面直接用上游的名字。
 fn types_ts() -> String {
     use ts_rs::TS;
     let cfg = ts_rs::Config::new().with_large_int("number");
     let own = |docs: Option<String>, decl: String| {
         format!("{}export {decl}\n\n", docs.unwrap_or_default())
     };
-    // ③ 本仓界面里的叫法 → 上游类型（**别名，不是镜像**：形状全来自 ①；上游改名 ⇒ tsc 当场红）。
-    const LOCAL_NAMES: &[(&str, &str)] = &[
-        ("ClusterNode", "ArchNode"),
-        ("ClusterLink", "ArchLink"),
-        (
-            "ClustersBody",
-            "Extract<DiagramBody, { shape: \"clusters\" }>",
-        ),
-        (
-            "CallGraphBody",
-            "Extract<DiagramBody, { shape: \"call_graph\" }>",
-        ),
-        (
-            "TypeGraphBody",
-            "Extract<DiagramBody, { shape: \"type_graph\" }>",
-        ),
-        ("DiagramHonesty", "Honesty"),
-        ("DiagramOmitted", "Omitted"),
-    ];
     let mut out = String::from(
         "// 生成物 —— 不许手改。由 `tests/panorama-engine/cli_tests.rs::the_frontend_types_are_generated_from_upstream_and_this_program` 写出。\n\
          // 要求住址：`99 §1` V158「线上契约由上游给、本仓不手抄」。\n\
          // ① 上游 code-picture-core 的线上类型（vendored `src/wire.ts` 原样；ts-rs 从上游的 serde 属性写出，可选性随之过来）\n\
-         // ② 全景小程序自己的应答（`src/panorama-engine/main.rs` 的 DTO，ts-rs）\n\
-         // ③ 本仓界面里的叫法（别名，形状全来自 ①）\n\n\
+         // ② 全景小程序自己的应答（`src/panorama-engine/main.rs` 的 DTO，ts-rs）\n\n\
          // ── ① 上游（vendored code-picture-core `src/wire.ts`）──\n\n",
     );
     out.push_str(include_str!(
@@ -345,10 +326,6 @@ fn types_ts() -> String {
     out.push_str("// ── ② 全景小程序自己的应答 ──\n\n");
     out.push_str(&own(StatusReply::docs(), StatusReply::decl(&cfg)));
     out.push_str(&own(DiagramReply::docs(), DiagramReply::decl(&cfg)));
-    out.push_str("// ── ③ 本仓界面里的叫法 ──\n\n");
-    for (ours, up) in LOCAL_NAMES {
-        out.push_str(&format!("export type {ours} = {up};\n"));
-    }
     out
 }
 
@@ -366,14 +343,29 @@ fn the_frontend_types_are_generated_from_upstream_and_this_program() {
         std::fs::write(&p, &want).unwrap();
         panic!("生成物 {p:?} 与上游 schema / 本程序的应答对不上，已重写 —— 重跑即绿，把它一起提交");
     }
-    // 正控：三段都真的有东西（上游 · 自己的 · 别名各一个锚）。
+    // 正控：两段都真的有东西（上游 · 自己的各一个锚）；〔P3〕给上游类型另起的旧名一个都不许有。
     for anchor in [
         "export type Neighborhood = ",
         "export type PanoramaStatus = ",
-        "export type ClusterNode = ArchNode;",
     ] {
         assert_eq!(want.matches(anchor).count(), 1, "{anchor}");
     }
+    let renamed: Vec<&str> = want
+        .lines()
+        .filter(|l| {
+            l.starts_with("export type ")
+                && l.split_once(" = ").is_some_and(|(_, rhs)| {
+                    let r = rhs.trim_end_matches(';');
+                    r.starts_with(|c: char| c.is_ascii_uppercase())
+                        && r.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+                })
+        })
+        .collect();
+    assert_eq!(
+        renamed,
+        Vec::<&str>::new(),
+        "生成物里又出现了给上游类型另起的名字"
+    );
 }
 
 /// 要求住址：`97 §8`「要上游给的」④「建索引进度回调（小程序写成进度行 → 插件口转订阅流）」· `99 §1` V158「长活要有进度」。
