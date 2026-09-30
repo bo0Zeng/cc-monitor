@@ -34,6 +34,7 @@ pub(crate) const CC_BUS_SKILL_DIR: &str = "~/.claude/skills/cc-bus";
 pub(crate) const USER_SETTINGS: &str = "~/.claude/settings.json";
 /// 多账号那一族的账号库根。
 pub(crate) const ACCOUNTS_ROOT: &str = "~/.claude-alt/";
+pub(crate) const ACCOUNTS_ROOT_REL: &str = ".claude-alt/";
 /// skill 装到的那一层（家目录相对）。
 pub(crate) const SKILLS_DIR_REL: &str = ".claude/skills";
 /// 同上，申报路径那一格。
@@ -141,50 +142,25 @@ pub(crate) const TOOLS: &[ToolSpec] = &[
             ],
         }],
     },
+    // 账号库：这台后端自己建、自己改（`accounts/manage/`，界面「启用多账号」「新建账号」那几步）。
+    //   建库时把这台现在登录的身份文件从 `~/.claude`（与 `~/.claude.json`）搬进默认号的目录，之后每个号的共享项都链回 `~/.claude`。
     ToolSpec {
-        id: "cc-acct-iso",
-        display_name: Text(|| copy_text("rsToolRegistry.tools.acctIsoName", &[])),
+        id: "accounts",
+        display_name: Text(|| copy_text("rsToolRegistry.tools.accountsName", &[])),
         installable: true,
         uninstallable: false,
         carriers: &[Carrier {
-            what: Text(|| copy_text("rsToolRegistry.tools.acctIsoWhat", &[])),
-            source: ToolSource::Vendored {
-                repo_path: "src/shared/cc-acct-iso",
-                fingerprint_file: ".vendor_id",
-            },
-            destination: ToolDestination::UserConfiguredPath {
-                token: "$ACCT_ISO_DEST",
-                what: Text(|| copy_text("rsToolRegistry.tools.acctIsoDestWhat", &[])),
-            },
-            touches: &[
-                TouchedFile {
-                    path: "$ACCT_ISO_DEST",
-                    host: HostScope::Remote,
-                    note: Some(Text(|| {
-                        copy_text("rsToolRegistry.tools.acctIsoDestNote", &[])
-                    })),
-                    effect: TouchEffect::OwnedFile,
-                },
-                TouchedFile {
-                    path: ACCOUNTS_ROOT,
-                    // **`Either`**——这一条我改了两次，第二次也不对（T04 审计重要 2）。
-                    //
-                    // 第一版标 `Client`：错，`accounts.rs` 的账号库列举全是
-                    // `list_remote_accounts(origin)` 与「某会话属哪个账号」那一条（〔C4a〕今天经通道 `accounts-sessions`），走 ssh exec。
-                    // 第二版改 `Remote`：也不对——本机 `CLAUDE_CONFIG_DIR` 会**指进这个目录**
-                    // （这台机器上就是 `~/.claude-alt/z`），`config_surface::claude_config_dir` 与
-                    // `config_surface` 自己都在读它，`ConfigSurfaceReport.claude_config_dir` 更是
-                    // 直接把它打印出来。于是同一页会**自相矛盾**：顶部写着解析基准是
-                    // `<用户家目录>/.claude-alt/<账号>`，而这一行写着「位置：远端」。
-                    //
-                    // 按 `Either` 的定义（"Claude Code 跑在哪台，这东西就在哪台"）它本就是两端皆可。
-                    host: HostScope::Either,
-                    note: Some(Text(|| {
-                        copy_text("rsToolRegistry.tools.acctIsoVaultNote", &[])
-                    })),
-                    effect: TouchEffect::ReadOnly,
-                },
-            ],
+            what: Text(|| copy_text("rsToolRegistry.tools.accountsWhat", &[])),
+            source: ToolSource::Generated,
+            destination: ToolDestination::LocalHomeRelative(ACCOUNTS_ROOT_REL),
+            touches: &[TouchedFile {
+                path: ACCOUNTS_ROOT,
+                host: HostScope::Either,
+                note: Some(Text(|| {
+                    copy_text("rsToolRegistry.tools.accountsVaultNote", &[])
+                })),
+                effect: TouchEffect::OwnedFile,
+            }],
         }],
     },
     // 〔AS2 · 第四波 4B · V113〕**skill「装到这台」**：资产目录里别的机器有的 skill，用户点了才装到这台 ——

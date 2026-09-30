@@ -45,7 +45,7 @@ pub(super) mod tests {
 
     /// ㈠ 上游选择那棵树里的文件（相对**上游选择的根**）。**相等，不是地板**。
     // 〔`A3` 第二波〕根从 `accounts/` 收窄到 `accounts/upstream_select/`（现推，不是写死）；
-    // 账号隔离工具的查询（`accounts/iso.rs`）**不是**上游选择，不进本表 —— 它登记在 [`ACCOUNT_DOMAIN_OTHER_FILES`]。
+    // 账号库管理（`accounts/manage/`）**不是**上游选择，不进本表 —— 它登记在 [`ACCOUNT_DOMAIN_OTHER_FILES`]。
     // 〔RM1a · 第四波〕+`file_face.rs`：这台机器上那份凭据文件的帧面读写口（`apikey-key-set` / `apikey-read`）。
     // 它是上游选择自己的状态、同一份文件、同一套格式 ⇒ 住上游选择这棵树；它用到中转的只有 `segment_is_safe`
     // （已在 [`CONTRACT`] 里），接口面一项没变宽。
@@ -64,7 +64,16 @@ pub(super) mod tests {
     ///
     /// 账号域根 = 上游选择根的上一级（现推）。域根自己那份 `mod.rs` 只声明两块、不放代码，
     /// 不算任何一块（由 [`the_two_halves_of_the_account_domain_do_not_reference_each_other`] 钉着）。
-    const ACCOUNT_DOMAIN_OTHER_FILES: &[&str] = &["iso.rs"];
+    const ACCOUNT_DOMAIN_OTHER_FILES: &[&str] = &[
+        "manage/aliases.rs",
+        "manage/exec.rs",
+        "manage/layout.rs",
+        "manage/mod.rs",
+        "manage/model.rs",
+        "manage/scan.rs",
+        "manage/verify.rs",
+        "manage/wire.rs",
+    ];
 
     /// ㈣ 上游选择用到的中转的东西（相对 `crate::relay::` 的路径）—— **接口面就这么宽**。
     ///
@@ -217,7 +226,7 @@ pub(super) mod tests {
         // 〔RN1 · V114〕这里原先还硬插上游选择自己的模块名（`apikey`）。模块改名 `upstream` 之后它与中转自己的
         //   `relay::upstream`（传输原语 `Base`）同名 ⇒ 在 ㈢ 里当场假红，**不再插**。射程不变窄：中转要点名
         //   上游选择，路径必经 `accounts`（上一行）；「`use` 进来再以裸模块名用」那一写法的 `use` 行本身也带 `accounts`。
-        //   账号域内部那条（iso ↔ 上游选择）仍要这个名字 ⇒ 由那条判据自己从根目录现推、单独加（[`module_name_of_root`]）。
+        //   账号域内部那条（账号库管理 ↔ 上游选择）仍要这个名字 ⇒ 由那条判据自己从根目录现推、单独加（[`module_name_of_root`]）。
         for (_, prod) in selection {
             for line in prod.lines() {
                 let t = guard_core::strip_visibility(line.trim_start());
@@ -537,14 +546,14 @@ pub(super) mod tests {
     }
 
     /// ★★ 「账号就账号, 中转就中转」在账号域**内部**的那一半：给中转当上游选择的 `upstream/`
-    /// 与账号隔离工具的查询（`iso`）**两向零引用**。
+    /// 与账号库管理（`manage`）**两向零引用**。
     ///
     /// | 格 | 断言 | 反空真 |
     /// |---|---|---|
     /// | 人群 | 域根 = 上游选择根的上一级（现推）；上游选择之外那几份 ⇔ [`ACCOUNT_DOMAIN_OTHER_FILES`]，两向相等 | 两块各自非空 |
     /// | 域根 `mod.rs` | 生产段每一行都是 `pub mod …;`，条数 = 两块的模块数 | —— |
-    /// | iso → 上游选择 | 零命中（路径 ＋ 上游选择词表） | 同一个 `cross_refs` 喂合成文本必须命中 |
-    /// | 上游选择 → iso | 零命中（路径 ＋ iso 词表） | 同上 |
+    /// | 账号库管理 → 上游选择 | 零命中（路径 ＋ 上游选择词表） | 同一个 `cross_refs` 喂合成文本必须命中 |
+    /// | 上游选择 → 账号库管理 | 零命中（路径 ＋ 账号库管理词表） | 同上 |
     ///
     /// ⚠ 买不到：经第三处（比如 `main.rs`）把两块的值接到一起 —— 那是装配，不是互相认识。
     #[test]
@@ -605,7 +614,18 @@ pub(super) mod tests {
             .map(str::trim)
             .filter(|l| !l.is_empty())
             .collect();
-        let want_mods = 1 + others.len();
+        // 块数 = 上游选择那一块 ＋ 其余文件的顶层名（`manage/…` 算一块）。
+        let blocks: BTreeSet<String> = on_disk
+            .iter()
+            .map(|r| {
+                r.split('/')
+                    .next()
+                    .unwrap_or(r)
+                    .trim_end_matches(".rs")
+                    .to_string()
+            })
+            .collect();
+        let want_mods = 1 + blocks.len();
         assert!(
             hub_lines.len() == want_mods && hub_lines.iter().all(|l| l.starts_with("pub mod ") && l.ends_with(';')),
             "账号域根 `{domain_mod_rs}` 的生产段应当恰好是 {want_mods} 行 `pub mod …;`，实得 {hub_lines:?} —— \
@@ -615,7 +635,7 @@ pub(super) mod tests {
         // 两块的名字。`accounts` 是域名，两块都住在它底下 ⇒ 不作判据词（路径那一半已经分得开）。
         let mut sel_vocab = upstream_selection_vocabulary(&selection);
         sel_vocab.remove("accounts");
-        // 上游选择自己的模块名（盘上现推）：iso 一侧不许点它。中转那条（㈢）不收它 —— 见 `upstream_selection_vocabulary` 头注。
+        // 上游选择自己的模块名（盘上现推）：账号库管理那一侧不许点它。中转那条（㈢）不收它 —— 见 `upstream_selection_vocabulary` 头注。
         let sel_mod_name = module_name_of_root(&sel_root);
         sel_vocab.insert(sel_mod_name.clone());
         let mut iso_vocab = upstream_selection_vocabulary(&others);
@@ -630,39 +650,39 @@ pub(super) mod tests {
         assert!(
             sel_vocab.contains(&sel_mod_name)
                 && sel_vocab.contains("Accounts")
-                && iso_vocab.contains("iso"),
-            "词表推空了：上游选择 {sel_vocab:?} · iso {iso_vocab:?}"
+                && iso_vocab.contains("manage"),
+            "词表推空了：上游选择 {sel_vocab:?} · 账号库管理 {iso_vocab:?}"
         );
 
         // 正控：同一个 `cross_refs` 对合成文本必须命中（两个方向各一刀）。
         let fake_iso = (
-            "accounts/iso.rs".to_string(),
+            "accounts/manage/wire.rs".to_string(),
             "use crate::accounts::upstream_select::Accounts;\n".to_string(),
         );
         let fake_l2 = (
             "accounts/upstream_select/mod.rs".to_string(),
-            "fn f() { super::super::iso::answer(&[]); }\n".to_string(),
+            "fn f() { super::super::manage::wire::run_change(&[]); }\n".to_string(),
         );
         assert!(
             !cross_refs(&[&fake_iso], &[sel_mod.clone()], &sel_vocab).is_empty(),
-            "正控：iso 引上游选择没被认出来"
+            "正控：账号库管理引上游选择没被认出来"
         );
         assert!(
             !cross_refs(&[&fake_l2], &iso_mods, &iso_vocab).is_empty(),
-            "正控：上游选择引 iso 没被认出来"
+            "正控：上游选择引账号库管理没被认出来"
         );
 
         let fwd = cross_refs(&others, &[sel_mod.clone()], &sel_vocab);
         assert!(
             fwd.is_empty(),
-            "🔴 账号隔离那一块（iso）引用了中转的上游选择：\n  {}\n\
+            "🔴 账号库管理那一块引用了中转的上游选择：\n  {}\n\
              用户逐字「账号就账号, 中转就中转」—— 账号域里给中转当上游选择的那一块，别的块不许认识它。",
             fwd.join("\n  ")
         );
         let back = cross_refs(&selection, &iso_mods, &iso_vocab);
         assert!(
             back.is_empty(),
-            "🔴 中转的上游选择引用了账号隔离那一块（iso）：\n  {}",
+            "🔴 中转的上游选择引用了账号库管理那一块：\n  {}",
             back.join("\n  ")
         );
     }

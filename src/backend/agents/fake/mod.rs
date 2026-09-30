@@ -379,6 +379,7 @@ pub(crate) fn walk(caps: &FakeCaps, fixture_home: &Path) -> Result<Vec<&'static 
         mcp: Some(MCP),
         home: home_fn,
         footprint: None,
+        accounts: None,
         records: None,
         processes: None,
         launch: None,

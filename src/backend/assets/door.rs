@@ -141,6 +141,32 @@ pub(crate) fn delete_empty_dir(d: &dyn Door, root: &str, rel: &str) -> Result<()
     .map_err(refused)
 }
 
+/// 删一项（链接删链接本身；`recursive` ⇒ 整棵目录，逐条目过路径解析）。
+pub(crate) fn remove(d: &dyn Door, root: &str, rel: &str, recursive: bool) -> Result<(), String> {
+    d.ask(
+        "files-delete",
+        json!({ "root": root, "rel": rel, "recursive": recursive }),
+    )
+    .map(|_| ())
+    .map_err(|e| refused(e).said())
+}
+
+/// 同根内复制一份（`files-copy`：目标已在 ⇒ 拒；`recursive` ⇒ 整棵目录，链接照原样复制成链接；权限位从源抄）。
+pub(crate) fn copy(
+    d: &dyn Door,
+    root: &str,
+    from: &str,
+    to: &str,
+    recursive: bool,
+) -> Result<(), String> {
+    d.ask(
+        "files-copy",
+        json!({ "root": root, "from": from, "to": to, "recursive": recursive }),
+    )
+    .map(|_| ())
+    .map_err(|e| refused(e).said())
+}
+
 /// 建一层目录（`files-mkdir`，父目录要在）。
 pub(crate) fn mkdir(d: &dyn Door, root: &str, rel: &str) -> Result<(), String> {
     d.ask("files-mkdir", json!({ "root": root, "rel": rel }))

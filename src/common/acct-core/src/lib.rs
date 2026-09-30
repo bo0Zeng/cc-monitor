@@ -1,47 +1,18 @@
-//! cc-acct-iso 账号库契约的**唯一定义**，外加平台无关的名字安全判据。
+//! 账号库契约的**唯一定义**（清单常量 · 账号库命令的线上形状 [`wire`]），外加平台无关的名字安全判据。
 //!
-//! 〔RE · 第四波 D 段〕**今天的两个消费者**（`设计/00 §1.2` 共享 crate 那张表）：
-//! - 后端生产：`observe/accounts_query.rs` · `accounts/upstream_select/file_face.rs` · `accounts/upstream_select/endpoint.rs` ·
-//!   `control/ccm/plan.rs` · `control/launch_render/payload.rs`；
-//! - monitor 只经**生成物**用它：`tests/frontend/shell/payload_judgment_rules.rs` 从
-//!   [`AUTH_KINDS`] 现生成 `src/frontend/ui/generated/judgment-rules.ts`（J16）；monitor 生产代码零引用
-//!   （下面「三个读者」一节是来历）。
+//! 今天的消费者：
+//! - 后端：`accounts/manage/`（写账号库）· `observe/accounts_query.rs`（读清单）· `accounts/upstream_select/file_face.rs` ·
+//!   `accounts/upstream_select/endpoint.rs` · `control/ccm/plan.rs` · `control/launch_render/payload.rs`；
+//! - 界面只经**生成物**用它：`tests/frontend/shell/payload_judgment_rules.rs` 从 [`AUTH_KINDS`] 现生成
+//!   `src/frontend/ui/generated/judgment-rules.ts`；[`wire`] 里的类型由本 crate 的测试档导出到 `src/frontend/ui/generated/`。
 //!
-//! # 这份数据有三个读者
+//! # 为什么 `is_safe_config_dir` 两种形没有合成一个
 //!
-//! bash 写侧（`cc-acct-iso`）· 远端后端（`observe/accounts_query.rs`）·
-//! 本机 monitor（`local_accounts.rs`）。backend crate 是 bin-only、刻意不进 workspace，
-//! 所以此前只能靠一条**读对面源文件**的守卫（`contract_matches_the_backend_implementation`）
-//! 把四个常量钉住。
-//!
-//! 那条守卫是**真的**（它剥注释、剥测试段、有字节地板与锚点自检，注释里还记着
-//! 第一版是安慰剂、被变异证伪后修好）—— 但守卫只能**发现**漂移。
-//! 常量放进这里之后，漂移变成**不可表示**：两侧 import 同一个 `const`，
-//! 想不一致得先把 import 删掉。⇒ 那条守卫可以退役。
-//!
-//! # 为什么只搬这些
-//!
-//! `local_accounts.rs` 与 `accounts_query.rs` 有三个同名函数，但**只有一个该合**：
-//!
-//! | 函数 | 判定 |
-//! |---|---|
-//! | [`is_deceptive_char`] | **平台无关**，而且两侧**双向漂了**（见下）⇒ 合，取并集 |
-//! | `is_safe_config_dir` | monitor 用 `looks_absolute`（认 Windows 盘符）、**允许 `\`** 作分隔符故改拒 `\..\`；backend 直接把 `\` 当危险字符拒掉。**是刻意的平台特化，不是漂移** ⇒ 不合 |
-//! | `norm_dir` | 同上（monitor 多剥一层 `\`）⇒ 不合 |
-//!
-//! 🔴 **`N-F1c`（09-05）把这个「二选一」解掉了，本节留作来历，别当现行**：
-//! 〔旧文逐字：「硬把后两个合了，只能二选一：要么 monitor 失去 Windows 路径，
-//! 要么后端失去对 `\` 的拒绝。」〕
-//! 那个两难的前提是「`backend` 只跑在 Linux 上，所以它可以把 `\` 当危险字符」。
-//! `N-F1c` 起 **monitor 的本机账号清单也来问这个二进制**（`--list-accounts`），而 monitor 要在
-//! Windows 上跑 ⇒ 那个前提没了。
-//! 解法**不是**「合」，是把判据按它防的东西拆开（逐字照 `local_accounts.rs` 那段头注）：
-//!   ① shell 元字符与视觉欺骗字符 = **平台无关的安全性质**，两侧同一套；
-//!   ② 「是绝对路径」= **平台相关的形式**，各写各的。
-//! `\` 从两侧的危险字符表里一起拿掉，由**下游那一层**（`config_dir_command_safe`，拼 POSIX 命令
-//! 之前那一道）继续拒它 —— **分层校验**，不是放弃防守。
-//! ⇒ 今天 `is_safe_config_dir` 两侧仍未合并，但**理由变了**：不是「合不了」，是
-//! 「形式那一半本来就该各写各的」。
+//! 判据按它防的东西拆开：① shell 元字符与视觉欺骗字符 = **平台无关的安全性质**，一套（[`config_dir_char_unsafe`]）；
+//! ② 「是绝对路径」= **平台相关的形式**，POSIX 形（[`config_dir_posix_ok`]，拼 POSIX 命令之前）与任一平台形（[`config_dir_ok`]，
+//! 读清单时认 Windows 盘符）各一条。`\` 不在拒绝集里：它是 Windows 的分隔符，由 POSIX 形那一条自己拒。
+
+pub mod wire;
 
 /// 账号库目录名（`$HOME` 下）。
 pub const ACCTS_DIR_NAME: &str = ".claude-alt";
@@ -51,13 +22,8 @@ pub const MANIFEST_NAME: &str = "accounts.json";
 pub const CREDENTIALS_NAME: &str = ".credentials.json";
 /// 本仓支持的 manifest schema 版本。**不支持的版本不是错误**，是「未启用多账号」。
 ///
-/// # K-A1（08-24）：加 `authKind` 这一维**刻意不 bump** —— 裁决与排除见件计划 `KA6d`
-///
-/// 一句话理由：`RawAccount` 两侧都是 `#[serde(default)]` + 忽略未知键 ⇒ 加一个**可选键**
-/// 是**双向兼容**的（新代码读旧 manifest、旧代码读新 manifest 都不炸）⇒ 按定义不是
-/// breaking change。而 bump 会立刻造成真伤害：本常量的语义逐字是
-/// 「不支持的版本 = 未启用多账号」⇒ 任何还没升级 `cc-acct-iso` 写侧的机器（manifest 仍写
-/// `version: 1`）会被新读侧判成「没启用多账号」，**整张账号列表消失**。
+/// 加 `authKind` 这一维**没有 bump**：它是可选键，读侧一律 `#[serde(default)]` ＋ 忽略未知键 ⇒ 新旧清单双向都读得动；
+/// bump 反而会让盘上所有 `version: 1` 的清单被读成「没启用多账号」，整张账号列表消失。
 pub const SUPPORTED_SCHEMA: u64 = 1;
 
 // ---------------------------------------------------------------- 鉴权方式（K-A1）
@@ -104,9 +70,8 @@ pub fn auth_kind_from_manifest(raw: Option<&str>) -> &'static str {
 ///
 /// # 为什么要有这一格
 ///
-/// 设置页新建账号的 apikey 那一支是「`cc-acct-iso add` 建目录 ＋ 把 key 写进 apikey 表」——
-/// 而 cc-acct-iso **没有 apikey 账号这个概念**，manifest 里那个号的 `authKind` 缺席 ⇒ 按上面那条落订阅，
-/// 又没有订阅凭据 ⇒ 「未登录」、选不中。可它明明配好了 key。
+/// 清单里 `authKind` 缺席的号（旧清单、或 key 是后配进 apikey 表的）按上面那条落订阅，又没有订阅凭据 ⇒
+/// 「未登录」、选不中 —— 可它明明配好了 key。今天后端建 API 号时会写 `authKind`，这一格兜住其余那几种。
 ///
 /// # 为什么住这里（而不是界面那一侧拼一个「清单说 api-key 或表里有它」）
 ///

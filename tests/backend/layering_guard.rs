@@ -82,30 +82,6 @@ mod tests {
     /// ⚠ **类型也要登记，不只是函数**：`Done` / `NotRun` 出现在调用方的签名与 `match` 里，
     /// 它们和函数一样是接口面。漏登记等于「接口只算函数」——那是个会腐的口径。
     const ALLOWED_INTO_PLUGIN: &[(&str, &str, &str)] = &[
-        // 〔`A3` 第二波〕账号域经本口起 `cc-acct-iso shellinit`（`accounts/iso.rs`）。
-        // 四条边与 `control` 那几条同一套形状；码 → 语义的映射留在调用方（`shellinit_outcome`）。
-        (
-            "accounts",
-            "crate::plugin::discover::find",
-            "① 找它：`$HOME/.local/bin/cc-acct-iso` 先、`PATH` 后（与远端 `command -v` 前置 \
-             `~/.local/bin` 同一个顺序），找不到那句话的尾巴由账号域给",
-        ),
-        (
-            "accounts",
-            "crate::plugin::invoke::run",
-            "③ 传 argv 起它：`cc-acct-iso shellinit`（只读，全是 `printf`），期限走 `timeout` 前缀、\
-             环境白名单 —— 账号域不另开一处 `Command::new`",
-        ),
-        (
-            "accounts",
-            "crate::plugin::invoke::Done",
-            "④ 骨架的返回类型：账号域自己判「只有码 0 才算产出了片段」（码的语义留在调用方）",
-        ),
-        (
-            "accounts",
-            "crate::plugin::invoke::NotRun",
-            "「根本没跑起来」那一类：账号域要分得出它与「跑了但失败」（两个不同的失败码）",
-        ),
         (
             "control",
             "crate::plugin::discover::find",

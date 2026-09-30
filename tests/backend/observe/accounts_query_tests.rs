@@ -1,8 +1,3 @@
-// U7-3：`credential_filename_matches_native_identity_declaration` 已搬进
-// 共享 crate `acct-core`（`the_credential_filename_matches_the_cc_acct_iso_declaration`）。
-// 常量住那儿，跟 bash 声明对账的守卫就该住那儿，否则又是两份。
-// 它原先还带一半「本文件真的在用这个字面量」—— 常量共享之后那半**结构上不可能不成立**。
-
 use super::*;
 use std::fs;
 
@@ -346,39 +341,6 @@ fn account_trust_paths() {
     let _ = fs::remove_dir_all(&root);
 }
 
-// ---- 5. ACCTS_DIR 配置解析 ----
-#[test]
-fn parse_accts_dir_variants() {
-    assert_eq!(
-        parse_accts_dir_from_config("ACCTS_DIR=\"/a/b\"\n").as_deref(),
-        Some("/a/b")
-    );
-    assert_eq!(
-        parse_accts_dir_from_config("ACCTS_DIR='/a/b'\n").as_deref(),
-        Some("/a/b")
-    );
-    assert_eq!(
-        parse_accts_dir_from_config("  ACCTS_DIR=/a/b  # 注释\n").as_deref(),
-        Some("/a/b")
-    );
-    assert_eq!(parse_accts_dir_from_config("#ACCTS_DIR=/x\n"), None);
-    assert_eq!(parse_accts_dir_from_config("SHARED_STORE=/x\n"), None);
-    // 后写覆盖先写
-    assert_eq!(
-        parse_accts_dir_from_config("ACCTS_DIR=/a\nACCTS_DIR=\"/b\"\n").as_deref(),
-        Some("/b")
-    );
-    // $HOME 展开
-    let h = PathBuf::from("/home/u");
-    assert_eq!(
-        expand_home_prefix("$HOME/.claude-alt", Some(&h)),
-        "/home/u/.claude-alt"
-    );
-    assert_eq!(expand_home_prefix("${HOME}/x", Some(&h)), "/home/u/x");
-    assert_eq!(expand_home_prefix("~/x", Some(&h)), "/home/u/x");
-    assert_eq!(expand_home_prefix("/abs/x", Some(&h)), "/abs/x");
-}
-
 #[test]
 fn accts_dir_cli_override_wins() {
     let args = vec![
@@ -490,33 +452,6 @@ fn trailing_slash_normalized() {
     assert_eq!(norm_dir("/a/b/"), "/a/b");
     assert_eq!(norm_dir("/a/b"), "/a/b");
     assert_eq!(norm_dir("/"), "/");
-}
-
-// ---- 8. R2：export/declare 前缀 ----
-#[test]
-fn parse_accts_dir_export_prefix() {
-    assert_eq!(
-        parse_accts_dir_from_config("export ACCTS_DIR=/a/b\n").as_deref(),
-        Some("/a/b")
-    );
-    assert_eq!(
-        parse_accts_dir_from_config("declare -x ACCTS_DIR=\"/a/b\"\n").as_deref(),
-        Some("/a/b")
-    );
-    assert_eq!(
-        parse_accts_dir_from_config("  export ACCTS_DIR='/a/b'\n").as_deref(),
-        Some("/a/b")
-    );
-    // 撞名前缀不误认
-    assert_eq!(parse_accts_dir_from_config("ACCTS_DIRX=/y\n"), None);
-    assert_eq!(parse_accts_dir_from_config("export ACCTS_DIRX=/y\n"), None);
-    // `=` 前有空格 = shell 里的命令而非赋值 → 不认
-    assert_eq!(parse_accts_dir_from_config("ACCTS_DIR =/x\n"), None);
-    // CRLF 行尾
-    assert_eq!(
-        parse_accts_dir_from_config("export ACCTS_DIR=/a/b\r\n").as_deref(),
-        Some("/a/b")
-    );
 }
 
 // ---- 9. 重要-B：特殊文件不绕过大小上限 ----
@@ -2050,8 +1985,8 @@ fn every_group_of_deceptive_characters_is_rejected_in_a_config_dir() {
     );
 }
 
-/// ★ 账号库目录名是 **bash 写侧 / 后端 / 起会话那一侧三方共用的契约名**，写死成字面量核对；
-/// 而后端缺省解析（没有 `--accts-dir`、没有 `~/.cc-acct-iso/config` 覆盖时）恰经这一个常量拼出来。
+/// ★ 账号库目录名是 **写账号库那一侧 / 读清单那一侧 / 起会话那一侧共用的契约名**，写死成字面量核对；
+/// 而后端缺省解析（没有 `--accts-dir` 时）恰经这一个常量拼出来。
 #[test]
 fn the_accounts_library_lives_under_the_contract_directory_name() {
     assert_eq!(

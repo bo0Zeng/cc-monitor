@@ -427,11 +427,9 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
     //   不占 worker（等的是子进程退出，不是一段同步计算），`cancel` 命中时 future 被丢、子进程组被杀。
     // 〔C4d · 第四波 4B〕`remote-reach`：纯内存登记（一把锁、插一行），同 `ping` 在普通 spawn 上。
     // 〔C4d · 第四波 4B〕历史两条出成品：远端那一支等 `remote_ask`（真异步），本机扫盘那段自己挪到阻塞线程池。
-    // 〔DUP2 · J4〕`acct-iso-cmd`：纯函数（校验 ＋ 唯一的 quote，不起进程不碰盘），同 `ping` / `resolve` 在普通 spawn 上。
     for c in [
         "ping",
         "resolve",
-        "acct-iso-cmd",
         "ccm-probe",            // 〔E2〕纯函数，普通 spawn
         "terminal-ssh",         // 〔FIX4 · ⑬〕纯函数（校验 ＋ quote），普通 spawn
         "terminal-local",       // 〔P5〕纯函数（接前奏），普通 spawn
@@ -492,9 +490,7 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "bus-state",
         "bus-inbox",
         "capture-pane",
-        // 〔LOC1a · 第四波 4D〕起插件进程 / 读写整份 jsonl。
-        "acct-iso-status",
-        "acct-iso-shellinit",
+        // 〔LOC1a · 第四波 4D〕读写整份 jsonl。
         "session-fork",
     ] {
         assert!(
@@ -611,7 +607,16 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "skill-install-apply",
         "skill-host-list",
         "cc-bus-install",
-        "acct-iso-install",
+        // 账号库那一族：读账号库 ＋ 经本进程文件管理面落盘（同步文件 I/O）。
+        "accounts-init",
+        "accounts-add",
+        "accounts-remove",
+        "accounts-set-default",
+        "accounts-repair",
+        "accounts-isolate",
+        "accounts-rollback",
+        "accounts-verify",
+        "accounts-login-cmd",
         "authorized-keys-add", // 〔MIG-3b 续〕同步文件 I/O（经本进程文件管理面）
         "files-link",
         "cc-bus-install-state",
@@ -643,8 +648,6 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "kill",
         "ping",
         "resolve",
-        // 〔DUP2 · J4〕纯函数，普通 spawn。
-        "acct-iso-cmd",
         // 〔E2〕`ccm-probe`：纯函数，普通 spawn。
         "ccm-probe",
         // 〔FIX4 · ⑬〕`terminal-ssh`：纯函数，普通 spawn。
@@ -691,8 +694,6 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "bus-state",
         "bus-inbox",
         "capture-pane",
-        "acct-iso-status",
-        "acct-iso-shellinit",
         "session-fork",
         "files-create",
         "files-commit-upload",
@@ -784,7 +785,16 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "skill-install-apply",
         "skill-host-list",
         "cc-bus-install",
-        "acct-iso-install",
+        // 账号库那一族：读账号库 ＋ 经本进程文件管理面落盘（同步文件 I/O）。
+        "accounts-init",
+        "accounts-add",
+        "accounts-remove",
+        "accounts-set-default",
+        "accounts-repair",
+        "accounts-isolate",
+        "accounts-rollback",
+        "accounts-verify",
+        "accounts-login-cmd",
         "authorized-keys-add", // 〔MIG-3b 续〕同步文件 I/O（经本进程文件管理面）
         "files-link",
         "cc-bus-install-state",

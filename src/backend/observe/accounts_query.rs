@@ -1,4 +1,4 @@
-//! A2：多账号（cc-acct-iso「隔离又同步」管线）的**只读**消费侧。
+//! A2：多账号（账号库：每个号一个配置目录，共享项链回同一个配置根）的**只读**消费侧（写侧是 `accounts/manage/`）。
 //!
 //! - `--list-accounts [--accts-dir <p>]`
 //!   → 第 1 行 `{"kind":"accounts-meta",…}`，其后每账号一行 JSON。
@@ -110,7 +110,6 @@ struct Manifest {
 }
 
 /// 路径是否可安全地交给下游（cc-monitor 会把 configDir 拼进 `export CLAUDE_CONFIG_DIR='…'`）。
-/// 与 cc-acct-iso 的 `path_shell_safe` **在安全字符那一半上**同一套——两端对齐，避免一端放行另一端炸。
 /// ⚠ `N-F1c`（09-05）之后**不再是整套同一**：`\` 从本函数的拒绝集里拿出来了（Windows 的路径
 /// 分隔符就是它），而上面那一侧照旧拒。这不是漂移，是**分层校验** ——
 /// monitor 把 `configDir` 拼进 POSIX 命令之前要过 `config_dir_command_safe`，那个函数明确拒 `\`。
@@ -141,25 +140,7 @@ fn home_dir() -> Option<PathBuf> {
     crate::platform::paths::home_dir()
 }
 
-/// 把 `$HOME/x` / `~/x` 前缀展开成绝对路径。仅支持前缀形式——更花哨的 shell 写法
-/// 一律不猜（backend 不跑 shell），让用户走 `--accts-dir` 显式覆盖。
-/// 〔OSA · V156〕认法住 `platform::shell::posix::expand_home`。
-fn expand_home_prefix(raw: &str, home: Option<&Path>) -> String {
-    match home {
-        Some(h) => crate::platform::shell::posix::expand_home(raw, &h.to_string_lossy()),
-        None => raw.to_string(),
-    }
-}
-
-/// 从 `~/.cc-acct-iso/config` 的文本里抠 `ACCTS_DIR=` 的值。
-/// **正则式纯文本解析，绝不 source**（那是 shell 文件，backend 不跑 shell）。
-/// 取最后一次有效赋值（后写覆盖先写，与 shell 语义一致）；跳过注释行。
-fn parse_accts_dir_from_config(text: &str) -> Option<String> {
-    // 〔OSA · V156〕sh 赋值怎么认（`export` / `declare -x` 前缀 · 引号 · 行尾注释）住 `platform::shell::posix::assigned_value`。
-    crate::platform::shell::posix::assigned_value(text, "ACCTS_DIR")
-}
-
-/// 账号库目录：`--accts-dir <p>` > `~/.cc-acct-iso/config` 的 `ACCTS_DIR` > `$HOME/.claude-alt`。
+/// 账号库目录：`--accts-dir <p>` > `$HOME/.claude-alt`。
 fn resolve_accts_dir(args: &[String]) -> PathBuf {
     if let Some(i) = args.iter().position(|a| a == "--accts-dir") {
         if let Some(p) = args.get(i + 1) {
@@ -168,20 +149,10 @@ fn resolve_accts_dir(args: &[String]) -> PathBuf {
             }
         }
     }
-    let home = home_dir();
-    if let Some(h) = home.as_deref() {
-        let cfg = h.join(".cc-acct-iso").join("config");
-        if let Ok(text) = std::fs::read_to_string(&cfg) {
-            if let Some(raw) = parse_accts_dir_from_config(&text) {
-                let expanded = expand_home_prefix(&raw, Some(h));
-                if expanded.starts_with('/') {
-                    return PathBuf::from(expanded);
-                }
-            }
-        }
-        return h.join(ACCTS_DIR_NAME);
+    match home_dir() {
+        Some(h) => h.join(ACCTS_DIR_NAME),
+        None => PathBuf::from(ACCTS_DIR_NAME),
     }
-    PathBuf::from(ACCTS_DIR_NAME)
 }
 
 fn manifest_path(accts_dir: &Path) -> PathBuf {
@@ -198,7 +169,7 @@ pub(crate) fn default_manifest_path() -> PathBuf {
 /// 调用方据此输出 `enabled:false` 而**不是**失败退出（"没启用多账号"是正常状态）。
 ///
 /// 账号数组**逐条**解析：单个坏账号（缺 name/configDir 等）被跳过而非拖垮整份
-/// manifest，与 cc-acct-iso 写侧「丢单条」策略一致（避免手改 manifest 时一坏全灭）。
+/// manifest（避免手改 manifest 时一坏全灭；写侧 `accounts/manage/model.rs` 对这种条目也是原样留着、不去动它）。
 fn load_manifest(accts_dir: &Path) -> Result<Manifest, String> {
     let p = manifest_path(accts_dir);
     let bytes = read_regular_capped(&p, MAX_MANIFEST_BYTES).map_err(|e| {
@@ -508,12 +479,8 @@ fn scan_accounts(
                         )
                     }
                 };
-                // 只 stat 存在性，绝不读内容。
-                // **Z06 双写点**：这个文件名是「什么算已登录」的判据，而 cc-acct-iso
-                // 的 `NATIVE_IDENTITY` 声明里也各写了一份（bash 侧 `cc-acct-iso` 的
-                // `logged=` 那行）。两个进程、两种语言，无法共享常量 ⇒ 由本文件测试
-                // 模块里的 `credential_filename_matches_native_identity_declaration`
-                // 钉住（同 `TMUX_LS_FMT` 双写点那条守卫的做法）。**改这里必须改声明。**
+                // 只 stat 存在性，绝不读内容。这个文件名就是身份表
+                // （`agents::claudecode::accounts::NATIVE_IDENTITY`）里凭据那一项的同一个常量。
                 // 探不到 config dir（账号 0 且 manifest 没写 sharedStore）⇒ false，
                 // 那是「不知道」，不假装已登录。
                 let credentials_present = probe_dir
@@ -570,7 +537,7 @@ fn scan_accounts(
 /// （`rows`：表里有哪几条账号 id，调用方从 `accounts::upstream_select::file_face` 读来 —— 与中转里的上游选择同一个出处）；
 /// 「哪几个号在表里有行」只问 `acct_core::apikey_routed_subset`（`table_agent`：这台机器上那份文件属于哪一家）。
 ///
-/// `notice`：「能用但有缺」—— manifest 启用了、却一个账号 0 都没有（cc-acct-iso 写侧旧）。
+/// `notice`：「能用但有缺」—— manifest 启用了、却一个账号 0 都没有（写它的那一侧旧到不认账号 0）。
 /// 措辞不说「远端」：本机远端同一条路（此前那句写着「远端」，本机那条路因此刻意不出它）。
 /// 〔旧那一句「后端太旧、不认账号 0」删了：出成品的后端按构造认得账号 0；老后端回的是旧形状，界面当场认出。〕
 pub(crate) fn list_product(rows: &[String], agent: &str, table_agent: &str) -> serde_json::Value {
@@ -859,8 +826,7 @@ fn account_trust(
 ///
 /// 为什么要单独一个入口而不是给 `--account-trust` 传个空 `configDir`：账号 0 **没有**
 /// config dir，空串是被明令禁止的拼法（空值 ≠ 未设，见 `RawAccount::config_dir`）。
-/// 而且它的 `.claude.json` 也不在共享库里 —— 原生根是 `$HOME`（cc-acct-iso 的
-/// `NATIVE_IDENTITY` 里 `.claude.json:home:secret`）⇒ 路径来源本就不同，
+/// 而且它的 `.claude.json` 也不在共享库里 —— 原生根是 `$HOME`（身份表 `NATIVE_IDENTITY` 里它的原生根是家目录）⇒ 路径来源本就不同，
 /// 用同一个入口只能靠哨兵值区分，那比多一个动词更容易出错。
 fn account_trust_zero(cwd: &str) -> Result<String, (String, String)> {
     let home = home_dir().ok_or_else(|| {

@@ -1485,6 +1485,14 @@ mod tests {
          而且它正是拿锁之前那一步（锁的就是它建出来的目录）—— 它自己再拿锁是先有鸡还是先有蛋",
     )];
 
+    /// 第四层**之外**拿这把锁的（`(模块, 为什么)`）：它们改的不是后端自有状态文件，却同样是一趟读—改—写，
+    /// 两个后端进程同时做会盖掉对方。锁只是只读打开那个目录，不添任何写动词。
+    const LOCK_HOLDERS_OUTSIDE_OWN_STATE: &[(&str, &str)] = &[(
+        "accounts/manage/wire.rs",
+        "账号库的读—改—写（读清单与各号目录 → 算计划 → 经文件管理面落盘）：本机常驻后端与一次性 CLI 同时改，\
+         后写的会把先写的那个号从清单里抹掉。锁的是账号库目录本身",
+    )];
+
     /// 🔴 〔HX2 · 第四波 4D〕**第四层判据 ⑥：每一份都在跨进程锁里写 —— 人群两向相等。**
     ///
     /// 要求住址：题面 HX2 逐字「后端自有状态文件跨进程锁（`flock` 一类，Windows 对应）」；审计 `E-compat.md` §E6 · E14 · §3.1
@@ -1519,10 +1527,19 @@ mod tests {
             assert!(is_own_state(p), "锁的例外 `{p}` 不在第四层登记里 —— 挂空号");
             assert!(why.chars().count() >= 20, "`{p}` 没写清为什么不用锁");
         }
+        for (p, why) in LOCK_HOLDERS_OUTSIDE_OWN_STATE {
+            assert!(!is_own_state(p), "`{p}` 在第四层里 —— 它不用登记在这张表上");
+            assert!(why.chars().count() >= 20, "`{p}` 没写清为什么要这把锁");
+        }
         let want: std::collections::BTreeSet<String> = OWN_STATE_MODULES
             .iter()
             .map(|(p, _)| p.to_string())
             .filter(|p| !exempt.contains(p))
+            .chain(
+                LOCK_HOLDERS_OUTSIDE_OWN_STATE
+                    .iter()
+                    .map(|(p, _)| p.to_string()),
+            )
             .collect();
         let got: std::collections::BTreeSet<String> = holders.keys().cloned().collect();
         assert_eq!(

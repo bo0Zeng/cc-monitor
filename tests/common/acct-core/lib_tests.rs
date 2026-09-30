@@ -36,33 +36,6 @@ fn the_union_keeps_everything_both_sides_already_had() {
     }
 }
 
-/// ★ 凭据文件名必须与 `cc-acct-iso` 的 `NATIVE_IDENTITY` 声明一致。
-///
-/// 这是**唯一还需要守卫的那一半**：bash 侧是另一门语言，共享不了常量。
-/// Claude Code 哪天改了凭据文件名，改一边漏一边的表现是**静默错** ——
-/// `loggedIn` 恒 false，UI 上看不出来。
-///
-/// 守卫搬到这里而不是留在两个调用方：常量住在这儿，检查就该住在这儿，
-/// 否则又是两份。原先后端侧那条还带了「本文件真的在用这个字面量」的第二半 ——
-/// 常量共享之后那半**结构上不可能不成立**（只有一个定义处），已随之删掉。
-#[test]
-fn the_credential_filename_matches_the_cc_acct_iso_declaration() {
-    let lib_sh = include_str!("../../../src/shared/cc-acct-iso/scripts/lib.sh");
-    assert!(
-        lib_sh.len() > 1000,
-        "只读到 {} 字节的 lib.sh —— include_str! 没读到，本断言在空转",
-        lib_sh.len()
-    );
-    // 声明里那一行的精确形状：`<项名>:<原生根>:<类别>`，凭据项必须是 secret。
-    let expected = format!("{CREDENTIALS_NAME}:cfg:secret");
-    assert!(
-        lib_sh.contains(&expected),
-        "Z06 双写点漂移：cc-acct-iso 的 NATIVE_IDENTITY 声明里找不到 {expected:?}。\n\
-             两侧判「已登录」用的都是 {CREDENTIALS_NAME:?}（本 crate 的常量），\n\
-             Claude Code 改了凭据文件名就要**同时**改这里与 bash 声明。"
-    );
-}
-
 // ---- K-A1：鉴权方式这一维 ----
 
 /// ★ **金样与规则互钉。** 改了 [`auth_ready`] 而没改金样、或反过来，这条红。

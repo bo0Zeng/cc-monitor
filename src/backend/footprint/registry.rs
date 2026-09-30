@@ -154,11 +154,6 @@ pub enum ToolSource {
     EmbeddedText { repo_path: &'static str },
     /// 仓内目录，运行期读（`cc-bus` 的 `src/shared/cc-bus/`）。
     RepoDir { repo_path: &'static str },
-    /// vendored 目录 + 指纹（`cc-acct-iso`；〔TL1〕`code-picture-core` 从前也列在这里，它从没以这个形状进过 `TOOLS`，今天全景小程序那一条是 `EmbeddedBinary`）。
-    Vendored {
-        repo_path: &'static str,
-        fingerprint_file: &'static str,
-    },
     /// 交叉编译后内嵌的二进制（remote backend）。
     EmbeddedBinary { repo_path: &'static str },
     /// 由 cc-monitor 现场生成的文本片段（PowerShell profile 块、shell 别名块、钩子片段）。
@@ -1029,8 +1024,6 @@ pub enum EnvProbe {
     /// 切分必须走 `std::env::split_paths`（Windows 的 `;` 与盘符冒号），
     /// 以及「取不到 `PATH` 就返回 `None`（**不猜**）」。
     OnPath,
-    /// 一条 `~/` 路径 —— 走 `rows.rs::resolve_touched_path` 那条既有的本机解析。
-    HomePath,
     /// 查不动，**理由必填**：值由别处决定（占位符 / 用户配置），本页不猜。
     ///
     /// ⚠ 填这一支之前先问一遍：是真的查不动，还是**懒得查**？后者写在这里就是
@@ -1122,26 +1115,6 @@ pub const UNMANAGED_ENV: &[UnmanagedEnv] = &[
         why: Text(|| copy_text("rsToolRegistry.env.mcpServerWhy", &[])),
         site: "mcp_edit.rs::answer_put",
     },
-    // ═══ 🔴 〔`K-R65` 09-11〕**这一条是 `KR65D2` 的题面本身** ═══
-    //
-    // 它是 app 独有的东西（`K38` 逐字点名的「account」的**本机那半**）⇒ `AppShips`。
-    // 而它今天**零装口** ⇒ [`EnvTier::of`] 把它派生成 [`EnvTier::AppShipsNoInstallerYet`]。
-    //
-    // ⚠ **`who` 与「有没有装口」是两格，别合回去**：写 `AppShips` 不等于说「装得了」，
-    // 也不许被读成「不该我们装」。本件**不补那个装口**（`§0d`）—— 本件治的是
-    // 「这个状态申报不出来」。
-    UnmanagedEnv {
-        id: "cc-acct-iso-local",
-        display_name: Text(|| copy_text("rsToolRegistry.env.acctIsoLocalName", &[])),
-        who: Provisioning::AppShips,
-        // 零装口**不等于**零查口 —— 它是一条实打实的 `~/` 路径，查得动。
-        // 〔`K-R60` 那句「本机侧零装口、零查口」里的后半句，正是本件要改掉的行为。〕
-        probe: EnvProbe::HomePath,
-        named: "~/.local/bin/cc-acct-iso",
-        host: HostScope::Client,
-        why: Text(|| copy_text("rsToolRegistry.env.acctIsoLocalWhy", &[])),
-        site: "iso.rs::answer_wire_status",
-    },
     // ═══ 🔴 〔`K-R65` 09-11〕**第三样「随产品分发的东西」—— 它此前一张表都没进** ═══
     //
     // 🔴 **〔条 67 · 2026-09-18〕`code-picture-sidecar` 这一项摘掉了。**
@@ -1175,9 +1148,6 @@ pub const UNMANAGED_ENV: &[UnmanagedEnv] = &[
     // [`EnvTier::AppInstalls`]，**不再手写**。留这段墓碑是因为「它曾经在第三档」
     // 是这张表存在理由的最好例子：一个判断当初只能靠「进这张表」表达，
     // 做完之后它自己会从这张表里消失。
-    //
-    // ★ 同一档里 `cc-acct-iso-local` 仍在（「本机侧零装口、零查口」）——
-    // 那是**二进制**不是 rc 行，不在 `K-R62` 射程（`§0e`）。
 ];
 
 /// 闭集里一项的**来路**。两态，没有第三种 —— 一项要么有 [`ToolSpec`]，要么没有。
