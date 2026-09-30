@@ -67,6 +67,20 @@ pub fn ensure_private_dir(dir: &Path) -> Result<(), String> {
     })
 }
 
+/// 〔P4 · 阶段 H〕这一趟 `open` 若是**新建**，新文件只给本人（unix：`mode(0o600)`，创建那一刻生效）；别的平台照常建。
+/// 调用方是 `local_backend_host.rs` 写监听口钥匙 / pid 记录的那两处（钥匙是那条回环口上唯一的门）。
+pub fn only_me_on_create(opts: &mut std::fs::OpenOptions) {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        opts.mode(0o600);
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = opts; // 不是 unix 权限位这一问；参数照收，签名两边一致。
+    }
+}
+
 /// 〔HX2 · 第四波 4D〕**monitor 自有状态文件的跨进程锁**：锁那份文件所在的**目录**（不是文件：文件每写一次就被原子挪换成新 inode）。
 ///
 /// 守的要求：主会话 4D 追加「CFG1 把 `config.json` 收成单一写口 …… 两个 monitor 进程同写没有跨进程锁 —— 用你那一族同一套 `flock`

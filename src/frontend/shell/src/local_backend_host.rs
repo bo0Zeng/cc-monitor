@@ -219,11 +219,7 @@ fn ensure_listen_token(dir: &std::path::Path) -> Result<String, String> {
     opts.write(true).create_new(true);
     // ★ 权限位就是这一格买的东西 —— 少了它，同机别的用户读得到 token，
     //   而 token 是这条回环口上**唯一**的门。
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::OpenOptionsExt;
-        opts.mode(0o600);
-    }
+    crate::platform::fs::only_me_on_create(&mut opts);
     match opts.open(&p) {
         Ok(mut f) => {
             use std::io::Write;
@@ -310,11 +306,7 @@ fn write_listen_pid(
     let p = pid_path(dir, port);
     let mut opts = std::fs::OpenOptions::new();
     opts.write(true).create(true).truncate(true);
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::OpenOptionsExt;
-        opts.mode(0o600);
-    }
+    crate::platform::fs::only_me_on_create(&mut opts);
     use std::io::Write;
     let body = format!("{pid}\n{}\n", bin.display());
     opts.open(&p)
@@ -644,7 +636,8 @@ impl AttachErr {
 /// ⚠ **`process_group` 不改变父子关系** ⇒ **不 `wait` 就留僵尸**
 /// （`launch.rs:196-198` 头注逐字）。收尸走 [`reap_detached`]，由「流断了」这个**事件**触发，
 /// 不是轮询。monitor 自己退出之后那个进程被 init 接管，由 init 收 —— 那一格不归我们。
-#[cfg(target_os = "linux")]
+///
+/// 〔P4 · 阶段 H〕哪些平台能脱离由 `platform::proc::CAN_DETACH` 答（原先是这里两份 `cfg` 分身）；不能 ⇒ 那句「不支持」照旧。
 fn spawn_detached(
     bin: &std::path::Path,
     port: u16,
@@ -652,6 +645,12 @@ fn spawn_detached(
     extra_env: &[(String, String)],
 ) -> Result<crate::spawn_managed::ManagedChild, String> {
     use crate::spawn_managed::{managed_spawner, ConsolePolicy, Lifetime, StderrSink};
+    if !crate::platform::proc::CAN_DETACH {
+        return Err(copy_text(
+            "rsLocalBackendHost.spawn.unsupported",
+            &[("bin", &(bin.display()).to_string())],
+        ));
+    }
     let mut cmd = std::process::Command::new(bin);
     for (k, v) in extra_env {
         cmd.env(k, v);
@@ -706,19 +705,6 @@ fn spawn_detached(
             &[("bin", &(bin.display()).to_string()), ("e", &e.to_string())],
         ),
     })
-}
-
-#[cfg(not(target_os = "linux"))]
-fn spawn_detached(
-    bin: &std::path::Path,
-    _port: u16,
-    _token: &str,
-    _extra_env: &[(String, String)],
-) -> Result<crate::spawn_managed::ManagedChild, String> {
-    Err(copy_text(
-        "rsLocalBackendHost.spawn.unsupported",
-        &[("bin", &(bin.display()).to_string())],
-    ))
 }
 
 /// 脱离之后手里剩下的东西。
@@ -913,12 +899,8 @@ fn reap_detached(
 /// `None` = 既没有退出码也没有信号号。那一格**没有事实可说** ⇒ 调用方出声、不上账；
 /// 编一个 `Exited(0)` 顶上去正是 `platform/fallback_guard.rs` 治的那一族。
 fn outcome_of_status(status: std::process::ExitStatus) -> Option<crate::backend_policy::Outcome> {
-    #[cfg(unix)]
-    {
-        use std::os::unix::process::ExitStatusExt;
-        if let Some(sig) = status.signal() {
-            return Some(crate::backend_policy::Outcome::Signalled(sig));
-        }
+    if let Some(sig) = crate::platform::proc::exit_signal(&status) {
+        return Some(crate::backend_policy::Outcome::Signalled(sig));
     }
     status.code().map(crate::backend_policy::Outcome::Exited)
 }
@@ -1114,7 +1096,7 @@ fn start_detached(
     extra_env: &[(String, String)],
 ) -> DetachOutcome {
     if !detach_wanted(
-        cfg!(target_os = "linux"),
+        crate::platform::proc::CAN_DETACH,
         std::env::var(NO_DETACH_ENV).ok().as_deref(),
     ) {
         return DetachOutcome::NotTaken;
