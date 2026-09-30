@@ -764,6 +764,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "cc-monitor-filewin"
+version = "0.1.0"
+dependencies = [
+ "chan-core",
+ "copy-core",
+ "creds-core",
+ "eframe",
+ "egui",
+ "filewin-contract",
+ "futures",
+ "guard-core",
+ "host-core",
+ "relay-route-core",
+ "rfd",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tokio",
+ "tracing",
+ "uuid",
+ "winit",
+]
+
+[[package]]
 name = "cesu8"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3162,13 +3186,12 @@ name = "monitor"
 version = "4.0.0"
 dependencies = [
  "acct-core",
+ "cc-monitor-filewin",
  "chan-core",
  "copy-core",
  "creds-core",
  "deploy-core",
  "dirs 5.0.1",
- "eframe",
- "egui",
  "filewin-contract",
  "futures",
  "guard-core",
@@ -3177,10 +3200,8 @@ dependencies = [
  "notify-debouncer-mini",
  "parking_lot",
  "relay-route-core",
- "rfd",
  "serde",
  "serde_json",
- "sha2",
  "shell-quote-core",
  "tauri",
  "tauri-build",
@@ -3198,7 +3219,6 @@ dependencies = [
  "walkdir",
  "windows 0.56.0",
  "windows 0.61.3",
- "winit",
 ]
 
 [[package]]

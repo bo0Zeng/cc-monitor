@@ -134,3 +134,46 @@ pub fn terminal_open_args(cwd: serde_json::Value) -> serde_json::Value {
 pub fn terminal_open_cwd(args: &serde_json::Value) -> Option<&serde_json::Value> {
     args.get("cwd")
 }
+
+// ── 远端路径怎么切（〔P4〕原住窗口 `source.rs`，逐字搬来：开窗入口把「跳到这个文件」切成目录 ＋ 名字交进种子，窗口里之后每一次「上一级」
+//    都用同一个切法；两边分属两个 crate 之后切法只许住这一份）──
+
+/// 上一级目录。
+///
+/// 🔴 **它只吃一条字符串，不吃 [`Source`]** —— 而那是本机那一侧退役买到的东西之一：
+/// 远端路径**恒用 `/`**（SFTP 协议就是这么定的，对面是 Windows 也一样）
+/// ⇒ 只剩一个算法。⚠ 别为了「看起来通用」把 `std::path` 换回来：
+/// 它在 Windows 上会把 `\` 也当分隔符 ⇒ 远端一个名字里含反斜杠的目录会被切成两级。
+///
+/// ⚠ 到顶了就**返回原值**（不是空串、不是 `None`）—— 调用方靠「回来的和给出去的相等」
+/// 判断「已经在顶上了」，这样「到顶」这件事不需要第二个返回通道。
+pub fn parent_dir(cwd: &str) -> String {
+    let trimmed = cwd.trim_end_matches('/');
+    if trimmed.is_empty() {
+        // `/` 或空串：都已经在根上。
+        return "/".to_string();
+    }
+    match trimmed.rfind('/') {
+        Some(0) | None => "/".to_string(),
+        Some(i) => trimmed[..i].to_string(),
+    }
+}
+
+/// 远端路径的**最后一段**（basename）。
+///
+/// 🔴 抽成具名函数是因为盘上已经有**三处** `rsplit('/')` 各写了一份
+/// （`corpus.rs` · `shell.rs` 那两处），而这一刀要的是第四处。
+/// ⇒ 不再加第四份。它与 [`parent_dir`] 是**一对**（一个给前缀、一个给尾段），
+/// 所以住同一处。
+///
+/// ⚠ **只用 `/`**，理由与 [`parent_dir`] 逐字相同：SFTP 协议恒用 `/`，
+/// 拿 `std::path` 去切远端路径在 Windows 上会把 `\` 也当分隔符。
+/// ⚠ 那三处旧写法**本刀不动**（它们各在自己的语境里，改它们是另一件活）——
+/// 如实登记在这儿，别以为这个概念只有一个住址。
+pub fn remote_basename(path: &str) -> &str {
+    let t = path.trim_end_matches('/');
+    match t.rfind('/') {
+        Some(i) => &t[i + 1..],
+        None => t,
+    }
+}

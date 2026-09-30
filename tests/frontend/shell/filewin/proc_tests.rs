@@ -595,267 +595,107 @@ fn the_entry_command_has_no_in_process_fallback_left() {
     );
 }
 
+// 〔P4〕窗口进程拨回 monitor 那一下 · 第一屏那两条（窗口那一侧的躯体）随它搬去了 `tests/frontend/filewin/proc_tests.rs`。
+
 // ════════════════════════════════════════════════════════════════════════
-// 🔴〔F2 · 2026-09-24〕窗口进程拨回 monitor 那一下
+// 🔴〔第十一刀 2026-09-22〕「当场就死了」不再被报成成功（〔P4〕原住 `shell_tests`：`early_failure` 随起进程那一侧留在 monitor）
+//    下面两条**照旧喂线程**：它们钉的是那条轮询本身的两个方向（「结束了」认得出 · 「还在跑」不误判），
+//    线程是这两个方向最便宜的合成输入；进程那一侧的行为判据是上面那几条（真起进程）。
 // ════════════════════════════════════════════════════════════════════════
 
-/// 🔴 **拿着交接件拨得通；钥匙不对 / 口不在就是错 —— 而且错的时候窗口不开**（`D11`）。
+/// 当场就失败的那条线程，`early_failure` 认得出来。
+#[test]
+fn a_thread_that_dies_at_once_is_recognised_as_a_failure() {
+    let h: std::thread::JoinHandle<Result<(), String>> =
+        std::thread::spawn(|| Err("开窗失败: 事件循环不能重建".into()));
+    assert!(
+        early_failure(|| h.is_finished(), std::time::Duration::from_millis(500)),
+        "一条立刻就回 Err 的线程没被认出来 —— 那一形会被报成「窗口起来了」"
+    );
+    // 原因拿得回来（上层要把它交给用户）。
+    match h.join() {
+        Ok(Err(e)) => assert!(e.contains("事件循环"), "{e}"),
+        other => panic!("{other:?}"),
+    }
+}
+
+/// 🔴 **阴性对照**：还在跑的那条线程**不许**被当成失败。
 ///
-/// ① 阳性：一个真通道口（合成后端挂在宿主上）⇒ 拨得通，而且那条线**真能说一次 `call`**；
-/// ② 钥匙错一个字节 ⇒ 错（不是「连上了再说」）；③ 口不在 ⇒ 错。
-/// ④ `child_main` 里「先拨、拨不通就回 `EXIT_WINDOW_FAILED`」排在开窗之前（源码行序，代理）。
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn the_window_dials_back_with_the_handoff_and_refuses_to_open_without_it() {
-    use crate::filewin::find::testing::{Declared, FakeBackend};
-    // ① 阳性：真口 ＋ 真钥匙。
-    let be = std::sync::Arc::new(FakeBackendHost::new(FakeBackend::new(
-        &["files-stat"],
-        Declared::default(),
-    )));
-    let h = crate::chan::host::start_with(
-        be,
-        crate::chan::host::mint_key(),
-        1 << 20,
-        std::time::Duration::from_secs(5),
-    )
-    .await
-    .expect("回环口绑得上");
-    let line = dial_back(&h).await.expect("拿着对的交接件却拨不通");
-    let origin = crate::origin::Origin("proc-dial".into());
-    let r = crate::filewin::source::ask(
-        &line,
-        &origin,
-        "files-stat",
-        &serde_json::json!({ "path": "/" }),
-        std::time::Duration::from_secs(5),
-    )
-    .await;
-    assert!(r.is_ok(), "拨通了却说不了一次 call：{r:?}");
-    // ② 钥匙错。
-    let mut wrong = h.clone();
-    wrong.key = crate::chan::wire::Key("0".repeat(64));
-    let e = match dial_back(&wrong).await {
-        Ok(_) => panic!("钥匙不对竟然拨通了"),
-        Err(e) => e,
-    };
-    assert!(e.contains("窗口连不上主程序"), "{e}");
-    // ③ 口不在（拿一个刚放掉的回环端口）。
-    let dead = {
-        let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-        l.local_addr().unwrap()
-    };
-    let mut gone = h.clone();
-    gone.addr = dead;
-    assert!(dial_back(&gone).await.is_err(), "口不在竟然拨通了");
-    // ④ 行序：拨在开窗之前，拨不通就回失败码。
+/// 少了它，一个「恒回 true」的实现照样绿 —— 而那时**每一次**开窗都会被报成失败，
+/// 连真起来的那次也是。
+#[test]
+fn a_thread_still_running_is_not_mistaken_for_a_failure() {
+    let (tx, rx) = std::sync::mpsc::channel::<()>();
+    let h: std::thread::JoinHandle<Result<(), String>> = std::thread::spawn(move || {
+        // 一直占着这条线程，直到判据放它走 —— 这就是「窗口起来了」那一形的形状
+        //（`run_native` 占着线程直到窗口关闭）。
+        let _ = rx.recv();
+        Ok(())
+    });
+    assert!(
+        !early_failure(|| h.is_finished(), std::time::Duration::from_millis(120)),
+        "还占着线程的那一条被当成了失败 —— 那会让每一次真开窗都报错"
+    );
+    let _ = tx.send(());
+    let _ = h.join();
+}
+
+/// 开窗那条路**真的**经这一跳走，而且排在起进程之后。
+///
+/// ⚠ 判源码是代理（同族先例住 `entry_tests` 那条「空路径那一支」）。
+/// 买的是：起进程的结果不再被 `let _ = …` 丢掉，而且那一跳有东西可看时才跑。
+///
+/// 🔴〔第十三刀 2026-09-23〕**射程从 `entry.rs` 换到了 `proc.rs`。**
+/// 上一版这一条扫的是 `entry.rs`，因为那时「起线程 ＋ 看它死没死」两步都写在入口里。
+/// 今天入口只剩一句 `open_in_new_process(…)?`，那两步整块搬进了 `filewin::proc`
+/// ⇒ 继续扫 `entry.rs` 的话，这一条会在一个**恒为零**的人群上报绿。
+/// ⚠ 入口那一侧**没有失去判据**：`proc_tests` 里那条零命中型盯着
+/// 「入口那条路上不许再有『同进程开一个』的写法」（`D11`）。
+#[test]
+fn the_spawn_result_is_never_thrown_away() {
     let prod = guard_core::production_code(include_str!(
         "../../../../src/frontend/shell/src/filewin/proc.rs"
     ));
-    let at_dial = guard_core::find_pinned(&prod, "rt.block_on(dial_back(&req.handoff))")
-        .expect("child_main 里没有拨回那一下");
-    let at_open = guard_core::find_pinned(&prod, "super::shell::open_detached_seeded(")
-        .expect("child_main 里没有开窗那一下");
+    // ★ 反向自检：剥完不是空的，否则下面几比全在空人群上。
     assert!(
-        at_dial < at_open,
-        "开窗排在拨通道之前 —— 拨不通时窗口已经开了"
+        prod.contains("pub fn open_in_new_process"),
+        "剥生产段把那条路一起剥掉了 —— 下面几比此刻不可信"
     );
-    // ⑤〔FW34〕种子里每一格都真的交给了开窗那一下（漏交一格 ＝ 那一格在窗口那侧恒是默认值，
-    //    种子对拍照样绿 —— 它只判「过得了进程边界」，判不了「过去之后有人接」）。
-    for f in ["reveal", "bookmarks", "machines"] {
-        let at = guard_core::find_pinned(&prod, &format!("        req.{f},\n"))
-            .unwrap_or_else(|e| panic!("child_main 没把种子里的 `{f}` 交给开窗那一下：{e}"));
-        assert!(at > at_open, "`req.{f}` 不在开窗那一下的实参里");
-    }
-    // 〔P4〕那台的名字（种子 `origin`）先造成窗口那一侧的 `Source`，再交给开窗那一下。
-    let at_src = guard_core::find_pinned(&prod, "Source::remote(req.origin.clone())")
-        .expect("child_main 没拿种子里那台的名字造 `Source`");
-    let at_src_arg = guard_core::find_pinned(&prod[at_open..], "        source,\n")
-        .expect("开窗那一下的实参里没有 `source`");
-    assert!(at_src < at_open, "`Source` 造在开窗之后");
-    let _ = at_src_arg;
-    // ⑥〔MIG-3a · 09-28 裁 3〕第一屏：拨通之后、开窗之前列；列不出来就退（不开窗）；起点与那一屏是它列出来的那一份。
-    let at_first = guard_core::find_pinned(
-        &prod,
-        "rt.block_on(first_screen(&line, &source, req.cwd.clone()))",
-    )
-    .expect("child_main 里没有列第一屏那一下");
-    let at_refuse = guard_core::find_pinned(&prod, "Err(e) => return refuse(e, EXIT_NOT_LISTED),")
-        .expect("第一屏列不出来那一支不是「说原话、退」");
-    let at_ready = guard_core::find_pinned(&prod, "say(&Ready::Listed(rows.len()));")
-        .expect("列出来之后没说就绪那一行");
-    assert!(
-        at_dial < at_first && at_first < at_refuse && at_refuse < at_ready && at_ready < at_open,
-        "行序不是「拨 → 列 → 列不出来就退 → 说就绪 → 开窗」"
-    );
-    for f in ["cwd", "rows"] {
-        let at = guard_core::find_pinned(&prod, &format!("        {f},\n"))
-            .unwrap_or_else(|e| panic!("开窗那一下没收列出来的 `{f}`：{e}"));
-        assert!(at > at_open, "列出来的 `{f}` 不在开窗那一下的实参里");
-    }
-}
-
-/// 把 `find::testing::FakeBackend` 挂成宿主句柄的最小包装（`wire_up` 那一份不交出句柄本身）。
-struct FakeBackendHost(std::sync::Mutex<crate::filewin::find::testing::FakeBackend>);
-
-impl FakeBackendHost {
-    fn new(be: crate::filewin::find::testing::FakeBackend) -> Self {
-        Self(std::sync::Mutex::new(be))
-    }
-}
-
-impl crate::chan::router::Backends for FakeBackendHost {
-    fn call(
-        &self,
-        _origin: crate::chan::wire::Origin,
-        op: crate::chan::wire::Op,
-        _payload: crate::chan::wire::Body,
-        _left: std::time::Duration,
-        _cancel: crate::chan::wire::CancelToken,
-    ) -> futures::future::BoxFuture<
-        'static,
-        Result<crate::chan::wire::Body, crate::chan::wire::CallError>,
-    > {
-        let known = self.0.lock().unwrap().offered.iter().any(|c| c == &op.0);
-        Box::pin(async move {
-            if known {
-                Ok(crate::chan::wire::Body(b"{\"kind\":\"dir\"}".to_vec()))
-            } else {
-                Err(crate::chan::wire::CallError::Peer {
-                    why: crate::chan::wire::PeerFault::Unsupported,
-                })
-            }
-        })
-    }
-
-    fn subscribe(
-        &self,
-        _origin: crate::chan::wire::Origin,
-        _kind: crate::chan::wire::Kind,
-        _from: Option<crate::chan::wire::Cursor>,
-    ) -> futures::stream::BoxStream<'static, crate::chan::wire::Item> {
-        Box::pin(futures::stream::empty())
-    }
-}
-
-/// 〔MIG-3a · 09-28 裁 3〕答 `files-home` / `files-ls` 的替身后端：记下问了哪几条；`refuse` 里的那条回「不行 + 原话」。
-struct ScreenHost {
-    asked: std::sync::Mutex<Vec<String>>,
-    refuse: Option<&'static str>,
-}
-
-impl crate::chan::router::Backends for ScreenHost {
-    fn call(
-        &self,
-        _origin: crate::chan::wire::Origin,
-        op: crate::chan::wire::Op,
-        payload: crate::chan::wire::Body,
-        _left: std::time::Duration,
-        _cancel: crate::chan::wire::CancelToken,
-    ) -> futures::future::BoxFuture<
-        'static,
-        Result<crate::chan::wire::Body, crate::chan::wire::CallError>,
-    > {
-        self.asked.lock().unwrap().push(op.0.clone());
-        let refused = self.refuse == Some(op.0.as_str());
-        let args: serde_json::Value = serde_json::from_slice(&payload.0).unwrap_or_default();
-        Box::pin(async move {
-            let json =
-                |v: serde_json::Value| Ok(crate::chan::wire::Body(v.to_string().into_bytes()));
-            if refused {
-                return Err(crate::chan::wire::CallError::Peer {
-                    why: crate::chan::wire::PeerFault::Refused {
-                        body: crate::chan::wire::Body(
-                            r#"{"code":"io_failed","message":"那台说：没有这个目录"}"#
-                                .as_bytes()
-                                .to_vec(),
-                        ),
-                    },
-                });
-            }
-            match op.0.as_str() {
-                "files-home" => json(serde_json::json!({ "path": "/home/台架" })),
-                "files-ls" => {
-                    let dir = args
-                        .get("path")
-                        .and_then(|p| p.as_str())
-                        .unwrap_or("?")
-                        .to_string();
-                    json(serde_json::json!({
-                        "entries": [
-                            { "path": format!("{dir}/甲"), "kind": "dir" },
-                            { "path": format!("{dir}/乙.txt"), "kind": "file", "size": 3 },
-                        ],
-                        "truncated": false,
-                    }))
-                }
-                _ => Err(crate::chan::wire::CallError::Peer {
-                    why: crate::chan::wire::PeerFault::Unsupported,
-                }),
-            }
-        })
-    }
-
-    fn subscribe(
-        &self,
-        _origin: crate::chan::wire::Origin,
-        _kind: crate::chan::wire::Kind,
-        _from: Option<crate::chan::wire::Cursor>,
-    ) -> futures::stream::BoxStream<'static, crate::chan::wire::Item> {
-        Box::pin(futures::stream::empty())
-    }
-}
-
-/// 🔴〔MIG-3a · 主会话 09-28 裁 3〕**窗口进程自己问第一屏**（真通道口 ＋ 替身后端）：
-/// ① 没给目录 ⇒ 先问 home、再列 home（恰好这两问，按这个顺序）；② 给了目录 ⇒ 只列它、**不问 home**；
-/// ③ 列不出来 ⇒ 带那台的原话回错（窗口那侧据此说 `Failed` 并不开窗）；④ home 问不到 ⇒ 同样带原话、不去列。
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn the_first_screen_asks_home_only_when_told_nothing() {
-    async fn run(
-        refuse: Option<&'static str>,
-        cwd: Option<String>,
-    ) -> (Result<(String, Vec<String>), String>, Vec<String>) {
-        let be = std::sync::Arc::new(ScreenHost {
-            asked: std::sync::Mutex::new(Vec::new()),
-            refuse,
-        });
-        let h = crate::chan::host::start_with(
-            be.clone(),
-            crate::chan::host::mint_key(),
-            1 << 20,
-            std::time::Duration::from_secs(5),
-        )
-        .await
-        .expect("回环口绑得上");
-        let line = dial_back(&h).await.expect("拨得通");
-        let got = first_screen(&line, &Source::remote(synthetic_cfg()), cwd)
-            .await
-            .map(|(d, rows)| (d, rows.into_iter().map(|l| l.row.name).collect()));
-        let asked = be.asked.lock().unwrap().clone();
-        (got, asked)
-    }
-    // ①
-    let (got, asked) = run(None, None).await;
     assert_eq!(
-        asked,
-        ["files-home", "files-ls"],
-        "没给目录时问的不是「先 home、再列」"
+        prod.matches("early_failure(").count(),
+        1,
+        "`proc.rs` 生产段里 `early_failure(` 不是恰好一处 —— \
+         这一族轮询全仓只许一处（`rust_timer_registry` 登记的就是它）"
     );
-    let (dir, names) = got.expect("问得到 home、列得出来，却回了错");
-    assert_eq!(dir, "/home/台架");
-    assert_eq!(names.len(), 2, "那一屏不是替身答的那两行：{names:?}");
-    // ②
-    let (got, asked) = run(None, Some("/srv/给了".into())).await;
-    assert_eq!(asked, ["files-ls"], "给了目录还去问了 home");
-    assert_eq!(got.expect("列得出来").0, "/srv/给了");
-    // ③
-    let (got, asked) = run(Some("files-ls"), Some("/srv/不在".into())).await;
-    assert_eq!(asked, ["files-ls"]);
-    let e = got.expect_err("列不出来竟然回了一屏");
-    assert!(e.contains("那台说：没有这个目录"), "原话没带回来：{e}");
-    // ④
-    let (got, asked) = run(Some("files-home"), None).await;
-    assert_eq!(asked, ["files-home"], "home 问不到还去列了");
-    assert!(got
-        .expect_err("home 问不到竟然过了")
-        .contains("那台说：没有这个目录"));
+    let spawn_needle = format!("{}_window(", "spawn");
+    assert!(
+        !prod.contains(&format!("let _ = {spawn_needle}")),
+        "起进程的结果又被 `let _ = …` 丢掉了 —— 那就回到了「静默成功」那一形"
+    );
+    // 🔴 **先把那个函数项切出来，再比先后** —— 而这一刀是死值验逼出来的，不是洁癖。
+    //
+    // 上一版在**整份生产段**上比 `find(spawn_window()` 与 `find(early_failure()`。
+    // 死值验现打：把那一跳原地挪到起进程**之前**，这一条**照旧报绿**。
+    // 病根是 `spawn_window` 的**定义**（`pub fn spawn_window(`）就在文件里更靠前的位置
+    // ⇒ `at_spawn` 拿到的是定义的偏移，恒小于任何一处调用 ⇒ **那一比恒真**。
+    // ⇒ 人群必须收到「`open_in_new_process` 这一个函数项」里面。
+    let at_fn = prod
+        .find("pub fn open_in_new_process")
+        .expect("`open_in_new_process` 不在生产段里 —— 抽取器坏了");
+    let rest = &prod[at_fn..];
+    let body_end = rest
+        .find("\n}\n")
+        .expect("`open_in_new_process` 的花括号没收口 —— 抽取器看不懂它了");
+    let body = &rest[..body_end];
+    // ★ 反向自检：切出来的那一段里**两者都在**。任一缺席 ⇒ 下面那一比是空转的。
+    let at_spawn = body
+        .find(spawn_needle.as_str())
+        .expect("切出来的那个函数项里没有起进程那一句 —— 切法坏了，下面那一比此刻恒真");
+    let at_check = body
+        .find("early_failure(")
+        .expect("切出来的那个函数项里没有那一跳 —— 切法坏了");
+    assert!(
+        at_spawn < at_check,
+        "那一跳排在起进程**之前** —— 那时还没有进程可看"
+    );
 }

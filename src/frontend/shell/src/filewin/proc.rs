@@ -66,7 +66,7 @@
 //!   ├─ ③ 把种子写进它的 stdin 再关掉    ← 源 + cwd（缺 = 问那台 home）+ reveal + 交接件
 //!   ├─ ④ 读它 stdout 上的**一行**      ← 子进程拨回通道、问 home、列第一屏之后说「列到 N 行」或「列不出来：原话」
 //!   │                                  （列不出来 ⇒ 它不开窗就退，父进程带着原话回错 —— 那条纪律一个字没动）
-//!   ├─ ⑤ 等一个很短的预算，看它是不是**当场就退了**（shell::early_failure，同一条轮询）
+//!   ├─ ⑤ 等一个很短的预算，看它是不是**当场就退了**（[`early_failure`]，同一条轮询）
 //!   └─ ⑥ 把句柄交给一条收尸线程        ← Detached 不改父子关系 ⇒ 不 wait 就留僵尸；stdout 由它读到 EOF
 //! ```
 //!
@@ -121,7 +121,6 @@
 use crate::copy_table::copy_text;
 use std::path::{Path, PathBuf};
 
-use super::source::{Listed, Source};
 // 〔P4〕种子 · 就绪那一行 · 指到窗口二进制的环境变量：monitor 与窗口进程两边对上的形状住 `filewin-contract`。
 pub use filewin_contract::{
     decode_ready, decode_request, encode_ready, encode_request, OpenRequest, Ready, BIN_ENV,
@@ -292,7 +291,7 @@ pub enum Unopened {
 ///
 /// # 早失败那一跳买到 / 买不到什么
 ///
-/// 走的是 `super::shell::early_failure` **同一条轮询**（全仓这一族只许有一处，
+/// 走的是 [`early_failure`] **同一条轮询**（全仓这一族只许有一处，
 /// 登记在 `rust_timer_registry` 里）。它分得开的是**「当场就退了」**与**「还在跑」**：
 /// - 「起不来」那一形（二进制不对 · 没有图形会话）在说完就绪之后毫秒级就退；
 /// - 「起来了」那一形要占着那个进程直到用户关窗 ⇒ 预算内必然「还在跑」。
@@ -351,9 +350,9 @@ pub fn open_in_new_process(req: &OpenRequest, late: LateExit) -> Result<(u32, us
             return Err(Unopened::Process(garbled));
         }
     };
-    if super::shell::early_failure(
+    if early_failure(
         || matches!(child.try_wait(), Ok(Some(_)) | Err(_)),
-        super::shell::EARLY_FAILURE_BUDGET,
+        EARLY_FAILURE_BUDGET,
     ) {
         let why = match child.try_wait() {
             Ok(Some(st)) => copy_text("rsFilewinProc.open.exited", &[("st", &st.to_string())]),
@@ -369,6 +368,60 @@ pub fn open_in_new_process(req: &OpenRequest, late: LateExit) -> Result<(u32, us
     reap_later(child, Some(out), Some(late));
     Ok((pid, n))
 }
+
+// 〔P4〕原住窗口那一侧 `shell.rs`：判的是 monitor 起的那个进程，随「起进程那一侧」留在这里。
+/// 那件事**是不是当场就失败了** —— 是（＝预算内就结束了）回 `true`。
+///
+/// # 🔴 它补的是一个**静默成功**（本仓头号病形）
+///
+/// 入口那条命令此前把开窗的句柄丢掉（`let _ = …`）⇒ 无论窗口起没起来，
+/// webview 那侧看到的都是 `Ok(行数)`。而**有一条路当时必然走到那里**：
+/// winit 全进程只许建一个事件循环 ⇒ 同一个进程里第二次开窗必然失败
+/// ⇒ 用户把窗口关掉之后再点一次，屏幕上什么都没有，**而且界面说「成功」**。
+///
+/// 🔴〔第十三刀 2026-09-23〕**那条必然失败的路已经不存在了** —— 开窗改成起一个
+/// 独立进程（住本模块），第二趟是一个新进程、一个新事件循环。
+/// 本函数**没有随之退役**，因为它买的那件事一个字没变：**「当场就死了」不许被报成成功。**
+/// 今天它的生产调用方是 [`open_in_new_process`]（判的是「那个**进程**
+/// 是不是在开窗预算内就退了」），判据那一侧还照旧喂线程。
+///
+/// # 🔴 为什么签名从「一个线程句柄」换成一个闭包
+///
+/// 被判的东西从**线程**变成了**进程**，而这条轮询在全仓只许有一处
+/// （它是 `rust_timer_registry` 里登记的那个 `wait-for-condition`，
+/// 抄第二份就等于多一个没人登记的节拍）。⇒ 把「结束了没有」这一问抽成入参，
+/// 线程那一侧问 `is_finished()`、进程那一侧问 `try_wait()`，**轮询只此一份**。
+///
+/// # 为什么「等一小会儿」这个做法在这里是够的
+///
+/// 它分得开的是**早失败**与**起来了**：起不来那一形在毫秒级就结束
+/// （二进制不对 · 没有图形会话 · 种子解不出），而**起来了**的那一条会一直
+/// 占着那条线程／那个进程直到窗口关闭 ⇒ 预算内必然「还在跑」。
+///
+/// ⚠ **它买不到「窗口真的出现在屏幕上」** —— 那要一个图形会话。
+/// 它买到的是：**「那条线程当场就死了」不再被报成成功。**
+/// ⚠ 也买不到「慢失败」：真起了循环之后才炸的那一形，预算内看不见，
+/// 照旧只落在那条线程的 stderr 上。如实登记，别读宽。
+///
+/// ⚠ 预算刻意**短**：它是加在用户那一次点击上的延迟。
+/// 300ms 是「人感觉不到」与「毫秒级失败一定抓得到」之间的取值。
+/// ⚠ 刻意**不**注入一个假时钟：`is_finished()` 与 `sleep` 照样走真时钟，
+/// 注进来的那个只会让签名多一格而买不到任何东西
+/// （第一版写了它，复看时删掉 —— 注入只在它真能换掉一条 IO 时才值得，
+///  同 `download::judge_dest` 那一处是真换掉了「碰盘」）。
+pub fn early_failure(mut finished: impl FnMut() -> bool, budget: std::time::Duration) -> bool {
+    let t0 = std::time::Instant::now();
+    while t0.elapsed() < budget {
+        if finished() {
+            return true;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    false
+}
+
+/// 入口那条命令用的预算。**独立常量**，因为判据要按它喂合成输入。
+pub const EARLY_FAILURE_BUDGET: std::time::Duration = std::time::Duration::from_millis(300);
 
 /// 读窗口进程 stdout 上的**第一行**。`Ok(None)` = 一句没说就 EOF（它退了）；`Err` = 说了但不是约定形状。
 ///
@@ -422,170 +475,6 @@ fn reap_later(
             Err(e) => tracing::warn!("收不掉那个窗口进程（{e}）—— 内核里会留一条僵尸记录"),
         }
     });
-}
-
-// ═══════════════════════════════════════════════════════════════════
-// 子进程那一侧
-// ═══════════════════════════════════════════════════════════════════
-
-/// 窗口进程拨回 monitor 那个通道口、出示钥匙，换一条线。**拨不通就是错**（`D11`）。
-///
-/// 抽成具名函数是为了让它可判：[`child_main`] 要读 stdin、要开真窗口，判据跑不动它；
-/// 而「拿着交接件拨不拨得通、拨不通说什么」这一段不需要窗口。
-/// 期限是这里给的（`05 §3.3.2`：说法归调用方）。
-///
-/// # Errors
-///
-/// 连不上 / 钥匙不对 / 期限内没答 —— 带着通道那一层的分层原因。
-pub async fn dial_back(h: &crate::chan::host::Handoff) -> Result<super::source::Line, String> {
-    use crate::chan::wire::{Budget, CancelToken};
-    let budget = Budget {
-        until: std::time::Instant::now() + DIAL_BUDGET,
-        cancel: CancelToken::new(),
-    };
-    crate::chan::dial::dial(h, budget)
-        .await
-        .map_err(|e| copy_text("rsFilewinProc.dialBack.failed", &[("e", &e.to_string())]))
-}
-
-/// 拨回 monitor 那个通道口（回环）的期限。回环上连一次 ＋ 一来一回的认证，给得很宽。
-pub const DIAL_BUDGET: std::time::Duration = std::time::Duration::from_secs(5);
-
-/// 开窗前那两问（home · 第一屏）各自的往返上限（调用方给的期限；〔MIG-3a · 09-28 裁 3〕随那两问从 `entry.rs` 搬来）。
-pub const FIRST_SCREEN_BUDGET: std::time::Duration = std::time::Duration::from_secs(20);
-
-/// 〔MIG-3a · 09-28 裁 3〕**开窗前那一屏，窗口进程自己问**：`cwd` 缺席 ⇒ 先问那台 `files-home`；再列那个目录。
-/// 回 `(起点, 那一屏)`。与窗口里之后每一次列目录同一条路（[`super::source::list_dir`] → [`super::source::ask`]）。
-///
-/// # Errors
-///
-/// home 问不到 / 解不出起点 · 目录列不出来 —— 带那一跳的原话（[`super::source::said`] 翻过的）。
-pub async fn first_screen(
-    line: &super::source::Line,
-    source: &Source,
-    cwd: Option<String>,
-) -> Result<(String, Vec<Listed>), String> {
-    let cwd = match cwd {
-        Some(d) => d,
-        None => {
-            let d = super::source::ask(
-                line,
-                &source.origin(),
-                super::source::CMD_HOME,
-                &serde_json::json!({}),
-                FIRST_SCREEN_BUDGET,
-            )
-            .await?;
-            super::source::home_from_reply(&d)?
-        }
-    };
-    let (rows, _truncated) =
-        super::source::list_dir(line, source, &cwd, super::source::SortBy::default()).await?;
-    Ok((cwd, rows))
-}
-
-/// 在 stdout 上说那一行。父进程已经不在了（管子断了）⇒ 只在 stderr 上记一句，不当成窗口的错。
-fn say(r: &Ready) {
-    use std::io::Write;
-    let mut out = std::io::stdout().lock();
-    if let Err(e) = out
-        .write_all(encode_ready(r).as_bytes())
-        .and_then(|()| out.flush())
-    {
-        eprintln!("就绪那一行没送出去（{e}）");
-    }
-}
-
-/// 说「列不出来」并回那个退出码（窗口不开）。
-fn refuse(said: String, code: i32) -> i32 {
-    eprintln!("{said}");
-    say(&Ready::Failed(said));
-    code
-}
-
-/// 种子解不出来时的退出码。
-pub const EXIT_BAD_SEED: i32 = 2;
-/// 窗口没立起来时的退出码。
-pub const EXIT_WINDOW_FAILED: i32 = 1;
-/// 〔MIG-3a · 09-28 裁 3〕第一屏列不出来（home 问不到 / 目录列不出来）时的退出码 —— 窗口没开。
-pub const EXIT_NOT_LISTED: i32 = 3;
-
-/// **窗口进程的躯体。** `[[bin]]` 那个入口只有一行，调的就是它。
-///
-/// 回值 = 进程退出码。四档刻意分开（`D7`：失败要显式、归因要准确）：
-/// `0` 窗口开过又关了 · [`EXIT_WINDOW_FAILED`] 窗口立不起来 ·
-/// [`EXIT_BAD_SEED`] 种子读不动（那是 monitor 与它之间的契约漂了，不是显示问题）·
-/// [`EXIT_NOT_LISTED`] 第一屏列不出来（窗口没开）。
-/// 〔MIG-3a · 09-28 裁 3〕开窗之前的每一种失败都**也**在 stdout 上说一行 [`Ready::Failed`]（父进程据此带原话回错）。
-///
-/// ⚠ **它把原因印在 stderr 上**，而那根 stderr 是继承来的（见 [`spawn_window`]）
-/// ⇒ 从终端里起的 monitor 上看得见。装机那份 GUI app 没有 stderr 控制台
-/// ⇒ 那句话今天会丢。**如实登记**：把它接进 monitor 的滚动日志要 `StderrSink::ToLog`，
-/// 而那一格要一条泵、而且会把「窗口的话」与「后端的话」灌进同一个文件 —— 没顺手做。
-pub fn child_main() -> i32 {
-    let mut raw = String::new();
-    if let Err(e) = std::io::Read::read_to_string(&mut std::io::stdin(), &mut raw) {
-        return refuse(
-            copy_text("rsFilewinProc.seed.readFailed", &[("e", &e.to_string())]),
-            EXIT_BAD_SEED,
-        );
-    }
-    let req = match decode_request(&raw) {
-        Ok(r) => r,
-        Err(e) => return refuse(e, EXIT_BAD_SEED),
-    };
-    // 🔴 这个进程里要有一个 tokio 运行时 —— 窗口那一侧的每一次列目录 / 传输 / 搜索
-    //    都是 `h.spawn(async …)`。**不给它就等于开一个什么都做不了的窗口**
-    //    （`FileWindow` 在 `rt: None` 时会把「这个窗口没拿到运行时」画出来，
-    //     那一形是判据夹具的样子，不是生产的）。
-    let rt = match tokio::runtime::Builder::new_multi_thread()
-        .enable_all()
-        .build()
-    {
-        Ok(rt) => rt,
-        Err(e) => {
-            return refuse(
-                copy_text("rsFilewinProc.child.noRuntime", &[("e", &e.to_string())]),
-                EXIT_WINDOW_FAILED,
-            )
-        }
-    };
-    // 🔴〔F2 · 2026-09-24〕**先拨通道，拨不通就别开窗**（`D11`：没有退路 ——
-    //    不许「连不上就退回 SFTP 自己列」）。
-    let line = match rt.block_on(dial_back(&req.handoff)) {
-        Ok(c) => c,
-        Err(e) => return refuse(e, EXIT_WINDOW_FAILED),
-    };
-    // 🔴〔MIG-3a · 09-28 裁 3〕**列不出来就别开窗**（那条纪律从 monitor 那一侧搬到这里，一个字没动）：
-    //    先列第一屏，说一行给父进程；列不出来 ⇒ 说原话、退，窗口一个都不开。
-    let source = Source::remote(req.origin.clone());
-    let (cwd, rows) = match rt.block_on(first_screen(&line, &source, req.cwd.clone())) {
-        Ok(first) => first,
-        Err(e) => return refuse(e, EXIT_NOT_LISTED),
-    };
-    say(&Ready::Listed(rows.len()));
-    let h = super::shell::open_detached_seeded(
-        source,
-        cwd,
-        Some(rt.handle().clone()),
-        Some(line),
-        rows,
-        req.reveal,
-        req.bookmarks,
-        req.machines,
-        req.work_area,
-    );
-    match h.join() {
-        Ok(Ok(())) => 0,
-        Ok(Err(e)) => {
-            eprintln!("{e}");
-            EXIT_WINDOW_FAILED
-        }
-        Err(_) => {
-            eprintln!("开窗那条线程炸了（panic）—— 原因在它自己上面那几行");
-            EXIT_WINDOW_FAILED
-        }
-    }
 }
 
 #[cfg(test)]
