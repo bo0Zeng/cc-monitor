@@ -32,8 +32,13 @@ use crate::copy_table::copy_text;
 /// `#[cfg(not(windows))]` —— 它跑的是 `bash -lic`，是 POSIX 专有的原语。
 /// 先前本函数**没有对应的门** ⇒ Windows 上 `monitor` 的 lib 直接编不过（E0425）。
 /// ⇒ 两侧各写各的。**本函数的函数体一个字节没动**，非 Windows 上的行为按构造逐字节不变。
-#[cfg(not(windows))]
+/// 〔P4b · 阶段 H〕两份 cfg 分身合成这一份：本机新开终端是 PowerShell 那一族（`platform::login_shell::LOGIN_SHELL`）⇒ 交
+/// [`windows_ccm_too_old_warning`]；否则照下面这段探 PATH 上那个（探测那一侧今天两平台都编，`bash -lic` 那条只在 POSIX 那一族走）。
 fn local_ccm_too_old_warning() -> Option<String> {
+    use crate::platform::login_shell::{LoginShell, LOGIN_SHELL};
+    if LOGIN_SHELL == LoginShell::PowerShell {
+        return windows_ccm_too_old_warning();
+    }
     // ⚠ **不自己起进程探** —— `ccm_probe::probe_with` 就是「本机 ccm 的能力集探测」，
     //   已经在 `write_site_registry::SPAWNS` 里申报过、有超时、有 `name=ccm` 首行校验
     //   （挡 PATH 里同名但无关的用户脚本）。首版我又写了一份 `Command::new(ccm)`，
@@ -83,8 +88,7 @@ fn local_ccm_too_old_warning() -> Option<String> {
 ///   那一侧投递通道今天是显式的 rc=13（`cc-bus-adapt-windows.sh`）。本条只答「版本对不对」。
 ///
 /// ⚠ 它**不是错误**（与非 Windows 那条同一条纪律）：装本身做完了，命令仍回 `Ok`。
-#[cfg(windows)]
-fn local_ccm_too_old_warning() -> Option<String> {
+fn windows_ccm_too_old_warning() -> Option<String> {
     let st = crate::ccm_probe::local_ccm_entry_status(None);
     Some(windows_ccm_precheck(
         st.entry.as_deref().map(|e| (e, &st.ours)),
@@ -100,9 +104,7 @@ fn local_ccm_too_old_warning() -> Option<String> {
 /// `ours`：`None` = cc-monitor 那份 `ccm` 还没装下来；`Some((住址, 名片))` = 装了并问过一次。
 /// 返回值**总是一句话**（理由见 [`local_ccm_too_old_warning`] 的 Windows 臂）。
 ///
-/// ⚠ 门控是 `any(windows, test)` 而不是 `#[allow(dead_code)]`：非 Windows 的生产构建里它
-///   确实没有调用方，而 `allow` 会把将来真正的死代码一并盖住（`history.rs` 那条同一个取法）。
-#[cfg(any(windows, test))]
+/// 〔P4b · 阶段 H〕原先的 `any(windows, test)` 门摘了：调用方按 `LOGIN_SHELL` 分派，两平台的构建里都有调用方。
 pub(crate) fn windows_ccm_precheck(
     ours: Option<(&str, &crate::ccm_probe::CcmProbeResult)>,
     want_build: &str,
