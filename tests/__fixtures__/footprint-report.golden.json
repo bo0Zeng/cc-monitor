@@ -121,7 +121,7 @@
       "effect_label": "整个文件由 cc-monitor 拥有，部署时整体覆盖",
       "host_label": "项目目录",
       "installable": true,
-      "note": "相对你选定的项目目录。项目目录在推 / 拉那一块或资产目录的「装到这台」里选；只加或覆盖你勾的那几条，别的条目不动",
+      "note": "相对你选定的项目目录。项目在确认卡上选；只加或覆盖那一条，别的条目不动",
       "path_declared": ".mcp.json",
       "path_resolved": null,
       "source_label": "由 cc-monitor 现场生成的文本",
@@ -240,7 +240,7 @@
       "effect_label": "整个文件由 cc-monitor 拥有，部署时整体覆盖",
       "host_label": "本机或远端",
       "installable": true,
-      "note": "装到哪台就写哪台，只写 skills 下以这个 skill 为名的目录。只写你勾的那几个文件，不同的要你点了「盖」才盖，别的文件不动。卸的时候只删装时写进去的那几个（装完你改过的、装之前就在的先问你），目录本身留着",
+      "note": "装到哪台就写哪台，只写 skills 下以这个 skill 为名的目录；原来就有、内容不同的那几个列在确认卡上，你点了确认才盖。卸的时候只删装时写进去的那几个；不是从这里装的，先挪进备份再删",
       "path_declared": "~/.claude/skills",
       "path_resolved": "/nonexistent-footprint-golden/.claude/skills",
       "source_label": "由 cc-monitor 现场生成的文本",
@@ -264,6 +264,40 @@
       "state": {
         "kind": "undetermined",
         "why": "本机没找到（/nonexistent-footprint-golden/.cc-monitor/skill-installs.json）。这套东西装在 Claude Code 跑的那台上，很可能是某个远端；本页不连 SSH，远端状态请到对应页面查。"
+      },
+      "tier": "AppInstalls",
+      "tool_id": "skill-install",
+      "tool_name": "从别的机器装来的 skill",
+      "uninstallable": true
+    },
+    {
+      "effect_label": "整个文件由 cc-monitor 拥有，部署时整体覆盖",
+      "host_label": "本机或远端",
+      "installable": true,
+      "note": "卸掉不是 cc-monitor 装的 skill 或 MCP 之前，原样放一份在这里",
+      "path_declared": "~/.cc-monitor/backups",
+      "path_resolved": "/nonexistent-footprint-golden/.cc-monitor/backups",
+      "source_label": "由 cc-monitor 现场生成的文本",
+      "state": {
+        "kind": "undetermined",
+        "why": "本机没找到（/nonexistent-footprint-golden/.cc-monitor/backups）。这套东西装在 Claude Code 跑的那台上，很可能是某个远端；本页不连 SSH，远端状态请到对应页面查。"
+      },
+      "tier": "AppInstalls",
+      "tool_id": "skill-install",
+      "tool_name": "从别的机器装来的 skill",
+      "uninstallable": true
+    },
+    {
+      "effect_label": "整个文件由 cc-monitor 拥有，部署时整体覆盖",
+      "host_label": "项目目录",
+      "installable": true,
+      "note": "装到某个项目里的 skill 落在那个项目的这个目录下，以 skill 的名字为名",
+      "path_declared": ".claude/skills",
+      "path_resolved": null,
+      "source_label": "由 cc-monitor 现场生成的文本",
+      "state": {
+        "kind": "undetermined",
+        "why": "相对项目目录（.claude/skills）——要先选定项目才知道查哪里"
       },
       "tier": "AppInstalls",
       "tool_id": "skill-install",

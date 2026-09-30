@@ -1,7 +1,7 @@
-//! 〔MIG-3a · D 组〕skill「装到这台」与「卸」的写那一半：帧面 `skill-install-apply` · `skill-uninstall-apply`。
+//! 〔MIG-3a · D 组〕skill「装到这台」与「卸」的写那一半：帧面 `skill-install-apply`；卸由 `ext-uninstall-apply` 调 [`answer_uninstall`]。
 //!
 //! 从 monitor `skill_install.rs` 搬来（从前 monitor 请这台判「写哪几个」、再逐个经这台 `files-put` / `files-delete` 写、最后交装记录）。
-//! 今天判（`skill_install::answer_plan_with` · `answer_uninstall_plan`）、写（本进程文件管理面 [`Door`]）、记（`skill-install-record`，
+//! 今天判（`skill_install::answer_plan_with` · `answer_uninstall_plan_at`）、写（本进程文件管理面 [`Door`]）、记（`skill-install-record`，
 //! 写口由 `inbound.rs` 递进来 —— `readonly_guard` 第四层只许那一扇门）都在被写的这一台。
 //! 🔴 写**不重读重算**：用户确认的是他看到的那份差异；看过之后变了 ⇒ `stale` 就停，说清前面写了 / 删了哪几个（`96 §3.5`）。
 
@@ -105,7 +105,7 @@ pub(crate) fn answer_install(
     let plan = crate::assets::skill_install::answer_plan_with(
         facts,
         root,
-        &json!({ "name": name, "source": wire_source, "take": args.get("take"), "overwrite": args.get("overwrite") }),
+        &json!({ "name": name, "source": wire_source, "take": args.get("take"), "overwrite": args.get("overwrite"), "project": args.get("project") }),
     )?;
     let (dir, base, prefix) = (
         str_of(&plan, "dir"),
@@ -164,7 +164,11 @@ pub(crate) fn answer_install(
             .iter()
             .filter_map(|p| ledger.get(p).map(|v| (p.clone(), v.clone())))
             .collect();
-        record(&json!({ "op": "add", "name": name, "files": files }))
+        let mut rec = json!({ "op": "add", "name": name, "files": files });
+        if let Some(p) = args.get("project").filter(|p| p.is_string()) {
+            rec["project"] = p.clone();
+        }
+        record(&rec)
             .err()
             .map(|(_, e)| copy_text("beSkillFlow.install.recordFailed", &[("e", &e)]))
     };
@@ -180,11 +184,11 @@ pub(crate) fn answer_install(
     )
 }
 
-/// `skill-uninstall-apply {dir, seen, take, confirm}`：`seen` = 看的时候这台回的现有原文（CAS 期望）。
+/// 卸 `{dir, seen, take, confirm}`：`seen` = 看的时候这台那几份现有原文（CAS 期望）。
 /// 回 `{dir, deleted, recordFailed, dirRemoved, dirFailed}`。
 pub(crate) fn answer_uninstall(
     d: &dyn Door,
-    ledger: Option<&std::path::Path>,
+    ledger: &std::path::Path,
     record: Record,
     args: &Value,
 ) -> Answer {
@@ -194,10 +198,7 @@ pub(crate) fn answer_uninstall(
     ))?;
     let seen = texts_by_path(args.get("seen"), "seen")?;
     let ask = json!({ "dir": dir, "take": args.get("take"), "confirm": args.get("confirm") });
-    let plan = match ledger {
-        Some(l) => crate::assets::skill_install::answer_uninstall_plan_at(l, &ask)?,
-        None => crate::assets::skill_install::answer_uninstall_plan(&ask)?,
-    };
+    let plan = crate::assets::skill_install::answer_uninstall_plan_at(ledger, &ask)?;
     let (delete, forget) = (names(&plan, "delete"), names(&plan, "forget"));
     let recorded: Vec<String> = delete.iter().chain(forget.iter()).cloned().collect();
     let mut deleted = Vec::new();

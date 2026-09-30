@@ -32,20 +32,21 @@ fn temp_dir(tag: &str) -> PathBuf {
     p
 }
 
-fn skills(names: &[&str]) -> (Vec<Asset>, Vec<String>) {
-    (
-        names
+fn skills(names: &[&str]) -> cat::Scanned {
+    cat::Scanned {
+        assets: names
             .iter()
             .map(|n| Asset {
                 kind: KIND_SKILL.into(),
                 name: (*n).into(),
                 project: None,
+                dir: None,
                 digest: format!("d-{n}"),
                 summary: json!({}),
             })
             .collect(),
-        vec![],
-    )
+        ..cat::Scanned::default()
+    }
 }
 
 /// 一台机器 = 一份目录文件 ＋ 一份固定的「现扫」结果。

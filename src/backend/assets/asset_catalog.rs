@@ -1,4 +1,4 @@
-//! 〔AS2 · 第四波 4B · V113〕**资产目录** —— 每台后端把它看到的 skill 与项目级 MCP 记成一份目录，目录在后端之间自动对上。
+//! 〔AS2 · 第四波 4B · V113〕**资产目录** —— 每台后端把它看到的 skill 与 MCP（用户级 ＋ 这台上开过会话的项目里的）记成一份目录，目录在后端之间自动对上。
 //!
 //! # 用户裁决（2026-09-25，`99 §1` V113，逐字）
 //!
@@ -70,9 +70,12 @@ pub const MCP_KEYS_ONLY_FIELDS: &[&str] = &["env", "headers"];
 pub struct Asset {
     pub kind: String,
     pub name: String,
-    /// MCP：那台上的项目目录（项目级）。skill：没有。
+    /// 那台上的项目目录（项目级）；`None` = 用户级。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub project: Option<String>,
+    /// 它在那台上住哪（skill：那个目录；MCP：那份配置文件）。只给人看、给「在文件窗口里打开」用，不参与判定。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dir: Option<String>,
     pub digest: String,
     /// 给人看的摘要（skill：description / 文件数 / 字节数；MCP：去掉密钥值之后的定义）。
     pub summary: Value,
@@ -89,6 +92,16 @@ pub struct Snapshot {
     /// 那一代出生的时刻（那台自己的钟，unix 秒；只给人看，**不参与合并**）。
     pub seen_at: u64,
     pub assets: Vec<Asset>,
+    /// 那台上开过会话的项目目录（装到项目时给人选；随整份一起换）。
+    #[serde(default)]
+    pub project_dirs: Vec<String>,
+}
+
+/// 「上次来看扩展页」那两格（本机那一份自己记，不随同步走）：`prev` 之后第一次见到的条目算「新见到」。
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Visits {
+    pub prev: u64,
+    pub last: u64,
 }
 
 /// 目录文件的全部内容。
@@ -99,6 +112,24 @@ pub struct Catalog {
     #[serde(rename = "self")]
     pub self_id: String,
     pub machines: BTreeMap<String, Snapshot>,
+    /// 每个条目（[`entry_key`]）在这台目录里第一次出现的时刻（这台的钟，unix 秒）。只这台自己用，不随同步走。
+    #[serde(default)]
+    pub known: BTreeMap<String, u64>,
+    #[serde(default)]
+    pub visits: Visits,
+}
+
+/// 一台这一趟扫出来的全部：条目 · 开过会话的项目 · 读不出来的那几份。
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Scanned {
+    pub assets: Vec<Asset>,
+    pub projects: Vec<String>,
+    pub problems: Vec<String>,
+}
+
+/// 一个条目的键（种类 ＋ 名字）：「新见到」按它记，扩展页一行也按它分。
+pub fn entry_key(kind: &str, name: &str) -> String {
+    format!("{kind}/{name}")
 }
 
 // ───────────────────────── 摘要（纯） ─────────────────────────
@@ -154,13 +185,14 @@ pub fn canonical(v: &Value) -> String {
 }
 
 /// 一条 MCP 定义 → 目录条目。`digest` 按**整条原文**（含密钥值）的规范写法算；`summary` 去掉密钥值。
-pub fn mcp_asset(project: &str, name: &str, def: &Value) -> Asset {
+pub fn mcp_asset(project: Option<&str>, name: &str, def: &Value, file: Option<&Path>) -> Asset {
     let mut f = Fnv::default();
     f.part(KIND_MCP.as_bytes()).part(canonical(def).as_bytes());
     Asset {
         kind: KIND_MCP.to_string(),
         name: name.to_string(),
-        project: Some(project.to_string()),
+        project: project.map(str::to_string),
+        dir: file.map(|p| p.display().to_string()),
         digest: f.hex(),
         summary: mcp_summary(def),
     }
@@ -197,7 +229,12 @@ pub fn mcp_summary(def: &Value) -> Value {
 
 /// 一个 skill 目录 → 目录条目。按（相对路径, 内容）逐个进摘要；文件链接按它指向的内容算（目录链接不下去）。
 /// ⚠ 可执行位**不进摘要**：读执行位是平台原语（只许住 `platform/`）；只差 `chmod +x` 的两份判成「相同」—— 如实登记。
-pub fn skill_asset(name: &str, dir: &Path, description: Option<&str>) -> Asset {
+pub fn skill_asset(
+    project: Option<&str>,
+    name: &str,
+    dir: &Path,
+    description: Option<&str>,
+) -> Asset {
     let mut f = Fnv::default();
     f.part(KIND_SKILL.as_bytes());
     let (mut files, mut bytes) = (0usize, 0u64);
@@ -269,7 +306,8 @@ pub fn skill_asset(name: &str, dir: &Path, description: Option<&str>) -> Asset {
     Asset {
         kind: KIND_SKILL.to_string(),
         name: name.to_string(),
-        project: None,
+        project: project.map(str::to_string),
+        dir: Some(dir.display().to_string()),
         digest: f.hex(),
         summary: json!({
             "description": description,
@@ -287,16 +325,65 @@ pub(crate) fn assets_from(sightings: &[crate::agents::Sightings]) -> (Vec<Asset>
     let mut out = Vec::new();
     let mut problems = Vec::new();
     for s in sightings {
-        for (name, dir, desc) in &s.skills {
-            out.push(skill_asset(name, dir, desc.as_deref()));
+        for k in &s.skills {
+            out.push(skill_asset(
+                k.project.as_deref(),
+                &k.name,
+                &k.dir,
+                k.description.as_deref(),
+            ));
         }
-        for (project, name, def) in &s.mcp {
-            out.push(mcp_asset(project, name, def));
+        for m in &s.mcp {
+            out.push(mcp_asset(
+                m.project.as_deref(),
+                &m.name,
+                &m.def,
+                Some(&m.file),
+            ));
         }
         problems.extend(s.problems.iter().cloned());
     }
     out.sort_by(|a, b| (&a.kind, &a.name, &a.project).cmp(&(&b.kind, &b.name, &b.project)));
     (out, problems)
+}
+
+/// 这台上开过会话的项目目录：取历史清单那一份（`--list-projects` 的每一行的 `projectPath`），不另起一份扫描。
+/// 列不出来 ⇒ 空 ＋ 一句话（「这台没有项目」与「这台的项目列不出来」不许合成一句）。
+pub(crate) fn session_projects() -> (Vec<String>, Option<String>) {
+    session_projects_at(&crate::observe::history_query::agent_home())
+}
+
+/// [`session_projects`] 的本体：agent 的家由调用方给（判据拿临时家目录喂）。
+pub(crate) fn session_projects_at(agent_home: &Path) -> (Vec<String>, Option<String>) {
+    let mut buf = Vec::new();
+    if let Err(e) = crate::observe::history_query::list_projects_into(agent_home, &mut buf) {
+        return (Vec::new(), Some(e));
+    }
+    let mut dirs: Vec<String> = String::from_utf8_lossy(&buf)
+        .lines()
+        .filter_map(|l| serde_json::from_str::<Value>(l).ok())
+        .filter_map(|v| {
+            v.get("projectPath")
+                .and_then(Value::as_str)
+                .map(str::to_string)
+        })
+        .filter(|p| Path::new(p).is_absolute())
+        .collect();
+    dirs.sort();
+    dirs.dedup();
+    (dirs, None)
+}
+
+/// 这台现扫一次：先取项目清单，再交适配层扫用户级 ＋ 那几个项目。
+pub(crate) fn scan_here() -> Scanned {
+    let (projects, why) = session_projects();
+    let (assets, mut problems) = assets_from(&crate::agents::asset_sightings(&projects));
+    problems.extend(why);
+    Scanned {
+        assets,
+        projects,
+        problems,
+    }
 }
 
 // ───────────────────────── 合并与判定（纯） ─────────────────────────
@@ -307,14 +394,22 @@ pub fn fresh(self_id: String) -> Catalog {
         v: FORMAT_V,
         self_id,
         machines: BTreeMap::new(),
+        known: BTreeMap::new(),
+        visits: Visits::default(),
     }
 }
 
-/// 把这台刚扫出来的那一份放进自己那一格。**真变了**（条目或称呼不同）才 `gen + 1`、记时刻，回 `true`。
-pub fn refresh_self(cat: &mut Catalog, assets: Vec<Asset>, label: &str, now: u64) -> bool {
+/// 把这台刚扫出来的那一份放进自己那一格。**真变了**（条目 · 项目清单 · 称呼有一样不同）才 `gen + 1`、记时刻，回 `true`。
+pub fn refresh_self(
+    cat: &mut Catalog,
+    assets: Vec<Asset>,
+    projects: Vec<String>,
+    label: &str,
+    now: u64,
+) -> bool {
     let id = cat.self_id.clone();
     if let Some(cur) = cat.machines.get(&id) {
-        if cur.assets == assets && cur.label == label {
+        if cur.assets == assets && cur.project_dirs == projects && cur.label == label {
             return false;
         }
     }
@@ -326,9 +421,27 @@ pub fn refresh_self(cat: &mut Catalog, assets: Vec<Asset>, label: &str, now: u64
             gen,
             seen_at: now,
             assets,
+            project_dirs: projects,
         },
     );
     true
+}
+
+/// 目录里任何一台有、`known` 里还没有的条目记下第一次见到的时刻。回「记了没有」（只影响要不要落盘，不算目录变了）。
+pub fn note_known(cat: &mut Catalog, now: u64) -> bool {
+    let keys: Vec<String> = cat
+        .machines
+        .values()
+        .flat_map(|s| s.assets.iter().map(|a| entry_key(&a.kind, &a.name)))
+        .collect();
+    let mut noted = false;
+    for k in keys {
+        if !cat.known.contains_key(&k) {
+            cat.known.insert(k, now);
+            noted = true;
+        }
+    }
+    noted
 }
 
 /// 把别处传来的各台快照并进来：**同一台取 `gen` 大的整份**；这台自己那一格一律不收。回「真变了没有」。
@@ -407,6 +520,7 @@ pub fn wire(cat: &Catalog, problems: &[String], changed: bool, path: Option<&Pat
                 "gen": s.gen,
                 "seenAt": s.seen_at,
                 "assets": s.assets,
+                "projectDirs": s.project_dirs,
             })
         })
         .collect();
@@ -463,6 +577,14 @@ pub fn machines_from_wire(v: &Value) -> Result<BTreeMap<String, Snapshot>, Strin
                 "a machine `assets` has the wrong shape: {e}"
             ))
         })?;
+        let project_dirs: Vec<String> = match m.get("projectDirs") {
+            None | Some(Value::Null) => Vec::new(),
+            Some(v) => serde_json::from_value(v.clone()).map_err(|e| {
+                crate::common::contract::malformed(&format!(
+                    "a machine `projectDirs` must be an array of strings: {e}"
+                ))
+            })?,
+        };
         if let Some(a) = assets.iter().find(|a| !KINDS.contains(&a.kind.as_str())) {
             return Err(crate::common::contract::malformed(&format!(
                 "asset kind `{}` is not one of {KINDS:?}",
@@ -476,6 +598,7 @@ pub fn machines_from_wire(v: &Value) -> Result<BTreeMap<String, Snapshot>, Strin
                 gen,
                 seen_at,
                 assets,
+                project_dirs,
             },
         );
     }
@@ -636,10 +759,24 @@ fn write_at(path: &Path, cat: &Catalog) -> Result<(), String> {
 /// 这台机器现扫一次、并进 `incoming`（若有）、真变了才落盘。**可喂夹具**：路径与扫描结果由调用方给。
 pub fn update_at(
     path: &Path,
-    scanned: (Vec<Asset>, Vec<String>),
+    scanned: Scanned,
     label: &str,
     incoming: Option<BTreeMap<String, Snapshot>>,
 ) -> Result<Value, (&'static str, String)> {
+    let (cat, problems, changed) = update_with(path, scanned, label, incoming, false, now_secs())?;
+    Ok(wire(&cat, &problems, changed, Some(path)))
+}
+
+/// [`update_at`] 的本体：交回并好的整份（扩展页的表从它算）。`visit` ⇒ 这一趟算「来看了一次」（挪 [`Visits`]）。
+/// 回 `(目录, 读不出来的那几份, 目录真变了没有)`；「新见到」的记账与来看那两格变了也落盘，但不算目录变了（不触发扇出）。
+pub fn update_with(
+    path: &Path,
+    scanned: Scanned,
+    label: &str,
+    incoming: Option<BTreeMap<String, Snapshot>>,
+    visit: bool,
+    now: u64,
+) -> Result<(Catalog, Vec<String>, bool), (&'static str, String)> {
     let dir = path.parent().ok_or((
         "io_failed",
         copy_text(
@@ -663,15 +800,27 @@ pub fn update_at(
         Read::Absent => fresh(new_machine_id()),
         Read::Unreadable(why) => return Err(("catalog_unreadable", why)),
     };
-    let (assets, problems) = scanned;
-    let mut changed = refresh_self(&mut cat, assets, label, now_secs());
+    let Scanned {
+        assets,
+        projects,
+        problems,
+    } = scanned;
+    let mut changed = refresh_self(&mut cat, assets, projects, label, now);
     if let Some(inc) = incoming {
         changed |= merge(&mut cat, inc);
     }
-    if changed || !path.exists() {
+    let mut dirty = changed | note_known(&mut cat, now);
+    if visit {
+        cat.visits = Visits {
+            prev: cat.visits.last,
+            last: now,
+        };
+        dirty = true;
+    }
+    if dirty || !path.exists() {
         write_at(path, &cat).map_err(|e| ("io_failed", e))?;
     }
-    Ok(wire(&cat, &problems, changed, Some(path)))
+    Ok((cat, problems, changed))
 }
 
 fn update_now(
@@ -679,8 +828,24 @@ fn update_now(
 ) -> Result<Value, (&'static str, String)> {
     let path =
         catalog_path().ok_or(("io_failed", copy_text("beAssetCatalog.write.noHome", &[])))?;
-    let scanned = assets_from(&crate::agents::asset_sightings());
-    update_at(&path, scanned, &machine_label(), incoming)
+    update_at(&path, scan_here(), &machine_label(), incoming)
+}
+
+/// 扩展页那一问（**写口**，只从 `inbound.rs` 递出去）：这台现扫一次、记下，交回并好的整份（`visit` 见 [`update_with`]）。
+pub(crate) fn answer_current(
+    visit: bool,
+) -> Result<(Catalog, Vec<String>), (&'static str, String)> {
+    let path =
+        catalog_path().ok_or(("io_failed", copy_text("beAssetCatalog.write.noHome", &[])))?;
+    let (cat, problems, _) = update_with(
+        &path,
+        scan_here(),
+        &machine_label(),
+        None,
+        visit,
+        now_secs(),
+    )?;
+    Ok((cat, problems))
 }
 
 /// `assets-catalog`：这台现扫一次、记下（变了才写），回整份目录 ＋「这台缺什么」。

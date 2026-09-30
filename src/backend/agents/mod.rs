@@ -484,13 +484,18 @@ pub(crate) fn history_roots() -> Vec<PathBuf> {
         .collect()
 }
 
-/// 〔AS2〕一家的资产面：函数指针（同 [`Adapter::home`]，不立 trait）。两件知识：怎么扫 · skill 住哪。
+/// 〔AS2〕一家的资产面：函数指针（同 [`Adapter::home`]，不立 trait）。几件布局知识：怎么扫 · skill 住哪 · 用户级 MCP 住哪。
 #[derive(Clone, Copy)]
 pub(crate) struct AssetFace {
-    /// 按这台机器的环境现解根、现扫，交回原始事实（还没有摘要 —— 摘要是通用层的机器）。
-    pub(crate) scan: fn() -> Sightings,
-    /// 这一家 skill 的根（「装到这台」读 / 写 skill 的落点从这里来；与扫描同一个家）。
+    /// 按这台机器的环境现解根、现扫：用户级那一份 ＋ 交进来的那几个项目目录（这台上开过会话的项目）。
+    /// 交回原始事实（还没有摘要 —— 摘要是通用层的机器）。
+    pub(crate) scan: fn(projects: &[String]) -> Sightings,
+    /// 这一家用户级 skill 的根（「装到这台」读 / 写 skill 的落点从这里来；与扫描同一个家）。
     pub(crate) skills_root: fn() -> Option<PathBuf>,
+    /// 一个项目目录里 skill 的根（项目级 skill 的落点，与扫描同一个家）。
+    pub(crate) project_skills_root: fn(project: &Path) -> PathBuf,
+    /// 用户级 MCP 住的那份文件（只读：它是 agent 自己的热状态文件）。
+    pub(crate) user_mcp_file: fn() -> Option<PathBuf>,
     /// 〔MIG-3a〕接进来的 skill 在一个项目里的样子（收件箱那一面的列表）。
     pub(crate) skill_views: fn(cwd: &Path) -> Vec<serde_json::Value>,
     /// 〔MIG-3a〕能不能碰那一份可编辑文件 ⇒ `(项目根, 相对段)`（声明集合 ＋ 数据文件的纵深围栏）。
@@ -498,22 +503,40 @@ pub(crate) struct AssetFace {
         fn(skill_id: &str, cwd: &Path, requested: &Path) -> Result<(PathBuf, String), String>,
 }
 
+/// 看到的一个 skill：`project` = `None` 是用户级，`Some(项目目录)` 是那个项目里的。
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct SkillSeen {
+    pub project: Option<String>,
+    pub name: String,
+    /// 那个 skill 的目录（可能是一条链接：通用层按它跟到底走一遍）。
+    pub dir: PathBuf,
+    pub description: Option<String>,
+}
+
+/// 看到的一条 MCP server：`project` 同 [`SkillSeen::project`]；`file` 是它住的那份配置文件。
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct McpSeen {
+    pub project: Option<String>,
+    pub name: String,
+    /// 那一条原样的定义。
+    pub def: serde_json::Value,
+    pub file: PathBuf,
+}
+
 /// 〔AS2〕一家适配层看到的原始资产事实。**还没有摘要**（通用层 `asset_catalog.rs` 算）。
 #[derive(Debug, Default, Clone, PartialEq)]
 pub(crate) struct Sightings {
-    /// `(名字, 目录, description)`。目录可能是一条链接（通用层按它跟到底走一遍）。
-    pub skills: Vec<(String, PathBuf, Option<String>)>,
-    /// `(项目目录, server 名, 那一条原样的定义)`。
-    pub mcp: Vec<(String, String, serde_json::Value)>,
+    pub skills: Vec<SkillSeen>,
+    pub mcp: Vec<McpSeen>,
     /// 读不出来的那几份（一句话一份）—— 「这台没有」与「这台那份读不出来」不许合成一句。
     pub problems: Vec<String>,
 }
 
 /// 〔AS2〕注册表里每一家有资产面的，各扫一遍（注册序）。
-pub(crate) fn asset_sightings() -> Vec<Sightings> {
+pub(crate) fn asset_sightings(projects: &[String]) -> Vec<Sightings> {
     REGISTRY
         .iter()
-        .filter_map(|a| a.assets.map(|f| (f.scan)()))
+        .filter_map(|a| a.assets.map(|f| (f.scan)(projects)))
         .collect()
 }
 
@@ -523,6 +546,23 @@ pub(crate) fn skills_root() -> Option<PathBuf> {
     REGISTRY
         .iter()
         .find_map(|a| a.assets.and_then(|f| (f.skills_root)()))
+}
+
+/// skill 的根：`None` = 用户级（同 [`skills_root`]），`Some(项目目录)` = 那个项目里的（同一家）。
+pub(crate) fn skill_root_at(project: Option<&Path>) -> Option<PathBuf> {
+    match project {
+        None => skills_root(),
+        Some(p) => REGISTRY
+            .iter()
+            .find_map(|a| a.assets.map(|f| (f.project_skills_root)(p))),
+    }
+}
+
+/// 用户级 MCP 住的那份文件（同 [`skills_root`]：注册表里第一家有资产面的那一家）。
+pub(crate) fn user_mcp_file() -> Option<PathBuf> {
+    REGISTRY
+        .iter()
+        .find_map(|a| a.assets.and_then(|f| (f.user_mcp_file)()))
 }
 
 /// 〔MIG-3a〕收件箱那一面：注册表里第一家有资产面的那一家（同 [`skills_root`]）。

@@ -125,6 +125,8 @@ pub(crate) const RECORDS: super::RecordFace = super::RecordFace {
 pub(crate) const ASSETS: super::AssetFace = super::AssetFace {
     scan: assets::scan,
     skills_root: assets::skills_root,
+    project_skills_root: assets::project_skills_root,
+    user_mcp_file: assets::claude_json,
     skill_views: skill_host::views,
     skill_editable: skill_host::editable_target,
 };
