@@ -16,6 +16,21 @@ fn undo_runs_restores_first_then_deletes_each_in_reverse() {
         ]
     );
     assert_eq!(bad, ["garbage", "RESTORE\trelative"]);
+    // key 表那一行：`REKEY\t<表>\t<号的目录>` 归「还原」那一组；少一段 / 相对路径 ⇒ 认不出，原样报。
+    let (steps, bad) = undo_steps(
+        "DELETE\t/h/a\nREKEY\t/h/k.json\t/h/accts/k\nREKEY\t/h/k.json\nREKEY\tk.json\t/h/x\n",
+    );
+    assert_eq!(
+        steps,
+        vec![
+            Undo::Rekey {
+                table: "/h/k.json".into(),
+                config_dir: "/h/accts/k".into()
+            },
+            Undo::Delete("/h/a".into()),
+        ]
+    );
+    assert_eq!(bad, ["REKEY\t/h/k.json", "REKEY\tk.json\t/h/x"]);
 }
 
 #[test]

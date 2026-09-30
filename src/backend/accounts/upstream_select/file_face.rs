@@ -70,36 +70,8 @@ pub(crate) fn answer_set_at(path: &Path, args: &Value) -> FileFaceAnswer {
     // 〔HX2 · 第四波 4D〕入参从 `account` 换成 `configDir`：账号 id 由**这台后端**按全仓唯一那份规则推
     //   （`acct_core::apikey_account_id_of_dir`，起会话那一侧 `endpoint.rs` 调的同一个）。从前是 monitor 推好了交过来 ——
     //   那一跳随写 key 改走 `chan.call` 一起退了（前端一个字都不推账号 id：`KH2C1`）。不为旧形状留兼容：还给 `account` ⇒ 拒。
-    if args.get("account").is_some() {
-        return Err((
-            "bad_args",
-            crate::common::contract::malformed(
-                "`account` is not accepted; the account id is derived from `configDir`",
-            ),
-        ));
-    }
-    let config_dir = args.get("configDir").and_then(Value::as_str).ok_or((
-        "bad_args",
-        crate::common::contract::malformed("missing `configDir` (string)"),
-    ))?;
-    let account_id = acct_core::apikey_account_id_of_dir(config_dir).ok_or((
-        "bad_args",
-        copy_text(
-            "beUpstreamFileFace.keySet.noAccount",
-            &[("dir", &format!("{config_dir:?}"))],
-        ),
-    ))?;
+    let account_id = account_of(args)?;
     let account = account_id.as_str();
-    // ★ 与装表那一步**同一个谓词**：写得进去、却装不进表 ⇒ 那一行的请求永远 404，而文件里明明有它。
-    if !crate::relay::segment_is_safe(account) {
-        return Err((
-            "bad_args",
-            copy_text(
-                "beUpstreamFileFace.keySet.badId",
-                &[("account", &format!("{account:?}"))],
-            ),
-        ));
-    }
     let plain = args.get("key").and_then(Value::as_str).ok_or((
         "bad_args",
         crate::common::contract::malformed("missing `key` (string)"),
@@ -144,6 +116,102 @@ pub(crate) fn answer_set_at(path: &Path, args: &Value) -> FileFaceAnswer {
         "masked": masked,
         "baseUrl": base_url_now,
     }))
+}
+
+/// 入参里那个号的账号 id：按 `configDir` 推（`acct_core::apikey_account_id_of_dir`，起会话那一侧 `endpoint.rs` 调的同一个）。
+/// 不收 `account`（不为旧形状留兼容）；推出来的 id 还要过装表那一步**同一个谓词**：写得进去、却装不进表 ⇒ 那一行的请求永远 404。
+fn account_of(args: &Value) -> Result<String, (&'static str, String)> {
+    if args.get("account").is_some() {
+        return Err((
+            "bad_args",
+            crate::common::contract::malformed(
+                "`account` is not accepted; the account id is derived from `configDir`",
+            ),
+        ));
+    }
+    let config_dir = args.get("configDir").and_then(Value::as_str).ok_or((
+        "bad_args",
+        crate::common::contract::malformed("missing `configDir` (string)"),
+    ))?;
+    let account = acct_core::apikey_account_id_of_dir(config_dir).ok_or((
+        "bad_args",
+        copy_text(
+            "beUpstreamFileFace.keySet.noAccount",
+            &[("dir", &format!("{config_dir:?}"))],
+        ),
+    ))?;
+    if !crate::relay::segment_is_safe(&account) {
+        return Err((
+            "bad_args",
+            copy_text(
+                "beUpstreamFileFace.keySet.badId",
+                &[("account", &format!("{account:?}"))],
+            ),
+        ));
+    }
+    Ok(account)
+}
+
+/// 删号那一步：摘掉一个号那一行（账号 id 按 `configDir` 推，同 [`answer_set`]）。那一行本来就不在 ⇒ 一个字节不写。
+pub(crate) fn answer_drop(args: &Value) -> FileFaceAnswer {
+    answer_drop_at(&machine_path().map_err(|e| ("io_failed", e))?, args)
+}
+
+/// [`answer_drop`] 的本体，路径是参数。
+pub(crate) fn answer_drop_at(path: &Path, args: &Value) -> FileFaceAnswer {
+    let account = account_of(args)?;
+    let dropped = rewrite_at(path, &|cur| {
+        let has = cur
+            .get(store::ACCOUNTS_FIELD)
+            .and_then(Value::as_object)
+            .is_some_and(|m| m.contains_key(&account));
+        has.then(|| store::remove_account(cur, &account))
+    })?;
+    Ok(json!({ "account": account, "dropped": dropped }))
+}
+
+/// 回滚那一步：从 `from`（删号之前备份下来的那一份）把一个号那一行放回去；表里别的行不动。`from` 里没有它 ⇒ 拒。
+pub(crate) fn answer_restore(args: &Value) -> FileFaceAnswer {
+    answer_restore_at(&machine_path().map_err(|e| ("io_failed", e))?, args)
+}
+
+/// [`answer_restore`] 的本体，路径是参数。
+pub(crate) fn answer_restore_at(path: &Path, args: &Value) -> FileFaceAnswer {
+    let account = account_of(args)?;
+    let from = args.get("from").and_then(Value::as_str).ok_or((
+        "bad_args",
+        crate::common::contract::malformed("missing `from` (string)"),
+    ))?;
+    let saved = read_doc(Path::new(from))?.unwrap_or_default();
+    let has = saved
+        .get(store::ACCOUNTS_FIELD)
+        .and_then(Value::as_object)
+        .is_some_and(|m| m.contains_key(&account));
+    if !has {
+        return Err((
+            "io_failed",
+            copy_text(
+                "beUpstreamFileFace.restore.notSaved",
+                &[("from", from), ("account", &account)],
+            ),
+        ));
+    }
+    rewrite_at(path, &|cur| {
+        Some(store::restore_account(cur, &account, &saved))
+    })?;
+    Ok(json!({ "account": account, "restored": true }))
+}
+
+/// 表里现有哪几个号（`accounts` 底下的键，按名排）。只读；文件不在 ⇒ 零个；解析不了 ⇒ `Err`（那句话）。
+pub(crate) fn account_ids_at(path: &Path) -> Result<Vec<String>, String> {
+    let doc = read_doc(path).map_err(|(_, m)| m)?.unwrap_or_default();
+    let mut ids: Vec<String> = doc
+        .get(store::ACCOUNTS_FIELD)
+        .and_then(Value::as_object)
+        .map(|m| m.keys().cloned().collect())
+        .unwrap_or_default();
+    ids.sort();
+    Ok(ids)
 }
 
 /// 一把 key ＋ 一个 Base URL 写不写得进去（空 key · 装不进表的地址 ⇒ 拒）—— [`answer_set_at`] 落盘前判的就是这一条；
@@ -273,13 +341,30 @@ fn notice_of(v: &Verdict) -> Option<String> {
     }
 }
 
-/// **这台机器上唯一的写者**（第四层：动词只有建那一层目录 · 原子改名 · 删自己的临时文件）。
+/// 写一个号的 key（与 Base URL）：同一个合并函数、只改这一条的那一格。
 fn write_at(
     path: &Path,
     id: &str,
     key: &SecretKey,
     base_url: Option<&str>,
 ) -> Result<(), (&'static str, String)> {
+    // 〔GP1 · 第四波〕本机那一份也由（本机）后端的这一处写，monitor 那侧的写口删了。
+    rewrite_at(path, &|current| {
+        let merged = store::merge_account_key(current, id, key);
+        Some(match base_url {
+            Some(url) => store::merge_account_base_url(&merged, id, url),
+            None => merged,
+        })
+    })
+    .map(|_| ())
+}
+
+/// [`rewrite_at`] 收的那一步改动：拿写的这一刻读到的那一份，回新的那一份；回 `None` ⇒ 不用写。
+type Rewrite<'a> = &'a dyn Fn(&Map<String, Value>) -> Option<Map<String, Value>>;
+
+/// **这台机器上唯一的写者**（第四层：动词只有建那一层目录 · 原子改名 · 删自己的临时文件）。
+/// `change` 回 `None` ⇒ 一个字节不动（回 `false`）。
+fn rewrite_at(path: &Path, change: Rewrite) -> Result<bool, (&'static str, String)> {
     use std::io::Write as _;
     let dir = path.parent().ok_or((
         "io_failed",
@@ -303,11 +388,8 @@ fn write_at(
     let _lock = crate::platform::lock::hold(dir).map_err(|e| ("io_failed", e))?;
     // ★ 写的这一刻读盘。解析不了 ⇒ `bad_file`，**不覆盖**。
     let current = read_doc(path)?.unwrap_or_default();
-    let merged = store::merge_account_key(&current, id, key);
-    // 同一个合并函数、只改这一条的那一格。〔GP1 · 第四波〕本机那一份也由（本机）后端的这一处写，monitor 那侧的写口删了。
-    let merged = match base_url {
-        Some(url) => store::merge_account_base_url(&merged, id, url),
-        None => merged,
+    let Some(merged) = change(&current) else {
+        return Ok(false);
     };
     let text = store::to_pretty_json(&merged);
     let tmp = dir.join(format!("{}.{}.tmp", store::FILE_NAME, std::process::id()));
@@ -351,7 +433,7 @@ fn write_at(
     if result.is_err() {
         let _ = std::fs::remove_file(&tmp);
     }
-    result
+    result.map(|()| true)
 }
 
 #[cfg(test)]

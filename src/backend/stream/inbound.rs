@@ -1127,6 +1127,16 @@ pub fn uncancellable() -> Vec<String> {
         .collect()
 }
 
+/// 改账号库那几条（`accounts-*`）递给执行器的 key 表几口：写 key · 删号清那一行 · 回滚放回去 · 表在哪。
+/// 那份表（上游选择自己的状态）的写口只从这里递出去。
+const ACCOUNT_KEYS: crate::faces::accounts_face::KeyDoor<'static> =
+    crate::faces::accounts_face::KeyDoor {
+        set: &crate::accounts::upstream_select::file_face::answer_set,
+        drop: &crate::accounts::upstream_select::file_face::answer_drop,
+        restore: &crate::accounts::upstream_select::file_face::answer_restore,
+        path: &crate::accounts::upstream_select::file_face::machine_path,
+    };
+
 /// **单一事实源。** `COMMANDS` 是它的镜子，`dispatch` 从它查。
 pub const REGISTRY: &[CommandSpec] = &[
     // P4f：cc-bus 的两条基础命令。**转调本机的 cc-bus 命令**，不在后端里重实现总线
@@ -2928,14 +2938,9 @@ pub const REGISTRY: &[CommandSpec] = &[
         ],
         takes_input: true,
         run: Run::Blocking(|r| {
-            crate::faces::accounts_face::answer(
-                &LocalFiles,
-                &r.cmd,
-                &r.args,
-                &crate::accounts::upstream_select::file_face::answer_set,
-            )
-            .map(Some)
-            .map_err(|(c, m)| (c.to_string(), m))
+            crate::faces::accounts_face::answer(&LocalFiles, &r.cmd, &r.args, &ACCOUNT_KEYS)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
     CommandSpec {
@@ -2970,14 +2975,9 @@ pub const REGISTRY: &[CommandSpec] = &[
         ],
         takes_input: true,
         run: Run::Blocking(|r| {
-            crate::faces::accounts_face::answer(
-                &LocalFiles,
-                &r.cmd,
-                &r.args,
-                &crate::accounts::upstream_select::file_face::answer_set,
-            )
-            .map(Some)
-            .map_err(|(c, m)| (c.to_string(), m))
+            crate::faces::accounts_face::answer(&LocalFiles, &r.cmd, &r.args, &ACCOUNT_KEYS)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
     CommandSpec {
@@ -2995,14 +2995,9 @@ pub const REGISTRY: &[CommandSpec] = &[
         ],
         takes_input: true,
         run: Run::Blocking(|r| {
-            crate::faces::accounts_face::answer(
-                &LocalFiles,
-                &r.cmd,
-                &r.args,
-                &crate::accounts::upstream_select::file_face::answer_set,
-            )
-            .map(Some)
-            .map_err(|(c, m)| (c.to_string(), m))
+            crate::faces::accounts_face::answer(&LocalFiles, &r.cmd, &r.args, &ACCOUNT_KEYS)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
     CommandSpec {
@@ -3020,14 +3015,9 @@ pub const REGISTRY: &[CommandSpec] = &[
         ],
         takes_input: true,
         run: Run::Blocking(|r| {
-            crate::faces::accounts_face::answer(
-                &LocalFiles,
-                &r.cmd,
-                &r.args,
-                &crate::accounts::upstream_select::file_face::answer_set,
-            )
-            .map(Some)
-            .map_err(|(c, m)| (c.to_string(), m))
+            crate::faces::accounts_face::answer(&LocalFiles, &r.cmd, &r.args, &ACCOUNT_KEYS)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
     CommandSpec {
@@ -3043,14 +3033,9 @@ pub const REGISTRY: &[CommandSpec] = &[
         fields: &["aliases", "applied", "backup", "dryRun", "notes", "steps"],
         takes_input: true,
         run: Run::Blocking(|r| {
-            crate::faces::accounts_face::answer(
-                &LocalFiles,
-                &r.cmd,
-                &r.args,
-                &crate::accounts::upstream_select::file_face::answer_set,
-            )
-            .map(Some)
-            .map_err(|(c, m)| (c.to_string(), m))
+            crate::faces::accounts_face::answer(&LocalFiles, &r.cmd, &r.args, &ACCOUNT_KEYS)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
     CommandSpec {
@@ -3068,14 +3053,9 @@ pub const REGISTRY: &[CommandSpec] = &[
         ],
         takes_input: true,
         run: Run::Blocking(|r| {
-            crate::faces::accounts_face::answer(
-                &LocalFiles,
-                &r.cmd,
-                &r.args,
-                &crate::accounts::upstream_select::file_face::answer_set,
-            )
-            .map(Some)
-            .map_err(|(c, m)| (c.to_string(), m))
+            crate::faces::accounts_face::answer(&LocalFiles, &r.cmd, &r.args, &ACCOUNT_KEYS)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
     CommandSpec {
@@ -3091,14 +3071,9 @@ pub const REGISTRY: &[CommandSpec] = &[
         fields: &["aliases", "applied", "backup", "dryRun", "notes", "steps"],
         takes_input: true,
         run: Run::Blocking(|r| {
-            crate::faces::accounts_face::answer(
-                &LocalFiles,
-                &r.cmd,
-                &r.args,
-                &crate::accounts::upstream_select::file_face::answer_set,
-            )
-            .map(Some)
-            .map_err(|(c, m)| (c.to_string(), m))
+            crate::faces::accounts_face::answer(&LocalFiles, &r.cmd, &r.args, &ACCOUNT_KEYS)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
     CommandSpec {
@@ -3110,14 +3085,9 @@ pub const REGISTRY: &[CommandSpec] = &[
         ],
         takes_input: false,
         run: Run::Blocking(|r| {
-            crate::faces::accounts_face::answer(
-                &LocalFiles,
-                &r.cmd,
-                &r.args,
-                &crate::accounts::upstream_select::file_face::answer_set,
-            )
-            .map(Some)
-            .map_err(|(c, m)| (c.to_string(), m))
+            crate::faces::accounts_face::answer(&LocalFiles, &r.cmd, &r.args, &ACCOUNT_KEYS)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
     CommandSpec {
@@ -3127,14 +3097,9 @@ pub const REGISTRY: &[CommandSpec] = &[
         fields: &["cmd", "name"],
         takes_input: true,
         run: Run::Blocking(|r| {
-            crate::faces::accounts_face::answer(
-                &LocalFiles,
-                &r.cmd,
-                &r.args,
-                &crate::accounts::upstream_select::file_face::answer_set,
-            )
-            .map(Some)
-            .map_err(|(c, m)| (c.to_string(), m))
+            crate::faces::accounts_face::answer(&LocalFiles, &r.cmd, &r.args, &ACCOUNT_KEYS)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
     // 〔LOC1a · 第四波 4D〕分叉：与 CLI `--fork-session` 同一个本体（`control/fork_write.rs::run_inner`，

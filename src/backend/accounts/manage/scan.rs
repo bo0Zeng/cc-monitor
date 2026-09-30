@@ -123,6 +123,15 @@ pub(crate) struct Snapshot {
     /// 调用方另点名要看的单个路径（导入的凭据文件）。
     pub files: BTreeMap<String, Item>,
     pub backups: Vec<Backup>,
+    /// 这台 key 表里有哪几行（门递进来的，账号库不自己读那份文件）；`None` = 这一趟不看它。
+    pub keys: Option<KeyRows>,
+}
+
+/// 这台 key 表（上游选择自己的状态）此刻的样子：它在哪 · 里面有哪几个号（账号 id）。
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub(crate) struct KeyRows {
+    pub path: String,
+    pub ids: Vec<String>,
 }
 
 impl Snapshot {
