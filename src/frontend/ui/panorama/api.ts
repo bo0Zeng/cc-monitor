@@ -22,9 +22,11 @@
  * - **撤单**：`cancel` 拨下 ⇒ 通道撤单过 webview 那一跳（`chan_cancel`）⇒ 后端撤掉处理器、小程序那一组子进程被杀。
  * - **没装 / 太旧**（对端回码 `not_installed` / `unsupported`）⇒ 请 monitor **放字节**（`panorama_place`：推到那台 / 放到本机），
  *   再问**一次**；仍这么说 ⇒ 如实说，不循环。
+ * - 〔P7 · V158「长活要有进度」〕建索引那一问给了 `onProgress` ⇒ 先订那台的 `progress/<票>`、问的时候带上 `ticket`，
+ *   那台的小程序每报一格（上游 `IndexProgress`）就交一格；答案照旧是那一问的应答。撤单照旧（撤了订阅一起撤）。
  */
 import { commands } from "../ipc/commands";
-import { chan, ChanError } from "../../../comms/inward/chan";
+import { chan, ChanError, type Item, type Sub } from "../../../comms/inward/chan";
 import { budgetWithin, jsonBody, readJson, refusalOf, saidOf } from "../ipc/chan-caller";
 import { isLocalOrigin, type Origin } from "../ipc/origin";
 import type {
@@ -35,6 +37,8 @@ import type {
   DriftItem,
   Edge,
   ImpactSet,
+  IndexPhase,
+  IndexProgress,
   IndexStats,
   Neighborhood,
   NodeView,
@@ -113,30 +117,84 @@ export async function askOrPlace(
   }
 }
 
+/** 〔P7〕建索引的进度流（与 Rust `event_replay.rs::PROGRESS_KIND` 同一个串；后面跟 `/<ticket>`）。 */
+export const PROGRESS_KIND = "progress";
+/** 进度流一开始给的 credit（每收一格还一格：一趟建索引至多四百来格，窗口不必开到那么大）。 */
+const PROGRESS_WINDOW = 64;
+
+/** 这一版认得的阶段（`Record<IndexPhase, …>` ⇒ 上游生成物多 / 少一个阶段，tsc 当场红）。 */
+const PHASES: Readonly<Record<IndexPhase, true>> = { Parse: true, Link: true, Relink: true, Docs: true };
+
+/** 〔P7〕严格收一格进度（上游 `IndexProgress`）：恰好三个键、阶段认得、`0 ≤ done ≤ total` 的整数；否则 `null`（那一格不画）。 */
+export function decodeProgress(v: unknown): IndexProgress | null {
+  if (v === null || typeof v !== "object" || Array.isArray(v)) return null;
+  const o = v as Record<string, unknown>;
+  const keys = Object.keys(o).sort();
+  const nat = (x: unknown): x is number => typeof x === "number" && Number.isInteger(x) && x >= 0;
+  if (keys.join(",") !== "done,phase,total" || typeof o.phase !== "string" || !Object.prototype.hasOwnProperty.call(PHASES, o.phase)) return null;
+  if (!nat(o.done) || !nat(o.total) || o.done > o.total) return null;
+  return { phase: o.phase as IndexPhase, done: o.done, total: o.total };
+}
+
+/** 订那台的 `progress/<票>`：每收一格进度交 `on`、还一格 credit；丢了（gap）/ 看不见那台（unseen）都不管 —— 每格是整份快照。 */
+async function followProgress(origin: Origin, ticket: string, on: (p: IndexProgress) => void): Promise<Sub> {
+  let sub: Sub | null = null;
+  const onItems = (items: Item[]): void => {
+    let frames = 0;
+    for (const it of items) {
+      if (it.t !== "frame") continue;
+      frames += 1;
+      let v: unknown = null;
+      try {
+        v = JSON.parse(it.body);
+      } catch {
+        v = null;
+      }
+      const p = decodeProgress(v);
+      if (p !== null) on(p);
+    }
+    if (frames > 0) sub?.want(frames);
+  };
+  sub = await chan.subscribe(origin, `${PROGRESS_KIND}/${ticket}`, null, PROGRESS_WINDOW, onItems);
+  return sub;
+}
+
 /** 应答体 ⇒ 它的 JSON（`panorama` 是 `{result}`，`panorama-edit` 整份就是那个值）。 */
 function resultOf(body: Uint8Array): unknown {
   return readJson(body);
 }
 
-/** 问那台机器的后端（本机 = `<local>`；`result` 的形状由 op 定）。给了 `cancel` ⇒ 拨下就撤（撤单过通道那一跳）。 */
+/**
+ * 问那台机器的后端（本机 = `<local>`；`result` 的形状由 op 定）。给了 `cancel` ⇒ 拨下就撤（撤单过通道那一跳）。
+ * 〔P7〕给了 `onProgress` ⇒ 先订那台的进度流、载荷带上票（后端据它推 `progress` 帧），这一问结束（成 / 败 / 撤）就撤订。
+ */
 async function remote<T>(
   at: { origin: Origin; path: string | null },
   op: string,
   args?: object,
   cancel?: AbortSignal,
+  onProgress?: (p: IndexProgress) => void,
 ): Promise<T> {
   if (cancel?.aborted === true) throw new PanoramaCancelled();
-  const body = jsonBody({ op, repo: at.path, args: args ?? null, shape: SHAPE });
-  // 每一问现造期限（放字节之后那一问重新起算，同原 monitor 那一跳）。
-  const budget = (): ReturnType<typeof budgetWithin> => budgetWithin(budgetFor(op), cancel);
-  const got = await askOrPlace(
-    () => chan.call(at.origin, "panorama", body, budget()),
-    () => commands.panorama_place({ origin: at.origin }),
-    cancel,
-  );
-  const r = got !== null && typeof got === "object" ? (got as { result?: unknown }).result : undefined;
-  if (r === undefined) throw new Error(copyText("panoramaApi.reply.noResult"));
-  return r as T;
+  const ticket = onProgress ? crypto.randomUUID() : null;
+  // 进度只是给人看的：订不上（这一页的 webview 听不了）就不画进度，那一问照问 —— 不许因为它让建索引失败。
+  const sub = onProgress && ticket ? await followProgress(at.origin, ticket, onProgress).catch(() => null) : null;
+  try {
+    const payload = { op, repo: at.path, args: args ?? null, shape: SHAPE };
+    const body = jsonBody(ticket === null ? payload : { ...payload, ticket });
+    // 每一问现造期限（放字节之后那一问重新起算，同原 monitor 那一跳）。
+    const budget = (): ReturnType<typeof budgetWithin> => budgetWithin(budgetFor(op), cancel);
+    const got = await askOrPlace(
+      () => chan.call(at.origin, "panorama", body, budget()),
+      () => commands.panorama_place({ origin: at.origin }),
+      cancel,
+    );
+    const r = got !== null && typeof got === "object" ? (got as { result?: unknown }).result : undefined;
+    if (r === undefined) throw new Error(copyText("panoramaApi.reply.noResult"));
+    return r as T;
+  } finally {
+    sub?.stop();
+  }
 }
 
 /** 小程序自报的写表（生成物）：「算」op → 写成之后要跑的 op（没有 = `null`）。 */
@@ -172,13 +230,22 @@ export const sameRepo = (a: RepoAt | null, b: RepoAt | null): boolean =>
 export const repoLabel = (at: RepoAt): string =>
   isLocalOrigin(at.origin) ? at.path : copyText("api.repoLabel.remote", { path: at.path, machine: at.origin });
 
-/** 建索引（重活：tree-sitter 解析全仓 → SQLite）。开面板首次调 + loading。〔RM1f〕`cancel` 拨下 ⇒ 撤（本机远端都撤得掉）。 */
-export const index = (at: RepoAt, cancel?: AbortSignal): Promise<IndexStats> =>
-  remote(at, "index", undefined, cancel);
+/**
+ * 建索引（重活：tree-sitter 解析全仓 → SQLite）。开面板首次调 + loading。〔RM1f〕`cancel` 拨下 ⇒ 撤（本机远端都撤得掉）。
+ * 〔P7〕`onProgress`：那台小程序报的每一格进度（阶段 · 这一阶段做完几份 / 共几份）。
+ */
+export const index = (
+  at: RepoAt,
+  cancel?: AbortSignal,
+  onProgress?: (p: IndexProgress) => void,
+): Promise<IndexStats> => remote(at, "index", undefined, cancel, onProgress);
 
-/** 重建索引（改代码后刷新；只写索引，非侵入）。刷新按钮调。〔RM1f〕`cancel` 同上。 */
-export const reindex = (at: RepoAt, cancel?: AbortSignal): Promise<IndexStats> =>
-  remote(at, "reindex", undefined, cancel);
+/** 重建索引（改代码后刷新；只写索引，非侵入）。刷新按钮调。〔RM1f〕`cancel` · 〔P7〕`onProgress` 同上。 */
+export const reindex = (
+  at: RepoAt,
+  cancel?: AbortSignal,
+  onProgress?: (p: IndexProgress) => void,
+): Promise<IndexStats> => remote(at, "reindex", undefined, cancel, onProgress);
 
 /** 索引新鲜度 + 上次索引时间 + 符号总数。开面板时查一次决定是否需索引。 */
 export const status = (at: RepoAt): Promise<PanoramaStatus> => remote(at, "status");
