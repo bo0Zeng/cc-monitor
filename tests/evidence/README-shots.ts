@@ -103,7 +103,7 @@ const SCENES: Record<string, Scene> = {
       await page.waitForFunction((n) => document.querySelectorAll('.backend-row-state[data-on="true"]').length === n, MACHINES.length);
     },
   },
-  /** 代码全景：搜到刚改过的那个路由处理函数，画它的调用子图（右侧是符号详情，图下是完整度读数）。 */
+  /** 代码全景：搜到刚改过的那个路由处理函数，画它的调用子图，收起详情让图按视口铺满（图下是完整度读数）。 */
   panorama: {
     html: "index.html",
     async drive(page) {
@@ -117,6 +117,8 @@ const SCENES: Record<string, Scene> = {
       await page.waitForSelector('.panorama-diagram-select option[value="calls"]:not([disabled])', { state: "attached" });
       await page.selectOption(".panorama-diagram-select", "calls");
       await page.waitForSelector(".panorama-diagram-canvas svg");
+      // 收起符号详情 ⇒ 画布变宽，图按视口重新适配、铺满（`diagram-view.ts::fit`）
+      await page.click(".panorama-sidebar-close");
     },
   },
   /** 设置 → devbox → 足迹：cc-monitor 在那台机器上放了什么、现在在不在。 */
