@@ -589,10 +589,10 @@ export class AccountsSection {
   /** 行上的「删除」：确认（默认号多说一句）→ 那台后端删（只删它自己的目录，先备份）。 */
   private async removeAccount(a: Account): Promise<void> {
     const origin = this.machineOrigin();
-    const msg = copyText(a.isDefault ? "accounts.remove.confirmDefault" : "accounts.remove.confirm", {
-      machine: machineName(origin),
-      name: a.name,
-    });
+    const machine = machineName(origin);
+    const msg = a.isDefault
+      ? copyText("accounts.remove.confirmDefault", { machine, name: a.name })
+      : copyText("accounts.remove.confirm", { machine, name: a.name });
     if (!(await askConfirm(msg))) return;
     try {
       const done = await accountsRemove(origin, a.isDefault ? { name: a.name, force: true } : { name: a.name });
@@ -959,7 +959,7 @@ export class AccountsSection {
     return wrap;
   }
 
-  /** 核对一遍，逐条列出来（✓ 通过 · ! 提示 · ✗ 要修 · - 跳过）。 */
+  /** 核对一遍，逐条列出来（+ 通过 · ! 提示 · x 要修 · - 跳过）。 */
   private async runVerify(btn: HTMLButtonElement, out: HTMLElement): Promise<void> {
     btn.disabled = true;
     out.innerHTML = "";
@@ -971,7 +971,7 @@ export class AccountsSection {
         ? copyText("accounts.verify.pass", { warns: String(r.warns) })
         : copyText("accounts.verify.fail", { fails: String(r.fails), warns: String(r.warns) });
       out.appendChild(head);
-      const mark = { ok: "✓", warn: "!", fail: "✗", skip: "-" } as const;
+      const mark = { ok: "+", warn: "!", fail: "x", skip: "-" } as const;
       for (const c of r.checks) {
         const line = document.createElement("div");
         line.className = `accounts-verify-check ${c.level}`;

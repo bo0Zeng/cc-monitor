@@ -112,7 +112,7 @@ describe("computeGaps", () => {
     // 〔S9〕从前 Windows 本机这一格判不适用、要注入 monitor 跑在哪个 OS；那条豁免与那个入参一起删了（`readiness.ts::notApplicable` 头注第 3 条）。
     const gaps = computeGaps({ origins: [LOCAL_MACHINE_KEY], statusOf: none });
     expect(gaps.some((g) => g.facet === "ccm")).toBe(true);
-    expect(gaps.some((g) => g.facet === "acctIso")).toBe(true);
+    expect(gaps.some((g) => g.facet === "accounts")).toBe(true);
   });
 
   it("账本里显式记成 na 的也不算缺", () => {
@@ -142,7 +142,6 @@ describe("computeGaps", () => {
       connection: { kind: "ok", at: T },
       backend: { kind: "ok", at: T },
       ccm: { kind: "ok", at: T },
-      acctIso: { kind: "ok", at: T },
       accounts: { kind: "ok", at: T },
     };
     expect(computeGaps({ origins: ["devbox"], statusOf: () => all })).toEqual([]);
@@ -154,7 +153,7 @@ describe("computeGaps", () => {
  *
  * 它此前是死代码，不是因为这个纯函数错了 —— 恰恰相反，`computeGaps` 一直就把本机
  * 算进去、`notApplicable` 当时也只排掉本机的 `backend` / `connection`。死的是**写点**：
- * 本机的 `acctIso` / `accounts` 全仓没有任何 `recordFacet` 生产者
+ * 本机的 `accounts` 全仓没有任何 `recordFacet` 生产者
  * ⇒ 恒 `unknown` ⇒ `summarizeGaps` 恒非 null。
  *
  * ⇒ 本族断的是**这个纯函数这一侧的地板**：给一本「本机全绿」的账本，它必须真的
@@ -172,11 +171,10 @@ describe("N-F2 NF2D3：本机全绿 + 没有远端 ⇒ 那张清单该整块消�
    */
   const localGreen: MachineStatus = {
     backend: { kind: "ok", at: T },
-    acctIso: { kind: "ok", at: T },
     accounts: { kind: "ok", at: T },
   };
 
-  it("★ 本机：适用格恰好是那四格，写绿之后 summarizeGaps 返回 null", () => {
+  it("★ 本机：适用格恰好是那三格，写绿之后 summarizeGaps 返回 null", () => {
     // 分母（`NF2D3` 的 acceptor 逐字要求，防「一台机器都没有」蒙混）：
     //   · 机器数 = 1，**不是空清单**；
     //   · 先断这台机在这个 OS 上的适用格集合非空、且恰好是我们要写绿的那几格。
@@ -185,8 +183,8 @@ describe("N-F2 NF2D3：本机全绿 + 没有远端 ⇒ 那张清单该整块消�
     const before = computeGaps({ origins, statusOf: none });
     expect(
       before.map((g) => g.facet),
-      "适用格不是这四格 —— 那下面这条 null 就不是本件买来的",
-    ).toEqual(["backend", "ccm", "acctIso", "accounts"]);
+      "适用格不是这三格 —— 那下面这条 null 就不是本件买来的",
+    ).toEqual(["backend", "ccm", "accounts"]);
 
     const after = computeGaps({
       origins,
@@ -204,12 +202,11 @@ describe("N-F2 NF2D3：本机全绿 + 没有远端 ⇒ 那张清单该整块消�
     expect(gaps.map((g) => `${g.facet}:${g.kind}`)).toEqual([
       "backend:unknown",
       "ccm:unknown",
-      "acctIso:unknown",
       "accounts:unknown",
     ]);
     const s = summarizeGaps(gaps);
     // 〔W5-VIS · 缺口三〕后端那一格是必需的，另几格可选 —— 摘要按轻重分开说。
-    expect(s).toBe("必需：1 项还没测过；可选：3 项还没测过");
+    expect(s).toBe("必需：1 项还没测过；可选：2 项还没测过");
   });
 
   it("★ 本机的 `ccm` 一格照常算数：没记 ⇒ 剩它一条，记上 ok ⇒ 清空", () => {

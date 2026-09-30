@@ -66,7 +66,7 @@ describe("D1 · tmux 四选的说明与后端退让规则同一张表", () => {
 
   it("表单上选哪一种，下面那句就是哪一种的说明；每个选项的 title 也是它", async () => {
     const { buildAliasManager, TMUX_NAMING } = await import("../../../../src/frontend/ui/settings/machine-aliases");
-    const w = buildAliasManager({ platform: "posix", origin: () => "<local>", loadAccounts: async () => [] });
+    const w = buildAliasManager({ platform: "posix", origin: () => "<local>" });
     const sel = [...w.querySelectorAll("select")].find((s) =>
       [...s.options].some((o) => o.value === "base"),
     );

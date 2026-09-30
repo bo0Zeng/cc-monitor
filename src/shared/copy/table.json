@@ -36,7 +36,7 @@
     },
     "accountNewForm.form.makeDefault": {
       "kind": "control",
-      "zh": "设为默认账号（终端里不带 --account 起 ccm 时用它）",
+      "zh": "设为默认账号",
       "args": []
     },
     "accounts.row.remove": {
@@ -211,7 +211,7 @@
     },
     "rsToolRegistry.tools.accountsWhat": {
       "kind": "body",
-      "zh": "后端在这台机器上建的账号库：每个号一个配置目录，共享的东西链回 ~/.claude",
+      "zh": "后端在这台机器上建的账号库。每个号一个配置目录，共享的东西链回 ~/.claude",
       "args": []
     },
     "rsToolRegistry.tools.accountsVaultNote": {
@@ -391,7 +391,7 @@
     },
     "beAcctPlan.links.noneShared": {
       "kind": "body",
-      "zh": "共享库 {shared} 里还没有可共享的东西，这个账号暂时只有自己的身份文件。",
+      "zh": "共享库 {shared} 里还没有东西可共享。这个账号暂时只有自己的身份文件。",
       "args": ["shared"]
     },
     "beAcctPlan.name.shape": {
@@ -561,7 +561,7 @@
     },
     "beAcctVerify.acct.linkEntity": {
       "kind": "error",
-      "zh": "{item} 是一份自己的文件而不是共享链接，这个账号的改动别的账号看不到。",
+      "zh": "{item} 是这个号自己的一份文件。它的改动别的账号看不到，应当是共享链接。",
       "args": ["item"]
     },
     "beAcctVerify.acct.linkMissing": {
@@ -641,7 +641,7 @@
     },
     "beAcctVerify.global.inPlaceSplit": {
       "kind": "body",
-      "zh": "有账号的目录就是共享库本身，而且 {shared} 和 {home} 已经是两份 .claude.json 了：同一个登录，两套本机状态。",
+      "zh": "有账号的目录就是共享库本身。{shared} 和 {home} 已经是两份 .claude.json：同一个登录，两套本机状态。",
       "args": ["shared", "home"]
     },
     "beAcctVerify.global.noManifest": {
@@ -1592,61 +1592,6 @@
       "zh": "预览画面失败",
       "args": []
     },
-    "accountsLocal.acctIso.installed": {
-      "kind": "body",
-      "zh": "这台机器已装 cc-acct-iso：{path}",
-      "args": ["path"]
-    },
-    "accountsLocal.acctIso.missing": {
-      "kind": "body",
-      "zh": "这台机器还没装 cc-acct-iso。",
-      "args": []
-    },
-    "accountsLocal.acctIso.probeFailed": {
-      "kind": "error",
-      "zh": "查不出这台机器装没装 cc-acct-iso：{reason}",
-      "args": ["reason"]
-    },
-    "accountsLocal.acctIso.initNext": {
-      "kind": "body",
-      "zh": "下一步：在终端里跑 cc-acct-iso init <账号名> --apply。它把现在这个登录态收进第一个隔离账号；跑完回来点「刷新」。",
-      "args": []
-    },
-    "accountsLocal.rc.action": {
-      "kind": "action",
-      "zh": "生成 rc 片段",
-      "args": []
-    },
-    "accountsLocal.rc.hover": {
-      "kind": "body",
-      "zh": "读这台机器上 cc-acct-iso shellinit 的输出，给你一段可以贴进 shell 配置的片段。只读，不会替你写任何文件。",
-      "args": []
-    },
-    "accountsLocal.rc.target": {
-      "kind": "body",
-      "zh": "这台机器的 ~/.bashrc（zsh 用户贴 ~/.zshrc）",
-      "args": []
-    },
-    "accountsLocal.rc.merge": {
-      "kind": "body",
-      "zh": "追加到文件末尾。片段自带 BEGIN / END 两行标记，重新生成时只替换两行之间那一段，别贴成两份。",
-      "args": []
-    },
-    "accountsLocal.rc.activation": {
-      "kind": "body",
-      "zh": "重新开一个登录 shell，或在当前 shell 里 source 它（已经开着的其他 shell 不受影响）。",
-      "args": []
-    },
-    "accountsLocal.rc.incomplete": {
-      "kind": "error",
-      "zh": "片段不完整，先别贴。缺了 BEGIN / END 标记，在终端里跑一次 cc-acct-iso verify 看看是什么状况。",
-      "args": []
-    },
-    "accountsLocal.rc.failed": {
-      "kind": "error",
-      "zh": "生成 rc 片段失败",
-      "args": []
-    },
     "accountsLocal.list.scope": {
       "kind": "body",
       "zh": "这一节列出这台机器上的账号，也可以在下面新建一个。",
@@ -1654,27 +1599,12 @@
     },
     "accountsLocal.new.subscriptionHint": {
       "kind": "body",
-      "zh": "建好后起 claude 登录这个号：本机不开终端窗口，登录用的那一行会复制给你，在自己的终端里跑。导入了旧凭据就不用再登录。",
+      "zh": "建好后起 claude 登录这个号。本机不开终端窗口，登录那一行会复制给你，在自己的终端里跑。导入了旧凭据就不用再登录。",
       "args": []
     },
     "accountsLocal.new.apikeyHint": {
       "kind": "body",
       "zh": "key 直接存进这台机器的 API key 表，界面上只显示掩码。",
-      "args": []
-    },
-    "accountsLocal.new.cmdInvalid": {
-      "kind": "error",
-      "zh": "命令无法生成",
-      "args": []
-    },
-    "accountsLocal.new.launched": {
-      "kind": "body",
-      "zh": "已在终端里运行建号命令",
-      "args": []
-    },
-    "accountsLocal.new.launchedNext": {
-      "kind": "body",
-      "zh": "跑完点「刷新」，新账号就会出现在列表里。",
       "args": []
     },
     "accountsLocal.new.noWindowCopied": {
@@ -6899,11 +6829,6 @@
       "zh": "不动我的 shell 配置",
       "args": []
     },
-    "machineAliases.perAccount.failed": {
-      "kind": "error",
-      "zh": "读不到这台机器上的账号：{e}",
-      "args": ["e"]
-    },
     "machineAliases.changed.failed": {
       "kind": "error",
       "zh": "生成失败：{e}",
@@ -7015,16 +6940,6 @@
     "machineAliases.paste.mergeNote": {
       "kind": "body",
       "zh": "整段贴到文件末尾；以后改了清单，再贴一次换掉上一次那段。",
-      "args": []
-    },
-    "machineAliases.form.perAccountHint": {
-      "kind": "body",
-      "zh": "一次性的：每个还没有别名的账号加一条「<名>cc → --account <名>」。以后加了账号不会自动多一条。",
-      "args": []
-    },
-    "machineAliases.form.perAccount": {
-      "kind": "action",
-      "zh": "为每个账号加一条",
       "args": []
     },
     "machineAliases.form.clear": {
@@ -7325,11 +7240,6 @@
       "zh": "不能在这台机器上按账号隔离地起会话",
       "args": []
     },
-    "readiness.meaning.accountIso": {
-      "kind": "body",
-      "zh": "这台机器上没有 cc-acct-iso，开不了多账号",
-      "args": []
-    },
     "readiness.meaning.cc": {
       "kind": "body",
       "zh": "终端里没有 cc 命令；从终端起的会话 app 也认不出",
@@ -7353,56 +7263,6 @@
     "readiness.gapHead.missing": {
       "kind": "body",
       "zh": "缺",
-      "args": []
-    },
-    "acctDeploy.cmd.refused": {
-      "kind": "error",
-      "zh": "命令拼不出来：{detail}",
-      "args": ["detail"]
-    },
-    "acctDeploy.cmd.contract": {
-      "kind": "error",
-      "zh": "那台机器的后端版本不对，需要更新：{detail}",
-      "args": ["detail"]
-    },
-    "acctDeploy.cmd.otherCode": {
-      "kind": "error",
-      "zh": "命令拼不出来（{code}）：{detail}",
-      "args": ["code", "detail"]
-    },
-    "acctDeploy.cmd.noReason": {
-      "kind": "error",
-      "zh": "命令拼不出来，那台机器的后端没说原因",
-      "args": []
-    },
-    "beIso.cmd.badName": {
-      "kind": "error",
-      "zh": "账号名不合规：{name}。只能用字母、数字、下划线和连字符，以字母或数字开头，最长 {max} 个字符",
-      "args": ["name", "max"]
-    },
-    "beIso.cmd.snapshotEmpty": {
-      "kind": "error",
-      "zh": "凭据快照路径是空的",
-      "args": []
-    },
-    "beIso.cmd.snapshotQuote": {
-      "kind": "error",
-      "zh": "凭据快照路径不能含双引号：{path}",
-      "args": ["path"]
-    },
-    "beIso.cmd.snapshotControl": {
-      "kind": "error",
-      "zh": "凭据快照路径不能含控制字符：{path}",
-      "args": ["path"]
-    },
-    "acctDeploy.name.shape": {
-      "kind": "error",
-      "zh": "账号名不合规。只能用字母、数字、下划线和连字符，以字母或数字开头，最长 {max} 个字符",
-      "args": ["max"]
-    },
-    "acctDeploy.name.empty": {
-      "kind": "error",
-      "zh": "账号名不能为空",
       "args": []
     },
     "assets.skill.listSep": {
@@ -8029,7 +7889,7 @@
     },
     "accountNewForm.form.snapshot": {
       "kind": "control",
-      "zh": "旧凭据文件路径（家目录底下，可写 ~/…）",
+      "zh": "旧凭据文件路径",
       "args": []
     },
     "accountNewForm.form.advanced": {
@@ -8207,59 +8067,9 @@
       "zh": "★",
       "args": []
     },
-    "accounts.rc.failed": {
-      "kind": "error",
-      "zh": "生成 rc 片段失败",
-      "args": []
-    },
-    "accounts.rc.incomplete": {
-      "kind": "error",
-      "zh": "片段不完整，先别贴。缺了 BEGIN / END 标记，在远端跑一次 cc-acct-iso verify 看看是什么状况。",
-      "args": []
-    },
-    "accounts.rc.activation": {
-      "kind": "body",
-      "zh": "source 它，或在这台远端开一个新的登录 shell（已经开着的 shell 不受影响）。",
-      "args": []
-    },
-    "accounts.rc.merge": {
-      "kind": "body",
-      "zh": "追加到文件末尾，并删掉你以前手写的 swap 式切号块。片段自带 BEGIN / END 两行标记，重新生成时替换两行之间那一段就行，别贴成两份。",
-      "args": []
-    },
-    "accounts.rc.target": {
-      "kind": "body",
-      "zh": "这台远端的 ~/.bashrc（zsh 用户贴 ~/.zshrc；它是登录 shell 的配置文件）",
-      "args": []
-    },
-    "accounts.rc.fetching": {
-      "kind": "action",
-      "zh": "抓取中…",
-      "args": []
-    },
-    "accounts.rc.noConfigBody": {
-      "kind": "error",
-      "zh": "请先在「远端」里配好它",
-      "args": []
-    },
-    "accounts.rc.noConfig": {
-      "kind": "error",
-      "zh": "拿不到这台远端的配置",
-      "args": []
-    },
-    "accounts.maintenance.rcHint": {
-      "kind": "body",
-      "zh": "抓远端 cc-acct-iso shellinit 的输出，给你一段可以贴的 rc 片段。贴了之后裸 claude 走默认账号，每个账号有 <名>cc 函数，账号 0 用 0cc。只读，不会替你写任何文件。",
-      "args": []
-    },
-    "accounts.maintenance.rc": {
-      "kind": "action",
-      "zh": "生成 rc 片段…",
-      "args": []
-    },
     "accounts.maintenance.syncHint": {
       "kind": "body",
-      "zh": "补齐共享链接、改回权限、刷新账号清单里的邮箱、补上每个账号的别名。可以重复跑。",
+      "zh": "补齐共享链接、改回权限、刷新邮箱。也会补上每个账号的别名，可以重复跑。",
       "args": []
     },
     "accounts.maintenance.sync": {
@@ -8296,26 +8106,6 @@
       "kind": "body",
       "zh": "已写入 API key",
       "args": []
-    },
-    "accounts.pending.noDir": {
-      "kind": "error",
-      "zh": "{name} 没有自己的账号目录，API key 表里配了也不会被用上。",
-      "args": ["name"]
-    },
-    "accounts.pending.notWritten": {
-      "kind": "error",
-      "zh": "API key 没写",
-      "args": []
-    },
-    "accounts.pending.drop": {
-      "kind": "action",
-      "zh": "放弃",
-      "args": []
-    },
-    "accounts.pending.waiting": {
-      "kind": "body",
-      "zh": "等 {name} 出现在账号列表里（终端跑完点「刷新」），就把它的 API key 写进去。",
-      "args": ["name"]
     },
     "accounts.table.bulkGone": {
       "kind": "body",
@@ -8357,64 +8147,6 @@
       "zh": "未设当前账号",
       "args": []
     },
-    "accounts.notEnabled.moveNote": {
-      "kind": "body",
-      "zh": "这会把现有默认账号的凭据与 .claude.json 搬进账号库、其余项建 symlink。",
-      "args": []
-    },
-    "accounts.sync.empty": {
-      "kind": "body",
-      "zh": "填入合法账号名后，这里显示将运行的命令",
-      "args": []
-    },
-    "accounts.sync.script": {
-      "kind": "body",
-      "zh": "# 预览计划（不写盘）\n{cmd}\n\n# 执行迁移\n{cmd2}\n\n# 打印 rc 片段\ncc-acct-iso shellinit",
-      "args": ["cmd", "cmd2"]
-    },
-    "accounts.notEnabled.steps": {
-      "kind": "body",
-      "zh": "<small>顺序：① 看计划，什么都不动 → ② 执行迁移 → ③ 自检 → ④ 把打印的片段贴进 <code>~/.bashrc</code>，工具不改你的 rc → 回来点「刷新」。第二个账号可在启用后用「加账号」导入。</small>",
-      "args": [],
-      "waive": {
-        "C-L1": "步骤清单，一步一格用箭头连着；拆成几句反而看不出次序"
-      }
-    },
-    "accounts.notEnabled.step4": {
-      "kind": "action",
-      "zh": "④ 打印 rc 片段",
-      "args": []
-    },
-    "accounts.notEnabled.step3": {
-      "kind": "action",
-      "zh": "③ 自检 verify",
-      "args": []
-    },
-    "accounts.notEnabled.step2": {
-      "kind": "action",
-      "zh": "② 执行迁移（--apply）",
-      "args": []
-    },
-    "accounts.notEnabled.step1": {
-      "kind": "action",
-      "zh": "① 预览计划（dry-run）",
-      "args": []
-    },
-    "accounts.notEnabled.copiedNext": {
-      "kind": "body",
-      "zh": "可粘到远端终端里跑。",
-      "args": []
-    },
-    "accounts.notEnabled.copied": {
-      "kind": "body",
-      "zh": "已复制命令",
-      "args": []
-    },
-    "accounts.notEnabled.copy": {
-      "kind": "action",
-      "zh": "复制命令",
-      "args": []
-    },
     "accounts.notEnabled.defaultNameHint": {
       "kind": "control",
       "zh": "例如 z",
@@ -8438,56 +8170,6 @@
     "accounts.notEnabled.title": {
       "kind": "body",
       "zh": "该远端尚未启用多账号",
-      "args": []
-    },
-    "accounts.needsDeploy.failed": {
-      "kind": "error",
-      "zh": "部署 cc-acct-iso 失败",
-      "args": []
-    },
-    "accounts.needsDeploy.done": {
-      "kind": "body",
-      "zh": "已部署 cc-acct-iso",
-      "args": []
-    },
-    "accounts.needsDeploy.deploying": {
-      "kind": "action",
-      "zh": "部署中…",
-      "args": []
-    },
-    "accounts.needsDeploy.deploy": {
-      "kind": "action",
-      "zh": "一键部署 cc-acct-iso",
-      "args": []
-    },
-    "accounts.needsDeploy.title": {
-      "kind": "body",
-      "zh": "该远端还没装多账号管线（cc-acct-iso）",
-      "args": []
-    },
-    "accounts.launchStep.failed": {
-      "kind": "error",
-      "zh": "拉起终端失败",
-      "args": []
-    },
-    "accounts.launchStep.launchedNext": {
-      "kind": "body",
-      "zh": "完成后点「刷新」更新账号列表。",
-      "args": []
-    },
-    "accounts.launchStep.launched": {
-      "kind": "body",
-      "zh": "已在终端里运行",
-      "args": []
-    },
-    "accounts.launchStep.confirm": {
-      "kind": "body",
-      "zh": "将在远端「{machine}」的终端里运行：\n\n{cmd}\n\n{extra}命令在你看得见的终端里执行、需你亲手确认；工具自带备份，可以还原。继续？",
-      "args": ["machine", "cmd", "extra"]
-    },
-    "accounts.launchStep.cmdInvalid": {
-      "kind": "error",
-      "zh": "命令无法生成",
       "args": []
     },
     "accounts.status.count": {
@@ -13367,11 +13049,6 @@
       "zh": "查不动：{why}",
       "args": ["why"]
     },
-    "rsConfigSurface.home.unresolvable": {
-      "kind": "error",
-      "zh": "登记的名字解析不成本机路径：{msg}",
-      "args": ["msg"]
-    },
     "rsConfigSurface.onPath.present": {
       "kind": "body",
       "zh": "PATH 上有 {named}",
@@ -13490,11 +13167,6 @@
     "rsConfigSurface.source.embeddedBinary": {
       "kind": "body",
       "zh": "随 cc-monitor 一起安装的程序",
-      "args": []
-    },
-    "rsConfigSurface.source.vendored": {
-      "kind": "body",
-      "zh": "随 cc-monitor 一起安装的第三方组件",
       "args": []
     },
     "rsConfigSurface.source.repoDir": {
@@ -14520,11 +14192,6 @@
     "rsDataPaths.backend.listenPid": {
       "kind": "body",
       "zh": "本机常驻后端的进程记录。后端运行时要用，删了要重起后端",
-      "args": []
-    },
-    "rsDataPaths.backend.acctIso": {
-      "kind": "body",
-      "zh": "多账号工具 cc-acct-iso，删了要重装",
       "args": []
     },
     "rsDataPaths.backend.policy": {
@@ -16363,7 +16030,7 @@
     },
     "accounts.loginAction.loginHint": {
       "kind": "body",
-      "zh": "用该账号打开一个远端终端（在里面 /login）",
+      "zh": "在终端里用这个号起 claude，按提示登录",
       "args": []
     },
     "accounts.loginAction.goLogin": {
@@ -16378,7 +16045,7 @@
     },
     "accounts.loginAction.openTerminalHint": {
       "kind": "body",
-      "zh": "用该账号打开一个远端终端。API key 号不需要 /login，要在里面配好端点环境变量",
+      "zh": "在终端里用这个号起 claude（API key 号不需要登录）",
       "args": []
     },
     "accounts.loginAction.openTerminal": {
@@ -16474,16 +16141,6 @@
     "rsToolRegistry.environment.managedWhy": {
       "kind": "body",
       "zh": "谁来装看它装到哪台机器；这里能装的由 cc-monitor 装",
-      "args": []
-    },
-    "rsToolRegistry.env.acctIsoLocalWhy": {
-      "kind": "body",
-      "zh": "本机这一份要你自己装；这里只能装远端那一份",
-      "args": []
-    },
-    "rsToolRegistry.env.acctIsoLocalName": {
-      "kind": "title",
-      "zh": "cc-acct-iso 本机那份",
       "args": []
     },
     "rsToolRegistry.env.mcpServerWhy": {
@@ -16751,31 +16408,6 @@
     "rsToolRegistry.tools.backendName": {
       "kind": "title",
       "zh": "cc-monitor 后端",
-      "args": []
-    },
-    "rsToolRegistry.tools.acctIsoVaultNote": {
-      "kind": "body",
-      "zh": "账号库：列举走远端 ssh；本机 CLAUDE_CONFIG_DIR 也可能指进来，两端都可能有",
-      "args": []
-    },
-    "rsToolRegistry.tools.acctIsoDestNote": {
-      "kind": "body",
-      "zh": "远端，部署目录是你在账号页填的那个值",
-      "args": []
-    },
-    "rsToolRegistry.tools.acctIsoDestWhat": {
-      "kind": "body",
-      "zh": "部署时在账号页填的「部署目录」",
-      "args": []
-    },
-    "rsToolRegistry.tools.acctIsoWhat": {
-      "kind": "body",
-      "zh": "随 cc-monitor 带着的那一份 cc-acct-iso，部署到远端你填的那个目录",
-      "args": []
-    },
-    "rsToolRegistry.tools.acctIsoName": {
-      "kind": "title",
-      "zh": "cc-acct-iso 多账号隔离",
       "args": []
     },
     "rsToolRegistry.tools.ccBusStateNote": {
@@ -18094,26 +17726,6 @@
       "zh": "base_url 不是一个网址（要以 https:// 或 http:// 开头）",
       "args": []
     },
-    "beIso.shellinitOutcome.argsTooLong": {
-      "kind": "error",
-      "zh": "{tool} shellinit 没能起来：参数过长",
-      "args": ["tool"]
-    },
-    "beIso.shellinitOutcome.noOutput": {
-      "kind": "error",
-      "zh": "{tool} shellinit 什么都没输出（退出码 {exit}）：{detail}",
-      "args": ["tool", "exit", "detail"]
-    },
-    "beIso.shellinitOutcome.timedOut": {
-      "kind": "error",
-      "zh": "{tool} shellinit 超过 {secs} 秒没有返回",
-      "args": ["tool", "secs"]
-    },
-    "beIso.locate.notInstalled": {
-      "kind": "error",
-      "zh": "这台机器上还没装 cc-acct-iso。",
-      "args": []
-    },
     "beUpstreamCreds.load.unreadable": {
       "kind": "error",
       "zh": "读不了凭据文件：{e}",
@@ -18588,21 +18200,6 @@
     "accounts.status.multiOff": {
       "kind": "body",
       "zh": "多账号没启用",
-      "args": []
-    },
-    "accounts.status.isoInstalled": {
-      "kind": "body",
-      "zh": "已装",
-      "args": []
-    },
-    "accounts.status.isoMissing": {
-      "kind": "body",
-      "zh": "没装",
-      "args": []
-    },
-    "accounts.status.isoUnknown": {
-      "kind": "body",
-      "zh": "查不出来",
       "args": []
     },
     "rsDialHost.hostKey.pinned": {
@@ -20173,21 +19770,6 @@
       "zh": "、",
       "args": []
     },
-    "beAcctIso.shellinit.noFence": {
-      "kind": "error",
-      "zh": "这台机器没能产出 rc 片段（输出里没有 {begin}）。常见原因：cc-acct-iso 还没装，或这台还没跑过 cc-acct-iso init。",
-      "args": ["begin"]
-    },
-    "beAcctIso.shellinit.truncated": {
-      "kind": "error",
-      "zh": "这台机器产出的 rc 片段不完整（有 {begin} 但没有 {end}），可能被截断了。别贴：半截片段会让登录 shell 报错。请重试。",
-      "args": ["begin", "end"]
-    },
-    "acctIsoReads.reply.badShape": {
-      "kind": "error",
-      "zh": "读不懂那台后端回的 cc-acct-iso 状态 / 片段，多半是它的版本不对。",
-      "args": []
-    },
     "beSkillInbox.face.none": {
       "kind": "error",
       "zh": "这台后端不认得任何带 skill 的 agent，找不到收件箱。",
@@ -20283,31 +19865,6 @@
       "zh": "读不懂本机后端回的 cc-bus 安装结果，多半是后端版本不对。",
       "args": []
     },
-    "beAcctIsoInstall.record.failed": {
-      "kind": "error",
-      "zh": "装好了，但没记进装记录：{e}（这一趟装的卸不掉）",
-      "args": ["e"]
-    },
-    "accounts.needsDeploy.linked": {
-      "kind": "body",
-      "zh": "已链到 {link}。",
-      "args": ["link"]
-    },
-    "accounts.needsDeploy.linkKept": {
-      "kind": "body",
-      "zh": "{link} 那儿已经有东西，没动它。",
-      "args": ["link"]
-    },
-    "accounts.needsDeploy.configWritten": {
-      "kind": "body",
-      "zh": "已按样例建好 {config}。",
-      "args": ["config"]
-    },
-    "accounts.needsDeploy.configKept": {
-      "kind": "body",
-      "zh": "{config} 已在，没覆盖。",
-      "args": ["config"]
-    },
     "rsFilewinProc.spawn.noStdout": {
       "kind": "error",
       "zh": "文件窗口进程起来了，但收不到它的回话（程序内部出错）",
@@ -20332,26 +19889,6 @@
       "kind": "error",
       "zh": "文件窗口起不来（程序内部出错）：{e}",
       "args": ["e"]
-    },
-    "beAcctIsoInstall.embed.notUtf8": {
-      "kind": "error",
-      "zh": "这台后端带着的 cc-acct-iso 里 {rel} 不是文本，装不了（构建有误）",
-      "args": ["rel"]
-    },
-    "accounts.needsDeploy.intro": {
-      "kind": "body",
-      "zh": "多账号靠 cc-acct-iso：每账号一个隔离配置目录、数据共享。点下面一键把它装到这台远端的 ~/.cc-monitor/bin/cc-acct-iso（只软链到 ~/.local/bin，不改你的 ~/.bashrc）。装完再回来启用。",
-      "args": []
-    },
-    "accounts.needsDeploy.landed": {
-      "kind": "body",
-      "zh": "已装 cc-acct-iso（{version}）到 {dest}，写了 {written} 份。",
-      "args": ["version", "dest", "written"]
-    },
-    "accounts.needsDeploy.current": {
-      "kind": "body",
-      "zh": "{dest} 已是这一版 cc-acct-iso（{version}），没重写。",
-      "args": ["version", "dest"]
     },
     "cssMarks.menu.submenu": {
       "kind": "body",

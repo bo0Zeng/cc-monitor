@@ -109,7 +109,7 @@ fn sync_aliases(d: &dyn Door, accounts: &[String]) -> AliasChange {
             path: listing.alias_path,
             changed: false,
             names: Vec::new(),
-            note: Some(notes.join("；")),
+            note: Some(notes.join("\n")),
         };
     }
     let list: Vec<Alias> = rec
@@ -122,7 +122,7 @@ fn sync_aliases(d: &dyn Door, accounts: &[String]) -> AliasChange {
             path: r.alias_path,
             changed: r.wrote_alias_file,
             names: rec.names,
-            note: (!notes.is_empty()).then(|| notes.join("；")),
+            note: (!notes.is_empty()).then(|| notes.join("\n")),
         },
         Err(e) => {
             notes.push(copy_text("beAcctFace.aliases.writeFailed", &[("e", &e)]));
@@ -130,7 +130,7 @@ fn sync_aliases(d: &dyn Door, accounts: &[String]) -> AliasChange {
                 path: listing.alias_path,
                 changed: false,
                 names: Vec::new(),
-                note: Some(notes.join("；")),
+                note: Some(notes.join("\n")),
             }
         }
     }
