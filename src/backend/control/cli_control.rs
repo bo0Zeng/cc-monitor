@@ -168,6 +168,8 @@ pub(crate) const STREAM_ONLY: &[&str] = &[
     "tmux-name-mint",
     // 〔FIX4 · `99 §2.1 ⑬`〕开终端那一串：界面 / 文件窗口开 PowerShell 窗口前问；命令行那一侧用不着（它自己就在终端里）。
     "terminal-ssh",
+    // 〔P5〕本机开终端那一串（接令牌握手前奏）：同上，只有界面开窗前问。
+    "terminal-local",
     // 〔FIX4 · `90 §3` J15〕各台搜索结果合成一份：界面逐台问完才有得合；命令行那一侧 `--search` 只问这一台，用不着合。
     "history-search-merge",
 ];

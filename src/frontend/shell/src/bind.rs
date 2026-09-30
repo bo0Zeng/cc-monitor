@@ -64,9 +64,9 @@
 //!
 //! - 〔第二波 T4 订正〕步 3 落地那天这里写的是「今天没有任何生产代码往 `ps-await` 里写一个
 //!   带令牌的 marker ⇒ 本模块买到的是『接得住』，不是『已经在收』」—— **那句话到此作废**：
-//!   写入方接上了，是 monitor 拉起窗口时注入的那段令牌握手前奏
-//!   （`launch.rs::with_rbind_bind_prelude` ＋ `scripts/rbind-token-bind.ps1.tpl`，
-//!   与 `__ccm_bind` 同一条握手、只差 marker 的形状）。
+//!   写入方接上了，是开终端时接在命令前面的那段令牌握手前奏
+//!   （〔P5〕本机后端渲：`src/backend/dial/terminal.rs::with_bind_prelude` ＋ `platform/shell/rbind-token-bind.ps1.tpl`，
+//!   与 `__ccm_bind` 同一条握手、只差 marker 的形状；marker 前缀与目录名是共享契约 `shell_quote_core`）。
 //!   ⚠ 但「那段 PowerShell 在真 Windows 上真的跑通、表里真的多了一条」**本机一格都买不到**
 //!   （没有 `pwsh`、没有 Windows）；判据只钉得住交给 PowerShell 的那段**文字**。
 //! - 🔴 **「↗ 真的把那个窗口拉到前台了」这一维本仓的 Linux 门禁一格都买不到**：
@@ -237,58 +237,21 @@ impl BindRegistry {
     }
 }
 
-/// `设计/80 §8.7` 步 3：带令牌的那一种 marker 长什么样。
-///
-/// **前缀刻意与 Era 2 的 `ccm-bind-<PID>-<8hex>` 以及远端标题路的
-/// `ccm-rbind-<sid>` 三者互不为前缀**，所以三种 marker 在同一个 `title.contains`
-/// 的世界里不会互相误命中：
-///
-/// | 来源 | 形状 | 键 |
-/// |---|---|---|
-/// | Era 2 · PowerShell profile `__ccm_bind` | `ccm-bind-<PID>-<8hex>` | `ps_pid` |
-/// | Era 3 · 远端 tmux 标题（`RemoteHwndCache`） | `ccm-rbind-<sid>` | `sid` |
-/// | **方案 E · 启动期令牌（本节）** | `ccm-rbind-token-<32hex>` | **令牌** |
-///
-/// ⚠ `ccm-rbind-token-` **是** `ccm-rbind-` 的扩展，看起来像会撞 —— 不会：
-/// 那一路拼的是 `ccm-rbind-<sid>`，而 sid 是 uuid（含 `-`、有大写、长 36），
-/// 与 `token-<32hex>` 无论如何对不上；反向也一样（本函数要求前缀后**恰好** 32 个
-/// 小写十六进制字符、后面一个字节都不许有）。两条判据各钉一头，见 `bind_tests.rs`。
-pub const RBIND_TOKEN_MARKER_PREFIX: &str = "ccm-rbind-token-";
-
-/// 握手目录 `ps-await/` 的名字（相对 monitor 数据目录）。
-///
-/// 〔`设计/80 §8.7` 步 3 收尾，第二波 T4〕**有两个写入方、一个读方**，三处必须同一个名字：
-/// 读方 = [`BindRegistry::spawn`] 监听的目录；写入方 ① = PowerShell profile 里的 `__ccm_bind`
-/// （`src/shared/cc.ps1.tpl`，它在用户机器上自己拼 `ps-await`，改不动已装的那份 ⇒ 本常量**不许改值**）；
-/// 写入方 ② = `launch.rs` 在拉起窗口时注入的那段令牌握手前奏（取的就是本常量）。
-pub const AWAIT_SUBDIR: &str = "ps-await";
-
-/// 带令牌的 marker：`ccm-rbind-token-<32hex>`。形状不对 ⇒ `None`（不产一个解不回来的 marker）。
-///
-/// 与 [`rbind_token_from_marker`] 互为逆：`rbind_token_from_marker(&rbind_token_marker(t)?) == Some(t)`。
-/// **写入方只许用它拼**（`launch.rs` 的令牌握手前奏）—— 手拼一份前缀，哪天前缀改了，
-/// 本地表会静默收不到任何带令牌的条目（「拉不到窗口」与「没有令牌」同形）。
-pub fn rbind_token_marker(token: &str) -> Option<String> {
-    rbind_token_shape_ok(token).then(|| format!("{RBIND_TOKEN_MARKER_PREFIX}{token}"))
-}
-
-// 〔DUP2 · `设计/01 §5` D1〕令牌形状**只有一份**：`shell_quote_core::rbind_token_ok`（〔MIG-2〕载荷内核搬进后端之后直接用共享 crate 那一份）。
-// 这里原来逐字抄了一份（连同一个私有的长度常量），头注自称「本 crate 里只许有这一份」—— 而载荷那边同时也有一份。
-// 今天是再导出：`crate::bind::rbind_token_shape_ok` 这个名字留着（`ssh_source::parse_frame` · `launch.rs` 的调用点一个不动），
-// 背后是同一个函数 ⇒ 「本地表的键」与「wire 上读回来的串」按构造同源（`设计/80 §8.7` 步 3 / 步 4 要的那件事）。
+// `设计/80 §8.7` 步 3：带令牌的那一种 marker 长什么样 —— 三种 marker 在同一个 `title.contains` 的世界里互不误命中：
+//
+// | 来源 | 形状 | 键 |
+// |---|---|---|
+// | Era 2 · PowerShell profile `__ccm_bind` | `ccm-bind-<PID>-<8hex>` | `ps_pid` |
+// | Era 3 · 远端 tmux 标题（`RemoteHwndCache`） | `ccm-rbind-<sid>` | `sid` |
+// | **方案 E · 启动期令牌（本节）** | `ccm-rbind-token-<32hex>` | **令牌** |
+//
+// 〔P5〕写侧（开终端前奏）搬进本机后端之后，前缀 · 拼 / 解 · 握手目录名 `ps-await` 住共享契约 `shell_quote_core`
+// （两侧 `use` 同一份）；本模块是读方：[`BindRegistry::spawn`] 监听那个目录、[`entry_from_marker_hit`] 从 marker 解令牌。
+// 令牌形状同一份（`shell_quote_core::rbind_token_ok`，DUP2）⇒「本地表的键」与「wire 上读回来的串」按构造同源。
 pub(crate) use shell_quote_core::rbind_token_ok as rbind_token_shape_ok;
-
-/// 从一个 marker 里解出启动期令牌。**不是**这一种 marker ⇒ `None`（Era 2 的
-/// `ccm-bind-…` 走的就是这条，行为与从前一字不差）。
-///
-/// fail closed 到底：前缀对了但后面形状不对（少一位 / 多一位 / 有大写 / 尾巴上
-/// 还挂着东西）**一律当没有**，而不是当「大概是它」。把一个形状可疑的串记进表里，
-/// 会让「拉错窗口」（有键、键错了）伪装成「拉不到窗口」（没键）—— 那正是
-/// `§6.2` 记的「失败归因把人引向一个不存在的问题」。
-pub fn rbind_token_from_marker(marker: &str) -> Option<&str> {
-    let rest = marker.strip_prefix(RBIND_TOKEN_MARKER_PREFIX)?;
-    rbind_token_shape_ok(rest).then_some(rest)
-}
+pub use shell_quote_core::{
+    rbind_token_from_marker, rbind_token_marker, AWAIT_SUBDIR, RBIND_TOKEN_MARKER_PREFIX,
+};
 
 /// 把一段**可能含启动期令牌**的文本（marker / 窗口标题）变成可以进日志的样子。
 ///
