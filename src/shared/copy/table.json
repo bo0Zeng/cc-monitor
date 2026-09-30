@@ -9,6 +9,201 @@
     "本波只抽了一个样板区（src/frontend/ui/views/pane-preview.ts）；全量抽表排在最后一波。"
   ],
   "entries": {
+    "accountOps.name.empty": {
+      "kind": "error",
+      "zh": "账号名不能为空",
+      "args": []
+    },
+    "accountOps.name.shape": {
+      "kind": "error",
+      "zh": "账号名不合规。只能用字母、数字、下划线和连字符，以字母或数字开头，最长 {max} 个字符",
+      "args": ["max"]
+    },
+    "accountOps.said.contract": {
+      "kind": "error",
+      "zh": "那台机器的后端版本对不上，需要更新：{detail}",
+      "args": ["detail"]
+    },
+    "accountOps.said.otherCode": {
+      "kind": "error",
+      "zh": "没做成（{code}）：{detail}",
+      "args": ["code", "detail"]
+    },
+    "accountOps.said.noReason": {
+      "kind": "error",
+      "zh": "没做成，那台机器的后端没说原因",
+      "args": []
+    },
+    "accountNewForm.form.makeDefault": {
+      "kind": "control",
+      "zh": "设为默认账号（终端里不带 --account 起 ccm 时用它）",
+      "args": []
+    },
+    "accounts.row.remove": {
+      "kind": "action",
+      "zh": "删除",
+      "args": []
+    },
+    "accounts.login.launched": {
+      "kind": "body",
+      "zh": "已在终端里起 claude",
+      "args": []
+    },
+    "accounts.login.launchedNext": {
+      "kind": "body",
+      "zh": "在那个终端里按提示登录这个号，登录完回来点「刷新」。",
+      "args": []
+    },
+    "accounts.login.failed": {
+      "kind": "error",
+      "zh": "拿不到登录用的那一行",
+      "args": []
+    },
+    "accounts.remove.confirm": {
+      "kind": "body",
+      "zh": "删除「{machine}」上的账号 {name}？\n\n只删它自己的目录，共享的 skills、记忆、历史都不动。删之前会留一份备份，可以回滚。",
+      "args": ["machine", "name"]
+    },
+    "accounts.remove.confirmDefault": {
+      "kind": "body",
+      "zh": "{name} 是「{machine}」上的默认账号，删掉后剩下的第一个账号会成为默认。\n\n只删它自己的目录，共享的东西都不动。删之前会留一份备份，可以回滚。继续？",
+      "args": ["name", "machine"]
+    },
+    "accounts.remove.done": {
+      "kind": "body",
+      "zh": "已删除账号 {name}",
+      "args": ["name"]
+    },
+    "accounts.remove.failed": {
+      "kind": "error",
+      "zh": "删除账号没成",
+      "args": []
+    },
+    "accountsLocal.init.title": {
+      "kind": "title",
+      "zh": "这台机器还没启用多账号",
+      "args": []
+    },
+    "accountsLocal.init.intro": {
+      "kind": "body",
+      "zh": "给现在这个登录起个名字，它会成为第一个账号。启用后每个账号的凭据各自独立，skills、记忆、历史、设置实时共享。账号清单：{path}",
+      "args": ["path"]
+    },
+    "accounts.notEnabled.enable": {
+      "kind": "action",
+      "zh": "启用多账号",
+      "args": []
+    },
+    "accounts.init.previewEmpty": {
+      "kind": "body",
+      "zh": "填好账号名后，这里显示将要做的几步",
+      "args": []
+    },
+    "accounts.init.confirm": {
+      "kind": "body",
+      "zh": "在「{machine}」上启用多账号，现在这个登录收成账号 {name}：\n\n{steps}\n\n改动前会留一份备份，可以回滚。继续？",
+      "args": ["machine", "name", "steps"]
+    },
+    "accounts.init.done": {
+      "kind": "body",
+      "zh": "已启用多账号，第一个账号是 {name}",
+      "args": ["name"]
+    },
+    "accounts.init.failed": {
+      "kind": "error",
+      "zh": "启用多账号没成",
+      "args": []
+    },
+    "accounts.add.failed": {
+      "kind": "error",
+      "zh": "新建账号没成",
+      "args": []
+    },
+    "accounts.add.done": {
+      "kind": "body",
+      "zh": "已新建账号 {name}",
+      "args": ["name"]
+    },
+    "accounts.add.keyFailed": {
+      "kind": "error",
+      "zh": "API key 没存进去",
+      "args": []
+    },
+    "accounts.maintenance.rollback": {
+      "kind": "action",
+      "zh": "回滚上一次改动",
+      "args": []
+    },
+    "accounts.maintenance.rollbackHint": {
+      "kind": "body",
+      "zh": "按最近一份备份，把账号库还原到那次改动之前。",
+      "args": []
+    },
+    "accounts.verify.pass": {
+      "kind": "body",
+      "zh": "核对通过，有 {warns} 条提示",
+      "args": ["warns"]
+    },
+    "accounts.verify.fail": {
+      "kind": "body",
+      "zh": "有 {fails} 处要修，另有 {warns} 条提示。点「修复」可以补齐链接、改回权限。",
+      "args": ["fails", "warns"]
+    },
+    "accounts.verify.failed": {
+      "kind": "error",
+      "zh": "核对没做成",
+      "args": []
+    },
+    "accounts.repair.nothing": {
+      "kind": "body",
+      "zh": "不用修复",
+      "args": []
+    },
+    "accounts.repair.nothingBody": {
+      "kind": "body",
+      "zh": "链接、权限、邮箱都已经是对的。",
+      "args": []
+    },
+    "accounts.repair.confirm": {
+      "kind": "body",
+      "zh": "在「{machine}」上修复账号库：\n\n{steps}\n\n改动前会留一份备份，可以回滚。继续？",
+      "args": ["machine", "steps"]
+    },
+    "accounts.repair.done": {
+      "kind": "body",
+      "zh": "已修复",
+      "args": []
+    },
+    "accounts.repair.failed": {
+      "kind": "error",
+      "zh": "修复没成",
+      "args": []
+    },
+    "accounts.rollback.confirm": {
+      "kind": "body",
+      "zh": "在「{machine}」上按备份 {backup} 回滚：\n\n{steps}\n\n现场被换掉的那几份会挪进备份目录，不会直接删掉。继续？",
+      "args": ["machine", "backup", "steps"]
+    },
+    "accounts.rollback.done": {
+      "kind": "body",
+      "zh": "已回滚",
+      "args": []
+    },
+    "accounts.rollback.failed": {
+      "kind": "error",
+      "zh": "回滚没成",
+      "args": []
+    },
+    "accounts.change.backup": {
+      "kind": "body",
+      "zh": "改了 {n} 处，备份 {backup}。",
+      "args": ["n", "backup"]
+    },
+    "accounts.change.nothing": {
+      "kind": "body",
+      "zh": "什么都不用改。",
+      "args": []
+    },
     "rsToolRegistry.tools.accountsName": {
       "kind": "title",
       "zh": "多账号账号库",
@@ -1459,12 +1654,12 @@
     },
     "accountsLocal.new.subscriptionHint": {
       "kind": "body",
-      "zh": "创建后在这台机器的终端里跑建号命令；跑完在那个终端里用这个号 /login。",
+      "zh": "建好后起 claude 登录这个号：本机不开终端窗口，登录用的那一行会复制给你，在自己的终端里跑。导入了旧凭据就不用再登录。",
       "args": []
     },
     "accountsLocal.new.apikeyHint": {
       "kind": "body",
-      "zh": "创建后在这台机器的终端里跑建号命令；这个号出现在上面的列表里时（跑完点「刷新」），这把 key 自动写进 API key 表。在那之前 key 只留在这个窗口里，关掉 cc-monitor 就没了。",
+      "zh": "key 直接存进这台机器的 API key 表，界面上只显示掩码。",
       "args": []
     },
     "accountsLocal.new.cmdInvalid": {
@@ -7824,22 +8019,22 @@
     },
     "accountNewForm.form.willRunEmpty": {
       "kind": "body",
-      "zh": "填好账号名后，这里显示将运行的命令",
+      "zh": "填好账号名后，这里显示将要做的几步",
       "args": []
     },
     "accountNewForm.form.willRun": {
       "kind": "body",
-      "zh": "将在终端里运行：",
+      "zh": "将要做的：",
       "args": []
     },
     "accountNewForm.form.snapshot": {
       "kind": "control",
-      "zh": "旧凭据快照路径",
+      "zh": "旧凭据文件路径（家目录底下，可写 ~/…）",
       "args": []
     },
     "accountNewForm.form.advanced": {
       "kind": "title",
-      "zh": "高级：从旧凭据快照导入，免重登",
+      "zh": "高级：从旧凭据文件导入，免重登",
       "args": []
     },
     "accountNewForm.form.baseUrl": {
@@ -7854,7 +8049,7 @@
     },
     "accountNewForm.form.apikeyHint": {
       "kind": "body",
-      "zh": "创建后弹出终端建好账号目录；这个号出现在下面的账号列表里时（终端跑完点「刷新」），这把 key 自动写进 API key 表。在那之前 key 只留在这个窗口里，关掉 monitor 就没了。",
+      "zh": "key 直接存进这台机器的 API key 表，界面上只显示掩码。",
       "args": []
     },
     "accountNewForm.form.apikey": {
@@ -7864,7 +8059,7 @@
     },
     "accountNewForm.form.subscriptionHint": {
       "kind": "body",
-      "zh": "创建后弹出终端，在那个终端里用这个号 /login。",
+      "zh": "建好后在终端里起 claude 登录这个号；导入了旧凭据就不用再登录。",
       "args": []
     },
     "accountNewForm.form.subscription": {
@@ -8064,22 +8259,22 @@
     },
     "accounts.maintenance.syncHint": {
       "kind": "body",
-      "zh": "补齐或修复共享库软链、修权限、刷新账号清单里的邮箱。可以重复跑（幂等）。",
+      "zh": "补齐共享链接、改回权限、刷新账号清单里的邮箱、补上每个账号的别名。可以重复跑。",
       "args": []
     },
     "accounts.maintenance.sync": {
       "kind": "action",
-      "zh": "补链 sync",
+      "zh": "修复",
       "args": []
     },
     "accounts.maintenance.verify": {
       "kind": "action",
-      "zh": "自检 verify",
+      "zh": "核对",
       "args": []
     },
     "accounts.maintenance.title": {
       "kind": "title",
-      "zh": "维护 · 自检 / 补链 / rc 片段",
+      "zh": "维护 · 核对 / 修复 / 回滚",
       "args": []
     },
     "accounts.readApikey.failed": {
@@ -8227,12 +8422,12 @@
     },
     "accounts.notEnabled.defaultName": {
       "kind": "control",
-      "zh": "默认账号名，现有的默认账号会迁进来：",
+      "zh": "给现在这个登录起个名字：",
       "args": []
     },
     "accounts.notEnabled.intro": {
       "kind": "body",
-      "zh": "在远端跑 cc-acct-iso 迁移管线就能启用。启用后各账号凭据独立，skills、记忆、历史、设置实时共享。<br>原因：{reason}<br>账号清单查找位置：<code>{path}</code>",
+      "zh": "启用后每个账号的凭据各自独立，skills、记忆、历史、设置实时共享。给现在这个登录起个名字，它会成为第一个账号。原因：{reason}。账号清单查找位置：{path}",
       "args": ["reason", "path"]
     },
     "accounts.notEnabled.noPath": {
@@ -16083,7 +16278,7 @@
     },
     "accounts.local.emptyNext": {
       "kind": "body",
-      "zh": "下一步：在这台机器上装好 cc-acct-iso，跑一次初始化。现在这个登录态会收进第一个隔离账号。cc-monitor 不在本机替你装，要在终端里做。",
+      "zh": "多账号已经启用，只是还没有账号：在下面新建一个。",
       "args": []
     },
     "accounts.local.emptyTitle": {

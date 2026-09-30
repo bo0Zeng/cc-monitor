@@ -620,7 +620,6 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
   },
   "relay-route-core": {
     // 〔P3 · 主会话 09-29 裁〕后端住在 `~/.cc-monitor` 里的那几样的相对路径（后端各写者引它、monitor 数据位置页按它列）；TS 侧没有孪生。
-    ACCT_ISO_REL: NONE,
     ALL: NONE,
     ASSET_CATALOG_REL: NONE,
     BACKEND_POLICY_REL: NONE,

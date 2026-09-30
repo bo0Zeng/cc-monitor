@@ -609,11 +609,6 @@ export class MachineCard {
         // 远端恒 POSIX：`设计/01 §6.7b` 表 B 只承诺远端 Linux（`第四波记录/W5-ALIAS.md §2.2`）。
         platform: "posix",
         origin,
-        loadAccounts: async () => {
-          const st = await fetchAccounts(origin());
-          if (!st.available) throw new Error(st.error ?? "");
-          return st.accounts.map((a) => a.name);
-        },
         // 机器列表那一格（`ccm`）照旧记装 / 卸的结论。〔MIG-2〕原先装完还清一次界面的 ccm 探针缓存：渲染进了那台后端、
         //   能力问它自己，界面不再缓存那一份（探针与缓存一起删了）。
         onBlockDone: (verb, error) => {
@@ -911,7 +906,7 @@ export class MachineCard {
         // 原文写「用远端已登录的那个，不注入 CLAUDE_CONFIG_DIR」，两处都不准：
         //   ① 「不注入」**弱于事实**：CLI 路会发 `--base`，而 ccm 收到 `--base` 是
         //      **`unset CLAUDE_CONFIG_DIR`**（`shared/ccm:674` 送进 tmux 的载荷行 + `:709`
-        //      会话级 env，两处都 unset）。远端 shell 里若有 `cc-acct-iso shellinit` 生成的
+        //      会话级 env，两处都 unset）。远端 shell 里若有一行
         //      `export CLAUDE_CONFIG_DIR=<某账号>`，「不注入」会继承它，「unset」则落回基座
         //      —— **两者落到的是不同的账号**。
         //   ② 「已登录的那个」**在主路径上是假的**：它落 `~/.claude`，而基座常常没凭据。

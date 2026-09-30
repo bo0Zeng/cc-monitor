@@ -129,20 +129,6 @@ const platformCopy = (): Record<
   },
 });
 
-/**
- * `K-R49`：一个账号叫什么名字，「为每个账号加一条」给它起的名字就叫什么（`<名>cc`）。
- * 与 `cc-acct-iso shellinit` 生成的那一族逐字同形 —— 从两条路进来的人看到的是同一套名字。
- *
- * ⚠ 两处收窄：① 非法字符**丢掉**而不是换成下划线（`a.b` 与 `a_b` 换完会撞成同一个名字）；
- * ② 以数字开头就前缀一个 `_`（shell 函数名不许数字打头）。整个都非法 ⇒ 空串（调用方跳过它）。
- */
-export function suggestAliasName(account: string): string {
-  const cleaned = account.replace(/[^A-Za-z0-9_]/g, "");
-  if (!cleaned) return "";
-  const withCc = `${cleaned}cc`;
-  return /^[0-9]/.test(withCc) ? `_${withCc}` : withCc;
-}
-
 /** 〔W5-ALIAS〕问一次预览（`ccm-print`）最多等多久：读一份账号库 ＋ 问一次会话快照，秒级内。 */
 const PREVIEW_BUDGET_MS = 10_000;
 
@@ -345,13 +331,11 @@ function button(label: string, variant: string, onClick: () => void): HTMLButton
  *
  * @param platform 这台机器用哪种 shell 的方言（本机 = [`localShell`]；远端恒 `posix`，`01 §6.7b` 表 B）。
  * @param origin 那台机器（取值函数：远端卡改名后跟着它走）。六条 `aliases_*` 都带它。
- * @param loadAccounts 「为每个账号加一条」要的账号名（那台机器的账号）。
  * @param onBlockDone 装 / 卸别名块之后（远端卡拿它记机器列表那一格；`error` 为空 = 成了）。
  */
 export function buildAliasManager(opts: {
   platform: Shell;
   origin: () => Origin;
-  loadAccounts: () => Promise<string[]>;
   onBlockDone?: (verb: "install" | "remove", error: string | null) => void;
   /** 〔WF1 · L〕改执行策略之前问一句的注入缝（缺省走应用内对话框）。 */
   confirm?: ConfirmFn;
@@ -446,9 +430,8 @@ export function buildAliasManager(opts: {
   const formRow = el("div", "settings-row settings-row-actions");
   const saveBtn = button(copyText("machineAliases.form.save"), "settings-btn-primary", () => onSave());
   const clearBtn = button(copyText("machineAliases.form.clear"), "", () => fillForm(emptyForm(), -1));
-  const perAcctBtn = button(copyText("machineAliases.form.perAccount"), "", () => void onPerAccount());
-  perAcctBtn.title = copyText("machineAliases.form.perAccountHint");
-  formRow.append(saveBtn, clearBtn, perAcctBtn);
+  // 每个账号那一条（`<名>cc`）由那台后端在账号表变了的时候自己并进别名文件（新建 / 删号 / 修复），这里不再有一颗按钮。
+  formRow.append(saveBtn, clearBtn);
   wrap.append(grid, tmuxHint, adv, formRow);
 
   // ── 渲染结果（第①跳）────────────────────────────────────────────────────
@@ -697,24 +680,6 @@ export function buildAliasManager(opts: {
     if (editing >= 0 && editing < list.length) list[editing] = a;
     else list = [...list, a];
     fillForm(emptyForm(), -1);
-    void changed();
-  };
-
-  const onPerAccount = async (): Promise<void> => {
-    let names: string[];
-    try {
-      names = await opts.loadAccounts();
-    } catch (e) {
-      problemsBox.textContent = copyText("machineAliases.perAccount.failed", { e: String(e) });
-      return;
-    }
-    const have = new Set(list.map((a) => a.name));
-    for (const account of names) {
-      const name = suggestAliasName(account);
-      if (!name || have.has(name)) continue;
-      have.add(name);
-      list = [...list, { name, args: ["--", "--account", account] }]; // 〔V151〕ccm 的选项在 `--` 右边
-    }
     void changed();
   };
 
