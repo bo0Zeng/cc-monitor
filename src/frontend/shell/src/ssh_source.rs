@@ -1268,6 +1268,9 @@ pub enum InboundFrame {
     /// 〔MIG-1 收尾〕测试连接那一趟的一格进度 / 结局（后端 `wire::Frame::Probe`）。只有**本机后端**那条流上会有
     /// （测试连接在本机常驻后端里跑），交 `probe_relay::deliver`。`cell` 原样（一个 JSON 对象的文本，monitor 不解释）。
     Probe { ticket: String, cell: String },
+    /// 〔P7〕一条长活（全景建索引）此刻的一格进度（后端 `wire::Frame::Progress`）。本机远端两条流都会有（那台的后端起的小程序报的），
+    /// 交 `event_replay::EventReplay::on_progress`（按 origin）。`cell` 原样（一个 JSON 对象的文本，monitor 不解释）。
+    Progress { ticket: String, cell: String },
 }
 
 /// 拥塞提示的**措辞**：有没有不可恢复的丢失，说法完全不同〔audit-0805 F21〕。
@@ -1604,6 +1607,13 @@ pub fn parse_frame(line: &str) -> Option<InboundFrame> {
             })
         }
 
+        // 〔P7〕长活的一格进度：同 `probe` 的收法（票 ＋ 原样那一格，必须是对象；内容由界面严格收）。
+        "progress" => {
+            let ticket = obj.get("ticket")?.as_str()?.to_string();
+            let cell = obj.get("cell").filter(|c| c.is_object())?.to_string();
+            Some(InboundFrame::Progress { ticket, cell })
+        }
+
         // 〔MIG-1 收尾〕测试连接的一格进度：票 ＋ 原样那一格（必须是对象；内容由界面严格收）。
         "probe" => {
             let ticket = obj.get("ticket")?.as_str()?.to_string();
@@ -1663,6 +1673,7 @@ const KNOWN_FRAME_KINDS: &[&str] = &[
     "link_end",
     "overflow",
     "probe",
+    "progress",
     "reply",
     "session_added",
     "session_file_gone",
@@ -2290,6 +2301,8 @@ pub(crate) enum LocalStep {
     Remove { sid: String },
     /// 〔MIG-3b · ㉓②〕本机某个会话的任务清单变了 ⇒ 交重放缓冲那张订阅表（与远端同一个 `tasks_changed`）。
     Tasks { sid: String },
+    /// 〔P7〕本机后端那一趟建索引的一格进度 ⇒ 交重放缓冲那张订阅表（与远端同一个 `progress`）。
+    Progress { ticket: String, cell: String },
     /// 〔FW1〕进 [`LineIntake::notice`]（冲掉残批、交一格出声）。
     Notice {
         sid: String,
@@ -2462,6 +2475,9 @@ pub(crate) fn local_step(
         }
         // 〔MIG-3b · ㉓②〕任务清单变了：与 bg 藏不藏无关（任务面板按 sid 取，藏起来的会话本来就没有 tab）。
         LocalItem::Frame(InboundFrame::TasksChanged { sid }) => LocalStep::Tasks { sid },
+        LocalItem::Frame(InboundFrame::Progress { ticket, cell }) => {
+            LocalStep::Progress { ticket, cell }
+        }
         LocalItem::Frame(_) => LocalStep::Skip,
     }
 }
@@ -2542,6 +2558,9 @@ pub(crate) async fn consume_local(
                 LocalStep::Notice { sid, path, change } => intake.notice(&sid, &path, change).await,
                 LocalStep::Tasks { sid } => {
                     replay.tasks_changed(&crate::origin::Origin(label.clone()), &sid)
+                }
+                LocalStep::Progress { ticket, cell } => {
+                    replay.on_progress(&crate::origin::Origin(label.clone()), &ticket, cell)
                 }
                 LocalStep::Skip => {}
                 LocalStep::Lost => intake.lost().await,
@@ -3069,6 +3088,10 @@ async fn stream_loop(
                 replay.accounts_changed(&crate::origin::Origin(host_label.clone()));
             }
             // 〔MIG-3b · `99 §2.1 ㉓②`〕某个会话的任务清单变了 ⇒ 订了这台 `session-tasks` 的订阅收一格 `{sid}`。
+            // 〔P7〕那台的后端起的小程序报的建索引进度 ⇒ 交订了那台 `progress/<票>` 的订阅（与本机那条流同一个口）。
+            Some(InboundFrame::Progress { ticket, cell }) => {
+                replay.on_progress(&crate::origin::Origin(host_label.clone()), &ticket, cell);
+            }
             Some(InboundFrame::TasksChanged { sid }) => {
                 replay.tasks_changed(&crate::origin::Origin(host_label.clone()), &sid);
             }
