@@ -944,9 +944,11 @@ mod tests {
             "exit_policy::answer_set",
             "stream/inbound.rs",
         ),
+        // 写 key（`answer_set`）· 删号清那一行（`answer_drop`）· 回滚放回那一行（`answer_restore`）同一个前缀 ⇒ 针取前缀；
+        // 读口 `answer_read` 也落在针上，它同样只从 `inbound.rs` 进来（多挡一个读口不伤）。
         (
             "accounts/upstream_select/file_face.rs",
-            "file_face::answer_set",
+            "file_face::answer_",
             "stream/inbound.rs",
         ),
         // 〔AS2〕三条写口同一个前缀（`answer_catalog` 现扫即记 · `answer_merge` 并进来再记，都会写）⇒ 针取前缀：
@@ -1485,6 +1487,14 @@ mod tests {
          而且它正是拿锁之前那一步（锁的就是它建出来的目录）—— 它自己再拿锁是先有鸡还是先有蛋",
     )];
 
+    /// 第四层**之外**拿这把锁的（`(模块, 为什么)`）：它们改的不是后端自有状态文件，却同样是一趟读—改—写，
+    /// 两个后端进程同时做会盖掉对方。锁只是只读打开那个目录，不添任何写动词。
+    const LOCK_HOLDERS_OUTSIDE_OWN_STATE: &[(&str, &str)] = &[(
+        "accounts/manage/wire.rs",
+        "账号库的读—改—写（读清单与各号目录 → 算计划 → 经文件管理面落盘）：本机常驻后端与一次性 CLI 同时改，\
+         后写的会把先写的那个号从清单里抹掉。锁的是账号库目录本身",
+    )];
+
     /// 🔴 〔HX2 · 第四波 4D〕**第四层判据 ⑥：每一份都在跨进程锁里写 —— 人群两向相等。**
     ///
     /// 要求住址：题面 HX2 逐字「后端自有状态文件跨进程锁（`flock` 一类，Windows 对应）」；审计 `E-compat.md` §E6 · E14 · §3.1
@@ -1519,10 +1529,19 @@ mod tests {
             assert!(is_own_state(p), "锁的例外 `{p}` 不在第四层登记里 —— 挂空号");
             assert!(why.chars().count() >= 20, "`{p}` 没写清为什么不用锁");
         }
+        for (p, why) in LOCK_HOLDERS_OUTSIDE_OWN_STATE {
+            assert!(!is_own_state(p), "`{p}` 在第四层里 —— 它不用登记在这张表上");
+            assert!(why.chars().count() >= 20, "`{p}` 没写清为什么要这把锁");
+        }
         let want: std::collections::BTreeSet<String> = OWN_STATE_MODULES
             .iter()
             .map(|(p, _)| p.to_string())
             .filter(|p| !exempt.contains(p))
+            .chain(
+                LOCK_HOLDERS_OUTSIDE_OWN_STATE
+                    .iter()
+                    .map(|(p, _)| p.to_string()),
+            )
             .collect();
         let got: std::collections::BTreeSet<String> = holders.keys().cloned().collect();
         assert_eq!(
@@ -2888,9 +2907,7 @@ mod spawn_registry {
              是人回来读了这一段才写下的。下一个使用者同理。\
              ★★ **〔`A3` 第二波 09-24〕第三个使用者到了，逐条记在这里** —— 上游选择 \
              `accounts/iso.rs`经这一处口起**本机 `cc-acct-iso shellinit`**（`--acct-iso-shellinit`）。\
-             写面：**只读** —— `cmd_shellinit` 全是 `printf`，不写任何文件（vendored 那份 \
-             `src/shared/cc-acct-iso/scripts/cc-acct-iso` 逐行可查）；它读 manifest 与 \
-             `~/.cc-acct-iso/config`，要 `HOME` / `PATH`（都在继承白名单里）。\
+             写面：**只读**。今天这个使用者已不在：账号库改由后端自己建，那份外部脚本与 `accounts/iso.rs` 一起删了。\
              ⚠ 同样**加这一条不会红**（键仍是 `<非字面量>`；下面那条「恰好四条」只数 \
              `control/cc_bus.rs`）—— 是人回来读了这一段才写下的。\
              ★★ **〔RM1c · 第四波 09-24〕第四个使用者到了，逐条记在这里** —— 代码全景 \
@@ -6145,7 +6162,7 @@ mod remote_write_layer {
     const REMOTE_WRITE_MODULE: (&str, &str) = (
         "dial/sftp.rs",
         "SFTP 住本机常驻后端（V89）：暂存区的上传件（`control/transfer.rs` 经它写）· \
-         自部署的后端二进制 / `.build_id` / `ccm` 入口 / cc-acct-iso（部署链路 `use:\"files\"` 经它写）。\
+         自部署的后端二进制 / `.build_id` / `ccm` 入口（部署链路 `use:\"files\"` 经它写）。\
          路径由 monitor 给、由本文件的 `fenced_remote` 判：词法（只许两个根）＋ 父目录解链接仍在根下 ＋ \
          开写前 `lstat` 拒链接",
     );

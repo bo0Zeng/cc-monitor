@@ -385,13 +385,6 @@ const DESCENDING_SPECIFICITY_EXCEPTIONS: readonly {
   },
   {
     file: "src/frontend/ui/styles/settings.css",
-    later: ".accounts-wiz-copyrow button",
-    earlier: ".accounts-row-actions button:hover",
-    kind: "harmless",
-    why: "〔AR1 判〕同上一条",
-  },
-  {
-    file: "src/frontend/ui/styles/settings.css",
     later: ".accounts-maint button",
     earlier: ".accounts-row-actions button:hover",
     kind: "harmless",

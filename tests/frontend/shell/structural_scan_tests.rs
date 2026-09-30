@@ -2395,7 +2395,7 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         ),
         // 〔P6 · 09-29〕`("src/doc/ARCHITECTURE.md", "lookup_by_foreground_pid", 1)` 摘了：开发文档按 4.0.0 重写，「刻意不做的」那一节只讲理由、不再点那个旧名。
         // 〔LOC1b〕`("src/doc/CONTRIBUTING.md", "list_active_session_ids", 1)` 摘了：那段示例改写成读本机活会话表，不再点那个说明性的名字。
-        ("src/doc/INVARIANTS.md", "path_shell_safe", 1),
+        // `("src/doc/INVARIANTS.md", "path_shell_safe", 1)` 摘了：那一句改成点 `acct-core::config_dir_posix_ok`，不再点外部脚本里的旧名。
         ("src/doc/INVARIANTS.md", "snapshot_announced_by_origin", 1),
         ("src/doc/STATE-MATRIX.md", "read_session_jsonl", 1),
         (
@@ -2435,22 +2435,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             "frozen_single_client_guard",
             1,
         ),
-        // 〔步 7c 后端剖分 2026-09-19 · C 类〕同上，**总处数守恒（2 ＝ 1 ＋ 1）**。
-        (
-            "src/backend/observe/accounts_query.rs",
-            "credential_filename_matches_native_identity_declaration",
-            1,
-        ),
-        (
-            "tests/backend/observe/accounts_query_tests.rs",
-            "credential_filename_matches_native_identity_declaration",
-            1,
-        ),
-        (
-            "src/backend/observe/accounts_query.rs",
-            "path_shell_safe",
-            1,
-        ),
         ("src/backend/observe/watcher.rs", "spawn_tmux_ticker", 2),
         (
             "tests/backend/protocol_doc_guard.rs",
@@ -2472,14 +2456,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             // 〔步 7c 后端剖分 2026-09-19 · C 类〕散文随测试段搬家。
             "tests/comms/outward/upstream_tests.rs",
             "tls_client_config_builds_and_carries_roots",
-            1,
-        ),
-        (
-            // 〔2026-09-18〕**这里一度被我改成 2，那是错的** —— 那个 2 是语料根互相
-            // 包含造成的**重复计数**假象（`src/common` 是 `src` 的子目录）。
-            // 根去重之后真数仍是 1。⇒ 看到「盘上比登记多一倍」先怀疑语料面，别改账。
-            "src/common/acct-core/src/lib.rs",
-            "contract_matches_the_backend_implementation",
             1,
         ),
         (
@@ -3474,14 +3450,12 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             "is_safe_remote_managed_path",
             1,
         ),
+        // 那个模块名（`acct_iso_deploy`）从前还在别处当活名字出现；账号库收进后端之后它在全仓只剩墓碑，点它的散文逐处登记。
+        ("src/frontend/shell/src/lib.rs", "acct_iso_deploy", 1),
+        ("src/frontend/shell/src/sftp.rs", "acct_iso_deploy", 3),
+        ("tests/frontend/shell/sftp_tests.rs", "acct_iso_deploy", 1),
         // 〔MIG-3a · 09-28 预裁〕`deploy_remote_acct_iso` 那条 Tauri 命令（与守它的判据文件 `acct_iso_deploy_tests`）删了：点旧名的散文挂墓碑。
-        ("src/frontend/ui/accounts.ts", "deploy_remote_acct_iso", 1),
-        (
-            "src/frontend/ui/acct-iso-reads.ts",
-            "deploy_remote_acct_iso",
-            1,
-        ),
-        ("src/doc/IPC-PROTOCOL.md", "deploy_remote_acct_iso", 1),
+        // `("src/frontend/ui/accounts.ts", "deploy_remote_acct_iso", 1)` 摘了：空态那句「只能在终端里做」的理由整条退役（新建由后端执行），墓碑随被守的那句一起走。
         (
             "src/frontend/ui/ipc/commands.ts",
             "deploy_remote_acct_iso",
@@ -3506,16 +3480,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             "tests/frontend/shell/parity_ledger_tests.rs",
             "deploy_remote_acct_iso",
             6,
-        ),
-        (
-            "src/backend/assets/acct_iso_install.rs",
-            "deploy_remote_acct_iso",
-            1,
-        ),
-        (
-            "src/frontend/ui/settings/accounts-section.ts",
-            "deploy_remote_acct_iso",
-            1,
         ),
         (
             "tests/frontend/ui/ipc/commands.vitest.ts",
@@ -4381,17 +4345,7 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             3,
         ), // 〔C4d〕远端会话清单那个函数随历史清单搬进本机后端删了，点它的散文挂墓碑
         // 〔SH1 · `00 §2.5 ①`〕acct-iso 本机 / 远端两对 Tauri 命令合成带 origin 的两条，点四个旧名的散文挂墓碑。
-        (
-            "src/backend/accounts/iso.rs",
-            "remote_acct_iso_shellinit",
-            1,
-        ),
         // 〔THIN〕`backend/mod.rs` · `check_local_acct_iso` 那一行摘了：那份文件随 `backend` 目录删了。
-        (
-            "src/backend/footprint/registry.rs",
-            "check_remote_acct_iso",
-            1,
-        ),
         (
             "tests/frontend/shell/parity_ledger_tests.rs",
             "check_local_acct_iso",
@@ -5128,12 +5082,10 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/doc/INVARIANTS.md", 25), // 〔合并 MIG-1 × 主线 8c6cdc0e〕两边各自贴的墓碑相加，按盘上现数（跑出来核过） 19 → 25 // 〔合并 MIG-3b × 主线 5bb03b34〕两边各自贴的墓碑相加，按盘上现数（跑出来核过） // 〔合并 MIG-3a × 主线 5b52f042〕基数 12 ＋ MIG-3a +2 ＋ 主线 +4 ⇒ 18 // 〔DUP1〕+2：U8c-1「变严的代价」那一节补一句「收口了，收法是删」·「本地路径借 IR 做校验」那一节记 `validateLocalLaunch` 删了 // 〔LOC1b〕+1：§6 探活双重校验那一格搬去后端，点 monitor 旧函数名那句挂一块 // 〔RW1〕+2：§1 例外 3 那道远端删会话守卫 · 例外 1 本机那道路径守卫（`validate_delete_target`） // 〔MIG-2〕12 → 16
         //   〔LR2〕+3：§33b 产出方表 `session-backend.ts` 那格 · 三问表 ③ 那格 · 「删掉座的代价也换人了」那段 —— 点着随 TS 兜底一族删掉 / 改写的判据
         //   ⇒ 6（基）＋1（LOC1b）＋3（LR2）= 10
-        ("src/doc/IPC-PROTOCOL.md", 12), // 〔MIG-3a · 09-28 预裁〕11 → 12：点 `deploy_remote_acct_iso` 旧名那几处挂墓碑 // // 〔合并 MIG-1 × 主线 bc175f33〕主线 8 ＋ MIG-1 本路增量 ⇒ 11（盘上现打） // 〔CFG1〕+1：整份写口 `save_config` 删了，讲来历那一句挂墓碑 // 〔MIG-2〕5 → 8
+        ("src/doc/IPC-PROTOCOL.md", 11), // 账号库收进后端：12 → 11（`acct-iso-install` 那一节随命令删了，它那一处墓碑跟着走）// 〔MIG-3a · 09-28 预裁〕11 → 12：点 `deploy_remote_acct_iso` 旧名那几处挂墓碑 // // 〔合并 MIG-1 × 主线 bc175f33〕主线 8 ＋ MIG-1 本路增量 ⇒ 11（盘上现打） // 〔CFG1〕+1：整份写口 `save_config` 删了，讲来历那一句挂墓碑 // 〔MIG-2〕5 → 8
         // 〔AL1 · 2026-09-24〕+1：别名那一块搬走时留的墓碑（`buildAccountAliasBlock`）。
-        ("src/frontend/ui/settings/accounts-section.ts", 5), // 〔MIG-3a · 09-28 预裁〕4 → 5：部署那一段头注点旧命令名 // // 〔MIG-2〕3 → 4
+        ("src/frontend/ui/settings/accounts-section.ts", 3), // 账号库收进后端：5 → 3（部署那一段 · rc 片段那一段随功能删了）// 〔MIG-3a · 09-28 预裁〕4 → 5：部署那一段头注点旧命令名 // // 〔MIG-2〕3 → 4
         ("src/frontend/ui/apikey-reads.ts", 2), // 〔MIG-2〕+1：`apikey_remote`整删，点它的那一处挂墓碑 // 〔HX2 · 4D〕写 key 改走通道：头注点旧命令名
-        ("src/frontend/ui/settings/account-new-form.ts", 1), // 〔HX2 · 4D〕同上 // 〔HX2 · 4D〕+1：写 key 改走通道那一行点旧命令名
-        ("src/frontend/ui/settings/acct-deploy.ts", 3), // 〔MIG-3a · 09-28 预裁〕2 → 3：`deriveAcctIsoDir` 删了，原地一块 // // 〔DUP2 · J4〕头注记 `sq` · `buildAcctIsoCmd` 搬进了后端（帧命令 `acct-iso-cmd`）
         ("tests/backend/control/gate_tests.rs", 1),
         ("tests/backend/no_timer_guard.rs", 1),
         // 〔SR1b · 2026-09-24〕2 → 3：远端写那一层「今天一处远端写都没有」那条判据随 V89 改写成
@@ -5257,7 +5209,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/comms/outward/mod.rs", 1),
         ("src/frontend/shell/src/ssh_source.rs", 25), // 〔FIX4 · V41〕24 → 25：`winner_address` 零生产调用者删了，原处挂墓碑 // 〔MOD〕23 → 24 // 〔MIG-3b 续〕+1：流那一个一次性 exec 原语删了，原地一块 // 〔MIG-1 收尾〕地址解析 / 组拨号请求搬进后端 dial/machine.rs，点旧名的散文挂墓碑 21 → 22 // 〔MIG-1 续〕测试连接搬进本机后端，旧名挂墓碑 15 → 21 // 〔MIG-1〕5 → 15：会话 / tmux 账本搬进后端，原处墓碑与点旧名的散文 // // 〔MIG-1〕+3：`~/.ssh/config` 导入搬进后端，原地留一段点三条旧命令名的墓碑 // 〔LOC1b〕+1：「未登记的会话 kind」那一笔从 `session_map.rs` 搬来，头注点旧函数名 // 〔C4d〕逐次拨号那条路删了（run_list_query 一族），点旧名的散文挂墓碑
         // 〔MOD〕`src/frontend/shell/src/subagent.rs` 出表：那份文件随记录解释进后端删了（或墓碑随被守的东西整轴退役）
-        ("src/backend/footprint/registry.rs", 10), // 〔MIG-3b 续〕11 → 10：Claude 布局那一半搬进适配层，带走一块（`IndirectWrite` 那条 `~/.cc-bus/` note） // 〔MIG-3a · 09-28 预裁〕10 → 11：头注点当年那条部署命令 // // 〔E2 · 子步 4〕6 → 10：本机 `ccm` 载体的来源 / 头注里点副本与 shim 旧名处（四块） //, // 〔E2〕5 → 6：点 `is_safe_remote_backend_path`（卸载守卫随固定落点删了） // 〔SH1〕+1：远端 acct-iso 探测旧名 // 〔SH1〕+1：点 `build_online_cmd` 的那句原靠 monitor 驾驶舱那份墓碑兜着，那份删了，就地补标 // 〔C4e 批 3b〕+2：`IndirectWrite` 那一档与 `~/.cc-bus/` 那条 note 点的写面旧命令名（写面迁到界面） // 〔C4d〕逐次拨号那条路删了（run_list_query 一族），点旧名的散文挂墓碑
+        ("src/backend/footprint/registry.rs", 9), // 账号库收进后端：10 → 9（那段更正里点旧工具探测函数的墓碑随那段改写走了）// 〔MIG-3b 续〕11 → 10：Claude 布局那一半搬进适配层，带走一块（`IndirectWrite` 那条 `~/.cc-bus/` note） // 〔MIG-3a · 09-28 预裁〕10 → 11：头注点当年那条部署命令 // // 〔E2 · 子步 4〕6 → 10：本机 `ccm` 载体的来源 / 头注里点副本与 shim 旧名处（四块） //, // 〔E2〕5 → 6：点 `is_safe_remote_backend_path`（卸载守卫随固定落点删了） // 〔SH1〕+1：远端 acct-iso 探测旧名 // 〔SH1〕+1：点 `build_online_cmd` 的那句原靠 monitor 驾驶舱那份墓碑兜着，那份删了，就地补标 // 〔C4e 批 3b〕+2：`IndirectWrite` 那一档与 `~/.cc-bus/` 那条 note 点的写面旧命令名（写面迁到界面） // 〔C4d〕逐次拨号那条路删了（run_list_query 一族），点旧名的散文挂墓碑
         ("tests/frontend/shell/exec_site_registry_tests.rs", 5), // 〔合并 MIG-3b × 主线 a7b0b209〕跑出来 5（两路各给远端 `ccm` 探针那两句挂了墓碑，合并取主线那两句；另两处是 MIG-3b 点旧名处） // 〔C4d〕逐次拨号那条路删了（run_list_query 一族），点旧名的散文挂墓碑 // 〔MIG-2〕1 → 3
         // 〔MOD〕`tests/frontend/shell/remote_history_tests.rs` 出表：那份文件随记录解释进后端删了（或墓碑随被守的东西整轴退役）
         ("tests/backend/observe/accounts_query_tests.rs", 2), // 〔C4d〕本机账号参照实现删了（list_from_dir 一族 ＋ accounts.rs 整份），点旧名的散文挂墓碑 // 〔MIG-2〕1 → 2
@@ -5310,7 +5262,6 @@ fn every_prose_tombstone_mark_is_registered() {
         // 〔LOC1a · 第四波 4D〕本机四个一次性 exec 改走 `<local>` 长连接（`local_query` 一族删、monitor 侧 `observe/` 删）·
         //   `tasks-list` 出成品（`get_session_tasks` / `parse_task_lines` 删）· acct-iso argv 形退役 · 分叉 exec 那条路删：
         //   原处与讲来历的散文各挂一块。
-        ("src/backend/accounts/iso.rs", 2), // 〔SH1〕+1：远端 shellinit 旧名
         ("src/backend/observe/tasks_query.rs", 1),
         ("src/backend/control/fork_write.rs", 1),
         ("src/frontend/shell/src/cross_half_edge_registry.rs", 2), // 〔MIG-1 续〕列 tmux 会话那一族搬进后端（tmux-list 出成品），旧名挂墓碑 1 → 2
@@ -5322,7 +5273,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("tests/frontend/shell/write_site_registry_spawn_sites.rs", 3), // 〔SH1〕+1：本机 cc-bus 读那一处出表
         // 〔DUP1 · 4D〕`设计/90 §3` 判据 2：`accounts.ts` 里 `auth_ready` 订阅分支的第二份（带「旧后端」回落的 `authReady()` 包装）删了，
         //   点它的散文各挂一块：`Account.authReady` 字段头注那一处 · KAY4 判据头注第 4 条那一处。
-        ("src/frontend/ui/accounts.ts", 3), // 〔MIG-3a · 09-28 预裁〕2 → 3：点 `deploy_remote_acct_iso` 旧名那几处挂墓碑 // // 〔MIG-2〕1 → 2
+        ("src/frontend/ui/accounts.ts", 2), // 3 → 2：空态那句的墓碑随「只能在终端里做」那条理由退役 // 〔MIG-3a · 09-28 预裁〕2 → 3：点 `deploy_remote_acct_iso` 旧名那几处挂墓碑 // // 〔MIG-2〕1 → 2
         ("tests/frontend/ui/account-availability-guard.vitest.ts", 1),
         // 〔DUP1 · 4D〕同一判据 J2 / J3：TS 的 `isValidConfigDir`（渲染侧 configDir 拒绝集的手抄）与 `sanitizeRemoteLauncher`
         //   （同一字符集、却静默换成默认 launcher）删了，点它们的散文各挂一块。
@@ -5344,10 +5295,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/frontend/ui/account-prefs.ts", 1),
         // 〔E2 · V28〕`backendPath` · 远端三行入口 · 逐字节副本退役，点旧名的散文挂墓碑。
         // 〔MIG-3a · 09-28 预裁〕`acct_iso_deploy.rs` 那一行随整份文件删了（字节随后端二进制走）。
-        ("src/frontend/ui/acct-iso-reads.ts", 1), // 〔MIG-3a · 09-28 预裁〕新贴：头注点当年那条部署命令
         ("tests/frontend/shell/command_home_registry_tests.rs", 5), // 〔FIX4 · ⑬〕3 → 5：开终端 ssh 外壳进本机后端，点旧名的散文挂墓碑 // 〔MOD〕2 → 3 // 〔MIG-3b 续〕1 → 2：足迹那一行已迁 // 〔MIG-3a · 09-28 预裁〕新贴：待迁那一行删了，原处一块
-        ("src/backend/assets/acct_iso_install.rs", 1), // 〔MIG-3a · 09-28 预裁〕新贴：头注点当年 monitor 那条部署命令
-        ("tests/frontend/ui/settings/acct-deploy.vitest.ts", 1), // 〔MIG-3a · 09-28 预裁〕新贴：`deriveAcctIsoDir` 那一组判据随函数删了
         ("src/frontend/shell/src/filewin/entry.rs", 2), // 〔MIG-3a · 09-28 裁 3〕新贴：开窗前那两问进窗口进程，monitor 侧三个函数退役
         ("src/frontend/shell/src/quote_singleton_guard.rs", 3), // 〔THIN〕2 → 3：病史里 `ssh_source` 那层转调壳随零生产调用删了，挂墓碑 // 〔FIX4 · ⑬〕1 → 2：开终端 ssh 外壳进本机后端，点旧名的散文挂墓碑 // 〔MIG-3a · 09-28 裁 2〕新贴：病史里那第五份 sq 随跑安装脚本退役
         // 〔FIX4 · `99 §2.1 ⑬`〕新贴：ssh 外壳（`build_remote_ssh_ps_command` 一族）搬进本机后端 `dial/terminal.rs`，

@@ -526,6 +526,42 @@ pub fn merge_account_base_url(
     out
 }
 
+/// 删号那一步：把 `accounts.<id>` 那一条整条摘掉，别的条与两层的未知键一个不动。那一条本来就不在 ⇒ 原样返回。
+///
+/// 形状同 [`merge_account_key`]：签名逼调用方说清摘哪一条，「整份替换 accounts」在公开面上仍不可表示。
+pub fn remove_account(current: &Map<String, Value>, id: &str) -> Map<String, Value> {
+    let mut out = current.clone();
+    if let Some(Value::Object(accounts)) = out.get_mut(ACCOUNTS_FIELD) {
+        accounts.remove(id);
+    }
+    out
+}
+
+/// 回滚那一步：把 `from`（删之前留的那一份）里 `accounts.<id>` 那一条原样放回 `current` ——
+/// 只这一条，`current` 里别的条（删号之后别人写进来的也算）与未知键一个不动。`from` 里没有它 ⇒ 原样返回。
+pub fn restore_account(
+    current: &Map<String, Value>,
+    id: &str,
+    from: &Map<String, Value>,
+) -> Map<String, Value> {
+    let Some(entry) = from
+        .get(ACCOUNTS_FIELD)
+        .and_then(Value::as_object)
+        .and_then(|m| m.get(id))
+        .filter(|v| v.is_object())
+    else {
+        return current.clone();
+    };
+    let mut out = current.clone();
+    let mut accounts = match out.get(ACCOUNTS_FIELD).and_then(Value::as_object) {
+        Some(m) => m.clone(),
+        None => Map::new(),
+    };
+    accounts.insert(id.to_string(), entry.clone());
+    out.insert(ACCOUNTS_FIELD.to_string(), Value::Object(accounts));
+    out
+}
+
 /// **`KS10` 的正主**：把 key 并进一份**刚从盘上读回来的**文档，其余键一个不动。
 ///
 /// # 它为什么收 `current` 而不是收一个 `&mut self`

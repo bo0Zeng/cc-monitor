@@ -9,6 +9,756 @@
     "本波只抽了一个样板区（src/frontend/ui/views/pane-preview.ts）；全量抽表排在最后一波。"
   ],
   "entries": {
+    "accountOps.name.empty": {
+      "kind": "error",
+      "zh": "账号名不能为空",
+      "args": []
+    },
+    "accountOps.name.shape": {
+      "kind": "error",
+      "zh": "账号名不合规。只能用字母、数字、下划线和连字符，以字母或数字开头，最长 {max} 个字符",
+      "args": ["max"]
+    },
+    "accountOps.said.contract": {
+      "kind": "error",
+      "zh": "那台机器的后端版本对不上，需要更新：{detail}",
+      "args": ["detail"]
+    },
+    "accountOps.said.otherCode": {
+      "kind": "error",
+      "zh": "没做成（{code}）：{detail}",
+      "args": ["code", "detail"]
+    },
+    "accountOps.said.noReason": {
+      "kind": "error",
+      "zh": "没做成，那台机器的后端没说原因",
+      "args": []
+    },
+    "accountNewForm.form.makeDefault": {
+      "kind": "control",
+      "zh": "设为默认账号",
+      "args": []
+    },
+    "accounts.row.remove": {
+      "kind": "action",
+      "zh": "删除",
+      "args": []
+    },
+    "accounts.login.launched": {
+      "kind": "body",
+      "zh": "已在终端里起 claude",
+      "args": []
+    },
+    "accounts.login.launchedNext": {
+      "kind": "body",
+      "zh": "在那个终端里按提示登录这个号，登录完回来点「刷新」。",
+      "args": []
+    },
+    "accounts.login.failed": {
+      "kind": "error",
+      "zh": "拿不到登录用的那一行",
+      "args": []
+    },
+    "accounts.remove.confirm": {
+      "kind": "body",
+      "zh": "删除「{machine}」上的账号 {name}？\n\n只删它自己的目录，共享的 skills、记忆、历史都不动。删之前会留一份备份，可以回滚。",
+      "args": ["machine", "name"]
+    },
+    "accounts.remove.confirmDefault": {
+      "kind": "body",
+      "zh": "{name} 是「{machine}」上的默认账号，删掉后剩下的第一个账号会成为默认。\n\n只删它自己的目录，共享的东西都不动。删之前会留一份备份，可以回滚。继续？",
+      "args": ["name", "machine"]
+    },
+    "accounts.remove.done": {
+      "kind": "body",
+      "zh": "已删除账号 {name}",
+      "args": ["name"]
+    },
+    "accounts.remove.failed": {
+      "kind": "error",
+      "zh": "删除账号没成",
+      "args": []
+    },
+    "accountsLocal.init.title": {
+      "kind": "title",
+      "zh": "这台机器还没启用多账号",
+      "args": []
+    },
+    "accountsLocal.init.intro": {
+      "kind": "body",
+      "zh": "给现在这个登录起个名字，它会成为第一个账号。启用后每个账号的凭据各自独立，skills、记忆、历史、设置实时共享。账号清单：{path}",
+      "args": ["path"]
+    },
+    "accounts.notEnabled.enable": {
+      "kind": "action",
+      "zh": "启用多账号",
+      "args": []
+    },
+    "accounts.init.previewEmpty": {
+      "kind": "body",
+      "zh": "填好账号名后，这里显示将要做的几步",
+      "args": []
+    },
+    "accounts.init.confirm": {
+      "kind": "body",
+      "zh": "在「{machine}」上启用多账号，现在这个登录收成账号 {name}：\n\n{steps}\n\n改动前会留一份备份，可以回滚。继续？",
+      "args": ["machine", "name", "steps"]
+    },
+    "accounts.init.done": {
+      "kind": "body",
+      "zh": "已启用多账号，第一个账号是 {name}",
+      "args": ["name"]
+    },
+    "accounts.init.failed": {
+      "kind": "error",
+      "zh": "启用多账号没成",
+      "args": []
+    },
+    "accounts.add.failed": {
+      "kind": "error",
+      "zh": "新建账号没成",
+      "args": []
+    },
+    "accounts.add.done": {
+      "kind": "body",
+      "zh": "已新建账号 {name}",
+      "args": ["name"]
+    },
+    "accounts.add.keyFailed": {
+      "kind": "error",
+      "zh": "API key 没存进去",
+      "args": []
+    },
+    "accounts.maintenance.rollback": {
+      "kind": "action",
+      "zh": "回滚上一次改动",
+      "args": []
+    },
+    "accounts.maintenance.rollbackHint": {
+      "kind": "body",
+      "zh": "按最近一份备份，把账号库还原到那次改动之前。",
+      "args": []
+    },
+    "accounts.verify.pass": {
+      "kind": "body",
+      "zh": "核对通过，有 {warns} 条提示",
+      "args": ["warns"]
+    },
+    "accounts.verify.fail": {
+      "kind": "body",
+      "zh": "有 {fails} 处要修，另有 {warns} 条提示。点「修复」可以补齐链接、改回权限。",
+      "args": ["fails", "warns"]
+    },
+    "accounts.verify.failed": {
+      "kind": "error",
+      "zh": "核对没做成",
+      "args": []
+    },
+    "accounts.repair.nothing": {
+      "kind": "body",
+      "zh": "不用修复",
+      "args": []
+    },
+    "accounts.repair.nothingBody": {
+      "kind": "body",
+      "zh": "链接、权限、邮箱都已经是对的。",
+      "args": []
+    },
+    "accounts.repair.confirm": {
+      "kind": "body",
+      "zh": "在「{machine}」上修复账号库：\n\n{steps}\n\n改动前会留一份备份，可以回滚。继续？",
+      "args": ["machine", "steps"]
+    },
+    "accounts.repair.done": {
+      "kind": "body",
+      "zh": "已修复",
+      "args": []
+    },
+    "accounts.repair.failed": {
+      "kind": "error",
+      "zh": "修复没成",
+      "args": []
+    },
+    "accounts.rollback.confirm": {
+      "kind": "body",
+      "zh": "在「{machine}」上按备份 {backup} 回滚：\n\n{steps}\n\n现场被换掉的那几份会挪进备份目录，不会直接删掉。继续？",
+      "args": ["machine", "backup", "steps"]
+    },
+    "accounts.rollback.done": {
+      "kind": "body",
+      "zh": "已回滚",
+      "args": []
+    },
+    "accounts.rollback.failed": {
+      "kind": "error",
+      "zh": "回滚没成",
+      "args": []
+    },
+    "accounts.change.backup": {
+      "kind": "body",
+      "zh": "改了 {n} 处，备份 {backup}。",
+      "args": ["n", "backup"]
+    },
+    "accounts.change.nothing": {
+      "kind": "body",
+      "zh": "什么都不用改。",
+      "args": []
+    },
+    "beAcctExec.key.noDoor": {
+      "kind": "error",
+      "zh": "这一步要动 key 表 {path}，可这一趟没拿到它的写口，没有动。",
+      "args": ["path"]
+    },
+    "beAcctExec.rollback.rekey": {
+      "kind": "body",
+      "zh": "把 {dir} 那一行放回 key 表 {path}",
+      "args": ["dir", "path"]
+    },
+    "beAcctFace.key.unreadable": {
+      "kind": "error",
+      "zh": "key 表读不了（{e}），这个号在里面那一行没有跟着清掉。",
+      "args": ["e"]
+    },
+    "beAcctPlan.remove.keyOutside": {
+      "kind": "body",
+      "zh": "key 表 {path} 不在家目录底下，没法先备份，{name} 那一行没有清掉。",
+      "args": ["name", "path"]
+    },
+    "beAcctPlan.step.dropKey": {
+      "kind": "body",
+      "zh": "清掉 key 表 {path} 里 {dir} 那一行",
+      "args": ["dir", "path"]
+    },
+    "beUpstreamFileFace.restore.notSaved": {
+      "kind": "error",
+      "zh": "备份 {from} 里没有 {account} 那一行，没法放回去。",
+      "args": ["account", "from"]
+    },
+    "rsToolRegistry.tools.accountsName": {
+      "kind": "title",
+      "zh": "多账号账号库",
+      "args": []
+    },
+    "rsToolRegistry.tools.accountsWhat": {
+      "kind": "body",
+      "zh": "后端在这台机器上建的账号库。每个号一个配置目录，共享的东西链回 ~/.claude",
+      "args": []
+    },
+    "rsToolRegistry.tools.accountsVaultNote": {
+      "kind": "body",
+      "zh": "账号库：清单 accounts.json、每个号的目录和改动前的备份都在这里。启用多账号时，这台现在登录的身份文件（~/.claude/.credentials.json、~/.claude.json）会搬进默认号的目录。",
+      "args": []
+    },
+    "beAcctExec.apply.stopped": {
+      "kind": "error",
+      "zh": "第 {step}/{of} 步没做成：{what}。原因：{e}。前面做了的都记在备份 {backup} 里，可以按它回滚。",
+      "args": ["step", "of", "what", "e", "backup"]
+    },
+    "beAcctExec.copy.kind": {
+      "kind": "error",
+      "zh": "{path} 不是文件、目录或链接，没法原样拷一份。",
+      "args": ["path"]
+    },
+    "beAcctExec.isolate.changed": {
+      "kind": "error",
+      "zh": "{path} 在复制的时候被别的程序改了，这一步没落下。再做一次就好。",
+      "args": ["path"]
+    },
+    "beAcctExec.isolate.noSource": {
+      "kind": "error",
+      "zh": "共享库里没有 {path}，没东西可复制。",
+      "args": ["path"]
+    },
+    "beAcctExec.isolate.selfCheck": {
+      "kind": "error",
+      "zh": "{path} 复制完核对没过，已经改回成链接。",
+      "args": ["path"]
+    },
+    "beAcctExec.manifest.nothing": {
+      "kind": "error",
+      "zh": "计划里要写账号清单，却没给出清单内容。",
+      "args": []
+    },
+    "beAcctExec.manifest.stale": {
+      "kind": "error",
+      "zh": "账号清单在这期间被别处改过，这一趟没写进去。重新做一次。",
+      "args": []
+    },
+    "beAcctExec.mkdir.notDir": {
+      "kind": "error",
+      "zh": "{path} 已经在，而且不是目录。",
+      "args": ["path"]
+    },
+    "beAcctExec.remove.outside": {
+      "kind": "error",
+      "zh": "只删账号库 {accts} 里的东西，{path} 不在里面。",
+      "args": ["accts", "path"]
+    },
+    "beAcctExec.rollback.delete": {
+      "kind": "body",
+      "zh": "删掉 {path}（这一趟新建的）",
+      "args": ["path"]
+    },
+    "beAcctExec.rollback.deleteOutside": {
+      "kind": "error",
+      "zh": "{path} 不在账号库 {accts} 里，没删。",
+      "args": ["path", "accts"]
+    },
+    "beAcctExec.rollback.notSaved": {
+      "kind": "error",
+      "zh": "备份里没有 {path}，没法还原。",
+      "args": ["path"]
+    },
+    "beAcctExec.rollback.outside": {
+      "kind": "error",
+      "zh": "{path} 不在账号库、共享库或家目录底下，跳过了。",
+      "args": ["path"]
+    },
+    "beAcctExec.rollback.restore": {
+      "kind": "body",
+      "zh": "还原 {path}",
+      "args": ["path"]
+    },
+    "beAcctFace.aliases.nameTaken": {
+      "kind": "body",
+      "zh": "别名 {alias} 已经被你自己的一条别名占着，没给账号 {account} 加。",
+      "args": ["alias", "account"]
+    },
+    "beAcctFace.aliases.readFailed": {
+      "kind": "error",
+      "zh": "读不了别名文件，账号别名这次没更新：{e}",
+      "args": ["e"]
+    },
+    "beAcctFace.aliases.unparsed": {
+      "kind": "body",
+      "zh": "别名文件 {path} 里有 {n} 行认不出来，这次没动它。到「别名」里看一眼。",
+      "args": ["path", "n"]
+    },
+    "beAcctFace.aliases.writeFailed": {
+      "kind": "error",
+      "zh": "别名文件没写成：{e}",
+      "args": ["e"]
+    },
+    "beAcctFace.key.notSaved": {
+      "kind": "error",
+      "zh": "账号建好了，API key 没存进去：{e}。在这个账号那一行重新填一次。",
+      "args": ["e"]
+    },
+    "beAcctModel.parse.badJson": {
+      "kind": "error",
+      "zh": "账号清单不是合法的 JSON：{e}",
+      "args": ["e"]
+    },
+    "beAcctModel.parse.badVersion": {
+      "kind": "error",
+      "zh": "账号清单的版本是 {v}，这里只认版本 1。",
+      "args": ["v"]
+    },
+    "beAcctModel.parse.notObject": {
+      "kind": "error",
+      "zh": "账号清单的最外层不是一个对象。",
+      "args": []
+    },
+    "beAcctPlan.account.unknown": {
+      "kind": "error",
+      "zh": "没有叫 {name} 的账号。",
+      "args": ["name"]
+    },
+    "beAcctPlan.add.taken": {
+      "kind": "error",
+      "zh": "已经有叫 {name} 的账号了。",
+      "args": ["name"]
+    },
+    "beAcctPlan.cred.empty": {
+      "kind": "error",
+      "zh": "凭据文件 {path} 是空的。",
+      "args": ["path"]
+    },
+    "beAcctPlan.cred.link": {
+      "kind": "error",
+      "zh": "凭据文件 {path} 是一个链接。导入它会让两个账号共用同一份凭据，所以不收。",
+      "args": ["path"]
+    },
+    "beAcctPlan.cred.missing": {
+      "kind": "error",
+      "zh": "找不到凭据文件 {path}，或者它不是普通文件。",
+      "args": ["path"]
+    },
+    "beAcctPlan.dir.exists": {
+      "kind": "error",
+      "zh": "{path} 已经在了。换个名字，或者先把它挪走。",
+      "args": ["path"]
+    },
+    "beAcctPlan.init.already": {
+      "kind": "error",
+      "zh": "账号库已经建过了（{path}）。",
+      "args": ["path"]
+    },
+    "beAcctPlan.init.linkedIdentity": {
+      "kind": "error",
+      "zh": "{path} 是一个指向 {target} 的链接，这多半是以前的切号方式留下的。先把它换回一份普通文件再建账号库。",
+      "args": ["path", "target"]
+    },
+    "beAcctPlan.isolate.already": {
+      "kind": "body",
+      "zh": "{name} 的 {item} 已经是它自己的一份，跳过。",
+      "args": ["name", "item"]
+    },
+    "beAcctPlan.isolate.badItem": {
+      "kind": "error",
+      "zh": "要隔离的项 {item} 不对。只能是共享库顶层的一个名字。",
+      "args": ["item"]
+    },
+    "beAcctPlan.isolate.notDeclared": {
+      "kind": "body",
+      "zh": "{item} 不是身份文件。之后「核对」会提示它不是共享链接，这是预期的。",
+      "args": ["item"]
+    },
+    "beAcctPlan.isolate.notShared": {
+      "kind": "error",
+      "zh": "共享库 {shared} 里没有 {item}。",
+      "args": ["shared", "item"]
+    },
+    "beAcctPlan.links.noneShared": {
+      "kind": "body",
+      "zh": "共享库 {shared} 里还没有东西可共享。这个账号暂时只有自己的身份文件。",
+      "args": ["shared"]
+    },
+    "beAcctPlan.name.shape": {
+      "kind": "error",
+      "zh": "账号名不合规：{name}。只能用字母、数字、下划线和连字符，以字母或数字开头，最长 {max} 个字符。",
+      "args": ["name", "max"]
+    },
+    "beAcctPlan.name.zero": {
+      "kind": "error",
+      "zh": "0 是保留名，指的是不设配置目录直接起 claude 的那个状态。换个名字。",
+      "args": []
+    },
+    "beAcctPlan.need.noManifest": {
+      "kind": "error",
+      "zh": "这台机器还没建账号库（{path} 不在）。先启用多账号。",
+      "args": ["path"]
+    },
+    "beAcctPlan.remove.backupKeeps": {
+      "kind": "body",
+      "zh": "这个账号的凭据会在备份目录里留一份，回滚要用。不需要时可以手动删掉备份。",
+      "args": []
+    },
+    "beAcctPlan.remove.default": {
+      "kind": "error",
+      "zh": "{name} 是默认账号。确定要删的话，在确认框里选删除默认账号。",
+      "args": ["name"]
+    },
+    "beAcctPlan.remove.newDefault": {
+      "kind": "body",
+      "zh": "默认账号改成了 {name}。",
+      "args": ["name"]
+    },
+    "beAcctPlan.remove.outside": {
+      "kind": "error",
+      "zh": "{path} 不在账号库 {accts} 里，不能这样删。",
+      "args": ["path", "accts"]
+    },
+    "beAcctPlan.remove.zero": {
+      "kind": "error",
+      "zh": "账号 0 删不掉，它就是不设配置目录的那个状态。",
+      "args": []
+    },
+    "beAcctPlan.repair.entity": {
+      "kind": "body",
+      "zh": "{name} 里的 {item} 是一份自己的文件而不是共享链接，没有动它。要共享的话，先把内容合进共享库再删掉它。",
+      "args": ["name", "item"]
+    },
+    "beAcctPlan.repair.skipMissing": {
+      "kind": "body",
+      "zh": "跳过 {name}：它的目录 {path} 不在。",
+      "args": ["name", "path"]
+    },
+    "beAcctPlan.repair.skipOutside": {
+      "kind": "body",
+      "zh": "跳过 {name}：它的目录 {path} 不在账号库里。",
+      "args": ["name", "path"]
+    },
+    "beAcctPlan.step.chmod": {
+      "kind": "body",
+      "zh": "改权限 {at} → {mode}",
+      "args": ["at", "mode"]
+    },
+    "beAcctPlan.step.copy": {
+      "kind": "body",
+      "zh": "导入凭据 {from} → {to}",
+      "args": ["from", "to"]
+    },
+    "beAcctPlan.step.isolate": {
+      "kind": "body",
+      "zh": "复制成自己的一份 {at}（取自 {from}，共享库那份留着）",
+      "args": ["at", "from"]
+    },
+    "beAcctPlan.step.link": {
+      "kind": "body",
+      "zh": "建链接 {at} → {target}",
+      "args": ["at", "target"]
+    },
+    "beAcctPlan.step.manifest": {
+      "kind": "body",
+      "zh": "写账号清单 {path}",
+      "args": ["path"]
+    },
+    "beAcctPlan.step.mkdir": {
+      "kind": "body",
+      "zh": "建目录 {path}",
+      "args": ["path"]
+    },
+    "beAcctPlan.step.move": {
+      "kind": "body",
+      "zh": "搬文件 {from} → {to}",
+      "args": ["from", "to"]
+    },
+    "beAcctPlan.step.relink": {
+      "kind": "body",
+      "zh": "改链接 {at} → {target}",
+      "args": ["at", "target"]
+    },
+    "beAcctPlan.step.remove": {
+      "kind": "body",
+      "zh": "删除 {path}",
+      "args": ["path"]
+    },
+    "beAcctScan.manifest.unreadable": {
+      "kind": "error",
+      "zh": "读不了账号清单 {path}：{e}",
+      "args": ["path", "e"]
+    },
+    "beAcctScan.roots.nested": {
+      "kind": "error",
+      "zh": "共享库 {shared} 和账号库 {accts} 不能一个套在另一个里面。",
+      "args": ["shared", "accts"]
+    },
+    "beAcctScan.roots.outsideHome": {
+      "kind": "error",
+      "zh": "{path} 不在家目录 {home} 底下，这里不改它。",
+      "args": ["path", "home"]
+    },
+    "beAcctVerify.acct.credMode": {
+      "kind": "error",
+      "zh": "凭据的权限是 {mode}，应当是 600。点「修复」改回来。",
+      "args": ["mode"]
+    },
+    "beAcctVerify.acct.credOk": {
+      "kind": "body",
+      "zh": "{item} 是这个账号自己的，权限 600",
+      "args": ["item"]
+    },
+    "beAcctVerify.acct.dirMode": {
+      "kind": "body",
+      "zh": "目录权限 700",
+      "args": []
+    },
+    "beAcctVerify.acct.dirModeBad": {
+      "kind": "error",
+      "zh": "目录权限是 {mode}，应当是 700（里面有凭据）。点「修复」改回来。",
+      "args": ["mode"]
+    },
+    "beAcctVerify.acct.dirModeInPlace": {
+      "kind": "body",
+      "zh": "目录权限是 {mode}。这个账号的目录就是共享库，不要求 700。",
+      "args": ["mode"]
+    },
+    "beAcctVerify.acct.email": {
+      "kind": "body",
+      "zh": "邮箱：{email}",
+      "args": ["email"]
+    },
+    "beAcctVerify.acct.identityLink": {
+      "kind": "error",
+      "zh": "{item} 是一个链接，两个账号会共用同一个身份。点「修复」把它换成这个账号自己的一份。",
+      "args": ["item"]
+    },
+    "beAcctVerify.acct.identityOwn": {
+      "kind": "body",
+      "zh": "{item} 是这个账号自己的",
+      "args": ["item"]
+    },
+    "beAcctVerify.acct.inPlaceLinks": {
+      "kind": "body",
+      "zh": "这个账号的目录就是共享库，不查共享链接",
+      "args": []
+    },
+    "beAcctVerify.acct.linkBroken": {
+      "kind": "error",
+      "zh": "共享链接 {item} 断了。点「修复」重建。",
+      "args": ["item"]
+    },
+    "beAcctVerify.acct.linkEntity": {
+      "kind": "error",
+      "zh": "{item} 是这个号自己的一份文件。它的改动别的账号看不到，应当是共享链接。",
+      "args": ["item"]
+    },
+    "beAcctVerify.acct.linkMissing": {
+      "kind": "error",
+      "zh": "少了 {n} 个共享链接。点「修复」补上。",
+      "args": ["n"]
+    },
+    "beAcctVerify.acct.linksOk": {
+      "kind": "body",
+      "zh": "{n} 个共享链接都在",
+      "args": ["n"]
+    },
+    "beAcctVerify.acct.linkWrong": {
+      "kind": "error",
+      "zh": "共享链接 {item} 指向 {target}，应当指向 {want}。点「修复」改回来。",
+      "args": ["item", "target", "want"]
+    },
+    "beAcctVerify.acct.missing": {
+      "kind": "error",
+      "zh": "账号目录 {path} 不在。",
+      "args": ["path"]
+    },
+    "beAcctVerify.acct.noEmail": {
+      "kind": "body",
+      "zh": "还不知道邮箱（没登录过，或者还没有 .claude.json）",
+      "args": []
+    },
+    "beAcctVerify.acct.noShared": {
+      "kind": "error",
+      "zh": "共享库 {shared} 里一样可共享的都没有，这样根本没有共享。",
+      "args": ["shared"]
+    },
+    "beAcctVerify.acct.notLoggedIn": {
+      "kind": "body",
+      "zh": "还没登录。点这个账号的「去登录」。",
+      "args": []
+    },
+    "beAcctVerify.acct.outside": {
+      "kind": "error",
+      "zh": "账号目录 {path} 不在账号库 {accts} 里，也不是共享库。",
+      "args": ["path", "accts"]
+    },
+    "beAcctVerify.acct.sourceBroken": {
+      "kind": "body",
+      "zh": "共享链接 {item} 断了，是共享库里的 {source} 本身就指向不在的 {target}。到共享库里修掉或删掉它。",
+      "args": ["item", "source", "target"]
+    },
+    "beAcctVerify.acct.unexpected": {
+      "kind": "body",
+      "zh": "{item} 既不是身份文件也不是共享链接。要共享就挪进共享库，要私有就留着。",
+      "args": ["item"]
+    },
+    "beAcctVerify.drift.nowhere": {
+      "kind": "body",
+      "zh": "{item} 在共享库、家目录和各个账号里都没找到。可能只是还没用到，也可能 Claude Code 换了它的位置。",
+      "args": ["item"]
+    },
+    "beAcctVerify.drift.secretLike": {
+      "kind": "body",
+      "zh": "共享库里的 {item} 权限是 600，却不在身份文件里。它会被链给每个账号；如果它是身份的一部分，就会串号。",
+      "args": ["item"]
+    },
+    "beAcctVerify.global.badManifest": {
+      "kind": "error",
+      "zh": "账号清单读不了：{e}",
+      "args": ["e"]
+    },
+    "beAcctVerify.global.homeConfig": {
+      "kind": "body",
+      "zh": "{path} 又出现了，说明有人没指定账号直接起过 claude。",
+      "args": ["path"]
+    },
+    "beAcctVerify.global.inPlace": {
+      "kind": "body",
+      "zh": "有账号的目录就是共享库本身，它的 .claude.json 会和 {home} 分成两份。现在还没分开。",
+      "args": ["home"]
+    },
+    "beAcctVerify.global.inPlaceSplit": {
+      "kind": "body",
+      "zh": "有账号的目录就是共享库本身。{shared} 和 {home} 已经是两份 .claude.json：同一个登录，两套本机状态。",
+      "args": ["shared", "home"]
+    },
+    "beAcctVerify.global.noManifest": {
+      "kind": "error",
+      "zh": "还没建账号库（{path} 不在）。",
+      "args": ["path"]
+    },
+    "beAcctVerify.global.residue": {
+      "kind": "error",
+      "zh": "共享库 {shared} 里有 {item}，它不属于任何账号，而且里面有登录身份。核对后手动挪走它。",
+      "args": ["shared", "item"]
+    },
+    "beAcctVerify.global.residueInPlace": {
+      "kind": "body",
+      "zh": "共享库里有 {item}，有账号的目录就是共享库，不算问题",
+      "args": ["item"]
+    },
+    "beAcctVerify.global.roots": {
+      "kind": "error",
+      "zh": "{e}",
+      "args": ["e"]
+    },
+    "beAcctVerify.global.unknown": {
+      "kind": "error",
+      "zh": "没有叫 {name} 的账号。",
+      "args": ["name"]
+    },
+    "beAcctVerify.global.zeroIn": {
+      "kind": "body",
+      "zh": "账号 0 已登录（共享库里有凭据）",
+      "args": []
+    },
+    "beAcctVerify.global.zeroOut": {
+      "kind": "body",
+      "zh": "账号 0 没登录",
+      "args": []
+    },
+    "beAcctVerify.iso.distinct": {
+      "kind": "body",
+      "zh": "{n} 个账号的邮箱互不相同",
+      "args": ["n"]
+    },
+    "beAcctVerify.iso.dup": {
+      "kind": "error",
+      "zh": "{a} 和 {b} 的邮箱都是 {email}，两个账号没隔离开。",
+      "args": ["a", "b", "email"]
+    },
+    "beAcctVerify.iso.tooFew": {
+      "kind": "body",
+      "zh": "知道邮箱的账号不到两个，没法比较是否隔离开",
+      "args": []
+    },
+    "beAcctWire.cred.outsideHome": {
+      "kind": "error",
+      "zh": "凭据文件 {path} 要在家目录 {home} 底下，写绝对路径或者用 ~/ 开头。",
+      "args": ["path", "home"]
+    },
+    "beAcctWire.platform.unsupported": {
+      "kind": "error",
+      "zh": "这台机器（{os}）上还不支持多账号。",
+      "args": ["os"]
+    },
+    "beAcctWire.rollback.badId": {
+      "kind": "error",
+      "zh": "备份名 {id} 不对。只能是备份目录名里 .backup- 后面那一段。",
+      "args": ["id"]
+    },
+    "beAcctWire.rollback.badLine": {
+      "kind": "body",
+      "zh": "备份的撤销清单里有一行认不出来，跳过了：{line}",
+      "args": ["line"]
+    },
+    "beAcctWire.rollback.none": {
+      "kind": "error",
+      "zh": "账号库 {accts} 里没有可以回滚的备份（回滚过的不算）。",
+      "args": ["accts"]
+    },
+    "beAcctWire.rollback.noUndo": {
+      "kind": "error",
+      "zh": "备份 {path} 不完整，缺撤销清单。",
+      "args": ["path"]
+    },
+    "beAcctWire.rollback.partial": {
+      "kind": "error",
+      "zh": "回滚做了 {done} 步，有几步没做成：{failed}。备份还在 {path}，处理掉原因后可以再回滚一次。",
+      "args": ["done", "failed", "path"]
+    },
     "bePlan.env.configIgnored": {
       "kind": "error",
       "zh": "ccm: {path} 不会被读取。里面的两个值改用环境变量 CCM_ACCTS_MANIFEST 和 CCM_ENV。",
@@ -872,61 +1622,6 @@
       "zh": "预览画面失败",
       "args": []
     },
-    "accountsLocal.acctIso.installed": {
-      "kind": "body",
-      "zh": "这台机器已装 cc-acct-iso：{path}",
-      "args": ["path"]
-    },
-    "accountsLocal.acctIso.missing": {
-      "kind": "body",
-      "zh": "这台机器还没装 cc-acct-iso。",
-      "args": []
-    },
-    "accountsLocal.acctIso.probeFailed": {
-      "kind": "error",
-      "zh": "查不出这台机器装没装 cc-acct-iso：{reason}",
-      "args": ["reason"]
-    },
-    "accountsLocal.acctIso.initNext": {
-      "kind": "body",
-      "zh": "下一步：在终端里跑 cc-acct-iso init <账号名> --apply。它把现在这个登录态收进第一个隔离账号；跑完回来点「刷新」。",
-      "args": []
-    },
-    "accountsLocal.rc.action": {
-      "kind": "action",
-      "zh": "生成 rc 片段",
-      "args": []
-    },
-    "accountsLocal.rc.hover": {
-      "kind": "body",
-      "zh": "读这台机器上 cc-acct-iso shellinit 的输出，给你一段可以贴进 shell 配置的片段。只读，不会替你写任何文件。",
-      "args": []
-    },
-    "accountsLocal.rc.target": {
-      "kind": "body",
-      "zh": "这台机器的 ~/.bashrc（zsh 用户贴 ~/.zshrc）",
-      "args": []
-    },
-    "accountsLocal.rc.merge": {
-      "kind": "body",
-      "zh": "追加到文件末尾。片段自带 BEGIN / END 两行标记，重新生成时只替换两行之间那一段，别贴成两份。",
-      "args": []
-    },
-    "accountsLocal.rc.activation": {
-      "kind": "body",
-      "zh": "重新开一个登录 shell，或在当前 shell 里 source 它（已经开着的其他 shell 不受影响）。",
-      "args": []
-    },
-    "accountsLocal.rc.incomplete": {
-      "kind": "error",
-      "zh": "片段不完整，先别贴。缺了 BEGIN / END 标记，在终端里跑一次 cc-acct-iso verify 看看是什么状况。",
-      "args": []
-    },
-    "accountsLocal.rc.failed": {
-      "kind": "error",
-      "zh": "生成 rc 片段失败",
-      "args": []
-    },
     "accountsLocal.list.scope": {
       "kind": "body",
       "zh": "这一节列出这台机器上的账号，也可以在下面新建一个。",
@@ -934,27 +1629,12 @@
     },
     "accountsLocal.new.subscriptionHint": {
       "kind": "body",
-      "zh": "创建后在这台机器的终端里跑建号命令；跑完在那个终端里用这个号 /login。",
+      "zh": "建好后起 claude 登录这个号。本机不开终端窗口，登录那一行会复制给你，在自己的终端里跑。导入了旧凭据就不用再登录。",
       "args": []
     },
     "accountsLocal.new.apikeyHint": {
       "kind": "body",
-      "zh": "创建后在这台机器的终端里跑建号命令；这个号出现在上面的列表里时（跑完点「刷新」），这把 key 自动写进 API key 表。在那之前 key 只留在这个窗口里，关掉 cc-monitor 就没了。",
-      "args": []
-    },
-    "accountsLocal.new.cmdInvalid": {
-      "kind": "error",
-      "zh": "命令无法生成",
-      "args": []
-    },
-    "accountsLocal.new.launched": {
-      "kind": "body",
-      "zh": "已在终端里运行建号命令",
-      "args": []
-    },
-    "accountsLocal.new.launchedNext": {
-      "kind": "body",
-      "zh": "跑完点「刷新」，新账号就会出现在列表里。",
+      "zh": "key 直接存进这台机器的 API key 表，界面上只显示掩码。",
       "args": []
     },
     "accountsLocal.new.noWindowCopied": {
@@ -6179,11 +6859,6 @@
       "zh": "不动我的 shell 配置",
       "args": []
     },
-    "machineAliases.perAccount.failed": {
-      "kind": "error",
-      "zh": "读不到这台机器上的账号：{e}",
-      "args": ["e"]
-    },
     "machineAliases.changed.failed": {
       "kind": "error",
       "zh": "生成失败：{e}",
@@ -6295,16 +6970,6 @@
     "machineAliases.paste.mergeNote": {
       "kind": "body",
       "zh": "整段贴到文件末尾；以后改了清单，再贴一次换掉上一次那段。",
-      "args": []
-    },
-    "machineAliases.form.perAccountHint": {
-      "kind": "body",
-      "zh": "一次性的：每个还没有别名的账号加一条「<名>cc → --account <名>」。以后加了账号不会自动多一条。",
-      "args": []
-    },
-    "machineAliases.form.perAccount": {
-      "kind": "action",
-      "zh": "为每个账号加一条",
       "args": []
     },
     "machineAliases.form.clear": {
@@ -6605,11 +7270,6 @@
       "zh": "不能在这台机器上按账号隔离地起会话",
       "args": []
     },
-    "readiness.meaning.accountIso": {
-      "kind": "body",
-      "zh": "这台机器上没有 cc-acct-iso，开不了多账号",
-      "args": []
-    },
     "readiness.meaning.cc": {
       "kind": "body",
       "zh": "终端里没有 cc 命令；从终端起的会话 app 也认不出",
@@ -6633,56 +7293,6 @@
     "readiness.gapHead.missing": {
       "kind": "body",
       "zh": "缺",
-      "args": []
-    },
-    "acctDeploy.cmd.refused": {
-      "kind": "error",
-      "zh": "命令拼不出来：{detail}",
-      "args": ["detail"]
-    },
-    "acctDeploy.cmd.contract": {
-      "kind": "error",
-      "zh": "那台机器的后端版本不对，需要更新：{detail}",
-      "args": ["detail"]
-    },
-    "acctDeploy.cmd.otherCode": {
-      "kind": "error",
-      "zh": "命令拼不出来（{code}）：{detail}",
-      "args": ["code", "detail"]
-    },
-    "acctDeploy.cmd.noReason": {
-      "kind": "error",
-      "zh": "命令拼不出来，那台机器的后端没说原因",
-      "args": []
-    },
-    "beIso.cmd.badName": {
-      "kind": "error",
-      "zh": "账号名不合规：{name}。只能用字母、数字、下划线和连字符，以字母或数字开头，最长 {max} 个字符",
-      "args": ["name", "max"]
-    },
-    "beIso.cmd.snapshotEmpty": {
-      "kind": "error",
-      "zh": "凭据快照路径是空的",
-      "args": []
-    },
-    "beIso.cmd.snapshotQuote": {
-      "kind": "error",
-      "zh": "凭据快照路径不能含双引号：{path}",
-      "args": ["path"]
-    },
-    "beIso.cmd.snapshotControl": {
-      "kind": "error",
-      "zh": "凭据快照路径不能含控制字符：{path}",
-      "args": ["path"]
-    },
-    "acctDeploy.name.shape": {
-      "kind": "error",
-      "zh": "账号名不合规。只能用字母、数字、下划线和连字符，以字母或数字开头，最长 {max} 个字符",
-      "args": ["max"]
-    },
-    "acctDeploy.name.empty": {
-      "kind": "error",
-      "zh": "账号名不能为空",
       "args": []
     },
     "assets.skill.listSep": {
@@ -7299,22 +7909,22 @@
     },
     "accountNewForm.form.willRunEmpty": {
       "kind": "body",
-      "zh": "填好账号名后，这里显示将运行的命令",
+      "zh": "填好账号名后，这里显示将要做的几步",
       "args": []
     },
     "accountNewForm.form.willRun": {
       "kind": "body",
-      "zh": "将在终端里运行：",
+      "zh": "将要做的：",
       "args": []
     },
     "accountNewForm.form.snapshot": {
       "kind": "control",
-      "zh": "旧凭据快照路径",
+      "zh": "旧凭据文件路径",
       "args": []
     },
     "accountNewForm.form.advanced": {
       "kind": "title",
-      "zh": "高级：从旧凭据快照导入，免重登",
+      "zh": "高级：从旧凭据文件导入，免重登",
       "args": []
     },
     "accountNewForm.form.baseUrl": {
@@ -7329,7 +7939,7 @@
     },
     "accountNewForm.form.apikeyHint": {
       "kind": "body",
-      "zh": "创建后弹出终端建好账号目录；这个号出现在下面的账号列表里时（终端跑完点「刷新」），这把 key 自动写进 API key 表。在那之前 key 只留在这个窗口里，关掉 monitor 就没了。",
+      "zh": "key 直接存进这台机器的 API key 表，界面上只显示掩码。",
       "args": []
     },
     "accountNewForm.form.apikey": {
@@ -7339,7 +7949,7 @@
     },
     "accountNewForm.form.subscriptionHint": {
       "kind": "body",
-      "zh": "创建后弹出终端，在那个终端里用这个号 /login。",
+      "zh": "建好后在终端里起 claude 登录这个号；导入了旧凭据就不用再登录。",
       "args": []
     },
     "accountNewForm.form.subscription": {
@@ -7487,74 +8097,24 @@
       "zh": "★",
       "args": []
     },
-    "accounts.rc.failed": {
-      "kind": "error",
-      "zh": "生成 rc 片段失败",
-      "args": []
-    },
-    "accounts.rc.incomplete": {
-      "kind": "error",
-      "zh": "片段不完整，先别贴。缺了 BEGIN / END 标记，在远端跑一次 cc-acct-iso verify 看看是什么状况。",
-      "args": []
-    },
-    "accounts.rc.activation": {
-      "kind": "body",
-      "zh": "source 它，或在这台远端开一个新的登录 shell（已经开着的 shell 不受影响）。",
-      "args": []
-    },
-    "accounts.rc.merge": {
-      "kind": "body",
-      "zh": "追加到文件末尾，并删掉你以前手写的 swap 式切号块。片段自带 BEGIN / END 两行标记，重新生成时替换两行之间那一段就行，别贴成两份。",
-      "args": []
-    },
-    "accounts.rc.target": {
-      "kind": "body",
-      "zh": "这台远端的 ~/.bashrc（zsh 用户贴 ~/.zshrc；它是登录 shell 的配置文件）",
-      "args": []
-    },
-    "accounts.rc.fetching": {
-      "kind": "action",
-      "zh": "抓取中…",
-      "args": []
-    },
-    "accounts.rc.noConfigBody": {
-      "kind": "error",
-      "zh": "请先在「远端」里配好它",
-      "args": []
-    },
-    "accounts.rc.noConfig": {
-      "kind": "error",
-      "zh": "拿不到这台远端的配置",
-      "args": []
-    },
-    "accounts.maintenance.rcHint": {
-      "kind": "body",
-      "zh": "抓远端 cc-acct-iso shellinit 的输出，给你一段可以贴的 rc 片段。贴了之后裸 claude 走默认账号，每个账号有 <名>cc 函数，账号 0 用 0cc。只读，不会替你写任何文件。",
-      "args": []
-    },
-    "accounts.maintenance.rc": {
-      "kind": "action",
-      "zh": "生成 rc 片段…",
-      "args": []
-    },
     "accounts.maintenance.syncHint": {
       "kind": "body",
-      "zh": "补齐或修复共享库软链、修权限、刷新账号清单里的邮箱。可以重复跑（幂等）。",
+      "zh": "补齐共享链接、改回权限、刷新邮箱。也会补上每个账号的别名，可以重复跑。",
       "args": []
     },
     "accounts.maintenance.sync": {
       "kind": "action",
-      "zh": "补链 sync",
+      "zh": "修复",
       "args": []
     },
     "accounts.maintenance.verify": {
       "kind": "action",
-      "zh": "自检 verify",
+      "zh": "核对",
       "args": []
     },
     "accounts.maintenance.title": {
       "kind": "title",
-      "zh": "维护 · 自检 / 补链 / rc 片段",
+      "zh": "维护 · 核对 / 修复 / 回滚",
       "args": []
     },
     "accounts.readApikey.failed": {
@@ -7576,26 +8136,6 @@
       "kind": "body",
       "zh": "已写入 API key",
       "args": []
-    },
-    "accounts.pending.noDir": {
-      "kind": "error",
-      "zh": "{name} 没有自己的账号目录，API key 表里配了也不会被用上。",
-      "args": ["name"]
-    },
-    "accounts.pending.notWritten": {
-      "kind": "error",
-      "zh": "API key 没写",
-      "args": []
-    },
-    "accounts.pending.drop": {
-      "kind": "action",
-      "zh": "放弃",
-      "args": []
-    },
-    "accounts.pending.waiting": {
-      "kind": "body",
-      "zh": "等 {name} 出现在账号列表里（终端跑完点「刷新」），就把它的 API key 写进去。",
-      "args": ["name"]
     },
     "accounts.table.bulkGone": {
       "kind": "body",
@@ -7637,64 +8177,6 @@
       "zh": "未设当前账号",
       "args": []
     },
-    "accounts.notEnabled.moveNote": {
-      "kind": "body",
-      "zh": "这会把现有默认账号的凭据与 .claude.json 搬进账号库、其余项建 symlink。",
-      "args": []
-    },
-    "accounts.sync.empty": {
-      "kind": "body",
-      "zh": "填入合法账号名后，这里显示将运行的命令",
-      "args": []
-    },
-    "accounts.sync.script": {
-      "kind": "body",
-      "zh": "# 预览计划（不写盘）\n{cmd}\n\n# 执行迁移\n{cmd2}\n\n# 打印 rc 片段\ncc-acct-iso shellinit",
-      "args": ["cmd", "cmd2"]
-    },
-    "accounts.notEnabled.steps": {
-      "kind": "body",
-      "zh": "<small>顺序：① 看计划，什么都不动 → ② 执行迁移 → ③ 自检 → ④ 把打印的片段贴进 <code>~/.bashrc</code>，工具不改你的 rc → 回来点「刷新」。第二个账号可在启用后用「加账号」导入。</small>",
-      "args": [],
-      "waive": {
-        "C-L1": "步骤清单，一步一格用箭头连着；拆成几句反而看不出次序"
-      }
-    },
-    "accounts.notEnabled.step4": {
-      "kind": "action",
-      "zh": "④ 打印 rc 片段",
-      "args": []
-    },
-    "accounts.notEnabled.step3": {
-      "kind": "action",
-      "zh": "③ 自检 verify",
-      "args": []
-    },
-    "accounts.notEnabled.step2": {
-      "kind": "action",
-      "zh": "② 执行迁移（--apply）",
-      "args": []
-    },
-    "accounts.notEnabled.step1": {
-      "kind": "action",
-      "zh": "① 预览计划（dry-run）",
-      "args": []
-    },
-    "accounts.notEnabled.copiedNext": {
-      "kind": "body",
-      "zh": "可粘到远端终端里跑。",
-      "args": []
-    },
-    "accounts.notEnabled.copied": {
-      "kind": "body",
-      "zh": "已复制命令",
-      "args": []
-    },
-    "accounts.notEnabled.copy": {
-      "kind": "action",
-      "zh": "复制命令",
-      "args": []
-    },
     "accounts.notEnabled.defaultNameHint": {
       "kind": "control",
       "zh": "例如 z",
@@ -7702,12 +8184,12 @@
     },
     "accounts.notEnabled.defaultName": {
       "kind": "control",
-      "zh": "默认账号名，现有的默认账号会迁进来：",
+      "zh": "给现在这个登录起个名字：",
       "args": []
     },
     "accounts.notEnabled.intro": {
       "kind": "body",
-      "zh": "在远端跑 cc-acct-iso 迁移管线就能启用。启用后各账号凭据独立，skills、记忆、历史、设置实时共享。<br>原因：{reason}<br>账号清单查找位置：<code>{path}</code>",
+      "zh": "启用后每个账号的凭据各自独立，skills、记忆、历史、设置实时共享。给现在这个登录起个名字，它会成为第一个账号。原因：{reason}。账号清单查找位置：{path}",
       "args": ["reason", "path"]
     },
     "accounts.notEnabled.noPath": {
@@ -7718,56 +8200,6 @@
     "accounts.notEnabled.title": {
       "kind": "body",
       "zh": "该远端尚未启用多账号",
-      "args": []
-    },
-    "accounts.needsDeploy.failed": {
-      "kind": "error",
-      "zh": "部署 cc-acct-iso 失败",
-      "args": []
-    },
-    "accounts.needsDeploy.done": {
-      "kind": "body",
-      "zh": "已部署 cc-acct-iso",
-      "args": []
-    },
-    "accounts.needsDeploy.deploying": {
-      "kind": "action",
-      "zh": "部署中…",
-      "args": []
-    },
-    "accounts.needsDeploy.deploy": {
-      "kind": "action",
-      "zh": "一键部署 cc-acct-iso",
-      "args": []
-    },
-    "accounts.needsDeploy.title": {
-      "kind": "body",
-      "zh": "该远端还没装多账号管线（cc-acct-iso）",
-      "args": []
-    },
-    "accounts.launchStep.failed": {
-      "kind": "error",
-      "zh": "拉起终端失败",
-      "args": []
-    },
-    "accounts.launchStep.launchedNext": {
-      "kind": "body",
-      "zh": "完成后点「刷新」更新账号列表。",
-      "args": []
-    },
-    "accounts.launchStep.launched": {
-      "kind": "body",
-      "zh": "已在终端里运行",
-      "args": []
-    },
-    "accounts.launchStep.confirm": {
-      "kind": "body",
-      "zh": "将在远端「{machine}」的终端里运行：\n\n{cmd}\n\n{extra}命令在你看得见的终端里执行、需你亲手确认；工具自带备份，可以还原。继续？",
-      "args": ["machine", "cmd", "extra"]
-    },
-    "accounts.launchStep.cmdInvalid": {
-      "kind": "error",
-      "zh": "命令无法生成",
       "args": []
     },
     "accounts.status.count": {
@@ -12657,11 +13089,6 @@
       "zh": "查不动：{why}",
       "args": ["why"]
     },
-    "rsConfigSurface.home.unresolvable": {
-      "kind": "error",
-      "zh": "登记的名字解析不成本机路径：{msg}",
-      "args": ["msg"]
-    },
     "rsConfigSurface.onPath.present": {
       "kind": "body",
       "zh": "PATH 上有 {named}",
@@ -12780,11 +13207,6 @@
     "rsConfigSurface.source.embeddedBinary": {
       "kind": "body",
       "zh": "随 cc-monitor 一起安装的程序",
-      "args": []
-    },
-    "rsConfigSurface.source.vendored": {
-      "kind": "body",
-      "zh": "随 cc-monitor 一起安装的第三方组件",
       "args": []
     },
     "rsConfigSurface.source.repoDir": {
@@ -13810,11 +14232,6 @@
     "rsDataPaths.backend.listenPid": {
       "kind": "body",
       "zh": "本机常驻后端的进程记录。后端运行时要用，删了要重起后端",
-      "args": []
-    },
-    "rsDataPaths.backend.acctIso": {
-      "kind": "body",
-      "zh": "多账号工具 cc-acct-iso，删了要重装",
       "args": []
     },
     "rsDataPaths.backend.policy": {
@@ -15568,7 +15985,7 @@
     },
     "accounts.local.emptyNext": {
       "kind": "body",
-      "zh": "下一步：在这台机器上装好 cc-acct-iso，跑一次初始化。现在这个登录态会收进第一个隔离账号。cc-monitor 不在本机替你装，要在终端里做。",
+      "zh": "多账号已经启用，只是还没有账号：在下面新建一个。",
       "args": []
     },
     "accounts.local.emptyTitle": {
@@ -15653,7 +16070,7 @@
     },
     "accounts.loginAction.loginHint": {
       "kind": "body",
-      "zh": "用该账号打开一个远端终端（在里面 /login）",
+      "zh": "在终端里用这个号起 claude，按提示登录",
       "args": []
     },
     "accounts.loginAction.goLogin": {
@@ -15668,7 +16085,7 @@
     },
     "accounts.loginAction.openTerminalHint": {
       "kind": "body",
-      "zh": "用该账号打开一个远端终端。API key 号不需要 /login，要在里面配好端点环境变量",
+      "zh": "在终端里用这个号起 claude（API key 号不需要登录）",
       "args": []
     },
     "accounts.loginAction.openTerminal": {
@@ -15764,16 +16181,6 @@
     "rsToolRegistry.environment.managedWhy": {
       "kind": "body",
       "zh": "谁来装看它装到哪台机器；这里能装的由 cc-monitor 装",
-      "args": []
-    },
-    "rsToolRegistry.env.acctIsoLocalWhy": {
-      "kind": "body",
-      "zh": "本机这一份要你自己装；这里只能装远端那一份",
-      "args": []
-    },
-    "rsToolRegistry.env.acctIsoLocalName": {
-      "kind": "title",
-      "zh": "cc-acct-iso 本机那份",
       "args": []
     },
     "rsToolRegistry.env.mcpServerWhy": {
@@ -16043,31 +16450,6 @@
       "zh": "cc-monitor 后端",
       "args": []
     },
-    "rsToolRegistry.tools.acctIsoVaultNote": {
-      "kind": "body",
-      "zh": "账号库：列举走远端 ssh；本机 CLAUDE_CONFIG_DIR 也可能指进来，两端都可能有",
-      "args": []
-    },
-    "rsToolRegistry.tools.acctIsoDestNote": {
-      "kind": "body",
-      "zh": "远端，部署目录是你在账号页填的那个值",
-      "args": []
-    },
-    "rsToolRegistry.tools.acctIsoDestWhat": {
-      "kind": "body",
-      "zh": "部署时在账号页填的「部署目录」",
-      "args": []
-    },
-    "rsToolRegistry.tools.acctIsoWhat": {
-      "kind": "body",
-      "zh": "随 cc-monitor 带着的那一份 cc-acct-iso，部署到远端你填的那个目录",
-      "args": []
-    },
-    "rsToolRegistry.tools.acctIsoName": {
-      "kind": "title",
-      "zh": "cc-acct-iso 多账号隔离",
-      "args": []
-    },
     "rsToolRegistry.tools.ccBusStateNote": {
       "kind": "body",
       "zh": "运行期状态：收件箱、名册、队列、日志。本机与远端都读；发消息、派活、广播、收掉这些写操作只动远端那份",
@@ -16075,7 +16457,7 @@
     },
     "rsToolRegistry.tools.ccBusBinNote": {
       "kind": "body",
-      "zh": "cc-bus 自己的安装脚本建的命令链接，不是 cc-monitor 建的。钩子诊断只查 cc-register 与 cc-bus-stop-hook 在不在；计数会把 cc-acct-iso 同前缀的链接也算进去，多 1",
+      "zh": "cc-bus 自己的安装脚本建的命令链接，不是 cc-monitor 建的。钩子诊断只查 cc-register 与 cc-bus-stop-hook 在不在；计数按 cc- 前缀数，别的工具建的同前缀链接也会算进去",
       "args": []
     },
     "rsToolRegistry.tools.ccBusHooksNote": {
@@ -17331,7 +17713,7 @@
     },
     "beAccountsQuery.listProductAt.noDefault": {
       "kind": "body",
-      "zh": "这台机器的账号清单里缺默认账号。重新部署 cc-acct-iso 后可以补上。",
+      "zh": "这台机器的账号清单里缺默认账号。在账号页的维护里点「修复」可以补上。",
       "args": []
     },
     "bePanorama.classify.badReply": {
@@ -17382,26 +17764,6 @@
     "beRelayUpstream.parse.notUrl": {
       "kind": "error",
       "zh": "base_url 不是一个网址（要以 https:// 或 http:// 开头）",
-      "args": []
-    },
-    "beIso.shellinitOutcome.argsTooLong": {
-      "kind": "error",
-      "zh": "{tool} shellinit 没能起来：参数过长",
-      "args": ["tool"]
-    },
-    "beIso.shellinitOutcome.noOutput": {
-      "kind": "error",
-      "zh": "{tool} shellinit 什么都没输出（退出码 {exit}）：{detail}",
-      "args": ["tool", "exit", "detail"]
-    },
-    "beIso.shellinitOutcome.timedOut": {
-      "kind": "error",
-      "zh": "{tool} shellinit 超过 {secs} 秒没有返回",
-      "args": ["tool", "secs"]
-    },
-    "beIso.locate.notInstalled": {
-      "kind": "error",
-      "zh": "这台机器上还没装 cc-acct-iso。",
       "args": []
     },
     "beUpstreamCreds.load.unreadable": {
@@ -17878,21 +18240,6 @@
     "accounts.status.multiOff": {
       "kind": "body",
       "zh": "多账号没启用",
-      "args": []
-    },
-    "accounts.status.isoInstalled": {
-      "kind": "body",
-      "zh": "已装",
-      "args": []
-    },
-    "accounts.status.isoMissing": {
-      "kind": "body",
-      "zh": "没装",
-      "args": []
-    },
-    "accounts.status.isoUnknown": {
-      "kind": "body",
-      "zh": "查不出来",
       "args": []
     },
     "rsDialHost.hostKey.pinned": {
@@ -19463,21 +19810,6 @@
       "zh": "、",
       "args": []
     },
-    "beAcctIso.shellinit.noFence": {
-      "kind": "error",
-      "zh": "这台机器没能产出 rc 片段（输出里没有 {begin}）。常见原因：cc-acct-iso 还没装，或这台还没跑过 cc-acct-iso init。",
-      "args": ["begin"]
-    },
-    "beAcctIso.shellinit.truncated": {
-      "kind": "error",
-      "zh": "这台机器产出的 rc 片段不完整（有 {begin} 但没有 {end}），可能被截断了。别贴：半截片段会让登录 shell 报错。请重试。",
-      "args": ["begin", "end"]
-    },
-    "acctIsoReads.reply.badShape": {
-      "kind": "error",
-      "zh": "读不懂那台后端回的 cc-acct-iso 状态 / 片段，多半是它的版本不对。",
-      "args": []
-    },
     "beSkillInbox.face.none": {
       "kind": "error",
       "zh": "这台后端不认得任何带 skill 的 agent，找不到收件箱。",
@@ -19573,31 +19905,6 @@
       "zh": "读不懂本机后端回的 cc-bus 安装结果，多半是后端版本不对。",
       "args": []
     },
-    "beAcctIsoInstall.record.failed": {
-      "kind": "error",
-      "zh": "装好了，但没记进装记录：{e}（这一趟装的卸不掉）",
-      "args": ["e"]
-    },
-    "accounts.needsDeploy.linked": {
-      "kind": "body",
-      "zh": "已链到 {link}。",
-      "args": ["link"]
-    },
-    "accounts.needsDeploy.linkKept": {
-      "kind": "body",
-      "zh": "{link} 那儿已经有东西，没动它。",
-      "args": ["link"]
-    },
-    "accounts.needsDeploy.configWritten": {
-      "kind": "body",
-      "zh": "已按样例建好 {config}。",
-      "args": ["config"]
-    },
-    "accounts.needsDeploy.configKept": {
-      "kind": "body",
-      "zh": "{config} 已在，没覆盖。",
-      "args": ["config"]
-    },
     "rsFilewinProc.spawn.noStdout": {
       "kind": "error",
       "zh": "文件窗口进程起来了，但收不到它的回话（程序内部出错）",
@@ -19622,26 +19929,6 @@
       "kind": "error",
       "zh": "文件窗口起不来（程序内部出错）：{e}",
       "args": ["e"]
-    },
-    "beAcctIsoInstall.embed.notUtf8": {
-      "kind": "error",
-      "zh": "这台后端带着的 cc-acct-iso 里 {rel} 不是文本，装不了（构建有误）",
-      "args": ["rel"]
-    },
-    "accounts.needsDeploy.intro": {
-      "kind": "body",
-      "zh": "多账号靠 cc-acct-iso：每账号一个隔离配置目录、数据共享。点下面一键把它装到这台远端的 ~/.cc-monitor/bin/cc-acct-iso（只软链到 ~/.local/bin，不改你的 ~/.bashrc）。装完再回来启用。",
-      "args": []
-    },
-    "accounts.needsDeploy.landed": {
-      "kind": "body",
-      "zh": "已装 cc-acct-iso（{version}）到 {dest}，写了 {written} 份。",
-      "args": ["version", "dest", "written"]
-    },
-    "accounts.needsDeploy.current": {
-      "kind": "body",
-      "zh": "{dest} 已是这一版 cc-acct-iso（{version}），没重写。",
-      "args": ["version", "dest"]
     },
     "cssMarks.menu.submenu": {
       "kind": "body",

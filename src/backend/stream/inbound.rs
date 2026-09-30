@@ -89,17 +89,20 @@ pub const REPLY_CHANNEL_CAPACITY: usize = 256;
 ///   （`U8a-2d` 换掉的），而同一份文件的 `mod tests` 里自己写着「上一版是 …」——
 ///   **一份文件里，一处当现状说，另一处说它是历史。**
 pub const COMMANDS: &[&str] = &[
+    // 改账号库的那几条（`accounts/manage/`，帧面宿主 `faces/accounts_face.rs`）：建库 · 加号 / 删号 / 设默认 · 修复 · 隔离 · 回滚 · 核对 · 登录那一行。
+    "accounts-add",
+    "accounts-init",
+    "accounts-isolate",
     "accounts-list",
+    "accounts-login-cmd",
+    "accounts-remove",
+    "accounts-repair",
+    "accounts-rollback",
     "accounts-sessions",
+    "accounts-set-default",
     // 〔C4c · 第四波 4B〕换号前的信任预检（替掉最后两条仍逐次拨号的 `--account-trust*`）。
     "accounts-trust",
-    // 〔LOC1a · 第四波 4D〕这台机器的 `cc-acct-iso` 两问（本机那两条从 exec 一次性后端改走 `<local>` 长连接）。
-    // 〔DUP2 · J4〕一个 cc-acct-iso 步骤在终端里要跑的那一行（预览 · 弹终端都问它；界面零拼 shell 串）。
-    "acct-iso-cmd",
-    // 〔MIG-3a · 子步 3 · 09-28 预裁〕cc-acct-iso 装到这台（随二进制带着的字节 ＋ 链接 ＋ 配置 ＋ 记账），经这台的文件管理面。**是新命令** ⇒ `build_id_guard` 红是预期的。
-    "acct-iso-install",
-    "acct-iso-shellinit",
-    "acct-iso-status",
+    "accounts-verify",
     // 〔MIG-3a · 主会话 09-27 裁〕别名六条：规则 · 方言 · 围栏住这台（`assets/aliases/`），写经 [`LocalFiles`]。**是新命令** ⇒ `build_id_guard` 红是预期的。
     "aliases-block-install",
     "aliases-block-remove",
@@ -1124,6 +1127,16 @@ pub fn uncancellable() -> Vec<String> {
         .collect()
 }
 
+/// 改账号库那几条（`accounts-*`）递给执行器的 key 表几口：写 key · 删号清那一行 · 回滚放回去 · 表在哪。
+/// 那份表（上游选择自己的状态）的写口只从这里递出去。
+const ACCOUNT_KEYS: crate::faces::accounts_face::KeyDoor<'static> =
+    crate::faces::accounts_face::KeyDoor {
+        set: &crate::accounts::upstream_select::file_face::answer_set,
+        drop: &crate::accounts::upstream_select::file_face::answer_drop,
+        restore: &crate::accounts::upstream_select::file_face::answer_restore,
+        path: &crate::accounts::upstream_select::file_face::machine_path,
+    };
+
 /// **单一事实源。** `COMMANDS` 是它的镜子，`dispatch` 从它查。
 pub const REGISTRY: &[CommandSpec] = &[
     // P4f：cc-bus 的两条基础命令。**转调本机的 cc-bus 命令**，不在后端里重实现总线
@@ -1381,7 +1394,7 @@ pub const REGISTRY: &[CommandSpec] = &[
         }),
     },
     // 〔E2 · `96 §7.2.2`〕**这台的 `ccm` 会哪些**：`ccm` 就是这台后端本身（V28），「PATH 上那个是谁」退化成问它自己。
-    //   纯函数（拼 `--ccm-probe` 那几行），不起进程、不碰盘 ⇒ 不进阻塞档（同 `ping` / `acct-iso-cmd` 那一形）。
+    //   纯函数（拼 `--ccm-probe` 那几行），不起进程、不碰盘 ⇒ 不进阻塞档（同 `ping` 那一形）。
     CommandSpec {
         name: "ccm-probe",
         doc_anchor: Some("#### `ccm-probe`"),
@@ -2652,7 +2665,7 @@ pub const REGISTRY: &[CommandSpec] = &[
         }),
     },
     // 〔FIX4 · `90 §3` J15 · 主会话 09-28 裁 B〕**各台 `history-search` 的会话行合成一份**：`updatedAt` 倒序（`search_rules::sort_by_recency`）·
-    //   命中数相加 · 任一行被砍 ⇒ `truncated`。本体 `observe/search_query.rs::answer_merge`（经只读宿主 `read_face` 那一臂）；纯计算 ⇒ 不进阻塞档（同 `acct-iso-cmd`）。
+    //   命中数相加 · 任一行被砍 ⇒ `truncated`。本体 `observe/search_query.rs::answer_merge`（经只读宿主 `read_face` 那一臂）；纯计算 ⇒ 不进阻塞档（同 `ping`）。
     CommandSpec {
         name: "history-search-merge",
         doc_anchor: Some("#### `history-search-merge`"),
@@ -2908,54 +2921,183 @@ pub const REGISTRY: &[CommandSpec] = &[
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
-    // 〔LOC1a · 第四波 4D〕这台机器的 `cc-acct-iso` 两问 —— 与 CLI `--acct-iso-status` / `--acct-iso-shellinit`
-    //   同一份本体（`accounts/iso.rs`）。`设计/05 §14.6`：本机那几问从「exec 一次性本机后端」改走 `<local>` 长连接。
-    //   `shellinit` 要起一次 `cc-acct-iso`（插件口）⇒ 两条都进阻塞档（`status` 只看文件在不在，同档省一份理由）。
+    // 改账号库的那几条：本体 `accounts/manage/`，帧面宿主 `faces/accounts_face.rs`（建 API 号写 key · 账号表变了重写别名文件）。
+    //   写经这台的文件管理面（[`LocalFiles`]）；同步文件 I/O ⇒ 阻塞档。`accounts-verify` / `accounts-login-cmd` 只读。
     CommandSpec {
-        name: "acct-iso-status",
-        doc_anchor: Some("#### `acct-iso-status`"),
-        codes: &[],
-        fields: &["installed", "looked", "path"],
-        takes_input: false,
-        run: Run::Blocking(|_r| {
-            crate::accounts::iso::answer_wire_status()
+        name: "accounts-init",
+        doc_anchor: Some("#### `accounts-init`"),
+        codes: &[
+            "bad_args",
+            "io_failed",
+            "not_enabled",
+            "refused",
+            "unsupported",
+        ],
+        fields: &[
+            "alias", "aliases", "applied", "backup", "dryRun", "name", "notes", "steps",
+        ],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::faces::accounts_face::answer(&LocalFiles, &r.cmd, &r.args, &ACCOUNT_KEYS)
                 .map(Some)
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
-    // 〔DUP2 · 主会话 09-26 裁 J4〕**一个 cc-acct-iso 步骤在终端里要跑的那一行**（`设计/01 §1.1`「命令串……都不在前端」·
-    //   `设计/90 §3` 判据 2；先例 `ccm-print`）。纯函数：校验 ＋ 唯一的 quote，**不起进程、不碰盘** ⇒ 不进阻塞档（同 `ping` / `resolve`
-    //   那一形，在 runtime 上当场答完）。跑它的是用户面前那个终端（DESIGN §6）。
     CommandSpec {
-        name: "acct-iso-cmd",
-        doc_anchor: Some("#### `acct-iso-cmd`"),
-        codes: &["bad_args", "refused"],
-        fields: &["cmd", "credFile", "name", "step"],
+        name: "accounts-add",
+        doc_anchor: Some("#### `accounts-add`"),
+        codes: &[
+            "bad_args",
+            "io_failed",
+            "not_enabled",
+            "refused",
+            "unsupported",
+        ],
+        fields: &[
+            "account",
+            "alias",
+            "aliases",
+            "applied",
+            "backup",
+            "baseUrl",
+            "configDir",
+            "credFile",
+            "dryRun",
+            "isDefault",
+            "key",
+            "keyMasked",
+            "keyProblem",
+            "kind",
+            "loginCmd",
+            "name",
+            "notes",
+            "steps",
+        ],
         takes_input: true,
-        run: Run::Async(|r| {
-            Box::pin(async move {
-                crate::accounts::iso::answer_wire_cmd(&r.args)
-                    .map(Some)
-                    .map_err(|(c, m)| (c.to_string(), m))
-            })
+        run: Run::Blocking(|r| {
+            crate::faces::accounts_face::answer(&LocalFiles, &r.cmd, &r.args, &ACCOUNT_KEYS)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
     CommandSpec {
-        name: "acct-iso-shellinit",
-        doc_anchor: Some("#### `acct-iso-shellinit`"),
-        // 〔MIG-3a〕`fence_incomplete` / `no_fence`：围栏校验进了这一侧（`accounts/iso.rs::fenced`）。
+        name: "accounts-remove",
+        doc_anchor: Some("#### `accounts-remove`"),
         codes: &[
-            "fence_incomplete",
-            "no_fence",
-            "not_installed",
-            "not_run",
-            "timed_out",
-            "tool_failed",
+            "bad_args",
+            "io_failed",
+            "not_enabled",
+            "refused",
+            "unsupported",
         ],
-        fields: &["snippet"],
+        fields: &[
+            "aliases", "applied", "backup", "dryRun", "force", "name", "notes", "steps",
+        ],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::faces::accounts_face::answer(&LocalFiles, &r.cmd, &r.args, &ACCOUNT_KEYS)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    CommandSpec {
+        name: "accounts-set-default",
+        doc_anchor: Some("#### `accounts-set-default`"),
+        codes: &[
+            "bad_args",
+            "io_failed",
+            "not_enabled",
+            "refused",
+            "unsupported",
+        ],
+        fields: &[
+            "aliases", "applied", "backup", "dryRun", "name", "notes", "steps",
+        ],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::faces::accounts_face::answer(&LocalFiles, &r.cmd, &r.args, &ACCOUNT_KEYS)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    CommandSpec {
+        name: "accounts-repair",
+        doc_anchor: Some("#### `accounts-repair`"),
+        codes: &[
+            "bad_args",
+            "io_failed",
+            "not_enabled",
+            "refused",
+            "unsupported",
+        ],
+        fields: &["aliases", "applied", "backup", "dryRun", "notes", "steps"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::faces::accounts_face::answer(&LocalFiles, &r.cmd, &r.args, &ACCOUNT_KEYS)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    CommandSpec {
+        name: "accounts-isolate",
+        doc_anchor: Some("#### `accounts-isolate`"),
+        codes: &[
+            "bad_args",
+            "io_failed",
+            "not_enabled",
+            "refused",
+            "unsupported",
+        ],
+        fields: &[
+            "aliases", "applied", "backup", "dryRun", "item", "notes", "steps",
+        ],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::faces::accounts_face::answer(&LocalFiles, &r.cmd, &r.args, &ACCOUNT_KEYS)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    CommandSpec {
+        name: "accounts-rollback",
+        doc_anchor: Some("#### `accounts-rollback`"),
+        codes: &[
+            "bad_args",
+            "io_failed",
+            "not_enabled",
+            "refused",
+            "unsupported",
+        ],
+        fields: &["aliases", "applied", "backup", "dryRun", "notes", "steps"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::faces::accounts_face::answer(&LocalFiles, &r.cmd, &r.args, &ACCOUNT_KEYS)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    CommandSpec {
+        name: "accounts-verify",
+        doc_anchor: Some("#### `accounts-verify`"),
+        codes: &["bad_args", "io_failed", "unsupported"],
+        fields: &[
+            "account", "checks", "fails", "level", "pass", "text", "warns",
+        ],
         takes_input: false,
-        run: Run::Blocking(|_r| {
-            crate::accounts::iso::answer_wire_shellinit()
+        run: Run::Blocking(|r| {
+            crate::faces::accounts_face::answer(&LocalFiles, &r.cmd, &r.args, &ACCOUNT_KEYS)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    CommandSpec {
+        name: "accounts-login-cmd",
+        doc_anchor: Some("#### `accounts-login-cmd`"),
+        codes: &["bad_args", "io_failed", "refused", "unsupported"],
+        fields: &["cmd", "name"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::faces::accounts_face::answer(&LocalFiles, &r.cmd, &r.args, &ACCOUNT_KEYS)
                 .map(Some)
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
@@ -3020,31 +3162,6 @@ pub const REGISTRY: &[CommandSpec] = &[
             crate::assets::mcp_edit::answer_remove(&LocalFiles, &r.args)
                 .map(Some)
                 .map_err(|(c, m)| (c.to_string(), m))
-        }),
-    },
-    // 〔MIG-3a · 子步 3 · 09-28 预裁〕cc-acct-iso 装到这台：`assets/acct_iso_install.rs`；字节 / 链接 / 配置经 [`LocalFiles`]，装记录写口由本门递进去。
-    CommandSpec {
-        name: "acct-iso-install",
-        doc_anchor: Some("#### `acct-iso-install`"),
-        codes: &["bad_file", "refused"],
-        fields: &[
-            "config",
-            "configWritten",
-            "dest",
-            "link",
-            "linked",
-            "recordFailed",
-            "version",
-            "written",
-        ],
-        takes_input: false,
-        run: Run::Blocking(|_| {
-            crate::assets::acct_iso_install::answer_install(
-                &LocalFiles,
-                &crate::assets::skill_ledger::answer_record,
-            )
-            .map(Some)
-            .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
     // 〔MIG-3a · 子步 3〕cc-bus 装到这台：`assets/cc_bus_install.rs`；写经 [`LocalFiles`]，装记录写口由本门递进去（第四层 ④）。
@@ -3552,7 +3669,7 @@ pub const REGISTRY: &[CommandSpec] = &[
     },
     // 〔FIX4 · `99 §2.1 ⑬`「待迁」最后一行〕**开终端那一串**：`{machine, saved?, jump?, prefer?, command, rbindToken?}` ⇒ `{command}`（一行 PowerShell：
     //   `& ssh -t[ -J …] -p … [-i …] user@host -- '<bash -lic …>'`；〔P5〕带令牌 ⇒ 前面接令牌握手前奏）。组请求走 `dial/machine.rs::resolve`，本体 `dial/terminal.rs`。
-    //   纯函数：校验 ＋ quote，不拨号、不起进程、不碰盘 ⇒ 不进阻塞档（同 `acct-iso-cmd` 那一形）。
+    //   纯函数：校验 ＋ quote，不拨号、不起进程、不碰盘 ⇒ 不进阻塞档（同 `ping` 那一形）。
     CommandSpec {
         name: "terminal-ssh",
         doc_anchor: Some("#### `terminal-ssh`"),

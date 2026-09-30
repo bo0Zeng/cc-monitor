@@ -203,7 +203,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   // ⚠ `finally` 不是 `then`：`loadPinned` 失败也得让顺序照常回来（互不为前提）。
   void tabs.loadPinned().finally(() => void tabs.loadOrder());
 
-  // A3：状态栏「当前账号」chip（多账号 cc-acct-iso）。绑第一台可用远端的默认账号；
+  // A3：状态栏「当前账号」chip（多账号）。绑第一台可用远端的默认账号；
   // 未连远端 / 未启用多账号 各自安静降级（不报错）。点击弹选单切默认账号。
   // **构造在 `refreshSessionAccounts` 定义之前**（D 审计）：`onDefaultChanged` 回调间接调用
   // `refreshSessionAccounts`（下方 `const` 声明，函数体里会写 `appStore.sessionAccounts`）——

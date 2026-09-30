@@ -180,18 +180,18 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     ],
   },
   J4: {
-    what: "POSIX 单引号 ＋ cc-acct-iso 那几条命令串",
-    // 〔DUP2 · 主会话 09-26 裁 J4〕后端出这条命令（帧命令 `acct-iso-cmd`，`src/backend/accounts/iso.rs::render_cmd`，值过唯一的 quote），
-    //   界面的逐字预览与弹终端都经 `chan.call` 问它 —— TS 零拼 shell 串。`acct-deploy.ts` 的 `sq` · `buildAcctIsoCmd` ·
-    //   快照路径那道 `validatePathArg` 一起删；账号名的即时反馈读生成物（J18）。
-    homes: ["shell-quote-core::posix_quote", "src/backend/accounts/iso.rs::render_cmd"],
+    what: "POSIX 单引号 ＋ 账号那几条要在终端里跑的命令串",
+    // 今天终端里唯一要跑的账号命令是登录那一行：后端出（帧命令 `accounts-login-cmd` · `accounts-add` 的 `loginCmd`，
+    //   `src/backend/accounts/manage/wire.rs::login_line`，值过唯一的 quote），界面原样交给开终端那一步 —— TS 零拼 shell 串。
+    //   那时的 `sq` · 命令构造器 · 快照路径那道 `validatePathArg` 一起删；账号名的即时反馈读生成物（J18）。
+    homes: ["shell-quote-core::posix_quote", "src/backend/accounts/manage/wire.rs::login_line"],
     status: "zero",
     defs: ["sq", "buildAcctIsoCmd", "validatePathArg"],
     // 〔LR2 合入〕`shell-quote.ts::posixQuote` 随 TS 兜底一族删了 ⇒ 挪进 gone。
     gone: ["posixQuote"],
     needles: [
       { text: "'\\\\''", count: 0 },
-      { text: "cc-acct-iso init", count: 0 },
+      { text: "--account '", count: 0 },
     ],
   },
   J5: {
@@ -428,7 +428,7 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     gen: {
       file: "src/frontend/ui/generated/judgment-rules.ts",
       exports: ["accountNameOk", "ACCOUNT_NAME_PATTERN", "ACCOUNT_NAME_MAX"],
-      importers: ["src/frontend/ui/settings/acct-deploy.ts"],
+      importers: ["src/frontend/ui/account-ops.ts"],
     },
     parity: {
       via: "tests/__fixtures__/identifier-rules.golden.json",
@@ -620,7 +620,6 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
   },
   "relay-route-core": {
     // 〔P3 · 主会话 09-29 裁〕后端住在 `~/.cc-monitor` 里的那几样的相对路径（后端各写者引它、monitor 数据位置页按它列）；TS 侧没有孪生。
-    ACCT_ISO_REL: NONE,
     ALL: NONE,
     ASSET_CATALOG_REL: NONE,
     BACKEND_POLICY_REL: NONE,

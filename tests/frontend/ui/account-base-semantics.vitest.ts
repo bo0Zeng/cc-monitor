@@ -20,7 +20,7 @@
  *   钉住）→ CLI 路**必发 `--base`**；
  * - `shared/ccm` 收到 `--base` 是 **`unset CLAUDE_CONFIG_DIR`**（`:674` 送进 tmux 的载荷行
  *   ＋ `:709` 会话级 env，两处都 unset），**不是「不注入」**；
- * - 远端 shell 里若有 `cc-acct-iso shellinit` 生成的 `export CLAUDE_CONFIG_DIR=<某账号>`，
+ * - 远端 shell 里若有一句 `export CLAUDE_CONFIG_DIR=<某账号>`（用户自己写的，或早先的账号工具留下的），
  *   「不注入」会继承它、「unset」落回 `~/.claude` —— **两者落到的是不同的账号**。
  *
  * ★ 最能说明问题的一点：`machine-card.ts` 那句文案**上一行的注释一直是对的**

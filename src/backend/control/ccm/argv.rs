@@ -103,7 +103,7 @@ impl Defaults {
     //    连同读它的 `CCM_WORKSPACE`。默认值表里少一格，是因为那一格的默认现在是恒等。
     /// 账号库 manifest（相对 `$HOME`）。
     ///
-    /// ⚠ 这是 **cc-acct-iso 这个工具**的账号库门牌号，**不是 Claude 的目录布局** ——
+    /// ⚠ 这是**账号库**（后端 `accounts/manage/` 建和维护）的门牌号，**不是 Claude 的目录布局** ——
     /// `agents/claudecode/accounts.rs` 的头注逐字把它划在适配层之外（「属工具而非 agent」）。
     /// 同族先例：`control/cc_bus.rs` 里 cc-bus 的门牌号。
     pub(crate) const ACCTS_MANIFEST_REL: &'static str = ".claude-alt/accounts.json";

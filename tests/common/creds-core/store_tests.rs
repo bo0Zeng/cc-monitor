@@ -838,3 +838,27 @@ fn both_halves_read_the_home_through_this_one_function() {
     assert_ne!(planted, config, "正控的锚没落在靶上");
     assert!(dirs_home_calls(&planted) >= 1);
 }
+
+/// 删号 · 回滚那两步：只摘 / 只放回点名的那一条，别的条与两层的未知键一个不动；那一条不在 ⇒ 原样。
+#[test]
+fn removing_and_restoring_one_account_touches_only_that_account() {
+    let doc = parse(
+        r#"{"_note":"keep","accounts":{"a":{"api_key":"sk-a","x":1},"b":{"api_key":"sk-b","base_url":"https://b.example"}}}"#,
+    )
+    .unwrap();
+    let gone = remove_account(&doc, "a");
+    assert_eq!(gone["_note"], "keep");
+    assert!(gone["accounts"].get("a").is_none(), "{gone:?}");
+    assert_eq!(gone["accounts"]["b"], doc["accounts"]["b"]);
+    assert_eq!(remove_account(&doc, "nope"), doc, "不在的那一条也改了文档");
+    // 删之后又有人写进来一条 c：放回 a 时 c 留着。
+    let mut later = gone.clone();
+    later["accounts"]
+        .as_object_mut()
+        .unwrap()
+        .insert("c".into(), serde_json::json!({"api_key": "sk-c"}));
+    let back = restore_account(&later, "a", &doc);
+    assert_eq!(back["accounts"]["a"], doc["accounts"]["a"]);
+    assert_eq!(back["accounts"]["c"]["api_key"], "sk-c");
+    assert_eq!(restore_account(&later, "nope", &doc), later);
+}

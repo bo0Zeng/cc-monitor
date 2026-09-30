@@ -168,8 +168,6 @@ async fn main() {
             // 而 monitor 的账号 0 路径**真的在发这条命令**。
             // 测试当时抓不到，是因为它们直接调 `observe::accounts_query::run`、**绕过了本处调度**。
             // 现由 `observe::accounts_query::tests::main_dispatches_every_subcommand_we_handle` 钉住。
-            // 〔LOC1a · 第四波 4D〕`cc-acct-iso` 两问的 argv 形两臂退役：它们上了帧面（`acct-iso-status` /
-            //   `acct-iso-shellinit`），CLI 面由帧面自动派生、走下面 `cli_control` 那一臂（同名 flag）。
             Some("--list-accounts")
             | Some("--session-accounts")
             | Some("--account-trust")

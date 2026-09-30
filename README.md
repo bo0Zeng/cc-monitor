@@ -190,7 +190,7 @@ ccm -- --ccm-help                 # 全部选项
 |---|---|
 | `~/.cc-monitor/` | cc-monitor 的一切：配置、后端、日志、别名文件、API 号的 key（只给本人读写） |
 | `~/.claude/` | Claude Code 自己的目录。cc-monitor 只读会话记录，只写你点名要装的 skill / MCP |
-| `~/.claude-alt/` | 多账号的账号库（由 cc-acct-iso 管理），每个号一份登录凭据 |
+| `~/.claude-alt/` | 多账号的账号库（由后端建立和维护），每个号一份登录凭据 |
 
 设置里的「数据位置」页列出每个文件的完整路径。
 
@@ -200,7 +200,7 @@ ccm -- --ccm-help                 # 全部选项
 
 - Windows 上会话暂不能放后台、接回、看画面、往里送字；本机后端在 Windows 上随界面一起退出。
 - macOS、本机 Linux arm64 不在支持范围内（可以把它们当远端机器连）。
-- 多账号依赖的 cc-acct-iso 目前只支持 Linux。
+- 多账号目前只支持 Linux / Unix 机器，Windows 本机上不能建账号库。
 - 4.0.0 里几条 Windows 修复只经过自动化测试，没在真实 Windows 上复验，见 [CHANGELOG](CHANGELOG.md)。
 
 ---

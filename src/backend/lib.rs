@@ -695,7 +695,9 @@ pub const PROTO_VERSION: u32 = 1;
 /// ★★★ **p6c-filewin-package**（2026-09-30，P4 合并那一拍）：结构 —— 文件窗口独立成包 `src/frontend/filewin/`（`cc-monitor-filewin`，只说 call / subscribe；开终端经通道交 monitor、命令由后端渲）· 新契约 / 宿主 crate `chan-core` · `host-core` · `filewin-contract` · 壳里平台形态全部收进 `platform/`（阶段 H 收完）· 足迹里两个写点住址跟着新住址。行为不变。
 ///
 /// p6d-multiline-args：ccm 收的透传给 agent 的参数与登记备注可以跨行（只拒 NUL / CR），多行初始任务起得来。
-pub const BUILD_ID: &str = "p6d-multiline-args";
+///
+/// p6e-accounts-native：账号库由后端直接管理（建库 · 加号 · 删号 · 设默认 · 核对 · 修复 · 隔离 · 回滚 · 别名），不再调外部工具。
+pub const BUILD_ID: &str = "p6e-accounts-native";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src/frontend/shell/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），
@@ -762,13 +764,18 @@ pub static CC_MONITOR_BUILD_STAMP: [u8; BUILD_STAMP_LEN] = build_stamp();
 pub const SUBCOMMANDS: &[&str] = &[
     "--account-trust",
     "--account-trust-zero",
-    // 〔`A3` 第二波〕本机 `cc-acct-iso` 的两问（`accounts/iso.rs`）。登记理由同下面那几条：
-    // `is_query_mode` 那道闸门读本表，不在表里 ⇒ 当未知 flag 静默进流模式。
-    // ⚠ 加这两行会逼出一次 `BUILD_ID` bump（`build_id_guard`）—— 本路**不 bump**，合并那一拍统一做。
-    // 〔LOC1a · 第四波 4D〕这两行今天是帧面 `acct-iso-status` / `acct-iso-shellinit` **自动派生**的 CLI 面（同名；
-    //   argv 形那两臂退役）—— 名字一格没变，所以这两行不动；帧面那两条的 `ch:` 进指纹 ⇒ 仍逼出一次 bump。
-    "--acct-iso-shellinit",
-    "--acct-iso-status",
+    // 改账号库那几条帧命令（`inbound::REGISTRY` 的 `accounts-*`，本体 `accounts/manage/`）**自动派生**的 CLI 面。
+    // 登记理由同下面那几族：`is_query_mode` 那道闸门读本表，不在表里 ⇒ 当未知 flag 静默进流模式。
+    // `--accounts-add` 的入参（API 号的 key 在内）**从 stdin 读**，不收 argv。⚠ 加这几行会逼出一次 `BUILD_ID` bump。
+    "--accounts-add",
+    "--accounts-init",
+    "--accounts-isolate",
+    "--accounts-login-cmd",
+    "--accounts-remove",
+    "--accounts-repair",
+    "--accounts-rollback",
+    "--accounts-set-default",
+    "--accounts-verify",
     // 〔`C1` · 2026-09-24〕只读查询面那八条帧命令**自动派生**出来的 CLI 面
     //（`cli_control::cli_exposed`）。登记在这里的理由与下面那几族逐字相同 ——
     // `is_query_mode` 那道闸门读的就是本表；不在表里 ⇒ 当未知 flag ⇒ 静默进流模式。
@@ -846,9 +853,6 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--footprint-report",
     // 〔E2〕帧命令 `ccm-print` 的 CLI 面删了：`--ccm-*` 这族名字归 ccm 的诊断口（V138），二进制叫 `ccm` 时
     //   按本表分流会把 `ccm --ccm-print` 抢进后端（`cli_control::cli_exposed` 排除 ccm 的词）。逼出 `BUILD_ID` bump，本路不 bump。
-    // 〔DUP2 · J4〕cc-acct-iso 步骤那一行（`inbound::REGISTRY` 的 `acct-iso-cmd`）派生的 CLI 面。纯函数，入参从 stdin 读。
-    // 加这一行会逼出一次 `BUILD_ID` bump（`build_id_guard`）—— 本路**不 bump**，停在那条红上报备。
-    "--acct-iso-cmd",
     // 〔AS1 · 第四波 4B〕MCP 资产同步的判定（`inbound::REGISTRY` 的 `mcp-sync-plan`）派生的 CLI 面。只读，入参从 stdin 读。
     // 加这一行会逼出一次 `BUILD_ID` bump（`build_id_guard`）—— 本路**不 bump**，合并那一拍统一做。
     // 〔SH1 · V137〕帧面 `mcp-read` 自动派生的 CLI 面（MCP 列表成品）。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
@@ -860,7 +864,6 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--mcp-sync-source",
     "--mcp-sync-preview",
     "--mcp-sync-apply",
-    "--acct-iso-install",
     "--cc-bus-install",
     "--files-link",
     "--cc-bus-install-state",
