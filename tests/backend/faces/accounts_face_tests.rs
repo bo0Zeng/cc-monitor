@@ -586,6 +586,34 @@ fn default_moves_on_remove_and_can_be_set() {
     assert_eq!(t.manifest()["accounts"][0]["isDefault"], true);
 }
 
+/// 设默认 · 修复 · 核对的拒绝形：不认得的号 ⇒ `refused`；多给参数 ⇒ `bad_args`；还没有账号库 ⇒ `not_enabled`。被拒的那几趟盘上一个字节不动。
+#[test]
+fn set_default_repair_and_verify_refuse_what_they_cannot_do() {
+    let t = two_accounts("refuse3");
+    let before = tree(&t.0);
+    assert_eq!(
+        code(&t, "accounts-set-default", json!({ "name": "nope" })),
+        "refused"
+    );
+    assert_eq!(
+        code(&t, "accounts-verify", json!({ "names": ["d"] })),
+        "bad_args"
+    );
+    assert_eq!(
+        code(&t, "accounts-repair", json!({ "force": true })),
+        "bad_args"
+    );
+    assert_eq!(tree(&t.0), before, "被拒的那几趟动了盘");
+    let empty = machine("refuse3-empty");
+    let empty_before = tree(&empty.0);
+    assert_eq!(code(&empty, "accounts-repair", json!({})), "not_enabled");
+    assert_eq!(
+        code(&empty, "accounts-set-default", json!({ "name": "d" })),
+        "not_enabled"
+    );
+    assert_eq!(tree(&empty.0), empty_before, "没有账号库时动了盘");
+}
+
 // ───────────────────────────── 核对 ─────────────────────────────
 
 /// 装好的一套核下来是 PASS：账号 0 没登录 · 各号邮箱互不相同（只有一个号有邮箱时跳过）· 链接全在。
