@@ -20,10 +20,11 @@
 //!
 //! # 谁用哪几样
 //!
-//! - 后端：中转 `relay/route.rs::parse`（[`parse_target`]）· 中转宿主 `relay/listen.rs`（[`PORT`]）· 门 `relay/door.rs`（[`KEY_FILE_REL`]）·
-//!   上游选择 `accounts/upstream_select/endpoint.rs`（[`base_url`]：起会话那一发注入哪个地址，**只有它拼**）。
-//! - monitor：起本机后端时交的端口（[`PORT`]）· 渲染 `$(cat "$HOME/<钥匙>")` 那一段（[`KEY_FILE_REL`]）·
-//!   载荷里那条中转地址的 fail-closed 校验（[`base_url_shape_ok`]，[`base_url`] 的逆）· 起会话身份 token 的字符集（[`segment_is_safe`]）。
+//! - 后端：中转 `relay/route.rs::parse`（[`parse_target`]）· 门 `relay/door.rs`（[`KEY_FILE_REL`]）·
+//!   上游选择 `accounts/upstream_select/endpoint.rs`（[`base_url`]：起会话那一发注入哪个地址，**只有它拼**）·
+//!   起会话载荷 `control/launch_render/payload.rs`（[`PORT`] · 钥匙段渲成 `$(cat ~/<钥匙>)` 的 [`KEY_FILE_REL`] ·
+//!   中转地址的 fail-closed 校验 [`base_url_shape_ok`]（[`base_url`] 的逆）· 起会话身份 token 的字符集 [`segment_is_safe`]）。
+//! - monitor：起本机后端时交的端口（[`PORT`]）· 常驻监听口（[`listen_port_for`]）· 后端落点（[`BACKEND_LANDING_REL`]）。
 
 /// 〔HOST · `设计/05 §5.2` 两个端口〕**常驻监听口**的门牌也住这里（它与中转口是这台机器上后端的两个门）：
 /// 这台机器 ＋ 这个 agent 家目录 ⇒ 那一个口。本机宿主（monitor `local_backend_host`）与远端 `--resident-ensure` 同一个函数
@@ -54,7 +55,7 @@ pub const LISTEN_TOKEN_FILE_REL: &str = ".cc-monitor/listen-token";
 pub const PORT: u16 = 8788;
 
 /// 中转钥匙文件相对家目录的路径（`INVARIANTS §48.1a`）：**中转所在那台机器**上 `0600`，中转绑上口之后自己读回或铸。
-/// 注入的 URL 不带钥匙本身，渲染成 `$(cat "$HOME/<本常量>")` 在那台机器的 pane shell 里展开（RK1）。
+/// 注入的 URL 不带钥匙本身，渲染成 `$(cat ~/<本常量>)` 在那台机器的 pane shell 里展开（RK1）。
 pub const KEY_FILE_REL: &str = ".cc-monitor/relay-key";
 
 /// 钥匙的形状：恰好 64 个小写十六进制字符（32 字节 = 256 位，中转 `relay/door.rs` 铸的就是这一形）。
@@ -63,7 +64,7 @@ pub fn key_shape_ok(s: &str) -> bool {
 }
 
 /// 一条**已经把钥匙段展开进去**的中转地址（`http://127.0.0.1:<口>/<钥匙>/<前缀>/…`，pane shell 展开
-/// `$(cat "$HOME/<KEY_FILE_REL>")` 之后 agent 进程环境里的那一形）切成「钥匙之前」「钥匙之后」两半：
+/// `$(cat ~/<KEY_FILE_REL>)` 之后 agent 进程环境里的那一形）切成「钥匙之前」「钥匙之后」两半：
 /// `("http://127.0.0.1:<口>/", "/<前缀>/<seg1>/<seg2>")`。
 ///
 /// 认的条件全在这里一处：钥匙段过 [`key_shape_ok`] · 两半拼回去（去掉钥匙段）过 [`base_url_shape_ok`]。
