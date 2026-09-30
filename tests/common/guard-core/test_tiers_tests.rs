@@ -115,7 +115,8 @@ const UNIT: &[&str] = &[
     "tests/common/creds-core/store_tests.rs",
     "tests/backend/control/gate_rules_tests.rs", // 〔THIN〕原 `tests/common/gate-core/lib_tests.rs`：gate-core 收成后端模块
     "tests/common/relay-route-core/lib_tests.rs", // 〔US1〕中转门牌共享 crate
-    "tests/common/search-core/lib_tests.rs",
+    // 〔P1〕`search-core` 删了：它的纯函数判据随家拆成两份（通用口径 · Claude 记录文本），同层。
+    "tests/backend/agents/claudecode/text_tests.rs",
     "tests/frontend/shell/filewin/corpus_tests.rs",
     "tests/frontend/shell/filewin/create_tests.rs",
     "tests/frontend/shell/filewin/editor_tests.rs",
@@ -270,6 +271,8 @@ const UNIT: &[&str] = &[
 
 /// 源码扫描层：读仓内文本（`include_str!` · `repo_root()` 一族 · `readFileSync` 一族）、不碰 OS。
 const SCAN: &[&str] = &[
+    // 〔P1〕原 `search-core` 纯函数判据的通用那一半 ＋ 「口径只有一个家」那两道（读后端三份生产源码）⇒ 扫描层。
+    "tests/backend/observe/search_rules_tests.rs",
     // 〔MOD〕记录解释搬进后端：漂移账（原 monitor `drift_ledger_tests.rs` 的记录两面）· 抢救与记账（原 `parser_tests.rs`）·
     //   记录的线上形状（原 `messages_tests.rs`）· 标题记录一个不漏被接住（原 `history_title_coverage.rs`）。
     "tests/backend/agents/claudecode/drift_tests.rs",

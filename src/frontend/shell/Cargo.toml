@@ -16,7 +16,6 @@ members = [
     "../../common/creds-core",
     "../../common/guard-core",
     "../../common/relay-route-core",
-    "../../common/search-core",
     "../../common/shell-quote-core",
     "../../common/copy-core",
     # 〔THIN〕`agent-tools-core` 出列：界面不再按工具名判卡型（卡型随记录成品带出），它只剩后端用，收进后端适配层。
@@ -144,7 +143,7 @@ deploy-contract = { path = "../../common/deploy-contract" }
 # 〔THIN〕`gate-core` 删了：monitor 侧的 Gate 1 前检与转调壳（只剩跨轨对拍锚点在用）删掉之后它只剩后端用，收成后端模块 `control/gate_rules.rs`。
 
 # 〔THIN〕`search-core` 删了：monitor 零引用（搜索与记录解释都在后端；`messages.rs` 那一处随记录解释进了后端，MOD）。
-#   它仍是 workspace 成员（单测照旧随这一格跑），只剩后端用 —— 进不进后端适配层报备（`调研/第四波记录/THIN.md §四`）。
+#   〔P1〕workspace 成员也出列、crate 删了：通用口径进后端 `observe/search_rules.rs`，Claude 记录文本那一半进 `agents/claudecode/text.rs`。
 
 notify = "6"
 notify-debouncer-mini = "0.4"

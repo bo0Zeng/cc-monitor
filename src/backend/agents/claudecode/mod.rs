@@ -10,6 +10,7 @@
 //! | [`accounts`] | `.claude.json` 的信任判定（`projects[cwd].hasTrustDialogAccepted`） |
 //! | [`resume`] | resume 的命令形状与会话名前缀（与 [`super::codex::resume`] 对称） |
 //! | [`assets`] | 〔AS2〕资产布局：`skills/<名>/` · `SKILL.md` 的 `description:` · `.claude.json` 的 `projects` × `<项目>/.mcp.json` |
+//! | [`text`] | 〔P1〕记录文本：`message.content` 的正文块 / 工具内容怎么抽 · user 正文里 CLI 注入的包装与样板怎么剥（原共享 crate `search-core` 的这一半） |
 //! | [`schema`] · [`parse`] · [`turn`] · [`drift`] | 〔MOD〕**记录解释**：一行 jsonl 的线上形状（界面收到的就是它）· 抢救与记账 · 轮次边沿 · 漂移账（从 monitor 搬来，`设计/90 §3` 判据 3） |
 //!
 //! # ⚠ 搬进来的是**知识**，不是**机器**
@@ -48,6 +49,8 @@ pub mod paths;
 pub(crate) mod records;
 pub(crate) mod resume;
 pub(crate) mod schema;
+// 〔P1〕记录文本：正文 / 工具内容怎么抽 · CLI 注入怎么剥（原共享 crate `search-core` 的 Claude 那一半）。
+pub(crate) mod text;
 // 〔MIG-3a〕skill 接入面的声明（收件箱那几个人要改的文件 ＋ Claude 数据文件的纵深围栏）：从 monitor 搬来。
 pub(crate) mod skill_host;
 pub(crate) mod turn;
@@ -99,6 +102,11 @@ pub(crate) const RECORDS: super::RecordFace = super::RecordFace {
     find_session: Some(branch::find_session_file),
     branch: Some(branch::build_branch_records),
     drift: Some(drift::report),
+    text: Some(super::TextFace {
+        main: text::extract_text_blocks,
+        tool: text::extract_tool_text,
+        clean_user: text::clean_user_text,
+    }),
     delete: Some(super::SessionDelete {
         locate: paths::session_file_for_delete,
         is_record: paths::is_session_record_path,

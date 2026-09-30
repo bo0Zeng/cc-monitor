@@ -2649,7 +2649,7 @@ pub const REGISTRY: &[CommandSpec] = &[
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
-    // 〔FIX4 · `90 §3` J15 · 主会话 09-28 裁 B〕**各台 `history-search` 的会话行合成一份**：`updatedAt` 倒序（`search_core::sort_by_recency`）·
+    // 〔FIX4 · `90 §3` J15 · 主会话 09-28 裁 B〕**各台 `history-search` 的会话行合成一份**：`updatedAt` 倒序（`search_rules::sort_by_recency`）·
     //   命中数相加 · 任一行被砍 ⇒ `truncated`。本体 `observe/search_query.rs::answer_merge`（经只读宿主 `read_face` 那一臂）；纯计算 ⇒ 不进阻塞档（同 `acct-iso-cmd`）。
     CommandSpec {
         name: "history-search-merge",

@@ -1996,7 +1996,7 @@ fn open_with_os(path_or_dir: &str) -> Result<(), String> {
     .map_err(|e| format!("{bin} failed: {e}"))
 }
 
-// 〔LOC1b · 第四波 4D〕搜索口径那道守卫原挂在 `search.rs` 下；那份文件删了，挂到这里（它读的是 search-core 与后端两份源码）。
+// 〔LOC1b · 第四波 4D〕搜索口径那道守卫原挂在 `search.rs` 下；那份文件删了，挂到这里。〔P1〕今天只剩「monitor 这一侧零处」（「恰一份」那两道随家进了后端）。
 #[cfg(test)]
 #[path = "../../../../tests/frontend/shell/search_kou_jing_guard.rs"]
 mod search_kou_jing_guard;

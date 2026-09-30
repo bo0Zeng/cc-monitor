@@ -32,7 +32,6 @@ const CRATES: &[(&str, Class, &str)] = &[
     ("deploy-contract", Class::Contract, "字节表键 · 文件格式 · 答话形状 · 路径：表 A 的键与行、拒绝的形状与话、身份戳格式、计划答话、落点路径，两侧对上同一份（判定那一半住后端 `control/deploy_plan.rs`）"),
     ("guard-core", Class::TestInfra, "源码扫描判据的原语，两侧都只在 dev 侧"),
     ("relay-route-core", Class::Contract, "端口 · 路径 · 路由语法：中转与常驻监听口的门牌、后端落点，两侧拼 / 拆同一份"),
-    ("search-core", Class::Decision, "搜索口径与多机合并排序是裁决，只后端用"),
     ("shell-quote-core", Class::Contract, "令牌形状：POSIX 单引号 quote 与标识符放行形状（session id · 启动令牌 · cc-bus id · 路径），两侧拼进 shell 前对上同一份"),
     ("upstream-url-core", Class::Decision, "上游 URL 能不能用是裁决；界面读的是生成器现生成的式子（monitor 只在 dev 侧链它）"),
 ];

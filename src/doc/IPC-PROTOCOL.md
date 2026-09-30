@@ -2489,7 +2489,7 @@ V116「要，只删装时写进去的文件」：装的时候记下写了哪几�
 ```
 
 界面照旧逐台经通道问那台常驻后端的 `history-search`（各台内存索引保热），把解码过的会话行（远端的补了 `origin`）一次交给**本机**后端合：
-`updatedAt` 倒序、稳定（`search_core::sort_by_recency`，与每台后端花 snippet 预算同一个函数）· `totalHits` = `hitCount` 之和 ·
+`updatedAt` 倒序、稳定（`search_rules::sort_by_recency`，与每台后端花 snippet 预算同一个函数）· `totalHits` = `hitCount` 之和 ·
 任一行 `hitsTruncated` ⇒ `truncated`。只读排序与计数要的那三格，其余原样透传。纯计算。错误码：`bad_args`（不是 `{sessions:[…]}` / 某一行那三格缺或类型不对）。
 只上帧面（`STREAM_ONLY`）。
 
@@ -4200,7 +4200,7 @@ CLI 面这两条的用处是**量一趟遍历** ／ **在一个常驻后端进�
 
 **口径与 §10 的 `--search` 是同一份**：一条记录拿哪两段文本去搜（user 正文先剥 CLI 注入的包装、按 `MAIN_CAP` 截；
 `--include-tools` 时再加工具内容、按 `TOOL_CAP` 截）、命中算哪一种（先正文、后工具）、片段怎么切 ——
-后端 `observe/search_query.rs::record_text` / `record_hit` ＋ `search-core`，两条子命令调同一对函数。
+后端 `observe/search_query.rs::record_text` / `record_hit` ＋ 口径的家（`observe/search_rules.rs` · `agents/claudecode/text.rs`），两条子命令调同一对函数。
 差别只在「扫哪些文件、给多少条」：只扫 `<p>` 这一份；**按文件序**（= 对话序）；**没有 uuid 的记录不列**（跳不过去）。
 
 - `--query <q>`：**必填**，查询串是这个选项的**值**（不是位置参数）⇒ 以 `--` 起头的查询（`--force`）不会被当成选项。

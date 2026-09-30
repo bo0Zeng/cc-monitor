@@ -46,6 +46,8 @@ pub(crate) const RECORDS: crate::agents::RecordFace = crate::agents::RecordFace 
     find_session: None,
     branch: None,
     drift: None,
+    // 〔P1〕Codex 的记录不进全局搜索 / 摘录那几条通用路（它们只走记录树那一家）⇒ 不给文本面。
+    text: None,
     delete: None,
 };
 // 〔`设计/50` 删用量〕**原 `pub(crate) mod usage;` 删了。**
