@@ -135,7 +135,7 @@ describe("远端会话的全景（RM1c · RM1d）", () => {
       ["box1", "/srv/proj", "plan_add_annotation"],
       ["box1", "/srv/proj", "plan_approve_annotation"],
     ]);
-    expect(edits()[0].args.args).toEqual({ file: "src/lib.rs", symbol: "f", body: "新批注", author: "me" });
+    expect(edits()[0].args.args).toEqual({ target: "src/lib.rs#f", body: "新批注", author: "me" });
   });
 
   /** 〔MIG-3b 续〕建索引那一问挂着不回来；撤单那一条恰带着它的编号。 */

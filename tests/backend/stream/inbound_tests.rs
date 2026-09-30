@@ -1122,7 +1122,7 @@ async fn a_cancel_really_stops_an_in_flight_panorama_index() {
         tx.clone(),
         running.clone(),
         move |r: Request| async move {
-            crate::control::panorama::answer_with(&fixed, &store, &r.args)
+            crate::control::panorama::answer_with(&fixed, &store, &r.args, &|_| {})
                 .await
                 .map(Some)
                 .map_err(|(c, m)| (c.to_string(), m))
@@ -1200,4 +1200,33 @@ async fn a_cancel_really_stops_an_in_flight_panorama_index() {
         "`cancelled` 回了，小程序（{pid}）5 秒后还在跑 —— 那是一条撒谎的 `cancelled`"
     );
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// 要求住址：`97 §8`「要上游给的」④「插件口转订阅流」· `99 §1` V158「长活要有进度」。
+///
+/// ★〔P7〕进度的窄口只推**本请求那张票**的 `progress` 帧：请求交了 `ticket` ⇒ 推一格就是一帧 `progress{ticket, cell}`（原样）；
+/// 没交 / 交了空串 / CLI 那个空口 ⇒ 一帧都不发。
+#[test]
+fn the_progress_capability_only_pushes_frames_for_the_requests_own_ticket() {
+    let (tx, mut rx) = mpsc::channel::<Frame>(4);
+    let cell = serde_json::json!({"phase": "Parse", "done": 1, "total": 2});
+    Progress::for_request(&tx, &serde_json::json!({"op": "index", "ticket": "t-1"}))
+        .push(cell.clone());
+    match rx.try_recv() {
+        Ok(Frame::Progress { ticket, cell: got }) => {
+            assert_eq!(ticket, "t-1");
+            assert_eq!(got, cell);
+        }
+        other => panic!("交了票却没推出那一帧：{other:?}"),
+    }
+    Progress::for_request(&tx, &serde_json::json!({"op": "index"})).push(cell.clone());
+    Progress::for_request(&tx, &serde_json::json!({"op": "index", "ticket": ""}))
+        .push(cell.clone());
+    Progress::none().push(cell);
+    assert!(rx.try_recv().is_err(), "没交票也推出了帧");
+    // 注册表里 `panorama` 是收这个口的那一档（否则上面那张票根本递不到它手里）。
+    assert!(matches!(
+        lookup("panorama").expect("注册表里有 panorama").run,
+        Run::AsyncProgress(_)
+    ));
 }
