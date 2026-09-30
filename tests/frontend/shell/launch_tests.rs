@@ -1265,7 +1265,8 @@ fn the_launch_token_never_reaches_a_log_macro_in_launch_rs() {
     let leak: Vec<&String> = calls
         .iter()
         .filter(|c| {
-            ["rbind_token", "ps_command", "remote_cmd", "tok"]
+            // 〔P5〕`command`：开窗交来的成品（前奏里带着令牌 marker）。
+            ["rbind_token", "ps_command", "remote_cmd", "tok", "command"]
                 .iter()
                 .any(|w| guard_core::contains_word(c, w))
         })
