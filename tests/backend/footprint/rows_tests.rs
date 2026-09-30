@@ -826,10 +826,10 @@ fn destination_checks_still_run_under_every_host() {
 /// **申报的落点必须与真正执行写入的那段代码逐字一致。**
 ///
 /// 审计说得对：此前没有一条测试把 `TOOLS` 的申报与 `sftp.rs` / `mcp.rs` /
-/// `acct_iso_deploy` 对齐，所以这张告知页可以自信地说错而门禁不会红。
+/// 当时那条账号工具的部署命令对齐，所以这张告知页可以自信地说错而门禁不会红。
 /// 追查下去比审计报的更严重——**六条声明里三条没有任何代码支撑**：
 /// `remote-daemon` 的 `.local/bin/ccm-backend` 全仓只出现在注册表自己里
-/// （真实是 `RemoteConfig.backend_path`）、`cc-acct-iso` 声明成本机而实际是远端 +
+/// （真实是 `RemoteConfig.backend_path`）、当时那个账号工具声明成本机而实际是远端 +
 /// 前端传的 `dest_dir`、`cc-bus` 的落点是未实现的愿景。
 /// 前两条已改成 `ToolDestination::UserConfiguredPath`（承认"这是配置项"），
 /// 剩下**真有常量**的两条在这里用 `pin_definition` 钉死。
