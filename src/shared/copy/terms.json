@@ -106,8 +106,8 @@
       "word": "PowerShell",
       "tier": "限用",
       "tally": { "re": "powershell", "flags": "i" },
-      "inTable": 43,
-      "inTableNote": "〔FIX4 · 71 §8 第 7 条〕36 → 37：认不出本机系统时别名那一格那句（machineAliases.unknownOs.said）点名 PowerShell（与 bash 并列，说明为什么不猜）。〔WF1 · L〕37 → 43：执行策略那一族（machineAliases.policy.hostPowershell / hostPwsh / confirm / setDone / afterInstall · rsPsPolicy.listing.unreadable）说的就是 $PROFILE 由哪一代 PowerShell 加载、它的执行策略。",
+      "inTable": 44,
+      "inTableNote": "〔P3 · 主会话 09-29 裁〕43 → 44：数据位置页 PowerShell 那份别名文件的说明（rsDataPaths.backend.aliasesPs「你建的别名（PowerShell 读这一份）」，用户自己的 shell 名）。〔FIX4 · 71 §8 第 7 条〕36 → 37：认不出本机系统时别名那一格那句（machineAliases.unknownOs.said）点名 PowerShell（与 bash 并列，说明为什么不猜）。〔WF1 · L〕37 → 43：执行策略那一族（machineAliases.policy.hostPowershell / hostPwsh / confirm / setDone / afterInstall · rsPsPolicy.listing.unreadable）说的就是 $PROFILE 由哪一代 PowerShell 加载、它的执行策略。",
       "meaning": "Windows 上的 shell。",
       "context": "讲终端集成、$PROFILE 时许说；不许缩写成 PS。",
       "source": "设计/91 §4 R1b"

@@ -30,7 +30,7 @@ pub(crate) const LINK_REL: &str = ".local/bin/cc-acct-iso";
 pub(crate) const CONFIG_DIR_REL: &str = ".cc-acct-iso";
 const CONFIG_REL: &str = ".cc-acct-iso/config";
 /// 字节落在家目录底下的哪儿（部署那一根，`~/.cc-monitor/bin/` 底下；名字只住这里）。
-pub(crate) const DEST_REL: &str = ".cc-monitor/bin/cc-acct-iso";
+pub(crate) const DEST_REL: &str = relay_route_core::ACCT_ISO_REL;
 /// 身份标记（vendored 那份的内容指纹，[`vendor_id`]）落在 `DEST_REL` 底下的哪儿。
 const MARKER_REL: &str = ".vendor_id";
 

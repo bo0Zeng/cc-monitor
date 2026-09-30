@@ -65,6 +65,44 @@ pub const STAGING_DIR_REL: &str = ".cc-monitor/staging";
 /// 被分析的仓零字节；monitor 的数据位置页按它列出。
 pub const PANORAMA_INDEX_REL: &str = ".cc-monitor/panorama";
 
+/// 〔P3 · 主会话 09-29 裁「家里的都进唯一枚举」〕这台机器上后端的**退出行为设置**（只有后端写，`control/exit_policy.rs`）。
+pub const BACKEND_POLICY_REL: &str = ".cc-monitor/backend.json";
+
+/// 〔P3 · 同上〕别名块文件：POSIX shell 读的那一份（后端 `platform/shell/dialect.rs` 写，rc 里那一行 source 它）。
+pub const POSIX_ALIASES_REL: &str = ".cc-monitor/aliases.sh";
+
+/// 〔P3 · 同上〕别名块文件：PowerShell 读的那一份。
+pub const PS_ALIASES_REL: &str = ".cc-monitor/aliases.ps1";
+
+/// 〔P3 · 同上〕skill 装记录（后端 `assets/skill_ledger.rs` 写；卸的时候按它删）。
+pub const SKILL_LEDGER_REL: &str = ".cc-monitor/skill-installs.json";
+
+/// 〔P3 · 同上〕资产目录（后端 `assets/asset_catalog.rs` 写；各台机器之间自动对上）。
+pub const ASSET_CATALOG_REL: &str = ".cc-monitor/assets-catalog.json";
+
+/// 〔P3 · 同上〕cc-acct-iso 的字节落点（后端 `assets/acct_iso_install.rs` 装）。
+pub const ACCT_ISO_REL: &str = ".cc-monitor/bin/cc-acct-iso";
+
+/// 〔P3 · 同上〕常驻监听口的进程记录的文件名（与 [`LISTEN_TOKEN_FILE_REL`] 同一个目录）：本机宿主与远端
+/// `--resident-ensure` 按同一个口（[`listen_port_for`]）找同一份。
+pub fn listen_pid_file_name(port: u16) -> String {
+    format!("listen-{port}.pid")
+}
+
+/// 相对家目录的一段 ⇒ 最后一截（文件名）。给各写者定自己那个 `FILE_NAME`（临时件的名字从它拼），名字仍只住上面那一处。
+pub const fn file_name_of(rel: &'static str) -> &'static str {
+    let b = rel.as_bytes();
+    let mut i = b.len();
+    while i > 0 && b[i - 1] != b'/' {
+        i -= 1;
+    }
+    let (_, tail) = b.split_at(i);
+    match core::str::from_utf8(tail) {
+        Ok(s) => s,
+        Err(_) => rel,
+    }
+}
+
 /// 钥匙的形状：恰好 64 个小写十六进制字符（32 字节 = 256 位，中转 `relay/door.rs` 铸的就是这一形）。
 pub fn key_shape_ok(s: &str) -> bool {
     s.len() == 64 && s.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))

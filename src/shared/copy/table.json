@@ -13729,12 +13729,52 @@
     },
     "rsDataPaths.backend.relayKey": {
       "kind": "body",
-      "zh": "中转用的钥匙，后端重起时没有就新建一把",
+      "zh": "中转用的钥匙。后端运行时要用，删了要重起后端",
       "args": []
     },
     "rsDataPaths.backend.listenToken": {
       "kind": "body",
-      "zh": "连本机后端用的钥匙，后端重起时没有就新建一把",
+      "zh": "连本机后端用的钥匙。后端运行时要用，删了要重起后端",
+      "args": []
+    },
+    "rsDataPaths.backend.listenPid": {
+      "kind": "body",
+      "zh": "本机常驻后端的进程记录。后端运行时要用，删了要重起后端",
+      "args": []
+    },
+    "rsDataPaths.backend.acctIso": {
+      "kind": "body",
+      "zh": "多账号工具 cc-acct-iso，删了要重装",
+      "args": []
+    },
+    "rsDataPaths.backend.policy": {
+      "kind": "body",
+      "zh": "退出行为：monitor 退出时后端留不留",
+      "args": []
+    },
+    "rsDataPaths.backend.aliasesPosix": {
+      "kind": "body",
+      "zh": "你建的别名（bash、zsh 读这一份）",
+      "args": []
+    },
+    "rsDataPaths.backend.aliasesPs": {
+      "kind": "body",
+      "zh": "你建的别名（PowerShell 读这一份）",
+      "args": []
+    },
+    "rsDataPaths.backend.skillLedger": {
+      "kind": "body",
+      "zh": "从这里装的 skill 的记录，卸的时候按它删",
+      "args": []
+    },
+    "rsDataPaths.backend.assetCatalog": {
+      "kind": "body",
+      "zh": "各台机器上 skill 与 MCP 的清单，删了会重新扫出来",
+      "args": []
+    },
+    "rsDataPaths.backend.apikey": {
+      "kind": "body",
+      "zh": "你填的 API key",
       "args": []
     },
     "rsDataPaths.backend.logs": {

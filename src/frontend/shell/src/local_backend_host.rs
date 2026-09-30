@@ -165,7 +165,7 @@ fn token_path(dir: &std::path::Path) -> std::path::PathBuf {
 
 /// 「谁在听那个口」的住址。**按口分文件**：同一台机上不同数据目录各有各的后端。
 fn pid_path(dir: &std::path::Path, port: u16) -> std::path::PathBuf {
-    dir.join(format!("listen-{port}.pid"))
+    dir.join(relay_route_core::listen_pid_file_name(port))
 }
 
 /// 生成（或读回）attach token。

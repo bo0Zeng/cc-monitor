@@ -591,7 +591,16 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
   },
   // 〔THIN〕`gate-core` 那一格删了：它收成后端模块（`control/gate_rules.rs`），不再是共享 crate，不在本表人群里。
   "relay-route-core": {
+    // 〔P3 · 主会话 09-29 裁〕后端住在 `~/.cc-monitor` 里的那几样的相对路径（后端各写者引它、monitor 数据位置页按它列）；TS 侧没有孪生。
+    ACCT_ISO_REL: NONE,
     ALL: NONE,
+    ASSET_CATALOG_REL: NONE,
+    BACKEND_POLICY_REL: NONE,
+    file_name_of: NONE,
+    listen_pid_file_name: NONE,
+    POSIX_ALIASES_REL: NONE,
+    PS_ALIASES_REL: NONE,
+    SKILL_LEDGER_REL: NONE,
     // 〔E2 · V28〕后端落点（`~/.cc-monitor/bin/ccm`，两半同一份）；TS 侧没有孪生（界面那句话里的路径在文案表里）。
     BACKEND_LANDING_REL: NONE,
     BACKEND_LANDING_SHELL: NONE,

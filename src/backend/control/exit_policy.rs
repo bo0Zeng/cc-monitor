@@ -42,8 +42,9 @@ use std::path::{Path, PathBuf};
 /// 后端在每台机器上的家目录名（相对用户家目录）。
 pub const DIR_NAME: &str = ".cc-monitor";
 
-/// 那个值住的文件名。**全仓只有这一处写这个字面量**（E1 的判据按它找写者）。
-pub const FILE_NAME: &str = "backend.json";
+/// 那个值住的文件名。〔P3〕字面量只住契约 crate（`relay_route_core::BACKEND_POLICY_REL`：monitor 的数据位置页按它列出、只看在不在），
+/// 写者仍只有本模块（E1 的判据按字面量找家、按写口找写者）。
+pub const FILE_NAME: &str = relay_route_core::file_name_of(relay_route_core::BACKEND_POLICY_REL);
 
 /// 文件里那一格的键。键名与线上 `data.killOnExit` 同一个词，免得两个名字说一件事。
 pub const KEY_KILL_ON_EXIT: &str = "killOnExit";
