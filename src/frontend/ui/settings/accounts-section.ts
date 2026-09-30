@@ -1,4 +1,4 @@
-// A3：设置面板「账号」组（多账号 cc-acct-iso）。占用原「远端」空占位组。
+// A3：设置面板「账号」组（多账号；账号库由那台机器的后端建立和维护）。占用原「远端」空占位组。
 //
 // 展示某台远端的账号列表（名/邮箱/mode/登录态/configDir/默认）+ 设为默认 / 复制 configDir /
 // 刷新。**只读 + 改本机默认账号**（写 config.json，不碰远端 manifest、不注入、不重启——A4/A5）。
@@ -6,7 +6,6 @@
 //
 // 设置窗独立于主窗、拿不到活跃会话，故用远端选择器（多台时下拉）。改默认账号后
 // emit(SETTINGS_APPLIED_EVENT) 让主窗状态栏 chip 同步。
-import { installAcctIso, readAcctIsoSnippet, readAcctIsoStatus, type AcctIsoInstalled } from "../acct-iso-reads";
 import { getCurrentMachine, subscribeMachine } from "./machine-context";
 import { emit } from "@tauri-apps/api/event";
 import { openTerminal } from "../terminal-open";
@@ -17,11 +16,9 @@ import { setDefaultName, getModelForAccount, setModelForAccount } from "../accou
 import { accountAvatarEl } from "../account-color";
 import { readRemoteConfig, type RemoteHostConfig } from "../remote-config";
 import { showActionFailureToast } from "../error-toast";
-import { buildPasteBlock } from "../paste-block"; // T03：待贴文本统一组件（Z05 复用它）
 // 〔第三波 S3〕本机那一支新长的字全走文案表（`设计/91 §5.1`）：一处取文，判据按表逐条量。
 import { copyText } from "../copy-table";
-// 〔第三波 S3〕本机建号那一跳：后端那个本机串（〔C4b〕账号面那个 `"__local__"` 已退役，本机只剩这一个表示），
-// 以及「本机刻意不开终端窗口」那句话的跨语言标记（唯一住址在 `remote-launch-run.ts`）。
+// 本机那个串（后端那个本机表示），以及「本机刻意不开终端窗口」那句话的跨语言标记（唯一住址在 `remote-launch-run.ts`）。
 import { LOCAL_ORIGIN as BACKEND_LOCAL_ORIGIN } from "../backend-policy";
 import { isLocalOrigin, isRemoteOrigin, type Origin } from "../ipc/origin";
 import { POSIX_NO_WINDOW_MARKER } from "../remote-launch-run";
@@ -30,16 +27,21 @@ import { POSIX_NO_WINDOW_MARKER } from "../remote-launch-run";
 // A2（`设计/70 §4.4`）：新建账号那张表单。
 import { renderNewAccountForm, type NewAccountRequest } from "./account-new-form";
 import { SETTINGS_APPLIED_EVENT } from "./events";
-// Phase G：这两格此前**没有任何生产者**，见下面 `note()` 的注释。
-// `N-F2`：本机那条路也要写进同一本账 ⇒ 连本机那个 key 一起取，别在这儿长第二个名字。
 import { recordFacet, LOCAL_MACHINE_KEY } from "./machine-status";
+// 改账号库的那几件都问这一页那台机器的后端（本机远端同一条路）。
 import {
-  askAcctIsoCmd,
+  accountsAdd,
+  accountsInit,
+  accountsLoginCmd,
+  accountsRemove,
+  accountsRepair,
+  accountsRollback,
+  accountsVerify,
   validateAcctName,
-  type AcctIsoStep,
-} from "./acct-deploy";
+  type AccountChange,
+} from "../account-ops";
 import { askConfirm } from "../ask-dialog";
-import { saidOfControl } from "../control-said";
+import { machineName, saidOfControl } from "../control-said";
 
 /**
  * apikey 那一格要显的**一个账号**。只带界面真正用得到的三样。
@@ -191,18 +193,6 @@ export class AccountsSection {
   private origin: Origin = BACKEND_LOCAL_ORIGIN;
   /** U7：维护区展开态。null=用户还没表态（默认折叠）；true/false=用户手动开合过，reload 后保持。 */
   private maintOpen: boolean | null = null;
-  /**
-   * A2：表单上选了「第三方 apikey」、终端已拉起、但这个号**还没出现在列表里**的那几把 key（名 → key）。
-   * 只住内存，不落盘、不进 DOM；放弃 / 写成 / 写不成都会把它删掉。
-   *
-   * 〔RM1a〕每一把**记着它是给哪台机器建的**：key 从此写进那台机器上的那一份表，
-   * 而这一页会换机器 —— 不记的话，远端 A 上建的号若与本机某个号同名，key 会被写到本机去。
-   * ⇒ 只在**同一台**机器的列表里出现时才写。
-   */
-  // 〔第四波 ST2〕值多带一格 Base URL（表单 apikey 那一支的第二格；缺席 = 默认上游）。
-  // 〔RM1a〕再带一格 origin：建它的那台机器（见上）。两格一起跟着那把 key 走到那台机器上。
-  private readonly pendingKeys = new Map<string, { key: string; origin: Origin; baseUrl?: string }>();
-  private pendingBox: HTMLElement | null = null;
 
   constructor() {
     const root = document.createElement("div");
@@ -303,51 +293,10 @@ export class AccountsSection {
   }
 
   /**
-   * Phase G：给状态账本记一格。
-   *
-   * **这里此前是个洞**：`MACHINE_FACETS` 有 5 格，而全仓 `recordFacet` 的生产者只覆盖
-   * 3 格（machine-card 的 connection/backend/ccm）—— `acctIso` 与 `accounts` **一个写点都没有**。
-   * 后果不是「少两个格子」，而是**「还差什么」那张清单在任何真实安装上都清不空**：
-   * 每台机器恒定产出 ≥2 条 `unknown` ⇒ `summarizeGaps` 恒非 null ⇒
-   * `remote-section` 里「全绿就整块不出现」那一支是**死代码**。
-   * 一张自称「还差什么、点哪里补齐」却既补不齐也消不掉的清单，比不做这个功能更糟。
-   *
-   * # `N-F2`（09-05）：那个洞**在本机这条路上一直还开着**，本件把它补上
-   *
-   * 上面那段说的是「全仓」，而这一行此前逐字写着 `if (!this.origin) return;`
-   * ⇒ 远端补上了，**本机一格都没写过**（`N-F2` 开工时现打：全仓对 `LOCAL_MACHINE_KEY`
-   * 的 `recordFacet` 写点 **0 个** —— ⚠ **这是那一刻的快照，而改掉它的正是下面这一行**：
-   * 本件之后是 1 个，就是这里）。而 `readiness.notApplicable` 对本机只排掉
-   * `backend` / `connection` 两格（`ccm` 另有一条，仅 Windows），
-   * 于是本机的 `acctIso` / `accounts` 是**适用而恒 `unknown`** 的两格 ——
-   * 上面那句「清单在任何真实安装上都清不空」在本机这一侧原封不动地仍然成立。
-   *
-   * ⚠ **那道守卫看不见这件事**：`facet-producer-guard.vitest.ts` 扫的是
-   * 「源码里有没有 `note("acctIso", …)` 这个形状」，而它**一直是绿的** ——
-   * 因为写点确实存在，只是被这一行早返回挡在本机之外。
-   * 「代码库里有没有写点」与「某条路上写不写得到」是两个作用域。
-   *
-   * # 那句被撤掉的注释：「本机：这两格由 `L3b` 补，今天表示不了」
-   *
-   * `NF2D1` 现打核实，这句话**两头都不成立**（查证过程见件文件 `§3a`）：
-   * - `L3b`（`planned-build/local-as-remote/MASTERPLAN.md:117`）是**本地账号管理·写**
-   *   ——建 / 迁 / 删 / 改默认号，状态列逐字「待规划」、`STATUS.md:3` 逐字「L3b 未做」，
-   *   代码仓里零实现。它是**写**那一摊，而这两格问的是**读得出来没有**
-   *   ⇒ 就算 L3b 落地了，也**不是它**来补这两格：挂错了件。
-   * - 「今天表示不了」也过期了：`N-F1b` / `N-F1c` 之后本机这条路
-   *   （`reloadLocal` ⇒ `fetchLocalAccounts`）本来就有三档结局，那正是这两格要写的东西。
-   *
-   * # 本机用哪个 key
-   *
-   * `LOCAL_MACHINE_KEY` —— 与 `remote-section` 算那张清单时传的入参
-   * （`origins: [LOCAL_MACHINE_KEY, ...]`）、以及本机那一行显状态格用的
-   * `readStatus(LOCAL_MACHINE_KEY)` 是**同一个常量**，不在这里长第二个名字。
-   * 远端那条路的 key 与写进去的值**一个字节不变**（`this.origin` 非空时走的还是它）。
+   * 给状态账本记 `accounts` 那一格（远端按那台的名字，本机按 `LOCAL_MACHINE_KEY`）。
+   * 读不出来 / 后端不在 / 没启用 / 读到了几个号 —— 每一档写法各不相同，「还差什么」那张清单才说得清缺的是哪一件。
    */
-  private note(
-    facet: "acctIso" | "accounts",
-    state: { kind: "ok" | "fail" | "na"; detail?: string },
-  ): void {
+  private note(facet: "accounts", state: { kind: "ok" | "fail" | "na"; detail?: string }): void {
     recordFacet(isLocalOrigin(this.origin) ? LOCAL_MACHINE_KEY : this.origin, facet, state);
   }
 
@@ -356,17 +305,6 @@ export class AccountsSection {
     return enabled
       ? { kind: "ok", detail: copyText("accounts.status.read") }
       : { kind: "fail", detail: copyText("accounts.status.multiOff") };
-  }
-
-  /** 〔VIS2 · `设计/15 §4.5` 缺口二〕`acctIso` 那一格 = cc-acct-iso 装没装（`null` = 问不出来）。 */
-  private noteInstalled(installed: boolean | null): void {
-    const detail =
-      installed === true
-        ? copyText("accounts.status.isoInstalled")
-        : installed === false
-          ? copyText("accounts.status.isoMissing")
-          : copyText("accounts.status.isoUnknown");
-    this.note("acctIso", { kind: installed === true ? "ok" : "fail", detail });
   }
 
   private async reload(force: boolean): Promise<void> {
@@ -407,8 +345,8 @@ export class AccountsSection {
     }
     const ui = deriveUi(state);
     switch (ui.kind) {
-      // 🔴 `K-R59`：这里原来还有一支 `case "hidden"`，把 `accounts`/`acctIso` 两格
-      //    记成 `na`、理由「用户显式选的降级」。那一档（`daemonless`）整格没了 ⇒ 支也没了。
+      // 🔴 `K-R59`：这里原来还有一支 `case "hidden"`，把账号那一格记成 `na`、理由「用户显式选的降级」。
+      //    那一档（`daemonless`）整格没了 ⇒ 支也没了。
       case "needs-update":
         this.note("accounts", { kind: "fail", detail: copyText("accounts.status.backendOld") });
         this.info(copyText("accounts.status.backendOldBody", { reason: ui.reason }));
@@ -419,64 +357,29 @@ export class AccountsSection {
         this.info(copyText("accounts.status.queryFailedBody", { reason: ui.reason }));
         return;
       case "not-enabled":
-        // 〔VIS2 · `设计/15 §4.5` 缺口二〕启用没启用记在 accounts（启用着只是零个号 ⇒ 读到了）；acctIso 只记装没装（`renderNotEnabledFlow` 里问）。
+        // 〔VIS2 · `设计/15 §4.5` 缺口二〕启用没启用记在 accounts（启用着只是零个号 ⇒ 读到了）。
         this.note("accounts", this.enabledFacet(state.meta?.enabled === true));
-        void this.renderNotEnabledFlow(ui.manifestPath, ui.reason);
+        this.renderInitWizard(this.body, ui.manifestPath, ui.reason, "remote");
         return;
       case "ready":
         this.note("accounts", { kind: "ok", detail: copyText("accounts.status.count", { n: ui.accounts.length }) });
-        // 启用着 ⇒ 工具在（多账号只由它建）；不为这一格多开一趟 SSH。
-        this.note("acctIso", { kind: "ok", detail: copyText("accounts.status.isoInstalled") });
         await this.renderTable(state, ui.accounts, ui.notice);
         return;
     }
   }
 
   /**
-   * `N-F1b`：**没有配任何远端时，这一节讲的是这台机器。**
-   *
-   * # 它为什么是一条**自己的**渲染路，而不是把本机塞进 `renderTable`
-   *
-   * 远端那张表带着一整套只对远端成立的东西：维护区那几个按钮会**动远端目录**、
-   * 「去登录」会去拉一个**远端终端**（`accountLoginActionLabel` 的两句文案都逐字带「远端」）、
-   * apikey 那一块问的是「这几个 configDir 在**本机**的 apikey 表里有没有行」而表里显的是远端的号
-   *（那一块当年的头注口径③ 自己记着这笔账；它今天拆成 `renderApikeyFileBlock` ＋ `renderApikeyEditor`）。把本机接进那条路，
-   * 等于把「一台远端机器」这个概念套到本机头上 —— 那正是 `N2` 排除的那件事，
-   * 也正是 `control-parity` 那个区花 41 件治过的病。
-   * ⇒ 本机这一支只做它今天真做得到的事：**把清单列出来**。
-   *
-   * # 🔴 射程线：本件只换「面板走不走得到」，不换数据源
-   *
-   * 数据源是今天已经能用的本机读口 `fetchLocalAccounts`（直读磁盘）。
-   * 用户 09-05 拍的板（`DECISIONS.md` `NR1` / `NR2`）说的终态是「每台机的账号由那台机的
-   * **后端**管」，那是**下一件**（`N-F1c`），它压着两处现打的障碍：后端那份路径检查
-   * 第一条是 `starts_with('/')`（Windows 列表会恒空）· 开发树里没有后端程序。
-   * ⇒ 这一支将来是**换实现不换界面**，别在这里预支它。
+   * `N-F1b`：**本机页讲的是这台机器。** 本机那一支自己一条渲染路（本机那一页的字一句「远端」都不许出现），
+   * 而改账号库那几件与远端同一条路：问本机后端（`account-ops.ts`，`origin` = 本机）。
    *
    * # 三个结局，一个都不许合并
    *
    * 读不出来 / 一个号都没有 / 有号 —— 前两个长得像但完全不是一回事：
-   * 把「读不出来」渲染成「你没有账号」，用户会去装一个他已经装好的东西。
-   * 由 `NF1bD1` 那一族的两条「诚实降级」判据钉着。
+   * 把「读不出来」渲染成「你没有账号」，用户会去启用一个他已经启用了的东西。
+   * 由 `NF1bD1` 那一族的两条「诚实降级」判据钉着。每一档往账本里记的 `accounts` 那一格也各不相同。
    *
-   * # `N-F2`：这三个结局**每一个都要往账本里记一笔**
-   *
-   * 这一支此前渲染完就走，一格都不写 ⇒ 本机的 `acctIso` / `accounts` 恒 `unknown`
-   *（详见 `note()` 的头注）。本件给每一档配一个**互不相同**的写法，
-   * 因为「没测过 / 读不动 / 后端不在 / 读到了但没启用 / 都好」在
-   *「还差什么」那张清单上要说的是五句不同的话。
-   *
-   * ⚠ **读失败那两档为什么 `acctIso` 也记 `fail`，而不是留空**：账本的词汇只有
-   * `ok` / `fail` / `na` 三个，留空的含义是「**没测过**」。而这两档是**测过了**
-   *（我们真去问了本机后端），结论是这台机器此刻**按账号隔离地起会话这件事做不到**
-   * —— 那正是 `FACET_MEANING.acctIso.consequence` 逐字写的后果。
-   * 记 `na`（不适用）与记空（没测过）在这里都是假话；`detail` 里带上是哪一档，
-   * 用户才知道该去修后端还是去装工具。⇒ 这不是选出来的，是词汇表逼出来的。
-   *
-   * ⚠ **诚实边界**：前端分不出后端那三档里的 `NoBackend` 与 `Unreadable`
-   *（`local_accounts.rs` 把两者一起塞进 `available:false` + 一句 `error` 文案）。
-   * 要在格子上分开它们，得让后端多带一个字段回来 —— 那是 `src/frontend/shell` 那一侧的事，
-   * 不在本件射程里。所以这里的档名说的是**面板看得见的那三档**，不是 Rust 那个枚举。
+   * ⚠ **诚实边界**：前端分不出后端那三档里的 `NoBackend` 与 `Unreadable`（两者一起是 `available:false` ＋ 一句 `error`），
+   * 所以这里的档名说的是**面板看得见的那三档**。
    */
   private async reloadLocal(force: boolean): Promise<void> {
     const box = document.createElement("div");
@@ -490,34 +393,30 @@ export class AccountsSection {
     } catch (e) {
       // 档三：**读不动** —— 那条 Promise 直接 rejected，命令根本没跑通。
       this.note("accounts", { kind: "fail", detail: copyText("accounts.local.unreadable") });
-      this.note("acctIso", { kind: "fail", detail: copyText("accounts.local.unreadable") });
       this.localFail(box, String(e));
       return;
     }
     if (!state.available) {
       // 档二：**后端不在** —— 后端答了「不可用」，那句原因在 `state.error` 里。
       this.note("accounts", { kind: "fail", detail: copyText("accounts.local.noBackend") });
-      this.note("acctIso", { kind: "fail", detail: copyText("accounts.local.noBackend") });
       this.localFail(box, state.error ?? LOCAL_ACCOUNTS_COPY.unknownReason);
       return;
     }
     if (!state.meta?.enabled || state.accounts.length === 0) {
       // 档一的空态：没启用 ⇒ accounts 缺（〔VIS2〕启用没启用住这一格）；启用着只是零个号 ⇒ 读到了。
-      // acctIso 记装没装，由下面那一问写（与远端 `not-enabled` 一支同形）。
       this.note("accounts", this.enabledFacet(state.meta?.enabled === true));
-      AccountsSection.line(
-        box,
-        "accounts-info accounts-local-empty-title",
-        LOCAL_ACCOUNTS_COPY.emptyTitle,
-      );
-      await this.renderLocalAcctIsoProbe(box);
+      AccountsSection.line(box, "accounts-info accounts-local-empty-title", LOCAL_ACCOUNTS_COPY.emptyTitle);
+      if (!state.meta?.enabled) {
+        this.renderInitWizard(box, state.meta?.manifestPath ?? null, state.meta?.error ?? "", "local");
+      } else {
+        AccountsSection.line(box, "accounts-hint accounts-local-empty-next", LOCAL_ACCOUNTS_COPY.emptyNext);
+        box.appendChild(this.localNewForm());
+      }
       return;
     }
 
-    // 档一：**读出来了**，而且这台机真的启用着隔离账号 ⇒ 两格都绿。
-    // 这是本机那两格唯一能变绿的一档 —— `NF2D3` 那条判据买的就是它。
+    // 档一：**读出来了**，而且这台机真的启用着隔离账号。
     this.note("accounts", { kind: "ok", detail: copyText("accounts.status.count", { n: state.accounts.length }) });
-    this.note("acctIso", { kind: "ok", detail: copyText("accounts.status.isoInstalled") });
     AccountsSection.line(
       box,
       "accounts-meta accounts-local-count",
@@ -529,118 +428,26 @@ export class AccountsSection {
     const cur = currentWorkingAccount(state);
     const table = document.createElement("div");
     table.className = "accounts-local-table";
-    // 〔第三波 S3〕本机这一半的两格事实（apikey 表里有没有它那一行 · 本机中转在不在跑）问后端要：
-    // `accountStatusBadge` 本机那三档从 `K-H2b` 起就「有实现、没接线」，这里接上。
+    // 〔第三波 S3〕本机这一半的两格事实（apikey 表里有没有它那一行 · 本机中转在不在跑）问后端要。
     const routing = await this.readLocalRouting(state.accounts);
     for (const a of state.accounts) {
       table.appendChild(
-        AccountsSection.localRow(a, cur?.name === a.name, routing ? localApikeyEndpointStateFor(a, routing) : undefined),
+        this.localRow(a, cur?.name === a.name, routing ? localApikeyEndpointStateFor(a, routing) : undefined),
       );
     }
     box.appendChild(table);
-    // 〔第三波 S3〕原先这里是 `LOCAL_ACCOUNTS_COPY.scopeHint`（「只读；在这里改不了它们」）——
-    // 这一拍本机能新建账号了，那句话成了假话 ⇒ 换成文案表里本机那一句。
     AccountsSection.line(box, "accounts-hint accounts-local-hint", copyText("accountsLocal.list.scope"));
-    box.appendChild(this.renderLocalRcSnippetBlock());
-    // 〔第三波 S3〕本机也能新建账号：与远端同一张表单（同一套校验、同一条 `cc-acct-iso add` 命令），
-    // 只是跑命令的那一跳走本机（[`launchLocalStep`]）。apikey 那一支在本机**真的有用**：
-    // apikey 表与中转本来就是本机的，起本机会话时按账号换上那把 key。
-    box.appendChild(
-      renderNewAccountForm(BACKEND_LOCAL_ORIGIN, (req) => this.createAccount(req, "local"), {
-        subscription: copyText("accountsLocal.new.subscriptionHint"),
-        apikey: copyText("accountsLocal.new.apikeyHint"),
-      }),
-    );
-    this.renderPendingKeys();
-    await this.flushPendingKeys(state.accounts);
-    // 〔AL1 · 2026-09-24〕这里原来挂着「按账号生成命令」那一块（`K-R49`）。它搬去了机器页
-    // 「本机 → 工具 → 别名」，并且不再是「账号表的投影」—— 别名清单归用户（`设计/71 §8`）。
-    // 〔AL1 · 2026-09-24〕`K-R135` 那一格（用户级 PATH）也跟着别名块搬去了机器页「别名」里
-    // （Windows 本机上，第一次展开那一块时建）。
+    // 本机也能新建账号：与远端同一张表单、同一条 `accounts-add`，只是问的是本机后端。
+    box.appendChild(this.localNewForm());
+    box.appendChild(this.renderMaintenance());
   }
 
-  /**
-   * 〔第三波 S3 · A3 接线〕本机空态的「下一步」：先问本机后端**这台机器装没装 cc-acct-iso**
-   * （〔MIG-3a〕经通道问本机后端 `acct-iso-status`），再说下一步 —— 三个结局各说各的：
-   *
-   * | 问到的 | 这一格说什么 | 「下一步」那一行 |
-   * |---|---|---|
-   * | 装了 | 装在哪（路径是后端答的） | 在终端里跑 `init`（本机没有替你开终端的口，如实说「在终端里」） |
-   * | 没装 | 还没装 | 原样用 `LOCAL_ACCOUNTS_COPY.emptyNext`（装 + 初始化，本机没有安装口） |
-   * | 问不出来 | 查不出来 ＋ 原因 | 同上 —— 问不出来**不许**当成「装了」，也不许当成「没装」 |
-   *
-   * 〔VIS2 · `设计/15 §4.5` 缺口二〕问到的就是 `acctIso` 那一格（装没装）：装了 ok · 没装 fail · 问不出来 fail「查不出来」。
-   */
-  private async renderLocalAcctIsoProbe(box: HTMLElement): Promise<void> {
-    const iso = AccountsSection.line(box, "accounts-hint accounts-local-iso", "");
-    let installed: boolean | null = null;
-    try {
-      const st = await readAcctIsoStatus(BACKEND_LOCAL_ORIGIN);
-      if (typeof st?.installed !== "boolean") throw new Error(String(st));
-      installed = st.installed;
-      this.noteInstalled(st.installed);
-      iso.textContent = st.installed
-        ? copyText("accountsLocal.acctIso.installed", { path: st.path ?? "cc-acct-iso" })
-        : copyText("accountsLocal.acctIso.missing");
-    } catch (e) {
-      this.noteInstalled(null);
-      iso.textContent = copyText("accountsLocal.acctIso.probeFailed", { reason: String(e) });
-    }
-    AccountsSection.line(
-      box,
-      "accounts-hint accounts-local-empty-next",
-      installed === true ? copyText("accountsLocal.acctIso.initNext") : LOCAL_ACCOUNTS_COPY.emptyNext,
-    );
-  }
-
-  /**
-   * 〔第三波 S3 · A3 接线〕本机的 rc 片段：〔MIG-3a〕经通道问本机后端 `acct-iso-shellinit` → 待贴块。
-   *
-   * 与远端那颗「生成 rc 片段…」（[`renderRcSnippet`]）同一个形状、同一条纪律：
-   * **只读、不代写**（`paste-block.ts` 模块头：本组件没有任何写入路径）。
-   * 围栏已由那台后端校验过一次（〔MIG-3a〕`acct-iso-shellinit` 自己校验）；这里再校验一次，理由同远端那条：「能显示」与「能贴」是两件事。
-   *
-   * ⚠ 文案全走 `copyText`（`accountsLocal.rc.*`）：本机那一支上不许出现「远端」，
-   * 远端那段话（「这台远端的 ~/.bashrc」「在远端跑一次」）不能照抄过来。
-   */
-  private renderLocalRcSnippetBlock(): HTMLElement {
-    const wrap = document.createElement("div");
-    wrap.className = "accounts-local-rc";
-    const btn = mkBtn(copyText("accountsLocal.rc.action"));
-    btn.title = copyText("accountsLocal.rc.hover");
-    const out = document.createElement("div");
-    out.className = "accounts-maint-rc";
-    btn.addEventListener("click", () => {
-      void (async () => {
-        btn.disabled = true;
-        out.innerHTML = "";
-        try {
-          const snippet = await readAcctIsoSnippet(BACKEND_LOCAL_ORIGIN);
-          out.appendChild(
-            buildPasteBlock({
-              text: () => snippet,
-              target: copyText("accountsLocal.rc.target"),
-              mergeNote: copyText("accountsLocal.rc.merge"),
-              activation: copyText("accountsLocal.rc.activation"),
-              invalidReason: (t) =>
-                t.includes("# ===== BEGIN cc-acct-iso =====") &&
-                t.includes("# ===== END cc-acct-iso =====")
-                  ? null
-                  : copyText("accountsLocal.rc.incomplete"),
-              multiline: true,
-              rows: 12,
-              className: "accounts-rc-paste",
-            }).element,
-          );
-        } catch (e) {
-          showActionFailureToast(copyText("accountsLocal.rc.failed"), String(e), { level: "error" });
-        } finally {
-          btn.disabled = false;
-        }
-      })();
+  /** 本机那一页的新建表单：两句提示换成本机的话（本机 Linux 不开终端窗口）。 */
+  private localNewForm(): HTMLElement {
+    return renderNewAccountForm(BACKEND_LOCAL_ORIGIN, (req) => this.createAccount(req), {
+      subscription: copyText("accountsLocal.new.subscriptionHint"),
+      apikey: copyText("accountsLocal.new.apikeyHint"),
     });
-    wrap.append(btn, out);
-    return wrap;
   }
 
   /**
@@ -695,7 +502,7 @@ export class AccountsSection {
    * 🔴 **千万别顺手传 `{ scope: "remote" }`** —— 那会让一台本机的号被解释成远端那一半，
    * 文案里当场出现「远端」两个字；`NF1bD2` 那条判据正是钉这个的。
    */
-  private static localRow(a: Account, isCurrent: boolean, relay?: ApikeyEndpointState): HTMLElement {
+  private localRow(a: Account, isCurrent: boolean, relay?: ApikeyEndpointState): HTMLElement {
     const row = document.createElement("div");
     row.className = isCurrent ? "accounts-local-row current" : "accounts-local-row";
     row.appendChild(accountAvatarEl(a.name, { size: 16, ghost: !isSelectable(a) }));
@@ -715,81 +522,39 @@ export class AccountsSection {
     if (isCurrent) {
       AccountsSection.line(row, "accounts-local-row-mark", LOCAL_ACCOUNTS_COPY.currentMark);
     }
+    // 有自己目录的号才有「去登录」「删除」（账号 0 没有目录；in-place 那种旧号的目录就是共享库，删不得）。
+    if (a.configDir && a.mode !== "in-place") {
+      const acts = document.createElement("span");
+      acts.className = "accounts-local-row-actions";
+      const login = mkBtn(accountLoginActionLabel(a).label);
+      login.addEventListener("click", () => void this.loginAccount(a));
+      acts.appendChild(login);
+      const del = mkBtn(copyText("accounts.row.remove"));
+      del.classList.add("danger");
+      del.addEventListener("click", () => void this.removeAccount(a));
+      acts.appendChild(del);
+      row.appendChild(acts);
+    }
     return row;
   }
 
   /**
-   * A6：在远端终端里跑一个部署/维护步骤——问那台后端要命令（〔DUP2 · J4〕`acct-iso-cmd`；它拒了 / 问不到 ⇒ 提示、不动手）
-   * → danger 步二次确认 → `terminal-open.ts::openTerminal` 弹真实终端让用户看着跑（DESIGN §6，不代跑）。
+   * 在终端里起 claude 登录一个号（那一行是那台后端答的，claude 自己的登录界面）。
+   * 远端：弹一个终端连过去跑；本机 Linux 刻意不开窗口（按后端自己的声明判，不按 OS 猜）⇒ 那一行复制给人自己跑。
    */
-  private async launchStep(
-    step: AcctIsoStep,
-    opts: { danger?: boolean; confirmExtra?: string } = {},
-  ): Promise<boolean> {
-    if (isLocalOrigin(this.origin)) return false;
-    let cmd: string;
+  private async openLogin(origin: Origin, cmd: string): Promise<void> {
     try {
-      cmd = await askAcctIsoCmd(this.origin, step);
-    } catch (e) {
-      showActionFailureToast(copyText("accounts.launchStep.cmdInvalid"), saidOfControl(e), { level: "error" });
-      return false;
-    }
-    if (opts.danger) {
-      const msg =
-        copyText("accounts.launchStep.confirm", { machine: this.origin, cmd, extra: (opts.confirmExtra ? `${opts.confirmExtra}
-
-` : "") });
-      if (!(await askConfirm(msg))) return false;
-    }
-    try {
-      await openTerminal(this.origin, cmd);
-      showActionFailureToast(copyText("accounts.launchStep.launched"), copyText("accounts.launchStep.launchedNext"), {
+      await openTerminal(origin, cmd);
+      showActionFailureToast(copyText("accounts.login.launched"), copyText("accounts.login.launchedNext"), {
         level: "info",
         durationMs: 5000,
       });
-      return true;
-    } catch (e) {
-      showActionFailureToast(copyText("accounts.launchStep.failed"), String(e), { level: "error" });
-      return false;
-    }
-  }
-
-  /**
-   * 〔第三波 S3〕在**本机**跑一个账号步骤（今天只有新建账号用它）。
-   *
-   * 走的是既有那条 `terminal-open.ts::openTerminal`，`origin` 给本机串 —— 本机那一支原串交 monitor 开窗
-   * （`launch.rs::open_terminal_window`：Windows 开一个 PowerShell 窗口；别的系统**刻意不开窗口**，
-   * 回一句带 `POSIX_NO_WINDOW_MARKER` 的话，让前端把命令交给用户在自己的 bash 里跑）。
-   * ⇒ 本机建号**不需要新命令**。
-   *
-   * 三个结局，返回值说「这条命令会不会被跑」（apikey 那一支据此决定留不留那把 key）：
-   * - 开了窗口 ⇒ `true`；
-   * - 刻意不开窗口（按后端自己的声明判，不按 OS 猜）⇒ 命令复制好，`true` —— 这一支就是 Linux 上的正路；
-   * - 真失败 ⇒ 命令照样复制给用户，但返回 `false`：与远端那条「终端没拉起来就不留 key」同一个口径。
-   */
-  private async launchLocalStep(step: AcctIsoStep): Promise<boolean> {
-    // 〔DUP2 · J4〕命令由本机后端出（与远端同一条 `acct-iso-cmd`，`origin` = 本机）。
-    let cmd: string;
-    try {
-      cmd = await askAcctIsoCmd(BACKEND_LOCAL_ORIGIN, step);
-    } catch (e) {
-      showActionFailureToast(copyText("accountsLocal.new.cmdInvalid"), saidOfControl(e), { level: "error" });
-      return false;
-    }
-    try {
-      await openTerminal(BACKEND_LOCAL_ORIGIN, cmd);
-      showActionFailureToast(
-        copyText("accountsLocal.new.launched"),
-        copyText("accountsLocal.new.launchedNext"),
-        { level: "info", durationMs: 5000 },
-      );
-      return true;
     } catch (err) {
       let copied = true;
       try {
         await navigator.clipboard.writeText(cmd);
       } catch {
-        copied = false; // 命令在提示里照样看得见，可以手动复制
+        copied = false; // 那一行在提示里照样看得见，可以手动复制
       }
       const byDesign = String(err).includes(POSIX_NO_WINDOW_MARKER);
       const headline = byDesign
@@ -799,115 +564,66 @@ export class AccountsSection {
         : copied
           ? copyText("accountsLocal.new.failedCopied")
           : copyText("accountsLocal.new.failedNotCopied");
-      showActionFailureToast(
-        headline,
-        copyText("accountsLocal.new.pasteBody", { reason: String(err), cmd: cmd }),
-        { level: byDesign ? "info" : "error", durationMs: 10000 },
-      );
-      return byDesign;
+      showActionFailureToast(headline, copyText("accountsLocal.new.pasteBody", { reason: String(err), cmd }), {
+        level: byDesign ? "info" : "error",
+        durationMs: 10000,
+      });
     }
   }
 
-  /** 当前选中远端对应的 host 配置（多账号 IPC 要传 cfg=RemoteHostConfig）。 */
-  private currentHost(): RemoteHostConfig | null {
-    if (isLocalOrigin(this.origin)) return null;
-    return (
-      this.hosts.find((h) => (h.label || h.host) === this.origin) ?? this.hosts[0] ?? null
-    );
-  }
-
-  /**
-   * F5：未启用态先探测远端有没有装 cc-acct-iso。没装 → 显「一键部署」（而非直接甩 init 命令让它
-   * command not found）；装了（或探测失败，别把用户堵死）→ 走现有 init 向导。
-   */
-  private async renderNotEnabledFlow(
-    manifestPath: string | null,
-    reason: string,
-  ): Promise<void> {
-    const host = this.currentHost();
-    if (host) {
-      try {
-        // 探测不依赖 dest（D 审计 S2/S5：只 command -v 一次 exec，任何配置下都能判 installed）。
-        const status = await readAcctIsoStatus(this.origin);
-        this.noteInstalled(status.installed);
-        if (!status.installed) {
-          this.renderNeedsDeploy();
-          return;
-        }
-      } catch (e) {
-        this.noteInstalled(null);
-        console.warn("acct-iso-status failed, fall through to wizard:", e);
-      }
+  /** 行上的「去登录」：问那台后端要登录那一行，交给开终端那一步。 */
+  private async loginAccount(a: Account): Promise<void> {
+    const origin = this.machineOrigin();
+    let cmd: string;
+    try {
+      cmd = await accountsLoginCmd(origin, a.name);
+    } catch (e) {
+      showActionFailureToast(copyText("accounts.login.failed"), saidOfControl(e), { level: "error" });
+      return;
     }
-    this.renderNotEnabled(manifestPath, reason);
+    await this.openLogin(origin, cmd);
   }
+
+  /** 行上的「删除」：确认（默认号多说一句）→ 那台后端删（只删它自己的目录，先备份）。 */
+  private async removeAccount(a: Account): Promise<void> {
+    const origin = this.machineOrigin();
+    const machine = machineName(origin);
+    const msg = a.isDefault
+      ? copyText("accounts.remove.confirmDefault", { machine, name: a.name })
+      : copyText("accounts.remove.confirm", { machine, name: a.name });
+    if (!(await askConfirm(msg))) return;
+    try {
+      const done = await accountsRemove(origin, a.isDefault ? { name: a.name, force: true } : { name: a.name });
+      this.changed(copyText("accounts.remove.done", { name: a.name }), done);
+    } catch (e) {
+      showActionFailureToast(copyText("accounts.remove.failed"), saidOfControl(e), { level: "error" });
+    }
+  }
+
 
   /**
-   * F5：远端没装 cc-acct-iso → 一键装（那台后端自己带着那份字节、落点它自己算、链接 ＋ 配置 ＋ 记账，不碰 rc）。
-   * 〔MIG-3a · 主会话 09-28 预裁〕从前是 monitor 推字节（`deploy_remote_acct_iso`〔散文墓碑〕，落点由这里按用户名推）再问那台落进用户目录；
-   * 今天只问那台一次 `acct-iso-install`。
+   * A6：未启用 → 内联「启用多账号」：给现在这个登录起个名字 → 那台后端预演（将要做的那几步上屏）→ 确认 → 它建库。
+   * 本机远端同一张（`where` 只换引言那一句：本机那一页不说「远端」）。
    */
-  private renderNeedsDeploy(): void {
-    const box = document.createElement("div");
-    box.className = "accounts-needs-deploy";
-
-    const h = document.createElement("div");
-    h.className = "accounts-ne-title";
-    h.textContent = copyText("accounts.needsDeploy.title");
-    box.appendChild(h);
-
-    const p = document.createElement("div");
-    p.className = "accounts-ne-desc";
-    p.textContent = copyText("accounts.needsDeploy.intro");
-    box.appendChild(p);
-
-    const btn = mkBtn(copyText("accounts.needsDeploy.deploy"));
-    btn.addEventListener("click", () => {
-      btn.disabled = true;
-      const prev = btn.textContent;
-      btn.textContent = copyText("accounts.needsDeploy.deploying");
-      // 〔MIG-3a · 09-28 预裁〕一步：问那台后端 `acct-iso-install`（字节它自己带着；幂等：一致的不写、已在的不动）。
-      void installAcctIso(this.origin)
-        .then(installedLine)
-        .then(
-          (msg) => {
-            showActionFailureToast(copyText("accounts.needsDeploy.done"), msg, {
-              level: "info",
-              durationMs: 6000,
-            });
-            void this.reload(true);
-          },
-          (e) => {
-            showActionFailureToast(copyText("accounts.needsDeploy.failed"), String(e), { level: "error" });
-            btn.disabled = false;
-            btn.textContent = prev;
-          },
-        );
-    });
-    box.appendChild(btn);
-    this.body.appendChild(box);
-  }
-
-  /** A6：未启用 → 内联「启用多账号」向导（无 modal）：填默认账号名 → 预览命令 → 分步弹终端。 */
-  private renderNotEnabled(manifestPath: string | null, reason: string): void {
+  private renderInitWizard(parent: HTMLElement, manifestPath: string | null, reason: string, where: "local" | "remote"): void {
     const box = document.createElement("div");
     box.className = "accounts-not-enabled";
 
     const h = document.createElement("div");
     h.className = "accounts-ne-title";
-    h.textContent = copyText("accounts.notEnabled.title");
+    h.textContent = where === "local" ? copyText("accountsLocal.init.title") : copyText("accounts.notEnabled.title");
     box.appendChild(h);
 
     const p = document.createElement("div");
     p.className = "accounts-ne-body";
-    p.innerHTML =
-      copyText("accounts.notEnabled.intro", { reason: escapeHtml(reason), path: escapeHtml(manifestPath ?? copyText("accounts.notEnabled.noPath")) });
+    p.textContent =
+      where === "local"
+        ? copyText("accountsLocal.init.intro", { path: manifestPath ?? copyText("accounts.notEnabled.noPath") })
+        : copyText("accounts.notEnabled.intro", { reason, path: manifestPath ?? copyText("accounts.notEnabled.noPath") });
     box.appendChild(p);
 
     const wiz = document.createElement("div");
     wiz.className = "accounts-wizard";
-
-    // 默认账号名输入 + 实时校验。
     const field = document.createElement("div");
     field.className = "accounts-wiz-field";
     const label = document.createElement("label");
@@ -916,92 +632,77 @@ export class AccountsSection {
     input.type = "text";
     input.className = "accounts-wiz-name";
     input.placeholder = copyText("accounts.notEnabled.defaultNameHint");
-    field.appendChild(label);
-    field.appendChild(input);
+    field.append(label, input);
     const err = document.createElement("div");
     err.className = "accounts-wiz-err";
     field.appendChild(err);
     wiz.appendChild(field);
 
-    // 命令预览（只读，可复制）。
+    // 将要做的那几步（那台后端预演的原话，只读）。
     const preview = document.createElement("pre");
     preview.className = "accounts-wiz-preview";
     wiz.appendChild(preview);
-    const copyRow = document.createElement("div");
-    copyRow.className = "accounts-wiz-copyrow";
-    const copyBtn = mkBtn(copyText("accounts.notEnabled.copy"));
-    copyBtn.addEventListener("click", () => {
-      void navigator.clipboard?.writeText(preview.textContent ?? "").then(
-        () => showActionFailureToast(copyText("accounts.notEnabled.copied"), copyText("accounts.notEnabled.copiedNext"), { level: "info", durationMs: 2500 }),
-        () => showActionFailureToast(copyText("accounts.copy.failed"), copyText("accounts.copy.noClipboard"), { level: "error" }),
-      );
-    });
-    copyRow.appendChild(copyBtn);
-    wiz.appendChild(copyRow);
 
-    // 分步按钮。
     const btns = document.createElement("div");
     btns.className = "accounts-wiz-btns";
-    const bPreview = mkBtn(copyText("accounts.notEnabled.step1"));
-    const bApply = mkBtn(copyText("accounts.notEnabled.step2"));
+    const bApply = mkBtn(copyText("accounts.notEnabled.enable"));
     bApply.classList.add("danger");
-    const bVerify = mkBtn(copyText("accounts.notEnabled.step3"));
-    const bShellinit = mkBtn(copyText("accounts.notEnabled.step4"));
-    btns.append(bPreview, bApply, bVerify, bShellinit);
+    btns.append(bApply);
     wiz.appendChild(btns);
 
-    const note = document.createElement("div");
-    note.className = "accounts-wiz-note";
-    note.innerHTML =
-      copyText("accounts.notEnabled.steps");
-    wiz.appendChild(note);
-
-    // —— 校验驱动的启用/禁用 + 预览 ——
-    // 〔DUP2 · J4〕两行命令由那台后端出（`acct-iso-cmd`，两问）：输入一变就问，只认最后一次的答案（序号，零定时器）。
+    const origin = this.machineOrigin();
+    // 输入一变就问一次预演，只认最后一次的答案（序号，零定时器）。
     let asked = 0;
+    let planned: AccountChange | null = null;
     const sync = (): void => {
       const name = input.value.trim();
       const v = validateAcctName(name);
-      const valid = v.ok;
       err.textContent = name && !v.ok ? v.reason : "";
-      for (const b of [bPreview, bApply, bShellinit]) b.disabled = !valid;
-      // verify 不依赖名字（自检当前状态），恒可点。
+      bApply.disabled = true;
+      planned = null;
       const my = ++asked;
-      if (!valid) {
-        preview.textContent = copyText("accounts.sync.empty");
+      if (!v.ok) {
+        preview.textContent = copyText("accounts.init.previewEmpty");
         return;
       }
-      void Promise.all([
-        askAcctIsoCmd(this.origin, { kind: "init-preview", name }),
-        askAcctIsoCmd(this.origin, { kind: "init-apply", name }),
-      ]).then(
-        ([cmd, cmd2]) => {
-          if (my === asked) preview.textContent = copyText("accounts.sync.script", { cmd, cmd2 });
+      void accountsInit(origin, { name, dryRun: true }).then(
+        (plan) => {
+          if (my !== asked) return;
+          planned = plan;
+          preview.textContent = [copyText("accountNewForm.form.willRun"), ...plan.steps, ...plan.notes].join("\n");
+          bApply.disabled = false;
         },
         (e: unknown) => {
           if (my !== asked) return;
-          preview.textContent = copyText("accounts.sync.empty");
+          preview.textContent = copyText("accounts.init.previewEmpty");
           err.textContent = saidOfControl(e);
         },
       );
     };
     input.addEventListener("input", sync);
-    bPreview.addEventListener("click", () =>
-      void this.launchStep({ kind: "init-preview", name: input.value.trim() }),
-    );
-    bApply.addEventListener("click", () =>
-      void this.launchStep(
-        { kind: "init-apply", name: input.value.trim() },
-        { danger: true, confirmExtra: copyText("accounts.notEnabled.moveNote") },
-      ),
-    );
-    bVerify.addEventListener("click", () => void this.launchStep({ kind: "verify" }));
-    bShellinit.addEventListener("click", () => void this.launchStep({ kind: "shellinit" }));
+    bApply.addEventListener("click", () => {
+      const name = input.value.trim();
+      const plan = planned;
+      if (!plan || !validateAcctName(name).ok) return;
+      void (async () => {
+        const msg = copyText("accounts.init.confirm", { machine: machineName(origin), name, steps: stepList(plan) });
+        if (!(await askConfirm(msg))) return;
+        bApply.disabled = true;
+        try {
+          const done = await accountsInit(origin, { name });
+          this.changed(copyText("accounts.init.done", { name }), done);
+        } catch (e) {
+          showActionFailureToast(copyText("accounts.init.failed"), saidOfControl(e), { level: "error" });
+          bApply.disabled = false;
+        }
+      })();
+    });
     sync();
 
     box.appendChild(wiz);
-    this.body.appendChild(box);
+    parent.appendChild(box);
   }
+
 
   /**
    * account-ux U7：顶部「当前账号」横幅——把 chip / tab 徽章上那个概念在设置里讲清楚:
@@ -1053,7 +754,7 @@ export class AccountsSection {
   ): Promise<void> {
     const def = currentWorkingAccount(state);
     this.body.appendChild(this.renderCurrentBanner(def));
-    // Z01：**能用但有缺**（远端 backend / cc-acct-iso 旧到看不见账号 0）。列表本身是好的，
+    // Z01：**能用但有缺**（那台后端旧到看不见账号 0）。列表本身是好的，
     // 所以不走 needs-update 那条整体降级——但也**绝不静默**：少一行账号用户看不出来。
     if (notice) {
       const n = document.createElement("div");
@@ -1125,92 +826,28 @@ export class AccountsSection {
     // 🔴 `设计/70 §4.4`（A2）：**新建账号是一张常驻的表单**，不再藏在「维护」折叠组里、
     //    也不再是红色按钮。岔口（订阅 / 第三方 apikey）在表单里问。
     this.body.appendChild(renderNewAccountForm(this.origin, (req) => this.createAccount(req)));
-    this.renderPendingKeys();
-    // 表单交过 apikey、而这个号这一趟已经出现在列表里了 ⇒ 接着把 key 写进去。
-    await this.flushPendingKeys(accounts);
 
     this.body.appendChild(this.renderMaintenance());
   }
 
   /**
-   * A2：表单交上来一个新账号。两支共用同一条终端命令（`cc-acct-iso add <名> --apply`）；
-   * apikey 那一支另把 key 记在 [`pendingKeys`] 里，等这个号在列表里出现再写。
-   *
-   * ⚠ **终端没拉起来就不留 key** —— 那个号不会出现，留着就是一把在内存里永远等不到主人的明文。
+   * A2：表单交上来一个新账号 ⇒ 那台后端一趟做完（建目录 · 链接 · 清单 · 凭据或 key · 别名）。
+   * 订阅号没导入凭据 ⇒ 接着在终端里起 claude 登录（那一行也是后端答的）；API 号的 key 没写进去 ⇒ 说出来，在那一行重填。
    */
-  private async createAccount(
-    req: NewAccountRequest,
-    where: "remote" | "local" = "remote",
-  ): Promise<void> {
-    const step: AcctIsoStep = {
-      kind: "add-apply",
-      name: req.name,
-      credFile: req.access === "subscription" ? req.credFile : undefined,
-    };
-    const launched =
-      where === "local" ? await this.launchLocalStep(step) : await this.launchStep(step);
-    if (launched && req.access === "apikey") {
-      const origin = where === "local" ? BACKEND_LOCAL_ORIGIN : this.machineOrigin();
-      this.pendingKeys.set(req.name, { key: req.key, origin, baseUrl: req.baseUrl });
-    }
-    this.renderPendingKeys();
-  }
-
-  /**
-   * A2：「建好后自动写 key」还在等的那几个号 —— 常驻一行，并且可以放弃（放弃 = 把内存里那把 key 丢掉）。
-   * 这一行不说 key 的任何一个字符。
-   */
-  private renderPendingKeys(): void {
-    this.pendingBox?.remove();
-    if (this.pendingKeys.size === 0) {
-      this.pendingBox = null;
+  private async createAccount(req: NewAccountRequest): Promise<void> {
+    const origin = this.machineOrigin();
+    let got: AccountChange;
+    try {
+      got = await accountsAdd(origin, req);
+    } catch (e) {
+      showActionFailureToast(copyText("accounts.add.failed"), saidOfControl(e), { level: "error" });
       return;
     }
-    const box = document.createElement("div");
-    box.className = "accounts-new-pending";
-    for (const name of this.pendingKeys.keys()) {
-      const line = document.createElement("div");
-      line.className = "accounts-hint";
-      line.textContent = copyText("accounts.pending.waiting", { name });
-      const drop = mkBtn(copyText("accounts.pending.drop"));
-      drop.addEventListener("click", () => {
-        this.pendingKeys.delete(name);
-        this.renderPendingKeys();
-      });
-      line.appendChild(drop);
-      box.appendChild(line);
-    }
-    const form = this.body.querySelector(".accounts-new");
-    if (form) form.after(box);
-    else this.body.appendChild(box);
-    this.pendingBox = box;
+    this.changed(copyText("accounts.add.done", { name: req.name }), got);
+    if (got.keyProblem) showActionFailureToast(copyText("accounts.add.keyFailed"), got.keyProblem, { level: "error" });
+    if (got.loginCmd) await this.openLogin(origin, got.loginCmd);
   }
 
-  /**
-   * A2：把表单上收下的 key 写给**已经出现**的那几个号。
-   *
-   * ⚠ configDir 取自**这一趟列表里那个号自己的字段**（不透明串，`KH2C1`），前端不从名字推。
-   * ⚠ 出现了但没有 configDir（账号 0 那种）⇒ 配了也不会被用上：丢掉 key 并说出来，不假装写成了。
-   */
-  private async flushPendingKeys(accounts: Account[]): Promise<void> {
-    for (const [name, { key, origin, baseUrl }] of [...this.pendingKeys]) {
-      // 〔RM1a〕只在建它的那台机器的列表里认领（见 `pendingKeys` 头注）。
-      if (origin !== this.machineOrigin()) continue;
-      const a = accounts.find((x) => x.name === name);
-      if (!a) continue;
-      this.pendingKeys.delete(name);
-      if (!a.configDir) {
-        showActionFailureToast(
-          copyText("accounts.pending.notWritten"),
-          copyText("accounts.pending.noDir", { name }),
-          { level: "error" },
-        );
-        continue;
-      }
-      await this.writeApikey(key, a.configDir, name, baseUrl);
-    }
-    this.renderPendingKeys();
-  }
 
   /**
    * 这一页此刻显的是哪台机器 —— apikey 那几条命令按它定目标（本机逐字送 `"<local>"`）。
@@ -1284,11 +921,10 @@ export class AccountsSection {
     return { entries, fileBlock };
   }
 
-  /** A6：已启用态的「维护」区——自检 / 补链 / rc 片段，均弹终端或只读。
-   *  account-ux U7：整块收进 `<details>` **默认折叠**——都低频，补链还会改软链。
-   *  🔴 `设计/70 §4.3` ①（A2）：**加账号已经搬出去了**（常驻的「新建账号」表单）——
-   *  它是最常用的账号操作，不是维护。于是原来那条「只有 1 个号时默认展开，好让人看见加账号」
-   *  的理由也跟着没了 ⇒ 默认一律折叠。 */
+  /**
+   * 维护区（默认折叠）：核对 · 修复 · 回滚 —— 都问这一页那台机器的后端。核对只读，结果就地列出来；
+   * 修复与回滚先预演、把将要做的那几步给人看一眼，确认了才让那台后端做（它先备份再改）。
+   */
   private renderMaintenance(): HTMLElement {
     const wrap = document.createElement("details");
     wrap.className = "accounts-maint-wrap";
@@ -1303,97 +939,107 @@ export class AccountsSection {
 
     const box = document.createElement("div");
     box.className = "accounts-maint";
-
-    // 自检 / 补链。
     const ops = document.createElement("div");
     ops.className = "accounts-maint-ops";
+    const out = document.createElement("div");
+    out.className = "accounts-maint-report";
     const verifyBtn = mkBtn(copyText("accounts.maintenance.verify"));
-    verifyBtn.addEventListener("click", () => void this.launchStep({ kind: "verify" }));
-    const syncBtn = mkBtn(copyText("accounts.maintenance.sync"));
-    syncBtn.addEventListener("click", () =>
-      void this.launchStep(
-        { kind: "sync-apply" },
-        { danger: true, confirmExtra: copyText("accounts.maintenance.syncHint") },
-      ),
-    );
-    const rcBtn = mkBtn(copyText("accounts.maintenance.rc"));
-    rcBtn.title =
-      copyText("accounts.maintenance.rcHint");
-    const rcBox = document.createElement("div");
-    rcBox.className = "accounts-maint-rc";
-    rcBtn.addEventListener("click", () => void this.renderRcSnippet(rcBtn, rcBox));
-    ops.append(verifyBtn, syncBtn, rcBtn);
-    box.appendChild(ops);
-    box.appendChild(rcBox);
-    // 🔴 `K-R49`：**这一条路上刻意不把「按账号生成命令」那一块搬过来。**
-    // 这张表显的是**远端那台**的账号，而别名是给**本机 shell** 用的
-    // （`ccm --account <名>` 在这台机器上跑）⇒ 在这里挂那一块就得去读本机账号，
-    // 而 `NF1bD3` 那条判据逐字断的正是「配了远端时，本机那条读口一次都不该被调」。
-    // 它守的是「远端页上不许渲染本机的账号」，那条性质是对的 —— 所以这里让路。
-    // 〔A2 · `70 §4.3` ⑤〕原先那句「加完之后到『设置 → 行为 → …』里写入」的散文导航已撤：
-    // 命令名改成新建表单里的一行提示（`aliasHintFor`），管理器归 `设计/71 §13` 那一路。
+    verifyBtn.addEventListener("click", () => void this.runVerify(verifyBtn, out));
+    const repairBtn = mkBtn(copyText("accounts.maintenance.sync"));
+    repairBtn.title = copyText("accounts.maintenance.syncHint");
+    repairBtn.addEventListener("click", () => void this.runRepair(repairBtn));
+    const rollbackBtn = mkBtn(copyText("accounts.maintenance.rollback"));
+    rollbackBtn.title = copyText("accounts.maintenance.rollbackHint");
+    rollbackBtn.addEventListener("click", () => void this.runRollback(rollbackBtn));
+    ops.append(verifyBtn, repairBtn, rollbackBtn);
+    box.append(ops, out);
     wrap.appendChild(box);
     return wrap;
   }
 
-  /**
-   * Z05（销 BACKLOG F14）：rc 片段一键生成。
-   *
-   * **单一来源留在 bash**：片段由远端 `cc-acct-iso shellinit` 产出，本文件**不重新生成一份**
-   * ——那会多一个跨语言双写点（本工作区反复在治的病）。抓到什么贴什么。
-   *
-   * **这一块绝不代写**：只产出文本 + 复制按钮（`paste-block.ts` 的模块头也写死了
-   * 「本文件没有、也不得有任何写入路径」）。
-   *
-   * 🔴 `K-R49`（09-10）订正这一段原先那句全称 —— 它逐字写着「**写 `~/.bashrc` 是用户明令
-   * 的红线**」，而那句话今天只对**这一块**成立，别拿它去撤别处的活：
-   * - 仍然成立的是「**不问自取**」那一半：没有用户当次手势就写他的 shell 配置，禁。
-   * - 用户 09-10 逐字要的是反过来的事：「**我现在添加了一个账号但是没法直接添加命令,
-   *   还得手动去改**」⇒ 按账号生成命令那一块（`buildAccountAliasBlock`〔散文墓碑〕，〔AL1〕今天是机器页的「别名」）**会真落盘**，
-   *   而它把代价压到最小：重写的是 cc-monitor 自己那份文件，用户的 rc 最多多一行 `source`，
-   *   且那份 rc 由他在下拉里自己选。整条推理住 `launcher-diagnostics.ts` 的模块头注。
-   * - **这一块为什么仍然不代写**：它抓的是**远端** `cc-acct-iso shellinit` 的输出，
-   *   而落盘那一侧今天在远端没有主人（`parity_ledger` 的 `alias.account-commands` 那行
-   *   逐条记着欠什么）—— 是**还没做**，不是「不许做」。
-   */
-  private async renderRcSnippet(btn: HTMLButtonElement, box: HTMLElement): Promise<void> {
-    const host = this.currentHost();
-    if (!host) {
-      showActionFailureToast(copyText("accounts.rc.noConfig"), copyText("accounts.rc.noConfigBody"), { level: "error" });
-      return;
-    }
+  /** 核对一遍，逐条列出来（+ 通过 · ! 提示 · x 要修 · - 跳过）。 */
+  private async runVerify(btn: HTMLButtonElement, out: HTMLElement): Promise<void> {
     btn.disabled = true;
-    const prev = btn.textContent;
-    btn.textContent = copyText("accounts.rc.fetching");
-    box.innerHTML = "";
+    out.innerHTML = "";
     try {
-      const snippet = await readAcctIsoSnippet(this.origin);
-      box.appendChild(
-        buildPasteBlock({
-          text: () => snippet,
-          target: copyText("accounts.rc.target"),
-          mergeNote:
-            copyText("accounts.rc.merge"),
-          activation: copyText("accounts.rc.activation"),
-          // 围栏在 Rust 侧已经校验过一次（拿不到就直接 Err）；这里再校验一次是因为
-          // 「能显示」与「能贴」是两件事——半截片段贴进 rc 会让登录 shell 报错。
-          invalidReason: (t) =>
-            t.includes("# ===== BEGIN cc-acct-iso =====") &&
-            t.includes("# ===== END cc-acct-iso =====")
-              ? null
-              : copyText("accounts.rc.incomplete"),
-          multiline: true,
-          rows: 12,
-          className: "accounts-rc-paste",
-        }).element,
-      );
+      const r = await accountsVerify(this.machineOrigin());
+      const head = document.createElement("div");
+      head.className = r.pass ? "accounts-verify-head" : "accounts-verify-head warn";
+      head.textContent = r.pass
+        ? copyText("accounts.verify.pass", { warns: String(r.warns) })
+        : copyText("accounts.verify.fail", { fails: String(r.fails), warns: String(r.warns) });
+      out.appendChild(head);
+      const mark = { ok: "+", warn: "!", fail: "x", skip: "-" } as const;
+      for (const c of r.checks) {
+        const line = document.createElement("div");
+        line.className = `accounts-verify-check ${c.level}`;
+        line.textContent = c.account ? `${mark[c.level]} ${c.account}：${c.text}` : `${mark[c.level]} ${c.text}`;
+        out.appendChild(line);
+      }
     } catch (e) {
-      showActionFailureToast(copyText("accounts.rc.failed"), String(e), { level: "error" });
+      showActionFailureToast(copyText("accounts.verify.failed"), saidOfControl(e), { level: "error" });
     } finally {
       btn.disabled = false;
-      btn.textContent = prev;
     }
   }
+
+  /** 修复：预演 → 没事可做就说一声；有事可做 ⇒ 列出那几步、确认了才做。 */
+  private async runRepair(btn: HTMLButtonElement): Promise<void> {
+    const origin = this.machineOrigin();
+    btn.disabled = true;
+    try {
+      const plan = await accountsRepair(origin, { dryRun: true });
+      if (plan.steps.length === 0) {
+        showActionFailureToast(copyText("accounts.repair.nothing"), plan.notes.join("\n") || copyText("accounts.repair.nothingBody"), {
+          level: "info",
+          durationMs: 4000,
+        });
+        return;
+      }
+      const msg = copyText("accounts.repair.confirm", { machine: machineName(origin), steps: stepList(plan) });
+      if (!(await askConfirm(msg))) return;
+      const done = await accountsRepair(origin, {});
+      this.changed(copyText("accounts.repair.done"), done);
+    } catch (e) {
+      showActionFailureToast(copyText("accounts.repair.failed"), saidOfControl(e), { level: "error" });
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  /** 回滚最近一次改动（预演 → 确认 → 做）。 */
+  private async runRollback(btn: HTMLButtonElement): Promise<void> {
+    const origin = this.machineOrigin();
+    btn.disabled = true;
+    try {
+      const plan = await accountsRollback(origin, { dryRun: true });
+      const msg = copyText("accounts.rollback.confirm", {
+        machine: machineName(origin),
+        backup: plan.backup ?? "",
+        steps: stepList(plan),
+      });
+      if (!(await askConfirm(msg))) return;
+      const done = await accountsRollback(origin, plan.backup ? { backup: plan.backup } : {});
+      this.changed(copyText("accounts.rollback.done"), done);
+    } catch (e) {
+      showActionFailureToast(copyText("accounts.rollback.failed"), saidOfControl(e), { level: "error" });
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  /** 一趟改动做完：说一句（改了几步 · 备份叫什么 · 别名那一步有话就带上）、清缓存、重读。 */
+  private changed(title: string, c: AccountChange): void {
+    const lines = [
+      c.backup ? copyText("accounts.change.backup", { n: String(c.steps.length), backup: c.backup }) : copyText("accounts.change.nothing"),
+      ...c.notes,
+    ];
+    if (c.aliases?.note) lines.push(c.aliases.note);
+    showActionFailureToast(title, lines.join("\n"), { level: "info", durationMs: 6000 });
+    invalidateAccountsCache(this.machineOrigin());
+    void this.reload(true);
+  }
+
 
   /**
    * 表里的一行。`apikey` 非空 ⇒ 这个号能配第三方 API key：操作列多一颗按钮，
@@ -1520,16 +1166,23 @@ export class AccountsSection {
       );
     });
     actions.appendChild(copy);
-    // A6：打开该账号的终端（去 /login / 修复登录）——对 in-place 逃生口不给（不支持切号）。
-    if (a.mode !== "in-place") {
+    // A6：在终端里起 claude 登录这个号（那一行由那台后端出）——对 in-place 逃生口与账号 0 不给（没有自己的目录）。
+    if (a.mode !== "in-place" && a.configDir) {
       const login = document.createElement("button");
       login.type = "button";
       // K-A1：对 api-key 号说「去登录」是假话（它不需要 /login，/login 也修不了缺端点）。
       const action = accountLoginActionLabel(a);
       login.textContent = action.label;
       login.title = action.title;
-      login.addEventListener("click", () => void this.launchStep({ kind: "login", name: a.name }));
+      login.addEventListener("click", () => void this.loginAccount(a));
       actions.appendChild(login);
+      // 删号：红色（`§4.3` ②：红色留给删账号），确认框里说清删的是哪台机器上的哪个号。
+      const del = document.createElement("button");
+      del.type = "button";
+      del.className = "danger";
+      del.textContent = copyText("accounts.row.remove");
+      del.addEventListener("click", () => void this.removeAccount(a));
+      actions.appendChild(del);
     }
     // 🔴 `设计/70 §4.4` 关键二：**「哪个账号」只问一次** —— 配 apikey 是这一行自己的一格。
     let editor: HTMLElement | null = null;
@@ -1569,10 +1222,6 @@ export class AccountsSection {
   }
 }
 
-function escapeHtml(s: string): string {
-  return s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c] ?? c);
-}
-
 /** A6 向导用的按钮工厂（type=button，避免 form 默认提交）。 */
 function mkBtn(text: string): HTMLButtonElement {
   const b = document.createElement("button");
@@ -1581,19 +1230,7 @@ function mkBtn(text: string): HTMLButtonElement {
   return b;
 }
 
-/** 〔MIG-3a · 09-28 裁 2〕`acct-iso-install` 的成品 ⇒ 给人读的一两句（已在的不动，如实说）。 */
-function installedLine(r: AcctIsoInstalled): string {
-  const parts = [
-    r.written > 0
-      ? copyText("accounts.needsDeploy.landed", { version: r.version, dest: r.dest, written: String(r.written) })
-      : copyText("accounts.needsDeploy.current", { version: r.version, dest: r.dest }),
-    r.linked
-      ? copyText("accounts.needsDeploy.linked", { link: r.link })
-      : copyText("accounts.needsDeploy.linkKept", { link: r.link }),
-    r.configWritten
-      ? copyText("accounts.needsDeploy.configWritten", { config: r.config })
-      : copyText("accounts.needsDeploy.configKept", { config: r.config }),
-  ];
-  if (r.recordFailed) parts.push(r.recordFailed);
-  return parts.join("");
+/** 预演那几步 ⇒ 确认框里的一段（一行一步）。 */
+function stepList(c: AccountChange): string {
+  return [...c.steps, ...c.notes].map((l) => `· ${l}`).join("\n");
 }

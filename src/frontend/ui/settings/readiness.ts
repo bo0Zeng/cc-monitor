@@ -94,10 +94,6 @@ const FACET_MEANING: Record<
     consequence: copyText("readiness.meaning.cc"),
     severity: "optional",
   },
-  acctIso: {
-    consequence: copyText("readiness.meaning.accountIso"),
-    severity: "optional",
-  },
   accounts: {
     consequence: copyText("readiness.meaning.accounts"),
     severity: "optional",

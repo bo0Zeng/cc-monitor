@@ -51,7 +51,7 @@ const ACK_DEADLINE: Duration = Duration::from_secs(45);
 /// （后端长连接流 · 端口转发 · 部署文件面 —— 后者每一问自带期限）显式调 [`DialStream::lives_long`] 摘掉，
 /// 那三处由 `dial_host_tests::only_the_three_long_lived_links_drop_the_deadline` 两向钉住。
 ///
-/// 值：今天各调用方外面套的最宽是「握手 45 s ＋ 读 30 s」、`acct_iso_deploy` 整趟 45 s ⇒ 120 s 不收紧任何一条既有的；
+/// 值：今天各调用方外面套的最宽是「握手 45 s ＋ 读 30 s」、当时账号工具的部署整趟 45 s ⇒ 120 s 不收紧任何一条既有的；
 /// 它是**天花板**（调用方外面再套的更短期限照旧先到）。⚠ `05 §3.3.2`「值归后端」这一格没做到（与 [`ACK_DEADLINE`] 同住这里）。
 pub(crate) const ONE_SHOT_DEADLINE: Duration = Duration::from_secs(120);
 
@@ -676,7 +676,7 @@ pub(crate) async fn capture(
 // ═══ 〔SR1b · 2026-09-24〕部署那条路：受限的远端文件一问一答（链路 `use:"files"`）═══════════════════
 //
 // 用户 V89「SFTP 进本机常驻后端，只写暂存区」：界面进程零 SSH / 零 SFTP。自部署（F08 后端二进制 · `.build_id` ·
-// `ccm` 入口 · cc-acct-iso）的**业务判定**留在 monitor（`sftp.rs` / `acct_iso_deploy.rs`，一个判定函数都没动），
+// `ccm` 入口）的**业务判定**留在 monitor（`sftp.rs`，一个判定函数都没动），
 // 执行交给本机常驻后端那一份 SFTP（`src/backend/dial/sftp.rs`）—— 它**只许往 `~/.cc-monitor/staging/` 与
 // `~/.cc-monitor/bin/` 写**（越界 ⇒ 应答 `code:"fenced"`，这里原话带回）。线上形状住后端那份头注与协议文档。
 
@@ -786,7 +786,7 @@ impl RemoteFs {
     // 〔MIG-3b〕这里原先是 `stat` 那一问（落点那个文件在不在 / 多大）：落点那一份是谁改由本机常驻后端出计划时自己问（`deploy-plan`），
     //   monitor 这一侧零调用方 ⇒ 删了；〔MIG-3b 续 · V41〕链路那一侧的 `stat` 一问随之也删了。
 
-    // 〔MIG-3a · 09-28 预裁〕`read` 那一问（整份读回一个小文件）零调用方了：唯一的读者是按目录取版本标记那条路（`acct_iso_deploy`，随字节进后端退役）⇒ 删了。
+    // 〔MIG-3a · 09-28 预裁〕`read` 那一问（整份读回一个小文件）零调用方了：唯一的读者是按目录取版本标记那条路（已退役）⇒ 删了。
     //   链路那一侧的 `read` 一问照旧在（`files` 链路协议没动）。
 
     /// 原子上传（EXCL 临时件 → 旧的改名 `.bak` → 上位 → 删 `.bak`；**绝不 setstat**）。`verify` ⇒ 后端读回比对，回结论。

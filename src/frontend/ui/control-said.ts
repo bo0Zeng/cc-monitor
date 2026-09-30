@@ -2,8 +2,8 @@
  * 〔C4e · 第四波 4C〕**界面直接说控制类帧命令时共用的那一薄层**：一次动作没做成怎么抛、通道三层怎么说人话、
  * 成品形状怎么核、机器怎么称呼。
  *
- * 三个调用方：`src/frontend/ui/tmux-control.ts`（抓屏 · 结束会话 · 发按键 · 就地 resume）· `src/frontend/ui/cc-bus-control.ts`
- * （cc-bus 查在线 · 发消息 · 收掉 · 派生 · 广播）·〔DUP2 · J4〕`src/frontend/ui/settings/acct-deploy.ts`（cc-acct-iso 步骤那一行问后端）。它们各自的「拒绝码 → 一句话」按动作分表、住各自那一份；
+ * 调用方：`src/frontend/ui/tmux-control.ts`（抓屏 · 结束会话 · 发按键 · 就地 resume）· `src/frontend/ui/cc-bus-control.ts`
+ * （cc-bus 查在线 · 发消息 · 收掉 · 派生 · 广播）· `src/frontend/ui/account-ops.ts`（账号库那几条命令）。它们各自的「拒绝码 → 一句话」按动作分表、住各自那一份；
  * **这里只放两边说的是同一件事的那几句**（这台机器够不够得着、答没答、答的读不读得懂）—— 写两份就会各自漂。
  *
  * ⚠ 本文件**不说 `chan.call`**：`frame_query_tests` 按 `chan.call(` 的字面量操作名数前端经通道说哪几条、

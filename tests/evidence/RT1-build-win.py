@@ -16,7 +16,7 @@
     `cdylib` / `staticlib` 零消费者），门禁 `winlink` 那一格真链接 ⇒ 这里只**核**它还是 `["rlib"]`，不再改文件。
 
 产物（全在 .build/ 与 src/frontend/shell/native-backend/ 下，两处都被 gitignore）：
-  .build/shell/x86_64-pc-windows-gnu/release/{monitor.exe,cc-monitor-filewin.exe,WebView2Loader.dll}
+  .build/shell/x86_64-pc-windows-gnu/release/{cc-monitor.exe,cc-monitor-filewin.exe,WebView2Loader.dll}
   .build/backend/x86_64-pc-windows-gnu/release/cc-monitor-backend.exe
   .build/panorama/x86_64-pc-windows-gnu/release/cc-monitor-panorama.exe
   以及两个替身（不是 cargo target，rustc 直编）：claude.exe · rt1-bench.exe → .build/rt1/

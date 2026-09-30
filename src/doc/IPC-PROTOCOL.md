@@ -201,7 +201,7 @@ session_id → HWND 持久缓存。新 session 出现时查这里复用绑定，
 
 **生命周期**：持久。
 
-**为什么自动写路径**：让 monitor.exe 是 portable（用户可以随意移动），下次启动自动更新最新路径，PS 端不需要硬编码。
+**为什么自动写路径**：让 cc-monitor.exe 是 portable（用户可以随意移动），下次启动自动更新最新路径，PS 端不需要硬编码。
 
 ---
 
@@ -1559,11 +1559,11 @@ SFTP 缩成只做传输之后（`设计/60 §13`），上传**只写** `~/.cc-mo
 #### `files-link`：建一条符号链接（MIG-3a · 主会话 09-28 裁 2，**写用户文件**）
 
 写面闭集里 FILES2 那个「建链接」动词（`control/files_extract.rs::land_link`，复制目录与解压共用）的帧面入口 —— 只补这一个入口，不另起原语。
-第一个用者：`acct-iso-install` 把 `~/.local/bin/cc-acct-iso` 链到部署落点。
+账号库管理（`accounts-init` / `accounts-add` / `accounts-repair`）在进程内经它建各号链回共享库的那几条链接。
 
 ```
-→ {"id":"l1","cmd":"files-link","args":{"root":"/home/u","rel":".local/bin/cc-acct-iso","target":"/home/u/.cc-monitor/bin/cc-acct-iso/scripts/cc-acct-iso"}}
-← {"id":"l1","ok":true,"data":{"path":"/home/u/.local/bin/cc-acct-iso"}}
+→ {"id":"l1","cmd":"files-link","args":{"root":"/home/u","rel":".claude-alt/z/skills","target":"/home/u/.claude/skills"}}
+← {"id":"l1","ok":true,"data":{"path":"/home/u/.claude-alt/z/skills"}}
 ```
 
 | 字段 | 方向 | 说明 |
@@ -2365,7 +2365,7 @@ V116「要，只删装时写进去的文件」：装的时候记下写了哪几�
 |---|---|---|
 | `op` | → | `add`（装完记）或 `drop`（卸掉 / 已经不在的摘掉）；MCP 那一条：`mcp-add` · `mcp-drop` |
 | `name` | → | `add`：skill 的目录名。**目录由这台后端按 `skill 根 / name` 自己算**，不收调用方给的路径 |
-| `at` | → | `add` 可缺席：缺 ⇒ 目录按 skill 根算；`"home"` ⇒ 目录 = 记录所在那个家目录（〔MIG-3a · 09-28 裁 2〕`acct-iso-install` 用：它落的是 `~/.local/bin` · `~/.cc-acct-iso`，不在 skill 根下）；其余值 ⇒ `bad_args` |
+| `at` | → | `add` 可缺席：缺 ⇒ 目录按 skill 根算；`"home"` ⇒ 目录 = 记录所在那个家目录（装在家目录底下、不在 skill 根下的东西用）；其余值 ⇒ `bad_args` |
 | `files` | → | `add`：`{<相对路径>: {digest, created}}` —— `skill-install-plan` 答的 `ledger` 里真写成了的那几个。同一目录再装一次：新路径加进来、已记的换新摘要、`created` 取第一次的 |
 | `dir` | ↔ | `drop` 的入参：记录里那个 skill 目录；应答里是这一条记录的目录 |
 | `paths` | → | `drop`：要摘的相对路径（不在记录里 ⇒ `bad_args`，一个字节不动）；摘到零个 ⇒ 整条记录摘掉 |
@@ -2492,7 +2492,7 @@ V116「要，只删装时写进去的文件」：装的时候记下写了哪几�
 | `agent` | → | 必填：这次起会话的是哪一家（适配器 id）。只有它是这台机器 apikey 表的那一家时，表里的行才算数（条 49） |
 | `meta` | ← | `{enabled, acctsDir, manifestPath, updatedAt, sharedStore, count, error}`（同 `--list-accounts` 首行去掉分帧用的 `kind` / `accountZeroAware`）。账号库目录走默认解析，**帧面不收 `--accts-dir`** |
 | `accounts` | ← | 每账号一个对象，字段同 `--list-accounts` 的账号行；**并上了这台机器自己那份 apikey 表**：表里有行的号 `authKind` 是 `api-key`、`authReady` 按 `acct_core::auth_ready`（规则住 `acct-core`，CLI 那一臂不并表） |
-| `notice` | ← | 「能用但有缺」：启用了却一个账号 0 都没有（cc-acct-iso 写侧旧）时的一句话；否则 `null` |
+| `notice` | ← | 「能用但有缺」：启用了却一个账号 0 都没有（写清单的那一侧旧到不认账号 0）时的一句话；否则 `null` |
 
 **错误码**：`bad_args`（缺 `agent`）· `too_large`。
 ⚠ 〔C4c〕此前应答是 `{"lines": [...]}`（与 CLI 逐行同形）、并表在 monitor 做且只并本机；老后端仍回旧形状 ⇒ 新界面当场认出「两端契约对不上」。
@@ -2514,58 +2514,172 @@ V116「要，只删装时写进去的文件」：装的时候记下写了哪几�
 **错误码**：`bad_args` · `unsafe_config_dir` · `unknown_config_dir` · `manifest_unavailable` · `no_home` · `failed`（读 / 解析那个账号的配置文件失败等 agent 那一层的码一律落它，原因原样带着 —— 通用层不认 agent 的名字）。
 与 `--account-trust` / `--account-trust-zero` 是**同一个函数的两个宿主**；CLI 面照例自动派生一个 `--accounts-trust`（stdin 一段 JSON）。
 
-#### `acct-iso-status`：这台机器装没装 `cc-acct-iso`（〔LOC1a · 第四波 4D〕，**不读 stdin**）
+#### `accounts-init`：建账号库（**写用户文件**，同步文件 I/O，阻塞档）
+
+这台机器现在登录的那个身份收成名叫 `name` 的默认号：Claude 的身份文件（凭据 · `.claude.json` · 几份本机状态）搬进
+`~/.claude-alt/<name>/`（`0700`，凭据 `0600`），共享库 `~/.claude` 顶层其余每一项在号的目录里链回共享库；写清单
+`~/.claude-alt/accounts.json`（schema v1，账号 0 合成在数组末尾、没有 `configDir` 键）；然后把每个号一条 `<名>cc` 并进别名文件。
 
 ```text
-→ {"id":"a1","cmd":"acct-iso-status","args":{}}
-← {"kind":"reply","id":"a1","ok":true,"data":{"installed":true,"path":"/home/u/.local/bin/cc-acct-iso","looked":null}}
+→ {"id":"a1","cmd":"accounts-init","args":{"name":"z","dryRun":true}}
+← {"kind":"reply","id":"a1","ok":true,"data":{"applied":false,"steps":["建目录 /home/u/.claude-alt", …],"notes":[],"backup":null,"account":null,"loginCmd":null,"alias":"alphacc","keyMasked":null,"keyProblem":null,"aliases":null}}
 ```
 
 | 字段 | 向 | 说明 |
 |---|---|---|
-| `installed` | ← | 找到了没有：先查 `$HOME/.local/bin/cc-acct-iso`（install 脚本的软链落点）、再查 `PATH`，与远端那条 `PATH="$HOME/.local/bin:$PATH" command -v cc-acct-iso` 同一个顺序 |
-| `path` | ← | 找到的那一份；没找到 ⇒ `null` |
-| `looked` | ← | 没找到时说清查过哪儿；找到了 ⇒ `null` |
+| `name` | → | 默认号的名字：过 `shell_quote_core::account_name_ok`（与 `ccm … --account` 同一条），`0` 是保留名 |
+| `dryRun` | → | 可缺席的布尔：真 ⇒ 只算不做，`steps` 是将要做的那几步 |
+| `applied` | ← | 这一趟真改了盘没有 |
+| `steps` | ← | 做了（预演时：将要做）的每一步，一句一行 |
+| `notes` | ← | 提示（不挡这一趟），比如共享库里还没有可共享的项 |
+| `backup` | ← | 这一趟留的备份（`~/.claude-alt/.backup-<这一段>`，回滚用它）；没改动 ⇒ `null` |
+| `alias` | ← | 这个号拿到的别名名字 |
+| `aliases` | ← | 别名文件那一步：`{path, changed, names, note}`（`note` = 没能自动改它时那一句，比如文件里有认不出的行） |
 
-**「没装」是答案不是错误**（`ok:true`、`installed:false`）。按「可执行文件在不在」判 ⇒ 非 unix 上恒 `installed:false`。只读、不起进程。
-〔LOC1a〕此前是 argv 形一次性子命令 `--acct-iso-status`（单行 JSON、exit 0），唯一调用方是 monitor 每问 exec 一次本机后端；
-那条路删了之后它上了帧面，本机经 `<local>` 长连接问（`设计/05 §14.6`）。CLI 面照例自动派生同名 `--acct-iso-status`（信封形，不读 stdin）。
+先备份再改：每一步动一份既有的东西之前先原样拷进备份目录（`0700`），**做成之后**才往备份里的 `undo.tsv` 记一行。
+已经建过 · 名字不合规 · 身份文件是一条链接（以前的软链切号方式留下的）⇒ `refused`，一个字节不写。
+共享库 `~/.claude` 不在 ⇒ 先建它。
 
-#### `acct-iso-shellinit`：这台机器的 `cc-acct-iso shellinit` 片段（〔LOC1a · 第四波 4D〕，**不读 stdin**）
+**错误码**：`bad_args`（入参形状不对：多键 · 缺键 · 类型不对）· `refused`（句子说清为什么）· `not_enabled`（其余几条：还没有账号库）·
+`io_failed`（盘上那一步没成：话里带做到第几步、用哪份备份回滚）· `unsupported`（这台做不了多账号，今天是 Windows）。
+下面几条改账号库的命令码同这一套。⚠ **CLI 面也有它们**（`--accounts-*`，入参从 stdin 读）。
+
+#### `accounts-add`：新建一个号（**写用户文件**，阻塞档）
 
 ```text
-→ {"id":"a2","cmd":"acct-iso-shellinit","args":{}}
-← {"kind":"reply","id":"a2","ok":true,"data":{"snippet":"# >>> cc-acct-iso >>>\n…\n# <<< cc-acct-iso <<<\n"}}
+→ {"id":"a2","cmd":"accounts-add","args":{"name":"b","kind":"subscription","credFile":"~/snap/b.json"}}
+← {"kind":"reply","id":"a2","ok":true,"data":{"applied":true,"steps":[…],"notes":[],"backup":"20260930-120000","account":{"name":"b","configDir":"/home/u/.claude-alt/b"},"loginCmd":null,"alias":"betacc","keyMasked":null,"keyProblem":null,"aliases":{"path":"/home/u/.cc-monitor/aliases.sh","changed":true,"names":["alphacc","betacc"],"note":null}}}
 ```
 
 | 字段 | 向 | 说明 |
 |---|---|---|
-| `snippet` | ← | 起一次本机 `cc-acct-iso shellinit`（经插件通用调用口：argv 直传不过 shell、`timeout` 前缀给子进程期限、环境白名单），退出码 0 时它的 stdout **原样** |
+| `name` | → | 同 `accounts-init`；已有同名号 / 同名目录 ⇒ `refused` |
+| `kind` | → | `"subscription"`（订阅号）或 `"api-key"`（API 号，清单里写 `authKind: "api-key"`） |
+| `credFile` | → | 只订阅号：导入哪一份凭据（家目录底下的绝对路径或 `~/…`；是链接 / 空文件 / 不在 ⇒ `refused`）。复制成号里的 `.credentials.json`（`0600`），源不动 |
+| `baseUrl` · `key` | → | 只 API 号：上游地址（缺席 = 默认上游）与 key 明文。建号**之前**先判写不写得进 apikey 表（空 key · 装不进表的地址 ⇒ `bad_args`、一个字节不写）；建好后 key 交给这台的 apikey 表（与 `apikey-key-set` 同一个写口），不进清单、不回显 |
+| `isDefault` | → | 可缺席的布尔：真 ⇒ 建好后它是默认号（`ccm` 不带 `--account` 时用它） |
+| `dryRun` | → | 同上 |
+| `account` | ← | 建出来的那个号：`{name, configDir}` |
+| `configDir` | ← | 那个号的配置目录（`account` 里） |
+| `loginCmd` | ← | 订阅号没导入凭据时：在终端里跑这一行登录（`'<家>/.cc-monitor/bin/ccm' -- --account '<名>'`，claude 自己的登录界面）；否则 `null` |
+| `keyMasked` · `keyProblem` | ← | API 号：写进 apikey 表之后的掩码；号建好了 key 却没写进去时那一句（界面据此让人在那一行重填） |
+| `applied` · `steps` · `notes` · `backup` · `alias` · `aliases` | ← | 同 `accounts-init` |
 
-〔MIG-3a〕BEGIN/END 围栏**在本命令里校验**（`# ===== BEGIN cc-acct-iso =====` / `# ===== END cc-acct-iso =====` 两条都在才交出去；从前归 monitor）。被起的那一条只读（`cmd_shellinit` 全是 `printf`）。
-**错误码**：`not_installed` · `timed_out` · `tool_failed` · `not_run` · `fence_incomplete`（有 BEGIN 没 END，多半被截断 —— 别贴）· `no_fence`（输出里没有 BEGIN）。
-〔LOC1a〕此前是 argv 形一次性子命令 `--acct-iso-shellinit`（片段吐 stdout、失败 exit 2 ＋ stderr 信封）；同上一节，改上帧面，CLI 面自动派生同名。
+号的目录：链齐共享项；身份之外那几份本机状态从共享库复制成它自己的一份（共享库那份是模板）；身份本体绝不从别的号复制。
 
-#### `acct-iso-cmd`：一个 `cc-acct-iso` 步骤在终端里要跑的那一行（〔DUP2 · 第四波 4D〕2026-09-26，**只出一行、不起进程不碰盘**）
-
-设置「账号」那几块（新建账号表单 · 启用向导 · 维护 · 登录）要在那台机器的终端里跑的 `cc-acct-iso …` 由**这台后端**出
-（主会话 09-26 裁 J4：`设计/01 §1.1`「命令串……都不在前端」· `设计/90 §3` 判据 2；先例 `ccm-print`）。界面的逐字预览与「弹终端」都问它，
-拿到的一行原样上屏 / 原样交给开终端那一口（`src/frontend/ui/terminal-open.ts::openTerminal`，〔FIX4〕；跑它的是用户面前那个终端，DESIGN §6）。本机远端同一条命令，`origin` 区分。
+#### `accounts-remove`：删一个号（**写用户文件**，阻塞档）
 
 ```text
-→ {"id":"a3","cmd":"acct-iso-cmd","args":{"step":"add-apply","name":"z","credFile":"/home/u/snap.json"}}
-← {"kind":"reply","id":"a3","ok":true,"data":{"cmd":"cc-acct-iso add 'z' --from-credentials '/home/u/snap.json' --apply"}}
+→ {"id":"a3","cmd":"accounts-remove","args":{"name":"b"}}
+← {"kind":"reply","id":"a3","ok":true,"data":{"applied":true,"steps":["删除 /home/u/.claude-alt/b","写账号清单 …"],"notes":[…],"backup":"…",…}}
 ```
 
 | 字段 | 向 | 说明 |
 |---|---|---|
-| `step` | → | `init-preview` · `init-apply` · `verify` · `shellinit` · `sync-apply` · `add-apply` · `login`（七选一） |
-| `name` | → | 账号名：`init-*` · `add-apply` · `login` 必带，其余不许带。过 `shell_quote_core::account_name_ok`（与建号工具 `cc-acct-iso` 的 `name_check` 逐字同） |
-| `credFile` | → | 凭据快照路径：只有 `add-apply` 许带、可缺。非空 · 无 `"` · 无控制字符 · 不以 `-` 开头 · ≤ 4096 字节 |
-| `cmd` | ← | 那一行：值一律经唯一的 quote（`shell_quote_core::posix_quote`） |
+| `name` | → | 要删的号；`0` · 不认识的号 ⇒ `refused` |
+| `force` | → | 可缺席的布尔：删的是默认号时必须给真（剩下的第一个号接着当默认） |
+| `dryRun` | → | 同上 |
+| `applied` · `steps` · `notes` · `backup` · `aliases` | ← | 同 `accounts-init`；它那一条别名随之删掉 |
 
-**错误码**：`bad_args`（契约错：不认识的 `step` · 该带的格没带 / 多带 · 类型不对 · 路径超上界；英文诊断）·
-`refused`（账号名 / 快照路径过不了，句子走表）。⚠ **CLI 面也有它**（`--acct-iso-cmd`），入参从 stdin 读。
+只删它自己的目录（只许在账号库里），共享库一个字节不动；目录整棵先拷进备份（凭据的副本留在备份里，回滚要用）。
+这台 key 表（`~/.cc-monitor/apikey-credentials.json`）里有这个号那一行（API 号）⇒ 第一步先清它：整份表先拷进同一份备份，只摘这一行、别的行不动；订阅号那一趟不碰这份表。表读不了 ⇒ 不清，`notes` 里说一句。
+
+#### `accounts-set-default`：设默认号（阻塞档）
+
+```text
+→ {"id":"a4","cmd":"accounts-set-default","args":{"name":"b"}}
+← {"kind":"reply","id":"a4","ok":true,"data":{"applied":true,"steps":["写账号清单 …"],"notes":[],"backup":"…",…}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `name` | → | 要当默认的号（不认识 ⇒ `refused`） |
+| `dryRun` | → | 同上 |
+| `applied` · `steps` · `notes` · `backup` · `aliases` | ← | 同 `accounts-init`；已经是默认 ⇒ `applied: false`、一个字节不写 |
+
+只改清单里 `isDefault` 那一格（只留一个）。
+
+#### `accounts-repair`：修复（**写用户文件**，阻塞档，幂等）
+
+```text
+→ {"id":"a5","cmd":"accounts-repair","args":{}}
+← {"kind":"reply","id":"a5","ok":true,"data":{"applied":true,"steps":["建链接 …","改链接 …","改权限 … → 600"],"notes":[],"backup":"…",…,"aliases":{…}}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `dryRun` | → | 同上 |
+| `applied` · `steps` · `notes` · `backup` · `aliases` | ← | 同 `accounts-init`；再跑一次 ⇒ `applied: false`、`backup: null` |
+
+每个号：目录改回 `0700` · 身份本体改回 `0600` · 缺的共享链接补上 · 指错的改指 · 共享库里已经没有的残链清掉
+（身份那几项若还是链向共享库的链接 ⇒ 复制成这个号自己的一份，不是删）· 清单里的邮箱按各号 `.claude.json` 刷新 · 补齐每个号的别名。
+共享项在号里是一份实体文件 ⇒ 不动它、`notes` 里说一句。
+
+#### `accounts-isolate`：把一个共享项变成每个号各一份（**写用户文件**，阻塞档）
+
+```text
+→ {"id":"a6","cmd":"accounts-isolate","args":{"item":"settings.json","dryRun":true}}
+← {"kind":"reply","id":"a6","ok":true,"data":{"applied":false,"steps":["复制成自己的一份 …"],"notes":[…],…}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `item` | → | 共享库顶层的一个名字（含 `/` · `.` · `..` · 共享库里没有 ⇒ `refused`） |
+| `dryRun` | → | 同上 |
+| `applied` · `steps` · `notes` · `backup` · `aliases` | ← | 同 `accounts-init`（`aliases` 恒 `null`：这一条不动账号表）；它不在身份表里 ⇒ `notes` 提示之后「核对」会报它不是共享链接 |
+
+复制成私有的那一下：旁边先复制一份、核共享库那份复制期间没被改过、摘掉链接（绝不跟着链接写回共享库）、换名上位、再核一次；不对 ⇒ 还原成链接。
+
+#### `accounts-rollback`：按一份备份还原（**写用户文件**，阻塞档）
+
+```text
+→ {"id":"a7","cmd":"accounts-rollback","args":{"dryRun":true}}
+← {"kind":"reply","id":"a7","ok":true,"data":{"applied":false,"steps":["还原 /home/u/.claude-alt/b/skills","删掉 …（这一趟新建的）"],"notes":[],"backup":"20260930-120000",…}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `backup` | → ← | 入：用哪一份（`.backup-` 后面那一段，只许 `[0-9A-Za-z._-]`、不含 `..`）；缺席 ⇒ 最近一份还没还原过的。出：用的那一份 |
+| `dryRun` | → | 同上 |
+| `applied` · `steps` · `notes` · `aliases` | ← | 同 `accounts-init`；`notes` 里是撤销清单里认不出、跳过了的行 |
+
+按撤销清单倒着来：先还原（现场的那一份先挪进备份里的 `pre-rollback/`，不直接删）、再删这一趟新建的；每一条自己的错误不挡别的条。
+还原只落在账号库 · 共享库 · 家目录底下，删只删账号库里的；删号清掉的 key 表那一行从备份那一份里取回、只放回这一行（表里此后别人写进来的行不动）；做完留 `.rolled-back` 标记。有条没做成 ⇒ `io_failed`（话里说做了几条、哪几条没成、备份在哪）。
+
+#### `accounts-verify`：核对（**只读**，**不读 stdin**）
+
+```text
+→ {"id":"a8","cmd":"accounts-verify","args":{}}
+← {"kind":"reply","id":"a8","ok":true,"data":{"pass":false,"fails":1,"warns":0,"checks":[{"level":"fail","account":"b","text":"共享链接 skills 指向 /x，应当指向 /home/u/.claude/skills。点「修复」改回来。"},…]}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `pass` | ← | 没有一条 `fail` |
+| `fails` · `warns` | ← | `fail` / `warn` 各几条 |
+| `checks` | ← | 每条 `{level, account, text}` |
+| `level` | ← | `ok` · `warn` · `fail` · `skip` |
+| `account` | ← | 说的是哪个号；全局那几条 ⇒ `null` |
+| `text` | ← | 给人看的那一句 |
+
+致命：身份没隔离开（身份文件是链接 · 两个号邮箱相同 · 共享库里留着原生根在家目录的那份身份）· 权限不对（号的目录不是 `0700` · 凭据不是 `0600`）·
+共享没接上（缺链接 · 链错地方 · 断链 · 共享项在号里是实体文件 · 一个共享项都没有）。提示：还没登录（API 号不提示）· 号里有意料之外的实体项 ·
+共享库本身的源头断了 · 身份表里的某项哪儿都找不到 · 共享库顶层有一份 `0600` 的文件却不在身份表里。
+**错误码**：`io_failed`（问不出家目录）· `unsupported`。⚠ **CLI 面也有它**（`--accounts-verify`，不读 stdin）。
+
+#### `accounts-login-cmd`：在终端里登录一个号的那一行（**只算不做**，阻塞档）
+
+```text
+→ {"id":"a9","cmd":"accounts-login-cmd","args":{"name":"b"}}
+← {"kind":"reply","id":"a9","ok":true,"data":{"cmd":"'/home/u/.cc-monitor/bin/ccm' -- --account 'b'"}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `name` | → | 清单里的一个号（不认识 ⇒ `refused`） |
+| `cmd` | ← | 那一行：这台的 `ccm` 带 `--account` 起 claude（claude 自己的登录界面）；值一律经唯一的 quote（`shell_quote_core::posix_quote`） |
+
+界面把它交给开终端那一步（本机 Linux 上不开窗，复制给人自己跑）。**错误码**：`bad_args` · `refused` · `io_failed` · `unsupported`。
 
 #### `accounts-sessions`：正在跑的会话各属哪个账号（**不读 stdin**）
 
@@ -3068,26 +3182,6 @@ cc-monitor 装的：skill 按装记录逐文件删（带逐字节 `expect`），
 
 写经本进程文件管理面（`files-rename` / `files-put` / `files-chmod`）。只由用户显式点「装」触发（`INVARIANTS` 第 7 条例外）。错误码：`bad_file` · `refused`。⚠ **CLI 面也有它**（`--cc-bus-install`）。
 
-#### `acct-iso-install`：把这台二进制带着的 cc-acct-iso 装到这台（MIG-3a · 主会话 09-28 裁 2 · 09-28 预裁，**写用户文件**）
-
-```text
-→ {"id":"a1","cmd":"acct-iso-install"}
-← {"kind":"reply","id":"a1","ok":true,"data":{"dest":"/home/u/.cc-monitor/bin/cc-acct-iso","version":"e24bfd164014351a","written":6,"link":"/home/u/.local/bin/cc-acct-iso","linked":true,"config":"/home/u/.cc-acct-iso/config","configWritten":true,"recordFailed":null}}
-```
-
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `dest` · `version` | ← | 字节落在哪（这台按自己的家目录算：`~/.cc-monitor/bin/cc-acct-iso`，不收调用方给的路径）· 带着的那一份的内容指纹（`.vendor_id`，也写成落点里的标记） |
-| `written` | ← | 这一趟写了几份字节（逐份比，盘上已是这一份就不写 ⇒ 再装一次是 `0`） |
-| `link` · `linked` | ← | `~/.local/bin/cc-acct-iso` · 这一趟建了没有（那儿已有任何东西 ⇒ 不动它、`false`） |
-| `config` · `configWritten` | ← | `~/.cc-acct-iso/config` · 这一趟从随包 `examples/config` 抄了没有（已有不覆盖；抄了 ⇒ 目录 `0700`） |
-| `recordFailed` | ← | 装好了但没记进 skill 装记录时那一句；装卸账记在 skill 装记录那一份（`name = "acct-iso"`，按家目录记，这一趟写了的都记） |
-
-字节**随后端二进制走**（同 `cc-bus-install`：部署载荷只一种走法），单一事实源 `src/shared/cc-acct-iso/`；
-从前是 monitor 的 `deploy_remote_acct_iso`〔散文墓碑〕 把它内嵌的那份经 SFTP 推过来（更早还经 ssh 跑 `cc-acct-iso-install.sh`）。
-落盘全经本进程文件管理面：字节 `files-put`（CAS：读到哪份就对哪份写）· 可执行位 `files-chmod` · 链接 `files-link` · 目录 `files-mkdir`。
-不改 rc、不动账号 / 凭据。只由用户显式点「部署」触发（`INVARIANTS` 第 7 条例外）。错误码：`bad_file` · `refused`。⚠ **CLI 面也有它**（`--acct-iso-install`，**不读 stdin**）。
-
 #### `tmux-list`：这台机器的 tmux 会话（SH1，09-26，**只读**）
 
 ```text
@@ -3512,7 +3606,7 @@ capture{max_bytes,abort_marker,stdin} · forward{local_port,remote_host,remote_p
 上行每一行一个请求 `{"op":…}`，下行每一行一个应答；`op` ∈ `home` · `read{path,max}` · `put{path,size,mode,verify}`（该行之后紧跟 `size` 个原始字节，
 上限 64 MiB）· `remove{path}` · `mkdirs{path}`（〔MIG-3b 续 · V41〕`stat` 那一问删了：唯一的问者随部署判定进了本机后端）。失败那一形 `{"code","message"}`，`code` ∈ `fenced`（远端写围栏拒）· `io` · `too_big` · `bad_request` · `unknown_op`。
 🔴 **写只许两处**：远端 `~/.cc-monitor/staging/` 与 `~/.cc-monitor/bin/`（用户 V89；`INVARIANTS §41.6` 的 SR1b 订正）。读不受限。
-它服务自部署（F08 后端二进制 · cc-acct-iso）：〔MIG-3b〕后端二进制那一路的判定在本机常驻后端（`deploy-plan`），monitor 照计划经它放字节（`dial_host::RemoteFs`）；cc-acct-iso 那一路的判定仍在 monitor。
+它服务自部署（F08 后端二进制）：〔MIG-3b〕后端二进制那一路的判定在本机常驻后端（`deploy-plan`），monitor 照计划经它放字节（`dial_host::RemoteFs`）；账号库不经这里部署，由那台后端自己建（`accounts-init`）。
 `use:"subsystem"`（把原始 SFTP 字节交给客户端）**不开** ⇒ 回 `unsupported_use`：SFTP 协议住后端，客户端只有 `files` 与 `transfer-*` 两条路。
 错误 code：`invalid_args` · `unsupported_use` · `duplicate_link` · `too_many_links`（每连接 256 条）。
 
@@ -3640,11 +3734,10 @@ rc=2
 > 用量的**聚合轴**整轴退役 ⇒ 子命令与它的实现（那份 `usage_query.rs`，**已删**）一起删了，
 > monitor 侧的 fan-out 消费者同拍删除。`SUBCOMMANDS` 27 → 25（另一条是 `--oneshot-session`）。〕
 
-- `--list-accounts [--accts-dir <p>]`（A2 多账号，`src/backend/observe/accounts_query.rs`）→ 读 cc-acct-iso 的 manifest（`$ACCTS_DIR/accounts.json`，契约 v1）。**首行** `{"kind":"accounts-meta","enabled":bool,"acctsDir","manifestPath","updatedAt","sharedStore","count","error"}`，其后每账号一行 `{name,email,configDir,isDefault,mode,exists,loggedIn}`。**"未启用多账号"是正常状态**：manifest 缺失/坏/版本不支持 → `enabled:false` + `error` 人话原因 + **exit 0**（不是错误）。`loggedIn` 仅 stat `.credentials.json` 存在性。账号库目录解析：`--accts-dir` > `~/.cc-acct-iso/config` 的 `ACCTS_DIR=`（**正则抠值，绝不 source**）> `$HOME/.claude-alt`
+- `--list-accounts [--accts-dir <p>]`（A2 多账号，`src/backend/observe/accounts_query.rs`）→ 读账号库清单（`~/.claude-alt/accounts.json`，契约 v1）。**首行** `{"kind":"accounts-meta","enabled":bool,"acctsDir","manifestPath","updatedAt","sharedStore","count","error"}`，其后每账号一行 `{name,email,configDir,isDefault,mode,exists,loggedIn}`。**"未启用多账号"是正常状态**：manifest 缺失/坏/版本不支持 → `enabled:false` + `error` 人话原因 + **exit 0**（不是错误）。`loggedIn` 仅 stat `.credentials.json` 存在性。账号库目录解析：`--accts-dir` > `$HOME/.claude-alt`
 - `--session-accounts [--accts-dir <p>]`（A2；`launchId` 是 `K-P5f`）→ 扫 `<claude_dir>/sessions/<PID>.json` 拿 pid，读 `/proc/<pid>/environ` **只抠三个写死的键**（`CLAUDE_CONFIG_DIR` · `CCM_LAUNCH_ID` ·〔HX1 · D-f〕`ANTHROPIC_BASE_URL`——最后那个的值带中转钥匙，只折成 `viaRelay` 一个布尔、值本身不出参；**键名不是参数**，所以这条查询不是「任意环境变量读」原语，也**绝不回传整个环境快照**），`CLAUDE_CONFIG_DIR` 反查 manifest 得账号名。每条一行 `{pid,sessionId,cwd,configDir,account,bare,alive,launchId,viaRelay}`（〔HX1〕`viaRelay` = 这条会话的上游地址是不是本机中转那一形：`true` / `false` / `null` = 不知道（进程已死 / 环境这一刻取不到）；机器页「停」本机后端之前据它数几条会断；老后端不出这个键 ⇒ 读成 `null`）。`account:null` = 查不到（**不猜**）；**`bare:true` = 进程活着、`/proc/<pid>/environ` 这一刻读得到、而没设 `CLAUDE_CONFIG_DIR`（裸起）——这个布尔的语义钉死在那一个变量上，加了第二个键也没有拓宽它**（没设 `CCM_LAUNCH_ID` 由 `launchId:null` 自己表达）。⚠ 「读得到」这个合取项是 `K-R21`（09-03）补的，**语义是收窄不是拓宽**：environ 在 exec 窗口里（60–140 µs）与进程成僵尸之后**读得到却回 0 字节 / 读不到**，从前那一刻会被报成斩钉截铁的 `account:"<账号0>"` + `bare:true`，而 `alive` 仍是 `true`（判活读的是 `/proc/<pid>/stat`，与 `environ` 不是同一次读）⇒ **一条真跑在别的账号下的会话会被报成账号 0 的，且无声无息**。现在那一刻报 `configDir:null` + `account:null` + `bare:false`（=「不知道」，**出参形状没变、没有新字段**）。`launchId` = 起会话方铸进这条会话进程环境的**身份 token**（写侧住 `local.rs::LAUNCH_ID_VAR`），`null` = **不作数**，五种原因合并且**刻意不区分**：没设 / 形状过不了白名单（`[A-Za-z0-9_-]`，1..=128）/ **同一个 token 落在一条以上活会话上** / 进程已死 / **读那一刻环境取不到**。⚠ 第五种是 `K-R21` 现打出来的，**它一直都在、只是从前混在「没设」里数不出来**（读侧那个 `Option` 装着四件事）——这不是新增了一种行为，是把「四种」这句旧话订正成实话；`configDir` 那一半已经把它拆出来了，身份这一半仍按「要区分就得给出参加状态位 = 改上线契约」那条裁定合并着。⚠ **`launchId` 不是硬真相**：它是**继承型**环境变量（claude spawn 的子进程原样继承），后端只能判「同一批里唯一」，判不出「确实是它的」——父会话已退出时那个继承值仍会被报出来。**additive**：老后端不出这个键，下游读成 `null`。⇒ 账号那一半（`configDir`/`account`/`bare`）仍是"某条**正在跑**的会话属于哪个账号"的唯一硬真相（会话 jsonl 里没有任何账号字段）；身份那一半（`launchId`）**不是**，别把上一句读到它头上
 - `--account-trust <configDir> <cwd> [--accts-dir <p>]`（A2）→ 换号 resume 前的信任预检（首次用某账号进某目录，CC 会弹信任确认、会卡住自动化）。单行 `{"trusted":bool,"known":bool,"error":null}`。**安全**：`configDir` 必须逐字 ∈ manifest 的账号列表，否则 exit 2 + stderr `{"code":"unknown_config_dir",...}`——避免退化成任意文件读原语；**只回三个布尔/字符串字段，绝不回传 `.claude.json` 内容**（内含 `mcpServers` 的环境变量，可能有 API key）
 - `--account-trust-zero <cwd>`（A2）→ **账号 0**（未启用多账号时那个原生身份）的信任预检，返回形状同 `--account-trust`。**为什么单开一个动词而不是给 `--account-trust` 传空 `configDir`**：账号 0 没有 config dir，而空串是被明令禁止的拼法（空值 ≠ 未设）；且它的 `.claude.json` 原生根是 `$HOME`、不在共享账号库里 ⇒ 路径来源本就不同，合并只能靠哨兵值区分，比多一个动词更易错。**不收任何文件/配置目录路径参数**：它收 `cwd`，但那只当 `projects` 里的**查表键**，`.claude.json` 的根写死 `$HOME` ⇒ 连"任意文件读"的面都没有（`account_trust_zero_takes_no_path_argument` 钉住）
-- `--acct-iso-status` / `--acct-iso-shellinit`（A3 第二波）〔LOC1a · 第四波 4D 改〕：argv 形那两条退役，上了帧面（见 §10 入方向 `acct-iso-status` / `acct-iso-shellinit` 两小节）；同名 CLI 面今天由帧面自动派生（信封形 `{"id":"cli","ok":…,"data":…}`，不读 stdin）。
 - `--fork-session <args>`（G2 branch-anywhere，`src/backend/control/fork_write.rs`）→ 从指定消息处分叉出一个新会话文件。**后端唯一的写盘入口**——其余一切子命令只读；`readonly_guard` 的写白名单按路径单独盯着 `control/fork_write.rs` 这一个文件（`src/doc/INVARIANTS.md` §41.6）
 - `--tmux-notify <backend_pid> <backend_starttime>`（P4b zero-poll-liveness）→ **不是查询**，是 tmux hook 子进程走的通路：校验身份后给正在跑的后端发一个信号叫它立刻重扫 tmux，**完全不碰文件系统**。两个参数缺一或非整数 ⇒ exit 2。**必须同时比对 starttime 而不只看 pid 存在**：后端退出后那个 pid 可能已被别的进程占用，误发信号轻则无效、重则打断无关进程（很多程序把该信号当自定义控制信号，默认处置直接终止）。身份对不上 ⇒ **静默 exit 0，不做事**
 
@@ -3689,7 +3782,7 @@ stdin **只读到第一个换行**就动手，不等 EOF（上限与超限的拒
 今天的发送方：资产目录推那一趟（`'<远端后端>' --assets-catalog-merge --stdin-line`）· 历史跨机那一问（`'<远端后端>' --list-sessions --stdin-line`，项目目录名走那一行；`remote_ask::ask_with`）。旧后端不认这个修饰词（它会照旧读到 EOF、一直等）⇒
 随 `BUILD_ID` 换代，远端按身份重部署之后才发。
 
-错误写 stderr + 退出码 2（`--account-trust` 用 `--resolve` 那套结构化 `{code,message}` JSON）。**读会话那一族**（`--read-session` / `--read-session-tail` / `--read-session-from-offset` / `--fork-session`）的路径参数严格限制在 `<claude_dir>/projects/` 内（canonicalize 后前缀校验，拒穿越 / symlink 逃逸 / 非 jsonl）。**账号一族不走这条**，各有各的判据：`--accts-dir <p>` 解析到 `~/.cc-acct-iso/config` 或 `$HOME/.claude-alt`；`--account-trust <configDir>` 靠「逐字 ∈ manifest」而非 projects 前缀；`--tmux-notify` 根本不碰文件系统。**旧后端兼容**：不认参数的旧版会照常发 `hello` 进流模式——monitor 以"首行是 hello 帧"识别旧版并提示升级（优雅降级，无版本协商）。
+错误写 stderr + 退出码 2（`--account-trust` 用 `--resolve` 那套结构化 `{code,message}` JSON）。**读会话那一族**（`--read-session` / `--read-session-tail` / `--read-session-from-offset` / `--fork-session`）的路径参数严格限制在 `<claude_dir>/projects/` 内（canonicalize 后前缀校验，拒穿越 / symlink 逃逸 / 非 jsonl）。**账号一族不走这条**，各有各的判据：`--accts-dir <p>` 缺省是 `$HOME/.claude-alt`；`--account-trust <configDir>` 靠「逐字 ∈ manifest」而非 projects 前缀；`--tmux-notify` 根本不碰文件系统。**旧后端兼容**：不认参数的旧版会照常发 `hello` 进流模式——monitor 以"首行是 hello 帧"识别旧版并提示升级（优雅降级，无版本协商）。
 
 **`K-R86` 追加一条（09-13）**：`--capture-pane <会话名>` —— **只读**地抓一次某个 tmux 会话
 **此刻**那一屏的文本。它是上面读面那一族的邻居，但读的不是文件而是屏幕，所以单列在这里。
@@ -3734,8 +3827,7 @@ stdin **只读到第一个换行**就动手，不等 EOF（上限与超限的拒
 **C4e 追加一条（09-25）**：`--bus-broadcast` —— 给总线上在线的成员群发一条（见上面它自己那一小节）。
 同上，与帧面同一个 `run`；**读 stdin**（那段 JSON 就是它的 `args`）。
 
-**LOC1a 追加三条（09-25）**：`--acct-iso-status` · `--acct-iso-shellinit`（不读 stdin；名字与退役的 argv 形同名，形状换成信封）·
-`--session-fork`（读 stdin）—— 见上面各自那一小节。同上，与帧面同一个 `run`。
+**LOC1a 追加一条（09-25）**：`--session-fork`（读 stdin）—— 见上面它自己那一小节。同上，与帧面同一个 `run`。
 
 **SH1 追加一条（09-26）**：`--bus-inbox` —— 只读看一个 agent 收件箱的尾巴（见上面它自己那一小节）。同上，与帧面同一个 `run`；**读 stdin**（`{id, lines?}`）。
 
@@ -3743,7 +3835,9 @@ stdin **只读到第一个换行**就动手，不等 EOF（上限与超限的拒
 
 **MIG-3a 追加二十二条（09-27 · 09-28；09-30 起其中两台之间的旧枢纽四条、卸那一条与收件箱三条已删）**：`--cc-bus-install` · `--cc-bus-install-state`（cc-bus 装到这台）· `--mcp-server-put` · `--mcp-server-remove` · `--mcp-sync-source` · `--mcp-sync-preview` · `--mcp-sync-apply` · `--skill-install-apply` · `--aliases-render` · `--aliases-read` · `--aliases-install` · `--aliases-block-render` · `--aliases-block-install` · `--aliases-block-remove` —— D 组 MCP · skill · 别名那几件收进这台后端（见各自那一小节）。与帧面同一个 `run`；**读 stdin**。
 
-**MIG-3a 追加两条（09-28 · 主会话裁 2）**：`--acct-iso-install`（cc-acct-iso 装到这台，**不读 stdin**）· `--files-link`（写面「建链接」的入口，**读 stdin**）—— 见上面各自那一小节。与帧面同一个 `run`。
+**MIG-3a 追加一条（09-28 · 主会话裁 2）**：`--files-link`（写面「建链接」的入口，**读 stdin**）—— 见上面它自己那一小节。与帧面同一个 `run`。
+
+**账号库那一族追加九条**：`--accounts-init` · `--accounts-add` · `--accounts-remove` · `--accounts-set-default` · `--accounts-repair` · `--accounts-isolate` · `--accounts-rollback` · `--accounts-login-cmd`（读 stdin；`--accounts-add` 的 key 只走 stdin、不收 argv）· `--accounts-verify`（不读 stdin）—— 见上面各自那一小节。与帧面同一个 `run`。
 
 **扩展页追加两条（09-30）**：`--ext-uninstall-preview` · `--ext-uninstall-apply` —— 从这台卸一个扩展（见上面各自那一小节）。与帧面同一个 `run`；**读 stdin**。`ext-list` · `ext-hub-preview` · `ext-hub-apply` 读本进程的可达表，只在帧面上。
 
@@ -4265,7 +4359,7 @@ PS (__ccm_bind)                          File System                    monitor 
 
 2. 检查 auto-launch.json
    - auto_launch_enabled && monitor 不在跑
-     → Start-Process monitor.exe --background
+     → Start-Process cc-monitor.exe --background
        （不抢前台焦点；v2 起不再死等 2s）
 
 3. 生成 marker = "ccm-bind-<PID>-<8 字符 GUID>"
@@ -4342,7 +4436,7 @@ deadline 是 **3000ms**（v2 从 800ms 提上来，覆盖 monitor 冷启动；�
 - 失效检测在拉前时三重校验（IsWindow + owner_pid + owner_proc_start），过期条目自动清
 
 ### 为什么 auto-launch 写 monitor exe path
-- 让 monitor.exe portable：用户从 D 盘搬到 C 盘也无需重设
+- 让 cc-monitor.exe portable：用户从 D 盘搬到 C 盘也无需重设
 - monitor 启动时自动更新该路径，PS 端永远拿到最新值
 
 ---

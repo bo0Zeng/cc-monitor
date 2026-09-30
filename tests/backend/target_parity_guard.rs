@@ -843,6 +843,42 @@ const REACHES_TMUX_WITHOUT_NO_TMUX: &[(&str, &str)] = &[
         "powershell-policy-set",
         "〔WF1 · L〕与别名那一族同住 `assets/aliases/mod.rs`（引用图按文件算，因此连带）；设执行策略本身只起 PowerShell，不碰 tmux",
     ),
+    (
+        "accounts-add",
+        "账号库那一族（`accounts/manage/` · `faces/accounts_face.rs`）只从 `control/ccm/` 取 `ccm` 那个词与 `--` / `--account` 两个旗标（拼登录那一行 · 账号别名），并经别名那一族写别名文件 —— 按文件画的引用图因此连到了 tmux；本族不问 tmux、不起 tmux",
+    ),
+    (
+        "accounts-init",
+        "账号库那一族（`accounts/manage/` · `faces/accounts_face.rs`）只从 `control/ccm/` 取 `ccm` 那个词与 `--` / `--account` 两个旗标（拼登录那一行 · 账号别名），并经别名那一族写别名文件 —— 按文件画的引用图因此连到了 tmux；本族不问 tmux、不起 tmux",
+    ),
+    (
+        "accounts-isolate",
+        "账号库那一族（`accounts/manage/` · `faces/accounts_face.rs`）只从 `control/ccm/` 取 `ccm` 那个词与 `--` / `--account` 两个旗标（拼登录那一行 · 账号别名），并经别名那一族写别名文件 —— 按文件画的引用图因此连到了 tmux；本族不问 tmux、不起 tmux",
+    ),
+    (
+        "accounts-login-cmd",
+        "账号库那一族（`accounts/manage/` · `faces/accounts_face.rs`）只从 `control/ccm/` 取 `ccm` 那个词与 `--` / `--account` 两个旗标（拼登录那一行 · 账号别名），并经别名那一族写别名文件 —— 按文件画的引用图因此连到了 tmux；本族不问 tmux、不起 tmux",
+    ),
+    (
+        "accounts-remove",
+        "账号库那一族（`accounts/manage/` · `faces/accounts_face.rs`）只从 `control/ccm/` 取 `ccm` 那个词与 `--` / `--account` 两个旗标（拼登录那一行 · 账号别名），并经别名那一族写别名文件 —— 按文件画的引用图因此连到了 tmux；本族不问 tmux、不起 tmux",
+    ),
+    (
+        "accounts-repair",
+        "账号库那一族（`accounts/manage/` · `faces/accounts_face.rs`）只从 `control/ccm/` 取 `ccm` 那个词与 `--` / `--account` 两个旗标（拼登录那一行 · 账号别名），并经别名那一族写别名文件 —— 按文件画的引用图因此连到了 tmux；本族不问 tmux、不起 tmux",
+    ),
+    (
+        "accounts-rollback",
+        "账号库那一族（`accounts/manage/` · `faces/accounts_face.rs`）只从 `control/ccm/` 取 `ccm` 那个词与 `--` / `--account` 两个旗标（拼登录那一行 · 账号别名），并经别名那一族写别名文件 —— 按文件画的引用图因此连到了 tmux；本族不问 tmux、不起 tmux",
+    ),
+    (
+        "accounts-set-default",
+        "账号库那一族（`accounts/manage/` · `faces/accounts_face.rs`）只从 `control/ccm/` 取 `ccm` 那个词与 `--` / `--account` 两个旗标（拼登录那一行 · 账号别名），并经别名那一族写别名文件 —— 按文件画的引用图因此连到了 tmux；本族不问 tmux、不起 tmux",
+    ),
+    (
+        "accounts-verify",
+        "账号库那一族（`accounts/manage/` · `faces/accounts_face.rs`）只从 `control/ccm/` 取 `ccm` 那个词与 `--` / `--account` 两个旗标（拼登录那一行 · 账号别名），并经别名那一族写别名文件 —— 按文件画的引用图因此连到了 tmux；本族不问 tmux、不起 tmux",
+    ),
     ("bus-broadcast", "同 `bus-list`：挑在线的那一步读 `live`，问不到 tmux 就当「不知道谁在线」如实回，不回 `no_tmux`"),
     ("bus-kill", "同 `bus-list`（转调 `cc-kill`；tmux 只用来挂 `live`）"),
     ("bus-list", "`control/cc_bus.rs::agents_via_cc_list` 经 `gate::list_sessions().ok()` 挂「还活着吗」那一栏 —— 问不到回 `live: null`（「不假装知道」），命令本身照做；它的能力是转调 cc-bus，不是 tmux"),

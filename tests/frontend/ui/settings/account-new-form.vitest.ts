@@ -3,9 +3,8 @@
 // 本文件判**表单自己**：交出去的请求形状、两支的显隐、校验挡不挡得住绕过 disabled 的点击。
 // 「交出去之后账号分节怎么把 key 写给那个号」在 `accounts-section.vitest.ts` 的 A2 那一族。
 //
-// 〔DUP2 · J4〕逐字预览的那一行由那台后端出（帧命令 `acct-iso-cmd`）：判据假扮通道那一跳，**照跨语言金样答**
-// （`tests/__fixtures__/acct-iso-cmd.golden.json`，后端那侧逐条对生产函数）—— 不在 JS 里再写一份命令构造。
-// 输入一变表单就问一次，所以每次输入之后要等那一问回来（`settle()`）。
+// 预演那几步由那台后端出（帧命令 `accounts-add` 带 `dryRun`）：判据假扮通道那一跳，用罐头答（`accountsFakeInvoke`）
+// —— 不在 JS 里再写一份规划器。输入一变表单就问一次，所以每次输入之后要等那一问回来（`settle()`）。
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const invokeMock = vi.fn();
@@ -18,19 +17,22 @@ import {
   NEW_ACCOUNT_COPY,
   type NewAccountRequest,
 } from "../../../../src/frontend/ui/settings/account-new-form";
-import { suggestAliasName } from "../../../../src/frontend/ui/settings/machine-aliases"; // 〔AL1〕随别名那一块搬家
-import { acctIsoCmdCase, acctIsoCmdInvoke, isChanCall, type ChanCallArgs } from "../../../test-support/chan-fake";
+import { accountsFakeInvoke, chanArgsJson, isChanCall, refusedReply, type ChanCallArgs } from "../../../test-support/chan-fake";
 
-/** 表单问的那几发 `acct-iso-cmd`（交给了哪台 ＋ 请求体）。 */
+/** 表单问的那几发预演（交给了哪台 ＋ 请求体）。 */
 const asked: ChanCallArgs[] = [];
+/** 下一发预演要不要让那台后端拒（`null` = 照罐头答）。 */
+let refuse: string | null = null;
 
 beforeEach(() => {
   asked.length = 0;
+  refuse = null;
   invokeMock.mockReset();
   invokeMock.mockImplementation((cmd: string, args: unknown) => {
-    if (isChanCall(cmd, args, "acct-iso-cmd")) {
+    if (isChanCall(cmd, args, "accounts-add")) {
       asked.push(args);
-      return acctIsoCmdInvoke(args);
+      if (refuse !== null) return Promise.reject(refusedReply("refused", refuse));
+      return accountsFakeInvoke(args);
     }
     return Promise.reject(new Error(`判据没料到这一发：${cmd}`));
   });
@@ -89,13 +91,13 @@ describe("A2 新建账号表单", () => {
     expect(f.el.textContent).toContain(NEW_ACCOUNT_COPY.apikeyHint);
   });
 
-  it("订阅：交出去的是 {name, subscription, credFile?}，交完三格清空", async () => {
+  it("订阅：交出去的是 {name, kind: subscription, credFile?}，交完三格清空", async () => {
     const f = form();
     await f.type(f.name, "b");
-    await f.type(f.cred, "/h/snap.json");
+    await f.type(f.cred, "~/snap.json");
     expect(f.btn("创建").disabled).toBe(false);
     f.btn("创建").click();
-    expect(f.seen).toEqual([{ name: "b", access: "subscription", credFile: "/h/snap.json" }]);
+    expect(f.seen).toEqual([{ name: "b", kind: "subscription", credFile: "~/snap.json" }]);
     expect([f.name.value, f.cred.value, f.key.value]).toEqual(["", "", ""]);
   });
 
@@ -110,7 +112,8 @@ describe("A2 新建账号表单", () => {
     await f.type(f.key, "  sk-ant-TYPED  ");
     expect(f.btn("创建").disabled).toBe(false);
     f.btn("创建").click();
-    expect(f.seen).toEqual([{ name: "b", access: "apikey", key: "sk-ant-TYPED" }]);
+    expect(f.seen).toEqual([{ name: "b", kind: "api-key", key: "sk-ant-TYPED" }]);
+    for (const a of asked) expect((chanArgsJson(a) as { key?: string }).key, "预演带上了 key 的明文").toBeUndefined();
     expect(f.key.value, "交完 key 还留在输入框里").toBe("");
   });
 
@@ -127,16 +130,16 @@ describe("A2 新建账号表单", () => {
     expect(f.btn("创建").disabled).toBe(false);
   });
 
-  it("〔DUP2 · J4〕命令预览是那台后端答的那一行（`acct-iso-cmd`，交给表单那台）；输入一变就重问、只认最后一问", async () => {
+  it("预演是那台后端答的那几步（`accounts-add` 带 `dryRun`，交给表单那台）；输入一变就重问、只认最后一问", async () => {
     const f = form();
     await f.type(f.name, "b");
-    const want = acctIsoCmdCase(asked.at(-1)!).cmd!;
     expect(asked.at(-1)!.origin).toBe("<local>");
+    expect(chanArgsJson(asked.at(-1)!)).toEqual({ name: "b", kind: "subscription", dryRun: true });
     const pre = () => f.el.querySelector("pre.accounts-wiz-preview")!.textContent!;
-    expect(pre()).toContain(want);
-    // apikey 那一支还没填 key 时，命令照样预览得出来（命令与 key 无关）。
+    expect(pre()).toContain("（预演）accounts-add b");
+    // apikey 那一支还没填 key 时，预演照样问得出来（预演不带 key）。
     await f.pick("apikey");
-    expect(pre()).toContain(want);
+    expect(chanArgsJson(asked.at(-1)!)).toEqual({ name: "b", kind: "api-key", dryRun: true });
     // 名字不合法 ⇒ 不问（问了也是拒），预览是空的那一句。
     const n = asked.length;
     await f.type(f.name, "a b");
@@ -144,27 +147,39 @@ describe("A2 新建账号表单", () => {
     expect(pre()).toBe(NEW_ACCOUNT_COPY.previewEmpty);
   });
 
-  it("〔DUP2 · J4〕后端拒了（快照路径带双引号；〔FIX · `99 §2 ㊹`〕`-` 开头那一格已放行）⇒ 那一句上屏、「创建」灰、绕过也不交", async () => {
+  it("那台后端预演就拒了（比如凭据文件不在）⇒ 那一句上屏、「创建」灰、绕过也不交", async () => {
     const f = form();
+    refuse = "找不到凭据文件 /h/nope.json，或者它不是普通文件。";
     await f.type(f.name, "b");
-    await f.type(f.cred, 'a"b');
+    await f.type(f.cred, "/h/nope.json");
     const create = f.btn(NEW_ACCOUNT_COPY.create) as HTMLButtonElement;
     expect(create.disabled).toBe(true);
-    expect(f.el.querySelector(".accounts-maint-err")!.textContent).toContain("命令拼不出来");
+    expect(f.el.querySelector(".accounts-maint-err")!.textContent).toContain("找不到凭据文件");
     create.disabled = false;
     create.click();
     expect(f.seen, "后端拒了还交出去了").toEqual([]);
   });
 
-  it("命令名那一行走唯一那条规则（`suggestAliasName`），名字一变它就跟着变", async () => {
+  it("命令名那一行是那台后端预演时答的别名名字（`alias`），不在界面里推", async () => {
     const f = form();
     await f.type(f.name, "b");
-    expect(suggestAliasName("b")).not.toBe("");
-    expect(aliasHintFor("b")).toContain(suggestAliasName("b"));
-    expect(f.el.textContent).toContain(aliasHintFor("b"));
+    expect(f.el.textContent).toContain(aliasHintFor("betacc"));
     await f.type(f.name, "work");
-    expect(f.el.textContent).toContain(suggestAliasName("work"));
-    expect(f.el.textContent).not.toContain(aliasHintFor("b"));
+    expect(f.el.textContent).toContain(aliasHintFor("workcc"));
+    expect(f.el.textContent).not.toContain(aliasHintFor("betacc"));
+    expect(aliasHintFor(null)).toBe("");
+  });
+
+  it("「设为默认」勾上 ⇒ 预演与交出去的那一发都带 isDefault", async () => {
+    const f = form();
+    await f.type(f.name, "b");
+    const d = f.el.querySelector<HTMLInputElement>('input[data-field="is-default"]')!;
+    d.checked = true;
+    d.dispatchEvent(new Event("change"));
+    await settle();
+    expect(chanArgsJson(asked.at(-1)!)).toEqual({ name: "b", kind: "subscription", isDefault: true, dryRun: true });
+    f.btn("创建").click();
+    expect(f.seen).toEqual([{ name: "b", kind: "subscription", isDefault: true }]);
   });
 
   it("🔴 `70 §4.3` ②：「创建」不是红色；表单里没有 `.danger`，也没有账号下拉", () => {
@@ -202,14 +217,14 @@ describe("〔ST2 · `70 §4.4` 线框〕apikey 那一支的 Base URL", () => {
     await f.type(f.base, "https://api.example.com");
     expect(create.disabled).toBe(false);
     create.click();
-    expect(f.seen).toEqual([{ name: "b", access: "apikey", key: "sk-x", baseUrl: "https://api.example.com" }]);
+    expect(f.seen).toEqual([{ name: "b", kind: "api-key", baseUrl: "https://api.example.com", key: "sk-x" }]);
     expect(f.base.value, "交完没清空").toBe("");
     // 留空那一次：请求里没有 baseUrl 这一格（后端那一格不碰）。
     await f.pick("apikey");
     await f.type(f.name, "c");
     await f.type(f.key, "sk-y");
     (f.btn(NEW_ACCOUNT_COPY.create) as HTMLButtonElement).click();
-    expect(f.seen[1]).toEqual({ name: "c", access: "apikey", key: "sk-y" });
+    expect(f.seen[1]).toEqual({ name: "c", kind: "api-key", key: "sk-y" });
     expect("baseUrl" in f.seen[1]!).toBe(false);
   });
 });

@@ -12,7 +12,7 @@
  * | 路 | 结论 |
  * |---|---|
  * | pidfile `sessions/<PID>.json` | 进程退出即消失 ⇒ **只对活着的会话有效** |
- * | jsonl 所在路径 | 各账号的 `projects/` 是**软链到共享的 `~/.claude/projects`**（同 inode）⇒ 路径**不编码**账号。这是 cc-acct-iso「隔离又同步」的设计：凭据分家、会话历史共享 |
+ * | jsonl 所在路径 | 各账号的 `projects/` 是**软链到共享的 `~/.claude/projects`**（同 inode）⇒ 路径**不编码**账号。这是账号库「隔离又同步」的设计：凭据分家、会话历史共享 |
  * | jsonl 内容 | 44 个顶层键里**没有**任何账号 / 邮箱 / configDir 字段 |
  *
  * ⇒ **对已退出的会话，账号一律 `unknown`。**

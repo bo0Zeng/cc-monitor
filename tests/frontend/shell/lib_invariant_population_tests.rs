@@ -346,18 +346,15 @@ type QuoteRow = (
     &'static str,
 );
 const QUOTE_SITES: &[QuoteRow] = &[
-    // 〔DUP2 · J4〕cc-acct-iso 步骤那一行（帧命令 `acct-iso-cmd`，原先界面自己拼）：账号名过 `account_name_ok`（§47 ①），
-    //   凭据快照路径过 `check_snapshot_path`（规则照界面原样搬：非空 · 无 `"` · 无控制符 · 不以 `-` 开头），再走唯一的 quote。
+    // 账号库管理：「在终端里登录这个号」那一行（`<家>/.cc-monitor/bin/ccm -- --account <名>`）。
+    //   账号名先过 `account_name_ok`（且必须是清单里已有的号），ccm 那条路径是这台自己的家目录拼出来的，两者都经唯一的 quote。
     (
-        "src/backend/accounts/iso.rs",
-        6,
-        &[
-            (
-                "src/common/shell-quote-core/src/lib.rs",
-                "account_name_ok",
-            ),
-            ("src/backend/accounts/iso.rs", "check_snapshot_path"),
-        ],
+        "src/backend/accounts/manage/wire.rs",
+        2,
+        &[(
+            "src/common/shell-quote-core/src/lib.rs",
+            "account_name_ok",
+        )],
         "",
         "",
     ),

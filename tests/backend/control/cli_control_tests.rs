@@ -329,8 +329,8 @@ fn the_no_input_commands_are_registered_and_declared_consistently() {
         // 〔MIG-3a · 子步 3〕cc-bus 装到这台 / 查三态：落点由这台自己算（skills 根），不收任何参数。
         "cc-bus-install",
         "cc-bus-install-state",
-        // 〔MIG-3a · 09-28 预裁〕cc-acct-iso 装到这台：字节随二进制带着、落点由这台按自己的家目录算，不收参数。
-        "acct-iso-install",
+        // 账号库核对：只读，问的就是「这台」的账号库，不收参数。
+        "accounts-verify",
         "accounts-sessions",
         "bus-list",
         "bus-state",
@@ -351,10 +351,6 @@ fn the_no_input_commands_are_registered_and_declared_consistently() {
         "assets-catalog",
         // 〔C4d · 第四波 4B〕sid → 上次用哪个号起：无入参（读本机那份注解文件）。
         "history-last-accounts",
-        // 〔SU1 · 第四波 4C〕这台记着的、从别处装来的 skill：无入参（读本机那份装记录）。
-        // 〔LOC1a · 第四波 4D〕这台机器的 `cc-acct-iso` 两问：无入参（问的就是「这台」）。
-        "acct-iso-status",
-        "acct-iso-shellinit",
         // 〔SH1〕列这台的 tmux 会话：无入参（问的就是「这台」）。
         "tmux-list",
         // 〔MIG-1〕列转发：无入参（问的就是本进程那张账）。

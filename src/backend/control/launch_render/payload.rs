@@ -119,7 +119,7 @@ pub fn config_dir_command_safe(dir: &str) -> bool {
 /// | [`Account::Named`] | 具名账号 | `export CLAUDE_CONFIG_DIR='…'; ` |
 ///
 /// **「账号 0」不能等于「什么都不加」**：用户的 shell rc 里很可能有一句
-/// `export CLAUDE_CONFIG_DIR=<默认账号>`（`cc-acct-iso shellinit` 生成的就是它），
+/// `export CLAUDE_CONFIG_DIR=<某个账号>`（用户自己写的，或早先的账号工具留下的），
 /// 而本机拉起**故意加载 rc** ⇒「什么都不加」会落到默认账号上 = **静默串号**。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Account<'a> {

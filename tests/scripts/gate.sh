@@ -1372,7 +1372,7 @@ run_gate winchk-backend '不是数出来的数：`cargo check --all-targets --ta
 #   以及 `设计/01 §7.3` 逐字「门禁补一格真链接、桌面不需要的 `cdylib` 收掉（4D WIN1）」。
 #
 # ## 它买什么 / 不买什么
-#   · 买：`-p monitor` 的**两个二进制**（`monitor` 主窗 ＋ `cc-monitor-filewin` 文件窗口）在
+#   · 买：`-p monitor` 的**两个二进制**（`cc-monitor` 主程序 ＋ `cc-monitor-filewin` 文件窗口）在
 #     `x86_64-pc-windows-gnu` 上**真走一趟链接器**、链得出 `.exe`。`[lib]` 那一格收成 `rlib` 之后
 #     不再产 dll（WIN1：全仓没有移动端，`cdylib` / `staticlib` 两格零消费者）；有人把 `cdylib` 加回来
 #     ⇒ 这里当场红在 `export ordinal too large`（死值验住 `第四波记录/WIN1.md`）。
@@ -1381,7 +1381,7 @@ run_gate winchk-backend '不是数出来的数：`cargo check --all-targets --ta
 #   · ⚠ dev profile；release 那一档的链接本格不跑（`RT1-build-win.py` 走 release，它不在门禁上）。
 #   · ⚠ 内嵌的本机后端字节此时**不在**（`native-backend/` 没铺）⇒ 链进去的是「没带后端」那一形，
 #     与 `winchk` 同一形；带字节的那一形要 `RT1-build-win.py`。
-run_gate winlink '不是数出来的数：`cargo build --bins --target x86_64-pc-windows-gnu`（dev）只有绿/红两态。射程 = `-p monitor` 的两个二进制（`monitor` · `cc-monitor-filewin`）**真链接**一趟；⚠ 只链不跑（起不起得来要真机）· `-gnu` 不是 `-msvc` · release 那一档不链 · test 档不链（那一半归 `winchk` 的 `check`）' \
+run_gate winlink '不是数出来的数：`cargo build --bins --target x86_64-pc-windows-gnu`（dev）只有绿/红两态。射程 = `-p monitor` 的两个二进制（`cc-monitor` · `cc-monitor-filewin`）**真链接**一趟；⚠ 只链不跑（起不起得来要真机）· `-gnu` 不是 `-msvc` · release 那一档不链 · test 档不链（那一半归 `winchk` 的 `check`）' \
          bash -c 'cd src/frontend/shell && cargo build --locked -p monitor --bins --target x86_64-pc-windows-gnu 2>&1 && echo "winlink: 1 passed"'
 
 # 13 个包 = `monitor` + 12 个共享 crate（〔TL1〕`vendor/code-picture-core` 早已不是成员 —— monitor 不再依赖它 —— 不用再 `--exclude`）。

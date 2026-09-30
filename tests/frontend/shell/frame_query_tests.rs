@@ -396,9 +396,32 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
          界面 `settings/machine-aliases.ts::previewAlias` 原样上屏",
     ),
     (
-        "acct-iso-cmd",
-        "〔DUP2 · J4〕cc-acct-iso 步骤那一行：生来就走通道（原先界面自己拼、从没过 monitor）—— 后端应答就是成品（那一行命令），\
-         界面 `settings/acct-deploy.ts::askAcctIsoCmd` 原样上屏 / 原样交给 `launch_remote_terminal`",
+        "accounts-add",
+        "账号库那一族：生来就走通道（从没过 monitor）—— 那台后端做完回成品，界面 `account-ops.ts` 按生成的线上类型收",
+    ),
+    (
+        "accounts-init",
+        "账号库那一族：生来就走通道（从没过 monitor）—— 那台后端做完回成品，界面 `account-ops.ts` 按生成的线上类型收",
+    ),
+    (
+        "accounts-login-cmd",
+        "账号库那一族：生来就走通道（从没过 monitor）—— 那台后端做完回成品，界面 `account-ops.ts` 按生成的线上类型收",
+    ),
+    (
+        "accounts-remove",
+        "账号库那一族：生来就走通道（从没过 monitor）—— 那台后端做完回成品，界面 `account-ops.ts` 按生成的线上类型收",
+    ),
+    (
+        "accounts-repair",
+        "账号库那一族：生来就走通道（从没过 monitor）—— 那台后端做完回成品，界面 `account-ops.ts` 按生成的线上类型收",
+    ),
+    (
+        "accounts-rollback",
+        "账号库那一族：生来就走通道（从没过 monitor）—— 那台后端做完回成品，界面 `account-ops.ts` 按生成的线上类型收",
+    ),
+    (
+        "accounts-verify",
+        "账号库那一族：生来就走通道（从没过 monitor）—— 那台后端做完回成品，界面 `account-ops.ts` 按生成的线上类型收",
     ),
     // 〔C4d · 第四波 4B〕注解三条：读写者换成本机常驻后端（`history_annotations.rs`，文件原地不动）；monitor 那两条命令
     //   （`update_history_metadata` / `list_last_accounts`）与删会话时那一句清注解删了，界面经 `src/frontend/ui/history-reads.ts` 问 `<local>`。
@@ -545,19 +568,6 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "powershell-policy-set",
         "〔WF1 · L · `设计/99 §2.3`〕新帧命令：那一代 PowerShell 的执行策略设成当前用户 `RemoteSigned`（`assets/aliases/mod.rs::answer_policy_set`）；\
          前端 `src/frontend/ui/alias-reads.ts::allowLocalScripts` 问（用户点了、确认了之后），monitor 这一侧零发送点",
-    ),
-    (
-        "acct-iso-status",
-        "〔MIG-3a〕这台装没装 `cc-acct-iso`：后端从来就出成品，monitor 那条命令只在判读 ＋ 转 —— 判读退役，界面 `acct-iso-reads.ts` 按形状收",
-    ),
-    (
-        "acct-iso-shellinit",
-        "〔MIG-3a〕rc 片段：围栏校验从 monitor 挪进后端（`accounts/iso.rs::fenced`），monitor 那条命令与本机远端两份话删了",
-    ),
-    (
-        "acct-iso-install",
-        "〔MIG-3a · 09-28 裁 2〕新帧命令：cc-acct-iso 落进用户目录（链接走写面 `files-link` ＋ 配置样例 ＋ 记 skill 装记录）；\
-         从前是部署命令经 ssh 跑安装脚本",
     ),
     // 〔MIG-3a · 主会话 09-28 裁〕`skill-read` / `skill-install-plan` / `skill-install-apply` 界面不再直问：只经本机那两条枢纽命令。
     // 〔OSA · 主会话 09-28 裁〕基数 → 增量 +1：数据位置页 `$PROFILE` 备份那一格（`src/frontend/ui/settings/profile-backups.ts`）问本机后端那几个目录里

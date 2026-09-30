@@ -164,12 +164,14 @@ fn a_seed_that_cannot_be_read_is_a_loud_failure_not_a_default_window() {
     );
 }
 
-/// **那份二进制只有两处来路，都不在就出声并说出看过哪儿。**
+/// **那份二进制只有三处来路，都给不出就出声并说出看过哪儿。**（注入形：不读真环境变量、不碰真 `~/.cc-monitor`。）
 #[test]
 fn the_window_binary_is_never_guessed() {
-    let _g = ENV.lock().unwrap_or_else(|e| e.into_inner());
     let dir = std::env::temp_dir().join(format!("filewin-bin-{}", std::process::id()));
     std::fs::create_dir_all(&dir).expect("造不出临时目录");
+    let landing = dir.join("home-bin");
+    let mk = |_: &Path| -> Result<(), String> { Ok(()) };
+    let ensure = crate::platform::fs::ensure_private_dir;
     // ① 纯函数那一格：落点的形状（Windows 上带 `.exe`）。
     let p = window_bin_in(&dir);
     assert_eq!(
@@ -177,26 +179,165 @@ fn the_window_binary_is_never_guessed() {
         dir.join(format!("{BIN_STEM}{}", std::env::consts::EXE_SUFFIX)),
         "落点的拼法变了"
     );
-    // ② 环境变量指着一个**不存在**的路径 ⇒ 出声，而且**把看过的都说出来**。
+    // ② 环境变量指着一个**不存在**的路径、旁边没有、这一份没带 ⇒ 出声，而且**把看过的都说出来**。
     let missing = dir.join("根本没有这个文件");
-    std::env::set_var(BIN_ENV, &missing);
-    let e = resolve_window_bin().expect_err("指着一个不存在的文件居然解出来了");
+    let e = resolve_window_bin_in(
+        Some(missing.clone()),
+        &dir,
+        None,
+        Some(&landing),
+        &mk,
+        &ensure,
+    )
+    .expect_err("指着一个不存在的文件居然解出来了");
     assert!(
         e.contains("根本没有这个文件"),
         "报错里没有那条被看过的路径 —— `D7`：归因得说准是「二进制不在」而不是「窗口画不出来」：{e}"
     );
     assert!(e.contains(BIN_STEM), "报错里没点名要找的是哪个二进制：{e}");
+    assert!(!landing.exists(), "没带那一份却往落点里建了东西");
     // ③ 阴性对照：指着一个**真存在**的文件 ⇒ 原样回它，不再往别处找。
     let real = dir.join("假装是那个二进制");
     std::fs::write(&real, b"#!/bin/true\n").expect("写不出那个文件");
-    std::env::set_var(BIN_ENV, &real);
     assert_eq!(
-        resolve_window_bin().expect("指着一个真文件却解不出来"),
+        resolve_window_bin_in(
+            Some(real.clone()),
+            &dir,
+            Some(b"carried"),
+            Some(&landing),
+            &mk,
+            &ensure
+        )
+        .expect("指着一个真文件却解不出来"),
         real,
         "环境变量指的那一份没被用上 —— 判据从此指不动它"
     );
-    std::env::remove_var(BIN_ENV);
     std::fs::remove_dir_all(&dir).ok();
+}
+
+/// 🔴 **旁边没有、monitor 自带着 ⇒ 放到落点再回那一份**（单文件的 monitor 开得了文件窗口，靠的就是这一支）。
+///
+/// 期望手写自落盘规则（不取自被测函数）：落点 = `<落点目录>/<窗口程序名>`、字节 = 自带那份；
+/// 同一份再开零写；盘上是别的字节 ⇒ 换成自带那份；原地换不掉（Windows 上旧的那份正在跑）⇒ 先挪开再上位；
+/// 旁边有 ⇒ 用旁边的、不碰落点；家目录问不到 / 放不下来 ⇒ 各说各的那一句，不说成「没带」。
+#[test]
+fn with_nothing_beside_the_exe_the_carried_window_binary_is_placed_and_returned() {
+    let root = std::env::temp_dir().join(format!("filewin-carried-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    let exe_dir = root.join("exe");
+    std::fs::create_dir_all(&exe_dir).expect("造不出 exe 目录");
+    let landing = root.join("home").join(".cc-monitor").join("bin");
+    let made = std::cell::Cell::new(0usize);
+    let mk = |_: &Path| -> Result<(), String> {
+        made.set(made.get() + 1);
+        Ok(())
+    };
+    let ensure = crate::platform::fs::ensure_private_dir;
+    let want = landing.join(format!("{BIN_STEM}{}", std::env::consts::EXE_SUFFIX));
+    let resolve = |carried: &[u8]| {
+        resolve_window_bin_in(None, &exe_dir, Some(carried), Some(&landing), &mk, &ensure)
+    };
+    // ① 第一次：放下来、置可执行位、回落点那一份。
+    assert_eq!(resolve(b"carried-v1").expect("自带着却没放下来"), want);
+    assert_eq!(std::fs::read(&want).expect("落点上没有文件"), b"carried-v1");
+    assert_eq!(made.get(), 1, "放下来的那一份没置可执行位");
+    // ② 同一份再开一次：零写。
+    assert_eq!(resolve(b"carried-v1").expect("第二次没解出来"), want);
+    assert_eq!(made.get(), 1, "逐字节相等还重写了一次");
+    // ③ 盘上是别的版本（同长不同字节）⇒ 换成自带那份。
+    std::fs::write(&want, b"other-ver!").expect("写不出旧版替身");
+    assert_eq!(resolve(b"carried-v1").expect("换版没解出来"), want);
+    assert_eq!(std::fs::read(&want).expect("落点上没有文件"), b"carried-v1");
+    assert_eq!(made.get(), 2, "字节不同却没换");
+    // ④ 原地换不掉（落点被一个非空目录占着，`rename` 必失败 —— Windows 上正在跑的那份同形）⇒ 挪开再上位，挪开的那份留着。
+    std::fs::remove_file(&want).expect("删不掉上一份");
+    std::fs::create_dir_all(want.join("占着")).expect("造不出占位目录");
+    assert_eq!(resolve(b"carried-v2").expect("原地换不掉就没解出来"), want);
+    assert_eq!(std::fs::read(&want).expect("挪开之后没上位"), b"carried-v2");
+    let aside = landing.join(format!(
+        ".{BIN_STEM}{}.{}.old",
+        std::env::consts::EXE_SUFFIX,
+        std::process::id()
+    ));
+    assert!(
+        aside.join("占着").is_dir(),
+        "占着的那一份不是被挪开的：{aside:?}"
+    );
+    // ⑤ 旁边有 ⇒ 用旁边那份，落点那一份一个字节不动。
+    let beside = window_bin_in(&exe_dir);
+    std::fs::write(&beside, b"beside").expect("写不出旁边那份");
+    assert_eq!(resolve(b"carried-v3").expect("旁边有却没解出来"), beside);
+    assert_eq!(std::fs::read(&want).expect("落点上没有文件"), b"carried-v2");
+    std::fs::remove_file(&beside).expect("删不掉旁边那份");
+    // ⑥ 家目录问不到 ⇒ 「不知道放哪」那一句；放不下来 ⇒ 带着原话的那一句 —— 都不是「没带」。
+    assert_eq!(
+        resolve_window_bin_in(None, &exe_dir, Some(b"x"), None, &mk, &ensure)
+            .expect_err("没有落点也解出来了"),
+        copy_text("rsFilewinProc.bin.noHome", &[])
+    );
+    let no_dir = |_: &Path| -> Result<(), String> { Err("不许建".to_string()) };
+    let fresh = root.join("fresh");
+    assert_eq!(
+        resolve_window_bin_in(None, &exe_dir, Some(b"x"), Some(&fresh), &mk, &no_dir)
+            .expect_err("建不了目录也解出来了"),
+        copy_text(
+            "rsFilewinProc.bin.placeFailed",
+            &[("dir", &fresh.display().to_string()), ("e", "不许建")]
+        )
+    );
+    std::fs::remove_dir_all(&root).ok();
+}
+
+/// 自带那份的名字**一处定、处处同**：`build.rs` 的 `NATIVE_BACKEND_DIR` ＋ `NATIVE_FILEWIN_FILE` == 本模块的 [`BIN_STEM`]
+/// == `byte_table.rs` 的 `include_bytes!` 字面量 == `re-embed.sh --native` 铺的 == `release.yml` 两个 job 铺的。
+/// 漂一处就是「嵌进去一个空 cfg」或「铺了没人吃」。异源：五份文件现读。
+#[test]
+fn the_carried_window_binary_is_spelled_the_same_in_every_place() {
+    let build = include_str!("../../../../src/frontend/shell/build.rs");
+    let konst = |name: &str| -> String {
+        let at = guard_core::find_pinned(build, &format!("const {name}: &str = \""))
+            .unwrap_or_else(|e| panic!("`build.rs` 里的 `{name}`：{e}"));
+        let rest = &build[at..];
+        let open = rest.find('"').expect("常量没有字面量") + 1;
+        let close = rest[open..].find('"').expect("字面量没闭合");
+        rest[open..open + close].to_string()
+    };
+    let dir = konst("NATIVE_BACKEND_DIR");
+    let file = konst("NATIVE_FILEWIN_FILE");
+    assert_eq!(
+        file, BIN_STEM,
+        "内嵌那份的名字与 exe 旁边找的那个名字不是同一个词"
+    );
+    let landing = format!("{dir}/{file}");
+    let bytes_src = guard_core::production_code(include_str!(
+        "../../../../src/frontend/shell/src/byte_table.rs"
+    ));
+    // 针在运行时拼（整串写死在本文件里，`cross_half_edge_registry` 会把它当成一处解析不出路径的内嵌）。
+    let needle = format!("{}!(\"../{landing}\")", "include_bytes");
+    assert!(
+        guard_core::find_pinned(&bytes_src, &needle).is_ok(),
+        "消费侧的内嵌字面量不是 `../{landing}`"
+    );
+    let reembed = include_str!("../../../../tests/scripts/re-embed.sh");
+    for line in [
+        format!("cp \"$ROOT/.build/shell/release/{file}$exe\" \"$NATIVE_DIR/{file}\""),
+        format!("printf '%s\\n' \"$triple\" > \"$NATIVE_DIR/{file}.target\""),
+    ] {
+        assert!(
+            guard_core::find_pinned(reembed, &line).is_ok(),
+            "`re-embed.sh --native` 没有恰好一行 `{line}`"
+        );
+    }
+    let yml = include_str!("../../../../.github/workflows/release.yml");
+    for line in [
+        format!("$dst = \"src/frontend/shell/{landing}\""),
+        format!("dst=src/frontend/shell/{landing}"),
+    ] {
+        assert!(
+            guard_core::find_pinned(yml, &line).is_ok(),
+            "`release.yml` 没有恰好一处铺 `{landing}` 的 `{line}`（Windows 那一格 `$dst = …` · Linux 那一格 `dst=…`）"
+        );
+    }
 }
 
 /// 一个**一定在**的替身二进制：它读 stdin 到 EOF 然后退出。

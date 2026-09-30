@@ -125,15 +125,17 @@ flowchart LR
 
 从 [Releases](https://github.com/bo0Zeng/cc-monitor/releases) 下载最新版。
 
-- **Windows**：`*-setup.exe`（推荐）· `*.msi`（适合批量部署）· `monitor.exe`（免安装）
+- **Windows**：`*-setup.exe`（推荐）· `*.msi`（适合批量部署）· `cc-monitor.exe`（免安装）
   未签名，第一次运行时 SmartScreen 会拦，点「更多信息 → 仍要运行」。
-- **Linux**：`cc-monitor_<版本>_amd64.deb`（`sudo apt install ./cc-monitor_<版本>_amd64.deb`）· `monitor`（免安装）
+- **Linux**：`cc-monitor_<版本>_amd64.deb`（`sudo apt install ./cc-monitor_<版本>_amd64.deb`）· `cc-monitor`（免安装）
+
+下载的 `cc-monitor.exe`（Linux 上是 `cc-monitor`）或者安装的，就是这个项目本身：包含前端和后端，后端会被它释放到用到的每台机器上。
 
 校验和在 `SHA256SUMS.txt`（Windows）与 `SHA256SUMS-linux.txt`（Linux）。
 
 ### 上手
 
-1. 打开 cc-monitor（Linux 上的命令是 `monitor`）。
+1. 打开 cc-monitor（Linux 上的命令是 `cc-monitor`）。
 2. 在任意终端里跑 `claude`，cc-monitor 里就多出一个 tab。
 3. 加远端机器：按 `,` 打开设置 → 机器 → 添加机器。连上之后，那台上的会话会自动出现。
 4. 想让 tab 上的 ↗ 跳回终端：在机器页装别名块，之后用 `cc` 起会话。
@@ -188,7 +190,7 @@ ccm -- --ccm-help                 # 全部选项
 |---|---|
 | `~/.cc-monitor/` | cc-monitor 的一切：配置、后端、日志、别名文件、API 号的 key（只给本人读写） |
 | `~/.claude/` | Claude Code 自己的目录。cc-monitor 只读会话记录，只写你点名要装的 skill / MCP |
-| `~/.claude-alt/` | 多账号的账号库（由 cc-acct-iso 管理），每个号一份登录凭据 |
+| `~/.claude-alt/` | 多账号的账号库（由后端建立和维护），每个号一份登录凭据 |
 
 设置里的「数据位置」页列出每个文件的完整路径。
 
@@ -198,7 +200,7 @@ ccm -- --ccm-help                 # 全部选项
 
 - Windows 上会话暂不能放后台、接回、看画面、往里送字；本机后端在 Windows 上随界面一起退出。
 - macOS、本机 Linux arm64 不在支持范围内（可以把它们当远端机器连）。
-- 多账号依赖的 cc-acct-iso 目前只支持 Linux。
+- 多账号目前只支持 Linux / Unix 机器，Windows 本机上不能建账号库。
 - 4.0.0 里几条 Windows 修复只经过自动化测试，没在真实 Windows 上复验，见 [CHANGELOG](CHANGELOG.md)。
 
 ---

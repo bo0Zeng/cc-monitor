@@ -368,8 +368,8 @@ pub fn record_at(path: &Path, skills_root: Option<&Path>, args: &Value) -> Answe
                 .to_string();
             let files = files_arg(args)?;
             // 目录自己算：与 `skill-install-plan` 答 `dir` 的是同一个根（不收调用方给的路径）。
-            // 〔MIG-3a · 子步 3 · 主会话 09-28 裁〕`at: "home"`（闭集，只此一个值）：装的东西落在家目录底下（acct-iso 的
-            //   `~/.local/bin` 链接与 `~/.cc-acct-iso/config`）⇒ 键 = 本记录自己所在的那个家（`<家>/.cc-monitor/<本文件>` 的上两层），
+            // 〔MIG-3a · 子步 3 · 主会话 09-28 裁〕`at: "home"`（闭集，只此一个值）：装的东西落在家目录底下、不在 skill 根下
+            //   ⇒ 键 = 本记录自己所在的那个家（`<家>/.cc-monitor/<本文件>` 的上两层），
             //   `files` 的路径相对它。同一份账、同一个形（主会话：不另立第二份账）。
             let project = args.get("project").and_then(Value::as_str);
             let dir = match args.get("at").and_then(Value::as_str) {

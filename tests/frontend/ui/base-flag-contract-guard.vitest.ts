@@ -22,7 +22,7 @@
  * 当时 `launch-dimensions.test.ts` 只断言 monitor **发**了 `--base`（〔LR1〕那一格今天在 Rust `ccm_invocation_tests.rs`）；
  * **没有任何东西断言 ccm 会照它 unset**。这条契约一旦漂（比如 ccm 哪天把 `--base` 改成
  * 「什么都不做」），表现是**静默错**：CLI 路径起出来的会话继承远端 shell 里那句
- * `export CLAUDE_CONFIG_DIR=<默认账号>`（`cc-acct-iso shellinit` 生成的就是这一句），
+ * `export CLAUDE_CONFIG_DIR=<默认账号>`（用户自己写的，或早先的账号工具留下的），
  * 于是**用户以为在起账号 0，实际烧的是默认账号的额度**。UI 上完全看不出来。
  *
  * 做法照 `src/frontend/shell/src/tmux.rs::tmux_ls_fmt_double_write_point_stays_in_sync`：

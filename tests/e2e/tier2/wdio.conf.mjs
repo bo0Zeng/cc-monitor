@@ -27,7 +27,7 @@ let tauriDriver;
 const APP = process.env.APP_EXE;
 if (!APP) {
   throw new Error(
-    "APP_EXE 没给 —— 这一档必须被告知被测的 monitor.exe 在哪（不猜默认值）。\n" +
+    "APP_EXE 没给 —— 这一档必须被告知被测的 cc-monitor.exe 在哪（不猜默认值）。\n" +
       "  ⚠ 它还要求同目录下有 WebView2Loader.dll：那是**普通导入**不是 delay-load，\n" +
       "    少了它进程会立刻自退，且 stdout/stderr/日志三处全空（2026-09-21 真机现打）。",
   );

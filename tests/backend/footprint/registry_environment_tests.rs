@@ -1,4 +1,5 @@
 use super::*;
+use copy_core::copy_text;
 use std::collections::BTreeSet;
 
 /// 〔MIG-3b 续〕受管工具 / 手写环境项的**全集**（本表 ＋ 注册表里各家足迹面带来的那一半）—— 判据按全集判，与搬家前同一个人群。
@@ -69,8 +70,30 @@ fn the_environment_is_one_closed_list() {
 /// 分母现算（`EnvTier::ALL`），不写死一个基数〔`13b`：报一个基数也是复述〕。
 #[test]
 fn every_tier_has_members_so_absence_never_encodes_a_judgement() {
+    // 今天可以是空的那几档（`(档, 为什么)`）；列在这里的必须**真是空的**（有了成员就摘掉这一行）。
+    const MAY_BE_EMPTY: &[(EnvTier, &str)] = &[(
+        EnvTier::AppShipsNoInstallerYet,
+        "该我们装、而这里装不了的东西今天没有：账号库那一件由后端自己建（`accounts-init`），\
+         这一档留给下一件「该由 app 带、实现还没有」的东西",
+    )];
     let env = environment();
+    for (tier, why) in MAY_BE_EMPTY {
+        assert!(
+            why.chars().count() >= 20,
+            "`{}` 没写清为什么可以空",
+            tier.label()
+        );
+        assert_eq!(
+            env.iter().filter(|e| e.tier == *tier).count(),
+            0,
+            "「{}」这一档有成员了 —— 从 `MAY_BE_EMPTY` 里摘掉它",
+            tier.label()
+        );
+    }
     for tier in EnvTier::ALL {
+        if MAY_BE_EMPTY.iter().any(|(t, _)| t == tier) {
+            continue;
+        }
         let n = env.iter().filter(|e| e.tier == *tier).count();
         assert!(
             n > 0,
@@ -197,82 +220,64 @@ fn posix_rc_aliases_sits_in_the_first_tier_now() {
 /// 那种派生（也就是把两格又合回去）⇒ 下面两组反例必有一组空 ⇒ 红。
 #[test]
 fn who_should_install_is_not_a_function_of_whether_we_can_install_today() {
-    let env = environment();
-    // 「今天有没有装口」这一格在闭集里的读法：只有 `AppInstalls` 那一档是「有」。
-    let has_installer = |e: &EnvEntry| e.tier == EnvTier::AppInstalls;
-
-    // ① 同一个 `who`，两种「有没有装口」—— 否则 `who` 就是那一格的同义词。
-    let ships: Vec<&EnvEntry> = env
+    // 判的是派生表本身（`EnvTier::of`）：闭集里今天没有「该我们装、这里装不了」的成员，按人群判会空转。
+    // ① 同一个 `who`（app 自带），两种「有没有装口」落两个不同的档 —— 否则 `who` 就是那一格的同义词。
+    assert_ne!(
+        EnvTier::of(Provisioning::AppShips, true),
+        EnvTier::of(Provisioning::AppShips, false),
+        "「app 自带」那一群里，「今天有装口」与「今天没有装口」落进了同一档 —— 两格又合回去了"
+    );
+    // ② 同一种「没有装口」，不同的 `who` 落不同的档 —— 否则「没装口」就唯一决定了「谁该装」。
+    let no_installer: BTreeSet<EnvTier> = Provisioning::ALL
+        .iter()
+        .map(|w| EnvTier::of(*w, false))
+        .collect();
+    assert_eq!(
+        no_installer.len(),
+        Provisioning::ALL.len(),
+        "「今天没有装口」时，不同的「谁该装」落进了同一档：{:?}",
+        no_installer.iter().map(|t| t.label()).collect::<Vec<_>>()
+    );
+    // 人群那一半：闭集里「app 自带」的每一项，档都是从 `(who, 有没有装口)` 派生的那一档。
+    for e in environment()
         .iter()
         .filter(|e| e.who == Provisioning::AppShips)
-        .collect();
-    assert!(
-        ships.iter().any(|e| has_installer(e)) && ships.iter().any(|e| !has_installer(e)),
-        "「app 自带」这一群里，「今天有装口」与「今天没有装口」**没有同时出现** ——\n\
-             那说明这两格今天是同一个字段的两个名字，而 `KR65D2` 的题面正是它们不是。\n\
-             实得：{:?}",
-        ships
-            .iter()
-            .map(|e| (e.id, e.tier.label()))
-            .collect::<Vec<_>>()
-    );
-
-    // ② 同一种「没有装口」，两个不同的 `who` —— 否则「没装口」就唯一决定了「谁该装」，
-    //    那正是本件之前的盘面（没装口 ⇒ 只能写成「不该我们装」）。
-    let no_installer: BTreeSet<Provisioning> = env
-        .iter()
-        .filter(|e| !has_installer(e))
-        .map(|e| e.who)
-        .collect();
-    assert!(
-        no_installer.len() >= 2,
-        "「今天没有装口」的那一群里，「谁该装」只有一个取值（{:?}）——\n\
-             那就等于说「没装口」= 「不该我们装」，而 `K38` 裁的恰恰相反：\n\
-             `cc-acct-iso-local` **该由 app 装**，只是实现还欠着。",
-        no_installer.iter().map(|w| w.label()).collect::<Vec<_>>()
-    );
+    {
+        assert!(
+            e.tier == EnvTier::AppInstalls || e.tier == EnvTier::AppShipsNoInstallerYet,
+            "`{}` 是「app 自带」却落在「{}」",
+            e.id,
+            e.tier.label()
+        );
+    }
 }
 
-/// 🔴 `KR65D2` ②：**「app 该自带、而今天还没有装口」那一格数得出来，且不是空的。**
+/// 🔴 `KR65D2` ②：**「app 该自带、而今天还没有装口」那一格派得出来、说得清。**
 ///
-/// 死值验的两侧（件计划 `KR65D2` 逐字）：
-///   · 把 `cc-acct-iso-local` 标成「app 该装」而不给实现 ⇒ **能被数出来**（就是本条）；
-///   · 把它标成「不该我们装」⇒ **必须红**（那一格由
-///     `everything_the_charter_named_as_ours_is_in_the_shipped_population` 判）。
-///
-/// ⚠ 本条**不判「这一格里该有几项」** —— 那要读语义。它判的是这一格**存在、非空、
-/// 且每一项都答得出「欠的是什么」**（`why` 里那个代码住址由另一条判据管）。
+/// 今天这一格没有成员（账号库那一件由后端自己建了）；本条判派生表与档名，落进去的每一项 `who` 都是「app 自带」。
 #[test]
 fn the_tier_for_owed_installers_is_countable_and_not_empty() {
-    let env = environment();
-    let owed: Vec<&EnvEntry> = env
+    // 这一档今天可以是空的（`every_tier_has_members_so_absence_never_encodes_a_judgement` 的 `MAY_BE_EMPTY`）；
+    // 这里判它**派得出来**、档名说得清「该我们装而这里装不了」、落进去的每一项 `who` 都是「app 自带」。
+    assert_eq!(
+        EnvTier::of(Provisioning::AppShips, false),
+        EnvTier::AppShipsNoInstallerYet
+    );
+    assert_eq!(
+        EnvTier::AppShipsNoInstallerYet.label(),
+        copy_text("rsToolRegistry.envTier.appShipsNoInstallerYet", &[]),
+        "这一档的档名读不出「该我们装、而今天还没有装口」两半 —— 用户会把它读成「不该我们装」"
+    );
+    for e in environment()
         .iter()
         .filter(|e| e.tier == EnvTier::AppShipsNoInstallerYet)
-        .collect();
-    assert!(
-        !owed.is_empty(),
-        "「{}」这一档一个成员都没有 —— 要么本件的活退回去了（`cc-acct-iso-local` \
-             又被写成「不该我们装」），要么装口真补上了（那它该升到「{}」，\
-             同轮把这一条改成新的下界）",
-        EnvTier::AppShipsNoInstallerYet.label(),
-        EnvTier::AppInstalls.label()
-    );
-    for e in &owed {
+    {
         assert_eq!(
             e.who,
             Provisioning::AppShips,
             "`{}` 落在「欠装口」那一档，而它的 `who` 不是「{}」—— 派生坏了",
             e.id,
             Provisioning::AppShips.label()
-        );
-        // 「有名字、看得见」：档名本身必须说清是**欠的实现**，不是「不该我们装」。
-        assert!(
-            // 〔CP2b〕「装口」是内部说法（CP1 裁：内部词），档名改说「安装功能」。
-            // 〔FIX2 · 99 §2.1 ㉛②〕按文案键断言：档名取的是「该自带、还没有安装功能」那一条，说法由文案表管。
-            e.tier.label() == copy_text("rsToolRegistry.envTier.appShipsNoInstallerYet", &[]),
-            "这一档的档名读不出「该我们装、而今天还没有装口」两半，实得 {:?} —— \
-                 用户会把它读成「不该我们装」",
-            e.tier.label()
         );
     }
 }
@@ -311,10 +316,9 @@ fn everything_the_charter_named_as_ours_is_in_the_shipped_population() {
     /// `(闭集里的 id, 谁在什么时候点的名)`。**只收逐字点过名的**，不收推断出来的。
     const NAMED_AS_OURS: &[(&str, &str)] = &[
         ("cc-bus", "K38 逐字：「cc-bus」"),
-        ("cc-acct-iso", "K38 逐字：「account」—— 远端那半"),
         (
-            "cc-acct-iso-local",
-            "K38 逐字：「account」—— 本机那半（件计划 §0c 明裁它是 app 独有的）",
+            "accounts",
+            "K38 逐字：「account」—— 账号库今天由后端自己建（本机远端同一条路）",
         ),
     ];
     let env = environment();
@@ -427,7 +431,7 @@ fn the_prompt_tier_declares_how_it_will_look() {
             )
         };
         match probe {
-            EnvProbe::OnPath | EnvProbe::HomePath => probeable += 1,
+            EnvProbe::OnPath => probeable += 1,
             EnvProbe::CannotProbe { why } => {
                 blind += 1;
                 assert!(
@@ -487,6 +491,5 @@ fn every_managed_tool_reaches_the_closed_set() {
 // 为什么非搬不可（`KR63D2` 的正题）：那一条的**名字里带工具名** ——
 // 读的人会以为「申报与实现对不对得上」这一格有人守，而它只守 `cc-bus` 一个工具。
 // `K-R60` 收窗口时 PM 的刀 γ 就现打过同一件事的另一半；`K-R63` 的刀 C 更直接：
-// 〔PM 09-11 现打，量于 `cd26954`〕翻 `cc-acct-iso` 的 `uninstallable`
-// ⇒ 全表 1379 条一条没红。
+// 〔PM 09-11 现打，量于 `cd26954`〕翻当时某一个工具的 `uninstallable` ⇒ 全表 1379 条一条没红。
 // ⇒ **别再在这里加第二颗专名钉子**；要加就加进那张对拍表。

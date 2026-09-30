@@ -60,7 +60,7 @@
 //!
 //! ```text
 //! open_file_window（monitor 进程）
-//!   ├─ ① resolve_window_bin()      ← 环境变量 CCM_FILEWIN_BIN，或 exe 旁那份
+//!   ├─ ① resolve_window_bin()      ← 环境变量 CCM_FILEWIN_BIN，或 exe 旁那份，或 monitor 自带那份（放到 ~/.cc-monitor/bin）
 //!   ├─ ② 起进程的唯一出口          ← `crate::spawn_managed` 那个五参数形态
 //!   │                                  （Hidden · Detached · Inherit，逐格理由住 [`spawn_window`]）
 //!   ├─ ③ 把种子写进它的 stdin 再关掉    ← 源 + cwd（缺 = 问那台 home）+ reveal + 交接件
@@ -116,6 +116,8 @@
 //! - 〔订正 · F8〕**发版包里本来就有这个二进制**：tauri bundler 把每个 `[[bin]]` 装到主程序旁
 //!   （真 deb ＋ 生成的 NSIS 脚本核过），[`resolve_window_bin`] 那条「exe 旁边」的分支找得到它。
 //!   两向相等判据住 `K-R124-ruler.py` ⑭；真 Windows 装机那一维仍零读数。
+//! - **单文件的 monitor 也带着它**：发版时它的字节内嵌进 monitor（`build.rs::embed_native_filewin`），
+//!   旁边没有时放到 `~/.cc-monitor/bin/` 再起（与本机后端同一个目录、同一套落盘）。
 //! - **Windows 上一趟读数都没有**（手上没有 Windows 机器）。
 
 use crate::copy_table::copy_text;
@@ -133,76 +135,101 @@ pub const BIN_STEM: &str = "cc-monitor-filewin";
 
 /// 窗口那份二进制在 `dir` 里的落点。**纯函数**（判据要在临时目录上喂它）。
 pub fn window_bin_in(dir: &Path) -> PathBuf {
-    dir.join(format!("{BIN_STEM}{}", crate::platform::proc::EXE_SUFFIX))
+    dir.join(window_bin_name())
 }
 
-/// 那份二进制到底在哪 —— **环境变量优先，否则 exe 旁边**。
+/// 窗口那份二进制的文件名（exe 旁边与 `~/.cc-monitor/bin` 里是同一个名字）。
+pub fn window_bin_name() -> String {
+    format!("{BIN_STEM}{}", crate::platform::proc::EXE_SUFFIX)
+}
+
+/// 那份二进制到底在哪 —— **环境变量 → exe 旁边 → monitor 自带那份**（放到 `~/.cc-monitor/bin/` 再用）。
 ///
-/// 🔴 **没有第三条路，也没有回落**（`设计/01 §5 D11`：不许留退路）。
-/// 找不到就是一条响亮的失败，带上**看过哪几处**（`D7`：归因要准确 ——
-/// 「窗口没起来」与「那份二进制根本不在这台机器上」是两件不同的事）。
+/// 🔴 **三处之外没有别的路，也没有回落**。
+/// 找不到 / 放不下来都是一条响亮的失败，说清看过哪几处、或往哪儿写失败了（归因要准确 ——
+/// 「窗口没起来」「这一份 monitor 没带它」「带了但放不下来」是三件不同的事）。
 ///
-/// # 🔴〔2026-09-23 订正〕**装机那份里有它，「exe 旁边」这一支就是为它准备的**
-///
-/// 本函数原来那条诊断（以及模块头注 §四最后一条、`Cargo.toml` 那个 `[[bin]]` 的头注）
-/// 都写着「装机那份今天还没有它 —— Tauri 只装主二进制与 `externalBin` sidecar」。
-/// **那句是假的**，同日现打两趟推翻（逐条读数与机制住 `tests/evidence/K-R124-ruler.py`
-/// 的 ⑭ 头注，判据也住那里）：
-///
-/// - 真 `.deb`：`dpkg-deb -c` 现打 `usr/bin/` 三份 —— `monitor` · **`cc-monitor-filewin`**
-///   · `cc-monitor-backend`，**同一个目录** ⇒ `current_exe().parent()` 就是它。
-/// - NSIS 那份清单（生成出来的 `installer.nsi`）现打 `File /a "/oname=cc-monitor-filewin.exe"`，
-///   与 `${MAINBINARYNAME}.exe` 同落 `$INSTDIR`。
-///
-/// 机制：打包器把 Cargo.toml 里**每一个** `[[bin]]` 都装上（`name == 包名` 的那个算主
-/// 二进制、其余算「非主 bin」，三个打包器都把非主 bin 放在主二进制旁边）。⇒ 本函数
-/// **不需要**第二种文件名形态：非主 bin 装进去用的就是 [`BIN_STEM`]，名字里**永远不带**
-/// target triple（这一点与 `local_backend::local_backend_candidates` 不同 —— 那一族是
-/// `externalBin` sidecar，构建期带 triple、打包时剥掉，所以那边两形都得找）。
-///
-/// ⚠ **仍然会走到「找不到」那一支的两种情形**（这也是下面那条诊断要说准的事）：
-/// ① 用户手里是 Release 页上那个**裸 `monitor.exe` / 裸 `monitor`** —— 单文件，不带任何
-///    随包二进制（同族的账住 `local_backend` 头注的 `K-R42` 那一段：后端那一份是靠
-///    「自己内嵌一份再释放」补的，**窗口这一份没有那条路**）；
-/// ② 开发树里第二个 bin 还没编过（`cargo build --bin cc-monitor-filewin`，
-///    产物在那棵树的 `<target-dir>/<档>/` 下 —— 本仓现打是 `.build/shell/`，
-///    由仓根那份 `.cargo/config.toml` 定）。
+/// - 环境变量 [`BIN_ENV`]：开发时指一份别处的。
+/// - exe 旁边：安装包把它装在主程序旁（机制与判据住 `K-R124-ruler.py` ⑭）；开发树 `target/<档>/` 里两个也挨着。
+///   名字里**永远不带** target triple（非主 bin 装进去用的就是 [`BIN_STEM`]；这一点与 `local_backend::local_backend_candidates` 不同）。
+/// - monitor 自带那份（`byte_table::native_filewin`，发版时内嵌）：落点、上位、Windows 上旧的那份正在跑时怎么换，
+///   都与本机后端同一套（`local_backend::place_local_program`）；是哪一版由字节答 —— 盘上那份逐字节相等才直接用，
+///   不同就换成这一版 monitor 带的那份（种子与就绪那一行是编进两侧的契约）。
 ///
 /// # Errors
 ///
-/// 两处都不是一个存在的文件。
+/// 三处都给不出一个存在的文件；或自带的那份放不下来。
 pub fn resolve_window_bin() -> Result<PathBuf, String> {
+    let exe = std::env::current_exe()
+        .map_err(|e| copy_text("rsFilewinProc.selfPath.failed", &[("e", &e.to_string())]))?;
+    resolve_window_bin_in(
+        std::env::var_os(BIN_ENV).map(PathBuf::from),
+        exe.parent().unwrap_or(Path::new(".")),
+        crate::byte_table::native_filewin(),
+        landing_dir().as_deref(),
+        &crate::platform::fs::make_executable,
+        &crate::platform::fs::ensure_private_dir,
+    )
+}
+
+/// 自带那份放到哪：本机后端落点所在的那个目录（`~/.cc-monitor/bin`）。家目录问不到 ⇒ `None`（不发明一个目录）。
+fn landing_dir() -> Option<PathBuf> {
+    let rel = crate::profile_installer::ccm_bin_dir_rel()?;
+    creds_core::store::home_dir().map(|h| rel.split('/').fold(h, |p, seg| p.join(seg)))
+}
+
+/// [`resolve_window_bin`] 的注入形：环境变量的值 · exe 所在目录 · 自带的字节 · 落点目录 · 两样宿主知识都由调用方给
+/// （判据在临时目录上喂它，不碰真 `~/.cc-monitor`）。
+///
+/// # Errors
+///
+/// 同 [`resolve_window_bin`]。
+pub fn resolve_window_bin_in(
+    env: Option<PathBuf>,
+    exe_dir: &Path,
+    embedded: Option<&[u8]>,
+    landing: Option<&Path>,
+    make_executable: &dyn Fn(&Path) -> Result<(), String>,
+    ensure_dir: &dyn Fn(&Path) -> Result<(), String>,
+) -> Result<PathBuf, String> {
     let mut looked: Vec<PathBuf> = Vec::new();
-    if let Some(p) = std::env::var_os(BIN_ENV) {
-        let p = PathBuf::from(p);
+    if let Some(p) = env {
         if p.is_file() {
             return Ok(p);
         }
         looked.push(p);
     }
-    match std::env::current_exe() {
-        Ok(exe) => {
-            let p = window_bin_in(exe.parent().unwrap_or(Path::new(".")));
-            if p.is_file() {
-                return Ok(p);
-            }
-            looked.push(p);
-        }
-        Err(e) => {
-            return Err(copy_text(
-                "rsFilewinProc.selfPath.failed",
-                &[("e", &e.to_string())],
-            ))
-        }
+    let beside = window_bin_in(exe_dir);
+    if beside.is_file() {
+        return Ok(beside);
     }
-    Err(copy_text(
-        "rsFilewinProc.bin.notFound",
-        &[
-            ("binStem", &BIN_STEM.to_string()),
-            ("looked", &format!("{:?}", looked)),
-            ("binEnv", &BIN_ENV.to_string()),
-        ],
-    ))
+    looked.push(beside);
+    let Some(bytes) = embedded else {
+        return Err(copy_text(
+            "rsFilewinProc.bin.notFound",
+            &[
+                ("binStem", &BIN_STEM.to_string()),
+                ("looked", &format!("{:?}", looked)),
+                ("binEnv", &BIN_ENV.to_string()),
+            ],
+        ));
+    };
+    let Some(dir) = landing else {
+        return Err(copy_text("rsFilewinProc.bin.noHome", &[]));
+    };
+    crate::local_backend::place_local_program(
+        dir,
+        &window_bin_name(),
+        bytes,
+        make_executable,
+        ensure_dir,
+    )
+    .map_err(|e| {
+        copy_text(
+            "rsFilewinProc.bin.placeFailed",
+            &[("dir", &dir.display().to_string()), ("e", &e)],
+        )
+    })
 }
 
 /// 起一个窗口进程并把种子交给它。回**那个句柄**（还没做早失败判断）。

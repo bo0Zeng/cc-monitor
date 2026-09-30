@@ -307,9 +307,8 @@ cell(
         "tests/scripts/": (PART, "`scripts/*.sh` 现打 **3** 份 / 这棵树现打 **6** 份 —— "
                            "`run.ps1` 全仓没有 linter（`audit-0805` 登记的诚实边界），"
                            "`assert-coverage-floors.mjs` 是 JS"),
-        "src/frontend/shell/": (PART, "只有 vendored `cc-acct-iso` 那 **4** 份 bash（逐份点名，不用 glob —— "
-                             "`ci.yml` 那段注释逐字记着为什么：不开 globstar 时 `**` 等价于 `*`，"
-                             "会把一个目录喂给 shellcheck ⇒ 恒红）。这棵树的其余部分与本格无关"),
+        "src/frontend/shell/": blind("这棵树里今天没有一份 shell 进人群 —— 原先逐份点名的那 4 份 vendored bash "
+                                   "随账号库收进后端整棵删了；这棵树的其余部分与本格无关"),
         "tests/hooks/": (PART, "只有 `hooks/pre-commit` 这**一份**，而且是**逐份点名**进人群的、不是 glob "
                          "⇒ 往这棵树加第二份 hook，本格看不见它（那一维由 `hooks` 那一格的 "
                          "`git ls-files hooks/` 盖）"),
@@ -372,7 +371,7 @@ cell(
     cwd="src/frontend/shell/",
     cmd="cargo build --locked -p monitor --bins --target x86_64-pc-windows-gnu",
     **{
-        "src/frontend/shell/": (PART, "`-p monitor` 的两个二进制（`monitor` · `cc-monitor-filewin`）在 Windows target 上"
+        "src/frontend/shell/": (PART, "`-p monitor` 的两个二进制（`cc-monitor` · `cc-monitor-filewin`）在 Windows target 上"
                              "**真链接**一趟（dev）。⚠ 只链不跑；test 档不链（那一半是 `winchk` 的 `check`）；"
                              "`-gnu` 不是 `-msvc`"),
         VENDOR: (PART, "作为 `monitor` 的依赖被编、被链。⚠ 按依赖关系推的，按「未验」读"),
@@ -1449,7 +1448,7 @@ invoke("winchk-backend", ELSEWHERE,
        anchor="cargo check --all-targets --target x86_64-pc-windows-msvc")
 invoke("winlink", NOWHERE,
        "`ci.yml` 的 Windows 那个 job（`rust`，`windows-latest`）只跑 clippy 与 `cargo test`（链的是测试二进制，"
-       "不链 `monitor.exe`）；真产 exe 的是 `release.yml`（`-msvc` 原生，不在 CI 上）⇒ "
+       "不链 `cc-monitor.exe`）；真产 exe 的是 `release.yml`（`-msvc` 原生，不在 CI 上）⇒ "
        "「`-gnu` 上两个二进制链得起来」这一维云端零覆盖，只有本机这一格")
 for _s in ("backend-rbind-token", "rbind-token-endtoend"):
     invoke("ccm tests/e2e/" + _s, NOWHERE,

@@ -365,7 +365,7 @@ export class RemoteSection {
    *
    * 撤掉 `readiness.notApplicable` 里那条豁免之后，本机的 `backend` 变成一格**适用**的格子。
    * 而全仓对 `LOCAL_MACHINE_KEY` 的 `recordFacet` 写点此前只有一个
-   *（`accounts-section.ts::note`，只写 `acctIso`/`accounts`）⇒ 少了这一行，
+   *（`accounts-section.ts::note`，只写 `accounts`）⇒ 少了这一行，
    * 本机后端会**恒 `unknown`**，「还差什么」那张清单对任何人都清不空 ——
    * 那正是 `facet-producer-guard.vitest.ts` 与 `N-F2` 各治过一遍的同一个洞
    *（⚠ 两者都**看不见**这一格：前者按 facet 扫源码，后者管的是另外两格）。

@@ -29,12 +29,11 @@ const ORIGINS = [LOCAL_MACHINE_KEY, "devbox"];
 
 /** 一台什么都没测过的机器 —— 新用户装完就是这个形。 */
 const NOTHING: MachineStatus = {};
-/** 五格全绿。`computeGaps` 见 `ok` 就跳过 ⇒ 这一形不该产出任何缺口。 */
+/** 四格全绿。`computeGaps` 见 `ok` 就跳过 ⇒ 这一形不该产出任何缺口。 */
 const ALL_OK: MachineStatus = {
   connection: { kind: "ok", at: T },
   backend: { kind: "ok", at: T },
   ccm: { kind: "ok", at: T },
-  acctIso: { kind: "ok", at: T },
   accounts: { kind: "ok", at: T },
 };
 

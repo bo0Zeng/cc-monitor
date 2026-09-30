@@ -38,7 +38,6 @@ export type MachineFacet =
   | "connection"
   | "backend"
   | "ccm"
-  | "acctIso"
   | "accounts";
 
 /** 面板上从左到右的显示顺序（也是 §2.3 那张示意图里的顺序）。 */
@@ -46,7 +45,6 @@ export const MACHINE_FACETS: readonly MachineFacet[] = [
   "connection",
   "backend",
   "ccm",
-  "acctIso",
   "accounts",
 ];
 
@@ -54,7 +52,6 @@ export const FACET_LABELS: Record<MachineFacet, string> = {
   connection: copyText("machineStatus.facet.connection"),
   backend: "backend",
   ccm: "ccm",
-  acctIso: "acct-iso",
   accounts: copyText("machineStatus.facet.accounts"),
 };
 
