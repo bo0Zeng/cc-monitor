@@ -356,8 +356,18 @@ fn capture_full(
             (buf, read)
         })
     };
-    let out = drain(child.stdout.take().map(|p| Box::new(p) as Box<dyn Read + Send>));
-    let err = drain(child.stderr.take().map(|p| Box::new(p) as Box<dyn Read + Send>));
+    let out = drain(
+        child
+            .stdout
+            .take()
+            .map(|p| Box::new(p) as Box<dyn Read + Send>),
+    );
+    let err = drain(
+        child
+            .stderr
+            .take()
+            .map(|p| Box::new(p) as Box<dyn Read + Send>),
+    );
     let deadline = std::time::Instant::now() + timeout;
     let (timed_out, code) = loop {
         match child.try_wait() {
@@ -412,7 +422,7 @@ pub(crate) enum OnceErr {
 
 /// 〔P1〕**问我们自己放下去的那一份后端一次**：帧命令的 CLI 面 `<bin> -- --<cmd>`（`control/cli_control.rs`：入参 JSON 走 stdin、
 /// 读到 EOF；exit 0 ⇒ stdout 一行 JSON · exit 2 ⇒ stderr 一行 `{code, message}`），不经 shell。
-/// 同步命令里问后端就走这一条（`INVARIANTS §10`：同步命令里不 `block_on` 连常驻后端）；本机后端自举（`place-verdict`）也走它。
+/// 同步命令里问后端就走这一条（`INVARIANTS §10`：同步命令里不 `block_on` 连常驻后端）；本机后端自举（[`ask_place_verdict`]）也走它。
 pub(crate) fn ask_once(
     bin: &std::path::Path,
     cmd: &str,
@@ -467,6 +477,18 @@ pub(crate) fn ask_once(
         }
         _ => Err(unreadable()),
     }
+}
+
+/// 〔P1〕本机后端自举那一问的上限：一个后端进程起来、读一遍落点那个文件（约 10 MB）就答；Windows 上第一次跑一份新写的 exe
+/// 杀毒软件会先扫一遍（几秒）⇒ 放宽到 20 秒。本机后端引导持锁等它（`local_backend_host::start_local_backend` 头注的代价那一段）。
+pub(crate) const PLACE_ASK_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(20);
+
+/// 〔P1 · 形状 A〕宿主交给 `local_backend::extract_embedded_to` 的问话口（`local_backend::PlaceAsk`）：跑暂存件的 `--place-verdict` 问一次。
+pub(crate) fn ask_place_verdict(
+    staged: &std::path::Path,
+    args: &serde_json::Value,
+) -> Result<serde_json::Value, OnceErr> {
+    ask_once(staged, "place-verdict", args, PLACE_ASK_TIMEOUT)
 }
 
 /// 〔P1 · 第 3 件〕PATH 上另一个 `ccm` 的开头一截是不是我们早先放的旧入口 —— **问我们自己那一份后端**（`deploy-retired` 的 `{text}` 形），
@@ -747,8 +769,8 @@ fn probe_path_ccm() -> Option<CcmProbeResult> {
 pub(crate) fn ours_by_bytes(p: &std::path::Path) -> bool {
     std::fs::read(p).is_ok_and(|b| {
         matches!(
-            deploy_core::identity_of_bytes(&b, crate::sftp::STAMP_MARKS),
-            deploy_core::RemoteIdentity::Stamp(_)
+            deploy_contract::identity_of_bytes(&b, crate::sftp::STAMP_MARKS),
+            deploy_contract::RemoteIdentity::Stamp(_)
         )
     })
 }
@@ -798,7 +820,11 @@ pub fn local_ccm_entry_status(fresh: Option<bool>) -> LocalCcmEntry {
                 Some(p) if ours_bytes => old_entry_by_backend(p, head),
                 _ => false,
             };
-            let reach = reach_of(on_path.at.as_deref(), installed.map(|p| p.as_path()), &asked);
+            let reach = reach_of(
+                on_path.at.as_deref(),
+                installed.map(|p| p.as_path()),
+                &asked,
+            );
             let old_entry = matches!(
                 reach,
                 Reach::OtherFile {

@@ -552,9 +552,18 @@ fn ask_once_reads_the_cli_envelope_both_ways() {
     };
     let t = std::time::Duration::from_secs(5);
     let args = serde_json::json!({ "text": "#!/bin/sh\n", "n": 1 });
-    let echo = script("echo", r#"[ "$1" = "--" ] && [ "$2" = "--deploy-retired" ] || exit 9; cat"#);
-    assert_eq!(ask_once(&echo, "deploy-retired", &args, t), Ok(args.clone()));
-    let no = script("no", r#"echo '{"code":"refused","message":"不放"}' >&2; exit 2"#);
+    let echo = script(
+        "echo",
+        r#"[ "$1" = "--" ] && [ "$2" = "--deploy-retired" ] || exit 9; cat"#,
+    );
+    assert_eq!(
+        ask_once(&echo, "deploy-retired", &args, t),
+        Ok(args.clone())
+    );
+    let no = script(
+        "no",
+        r#"echo '{"code":"refused","message":"不放"}' >&2; exit 2"#,
+    );
     assert_eq!(
         ask_once(&no, "x", &args, t),
         Err(OnceErr::Refused {

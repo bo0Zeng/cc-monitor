@@ -142,7 +142,7 @@ src_const() {
 bytes_id() {
   local f="$1" open="$2" close="$3" found n s
   # 界标之间**至少一个字符**：两个界标常量在 `.rodata` 里挨着时会读出一个空 id 的「戳」（MIG-3b 之后实测 3 处），
-  # 它不是身份 —— 与 `build.rs::bytes_build_id` · `deploy-core::stamp_scan_cmd` 同一条（空串不收）。
+  # 它不是身份 —— 与 `build.rs::bytes_build_id` · `deploy-contract::stamp_scan_cmd` 同一条（空串不收）。
   found="$(LC_ALL=C grep -aoE "${open}[[:alnum:]_.-]+${close}" "$f" | sort -u || true)"
   n="$(printf '%s' "$found" | grep -c . || true)"
   if [ "$n" != "1" ]; then

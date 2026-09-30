@@ -5312,7 +5312,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("tests/frontend/shell/launch_tests.rs", 2),
         ("tests/frontend/shell/quote_singleton_guard_tests.rs", 2),
         ("src/frontend/shell/src/ccm_legacy.rs", 1), // 〔合并 MIG-3b × 主线 5bb03b34〕两边各自贴的墓碑相加，按盘上现数（跑出来核过）
-        ("src/common/deploy-core/src/lib.rs", 1),
+        ("src/common/deploy-contract/src/lib.rs", 1), // 〔P1〕随契约那一半改名（`SHIM_MARK` 头注那一块）
         ("tests/backend/control/deploy_plan_tests.rs", 1), // 〔THIN〕旧入口两形真值表随判定从 monitor `ccm_legacy_tests.rs` 搬来，那块墓碑跟着搬
         ("tests/frontend/shell/lib_invariant_population_tests.rs", 2),
         ("tests/frontend/shell/ssh_source_tier1_tests.rs", 2), // 〔FIX4 · V41〕1 → 2：F45 那两条判据随 `winner_address` 删了，原处一块

@@ -124,8 +124,8 @@ search-core = { path = "../common/search-core" }
 # 后端自己出句子、读的是与前端 / monitor 同一份 `src/shared/copy/table.json`（选 A 的理由：
 # `调研/第四波记录/CP2c.md §2.1`）。依赖只有 `serde_json`（本 crate 早就有）⇒ 不引新的第三方包。
 copy-core = { path = "../common/copy-core" }
-# 〔MIG-3b〕部署决策的唯一一份（表 A / 表 B · 身份戳 · 只升不降），与 monitor 同一份：本机常驻后端出计划（`control/deploy_plan.rs`），monitor 只放字节。
-deploy-core = { path = "../common/deploy-core" }
+# 〔P1〕部署那一族的契约（表 A 的键与行 · 戳格式 · 答话形状 · 路径），与 monitor 同一份；判定（承诺 · 换不换 · 认不认）住 `control/deploy_plan.rs`。
+deploy-contract = { path = "../common/deploy-contract" }
 tokio = { version = "1", features = [
     "rt-multi-thread",
     "macros",

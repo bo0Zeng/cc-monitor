@@ -969,40 +969,119 @@ fn tmpdir_e2(tag: &str) -> PathBuf {
     d
 }
 
-/// 〔E2 · E-b〕要求住址：`设计/01 §6.7b`「落点 `~/.cc-monitor/bin/ccm` —— 本机与远端同一个」· `W5-ALIAS.md §2.5.2` E-b
-/// 「名字不带 id ⇒ 两个不同版本的 monitor 会互相换掉对方的后端（主会话 D-b『只在我的比盘上的新时才换』要搬到本机这一侧）」。
+/// 〔P1〕替身问话口：答预设的那一句，并记下每一次问的暂存件在不在、装的是不是手上那份字节、入参是什么。
+struct FakeAsk {
+    answer: Result<serde_json::Value, crate::ccm_probe::OnceErr>,
+    asked: std::cell::RefCell<Vec<(std::path::PathBuf, bool, serde_json::Value)>>,
+    bytes: Vec<u8>,
+}
+
+impl FakeAsk {
+    fn new(answer: Result<serde_json::Value, crate::ccm_probe::OnceErr>, bytes: &[u8]) -> FakeAsk {
+        FakeAsk {
+            answer,
+            asked: Default::default(),
+            bytes: bytes.to_vec(),
+        }
+    }
+    fn ask(
+        &self,
+        staged: &Path,
+        args: &serde_json::Value,
+    ) -> Result<serde_json::Value, crate::ccm_probe::OnceErr> {
+        let holds = std::fs::read(staged).is_ok_and(|b| b == self.bytes);
+        self.asked
+            .borrow_mut()
+            .push((staged.to_path_buf(), holds, args.clone()));
+        self.answer.clone()
+    }
+}
+
+fn place() -> Result<serde_json::Value, crate::ccm_probe::OnceErr> {
+    Ok(serde_json::json!({ "action": "place", "why": "那台上是 p4z-old，这一版是 p5a-mine" }))
+}
+
+/// 〔E2 · P1〕要求住址：`设计/01 §6.7b`「落点 `~/.cc-monitor/bin/ccm` —— 本机与远端同一个」· `4d-lanes.md ## 发版后四路 ### P1` 第 1 件
+/// （主会话 09-29 拍板形状 A：放不放问手上那份字节自己，判定只住后端 `deploy_plan::place_verdict`；那张真值表住后端 `deploy_plan_tests`）。
 ///
-/// 真跑 [`extract_embedded_to`]，逐格比盘上那份字节（不读源码）：缺 ⇒ 放；同版同字节 ⇒ 不动；同版字节不同（开发树重编）⇒ 换；
-/// 盘上更旧 ⇒ 换；盘上不旧 ⇒ 不动；盘上那份不说自己是谁 ⇒ 拒、一个字节不动。落点文件名恒是 [`local_ccm_entry_name`]。
+/// 真跑 [`extract_embedded_to`]、替身答话，逐格比盘上那份字节与目录（不读源码）：缺 ⇒ 问（问时暂存件里恰是手上那份、入参是落点与「本机」）⇒
+/// 答放 ⇒ 放；逐字节相同 ⇒ 不问、不动；答不动 ⇒ 用盘上那份；它说「不」⇒ 那句话原样、不动；问不成 · 答话不成形 ⇒ 说清、不动。
+/// 每一形之后目录里都没有暂存件。落点文件名恒是 [`local_ccm_entry_name`]。
 #[test]
-fn the_local_landing_is_ccm_and_only_an_older_or_rebuilt_one_is_replaced() {
+fn the_local_landing_is_placed_exactly_as_the_bytes_in_hand_say() {
     let d = tmpdir_e2("place");
     let mark = |_: &Path| Ok(());
     let dirs = |p: &Path| std::fs::create_dir_all(p).map_err(|e| e.to_string());
-    let put = |id: &str, bytes: &[u8]| extract_embedded_to(&d, id, bytes, &mark, &dirs);
     let dest = d.join(local_ccm_entry_name());
     let disk = || std::fs::read(&dest).unwrap_or_default();
+    let partial = d.join(format!(
+        ".{}.{}.partial",
+        local_ccm_entry_name(),
+        std::process::id()
+    ));
+    let no_partials = || !partial.exists();
     let mine = stamped("p5a-mine", 1);
-    // 缺 ⇒ 放
-    assert_eq!(put("p5a-mine", &mine).expect("缺 ⇒ 放"), dest);
+    let put = |fake: &FakeAsk| {
+        extract_embedded_to(&d, "p5a-mine", &mine, &mark, &dirs, &|p, a| fake.ask(p, a))
+    };
+    // 缺 ⇒ 问 ⇒ 放
+    let fake = FakeAsk::new(place(), &mine);
+    assert_eq!(put(&fake).expect("答放 ⇒ 放"), dest);
     assert_eq!(disk(), mine);
-    // 同版字节不同（开发树重编）⇒ 换
-    let rebuilt = stamped("p5a-mine", 9);
-    put("p5a-mine", &rebuilt).expect("同版重编 ⇒ 换");
-    assert_eq!(disk(), rebuilt, "同一版、字节不同没换");
-    // 盘上更旧 ⇒ 换
-    std::fs::write(&dest, stamped("p4z-old", 2)).unwrap();
-    put("p5a-mine", &mine).expect("更旧 ⇒ 换");
-    assert_eq!(disk(), mine, "盘上更旧却没换");
-    // 盘上不旧 ⇒ 不动（两个版本的 monitor 从此只升不降）
+    let asked = fake.asked.borrow().clone();
+    assert_eq!(asked.len(), 1, "该问恰一次");
+    assert_eq!(asked[0].0, partial, "问的不是这一趟的暂存件");
+    assert!(asked[0].1, "问的时候暂存件里不是手上那份字节");
+    assert!(!partial.exists(), "放上去之后暂存件还在（该是换名上位）");
+    assert_eq!(
+        asked[0].2,
+        serde_json::json!({ "dest": dest.to_string_lossy(), "machine": "本机" })
+    );
+    assert!(no_partials());
+    // 逐字节相同 ⇒ 不问
+    let fake = FakeAsk::new(Err(crate::ccm_probe::OnceErr::TimedOut), &mine);
+    assert_eq!(put(&fake).expect("相同 ⇒ 直接用"), dest);
+    assert!(fake.asked.borrow().is_empty(), "逐字节相同还去问了");
+    // 字节不同 · 答不动 ⇒ 用盘上那份
     let newer = stamped("p5b-newer", 3);
     std::fs::write(&dest, &newer).unwrap();
-    assert_eq!(put("p5a-mine", &mine).expect("不旧 ⇒ 照用盘上那份"), dest);
-    assert_eq!(disk(), newer, "盘上那份不比我旧却被换掉了");
-    // 不说自己是谁 ⇒ 拒、不动
-    std::fs::write(&dest, b"#!/bin/sh\necho mine\n").unwrap();
-    assert!(put("p5a-mine", &mine).is_err(), "无戳的文件被覆盖了");
-    assert_eq!(disk(), b"#!/bin/sh\necho mine\n");
+    let fake = FakeAsk::new(
+        Ok(serde_json::json!({ "action": "keep", "why": "不比它旧" })),
+        &mine,
+    );
+    assert_eq!(put(&fake).expect("答不动 ⇒ 用盘上那份"), dest);
+    assert_eq!(disk(), newer, "答不动却换了");
+    assert!(no_partials());
+    // 它说「不」⇒ 那句话原样，不动
+    let fake = FakeAsk::new(
+        Err(crate::ccm_probe::OnceErr::Refused {
+            code: "undecidable".into(),
+            message: "不说自己是谁（夹具句）".into(),
+        }),
+        &mine,
+    );
+    assert_eq!(
+        put(&fake),
+        Err(Unplaced::Said("不说自己是谁（夹具句）".into()))
+    );
+    assert_eq!(disk(), newer);
+    assert!(no_partials());
+    // 问不成 · 答话不成形 ⇒ 说清是问不成，不动、不猜
+    for answer in [
+        Err(crate::ccm_probe::OnceErr::Spawn("exec format error".into())),
+        Err(crate::ccm_probe::OnceErr::TimedOut),
+        Err(crate::ccm_probe::OnceErr::Unreadable("exit=Some(1)".into())),
+        Ok(serde_json::json!({ "action": "maybe", "why": "" })),
+        Ok(serde_json::json!({ "action": "place" })),
+    ] {
+        let fake = FakeAsk::new(answer.clone(), &mine);
+        match put(&fake) {
+            Err(Unplaced::Said(s)) => assert!(s.contains("答不出该不该放"), "{answer:?}：{s}"),
+            other => panic!("{answer:?}：该是「问不成、没放」，实得 {other:?}"),
+        }
+        assert_eq!(disk(), newer, "{answer:?}：问不成却动了盘上那份");
+        assert!(no_partials(), "{answer:?}：暂存件没清");
+    }
     let _ = std::fs::remove_dir_all(&d);
 }
 
@@ -1031,6 +1110,7 @@ fn the_resolution_path_hands_the_ccm_entry_the_backend_it_just_resolved() {
         Ok(("p5a-wire", &bytes)),
         &mark,
         &crate::platform::fs::ensure_private_dir,
+        &|_, _| place(),
     );
     let Resolved::Found(bin) = r.clone() else {
         panic!("夹具塌了：内嵌那份没放出来 ⇒ 本条此刻无效。实得 {r:?}");
@@ -1090,7 +1170,7 @@ fn both_ccm_entries_spell_the_word_from_the_same_place() {
 // 〔E2 · V28〕`remote_shim_sets_no_environment_of_its_own`〔散文墓碑〕 删了：远端 shim 本身删了（落点就是后端字节），没有 shim 可判。
 
 /// P2z-Y3：**本机那条路不许自己写版本比较** —— 版本比对只有一个家（〔MIG-3a · 09-28〕当年是 `sftp.rs` 的比标记函数，
-/// 那一族退役后是 `deploy-core` 的 `identity_decision`，纯函数）。
+/// 那一族退役后是共享判定 `identity_decision`；〔P1〕今天住后端 `control/deploy_plan.rs`，本机那一份经 `place-verdict` 问手上那份字节自己）。
 ///
 /// 它会失效的地方（如实写）：那个判定只回答「要不要装」，
 /// **不回答「装完对不对」**。本条只挡「另写一套比较逻辑」，不是完整校验。
@@ -1104,7 +1184,7 @@ fn the_local_path_does_not_hand_roll_version_comparison() {
     assert!(
         !src.contains(&bad),
         "生产段出现了手写的 build_id 比较（`{bad}`）。\n\
-             版本比对只有一个真相源：`deploy-core` 的 `identity_decision`（纯函数，可单测）。\n\
+             版本比对只有一个真相源：后端 `control/deploy_plan.rs` 的 `identity_decision`（本机经 `place-verdict` 问）。\n\
              另写一套 ⇒ 两处判「要不要装」的逻辑迟早分叉，而分叉的后果是无限重装。"
     );
 }
@@ -1335,14 +1415,16 @@ fn a_directory_it_cannot_create_really_takes_the_loud_path() {
     std::fs::write(&blocker, b"x").expect("写占位文件");
     let dir = blocker.join("bin");
 
-    let err = extract_embedded_to(
+    let Err(Unplaced::Write(err)) = extract_embedded_to(
         &dir,
         "p2e-dial",
         b"not-a-real-backend",
         &|_| Ok(()),
         &crate::platform::fs::ensure_private_dir,
-    )
-    .expect_err("目标目录的父路径是个普通文件，它居然报了成功");
+        &|_, _| panic!("目录都建不出来还去问放不放"),
+    ) else {
+        panic!("目标目录的父路径是个普通文件，它居然没走「写不进去」那一形");
+    };
     let reason = extraction_failure_reason(&dir, &err);
     assert!(
         reason.contains(EXTRACTION_REFUSED_MARKER.as_str()),
@@ -2904,6 +2986,7 @@ fn a_refusal_from_the_byte_table_reaches_the_missing_reason_and_writes_nothing()
         Err(said.to_string()),
         &mark,
         &crate::platform::fs::ensure_private_dir,
+        &|_, _| panic!("取不到字节还去问放不放"),
     );
     let Resolved::Missing { reason, .. } = r else {
         panic!("取不到字节竟然 Found 了：{r:?}");

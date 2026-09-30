@@ -1,14 +1,15 @@
-//! 要求住址：`设计/00 §1.2`「共享 crate 只放两边必须对上的契约（路径 · 端口 · 文件格式 · 文案表 · 令牌形状 · 字节表键），不放判定；判定只在后端」＋ `99 §2.3` THIN 第 5 件「monitor 生产段只许依赖契约类 crate」。
+//! 要求住址：`设计/00 §1.2`「共享 crate 只放两边必须对上的契约（路径 · 端口 · 文件格式 · 文案表 · 令牌形状 · 字节表键），不放判定；判定只在后端」＋ `99 §2.3` THIN 第 5 件「monitor 生产段只许依赖契约类 crate」
+//! ＋ 〔P1〕`4d-lanes.md ## 发版后四路 ### P1` 第 1 件「`contract_crate_guard_tests.rs` ③ 由『按符号』改成 crate 级」。
 //!
 //! 三道：
 //! ① `src/common/` 下每个 crate 恰好登记一类、逐个写理由（两向：目录 == [`CRATES`]）；
 //! ② monitor 生产段（`[dependencies]` · `[build-dependencies]` · `[target.*.dependencies]`）点名的每个 path 依赖、连同它们自己生产段的
-//!    path 依赖闭包，只许住 `src/common/` 且是契约类；判定类出现即红 —— 唯一例外是 ③ 按符号钉住的 `deploy-core`；
-//! ③ `deploy-core` 按符号：monitor 生产源码（壳 `src/**` ＋ 它经 `#[path]` 收进来的通信层文件）里每个 `deploy_core::X`
-//!    要么在契约名单 [`DEPLOY_CONTRACT`] 里，要么是 [`DEPLOY_RESIDUAL`] 登记的自举残留（符号 × 住址两向相等：搬走一处，登记当场红）。
+//!    path 依赖闭包，只许住 `src/common/` 且是契约类；判定类出现即红，**没有例外**（〔P1〕`deploy-core` 拆成契约 `deploy-contract` ＋ 后端判定之后，按符号那道豁免退役）；
+//! ③ crate 级：部署判定（[`DEPLOY_DECISIONS`]）只有一个家 —— 后端 `control/deploy_plan.rs` 恰一处定义；契约 crate `deploy-contract` 与
+//!    monitor 生产源码里用着部署契约的每一份（壳 `src/**` ＋ 它经 `#[path]` 收进来的通信层文件）零处定义。
 //!
-//! 买不到：契约类 crate **里面**长出一个判定（这条只按 crate / 符号分类，不读函数体；那是 `judgment-single-home.vitest.ts` 的 CORE_ITEMS）；
-//! `use deploy_core::*` 之外的别名路（`extern crate … as`）今天全仓零处，下面那道「`deploy_core` 只以 `deploy_core::` 出现」顺带挡住。
+//! 买不到：契约类 crate **里面**长出一个名字不在 [`DEPLOY_DECISIONS`] 里的判定（这条只按 crate 分类 ＋ 点名的判定符号，不读函数体；
+//! 那是 `judgment-single-home.vitest.ts` 的 CORE_ITEMS）。
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -17,7 +18,7 @@ use std::path::{Path, PathBuf};
 enum Class {
     /// 两侧必须对上的形状：monitor 生产段可以依赖。
     Contract,
-    /// 裁决：只许后端用；monitor 生产段依赖即红（`deploy-core` 按 ③ 的符号例外）。
+    /// 裁决：只许后端用；monitor 生产段依赖即红。
     Decision,
     /// 判据原语：两侧只在 dev 侧。
     TestInfra,
@@ -28,7 +29,7 @@ const CRATES: &[(&str, Class, &str)] = &[
     ("acct-core", Class::Decision, "账号能不能用 · 走哪一支（`auth_ready` · `apikey_routed_subset`）是裁决；界面那份 `AUTH_KINDS` 由测试档的生成器现生成（monitor 只在 dev 侧链它）"),
     ("copy-core", Class::Contract, "文案表：两侧按同一个键取同一句（`copy_text` / `copy_static`），不裁决"),
     ("creds-core", Class::Contract, "文件格式 · 路径：凭据落盘格式与文件名、数据目录（monitor 只算路径；写半边在 `harden` 后面，monitor 不开）"),
-    ("deploy-core", Class::Decision, "那台要哪一格 · 换不换是裁决（`judge` · `identity_decision` · `is_newer`）；它同时带字节表键与身份戳格式 ⇒ monitor 只按 ③ 的符号用"),
+    ("deploy-contract", Class::Contract, "字节表键 · 文件格式 · 答话形状 · 路径：表 A 的键与行、拒绝的形状与话、身份戳格式、计划答话、落点路径，两侧对上同一份（判定那一半住后端 `control/deploy_plan.rs`）"),
     ("guard-core", Class::TestInfra, "源码扫描判据的原语，两侧都只在 dev 侧"),
     ("relay-route-core", Class::Contract, "端口 · 路径 · 路由语法：中转与常驻监听口的门牌、后端落点，两侧拼 / 拆同一份"),
     ("search-core", Class::Decision, "搜索口径与多机合并排序是裁决，只后端用"),
@@ -36,47 +37,21 @@ const CRATES: &[(&str, Class, &str)] = &[
     ("upstream-url-core", Class::Decision, "上游 URL 能不能用是裁决；界面读的是生成器现生成的式子（monitor 只在 dev 侧链它）"),
 ];
 
-/// `deploy-core` 里 monitor 生产段可以用的契约符号：字节表键 · 线上答话的形状 · 身份戳格式 · 落点路径。
-const DEPLOY_CONTRACT: &[(&str, &str)] = &[
-    ("Arch", "字节表键"),
-    ("Os", "字节表键"),
-    ("Key", "字节表键"),
-    ("Product", "字节表键（`wire` / `of_wire` 是线上两个词）"),
-    ("Route", "字节表键（本机 / 远端）"),
-    ("LINES", "字节表的行（取字节口按它把键映到内嵌字节）"),
-    ("UNAME_CMD", "问那台是什么机器的那一行命令"),
-    ("key_of", "两个线上词 → 字节表键（解析，不裁决）"),
-    ("key_from_uname", "`uname -s -m` 的答话 → 字节表键（解析）"),
-    ("Refusal", "拒绝的形状（后端答话与自举同一套词）"),
-    (
-        "DeployAction",
-        "`deploy-plan` 答话的形状（monitor 解码后照做）",
-    ),
-    ("LegacyVerdict", "`deploy-plan` 答话里旧落点那一格的形状"),
-    ("LEGACY_BACKEND_REL", "旧落点路径"),
-    (
-        "LEGACY_ENTRY_REL",
-        "旧入口路径（`~/.local/bin/ccm`；去向后端判，monitor 照删）",
-    ),
-    ("Marks", "身份戳的两个界标（文件格式）"),
-    ("RemoteIdentity", "读身份戳的结果形状"),
-    ("identity_of_bytes", "从字节里读身份戳（文件格式，不跑它）"),
+/// 部署判定（原 `deploy-core` 的判定那一半）：只许在后端 [`DEPLOY_HOME`] 恰一处定义。
+const DEPLOY_DECISIONS: &[&str] = &[
+    "judge",
+    "promised",
+    "is_newer",
+    "identity_decision",
+    "landing_verdict",
+    "legacy_verdict",
+    "is_ours",
+    "interpret_target_probe",
+    "place_verdict",
 ];
 
-/// `deploy-core` 判定符号在 monitor 生产段的**自举残留**：(符号, 住址 `文件::函数`, 为什么搬不进后端)。
-/// 两向：登记的每一条恰好在它说的函数里出现；没登记的判定符号出现即红。
-const DEPLOY_RESIDUAL: &[(&str, &str, &str)] = &[
-    (
-        "judge",
-        "src/frontend/shell/src/byte_table.rs::choose",
-        "本机常驻后端自己的那一份字节：放它的时候还没有后端可问（取字节口的拒绝链）",
-    ),
-    (
-        "identity_decision",
-        "src/frontend/shell/src/local_backend.rs::extract_embedded_to",
-        "同上：本机那一份换不换，放完它才有后端",
-    ),
-];
+/// 部署判定的唯一住址（仓内相对路径）。
+const DEPLOY_HOME: &str = "src/backend/control/deploy_plan.rs";
 
 fn root() -> PathBuf {
     crate::guard_support::repo_root()
@@ -199,53 +174,19 @@ fn monitor_production_sources() -> Vec<(String, String)> {
         .collect()
 }
 
-/// 一段生产正文里每个 `deploy_core::X`（花括号组展开）→ (符号, 它所在的函数名；模块级为空串)。
-fn deploy_symbols(body: &str) -> Vec<(String, String)> {
-    let needle = "deploy_core::";
-    let mut out = Vec::new();
-    for (at, _) in body.match_indices(needle) {
-        let rest = &body[at + needle.len()..];
-        let names: Vec<String> = if let Some(group) = rest.strip_prefix('{') {
-            let inner = group.split('}').next().unwrap_or_default();
-            inner
-                .split(',')
-                .map(|s| {
-                    s.split("::")
-                        .next()
-                        .unwrap_or_default()
-                        .split_whitespace()
-                        .next()
-                        .unwrap_or_default()
-                        .to_string()
-                })
-                .filter(|s| !s.is_empty())
-                .collect()
-        } else {
-            vec![rest
-                .chars()
-                .take_while(|c| c.is_alphanumeric() || *c == '_' || *c == '*')
-                .collect()]
-        };
-        let before = &body[..at];
-        let func = before
-            .rmatch_indices("fn ")
-            .find(|(i, _)| {
-                *i == 0
-                    || !before.as_bytes()[i - 1].is_ascii_alphanumeric()
-                        && before.as_bytes()[i - 1] != b'_'
-            })
-            .map(|(i, _)| {
-                before[i + 3..]
-                    .chars()
-                    .take_while(|c| c.is_alphanumeric() || *c == '_')
-                    .collect::<String>()
-            })
-            .unwrap_or_default();
-        for n in names {
-            out.push((n, func.clone()));
-        }
-    }
-    out
+/// 一段生产正文里 `fn <名>` 的定义处数（名字两侧不连着标识符字符）。
+fn fn_defs(body: &str, name: &str) -> usize {
+    let needle = format!("fn {name}");
+    body.match_indices(&needle)
+        .filter(|(at, _)| {
+            let before_ok = *at == 0 || {
+                let b = body.as_bytes()[at - 1];
+                !b.is_ascii_alphanumeric() && b != b'_'
+            };
+            let after = body[at + needle.len()..].chars().next();
+            before_ok && !after.is_some_and(|c| c.is_alphanumeric() || c == '_')
+        })
+        .count()
 }
 
 #[test]
@@ -296,7 +237,6 @@ fn the_monitor_production_segment_links_only_contract_crates() {
         let crate_dir = rel.to_string_lossy().replace('\\', "/");
         match class_of(&crate_dir) {
             Some(Class::Contract) => {}
-            Some(Class::Decision) if crate_dir == "deploy-core" => {} // ③ 按符号管
             Some(c) => bad.push(format!(
                 "{who} → {crate_dir}：{c:?} 类，monitor 生产段不许链它（判定的家在后端）"
             )),
@@ -311,13 +251,19 @@ fn the_monitor_production_segment_links_only_contract_crates() {
 }
 
 #[test]
-fn deploy_core_is_used_only_through_its_contract_and_the_pinned_bootstrap_residual() {
-    let contract: BTreeSet<&str> = DEPLOY_CONTRACT.iter().map(|(s, _)| *s).collect();
-    let mut residual_hits: BTreeMap<(&str, &str), usize> = DEPLOY_RESIDUAL
-        .iter()
-        .map(|(s, at, _)| ((*s, *at), 0))
-        .collect();
+fn deploy_decisions_live_only_in_the_backend() {
+    let root = root();
     let mut bad = Vec::new();
+    let home = guard_core::production_code(
+        &std::fs::read_to_string(root.join(DEPLOY_HOME))
+            .unwrap_or_else(|e| panic!("读 {DEPLOY_HOME}：{e}")),
+    );
+    for name in DEPLOY_DECISIONS {
+        let n = fn_defs(&home, name);
+        if n != 1 {
+            bad.push(format!("`{name}` 在 {DEPLOY_HOME} 定义 {n} 处（该恰一处）"));
+        }
+    }
     let sources = monitor_production_sources();
     assert!(
         sources
@@ -325,35 +271,44 @@ fn deploy_core_is_used_only_through_its_contract_and_the_pinned_bootstrap_residu
             .any(|(r, _)| r == "src/comms/inward/backend_route.rs"),
         "经 `#[path]` 收进来的通信层文件没进扫描面 —— 量法瞎了"
     );
-    let mut total = 0;
-    for (rel, body) in &sources {
-        let bare = body.matches("deploy_core").count();
-        let qualified = body.matches("deploy_core::").count();
-        if bare != qualified {
-            bad.push(format!("{rel}：`deploy_core` 不以 `deploy_core::` 出现（别名 / `use deploy_core;` 会绕过逐符号判）"));
-        }
-        for (sym, func) in deploy_symbols(body) {
-            total += 1;
-            if contract.contains(sym.as_str()) {
-                continue;
-            }
-            let at = format!("{rel}::{func}");
-            match residual_hits.iter_mut().find(|((s, a), _)| *s == sym && *a == at) {
-                Some((_, n)) => *n += 1,
-                None => bad.push(format!("`deploy_core::{sym}` 在 `{at}`：判定符号，monitor 生产段不许用（问后端；自举残留要登记住址与理由）")),
-            }
-        }
-    }
+    // 人群：契约 crate 自己 ＋ monitor 生产源码里用着部署契约的那几份（判定名很泛 —— `judge` 在文件窗口 · 凭据权限里另有同名的别的判定，
+    //   按「用不用部署契约」取人群，不按名字猜）。
+    let contract: Vec<(String, String)> =
+        guard_core::scan_tree_excluding(&common_dir().join("deploy-contract"), &["rs"], &[])
+            .into_iter()
+            .map(|(p, raw)| {
+                (
+                    p.to_string_lossy().replace('\\', "/"),
+                    guard_core::production_code(&raw),
+                )
+            })
+            .collect();
     assert!(
-        total > 0,
-        "monitor 生产段一个 `deploy_core::` 都没量到 —— 量法瞎了"
+        contract.iter().any(|(_, b)| fn_defs(b, "key_of") == 1),
+        "契约 crate 里没扫到 `key_of` —— 量法瞎了"
     );
-    for ((sym, at), n) in &residual_hits {
-        if *n == 0 {
-            bad.push(format!(
-                "残留登记 `{sym}` @ `{at}` 已经不在那里了 —— 搬走了就删这一行"
-            ));
+    let users: Vec<&(String, String)> = sources
+        .iter()
+        .filter(|(_, b)| b.contains("deploy_contract::"))
+        .collect();
+    assert!(
+        users.iter().any(|(r, _)| r.ends_with("local_backend.rs")),
+        "monitor 里用部署契约的人群没扫到 `local_backend.rs` —— 量法瞎了"
+    );
+    for (rel, body) in contract.iter().chain(users) {
+        for name in DEPLOY_DECISIONS {
+            if fn_defs(body, name) > 0 {
+                bad.push(format!(
+                    "{rel}：定义了部署判定 `{name}`（判定只在后端 {DEPLOY_HOME}）"
+                ));
+            }
         }
     }
+    // 正控：量法认得出一个定义、认不出前后连着字的名字。
+    assert_eq!(fn_defs("pub fn judge(x: u8) {}", "judge"), 1);
+    assert_eq!(
+        fn_defs("fn judge_path_ccm() {} fn misjudge() {}", "judge"),
+        0
+    );
     assert!(bad.is_empty(), "{}", bad.join("\n"));
 }

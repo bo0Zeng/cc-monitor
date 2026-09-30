@@ -5,11 +5,11 @@
 //! monitor 交两样事实：怎么够到那台（`dial`，与 `files` 链路同一份拨号请求）· 自己带着哪几格后端字节、各自自报的身份
 //! （`carried`，`[{os, arch, id}]`，放字节的一侧才知道）。本模块沿池里那条 SSH 问那台：
 //!
-//! 1. `uname -s -m`（[`deploy_core::key_from_uname`]）→ 表 A / 表 B（[`deploy_core::judge`]）→ 这一版带没带那一格（`carried`）——
+//! 1. `uname -s -m`（[`deploy_contract::key_from_uname`]）→ 表 A / 表 B（[`judge`]）→ 这一版带没带那一格（`carried`）——
 //!    **换成什么**；拒绝点在写第一个字节之前（`设计/96 §7.1.4b`）；
 //! 2. 落点那一份是谁：stat（没有 / 0 字节就不必再问）→ 扫它字节里的身份戳（一次 exec，不跑它）；
 //!    不肯说自己是谁时读回来看是不是从前那份三行入口 —— **身份判定**（`96 §7.2`）；
-//! 3. **该不该换**（[`deploy_core::landing_verdict`]：只升不降）；旧落点那份字节要不要删（[`deploy_core::legacy_verdict`]）；
+//! 3. **该不该换**（[`landing_verdict`]：只升不降）；旧落点那份字节要不要删（[`legacy_verdict`]）；
 //! 4. 〔WF2 · WIN3 读数 B〕落点那个目录里上一趟没收拾掉的临时件 / 备份件（[`stale_leftovers`]）—— 每次连上都问一次，交 monitor 删。
 //!
 //! # 〔THIN〕帧命令 `deploy-retired`（同一家：落点上该清的东西）
@@ -29,6 +29,12 @@
 //!
 //! 远端常驻后端 hello 报的 build 比 monitor 手上这一版旧 ⇒ 换一次（[`resident_verdict`]）；monitor 只照做（`remote_resident::attach`）。
 //!
+//! # 〔P1〕帧命令 `place-verdict`（同一家：本机那一份放不放）
+//!
+//! monitor 放本机后端之前还没有常驻后端可问 ⇒ 问手上那份字节自己（写成暂存件、跑它的 CLI 面）：表 B 本机那一行 · 落点那一份
+//! vs 自己的 `BUILD_ID`（[`place_verdict`]）。原共享 crate `deploy-core` 的判定那一半（承诺 · 换不换 · 认不认 · 取样解释）从此只住本文件；
+//! 契约那一半在 `deploy_contract`。
+//!
 //! # 它归 `control/` 的理由
 //!
 //! 同 [`super::resolve_query`]：产「要怎么改变世界」的计划属于控制的前半；它自己只读（stat · read · 两条只读 exec）。
@@ -43,8 +49,9 @@ use std::future::Future;
 use std::pin::Pin;
 
 use copy_core::copy_text;
-use deploy_core::{
-    DeployAction, Key, LegacyVerdict, Marks, Product, Refusal, RemoteIdentity, Route,
+use deploy_contract::{
+    Arch, DeployAction, Key, LegacyVerdict, Marks, Os, Product, Refusal, RemoteIdentity, Route,
+    LINES,
 };
 use serde_json::{json, Value};
 
@@ -67,7 +74,7 @@ type Fut<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 pub trait Facing: Send + Sync {
     /// 收全三样 ＋ 那一趟拨号的 ack（`DialAck` 原样；逐地址指纹要交 monitor 固化）。
     fn exec(&self, command: String) -> Fut<'_, Result<(crate::dial::Captured, Value), String>>;
-    /// `(metadata 的 size, 补问的 exists)` —— 与 [`deploy_core::interpret_target_probe`] 入参同形。
+    /// `(metadata 的 size, 补问的 exists)` —— 与 [`interpret_target_probe`] 入参同形。
     fn stat<'a>(
         &'a self,
         rel: &'a str,
@@ -76,6 +83,203 @@ pub trait Facing: Send + Sync {
     fn read<'a>(&'a self, rel: &'a str, max: u64) -> Fut<'a, Option<Vec<u8>>>;
     /// 〔WF2〕列一个目录：`(名字, 修改时间秒)`；列不出 ⇒ `None`。
     fn list<'a>(&'a self, rel: &'a str) -> Fut<'a, Option<Vec<(String, Option<u64>)>>>;
+}
+
+// ═══ 〔P1〕部署判定：原共享 crate `deploy-core` 的判定那一半（`设计/00 §1.2` 判定只在后端）══════════════
+//
+// 契约那一半（键 · 戳格式 · 答话形状 · 路径）住 `deploy_contract`，两侧同一份；下面这几条裁决只住这里，
+// monitor 那两处自举（本机后端放下去之前）改问手上那份字节自己（[`answer_place`]，帧命令 `place-verdict`）。
+
+/// 表 B：这个 origin 今天承诺哪几种机器（`01 §6.7a`：本机 Windows x86_64 · 本机 Linux〔用户 09-18「算」〕· 远端 Linux 两个 arch）。
+///
+/// 〔V132 · 09-25〕用户原话「不承诺. 适配部分, 即os适配部分后面单独写单独做.」⇒ **本机 (Linux, aarch64) 不承诺**
+/// （`96 §7.1.5` 那句「建议本机 Linux 限定 x86_64、本机侧走「不承诺」那一形」，即 [`Refusal::NotPromisedHere`]）。于是本表不再只按 OS 分：
+/// 本机那两行都钉到 x86_64（本机 Windows arm64 本来就不在产线里，`V31`），远端 Linux 两个 arch 照旧。
+/// 承诺面的唯一住址是 `tests/evidence/K-G4-platform-ledger.py` 的 `PROMISE_FACE`；本函数与它两向相等
+/// 由 `deploy_plan_tests.rs::the_promise_face_in_the_ledger_equals_the_code` 钉着。
+pub fn promised(route: Route, key: Key) -> bool {
+    matches!(
+        (route, key.os, key.arch),
+        (Route::Local, Os::Windows, Arch::X86_64)
+            | (Route::Local, Os::Linux, Arch::X86_64)
+            | (Route::Remote, Os::Linux, _)
+    )
+}
+
+/// 拒绝点的前三步（在向目标机器写第一个字节之前）：键 → 产线 → 承诺。四形各在一步上，不合并；
+/// 第五形「这一版带没带」看放字节的一侧交来的事实（`carried`，[`slot_of`]）。
+pub fn judge(product: Product, route: Route, key: Result<Key, Refusal>) -> Result<Key, Refusal> {
+    let key = key?;
+    let (os, arch) = (key.os.label().to_string(), key.arch.label().to_string());
+    if !LINES.contains(&(product, key)) {
+        return Err(Refusal::UnsupportedMachine { os, arch });
+    }
+    if !promised(route, key) {
+        return Err(Refusal::NotPromisedHere { os, arch, route });
+    }
+    Ok(key)
+}
+
+/// 部署落点那个文件**本身**的取样结论（落点身份的第一步：没有 / 0 字节就不必再问它是谁）。
+///
+/// 纪律：**「问不出来」不许读成上面任何一个确定答案**
+/// ——把无权限/传输失败当成「不在」会变成每次连接都重传（把版本门控拆了），
+/// 当成「在」则退回本枚举要治的那个静默。**所以它不是 `bool`。**
+/// ⚠ 成员就在下面，别在散文里复述一份基数 —— 那份字面量会在加成员那天变成假话。
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum TargetBinary {
+    /// stat 说它在，且有字节。
+    Present,
+    /// stat **明确说**它不在。
+    Missing,
+    /// stat 说它在，但是 **0 字节** —— 不是假想形态：原子上传那一段（今天住后端 `dial/sftp.rs::put_atomic`）里
+    /// 「绝不 set_metadata」那条注释记的就是真机 e2e 实测把后端截成 0 字节、
+    /// 不可 exec 的那次事故。`try_exists` 会把它算成「在」。
+    Empty,
+    /// 问不出来（无权限 / 传输失败 / 服务器不给属性）—— 不许读成上面任何一个。
+    Unknown,
+}
+
+/// stat 那两次取样的**解释**（纯函数，可单测 —— K-W4b）。
+///
+/// 形状：**吃两次调用各自的结果，不吃会话**。拆出来的理由是一个具体缺陷，不是行数：解释这一半原先焊在 async 体里，
+/// 四个状态的映射规则因此一条判据都没有（`tests/evidence/K-W4b-readings.md`）。
+///
+/// 入参就是两次调用**降解之后**的结果：
+/// - `metadata_size`：`None` = `metadata` 那次调用失败；`Some(inner)` = 成功，
+///   `inner` 是服务器给的 size —— ⚠ `Some(None)` 是**服务器没给 size**，不是 0 字节。
+/// - `exists`：`metadata` 失败时补问 `try_exists` 的结果（`None` = 它也答不出来）。
+///   `metadata` 成功那一路根本不问它，那时它恒为 `None` 而本函数在那一路也不看它。
+pub fn interpret_target_probe(
+    metadata_size: Option<Option<u64>>,
+    exists: Option<bool>,
+) -> TargetBinary {
+    match metadata_size {
+        Some(Some(0)) => TargetBinary::Empty,
+        // 服务器不给 size（`Some(None)`）≠ 0 字节：存在是确定的，别把「没说」读成「空」。
+        Some(_) => TargetBinary::Present,
+        None => match exists {
+            Some(false) => TargetBinary::Missing,
+            Some(true) => TargetBinary::Present,
+            None => TargetBinary::Unknown,
+        },
+    }
+}
+
+/// 「手上这一版比那台上的新」—— 两边都解得出序键（[`deploy_contract::build_order`]）、且这一版的严格大。解不出任何一边 ⇒ `false`（不可比 ⇒ 不换）。
+pub fn is_newer(mine: &str, theirs: &str) -> bool {
+    matches!((deploy_contract::build_order(mine), deploy_contract::build_order(theirs)), (Some(m), Some(t)) if m > t)
+}
+
+/// 要不要（重）部署 —— **对照物是手上那份字节自报的身份**（`96 §7.2.3`），不是源码常量。**纯函数**。
+///
+/// `Err` = 显式失败、**一个字节都不写**（出路交给用户：机器页「卸载后端」删掉那个文件，就是明确授权覆盖）。
+///
+/// 〔HX2 · D-b〕「另一版」那一格按 [`deploy_contract::build_order`] 拆两格：那台上的**比这一版旧** ⇒ 换；**不比这一版旧** ⇒ [`DeployAction::Keep`]
+/// （两个不同版本的 monitor 连同一台远端，从此只会升不会降，不再每次连上互相换掉 —— 审计 E3）。
+pub fn identity_decision(
+    id: &RemoteIdentity,
+    expected: &str,
+    machine: &str,
+    path: &str,
+) -> Result<DeployAction, String> {
+    let hands_off = copy_text("rsSftp.identity.handsOff", &[]);
+    match id {
+        RemoteIdentity::Missing => Ok(DeployAction::Deploy(copy_text(
+            "rsSftp.identity.missing",
+            &[],
+        ))),
+        RemoteIdentity::Empty => Ok(DeployAction::Deploy(copy_text(
+            "rsSftp.identity.empty",
+            &[],
+        ))),
+        RemoteIdentity::Stamp(s) if s == expected => Ok(DeployAction::Skip),
+        RemoteIdentity::Stamp(s) if is_newer(expected, s) => Ok(DeployAction::Deploy(copy_text(
+            "rsSftp.identity.other",
+            &[("s", &s.to_string()), ("expected", &expected.to_string())],
+        ))),
+        RemoteIdentity::Stamp(s) => Ok(DeployAction::Keep {
+            theirs: s.clone(),
+            why: copy_text(
+                "rsSftp.identity.notOlder",
+                &[
+                    ("machine", &machine.to_string()),
+                    ("s", &s.to_string()),
+                    ("expected", &expected.to_string()),
+                ],
+            ),
+        }),
+        RemoteIdentity::NoStamp => Err(copy_text(
+            "rsSftp.identity.unstamped",
+            &[
+                ("machine", &machine.to_string()),
+                ("path", &path.to_string()),
+                ("handsOff", &hands_off.to_string()),
+            ],
+        )),
+        RemoteIdentity::Ambiguous(ids) => Err(copy_text(
+            "rsSftp.identity.multiple",
+            &[
+                ("machine", &machine.to_string()),
+                ("path", &path.to_string()),
+                ("ids", &ids.join(&copy_text("rsSftp.identity.listSep", &[]))),
+                ("handsOff", &hands_off.to_string()),
+            ],
+        )),
+        RemoteIdentity::Unreadable(why) => Err(copy_text(
+            "rsSftp.identity.undecidable",
+            &[
+                ("machine", &machine.to_string()),
+                ("path", &path.to_string()),
+                ("why", &why.to_string()),
+            ],
+        )),
+    }
+}
+
+/// 这份文本是不是我们从前放的那一形 `ccm` 入口（三行 shim / bash 启动器两形之一）。**纯函数**。
+/// 用户：旧落点那一份（[`retired_verdict`]，远端读回的 · 〔P1〕monitor 本机探针交来的 PATH 上另一个 `ccm` 的开头）· 今天的落点上从前那份三行入口（[`landing_verdict`]）。
+/// 两形的记号是文件格式（`deploy_contract::SHIM_MARK` · `LAUNCHER_MARK`）。
+pub fn is_ours(text: &str) -> bool {
+    let mut lines = text.lines();
+    let (Some(first), Some(second)) = (lines.next(), lines.next()) else {
+        return false;
+    };
+    if !first.starts_with("#!") {
+        return false;
+    }
+    second == deploy_contract::SHIM_MARK || second.starts_with(deploy_contract::LAUNCHER_MARK)
+}
+
+/// 〔E2〕落点那一份怎么办：先按身份戳判（[`identity_decision`]）；「不说自己是谁」时再看它是不是我们从前放的
+/// 三行入口（[`is_ours`]，`old_entry` = 读回来的那一份字节，读不到 ⇒ `None`）—— 是 ⇒ 换成后端本体（部署那一步是原子替换）；
+/// 不是 ⇒ 照旧显式失败、不动。**纯函数**。
+pub fn landing_verdict(
+    id: &RemoteIdentity,
+    old_entry: Option<&[u8]>,
+    expected: &str,
+    machine: &str,
+    path: &str,
+) -> Result<DeployAction, String> {
+    if matches!(id, RemoteIdentity::NoStamp)
+        && old_entry.is_some_and(|b| is_ours(&String::from_utf8_lossy(b)))
+    {
+        return Ok(DeployAction::Deploy(copy_text(
+            "rsSftp.identity.oldEntry",
+            &[],
+        )));
+    }
+    identity_decision(id, expected, machine, path)
+}
+
+/// 旧落点那一份的身份 → 怎么办。**纯函数**。
+pub fn legacy_verdict(id: Result<RemoteIdentity, String>) -> LegacyVerdict {
+    match id {
+        Ok(RemoteIdentity::Missing) => LegacyVerdict::Absent,
+        Ok(RemoteIdentity::Stamp(_)) => LegacyVerdict::Remove,
+        Ok(_) => LegacyVerdict::Keep,
+        Err(e) => LegacyVerdict::Unknown(e),
+    }
 }
 
 /// 〔WF2 · WIN3 读数 B〕残件多久没动过才算没人要：远大于 monitor 等一次 `put` 的上限（`dial_host::FILES_PUT_DEADLINE`，600 秒）
@@ -115,14 +319,20 @@ pub struct Plan {
 /// 落点那一份是谁：先 stat（没有 / 0 字节就不必再问），在就扫它字节里的身份戳。
 async fn identity_at(facing: &dyn Facing, rel: &str, word: &str) -> Result<RemoteIdentity, String> {
     let (size, exists) = facing.stat(rel).await?;
-    Ok(match deploy_core::interpret_target_probe(size, exists) {
-        deploy_core::TargetBinary::Missing => RemoteIdentity::Missing,
-        deploy_core::TargetBinary::Empty => RemoteIdentity::Empty,
-        deploy_core::TargetBinary::Present | deploy_core::TargetBinary::Unknown => {
-            match facing.exec(deploy_core::stamp_scan_cmd(word, MARKS)).await {
-                Ok((r, _)) => {
-                    deploy_core::interpret_stamp_scan(r.exit_status, &r.stdout, &r.stderr, MARKS)
-                }
+    Ok(match interpret_target_probe(size, exists) {
+        TargetBinary::Missing => RemoteIdentity::Missing,
+        TargetBinary::Empty => RemoteIdentity::Empty,
+        TargetBinary::Present | TargetBinary::Unknown => {
+            match facing
+                .exec(deploy_contract::stamp_scan_cmd(word, MARKS))
+                .await
+            {
+                Ok((r, _)) => deploy_contract::interpret_stamp_scan(
+                    r.exit_status,
+                    &r.stdout,
+                    &r.stderr,
+                    MARKS,
+                ),
                 Err(e) => RemoteIdentity::Unreadable(e),
             }
         }
@@ -131,8 +341,8 @@ async fn identity_at(facing: &dyn Facing, rel: &str, word: &str) -> Result<Remot
 
 /// 〔THIN〕**那台要哪一格字节** —— 部署计划的第 ① 步，两件产物共用（`deploy-plan` 与 `deploy-slot` 都走它）。
 ///
-/// 远端（有 `facing`）：问 `uname -s -m`（[`deploy_core::key_from_uname`]）；本机（`None`）：这台自己的键（`Key::this_machine`，
-/// `设计/01 §6.7a` 规矩 4：本机只是「目标机器恰好是自己」）。→ 表 A / 表 B（[`deploy_core::judge`]）→ 这一版带没带那一格（`carried`）。
+/// 远端（有 `facing`）：问 `uname -s -m`（[`deploy_contract::key_from_uname`]）；本机（`None`）：这台自己的键（`Key::this_machine`，
+/// `设计/01 §6.7a` 规矩 4：本机只是「目标机器恰好是自己」）。→ 表 A / 表 B（[`judge`]）→ 这一版带没带那一格（`carried`）。
 /// 拒绝点在写第一个字节之前（`设计/96 §7.1.4b`）；回那一格与问 `uname` 那一趟拨号的 ack（本机 `Null`）。
 async fn slot_of(
     facing: Option<&dyn Facing>,
@@ -144,7 +354,7 @@ async fn slot_of(
     let (raw, route, ack) = match facing {
         Some(f) => {
             let (got, ack) = f
-                .exec(deploy_core::UNAME_CMD.to_string())
+                .exec(deploy_contract::UNAME_CMD.to_string())
                 .await
                 .map_err(|e| {
                     let said = match product {
@@ -160,14 +370,14 @@ async fn slot_of(
                     ("unreachable", said)
                 })?;
             (
-                deploy_core::key_from_uname(got.exit_status, &got.stdout, &got.stderr),
+                deploy_contract::key_from_uname(got.exit_status, &got.stdout, &got.stderr),
                 Route::Remote,
                 ack,
             )
         }
         None => (Key::this_machine(), Route::Local, Value::Null),
     };
-    let key = deploy_core::judge(product, route, raw).map_err(said)?;
+    let key = judge(product, route, raw).map_err(said)?;
     if !carried.contains(&key) {
         return Err(said(Refusal::NotCarried {
             os: key.os.label().to_string(),
@@ -207,7 +417,7 @@ pub async fn plan(
         }
         _ => None,
     };
-    let action = deploy_core::landing_verdict(
+    let action = landing_verdict(
         &id,
         old.as_deref(),
         &expected,
@@ -215,11 +425,11 @@ pub async fn plan(
         &format!("~/{landing}"),
     )
     .map_err(|e| ("undecidable", e))?;
-    let legacy = deploy_core::legacy_verdict(
+    let legacy = legacy_verdict(
         identity_at(
             facing,
-            deploy_core::LEGACY_BACKEND_REL,
-            deploy_core::LEGACY_BACKEND_WORD,
+            deploy_contract::LEGACY_BACKEND_REL,
+            deploy_contract::LEGACY_BACKEND_WORD,
         )
         .await,
     );
@@ -277,7 +487,7 @@ pub fn carried_of(args: &Value) -> Result<Vec<(Key, String)>, (&'static str, Str
     rows.iter()
         .map(|r| {
             let s = |k: &str| r.get(k).and_then(Value::as_str).unwrap_or("");
-            let key = deploy_core::key_of(s("os"), s("arch"))
+            let key = deploy_contract::key_of(s("os"), s("arch"))
                 .map_err(|_| bad("`carried` row names a machine outside table A"))?;
             match s("id") {
                 "" => Err(bad("`carried` row without `id`")),
@@ -377,7 +587,7 @@ pub async fn answer(args: &Value, facing: &dyn Facing) -> Result<Value, (&'stati
 // ═══ 〔THIN〕旧入口 `~/.local/bin/ccm` 的去向（帧命令 `deploy-retired`）══════════════════════════════
 //
 // 与上传残件（[`stale_leftovers`]）同一家：落点上该清的东西，判在这里，monitor 照删。从前 monitor `ccm_legacy::sweep`
-// 自己读、自己认（`deploy_core::is_ours`）、自己决定删；今天它只把这里的答交给那台后端的 `files-delete`（带 `expect`）。
+// 自己读、自己认（`is_ours`）、自己决定删；今天它只把这里的答交给那台后端的 `files-delete`（带 `expect`）。
 
 /// 旧入口那一份的去向。
 #[derive(Debug, PartialEq, Eq)]
@@ -391,9 +601,9 @@ pub enum Retired {
 }
 
 /// **纯函数**：stat 的结论 ＋ 读回来的字节（读不出 / 比 [`RETIRED_READ_MAX`] 大 ⇒ `None`）→ 去向。
-/// 只认 [`deploy_core::is_ours`] 那两形；别的一律不动（用户自己的脚本 · 空文件 · 不是 UTF-8 · 读不回来）。
-pub fn retired_verdict(at: deploy_core::TargetBinary, bytes: Option<Vec<u8>>) -> Retired {
-    use deploy_core::TargetBinary;
+/// 只认 [`is_ours`] 那两形；别的一律不动（用户自己的脚本 · 空文件 · 不是 UTF-8 · 读不回来）。
+pub fn retired_verdict(at: TargetBinary, bytes: Option<Vec<u8>>) -> Retired {
+    use TargetBinary;
     let not_ours = || Retired::Keep {
         why: copy_text("beDeployRetired.kept.notOurs", &[]),
     };
@@ -401,7 +611,7 @@ pub fn retired_verdict(at: deploy_core::TargetBinary, bytes: Option<Vec<u8>>) ->
         TargetBinary::Missing => Retired::Absent,
         TargetBinary::Empty => not_ours(),
         TargetBinary::Present | TargetBinary::Unknown => match bytes.map(String::from_utf8) {
-            Some(Ok(text)) if deploy_core::is_ours(&text) => Retired::Remove { expect: text },
+            Some(Ok(text)) if is_ours(&text) => Retired::Remove { expect: text },
             Some(Ok(_)) => not_ours(),
             _ => Retired::Keep {
                 why: copy_text("beDeployRetired.kept.unreadable", &[]),
@@ -427,15 +637,15 @@ pub async fn answer_retired(
     }
     if let Some(t) = text {
         return Ok(retired_json(retired_verdict(
-            deploy_core::TargetBinary::Present,
+            TargetBinary::Present,
             Some(t.as_bytes().to_vec()),
         )));
     }
-    let rel = deploy_core::LEGACY_ENTRY_REL;
+    let rel = deploy_contract::LEGACY_ENTRY_REL;
     let (size, exists) = facing.stat(rel).await.map_err(|e| ("unreachable", e))?;
-    let at = deploy_core::interpret_target_probe(size, exists);
+    let at = interpret_target_probe(size, exists);
     let bytes = match at {
-        deploy_core::TargetBinary::Present | deploy_core::TargetBinary::Unknown => {
+        TargetBinary::Present | TargetBinary::Unknown => {
             let got = facing.read(rel, RETIRED_READ_MAX).await;
             if got.is_none() {
                 tracing::warn!("deploy-retired：~/{rel} 读不回来或比上限大 —— 认不出、不删");
@@ -484,7 +694,7 @@ pub async fn answer_slot(
         .iter()
         .map(|r| {
             let s = |k: &str| r.get(k).and_then(Value::as_str).unwrap_or("");
-            deploy_core::key_of(s("os"), s("arch"))
+            deploy_contract::key_of(s("os"), s("arch"))
                 .map_err(|_| bad("`carried` row names a machine outside table A"))
         })
         .collect::<Result<_, _>>()?;
@@ -499,7 +709,7 @@ pub async fn answer_slot(
 
 // ═══ 〔THIN〕远端常驻后端 hello 的新旧（帧命令 `resident-verdict`）═══════════════════════════
 //
-// monitor 接远端常驻后端时读到 hello，从前自己判「那台比手上这一版旧 ⇒ 换一次」（`deploy_core::is_newer`）；
+// monitor 接远端常驻后端时读到 hello，从前自己判「那台比手上这一版旧 ⇒ 换一次」（`is_newer`）；
 // 判定归后端（`设计/00 §1.2`「判定只在后端」），与部署计划同一家：「换不换」都在这里判，monitor 只照做。
 
 /// hello 那一问的答：`replace` = 换掉再接（只升不降，HX2 D-b，且只换一次）；`older` = 那台比手上这一版旧（版本那句话按它挑）。
@@ -511,7 +721,7 @@ pub struct Verdict {
 
 /// **纯函数**：`mine` = monitor 手上这一版自报的身份 · `theirs` = 那台 hello 报的 · `replaced` = 这一趟已经换过一次。
 pub fn resident_verdict(mine: &str, theirs: &str, replaced: bool) -> Verdict {
-    let older = deploy_core::is_newer(mine, theirs);
+    let older = is_newer(mine, theirs);
     Verdict {
         replace: older && !replaced,
         older,
@@ -539,6 +749,73 @@ pub fn answer_resident_verdict(args: &Value) -> Result<Value, (&'static str, Str
         "action": if v.replace { "replace" } else { "attach" },
         "older": v.older,
     }))
+}
+
+// ═══ 〔P1〕本机那一份放不放（帧命令 `place-verdict`）═══════════════════════════════════════════
+//
+// 本机常驻后端放下去之前没有后端可问 —— 可「`ccm` 就是后端本体」（V28）：monitor 手上那份字节就是一个后端。
+// monitor 把它写成暂存件、跑 `<暂存件> -- --place-verdict` 问一次（CLI 面自动派生），照答放或不放（`local_backend::extract_embedded_to`）；
+// 判定（表 B 本机那一行 · 落点那一份 vs 自己的 `BUILD_ID`，只升不降）只在这里。
+// 〔主会话 09-29 认的偏离〕本机 (Linux, aarch64) 的「不承诺」落在写暂存件之后（`96 §7.1.4b` 字面是写第一个字节之前）：问完即删、净足迹零。
+
+/// 本机那一份的去向。
+#[derive(Debug, PartialEq, Eq)]
+pub enum Placed {
+    /// 放（换）上去；`why` = 人读原因。
+    Place(String),
+    /// 不动、用盘上那一份（它不比这一份旧）；`why` 点名两边各是哪一版。
+    Keep(String),
+}
+
+/// **纯函数**：`me` = 这份字节自己的键（就是这台）· `disk` = 落点那个文件（`Ok(None)` = 不在 · `Err` = 读不了）· `mine` = 自己的 `BUILD_ID`。
+/// 只在「盘上与手上逐字节不同」时被问（相同那一形 monitor 直接用、不问）⇒ 同一版那一格也是放（开发树重编：同 id、不同字节）。
+/// 拒：`refused`（表 A / 表 B，那句话是 `Refusal::say`）· `undecidable`（落点那一份不说自己是谁 / 身份不唯一 / 读不了）。
+pub fn place_verdict(
+    me: Result<Key, Refusal>,
+    disk: Result<Option<Vec<u8>>, String>,
+    mine: &str,
+    machine: &str,
+    dest: &str,
+) -> Result<Placed, (&'static str, String)> {
+    judge(Product::Backend, Route::Local, me)
+        .map_err(|r| ("refused", r.say(Product::Backend, machine)))?;
+    let id = match disk {
+        Ok(None) => RemoteIdentity::Missing,
+        Ok(Some(b)) => deploy_contract::identity_of_bytes(&b, MARKS),
+        Err(e) => RemoteIdentity::Unreadable(e),
+    };
+    match identity_decision(&id, mine, machine, dest).map_err(|e| ("undecidable", e))? {
+        DeployAction::Deploy(why) => Ok(Placed::Place(why)),
+        DeployAction::Skip => Ok(Placed::Place(copy_text("bePlaceVerdict.why.rebuilt", &[]))),
+        DeployAction::Keep { why, .. } => Ok(Placed::Keep(why)),
+    }
+}
+
+/// 帧面入口：`{dest, machine}` → `{action: "place" | "keep", why}`。`dest` 缺 / 不是绝对路径 · `machine` 缺 ⇒ `bad_args`。
+/// 只读落点那一个文件（不在 ⇒ 没装）；这份字节自己的键与身份取自编译期（`Key::this_machine` · `crate::BUILD_ID`）。
+pub fn answer_place(args: &Value) -> Result<Value, (&'static str, String)> {
+    let bad = |m: &str| ("bad_args", crate::common::contract::malformed(m));
+    let dest = args
+        .get("dest")
+        .and_then(Value::as_str)
+        .filter(|d| std::path::Path::new(d).is_absolute())
+        .ok_or_else(|| bad("missing `dest` (absolute path)"))?;
+    let machine = args
+        .get("machine")
+        .and_then(Value::as_str)
+        .filter(|m| !m.is_empty())
+        .ok_or_else(|| bad("missing `machine` (non-empty string)"))?;
+    let disk = match std::fs::read(dest) {
+        Ok(b) => Ok(Some(b)),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(e.to_string()),
+    };
+    Ok(
+        match place_verdict(Key::this_machine(), disk, crate::BUILD_ID, machine, dest)? {
+            Placed::Place(why) => json!({ "action": "place", "why": why }),
+            Placed::Keep(why) => json!({ "action": "keep", "why": why }),
+        },
+    )
 }
 
 #[cfg(test)]

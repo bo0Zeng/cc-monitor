@@ -11,7 +11,7 @@
 //!
 //! | 形 | 第二行（记号） | 来自 |
 //! |---|---|---|
-//! | 三行 shim（09-11 起，历代都是这一行） | `deploy_core` 里那个 `SHIM_MARK`（生成器〔E2〕删了，记号留成字面量） | `ccm_entry_shim`〔散文墓碑〕历代 |
+//! | 三行 shim（09-11 起，历代都是这一行） | `deploy_contract` 里那个 `SHIM_MARK`（生成器〔E2〕删了，记号留成字面量） | `ccm_entry_shim`〔散文墓碑〕历代 |
 //! | bash 启动器（09-11 之前，`shared/ccm`，后端 ccm 的第二份实现 ＝ ③ 那份「与后端重复的」） | `# ccm — cc-monitor 统一启动器…` | `K-R48` 删掉的那份文件 |
 //!
 //! 〔THIN · 09-29〕**认不认得出 · 删不删由本机常驻后端判**（帧命令 `deploy-retired`，`src/backend/control/deploy_plan.rs::retired_verdict`，
@@ -34,8 +34,8 @@
 use crate::copy_table::copy_text;
 use crate::user_files::{Door, Refused};
 
-/// 那一份在家目录下的相对路径。**唯一住址**在共享的 `deploy-core`（后端判它、足迹那一行、本模块删它，同一个常量）。
-pub(crate) use deploy_core::LEGACY_ENTRY_REL as LEGACY_REL;
+/// 那一份在家目录下的相对路径。**唯一住址**在契约 crate `deploy-contract`（后端判它、足迹那一行、本模块删它，同一个常量）。
+pub(crate) use deploy_contract::LEGACY_ENTRY_REL as LEGACY_REL;
 
 /// 本机常驻后端那条命令的名字（与 `src/backend/stream/inbound.rs::REGISTRY` 同名）。
 pub(crate) const RETIRED_CMD: &str = "deploy-retired";

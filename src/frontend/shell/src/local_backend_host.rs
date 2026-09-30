@@ -1364,6 +1364,8 @@ fn resolve_backend_bin(
         // `backend-split` 的 C10：平台知识由宿主注入。
         &crate::platform::fs::make_executable,
         &crate::platform::fs::ensure_private_dir,
+        // 〔P1〕放不放问手上那份字节自己（起进程的三条策略由宿主给，`15 §5.1 A3`）。
+        &crate::ccm_probe::ask_place_verdict,
     ) {
         Resolved::Found(p) => Ok(p),
         Resolved::Missing { reason, looked_at } => Err((reason, looked_at)),
@@ -1613,21 +1615,18 @@ pub fn start_local_backend() -> StartOutcome {
     //  『表没有 OS 轴』逼出来的补丁」。〕今天 `byte_table::choose` 按这台机器的键查表：Windows 那一格就是这一份产物
     //  按 `TARGET` 内嵌的那份，Linux 那一格是 musl（开发树只有原生那份时给原生那份），不承诺 / 没带 ⇒ 那句拒绝的话。
     let this_machine = crate::byte_table::Key::this_machine();
-    let embedded: Result<(&str, &[u8]), String> = crate::byte_table::choose(
-        crate::byte_table::Product::Backend,
-        crate::byte_table::Route::Local,
-        this_machine,
-    )
-    .map_err(|r| {
-        r.say(
-            crate::byte_table::Product::Backend,
-            &copy_text("rsLocalBackendHost.local.machine", &[]),
-        )
-    })
-    .and_then(|p| match p.build_id {
-        Some(id) => Ok((id, p.bytes)),
-        None => Err(copy_text("rsLocalBackendHost.local.noBuildId", &[])),
-    });
+    let embedded: Result<(&str, &[u8]), String> =
+        crate::byte_table::choose(crate::byte_table::Product::Backend, this_machine)
+            .map_err(|r| {
+                r.say(
+                    crate::byte_table::Product::Backend,
+                    &copy_text("rsLocalBackendHost.local.machine", &[]),
+                )
+            })
+            .and_then(|p| match p.build_id {
+                Some(id) => Ok((id, p.bytes)),
+                None => Err(copy_text("rsLocalBackendHost.local.noBuildId", &[])),
+            });
     // ★★ `K-P1`：**先走常驻那条路** —— 认得出已有实例就接上它，没有就起一个脱离的。
     //
     // 这就是「怎么起」那个注入点：`start_detached` 是**这一层**（宿主知识层）的东西，
@@ -1658,6 +1657,8 @@ pub fn start_local_backend() -> StartOutcome {
         crate::spawn_managed::local_backend_supervised(),
         // 〔RL1〕与常驻那条路交的是**同一份**（上面那个 `relay_envs`）。
         relay_envs,
+        // 〔P1〕同上：放不放问手上那份字节自己。
+        &crate::ccm_probe::ask_place_verdict,
     );
     if let Some(h) = sup {
         *g = Some(h);
