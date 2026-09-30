@@ -365,6 +365,7 @@ const SCAN: &[&str] = &[
     "tests/backend/control/launch_render/launch_wire_f07_main_path_tests.rs",
     "tests/frontend/shell/backend_policy_tests.rs",
     "tests/frontend/shell/backend_client_guard_tests.rs", // 〔THIN〕原 `backend_tests.rs`：`backend/` 目录没了，两道判据改看逐个点名的那一组
+    "tests/frontend/shell/platform/platform_home_guard.rs", // 〔P4b · 阶段 H〕壳里平台形态只许住 `platform/`（与 host-core）＋ 待收名单
     "tests/frontend/shell/contract_crate_guard_tests.rs", // 〔THIN 第 5 件〕读 manifest 与生产源码
     "tests/frontend/shell/bus_identity_registry_tests.rs",
     "tests/frontend/shell/byte_cap_registry_tests.rs",

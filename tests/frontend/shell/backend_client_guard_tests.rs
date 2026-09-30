@@ -140,16 +140,10 @@ fn platform_needles() -> Vec<String> {
 /// ① **单点**（该形态在该文件生产段里恰好出现 **1** 次）；
 /// ② **「已收敛」不是散文** —— 第四列是那句话的机检锚点，锚点没了就红。
 #[allow(clippy::type_complexity)]
-const PLATFORM_EXCEPTIONS: &[(&str, &str, &str, &str)] = &[(
-    "src/frontend/shell/src/local_backend.rs",
-    "env::consts::",
-    "`EXE_SUFFIX` 是**没有 cfg 的平台原语**（Windows `.exe` / 别处空串）。         它没被搬进 `platform/`，但**平台差异已经收敛成一个注入参数**：         `resolve_beside_this_exe` 把它读出来喂给 `resolve_with`，         而 `resolve_with`（逻辑那半）与平台无关、在任何平台上都能测。         ⇒ 出路②「建 backend/platform/」为它一个常量建一层目录不划算；走出路③，登记在此。",
-    // ⚠ 锚点要**不含糊**：第一版写的是 `"exe_suffix: &str"`，而同文件的
-    // `local_backend_candidates` 也有同名参数 ⇒ 把 `resolve_with` 的参数改名，
-    // 判据**照样绿**（变异实测）。改成多行签名片段。
-    // ★ 与 F05「起流/起流程」、F16「src/backend/-X」同族：**匹配单位比事实小**。
-    "pub fn resolve_with(\n    exe_dir: &Path,\n    target_triple: &str,\n    exe_suffix: &str,",
-)];
+// 〔P4b · 阶段 H〕唯一那一行（`local_backend.rs` 的 `env::consts::`）随 `EXE_SUFFIX` 收进 `platform::proc` 出列，表今天是空的。
+// 上限那行不动（它被 `local_backend_host_tests::this_item_loosened_none_of_the_ratchets_it_touched` 按整行钉着）；
+// 真正挡「往这组里写平台代码」的已是 `platform/platform_home_guard.rs`：这里加一行例外、那边照样红。
+const PLATFORM_EXCEPTIONS: &[(&str, &str, &str, &str)] = &[];
 
 fn platform_hits(prod: &str) -> Vec<String> {
     platform_needles()
@@ -341,7 +335,8 @@ fn the_platform_needles_actually_match_the_platform_heavy_half() {
     // 地板留一格余量（少一种形态不算警报，少两种就说明形态集在烂）。
     // 〔LOC1b · 第四波 4D〕`session_map.rs`（原 4 种）那个锚摘了：monitor 自己那份进程身份判活（`/proc` · `GetProcessTimes`）
     //   随本机判活改由本机后端的帧来删了，那份文件今天零平台形态 —— 它不再是「平台重的那一半」，拿它当锚会恒红。
-    for (rel, least) in [("utils.rs", 5usize), ("bind.rs", 3usize)] {
+    // 〔P4b · 阶段 H〕`bind.rs`（原 4 种）那个锚换成它的平台那一半的新住址 `platform/hwnd.rs`：Win32 窗口读法整段搬去了，`bind.rs` 今天零平台形态。
+    for (rel, least) in [("utils.rs", 5usize), ("platform/hwnd.rs", 3usize)] {
         let p = src_root.join(rel);
         assert!(
             p.is_file(),

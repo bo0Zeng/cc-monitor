@@ -160,22 +160,21 @@ const LOCAL_PROBE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(
 ///
 /// `Command::output()` 没有超时形态（std 不提供 `wait_timeout`），所以这里自己拼：
 /// stdout 交给一条读线程（不读会在管道写满时把子进程堵死），主线程按截止时间轮询 `try_wait`。
-#[cfg(not(windows))]
-pub(crate) fn probe_local_ccm_uncached(timeout: std::time::Duration) -> CcmProbeResult {
-    probe_with(timeout, CCM_PROBE_CMD)
-}
-
+///
 /// 〔WF1 · `99 §2.2 ㉔`〕Windows 那一形：新开一个 PowerShell 窗口时敲 `ccm` 走到哪（见 [`probe_via_fresh_powershell`]）。
-#[cfg(windows)]
+/// 〔P4b · 阶段 H〕两份 cfg 分身合成一份：本机新开终端是哪一族 shell 由 `platform::login_shell::LOGIN_SHELL` 答。
 pub(crate) fn probe_local_ccm_uncached(timeout: std::time::Duration) -> CcmProbeResult {
-    probe_via_fresh_powershell(timeout)
+    use crate::platform::login_shell::{LoginShell, LOGIN_SHELL};
+    match LOGIN_SHELL {
+        LoginShell::Posix => probe_with(timeout, CCM_PROBE_CMD),
+        LoginShell::PowerShell => probe_via_fresh_powershell(timeout),
+    }
 }
 
 /// 〔WF1 · ㉔〕Windows 上「新开一个终端窗口时的 PATH」：注册表里机器级 ＋ 用户级（展开之后）现拼 ——
 /// 本进程继承来的是 monitor 起的那一刻的那一份，用户刚在设置里加过的用户级 PATH 它看不到。
 /// 〔P1 · 同 P2 那一形（`profile_installer::render_user_path_probe_command`）〕自己编成 UTF-8 字节、直写标准输出流：
 /// 不经控制台编码（中文系统是 936）、也不去改控制台代码页 ⇒ PATH 里有非 ASCII 目录时读回不坏。
-#[cfg(any(windows, test))]
 const FRESH_PATH_PS: &str = "$t = (@([Environment]::GetEnvironmentVariable('Path', 'Machine'), [Environment]::GetEnvironmentVariable('Path', 'User')) | Where-Object { $_ }) -join ';'\n\
 $b = [Text.Encoding]::UTF8.GetBytes($t + [char]10)\n\
 $o = [Console]::OpenStandardOutput()\n\
@@ -185,7 +184,6 @@ $o.Flush()\n";
 /// 〔WF1 · ㉔〕Windows 那一形的探测串，跑在**照常加载 profile** 的 PowerShell 里（`$PROFILE` 在哪、怎么加载由 PowerShell 自己答）。
 /// 输出与 [`CCM_PROBE_CMD`] 同形：名片 ＋ 空行 ＋ `at=<住址>`，找不到 ⇒ `NO_CCM`；住址：程序 ⇒ 它的路径，函数 / 别名 ⇒ 名字（同 `command -v`）。
 /// 〔P1〕整段拼好、编成 UTF-8 字节直写标准输出流（同上）：住址（用户目录）含非 ASCII 时不坏；名片那几行是 ASCII，经 PowerShell 读回不受代码页影响。
-#[cfg(any(windows, test))]
 const CCM_PROBE_PS: &str = "$c = Get-Command ccm -ErrorAction SilentlyContinue | Select-Object -First 1\n\
 $t = if ($c) { ((& ccm '--' '--ccm-probe') -join [char]10) + [char]10 + [char]10 + 'at=' + $(if ($c.CommandType -eq 'Application') { $c.Source } else { $c.Name }) + [char]10 } else { 'NO_CCM' + [char]10 }\n\
 $b = [Text.Encoding]::UTF8.GetBytes($t)\n\
@@ -195,7 +193,6 @@ $o.Flush()\n";
 
 /// 两跳：① 不读 profile 的那一个现拼 PATH（[`FRESH_PATH_PS`]）；② 带这份 PATH 起一个照常加载 profile 的，问 [`CCM_PROBE_PS`]。
 /// 与 POSIX 那一形（`bash -lic`）同一个等待与解析（[`capture_spawned`] · [`parse_probe_output`]）；哪一跳没成 ⇒ 当没装（同 POSIX）。
-#[cfg(windows)]
 fn probe_via_fresh_powershell(timeout: std::time::Duration) -> CcmProbeResult {
     use crate::spawn_managed::{spawn_managed_cmd, ConsolePolicy, Lifetime, StderrSink};
     let Some(path) = capture_spawned(timeout, &|| {
@@ -231,7 +228,6 @@ fn probe_via_fresh_powershell(timeout: std::time::Duration) -> CcmProbeResult {
 
 /// [`probe_local_ccm_uncached`] 的内层。**命令是参数只为了让判据能喂一个「一定挂住」的串**；
 /// 生产侧唯一的实参是 [`CCM_PROBE_CMD`]（由 `the_only_production_probe_command_is_the_constant` 钉）。
-#[cfg(not(windows))]
 fn probe_with(timeout: std::time::Duration, cmd: &str) -> CcmProbeResult {
     use crate::spawn_managed::{spawn_managed_cmd, ConsolePolicy, Lifetime, StderrSink};
     probe_spawned(timeout, &|| {
