@@ -16,6 +16,7 @@ use std::collections::{HashMap, HashSet};
 
 /// 一个类型。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 pub struct TypeNode {
     /// 图里的 id(Mermaid 能吃的字符;由名字派生,人能读)。
     pub id: String,
@@ -31,12 +32,14 @@ pub struct TypeNode {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 pub struct TypeField {
     pub name: String,
     pub ty: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 pub struct TypeMethod {
     pub name: String,
     pub symbol: SymbolId,
@@ -44,6 +47,7 @@ pub struct TypeMethod {
 
 /// 类型之间的一条关系。`from`/`to` 是 [`TypeNode::id`]。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 pub struct TypeRelation {
     pub from: String,
     pub to: String,
@@ -54,6 +58,7 @@ pub struct TypeRelation {
 
 /// 关系种类 —— 都来自声明。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "snake_case")]
 pub enum TypeRelKind {
     /// `from` 实现 / 继承 `to`(`impl Tr for A` ⇒ A → Tr)。
