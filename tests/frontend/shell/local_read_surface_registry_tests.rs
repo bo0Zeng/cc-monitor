@@ -228,6 +228,14 @@ const HOME_REACHES: &[(&str, &str, &str, &str)] = &[
         "足迹里 monitor 自己那几行的根（`home` 那一格）",
         "只读诊断页；只交 monitor 自己进程的几条事实，不 stat，落点由本模块的 claude 棘轮数着",
     ),
+    // 〔P3 · V160〕数据位置页列本机后端住在家里的那几样：只 stat（在不在 · 多大），不读内容。
+    (
+        "data_paths.rs",
+        "collect",
+        "`~/.cc-monitor` 里后端那几样（`bin/` · `staging/` · 两把钥匙 · `panorama/`）",
+        "**不是伸手拿用户的东西**：cc-monitor 自己的家（后端与 monitor 同住，V160）。只 `is_file` / `is_dir` / 长度，\
+             不读字节 —— 两把钥匙的内容一个字节都不碰；`home_dir()` 只为「每个用户各一份」",
+    ),
     // 〔OSA · 主会话 09-28 裁〕`data_paths.rs` 探 `$PROFILE` 候选目录那一行摘了：界面经通道问本机后端（`$PROFILE` 在哪只有后端方言答）。
     // 〔MIG-3b〕钩子诊断那一行摘了：本机那份读盘进了本机后端（`hooks-diag`），monitor 不再伸手进用户 home。
     // 〔AL2 · 第四波 4D〕这里原来有 `aliases_read`〔散文墓碑〕一行（它自己 `home_dir()` 再直读）。读回口改问那台后端

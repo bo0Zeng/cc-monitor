@@ -57,6 +57,14 @@ pub const PORT: u16 = 8788;
 /// 注入的 URL 不带钥匙本身，渲染成 `$(cat "$HOME/<本常量>")` 在那台机器的 pane shell 里展开（RK1）。
 pub const KEY_FILE_REL: &str = ".cc-monitor/relay-key";
 
+/// 〔P3 · `设计/70 §6.2` · V160「一台机器一个家」〕后端的**上传暂存区**（相对家目录）：SFTP 传输台只往这里写 `<key>.part`，
+/// 传完由那台后端提交、挪进目标。后端按它落盘（`control/files_commit.rs::STAGING_DIR`），monitor 的数据位置页按它列出。
+pub const STAGING_DIR_REL: &str = ".cc-monitor/staging";
+
+/// 〔P3 · 同上〕代码全景的**索引根**（相对家目录）：那台后端起全景小程序时交的 `--store`（`control/panorama.rs::store_dir`），
+/// 被分析的仓零字节；monitor 的数据位置页按它列出。
+pub const PANORAMA_INDEX_REL: &str = ".cc-monitor/panorama";
+
 /// 钥匙的形状：恰好 64 个小写十六进制字符（32 字节 = 256 位，中转 `relay/door.rs` 铸的就是这一形）。
 pub fn key_shape_ok(s: &str) -> bool {
     s.len() == 64 && s.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))

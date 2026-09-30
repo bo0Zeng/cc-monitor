@@ -212,6 +212,7 @@ data dir 里两类东西**语义上一刀两断**，别搅混到「迁移/重建
 | `sid-hwnd-cache.json` | **缓存** | `bind.rs` | sid→HWND，能从 PS 握手重建 |
 | `ps-registry/` `ps-await/` | **缓存/IPC** | `bind.rs` | 跨进程握手，启动重扫 |
 | `logs/` | **缓存/派生** | `logging.rs` · 本机常驻后端 | 诊断日志：`monitor/` 是本进程按天滚动、保留 3 天（§15）；`backend/` 是脱离运行的本机后端 stderr |
+| `bin/` `staging/` `relay-key` `listen-token` `logs/backend/` `panorama/` | **缓存** | 本机后端（`bin/` 与 `listen-token` 由宿主放 / 铸） | 〔P3 · V160 一台机器一个家〕后端住在同一个家里的：程序 · 上传暂存区 · 中转钥匙 · 监听钥匙 · 错误输出 · 全景索引。都能重建（两把钥匙重起后端时重铸）；名字各取契约常量（`relay_route_core`）与宿主那一处（`logging::backend_stderr_log_path`），`data_paths.rs::backend_entries` 列它们 |
 
 - **真相** = 用户手写/意图，**删了丢东西、要备份、要迁移友好**。
 - **缓存/派生** = 能从别处重建，**随便删**。
