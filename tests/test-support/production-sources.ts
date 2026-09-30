@@ -21,6 +21,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
+import { toPosix } from "./posix-path.ts";
 import { REPO_ROOT } from "./repo-root.ts";
 
 /** 不进遍历的目录：构建产物、依赖、生成物。 */
@@ -73,7 +74,8 @@ function collect(subdir: string, ext: string): ProductionSource[] {
       // ★ 就是这一行让判据读不到自己：测试文件不进人群。
       if (e.name.includes(".vitest.") || e.name.includes(".test.")) continue;
       out.push({
-        file: full.slice(REPO_ROOT.length + 1),
+        // `resolve` 在 Windows 上把 `subdir` 那一截拼成 `\` ⇒ 不规整就是 `src\common/copy-core/…`，与字面量住址对不上。
+        file: toPosix(full.slice(REPO_ROOT.length + 1)),
         text: readFileSync(full, "utf8"),
       });
     }
