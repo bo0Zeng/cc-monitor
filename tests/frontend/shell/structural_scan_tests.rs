@@ -1813,9 +1813,15 @@ fn line_number_addresses_stay_in_range_and_never_grow() {
             // 消歧只走一步：**路径后缀唯一**。消不了就跳过，**不猜**
             // —— 猜错时它会输出一个看起来完全合理的东西（`K-R10` 否掉选法 ① 的
             // 理由逐字就是这个），那比不判更坏。
+            // `cited` 用 `/` 写（`control/tmux_hook.rs`）⇒ 盘上路径先归一成 `/` 再比：
+            // 不归一的话 Windows 上带目录的地址一个都消不了歧，越界那半静默跳过。
             let narrowed: Vec<&&(std::path::PathBuf, String)> = cands
                 .iter()
-                .filter(|e| e.0.to_string_lossy().ends_with(cited.as_str()))
+                .filter(|e| {
+                    e.0.to_string_lossy()
+                        .replace('\\', "/")
+                        .ends_with(cited.as_str())
+                })
                 .collect();
             if narrowed.len() != 1 {
                 continue;
