@@ -1,5 +1,51 @@
 use super::*;
 
+/// 夹具注进每个 `sleep` 的哨兵键（测试进程自己没有它）。
+const OWN_ENVIRON_SENTINEL: &str = "CCM_TEST_KID_OWN_ENVIRON";
+
+/// 起一个 `sleep 60`（`shape` 按需改它的环境），**回来时 `/proc/<pid>/environ` 读到的已经是它自己的环境**。
+///
+/// 🔴 「environ 读得出、非空」**不等于**读到的是子进程自己的环境〔CIFIX-BE 09-30，4.0.0 CI 红两条的根因〕：
+/// `posix_spawn` 的 vfork 父进程在子进程 `execve` **换 mm 之前**就被放回来；子进程此刻若被调度走，
+/// `/proc/<kid>/environ` 读的是**测试进程自己**的环境 —— 非空、没有令牌、没有 `TMUX_PANE`。
+/// 本机要让父进程抢在子进程前面才现形（`sudo chrt -R -f 1 taskset -c 7`：旧门 200/200 读到父进程环境，本门 200/200 对）。
+/// ⇒ 门是「读到哨兵」：它只在子进程 exec 完、换上自己的 mm 之后才在；`sleep` 不再 exec ⇒ 之后每次读都是它自己的。
+/// 等时**睡着让出 CPU**（子进程可能排在同一个核上）；10 s 等不到就 panic —— 那时的 `None` 是「取不到」不是「没设」。
+pub(crate) fn spawn_settled_sleep(
+    shape: impl FnOnce(&mut std::process::Command),
+) -> std::process::Child {
+    let mut cmd = std::process::Command::new("sleep");
+    cmd.arg("60");
+    shape(&mut cmd);
+    // 哨兵在 `shape` 之后注：`shape` 里就算 `env_clear()` 也清不掉它。
+    cmd.env(OWN_ENVIRON_SENTINEL, "1")
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null());
+    let mut kid = cmd
+        .spawn()
+        .expect("起不来 `sleep` —— 夹具坏了，读数一个字都不能信");
+    let want = format!("{OWN_ENVIRON_SENTINEL}=1");
+    let t0 = std::time::Instant::now();
+    loop {
+        if let Ok(b) = std::fs::read(format!("/proc/{}/environ", kid.id())) {
+            if b.split(|c| *c == 0).any(|e| e == want.as_bytes()) {
+                return kid;
+            }
+        }
+        if t0.elapsed() > std::time::Duration::from_secs(10) {
+            let pid = kid.id();
+            let _ = kid.kill();
+            let _ = kid.wait();
+            panic!(
+                "pid {pid} 等了 10 s 仍读不到它自己的 environ —— 夹具坏了，\
+                 此刻任何读数说的都不是这个子进程"
+            );
+        }
+        std::thread::sleep(std::time::Duration::from_millis(1));
+    }
+}
+
 /// 〔RESYNC · `INVARIANTS §48.3`〕**那个口真的 fail-closed**：没注入 ⇒ `tag` 炸（连 sid 都不看）；
 /// 注入了 ⇒ 探测真落到假 tmux 上（带着子进程环境里的那个 pane）。
 /// 住址 `INVARIANTS §48.3` 原文：「拿不到就炸，不许降级裸跑」。
@@ -21,20 +67,11 @@ fn an_in_process_tag_without_a_fake_tmux_blows_up() {
         format!("#!/bin/sh\necho \"$*\" >> '{}'\nexit 1\n", log.display()),
     )
     .unwrap();
-    let mut kid = std::process::Command::new("sleep")
-        .arg("5")
-        .env("TMUX_PANE", "%4242")
-        .spawn()
-        .expect("起得来 sleep");
+    let mut kid = spawn_settled_sleep(|c| {
+        c.env("TMUX_PANE", "%4242");
+    });
     let _iso = door::isolate_with(&script);
-    let mut got = Outcome::PaneUnknown;
-    for _ in 0..50 {
-        got = tag(kid.id(), "9d66c46d-bf88-4f99-877e-455555555555");
-        if got != Outcome::PaneUnknown {
-            break;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(20));
-    }
+    let got = tag(kid.id(), "9d66c46d-bf88-4f99-877e-455555555555");
     let _ = kid.kill();
     let _ = kid.wait();
     assert_eq!(got, Outcome::NoSuchPane);
@@ -108,22 +145,10 @@ fn a_pid_without_tmux_pane_never_reaches_tmux() {
 #[test]
 fn a_readable_env_without_tmux_pane_is_not_in_tmux() {
     let _iso = door::isolate();
-    let mut child = std::process::Command::new("sleep")
-        .arg("5")
-        .env_remove("TMUX_PANE")
-        .env_remove("TMUX")
-        .spawn()
-        .expect("起得来 sleep");
-    // 等它 exec 完（exec 窗口里环境读回 0 字节 ⇒ `Unreadable`，那是另一格）。
-    let pid = child.id();
-    let mut got = Outcome::PaneUnknown;
-    for _ in 0..50 {
-        got = tag(pid, "9d66c46d-bf88-4f99-877e-455555555555");
-        if got != Outcome::PaneUnknown {
-            break;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(20));
-    }
+    let mut child = spawn_settled_sleep(|c| {
+        c.env_remove("TMUX_PANE").env_remove("TMUX");
+    });
+    let got = tag(child.id(), "9d66c46d-bf88-4f99-877e-455555555555");
     let _ = child.kill();
     let _ = child.wait();
     assert_eq!(got, Outcome::NotInTmux);
@@ -152,6 +177,26 @@ fn a_bad_sid_short_circuits_before_any_io() {
 
 /// 一个形状合法的令牌（32 个小写十六进制字符）。夹具用，值本身无意义。
 const GOOD_TOKEN: &str = "0123456789abcdef0123456789abcdef";
+
+/// 起一个 `sleep`，可选地给它注一个 `CCM_RBIND_TOKEN`；环境已定型（[`spawn_settled_sleep`]）。
+/// 令牌那两条真进程判据共用：本文件断「读得出来」· `watcher_tests` 断「接上了、上了帧」。
+pub(crate) fn spawn_token_sleeper(token: Option<&str>) -> std::process::Child {
+    spawn_settled_sleep(|cmd| {
+        // ★ 先 `env_remove` 再按需 `env`：本测试进程自己的环境里要是碰巧有这个变量
+        //   （开发机上完全可能 —— 步 1 落地之后 monitor 就在注它），
+        //   阴性组会继承到它、当场变成一条假绿。
+        // 🔴 **这里刻意写字面量，不用 `RBIND_TOKEN_ENV`** —— 死值验现打逮到的一格。
+        //
+        // 用那个常量的话，注进去的名字与读出来的名字**同源**：把常量改成
+        // `CCM_RBIND_TOKEN_V2`（正是这个双写点真实的失效方向）之后，
+        // 本条**照样全绿** —— 本仓逐字「恒等两侧同源会恒真」。
+        // 换成字面量之后那一刀当场红。〔09-23 死值验刀 6 现打，先绿后红都量过。〕
+        cmd.env_remove("CCM_RBIND_TOKEN");
+        if let Some(t) = token {
+            cmd.env("CCM_RBIND_TOKEN", t);
+        }
+    })
+}
 
 #[test]
 fn a_well_formed_launch_token_is_accepted() {
@@ -202,68 +247,8 @@ fn anything_that_is_not_exactly_thirty_two_lowercase_hex_is_rejected() {
 /// ★ 阴性二不是陪跑：把校验整条删掉，正题与阴性一**都还绿**，只有它红。
 #[test]
 fn the_token_is_read_back_out_of_a_real_child_process_environ() {
-    /// 起一个 `sleep`，可选地给它注一个 `CCM_RBIND_TOKEN`。回 (子进程句柄, pid)。
-    fn spawn_sleeper(token: Option<&str>) -> std::process::Child {
-        let mut cmd = std::process::Command::new("sleep");
-        cmd.arg("60");
-        // ★ 先 `env_remove` 再按需 `env`：本测试进程自己的环境里要是碰巧有这个变量
-        //   （开发机上完全可能 —— 步 1 落地之后 monitor 就在注它），
-        //   阴性一会继承到它、当场变成一条假绿。
-        // 🔴 **这里刻意写字面量，不用 `RBIND_TOKEN_ENV`** —— 死值验现打逮到的一格。
-        //
-        // 用那个常量的话，注进去的名字与读出来的名字**同源**：把常量改成
-        // `CCM_RBIND_TOKEN_V2`（正是这个双写点真实的失效方向）之后，
-        // 本条**照样全绿** —— 本仓逐字「恒等两侧同源会恒真」。
-        // 换成字面量之后那一刀当场红。〔09-23 死值验刀 6 现打，先绿后红都量过。〕
-        cmd.env_remove("CCM_RBIND_TOKEN");
-        if let Some(t) = token {
-            cmd.env("CCM_RBIND_TOKEN", t);
-        }
-        let kid = cmd
-            .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .spawn()
-            .expect("起不来 `sleep` —— 本条的夹具坏了，读数一个字都不能信");
-        settle_past_the_exec_window(kid.id());
-        kid
-    }
-
-    /// 🔴 **等这个子进程走出 `execve` 窗口** —— 不等就是一条真的间歇性假红。
-    ///
-    /// # 这不是保险起见，是现打出来的
-    ///
-    /// `platform/proc.rs::EnvRead` 的头注逐字记着支四：`/proc/<pid>/environ`
-    /// **读得到、但回 0 字节** —— 成因之一是「exec 窗口（60–140 µs，进程刚 `execve`、
-    /// mm 还没装好）」。本条第一版没等，**全量跑第一次就红了一发**；
-    /// 单独跑 5 次全绿（并发一起跑时才够窄）。
-    /// 现打（本机 09-23，`sleep` × 500，spawn 之后立刻读）：**1/500 回 0 字节**。
-    /// ⇒ 每个探针约 0.2%，本条 3 个探针 ⇒ 每轮约 0.6%，正是那一发的来源。
-    ///
-    /// # 为什么判据是「environ 非空」而不是「读到那个令牌」
-    ///
-    /// 阴性组**本来就没有**那个令牌 —— 拿「读到令牌」当门会让阴性组死等。
-    /// 「environ 非空」对四组是同一个门，而且它逐字就是那一支要区分的东西
-    /// （`Unreadable` = 环境这一刻取不到 · `Unset` = 读得到、这个键不作数）。
-    ///
-    /// ⚠ **不许把超时那一格改成静默放过**：等不到就 `panic` —— 那时读到的
-    /// `None` 说的是「环境取不到」，不是「没设」，拿它当读数就是假绿。
-    fn settle_past_the_exec_window(pid: u32) {
-        // exec 窗口是微秒级；让 500 次「重读 + 让出 CPU」覆盖它，不引入任何计时器。
-        for _ in 0..500 {
-            match std::fs::read(format!("/proc/{pid}/environ")) {
-                Ok(b) if !b.is_empty() => return,
-                _ => std::thread::yield_now(),
-            }
-        }
-        panic!(
-            "pid {pid} 的 environ 等了 500 轮仍然读不出字节 —— \
-             夹具坏了（子进程死了？），此刻任何 `None` 都不是「没设」而是「取不到」"
-        );
-    }
-
     // ── 正题 ───────────────────────────────────────────────────────────────
-    let mut kid = spawn_sleeper(Some(GOOD_TOKEN));
+    let mut kid = spawn_token_sleeper(Some(GOOD_TOKEN));
     let got = rbind_token_of(kid.id());
     let _ = kid.kill();
     let _ = kid.wait();
@@ -275,7 +260,7 @@ fn the_token_is_read_back_out_of_a_real_child_process_environ() {
     );
 
     // ── 阴性一：压根没设 ───────────────────────────────────────────────────
-    let mut bare = spawn_sleeper(None);
+    let mut bare = spawn_token_sleeper(None);
     let got = rbind_token_of(bare.id());
     let _ = bare.kill();
     let _ = bare.wait();
@@ -285,7 +270,7 @@ fn the_token_is_read_back_out_of_a_real_child_process_environ() {
     );
 
     // ── 阴性二：设了，但形状不对 ⇒ fail closed ────────────────────────────
-    let mut bad = spawn_sleeper(Some("NOT-A-TOKEN"));
+    let mut bad = spawn_token_sleeper(Some("NOT-A-TOKEN"));
     let got = rbind_token_of(bad.id());
     let _ = bad.kill();
     let _ = bad.wait();

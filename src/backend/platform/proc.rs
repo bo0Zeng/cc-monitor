@@ -104,6 +104,8 @@ pub(crate) fn parse_starttime_from_stat(stat: &str) -> Option<u64> {
 /// 一个是「这一刻我读不出来」，一个是「我读到了，它确实没设」。
 /// 支四的两个真实来源：**exec 窗口**（60–140 µs，进程刚 `execve`、mm 还没装好）
 /// 与**僵尸进程**（`/proc/<pid>/stat` 还在 ⇒ 判活仍是 `true`，而 mm 已释放 ⇒ environ 读回 0 字节）。
+/// ⚠ exec 窗口还有一形**不走支四**〔CIFIX-BE 09-30〕：vfork 父进程被放回来、子进程还没换 mm 的那一刻，读到的是**父进程**的环境
+/// （非空 ⇒ `Unset` 或父的值）。生产调用方读的都是自己写了 pidfile 的进程（早 exec 完）碰不到；起子进程的夹具要自己等（`identity_tag_tests::spawn_settled_sleep`）。
 ///
 /// # 🔴 它**只**拆出一支，另两支**刻意仍然合并**（`K-R21` PM 裁定选「乙」不选「甲」）
 ///
