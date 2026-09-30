@@ -242,6 +242,12 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "开终端那一行（`ssh -t …` 外壳 ＋ PowerShell 载荷）：本机后端 `dial/terminal.rs` 渲（组请求走 `dial/machine.rs::resolve`）；\
          前端 `src/frontend/ui/terminal-open.ts` 与文件窗口 `filewin/shell.rs::open_terminal_here` 问，monitor 那一侧只开窗",
     ),
+    // 〔P5 · `设计/80 §8.2` 本地半〕本机开终端那一串：令牌握手前奏由本机后端接（monitor 只开窗）。
+    (
+        "terminal-local",
+        "本机开终端那一串接上令牌握手前奏：本机后端 `dial/terminal.rs::answer_local`（前奏住 `platform/shell/powershell.rs`）；\
+         前端 `src/frontend/ui/terminal-open.ts` 问，monitor 那一侧只开窗",
+    ),
     // 〔FIX4 · `90 §3` J7〕起会话要的 tmux 名：派生 ＋ 避让只留后端（前端那份铸名口删了）。
     (
         "tmux-name-mint",

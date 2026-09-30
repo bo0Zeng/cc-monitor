@@ -141,7 +141,7 @@ pub fn collect(handle: &AppHandle) -> DataPathsResponse {
     // 常驻监听口：与宿主同一个算法（按 Claude 家目录，`local_backend_host` 起常驻时就是这么算的）。
     let listen_port = crate::config::resolve_claude_dir()
         .map(|d| relay_route_core::listen_port_for(&d.to_string_lossy()));
-    let (backend_home, backend_entries) = match dirs::home_dir() {
+    let (backend_home, backend_entries) = match creds_core::store::home_dir() {
         Some(home) => (
             home.join(backend_home_rel()).display().to_string(),
             backend_entries(&home, &monitor_data_dir, listen_port),
