@@ -6,5 +6,5 @@
  * ⚠ 不看 `path.sep`、无条件把 `\` 换成 `/`：它在哪台机器上都是同一个函数，本机验过的就是 Windows 上跑的那一份。
  */
 export function toPosix(p: string): string {
-  return p.replaceAll("\\", "/");
+  return p.replace(/\\/g, "/");
 }
