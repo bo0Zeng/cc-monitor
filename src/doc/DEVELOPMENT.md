@@ -150,6 +150,11 @@ cargo test --lib -- --nocapture                      # 看 println! 输出
 
 ---
 
+### 这些数不抄在文档里
+
+- 主题 token 有哪些、几条：以 `src/frontend/ui/theme.ts` 的 `TOKENS` 为准。
+- 设置面板每页有哪几个折叠分组：家在 `tests/frontend/ui/settings/panel-groups.vitest.ts`（逐页完整相等断言）。
+
 ## 后端日志（dev mode）
 
 `tests/scripts/run.ps1 dev` 启动后，dev shell 的 stdout 会显示：
