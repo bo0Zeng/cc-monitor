@@ -1,5 +1,5 @@
-//! 设计/01 §3.5：「观测方沿它本来就拥有的那条连接去拉被观测方」·「不是经前端中继」（主会话 09-28 裁：两台之间那几件，
-//! 界面只问本机一次，本机常驻后端当枢纽向来源那台取、向被写那台写；被写那台照旧自己判 CAS、`stale` 就停）。
+//! 要求：两台之间「装」那一件不经前端中继 —— 界面只问本机一次，本机常驻后端当枢纽向来源那台取、交被写那台判与写；
+//! skill 与 MCP 同一对命令（`ext-hub-preview` / `ext-hub-apply`），看过之后任一头变了 ⇒ `stale`、一个字节不写。
 use super::*;
 use crate::stream::remote_ask::{register, Remote, Table};
 use std::collections::BTreeMap;
@@ -68,23 +68,32 @@ fn remote(outs: &[Value]) -> FakeRemote {
     }
 }
 
-/// ★ 推：来源是远端那台、被写的是这台 —— 来源那一跳经 capture 跑那台 CLI 面的 `--mcp-sync-source --stdin-line`（参数一行进 stdin），
-/// 被写那一跳问这台自己；来源原文**由枢纽交给被写那台**（不经界面），被写那台的成品原样交回。
+fn mcp_args(from: Value, to: Value) -> Value {
+    json!({ "kind": "mcp", "name": "x", "from": from, "to": to,
+            "scope": { "from": { "level": "project", "dir": "/r" }, "to": { "level": "project", "dir": "/l" } } })
+}
+
+/// ★ MCP：来源是远端那台 —— 来源那一跳经 capture 跑那台 CLI 面的 `--mcp-sync-source --stdin-line`（参数一行进 stdin），
+/// 被写那一跳问这台自己，交过去的是来源那台给的空位定义；卡上带两头的记号。
 #[tokio::test]
 async fn the_hub_takes_from_the_source_and_asks_the_target_itself() {
-    let preview = json!({ "sourcePath": "/r/.mcp.json", "targetPath": "/l/.mcp.json", "sourceText": "S", "targetText": null, "rows": [] });
-    let (h, dyn_h) = here(&[("mcp-sync-preview", preview.clone())]);
+    let preview = json!({ "path": "/l/.mcp.json", "state": "new", "def": { "command": "c", "env": { "K": null } },
+                          "slots": [{ "field": "env", "key": "K", "kept": false }], "suspects": [], "target": null });
+    let (h, dyn_h) = here(&[("mcp-sync-preview", preview)]);
     let t = table_with("aya");
-    let r = remote(&[json!({ "path": "/r/.mcp.json", "text": "S" })]);
-    let got = mcp_preview(
-        &dyn_h,
-        &json!({ "from": "aya", "fromDir": "/r", "to": null, "toDir": "/l" }),
-        &t,
-        &r,
-    )
-    .await
-    .expect("枢纽没答");
-    assert_eq!(got, preview);
+    let r = remote(&[
+        json!({ "path": "/r/.mcp.json", "def": { "command": "c", "env": { "K": null } },
+                             "slots": [{ "field": "env", "key": "K" }], "token": "t-src" }),
+    ]);
+    let card = ext_preview(&dyn_h, &mcp_args(json!("aya"), Value::Null), &t, &r)
+        .await
+        .expect("枢纽没答");
+    assert_eq!(card["tokens"], json!({ "source": "t-src", "target": null }));
+    assert_eq!(card["writes"], json!(["/l/.mcp.json"]));
+    assert_eq!(
+        card["slots"],
+        json!([{ "field": "env", "key": "K", "kept": false }])
+    );
     let calls = r.calls.lock().unwrap().clone();
     assert_eq!(calls.len(), 1, "来源那台只问一次：{calls:?}");
     assert!(
@@ -95,33 +104,38 @@ async fn the_hub_takes_from_the_source_and_asks_the_target_itself() {
     );
     assert_eq!(
         serde_json::from_str::<Value>(calls[0].1.as_deref().unwrap().trim()).unwrap(),
-        json!({ "projectDir": "/r" })
+        json!({ "name": "x", "at": { "level": "project", "dir": "/r" } })
     );
     let asked = h.asked.lock().unwrap().clone();
     assert_eq!(asked.len(), 1);
     assert_eq!(asked[0].0, "mcp-sync-preview");
-    assert_eq!(asked[0].1["source"], "S");
-    assert_eq!(asked[0].1["sameMachine"], false);
+    assert_eq!(
+        asked[0].1["def"],
+        json!({ "command": "c", "env": { "K": null } })
+    );
 }
 
-/// ★ 写：来源那份再取一次 —— 与看差异时那份不同 ⇒ `stale`、被写那台一次都没被问；相同 ⇒ 写的是枢纽自己取来的那份。
+/// ★ 写：两头再看一次 —— 来源的记号与卡上不同 ⇒ `stale`、被写那台一次都没被叫去写；相同 ⇒ 交被写那台写（带用户填的值）。
 #[tokio::test]
 async fn the_hub_refuses_to_write_when_the_source_moved_since_the_preview() {
-    let applied = json!({ "path": "/l/.mcp.json", "written": true, "names": ["x"] });
+    let preview = json!({ "path": "/l/.mcp.json", "state": "new", "def": { "command": "c" }, "slots": [], "suspects": [], "target": "t-dst" });
     let (h, dyn_h) = here(&[
         (
             "mcp-sync-source",
-            json!({ "path": "/a/.mcp.json", "text": "NEW" }),
+            json!({ "path": "/a/.mcp.json", "def": { "command": "c" }, "slots": [], "token": "NEW" }),
         ),
-        ("mcp-sync-apply", applied.clone()),
+        ("mcp-sync-preview", preview),
+        (
+            "mcp-sync-apply",
+            json!({ "path": "/l/.mcp.json", "written": true, "recordFailed": null }),
+        ),
     ]);
     let t = table_with("aya");
     let r = remote(&[]);
-    let args = |expect: &str| {
-        json!({ "from": null, "fromDir": "/a", "to": null, "toDir": "/b",
-                "expectSource": expect, "target": null, "take": ["x"], "overwrite": [] })
-    };
-    let (code, _) = mcp_apply(&dyn_h, &args("OLD"), &t, &r)
+    let mut args = mcp_args(Value::Null, Value::Null);
+    args["scope"]["from"]["dir"] = json!("/a");
+    args["tokens"] = json!({ "source": "OLD", "target": "t-dst" });
+    let (code, _) = ext_apply(&dyn_h, &args, &t, &r)
         .await
         .expect_err("来源变了还写了");
     assert_eq!(code, "stale");
@@ -131,13 +145,19 @@ async fn the_hub_refuses_to_write_when_the_source_moved_since_the_preview() {
             .unwrap()
             .iter()
             .all(|(c, _)| c != "mcp-sync-apply"),
-        "来源变了，被写那台却被问了"
+        "来源变了，被写那台却被叫去写了"
     );
-    let got = mcp_apply(&dyn_h, &args("NEW"), &t, &r).await.expect("写");
-    assert_eq!(got, applied);
+    args["tokens"]["source"] = json!("NEW");
+    args["fill"] = json!({ "env": { "K": "typed" } });
+    let done = ext_apply(&dyn_h, &args, &t, &r).await.expect("写");
+    assert_eq!(
+        done,
+        json!({ "path": "/l/.mcp.json", "changed": ["x"], "note": null })
+    );
     let asked = h.asked.lock().unwrap().clone();
     let apply = asked.iter().find(|(c, _)| c == "mcp-sync-apply").unwrap();
-    assert_eq!(apply.1["source"], "NEW");
+    assert_eq!(apply.1["fill"], json!({ "env": { "K": "typed" } }));
+    assert_eq!(apply.1["target"], "t-dst");
 }
 
 /// 反向：可达表里没有那一台 ⇒ `unreachable`、说出是哪台，一次都不拨。
@@ -146,74 +166,61 @@ async fn an_unregistered_machine_is_unreachable_and_never_dialed() {
     let (_h, dyn_h) = here(&[]);
     let t: Table = Mutex::new(BTreeMap::new());
     let r = remote(&[]);
-    let (code, said) = mcp_preview(
-        &dyn_h,
-        &json!({ "from": "ghost", "fromDir": "/r", "to": null, "toDir": "/l" }),
-        &t,
-        &r,
-    )
-    .await
-    .expect_err("没登记的那台也答了");
+    let (code, said) = ext_preview(&dyn_h, &mcp_args(json!("ghost"), Value::Null), &t, &r)
+        .await
+        .expect_err("没登记的那台也答了");
     assert_eq!(code, "unreachable");
     assert!(said.contains("ghost"), "{said}");
     assert!(r.calls.lock().unwrap().is_empty());
 }
 
-/// ★ skill：看差异 = 来源那台读 ＋ 被写那台判，一趟交回 `{dir, rows, target, source}`；写之前来源再读一次，变了 ⇒ `stale`。
+/// ★ skill：同一对命令按种类分派到 `skill-read` → `skill-install-plan`；卡上写哪几个 = 新的 ＋ 不同的；来源变了 ⇒ `stale`；
+/// 同一台同一处 ⇒ 拒。
 #[tokio::test]
-async fn skill_preview_and_apply_go_through_the_hub() {
+async fn skill_preview_and_apply_go_through_the_same_pair() {
     let files =
         json!([{ "path": "SKILL.md", "text": "a", "exec": false, "why": null, "bytes": 1 }]);
-    let plan =
-        json!({ "dir": "/s/demo", "rows": [], "target": [], "base": "/s", "prefix": "demo" });
+    let plan = json!({ "dir": "/s/demo", "target": [], "base": "/s", "prefix": "demo",
+                       "rows": [{ "path": "SKILL.md", "state": "new", "suspects": [], "blocked": null }] });
     let t = table_with("aya");
-    let (h, dyn_h) = here(&[
-        ("skill-install-plan", plan),
-        (
-            "skill-install-apply",
-            json!({ "dir": "/s/demo", "written": ["SKILL.md"], "chmodFailed": [], "recordFailed": null }),
-        ),
+    let (h, dyn_h) = here(&[("skill-install-plan", plan)]);
+    let r = remote(&[
+        json!({ "files": files }),
+        json!({ "files": [{ "path": "SKILL.md", "text": "CHANGED", "exec": false }] }),
     ]);
-    let r = remote(&[json!({ "files": files }), json!({ "files": files })]);
-    let p = skill_preview(
-        &dyn_h,
-        &json!({ "from": "aya", "to": null, "name": "demo" }),
-        &t,
-        &r,
-    )
-    .await
-    .expect("看差异");
-    assert_eq!(p["dir"], "/s/demo");
-    assert_eq!(p["source"], files);
+    let args = json!({ "kind": "skill", "name": "demo", "from": "aya", "to": null,
+                       "scope": { "from": { "level": "user" }, "to": { "level": "user" } } });
+    let card = ext_preview(&dyn_h, &args, &t, &r).await.expect("看卡");
+    assert_eq!(card["path"], "/s/demo");
+    assert_eq!(card["writes"], json!(["SKILL.md"]));
+    assert_eq!(card["stop"], Value::Null);
     let plan_ask = h.asked.lock().unwrap()[0].clone();
     assert_eq!(plan_ask.0, "skill-install-plan");
     assert_eq!(
         plan_ask.1["source"],
         json!([{ "path": "SKILL.md", "text": "a", "exec": false }])
     );
-    let (code, _) = skill_apply(
-        &dyn_h,
-        &json!({ "from": "aya", "to": null, "name": "demo",
-                 "expectSource": [{ "path": "SKILL.md", "text": "OLD", "exec": false, "why": null }],
-                 "target": [], "take": ["SKILL.md"], "overwrite": [] }),
-        &t,
-        &r,
-    )
-    .await
-    .expect_err("来源变了还装了");
+    let mut apply = args.clone();
+    apply["tokens"] = card["tokens"].clone();
+    let (code, _) = ext_apply(&dyn_h, &apply, &t, &r)
+        .await
+        .expect_err("来源变了还装了");
     assert_eq!(code, "stale");
-    let (same, _) = skill_preview(
-        &dyn_h,
-        &json!({ "from": null, "to": null, "name": "demo" }),
-        &t,
-        &r,
-    )
-    .await
-    .expect_err("同一台也看差异了");
-    assert_eq!(same, "refused");
+    assert!(h
+        .asked
+        .lock()
+        .unwrap()
+        .iter()
+        .all(|(c, _)| c != "skill-install-apply"));
+    let mut same = args.clone();
+    same["from"] = Value::Null;
+    let (code, _) = ext_preview(&dyn_h, &same, &t, &r)
+        .await
+        .expect_err("同一台同一处也看卡了");
+    assert_eq!(code, "refused");
 }
 
-/// 远端答「按码说」：被写那台 CLI 信封答 `stale` ⇒ 枢纽回的也是 `stale`（〔主会话 09-28 裁〕别压成 `refused`）。
+/// 远端答「按码说」：被写那台 CLI 信封答 `stale` ⇒ 枢纽回的也是 `stale`（别压成 `refused`）。
 struct CodedRemote;
 impl Remote for CodedRemote {
     fn run<'a>(
@@ -234,7 +241,7 @@ impl Remote for CodedRemote {
         Box::pin(async {
             Err(crate::stream::remote_ask::Said {
                 code: Some("stale".to_string()),
-                message: "盘上那份在看差异之后被改过".to_string(),
+                message: "盘上那份在看过之后被改过".to_string(),
             })
         })
     }
@@ -244,13 +251,12 @@ impl Remote for CodedRemote {
 async fn the_hub_passes_the_remote_code_through() {
     let (_h, dyn_h) = here(&[(
         "mcp-sync-source",
-        json!({ "path": "/a/.mcp.json", "text": "S" }),
+        json!({ "path": "/a/.mcp.json", "def": {}, "slots": [], "token": "S" }),
     )]);
     let t = table_with("aya");
-    let (code, said) = mcp_apply(
+    let (code, said) = ext_preview(
         &dyn_h,
-        &json!({ "from": null, "fromDir": "/a", "to": "aya", "toDir": "/b",
-                 "expectSource": "S", "target": null, "take": ["x"], "overwrite": [] }),
+        &mcp_args(Value::Null, json!("aya")),
         &t,
         &CodedRemote,
     )

@@ -86,9 +86,10 @@ vi.mock("../../../../src/frontend/ui/settings/diagnostics-section", () => ({
     loadNow = vi.fn();
   },
 }));
-vi.mock("../../../../src/frontend/ui/settings/mcp-section", () => ({
-  McpSection: class {
-    element = document.createElement("div");
+vi.mock("../../../../src/frontend/ui/settings/ext-section", () => ({
+  ExtSection: class {
+    element = Object.assign(document.createElement("div"), { id: "stub-ext-section" });
+    loadNow = vi.fn();
   },
 }));
 // A3：账号组子分区 stub，给个可识别的 class 供断言（原「远端」空占位已被本组取代）。
@@ -175,20 +176,21 @@ function navTitles(): string[] {
 }
 
 describe("S2 设置面板分页结构", () => {
-  it("导航 = 应用 / 机器（按序）", () => {
+  it("导航 = 应用 / 机器 / 扩展（按序）", () => {
     document.body.replaceChildren();
     new SettingsPanel({ windowMode: true });
     // S6 已把 cc-bus 驾驶舱移出设置（它是运营视图不是设置，§1-1）。
     // 它现在的入口是命令面板（不加第 7 个顶栏图标，理由见 views/cc-bus-view.ts 头注）。
     // 🔴 〔ST2 · 用户 09-24 裁「并进机器页，删掉顶层页」〕「改动足迹」顶层页没了 ⇒ 顶层只剩两个。
     // 〔ST2 · `70 §6` #3 · 步 15〕「应用」下挂三个子页（替掉原来的两个折叠组）。
-    expect(navTitles()).toEqual(["应用", "外观", "日志", "数据位置", "机器"]);
+    // 跨机器的 skill / MCP 是一类被设置的对象 ⇒ 顶层「扩展」页，不挂在某台机器下面。
+    expect(navTitles()).toEqual(["应用", "外观", "日志", "数据位置", "机器", "扩展"]);
   });
 
   /** 等 RemoteSection 那边异步注册完本机页（真实实现是在 `refresh()` 里注册的）。 */
   const tick = () => new Promise((r) => setTimeout(r, 0));
 
-  it("★ 逐页完整清单 —— 17 个叶子块一个不少、一个不错位", async () => { // P8a +1（插件（marketplace））；〔AL1〕+1（别名）；〔AL1c〕−1（终端集成并进别名）
+  it("★ 逐页完整清单 —— 15 个叶子块一个不少、一个不错位", async () => { // P8a +1（插件（marketplace））；〔AL1〕+1（别名）；〔AL1c〕−1（终端集成并进别名）；扩展页 −3 ＋1（机器页里 MCP · 资产目录 · 插件三块搬走，顶层「扩展」一块）
     // 这是本轮最重要的一条：S2 只搬不改，**搬丢一块 = 一个功能凭空消失**，
     // 而它在 UI 上的表现只是「某个设置项找不到了」，不会报错。
     // 用**完整相等**而不是 `toContain`：后者对「多出一块」和「顺序乱了」都是瞎的。
@@ -222,14 +224,9 @@ describe("S2 设置面板分页结构", () => {
       // 〔AL1c · 4B〕「终端集成」并进了下面「别名」那一块（Windows 上它是 PowerShell 那一侧的别名块）。
       // 〔AL1 · 2026-09-24〕`设计/71 §13` ②：别名并进机器页（`70 §3.3`），从「应用 → 行为」搬来。
       "别名",
-      "MCP",
-      // 〔AS2 · 4B〕资产目录：别的机器有、这台没有的 skill / MCP，装要你点（本机与远端页都有）。
-      "资产目录",
+      // MCP · 资产目录 · 插件三块搬去了顶层「扩展」页（跨机器的一类对象）。
       // 〔FIX4 · `97 §8`〕代码全景组件的卸口（本机与远端页都有）。
       "代码全景组件",
-      // P8a：marketplace 只读枚举。**只在本机页**——远端今天没有这条口
-      // （欠账记在 `parity_ledger::plugins.marketplaces`），挂到远端就是个恒失败的块。
-      "插件（marketplace）",
       "cc-bus 钩子",
       // 🔴 `70 §10.1`（步 14a）：「足迹」从顶层「改动足迹」页搬进来，是**新增的第五块**。
       "足迹",
@@ -239,6 +236,9 @@ describe("S2 设置面板分页结构", () => {
     // `70 §10.1`（步 14a）：「配置面审计」→ 改名「足迹」并搬进机器子页。
     // 🔴 〔ST2〕`§10.5` #1 用户裁了：顶层「改动足迹」页**删掉**，剩下那一块并进机器页。
     expect(document.querySelector('.settings-page[data-route-id="footprint"]')).toBeNull();
+    // 「扩展」页只有那一块（不带块标题：页头就是它的名字）。
+    expect(pageTitles("ext")).toEqual([]);
+    expect(document.querySelector('.settings-page[data-route-id="ext"] #stub-ext-section')).not.toBeNull();
     // cc-bus 已不在设置里（S6）—— 连页都不该存在。
     expect(
       document.querySelector('.settings-page[data-route-id="cc-bus"]'),
@@ -369,8 +369,7 @@ describe("S2 设置面板分页结构", () => {
     // **任何时刻恰好一绿一红，两条不可能同时绿**（`N-F1b` 的 `NbM5` 实打过）。
     // ⇒ 同一件事实写在两处，本件改了那件事实 ⇒ 两处一起改，不是二选一。
     expect(visibleTitles).toContain("账号");
-    // MCP / cc-bus 钩子两边都有意义
-    expect(visibleTitles).toContain("MCP");
+    // cc-bus 钩子两边都有意义
     expect(visibleTitles).toContain("cc-bus 钩子");
   });
 
@@ -399,10 +398,7 @@ describe("S2 设置面板分页结构", () => {
       "远端连接",
       "账号",
       "别名", // 〔AL1〕本机那一格的 ②，跟着 per-machine 那几块一起留在兜底落点（〔AL1c〕终端集成并进了它）
-      "MCP",
-      "资产目录", // 〔AS2〕
       "代码全景组件", // 〔FIX4〕
-      "插件（marketplace）",
       "cc-bus 钩子",
       "足迹",
       "未识别的数据",
@@ -468,11 +464,11 @@ describe("S2 设置面板分页结构", () => {
       strip.querySelector<HTMLElement>(`.settings-page[data-route-id="machine:aya#${id}"]`)!;
     // 账号块进「账号」栏
     expect(tabPage("acct").querySelector(".accounts-section-stub")).toBeTruthy();
-    // MCP / cc-bus 钩子 进「工具」栏（〔AL1c〕终端集成并进了「别名」）
+    // cc-bus 钩子 进「工具」栏（〔AL1c〕终端集成并进了「别名」）
     const toolTitles = [...tabPage("tools").querySelectorAll(".settings-group-title")].map(
       (e) => e.textContent,
     );
-    expect(toolTitles).toContain("MCP");
+    expect(toolTitles).toContain("代码全景组件");
     expect(toolTitles).toContain("cc-bus 钩子");
     // 反向：账号**不该**也出现在工具栏里（搬 DOM 一处一份，不能有两份）
     expect(toolTitles).not.toContain("账号");
@@ -560,7 +556,7 @@ describe("S9 本机 OS 门（〔AL1c〕别名那一块的平台）", () => {
     });
   }
 
-  it("门只管这一块 —— 同栏的 MCP / cc-bus 钩子在 Linux 上照常在", async () => {
+  it("门只管这一块 —— 同栏的代码全景组件 / cc-bus 钩子在 Linux 上照常在", async () => {
     __setHostOsForTests("linux");
     document.body.replaceChildren();
     new SettingsPanel({ windowMode: true });
@@ -572,7 +568,7 @@ describe("S9 本机 OS 门（〔AL1c〕别名那一块的平台）", () => {
         )!
         .querySelectorAll(".settings-group-title"),
     ].map((e) => e.textContent);
-    expect(titles).toContain("MCP");
+    expect(titles).toContain("代码全景组件");
     expect(titles).toContain("cc-bus 钩子");
   });
 });

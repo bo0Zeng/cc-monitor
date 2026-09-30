@@ -590,6 +590,9 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     parse: NONE,
     probe: NONE,
     read_accounts: NONE,
+    // 删号 · 回滚那两步的纯变换（后端账号库那一族调它；TS 侧没有孪生）。
+    remove_account: NONE,
+    restore_account: NONE,
     read_auth_style: NONE,
     read_key: NONE,
     // 〔FIX · COPY ④〕常量 `TEMPLATE` → 运行期拼的 `template()`（三句说明住文案表）；报错的话 `StoreError::said`（带路径）。
@@ -622,6 +625,7 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     // 〔P3 · 主会话 09-29 裁〕后端住在 `~/.cc-monitor` 里的那几样的相对路径（后端各写者引它、monitor 数据位置页按它列）；TS 侧没有孪生。
     ALL: NONE,
     ASSET_CATALOG_REL: NONE,
+    EXT_BACKUPS_DIR_REL: NONE,
     BACKEND_POLICY_REL: NONE,
     file_name_of: NONE,
     listen_pid_file_name: NONE,

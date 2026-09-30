@@ -58,3 +58,23 @@ fn a_settings_file_that_sets_the_base_url_makes_via_relay_unsayable() {
     );
     let _ = std::fs::remove_dir_all(&d);
 }
+
+/// 它管不着的那几类路径（读数表，如实登记）：目录 · subagent 记录 · tasks · settings 今天都不认成会话记录。扩射程要用户拍。
+#[test]
+fn every_uncovered_shape_is_still_uncovered_today() {
+    for p in [
+        "/home/u/.claude/projects/-x-proj",
+        "/home/u/.claude/projects/-x-proj/<sid>/subagents/agent-ab12.jsonl",
+        "/home/u/.claude/tasks/<sid>/17.json",
+        "/home/u/.claude/settings.json",
+    ] {
+        assert!(
+            !is_session_record_file(p),
+            "{p} 今天被挡住了 —— 扩射程要用户拍"
+        );
+    }
+    assert!(
+        is_session_record_file("/home/u/.claude/projects/-x-proj/0000.jsonl"),
+        "正控：会话记录没被认出来"
+    );
+}

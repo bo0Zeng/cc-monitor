@@ -42,6 +42,19 @@ use super::*;
 /// 形状抄 `readonly_guard::spawn_registry::ALLOWED`：把「为什么这条不上」写成**数据**，
 /// 好让机检对着它比 —— 散文里说一遍，下一个人加命令时看不见。
 const NOT_ON_CLI: &[(&str, &str)] = &[
+    // 扩展页那张表与「装」的枢纽。
+    (
+        "ext-list",
+        "它按本进程的可达表认出每台叫什么、连没连上；一次性进程里那张表是空的 ⇒ 只剩本机、别的台全画成「没连上」，是假话 ⇒ 只上帧面（`STREAM_ONLY`）。",
+    ),
+    (
+        "ext-hub-preview",
+        "枢纽要经本进程的可达表够到来源那台与被写那台；一次性进程里那张表是空的 ⇒ 除了本机对本机什么都问不到 ⇒ 只上帧面（`STREAM_ONLY`）。",
+    ),
+    (
+        "ext-hub-apply",
+        "同 `ext-hub-preview`：两头都要经本进程的可达表够到 ⇒ 只上帧面（`STREAM_ONLY`）。",
+    ),
     // 〔FIX4 · `97 §8`〕卸全景小程序：机器页上点的破坏性动作。
     (
         "panorama-uninstall",
@@ -334,13 +347,10 @@ fn the_no_input_commands_are_registered_and_declared_consistently() {
         // 〔C4d · 第四波 4B〕`history-projects` 出列：它从此收 `origin`（缺席 = 这台），要读 stdin。
         "ping",
         // 〔RM1b · 第四波〕问这台机器登记了哪些插件市场：无入参，输出 `lines`。
-        "plugins-marketplaces",
         // 〔AS2 · 第四波 4B〕这台现扫一次资产、记进目录、回整份：无入参。
         "assets-catalog",
         // 〔C4d · 第四波 4B〕sid → 上次用哪个号起：无入参（读本机那份注解文件）。
         "history-last-accounts",
-        // 〔SU1 · 第四波 4C〕这台记着的、从别处装来的 skill：无入参（读本机那份装记录）。
-        "skill-installs",
         // 〔SH1〕列这台的 tmux 会话：无入参（问的就是「这台」）。
         "tmux-list",
         // 〔MIG-1〕列转发：无入参（问的就是本进程那张账）。

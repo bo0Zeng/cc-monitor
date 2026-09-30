@@ -172,6 +172,10 @@ pub(crate) const STREAM_ONLY: &[&str] = &[
     "terminal-local",
     // 〔FIX4 · `90 §3` J15〕各台搜索结果合成一份：界面逐台问完才有得合；命令行那一侧 `--search` 只问这一台，用不着合。
     "history-search-merge",
+    // 扩展页那张表与「装」的枢纽：读本进程的可达表（远端那几台叫什么、怎么够得着）；一次性进程里那张表是空的 ⇒ 只剩本机、答的是假话。
+    "ext-list",
+    "ext-hub-preview",
+    "ext-hub-apply",
 ];
 
 /// 命令名 → CLI 子命令（`launch` → `--launch`）。

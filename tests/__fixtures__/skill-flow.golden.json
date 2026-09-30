@@ -1,6 +1,6 @@
 {
   "说明": [
-    "〔MIG-3a〕skill 装 / 卸写那一半的跨语言金样：后端对临时目录现算 == reply；界面 `src/frontend/ui/skill-install-reads.ts` 读同一份。",
+    "〔MIG-3a〕skill 装 / 卸写那一半的金样：后端对临时目录现算 == reply（界面经 `ext-*` 那几条拿成品，线上形状由 `ext-flow.golden.json` 钉）。",
     "只采结构（占位文件名 / 占位正文）。`<ROOT>` 由测试换成临时 skill 根。"
   ],
   "name": "demo",
@@ -15,7 +15,6 @@
   "uninstallTake": ["SKILL.md"],
   "uninstallReply": { "dir": "<ROOT>/demo", "deleted": ["SKILL.md"], "recordFailed": null, "dirRemoved": false, "dirFailed": null },
   "codes": {
-    "skill-install-apply": ["bad_args", "bad_file", "io_failed", "needs_consent", "stale"],
-    "skill-uninstall-apply": ["bad_args", "io_failed", "ledger_unreadable", "needs_consent", "not_found", "stale"]
+    "skill-install-apply": ["bad_args", "bad_file", "io_failed", "needs_consent", "stale"]
   }
 }

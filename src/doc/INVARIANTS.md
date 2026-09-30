@@ -59,9 +59,9 @@ monitor 进程**一个字节都不直接写用户文件**。rc / `$PROFILE` / �
 > **〔订正 · FN1 · 第四波 4C · 2026-09-25 · 用户 V119〕** 用户原话「**文件管理器全部都可以改. 不需要任何围栏**」。这一段里的「防误伤守卫」**对文件管理器不再成立**：
 > 今天的文件面板就是原生文件窗口 ＋ 后端文件管理写面（`files-*`），会话文件 · 项目目录 · subagent · tasks 都能改名 / 删 / 改权限 / 覆盖；
 > 窗口的本地预判、传输台开下载单那一判、后端写面那一问都删了。「每次写都是一次直接用户手势、绝无自动/后台写」**照旧成立**（那是这一段的正题，不是围栏）。
-> 〔MIG-3a · 09-28〕monitor 那一份判定（`claude_data_fence`〔散文墓碑〕）随它最后一个用户（F03b 收件箱纵深）进了后端：收件箱那一道借 `paths.rs::is_session_record_file`（`skill_host.rs::editable_target`），全仓一份。
+> 〔MIG-3a · 09-28〕monitor 那一份判定（`claude_data_fence`〔散文墓碑〕）随它最后一个用户（F03b 收件箱纵深）进了后端；〔09-30〕收件箱编辑面整块删了（skill 改用「在文件窗口里打开」），那一道随之没了。
 
-**F03b 收件箱编辑不在本约管辖内（澄清，非例外/非松动）**〔RW1 · 第四波 2026-09-24：本机 ＋ 远端项目都能编辑（用户裁），读写经那台机器的后端（`files-peek` / `files-put`，写带打开时读到的那一份当 CAS 期望，agent 改过 ⇒ 一个字节不写）；下文 `verified_write` 那一跳已并进后端规则〕：devbench-F03b 起 cc-monitor 挂了一个**收件箱编辑面板**（读写用户自己项目里的 `.claude/planned-build/INBOX.txt` —— planned-build skill 的「结构化注入」进件口）。**口径与 F47 逐条对齐**：它写的是**用户自己项目的普通文本文件**，不是 Claude 的 jsonl/pidfile；每次写都是**面板内一次直接用户手势**（点「保存」，绝无自动/后台写）。**围栏三道**（〔MIG-3a〕今天住后端 `skill_host.rs::editable_target`）：① 路径 `canonicalize` **之后**做**集合判定**，集合来自声明表 `skill_host.rs::SKILLS` 的 `editable`（**不是一串 `if`**，也不是判字符串——`..` 与符号链接都已解开）② 过 `paths.rs::is_session_record_file`（**纵深**：即使声明写歪也不许碰 Claude 数据；〔MIG-3a〕与删会话那一道同读 Claude 的目录结构，全仓一份）③ 目标**必须已存在**（本功能是「编辑收件箱」不是「创建任意文件」）。写本身走 `verified_write::verify_and_rollback`（备份 → 写 → 读回**逐字节**比对 → 不符即回滚），**没有自造第四份写入实现**。⇒ 写面严格等于「声明里那几个真实文件」，今天恰好一个文件名。⚠ **远端项目的收件箱不在此列**：`parity_ledger` 里 `skill.inbox` 记 `Undecided`——「要不要能编辑」没人裁定过，且远端版的第①道（`canonicalize`）在那边不成立。
+**F03b 收件箱编辑**〔09-30 删〕：那个编辑面板整块拿掉了（设置「扩展」里 skill 改用「在文件窗口里打开」，走文件管理面，口径同上面 F47 那一段）；本约不再有这一条。
 
 **A2 多账号只读查询是本约的「读」面延伸（澄清，非例外/非松动）**：`src/backend/observe/accounts_query.rs`（monitor 那一侧〔C4d〕已无文件：界面经通道问、后端出成品）为「按会话切账号」新增三条**纯只读**远端查询（`--list-accounts` / `--session-accounts` / `--account-trust`），**零写入**、**不 shell out**。它把后端的读面从 `<claude_dir>` 扩到三处新位置，各自有硬边界:
 
@@ -89,19 +89,7 @@ monitor 进程**一个字节都不直接写用户文件**。rc / `$PROFILE` / �
 （`P4b` 删掉「spawn 复用活会话」那一刀实测就卡在这里 —— 两份差的正是它改的那 2 个文件）。
 ⚠ `uninstallable` 仍是 `false`：**卸载没做**，如实声明。
 
-**P8a 插件面枚举是本约「读」面的又一次延伸（澄清，非例外/非松动）**：P8a 为
-「有哪些 Claude Code marketplace」新增一条**纯只读**的本机查询（〔RM1b〕读法搬进后端 `observe/plugins_query.rs`；
-〔C4b〕monitor 那一侧的模块与那条命令已删，界面经通道直接问帧命令 `plugins-marketplaces`），
-**零写入**、**不 shell out**、**不轮询**（按需一次）。它把本机读面从 `projects/` + `sessions/`
-扩到 `<claude_dir>/plugins/`，边界两条：
-① 只读 `<claude_dir>/plugins/known_marketplaces.json` 与各 marketplace 落点下的 `<落点>/.claude-plugin/marketplace.json`
-   两种文件，**各带字节上限**（`byte_cap_registry` 里逐条登记了超限怎么办）；
-② **不解释、不校验 `.gcs-sha`**，也**不去数** `marketplaces/<id>/plugins/` 那个目录 ——
-   那是上游下载器的快照，把它当成「用户装了几个」是**说假话**（本机实测：manifest 声明 276 个、
-   快照目录里 39 个）。**「装了/启用了哪些插件」今天在盘上没有真相源**，界面明说这一点，
-   不猜（待决 `U10d`）。
-⚠ 这条读面**是新增的直读点**，已在 `local_read_surface_registry` 的递减棘轮上登记并写明退役条件
-（后端补 `--list-marketplaces` 后随 F10 一起退役，与 `parity_ledger` 里那笔远端欠账**同一条**）。
+**P8a 插件面枚举**〔09-30 删〕：插件市场只读列表整块拿掉（界面上没有可做的事），后端那条查询随之删了；本约不再有这一条读面。
 
 **F62 从历史某轮建分支不在本约管辖内（澄清，非例外/非松动，用户 2026-07-12 拍板）**〔RW1 · 第四波 2026-09-24：**本机那一支也交给后端写了** —— exec 本机后端的 `--fork-session`（`control/fork_write.rs`，与下面 G6 远端同一条子命令、同一份结果解释 `remote_branch::interpret_fork_exec`；〔LOC1a 2026-09-25〕exec 那一趟与这份解释都删了，本机远端同走那台后端的帧命令 `session-fork`，本体仍是 `fork_write.rs` 那一份），monitor 进程不再 `O_EXCL` 写会话文件；本机后端不在 ⇒ 明确报错、不回落。下面的性质（只增不减 · 只收 sid · 绝不覆盖）一格没变；〔MIG-3b〕monitor 那条转交命令也删了，界面经通道直说那台后端（`src/frontend/ui/session-writes.ts` 的 `forkSession`）〕：分叉在用户**显式**点历史查看器里某条消息的 `⑂` 时，把 `[根…该消息]` 前缀**复制**成一个**全新** `<new-sid>.jsonl`（原生 `/branch` 的 `forkedFrom` 格式）。这与本约**正交**——本约防的是 monitor **改坏/覆盖/后台写**它正在监视的**现存**会话文件；建分支是**纯新增产出**（用户框定："复制产出一个文件，而非侵入式改动"），**原会话一字节不改**，且只写**新生成、collision-check 过的 sid**（`out_path.exists()` 则拒，绝不覆盖任何现存会话）。防越界守卫〔`K-R88` 2026-09-13 换形状〕：入参从**路径**收成 **sid**，由两侧共用的 `branch_core::find_session_file` 在记录树里枚举出那份文件（sid 先过 `[A-Za-z0-9-]` 白名单，符号链接不算命中）—— 界外那种入参**连表达都表达不出来**。〔散文墓碑〕原措辞逐字留档：「`validate_branch_source`（canonicalize + `starts_with(projects)` + `.jsonl`）与 delete 同构」，那个函数**今天已经不在了**。破坏性上它比已放行的「显式删除」更弱（只增不减）。
 
@@ -213,7 +201,7 @@ data dir 里两类东西**语义上一刀两断**，别搅混到「迁移/重建
 | `ps-registry/` `ps-await/` | **缓存/IPC** | `bind.rs` | 跨进程握手，启动重扫 |
 | `logs/` | **缓存/派生** | `logging.rs` · 本机常驻后端 | 诊断日志：`monitor/` 是本进程按天滚动、保留 3 天（§15）；`backend/` 是脱离运行的本机后端 stderr |
 | `bin/` `staging/` `logs/backend/` `panorama/` `assets-catalog.json` | **缓存** | 本机后端（`bin/` 里的后端与全景组件由宿主放） | 〔P3 · V160 一台机器一个家〕后端住在同一个家里、能重建的：程序（缺了重放）· 上传暂存区 · 错误输出 · 全景索引 · 资产目录（重新扫出来、各台之间再对上） |
-| `relay-key` `listen-token` `listen-<口>.pid` `backend.json` `aliases.sh` `aliases.ps1` `skill-installs.json` `apikey-credentials.json` | **真相** | 本机后端（`listen-token` · 进程记录由宿主铸 / 写） | 〔P3 · 主会话 09-29 裁〕删了会丢的：后端跑着时要用的两把钥匙与进程记录（删了要重起后端）· 退出行为设置 · 你建的别名 · skill 装记录 · 你填的 API key。名字各取契约常量（`relay_route_core` · `creds_core::store`）与宿主那一处（`logging::backend_stderr_log_path`），`data_paths.rs::backend_entries` 列它们 |
+| `relay-key` `listen-token` `listen-<口>.pid` `backend.json` `aliases.sh` `aliases.ps1` `skill-installs.json` `backups/` `apikey-credentials.json` | **真相** | 本机后端（`listen-token` · 进程记录由宿主铸 / 写） | 〔P3 · 主会话 09-29 裁〕删了会丢的：后端跑着时要用的两把钥匙与进程记录（删了要重起后端）· 退出行为设置 · 你建的别名 · skill / MCP 装记录 · 从「扩展」卸掉不是 cc-monitor 装的东西之前放的那一份 · 你填的 API key。名字各取契约常量（`relay_route_core` · `creds_core::store`）与宿主那一处（`logging::backend_stderr_log_path`），`data_paths.rs::backend_entries` 列它们 |
 
 - **真相** = 用户手写/意图，**删了丢东西、要备份、要迁移友好**。
 - **缓存/派生** = 能从别处重建，**随便删**。

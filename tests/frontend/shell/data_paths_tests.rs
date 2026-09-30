@@ -217,6 +217,7 @@ fn backend_rows_point_where_the_backend_itself_writes() {
             "dir",
         ),
         row("panorama/", h.join(rr::PANORAMA_INDEX_REL), "dir"),
+        row("backups/", h.join(rr::EXT_BACKUPS_DIR_REL), "dir"),
     ];
     assert_eq!(got, want);
     // 口号拿不到 ⇒ 进程记录那一行不列（不猜一个口）

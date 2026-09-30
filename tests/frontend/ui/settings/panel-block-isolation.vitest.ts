@@ -10,9 +10,9 @@ const { remoteRefresh, dataRefresh, boom, behaviorStub } = vi.hoisted(() => ({
   behaviorStub: { localPresets: [] as string[], remotePresets: [] as string[] },
   remoteRefresh: vi.fn(),
   dataRefresh: vi.fn(),
-  boom: { remote: false, mcp: false, kb: false } as {
+  boom: { remote: false, ext: false, kb: false } as {
     remote: boolean;
-    mcp: boolean;
+    ext: boolean;
     kb: boolean;
   },
 }));
@@ -62,12 +62,13 @@ vi.mock("../../../../src/frontend/ui/settings/diagnostics-section", () => ({
   },
 }));
 // 〔AL1c · 4B〕`cc_integration.ts` 并进了 `machine-aliases.ts`（终端集成成了「别名」那一块 PowerShell 那一侧），它的替身随之删掉。
-vi.mock("../../../../src/frontend/ui/settings/mcp-section", () => ({
-  McpSection: class {
+vi.mock("../../../../src/frontend/ui/settings/ext-section", () => ({
+  ExtSection: class {
     element = document.createElement("div");
     constructor() {
-      if (boom.mcp) throw new Error("MCP_BOOM");
+      if (boom.ext) throw new Error("EXT_BOOM");
     }
+    loadNow(): void {}
   },
 }));
 // A3：账号组子分区 stub，给个可识别的 class 供断言（原「远端」空占位已被本组取代）。
@@ -157,7 +158,7 @@ afterEach(() => __setHostOsForTests(null));
 describe("T07 分区块隔离（真行为）", () => {
   beforeEach(() => {
     boom.remote = false;
-    boom.mcp = false;
+    boom.ext = false;
     boom.kb = false;
     document.body.textContent = "";
   });
@@ -185,8 +186,8 @@ describe("T07 分区块隔离（真行为）", () => {
     // 而「一块坏不影响其余」这条性质现在体现在**页面结构完整**上。
     const pages = [...document.querySelectorAll(".settings-page")];
     // S6 后顶层是 3 页（cc-bus 已移出设置）；〔ST2〕「改动足迹」并进机器页、「应用」下挂三个子页
-    // ⇒ 应用 ＋ 外观 / 日志 / 数据位置 ＋ 机器 = 5 页。
-    expect(pages.length, "五页都该在").toBe(5);
+    // ⇒ 应用 ＋ 外观 / 日志 / 数据位置 ＋ 机器 = 5 页；顶层多一页「扩展」⇒ 6 页。
+    expect(pages.length, "六页都该在").toBe(6);
     expect(
       document.querySelector(".accounts-section-stub"),
       "账号块不受影响",
@@ -219,8 +220,8 @@ describe("T07 分区块隔离（真行为）", () => {
     expect(backendRows!.querySelector('.backend-row[data-origin="<local>"]')).not.toBeNull();
   });
 
-  it("换一块抛（McpSection）→ 同样只坏那一块", async () => {
-    boom.mcp = true;
+  it("换一块抛（ExtSection）→ 同样只坏那一块", async () => {
+    boom.ext = true;
     const p = new SettingsPanel({ windowMode: true });
     void p;
     await new Promise((r) => setTimeout(r, 0));
@@ -229,7 +230,7 @@ describe("T07 分区块隔离（真行为）", () => {
       ".settings-block-failed",
     );
     expect(failed.length, "只该坏一块").toBe(1);
-    expect(failed[0].textContent).toContain("MCP_BOOM");
+    expect(failed[0].textContent).toContain("EXT_BOOM");
     expect(document.querySelector(".accounts-section-stub")).not.toBeNull();
   });
 

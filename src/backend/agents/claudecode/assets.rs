@@ -1,8 +1,9 @@
-//! 〔AS2 · 第四波 4B · V113〕Claude 的**资产布局**：skill 住哪、项目级 MCP 住哪、怎么从盘上认出它们。
+//! Claude 的**资产布局**：skill 住哪、MCP 住哪、怎么从盘上认出它们。
 //!
-//! 只装布局知识（`skills/<名>/` · `SKILL.md` 头部的 `description:` · `.claude.json` 的 `projects` 键 ·
-//! `<项目>/.mcp.json` 的 `mcpServers`），**不做摘要、不做合并、不记目录** —— 那些是通用层的机器
-//! （`asset_catalog.rs`），经注册表 `agents::Adapter.assets` 那一格拿本层的知识（不增 `ADAPTER_CALL_SITES`）。
+//! 只装布局知识（用户级 `skills/<名>/` 与项目里的 `.claude/skills/<名>/` · `SKILL.md` 头部的 `description:` ·
+//! 用户级 `.claude.json` 顶层的 `mcpServers` · `<项目>/.mcp.json` 的 `mcpServers`），**不做摘要、不做合并、不记目录** ——
+//! 那些是通用层的机器（`asset_catalog.rs`），经注册表 `agents::Adapter.assets` 那一格拿本层的知识（不增 `ADAPTER_CALL_SITES`）。
+//! 扫哪几个项目由通用层交进来（这台上开过会话的项目目录），本层不另起一份项目清单。
 //!
 //! 读法宽容：缺 / 坏的那一份不让整次扫描失败，但**说出来**（[`Sightings::problems`]）—— 「这台没有」与
 //! 「这台那份读不出来」不许合成一句。
@@ -14,10 +15,12 @@ use crate::common::fs::read_regular_capped;
 
 use super::accounts::{config_path_in, MAX_CONFIG_BYTES};
 use super::paths::{resolve_home, CONFIG_DIR_ENV};
-use crate::agents::Sightings;
+use crate::agents::{McpSeen, Sightings, SkillSeen};
 
 /// skill 目录名（配置根下）。
 const SKILLS_DIR: &str = "skills";
+/// 项目里装配置的那一层目录名（项目级 skill 住 `<项目>/.claude/skills`）。
+const PROJECT_CONFIG_DIR: &str = ".claude";
 /// 一个 skill 的说明文件。
 const SKILL_DOC: &str = "SKILL.md";
 /// 项目级 MCP 配置的文件名。
@@ -43,23 +46,42 @@ pub(crate) fn claude_json() -> Option<PathBuf> {
     crate::platform::paths::home_dir().map(|h| config_path_in(&h))
 }
 
-/// 注册表那一格的实现：按这台机器的环境现解两个根，现扫。
-pub(crate) fn scan() -> Sightings {
+/// 一个项目目录里 skill 的根：`<项目>/.claude/skills`。
+pub(crate) fn project_skills_root(project: &Path) -> PathBuf {
+    project.join(PROJECT_CONFIG_DIR).join(SKILLS_DIR)
+}
+
+/// 注册表那一格的实现：用户级两个根 ＋ 交进来的每个项目各两处，现扫。
+pub(crate) fn scan(projects: &[String]) -> Sightings {
+    scan_at(skills_root().as_deref(), claude_json().as_deref(), projects)
+}
+
+/// [`scan`] 的本体：用户级两个根由调用方给（判据拿临时家目录喂）。
+pub(crate) fn scan_at(
+    skills: Option<&Path>,
+    claude_json: Option<&Path>,
+    projects: &[String],
+) -> Sightings {
     let mut out = Sightings::default();
-    if let Some(root) = skills_root() {
-        scan_skills_at(&root, &mut out);
+    if let Some(root) = skills {
+        scan_skills_at(root, None, &mut out);
     }
-    match claude_json() {
-        Some(cfg) => scan_mcp_at(&cfg, &mut out),
+    match claude_json {
+        Some(cfg) => scan_user_mcp_at(cfg, &mut out),
         None => out
             .problems
             .push(copy_text("beClaudeAssets.scan.noHome", &[])),
     }
+    for dir in projects {
+        let p = Path::new(dir);
+        scan_skills_at(&project_skills_root(p), Some(dir), &mut out);
+        scan_project_mcp_at(p, &mut out);
+    }
     out
 }
 
-/// skill：`<root>/<名>/` 每个目录一条（顶层链接跟到底；名字不是 UTF-8 的跳过并说出来）。
-pub(crate) fn scan_skills_at(root: &Path, out: &mut Sightings) {
+/// skill：`<root>/<名>/` 每个目录一条（顶层链接跟到底；名字不是 UTF-8 的跳过并说出来）。`project` 原样记进每一条。
+pub(crate) fn scan_skills_at(root: &Path, project: Option<&str>, out: &mut Sightings) {
     let rd = match std::fs::read_dir(root) {
         Ok(rd) => rd,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return,
@@ -71,6 +93,7 @@ pub(crate) fn scan_skills_at(root: &Path, out: &mut Sightings) {
             return;
         }
     };
+    let mut found = Vec::new();
     for ent in rd.flatten() {
         let path = ent.path();
         // `metadata` 跟链接：`skills/foo -> ~/repo/foo` 是常见装法。
@@ -101,9 +124,15 @@ pub(crate) fn scan_skills_at(root: &Path, out: &mut Sightings) {
                 None
             }
         };
-        out.skills.push((name, path, description));
+        found.push(SkillSeen {
+            project: project.map(str::to_string),
+            name,
+            dir: path,
+            description,
+        });
     }
-    out.skills.sort_by(|a, b| a.0.cmp(&b.0));
+    found.sort_by(|a, b| a.name.cmp(&b.name));
+    out.skills.extend(found);
 }
 
 /// `SKILL.md` 头部 front matter（三个 `-` 包着的那一段）里的 `description:`。没有这份文件 / 没有那一格 ⇒ `Ok(None)`；
@@ -132,76 +161,74 @@ fn skill_description(doc: &Path) -> Result<Option<String>, String> {
     Ok(None)
 }
 
-/// 项目级 MCP：`.claude.json` 的 `projects` 键 × 各自的 `<dir>/.mcp.json`。
-///
-/// `.claude.json` 不在 ⇒ 这台没用过（不是问题）；在但读不出来 ⇒ 说出来。
-/// 一个项目没有 `.mcp.json` ⇒ 跳过（绝大多数项目都没有）；有但坏了 ⇒ 说出来，**不当成空表**。
-pub(crate) fn scan_mcp_at(claude_json: &Path, out: &mut Sightings) {
+/// 用户级 MCP：`.claude.json` 顶层的 `mcpServers`。文件不在 ⇒ 这台没用过（不是问题）；在但读不出来 ⇒ 说出来。
+pub(crate) fn scan_user_mcp_at(claude_json: &Path, out: &mut Sightings) {
     if !claude_json.exists() {
         return;
     }
-    let cfg: serde_json::Value = match read_regular_capped(claude_json, MAX_CONFIG_BYTES)
-        .and_then(|b| serde_json::from_slice(&b).map_err(|e| e.to_string()))
+    match read_regular_capped(claude_json, MAX_CONFIG_BYTES)
+        .and_then(|b| serde_json::from_slice(strip_bom(&b)).map_err(|e| e.to_string()))
     {
-        Ok(v) => v,
+        Ok(v) => servers_into(&v, claude_json, None, out),
+        Err(e) => out.problems.push(copy_text(
+            "beClaudeAssets.mcp.configFailed",
+            &[
+                ("path", &claude_json.display().to_string()),
+                ("e", &e.to_string()),
+            ],
+        )),
+    }
+}
+
+/// 项目级 MCP：`<dir>/.mcp.json` 的 `mcpServers`。没有这份 ⇒ 跳过（绝大多数项目都没有）；有但坏了 ⇒ 说出来，**不当成空表**。
+pub(crate) fn scan_project_mcp_at(dir: &Path, out: &mut Sightings) {
+    let file = dir.join(PROJECT_MCP_FILE);
+    match std::fs::metadata(&file) {
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return,
         Err(e) => {
             out.problems.push(copy_text(
-                "beClaudeAssets.mcp.configFailed",
-                &[
-                    ("path", &claude_json.display().to_string()),
-                    ("e", &e.to_string()),
-                ],
+                "beClaudeAssets.mcp.statFailed",
+                &[("path", &file.display().to_string()), ("e", &e.to_string())],
             ));
             return;
         }
+        Ok(_) => {}
+    }
+    let parsed: Result<serde_json::Value, String> =
+        read_regular_capped(&file, MAX_PROJECT_MCP_BYTES)
+            .and_then(|b| serde_json::from_slice(strip_bom(&b)).map_err(|e| e.to_string()));
+    match parsed {
+        Ok(v) => servers_into(&v, &file, Some(&dir.display().to_string()), out),
+        Err(e) => {
+            let why = copy_text(
+                "beClaudeAssets.mcp.readFailed",
+                &[("path", &file.display().to_string()), ("e", &e.to_string())],
+            );
+            tracing::warn!("资产目录：{why}");
+            out.problems.push(why);
+        }
+    }
+}
+
+/// 一份配置里 `mcpServers` 的每一条（没有这一格 ⇒ 什么都没有；不是对象 ⇒ 说出来）。
+fn servers_into(v: &serde_json::Value, file: &Path, project: Option<&str>, out: &mut Sightings) {
+    let Some(servers) = v.get(SERVERS_KEY) else {
+        return;
     };
-    let mut dirs: Vec<String> = cfg
-        .get("projects")
-        .and_then(serde_json::Value::as_object)
-        .map(|o| o.keys().cloned().collect())
-        .unwrap_or_default();
-    dirs.sort();
-    for dir in dirs {
-        let file = Path::new(&dir).join(PROJECT_MCP_FILE);
-        match std::fs::metadata(&file) {
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
-            Err(e) => {
-                out.problems.push(copy_text(
-                    "beClaudeAssets.mcp.statFailed",
-                    &[("path", &file.display().to_string()), ("e", &e.to_string())],
-                ));
-                continue;
-            }
-            Ok(_) => {}
-        }
-        let parsed: Result<serde_json::Value, String> =
-            read_regular_capped(&file, MAX_PROJECT_MCP_BYTES)
-                .and_then(|b| serde_json::from_slice(strip_bom(&b)).map_err(|e| e.to_string()));
-        let v = match parsed {
-            Ok(v) => v,
-            Err(e) => {
-                let why = copy_text(
-                    "beClaudeAssets.mcp.readFailed",
-                    &[("path", &file.display().to_string()), ("e", &e.to_string())],
-                );
-                tracing::warn!("资产目录：{why}");
-                out.problems.push(why);
-                continue;
-            }
-        };
-        let Some(servers) = v.get(SERVERS_KEY) else {
-            continue;
-        };
-        let Some(servers) = servers.as_object() else {
-            out.problems.push(copy_text(
-                "beClaudeAssets.mcp.notObject",
-                &[("path", &file.display().to_string())],
-            ));
-            continue;
-        };
-        for (name, def) in servers {
-            out.mcp.push((dir.clone(), name.clone(), def.clone()));
-        }
+    let Some(servers) = servers.as_object() else {
+        out.problems.push(copy_text(
+            "beClaudeAssets.mcp.notObject",
+            &[("path", &file.display().to_string())],
+        ));
+        return;
+    };
+    for (name, def) in servers {
+        out.mcp.push(McpSeen {
+            project: project.map(str::to_string),
+            name: name.clone(),
+            def: def.clone(),
+            file: file.to_path_buf(),
+        });
     }
 }
 

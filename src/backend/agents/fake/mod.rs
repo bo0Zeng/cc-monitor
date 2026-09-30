@@ -163,14 +163,6 @@ pub(crate) fn resume_command(base: &str, session_id: &str) -> String {
 /// 能力 12：resume 会话名前缀（Claude `cc` / Codex `cx`）。
 pub(crate) const SESSION_NAME_PREFIX: &str = "fk";
 
-/// 能力 13〔RM1b · 第四波〕：一个插件市场的落点 → 它**声明插件的那份清单**在哪。
-///
-/// 反推自 `observe/plugins_query.rs`（插件市场只读枚举搬进后端，远端也要答得出）：
-/// Claude 那家是 `<落点>/.claude-plugin/marketplace.json`，本层**文件名与层级都不同**。
-pub(crate) fn marketplace_manifest(install_location: &Path) -> PathBuf {
-    install_location.join("catalog.fake.json")
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
 // 能力表 + 走全流程的 driver
 // ─────────────────────────────────────────────────────────────────────────────
@@ -190,8 +182,6 @@ pub(crate) const CAPABILITIES: &[&str] = &[
     "resume 默认命令",
     "resume 命令形",
     "resume 会话名前缀",
-    // 〔RM1b · 第四波〕能力 13：插件市场的清单住哪（`observe/plugins_query.rs` 反推出来的第 13 种）。
-    "插件市场清单",
 ];
 
 /// 假 agent 交出来的一整套能力。
@@ -213,7 +203,6 @@ pub(crate) struct FakeCaps {
     pub(crate) default_command: Option<&'static str>,
     pub(crate) resume_command: Option<fn(&str, &str) -> String>,
     pub(crate) session_name_prefix: Option<&'static str>,
-    pub(crate) marketplace_manifest: Option<fn(&Path) -> PathBuf>,
 }
 
 impl FakeCaps {
@@ -231,7 +220,6 @@ impl FakeCaps {
             self.default_command.is_some(),
             self.resume_command.is_some(),
             self.session_name_prefix.is_some(),
-            self.marketplace_manifest.is_some(),
         ]
         .iter()
         .filter(|b| **b)
@@ -252,7 +240,6 @@ impl FakeCaps {
             default_command: Some(DEFAULT_COMMAND),
             resume_command: Some(resume_command),
             session_name_prefix: Some(SESSION_NAME_PREFIX),
-            marketplace_manifest: Some(marketplace_manifest),
         }
     }
 
@@ -277,14 +264,13 @@ impl FakeCaps {
             "resume 默认命令" => c.default_command = None,
             "resume 命令形" => c.resume_command = None,
             "resume 会话名前缀" => c.session_name_prefix = None,
-            "插件市场清单" => c.marketplace_manifest = None,
             other => unreachable!("`{other}` 在 CAPABILITIES 里却没有对应字段 —— 两处漂开了"),
         }
         c
     }
 }
 
-/// 全流程的 7 段。名字进错误信息，所以是常量而不是字面量。
+/// 全流程的 6 段。名字进错误信息，所以是常量而不是字面量。
 pub(crate) const STAGES: &[&str] = &[
     "发现",
     "宣告（hello.homes）",
@@ -292,8 +278,6 @@ pub(crate) const STAGES: &[&str] = &[
     "判活",
     "账号",
     "resume",
-    // 〔RM1b · 第四波〕第 7 段：插件市场（能力 13）。
-    "插件市场",
 ];
 
 /// 流程停下来的原因 —— **两种都必须说得出话**。
@@ -523,19 +507,6 @@ pub(crate) fn walk(caps: &FakeCaps, fixture_home: &Path) -> Result<Vec<&'static 
     }
     done.push(STAGES[5]);
 
-    // ── ⑦〔RM1b〕插件市场：清单住哪（能力 13）。夹具在 `<home>/market/` 下放了一份本层形状的清单。
-    let manifest = caps.marketplace_manifest.ok_or(Stop::MissingCapability {
-        stage: STAGES[6],
-        capability: "插件市场清单",
-    })?;
-    if !manifest(&fixture_home.join(FIXTURE_MARKET_DIR)).is_file() {
-        return Err(Stop::MissingCapability {
-            stage: STAGES[6],
-            capability: "插件市场清单",
-        });
-    }
-    done.push(STAGES[6]);
-
     Ok(done)
 }
 
@@ -543,8 +514,6 @@ pub(crate) fn walk(caps: &FakeCaps, fixture_home: &Path) -> Result<Vec<&'static 
 pub(crate) const FIXTURE_SESSION_ID: &str = "00000000-0000-4000-8000-0000000000f6";
 /// 夹具里那条会话的 cwd。
 pub(crate) const FIXTURE_CWD: &str = "/home/u/proj";
-/// 〔RM1b〕夹具里那个插件市场的落点（相对 home）。
-pub(crate) const FIXTURE_MARKET_DIR: &str = "market";
 
 #[cfg(test)]
 #[path = "../../../../tests/backend/agents/fake_tests.rs"]

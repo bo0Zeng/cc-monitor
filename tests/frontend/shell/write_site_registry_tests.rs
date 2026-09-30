@@ -97,7 +97,7 @@ pub(crate) const WRITE_SITES: &[(&str, &str, Option<&str>, &str)] = &[
     // ── 〔RW1 · 第四波 · 2026-09-24〕这里原来有收件箱写（`write_skill_file`〔散文墓碑〕）一行（项目里的
     //    `.claude/planned-build/INBOX.txt`，本进程 `fs::write` ＋ `verified_write` 回读回滚）。用户裁「远端（和本机，
     //    同一条路）的 `INBOX.txt` 能编辑、经那台机器后端的文件管理那一面写」⇒ 读写都改经后端（`files-peek` /
-    //    `files-put`，带 CAS 期望），本进程一个字节不落 ⇒ 摘行。〔MIG-3a〕三道围栏也进了那台后端（`skill_host.rs::editable_target`）。
+    //    `files-put`，带 CAS 期望），本进程一个字节不落 ⇒ 摘行。〔MIG-3a〕三道围栏也进了那台后端；〔09-30〕收件箱编辑面整块删了，那三道随之没了。
     // ── 🔴 〔RW1 · 第四波 · 2026-09-24〕这里原来有三行 `fenced_block.rs` 的本机原语
     //    （`put_atomic` / `save_backup` / `delete_created`，那时是本机 rc · `$PROFILE` · 别名文件 · rc 里那一行
     //    source 的唯一落盘漏斗）。用户裁「只允许后端的文件管理部分写文件」**也管本机** ⇒ 那几件改经本机后端

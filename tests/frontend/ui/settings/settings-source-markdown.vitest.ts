@@ -111,8 +111,7 @@ describe("ST1：设置窗屏幕上的字符串里零 markdown 星号", () => {
       "src/frontend/ui/settings/panel.ts",
       "src/frontend/ui/settings/accounts-section.ts",
       "src/frontend/ui/settings/account-new-form.ts",
-      "src/frontend/ui/settings/mcp-section.ts",
-      "src/frontend/ui/settings/plugins-section.ts",
+      "src/frontend/ui/settings/ext-section.ts",
       "src/frontend/ui/settings/machine-aliases.ts", // 〔AL1c〕原 `cc_integration.ts` 并进了它
       "src/frontend/ui/settings/remote-section.ts",
       "src/frontend/ui/accounts.ts",

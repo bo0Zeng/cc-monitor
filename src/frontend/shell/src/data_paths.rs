@@ -358,6 +358,11 @@ fn backend_entries(
             copy_text("rsDataPaths.backend.panorama", &[]),
             DataClass::Cache,
         ),
+        dir(
+            rr::EXT_BACKUPS_DIR_REL,
+            copy_text("rsDataPaths.backend.extBackups", &[]),
+            DataClass::Truth,
+        ),
     ]);
     out
 }

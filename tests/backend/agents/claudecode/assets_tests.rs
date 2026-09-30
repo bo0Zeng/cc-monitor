@@ -4,11 +4,11 @@
 //! ＋ 题面「skill（`~/.claude/skills/*`）与 MCP 定义（项目 `.mcp.json` 里的条目）」。
 //!
 //! 买到：临时目录上真读 —— skill 逐个目录（链接跟到底、文件与点开头的跳过）· `description:` 从 front matter 取 ·
-//! MCP 按 `.claude.json` 的 `projects` × `<项目>/.mcp.json` 逐条 · 坏的那一份**说出来**而不是当空表。
+//! MCP 用户级（`.claude.json` 顶层）与交进来的每个项目的 `.mcp.json` 逐条 · 坏的那一份**说出来**而不是当空表。
 //! 买不到：真 `~/.claude` 的形状（夹具是按公开布局造的）；Windows 路径没跑过。
 
 use super::*;
-use crate::agents::Sightings;
+use crate::agents::{McpSeen, Sightings};
 
 fn temp_dir(tag: &str) -> PathBuf {
     let p = std::env::temp_dir().join(format!("ccm-ccassets-{tag}-{}", std::process::id()));
@@ -40,11 +40,11 @@ fn skills_are_the_directories_under_the_root_with_their_description() {
     std::os::unix::fs::symlink(d.join("elsewhere").join("gamma"), root.join("gamma")).unwrap();
 
     let mut out = Sightings::default();
-    scan_skills_at(&root, &mut out);
+    scan_skills_at(&root, None, &mut out);
     let got: Vec<(String, Option<String>)> = out
         .skills
         .iter()
-        .map(|(n, _, dsc)| (n.clone(), dsc.clone()))
+        .map(|k| (k.name.clone(), k.description.clone()))
         .collect();
     let mut want = vec![
         ("alpha".to_string(), Some("Does alpha things".to_string())),
@@ -56,7 +56,7 @@ fn skills_are_the_directories_under_the_root_with_their_description() {
     assert!(out.problems.is_empty(), "{:?}", out.problems);
 
     let mut none = Sightings::default();
-    scan_skills_at(&d.join("no-such"), &mut none);
+    scan_skills_at(&d.join("no-such"), None, &mut none);
     assert_eq!(
         none,
         Sightings::default(),
@@ -66,7 +66,7 @@ fn skills_are_the_directories_under_the_root_with_their_description() {
 }
 
 #[test]
-fn project_mcp_is_projects_times_their_mcp_json_and_broken_ones_are_said() {
+fn mcp_is_the_user_level_table_plus_each_given_projects_mcp_json_and_broken_ones_are_said() {
     let d = temp_dir("mcp");
     let (p1, p2, p3) = (d.join("p1"), d.join("p2"), d.join("p3"));
     for p in [&p1, &p2, &p3] {
@@ -79,31 +79,41 @@ fn project_mcp_is_projects_times_their_mcp_json_and_broken_ones_are_said() {
     .unwrap();
     std::fs::write(p3.join(PROJECT_MCP_FILE), "{broken").unwrap();
     let cfg = d.join(".claude.json");
-    let projects: serde_json::Value = serde_json::json!({
-        "projects": {
-            p1.to_string_lossy(): {},
-            p2.to_string_lossy(): {},
-            p3.to_string_lossy(): {},
-        }
-    });
-    std::fs::write(&cfg, projects.to_string()).unwrap();
+    std::fs::write(
+        &cfg,
+        serde_json::json!({ "mcpServers": { "u": { "command": "u-cmd" } }, "projects": {} })
+            .to_string(),
+    )
+    .unwrap();
+    let projects: Vec<String> = [&p1, &p2, &p3]
+        .iter()
+        .map(|p| p.to_string_lossy().into_owned())
+        .collect();
 
-    let mut out = Sightings::default();
-    scan_mcp_at(&cfg, &mut out);
-    let got: Vec<(String, String)> = out
+    let out = scan_at(None, Some(&cfg), &projects);
+    let got: Vec<(Option<String>, String)> = out
         .mcp
         .iter()
-        .map(|(p, n, _)| (p.clone(), n.clone()))
+        .map(|m| (m.project.clone(), m.name.clone()))
         .collect();
     let p1s = p1.to_string_lossy().into_owned();
     assert_eq!(
         got,
-        vec![(p1s.clone(), "fs".to_string()), (p1s, "gh".to_string())]
+        vec![
+            (None, "u".to_string()),
+            (Some(p1s.clone()), "fs".to_string()),
+            (Some(p1s), "gh".to_string())
+        ]
     );
     assert_eq!(
-        out.mcp[0].2,
-        serde_json::json!({"command": "/opt/fs"}),
-        "定义原样"
+        out.mcp[1],
+        McpSeen {
+            project: Some(p1.to_string_lossy().into_owned()),
+            name: "fs".into(),
+            def: serde_json::json!({"command": "/opt/fs"}),
+            file: p1.join(PROJECT_MCP_FILE),
+        },
+        "定义原样、住哪一份也记下"
     );
     assert_eq!(
         out.problems.len(),
@@ -113,12 +123,78 @@ fn project_mcp_is_projects_times_their_mcp_json_and_broken_ones_are_said() {
     );
     assert!(out.problems[0].contains("p3"), "{:?}", out.problems);
 
-    let mut none = Sightings::default();
-    scan_mcp_at(&d.join("no-such.json"), &mut none);
+    let none = scan_at(None, Some(&d.join("no-such.json")), &[]);
     assert_eq!(
         none,
         Sightings::default(),
         "没有 .claude.json ⇒ 这台没用过，不是问题"
     );
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// ★ 覆盖面：一个临时家目录里 skill × 用户级 / 项目级、MCP × 用户级 / 项目级四格各放一个 —— 项目取自这台的会话清单
+/// （会话记录里的 `cwd`，只采结构），目录四格各认出一个（两向相等）。
+#[test]
+fn the_catalog_sees_one_of_each_kind_at_each_level() {
+    let d = temp_dir("four");
+    let agent_home = d.join(".claude");
+    let proj = d.join("proj");
+    let skill = |root: &Path, name: &str| {
+        std::fs::create_dir_all(root.join(name)).unwrap();
+        std::fs::write(
+            root.join(name).join(SKILL_DOC),
+            "---\ndescription: x\n---\n",
+        )
+        .unwrap();
+    };
+    skill(&agent_home.join(SKILLS_DIR), "su");
+    skill(&project_skills_root(&proj), "sp");
+    std::fs::write(
+        d.join(".claude.json"),
+        serde_json::json!({ "mcpServers": { "mu": { "command": "u" } } }).to_string(),
+    )
+    .unwrap();
+    std::fs::write(
+        proj.join(PROJECT_MCP_FILE),
+        serde_json::json!({ "mcpServers": { "mp": { "command": "p" } } }).to_string(),
+    )
+    .unwrap();
+    let sessions = agent_home.join("projects").join("-proj");
+    std::fs::create_dir_all(&sessions).unwrap();
+    std::fs::write(
+        sessions.join("00000000-0000-0000-0000-000000000001.jsonl"),
+        format!(
+            "{}\n",
+            serde_json::json!({ "type": "user", "cwd": proj.display().to_string() })
+        ),
+    )
+    .unwrap();
+
+    let (projects, why) = crate::assets::asset_catalog::session_projects_at(&agent_home);
+    assert_eq!(
+        (projects.clone(), why),
+        (vec![proj.display().to_string()], None)
+    );
+    let seen = scan_at(
+        Some(&agent_home.join(SKILLS_DIR)),
+        Some(&d.join(".claude.json")),
+        &projects,
+    );
+    let (assets, problems) = crate::assets::asset_catalog::assets_from(&[seen]);
+    assert!(problems.is_empty(), "{problems:?}");
+    let got: std::collections::BTreeSet<(String, String, bool)> = assets
+        .iter()
+        .map(|a| (a.kind.clone(), a.name.clone(), a.project.is_some()))
+        .collect();
+    let want: std::collections::BTreeSet<(String, String, bool)> = [
+        ("skill", "su", false),
+        ("skill", "sp", true),
+        ("mcp", "mu", false),
+        ("mcp", "mp", true),
+    ]
+    .iter()
+    .map(|(k, n, p)| (k.to_string(), n.to_string(), *p))
+    .collect();
+    assert_eq!(got, want);
     let _ = std::fs::remove_dir_all(&d);
 }

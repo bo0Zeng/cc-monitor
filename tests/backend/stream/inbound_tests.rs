@@ -435,18 +435,16 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "terminal-local",       // 〔P5〕纯函数（接前奏），普通 spawn
         "history-search-merge", // 〔FIX4 · J15〕纯计算（合并排序），普通 spawn
         "assets-sync",
-        // 〔MIG-3a · 主会话 09-28 裁〕两台之间那几件的枢纽：等远端 capture（真异步），本机那一跳自己挪到阻塞线程池。
-        "mcp-sync-hub-preview",
-        "mcp-sync-hub-apply",
+        // 两台之间「装」那一件的枢纽：等远端 capture（真异步），本机那一跳自己挪到阻塞线程池。
+        "ext-hub-preview",
+        "ext-hub-apply",
         "pubkey-push",        // 〔MIG-3b 续〕等远端（问那台后端 / 一次 exec），真异步
         "panorama-edit", // 〔MIG-3b 续〕同 `panorama`（起小程序、等它），落盘那一步挪到阻塞线程池
         "panorama-uninstall", // 〔FIX4〕同上：起小程序认身份、等它；读与删挪到阻塞线程池
         "files-grep",    // 〔FILES3〕可撤：走那一趟在阻塞线程池上、看取消位，future 被丢即收手
-        "skill-install-hub-preview",
-        "skill-install-hub-apply",
-        "deploy-plan", // 〔MIG-3b〕真异步（拨号 / 等远端 capture · SFTP），在 await 点可取消
+        "deploy-plan",   // 〔MIG-3b〕真异步（拨号 / 等远端 capture · SFTP），在 await 点可取消
         "resident-verdict", // 〔THIN〕纯判定，普通 spawn
-        "deploy-slot", // 〔THIN〕有 `dial` 时真异步（等远端 capture），在 await 点可取消
+        "deploy-slot",   // 〔THIN〕有 `dial` 时真异步（等远端 capture），在 await 点可取消
         "deploy-retired", // 〔THIN〕真异步（沿池里那条 SSH 开 SFTP），在 await 点可取消
         "panorama",
         "remote-reach",
@@ -561,7 +559,6 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "exit-policy-read",
         "exit-policy-set",
         // 〔RM1b · 第四波〕功能侧只读查询：读一个目录 ＋ 每个文件各一次（同步文件 I/O）。
-        "plugins-marketplaces",
         "tasks-list",
         "mcp-read",
         "tmux-list",
@@ -589,10 +586,10 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         // 〔AS2〕skill「装到这台」两条：走目录 ＋ 读原文 ＋ stat。
         "skill-read",
         "skill-install-plan",
-        // 〔SU1 · 第四波 4C〕skill 卸三条：原子写装记录 · 读装记录 · 逐个读盘比摘要。
+        // 〔SU1 · 第四波 4C〕装记录的写口 ＋ 扩展页那张表 ＋ 卸之前那张卡：同步文件 I/O。
         "skill-install-record",
-        "skill-installs",
-        "skill-uninstall-plan",
+        "ext-list",
+        "ext-uninstall-preview",
         // 〔C4d · 第四波 4B〕历史注解三条：读 / 原子写一份小文件（同步文件 I/O）。
         "history-annotate",
         "history-forget",
@@ -605,7 +602,6 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "mcp-sync-plan",
         // 〔MIG-3a〕MCP 写两条 ＋ 推拉三条 ＋ skill 装卸两条：同步文件 I/O（经本进程文件管理面）。
         "skill-install-apply",
-        "skill-host-list",
         "cc-bus-install",
         // 账号库那一族：读账号库 ＋ 经本进程文件管理面落盘（同步文件 I/O）。
         "accounts-init",
@@ -627,9 +623,7 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "aliases-block-install",
         "aliases-block-remove",
         "powershell-policy-set",
-        "skill-host-read",
-        "skill-host-write",
-        "skill-uninstall-apply",
+        "ext-uninstall-apply",
         "mcp-server-put",
         "mcp-server-remove",
         "mcp-sync-source",
@@ -657,14 +651,12 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         // 〔FIX4 · J15〕`history-search-merge`：纯计算，普通 spawn。
         "history-search-merge",
         "assets-sync",
-        "mcp-sync-hub-preview",
-        "mcp-sync-hub-apply",
+        "ext-hub-preview",
+        "ext-hub-apply",
         "pubkey-push",        // 〔MIG-3b 续〕等远端（问那台后端 / 一次 exec），真异步
         "panorama-edit", // 〔MIG-3b 续〕同 `panorama`（起小程序、等它），落盘那一步挪到阻塞线程池
         "panorama-uninstall", // 〔FIX4〕同上：起小程序认身份、等它；读与删挪到阻塞线程池
         "files-grep",    // 〔FILES3〕可撤：走那一趟在阻塞线程池上、看取消位，future 被丢即收手
-        "skill-install-hub-preview",
-        "skill-install-hub-apply",
         // 〔MIG-3b〕部署计划：真异步（拨号 / 等远端），普通 spawn。
         "deploy-plan",
         // 〔THIN〕远端常驻后端 hello 的新旧：纯判定，普通 spawn。
@@ -738,7 +730,6 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "accounts-trust", // 〔C4c〕
         "exit-policy-read",
         "exit-policy-set",
-        "plugins-marketplaces",
         "tasks-list",
         "mcp-read",
         "tmux-list",
@@ -769,8 +760,8 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "skill-install-plan",
         // 〔SU1 · 第四波 4C〕skill 卸三条，阻塞档。
         "skill-install-record",
-        "skill-installs",
-        "skill-uninstall-plan",
+        "ext-list",
+        "ext-uninstall-preview",
         // 〔C4d · 第四波 4B〕历史注解三条，阻塞档。
         "history-annotate",
         "history-forget",
@@ -783,7 +774,6 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "mcp-sync-plan",
         // 〔MIG-3a〕MCP 写两条 ＋ 推拉三条 ＋ skill 装卸两条，阻塞档。
         "skill-install-apply",
-        "skill-host-list",
         "cc-bus-install",
         // 账号库那一族：读账号库 ＋ 经本进程文件管理面落盘（同步文件 I/O）。
         "accounts-init",
@@ -805,9 +795,7 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "aliases-block-install",
         "aliases-block-remove",
         "powershell-policy-set",
-        "skill-host-read",
-        "skill-host-write",
-        "skill-uninstall-apply",
+        "ext-uninstall-apply",
         "mcp-server-put",
         "mcp-server-remove",
         "mcp-sync-source",
