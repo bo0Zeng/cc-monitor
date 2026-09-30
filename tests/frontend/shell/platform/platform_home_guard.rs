@@ -32,11 +32,6 @@ enum Presence {
 const PENDING: &[(&str, &str, Presence)] = &[
     ("config.rs", "归 P4 收", Presence::Now),
     (
-        "dial_host.rs",
-        "待主会话派（不在 P4 / P4b 写区）",
-        Presence::Now,
-    ),
-    (
         "filewin/download.rs",
         "归 P4 收（随窗口包搬走即删）",
         Presence::Now,
@@ -98,7 +93,7 @@ const PENDING: &[(&str, &str, Presence)] = &[
 ];
 
 /// 名单条数的上限，与 [`PENDING`] 恒等：删行时同拍减一；**不许加**（加一行 = 往壳里别处又写了平台代码）。
-const PENDING_LEN: usize = 17;
+const PENDING_LEN: usize = 16;
 
 /// `cfg` 谓词里点了操作系统的词（字符串字面量之外，按整词认）。`target_arch` 不在：那是架构，不是操作系统。
 const CFG_WORDS: &[&str] = &[

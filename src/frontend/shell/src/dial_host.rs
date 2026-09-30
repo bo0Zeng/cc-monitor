@@ -104,7 +104,7 @@ pub(crate) async fn local_backend_accepting(cmd: &str) -> Result<Arc<InboundClie
 /// 界面进程此刻的 ssh-agent 套接字（Unix）。常驻后端活得比界面长，它自己身上那份可能早就不指向活的 agent
 /// ⇒ 由界面交过去（后端 `DialRequest::agent_sock`）。Windows 上 agent 是固定的命名管道，不给。
 fn agent_sock() -> Option<String> {
-    if cfg!(unix) {
+    if crate::platform::ssh_agent::AGENT_VIA_SOCKET_ENV {
         std::env::var("SSH_AUTH_SOCK")
             .ok()
             .filter(|s| !s.trim().is_empty())
