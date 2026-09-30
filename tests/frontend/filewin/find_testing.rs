@@ -77,16 +77,35 @@ impl Drop for SynthTree {
 }
 
 impl SynthTree {
-    /// 这棵树里路径含 `needle` 的那些条目 —— **预期集**。
+    /// 这棵树里路径含 `needle` 的那些条目 —— **预期集**（[`remote_form`] 那一形：窗口看见的就是它）。
     ///
     /// 纯路径过滤，不碰磁盘、不碰那台合成后端。
     pub fn expected(&self, needle: &str) -> std::collections::BTreeSet<String> {
         self.entries
             .iter()
             .filter(|p| p.contains(needle))
-            .cloned()
+            .map(|p| remote_form(p))
             .collect()
     }
+
+    /// 根交给窗口的那一形（窗口的 `cwd`）。
+    pub fn remote_root(&self) -> String {
+        remote_form(&self.root.to_string_lossy())
+    }
+}
+
+/// 本机夹具路径 → 当「远端」交给窗口的那一形：分隔符一律 `/`。
+///
+/// 要求住址 `设计/60 §2.4`「只有远端，没有本机」：远端路径恒用 `/`，窗口切路径只认 `/`（`source::parent_dir` 头注）。
+/// 本摞拿本机临时目录演那台远端 —— Linux 上恒等；Windows 上 `C:\…\x` 换成 `C:/…/x`（Windows 的文件 API 两种都认，
+/// 合成后端拿它回盘上照样打得开）。不换 ⇒ 窗口把整条 `C:\…\x` 当成一个名字（〔CIFIX-FW〕Windows runner 上那几条红）。
+pub fn remote_form(local: &str) -> String {
+    remote_form_with(local, std::path::MAIN_SEPARATOR)
+}
+
+/// 同 [`remote_form`]，本机分隔符由调用方交 —— 判据在 Linux 上注入 `\` 演 Windows 那一形。
+pub fn remote_form_with(local: &str, sep: char) -> String {
+    local.replace(sep, "/")
 }
 
 /// 把 `corpus` 那几条路径夹紧成「落得到盘上」的相对路径。
@@ -463,7 +482,7 @@ impl FakeBackend {
                             .iter()
                             .map(|r| {
                                 serde_json::json!({
-                                    "path": r.path,
+                                    "path": remote_form(&r.path),
                                     "kind": if r.is_dir { "dir" } else { "file" },
                                     "size": r.size,
                                 })
@@ -864,7 +883,7 @@ fn walk(root: &std::path::Path) -> Vec<Vec<u8>> {
             continue;
         };
         for r in rows {
-            out.push(r.path.as_bytes().to_vec());
+            out.push(remote_form(&r.path).into_bytes());
             if r.is_dir {
                 stack.push(std::path::PathBuf::from(&r.path));
             }

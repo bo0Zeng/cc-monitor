@@ -144,7 +144,7 @@ fn the_synthetic_tree_is_not_a_trivial_shape() {
 #[tokio::test]
 async fn typing_into_the_box_puts_exactly_the_expected_hits_on_the_frame() {
     let tree = testing::plant("e2e", TREE_N, TREE_SEED).expect("造不出那棵树");
-    let root = tree.root.to_string_lossy().to_string();
+    let root = tree.remote_root();
     let wired = testing::wire_up(
         "b1-find-e2e",
         FakeBackend::new(COMMANDS, Declared::default()),
@@ -198,7 +198,7 @@ async fn typing_into_the_box_puts_exactly_the_expected_hits_on_the_frame() {
 #[tokio::test]
 async fn a_find_against_a_backend_that_never_built_an_index_comes_back_empty_and_says_so() {
     let tree = testing::plant("nonull", TREE_N, TREE_SEED).expect("造不出那棵树");
-    let root = tree.root.to_string_lossy().to_string();
+    let root = tree.remote_root();
     // 🔴 它**不声明** `files-index-rebuild` ⇒ 客户端连发都发不出去
     //    （`InboundClient::call` 第一行的能力协商），索引永远建不起来。
     //    这正是本刀之前真机上的那一态（「零生产调用方 ⇒ 恒回 index_missing」）。
@@ -279,7 +279,7 @@ async fn a_find_against_a_backend_that_never_built_an_index_comes_back_empty_and
 #[tokio::test]
 async fn the_window_sends_a_rebuild_when_the_backend_says_the_index_is_missing() {
     let tree = testing::plant("cadence", 40, TREE_SEED).expect("造不出那棵树");
-    let root = tree.root.to_string_lossy().to_string();
+    let root = tree.remote_root();
     let wired = testing::wire_up(
         "b1-find-cadence",
         FakeBackend::new(COMMANDS, Declared::default()),
@@ -336,7 +336,7 @@ async fn the_window_sends_a_rebuild_when_the_backend_says_the_index_is_missing()
 #[tokio::test]
 async fn a_fresh_index_is_never_rebuilt_behind_the_users_back() {
     let tree = testing::plant("fresh", 40, TREE_SEED).expect("造不出那棵树");
-    let root = tree.root.to_string_lossy().to_string();
+    let root = tree.remote_root();
     let declared = Declared {
         age_secs: 7,
         rewalk_interval_secs: 4242,
@@ -398,7 +398,7 @@ async fn a_fresh_index_is_never_rebuilt_behind_the_users_back() {
 #[tokio::test]
 async fn a_stale_index_the_backend_flagged_gets_rebuilt() {
     let tree = testing::plant("stale", 40, TREE_SEED).expect("造不出那棵树");
-    let root = tree.root.to_string_lossy().to_string();
+    let root = tree.remote_root();
     let declared = Declared {
         age_secs: 9_999,
         rewalk_interval_secs: 4242,
@@ -434,7 +434,7 @@ async fn a_stale_index_the_backend_flagged_gets_rebuilt() {
 #[tokio::test]
 async fn many_keystrokes_in_flight_still_only_trigger_one_rebuild() {
     let tree = testing::plant("burst", 40, TREE_SEED).expect("造不出那棵树");
-    let root = tree.root.to_string_lossy().to_string();
+    let root = tree.remote_root();
     let wired = testing::wire_up(
         "b1-find-burst",
         FakeBackend::new(COMMANDS, Declared::default()),
@@ -500,7 +500,7 @@ async fn the_freshness_numbers_the_backend_reports_really_reach_the_frame() {
     ] {
         let tree =
             testing::plant(&format!("fresh-{entries_hint}"), 30, TREE_SEED).expect("造不出那棵树");
-        let root = tree.root.to_string_lossy().to_string();
+        let root = tree.remote_root();
         let declared = Declared {
             rewalk_interval_secs: interval,
             age_secs: age,
@@ -609,7 +609,7 @@ async fn the_cold_first_build_line_is_on_the_frame_while_it_runs_and_gone_after(
     for (i, (tag, secs)) in groups.iter().enumerate() {
         let other = groups[1 - i].1;
         let tree = testing::plant(tag, 30, TREE_SEED).expect("造不出那棵树");
-        let root = tree.root.to_string_lossy().to_string();
+        let root = tree.remote_root();
         let gate = std::sync::Arc::new(tokio::sync::Notify::new());
         let declared = Declared {
             cold_first_build_secs: *secs,
@@ -687,7 +687,7 @@ async fn the_cold_first_build_line_is_on_the_frame_while_it_runs_and_gone_after(
 #[tokio::test]
 async fn a_warm_rewalk_never_claims_to_be_the_cold_first_build() {
     let tree = testing::plant("warm", 30, TREE_SEED).expect("造不出那棵树");
-    let root = tree.root.to_string_lossy().to_string();
+    let root = tree.remote_root();
     let gate = std::sync::Arc::new(tokio::sync::Notify::new());
     let declared = Declared {
         age_secs: 9_999,
