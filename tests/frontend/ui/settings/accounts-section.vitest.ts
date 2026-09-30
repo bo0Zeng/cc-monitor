@@ -1128,6 +1128,15 @@ describe("N-F1b 没有远端时：设置面板列得出这台机器的账号", (
         const b = accounts.accountStatusBadge(a);
         return [b.text, b.title];
       }),
+      // ②b 行上的动作与维护区：家在文案表（`accounts.*`，与远端那一页同一套）与 `accounts.ts::accountLoginActionLabel`
+      ...st.accounts.map((a) => accounts.accountLoginActionLabel(a).label),
+      copyText("accounts.row.remove"),
+      copyText("accounts.maintenance.title"),
+      copyText("accounts.maintenance.verify"),
+      copyText("accounts.maintenance.sync"),
+      copyText("accounts.maintenance.rollback"),
+      copyText("accounts.maintenance.syncHint"),
+      copyText("accounts.maintenance.rollbackHint"),
       // ③ 这一轮桩喂进去的动态值
       ...st.accounts.flatMap((a) => [a.name, a.email, a.configDir ?? ""]),
       st.meta?.manifestPath ?? "",
