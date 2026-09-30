@@ -10417,7 +10417,7 @@
     },
     "rsFilewinProc.bin.notFound": {
       "kind": "error",
-      "zh": "找不到文件窗口程序（{binStem}）。看过这几处：{looked}\n这一份 monitor 自己也没带它。要用别处的一份，设环境变量 {binEnv}。",
+      "zh": "找不到文件窗口程序（{binStem}）。看过这几处：{looked}\n这一份 cc-monitor 自己也没带它。要用别处的一份，设环境变量 {binEnv}。",
       "args": ["binStem", "looked", "binEnv"]
     },
     "rsFilewinProc.bin.noHome": {
@@ -12509,7 +12509,7 @@
     },
     "rsLocalBackend.resolve.notBeside": {
       "kind": "error",
-      "zh": "monitor 旁边没有本机后端（{stem}）。它随安装包一起装，和 monitor 在同一个目录；装一次安装包（Releases 页）就有。远端功能不受影响。",
+      "zh": "cc-monitor 旁边没有本机后端（{stem}）。它随安装包一起装，和 cc-monitor 在同一个目录；装一次安装包（Releases 页）就有。远端功能不受影响。",
       "args": ["stem"]
     },
     "rsBackendControl.handle.missing": {

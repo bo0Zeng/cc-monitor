@@ -162,10 +162,10 @@ COMPILE_STEPS = [
     # 文件窗口程序（monitor 包的另一个 `[[bin]]`，内嵌进 exe 让单文件的 monitor 也开得了文件窗口）：同一格平台的**第三件字节**。
     ("build-windows", "Build local filewin (native)",
      "runner host triple 的原生 `cc-monitor-filewin.exe`",
-     "本机 Windows x86_64（文件窗口；内嵌进 `monitor.exe`）"),
+     "本机 Windows x86_64（文件窗口；内嵌进 `cc-monitor.exe`）"),
     ("build-linux", "Build local filewin (native)",
      "runner host triple 的原生 glibc `cc-monitor-filewin`（链 GTK，musl 那两份替不了它）",
-     "本机 Linux x86_64（文件窗口；内嵌进裸 `monitor`）"),
+     "本机 Linux x86_64（文件窗口；内嵌进裸 `cc-monitor`）"),
     ("build-linux", "Build local backend (native)",
      "runner host triple 的原生 glibc 字节",
      "🟡 **本机 Linux 的第二份来源** —— `设计/96 §7.3` 逐字「哪一份该留、哪一份该删，"
@@ -222,7 +222,7 @@ BYTE_LINES = [
         "into": "后端与全景小程序**不另编一份**（`设计/96 §7.1.5` 待点① 逐字：`local_daemon.rs::start_local_backend` 里"
                 "那道 `cfg!(target_os = \"linux\")` 闸让本机 Linux 直接用远端那两份 **musl 静态**字节自释放）"
                 "⇒ 这两件的产线增量是 **0**，它要的是**门禁多一格 ＋ 一次真机验**。"
-                "文件窗口程序另编一份，经 `build.rs::embed_native_filewin` 进裸 `monitor` 本体。"
+                "文件窗口程序另编一份，经 `build.rs::embed_native_filewin` 进裸 `cc-monitor` 本体。"
                 "⚠ 真机验这一维本判据**买不到**",
     },
 ]
@@ -365,11 +365,11 @@ CLI_VERSION = "2.11.2"
 #: 🔴 本包每一个 `[[bin]]` ↔ 它进安装包的路线。⑭a 与 Cargo.toml 现打**两向集合相等**。
 #: `consumer` = 装机那份上「谁去找它」的那个文件名主干常量的住址（⑭e 逐字对拍）。
 BIN_SHIPPING = {
-    "monitor": {
+    "cc-monitor": {
         "route": "主二进制",
-        "into": "打包器的 main binary：NSIS/MSI 落 `$INSTDIR\\monitor.exe`（`installer.nsi` "
-                "现打 `!define MAINBINARYNAME \"monitor\"` —— **不是** productName `cc-monitor`）；"
-                "deb 落 `/usr/bin/monitor`",
+        "into": "打包器的 main binary（`package.default-run` 点名它；包名仍是 `monitor`）：NSIS/MSI 落 "
+                "`$INSTDIR\\cc-monitor.exe`（`installer.nsi` 的 `MAINBINARYNAME` 跟它走）；"
+                "deb 落 `/usr/bin/cc-monitor`（`.desktop` 的 `Exec` 跟它走）",
         "consumer": None,
     },
     "cc-monitor-filewin": {
@@ -1363,17 +1363,18 @@ def run_checks(emit):
           % (sorted(names - registered), sorted(registered - names)))
 
     # ── ⑭b 主二进制恰好一个，而且就是登记里那一个 ───────────────────────────────────
-    #   口径与 `tauri-cli::get_binaries` 逐字同源：`name == 包名`（或 `default-run`）的
-    #   那个才是 main。⚠ 本仓**没有** `default-run`（下面顺带判它别偷偷出现 —— 出现了，
-    #   哪个 bin 是主二进制就换人，而 `installer.nsi` 的 `MAINBINARYNAME` 会跟着换）。
-    mains = {n for n in names if n == pkg_name}
-    reg_mains = {n for n, v in BIN_SHIPPING.items() if v["route"] == "主二进制"}
+    #   口径与 `tauri-cli::get_binaries` 逐字同源：`name == 包名` **或** `name == default-run` 的
+    #   那个才是 main。主二进制 `cc-monitor` 与包名 `monitor` 不同 ⇒ 本仓用 `default-run` 点名它。
+    #   两样都按 tauri 的口径算：换人（`default-run` 改指别处 / 又长出一个与包名同名的 bin ⇒ 两个 main）
+    #   当场红 —— `installer.nsi` 的 `MAINBINARYNAME` 与 deb 的 `Exec` 都跟着主二进制走。
     default_run = ((cargo_doc or {}).get("package") or {}).get("default-run")
-    check(mains == reg_mains and len(mains) == 1 and default_run is None,
+    mains = {n for n in names if n == pkg_name or n == default_run}
+    reg_mains = {n for n, v in BIN_SHIPPING.items() if v["route"] == "主二进制"}
+    check(mains == reg_mains and len(mains) == 1 and (default_run is None or default_run in names),
           "⑭b主二进制恰好一个，且与登记一致",
-          "`name == package.name`（%r）的 bin = %s · 登记的主二进制 = %s · "
-          "`package.default-run` = %r（它一有值，主二进制就换人）"
-          % (pkg_name, sorted(mains), sorted(reg_mains), default_run))
+          "`name == package.name`（%r）或 `name == package.default-run`（%r）的 bin = %s · 登记的主二进制 = %s"
+          "（`default-run` 指着一个不存在的 bin 也红）"
+          % (pkg_name, default_run, sorted(mains), sorted(reg_mains)))
 
     # ── ⑭c 零命中：没有任何 `[[bin]]` 带 `required-features` ────────────────────────
     #   🔴 这一条是**零命中**那一形（不是地板）：`tauri-cli::get_binaries` 对

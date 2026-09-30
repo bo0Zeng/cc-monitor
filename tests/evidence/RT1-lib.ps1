@@ -84,14 +84,14 @@ function Rt1-Env {
 function Rt1-StartMonitor([hashtable]$extra = @{}) {
   Rt1-Env
   foreach ($k in $extra.Keys) { Set-Item "env:$k" $extra[$k] }
-  $p = Start-Process "$RT1\app\monitor.exe" -WorkingDirectory "$RT1\work" -PassThru
+  $p = Start-Process "$RT1\app\cc-monitor.exe" -WorkingDirectory "$RT1\work" -PassThru
   $p.Id | Set-Content "$RT1\logs\monitor.pid"
   "monitor pid=$($p.Id) start=$($p.StartTime.ToString('o'))"
   return
 }
 function Rt1-Mine {
-  # 我起的进程：路径在 rt1\ 下，或 ~\.cc-monitor\bin\ 下（monitor 自释放的后端 / 全景 / ccm），或 --webview-exe-name=monitor.exe 且 user-data-dir 在 rt1\wv2
-  Get-CimInstance Win32_Process | ? { $_.ExecutablePath -like "$RT1\*" -or $_.ExecutablePath -like 'C:\Users\zbl\.cc-monitor\*' -or ($_.CommandLine -like '*--webview-exe-name=monitor.exe*' -and $_.CommandLine -like "*rt1\wv2*") } |
+  # 我起的进程：路径在 rt1\ 下，或 ~\.cc-monitor\bin\ 下（monitor 自释放的后端 / 全景 / ccm），或 --webview-exe-name=cc-monitor.exe 且 user-data-dir 在 rt1\wv2
+  Get-CimInstance Win32_Process | ? { $_.ExecutablePath -like "$RT1\*" -or $_.ExecutablePath -like 'C:\Users\zbl\.cc-monitor\*' -or ($_.CommandLine -like '*--webview-exe-name=cc-monitor.exe*' -and $_.CommandLine -like "*rt1\wv2*") } |
     select ProcessId,ParentProcessId,Name,SessionId,CreationDate
 }
 function Rt1-Enc([string]$s) { [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($s)) }

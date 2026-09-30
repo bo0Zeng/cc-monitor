@@ -52,13 +52,13 @@ git push origin vX.Y.Z                     # tag push 触发 release.yml
 
 - `cc-monitor_X.Y.Z_x64-setup.exe` — NSIS 安装器
 - `cc-monitor_X.Y.Z_x64_en-US.msi` — MSI（后缀是 `en-US`：`tauri.conf.json` 没配 WiX 语言 ⇒ 走默认）
-- `monitor.exe` — 裸 exe（名字是 cargo 包名 `monitor`，不是 productName）
+- `cc-monitor.exe` — 裸 exe（名字是 `src/frontend/shell/Cargo.toml` 里主 `[[bin]]` 的名字；包名仍是 `monitor`）
 - `SHA256SUMS.txt` — 校验和
 
 **Linux**（`build-linux`）：
 
 - `cc-monitor_X.Y.Z_amd64.deb`
-- `monitor` — 裸二进制
+- `cc-monitor` — 裸二进制
 - `SHA256SUMS-linux.txt`
 - `cc-monitor-backend-x86_64` / `cc-monitor-backend-aarch64` — 远端后端的 musl 静态二进制（外部项目自部署要拿它）。身份在字节自己里（`<<ccm-build-id:…:ccm-build-id>>`），要问它是谁就 `grep -a` 那个串，或跑 `./cc-monitor-backend --ccm-probe` 读 `build=` 那一行。
 
@@ -164,9 +164,9 @@ Release 正文由流水线生成：`release.yml` 两处发布步骤（`build-win
 **下载**
 - `cc-monitor_X.Y.Z_x64-setup.exe` — Windows 普通用户（NSIS）
 - `cc-monitor_X.Y.Z_x64_en-US.msi` — 企业 IT 部署（MSI）
-- `monitor.exe` — Windows 裸 exe（需 WebView2 + 自管路径）
+- `cc-monitor.exe` — Windows 裸 exe（需 WebView2 + 自管路径）
 - `cc-monitor_X.Y.Z_amd64.deb` — Linux（Debian / Ubuntu 系）
-- `monitor` — Linux 裸二进制
+- `cc-monitor` — Linux 裸二进制
 - `SHA256SUMS.txt` / `SHA256SUMS-linux.txt` — 校验和（Windows / Linux 各一份）
 
 完整 CHANGELOG 见 [CHANGELOG.md](https://github.com/bo0Zeng/cc-monitor/blob/main/CHANGELOG.md)

@@ -707,7 +707,7 @@ fn target_exe_suffix(target: &str) -> &'static str {
 const NATIVE_BACKEND_DIR: &str = "native-backend";
 const NATIVE_BACKEND_FILE: &str = "cc-monitor-native";
 
-/// `K-R42`：**把「本机后端」也内嵌进 exe**，让裸 `monitor.exe` 自己带得上一份。
+/// `K-R42`：**把「本机后端」也内嵌进 exe**，让裸 `cc-monitor.exe` 自己带得上一份。
 ///
 /// # 它与 `embed_backends` 是两件事，别合并
 ///
