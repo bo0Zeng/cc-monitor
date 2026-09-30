@@ -534,6 +534,8 @@ pub const LEGACY_ENTRY_REL: &str = ".local/bin/ccm";
 
 /// 〔E2 · E-c〕旧默认 `backendPath` 落下的那份后端字节（`backendPath` 那一格删了之后没人再用它）：SFTP 那一侧（家目录相对）。
 /// 后端问它是谁、monitor 删它，同一个常量。
+/// 〔P1 · 主会话 09-29 裁〕不进 `relay_route_core` 的「家」那一族：那一族是后端**住**在 `~/.cc-monitor` 里的东西（数据位置页逐行列出，判据两向）；
+/// 这一个是退役落点，只认出来删、不住人 ⇒ 留在部署这一族，全仓一份。
 pub const LEGACY_BACKEND_REL: &str = ".cc-monitor/bin/cc-monitor-backend";
 
 /// 同一个文件在远端 shell 里的写法（扫身份戳那一条命令用）。

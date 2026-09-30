@@ -593,3 +593,23 @@ fn ask_once_reads_the_cli_envelope_both_ways() {
     ));
     let _ = std::fs::remove_dir_all(&d);
 }
+
+/// 〔P1 · 主会话 09-29 定：让 PowerShell 吐 UTF-8 一律探针直写 UTF-8 字节，同 P2 `profile_installer::render_user_path_probe_command`〕
+/// Windows 那两段探针（现拼 PATH · 问 `ccm`）各**恰好一处**把整段编成 UTF-8 字节直写标准输出流，且**零处**再去改控制台代码页。
+/// 买不到：真 `powershell.exe` 5.1 上的读数（本机没有 PowerShell；`wf1_the_windows_probe_script_reports_card_and_where_ccm_resolves` 那台架要 `CCM_PWSH`）。
+#[test]
+fn the_windows_probe_scripts_write_utf8_bytes_themselves() {
+    for (name, ps) in [
+        ("FRESH_PATH_PS", FRESH_PATH_PS),
+        ("CCM_PROBE_PS", CCM_PROBE_PS),
+    ] {
+        for (needle, want) in [
+            ("[Text.Encoding]::UTF8.GetBytes(", 1),
+            ("$o = [Console]::OpenStandardOutput()", 1),
+            ("$o.Write($b, 0, $b.Length)", 1),
+            ("OutputEncoding", 0),
+        ] {
+            assert_eq!(ps.matches(needle).count(), want, "{name}：`{needle}`");
+        }
+    }
+}

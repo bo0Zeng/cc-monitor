@@ -173,16 +173,25 @@ pub(crate) fn probe_local_ccm_uncached(timeout: std::time::Duration) -> CcmProbe
 
 /// 〔WF1 · ㉔〕Windows 上「新开一个终端窗口时的 PATH」：注册表里机器级 ＋ 用户级（展开之后）现拼 ——
 /// 本进程继承来的是 monitor 起的那一刻的那一份，用户刚在设置里加过的用户级 PATH 它看不到。
+/// 〔P1 · 同 P2 那一形（`profile_installer::render_user_path_probe_command`）〕自己编成 UTF-8 字节、直写标准输出流：
+/// 不经控制台编码（中文系统是 936）、也不去改控制台代码页 ⇒ PATH 里有非 ASCII 目录时读回不坏。
 #[cfg(any(windows, test))]
-const FRESH_PATH_PS: &str = "[Console]::OutputEncoding = [Text.Encoding]::UTF8\n\
-(@([Environment]::GetEnvironmentVariable('Path', 'Machine'), [Environment]::GetEnvironmentVariable('Path', 'User')) | Where-Object { $_ }) -join ';'\n";
+const FRESH_PATH_PS: &str = "$t = (@([Environment]::GetEnvironmentVariable('Path', 'Machine'), [Environment]::GetEnvironmentVariable('Path', 'User')) | Where-Object { $_ }) -join ';'\n\
+$b = [Text.Encoding]::UTF8.GetBytes($t + [char]10)\n\
+$o = [Console]::OpenStandardOutput()\n\
+$o.Write($b, 0, $b.Length)\n\
+$o.Flush()\n";
 
 /// 〔WF1 · ㉔〕Windows 那一形的探测串，跑在**照常加载 profile** 的 PowerShell 里（`$PROFILE` 在哪、怎么加载由 PowerShell 自己答）。
 /// 输出与 [`CCM_PROBE_CMD`] 同形：名片 ＋ 空行 ＋ `at=<住址>`，找不到 ⇒ `NO_CCM`；住址：程序 ⇒ 它的路径，函数 / 别名 ⇒ 名字（同 `command -v`）。
+/// 〔P1〕整段拼好、编成 UTF-8 字节直写标准输出流（同上）：住址（用户目录）含非 ASCII 时不坏；名片那几行是 ASCII，经 PowerShell 读回不受代码页影响。
 #[cfg(any(windows, test))]
-const CCM_PROBE_PS: &str = "[Console]::OutputEncoding = [Text.Encoding]::UTF8\n\
-$c = Get-Command ccm -ErrorAction SilentlyContinue | Select-Object -First 1\n\
-if ($c) { & ccm '--' '--ccm-probe'; ''; 'at=' + $(if ($c.CommandType -eq 'Application') { $c.Source } else { $c.Name }) } else { 'NO_CCM' }\n";
+const CCM_PROBE_PS: &str = "$c = Get-Command ccm -ErrorAction SilentlyContinue | Select-Object -First 1\n\
+$t = if ($c) { ((& ccm '--' '--ccm-probe') -join [char]10) + [char]10 + [char]10 + 'at=' + $(if ($c.CommandType -eq 'Application') { $c.Source } else { $c.Name }) + [char]10 } else { 'NO_CCM' + [char]10 }\n\
+$b = [Text.Encoding]::UTF8.GetBytes($t)\n\
+$o = [Console]::OpenStandardOutput()\n\
+$o.Write($b, 0, $b.Length)\n\
+$o.Flush()\n";
 
 /// 两跳：① 不读 profile 的那一个现拼 PATH（[`FRESH_PATH_PS`]）；② 带这份 PATH 起一个照常加载 profile 的，问 [`CCM_PROBE_PS`]。
 /// 与 POSIX 那一形（`bash -lic`）同一个等待与解析（[`capture_spawned`] · [`parse_probe_output`]）；哪一跳没成 ⇒ 当没装（同 POSIX）。
@@ -788,7 +797,8 @@ pub fn local_ccm_entry_status(fresh: Option<bool>) -> LocalCcmEntry {
     if fresh == Some(true) {
         *LOCAL_PROBE_CACHE.lock().unwrap_or_else(|e| e.into_inner()) = None;
     }
-    let home = dirs::home_dir();
+    // 〔P1 · P5 裁〕家目录只有一条规矩（`creds_core::store::home_dir`，两侧共用）。
+    let home = creds_core::store::home_dir();
     let path = home.as_ref().map(|h| {
         h.join(".cc-monitor")
             .join("bin")
