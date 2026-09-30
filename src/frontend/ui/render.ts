@@ -223,10 +223,16 @@ export interface RenderMarkdownOptions {
  * 导致「结果是：<换行>$$…多行…$$」这类最常见形态不渲染（单行 `$$x$$` 走行内规则不受影响，故
  * "单行能、多行不能"的错觉）。在 `marked.parse` 前把块公式规整成扩展唯一能吃的形态（`$$` 独占行
  * + 前后空行），并把 `\[..\]`→`$$..$$`、`\(..\)`→`$..$`。**先保护代码围栏/行内代码**（别动代码里
- * 的 `$$`/`\[`）。纯函数、可单测。占位符用不可见 `\u0000` 包裹防与正文串位。
+ * 的 `$$`/`\[`）。纯函数、可单测。占位符用 Unicode 非字符 `\uFDD0`（`STUB_MARK`）包裹防与正文串位。
  * 已知边界：4 空格缩进代码块不保护（Claude 输出几乎只用围栏）；prose 里恰好配对的 `$$…$$`（如
  * "from $$5 to $$10"）会误判为公式——与既有 `nonStandard:true` 对单 `$` 的误判同源、不新增暴露面。
  */
+/**
+ * 代码 stub 的包边字符：Unicode 非字符 U+FDD0（永不分配字符，标准建议的程序内部哨兵）。先前是 `\u0000`，
+ * 还原正则里带控制字符撞 eslint `no-control-regex`（全仓最后一条基线错）。
+ */
+const STUB_MARK = "\uFDD0";
+
 export function preprocessMath(md: string): string {
   // `设计/17 §2.6` 前置闸。见 `needsMathPreprocess` 头注。
   if (!needsMathPreprocess(md)) return md;
@@ -248,8 +254,8 @@ export function preprocessMath(md: string): string {
  *  - 第 2a/2b 遍（代码围栏 / 行内 code 打 stub）与第 4 遍（还原）是**一对**：
  *    中间那两遍没东西可改时，打 stub 再原样还原**净效果是恒等** ⇒ 代码记号
  *    （``` ``` ``` / `~~~` / 反引号）**不必**进闸。
- *  - 🔴 `\u0000` ⇒ **规格那 4 条之外、本轮现打补的第 5 条**。第 4 遍的还原正则认的是
- *    `\u0000M<数字>\u0000`；正文里若**本来就**带着这个串，慢路会把它替换成
+ *  - 🔴 `\uFDD0` ⇒ **规格那 4 条之外、本轮现打补的第 5 条**。第 4 遍的还原正则认的是
+ *    `\uFDD0M<数字>\uFDD0`；正文里若**本来就**带着这个串，慢路会把它替换成
  *    `stash[i]`（多半是 `undefined`，或者错位成别人的代码块）。那是一条**既存**缺陷，
  *    本轮**不修**（它与本条改动无关，修它要改语义）。把它放进闸里，只是为了让
  *    「**走快路 ⇒ 逐字节等于走慢路**」这句话**无条件成立** —— 判据钉的就是这句，
@@ -264,7 +270,7 @@ export function needsMathPreprocess(md: string): boolean {
     md.indexOf("\\[") >= 0 ||
     md.indexOf("\\(") >= 0 ||
     md.indexOf("\r") >= 0 ||
-    md.indexOf("\u0000") >= 0
+    md.indexOf(STUB_MARK) >= 0
   );
 }
 
@@ -279,7 +285,7 @@ export function preprocessMathUnguarded(md: string): string {
   const stash: string[] = [];
   const stub = (m: string): string => {
     stash.push(m);
-    return `\u0000M${stash.length - 1}\u0000`;
+    return `${STUB_MARK}M${stash.length - 1}${STUB_MARK}`;
   };
   // 1) 保护代码：围栏（``` / ~~~）+ 行内 `code`——避免动到代码里的 $$ / \[。
   md = md.replace(/(^|\n)(```|~~~)[\s\S]*?\n\2[^\n]*(?=\n|$)/g, (m) => stub(m));
@@ -300,7 +306,7 @@ export function preprocessMathUnguarded(md: string): string {
     (_m, x: string) => `\n\n$$\n${x.trim()}\n$$\n\n`,
   );
   // 4) 还原代码。
-  return md.replace(/\u0000M(\d+)\u0000/g, (_m, i: string) => stash[Number(i)]);
+  return md.replace(/\uFDD0M(\d+)\uFDD0/g, (_m, i: string) => stash[Number(i)]);
 }
 
 export function renderMarkdown(md: string, opts: RenderMarkdownOptions = {}): string {

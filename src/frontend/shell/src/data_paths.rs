@@ -116,6 +116,10 @@ pub struct DataPathsResponse {
     pub monitor_data_dir: String,
     /// monitor 自己的持久化数据（按类别有序）
     pub entries: Vec<DataPathInfo>,
+    /// 〔P3 · V160「一台机器一个家」〕本机后端的家（`~/.cc-monitor`，按家目录算，不随 `CCM_DATA_DIR` 漂）
+    pub backend_home: String,
+    /// 〔P3〕本机后端住在这个家里的那几样（[`backend_entries`]）
+    pub backend_entries: Vec<DataPathInfo>,
     /// WebView2 用户数据目录推断路径（cache / localStorage / IndexedDB / cookies）
     pub webview_user_data_dir: Option<DataPathInfo>,
     // 〔OSA · 主会话 09-28 裁〕这里原来有 `$PROFILE` 备份目录那一格 —— 「`$PROFILE` 在哪」只由后端方言答，
@@ -133,12 +137,25 @@ pub fn collect(handle: &AppHandle) -> DataPathsResponse {
         crate::config::resolve_monitor_data_dir().unwrap_or_else(|| PathBuf::from("(unknown)"));
 
     let entries = monitor_entries(&monitor_data_dir);
+    // 〔P3〕后端的家按家目录算（它自己也是这么落盘的）；取不到家目录 ⇒ 这一张卡空着，不猜。
+    // 常驻监听口：与宿主同一个算法（按 Claude 家目录，`local_backend_host` 起常驻时就是这么算的）。
+    let listen_port = crate::config::resolve_claude_dir()
+        .map(|d| relay_route_core::listen_port_for(&d.to_string_lossy()));
+    let (backend_home, backend_entries) = match dirs::home_dir() {
+        Some(home) => (
+            home.join(backend_home_rel()).display().to_string(),
+            backend_entries(&home, &monitor_data_dir, listen_port),
+        ),
+        None => ("(unknown)".to_string(), Vec::new()),
+    };
 
     let webview_user_data_dir = detect_webview_data_dir(handle);
 
     DataPathsResponse {
         monitor_data_dir: monitor_data_dir.display().to_string(),
         entries,
+        backend_home,
+        backend_entries,
         webview_user_data_dir,
     }
 }
@@ -205,6 +222,149 @@ fn monitor_entries(monitor_data_dir: &Path) -> Vec<DataPathInfo> {
             DataClass::Cache,
         ),
     ]
+}
+
+/// 后端的家（相对家目录的那一段）：取自契约常量里后端落点的第一段（`relay_route_core::BACKEND_LANDING_REL`），不另写一份。
+fn backend_home_rel() -> &'static str {
+    relay_route_core::BACKEND_LANDING_REL
+        .split('/')
+        .next()
+        .unwrap_or(relay_route_core::BACKEND_LANDING_REL)
+}
+
+/// 契约里相对家目录的一段 ⇒ 这一行的名字（去掉后端的家那一段；目录带尾 `/`）。
+fn home_rel_label(rel: &str, dir: bool) -> String {
+    let tail = rel
+        .strip_prefix(backend_home_rel())
+        .unwrap_or(rel)
+        .trim_start_matches('/');
+    if dir {
+        format!("{tail}/")
+    } else {
+        tail.to_string()
+    }
+}
+
+/// 〔P3 · `设计/70 §6.2` · `INVARIANTS §2.1` · V160「一台机器一个家」· 主会话 09-29 裁「家里的都进这一份枚举」〕
+/// **本机后端住在同一个家里的那几样**（V66：只给路径，不给删）。
+///
+/// 名字各取唯一住址，这里不写字面量：`~/.cc-monitor/` 下相对家目录的那一族取契约常量（`relay_route_core`，后端按同一份落盘；
+/// 程序目录 = 后端落点的上一层）· 监听口的进程记录按同一个口（`listen_port` = 宿主按 Claude 家目录算的那个，`None` ⇒ 这一行不列）·
+/// API key 那份按数据目录（`creds_core::store::credentials_path`）· 后端错误输出 = 宿主交给它的那份文件所在的目录
+/// （`logging::backend_stderr_log_path`）。后端跑着时要用的（两把钥匙 · 进程记录）按真相记：删了要重起后端。
+fn backend_entries(
+    home: &Path,
+    monitor_data_dir: &Path,
+    listen_port: Option<u16>,
+) -> Vec<DataPathInfo> {
+    use relay_route_core as rr;
+    let bin = rr::BACKEND_LANDING_REL
+        .rsplit_once('/')
+        .map_or(rr::BACKEND_LANDING_REL, |(dir, _)| dir);
+    let stderr_dir = crate::logging::backend_stderr_log_path(monitor_data_dir)
+        .parent()
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| monitor_data_dir.to_path_buf());
+    let stderr_label = stderr_dir
+        .strip_prefix(monitor_data_dir)
+        .map(|p| format!("{}/", p.to_string_lossy().replace('\\', "/")))
+        .unwrap_or_else(|_| stderr_dir.display().to_string());
+    let creds = creds_core::store::credentials_path(monitor_data_dir);
+    let dir = |rel: &str, key_text: String, class: DataClass| {
+        probe_dir(home.join(rel), &home_rel_label(rel, true), &key_text, class)
+    };
+    let file = |rel: &str, key_text: String, class: DataClass| {
+        probe_file(
+            home.join(rel),
+            &home_rel_label(rel, false),
+            &key_text,
+            class,
+        )
+    };
+    let mut out = vec![
+        dir(
+            bin,
+            copy_text("rsDataPaths.backend.bin", &[]),
+            DataClass::Cache,
+        ),
+        dir(
+            rr::ACCT_ISO_REL,
+            copy_text("rsDataPaths.backend.acctIso", &[]),
+            DataClass::Truth,
+        ),
+        dir(
+            rr::STAGING_DIR_REL,
+            copy_text("rsDataPaths.backend.staging", &[]),
+            DataClass::Cache,
+        ),
+        file(
+            rr::KEY_FILE_REL,
+            copy_text("rsDataPaths.backend.relayKey", &[]),
+            DataClass::Truth,
+        ),
+        file(
+            rr::LISTEN_TOKEN_FILE_REL,
+            copy_text("rsDataPaths.backend.listenToken", &[]),
+            DataClass::Truth,
+        ),
+    ];
+    if let Some(port) = listen_port {
+        let name = rr::listen_pid_file_name(port);
+        out.push(probe_file(
+            home.join(backend_home_rel()).join(&name),
+            &name,
+            &copy_text("rsDataPaths.backend.listenPid", &[]),
+            DataClass::Truth,
+        ));
+    }
+    out.extend([
+        file(
+            rr::BACKEND_POLICY_REL,
+            copy_text("rsDataPaths.backend.policy", &[]),
+            DataClass::Truth,
+        ),
+        file(
+            rr::POSIX_ALIASES_REL,
+            copy_text("rsDataPaths.backend.aliasesPosix", &[]),
+            DataClass::Truth,
+        ),
+        file(
+            rr::PS_ALIASES_REL,
+            copy_text("rsDataPaths.backend.aliasesPs", &[]),
+            DataClass::Truth,
+        ),
+        file(
+            rr::SKILL_LEDGER_REL,
+            copy_text("rsDataPaths.backend.skillLedger", &[]),
+            DataClass::Truth,
+        ),
+        file(
+            rr::ASSET_CATALOG_REL,
+            copy_text("rsDataPaths.backend.assetCatalog", &[]),
+            DataClass::Cache,
+        ),
+        probe_file(
+            creds.clone(),
+            &creds
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default(),
+            &copy_text("rsDataPaths.backend.apikey", &[]),
+            DataClass::Truth,
+        ),
+        probe_dir(
+            stderr_dir,
+            &stderr_label,
+            &copy_text("rsDataPaths.backend.logs", &[]),
+            DataClass::Cache,
+        ),
+        dir(
+            rr::PANORAMA_INDEX_REL,
+            copy_text("rsDataPaths.backend.panorama", &[]),
+            DataClass::Cache,
+        ),
+    ]);
+    out
 }
 
 fn probe_file(path: PathBuf, label: &str, description: &str, class: DataClass) -> DataPathInfo {

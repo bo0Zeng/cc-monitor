@@ -48,7 +48,8 @@ fn home() -> Option<PathBuf> {
 }
 
 fn pid_path(home: &Path, port: u16) -> PathBuf {
-    home.join(".cc-monitor").join(format!("listen-{port}.pid"))
+    home.join(".cc-monitor")
+        .join(relay_route_core::listen_pid_file_name(port))
 }
 
 /// 这台机器的常驻监听口（按 agent 家目录，与本机宿主同一个函数）。

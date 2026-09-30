@@ -685,7 +685,9 @@ pub const PROTO_VERSION: u32 = 1;
 /// ★★★ **p5x-win-rtt-oem**（2026-09-29，P2 合并那一拍）：行为 —— Windows 上读得到连接往返时间（`SIO_TCP_INFO`，压缩判准不变：局域网远端不再压）· PATH 状态探针直写 UTF-8 字节 · 加 / 撤 PATH 失败时报错按控制台代码页解 · `ssh_config` 走统一的家目录 · 中转删无用参数 · 门读盘那一半只从宿主调有判据。子命令没变。
 ///
 /// ★★★ **p5y-panorama-upstream-asks**（2026-09-29，P7 合并那一拍）：协议 —— 代码全景接上游四条：邻域跳数由引擎给 · 符号 id 结构化（`SymbolRef`）· 线上类型由上游导出、前端生成 · 建索引带进度（`panorama` 请求多 `ticket`，新出方向帧 `progress{ticket, cell}`，界面显示「阶段：已做 / 总数」）；re-vendor 到上游 `7eafe64`，形状代号换代 ⇒ 各台首次打开全景重放一次小程序。子命令没变。
-pub const BUILD_ID: &str = "p5y-panorama-upstream-asks";
+///
+/// ★★★ **p5z-panorama-zoom-data-page**（2026-09-29，P3 合并那一拍）：行为 —— 全景图可缩放 / 拖拽、按视口适配 · 列宽变了重算行高 · 文案取文口按值在值与汉字之间补 / 去空格（C-L5，TS 与 Rust 同一套）· 数据位置页列出后端住在 `~/.cc-monitor` 里的全部东西（名字进 `relay_route_core` 契约）· CI 的 eslint 改成会拦。子命令没变。
+pub const BUILD_ID: &str = "p5z-panorama-zoom-data-page";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src/frontend/shell/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），
