@@ -772,7 +772,7 @@ export class HistoryView {
     this.statusEl.textContent = copyText("history.search.searching");
     try {
       // 本机 ＋ 各台远端，逐台经通道说 `history-search`（〔LOC1b〕本机也是），〔FIX4 · J15〕合并排序问本机后端（`history-search.ts`）。
-      //   条数上限不在这里写：不交 `limit` ⇒ 每台后端用 `search_core::DEFAULT_LIMIT`（前端那份 300 的副本删了）。
+      //   条数上限不在这里写：不交 `limit` ⇒ 每台后端用 `search_rules::DEFAULT_LIMIT`（前端那份 300 的副本删了）。
       const resp = await searchAllMachines({
         query,
         includeTools: this.includeTools,

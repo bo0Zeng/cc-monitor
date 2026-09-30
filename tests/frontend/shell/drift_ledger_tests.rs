@@ -296,7 +296,7 @@ fn the_read_side_answers_the_asked_machine_and_echoes_it() {
 //
 // 🔴 **它的人群**：`src/frontend/shell/src` 生产段里，调了「喂账入口」的函数（`文件, 外层 fn`）。
 // 喂账入口 ＝ 直接写账的 `drift_ledger::record` ＋ 把 `origin` 一路交给它的那一个（`note_unknown_capabilities`）。
-// 〔MOD〕记录解析那几条（`parse_line` / `parse_for_kind` / `batch_to_payloads` / `range_payloads`）出列：解析进了后端，账也跟着记在那台后端。
+// 〔MOD〕记录解析那几条（`parse_line` / `parse_for_kind`〔散文墓碑〕 / `batch_to_payloads` / `range_payloads`）出列：解析进了后端，账也跟着记在那台后端。
 // 判法两条，都不是地板：
 //   ① 人群 == `FEEDERS` 的键（两向）：新长一个喂账点 ⇒ 红，必须来这里说清它记在哪台名下；
 //      删了一个 ⇒ 死条目 ⇒ 红。

@@ -4724,14 +4724,7 @@ mod g6_dependency_signoff {
              谁划边界：只许 `dial/sftp.rs` 一份文件持有它的会话、写根 == 暂存区与部署目录、每处先过 `fenced_remote`。\
              边界判据：`the_remote_write_lives_in_exactly_one_file_and_its_roots_are_exactly_staging_and_bin`",
         ),
-        (
-            "search-core",
-            DEPS,
-            MEASURED_CLEAN,
-            "`K-R100`：历史全文搜索口径的唯一实现（12 个纯函数 + 4 个口径常量 + snippet 预算 \
-             + 预算顺序），与 monitor 共用同一份。**纯函数，无 IO** —— 它连 `std::fs` 都不 use，\
-             取数（读 jsonl）仍在本 crate 的 `observe/search_query.rs` 里；仓内 crate，现打 0 处写面",
-        ),
+        // 〔P1〕`search-core` 那一行出列：crate 删了（通用口径收成 `observe/search_rules.rs`，记录文本进 `agents/claudecode/text.rs`）。
         (
             "serde",
             DEPS,
@@ -4816,11 +4809,11 @@ mod g6_dependency_signoff {
             "上游 base URL 的形状 ＋ 明文只许回环（纯字符串判定）；仓内 crate、零依赖，现打 0 处写面、0 处 I/O",
         ),
         (
-            // 〔MIG-3b〕部署决策的唯一一份（表 A / 表 B · 身份戳 · 只升不降），`control/deploy_plan.rs` 用它出计划。
-            "deploy-core",
+            // 〔MIG-3b · P1〕部署那一族的契约（表 A 的键与行 · 戳格式 · 答话形状 · 路径）；判定那一半住 `control/deploy_plan.rs`。
+            "deploy-contract",
             DEPS,
             MEASURED_CLEAN,
-            "部署决策（纯判定：键 · 表 · 身份戳的解读 · 新旧）；仓内 crate、只依赖 copy-core / shell-quote-core，现打 0 处写面、0 处 I/O",
+            "部署契约（纯形状：键 · 表 A 的行 · 身份戳的读法 · 答话形状 · 路径）；仓内 crate、只依赖 copy-core / shell-quote-core，现打 0 处写面、0 处 I/O",
         ),
     ];
 

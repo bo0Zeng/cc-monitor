@@ -279,7 +279,7 @@ export function extractBranchRecord(rec: {
   parentUuid?: string | null;
   timestamp?: string | null;
   message?: { content?: unknown };
-  /** 〔RENDER2 · J10〕user 记录的注入噪声成品（monitor 填，`search-core::user_text`）；只读 `interrupt`。 */
+  /** 〔RENDER2 · J10〕user 记录的注入噪声成品（monitor 填，`agents/claudecode/text.rs::user_text`）；只读 `interrupt`。 */
   userText?: { interrupt: boolean };
 }): BranchRecord | null {
   if (

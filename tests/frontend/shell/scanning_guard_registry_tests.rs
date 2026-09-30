@@ -1285,8 +1285,8 @@ const PROSE_TREES: &[(&str, usize)] = &[
     ("src/frontend/shell/src", 100),
     ("src/common", 8),
     ("src/backend", 58),
-    // 〔P4〕140 → 125：文件窗口那 31 份判据搬去 `tests/frontend/filewin/`（下一行），这一棵现打 129。
-    ("tests/frontend/shell", 125),
+    // 〔P4〕140 → 120：文件窗口那 31 份判据搬去 `tests/frontend/filewin/`（下一行）；〔合并主线 211bb498〕P1 删了 monitor 适配表那一族的判据，这一棵现打 124。
+    ("tests/frontend/shell", 120),
     // 〔P4〕文件窗口独立成包，它的判据从上一棵搬到这里（地板取现打份数）。
     ("tests/frontend/filewin", 33),
     ("tests/backend", 65),

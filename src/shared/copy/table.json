@@ -10490,6 +10490,11 @@
       "zh": "问 {machine} 是什么机器没问成，没有放代码全景组件：{e}",
       "args": ["machine", "e"]
     },
+    "bePlaceVerdict.why.rebuilt": {
+      "kind": "body",
+      "zh": "同一版，字节不同（重新编过）",
+      "args": []
+    },
     "beDeployRetired.kept.notOurs": {
       "kind": "body",
       "zh": "不是 cc-monitor 放的",
@@ -12432,6 +12437,26 @@
     },
 
 
+    "rsLocalBackend.place.unasked": {
+      "kind": "error",
+      "zh": "本机后端没有放上去：要放的这一份答不出该不该放（{why}）。盘上原来那一份没动。",
+      "args": ["why"]
+    },
+    "rsLocalBackend.place.askSpawn": {
+      "kind": "body",
+      "zh": "它起不来：{e}",
+      "args": ["e"]
+    },
+    "rsLocalBackend.place.askTimeout": {
+      "kind": "body",
+      "zh": "它在限定时间里没有答完",
+      "args": []
+    },
+    "rsLocalBackend.place.askUnreadable": {
+      "kind": "body",
+      "zh": "它的回答认不出：{said}",
+      "args": ["said"]
+    },
     "rsLocalBackend.place.thisMachine": {
       "kind": "body",
       "zh": "本机",

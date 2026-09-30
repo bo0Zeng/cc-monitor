@@ -648,13 +648,8 @@ fn ccm_is_one_skeleton_with_a_per_agent_table() {
              那个 `extract_capabilities` 抠的是后端流模式那个同名常量，盖不到这里。〕",
         caps.len()
     );
-    assert_eq!(
-        ccm_const_list("AGENTS"),
-        vec!["claude".to_string(), "codex".to_string()],
-        "`--ccm-probe` 报的 agent 集合变了 —— `E4b` 的 per-agent 表要跟着加行，\
-             而 `E4c` 记着那张表今天有**三份副本**（`golden.tsv` 4 key · `control/ccm` 5 函数 · \
-             backend `agents/*/resume.rs`），真相源只覆盖一半。"
-    );
+    // 〔P1 · 第 4 件〕`--ccm-probe` 报的 agent 集合不再是 `mod.rs` 里一份手写常量：由后端注册表派生（带起会话事实的那几家，
+    //   `agents::launchable_kinds`），值由后端 `control::ccm::tests::the_agent_set_has_one_address_and_every_member_is_wired` 钉。
 
     // 轴二那一格：它是**受管工具**，不是三档中的任何一档。
     // 〔MIG-3b 续〕受管工具表随「一处后端」进了后端（`src/backend/footprint/registry.rs`）。
@@ -778,19 +773,20 @@ fn the_classification_is_guard_corpus_only_and_no_production_code_consumes_it() 
 #[test]
 fn the_const_list_extractor_takes_one_list_not_the_whole_file() {
     // 正向：真去抠一次，成员必须是**这一个**常量的（不是把下一个常量也吃进来）。
-    let agents = ccm_const_list("AGENTS");
-    assert_eq!(agents, vec!["claude".to_string(), "codex".to_string()]);
-    // 段界自检：`AGENTS` 抠出来的里面不许出现 `CAPABILITIES` 的成员
-    //（吃过头的话两张表会合并，而「17 个 token」那一格会静默地变成另一个数）。
+    // 〔P1 · 第 4 件〕agent 闭集改由注册表派生、不再是常量 ⇒ 段界自检换成相邻的两张：`CAPABILITIES` 之后紧跟
+    //   `CCM_TMUX_CARRIED`（后者成员全在前者里）⇒ 吃过头时前者会出现重复成员（「18 个 token」那一格会静默地变成另一个数）。
     let caps = ccm_const_list("CAPABILITIES");
-    assert!(
-        !agents
-            .iter()
-            .any(|a| caps.contains(a) && a != "claude" && a != "codex"),
-        "`AGENTS` 抠过头了 —— 吃到了下一个常量：{agents:?}"
+    let carried = ccm_const_list("CCM_TMUX_CARRIED");
+    let mut distinct = caps.clone();
+    distinct.sort();
+    distinct.dedup();
+    assert_eq!(
+        distinct.len(),
+        caps.len(),
+        "`CAPABILITIES` 抠过头了 —— 吃到了下一个常量：{caps:?}"
     );
     assert!(
-        caps.len() > agents.len(),
+        carried.iter().all(|c| caps.contains(c)) && caps.len() > carried.len(),
         "两张表抠成了同一份 —— 锚点没起作用"
     );
     // per-agent 函数那一格：抠出来的每一项都要带住址前缀（免得两份同名函数被数成一个）。

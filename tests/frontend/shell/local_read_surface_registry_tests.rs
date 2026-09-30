@@ -100,12 +100,8 @@ const REGISTERED: &[(&str, &str, usize, &str)] = &[
     //   **整行摘掉**：那两句随 `degraded_notice`〔散文墓碑〕一起删了（账号清单改由那台机器的后端出成品、「缺账号 0」那句由后端说）
     //   ⇒ 本文件 0 处。⚠ 与这张表别的「往下走」一样**不算工作量减少**：它本来就不是本机读面。
     // 〔SH1 · V137〕`src/mcp.rs` 那一行（读 `.claude.json` 的 MCP 声明，6 处）退役：MCP 列表改问那台后端 `mcp-read`，monitor 零处读它。
-    (
-        "src/adapter/claude_code.rs",
-        "reader",
-        1,
-        "Claude Code 适配器自己那一处路径。退役归 F10 本体。",
-    ),
+    // 〔P1 · 第 4 件〕`src/adapter/claude_code.rs` 那一行（1 处：适配器自己的数据根）**真退役**：monitor 那份适配表删了，
+    //   起会话事实只住后端适配层；setup 里取 claude 目录直接问 `config::resolve_claude_dir`（那一处本来就登记在 `src/config.rs` 里）。
     // 〔MIG-3b 续 · 主会话 09-28 裁①〕`src/config_surface.rs`〔散文墓碑〕那一行（3 处）随判定进后端摘了（`src/backend/footprint/rows.rs`，那一半不在本表人群里）。
     (
         "src/footprint_client.rs",
@@ -229,12 +225,7 @@ fn rust_files() -> Vec<(String, String)> {
 /// 而后端的写侧由它自己的 `readonly_guard` 整个禁掉。
 /// 把两侧混进一张表会让「这一处归谁管」这一列失去意义。
 const HOME_REACHES: &[(&str, &str, &str, &str)] = &[
-    (
-        "codex.rs",
-        "resolve_codex_dir",
-        "`~/.codex`",
-        "Codex 那一族的用量读面；与 claude 面平行，由 usage-core 的口径判据管",
-    ),
+    // 〔P1 · 第 4 件〕monitor 那份 Codex 适配器取 `~/.codex` 那一行摘了：适配器随适配表删了（`~/.codex` 住哪只剩后端 `agents/codex/`）。
     (
         "footprint_client.rs",
         // 〔MIG-3b 续〕足迹判定进了后端，monitor 只答它自己那台那几行的事实（`with_monitor_probe`〔散文墓碑〕删了）。
@@ -472,9 +463,10 @@ fn every_reader_names_its_retirement_owner() {
     // 抽取器自检：一条 reader 都没认出来时上面全空转。
     // 〔SH1 · V137〕4 → **3**：`mcp.rs` 真退役（MCP 列表改问那台后端 `mcp-read`，monitor 零处读 `.claude.json`）。
     // 〔MIG-3b〕3 → **2**：`hooks_diag.rs` 真退役（钩子诊断进后端 `hooks-diag`，monitor 零处读 `settings.json`）。
+    // 〔P1 · 第 4 件〕2 → **1**：`adapter/claude_code.rs` 真退役（monitor 那份适配表删了，起会话事实只住后端适配层）。
     assert_eq!(
-        readers, 2,
-        "`reader` 条数变了（**实测 2 条** —— ⚠ 这句话本身腐过一次：数字从 11 一路走到 7，\
+        readers, 1,
+        "`reader` 条数变了（**实测 1 条** —— ⚠ 这句话本身腐过一次：数字从 11 一路走到 7，\
              而这段文案一直写着「实测 10 条」，是 S11 那族出现在**判据自己的报错文案**里）。这个数就是 **F10 的真实工作面** —— \
              多一条要说明为什么又加了直读点，少一条说明退役了一处（把棘轮往下拧）。\n\
              ⚠ 棘轮史：11 → **10**（F10b 第一批，`usage.rs` 退役 —— 它改走本机后端的 `--usage`）\n\

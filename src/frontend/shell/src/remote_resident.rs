@@ -136,7 +136,7 @@ async fn ensure(cfg: &RemoteConfig, replace: bool) -> Result<Ensured, AttachErr>
 }
 
 /// hello 那一行里那台报的 build（纯函数，只读线上形状）。口上不是常驻后端（第一行不是 hello）⇒ `Err`（那句话）。
-/// 〔THIN〕从前这里还判「换不换」（`hello_decision`〔散文墓碑〕调 `deploy_core::is_newer`）：判定进了本机常驻后端（[`ask_verdict`]）。
+/// 〔THIN〕从前这里还判「换不换」（`hello_decision`〔散文墓碑〕调共享判定 `is_newer`，今天住后端 `control/deploy_plan.rs`）：判定进了本机常驻后端（[`ask_verdict`]）。
 pub(crate) fn hello_build(line: &str) -> Result<String, String> {
     let v: serde_json::Value = serde_json::from_str(line.trim()).unwrap_or_default();
     if v["kind"] != "hello" {

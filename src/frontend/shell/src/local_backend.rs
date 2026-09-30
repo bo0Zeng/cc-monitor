@@ -986,7 +986,7 @@ pub fn resolve_beside_this_exe(target_triple: &str) -> Resolved {
 ///
 /// 从前释放成 `cc-monitor-backend-<build_id>`、再逐字节拷一份叫 `ccm`（V28「第二份拷贝」）；今天只有这一个文件，
 /// 本机常驻后端跑的就是它，终端里敲的 `ccm` 也是它。名字不带 build_id 之后「两个版本的 monitor 互相换掉对方」那一形
-/// 由换版规则挡：照 HX2 D-b「盘上的比我旧才换」（[`deploy_core::identity_decision`]，与远端部署同一条），见 [`extract_embedded_to`]。
+/// 由换版规则挡：照 HX2 D-b「盘上的比我旧才换」（〔P1〕判在后端 `control/deploy_plan.rs::place_verdict`，与远端部署同一条 `identity_decision`；手上那份字节自己答），见 [`extract_embedded_to`]。
 /// 名字的后缀由 `build.rs` 从 `TARGET` 算好（`CCM_TARGET_EXE_SUFFIX`，`K-R42`），本层不现算平台原语。
 
 /// 陈旧 `.partial` 的年龄阈值。
@@ -1057,8 +1057,8 @@ pub fn sweep_legacy_extracts(dir: &Path) -> usize {
         }
         let ours = std::fs::read(ent.path()).is_ok_and(|b| {
             matches!(
-                deploy_core::identity_of_bytes(&b, crate::sftp::STAMP_MARKS),
-                deploy_core::RemoteIdentity::Stamp(_)
+                deploy_contract::identity_of_bytes(&b, crate::sftp::STAMP_MARKS),
+                deploy_contract::RemoteIdentity::Stamp(_)
             )
         });
         if ours && std::fs::remove_file(ent.path()).is_ok() {
@@ -1071,12 +1071,73 @@ pub fn sweep_legacy_extracts(dir: &Path) -> usize {
 /// 旧版本机释放名的前缀（`cc-monitor-backend-<build_id>[.exe]`）。
 pub const LEGACY_EXTRACT_PREFIX: &str = "cc-monitor-backend-";
 
+/// 〔P1 · `设计/00 §1.2` 判定只在后端〕问手上这份字节「放不放」的那一口 —— **宿主注入**（起进程的三条策略是宿主知识，`15 §5.1 A3`；
+/// 本层平台无关）。入参 = 暂存件的路径 · 帧命令 `place-verdict` 的入参；回 = 它的答，或没问成的那一形。生产 = `ccm_probe::ask_place_verdict`。
+pub type PlaceAsk<'a> =
+    &'a dyn Fn(&Path, &serde_json::Value) -> Result<serde_json::Value, crate::ccm_probe::OnceErr>;
+
+/// 放不下来的两形（下一步不同，互不合并）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Unplaced {
+    /// 写不进去（建目录 · 写暂存件 · 置可执行位 · 换名）：原话，由 [`extraction_failure_reason`] 说成「带了、这台不让放」那一句。
+    Write(String),
+    /// 没放，那句话已经说全：手上那份字节说「不」（这台不承诺 · 落点那一份判不了）或问它没问成。盘上那份没动。
+    Said(String),
+}
+
+/// 暂存件任何结局下都清（主会话 09-29 拍板形状 A 的要求 ②）；清不掉出声（超过一天的那份由下一次放置的 [`sweep_stale_partials`] 收）。
+fn drop_partial(tmp: &Path) {
+    match std::fs::remove_file(tmp) {
+        Ok(()) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => tracing::warn!(
+            "本机后端的暂存件 {} 清不掉（{e}）—— 留着的那份一天后由下一次放置收掉",
+            tmp.display()
+        ),
+    }
+}
+
+/// 没问成的那几形 → 一句话（手上那份字节说「不」时那句就是它自己的话，原样）。
+fn unasked(e: crate::ccm_probe::OnceErr) -> String {
+    use crate::ccm_probe::OnceErr;
+    let why = match e {
+        OnceErr::Refused { message, .. } => return message,
+        OnceErr::Spawn(e) => copy_text("rsLocalBackend.place.askSpawn", &[("e", &e)]),
+        OnceErr::TimedOut => copy_text("rsLocalBackend.place.askTimeout", &[]),
+        OnceErr::Unreadable(said) => {
+            copy_text("rsLocalBackend.place.askUnreadable", &[("said", &said)])
+        }
+    };
+    copy_text("rsLocalBackend.place.unasked", &[("why", &why)])
+}
+
+/// `place-verdict` 的答 → 放（`true`）/ 不动（`false`）。**严格收**：恰 `{action, why}`、`action` 两个词之一；别的都是没问成（不猜）。
+pub(crate) fn decode_place(v: &serde_json::Value) -> Result<bool, String> {
+    let bad = || {
+        unasked(crate::ccm_probe::OnceErr::Unreadable(
+            v.to_string().chars().take(200).collect(),
+        ))
+    };
+    let obj = v.as_object().ok_or_else(bad)?;
+    let mut keys: Vec<&str> = obj.keys().map(String::as_str).collect();
+    keys.sort_unstable();
+    if keys != ["action", "why"] || !obj["why"].is_string() {
+        return Err(bad());
+    }
+    match obj["action"].as_str() {
+        Some("place") => Ok(true),
+        Some("keep") => Ok(false),
+        _ => Err(bad()),
+    }
+}
+
 /// P2z：**单 exe 自释放** ——〔E2〕把手上这份后端字节放到 `dir/ccm(.exe)`（它就是后端本身），返回落点。
 ///
-/// 换不换照 HX2 D-b（与远端部署同一条判定 [`deploy_core::identity_decision`]，对照物是手上这份字节自报的 `build_id`）：
-/// 盘上缺 / 0 字节 ⇒ 放；同一版且逐字节相同 ⇒ 留；同一版字节不同（开发树重编）⇒ 换；盘上的更旧 ⇒ 换；
-/// 盘上的不比我旧 ⇒ 留、跑盘上那份；盘上那份不说自己是谁 / 身份不唯一 ⇒ `Err`（不覆盖，那句话说清出路）。
-/// 写法：`.<名>.<pid>.partial` → 置可执行位 → `rename` 上位；`rename` 不成（Windows 上旧的正在跑）⇒ 先把旧的改名挪开再上位。
+/// 〔P1〕放不放**问手上这份字节自己**（`ask` ⇒ `<暂存件> -- --place-verdict`：表 B 本机那一行 · 盘上那份 vs 它自己的 `BUILD_ID`，
+/// 只升不降 —— 判定住后端 `control/deploy_plan.rs::place_verdict`，本层只照答办）：盘上与手上逐字节相同 ⇒ 直接用、不问（事实）；
+/// 否则写暂存件 `.<名>.<pid>.partial` → 置可执行位 → 问 → `place` ⇒ `rename` 上位（Windows 上旧的正在跑 ⇒ 先把旧的改名挪开再上位）·
+/// `keep` ⇒ 用盘上那份 · 说「不」/ 没问成 ⇒ 不放、盘上那份不动（[`Unplaced::Said`]）。暂存件任何结局下都清。
+/// `build_id` = 这份字节自报的身份（只进日志；判定用的是它自己编进去的那一份）。
 pub fn extract_embedded_to(
     dir: &Path,
     build_id: &str,
@@ -1084,33 +1145,49 @@ pub fn extract_embedded_to(
     make_executable: &dyn Fn(&Path) -> Result<(), String>,
     // 〔HX1 · 拍板项 4〕建落点目录（`~/.cc-monitor/bin` 一族）也是宿主知识：建的那一下就只给本人（`platform::fs::ensure_private_dir`）。
     ensure_dir: &dyn Fn(&Path) -> Result<(), String>,
-) -> Result<PathBuf, String> {
+    ask: PlaceAsk<'_>,
+) -> Result<PathBuf, Unplaced> {
     let name = local_ccm_entry_name();
     let dest = dir.join(&name);
     sweep_moved_aside(dir, &name);
-    let disk = std::fs::read(&dest).ok();
-    let id = match &disk {
-        None => deploy_core::RemoteIdentity::Missing,
-        Some(b) => deploy_core::identity_of_bytes(b, crate::sftp::STAMP_MARKS),
-    };
-    let machine = copy_text("rsLocalBackend.place.thisMachine", &[]);
-    match deploy_core::identity_decision(&id, build_id, &machine, &dest.display().to_string())? {
-        crate::sftp::DeployAction::Skip if disk.as_deref() == Some(bytes) => return Ok(dest),
-        crate::sftp::DeployAction::Keep { .. } => return Ok(dest),
-        crate::sftp::DeployAction::Skip | crate::sftp::DeployAction::Deploy(_) => {}
+    if std::fs::read(&dest).is_ok_and(|disk| disk == bytes) {
+        return Ok(dest);
     }
-    ensure_dir(dir)?;
+    ensure_dir(dir).map_err(Unplaced::Write)?;
     // 临时名**带 pid**〔`P2t` 摸底 08-12〕：两个同版本 monitor 同时释放各写各的，`rename` 仍是原子的。
     let tmp = dir.join(format!(".{name}.{}.partial", std::process::id()));
     sweep_stale_partials(dir, &name);
-    std::fs::write(&tmp, bytes).map_err(|e| {
-        copy_text(
+    if let Err(e) = std::fs::write(&tmp, bytes) {
+        drop_partial(&tmp);
+        return Err(Unplaced::Write(copy_text(
             "rsLocalBackend.extract.writeFailed",
             &[("tmp", &(tmp.display()).to_string()), ("e", &e.to_string())],
-        )
-    })?;
+        )));
+    }
     // `backend-split` 的 C10：「怎么置可执行位」是平台知识，由宿主注入（`platform::fs::make_executable`）。
-    make_executable(&tmp)?;
+    if let Err(e) = make_executable(&tmp) {
+        drop_partial(&tmp);
+        return Err(Unplaced::Write(e));
+    }
+    let args = serde_json::json!({
+        "dest": dest.to_string_lossy(),
+        "machine": copy_text("rsLocalBackend.place.thisMachine", &[]),
+    });
+    match ask(&tmp, &args)
+        .map_err(unasked)
+        .and_then(|v| decode_place(&v))
+    {
+        Ok(true) => {}
+        Ok(false) => {
+            drop_partial(&tmp);
+            tracing::info!("本机后端 {build_id} 没换上去：盘上那一份不比它旧，用盘上那份");
+            return Ok(dest);
+        }
+        Err(said) => {
+            drop_partial(&tmp);
+            return Err(Unplaced::Said(said));
+        }
+    }
     let placed = std::fs::rename(&tmp, &dest).or_else(|first| {
         // 〔E2 · E-b〕Windows 上正在跑的 `ccm.exe` 删不掉、换不掉，但改得了名：挪开再上位，挪开的下次放置时收。
         let aside = dir.join(format!(".{name}.{}.old", std::process::id()));
@@ -1119,14 +1196,14 @@ pub fn extract_embedded_to(
             .map_err(|_| first)
     });
     placed.map_err(|e| {
-        let _ = std::fs::remove_file(&tmp);
-        copy_text(
+        drop_partial(&tmp);
+        Unplaced::Write(copy_text(
             "rsLocalBackend.extract.renameFailed",
             &[
                 ("dest", &(dest.display()).to_string()),
                 ("e", &e.to_string()),
             ],
-        )
+        ))
     })?;
     Ok(dest)
 }
@@ -1218,7 +1295,7 @@ pub fn local_ccm_entry_name() -> String {
 }
 
 // 〔E2 · V28 · `设计/01 §6.7b`〕远端三行入口的生成器 `ccm_entry_shim`〔散文墓碑〕删了：远端落点 `~/.cc-monitor/bin/ccm` 上放的就是
-//   后端字节（`sftp.rs::LANDING_REL`）。已部署机器上的旧入口由本机常驻后端认（`deploy_plan::retired_verdict` 调 `deploy_core::is_ours`，〔THIN〕从前在 `ccm_legacy`）。
+//   后端字节（`sftp.rs::LANDING_REL`）。已部署机器上的旧入口由本机常驻后端认（`deploy_plan::retired_verdict` 调 `deploy_plan::is_ours`，〔THIN〕从前在 `ccm_legacy`）。
 
 // 〔E2 · V28〕`install_local_ccm_entry`〔散文墓碑〕（把后端逐字节拷一份叫 `ccm`，V28「第二份拷贝」）删了：
 //   落点 `~/.cc-monitor/bin/ccm` 放的就是后端本身（[`extract_embedded_to`]）。
@@ -1791,6 +1868,8 @@ pub fn resolve_or_extract(
     make_executable: &dyn Fn(&Path) -> Result<(), String>,
     // 〔HX1 · 拍板项 4〕建落点目录（`~/.cc-monitor/bin` 一族）也是宿主知识：建的那一下就只给本人（`platform::fs::ensure_private_dir`）。
     ensure_dir: &dyn Fn(&Path) -> Result<(), String>,
+    // 〔P1〕放不放问手上那份字节自己（[`PlaceAsk`]，宿主注入）。
+    ask: PlaceAsk<'_>,
 ) -> Resolved {
     // 〔E2 · V28〕字节从哪来：安装包旁边那一份（读它、按它自报的身份）优先，其次这一份产物内嵌的那一份；
     //   **落点恒是 `extract_dir/ccm`** —— 本机常驻后端跑的与终端里敲的 `ccm` 是同一个文件（`设计/01 §6.7b`）。
@@ -1799,8 +1878,8 @@ pub fn resolve_or_extract(
         let beside = resolve_beside_this_exe(target_triple);
         let from_beside: Option<(String, Vec<u8>)> = match &beside {
             Resolved::Found(p) => match std::fs::read(p) {
-                Ok(b) => match deploy_core::identity_of_bytes(&b, crate::sftp::STAMP_MARKS) {
-                    deploy_core::RemoteIdentity::Stamp(id) => Some((id, b)),
+                Ok(b) => match deploy_contract::identity_of_bytes(&b, crate::sftp::STAMP_MARKS) {
+                    deploy_contract::RemoteIdentity::Stamp(id) => Some((id, b)),
                     _ => {
                         break 'resolve Resolved::Missing {
                             reason: copy_text(
@@ -1839,12 +1918,23 @@ pub fn resolve_or_extract(
                 }
             },
         };
-        match extract_embedded_to(extract_dir, build_id, bytes, make_executable, ensure_dir) {
+        match extract_embedded_to(
+            extract_dir,
+            build_id,
+            bytes,
+            make_executable,
+            ensure_dir,
+            ask,
+        ) {
             Ok(p) => Resolved::Found(p),
             Err(e) => {
                 // 🔴 `K-R42` 硬要求①：**这一支不许被读成「这份产物没带后端」。**
                 //    它是「带了，但这台机器不让我把它放下来」——两件事的下一步完全不同。
-                let reason = extraction_failure_reason(extract_dir, &e);
+                //    〔P1〕手上那份字节自己说「不」/ 问它没问成 ⇒ 那句话已经说全，原样交出（不套「写不进去」那一句）。
+                let reason = match e {
+                    Unplaced::Write(e) => extraction_failure_reason(extract_dir, &e),
+                    Unplaced::Said(said) => said,
+                };
                 // 这一支自己吼一声 error，日志里一定留得下（两条生产路共用这一声）。
                 tracing::error!("{reason}");
                 Resolved::Missing {
@@ -1883,6 +1973,8 @@ pub fn start_or_extract(
     spawn: Arc<crate::spawn_managed::ManagedSpawn>,
     // 〔RL1 · V107〕交给后端的环境（中转端口 ＋ 凭据路径）由**宿主**给 —— 本层不认识中转，只原样转交。
     envs: Vec<(String, String)>,
+    // 〔P1〕放不放问手上那份字节自己（[`PlaceAsk`]，宿主注入）。
+    ask: PlaceAsk<'_>,
 ) -> (Resolved, Option<SuperviseHandle>) {
     let resolved = resolve_or_extract(
         target_triple,
@@ -1890,6 +1982,7 @@ pub fn start_or_extract(
         embedded,
         make_executable,
         ensure_dir,
+        ask,
     );
     let Resolved::Found(bin) = resolved else {
         // 诚实降级：`reason` / `looked_at` 原样交回，这一层不再包一句自己的话。

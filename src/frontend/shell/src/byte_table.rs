@@ -1,5 +1,5 @@
 //! 〔DP1 · 第四波〕**全仓唯一的取字节口**：一台机器要哪一份可执行字节，按那台机器的 (OS, arch) 查一张表
-//! （`设计/96 §7.1` 的表 A）；这一个 origin 今天承不承诺那种机器，查另一张表（`设计/01 §6.7a` 的表 B）。
+//! （`设计/96 §7.1` 的表 A）。〔P1〕这一个 origin 承不承诺那种机器（`设计/01 §6.7a` 的表 B）是判定，住后端。
 //!
 //! # 要求住址
 //!
@@ -28,17 +28,14 @@
 //!
 //! # 不在本文件的
 //!
-//! - 〔MIG-3b〕表 A / 表 B 本身（键 · 产线 · 承诺 · 拒绝五形与它们的话 · `uname` 的解读）：共享 crate `deploy-core`
-//!   （本机常驻后端出部署计划要同一份）；本文件再导出那几个名字，自己只留**槽**与取字节口。
+//! - 〔MIG-3b · P1〕表 A 的键与行 · 拒绝五形与它们的话 · `uname` 的解读：契约 crate `deploy-contract`（两侧同一份）；
+//!   表 B 的承诺是判定，住后端 `control/deploy_plan.rs`。本文件再导出那几个名字，自己只留**槽**与取字节口。
 //! - 字节落到哪（条 62 一个常量，与来源无关）；推上去怎么推（`sftp.rs` 部署 · `panorama_bytes::push_to`）。
 //! - 那台机器上已有的那一份是谁（〔MIG-3b〕本机常驻后端出计划时读它字节里的身份戳，`96 §7.2`）。
 
-// 〔MIG-3b〕表 A / 表 B 本身（键 · 产线 · 承诺 · 拒绝那五形与它们的话 · `uname` 的解读）搬进了共享的 `deploy-core`：
-//   本机常驻后端出部署计划（`deploy-plan`）要同一份判定。本文件留下的是**槽**（这一版带着哪几份字节）与取字节口。
-// 〔THIN〕表 B 的承诺是裁决（`设计/00 §1.2`「判定只在后端」）⇒ 生产段只剩本机后端引导那一处经 [`choose`] 用它（报备，见头注）；
-//   全景推字节「那台要哪一格」改问本机常驻后端（帧命令 `deploy-slot`），`uname` 那一问与它的解读不再住 monitor。
-//   判据那几份（`key_of` · `key_from_uname` · `promised`）在测试档里直接 `use deploy_core::…`，本文件生产段不再导出判定名。
-pub(crate) use deploy_core::{Arch, Key, Os, Product, Refusal, Route, LINES};
+// 〔THIN · P1〕表 B 的承诺是裁决（`设计/00 §1.2`「判定只在后端」）⇒ 住后端 `control/deploy_plan.rs::promised`；本文件只剩表 A 的行与槽。
+//   全景推字节「那台要哪一格」问本机常驻后端（帧命令 `deploy-slot`）；本机后端引导那一刻问手上那份字节自己（`place-verdict`）。
+pub(crate) use deploy_contract::{Arch, Key, Os, Product, Refusal, LINES};
 
 /// 表里取到的一份字节。
 #[derive(Debug, Clone, Copy)]
@@ -172,20 +169,18 @@ pub(crate) fn pick(product: Product, key: Key) -> Option<Picked> {
     }
 }
 
-/// 拒绝点（在向目标机器写第一个字节之前）：键 → 产线 → 承诺（`deploy_core::judge`）→ 这一版带没带（本文件）。五形各在一步上，不合并。
+/// 取字节口的拒绝链里 monitor 这一侧的两步（都是查表 · 事实，不是判定）：键在不在表 A 有产线的行里（[`LINES`]，契约）→ 这一版带没带（本文件）。
 ///
-/// 〔THIN〕生产段只剩**本机后端引导**一个调用方（`local_backend_host::start_local_backend`）：那一刻本机后端还没起、问不了它 ——
-/// 这一处判定留在 monitor 是已登记的残留（`调研/第四波记录/THIN.md §四`，待主会话拍板）。全景两条路改问本机常驻后端 `deploy-slot`。
-pub(crate) fn choose(
-    product: Product,
-    route: Route,
-    key: Result<Key, Refusal>,
-) -> Result<Picked, Refusal> {
-    let key = deploy_core::judge(product, route, key)?;
-    pick(product, key).ok_or(Refusal::NotCarried {
-        os: key.os.label().to_string(),
-        arch: key.arch.label().to_string(),
-    })
+/// 〔P1〕从前这里先过表 A / 表 B 那条判序（表 B 承诺是裁决，今天住后端 `control/deploy_plan.rs::judge`）。生产段唯一的调用方是本机后端引导（`local_backend_host::start_local_backend`），
+/// 那一刻本机后端还没起 ⇒ 表 B 本机那一行改由手上那份字节自己判（帧命令 `place-verdict`，`local_backend::extract_embedded_to` 问）；
+/// 全景两条路问本机常驻后端 `deploy-slot`。
+pub(crate) fn choose(product: Product, key: Result<Key, Refusal>) -> Result<Picked, Refusal> {
+    let key = key?;
+    let (os, arch) = (key.os.label().to_string(), key.arch.label().to_string());
+    if !LINES.contains(&(product, key)) {
+        return Err(Refusal::UnsupportedMachine { os, arch });
+    }
+    pick(product, key).ok_or(Refusal::NotCarried { os, arch })
 }
 
 /// 〔THIN〕这一版为某件产物**真带着字节**的那几格（表 A 有产线的格里 [`pick`] 取得到的）—— 交给本机常驻后端判「那台要哪一格」的事实

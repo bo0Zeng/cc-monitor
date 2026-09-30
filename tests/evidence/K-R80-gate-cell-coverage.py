@@ -520,11 +520,10 @@ cell(
     # 〔THIN〕`gate-core` 收成后端模块 ⇒ 成员 13 → 12，`gate.sh` 同拍改 `cargo 12`，本锚点同拍跟上。
     # 〔THIN〕`agent-tools-core` 收进后端适配层 ⇒ 成员 12 → 11，同拍。
     # 〔THIN〕`branch-core` 收进后端适配层 ⇒ 成员 11 → 10，同拍。
-    # 〔P4〕新共享 crate `host-core`（前端宿主原语）⇒ 成员 10 → 11，同拍。
-    # 〔P4〕新共享 crate `chan-core`（通道）⇒ 成员 11 → 12，同拍。
-    # 〔P4〕新共享 crate `filewin-contract`（monitor ↔ 文件窗口进程的契约）⇒ 成员 12 → 13，同拍。
-    # 〔P4〕文件窗口独立成包 `src/frontend/filewin/`（`cc-monitor-filewin`）⇒ 成员 13 → 14，同拍。
-    anchor="run_gate_sum cargo 14 bash -c",
+    # 〔P1〕`search-core` 拆进后端 ⇒ 成员 10 → 9，同拍（`deploy-core` → `deploy-contract` 只改名）。
+    # 〔P4〕〔合并 P4 × 主线 211bb498〕新共享 crate `host-core` · `chan-core` · `filewin-contract` ⇒ 成员 9 → 12，同拍。
+    # 〔P4〕文件窗口独立成包 `src/frontend/filewin/`（`cc-monitor-filewin`）⇒ 成员 12 → 13，同拍。
+    anchor="run_gate_sum cargo 13 bash -c",
     cwd="src-tauri/",
     cmd="cargo test --workspace --lib",
     **{
