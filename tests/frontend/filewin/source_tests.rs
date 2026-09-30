@@ -202,16 +202,35 @@ fn walking_up_uses_slashes_only_and_never_the_platform_separator() {
         "远端路径里的反斜杠被当成分隔符了 —— 那是 `std::path` 在 Windows 上的行为，\
          而这条路上不许用它"
     );
-    // 🔴 **阴性对照**：换成 `std::path` 的那一形在这几格上会给出不同的答案
-    //    ⇒ 上面那一比不是恒真的。
-    #[cfg(windows)]
+    // 🔴 反斜杠在**最后一段**里：这一格才分得开「只认 `/`」与「`\` 也算」（上面那格两种切法同答：
+    //    `Path::parent` 只摘掉末段，`a\b` 在前缀里原样留着）。
+    assert_eq!(
+        parent_dir("/srv/a\\b"),
+        "/srv",
+        "末段里的反斜杠被当成分隔符了"
+    );
+    // 🔴 **阴性对照**：「`\` 也当分隔符」那一形（`std::path` 在 Windows 上就是它）在这一格上答得不同
+    //    ⇒ 上面那一比不是恒真的。〔CIFIX-FW〕上一版只在 Windows 上比、且比的是上面那格（两种切法同答）⇒ Windows runner 上红、Linux 上从没跑过。
+    let also_backslash = |p: &str| -> String {
+        let t = p.trim_end_matches(['/', '\\']);
+        match t.rfind(['/', '\\']) {
+            Some(0) | None => "/".to_string(),
+            Some(i) => t[..i].to_string(),
+        }
+    };
     assert_ne!(
-        std::path::Path::new("/srv/a\\b/c")
+        also_backslash("/srv/a\\b"),
+        parent_dir("/srv/a\\b"),
+        "「`\\` 也算分隔符」那一形与本算法答得一样 —— 上面那一比买不到东西"
+    );
+    // 那一形确是 Windows 上 `std::path` 的行为（不是立给自己打的靶子）。
+    #[cfg(windows)]
+    assert_eq!(
+        std::path::Path::new("/srv/a\\b")
             .parent()
-            .map(|p| p.to_string_lossy().to_string())
-            .unwrap_or_default(),
-        "/srv/a\\b".to_string(),
-        "这台机器上 `std::path` 与本算法答得一样 —— 那上面那一比在这台机器上买不到东西"
+            .map(|p| p.to_string_lossy().to_string()),
+        Some(also_backslash("/srv/a\\b")),
+        "阴性对照那一形不是这台机器上 `std::path` 的答案"
     );
 }
 
@@ -524,7 +543,7 @@ fn truncation_is_carried_back_not_dropped() {
 /// ③ 线上恰好一条 `files-ls`（没有第二趟、也没有别的命令被悄悄发出去）。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn listing_has_no_second_road_when_the_backend_refuses() {
-    use crate::find::testing::{wire_up, Declared, FakeBackend};
+    use crate::find::testing::{remote_form, wire_up, Declared, FakeBackend};
     let root = synth_tree();
     let wired = wire_up(
         "source-ls",
@@ -533,7 +552,8 @@ async fn listing_has_no_second_road_when_the_backend_refuses() {
     .await;
     let cfg = wired.origin.clone();
     let src = Source::remote(cfg);
-    let dir = root.to_string_lossy().to_string();
+    // 窗口手里的是远端那一形（恒 `/`；Windows 上本机临时目录要换一下，见 `remote_form` 头注）。
+    let dir = remote_form(&root.to_string_lossy());
     // ① 后端答得出。
     let (rows, cut) = list_dir(&wired.line, &src, &dir, SortBy::default())
         .await
@@ -558,6 +578,40 @@ async fn listing_has_no_second_road_when_the_backend_refuses() {
     // ③ 线上恰好两条 `files-ls`（① 一条、② 一条），没有别的。
     assert_eq!(wired.cmds(), [CMD_LS, CMD_LS]);
     std::fs::remove_dir_all(&root).ok();
+}
+
+/// 要求住址 `设计/60 §2.4`「只有远端，没有本机」（远端路径恒用 `/`）—— 〔CIFIX-FW〕Windows runner 上那一形**在这台 Linux 上也跑一遍**。
+///
+/// 合成后端拿本机临时目录演远端，Windows 上那条目录是 `C:\…`。注入 `\` 当本机分隔符：
+/// ① 原样交给窗口（上一版夹具就这样）⇒ 一行的名字是整条路径、面包屑里冒出整条根 —— 正是
+///    `listing_has_no_second_road_when_the_backend_refuses` 与 `find` 那两条在 Windows 上的红；
+/// ② 过夹具的 `remote_form_with` ⇒ 名字是末段、面包屑逐级、上一级回到根。
+#[test]
+fn a_windows_temp_dir_is_split_by_the_window_only_after_the_fixture_makes_it_posix() {
+    use crate::find::testing::remote_form_with;
+    let root = r"C:\Users\RUNNER~1\AppData\Local\Temp\ccm-filewin-1";
+    let child = format!(r"{root}\alpha");
+    let name_of = |p: &str| {
+        row_from_ls_entry(&serde_json::json!({ "path": p, "kind": "dir" }))
+            .expect("解得出来")
+            .name
+            .clone()
+    };
+    let crumbs_like_root = |r: &str| {
+        breadcrumbs(r)
+            .into_iter()
+            .filter(|(t, _)| t.starts_with(r))
+            .count()
+    };
+    // ① 不换：切不开。
+    assert_eq!(name_of(&child), child);
+    assert_eq!(crumbs_like_root(root), 1);
+    // ② 换成远端那一形：切得开。
+    let (r, c) = (remote_form_with(root, '\\'), remote_form_with(&child, '\\'));
+    assert_eq!(r, "C:/Users/RUNNER~1/AppData/Local/Temp/ccm-filewin-1");
+    assert_eq!(name_of(&c), "alpha");
+    assert_eq!(parent_dir(&c), r);
+    assert_eq!(crumbs_like_root(&r), 0);
 }
 
 // ════════════════════════════════════════════════════════════════════════
