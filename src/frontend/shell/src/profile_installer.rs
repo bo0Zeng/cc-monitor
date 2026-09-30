@@ -322,9 +322,12 @@ pub struct UserPathStatus {
 ///   里面唯一的变量是 `tool_registry` 申报的那个目录。判据在数这件事。
 ///
 /// 非 Windows 上**不起进程**，直接如实回错 —— 那台机器上根本没有「用户级 PATH」这一档。
-#[cfg(windows)]
+/// 〔P4b · 阶段 H〕有没有这一档由 `platform::login_shell` 答（原先是这里两份 cfg 分身）。
 fn run_user_path_powershell(script: &str) -> Result<String, String> {
     use crate::spawn_managed::{spawn_managed_cmd, ConsolePolicy, Lifetime, StderrSink};
+    if !crate::platform::login_shell::LOGIN_SHELL.has_user_level_path() {
+        return Err(copy_text("rsProfileInstaller.userPath.notWindows", &[]));
+    }
     let mut cmd = std::process::Command::new("powershell.exe");
     cmd.args(["-NoProfile", "-NonInteractive", "-Command", script])
         .stdout(std::process::Stdio::piped());
@@ -367,24 +370,20 @@ fn run_user_path_powershell(script: &str) -> Result<String, String> {
     Ok(String::from_utf8_lossy(&out.stdout).to_string())
 }
 
-#[cfg(not(windows))]
-fn run_user_path_powershell(_script: &str) -> Result<String, String> {
-    Err(copy_text("rsProfileInstaller.userPath.notWindows", &[]))
-}
-
 /// `KR135D1` ①：**现在状态**。每调一次真跑一趟探针，**不缓存**。
 ///
 /// 🔴 **探不动时不许假装「不在 PATH 上」**：那时 `on_user_path = false` 而 `error` 非空，
 /// 界面要显示 `error` 那一句。把「问不出来」显示成「没装」，用户会去点「加」，
 /// 而那一下同样会失败 —— 两次失败之间他学不到任何东西。
 pub fn user_path_status() -> UserPathStatus {
+    let has_user_path = crate::platform::login_shell::LOGIN_SHELL.has_user_level_path();
     let add_command = render_user_path_setup_command();
     let remove_command = render_user_path_removal_command();
     let probe = match render_user_path_probe_command() {
         Some(p) => p,
         None => {
             return UserPathStatus {
-                supported: cfg!(windows),
+                supported: has_user_path,
                 dir: None,
                 on_user_path: false,
                 add_command,
@@ -393,7 +392,7 @@ pub fn user_path_status() -> UserPathStatus {
             };
         }
     };
-    if !cfg!(windows) {
+    if !has_user_path {
         return UserPathStatus {
             supported: false,
             dir: None,

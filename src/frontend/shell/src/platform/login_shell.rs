@@ -11,6 +11,13 @@ pub enum LoginShell {
     PowerShell,
 }
 
+impl LoginShell {
+    /// 有没有「用户级 PATH」这一档（只有 PowerShell 那一族有：注册表 `HKCU\Environment`）。
+    pub fn has_user_level_path(self) -> bool {
+        matches!(self, LoginShell::PowerShell)
+    }
+}
+
 /// 本机那一族。
 pub const LOGIN_SHELL: LoginShell = if cfg!(windows) {
     LoginShell::PowerShell
