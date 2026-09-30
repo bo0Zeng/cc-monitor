@@ -98,7 +98,7 @@ jobs:
         run: cargo clippy --workspace --all-targets
 
       - name: cargo test（整个 workspace，vendor 除外）
-        run: cargo test --workspace
+        run: cargo test --workspace --no-fail-fast
 
       # C05（rust-ts-boundary）：**生成物必须最新**。上一步的 `cargo test --workspace` 会跑
       # `ts-rs` 的导出测试、把 `src/frontend/ui/generated/**` 重新写一遍；这里断言它与已提交的版本一致。
@@ -194,8 +194,15 @@ jobs:
             libayatana-appindicator3-dev \
             librsvg2-dev
 
+      # 文件窗口那几格要一个真图形会话（`tests/frontend/filewin/xvfb_rig.rs`）和一份 CJK 字体
+      # （`tests/frontend/filewin/fonts_tests.rs`）；缺了它们报「判不了」而不是「过了」。
+      # `ubuntu-latest` 今天自带 Xvfb，但那是镜像的实现细节 ⇒ 这里照样点名装。
+      - name: Install test-time deps (Xvfb · xdotool · CJK font)
+        run: |
+          sudo apt-get install -y xvfb xdotool fonts-noto-cjk
+
       - name: cargo test（整个 workspace，vendor 除外；Linux 执行面）
-        run: cargo test --workspace
+        run: cargo test --workspace --no-fail-fast
 
   frontend:
     name: Frontend typecheck + build
@@ -1101,8 +1108,11 @@ jobs:
       # `.build/backend/debug/cc-monitor-backend`）。主计划把「怎么把后端产物
       # 从 `backend` job 传过来」记成 G-C 唯一的技术不确定性——**直接在本 job 里编就绕开了**：
       # 本 job 已有 Rust 工具链，而 backend crate 比它已经在编的 src/frontend/shell 轻得多。
+      # cwd 必须是 `src/backend`：cargo 按**发起命令的 cwd** 找 `.cargo/config.toml`。
+      # 从仓根发起会读到仓根那份（`.build/shell`），产物就不在下面几套找的 `.build/backend/` 里。
       - name: build debug backend（供 backend-frames 三套）
-        run: cargo build --manifest-path src/backend/Cargo.toml
+        working-directory: src/backend
+        run: cargo build
 
       # ── 🔴〔用量下线 2026-09-18〕**「用量探针（F10）」那一步整步删了。** ────────────
       # 它跑的是 `tests/e2e/usage-probe-acceptance.sh`（套件名 `usage-probe`，地板 11），

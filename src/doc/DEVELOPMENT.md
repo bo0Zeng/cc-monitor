@@ -45,7 +45,7 @@ npx tauri dev                                # 在仓根跑：起 vite、编 mon
 
 ```bash
 # 壳的 workspace（monitor ＋ 共享 crate）：在 src/frontend/shell 里
-cargo test --workspace                         # 与 CI 的 rust job 逐字相同
+cargo test --workspace --no-fail-fast          # 与 CI 的 rust job 逐字相同（一个测试二进制红了也跑完其余的）
 cargo test -p monitor --lib <过滤串>            # 只跑名字里带这个串的
 cargo test -p monitor --lib <过滤串> -- --nocapture
 cargo fmt --all --check
