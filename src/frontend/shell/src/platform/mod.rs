@@ -10,6 +10,7 @@ pub mod fs;
 pub mod hwnd;
 pub mod login_shell;
 pub mod pid;
+pub mod proc;
 pub mod spawn;
 
 #[cfg(test)]

@@ -940,7 +940,7 @@ fn the_detach_landing_is_the_host_layer_and_the_injection_is_really_used() {
              `the_backend_half_stays_platform_agnostic` 的禁针里 —— 那一层不认识平台。\n\
              ⇒ 脱离的落点只能是**宿主知识层**（`local_backend_host.rs`），\n\
              照 `platform::fs::make_executable` 那个注入先例把「怎么起」喂进去。\n\
-             ⚠ 「加一条平台例外」这条路走不通：`PLATFORM_EXCEPTIONS.len() <= 1` 是递减棘轮，今天正好 1 条。"
+             ⚠ 「加一条平台例外」这条路走不通：`PLATFORM_EXCEPTIONS.len() <= 1` 是递减棘轮（〔P4b〕今天 0 条），壳里平台形态另只许住 `platform/`。"
     );
 
     // ── ② 位置性 ────────────────────────────────────────────────────

@@ -977,7 +977,7 @@ pub fn resolve_beside_this_exe(target_triple: &str) -> Resolved {
     resolve_with(
         &exe_dir,
         target_triple,
-        std::env::consts::EXE_SUFFIX,
+        crate::platform::proc::EXE_SUFFIX,
         &|p: &Path| p.is_file(),
     )
 }
@@ -1287,9 +1287,8 @@ pub const CCM_ENTRY_WORD: &str = "ccm";
 /// 后缀与本机落点同一个来路：`build.rs` 按 **`TARGET`** 算好的编译期常量
 /// `CCM_TARGET_EXE_SUFFIX`。这一份是要**被起成进程**的 ⇒ 在把扩展名当身份的平台上
 /// 它得带着自己那个后缀。
-/// ⚠ 这里**不许**现算 `env::consts::EXE_SUFFIX` —— 那是平台原语，而本文件在
-/// `backend_client_guard_tests.rs::PLATFORM_EXCEPTIONS` 上只有一格例外额度，今天已被
-/// `resolve_beside_this_exe` 占满（那张表挂着递减棘轮 `len() <= 1`）。
+/// ⚠ 这里**不许**现算 `EXE_SUFFIX` —— 那是**本进程**的后缀，而这一份要的是**目标**平台的（`build.rs` 按 `TARGET` 算好）；
+/// 〔P4b · 阶段 H〕平台原语本身也只许住 `platform/`（`resolve_beside_this_exe` 那一处已改引 `platform::proc::EXE_SUFFIX`）。
 pub fn local_ccm_entry_name() -> String {
     format!("{CCM_ENTRY_WORD}{}", env!("CCM_TARGET_EXE_SUFFIX"))
 }

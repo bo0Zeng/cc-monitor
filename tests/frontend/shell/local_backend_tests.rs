@@ -1595,7 +1595,7 @@ fn the_extracted_name_carries_the_target_exe_suffix() {
              在把扩展名当身份的平台上，那个文件起不起得来是碰运气"
     );
     // 后缀是**编译期常量**、不是现算的平台原语 —— 现算要 `env::consts::`，
-    // 而本文件在 `PLATFORM_EXCEPTIONS` 里的例外额度已经占满（那张表挂着递减棘轮）。
+    // 而〔P4b · 阶段 H〕平台原语只许住 `platform/`（`platform_home_guard`），本文件那一处已改引 `platform::proc::EXE_SUFFIX`。
     // ⚠ 用 `contains_word`（两侧有边界）而不是裸 `contains` —— 后者被
     //   `needle_anchor_registry` 那条递减棘轮数着，而这里也确实不该用子串匹配。
     //   **不用 `find_pinned`**：这个名字在本文件里还出现在头注里，本条要的是

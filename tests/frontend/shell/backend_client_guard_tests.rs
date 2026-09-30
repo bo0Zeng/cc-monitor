@@ -140,16 +140,10 @@ fn platform_needles() -> Vec<String> {
 /// ① **单点**（该形态在该文件生产段里恰好出现 **1** 次）；
 /// ② **「已收敛」不是散文** —— 第四列是那句话的机检锚点，锚点没了就红。
 #[allow(clippy::type_complexity)]
-const PLATFORM_EXCEPTIONS: &[(&str, &str, &str, &str)] = &[(
-    "src/frontend/shell/src/local_backend.rs",
-    "env::consts::",
-    "`EXE_SUFFIX` 是**没有 cfg 的平台原语**（Windows `.exe` / 别处空串）。         它没被搬进 `platform/`，但**平台差异已经收敛成一个注入参数**：         `resolve_beside_this_exe` 把它读出来喂给 `resolve_with`，         而 `resolve_with`（逻辑那半）与平台无关、在任何平台上都能测。         ⇒ 出路②「建 backend/platform/」为它一个常量建一层目录不划算；走出路③，登记在此。",
-    // ⚠ 锚点要**不含糊**：第一版写的是 `"exe_suffix: &str"`，而同文件的
-    // `local_backend_candidates` 也有同名参数 ⇒ 把 `resolve_with` 的参数改名，
-    // 判据**照样绿**（变异实测）。改成多行签名片段。
-    // ★ 与 F05「起流/起流程」、F16「src/backend/-X」同族：**匹配单位比事实小**。
-    "pub fn resolve_with(\n    exe_dir: &Path,\n    target_triple: &str,\n    exe_suffix: &str,",
-)];
+// 〔P4b · 阶段 H〕唯一那一行（`local_backend.rs` 的 `env::consts::`）随 `EXE_SUFFIX` 收进 `platform::proc` 出列，表今天是空的。
+// 上限那行不动（它被 `local_backend_host_tests::this_item_loosened_none_of_the_ratchets_it_touched` 按整行钉着）；
+// 真正挡「往这组里写平台代码」的已是 `platform/platform_home_guard.rs`：这里加一行例外、那边照样红。
+const PLATFORM_EXCEPTIONS: &[(&str, &str, &str, &str)] = &[];
 
 fn platform_hits(prod: &str) -> Vec<String> {
     platform_needles()
