@@ -87,6 +87,23 @@ pub enum SurfaceState {
     Undetermined {
         why: String,
     },
+    /// **该不在、确实不在**：这一行的目标就是它不在（今天只有旧版遗留那一档），不在 ＝ 该有的样子、不是缺口。
+    /// 判定只一处 [`read_absence`]；界面照这一档画（`detail` 原样上屏），不看效果档、不看措辞。
+    ExpectedAbsent {
+        detail: String,
+    },
+}
+
+/// 「不在」怎么读 —— 按这一行的效果档（判定只在这里）。
+/// [`TouchEffect::RetiredLegacy`]（旧版放的那一份：认出是我们放的就删）的目标就是它不在 ⇒ `Absent` 读成
+/// [`SurfaceState::ExpectedAbsent`]；其余效果档、其余现状一律原样（旧版那一份**还在**仍如实说在）。
+pub fn read_absence(effect: TouchEffect, state: SurfaceState) -> SurfaceState {
+    match (effect, state) {
+        (TouchEffect::RetiredLegacy, SurfaceState::Absent) => SurfaceState::ExpectedAbsent {
+            detail: copy_text("rsConfigSurface.observe.retiredGone", &[]),
+        },
+        (_, s) => s,
+    }
 }
 
 /// 注入的文件系统探针。做成注入是为了让**解析 + 观测**两步都能纯测
@@ -457,6 +474,8 @@ pub fn observe(res: &PathResolution, fs: &FsProbe) -> SurfaceState {
                     &[("why", &why.to_string())],
                 ),
             },
+            // `observe` 自己不出这一档（它由 [`read_absence`] 在出行时读出来）；写成具名臂只为穷尽。
+            s @ SurfaceState::ExpectedAbsent { .. } => s,
         },
         PathResolution::NeedsUserConfig { what } => SurfaceState::Undetermined {
             why: copy_text(
@@ -608,7 +627,7 @@ fn row(
                 PathResolution::WindowsProfile => None,
                 PathResolution::NeedsUserConfig { .. } => None,
             };
-            (shown, observe(r, fs))
+            (shown, read_absence(f.effect, observe(r, fs)))
         }
         // **声明自相矛盾也要如实显示**，不能静默跳过一行——那会让表格看着很干净而实际漏了东西
         Err(e) => (
