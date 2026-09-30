@@ -6,6 +6,6 @@ export type AutoLaunchConfig = {
  */
 auto_launch_enabled: boolean, 
 /**
- * monitor.exe 的当前路径。monitor 每次启动自动更新。
+ * cc-monitor.exe 的当前路径。monitor 每次启动自动更新。
  */
 monitor_exe_path: string | null, };

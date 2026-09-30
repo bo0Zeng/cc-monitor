@@ -48,6 +48,8 @@ repository = "https://github.com/local/cc-monitor"
 homepage = "https://github.com/local/cc-monitor"
 keywords = ["claude", "claude-code", "monitor", "tauri", "viewer"]
 categories = ["development-tools", "visualization"]
+# 主二进制是 `cc-monitor`（与包名不同）⇒ 用 `default-run` 点名它：`cargo run` 起它，打包器（tauri-cli）也按它认主二进制。
+default-run = "cc-monitor"
 
 # 〔P4 · `设计/90 §0.5.3` ⑰〕「monitor 源码树」的判据人群：本包 `src/` ＋ 下面这几包 —— monitor 的代码搬进去的、只有前端链的兄弟包
 #   （通道 · 前端宿主原语 · 开窗契约 · 文件窗口）。`guard_core::walk_tree` / `module_address` 按它收 / 认，按人群扫的判据搬家前后逐条同一群；
@@ -64,10 +66,12 @@ population = [
 name = "monitor_lib"
 crate-type = ["rlib"]
 
-# 主二进制。🔴 **明写出来**：下面多了第二个 `[[bin]]`，而「自动发现 + 明写混用」
+# 主二进制 `cc-monitor`：下载的 `cc-monitor.exe`（Linux 上是 `cc-monitor`）或装上的就是这个项目本身，包含前端和后端，
+# 后端会被它释放到不同机器上。🔴 **明写出来**：下面多了第二个 `[[bin]]`，而「自动发现 + 明写混用」
 # 是一个读起来要去查 cargo 文档才知道答案的形状 —— 两个都写死，谁都不用猜。
+# 包名仍是 `monitor`（`-p monitor` · 库名 `monitor_lib` 不动），可执行文件的名字只住这一行。
 [[bin]]
-name = "monitor"
+name = "cc-monitor"
 path = "src/main.rs"
 
 # 🔴〔第十三刀 2026-09-23〕**文件管理窗口的独立进程**（`设计/60 §4.8` 作废重写 · `§8.5`）。

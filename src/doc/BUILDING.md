@@ -1,6 +1,6 @@
 # 构建与打包
 
-怎样把 cc-monitor 编成可分发的包：Windows 的 NSIS 安装器 · MSI · 裸 `monitor.exe`，Linux 的 `.deb` · 裸 `monitor`。发版产物由 `.github/workflows/release.yml` 在 CI 上编，本篇讲它由哪几件组成、本机怎么编出同样的东西。
+怎样把 cc-monitor 编成可分发的包：Windows 的 NSIS 安装器 · MSI · 裸 `cc-monitor.exe`，Linux 的 `.deb` · 裸 `cc-monitor`。发版产物由 `.github/workflows/release.yml` 在 CI 上编，本篇讲它由哪几件组成、本机怎么编出同样的东西。
 
 开发环境与 dev 模式 → [DEVELOPMENT.md](DEVELOPMENT.md)。发版流程 → [RELEASING.md](RELEASING.md)。
 
@@ -68,7 +68,8 @@ npx tauri build --bundles deb
 
 ```
 .build/shell/release/
-├ monitor(.exe)                                     裸二进制（包名 monitor）
+├ cc-monitor(.exe)                                  裸二进制（主 `[[bin]]` 的名字；包名仍是 monitor）
+├ cc-monitor-filewin(.exe)                          文件窗口程序（安装包装在主程序旁；发版时也编进上面那一个）
 └ bundle/
   ├ nsis/cc-monitor_<version>_x64-setup.exe         NSIS 安装器
   ├ msi/cc-monitor_<version>_x64_en-US.msi          MSI（WiX 没配语言 ⇒ en-US）

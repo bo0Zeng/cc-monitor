@@ -24,12 +24,12 @@ fn save_and_load_roundtrip() {
     let _ = fs::remove_file(&tmp);
     let cfg = AutoLaunchConfig {
         auto_launch_enabled: true,
-        monitor_exe_path: Some(r"C:\bar\monitor.exe".to_string()),
+        monitor_exe_path: Some(r"C:\bar\cc-monitor.exe".to_string()),
     };
     save(&tmp, &cfg).unwrap();
     let loaded = load(&tmp);
     assert!(loaded.auto_launch_enabled);
-    assert_eq!(loaded.monitor_exe_path.unwrap(), r"C:\bar\monitor.exe");
+    assert_eq!(loaded.monitor_exe_path.unwrap(), r"C:\bar\cc-monitor.exe");
     let _ = fs::remove_file(&tmp);
 }
 
