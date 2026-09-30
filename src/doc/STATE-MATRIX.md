@@ -36,6 +36,7 @@
 
 ### `Arc<BindRegistry>`
 - `lib.rs::bound_terminal_count(bind_state: State<'_, Arc<BindRegistry>>)`（〔MIG-3a〕握手终端数单独一问；从前夹在别名读回口里 —— 别名那一族进了那台后端，`aliases-read`）
+- `lib.rs::bring_remote_terminal_to_front(session_id, cache: State<'_, Arc<RemoteHwndCache>>, registry: State<'_, Arc<BindRegistry>>)`
 
 ### `Arc<SidHwndCache>`
 - `lib.rs::bring_terminal_to_front(session_id, cache: State<'_, Arc<SidHwndCache>>)`

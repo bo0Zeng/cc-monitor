@@ -94,6 +94,7 @@ pub struct ArchGraph {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 pub struct ArchNode {
     /// Mermaid 里的 id。**从标签派生、人能读**(`lang_kotlin`)——
     /// `s0`/`s1` 那种不透明 id 逼着读图的人在边与节点定义之间来回翻。
@@ -110,6 +111,7 @@ pub struct ArchNode {
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 pub struct ArchLink {
     pub from: String,
     pub to: String,

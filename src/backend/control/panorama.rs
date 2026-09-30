@@ -12,7 +12,7 @@
 //! |---|---|
 //! | ① 找它 | 候选：后端自己那个可执行文件旁边 → `<家>/.cc-monitor/bin/`；**不兜 `PATH`**（同名的无关程序由身份行再挡一道） |
 //! | ② 问它会什么 | 要的能力 = 这一次的 op（缺哪个说哪个 —— 「这台装的小程序太旧」与「调用失败」是两件事）；要的那一代 = 请求带来的 `shape` |
-//! | ③ 起它 | 期限按它自报的档：长活档（`long=`）一档、其余一档（`u64` 秒，交给子进程的 `timeout` 前缀；**后端零定时器不破**） |
+//! | ③ 起它 | 期限按它自报的档：长活档（`long=`）一档、其余一档（`u64` 秒，交给子进程的 `timeout` 前缀；**后端零定时器不破**）；〔P7〕它在 stderr 上写的进度行（插件口分拣）交发起方订的进度流 |
 //! | ④ 码 → 语义 | **这张表只住这里**（插件口只抽骨架）：见 [`classify`] |
 //!
 //! # 后端不带引擎知识（〔PANO〕`99 §1` V158）
@@ -142,10 +142,15 @@ pub(crate) fn fixed_candidates(exe_dir: Option<&Path>, home: Option<&Path>) -> V
     out
 }
 
-/// 帧面入口。〔RM1f〕异步：注册表里是 `Run::Async`，`cancel` 命中 ⇒ 这个 future 被丢 ⇒ 小程序那一组子进程被杀。
-pub(crate) async fn answer(args: &Value) -> Result<Value, (String, String)> {
+/// 帧面入口。〔RM1f〕异步：`cancel` 命中 ⇒ 这个 future 被丢 ⇒ 小程序那一组子进程被杀。
+/// 〔P7〕`progress`：小程序报的每一格进度（一个 JSON 对象，原样；格里是什么由界面解释）往哪儿交 ——
+/// 帧面上是「推进本请求那张票的进度流」（`stream::inbound::Progress`），CLI 一次性进程里没人订、是空的。
+pub(crate) async fn answer(
+    args: &Value,
+    progress: &(dyn Fn(Value) + Send + Sync),
+) -> Result<Value, (String, String)> {
     let (fixed, store) = where_to_look()?;
-    answer_with(&fixed, &store, args)
+    answer_with(&fixed, &store, args, progress)
         .await
         .map_err(|(c, m)| (c.to_string(), m))
 }
@@ -175,13 +180,14 @@ fn where_to_look() -> Result<(Vec<PathBuf>, PathBuf), (String, String)> {
     Ok((fixed, store_dir(&home)))
 }
 
-/// [`answer`] 的本体：候选与索引根是参数（判据拿夹具喂它，不去动进程级环境）。
+/// [`answer`] 的本体：候选与索引根是参数（判据拿夹具喂它，不去动进程级环境）；小程序报的进度格交 `progress`。
 pub(crate) async fn answer_with(
     fixed: &[PathBuf],
     store: &Path,
     args: &Value,
+    progress: &(dyn Fn(Value) + Send + Sync),
 ) -> Result<Value, CmdErr> {
-    run_op(fixed, store, args, false).await
+    run_op(fixed, store, args, false, progress).await
 }
 
 /// [`answer_plan`] 的本体（同 [`answer_with`]）。
@@ -190,7 +196,7 @@ pub(crate) async fn answer_with_plan(
     store: &Path,
     args: &Value,
 ) -> Result<Value, CmdErr> {
-    run_op(fixed, store, args, true).await
+    run_op(fixed, store, args, true, &|_| {}).await
 }
 
 /// 写表（`plans=` 的值，`<算 op>[><之后>]` 逗号列表）里 `op` 那一项：`Some(之后要跑的)`；不在表里 ⇒ `None`。
@@ -208,6 +214,7 @@ async fn run_op(
     store: &Path,
     args: &Value,
     plan: bool,
+    progress: &(dyn Fn(Value) + Send + Sync),
 ) -> Result<Value, CmdErr> {
     let op = args.get("op").and_then(Value::as_str).ok_or((
         "bad_args",
@@ -293,7 +300,21 @@ async fn run_op(
     if let Some(a) = op_args.as_deref() {
         argv.extend(["--args", a]);
     }
-    let done = crate::plugin::invoke::run_abortable(&bin, &argv, deadline, &[], keep()).await;
+    // 〔P7〕插件口分拣出来的进度行：只认一个 JSON 对象（一格），别的形不转（格是什么由界面严格收）。
+    let mut on_line = |line: &str| {
+        if let Ok(cell @ Value::Object(_)) = serde_json::from_str::<Value>(line) {
+            progress(cell);
+        }
+    };
+    let done = crate::plugin::invoke::run_abortable_reporting(
+        &bin,
+        &argv,
+        deadline,
+        &[],
+        keep(),
+        &mut on_line,
+    )
+    .await;
     let mut got = classify(op, deadline, done.map_err(|n| not_run(&bin, n))?)?;
     if let Some(then) = then {
         got["then"] = json!(then);

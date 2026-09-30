@@ -419,6 +419,7 @@ monitor 记进一张 sid 表，用它 ① 拦掉 `↗` 并给出正确说法 ②
 | `link_end` | `link`, `error?` | **〔SR1a〕这条链路不会再有字节了**，后端已忘掉这个 id。`error` 缺席 = 正常收尾；在 = 非正常收尾的人话。拨不通**不**走这里（那是链路字节里那一行失败的 ack） |
 | `transfer` | `id`, `got`, `total`, `end?` | **〔SR1b〕一趟传输此刻的样子**（`transfer-start` 之后才出现）：每一帧是整份快照（`got` / `total` 字节），不是增量 ⇒ 后端按变更合并、堵住时只合并不堆积。带 `end` 的那一帧是这一趟的**最后一帧**：`{"state":"done","bytes","sha256"?}` · `{"state":"failed","why"}` · `{"state":"cancelled"}`（〔FW1 · 第四波 4D〕`sha256` 只有上传那一路有：整份本机文件的摘要，窗口提交 `files-commit-upload` 时原样交回当 `expect`）。**不丢**：走应答那条独立通道。完整语义在「入方向」那一节的「传输四条」 |
 | `probe` | `ticket`, `cell` | **〔MIG-1 收尾〕测试连接那一趟的一格进度**（`remote-probe` 在跑时才出现）：`cell` 恰好一个键 —— `stage`（拨号阶段行）· `reached`（`ssh` / `hello` / `control`）· `end`（结局，最后一格）。**不丢**：走应答那条独立通道。完整语义在「入方向」那一节的 `remote-probe` |
+| `progress` | `ticket`, `cell` | **〔P7 · V158「长活要有进度」〕一条长活此刻的一格进度**（今天：`panorama` 建索引那一档，请求交了 `ticket` 才出现）：`ticket` = 发起方交的票（进度流 `progress/<ticket>` 的名字，本后端只回填），`cell` = 那个活自己报的一格（一个 JSON 对象，原样不解释；全景是上游 `IndexProgress{phase, done, total}`）。走应答那条独立通道，但**可丢**（满了丢这一格：每格是整份快照，下一格补上；结局照旧在应答里）。完整语义在「入方向」那一节的 `panorama` |
 | `tap` | `stream`, `resp`, `n`, `data?`, `end?` | **〔TAP · V124 · `设计/20 §8`〕中转抄出来的一个 SSE 事件**（或一个响应的收尾）。只有**进程里住着中转的那个后端**（常驻后端，本机远端同形）会发。`stream` = 〔V141〕claude 请求头 `x-claude-code-session-id` 的值（== 它的 sid，新开 / resume / 分叉同一形；没带 / 过不了段闸 ⇒ 空串），后端不解释；`resp` = 本进程第几个响应；`n` = 这一个响应里第几个事件，**从 0 连续** —— 每个事件先占号再投递，丢了的号不出现 ⇒ 接收侧看 `n` 连不连得上就知道缺在哪（原位缺口，`设计/05 §3.3.4`）。`data`（SSE `data:` 后那段原文，**一个 JSON 串**）与 `end`（`"done"` 上游说完 · `"broken"` 转发以错误收尾；这一帧的 `n` = 一共占了几个号）恰有一个。一个事件都没有的响应（非 SSE）不发。**可丢**：走后端自己那条有界 tap 通道（256 件、单件原文 ≤ 16 KiB），不挤出方向的内容帧、不回推中转；SSE 只保快，jsonl 保对（V24） |
 
 ### 入方向：流连接上的命令信封（U6b-1）
@@ -3364,9 +3365,10 @@ marker = `ccm-rbind-token-<令牌>`；marker 前缀与目录名是共享契约�
 | `shape` | → | 〔PANO〕要的那一代小程序的形状代号（发起方取自生成物 `engine-contract.json`）；后端拿它与 `--probe` 报的 `shape=` 逐字比，对不上 ⇒ `unsupported`。缺 ⇒ `bad_args` |
 | `repo` | → | 被分析的仓在**这台机器上**的绝对路径（`diagram_kinds` 不要） |
 | `args` | → | 这个 op 自己的参数（JSON 对象；拼错的字段名被拒，不静默忽略） |
+| `ticket` | → | 〔P7〕可缺。交了 ⇒ 小程序报的进度（建索引那一档在 stderr 上写 `progress=<一格 JSON>`，插件口分拣）逐格推成出方向 `progress{ticket, cell}` 帧（见出方向那张表），界面拿它订 `progress/<ticket>`；没交 ⇒ 不推 |
 | `result` | ← | 小程序应答里的 `data` **原样**（形状与 monitor 进程内那套全景命令逐字相同；`node` 查不到是 `null`） |
 
-- CLI 面同样自动派生（`--panorama`，stdin 一段 JSON = 上面那个 `args`），已进 `SUBCOMMANDS`。
+- CLI 面同样自动派生（`--panorama`，stdin 一段 JSON = 上面那个 `args`），已进 `SUBCOMMANDS`（一次性进程里没人订进度，`ticket` 交了也不推）。
 - 期限：按小程序 `--probe` 自报的档 —— `long=` 里的（今天 `index` / `reindex` / `refresh_doc_links`）900 秒，其余 60 秒 —— 给**子进程**的（后端零定时器）。客户端那一侧的等待要比它长。
 - 错误码：`bad_args`（缺 `op` / `shape`、参数不合形，小程序自己那句话原样带回）· `not_installed`（这台没有那个小程序，或找到的那个身份行对不上；整句说清查过哪儿）· `unsupported`（装的那份不会这个 op，点名缺的那一个；或形状代号不是请求要的那一代）· `timed_out`（说清是哪一档期限）· `too_large`（参数塞不进一次命令调用，或结果超过 32 MiB）· `failed`（仓打不开 / 引擎报错 / 被信号打断，带诊断）。
 - 〔RM1d · V110「引擎只算、文件管理来写」〕本命令**不写用户文件**。批注 / 文档关联的 `plan_*` 只读盘上那一两份、回一份编辑计划
@@ -3394,7 +3396,7 @@ marker = `ccm-rbind-token-<令牌>`；marker 前缀与目录名是共享契约�
 #### `panorama-edit`：全景写批注 / 文档关联（〔MIG-3b 续〕09-28；〔RM1d〕V110「引擎只算、文件管理来写」）
 
 ```text
-→ {"id":"g2","cmd":"panorama-edit","args":{"repo":"/home/me/proj","op":"plan_add_annotation","args":{"file":"a.rs","symbol":null,"body":"x","author":"me"},"shape":"<形状代号>"}}
+→ {"id":"g2","cmd":"panorama-edit","args":{"repo":"/home/me/proj","op":"plan_add_annotation","args":{"target":"a.rs#f","body":"x","author":"me"},"shape":"<形状代号>"}}
 ← {"kind":"reply","id":"g2","ok":true,"data":"k3f…"}
 ```
 

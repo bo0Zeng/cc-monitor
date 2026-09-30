@@ -17,6 +17,8 @@
 //!   成功 `{"ok":true,"data":…}`（退出码 0）；失败 `{"ok":false,"code":…,"message":…}`，
 //!   退出码 [`EXIT_BAD_ARGS`]（调用方给错了东西）/ [`EXIT_FAILED`]（仓打不开 / 引擎报错）。
 //!   失败那句话同时写 stderr 一行（调用口摘诊断时 stderr 优先）。
+//! - 〔P7〕建索引那一档边走边往 **stderr** 写进度行 `progress=<一格 JSON>`（[`PROGRESS_PREFIX`]；格 = 上游 `IndexProgress`）。
+//!   后端插件口把这种行分拣出来、转进发起方订的进度流，不进诊断；stdout 照旧恰一行。
 //! - ⚠ **退出码的语义只在这里定义一次**；起它的那一侧（后端适配层）自己持一张码 → 语义码的表，
 //!   插件口本身不翻码（那条纪律住 `src/backend/plugin/mod.rs` 头注）。
 //!
@@ -51,6 +53,32 @@ pub const NAME: &str = "cc-monitor-panorama";
 
 /// 能力探测旗标（插件口那套方言）。
 pub const PROBE_FLAG: &str = "--probe";
+
+/// 〔P7〕进度行的前缀（插件口那套方言：stderr 上以它开头的一行 = 一格进度，后端 `plugin::invoke::PROGRESS_PREFIX` 同一个串）。
+pub const PROGRESS_PREFIX: &str = "progress=";
+
+/// 〔P7〕建索引的进度 → 进度行。**节流**：同一阶段里整百分比变了才出一行（每阶段第一格 `0/n` 与最后一格 `n/n` 都必出）——
+/// 上游每做完一个文件回调一次，大仓上千份，一格一行会把那条管子与界面一起淹掉。节流按份数算，不看钟（零定时器）。
+struct ProgressLines<'a> {
+    out: &'a mut dyn FnMut(String),
+    last: Option<(model::IndexPhase, usize)>,
+}
+
+impl ProgressLines<'_> {
+    fn feed(&mut self, p: model::IndexProgress) {
+        let pct = if p.total == 0 {
+            100
+        } else {
+            p.done * 100 / p.total
+        };
+        if self.last == Some((p.phase, pct)) {
+            return;
+        }
+        self.last = Some((p.phase, pct));
+        let cell = serde_json::to_string(&p).expect("进度格序列化不出来");
+        (self.out)(format!("{PROGRESS_PREFIX}{cell}\n"));
+    }
+}
 
 /// 调用方给错了东西：未知 op / 缺仓 / 参数 JSON 不合形 / 多了不认识的旗标。
 pub const EXIT_BAD_ARGS: i32 = 2;
@@ -88,7 +116,7 @@ pub const OPS: &[(&str, Need)] = &[
     ("reindex", Need::Build),
     ("overview", Need::Read),
     ("node", Need::Read),
-    // 〔PANO · CP1〕以某符号为心的邻域，每个符号带「距根几跳」（前端只分组，不算）。
+    // 〔PANO · CP1〕以某符号为心的邻域，每个符号带「距根几跳」（〔P7〕上游 `Engine::neighborhood` 直出；前端只分组，不算）。
     ("neighborhood", Need::Read),
     ("callers", Need::Read),
     ("callees", Need::Read),
@@ -135,7 +163,10 @@ fn plans_line() -> String {
 }
 
 /// 〔PANO〕本程序**自己的**应答形状（引擎直出之外的那几样）：`status` 那三格。
+/// `stale` = 源文件有改动、索引已陈旧；`indexedAt` = 上次索引的 unix 秒（`null` = 从未建完）；`symbols` = 已索引符号数。
+/// 〔P7〕它与下面那份的 TS 声明进前端生成物 `types.ts`（ts-rs，只在测试构建里派生）。
 #[derive(Serialize, Default)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(rename = "PanoramaStatus"))]
 struct StatusReply {
     stale: bool,
     #[serde(rename = "indexedAt")]
@@ -143,23 +174,11 @@ struct StatusReply {
     symbols: usize,
 }
 
-/// `neighborhood` 的应答：根 ＋ 每个够得着的符号与它距根几跳。
+/// `diagram` 的应答：上游 `Diagram`（形状归 vendored pin）＋ 上游 Mermaid 文本（复制给 agent 与「画不出」兜底用，不许解析它）。
 #[derive(Serialize, Default)]
-struct NeighborhoodReply {
-    root: String,
-    reached: Vec<Reached>,
-}
-
-/// 邻域里的一个符号。
-#[derive(Serialize, Default)]
-struct Reached {
-    id: String,
-    depth: u32,
-}
-
-/// `diagram` 的应答：上游 `Diagram`（形状归 vendored pin）＋ 上游 Mermaid 文本。
-#[derive(Serialize, Default)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(rename = "PanoramaDiagram"))]
 struct DiagramReply {
+    #[cfg_attr(test, ts(type = "Diagram"))]
     diagram: Value,
     mermaid: String,
 }
@@ -172,13 +191,6 @@ fn own_dtos() -> Vec<(&'static str, Value)> {
         (
             "status",
             sample(serde_json::to_value(StatusReply::default())),
-        ),
-        (
-            "neighborhood",
-            sample(serde_json::to_value(NeighborhoodReply {
-                reached: vec![Reached::default()],
-                ..Default::default()
-            })),
         ),
         (
             "diagram",
@@ -351,6 +363,17 @@ pub fn run(
     store: Option<&Path>,
     args: Value,
 ) -> Result<Value, Fail> {
+    run_reporting(op, repo, store, args, &mut |_| {})
+}
+
+/// 同 [`run`]，建索引那一档把进度行交给 `progress`（生产 = 写 stderr，见 [`main`]）。
+pub fn run_reporting(
+    op: &str,
+    repo: Option<&Path>,
+    store: Option<&Path>,
+    args: Value,
+    progress: &mut dyn FnMut(String),
+) -> Result<Value, Fail> {
     let Some((_, need)) = OPS.iter().find(|(n, _)| *n == op) else {
         return Err(Fail::BadArgs(format!(
             "不认识的 op `{op}`（本程序会的：{}）",
@@ -391,7 +414,7 @@ pub fn run(
         },
     )
     .map_err(|e| Fail::Failed(format!("打开全景引擎失败（{}）：{e}", repo.display())))?;
-    dispatch(op, &mut engine, args)
+    dispatch(op, &mut engine, args, progress)
 }
 
 /// 索引根上的一把文件锁：建索引独占、读共享。
@@ -474,9 +497,8 @@ struct DiagramArgs {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct AnnotateArgs {
-    file: String,
-    /// 符号段（如 `f` / `Type::method`）；缺席 / `null` = 文件级批注。
-    symbol: Option<String>,
+    /// 〔P7〕挂在谁身上：**整个**符号 id（文件级批注 = 裸文件路径）。截 `@行号`、取文件段归上游 `SymbolRef::of`，本程序不拆。
+    target: String,
     body: String,
     author: String,
 }
@@ -524,17 +546,23 @@ fn dispatch_plan(op: &str, repo: &Path, args: Value) -> Result<Value, Fail> {
     match op {
         "plan_add_annotation" => {
             let a: AnnotateArgs = take(op, args)?;
-            out(
-                edits::plan_add_annotation(repo, &a.file, a.symbol.as_deref(), &a.body, &a.author)
-                    .map_err(plan_fail)?,
+            let at = model::SymbolRef::of(&a.target);
+            out(edits::plan_add_annotation(
+                repo,
+                &at.file,
+                at.symbol.as_deref(),
+                &a.body,
+                &a.author,
             )
+            .map_err(plan_fail)?)
         }
         "plan_propose_annotation" => {
             let a: AnnotateArgs = take(op, args)?;
+            let at = model::SymbolRef::of(&a.target);
             out(edits::plan_propose_annotation(
                 repo,
-                &a.file,
-                a.symbol.as_deref(),
+                &at.file,
+                at.symbol.as_deref(),
                 &a.body,
                 &a.author,
             )
@@ -562,7 +590,16 @@ fn dispatch_plan(op: &str, repo: &Path, args: Value) -> Result<Value, Fail> {
 
 /// 在开好的引擎上跑一个 op。**这里只有读引擎的方法与建索引**（写用户文件的那几样只算不写，
 /// 住 [`dispatch_plan`]，见头注）。
-fn dispatch(op: &str, e: &mut Engine, args: Value) -> Result<Value, Fail> {
+fn dispatch(
+    op: &str,
+    e: &mut Engine,
+    args: Value,
+    progress: &mut dyn FnMut(String),
+) -> Result<Value, Fail> {
+    let mut lines = ProgressLines {
+        out: progress,
+        last: None,
+    };
     match op {
         "status" => {
             take::<NoArgs>(op, args)?;
@@ -574,11 +611,15 @@ fn dispatch(op: &str, e: &mut Engine, args: Value) -> Result<Value, Fail> {
         }
         "index" => {
             take::<NoArgs>(op, args)?;
-            out(e.index().map_err(|x| Fail::Failed(x.to_string()))?)
+            out(e
+                .index_with_progress(&mut |p| lines.feed(p))
+                .map_err(|x| Fail::Failed(x.to_string()))?)
         }
         "reindex" => {
             take::<NoArgs>(op, args)?;
-            out(e.reindex().map_err(|x| Fail::Failed(x.to_string()))?)
+            out(e
+                .reindex_with_progress(&mut |p| lines.feed(p))
+                .map_err(|x| Fail::Failed(x.to_string()))?)
         }
         "overview" => {
             let a: OverviewArgs = take(op, args)?;
@@ -590,7 +631,7 @@ fn dispatch(op: &str, e: &mut Engine, args: Value) -> Result<Value, Fail> {
         }
         "neighborhood" => {
             let a: SymbolDepthArgs = take(op, args)?;
-            out(neighborhood(e, &a.symbol, a.depth))
+            out(e.neighborhood(&a.symbol, a.depth))
         }
         "callers" => {
             let a: SymbolDepthArgs = take(op, args)?;
@@ -626,8 +667,9 @@ fn dispatch(op: &str, e: &mut Engine, args: Value) -> Result<Value, Fail> {
             // 同 monitor 旧的 `collect_symbols_in_file`〔散文墓碑〕（随内嵌引擎删了，RM1f）：core 没有公开的按文件查询口 ⇒
             // `symbols_touching`（ranges 空 = 整文件）＋ 逐 id `find_symbol`。
             let a: FileArgs = take(op, args)?;
-            let ids = e.symbols_touching(&[PathBuf::from(&a.file)], &[]);
-            let syms: Vec<model::Symbol> = ids.iter().filter_map(|id| e.find_symbol(id)).collect();
+            let refs = e.symbols_touching(&[PathBuf::from(&a.file)], &[]);
+            let syms: Vec<model::Symbol> =
+                refs.iter().filter_map(|r| e.find_symbol(&r.id)).collect();
             out(syms)
         }
         "drift" => {
@@ -659,36 +701,16 @@ fn dispatch(op: &str, e: &mut Engine, args: Value) -> Result<Value, Fail> {
     }
 }
 
-/// 〔PANO · `97` CP1「人那一侧不许出现任何图分析」· `99 §1` V158〕以 `sym` 为心的邻域，**每个符号带距根几跳**：
-/// `{root, reached: [{id, depth}]}`（同一层按 id 排，根不进结果）。
-///
-/// 跳数 = 它最早出现在第几跳的上游 `subgraph(sym, d)` 里（`d = 1..=depth`，一层没有新的就停）——
-/// 只用上游的答案、不自写图算法，口径与上游 `subgraph` 的 depth 同一个（callers ∪ callees 各自按方向走）。
-/// 此前这一步住前端（对 `subgraph` 的边做无向 BFS）。上游给了这个口就换过去（`调研/第四波记录/PANO.md`「上游需求」①）。
-fn neighborhood(e: &Engine, sym: &str, depth: u32) -> NeighborhoodReply {
-    let root = sym.to_string();
-    let mut seen: std::collections::HashSet<String> =
-        std::collections::HashSet::from([root.clone()]);
-    let mut reached: Vec<Reached> = Vec::new();
-    for d in 1..=depth {
-        let sg = e.subgraph(&root, d);
-        let mut layer: Vec<String> = sg
-            .edges
-            .iter()
-            .flat_map(|x| [x.from.clone(), x.to.clone()])
-            .filter(|id| seen.insert(id.clone()))
-            .collect();
-        if layer.is_empty() {
-            break;
-        }
-        layer.sort();
-        reached.extend(layer.into_iter().map(|id| Reached { id, depth: d }));
-    }
-    NeighborhoodReply { root, reached }
-}
-
 /// 一次调用 → (stdout 那一行, stderr 那一行（可空）, 退出码)。纯函数外壳，好测。
 pub fn answer(argv: &[String]) -> (String, String, i32) {
+    answer_reporting(argv, &mut |_| {})
+}
+
+/// 同 [`answer`]，进度行边走边交给 `progress`（[`main`] 把它们直写 stderr）。
+pub fn answer_reporting(
+    argv: &[String],
+    progress: &mut dyn FnMut(String),
+) -> (String, String, i32) {
     let parsed = match parse_argv(argv) {
         Ok(p) => p,
         Err(f) => return fail_line(&f),
@@ -700,7 +722,7 @@ pub fn answer(argv: &[String]) -> (String, String, i32) {
             repo,
             store,
             args,
-        } => match run(&op, repo.as_deref(), store.as_deref(), args) {
+        } => match run_reporting(&op, repo.as_deref(), store.as_deref(), args, progress) {
             Ok(data) => (
                 format!("{}\n", json!({ "ok": true, "data": data })),
                 String::new(),
@@ -724,7 +746,10 @@ fn fail_line(f: &Fail) -> (String, String, i32) {
 
 fn main() {
     let argv: Vec<String> = std::env::args().skip(1).collect();
-    let (stdout, stderr, code) = answer(&argv);
+    // 进度行边走边写（写不出去就算了：进度只是给人看的，答案照旧走 stdout 那一行）。
+    let (stdout, stderr, code) = answer_reporting(&argv, &mut |line| {
+        let _ = std::io::stderr().write_all(line.as_bytes());
+    });
     // 写不出去（管道已关）就只剩退出码能说话 —— 不 panic，照原码退。
     let _ = std::io::stdout().write_all(stdout.as_bytes());
     let _ = std::io::stderr().write_all(stderr.as_bytes());

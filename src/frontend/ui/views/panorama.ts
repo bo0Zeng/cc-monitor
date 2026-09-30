@@ -31,6 +31,8 @@ import type {
   Symbol,
   Edge,
   Confidence,
+  IndexPhase,
+  IndexProgress,
 } from "../panorama/types";
 import {
   computeLayout,
@@ -38,7 +40,7 @@ import {
   zoomAt,
   hitTest,
   coverageBanner,
-  touchedFilesFromIds,
+  touchedFiles,
   countShown,
   type PanoramaLayout,
   type Viewport,
@@ -65,16 +67,18 @@ type FileRef = {
 /** main.ts 注入的活跃仓信息取值器（读活跃 tab 的 cwd/origin）。 */
 type RepoInfoGetter = () => { cwd: string; origin: Origin } | null;
 
-/**
- * F72：从符号全 id 取「批注用的符号段」——**镜像 core `split_sym_id`**：取 `#` 后、`@行号`消歧
- * 前的段。core 对同文件同限定名冲突会给 id 追加 `@start_line`（如 `a.rs#f@42`），而 `annotations_for`
- * 查询时会截掉 `@42`；故写入的 symbol 段也必须截掉 `@`，否则同名多符号写完查不回 = 静默丢失。
- * 无 `#`（不该发生）→ null（文件级批注）。
- */
-export function symbolSegForAnnotation(id: string): string | null {
-  const h = id.indexOf("#");
-  if (h < 0) return null;
-  return id.slice(h + 1).split("@")[0];
+/** 〔P7〕建索引那一阶段的人话（`switch` 穷尽 `IndexPhase`：上游生成物多一个阶段 ⇒ tsc 当场红）。 */
+function phaseLabel(p: IndexPhase): string {
+  switch (p) {
+    case "Parse":
+      return copyText("panorama.indexProgress.parse");
+    case "Link":
+      return copyText("panorama.indexProgress.link");
+    case "Relink":
+      return copyText("panorama.indexProgress.relink");
+    case "Docs":
+      return copyText("panorama.indexProgress.docs");
+  }
 }
 
 export class PanoramaView implements OverlayHandle {
@@ -88,6 +92,8 @@ export class PanoramaView implements OverlayHandle {
   private canvasWrap!: HTMLElement;
   private tooltipEl!: HTMLElement;
   private loadingEl!: HTMLElement;
+  /** 〔P7〕转圈下面那一行进度（建索引时由那台小程序报的格填；别的时候空着）。 */
+  private progressEl: HTMLElement | null = null;
   private messageEl!: HTMLElement;
   private searchInput!: HTMLInputElement;
   private sidebarEl!: HTMLElement;
@@ -378,7 +384,7 @@ export class PanoramaView implements OverlayHandle {
       if (st.stale) {
         const cancel = this.cancelHandle();
         this.showLoading(copyText("panorama.load.stale"), cancel.abort);
-        await api.index(this.at(repo), cancel.signal);
+        await api.index(this.at(repo), cancel.signal, this.progressFor(seq));
         if (seq !== this.loadSeq) return;
       }
       this.showLoading(copyText("panorama.load.loading"));
@@ -404,7 +410,7 @@ export class PanoramaView implements OverlayHandle {
     const cancel = this.cancelHandle();
     this.showLoading(copyText("panorama.enableAndIndex.indexing"), cancel.abort);
     try {
-      await api.index(this.at(repo), cancel.signal);
+      await api.index(this.at(repo), cancel.signal, this.progressFor(seq));
       if (seq !== this.loadSeq) return;
       this.showLoading(copyText("panorama.load.loading"));
       const ov = await api.overview(this.at(repo));
@@ -429,6 +435,18 @@ export class PanoramaView implements OverlayHandle {
   private cancelHandle(): { abort: () => void; signal: AbortSignal } {
     const ctrl = new AbortController();
     return { abort: () => ctrl.abort(), signal: ctrl.signal };
+  }
+
+  /** 〔P7〕这一趟加载的进度去处：那台小程序报一格就写进转圈下面那一行；换仓 / 重载了（`seq` 过期）⇒ 不写。 */
+  private progressFor(seq: number): (p: IndexProgress) => void {
+    return (p) => {
+      if (seq !== this.loadSeq || !this.progressEl) return;
+      this.progressEl.textContent = copyText("panorama.indexProgress.line", {
+        phase: phaseLabel(p.phase),
+        done: p.done,
+        total: p.total,
+      });
+    };
   }
 
   /** 〔RM1f〕建索引被人撤了：那一趟在后端已经停下；给一个重新开始的按钮。 */
@@ -494,10 +512,10 @@ export class PanoramaView implements OverlayHandle {
     }
     const seq = ++this.highlightSeq; // 独立世代号（不借 loadSeq，免卡 refresh 按钮）
     try {
-      const ids = await api.touching(this.at(repo), files, []);
+      const refs = await api.touching(this.at(repo), files, []);
       // 三重校验：本次高亮未被更晚的高亮作废 / 仓没变 / 布局还在（切仓由 this.repo!==repo 兜）。
       if (seq !== this.highlightSeq || this.repo !== repo || !this.layout) return;
-      const touched = touchedFilesFromIds(ids);
+      const touched = touchedFiles(refs);
       this.touchedFiles = touched;
       // 图例用「碰过的文件数」(files.length，含未解析/非脊柱的) vs「图上高亮数」(shown)——诚实
       // 呈现差值，别让"看着全高亮了"骗人（呼应全景诚实性铁律）。
@@ -526,7 +544,7 @@ export class PanoramaView implements OverlayHandle {
     const cancel = this.cancelHandle();
     this.showLoading(copyText("panorama.refresh.rebuilding"), cancel.abort);
     try {
-      await api.reindex(this.at(repo), cancel.signal);
+      await api.reindex(this.at(repo), cancel.signal, this.progressFor(seq));
       if (seq !== this.loadSeq) return;
       this.showLoading(copyText("panorama.load.loading"));
       const ov = await api.overview(this.at(repo));
@@ -748,6 +766,12 @@ export class PanoramaView implements OverlayHandle {
     label.className = "panorama-loading-text";
     label.textContent = text;
     this.loadingEl.appendChild(label);
+    // 〔P7〕进度那一行：建索引时那台小程序报的格往这里写（`progressFor`）；别的转圈它空着。
+    const progress = document.createElement("div");
+    progress.className = "panorama-loading-text";
+    progress.dataset.pano = "index-progress";
+    this.loadingEl.appendChild(progress);
+    this.progressEl = progress;
     if (onCancel) {
       const btn = document.createElement("button");
       btn.type = "button";
@@ -1261,7 +1285,7 @@ export class PanoramaView implements OverlayHandle {
       row.appendChild(foot);
       sec.appendChild(row);
     }
-    // 添加表单（人写 = Active）。symbol 段取 s.id 的 `#` 后半（annotations_for 用全 id 查得到）。
+    // 添加表单（人写 = Active）。〔P7〕交整个 `s.id`：截 `@行号`、取文件段归上游（`SymbolRef::of`），前端不拆。
     const form = document.createElement("div");
     form.className = "panorama-ann-form";
     const ta = document.createElement("textarea");
@@ -1276,7 +1300,7 @@ export class PanoramaView implements OverlayHandle {
       const bodyText = ta.value.trim();
       if (!bodyText) return;
       void this.mutateAnnotation(
-        () => api.addAnnotation(this.at(this.repo ?? ""), s.file, symbolSegForAnnotation(s.id), bodyText, "me"),
+        () => api.addAnnotation(this.at(this.repo ?? ""), s.id, bodyText, "me"),
         s.id,
       );
     });

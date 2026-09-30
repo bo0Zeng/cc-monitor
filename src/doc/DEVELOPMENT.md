@@ -1,8 +1,8 @@
 # 开发环境与调试
 
-本机起 cc-monitor dev 模式 + 调试技巧。
+本机起 cc-monitor 的 dev 模式、跑测试、看日志，以及几类常见问题怎么查。
 
-生产构建 → [BUILDING.md](BUILDING.md)。发版 → [RELEASING.md](RELEASING.md)。
+生产构建与打包 → [BUILDING.md](BUILDING.md)。发版 → [RELEASING.md](RELEASING.md)。架构 → [ARCHITECTURE.md](ARCHITECTURE.md)。
 
 ---
 
@@ -10,238 +10,180 @@
 
 | 工具 | 版本 | 检查 |
 |---|---|---|
-| **Node.js** | LTS (≥ 18) | `node -v` |
-| **Rust** | stable (≥ 1.75) | `rustc --version` |
-| **MSVC Build Tools 2022** | 含 VCTools workload | `where link.exe` 应找到 MSVC 的 link |
-| **WebView2 Runtime** | Win11 自带 / Win10 [手装](https://developer.microsoft.com/microsoft-edge/webview2/) | — |
-
-`tests/scripts/run.ps1` 走 `vswhere.exe` 自动找 MSVC（非默认路径也行），无需手动 vcvars。
-
----
-
-## 起 dev server
-
-```powershell
-cd D:\path\to\cc-monitor
-
-npm install                                              # 一次性
-powershell -NoProfile -File scripts\run.ps1 dev          # 弹 1100x800 窗口
-```
-
-直接 `npx tauri dev` 也行，**前提是当前 PowerShell 已注入 vcvars**（否则 link.exe 找的是 Git Bash 的 GNU coreutils 假冒，编译挂）。
-
-### dev 模式的特殊行为
-
-- **自动打开 DevTools**（`lib.rs::setup()` 内 `#[cfg(debug_assertions)] window.open_devtools()`），可看前端 console
-- **HMR**：保存 `src/` 下 TS / CSS 会触发 vite HMR 自动刷新前端；保存 `src/frontend/shell/` 下 Rust 会触发增量 cargo build + 重启 monitor
-- **`main.ts` 强制 full reload**：HMR 检测到任何 TS 改动直接 `location.reload()`，不做部分热替换。避免长跑监控时旧 listener 与新代码并存导致消息重复 / event_replay 状态不一致
-
-### 其它常用命令
-
-```powershell
-powershell -NoProfile -File scripts\run.ps1 check    # cargo check
-powershell -NoProfile -File scripts\run.ps1 clean    # cargo clean
-powershell -NoProfile -File scripts\run.ps1 build    # 生产构建（详 BUILDING.md）
-```
-
-`tests/scripts/run.ps1` 子命令清单 → [`../../tests/scripts/README.md`](../../tests/scripts/README.md)。
+| Node.js | ≥ 22.18（`package.json` 的 `engines`） | `node -v` |
+| Rust | stable | `rustc --version` |
+| Windows：MSVC Build Tools 2022 | 含 VCTools workload | Developer PowerShell 里 `where link.exe` 找得到 MSVC 的 link |
+| Windows：WebView2 Runtime | Windows 11 自带，Windows 10 [手装](https://developer.microsoft.com/microsoft-edge/webview2/) | — |
+| Linux：WebKitGTK 等 | `libwebkit2gtk-4.1-dev` · `libgtk-3-dev` · `libayatana-appindicator3-dev` · `librsvg2-dev` | `pkg-config --modversion webkit2gtk-4.1` |
+| e2e 另需 | `tmux` · `jq` · `Xvfb`（GUI 那几套） | — |
 
 ---
 
-## 端口冲突
+## 起 dev
 
-### 默认 dev 端口 24174
-
-如果启动报（端口号是当时的 dev 端口）：
-```
-Error: listen EACCES: permission denied ::1:24174
-```
-
-**原因**：Windows 的 Hyper-V / WSL2 / WinNAT 把一段段端口加进**动态保留范围**，应用层无法 bind——netstat 看不到占用进程，但 listen syscall 失败。保留段在重启后会重新分配，所以「昨天能跑今天不行」很正常。
-
-**为什么默认选 24174**：实测保留段集中在较低区间（用 `netsh int ipv4 show excludedportrange protocol=tcp` 可看，通常 ~1000–12500），而系统 ephemeral 段从 49152 起。24174 落在「保留段之上、ephemeral 之下」的冷门高位，最不容易被占。历史上用过的 1420（Tauri 默认，落 1366-1465）、5174（落 5110-5209）都因撞进保留段被坑过。
-
-**确认 + 看保留段**：
-
-```powershell
-function Test-Port($addr, $port) {
-    try {
-        $l = New-Object System.Net.Sockets.TcpListener($addr, $port)
-        $l.Start(); $l.Stop(); "OK"
-    } catch { "FAIL: $($_.Exception.Message)" }
-}
-"IPv4 24174 : " + (Test-Port ([System.Net.IPAddress]::Loopback) 24174)
-# 看当前所有 TCP 保留段（你的 dev 端口若落在某段内 = 被保留）：
-netsh int ipv4 show excludedportrange protocol=tcp
+```bash
+npm install                                  # 一次性
+bash tests/scripts/re-embed.sh --native      # 编本机原生后端与全景小程序，铺进内嵌目录
+npx tauri dev                                # 在仓根跑：起 vite、编 monitor、弹 1100×800 窗口
 ```
 
-万一 24174 也被占，临时换端口跑（不必改任何提交文件）：
+- **本机后端要先铺**：monitor 的每条主路都走本机常驻后端，开发构建与发版走同一条路——`--native` 编出本机那一份，`build.rs` 把它编进 exe，运行时自释放再起。没铺就起不了本机后端（界面会明说），不存在「开发构建里先凑合」的退路。判起不起得来用 `bash tests/scripts/re-embed.sh --check-dev`（真起一趟那份字节、读它的 hello 帧）。要连远端机器，另跑一次 `bash tests/scripts/re-embed.sh` 铺 musl 那两份（要 `cargo-zigbuild`）。
+- **Windows**：在 Developer PowerShell for VS 2022 里跑 `npx tauri dev`；或用 `powershell -NoProfile -File tests\scripts\run.ps1 dev`，它用 `vswhere.exe` 找 MSVC、注入环境后再跑（子命令 `dev` · `build` · `check` · `clean`，见 [`tests/scripts/README.md`](../../tests/scripts/README.md)）。没注入 vcvars 时 `link.exe` 会找到 Git Bash 带的同名工具，编译挂在链接阶段。
+- 从 Claude Code 会话里的 shell 起 dev 也行：monitor 启动最先清掉继承来的嵌套会话标记，边界见下文「常见问题」。
 
-```powershell
-$env:VITE_PORT = "24500"
-# 写个临时覆盖文件，省得动 tauri.conf.json：
-'{ "build": { "devUrl": "http://localhost:24500" } }' | Set-Content -Encoding utf8 "$env:TEMP\ccm-dev.json"
-powershell -NoProfile -File scripts\run.ps1 dev --config "$env:TEMP\ccm-dev.json"
-```
+### dev 模式的行为
 
-**真正的根因解决**：
-- 重启电脑（动态保留段会重排，通常就不再压到默认端口）
-- 或 `net stop winnat; net start winnat`（管理员 PS）释放并重导保留段，但影响 Docker / WSL 网络，慎用
-
-vite.config.ts 已支持 `VITE_PORT` env override，HMR 端口自动设为 `VITE_PORT + 1`。
-
----
-
-## DevTools 用法
-
-### 看前端 console
-
-dev mode 自动开 DevTools。生产 build 没 DevTools（`tauri.conf.json` 默认禁用）。
-
-调试前端 bug 必须先起 dev mode。
-
-### 查 IPC 调用
-
-DevTools Network tab 看不到 Tauri IPC（不走 HTTP）。要看 IPC：
-- 在 ts 端 `invoke()` 前后加 `console.log`
-- Rust 端 `tracing::info!`（dev 模式 stdout 可见；生产 build 看不到，issue #4 会加 log 文件）
-
-### 查 capability 报错
-
-报 `Permission xxx not allowed`：
-
-1. 看 `src/frontend/shell/gen/schemas/acl-manifests.json` 确认 plugin 的 permission set 实际内容
-2. 看 `src/frontend/shell/capabilities/default.json` 当前 grant 了哪些
-3. 通常需要加 inline scoped permission，详 [CONTRIBUTING § 2.6](CONTRIBUTING.md#26-添加新-tauri-capability-permission)
+- **自动打开 DevTools**：debug 构建在 setup 里 `open_devtools()`；设 `CCM_NO_DEVTOOLS=1` 不开（远程实测 / e2e 时省半屏）。生产构建没有 DevTools。
+- **HMR**：改 `src/frontend/ui/` 下的 TS / CSS 由 vite 热更新；改 Rust 会增量重编并重启 monitor。
+- **主窗整页重载**：主窗入口遇到任何 TS 热更新都 `location.reload()`，不做局部替换——长跑时旧 listener 与新代码并存会让消息重复、重放状态错乱。
 
 ---
 
 ## 跑测试
 
-```powershell
-cd src/frontend/shell
-cargo test --workspace   # ★ 后端全量（见下方警告）
-cargo test --lib profile_installer                   # 单个模块
-cargo test --lib -- --nocapture                      # 看 println! 输出
+### Rust
+
+```bash
+# 壳的 workspace（monitor ＋ 共享 crate）：在 src/frontend/shell 里
+cargo test --workspace                         # 与 CI 的 rust job 逐字相同
+cargo test -p monitor --lib <过滤串>            # 只跑名字里带这个串的
+cargo test -p monitor --lib <过滤串> -- --nocapture
+cargo fmt --all --check
+cargo clippy --workspace --all-targets
+
+# 后端（不是 workspace 成员）：在 src/backend 里
+cargo test
+cargo fmt --check
+cargo clippy --all-targets
+
+# 全景小程序（也自成一份）：在 src/panorama-engine 里
+cargo test
 ```
 
-> ⚠ **`--lib` 那种跑法不是全量**〔08-06 订正〕：它只覆盖**根包**，
-> 六个共享 crate（`guard-core` / `gate-core` / `shell-quote-core` / …）一条都不跑。
-> 上面那条 `--workspace` 与 `ci.yml` 的 `rust` job **逐字相同**（〔TL1 · 4C〕从前带 `--exclude code-picture-core`，vendor 不再是成员之后删了），
-> 由 `doc_claim_registry_tests.rs::the_backend_test_command_in_the_docs_matches_ci` 钉住。
->
-> **本机还必须跑的（CI 里有、或 CI 根本跑不到的）**：
-> - `cargo fmt --all --check`（两侧：`src/frontend/shell/` 与 `src/backend/`）—— CI 第一个 Rust 步骤；
-> - `tests/scripts/verify-committed-state.sh` —— 全仓**唯一量「提交状态」**的门（其余都量工作树）。
->   本仓不 push ⇒ CI 见不到这些 commit，**这道门只能在本机跑**，理由见它自己的头注；
-> - `node tests/scripts/assert-coverage-floors.mjs` —— 逐文件覆盖率地板 + 0% 文件递减棘轮；
-> - **本机跑得动的那几套 e2e**：清单与跑法**以判据里的 `LOCALLY_RUNNABLE` 为准**
->   （`shared_crate_registry.rs`），这里刻意不抄 —— 抄一份就会漂。
+三处要分别跑：在 `src/frontend/shell` 里跑的任何 cargo 命令都覆不到后端与全景小程序（理由见 [ARCHITECTURE.md § 2.7](ARCHITECTURE.md#27-共享-crate-与-workspace)）。每条 cargo 命令前带 `CARGO_BUILD_JOBS=4` 可以压住并行编译的内存；跑会碰 tmux 的测试前摘掉 `TMUX` / `TMUX_PANE`（`env -u TMUX -u TMUX_PANE …`），测试起的 tmux 与后端一律隔离，不碰用户那一个。
 
-前端测试分三层,**全部经 `npm test` 进了 CI 门禁**(.github/workflows/ci.yml frontend job;Phase G 前本节曾写"前端没有测试",已过期):
+### 前端
 
 | 层 | 跑法 | 覆盖 |
 |---|---|---|
-| node 纯函数断言(`src/**/*.test.ts`,**13 组**) | `npm test` 前段(node 原生跑 TS,需 Node ≥22.18) | diff/branching/api-error/bash/format/remote-health/remote-launch/history-cache/history-prefs/history-actions/pricing/panorama-session-files/**launch-dimensions** 纯逻辑(〔LR1〕`launch-render-cli` 那一组随 TS 渲染器删了;〔LR2〕`session-backend` 那一组随 TS 座删了)。<br>**这张清单的单一事实源是 `tests/frontend/ui/node-suite-registry-guard.vitest.ts` 的 `NODE_SUITES`**(U0 2026-08-01 起机检:套件集合↔`package.json`↔`npm test` 链三方对拍)。本行是给人读的副本 —— 原写「14 组」且漏了后两个,正是副本漂移 |
-| vitest + jsdom(`src/**/*.vitest.ts`;条数以 `npm run test:dom` 实跑为准,**别在文档里存副本** —— 这个数在仓里有 4-5 份拷贝、注定漂,见 BACKLOG E65) | `npm run test:dom`(覆盖率 `npm run coverage`) | DOM/生命周期/mock 协作:tabs 门控与物化、TailWindow、UnrenderedRanges、RecordTimeline、估高、路由表、探针纯函数、settings 面板分组、mcp-section、grid-monitor、command-bar、账号徽章/灰灯 等 |
-| E2E 套件(`npm run test:f40` = `tests/e2e/f40-suite.sh`；⚠ 它会往 `~/.claude/` 写 fixture，**本机受限环境别跑**) | **手动**,Linux Xvfb + `tauri dev`(前置见 [tests/e2e/README.md](../../tests/e2e/README.md)) | 整机行为:启动门控/贴底/上翻补批/fork 折叠/抖动密度绊线 |
+| node 纯函数套件（`tests/**/*.test.ts`） | `npm test` 的前段（每套一个 `test:*` 脚本，`tsx` 跑） | diff · branching · 报错卡 · bash 卡 · 格式化 · 历史缓存等纯逻辑。清单的单一事实源是 `tests/frontend/ui/node-suite-registry-guard.vitest.ts` 的 `NODE_SUITES` |
+| vitest ＋ jsdom（`tests/**/*.vitest.ts`） | `npm run test:dom`；单跑一份 `npx vitest run <文件>`；覆盖率 `npm run coverage` | DOM · 生命周期 · 通道替身协作：tab 门控与物化、账本、估高、设置面板、全景视图等 |
+| 类型 | `npx tsc --noEmit`；`npm run check:types`（重生成 Rust 导出的类型并要求 `src/frontend/ui/generated/` 无差异） | 全部源码与测试文件 |
+| lint | `npm run lint` · `npm run lint:css` | CI 里只作参考；eslint 基线由 `tests/frontend/ui/eslint-baseline.vitest.ts` 钉着 |
 
-改前端:动纯函数跑对应 node 脚本、动 DOM 行为跑 `npm run test:dom`、动滚动/渲染管线跑一遍 e2e 套件;`tsc --noEmit` 对全部测试文件做类型检查。**WebView2(生产)行为无自动化覆盖**——涉滚动锚定的改动发版前须 Windows 真机复核(tests/e2e/README「人工场景」)。
+`npm test` ＝ 全部 node 套件 ＋ vitest，即 CI frontend job 里的单测那一步；覆盖率的逐文件地板另跑 `node tests/scripts/assert-coverage-floors.mjs`。各套测试的条数以实跑为准，这里不抄。
 
----
+### e2e
+
+- CI 跑的那几套在 `.github/workflows/ci.yml` 里，每套一行 `bash tests/e2e/assert-pass-floor.sh <套件> <断言数地板>`；本机跑得动的那几套以 `shared_crate_registry_tests.rs` 的 `LOCALLY_RUNNABLE` 为准（例：`npm run test:ccm-cli`，要先在 `src/backend` 里 `cargo build --bin cc-monitor-backend`）。
+- 要 GUI 的两套：`npm run test:f40`（滚动 / 渲染管线）与 `npm run test:graylight`，前置是 Xvfb 上跑着一个 `npx tauri dev`，见 [`tests/e2e/README.md`](../../tests/e2e/README.md)。⚠ `test:f40` 会往 `~/.claude/` 写 fixture，受限环境别跑。
+- WebView2（生产）的滚动行为没有自动化覆盖：动过滚动锚定的改动，发版前在 Windows 真机按 `tests/e2e/README.md` 的「人工场景」复核。
+
+### 门禁
+
+- `npm run gate`（＝ `bash tests/scripts/gate.sh`）：出货前的唯一闸门，逐格跑 cargo（三处）· npm · 各类判据，末尾只吐一行 `GATE: OK` / `GATE: FAIL …`。先跑它、看见 OK，再单独提交。
+- `bash tests/scripts/verify-committed-state.sh`：从提交状态（不是工作树）编一次。本仓不 push，CI 见不到本机的提交，这道门只能在本机跑。
 
 ### 这些数不抄在文档里
 
-- 主题 token 有哪些、几条：以 `src/frontend/ui/theme.ts` 的 `TOKENS` 为准。
+- 主题 token 有哪些：以 `src/frontend/ui/theme.ts` 的 `TOKENS` 为准。
 - 设置面板每页有哪几个折叠分组：家在 `tests/frontend/ui/settings/panel-groups.vitest.ts`（逐页完整相等断言）。
-
-## 后端日志（dev mode）
-
-`tests/scripts/run.ps1 dev` 启动后，dev shell 的 stdout 会显示：
-
-- vite dev server log
-- cargo build 进度
-- monitor.exe 自己的 `tracing::*!` 输出（默认 INFO 级）
-
-调级别：
-
-```powershell
-$env:RUST_LOG = "debug"; powershell -NoProfile -File scripts\run.ps1 dev
-# 或更细：
-$env:RUST_LOG = "monitor=debug,tauri=warn"; ...
-```
-
-生产 build 没 stdout（`windows_subsystem = "windows"`）→ 看不到 tracing 输出。**已在 v2.0.0+ 实现**：tracing 输出到 `<monitor_data_dir>/logs/monitor/monitor.YYYY-MM-DD.log` 文件 + 设置面板 → 诊断区可调日志级别 + ERROR 级 toast 反馈。详 `src/frontend/shell/src/logging.rs` + 设置面板。
+- CI 有哪些 job：`.github/workflows/ci.yml` 本身。
 
 ---
 
-## 调试技巧 / 常见问题
+## 日志
 
-### Tab 不出现
-- 跑 `claude` 后 `~/.claude/sessions/` 应该有新 `<PID>.json` 文件
-- 没有：claude 启动有问题
-- 有但 Tab 不出现：dev console 看会话流的交格（〔CF2〕`chan-items` 事件；`[events] 会话流 …` 那几行说看不见 / 丢格 / 关了）是否到前端
+- **dev**：跑 `npx tauri dev` 的那个终端里有 vite 日志、cargo 进度与 monitor 自己的 `tracing` 输出（默认 INFO）。调级别：
 
-### cc 集成握手不成功
-- `~/.cc-monitor/ps-await/<PID>.json` 写了又被删 → monitor 收到了
-- 写了**没被删** → monitor 没 watch 到 / parse 失败
-- 看 dev stdout 是否有 `bind: parse ... failed`
+  ```bash
+  RUST_LOG=debug npx tauri dev
+  RUST_LOG="monitor=debug,tauri=warn" npx tauri dev
+  ```
 
-### profile 写入失败
-- 设置面板 [安装] 后看 alert 报错
-- 检查 `~/.cc-monitor/...` 下不存在（v1.7.10 的"防御性 abort"会触发）
-- 检查目标 profile 路径是否真存在 + 权限
+- **生产**：release 版没有 stdout，日志写到 `<monitor 数据目录>/logs/monitor/monitor.YYYY-MM-DD.log`，按天滚动；设置 → 诊断里可以不重启地改级别、打开日志，ERROR 级会弹提示。
+- **后端**：本机后端的 stderr 接进 monitor 的日志；脱离起的后端写 `<monitor 数据目录>/logs/backend/`，设置页的「日志」经通道读那台后端的尾部。
 
-### tooltip 不显示 / 显示在错位置
-- DevTools Elements tab 看 `.settings-info-tooltip` 是否真挂到 `<body>` 末尾
-- 看 inline style 的 `left/top` 值是否合理（不应大于 `window.innerWidth` 或负数）
-- 详见 [ARCHITECTURE.md § 5 CSS portal](ARCHITECTURE.md#5-关键设计选择--理由) 的设计理由
+---
 
-### Web 字体 / 图片 / KaTeX 加载导致消息错位 / 贴底跟随失灵
-- `stream.ts` 的 `MessageStream` 用 `ResizeObserver` + 守卫式 `snap()` 应对：内容后载长高时若仍贴底则自动跟随到底部
-- 如果贴底失灵，DevTools 看是否触发了 ResizeObserver 回调，以及 `snap()` 的守卫条件（落后底部 >1px 才贴）是否被满足
+## 端口冲突
 
-### 从 claude 内嵌 shell 启动 dev → resume 出的会话不注册、不落盘、无 Tab（已修 issue #24，回归排查）
+dev 端口默认 24174。启动报：
 
-**症状**：monitor 历史里点 ↺ resume，claude 窗口正常打开、能对话、能跑工具，但 monitor
-永远不出 Tab；且该会话**写的任何东西都不落盘**（关窗即丢）。同一条 `claude --resume`
-从用户自己开的终端跑则一切正常。
+```
+Error: listen EACCES: permission denied ::1:24174
+```
 
-**原理（环境变量继承链 + Claude 的嵌套检测）**：
-1. dev monitor 若是从 Claude Code 会话内的 shell 启动（如让 Claude 跑 `run.ps1 dev`），
-   该 shell 带着 claude 注入的 `CLAUDECODE=1` / `CLAUDE_CODE_CHILD_SESSION=1` /
-   `CLAUDE_CODE_SESSION_ID=<父sid>` / `CLAUDE_CODE_ENTRYPOINT=cli`；
-2. Windows 子进程默认继承全部环境 → monitor → wt.exe → powershell → `claude --resume`
-   原封拿到这些变量；
-3. claude 据此判定自己是**嵌套子会话**（防嵌套实例与父会话互踩的合理设计）→ 不注册
-   `sessions/<PID>.json`、不写会话 jsonl（实测仅启动 +2s 追加过一次 ai-title/mode/
-   permission-mode 元数据，之后零字节；全 `~/.claude` 树 mtime 扫描验证）；
-4. monitor 是纯只读渲染器，active 判定靠 `sessions/<PID>.json`——没注册 = watcher 过滤
-   掉它全部行 = 无 Tab。**monitor 行为正确，无米下锅。**
+是 Windows 的 Hyper-V / WSL2 / WinNAT 把一段段端口列进了动态保留范围：netstat 看不到占用进程，但 listen 失败；保留段重启后会重排，所以「昨天能跑今天不行」很正常。24174 选在保留段（通常约 1000–12500）之上、ephemeral 段（49152 起）之下，最不容易被占。
 
-**判别法**：`sessions/` 里没有该 claude 的 `<PID>.json` + jsonl mtime 冻结 + 用户自己
-终端 resume 正常 → 即此问题。**注意 resume 窗口里写的内容不会被保存。**
+确认与看保留段：
 
-**已修**（issue #24）：`lib.rs::run()` 最前（任何线程 spawn 之前）
-`scrub_env_vars(&NESTED_CLAUDE_ENV_KEYS)` 清掉上述四个嵌套标记（保留
-`CLAUDE_CONFIG_DIR`——monitor 自己消费它），之后 spawn 的一切子进程都干净。
-清洗发生时日志留痕 `scrubbed inherited claude nested-session env markers: ...`。
-**边界**：scrub 只管 monitor 自己 spawn 的进程链；若 Windows Terminal 配置为
-"attach 到已存在窗口"，新 tab 的 shell 继承的是已有 WT server 进程的环境——
-那个 server 若本身从 claude 会话里启动，resume 出的 claude 仍带毒（monitor
-管不到别人的进程树）。
+```powershell
+netsh int ipv4 show excludedportrange protocol=tcp
+```
 
-### 会话内容在 timeline 底部整段重复（已修 issue #26，回归排查）
-- 根因：watcher 截断重读换新 seq 重投整个文件（at-least-once，INVARIANTS § 25），seq 去重放行 → 每条记录以更大 seq 在末尾再渲染一遍
-- 检查：〔RENDER2〕截断重读先出 `session_file_reread`、行号从 0 重数（`watcher_lines_tests`）；前端收到后 tab 整份重来（`TabManager.onRecordFileReread`），入口只剩按 seq 那一道
-- 复现：对一个被 watch 的活跃 jsonl 手动截短再追加回去 → 后端出 `jsonl truncated ... full re-read` warn → Tab 内容应**不**翻倍
+临时换端口（不改任何提交的文件）：
 
-### 大段消息被误折成「已被 ESC 回退」（已修 issue #25，回归排查）
-- 根因：行投递是 at-least-once（INVARIANTS § 25），重复 uuid 毒化 `computeMainBranch` 的 Kahn 拓扑——`remaining` 计数被多扣、重复点全部祖先 leftover、折叠信号（latestDescTs/hasAssistant）全错 → fork 赢家/多 root 分类误判。重复常是 attachment 等**不渲染**的记录，肉眼看不出输入有重复；实测 1 条重复 attachment 即折 1541/4331 条
-- 检查四道防线：(1) `computeMainBranch` 入口 uuid 去重还在；(2) `BranchFolder.seenUuids` 拒重还在；(3) DevTools console 有无 `[branching] Kahn leftover` warn（出现 = 异常输入新形态，warn 里带嫌疑 uuid）；(4) 后端 log 有无 `jsonl truncated ... full re-read` warn（出现 = 发生过截断重投；频繁出现要查谁在改写 jsonl）
-- 复现/回归：`npm run test:branching`（#25 三用例：root 级毒化 / fork 级毒化 / 全文件 doubled 幂等）。
+```powershell
+$env:VITE_PORT = "24500"          # vite 端口；HMR 端口自动是 VITE_PORT + 1
+'{ "build": { "devUrl": "http://localhost:24500" } }' | Set-Content -Encoding utf8 "$env:TEMP\ccm-dev.json"
+npx tauri dev --config "$env:TEMP\ccm-dev.json"
+```
 
-### 启动重放期最新消息整行高频上下微抖（已修，回归排查）
-- 根因：旧内容逐帧插到贴底视口上方 → 浏览器逐帧重排 + 重做 scroll anchoring，HiDPI/高刷屏分数像素下舍入误差每帧不同 → 整块 ±0.5px 抖（详 INVARIANTS § 21）
-- 检查三道防线是否被破坏：(1) `snap()` 是否还守卫（没被改成无脑 `scrollTop=scrollHeight`）；(2) `.stream` 是否被加了 `overflow-anchor: none`；(3) F40a 尾部优先门控是否仍在——`TabManager.onLine` 对 `seq < floor` 的旧记录收纳进 `TailWindow` 不建卡（INVARIANTS § 21.3；deferMode/flushDeferred 已于 F40a 退役）
-- **关键**：`scrollTop` 本身不震荡（单调增长），只测 scrollTop 发现不了——要测可见元素 `getBoundingClientRect().top` 的逐帧方向反转。
+根治：重启电脑，或管理员 PowerShell 里 `net stop winnat; net start winnat`（会影响 Docker / WSL 网络）。
+
+---
+
+## 调试
+
+### 看 IPC
+
+DevTools 的 Network 看不到 Tauri IPC。界面对后端的请求都经通道（`chan.call` / `chan.subscribe`）；会话流的异常（读不懂的格 · 那台看不见了 · 流关了）由 `events.ts` 以 `[events]` 前缀打在 console 里。Rust 一侧加 `tracing::info!`，dev 终端里看。
+
+### capability 报错
+
+报 `Permission xxx not allowed`：
+
+1. 看 `src/frontend/shell/gen/schemas/acl-manifests.json`（cargo build 之后生成）里那个 plugin 的 permission set 实际内容；
+2. 看 `src/frontend/shell/capabilities/default.json` 现在授了哪些；
+3. 通常要加一条带 scope 的 inline permission，做法见 [CONTRIBUTING.md § 改 Tauri capability](CONTRIBUTING.md#改-tauri-capability)。
+
+---
+
+## 常见问题
+
+### tab 不出现
+
+1. 跑 `claude` 之后，`~/.claude/sessions/` 里应当多一个 `<PID>.json`；没有就是 claude 自己没起来。
+2. 有文件但没 tab：DevTools console 里找 `[events] 会话流 …` 那几行（看不见 / 关了）；再看机器页本机后端是不是已连上。
+
+### 从 Claude Code 会话里起的 dev monitor，resume 出的会话不落盘
+
+Claude Code 给它 shell 里起的子进程注入 `CLAUDECODE=1` / `CLAUDE_CODE_CHILD_SESSION=1` 等嵌套会话标记；子进程默认继承环境，经 monitor 起的 `claude --resume` 拿到这些标记会判定自己是嵌套子会话，不注册 pidfile、不写 jsonl。monitor 在 `lib.rs::run` 最前面（任何线程起来之前）清掉这组标记（保留 `CLAUDE_CONFIG_DIR`），日志留一行 `scrubbed inherited claude nested-session env markers: …`。
+
+边界：它只管 monitor 自己起的进程链。Windows Terminal 设成「附着到已有窗口」时，新 tab 的 shell 继承的是那个 WT 进程的环境；那个 WT 若本身是从 claude 会话里起的，resume 出的 claude 照样带着标记。判别法：`sessions/` 里没有那个 claude 的 `<PID>.json`，jsonl 的修改时间冻结，而同一条 `claude --resume` 在自己开的终端里正常。
+
+### `cc` 集成握手不成功（Windows）
+
+- `~/.cc-monitor/ps-await/<PID>.json` 写了又被删 ⇒ monitor 收到了；写了没被删 ⇒ monitor 没看到或解析失败。
+- dev 终端里找 `bind: parse … failed`。握手顺序与时序见 [IPC-PROTOCOL.md § 跨进程握手时序图](IPC-PROTOCOL.md)。
+
+### 会话内容在底部整段重复
+
+记录文件被截短重写时，后端先发 `session_file_reread`、行号从 0 重数，前端收到后那个 tab 整份重来（`TabManager.onRecordFileReread`），入口只按 seq 去重。复现：对一个正在被盯的 jsonl 手动截短再追加回去，后端日志出 `jsonl truncated … full re-read`，tab 内容不应翻倍。行投递是至少一次（INVARIANTS §25）。
+
+### 大段消息被误折成「已被 ESC 回退」
+
+重复的 uuid 会毒化分支拓扑的计数，让折叠信号全错。四道防线：`computeMainBranch` 入口按 uuid 去重；`BranchFolder` 拒重；console 出现 `[branching] Kahn leftover` warn（带嫌疑 uuid）说明遇到了新形态的异常输入；后端日志的 `jsonl truncated … full re-read` 说明发生过截断重投。回归用 `npm run test:branching`。
+
+### 启动重放时最新消息上下微抖
+
+查三道防线有没有被破坏：`stream.ts` 的 `snap()` 还是守卫式（落后底部超过 1px 才贴）；`.stream` 没被加上 `overflow-anchor: none`；`TabManager.onLine` 对尾块之前的旧记录仍只收进 `TailWindow`、不建卡（INVARIANTS §21）。`scrollTop` 本身单调增长，只测它发现不了抖动——要测可见元素 `getBoundingClientRect().top` 的逐帧方向反转。
+
+### 字体 / 图片 / KaTeX 后载导致贴底跟随失灵
+
+`stream.ts` 的 `MessageStream` 用 `ResizeObserver` ＋ 守卫式 `snap()`：内容后载长高时若仍贴底就跟到底部。失灵时在 DevTools 看 ResizeObserver 回调有没有触发、`snap()` 的守卫条件是否满足。
+
+### 设置里的提示框不显示或错位
+
+DevTools Elements 看 `.settings-info-tooltip` 是否挂在 `<body>` 末尾，inline 的 `left` / `top` 是否在视口内。为什么挂 body 见 [ARCHITECTURE.md § 5](ARCHITECTURE.md#5-关键设计选择与理由)。
