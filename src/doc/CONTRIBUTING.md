@@ -155,7 +155,7 @@ cargo test --workspace
 
 1. fork → 分支（`feat/<简述>` / `fix/<简述>`）。
 2. 改代码 ＋ 测试 ＋ 文档（照本篇对应的做法）。测试夹具只采结构，不放真会话正文；令牌与钥匙不进日志、不走 argv / env。
-3. 本机跑绿再提：`npm run gate` 看见 `GATE: OK`。它逐格跑三处 cargo（壳 workspace · 后端 · 全景小程序）的 test / fmt / clippy、`npm test`、`npx tsc --noEmit`、`npm run build` 与各类判据；跑法见 [DEVELOPMENT.md](DEVELOPMENT.md)。CI 有哪些 job 以 `.github/workflows/ci.yml` 为准。
+3. 本机跑绿再提：三处 cargo（壳 workspace · 后端 · 全景小程序）的 fmt / clippy / test、`npm test`、`npx tsc --noEmit`、`npm run build`；`npm run gate` 一趟跑完 cargo test、fmt、`npm test` 与各类判据，看见 `GATE: OK` 再提交。跑法见 [DEVELOPMENT.md](DEVELOPMENT.md)，CI 有哪些 job 以 `.github/workflows/ci.yml` 为准。
 4. PR 描述写：解决什么问题（链 issue）· 怎么解决（一句话）· 动了哪些文件 · 手测过哪些路径。
 5. 提 PR → 等 CI → review → merge。
 
