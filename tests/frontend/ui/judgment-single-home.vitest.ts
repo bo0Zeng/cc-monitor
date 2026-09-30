@@ -548,6 +548,10 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     DATA_DIR_ENV: NONE,
     HISTORY_METADATA_FILE: NONE,
     monitor_data_dir: NONE,
+    // 〔P5 · 主会话 09-29 裁〕哪个环境变量算家（按平台惯例）：两侧 Rust 都调它；TS 侧零处读家目录 ⇒ NONE。
+    home_dir: NONE,
+    home_dir_from: NONE,
+    home_dir_on: NONE,
     ACCOUNTS_FIELD: NONE,
     ALL: NONE,
     AUTH_STYLE_FIELD: NONE,
