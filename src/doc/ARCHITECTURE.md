@@ -70,7 +70,21 @@ cc-monitor 是 Claude Code 会话的**观察者和启动器**：`claude` 跑在�
 - **冷读也问那台后端**：历史清单、整页正文、按偏移读、按行号读、子 agent、全文搜索都是帧命令（`history-*`）。记录解释（一行 jsonl → 渲染模型）只在后端 `agents/claudecode/`，界面按形状收成品；多台的搜索结果由本机后端合并排序。
 - **Task 面板**：那台后端盯 `<agent 家>/tasks/`，一批事件按 sid 去重发 `tasks_changed`，界面订 `session-tasks`，收到就重问 `tasks-list`。
 
-### 1.3 界面对后端只有两个动作
+### 1.3 每条线的真相源
+
+按「真相源是谁」切，是不会切错的那种切法：
+
+| 线 | 真相源 |
+|---|---|
+| 会话内容 · 历史 | `<claude_dir>/projects/**/*.jsonl`（冷读与实时读同一份） |
+| 判活 | `<claude_dir>/sessions/<PID>.json` ＋ tmux 会话上的 `@ccm_sid` |
+| 流量 | HTTP 请求本身（中转看得见的那一份） |
+| 起会话 · 控制 | 用户意图 |
+| 窗口绑定 · 拉前 | 启动期令牌（Windows 本机另有 `cc` 集成的 marker 握手） |
+| 账号 · 上游 | `~/.claude-alt/accounts.json` ＋ 每台机器一份 API 号凭据表 |
+| 配置 | 各自的配置文件（monitor 的 `config.json` · 每台后端的 `backend.json`） |
+
+### 1.4 界面对后端只有两个动作
 
 ```
 call(origin, op, payload)  → 一次性请求
@@ -87,13 +101,15 @@ subscribe(origin, kind)    → 流
 
 ### 2.1 三层
 
-- **前端**：把后端给的东西排版成像素、收手势，并在用户桌面上开终端窗口。不做判定、不拼命令串、不缓存业务数据。
+- **前端**：把后端给的东西排版成像素、收手势，并在用户桌面上开终端窗口。不做判定、不拼命令串、不缓存业务数据。界面状态只有一份 pub-sub：`app-store.ts` 的 `Slice`（当前机器 · 账号快照 · 当前 tab），tab 那一层是 `tab-store.ts` ＋ `tab-router.ts`，overlay 视图的开关收在 `overlay-router.ts`。
 - **通信层**：搬字节，零业务判断。面 A 是前端 ↔ 各处后端（按 `origin` 寻址，住 `src/comms/inward/`）；面 B 是 agent ↔ 上游 API，也就是中转（按路径前缀寻址，住 `src/comms/outward/`）。它不读盘、不起进程、不绑端口，凭据与端口由后端交给它。
 - **后端**：其余一切干活的——读会话、起进程、动 tmux、拨 SSH、管资产、写用户的文件。
 
 ### 2.2 后端：一份代码、两种承载
 
 后端（backend = 读 `observe/` ＋ 控制 `control/`）是一份代码、两种承载：本机常驻后端与每台远端的后端是同一个二进制，本机与远端的唯一差别是通道（管道 / SSH）。本机就是不走 ssh 的远端。
+
+进后端的口有两个、平级：帧面（`stream/`，monitor 与外部前端经通信层面 A 走这条）与 CLI 面（`main.rs` 的一次性分派，用户敲 `ccm` 走这条；帧命令派生出同名的 CLI 子命令）。argv 只在 `main.rs` 里取一次。
 
 模块地图（`src/backend/`，逐文件清单见它的 README）：
 
@@ -221,6 +237,12 @@ monitor 自己的文件在 `~/.cc-monitor/`：
 后端只读 `projects/` 与 `sessions/`。写入一律是用户显式触发，而且只经那台后端的文件管理面：删历史会话只收 sid（`files-delete-session`）；从某一轮分叉只新增一份 `<new-sid>.jsonl`，`O_EXCL` 新建、绝不覆盖，原会话零改动（`control/fork_write`）。按 sid 找那份会话文件只有一份实现，两处共用（原先收路径的源守卫 `validate_branch_source`〔散文墓碑〕已不在）。装别名块、skill、MCP 是用户点名的写，别名块只动 BEGIN / END 块内。
 
 **为什么**：用户对「数据源就是我自己的命令痕迹」的认知不能破；写是必要时的可选副作用，就得是显式的、可见的（足迹页逐条列出）。
+
+### 起子进程只有一个出口
+
+monitor 起子进程一律经 `spawn_managed.rs`，三个策略都是必填参数、都没有 `Default`：控制台（`ConsolePolicy`：`Hidden` · `NewVisible` · `Inherit`）· 生命周期（`Lifetime`：`JobKillOnClose` · `Detached`）· stderr 去向（`StderrSink`：`ToLog` · `Null` · `Inherit` · `Captured`）。还自造 `Command` 的地方逐处登记。给用户开真终端那一处刻意是 `NewVisible`。
+
+**为什么**：Windows 上 GUI 进程起一个控制台程序而不给 flag，系统会新配一个带窗口的控制台——用户看到就会关，关掉就杀死子进程（退出码 `0xC000013A`）。分进程之后，原来免费的东西都要显式管：谁杀谁、控制台策略、错误怎么跨进程传、两边对版、起不起得来。三个必填参数让坏默认值无法被表达；子进程的 stderr 接进 monitor 日志，死亡码说人话（「被控制台事件杀死」而不是裸退出码）。
 
 ### 顺序靠 seq，不靠后端保序
 

@@ -29,7 +29,7 @@ npx tauri dev                                # 在仓根跑：起 vite、编 mon
 
 - **本机后端要先铺**：monitor 的每条主路都走本机常驻后端，开发构建与发版走同一条路——`--native` 编出本机那一份，`build.rs` 把它编进 exe，运行时自释放再起。没铺就起不了本机后端（界面会明说），不存在「开发构建里先凑合」的退路。判起不起得来用 `bash tests/scripts/re-embed.sh --check-dev`（真起一趟那份字节、读它的 hello 帧）。要连远端机器，另跑一次 `bash tests/scripts/re-embed.sh` 铺 musl 那两份（要 `cargo-zigbuild`）。
 - **Windows**：在 Developer PowerShell for VS 2022 里跑 `npx tauri dev`；或用 `powershell -NoProfile -File tests\scripts\run.ps1 dev`，它用 `vswhere.exe` 找 MSVC、注入环境后再跑（子命令 `dev` · `build` · `check` · `clean`，见 [`tests/scripts/README.md`](../../tests/scripts/README.md)）。没注入 vcvars 时 `link.exe` 会找到 Git Bash 带的同名工具，编译挂在链接阶段。
-- 别从一个 Claude Code 会话里的 shell 起 dev 却指望它继承的环境干净：monitor 启动最先清掉嵌套会话标记（见下文「常见问题」）。
+- 从 Claude Code 会话里的 shell 起 dev 也行：monitor 启动最先清掉继承来的嵌套会话标记，边界见下文「常见问题」。
 
 ### dev 模式的行为
 
@@ -44,19 +44,19 @@ npx tauri dev                                # 在仓根跑：起 vite、编 mon
 ### Rust
 
 ```bash
-cd src/frontend/shell
-cargo test --workspace                         # monitor ＋ 共享 crate，与 CI 的 rust job 逐字相同
+# 壳的 workspace（monitor ＋ 共享 crate）：在 src/frontend/shell 里
+cargo test --workspace                         # 与 CI 的 rust job 逐字相同
 cargo test -p monitor --lib <过滤串>            # 只跑名字里带这个串的
 cargo test -p monitor --lib <过滤串> -- --nocapture
 cargo fmt --all --check
 cargo clippy --workspace --all-targets
 
-cd src/backend                                 # 后端不是 workspace 成员，单独跑
+# 后端（不是 workspace 成员）：在 src/backend 里
 cargo test
 cargo fmt --check
 cargo clippy --all-targets
 
-cd src/panorama-engine                         # 全景小程序也自成一份
+# 全景小程序（也自成一份）：在 src/panorama-engine 里
 cargo test
 ```
 
@@ -75,7 +75,7 @@ cargo test
 
 ### e2e
 
-- CI 跑的那几套在 `.github/workflows/ci.yml` 里，每套一行 `bash tests/e2e/assert-pass-floor.sh <套件> <断言数地板>`；本机跑得动的那几套以 `shared_crate_registry_tests.rs` 的 `LOCALLY_RUNNABLE` 为准（例：`npm run test:ccm-cli`）。
+- CI 跑的那几套在 `.github/workflows/ci.yml` 里，每套一行 `bash tests/e2e/assert-pass-floor.sh <套件> <断言数地板>`；本机跑得动的那几套以 `shared_crate_registry_tests.rs` 的 `LOCALLY_RUNNABLE` 为准（例：`npm run test:ccm-cli`，要先在 `src/backend` 里 `cargo build --bin cc-monitor-backend`）。
 - 要 GUI 的两套：`npm run test:f40`（滚动 / 渲染管线）与 `npm run test:graylight`，前置是 Xvfb 上跑着一个 `npx tauri dev`，见 [`tests/e2e/README.md`](../../tests/e2e/README.md)。⚠ `test:f40` 会往 `~/.claude/` 写 fixture，受限环境别跑。
 - WebView2（生产）的滚动行为没有自动化覆盖：动过滚动锚定的改动，发版前在 Windows 真机按 `tests/e2e/README.md` 的「人工场景」复核。
 
