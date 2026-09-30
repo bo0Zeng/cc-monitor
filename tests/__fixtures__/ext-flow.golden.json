@@ -1,0 +1,123 @@
+{
+  "说明": [
+    "扩展页一趟「装上 → 卸掉」五份线上成品的跨语言金样：后端测试产出 == 本文件；界面 `src/frontend/ui/ext-reads.ts` 的解码器读同一份。",
+    "只采结构（占位 skill 名 / 占位正文）。`<BASE>` 是测试的临时目录。"
+  ],
+  "card": {
+    "config": null,
+    "kind": "skill",
+    "name": "demo",
+    "path": "<BASE>/b/.claude/skills/demo",
+    "slots": [],
+    "stop": null,
+    "suspects": [],
+    "tokens": {
+      "source": "f8dce283cc18be65",
+      "target": "9c3ddcd3288c214b"
+    },
+    "unchanged": false,
+    "writes": [
+      "SKILL.md"
+    ]
+  },
+  "done": {
+    "changed": [
+      "SKILL.md"
+    ],
+    "note": null,
+    "path": "<BASE>/b/.claude/skills/demo"
+  },
+  "list": {
+    "machines": [
+      {
+        "here": true,
+        "key": null,
+        "name": "a",
+        "projects": [
+          "<BASE>/a/proj"
+        ],
+        "reachable": true
+      },
+      {
+        "here": false,
+        "key": "laptop",
+        "name": "laptop",
+        "projects": [
+          "<BASE>/b/proj"
+        ],
+        "reachable": true
+      }
+    ],
+    "problems": [],
+    "rows": [
+      {
+        "about": "d",
+        "cells": [
+          {
+            "action": {
+              "at": {
+                "level": "user"
+              },
+              "verb": "uninstall"
+            },
+            "dir": "<BASE>/a/.claude/skills/demo",
+            "note": null,
+            "places": [
+              {
+                "level": "user"
+              }
+            ],
+            "state": "same"
+          },
+          {
+            "action": {
+              "from": null,
+              "fromName": "a",
+              "scope": {
+                "from": {
+                  "level": "user"
+                },
+                "to": {
+                  "level": "user"
+                }
+              },
+              "verb": "install"
+            },
+            "dir": null,
+            "note": null,
+            "places": [],
+            "state": "missing"
+          }
+        ],
+        "detail": [
+          {
+            "label": "文件",
+            "value": "1 个，共 23 字节"
+          }
+        ],
+        "kind": "skill",
+        "name": "demo",
+        "new": false
+      }
+    ]
+  },
+  "uninstallCard": {
+    "backup": null,
+    "files": [
+      "SKILL.md"
+    ],
+    "kind": "skill",
+    "name": "demo",
+    "path": "<BASE>/b/.claude/skills/demo",
+    "recorded": true,
+    "said": "这是 cc-monitor 装的：删掉装时写进去的 1 个文件，你后来加的留着。",
+    "token": "7c026244ae70e7a4"
+  },
+  "uninstallDone": {
+    "changed": [
+      "SKILL.md"
+    ],
+    "note": null,
+    "path": "<BASE>/b/.claude/skills/demo"
+  }
+}

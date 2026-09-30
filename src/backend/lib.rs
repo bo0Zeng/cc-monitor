@@ -865,7 +865,6 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--files-link",
     "--cc-bus-install-state",
     "--skill-install-apply",
-    "--skill-host-list",
     "--aliases-render",
     "--aliases-read",
     "--aliases-install",
@@ -874,8 +873,6 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--aliases-block-remove",
     // 〔WF1 · L〕帧面 `powershell-policy-set` 派生的 CLI 面。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
     "--powershell-policy-set",
-    "--skill-host-read",
-    "--skill-host-write",
     // 〔AS2 · 第四波 4B〕资产目录那两条（`inbound::REGISTRY` 的 `assets-catalog` / `assets-catalog-merge`）派生的 CLI 面。
     // 加这两行会逼出一次 `BUILD_ID` bump（`build_id_guard`）—— 本路**不 bump**，合并那一拍统一做。
     "--assets-catalog",
@@ -1005,8 +1002,6 @@ pub const SUBCOMMANDS: &[&str] = &[
     // ⚠ 新子命令 ⇒ `build_id_guard` 红是预期的，BUILD_ID 由合并那一拍统一 bump（本路不 bump）。
     "--panorama",
     "--ping",
-    // 〔RM1b · 第四波〕`plugins-marketplaces` 帧命令的 CLI 面（同 `--tasks-list` 那一段的理由）。
-    "--plugins-marketplaces",
     "--read-session",
     "--read-session-from-offset",
     "--read-session-tail",

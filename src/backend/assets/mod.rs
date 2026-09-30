@@ -13,7 +13,6 @@ pub(crate) mod mcp_sync_flow;
 // 〔MIG-3b 续〕公钥推进那台的 `authorized_keys`（`pubkey-push` 本机那一跳 · `authorized-keys-add` 被写那台）。
 pub(crate) mod pubkey;
 pub(crate) mod skill_flow;
-pub(crate) mod skill_inbox;
 
 // 〔MOD〕从 crate 根归进来（纯搬家，`00 §2.1` 资产那一行）。
 pub mod asset_catalog; // 〔AS2 · 第四波 4B · V113〕资产目录：帧面 `assets-catalog` / `assets-catalog-merge`（后端自有状态 `~/.cc-monitor/assets-catalog.json`，第四层；一个用户文件都不写）

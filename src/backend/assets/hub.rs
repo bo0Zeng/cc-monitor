@@ -1,4 +1,4 @@
-//! 〔MIG-3a · `设计/01 §3.5` · 主会话 09-28 裁〕**两台之间「装」那一件的枢纽**：`ext-hub-preview` / `ext-hub-apply`，skill 与 MCP 同一对命令。
+//! **两台之间「装」那一件的枢纽**：`ext-hub-preview` / `ext-hub-apply`，skill 与 MCP 同一对命令。
 //!
 //! 界面只 `call(<local>, …)` 一次（带 `kind` · `name` · `from` / `to` · `scope`），**本机常驻后端当枢纽**：向来源那台取、
 //! 交被写那台判与写（被写那台照旧自己判 CAS、`stale` 就停）。种类在这里分派到原来那两条内层路：

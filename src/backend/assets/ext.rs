@@ -567,10 +567,14 @@ fn action_for(
     }
 }
 
+/// 目录的写口（现扫 ＋ 记下 ＋ 交回整份与读不出来的那几份）：生产 = `asset_catalog::answer_current`。
+pub(crate) type Current<'a> =
+    &'a dyn Fn(bool) -> Result<(Catalog, Vec<String>), (&'static str, String)>;
+
 /// `ext-list {visit}`：这台现扫一次、记下（`current` = 目录的写口，由 `inbound.rs` 递进来），出表。
 pub(crate) fn answer_list(
     args: &Value,
-    current: &dyn Fn(bool) -> Result<(Catalog, Vec<String>), (&'static str, String)>,
+    current: Current,
     reach: &[(String, Option<String>)],
 ) -> Answer {
     let visit = match args.get("visit") {

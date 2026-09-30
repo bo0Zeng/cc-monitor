@@ -867,7 +867,6 @@ const REACHES_TMUX_WITHOUT_NO_TMUX: &[(&str, &str)] = &[
     ("tmux-list", "〔SH1〕`tmux_observe::list_for_query` 问不到 tmux ⇒ 回 `installed: false` ＋ 空行（如实说没装），命令照答，不回 `no_tmux`"),
     ("tmux-name-mint", "〔FIX4 · J7〕铸名只拿会话快照避让：这台没装 tmux ⇒ 一个名字都没占 ⇒ 交基名，命令照答，不回 `no_tmux`（起不起得来归起会话那一步说）"),
     ("mcp-read", "与 `tmux-list` 同一个宿主 `feature_face::answer`（引用图按文件算，因此连带）；读 MCP 本身不碰 tmux"),
-    ("plugins-marketplaces", "同 `mcp-read`：只因与 `tmux-list` 同住 `feature_face.rs` 被连带；本身不碰 tmux"),
     ("tasks-list", "同 `mcp-read`：只因与 `tmux-list` 同住 `feature_face.rs` 被连带；本身不碰 tmux"),
 ];
 

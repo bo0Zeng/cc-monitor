@@ -563,7 +563,6 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "exit-policy-read",
         "exit-policy-set",
         // 〔RM1b · 第四波〕功能侧只读查询：读一个目录 ＋ 每个文件各一次（同步文件 I/O）。
-        "plugins-marketplaces",
         "tasks-list",
         "mcp-read",
         "tmux-list",
@@ -607,7 +606,6 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "mcp-sync-plan",
         // 〔MIG-3a〕MCP 写两条 ＋ 推拉三条 ＋ skill 装卸两条：同步文件 I/O（经本进程文件管理面）。
         "skill-install-apply",
-        "skill-host-list",
         "cc-bus-install",
         "acct-iso-install",
         "authorized-keys-add", // 〔MIG-3b 续〕同步文件 I/O（经本进程文件管理面）
@@ -620,8 +618,6 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "aliases-block-install",
         "aliases-block-remove",
         "powershell-policy-set",
-        "skill-host-read",
-        "skill-host-write",
         "ext-uninstall-apply",
         "mcp-server-put",
         "mcp-server-remove",
@@ -733,7 +729,6 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "accounts-trust", // 〔C4c〕
         "exit-policy-read",
         "exit-policy-set",
-        "plugins-marketplaces",
         "tasks-list",
         "mcp-read",
         "tmux-list",
@@ -778,7 +773,6 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "mcp-sync-plan",
         // 〔MIG-3a〕MCP 写两条 ＋ 推拉三条 ＋ skill 装卸两条，阻塞档。
         "skill-install-apply",
-        "skill-host-list",
         "cc-bus-install",
         "acct-iso-install",
         "authorized-keys-add", // 〔MIG-3b 续〕同步文件 I/O（经本进程文件管理面）
@@ -791,8 +785,6 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "aliases-block-install",
         "aliases-block-remove",
         "powershell-policy-set",
-        "skill-host-read",
-        "skill-host-write",
         "ext-uninstall-apply",
         "mcp-server-put",
         "mcp-server-remove",

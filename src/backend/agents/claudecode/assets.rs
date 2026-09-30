@@ -1,4 +1,4 @@
-//! 〔AS2 · 第四波 4B · V113〕Claude 的**资产布局**：skill 住哪、MCP 住哪、怎么从盘上认出它们。
+//! Claude 的**资产布局**：skill 住哪、MCP 住哪、怎么从盘上认出它们。
 //!
 //! 只装布局知识（用户级 `skills/<名>/` 与项目里的 `.claude/skills/<名>/` · `SKILL.md` 头部的 `description:` ·
 //! 用户级 `.claude.json` 顶层的 `mcpServers` · `<项目>/.mcp.json` 的 `mcpServers`），**不做摘要、不做合并、不记目录** ——

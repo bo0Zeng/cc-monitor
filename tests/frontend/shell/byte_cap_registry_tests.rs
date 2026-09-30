@@ -314,8 +314,7 @@ const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
 const CAPS: &[(&str, &str, u64, &str, &str)] = &[
     // ---- monitor 侧 ----
     // ---- P8a：插件面只读枚举 ----
-    // 〔RM1b · 第四波〕这两条随读实现搬去了后端（`src/backend/observe/plugins_query.rs`，登记在后端那一段），
-    //   monitor 这一侧不再有它们。
+    // 〔RM1b · 第四波〕这两条随读实现搬去了后端，后来随插件只读列表一起删了。
     // 〔C4d · 第四波 4B〕`local_accounts.rs` 的 `MANIFEST_CAP`（本机读账号 manifest，「降级+说清」）那一行出列：
     //   那份零生产调用方的本机参照实现删了，读 manifest 只剩后端一处（`MAX_MANIFEST_BYTES`，登记在后端那一段）。
     // 〔LOC1b · 第四波 4D〕住址 `remote_history.rs` → `history.rs`；〔MOD〕→ 后端 `read_face.rs::WHOLE_SESSION_MAX_BYTES`
@@ -716,22 +715,7 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
         "按行那六条帧查询（`history-projects` 等）整份输出",
         "拒收+回错",
     ),
-    // 〔RM1b · 第四波〕插件市场枚举搬进后端（`plugins-marketplaces`）：两个上限原样随行
-    //   （量、值、超限语义都与搬家前 monitor 那两条逐字相同；monitor 那两条已随本机读实现退役摘掉）。
-    (
-        "src/backend/observe/plugins_query.rs",
-        "KNOWN_MARKETPLACES_CAP",
-        4 * 1024 * 1024,
-        "读 marketplace 登记表（`P8a` 本机实测 206 字节）",
-        "硬报错",
-    ),
-    (
-        "src/backend/observe/plugins_query.rs",
-        "MARKETPLACE_MANIFEST_CAP",
-        32 * 1024 * 1024,
-        "读单个 marketplace 的 manifest（`P8a` 本机实测 161 KB / 声明 276 个插件）",
-        "降级+说清",
-    ),
+    // 〔RM1b · 第四波〕插件市场枚举那两个上限随插件只读列表整块删了（界面上没有可做的事）。
     // 〔RM1b · 第四波〕任务列表搬进后端（`tasks-list`）：单个任务文件的读上限。
     (
         "src/backend/observe/tasks_query.rs",
@@ -1438,8 +1422,7 @@ fn a_cap_registered_as_hard_error_is_not_swallowed_at_its_call_site() {
             //     落进了同一个窗口。⇒ 本条对「同一个 `match` 里有多条臂」这种形状
             //     **钉不住**，别读成「降级一定被说清了」；那一层今天靠站点自己的
             //     行为判据兜（`plugins.rs` 那两条当场红）。
-            //     〔RM1b · 第四波〕那个站点连同那两条行为判据随读实现搬去了后端
-            //     （`observe/plugins_query.rs` · `tests/backend/observe/plugins_query_tests.rs`），形状照旧。
+            //     〔RM1b · 第四波〕那个站点连同那两条行为判据随读实现搬去了后端，后来随插件只读列表一起删了。
             // 两种都靠人读诊断分辨。已登记进 `ROADMAP §5`。
             const WINDOW: usize = 10;
             let window = lines[i..(i + WINDOW).min(lines.len())].join("\n");

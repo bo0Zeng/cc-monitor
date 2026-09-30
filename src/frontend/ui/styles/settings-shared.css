@@ -14,39 +14,6 @@
   padding-right: 6px;
 }
 
-.mcp-dirs-empty {
-  margin: 0;
-}
-
-/* F87b③：机器选择行（本机 / 各远端 origin）——仅配了远端时显示。 */
-.mcp-machine-row {
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-}
-
-.mcp-del {
-  flex-shrink: 0;
-}
-
-.mcp-json-toggle {
-  margin-left: auto;
-  flex-shrink: 0;
-}
-
-.mcp-json-toggle,
-.mcp-edit,
-.mcp-del {
-  padding: 1px 8px;
-  font-size: var(--font-size-xs);
-}
-
-.mcp-json-input {
-  font-family: var(--font-mono, monospace);
-  font-size: var(--font-size-small);
-  resize: vertical;
-}
-
 /* 复选框行（同时安装 wrapper / auto-launch） */
 .settings-row-checkbox {
   display: flex;

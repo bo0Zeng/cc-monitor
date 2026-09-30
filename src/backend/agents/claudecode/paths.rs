@@ -104,17 +104,6 @@ pub(crate) fn sessions_root(home: &Path) -> PathBuf {
     home.join("sessions")
 }
 
-/// 一个插件市场的落点 → 它**声明插件的那份清单**：`<落点>/.claude-plugin/marketplace.json`。
-///
-/// 〔RM1b · 第四波〕插件市场只读枚举从 monitor 搬进后端（`observe/plugins_query.rs`，远端也要答得出）；
-/// 清单的目录名带 agent 的名字 ⇒ 这件格式知识住本层（`agent_locality_guard` 的针当场认得出它）。
-/// 通用层那一处调用登记在 `ADAPTER_CALL_SITES`，对应的能力是假 agent 的「插件市场清单」。
-pub(crate) fn marketplace_manifest(install_location: &Path) -> PathBuf {
-    install_location
-        .join(".claude-plugin")
-        .join("marketplace.json")
-}
-
 /// 一个路径**在不在 Claude 的那几棵树里** —— `~/.claude*` 那个星号的**唯一住址**。
 ///
 /// 〔步 23b · 2026-09-19〕`设计/60 §6.5.2 A` 给新的写模块定的围栏逐字是
@@ -156,8 +145,8 @@ pub fn is_inside_tree(home: &Path, target: &Path) -> bool {
 /// 不再问它。后端里它今天**只有删历史会话那一条**在问（[`session_file_for_delete_in`] 与
 /// `files_write::fenced_session_file`：「要删的必须**是**一份会话记录」—— 方向与从前那道围栏相反）。
 /// 旧名 `is_protected_session_file` / `is_protected_session_path`〔散文墓碑〕：「protected」在后端从此是假的，名字改成它真在答的那一问。
-/// 〔MIG-3a〕另一个问它的是 skill 收件箱编辑那道纵深（F03b，`skill_host.rs::editable_target`）：桥那一份逐字副本
-/// （`claude_data_fence`〔散文墓碑〕）随它最后一个用户搬进后端，全仓只剩这一份。下面几节是它当写侧围栏那一段的历史。
+/// 〔MIG-3a〕桥那一份逐字副本（`claude_data_fence`〔散文墓碑〕）随它最后一个用户搬进后端，全仓只剩这一份；
+/// 那个用户（skill 收件箱编辑面）09-30 整块删了。下面几节是它当写侧围栏那一段的历史。
 ///
 /// 〔波 5 ㈢ · 2026-09-23 · 用户 2026-09-23 逐字裁「文件管理器该不该能改 `~/.claude`
 /// 里的东西. **可以.**」〕
@@ -193,7 +182,7 @@ pub fn is_inside_tree(home: &Path, target: &Path) -> bool {
 /// - **不认非会话的那些东西**：`settings.json` · `skills/**` · 账号库 · `.credentials.json`
 ///   —— 全部**放行**，那正是用户这一裁要买的东西。谁要收回这一格，那是下一道产品题。
 /// - 它管不着的那几类路径登记成一张读数表
-///   （〔MIG-3a〕今天住 `skill_host_tests.rs::every_uncovered_shape_is_still_uncovered_today`，桥那一份删了）。
+///   （今天住 `paths_tests.rs::every_uncovered_shape_is_still_uncovered_today`）。
 pub fn is_session_record_file(path: &str) -> bool {
     let p = path.replace('\\', "/");
     // batch20 审计修：**结构判定**，不靠 `/.claude/` 字面——Claude 数据文件结构为 `<任意>/projects/<proj>/<sid>.jsonl`
