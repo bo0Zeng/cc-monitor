@@ -273,7 +273,7 @@ pub(crate) const UNMANAGED_ENV: &[UnmanagedEnv] = &[UnmanagedEnv {
     named: "claude",
     host: HostScope::Either,
     why: Text(|| copy_text("rsToolRegistry.env.agentCliWhy", &[])),
-    site: "adapter/claude_code.rs::default_launcher",
+    site: "agents/claudecode/resume.rs::DEFAULT_COMMAND",
 }];
 
 /// 注册表里这一家的足迹面。

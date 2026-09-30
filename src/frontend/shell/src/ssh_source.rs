@@ -1884,7 +1884,7 @@ fn version_warning(
         VersionVerdict::Ok => None,
         // 〔HX2 · 主会话 D-b〕按新旧分两句（部署只升不降）：
         //   那台旧 ⇒ 下次连上的部署预检会换掉它；那台不比这一版旧 ⇒ 这个 monitor 不会把它换回去。
-        //   〔THIN〕新旧不在这里比（从前调 `deploy_core::is_newer`）：本机常驻后端接上那一刻判过（`resident-verdict`），这里只按答挑句子。
+        //   〔THIN〕新旧不在这里比（从前调共享判定 `is_newer`，今天住后端 `control/deploy_plan.rs`）：本机常驻后端接上那一刻判过（`resident-verdict`），这里只按答挑句子。
         //   〔墓碑 —— 从前一句话不分新旧（`rsSshSource.version.buildMismatch`：「…建议更新后端（后续将支持自动部署）」），自动部署早已落地。〕
         VersionVerdict::StaleBuild { reported } if remote_older => Some(copy_text(
             "rsSshSource.version.remoteOlder",

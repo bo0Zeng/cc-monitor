@@ -245,6 +245,8 @@ pub const COMMANDS: &[&str] = &[
     // 〔FIX4 · `97 §8`〕全景小程序卸口：只删装时放下的那一份（先认身份、CAS 删）。**是新命令** ⇒ `build_id_guard` 红是预期的。
     "panorama-uninstall",
     "ping",
+    // 〔P1〕本机那一份放不放（monitor 自举：放本机后端之前问手上那份字节自己，CLI 面）。**是新命令** ⇒ `build_id_guard` 红是预期的。
+    "place-verdict",
     "plugins-marketplaces",
     // 〔WF1 · L · `设计/99 §2.3`〕PowerShell 执行策略设成当前用户 `RemoteSigned`（用户点了、确认了才发）。**是新命令** ⇒ `build_id_guard` 红是预期的。
     "powershell-policy-set",
@@ -1433,11 +1435,12 @@ pub const REGISTRY: &[CommandSpec] = &[
     },
     // 〔THIN〕**那台旧入口的去向**：`{dial}` → `{verdict, expect, why}`（沿池里那条 SSH 开只读 SFTP，stat ＋ 读回，真异步）。
     //   本体 `control/deploy_plan.rs::answer_retired`（与上传残件同一家：落点上该清的东西）。
+    //   〔P1〕另一形 `{text}`：本机 PATH 上另一个 `ccm` 的开头一截，只判不读盘（monitor 本机探针拿来说话）。
     CommandSpec {
         name: "deploy-retired",
         doc_anchor: Some("#### `deploy-retired`"),
         codes: &["bad_args", "unreachable"],
-        fields: &["dial", "expect", "verdict", "why"],
+        fields: &["dial", "expect", "text", "verdict", "why"],
         takes_input: true,
         run: Run::Async(|r| {
             Box::pin(async move {
@@ -1494,6 +1497,20 @@ pub const REGISTRY: &[CommandSpec] = &[
                     .map(Some)
                     .map_err(|(c, m)| (c.to_string(), m))
             })
+        }),
+    },
+    // 〔P1〕**本机那一份放不放**：`{dest, machine}` → `{action: place|keep, why}`（只读落点那一个文件 ⇒ 阻塞档）。
+    //   monitor 放本机后端之前还没有常驻后端 ⇒ 跑手上那份字节的 CLI 面问它（`--place-verdict`）。本体 `control/deploy_plan.rs::answer_place`。
+    CommandSpec {
+        name: "place-verdict",
+        doc_anchor: Some("#### `place-verdict`"),
+        codes: &["bad_args", "refused", "undecidable"],
+        fields: &["action", "dest", "machine", "why"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::control::deploy_plan::answer_place(&r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
     // 〔MIG-3b 续〕**公钥一键推送**（本机常驻后端答）：`{machine, saved?, jump?, pubKeyPath?}` → `{outcome, pubPath, via}`。
@@ -2634,7 +2651,7 @@ pub const REGISTRY: &[CommandSpec] = &[
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
-    // 〔FIX4 · `90 §3` J15 · 主会话 09-28 裁 B〕**各台 `history-search` 的会话行合成一份**：`updatedAt` 倒序（`search_core::sort_by_recency`）·
+    // 〔FIX4 · `90 §3` J15 · 主会话 09-28 裁 B〕**各台 `history-search` 的会话行合成一份**：`updatedAt` 倒序（`search_rules::sort_by_recency`）·
     //   命中数相加 · 任一行被砍 ⇒ `truncated`。本体 `observe/search_query.rs::answer_merge`（经只读宿主 `read_face` 那一臂）；纯计算 ⇒ 不进阻塞档（同 `acct-iso-cmd`）。
     CommandSpec {
         name: "history-search-merge",

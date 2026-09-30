@@ -1612,7 +1612,7 @@ fn extract_cwd_from_head(p: &Path) -> Option<String> {
 /// 〔C4d · 第四波 4B〕**这一行从此是本机与远端共用的唯一口径**：本机的历史会话清单此前由 monitor 进程内自己扫
 /// （`history·rs::analyze_jsonl`〔散文墓碑〕，经记录解析器），与这里的「精简版」各算各的 —— 开始时刻 / 摘录 / 标题 / fork 关系
 /// 四格两边不一样。历史跨机 join 进了本机后端之后本机也读这一行 ⇒ 把 monitor 那份有、这里没有的三格（fork 关系 ·
-/// `custom-title` · 首条时间戳）补进来，摘录的清洗与截断改用 `search-core` 那一份（与全文搜索同一个家）。条数仍是「非空行数」。
+/// `custom-title` · 首条时间戳）补进来，摘录的清洗与截断改用与全文搜索同一个家那一份（〔P1〕清洗经注册表 `agents::clean_user_text` · 截断 `observe/search_rules.rs`）。条数仍是「非空行数」。
 fn analyze_session(p: &Path) -> serde_json::Value {
     let session_id = p
         .file_stem()
@@ -1684,9 +1684,9 @@ fn analyze_session(p: &Path) -> serde_json::Value {
                         && v.get("isMeta").and_then(|m| m.as_bool()) != Some(true) =>
                 {
                     if let Some(text) = user_text(&v) {
-                        let cleaned = search_core::clean_user_text(&text);
+                        let cleaned = crate::agents::clean_user_text(&text);
                         if !cleaned.is_empty() {
-                            excerpt = search_core::truncate_excerpt(&cleaned, 120);
+                            excerpt = super::search_rules::truncate_excerpt(&cleaned, 120);
                         }
                     }
                 }
@@ -1754,7 +1754,7 @@ fn user_text(v: &serde_json::Value) -> Option<String> {
     None
 }
 
-// 〔C4d〕按字符截断的那一份（`truncate_chars`〔散文墓碑〕）没了读者：摘录改用 `search_core::truncate_excerpt`（同样不劈码点，
+// 〔C4d〕按字符截断的那一份（`truncate_chars`〔散文墓碑〕）没了读者：摘录改用 `search_rules::truncate_excerpt`（同样不劈码点，
 //   另把换行折成空格、超了加 `…` —— 与本机那条路从前的口径、与全文搜索的标题摘录同一个家）。
 
 #[cfg(test)]

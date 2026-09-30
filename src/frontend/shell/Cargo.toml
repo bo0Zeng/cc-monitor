@@ -16,14 +16,13 @@ members = [
     "../../common/creds-core",
     "../../common/guard-core",
     "../../common/relay-route-core",
-    "../../common/search-core",
     "../../common/shell-quote-core",
     "../../common/copy-core",
     # 〔THIN〕`agent-tools-core` 出列：界面不再按工具名判卡型（卡型随记录成品带出），它只剩后端用，收进后端适配层。
     # 〔DUP3 · J9〕上游 base URL 能不能用 —— 后端中转 · 上游选择 · 写口与界面生成物共用的唯一一份。
     "../../common/upstream-url-core",
-    # 〔MIG-3b〕部署决策（表 A / 表 B · 身份戳 · 只升不降）—— 本机常驻后端出计划、monitor 放字节共用的唯一一份。
-    "../../common/deploy-core",
+    # 〔P1〕部署那一族的契约（表 A 的键与行 · 戳格式 · 答话形状 · 路径）；判定那一半（原 `deploy-core`）进了后端 `control/deploy_plan.rs`。
+    "../../common/deploy-contract",
     # 〔THIN〕`gate-core` 出列：收成后端模块 `control/gate_rules.rs`（monitor 那一侧的门删了）。
 ]
 # 〔RE〕`exclude = ["vendor/code-picture-core"]` 删了：vendor 随唯一消费者搬进 `src/panorama-engine/vendor/`，
@@ -139,12 +138,12 @@ creds-core = { path = "../../common/creds-core" }
 shell-quote-core = { path = "../../common/shell-quote-core" }
 # 〔US1 · 4D · P3〕后端的门牌与家的契约（端口 · 钥匙 · 路由语法 · `~/.cc-monitor/` 下每一样的相对路径），与后端同一份（`设计/20 §5` 目标）。
 relay-route-core = { path = "../../common/relay-route-core" }
-# 〔MIG-3b〕部署决策的唯一一份：本机常驻后端出计划（`deploy-plan`）用它判，monitor 照计划取字节、本机那一份的身份 · 远端 hello 的新旧 · 全景的表 A/B 也用它。
-deploy-core = { path = "../../common/deploy-core" }
+# 〔P1〕部署那一族的契约（契约类，`设计/00 §1.2`）：取字节口的键与行 · 解计划答话 · 读字节里的身份戳；判定都问后端（自举那一刻问手上那份字节自己，`place-verdict`）。
+deploy-contract = { path = "../../common/deploy-contract" }
 # 〔THIN〕`gate-core` 删了：monitor 侧的 Gate 1 前检与转调壳（只剩跨轨对拍锚点在用）删掉之后它只剩后端用，收成后端模块 `control/gate_rules.rs`。
 
 # 〔THIN〕`search-core` 删了：monitor 零引用（搜索与记录解释都在后端；`messages.rs` 那一处随记录解释进了后端，MOD）。
-#   它仍是 workspace 成员（单测照旧随这一格跑），只剩后端用 —— 进不进后端适配层报备（`调研/第四波记录/THIN.md §四`）。
+#   〔P1〕workspace 成员也出列、crate 删了：通用口径进后端 `observe/search_rules.rs`，Claude 记录文本那一半进 `agents/claudecode/text.rs`。
 
 notify = "6"
 notify-debouncer-mini = "0.4"

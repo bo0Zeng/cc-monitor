@@ -229,7 +229,7 @@ dependencies = [
  "acct-core",
  "copy-core",
  "creds-core",
- "deploy-core",
+ "deploy-contract",
  "flate2",
  "guard-core",
  "libc",
@@ -240,7 +240,6 @@ dependencies = [
  "russh",
  "russh-sftp",
  "rustls",
- "search-core",
  "serde",
  "serde_json",
  "sha2",
@@ -505,7 +504,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "deploy-core"
+name = "deploy-contract"
 version = "0.1.0"
 dependencies = [
  "copy-core",
@@ -1835,13 +1834,6 @@ dependencies = [
  "pbkdf2",
  "salsa20",
  "sha2",
-]
-
-[[package]]
-name = "search-core"
-version = "0.1.0"
-dependencies = [
- "serde_json",
 ]
 
 [[package]]

@@ -223,6 +223,7 @@ fn a_brand_new_agent_is_discovered_and_announced_with_zero_general_layer_change(
         footprint: None,
         records: None,
         processes: None,
+        launch: None,
     };
     let discovered = crate::agents::visible_among(std::slice::from_ref(&adapter));
     assert_eq!(
@@ -489,6 +490,7 @@ fn the_fake_agents_mcp_face_is_read_through_the_generic_layer() {
         footprint: None,
         records: None,
         processes: None,
+        launch: None,
     };
     let got = crate::agents::mcp_read_among(std::slice::from_ref(&adapter), Some(&dir));
     let _ = std::fs::remove_dir_all(&dir);

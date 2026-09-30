@@ -664,8 +664,8 @@ fn the_local_stop_rides_the_same_one_shot_supervisor() {
 ///  Windows/macOS 上会释放一个 Linux ELF、UI 与日志报告「已起」，而进程从来没起来过）。〕
 ///
 /// 〔DP1 · 第四波〕今天字节按 (OS, arch) 查表（`byte_table`，`设计/01 §6.7a` 规矩 4）⇒ 「先问 OS」不再是一道闸，
-/// 是**键的一半**。本条钉：本机那条取用点的键是**这台机器自己**（`Key::this_machine()`），走的路是
-/// `Route::Local`，而且键在取字节之前定下。「musl 字节只落在 Linux 格」那一半是表的行为，钉在
+/// 是**键的一半**。本条钉：本机那条取用点的键是**这台机器自己**（`Key::this_machine()`）、取的是后端那一类，
+/// 而且键在取字节之前定下。〔P1〕本机那一行的承诺（表 B）不在这里判：放之前问手上那份字节自己（`place-verdict`）。「musl 字节只落在 Linux 格」那一半是表的行为，钉在
 /// `byte_table_tests::musl_bytes_only_ever_land_on_linux_cells`。
 ///
 /// ⚠ 射程：它是**源码判据**，只证明取用点这样写着；证明不了「Windows 上真的不会释放」——
@@ -692,8 +692,8 @@ fn the_local_backend_only_takes_a_binary_this_platform_can_run() {
     assert!(key < take, "键在取字节之后才定 —— 取用点的形状变了");
     let tail = &body[take..];
     assert!(
-        tail.contains("Route::Local") && tail.contains("Product::Backend"),
-        "本机那条取用点不是「本机 · 后端」那一格：\n{tail}"
+        tail.contains("Product::Backend") && !tail.contains("Route::"),
+        "本机那条取用点不是「这台 · 后端」那一格（〔P1〕表 B 不在 monitor 判，取用点不该再带 origin）：\n{tail}"
     );
 }
 

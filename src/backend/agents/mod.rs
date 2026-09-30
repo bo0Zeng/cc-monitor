@@ -135,6 +135,42 @@ pub(crate) struct Adapter {
     /// 〔THIN〕tmux 前台命令（`#{pane_current_command}`）是这几个之一 ⇒ 那个 pane 跑的是这一家（从前界面按画像表自己判）。
     /// `None` ＝ 今天没人考据过。收进注册表而不是让 `observe/tmux_list.rs` 直呼 `agents::<名>::` —— 理由同 [`Adapter::assets`]。
     pub(crate) processes: Option<&'static [&'static str]>,
+    /// 〔P1 · 第 4 件〕这一家的**起会话事实**（默认启动器 · shell wrapper · resume 字面量 · 嵌套标记）；`None` ＝ 这一家不由我们起。
+    pub(crate) launch: Option<LaunchFace>,
+}
+
+/// 〔P1 · 第 4 件 · `设计/00 §2.1` 加一个 agent 只改 `agents/`〕一家的起会话事实 —— **唯一的家**。
+/// 从前住两处（monitor `adapter.rs` · 后端 `control/ccm/`，靠金样 `agent-profile-golden.tsv` 对着）；今天 `ccm` 按注册表读
+/// （[`launch_face_of`]），界面与 monitor 读从这里生成的 `src/frontend/ui/generated/agent-profile-table.ts`。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct LaunchFace {
+    /// 适配器 id（界面起会话那一发交回，上游选择按它挑那一行）。
+    pub(crate) adapter_id: &'static str,
+    /// 默认启动器（无候选时的命令基底）。
+    pub(crate) default_launcher: &'static str,
+    /// shell 集成 wrapper：探得到先用它，探不到回退默认启动器；没有 ⇒ `None`。
+    pub(crate) launcher_alias: Option<&'static str>,
+    /// resume 那个字面量：`--` 开头 ＝ flag 形（`claude --resume <sid>`），否则 ＝ 子命令形（`codex resume <sid>`）。
+    pub(crate) resume_token: &'static str,
+    /// 起之前要清掉的嵌套会话标记（顺序决定载荷字节）。
+    pub(crate) nested_env: &'static [&'static str],
+}
+
+/// 某一家（wire 上的 kind）的起会话事实。认不出 ⇒ `None`。
+pub(crate) fn launch_face_of(kind: &str) -> Option<LaunchFace> {
+    REGISTRY
+        .iter()
+        .find(|a| a.kind == kind)
+        .and_then(|a| a.launch)
+}
+
+/// 由我们起的那几家（带 [`LaunchFace`] 的，注册表序）—— `ccm --agent` 的闭集就是它，不另写一份。
+pub(crate) fn launchable_kinds() -> Vec<&'static str> {
+    REGISTRY
+        .iter()
+        .filter(|a| a.launch.is_some())
+        .map(|a| a.kind)
+        .collect()
 }
 
 /// 〔THIN〕一个 `tool_use` 在界面上画成哪一种卡 —— **通用的值域**；哪个工具名算哪一种是各家的格式知识（`agents/<名>/`，
@@ -212,8 +248,42 @@ pub(crate) struct RecordFace {
     pub(crate) branch: Option<BranchFn>,
     /// 这一家的漂移账（看不懂的记录类型记在哪）⇒ 成品；`None` ＝ 这一家不记。
     pub(crate) drift: Option<fn() -> serde_json::Value>,
+    /// 〔P1〕这一家的记录文本面（正文 / 工具内容怎么抽 · CLI 注入怎么剥）；`None` ＝ 这一家不进搜索 / 摘录那几条通用路。
+    pub(crate) text: Option<TextFace>,
     /// 〔MOD · 子步 4〕删历史会话那一条的两问（按 sid 找那一份 · 它是不是一份会话记录）；`None` ＝ 这一家不删。
     pub(crate) delete: Option<SessionDelete>,
+}
+
+/// 〔P1〕一家的记录文本面（原共享 crate `search-core` 里 Claude 记录文本那一半）：函数指针（同 [`Adapter::home`]，不立 trait）。
+/// 通用层（全局搜索 · 会话内查找 · 历史摘录 · 用户输入列表）经 [`main_text`] · [`tool_text`] · [`clean_user_text`] 够它，不按名字够。
+#[derive(Clone, Copy)]
+pub(crate) struct TextFace {
+    /// 一条记录的 `message.content` ⇒ 正文文本块。
+    pub(crate) main: fn(&serde_json::Value) -> String,
+    /// 同上 ⇒ 工具内容（`is_assistant`：工具入参 · 思考；否则：工具结果）。
+    pub(crate) tool: fn(&serde_json::Value, bool) -> String,
+    /// 一条 user 正文剥掉 CLI 注入之后的真内容（空 ＝ 整条都是注入噪声）。
+    pub(crate) clean_user: fn(&str) -> String,
+}
+
+/// 记录树那一家（同 [`stream_record_face`]）的文本面。
+fn text_face() -> Option<TextFace> {
+    stream_record_face().and_then(|r| r.text)
+}
+
+/// 〔P1〕记录树那一家怎么抽正文 —— 通用层够它的唯一入口。没有哪一家答得了 ⇒ 空串（不搜、不摘）。
+pub(crate) fn main_text(content: &serde_json::Value) -> String {
+    text_face().map_or_else(String::new, |t| (t.main)(content))
+}
+
+/// 〔P1〕记录树那一家怎么抽工具内容。没有哪一家答得了 ⇒ 空串。
+pub(crate) fn tool_text(content: &serde_json::Value, is_assistant: bool) -> String {
+    text_face().map_or_else(String::new, |t| (t.tool)(content, is_assistant))
+}
+
+/// 〔P1〕记录树那一家怎么剥 user 正文里的 CLI 注入。没有哪一家答得了 ⇒ 原样（不剥）。
+pub(crate) fn clean_user_text(s: &str) -> String {
+    text_face().map_or_else(|| s.to_string(), |t| (t.clean_user)(s))
 }
 
 /// 〔MOD · 子步 4 · 主会话裁〕删历史会话那一条要问适配层的两件事 —— 那是记录布局的知识，文件管理写面不认；
@@ -470,13 +540,13 @@ pub(crate) fn skill_asset_face() -> Option<AssetFace> {
 /// 一家拆成四行会让那个读数变成排版的函数。
 #[rustfmt::skip]
 pub(crate) const REGISTRY: &[Adapter] = &[
-    Adapter { kind: claudecode::AGENT_KIND, home: claudecode::home, account_env: Some(claudecode::paths::CONFIG_DIR_ENV), assets: Some(claudecode::ASSETS), history: None, upstream: Some(claudecode::UPSTREAM), mcp: Some(claudecode::MCP), footprint: Some(claudecode::footprint::FACE), records: Some(claudecode::RECORDS), processes: Some(claudecode::cards::PROCESS_NAMES) },
+    Adapter { kind: claudecode::AGENT_KIND, home: claudecode::home, account_env: Some(claudecode::paths::CONFIG_DIR_ENV), assets: Some(claudecode::ASSETS), history: None, upstream: Some(claudecode::UPSTREAM), mcp: Some(claudecode::MCP), footprint: Some(claudecode::footprint::FACE), records: Some(claudecode::RECORDS), processes: Some(claudecode::cards::PROCESS_NAMES), launch: Some(claudecode::LAUNCH) },
     // ⚠ codex 那一格**今天借用同一个载体，这是如实登记的耦合、不是设计**：
     //   账号维度来自 `cc-acct-iso`（机器上只有一套账号库），而那套库切的就是这个变量。
     //   `ccm --agent codex --account b` 从来就是这个行为（`shared/ccm` 那侧也是无条件 export）。
     //   codex 自己并不读它 ⇒ 哪天账号维度按家拆开，改的就是这一行。
     // 〔NT2 · V25〕codex **刻意不登记**默认上游：它的默认上游是哪一个、认不认 base URL 覆盖，本仓零证据（`C7`）⇒ 未登记即拒（fail-closed）。
-    Adapter { kind: codex::AGENT_KIND,      home: codex::home,      account_env: Some(claudecode::paths::CONFIG_DIR_ENV), assets: None, history: Some(codex::HISTORY), upstream: None, mcp: None, footprint: None, records: Some(codex::RECORDS), processes: None },
+    Adapter { kind: codex::AGENT_KIND,      home: codex::home,      account_env: Some(claudecode::paths::CONFIG_DIR_ENV), assets: None, history: Some(codex::HISTORY), upstream: None, mcp: None, footprint: None, records: Some(codex::RECORDS), processes: None, launch: Some(codex::LAUNCH) },
 ];
 
 /// 某一家的账号载体（环境变量名）。认不出这家 ⇒ `None`。

@@ -1428,7 +1428,7 @@ fn monitor_ccm_entry_name() -> String {
 ///
 /// 守的是**申报**（这张表里有没有这条落点、在哪台机器上）。
 /// 「那个文件真的被放下去了吗」「放下去的是不是后端本体」由
-/// `local_backend` 那两条管（〔E2〕今天是 `the_local_landing_is_ccm_and_only_an_older_or_rebuilt_one_is_replaced`
+/// `local_backend` 那两条管（〔E2 · P1〕今天是 `the_local_landing_is_placed_exactly_as_the_bytes_in_hand_say`
 /// 与 `the_resolution_path_hands_the_ccm_entry_the_backend_it_just_resolved`：落点就是后端本身，没有副本可比）。
 /// **三条合起来才是那一格，单独任何一条都不够。**
 #[test]

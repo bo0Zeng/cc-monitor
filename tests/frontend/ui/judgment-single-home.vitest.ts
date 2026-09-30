@@ -16,7 +16,7 @@
  *
  * # 四条
  *
- * 1. **人群两向（D5）**：盘上 `src/common/*-core/src` 生产段的 `pub fn` / `pub const` / `pub static`
+ * 1. **人群两向（D5）**：盘上 `src/common/<crate>/src`（〔P1〕全部共享 crate，不再只看 `-core` 后缀）生产段的 `pub fn` / `pub const` / `pub static`
  *    名字全集 == [`CORE_ITEMS`] 的键全集（逐 crate）。新长一个 `*-core` 项而不登记 ⇒ 红 ——
  *    逼着回答「TS 里有没有它的孪生」。`guard-core` 整 crate 排出人群，理由现核：它在每一份提到它的
  *    `Cargo.toml` 里都只在 `[dev-dependencies]`（测试基础设施，不是产品判定）。
@@ -313,7 +313,8 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     // 〔RENDER2〕规则合成一份住 `user_text`（`clean_user_text` 取它的 `clean`）；后端读者（搜索 · 历史摘要 · 大纲）都走它。
     //   前端（主会话 09-27 裁乙）：monitor 解析 user 记录时调同一个 `user_text` 填 `userText`（`messages.rs::UserText::of`），
     //   渲染 / compact 检测 / 分叉折叠只读成品；TS 那份 `stripInternalNoise` 与 `branching.ts` 的前缀判断删了。
-    homes: ["search-core::user_text", "search-core::clean_user_text"],
+    // 〔P1〕`search-core` 拆进后端：这条规则是 Claude 记录格式的知识 ⇒ 住适配层（通用层经注册表 `agents::clean_user_text` 够）。
+    homes: ["src/backend/agents/claudecode/text.rs::user_text", "src/backend/agents/claudecode/text.rs::clean_user_text"],
     status: "zero",
     defs: ["stripInternalNoise"],
     needles: [
@@ -379,9 +380,10 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
   J15: {
     what: "全文搜索条数上限 ＋ 多机合并排序",
     // 〔FIX4 · `设计/90 §3` J15 · 主会话 09-28 裁 B〕翻 `zero`：界面照旧逐台扇出（各台常驻索引保热），合并排序问本机后端
-    //   `history-search-merge`（`observe/search_query.rs::answer_merge` → `search_core::sort_by_recency`）；前端 `mergeSearchResults` 删。
-    //   条数上限：界面不交 `limit` ⇒ 每台用 `search_core::DEFAULT_LIMIT`（`history.ts` 那份 300 的副本删了）。
-    homes: ["search-core::DEFAULT_LIMIT", "search-core::sort_by_recency"],
+    //   `history-search-merge`（`observe/search_query.rs::answer_merge` → `search_rules::sort_by_recency`）；前端 `mergeSearchResults` 删。
+    //   条数上限：界面不交 `limit` ⇒ 每台用 `search_rules::DEFAULT_LIMIT`（`history.ts` 那份 300 的副本删了）。
+    // 〔P1〕`search-core` 拆进后端：通用口径住 `observe/search_rules.rs`（`DEFAULT_LIMIT` 与收 limit 的 `clamp_limit` 同一份文件；住址格只认 `fn`）。
+    homes: ["src/backend/observe/search_rules.rs::sort_by_recency", "src/backend/observe/search_rules.rs::clamp_limit"],
     status: "zero",
     defs: ["mergeSearchResults"],
     needles: [
@@ -453,7 +455,7 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     rustGone: ["src/backend/observe/facts_query.rs::is_agent_tool"],
     rustNeedles: [
       { file: "src/backend/observe/facts_query.rs", text: '&["Agent", "Task"]', count: 0 },
-      { file: "src/frontend/shell/src/adapter.rs", text: '&["Agent", "Task"]', count: 0 },
+      // 〔P1 · 第 4 件〕monitor `adapter.rs` 那一行摘了：那份文件随 monitor 的适配表整删（起会话事实只住后端适配层）。
       { file: "src/backend/agents/claudecode/cards.rs", text: '&["Agent", "Task"]', count: 1 },
     ],
   },
@@ -625,35 +627,7 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     split_keyed_base_url: NONE,
     STAGING_DIR_REL: NONE,
   },
-  "search-core": {
-    clamp_limit: NONE,
-    clean_user_text: "J10",
-    user_text: "J10", // 〔RENDER2〕合并口径的本体（`clean_user_text` 取它的 `clean`）
-    collapse_ws: NONE,
-    collapse_ws_keep_ellipsis: NONE,
-    DEFAULT_LIMIT: "J15",
-    extract_text_blocks: NONE,
-    extract_tool_text: NONE,
-    find_ci: NONE,
-    head_chars: NONE,
-    LIMIT_MAX: NONE,
-    LIMIT_MIN: NONE,
-    MAIN_CAP: NONE,
-    make_snippet: NONE,
-    new: NONE,
-    PER_SESSION_CAP: NONE,
-    session_title: NONE,
-    SNIPPET_CTX: NONE,
-    sort_by_recency: "J15",
-    spent: NONE,
-    starved: NONE,
-    stringify_json: NONE,
-    tail_chars: NONE,
-    take: NONE,
-    TOOL_CAP: NONE,
-    truncate_excerpt: NONE,
-    truncate_plain: NONE,
-  },
+  // 〔P1〕`search-core` 出列：crate 删了（通用口径 → 后端 `observe/search_rules.rs` · Claude 记录文本 → `agents/claudecode/text.rs`），J10 / J15 的住址改成路径形。
   "shell-quote-core": {
     // 〔合并 TL3 续做〕`INVARIANTS §47` ② 自由文本那一层（拒绝集只收 NUL / CR / LF）进了本 crate：TS 侧零处拼 shell、零处判它 ⇒ NONE。
     FREE_TEXT_REFUSED: NONE,
@@ -699,27 +673,21 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     upstream_is_loopback: "J9",
     usable: "J9",
   },
-  // 〔MIG-3b · 4d-lanes 子步 1〕部署决策（新立；本机常驻后端出计划 · monitor 放字节共用）。TS 侧零处判部署 ⇒ 全 NONE。
-  "deploy-core": {
+  // 〔MIG-3b · P1〕部署那一族的契约（`deploy-core` 拆开：判定那一半进了后端 `control/deploy_plan.rs`，这里只剩两侧对上的形状）。TS 侧零处判部署 ⇒ 全 NONE。
+  "deploy-contract": {
+    LAUNCHER_MARK: NONE, // 〔P1〕旧入口两形的记号（文件格式；认不认得出是后端判）
+    SHIM_MARK: NONE,
     LEGACY_BACKEND_REL: NONE,
     LEGACY_ENTRY_REL: NONE, // 〔THIN〕旧入口路径（契约：后端判去向 · monitor 照删 · 足迹一行）
     LEGACY_BACKEND_WORD: NONE,
     LINES: NONE,
     UNAME_CMD: NONE,
     build_order: NONE,
-    identity_decision: NONE,
     identity_of_bytes: NONE,
     interpret_stamp_scan: NONE,
-    interpret_target_probe: NONE,
-    is_newer: NONE,
-    is_ours: NONE,
-    judge: NONE,
     key_from_uname: NONE,
     key_of: NONE,
     label: NONE,
-    landing_verdict: NONE,
-    legacy_verdict: NONE,
-    promised: NONE,
     say: NONE,
     stamp_scan_cmd: NONE,
     this_machine: NONE,
@@ -843,10 +811,11 @@ describe("DUP1 判定只有一个家（设计/90 §3 判据 2）", () => {
   const tsAll = ts.map((s) => s.code).join("\n");
   const tsByFile = new Map(ts.map((s) => [s.file, s.code]));
 
-  it("① 人群两向：盘上 *-core 的 pub 项 == 登记表（逐 crate）", () => {
-    const diskCrates = [...byCrate.keys()].filter((c) => c.endsWith("-core")).sort();
-    expect(diskCrates.length, "一个 *-core 都没扫到 —— 路径断了，下面会零命中地绿").toBeGreaterThan(0);
-    expect(diskCrates, "盘上 *-core crate 集合 ≠ 登记表 crate 集合 ∪ {guard-core}").toEqual(
+  it("① 人群两向：盘上 `src/common/` 各 crate 的 pub 项 == 登记表（逐 crate）", () => {
+    // 〔P1〕人群是 `src/common/` 下的全部 crate（D5：从文件系统全集来）—— 从前按 `*-core` 后缀筛，`deploy-contract` 会静默出列。
+    const diskCrates = [...byCrate.keys()].sort();
+    expect(diskCrates.length, "一个共享 crate 都没扫到 —— 路径断了，下面会零命中地绿").toBeGreaterThan(0);
+    expect(diskCrates, "盘上 `src/common/` 的 crate 集合 ≠ 登记表 crate 集合 ∪ {guard-core}").toEqual(
       [...Object.keys(CORE_ITEMS), TEST_INFRA_CRATE].sort(),
     );
     const diff: string[] = [];

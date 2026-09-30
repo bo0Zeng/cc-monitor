@@ -605,17 +605,18 @@ fn the_shell_wake_scan_is_neither_too_narrow_nor_too_wide() {
     //   （`rust_files()` 只走 `src/`，够不着）。⇒ 直接按住址读，别让本条以
     //   「`search.rs` 里那个循环不见了」的形态红 —— **报的方向是错的**，
     //   它不见了不是因为有人删了它，是因为它搬走了。
-    let anchor = crate::guard_support::repo_src_root().join("common/search-core/src/lib.rs");
+    // 〔P1〕又搬一次：`search-core` 拆进后端，`find_ci` 随通用口径住 `src/backend/observe/search_rules.rs`。
+    let anchor = crate::guard_support::repo_src_root().join("backend/observe/search_rules.rs");
     let search = production(&fs::read_to_string(&anchor).unwrap_or_default());
     assert!(
         search.contains(&format!("for i in 0{}n", "..")),
-        "`src/common/search-core/src/lib.rs` 里那个 Rust `for i in 0..n`（`find_ci`）不见了 \
+        "`src/backend/observe/search_rules.rs` 里那个 Rust `for i in 0..n`（`find_ci`）不见了 \
              —— 下面那条反向断言失去了标的"
     );
     assert_eq!(
         shell_wake_hits(&search),
         0,
-        "模式面把 `search-core` 的 **Rust** 循环也收进来了 —— 那是摸底时踩过的那个错法\n\
+        "模式面把 `search_rules.rs` 的 **Rust** 循环也收进来了 —— 那是摸底时踩过的那个错法\n\
              （画大了 ⇒ 这张表被噪音填满 ⇒ 与画小了一样失去意义）"
     );
 }

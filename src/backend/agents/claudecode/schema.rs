@@ -30,13 +30,9 @@ pub struct UserText {
 }
 
 impl UserText {
-    /// 规则只有一份（`search_core::user_text`）；正文的抽法同全局搜索（`search_core::extract_text_blocks`）。
+    /// 规则只有一份（[`super::text::user_text`]）；正文的抽法同全局搜索（[`super::text::extract_text_blocks`]）。
     pub(crate) fn of(message: &ApiMessage) -> Self {
-        let v = search_core::user_text(&search_core::extract_text_blocks(&message.content));
-        Self {
-            clean: v.clean,
-            interrupt: v.interrupt,
-        }
+        super::text::user_text(&super::text::extract_text_blocks(&message.content))
     }
 }
 
@@ -122,7 +118,7 @@ pub enum JsonlRecord {
         // issue #12: fork session 的所有记录都带这个字段；非 fork session 缺失
         #[serde(rename = "forkedFrom", default)]
         forked_from: Option<ForkedFrom>,
-        /// 〔RENDER2 · J10〕剥完 CLI 注入噪声的正文与「是不是 ESC 中断标记」—— 规则只在 `search_core::user_text`，
+        /// 〔RENDER2 · J10〕剥完 CLI 注入噪声的正文与「是不是 ESC 中断标记」—— 规则只在 `agents/claudecode/text.rs::user_text`，
         /// 前端渲染 / 分叉折叠只读这个成品（不自己再判）。原文里没有这一格：解析完由 [`UserText::of`] 填（`parse::parse_line` · `agents/codex/record.rs`）。
         #[serde(rename = "userText", skip_deserializing, default)]
         user_text: UserText,
