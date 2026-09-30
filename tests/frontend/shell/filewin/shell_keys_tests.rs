@@ -16,17 +16,8 @@ use crate::filewin::source::Row;
 
 const SCREEN: egui::Vec2 = egui::vec2(1280.0, 800.0);
 
-fn synth_cfg(label: &str) -> crate::ssh_source::RemoteConfig {
-    crate::ssh_source::RemoteConfig {
-        host: "example.invalid".into(),
-        label: label.into(),
-        port: 22,
-        user: "nobody".into(),
-        key_path: None,
-        host_key_fingerprint: None,
-        addresses: Vec::new(),
-        jump: None,
-    }
+fn synth_cfg(label: &str) -> String {
+    String::from(label)
 }
 
 fn row(name: &str, is_dir: bool, size: u64, lossy: bool) -> Row {

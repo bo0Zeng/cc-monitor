@@ -73,8 +73,6 @@
 use crate::copy_table::copy_text;
 use std::path::Path;
 
-use crate::ssh_source::RemoteConfig;
-
 /// 文件列表里的一行。**故意比 `SftpEntry` 窄** —— 列表只画得下这些。
 ///
 /// 🔴〔第十三刀 2026-09-23〕**它现在要过一次进程边界**，所以多了 serde 那一对。
@@ -179,28 +177,21 @@ impl std::ops::Deref for Listed {
 /// 形状上的先例逐字住 `src/frontend/shell/Cargo.toml`（`creds-core` 那条 `harden` feature）：
 /// 「『backend 写不了这份文件』是**编译器**兜的，不是一条判据兜的」。
 ///
-/// 🔴〔第十三刀〕serde 那一对的理由同 [`Row`]：开窗那一跳要把它交给另一个进程。
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
-pub struct Source(Box<RemoteConfig>);
+/// 〔P4〕它装的是那台机器**寻址用的名字**（`RemoteConfig::origin_label` 的口径，monitor 开窗时算好随种子交来）。
+/// 从前装的是整份 `RemoteConfig`：窗口只拿它取名字、再给「在此打开终端」算机器事实 —— 开终端改由 monitor 接之后只剩名字，
+/// 窗口进程从此不认识 monitor 的配置类型（`filewin` 边界判据那一格「开窗配置的类型」清零）。
+#[derive(Clone, Debug)]
+pub struct Source(String);
 
 impl Source {
     /// 造一个 —— **这是唯一的造法**。
-    pub fn remote(cfg: RemoteConfig) -> Self {
-        Source(Box::new(cfg))
-    }
-
-    /// 那台机器的配置。
-    ///
-    /// ⚠ 回引用而**不是**克隆：调用方里有一半只是要读 `origin_label()`，
-    /// 而另一半要 `clone()` 一份丢进 tokio —— 让后者自己写那一声 `clone`，
-    /// 别在这里替所有人付。
-    pub fn cfg(&self) -> &RemoteConfig {
-        &self.0
+    pub fn remote(name: String) -> Self {
+        Source(name)
     }
 
     /// 给窗口标题/面包屑用的短名。
     pub fn label(&self) -> String {
-        self.0.origin_label()
+        self.0.clone()
     }
 
     /// 这一趟问的是**哪台机器** —— 走 [`Origin`]（`chan::wire` 再导出的全仓那一个类型）。
@@ -214,11 +205,11 @@ impl Source {
     /// ⚠ **刻意不回 `String`**：`origin_tests::no_new_raw_string_origin_parameters`
     /// 是一条递减棘轮 —— `设计/00 §2.5 ①` 逐字「origin 归一 —— 这是地基」，
     /// 新代码一律用这个类型，不许再给这个概念造一种表达。
-    /// ⚠ 这里用 `origin_label()`，与 `ssh_source` 的 `stream_loop` 登记时
+    /// ⚠ 那个名字由 monitor 开窗时用 `origin_label()` 算（`filewin/entry.rs`），与 `ssh_source` 的 `stream_loop` 登记时
     /// 用的是**同一个函数** —— 两处漂开的症状是「命令发给了一个谁都没登记过的
     /// origin，而且不报错」（`inbound_client::LOCAL_ORIGIN` 的头注记过同一形）。
     pub fn origin(&self) -> Origin {
-        Origin(self.0.origin_label())
+        Origin(self.0.clone())
     }
 }
 

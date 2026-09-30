@@ -801,16 +801,7 @@ fn find_from_walks_forward_backward_and_wraps_in_chars() {
 }
 
 fn window_editing(text: &str) -> (crate::filewin::shell::FileWindow, egui::Context) {
-    let cfg = crate::ssh_source::RemoteConfig {
-        host: "example.invalid".into(),
-        label: "find".into(),
-        port: 22,
-        user: "nobody".into(),
-        key_path: None,
-        host_key_fingerprint: None,
-        addresses: Vec::new(),
-        jump: None,
-    };
+    let cfg = String::from("find");
     let mut w = crate::filewin::shell::FileWindow::seeded(
         crate::filewin::source::Source::remote(cfg),
         "/srv".to_string(),

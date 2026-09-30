@@ -26,7 +26,6 @@
 //!   而「够不着之后窗口上那行橙字说得对不对」是 `source` / `find` 那两摞的活。
 
 use super::*;
-use crate::ssh_source::RemoteConfig;
 
 /// 改环境变量那几条**必须串行**：`std::env` 是进程级的，而 `cargo test` 默认并行。
 ///
@@ -34,23 +33,14 @@ use crate::ssh_source::RemoteConfig;
 /// 本仓对「偶发红会被人学会重跑绕过」记过一笔，所以这里直接串起来。
 static ENV: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
-/// 一台**字段全填满**的合成远端 —— 种子对拍要的是「每一格都过得去」。
-fn synthetic_cfg() -> RemoteConfig {
-    RemoteConfig {
-        host: "10.0.0.7".to_string(),
-        label: "台架-远端".to_string(),
-        port: 2222,
-        user: "zbl".to_string(),
-        key_path: Some("/home/zbl/.ssh/id_ed25519".to_string()),
-        host_key_fingerprint: Some("SHA256:xxxx".to_string()),
-        addresses: vec!["10.0.0.7".to_string(), "fd00::7".to_string()],
-        jump: None,
-    }
+/// 一台合成远端的名字（〔P4〕种子里只剩名字：窗口不再拿整份 `RemoteConfig`）—— 带中文与连字符，同 `cwd` 那一格的理由。
+fn synthetic_cfg() -> String {
+    "台架-远端".to_string()
 }
 
 fn synthetic_request() -> OpenRequest {
     OpenRequest {
-        source: Source::remote(synthetic_cfg()),
+        origin: synthetic_cfg(),
         cwd: Some("/home/zbl/带空格 的目录".to_string()),
         // 〔MIG-3a · 09-28 裁 3〕「那一屏」（`rows`，含链接 · 时间 · 有损名原始字节几格）不再过这条边界：
         //   窗口进程自己列（`first_screen`）；那几格的解法由 `source_tests` 的 `row_from_ls_entry` 那几条判。
@@ -87,7 +77,7 @@ fn a_seed_survives_the_trip_through_a_process_boundary() {
     let want = synthetic_request();
     let wire = encode_request(&want).expect("种子序列化不了 —— 那这条路整条不通");
     let got = decode_request(&wire).expect("自己写的种子自己读不动");
-    // ── `OpenRequest` 没有 `PartialEq`（`RemoteConfig` 也没有）⇒ 逐格比。
+    // ── `OpenRequest` 没有 `PartialEq` ⇒ 逐格比。
     //    🔴 **逐格比不是偷懒**：它让「新加一个字段而没进种子」当场红在下面那条
     //    字段数自检上，而一个 `PartialEq` 的 `assert_eq!` 在**字段被漏掉时恒真**
     //    （漏掉的那一格两侧都是默认值）。
@@ -120,32 +110,8 @@ fn a_seed_survives_the_trip_through_a_process_boundary() {
     //    （对不上就 `panic!("源的判别式没过得去")`），下面还单独喂一份
     //    `Source::Local` 的种子对拍它那一格。`Source` 收成 newtype 之后
     //    **判别式这个概念不存在了** ⇒ 那两处不是被删掉的判据，是它们判的东西没了。
-    {
-        let (a, b) = (got.source.cfg(), want.source.cfg());
-        {
-            assert_eq!(
-                (
-                    &a.host,
-                    &a.label,
-                    a.port,
-                    &a.user,
-                    &a.key_path,
-                    &a.host_key_fingerprint,
-                    &a.addresses
-                ),
-                (
-                    &b.host,
-                    &b.label,
-                    b.port,
-                    &b.user,
-                    &b.key_path,
-                    &b.host_key_fingerprint,
-                    &b.addresses
-                ),
-                "远端配置漂了 —— 窗口会去连另一台机器（或者连不上而说不清为什么）"
-            );
-        }
-    }
+    // 〔P4〕那台的名字（从前是整份远端配置：主机 · 口 · 用户 · 钥匙路径 · 地址表逐格比；窗口今天只拿名字）。
+    assert_eq!(got.origin, want.origin, "那台的名字漂了 —— 窗口会问另一台机器（或者谁都没登记过的名字）");
     // 🔴〔F2〕交接件整份过得去（地址 · 帧长 · 钥匙），否则窗口拨不回来。
     assert_eq!(got.handoff.addr, want.handoff.addr, "交接件的地址漂了");
     assert_eq!(got.handoff.frame, want.handoff.frame, "交接件的帧长漂了");
@@ -157,7 +123,7 @@ fn a_seed_survives_the_trip_through_a_process_boundary() {
     );
     // ★ 反向自检：**线上那份字节里真的装着那几个值**。
     //   少了这一比，一个「原样回传入参」的假实现照样绿（encode/decode 都不走 serde）。
-    for needle in ["10.0.0.7", "带空格 的目录", "id_ed25519", "书签 目录"] {
+    for needle in ["台架-远端", "带空格 的目录", "书签 目录"] {
         assert!(
             wire.contains(needle),
             "线上那份字节里找不到 {needle:?} —— encode/decode 可能压根没经过 serde：{wire}"
@@ -278,7 +244,7 @@ fn opening_a_window_three_times_really_starts_three_independent_processes() {
     let _g = ENV.lock().unwrap_or_else(|e| e.into_inner());
     std::env::set_var(BIN_ENV, stdin_eating_stand_in());
     let req = OpenRequest {
-        source: Source::remote(synthetic_cfg()),
+        origin: synthetic_cfg(),
         cwd: Some("/tmp".to_string()),
         reveal: None,
         handoff: synthetic_handoff(),
@@ -350,7 +316,7 @@ fn the_seed_really_arrives_on_the_child_process_stdin() {
     );
     // ★ 反向自检：那份字节**不是空的**，而且真的装着东西（否则上面是「空 == 空」）。
     assert!(
-        seen.contains("10.0.0.7") && seen.len() > 100,
+        seen.contains("台架-远端") && seen.len() > 100,
         "送到对面的种子看起来是空的（{} 字节）—— 上面那条相等此刻是空真：{seen}",
         seen.len()
     );
@@ -391,7 +357,7 @@ fn the_window_process_lists_first_and_the_parent_carries_its_words() {
     let dir = std::env::temp_dir().join(format!("filewin-ready-{}", std::process::id()));
     std::fs::create_dir_all(&dir).expect("造不出临时目录");
     let req = OpenRequest {
-        source: Source::remote(synthetic_cfg()),
+        origin: synthetic_cfg(),
         cwd: None,
         reveal: None,
         handoff: synthetic_handoff(),
@@ -448,7 +414,7 @@ fn a_window_that_dies_after_being_judged_open_is_still_reported() {
     let dir = std::env::temp_dir().join(format!("filewin-late-{}", std::process::id()));
     std::fs::create_dir_all(&dir).expect("造不出临时目录");
     let req = OpenRequest {
-        source: Source::remote(synthetic_cfg()),
+        origin: synthetic_cfg(),
         cwd: None,
         reveal: None,
         handoff: synthetic_handoff(),
@@ -563,7 +529,7 @@ fn a_window_process_that_dies_at_once_comes_back_as_a_reason() {
     std::env::set_var(BIN_ENV, &fake);
     let e = open_in_new_process(
         &OpenRequest {
-            source: Source::remote(synthetic_cfg()),
+            origin: synthetic_cfg(),
             cwd: Some(dir.to_string_lossy().to_string()),
             reveal: None,
             handoff: synthetic_handoff(),

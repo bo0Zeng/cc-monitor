@@ -35,16 +35,11 @@ use std::sync::{Arc, Mutex};
 
 use super::source::Origin;
 
-/// 书签文件的名字（住 monitor 数据目录下）。**唯一住址**。
-pub const FILE_NAME: &str = crate::data_paths::FILEWIN_BOOKMARKS_FILE;
+// 〔P4〕书签文件的名字 ＋ 「它在数据目录下的全路径」（`FILE_NAME`〔散文墓碑〕· `file_in`〔散文墓碑〕）挪到了 monitor 那一侧：
+//   名字只住 `data_paths::FILEWIN_BOOKMARKS_FILE`，全路径由开窗入口算好、随种子交来（窗口进程不找数据目录，`设计/60 §2.8`）。
 
 /// 整份书签：机器 → 那台机器上的目录（保序、不重样）。
 pub type Book = BTreeMap<String, Vec<String>>;
-
-/// 书签文件在 `dir` 下的全路径。
-pub fn file_in(dir: &Path) -> PathBuf {
-    dir.join(FILE_NAME)
-}
 
 /// 锁旁件的路径（与书签文件同目录，名字后面接 `.lock`）。
 fn lock_path(file: &Path) -> PathBuf {

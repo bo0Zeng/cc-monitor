@@ -122,82 +122,15 @@ use crate::copy_table::copy_text;
 use std::path::{Path, PathBuf};
 
 use super::source::{Listed, Source};
+// 〔P4〕种子 · 就绪那一行 · 指到窗口二进制的环境变量：monitor 与窗口进程两边对上的形状住 `filewin-contract`。
+pub use filewin_contract::{
+    decode_ready, decode_request, encode_ready, encode_request, OpenRequest, Ready, BIN_ENV,
+};
 
 /// 窗口进程那份二进制的**文件名主干**。
 ///
 /// ⚠ 与本包主二进制同住一个目录（`cargo` 的 `target/<档>/` 或安装包的 exe 旁）。
 pub const BIN_STEM: &str = "cc-monitor-filewin";
-
-/// 覆盖「那份二进制在哪」的环境变量。
-///
-/// 🔴 它存在的理由与 `local_backend::BACKEND_BIN_ENV` / `CCM_DIAL_PROXY` 逐字同形：
-/// **判据跑在 `target/<档>/deps/` 里**（`current_exe()` 给的是那条测试二进制），
-/// 而 `[[bin]]` 的产物在它的上一级 ⇒ 判据必须说得出「用这一份」。
-/// ⚠ 它**不是** fail-open 的开关：给了但那份文件不在，照旧是一条响亮的失败。
-pub const BIN_ENV: &str = "CCM_FILEWIN_BIN";
-
-/// 一次开窗的**全部**输入 —— 它整份过一次进程边界（走 stdin，见模块头注 §三）。
-///
-/// 🔴〔F2 · 2026-09-24〕多了 [`Self::handoff`]：通道的交接件（回环地址 ＋ **钥匙** ＋ 帧长）。
-/// 它**只走 stdin** —— 不走 argv（`/proc/<pid>/cmdline` 世界可读）、不走环境变量
-/// （`/proc/<pid>/environ` 同用户可读、且会被孙进程继承），理由与 `chan/host.rs` 头注
-/// 「钥匙怎么交接」第 3 步逐字同一条。⚠ 本类型的 `Debug` 会打到 `Handoff` 那一格，
-/// 而 `Handoff` / `Key` 的 `Debug` 都手写成不打印钥匙 —— 钥匙不进日志。
-///
-/// 🔴 字段与 `super::shell::FileWindow::seeded` ＋ `set_reveal` 的入参**一一对应**，
-/// 刻意不多不少：多一个字段就是一处「窗口那侧能有、而开窗这条路给不了」的缝。
-/// 〔MIG-3a · 09-28 裁 3〕例外恰好两格、都由窗口进程自己补：`rows`（那一屏，[`first_screen`] 列）与
-/// `cwd` 缺席时的 home（[`first_screen`] 问）。
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
-pub struct OpenRequest {
-    /// 这个窗口看哪台机器。
-    pub source: Source,
-    /// 开在哪个目录；`None` = 问那台机器的 home（`files-home`，窗口进程自己问）。
-    /// 〔MIG-3a · 09-28 裁 3〕「已经列好的那一屏」（`rows`）这一格删了：第一屏由窗口进程自己列（[`first_screen`]）。
-    pub cwd: Option<String>,
-    /// 开窗就高亮这一行（`None` = 不高亮）。
-    pub reveal: Option<String>,
-    /// 🔴〔F2〕窗口进程拿它拨回 monitor 那个通道口（`chan::dial::dial`）。
-    pub handoff: crate::chan::host::Handoff,
-    /// 〔FW34〕书签文件的全路径（monitor 算好：它住 monitor 的数据目录）。
-    /// `None` ＝ 数据目录解不出来 ⇒ 窗口的书签栏上出声，不静默不画。
-    pub bookmarks: Option<std::path::PathBuf>,
-    /// 〔FILES2 · V152〕「复制到另一台」那一问的下拉：本机 ＋ 已配的远端（monitor 从已有的配置读口算好；名字与 `origin` 同一个口径）。
-    #[serde(default)]
-    pub machines: Vec<String>,
-    /// 〔WF2 · WIN3 读数 D〕主窗所在显示器的工作区（monitor 问 Tauri 得来）：窗口开出来第一拍夹进它。`None` ＝ 问不到，不夹。
-    #[serde(default)]
-    pub work_area: Option<host_core::WorkArea>,
-}
-
-/// 种子 → 字节。**纯函数**（判据两向对拍）。
-///
-/// # Errors
-///
-/// 序列化失败（今天只可能是 `Row`/`Source` 里出现了 serde 表达不了的东西）。
-pub fn encode_request(r: &OpenRequest) -> Result<String, String> {
-    serde_json::to_string(r)
-        .map_err(|e| copy_text("rsFilewinProc.seed.encodeFailed", &[("e", &e.to_string())]))
-}
-
-/// 字节 → 种子。**纯函数**。
-///
-/// ⚠ 它**不许**对残缺的种子补默认值：补一个默认 cwd 出来，用户会看到一个
-/// 开在别处的窗口而且没有一句话。解不出来就是错。
-///
-/// # Errors
-///
-/// 不是合法 JSON / 字段形状不对 / 空输入。
-pub fn decode_request(raw: &str) -> Result<OpenRequest, String> {
-    if raw.trim().is_empty() {
-        return Err(copy_text(
-            "rsFilewinProc.seed.empty",
-            &[("binEnv", &BIN_ENV.to_string())],
-        ));
-    }
-    serde_json::from_str(raw)
-        .map_err(|e| copy_text("rsFilewinProc.seed.unreadable", &[("e", &e.to_string())]))
-}
 
 /// 窗口那份二进制在 `dir` 里的落点。**纯函数**（判据要在临时目录上喂它）。
 pub fn window_bin_in(dir: &Path) -> PathBuf {
@@ -521,40 +454,6 @@ pub const DIAL_BUDGET: std::time::Duration = std::time::Duration::from_secs(5);
 /// 开窗前那两问（home · 第一屏）各自的往返上限（调用方给的期限；〔MIG-3a · 09-28 裁 3〕随那两问从 `entry.rs` 搬来）。
 pub const FIRST_SCREEN_BUDGET: std::time::Duration = std::time::Duration::from_secs(20);
 
-/// 窗口进程在 stdout 上说的**那一行**（〔MIG-3a · 09-28 裁 3〕）：第一屏列到几行，或列不出来的原话。
-/// 线上形 `{"listed":N}` / `{"failed":"…"}`，一行一个 JSON。
-#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum Ready {
-    /// 列出来了（行数）—— 它接着就开窗。
-    Listed(usize),
-    /// 列不出来（原话）—— 它不开窗就退。
-    Failed(String),
-}
-
-/// [`Ready`] → 那一行（带换行）。**纯函数**。
-pub fn encode_ready(r: &Ready) -> String {
-    // `Ready` 只有一个整数或一个字符串，序列化不会失败；万一失败也得是一行、而且说清。
-    let mut s = serde_json::to_string(r).unwrap_or_else(|e| {
-        format!(
-            "{{\"failed\":{}}}",
-            serde_json::Value::String(e.to_string())
-        )
-    });
-    s.push('\n');
-    s
-}
-
-/// 那一行 → [`Ready`]。**纯函数**；解不出来就是错（不猜）。
-///
-/// # Errors
-///
-/// 不是约定的那两种形状。
-pub fn decode_ready(line: &str) -> Result<Ready, String> {
-    serde_json::from_str(line.trim())
-        .map_err(|e| copy_text("rsFilewinProc.ready.unreadable", &[("e", &e.to_string())]))
-}
-
 /// 〔MIG-3a · 09-28 裁 3〕**开窗前那一屏，窗口进程自己问**：`cwd` 缺席 ⇒ 先问那台 `files-home`；再列那个目录。
 /// 回 `(起点, 那一屏)`。与窗口里之后每一次列目录同一条路（[`super::source::list_dir`] → [`super::source::ask`]）。
 ///
@@ -659,13 +558,14 @@ pub fn child_main() -> i32 {
     };
     // 🔴〔MIG-3a · 09-28 裁 3〕**列不出来就别开窗**（那条纪律从 monitor 那一侧搬到这里，一个字没动）：
     //    先列第一屏，说一行给父进程；列不出来 ⇒ 说原话、退，窗口一个都不开。
-    let (cwd, rows) = match rt.block_on(first_screen(&line, &req.source, req.cwd.clone())) {
+    let source = Source::remote(req.origin.clone());
+    let (cwd, rows) = match rt.block_on(first_screen(&line, &source, req.cwd.clone())) {
         Ok(first) => first,
         Err(e) => return refuse(e, EXIT_NOT_LISTED),
     };
     say(&Ready::Listed(rows.len()));
     let h = super::shell::open_detached_seeded(
-        req.source,
+        source,
         cwd,
         Some(rt.handle().clone()),
         Some(line),

@@ -304,3 +304,13 @@ fn a_reveal_request_we_cannot_split_is_an_error_not_a_silent_home() {
     //（少了这一半，上面那一比可以靠「什么都报错」全绿）。
     assert!(plan_target("", Some("/a/b.txt")).is_ok());
 }
+
+/// 〔P4〕开窗种子里那台的名字 ＝ `RemoteConfig::origin_label`（`label` 为空时回退到 `host`）——
+/// 原住 `shell_tests::every_source_has_a_non_empty_label` 的后一半：窗口只拿名字之后，「名字怎么从配置来」是开窗入口这一侧的事。
+#[test]
+fn the_seed_names_the_machine_by_its_origin_label() {
+    assert_eq!(synth_cfg().origin_label(), "synthetic-origin");
+    let mut anon = synth_cfg();
+    anon.label.clear();
+    assert_eq!(anon.origin_label(), "example.invalid");
+}

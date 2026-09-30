@@ -1034,16 +1034,7 @@ impl Wired {
 /// `reload()`，而远端那一支会去拨真 SFTP —— 本仓红线不许起真连接。
 pub fn window_on(wired: &Wired, cwd: &str) -> crate::filewin::shell::FileWindow {
     let origin = wired.origin.as_str();
-    let cfg = crate::ssh_source::RemoteConfig {
-        host: "example.invalid".into(),
-        label: origin.into(),
-        port: 22,
-        user: "nobody".into(),
-        key_path: None,
-        host_key_fingerprint: None,
-        addresses: Vec::new(),
-        jump: None,
-    };
+    let cfg = String::from(origin);
     let mut w = crate::filewin::shell::FileWindow::seeded(
         crate::filewin::source::Source::remote(cfg),
         cwd.to_string(),

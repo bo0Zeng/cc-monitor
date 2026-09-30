@@ -10890,7 +10890,7 @@
       "zh": "终端没打开：{why}",
       "args": ["why"]
     },
-    "rsFilewinShell.terminal.badCwd": {
+    "beTerminal.refuse.badCwd": {
       "kind": "error",
       "zh": "当前目录 {cwd} 开不了终端。要绝对路径，不含 .. 段、换行或 NUL",
       "args": ["cwd"]
@@ -10950,7 +10950,7 @@
       "zh": "取消",
       "args": []
     },
-    "rsFilewinShell.terminal.badReply": {
+    "rsChanHost.terminal.badReply": {
       "kind": "error",
       "zh": "本机后端回的内容读不懂，终端没打开。多半是后端版本不对。",
       "args": []
@@ -13672,6 +13672,16 @@
     "rsChanHost.transfer.noConfig": {
       "kind": "error",
       "zh": "没有叫「{machine}」的远端配置，传输要那台机器的 SSH 配置",
+      "args": ["machine"]
+    },
+    "rsChanHost.terminal.localNone": {
+      "kind": "error",
+      "zh": "本机那一侧没有文件窗口，在此打开终端只接远端机器",
+      "args": []
+    },
+    "rsChanHost.terminal.noConfig": {
+      "kind": "error",
+      "zh": "没有叫「{machine}」的远端配置，开终端要那台机器的 SSH 配置",
       "args": ["machine"]
     },
     "rsChanHost.transfer.localNone": {

@@ -1680,6 +1680,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "filewin-contract"
+version = "0.1.0"
+dependencies = [
+ "chan-core",
+ "copy-core",
+ "host-core",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "find-msvc-tools"
 version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3158,6 +3169,7 @@ dependencies = [
  "dirs 5.0.1",
  "eframe",
  "egui",
+ "filewin-contract",
  "futures",
  "guard-core",
  "host-core",

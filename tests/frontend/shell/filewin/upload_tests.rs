@@ -98,16 +98,7 @@ fn the_is_file_check_has_exactly_one_production_address() {
 async fn clicking_upload_then_ok_runs_the_drop_path_over_the_channel() {
     use crate::filewin::copy::testing::rects_of;
     let (line, origin, log) = xfer_rig(Ends::Done).await;
-    let cfg = crate::ssh_source::RemoteConfig {
-        host: "example.invalid".into(),
-        label: origin.0.clone(),
-        port: 22,
-        user: "nobody".into(),
-        key_path: None,
-        host_key_fingerprint: None,
-        addresses: Vec::new(),
-        jump: None,
-    };
+    let cfg = origin.0.clone();
     let mut w = crate::filewin::shell::FileWindow::seeded(
         crate::filewin::source::Source::remote(cfg),
         "/srv".to_string(),
