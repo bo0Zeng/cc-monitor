@@ -803,6 +803,12 @@ fn every_comment_stripping_transformer_is_registered() {
         // 搬家当场被本条逮住（多出 `job_block`、少了那两个）—— 这正是默认拒绝该有的样子。
         ("shared_crate_registry_ci_yaml.rs::job_block", "不是剥法：抽某个 job 的段落"),
         ("ssh_config.rs::parse_host_aliases", "不是剥法：解析 ssh config 的 Host 别名（〔MIG-1〕随导入搬进后端 `dial/`）"),
+        (
+            // 〔P5〕开终端的令牌握手前奏随渲染从 monitor `launch.rs` 搬进后端方言层（monitor 那一份当年没被这把尺子认出来：它回 `Result`）。
+            "powershell.rs::rbind_bind_prelude",
+            "**生产渲染、不是判据剥法**：剥的是我们自己那份 PowerShell 模板的 `#` 整行注释（产物进 `-EncodedCommand`，\
+                 命令行 32767 字符的额度），后端生产段链不到 `guard_core`；与 `dialect.rs::parse_file` 同一个缺口（共享原语没有「注释前缀」参数）",
+        ),
         ("registry_tests.rs::declared_fields_of", "不是剥法：解析结构体字段声明"),
         // 〔`K-R62` 09-11〕**方向恰好相反的一条**：它不剥注释，它**把注释留下来并指名**。
         // 那一格的正题是「你 rc 里这几行是旧的」——`#` 打头的行照样进结果，只是分类成

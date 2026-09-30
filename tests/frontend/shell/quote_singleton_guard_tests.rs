@@ -22,7 +22,7 @@ const ESCAPE_PLAIN: &str = r#""'\\''""#;
 ///
 /// ⚠ 走过一次弯路，记下来：我先想按「动作」派生人群（凡是替换单引号字符的都算）。
 /// 量了之后否掉 —— 它**够不着唯一的家**（那里是逐 char `push_str`，根本没有 `replace`），
-/// 却会**误伤 `launch.rs::ps_quote`**（PowerShell 的 `''` 转义，是另一门语言的正确写法）。
+/// 却会**误伤当年 monitor 里那个 PowerShell `''` 转义**（另一门语言的正确写法；〔P5〕它已删，PowerShell 字面量只在后端写）。
 /// **派生不是万能的：派生错了人群，比手写清单更糟，因为它看起来更有原则。**
 const ESCAPE_ALT_RAW: &str = r#"'"'"'"#;
 const ESCAPE_ALT_PLAIN: &str = r#"'\"'\"'"#;
@@ -137,3 +137,80 @@ fn the_sole_home_really_holds_the_implementation() {
 //   更早摘掉的两个：`launch::posix_quote`〔散文墓碑〕（FIX4，远端 ssh 外壳随渲染进了本机后端）· `acct_iso_deploy::sq`（MIG-3a）。
 //   「不逃逸的第二份实现」那一形照旧由上面的零命中守卫 ＋ 唯一的家那两条挡（当年只比一个入口时，把 `posix_quote`〔散文墓碑〕
 //   换成不逃逸的写法照样全绿 —— 那条教训今天落在「monitor 侧零个入口」上）。
+
+// ═══════ 〔P5〕PowerShell 那一门：monitor 里一个引号器都不许有 ═══════════════════
+
+/// PowerShell 单引号引号器必有的记号：双写替换串 `"''"`（只转 ASCII 的那一形）· PowerShell 专有的四个引号字符
+/// （认全的那一形必须点名它们；字面或 `\u{…}` 两种写法）。`(记号名, 源码里的写法)`。
+const PS_QUOTER_MARKS: &[(&str, &[&str])] = &[
+    ("\"''\"", &["\"''\""]),
+    ("U+2018", &["\u{2018}", "\\u{2018}"]),
+    ("U+2019", &["\u{2019}", "\\u{2019}"]),
+    ("U+201A", &["\u{201a}", "\\u{201a}", "\\u{201A}"]),
+    ("U+201B", &["\u{201b}", "\\u{201b}", "\\u{201B}"]),
+];
+
+/// 一份源码（原文）的生产段里各记号出现几处（只收非零）。
+fn ps_quoter_census(src: &str) -> std::collections::BTreeMap<&'static str, usize> {
+    let prod = guard_core::production_code(src);
+    PS_QUOTER_MARKS
+        .iter()
+        .map(|(name, spellings)| {
+            (
+                *name,
+                spellings.iter().map(|s| prod.matches(s).count()).sum(),
+            )
+        })
+        .filter(|(_, k)| *k > 0)
+        .collect()
+}
+
+/// ★ 住址：`4d-lanes` P5 ——「判据：monitor 生产段零 PowerShell 引号器（零命中）」
+/// （主会话裁：V156 方言只住后端，PowerShell 字面量只走后端 `platform/shell/dialect.rs::ps_literal`）。
+/// 人群：前端树 `src/frontend/**.rs` 的生产段（剥注释与测试段）。零命中；正控两条：同一把尺子量后端那唯一的出口恰好量出四个引号字符 ·
+/// 往 `launch.rs` 副本塞回旧的只转 ASCII 那一形数得出。买不到：按码点现算出引号、不写任何字面量的等价实现这把尺子看不见。
+#[test]
+fn the_monitor_holds_no_powershell_quoter() {
+    let root = repo_root();
+    let files = guard_core::scan_tree_excluding(&root.join("src/frontend"), &["rs"], &[]);
+    assert!(
+        files
+            .iter()
+            .any(|(p, _)| p.ends_with("src/frontend/shell/src/launch.rs")),
+        "前端树里没扫到 `launch.rs`（共 {} 份）—— 遍历坏了，本条会零命中地绿",
+        files.len()
+    );
+    let hits: Vec<(String, std::collections::BTreeMap<&str, usize>)> = files
+        .iter()
+        .map(|(p, src)| {
+            (
+                p.strip_prefix(&root).unwrap_or(p).display().to_string(),
+                ps_quoter_census(src),
+            )
+        })
+        .filter(|(_, c)| !c.is_empty())
+        .collect();
+    assert_eq!(
+        hits,
+        vec![],
+        "monitor 里又长出了 PowerShell 引号器 —— PowerShell 字面量只在后端写（`platform/shell/dialect.rs::ps_literal`，认全五个引号字符），\
+         要渲 PowerShell 就问本机后端要成品"
+    );
+    let sole = include_str!("../../../src/backend/platform/shell/dialect.rs");
+    assert_eq!(
+        ps_quoter_census(sole),
+        std::collections::BTreeMap::from([
+            ("U+2018", 1),
+            ("U+2019", 1),
+            ("U+201A", 1),
+            ("U+201B", 1)
+        ]),
+        "同一把尺子量不出后端那唯一的出口 —— 尺子坏了，上面那条零命中不可信"
+    );
+    let launch = include_str!("../../../src/frontend/shell/src/launch.rs");
+    let planted = format!("{launch}\nfn q(s: &str) -> String {{\n    format!(\"'{{}}'\", s.replace('\\'', \"''\"))\n}}\n");
+    assert_eq!(
+        ps_quoter_census(&planted),
+        std::collections::BTreeMap::from([("\"''\"", 1)])
+    );
+}

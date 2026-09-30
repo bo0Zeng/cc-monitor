@@ -664,6 +664,11 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     rbind_token_ok: "J8",
     RBIND_TOKEN_LEN: NONE,
     RBIND_TOKEN_ALPHABET: NONE,
+    // 〔P5〕令牌握手的 marker 与目录名（写侧后端前奏 · 读侧 monitor `bind.rs` 共用的契约）：TS 侧零处拼 marker、零处写握手文件 ⇒ NONE。
+    RBIND_TOKEN_MARKER_PREFIX: NONE,
+    AWAIT_SUBDIR: NONE,
+    rbind_token_marker: NONE,
+    rbind_token_from_marker: NONE,
     // 〔DUP3 · J3〕启动器命令片段白名单（§47 ③）；两个常量是规则的一部分，TS 不抄 ⇒ NONE。
     launcher_refused_char: "J3",
     LAUNCHER_EXTRA: NONE,

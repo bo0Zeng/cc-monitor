@@ -13842,11 +13842,6 @@
       "zh": "拒绝启动：启动令牌格式不对（应为 32 个小写十六进制字符）",
       "args": []
     },
-    "rsLaunch.refuse.badToken": {
-      "kind": "error",
-      "zh": "拒绝启动：启动令牌格式不对（应为 32 个小写十六进制字符）",
-      "args": []
-    },
     "rsLaunch.local.notOnWindows": {
       "kind": "error",
       "zh": "POSIX 本地启动不适用于 Windows，Windows 本机走 PowerShell",

@@ -996,14 +996,20 @@ export function tmuxMintCalls(calls: ReadonlyArray<readonly unknown[]>): [string
 //  〔FIX4 · `设计/99 §2.1 ⑬`〕开终端改成三步之后，判据那一侧的翻译
 // ════════════════════════════════════════════════════════════════════════════
 //
-// 今天开终端是三步（`src/frontend/ui/terminal-open.ts`）：monitor `terminal_dial {origin}`（机器事实）→ 本机后端 `terminal-ssh`
-// （渲 `ssh -t …` 那一行）→ monitor `open_terminal_window {command, rbindToken, ssh}`。判据手里的替身按**旧的那一条**答话、断言
-// （`launch_remote_terminal {origin, remoteCmd, rbindToken}`）⇒ 本节把三步译回那一条：
-// - `terminal-ssh` **原样回**交进来的那串（ssh 外壳的字节归 Rust：`tests/backend/dial_terminal_tests.rs`，这里不重抄渲染）；
+// 今天开终端是三步（`src/frontend/ui/terminal-open.ts`）：monitor `terminal_dial {origin}`（机器事实，只远端）→ 本机后端 `terminal-ssh`
+// （渲 `ssh -t …` 那一行）/ `terminal-local`（本机那一串）→ monitor `open_terminal_window {command, ssh}`。〔P5〕令牌交给后端那一跳。
+// 判据手里的替身按**旧的那一条**答话、断言（`launch_remote_terminal {origin, remoteCmd, rbindToken}`）⇒ 本节把三步译回那一条：
+// - 两条帧命令都**原样回**交进来的那串（前奏与 ssh 外壳的字节归 Rust：`tests/backend/dial_terminal_tests.rs`，这里不重抄渲染），
+//   交给后端的 `rbindToken` 记下、开窗那一步补回；
 // - 开窗那一步凭「上一次 `terminal_dial` 问的是哪台」补回 origin；`ssh: false` ⇒ 本机串 `<local>`。
 /** 这一发是不是开终端那三步之一。 */
 export function isTerminalStep(cmd: string, args: unknown): boolean {
-  return cmd === "terminal_dial" || cmd === "open_terminal_window" || isChanCall(cmd, args, "terminal-ssh");
+  return (
+    cmd === "terminal_dial" ||
+    cmd === "open_terminal_window" ||
+    isChanCall(cmd, args, "terminal-ssh") ||
+    isChanCall(cmd, args, "terminal-local")
+  );
 }
 
 /** 把开终端那三步译回旧的 `launch_remote_terminal`（见本节头注）；别的原样交进去。 */
@@ -1011,19 +1017,24 @@ export function terminalShim(
   inner: (cmd: string, args?: unknown) => unknown,
 ): (cmd: string, args?: unknown) => Promise<unknown> {
   let asked: string | null = null;
+  let token: string | null = null;
   return async (cmd, args) => {
     if (cmd === "terminal_dial") {
       asked = (args as { origin: string }).origin;
       return { machine: { label: asked } };
     }
-    if (isChanCall(cmd, args, "terminal-ssh")) {
-      return chanReply({ command: (chanArgsJson(args) as { command: string }).command });
+    if (isChanCall(cmd, args, "terminal-ssh") || isChanCall(cmd, args, "terminal-local")) {
+      const a = chanArgsJson(args) as { command: string; rbindToken?: string | null };
+      token = a.rbindToken ?? null;
+      return chanReply({ command: a.command });
     }
     if (cmd === "open_terminal_window") {
-      const a = args as { command: string; rbindToken: string | null; ssh: boolean };
+      const a = args as { command: string; ssh: boolean };
       const origin = a.ssh ? (asked ?? "<没问过 terminal_dial>") : "<local>";
+      const rbindToken = token;
       asked = null;
-      return inner("launch_remote_terminal", { origin, remoteCmd: a.command, rbindToken: a.rbindToken });
+      token = null;
+      return inner("launch_remote_terminal", { origin, remoteCmd: a.command, rbindToken });
     }
     return inner(cmd, args);
   };
