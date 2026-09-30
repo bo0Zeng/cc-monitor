@@ -2695,11 +2695,6 @@
       "zh": "人写",
       "args": []
     },
-    "panorama.truncate.ellipsis": {
-      "kind": "body",
-      "zh": "{text}…",
-      "args": ["text"]
-    },
     "panorama.sidebarStatus.symbols": {
       "kind": "title",
       "zh": "符号",
@@ -3805,6 +3800,11 @@
       "kind": "body",
       "zh": "{n} 处调用未解析",
       "args": ["n"]
+    },
+    "layout.label.ellipsis": {
+      "kind": "body",
+      "zh": "{text}…",
+      "args": ["text"]
     },
     "layout.cluster.uncategorized": {
       "kind": "body",
