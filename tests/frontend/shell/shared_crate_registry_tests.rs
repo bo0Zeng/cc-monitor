@@ -1045,6 +1045,11 @@ fn every_ignored_test_still_has_someone_who_triggers_it() {
              谁什么时候跑：改 `ccm_probe.rs` 里 `CCM_PROBE_PS` 的那一拍，交付前跑一趟、把结果贴进报告。",
         ),
         (
+            "p2_the_path_probe_reads_back_a_non_ascii_home_under_an_oem_console",
+            "〔P2〕不是判据是**读数**：同上要一个 PowerShell（`CCM_PWSH`），控制台编码设成 936 当替身跑 PATH 探针、读回汉字目录。\
+             谁什么时候跑：改 `profile_installer.rs::render_user_path_probe_command` 的那一拍，交付前跑一趟、把结果贴进报告。",
+        ),
+        (
             "the_readings_behind_the_two_thresholds",
             "〔F9 09-24〕不是判据是**读数**：大文件模式两个门槛的来源，只在 **release** 档上有意义\
              （debug 档慢一个数量级，拿它推门槛就是 `设计/60 §9 §四.0` 订正过的那个错）。\

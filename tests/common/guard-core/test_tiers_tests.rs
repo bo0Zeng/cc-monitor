@@ -982,6 +982,11 @@ const REAL_MACHINE: &[(&str, &str, Trigger)] = &[
         "wf1_the_windows_probe_script_reports_card_and_where_ccm_resolves",
         Trigger::Manual("〔WF1 · ㉔〕读数不是判据：要一个 PowerShell（`CCM_PWSH`）跑 Windows 那一形的探测串三种情形；跑法住它自己的头注"),
     ),
+    (
+        "tests/frontend/shell/profile_installer_tests.rs",
+        "p2_the_path_probe_reads_back_a_non_ascii_home_under_an_oem_console",
+        Trigger::Manual("〔P2〕读数不是判据：要一个 PowerShell（`CCM_PWSH`）在 936 控制台编码替身下跑 PATH 探针、读回汉字目录；跑法住它自己的头注"),
+    ),
 ];
 
 /// 判别器判错的那几份：`(文件, 应归的层, 理由)`。
