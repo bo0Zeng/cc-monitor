@@ -133,7 +133,7 @@ pub const BIN_STEM: &str = "cc-monitor-filewin";
 
 /// 窗口那份二进制在 `dir` 里的落点。**纯函数**（判据要在临时目录上喂它）。
 pub fn window_bin_in(dir: &Path) -> PathBuf {
-    dir.join(format!("{BIN_STEM}{}", std::env::consts::EXE_SUFFIX))
+    dir.join(format!("{BIN_STEM}{}", crate::platform::proc::EXE_SUFFIX))
 }
 
 /// 那份二进制到底在哪 —— **环境变量优先，否则 exe 旁边**。

@@ -380,31 +380,12 @@ pub fn candidates() -> Vec<String> {
             out.push(p);
         }
     }
-    #[cfg(target_os = "windows")]
+    // 〔P4 · 阶段 H〕按平台的系统字体候选（Windows 的微软雅黑一族 · Linux 各发行版的 Noto CJK / 文泉驿）住 `platform.rs`。
     out.extend(
-        [
-            // 微软雅黑 —— Vista 起随系统装，**不分区域设置**
-            r"C:\Windows\Fonts\msyh.ttc",
-            r"C:\Windows\Fonts\msyh.ttf",   // Win7 及更早是 .ttf
-            r"C:\Windows\Fonts\msjh.ttc",   // 微软正黑（繁体系统）
-            r"C:\Windows\Fonts\simsun.ttc", // 宋体，兜底
-        ]
-        .into_iter()
-        .map(String::from),
-    );
-    #[cfg(not(target_os = "windows"))]
-    out.extend(
-        [
-            // ↓ 本机（Debian/Ubuntu 系，fonts-noto-cjk）现打就是这一份
-            "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
-            "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc", // Arch
-            "/usr/share/fonts/google-noto-cjk/NotoSansCJK-Regular.ttc", // Fedora
-            "/usr/share/fonts/opentype/noto/NotoSerifCJK-Regular.ttc",
-            "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc", // 文泉驿，小
-            "/usr/share/fonts/truetype/arphic/uming.ttc",
-        ]
-        .into_iter()
-        .map(String::from),
+        crate::platform::SYSTEM_CJK_FONTS
+            .iter()
+            .copied()
+            .map(String::from),
     );
     out
 }

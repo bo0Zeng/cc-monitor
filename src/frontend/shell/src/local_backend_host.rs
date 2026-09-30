@@ -114,7 +114,7 @@ impl StartOutcome {
 // ⇒ 今天就是那一天：`ConsolePolicy::Hidden` 住 `spawn_managed.rs`，
 // 那条反向边换成了 `local_backend::supervise_with_stdio` 的 `spawn` 注入参数。
 // ⚠ 那条止血头注里的另一句也一起搬过去了，一个字没丢：
-// **别把 `Hidden` 铺到 `launch.rs::launch_powershell_window` 头上** —— 它是 `NewVisible`。
+// **别把 `Hidden` 铺到 `platform/terminal.rs::launch_powershell_window` 头上** —— 它是 `NewVisible`。
 // ═══════════════════════════════════════════════════════════════════════════
 
 /// 握手那一行（hello / attach 应答）的字节上限。
@@ -859,7 +859,7 @@ pub(crate) fn detach_wanted(is_linux: bool, no_detach_env: Option<&str>) -> bool
 /// ⇒ 与 `supervise_with_stdio` 头注记的是**同一条**（那边逐字写过「guard 活在闭包里
 /// ⇒ `wait()` 整段都持着锁，而 `stop()` 第一件事就是取那把锁」）—— 本仓第二次。
 ///
-/// 收尸落在一条**专用线程**上（形状抄 `launch.rs::launch_local_posix_via` 里那条），
+/// 收尸落在一条**专用线程**上（形状抄 `platform/terminal.rs::launch_local_posix_via` 里那条），
 /// 它随子进程结束而结束；`Child` 被取走之后句柄里只剩 pid + 二进制路径，
 /// 「停」那一步照样有凭据（〔STOP〕一次性 `--resident-stop` 用这个二进制、按它自己记的 pid 核身份）。
 fn reap_detached(

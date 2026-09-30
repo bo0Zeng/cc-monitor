@@ -114,7 +114,7 @@ export async function startForkedSession(
   // G6：**本机这条路不进 tmux** —— `resume_history_session` 交给用户自配的拉起器，
   // tmux 与否根本不在它的表达能力里。
   // ⚠⚠ 括号里原本写「POSIX 是终端模拟器」——**那是假的**〔audit-0805 F08 / 报告 B-2〕：
-  // `launch.rs::launch_local_posix` 明写**不开终端模拟器**（stdio 全 null + `process_group(0)`），
+  // `platform/terminal.rs::launch_local_posix` 明写**不开终端模拟器**（stdio 全 null + `process_group(0)`），
   // 产出的是一个无 tty 的进程。Windows 那半（`wt.exe`）是对的。
   // ★ 这句与 `launch.rs` 那条头注**曾经互相矛盾**（一个说容器是 tmux、一个说是终端模拟器，
   // 而代码里两个都没有）；两条已一并订正。

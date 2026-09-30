@@ -574,7 +574,7 @@ fn xvfb_worker_real_pointer_events_on_a_row() {
 
     let opts = eframe::NativeOptions {
         // 生产那个 hook，一个字没换 —— 次线程上建事件循环走的是同一条路。
-        event_loop_builder: Some(Box::new(crate::shell::any_thread_hook)),
+        event_loop_builder: Some(Box::new(crate::platform::any_thread_hook)),
         viewport: egui::ViewportBuilder::default()
             // 🔴 与 ① 量按钮时用的那张屏**同尺寸** —— 两把尺子必须同轴。
             .with_inner_size([screen.x, screen.y])

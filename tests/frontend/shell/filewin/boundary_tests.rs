@@ -352,6 +352,8 @@ const MONITOR_SIDE: &[(&str, Kind)] = &[
     ("spawn_managed::ManagedChild", Kind::Spawn),
     ("spawn_managed::StderrSink", Kind::Spawn),
     ("spawn_managed::spawn_managed_cmd", Kind::Spawn),
+    // 〔P4 · 阶段 H〕窗口那份二进制的文件名后缀（`window_bin_in`）：平台原语住壳的平台层。
+    ("platform::proc::EXE_SUFFIX", Kind::Spawn),
     ("ssh_source::RemoteConfig", Kind::Config),
     // 〔FILES2 · V152〕开窗种子带上机器名单（「复制到另一台」那一问的下拉）：已有的配置读口，不新建数据源。
     ("load_remote_configs", Kind::Config),
@@ -417,9 +419,10 @@ fn edges_by_process() -> (
     let window_files = guard_core::scan_tree_excluding(&window_crate_dir(), &["rs"], &[]);
     // 🔴 两侧人群都现数（恒等，不是地板）：塌成空集时下面那两条相等**照样成立**。
     //   〔P4〕壳里 `filewin/` 现打 4 份（mod · entry · proc · win_main）；窗口包现打 29 份（搬家前那 31 份里 27 份整份搬来 ＋ 新 `proc.rs`（窗口进程那一半）＋ `guard_support.rs`）。
+    //   〔P4 · 阶段 H〕29 → 30：窗口包的平台层 `platform.rs`。
     assert_eq!(
         (inside.len(), window_files.len()),
-        (4, 29),
+        (4, 30),
         "两侧扫到的 `.rs` 份数变了 —— 遍历器坏了，或者两侧有人加 / 删了文件（先回答那份住哪一侧，再改这个数）"
     );
     let root = repo_root();

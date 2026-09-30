@@ -107,7 +107,7 @@ fn every_unmanaged_entry_names_a_code_address() {
         "抽取器把散文当住址了"
     );
     assert!(
-        !addresses_in("launch.rs::TERMINAL_EXITS").is_empty(),
+        !addresses_in("platform/terminal.rs::TERMINAL_EXITS").is_empty(),
         "抽取器连一个真住址都抠不出来 —— 先查抽取器，别改断言"
     );
 

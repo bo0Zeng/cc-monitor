@@ -111,7 +111,7 @@ pub(crate) const WRITE_SITES: &[(&str, &str, Option<&str>, &str)] = &[
     // ── 〔GP1 · 第四波〕这里原来有一行 `creds_store.rs` 的凭据写口（K-H2a：账号的第三方 API key 那份文件）。
     //    主会话 09-25 裁「每台机器上这份文件的程序写者恰好一个 ＝ 那台的后端」⇒ 本机那一份也交本机常驻后端写
     //    （`apikey-key-set` → `src/backend/accounts/upstream_select/file_face.rs`，第四层后端自有状态），本进程一个字节不落 ⇒ 摘行。
-    ("config.rs", "atomic_replace", None, "原子替换原语的本地副本（同上，归 `atomic_replace_registry` 判）"),
+    ("fs.rs", "atomic_replace", None, "原子替换原语的本地副本（同上，归 `atomic_replace_registry` 判；〔P4 · 阶段 H〕原住 `config.rs`，住壳的平台层）"),
     ("lib.rs", "open_log_dir", None, "打开日志目录前确保它存在"),
     ("logging.rs", "build_rolling_appender", None, "monitor 自己的滚动日志"),
     // 〔CFG1 · 4D〕`logging.rs` 那两行（`write_diagnostics_to_config` · `atomic_replace` 副本）摘了：诊断写口改经
@@ -456,7 +456,7 @@ const SITE_CLASS: &[(&str, &str, Lands)] = &[
     ("bind.rs", "cleanup_dead", Lands::OwnState),
     ("config.rs", "patch_config_at", Lands::OwnState),
     // 〔GP1 · 第四波〕`creds_store.rs` 的凭据写口那一行摘了（理由同上一张表）。
-    ("config.rs", "atomic_replace", Lands::OwnState),
+    ("fs.rs", "atomic_replace", Lands::OwnState), // 〔P4 · 阶段 H〕原住 `config.rs`
     ("lib.rs", "open_log_dir", Lands::OwnState),
     ("logging.rs", "build_rolling_appender", Lands::OwnState),
     // 〔CFG1〕`logging.rs` 两行随写盘一起摘（见 `WRITE_SITES` 同处）。

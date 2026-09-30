@@ -39,7 +39,7 @@ const SITES: &[(&str, &str, usize, &str, &str)] = &[
     ),
     // 〔MIG-3a · 子步 3〕`cc_bus_deploy.rs [rename]` 那一行摘了：覆盖前整目录改名留底随装 cc-bus 进了本机后端（`assets/cc_bus_install.rs`，经 `files-rename`）。
     (
-        "config.rs",
+        "platform/fs.rs", // 〔P4 · 阶段 H〕原住 `config.rs` 的 `atomic_replace`（两个平台臂一起搬进壳的平台层）
         "MoveFileExW",
         1,
         "monitor 自己的 config.json",
@@ -70,7 +70,7 @@ const SITES: &[(&str, &str, usize, &str, &str)] = &[
              但刻意复制的代价就是**两处都得被看住** —— 这正是登记表存在的理由。",
     ),
     (
-        "config.rs",
+        "platform/fs.rs", // 〔P4 · 阶段 H〕同上
         "rename",
         1,
         "**monitor 自己的** config.json（POSIX 分支）",

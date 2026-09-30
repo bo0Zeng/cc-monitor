@@ -105,7 +105,8 @@ pub fn plan_dest(typed: &str, src_name: &str) -> Result<String, String> {
     if t.is_empty() {
         return Err(copy_text("rsFilewinDownload.plan.empty", &[]).into());
     }
-    let ends_with_sep = t.ends_with('/') || (cfg!(windows) && t.ends_with('\\'));
+    let ends_with_sep =
+        t.ends_with('/') || (crate::platform::BACKSLASH_IS_SEP && t.ends_with('\\'));
     if ends_with_sep {
         if src_name.trim().is_empty() {
             return Err(copy_text(

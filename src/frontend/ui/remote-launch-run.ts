@@ -467,7 +467,7 @@ const sent = (o: Opened): boolean => o !== "unsent";
  *  这一个函数，返回「IPC 是否真的被接受」（true=拉起成功；false=已走剪贴板回退）。 */
 /** U8b：后端在 POSIX 上回的那句话里的**稳定标记**。
  *
- *  它不是「随便找个子串」——后端 `launch.rs::POSIX_NO_TERMINAL_WINDOW` 是那句话的唯一出处，
+ *  它不是「随便找个子串」——后端 `platform/terminal.rs::POSIX_NO_TERMINAL_WINDOW` 是那句话的唯一出处，
  *  两边由 Rust 侧的 `the_posix_marker_is_the_one_the_frontend_matches_on`
  *  逐字对拍（`include_str!` 读本文件）。改一边不改另一边 ⇒ 红。
  *

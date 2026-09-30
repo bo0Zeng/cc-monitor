@@ -1016,15 +1016,17 @@ fn local_queries_reach_the_running_resident_backend_not_a_file_beside_the_exe() 
     );
     // ④ 给终端窗口导 `CCM_BACKEND_BIN` 的那一格（WIN1 报备的同病）：两处调用都交**正在跑的那一份**。
     //    两向：`backend_bin_env_for_window(` 的生产调用点 == 实参是 `running_backend_bin()` 的那几处。
-    let launch =
-        guard_core::production_code(include_str!("../../../src/frontend/shell/src/launch.rs"));
+    // 〔P4 · 阶段 H〕开窗的两个平台臂（两处调用都在里面）搬进 `platform/terminal.rs`。
+    let launch = guard_core::production_code(include_str!(
+        "../../../src/frontend/shell/src/platform/terminal.rs"
+    ));
     let calls = launch.matches("backend_bin_env_for_window(").count();
     let running = launch
         .matches("backend_bin_env_for_window(\n        crate::local_backend_host::running_backend_bin(),")
         .count();
     assert!(
         calls >= 1,
-        "尺子瞎了：launch.rs 里一处 `backend_bin_env_for_window(` 都没数到"
+        "尺子瞎了：platform/terminal.rs 里一处 `backend_bin_env_for_window(` 都没数到"
     );
     assert_eq!(
         calls, running,

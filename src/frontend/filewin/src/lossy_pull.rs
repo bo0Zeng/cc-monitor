@@ -24,56 +24,15 @@ pub fn local_dest(dest: &str, shown: &str, raw: &[u8]) -> (serde_json::Value, Op
     if !kept {
         return (serde_json::Value::String(dest.to_string()), None);
     }
-    local_dest_kept(p, shown, raw)
+    crate::platform::local_dest_kept(p, shown, raw)
 }
 
-#[cfg(unix)]
-fn local_dest_kept(
-    p: &std::path::Path,
-    _shown: &str,
-    raw: &[u8],
-) -> (serde_json::Value, Option<String>) {
-    use std::os::unix::ffi::OsStrExt as _;
-    let mut b = p
-        .parent()
-        .map(|d| d.as_os_str().as_bytes().to_vec())
-        .unwrap_or_default();
-    if b.last() != Some(&b'/') {
-        b.push(b'/');
-    }
-    b.extend_from_slice(raw);
-    (super::source::wire_bytes(&b), None)
-}
-
-#[cfg(not(unix))]
-fn local_dest_kept(
-    p: &std::path::Path,
-    shown: &str,
-    _raw: &[u8],
-) -> (serde_json::Value, Option<String>) {
-    (
-        serde_json::Value::String(p.to_string_lossy().to_string()),
-        Some(copy_text(
-            "rsFilewinLossyPull.note.renamed",
-            &[("name", shown)],
-        )),
-    )
-}
+// 〔P4 · 阶段 H〕`local_dest_kept` 的两个平台臂（unix 按字节拼 · 别处用有损形并说一句）住 `platform.rs`。
 
 /// 线上那一形 → 本机路径（给「那儿已经有东西了吗」那一问用；判定本身住 `download::dest_exists_at`）。
 pub fn local_path_of(v: &serde_json::Value) -> Option<std::path::PathBuf> {
     let b = super::find::decode_path(v)?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::ffi::OsStrExt as _;
-        Some(std::path::PathBuf::from(std::ffi::OsStr::from_bytes(&b)))
-    }
-    #[cfg(not(unix))]
-    {
-        Some(std::path::PathBuf::from(
-            String::from_utf8_lossy(&b).to_string(),
-        ))
-    }
+    Some(crate::platform::path_from_bytes(&b))
 }
 
 /// 一块读多少（== 后端 `files::READ_CHUNK_MAX_BYTES`，读两侧源码钉相等）。
@@ -94,7 +53,7 @@ pub fn split_local(local: &serde_json::Value) -> Option<(serde_json::Value, serd
     let b = super::find::decode_path(local)?;
     let cut = b
         .iter()
-        .rposition(|c| *c == b'/' || (cfg!(windows) && *c == b'\\'))?;
+        .rposition(|c| *c == b'/' || (crate::platform::BACKSLASH_IS_SEP && *c == b'\\'))?;
     let (dir, name) = (&b[..cut.max(1)], &b[cut + 1..]);
     if name.is_empty() {
         return None;
