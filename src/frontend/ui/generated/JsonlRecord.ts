@@ -6,7 +6,7 @@ import type { UserText } from "./UserText";
 
 export type JsonlRecord = { "type": "user", uuid: string, timestamp: string, message: ApiMessage, cwd: string | null, sessionId: string | null, isSidechain: boolean, isMeta: boolean, parentUuid: string | null, forkedFrom: ForkedFrom | null, 
 /**
- * 〔RENDER2 · J10〕剥完 CLI 注入噪声的正文与「是不是 ESC 中断标记」—— 规则只在 `search_core::user_text`，
+ * 〔RENDER2 · J10〕剥完 CLI 注入噪声的正文与「是不是 ESC 中断标记」—— 规则只在 `agents/claudecode/text.rs::user_text`，
  * 前端渲染 / 分叉折叠只读这个成品（不自己再判）。原文里没有这一格：解析完由 [`UserText::of`] 填（`parse::parse_line` · `agents/codex/record.rs`）。
  */
 userText: UserText, } | { "type": "assistant", uuid: string, timestamp: string, message: ApiMessage, sessionId: string | null, isSidechain: boolean, requestId: string | null, parentUuid: string | null, forkedFrom: ForkedFrom | null, isApiErrorMessage: boolean, error: unknown, apiErrorStatus: number | null, 

@@ -240,7 +240,6 @@ dependencies = [
  "russh",
  "russh-sftp",
  "rustls",
- "search-core",
  "serde",
  "serde_json",
  "sha2",
@@ -1835,13 +1834,6 @@ dependencies = [
  "pbkdf2",
  "salsa20",
  "sha2",
-]
-
-[[package]]
-name = "search-core"
-version = "0.1.0"
-dependencies = [
- "serde_json",
 ]
 
 [[package]]

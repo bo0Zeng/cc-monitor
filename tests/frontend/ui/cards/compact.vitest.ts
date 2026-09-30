@@ -1,5 +1,5 @@
 // A5：isCompactRecord —— 换号重启 compact 完成检测的判定（与卡片渲染同一套：`userText.clean` → isCompactSummary）。
-// 〔RENDER2 · J10〕剥注入噪声那一步在 monitor（`search-core::user_text`，判据住 search-core 的 lib_tests）；这里只锁「读成品」。
+// 〔RENDER2 · J10〕剥注入噪声那一步在 monitor（`agents/claudecode/text.rs::user_text`，判据住 `tests/backend/agents/claudecode/text_tests.rs`）；这里只锁「读成品」。
 import { describe, it, expect } from "vitest";
 import { isCompactRecord } from "../../../../src/frontend/ui/cards/index";
 import type { JsonlRecord } from "../../../../src/frontend/ui/generated/JsonlRecord";

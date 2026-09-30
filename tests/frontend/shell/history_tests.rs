@@ -101,7 +101,7 @@ fn extracting_cwd_from_a_jsonl_head_now_lives_in_exactly_one_place() {
 //     ＋ `history_join_tests.rs::synthesized_history_groups_by_cwd_under_the_kind_prefix`；
 //   - 上次账号的 serde 与 patch 三态 · 只含真有的那几条（`last_account_serde_and_patch_semantics` 那两条〔散文墓碑〕）⇒ 后端
 //     `tests/backend/history/history_annotations_tests.rs`（`patch_semantics_match_what_the_monitor_did` · `last_accounts_are_only_the_entries_that_have_one`）；
-//   - 摘录按字符截断（`truncate_chars_unicode` 那三条〔散文墓碑〕）⇒ `search-core` 的 `truncate_excerpt`（后端会话行改用它）；
+//   - 摘录按字符截断（`truncate_chars_unicode` 那三条〔散文墓碑〕）⇒ 通用搜索口径的 `truncate_excerpt`（后端会话行改用它；〔P1〕今天住 `observe/search_rules.rs`）；
 //   - 「迁移前」旧读者读注解夹具 == 金样（`c4d_the_old_reader_reads_the_annotation_fixture_as_the_golden`〔散文墓碑〕，子步 4 那一拍对过）
 //     ⇒ 金样 `tests/__fixtures__/history-metadata.readout.golden.json` 留作「迁移前」的冻结读数，后端新读者照旧对它。
 

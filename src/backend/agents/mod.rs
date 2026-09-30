@@ -212,8 +212,42 @@ pub(crate) struct RecordFace {
     pub(crate) branch: Option<BranchFn>,
     /// 这一家的漂移账（看不懂的记录类型记在哪）⇒ 成品；`None` ＝ 这一家不记。
     pub(crate) drift: Option<fn() -> serde_json::Value>,
+    /// 〔P1〕这一家的记录文本面（正文 / 工具内容怎么抽 · CLI 注入怎么剥）；`None` ＝ 这一家不进搜索 / 摘录那几条通用路。
+    pub(crate) text: Option<TextFace>,
     /// 〔MOD · 子步 4〕删历史会话那一条的两问（按 sid 找那一份 · 它是不是一份会话记录）；`None` ＝ 这一家不删。
     pub(crate) delete: Option<SessionDelete>,
+}
+
+/// 〔P1〕一家的记录文本面（原共享 crate `search-core` 里 Claude 记录文本那一半）：函数指针（同 [`Adapter::home`]，不立 trait）。
+/// 通用层（全局搜索 · 会话内查找 · 历史摘录 · 用户输入列表）经 [`main_text`] · [`tool_text`] · [`clean_user_text`] 够它，不按名字够。
+#[derive(Clone, Copy)]
+pub(crate) struct TextFace {
+    /// 一条记录的 `message.content` ⇒ 正文文本块。
+    pub(crate) main: fn(&serde_json::Value) -> String,
+    /// 同上 ⇒ 工具内容（`is_assistant`：工具入参 · 思考；否则：工具结果）。
+    pub(crate) tool: fn(&serde_json::Value, bool) -> String,
+    /// 一条 user 正文剥掉 CLI 注入之后的真内容（空 ＝ 整条都是注入噪声）。
+    pub(crate) clean_user: fn(&str) -> String,
+}
+
+/// 记录树那一家（同 [`stream_record_face`]）的文本面。
+fn text_face() -> Option<TextFace> {
+    stream_record_face().and_then(|r| r.text)
+}
+
+/// 〔P1〕记录树那一家怎么抽正文 —— 通用层够它的唯一入口。没有哪一家答得了 ⇒ 空串（不搜、不摘）。
+pub(crate) fn main_text(content: &serde_json::Value) -> String {
+    text_face().map_or_else(String::new, |t| (t.main)(content))
+}
+
+/// 〔P1〕记录树那一家怎么抽工具内容。没有哪一家答得了 ⇒ 空串。
+pub(crate) fn tool_text(content: &serde_json::Value, is_assistant: bool) -> String {
+    text_face().map_or_else(String::new, |t| (t.tool)(content, is_assistant))
+}
+
+/// 〔P1〕记录树那一家怎么剥 user 正文里的 CLI 注入。没有哪一家答得了 ⇒ 原样（不剥）。
+pub(crate) fn clean_user_text(s: &str) -> String {
+    text_face().map_or_else(|| s.to_string(), |t| (t.clean_user)(s))
 }
 
 /// 〔MOD · 子步 4 · 主会话裁〕删历史会话那一条要问适配层的两件事 —— 那是记录布局的知识，文件管理写面不认；

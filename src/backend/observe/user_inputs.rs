@@ -25,7 +25,7 @@
 //!
 //! 另：**没有 uuid 的不要**（跳不过去，列出来就是一条点了没反应的项）。
 //!
-//! 〔RENDER2 · J10〕第 4 条的「纯文本」先过注入噪声那一条规则（`search_core::user_text`，渲染同一份）再判空 ——
+//! 〔RENDER2 · J10〕第 4 条的「纯文本」先过注入噪声那一条规则（`agents/claudecode/text.rs::user_text`，渲染同一份；经注册表 `agents::clean_user_text` 够）再判空 ——
 //! 原先「渲染还会再剥一层、清单多出没有卡的项」那条不等价在后端这一侧销了；前端渲染那一份何时改读后端成品见 J10 登记。
 //!
 //! # 出什么（逐行 JSON，形状登记在 `IPC-PROTOCOL.md §10.4`）
@@ -82,7 +82,7 @@ pub(crate) fn user_input_of(v: &Value) -> Option<UserInputRow> {
         .filter(|u| !u.is_empty())?;
     let body = plain_text(v.get("message").and_then(|m| m.get("content")));
     // 〔RENDER2 · J10〕与渲染同一条规则剥注入噪声：剥空的（ESC 中断标记 · 纯包装）不列。
-    let body = search_core::clean_user_text(&body);
+    let body = crate::agents::clean_user_text(&body);
     if body.is_empty() {
         return None;
     }

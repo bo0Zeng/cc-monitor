@@ -520,7 +520,8 @@ cell(
     # 〔THIN〕`gate-core` 收成后端模块 ⇒ 成员 13 → 12，`gate.sh` 同拍改 `cargo 12`，本锚点同拍跟上。
     # 〔THIN〕`agent-tools-core` 收进后端适配层 ⇒ 成员 12 → 11，同拍。
     # 〔THIN〕`branch-core` 收进后端适配层 ⇒ 成员 11 → 10，同拍。
-    anchor="run_gate_sum cargo 10 bash -c",
+    # 〔P1〕`search-core` 拆进后端 ⇒ 成员 10 → 9，同拍（`deploy-core` → `deploy-contract` 只改名）。
+    anchor="run_gate_sum cargo 9 bash -c",
     cwd="src-tauri/",
     cmd="cargo test --workspace --lib",
     **{

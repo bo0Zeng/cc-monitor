@@ -49,7 +49,7 @@ import { LOCAL_ORIGIN } from "../../../../src/frontend/ui/ipc/origin";
 
 let rig: ViewerRigHandles;
 
-/** 〔RENDER2 · J10〕ESC 中断标记那一条：monitor 按 `search-core::user_text` 判出来的成品（夹具显式写，前端不判）。 */
+/** 〔RENDER2 · J10〕ESC 中断标记那一条：monitor 按 `agents/claudecode/text.rs::user_text` 判出来的成品（夹具显式写，前端不判）。 */
 const INTERRUPT = { clean: "", interrupt: true };
 
 /**

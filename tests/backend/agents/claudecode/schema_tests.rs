@@ -422,7 +422,7 @@ fn displayable_classes_equal_the_table_with_a_reader_for_each() {
 }
 
 /// 〔RENDER2 · J10 乙（主会话 09-27 裁）〕要求住址：`设计/10 §2.2b ⑤`「判定全仓一个住址」＋ 裁定原话「monitor 解析记录时调同一个
-/// `search-core::user_text` 填进记录」。经生产出口 `parse_line`：user 记录过线时带 `userText`（= 规则的输出），别的类型不带。
+/// `search-core::user_text` 填进记录」（〔P1〕那条规则今天住 `agents/claudecode/text.rs`）。经生产出口 `parse_line`：user 记录过线时带 `userText`（= 规则的输出），别的类型不带。
 #[test]
 fn a_parsed_user_record_carries_the_one_noise_rule_product() {
     let cases = [
@@ -473,7 +473,7 @@ fn the_ts_fixture_user_records_carry_no_injected_noise() {
                 continue;
             };
             users += 1;
-            let plain = search_core::extract_text_blocks(&message.content)
+            let plain = super::super::text::extract_text_blocks(&message.content)
                 .trim()
                 .to_string();
             assert_eq!(
