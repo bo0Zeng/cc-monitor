@@ -114,6 +114,14 @@ const REGISTERED: &[(&str, &str, usize, &str)] = &[
         "〔MIG-3b 续〕足迹里 monitor 自己那台那几行（`HostScope::Client`）的事实：交一次 monitor 自己的 agent 家（`paths::resolve_claude_dir` 那一处答），\
          再 stat 后端交来的绝对路径 —— 不认识任何工具名。退役归 F10 本体。",
     ),
+    // 〔P3 · 主会话 09-29 裁〕数据位置页列监听口的进程记录：只要它叫什么 ⇒ 按宿主起常驻时同一个算法算口。
+    (
+        "src/data_paths.rs",
+        "payload",
+        1,
+        "〔P3〕拿 Claude 家目录的字符串喂 `relay_route_core::listen_port_for`（与 `local_backend_host` 起常驻时同一个算法）算出 \
+         `listen-<口>.pid` 叫什么；不读 Claude 目录里任何东西 ⇒ 不属 F10 的退役范围。",
+    ),
     // 〔MIG-3b〕`src/hooks_diag.rs` 那一行摘了：钩子诊断进了后端（`hooks-diag`），monitor 不再读 settings。
     // 🔴 〔`K-R48` 第二拍 09-11〕原来这里有一行 `src/ccm_cli_contract.rs`（`non-read` 1 处：
     //    契约清单里出现过 `CLAUDE_CONFIG_DIR` 这个变量名）。本拍把那个模块从 2773 行砍到
