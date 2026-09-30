@@ -93,6 +93,7 @@ const UNIT: &[&str] = &[
     "tests/backend/observe/session_ledger_tests.rs", // 〔MIG-1〕会话账本（可重连 / 已结束的裁决）真值表
     "tests/backend/observe/user_inputs_tests.rs",
     "tests/backend/platform/shell_tests.rs",
+    "tests/backend/platform/tcp_rtt_tests.rs", // 〔P2〕Windows 臂 `SIO_TCP_INFO` 的布局与控制码对 SDK
     "tests/backend/plugin/probe_tests.rs",
     "tests/comms/outward/http1_tests.rs",
     "tests/comms/outward/route_tests.rs", // 〔US1〕跨半边抠 monitor 源码那几条退役 ⇒ 只剩纯解析 ＋ 成品→决策表（SCAN → UNIT）
