@@ -7,6 +7,14 @@ export type DataPathsResponse = { monitorDataDir: string,
  */
 entries: Array<DataPathInfo>, 
 /**
+ * 〔P3 · V160「一台机器一个家」〕本机后端的家（`~/.cc-monitor`，按家目录算，不随 `CCM_DATA_DIR` 漂）
+ */
+backendHome: string, 
+/**
+ * 〔P3〕本机后端住在这个家里的那几样（[`backend_entries`]）
+ */
+backendEntries: Array<DataPathInfo>, 
+/**
  * WebView2 用户数据目录推断路径（cache / localStorage / IndexedDB / cookies）
  */
 webviewUserDataDir: DataPathInfo | null, };

@@ -111,7 +111,10 @@ fn a_seed_survives_the_trip_through_a_process_boundary() {
     //    `Source::Local` 的种子对拍它那一格。`Source` 收成 newtype 之后
     //    **判别式这个概念不存在了** ⇒ 那两处不是被删掉的判据，是它们判的东西没了。
     // 〔P4〕那台的名字（从前是整份远端配置：主机 · 口 · 用户 · 钥匙路径 · 地址表逐格比；窗口今天只拿名字）。
-    assert_eq!(got.origin, want.origin, "那台的名字漂了 —— 窗口会问另一台机器（或者谁都没登记过的名字）");
+    assert_eq!(
+        got.origin, want.origin,
+        "那台的名字漂了 —— 窗口会问另一台机器（或者谁都没登记过的名字）"
+    );
     // 🔴〔F2〕交接件整份过得去（地址 · 帧长 · 钥匙），否则窗口拨不回来。
     assert_eq!(got.handoff.addr, want.handoff.addr, "交接件的地址漂了");
     assert_eq!(got.handoff.frame, want.handoff.frame, "交接件的帧长漂了");

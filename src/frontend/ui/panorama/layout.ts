@@ -17,7 +17,7 @@
  * /`screenToWorld`。布局只算一次（load overview 时），pan/zoom 只改 viewport → 重画，便宜。
  */
 
-import type { Overview } from "./types";
+import type { Overview, SymbolRef } from "./types";
 import { copyText } from "../copy-table";
 
 // === 基础几何 ===
@@ -69,7 +69,8 @@ export function zoomAt(vp: Viewport, sx: number, sy: number, factor: number): Vi
 
 /**
  * 让 world 边界 [0,worldW]×[0,worldH] 居中铺进 screen（留 pad 像素边）。空/退化时回退到
- * 居中 scale=1。用于 open 时初始视口 + 「适配」按钮。
+ * 居中 scale=1。用于 open 时初始视口 + 「适配」按钮。`maxScale` 给小图封个顶
+ * （选图那一块：一两个节点的图不该被放大到八倍）。
  */
 export function fitViewport(
   worldW: number,
@@ -77,12 +78,13 @@ export function fitViewport(
   screenW: number,
   screenH: number,
   pad = 48,
+  maxScale = MAX_SCALE,
 ): Viewport {
   if (worldW <= 0 || worldH <= 0 || screenW <= 0 || screenH <= 0) {
     return { x: screenW / 2, y: screenH / 2, scale: 1 };
   }
   const raw = Math.min((screenW - 2 * pad) / worldW, (screenH - 2 * pad) / worldH);
-  const scale = clamp(raw, MIN_SCALE, MAX_SCALE);
+  const scale = clamp(raw, MIN_SCALE, Math.min(MAX_SCALE, maxScale));
   return {
     x: (screenW - worldW * scale) / 2,
     y: (screenH - worldH * scale) / 2,
@@ -197,12 +199,8 @@ export function computeLayout(overview: Overview, opts?: LayoutOptions): Panoram
     }
   }
 
-  // 入口点文件集合（entry_points 是符号 id `file#name`，取 file 段）。
-  const entryFiles = new Set<string>();
-  for (const id of overview.entry_points ?? []) {
-    const file = id.split("#")[0];
-    if (file) entryFiles.add(file);
-  }
+  // 入口点文件集合（〔P7〕上游给的 `file` 字段，不拆 id）。
+  const entryFiles = new Set<string>((overview.entry_points ?? []).map((e) => e.file));
 
   // 分数范围（半径归一化用）。
   let minScore = Infinity;
@@ -248,7 +246,9 @@ export function computeLayout(overview: Overview, opts?: LayoutOptions): Panoram
     label: string;
     hue: number;
     bubbles: FileBubble[]; // 已填 local x/y
-    clusterR: number;
+    /** 这一簇圆的真包围盒左上角（局部坐标）。打包从第一个圆心向外长、不对称 ⇒ 按它居中，不按「最远圆心距」。 */
+    minX: number;
+    minY: number;
     cellW: number;
     cellH: number;
   }
@@ -265,15 +265,21 @@ export function computeLayout(overview: Overview, opts?: LayoutOptions): Panoram
       arr.map((b) => b.r),
       o.bubblePad,
     );
-    let clusterR = 0;
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
     for (let i = 0; i < arr.length; i++) {
       arr[i].x = local[i].x;
       arr[i].y = local[i].y;
-      clusterR = Math.max(clusterR, Math.hypot(local[i].x, local[i].y) + arr[i].r);
+      minX = Math.min(minX, local[i].x - arr[i].r);
+      minY = Math.min(minY, local[i].y - arr[i].r);
+      maxX = Math.max(maxX, local[i].x + arr[i].r);
+      maxY = Math.max(maxY, local[i].y + arr[i].r);
     }
-    const cellW = 2 * (clusterR + o.regionPad);
-    const cellH = 2 * (clusterR + o.regionPad) + o.labelSpace;
-    cells.push({ label, hue, bubbles: arr, clusterR, cellW, cellH });
+    const cellW = maxX - minX + 2 * o.regionPad;
+    const cellH = maxY - minY + 2 * o.regionPad + o.labelSpace;
+    cells.push({ label, hue, bubbles: arr, minX, minY, cellW, cellH });
   }
 
   // shelf（行流）打包子系统盒：行宽超过目标就换行，得紧凑确定性网格。
@@ -296,11 +302,11 @@ export function computeLayout(overview: Overview, opts?: LayoutOptions): Panoram
     }
     const boxX = curX;
     const boxY = curY;
-    // 簇心：盒内、标签留白之下居中。
-    const cx = boxX + o.regionPad + c.clusterR;
-    const cy = boxY + o.labelSpace + o.regionPad + c.clusterR;
+    // 包围盒贴着盒内边距摆 ⇒ 圆在盒里（标签留白之下）四边等距、居中。
+    const ox = boxX + o.regionPad - c.minX;
+    const oy = boxY + o.labelSpace + o.regionPad - c.minY;
     for (const b of c.bubbles) {
-      bubbles.push({ ...b, x: cx + b.x, y: cy + b.y });
+      bubbles.push({ ...b, x: ox + b.x, y: oy + b.y });
     }
     regions.push({
       label: c.label,
@@ -410,6 +416,31 @@ export function hitTest(
   return best;
 }
 
+// === 气泡里的文件名 ===
+
+/**
+ * 气泡里那一行文件名怎么放：先在 `[minPx, maxPx]` 里找放得下全名的最大字号，都放不下才用最小字号截断
+ * （尾部省略号，按实测宽度截，不按字数估）。`measure(text, px)` 由调用方给（canvas `measureText`）。
+ * `maxWidth` 容不下省略号 ⇒ `null`（不画）。
+ */
+export function fitLabel(
+  name: string,
+  maxWidth: number,
+  maxPx: number,
+  minPx: number,
+  measure: (text: string, px: number) => number,
+): { text: string; px: number } | null {
+  for (let px = Math.floor(maxPx); px >= minPx; px--) {
+    if (measure(name, px) <= maxWidth) return { text: name, px };
+  }
+  const chars = [...name];
+  for (let n = chars.length - 1; n >= 1; n--) {
+    const text = copyText("layout.label.ellipsis", { text: chars.slice(0, n).join("") });
+    if (measure(text, minPx) <= maxWidth) return { text, px: minPx };
+  }
+  return null;
+}
+
 // === 覆盖信号文案（诚实性硬要求）===
 
 /**
@@ -430,17 +461,11 @@ export function coverageBanner(o: {
 }
 
 /**
- * F70：把 `panorama_touching` 返回的符号 id（`file#name`）映射回**文件段集合**（去重）。
- * 全景图画的是文件级气泡，故高亮按文件粒度。与 `computeLayout` 里 entry_points 的 id→file
- * 派生（`id.split("#")[0]`）同款约定——core 若改 SymbolId 格式两处一起坏，风险已存在非新增。
+ * F70：`touching` 命中的符号 → **文件集合**（去重）。全景图画的是文件级气泡，故高亮按文件粒度。
+ * 〔P7〕读上游给的 `file` 字段（`SymbolRef`），不照 id 格式自己拆。
  */
-export function touchedFilesFromIds(ids: string[]): Set<string> {
-  const files = new Set<string>();
-  for (const id of ids) {
-    const file = id.split("#")[0];
-    if (file) files.add(file);
-  }
-  return files;
+export function touchedFiles(refs: SymbolRef[]): Set<string> {
+  return new Set(refs.map((r) => r.file));
 }
 
 /**

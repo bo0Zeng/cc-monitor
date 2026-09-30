@@ -338,14 +338,11 @@ fn powershell_single_quoted_literals_have_one_exit() {
 /// 〔WF1 · F〕家目录那两个环境变量名（字面量**整串相等**才算，`"$HOME/…"` 这类 shell 文本不算）。
 const HOME_VARS: &[&str] = &["HOME", "USERPROFILE"];
 
-/// `platform/paths.rs::home_dir_from` 之外允许的命中（逐条说清）。
+/// 后端生产段里允许的命中（逐条说清）。〔P5〕读法本身住共享契约 `creds_core::store::home_dir_on`，后端一处都不写。
 const HOME_ELSEWHERE: &[(&str, &str, usize)] = &[
     // 交给插件子进程**透传**的变量名表（不是读家目录）。
     ("plugin/invoke.rs", "HOME", 1),
 ];
-
-/// `std::env::home_dir` 的调用：〔主会话 09-29 裁〕`dial/ssh_config.rs` 那一处归 WF2，WF1 合后改调同一个家目录函数。
-const STD_HOME_DIR_ELSEWHERE: &[(&str, usize)] = &[("dial/ssh_config.rs", 1)];
 
 fn home_census_of(src: &str) -> (BTreeMap<&'static str, usize>, usize) {
     let prod = guard_core::production_code(src);
@@ -359,8 +356,10 @@ fn home_census_of(src: &str) -> (BTreeMap<&'static str, usize>, usize) {
 }
 
 /// ★ 住址：`设计/99 §2.3`「高危四条 … 与中低各条发版前修」· `第四波记录/WIN3.md §2` F（后端多处只读 `HOME`、另有多处各自手写 `HOME.or(USERPROFILE)`）。
-/// 后端生产段读家目录只在 `platform/paths.rs::home_dir_from` 一处：`"HOME"` / `"USERPROFILE"` 字面量的 `(文件, 名字) → 处数` ==
-/// 那一处各 1 ＋ [`HOME_ELSEWHERE`]（两向）；`std::env::home_dir` 的调用 == [`STD_HOME_DIR_ELSEWHERE`]。正控：往副本里塞回一处手写读数得出。
+/// 〔P5 · 主会话 09-29 裁〕读家目录的规矩只在共享契约 `creds_core::store::home_dir_on` 一处（后端 `platform::paths::home_dir` 转调它）：
+/// 后端生产段 `"HOME"` / `"USERPROFILE"` 字面量的 `(文件, 名字) → 处数` == [`HOME_ELSEWHERE`]（两向）· 契约那份各恰好 1 处；
+/// `std::env::home_dir` 的调用零处（〔P2〕`dial/ssh_config.rs` 那最后一处改调了 `platform::paths::home_dir`）。
+/// 正控：往副本里塞回一处手写读数 · 一处 `std::env::home_dir` 都数得出。
 #[test]
 fn the_home_directory_is_read_in_one_place() {
     let root = crate::guard_support::src_root();
@@ -380,23 +379,28 @@ fn the_home_directory_is_read_in_one_place() {
             std_calls.insert(rel, n);
         }
     }
-    let mut want: BTreeMap<(String, &str), usize> = HOME_ELSEWHERE
+    let want: BTreeMap<(String, &str), usize> = HOME_ELSEWHERE
         .iter()
         .map(|(f, v, k)| ((f.to_string(), *v), *k))
         .collect();
-    for v in HOME_VARS {
-        want.insert(("platform/paths.rs".to_string(), *v), 1);
-    }
     assert_eq!(
         vars, want,
-        "家目录又有人自己读了（Windows 上默认没有 `HOME`）⇒ 改调 `platform::paths::home_dir` / `home_dir_from`；\
+        "家目录又有人自己读了（哪个变量算家是两侧的契约）⇒ 改调 `platform::paths::home_dir` / `home_dir_from`；\
          不是读家目录的（透传表之类），写进 `HOME_ELSEWHERE` 并说清"
     );
-    let want_std: BTreeMap<String, usize> = STD_HOME_DIR_ELSEWHERE
-        .iter()
-        .map(|(f, k)| (f.to_string(), *k))
-        .collect();
-    assert_eq!(std_calls, want_std, "`std::env::home_dir` 的调用点变了");
+    let contract = home_census_of(include_str!("../../../src/common/creds-core/src/store.rs"));
+    assert_eq!(
+        contract,
+        (BTreeMap::from([("HOME", 1), ("USERPROFILE", 1)]), 0),
+        "读家目录的那一处（`creds_core::store`）量不出那两个变量名 —— 规矩搬走了或尺子瞎了"
+    );
+    assert_eq!(
+        std_calls,
+        BTreeMap::new(),
+        "有人又调了 `std::env::home_dir`（Linux 上它还会退到 passwd，与 `platform::paths::home_dir` 答的不是同一个家）⇒ 改调后者"
+    );
     let planted = "fn h() -> Option<std::ffi::OsString> {\n    std::env::var_os(\"HOME\")\n}\n";
     assert_eq!(home_census_of(planted), (BTreeMap::from([("HOME", 1)]), 0));
+    let planted_std = "fn h() -> Option<std::path::PathBuf> {\n    std::env::home_dir()\n}\n";
+    assert_eq!(home_census_of(planted_std), (BTreeMap::new(), 1));
 }

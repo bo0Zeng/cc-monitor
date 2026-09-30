@@ -158,6 +158,25 @@ pub fn rbind_token_ok(token: &str) -> bool {
             .all(|b| RBIND_TOKEN_ALPHABET.as_bytes().contains(&b))
 }
 
+/// 〔P5 · `设计/80 §8.2`「marker = token」〕令牌握手里那个 marker 的前缀：`ccm-rbind-token-<32hex>`。
+/// 写侧是后端渲的开终端前奏（`platform/shell/powershell.rs::rbind_bind_prelude`），读侧是 monitor `bind.rs` 那张表 ⇒ 契约住这里。
+/// 与 Era 2 的 `ccm-bind-<PID>-<8hex>`、标题路的 `ccm-rbind-<sid>` 互不误命中：解码要求前缀后**恰好**一个合格令牌。
+pub const RBIND_TOKEN_MARKER_PREFIX: &str = "ccm-rbind-token-";
+
+/// 握手目录名（相对 monitor 数据目录）。已装的 `__ccm_bind`（`src/shared/cc.ps1.tpl`）也写它 ⇒ **不许改值**。
+pub const AWAIT_SUBDIR: &str = "ps-await";
+
+/// 带令牌的 marker。形状不对 ⇒ `None`（不产一个解不回来的 marker）。与 [`rbind_token_from_marker`] 互逆。
+pub fn rbind_token_marker(token: &str) -> Option<String> {
+    rbind_token_ok(token).then(|| format!("{RBIND_TOKEN_MARKER_PREFIX}{token}"))
+}
+
+/// 从 marker 里解出令牌；前缀对了而后面形状不对也当没有（fail closed：可疑的键会把「拉错窗口」伪装成「拉不到」）。
+pub fn rbind_token_from_marker(marker: &str) -> Option<&str> {
+    let rest = marker.strip_prefix(RBIND_TOKEN_MARKER_PREFIX)?;
+    rbind_token_ok(rest).then_some(rest)
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // 〔DUP3 · 主会话 09-26 裁（乙；主会话代用户裁，用户可推翻）· `INVARIANTS §47` ③〕**命令片段类**：启动器。
 //

@@ -43,7 +43,7 @@
 //! · **exec 模型**：1 exec = 1 请求 1 响应 1 退出，**无 request-id**（`resolve_query` 头注逐字）。
 
 use crate::common::contract;
-use crate::stream::inbound::{CommandSpec, Run, REGISTRY};
+use crate::stream::inbound::{CommandSpec, Progress, Run, REGISTRY};
 use crate::stream::wire::Request;
 use std::io::Read;
 
@@ -168,6 +168,8 @@ pub(crate) const STREAM_ONLY: &[&str] = &[
     "tmux-name-mint",
     // 〔FIX4 · `99 §2.1 ⑬`〕开终端那一串：界面 / 文件窗口开 PowerShell 窗口前问；命令行那一侧用不着（它自己就在终端里）。
     "terminal-ssh",
+    // 〔P5〕本机开终端那一串（接令牌握手前奏）：同上，只有界面开窗前问。
+    "terminal-local",
     // 〔FIX4 · `90 §3` J15〕各台搜索结果合成一份：界面逐台问完才有得合；命令行那一侧 `--search` 只问这一台，用不着合。
     "history-search-merge",
 ];
@@ -272,6 +274,8 @@ pub async fn run(args: &[String]) -> i32 {
     let outcome = match spec.run {
         Run::Blocking(f) => f(req),
         Run::Async(f) => f(req).await,
+        // 〔P7〕一次性进程里没人订进度流 ⇒ 空口。
+        Run::AsyncProgress(f) => f(req, Progress::none()).await,
         Run::Builtin => {
             return emit_err(
                 "not_available_in_cli",

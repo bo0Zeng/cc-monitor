@@ -13,7 +13,7 @@ import { showActionFailureToast } from "../../../src/frontend/ui/error-toast";
 import { loadConfig } from "../../../src/frontend/ui/config";
 import { fakeCfg } from "./config-patch-fake";
 import { deriveUi, effectiveDefault, currentWorkingAccount, currentAccountForBadge, accountColorsActive, selectableAccounts, resolveFollowAccount, detectAccountMismatch, isSelectable, accountConfigDir, badgeText, sessionBadge, shouldShowAccountBadge, resolveAccount, isAccountZero, accountStatusBadge, localApikeyEndpointStateFor, accountLoginActionLabel, type AccountsState, type Account, type SessionAccount } from "../../../src/frontend/ui/accounts";
-import { fetchAccounts, fetchSessionAccounts, parseSessionAccountLines, invalidateAccountsCache, __resetAccountsCacheForTest, fetchLocalApikeyRouting } from "../../../src/frontend/ui/account-reads";
+import { fetchAccounts, fetchSessionAccounts, fetchSessionAccountsOrNull, parseSessionAccountLines, invalidateAccountsCache, __resetAccountsCacheForTest, fetchLocalApikeyRouting } from "../../../src/frontend/ui/account-reads";
 import { getDefaultName, setDefaultName, getModelForAccount, setModelForAccount } from "../../../src/frontend/ui/account-prefs";
 import { recordLastAccount, withAccount, localLaunchAccountSync, localLaunchAccountNameSync, __setLocalLaunchSnapshotForTests, __resetLocalLaunchSnapshotForTests } from "../../../src/frontend/ui/launch-account";
 import { sidOfLaunch, rememberLocalLaunch, resolvePendingLocalLaunches, __resetPendingLocalLaunchesForTests, __pendingLocalLaunchCountForTests, PENDING_LAUNCH_TTL_MS, PENDING_LAUNCH_MAX_ASKS, PENDING_LAUNCH_CAP } from "../../../src/frontend/ui/local-launch-backfill";
@@ -502,6 +502,40 @@ describe("fetchSessionAccounts（经通道 `accounts-sessions`）", () => {
   });
 });
 
+// 「停本机后端之前数一数会断几条」那一问（`settings/backend-section.ts` 用）：现问、不走缓存，问不到就是 null ——
+//   空表在这里的意思是「没有会话会断」，把失败折成空表就是一句假话。
+describe("fetchSessionAccountsOrNull（停后端前那一问）", () => {
+  const row = { pid: 1, sessionId: "s", cwd: "/w", configDir: null, account: null, bare: true, alive: true };
+  it("那台没有控制通道 → null，不折成空表", async () => {
+    invokeMock.mockRejectedValue(NO_CHANNEL);
+    expect(await fetchSessionAccountsOrNull("<local>")).toBeNull();
+  });
+  it("后端答了几行 → 解回几行；问的是那台机器、那条帧命令、请求体是空对象", async () => {
+    invokeMock.mockImplementation(withHistoryReads((cmd: string, args: unknown) =>
+      Promise.resolve(isChanCall(cmd, args, "accounts-sessions") ? linesReply([row, { ...row, pid: 2 }]) : undefined),
+    ));
+    const rows = await fetchSessionAccountsOrNull("devbox");
+    expect(rows?.map((r) => r.pid)).toEqual([1, 2]);
+    const args = invokeMock.mock.calls.find((c) => c[0] === "chan_call")?.[1] as ChanCallArgs;
+    expect(args.origin).toBe("devbox");
+    expect(args.op).toBe("accounts-sessions");
+    expect(chanArgsJson(args)).toEqual({});
+  });
+  it("不吃缓存：缓存里刚存着一张空表，它照样现问、拿到的是这一刻的答案", async () => {
+    let answer: unknown[] = [];
+    invokeMock.mockImplementation(withHistoryReads((cmd: string, args: unknown) =>
+      Promise.resolve(isChanCall(cmd, args, "accounts-sessions") ? linesReply(answer) : undefined),
+    ));
+    expect(await fetchSessionAccounts("<local>")).toEqual([]);
+    answer = [row];
+    const asked = () => invokeMock.mock.calls.filter((c) => c[0] === "chan_call").length;
+    const before = asked();
+    const rows = await fetchSessionAccountsOrNull("<local>");
+    expect(asked(), "它得真去问一次，不能读缓存那张空表").toBe(before + 1);
+    expect(rows).toHaveLength(1);
+  });
+});
+
 // 〔C4a〕逐行解释从 Rust（`accounts.rs::SessionAccount` 的 serde）搬到 `parseSessionAccountLines`，
 //   Rust 那侧两条金样（`accounts_tests.rs` 原来那两条）逐字节搬到这里。
 describe("parseSessionAccountLines（`--session-accounts` 的逐行）", () => {
@@ -802,7 +836,7 @@ describe("withAccount（A4 统一编排 resolve+record，三站点共用）", ()
     expect(run).not.toHaveBeenCalled();
     expect(toastMock()).toHaveBeenCalledTimes(1);
     const [, body, opts] = toastMock().mock.calls[0] as [string, string, { onClick?: () => void }];
-    expect(body).toContain("读不到devbox的账号清单");
+    expect(body).toContain("读不到 devbox 的账号清单"); // 〔P3〕中西文之间的空格由取文口按值补（rules.json C-L5）
     opts.onClick!();
     await vi.waitFor(() =>
       expect(run).toHaveBeenCalledWith({ configDir: undefined, accountName: undefined, modelOverride: undefined }),

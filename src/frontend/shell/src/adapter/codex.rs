@@ -20,7 +20,7 @@ fn resolve_codex_dir() -> Option<PathBuf> {
             return Some(p);
         }
     }
-    Some(dirs::home_dir()?.join(".codex"))
+    Some(creds_core::store::home_dir()?.join(".codex"))
 }
 
 /// OpenAI Codex CLI 适配器（ZST）。

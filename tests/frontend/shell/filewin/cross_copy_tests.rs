@@ -249,14 +249,22 @@ fn the_local_origin_is_the_app_one() {
 
 #[test]
 fn the_staging_dir_is_the_backend_one() {
+    // 〔P3〕后端那一份的值住契约 crate（`relay_route_core::STAGING_DIR_REL`；数据位置页也按它列），
+    //   后端 `files_commit::STAGING_DIR` 引它 ⇒ 这里钉「后端引的是契约那一份」＋「窗口这份 == 契约那一份」。
     let backend = guard_core::production_code(include_str!(
         "../../../../src/backend/control/files_commit.rs"
     ));
-    let needle = format!("pub const STAGING_DIR: &str = \"{STAGING_DIR}\";");
     assert_eq!(
-        backend.matches(needle.as_str()).count(),
+        backend
+            .matches("pub const STAGING_DIR: &str = relay_route_core::STAGING_DIR_REL;")
+            .count(),
         1,
-        "窗口那份暂存区与后端 `files_commit::STAGING_DIR` 不是同一个值"
+        "后端 `files_commit::STAGING_DIR` 不再引契约那一份了"
+    );
+    assert_eq!(
+        STAGING_DIR,
+        relay_route_core::STAGING_DIR_REL,
+        "窗口那份暂存区与后端的不是同一个值"
     );
 }
 

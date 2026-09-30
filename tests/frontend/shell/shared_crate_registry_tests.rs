@@ -603,7 +603,8 @@ fn every_ci_run_step_is_classified_as_local_or_unrunnable() {
         ),
         // ── job frontend
         ("npm audit (production deps, high)", true, "同名命令"),
-        ("eslint (advisory, baseline)", true, "同名命令。⚠ 它带 `|| true` ⇒ **结构上不会红**；登记它是为了别把「不会红」误当成「跑过了」"),
+        // 〔P3 · 主会话 09-29 裁〕基线清到 0 ⇒ 去掉 `|| true`、改成会拦（步骤名同拍改）。
+        ("eslint (blocking, baseline 0)", true, "同名命令（`npm run lint`，有一条错就红）"),
         ("stylelint (advisory, baseline)", true, "同上，也带 `|| true`"),
         ("unit tests (node pure-fn + vitest DOM)", true, "`npm test`"),
         ("coverage floor (vitest jsdom)", true, "`npm run coverage`"),
@@ -1043,6 +1044,16 @@ fn every_ignored_test_still_has_someone_who_triggers_it() {
             "wf1_the_windows_probe_script_reports_card_and_where_ccm_resolves",
             "〔WF1 · ㉔〕不是判据是**读数**：同上一条要一个 PowerShell（`CCM_PWSH`），跑 Windows 那一形的 ccm 探测串三种情形。\
              谁什么时候跑：改 `ccm_probe.rs` 里 `CCM_PROBE_PS` 的那一拍，交付前跑一趟、把结果贴进报告。",
+        ),
+        (
+            "p2_the_path_probe_reads_back_a_non_ascii_home_under_an_oem_console",
+            "〔P2〕不是判据是**读数**：同上要一个 PowerShell（`CCM_PWSH`），控制台编码设成 936 当替身跑 PATH 探针、读回汉字目录。\
+             谁什么时候跑：改 `profile_installer.rs::render_user_path_probe_command` 的那一拍，交付前跑一趟、把结果贴进报告。",
+        ),
+        (
+            "p2_powershell_under_a_936_console_writes_the_sample_bytes_to_stderr",
+            "〔P2〕不是判据是**读数**：同上要一个 PowerShell（`CCM_PWSH`），核 `platform/console_text_tests.rs` 那段 936 替身字节就是 PowerShell 在 936 控制台下往 stderr 写的。\
+             谁什么时候跑：改那段替身字节或 `platform/console_text.rs` 的那一拍，交付前跑一趟、把结果贴进报告。",
         ),
         (
             "the_readings_behind_the_two_thresholds",

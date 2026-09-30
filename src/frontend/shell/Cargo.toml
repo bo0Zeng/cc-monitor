@@ -143,7 +143,7 @@ creds-core = { path = "../../common/creds-core" }
 # ⚠ 原注释说「backend 侧刻意还没加这条依赖」已经过期两轮：U8c-2b-0 起后端的
 # `control/tmux_hook.rs::sq` 就在调它，那也是它今天唯一的后端用量。
 shell-quote-core = { path = "../../common/shell-quote-core" }
-# 〔US1 · 4D〕中转门牌（端口 · 钥匙文件路径 · 路由语法）的唯一住址，与后端同一份（`设计/20 §5` 目标）。
+# 〔US1 · 4D · P3〕后端的门牌与家的契约（端口 · 钥匙 · 路由语法 · `~/.cc-monitor/` 下每一样的相对路径），与后端同一份（`设计/20 §5` 目标）。
 relay-route-core = { path = "../../common/relay-route-core" }
 # 〔MIG-3b〕部署决策的唯一一份：本机常驻后端出计划（`deploy-plan`）用它判，monitor 照计划取字节、本机那一份的身份 · 远端 hello 的新旧 · 全景的表 A/B 也用它。
 deploy-core = { path = "../../common/deploy-core" }

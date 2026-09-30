@@ -33,6 +33,8 @@ const ov = (): Overview => ({
   total_symbols: 1,
   total_files: 1,
   unresolved_calls: 0,
+  ambiguous_calls: 0,
+  unresolved_imports: 0,
   parse_errors: 0,
 });
 // 私有字段/方法探针（仅测试）。

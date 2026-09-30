@@ -93,6 +93,7 @@ const UNIT: &[&str] = &[
     "tests/backend/observe/session_ledger_tests.rs", // 〔MIG-1〕会话账本（可重连 / 已结束的裁决）真值表
     "tests/backend/observe/user_inputs_tests.rs",
     "tests/backend/platform/shell_tests.rs",
+    "tests/backend/platform/tcp_rtt_tests.rs", // 〔P2〕Windows 臂 `SIO_TCP_INFO` 的布局与控制码对 SDK
     "tests/backend/plugin/probe_tests.rs",
     "tests/comms/outward/http1_tests.rs",
     "tests/comms/outward/route_tests.rs", // 〔US1〕跨半边抠 monitor 源码那几条退役 ⇒ 只剩纯解析 ＋ 成品→决策表（SCAN → UNIT）
@@ -111,7 +112,6 @@ const UNIT: &[&str] = &[
     "tests/backend/control/launch_render/launch_tmux_outer_parity_tests.rs",
     "tests/frontend/shell/chan/transfer_stream_tests.rs",
     "tests/backend/agents/claudecode/branch_tests.rs", // 〔THIN〕原 `tests/common/branch-core/lib_tests.rs`：分叉变换收进后端适配层
-    "tests/common/creds-core/store_tests.rs",
     "tests/backend/control/gate_rules_tests.rs", // 〔THIN〕原 `tests/common/gate-core/lib_tests.rs`：gate-core 收成后端模块
     "tests/common/relay-route-core/lib_tests.rs", // 〔US1〕中转门牌共享 crate
     "tests/common/search-core/lib_tests.rs",
@@ -315,6 +315,7 @@ const SCAN: &[&str] = &[
     "tests/backend/observe/tmux_list_tests.rs", // 〔MIG-1 续〕解析判据 ＋ 写跨语言金样（`include_str!` 读 `tmux-list.golden.json`）
     "tests/backend/dial_forwards_tests.rs", // 〔MIG-1〕转发账判据 ＋ 写跨语言金样（`include_str!` 读 `forward-list.golden.json`）
     "tests/backend/dial_ssh_config_tests.rs", // 〔MIG-1〕规则判据 ＋ 写跨语言金样（`include_str!` 读 `ssh-config.golden.json`）
+    "tests/common/creds-core/store_tests.rs", // 〔P5〕UNIT → SCAN：多一条「两侧读家目录同一个函数」（读两棵生产树的源码现扫调用点）
     "tests/backend/dial_terminal_tests.rs", // 〔WF1 · G〕UNIT → SCAN：开终端那一行的渲染规则 ＋ 三份起会话夹具的全部请求都过守卫（`include_str!` 读 `launch_render/fixtures/*.json`）
     "tests/backend/dial_tests.rs",
     "tests/backend/files/module_boundary_guard.rs",
@@ -691,6 +692,7 @@ const INTEGRATION: &[&str] = &[
     // 〔MIG-3b 续〕`tests/frontend/shell/panorama_call_tests.rs` 删了：问 · 交那一环随实现搬进后端（`tests/backend/control/panorama_edit_tests.rs`）。
     // 〔RM1f〕`tests/frontend/shell/panorama_tests.rs` 删了（monitor 的内嵌引擎连同它的判据一起删了）。
     "tests/frontend/shell/profile_installer_tests.rs",
+    "tests/frontend/shell/platform/console_text_tests.rs", // 〔P2〕控制台字节按 OEM 代码页解（Windows 臂 ＋ PowerShell 读数起进程）
     "tests/backend/control/panorama_edit_tests.rs", // 〔MIG-3b 续〕全景写：问 · 交那一环（原 `tests/frontend/shell/panorama_call_tests.rs`）随实现搬来，临时目录当仓
     "tests/backend/assets/pubkey_tests.rs", // 〔MIG-3b 续〕原 `tests/frontend/shell/pubkey_tests.rs` 随实现搬来（真 `sh` 上跑那一串 · 临时目录当家）
     "tests/frontend/shell/scanning_guard_registry_tests.rs",
@@ -981,6 +983,16 @@ const REAL_MACHINE: &[(&str, &str, Trigger)] = &[
         "tests/frontend/shell/ccm_probe_tests.rs",
         "wf1_the_windows_probe_script_reports_card_and_where_ccm_resolves",
         Trigger::Manual("〔WF1 · ㉔〕读数不是判据：要一个 PowerShell（`CCM_PWSH`）跑 Windows 那一形的探测串三种情形；跑法住它自己的头注"),
+    ),
+    (
+        "tests/frontend/shell/profile_installer_tests.rs",
+        "p2_the_path_probe_reads_back_a_non_ascii_home_under_an_oem_console",
+        Trigger::Manual("〔P2〕读数不是判据：要一个 PowerShell（`CCM_PWSH`）在 936 控制台编码替身下跑 PATH 探针、读回汉字目录；跑法住它自己的头注"),
+    ),
+    (
+        "tests/frontend/shell/platform/console_text_tests.rs",
+        "p2_powershell_under_a_936_console_writes_the_sample_bytes_to_stderr",
+        Trigger::Manual("〔P2〕读数不是判据：要一个 PowerShell（`CCM_PWSH`）核 936 替身字节就是它往 stderr 写的那一段；跑法住它自己的头注"),
     ),
 ];
 
