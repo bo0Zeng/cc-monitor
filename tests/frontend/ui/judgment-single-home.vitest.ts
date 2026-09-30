@@ -455,7 +455,7 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     rustGone: ["src/backend/observe/facts_query.rs::is_agent_tool"],
     rustNeedles: [
       { file: "src/backend/observe/facts_query.rs", text: '&["Agent", "Task"]', count: 0 },
-      { file: "src/frontend/shell/src/adapter.rs", text: '&["Agent", "Task"]', count: 0 },
+      // 〔P1 · 第 4 件〕monitor `adapter.rs` 那一行摘了：那份文件随 monitor 的适配表整删（起会话事实只住后端适配层）。
       { file: "src/backend/agents/claudecode/cards.rs", text: '&["Agent", "Task"]', count: 1 },
     ],
   },

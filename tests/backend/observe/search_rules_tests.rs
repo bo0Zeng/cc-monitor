@@ -150,24 +150,30 @@ const MUST_CALL: &[&str] = &[
 
 #[test]
 fn the_search_kou_jing_has_exactly_one_home() {
-    let rules = guard_core::production_code(include_str!(
-        "../../../src/backend/observe/search_rules.rs"
-    ));
+    let rules =
+        guard_core::production_code(include_str!("../../../src/backend/observe/search_rules.rs"));
     let text = guard_core::production_code(include_str!(
         "../../../src/backend/agents/claudecode/text.rs"
     ));
-    let search = guard_core::production_code(include_str!(
-        "../../../src/backend/observe/search_query.rs"
-    ));
+    let search =
+        guard_core::production_code(include_str!("../../../src/backend/observe/search_query.rs"));
     let defs = |code: &str, h: &str| code.matches(&format!("fn {h}(")).count();
     // ① 家里恰各一份（否则下面 ② 退化成「哪里都没有」，零命中地绿）。
     for h in RULE_HELPERS {
-        assert_eq!(defs(&rules, h), 1, "`search_rules.rs` 里 `{h}` 不是恰好一份");
+        assert_eq!(
+            defs(&rules, h),
+            1,
+            "`search_rules.rs` 里 `{h}` 不是恰好一份"
+        );
         assert_eq!(defs(&text, h), 0, "`text.rs` 里长出了通用助手 `{h}`");
     }
     for h in TEXT_HELPERS {
         assert_eq!(defs(&text, h), 1, "`text.rs` 里 `{h}` 不是恰好一份");
-        assert_eq!(defs(&rules, h), 0, "`search_rules.rs` 里长出了记录文本助手 `{h}`");
+        assert_eq!(
+            defs(&rules, h),
+            0,
+            "`search_rules.rs` 里长出了记录文本助手 `{h}`"
+        );
     }
     for c in CONSTS {
         assert_eq!(
@@ -180,7 +186,11 @@ fn the_search_kou_jing_has_exactly_one_home() {
         rules.contains("struct SnippetBudget") && rules.contains("enum SnippetVerdict"),
         "snippet 预算（含「预算用完」vs「单会话满」这一拆）必须住口径的家"
     );
-    assert_eq!(defs(&rules, "sort_by_recency<T>"), 1, "预算顺序（最近优先）必须住口径的家");
+    assert_eq!(
+        defs(&rules, "sort_by_recency<T>"),
+        1,
+        "预算顺序（最近优先）必须住口径的家"
+    );
     // ② 搜索那一侧：不许自己再有一份，且必须真的调家里那一份。
     let redefined: Vec<&str> = RULE_HELPERS
         .iter()

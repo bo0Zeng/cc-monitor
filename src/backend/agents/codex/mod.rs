@@ -70,6 +70,15 @@ pub(crate) const RECORDS: crate::agents::RecordFace = crate::agents::RecordFace 
 /// 根本不在做派发）。
 pub(crate) const AGENT_KIND: &str = "codex";
 
+/// 〔P1 · 第 4 件〕本家的起会话事实（注册表 `Adapter.launch` 那一格）。适配器 id 就是 wire 上的 kind（这一家没有登记默认上游）；没有 shell wrapper。
+pub(crate) const LAUNCH: crate::agents::LaunchFace = crate::agents::LaunchFace {
+    adapter_id: AGENT_KIND,
+    default_launcher: resume::DEFAULT_COMMAND,
+    launcher_alias: None,
+    resume_token: resume::RESUME_TOKEN,
+    nested_env: resume::NESTED_ENV,
+};
+
 /// 本 agent 在这台机器上的 home 目录 —— **只答"它该在哪"，不答"在不在"**〔`S5`〕。
 ///
 /// 与 Claude 那家的**真实差别**：这里可能答不出来（`None`）——

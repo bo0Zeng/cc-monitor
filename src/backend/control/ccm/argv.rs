@@ -317,16 +317,11 @@ pub(crate) fn resume_sid(passthru: &[String]) -> Option<&str> {
 /// 组合校验。**一条都不许静默忽略** —— 静默忽略正是本工作区反复消灭的那类病
 ///（写了个修饰、看起来生效了、实际被吃掉）。
 fn validate(o: &Opts) -> Result<(), Die> {
-    if !crate::control::ccm::AGENTS.contains(&o.agent.as_str()) {
+    let known = crate::control::ccm::agents();
+    if !known.contains(&o.agent.as_str()) {
         return die(copy_text(
             "beArgv.validate.unknownAgent",
-            &[
-                ("agent", &o.agent.to_string()),
-                (
-                    "known",
-                    &(crate::control::ccm::AGENTS.join("|")).to_string(),
-                ),
-            ],
+            &[("agent", &o.agent.to_string()), ("known", &known.join("|"))],
         ));
     }
     if !o.account.is_empty() && o.use_base {

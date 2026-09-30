@@ -77,6 +77,15 @@ pub(crate) const UPSTREAM: super::DefaultUpstream = super::DefaultUpstream {
     session_header: Some("x-claude-code-session-id"),
 };
 
+/// 〔P1 · 第 4 件〕本家的**起会话事实**（注册表 `Adapter.launch` 那一格）：`ccm` 按它起、界面按生成物 `agent-profile-table.ts` 读，同一份。
+pub(crate) const LAUNCH: super::LaunchFace = super::LaunchFace {
+    adapter_id: UPSTREAM.route_id,
+    default_launcher: resume::DEFAULT_COMMAND,
+    launcher_alias: Some(resume::LAUNCHER_ALIAS),
+    resume_token: resume::RESUME_TOKEN,
+    nested_env: resume::NESTED_ENV,
+};
+
 /// 本 agent 在这台机器上的 home 目录 —— **只答"它该在哪"，不答"在不在"**〔`S5`〕。
 ///
 /// 「在不在」的判准是通用层的机器（`agents::visible_homes`），不是每家自己定一套 ——
