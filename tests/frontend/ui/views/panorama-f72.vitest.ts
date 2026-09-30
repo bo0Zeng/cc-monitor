@@ -19,7 +19,7 @@ vi.mock("../../../../src/frontend/ui/panorama/api", async (importOriginal) => {
 });
 
 import * as api from "../../../../src/frontend/ui/panorama/api";
-import { PanoramaView, symbolSegForAnnotation } from "../../../../src/frontend/ui/views/panorama";
+import { PanoramaView } from "../../../../src/frontend/ui/views/panorama";
 import { LOCAL_ORIGIN } from "../../../../src/frontend/ui/ipc/origin";
 
 const flush = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
@@ -61,7 +61,7 @@ describe("F72 批注 + doc-link 写 UI（节点详情面板）", () => {
     vi.mocked(api.node).mockReturnValue(pending()); // mutate 后的重取挂起，避免二次渲染
   });
 
-  it("写批注 → api.addAnnotation(repo, file, 符号段, body, author)", async () => {
+  it("写批注 → api.addAnnotation(repo, 整个符号 id, body, author)", async () => {
     vi.mocked(api.addAnnotation).mockResolvedValue("id1");
     probe(v).renderNodeDetail(nodeView());
     const ta = probe(v).sidebarEl.querySelector(
@@ -70,7 +70,7 @@ describe("F72 批注 + doc-link 写 UI（节点详情面板）", () => {
     ta.value = "这个函数要注意 X";
     btnByText(v, "添加批注").click();
     await flush();
-    expect(api.addAnnotation).toHaveBeenCalledWith({ origin: LOCAL_ORIGIN, path: "/repo" }, "src/lib.rs", "f", "这个函数要注意 X", "me");
+    expect(api.addAnnotation).toHaveBeenCalledWith({ origin: LOCAL_ORIGIN, path: "/repo" }, "src/lib.rs#f", "这个函数要注意 X", "me");
   });
 
   it("空批注不提交", async () => {
@@ -92,16 +92,7 @@ describe("F72 批注 + doc-link 写 UI（节点详情面板）", () => {
     expect(api.removeAnnotation).toHaveBeenCalledWith({ origin: LOCAL_ORIGIN, path: "/repo" }, "aaa");
   });
 
-  it("symbolSegForAnnotation：镜像 core split_sym_id（截 @行号消歧，否则同名多符号静默丢失）", () => {
-    expect(symbolSegForAnnotation("src/a.rs#f")).toBe("f");
-    expect(symbolSegForAnnotation("src/a.rs#Type::method")).toBe("Type::method");
-    // @行号消歧 id：必须截掉 @42，否则 annotations_for 查询段("f")对不上写入段("f@42")。
-    expect(symbolSegForAnnotation("src/a.rs#f@42")).toBe("f");
-    expect(symbolSegForAnnotation("src/a.rs#Type::m@88")).toBe("Type::m");
-    expect(symbolSegForAnnotation("noHash")).toBeNull();
-  });
-
-  it("写批注（@行号消歧 id）→ addAnnotation 传截断后的段 f（回归：防静默丢失）", async () => {
+  it("写批注（@行号消歧 id）→ 〔P7〕整个 id 原样交（截 @行号 归上游 `SymbolRef::of`；小程序判据真引擎验查得回）", async () => {
     vi.mocked(api.addAnnotation).mockResolvedValue("id2");
     const nv = nodeView();
     (nv.symbol as unknown as { id: string }).id = "src/a.rs#f@42";
@@ -112,7 +103,7 @@ describe("F72 批注 + doc-link 写 UI（节点详情面板）", () => {
     ta.value = "重载函数的批注";
     btnByText(v, "添加批注").click();
     await flush();
-    expect(api.addAnnotation).toHaveBeenCalledWith({ origin: LOCAL_ORIGIN, path: "/repo" }, "src/lib.rs", "f", "重载函数的批注", "me");
+    expect(api.addAnnotation).toHaveBeenCalledWith({ origin: LOCAL_ORIGIN, path: "/repo" }, "src/a.rs#f@42", "重载函数的批注", "me");
   });
 
   it("关联文档 → api.writeDocLink(repo, doc, 符号全 id)", async () => {

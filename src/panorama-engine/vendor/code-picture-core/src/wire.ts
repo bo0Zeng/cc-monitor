@@ -1,11 +1,3 @@
-// 生成物 —— 不许手改。由 `tests/panorama-engine/cli_tests.rs::the_frontend_types_are_generated_from_upstream_and_this_program` 写出。
-// 要求住址：`99 §1` V158「线上契约由上游给、本仓不手抄」。
-// ① 上游 code-picture-core 的线上类型（vendored `src/wire.ts` 原样；ts-rs 从上游的 serde 属性写出，可选性随之过来）
-// ② 全景小程序自己的应答（`src/panorama-engine/main.rs` 的 DTO，ts-rs）
-// ③ 本仓界面里的叫法（别名，形状全来自 ①）
-
-// ── ① 上游（vendored code-picture-core `src/wire.ts`）──
-
 // 生成物 —— code-picture-core 的线上类型(serde 序列化出来的样子),由 `src/wire_schema.rs` 从
 // `#[cfg_attr(test, derive(ts_rs::TS))]` 写出(`cargo test -p code-picture-core wire_schema`)。不许手改。
 
@@ -557,26 +549,3 @@ label: string | null, };
  */
 export type TypeRelKind = "implements" | "composes";
 
-// ── ② 全景小程序自己的应答 ──
-
-/**
- * 〔PANO〕本程序**自己的**应答形状（引擎直出之外的那几样）：`status` 那三格。
- * `stale` = 源文件有改动、索引已陈旧；`indexedAt` = 上次索引的 unix 秒（`null` = 从未建完）；`symbols` = 已索引符号数。
- * 〔P7〕它与下面那份的 TS 声明进前端生成物 `types.ts`（ts-rs，只在测试构建里派生）。
- */
-export type PanoramaStatus = { stale: boolean, indexedAt: number | null, symbols: number, };
-
-/**
- * `diagram` 的应答：上游 `Diagram`（形状归 vendored pin）＋ 上游 Mermaid 文本（复制给 agent 与「画不出」兜底用，不许解析它）。
- */
-export type PanoramaDiagram = { diagram: Diagram, mermaid: string, };
-
-// ── ③ 本仓界面里的叫法 ──
-
-export type ClusterNode = ArchNode;
-export type ClusterLink = ArchLink;
-export type ClustersBody = Extract<DiagramBody, { shape: "clusters" }>;
-export type CallGraphBody = Extract<DiagramBody, { shape: "call_graph" }>;
-export type TypeGraphBody = Extract<DiagramBody, { shape: "type_graph" }>;
-export type DiagramHonesty = Honesty;
-export type DiagramOmitted = Omitted;

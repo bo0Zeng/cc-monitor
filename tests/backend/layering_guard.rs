@@ -159,6 +159,12 @@ mod tests {
         ),
         (
             "control",
+            "crate::plugin::invoke::run_abortable_reporting",
+            "〔P7〕同上那一种等法，另把 stderr 上以通用前缀 `progress=` 开头的整行交调用方的回调（插件口那套方言，\
+             同 `--probe` 的 `key=value`）：分拣是调用口的形状，格里是什么由调用方解释（全景：上游 `IndexProgress`）",
+        ),
+        (
+            "control",
             "crate::plugin::invoke::TIMED_OUT_CODE",
             "期限命令超时时的那个退出码。它是**那条命令的事实**、不是某个插件的语义 ⇒ 住通用层；\
              而「超时之后跟人怎么说」是插件自己的话，留在调用方",
