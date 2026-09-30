@@ -2368,7 +2368,7 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             "daemonless_stream_loop",
             1,
         ),
-        ("src/doc/ARCHITECTURE.md", "lookup_by_foreground_pid", 1),
+        // 〔P6 · 09-29〕`("src/doc/ARCHITECTURE.md", "lookup_by_foreground_pid", 1)` 摘了：开发文档按 4.0.0 重写，「刻意不做的」那一节只讲理由、不再点那个旧名。
         // 〔LOC1b〕`("src/doc/CONTRIBUTING.md", "list_active_session_ids", 1)` 摘了：那段示例改写成读本机活会话表，不再点那个说明性的名字。
         ("src/doc/INVARIANTS.md", "path_shell_safe", 1),
         ("src/doc/INVARIANTS.md", "snapshot_announced_by_origin", 1),
@@ -2933,8 +2933,8 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             "create_remote_branch_session",
             1,
         ),
-        ("src/doc/ARCHITECTURE.md", "create_branch_session", 2),
-        ("src/doc/ARCHITECTURE.md", "create_remote_branch_session", 1),
+        // 〔P6 · 09-29〕ARCHITECTURE 那两行（`create_branch_session` 2 · `create_remote_branch_session` 1）摘了：零侵入那一段按 4.0.0 重写，只讲今天的写口；
+        //   那块墓碑本身（`validate_branch_source`）照留，只是同一行不再捎带这两个旧名。
         ("src/doc/INVARIANTS.md", "delete_remote_history_session", 1),
         ("src/doc/INVARIANTS.md", "validate_delete_target", 1),
         (
