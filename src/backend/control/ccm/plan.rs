@@ -787,13 +787,14 @@ pub(crate) fn resolve_account(
 /// | 格 | 形式（按本机语境） | 拒绝集 |
 /// |---|---|---|
 /// | 工作目录（`--cwd` / 当前目录） | 绝对路径（`Path::is_absolute`，Windows 上认 `C:\` 那一形）· 没有 `..` 段 | NUL / CR / LF |
-/// | 透传给 agent 的参数 · 登记备注 · 继承来的 `CLAUDE_CONFIG_DIR` / `ANTHROPIC_BASE_URL` / `CCM_LAUNCH_ID` | — | NUL / CR / LF |
+/// | 透传给 agent 的参数 · 登记备注（可以跨行：多行初始任务） | — | NUL / CR（`shell_quote_core::arg_text_ok`） |
+/// | 继承来的 `CLAUDE_CONFIG_DIR` / `ANTHROPIC_BASE_URL` / `CCM_LAUNCH_ID` | — | NUL / CR / LF |
 ///
 /// 〔DUP3 · 主会话 09-26 裁 · `INVARIANTS §47` ③〕**启动器不在上表**：它是命令片段（带参数 · alias · 路径），不是自由文本 ——
 /// 过全仓那一张白名单 `shell_quote_core::launcher_refused_char`（与 monitor 本机 `history.rs` · 远端载荷 `payload.rs` 同一条，
 /// `设计/01 §6.8`；先前这一格只拒 NUL / CR / LF）。空 = 没给（下面用这个 agent 的默认启动器）。
 ///
-/// **不拒 shell 元字符**（`Bob's` · `(2019)` 照放，交给唯一的 quote）。拒绝集住 `shell_quote_core::free_text_ok`。
+/// **不拒 shell 元字符**（`Bob's` · `(2019)` 照放，交给唯一的 quote）。拒绝集住 `shell_quote_core::free_text_ok` / `arg_text_ok`。
 /// ⚠ 模型名与 `--ccm-sid` **不在这里**：主会话裁交 DUP1（判定唯一住址那一路）统一定规则（`调研/第四波记录/TL3.md §7.3`）。
 /// ⚠ 继承来的那三个只在它们真会被拼进去的时候才判（容器路把它们显式化进载荷，[`inherited_gate`]）：
 ///   环境里一个用不上的怪值不该挡住起会话（拒过头）。
@@ -818,11 +819,11 @@ fn free_text_gate(cwd: &str, o: &Opts) -> Result<(), Die> {
     if let Some(a) = o
         .passthru
         .iter()
-        .find(|a| !shell_quote_core::free_text_ok(a))
+        .find(|a| !shell_quote_core::arg_text_ok(a))
     {
         return Err(refuse(flag::END, a));
     }
-    if !shell_quote_core::free_text_ok(&o.bus_note) {
+    if !shell_quote_core::arg_text_ok(&o.bus_note) {
         return Err(refuse(flag::BUS_NOTE, &o.bus_note));
     }
     Ok(())
