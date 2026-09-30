@@ -38,15 +38,15 @@
 #
 # 用法：
 #   # 先把发版产物下下来（本脚本不联网、不替你下）：
-#   #   gh release download v3.8.0 --repo <owner>/cc-monitor \
-#   #     --pattern 'cc-monitor_3.8.0_amd64.deb' --pattern 'monitor' --dir <某个目录>
+#   #   gh release download vX.Y.Z --repo <owner>/cc-monitor \
+#   #     --pattern 'cc-monitor_X.Y.Z_amd64.deb' --pattern 'cc-monitor' --dir <某个目录>
 #   bash tests/e2e/local-backend-container/build-image.sh
 #   LBC_ARTIFACTS=<某个目录> bash tests/e2e/local-backend-container/rig.sh
 #   bash tests/e2e/local-backend-container/rig.sh --clean    # 只清上一趟崩掉时留下的容器/网络
 #
 # 环境变量：
 #   LBC_IMAGE      默认 ccmon-lbc:latest（由 build-image.sh 建）
-#   LBC_ARTIFACTS  发版产物所在目录（必须含 .deb；`monitor` 裸二进制可选）
+#   LBC_ARTIFACTS  发版产物所在目录（必须含 .deb；`cc-monitor` 裸二进制可选）
 #   LBC_DEB        .deb 的文件名，默认 cc-monitor_3.8.0_amd64.deb
 set -uo pipefail
 
@@ -199,7 +199,7 @@ BARE_OUT="$(docker exec -u root "$CT_BARE" dpkg -i "/tmp/$DEB" 2>&1; echo "rc=$?
 BARE_RC="$(printf '%s' "$BARE_OUT" | tail -1)"
 note "裸机 dpkg -i 退出码：$BARE_RC"
 printf '%s\n' "$BARE_OUT" | sed 's/^/    | /' | tail -12
-note "裸机 dpkg -i 之后 /usr/bin/monitor 在不在：$(docker exec "$CT_BARE" sh -c '[ -e /usr/bin/monitor ] && echo 在 || echo 不在')"
+note "裸机 dpkg -i 之后 /usr/bin/cc-monitor 在不在：$(docker exec "$CT_BARE" sh -c '[ -e /usr/bin/cc-monitor ] && echo 在 || echo 不在')"
 docker rm -f "$CT_BARE" >/dev/null 2>&1
 line
 
@@ -237,10 +237,10 @@ echo "== P6 起一次 app（Xvfb）—— 这是把 ccm 放下来的**那条生�
 docker exec -u tester -e HOME=/home/tester \
   -e WEBKIT_DISABLE_COMPOSITING_MODE=1 -e WEBKIT_DISABLE_DMABUF_RENDERER=1 \
   -d "$CT" bash -lc \
-  'xvfb-run -a dbus-run-session -- /usr/bin/monitor >/tmp/app.log 2>&1' >/dev/null 2>&1
+  'xvfb-run -a dbus-run-session -- /usr/bin/cc-monitor >/tmp/app.log 2>&1' >/dev/null 2>&1
 # 给它一点时间把后端释放出来并起进程。
 sleep 20
-note "app 进程数（pgrep -c monitor）：$(docker exec "$CT" sh -c 'pgrep -c -x monitor || echo 0' | tr -d '\r')"
+note "app 进程数（pgrep -c cc-monitor）：$(docker exec "$CT" sh -c 'pgrep -c -x cc-monitor || echo 0' | tr -d '\r')"
 note "后端进程数（pgrep -cf cc-monitor-backend）：$(docker exec "$CT" sh -c 'pgrep -cf cc-monitor-backend || echo 0' | tr -d '\r')"
 note "\$HOME/$DIR_REAL 里现在有什么：$(tsh "ls -1 \$HOME/$DIR_REAL 2>/dev/null | tr '\n' ' '")"
 note "app 日志尾（/tmp/app.log 末 6 行）："
@@ -313,7 +313,7 @@ line
 # ══════════════════════════════════════════════════════════════════
 echo "== P10 卸载 → 看残留"
 rsh "dpkg -r cc-monitor >/dev/null 2>&1; echo rc=\$?" | sed 's/^/    | /'
-note "卸完 /usr/bin/monitor 在不在：$(docker exec "$CT" sh -c '[ -e /usr/bin/monitor ] && echo 在 || echo 不在')"
+note "卸完 /usr/bin/cc-monitor 在不在：$(docker exec "$CT" sh -c '[ -e /usr/bin/cc-monitor ] && echo 在 || echo 不在')"
 note "卸完 /usr/bin/cc-monitor-backend 在不在：$(docker exec "$CT" sh -c '[ -e /usr/bin/cc-monitor-backend ] && echo 在 || echo 不在')"
 note "卸完 \$HOME/$DIR_REAL 在不在：$(tsh "[ -d \$HOME/$DIR_REAL ] && echo 在 || echo 不在")"
 note "卸完 \$HOME/$DIR_REAL 里还剩：$(tsh "ls -1 \$HOME/$DIR_REAL 2>/dev/null | tr '\n' ' '")"

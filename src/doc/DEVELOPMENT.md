@@ -23,7 +23,7 @@
 
 ```bash
 npm install                                  # 一次性
-bash tests/scripts/re-embed.sh --native      # 编本机原生后端与全景小程序，铺进内嵌目录
+bash tests/scripts/re-embed.sh --native      # 编本机原生后端、全景小程序与文件窗口程序，铺进内嵌目录
 npx tauri dev                                # 在仓根跑：起 vite、编 monitor、弹 1100×800 窗口
 ```
 

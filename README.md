@@ -125,15 +125,17 @@ flowchart LR
 
 从 [Releases](https://github.com/bo0Zeng/cc-monitor/releases) 下载最新版。
 
-- **Windows**：`*-setup.exe`（推荐）· `*.msi`（适合批量部署）· `monitor.exe`（免安装）
+- **Windows**：`*-setup.exe`（推荐）· `*.msi`（适合批量部署）· `cc-monitor.exe`（免安装）
   未签名，第一次运行时 SmartScreen 会拦，点「更多信息 → 仍要运行」。
-- **Linux**：`cc-monitor_<版本>_amd64.deb`（`sudo apt install ./cc-monitor_<版本>_amd64.deb`）· `monitor`（免安装）
+- **Linux**：`cc-monitor_<版本>_amd64.deb`（`sudo apt install ./cc-monitor_<版本>_amd64.deb`）· `cc-monitor`（免安装）
+
+下载的 `cc-monitor.exe`（Linux 上是 `cc-monitor`）或者安装的，就是这个项目本身：包含前端和后端，后端会被它释放到用到的每台机器上。
 
 校验和在 `SHA256SUMS.txt`（Windows）与 `SHA256SUMS-linux.txt`（Linux）。
 
 ### 上手
 
-1. 打开 cc-monitor（Linux 上的命令是 `monitor`）。
+1. 打开 cc-monitor（Linux 上的命令是 `cc-monitor`）。
 2. 在任意终端里跑 `claude`，cc-monitor 里就多出一个 tab。
 3. 加远端机器：按 `,` 打开设置 → 机器 → 添加机器。连上之后，那台上的会话会自动出现。
 4. 想让 tab 上的 ↗ 跳回终端：在机器页装别名块，之后用 `cc` 起会话。

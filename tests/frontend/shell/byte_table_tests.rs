@@ -351,6 +351,7 @@ fn include_targets(prod: &str) -> Vec<String> {
 /// B2：`byte_table.rs` 的每个槽恰挂表 A 的一个键（从 `include_bytes!` 的目标名读：`<类>-<arch>` ⇒ (类, Linux, arch)；
 /// 本机原生那两份 ⇒ 这一份产物的 `TARGET` 那一格）。一个 (类, 键) 恰一个槽，**仅有的例外**是本机原生那两槽（后端 ·
 /// 〔RM1f〕全景）在 Linux 构建上与 musl 同格（`96 §7.3` 第一条，没裁），例外名单两向相等。
+/// 不挂表 A 的槽只许文件窗口程序那一个（monitor 自己的窗口进程，只在本机起、从不部署到别的机器），名单两向相等。
 #[test]
 fn every_slot_hangs_on_exactly_one_key_and_one_key_has_one_slot_but_the_one_listed_exception() {
     let src = read("src/frontend/shell/src/byte_table.rs");
@@ -358,12 +359,22 @@ fn every_slot_hangs_on_exactly_one_key_and_one_key_has_one_slot_but_the_one_list
     let targets = include_targets(&prod);
     assert_eq!(
         targets.len(),
-        6,
-        "byte_table.rs 生产段里 `include_bytes!` 应当恰好 6 处（后端 musl 2 · 全景 musl 2 · 本机原生 2：后端 ＋ 〔RM1f〕全景）：{targets:?}"
+        7,
+        "byte_table.rs 生产段里 `include_bytes!` 应当恰好 7 处（后端 musl 2 · 全景 musl 2 · 本机原生 2：后端 ＋ 〔RM1f〕全景 · 文件窗口程序 1）：{targets:?}"
+    );
+    // 不挂表 A 的槽恰好文件窗口程序那一个；别的槽下面逐个认名字，认不出就红（不会有第二个不挂表 A 的槽混过去）。
+    const FILEWIN_SLOT: &str = "\"../native-backend/cc-monitor-filewin\"";
+    assert_eq!(
+        targets
+            .iter()
+            .filter(|t| t.as_str() == FILEWIN_SLOT)
+            .count(),
+        1,
+        "文件窗口程序那一槽应当恰好一处（字面量 {FILEWIN_SLOT}）：{targets:?}"
     );
     let native_key = Key::this_machine().expect("这一份产物的 TARGET 不在表 A 的轴上");
     let mut slots: Vec<(Product, Key)> = Vec::new();
-    for t in &targets {
+    for t in targets.iter().filter(|t| t.as_str() != FILEWIN_SLOT) {
         let slot = if t.contains("native-backend/cc-monitor-native") {
             (Product::Backend, native_key)
         } else if t.contains("native-backend/cc-monitor-panorama") {

@@ -1,6 +1,6 @@
 # 构建与打包
 
-怎样把 cc-monitor 编成可分发的包：Windows 的 NSIS 安装器 · MSI · 裸 `monitor.exe`，Linux 的 `.deb` · 裸 `monitor`。发版产物由 `.github/workflows/release.yml` 在 CI 上编，本篇讲它由哪几件组成、本机怎么编出同样的东西。
+怎样把 cc-monitor 编成可分发的包：Windows 的 NSIS 安装器 · MSI · 裸 `cc-monitor.exe`，Linux 的 `.deb` · 裸 `cc-monitor`。发版产物由 `.github/workflows/release.yml` 在 CI 上编，本篇讲它由哪几件组成、本机怎么编出同样的东西。
 
 开发环境与 dev 模式 → [DEVELOPMENT.md](DEVELOPMENT.md)。发版流程 → [RELEASING.md](RELEASING.md)。
 
@@ -13,6 +13,7 @@
 | 前端 | 三个入口页（主窗 · 设置 · 只读窗）的 JS / CSS | `npm run build`（`tsc && vite build`），产物在 `.build/dist/` |
 | 远端用的字节 | 后端与全景小程序的 musl 静态二进制，x86_64 / aarch64 各一份，编进 monitor，第一次连上远端时部署过去 | `cargo zigbuild --release --locked --target <arch>-unknown-linux-musl`，铺进 `src/frontend/shell/embedded-backends/` |
 | 本机后端 | 本机原生 target 的后端（与全景小程序），随包带上，本机起它 | `cargo build --release --locked`，发版时作 `externalBin` 注入，并铺进 `src/frontend/shell/native-backend/` 供自释放 |
+| 文件窗口程序 | monitor 包的第二个二进制 `cc-monitor-filewin`，安装包把它装在主程序旁；也编进 monitor，单文件版开窗时放到 `~/.cc-monitor/bin/` 再起 | 先 `cargo build --release --locked --bin cc-monitor-filewin`、铺进 `src/frontend/shell/native-backend/`，再编 monitor（同一趟 cargo 里 monitor 嵌不到它） |
 | monitor 本体 | Tauri 壳 ＋ 打包 | `npx tauri build`（先跑上面的 `npm run build`，再 `cargo build --release`，最后打包） |
 
 - 那三个落点目录都在 `.gitignore` 里，干净 clone 里没有。没有时 monitor 照样编得过，只是那一份能力诚实关闭（不能部署远端 / 起不了本机后端），不会编出一份假装能用的包。
@@ -27,7 +28,7 @@
 
 ```bash
 bash tests/scripts/re-embed.sh            # 重编两个 musl arch 并铺回落点（要 cargo-zigbuild 与 zig）
-bash tests/scripts/re-embed.sh --native   # 编本机原生后端与全景小程序，铺进 native-backend/
+bash tests/scripts/re-embed.sh --native   # 编本机原生后端、全景小程序与文件窗口程序，铺进 native-backend/
 bash tests/scripts/re-embed.sh --check    # 只查：盘上的字节与源码的 BUILD_ID 对不对得上，不产字节
 bash tests/scripts/re-embed.sh --clean    # 删掉落点：自动部署诚实关闭，编译立刻恢复
 ```
@@ -67,7 +68,8 @@ npx tauri build --bundles deb
 
 ```
 .build/shell/release/
-├ monitor(.exe)                                     裸二进制（包名 monitor）
+├ cc-monitor(.exe)                                  裸二进制（主 `[[bin]]` 的名字；包名仍是 monitor）
+├ cc-monitor-filewin(.exe)                          文件窗口程序（安装包装在主程序旁；发版时也编进上面那一个）
 └ bundle/
   ├ nsis/cc-monitor_<version>_x64-setup.exe         NSIS 安装器
   ├ msi/cc-monitor_<version>_x64_en-US.msi          MSI（WiX 没配语言 ⇒ en-US）

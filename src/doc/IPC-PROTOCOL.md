@@ -201,7 +201,7 @@ session_id → HWND 持久缓存。新 session 出现时查这里复用绑定，
 
 **生命周期**：持久。
 
-**为什么自动写路径**：让 monitor.exe 是 portable（用户可以随意移动），下次启动自动更新最新路径，PS 端不需要硬编码。
+**为什么自动写路径**：让 cc-monitor.exe 是 portable（用户可以随意移动），下次启动自动更新最新路径，PS 端不需要硬编码。
 
 ---
 
@@ -4334,7 +4334,7 @@ PS (__ccm_bind)                          File System                    monitor 
 
 2. 检查 auto-launch.json
    - auto_launch_enabled && monitor 不在跑
-     → Start-Process monitor.exe --background
+     → Start-Process cc-monitor.exe --background
        （不抢前台焦点；v2 起不再死等 2s）
 
 3. 生成 marker = "ccm-bind-<PID>-<8 字符 GUID>"
@@ -4411,7 +4411,7 @@ deadline 是 **3000ms**（v2 从 800ms 提上来，覆盖 monitor 冷启动；�
 - 失效检测在拉前时三重校验（IsWindow + owner_pid + owner_proc_start），过期条目自动清
 
 ### 为什么 auto-launch 写 monitor exe path
-- 让 monitor.exe portable：用户从 D 盘搬到 C 盘也无需重设
+- 让 cc-monitor.exe portable：用户从 D 盘搬到 C 盘也无需重设
 - monitor 启动时自动更新该路径，PS 端永远拿到最新值
 
 ---

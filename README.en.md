@@ -127,15 +127,17 @@ Install [Claude Code](https://github.com/anthropics/claude-code) first and run i
 
 Get the latest version from [Releases](https://github.com/bo0Zeng/cc-monitor/releases).
 
-- **Windows**: `*-setup.exe` (recommended) · `*.msi` (for managed deployment) · `monitor.exe` (portable)
+- **Windows**: `*-setup.exe` (recommended) · `*.msi` (for managed deployment) · `cc-monitor.exe` (portable)
   The build is unsigned; on first run SmartScreen will stop it — choose "More info → Run anyway".
-- **Linux**: `cc-monitor_<version>_amd64.deb` (`sudo apt install ./cc-monitor_<version>_amd64.deb`) · `monitor` (portable)
+- **Linux**: `cc-monitor_<version>_amd64.deb` (`sudo apt install ./cc-monitor_<version>_amd64.deb`) · `cc-monitor` (portable)
+
+The downloaded `cc-monitor.exe` (`cc-monitor` on Linux), or the installed app, is the project itself: it contains the frontend and the backend, and it releases the backend onto every machine it uses.
 
 Checksums are in `SHA256SUMS.txt` (Windows) and `SHA256SUMS-linux.txt` (Linux).
 
 ### First steps
 
-1. Open cc-monitor (on Linux the command is `monitor`).
+1. Open cc-monitor (on Linux the command is `cc-monitor`).
 2. Run `claude` in any terminal; a new tab appears in cc-monitor.
 3. Add a remote machine: press `,` for Settings → Machines → Add machine. Once connected, its sessions appear automatically.
 4. To make ↗ jump back to the terminal, install the alias block from the machine page and start sessions with `cc`.
