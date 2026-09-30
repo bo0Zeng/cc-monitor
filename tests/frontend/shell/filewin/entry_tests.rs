@@ -177,6 +177,7 @@ fn some_ui_file_other_than_the_wrapper_actually_calls_it() {
 /// 🔴 **空路径那一支真的去问 home，而且排在列目录前面；monitor 这一侧一问都不问。**
 ///
 /// 〔MIG-3a · 主会话 09-28 裁 3〕射程从 `entry.rs` 换到 `proc.rs::first_screen`：那两问进了窗口进程。
+/// 〔P4〕窗口独立成包：`first_screen` 随窗口进程那一半住窗口包的 `proc.rs`；monitor 那一侧的 `proc.rs`（起进程）同 `entry.rs` 一起判零 SFTP。
 /// 行为那一半（没给目录才问 · 问的顺序）住 `proc_tests::the_first_screen_asks_home_only_when_told_nothing`；
 /// 本条钉结构：① `first_screen` 里 home 那一问排在列目录前面、用的是 `files-home` 那个常量；
 /// ② `entry.rs` 生产段里**没有**问后端的写法（宿主句柄 · 两问的命令常量）—— 那正是 `99 §2.1 ⑬` 待迁那一行删掉的理由。
@@ -184,7 +185,9 @@ fn some_ui_file_other_than_the_wrapper_actually_calls_it() {
 /// ⚠ **它买不到那一跳是对的**，只买到它在、在前面、monitor 这一侧不在。别读宽。
 #[test]
 fn the_empty_path_branch_goes_through_the_one_home_resolver_before_listing() {
-    let proc = guard_core::production_code(include_str!(
+    let proc =
+        guard_core::production_code(include_str!("../../../../src/frontend/filewin/src/proc.rs"));
+    let spawner = guard_core::production_code(include_str!(
         "../../../../src/frontend/shell/src/filewin/proc.rs"
     ));
     let at_fn = guard_core::find_pinned(&proc, "pub async fn first_screen(")
@@ -223,7 +226,9 @@ fn the_empty_path_branch_goes_through_the_one_home_resolver_before_listing() {
     // 〔F7a · 第三波 09-24〕一处 SFTP 都不许有。针拼出来，免得命中本文件。
     let pool = format!("sftp_{}::", "pool");
     assert!(
-        !entry.contains(pool.as_str()) && !proc.contains(pool.as_str()),
+        !entry.contains(pool.as_str())
+            && !proc.contains(pool.as_str())
+            && !spawner.contains(pool.as_str()),
         "开窗那条路又够到了 SFTP 那个池子"
     );
 }

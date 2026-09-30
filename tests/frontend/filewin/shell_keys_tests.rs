@@ -1081,7 +1081,7 @@ fn a_real_x_keyboard_drives_the_list() {
             .unwrap_or_else(|e| panic!("起不了 Xvfb ⇒ 这一格判不了，不是过了：{e}"));
         xvfb::run_scenario(
             screen.display(),
-            "filewin::shell::keys_tests::xvfb_worker_real_keys_on_the_window",
+            "shell::keys_tests::xvfb_worker_real_keys_on_the_window",
         )
     };
     run.must_have_passed("「真键盘按得动文件窗口」");

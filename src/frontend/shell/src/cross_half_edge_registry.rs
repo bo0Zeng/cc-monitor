@@ -288,7 +288,7 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     ),
     (
         "monitor→backend",
-        "tests/frontend/shell/filewin/transfer_tests.rs",
+        "tests/frontend/filewin/transfer_tests.rs",
         "src/backend/dial/pool.rs",
         "★〔SR1b 09-24 新增〕**窗口一趟拖入起几件，与本机后端那条连接的传输车道 / 通道闸对得上** —— \
          窗口传输那份判据里的 `one_windows_burst_fits_the_transfer_lane_and_never_fills_the_connection`。\
@@ -297,7 +297,7 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     ),
     (
         "monitor→backend",
-        "tests/frontend/shell/filewin/cross_copy_tests.rs",
+        "tests/frontend/filewin/cross_copy_tests.rs",
         "src/backend/control/files_commit.rs",
         "★〔FILES2 · 第四波新增〕**窗口清 B 那头暂存件用的暂存区 == 后端的暂存区** —— \
          `cross_copy_tests.rs::the_staging_dir_is_the_backend_one`。两个 crate 互相引不到，两侧各写一份 \
@@ -305,7 +305,7 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     ),
     (
         "monitor→backend",
-        "tests/frontend/shell/filewin/lossy_pull_tests.rs",
+        "tests/frontend/filewin/lossy_pull_tests.rs",
         "src/backend/files/mod.rs",
         "★〔FILES2 · V152 新增〕**窗口一块读多少 == 后端 `files-read-chunk` 的上限** —— \
          `lossy_pull_tests.rs::the_chunk_is_the_backend_cap`。两侧各写一个数；失效方向：窗口的块比后端的上限大 ⇒ \
@@ -313,7 +313,7 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     ),
     (
         "monitor→backend",
-        "tests/frontend/shell/filewin/chunk_upload_tests.rs",
+        "tests/frontend/filewin/chunk_upload_tests.rs",
         "src/backend/control/transfer.rs",
         "★〔FILES2 · 第四波新增〕**窗口据以换路的收场码 == 传输台发的那个** —— \
          `chunk_upload_tests.rs::the_mismatch_code_is_the_backend_one`。两侧各写一份 `sftp_home_mismatch`；\

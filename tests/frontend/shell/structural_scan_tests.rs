@@ -44,6 +44,7 @@ fn no_two_test_attributes_land_on_the_same_function() {
         ("src/frontend/shell/src", &[] as &[&str]),
         ("src/backend", &[]),
         ("tests/frontend/shell", &["structural_scan_tests.rs"]),
+        ("tests/frontend/filewin", &[]), // 〔P4〕文件窗口独立成包，它的判据搬到这里
         ("tests/backend", &[]),
         ("tests/comms", &[]), // 〔RE〕通信层成员的单测镜像
     ] {
@@ -973,6 +974,7 @@ fn comment_stripping_has_exactly_one_shared_implementation() {
         std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src"),
         crate::guard_support::tests_root().join("frontend/shell"),
         crate::guard_support::tests_root().join("comms/inward"), // 〔RE〕本 crate 的第二棵测试树
+        crate::guard_support::tests_root().join("frontend/filewin"), // 〔P4〕文件窗口的测试树
     ] {
         for (f, raw) in guard_core::scan_tree!(&root, &["rs"]) {
             // 只看生产段之外也一样：私有剥法一律住在测试模块里，所以扫整份。
@@ -1314,6 +1316,7 @@ fn every_position_comparison_over_source_pins_and_bounds_its_anchors() {
         ("src/frontend/shell/src", &[] as &[&str]),
         ("src/backend", &[]),
         ("tests/frontend/shell", &["structural_scan_tests.rs"]),
+        ("tests/frontend/filewin", &[]), // 〔P4〕文件窗口独立成包，它的判据搬到这里
         ("tests/backend", &[]),
         ("tests/comms", &[]), // 〔RE〕通信层成员的单测镜像
     ] {
@@ -2678,20 +2681,16 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         // 〔P4〕「在此打开终端」那一串（`cd <目录> && exec $SHELL -l`）随「窗口只交意图」从文件窗口搬进本机后端 `dial/terminal.rs::command_for_cwd`。
         ("src/backend/dial/terminal.rs", "build_open_terminal_cmd", 1),
         (
-            "src/frontend/shell/src/filewin/shell.rs",
+            "src/frontend/filewin/src/shell.rs",
             "build_open_terminal_cmd",
             1,
         ),
         (
-            "src/frontend/shell/src/filewin/shell.rs",
+            "src/frontend/filewin/src/shell.rs",
             "build_open_terminal_cmd_at",
             2,
         ),
-        (
-            "src/frontend/shell/src/filewin/shell.rs",
-            "cd_then_shell",
-            1,
-        ),
+        ("src/frontend/filewin/src/shell.rs", "cd_then_shell", 1),
         (
             "src/frontend/shell/src/launch.rs",
             "build_remote_ssh_ps_command",
@@ -3398,16 +3397,8 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         ),
         // 🔴 〔F9c · 第四波 · 2026-09-24〕存盘装不进一行的改走暂存区分块之后，「打开即只读」一档与它那两句话一起删了；
         //    `fonts.rs` 的探针来路里逐字记着那两句当初带进来的九个字 ⇒ 第②条出路：贴墓碑 ＋ 记账。
-        (
-            "src/frontend/shell/src/filewin/fonts.rs",
-            "too_big_to_save",
-            1,
-        ),
-        (
-            "src/frontend/shell/src/filewin/fonts.rs",
-            "read_only_notice",
-            1,
-        ),
+        ("src/frontend/filewin/src/fonts.rs", "too_big_to_save", 1),
+        ("src/frontend/filewin/src/fonts.rs", "read_only_notice", 1),
         // 🔴 〔C2 · 2026-09-24〕拨号搬进后端的拨号代理之后，界面侧 `K-P6b` 那一版的三条判据随它们守的东西一起删了：
         //    回落登记（回落删了，`D11`）· 请求行按蛇形键写（请求改由宿主 `dial_host` 造，判据搬去那边且改成与后端异源）·
         //    代理只从两处解析（解析多了「自释放那一份」一处）。留下的那几句说的正是「它们为什么不在了」⇒ 第②条出路。
@@ -3539,30 +3530,30 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         //    `INVARIANTS §40 追加` 的「天然不对称白名单」第一条逐字一致
         //    ⇒ 文件管理器的本机侧整条删了。下面**三条判据随它一起走**，
         //    墓碑正文（存在过什么 · 谁裁的 · 白名单原文 · 买不到什么）住
-        //    `src/frontend/shell/src/filewin/source.rs` 的头注。
+        //    `src/frontend/filewin/src/source.rs` 的头注。
         //    ⚠ 点名的理由是「让随它们走掉的**检出力**有一份可读的账」——
         //      这三条各钉一件不重复的事（阴性对照 · 同真同假 · 整条执行链）。
         //      同轮还删了六条，那六条**刻意没点名**（名字里逐字带着 `the_local_side_…`，
         //      点出来只是把同一句话说六遍）⇒ 它们不在这张表里，如实登记这个口径。
         (
-            "src/frontend/shell/src/filewin/source.rs",
+            "src/frontend/filewin/src/source.rs",
             "a_window_that_started_local_has_nowhere_to_go_back_to",
             1,
         ),
         (
-            "src/frontend/shell/src/filewin/source.rs",
+            "src/frontend/filewin/src/source.rs",
             "the_button_shows_up_exactly_when_the_jump_would_work",
             1,
         ),
         (
-            "src/frontend/shell/src/filewin/source.rs",
+            "src/frontend/filewin/src/source.rs",
             "a_real_click_on_the_go_back_button_walks_the_whole_chain",
             1,
         ),
         // 🔴 同一轮：`parent_dir` 从「吃 `&Source`、两侧两个算法」收成「吃一条字符串」
         //    ⇒ 那条判据的名字里「本机那一支」那半不成立了，改了名。旧名逐字留着。
         (
-            "tests/frontend/shell/filewin/source_tests.rs",
+            "tests/frontend/filewin/source_tests.rs",
             "walking_up_uses_slashes_on_the_remote_side_and_the_platform_on_the_local_side",
             1,
         ),
@@ -4170,33 +4161,33 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         ("src/frontend/shell/README.md", "sftp_cancel_transfer", 1),
         ("src/frontend/shell/README.md", "sftp_read_text_for_edit", 2),
         (
-            "src/frontend/shell/src/filewin/editor.rs",
+            "src/frontend/filewin/src/editor.rs",
             "sftp_read_text_for_edit",
             2,
         ),
         (
-            "src/frontend/shell/src/filewin/mod.rs",
+            "src/frontend/filewin/src/lib.rs", // 〔P4〕原壳里 `filewin/mod.rs`（窗口独立成包，躯体随之）
             "sftp_cancel_transfer",
             1,
         ),
         (
-            "src/frontend/shell/src/filewin/mod.rs",
+            "src/frontend/filewin/src/lib.rs",
             "sftp_read_text_for_edit",
             1,
         ),
         (
-            "src/frontend/shell/src/filewin/transfer.rs",
+            "src/frontend/filewin/src/transfer.rs",
             "sftp_cancel_transfer",
             1,
         ),
         (
-            "src/frontend/shell/src/filewin/writeops.rs",
+            "src/frontend/filewin/src/writeops.rs",
             "sftp_read_text_for_edit",
             1,
         ),
         // 〔FILES2 · 第四波〕有损目录里上传 / 搜索 / 开终端改成按字节做 ⇒ 那道出声拒的闸没了调用方、删了，原处一块墓碑。
         (
-            "src/frontend/shell/src/filewin/shell.rs",
+            "src/frontend/filewin/src/shell.rs",
             "refused_in_lossy_cwd",
             1,
         ),
@@ -5114,8 +5105,8 @@ fn every_prose_tombstone_mark_is_registered() {
         //   `source.rs` 的头注上留了一块墓碑：**4 处标记**（一处是墓碑正文那一句，
         //   另三处各挂在一条**随功能一起走掉的判据**的名字上 ——
         //   那三个名字同时要进 `TOMBSTONED`，两张表单位不同，各记各的）。
-        ("src/frontend/shell/src/filewin/source.rs", 5), // 〔F7c 收尾 09-24〕4 → 5（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）
-        ("src/frontend/shell/src/filewin/fonts.rs", 2), // 〔F9c 第四波 09-24〕0 → 2（探针来路里那两句「存不回去」的函数名随只读一档删了）
+        ("src/frontend/filewin/src/source.rs", 5), // 〔F7c 收尾 09-24〕4 → 5（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）
+        ("src/frontend/filewin/src/fonts.rs", 2), // 〔F9c 第四波 09-24〕0 → 2（探针来路里那两句「存不回去」的函数名随只读一档删了）
         ("src/frontend/shell/src/history.rs", 9), // 〔MOD〕4 → 9 // 〔MOD〕9 → 4 // 〔合并 MIG-3b × 主线 5bb03b34〕两边各自贴的墓碑相加，按盘上现数（跑出来核过） // 〔DUP1〕+1：configDir 校验头注原先「照抄 TS 侧 `isValidConfigDir`」那句（TS 那份删了） // 〔合并 LOC1a〕主线 18 ＋ LOC1a +1（分叉 exec 那一趟的结果解释删了）// 〔合并 US1 × 主线〕主线 15 ＋ US1 +3 // 〔C4e 批 2〕+1：本机 kill 那句点的旧发送端 // 〔C4c〕+1：记录那一问的 Tauri 命令与答案形状退役，原处留一块 // 〔RW1〕+1：本机删会话那道路径守卫整段搬去后端 // 〔RW1〕+3：本机分叉的实现（`branch_impl` / `write_branch_file` / `read_jsonl_values`）交给后端 ·〔C4d〕本机账号参照实现删了（list_from_dir 一族 ＋ accounts.rs 整份），点旧名的散文挂墓碑 ·〔C4d〕历史清单与注解搬进本机常驻后端，点旧名的散文挂墓碑 // 〔MIG-2〕20 → 15
         ("src/frontend/shell/src/launch.rs", 8), // 〔FIX4 · ⑬〕7 → 8：开终端 ssh 外壳进本机后端，点旧名的散文挂墓碑  // 〔MIG-2〕1 → 7
         ("src/frontend/shell/src/lib.rs", 35), // 〔MOD〕31 → 35 // 〔MIG-3b 续〕30 → 31：足迹三个 mod 删了那一块 // 〔MIG-3b 续〕29 → 30：`mod panorama_call;` 换成一块墓碑 // 〔MIG-3b 续〕+2：`mod pubkey;` 与 `push_public_key` 注册那一行各换成一块墓碑 // 〔MIG-3a · 09-28 预裁〕26 → 27：`mod acct_iso_deploy` 那一行换成一块墓碑 // // 〔合并 MIG-1 × 主线 8c6cdc0e〕两边各自贴的墓碑相加，按盘上现数（跑出来核过） 21 → 26 // 〔合并 MIG-3b × 主线 5bb03b34〕两边各自贴的墓碑相加，按盘上现数（跑出来核过） // 〔合并 MIG-3a × MIG-2〕基数 16 ＋ 主线 +1 ＋ MIG-3a +2 ＋ MIG-2 +1（`apikey_remote` 整删）⇒ 20 // 〔STOP〕+1：`mod stop_grace;` 那一行换成一块墓碑（「请它收尾 → 等 → 强杀」搬进一次性 `--resident-stop`）。 〔W5-ALIAS · 删 `fenced_block::apply` 那一族〕主线 13 ＋ 本路 +2（`verified_write` 模块删了那一行：`verified_write` · `fenced_block::apply` 各一）⇒ 15。主线原注：〔合并 HX2 × 主线 267588ca〕基数 10 ＋ LOC1b +3 ＋ HX2 ±0 ⇒ 13。LOC1b 原注：〔LOC1b〕+2：本机判活那一段（`SessionMap::load_with_changes` 起步 · `app.manage(session_map)`）删了，原处各挂一块 // 〔合并 LOC1b × 主线 4837d0bd〕主线 10 ＋ LOC1b +1（`mod search;` 那一行挂一块，本机内存索引删了） // 〔US1〕+1 // 〔GP1〕+1：`write_apikey_credentials_key` 头注里「整段论证见」那个旧写口 // 〔合并 C4d × 主线 303fed89〕主线 7 ＋ 本路 +1 ⇒ 8（〔C4d〕本机账号参照实现删了（list_from_dir 一族 ＋ accounts.rs 整份），点旧名的散文挂墓碑） // 〔合并 CF2 × 主线 362611a9〕主线 6 ＋ 本路 +1（独立窗口的定向重放命令退役那一段）// 〔AL1d〕+2（「终端集成」五条命令退役：注册表旁一句 ＋ 原住址一句；合并主线 636cc1a0 按两边增量相加 4 + 2） // 〔F7c 收尾 09-24〕1 → 2（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）· 〔SR1b 子步 3〕+1：`sftp_move_ledger` 退役 · 〔C4b〕+1：`plugins` 模块删了，那一行挂一块（合并按两边增量相加 ⇒ 4） ｜ HX2 原注：〔HX2 · 4D〕±0：`write_apikey_credentials_key` 整条删，原处换一块墓碑（点旧命令名 ＋ `KH2C1` 那条旧判据名）// 〔US1〕+1 // 〔GP1〕+1：`write_apikey_credentials_key` 头注里「整段论证见」那个旧写口 // 〔合并 C4d × 主线 303fed89〕主线 7 ＋ 本路 +1 ⇒ 8（〔C4d〕本机账号参照实现删了（list_from_dir 一族 ＋ accounts.rs 整份），点旧名的散文挂墓碑） // 〔合并 CF2 × 主线 362611a9〕主线 6 ＋ 本路 +1（独立窗口的定向重放命令退役那一段）// 〔AL1d〕+2（「终端集成」五条命令退役：注册表旁一句 ＋ 原住址一句；合并主线 636cc1a0 按两边增量相加 4 + 2） // 〔F7c 收尾 09-24〕1 → 2（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）· 〔SR1b 子步 3〕+1：`sftp_move_ledger` 退役 · 〔C4b〕+1：`plugins` 模块删了，那一行挂一块（合并按两边增量相加 ⇒ 4） // 〔MIG-2〕16 → 17
@@ -5171,7 +5162,7 @@ fn every_prose_tombstone_mark_is_registered() {
         // 🔴 〔波 4 合并时补〕`filewin/editor.rs` 那一段记的是**一个被现打证伪的旧读数**
         //   （「26 万字节排一帧 16.3 ms」是 debug 档 ＋ 全新 Context 的第一帧；release 是 2.5 ms）。
         //   按本表的口径它是墓碑：**不删那段话**，但挂上标记、登记在册。
-        ("src/frontend/shell/src/filewin/editor.rs", 3), // 〔F7c 收尾 09-24〕1 → 3（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）
+        ("src/frontend/filewin/src/editor.rs", 3), // 〔F7c 收尾 09-24〕1 → 3（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）
         ("tests/frontend/shell/comm_boundary_registry_tests.rs", 3), // 〔RW1〕+2：sftp.rs 那一行的阻塞随 F11 清空 · 头注里那个公开名字
         ("tests/common/guard-core/lib_tests.rs", 1),
         ("tests/frontend/shell/doc_claim_registry_tests.rs", 3), // 〔THIN〕+1：U8c-2b-0 量法原先读的 `ssh_source` 转调壳删了，点旧名的散文挂墓碑 // 〔LOC1a〕+1：本机一次性 exec / 任务行解释 / 分叉 exec 那几条路删了，点旧名的散文挂墓碑
@@ -5179,7 +5170,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("tests/backend/assets/aliases/fence_tests.rs", 3), // 〔W5-ALIAS · 删 `fenced_block::apply` 那一族〕+2：序列那五条判据的墓碑（`apply` 两处） // 〔TL1 · 4C〕新：写规则那条的死值验说明点代装 rc 那一跳（已退役）的旧名
         // 🔴〔本机侧退役 2026-09-23〕`parent_dir` 只剩一个算法 ⇒ 那条判据改了名
         //   （旧名尾巴上那半判的是本机那一支）。旧名逐字留着说明「它为什么改了」。
-        ("tests/frontend/shell/filewin/source_tests.rs", 2), // 〔F7c 收尾 09-24〕1 → 2（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）
+        ("tests/frontend/filewin/source_tests.rs", 2), // 〔F7c 收尾 09-24〕1 → 2（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）
         // 〔AL1 · 2026-09-24〕+5：`write_account_aliases` 退役那一行 ＋ 增量账里它那一行 ＋ 合并主线时
         //   三个计数旁的增量注（`EXPECTED_LOCAL_OR_BOTH` · `LEDGER.len()` · 增量账）。
         ("src/frontend/shell/src/asset_sync.rs", 2), // 〔MIG-3a〕+2：`AssetsSynced` 那几个形状 ＋ 界面那条 Tauri 命令随同步那一问走通道删了
@@ -5217,17 +5208,17 @@ fn every_prose_tombstone_mark_is_registered() {
         ("tests/frontend/ui/settings/plugins-section.vitest.ts", 1),
         ("tests/test-support/chan-fake.ts", 8), // 〔MOD〕7 → 8 // 〔MIG-1 续〕列 tmux 会话改走通道，旧命令名挂墓碑 6 → 7 // 〔MIG-2〕+1：起会话渲染那一节点六条旧命令名 // 〔C4e 批 3b〕+1：cc-bus 驾驶舱那一节点五条旧命令名 // 〔C4e〕+1：tmux 控制类那一节点四条旧命令名 // 〔C4c〕+1：账号那两问的翻译节点名三条旧命令名 ·〔C4d〕远端会话清单那个函数随历史清单搬进本机后端删了，点它的散文挂墓碑
         // 〔F7c 收尾 09-24〕SFTP 那一族收到只剩传输：删掉的命令 / 函数 / 判据名在这几份里逐处挂了墓碑。
-        ("src/frontend/shell/src/filewin/mod.rs", 3), // 〔FIX4 · ⑬〕2 → 3：开终端 ssh 外壳进本机后端，点旧名的散文挂墓碑
-        ("src/frontend/shell/src/filewin/transfer.rs", 4),
-        ("src/frontend/shell/src/filewin/writeops.rs", 1),
+        ("src/frontend/filewin/src/lib.rs", 3), // 〔P4〕住址：原壳里 `filewin/mod.rs` //〔FIX4 · ⑬〕2 → 3：开终端 ssh 外壳进本机后端，点旧名的散文挂墓碑
+        ("src/frontend/filewin/src/transfer.rs", 4),
+        ("src/frontend/filewin/src/writeops.rs", 1),
         // 〔FILES2 · 第四波〕0 → 1：`refused_in_lossy_cwd` 删了（有损目录里三件改按字节做），原处墓碑。
         // 〔P4〕1 → 5：「在此打开终端」那一串的三个函数随「窗口只交意图」搬进本机后端，原处一块 ＋ 两处旧名旁注。
-        ("src/frontend/shell/src/filewin/shell.rs", 5),
+        ("src/frontend/filewin/src/shell.rs", 5),
         // 〔P4〕0 → 2：书签文件名 ＋ 数据目录下全路径那两个随「全路径由开窗入口算好」挪到 monitor 那一侧，原处墓碑。
-        ("src/frontend/shell/src/filewin/bookmarks.rs", 2),
+        ("src/frontend/filewin/src/bookmarks.rs", 2),
         // 〔第四波 S4〕`sftp_pool.rs` 1 → 0（行删）：那块墓碑随零流量复制一段整块删了，理由同 `TOMBSTONED` 那一行。
         ("tests/frontend/shell/filewin/boundary_tests.rs", 2), // 〔FIX4 · ⑬〕2 → 4：开终端 ssh 外壳进本机后端，点旧名的散文挂墓碑 // 〔P4〕4 → 2：挂着墓碑的两行边（传输那一类的旧说明 · 本机动作的旧说明）随类别清零整行摘了
-        ("tests/frontend/shell/filewin/transfer_tests.rs", 1),
+        ("tests/frontend/filewin/transfer_tests.rs", 1),
         ("tests/frontend/shell/sftp_family_registry_tests.rs", 2),
         // 〔SR1b〕`sftp_move_ledger_tests.rs` 1 → 0（行删）：那块墓碑住乙「死连接重建」那一行里，乙整份过界、那一行摘了。
         // 〔SR1b〕5 → 0（行删）：同上 `TOMBSTONED` 那段（整份重写，守的轴搬进了本机后端）。
@@ -5238,7 +5229,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/backend/control/files_write.rs", 2),
         // 〔HX1 · 4D〕`main.rs` 里等停机信号的函数下沉 `platform/signal.rs::shutdown_listener`，原处留一块。
         ("src/backend/main.rs", 1),
-        ("src/frontend/shell/src/filewin/select.rs", 1),
+        ("src/frontend/filewin/src/select.rs", 1),
         // 〔第四波 S4〕快捷键预留位 `app.search-history` 删了（历史全文搜索从没独立快捷键、预留位不留）：
         //   清单那一处 ＋ 清单头注一处 ＋ 编辑器那枚「未上线」标签的遗址一处，逐处挂了墓碑。
         ("src/frontend/ui/keybindings/actions.ts", 2),
@@ -5443,7 +5434,7 @@ fn every_prose_tombstone_mark_is_registered() {
     ///   与 `tests/scripts/gate.sh` 里那段「立项理由已不成立、原话照留」的头注。
     const SITES: &[(&str, usize)] = &[
         ("src/backend/control/ccm/plan.rs", 1),
-        ("tests/frontend/shell/filewin/source_tests.rs", 1),
+        ("tests/frontend/filewin/source_tests.rs", 1),
         // 〔F7c 收尾 09-24〕`remote_write_registry_tests.rs` 那一行走了：它挂在 `NON_WRITING_COMMANDS` 里
         //   「`sftp_download` 从这张表搬走了」那段 09-21 的订正上，而那张表的全部五行连同它说的那条命令
         //   整轴删了（池子收到只剩 `sftp_copy`）⇒ 被守的那件事不在了，按第②条出路减掉。

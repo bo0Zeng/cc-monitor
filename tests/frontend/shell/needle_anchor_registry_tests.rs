@@ -382,6 +382,7 @@ fn bare_contains_on_disk_corpora_only_goes_down() {
         ("src/backend", &[]),
         ("src/common", &[]),
         ("tests/frontend/shell", &["needle_anchor_registry_tests.rs"]),
+        ("tests/frontend/filewin", &[]), // 〔P4〕文件窗口独立成包，它的判据搬到这里
         ("tests/backend", &[]),
         ("tests/comms", &[]), // 〔RE〕通信层成员的单测镜像
     ] {

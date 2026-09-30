@@ -1325,8 +1325,8 @@ run_gate fmt-backend '不是数出来的数：`cargo fmt --check` 只有绿/红�
 # ⚠ `--locked` 照旧带着：本格同时是 `src/frontend/shell/Cargo.toml ↔ Cargo.lock` 那条对账的落点
 #   （`doc_claim_registry` 两处逐字点名「门禁 `winchk` 那一格的 `cargo check --locked`」）。
 #   与 `winchk-backend` 刻意不带 `--locked` 的差别是**另一维**，别顺手抹平。
-run_gate winchk '不是数出来的数：`cargo check --all-targets --target x86_64-pc-windows-gnu` 只有绿/红两态。射程 = `-p monitor` 一个包的**生产段 ＋ test 档**（`src/frontend/shell/src` 的 67 处 `cfg(windows)`；`--all-targets` 是 `A5` 补的，与兄弟格 `winchk-backend` 对齐 —— 那一格的读数逐字「云端那 10 个错全在 test 档」）；`src/backend` 那 17 处与 `creds-core` 那 2 处本行盖不到' \
-         bash -c 'cd src/frontend/shell && cargo check --locked --all-targets -p monitor --target x86_64-pc-windows-gnu 2>&1 && echo "winchk: 1 passed"'
+run_gate winchk '不是数出来的数：`cargo check --all-targets --target x86_64-pc-windows-gnu` 只有绿/红两态。射程 = `-p monitor` 与〔P4〕文件窗口包 `-p cc-monitor-filewin`（搬家前它的代码与判据都在 monitor 包里，射程不缩）两个包的**生产段 ＋ test 档**（`src/frontend/shell/src` 的 67 处 `cfg(windows)`；`--all-targets` 是 `A5` 补的，与兄弟格 `winchk-backend` 对齐 —— 那一格的读数逐字「云端那 10 个错全在 test 档」）；`src/backend` 那 17 处与 `creds-core` 那 2 处本行盖不到' \
+         bash -c 'cd src/frontend/shell && cargo check --locked --all-targets -p monitor -p cc-monitor-filewin --target x86_64-pc-windows-gnu 2>&1 && echo "winchk: 1 passed"'
 
 # ── `winchk-backend`：**backend 那棵树在 Windows 上编不编得过**（`K-R122` `KR122D2` 甲，09-14，第 18 格）──
 #
@@ -1394,7 +1394,9 @@ run_gate winlink '不是数出来的数：`cargo build --bins --target x86_64-pc
 # 〔THIN〕13 → 12：`gate-core` 收成后端模块 `control/gate_rules.rs`（monitor 那一侧的门删了），它的单测随后端那一格跑。
 # 〔THIN〕12 → 11：`agent-tools-core` 收进后端适配层 `agents/claudecode/cards.rs`（界面不再按工具名判卡型）。
 # 〔THIN〕11 → 10：`branch-core` 收进后端适配层 `agents/claudecode/branch.rs`（monitor 零引用）。
-run_gate_sum cargo 13 bash -c 'cd src/frontend/shell && cargo test --workspace --lib 2>&1'
+# 〔P4〕10 → 13：新共享 crate `host-core`（前端宿主原语）· `chan-core`（通道）· `filewin-contract`（monitor ↔ 文件窗口进程的契约）。
+# 〔P4〕13 → 14：文件窗口独立成包 `src/frontend/filewin/`（`cc-monitor-filewin`，lib；monitor 包里那个 `[[bin]]` 转调它），它的单测随本格跑。
+run_gate_sum cargo 14 bash -c 'cd src/frontend/shell && cargo test --workspace --lib 2>&1'
 
 # ★★ `K-G3`（09-01）：上面那个合计**还缺一个分母** —— `src/frontend/shell/embedded-backends/` 铺没铺。
 #
@@ -1534,7 +1536,7 @@ deadcode_t0=$(date +%s)
 # **又是那条刻意的耦合按设计开火了，而且这一次上面那段逐字预告过它**：
 #   「剩下的第 3 条**仍在**：`Origin` 的五个方法……等调用点真的吃这几个方法，
 #    本格会再红一次 —— **那一次同样是对的**。」
-# 吃它的是 `src/frontend/shell/src/filewin/find.rs`（原生文件窗口那一侧的搜索）＋
+# 吃它的是 `src/frontend/filewin/src/find.rs`（原生文件窗口那一侧的搜索）＋
 #   `filewin/source.rs::Source::origin`：前者调 `Origin::as_wire_str()`，后者调 `Origin::local()`
 #   ⇒ 那一条「associated items 从来没用过」的合并警告整条出列。
 # ⚠ **`is_local` / `is_remote` / `host_name` 今天仍然没有生产调用方** —— 现打核过

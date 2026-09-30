@@ -30,7 +30,7 @@
  * 要求住址：`设计/91 §5.5`，逐字：「线上契约 | 不变：`Reply {code, message}`，`code` 仍是命令级粗码」——
  * 判「是哪一种失败」靠 `code` / 结构化字段；句子进了表就会被改写，谁按原文认它，改一个字就静默失灵
  *（CP2c 待办表的理由列：「refuse write:」等前缀被按原文认，先把判定换成码再抽）。
- * 判法：生产段（`src/backend` · `src/frontend/shell/src` · `src/common` 的 `.rs` ＋ `src` 的 `.ts`，剥注释）里
+ * 判法：生产段（`src/backend` · `src/frontend/shell/src` · `src/frontend/filewin/src` · `src/common` 的 `.rs` ＋ `src` 的 `.ts`，剥注释）里
  * 字符串匹配调用的字面量参数带汉字或 `refuse write/delete` 的地方 == `RECOGNIZE_BY_TEXT`（两向，按「文件 · 串」比）。
  */
 import { execFileSync } from "node:child_process";
@@ -173,6 +173,7 @@ describe("COPY · 生产代码不许按原文认话（判是哪种失败靠码�
     const rs = [
       ...productionRsFiles("src/backend"),
       ...productionRsFiles("src/frontend/shell/src"),
+      ...productionRsFiles("src/frontend/filewin/src"), // 〔P4〕文件窗口独立成包
       ...productionRsFiles("src/common"),
       ...productionRsFiles("src/comms"), // 〔RE〕通信层成员（两个 crate 经 `#[path]` 编它们）
     ].map((f) => ({ ...f, lang: "rust" as const }));

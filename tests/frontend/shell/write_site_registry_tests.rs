@@ -267,11 +267,8 @@ fn src_root() -> PathBuf {
 /// · `src/common` · `src` · `doc` —— **`src/frontend/shell/build.rs` 一张表都没扫到**，
 /// 它是这些扫描面共同的盲点（与 F65「三张表共享同一个没写下来的前提」同族）。
 fn corpus() -> Vec<(PathBuf, String)> {
+    // 〔P4〕人群含本包 manifest 明写的兄弟源码树（`host-core` · 文件窗口 …，`guard_core::population_trees`）：它们也跑在这台机器的前端进程里。
     let mut files = guard_core::scan_tree!(&src_root(), &["rs"]);
-    // 〔P4〕别的前端源码树（`host-core`）也跑在这台机器的前端进程里 ⇒ 同一张表。
-    for r in crate::guard_support::other_frontend_src_roots() {
-        files.extend(guard_core::scan_tree!(&r, &["rs"]));
-    }
     let bs = Path::new(env!("CARGO_MANIFEST_DIR")).join("build.rs");
     let src = std::fs::read_to_string(&bs).expect("读不到 build.rs —— 它是本表的一部分");
     files.push((bs, src));

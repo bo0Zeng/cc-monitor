@@ -680,7 +680,7 @@ fn scenario_trips() -> &'static [crate::rows::testing::xvfb::ChildRun; 3] {
         let mut go = || {
             xvfb::run_scenario(
                 screen.display(),
-                "filewin::shell::tests::xvfb_worker_opens_a_real_window",
+                "shell::tests::xvfb_worker_opens_a_real_window",
             )
         };
         [go(), go(), go()]
@@ -819,7 +819,7 @@ fn a_window_that_cannot_come_up_comes_back_as_a_reason_not_a_silent_ok() {
     // 刻意给一个**没有任何 X 服务器**的号（台架自己只用 :90–:119）。
     let run = xvfb::run_scenario(
         ":121",
-        "filewin::shell::tests::xvfb_worker_opens_with_no_x_server_at_all",
+        "shell::tests::xvfb_worker_opens_with_no_x_server_at_all",
     );
     run.must_have_passed("「窗口起不来要出声」那条阴性对照");
 
@@ -978,7 +978,7 @@ fn opening_a_window_again_is_a_new_process_and_it_really_comes_up() {
 ///
 /// ① **值**：那一句是 `with_dpi_aware(builder, true)`，恰好一行（`pin_line`）；`false` 零命中。
 /// ② **前提**：这个 hook 在生产上只经一条链被用到 ——
-///    `win_main.rs`（窗口进程入口）→ `proc::child_main` → `shell::open_detached_seeded` → `any_thread_hook`，
+///    `win_main.rs`（窗口进程入口，monitor 包里那个 `[[bin]]`）→ 〔P4〕`cc_monitor_filewin::run` → `proc::child_main` → `shell::open_detached_seeded` → `any_thread_hook`，
 ///    每个符号的「生产段里提到它的文件」集合与期望**两向相等**；且链上两份文件的生产段里
 ///    一个 `tauri` / `tao` 都没有。哪天有人在 monitor 进程里开这个窗口（集合多一个文件），
 ///    ② 先红 —— 逼他回来重答「这个进程的 DPI 归谁」，而不是让 ① 静静地守着一个过期的值。
@@ -1007,14 +1007,25 @@ fn the_window_process_owns_its_dpi_because_no_tauri_lives_there() {
     );
 
     // ② 前提：谁在生产段里提到这条链上的每一个符号。
-    let src_root = crate::guard_support::crate_src_root();
-    let files: Vec<(String, String)> = guard_core::scan_tree_excluding(&src_root, &["rs"], &[])
+    //    〔P4〕窗口独立成包：人群是 monitor 那棵（入口 `filewin/win_main.rs` 住那里）＋ 本包这棵（键带包名前缀，
+    //    免得与 monitor 那一侧同名的 `filewin/proc.rs` 撞）；链多了一跳 `cc_monitor_filewin::run`（本包 `lib.rs`）。
+    let monitor_src = crate::guard_support::repo_root().join("src/frontend/shell/src");
+    let own_src = crate::guard_support::crate_src_root();
+    let files: Vec<(String, String)> = guard_core::scan_tree_excluding(&monitor_src, &["rs"], &[])
         .into_iter()
         .map(|(p, raw)| {
             // 〔RE〕按模块住址认：通信层成员住 `src/comms/inward/`、经 `#[path]` 挂进本 crate（`guard_core` 顺着收）。
-            let rel = guard_core::module_address(&src_root, &p);
-            (rel, guard_core::production_code(&raw))
+            (guard_core::module_address(&monitor_src, &p), raw)
         })
+        .chain(
+            guard_core::scan_tree_excluding(&own_src, &["rs"], &[])
+                .into_iter()
+                .map(|(p, raw)| {
+                    let rel = guard_core::module_address(&own_src, &p);
+                    (format!("cc-monitor-filewin/{rel}"), raw)
+                }),
+        )
+        .map(|(rel, raw)| (rel, guard_core::production_code(&raw)))
         .collect();
     // 反空真：整棵树扫塌了的话，下面每个集合都会是空集而「与期望相等」只会在期望也空时成立 ——
     // 期望全非空，所以塌了会红；这一行只是让红的时候说人话。
@@ -1034,16 +1045,18 @@ fn the_window_process_owns_its_dpi_because_no_tauri_lives_there() {
         xs.iter().map(|s| s.to_string()).collect()
     };
     for (sym, want) in [
-        ("any_thread_hook", set(&["filewin/shell.rs"])),
+        ("any_thread_hook", set(&["cc-monitor-filewin/shell.rs"])),
         (
             "open_detached_seeded",
-            set(&["filewin/shell.rs", "filewin/proc.rs"]),
+            set(&["cc-monitor-filewin/shell.rs", "cc-monitor-filewin/proc.rs"]),
         ),
-        ("open_detached", set(&["filewin/shell.rs"])),
+        ("open_detached", set(&["cc-monitor-filewin/shell.rs"])),
         (
             "child_main",
-            set(&["filewin/proc.rs", "filewin/win_main.rs"]),
+            set(&["cc-monitor-filewin/proc.rs", "cc-monitor-filewin/lib.rs"]),
         ),
+        // 〔P4〕monitor 那一侧只有那个 `[[bin]]` 入口提到本包（`contract_crate_guard` 的「前端包」那一类同钉）。
+        ("cc_monitor_filewin", set(&["filewin/win_main.rs"])),
     ] {
         assert_eq!(
             mentioned_by(sym),
@@ -1054,7 +1067,11 @@ fn the_window_process_owns_its_dpi_because_no_tauri_lives_there() {
              多了一个文件 ⇒ 多半是有人在别的进程里开这个窗口：先回去重答「那个进程的 DPI 归谁」。"
         );
     }
-    for rel in ["filewin/proc.rs", "filewin/win_main.rs"] {
+    for rel in [
+        "cc-monitor-filewin/proc.rs",
+        "cc-monitor-filewin/lib.rs",
+        "filewin/win_main.rs",
+    ] {
         let window_proc_prod = &files
             .iter()
             .find(|(r, _)| r == rel)
@@ -1451,7 +1468,7 @@ async fn a_real_click_on_delete_walks_the_whole_chain_even_on_a_session_file() {
 // 这里原来有 3 条判据，钉的是「点一下『本机』还回得来」那条往返
 // （以及它当初修掉的那扇单向门）。2026-09-23 用户裁掉了整个本机侧
 // ⇒ 3 条随功能一起走了。存在过什么 · 谁裁的 · 那条白名单原文，
-// **完整记述只有一份**，住 `src/frontend/shell/src/filewin/source.rs` 的头注（那块墓碑）。
+// **完整记述只有一份**，住 `src/frontend/filewin/src/source.rs` 的头注（那块墓碑）。
 //
 // ⚠ **随它们一起走掉的检出力，如实点名**（三条各自独占的那一刀）：
 // ⑤「没有来处也报回去成功了」· ③「按钮恒画 ⇒ 画了点了没反应」·

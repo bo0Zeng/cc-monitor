@@ -171,12 +171,27 @@ fn the_gate_package_count_tracks_the_number_of_shared_crates() {
         .next()
         .and_then(|t| t.parse().ok())
         .expect("`run_gate_sum cargo` 后面那个数读不出来");
-    let want = 1 + shared_crate_names().len();
+    // 〔P4〕workspace 里除了根包与共享 crate，还有「前端包」（文件窗口 `src/frontend/filewin`）：从 `[workspace] members` 现数
+    //   （不住 `../../common/`、不是 `.` 的那几行）。
+    let toml = fs::read_to_string(root().join("Cargo.toml")).expect("Cargo.toml 读不到");
+    let members = toml
+        .split_once("\nmembers = [")
+        .map(|(_, rest)| rest)
+        .expect("`[workspace] members` 切不出来");
+    let frontend_pkgs = members
+        .lines()
+        .map(str::trim)
+        .take_while(|l| *l != "]")
+        .filter(|l| l.starts_with('"'))
+        .map(|l| l.trim_end_matches(',').trim_matches('"'))
+        .filter(|m| *m != "." && !m.starts_with("../../common/"))
+        .count();
+    let want = 1 + frontend_pkgs + shared_crate_names().len();
     assert_eq!(
         n,
         want,
         "`tests/scripts/gate.sh` 里 `run_gate_sum cargo {n}`，而今天应当是 **{want}**\n\
-             （1 个根包 `monitor` + {} 个共享 crate）。\n\
+             （1 个根包 `monitor` + {frontend_pkgs} 个前端包 + {} 个共享 crate）。\n\
              ⚠ 加/删共享 crate 时**这个数要跟着改** —— 不改的话 `npm run gate` 会红，\n\
              但它的报文说的是「有包静默掉出了 --workspace」，**指错方向**。",
         shared_crate_names().len()
@@ -1142,6 +1157,11 @@ fn every_ignored_test_still_has_someone_who_triggers_it() {
         &repo.join("tests/comms/inward"),
         &["rs"]
     ));
+    // 〔P4〕文件窗口独立成包（代码随上面那棵的人群声明收），它的测试住 `tests/frontend/filewin/`。
+    ignore_corpus.extend(guard_core::scan_tree!(
+        &repo.join("tests/frontend/filewin"),
+        &["rs"]
+    ));
     for (path, src) in ignore_corpus {
         let stem = path
             .file_stem()
@@ -1268,6 +1288,11 @@ fn every_ignored_test_still_has_someone_who_triggers_it() {
         // 〔RE〕本 crate 的第二棵测试树（通信层成员单测，`tests/comms/inward/`）。
         judge_corpus.extend(guard_core::scan_tree!(
             &repo.join("tests/comms/inward"),
+            &["rs"]
+        ));
+        // 〔P4〕文件窗口的测试树。
+        judge_corpus.extend(guard_core::scan_tree!(
+            &repo.join("tests/frontend/filewin"),
             &["rs"]
         ));
         assert!(

@@ -29,7 +29,7 @@
 //! ③ upload_all  —— **并行**起传输（有界）
 //! ```
 //!
-//! 判据钉的正是这个顺序与并行度，见 `tests/frontend/shell/filewin/transfer_tests.rs`：
+//! 判据钉的正是这个顺序与并行度，见 `tests/frontend/filewin/transfer_tests.rs`：
 //! · `confirm` 被调用**恰好一次**，且它拿到的是**全部**冲突项（相等断言）
 //! · 任何一次 `launch` 都排在那一次 `confirm` **之后**（时序号相比）
 //! · 4 件在 `lanes = 4` 下**真的同时在飞**（`Barrier` 凑齐才放行；串行实现会超时）

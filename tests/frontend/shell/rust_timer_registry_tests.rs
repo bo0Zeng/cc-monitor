@@ -16,7 +16,7 @@
 //!
 //! ⚠ 条 43 是 2026-09-22 才有的（`P20` 现打之后用户拍板升格）：
 //! 在那之前本表**一直在管、却点不到任何要求**，而那天它**还在长**
-//!（当天加了 `filewin/shell.rs` 那个 10ms 轮询）⇒ 活着的缺口，不是历史遗留。
+//!（当天加了那个 10ms 轮询，今住 `filewin/proc.rs::early_failure`）⇒ 活着的缺口，不是历史遗留。
 //! 逐条依据住 `设计/99 §4.10.2`。
 //!
 use std::fs;
@@ -106,7 +106,8 @@ const REGISTERED: &[(&str, &str, usize, &str)] = &[
              （而它也顺手把 `EADDRINUSE` 挪到宿主手里）。",
     ),
     (
-        "src/filewin/shell.rs",
+        // 〔P4〕`early_failure` 随「起进程那一侧」留在 monitor（从前住窗口的 `shell.rs`）。
+        "src/filewin/proc.rs",
         "wait-for-condition",
         1,
         "🔴〔第十一刀 2026-09-22〕`early_failure` 里那一跳 10ms 轮询：\
@@ -182,24 +183,30 @@ fn production(raw: &str) -> String {
 fn rust_files() -> Vec<(String, String)> {
     let src = root().join("src");
     let mut out = Vec::new();
-    let mut stack = vec![src.clone()];
-    while let Some(d) = stack.pop() {
-        let Ok(rd) = fs::read_dir(&d) else { continue };
-        for e in rd.flatten() {
-            let p: PathBuf = e.path();
-            if p.is_dir() {
-                stack.push(p);
-                continue;
-            }
-            if p.extension().is_some_and(|x| x == "rs") {
-                let rel = format!(
-                    "src/{}",
-                    p.strip_prefix(&src)
-                        .unwrap_or(&p)
-                        .to_string_lossy()
-                        .replace('\\', "/")
-                );
-                out.push((rel, fs::read_to_string(&p).unwrap_or_default()));
+    // 〔P4〕人群 ＝ 本 crate 的 `src/` ＋ manifest 明写的兄弟包（窗口包 · 通道 · 宿主原语 · 开窗契约，
+    //   `guard_core::population_trees`）—— monitor 的代码搬进去了，人群不变；兄弟包的键带包名。
+    let trees =
+        std::iter::once(("src".to_string(), src.clone())).chain(guard_core::population_trees(&src));
+    for (label, tree) in trees {
+        let mut stack = vec![tree.clone()];
+        while let Some(d) = stack.pop() {
+            let Ok(rd) = fs::read_dir(&d) else { continue };
+            for e in rd.flatten() {
+                let p: PathBuf = e.path();
+                if p.is_dir() {
+                    stack.push(p);
+                    continue;
+                }
+                if p.extension().is_some_and(|x| x == "rs") {
+                    let rel = format!(
+                        "{label}/{}",
+                        p.strip_prefix(&tree)
+                            .unwrap_or(&p)
+                            .to_string_lossy()
+                            .replace('\\', "/")
+                    );
+                    out.push((rel, fs::read_to_string(&p).unwrap_or_default()));
+                }
             }
         }
     }

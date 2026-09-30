@@ -15,7 +15,7 @@ const RULE: &str = "\
 拿不准就当成用户文件（两种错判的代价不对称：多保留一次 ACL 无害，丢一次 ACL 用户读不了文件）。";
 
 /// 每个生产调用点登记：`(相对 src/frontend/shell/src 的路径, 符号, 处数, 写的是哪类文件, 为什么是这一套)`。
-/// 〔P4〕别的前端源码树（`guard_support::other_frontend_src_roots`）里那几处写成 `<crate>/<相对它 src 的路径>`。
+/// 〔P4〕本包 manifest 明写的兄弟源码树（`guard_core::population_trees`）里那几处写成 `<包名>/<相对它 src 的路径>`。
 ///
 /// ⚠ **登记表不是豁免清单**：新增一处没登记的 ⇒ 下面那条红，并把 `RULE` 原样打出来。
 const SITES: &[(&str, &str, usize, &str, &str)] = &[
@@ -137,17 +137,10 @@ fn call_sites() -> Vec<(String, String, usize)> {
     let root = src_root();
     let mut files = Vec::new();
     collect_rs(&root, &mut files);
-    // 〔P4〕别的前端源码树：键带上 crate 名（`host-core/atomic.rs`），与壳里的相对路径分开。
-    let others: Vec<(PathBuf, String)> = crate::guard_support::other_frontend_src_roots()
+    // 〔P4〕本包 manifest 明写的兄弟源码树（`guard_core::population_trees`）：键带上包名（`host-core/atomic.rs`），与壳里的相对路径分开。
+    let others: Vec<(PathBuf, String)> = guard_core::population_trees(&root)
         .into_iter()
-        .map(|r| {
-            let name = r
-                .parent()
-                .and_then(|c| c.file_name())
-                .map(|n| n.to_string_lossy().to_string())
-                .unwrap_or_default();
-            (r, name)
-        })
+        .map(|(name, r)| (r, name))
         .collect();
     for (r, _) in &others {
         collect_rs(r, &mut files);

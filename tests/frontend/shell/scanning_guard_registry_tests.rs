@@ -1285,7 +1285,10 @@ const PROSE_TREES: &[(&str, usize)] = &[
     ("src/frontend/shell/src", 100),
     ("src/common", 8),
     ("src/backend", 58),
-    ("tests/frontend/shell", 140),
+    // 〔P4〕140 → 125：文件窗口那 31 份判据搬去 `tests/frontend/filewin/`（下一行），这一棵现打 129。
+    ("tests/frontend/shell", 125),
+    // 〔P4〕文件窗口独立成包，它的判据从上一棵搬到这里（地板取现打份数）。
+    ("tests/frontend/filewin", 33),
     ("tests/backend", 65),
     // 〔RE〕通信层成员的单测镜像（从上面两棵里搬出来的 9 份 ＋ 1 份 `.vitest.ts` 不在 `.rs` 人群）；地板取现打份数。
     ("tests/comms", 9),

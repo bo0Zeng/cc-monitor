@@ -498,7 +498,7 @@ pub fn format_mtime(secs: u64) -> String {
 /// # 🔴 它在生产路径上**零消费者**，而它还在盘上 —— 逐条理由，不是「以后可能用得上」
 ///
 /// 本机那一侧退役（见本模块头注那块墓碑）之后，它唯一的消费者是
-/// `tests/frontend/shell/filewin/find_testing.rs::walk` —— 搜索那一族判据用的**合成后端**
+/// `tests/frontend/filewin/find_testing.rs::walk` —— 搜索那一族判据用的**合成后端**
 /// 要一个「列一个目录」原语去走一棵临时目录树。
 ///
 /// 为什么不把它搬进那份测试文件（那才是「该删就删」的写法）：

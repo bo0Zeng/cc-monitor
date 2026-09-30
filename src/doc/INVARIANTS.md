@@ -207,7 +207,7 @@ data dir 里两类东西**语义上一刀两断**，别搅混到「迁移/重建
 |---|---|---|---|
 | `config.json` | **真相** | `config.rs` | theme/font/claudeDir/keybindings/`remote.hosts[]`(含 label)/resume 命令/诊断开关——全用户手填 |
 | `history-metadata.json` | **真相** | 〔C4d〕本机常驻后端 `history_annotations.rs::answer_annotate`（路径仍由 `history.rs::metadata_path` 算、起后端时交过去；文件原地不动） | 按 sid 的 star/重命名/隐藏——用户策展意图 |
-| `filewin-bookmarks.json` | **真相** | `filewin/bookmarks.rs`（文件管理窗口进程；旁件 `.lock` 上独占锁读-改-写） | 〔FILES3 · `设计/99 §2.2 ㉜`〕每台机器一份收藏目录清单 —— 用户手点的；设置页「数据位置」列出它 |
+| `filewin-bookmarks.json` | **真相** | `filewin/src/bookmarks.rs`（文件管理窗口进程；旁件 `.lock` 上独占锁读-改-写） | 〔FILES3 · `设计/99 §2.2 ㉜`〕每台机器一份收藏目录清单 —— 用户手点的；设置页「数据位置」列出它 |
 | `auto-launch.json` | **混（良性）** | `auto_launch.rs` | `enabled`=真相；`monitor_exe_path`=派生(每次启动 `current_exe()` 自愈改写) |
 | `sid-hwnd-cache.json` | **缓存** | `bind.rs` | sid→HWND，能从 PS 握手重建 |
 | `ps-registry/` `ps-await/` | **缓存/IPC** | `bind.rs` | 跨进程握手，启动重扫 |
@@ -2041,7 +2041,7 @@ throttle / startup-delay），`ticker` 还要写明事件源与退役归属。
 == 登记表条数）。
 
 ⚠ 升格的来历（`设计/99 §4.10.2`）：这张表**一直在管**，却点不到任何要求
-—— 而 2026-09-22 它**还在长**（当天加了 `filewin/shell.rs` 那个 10ms 轮询）
+—— 而 2026-09-22 它**还在长**（当天加了那个 10ms 轮询，今住 `filewin/proc.rs::early_failure`）
 ⇒ 那是一个活着的缺口，不是历史遗留。
 
 ---

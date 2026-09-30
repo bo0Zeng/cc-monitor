@@ -105,8 +105,18 @@ fn the_two_orderings_agree_on_a_synthetic_set() {
 /// [`listing_has_no_second_road_when_the_backend_refuses`] 那条行为判据买。
 #[test]
 fn the_whole_filewin_tree_lists_a_remote_directory_only_by_asking_the_backend() {
+    // 〔P4〕「整棵 `filewin/`」今天是两棵：本包 ＋ monitor 那一侧 `src/frontend/shell/src/filewin/`（开窗入口 · 起进程），人群与搬家前逐份相同。
     let root = crate::guard_support::crate_src_root();
-    let files = guard_core::files_by_extension(&root, "rs");
+    let monitor_side = crate::guard_support::repo_root().join("src/frontend/shell/src/filewin");
+    let files: Vec<std::path::PathBuf> = guard_core::files_by_extension(&root, "rs")
+        .into_iter()
+        .map(|f| root.join(f))
+        .chain(
+            guard_core::files_by_extension(&monitor_side, "rs")
+                .into_iter()
+                .map(|f| monitor_side.join(f)),
+        )
+        .collect();
     assert!(
         files.len() >= 16,
         "`filewin/` 下只扫到 {} 份 `.rs`（{files:?}）—— 扫描面塌了，下面几条在空转",
@@ -116,8 +126,12 @@ fn the_whole_filewin_tree_lists_a_remote_directory_only_by_asking_the_backend() 
     let pool_ls = format!("sftp_pool::sftp_{}(", "list_dir");
     let mut asking: Vec<(String, bool)> = Vec::new();
     let mut total_prod = 0usize;
-    for f in &files {
-        let src = std::fs::read_to_string(root.join(f)).expect("read filewin rs");
+    for path in &files {
+        let f = path
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_default();
+        let src = std::fs::read_to_string(path).expect("read filewin rs");
         let prod = guard_core::production_code(&src);
         total_prod += prod.len();
         // 定义那一行（`pub const CMD_LS`）不算「问」。
@@ -819,7 +833,9 @@ fn the_field_by_field_table_between_backend_and_window_is_a_judge() {
 ///
 /// # 人群与口径
 ///
-/// - 人群：`filewin/` 生产段（`guard_core::production_code` 剥过测试与注释）。
+/// - 人群：`filewin/` 生产段（`guard_core::production_code` 剥过测试与注释）。〔P4〕窗口独立成包之后那是三棵：
+///   窗口包本身 · monitor 那一侧 `shell/src/filewin/`（开窗入口也切「跳到这个文件」）· 契约 crate `filewin-contract`
+///   （`parent_dir` / `remote_basename` 搬去那里、两边共用一份）；后两棵的键带前缀。
 /// - 算一处「切」：一行里出现 `.split('/')` · `.rsplit('/')` · `.rfind('/')` ·
 ///   `.split_terminator('/')` 任一形；记成 `(文件, 所在函数)`。
 /// - ⚠ **不算**：`trim_end_matches('/')`（剥尾巴，不切）· `push('/')`（拼，不切）·
@@ -842,23 +858,36 @@ fn every_place_that_splits_a_remote_path_is_declared() {
         ),
         ("corpus.rs", "synth_rows", "合成语料取名字，不是远端路径"),
         ("source.rs", "breadcrumbs", "面包屑那一摞前缀"),
-        ("source.rs", "parent_dir", "上一级"),
-        ("source.rs", "remote_basename", "尾段"),
+        ("filewin-contract/lib.rs", "parent_dir", "上一级"),
+        ("filewin-contract/lib.rs", "remote_basename", "尾段"),
     ];
-    let dir = crate::guard_support::repo_root().join("src/frontend/filewin/src");
+    let repo = crate::guard_support::repo_root();
     let mut found: std::collections::BTreeSet<(String, String)> = Default::default();
     let mut files = 0usize;
-    for (path, src) in guard_core::scan_tree_excluding(&dir, &["rs"], &[]) {
-        files += 1;
-        let file = path.file_name().unwrap().to_string_lossy().to_string();
-        let prod = guard_core::production_code(&src);
-        let mut current = String::new();
-        for line in prod.lines() {
-            if let Some(name) = fn_name_on(line, FN_WORD) {
-                current = name;
-            }
-            if SPLITS.iter().any(|n| guard_core::contains_word(line, n)) {
-                found.insert((file.clone(), current.clone()));
+    let trees = [
+        (crate::guard_support::crate_src_root(), ""),
+        (
+            repo.join("src/frontend/shell/src/filewin"),
+            "shell/filewin/",
+        ),
+        (
+            repo.join("src/common/filewin-contract/src"),
+            "filewin-contract/",
+        ),
+    ];
+    for (dir, label) in &trees {
+        for (path, src) in guard_core::scan_tree_excluding(dir, &["rs"], &[]) {
+            files += 1;
+            let file = format!("{label}{}", path.file_name().unwrap().to_string_lossy());
+            let prod = guard_core::production_code(&src);
+            let mut current = String::new();
+            for line in prod.lines() {
+                if let Some(name) = fn_name_on(line, FN_WORD) {
+                    current = name;
+                }
+                if SPLITS.iter().any(|n| guard_core::contains_word(line, n)) {
+                    found.insert((file.clone(), current.clone()));
+                }
             }
         }
     }
