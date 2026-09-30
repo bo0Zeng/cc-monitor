@@ -2675,6 +2675,23 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             "build_remote_ssh_ps_command",
             1,
         ),
+        // 〔P4〕「在此打开终端」那一串（`cd <目录> && exec $SHELL -l`）随「窗口只交意图」从文件窗口搬进本机后端 `dial/terminal.rs::command_for_cwd`。
+        ("src/backend/dial/terminal.rs", "build_open_terminal_cmd", 1),
+        (
+            "src/frontend/shell/src/filewin/shell.rs",
+            "build_open_terminal_cmd",
+            1,
+        ),
+        (
+            "src/frontend/shell/src/filewin/shell.rs",
+            "build_open_terminal_cmd_at",
+            2,
+        ),
+        (
+            "src/frontend/shell/src/filewin/shell.rs",
+            "cd_then_shell",
+            1,
+        ),
         (
             "src/frontend/shell/src/launch.rs",
             "build_remote_ssh_ps_command",
@@ -4194,7 +4211,7 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         (
             "tests/frontend/shell/filewin/boundary_tests.rs",
             "sftp_cancel_transfer",
-            2,
+            1, // 〔P4〕2 → 1：传输那一类的旧说明（带这块墓碑）随类别清零整行摘了
         ),
         (
             "tests/frontend/shell/parity_ledger_tests.rs",
@@ -5204,9 +5221,12 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/frontend/shell/src/filewin/transfer.rs", 4),
         ("src/frontend/shell/src/filewin/writeops.rs", 1),
         // 〔FILES2 · 第四波〕0 → 1：`refused_in_lossy_cwd` 删了（有损目录里三件改按字节做），原处墓碑。
-        ("src/frontend/shell/src/filewin/shell.rs", 1),
+        // 〔P4〕1 → 5：「在此打开终端」那一串的三个函数随「窗口只交意图」搬进本机后端，原处一块 ＋ 两处旧名旁注。
+        ("src/frontend/shell/src/filewin/shell.rs", 5),
+        // 〔P4〕0 → 2：书签文件名 ＋ 数据目录下全路径那两个随「全路径由开窗入口算好」挪到 monitor 那一侧，原处墓碑。
+        ("src/frontend/shell/src/filewin/bookmarks.rs", 2),
         // 〔第四波 S4〕`sftp_pool.rs` 1 → 0（行删）：那块墓碑随零流量复制一段整块删了，理由同 `TOMBSTONED` 那一行。
-        ("tests/frontend/shell/filewin/boundary_tests.rs", 4), // 〔FIX4 · ⑬〕2 → 4：开终端 ssh 外壳进本机后端，点旧名的散文挂墓碑
+        ("tests/frontend/shell/filewin/boundary_tests.rs", 2), // 〔FIX4 · ⑬〕2 → 4：开终端 ssh 外壳进本机后端，点旧名的散文挂墓碑 // 〔P4〕4 → 2：挂着墓碑的两行边（传输那一类的旧说明 · 本机动作的旧说明）随类别清零整行摘了
         ("tests/frontend/shell/filewin/transfer_tests.rs", 1),
         ("tests/frontend/shell/sftp_family_registry_tests.rs", 2),
         // 〔SR1b〕`sftp_move_ledger_tests.rs` 1 → 0（行删）：那块墓碑住乙「死连接重建」那一行里，乙整份过界、那一行摘了。
@@ -5336,7 +5356,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/frontend/shell/src/quote_singleton_guard.rs", 3), // 〔THIN〕2 → 3：病史里 `ssh_source` 那层转调壳随零生产调用删了，挂墓碑 // 〔FIX4 · ⑬〕1 → 2：开终端 ssh 外壳进本机后端，点旧名的散文挂墓碑 // 〔MIG-3a · 09-28 裁 2〕新贴：病史里那第五份 sq 随跑安装脚本退役
         // 〔FIX4 · `99 §2.1 ⑬`〕新贴：ssh 外壳（`build_remote_ssh_ps_command` 一族）搬进本机后端 `dial/terminal.rs`，
         //   新家头注点来历一块 · monitor 那侧判据原处各挂一块（六条搬走的期望 · 那个转发别名）。
-        ("src/backend/dial/terminal.rs", 1),
+        ("src/backend/dial/terminal.rs", 2), // 〔P4〕1 → 2：「在此打开终端」那一串的拼法从文件窗口搬来，点旧名一块
         ("tests/frontend/ui/views/history-search.vitest.ts", 1), // 〔FIX4 · J15〕合并那三条搬进后端，原处一块
         ("tests/frontend/shell/launch_tests.rs", 2),
         ("tests/frontend/shell/quote_singleton_guard_tests.rs", 2),

@@ -242,7 +242,7 @@ test("F74 tmux 新建：显式 name 原样上线（形状交渲染侧判，〔DU
 // 随铸名口搬进后端（`plan_tests.rs`：`the_session_name_derivation_rule` · 退让规则那几格）。
 
 // 〔LR2〕这里原来有一条 `buildOpenTerminalCmd`（旧面板「在此打开终端」那颗按钮的 TS 那份）。
-// 生产调用方 0（旧面板已退役；文件窗口用 Rust `filewin/shell.rs::build_open_terminal_cmd`），
+// 生产调用方 0（旧面板已退役；文件窗口那一串〔P4〕今天由本机后端 Rust `dial/terminal.rs::command_for_cwd` 拼），
 // 主会话按 `设计/00 §2.5 ④` ＋ `90 §3`（前端零 shell 串）裁删；三行期望原样搬进了
 // `tests/frontend/shell/filewin/shell_tests.rs::the_open_terminal_command_keeps_its_three_shapes`。
 

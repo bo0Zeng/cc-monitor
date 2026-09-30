@@ -27,9 +27,9 @@ pub static CROSS_LABEL: std::sync::LazyLock<String> =
 /// 判据 `cross_copy_tests::the_local_origin_is_the_app_one` 读两侧源码钉相等）。
 pub const LOCAL_ORIGIN: &str = "<local>";
 
-/// 暂存区（相对 home）。⚠ 与后端 `control/files_commit.rs::STAGING_DIR` 是同一个值的两份（两个 crate 互相引不到），
-/// 判据 `cross_copy_tests::the_staging_dir_is_the_backend_one` 读两侧源码钉相等。
-pub const STAGING_DIR: &str = ".cc-monitor/staging";
+/// 暂存区（相对 home）。〔P4〕引契约那一份（`relay_route_core::STAGING_DIR_REL`，后端 `control/files_commit.rs::STAGING_DIR`
+/// 与数据位置页引的同一个）；判据 `cross_copy_tests::the_staging_dir_is_the_backend_one` 钉两侧都引它。
+pub const STAGING_DIR: &str = relay_route_core::STAGING_DIR_REL;
 
 /// 暂存区自建时收成的权限位（与后端 `own_dir` 建自家目录同一个 0700）。
 pub const STAGING_MODE: u32 = 0o700;

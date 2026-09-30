@@ -13716,7 +13716,7 @@
     },
     "rsChanHost.terminal.noConfig": {
       "kind": "error",
-      "zh": "没有叫「{machine}」的远端配置，开终端要那台机器的 SSH 配置",
+      "zh": "没有叫「{machine}」的远端配置，开不了它的终端",
       "args": ["machine"]
     },
     "rsChanHost.transfer.localNone": {
