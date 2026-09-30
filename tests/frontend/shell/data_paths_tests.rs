@@ -190,7 +190,6 @@ fn backend_rows_point_where_the_backend_itself_writes() {
     let row = |l: &str, p: PathBuf, k: &str| (l.to_string(), p, k.to_string());
     let want = vec![
         row("bin/", h.join(".cc-monitor/bin"), "dir"),
-        row("bin/cc-acct-iso/", h.join(rr::ACCT_ISO_REL), "dir"),
         row("staging/", h.join(rr::STAGING_DIR_REL), "dir"),
         row("relay-key", h.join(rr::KEY_FILE_REL), "file"),
         row("listen-token", h.join(rr::LISTEN_TOKEN_FILE_REL), "file"),

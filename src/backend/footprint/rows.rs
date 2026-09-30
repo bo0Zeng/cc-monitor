@@ -516,7 +516,6 @@ pub fn source_label(s: &ToolSource) -> String {
     match s {
         ToolSource::EmbeddedText { .. } => copy_text("rsConfigSurface.source.embeddedText", &[]),
         ToolSource::RepoDir { .. } => copy_text("rsConfigSurface.source.repoDir", &[]),
-        ToolSource::Vendored { .. } => copy_text("rsConfigSurface.source.vendored", &[]),
         ToolSource::EmbeddedBinary { .. } => {
             copy_text("rsConfigSurface.source.embeddedBinary", &[])
         }
@@ -786,24 +785,6 @@ fn observe_unmanaged(
                 ),
             }
         }
-        // 一条 `~/` 路径 —— 走既有的本机解析 + 观测，一个字都不另写。
-        // `host` 的投影也照旧（`Either` 那一族仍然「本机没找到 ≠ 不存在」）。
-        EnvProbe::HomePath => {
-            match resolve_local_home(named, env.home, env.agent_home) {
-                Ok(r) => (Some(describe_target(&r)), observe(&r, env.fs)),
-                // 申报的名字根本不是一条 `~/` 路径 ⇒ **如实报错**，不静默显示成空。
-                Err(msg) => (
-                    None,
-                    SurfaceState::Undetermined {
-                        why: copy_text(
-                            "rsConfigSurface.home.unresolvable",
-                            &[("msg", &msg.to_string())],
-                        ),
-                    },
-                ),
-            }
-        }
-        // 查不动，理由由申报方给。⚠ 这一支**不是**「不查」—— 见 `EnvProbe` 的头注。
         EnvProbe::CannotProbe { why } => (
             None,
             SurfaceState::Undetermined {

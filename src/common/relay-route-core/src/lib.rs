@@ -6,7 +6,7 @@
 //! - **门牌**：中转口 [`PORT`] · 常驻监听口 [`listen_port_for`] · 两把钥匙 [`KEY_FILE_REL`] / [`LISTEN_TOKEN_FILE_REL`] ·
 //!   路由路径的语法（两个前缀 · 段闸 · 拼 · 拆）。
 //! - **家**（相对家目录，`.cc-monitor/` 开头的每一个常量）：后端落点 [`BACKEND_LANDING_REL`] · 暂存区 · 全景索引 ·
-//!   退出行为设置 · 两份别名文件 · skill 装记录 · 资产目录 · cc-acct-iso 落点 · 监听口的进程记录 [`listen_pid_file_name`]。
+//!   退出行为设置 · 两份别名文件 · skill 装记录 · 资产目录 · 监听口的进程记录 [`listen_pid_file_name`]。
 //!   后端各写者引它们落盘；monitor 的数据位置页（`data_paths.rs::backend_entries`）按它们列出，判据两向对着这一族。
 //! - crate 名还是「relay-route」—— 它最早只装中转门牌；改名发版后另议。
 //!
@@ -37,7 +37,7 @@
 //! - monitor：起本机后端时交的端口（[`PORT`]）· 常驻监听口（[`listen_port_for`]）· 后端落点（[`BACKEND_LANDING_REL`]）·
 //!   监听口的进程记录（`local_backend_host::pid_path`，[`listen_pid_file_name`]）· 数据位置页列家那一族（`data_paths.rs::backend_entries`）。
 //! - 后端按家那一族落盘：`control/exit_policy` · `control/files_commit` · `control/panorama` · `control/resident` ·
-//!   `assets/skill_ledger` · `assets/asset_catalog` · `assets/acct_iso_install` · `platform/shell/dialect`（两份别名文件）。
+//!   `assets/skill_ledger` · `assets/asset_catalog` · `platform/shell/dialect`（两份别名文件）。
 
 /// 〔HOST · `设计/05 §5.2` 两个端口〕**常驻监听口**的门牌也住这里（它与中转口是这台机器上后端的两个门）：
 /// 这台机器 ＋ 这个 agent 家目录 ⇒ 那一个口。本机宿主（monitor `local_backend_host`）与远端 `--resident-ensure` 同一个函数
@@ -94,8 +94,6 @@ pub const SKILL_LEDGER_REL: &str = ".cc-monitor/skill-installs.json";
 /// 〔P3 · 同上〕资产目录（后端 `assets/asset_catalog.rs` 写；各台机器之间自动对上）。
 pub const ASSET_CATALOG_REL: &str = ".cc-monitor/assets-catalog.json";
 
-/// 〔P3 · 同上〕cc-acct-iso 的字节落点（后端 `assets/acct_iso_install.rs` 装）。
-pub const ACCT_ISO_REL: &str = ".cc-monitor/bin/cc-acct-iso";
 
 /// 〔P3 · 同上〕常驻监听口的进程记录的文件名（与 [`LISTEN_TOKEN_FILE_REL`] 同一个目录）：本机宿主与远端
 /// `--resident-ensure` 按同一个口（[`listen_port_for`]）找同一份。

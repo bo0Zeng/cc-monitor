@@ -204,36 +204,19 @@
     },
     {
       "effect_label": "整个文件由 cc-monitor 拥有，部署时整体覆盖",
-      "host_label": "远端",
-      "installable": true,
-      "note": "远端，部署目录是你在账号页填的那个值",
-      "path_declared": "$ACCT_ISO_DEST",
-      "path_resolved": null,
-      "source_label": "随 cc-monitor 一起安装的第三方组件",
-      "state": {
-        "kind": "undetermined",
-        "why": "路径由配置决定（部署时在账号页填的「部署目录」）——本页不猜它当前是什么值"
-      },
-      "tier": "AppInstalls",
-      "tool_id": "cc-acct-iso",
-      "tool_name": "cc-acct-iso 多账号隔离",
-      "uninstallable": false
-    },
-    {
-      "effect_label": "只读（诊断用），cc-monitor 不写",
       "host_label": "本机或远端",
       "installable": true,
-      "note": "账号库：列举走远端 ssh；本机 CLAUDE_CONFIG_DIR 也可能指进来，两端都可能有",
+      "note": "账号库：清单 accounts.json、每个号的目录和改动前的备份都在这里。启用多账号时，这台现在登录的身份文件（~/.claude/.credentials.json、~/.claude.json）会搬进默认号的目录。",
       "path_declared": "~/.claude-accts/",
       "path_resolved": "/nonexistent-footprint-golden/.claude-accts",
-      "source_label": "随 cc-monitor 一起安装的第三方组件",
+      "source_label": "由 cc-monitor 现场生成的文本",
       "state": {
         "kind": "undetermined",
         "why": "本机没找到（/nonexistent-footprint-golden/.claude-accts）。这套东西装在 Claude Code 跑的那台上，很可能是某个远端；本页不连 SSH，远端状态请到对应页面查。"
       },
       "tier": "AppInstalls",
-      "tool_id": "cc-acct-iso",
-      "tool_name": "cc-acct-iso 多账号隔离",
+      "tool_id": "accounts",
+      "tool_name": "多账号账号库",
       "uninstallable": false
     },
     {

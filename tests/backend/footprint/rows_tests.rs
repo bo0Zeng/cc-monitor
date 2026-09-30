@@ -539,9 +539,10 @@ fn remote_host_never_resolves_to_a_local_path() {
     // 〔TL1 · 4C〕4 → 5：`panorama` 推给远端那台的那一份（`~/.cc-monitor/bin/cc-monitor-panorama`，`Remote`）。
     // 〔E2 · V28〕6 → 7：`ccm` 多一行旧落点 `~/.cc-monitor/bin/cc-monitor-backend`（旧默认 `backendPath`，认出是我们编的就删，`RetiredLegacy`）；
     //   `backend` 推给远端那一格从 `$BACKEND_PATH` 换成固定落点 `~/.cc-monitor/bin/ccm`（条数不变）。
+    // 7 → 6：旧工具推给远端那一格（`$ACCT_ISO_DEST`）随它删了（账号库改由那台后端自己建，`Either`）。
     assert_eq!(
-        checked, 7,
-        "Remote 条目数变了（真实应为 7）——改 TOOLS 就要来确认这个数。\
+        checked, 6,
+        "Remote 条目数变了（真实应为 6）——改 TOOLS 就要来确认这个数。\
              ★ P4c（08-12）5→4：`~/.cc-bus/` 转 Either（`P4a` 把读面做成本机可用）；\
              〔TL1〕4→5：代码全景组件推给远端那一份；\
              〔GP1 · 第四波〕5→6：`ccm` 多一行旧版入口 `~/.local/bin/ccm`（认出是我们放的就删；合并时按两边增量相加）；\
@@ -591,9 +592,8 @@ fn every_host_declaration_is_pinned() {
         //   —— `P4a` 把读面三条做成了本机可用（同一条串、不包 ssh），下拉也加了「本机」档
         //   ⇒ `Either`。理由的长版住 `tool_registry.rs` 那条 `TouchedFile`。
         ("cc-bus", "~/.cc-bus/", Either),
-        ("cc-acct-iso", "$ACCT_ISO_DEST", Remote),
-        // 列举走远端 ssh，但本机 CLAUDE_CONFIG_DIR 会指进来 → 两端皆可
-        ("cc-acct-iso", "~/.claude-accts/", Either),
+        // 账号库：哪台机器的后端建它就在哪台（本机远端同一条路）→ 两端皆可。
+        ("accounts", "~/.claude-accts/", Either),
         // 🔴 〔`K-R81` 09-12〕`remote-daemon` → `backend`，而它今天有**三行**：
         //    同一份后端的三种载体（`K-R68` 现打）。三行的 `host` 逐条不同源：
         //    ① 安装包旁边那份与 ② 自释放那份都落在 monitor 跑着的**这台**（`Client`）；
@@ -771,30 +771,22 @@ fn all_host_scopes_are_really_used() {
 /// （它告诉用户去哪儿看那个值），覆盖掉是降级。
 #[test]
 fn host_projection_preserves_the_richer_resolution() {
-    // 〔E2 · V28〕后端推给远端那一格不再是配置项（`$BACKEND_PATH` 删了，落点固定）⇒ 远端还剩的配置项落点是 `cc-acct-iso` 那一格。
-    let acct = TOOLS.iter().find(|t| t.id == "cc-acct-iso").unwrap();
-    let (c, f) = acct
-        .carrier_touches()
-        .find(|(_, f)| f.host == HostScope::Remote)
-        .expect("cc-acct-iso 必须有一份是推给远端那台机器的");
+    // 今天闭集里没有「远端 × 配置项落点」那一格的真成员 ⇒ 造一个落点喂同一个解析函数。
+    let dest = ToolDestination::UserConfiguredPath {
+        token: "$REMOTE_SAMPLE",
+        what: crate::footprint::registry::Text(|| "sample".to_string()),
+    };
     let r = resolve_touched_path(
         Vantage::Monitor,
-        f.path,
-        &c.destination,
-        f.host,
+        "$REMOTE_SAMPLE",
+        &dest,
+        HostScope::Remote,
         &home(),
         &home().join(".claude"),
     )
     .unwrap();
     match r {
-        PathResolution::NeedsUserConfig { what } => {
-            // 〔CP2b〕话进了文案表：投影交出的就是那一格的原话。
-            assert_eq!(
-                what,
-                copy_core::copy_text("rsToolRegistry.tools.acctIsoDestWhat", &[]),
-                "实得 {what}"
-            );
-        }
+        PathResolution::NeedsUserConfig { what } => assert_eq!(what, "sample", "实得 {what}"),
         other => panic!("远端投影把 NeedsUserConfig 吞成了 {other:?}"),
     }
 }
@@ -1133,15 +1125,6 @@ fn the_same_name_under_three_probes_gives_three_different_cells() {
         missing, blind,
         "掐掉探测之后这一行仍然说「缺」—— 那是替用户下了一个他没做过的结论"
     );
-
-    // 第三种查法：`~/` 路径。同一台空机器上它也该是「缺」，而不是「查不动」——
-    // 否则「查不动」就成了万能挡箭牌。
-    let (_, home_missing) = observe_unmanaged("~/.local/bin/x-probe", EnvProbe::HomePath, &env);
-    assert_eq!(home_missing, SurfaceState::Absent);
-    // 而申报了一个根本不是路径的名字 ⇒ 如实说查不动，不静默显示成空
-    let (shown, bad) = observe_unmanaged("$SOMETHING", EnvProbe::HomePath, &env);
-    assert!(shown.is_none());
-    assert!(matches!(bad, SurfaceState::Undetermined { .. }));
 }
 
 /// 🔴 `KR65D2` 的上屏那一半：**「档」进了线上形状，而且欠装口那一档不许被读成
@@ -1182,11 +1165,33 @@ fn every_row_carries_its_tier_and_the_owed_one_never_reads_as_not_ours() {
     // ③ 欠装口那一档：〔V161〕用户 09-29「所有文案…不能把开发过程混进去」⇒ 说现状（这里装不了、要你自己装），
     //   不再留「应随 cc-monitor 一起安装，暂未提供」「安装入口还没写」那层「还欠着」的意思；按文案键断言。
     //   仍**不许**说成「不由 cc-monitor 提供」（`KR65D2`：不会被读成「不该我们装」）。
-    let owed: Vec<&SurfaceRow> = rows
-        .iter()
-        .filter(|r| r.tier == EnvTier::AppShipsNoInstallerYet)
+    //   闭集里今天没有这一档的成员 ⇒ 造一项喂同一个出行函数（`unmanaged_row`），判它的措辞。
+    let synthetic = crate::footprint::registry::EnvEntry {
+        id: "owed-sample",
+        display_name: "owed".into(),
+        who: crate::footprint::registry::Provisioning::AppShips,
+        tier: EnvTier::AppShipsNoInstallerYet,
+        why: String::new(),
+        site: "rows.rs::unmanaged_row",
+        backing: crate::footprint::registry::EnvBacking::Named {
+            named: "owed-sample",
+            host: HostScope::Client,
+            probe: crate::footprint::registry::EnvProbe::OnPath,
+        },
+    };
+    let owed_row = unmanaged_row(
+        &synthetic,
+        "owed-sample",
+        HostScope::Client,
+        crate::footprint::registry::EnvProbe::OnPath,
+        &env_with(&h, &fs, Some("/usr/bin")),
+    );
+    let owed: Vec<&SurfaceRow> = std::iter::once(&owed_row)
+        .chain(
+            rows.iter()
+                .filter(|r| r.tier == EnvTier::AppShipsNoInstallerYet),
+        )
         .collect();
-    assert!(!owed.is_empty(), "这一页上一行「欠装口」都没有 —— 先查闭集");
     for r in &owed {
         assert_eq!(
             r.source_label,
