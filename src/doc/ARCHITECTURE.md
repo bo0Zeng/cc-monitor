@@ -141,14 +141,12 @@ subscribe(origin, kind)    → 流
 
 monitor 的 Rust 半是 Tauri 壳（`src/frontend/shell/`），只留宿主知识（窗口 · 起子进程 · 开终端 · 放字节 · 本机后端起停）与通信层；读会话、判定、改世界都在后端。壳里调后端的客户端那一组生产段零平台原语、零宿主耦合，由 `backend_client_guard_tests.rs::the_backend_half_stays_platform_agnostic` 钉着。
 
-后端的四层在 monitor 壳里的样子如下，每一格由判据现场量（`each_registered_status_still_matches_reality`）：
+壳里没有后端那几层的副本：
 
-| 后端的层 | monitor 壳里 | 状态 |
-|---|---|---|
-| `control/` | 没有这一层：monitor 调后端控制面只经通信层那一个分流器 | 已交付：`src/comms/inward/backend_route.rs`（`Done` / `Refused` / `NoChannel` 三态；被门拒绝不另找一条路） |
-| `observe/` | 没有：monitor 不产观测帧，读都问后端（每问 exec 一次本机后端的那份传输 `local_query`〔散文墓碑〕已删） | 未做，也不做 |
-| `platform/` | 有：只住文件原语（不覆盖改名 · 置可执行位 · 只给本人的目录） | 已交付 |
-| `common/` | 没有：monitor 与后端的共用面住共享 crate `src/common/` | 未做，也不做 |
+- 不产观测帧，读都问后端（本机那几问也走 `<local>` 长连接；每问 exec 一次本机后端的那份传输 `local_query`〔散文墓碑〕已删）；
+- 调后端控制面只经通信层那一个分流器 `src/comms/inward/backend_route.rs`（`Done` / `Refused` / `NoChannel` 三态，被门拒绝不另找一条路）；
+- 与后端共用的只放在共享 crate `src/common/` 里；
+- 壳自己的 `platform/` 只住文件原语（不覆盖改名 · 置可执行位 · 只给本人的目录）。
 
 monitor 里仍直读本机 agent 目录的地方逐处登记，条数以 `local_read_surface_registry` 的机检为准。
 
@@ -352,7 +350,7 @@ PS 模板 `src/shared/cc.ps1.tpl` 用 `UTF8Encoding($false)` 写无 BOM；Rust �
 ## 7. 入门读图
 
 - 整体数据流：本篇 §1 ＋ §5
-- 一件事该放在哪一层：本篇 §2（§2.4 那张表由判据现场量）
+- 一件事该放在哪一层：本篇 §2
 - 加 jsonl 记录类型、加帧命令、加设置项 / 快捷键：[CONTRIBUTING.md](CONTRIBUTING.md)
 - 改跨进程文件或帧协议：[IPC-PROTOCOL.md](IPC-PROTOCOL.md)
 - 改某个具体模块：对应目录的 README
