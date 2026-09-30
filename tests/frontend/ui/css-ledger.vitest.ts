@@ -466,7 +466,9 @@ const PREFIX_COVERAGE_CEILING = 35;
 // 〔W5-AUX · AR1 拍板 3 · 09-25 棘 147 → 146〕主会话裁「删类名」：`.settings-btn-secondary` 从 `src/` 12 份文件里摘掉
 //   （现打 55 处字面量 ＋ `panel.ts::makeBtn` 那一处模板拼接；三个按钮助手的 `variant` 空串 = 默认那一种）⇒ 少的就是它这一个。
 //   外观不变：它从来没有规则，挂与不挂算出来的样式一样。
-const DANGLING_CEILING = 146;
+// 〔SHOTS · 09-29 棘 146 → 141〕设置 → 机器那一行的后端四格补了样式（`settings.css`，`设计/70 §2.3`）⇒
+//   `.backend-row` · `-state` · `-kill` · `-exit` · `-health` 这五个从「挂着没规则」里出去，少的就是它们。
+const DANGLING_CEILING = 141;
 
 /** 本文件只在这儿读一次盘，后面各格共用。 */
 let cached: Ledger | null = null;
