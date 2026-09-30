@@ -125,7 +125,15 @@ function panorama(op: string, args: Json | null): unknown {
     case "overview":
       return {
         spine_files: panoFiles.map((f) => ({ file: f.file, score: f.symbols / 14, symbols: f.symbols })),
-        subsystems: PANO_MODULES.map((m) => ({ label: baseName(m.dir), files: m.files.map((f) => `${m.dir}/${f.name}`), size: m.files.reduce((n, f) => n + f.symbols, 0) })),
+        subsystems: PANO_MODULES.map((m, i) => ({
+          label: baseName(m.dir),
+          files: m.files.map((f) => `${m.dir}/${f.name}`),
+          size: m.files.reduce((n, f) => n + f.symbols, 0),
+          member_hash: (0x9e3779b1 * (i + 1)).toString(16).slice(-8),
+          anchors: [],
+          internal_edges: m.files.length * 3,
+          external_edges: m.files.length,
+        })),
         entry_points: [{ id: "src/routes/index.ts#mountRoutes", file: "src/routes/index.ts", symbol: "mountRoutes" }], // 〔P7〕上游 `SymbolRef`
         total_symbols: panoSymbolCount,
         total_files: panoFiles.length,
