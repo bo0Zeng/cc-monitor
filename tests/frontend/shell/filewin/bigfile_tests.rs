@@ -643,16 +643,7 @@ fn edits_undo_and_redo_are_byte_exact() {
 /// 一份小文件照旧走普通路径、整份画出来（对照组）。
 #[test]
 fn the_file_window_really_goes_through_the_big_mode() {
-    let cfg = crate::ssh_source::RemoteConfig {
-        host: "example.invalid".into(),
-        label: "bigfile".into(),
-        port: 22,
-        user: "nobody".into(),
-        key_path: None,
-        host_key_fingerprint: None,
-        addresses: Vec::new(),
-        jump: None,
-    };
+    let cfg = String::from("bigfile");
     for (text, big) in [
         (one_line(200 * 1024), true),
         ("a=1\nb=2\n".to_string(), false),
@@ -878,16 +869,7 @@ fn the_readings_behind_the_two_thresholds() {
     //    「存得回的最大」＝ 恰好 `MAX_EDIT_BYTES` 那么大（每一形都存得回，不再按转义削）。
     let window = |text: &str| -> ((f64, f64), (f64, f64), bool) {
         let mut w = crate::filewin::shell::FileWindow::seeded(
-            crate::filewin::source::Source::remote(crate::ssh_source::RemoteConfig {
-                host: "example.invalid".into(),
-                label: "readings".into(),
-                port: 22,
-                user: "nobody".into(),
-                key_path: None,
-                host_key_fingerprint: None,
-                addresses: Vec::new(),
-                jump: None,
-            }),
+            crate::filewin::source::Source::remote(String::from("readings")),
             "/srv/data".to_string(),
             None,
             Vec::<crate::filewin::source::Row>::new(),

@@ -107,6 +107,17 @@ pub struct InboundBackends;
 /// 这一跳在面 A 上的编号：路由器 ↔ 后端（`wire::HopId` 头注那两跳里的第 1 跳）。
 const HOP: u8 = 1;
 
+/// 〔P4〕通道上**由 monitor 自己接**、不按 `origin` 转给那台后端的 op：传输台开单两条（本机常驻后端的传输台，经中继 `sftp_pool.rs`）·
+/// 文件窗口「在此打开终端」（[`terminal_open`]）。其余一切照旧按 `origin` 去 `inbound_client`。
+pub(crate) const HOST_OPS: [&str; 3] = [
+    crate::sftp_pool::TRANSFER_UPLOAD,
+    crate::sftp_pool::TRANSFER_DOWNLOAD,
+    filewin_contract::TERMINAL_OPEN_OP,
+];
+
+/// 开终端那一行由本机后端渲（`src/backend/dial/terminal.rs`，与主界面 `terminal-open.ts` 问的同一条）。
+const TERMINAL_SSH: &str = "terminal-ssh";
+
 impl Backends for InboundBackends {
     fn call(
         &self,
@@ -119,7 +130,11 @@ impl Backends for InboundBackends {
         // 🔴〔F7c · 第三波 09-24〕**传输台那两条开单命令不按 `origin` 去那台机器的后端**：
         //    〔SR1b〕传输台住**本机**常驻后端（SFTP 与其它 SSH 同一条连接），由中继 `sftp_pool.rs` 转过去；
         //    其余一切照旧按 `origin` 去 `inbound_client`。
-        if crate::sftp_pool::is_transfer_op(&op.0) {
+        // 〔P4 · 主会话 09-29 拍板 Q2 A〕通道上由 monitor 自己接的那几条（[`HOST_OPS`]，两向登记在 `command_home_registry_tests::CHANNEL_OWN`）。
+        if HOST_OPS.contains(&op.0.as_str()) {
+            if op.0 == filewin_contract::TERMINAL_OPEN_OP {
+                return Box::pin(terminal_open(origin, payload, left));
+            }
             return Box::pin(transfer_open(origin, op, payload));
         }
         // 撤单**不在这里接**：路由器在撤单手柄拨下时直接丢掉本 future（`router::run_call`），
@@ -220,6 +235,58 @@ async fn transfer_open(origin: Origin, op: Op, payload: Body) -> Result<Body, Ca
     match crate::sftp_pool::transfer_call(cfg, &op.0, &args).await {
         Ok(v) => Ok(Body(serde_json::to_vec(&v).unwrap_or_default())),
         Err((code, message)) => Err(refused(&code, message)),
+    }
+}
+
+/// 〔P4 · 主会话 09-29 拍板 Q2 A〕**文件窗口「在此打开终端」**：窗口只交意图（寻址 ＝ 那台 · 参数 `{cwd}`），这里补那台的机器事实
+/// （monitor 的机器表 ＋ 上次赢的那条，`dial_host::machine_facts`）、问本机后端 `terminal-ssh` 渲那一行、交 `open_terminal_window` 开窗 ——
+/// 与主界面开终端同一条路（`src/frontend/ui/terminal-open.ts`：`terminal_dial` → `terminal-ssh` → `open_terminal_window`）。
+/// 窗口不拼命令、不认识 monitor 的配置；成败作为这一次 `call` 的应答回去，那句话照旧画在窗口上。
+async fn terminal_open(origin: Origin, payload: Body, left: Duration) -> Result<Body, CallError> {
+    let Ok(args) = serde_json::from_slice::<serde_json::Value>(&payload.0) else {
+        return Err(OursFault::Misuse.into());
+    };
+    let Some(cwd) = filewin_contract::terminal_open_cwd(&args) else {
+        return Err(OursFault::Misuse.into());
+    };
+    // 文件窗口只开在远端上（`设计/60 §2.4`）⇒ 本机这一问不存在，说真实原因。
+    if origin.as_wire_str() == inbound_client::LOCAL_ORIGIN {
+        return Err(refused(
+            "local_has_no_file_window",
+            copy_text("rsChanHost.terminal.localNone", &[]),
+        ));
+    }
+    let Some(cfg) = crate::load_remote_config_by_label(origin.as_wire_str()) else {
+        return Err(refused(
+            "no_such_origin",
+            copy_text(
+                "rsChanHost.terminal.noConfig",
+                &[("machine", &(origin.as_wire_str()).to_string())],
+            ),
+        ));
+    };
+    let mut ask = crate::dial_host::machine_facts(&cfg);
+    ask["cwd"] = cwd.clone();
+    let Some(local) = inbound_client::client_for(inbound_client::LOCAL_ORIGIN) else {
+        return Err(backend_route::layer_no_channel(HOP));
+    };
+    let reply = match local.call(TERMINAL_SSH, ask, left).await {
+        Ok(v) => v,
+        Err(e) => return Err(backend_route::layer_call_error(&e, HOP).error),
+    };
+    let Some(line) = reply
+        .as_ref()
+        .and_then(|v| v.get("command"))
+        .and_then(serde_json::Value::as_str)
+    else {
+        return Err(refused(
+            "bad_reply",
+            copy_text("rsChanHost.terminal.badReply", &[]),
+        ));
+    };
+    match crate::launch::open_terminal_window(line.to_string(), None, true).await {
+        Ok(()) => Ok(Body(b"{}".to_vec())),
+        Err(why) => Err(refused("terminal_failed", why)),
     }
 }
 

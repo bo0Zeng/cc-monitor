@@ -18,6 +18,11 @@
 use super::*;
 use std::collections::BTreeSet;
 
+/// 判据用的书签文件落点（〔P4〕名字与「数据目录下的全路径」住 monitor 那一侧 —— 窗口只拿开窗入口算好的全路径，判据随便起个名字即可）。
+fn file_in(dir: &Path) -> PathBuf {
+    dir.join("书签.json")
+}
+
 fn scratch(tag: &str) -> PathBuf {
     let d = std::env::temp_dir().join(format!(
         "ccm-fw34-{tag}-{}-{}",

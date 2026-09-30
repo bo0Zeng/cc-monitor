@@ -58,7 +58,6 @@ use crate::copy_table::copy_text;
 use crate::ssh_source::RemoteConfig;
 
 use super::proc::{open_in_new_process, OpenRequest, Unopened};
-use super::source::Source;
 
 /// 这一趟要落在哪儿。
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -206,10 +205,11 @@ pub(crate) async fn open_with(
     work_area: Option<host_core::WorkArea>,
     late: super::proc::LateExit,
 ) -> Result<usize, String> {
-    let source = Source::remote(cfg);
-    // 〔FW34〕书签文件住 monitor 自己的数据目录（不是用户文件），路径在这一侧算好交过去。
-    let bookmarks =
-        crate::config::resolve_monitor_data_dir().map(|d| super::bookmarks::file_in(&d));
+    // 〔P4〕窗口进程只拿那台的名字（寻址用，`origin_label` 口径）；它不认识 monitor 的配置类型。
+    let origin = cfg.origin_label();
+    // 〔FW34〕书签文件住 monitor 自己的数据目录（不是用户文件），路径在这一侧算好交过去（名字只住 `data_paths`）。
+    let bookmarks = crate::config::resolve_monitor_data_dir()
+        .map(|d| d.join(crate::data_paths::FILEWIN_BOOKMARKS_FILE));
     // ⓪ 三者优先级 —— 那一段是**纯函数**（[`plan_target`]），理由见它的头注。
     //    〔MIG-3a · 09-28 裁 3〕home 那一支不在这里问了：`cwd` 缺席交给窗口进程（`proc::first_screen`）。
     let (cwd, reveal) = match plan_target(&path, reveal_file.as_deref())? {
@@ -221,7 +221,7 @@ pub(crate) async fn open_with(
     let handoff =
         crate::chan::host::handoff().ok_or_else(|| copy_text("rsFilewinEntry.open.noHost", &[]))?;
     let req = OpenRequest {
-        source,
+        origin,
         cwd,
         reveal,
         handoff,

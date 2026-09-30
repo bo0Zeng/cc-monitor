@@ -517,16 +517,7 @@ async fn listing_has_no_second_road_when_the_backend_refuses() {
         FakeBackend::new(&[CMD_LS], Declared::default()),
     )
     .await;
-    let cfg = crate::ssh_source::RemoteConfig {
-        host: "example.invalid".into(),
-        label: wired.origin.clone(),
-        port: 22,
-        user: "nobody".into(),
-        key_path: None,
-        host_key_fingerprint: None,
-        addresses: Vec::new(),
-        jump: None,
-    };
+    let cfg = wired.origin.clone();
     let src = Source::remote(cfg);
     let dir = root.to_string_lossy().to_string();
     // ① 后端答得出。

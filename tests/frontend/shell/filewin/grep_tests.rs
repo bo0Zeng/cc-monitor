@@ -127,16 +127,7 @@ async fn a_search_asks_the_backend_about_this_directory_and_puts_the_hits_on_the
 #[test]
 fn clicking_a_hit_goes_to_its_directory_and_highlights_it() {
     let mut w = crate::filewin::shell::FileWindow::seeded(
-        crate::filewin::source::Source::remote(crate::ssh_source::RemoteConfig {
-            host: "example.invalid".into(),
-            label: "files3-grep-jump".into(),
-            port: 22,
-            user: "nobody".into(),
-            key_path: None,
-            host_key_fingerprint: None,
-            addresses: Vec::new(),
-            jump: None,
-        }),
+        crate::filewin::source::Source::remote(String::from("files3-grep-jump")),
         "<root>".to_string(),
         None,
         Vec::<crate::filewin::source::Row>::new(),

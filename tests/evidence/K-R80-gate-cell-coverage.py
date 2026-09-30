@@ -521,7 +521,8 @@ cell(
     # 〔THIN〕`branch-core` 收进后端适配层 ⇒ 成员 11 → 10，同拍。
     # 〔P4〕新共享 crate `host-core`（前端宿主原语）⇒ 成员 10 → 11，同拍。
     # 〔P4〕新共享 crate `chan-core`（通道）⇒ 成员 11 → 12，同拍。
-    anchor="run_gate_sum cargo 12 bash -c",
+    # 〔P4〕新共享 crate `filewin-contract`（monitor ↔ 文件窗口进程的契约）⇒ 成员 12 → 13，同拍。
+    anchor="run_gate_sum cargo 13 bash -c",
     cwd="src-tauri/",
     cmd="cargo test --workspace --lib",
     **{

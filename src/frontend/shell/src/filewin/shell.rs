@@ -121,10 +121,8 @@ use super::writeops::{is_writable, WriteBoard, WriteOp, WritePrompt, MKDIR_LABEL
 
 /// 〔NET2〕接上通道时问那台能力事实的期限（一问一答，同读侧那几问的量级）。
 const OFFER_WITHIN: std::time::Duration = std::time::Duration::from_secs(10);
-/// 〔FIX4 · `99 §2.1 ⑬`〕开终端那一行问本机后端（`terminal-ssh`，纯计算、就在本机）：期限给足握手余量即可。
+/// 「在此打开终端」那一问的期限（〔P4〕monitor 接下它：问本机后端渲那一行 ＋ 开窗，都在本机）：给足握手余量即可。
 const TERMINAL_WITHIN: std::time::Duration = std::time::Duration::from_secs(10);
-/// 开终端那一问的帧命令名（本机后端 `src/backend/dial/terminal.rs`）。
-const TERMINAL_CMD: &str = "terminal-ssh";
 
 /// 开过几个窗口 —— **egui 那条线程真的跑起来了**几次。
 ///
@@ -219,58 +217,8 @@ pub fn local_home() -> String {
 pub static NO_LINE: std::sync::LazyLock<String> =
     std::sync::LazyLock::new(|| copy_text("rsFilewinShell.noLine.message", &[]));
 
-/// 「在此打开终端」要在那台远端上跑的那一串。
-///
-/// # 它今天是唯一一份
-///
-/// 逐字：`cd <quoted> && exec ${SHELL:-bash} -l`（`cwd` 为空 ⇒ 只有后半段）。
-/// 〔LR2〕旧面板那颗同名按钮的 TS 那份（`remote-launch.ts` 里）生产调用方 0，主会话按
-/// `设计/00 §2.5 ④` ＋ `90 §3`（前端零 shell 串）裁删 —— 原先这里登记的「到期日」（旧面板退役那一刀
-/// TS 那一份跟着走）到了。三种形状由 `shell_tests` 的手写期望逐字节钉着（原 TS 黄金样例的字节原样搬过去）。
-///
-/// ⚠ 引号走 `shell_quote_core::posix_quote` —— Rust 侧唯一那一份
-/// （`quote_singleton_guard` 钉着「只许一个实现」）。**不许在这儿自己拼单引号。**
-///
-/// ⚠ **不用双引号**：`launch.rs` 会拒掉含双引号的 `remote_cmd`
-/// （PowerShell 原生传参畸变那道防线）—— 那一条与 TS 那份注释逐字同源。
-///
-/// 〔TL3 · `INVARIANTS §47` ② · 主会话 09-26 按 V131 裁〕当前目录是那台列出来的**自由文本路径** ⇒ 拼进 `cd` 之前先过
-/// 形式 ＋ 拒绝集（`shell_quote_core::posix_free_path_ok`：POSIX 绝对 · 无 `..` 段 · 不含 NUL / CR / LF；**不拒 shell 元字符**，
-/// 交给那一处 quote）。判不过 ⇒ `Err`（那句话由窗口画出来），一个请求都不发。
-pub fn build_open_terminal_cmd(cwd: &str) -> Result<String, String> {
-    let shell = "exec ${SHELL:-bash} -l";
-    let c = cwd.trim();
-    if c.is_empty() {
-        Ok(shell.to_string())
-    } else if !shell_quote_core::posix_free_path_ok(c) {
-        Err(copy_text(
-            "rsFilewinShell.terminal.badCwd",
-            &[("cwd", &format!("{c:?}"))],
-        ))
-    } else {
-        Ok(cd_then_shell(&shell_quote_core::posix_quote(c)))
-    }
-}
-
-/// `cd <已 quote 的目录> && <登录 shell>` —— 「在此打开终端」那一串**只在这里拼**（字符串形与字节形共用）。
-fn cd_then_shell(quoted: &str) -> String {
-    format!("cd {} && exec ${{SHELL:-bash}} -l", quoted)
-}
-
-/// 〔FILES2 · 非 UTF-8 目录〕同 [`build_open_terminal_cmd`]，当前目录可以带字节：有字节 ⇒ 过唯一的 quote 的字节形
-/// （`shell_quote_core::posix_quote_bytes`，`$'…'`）；判定是 `posix_free_path_bytes_ok`（与字符串形逐条同规则）。
-pub fn build_open_terminal_cmd_at(cwd: &super::source::RemotePath) -> Result<String, String> {
-    let Some(raw) = &cwd.raw else {
-        return build_open_terminal_cmd(&cwd.shown);
-    };
-    if !shell_quote_core::posix_free_path_bytes_ok(raw) {
-        return Err(copy_text(
-            "rsFilewinShell.terminal.badCwd",
-            &[("cwd", &format!("{:?}", cwd.shown))],
-        ));
-    }
-    Ok(cd_then_shell(&shell_quote_core::posix_quote_bytes(raw)))
-}
+// 〔P4〕「在此打开终端」那一串（`build_open_terminal_cmd`〔散文墓碑〕· `build_open_terminal_cmd_at`〔散文墓碑〕· `cd_then_shell`〔散文墓碑〕）
+//   随「窗口只交意图」搬进本机后端：`src/backend/dial/terminal.rs::command_for_cwd`（期望串原样搬去 `tests/backend/dial_terminal_tests.rs`）。
 
 /// 列目录这件事的**共享落点** —— 一次列目录要写的东西全在这儿。
 ///
@@ -752,7 +700,7 @@ impl FileWindow {
     }
 
     // 〔散文墓碑〕〔FILES2〕这里原有 `refused_in_lossy_cwd`（W5-FILES：有损目录里上传 / 搜索 / 开终端出声拒）——
-    //   三件都改成按字节做了（搜索 `find::run_search_at` · 上传 `Pending::remote_dir_raw` · 终端 `build_open_terminal_cmd_at`），它没了调用方。
+    //   三件都改成按字节做了（搜索 `find::run_search_at` · 上传 `Pending::remote_dir_raw` · 终端 `build_open_terminal_cmd_at`〔散文墓碑〕，〔P4〕今天是后端 `dial/terminal.rs::command_for_cwd`），它没了调用方。
 
     /// 〔W5-FILES · 有损名全寻址〕进一个目录（显示串 ＋ 可能有的字节）。与 [`Self::navigate_to`] 同一套收摊。
     pub fn navigate_to_at(&mut self, at: super::source::RemotePath) {
@@ -816,15 +764,11 @@ impl FileWindow {
 
     /// 在**当前这个目录**里给用户开一个真终端。回值 = 真的发出去了。
     ///
-    /// # 三步，〔FIX4 · `设计/99 §2.1 ⑬`〕ssh 那一行不在这里拼
-    ///
-    /// ① 这台的机器事实（`dial_host::machine_facts`：monitor 的机器表 ＋ 上次赢的那条）＋ `cd` 那一串 ⇒
-    /// ② 经窗口那条通道问**本机后端** `terminal-ssh`，拿回一行成品 PowerShell（`ssh -t …` 外壳，`src/backend/dial/terminal.rs`）⇒
-    /// ③ `launch::open_terminal_window` 开窗（全仓**唯一**的开窗出口，`launcher_identity_registry` 记成 `L2`；
-    ///    这里不带令牌：开的是一个裸 shell，不是一场要被 ↗ 找回来的会话）。
-    /// 问不到本机后端 ⇒ 说出来（`D11`，不退回自己拼）。
-    ///
-    /// ⚠ 这几条边都是 app 侧依赖 ⇒ 登记在 `boundary_tests::WINDOW_SIDE`（`Kind::Terminal`），那张表少一行就红。
+    /// 〔P4 · 主会话 09-29 拍板 Q2 A〕窗口只交**意图**：经它那条通道 `call` 一条 monitor 自己接的
+    /// [`filewin_contract::TERMINAL_OPEN_OP`]（寻址 ＝ 这台 · 参数 `{cwd}`）。之后三步都在 monitor 那一侧
+    /// （`chan/host.rs::terminal_open`）：补这台的机器事实 → 问本机后端 `terminal-ssh` 渲那一行（`cd` 那一串也在那里拼，
+    /// `src/backend/dial/terminal.rs::command_for_cwd`）→ `launch::open_terminal_window` 开窗 —— 与主界面开终端同一条路。
+    /// 窗口不拼命令、不认识 monitor 的配置、不起进程；那一问不成 ⇒ 对端那句原话画在窗口上（`D11`，不退回自己拼）。
     ///
     /// # ⚠ 它在 Linux 上**恒定「失败」，而那不是缺陷**
     ///
@@ -837,7 +781,6 @@ impl FileWindow {
     /// 是前端剪贴板兜底干的活（`remote-launch-run.ts`），**这个窗口没有它**
     /// ⇒ 那半句在这儿是假的。如实登记为**没做**（旧面板那颗按钮同样没有）。
     pub fn open_terminal_here(&mut self, ctx: Option<egui::Context>) -> bool {
-        // 〔FILES2〕有损目录：`cd` 那一串走唯一的 quote 的字节形（`$'…'`），不再出声拒。
         let Some(h) = self.rt.clone() else {
             *self.term_notice.lock().unwrap() =
                 Some(copy_text("rsFilewinShell.terminal.noRuntime", &[]).into());
@@ -847,29 +790,20 @@ impl FileWindow {
             *self.term_notice.lock().unwrap() = Some(NO_LINE.to_string());
             return false;
         };
-        let cmd = match build_open_terminal_cmd_at(&self.cwd_path()) {
-            Ok(c) => c,
-            Err(why) => {
-                *self.term_notice.lock().unwrap() = Some(why);
-                return false;
-            }
-        };
-        let mut ask = crate::dial_host::machine_facts(self.source.cfg());
-        ask["command"] = serde_json::json!(cmd);
+        // 〔FILES2〕有损目录：当前目录按字节交（线上形 `{"b16": …}`），`cd` 那一串在后端走唯一的 quote 的字节形。
+        let args = filewin_contract::terminal_open_args(self.cwd_path().wire());
+        let origin = self.source.origin();
         let slot = self.term_notice.clone();
         *slot.lock().unwrap() = None;
         h.spawn(async move {
-            let here = super::source::Origin(super::cross_copy::LOCAL_ORIGIN.to_string());
-            let opened =
-                match super::source::ask(&line, &here, TERMINAL_CMD, &ask, TERMINAL_WITHIN).await {
-                    Ok(v) => match v.get("command").and_then(serde_json::Value::as_str) {
-                        Some(ps) => {
-                            crate::launch::open_terminal_window(ps.to_string(), None, true).await
-                        }
-                        None => Err(copy_text("rsFilewinShell.terminal.badReply", &[]).into()),
-                    },
-                    Err(why) => Err(why),
-                };
+            let opened = super::source::ask(
+                &line,
+                &origin,
+                filewin_contract::TERMINAL_OPEN_OP,
+                &args,
+                TERMINAL_WITHIN,
+            )
+            .await;
             let said = opened.err().map(|why| {
                 copy_text(
                     "rsFilewinShell.terminal.failed",

@@ -214,16 +214,7 @@ fn no_line_says_so_instead_of_doing_nothing() {
         .build()
         .expect("起得来一个运行时");
     let mut w = FileWindow::seeded(
-        super::super::source::Source::remote(crate::ssh_source::RemoteConfig {
-            host: "example.invalid".into(),
-            label: "create-noline".into(),
-            port: 22,
-            user: "nobody".into(),
-            key_path: None,
-            host_key_fingerprint: None,
-            addresses: Vec::new(),
-            jump: None,
-        }),
+        super::super::source::Source::remote(String::from("create-noline")),
         "/srv/data".to_string(),
         Some(rt.handle().clone()),
         Vec::<super::super::source::Row>::new(),

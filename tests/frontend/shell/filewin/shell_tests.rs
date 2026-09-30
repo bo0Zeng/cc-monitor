@@ -2,20 +2,9 @@ use super::*;
 use crate::filewin::source::parent_dir;
 use crate::filewin::source::Row;
 
-/// 合成一份远端配置。**全字段合成**，不读任何真配置 ——
-/// `host` 用 `.invalid`（RFC 2606 保留），确保就算有人不小心让它真去连，
-/// DNS 也解不出来。
-fn synth_cfg(label: &str) -> crate::ssh_source::RemoteConfig {
-    crate::ssh_source::RemoteConfig {
-        host: "example.invalid".into(),
-        label: label.into(),
-        port: 22,
-        user: "nobody".into(),
-        key_path: None,
-        host_key_fingerprint: None,
-        addresses: Vec::new(),
-        jump: None,
-    }
+/// 合成那台远端的名字（〔P4〕窗口只拿名字，不再拿整份 `RemoteConfig`；名字怎么从配置来是 monitor 那一侧的事，判据在 `entry_tests`）。
+fn synth_cfg(label: &str) -> String {
+    String::from(label)
 }
 
 /// 实景台架那两份 worker 与它们的父判据**共用的**那台合成远端的名字。
@@ -73,10 +62,8 @@ fn a_remote_window_without_a_runtime_says_so_instead_of_showing_an_empty_dir() {
 #[test]
 fn every_source_has_a_non_empty_label() {
     assert_eq!(Source::remote(synth_cfg("tagged")).label(), "tagged");
-    // `label` 为空时回退到 `host`（`RemoteConfig::origin_label` 的契约）。
-    let mut anon = synth_cfg("");
-    anon.label.clear();
-    assert_eq!(Source::remote(anon).label(), "example.invalid");
+    // 〔P4〕「`label` 为空时回退到 `host`」那一半是 `RemoteConfig::origin_label` 的契约，随名字在 monitor 那一侧算搬去了
+    //   `entry_tests::the_seed_names_the_machine_by_its_origin_label`。
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -2387,55 +2374,9 @@ fn opening_a_terminal_with_no_runtime_says_so_on_the_window() {
     );
 }
 
-/// 🔴 **「在此打开终端」拼出来的那一串 —— 三种形状，期望串手写。**
-///
-/// 〔LR2〕这里原来是一条跨语言对拍：期望串现读 `tests/frontend/ui/remote-launch.test.ts` 里旧面板那条判据的三行
-/// （TS `buildOpenTerminalCmd` 的黄金样例）。那份 TS 实现生产调用方 0（旧面板已退役），
-/// 主会话按 `设计/00 §2.5 ④` ＋ `90 §3`（前端零 shell 串）裁删 ⇒ 本函数成了唯一一份，
-/// 那三行的字节**原样**搬进来当期望（行为零变化）。
-#[test]
-fn the_open_terminal_command_keeps_its_three_shapes() {
-    const GOLDEN: &[(&str, &str)] = &[
-        ("/home/pi/p", "cd '/home/pi/p' && exec ${SHELL:-bash} -l"),
-        ("  ", "exec ${SHELL:-bash} -l"),
-        ("/a b/c", "cd '/a b/c' && exec ${SHELL:-bash} -l"),
-    ];
-    for (input, want) in GOLDEN {
-        assert_eq!(
-            build_open_terminal_cmd(input).as_deref(),
-            Ok(*want),
-            "入参 {input:?}"
-        );
-    }
-    // ⚠ 双引号那一条：模板自己**一个都不带**（`launch.rs` 拒掉含双引号的 `remote_cmd`）；
-    //   路径里自带的双引号会原样进单引号里 ⇒ 那一形由 `launch.rs` 拒、窗口出声，不在这里兜。
-    assert!(!build_open_terminal_cmd("").unwrap().contains('"'));
-}
-
-/// 〔TL3 · `INVARIANTS §47` ②〕「在此打开终端」的当前目录：自由文本路径，形式 ＋ 拒绝集（只收 NUL / CR / LF），**正反各一格**。
-/// 要求住址：`INVARIANTS §47` ②；主会话 09-26 按 V131 裁「自由文本路径……拒绝集只收控制字符（NUL / CR / LF）……不拒 shell 元字符」。
-#[test]
-fn the_open_terminal_cwd_passes_real_names_and_refuses_what_quote_cannot_hold() {
-    for good in ["/home/u/Bob's notes", "/data/照片 (2019)", "/srv/a&b;c"] {
-        let cmd = build_open_terminal_cmd(good)
-            .unwrap_or_else(|e| panic!("真实好值被拒了：{good:?} ⇒ {e}"));
-        assert!(cmd.starts_with("cd '"), "{cmd}");
-    }
-    // CR 放在中间：放两头会被 trim 掉（取出来的值本就不含它）。
-    for bad in [
-        "relative/dir",
-        "/home/u/../etc",
-        "/home/u/x\nrm -rf ~",
-        "/home/u/x\ry",
-        "/home/u/x\0",
-    ] {
-        let e = build_open_terminal_cmd(bad).expect_err(&format!("坏值放行了：{bad:?}"));
-        assert!(
-            e.contains(&format!("{:?}", bad.trim())),
-            "那句话没说清是哪个目录：{e}"
-        );
-    }
-}
+// 〔P4〕「在此打开终端」拼那一串的两条判据（三种形状 · 当前目录的形式与拒绝集）随拼法搬去本机后端：
+//   `tests/backend/dial_terminal_tests.rs::the_open_terminal_command_keeps_its_three_shapes` ·
+//   `::the_open_terminal_cwd_passes_real_names_and_refuses_what_quote_cannot_hold`（期望串一个字没改）。
 
 // ════════════════════════════════════════════════════════════════════════
 // 〔FW1 · 第四波 4D · 2026-09-25〕编辑器存盘 CAS（主会话裁 D-c ＋ 09-25 认可「stale 让用户选 仍然覆盖 / 丢掉重开」）
@@ -2689,6 +2630,7 @@ async fn a_lossy_directory_is_entered_and_everything_inside_is_addressed_by_its_
                 "files-index-status",
                 "files-browse",
                 "files-index-rebuild",
+                filewin_contract::TERMINAL_OPEN_OP,
             ],
             Declared::default(),
         ),
@@ -2794,11 +2736,13 @@ async fn a_lossy_directory_is_entered_and_everything_inside_is_addressed_by_its_
         last_args(&wired, "files-stat")["path"],
         b16(b"/srv/d\xff/up.txt")
     );
-    // 开终端：`cd` 走唯一的 quote 的字节形。
+    // 开终端：〔P4〕窗口只交意图，当前目录按字节交给 monitor 接的那一问（`cd` 那一串的字节形在后端拼，
+    //   判据 `tests/backend/dial_terminal_tests.rs::the_open_terminal_cwd_passes_real_names_and_refuses_what_quote_cannot_hold`）。
+    assert!(w.open_terminal_here(None), "有损目录里开终端那一问没发出去");
+    wait_for(&wired, filewin_contract::TERMINAL_OPEN_OP, 1).await;
     assert_eq!(
-        crate::filewin::shell::build_open_terminal_cmd_at(&w.cwd_path())
-            .expect("有损目录的 cd 被拒了"),
-        "cd $'/srv/d\\xff' && exec ${SHELL:-bash} -l"
+        last_args(&wired, filewin_contract::TERMINAL_OPEN_OP),
+        serde_json::json!({ "cwd": b16(b"/srv/d\xff") })
     );
     // 上一级：按字节回到 `/srv`（它是合法 UTF-8 ⇒ 字节那一格清掉）。
     w.navigate_up();

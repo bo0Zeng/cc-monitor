@@ -32,17 +32,8 @@ use crate::filewin::source::{Row, Source};
 
 const SCREEN: egui::Vec2 = egui::vec2(1600.0, 900.0);
 
-fn cfg(label: &str) -> crate::ssh_source::RemoteConfig {
-    crate::ssh_source::RemoteConfig {
-        host: "example.invalid".into(),
-        label: label.into(),
-        port: 22,
-        user: "nobody".into(),
-        key_path: None,
-        host_key_fingerprint: None,
-        addresses: Vec::new(),
-        jump: None,
-    }
+fn cfg(label: &str) -> String {
+    String::from(label)
 }
 
 fn file(name: &str, dir: &str) -> Row {
