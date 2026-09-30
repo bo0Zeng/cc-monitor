@@ -438,4 +438,4 @@ fn set_sid(mut cmd: std::process::Command, target: String, sid: &str) -> Outcome
 
 #[cfg(test)]
 #[path = "../../../tests/backend/control/identity_tag_tests.rs"]
-mod tests;
+pub(crate) mod tests; // 〔CIFIX-BE〕`pub(crate)`：起 `sleep` 的夹具（`tests::spawn_settled_sleep` · `spawn_token_sleeper`）给 watcher 的单测共用
