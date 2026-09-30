@@ -57,6 +57,7 @@ import { findProfileBackupDirs } from "./profile-backups";
 export function gapKindOfState(st: SurfaceState): GapKind | null {
   switch (st?.kind) {
     case "present":
+    case "expected_absent": // 该不在、确实不在（后端给的结论）⇒ 不是缺口
       return null;
     case "absent":
       return "missing";
@@ -104,6 +105,9 @@ export function describeSurfaceState(st: SurfaceState): {
 } {
   switch (st?.kind) {
     case "present":
+      return { text: st.detail, tone: "ok" };
+    // 〔SHOTS 09-29〕该不在、确实不在：那一句是后端的成品，照档画成正常 —— 不借「不存在」的红
+    case "expected_absent":
       return { text: st.detail, tone: "ok" };
     case "absent":
       return { text: copyText("configSurface.state.absent"), tone: "bad" };
