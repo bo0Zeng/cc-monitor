@@ -46,7 +46,7 @@ import json
 import sys
 import tempfile
 from collections import Counter
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 
 HERE = Path(__file__).resolve().parent
 CP1_PATH = HERE / "CP1-copy-verdicts.py"
@@ -97,7 +97,8 @@ def outward_literals(cp1, src_root: Path | None = None, ledger: Path | None = No
 
 def _in_cp2c_scope(rel: str) -> bool:
     # 普查对仓外临时树（selftest 的空语料）给绝对路径 ⇒ 取 `/src/` 之后那一截再判（同 CP2c 的 `in_scope`）。
-    if rel.startswith("/") and "/src/" in rel:
+    # POSIX（`/tmp/…`）与 Windows（`C:/Users/…/Temp/…`，windows runner 上的仓外临时树）两种绝对路径都认。
+    if (PurePosixPath(rel).is_absolute() or PureWindowsPath(rel).is_absolute()) and "/src/" in rel:
         rel = "src/" + rel.split("/src/", 1)[1]
     return rel.startswith(CP2C_SCOPE)
 

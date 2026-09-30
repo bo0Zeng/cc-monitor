@@ -54,7 +54,7 @@ import json
 import sys
 import tempfile
 from collections import Counter
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 
 HERE = Path(__file__).resolve().parent
 CP1_PATH = HERE / "CP1-copy-verdicts.py"
@@ -75,7 +75,8 @@ PROBE_SRC = (
 def in_scope(rel: str) -> bool:
     """相对仓根的住址落在两棵树里。⚠ 不能用「含 `/src/backend/`」判：monitor crate 的后端调用层（CP2b 的射程）曾住 `src/frontend/shell/src/backend/`，
     按前缀判才不随目录名漂。普查对仓外的临时树（探针）给的是绝对路径 ⇒ 取 `/src/` 之后那一截再判。"""
-    if rel.startswith("/") and "/src/" in rel:
+    # POSIX（`/tmp/…`）与 Windows（`C:/Users/…/Temp/…`，windows runner 上的仓外临时树）两种绝对路径都认。
+    if (PurePosixPath(rel).is_absolute() or PureWindowsPath(rel).is_absolute()) and "/src/" in rel:
         rel = "src/" + rel.split("/src/", 1)[1]
     return rel.startswith(SCOPE)
 
