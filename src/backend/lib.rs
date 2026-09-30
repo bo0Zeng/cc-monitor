@@ -687,7 +687,9 @@ pub const PROTO_VERSION: u32 = 1;
 /// ★★★ **p5y-panorama-upstream-asks**（2026-09-29，P7 合并那一拍）：协议 —— 代码全景接上游四条：邻域跳数由引擎给 · 符号 id 结构化（`SymbolRef`）· 线上类型由上游导出、前端生成 · 建索引带进度（`panorama` 请求多 `ticket`，新出方向帧 `progress{ticket, cell}`，界面显示「阶段：已做 / 总数」）；re-vendor 到上游 `7eafe64`，形状代号换代 ⇒ 各台首次打开全景重放一次小程序。子命令没变。
 ///
 /// ★★★ **p5z-panorama-zoom-data-page**（2026-09-29，P3 合并那一拍）：行为 —— 全景图可缩放 / 拖拽、按视口适配 · 列宽变了重算行高 · 文案取文口按值在值与汉字之间补 / 去空格（C-L5，TS 与 Rust 同一套）· 数据位置页列出后端住在 `~/.cc-monitor` 里的全部东西（名字进 `relay_route_core` 契约）· CI 的 eslint 改成会拦。子命令没变。
-pub const BUILD_ID: &str = "p5z-panorama-zoom-data-page";
+///
+/// ★★★ **p6a-terminal-prelude-home**（2026-09-29，P5 合并那一拍）：协议 / 行为 —— 开终端的令牌握手前奏整段由后端渲（新帧命令 `terminal-local`；`terminal-ssh` 多收 `rbindToken`），monitor 只开窗 · 家目录规则收成 `creds-core` 唯一一个函数、两侧共用（Windows `USERPROFILE` → `HOME`，其余 `HOME` → `USERPROFILE`）。
+pub const BUILD_ID: &str = "p6a-terminal-prelude-home";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src/frontend/shell/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），

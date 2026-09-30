@@ -162,7 +162,7 @@ pub(crate) async fn push_to(origin: &crate::origin::Origin) -> Result<(), String
 /// （〔MIG-3b 续〕界面 `askOrPlace` → [`panorama_place`]）。**写的那一下住 `local_backend.rs`**（与释放本机后端同一套：暂存旁名 → 可执行位 → 换名）。
 fn place_local(bytes: &'static [u8]) -> Result<(), String> {
     // 与推到远端同一个落点（[`PUSH_DIR`]，判据对拍后端的第二个候选）。
-    let dir = dirs::home_dir()
+    let dir = creds_core::store::home_dir()
         .map(|h| PUSH_DIR.split('/').fold(h, |p, seg| p.join(seg)))
         .ok_or_else(|| copy_text("rsPanoramaBytes.local.noHome", &[]))?;
     let placed = crate::local_backend::place_local_panorama(

@@ -152,7 +152,7 @@ pub use relay_route_core::listen_port_for;
 /// monitor 自己的目录 —— token 与「谁在听」都住这里。**与后端的落点同一个目录**
 /// （`~/.cc-monitor`），因为它们本来就是同一件事的两半。
 fn cc_monitor_dir() -> std::path::PathBuf {
-    dirs::home_dir()
+    creds_core::store::home_dir()
         .map(|h| h.join(".cc-monitor"))
         .unwrap_or_else(|| std::path::PathBuf::from("/tmp/.cc-monitor"))
 }
@@ -1597,7 +1597,7 @@ pub fn start_local_backend() -> StartOutcome {
     //     ⇒ 与远端那份结构上不可能撞（理由见 `extract_embedded_to` 头注的 D1 段）。
     //   · 这台机器的 (OS, arch)：`byte_table::choose` 按它挑内嵌字节（下面那一段）；取不到时交进去的是那句拒绝的话，
     //     函数把它接在「旁边没有」后面，不伪造理由。
-    let extract_dir = dirs::home_dir()
+    let extract_dir = creds_core::store::home_dir()
         .map(|h| h.join(".cc-monitor").join("bin"))
         .unwrap_or_else(|| std::path::PathBuf::from("/tmp/.cc-monitor/bin"));
     // 〔HX1 · RK1 小尾巴〕本机上第一个建 `~/.cc-monitor` 的就是这里（释放后端二进制之前）⇒ 先把这一层按「只给本人」建好；

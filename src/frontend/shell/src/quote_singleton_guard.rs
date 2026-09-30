@@ -30,8 +30,9 @@
 //!
 //! ⚠ **仍查不了**「连字面量都不出现的等价实现」（例如按字节码拼出那个序列）。
 //! 与本仓其它约定型守卫同一档。**比没有强，别读成证明。**
-//! ⚠ 也**不查 PowerShell 的 `''` 转义**（`launch.rs::ps_quote`）—— 那是另一门语言的正确写法，
-//! 不属本条管辖。摸底时差点把它算进来，见 `ESCAPE_ALT_RAW` 头注记的那次弯路。
+//! ⚠ 这一族**不查 PowerShell 的 `''` 转义** —— 那是另一门语言的正确写法，不属 POSIX 这条管辖
+//! （摸底时差点把它算进来，见 `ESCAPE_ALT_RAW` 头注记的那次弯路）。〔P5〕PowerShell 那一门另有一条：monitor 生产段
+//! 零 PowerShell 引号器（`the_monitor_holds_no_powershell_quoter`；唯一的出口在后端 `platform/shell/dialect.rs::ps_literal`）。
 //!
 //! # ✅ 它服务哪条要求：**`设计/01 §5 D1`**〔`P20` 第二刀 2026-09-22〕
 //!

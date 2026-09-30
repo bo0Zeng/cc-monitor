@@ -3,9 +3,9 @@
 //! 三块：
 //! 1. [`launch_powershell_window`] —— 通用「新终端窗口跑一条 PowerShell 命令」机械（wt.exe Plan A →
 //!    CREATE_NEW_CONSOLE Plan B，`-NoExit -EncodedCommand`、**不带 `-NoProfile`**）。本地与远端共用此单一入口。
-//! 2. [`open_terminal_window`] —— 开窗那一条 Tauri 命令：接上令牌握手前奏（[`with_rbind_bind_prelude`]，窗口要登记进
-//!    monitor 自己那张 `bind.rs` 表）再开窗。它**不拼 ssh**：远端那一行（`& ssh -t[ -J …] … -- '<bash -lic ''…''>'`）由本机后端
-//!    帧命令 `terminal-ssh` 渲好交来（`src/backend/dial/terminal.rs`，组请求走 `dial/machine.rs::resolve`）。
+//! 2. [`open_terminal_window`] —— 开窗那一条 Tauri 命令：**只开窗**。交来的是本机后端的成品 —— 远端那一行
+//!    （`& ssh -t[ -J …] … -- '<bash -lic ''…''>'`）由帧命令 `terminal-ssh` 渲、本机那一串由 `terminal-local` 出；
+//!    〔P5〕令牌握手前奏（窗口要登记进 monitor 自己那张 `bind.rs` 表）也由它们接好（`src/backend/dial/terminal.rs::with_bind_prelude`）。
 //!    原先住这里的 `build_remote_ssh_ps_command`〔散文墓碑〕与它那几道白名单（用户名 · 地址 · 跳板 · 双引号）随之搬走。
 //! 3. [`terminal_dial`] —— 给那一问交机器事实（`{machine, saved, jump, prefer}`：monitor 自己的机器表 ＋ 上次赢的那条，
 //!    `dial_host::machine_facts`）。
@@ -23,10 +23,8 @@ const MAX_REMOTE_CMD: usize = 4096;
 // 〔FIX4 · `99 §2.1 ⑬`〕这里原来一个 `posix_quote`〔散文墓碑〕（`shell_quote_core::posix_quote` 的纯转发别名）：唯一的用户是远端那条
 // ssh 外壳（`bash -lic '<命令>'`），随渲染搬进本机后端（`src/backend/dial/terminal.rs`，直调 `shell_quote_core`）⇒ 别名一起删。
 
-/// PowerShell 单引号字面量：`'…'` 包裹，内部 `'` → `''`。
-fn ps_quote(s: &str) -> String {
-    format!("'{}'", s.replace('\'', "''"))
-}
+// 〔P5 · V156〕这里原来一个只双写 ASCII `'` 的 PowerShell 引号器（本机数据目录带弯引号时握手前奏会断）：前奏整段搬进本机后端，
+// PowerShell 字面量只经后端 `platform/shell/dialect.rs::ps_literal` ⇒ 删了。monitor 生产段零 PowerShell 引号器（`quote_singleton_guard_tests`）。
 
 /// L1（local-as-remote）：**与传输无关**的那层命令校验 —— 三条送法一律适用。
 ///
@@ -327,73 +325,6 @@ pub fn launch_local_posix(_cmd: &str, _cwd: Option<&str>) -> Result<(), String> 
     Err(copy_text("rsLaunch.local.notOnWindows", &[]).into())
 }
 
-/// `设计/80 §8.7` 步 3 收尾（第二波 T4）：**本地半的生产写入方**的模板。见文件头注。
-const RBIND_BIND_PRELUDE_TPL: &str = include_str!("../scripts/rbind-token-bind.ps1.tpl");
-
-/// 把令牌握手前奏渲出来：剥掉模板里的整行注释、填两个占位符（都按 PowerShell 单引号字面量转义）。
-///
-/// # 为什么需要它（T3 交接的那个 🔴）
-///
-/// 步 3 让 `bind.rs` **接得住**带令牌的 marker（`ccm-rbind-token-<32hex>` → 表里多记一个
-/// `rbind_token`），但**没有任何生产代码往 `ps-await/` 里写这样一份** —— Era 2 唯一的写入方是
-/// PowerShell profile 里的 `__ccm_bind`，它写的是 `ccm-bind-<PID>-<8hex>`。
-/// ⇒ 步 4（↗ 改走 `sid → token → HWND`）没有这一段就是空转：表里永远查不到令牌。
-///
-/// # 形状
-///
-/// - marker 由 [`crate::bind::rbind_token_marker`] 拼（与 `bind.rs` 解它的那一侧同一个前缀常量），
-///   令牌形状不对 ⇒ `Err`（**不**产一段写着解不回来的 marker 的前奏）。
-/// - 目录 = `monitor_data_dir/`[`crate::bind::AWAIT_SUBDIR`] —— 与 `BindRegistry::spawn` 监听的是同一个常量。
-/// - 模板里以 `#` 开头的整行不进产物：`-EncodedCommand` 的长度是 UTF-16LE 再 base64，
-///   注释会白白吃掉 Windows 命令行 32767 字符的额度。
-pub(crate) fn render_rbind_bind_prelude(
-    token: &str,
-    monitor_data_dir: &std::path::Path,
-) -> Result<String, String> {
-    let marker = crate::bind::rbind_token_marker(token)
-        .ok_or_else(|| copy_text("rsLaunch.refuse.badToken", &[]))?;
-    let await_dir = monitor_data_dir.join(crate::bind::AWAIT_SUBDIR);
-    let body: String = RBIND_BIND_PRELUDE_TPL
-        .lines()
-        .filter(|l| !l.trim_start().starts_with('#'))
-        .map(|l| format!("{l}\n"))
-        .collect();
-    Ok(body
-        .replace("{{MARKER}}", &ps_quote(&marker))
-        .replace("{{AWAIT_DIR}}", &ps_quote(&await_dir.to_string_lossy())))
-}
-
-/// 给一条要在新窗口里跑的 PowerShell 命令接上令牌握手前奏。
-///
-/// - `token = None` ⇒ **逐字节原样返回**（`attach` 那一格、以及账号部署那些不起 agent 进程的调用方）。
-/// - `token = Some(形状不对)` ⇒ `Err`：前端铸币口与载荷渲染器都各有一道同形闸，走到这里还是坏的
-///   说明是一次编程错误，宁可当场拒，也不要拉起一个本地半注定登记不上的窗口。
-/// - `monitor_data_dir = None`（解析不出数据目录）⇒ **不接前奏、照常拉起**，并打一句不带值的警告。
-///   这一段只为 ↗ 服务；为它挡住用户真正要跑的命令是本末倒置。那时 ↗ 会如实说
-///   「带着令牌、本地没登记到它的窗口」（`bind.rs` 的分派）。
-pub(crate) fn with_rbind_bind_prelude(
-    ps_command: String,
-    token: Option<&str>,
-    monitor_data_dir: Option<&std::path::Path>,
-) -> Result<String, String> {
-    let Some(tok) = token else {
-        return Ok(ps_command);
-    };
-    let Some(dir) = monitor_data_dir else {
-        if !crate::bind::rbind_token_shape_ok(tok) {
-            return Err(copy_text("rsLaunch.refuse.badToken", &[]).into());
-        }
-        tracing::warn!(
-            "launch: 解析不出 monitor 数据目录 —— 本次拉起不接令牌握手前奏（↗ 将按令牌找不到窗口）"
-        );
-        return Ok(ps_command);
-    };
-    Ok(format!(
-        "{}{ps_command}",
-        render_rbind_bind_prelude(tok, dir)?
-    ))
-}
-
 /// 在新终端窗口跑一条 PowerShell 命令（加载用户 profile、`-NoExit` 保留窗口）。
 ///
 /// Plan A：wt.exe（Windows Terminal）新标签；Plan B：powershell.exe +
@@ -630,22 +561,14 @@ fn ssh_client_available() -> bool {
 
 /// 〔FIX4 · `设计/99 §2.1 ⑬`「待迁」最后一行〕**开一个终端窗口跑 `command`** —— monitor 在「开终端」这件事上只剩这一下。
 ///
-/// `command` 是**成品**：远端那一行由本机后端 `terminal-ssh` 渲好（`ssh -t …` 外壳 ＋ PowerShell 载荷），本机那一串是
-/// 前端 / 后端载荷渲染器给的原串 —— 这里不判、不拼。`ssh = true` ⇒ Windows 上先查本机有没有 ssh.exe
-/// （缺 OpenSSH 客户端时窗口只会报 "not recognized"，而 spawn 本身成功 ⇒ 前端误报成功）。
-///
-/// 〔`设计/80 §8.7` 步 3 收尾，第二波 T4〕`rbind_token`：这次拉起铸的**启动期令牌**（前端从真正交出去渲染的那份 plan 里取，
-/// 不另铸）。有值 ⇒ 接令牌握手前奏（[`with_rbind_bind_prelude`]），让新窗口以 `ccm-rbind-token-<令牌>` 登记进 `bind.rs`
-/// 那张表（↗ 的 `sid → token → HWND` join 的本地一半）。缺省（`attach` · 部署那几条不起 agent 进程的）⇒ 原样开窗。
+/// `command` 是**成品**：远端那一行由本机后端 `terminal-ssh` 渲好（`ssh -t …` 外壳 ＋ PowerShell 载荷），本机那一串由 `terminal-local`
+/// 交回 —— 这次拉起带启动期令牌时，两条都已在前面接好令牌握手前奏（`设计/80 §8.2` 本地半，〔P5〕后端渲）。这里不判、不拼。
+/// `ssh = true` ⇒ Windows 上先查本机有没有 ssh.exe（缺 OpenSSH 客户端时窗口只会报 "not recognized"，而 spawn 本身成功 ⇒ 前端误报成功）。
 ///
 /// ★ POSIX：[`launch_powershell_window`] 的非 Windows 臂回 [`POSIX_NO_TERMINAL_WINDOW`]，前端据此把命令交给用户在自己的
 /// bash 里执行（〔用户裁定 08-12〕「attach 暂时就用纯 linux bash 以及 windows 的 PowerShell + Windows Terminal」）。**这不是失败**。
 #[tauri::command]
-pub async fn open_terminal_window(
-    command: String,
-    rbind_token: Option<String>,
-    ssh: bool,
-) -> Result<(), String> {
+pub async fn open_terminal_window(command: String, ssh: bool) -> Result<(), String> {
     // §10（Phase G 对齐）：`where.exe` 预检（阻塞）＋ 进程 spawn 挪到阻塞线程池，不堵 IPC 派发线程。
     tokio::task::spawn_blocking(move || {
         #[cfg(windows)]
@@ -654,10 +577,7 @@ pub async fn open_terminal_window(
         }
         #[cfg(not(windows))]
         let _ = ssh;
-        let data_dir = crate::config::resolve_monitor_data_dir();
-        let ps_command =
-            with_rbind_bind_prelude(command, rbind_token.as_deref(), data_dir.as_deref())?;
-        launch_powershell_window(&ps_command, None)?;
+        launch_powershell_window(&command, None)?;
         tracing::info!("launch: terminal window opened");
         Ok::<(), String>(())
     })
