@@ -597,6 +597,7 @@ async fn retired_only_the_two_forms_we_ever_placed_are_removed_and_with_what_was
     assert!(kept(&retired_at(present, Some(&[0xff, 0xfe, b'\n'])).await));
 }
 
+/// 要求住址：`设计/00 §1.2`「判定只在后端」· 题面 `4d-lanes.md ### P1` 第 3 件「（`is_ours`，只显示不删）→ 后端答，monitor 只显示」。
 /// 〔P1 · 第 3 件〕`{text}` 那一形（本机 PATH 上另一个 `ccm` 的开头一截）与 `{dial}` 读回来的走同一条规矩：
 /// 逐条与 [`retired_at`] 读回同一段字节的答相等，且一次 stat / 读都不发（`Fake` 什么都没登记，发了就是 `unreachable`）。
 #[tokio::test]
@@ -956,10 +957,9 @@ fn judge_refuses_at_the_key_the_line_and_the_promise_and_nowhere_else() {
     ));
 }
 
+// 要求住址：`设计/01 §6.7a` 表 B（V132：本机 (Linux, aarch64) 不承诺）· `设计/00 §1.2`「判定只在后端」· HX2 D-b「只在我的比盘上的新时才换」。
 // ═══ 〔P1〕`place-verdict`：本机那一份放不放（monitor 自举时问手上那份字节自己）══════════════════════
-//
-// 要求住址：`4d-lanes.md ## 发版后四路 ### P1` 第 1 件（主会话 09-29 拍板形状 A）「自举那一刻已有后端可问 ⇒ 判定只住后端一家」·
-// HX2 D-b「只在我的比盘上的新时才换」· `设计/01 §6.7a` 表 B（V132：本机 (Linux, aarch64) 不承诺）。期望手写。
+// 题面 `4d-lanes.md ### P1` 第 1 件（主会话 09-29 拍板形状 A：自举那一刻问手上那份字节自己 ⇒ 判定只住后端一家）。期望手写。
 
 fn landed(id: &str) -> Result<Option<Vec<u8>>, String> {
     Ok(Some(format!("junk{}junk", stamp(id)).into_bytes()))
