@@ -196,10 +196,11 @@ jobs:
 
       # 文件窗口那几格要一个真图形会话（`tests/frontend/filewin/xvfb_rig.rs`）和一份 CJK 字体
       # （`tests/frontend/filewin/fonts_tests.rs`）；缺了它们报「判不了」而不是「过了」。
+      # `libxkbcommon-x11-0`：winit 在 X11 上起窗口时按名字 dlopen 它，缺了窗口起不来。
       # `ubuntu-latest` 今天自带 Xvfb，但那是镜像的实现细节 ⇒ 这里照样点名装。
       - name: Install test-time deps (Xvfb · xdotool · CJK font)
         run: |
-          sudo apt-get install -y xvfb xdotool fonts-noto-cjk
+          sudo apt-get install -y xvfb xdotool fonts-noto-cjk libxkbcommon-x11-0
 
       - name: cargo test（整个 workspace，vendor 除外；Linux 执行面）
         run: cargo test --workspace --no-fail-fast
