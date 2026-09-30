@@ -8,6 +8,7 @@
 pub mod console_text;
 pub mod fs;
 pub mod hwnd;
+pub mod login_shell;
 pub mod pid;
 pub mod spawn;
 
