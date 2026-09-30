@@ -3571,7 +3571,7 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             1,
         ),
         (
-            "src/frontend/shell/src/launch.rs",
+            "src/frontend/shell/src/platform/terminal.rs", // 〔P4 · 阶段 H〕原 `launch.rs`（开窗的平台臂连同头注搬来）
             "resolve_from_backend",
             1,
         ),
@@ -4543,22 +4543,22 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             1,
         ), // 〔MIG-2〕起会话的计划与渲染搬进后端（`99 §2.1 ⑬`）：墓碑随搬家换住址 / 点已删命令名的散文挂墓碑
         (
-            "src/frontend/shell/src/launch.rs",
+            "src/frontend/shell/src/platform/terminal.rs", // 〔P4 · 阶段 H〕原 `launch.rs`（开窗的平台臂连同头注搬来）
             "build_local_posix_command",
             1,
         ), // 〔MIG-2〕起会话的计划与渲染搬进后端（`99 §2.1 ⑬`）：墓碑随搬家换住址 / 点已删命令名的散文挂墓碑
         (
-            "src/frontend/shell/src/launch.rs",
+            "src/frontend/shell/src/platform/terminal.rs", // 〔P4 · 阶段 H〕原 `launch.rs`（开窗的平台臂连同头注搬来）
             "nobody_reaches_the_relay_take_points_without_going_through_the_seam",
             1,
         ), // 〔MIG-2〕起会话的计划与渲染搬进后端（`99 §2.1 ⑬`）：墓碑随搬家换住址 / 点已删命令名的散文挂墓碑
         (
-            "src/frontend/shell/src/launch.rs",
+            "src/frontend/shell/src/platform/terminal.rs", // 〔P4 · 阶段 H〕原 `launch.rs`（开窗的平台臂连同头注搬来）
             "the_local_resume_payload_has_no_session_container_today",
             1,
         ), // 〔MIG-2〕起会话的计划与渲染搬进后端（`99 §2.1 ⑬`）：墓碑随搬家换住址 / 点已删命令名的散文挂墓碑
         (
-            "src/frontend/shell/src/launch.rs",
+            "src/frontend/shell/src/platform/terminal.rs", // 〔P4 · 阶段 H〕原 `launch.rs`（开窗的平台臂连同头注搬来）
             "the_rendered_local_command_really_carries_the_container",
             1,
         ), // 〔MIG-2〕起会话的计划与渲染搬进后端（`99 §2.1 ⑬`）：墓碑随搬家换住址 / 点已删命令名的散文挂墓碑
@@ -4987,9 +4987,10 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/frontend/shell/src/event_replay.rs", 7), // 〔MIG-1〕6 → 7：⑬ 退役的会话清单/活动命令与 buffered_* 旧名挂墓碑 // 〔GP1〕+1：远端 sid 清单改名（连同 origin 一起交）那一块 〔DL1〕+1：头注点名退役的裸事件常量那一块
         // 〔GP1 · 第四波〕本机凭据文件的写者换成本机常驻后端：monitor 那侧写口 · `platform::fs::make_private` ·
         //   「本机那一臂不发帧」判据退役，讲来历的散文逐处一块；搬去后端的三条判据的出处各一块。
-        ("src/frontend/shell/src/config.rs", 2), // 〔CFG1〕+1：整份写口 `save_config` 删了，讲来历那一句挂墓碑
+        ("src/frontend/shell/src/config.rs", 1), // 〔P4 · 阶段 H〕2 → 1：`atomic_replace` 头注里那一处随函数进了 `platform/fs.rs` //〔CFG1〕+1：整份写口 `save_config` 删了，讲来历那一句挂墓碑
         ("src/frontend/shell/src/creds_store.rs", 6), // 〔HX2 · 4D〕+2：两处「GP1 那一版经 `write_key_on`」
-        ("src/frontend/shell/src/platform/fs.rs", 1),
+        ("src/frontend/shell/src/platform/fs.rs", 2), // 〔P4 · 阶段 H〕1 → 2：`atomic_replace` 从 `config.rs` 搬来，头注那一处随之
+        ("src/frontend/shell/src/platform/terminal.rs", 6), // 〔P4 · 阶段 H〕0 → 6：开窗的平台臂从 `launch.rs` 搬来，头注里的六处随之
         (
             "tests/backend/accounts/upstream_select/file_face_tests.rs",
             6,
@@ -5103,7 +5104,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/frontend/filewin/src/source.rs", 5), // 〔F7c 收尾 09-24〕4 → 5（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）
         ("src/frontend/filewin/src/fonts.rs", 2), // 〔F9c 第四波 09-24〕0 → 2（探针来路里那两句「存不回去」的函数名随只读一档删了）
         ("src/frontend/shell/src/history.rs", 9), // 〔MOD〕4 → 9 // 〔MOD〕9 → 4 // 〔合并 MIG-3b × 主线 5bb03b34〕两边各自贴的墓碑相加，按盘上现数（跑出来核过） // 〔DUP1〕+1：configDir 校验头注原先「照抄 TS 侧 `isValidConfigDir`」那句（TS 那份删了） // 〔合并 LOC1a〕主线 18 ＋ LOC1a +1（分叉 exec 那一趟的结果解释删了）// 〔合并 US1 × 主线〕主线 15 ＋ US1 +3 // 〔C4e 批 2〕+1：本机 kill 那句点的旧发送端 // 〔C4c〕+1：记录那一问的 Tauri 命令与答案形状退役，原处留一块 // 〔RW1〕+1：本机删会话那道路径守卫整段搬去后端 // 〔RW1〕+3：本机分叉的实现（`branch_impl` / `write_branch_file` / `read_jsonl_values`）交给后端 ·〔C4d〕本机账号参照实现删了（list_from_dir 一族 ＋ accounts.rs 整份），点旧名的散文挂墓碑 ·〔C4d〕历史清单与注解搬进本机常驻后端，点旧名的散文挂墓碑 // 〔MIG-2〕20 → 15
-        ("src/frontend/shell/src/launch.rs", 8), // 〔FIX4 · ⑬〕7 → 8：开终端 ssh 外壳进本机后端，点旧名的散文挂墓碑  // 〔MIG-2〕1 → 7
+        ("src/frontend/shell/src/launch.rs", 2), // 〔P4 · 阶段 H〕8 → 2：六处随开窗的平台臂进了 `platform/terminal.rs` //〔FIX4 · ⑬〕7 → 8：开终端 ssh 外壳进本机后端，点旧名的散文挂墓碑  // 〔MIG-2〕1 → 7
         ("src/frontend/shell/src/lib.rs", 37), // 〔P1〕35 → 37：`mod agent_dispatch_registry;` 那一行换成一块墓碑 ＋ 跨轨对拍锚点 `agent_profile_parity` 那一句挂一块 // 〔MOD〕31 → 35 // 〔MIG-3b 续〕30 → 31：足迹三个 mod 删了那一块 // 〔MIG-3b 续〕29 → 30：`mod panorama_call;` 换成一块墓碑 // 〔MIG-3b 续〕+2：`mod pubkey;` 与 `push_public_key` 注册那一行各换成一块墓碑 // 〔MIG-3a · 09-28 预裁〕26 → 27：`mod acct_iso_deploy` 那一行换成一块墓碑 // // 〔合并 MIG-1 × 主线 8c6cdc0e〕两边各自贴的墓碑相加，按盘上现数（跑出来核过） 21 → 26 // 〔合并 MIG-3b × 主线 5bb03b34〕两边各自贴的墓碑相加，按盘上现数（跑出来核过） // 〔合并 MIG-3a × MIG-2〕基数 16 ＋ 主线 +1 ＋ MIG-3a +2 ＋ MIG-2 +1（`apikey_remote` 整删）⇒ 20 // 〔STOP〕+1：`mod stop_grace;` 那一行换成一块墓碑（「请它收尾 → 等 → 强杀」搬进一次性 `--resident-stop`）。 〔W5-ALIAS · 删 `fenced_block::apply` 那一族〕主线 13 ＋ 本路 +2（`verified_write` 模块删了那一行：`verified_write` · `fenced_block::apply` 各一）⇒ 15。主线原注：〔合并 HX2 × 主线 267588ca〕基数 10 ＋ LOC1b +3 ＋ HX2 ±0 ⇒ 13。LOC1b 原注：〔LOC1b〕+2：本机判活那一段（`SessionMap::load_with_changes` 起步 · `app.manage(session_map)`）删了，原处各挂一块 // 〔合并 LOC1b × 主线 4837d0bd〕主线 10 ＋ LOC1b +1（`mod search;` 那一行挂一块，本机内存索引删了） // 〔US1〕+1 // 〔GP1〕+1：`write_apikey_credentials_key` 头注里「整段论证见」那个旧写口 // 〔合并 C4d × 主线 303fed89〕主线 7 ＋ 本路 +1 ⇒ 8（〔C4d〕本机账号参照实现删了（list_from_dir 一族 ＋ accounts.rs 整份），点旧名的散文挂墓碑） // 〔合并 CF2 × 主线 362611a9〕主线 6 ＋ 本路 +1（独立窗口的定向重放命令退役那一段）// 〔AL1d〕+2（「终端集成」五条命令退役：注册表旁一句 ＋ 原住址一句；合并主线 636cc1a0 按两边增量相加 4 + 2） // 〔F7c 收尾 09-24〕1 → 2（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）· 〔SR1b 子步 3〕+1：`sftp_move_ledger` 退役 · 〔C4b〕+1：`plugins` 模块删了，那一行挂一块（合并按两边增量相加 ⇒ 4） ｜ HX2 原注：〔HX2 · 4D〕±0：`write_apikey_credentials_key` 整条删，原处换一块墓碑（点旧命令名 ＋ `KH2C1` 那条旧判据名）// 〔US1〕+1 // 〔GP1〕+1：`write_apikey_credentials_key` 头注里「整段论证见」那个旧写口 // 〔合并 C4d × 主线 303fed89〕主线 7 ＋ 本路 +1 ⇒ 8（〔C4d〕本机账号参照实现删了（list_from_dir 一族 ＋ accounts.rs 整份），点旧名的散文挂墓碑） // 〔合并 CF2 × 主线 362611a9〕主线 6 ＋ 本路 +1（独立窗口的定向重放命令退役那一段）// 〔AL1d〕+2（「终端集成」五条命令退役：注册表旁一句 ＋ 原住址一句；合并主线 636cc1a0 按两边增量相加 4 + 2） // 〔F7c 收尾 09-24〕1 → 2（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）· 〔SR1b 子步 3〕+1：`sftp_move_ledger` 退役 · 〔C4b〕+1：`plugins` 模块删了，那一行挂一块（合并按两边增量相加 ⇒ 4） // 〔MIG-2〕16 → 17
         ("src/frontend/shell/src/local_backend_host.rs", 4), // 〔TL3 · 🔴-3〕+1：中转「在不在」那一行原先点着已删的回环探针，改成今天由后端答、旧名留一块 // 〔US1〕+1：`relay_running` 一族退役那一块 // 〔HX1〕+1：`fresh_token` 头注里「不需要密码学随机数」那一段整段删，原处留一块（合并按两边增量相加：1 ＋ 1 ＋ 1）
         // 〔LOC1b · 第四波 4D〕monitor 自己那份本机判活整份删了（本机活会话表改由本机后端的帧喂），头注点旧实现的几个名字各挂一块。

@@ -164,34 +164,7 @@ pub fn open_requested() -> u64 {
     OPEN_REQUESTED.load(Ordering::SeqCst)
 }
 
-/// 🔴 让 winit 的事件循环能建在**非主线程**上。
-///
-/// 三个平台各一句；macOS 上**没有**对应的扩展 trait（NSApplication 铁定要主线程），
-/// 而本仓承诺的平台是 Windows / Linux ⇒ 今天碰不到那一格。
-pub fn any_thread_hook(builder: &mut eframe::EventLoopBuilder<eframe::UserEvent>) {
-    #[cfg(all(unix, not(target_os = "macos"), not(target_os = "android")))]
-    {
-        use winit::platform::wayland::EventLoopBuilderExtWayland;
-        use winit::platform::x11::EventLoopBuilderExtX11;
-        EventLoopBuilderExtX11::with_any_thread(builder, true);
-        EventLoopBuilderExtWayland::with_any_thread(builder, true);
-    }
-    #[cfg(windows)]
-    {
-        use winit::platform::windows::EventLoopBuilderExtWindows;
-        EventLoopBuilderExtWindows::with_any_thread(builder, true);
-        // 🔴 〔WN1 · 09-24〕**进程 DPI 归这个窗口进程自己管** —— 这个进程里没有 Tauri。
-        // 从前是 `false`（「进程 DPI 归 Tauri 管」，同进程时代）；窗口进程独立之后那一格
-        // 让它全程 `UNAWARE`。四格读数与改回来的理由住本模块头注「WN1」那一节。
-        EventLoopBuilderExtWindows::with_dpi_aware(builder, true);
-    }
-    #[cfg(target_os = "macos")]
-    {
-        // 够不着：macOS 没有 with_any_thread。留个明确的编译期落点，
-        // 免得哪天上了 macOS 还以为这条路是通的。
-        let _ = builder;
-    }
-}
+// 〔P4 · 阶段 H〕`any_thread_hook`（winit 事件循环建在次线程上 · 本进程自己管 DPI，三个平台各一句）住 `platform.rs`。
 
 /// **「存到哪儿」那一问的缺省落点** —— 用户的 home。
 ///
@@ -444,7 +417,7 @@ pub struct FileWindow {
     ///
     /// # 为什么这一格非有不可
     ///
-    /// 那条命令在 **POSIX 上恒定失败**（`launch.rs::POSIX_NO_TERMINAL_WINDOW`：
+    /// 那条命令在 **POSIX 上恒定失败**（`platform/terminal.rs::POSIX_NO_TERMINAL_WINDOW`：
     /// 「本机不是 Windows，刻意不替你挑终端模拟器」），在 Windows 上也可能失败
     /// （那台远端的配置没存全）。一次失败与一次成功在屏幕上长得一样
     /// ⇒ 用户点了按钮、什么都没发生、也没有一句话 —— 那正是本仓的头号病形。
@@ -3638,7 +3611,7 @@ pub fn open_detached_seeded(
             &[("source", &(source.label()).to_string())],
         );
         let opts = eframe::NativeOptions {
-            event_loop_builder: Some(Box::new(any_thread_hook)),
+            event_loop_builder: Some(Box::new(crate::platform::any_thread_hook)),
             ..Default::default()
         };
         WINDOWS_OPENED.fetch_add(1, Ordering::SeqCst);

@@ -987,8 +987,10 @@ fn opening_a_window_again_is_a_new_process_and_it_really_comes_up() {
 /// 「那一句在真 Windows 上真的把进程设成 V2」要真机（本路不碰 Win11 虚拟机，买不到）。
 #[test]
 fn the_window_process_owns_its_dpi_because_no_tauri_lives_there() {
-    let shell =
-        guard_core::production_code(include_str!("../../../src/frontend/filewin/src/shell.rs"));
+    // 〔P4 · 阶段 H〕`any_thread_hook` 住窗口包的平台层 `platform.rs`（平台 cfg 只许住那里）。
+    let shell = guard_core::production_code(include_str!(
+        "../../../src/frontend/filewin/src/platform.rs"
+    ));
     // ① 值。
     guard_core::pin_line(
         &shell,
@@ -1045,7 +1047,13 @@ fn the_window_process_owns_its_dpi_because_no_tauri_lives_there() {
         xs.iter().map(|s| s.to_string()).collect()
     };
     for (sym, want) in [
-        ("any_thread_hook", set(&["cc-monitor-filewin/shell.rs"])),
+        (
+            "any_thread_hook",
+            set(&[
+                "cc-monitor-filewin/platform.rs",
+                "cc-monitor-filewin/shell.rs",
+            ]),
+        ),
         (
             "open_detached_seeded",
             set(&["cc-monitor-filewin/shell.rs", "cc-monitor-filewin/proc.rs"]),

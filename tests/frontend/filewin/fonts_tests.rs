@@ -348,7 +348,8 @@ fn the_probe_equals_every_non_ascii_char_in_the_window_labels() {
         //   23 → 24，多的是 `chunk_upload.rs`（上传块形：读不到本机文件那一句；「改经后端一段一段写」那一句画在 transfer.rs 上；字形一个没多）；
         //   24 → 25，多的是 `cross_copy.rs`（复制到另一台：填机器名那一问 · 盖不盖那一问 · 一条进度 · 结局；字形一个没多）。
         // 〔FILES3〕25 → 26，多的是 `grep.rs`（按内容搜：命中那一行 · 总述 · 停在哪一道上界 · 读不懂那一句）。
-        26,
+        // 〔P4 · 阶段 H〕26 → 27，多的是 `platform.rs`（窗口包的平台层：有损名下载 Windows 上「已改成 X」那一句随平台臂搬来；字形一个没多）。
+        27,
         "人群应当是 10 份（2026-09-21 现打：copy · corpus · entry · **find** · rows · scale · \
          shell · source · transfer · **writeops**；`fonts.rs` 与 `mod.rs` 摘掉了。\
          ⚠ `corpus.rs` 的非 ASCII 字面量是 0，按字符数统计时看不见它 —— \

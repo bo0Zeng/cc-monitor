@@ -72,11 +72,13 @@ const SPAWNS: &[(&str, &str, &str, &str, &str)] = &[
     //    那个函数不存在了 —— 本机用量探针不再在界面进程里 `sh -c <载荷>`，
     //    它与远端那条**是同一条路**：往那台机器的后端发几条帧命令。
     //    ⇒ 界面进程这一侧起进程的面**净少一处**（这是好事，也是本表存在的理由）。
-    ("launch.rs", "launch_local_posix_via", "用户配置的终端 argv[0]",
+    ("terminal.rs", "launch_local_posix_via", // 〔P4 · 阶段 H〕原 `launch.rs`：开窗的两个平台臂搬进 `platform/terminal.rs`
+     "用户配置的终端 argv[0]",
      "在用户的终端里起会话 —— 承接 C13「最后那次 exec 在用户终端里」，这是本产品的主用途
           ★ 三条策略为什么是这三格：`Detached` 就是先前那句 `process_group(0)`。`Hidden` 在 POSIX 上是空的 —— **窗口是终端出口自己开的**，不是 `CreateProcess` 开的，别读成「这条路不开窗」。",
      "Hidden · Detached · Null"),
-    ("launch.rs", "launch_powershell_window", "`wt.exe` / `powershell.exe`",
+    ("terminal.rs", "launch_powershell_window", // 〔P4 · 阶段 H〕原 `launch.rs`：开窗的两个平台臂搬进 `platform/terminal.rs`
+     "`wt.exe` / `powershell.exe`",
      "Windows 侧同上；两个名字都是常量，不吃用户输入
           ★ 三条策略为什么是这三格：🔴 **全仓唯一一处 `NewVisible`**（Plan B 那一跳），而且是刻意的（`00 §1.5.2` 逐字点名「别把它一起改掉」）。\
           `Detached`：用户的终端不该随 monitor 一起死，关掉界面 ≠ 关掉他正在敲字的会话。\
@@ -113,7 +115,8 @@ const SPAWNS: &[(&str, &str, &str, &str, &str)] = &[
           ★ 三条策略为什么是这三格：`Hidden` 那格**先前没人回答过**（裸 `.output()`）—— `-NonInteractive` 只保证不等人回车，挡不住新开一个控制台。`Captured`：stderr 是下面那句报错的一部分。",
      "Hidden · JobKillOnClose · Captured"),
     // 〔MIG-3a〕`dialect.rs::ask_get_alias` 那一行（从前住 monitor 的方言模块）随方言进了那台后端（`platform/shell/mod.rs::powershell_command`，〔OSA〕目录模块，后端 `readonly_guard::spawn_registry` 登记）。
-    ("launch.rs", "ssh_client_available", "探测用的 `ssh`",
+    ("terminal.rs", "ssh_client_available", // 〔P4 · 阶段 H〕原 `launch.rs`：开窗的两个平台臂搬进 `platform/terminal.rs`
+     "探测用的 `ssh`",
      "只探测「本机有没有 ssh」，不带用户参数
           ★ 三条策略为什么是这三格：同上：先前是裸 `.output()`，Windows 上闪一个 `where.exe` 的黑框。`Captured`：输出就是返回值（`status.success()`）。",
      "Hidden · JobKillOnClose · Captured"),

@@ -5,5 +5,11 @@
 //! 不是这一刀（诚实边界照 [`fs`] 头注「10g」：没有判据钉「平台原语只许住这里」）。
 
 pub mod console_text;
+// 〔P4 · 阶段 H〕`utils::FileTime` 的 Win32 那两件。
+pub mod filetime;
 pub mod fs;
 pub mod proc;
+// 〔P4 · 阶段 H〕开终端窗口的平台那一半，原住 `launch.rs`。
+pub mod terminal;
+// 〔P4 · 阶段 H〕窗口那一族（单实例 · WebView2 错位修复 · 主窗口拉前），原住 `lib.rs`。
+pub mod window;

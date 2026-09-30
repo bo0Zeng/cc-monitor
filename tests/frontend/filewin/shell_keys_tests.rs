@@ -971,7 +971,7 @@ fn xvfb_worker_real_keys_on_the_window() {
     let drv_display = display.clone();
     let driver = std::thread::spawn(move || drive_real_keys(&drv_display, &drv_shared));
     let opts = eframe::NativeOptions {
-        event_loop_builder: Some(Box::new(crate::shell::any_thread_hook)),
+        event_loop_builder: Some(Box::new(crate::platform::any_thread_hook)),
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([900.0, 600.0])
             .with_title(KEY_PROBE_TITLE),

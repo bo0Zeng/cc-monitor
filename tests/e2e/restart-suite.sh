@@ -4,7 +4,7 @@
 # `restartWithAccount`（经 restart-cmd-driver.ts + restart-shims/ 把 Tauri IPC 边界重定向到真 tmux +
 # fake-claude,见那两个文件头注),逐边界断言编排真正发出的命令序列 / resume argv / 账号解析 / 失败语义。
 #
-# **诚实天花板 = 命令级**:GUI 全链在 Linux 结构性不可达(`launch.rs::launch_powershell_window` 仅
+# **诚实天花板 = 命令级**:GUI 全链在 Linux 结构性不可达(`platform/terminal.rs::launch_powershell_window` 仅
 # Windows→回退剪贴板、绝不执行)。本套件测的是**真编排逻辑 + 真 tmux 效果 + 真账号解析**,唯一替换的
 # 是那道无法在 Linux 触达、本该由后端 Rust 执行 tmux 的 IPC 边界(见 tests/e2e/README + resume-suite.sh 头注)。
 # 批量对齐 alignAllToCurrentAccount 的 idle/busy 分桶是 TabManager DOM 方法,其诚实天花板 = DOM(jsdom)级,

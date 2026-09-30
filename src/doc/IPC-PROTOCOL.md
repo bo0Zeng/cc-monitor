@@ -28,7 +28,7 @@ cc-monitor 跟外部进程（PowerShell `__ccm_bind` helper、Claude Code CLI）
 
 1. **UTF-8 无 BOM**。PS 5.1 `Out-File -Encoding utf8` 会写 BOM（前 3 字节 `EF BB BF`），导致 `serde_json::from_str` 失败。源头：PS 端用 `[System.IO.File]::WriteAllText(path, json, [System.Text.UTF8Encoding]::new($false))`。接收端 Rust：`raw.trim_start_matches('\u{feff}')` 兜底剥任何 BOM 再 parse。
 2. **原子写**。两种实现：
-   - **Rust 端**：写 `<path>.tmp` → `MoveFileExW(MOVEFILE_REPLACE_EXISTING)` 一步替换。`std::fs::rename` 在 Windows 上 dst 存在会失败，必须用 `MoveFileExW`。详 [`config.rs::atomic_replace`](../../src/frontend/shell/src/config.rs)。
+   - **Rust 端**：写 `<path>.tmp` → `MoveFileExW(MOVEFILE_REPLACE_EXISTING)` 一步替换。`std::fs::rename` 在 Windows 上 dst 存在会失败，必须用 `MoveFileExW`。详 [`platform/fs.rs::atomic_replace`](../../src/frontend/shell/src/config.rs)。
    - **PS 端**：直接 `[System.IO.File]::WriteAllText` 即可，单调用本身原子。
 
    **作用范围**：本条 `MoveFileExW` 路径**仅适用于** `~/.cc-monitor/` 下 monitor 自己产物（`config.json` / `sid-hwnd-cache.json` / `auto-launch.json` / `history-metadata.json` / `ps-registry/<PID>.json` 等）。**写用户文件**（PowerShell profile 等 monitor data dir 之外的文件）**必须**改走 `ReplaceFileW + backup + 写后校验`——理由是保留 dst 的 ACL/ADS/创建时间 + OneDrive placeholder 风险，详 [INVARIANTS.md § 4](INVARIANTS.md)。两者边界由 INVARIANT § 2（monitor data dir 永远在 `~/.cc-monitor/`）锁定，不会漂移。

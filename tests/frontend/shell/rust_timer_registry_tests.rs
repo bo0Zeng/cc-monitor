@@ -149,14 +149,21 @@ const REGISTERED: &[(&str, &str, usize, &str)] = &[
              连上之后由 `stream_loop` 阻塞驱动；断线才回到这里。上限 30s 是明写的常量。",
     ),
     (
+        // 〔P4 · 阶段 H〕2 → 1：① 那处（resize 稳定检测，WebView2 错位修复的去抖）随 Windows 那段搬进 `platform/window.rs`（下一行）。
         "src/lib.rs",
         "wait-for-condition",
-        2,
-        "两处都有终止条件：① resize 稳定检测 `loop { sleep(60ms); if now == last { break } }`；\
-             ② `remote-bind-scan` 的 `for _ in 0..15`（每 ~0.6s、最多 ~9s，命中即停；\
-             〔U2〕带启动令牌的会话不起这条线程，见 `lib.rs::wants_title_prescan`）。**两处都不是节拍器。**\
+        1,
+        "有终止条件：`remote-bind-scan` 的 `for _ in 0..15`（每 ~0.6s、最多 ~9s，命中即停；\
+             〔U2〕带启动令牌的会话不起这条线程，见 `lib.rs::wants_title_prescan`）。**不是节拍器。**\
              〔CF1 · 第四波 09-24〕**3 → 2**：原来的第三处「frontend-ready 之后 10ms 一拍等本机 watcher 首扫完成（10s 上限）」\
              随本机 watcher 删了 —— 本机会话内容改走本机后端的 `line` 帧之后与远端同形，replay 不等。",
+    ),
+    (
+        "src/platform/window.rs",
+        "wait-for-condition",
+        1,
+        "〔P4 · 阶段 H〕原 `lib.rs` 那两处的 ①：resize 稳定检测 `loop { sleep(60ms); if now == last { break } }`\
+             （WebView2 最大化 / 全屏后内容错位修复的去抖，Windows 那段随平台臂搬来）。有终止条件，**不是节拍器**。",
     ),
     (
         "src/event_replay.rs",

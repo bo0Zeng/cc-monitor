@@ -211,7 +211,7 @@ src/frontend/shell/
 与「行先于 pidfile 落地 ⇒ 会话出现时强制重扫一次」那条兜底通道。本机内容改走本机后端的 `line` 帧之后两条都随它删了：
 后端宣告会话时先把游标 prime 到当前行数、历史走旁路快照（与远端同一套），那个竞态不在了。
 
-### `config.rs::atomic_replace` 用 `MoveFileExW(MOVEFILE_REPLACE_EXISTING)`
+### `platform/fs.rs::atomic_replace` 用 `MoveFileExW(MOVEFILE_REPLACE_EXISTING)`
 `std::fs::rename` 在 Windows 上 dst 存在时失败（POSIX rename atomic overwrite 行为在 Windows 上没有）。MoveFileExW 是 Windows 原生原子替换 API，专门设计来实现"覆盖现有文件"语义。
 
 ### `profile_installer::atomic_write_string`〔散文墓碑〕 用 `ReplaceFileW` 而非 `MoveFileExW`
