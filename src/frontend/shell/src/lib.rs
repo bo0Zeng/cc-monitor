@@ -1008,7 +1008,7 @@ pub fn run() {
                             // 否则「上次连上过 ⇒ 立即快速重连」这个判断会拿着旧账做决定。
                             let connected = Arc::new(std::sync::atomic::AtomicBool::new(true));
                             if let Err(e) =
-                                ssh_source::run(cfg, replay, app, connected).await
+                                ssh_source::run(cfg, replay, remote_health_out(app), connected).await
                             {
                                 // S8/S9 会把"connection dropped"做成显眼的前端提示；先大声 log。
                                 tracing::error!("ssh_source::run [{label}] exited: {e}");
@@ -1284,6 +1284,14 @@ pub(crate) fn load_show_bg_sessions() -> bool {
 /// 〔S5 · 第四波 · `99 §1` V41「不为旧配置留兼容」〕旧单对象形态（`"remote": { "enabled": true, "host": …, … }`，
 /// 没有 `hosts` 数组）**不再认**：[`parse_remote_hosts`] 回 `Err`，这里照原样落一条 `error!` 日志、不连任何远端 ——
 /// 不再把它悄悄当成一台，也不装作「没配远端」（D4）。
+/// 〔P4 · `设计/00 §2.2`〕`remote-health` 事件的出口：窗口把手只在这一层，交给 `ssh_source`（它不认识 GUI 宿主）的是一个闭包。
+pub(crate) fn remote_health_out(app: tauri::AppHandle) -> ssh_source::HealthOut {
+    Arc::new(move |payload| {
+        app.emit(ui_contract::events::REMOTE_HEALTH, payload)
+            .map_err(|e| e.to_string())
+    })
+}
+
 pub(crate) fn load_remote_configs() -> Vec<ssh_source::RemoteConfig> {
     let Some(cfg_path) = config::resolve_config_path() else {
         return Vec::new();
