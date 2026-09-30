@@ -152,7 +152,7 @@ pub fn mutate<R>(file: &Path, f: impl FnOnce(&mut Book) -> R) -> Result<(R, Book
     let mut book = read_book(file)?;
     let r = f(&mut book);
     book.retain(|_, v| !v.is_empty());
-    crate::utils::atomic_write_json(file, &book)
+    host_core::atomic_write_json(file, &book)
         .map_err(|e| copy_text("rsFilewinBookmarks.mutate.failed", &[("e", &e.to_string())]))?;
     Ok((r, book))
 }

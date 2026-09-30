@@ -3748,7 +3748,7 @@ pub fn open_detached_seeded(
     // 〔FILES2 · V152〕「复制到另一台」下拉里的机器（开窗种子带来的）。
     machines: Vec<String>,
     // 〔WF2 · WIN3 读数 D〕开出来第一拍夹进这块工作区（`None` ＝ 不夹）。
-    work_area: Option<crate::WorkArea>,
+    work_area: Option<host_core::WorkArea>,
 ) -> std::thread::JoinHandle<Result<(), String>> {
     OPEN_REQUESTED.fetch_add(1, Ordering::SeqCst);
     std::thread::spawn(move || {
@@ -3802,7 +3802,7 @@ mod keys_tests;
 /// 〔WF2 · WIN3 读数 D〕开窗后第一拍（窗口几何有了的那一拍）把窗口夹进 monitor 交来的工作区，之后原样转交。
 struct FitOnce<A> {
     inner: A,
-    work: Option<crate::WorkArea>,
+    work: Option<host_core::WorkArea>,
 }
 
 impl<A: eframe::App> eframe::App for FitOnce<A> {
@@ -3829,10 +3829,10 @@ pub(crate) fn fit_commands(
     outer: egui::Rect,
     inner: egui::Rect,
     ppp: f32,
-    work: crate::WorkArea,
+    work: host_core::WorkArea,
 ) -> Vec<egui::ViewportCommand> {
     let px = |v: f32| (v * ppp).round();
-    let Some(((w, h), (x, y))) = crate::fit_into_work_area(
+    let Some(((w, h), (x, y))) = host_core::fit_into_work_area(
         (px(outer.min.x) as i32, px(outer.min.y) as i32),
         (px(outer.width()) as u32, px(outer.height()) as u32),
         (px(inner.width()) as u32, px(inner.height()) as u32),

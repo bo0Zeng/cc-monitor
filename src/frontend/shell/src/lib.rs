@@ -399,62 +399,22 @@ pub(crate) fn windows_to_destroy_after<'a>(destroyed: &str, alive: &[&'a str]) -
         .collect()
 }
 
-/// 〔WF2 · WIN3 读数 D〕一台显示器的**工作区**（去掉任务栏 / 程序坞那一块，物理像素）。文件窗口进程拿它夹自己（随种子交过去）。
-#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct WorkArea {
-    pub x: i32,
-    pub y: i32,
-    pub w: u32,
-    pub h: u32,
+/// 那扇窗此刻所在的显示器的工作区（〔P4〕类型与判定住 `host_core`，问 Tauri 这一下留在宿主）；问不到 ⇒ `None`（不夹，照原样开）。
+pub(crate) fn work_area_of(w: &tauri::WebviewWindow) -> Option<host_core::WorkArea> {
+    let m = w.current_monitor().ok().flatten()?;
+    let a = m.work_area();
+    Some(host_core::WorkArea {
+        x: a.position.x,
+        y: a.position.y,
+        w: a.size.width,
+        h: a.size.height,
+    })
 }
 
-impl WorkArea {
-    /// 那扇窗此刻所在的显示器的工作区；问不到 ⇒ `None`（不夹，照原样开）。
-    pub(crate) fn of(w: &tauri::WebviewWindow) -> Option<WorkArea> {
-        let m = w.current_monitor().ok().flatten()?;
-        let a = m.work_area();
-        Some(WorkArea {
-            x: a.position.x,
-            y: a.position.y,
-            w: a.size.width,
-            h: a.size.height,
-        })
-    }
-}
-
-/// 〔WF2 · WIN3 读数 D〕**一扇窗夹进工作区**（纯函数；物理像素）：外框放不下 ⇒ 内框缩到「工作区 − 边框与标题栏」；
-/// 再把外框挪进工作区。回 `(新内框, 新外框左上)`；本来就在里面 ⇒ `None`。
-/// 真机读数：屏 1280×760、工作区 712 高，主窗初始外框 780 高、设置窗 780 高 ⇒ 底边压在任务栏下（toast、测试连接最后一行看不见）。
-pub(crate) fn fit_into_work_area(
-    outer_pos: (i32, i32),
-    outer: (u32, u32),
-    inner: (u32, u32),
-    work: WorkArea,
-) -> Option<((u32, u32), (i32, i32))> {
-    let chrome = (
-        outer.0.saturating_sub(inner.0),
-        outer.1.saturating_sub(inner.1),
-    );
-    let fitted = (outer.0.min(work.w), outer.1.min(work.h));
-    let new_inner = (
-        fitted.0.saturating_sub(chrome.0),
-        fitted.1.saturating_sub(chrome.1),
-    );
-    let slide = |p: i32, lo: i32, span: u32, len: u32| -> i32 {
-        let hi = lo.saturating_add(i32::try_from(span - len).unwrap_or(i32::MAX));
-        p.clamp(lo, hi)
-    };
-    let pos = (
-        slide(outer_pos.0, work.x, work.w, fitted.0),
-        slide(outer_pos.1, work.y, work.h, fitted.1),
-    );
-    (new_inner != inner || pos != outer_pos).then_some((new_inner, pos))
-}
-
-/// 照 [`fit_into_work_area`] 把一扇 Tauri 窗夹进它所在显示器的工作区（开窗之后调一次；问不到尺寸 ⇒ 不动）。
+/// 照 [`host_core::fit_into_work_area`] 把一扇 Tauri 窗夹进它所在显示器的工作区（开窗之后调一次；问不到尺寸 ⇒ 不动）。
 pub(crate) fn fit_window_to_work_area(w: &tauri::WebviewWindow) {
     let (Some(work), Ok(pos), Ok(outer), Ok(inner)) = (
-        WorkArea::of(w),
+        work_area_of(w),
         w.outer_position(),
         w.outer_size(),
         w.inner_size(),
@@ -462,7 +422,7 @@ pub(crate) fn fit_window_to_work_area(w: &tauri::WebviewWindow) {
         tracing::info!("窗口 {} 问不到尺寸或工作区 —— 不夹", w.label());
         return;
     };
-    let Some(((iw, ih), (x, y))) = fit_into_work_area(
+    let Some(((iw, ih), (x, y))) = host_core::fit_into_work_area(
         (pos.x, pos.y),
         (outer.width, outer.height),
         (inner.width, inner.height),

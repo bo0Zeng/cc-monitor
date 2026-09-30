@@ -63,7 +63,7 @@ fn synthetic_request() -> OpenRequest {
         // 〔FILES2 · V152〕机器名单也进种子对拍（带中文与空格）。
         machines: vec!["<local>".to_string(), "台架 远端".to_string()],
         // 〔WF2〕工作区那一格也进种子对拍（负坐标：主屏左边那台副屏）。
-        work_area: Some(crate::WorkArea {
+        work_area: Some(host_core::WorkArea {
             x: -1920,
             y: 0,
             w: 1920,

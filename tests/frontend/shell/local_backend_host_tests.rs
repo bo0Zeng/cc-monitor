@@ -4334,7 +4334,8 @@ fn hx1_every_monitor_dir_creation_is_registered_and_only_one_builds_the_backend_
         ),
         ("bind.rs", "spawn", "monitor 数据目录（绑定表）"),
         (
-            "utils.rs",
+            // 〔P4〕原 `utils.rs`：原子写搬进 `host-core`（两个前端共用那一份）。
+            "host-core/atomic.rs",
             "atomic_write_json",
             "调用方给的 JSON 文件的父目录（monitor 数据目录一族）",
         ),
@@ -4398,6 +4399,25 @@ fn hx1_every_monitor_dir_creation_is_registered_and_only_one_builds_the_backend_
             .to_string_lossy()
             .replace('\\', "/");
         found.extend(creations(&rel, &guard_core::production_code(src)));
+    }
+    // 〔P4〕别的前端源码树（`host-core`）：键带 crate 名。
+    for other in crate::guard_support::other_frontend_src_roots() {
+        let name = other
+            .parent()
+            .and_then(|c| c.file_name())
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_default();
+        for (path, src) in guard_core::scan_tree!(&other, &["rs"]) {
+            let rel = path
+                .strip_prefix(&other)
+                .unwrap_or(&path)
+                .to_string_lossy()
+                .replace('\\', "/");
+            found.extend(creations(
+                &format!("{name}/{rel}"),
+                &guard_core::production_code(&src),
+            ));
+        }
     }
     found.sort();
     found.dedup();

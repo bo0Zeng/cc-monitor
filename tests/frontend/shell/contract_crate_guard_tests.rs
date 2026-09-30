@@ -4,6 +4,7 @@
 //! ① `src/common/` 下每个 crate 恰好登记一类、逐个写理由（两向：目录 == [`CRATES`]）；
 //! ② monitor 生产段（`[dependencies]` · `[build-dependencies]` · `[target.*.dependencies]`）点名的每个 path 依赖、连同它们自己生产段的
 //!    path 依赖闭包，只许住 `src/common/` 且是契约类；判定类出现即红 —— 唯一例外是 ③ 按符号钉住的 `deploy-core`；
+//! ④〔P4〕「前端宿主原语」类（`host-core`）只许两个前端链：后端生产段闭包里出现即红。
 //! ③ `deploy-core` 按符号：monitor 生产源码（壳 `src/**` ＋ 它经 `#[path]` 收进来的通信层文件）里每个 `deploy_core::X`
 //!    要么在契约名单 [`DEPLOY_CONTRACT`] 里，要么是 [`DEPLOY_RESIDUAL`] 登记的自举残留（符号 × 住址两向相等：搬走一处，登记当场红）。
 //!
@@ -21,6 +22,8 @@ enum Class {
     Decision,
     /// 判据原语：两侧只在 dev 侧。
     TestInfra,
+    /// 〔P4 · 主会话 09-29 拍板 Q2〕前端宿主原语：两个前端（monitor · 文件窗口）都要、只该有一份的宿主那几件；后端不许链。
+    HostPrimitive,
 }
 
 /// `src/common/` 每个 crate 的类与理由（`00 §1.2` 表「类」一列的判据版）。
@@ -30,6 +33,7 @@ const CRATES: &[(&str, Class, &str)] = &[
     ("creds-core", Class::Contract, "文件格式 · 路径：凭据落盘格式与文件名、数据目录（monitor 只算路径；写半边在 `harden` 后面，monitor 不开）"),
     ("deploy-core", Class::Decision, "那台要哪一格 · 换不换是裁决（`judge` · `identity_decision` · `is_newer`）；它同时带字节表键与身份戳格式 ⇒ monitor 只按 ③ 的符号用"),
     ("guard-core", Class::TestInfra, "源码扫描判据的原语，两侧都只在 dev 侧"),
+    ("host-core", Class::HostPrimitive, "两个前端（monitor 主界面 · 文件窗口进程）共用的宿主那几件：自有状态文件的原子写 · 窗口夹进工作区；不裁决业务，后端不链"),
     ("relay-route-core", Class::Contract, "端口 · 路径 · 路由语法：中转与常驻监听口的门牌、后端落点，两侧拼 / 拆同一份"),
     ("search-core", Class::Decision, "搜索口径与多机合并排序是裁决，只后端用"),
     ("shell-quote-core", Class::Contract, "令牌形状：POSIX 单引号 quote 与标识符放行形状（session id · 启动令牌 · cc-bus id · 路径），两侧拼进 shell 前对上同一份"),
@@ -300,7 +304,7 @@ fn the_monitor_production_segment_links_only_contract_crates() {
         };
         let crate_dir = rel.to_string_lossy().replace('\\', "/");
         match class_of(&crate_dir) {
-            Some(Class::Contract) => {}
+            Some(Class::Contract | Class::HostPrimitive) => {}
             Some(Class::Decision) if crate_dir == "deploy-core" => {} // ③ 按符号管
             Some(c) => bad.push(format!(
                 "{who} → {crate_dir}：{c:?} 类，monitor 生产段不许链它（判定的家在后端）"
@@ -312,6 +316,41 @@ fn the_monitor_production_segment_links_only_contract_crates() {
         bad.is_empty(),
         "monitor 生产段依赖了非契约类 crate：\n{}",
         bad.join("\n")
+    );
+}
+
+/// ④ 后端生产段（`src/backend/Cargo.toml` 的生产段 path 依赖闭包）不链前端宿主原语。
+#[test]
+fn the_backend_links_no_host_primitive_crate() {
+    let mut todo = vec![root().join("src/backend/Cargo.toml")];
+    let mut seen = BTreeSet::new();
+    let common = common_dir();
+    let mut linked = Vec::new();
+    while let Some(manifest) = todo.pop() {
+        for (name, dir) in production_path_deps(&manifest) {
+            if let Ok(rel) = dir.strip_prefix(&common) {
+                linked.push((
+                    name.clone(),
+                    class_of(&rel.to_string_lossy().replace('\\', "/")),
+                ));
+            }
+            if seen.insert(dir.clone()) {
+                todo.push(dir.join("Cargo.toml"));
+            }
+        }
+    }
+    assert!(
+        linked.iter().any(|(n, _)| n == "copy-core"),
+        "后端生产段一个共享 crate 都没量到（`copy-core` 明明在）—— 量法瞎了"
+    );
+    let bad: Vec<&String> = linked
+        .iter()
+        .filter(|(_, c)| *c == Some(Class::HostPrimitive))
+        .map(|(n, _)| n)
+        .collect();
+    assert!(
+        bad.is_empty(),
+        "后端生产段链了前端宿主原语 {bad:?} —— 那一类只许两个前端用（窗口几何 · 前端自有状态），后端有自己的 `platform/`"
     );
 }
 

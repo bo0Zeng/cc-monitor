@@ -179,7 +179,7 @@ pub async fn open_file_window(
     let work_area = app
         .get_webview_window(crate::MAIN_WINDOW_LABEL)
         .as_ref()
-        .and_then(crate::WorkArea::of);
+        .and_then(crate::work_area_of);
     // 〔WF2 · WIN3 读数 J〕开出来之后又不体面地退了 ⇒ 经远端健康那条通道出声（同一个 toast 出口）。
     let origin = cfg.origin_label();
     let late: super::proc::LateExit = Box::new(move |said| {
@@ -203,7 +203,7 @@ pub(crate) async fn open_with(
     cfg: RemoteConfig,
     path: String,
     reveal_file: Option<String>,
-    work_area: Option<crate::WorkArea>,
+    work_area: Option<host_core::WorkArea>,
     late: super::proc::LateExit,
 ) -> Result<usize, String> {
     let source = Source::remote(cfg);

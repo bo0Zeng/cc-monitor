@@ -665,6 +665,7 @@ const INTEGRATION: &[&str] = &[
     "tests/frontend/shell/chan/chan_tests.rs",
     "tests/frontend/shell/comm_boundary_registry_tests.rs",
     "tests/common/creds-core/perm_tests.rs",
+    "tests/common/host-core/lib_tests.rs", // 〔P4〕原子写（真写临时文件）＋ 窗口几何，原在 `utils_tests` / `lib_window_lifecycle_tests`
     // 〔GP1 · 第四波〕旧版 `~/.local/bin/ccm` 那一份：替身门在临时目录上真读真删。
     "tests/frontend/shell/ccm_legacy_tests.rs",
     "tests/frontend/shell/data_paths_tests.rs",

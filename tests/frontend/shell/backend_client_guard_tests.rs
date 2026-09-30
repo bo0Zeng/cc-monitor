@@ -345,7 +345,9 @@ fn the_platform_needles_actually_match_the_platform_heavy_half() {
     // 地板留一格余量（少一种形态不算警报，少两种就说明形态集在烂）。
     // 〔LOC1b · 第四波 4D〕`session_map.rs`（原 4 种）那个锚摘了：monitor 自己那份进程身份判活（`/proc` · `GetProcessTimes`）
     //   随本机判活改由本机后端的帧来删了，那份文件今天零平台形态 —— 它不再是「平台重的那一半」，拿它当锚会恒红。
-    for (rel, least) in [("utils.rs", 5usize), ("bind.rs", 3usize)] {
+    // 〔P4〕`utils.rs`（原 6 种）那个锚换成 `platform/fs.rs`：原子替换那段平台代码搬进了 `host-core`，utils 只剩 3 种；
+    //   阶段 H 把壳里平台形态收进 `platform/` 之后，平台最重的正是那一层。
+    for (rel, least) in [("platform/fs.rs", 5usize), ("bind.rs", 3usize)] {
         let p = src_root.join(rel);
         assert!(
             p.is_file(),

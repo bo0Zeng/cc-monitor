@@ -49,6 +49,12 @@ pub(crate) fn tests_root() -> PathBuf {
 }
 
 /// 后端那一半的源码树 —— `<repo>/src/backend`。
+/// 〔P4〕monitor 这个 crate 之外、也编进前端那两个进程里的源码树（`src/common/host-core`：前端宿主原语）。
+/// 按「这个前端进程里有谁在写盘 / 起目录 / 原子替换」数人群的判据，除本 crate 外还要扫它们。
+pub(crate) fn other_frontend_src_roots() -> Vec<PathBuf> {
+    vec![repo_src_root().join("common/host-core/src")]
+}
+
 pub(crate) fn backend_src_root() -> PathBuf {
     repo_src_root().join("backend")
 }
