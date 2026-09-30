@@ -13,7 +13,8 @@
  * ⇒ 病根不在「谁忘了改注释」，在于 **eslint 这两个基线数是全仓仅有的没被机检的**：
  * shellcheck 的文件数被 `shell_lint_registry` 钉成**等号**、e2e 套数被 `e2e_gate_registry`
  * 四份副本对拍、覆盖率有地板与递减棘轮 —— 唯独 eslint/stylelint 靠散文。
- * 而 `ci.yml` 那步是 `npm run lint || true`（已登记为**结构上不会红**）⇒ CI 也接不住。
+ * 而 `ci.yml` 那步当时是 `npm run lint || true`（结构上不会红）⇒ CI 也接不住。
+ * 〔P3 · 主会话 09-29 裁〕基线清到 0 之后那一步去掉 `|| true`、改成会拦；③ 钉它（基线不是 0 时那一步不许拦，是 0 时必须拦）。
  *
  * ## 两条腿，各堵一半（**刻意不合成一条**）
  *
@@ -195,6 +196,15 @@ describe("V7-3：eslint 基线与作用面", () => {
         ).toBe(ESLINT_ERROR_BASELINE);
       }
     }
+  }, TIMEOUT_MS);
+
+  it("③ 〔P3〕基线是 0 ⇒ ci.yml 的 eslint 那一步会拦（`npm run lint`，不带 `|| true`）", () => {
+    const yml = read(".github/workflows/ci.yml");
+    const step = /- name: (eslint[^\n]*)\n\s+run: ([^\n]*)/.exec(yml);
+    expect(step, "ci.yml 里找不到 eslint 那一步 —— 步骤名改了就来改这条").not.toBeNull();
+    const run = step![2].trim();
+    expect(ESLINT_ERROR_BASELINE, "基线不是 0 却要拦 —— 先把基线清到 0").toBe(0);
+    expect(run, `eslint 那一步（${step![1]}）不会拦`).toBe("npm run lint");
   }, TIMEOUT_MS);
 
   it("② 每个被 lint 到的 .mjs 目录都有 files: 块认领（人群从 git ls-files 全集派生）", () => {
