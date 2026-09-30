@@ -376,6 +376,8 @@ fn bare_contains_on_disk_corpora_only_goes_down() {
     // ⚠ A 类同时治掉：原来是 `scan_tree!`（靠 `file!()` 摘自己），而语料现在**含本文件**
     //   ⇒ 摘除失效不再无害（本文件头注逐字写着 `.contains("` 当例子）。
     //   改成 `scan_tree_excluding` 的明写名单，摘不到就 panic。
+    // 每份文件带着「整份就是测试段」这一位：按它从哪棵根扫出来定（根名是本文件写死的 `/` 串），
+    // 不看操作系统渲出来的路径 —— Windows 上那是 `\`，拿 `"/tests/"` 去比，整棵测试树都会落空。
     let mut files = Vec::new();
     for (sub, excluded) in [
         ("src/frontend/shell/src", &[] as &[&str]),
@@ -386,11 +388,12 @@ fn bare_contains_on_disk_corpora_only_goes_down() {
         ("tests/backend", &[]),
         ("tests/comms", &[]), // 〔RE〕通信层成员的单测镜像
     ] {
-        files.extend(guard_core::scan_tree_excluding(
-            &root.join(sub),
-            &["rs"],
-            excluded,
-        ));
+        let whole = sub.starts_with("tests/");
+        files.extend(
+            guard_core::scan_tree_excluding(&root.join(sub), &["rs"], excluded)
+                .into_iter()
+                .map(|(path, src)| (path, src, whole)),
+        );
     }
     // 抽取器自检 ①：遍历活着。
     assert!(
@@ -405,7 +408,7 @@ fn bare_contains_on_disk_corpora_only_goes_down() {
     let mut hits = 0usize;
     let mut by_file: Vec<(String, usize)> = Vec::new();
     let mut per_prim: std::collections::BTreeMap<&str, usize> = Default::default();
-    for (path, src) in &files {
+    for (path, src, whole) in &files {
         // ★ **剥掉注释再数**〔08-06 Phase G 后续：逐条判真伪时撞出来的〕。
         //
         // 不剥的话，一条**解释「这里原来是裸 contains」的注释**会被算成一处欠账
@@ -418,9 +421,8 @@ fn bare_contains_on_disk_corpora_only_goes_down() {
         // 它让棘轮的那个数不再等于「还欠多少」，于是「只许降」失去意义。
         // 🔴 住 `tests/` 的文件**整份就是测试段** —— 对它们再走一遍 `test_source()`
         // 会返回空串（那份文件里没有 `#[cfg(test)]` 块），于是整棵测试树零命中地绿。
-        // 这一格与 `scanning_guard_registry_tests::test_side_of` 是同一条口径。
-        let whole = path.to_string_lossy().contains("/tests/");
-        let test_src: String = (if whole {
+        // 这一格与 `scanning_guard_registry_tests::test_side_of` 是同一条口径（仓内住址以 `tests/` 起头）。
+        let test_src: String = (if *whole {
             (*src).clone()
         } else {
             guard_core::test_source(src)
