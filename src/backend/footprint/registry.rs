@@ -43,19 +43,18 @@
 //! 计划 §2 的 DoD 写着「`ToolSpec` 声明五个正交关注点：源 / 落点 / 探测 / 装升卸 /
 //! 配置面申报」，并要求「每一项都必须能被现有五套工具中的**至少两套**实例化」。
 //!
-//! **先更正本文件原先写错的一处事实**（T01 审计 Q3）。原文说 `cc-acct-iso` 的探测是
-//! 「比对内容指纹」——不对。当年的 `check_remote_acct_iso`〔散文墓碑〕（〔MIG-3a〕今天是那台后端的帧命令 `acct-iso-status`，`iso.rs::answer_wire_status`）实际跑的是远端
-//! `PATH="$HOME/.local/bin:$PATH" command -v cc-acct-iso` 再解析 stdout，
-//! 与 `ccm_probe.rs` **属于同一族**（跑一条命令、解析 stdout）。`.vendor_id` 指纹比对
-//! 发生在**部署决策**那一步（`deploy_decision` 读远端 marker 文件），不是探测。
+//! **先更正本文件原先写错的一处事实**（T01 审计 Q3）。原文说当时那个账号工具的探测是
+//! 「比对内容指纹」——不对。它实际跑的是一条命令再解析 stdout，
+//! 与 `ccm_probe.rs` **属于同一族**（跑一条命令、解析 stdout）。指纹比对
+//! 发生在**部署决策**那一步，不是探测。
 //! 所以原先那句「四种机制彼此不兼容，且**各只有一个使用者**」是**错的**：
 //! 「跑命令解析 stdout」这一族至少两个使用者，按 ≥2 判据它反而**够格**。
 //! 结论（探测机制不进 `ToolSpec`）仍然成立，但**理由必须换**。
 //!
 //! 真实理由更硬：**`ToolSpec` 是 `const` 声明式数据，而探测是行为。**
-//! `ToolSource::Vendored { repo_path, fingerprint_file }` 是数据——两个字符串，
+//! `ToolSource::RepoDir { repo_path }` 是数据——一个字符串，
 //! 谁读它都不需要任何能力。一个探测机制不是：它要么需要一条活的 ssh 会话
-//! （`ccm` / `cc-acct-iso`），要么需要一次协议握手（remote backend 的 `hello` 帧），
+//! （`ccm`），要么需要一次协议握手（remote backend 的 `hello` 帧），
 //! 要么需要读本机文件系统（PowerShell profile 扫围栏）。把这些塞进 `const`
 //! 只能塞成「一段命令模板 + 一个解析规则」的小 DSL，那就是把四件不相干的事
 //! 装进一个盒子（本工作区反复拒绝的"上帝结构"）。

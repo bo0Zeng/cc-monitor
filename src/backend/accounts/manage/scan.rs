@@ -147,9 +147,7 @@ pub(crate) fn scan(home: &str, extra_dirs: &[String], extra_files: &[String]) ->
     let mpath = join(&accts, acct_core::MANIFEST_NAME);
     let (manifest_text, manifest) = match acct_view::item(Path::new(&mpath)) {
         Item::Absent => (None, None),
-        _ => match crate::common::fs::read_regular_capped(Path::new(&mpath), MAX_MANIFEST_BYTES)
-            .and_then(|b| String::from_utf8(b).map_err(|e| e.to_string()))
-        {
+        _ => match manifest_text_at(Path::new(&mpath)) {
             Ok(t) => {
                 let parsed = Manifest::parse(&t);
                 (Some(t), Some(parsed))
@@ -224,6 +222,12 @@ pub(crate) fn scan(home: &str, extra_dirs: &[String], extra_files: &[String]) ->
     snap
 }
 
+/// 清单全文（在却读不动 ⇒ `Err`，调用方把它记进快照、由用的那一步报出来）。
+fn manifest_text_at(p: &Path) -> Result<String, String> {
+    let bytes = crate::common::fs::read_regular_capped(p, MAX_MANIFEST_BYTES)?;
+    String::from_utf8(bytes).map_err(|e| e.to_string())
+}
+
 fn dir_state(p: &str) -> DirState {
     let me = acct_view::item(Path::new(p));
     let entries = match me {
@@ -251,9 +255,14 @@ fn backups_in(accts: &str, st: &DirState) -> Vec<Backup> {
             let path = join(accts, n);
             let undo_path = join(&path, UNDO_NAME);
             let undo =
-                crate::common::fs::read_regular_capped(Path::new(&undo_path), MAX_UNDO_BYTES)
-                    .ok()
-                    .and_then(|b| String::from_utf8(b).ok());
+                match crate::common::fs::read_regular_capped(Path::new(&undo_path), MAX_UNDO_BYTES)
+                {
+                    Ok(b) => String::from_utf8(b).ok(),
+                    Err(e) => {
+                        tracing::warn!("备份 {path} 的撤销清单读不了，这一份不能用来回滚：{e}");
+                        None
+                    }
+                };
             Backup {
                 id: n[BACKUP_PREFIX.len()..].to_string(),
                 rolled_back: acct_view::item(Path::new(&join(&path, ROLLED_BACK_NAME))).exists(),

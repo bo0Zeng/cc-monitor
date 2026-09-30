@@ -748,13 +748,20 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
         "`ccm-print` 交来的一条别名里一个参数的字节数（别名表单产出的远小于它）",
         "拒收+回错",
     ),
-    // 〔DUP2 · J4〕cc-acct-iso 步骤那一行（`acct-iso-cmd`）入参里凭据快照路径最长多少。
+    // 账号库管理读盘那一步：清单与撤销清单各一个上限（读的是这台自己的账号库，超了就读不动、如实报）。
     (
-        "src/backend/accounts/iso.rs",
-        "CMD_MAX_PATH_BYTES",
-        4096,
-        "`acct-iso-cmd` 交来的凭据快照路径的字节数（新建账号表单产出的远小于它）",
-        "拒收+回错",
+        "src/backend/accounts/manage/scan.rs",
+        "MAX_MANIFEST_BYTES",
+        8 * 1024 * 1024,
+        "改账号库之前读账号清单（与只读那一侧 `accounts_query.rs` 同一个量、同一个数）",
+        "硬报错",
+    ),
+    (
+        "src/backend/accounts/manage/scan.rs",
+        "MAX_UNDO_BYTES",
+        4 * 1024 * 1024,
+        "回滚时读一份备份里的撤销清单（每一行一条路径）",
+        "跳过+说清",
     ),
     // 〔RM1a → MIG-3b 续〕「足迹」由那台后端出成品（`footprint-report`，只读）那两个数（〔主会话 09-28 裁〕两拍之后 monitor 不再 stat，它那两个数与收 `client.stat` 那一个随之删）。
     (

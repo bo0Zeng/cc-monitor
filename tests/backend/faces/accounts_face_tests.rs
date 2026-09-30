@@ -141,31 +141,33 @@ fn verify(t: &Tmp) -> Value {
 }
 
 /// 目录下（不跟链接）每一项的 `(相对路径, 种类, 链接目标或内容)` —— 拿来比「回滚之后与之前逐项相同」。
+/// 列目录借生产那一份只读原语（`platform::acct_view`），判据里不另写一份遍历。
 fn tree(root: &Path) -> Vec<(String, String, String)> {
+    use crate::platform::acct_view::{item, names, Item};
     let mut out = Vec::new();
     fn walk(base: &Path, p: &Path, out: &mut Vec<(String, String, String)>) {
-        let mut names: Vec<_> = std::fs::read_dir(p).unwrap().flatten().collect();
-        names.sort_by_key(|e| e.file_name());
-        for e in names {
-            let path = e.path();
+        for n in names(p).unwrap_or_default() {
+            let path = p.join(&n);
             let rel = path.strip_prefix(base).unwrap().display().to_string();
             if rel.contains(".backup-") {
                 continue;
             }
-            if let Ok(t) = std::fs::read_link(&path) {
-                out.push((rel, "link".into(), t.display().to_string()));
-            } else if path.is_dir() {
-                out.push((rel.clone(), "dir".into(), String::new()));
-                walk(base, &path, out);
-            } else {
-                let body = std::fs::read_to_string(&path).unwrap_or_default();
-                // 清单里的 updatedAt 每写一次都变，比内容时去掉它。
-                let body = body
-                    .lines()
-                    .filter(|l| !l.contains("\"updatedAt\""))
-                    .collect::<Vec<_>>()
-                    .join("\n");
-                out.push((rel, "file".into(), body));
+            match item(&path) {
+                Item::Link { target, .. } => out.push((rel, "link".into(), target)),
+                Item::Dir { .. } => {
+                    out.push((rel.clone(), "dir".into(), String::new()));
+                    walk(base, &path, out);
+                }
+                _ => {
+                    let body = std::fs::read_to_string(&path).unwrap_or_default();
+                    // 清单里的 updatedAt 每写一次都变，比内容时去掉它。
+                    let body = body
+                        .lines()
+                        .filter(|l| !l.contains("\"updatedAt\""))
+                        .collect::<Vec<_>>()
+                        .join("\n");
+                    out.push((rel, "file".into(), body));
+                }
             }
         }
     }
@@ -865,12 +867,12 @@ fn rollback_refuses_traversal_and_skips_out_of_bounds_entries() {
         );
     }
     t.write("victim/precious.txt", "p");
-    let bk = std::fs::read_dir(t.p(".claude-alt"))
+    let bk = crate::platform::acct_view::names(&t.p(".claude-alt"))
         .unwrap()
-        .flatten()
-        .find(|e| e.file_name().to_string_lossy().starts_with(".backup-"))
-        .unwrap()
-        .path();
+        .into_iter()
+        .find(|n| n.starts_with(".backup-"))
+        .map(|n| t.p(&format!(".claude-alt/{n}")))
+        .unwrap();
     let undo = std::fs::read_to_string(bk.join("undo.tsv")).unwrap();
     std::fs::write(
         bk.join("undo.tsv"),
