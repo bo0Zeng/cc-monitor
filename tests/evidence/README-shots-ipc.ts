@@ -172,21 +172,18 @@ function panorama(op: string, args: Json | null): unknown {
 
 /**
  * 足迹：行的**结构与文字**取后端现产的跨语言金样（`tests/__fixtures__/footprint-report.golden.json`，每一句都是文案表里的成品），
- * 家目录换成夹具那台；这台上装着的改成「在」（在的那句话同样取文案表），旧版遗留那几行保持「不存在」—— 那正是健康的样子；
- * 项目目录 / 由配置决定的那几行后端本来就答「未确定」，原样留着。
+ * 家目录换成夹具那台；这台上装着的改成「在」（在的那句话同样取文案表）；旧版遗留那几行后端本来就答「该不在、确实不在」、
+ * 项目目录 / 由配置决定的那几行后端本来就答「未确定」—— 这两类原样留着。
  */
 function footprint(): unknown {
   const g = JSON.parse(JSON.stringify(FOOTPRINT_GOLDEN).split("/nonexistent-footprint-golden").join("/home/dev")) as {
-    rows: { path_declared: string; tier: string; host_label: string; effect_label: string; state: unknown }[];
+    rows: { path_declared: string; tier: string; host_label: string; state: { kind: string; detail?: string } }[];
     settings_scopes: { state: unknown; has_cc_bus_hooks: boolean | null }[];
   };
   const sizeOf = (path: string): number => 900 + ([...path].reduce((n, c) => n * 31 + c.charCodeAt(0), 7) % 38_000);
   for (const r of g.rows) {
     const p = r.path_declared;
-    if (r.effect_label === copyText("rsConfigSurface.effect.retiredLegacy")) {
-      r.state = { kind: "absent" };
-      continue;
-    }
+    if (r.state.kind === "expected_absent") continue;
     if (p.startsWith("$") || r.host_label === copyText("rsConfigSurface.host.projectDir")) continue;
     const seen =
       r.tier === "UserInstallsWePrompt"
