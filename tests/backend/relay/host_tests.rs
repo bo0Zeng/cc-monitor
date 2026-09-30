@@ -123,7 +123,6 @@ fn a_process_that_was_not_handed_a_port_hosts_no_relay() {
     for port in [None, Some(""), Some("   ")] {
         let got = host(
             &env_of(port, None, &creds),
-            std::path::Path::new("/nonexistent"),
             &crate::accounts::upstream_select::Boot,
             no_tap(),
         );
@@ -145,7 +144,6 @@ fn a_handed_port_really_listens_and_forwards_the_upstream_sse_byte_for_byte() {
             Some(format!("http://127.0.0.1:{}", up.port())),
             &creds,
         ),
-        std::path::Path::new("/nonexistent"),
         &crate::accounts::upstream_select::Boot,
         no_tap(),
     );
@@ -174,7 +172,6 @@ fn our_relay_listening_answers_from_the_hosts_own_state_not_from_who_answers_the
             Some(format!("http://127.0.0.1:{}", up.port())),
             &creds,
         ),
-        std::path::Path::new("/nonexistent"),
         &crate::accounts::upstream_select::Boot,
         no_tap(),
     );
@@ -189,7 +186,6 @@ fn our_relay_listening_answers_from_the_hosts_own_state_not_from_who_answers_the
     let port = squatter.local_addr().expect("地址").port();
     let failed = host(
         &env_of(Some(&port.to_string()), None, &creds),
-        std::path::Path::new("/nonexistent"),
         &crate::accounts::upstream_select::Boot,
         no_tap(),
     );
@@ -215,7 +211,6 @@ fn a_handed_port_that_is_taken_fails_loudly_without_taking_the_process_down() {
     let creds = creds_fixture("taken");
     let got = host(
         &env_of(Some(&port.to_string()), None, &creds),
-        std::path::Path::new("/nonexistent"),
         &crate::accounts::upstream_select::Boot,
         no_tap(),
     );
@@ -234,7 +229,6 @@ fn an_unreadable_port_is_refused_rather_than_defaulted() {
     for junk in ["abc", "70000", "-1"] {
         let got = host(
             &env_of(Some(junk), None, &creds),
-            std::path::Path::new("/nonexistent"),
             &crate::accounts::upstream_select::Boot,
             no_tap(),
         );
@@ -259,7 +253,6 @@ fn a_bad_upstream_config_fails_before_any_port_is_bound() {
             Some("not a url".to_string()),
             &creds,
         ),
-        std::path::Path::new("/nonexistent"),
         &crate::accounts::upstream_select::Boot,
         no_tap(),
     );
@@ -285,9 +278,7 @@ fn hosted_relay_child_entry_point() {
     if std::env::var(CHILD_MARK).is_err() {
         return;
     }
-    let said = crate::accounts::upstream_select::host_relay(
-        &crate::agents::claudecode::paths::resolve_home(),
-    );
+    let said = crate::accounts::upstream_select::host_relay();
     eprintln!("[rl1-child] {said}");
     loop {
         std::thread::park();
@@ -401,7 +392,7 @@ fn main_hosts_the_relay_exactly_once_between_the_one_shot_dispatch_and_the_carri
     let raw = std::fs::read_to_string(crate::guard_support::src_root().join("main.rs"))
         .expect("读 main.rs");
     let prod = crate::guard_support::production_code(&raw);
-    let call = guard_core::find_pinned(&prod, "accounts::upstream_select::host_relay(&agent_home)")
+    let call = guard_core::find_pinned(&prod, "accounts::upstream_select::host_relay()")
         .unwrap_or_else(|e| panic!("main.rs 生产段里那一处接线：{e}"));
     let dispatch = guard_core::find_pinned(&prod, "if is_query_mode(&args) {")
         .unwrap_or_else(|e| panic!("一次性分派那一行：{e}"));
@@ -489,7 +480,6 @@ fn hosted_with_tap(
             Some(format!("http://127.0.0.1:{}", up.port())),
             &creds,
         ),
-        std::path::Path::new("/nonexistent"),
         &crate::accounts::upstream_select::Boot,
         tap,
     ) {

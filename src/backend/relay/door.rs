@@ -18,8 +18,8 @@
 //!
 //! # 钥匙怎么到 agent 手里（不在本文件，但本文件的住址是它的另一半）
 //!
-//! monitor 渲染 `export ANTHROPIC_BASE_URL=…` 时，钥匙那一段写成**读这个文件的命令替换**，
-//! 在那台机器的 pane shell 里展开（`src/backend/control/launch_render/payload.rs::relay_env_prefix_posix`）。
+//! 起会话载荷渲染 `export ANTHROPIC_BASE_URL=…` 时，钥匙那一段写成**读这个文件的命令替换** `$(cat ~/<KEY_FILE_REL>)`，
+//! 在那台机器的 pane shell 里展开（`control/launch_render/payload.rs::relay_env_prefix_posix`，shell 写法出自 `platform/shell/posix.rs::home_file_between`）。
 //! ⇒ 钥匙只从这个文件进 agent 进程自己的 env；载荷、`tmux send-keys` 的 argv、shell 历史、webview 里都只有那几个字。
 //! 〔US1〕两半的相对路径是同一个 const（共享 crate `relay_route_core::KEY_FILE_REL`），不再各写一份再对拍。
 //!
@@ -41,7 +41,7 @@ use copy_core::copy_text;
 use std::path::{Path, PathBuf};
 
 /// 钥匙文件相对家目录的路径。〔US1 · 4D〕值只住共享 crate `relay_route_core::KEY_FILE_REL`：
-/// monitor 渲染 `$(cat "$HOME/…")` 用的 `payload::RELAY_KEY_FILE_REL` 是同一个 const（先前两处各写字面量、判据现抠对拍）。
+/// 起会话载荷渲染 `$(cat ~/…)` 用的 `control/launch_render/payload.rs::RELAY_KEY_FILE_REL` 是同一个 const。
 pub(crate) const KEY_FILE_REL: &str = relay_route_core::KEY_FILE_REL;
 
 /// 钥匙的熵：32 字节 = 256 位（题面要 ≥128 位）。落盘是 64 个小写十六进制字符。
