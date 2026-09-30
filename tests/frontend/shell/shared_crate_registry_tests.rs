@@ -613,8 +613,12 @@ fn every_ci_run_step_is_classified_as_local_or_unrunnable() {
                  与 `rust` job 那条**逐字同一条命令**，只是 runner 从 windows 换成 ubuntu。\
                  ⚠ 本地门禁 `gate.sh` 那格带 `--lib`（丢 doctest 与 bin 档）⇒ **本地跑得动，\
                  但本地今天跑的不是同一把尺子**；这一格买的正是 `15 §2.6` 漏洞 3 点名的\
-                 「monitor 的 Linux 行为云端执行面 = 0」。\
-                 ⚠⚠ 它**从没在云端跑过**（加它这一趟不推）⇒ 「配置写对了」≠「验过了」",
+                 「monitor 的 Linux 行为云端执行面 = 0」。",
+        ),
+        (
+            "Install test-time deps (Xvfb · xdotool · CJK font)",
+            false,
+            "apt 装测试期依赖（文件窗口的真图形会话台架与 CJK 字体）：要 sudo ⇒ 属于**环境准备**不是判据",
         ),
         // ── job frontend
         ("npm audit (production deps, high)", true, "同名命令"),
