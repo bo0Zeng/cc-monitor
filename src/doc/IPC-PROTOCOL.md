@@ -1780,7 +1780,7 @@ monitor 进程内也**不再有它的副本**（原来那条「启动时 / 改�
 | `agent` | → | 这一家 agent 的路由名（第 1 段）|
 | `account` | → | `{"kind":"named","configDir":…}` · `{"kind":"base"}` · 缺席 / `null`（没表态）|
 | `allSessions` | → | 全量注入开关（`/t/` 那几格；monitor 进程环境 `CCM_RELAY_ALL_SESSIONS`，默认开，由调用方带来）|
-| `baseUrl` | ← | 注入的地址（不带钥匙；渲染成 `$(cat "$HOME/.cc-monitor/relay-key")` 那一形是渲染那一侧的事）；`null` = 不注入（含「有它更好而中转没在听 ⇒ 这一发直连」）|
+| `baseUrl` | ← | 注入的地址（不带钥匙；渲染成 `$(cat ~/.cc-monitor/relay-key)` 那一形是渲染那一侧的事）；`null` = 不注入（含「有它更好而中转没在听 ⇒ 这一发直连」）|
 
 **错误码**：`bad_args` · `relay_down`（非它不可 —— API 号代入 `/s/` —— 而这台的中转没在听：拒绝起会话，一句话说清是哪个号）。
 只在要注入时才问中转在不在（读常驻后端进程内的监听状态；〔DEL〕中转只住那台的常驻后端里，不另起一个）。
@@ -1920,8 +1920,9 @@ monitor **从不**对本机那条连接发 `relay-ensure`（本机那一个就�
 | 字段 | 向 | 说明 |
 |---|---|---|
 | `client` | → | 可选。**本机那一栏**才带：monitor 自己进程独有的几条事实 `{home, agentHome, path?}`（`HostScope::Client` 那一族按它们解；本机后端与 monitor 同一台、同一用户 ⇒ stat 仍由这台做，`05 §14.3` E 组）。不带 ⇒ 远端那一栏：住 monitor 那台的那一族不进人群 |
-| `data` | ← | 整份报告：`rows`（每行 `tool_id` · `tool_name` · `tier` · `source_label` · `path_declared` · `path_resolved` · `note` · `host_label` · `effect_label` · `state{kind: present\|absent\|undetermined, detail?\|why?}` · `installable` · `uninstallable`）· `settings_scopes` · `claude_config_dir` · `home` |
+| `data` | ← | 整份报告：`rows`（每行 `tool_id` · `tool_name` · `tier` · `source_label` · `path_declared` · `path_resolved` · `note` · `host_label` · `effect_label` · `state{kind: present\|absent\|undetermined\|expected_absent, detail?\|why?}` · `installable` · `uninstallable`）· `settings_scopes` · `claude_config_dir` · `home` |
 
+- `expected_absent`（带 `detail`）＝ 该不在、确实不在：旧版遗留那一档（认出是我们放的就删）不在，正是该有的样子 —— 结论由后端给（`footprint/rows.rs::read_absence`），界面照档画、不算缺口。
 - 目录最多列 4096 个名字（超了 ⇒ 列不动，**不截断**）· 查 cc-bus 钩子字样的文件最多 1 MiB，**文件内容一个字节都不回**。
 - 环境是这个**后端进程**的（`HOME`，没有再退 `USERPROFILE`；`PATH`）—— 用户交互 shell 的 rc 改过的环境这里看不见。
 
