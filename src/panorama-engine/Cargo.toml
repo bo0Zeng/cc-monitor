@@ -32,6 +32,10 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
 [dev-dependencies]
+# 〔P7 · C01 同一条理由〕前端 `src/frontend/ui/panorama/types.ts` 是生成物：上游 vendored `src/wire.ts` ＋ 本程序自己那几份应答的
+# TS 声明（派生挂 `#[cfg_attr(test, …)]`）由判据拼出、对拍。**只在 dev 侧**：codegen 工具，不进小程序字节；
+# 版本就是 monitor 那份 lock 里早已解析的 12.0.1（离线可用）。
+ts-rs = "12.0.1"
 # 源码扫描型判据的「只留生产段」剥法 —— 全仓一份（`structural_scan` 的「剥注释实现只许一份」）。
 guard-core = { path = "../common/guard-core" }
 

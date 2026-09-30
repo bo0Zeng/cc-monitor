@@ -7,7 +7,40 @@ use serde::{Deserialize, Serialize};
 /// 残余同文件同名再追加 `@行号` 消歧(见 `symbols.rs`),避免落库 PRIMARY KEY 冲突丢符号。
 pub type SymbolId = String;
 
+/// 符号 id 的**结构化拆分** —— 拆法只住这里(`file#段[@行号]`;没有 `#` 的是文件级 id,如 `Imports` 边的端点)。
+///
+/// 该带文件的地方直接带上它(`Overview.entry_points` · `symbols_touching`),消费方读字段,
+/// 不照着 id 的格式自己拆 —— 格式哪天变了,拆的人会一起静默坏。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+pub struct SymbolRef {
+    pub id: SymbolId,
+    /// 仓库相对路径(`#` 之前)。
+    pub file: String,
+    /// `#` 之后、去掉 `@行号` 消歧的那一段(`Type::method` / `f`);文件级 id ⇒ `None`。
+    /// 批注与文档关联按它挂(同名多符号共用一段 —— 与 `annotations_for` / `docs_for` 的比法一致)。
+    pub symbol: Option<String>,
+}
+
+impl SymbolRef {
+    pub fn of(id: &str) -> SymbolRef {
+        let (file, symbol) = match id.split_once('#') {
+            Some((file, rest)) => (
+                file.to_string(),
+                Some(rest.split('@').next().unwrap_or(rest).to_string()),
+            ),
+            None => (id.to_string(), None),
+        };
+        SymbolRef {
+            id: id.to_string(),
+            file,
+            symbol,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 pub enum SymKind {
     Function,
     Method,
@@ -16,6 +49,7 @@ pub enum SymKind {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 pub enum Lang {
     Rust,
     Python,
@@ -29,6 +63,7 @@ pub enum Lang {
 }
 
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 pub struct Symbol {
     pub id: SymbolId,
     pub name: String,
@@ -141,6 +176,7 @@ impl Slot {
 }
 
 #[derive(Debug, Clone, Copy, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 pub struct LineRange {
     pub start: usize,
     pub end: usize,
@@ -148,6 +184,7 @@ pub struct LineRange {
 
 /// 人挂在代码上的锚点。Phase 1 只用文件/符号级;块级字段留占位(F09 才实现解析)。
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 pub struct Anchor {
     pub file: String,
     pub symbol: String,
@@ -203,6 +240,7 @@ impl Anchor {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 pub enum AnchorState {
     /// 原文件在(或经 git 改名跟到),符号也在
     Resolved,
@@ -217,12 +255,14 @@ pub enum AnchorState {
 }
 
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 pub struct Location {
     pub file: String,
     pub line: usize,
 }
 
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 pub struct Resolution {
     pub state: AnchorState,
     pub location: Option<Location>,
@@ -231,6 +271,7 @@ pub struct Resolution {
 }
 
 #[derive(Debug, Clone, Default, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 pub struct IndexStats {
     pub files: usize,
     pub symbols: usize,
@@ -249,7 +290,36 @@ pub struct IndexStats {
     pub parse_errors: usize,
 }
 
+/// 建索引走到哪了(`Engine::index_with_progress` 的回调参数)。
+///
+/// 每一阶段先报一次 `done = 0`(说出这一阶段一共几份),之后每做完一份报一次;阶段按 [`IndexPhase`] 的顺序走。
+/// 🔴 份数是**这一阶段**的,不是全程的 —— 各阶段每份的耗时差很多(解析远重于建边),合成一个百分比会骗人。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+pub struct IndexProgress {
+    pub phase: IndexPhase,
+    /// 这一阶段做完了几份(阶段内单调增)。
+    pub done: usize,
+    /// 这一阶段一共几份(阶段内不变)。
+    pub total: usize,
+}
+
+/// 建索引的阶段(按这个顺序走)。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+pub enum IndexPhase {
+    /// 逐个源文件解析、抽符号(份 = 源文件)。
+    Parse,
+    /// 第一趟建边(份 = 源文件)。
+    Link,
+    /// 函数摘要抬高之后的第二趟(只重建会变的文件;份 = 源文件)。
+    Relink,
+    /// 扫 `.md` 建文档关联(份 = 文档文件)。
+    Docs,
+}
+
 #[derive(Debug, Clone, Default, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 pub struct IndexDelta {
     pub updated_files: usize,
     pub added: usize,
@@ -259,6 +329,7 @@ pub struct IndexDelta {
 // ── 调用图(F02)──
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 pub enum EdgeKind {
     /// **一条事实**:这个调用点唯一地解析到了那个符号。
     /// 不变量:`Calls` ⟺ `Confidence::Exact` ⟺(非方法调用 ∧ 仓内候选唯一)。
@@ -281,6 +352,7 @@ pub enum EdgeKind {
 
 /// 边的可信度(F10):静态调用图对动态语言不可判定,一律标注而非假装 sound。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 pub enum Confidence {
     /// 唯一名 / 限定名唯一匹配。
     Exact,
@@ -297,6 +369,7 @@ pub enum Confidence {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 pub struct Edge {
     pub from: SymbolId,
     pub to: SymbolId,
@@ -334,6 +407,7 @@ impl TokenBudget {
 }
 
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 pub struct RankedFile {
     pub file: String,
     pub score: f64, // 该文件所有符号 PageRank 之和
@@ -341,6 +415,7 @@ pub struct RankedFile {
 }
 
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 pub struct Subsystem {
     pub label: String,      // 代表(成员最多的文件)
     pub files: Vec<String>, // 涉及文件
@@ -369,10 +444,12 @@ pub struct Subsystem {
 }
 
 #[derive(Debug, Clone, Default, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 pub struct Overview {
     pub spine_files: Vec<RankedFile>,
     pub subsystems: Vec<Subsystem>,
-    pub entry_points: Vec<SymbolId>,
+    /// 入口点(零入边、按 PageRank 排)。带 `file`:消费方按文件画的时候读字段,不拆 id。
+    pub entry_points: Vec<SymbolRef>,
     pub total_symbols: usize,
     pub total_files: usize,
     // F18 覆盖信号(基于上次全量 index;见 IndexStats 同名字段)。
@@ -392,12 +469,14 @@ pub struct Overview {
 // ── impact / blast-radius(F04)──
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 pub struct AffectedSymbol {
     pub id: SymbolId,
     pub depth: usize, // 反向距离(1 = 直接调用者)
 }
 
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 pub struct ImpactSet {
     pub root: SymbolId,
     pub affected: Vec<AffectedSymbol>,
@@ -413,6 +492,7 @@ impl ImpactSet {
 
 /// 一个基本块:一段**一旦进入就会从头跑到尾**的语句序列。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 pub struct CfgBlock {
     pub id: usize,
     /// 块内第一/最后一条语句的行号。空块(纯汇合点)两者相等。
@@ -429,6 +509,7 @@ pub struct CfgBlock {
 /// `sources` 是**这一次赋值**提到的标识符 —— 与流不敏感那张表的区别正在于此:
 /// 那张表把一个变量的**所有**赋值混成一堆,这里一次赋值一条,由到达定义决定哪条算数。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 pub struct CfgDef {
     pub var: String,
     pub line: usize,
@@ -447,6 +528,7 @@ pub struct CfgDef {
 /// 一张漏了某条边的 CFG,会把「这两个调用互斥」这种结论变成**假事实** ——
 /// 而假事实比没有答案坏得多。遇到不建模的控制结构就整份弃掉,如实说是哪个。
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 pub struct Cfg {
     pub function: SymbolId,
     pub blocks: Vec<CfgBlock>,
@@ -496,6 +578,7 @@ impl Cfg {
 
 /// 值流到的一个落点:某函数的某个形参位。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 pub struct FlowStep {
     pub id: SymbolId,
     /// 形参位(0 基;**不含**接收者形参)
@@ -516,6 +599,7 @@ pub struct FlowStep {
 /// 被变换过(`g(x + 1)` / `g(x.field)` / `g(h(x))`)、被存进结构体再取出来、
 /// 经闭包捕获的,**一律追不到**。那些要函数体内的定义-使用链(第三档)。
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 pub struct FlowSet {
     pub root: SymbolId,
     pub param: usize,
@@ -532,6 +616,7 @@ pub struct FlowSet {
 /// 提前返回、条件,也没有先后。同一函数体内多个调用点按行号排只是**书写顺序**,
 /// 不是运行顺序 —— 别把它读成 trace。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 pub struct CallPath {
     pub steps: Vec<Edge>,
 }
@@ -544,6 +629,7 @@ impl CallPath {
 }
 
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 pub struct PathSet {
     pub from: SymbolId,
     pub to: SymbolId,
@@ -558,6 +644,7 @@ pub struct PathSet {
 // ── doc-links(F05)──
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 pub enum LinkSource {
     Colocation,  // 目录里的 README.md
     Frontmatter, // md 头部 covers:
@@ -565,6 +652,7 @@ pub enum LinkSource {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 pub struct DocLink {
     pub doc_path: String,              // .md 文件(仓库相对)
     pub target_file: String,           // 目标文件或目录(目录以 '/' 结尾)
@@ -579,6 +667,7 @@ impl DocLink {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 pub struct DriftItem {
     pub doc_path: String,
     pub target_file: String,
@@ -589,12 +678,14 @@ pub struct DriftItem {
 // ── 批注(F07)—— 侧车 JSON 文件为唯一真相(人写、可版本化)──
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 pub enum AnnotationStatus {
     Active,   // 人写 / 已批准 —— agent 可消费
     Proposed, // agent 提议 —— 待人审批准
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 pub struct Annotation {
     pub id: String,
     pub file: String,           // 锚点文件
@@ -614,6 +705,7 @@ pub struct Annotation {
 
 /// 批注的来源。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 pub enum AnnotationOrigin {
     /// 人写的(`add_annotation`)。
     Human,
@@ -629,6 +721,7 @@ pub enum AnnotationOrigin {
 /// 单个符号的完整视图:符号本体 + 直接调用者/被调 + 关联文档 + 批注。
 /// 由 `Engine::node` 组装(此前散在 MCP 层现拼,cc-monitor 得自己组合;F15 收口)。
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 pub struct NodeView {
     pub symbol: Symbol,
     pub callers: Vec<Edge>,
@@ -639,7 +732,28 @@ pub struct NodeView {
 
 /// 以某符号为心的邻域调用子图(双向、可控深度):节点集 + 边集。
 #[derive(Debug, Clone, Default, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 pub struct SubGraph {
     pub symbols: Vec<Symbol>,
     pub edges: Vec<Edge>,
+}
+
+/// 以某符号为心的邻域,**每个够得着的符号带距根几跳**(`Engine::neighborhood`)。
+///
+/// 与 [`SubGraph`] 同一个邻域(同一个 depth 口径),只是把「第几跳」这个量直接给出来 ——
+/// 消费方要按跳数分层画图时不必自己再走一遍图(那等于在消费方那一侧算图)。
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+pub struct Neighborhood {
+    pub root: SymbolId,
+    /// 根不在里面。depth 升序、同层 id 升序。
+    pub reached: Vec<Reached>,
+}
+
+/// 邻域里的一个符号与它距根几跳(1 = 直接调它 / 它直接调)。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+pub struct Reached {
+    pub id: SymbolId,
+    pub depth: usize,
 }

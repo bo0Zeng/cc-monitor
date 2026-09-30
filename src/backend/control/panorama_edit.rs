@@ -57,7 +57,8 @@ where
         if plan {
             super::panorama::answer_plan(&a).await
         } else {
-            super::panorama::answer(&a).await
+            // 写成之后那一步（刷文档关联）不报进度：写那一问没有进度流（不交票）。
+            super::panorama::answer(&a, &|_| {}).await
         }
     })
     .await

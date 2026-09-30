@@ -20,6 +20,8 @@ pub mod precise;
 pub mod rank;
 pub mod scan;
 pub mod symbols;
+#[cfg(test)]
+mod wire_schema;
 
 pub use engine::{Engine, EngineOpts};
 pub use model::*;
