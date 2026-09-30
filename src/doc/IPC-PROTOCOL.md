@@ -1779,7 +1779,7 @@ monitor 进程内也**不再有它的副本**（原来那条「启动时 / 改�
 | `agent` | → | 这一家 agent 的路由名（第 1 段）|
 | `account` | → | `{"kind":"named","configDir":…}` · `{"kind":"base"}` · 缺席 / `null`（没表态）|
 | `allSessions` | → | 全量注入开关（`/t/` 那几格；monitor 进程环境 `CCM_RELAY_ALL_SESSIONS`，默认开，由调用方带来）|
-| `baseUrl` | ← | 注入的地址（不带钥匙；渲染成 `$(cat "$HOME/.cc-monitor/relay-key")` 那一形是渲染那一侧的事）；`null` = 不注入（含「有它更好而中转没在听 ⇒ 这一发直连」）|
+| `baseUrl` | ← | 注入的地址（不带钥匙；渲染成 `$(cat ~/.cc-monitor/relay-key)` 那一形是渲染那一侧的事）；`null` = 不注入（含「有它更好而中转没在听 ⇒ 这一发直连」）|
 
 **错误码**：`bad_args` · `relay_down`（非它不可 —— API 号代入 `/s/` —— 而这台的中转没在听：拒绝起会话，一句话说清是哪个号）。
 只在要注入时才问中转在不在（读常驻后端进程内的监听状态；〔DEL〕中转只住那台的常驻后端里，不另起一个）。
