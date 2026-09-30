@@ -307,9 +307,8 @@ cell(
         "tests/scripts/": (PART, "`scripts/*.sh` 现打 **3** 份 / 这棵树现打 **6** 份 —— "
                            "`run.ps1` 全仓没有 linter（`audit-0805` 登记的诚实边界），"
                            "`assert-coverage-floors.mjs` 是 JS"),
-        "src/frontend/shell/": (PART, "只有 vendored `cc-acct-iso` 那 **4** 份 bash（逐份点名，不用 glob —— "
-                             "`ci.yml` 那段注释逐字记着为什么：不开 globstar 时 `**` 等价于 `*`，"
-                             "会把一个目录喂给 shellcheck ⇒ 恒红）。这棵树的其余部分与本格无关"),
+        "src/frontend/shell/": blind("这棵树里今天没有一份 shell 进人群 —— 原先逐份点名的那 4 份 vendored bash "
+                                   "随账号库收进后端整棵删了；这棵树的其余部分与本格无关"),
         "tests/hooks/": (PART, "只有 `hooks/pre-commit` 这**一份**，而且是**逐份点名**进人群的、不是 glob "
                          "⇒ 往这棵树加第二份 hook，本格看不见它（那一维由 `hooks` 那一格的 "
                          "`git ls-files hooks/` 盖）"),

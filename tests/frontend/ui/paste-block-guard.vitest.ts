@@ -30,6 +30,9 @@ const FAMILY_B = [
   // 〔`设计/50`〕原先这里还有 `src/frontend/ui/views/usage-view.ts`（用量视图里「复制这一屏」）——
   // 用量 ② 轴整轴退役，那份文件整删。
   "src/frontend/ui/paste-block.ts", // 组件自己
+  // 账号分节：复制账号目录路径 · 本机不开终端窗口时把登录那一行复制给人自己跑。〔账号库收进后端〕rc 片段那两处待贴块
+  //   随功能删了（账号别名由后端自动写进别名文件），它从族 AB 回到族 B。
+  "src/frontend/ui/settings/accounts-section.ts",
 ];
 
 /**
@@ -44,20 +47,9 @@ const FAMILY_B = [
  * 「有人手搓一个复制按钮绕开组件」。对混合文件而言，能表达这个性质的是
  * **`writeText` 处数恰好等于已登记的族 B 用途数** —— 多出一处就说明又手搓了一个。
  */
-const FAMILY_AB: Array<{ file: string; writeTextUses: number; why: string }> = [
-  {
-    file: "src/frontend/ui/settings/accounts-section.ts",
-    // 2026-07-30 实测：复制命令 / 复制路径 / 复制诊断文本 三处。
-    // 🔴 〔`设计/50` 09-18〕**3 → 2**：那一处「复制这一屏」随账号表的用量单元格整块删了
-    // （用量 ③ 轴退役）。**计数下降 = 手搓的复制按钮少了一个**，正是这张表要看见的方向。
-    // 〔第三波 S3 09-24〕**2 → 3**：多的那一处是本机建号那一跳（`launchLocalStep`）的剪贴板回退 ——
-    // Linux 本机刻意不开终端窗口，把 `cc-acct-iso add …` 那条**要执行的命令**复制给用户去 bash 里跑
-    // （与 `remote-launch-run.ts::invokeLaunchOrCopyFallback` 同一形）。它是族 B（复制一条命令），
-    // 不是待贴配置（没有「贴到哪 / 怎么合并 / 怎样生效」那三句）⇒ 不走组件。
-    writeTextUses: 3,
-    why: "族 B 三处（复制路径/诊断/本机建号命令的回退）+ Z05 与本机 rc 片段两处待贴块（走组件）",
-  },
-];
+// 今天没有成员（唯一那一员 `accounts-section.ts` 的待贴块随 rc 片段那一段删了，回到族 B）。表留着：
+// 下一处「既复制命令又出待贴块」的文件照这个形状登记。
+const FAMILY_AB: Array<{ file: string; writeTextUses: number; why: string }> = [];
 
 /**
  * 收集源文件，**路径一律用 `/`**。

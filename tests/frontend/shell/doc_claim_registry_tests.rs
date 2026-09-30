@@ -1062,10 +1062,7 @@ fn every_repo_path_named_in_the_docs_still_resolves() {
             "**计划工作区**住在 `.claude/planned-build/`（另一个 git 仓）",
         ),
         ("unify-launch/MASTERPLAN.md", "同上"),
-        (
-            ".claude/planned-build/account-isolation/DESIGN-account-switching.md",
-            "同上：计划仓里的设计稿，不在本仓",
-        ),
+        // 账号切换那份计划仓设计稿那一行摘了：INVARIANTS 那一段改写成现状之后 `doc/` 里没人再指它。
         // 〔MIG-3a〕`/.mcp.json` 那一行摘了：INVARIANTS 那两处改写之后 `doc/` 里没人再这样写。
     ];
     const EXTS: &[&str] = &["rs", "ts", "sh", "mjs", "json", "yml", "toml", "md", "py"];

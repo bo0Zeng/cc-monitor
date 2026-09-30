@@ -10,21 +10,6 @@ const flush = async (): Promise<void> => {
   for (let i = 0; i < 8; i += 1) await Promise.resolve();
 };
 
-describe("suggestAliasName（从 launcher-diagnostics 搬来，行为一字不变）", () => {
-  it("账号名 → `<名>cc`（与 `cc-acct-iso shellinit` 那一族逐字同形）", async () => {
-    const { suggestAliasName } = await import("../../../../src/frontend/ui/settings/machine-aliases");
-    expect(suggestAliasName("z")).toBe("zcc");
-    expect(suggestAliasName("work")).toBe("workcc");
-  });
-  it("非法字符丢掉而不是换成下划线（`a.b` 与 `a_b` 不许撞名）；数字打头前缀 `_`；全非法 ⇒ 空串", async () => {
-    const { suggestAliasName } = await import("../../../../src/frontend/ui/settings/machine-aliases");
-    expect(suggestAliasName("a.b")).toBe("abcc");
-    expect(suggestAliasName("a_b")).toBe("a_bcc");
-    expect(suggestAliasName("0")).toBe("_0cc");
-    expect(suggestAliasName("...")).toBe("");
-  });
-});
-
 describe("表单 ↔ 一条别名（纯函数）", () => {
   it("每一格都往返得回来（两向：表单 → 参数 → 表单 逐格相等）", async () => {
     const m = await import("../../../../src/frontend/ui/settings/machine-aliases");
@@ -287,7 +272,6 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）：两跳
     const el = m.buildAliasManager({
       platform: plat,
       origin: () => "<local>",
-      loadAccounts: async () => ["z", "b", "0"],
       confirm,
     }) as HTMLDetailsElement;
     document.body.appendChild(el);
@@ -406,12 +390,10 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）：两跳
     expect(lastRendered()).toEqual(["bcc"]);
   });
 
-  it("「为每个账号加一条」只补没有的，不重复（`zcc` / `bcc` 已在），全非法的名字跳过", async () => {
+  it("没有「为每个账号加一条」那颗按钮：每个号那一条由那台后端随账号表自动写", async () => {
     const el = await mount();
     await open(el);
-    clickText(el, "为每个账号加一条");
-    await flush();
-    expect(lastRendered()).toEqual(["zcc", "bcc", "_0cc"]);
+    expect([...el.querySelectorAll("button")].map((b) => b.textContent)).not.toContain("为每个账号加一条");
   });
 
   it("有不合格的 ⇒ 写入按钮不给点，问题一条条上屏", async () => {
@@ -718,7 +700,6 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）：两跳
     const el = m.buildAliasManager({
       platform: "posix",
       origin: () => "aya",
-      loadAccounts: async () => ["z"],
       onBlockDone: (verb, err) => done.push(`${verb}:${err ?? "ok"}`),
     }) as HTMLDetailsElement;
     document.body.appendChild(el);

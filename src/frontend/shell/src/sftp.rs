@@ -145,7 +145,7 @@ pub(crate) const STAMP_MARKS: deploy_contract::Marks<'static> = deploy_contract:
 pub use deploy_contract::DeployAction;
 
 // 〔MIG-3a · 09-28 预裁〕`deploy_decision`〔散文墓碑〕（比旁挂版本标记）删了：它只留给 `acct_iso_deploy` 那条按目录取标记的路，那条路整条退役
-//   （字节随后端二进制走、逐份比内容，`src/backend/assets/acct_iso_install.rs`）。后端那条路的判定住 `deploy_contract::identity_decision`。
+//   （账号库今天由那台后端自己建，不再部署外部工具）。后端那条路的判定住 `deploy_contract::identity_decision`。
 
 /// 〔MIG-3b · 4d-lanes 子步 1〕**本机常驻后端出的部署计划**（帧命令 `deploy-plan`，线上形状 `tests/__fixtures__/deploy-plan.golden.json`）。
 /// 该不该换 · 换成哪一格 · 落点那一份是谁 · 旧落点那份删不删 —— 全是后端判的；本模块只照它放字节。

@@ -201,10 +201,9 @@ mod tests {
         (
             "control/ccm/argv.rs",
             ".claude",
-            "这是 **cc-acct-iso 这个工具**的账号库门牌号（`~/.claude-accts/accounts.json`），\
-             不是 Claude 的目录布局 —— `agents/claudecode/accounts.rs` 的头注**逐字**写着\
-             「账号清单（manifest）与配置目录白名单不在这里 —— 那是 `cc-acct-iso` 的格式，\
-             属工具而非 agent」。同上一条（允许**库的地址**，禁**数据布局**）：\
+            "这是**账号库**的门牌号（`~/.claude-accts/accounts.json`），\
+             不是 Claude 的目录布局 —— `agents/claudecode/accounts.rs` 的头注写着\
+             账号清单（manifest）与配置目录白名单不在它那里，那是账号库的格式。同上一条（允许**库的地址**，禁**数据布局**）：\
              这里只有一个路径，账号对象的形状由 `serde` 的字段名说了算，不在这张针底下。",
         ),
         (

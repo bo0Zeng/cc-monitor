@@ -129,6 +129,9 @@ pub(crate) struct Adapter {
     /// 〔MIG-3b 续〕这一家的**足迹面**：落在它自己布局里的那几条申报 ＋ 申报路径里 `~/<它的家>/…` 怎么认 ＋ 用户级 settings 住哪。
     /// 收进注册表而不是让 `footprint/` 直呼 `agents::<名>::` —— 理由同 [`Adapter::assets`]（判据④的读数只许降）。
     pub(crate) footprint: Option<FootprintFace>,
+    /// 这一家的**账号库布局**：一个身份由哪几份文件组成 · 没设账号时的配置根 · 登录邮箱在哪读。`None` = 这一家今天没有多账号。
+    /// 收进注册表而不是让 `accounts/manage/` 直呼 `agents::<名>::` —— 理由同 [`Adapter::assets`]（判据④的读数只许降）。
+    pub(crate) accounts: Option<AccountsFace>,
     /// 〔MOD · `设计/90 §3` 判据 3〕这一家的**记录解释**：一行原文在渲染模型里是什么 · sid 怎么从文件名来 · 轮次边沿 · 漂移账。
     /// 收进注册表而不是让通用层直呼 `agents::<名>::` —— 理由同 [`Adapter::assets`]（判据④的读数只许降）。
     pub(crate) records: Option<RecordFace>,
@@ -372,6 +375,44 @@ pub(crate) struct FootprintFace {
     pub(crate) user_settings: fn(&Path) -> [PathBuf; 2],
 }
 
+/// 一份身份文件的原生根：没设账号环境变量时它住哪。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum IdentityRoot {
+    /// 住 `<配置根>/<名>`（设了账号环境变量就跟着走）。
+    ConfigDir,
+    /// 住 `$HOME/<名>`（不跟账号环境变量走）。
+    Home,
+}
+
+/// 一份身份文件是什么。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum IdentityClass {
+    /// 身份本体：必须 600、必须每个号一份、绝不从别的号复制。
+    Secret,
+    /// 本机状态：每个号一份（共享会串号，或高频写互相覆盖）。
+    State,
+    /// 跟着别的项走的附属物（备份之类）。
+    Derived,
+}
+
+/// 见 [`Adapter::accounts`]。
+#[derive(Clone, Copy)]
+pub(crate) struct AccountsFace {
+    /// 每个号各有一份的那几项：`(名, 原生根, 类别)`；共享库顶层其余每一项都链回共享库。
+    pub(crate) identity: &'static [(&'static str, IdentityRoot, IdentityClass)],
+    /// 账号级配置文件的名字（原生根是家目录的那一份，账号 0 的住 `$HOME`）。
+    pub(crate) config_file: &'static str,
+    /// 没设账号时的配置根（= 各号链回去的共享库）。
+    pub(crate) shared_root: fn(&Path) -> PathBuf,
+    /// 一个配置根下登录的邮箱（读不到 ⇒ `None`）。
+    pub(crate) email_in: fn(&Path) -> Option<String>,
+}
+
+/// 这台机器上账号库的布局（注册表里第一家带账号库布局的；一台机器只有一套账号库）。
+pub(crate) fn accounts_face() -> Option<AccountsFace> {
+    REGISTRY.iter().find_map(|a| a.accounts)
+}
+
 /// 注册表里带足迹面的那几家（按注册表顺序）。
 pub(crate) fn footprint_faces() -> impl Iterator<Item = FootprintFace> {
     REGISTRY.iter().filter_map(|a| a.footprint)
@@ -540,13 +581,13 @@ pub(crate) fn skill_asset_face() -> Option<AssetFace> {
 /// 一家拆成四行会让那个读数变成排版的函数。
 #[rustfmt::skip]
 pub(crate) const REGISTRY: &[Adapter] = &[
-    Adapter { kind: claudecode::AGENT_KIND, home: claudecode::home, account_env: Some(claudecode::paths::CONFIG_DIR_ENV), assets: Some(claudecode::ASSETS), history: None, upstream: Some(claudecode::UPSTREAM), mcp: Some(claudecode::MCP), footprint: Some(claudecode::footprint::FACE), records: Some(claudecode::RECORDS), processes: Some(claudecode::cards::PROCESS_NAMES), launch: Some(claudecode::LAUNCH) },
+    Adapter { kind: claudecode::AGENT_KIND, home: claudecode::home, account_env: Some(claudecode::paths::CONFIG_DIR_ENV), assets: Some(claudecode::ASSETS), history: None, upstream: Some(claudecode::UPSTREAM), mcp: Some(claudecode::MCP), footprint: Some(claudecode::footprint::FACE), accounts: Some(claudecode::accounts::FACE), records: Some(claudecode::RECORDS), processes: Some(claudecode::cards::PROCESS_NAMES), launch: Some(claudecode::LAUNCH) },
     // ⚠ codex 那一格**今天借用同一个载体，这是如实登记的耦合、不是设计**：
-    //   账号维度来自 `cc-acct-iso`（机器上只有一套账号库），而那套库切的就是这个变量。
+    //   账号维度来自机器上唯一那一套账号库（`accounts/manage/`），而那套库切的就是这个变量。
     //   `ccm --agent codex --account b` 从来就是这个行为（`shared/ccm` 那侧也是无条件 export）。
     //   codex 自己并不读它 ⇒ 哪天账号维度按家拆开，改的就是这一行。
     // 〔NT2 · V25〕codex **刻意不登记**默认上游：它的默认上游是哪一个、认不认 base URL 覆盖，本仓零证据（`C7`）⇒ 未登记即拒（fail-closed）。
-    Adapter { kind: codex::AGENT_KIND,      home: codex::home,      account_env: Some(claudecode::paths::CONFIG_DIR_ENV), assets: None, history: Some(codex::HISTORY), upstream: None, mcp: None, footprint: None, records: Some(codex::RECORDS), processes: None, launch: Some(codex::LAUNCH) },
+    Adapter { kind: codex::AGENT_KIND,      home: codex::home,      account_env: Some(claudecode::paths::CONFIG_DIR_ENV), assets: None, history: Some(codex::HISTORY), upstream: None, mcp: None, footprint: None, accounts: None, records: Some(codex::RECORDS), processes: None, launch: Some(codex::LAUNCH) },
 ];
 
 /// 某一家的账号载体（环境变量名）。认不出这家 ⇒ `None`。

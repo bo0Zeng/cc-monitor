@@ -628,7 +628,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
   //
   // # 它此前是死代码，而这里是唯一断得到它的地方
   //
-  // 本机的 `acctIso` / `accounts` 在 `N-F2` 之前**全仓没有任何 `recordFacet` 生产者**
+  // 本机的 `accounts` 在 `N-F2` 之前**全仓没有任何 `recordFacet` 生产者**
   //（唯一的写点 `accounts-section.note()` 第一行是 `if (!this.origin) return`，
   // 而本机这条路上 `origin` 恒空）⇒ 那两格恒 `unknown` ⇒ `summarizeGaps` 恒非 null
   // ⇒ 这一支**在结构上走不到**。`accounts-section.vitest.ts` 里 `N-F2` 那一族
@@ -652,7 +652,6 @@ describe("S1 RemoteSection：保存走局部合并", () => {
   function greenLocalTwo(): void {
     recordFacet(LOCAL_MACHINE_KEY, "backend", { kind: "ok", detail: "已连上" });
     recordFacet(LOCAL_MACHINE_KEY, "ccm", { kind: "ok", detail: "是它" });
-    recordFacet(LOCAL_MACHINE_KEY, "acctIso", { kind: "ok", detail: "已启用" });
     recordFacet(LOCAL_MACHINE_KEY, "accounts", { kind: "ok", detail: "3 个" });
   }
   const gapsBoxOf = (sec: RemoteSection): HTMLElement =>
@@ -666,7 +665,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
   it("★ NF2D3 最后那一跳：本机全绿 + 零远端 ⇒ 「还差什么」整块不出现", async () => {
     // 分母先钉死，别让「一台机器都没有」蒙混过去：
     //   · 远端 **0** 台，而清单的入参是 `[LOCAL_MACHINE_KEY, ...hosts]` ⇒ 机器数 **1**；
-    //   · 本机的适用格**恰好**是 `backend` / `ccm` / `acctIso` / `accounts` 四格（`connection` 不适用）。
+    //   · 本机的适用格**恰好**是 `backend` / `ccm` / `accounts` 三格（`connection` 不适用）。
     //     ⚠ `K-R59`：`backend` 是那一拍新算进来的；〔WF1 · ㉔〕`ccm` 在 Windows 上也算了。
     // 下面这一屏是那个分母的**真实渲染**：它必须先真的出现、且逐项等于这两格。
     localStorage.clear();
@@ -679,7 +678,6 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     expect(gapKeysOf(before)).toEqual([
       `${LOCAL_MACHINE_KEY}/backend:unknown`,
       `${LOCAL_MACHINE_KEY}/ccm:unknown`,
-      `${LOCAL_MACHINE_KEY}/acctIso:unknown`,
       `${LOCAL_MACHINE_KEY}/accounts:unknown`,
     ]);
 
@@ -709,7 +707,6 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     expect(gapKeysOf(back)).toEqual([
       `${LOCAL_MACHINE_KEY}/backend:unknown`,
       `${LOCAL_MACHINE_KEY}/ccm:unknown`,
-      `${LOCAL_MACHINE_KEY}/acctIso:unknown`,
       `${LOCAL_MACHINE_KEY}/accounts:unknown`,
     ]);
   });
@@ -810,7 +807,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
    * 🔴 `K-R59`：本机 `backend` 那一格的**写点**真的在写。
    *
    * 撤掉豁免之后它是一格适用的格子，而全仓对 `LOCAL_MACHINE_KEY` 的 `recordFacet` 写点
-   * 此前只有 `accounts-section.note()`（只写 `acctIso`/`accounts`）⇒ 没有本条的话
+   * 此前只有 `accounts-section.note()`（只写 `accounts`）⇒ 没有本条的话
    * 它会**恒 `unknown`**，「还差什么」那张清单对任何人都清不空。
    */
   it("🔴 K-R59：本机后端起没起来，`noteLocalBackend` 真写进账本（两个方向都断）", async () => {

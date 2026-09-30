@@ -143,9 +143,7 @@ fn every_registered_command_declares_its_run_kind() {
                 | "bus-state"
                 // 〔SH1 · V136〕起一个 `cc-log` 子进程并等它退出。
                 | "bus-inbox"
-                // 〔LOC1a · 第四波 4D〕`cc-acct-iso` 两问（`shellinit` 起一次插件进程）· 分叉（读整份 jsonl ＋ `O_EXCL` 写）。
-                | "acct-iso-status"
-                | "acct-iso-shellinit"
+                // 〔LOC1a · 第四波 4D〕分叉（读整份 jsonl ＋ `O_EXCL` 写）。
                 | "session-fork"
                 | "capture-pane"
                 | "files-browse"
@@ -238,8 +236,16 @@ fn every_registered_command_declares_its_run_kind() {
                 | "skill-install-apply"
                 | "skill-host-list"
                 | "cc-bus-install"
-                // 〔MIG-3a · 09-28 裁 2〕acct-iso 装：经本进程文件管理面建链接 ＋ 抄配置样例（同步文件 I/O）；建链接那条同写面一档。
-                | "acct-iso-install"
+                // 账号库那一族：读账号库 ＋ 经本进程文件管理面建目录 · 建链接 · 复制 · 写清单（同步文件 I/O）。
+                | "accounts-init"
+                | "accounts-add"
+                | "accounts-remove"
+                | "accounts-set-default"
+                | "accounts-repair"
+                | "accounts-isolate"
+                | "accounts-rollback"
+                | "accounts-verify"
+                | "accounts-login-cmd"
                 // 〔MIG-3b 续〕公钥并进这台的 `authorized_keys`：同步文件 I/O（经本进程文件管理面）。
                 | "authorized-keys-add"
                 | "files-link"
@@ -322,8 +328,6 @@ fn every_registered_command_declares_its_run_kind() {
         "link-open",
         "ping",
         "resolve",
-        // 〔DUP2 · J4〕cc-acct-iso 步骤那一行：纯函数（校验 ＋ 唯一的 quote），不起进程不碰盘 ⇒ 不进阻塞档。
-        "acct-iso-cmd",
         // 〔E2〕`ccm-probe`：拼 `--ccm-probe` 那几行，纯函数 ⇒ 不进阻塞档。
         "ccm-probe",
         // 〔FIX4 · ⑬〕`terminal-ssh`：开终端那一串，纯函数（校验 ＋ quote，不拨号不起进程）⇒ 不进阻塞档。
@@ -367,8 +371,6 @@ fn every_registered_command_declares_its_run_kind() {
         "bus-spawn",
         "bus-state",
         "bus-inbox",
-        "acct-iso-status",
-        "acct-iso-shellinit",
         "session-fork",
         "capture-pane",
         "files-browse",
@@ -459,7 +461,16 @@ fn every_registered_command_declares_its_run_kind() {
         "skill-install-apply",
         "skill-host-list",
         "cc-bus-install",
-        "acct-iso-install",
+        // 账号库那一族（阻塞档，理由在上面 `expected_blocking`）。
+        "accounts-init",
+        "accounts-add",
+        "accounts-remove",
+        "accounts-set-default",
+        "accounts-repair",
+        "accounts-isolate",
+        "accounts-rollback",
+        "accounts-verify",
+        "accounts-login-cmd",
         "authorized-keys-add", // 〔MIG-3b 续〕同步文件 I/O（经本进程文件管理面）
         "files-link",
         "cc-bus-install-state",

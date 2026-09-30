@@ -49,6 +49,7 @@
 //! - [`stderr_fd`]：〔NT2 · S1〕把本进程的 fd 2 换到一份文件上 · 问它多长（脱离常驻的后端把 stderr 落盘，`crate::stderr_log`）
 //! - [`tcp_rtt`]：〔NT1〕一条已连上的 TCP 的往返时间（问内核 `TCP_INFO`，不掐表）—— 压缩判准要它（`dial/connect.rs::compression_for`）
 //! - [`lock`]：〔HX2〕后端自有状态文件（第四层）的跨进程锁 —— 锁那份文件所在的目录（unix `flock` · Windows 命名互斥量）
+//! - [`acct_view`]：账号库读盘的平台原语（不跟链接地看一项 · unix 权限位 · 这台做不做得了多账号）—— 只读
 //! - [`fs`]：〔FIX5〕文件管理写面的两样原语：不覆盖改名（`rename_noreplace`）· 开文件不跟链接的旗（`NO_FOLLOW`）
 //! - [`detach`]：〔RM1a〕把要起的子进程放进自己的进程组（远端那台的中转不许随 SSH 断而没了）· 〔RM1f〕插件口可打断的那一形也用它（让「杀一组」有组可杀）
 //! - `win_proc`：〔WN1 · U4b〕Windows 上判活 / 起始时刻 / 等进程退出的 Win32 读法（`OpenProcess` 一族），
@@ -61,6 +62,7 @@
 //! 现在返回 `bool` 由调用方丢弃。语义等价（两条路径旧版都返回 `0`，那个 `return` 是纯提前返回），
 //! 但「逐字搬来」这句话覆盖不到它，故单列。
 
+pub(crate) mod acct_view;
 #[cfg(test)]
 #[path = "../../../tests/backend/platform/cfgless_guard.rs"]
 mod cfgless_guard;
