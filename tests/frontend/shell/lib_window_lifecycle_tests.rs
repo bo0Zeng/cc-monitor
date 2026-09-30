@@ -216,43 +216,7 @@ fn every_emit_to_targets_a_webview_window_not_a_bare_label() {
     }
 }
 
-// ── 〔WF2〕要求住址：`第四波记录/WIN3.md §2` 读数 D「窗口初始高 780 > 工作区 712 …… 结果最后一行被任务栏压住」· 题面 WF2 第 6 条 ──
-
-/// 真机那一格原样（期望手算）：工作区 1280×712（屏 760、任务栏 48），主窗外框 1116×780 @ (156,0)、边框 + 标题栏 16×39 ⇒
-/// 外框高夹到 712、内框跟着缩到 673、左上不动；放得下的那一扇 ⇒ `None`（不碰）；跑出右下角的 ⇒ 只挪位置、尺寸不动；
-/// 副屏在主屏左边（负坐标）⇒ 照样夹进那一块。
-#[test]
-fn a_window_taller_than_the_work_area_is_shrunk_and_moved_inside_it() {
-    use super::{fit_into_work_area, WorkArea};
-    let work = WorkArea {
-        x: 0,
-        y: 0,
-        w: 1280,
-        h: 712,
-    };
-    assert_eq!(
-        fit_into_work_area((156, 0), (1116, 780), (1100, 741), work),
-        Some(((1100, 673), (156, 0)))
-    );
-    assert_eq!(
-        fit_into_work_area((10, 10), (800, 600), (784, 561), work),
-        None
-    );
-    assert_eq!(
-        fit_into_work_area((900, 500), (800, 600), (784, 561), work),
-        Some(((784, 561), (480, 112)))
-    );
-    let left = WorkArea {
-        x: -1920,
-        y: 0,
-        w: 1920,
-        h: 1040,
-    };
-    assert_eq!(
-        fit_into_work_area((-100, 0), (800, 1200), (784, 1161), left),
-        Some(((784, 1001), (-800, 0)))
-    );
-}
+// 〔P4〕「一扇窗夹进工作区」那条真值判据随判定搬去了 `tests/common/host-core/lib_tests.rs`。
 
 /// 三扇 Tauri 窗开出来都经那一个判定夹一次（主窗在 `setup` 里、设置窗与会话窗在建窗之后）—— 在执行链上。
 #[test]

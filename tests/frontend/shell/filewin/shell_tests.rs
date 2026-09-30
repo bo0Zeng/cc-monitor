@@ -2812,7 +2812,7 @@ async fn a_lossy_directory_is_entered_and_everything_inside_is_addressed_by_its_
 #[test]
 fn the_file_window_is_fitted_into_the_work_area_it_was_handed() {
     use egui::{pos2, vec2, Rect, ViewportCommand};
-    let work = crate::WorkArea {
+    let work = host_core::WorkArea {
         x: 0,
         y: 0,
         w: 1280,
@@ -2834,7 +2834,7 @@ fn the_file_window_is_fitted_into_the_work_area_it_was_handed() {
         "../../../../src/frontend/shell/src/filewin/entry.rs"
     ));
     assert!(
-        entry.contains(".and_then(crate::WorkArea::of)"),
+        entry.contains(".and_then(crate::work_area_of)"),
         "开窗入口没把工作区放进种子"
     );
     let proc = guard_core::production_code(include_str!(

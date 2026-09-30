@@ -167,7 +167,7 @@ pub struct OpenRequest {
     pub machines: Vec<String>,
     /// 〔WF2 · WIN3 读数 D〕主窗所在显示器的工作区（monitor 问 Tauri 得来）：窗口开出来第一拍夹进它。`None` ＝ 问不到，不夹。
     #[serde(default)]
-    pub work_area: Option<crate::WorkArea>,
+    pub work_area: Option<host_core::WorkArea>,
 }
 
 /// 种子 → 字节。**纯函数**（判据两向对拍）。

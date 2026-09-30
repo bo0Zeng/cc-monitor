@@ -256,7 +256,7 @@ enum Kind {
     /// `设计/01 §6.9`「所有对外文案与报错都从一张表来」—— 表是编译期内嵌的一份 JSON，窗口进程与 app 读同一份字节，
     /// 取文口是纯函数（查表 ＋ 填占位符），不碰进程外任何东西。
     Copy,
-    /// 〔WF2 · WIN3 读数 D〕**窗口几何**：工作区那个类型 ＋「一扇窗夹进工作区」那一个判定（`lib.rs::fit_into_work_area`，纯函数）。
+    /// 〔WF2 · WIN3 读数 D〕**窗口几何**：工作区那个类型 ＋「一扇窗夹进工作区」那一个判定（〔P4〕今天住 `host_core`，`geometry.rs::fit_into_work_area`；壳里只剩问 Tauri 的 `lib.rs::work_area_of`）。
     /// 不是欠账：它与 Tauri 那几扇窗共用一个家（一个判定不许两个家），不碰进程外任何东西。
     Geometry,
     /// monitor 那一侧：通道宿主（交接件 · 生产句柄）。
@@ -328,14 +328,13 @@ const WINDOW_SIDE: &[(&str, Kind)] = &[
     ("dial_host::machine_facts", Kind::Terminal),
     ("launch::open_terminal_window", Kind::Terminal),
     // ── monitor 自己的状态 ──
-    ("utils::atomic_write_json", Kind::OwnState),
+    // 〔P4〕`utils::atomic_write_json` 那一行摘了：原子写搬进共享 crate `host_core`（前端宿主原语），不再是壳里的边。
     // 〔FILES3 · ㉜〕书签那份文件的名字住数据目录的唯一枚举点（设置页「数据位置」列它），窗口这一侧引过来。
     ("data_paths::FILEWIN_BOOKMARKS_FILE", Kind::OwnState),
     // ── 对外文案表（CP2b）──
     ("copy_table::copy_text", Kind::Copy),
     // ── 窗口几何（〔WF2〕开窗第一拍夹进种子带来的工作区）──
-    ("WorkArea", Kind::Geometry),
-    ("fit_into_work_area", Kind::Geometry),
+    // 〔P4〕`WorkArea` · `fit_into_work_area` 两行摘了：类型与判定搬进 `host_core`（Tauri 那几扇窗与文件窗口共用那一份）。
 ];
 
 /// ★ **monitor 那一侧**（`entry.rs` ＋ [`MONITOR_FNS`]）够得到的 app 侧符号，逐条。
@@ -356,8 +355,8 @@ const MONITOR_SIDE: &[(&str, Kind)] = &[
     ("copy_table::copy_text", Kind::Copy),
     // 〔WF2 · WIN3 读数 D〕问主窗所在显示器的工作区，放进种子。
     ("MAIN_WINDOW_LABEL", Kind::Geometry),
-    ("WorkArea", Kind::Geometry),
-    ("WorkArea::of", Kind::Geometry),
+    // 〔P4〕类型搬进 `host_core`；问 Tauri 那一下留在壳里，改名 `work_area_of`。
+    ("work_area_of", Kind::Geometry),
     // 〔WF2 · WIN3 读数 J〕开出来之后又退了那一句经 `remote-health` 出声。
     ("ui_contract::RemoteHealthPayload", Kind::Notify),
     ("ui_contract::events::REMOTE_HEALTH", Kind::Notify),

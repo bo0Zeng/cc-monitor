@@ -91,7 +91,8 @@ const PENDING: &[&str] = &[
     "tests/frontend/shell/shared_crate_registry_tests.rs",
     // 〔MIG-1〕`tests/frontend/shell/ssh_source_f032_idle_tests.rs` 这一行删了：那份判据随 monitor 的 idle / tmux 账本一起删 ⇒ 存量少一条，上限同拍往下拧一格。
     "tests/frontend/shell/tmux_backend_gate_guard_tests.rs",
-    "tests/frontend/shell/utils_tests.rs",
+    // 〔P4〕原 `tests/frontend/shell/utils_tests.rs`：那一处 `read_dir`（查临时目录里有没有残留的临时件）随原子写的判据搬进 `host-core`，条数不变。
+    "tests/common/host-core/lib_tests.rs",
     "tests/backend/layering_guard.rs",
     "tests/backend/no_timer_guard.rs",
     // 🔴 〔步 7c 后端剖分 2026-09-19〕**watcher 这一条变成了两条，逐份点名。**
