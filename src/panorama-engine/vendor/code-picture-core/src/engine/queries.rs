@@ -10,10 +10,10 @@
 use super::{Direction, Engine};
 use crate::graph;
 use crate::model::{
-    AffectedSymbol, CallPath, Edge, FlowSet, FlowStep, ImpactSet, NodeView, PathSet, SubGraph,
-    SymKind, Symbol, SymbolId,
+    AffectedSymbol, CallPath, Edge, FlowSet, FlowStep, ImpactSet, Neighborhood, NodeView, PathSet,
+    Reached, SubGraph, SymKind, Symbol, SymbolId,
 };
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 impl Engine {
     /// 追一个**形参**的值往下流到哪些函数的哪些形参位。
@@ -306,6 +306,60 @@ impl Engine {
         let mut symbols: Vec<Symbol> = ids.iter().filter_map(|id| self.find_symbol(id)).collect();
         symbols.sort_by(|a, b| a.id.cmp(&b.id));
         SubGraph { symbols, edges }
+    }
+
+    /// 以 `sym` 为心、depth 层内的邻域,**每个符号带距根几跳**(根不进结果)。
+    ///
+    /// 跳数 = 最小的 d 使它出现在 [`Engine::subgraph`]`(sym, d)` 的边端点里 —— 即「它调谁」与
+    /// 「谁调它」两个方向**各自**走出的最短距离取小(不混向:`a → b ← c` 里 `c` 不是 `a` 的两跳邻居,
+    /// 与 `subgraph` 同一口径)。只走 `Calls`(同 `callers` / `callees`)。确定性:depth 升序 → id 升序。
+    pub fn neighborhood(&self, sym: &SymbolId, depth: u32) -> Neighborhood {
+        let mut best: HashMap<SymbolId, usize> = HashMap::new();
+        for dir in [Direction::Out, Direction::In] {
+            for (id, d) in self.distances(sym, depth, dir) {
+                best.entry(id).and_modify(|x| *x = (*x).min(d)).or_insert(d);
+            }
+        }
+        let mut reached: Vec<Reached> = best
+            .into_iter()
+            .map(|(id, depth)| Reached { id, depth })
+            .collect();
+        reached.sort_by(|a, b| a.depth.cmp(&b.depth).then(a.id.cmp(&b.id)));
+        Neighborhood {
+            root: sym.clone(),
+            reached,
+        }
+    }
+
+    /// 沿一个方向 BFS 到 depth 层:每个新到的符号与它的层号(根不算)。与 `traverse` 同一走法。
+    fn distances(&self, start: &SymbolId, depth: u32, dir: Direction) -> Vec<(SymbolId, usize)> {
+        let mut out = Vec::new();
+        let mut visited: HashSet<String> = HashSet::new();
+        visited.insert(start.clone());
+        let mut frontier = vec![start.clone()];
+        let mut d = 0usize;
+        while d < depth as usize && !frontier.is_empty() {
+            d += 1;
+            let mut next = Vec::new();
+            for node in &frontier {
+                let edges = match dir {
+                    Direction::Out => self.or_empty("edges_from", self.idx.edges_from(node)),
+                    Direction::In => self.or_empty("edges_to", self.idx.edges_to(node)),
+                };
+                for e in edges {
+                    let other = match dir {
+                        Direction::Out => e.to,
+                        Direction::In => e.from,
+                    };
+                    if visited.insert(other.clone()) {
+                        out.push((other.clone(), d));
+                        next.push(other);
+                    }
+                }
+            }
+            frontier = next;
+        }
+        out
     }
 
     /// 同 `subgraph`,但**把歧义边也带上**(两端都在图里的那些)。

@@ -3175,6 +3175,31 @@
       "zh": "取消",
       "args": []
     },
+    "panorama.indexProgress.line": {
+      "kind": "body",
+      "zh": "{phase}：{done} / {total}",
+      "args": ["phase", "done", "total"]
+    },
+    "panorama.indexProgress.parse": {
+      "kind": "body",
+      "zh": "解析源文件",
+      "args": []
+    },
+    "panorama.indexProgress.link": {
+      "kind": "body",
+      "zh": "建立调用关系",
+      "args": []
+    },
+    "panorama.indexProgress.relink": {
+      "kind": "body",
+      "zh": "补全调用关系",
+      "args": []
+    },
+    "panorama.indexProgress.docs": {
+      "kind": "body",
+      "zh": "扫描文档",
+      "args": []
+    },
     "panorama.highlightLegend.text": {
       "kind": "body",
       "zh": "本会话改了 {total} 个文件，图上高亮 {shown} 个{rest}",
