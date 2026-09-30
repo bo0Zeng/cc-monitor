@@ -441,6 +441,43 @@ fn a_malformed_launch_token_marker_is_treated_as_no_token_at_all() {
     );
 }
 
+/// ★ 写侧（〔P5〕本机后端的开终端前奏模板）写进 await 文件的 JSON 键 == [`AwaitRequest`] 认的那三个键。
+///
+/// 读侧在这里、写侧在后端：模板是那份契约的文字，本条读它（渲染只填 marker 与目录两格，键名就在模板里）。
+/// 两半：① 从模板的 hashtable 里抠出键名，**集合等于手写的** `{ps_pid, marker, proc_start}`；
+/// ② 用抠出来的键拼一份 JSON，**真的**反序列化成 `AwaitRequest`（键名拼错一个 ⇒ serde 当场拒）。
+#[test]
+fn the_terminal_prelude_writes_the_three_keys_the_await_watcher_parses() {
+    let tpl = include_str!("../../../src/backend/platform/shell/rbind-token-bind.ps1.tpl");
+    let line = guard_core::find_pinned(tpl, "ConvertTo-Json")
+        .map(|at| tpl[..at].rsplit('\n').next().unwrap_or(""))
+        .expect("模板里写 JSON 的那一行应当恰好一处");
+    let inner = line
+        .split_once("@{")
+        .and_then(|(_, r)| r.split_once('}'))
+        .map(|(h, _)| h)
+        .expect("那一行不是 `@{ … }` hashtable");
+    let mut keys: Vec<&str> = inner
+        .split(';')
+        .filter_map(|kv| kv.split_once('=').map(|(k, _)| k.trim()))
+        .collect();
+    keys.sort();
+    assert_eq!(keys, ["marker", "proc_start", "ps_pid"]);
+    let json = format!(
+        "{{{}}}",
+        keys.iter()
+            .map(|k| if *k == "ps_pid" {
+                format!("\"{k}\":1")
+            } else {
+                format!("\"{k}\":\"x\"")
+            })
+            .collect::<Vec<_>>()
+            .join(",")
+    );
+    serde_json::from_str::<AwaitRequest>(&json)
+        .unwrap_or_else(|e| panic!("用模板里的键拼出来的 JSON 解不成 AwaitRequest：{e}\n{json}"));
+}
+
 fn t3_entry(ps_pid: u32, marker: &str) -> HwndEntry {
     let req = AwaitRequest {
         ps_pid,

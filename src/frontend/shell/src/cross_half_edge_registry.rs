@@ -126,6 +126,19 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
         "src/backend/assets/aliases/block.rs",
         "〔MIG-3a〕「别名块的真相不住 `sftp.rs`」的正控：同一把尺子量真相今天的住处（那台后端的别名块模块），量不出 ⇒ 尺子瞎了",
     ),
+    (
+        "monitor→backend",
+        "tests/frontend/shell/bind_tests.rs",
+        "src/backend/platform/shell/rbind-token-bind.ps1.tpl",
+        "〔P5〕令牌握手的写侧（本机后端的开终端前奏模板）写进 await 文件的三个键 == 读侧 `bind.rs::AwaitRequest` 认的：\
+         键名只在模板里、结构体只在 monitor（读侧的形状不进共享 crate），两侧对上只能读模板那份文字",
+    ),
+    (
+        "monitor→backend",
+        "tests/frontend/shell/quote_singleton_guard_tests.rs",
+        "src/backend/platform/shell/dialect.rs",
+        "〔P5〕「monitor 零 PowerShell 引号器」那把零命中尺子的正控：同一把尺子量后端那唯一的出口（`ps_literal`）要恰好量出四个引号字符，量不出 ⇒ 尺子瞎了",
+    ),
     // 〔DEL〕`tests/frontend/shell/remote_relay_tests.rs → src/backend/stream/inbound.rs` 那一条退役：远端「用到才起」的脱离中转一族删了（中转只住常驻后端里）。
     // 〔HX2 · 第四波 4D〕`tests/frontend/shell/apikey_remote_tests.rs → src/backend/stream/inbound.rs` 那一条退役：命令名常量随写臂删了、那条对拍判据随之退役
     //   （monitor 里零处叫得出那条帧命令，由 `creds_store_tests::hx2_the_monitor_names_no_plaintext_key_on_the_way_to_the_backend` 钉零命中）。
