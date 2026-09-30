@@ -101,6 +101,11 @@ pub const SESSION_TASKS_KIND: &str = "session-tasks";
 /// 流名刻意不叫命令名（命令是那台后端的 `remote-probe`，monitor 生产段不许有它的字面量 —— 发送点只在界面）。
 pub const PROBE_PROGRESS_KIND: &str = "probe-progress";
 
+/// 〔P7 · `97 §8`「要上游给的」④ · V158「长活要有进度」〕又一种流：那台机器上一条长活（今天：全景建索引）的进度
+/// （`progress/<票>`，格体是那台后端原样那一格，今天是上游 `IndexProgress`；没有留存；本机远端都有，按 origin 分）。
+/// TS 那一侧的同一个串住 `src/frontend/ui/panorama/api.ts::PROGRESS_KIND`（两侧对拍在 `tests/frontend/ui/panorama/api-remote.vitest.ts`）。
+pub const PROGRESS_KIND: &str = "progress";
+
 /// 〔DL1〕`accounts-changed` 流里那一格 `Frame` 的体（不透明于通道；前端只认「来了一格」，体给日志看）。
 const ACCOUNTS_CHANGED_BODY: &[u8] = br#"{"accounts_changed":true}"#;
 
@@ -170,6 +175,8 @@ enum SubKind {
     Tasks,
     /// 〔MIG-1 收尾〕`probe-progress/<票>`：一趟测试连接的进度格（`only` = 那张票），没有留存。
     Probe,
+    /// 〔P7〕`progress/<票>`：那台机器上一条长活的进度格（`only` = 那张票），没有留存。
+    Progress,
 }
 
 impl Sub {
@@ -416,6 +423,8 @@ enum Stream {
     Tasks,
     /// 〔MIG-1 收尾〕`probe-progress/<票>`。
     Probe(String),
+    /// 〔P7〕`progress/<票>`。
+    Progress(String),
 }
 
 /// 〔CF2〕`kind` ⇒ 哪一种流（〔TAP〕`session-tap` ⇒ [`Stream::Tap`]；〔DL1〕`accounts-changed` ⇒ [`Stream::AccountsChanged`]）。认不出 ⇒ `Err`。
@@ -438,6 +447,13 @@ fn parse_kind(kind: &str) -> Result<Stream, ()> {
         .filter(|t| !t.is_empty())
     {
         return Ok(Stream::Probe(ticket.to_string()));
+    }
+    if let Some(ticket) = kind
+        .strip_prefix(PROGRESS_KIND)
+        .and_then(|r| r.strip_prefix('/'))
+        .filter(|t| !t.is_empty())
+    {
+        return Ok(Stream::Progress(ticket.to_string()));
     }
     match kind
         .strip_prefix(SESSION_LINES_KIND)
@@ -774,6 +790,7 @@ impl EventReplay {
             Ok(Stream::AccountsChanged) => (None, SubKind::AccountsChanged),
             Ok(Stream::Tasks) => (None, SubKind::Tasks),
             Ok(Stream::Probe(ticket)) => (Some(ticket), SubKind::Probe),
+            Ok(Stream::Progress(ticket)) => (Some(ticket), SubKind::Progress),
             Err(()) => {
                 let item = refused("no-such-stream", format!("没有叫 `{kind}` 的流"));
                 sink.deliver(label, id, vec![item]);
@@ -1081,6 +1098,37 @@ impl EventReplay {
                 .filter(|s| {
                     s.kind == SubKind::Probe
                         && s.origin == crate::origin::LOCAL
+                        && s.only.as_deref() == Some(ticket)
+                })
+                .map(|s| {
+                    let items = plan_live(s, vec![body.clone()]);
+                    (s.label.clone(), s.id, items)
+                })
+                .filter(|(_, _, items)| !items.is_empty())
+                .collect();
+            (sink, plans)
+        };
+        for (label, id, items) in plans {
+            sink.deliver(&label, id, items);
+        }
+    }
+
+    /// 〔P7〕那台机器上一条长活推来一格进度（本机远端两条流都经这里）：**不进 `history`**，交给订了**那台**上
+    /// `progress/<那张票>` 的订阅（credit 与 `Gap` 同 `probe-progress`；每格是整份快照，丢了下一格补上）。
+    pub fn on_progress(&self, origin: &crate::origin::Origin, ticket: &str, cell: String) {
+        let origin = origin.as_wire_str();
+        let body = Body(cell.into_bytes());
+        let (sink, plans) = {
+            let mut inner = self.inner.lock();
+            let Some(sink) = inner.sink.clone() else {
+                return;
+            };
+            let plans: Vec<(String, u64, Vec<Item>)> = inner
+                .subs
+                .iter_mut()
+                .filter(|s| {
+                    s.kind == SubKind::Progress
+                        && s.origin == origin
                         && s.only.as_deref() == Some(ticket)
                 })
                 .map(|s| {

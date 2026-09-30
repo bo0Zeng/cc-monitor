@@ -2358,6 +2358,13 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         //      「代码里没有这个名字」这件事该由本表说出来，而不是靠一处夹具替它遮着。
         //    ⚠ 这正是本条头注那句话的又一个实例：一个名字「在代码里出现过」不等于它活着。
         ("src/frontend/shell/README.md", "daemonless_stream_loop", 1),
+        // 〔P7〕仓外名字（另一个仓）：`types.ts` 是上游 schema 的生成物，它原样带着上游 code-picture 仓的文档注释，
+        //   里面点了上游 `graph::collect_local_types`（住 code-picture 仓；本仓只有它的 vendored 副本，而副本不在本条语料里）。
+        (
+            "src/frontend/ui/panorama/types.ts",
+            "collect_local_types",
+            1,
+        ),
         (
             "src/frontend/shell/src/ssh_source.rs",
             "daemonless_stream_loop",
