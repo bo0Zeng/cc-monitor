@@ -520,6 +520,28 @@ jobs:
           }
           Write-Host ("native panorama staged: {0} ({1} bytes, target={2})" -f $dst, (Get-Item $dst).Length, $triple)
 
+      # ── **文件窗口程序也内嵌进 exe** —— 单文件的 `monitor.exe` 旁边没有它时，开窗那一刻放到 `~/.cc-monitor/bin/` 再起 ──
+      #
+      # 它是 monitor 包的另一个 `[[bin]]`：monitor 的 `build.rs` 在同一趟 cargo 里吃不到它 ⇒ 先单编、铺进 `native-backend/`
+      # （名字定死在 `build.rs::NATIVE_FILEWIN_FILE`，旁挂 `.target` 同上面两对），下面 `tauri build` 编 monitor 时
+      # `build.rs::embed_native_filewin` 把它内嵌进去。与 `tests/scripts/re-embed.sh --native` 同一条配方（`K-R124-ruler.py` ⑬b 对拍）。
+      # ⚠ 安装包里照旧另带一份（打包器把包里每个 `[[bin]]` 都装在主程序旁，⑭）：装机那份开窗走「exe 旁边」。
+      # ⚠ **诚实边界**：本步买到「编得出 · 铺了 · target 对得上」；买不到「在真 Windows 上放得下来、起得来」—— 那要真机跑一趟。
+      - name: Build local filewin (native)
+        working-directory: src/frontend/shell
+        run: cargo build --release --locked --bin cc-monitor-filewin
+      - name: Stage native filewin for self-extract
+        shell: pwsh
+        run: |
+          $triple = (rustc -vV | Select-String '^host:').Line.Split(' ')[1]
+          $dst = "src/frontend/shell/native-backend/cc-monitor-filewin"
+          Copy-Item .build/shell/release/cc-monitor-filewin.exe $dst -Force
+          Set-Content -Path "$dst.target" -Value $triple
+          foreach ($f in $dst, "$dst.target") {
+            if (-not (Test-Path $f)) { Write-Error "文件窗口程序没铺全（缺 $f）——单文件的 monitor.exe 会打不开文件窗口"; exit 1 }
+          }
+          Write-Host ("native filewin staged: {0} ({1} bytes, target={2})" -f $dst, (Get-Item $dst).Length, $triple)
+
       # tauri build 会顺序：npm run build (vite) → cargo build --release → bundle (msi + nsis)
       #
       # ⚠ `--config src/frontend/shell/tauri.sidecar.conf.json` 是 F05b 刻意选的形态：`externalBin`
@@ -692,6 +714,21 @@ jobs:
           cp .build/backend/release/cc-monitor-backend \
              "src/frontend/shell/binaries/cc-monitor-backend-$triple"
           ls -l src/frontend/shell/binaries
+
+      # 文件窗口程序也内嵌进裸 `monitor`（理由与次序同 build-windows 那两步，见那里的头注）：先单编、铺进 `native-backend/`，
+      # 再由下面 `tauri build` 编 monitor 时内嵌。Linux 这一格的后端与全景小程序用 musl 那两份，文件窗口要原生的一份（它链 GTK）。
+      - name: Build local filewin (native)
+        working-directory: src/frontend/shell
+        run: cargo build --release --locked --bin cc-monitor-filewin
+      - name: Stage native filewin for self-extract
+        run: |
+          set -euo pipefail
+          triple=$(rustc -vV | sed -n 's/^host: //p')
+          dst=src/frontend/shell/native-backend/cc-monitor-filewin
+          mkdir -p src/frontend/shell/native-backend
+          cp .build/shell/release/cc-monitor-filewin "$dst"
+          printf '%s\n' "$triple" > "$dst.target"
+          ls -l src/frontend/shell/native-backend
 
       - name: tauri build (deb)
         run: npx tauri build --config src/frontend/shell/tauri.sidecar.conf.json --bundles deb

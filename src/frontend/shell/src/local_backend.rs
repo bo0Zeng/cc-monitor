@@ -1131,6 +1131,18 @@ pub(crate) fn decode_place(v: &serde_json::Value) -> Result<bool, String> {
     }
 }
 
+/// 暂存件上位：`rename(tmp → dest)`。Windows 上正在跑的那份删不掉、换不掉，但改得了名 ⇒ 换不上时先把旧的
+/// 挪开（`.<名>.<pid>.old`，下一次放置时由 [`sweep_moved_aside`] 收）再上位；挪也挪不开 ⇒ 回第一次的错。
+/// 往 `~/.cc-monitor/bin` 放程序的两条路（[`extract_embedded_to`] · [`place_local_program`]）共用这一份。
+fn rename_into_place(dir: &Path, name: &str, tmp: &Path, dest: &Path) -> std::io::Result<()> {
+    std::fs::rename(tmp, dest).or_else(|first| {
+        let aside = dir.join(format!(".{name}.{}.old", std::process::id()));
+        std::fs::rename(dest, &aside)
+            .and_then(|_| std::fs::rename(tmp, dest))
+            .map_err(|_| first)
+    })
+}
+
 /// P2z：**单 exe 自释放** ——〔E2〕把手上这份后端字节放到 `dir/ccm(.exe)`（它就是后端本身），返回落点。
 ///
 /// 〔P1〕放不放**问手上这份字节自己**（`ask` ⇒ `<暂存件> -- --place-verdict`：表 B 本机那一行 · 盘上那份 vs 它自己的 `BUILD_ID`，
@@ -1188,14 +1200,7 @@ pub fn extract_embedded_to(
             return Err(Unplaced::Said(said));
         }
     }
-    let placed = std::fs::rename(&tmp, &dest).or_else(|first| {
-        // 〔E2 · E-b〕Windows 上正在跑的 `ccm.exe` 删不掉、换不掉，但改得了名：挪开再上位，挪开的下次放置时收。
-        let aside = dir.join(format!(".{name}.{}.old", std::process::id()));
-        std::fs::rename(&dest, &aside)
-            .and_then(|_| std::fs::rename(&tmp, &dest))
-            .map_err(|_| first)
-    });
-    placed.map_err(|e| {
+    rename_into_place(dir, &name, &tmp, &dest).map_err(|e| {
         drop_partial(&tmp);
         Unplaced::Write(copy_text(
             "rsLocalBackend.extract.renameFailed",
@@ -1208,22 +1213,24 @@ pub fn extract_embedded_to(
     Ok(dest)
 }
 
-/// 〔RM1f〕**把本机的代码全景小程序放到 `dir/<file>`**（`dir` 由调用方给 ＝ `~/.cc-monitor/bin`，
-/// 本机后端找小程序的第二个候选 —— 后端在 monitor 旁边还是在这个目录里，这一格都找得到）。
+/// **把一份没有身份戳的本机程序放到 `dir/<file>`**（`dir` 由调用方给 ＝ `~/.cc-monitor/bin`）。两个调用方：
+/// 本机的代码全景小程序（`panorama_bytes::place_local`，本机后端找它的第二个候选）· 文件窗口程序
+/// （`filewin::proc::resolve_window_bin`，monitor 旁边没有它时）。
 ///
 /// 与 [`extract_embedded_to`] 同一套落盘：暂存旁名 `.<file>.<pid>.partial` → 置可执行位（平台知识由宿主注入）
-/// → `rename` 上位（半截文件不许被当成可执行的插件起起来）。
+/// → 上位（[`rename_into_place`]：Windows 上旧的那份正在跑 ⇒ 先挪开再上位，挪开的下次放置时收）。
+/// 半截文件不许被当成可执行的程序起起来。
 ///
-/// # 幂等：盘上那份**逐字节相等**才跳过
+/// # 幂等：盘上那份**逐字节相等**才跳过；不同就换成手上这份
 ///
-/// 本机后端的释放名带 `build_id`，而小程序**没有身份戳**（不随 `BUILD_ID` 走）⇒ 名字说明不了它是哪一版，
-/// 只能比字节（约 20 MB 的一次顺序读，只在本机后端答「没装 / 装的太旧」时才走到这里）。
-/// 字节不同 ⇒ 覆盖（旧的那份正被起着时 Windows 上 `rename` 会失败 ⇒ 如实报，下次再放）。
+/// 这两件都没有身份戳 ⇒ 名字说明不了它是哪一版，只能比字节（约 20 MB 的一次顺序读）。
+/// 与本机后端「盘上的比我旧才换」不同，这里**不问新旧**：手上这份就是这一版 monitor 要起的那一份
+/// （文件窗口的开窗种子与就绪那一行是编进两侧的契约，别的版本的那份对不上）。
 ///
 /// # 它不做什么
 ///
-/// 不起它、不问它会什么 —— 那是本机后端插件口的事；这里只让「去盘上找」那一格有东西可找。
-pub fn place_local_panorama(
+/// 不起它、不问它会什么 —— 那是调用方的事；这里只让「去盘上找」那一格有东西可找。
+pub fn place_local_program(
     dir: &Path,
     file: &str,
     bytes: &[u8],
@@ -1232,6 +1239,7 @@ pub fn place_local_panorama(
     ensure_dir: &dyn Fn(&Path) -> Result<(), String>,
 ) -> Result<PathBuf, String> {
     let dest = dir.join(file);
+    sweep_moved_aside(dir, file);
     if let Ok(m) = std::fs::metadata(&dest) {
         if m.is_file()
             && m.len() == bytes.len() as u64
@@ -1250,7 +1258,7 @@ pub fn place_local_panorama(
         )
     })?;
     make_executable(&tmp)?;
-    std::fs::rename(&tmp, &dest).map_err(|e| {
+    rename_into_place(dir, file, &tmp, &dest).map_err(|e| {
         let _ = std::fs::remove_file(&tmp);
         copy_text(
             "rsLocalBackend.extract.renameFailed",

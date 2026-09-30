@@ -12,7 +12,7 @@
 //! 〔墓碑 —— 本拍之前字节从三处各自取：远端部署在 `sftp.rs` 里只 `match arch`、不认 OS；
 //!  本机 `local_backend_host.rs::start_local_backend` 压一道 `cfg!(target_os = "linux")` 的闸再按 `consts::ARCH` 取那两份
 //!  musl；宿主交白卷时 `local_backend.rs` 再给一份按编译期 `TARGET` 定死的。
-//!  全景小程序那两份住 `panorama_bytes::panorama_binary` 的函数体里。〕 ⇒ 五个槽今天都住本文件（合主线时 RM1f 的原生全景小程序那一槽也收了进来，共六个）。
+//!  全景小程序那两份住 `panorama_bytes::panorama_binary` 的函数体里。〕 ⇒ 五个槽今天都住本文件（合主线时 RM1f 的原生全景小程序那一槽也收了进来，共六个；另有文件窗口那一槽，不在表 A 上，见 [`native_filewin`]）。
 //!
 //! # 表 A：键是 (OS, arch)，6 行
 //!
@@ -113,6 +113,22 @@ fn native_panorama() -> Option<Picked> {
 /// 没内嵌那一份时的同名壳。
 #[cfg(not(embedded_native_panorama))]
 fn native_panorama() -> Option<Picked> {
+    None
+}
+
+/// 文件窗口那份程序（`build.rs::embed_native_filewin`，按这一份产物的 `TARGET` 编）。没有身份戳。
+///
+/// ⚠ **不挂表 A、不经 [`pick`]**：它是 monitor 自己的窗口进程，只在跑着这个 monitor 的这台机器上起，
+/// 从不部署到别的机器 ⇒ 没有「目标机器是哪一格」这一问。唯一的消费者是 `filewin::proc::resolve_window_bin`（旁边没有时放下来再起）。
+/// 🔴 路径必须是字面量（同上）⇒ 名字定死在两处：这一行与 `build.rs` 的 `NATIVE_BACKEND_DIR` ＋ `NATIVE_FILEWIN_FILE`。
+#[cfg(embedded_native_filewin)]
+pub(crate) fn native_filewin() -> Option<&'static [u8]> {
+    Some(include_bytes!("../native-backend/cc-monitor-filewin"))
+}
+
+/// 没内嵌那一份时的同名壳。
+#[cfg(not(embedded_native_filewin))]
+pub(crate) fn native_filewin() -> Option<&'static [u8]> {
     None
 }
 
