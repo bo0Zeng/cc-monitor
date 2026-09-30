@@ -2429,22 +2429,9 @@ fn session_alive_decision_table_linux() {
 /// 〔VIS2〕真 inotify 那两条的夹具：起一个摘掉 tmux 环境的 `sleep`，等它的环境读得到（打标那一步要读）。
 #[cfg(target_os = "linux")]
 fn vis2_sleeper() -> std::process::Child {
-    let kid = std::process::Command::new("sleep")
-        .arg("60")
-        .env_remove("TMUX_PANE")
-        .env_remove("TMUX")
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .spawn()
-        .expect("起不来 `sleep` —— 夹具坏了");
-    for _ in 0..500 {
-        match std::fs::read(format!("/proc/{}/environ", kid.id())) {
-            Ok(b) if !b.is_empty() => break,
-            _ => std::thread::yield_now(),
-        }
-    }
-    kid
+    crate::control::identity_tag::tests::spawn_settled_sleep(|c| {
+        c.env_remove("TMUX_PANE").env_remove("TMUX");
+    })
 }
 
 /// 〔VIS2〕写一份活进程的 pidfile（形状同上面令牌那条的夹具：真 pid ＋ 真 procStart）。
@@ -2624,36 +2611,6 @@ fn vis2_s3_the_watch_loop_goes_through_the_home_ears_exactly_once() {
 #[test]
 fn the_launch_token_rides_the_session_added_frame_only_when_the_client_asked() {
     let _iso = crate::control::identity_tag::door::isolate(); // §48.3：打标只落假 tmux
-    /// 起一个 `sleep`，可选地给它注一个 `CCM_RBIND_TOKEN`。
-    fn spawn_sleeper(token: Option<&str>) -> std::process::Child {
-        let mut cmd = std::process::Command::new("sleep");
-        cmd.arg("60");
-        // ★ 先 `env_remove`：本测试进程自己碰巧带着这个变量时（步 1 落地之后
-        //   开发机上完全可能），阴性二会继承到它、当场变成一条假绿。
-        cmd.env_remove("CCM_RBIND_TOKEN");
-        if let Some(t) = token {
-            cmd.env("CCM_RBIND_TOKEN", t);
-        }
-        let kid = cmd
-            .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .spawn()
-            .expect("起不来 `sleep` —— 本条的夹具坏了，读数一个字都不能信");
-        // 🔴 等它走出 `execve` 窗口——不等就是一条真的间歇性假红。
-        // 成因与现打读数写在
-        // `identity_tag_tests::the_token_is_read_back_out_of_a_real_child_process_environ`
-        // 里那个同名助手的头注里（`/proc/<pid>/environ` 刚 `execve` 时回 0 字节，
-        // 本机 1/500）。门是「environ 非空」而不是「读到令牌」：阴性组本来就没令牌。
-        for _ in 0..500 {
-            match std::fs::read(format!("/proc/{}/environ", kid.id())) {
-                Ok(b) if !b.is_empty() => break,
-                _ => std::thread::yield_now(),
-            }
-        }
-        kid
-    }
-
     /// 跑一趟：起子进程 → 配一份合成 pidfile → 喂 `process_session_added` → 取帧上那个字段。
     ///
     /// 回 `Ok(帧上的 rbind_token)`。**不是真 claude**（`C7`：夹具不许起真 agent），
@@ -2661,7 +2618,8 @@ fn the_launch_token_rides_the_session_added_frame_only_when_the_client_asked() {
     fn probe(label: &str, asked: bool, token: Option<&str>) -> Option<String> {
         let dir = std::env::temp_dir().join(format!("ccm-rbind-{}-{label}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
-        let mut kid = spawn_sleeper(token);
+        // 夹具与 `identity_tag_tests` 那条同一份：环境定型之后才交出来（为什么「非空」不够见 `spawn_settled_sleep`）。
+        let mut kid = crate::control::identity_tag::tests::spawn_token_sleeper(token);
         let pid = kid.id();
         let ticks = proc_starttime(pid).expect("子进程的 starttime 读不到 —— 夹具坏了");
         let (tx, mut rx) = tokio::sync::mpsc::channel::<Frame>(64);
@@ -2773,22 +2731,9 @@ fn the_notify_arm_asks_once_per_batch_before_the_per_event_loop() {
 fn sessions_replayed_follows_every_initial_session_added_exactly_once() {
     let _iso = crate::control::identity_tag::door::isolate(); // §48.3：打标只落假 tmux
     fn sleeper() -> std::process::Child {
-        let kid = std::process::Command::new("sleep")
-            .arg("60")
-            .env_remove("TMUX_PANE")
-            .env_remove("TMUX")
-            .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .spawn()
-            .expect("起不来 `sleep` —— 夹具坏了");
-        for _ in 0..500 {
-            match std::fs::read(format!("/proc/{}/environ", kid.id())) {
-                Ok(b) if !b.is_empty() => break,
-                _ => std::thread::yield_now(),
-            }
-        }
-        kid
+        crate::control::identity_tag::tests::spawn_settled_sleep(|c| {
+            c.env_remove("TMUX_PANE").env_remove("TMUX");
+        })
     }
     fn kinds(rx: &mut tokio::sync::mpsc::Receiver<Frame>) -> Vec<String> {
         let mut out = Vec::new();
@@ -3158,17 +3103,9 @@ fn fake_tmux_world(dir: &Path) -> (PathBuf, PathBuf) {
 
 /// 起一个住在 `pane` 里的「claude」，并在 `sessions` 下写它的 pidfile（`sid` · `status`）。
 fn claude_in_pane(sessions: &Path, pane: &str, sid: &str, status: &str) -> std::process::Child {
-    let kid = std::process::Command::new("sleep")
-        .arg("60")
-        .env("TMUX_PANE", pane)
-        .spawn()
-        .expect("起不来 `sleep`");
-    for _ in 0..500 {
-        match std::fs::read(format!("/proc/{}/environ", kid.id())) {
-            Ok(b) if !b.is_empty() => break,
-            _ => std::thread::yield_now(),
-        }
-    }
+    let kid = crate::control::identity_tag::tests::spawn_settled_sleep(|c| {
+        c.env("TMUX_PANE", pane);
+    });
     write_pidfile(sessions, kid.id(), sid, status);
     kid
 }
