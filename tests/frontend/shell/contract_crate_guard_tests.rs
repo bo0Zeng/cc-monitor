@@ -30,7 +30,7 @@ const CRATES: &[(&str, Class, &str)] = &[
     ("creds-core", Class::Contract, "文件格式 · 路径：凭据落盘格式与文件名、数据目录（monitor 只算路径；写半边在 `harden` 后面，monitor 不开）"),
     ("deploy-core", Class::Decision, "那台要哪一格 · 换不换是裁决（`judge` · `identity_decision` · `is_newer`）；它同时带字节表键与身份戳格式 ⇒ monitor 只按 ③ 的符号用"),
     ("guard-core", Class::TestInfra, "源码扫描判据的原语，两侧都只在 dev 侧"),
-    ("relay-route-core", Class::Contract, "端口 · 路径 · 路由语法：中转与常驻监听口的门牌、后端落点与 `~/.cc-monitor/` 下每一样的相对路径，两侧拼 / 拆同一份"),
+    ("relay-route-core", Class::Contract, "端口 · 路径 · 路由语法：中转与常驻监听口的门牌、后端落点，两侧拼 / 拆同一份"),
     ("search-core", Class::Decision, "搜索口径与多机合并排序是裁决，只后端用"),
     ("shell-quote-core", Class::Contract, "令牌形状：POSIX 单引号 quote 与标识符放行形状（session id · 启动令牌 · cc-bus id · 路径），两侧拼进 shell 前对上同一份"),
     ("upstream-url-core", Class::Decision, "上游 URL 能不能用是裁决；界面读的是生成器现生成的式子（monitor 只在 dev 侧链它）"),
