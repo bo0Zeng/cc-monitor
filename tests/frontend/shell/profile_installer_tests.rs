@@ -369,6 +369,83 @@ fn the_user_path_status_uses_the_same_equality_as_the_generated_commands() {
     assert!(!user_path_has_our_bin("", dir));
 }
 
+/// 住址：`设计/99 §2.3` WF1 报备「PATH 状态探针读输出不设 UTF-8 … 发版后另排」（`第四波记录/WF1.md §3.7` 第 7 条：用户目录含非 ASCII 时判错）。
+/// 探针除赋值之外只有「写字节 · 冲刷」两句（两向相等）⇒ 没有一句经 PowerShell 的输出流（那一路按控制台代码页编码）；
+/// 写出去的字节恰好来自一次 UTF-8 编码。真跑那一半见下一条读数。
+#[test]
+fn p2_the_path_probe_writes_nothing_but_its_utf8_bytes() {
+    let probe = render_user_path_probe_command().expect("生成的「探」命令");
+    let statements: Vec<&str> = probe
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .filter(|l| !(l.starts_with('$') && l.contains(" = ")))
+        .collect();
+    assert_eq!(
+        statements,
+        ["$o.Write($b, 0, $b.Length)", "$o.Flush()"],
+        "探针多了会进 PowerShell 输出流的句子（控制台代码页编码，非 ASCII 目录读回来就坏了）：\n{probe}"
+    );
+    assert_eq!(
+        probe
+            .matches("$b = [Text.Encoding]::UTF8.GetBytes(")
+            .count(),
+        1,
+        "{probe}"
+    );
+    assert_eq!(
+        probe
+            .matches("$o = [Console]::OpenStandardOutput()")
+            .count(),
+        1,
+        "{probe}"
+    );
+}
+
+/// 〔P2〕读数，**不在门禁**（要一个 PowerShell；`CCM_PWSH=<程序> cargo test -- --ignored p2_`，那个程序收一个 `.ps1` 路径去跑）。
+/// 住址同上一条。替身：控制台编码设成 936（中文 Windows PowerShell 5.1 往管道写的那一种）· `USERPROFILE` 含汉字 · `Join-Path` 按 Windows 拼 ·
+/// 用户级 `Path` 换成含我们那一格的字面值（Linux 上没有用户级那一档）。读回走生产那一份解析，期望目录逐字、判「在」。
+/// 买不到：真 Windows PowerShell 5.1 的控制台与真注册表。
+#[test]
+#[ignore = "要一个 PowerShell：CCM_PWSH=<收 .ps1 路径的程序> cargo test -- --ignored"]
+fn p2_the_path_probe_reads_back_a_non_ascii_home_under_an_oem_console() {
+    let Ok(pwsh) = std::env::var("CCM_PWSH") else {
+        panic!("没给 CCM_PWSH");
+    };
+    let read_user = "[Environment]::GetEnvironmentVariable('Path', 'User')";
+    let probe = render_user_path_probe_command().unwrap();
+    assert_eq!(
+        probe.matches(read_user).count(),
+        1,
+        "锚不住读用户级 Path 那一句"
+    );
+    let ours = r"C:\Users\张三\.cc-monitor\bin";
+    let ps = format!(
+        "[Console]::OutputEncoding = [Text.Encoding]::GetEncoding(936)\n\
+         $env:USERPROFILE = 'C:\\Users\\张三'\n\
+         function Join-Path($a, $b) {{ \"$a\\$b\" }}\n{}",
+        probe.replace(read_user, &format!("'C:\\A;{ours}'"))
+    );
+    let dir = tmpdir("p2-pwsh");
+    let file = dir.0.join("probe.ps1");
+    std::fs::write(&file, &ps).unwrap();
+    let out = std::process::Command::new(&pwsh)
+        .arg(&file)
+        .output()
+        .expect("起 CCM_PWSH");
+    assert!(
+        out.status.success(),
+        "PowerShell 没跑完：{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert_eq!(
+        read_probe_lines(&String::from_utf8_lossy(&out.stdout)),
+        (Some(ours.to_string()), true),
+        "读回的字节：{:?}",
+        out.stdout
+    );
+}
+
 /// ★★ 〔`KR135D3` 09-15 · 〔E2〕改裁〕**那份共用的 POSIX 别名 snippet，真的把 `ccm` 落点放上了 PATH，而且只放它。**
 ///
 /// 要求住址：`设计/01 §6.7b`「落点 `~/.cc-monitor/bin/ccm` —— 本机与远端同一个」「清掉旧的 `~/.local/bin/ccm`」· V41（不为旧状态留兼容）。

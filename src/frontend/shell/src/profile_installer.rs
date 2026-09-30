@@ -244,13 +244,30 @@ pub fn user_path_has_our_bin(user_path_raw: &str, dir_abs: &str) -> bool {
 /// 它**只读 `'User'` 那一档**：读 `$env:PATH` 会把「机器级上有」读成「用户级上有」，
 /// 于是「撤」那个按钮点下去什么都没发生、而界面还说它撤掉了。
 /// 判据与另外两条走**同一批断言**。
+///
+/// # 〔P2 · `设计/99 §2.3` WF1 报备〕两行自己编成 UTF-8 字节、直写标准输出流
+///
+/// Windows PowerShell 5.1 往管道写输出用控制台的 OEM 代码页（中文系统是 936），而读回那一侧按 UTF-8 解
+/// ⇒ 用户目录含非 ASCII 时第 1 行解坏、「在不在 PATH 上」判错。直写字节不经控制台编码、也不去改控制台代码页。
+/// 只改这一条：它只给机器读；加 / 撤两条用户会抄去自己的终端跑，不动。
 pub fn render_user_path_probe_command() -> Option<String> {
     let dir = ccm_bin_dir_windows()?;
     Some(format!(
         "$d = Join-Path $env:USERPROFILE '{dir}'\n\
-         Write-Output $d\n\
-         Write-Output ([Environment]::GetEnvironmentVariable('Path', 'User'))\n"
+         $u = [Environment]::GetEnvironmentVariable('Path', 'User')\n\
+         $b = [Text.Encoding]::UTF8.GetBytes($d + [char]10 + $u + [char]10)\n\
+         $o = [Console]::OpenStandardOutput()\n\
+         $o.Write($b, 0, $b.Length)\n\
+         $o.Flush()\n"
     ))
+}
+
+/// 探针那两行 ⇒ `(目录, 在不在用户级 PATH 上)`。目录空 ⇒ `None`（此时恒不在，见 [`user_path_has_our_bin`]）。
+fn read_probe_lines(raw: &str) -> (Option<String>, bool) {
+    let mut lines = raw.lines();
+    let dir = lines.next().unwrap_or("").trim().to_string();
+    let on = user_path_has_our_bin(lines.next().unwrap_or("").trim_end(), &dir);
+    ((!dir.is_empty()).then_some(dir), on)
 }
 
 /// 用户级 PATH 那一格的**现状**。`R85` 逐字要的三样里的第一样，**现算，不缓存**。
@@ -385,13 +402,11 @@ pub fn user_path_status() -> UserPathStatus {
     }
     match run_user_path_powershell(&probe) {
         Ok(raw) => {
-            let mut lines = raw.lines();
-            let dir = lines.next().unwrap_or("").trim().to_string();
-            let user_path = lines.next().unwrap_or("").trim_end();
+            let (dir, on_user_path) = read_probe_lines(&raw);
             UserPathStatus {
                 supported: true,
-                on_user_path: user_path_has_our_bin(user_path, &dir),
-                dir: if dir.is_empty() { None } else { Some(dir) },
+                on_user_path,
+                dir,
                 add_command,
                 remove_command,
                 error: None,
