@@ -98,8 +98,9 @@ fn the_remote_column_really_probes_this_machine_and_drops_the_monitor_rows() {
     let remote = host_label(HostScope::Remote);
     let either = host_label(HostScope::Either);
     assert_eq!(kind_of(&rows, &remote, "~/.cc-monitor/bin/ccm"), "present");
+    // 〔SHOTS 09-29〕例子从旧版后端那一格换成全景小程序：前者是旧版遗留（不在 ＝ 该有的样子，`rows::read_absence`），不再是「缺」。
     assert_eq!(
-        kind_of(&rows, &remote, "~/.cc-monitor/bin/cc-monitor-backend"),
+        kind_of(&rows, &remote, "~/.cc-monitor/bin/cc-monitor-panorama"),
         "absent",
         "这台上真不在的远端落点 ⇒ 缺（不再是「本页不连 SSH」）"
     );
