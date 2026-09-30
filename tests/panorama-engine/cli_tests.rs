@@ -376,6 +376,59 @@ fn the_frontend_types_are_generated_from_upstream_and_this_program() {
     }
 }
 
+/// 要求住址：`97 §8`「要上游给的」④「建索引进度回调（小程序写成进度行 → 插件口转订阅流）」· `99 §1` V158「长活要有进度」。
+///
+/// ★ 建索引边走边在 stderr 出进度行（`progress=<上游 IndexProgress>`），stdout 照旧恰一行答案。节流恒等：
+/// 150 个源文件 ⇒ 三个按文件走的阶段各恰 101 行（整百分比 0..=100 各一行，首行 `0/150`、末行 `150/150`），
+/// 没有 `.md` 的文档阶段恰一行 `0/0`。真引擎、合成夹具。
+#[test]
+fn building_the_index_reports_throttled_progress_lines_on_the_side() {
+    let t = Tmp::new("many");
+    std::fs::create_dir_all(t.0.join("src")).unwrap();
+    for i in 0..150 {
+        std::fs::write(
+            t.0.join(format!("src/m{i}.rs")),
+            format!("pub fn f{i}() {{}}\n"),
+        )
+        .unwrap();
+    }
+    let store = Tmp::new("store");
+    let argv: Vec<String> = ["index", "--repo"]
+        .iter()
+        .map(|x| x.to_string())
+        .chain([t.0.display().to_string()])
+        .chain(["--store".to_string(), store.0.display().to_string()])
+        .collect();
+    let mut lines: Vec<String> = Vec::new();
+    let (stdout, _stderr, code) = answer_reporting(&argv, &mut |l| lines.push(l));
+    assert_eq!(code, 0, "{stdout}");
+    assert_eq!(stdout.matches('\n').count(), 1, "stdout 恰一行：{stdout}");
+    let cells: Vec<(String, u64, u64)> = lines
+        .iter()
+        .map(|l| {
+            let body = l
+                .strip_prefix(PROGRESS_PREFIX)
+                .and_then(|b| b.strip_suffix('\n'))
+                .unwrap_or_else(|| panic!("不是一行进度：{l:?}"));
+            let v: Value = serde_json::from_str(body).unwrap();
+            (
+                v["phase"].as_str().unwrap().to_string(),
+                v["done"].as_u64().unwrap(),
+                v["total"].as_u64().unwrap(),
+            )
+        })
+        .collect();
+    for phase in ["Parse", "Link", "Relink"] {
+        let mine: Vec<&(String, u64, u64)> = cells.iter().filter(|c| c.0 == phase).collect();
+        assert_eq!(mine.len(), 101, "{phase}");
+        assert_eq!((mine[0].1, mine[0].2), (0, 150), "{phase}");
+        assert_eq!((mine[100].1, mine[100].2), (150, 150), "{phase}");
+    }
+    let docs: Vec<&(String, u64, u64)> = cells.iter().filter(|c| c.0 == "Docs").collect();
+    assert_eq!(docs, [&("Docs".to_string(), 0, 0)]);
+    assert_eq!(cells.len(), 3 * 101 + 1, "没有别的阶段 / 别的行");
+}
+
 /// ★ 写用户文件的那几样，本程序生产段**零调用**（只算不写，理由见头注）。
 ///
 /// 针 =（a）`Engine` 那六个写方法的**方法调用形**（`.add_annotation(` …）——〔RM1d〕只认方法形，

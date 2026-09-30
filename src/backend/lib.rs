@@ -1875,6 +1875,9 @@ pub const EMITS: &[&str] = &[
     // 〔MIG-1 收尾〕测试连接那一趟的进度与结局（`dial/probe.rs` 真发，登记 = 承诺真发）。只在 `remote-probe` 在跑时出现；
     // 旧客户端不认 ⇒ 忽略（additive）。⚠ hello 字节变了 ⇒ 合并那一拍 bump `BUILD_ID`。
     "probe",
+    // 〔P7〕长活的一格进度（`stream::inbound::Progress` 真发，登记 = 承诺真发）：只在请求交了 `ticket` 的 `panorama` 建索引时出现；
+    // 旧客户端不认 ⇒ 忽略（additive）。⚠ hello 字节变了 ⇒ 合并那一拍 bump `BUILD_ID`。
+    "progress",
     // 〔TAP · V124〕中转抄出来的 SSE 事件（`tap::attach` 的接收端经 `writer_task` 真发，登记 = 承诺真发）。
     // 只有进程里住着中转的那个后端（本机常驻）才会有；旧客户端不认 ⇒ 忽略（additive）。
     "tap",

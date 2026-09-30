@@ -979,6 +979,10 @@ fn dispatch(
         other => match lookup(other) {
             Some(spec) => match spec.run {
                 Run::Async(f) => Disposition::Spawn(req, Box::new(f)),
+                Run::AsyncProgress(f) => {
+                    let p = Progress::for_request(replies, &req.args);
+                    Disposition::Spawn(req, Box::new(move |r: Request| f(r, p)))
+                }
                 Run::Blocking(f) => Disposition::SpawnBlocking(req, Box::new(f)),
                 // `cancel` 在上面那条硬臂里处理完了，走不到这儿。
                 Run::Builtin => Disposition::Reply(err(
@@ -1012,10 +1016,51 @@ fn dispatch(
 ///   与别的命令签名不同 —— 硬塞进统一签名等于给每条命令都递上「自己发帧 / 碰登记表」的能力，
 ///   而那条性质今天是成立的，不该为了整齐拆掉。**但它仍要在注册表里占一行**，
 ///   否则「镜子 == 注册表」覆盖不到它。
+/// - 〔P7〕[`Run::AsyncProgress`]：同 `Async`，另收一个 [`Progress`] —— **只能**往本请求那张票的进度流里推格的窄口
+///   （推不了别的帧、碰不到登记表 ⇒ 上面那条性质不破）。建索引那一类长活用；CLI 一次性进程里它是空的（没人订）。
 pub(crate) enum Run {
     Async(fn(Request) -> BoxFut),
+    AsyncProgress(fn(Request, Progress) -> BoxFut),
     Blocking(fn(Request) -> CmdResult),
     Builtin,
+}
+
+/// 〔P7 · `97 §8`「要上游给的」④ · V158「长活要有进度」〕一条长活往**发起方订的进度流**里推格的窄口。
+///
+/// 票是发起方在请求里交的 `ticket`（不透明的串，界面拿它订 `progress/<ticket>`，本后端只回填）；没交票 ⇒ 空口，推了也不发。
+/// 走本连接的应答通道（与应答同一条、同序），但**满了就丢这一格**（`try_send`）：每格是一整份快照，
+/// 丢一格下一格补上，而这是在建索引的读流里同步推的 —— 不许为它阻塞（阻塞就是背压回插件的 stderr 管子）。
+#[derive(Clone)]
+pub(crate) struct Progress {
+    to: Option<(mpsc::Sender<Frame>, String)>,
+}
+
+impl Progress {
+    /// 没人订的那一个（CLI 一次性进程 · 没交票的请求）。
+    pub(crate) fn none() -> Progress {
+        Progress { to: None }
+    }
+
+    /// 本请求的：请求里有 `ticket`（非空串）才通。
+    pub(crate) fn for_request(replies: &mpsc::Sender<Frame>, args: &serde_json::Value) -> Progress {
+        let ticket = args
+            .get("ticket")
+            .and_then(serde_json::Value::as_str)
+            .filter(|t| !t.is_empty());
+        Progress {
+            to: ticket.map(|t| (replies.clone(), t.to_string())),
+        }
+    }
+
+    /// 推一格（原样；格里是什么由界面解释）。
+    pub(crate) fn push(&self, cell: serde_json::Value) {
+        if let Some((tx, ticket)) = &self.to {
+            let _ = tx.try_send(Frame::Progress {
+                ticket: ticket.clone(),
+                cell,
+            });
+        }
+    }
 }
 
 /// 一条入方向命令的登记。**名字与处理器绑在同一个值里。**
@@ -3592,10 +3637,16 @@ pub const REGISTRY: &[CommandSpec] = &[
             "too_large",
             "failed",
         ],
-        fields: &["args", "op", "repo", "result", "shape"],
+        fields: &["args", "op", "repo", "result", "shape", "ticket"],
         takes_input: true,
-        run: Run::Async(|r| {
-            Box::pin(async move { crate::control::panorama::answer(&r.args).await.map(Some) })
+        // 〔P7〕建索引那一档的进度格经 `Progress` 进发起方订的 `progress/<ticket>`（没交票就不推）。
+        run: Run::AsyncProgress(|r, p| {
+            Box::pin(async move {
+                let push = move |cell: serde_json::Value| p.push(cell);
+                crate::control::panorama::answer(&r.args, &push)
+                    .await
+                    .map(Some)
+            })
         }),
     },
     // 〔FIX4 · `97 §8` · 主会话 09-28 裁〕**卸掉这台的全景小程序**：认身份（`--probe`）→ 这台文件管理面 CAS 删那一份；索引不动。本体 `control/panorama.rs::answer_uninstall`。
