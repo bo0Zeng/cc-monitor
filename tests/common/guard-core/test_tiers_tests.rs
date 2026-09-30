@@ -259,7 +259,7 @@ const UNIT: &[&str] = &[
     "tests/frontend/ui/views/session-viewer-skeleton.vitest.ts",
     "tests/frontend/ui/views/user-input-panel.vitest.ts",
     "tests/common/upstream-url-core/lib_tests.rs", // 〔DUP3 · J9〕新共享 crate `upstream-url-core` 的判定（纯函数）
-    "tests/common/deploy-core/lib_tests.rs", // 〔MIG-3b〕新共享 crate `deploy-core` 的判定（纯函数）
+    "tests/common/deploy-contract/lib_tests.rs", // 〔MIG-3b · P1〕部署契约（戳格式那几格；判定那几格随判定进了后端 `deploy_plan_tests`）
     "tests/frontend/ui/cards/long-reply.vitest.ts", // 〔RENDER2〕超长回复切片 ＋「显示全部」分片渲染（jsdom，假定时器）
     // 〔MIG-2〕基数 → 增量 +1：起会话那几问的帧命令应答（`control/launch_render/mod.rs::answer_*`）。
     "tests/backend/control/launch_render/answers_tests.rs",
@@ -541,7 +541,6 @@ const SCAN: &[&str] = &[
     "tests/frontend/ui/views/session-viewer-user-inputs.vitest.ts",
     "tests/frontend/ui/upstream-url-parity.vitest.ts", // 〔DUP3 · J9〕读共用金样（仓内文本）⇒ 扫描层
     "tests/frontend/ui/events-tap.vitest.ts", // 〔TAP〕session-tap 走 subscribe；〔MIG-3b〕另读后端 `event_replay.rs` 的流名钉两侧同名（仓内文本）⇒ 扫描层
-    "tests/backend/control/deploy_plan_tests.rs", // 〔MIG-3b〕部署计划的编排（替身对面）＋ 读金样与后端历史表（仓内文本）⇒ 扫描层
     "tests/frontend/ui/cc-bus-read.vitest.ts", // 〔SH1 · V136〕驾驶舱读面读跨语言金样（`tests/__fixtures__/cc-bus-read.golden.json`）
     "tests/frontend/shell/cc_bus_tests.rs", // 〔SH1〕INTEGRATION → SCAN：起进程的那几条（本机 shell 读 · 超时不留孤儿）随驾驶舱 shell 读退役
     // 〔AL2 · 第四波 4D〕从 INTEGRATION 挪来（候选那一条不再建临时目录）。
@@ -554,6 +553,8 @@ const SCAN: &[&str] = &[
 
 /// 集成层：碰 OS（起进程 · 套接字 · 真文件系统写 · 临时目录）。
 const INTEGRATION: &[&str] = &[
+    // 〔P1〕SCAN → INTEGRATION：部署计划的编排（替身对面）＋ 读金样与后端历史表之外，`place-verdict` 帧面那一条真读写临时目录里的落点文件。
+    "tests/backend/control/deploy_plan_tests.rs",
     // 〔E2 尾 · 09-27〕扫描层 → 集成层：多了「门禁那一行的判法与 CI 那一行的数由判据现算」—— 读 gate.sh ＋ ci.yml 两份外部件。
     "tests/frontend/shell/e2e_gate_registry_tests.rs",
     "tests/backend/observe/cc_bus_hooks_tests.rs", // 〔MIG-3b〕钩子诊断进后端：造一台假机器（临时目录里的 settings ＋ 程序）读回成品

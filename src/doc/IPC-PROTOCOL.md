@@ -2111,7 +2111,7 @@ F50「一键推送公钥」（`设计/99 §2.1 ⑬`「monitor 零 SSH」）。�
 ② 落点 `~/.cc-monitor/bin/ccm`：SFTP stat（没有 / 0 字节就不必再问）→ capture `LC_ALL=C grep -aoE <身份戳正则> -- "$HOME"/.cc-monitor/bin/ccm`（读字节、不跑它）；
 不肯说自己是谁时读回来（≤ 64 KiB，先问大小）看是不是从前那份三行入口；③ 按 `BUILD_ID` 可比序只升不降判换不换；④ 旧落点 `~/.cc-monitor/bin/cc-monitor-backend` 同法问身份，判删不删；
 ⑤ 〔WF2〕SFTP 列 `~/.cc-monitor/bin/`：上传留下的 `<名>.<trip>.tmp|bak`（`dial/sftp.rs::put_atomic` 的形状）一小时没动过的 ⇒ 进 `leftovers`。
-**一个字节都不写**：放字节（mkdir · 原子上传 · 读回比对）与删旧落点 · 删残件是 monitor 经 `files` 链路照计划做。纯判定住共享 crate `deploy-core`（monitor 同一份）。
+**一个字节都不写**：放字节（mkdir · 原子上传 · 读回比对）与删旧落点 · 删残件是 monitor 经 `files` 链路照计划做。判定住 `control/deploy_plan.rs`（〔P1〕原共享 crate `deploy-core` 的判定那一半）；两侧对上的形状住契约 crate `deploy-contract`。
 
 ```text
 → {"id":"d1","cmd":"deploy-plan","args":{"machine":"dev","dial":{"host":"10.0.0.2","port":22,"user":"u","key_path":"~/.ssh/id_ed25519","use":"files"},"carried":[{"os":"Linux","arch":"x86_64","id":"p4z-x"},{"os":"Linux","arch":"arm64","id":"p4z-x"}]}}
@@ -2182,6 +2182,29 @@ monitor 照答经**那台**后端的 `files-delete`（带 `expect`）删（`ccm_
 
 **错误码**：`bad_args`（`product` / `machine` / `carried` 缺或认不出）· `unreachable`（`uname` 那一问没问成：链路）· `refused`（表 A / 表 B / 这一版没带 —— `message` 就是对人说的那一句）。
 ⚠ **CLI 面也有它**（`--deploy-slot`，入参从 stdin 读；按派生规则「非内建即上 CLI」）：真正的用法是本机常驻后端的帧面。
+
+#### `place-verdict`：本机那一份放不放（P1，09-29；只读落点那一个文件）
+
+「判定只在后端」（`设计/00 §1.2`）：monitor 放本机后端（`~/.cc-monitor/bin/ccm`）之前还没有常驻后端可问 —— 可 `ccm` 就是后端本体（V28），
+手上那份字节自己就答得了。monitor 盘上与手上**逐字节相同**时直接用、不问；不同时把手上那份写成暂存件（`.<名>.<pid>.partial`）、
+跑 `<暂存件> -- --place-verdict`（CLI 面，入参走 stdin）问一次，照答放（`rename` 上位）或不放；暂存件在任何结局下都清掉（`local_backend::extract_embedded_to`）。
+判定：表 B 本机那一行（这份字节自己的 (OS, arch)）· 落点那一份的身份戳 vs 自己的 `BUILD_ID`（只升不降，HX2 D-b；同一版 ⇒ 放：只在字节不同时被问）。
+
+```text
+$ printf '%s' '{"dest":"/home/u/.cc-monitor/bin/ccm","machine":"本机"}' | .ccm.4242.partial -- --place-verdict
+{"action":"place","why":"那台上是 p5u-…，这一版是 p5v-…"}
+```
+
+| 字段 | 向 | 意思 |
+|---|---|---|
+| `dest` | → | 落点的绝对路径（不在 ⇒ 没装 ⇒ 放；读不了 ⇒ `undecidable`，不当成没装） |
+| `machine` | → | 对人说话时这台叫什么（monitor 交「本机」） |
+| `action` | ← | `place`（放 / 换上去）· `keep`（盘上那一份不比这一份旧 ⇒ 不动、用它） |
+| `why` | ← | 人读原因（`keep` 时点名两边各是哪一版） |
+
+错误码：`bad_args`（`dest` 缺或不是绝对路径 · `machine` 缺）· `refused`（表 A / 表 B：这台不承诺 —— `message` 就是对人说的那一句）·
+`undecidable`（落点那一份不说自己是谁 / 身份不唯一 / 读不了 —— 不覆盖，`message` 说清出路）。
+⚠ 本机 (Linux, aarch64) 那一格的「不承诺」落在写暂存件之后（`96 §7.1.4b` 字面是写第一个字节之前；主会话 09-29 认：问完即删、净足迹零）。
 
 #### `resident-verdict`：远端常驻后端要不要换一次（THIN，09-29；纯判定）
 

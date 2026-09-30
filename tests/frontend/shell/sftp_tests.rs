@@ -86,7 +86,7 @@ fn ccm_cli_has_required_elements() {
 #[test]
 fn embedded_backend_binaries_present_and_valid() {
     use crate::byte_table::{pick, Product};
-    use deploy_core::key_of;
+    use deploy_contract::key_of;
     for arch in ["x86_64", "aarch64"] {
         let key = key_of("Linux", arch).expect("表 A 认得这一格");
         let bin = pick(Product::Backend, key).expect("内嵌二进制应存在");
@@ -409,7 +409,7 @@ fn the_release_pipeline_stages_every_arch_that_build_rs_embeds() {
 //
 // 要求住址：`4d-lanes.md` MIG-3b 第 1 条「`sftp.rs` 部署决策（该不该换 · 换成什么 · 身份判定）进后端；monitor 只放字节」。
 // 〔墓碑 —— 这里原来是两条部署路「读字节自报的身份、不读旁挂标记」与取样壳「真走纯解释函数」两格源码判据，
-//  以及身份判定那几格纯函数判据：判定整个搬去了 `deploy-core`（纯判据跟着搬，期望一字未改）与后端 `control/deploy_plan.rs`。〕
+//  以及身份判定那几格纯函数判据：判定整个搬去了共享 crate（〔P1〕今天判定住后端 `control/deploy_plan.rs`、形状住 `deploy-contract`；纯判据跟着搬，期望一字未改）。〕
 
 /// 🔴 两条部署路（自动 · 按钮）各**恰好一次**问本机常驻后端要计划、照计划取字节；本文件生产段里**零处**再做判定
 /// （问那台 `uname` · 查表 A/B · 扫身份戳 · 判新旧 · 判落点 · 认旧入口），也零处碰旁挂标记。带正控。
@@ -483,7 +483,7 @@ fn the_plan_decoder_reads_the_golden() {
     );
     assert_eq!(
         p.legacy,
-        deploy_core::LegacyVerdict::Unknown("placeholder".into())
+        deploy_contract::LegacyVerdict::Unknown("placeholder".into())
     );
     assert_eq!(
         p.leftovers,
@@ -521,7 +521,7 @@ fn the_plan_decoder_reads_the_golden() {
     let p = decode_plan(&skip).expect("skip ＋ absent 那一形解不开");
     assert_eq!(
         (p.action, p.legacy),
-        (DeployAction::Skip, deploy_core::LegacyVerdict::Absent)
+        (DeployAction::Skip, deploy_contract::LegacyVerdict::Absent)
     );
 }
 
@@ -785,7 +785,7 @@ async fn sr1b_loopback_deploy_and_transfer_through_the_resident_backend() {
     bytes.splice(1_000_000..1_000_000, stamp.bytes());
     // 〔MIG-3b〕这一版「带着」的那一格就是台架那台（本机 sshd）的键，自报 `sr1b-id`（与送去的字节同一个戳）。
     let mine = [(
-        deploy_core::Key::this_machine().expect("台架那台的键认不出"),
+        deploy_contract::Key::this_machine().expect("台架那台的键认不出"),
         "sr1b-id",
     )];
     let decide = || async { ask_plan_for(&cfg, &mine).await.map(|p| p.action) };

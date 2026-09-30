@@ -245,6 +245,8 @@ pub const COMMANDS: &[&str] = &[
     // 〔FIX4 · `97 §8`〕全景小程序卸口：只删装时放下的那一份（先认身份、CAS 删）。**是新命令** ⇒ `build_id_guard` 红是预期的。
     "panorama-uninstall",
     "ping",
+    // 〔P1〕本机那一份放不放（monitor 自举：放本机后端之前问手上那份字节自己，CLI 面）。**是新命令** ⇒ `build_id_guard` 红是预期的。
+    "place-verdict",
     "plugins-marketplaces",
     // 〔WF1 · L · `设计/99 §2.3`〕PowerShell 执行策略设成当前用户 `RemoteSigned`（用户点了、确认了才发）。**是新命令** ⇒ `build_id_guard` 红是预期的。
     "powershell-policy-set",
@@ -1448,6 +1450,20 @@ pub const REGISTRY: &[CommandSpec] = &[
                     .map(Some)
                     .map_err(|(c, m)| (c.to_string(), m))
             })
+        }),
+    },
+    // 〔P1〕**本机那一份放不放**：`{dest, machine}` → `{action: place|keep, why}`（只读落点那一个文件 ⇒ 阻塞档）。
+    //   monitor 放本机后端之前还没有常驻后端 ⇒ 跑手上那份字节的 CLI 面问它（`--place-verdict`）。本体 `control/deploy_plan.rs::answer_place`。
+    CommandSpec {
+        name: "place-verdict",
+        doc_anchor: Some("#### `place-verdict`"),
+        codes: &["bad_args", "refused", "undecidable"],
+        fields: &["action", "dest", "machine", "why"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::control::deploy_plan::answer_place(&r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
     // 〔MIG-3b 续〕**公钥一键推送**（本机常驻后端答）：`{machine, saved?, jump?, pubKeyPath?}` → `{outcome, pubPath, via}`。

@@ -226,7 +226,7 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
          宿主则等在一个永远没人 bind 的口上，日志里只有一句「连不上」。\
          ⇒ 只能同时读两侧的源码才验得了（形状抄 `the_local_origin_is_the_same_string_on_both_sides`）。",
     ),
-    // 〔MIG-3b〕`tests/frontend/shell/sftp_tests.rs` → `tests/backend/build_id_guard.rs` 那一行摘了：序键随部署判定搬进共享的 `deploy-core`，
+    // 〔MIG-3b〕`tests/frontend/shell/sftp_tests.rs` → `tests/backend/build_id_guard.rs` 那一行摘了：序键随部署判定搬进共享 crate（〔P1〕序键今天住契约 crate `deploy-contract`，只升不降那条判定住后端 `control/deploy_plan.rs`），
     //   读历史表的那一格（`hx2_every_build_id_ever_shipped_has_an_order_and_the_history_climbs`）挪到后端 `deploy_plan_tests.rs` ——
     //   序键实现（后端依赖的共享 crate）与历史表同在后端那一半，这条边不再跨。
     (

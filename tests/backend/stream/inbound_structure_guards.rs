@@ -276,6 +276,8 @@ fn every_registered_command_declares_its_run_kind() {
                 | "history-last-accounts"
                 // 〔MIG-2〕本机起会话：探一次 `ccm`（起 `bash -lic`）＋ 读一次凭据表 ＋ 探一次中转。
                 | "launch-local"
+                // 〔P1〕本机那一份放不放：读一遍落点那个文件（约 10 MB，同步文件 I/O）。
+                | "place-verdict"
         );
         let is_blocking = matches!(spec.run, Run::Blocking(_));
         assert_eq!(
@@ -449,6 +451,8 @@ fn every_registered_command_declares_its_run_kind() {
         "launch-local",
         "launch-render-cli",
         "launch-render-payload",
+        // 〔P1〕本机那一份放不放（阻塞档，理由在上面 `expected_blocking`）。
+        "place-verdict",
         // 〔MIG-3a〕MCP 写两条 ＋ 推拉三条 ＋ skill 装卸两条（阻塞档，理由在上面 `expected_blocking`）。
         "skill-install-apply",
         "skill-host-list",

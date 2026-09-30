@@ -16,7 +16,7 @@
  *
  * # 四条
  *
- * 1. **人群两向（D5）**：盘上 `src/common/*-core/src` 生产段的 `pub fn` / `pub const` / `pub static`
+ * 1. **人群两向（D5）**：盘上 `src/common/<crate>/src`（〔P1〕全部共享 crate，不再只看 `-core` 后缀）生产段的 `pub fn` / `pub const` / `pub static`
  *    名字全集 == [`CORE_ITEMS`] 的键全集（逐 crate）。新长一个 `*-core` 项而不登记 ⇒ 红 ——
  *    逼着回答「TS 里有没有它的孪生」。`guard-core` 整 crate 排出人群，理由现核：它在每一份提到它的
  *    `Cargo.toml` 里都只在 `[dev-dependencies]`（测试基础设施，不是产品判定）。
@@ -678,27 +678,21 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     upstream_is_loopback: "J9",
     usable: "J9",
   },
-  // 〔MIG-3b · 4d-lanes 子步 1〕部署决策（新立；本机常驻后端出计划 · monitor 放字节共用）。TS 侧零处判部署 ⇒ 全 NONE。
-  "deploy-core": {
+  // 〔MIG-3b · P1〕部署那一族的契约（`deploy-core` 拆开：判定那一半进了后端 `control/deploy_plan.rs`，这里只剩两侧对上的形状）。TS 侧零处判部署 ⇒ 全 NONE。
+  "deploy-contract": {
+    LAUNCHER_MARK: NONE, // 〔P1〕旧入口两形的记号（文件格式；认不认得出是后端判）
+    SHIM_MARK: NONE,
     LEGACY_BACKEND_REL: NONE,
     LEGACY_ENTRY_REL: NONE, // 〔THIN〕旧入口路径（契约：后端判去向 · monitor 照删 · 足迹一行）
     LEGACY_BACKEND_WORD: NONE,
     LINES: NONE,
     UNAME_CMD: NONE,
     build_order: NONE,
-    identity_decision: NONE,
     identity_of_bytes: NONE,
     interpret_stamp_scan: NONE,
-    interpret_target_probe: NONE,
-    is_newer: NONE,
-    is_ours: NONE,
-    judge: NONE,
     key_from_uname: NONE,
     key_of: NONE,
     label: NONE,
-    landing_verdict: NONE,
-    legacy_verdict: NONE,
-    promised: NONE,
     say: NONE,
     stamp_scan_cmd: NONE,
     this_machine: NONE,
@@ -822,10 +816,11 @@ describe("DUP1 判定只有一个家（设计/90 §3 判据 2）", () => {
   const tsAll = ts.map((s) => s.code).join("\n");
   const tsByFile = new Map(ts.map((s) => [s.file, s.code]));
 
-  it("① 人群两向：盘上 *-core 的 pub 项 == 登记表（逐 crate）", () => {
-    const diskCrates = [...byCrate.keys()].filter((c) => c.endsWith("-core")).sort();
-    expect(diskCrates.length, "一个 *-core 都没扫到 —— 路径断了，下面会零命中地绿").toBeGreaterThan(0);
-    expect(diskCrates, "盘上 *-core crate 集合 ≠ 登记表 crate 集合 ∪ {guard-core}").toEqual(
+  it("① 人群两向：盘上 `src/common/` 各 crate 的 pub 项 == 登记表（逐 crate）", () => {
+    // 〔P1〕人群是 `src/common/` 下的全部 crate（D5：从文件系统全集来）—— 从前按 `*-core` 后缀筛，`deploy-contract` 会静默出列。
+    const diskCrates = [...byCrate.keys()].sort();
+    expect(diskCrates.length, "一个共享 crate 都没扫到 —— 路径断了，下面会零命中地绿").toBeGreaterThan(0);
+    expect(diskCrates, "盘上 `src/common/` 的 crate 集合 ≠ 登记表 crate 集合 ∪ {guard-core}").toEqual(
       [...Object.keys(CORE_ITEMS), TEST_INFRA_CRATE].sort(),
     );
     const diff: string[] = [];
