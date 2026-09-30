@@ -277,11 +277,11 @@ fn code_of(path: &std::path::Path, src: &str) -> String {
     }
 }
 
-/// ★★ `E1` 的全仓半：**`backend.json` 这个名字在 `src/` 全部生产代码里只有一个家**，就是本模块。
+/// ★★ `E1` 的全仓半：**`backend.json` 这个名字在 `src/` 全部生产代码里谁叫得出**（字面量或契约常量名）。
 ///
-/// ⇒ monitor（`src/frontend/shell/`）与前端（`src/**/*.ts`）零命中 —— 它们连这个文件叫什么都说不出来，
-/// 更写不了它。**两向集合相等**：多一个家 = 第二个写者（或读者）冒出来了；少了本模块 = 正控失败
-/// （判据在一个空集上绿）。
+/// 〔P3 · 主会话 09-29 裁「家里的都进数据位置那一份唯一枚举」〕三个家：定义（契约 crate `relay_route_core::BACKEND_POLICY_REL`）·
+/// 写者（本模块）· monitor 数据位置页（`data_paths.rs`，只 stat 在不在 / 多大，不读不写）。前端 `.ts` 仍零命中。
+/// **两向集合相等**：多一个家 = 第二个写者（或读者）冒出来了；少了本模块 = 正控失败（判据在一个空集上绿）。
 ///
 /// ⚠ 漏判面（如实登记）：把名字拆开拼（`format!("{}.json", "backend")`）骗得过它；
 /// 仓外的脚本 / 用户手工编辑不在人群里（那也不是「我们的写者」）。
@@ -289,11 +289,13 @@ fn code_of(path: &std::path::Path, src: &str) -> String {
 fn the_file_name_has_exactly_one_home_in_all_production_code() {
     let src = crate::guard_support::repo_root().join("src");
     let needle = format!("{}.{}", "backend", "json");
+    let via_const = format!("{}_{}_REL", "BACKEND", "POLICY");
     let mut scanned = 0usize;
     let mut homes: std::collections::BTreeSet<String> = Default::default();
     for (path, body) in guard_core::scan_tree_excluding(&src, &["rs", "ts", "sh"], &[]) {
         scanned += 1;
-        if code_of(&path, &body).contains(needle.as_str()) {
+        let code = code_of(&path, &body);
+        if code.contains(needle.as_str()) || code.contains(via_const.as_str()) {
             let rel = path
                 .strip_prefix(&src)
                 .unwrap_or(&path)
@@ -306,8 +308,12 @@ fn the_file_name_has_exactly_one_home_in_all_production_code() {
         scanned > 500,
         "只扫到 {scanned} 份源码 —— 遍历坏了，零命中在空人群上恒绿"
     );
-    let want: std::collections::BTreeSet<String> =
-        ["backend/control/exit_policy.rs".to_string()].into();
+    let want: std::collections::BTreeSet<String> = [
+        "common/relay-route-core/src/lib.rs".to_string(),
+        "backend/control/exit_policy.rs".to_string(),
+        "frontend/shell/src/data_paths.rs".to_string(),
+    ]
+    .into();
     assert_eq!(
         homes,
         want,

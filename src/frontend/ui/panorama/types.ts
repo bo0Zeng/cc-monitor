@@ -2,7 +2,6 @@
 // 要求住址：`99 §1` V158「线上契约由上游给、本仓不手抄」。
 // ① 上游 code-picture-core 的线上类型（vendored `src/wire.ts` 原样；ts-rs 从上游的 serde 属性写出，可选性随之过来）
 // ② 全景小程序自己的应答（`src/panorama-engine/main.rs` 的 DTO，ts-rs）
-// ③ 本仓界面里的叫法（别名，形状全来自 ①）
 
 // ── ① 上游（vendored code-picture-core `src/wire.ts`）──
 
@@ -571,12 +570,3 @@ export type PanoramaStatus = { stale: boolean, indexedAt: number | null, symbols
  */
 export type PanoramaDiagram = { diagram: Diagram, mermaid: string, };
 
-// ── ③ 本仓界面里的叫法 ──
-
-export type ClusterNode = ArchNode;
-export type ClusterLink = ArchLink;
-export type ClustersBody = Extract<DiagramBody, { shape: "clusters" }>;
-export type CallGraphBody = Extract<DiagramBody, { shape: "call_graph" }>;
-export type TypeGraphBody = Extract<DiagramBody, { shape: "type_graph" }>;
-export type DiagramHonesty = Honesty;
-export type DiagramOmitted = Omitted;

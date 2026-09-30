@@ -10,12 +10,16 @@
  * **买不到**：真引擎里的像素（布局模型是一维的累加，没有 margin 折叠 / content-visibility）；
  * 秤 3（半屏）那种端到端读数得在真 webview 里打。
  */
-import { beforeEach, describe, expect, it } from "vitest";
-import type { SkeletonFacts } from "../../../src/frontend/ui/height-estimate";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { estimateFromFacts, initialColumnWidth, skeletonKind, type SkeletonFacts } from "../../../src/frontend/ui/height-estimate";
 import { SkeletonLedger } from "../../../src/frontend/ui/live-window";
 import { RecordTimeline } from "../../../src/frontend/ui/record-timeline";
 import { SKELETON_GAP_CLASS, SkeletonView, ledgerFromIndex } from "../../../src/frontend/ui/skeleton-view";
 import { MessageStream } from "../../../src/frontend/ui/stream";
+
+// 〔P3〕列宽那一组要真 `TabStreamView`（它只在被问时才碰到 IPC；这里一次都不问）
+vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn().mockResolvedValue(null) }));
+vi.mock("@tauri-apps/plugin-opener", () => ({ openPath: vi.fn(), openUrl: vi.fn() }));
 
 globalThis.ResizeObserver = class {
   observe(): void {}
@@ -378,5 +382,87 @@ describe("〔RENDER2〕第二级与第一级同一套外框常数", () => {
       const it = refineItemOf(rec as never)!;
       expect(refinedHeight(it, arith), JSON.stringify(facts)).toBeCloseTo(estimateFromFacts(facts, "none"), 6);
     }
+  });
+});
+
+// ===== 〔P3〕列宽变了：账本按新列宽重估、只重算精算过的 =====
+// 要求住址：`设计/10 §2.5b` 逐字「列宽变化只重算已精算过的」＋「今天列宽只量一次（`COL_W`），列宽变了只重算精算过的那一步（`relayout`）还没有入口」；`99 §4.4` 同一行。
+describe("〔P3〕列宽变了", () => {
+  const rec = (seq: number) =>
+    ({ type: "assistant", uuid: `u${seq}`, message: { role: "assistant", content: [{ type: "text", text: "x".repeat(200) }] } }) as never;
+
+  it("SkeletonView.relayout：每行高 == 新列宽下的第一级；精算过的那几行进待重交；占位改高、视口钉住；差不到 1px 不动", () => {
+    const s = setup(3000, 2990);
+    s.view.attach(2990);
+    s.layout.scrollTop = s.ledger.heightOf(0, 2990) - VIEW_H / 2;
+    const anchor = cardsIn(s.content)[0] as HTMLElement;
+    const before = anchor.getBoundingClientRect().top;
+    s.view.applyRefined([
+      [10, 77],
+      [1500, 88],
+      [2980, 99],
+    ]);
+    const w = initialColumnWidth() / 2;
+    expect(s.view.relayout(w)).toBe(true);
+    let prev: ReturnType<typeof skeletonKind> = "none";
+    for (let i = 0; i < 3000; i += 97) {
+      const f = s.ledger.factsOf(i)!;
+      prev = i === 0 ? "none" : skeletonKind(s.ledger.factsOf(i - 1)!);
+      expect(s.ledger.heightOf(i, i + 1), `第 ${i} 行`).toBeCloseTo(estimateFromFacts(f, prev, w), 6);
+    }
+    const gap = s.content.querySelector<HTMLElement>(`.${SKELETON_GAP_CLASS}`)!;
+    expect(parseFloat(gap.style.height)).toBeCloseTo(s.ledger.heightOf(0, 2990), 6);
+    expect(anchor.getBoundingClientRect().top, "重估把视口推走了").toBeCloseTo(before, 6);
+    expect(s.view.relayout(w + 0.5), "差不到 1px 也重估").toBe(false);
+    expect(s.view.takeStale(10)).toEqual([10, 1500, 2980]);
+    expect(s.view.staleCount).toBe(0);
+  });
+
+  it("算的途中列宽变了 ⇒ 回来的高整批丢掉（回 false），账本里一行都不收", async () => {
+    const { HeightRefiner } = await import("../../../src/frontend/ui/height-refiner");
+    const s = setup(300, 290);
+    s.view.attach(290);
+    let release!: () => void;
+    const refiner = new HeightRefiner(
+      (items) => new Promise((r) => (release = () => r(items.map(() => 40)))),
+    );
+    const p = refiner.refine(s.view, [{ seq: 5, rec: rec(5) }]);
+    s.view.relayout(initialColumnWidth() / 2);
+    release();
+    expect(await p).toBe(false);
+    expect(s.ledger.isRefined(5)).toBe(false);
+  });
+
+  it("宿主接线：量到列宽变了 ⇒ 重估，离视口再远的精算行也按新列宽重交 Worker", async () => {
+    const { HeightRefiner } = await import("../../../src/frontend/ui/height-refiner");
+    const { TabStreamView } = await import("../../../src/frontend/ui/tab-stream-view");
+    const { TabStore } = await import("../../../src/frontend/ui/tab-store");
+    const s = setup(3000, 2990);
+    s.view.attach(2990);
+    s.layout.scrollTop = s.ledger.heightOf(0, 2990) - VIEW_H / 2; // 视口在最下面，第 10 行远在几十屏之外
+    s.view.applyRefined([[10, 77]]);
+    const widths: number[] = [];
+    const refiner = new HeightRefiner(async (items) => {
+      widths.push(...items.map((it) => it.widthPx));
+      return items.map(() => 55);
+    });
+    const store = new TabStore();
+    const tab = {
+      sessionId: "t",
+      skeleton: s.view,
+      parentPath: "/p/t.jsonl",
+      origin: "<local>",
+      window: { peekSeqs: (seqs: Set<number>) => [...seqs].map((seq) => ({ seq, message: rec(seq) })) },
+      stream: { contentElement: { getBoundingClientRect: () => ({ width: 500 }) } },
+    };
+    store.tabs.set("t", tab as never);
+    const tsv = new TabStreamView(store, document.createElement("div"), {} as never, refiner);
+    (tsv as unknown as { relayoutOnColumnChange(t: unknown): void }).relayoutOnColumnChange(tab);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(s.ledger.columnWidth).toBe(500);
+    expect(s.ledger.isRefined(10), "离视口远的那一行没重交").toBe(true);
+    expect(s.ledger.heightOf(10, 11)).toBe(55);
+    expect(new Set(widths)).toEqual(new Set([500])); // assistant 正文宽 == 列宽
+    expect(s.view.staleCount).toBe(0);
   });
 });
