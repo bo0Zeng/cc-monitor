@@ -35,6 +35,12 @@ use copy_core::copy_text;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
+/// 〔P7〕插件往 **stderr** 写的一行以它开头 ⇒ 那是**一格进度**（前缀后面那段原样交调用方的回调），不进诊断。
+///
+/// 通用方言（同 `--probe` 那套 `key=value`），不认识任何具体插件：格里是什么由调用方解释。
+/// 只有调用方给了回调（[`run_abortable_reporting`]）才分拣；没给 ⇒ 这种行照旧当普通 stderr 留着。
+pub(crate) const PROGRESS_PREFIX: &str = "progress=";
+
 /// `timeout` 那条命令超时时的退出码（GNU coreutils）。
 ///
 /// ⚠ 引用它的文案里**别把它写成命令名紧跟左括号**的形状 —— 零定时器护栏按调用形态扫，
@@ -278,6 +284,32 @@ pub(crate) async fn run_abortable(
     env: &[(&str, &str)],
     keep: u64,
 ) -> Result<Done, NotRun> {
+    abortable(bin, args, deadline_secs, env, keep, None).await
+}
+
+/// 〔P7〕同 [`run_abortable`]，另把 stderr 上的**进度行**（[`PROGRESS_PREFIX`] 开头、整行）边读边交 `on_progress`
+/// （前缀后面那段，去掉行尾）；进度行不进 [`Done::stderr`]（诊断照旧是那条失败的话）。一行也最多读 `keep ＋ 1` 字节：
+/// 超长的那一截不算进度、照普通 stderr 留（上限同一个）。
+pub(crate) async fn run_abortable_reporting(
+    bin: &Path,
+    args: &[&str],
+    deadline_secs: u64,
+    env: &[(&str, &str)],
+    keep: u64,
+    on_progress: &mut (dyn FnMut(&str) + Send),
+) -> Result<Done, NotRun> {
+    abortable(bin, args, deadline_secs, env, keep, Some(on_progress)).await
+}
+
+/// 两种可打断的等法共用的本体（给没给进度回调只差 stderr 那条流怎么读）。
+async fn abortable(
+    bin: &Path,
+    args: &[&str],
+    deadline_secs: u64,
+    env: &[(&str, &str)],
+    keep: u64,
+    on_progress: Option<&mut (dyn FnMut(&str) + Send)>,
+) -> Result<Done, NotRun> {
     let mut std_cmd = command_for(bin, args, deadline_secs, env);
     std_cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
     let grouped = crate::platform::detach::detach(&mut std_cmd).is_ok();
@@ -292,7 +324,7 @@ pub(crate) async fn run_abortable(
     let (status, (), ()) = tokio::join!(
         child.wait(),
         keep_then_drain(so.as_mut(), keep, &mut stdout),
-        keep_then_drain(se.as_mut(), keep, &mut stderr)
+        stderr_side(se.as_mut(), keep, on_progress, &mut stderr)
     );
     // 收过尸了 ⇒ 组号可能被复用，从这一刻起守卫不许再开枪。
     guard.group = None;
@@ -322,6 +354,40 @@ async fn keep_then_drain<R: tokio::io::AsyncRead + Unpin>(
         .read_to_end(out)
         .await;
     let _ = tokio::io::copy(r, &mut tokio::io::sink()).await;
+}
+
+/// 〔P7〕stderr 那条流：没给回调 ⇒ 同 [`keep_then_drain`]；给了 ⇒ 逐行读，整行的进度行交回调，其余留前 `keep ＋ 1` 字节。
+async fn stderr_side<R: tokio::io::AsyncRead + Unpin>(
+    r: Option<&mut R>,
+    keep: u64,
+    on_progress: Option<&mut (dyn FnMut(&str) + Send)>,
+    out: &mut Vec<u8>,
+) {
+    use tokio::io::{AsyncBufReadExt, AsyncReadExt};
+    let Some(on) = on_progress else {
+        return keep_then_drain(r, keep, out).await;
+    };
+    let Some(r) = r else { return };
+    let cap = keep.saturating_add(1);
+    let mut rd = tokio::io::BufReader::new(r);
+    let mut line = Vec::new();
+    loop {
+        line.clear();
+        // 对端是别人的程序：一行无界就是无界堆分配 ⇒ 一趟最多读 `keep ＋ 1` 字节。
+        match (&mut rd).take(cap).read_until(b'\n', &mut line).await {
+            Ok(0) | Err(_) => return,
+            Ok(_) => {}
+        }
+        match line.strip_prefix(PROGRESS_PREFIX.as_bytes()) {
+            Some(cell) if line.ends_with(b"\n") => {
+                on(String::from_utf8_lossy(cell).trim_end_matches(['\n', '\r']))
+            }
+            _ => {
+                let room = usize::try_from(cap.saturating_sub(out.len() as u64)).unwrap_or(0);
+                out.extend_from_slice(&line[..line.len().min(room)]);
+            }
+        }
+    }
 }
 
 /// 〔RM1f〕[`run_abortable`] 被丢时对子进程那一组开一枪（见那里「杀谁」一段）。
