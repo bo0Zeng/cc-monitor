@@ -36,6 +36,7 @@ import type {
 } from "../panorama/types";
 import {
   computeLayout,
+  fitLabel,
   fitViewport,
   zoomAt,
   hitTest,
@@ -47,7 +48,7 @@ import {
   type FileBubble,
 } from "../panorama/layout";
 import { clipForFile, clipForSymbol, type CoverageReading, type IndexStamp } from "../panorama/agent-clip";
-import { DiagramPane, type DiagramHost } from "../panorama/diagram-view";
+import { BUBBLE_VIEW, DiagramPane, type DiagramHost } from "../panorama/diagram-view";
 import { dispatcher, type OverlayHandle } from "../keybindings/registry";
 import { showActionFailureToast } from "../error-toast";
 import { copyText } from "../copy-table";
@@ -636,6 +637,11 @@ export class PanoramaView implements OverlayHandle {
     fitBtn.textContent = copyText("panorama.build.fit");
     fitBtn.title = copyText("panorama.build.fitHint");
     fitBtn.addEventListener("click", () => {
+      // 看着的是哪一张就适配哪一张：选了图 ⇒ 图那一层；气泡全景 ⇒ 画布。
+      if (this.diagram.kind() !== BUBBLE_VIEW) {
+        this.diagram.fit();
+        return;
+      }
       this.fitView();
       this.scheduleDraw();
     });
@@ -951,14 +957,17 @@ export class PanoramaView implements OverlayHandle {
         ctx.strokeStyle = accent;
         ctx.stroke();
       }
-      // 文件名（够大才画，恒定字号）
+      // 文件名（够大才画）：按实测宽度先缩字号、再截断（`fitLabel`），横跨圆心那条弦的九成宽。
       if (r >= 22) {
-        const name = basename(b.file);
-        const fs = Math.min(13, Math.max(9, r * 0.4));
-        ctx.font = `${fs}px ${fontMono}`;
-        ctx.fillStyle = "#141310";
-        const maxChars = Math.max(3, Math.floor((r * 1.7) / (fs * 0.6)));
-        ctx.fillText(truncate(name, maxChars), cx, cy);
+        const fit = fitLabel(basename(b.file), r * 1.8, 13, 9, (t, px) => {
+          ctx.font = `${px}px ${fontMono}`;
+          return ctx.measureText(t).width;
+        });
+        if (fit) {
+          ctx.font = `${fit.px}px ${fontMono}`;
+          ctx.fillStyle = "#141310";
+          ctx.fillText(fit.text, cx, cy);
+        }
       }
     }
     ctx.globalAlpha = 1; // F70：复位（高亮态压暗过 alpha，别泄漏到下一帧/其它绘制）
@@ -1860,12 +1869,6 @@ export class PanoramaView implements OverlayHandle {
 function basename(path: string): string {
   const parts = path.replace(/[\\/]+$/, "").split(/[\\/]/);
   return parts[parts.length - 1] || path;
-}
-
-function truncate(s: string, max: number): string {
-  if (s.length <= max) return s;
-  if (max <= 1) return s.slice(0, Math.max(0, max));
-  return copyText("panorama.truncate.ellipsis", { text: s.slice(0, max - 1) });
 }
 
 function fmtScore(n: number): string {

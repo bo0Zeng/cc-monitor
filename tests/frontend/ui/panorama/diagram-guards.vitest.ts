@@ -15,7 +15,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { RENDERERS, legendFor, renderCallGraph, renderClusters, renderTypeGraph, layoutCallGraph } from "../../../../src/frontend/ui/panorama/diagram-render";
 import { HONESTY_CELLS, honestyLine } from "../../../../src/frontend/ui/panorama/diagram-honesty";
-import type { CallGraphBody, ClustersBody, TypeGraphBody } from "../../../../src/frontend/ui/panorama/types";
+import type { BodyOf } from "../../../../src/frontend/ui/panorama/diagram-render";
 import * as fx from "./diagram-fixtures";
 
 const VD = "src/panorama-engine/vendor/code-picture-core/src/diagram/";
@@ -74,7 +74,7 @@ describe("PN1b 选图：本仓与上游两向相等（异源）", () => {
 
 describe("PN1b 渲染器（纯函数，零 mock）", () => {
   it("R1 团/模块：每捆连接的线型按成分选，混着的不许画成干净的粗实线；标签写出成分", () => {
-    const svg = renderClusters(fx.clustersDiagram.body as ClustersBody, { onNode: () => {} });
+    const svg = renderClusters(fx.clustersDiagram.body as BodyOf<"clusters">, { onNode: () => {} });
     const edges = [...svg.querySelectorAll("[data-edge]")];
     expect(edges.map((e) => e.getAttribute("data-conf"))).toEqual(["exact", "mixed", "guess"]);
     expect(edges.map((e) => e.querySelector("text")?.textContent)).toEqual([
@@ -90,7 +90,7 @@ describe("PN1b 渲染器（纯函数，零 mock）", () => {
   });
 
   it("R2 团/模块：选中的文件 ⇒ 含它的那个节点（且只那一个）描环；数据来自上游 member_files", () => {
-    const svg = renderClusters(fx.clustersDiagram.body as ClustersBody, {
+    const svg = renderClusters(fx.clustersDiagram.body as BodyOf<"clusters">, {
       onNode: () => {},
       focusFile: "src/b/z.rs",
     });
@@ -98,7 +98,7 @@ describe("PN1b 渲染器（纯函数，零 mock）", () => {
   });
 
   it("R3 调用子图：中心第 0 列、它调的往右、调它的往左；按名字凑的边标「N 选 1」", () => {
-    const body = fx.callDiagram.body as CallGraphBody;
+    const body = fx.callDiagram.body as BodyOf<"call_graph">;
     const { column } = layoutCallGraph(body);
     expect([...column.entries()].sort()).toEqual([
       ["src/a/x.rs#f", 0],
@@ -117,7 +117,7 @@ describe("PN1b 渲染器（纯函数，零 mock）", () => {
 
   it("R4 类图：关系按种类（实现 / 组合）画；点节点把类型交给调用方", () => {
     const picked: string[] = [];
-    const svg = renderTypeGraph(fx.typeDiagram.body as TypeGraphBody, {
+    const svg = renderTypeGraph(fx.typeDiagram.body as BodyOf<"type_graph">, {
       onNode: (p) => picked.push(`${p.shape}:${p.shape === "type_graph" ? p.node.name : ""}`),
     });
     expect([...svg.querySelectorAll("[data-edge]")].map((e) => e.getAttribute("data-conf"))).toEqual([

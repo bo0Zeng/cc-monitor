@@ -112,8 +112,9 @@ fn home() -> Option<PathBuf> {
 }
 
 /// 索引落哪：那台机器上后端自己的数据目录下 `panorama/`（**不是**被分析的仓）。
+/// 〔P3〕住址只住契约 crate（`relay_route_core::PANORAMA_INDEX_REL`：monitor 的数据位置页按同一个常量列出它）。
 pub(crate) fn store_dir(home: &Path) -> PathBuf {
-    home.join(super::exit_policy::DIR_NAME).join("panorama")
+    home.join(relay_route_core::PANORAMA_INDEX_REL)
 }
 
 /// 〔RM1f〕盘上那个可执行文件的**文件名**：身份名 ＋ 这台机器的可执行后缀（Windows 上 `.exe`，别处空串）。

@@ -27,7 +27,7 @@ vi.mock("../../../../src/frontend/ui/panorama/api", async (importOriginal) => {
 
 import * as api from "../../../../src/frontend/ui/panorama/api";
 import * as render from "../../../../src/frontend/ui/panorama/diagram-render";
-import { DiagramPane } from "../../../../src/frontend/ui/panorama/diagram-view";
+import { DiagramPane, FIT_MAX_SCALE } from "../../../../src/frontend/ui/panorama/diagram-view";
 import { honestyLine } from "../../../../src/frontend/ui/panorama/diagram-honesty";
 import { CLIP_HEAD } from "../../../../src/frontend/ui/panorama/agent-clip";
 import { PanoramaView } from "../../../../src/frontend/ui/views/panorama";
@@ -203,5 +203,108 @@ describe("PN1b 选图（界面）", () => {
     expect(q<HTMLElement>(v, ".panorama-diagram-note").textContent).toBe("画不出这张图：找不到符号 x");
     expect(probe(v).root.querySelectorAll(".panorama-diagram-canvas svg").length).toBe(0);
     expect(q<HTMLElement>(v, '[data-pano="diagram-honesty"]').textContent).toBe("");
+  });
+});
+
+// 〔P3〕`设计/97 §8`「图的缩放 / 拖拽」· `99 §4.4` 同一行 · SHOTS 报备「模块图 SVG 按自然尺寸画、只占左上角」。
+// 判的是**几何性质**（适配后居中且顶满一边或到封顶倍数 · 锚点下的世界点不动 · 平移量 == 拖动量），
+// 不拿被测那一份 `fitViewport` 去算期望。
+describe("〔P3〕图的缩放 / 拖拽：图铺满画布、按视口适配", () => {
+  const W = 900;
+  const H = 600;
+  let v: PanoramaView;
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    document.body.replaceChildren();
+    vi.mocked(api.diagramKinds).mockResolvedValue(fx.kinds);
+    vi.mocked(api.status).mockResolvedValue({ symbols: 0, stale: false, indexedAt: 1_790_000_000 });
+    vi.mocked(api.node).mockImplementation(async (_r, id) => nodeView(id));
+    vi.mocked(api.symbolsInFile).mockResolvedValue([]);
+    vi.mocked(api.diagram).mockResolvedValue(fx.view(fx.clustersDiagram));
+    v = new PanoramaView(() => ({ cwd: "/repo", origin: LOCAL_ORIGIN }));
+    await v.open();
+    await flush();
+    const canvas = q<HTMLElement>(v, ".panorama-diagram-canvas");
+    Object.defineProperty(canvas, "clientWidth", { configurable: true, value: W });
+    Object.defineProperty(canvas, "clientHeight", { configurable: true, value: H });
+  });
+  const world = (): SVGGElement => q<SVGGElement>(v, ".panorama-diagram-canvas g[data-pano-world]");
+  const vpOf = (): { x: number; y: number; s: number } => {
+    const m = /^translate\(([-\d.e]+) ([-\d.e]+)\) scale\(([-\d.e]+)\)$/.exec(world().getAttribute("transform") ?? "");
+    expect(m, `世界那一层没有平移 / 缩放：${world().getAttribute("transform")}`).not.toBeNull();
+    return { x: Number(m![1]), y: Number(m![2]), s: Number(m![3]) };
+  };
+  const size = (): { w: number; h: number } => ({
+    w: Number(world().getAttribute("data-world-w")),
+    h: Number(world().getAttribute("data-world-h")),
+  });
+  const fitted = (): void => {
+    const { x, y, s } = vpOf();
+    const { w, h } = size();
+    expect(x + (w * s) / 2, "适配后没有水平居中").toBeCloseTo(W / 2, 6);
+    expect(y + (h * s) / 2, "适配后没有垂直居中").toBeCloseTo(H / 2, 6);
+    // 顶满一边（留 24 像素边），或到了封顶倍数 —— 不许停在自然尺寸缩在左上角
+    const fillsW = Math.abs(w * s - (W - 48)) < 1e-6;
+    const fillsH = Math.abs(h * s - (H - 48)) < 1e-6;
+    expect(fillsW || fillsH || s === FIT_MAX_SCALE, `没铺满也没到封顶：scale=${s} world=${w}×${h}`).toBe(true);
+  };
+
+  it("Z1 画出来那一刻：SVG 铺满画布，世界那一层适配进视口（居中 · 顶满一边或到封顶）", async () => {
+    await choose(v, "k-clusters");
+    const svg = q<SVGSVGElement>(v, ".panorama-diagram-canvas svg");
+    expect([svg.getAttribute("width"), svg.getAttribute("height")]).toEqual(["100%", "100%"]);
+    fitted();
+  });
+
+  it("Z2 滚轮以指针为锚缩放：指针下的世界点缩放前后不动；「适配」回到适配", async () => {
+    await choose(v, "k-clusters");
+    const before = vpOf();
+    const [px, py] = [123, 77];
+    const wx = (px - before.x) / before.s;
+    const wy = (py - before.y) / before.s;
+    q<HTMLElement>(v, ".panorama-diagram-canvas").dispatchEvent(
+      new WheelEvent("wheel", { deltaY: -1, clientX: px, clientY: py, cancelable: true }),
+    );
+    const after = vpOf();
+    expect(after.s).toBeGreaterThan(before.s);
+    expect(wx * after.s + after.x).toBeCloseTo(px, 6);
+    expect(wy * after.s + after.y).toBeCloseTo(py, 6);
+    const fit = [...probe(v).root.querySelectorAll("button")].find((b) => b.textContent === copyText("panorama.build.fit"))!;
+    fit.click();
+    fitted();
+  });
+
+  it("Z3 按住拖动：平移量 == 拖动量；拖完松手那一下不当点击（不下钻）；不拖的点击照常下钻", async () => {
+    await choose(v, "k-clusters");
+    const canvas = q<HTMLElement>(v, ".panorama-diagram-canvas");
+    const node = q<SVGGElement>(v, '[data-node="src_a"]');
+    const before = vpOf();
+    node.dispatchEvent(new MouseEvent("mousedown", { button: 0, clientX: 10, clientY: 10, bubbles: true }));
+    window.dispatchEvent(new MouseEvent("mousemove", { clientX: 60, clientY: 40 }));
+    window.dispatchEvent(new MouseEvent("mouseup", { button: 0, clientX: 60, clientY: 40 }));
+    node.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    const after = vpOf();
+    expect([after.x - before.x, after.y - before.y, after.s]).toEqual([50, 30, before.s]);
+    expect(canvas.classList.contains("is-panning")).toBe(false);
+    expect(probe(v).sidebarEl.querySelectorAll('[data-pano="side-list"]').length, "拖图时顺手下钻了一个节点").toBe(0);
+    node.dispatchEvent(new MouseEvent("mousedown", { button: 0, clientX: 5, clientY: 5, bubbles: true }));
+    window.dispatchEvent(new MouseEvent("mouseup", { button: 0, clientX: 5, clientY: 5 }));
+    node.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(probe(v).sidebarEl.querySelectorAll('[data-pano="side-list"]').length).toBe(1);
+  });
+
+  it("Z4 同一张图只换描环（选中的文件变了）⇒ 视口不动；换一张图 ⇒ 重新适配", async () => {
+    await choose(v, "k-clusters");
+    q<HTMLElement>(v, ".panorama-diagram-canvas").dispatchEvent(
+      new WheelEvent("wheel", { deltaY: -1, clientX: 5, clientY: 5, cancelable: true }),
+    );
+    const zoomed = vpOf();
+    probe(v).openFileDetail({ file: "src/b/z.rs", subsystem: "src/b", isEntry: false });
+    await flush();
+    expect(world().querySelector('[data-focus]')?.getAttribute("data-node")).toBe("src_b");
+    expect(vpOf()).toEqual(zoomed);
+    vi.mocked(api.diagram).mockResolvedValue(fx.view(fx.typeDiagram));
+    await choose(v, "k-types");
+    fitted();
   });
 });
