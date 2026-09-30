@@ -42,6 +42,7 @@ import type {
   PanoramaDiagram,
   PanoramaStatus,
   Symbol as PanoramaSymbol,
+  SymbolRef,
 } from "./types";
 import { copyText } from "../copy-table";
 import CONTRACT from "./engine-contract.json";
@@ -251,23 +252,16 @@ export const drift = (at: RepoAt): Promise<DriftItem[]> => remote(at, "drift");
 // === F72：批注 + 文档关联写（落被分析仓、人手势触发）。存储格式只在上游定义（SS-15）。 ===
 // 〔RM1d〕本机远端同一条 `panorama_edit`：那台机器算、那台机器后端的文件管理写。
 
-/** F72：人写批注（直接 Active）。`symbol` = 符号段（如 `f`），null = 文件级。回批注 id。 */
-export const addAnnotation = (
-  at: RepoAt,
-  file: string,
-  symbol: string | null,
-  body: string,
-  author: string,
-): Promise<string> => edit(at, "plan_add_annotation", { file, symbol, body, author });
+/**
+ * F72：人写批注（直接 Active）。`target` = **整个**符号 id（文件级批注 = 文件路径）；
+ * 〔P7〕截 `@行号`、取文件段归上游（`SymbolRef::of`），前端不拆。回批注 id。
+ */
+export const addAnnotation = (at: RepoAt, target: string, body: string, author: string): Promise<string> =>
+  edit(at, "plan_add_annotation", { target, body, author });
 
-/** F72：agent 提议批注（Proposed，需人 approve 才 Active）。回批注 id。 */
-export const proposeAnnotation = (
-  at: RepoAt,
-  file: string,
-  symbol: string | null,
-  body: string,
-  author: string,
-): Promise<string> => edit(at, "plan_propose_annotation", { file, symbol, body, author });
+/** F72：agent 提议批注（Proposed，需人 approve 才 Active）。`target` 同 {@link addAnnotation}。回批注 id。 */
+export const proposeAnnotation = (at: RepoAt, target: string, body: string, author: string): Promise<string> =>
+  edit(at, "plan_propose_annotation", { target, body, author });
 
 /** F72：批准一条 Proposed 批注 → Active。回它在不在。 */
 export const approveAnnotation = (at: RepoAt, id: string): Promise<boolean> =>
@@ -289,7 +283,7 @@ export const removeDocLink = (at: RepoAt, doc: string, target: string): Promise<
   edit(at, "plan_remove_doc_link", { doc, target });
 
 /**
- * ⭐ P3 护城河缝：一组文件/行 → 命中的符号 id。`ranges` 空 → 整文件所有符号。
+ * ⭐ P3 护城河缝：一组文件/行 → 命中的符号（〔P7〕带 `file`，上游给）。`ranges` 空 → 整文件所有符号。
  * cc-monitor 从 jsonl 的 Edit/Write 拿「agent 刚改了哪些文件行」→ 高亮 = 「agent 正在改这几个节点」。
  * 远端会话的文件路径本来就是那台机器上的路径 ⇒ 远端仓照样问那台。
  */
@@ -297,4 +291,4 @@ export const touching = (
   at: RepoAt,
   files: string[],
   ranges: [number, number][],
-): Promise<string[]> => remote(at, "touching", { files, ranges });
+): Promise<SymbolRef[]> => remote(at, "touching", { files, ranges });

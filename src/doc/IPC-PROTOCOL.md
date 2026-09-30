@@ -3380,7 +3380,7 @@ D 组「monitor 算好、后端写」（`设计/05 §14.3`）按用户 09-27「�
 #### `panorama-edit`：全景写批注 / 文档关联（〔MIG-3b 续〕09-28；〔RM1d〕V110「引擎只算、文件管理来写」）
 
 ```text
-→ {"id":"g2","cmd":"panorama-edit","args":{"repo":"/home/me/proj","op":"plan_add_annotation","args":{"file":"a.rs","symbol":null,"body":"x","author":"me"},"shape":"<形状代号>"}}
+→ {"id":"g2","cmd":"panorama-edit","args":{"repo":"/home/me/proj","op":"plan_add_annotation","args":{"target":"a.rs#f","body":"x","author":"me"},"shape":"<形状代号>"}}
 ← {"kind":"reply","id":"g2","ok":true,"data":"k3f…"}
 ```
 

@@ -15,7 +15,7 @@ import {
   MAX_SCALE,
   type Viewport,
   type FileBubble,
-  touchedFilesFromIds,
+  touchedFiles,
   countShown,
 } from "../../../../src/frontend/ui/panorama/layout";
 import type { Overview } from "../../../../src/frontend/ui/panorama/types";
@@ -183,7 +183,7 @@ describe("computeLayout", () => {
       { label: "core", files: ["src/a.ts", "src/b.ts"], size: 2 },
       { label: "util", files: ["src/c.ts"], size: 1 },
     ],
-    entry_points: ["src/a.ts#main"],
+    entry_points: [{ id: "src/a.ts#main", file: "src/a.ts", symbol: "main" }],
     total_symbols: 26,
     total_files: 4,
     unresolved_calls: 5,
@@ -236,15 +236,11 @@ describe("computeLayout", () => {
   });
 });
 
-describe("F70 高亮派生（touchedFilesFromIds / countShown）", () => {
+describe("F70 高亮派生（touchedFiles / countShown）", () => {
   const bub = (file: string): FileBubble => ({ file }) as FileBubble;
-  it("touchedFilesFromIds：符号 id file#name → 文件段去重", () => {
-    expect([
-      ...touchedFilesFromIds(["a.ts#foo", "a.ts#bar", "b.rs#baz"]),
-    ]).toEqual(["a.ts", "b.rs"]);
-  });
-  it("touchedFilesFromIds：方法 id file#Type::method 也取文件段；空/畸形跳过", () => {
-    expect([...touchedFilesFromIds(["m.ts#T::run", "", "#nofile"])]).toEqual(["m.ts"]);
+  it("touchedFiles：〔P7〕读上游给的 file 字段去重（id 长什么样不看：这里故意给一个拆不出文件的 id）", () => {
+    const ref = (id: string, file: string) => ({ id, file, symbol: null });
+    expect([...touchedFiles([ref("x", "a.ts"), ref("y", "a.ts"), ref("z", "b.rs")])]).toEqual(["a.ts", "b.rs"]);
   });
   it("countShown：只数在气泡集里的高亮文件（非脊柱文件不计）", () => {
     const bubbles = [bub("a.ts"), bub("b.rs"), bub("c.py")];

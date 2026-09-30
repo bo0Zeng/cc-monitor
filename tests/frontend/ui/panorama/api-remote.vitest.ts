@@ -48,8 +48,8 @@ const READS: Record<string, (at: api.RepoAt) => Promise<unknown>> = {
   touching: (at) => api.touching(at, ["/srv/proj/a.rs"], []),
 };
 const WRITES: Record<string, (at: api.RepoAt) => Promise<unknown>> = {
-  addAnnotation: (at) => api.addAnnotation(at, "a.rs", "f", "x", "me"),
-  proposeAnnotation: (at) => api.proposeAnnotation(at, "a.rs", "f", "x", "agent"),
+  addAnnotation: (at) => api.addAnnotation(at, "a.rs#f", "x", "me"),
+  proposeAnnotation: (at) => api.proposeAnnotation(at, "a.rs#f", "x", "agent"),
   approveAnnotation: (at) => api.approveAnnotation(at, "id1"),
   removeAnnotation: (at) => api.removeAnnotation(at, "id1"),
   writeDocLink: (at) => api.writeDocLink(at, "d.md", "a#f"),
@@ -138,8 +138,9 @@ describe("全景经通道直问那台后端（RM1c · MIG-3b 续）", () => {
       expect(ops.sort()).toEqual(Object.keys(programOps().plans).sort());
     }
     vi.mocked(invoke).mockClear();
-    await api.addAnnotation(REMOTE, "a.rs", null, "x", "me");
-    expect(sent("panorama-edit")[0].body.args).toEqual({ file: "a.rs", symbol: null, body: "x", author: "me" });
+    // 〔P7〕交整个符号 id（带 `@行号` 也原样交；截它归上游 `SymbolRef::of`）。
+    await api.addAnnotation(REMOTE, "a.rs#f@42", "x", "me");
+    expect(sent("panorama-edit")[0].body.args).toEqual({ target: "a.rs#f@42", body: "x", author: "me" });
   });
 
   it("A3 本机读：与远端同一条 —— origin = <local>，op 与远端逐个相同", async () => {

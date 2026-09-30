@@ -1,4 +1,5 @@
 //! Engine —— 唯一对外入口。索引 + 增量 + symbols_touching + 锚点解析 + 多语言 + 新鲜度。
+//! (符号 id 的拆法住 `model::SymbolRef::of`,本层不另拆。)
 //!
 //! **线程模型(cc-monitor 融合必读)**:`Engine` 内含 `rusqlite::Connection`,故是 `Send`
 //! 但**非 `Sync`**。多线程(如 Tauri command)共享时用 `State<Mutex<Engine>>`,并把
@@ -205,17 +206,6 @@ fn now_nanos() -> u128 {
 }
 
 // ── 跨子模块共用的小工具 ──
-
-/// 拆分符号 id → (文件, 符号段)。符号段 = `#` 之后去 `@行号`(如 "Foo::run" 或 "login")。
-pub(super) fn split_sym_id(id: &str) -> (String, Option<String>) {
-    match id.split_once('#') {
-        Some((file, rest)) => (
-            file.to_string(),
-            Some(rest.split('@').next().unwrap_or(rest).to_string()),
-        ),
-        None => (id.to_string(), None),
-    }
-}
 
 /// 符号段的裸名(去掉 `Type::` 限定)。
 pub(super) fn bare_name(seg: &str) -> &str {

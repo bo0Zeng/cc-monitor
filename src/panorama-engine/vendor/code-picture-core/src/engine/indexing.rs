@@ -5,7 +5,7 @@
 //! (它们是全局计数),所以覆盖读数是「上次全量时」的 —— 这一条在 `mcp` 的输出里明说了。
 
 use super::{fingerprint, now_nanos, to_rel, Engine};
-use crate::model::{IndexDelta, IndexStats, Lang, Symbol};
+use crate::model::{IndexDelta, IndexPhase, IndexProgress, IndexStats, Lang, Symbol};
 use crate::{docs, graph, scan, symbols};
 use std::error::Error;
 use std::path::PathBuf;
@@ -15,11 +15,23 @@ impl Engine {
     /// 全量索引:扫所有受支持语言的源文件 → 符号入库 + 记内容指纹 + 打索引时间戳。
     /// 先对账清理旧数据,保证幂等(已删文件不残留陈旧符号)。
     pub fn index(&mut self) -> Result<IndexStats, Box<dyn Error>> {
+        self.index_with_progress(&mut |_| {})
+    }
+
+    /// 同 [`Engine::index`],边走边报进度(见 [`IndexProgress`]:每阶段先报 `0/总数`,之后每份一报)。
+    /// 回调在建索引的线程上同步调 —— 慢了就拖慢建索引,节流是调用方的事。
+    pub fn index_with_progress(
+        &mut self,
+        on: &mut dyn FnMut(IndexProgress),
+    ) -> Result<IndexStats, Box<dyn Error>> {
         self.idx.clear_symbols_and_fingerprints()?;
         let files = scan::source_files(&self.repo);
+        let total = files.len();
+        let mut tick = |phase: IndexPhase, done: usize| on(IndexProgress { phase, done, total });
         let mut stats = IndexStats::default();
         // 缓存 (rel, src, symbols),供随后建边复用(避免二次读盘)
         let mut cache: Vec<(String, String, Vec<Symbol>)> = Vec::new();
+        tick(IndexPhase::Parse, 0);
         for (rel, _lang) in &files {
             let src = std::fs::read_to_string(self.repo.join(rel)).unwrap_or_default();
             // 一次解析同时拿符号 · 字段类型 · 解析健康
@@ -36,6 +48,7 @@ impl Engine {
             self.idx.replace_file_impls(rel, &got.impls)?;
             self.idx.set_file_fingerprint(rel, &fingerprint(&src))?;
             cache.push((rel.clone(), src, syms));
+            tick(IndexPhase::Parse, cache.len());
         }
         stats.files = files.len();
         // 全量建边(需完整符号表);src 已在内存(cache),不再读盘、graph 不做 IO
@@ -46,12 +59,14 @@ impl Engine {
                 .with_impls(self.idx.all_impls()?);
         // 第一趟:建边。此刻**函数摘要只到一跳**(建符号阶段只看得见函数自己的函数体)。
         let mut pass_a: Vec<Vec<crate::model::Edge>> = Vec::with_capacity(cache.len());
+        tick(IndexPhase::Link, 0);
         for (rel, src, syms) in &cache {
             let built = graph::build_edges(src, rel, syms, &table);
             stats.unresolved_calls += built.unresolved_calls; // F18:识别为调用但连不上仓内符号
             stats.ambiguous_calls += built.ambiguous_calls; // 看得见但分不清(≠ 看不见)
             stats.unresolved_imports += built.unresolved_imports; // 同上,但成因不同,分开计
             pass_a.push(built.edges);
+            tick(IndexPhase::Link, pass_a.len());
         }
         // 不动点:顺第一趟的调用边(带 `arg_flow`)把摘要抬成传递闭包。
         // 🔴 解析结果与两个 unresolved 计数**不受摘要影响**(摘要只改参数流),
@@ -64,6 +79,7 @@ impl Engine {
         // 🔴 **只重建真的会变的文件** —— 一个文件只有在它调用了某个**摘要变了**的符号时,
         //    重来才可能得出不同的边。全量重来一趟是三倍索引时间换极少数文件的差异
         //    (实测本仓 2.7s → 8.2s,而真正要重建的是 0 个文件)。
+        tick(IndexPhase::Relink, 0);
         for (k, (rel, src, syms)) in cache.iter().enumerate() {
             let needs_redo = pass_a[k].iter().any(|e| lifted.contains_key(&e.to));
             if needs_redo {
@@ -72,6 +88,7 @@ impl Engine {
             } else {
                 self.idx.insert_edges(&pass_a[k])?;
             }
+            tick(IndexPhase::Relink, k + 1);
         }
         // F18:覆盖信号入 meta,供 overview 诚实展示(update 增量不维护,故为"上次全量 index 时")
         self.idx
@@ -83,7 +100,7 @@ impl Engine {
         self.idx
             .set_meta("parse_errors", &stats.parse_errors.to_string())?;
         // 文档链接:扫 .md → 解析 → 存(只读;drift/docs_for 查询时再据当前符号解析)
-        self.rebuild_doc_links()?;
+        self.rebuild_doc_links_with(on)?;
         self.stamp_index_time()?;
         self.invalidate_caches();
         Ok(stats)
@@ -94,12 +111,40 @@ impl Engine {
         self.index()
     }
 
+    /// 同 [`Engine::reindex`],边走边报进度(同 [`Engine::index_with_progress`])。
+    pub fn reindex_with_progress(
+        &mut self,
+        on: &mut dyn FnMut(IndexProgress),
+    ) -> Result<IndexStats, Box<dyn Error>> {
+        self.index_with_progress(on)
+    }
+
     /// 全量重建文档链接(doc-links 由 .md 派生)。
     pub(super) fn rebuild_doc_links(&mut self) -> Result<(), Box<dyn Error>> {
+        self.rebuild_doc_links_with(&mut |_| {})
+    }
+
+    /// 同 [`Engine::rebuild_doc_links`],边走边报 [`IndexPhase::Docs`] 那一段。
+    fn rebuild_doc_links_with(
+        &mut self,
+        on: &mut dyn FnMut(IndexProgress),
+    ) -> Result<(), Box<dyn Error>> {
+        let mds = scan::markdown_files(&self.repo);
+        let total = mds.len();
         let mut links = Vec::new();
-        for md in scan::markdown_files(&self.repo) {
-            let content = std::fs::read_to_string(self.repo.join(&md)).unwrap_or_default();
-            links.extend(docs::parse_md(&md, &content));
+        on(IndexProgress {
+            phase: IndexPhase::Docs,
+            done: 0,
+            total,
+        });
+        for (k, md) in mds.iter().enumerate() {
+            let content = std::fs::read_to_string(self.repo.join(md)).unwrap_or_default();
+            links.extend(docs::parse_md(md, &content));
+            on(IndexProgress {
+                phase: IndexPhase::Docs,
+                done: k + 1,
+                total,
+            });
         }
         self.idx.replace_all_doc_links(&links)?;
         self.invalidate_drift(); // doc_links 变仅 drift 失效(overview 不依赖 doc_links);index/update 另清 overview

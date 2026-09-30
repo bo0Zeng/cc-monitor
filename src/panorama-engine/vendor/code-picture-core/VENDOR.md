@@ -14,13 +14,27 @@ cc-monitor 仓内,CI 无需改 checkout、构建自洽。
 
 ## 来源
 - 上游仓:`/home/zbl/文档/project/self项目/code-picture/code-picture`
-- vendored commit:`43c5b73`(RM1d:批注 / 文档关联的写拆成「算」与「写盘」两层)
-- vendored 时间:2026-09-24
-- 取自上游分支 **`cc-monitor/rm1d`**(worktree `/home/zbl/cc-wt/up-rm1d`,只本地提交、不推 —— V79);
-  并进上游 `main` 由主会话做。`build.rs::check_vendor_freshness` 比的是 `pin..上游 HEAD`,这笔并进 main 之前
-  上游 HEAD(`276b531`)是 pin 的祖先 ⇒ 不报过期(看不见「副本领先上游 main」这一形 —— 记下,不改尺子)。
+- vendored commit:`446719c`(P7:上游四条接口需求 —— 邻域带跳数 · 符号 id 结构化 · 建索引进度 · 线上类型 schema)
+- vendored 时间:2026-09-29
+- 取自上游分支 **`cc-monitor/asks`**(worktree `/home/zbl/cc-wt/up-asks`,只本地提交、不推 —— V79);
+  并进上游 `main` 由主会话做。`build.rs::check_vendor_freshness` 比的是 `pin..上游 HEAD`,这几笔并进 main 之前
+  上游 HEAD(`43c5b73`)是 pin 的祖先 ⇒ 不报过期(看不见「副本领先上游 main」这一形 —— 记下,不改尺子)。
 - 沿革:`e6b9d64`(F18,07-10)→ `179a5b2`(F68 signature+DB迁移)→ `d8f1fe7`(F68 审计修)→
-  `d558e47`(F72 批注分家回仓)→ `276b531`(PN1b,09-24;中间 34 笔,见下)→ `43c5b73`(RM1d,09-24,1 笔)
+  `d558e47`(F72 批注分家回仓)→ `276b531`(PN1b,09-24;中间 34 笔,见下)→ `43c5b73`(RM1d,09-24,1 笔)→
+  `446719c`(P7,09-29,4 笔)
+
+## P7 re-vendor 带进的变化(09-29,`43c5b73..446719c`,4 笔;用户 V158「线上契约由上游给、本仓不手抄 · 长活要有进度」)
+
+- **邻域带跳数** `Engine::neighborhood(sym, depth) -> Neighborhood{root, reached:[Reached{id, depth}]}`:
+  跳数 = 最小的 d 使它出现在 `subgraph(sym, d)` 里(两向各走最短取小,不混向)。小程序 `neighborhood` op 改直调(原先逐跳取差集)。
+- **符号 id 结构化** `model::SymbolRef{id, file, symbol}` + `SymbolRef::of`(拆法唯一住址,原 `engine::split_sym_id` 并进去):
+  `Overview.entry_points` · `symbols_touching` 改回 `Vec<SymbolRef>`(**线上形状变**:串 → 对象)。
+- **建索引进度** `Engine::index_with_progress` / `reindex_with_progress(&mut dyn FnMut(IndexProgress))`;
+  `IndexProgress{phase, done, total}`,阶段 `Parse → Link → Relink → Docs`。`index()` / `reindex()` 不变。
+- **线上类型 schema**:生成物 `src/wire.ts`(ts-rs 从 `#[cfg_attr(test, derive(ts_rs::TS))]` 写出;上游判据两向钉)。
+  它在 `src/` 下 ⇒ 本菜谱照旧拷到;前端 `src/frontend/ui/panorama/types.ts` 由小程序判据据它生成。
+  ts-rs 只在上游的 `[dev-dependencies]`:path 依赖方不解析别人的 dev 依赖 ⇒ 本程序的 lock **一行不变**(`--locked` 验过)。
+- 依赖差零(正式依赖)。
 
 ## RM1d re-vendor 带进的变化(09-24,`276b531..43c5b73`,1 笔;用户 V110「引擎只算、文件管理来写」)
 

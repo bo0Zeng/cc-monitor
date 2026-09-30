@@ -58,7 +58,7 @@ pub fn overview_text(ov: &Overview) -> String {
     }
     s.push_str(&format!("入口点({}):\n", ov.entry_points.len()));
     for e in &ov.entry_points {
-        s.push_str(&format!("  {}\n", e));
+        s.push_str(&format!("  {}\n", e.id));
     }
     s
 }

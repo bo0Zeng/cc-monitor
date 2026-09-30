@@ -88,7 +88,7 @@ pub const OPS: &[(&str, Need)] = &[
     ("reindex", Need::Build),
     ("overview", Need::Read),
     ("node", Need::Read),
-    // 〔PANO · CP1〕以某符号为心的邻域，每个符号带「距根几跳」（前端只分组，不算）。
+    // 〔PANO · CP1〕以某符号为心的邻域，每个符号带「距根几跳」（〔P7〕上游 `Engine::neighborhood` 直出；前端只分组，不算）。
     ("neighborhood", Need::Read),
     ("callers", Need::Read),
     ("callees", Need::Read),
@@ -143,20 +143,6 @@ struct StatusReply {
     symbols: usize,
 }
 
-/// `neighborhood` 的应答：根 ＋ 每个够得着的符号与它距根几跳。
-#[derive(Serialize, Default)]
-struct NeighborhoodReply {
-    root: String,
-    reached: Vec<Reached>,
-}
-
-/// 邻域里的一个符号。
-#[derive(Serialize, Default)]
-struct Reached {
-    id: String,
-    depth: u32,
-}
-
 /// `diagram` 的应答：上游 `Diagram`（形状归 vendored pin）＋ 上游 Mermaid 文本。
 #[derive(Serialize, Default)]
 struct DiagramReply {
@@ -172,13 +158,6 @@ fn own_dtos() -> Vec<(&'static str, Value)> {
         (
             "status",
             sample(serde_json::to_value(StatusReply::default())),
-        ),
-        (
-            "neighborhood",
-            sample(serde_json::to_value(NeighborhoodReply {
-                reached: vec![Reached::default()],
-                ..Default::default()
-            })),
         ),
         (
             "diagram",
@@ -474,9 +453,8 @@ struct DiagramArgs {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct AnnotateArgs {
-    file: String,
-    /// 符号段（如 `f` / `Type::method`）；缺席 / `null` = 文件级批注。
-    symbol: Option<String>,
+    /// 〔P7〕挂在谁身上：**整个**符号 id（文件级批注 = 裸文件路径）。截 `@行号`、取文件段归上游 `SymbolRef::of`，本程序不拆。
+    target: String,
     body: String,
     author: String,
 }
@@ -524,17 +502,23 @@ fn dispatch_plan(op: &str, repo: &Path, args: Value) -> Result<Value, Fail> {
     match op {
         "plan_add_annotation" => {
             let a: AnnotateArgs = take(op, args)?;
-            out(
-                edits::plan_add_annotation(repo, &a.file, a.symbol.as_deref(), &a.body, &a.author)
-                    .map_err(plan_fail)?,
+            let at = model::SymbolRef::of(&a.target);
+            out(edits::plan_add_annotation(
+                repo,
+                &at.file,
+                at.symbol.as_deref(),
+                &a.body,
+                &a.author,
             )
+            .map_err(plan_fail)?)
         }
         "plan_propose_annotation" => {
             let a: AnnotateArgs = take(op, args)?;
+            let at = model::SymbolRef::of(&a.target);
             out(edits::plan_propose_annotation(
                 repo,
-                &a.file,
-                a.symbol.as_deref(),
+                &at.file,
+                at.symbol.as_deref(),
                 &a.body,
                 &a.author,
             )
@@ -590,7 +574,7 @@ fn dispatch(op: &str, e: &mut Engine, args: Value) -> Result<Value, Fail> {
         }
         "neighborhood" => {
             let a: SymbolDepthArgs = take(op, args)?;
-            out(neighborhood(e, &a.symbol, a.depth))
+            out(e.neighborhood(&a.symbol, a.depth))
         }
         "callers" => {
             let a: SymbolDepthArgs = take(op, args)?;
@@ -626,8 +610,9 @@ fn dispatch(op: &str, e: &mut Engine, args: Value) -> Result<Value, Fail> {
             // 同 monitor 旧的 `collect_symbols_in_file`〔散文墓碑〕（随内嵌引擎删了，RM1f）：core 没有公开的按文件查询口 ⇒
             // `symbols_touching`（ranges 空 = 整文件）＋ 逐 id `find_symbol`。
             let a: FileArgs = take(op, args)?;
-            let ids = e.symbols_touching(&[PathBuf::from(&a.file)], &[]);
-            let syms: Vec<model::Symbol> = ids.iter().filter_map(|id| e.find_symbol(id)).collect();
+            let refs = e.symbols_touching(&[PathBuf::from(&a.file)], &[]);
+            let syms: Vec<model::Symbol> =
+                refs.iter().filter_map(|r| e.find_symbol(&r.id)).collect();
             out(syms)
         }
         "drift" => {
@@ -657,34 +642,6 @@ fn dispatch(op: &str, e: &mut Engine, args: Value) -> Result<Value, Fail> {
         }
         other => Err(Fail::BadArgs(format!("op `{other}` 不在分派里"))),
     }
-}
-
-/// 〔PANO · `97` CP1「人那一侧不许出现任何图分析」· `99 §1` V158〕以 `sym` 为心的邻域，**每个符号带距根几跳**：
-/// `{root, reached: [{id, depth}]}`（同一层按 id 排，根不进结果）。
-///
-/// 跳数 = 它最早出现在第几跳的上游 `subgraph(sym, d)` 里（`d = 1..=depth`，一层没有新的就停）——
-/// 只用上游的答案、不自写图算法，口径与上游 `subgraph` 的 depth 同一个（callers ∪ callees 各自按方向走）。
-/// 此前这一步住前端（对 `subgraph` 的边做无向 BFS）。上游给了这个口就换过去（`调研/第四波记录/PANO.md`「上游需求」①）。
-fn neighborhood(e: &Engine, sym: &str, depth: u32) -> NeighborhoodReply {
-    let root = sym.to_string();
-    let mut seen: std::collections::HashSet<String> =
-        std::collections::HashSet::from([root.clone()]);
-    let mut reached: Vec<Reached> = Vec::new();
-    for d in 1..=depth {
-        let sg = e.subgraph(&root, d);
-        let mut layer: Vec<String> = sg
-            .edges
-            .iter()
-            .flat_map(|x| [x.from.clone(), x.to.clone()])
-            .filter(|id| seen.insert(id.clone()))
-            .collect();
-        if layer.is_empty() {
-            break;
-        }
-        layer.sort();
-        reached.extend(layer.into_iter().map(|id| Reached { id, depth: d }));
-    }
-    NeighborhoodReply { root, reached }
 }
 
 /// 一次调用 → (stdout 那一行, stderr 那一行（可空）, 退出码)。纯函数外壳，好测。
