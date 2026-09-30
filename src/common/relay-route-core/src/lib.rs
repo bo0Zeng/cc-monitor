@@ -34,7 +34,10 @@
 //!   上游选择 `accounts/upstream_select/endpoint.rs`（[`base_url`]：起会话那一发注入哪个地址，**只有它拼**）·
 //!   起会话载荷 `control/launch_render/payload.rs`（[`PORT`] · 钥匙段渲成 `$(cat ~/<钥匙>)` 的 [`KEY_FILE_REL`] ·
 //!   中转地址的 fail-closed 校验 [`base_url_shape_ok`]（[`base_url`] 的逆）· 起会话身份 token 的字符集 [`segment_is_safe`]）。
-//! - monitor：起本机后端时交的端口（[`PORT`]）· 常驻监听口（[`listen_port_for`]）· 后端落点（[`BACKEND_LANDING_REL`]）。
+//! - monitor：起本机后端时交的端口（[`PORT`]）· 常驻监听口（[`listen_port_for`]）· 后端落点（[`BACKEND_LANDING_REL`]）·
+//!   监听口的进程记录（`local_backend_host::pid_path`，[`listen_pid_file_name`]）· 数据位置页列家那一族（`data_paths.rs::backend_entries`）。
+//! - 后端按家那一族落盘：`control/exit_policy` · `control/files_commit` · `control/panorama` · `control/resident` ·
+//!   `assets/skill_ledger` · `assets/asset_catalog` · `assets/acct_iso_install` · `platform/shell/dialect`（两份别名文件）。
 
 /// 〔HOST · `设计/05 §5.2` 两个端口〕**常驻监听口**的门牌也住这里（它与中转口是这台机器上后端的两个门）：
 /// 这台机器 ＋ 这个 agent 家目录 ⇒ 那一个口。本机宿主（monitor `local_backend_host`）与远端 `--resident-ensure` 同一个函数
