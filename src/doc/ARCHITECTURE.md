@@ -1,527 +1,356 @@
 # 架构总览
 
-新贡献者第一站。读完应该能回答：数据从哪儿来、经过谁、停在哪儿、为什么这么分。
+cc-monitor 是 Claude Code 会话的**观察者和启动器**：`claude` 跑在用户自己的终端里，cc-monitor 读它写下的会话记录来显示，替用户起会话、管机器，不接管 `claude` 本身。
 
-每个模块的"当下设计 + 为什么"详见各子目录 README — [`../README.md`](../README.md)、[`../../src/frontend/shell/README.md`](../../src/frontend/shell/README.md)、[`../../tests/scripts/README.md`](../../tests/scripts/README.md)。
+本篇回答：由哪几个进程组成、会话内容从哪儿来、经过谁、停在哪儿；一件事该放进哪一层，以及为什么这么分。新贡献者先读这一篇。
 
-跨切面文档：
+相关文档：
+
 - 全局不变量 → [INVARIANTS.md](INVARIANTS.md)
-- 跨进程文件 IPC 协议详解 → [IPC-PROTOCOL.md](IPC-PROTOCOL.md)
+- 帧协议、一次性命令与跨进程文件 → [IPC-PROTOCOL.md](IPC-PROTOCOL.md)
 - Tauri State 注册矩阵 → [STATE-MATRIX.md](STATE-MATRIX.md)
-- 贡献者操作手册 + cookbook → [CONTRIBUTING.md](CONTRIBUTING.md)
+- 加东西 / 撤东西的做法 → [CONTRIBUTING.md](CONTRIBUTING.md)
+- 逐文件清单 → 前端 [`src/README.md`](../README.md) · 壳 [`src/frontend/shell/README.md`](../frontend/shell/README.md) · 后端 [`src/backend/README.md`](../backend/README.md)
 
 ---
 
-## 1. 数据流（实时通道）
+## 1. 进程与数据流
 
-```
-   ┌──────────────────────┐                    ┌──────────────────────┐
-   │  Claude Code CLI     │                    │  PowerShell session  │
-   │  (你跑 `claude`)     │                    │  (跑 cc / __ccm_bind)│
-   └──────────┬───────────┘                    └──────────┬───────────┘
-              │ 写                                         │ 改窗口标题 + 写
-              ▼                                            ▼
-   ~/.claude/projects/                              ~/.cc-monitor/
-       <encoded-cwd>/<sid>.jsonl                        ps-await/<PID>.json
-   ~/.claude/sessions/<PID>.json                        ps-registry/<PID>.json
-              │                                            │
-              │ notify-debouncer 监听              EnumWindows 找 marker
-              │                                            │
-              ▼                                            ▼
-   ┌───────────────────────────────────────────────────────────────────┐
-   │                          Rust 后端 (Tauri)                         │
-   │                                                                    │
-   │   本机后端 line 帧 ─local_lines─► LineIntake ─► messages::JsonlRecord│
-   │       │ (与远端同一个收口，CF1)                 │                   │
-   │       ▼                                        ▼                   │
-   │   session_map.rs (本机活会话表，帧喂) event_replay::on_line_batch_awaited │
-   │       │                                       │  交进各条订阅（CF2）│
-   │       │                                       │  小→逐行格         │
-   │       │                                       │  大→切块＋batch边界│
-   │       │                                       │  按 credit，没有就丢│
-   │       ▼                                       ▼   并原位报 Gap     │
-   │   bind.rs (ps-await/ps-registry/SidHwndCache, EnumWindows)         │
-   │       │                                       │                    │
-   │       │  invoke("bring_terminal_to_front")    │                    │
-   │       │  invoke("bring_monitor_to_front")     │                    │
-   │       └──────────────────┬────────────────────┘                    │
-   │                          ▼                                          │
-   │                     Tauri IPC                                       │
-   └──────────────────────────┬──────────────────────────────────────────┘
-                              │
-                              ▼
-   ┌──────────────────────────────────────────────────────────────────┐
-   │                  TypeScript 前端 (WebView2)                       │
-   │                                                                    │
-   │   events.ts (订阅 + 批量调度 + onBatchStart/End 哨兵)               │
-   │       │                                                            │
-   │       ▼                                                            │
-   │   tabs.ts (TabManager: switchTo manual/auto, userActive, override) │
-   │       │                                                            │
-   │       ▼                                                            │
-   │   render-stream-record.ts ⭐ v2.6 三 caller 共享渲染管线 +          │
-   │       │                  tool-group 后处理合并（看 timeline 左邻居）│
-   │       ▼                                                            │
-   │   record-timeline.ts ⭐ v2.6 按 seq binary insert + DOM insertBefore│
-   │       │                                                            │
-   │       ▼                                                            │
-   │   stream.ts (MessageStream: insertNode + 守卫式 snap 贴底;          │
-   │             重放旧记录经 live-window.ts(TailWindow)收纳不建卡,      │
-   │             上翻补批同步手动补偿——F40a/b,详 §5 与 INVARIANTS §21;   │
-   │             接上骨架后改由 skeleton-view.ts 占位 + 只物化可见区)    │
-   │       │                                                            │
-   │       ▼                                                            │
-   │   render.ts (marked + KaTeX + hljs + DOMPurify; opts.lazy 参数)    │
-   │       │                                                            │
-   │       └─► DOM                                                      │
-   └──────────────────────────────────────────────────────────────────┘
-```
+### 1.1 进程
 
-**关键路径**：
-
-- **内容流：本机与远端同一条帧路**（〔CF1 · 2026-09-24〕`设计/00 §2.5 ②`）：monitor 不再自己 watch jsonl —— 本机会话的行是本机常驻后端（`--tail-only --with-bg`）的 `line` 帧，两条本机读循环经 `local_lines` 交给 `ssh_source::consume_local`，与远端 `stream_loop` 用**同一个** `LineIntake`（攒批 ＋ 静默窗 ＋ 旁路快照 ＋ 续点）→ `flush_lines` → `batch_to_payloads` → `on_line_batch_awaited`。seq 是后端给的行号（与快照同一个空间）→ `JsonlLinePayload.seq` 透传到前端，**前端 RecordTimeline 按 seq 排序，后端 emit 顺序不再影响视觉**。（v2.4 的「monitor 自己的 watcher 同步回调」那一套随 CF1 删了。）
-- **会话流经通道 `subscribe`**（〔CF2 · 第四波 4B〕`设计/05 §8` 步 6）：前端每台机器订一条 `session-lines`（独立窗口订 `session-lines/<sid>`），交格走窗口作用域的 Tauri 事件 `chan-items`（与起停事件同一条投递队列，先后不乱）；前端给 credit（`events.ts::STREAM_WINDOW`），实时的行没 credit 就丢、原位报 `Gap`，前端按行号补（`read_session_lines` / 后端 `history-lines`）。
-- **大小分流**（v2.4.2，v2.6 chunked emit 简化，Batch5-F17 async 化；〔CF2〕交进订阅而不是广播事件）：`event_replay::on_line_batch_awaited` 按 batch 大小分流：
-  - `payloads.len() < 50`（用户日常敲键 1~N 行）→ 逐行一格，live 路径
-  - `payloads.len() >= 50`（`claude --resume` 灌历史 / 远端 snapshot 攒批 / 大量追加）→ 切块、每块带 `batch` 边界，前端进入 batch 模式（lazy hljs）。v2.6 简化：删 head/older 区分，统一按 `CHUNK_SIZE=600` 末块先发，前端按 seq 自动排到正确位置。**Batch5-F17**：大批块序列在调用方任务里发完才返回（块间 tokio sleep，INVARIANTS § 10）——行须先于断连归档；〔CF1〕原先那个 spawn 出去的孪生只供本机 watcher 用，随它删了；前端 events.ts 另有突发检测兜底（逐行格积压 >50 主动进 batch 模式）
-- **启动序**（v2.4 修首次启动乱序；Batch5-F18/F19 骨架+优先级）：前端 DOMContentLoaded 后先 invoke `list_active_sessions`〔散文墓碑〕 把本地活跃会话**骨架 tab** 全部建出（远端骨架走 `remote-session-added` 事件），再按 localStorage 记忆选 active（上次所在 tab），然后 `emit("frontend-ready", {prioritySid})`。〔CF2 · 第四波 4B〕在那之前前端已经经通道订好了每台机器的会话流（`chan.subscribe(origin, "session-lines")`），`frontend-ready` 就是它们的**就绪点**：后端 listener 在 async task 里直接 `event_replay·rs::ready_point(priority_sid)`（〔CF1〕原先那段「10ms 一拍等本机 watcher 首扫完成」随 watcher 删了；没到的行过了就绪点照样实时交） **按 session 分组**切块、按 credit 交进各条订阅（prioritySid 的块先发、组内末块先发、每块带 `batch` 边界）→ **按活跃集对账补发 `session-ended`**（#19 本地用 session_map / #20 远端用 remote_active；前端把 session-ended 与行同队列同序处理，归档落在全部重放行之后，INVARIANTS § 24）。v2.6 简化：**删了 `replaying` flag + catch-up tail 路径**，重放期间新到的行直接当场交，前端 timeline 按 seq 自动放到正确位置
-- **前端按 seq 排序**（v2.6 B 重构）：`RecordTimeline.insert(seq, element)` 用 binary search 找位置 → `stream.insertNode(element, anchor)` 同步处理 stickToBottom 贴底。**消除了** PayloadSource batch/live / inPrependMode / pendingPrependFragment 等 5 个 flag。tool-group 合并改后处理算法：插入时 `timeline.peekPrev(seq)` 看左邻居，是 tool-group 就 `addToToolGroup`，否则建新 group 入 timeline（详 render-stream-record.ts）
-- **active session 自动同步**（v2.4 issue #2）：tabs.ts `onLine` 透传 payload 给 `renderStreamRecord`；sink.onRealUserInput 仅在 `result.kind === "card" && message.type === "user"` 触发（v2.6 删 source 参数后用 message.type 判定）→ TabManager.userActive 检查 `autoFollowUserActive` toggle + 5s `manualOverrideUntil` → `switchTo(sid, "auto")` + 可选 `invoke("bring_monitor_to_front")`
-- **cc 集成绑定**：PS 跑 `__ccm_bind` 写 `ps-await/<PID>.json` + 改窗口标题为 marker → `bind.rs` 监听 + EnumWindows → 写 `ps-registry/<PID>.json` + 删 await → PS 检测到删除恢复标题
-- **历史浏览（流式）**：v2.2 起，点 Ctrl+H → `list_history_projects`（async + spawn_blocking，不阻塞 IPC）→ 用户展开项目 → 前端创建 `Channel<HistorySessionEntry>` 传给 `stream_history_sessions_in_project` → 后端边解析 jsonl 元数据边 `on_entry.send()` → 前端 onmessage rAF 节流增量插入到 fork 树。点单 session → `Channel<Vec<JsonlLinePayload>>` + `stream_read_session_jsonl` 100 行一 chunk emit → session-viewer 两阶段加载(Batch13-F39):收集全部 payload(不渲染)→ 渲染末尾 150 条首屏(37MB 实测 65.5s→1.1s)→ 上翻增量补批(手动滚动补偿稳视口)+ 深链岛
-- **Task 面板（v2.3 issue #11）**：〔MIG-3b · `设计/99 §2.1 ㉓②`〕变更的监视住那台机器的后端（`observe/watcher.rs` 递归盯 `<agent 家>/tasks/`，一批事件按 sid 去重发 `tasks_changed{sid}` 帧）；monitor 把它交进通道 `subscribe(origin, "session-tasks")`，界面收到那个 sid 就重问 `tasks-list`（成品）。本机远端同形；monitor 自己那条 notify 与 `task-update` 事件删了。
-
----
-
-### 1.1 ⚠ 上面那张图只画了**本机**那两个源 —— 另外两条链（F19 补）
-
-原图（`Claude Code CLI` + `PowerShell session`）会让新人以为 **monitor 只读本机文件**。
-今天的主战场是另外两条：
-
-```
-  ┌─ 远端主机 ─────────────────────────────┐
-  │  常驻后端（src/backend）      │
-  │   observe/watcher  ──► JSONL 帧 ──┐      │
-  │   control/{launch,kill,gate}      │      │   ← monitor 从这条**长连接**发控制命令
-  └───────────────────────────────────┼──────┘      （inbound_client：请求/应答 + 背压）
-                                      │ stdout（一条 SSH channel）
-                                      ▼
-        ssh_source.rs::stream_loop ──► 与本机同一套 emitter / event_replay
-                                      （帧种类见 `src/doc/IPC-PROTOCOL.md`）
-
-  ┌─ POSIX 本机 ──────────────────────────┐
-  │  「本地 = 不走 ssh 的远端」——同一套分解，  │  ← 会话容器就是 tmux，
-  │  只是没有 SSH 那一跳                     │     平面 ③ 刻意不开 GUI 终端（见 2.1）
-  └──────────────────────────────────────┘
-```
-
-⚠ 三条链**共用同一个前端管线**（`event_replay` → 〔CF2〕会话流订阅 → 前端按 `seq` 排序）
-—— 那是「一份代码、两种承载」在数据流这一侧的样子：**换的是源，不是管线**。
-
----
-
-## 2. 层边界（不放逐文件模块表 —— 见本节末）
-
-> ⚠ **F19 重写**（2026-08-04）。原来这一节是一张 **122 行的逐文件模块树**，而：
-> - 它与 `src/frontend/shell/README.md` 的目录树**各存一份**，**两份都缺 `backend/`**；
-> - 本文件自己在开头与结尾**两次**把「模块表」委派给子目录 README —— 它自己就说过不该放；
-> - 更要紧的是：**本工作区最大的两件结构性事实在它里面不存在** ——
->   `backend` 这个词全文只出现过 **1 次**（且指的是前端的 `session-backend.ts`），
->   「轮询」**0 次**。真架构住进了 1517 行的 `INVARIANTS.md` ⇒ **分层倒挂**。
->
-> ⇒ 本节只写**层边界与它们的理由**；逐文件清单去子目录 README。
-> ⚠ 那张树里**嵌着几条真正的架构理由**（U8a 三平面、平面 ③ 搬不走…）——
-> 它们**没被删掉**，被提到下面各条里了。
-
-### 2.1 两半：frontend 与 backend
-
-**backend = 读（`observe/`）+ 控制（`control/`）**，**一份代码、两种承载**：
-**远端进程** = `src/backend/`（独立 crate，**不是 workspace 成员**，见 2.6）·
-**本机进程** = 〔THIN 09-29〕今天是独立的本机常驻后端进程（`src/backend` 那一个 bin，本机远端同一个）；monitor 侧从前那个
-`backend` 目录（「本机那种宿主」）消失了 —— 它住的是 monitor 自己的客户端 · 命令层 · 宿主代码，回了壳根（见 2.7）。
-下表那四格照旧由判据量，量的是 monitor 壳里那一层的目录（今天都不在 ⇒ 除 `control/` 那格钉的分流器住 `src/comms/inward/` 外，都是「未做 / 待做」）。
-
-两侧都该有 `platform/` `observe/` `control/` `common/` 四层。**远端四层齐全；本机今天两层**
-〔原话逐字：「本机**只有一层**」—— 2026-09-12 `K-R71` 建了 `observe/` 之后不成立〕——
-下表是**今天真实的落地进度**，且**每一格都由判据现场量**
-（`doc_claim_registry::each_registered_status_still_matches_reality`；
-⚠ 判据**不存这一列的副本**，它从本文件读这一列、再去代码里量，两边不一致就红）：
-
-| backend 分层（定框 §5） | 远端（后端）有吗 | monitor 侧今天的状态 |
+| 可执行文件 | 是什么 | 谁起它 |
 |---|---|---|
-| `control/` | 有 | **已交付** —— 两条改状态的远端 tmux 命令都走它（见 2.3） |
-| `observe/` | 有 | **未做**〔2026-09-25 LOC1a：唯一的住户 —— 每问 exec 一次本机后端的那一跳 —— 删了，本机读面改走 `<local>` 长连接；空壳目录一并删〕—— 此前 2026-09-12 `K-R71` 建成，见 2.2 |
-| `platform/` | 有 | **已交付**〔RE 09-29 立在壳根：今天只住 `fs`（不覆盖改名 · 置可执行位 · 只给本人的目录）；壳里别处的平台 cfg 收进来是阶段 H 余下，没做〕—— 此前写「待做 —— 但 backend 那一半今天零平台面」（见 2.4） |
-| `common/` | 有 | **待做** —— **刻意不建**：monitor 侧的共用面住 `src/common/*`（见 2.6） |
+| `monitor` | 界面进程：webview 窗口 ＋ 通信层面 A 的客户端。零 SSH，不写用户文件，不链代码全景引擎 | 用户 |
+| `ccm`（开发树里叫 `cc-monitor-backend`） | 唯一的后端。每台机器上 `~/.cc-monitor/bin/ccm` 就是那台的后端，也是用户敲的 `claude` 的壳（argv 打头是 `--` 加后端词才进后端，其余交给 `claude`） | 本机：monitor 连上来时起；远端：monitor 接那台时经一次 exec `--resident-ensure` 起（已在跑就用那一个） |
+| `cc-monitor-filewin` | 文件管理器窗口，独立前端，一个窗口一个进程 | monitor（交给它一条回环通道和一把钥匙） |
+| `cc-monitor-panorama` | 全景小程序：只装代码全景引擎的一问一答 CLI | 那台机器的后端，按需起 |
 
-⚠ 这张表量的是「**这一层在 monitor 侧落地了没有**」，**不是**「平台原语已经收敛干净了」——
-后者是 C10 的判据（跨 target 编译）的事，今天**不成立**，见 2.4。
+`claude` 不是我们起的进程：后端渲好一条命令串，monitor 交给用户自己的终端去 exec。
 
-⚠ **「落地」这两个字的量法，四格分两种**〔`K-R73` 09-12〕：
-`control/` 有「那个唯一的住户」，量的就是**那份文件在不在**（`observe/` 从前也是，〔LOC1a〕那个住户删了之后改成下一种）；
-`observe/` · `platform/` 与 `common/` 今天**没有**那个唯一住户（指一个就是替未来的人做决定），
-量的是**目录在 ∧ 里面至少有一个不是 `mod.rs` 的 `.rs`**。
-🔴 **一个只有 `mod.rs` 的空壳目录不算「没落地」，是直接红** ——
-空壳目录本身不说假话，但它让下一个人只要顺手把这一列改成「已交付」就全绿，
-而那正是 `K-R71` 09-12 逮到的那一形（原先四格里有三格是裸「目录存在」）。
+```
+本机                                                          远端（每台）
+┌ monitor（界面，零 SSH）─────┐  回环 ＋ 钥匙  ┌ 文件窗口 ×N ┐
+│ webview 窗口 · 通道客户端   │◀─────────────▶│ call /      │
+└──────┬─────────────────────┘               │ subscribe   │
+       │ 管道                                 └─────────────┘
+┌──────▼──────────────────────────┐  SSH（隧道 · exec · SFTP）  ┌ 常驻后端（与本机同形）┐
+│ 本机常驻后端                      │ ──────────────────────────▶│ ＋ 中转（进程内）      │
+│ 持有到各远端的全部 SSH（含 SFTP） │                            │ ＋ 全景小程序（按需）  │
+│ 中转 ＋ 上游选择 · 全景小程序（按需）│ ◀── agent 经中转口连进来     └───────────────────────┘
+└─────────────────────────────────┘
+```
 
-**frontend 只剩「在用户桌面上开一个终端窗口」**，窗口里跑什么由 backend 给。
+- 本机固定两个进程：monitor ＋ 本机常驻后端。Linux 上后端脱离起、只听回环口，monitor 用钥匙接上；monitor 关了，后端按那台机器的「退出行为」留下或退出，下次 monitor 起来接回。Windows 上后端是 monitor 监护的子进程，随 monitor 退出。
+- 远端每台一个常驻后端，与本机同形。monitor 经本机后端在那条 SSH 连接上开的隧道接它，不另开公网口；那台后端比 monitor 旧就换一份。远端只支持能让后端常驻的 Unix 机器。
+- 一个常驻后端可以同时接多个客户，连接数归零那一刻按「退出行为」当场决定退不退。
 
-⚠ **那条搬不动的边界**：最后那次 `exec` **必须**在用户自己的终端进程里
-（pid 要等于 pidfile 名 · tty 与 Ctrl-C 要落在 agent 上 · `tmux attach` 要占住调用者终端）。
-⇒ 「起一个会话」被拆成 **U8a 三平面**：
-① **计划面**「跑什么命令」→ 后端 `control/resolve` ·
-② **远端执行面**「在远端真的建 tmux」→ 后端 `control/launch`（**argv 直传、不过 shell**）·
-③ **本机开窗面** → **只能是 monitor**（后端在远端，开不了你面前的窗）—— **这条永远搬不走**。
+### 1.2 会话内容流：本机与远端同一条帧路
 
-⚠ **平面 ③ 在 POSIX 上刻意不开 GUI 终端窗口**：那儿没有「唯一的终端」，挑一个就是平白引入
-一个会在别人机器上错的决定。⚠ 本句原先还接着「而容器一定是 tmux ⇒ 会话留在那儿等 attach」——
-**那是假的**〔audit-0805 F08 下半〕：POSIX 远端 `↺` 走 `planResumeDirect`，那里逐字是
-`container: { kind: "none" }`（`launch-requests.ts:45`，全文件唯一一个 `none`）。
-走 tmux 的是 `planResumeTmux`（F52）那条**另一条路**。判据见
-`launch-requests.vitest.ts` 的「远端 resume 的会话容器」组 + `launch.rs` 的
-`no_prose_claims_the_session_container_is_always_tmux` 零命中守卫。
-由 `no_terminal_emulator_is_ever_spawned_from_this_file` 零命中钉住。
+```
+   <claude_dir>/projects/<编码后的 cwd>/<sid>.jsonl        （claude 写）
+                 │  那台后端的 observe/watcher 盯文件，逐行出 line 帧（JSONL）
+                 ▼
+   本机：管道  ·  远端：本机后端持有的那条 SSH 长连接（隧道）
+                 ▼
+   monitor ssh_source.rs 的 LineIntake：攒批 · 静默窗 · 续点
+   （本机那条经 local_lines.rs 进同一个收口）
+                 ▼
+   event_replay.rs：重放缓冲（每个会话只留尾巴）· 大小分流 · 就绪点
+                 ▼  通道订阅 session-lines，按 credit 交格（窗口作用域事件 chan-items）
+   前端 events.ts → tabs.ts（TabManager）→ render-stream-record.ts
+                → record-timeline.ts（按 seq 插入）→ stream.ts → render.ts → DOM
+```
 
-### 2.2 `observe/` vs `control/`：**按用途分，不按读写分**
+- **同一个收口**：远端那台后端的 `line` 帧沿 SSH 长连接回来，交给 `ssh_source.rs` 的 `LineIntake`；本机后端的帧走管道，进的是同一个收口。换的是源，不是管线。
+- **seq 是后端给的行号**，前端 `RecordTimeline` 按 seq 二分插入，后端交格的先后不影响画面。工具组合并是插入后的后处理：看左邻居是不是工具组。
+- **起停与状态也在这条流里**：会话账本整本在后端（`observe/session_ledger`），帧 `session_added` · `session_state` · `sessions_replayed` 随 `session-lines` 一起来，起停帧不吃 credit、不许丢。monitor 只留一份「那台说过的成品」缓存（`session_book.rs`），它自己唯一知道的事实是「到那台的连接断了」，那时那台的成品作废、界面说「说不清」。
+- **背压**：前端给 credit；实时行没有 credit 就丢，并在原位报 gap，前端按行号向那台后端补（帧命令 `history-lines`）。
+- **大小分流**（`event_replay.rs::on_line_batch_awaited`）：小批逐行一格；大批（`claude --resume` 灌历史、重放）按 `CHUNK_SIZE = 600` 切块、末块先发，每块带 batch 边界，前端进 batch 模式（代码高亮延后）。
+- **启动序**：主窗口先经通道订好每台机器的会话流，再发 `frontend-ready`（带优先会话）——那就是这些订阅的就绪点。后端在 `event_replay.rs::ready_point` 里按会话分组切块、优先会话先交，并按活跃集补发 `session-ended`，归档落在全部重放行之后（INVARIANTS §24）。本机活会话的骨架 tab 也由这条流的起停帧给出（旧的 Tauri 命令 `list_active_sessions`〔散文墓碑〕已删）。
+- **冷读也问那台后端**：历史清单、整页正文、按偏移读、按行号读、子 agent、全文搜索都是帧命令（`history-*`）。记录解释（一行 jsonl → 渲染模型）只在后端 `agents/claudecode/`，界面按形状收成品；多台的搜索结果由本机后端合并排序。
+- **Task 面板**：那台后端盯 `<agent 家>/tasks/`，一批事件按 sid 去重发 `tasks_changed`，界面订 `session-tasks`，收到就重问 `tasks-list`。
 
-- **任何改状态的 tmux 命令**（`set-hook` / `set-option` / `new-session` / `kill` / `send-keys`）
-  一律归 `control/`；
-- **只喂控制决策的只读查询也归 `control/`**（`control/gate.rs` 探 `@ccm_sid` / `session_windows`
-  —— 它不产观测帧）；
-- **只有产出观测帧的读**才归 `observe/`。
+### 1.3 每条线的真相源
 
-⚠ **两侧今天都有机器在管「谁能引用谁」**〔monitor 侧 `K-R73` 09-12 补齐〕：
-后端侧是 `tests/backend/layering_guard.rs`，monitor 侧是当时 backend 目录头注里的 `layering` 模块
-（〔THIN 09-29〕monitor 侧的 backend 目录连同这条判据删了：那一组文件回了壳根，见 2.7）。两边同一个形 —— **反向（`control → observe`）零容忍**，
-**正向（`observe → control`）许有，但必须逐条列举、条数被等号钉住**。
-monitor 侧今天登记着 3 条，全部出自那一处跨线引用（本机一次性查询要先问控制面
-「那份本机后端在哪」）。
+按「真相源是谁」切，是不会切错的那种切法：
 
-⚠ 反面很具体：按「读/写」分的话，那次 `@ccm_sid` 探测会被判给 `observe/`，
-而它唯一的调用方在 `control/` ⇒ **凭空造出一条 `control → observe` 的边**，
-而 `layering_guard` 逐字禁止反向依赖（实测：照做时它当场红）。
+| 线 | 真相源 |
+|---|---|
+| 会话内容 · 历史 | `<claude_dir>/projects/**/*.jsonl`（冷读与实时读同一份） |
+| 判活 | `<claude_dir>/sessions/<PID>.json` ＋ tmux 会话上的 `@ccm_sid` |
+| 流量 | HTTP 请求本身（中转看得见的那一份） |
+| 起会话 · 控制 | 用户意图 |
+| 窗口绑定 · 拉前 | 启动期令牌（Windows 本机另有 `cc` 集成的 marker 握手） |
+| 账号 · 上游 | `~/.claude-accts/accounts.json` ＋ 每台机器一份 API 号凭据表 |
+| 配置 | 各自的配置文件（monitor 的 `config.json` · 每台后端的 `backend.json`） |
 
-🔴 **〔2026-09-25 LOC1a〕下面这一段的「唯一住户」今天没了**：本机那几问（子 agent · 按偏移读 · 分叉 · `cc-acct-iso` 两问）
-改走 `<local>` 那条长连接（`设计/05 §14.6`），每问 exec 一次本机后端的传输随之删掉，monitor 侧的 `observe/` 整条线（连空壳 `mod.rs`）一起删了。
+### 1.4 界面对后端只有两个动作
 
-⚠ **monitor 侧的 `observe/` 2026-09-12 建起来了**（`K-R71`，第 4 波 4a）：它那时的**唯一住户**
-是本机一次性查询的传输（那份 `local_query`〔散文墓碑〕，2026-09-25 LOC1a 删）—— 那份文件从 F10a 起就是读面代码，
-只是先前挂在 `control/` 线上（它自己的头注第一句逐字写着「后端的**读面**是 14 条一次性
-查询子命令」）。⇒ 建这个目录是**把走错门的住户领回家**，不是新起一层。
+```
+call(origin, op, payload)  → 一次性请求
+subscribe(origin, kind)    → 流
+```
 
-🔴 **但那批要退役的读面一条都没搬进来**：`config_surface.rs` 1596 行 · `search.rs` 1171 …
-以 `local_read_surface_registry` 的机检为准（**有几个 reader 刻意不写在这里** ——
-那条散文曾写 13，而机器数是 7；点名的 `local_accounts.rs` 早已不是 reader，
-它 `:564-565` 自陈「现在问本机后端」）。挡着它们的是两样有名有姓的东西：后端侧的查询集缺口，
-以及 `tasks.rs` / `search.rs` 今天带着的宿主耦合（`backend/` 有一道宿主无关守卫）。
-⇒ **今天没有触发器**，逐条理由当时住 monitor 侧 backend 目录那份 `mod.rs` 的头注最后一节（〔THIN〕随目录删了）。
+- `origin` 是唯一寻址键，本机也有值（`<local>`）。判定只住 `src/frontend/ui/ipc/origin.ts`，别处一律 `isLocalOrigin` / `isRemoteOrigin`。
+- webview 那一侧的通道客户端是 `chan.ts`（通信层面 A 成员）；握手时那台交出它能做的命令，做不到的命令界面事前置灰。
+- Tauri 命令只剩「monitor 自己的事」：窗口 · 拉前 · 本机 monitor 配置 · 日志与数据位置 · 重放缓冲 · 本机后端起停与引导 · 通道本身 · 放字节 · 足迹里 monitor 自己的事实。它们逐条登记在 `command_home_registry`，碰后端的新 Tauri 命令进不了这张表；全仓只有 `src/frontend/ui/ipc/commands.ts` 直接调 `invoke`。
 
-〔原话逐字，留作来历：「⚠ **monitor 侧的 `observe/` 今天刻意未建**……先搬进来再删掉是纯搬运。
-**谁来叫醒这个决定**：`local_read_surface_registry` 里那条前提触发器
-（`tauri.conf.json` 一出现 `externalBin` 就红）。」——「未建」今天不成立；
-而那条前提触发器 2026-08-04 就换过靶，今天盯的是**配置文件的形状**，
-当时那份 backend 目录头注逐字警告过**别**把它当成那批读面退役的闹钟。〕
+---
 
-### 2.3 控制面今天真的在 backend 了
+## 2. 层边界
 
-两条**改状态**的远端 tmux 命令都已切到后端：`kill_remote_tmux` → `control/kill.rs` ·
-`tmux_send_keys` → `control/launch.rs` 的 `send-into`（〔RST 续〕裸键 mode `send-keys-raw` 已删）。
-〔C4e · 第四波 4C〕再往前一步：那两条（连同抓屏、就地 resume）不再是 monitor 的 Tauri 命令 ——
-界面经通道直接说后端的 `kill` / `launch` / `capture-pane`（`src/frontend/ui/tmux-control.ts`），monitor 那一跳只搬字节；
-「能不能回落」那条判定在界面那一侧同义一份（`src/frontend/ui/ipc/chan-caller.ts::provablyNotSent`），
-与 Rust `backend_route::route_call_error` 由跨语言金样 `tests/__fixtures__/reach-collapse.golden.json` 对拍。
+### 2.1 三层
 
-🔴 **订正（`K-R106` 2026-09-13 现打）**：这里原来写着「一次性 SSH 那两条降为**过渡期**的
-第二条路」—— 那两条 **`K-R72`（2026-09-12）整块删了**（`K-R54` 裁定表第 1 · 2 处），
-今天**盘上只有后端这一条**；回潮闸住 `tmux_backend_gate_guard.rs`
-（〔C4e〕monitor 生产段里再出现 `kill-session` 就红；界面只经 `src/frontend/ui/tmux-control.ts` 一处说这几条）。
-「通道不在时怎么办」的判定**只有一份**（`src/comms/inward/backend_route.rs`，三态
-`Done` / `Refused` / `NoChannel`），而**过门被拒绝一律不另找一条路**
-（另找一条 = 把一次被门拒绝洗成另一条路的成功）。
+- **前端**：把后端给的东西排版成像素、收手势，并在用户桌面上开终端窗口。不做判定、不拼命令串、不缓存业务数据。界面状态只有一份 pub-sub：`app-store.ts` 的 `Slice`（当前机器 · 账号快照 · 当前 tab），tab 那一层是 `tab-store.ts` ＋ `tab-router.ts`，overlay 视图的开关收在 `overlay-router.ts`。
+- **通信层**：搬字节，零业务判断。面 A 是前端 ↔ 各处后端（按 `origin` 寻址，住 `src/comms/inward/`）；面 B 是 agent ↔ 上游 API，也就是中转（按路径前缀寻址，住 `src/comms/outward/`）。它不读盘、不起进程、不绑端口，凭据与端口由后端交给它。
+- **后端**：其余一切干活的——读会话、起进程、动 tmux、拨 SSH、管资产、写用户的文件。
 
-### 2.4 `platform/`：backend 那一半今天**零平台面**，所以还不需要它
+### 2.2 后端：一份代码、两种承载
 
-`platform/` 应当是**唯一**允许平台原语与平台 cfg 的地方，判据是**跨 target 编译**
-（不是 cfg 位置扫描）。
+后端（backend = 读 `observe/` ＋ 控制 `control/`）是一份代码、两种承载：本机常驻后端与每台远端的后端是同一个二进制，本机与远端的唯一差别是通道（管道 / SSH）。本机就是不走 ssh 的远端。
 
-⚠ 〔F18 实测订正〕这一节原来写「monitor 侧今天不成立 —— 平台原语散在 `bind.rs`/`utils.rs`」。
-**那句把两半混说了**：
+进后端的口有两个、平级：帧面（`stream/`，monitor 与外部前端经通信层面 A 走这条）与 CLI 面（`main.rs` 的一次性分派，用户敲 `ccm` 走这条；帧命令派生出同名的 CLI 子命令）。argv 只在 `main.rs` 里取一次。
 
-- **后端调用层那一半（`backend_client_guard_tests.rs::GUARDED` 那几份；THIN 第 7 件前住 `shell/src/backend/`）生产段零平台 cfg、零平台原语** ——
-  唯一那 3 处 `#[cfg(unix)]`/`#[cfg(windows)]` 全在 `local_backend.rs` 的**测试段**
-  （夹具在收拾自己起的子进程）。⇒ 这条纪律在它该管的范围里**已经成立**，
-  由 `backend_client_guard::the_backend_half_stays_platform_agnostic` 钉住不许退化，
-  另有一条**反向锚点**证明那套形态不是瞎的。
-  **⇒ 今天不需要 `backend/platform/`；真需要那天，判据会先红着告诉你。**
-- **另一半确实有平台代码**（`bind.rs` 的窗口把手 · `launch.rs` 的开窗 ·
-  `session_map.rs` 的进程身份，实测 47 处原语命中）—— **那是 C9 的活，不是欠账**：
-  「在用户桌面上开一个终端窗口」本身就是平台特定的，把它搬进 `platform/`
-  不会让它变可移植，只会让这条纪律变成一句摆设。
+模块地图（`src/backend/`，逐文件清单见它的 README）：
 
-⚠ 真正的欠账是**判据形态**那一半：后端侧 CI 有一步
-`cargo check --all-targets --target x86_64-pc-windows-msvc`（逐字标着「平台线的真判据」），
-**monitor 照抄不了** —— 本机实测 `exit=101`，挡路的不是 monitor 的代码
-（252 个 `.rmeta` 已产出），是某个 C 依赖的 build script 要 `lib.exe`。
-⇒ monitor 侧「两个平台都编得过」由 **CI 两个 OS 各自原生编**承担
-（`rust` job 在 windows-latest 跑 `cargo test --all` · `linux-app-build` 在 ubuntu-latest 跑 `cargo build`）。
+- `platform/`：平台原语与平台 cfg 的唯一住处（路径 · 进程 · 判活的读法 · 信号 · 文件原语 · 脱离）；`platform/shell/` 是 shell 方言知识的唯一住处（引号 · 定义函数 · 导出环境 · rc / `$PROFILE` 在哪）。
+- `observe/`：产出观测帧的读（会话文件 watcher · 会话账本 · tmux 观测 · 历史 / 搜索 / 任务 / 账号查询）。
+- `control/`：改状态的动作，以及只喂控制决策的只读查询（起会话与命令渲染 · kill · 送键 · 抓屏 · 分叉落盘 · 常驻与退出行为 · 部署计划 · 写用户文件的那一族 · 传输台 · 全景的查询与批注）。
+- `files/`：文件管理后端的读面（常驻文件名索引 · 按内容搜）。
+- `accounts/`：账号域。账号 ＝ 订阅号 ＋ API 号；上游选择（这一发走哪个上游、注入什么凭据）住这里。
+- `agents/`：用户的 AI CLI 的适配面（claudecode · codex），一家一行注册表，含记录解释。
+- `plugin/`：调外部程序的口（找 · 问 · 起 · 收），全景小程序经它起。
+- `relay/`：中转的宿主（门 · 监听）；中转本体是通信层面 B。
+- `dial/`：SSH（连接池 · 链路 · SFTP · `~/.ssh/config` 解读 · 端口转发 · 开终端那一行）。
+- `assets/`：skill / MCP / 别名的计算、判定与写，资产目录与同步，两台之间的装由本机后端当枢纽。
+- `history/`：历史跨机 join 与注解（星标 / 改名 / 隐藏）。
+- `faces/`：只读面与功能侧的帧面宿主；`stream/`：帧定义 · 入方向命令信封 · 监听 · 本机后端问远端后端的唯一一处。
+- `footprint/`：足迹（这台机器上 cc-monitor 写过什么、能不能撤）；`common/`：共用判定。
 
-### 2.5 零轮询：一律事件驱动，**四张账本覆盖四块**
+后端分两块、零互相依赖：**原生后端**（会话 · tmux · 账号 · SSH · 资产 · 历史 · 中转宿主）与**文件管理后端**（列 · 读 · 搜 · 写用户的文件 · 上传解压 · 传输），两块只共用 `platform/` · `common/` 与基础设施层。
 
-「不许轮询」不是一句口号，它由**四张登记表**覆盖：
+### 2.3 `observe/` 与 `control/`：按用途分，不按读写分
+
+- 任何改状态的 tmux 命令（`set-hook` · `set-option` · `new-session` · `kill` · `send-keys`）归 `control/`。
+- 只喂控制决策的只读查询也归 `control/`（例：`control/gate.rs` 探 `@ccm_sid`，它不产观测帧）。
+- 只有产出观测帧的读才归 `observe/`。
+
+方向单向：`control/` 引用 `observe/` 零容忍；`observe/` 引用 `control/` 许有，但逐条登记、条数钉死（`tests/backend/layering_guard.rs` 的 `ALLOWED_OBSERVE_TO_CONTROL`，每条写着为什么非得由观测侧发起）。按读写分的话，那次 `@ccm_sid` 探测会被判给 `observe/`，而它唯一的调用方在 `control/`，平白造出一条反向边。
+
+### 2.4 monitor：宿主 ＋ 通信层
+
+monitor 的 Rust 半是 Tauri 壳（`src/frontend/shell/`），只留宿主知识（窗口 · 起子进程 · 开终端 · 放字节 · 本机后端起停）与通信层；读会话、判定、改世界都在后端。壳里调后端的客户端那一组生产段零平台原语、零宿主耦合，由 `backend_client_guard_tests.rs::the_backend_half_stays_platform_agnostic` 钉着。
+
+壳里没有后端那几层的副本：
+
+- 不产观测帧，读都问后端（本机那几问也走 `<local>` 长连接；每问 exec 一次本机后端的那份传输 `local_query`〔散文墓碑〕已删）；
+- 调后端控制面只经通信层那一个分流器 `src/comms/inward/backend_route.rs`（`Done` / `Refused` / `NoChannel` 三态，被门拒绝不另找一条路）；
+- 与后端共用的只放在共享 crate `src/common/` 里；
+- 壳自己的 `platform/` 住壳要的平台原语：文件原语（不覆盖改名 · 置可执行位 · 只给本人的目录）与控制台输出的解码（Windows 按那台的 OEM 代码页）。
+
+monitor 里仍直读本机 agent 目录的地方逐处登记，条数以 `local_read_surface_registry` 的机检为准。
+
+**搬不走的那条边界**：最后那次 exec 必须发生在用户自己的终端进程里——pid 要等于 pidfile 名，tty 与 Ctrl-C 要落在 agent 上，`tmux attach` 要占住调用者的终端。所以起一个会话拆成三个平面：
+
+1. 计划面「跑什么命令」→ 那台后端出成品（本机起会话帧命令 `launch-local`，远端载荷渲染 `launch-render-payload`，开终端那一行 `terminal-ssh`）；
+2. 执行面「在那台真的建 tmux」→ 后端 `control/launch`，argv 直传、不过 shell；
+3. 开窗面 → 只能是 monitor（`open_terminal_window`）：后端在远端，开不了你面前的窗。平面 ③ 永远搬不走。
+
+平面 ③ 在 POSIX 上只走规范化出口 `xdg-terminal-exec`，不替用户挑具名终端模拟器；没有这个出口就不开窗、说清楚（`launch_tests.rs::no_terminal_emulator_is_ever_spawned_from_this_file` 钉着）。
+
+### 2.5 `platform/`：判据是跨 target 编译
+
+`platform/` 是唯一允许平台原语与平台 cfg 的地方。判据不是「cfg 出现在哪」，是跨 target 编译：后端 CI 跑 `cargo check --all-targets --target x86_64-pc-windows-msvc`，本地门禁的 `winchk` / `winchk-backend` 两格在 Linux 上对 Windows target 编一遍；`tests/backend/platform/cfgless_guard.rs` 补它的盲区（不带 cfg 的平台代码）。
+
+「怎么读到这个事实」下沉 `platform/`（Linux 读 `/proc`，Windows 读 Win32），「什么叫同一个活进程」留通用层、两平台共用一张判定（`liveness::is_same_live_process`）。连规则也下沉，就成了每个平台一套规则。
+
+### 2.6 零轮询：一律事件驱动，四张账本
+
+零轮询不是一句口号，它由四张登记表覆盖，口径是「每一处周期唤醒都说清事件源在哪、谁退役它」：
 
 | 账本 | 管哪一块 |
 |---|---|
-| `no_timer_guard`（后端侧） | 后端里不许有「自己醒过来」的构件（零容忍） |
-| `polling_registry` | 前端 TS 与 `shared/ccm`（已删，见 `e8f9e08e`；今天是后端的 `ccm`） |
-| `rust_timer_registry::REGISTERED` | monitor **Rust 级**的 `sleep` / `interval` |
-| `rust_timer_registry::SHELL_WAKES` | monitor Rust **拼出来的 shell 循环**（前三张都看不见它） |
+| `no_timer_guard`（后端） | 后端里不许有自己醒过来的构件，零容忍 |
+| `polling_registry` | 前端 TS 与 `src/shared/` 下的 shell |
+| `rust_timer_registry` 的 `REGISTERED` | monitor Rust 里的 `sleep` / `interval` |
+| `rust_timer_registry` 的 `SHELL_WAKES` | monitor Rust 拼出来的 shell 循环（前三张都看不见它） |
 
-⚠ **口径是「每一处都说清事件源在哪、谁退役它」，不是「一处轮询都没有」** ——
-实测有两处**今天根本没有内核事件源**（pane 内容变化 · 别人改了账号），
-把它们改成等帧只会做出一个永远等超时的东西 ⇒ 如实记未排期。
+登记在案的例外：预信任的「等信任框」没有内核事件源，由目标 shell 执行一段兜底轮询（`control/ccm` 产出这段 shell 串），与后端零定时器共存。期限一律由发起那件事的一方给一个绝对时刻，下游只收紧，通信层自己没有期限常量。
 
-⚠ **唯一登记在案的例外**：预信任的「等信任框」没有内核事件源 ⇒ `control/` 继续以
-**shell 字符串形态**产出它（由目标 shell 执行，因此与「零定时器」共存）。
+### 2.7 共享 crate 与 workspace
 
-### 2.6 共享 crate：为什么后端 **不进** workspace
+`src/common/` 住 monitor 与后端共同 link 的共享 crate。它们只放两边必须对上的**契约**（路径 · 端口 · 文件格式 · 文案表 · 令牌形状 · 字节表键），不放**判定**；判定只在后端。monitor 生产段只许依赖契约类 crate，由 `tests/frontend/shell/contract_crate_guard_tests.rs` 两向钉住。共享常量让两侧「想不一致」得先把 import 删掉，漂移变成不可表示。
 
-`src/common/*`（6 个）是 monitor 与后端的共同实现落点（判定只许有一个家）。
-而 **后端 crate 刻意不是 workspace 成员** —— 它要能在目标机上**原生构建**。
+后端 crate 刻意不是 workspace 成员：它要能在目标机上原生构建（发版交叉编成 musl 静态二进制）。全景小程序 `src/panorama-engine` 也自成一份，带着 vendored 的引擎。壳的 workspace 成员是 `monitor` ＋ 共享 crate，个数以 `src/frontend/shell/Cargo.toml` 现量为准。
 
-⚠ **代价是实的、要写下来**：在 `src/frontend/shell` 里跑 `cargo fmt --all` / `cargo test`
-**覆不到后端**（曾因此漏过一次 fmt 红）⇒ 门禁读数必须**八处分别跑**
-（monitor · 后端 · 6 个共享 crate）。
+代价：在 `src/frontend/shell` 里跑 `cargo test --workspace` / `cargo fmt --all` 覆不到后端与全景小程序 ⇒ 测试、格式、clippy 要三处分别跑（壳的 workspace · `src/backend` · `src/panorama-engine`），门禁的 `cargo` · `backend` · `panorama-engine` 三格就是这三处。
 
-### 2.7 逐文件清单去哪了
+### 2.8 其余几块
 
-- Rust 侧：`src/frontend/shell/README.md`
-- 前端：`src/README.md`
-- 〔THIN 09-29〕monitor 侧的 backend 目录没了（那一组 —— 调后端的客户端 `inbound_client` · `frame_query` · `backend_route`，
-  Tauri 命令层 `backend_control` · `cc_bus`，宿主 `local_backend` —— 回了壳根）；宿主无关 · 平台无关两道判据改看
-  `tests/frontend/shell/backend_client_guard_tests.rs` 的 `GUARDED`（逐个点名，加一份就加一行）
+- **中转**（通信层面 B）：本机远端同形，是那台常驻后端进程里的一条线程，对外端口由它绑，进门要钥匙。凡经我们的启动器起的会话都注入中转地址；用户自己设了 `ANTHROPIC_BASE_URL` 时不注入并说一句。中转只切流，这一发走哪个上游、注入什么凭据由账号域的上游选择出成品（帧命令 `launch-endpoint`），monitor 对凭据文件零读零写。
+- **文件管理**：`cc-monitor-filewin` 是独立前端，经回环通道 ＋ 钥匙只说 `call` / `subscribe`。写用户的文件只经那台后端的文件管理面（`files-peek` · `files-put` 带期望值 · `files-delete` …），本机远端同一条路；monitor 碰用户文件只有一个开口，只差 `origin`。
+- **代码全景**：在仓所在的那台机器上由全景小程序现场解析，后端只说查询语义、经插件口起它，线上只传结果；monitor 与后端本体零引擎。界面经通道直问那台（`src/frontend/ui/panorama/api.ts`）。
+- **部署**：后端与全景小程序的字节随 monitor 内嵌，全仓只有壳的字节表一个取字节口，按目标机器的 (OS, arch) 选，没覆盖的格子写第一个字节前拒绝。「换不换、换成什么」由后端帧命令 `deploy-plan` 出计划（只升不降，身份读字节里的戳、不跑它），monitor 只按计划放字节。
+- **资产**：每台后端一份资产目录，本机后端按事件在各后端之间拉 / 合 / 推；装到别的机器要用户点，先看差异。
+- **退出行为**：住那台机器自己的 `~/.cc-monitor/backend.json`，只有那台后端读写（`control/exit_policy`），决定那一刻现读。
 
 ---
 
-## 3. Tauri State 注册矩阵 → **只有一个家：`src/doc/STATE-MATRIX.md`**
+## 3. Tauri State：只有一个家
 
-〔F19〕这里原本有一张 7 行的 State 表，而 **`src/doc/STATE-MATRIX.md` 里有严格更全的同一张表**
-（多出「注册位置 / 创建位置 / Arc 所有权」三列 + 逐命令 consumer 清单），
-且原文自己就写着「详细 consumer 矩阵 → STATE-MATRIX.md」——
-**它自己承认家在那边，却又存了一份摘要。** 两份副本必漂 ⇒ 摘要删除，这里只留指针。
+State 注册表住 [STATE-MATRIX.md](STATE-MATRIX.md)，改 State 前后都读它，撤回 / 修改任何 Tauri 命令时它是强制 checklist。
 
-⇒ **改 State 前后都读 [STATE-MATRIX.md](STATE-MATRIX.md)**，它是撤回/修改任何 IPC 命令的强制 checklist。
-
-**为什么这件事值得一整份文档**（这条是架构性的，所以留在这里）：
-漏一次 `app.manage()` **不会被 `cargo check` 抓住** —— 命令签名照样编译过，
-**运行时第一次调用才 panic**。Tauri 的 State 注入是运行期按类型查表的，
-编译器在这条路上帮不了你 ⇒ 只能靠一份人维护的清单兜着。
+为什么值得一整份文档：漏一次 `app.manage()` 不会被 `cargo check` 抓住——命令签名照样编译过，运行时第一次调用才 panic。Tauri 的 State 注入是运行期按类型查表的，编译器在这条路上帮不了你，只能靠一份清单兜着。
 
 ---
 
-## 4. 跨进程文件 IPC 简表
+## 4. 数据放在哪
 
-monitor 与外部进程的所有通信都在 `~/.cc-monitor/` 下：
-
-| 路径 | 写入方 | 读取方 | 用途 | 生命周期 |
-|---|---|---|---|---|
-| `config.json` | monitor 设置面板 | monitor 启动 | 主题 / 字体 / claudeDir override / diagnostics | 持久 |
-| `ps-await/<PID>.json` | PowerShell (`__ccm_bind`) | monitor (`bind::BindRegistry`) | PS 通知 monitor "去找标题**含** marker 的窗口" | 短暂 (3s 超时) |
-| `ps-registry/<PID>.json` | monitor | PowerShell (查 + 比较 procStart) | monitor 通知 PS "绑定成功，HWND = X" | 与 PS 进程同寿 |
-| `sid-hwnd-cache.json` | monitor | monitor 启动恢复 | sid → hwnd 持久缓存，新 session 出现时查这里复用绑定 | 持久 |
-| `auto-launch.json` | monitor 设置面板 + 启动时回写 | PowerShell (`__ccm_bind` 头部) | "用 cc 启动 claude 时自动开 monitor" 开关 + monitor exe 路径 | 持久 |
-| `history-metadata.json` | monitor 历史浏览器 | monitor 历史浏览器 | star / 重命名 / 隐藏 | 持久 |
-| `logs/monitor/monitor.YYYY-MM-DD.log` (v2.0.0+) | monitor (tracing-appender) | 用户（设置面板 [打开 log] / 编辑器） | GUI app 诊断日志，按天滚动保留 3 天 | 持久（自动清理老文件） |
-
-**只读外部数据源**（不属于 monitor 写入域，但 monitor 读取并展示）：
+monitor 自己的文件在 `~/.cc-monitor/`：
 
 | 路径 | 写入方 | 读取方 | 用途 |
 |---|---|---|---|
-| `<claude_dir>/projects/<encoded-cwd>/<sid>.jsonl` | Claude Code CLI | 本机后端（`line` 帧，CF1 起）/ monitor `history.rs` | session 消息流，monitor 实时增量 + 历史浏览 |
-| `<claude_dir>/sessions/<PID>.json` | Claude Code CLI | 本机后端 `observe/watcher.rs`（〔LOC1b · 4D〕monitor 不再读：本机判活改由本机后端的 `session_added` / `session_removed` 帧来，与远端同一条） | 活跃 session 探活（PID + procStart 双校验，详 INVARIANTS § 18） |
-| `<claude_dir>/tasks/<sid>/<id>.json` (v2.3) | Claude Code CLI (`TaskCreate`/`TaskUpdate`/`TaskStop` 工具) | monitor `tasks.rs` | Tab task 面板数据源；附 `.lock` / `.highwatermark` 控制文件需忽略 |
+| `config.json` | monitor 设置 | monitor | 主题 · 字体 · 行为开关 · 机器表 · 诊断 |
+| `ps-await/<PID>.json` | PowerShell（`__ccm_bind`） | monitor `bind.rs` | PS 通知 monitor 去找标题含 marker 的窗口（短暂，3s 超时） |
+| `ps-registry/<PID>.json` | monitor | PowerShell | monitor 回告绑定成功与 HWND（与 PS 进程同寿） |
+| `sid-hwnd-cache.json` | monitor | monitor | sid → 窗口把手的持久缓存 |
+| `auto-launch.json` | monitor 设置 | PowerShell | 「用 `cc` 起 claude 时自动开 monitor」开关 ＋ monitor 路径 |
+| `history-metadata.json` | 本机后端 | 本机后端 | 历史注解（星标 · 改名 · 隐藏 · 上次账号） |
+| `logs/monitor/` | monitor | 用户 | 按天滚动的诊断日志 |
 
-每个文件的字段定义、编码约束（UTF-8 无 BOM）、写入方原子性语义、握手时序图 → [IPC-PROTOCOL.md](IPC-PROTOCOL.md)。
+后端自己的状态（`backend.json` · 中转钥匙 · 监听令牌 · 资产目录 · skill 装记录 · API 号凭据 · 后端日志 · `bin/`）由那台后端写，写者逐文件登记在 `readonly_guard.rs` 的 `OWN_STATE_WRITERS`。
+
+只读的外部数据源：`<claude_dir>/projects/**/*.jsonl`（会话内容）· `<claude_dir>/sessions/<PID>.json`（活跃会话，PID ＋ `procStart` 双校验）· `<claude_dir>/tasks/<sid>/`（Task 面板），都由那台后端读。
+
+字段定义、编码约束（UTF-8 无 BOM）、原子性与握手时序 → [IPC-PROTOCOL.md](IPC-PROTOCOL.md)。每个文件的完整路径在设置的「数据位置」页。
 
 ---
 
-## 5. 关键设计选择 + 理由
+## 5. 关键设计选择与理由
 
-每条都是踩过坑总结出来的"为什么不能用别的方案"。
+每条都是「为什么不能用别的方案」。
 
-### 零侵入 = 不写 Claude Code 数据源
-watcher / session_map 只读 `~/.claude/projects/` 和 `~/.claude/sessions/`。写入均为用户**显式**触发：①历史浏览器 `delete_history_session`（Batch4-F15 起 exists → 双边 canonicalize → canonical 前缀 + `.jsonl` 扩展名四段守卫，`..`/symlink 穿越拒绝）；②F62 `create_branch_session`（从某轮建分支——**只新增** `<new-sid>.jsonl`，`create_new` 原子写**绝不覆盖**，原会话零改动，§1 正交非侵入）。〔`K-R88` 2026-09-13〕它的入参从路径收成 **sid**，守卫也跟着换了家：两侧共用 `branch_core::find_session_file`（〔散文墓碑〕原措辞逐字是「`validate_branch_source` 同源守卫」，那个函数今天已经不在了）；③PowerShell profile [安装]（只动 BEGIN/END **块内**内容，块外用户其他代码完全不动）；④**G6 远端分叉**（〔步 12·C 09-20〕入口已与②**合并成同一条命令** `history::create_branch_session`，`origin` 说了算；远端那一支仍是 `remote_branch::create_remote_branch_session` → ssh → 后端的 `fork_write.rs`，只是它不再是一条 IPC 命令）——与②是**同一件事的远端形态**（用户显式点 `⑂` → 只新增一份 `<new-sid>.jsonl`、原会话零改动），区别只在**动手的是后端而不是 monitor**。后端的写面被 `readonly_guard` 两层护栏钉死在那**一个**模块上（且必须 `O_EXCL`、禁删/改名/截断/追加/覆盖），细则见 `src/doc/INVARIANTS.md` §1 的 G6 段与 §41.6。<br>（2026-08-01 Phase G 订正：本枚举原来只有三条 —— 而 `INVARIANTS.md` 那边已经写上了第四条，两份文档口径不一致，而本文是新人先读的那份。）
+### 零侵入：只读 Claude Code 的数据源
 
-**为什么**：cc-monitor 是个监控渲染器，写 jsonl 会破坏用户对"数据源 = 我自己的命令痕迹"的认知；profile 写入则是必要的可选副作用（用户显式 opt-in 装 `__ccm_bind`），仍然走完整的 backup + ACL 保留路径。
+后端只读 `projects/` 与 `sessions/`。写入一律是用户显式触发，而且只经那台后端的文件管理面：删历史会话只收 sid（`files-delete-session`）；从某一轮分叉只新增一份 `<new-sid>.jsonl`，`O_EXCL` 新建、绝不覆盖，原会话零改动（`control/fork_write`）。按 sid 找那份会话文件只有一份实现，两处共用（原先收路径的源守卫 `validate_branch_source`〔散文墓碑〕已不在）。装别名块、skill、MCP 是用户点名的写，别名块只动 BEGIN / END 块内。
 
-### event_replay 顺序保证 = 前端按 seq 排序（v2.6 起；本节曾描述已废弃的"持锁完整 emit"）
-v2.6 B 重构前顺序靠"持锁完整 emit"（record 排队等锁）；**现行设计**：`event_replay·rs::ready_point` 持锁只做 snapshot + 把订阅置为实时，交格全在锁外——顺序保证整体转移给 per-file 单调 seq + 前端 RecordTimeline 二分插入（ADR-021/022）。emit 期间并发到达的 live 行先于 snapshot 旧行到达也无碍：前端按 seq 排到正确位置。
+**为什么**：用户对「数据源就是我自己的命令痕迹」的认知不能破；写是必要时的可选副作用，就得是显式的、可见的（足迹页逐条列出）。
 
-**为什么能放弃持锁 emit**：旧方案的代价是 replay 期间 watcher 阻塞数十毫秒到秒级；seq 排序把"后端保序"变"前端排序"后，emit 顺序成为纯性能自由度（Batch5-F19 的 priority 分组正是利用这一自由度）。跨通道顺序（行 vs session-ended）不由 seq 覆盖，由队列同序（INVARIANTS § 20）与 `on_line_batch_awaited`（INVARIANTS § 10）分别兜住。
+### 起子进程只有一个出口
 
-### 成批交付替代逐条（原「JSONL_BATCH 单次 emit」；〔CF2〕今天是一块一次投递）
-replay 时按块投递（一次 Tauri 事件里一串格），前端 push 进同一 queue 走原批量调度。
+monitor 起子进程一律经 `spawn_managed.rs`，三个策略都是必填参数、都没有 `Default`：控制台（`ConsolePolicy`：`Hidden` · `NewVisible` · `Inherit`）· 生命周期（`Lifetime`：`JobKillOnClose` · `Detached`）· stderr 去向（`StderrSink`：`ToLog` · `Null` · `Inherit` · `Captured`）。还自造 `Command` 的地方逐处登记。给用户开真终端那一处刻意是 `NewVisible`。
 
-**为什么**：Tauri IPC 每次 emit 都有序列化 + 派发 overhead。N=3000 时累计 ~400ms 主线程阻塞，启动可见显著卡顿。BATCH 单次序列化降到 ~50ms。
+**为什么**：Windows 上 GUI 进程起一个控制台程序而不给 flag，系统会新配一个带窗口的控制台——用户看到就会关，关掉就杀死子进程（退出码 `0xC000013A`）。分进程之后，原来免费的东西都要显式管：谁杀谁、控制台策略、错误怎么跨进程传、两边对版、起不起得来。三个必填参数让坏默认值无法被表达；子进程的 stderr 接进 monitor 日志，死亡码说人话（「被控制台事件杀死」而不是裸退出码）。
 
-### 视口外渲染跳过 = content-visibility + 精确估高（#35 F38，虚拟化第一层）
-所有顶层卡片(`.stream-content > *` 与折叠段内 `.branch-fold-body-inner > *`)带 `content-visibility: auto`——视口外与隐藏 tab 的卡片跳过布局/绘制。`contain-intrinsic-size` 初值由 `src/frontend/ui/height-estimate.ts` 在建卡时按块类型精确估算(prose 走 @chenglou/pretext canvas 测宽、代码块行数×行高、折叠 details 常数;**估值只是初值**,`auto` 关键字让浏览器渲染过后记住真实尺寸)。约束:估高路径**绝不许抛**(pretext 失败双降级+三振永久禁用);780px 定宽列是估值成立前提;卡片被 reparent 进 fold 后由 inner 规则续保 c-v。这层吃掉了 paint/layout 成本,是后两层(F39/F40 不建 DOM)的地基。
+### 顺序靠 seq，不靠后端保序
 
-### 启动重放贴底消抖 = 守卫式 snap + overflow-anchor + 尾部优先收纳（F40a）
-重放"末块先发"。Batch13-F40a 起 `TabManager.onLine` 按 seq 门控（详 INVARIANTS § 21）：
+重放时就绪点持锁只做快照、把订阅置为实时，交格全在锁外；顺序保证交给 per-file 单调 seq 加前端二分插入。并发到的实时行先于快照旧行到达也无碍。跨通道的顺序（行 vs `session-ended`）不由 seq 覆盖，由同队列同序（INVARIANTS §20）与大批在调用方任务里发完再返回（INVARIANTS §10）兜住。
 
-- **守卫式 `snap()`**：只在落后底部 >1px 时才写 scrollTop，不每帧重钉。
-- **窗口内中部插入交给原生 `overflow-anchor`**：不手动补偿 scrollTop（叠加会 double-shift）。
-- **尾部优先收纳**：active tab 首条 content 记录钉 `floor`，尾块（`seq ≥ floor`）直渲进步式首屏；更老的块与后台 virgin tab 的全部记录**只进 `TailWindow` 账本不建卡**（meta/branch 经 `routeMetaAndBranch` 照喂）。后台 tab 批后 `requestIdleCallback` 逐个物化尾 150 条；`switchTo` 命中 virgin 同步物化。物化 = `unwrapAll` → `renderContentRecord`× → `reconcilePendingToolResults` → `rebuildNow`（无条件重折）。
+**为什么**：持锁完整交付会让重放期间 watcher 阻塞数十毫秒到秒级；seq 排序把「后端保序」变成「前端排序」，交付顺序成了纯性能自由度（优先会话先交就是用的这份自由）。
 
-**为什么**：旧内容逐条插到贴底视口上方会让浏览器逐帧重排 + 重做 scroll anchoring，HiDPI/高刷屏分数像素下 ±0.5px 高频抖动（deferMode 时代实测 66→1 帧）；F40a 让**启动重放**的上方插入为 0，且 9.4k 条重放只建 ~尾块+150×tabs 张卡（建卡是重放期最大成本——markdown/DOMPurify/pretext 全免）。历史方案 deferMode/`flushDeferred`/`attachBatch` 已退役。大增量批（>600 行切块落已渲染 tab）的老块由 F40b `midBatchBuffer` 缓冲、批末一次挂载。
+### 成批交付
 
-〔2026-09-24 · `设计/10` 骨架〕**上面「尾部优先收纳」与下面「上翻补批」只对没接上骨架的 tab 逐字成立**（单洞后缀）。拿得到索引（〔C4b〕界面经通道说帧命令 `history-index`，后端出成品；CLI 那一臂是 `--read-session-from-offset --index`）的 tab 与历史查看器接上 `SkeletonView`：没物化的 seq 区间由**占位**顶住（高 = 索引里宽度无关料的第一级粗估）⇒ 一接上滚动条就是全会话的；每次滚动只物化与视口 ±0.5 屏相交的那段；已渲染集 = 尾后缀 ∪ 岛。接上之后正文不再驻留：`TailWindow` 只留 200 条，其余按偏移取回（`read_session_range`）。〔CF2〕`EventReplay.history` 对**每个**会话都只留尾巴 600 条（不再只对接了骨架的）；没接骨架的 tab 丢掉的按行号取回（`read_session_lines`），`TailWindow` 自己也有上界（3000 条修回 2000）。不变量全文在 INVARIANTS § 21 第 3b 条。
+重放按块投递，一次 Tauri 事件里一串格，前端推进同一条队列走批量调度。
 
-F40b 上翻补批：active tab 滚到顶部 800px 内自动从 `TailWindow` 弹 200 条/批渲染（`unwrapAll`→`batchInsert`→reconcile(空组壳连根摘并出账)→`rebuildNow`→同步手动补偿 scrollTop），顶端 `.stream-more-above` 哨兵显示剩余条数；选区进行中暂缓；不可滚+账本有余的 tab 在 switchTo 时踢一次 fill 自链（INVARIANTS § 21.3）。
+**为什么**：每次 emit 都有序列化与派发开销，逐条交付几千行时主线程累计阻塞明显，启动可见卡顿。
 
-### 独立只读窗口复用主渲染管线 + 定向 replay（issue #10）
-`open_session_in_new_window` 建 `viewer-<sid>` WebviewWindow 加载 `index.html?viewer=<sid>`；前端 `main.ts` 检测参数走精简 bootstrap（`bootstrapViewer`）—— **复用 TabManager**（过滤到该 sid、`body.viewer-mode` 隐藏 tab/设置/历史 chrome），自动继承分支折叠 / 启动滚动消抖 / tool-group 合并。顶部一条 slim 栏：项目名标题 + ↗调出终端 + 📂打开 cwd（复用 TabManager 的 active-tab 动作）。
+### 视口外不渲染：content-visibility ＋ 估高 ＋ 骨架
 
-**为什么不另写 viewer 渲染器**：再写一套渲染会与主管线漂移（SessionViewer 漏 pendingToolResults 是历史教训）。复用 TabManager 零功能差。
+- 顶层卡片带 `content-visibility: auto`，视口外与隐藏 tab 的卡片跳过布局与绘制；`contain-intrinsic-size` 初值由 `height-estimate.ts` 按块类型估（正文用 pretext 测宽、代码块按行数），估值只是初值。估高路径绝不许抛，失败就降级。
+- 拿得到会话索引的 tab 与历史查看器接上 `SkeletonView`（`skeleton-view.ts`）：没物化的 seq 区间由占位顶住，一接上滚动条就是全会话的；每次滚动只物化与视口相交的那一段，正文按偏移向那台后端取回。
+- 没接骨架的 tab 由 `TailWindow`（`live-window.ts`）收纳：只物化尾部，更老的记录只进账本不建卡，滚到顶部附近再按批补。
 
-**历史 + 实时一致性**：〔CF2 · 第四波 4B〕独立窗口订一条会话流 `session-lines/<sid>`（URL 里带那个会话的 origin）：留存由那条订阅当场交、之后的实时行接着交——两者都是后端给的 **per-file 行号 seq 空间**，混进同一 RecordTimeline 顺序天然正确，重叠由前端 `seen` set 去重。**不发 frontend-ready**（那是主窗口那几条整台机器的订阅的就绪点）。仅活跃 session 在 buffer；archived 走前端一次性文件读。capability 必须含 `viewer-*`（见 capabilities/default.json）。
+**为什么**：建卡（markdown · DOMPurify · 高亮）是重放期最大的成本；不建看不见的卡，上万条记录的会话也能秒开。
 
-**踩过的坑（INVARIANT § 22，含 F82a 新增两条）**：见 §22 全六条。摘要：① 开窗命令必须 `async`（否则主线程自死锁）；② 定向事件 target-kind 对齐（viewer；settings 用广播↔模块级 listen 的 Any↔Any 同步）；③ 异步 listen 先注册再 emit；④ 精简模式别塌 grid 行（viewer 只定义剩余 item 行数；settings 直接隐藏 grid 容器 `#app` 整块）；⑤ **关窗要 `core:window:allow-close` 能力**（`core:window:default` 不含，getCurrentWindow().close() 否则被 ACL 静默拒）；⑥ **复用 dispatcher 的独立窗口必须自调 `dispatcher.start()`+`applyOverrides`**（否则窗内快捷键录制收不到键、Esc 关不了嵌套 overlay；别手搓 window Esc 会双关窗）。
+### 启动重放贴底不抖
 
-### 独立设置窗口（F82a #56+#47）
-`open_settings_window`（async，单例 `settings` 窗）建 `index.html?settings=1`；`main.ts` 检测参数走 `bootstrapSettings`——`body.settings-window-mode` 隐藏 `#app` 整块、`SettingsPanel({windowMode:true})` 铺满整窗，并自调 `dispatcher.applyOverrides+start`（窗内快捷键编辑器/overlay Esc 需要）。设置项经既有 config 命令读写（窗口无关，无 replay/事件流）。**跨窗同步**：设置窗保存主题 / 行为 toggle / resetAll、以及键位编辑器 persist 后 `emit('settings-applied')`（广播）；主窗口 `listen` 后重读并 `loadTheme`+`applyBehavior`+`applyOverrides`（跨 OS 窗口回调够不到）。cancel 不 emit → 天然 cancel-safe。触发器/`app.open-settings` 快捷键改 `invoke("open_settings_window")`。capability 的 `windows` 含 `settings` 且 `permissions` 含 `core:window:allow-close`。**窗体渲染本环境无 GUI 不可自测 → 真机验证累积。**
+- 守卫式 `snap()`：只在落后底部超过 1px 时才写 `scrollTop`，不每帧重钉。
+- 窗口内的中部插入交给原生 `overflow-anchor`，不手动补偿（叠加会双重位移）。
+- 尾部优先收纳：当前 tab 的尾块直接渲染，更老的块与后台 tab 的记录只进账本；后台 tab 空闲时物化尾部，切过去时同步物化。
 
-### 账号子系统：隔离又同步（A2–A6 / #68/#69）
-**模型**：一个「账号」= 一个 `CLAUDE_CONFIG_DIR`（各自 `.credentials.json`，两号可同时跑、不互踢），而 skills/memory/history/settings/plugins 经 symlink 共享到同一库——**凭据隔离、其余同步**。隔离/同步管线是远端脚本 `cc-acct-iso`（app 内向导 `settings/acct-deploy.ts` 分步驱动）。
+**为什么**：旧内容逐条插到贴底视口上方，会让浏览器逐帧重排并重做滚动锚定，高分屏上分数像素的舍入误差每帧不同，整块上下抖。细则在 INVARIANTS §21。
 
-**只读边界**：cc-monitor 侧对账号只**读**——后端 `accounts.rs` 两命令（`list_remote_accounts` / `check_account_trust`，全 `async(origin: String)`、**无 State**）＋〔C4a〕前端经通道直接说的帧命令 `accounts-sessions`，经后端纯只读查（名/邮箱/是否登录 / 某会话属哪个账号 / 目录是否可信）。动凭据（登录/同步/`--apply`）一律走**真实终端窗口**，不由 monitor 直接改。
+### 每个窗口一个入口
 
-**前端族**（`src/account-*.ts` + `settings/acct-deploy.ts`）：`account-chip.ts` 徽章 + 切号菜单（mismatch/align 状态）；`account-commands.ts`(A4) 「按会话选账号起/Resume」的 `withAccount`（账号解析 + `lastAccount` 记账）；`account-restart.ts`(A5) 「换号对齐当前会话」的**破坏性**重启编排。
+`index.html` · `settings.html` · `viewer.html` 各有自己的入口（`entry-main.ts` · `entry-settings.ts` · `entry-viewer.ts`）。设置窗的模块图里没有高亮、数学排版与 tab 管理；设置窗关窗是隐藏、复用时重跑取值，主窗销毁时连带销毁它（`lib.rs::windows_to_destroy_after`）。独立只读窗口复用 `TabManager` 过滤到那个会话，订一条 `session-lines/<sid>`，不发 `frontend-ready`。
 
-**A4 `withAccount` 与 A5 restart 为何分离**（架构审计裁定，防重新纠结）：语义天然不兼容——① 〔FE1 · D-h 09-25 订正〕不可选账号时两者今天都**不起、说清原因**：withAccount 另给一个可点的显式选择（用当前账号 / 都选不了时「不指定账号」），restart 直接**中止**（破坏性重启绝不退化用默认号）；原先 withAccount「降级默认起」那一形已删（`01 §6.2` · D4）；② withAccount run 后**无条件**记 lastAccount、restart **仅 kill+resume 全成后**才记。硬合需给 withAccount 加三个开关、复杂度净增。二者已共用同一批原语（`account-reads.ts::fetchAccounts` · `accountConfigDir` · `recordLastAccount`；FE1 把 `accounts.ts` 按域拆开之后各住其所），无逻辑漂移。**失败语义**严格照 DESIGN §5.2：换号重启直接结束旧会话（〔V154〕不再先键入 `/exit` 等它退）；compact 失败/超时**不阻断**、kill 失败**必须中止**（绝不续 resume，否则新旧两进程抢同一会话）。
+**为什么**：webview 之间的 JS realm 互不共享，一个入口顶层同步 import 了全部视图，运行期分派到哪一支都要把整张模块图执行一遍——修法只有多入口。viewer 不另写渲染器：再写一套就会与主管线漂移。
 
-### session 探活双重校验（PID + procStart，procStart 可缺）
-`OpenProcess(QUERY_LIMITED) + GetExitCodeProcess == STILL_ACTIVE` + 当 sessions/<PID>.json 含 `procStart` 字段时再加 `GetProcessTimes` creation FILETIME 100ms 容差比对。
+### 账号：隔离又同步
 
-**为什么不**只查 PID：Windows PID 短期复用非常常见，仅靠 STILL_ACTIVE 会把僵尸条目误判为活跃（旧 PID 被一个无关进程占用）。procStart 二次校验**有的话**就必须做。
+一个账号 ＝ 一个 `CLAUDE_CONFIG_DIR`：各自一份登录凭据，两个号可以同时跑、互不踢；skill、记忆、历史、设置经符号链接共享同一份（由 `cc-acct-iso` 管）。账号分订阅号与 API 号；API 号的 key 只留在它所在的那台机器，经那台的中转注入，不进命令行、不进环境变量。monitor 对账号只读，动凭据（登录 · 同步）一律走真实终端窗口。
 
-**为什么 procStart 可缺**：v2.4.2 实测 Claude Code 2.1.150 在某些启动路径下（/resume 或类似）写 `sessions/<PID>.json` 漏 procStart。之前 schema 必填导致 serde 整条解析失败 → 整个 session 被静默忽略 → monitor 漏 Tab。改 `Option<String>` 后缺失就跳过 procStart 校验仅 STILL_ACTIVE。INVARIANTS § 18 完整论证。
+换号重启直接结束旧会话再 resume 同一个 sid；compact 失败不阻断，kill 失败必须中止——绝不在旧进程还活着时续 resume，否则新旧两个进程抢同一份会话。选不了原账号时不静默换号，拒绝并给出「用当前账号」的显式选择。
 
-### 本机判活：Windows + Linux 各用平台原生口径（U7d，2026-08-02）
+### 判活：PID ＋ procStart
 
-上面那套双重校验（PID + `procStart`）**两个平台都是满精度的**，因为
-**`procStart` 是平台原生格式**，各自与本平台的查询口径同源：
+活跃会话按 `sessions/<PID>.json` 判：进程在 ∧ 文件里有 `procStart` 时再比进程创建时间。读法住后端 `platform/`（Windows 读 `GetProcessTimes`，Linux 读 `/proc/<pid>/stat` 第 22 字段），判定两平台共用一张。`procStart` 是平台原生格式，各自与本平台的查询口径同源，不需要启发式。
 
-| 平台 | `procStart` 写的是 | monitor 拿什么比 |
-|---|---|---|
-| Windows | .NET `DateTime.ToFileTime()` | `GetProcessTimes` 的 FILETIME |
-| Linux | `/proc/<pid>/stat` **第 22 字段**（starttime） | 同一字段，**逐字符相等** |
+- **为什么不只查 PID**：Windows 的 PID 短期复用很常见，只看进程在不在会把僵尸条目判成活跃。
+- **为什么 `procStart` 可缺**：Claude Code 在某些启动路径下写 pidfile 会漏这个字段；缺了就只看 PID，而不是整条解析失败、漏掉一个 tab。
+- **解析 `/proc/<pid>/stat` 不能朴素按空白切**：第 2 字段 `comm` 可以含空格与括号（`tmux: server` 就是），要从最后一个 `)` 之后数。
 
-Linux 那行是实测的：本机 6 个真实会话 `procStart` 与 `/proc` 第 22 字段 **6/6 完全相等**，
-量级（~10^6）也一眼不是 .NET Ticks（~6.4e17）。⇒ **不需要任何启发式降级。**
+### 拉前三重校验
 
-⚠ **解析 `/proc/<pid>/stat` 不能用朴素 `split_whitespace()`**：第 2 字段 `comm` 允许含空格与括号。
-实测本机 400 个进程里就有一个踩中 —— **`comm = "tmux: server"`**，朴素切法读到 `0`，正确值 `1042`。
-而 tmux server 正是本仓的核心依赖。做法：找**最后一个** `)`，其后是第 3 字段起，starttime 是其后第 19 项（0 基）。
+Windows 上把终端窗口拉到前台前要同时满足：窗口把手还有效 ∧ 当前 owner pid 等于绑定时的 ∧ owner 的进程创建时间等于绑定时的。任一不符就拒绝拉前并说原因。
 
-#### ⚠ macOS 仍然不工作
+**为什么**：窗口把手复用比 PID 复用还频繁，不校验 owner 会把不相干的窗口拉到前面。
 
-`#[cfg(all(unix, not(target_os = "linux")))]` 分支仍恒返回「不活跃」⇒ **macOS 上本机会话不会被监听**。
-那是**如实的未实现**：macOS 没有 `/proc`，要走 `sysctl KERN_PROC` 的 FFI，而本仓没有 macOS CI、
-也无法实测 —— 按本仓纪律不写没验过的实现。
+### marker 握手：先改标题，后写文件
 
-为什么返回 `false` 而不是 `unimplemented!()`（后端侧那样）：那边是 CLI，panic 是「没人能忽略的信号」；
-这边是 GUI 常驻进程，panic 会直接崩窗口。`false` 在这里是 **fail-safe**（少显示，而不是显示永不消失的
-僵尸会话），且这条限制写在这里与 README —— **不是静默的谎**。
+PowerShell **先**把 `$Host.UI.RawUI.WindowTitle` 设成唯一 marker，**后**写 `ps-await/<PID>.json`；monitor 收到文件后 `EnumWindows` 找标题含 marker 的窗口，找不到就重试（最多 600ms），找到写回 `ps-registry/<PID>.json`，PS 看到后恢复标题。顺序不可换：反过来 monitor 会在文件落地瞬间去找一个还没设上的标题。时序图在 [IPC-PROTOCOL.md § 跨进程握手时序图](IPC-PROTOCOL.md)。
 
-### HWND 拉前三重校验
-`IsWindow(hwnd)` + 当前 `owner_pid == 绑定时 owner_pid` + 当前 owner 的 `procStart == 绑定时 owner_proc_start`。
-
-**为什么**：HWND 复用比 PID 复用还高频（Windows 重用窗口句柄）；如果不校验 owner 的话，会把不相关的窗口拉前。任一失败拒拉前 + 给 toast 原因。
-
-### profile 写入用 ReplaceFileW 不用 MoveFileExW
-`ReplaceFileW(dst, tmp, NULL, REPLACEFILE_WRITE_THROUGH, ...)` 原子替换 dst 的**内容**，**保留 dst 的 ACL / ADS / 创建时间**。
-
-**为什么不**用 MoveFileExW：MoveFileExW 用 src（即 tmp 文件）的 ACL 覆盖 dst 的 ACL。如果用户把 Documents 重定向到非默认盘（`E:\<user>\Documents`），那一层目录 ACL 通常只给 Administrators + Everyone 部分权限，没给当前用户 explicit Full Control。原 profile 上的 explicit ACE 被 tmp 的"父目录继承 ACL"覆盖 → 用户自己读不了自己的 profile。ReplaceFileW 专门设计来保留 dst metadata。
-
-### profile 写入必先 backup + 写后校验
-写之前 `std::fs::copy(path, <path>.ccm-backup-<ms>)` 备份；写之后 `read_to_string` + 比对长度，不匹配从 backup 回滚。
-
-**为什么**：OneDrive online-only placeholder / 杀软介入等罕见场景下，`read_to_string` 可能返回 `Ok("")` 即"磁盘有内容但读到空"，纯写就是把用户内容冲掉。backup + 校验是双保险。
-
-### marker 握手 + EnumWindows 找窗口（cc 集成）
-PS **先**改 `$Host.UI.RawUI.WindowTitle = marker`、**后**写 `ps-await/<PID>.json` → monitor `EnumWindows` 找 `GetWindowTextW.contains(marker)` 的窗口（找不到重试 ≤600ms）。
-**顺序不可换**：反过来 monitor 会在文件落地瞬间就去找一个还没设上的标题，扫得越快越容易失败（v2.21 实测「每个新 shell 首次 `cc` 固定烧满超时」）。细节见 [IPC-PROTOCOL.md § 跨进程握手时序图](IPC-PROTOCOL.md)拿 HWND。
-
-**为什么不**直接用 `EnumWindows + GetWindowThreadProcessId`：PowerShell 进程**不直接拥有终端窗口**（Windows Terminal 是单独进程；cmd 走 conhost；VSCode 走 integrated terminal）。window owner 不等于 PS owner。用 PS 改自己窗口标题为 unique marker + 反查 title 是唯一可靠的跨进程握手。
+**为什么不直接按进程找窗口**：PowerShell 不拥有终端窗口（Windows Terminal 是单独进程，cmd 走 conhost，VS Code 走集成终端），window owner 不等于 PS。让 PS 改自己窗口的标题、再按标题反查，是唯一可靠的跨进程握手。
 
 ### UTF-8 BOM 双向防御
-PS 端模板 `cc.ps1.tpl` 用 `[System.IO.File]::WriteAllText(... UTF8Encoding($false))` 显式写无 BOM；Rust 端 `bind::process_await_file` 用 `raw.trim_start_matches('\u{feff}')` 剥任何 BOM 再 `serde_json::from_str`。
 
-**为什么**：PS 5.1 `Out-File -Encoding utf8` 默认**写 UTF-8 BOM**（前 3 字节 `EF BB BF`），`serde_json` 不剥 BOM 直接解析失败。源头修 + 接收端兜底双保险，避免用户用旧模板还能 work。
+PS 模板 `src/shared/cc.ps1.tpl` 用 `UTF8Encoding($false)` 写无 BOM；Rust 端 `bind.rs::process_await_file` 解析前先剥掉任何 BOM。
 
-### CSS portal tooltip 真挂 document.body
-`?` 图标 tooltip 不挂自己子节点，而是 `document.body.appendChild(tip)` + `position: fixed` + JS 算 viewport 坐标。
+**为什么**：PowerShell 5.1 的 `Out-File -Encoding utf8` 默认写 BOM，`serde_json` 不剥就解析失败；源头修 ＋ 接收端兜底，旧模板也能用。
 
-**为什么**：父 `.settings-panel` 有 `transform: translateX(0)`（slide-in 动画）。CSS spec 规定：祖先有 `transform` 时，`position: fixed` 后代的 containing block 从 viewport **重置到那个祖先** → `left/top` 不再是 viewport 坐标 → tooltip 实际跑出屏幕。挂 body 脱离 panel 子树即可恢复真 fixed 行为。
+### tooltip 挂在 body 上
 
-### logging 子系统：tracing init 在 Builder 之前 + ErrorEmitterLayer + reload Handle（v2.0.0）
-`logging::init(monitor_data_dir)` 必须在 `tauri::Builder::default()` **之前**调用（tracing 全局 dispatcher 一旦 init 不能再换）。内部组装 `registry().with(reload<EnvFilter>).with(stdout).with(file).with(ErrorEmitter).init()`。
+设置里的 `?` 提示框挂到 `document.body`，`position: fixed` ＋ 按视口算坐标。
 
-- **file layer 用 `tracing-appender::rolling::daily` + `non_blocking` writer**：按天滚动 + 不阻塞业务线程。WorkerGuard 必须挂在 LoggingState 上（drop 时 flush）
-- **reload::Layer<EnvFilter>**：`set_diagnostics_config` 能改日志级别**不重启就生效**
-- **ErrorEmitterLayer**：自定义 Layer 拦 `Level::ERROR` → 通过注入的 emit closure 发 `monitor-error` 事件 → 前端弹红色 toast。limited 60s/20 条避免风暴
-- **AppHandle 通过 closure 注入**：tracing init 时 AppHandle 还没建（在 setup 里才有）→ ErrorEmitter 内部用 `RwLock<Option<closure>>`，setup 里调 `install_error_emitter(handle)` 把 emit closure 写进去
-- **失败兜底**：log 目录创建失败 / appender 构造失败 → 退化到 stdout-only，monitor 仍能启动（INVARIANT § 15）
+**为什么**：祖先有 `transform` 时，`position: fixed` 的包含块从视口变成那个祖先，坐标就不再是视口坐标，提示框会跑出屏幕。
 
-**为什么**：v1.7.0-1.7.7 的 BOM 真凶就是因为 `windows_subsystem = "windows"` 无 stderr，`tracing::warn!("bind: parse ... failed")` 没人看见，cc 集成"装上没用"7 个版本无人察觉。issue #4 就是补这个结构性短板。
+### 日志：tracing 在 Builder 之前初始化
 
-### Win32 sync 调用走 spawn_blocking
-`bring_terminal_to_front` 走 `tokio::task::spawn_blocking`（〔AL2〕`aliases_read` 从前也走：今天它全经那台后端问，不再在本进程读盘）。
+`logging::init` 必须在 `tauri::Builder::default()` 之前调用（全局 dispatcher 只能装一次）：文件层按天滚动、非阻塞写；`EnvFilter` 可热改级别，不重启就生效；ERROR 级经 `logging.rs::install_error_emitter` 注入的回调发 `monitor-error`，前端弹提示（限流防风暴）。日志目录建不出来就退化成只写 stdout，monitor 照样起。后端子进程的 stderr 接进 monitor 的滚动日志，脱离起的后端写自己那份日志。
 
-**为什么**：Win32 同步调用（`EnumWindows` / `SetForegroundWindow` / `ShellExecuteW` 等）可能阻塞数十 ms 到秒级；放到 Tauri 主 runtime 会卡死 IPC 派发。spawn_blocking 隔离到 blocking thread pool，前端再加 5s timeout 兜底。
+**为什么**：release 版是 GUI 子系统，没有 stderr；日志不落盘，一条解析失败的 warn 就没人看见。
 
-### bring_monitor_to_front 三层 hack（v2.4 issue #2）
-用户在终端敲键 → monitor 不是前台进程 → `SetForegroundWindow` 直接调被 Win10/11 拒绝（OS 防恶意软件偷焦点）。修复方案是叠加三层：
+### Win32 同步调用走 spawn_blocking
 
-1. **`keybd_event(VK_MENU)` 模拟 Alt 按键**：OS 检测后视当前进程为"刚有用户输入" → 临时获得前台资格（PowerToys / TranslucentTB 同款 trick）
-2. **`AttachThreadInput`**：附加到当前前台线程的输入队列，借用其拉前权限
-3. **`SetWindowPos(TOPMOST → NOTOPMOST)`**：强制 Z 序拉顶，即使 `SetForegroundWindow` 失败也至少视觉浮顶
+`bring_terminal_to_front` 等 Win32 同步调用放进 `spawn_blocking`，前端再加超时兜底。
 
-单层（v2.4.0 只 set_focus / v2.4.1 加 AttachThreadInput）实测在 Win10 1903+ 都不够，三层叠加才稳。详 `lib.rs::bring_monitor_to_front` + CHANGELOG v2.4.2。
+**为什么**：`EnumWindows` / `SetForegroundWindow` 这类调用可能阻塞数十毫秒到秒级，放在 Tauri 主 runtime 上会卡住 IPC 派发（INVARIANTS §10）。
+
+### bring_monitor_to_front 三层 hack
+
+用户在终端里敲回车、monitor 自动跟到那个 tab 并可选拉到前台时，monitor 不是前台进程，直接 `SetForegroundWindow` 会被 Windows 拒绝（防偷焦点）。`lib.rs::bring_monitor_to_front` 叠三层：
+
+1. `keybd_event(VK_MENU)` 模拟一次 Alt，让系统视本进程为「刚有用户输入」；
+2. `AttachThreadInput` 附加到前台线程的输入队列，借它的拉前权限；
+3. `SetWindowPos(TOPMOST → NOTOPMOST)` 强制拉到 Z 序顶部，前两层都失败时至少视觉上浮顶。
+
+单层在 Win10 1903+ 上都不够，三层叠加才稳。
 
 ---
 
-## 6. 关于"不在主线 / 已废弃"特性
+## 6. 刻意不做的
 
-设计中**主动放弃**的方向，写在这里给后续重构者参考避免重蹈：
-
-### OS 焦点同步（已删 / v2.4 用 watcher 反推替代）
-原 `SetWinEventHook` 监听 `EVENT_SYSTEM_FOREGROUND` 然后切对应 Tab 的设计。
-
-**为什么放弃**：Windows Terminal 单进程多窗口/多 tab 架构，`GetForegroundWindow` 只能拿到 WT 主进程的 HWND，**无法区分同一 WT 窗口内哪个 tab active**。SidHwndCache 里 N 个 tab → 同一 HWND 的映射也反查不出。已彻底删除 `lookup_by_foreground_pid` 和 `FOCUS_SWITCH` IPC。
-
-**v2.4 issue #2 用 watcher 反推 `type=user` 替代**：用户在 claude 里敲回车 → claude 写一行 type=user 到 jsonl → watcher 识别 → 切对应 Tab。零侵入、信号准（详 `src/doc/INVARIANTS.md` § 20）。OS API 路径仍废弃；公开 API（[microsoft/terminal#19818](https://github.com/microsoft/terminal/issues/19818)）2026 年 5 月仍在 Backlog。
-
-### subagent 实时流（已隔离）
-不走主 watcher，由前端 `invoke("load_subagent")` 在用户展开 Task 折叠卡时按需加载。
-
-**为什么**：subagent jsonl 数量大但展开率低，主 watcher 全 emit 会膨胀 event_replay buffer 数倍但绝大多数没人看。隔离到 on-demand IPC 是 ergonomic + memory 的双赢。
-
-### 4-tier 启发式拉终端（已撤回）
-v1.6.x 试过的"从 claude PID 走 parent chain + WT 进程 + 终端类进程 + ai-title 匹配"4 层 fallback。
-
-**为什么放弃**：explorer 启 PowerShell + WT DefTerm 接管 console 的常见架构下，claude 祖先链与 WT 窗口完全脱节（claude 的 parent 是 PS，PS 的 parent 是 explorer；WT 是另一个独立进程，跟 claude/PS 没有 parent 关系）。4 层启发式在主流环境下都不可靠。改走 cc 命令注入式绑定（v1.7+），让 PS 主动告诉 monitor "我的 HWND 是 X"。
+- **按系统前台窗口切 tab**：Windows Terminal 一个进程多个窗口、多个 tab，前台窗口只拿得到 WT 主进程的把手，分不出是哪个 tab。改为看 jsonl：用户在 claude 里敲回车，claude 写一行 `type=user`，monitor 切到那个 tab（INVARIANTS §20）。
+- **subagent 实时流**：子 agent 的 jsonl 数量大、展开率低，全量推会把重放缓冲撑大数倍；只在用户展开 Task 折叠卡时按需向那台后端要（帧命令 `history-subagent`）。
+- **按进程祖先链猜终端窗口**：explorer 起 PowerShell ＋ WT 接管控制台的常见架构下，claude 的祖先链与 WT 窗口完全脱节，启发式在主流环境下都不可靠。改为终端主动告诉 monitor 它是哪个窗口（`cc` 集成的 marker 握手 · 启动期令牌）。
+- **换掉 webview**：这个 app 的核心是渲染会话记录（Markdown · 代码高亮 · LaTeX · 可折叠工具卡 · 流式追加 · 上万条记录的虚拟化），正是 HTML 最擅长、原生 GUI 工具箱最不擅长的那一类。文件管理器窗口不渲染会话记录，所以它是原生（egui）的。
 
 ---
 
 ## 7. 入门读图
 
-- 想理解整体数据流：本文 § 1（**三条链**：本机 / 远端后端 / POSIX）+ § 5
-- 想知道 frontend / backend 的边界在哪、哪一半还没搬完：本文 § 2
-  （§2.1 那张表是**今天真实的落地进度**，且由判据现场量 —— 它不会停在某个旧的「今天」）
-- 想加新 jsonl 类型：见 [CONTRIBUTING.md](CONTRIBUTING.md) § 添加 jsonl 类型
-- 想改/加跨进程协议文件：见 [IPC-PROTOCOL.md](IPC-PROTOCOL.md)
-- 想加新 IPC 命令：见 [CONTRIBUTING.md](CONTRIBUTING.md) § 添加 IPC + [STATE-MATRIX.md](STATE-MATRIX.md)
-- 想改某个具体模块：找对应子目录 README（`src/` 或 `src/frontend/shell/`）的模块表
+- 整体数据流：本篇 §1 ＋ §5
+- 一件事该放在哪一层：本篇 §2
+- 加 jsonl 记录类型、加帧命令、加设置项 / 快捷键：[CONTRIBUTING.md](CONTRIBUTING.md)
+- 改跨进程文件或帧协议：[IPC-PROTOCOL.md](IPC-PROTOCOL.md)
+- 改某个具体模块：对应目录的 README

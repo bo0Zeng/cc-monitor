@@ -57,9 +57,11 @@ const REQUIRED_FACTS: &[(&str, &[&str], &str)] = &[
         &["exec", "搬不走", "平面 ③"],
         "缺了它，下一个人会试图把开窗也搬进后端（定框 C13 逐字写着这条被误读过一次）",
     ),
+    // 〔P6 · 09-29〕第三个探针「八处」→「三处」：那个数过期了（共享 crate 早已是壳 workspace 的成员，
+    //   要分别跑的只剩壳的 workspace · `src/backend` · `src/panorama-engine` 三处，即门禁 `cargo` · `backend` · `panorama-engine` 三格）。
     (
         "共享 crate 与后端为什么不进 workspace，以及代价",
-        &["workspace 成员", "原生构建", "八处"],
+        &["workspace 成员", "原生构建", "三处"],
         "缺了它，下一个人会「顺手」把后端收进 workspace，或者以为 `cargo test` 覆盖了它",
     ),
 ];
