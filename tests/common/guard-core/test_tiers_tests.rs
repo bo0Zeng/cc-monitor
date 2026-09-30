@@ -112,7 +112,6 @@ const UNIT: &[&str] = &[
     "tests/backend/control/launch_render/launch_tmux_outer_parity_tests.rs",
     "tests/frontend/shell/chan/transfer_stream_tests.rs",
     "tests/backend/agents/claudecode/branch_tests.rs", // 〔THIN〕原 `tests/common/branch-core/lib_tests.rs`：分叉变换收进后端适配层
-    "tests/common/creds-core/store_tests.rs",
     "tests/backend/control/gate_rules_tests.rs", // 〔THIN〕原 `tests/common/gate-core/lib_tests.rs`：gate-core 收成后端模块
     "tests/common/relay-route-core/lib_tests.rs", // 〔US1〕中转门牌共享 crate
     // 〔P1〕`search-core` 删了：它的纯函数判据随家拆成两份（通用口径 · Claude 记录文本），同层。
@@ -319,6 +318,7 @@ const SCAN: &[&str] = &[
     "tests/backend/observe/tmux_list_tests.rs", // 〔MIG-1 续〕解析判据 ＋ 写跨语言金样（`include_str!` 读 `tmux-list.golden.json`）
     "tests/backend/dial_forwards_tests.rs", // 〔MIG-1〕转发账判据 ＋ 写跨语言金样（`include_str!` 读 `forward-list.golden.json`）
     "tests/backend/dial_ssh_config_tests.rs", // 〔MIG-1〕规则判据 ＋ 写跨语言金样（`include_str!` 读 `ssh-config.golden.json`）
+    "tests/common/creds-core/store_tests.rs", // 〔P5〕UNIT → SCAN：多一条「两侧读家目录同一个函数」（读两棵生产树的源码现扫调用点）
     "tests/backend/dial_terminal_tests.rs", // 〔WF1 · G〕UNIT → SCAN：开终端那一行的渲染规则 ＋ 三份起会话夹具的全部请求都过守卫（`include_str!` 读 `launch_render/fixtures/*.json`）
     "tests/backend/dial_tests.rs",
     "tests/backend/files/module_boundary_guard.rs",

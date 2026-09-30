@@ -863,9 +863,7 @@ impl FileWindow {
             let opened =
                 match super::source::ask(&line, &here, TERMINAL_CMD, &ask, TERMINAL_WITHIN).await {
                     Ok(v) => match v.get("command").and_then(serde_json::Value::as_str) {
-                        Some(ps) => {
-                            crate::launch::open_terminal_window(ps.to_string(), None, true).await
-                        }
+                        Some(ps) => crate::launch::open_terminal_window(ps.to_string(), true).await,
                         None => Err(copy_text("rsFilewinShell.terminal.badReply", &[]).into()),
                     },
                     Err(why) => Err(why),

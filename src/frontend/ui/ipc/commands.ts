@@ -247,12 +247,11 @@ export const commands = {
   // 〔LOC1a · 第四波 4D · C4e 批 4〕某会话的任务快照那一条退役：界面经通道直接问那台机器的后端 `tasks-list`
   //   （后端出成品，`tasks-panel.ts::fetchSessionTasks` / `decodeTasks`）。
 
-  /** 〔FIX4 · `设计/99 §2.1 ⑬`〕开一个终端窗口跑 `command`（**成品**：远端那一行由本机后端 `terminal-ssh` 渲好；本机那一串原样）。
+  /** 〔FIX4 · `设计/99 §2.1 ⑬`〕开一个终端窗口跑 `command`（**成品**：远端那一行由本机后端 `terminal-ssh` 渲好、本机那一串由 `terminal-local` 交回；
+   *  〔P5〕这次拉起带令牌时，两条都已接好令牌握手前奏 —— monitor 只开窗）。
    *  Rust 返回 `Result<(), String>` ⇒ **桶①**。`ssh`：这一行要跑本机的 ssh（Windows 上先查 ssh.exe 在不在）。
-   *  〔`设计/80 §8.7` 步 3 收尾，第二波 T4〕`rbindToken`：这次拉起铸的启动期令牌 —— monitor 据此在新窗口里先做一次令牌握手
-   *  （本地 `token → HWND` 表的生产写入方）；账号部署那几个不起 agent 进程的调用方交 `null`。
    *  只经 `src/frontend/ui/terminal-open.ts::openTerminal` 调（开终端只有一个家）。 */
-  open_terminal_window: (args: { command: string; rbindToken: string | null; ssh: boolean }) =>
+  open_terminal_window: (args: { command: string; ssh: boolean }) =>
     invoke<void>("open_terminal_window", args),
 
   /** 〔FIX4 · `设计/99 §2.1 ⑬`〕开终端那一问要的机器事实 `{machine, saved, jump, prefer}`（monitor 的机器表 ＋ 上次赢的那条）。

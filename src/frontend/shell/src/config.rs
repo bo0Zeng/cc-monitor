@@ -511,7 +511,7 @@ pub fn resolve_claude_dir() -> Option<PathBuf> {
             p.display()
         );
     }
-    let home = dirs::home_dir()?;
+    let home = creds_core::store::home_dir()?;
     let default_path = home.join(".claude");
     tracing::info!("claude_dir default: {}", default_path.display());
     Some(default_path)
@@ -555,7 +555,7 @@ pub const DATA_DIR_ENV: &str = creds_core::store::DATA_DIR_ENV;
 pub fn resolve_monitor_data_dir() -> Option<PathBuf> {
     monitor_data_dir_from(
         std::env::var(DATA_DIR_ENV).ok().as_deref(),
-        dirs::home_dir(),
+        creds_core::store::home_dir(),
     )
 }
 

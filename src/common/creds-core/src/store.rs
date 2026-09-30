@@ -120,6 +120,40 @@ pub fn monitor_data_dir(
     }
 }
 
+/// 家目录的两个环境变量名（只在这里写：「哪个变量算家」是两侧必须对上的契约）。
+const HOME_ENV: &str = "HOME";
+const USERPROFILE_ENV: &str = "USERPROFILE";
+
+/// 〔P5 · 主会话 09-29 裁〕**这台机器的家目录只有这一条规矩**（monitor 与后端都调它，[`monitor_data_dir`] 同一家）：
+/// 按平台惯例 —— Windows：`USERPROFILE` → `HOME`；其余：`HOME` → `USERPROFILE`（与 Claude Code / Node `os.homedir()` 一致）。
+/// 空串当没有；都没有 ⇒ `None`（调用方明说，不猜一个路径）。
+pub fn home_dir() -> Option<std::path::PathBuf> {
+    home_dir_from(&|k| std::env::var_os(k))
+}
+
+/// 同上，环境由 `get` 答（注入环境的调用方与判据用）。
+pub fn home_dir_from(
+    get: &dyn Fn(&str) -> Option<std::ffi::OsString>,
+) -> Option<std::path::PathBuf> {
+    home_dir_on(get, cfg!(windows))
+}
+
+/// 规矩本体：`windows` = 按 Windows 那一臂取（判据两臂各喂一次）。
+pub fn home_dir_on(
+    get: &dyn Fn(&str) -> Option<std::ffi::OsString>,
+    windows: bool,
+) -> Option<std::path::PathBuf> {
+    let order = if windows {
+        [USERPROFILE_ENV, HOME_ENV]
+    } else {
+        [HOME_ENV, USERPROFILE_ENV]
+    };
+    order
+        .iter()
+        .find_map(|k| get(k).filter(|v| !v.is_empty()))
+        .map(std::path::PathBuf::from)
+}
+
 /// 凭据文件住数据目录根上：`<数据目录>/apikey-credentials.json`。
 pub fn credentials_path(data_dir: &std::path::Path) -> std::path::PathBuf {
     data_dir.join(FILE_NAME)
