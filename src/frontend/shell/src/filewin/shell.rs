@@ -201,14 +201,12 @@ pub fn any_thread_hook(builder: &mut eframe::EventLoopBuilder<eframe::UserEvent>
 /// [`super::download::default_dest`]（往外拖时「存到哪儿」那一格的缺省值）。
 /// ⇒ 它**不再是文件管理器的一部分**，是**往外传**那条路上的一格。
 ///
-/// 🔴 **抽成一个具名函数不是风格，是登记要求**：`local_read_surface_registry::HOME_REACHES`
-/// 按「上一处 `fn 名字`」给每一处 `home_dir()` 归属，写在别人体内的话那一行会被登记成
-/// 一个说不出自己在干什么的名字。
+/// 〔P4 · P5 收家目录〕家目录取法走全仓那一条规矩（`creds_core::store::home_dir`，monitor 与后端同一家），不再自己调 `dirs`。
 ///
-/// ⚠ 它**只把 home 当一条缺省路径**，不去读 home 里的任何东西 —— 一次 `home_dir()`，
-/// 零次 `read_dir`。拿不到 home 就退到 `.`（当前工作目录），**不猜一个路径出来**。
+/// ⚠ 它**只把 home 当一条缺省路径**，不去读 home 里的任何东西 —— 零次 `read_dir`。
+/// 拿不到 home 就退到 `.`（当前工作目录），**不猜一个路径出来**。
 pub fn local_home() -> String {
-    dirs::home_dir()
+    creds_core::store::home_dir()
         .map(|p| p.to_string_lossy().to_string())
         .unwrap_or_else(|| ".".to_string())
 }

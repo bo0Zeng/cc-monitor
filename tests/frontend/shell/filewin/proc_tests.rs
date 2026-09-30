@@ -661,15 +661,22 @@ async fn the_window_dials_back_with_the_handoff_and_refuses_to_open_without_it()
     );
     // ⑤〔FW34〕种子里每一格都真的交给了开窗那一下（漏交一格 ＝ 那一格在窗口那侧恒是默认值，
     //    种子对拍照样绿 —— 它只判「过得了进程边界」，判不了「过去之后有人接」）。
-    for f in ["source", "reveal", "bookmarks", "machines"] {
+    for f in ["reveal", "bookmarks", "machines"] {
         let at = guard_core::find_pinned(&prod, &format!("        req.{f},\n"))
             .unwrap_or_else(|e| panic!("child_main 没把种子里的 `{f}` 交给开窗那一下：{e}"));
         assert!(at > at_open, "`req.{f}` 不在开窗那一下的实参里");
     }
+    // 〔P4〕那台的名字（种子 `origin`）先造成窗口那一侧的 `Source`，再交给开窗那一下。
+    let at_src = guard_core::find_pinned(&prod, "Source::remote(req.origin.clone())")
+        .expect("child_main 没拿种子里那台的名字造 `Source`");
+    let at_src_arg = guard_core::find_pinned(&prod[at_open..], "        source,\n")
+        .expect("开窗那一下的实参里没有 `source`");
+    assert!(at_src < at_open, "`Source` 造在开窗之后");
+    let _ = at_src_arg;
     // ⑥〔MIG-3a · 09-28 裁 3〕第一屏：拨通之后、开窗之前列；列不出来就退（不开窗）；起点与那一屏是它列出来的那一份。
     let at_first = guard_core::find_pinned(
         &prod,
-        "rt.block_on(first_screen(&line, &req.source, req.cwd.clone()))",
+        "rt.block_on(first_screen(&line, &source, req.cwd.clone()))",
     )
     .expect("child_main 里没有列第一屏那一下");
     let at_refuse = guard_core::find_pinned(&prod, "Err(e) => return refuse(e, EXIT_NOT_LISTED),")

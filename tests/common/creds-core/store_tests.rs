@@ -762,10 +762,7 @@ const DIRS_HOME_ELSEWHERE: &[(&str, &str)] = &[
         "src/frontend/shell/src/ccm_probe.rs",
         "〔待改调〕P1 写区（本路题面明令避开）：`local_ccm_entry_status` 那一格 `~/.cc-monitor/bin/ccm`，合并 P1 时改调并摘行",
     ),
-    (
-        "src/frontend/shell/src/filewin/shell.rs",
-        "〔待改调〕P4 写区（文件窗口搬成独立包，那一包链不链 `creds-core` 由 P4 定）：`local_home` 那一格浏览起点，合并 P4 时改调并摘行",
-    ),
+    // 〔P4〕`src/frontend/shell/src/filewin/shell.rs` 那一行（`local_home`）摘了：改调本函数（文件窗口包链 `creds-core`，契约类）。
 ];
 
 /// 一份源码（原文）的生产段里 `dirs::home_dir(` 几处。

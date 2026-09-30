@@ -22,6 +22,7 @@ use copy_core::copy_text;
 use serde_json::{json, Value};
 
 use crate::platform::shell::dialect::ps_literal;
+use crate::platform::shell::posix;
 use crate::platform::shell::powershell;
 
 /// 远端命令长度上限（防异常输入；正常 resume 命令 < 300 字节）。与 monitor 本机那条送法的上限同值。
@@ -193,7 +194,7 @@ fn command_arg(args: &Value) -> Result<&str, CmdErr> {
     })
 }
 
-/// 「在此打开终端」要在那台跑的那一串（〔P4〕原住文件窗口 `filewin/shell.rs::build_open_terminal_cmd` · `_at`，逐字搬来：
+/// 「在此打开终端」要在那台跑的那一串（〔P4〕原住文件窗口那一侧的 `build_open_terminal_cmd`〔散文墓碑〕 · `_at`，逐字搬来：
 /// 窗口只交意图 `{cwd}`，命令由这里拼，`设计/60 §2.3` · 主会话 09-29 拍板 Q2）。
 ///
 /// 逐字：`cd <quoted> && exec ${SHELL:-bash} -l`（`cwd` 为空 ⇒ 只有后半段）。当前目录是那台列出来的**自由文本路径** ⇒
@@ -201,7 +202,7 @@ fn command_arg(args: &Value) -> Result<&str, CmdErr> {
 /// **不拒 shell 元字符**，交给唯一那一处 quote，`INVARIANTS §47` ②）；非 UTF-8 的目录走字节形（`posix_quote_bytes`，`$'…'`）。
 /// ⚠ **不用双引号**：[`check_command`] 会拒掉含双引号的命令（PowerShell 原生传参畸变那道防线）。
 pub(crate) fn command_for_cwd(cwd: &Value) -> Result<String, CmdErr> {
-    let Some(bytes) = crate::files::raw::from_json(cwd) else {
+    let Some(bytes) = crate::common::path_wire::from_json(cwd) else {
         return Err((
             "invalid_args",
             crate::common::contract::malformed("`cwd` must be a string or {\"b16\": \"<hex>\"}"),
@@ -217,26 +218,22 @@ pub(crate) fn command_for_cwd(cwd: &Value) -> Result<String, CmdErr> {
         Ok(s) => {
             let c = s.trim();
             if c.is_empty() {
-                Ok(LOGIN_SHELL.to_string())
+                Ok(posix::cd_then_login_shell(None))
             } else if !shell_quote_core::posix_free_path_ok(c) {
                 Err(bad(c))
             } else {
-                Ok(cd_then_shell(&shell_quote_core::posix_quote(c)))
+                Ok(posix::cd_then_login_shell(Some(
+                    &shell_quote_core::posix_quote(c),
+                )))
             }
         }
         Err(_) if !shell_quote_core::posix_free_path_bytes_ok(&bytes) => {
             Err(bad(&String::from_utf8_lossy(&bytes)))
         }
-        Err(_) => Ok(cd_then_shell(&shell_quote_core::posix_quote_bytes(&bytes))),
+        Err(_) => Ok(posix::cd_then_login_shell(Some(
+            &shell_quote_core::posix_quote_bytes(&bytes),
+        ))),
     }
-}
-
-/// 登录 shell 那半段。
-const LOGIN_SHELL: &str = "exec ${SHELL:-bash} -l";
-
-/// `cd <已 quote 的目录> && <登录 shell>` —— 「在此打开终端」那一串**只在这里拼**（字符串形与字节形共用）。
-fn cd_then_shell(quoted: &str) -> String {
-    format!("cd {quoted} && {LOGIN_SHELL}")
 }
 
 /// 帧命令 `terminal-ssh`：`{machine, saved?, jump?, prefer?, command | cwd, rbindToken?}` ⇒ `{command: "<前奏？＋那一行 PowerShell>"}`。

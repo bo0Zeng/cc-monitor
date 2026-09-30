@@ -3158,7 +3158,9 @@ marker = `ccm-rbind-token-<令牌>`；marker 前缀与目录名是共享契约�
 ```
 
 入参：那台机器的配置 `machine`（＋ `saved?` · `jump?` · `prefer?`，与 `remote-probe` / `pubkey-push` 同形，组请求走 `dial/machine.rs::resolve`）＋ 要在那台跑的
-`command` ＋ 可空 `rbindToken`（〔P5〕有值 ⇒ 成品前面接令牌握手前奏，同 `terminal-local`）。出：一行 PowerShell `& ssh -t[ -J <跳板用户>@<跳板>[:口]] -p <口>[ -i '<钥匙>'] <用户>@<地址> -- '<bash -lic ''…''>'` —— 地址取竞速顺序第一条
+`command` ＋ 可空 `rbindToken`（〔P5〕有值 ⇒ 成品前面接令牌握手前奏，同 `terminal-local`）。〔P4〕`command` 也可以换成意图 `cwd`（**恰给一格**）：
+当前目录的线上形（字符串或 `{"b16": …}`，同 `files-*` 的路径），由后端拼成 `cd <目录> && exec ${SHELL:-bash} -l`（空 ⇒ 只有后半段；目录过 POSIX 自由文本路径那一关，
+不过 ⇒ `refused`）—— 文件窗口「在此打开终端」经 monitor 接下的通道那一问（`terminal-open`）走这一形，窗口不拼命令。出：一行 PowerShell `& ssh -t[ -J <跳板用户>@<跳板>[:口]] -p <口>[ -i '<钥匙>'] <用户>@<地址> -- '<bash -lic ''…''>'` —— 地址取竞速顺序第一条
 （交了 `prefer` 且仍在这台的地址里 ⇒ 上次赢的那条）；命令包成 `bash -lic '<命令>'` 再以 PowerShell 单引号字面量嵌入；钥匙尾 `\` 剥掉；没钥匙 ⇒ 不带 `-i`（走 agent）。
 **只算不起**：不拨号、不开窗（开窗是 monitor 的事）。码：`invalid_args`（缺 `machine` / `command` · `rbindToken` 不是串也不是 `null`）· `bad_jump`（跳板交不来 / 指自己）·
 `refused`（命令空 / 超长 / 含控制符 / 含双引号 —— PowerShell 5.1 传参畸变面；用户名 · 地址 · 跳板出了白名单；令牌形状不对）。只上帧面（`STREAM_ONLY`）。

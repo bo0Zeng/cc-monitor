@@ -314,7 +314,7 @@ fn need_bool(d: &Value, k: &str) -> Result<bool, String> {
 /// 十六进制（大小写都认）→ 字节。奇数长度 / 非十六进制字符 ⇒ `None`。
 ///
 /// 🔴 **不许在这里「尽力而为」**：猜错一个字节就是指到另一个文件
-/// （同 `src/backend/files/raw.rs::from_json` 的头注那一条）。
+/// （同 `src/backend/common/path_wire.rs::from_json` 的头注那一条）。
 fn from_hex(s: &str) -> Option<Vec<u8>> {
     let b = s.as_bytes();
     if !b.len().is_multiple_of(2) {

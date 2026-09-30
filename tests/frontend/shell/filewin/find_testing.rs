@@ -821,7 +821,7 @@ fn contains(hay: &[u8], needle: &[u8]) -> bool {
     hay.windows(needle.len()).any(|w| w == needle)
 }
 
-/// 路径字节 → 线上那两种形（同 `src/backend/files/raw.rs::to_json` 的契约）。
+/// 路径字节 → 线上那两种形（同 `src/backend/common/path_wire.rs::to_json` 的契约）。
 fn to_json(bytes: &[u8]) -> serde_json::Value {
     match std::str::from_utf8(bytes) {
         Ok(s) => serde_json::Value::String(s.to_string()),

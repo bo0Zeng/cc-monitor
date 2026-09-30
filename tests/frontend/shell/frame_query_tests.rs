@@ -655,11 +655,12 @@ const ASKED_BY_MONITOR_ITSELF: &[(&str, usize, &str)] = &[
         1,
         "文件窗口列目录（`filewin/source.rs::CMD_LS`）：窗口进程自己问那台后端，不是替主界面转",
     ),
-    // 〔FIX4 · `99 §2.1 ⑬`〕文件窗口「在此打开终端」：窗口进程自己问本机后端渲那一行（`filewin/shell.rs::TERMINAL_CMD`）。
+    // 〔FIX4 · `99 §2.1 ⑬`〕文件窗口「在此打开终端」。〔P4 · 主会话 09-29 拍板 Q2〕窗口只交意图（经通道 `terminal-open`），
+    //   monitor 接下来补机器事实、问本机后端渲那一行、开窗（`chan/host.rs::TERMINAL_SSH`）—— 与主界面开终端同一条路。
     (
         "terminal-ssh",
         1,
-        "文件窗口「在此打开终端」（`filewin/shell.rs::TERMINAL_CMD`）：窗口进程自己问本机后端渲 ssh 那一行，不是替主界面转",
+        "文件窗口「在此打开终端」（`chan/host.rs::TERMINAL_SSH`）：monitor 接下窗口交来的意图，问本机后端渲 ssh 那一行",
     ),
 ];
 

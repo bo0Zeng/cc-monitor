@@ -271,3 +271,37 @@ async fn a_coded_failure_reaches_the_window_with_its_code() {
         serde_json::json!({ "state": "failed", "why": "w", "code": "sftp_home_mismatch" })
     );
 }
+
+/// 〔P4 · 主会话 09-29 拍板 Q2 A〕文件窗口「在此打开终端」那一问由生产句柄**自己接**（不转给那台后端）：
+/// 本机寻址 ⇒ `local_has_no_file_window`（文件窗口只开在远端上，`设计/60 §2.4`）· 没有这台的配置 ⇒ `no_such_origin`，都不碰后端、不开窗。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn the_terminal_ask_is_taken_by_the_monitor_and_refused_out_loud_when_it_cannot_be_done() {
+    let client = rig().await;
+    for (origin, code) in [
+        (
+            crate::inbound_client::LOCAL_ORIGIN,
+            "local_has_no_file_window",
+        ),
+        ("判据里不存在的机器·terminal", "no_such_origin"),
+    ] {
+        let r = client
+            .call(
+                &crate::chan::wire::Origin(origin.to_string()),
+                &Op(filewin_contract::TERMINAL_OPEN_OP.to_string()),
+                Body(
+                    serde_json::to_vec(&filewin_contract::terminal_open_args(serde_json::json!(
+                        "/srv"
+                    )))
+                    .unwrap(),
+                ),
+                budget(5_000),
+            )
+            .await;
+        match r {
+            Err(CallError::Peer {
+                why: PeerFault::Refused { body },
+            }) => assert_eq!(body_json(&body)["code"], code, "{origin}"),
+            other => panic!("{origin}：该是 monitor 自己拒：{other:?}"),
+        }
+    }
+}

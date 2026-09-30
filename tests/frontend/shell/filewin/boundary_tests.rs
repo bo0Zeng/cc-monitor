@@ -234,24 +234,15 @@ enum Kind {
     Channel,
     /// 线上类型（`chan::wire::*`，`05 §3.3` 那一套）。**题面要的就是它。**
     Wire,
-    /// 跨机传输那一族够到的 app 侧类型（今天只剩开窗配置的类型 `ssh_source::RemoteConfig`）。
-    /// 〔TL3 · 审计 F 🔴-3 订正〕这里原先写「跨机传输仍走 SFTP、这一类在窗口进程就仍拨第二条 SSH」——
-    /// 今天传输是窗口经通道说 `transfer-*` ＋ 订阅、monitor 只中继、SFTP 住本机常驻后端（`设计/60 §4.2` · `§4.6`），
-    /// 窗口进程零 SFTP、零 SSH（`60 §2.2`）。
-    Transfer,
+    // 〔P4〕「跨机传输那一族够到的 app 侧类型」（`Transfer`，末一条是开窗配置的类型 `ssh_source::RemoteConfig`）清零删了：种子只带那台的名字。
     // 〔F7a · 第三波 09-24〕这里原来还有一类「后端今天没有这条命令」（同机复制：池子那条复制命令 ＋
     //   它的裁决类型，2 条）。后端有了 `files-copy` 之后两条都换走了通道 ⇒ 这一类清零，随之删掉
     //   （`every_declared_edge_falls_in_a_live_category` 逐字要求「一条边都没有就从 `Kind` 里删掉」）。
     // 〔FN1 · 第四波 4C · V119〕这里原来还有一类「本地预判的那道围栏」（1 条：窗口借围栏本家那个判定）。
     //   用户「文件管理器全部都可以改. 不需要任何围栏」⇒ 窗口那道预判删了，这一类清零，随之删掉
     //   （`every_declared_edge_falls_in_a_live_category` 逐字要求「一条边都没有就从 `Kind` 里删掉」）。
-    /// 「在此打开终端」—— **本机**动作（在用户面前这台机器上开一个窗口），后端在对面，够不着。
-    /// 为什么它不归 `Spawn`：那是原语，这是一层编排（按 origin 读落盘的远端配置 ＋ 一条平台裁决）。
-    Terminal,
-    /// 〔FW34 · 第四波 09-24〕**monitor 自己的状态文件**（书签那一份）的原子写。
-    /// 它不是欠账：书签不是用户文件（不归后端写面管），是这个程序自己存下的东西，
-    /// 与 `config.json` 同一族；写口只有 `bookmarks::mutate` 一处（上锁 → 现读 → 改 → 原子换）。
-    OwnState,
+    // 〔P4〕「在此打开终端」那一类（`Terminal`：机器事实 · 开窗两条）清零删了：窗口经通道交意图，monitor 接下来补事实、开窗（`chan/host.rs::terminal_open`）。
+    // 〔P4〕「monitor 自己的状态」那一类（`OwnState`：原子写 · 书签文件名）清零删了：原子写进 `host_core`，书签全路径由开窗入口算好随种子交来。
     /// 〔CP2b · 第四波 4C〕**对外文案表的取文口**（`copy_table::copy_text`）。它不是欠账：
     /// `设计/01 §6.9`「所有对外文案与报错都从一张表来」—— 表是编译期内嵌的一份 JSON，窗口进程与 app 读同一份字节，
     /// 取文口是纯函数（查表 ＋ 填占位符），不碰进程外任何东西。
@@ -320,17 +311,13 @@ const WINDOW_SIDE: &[(&str, Kind)] = &[
     // 〔F7c · 第三波 09-24〕`§8.4` 拍了（「保留SFTP. 思考怎么干净」）：上传 / 下载经通道开单、订阅进度
     //   （`设计/60 §13`）⇒ `sftp_upload` · `sftp_download` · `TRANSFER_LANE_CAP` 三行走掉；
     //   `sftp_cancel_transfer`〔散文墓碑〕 随复制走后端（F7a，不可取消）一起走掉（`transfer::forward_cancel` 删了）。
-    ("ssh_source::RemoteConfig", Kind::Transfer),
     // ── 本地预判围栏 ──〔FN1 · V119〕那一行（围栏本家那个判定）随窗口那道预判删了：这一类清零。
     // ── 本机动作 ──
     // 〔FIX4 · `99 §2.1 ⑬`〕开终端三步：机器事实（monitor 的机器表 ＋ 上次赢的那条）→ 窗口那条通道问本机后端 `terminal-ssh` →
     //   开窗（`launch_remote_terminal`〔散文墓碑〕那一条拼 ssh 的边退役，ssh 外壳进了本机后端）。
-    ("dial_host::machine_facts", Kind::Terminal),
-    ("launch::open_terminal_window", Kind::Terminal),
     // ── monitor 自己的状态 ──
     // 〔P4〕`utils::atomic_write_json` 那一行摘了：原子写搬进共享 crate `host_core`（前端宿主原语），不再是壳里的边。
     // 〔FILES3 · ㉜〕书签那份文件的名字住数据目录的唯一枚举点（设置页「数据位置」列它），窗口这一侧引过来。
-    ("data_paths::FILEWIN_BOOKMARKS_FILE", Kind::OwnState),
     // ── 对外文案表（CP2b）──
     ("copy_table::copy_text", Kind::Copy),
     // ── 窗口几何（〔WF2〕开窗第一拍夹进种子带来的工作区）──
@@ -351,6 +338,8 @@ const MONITOR_SIDE: &[(&str, Kind)] = &[
     // 〔FILES2 · V152〕开窗种子带上机器名单（「复制到另一台」那一问的下拉）：已有的配置读口，不新建数据源。
     ("load_remote_configs", Kind::Config),
     ("config::resolve_monitor_data_dir", Kind::DataDir), // 〔RE〕原 `paths::`（`paths.rs` 并进 `config.rs`）
+    // 〔P4〕书签文件的名字：全路径在这一侧拼好随种子交过去（窗口那一侧不再引它）。
+    ("data_paths::FILEWIN_BOOKMARKS_FILE", Kind::DataDir),
     // 〔CP2b〕monitor 那一侧（entry.rs）的报错也从文案表取。
     ("copy_table::copy_text", Kind::Copy),
     // 〔WF2 · WIN3 读数 D〕问主窗所在显示器的工作区，放进种子。
@@ -535,9 +524,6 @@ fn every_declared_edge_falls_in_a_live_category() {
     for (k, side) in [
         (Channel, WINDOW_SIDE),
         (Wire, WINDOW_SIDE),
-        (Transfer, WINDOW_SIDE),
-        (Terminal, WINDOW_SIDE),
-        (OwnState, WINDOW_SIDE),
         (Host, MONITOR_SIDE),
         (Spawn, MONITOR_SIDE),
         (Config, MONITOR_SIDE),
@@ -558,22 +544,18 @@ fn every_declared_edge_falls_in_a_live_category() {
             "`Kind::{k:?}` 跑到了另一侧的表里 —— 类别是按进程分的"
         );
     }
-    // 🔴 欠账那几类的**条数恒等**（不是地板）：变多 ＝ 窗口又长出一条不经通道的路；
-    //    变少 ＝ 有一笔欠账还了 —— 好事，但要同拍改这里并写清是哪一笔。
-    let debt = |k: Kind| WINDOW_SIDE.iter().filter(|(_, kk)| *kk == k).count();
+    // 🔴〔P4〕欠账清零：窗口进程够到壳的只剩「题面要的」两类（通道客户端 · 线上类型）＋ 文案取文口 —— 恒等，不是地板。
+    //   变多 ＝ 窗口又长出一条不经通道的路。历史：传输 7 → 5 → 1 → 0（F7a · F7c · P4：开窗配置类型换成名字）·
+    //   本地围栏 1 → 0（FN1）· 本机动作 1 → 2 → 0（FIX4 · P4：开终端交 monitor）· 自己的状态 2 → 0（P4：原子写进 `host_core`、书签名回 monitor）。
+    let kinds: std::collections::BTreeSet<String> =
+        WINDOW_SIDE.iter().map(|(_, k)| format!("{k:?}")).collect();
     assert_eq!(
-        (debt(Transfer), debt(Terminal)),
-        // 〔F7c · 合主线 ＋ 收尾 09-24〕传输 5 → 1：`sftp_upload` · `sftp_download` · `TRANSFER_LANE_CAP`
-        //   （上传下载经通道开单、订阅进度）· `sftp_cancel_transfer`〔散文墓碑〕（复制那一腿的取消，随复制走后端删了）走掉；
-        //   剩 `RemoteConfig`（窗口进程拿着那台机器的配置当种子）。
-        // 〔FN1 · V119〕本地围栏 1 → 0（类别删了）：窗口那道预判随「文件管理器不需要任何围栏」删了。
-        // 〔FIX4 · `99 §2.1 ⑬`〕本机动作 1 → 2：开终端那一条（原先自己拼 ssh 的 `launch_remote_terminal`〔散文墓碑〕）拆成
-        //   机器事实（`dial_host::machine_facts`）＋ 开窗（`launch::open_terminal_window`），ssh 外壳经通道问本机后端 `terminal-ssh`。
-        (1, 2),
-        "窗口进程里「还不是通道」的那几类条数变了（传输 · 本机动作）\
-         〔F7a 09-24〕传输 7 → 5：编辑器读文本那两条（池子那条读文本命令 ＋ 它的上限常量）换成后端 \
-         `files-read-text`，上限常量搬回窗口（`editor::MAX_EDIT_BYTES`）；\
-         后端缺命令 2 → 0（类别删了）：同机复制那两条换成后端 `files-copy`"
+        kinds,
+        ["Channel", "Copy", "Wire"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect::<std::collections::BTreeSet<String>>(),
+        "窗口进程里「还不是通道」的边又长出来了"
     );
 }
 
