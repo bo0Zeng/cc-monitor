@@ -95,7 +95,7 @@ run_side() {
         cargo test "$@" --no-run --message-format=json 2>/dev/null |
       grep -o '"executable":"[^"]*"' | cut -d'"' -f4 | sort -u
   )
-  for exe in "$target"/debug/cc-monitor-backend "$target"/debug/monitor; do
+  for exe in "$target"/debug/cc-monitor-backend "$target"/debug/cc-monitor; do
     [ -x "$exe" ] && objs+=("$exe")
   done
   if [ "${#objs[@]}" -eq 0 ]; then

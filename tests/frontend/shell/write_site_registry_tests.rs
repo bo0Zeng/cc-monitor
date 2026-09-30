@@ -65,11 +65,16 @@ pub(crate) const WRITE_SITES: &[(&str, &str, Option<&str>, &str)] = &[
      "〔E2 · E-c〕删旧版本机释放的 `~/.cc-monitor/bin/cc-monitor-backend-<build_id>` —— 身份戳恰一个（是我们编的）才删，\
           认不出的不动、删不掉（正在跑）不管。"),
     // ── 〔RM1f〕**本机那一份代码全景小程序**。不是安装动作 —— 我们自己的部署物，放在我们自己的目录里。
-    ("local_backend.rs", "place_local_panorama", None,
-     "把这一份产物带着的代码全景小程序放到 `~/.cc-monitor/bin/cc-monitor-panorama[.exe]`（本机后端找它的第二个候选）。\
-          写法与 `extract_embedded_to` 同一套（`.partial` + 置可执行位 + `rename`）；盘上那份逐字节相等就零写。\
-          唯一调用点是 `panorama_bytes::place_local`（本机后端答「没装 / 装的太旧」时才走到，与推到远端同一个触发点）。\
+    ("local_backend.rs", "place_local_program", None,
+     "把这一份产物带着的、没有身份戳的本机程序放到 `~/.cc-monitor/bin/<file>`：代码全景小程序 \
+          `cc-monitor-panorama[.exe]`（本机后端找它的第二个候选）· 文件窗口程序 `cc-monitor-filewin[.exe]`（monitor 旁边没有它时）。\
+          写法与 `extract_embedded_to` 同一套（`.partial` + 置可执行位 + 上位走 `rename_into_place`）；盘上那份逐字节相等就零写。\
+          两个调用点：`panorama_bytes::place_local`（本机后端答「没装 / 装的太旧」时才走到）· `filewin::proc::resolve_window_bin`（开窗时）。\
           不碰用户既有环境、不注册到任何用户配置里。"),
+    // ── 往 `~/.cc-monitor/bin` 放程序的两条路共用的上位那一步（旧的正在跑 ⇒ 先挪开）。不是安装动作。
+    ("local_backend.rs", "rename_into_place", None,
+     "`~/.cc-monitor/bin/.<名>.<pid>.partial` → `<名>`；Windows 上旧的那份正在跑换不掉 ⇒ 先把它改名成 `.<名>.<pid>.old` 再上位\
+          （挪开的那份由 `sweep_moved_aside` 下次收）。写的只是我们自己刚放的那一份与我们自己的旧版。"),
     // ── 〔RW1 · 第四波 · 2026-09-24〕这里原来有 `cc_bus_deploy.rs` 的三行（`deploy_into` 装 17 个文件 ·
     //    `fenced_dest` 先 `mkdir -p skills` · `backup_existing` 整目录改名成 `.bak-<ts>`，`U10b` 第 7 条例外那四个配套的落点）。
     //    用户裁「只允许后端的文件管理部分写文件」也管本机 ⇒ 三件都改经本机后端（`files-put` 带 `parents` /
@@ -445,7 +450,12 @@ const SITE_CLASS: &[(&str, &str, Lands)] = &[
     // 〔RM1f〕本机那一份代码全景小程序：同上，我们自己目录里的部署物。
     (
         "local_backend.rs",
-        "place_local_panorama",
+        "place_local_program",
+        Lands::OwnDeployment,
+    ),
+    (
+        "local_backend.rs",
+        "rename_into_place",
         Lands::OwnDeployment,
     ),
     ("build.rs", "embed_backends", Lands::BuildOutput),

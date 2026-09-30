@@ -372,7 +372,7 @@ cell(
     cwd="src/frontend/shell/",
     cmd="cargo build --locked -p monitor --bins --target x86_64-pc-windows-gnu",
     **{
-        "src/frontend/shell/": (PART, "`-p monitor` 的两个二进制（`monitor` · `cc-monitor-filewin`）在 Windows target 上"
+        "src/frontend/shell/": (PART, "`-p monitor` 的两个二进制（`cc-monitor` · `cc-monitor-filewin`）在 Windows target 上"
                              "**真链接**一趟（dev）。⚠ 只链不跑；test 档不链（那一半是 `winchk` 的 `check`）；"
                              "`-gnu` 不是 `-msvc`"),
         VENDOR: (PART, "作为 `monitor` 的依赖被编、被链。⚠ 按依赖关系推的，按「未验」读"),
@@ -1449,7 +1449,7 @@ invoke("winchk-backend", ELSEWHERE,
        anchor="cargo check --all-targets --target x86_64-pc-windows-msvc")
 invoke("winlink", NOWHERE,
        "`ci.yml` 的 Windows 那个 job（`rust`，`windows-latest`）只跑 clippy 与 `cargo test`（链的是测试二进制，"
-       "不链 `monitor.exe`）；真产 exe 的是 `release.yml`（`-msvc` 原生，不在 CI 上）⇒ "
+       "不链 `cc-monitor.exe`）；真产 exe 的是 `release.yml`（`-msvc` 原生，不在 CI 上）⇒ "
        "「`-gnu` 上两个二进制链得起来」这一维云端零覆盖，只有本机这一格")
 for _s in ("backend-rbind-token", "rbind-token-endtoend"):
     invoke("ccm tests/e2e/" + _s, NOWHERE,

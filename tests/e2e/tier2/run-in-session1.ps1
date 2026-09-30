@@ -16,7 +16,7 @@ $log = Join-Path $PSScriptRoot 'wdio.log'
 # 而 wdio.conf.mjs 里**抄着同一个错值** ⇒ 一个错的默认值有两处住址。
 # ⇒ 改成**说不出就当场停**，理由与失败签名逐条写在 wdio.conf.mjs 那一处。
 if (-not $env:APP_EXE) {
-  throw "APP_EXE 没给 —— 这一档必须被告知被测的 monitor.exe 在哪（不猜默认值）。同目录还要有 WebView2Loader.dll。"
+  throw "APP_EXE 没给 —— 这一档必须被告知被测的 cc-monitor.exe 在哪（不猜默认值）。同目录还要有 WebView2Loader.dll。"
 }
 # 这两个可以留空：tauri-driver 自己会去 PATH 里找 msedgedriver。
 if (-not $env:TAURI_DRIVER) { $env:TAURI_DRIVER = "$env:USERPROFILE\.cargo\bin\tauri-driver.exe" }

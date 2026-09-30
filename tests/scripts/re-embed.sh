@@ -96,7 +96,7 @@
 #   bash tests/scripts/re-embed.sh             # 重编两份 musl 字节并铺回落点，铺完自检
 #   bash tests/scripts/re-embed.sh --check     # 只问「盘上的字节与源码对不对得上 · 铺了的起不起得来」，不产字节
 #   bash tests/scripts/re-embed.sh --check-dev # 同上，但**本机那一份缺席就是红**：开发构建起得来本机后端吗
-#   bash tests/scripts/re-embed.sh --native    # 本机那一份（开发构建 ＋ 裸 exe 自带的后端）重编并重铺，铺完按 --check-dev 自检
+#   bash tests/scripts/re-embed.sh --native    # 本机那几份（裸 exe 自带的后端 · 全景小程序 · 文件窗口程序）重编并重铺，铺完按 --check-dev 自检
 #   bash tests/scripts/re-embed.sh --clean     # 守卫给的第二条出路：删掉落点（自动部署诚实关闭）
 #
 # 退出码 0 = 过；1 = 有对不上的 / 抠不到身份 / 编不过 / 铺了却起不来 /（`--check-dev`）本机那一份没铺。
@@ -221,6 +221,28 @@ do_native() {
   cp "$ROOT/.build/panorama/release/cc-monitor-panorama$exe" "$NATIVE_DIR/cc-monitor-panorama"
   printf '%s\n' "$triple" > "$NATIVE_DIR/cc-monitor-panorama.target"
   printf '==> 铺好 src/frontend/shell/native-backend/cc-monitor-panorama（＋ .target = %s）\n' "$triple"
+  # 文件窗口程序（单文件的 monitor 靠它开窗）。它是 monitor 包的另一个 `[[bin]]`，monitor 的 build.rs 在同一趟 cargo 里
+  #   吃不到它 ⇒ 先单编、铺好，之后再编 monitor 才嵌得进去。与 `release.yml` 两个 job 的 `Build local filewin (native)` ＋
+  #   `Stage native filewin for self-extract` 同一条配方；落点名字定死在 `build.rs::NATIVE_FILEWIN_FILE`（判据对拍）。
+  printf '==> cargo build %s --bin cc-monitor-filewin（本机 target %s，src/frontend/shell）\n' "${REEMBED_BUILD_FLAGS[*]}" "$triple"
+  ( cd "$ROOT/src/frontend/shell" && cargo build "${REEMBED_BUILD_FLAGS[@]}" --bin cc-monitor-filewin )
+  cp "$ROOT/.build/shell/release/cc-monitor-filewin$exe" "$NATIVE_DIR/cc-monitor-filewin"
+  printf '%s\n' "$triple" > "$NATIVE_DIR/cc-monitor-filewin.target"
+  printf '==> 铺好 src/frontend/shell/native-backend/cc-monitor-filewin（＋ .target = %s）\n' "$triple"
+}
+
+# 真起一趟文件窗口程序（空 stdin），回「退出码 第一行 stdout」。它读不到开窗种子就在 stdout 上说一行 `{"failed":…}`
+# 再退（非 0）—— 那一行正是 monitor 开窗时读的就绪行 ⇒ 读得到它 = 这份字节在这台机器上起得来。不开窗、不碰任何文件。
+filewin_starts() {
+  local f="$1" sandbox rc line
+  sandbox="$(mktemp -d)"
+  cp "$f" "$sandbox/filewin-under-test"
+  chmod +x "$sandbox/filewin-under-test"
+  env -i HOME="$sandbox" PATH="/usr/bin:/bin" LANG=C.UTF-8 \
+    timeout 20 "$sandbox/filewin-under-test" </dev/null >"$sandbox/out" 2>/dev/null && rc=0 || rc=$?
+  line="$(head -n 1 "$sandbox/out" 2>/dev/null || true)"
+  rm -rf "$sandbox"
+  printf '%s %s' "$rc" "$line"
 }
 
 # 🔴〔B1〕**真起一趟**本机那一份，回它 stdout 的第一行（起不来就回空串）。
@@ -397,6 +419,33 @@ do_check() {
         "src/frontend/shell/native-backend/cc-monitor-native 没铺 ⇒ 这棵树编出来的 exe **起不了本机后端**（D11：这不是「开发构建里的正常情况」）。出路：bash tests/scripts/re-embed.sh --native"
   else
     printf 'skip  本机内嵌后端 :: 没铺（这棵树编出来的 exe 起不了本机后端 —— 开发构建要它就跑 --native，判它用 --check-dev）\n'
+  fi
+
+  # 文件窗口程序：铺了、而且是给这台编的 ⇒ 真起一趟（`filewin_starts`）。没铺：只 skip（开窗走 exe 旁边那一份）。
+  local wf="$NATIVE_DIR/cc-monitor-filewin" wstaged whost wout wrc wline wshape
+  if [ -f "$wf" ]; then
+    present=$((present + 1))
+    wstaged="$(tr -d '[:space:]' < "$NATIVE_DIR/cc-monitor-filewin.target" 2>/dev/null || true)"
+    whost="$(rustc -vV 2>/dev/null | sed -n 's/^host: //p')"
+    if [ -n "$whost" ] && [ "$wstaged" = "$whost" ]; then
+      wout="$(filewin_starts "$wf")"
+      wrc="${wout%% *}"
+      wline="${wout#* }"
+      case "$wline" in
+        '{"failed":'*) wshape=1 ;;
+        *) wshape=0 ;;
+      esac
+      if [ "$wrc" != "0" ] && [ "$wshape" = "1" ]; then
+        ok "内嵌文件窗口程序起得来（真起一趟，空种子）" "退出码 $wrc，就绪行 [${wline:0:80}]"
+      else
+        bad "内嵌文件窗口程序起得来（真起一趟，空种子）" \
+            "退出码 [$wrc]，第一行读作 [${wline:0:160}] —— 该是一行 {\"failed\":…} 且非 0 退出：monitor 开窗时读不到就绪行"
+      fi
+    else
+      printf 'skip  内嵌文件窗口程序起不起得来 :: 它是给 [%s] 编的、这台是 [%s] —— 不在这里起\n' "$wstaged" "$whost"
+    fi
+  else
+    printf 'skip  内嵌文件窗口程序 :: 没铺（单文件的 monitor 只在旁边有它时开得了文件窗口）\n'
   fi
 
   if [ "$fail" -ne 0 ]; then

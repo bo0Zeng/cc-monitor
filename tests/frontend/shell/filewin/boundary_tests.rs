@@ -284,6 +284,9 @@ enum Kind {
     /// 〔WF2 · WIN3 读数 J〕monitor 那一侧：出声的既有通道（`remote-health` 事件与它的载荷）——
     /// 窗口进程「判成功」之后又不体面地退了，那一句经它到界面 toast。
     Notify,
+    /// monitor 那一侧：**monitor 自带的那份窗口程序**（exe 旁边没有它时用）—— 字节从唯一的取字节口来（`byte_table`），
+    /// 放到盘上那一步与本机后端同一套（`local_backend::place_local_program` ＋ 两样平台注入），落点目录与本机后端同一个。
+    Carried,
     /// monitor 那一侧：那条命令的入参类型（那台机器的配置）。
     /// 〔F7a · 第三波 09-24〕这一类原先还装着「开窗前解 home」（走 SFTP，后端没有这一问）——
     /// 现在问后端 `files-home`，走的是 `Host` 那一类的同一个句柄 ⇒ 这一类只剩配置，改了名。
@@ -354,6 +357,12 @@ const MONITOR_SIDE: &[(&str, Kind)] = &[
     ("spawn_managed::spawn_managed_cmd", Kind::Spawn),
     // 〔P4 · 阶段 H〕窗口那份二进制的文件名后缀（`window_bin_in`）：平台原语住壳的平台层。
     ("platform::proc::EXE_SUFFIX", Kind::Spawn),
+    // 自带的那份窗口程序：字节 · 放下来 · 放到哪 · 放的时候那两样平台知识（`proc::resolve_window_bin`）。
+    ("byte_table::native_filewin", Kind::Carried),
+    ("local_backend::place_local_program", Kind::Carried),
+    ("profile_installer::ccm_bin_dir_rel", Kind::Carried),
+    ("platform::fs::make_executable", Kind::Carried),
+    ("platform::fs::ensure_private_dir", Kind::Carried),
     ("ssh_source::RemoteConfig", Kind::Config),
     // 〔FILES2 · V152〕开窗种子带上机器名单（「复制到另一台」那一问的下拉）：已有的配置读口，不新建数据源。
     ("load_remote_configs", Kind::Config),

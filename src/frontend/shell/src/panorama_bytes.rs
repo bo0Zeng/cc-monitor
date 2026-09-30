@@ -165,7 +165,7 @@ fn place_local(bytes: &'static [u8]) -> Result<(), String> {
     let dir = creds_core::store::home_dir()
         .map(|h| PUSH_DIR.split('/').fold(h, |p, seg| p.join(seg)))
         .ok_or_else(|| copy_text("rsPanoramaBytes.local.noHome", &[]))?;
-    let placed = crate::local_backend::place_local_panorama(
+    let placed = crate::local_backend::place_local_program(
         &dir,
         &local_file_name(),
         bytes,

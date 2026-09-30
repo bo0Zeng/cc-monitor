@@ -265,7 +265,15 @@ const HOME_REACHES: &[(&str, &str, &str, &str)] = &[
         "place_local",
         "`~/.cc-monitor/bin/cc-monitor-panorama[.exe]`（本机代码全景小程序）",
         "**不是伸手拿用户的东西**：monitor 自己的目录（与自释放出来的本机后端同一个）。只在本机后端答\
-             「没装 / 装的太旧」时放一次；写侧登记在 `write_site_registry` 的 `local_backend.rs::place_local_panorama`",
+             「没装 / 装的太旧」时放一次；写侧登记在 `write_site_registry` 的 `local_backend.rs::place_local_program`",
+    ),
+    // 文件窗口程序的落点：monitor 旁边没有它时，把自带那份放到 `~/.cc-monitor/bin/` 再起。
+    (
+        "proc.rs",
+        "landing_dir",
+        "`~/.cc-monitor/bin/cc-monitor-filewin[.exe]`（文件窗口程序）",
+        "**不是伸手拿用户的东西**：monitor 自己的目录（与自释放出来的本机后端同一个）。只在开窗而 exe 旁边没有它时放；\
+             写侧登记在 `write_site_registry` 的 `local_backend.rs::place_local_program`",
     ),
     (
         "local_backend_host.rs",
