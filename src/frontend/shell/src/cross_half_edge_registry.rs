@@ -191,7 +191,7 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     (
         "backend→monitor",
         "tests/backend/control/launch_render/payload_tests.rs",
-        "src/frontend/shell/src/launch.rs",
+        "src/frontend/shell/src/platform/terminal.rs", // 〔P4 · 阶段 H〕开窗那一跳从 `launch.rs` 搬进壳的平台层
         "〔MIG-2〕「谁给 agent 进程定 env」那张人群闭表（`the_population_that_renders_env_prefixes_for_the_agent_process_is_enumerated`）\
          跨两半：串级那三处住后端（载荷内核 · 本机起会话 · `ccm` 容器路），进程级那一处（开窗那一跳的 `.env(k, v)`）留在 monitor。\
          多一个决定点就多一个能各自答错「这次走不走中转」的地方 —— 只有同时数两半才验得了。",
