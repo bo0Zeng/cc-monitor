@@ -308,8 +308,9 @@ describe("秤 2 · 金标准没过期（过期的秤比没有秤更坏）", () =
         `  金标准那一趟：locale=${want.displayLocale} · TZ=${want.timeZone}\n` +
         `  这台机器现打：locale=${now.locale} · TZ=${now.timeZone}\n` +
         "  语料 94 张卡全部带时间戳，locale/TZ 一变，渲染出来的字面与字数都变 ⇒ 真高也变。\n" +
-        "  这两个值由 `vitest.config.ts` 顶层钉死（`process.env.TZ` / `process.env.LC_ALL`）——\n" +
-        "  对不上说明那两行被改了、或本文件不是经 vitest 跑的。",
+        "  这两个值由 `vitest.config.ts` 顶层钉死（`process.env.TZ` / `process.env.LANG`；Windows 的 ICU 不读 `LANG`，\n" +
+        "  JS 那一层由它 `setupFiles` 里的 `tests/test-support/pin-locale.ts` 按同一个值钉）——\n" +
+        "  对不上说明那几行被改了、或本文件不是经 vitest 跑的。",
     ).toEqual({ locale: want.displayLocale, timeZone: want.timeZone });
   });
 

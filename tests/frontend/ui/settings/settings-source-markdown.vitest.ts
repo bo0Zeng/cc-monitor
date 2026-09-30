@@ -26,6 +26,8 @@ import ts from "typescript";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, relative, resolve } from "node:path";
 
+import { toPosix } from "../../../test-support/posix-path.ts";
+
 const ROOT = process.cwd();
 const ENTRY = resolve(ROOT, "src/frontend/ui/entry-settings.ts");
 const PAIRED = /\*\*[^*\n]+\*\*/g;
@@ -53,7 +55,8 @@ function reachable(entry: string): string[] {
       if (hit) queue.push(hit);
     }
   }
-  return [...seen].map((f) => relative(ROOT, f)).sort();
+  // `relative` 在 Windows 上吐 `src\comms\…` ⇒ 规整成正斜杠，才与下面的字面量住址同形。
+  return [...seen].map((f) => toPosix(relative(ROOT, f))).sort();
 }
 
 /** 一份源码里「字符串里带成对 `**`」的每一处：`<文件>\t<命中>`。`console.*` 的参数不算。 */
