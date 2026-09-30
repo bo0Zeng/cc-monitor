@@ -27,6 +27,16 @@ pub(crate) fn exec<S: AsRef<str>>(words: &[S]) -> String {
     out
 }
 
+/// 〔P4〕「在此打开终端」要在那台跑的那一串（原住文件窗口，〔P4〕随「窗口只交意图」搬进本机后端，产出逐字节不变）：
+/// `cd <已 quote 的目录> && exec ${SHELL:-bash} -l`；没有目录 ⇒ 只有登录 shell 那半段。目录合不合格、怎么 quote 由调用方先办
+/// （`dial/terminal.rs::command_for_cwd`）。
+pub(crate) fn cd_then_login_shell(quoted_dir: Option<&str>) -> String {
+    match quoted_dir {
+        Some(q) => format!("cd {} && exec ${{SHELL:-bash}} -l", q),
+        None => "exec ${SHELL:-bash} -l".to_string(),
+    }
+}
+
 /// `( <前一段>; exec <里面那条> )`：子 shell 里先跑一段、再把自己换成里面那条（起会话载荷外包的那一层）。
 pub(crate) fn wrap_exec(prelude: &str, inner: &str) -> String {
     format!("( {prelude}; {} )", exec(&[inner]))

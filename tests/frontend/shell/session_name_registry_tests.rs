@@ -91,8 +91,13 @@ fn scan_files() -> Vec<PathBuf> {
     let mut files: Vec<PathBuf> = Vec::new();
     collect_ts(&root.join("src"), &mut files);
     files.sort();
-    collect_rs(&root.join("src/frontend/shell/src"), &mut files);
+    // 〔P4〕壳那棵换成它的全部人群根（壳 `src/` ＋ manifest 明写的兄弟包，窗口包也在内）；有几个住 `src/common/`，去重。
+    for r in crate::guard_support::crate_population_roots() {
+        collect_rs(&r, &mut files);
+    }
     collect_rs(&root.join("src/common"), &mut files);
+    files.sort();
+    files.dedup();
     // 🔴 〔`K-R48` 第二拍 09-11〕`shared/ccm` 删了 ⇒ 换成后端那份原生实现。
     //    `collect_rs` 只扫 `src/frontend/shell/`，够不着 `src/backend/` ⇒ 仍按 extra 点名。
     for extra in [

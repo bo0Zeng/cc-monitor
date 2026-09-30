@@ -759,10 +759,7 @@ fn the_home_is_picked_by_the_platform_convention() {
 /// 两棵生产树（monitor 前端树 · 后端）里 `dirs::home_dir` 的调用：允许的只有下面这几处，逐条说理由（其余一律改调 [`home_dir`]）。
 const DIRS_HOME_ELSEWHERE: &[(&str, &str)] = &[
     // 〔P1〕`ccm_probe.rs` 那一行摘了：`local_ccm_entry_status` 改调 `home_dir`。
-    (
-        "src/frontend/shell/src/filewin/shell.rs",
-        "〔待改调〕P4 写区（文件窗口搬成独立包，那一包链不链 `creds-core` 由 P4 定）：`local_home` 那一格浏览起点，合并 P4 时改调并摘行",
-    ),
+    // 〔P4〕`src/frontend/filewin/src/shell.rs` 那一行（`local_home`）摘了：改调本函数（文件窗口包链 `creds-core`，契约类）。
 ];
 
 /// 一份源码（原文）的生产段里 `dirs::home_dir(` 几处。
@@ -803,7 +800,18 @@ fn both_halves_read_the_home_through_this_one_function() {
         .contains("creds_core::store::home_dir_from(get)"));
     let mut got: Vec<String> = Vec::new();
     for tree in ["src/frontend", "src/backend"] {
-        let files = guard_core::scan_tree_excluding(&root.join(tree), &["rs"], &[]);
+        let mut files = guard_core::scan_tree_excluding(&root.join(tree), &["rs"], &[]);
+        // 〔P4〕前端那一侧 ＋ monitor 人群声明里住在它外面的兄弟包（通道 · 宿主原语 · 开窗契约）：通道成员从前经壳 `#[path]` 挂在前端树的人群里。
+        let frontend = root.join("src/frontend");
+        if tree == "src/frontend" {
+            for (_, t) in guard_core::population_trees(&frontend.join("shell/src")) {
+                if !t.starts_with(&frontend) {
+                    files.extend(guard_core::scan_tree_excluding(&t, &["rs"], &[]));
+                }
+            }
+            files.sort_by(|a, b| a.0.cmp(&b.0));
+            files.dedup_by(|a, b| a.0 == b.0);
+        }
         assert!(
             files.len() > 50,
             "`{tree}` 只扫到 {} 份 —— 遍历坏了",

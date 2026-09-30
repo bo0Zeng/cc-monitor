@@ -42,16 +42,12 @@
 //! - ✅〔F7c · 2026-09-24〕**生产上的 `subscribe` 有了第一条流**：传输进度 `transfer/<id>`；其余 `kind` 照旧没有（理由住 `host.rs` 头注）。
 //! - **不买重连**（`client.rs` 头注）· **不买对端撤活**（`host.rs` 头注）· **不买协议版本协商**（`wire.rs` 头注）。
 
-// 〔RE〕通信层成员住 `src/comms/inward/chan/`（`99 §2.1 ⑰`）；非成员 dial / host / webview 留在壳
-#[path = "../../../../comms/inward/chan/client.rs"]
-pub mod client;
-pub mod dial;
+// 〔RE〕通信层成员住 `src/comms/inward/chan/`（`99 §2.1 ⑰`）。
+// 〔P4 · ⑰「先把通道客户端 … 抽成共享 crate」〕成员三份 ＋ 拨号 · 交接件编进共享 crate `chan-core`（文件窗口进程链同一份）；
+//   壳里只留 monitor 自己的宿主那两份（host 的生产入口与句柄 · webview 那一跳），其余经再导出、模块路径不变。
+pub use chan_core::chan::{client, dial, router, wire};
 pub mod host;
-#[path = "../../../../comms/inward/chan/router.rs"]
-pub mod router;
 pub mod webview;
-#[path = "../../../../comms/inward/chan/wire.rs"]
-pub mod wire;
 
 #[cfg(test)]
 #[path = "../../../../../tests/frontend/shell/chan/chan_tests.rs"]

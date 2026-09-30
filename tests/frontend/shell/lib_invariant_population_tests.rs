@@ -490,11 +490,21 @@ const QUOTE_SITES: &[QuoteRow] = &[
         "本侧渲染好的载荷整串 · 〔US1〕中转前缀里的中转口地址与钥匙文件路径（本侧的）",
     ),
     // 〔THIN〕monitor `tmux.rs` 那一行（Gate 1 前检 ＋ `exact_target` 的 quote，只剩跨轨锚点在用）随整份文件删了：门只在后端。
-    // 〔TL3 · §47〕文件窗口的当前目录（自由文本路径）拼进 `cd` 之前过 `posix_free_path_ok`（POSIX 绝对 · 无 `..` 段 · 不含 NUL / CR / LF）。
-    // 〔FILES2〕1 → 2：非 UTF-8 的当前目录走字节形 `posix_quote_bytes`，拼之前过 `posix_free_path_bytes_ok`（同一组规则的字节形）。
+    // 〔P4〕`src/frontend/filewin/src/shell.rs` 那一行出表：文件窗口只交意图（当前目录），`cd` 那一串随拼法搬进本机后端
+    //   `dial/terminal.rs::command_for_cwd`（下面那一行 1 → 3，两道放行判定跟着过去）。
     (
-        "src/frontend/shell/src/filewin/shell.rs",
-        2,
+        "src/backend/control/launch_render/local.rs",
+        1,
+        &[],
+        "",
+        "本侧铸的启动 id（〔MIG-2〕本机起会话搬进本机后端，原住 monitor `history.rs`）",
+    ),
+    // 〔FIX4 · `99 §2.1 ⑬`〕`src/frontend/shell/src/launch.rs` 那一行出表：远端那条 ssh 外壳（包一层 `bash -lic`）随渲染进了本机后端。
+    // 〔P4〕1 → 3：文件窗口「在此打开终端」的当前目录（自由文本路径）在这里拼进 `cd`：拼之前过 `posix_free_path_ok`
+    //   （POSIX 绝对 · 无 `..` 段 · 不含 NUL / CR / LF）；非 UTF-8 的走字节形 `posix_quote_bytes`，过 `posix_free_path_bytes_ok`。
+    (
+        "src/backend/dial/terminal.rs",
+        3,
         &[
             (
                 "src/common/shell-quote-core/src/lib.rs",
@@ -505,21 +515,6 @@ const QUOTE_SITES: &[QuoteRow] = &[
                 "posix_free_path_bytes_ok",
             ),
         ],
-        "",
-        "",
-    ),
-    (
-        "src/backend/control/launch_render/local.rs",
-        1,
-        &[],
-        "",
-        "本侧铸的启动 id（〔MIG-2〕本机起会话搬进本机后端，原住 monitor `history.rs`）",
-    ),
-    // 〔FIX4 · `99 §2.1 ⑬`〕`src/frontend/shell/src/launch.rs` 那一行出表：远端那条 ssh 外壳（包一层 `bash -lic`）随渲染进了本机后端。
-    (
-        "src/backend/dial/terminal.rs",
-        1,
-        &[],
         "",
         "〔FIX4〕开终端那一行里要在远端跑的整条命令（拼它的那几处各自判过；这里只包一层 `bash -lic`，本侧再判控制符 · 双引号 · 长度）",
     ),

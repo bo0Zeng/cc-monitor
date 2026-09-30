@@ -399,7 +399,7 @@ fn process_await_file(this: &BindRegistry, await_file: &Path) {
 
     // 写到 ps-registry/<PID>.json
     let registry_file = this.registry_dir().join(format!("{}.json", req.ps_pid));
-    if let Err(e) = crate::utils::atomic_write_json(&registry_file, &entry) {
+    if let Err(e) = host_core::atomic_write_json(&registry_file, &entry) {
         tracing::warn!(
             "bind: write registry {} failed: {e}",
             registry_file.display()
@@ -592,7 +592,7 @@ impl SidHwndCache {
 
     fn persist(&self) {
         let snapshot = self.by_sid.read().clone();
-        if let Err(e) = crate::utils::atomic_write_json(&self.file, &snapshot) {
+        if let Err(e) = host_core::atomic_write_json(&self.file, &snapshot) {
             tracing::warn!("sid-hwnd persist failed: {e}");
         }
     }

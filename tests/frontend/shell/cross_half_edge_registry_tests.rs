@@ -31,6 +31,8 @@ fn both_halves() -> Vec<String> {
         "src/frontend/shell/src",
         "src/backend",
         "tests/frontend/shell",
+        // 〔P4〕文件窗口独立成包，它的判据搬到这里（归 monitor 那一半，见 `half_of`）。
+        "tests/frontend/filewin",
         "tests/backend",
         // 〔RE〕通信层成员的单测镜像（两半各一棵：`inward` 归 monitor、`outward` 归后端，见 `half_of`）。
         "tests/comms",
@@ -62,8 +64,23 @@ fn half_of(rel: &str) -> &'static str {
     //   它们不是这件的标的」。所以这里按 `tests/frontend/shell/` · `tests/backend/`
     //   **逐个前缀**认，不写成「凡是 `tests/` 都算」。
     // 〔RE〕通信层成员住 `src/comms/`，但编进哪个 crate 就是哪一半：`inward` 由壳编、`outward` 由后端编。
+    // 〔P4〕monitor 源码树的人群声明（`guard_core::population_trees`：通道 · 宿主原语 · 开窗契约 · 文件窗口那几包）也归这一半，
+    //   文件窗口的判据住 `tests/frontend/filewin/`。
+    static POPULATION: std::sync::LazyLock<Vec<String>> = std::sync::LazyLock::new(|| {
+        let root = repo_root();
+        guard_core::population_trees(&crate::guard_support::crate_src_root())
+            .into_iter()
+            .map(|(_, src)| {
+                let pkg = src.parent().expect("人群树是 <包>/src").to_path_buf();
+                let rel = pkg.strip_prefix(&root).expect("人群包住仓里");
+                format!("{}/", rel.to_string_lossy().replace('\\', "/"))
+            })
+            .collect()
+    });
     if rel.starts_with("src/frontend/shell/")
         || rel.starts_with("tests/frontend/shell/")
+        || rel.starts_with("tests/frontend/filewin/")
+        || POPULATION.iter().any(|p| rel.starts_with(p.as_str()))
         || rel.starts_with("src/comms/inward/")
         || rel.starts_with("tests/comms/inward/")
     {

@@ -71,9 +71,16 @@ fn scanned_sources(root: &Path) -> Vec<PathBuf> {
     // 而 F01 建它时的普查**只看了 Rust**。⇒ 「同一句假话住四处」那次普查本身
     // 就漏了一整个目录，而**耐久文档恰恰是那句话最有害的住处**（它是权威）。
     // ★ 「扫描面画小了」在本仓第四次；这一次漏的不是一个文件，是一个**目录族**。
-    for base in ["src/frontend/shell/src", "src/backend", "src/doc"] {
-        walk(&root.join(base), &mut out);
+    // 〔P4〕monitor 那棵根换成它的全部人群根（`guard_support::crate_population_roots`：壳 `src/` ＋ manifest 明写的兄弟包，
+    //   窗口包也在内）；兄弟包有几个住 `src/common/`，下面去重。
+    for base in crate::guard_support::crate_population_roots()
+        .into_iter()
+        .chain(["src/backend", "src/doc"].iter().map(|b| root.join(b)))
+    {
+        walk(&base, &mut out);
     }
+    out.sort();
+    out.dedup();
     out
 }
 

@@ -36,77 +36,10 @@ pub fn path_bytes(p: &std::path::Path) -> &[u8] {
     p.as_os_str().as_encoded_bytes()
 }
 
-/// 十六进制小写。
-fn to_hex(bytes: &[u8]) -> String {
-    const DIGITS: &[u8; 16] = b"0123456789abcdef";
-    let mut out = String::with_capacity(bytes.len() * 2);
-    for b in bytes {
-        out.push(DIGITS[(b >> 4) as usize] as char);
-        out.push(DIGITS[(b & 0x0f) as usize] as char);
-    }
-    out
-}
-
-fn from_hex(s: &str) -> Option<Vec<u8>> {
-    if !s.len().is_multiple_of(2) {
-        return None;
-    }
-    let b = s.as_bytes();
-    let mut out = Vec::with_capacity(s.len() / 2);
-    let nib = |c: u8| -> Option<u8> {
-        match c {
-            b'0'..=b'9' => Some(c - b'0'),
-            b'a'..=b'f' => Some(c - b'a' + 10),
-            _ => None,
-        }
-    };
-    let mut i = 0usize;
-    while i < b.len() {
-        out.push((nib(b[i])? << 4) | nib(b[i + 1])?);
-        i += 2;
-    }
-    Some(out)
-}
-
-/// 线上那个键名。**只有一处住址** —— 判据按它对拍。
-pub const HEX_KEY: &str = "b16";
-
-/// 把一串路径字节交给线上，**双向无损**。
-///
-/// - 有效 UTF-8 ⇒ 一个 JSON 字符串（常见情形，界面直接能显示）。
-/// - 其余 ⇒ `{"b16": "<十六进制>"}`。
-///
-/// ⚠ 为什么不一律走十六进制：回送的是**命中**，而命中数可以上万
-///（`真相源/98 §3.3` 那一趟现打过一次 52 666 条命中）⇒ 一律双倍体积是白花的钱。
-/// ⚠ 为什么不一律走字符串：那就是 `档②` 那条有损解码，本族存在的理由之一。
-pub fn to_json(bytes: &[u8]) -> serde_json::Value {
-    match std::str::from_utf8(bytes) {
-        Ok(s) => serde_json::Value::String(s.to_string()),
-        Err(_) => {
-            let mut m = serde_json::Map::new();
-            m.insert(
-                HEX_KEY.to_string(),
-                serde_json::Value::String(to_hex(bytes)),
-            );
-            serde_json::Value::Object(m)
-        }
-    }
-}
-
-/// [`to_json`] 的**逆** —— 入方向的路径参数也走这两种形。
-///
-/// `None` = 这个 JSON 值不是一个路径（形状不对 / 十六进制坏了）。
-/// 🔴 **不许在这里「尽力而为」**：猜错一个字节就是去动另一个文件。
-pub fn from_json(v: &serde_json::Value) -> Option<Vec<u8>> {
-    match v {
-        serde_json::Value::String(s) => Some(s.as_bytes().to_vec()),
-        serde_json::Value::Object(m) => match m.get(HEX_KEY)? {
-            serde_json::Value::String(h) => from_hex(h),
-            _ => None,
-        },
-        _ => None,
-    }
-}
+// 〔P4〕路径字节的**线上两种形**（字符串 / `{"b16": …}`：`HEX_KEY` · `to_json` · `from_json` 与十六进制那两个小函数）逐字搬进了
+//   `common/path_wire.rs`：文件管理那一块与原生那一块（`dial/terminal.rs`：文件窗口「在此打开终端」交来的当前目录）都要读这一形，
+//   两块之间零互相依赖（`files/module_boundary_guard.rs`），共用的只许住 `common/`。本族照旧经这里用它。
+pub use crate::common::path_wire::{from_json, to_json, HEX_KEY};
 
 /// 把一串路径字节还原成能交给标准库的 `PathBuf`。
 ///

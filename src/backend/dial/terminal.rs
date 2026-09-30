@@ -22,6 +22,7 @@ use copy_core::copy_text;
 use serde_json::{json, Value};
 
 use crate::platform::shell::dialect::ps_literal;
+use crate::platform::shell::posix;
 use crate::platform::shell::powershell;
 
 /// 远端命令长度上限（防异常输入；正常 resume 命令 < 300 字节）。与 monitor 本机那条送法的上限同值。
@@ -193,13 +194,75 @@ fn command_arg(args: &Value) -> Result<&str, CmdErr> {
     })
 }
 
-/// 帧命令 `terminal-ssh`：`{machine, saved?, jump?, prefer?, command, rbindToken?}` ⇒ `{command: "<前奏？＋那一行 PowerShell>"}`。
+/// 「在此打开终端」要在那台跑的那一串（〔P4〕原住文件窗口那一侧的 `build_open_terminal_cmd`〔散文墓碑〕 · `_at`，逐字搬来：
+/// 窗口只交意图 `{cwd}`，命令由这里拼，`设计/60 §2.3` · 主会话 09-29 拍板 Q2）。
+///
+/// 逐字：`cd <quoted> && exec ${SHELL:-bash} -l`（`cwd` 为空 ⇒ 只有后半段）。当前目录是那台列出来的**自由文本路径** ⇒
+/// 拼进 `cd` 之前先过形式 ＋ 拒绝集（`shell_quote_core::posix_free_path_ok`：POSIX 绝对 · 无 `..` 段 · 不含 NUL / CR / LF；
+/// **不拒 shell 元字符**，交给唯一那一处 quote，`INVARIANTS §47` ②）；非 UTF-8 的目录走字节形（`posix_quote_bytes`，`$'…'`）。
+/// ⚠ **不用双引号**：[`check_command`] 会拒掉含双引号的命令（PowerShell 原生传参畸变那道防线）。
+pub(crate) fn command_for_cwd(cwd: &Value) -> Result<String, CmdErr> {
+    let Some(bytes) = crate::common::path_wire::from_json(cwd) else {
+        return Err((
+            "invalid_args",
+            crate::common::contract::malformed("`cwd` must be a string or {\"b16\": \"<hex>\"}"),
+        ));
+    };
+    let bad = |shown: &str| {
+        refused(copy_text(
+            "beTerminal.refuse.badCwd",
+            &[("cwd", &format!("{shown:?}"))],
+        ))
+    };
+    match std::str::from_utf8(&bytes) {
+        Ok(s) => {
+            let c = s.trim();
+            if c.is_empty() {
+                Ok(posix::cd_then_login_shell(None))
+            } else if !shell_quote_core::posix_free_path_ok(c) {
+                Err(bad(c))
+            } else {
+                Ok(posix::cd_then_login_shell(Some(
+                    &shell_quote_core::posix_quote(c),
+                )))
+            }
+        }
+        Err(_) if !shell_quote_core::posix_free_path_bytes_ok(&bytes) => {
+            Err(bad(&String::from_utf8_lossy(&bytes)))
+        }
+        Err(_) => Ok(posix::cd_then_login_shell(Some(
+            &shell_quote_core::posix_quote_bytes(&bytes),
+        ))),
+    }
+}
+
+/// 帧命令 `terminal-ssh`：`{machine, saved?, jump?, prefer?, command | cwd, rbindToken?}` ⇒ `{command: "<前奏？＋那一行 PowerShell>"}`。
+/// 〔P4〕`command`（主界面交成品命令）与 `cwd`（文件窗口「在此打开终端」只交意图，命令由 [`command_for_cwd`] 拼）**恰好给一个**。
 pub(crate) fn answer(args: &Value) -> Result<Value, CmdErr> {
-    command_arg(args)?;
     let token = token_arg(args)?;
-    let req = super::machine::resolve(args)?;
+    let req = super::machine::resolve(&dial_args(args)?)?;
     let line = with_bind_prelude(render(&req)?, token, monitor_data_dir().as_deref())?;
     Ok(json!({ "command": line }))
+}
+
+/// 〔P4〕`command` 与 `cwd` 恰好给一个；给的是 `cwd` ⇒ 由 [`command_for_cwd`] 拼好放进 `command`（拨号请求只认 `command`）。
+fn dial_args(args: &Value) -> Result<Value, CmdErr> {
+    match (args.get("command"), args.get("cwd")) {
+        (Some(_), Some(_)) => Err((
+            "invalid_args",
+            crate::common::contract::malformed(
+                "exactly one of `command` (a string) or `cwd` (a path)",
+            ),
+        )),
+        (None, Some(cwd)) => {
+            let command = command_for_cwd(cwd)?;
+            let mut dial = args.as_object().cloned().unwrap_or_default();
+            dial.remove("cwd");
+            dial.insert("command".to_string(), Value::String(command));
+            Ok(Value::Object(dial))
+        }
+        _ => command_arg(args).map(|_| args.clone()),
+    }
 }
 
 /// 帧命令 `terminal-local`：`{command, rbindToken?}` ⇒ `{command: "<前奏？＋原串>"}`。本机那一串是后端渲好的成品，这里不判、不拼，只接前奏。

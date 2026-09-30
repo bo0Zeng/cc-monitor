@@ -493,11 +493,16 @@ fn the_file_window_uses_exactly_the_pool_commands_it_registers() {
     const KINDS: &[&str] = &[];
 
     let root = repo_root();
-    let dir = root.join("src/frontend/shell/src/filewin");
+    // 〔P4〕「`filewin/` 这棵树」今天是两棵：窗口包 `src/frontend/filewin/src/` ＋ monitor 那一侧 `src/frontend/shell/src/filewin/`
+    //   （开窗入口 · 起进程 · `[[bin]]` 入口），合起来与搬家前那一棵逐份相同（多了窗口包的 `guard_support.rs` 与窗口那一半 `proc.rs`）。
     // 🔴 走 `guard_core` 而不是裸 `read_dir`（`scanning_guard_registry` 那条纪律：
     //    扫描型判据不许自己遍历）。本条不需要摘掉自己 —— 调用者住
     //    `tests/frontend/shell/`，压根不在被扫的那棵树里。
-    let files = guard_core::scan_tree!(&dir, &["rs"]);
+    let mut files = guard_core::scan_tree!(&root.join("src/frontend/shell/src/filewin"), &["rs"]);
+    files.extend(guard_core::scan_tree!(
+        &root.join("src/frontend/filewin/src"),
+        &["rs"]
+    ));
     // 抽取器自检①：**采集量**。射程被改窄在本条上是静默的（少扫一份 ⇒ 那一份
     // 接的命令从 `used` 里消失 ⇒ 差集非空 ⇒ 会红；但少扫**全部**就两边都空了）。
     assert_eq!(
@@ -512,7 +517,10 @@ fn the_file_window_uses_exactly_the_pool_commands_it_registers() {
         //   经通道 `files-copy` 进暂存区再 `transfer-download`）· `chunk_upload.rs`（上传块形：经通道 `files-stage-chunk`）·
         //   `cross_copy.rs`（复制到另一台：下 / 传都经通道）—— 四份一个池子符号都不碰。
         // 〔FILES3〕29 → 30，多的是 `grep.rs`（按内容搜：经通道问后端 `files-grep`，一个池子符号都不碰）。
-        30,
+        // 〔P4〕30 → 33：窗口独立成包，两棵合起来多三份 —— 窗口包的 `lib.rs`（原 `mod.rs` 的躯体；壳里那份 `mod.rs` 还在）·
+        //   窗口那一半 `proc.rs`（拨回 · 第一屏；壳里那一半 `proc.rs` 还在）· `guard_support.rs`（判据住址）；一个池子符号都不碰。
+        // 〔P4 · 阶段 H〕33 → 34，多的是窗口包的平台层 `platform.rs`（一个池子符号都不碰）。
+        34,
         "`filewin/` 那棵树现扫到 {} 份 `.rs`（2026-09-22 现打 14：copy · corpus · **download** · **editor** · entry · \
          find · fonts · mod · rows · scale · shell · source · transfer · writeops）\
          〔第十三刀 09-23：14 → 16，多的是 **proc** 与 **win_main**（窗口改独立进程：\

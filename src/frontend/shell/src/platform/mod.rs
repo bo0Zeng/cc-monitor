@@ -6,6 +6,8 @@
 //! （`tests/frontend/shell/platform/platform_home_guard.rs`）。住这里的只是「读法」；判定规则留在调用方（`设计/00 §1.6.6`）。
 
 pub mod console_text;
+// 〔P4 · 阶段 H〕`utils::FileTime` 的 Win32 那两件。
+pub mod filetime;
 pub mod fs;
 pub mod hwnd;
 pub mod login_shell;
@@ -13,6 +15,10 @@ pub mod pid;
 pub mod proc;
 pub mod spawn;
 pub mod ssh_agent;
+// 〔P4 · 阶段 H〕开终端窗口的平台那一半，原住 `launch.rs`。
+pub mod terminal;
+// 〔P4 · 阶段 H〕窗口那一族（单实例 · WebView2 错位修复 · 主窗口拉前），原住 `lib.rs`。
+pub mod window;
 
 #[cfg(test)]
 #[path = "../../../../../tests/frontend/shell/platform/platform_home_guard.rs"]

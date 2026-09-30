@@ -630,49 +630,57 @@ fn key_matching_is_whole_string_equality() {
 }
 
 /// 绑口只在宿主那一份里、只绑回环、全模块恰好一处（`C5` 的分界在盘上看得见）。
+///
+/// 〔P4〕通道分住两处：壳里 `chan/`（monitor 自己的宿主那两份）＋ 共享 crate `chan-core` 的 `chan/`（成员三份经 `#[path]` ＋ 拨号 · 交接件）。
+/// 绑口那一处随交接件搬进了 `chan-core` 的 `handoff.rs`（`start_with`），两棵合起来仍恰好一处。
 #[test]
 fn only_the_host_binds_and_only_to_loopback() {
     let root = crate::guard_support::repo_root();
-    let dir = root.join("src/frontend/shell/src/chan");
-    let files = guard_core::scan_tree_excluding(&dir, &["rs"], &[]);
-    let names: Vec<String> = files
-        .iter()
-        .map(|(p, _)| p.file_name().unwrap().to_string_lossy().to_string())
-        .collect();
-    let mut sorted = names.clone();
+    let mut files = Vec::new();
+    for (dir, who) in [
+        (root.join("src/frontend/shell/src/chan"), "壳"),
+        (root.join("src/common/chan-core/src/chan"), "chan-core"),
+    ] {
+        for (p, text) in guard_core::scan_tree_excluding(&dir, &["rs"], &[]) {
+            let name = p.file_name().unwrap().to_string_lossy().to_string();
+            files.push((format!("{who}:{name}"), text));
+        }
+    }
+    let mut sorted: Vec<String> = files.iter().map(|(n, _)| n.clone()).collect();
     sorted.sort();
     assert_eq!(
         sorted,
         vec![
-            "client.rs",
-            "dial.rs",
-            "host.rs",
-            "mod.rs",
-            "router.rs",
-            "webview.rs",
-            "wire.rs"
+            "chan-core:client.rs",
+            "chan-core:dial.rs",
+            "chan-core:handoff.rs",
+            "chan-core:mod.rs",
+            "chan-core:router.rs",
+            "chan-core:wire.rs",
+            "壳:host.rs",
+            "壳:mod.rs",
+            "壳:webview.rs",
         ],
         "通道目录的份数变了 —— 回来重读本条与 `chan/mod.rs` 那张表\n\
          （〔C4a〕`webview.rs` 是主界面那一跳的宿主：不绑口，下面那条「绑口恰好一处」照样量它）"
     );
     let bind = format!("TcpListener::{}(", "bind");
-    for (p, text) in &files {
+    for (name, text) in &files {
         let prod = guard_core::production_code(text);
         let n = prod.matches(bind.as_str()).count();
-        let name = p.file_name().unwrap().to_string_lossy().to_string();
-        let expect = usize::from(name == "host.rs");
+        let expect = usize::from(name == "chan-core:handoff.rs");
         assert_eq!(n, expect, "`{name}` 里绑口 {n} 处（应当 {expect} 处）");
     }
     let host_src = files
         .iter()
-        .find(|(p, _)| p.file_name().is_some_and(|n| n == "host.rs"))
+        .find(|(n, _)| n == "chan-core:handoff.rs")
         .map(|(_, t)| t.clone())
-        .expect("host.rs 在上面那张名单里");
+        .expect("handoff.rs 在上面那张名单里");
     guard_core::find_pinned(
         &guard_core::production_code(&host_src),
         &format!("TcpListener::{}((Ipv4Addr::LOCALHOST, 0))", "bind"),
     )
-    .expect("host.rs 里那一处绑口不是「回环 ＋ 内核挑口」");
+    .expect("handoff.rs 里那一处绑口不是「回环 ＋ 内核挑口」");
 }
 
 /// 线上形状：每一种错误、每一种 `Item` 过一趟线都原样回来；认不出的跳号标签 ⇒ 协议坏了。

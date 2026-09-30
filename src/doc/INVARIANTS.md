@@ -207,7 +207,7 @@ data dir 里两类东西**语义上一刀两断**，别搅混到「迁移/重建
 |---|---|---|---|
 | `config.json` | **真相** | `config.rs` | theme/font/claudeDir/keybindings/`remote.hosts[]`(含 label)/resume 命令/诊断开关——全用户手填 |
 | `history-metadata.json` | **真相** | 〔C4d〕本机常驻后端 `history_annotations.rs::answer_annotate`（路径仍由 `history.rs::metadata_path` 算、起后端时交过去；文件原地不动） | 按 sid 的 star/重命名/隐藏——用户策展意图 |
-| `filewin-bookmarks.json` | **真相** | `filewin/bookmarks.rs`（文件管理窗口进程；旁件 `.lock` 上独占锁读-改-写） | 〔FILES3 · `设计/99 §2.2 ㉜`〕每台机器一份收藏目录清单 —— 用户手点的；设置页「数据位置」列出它 |
+| `filewin-bookmarks.json` | **真相** | `filewin/src/bookmarks.rs`（文件管理窗口进程；旁件 `.lock` 上独占锁读-改-写） | 〔FILES3 · `设计/99 §2.2 ㉜`〕每台机器一份收藏目录清单 —— 用户手点的；设置页「数据位置」列出它 |
 | `auto-launch.json` | **混（良性）** | `auto_launch.rs` | `enabled`=真相；`monitor_exe_path`=派生(每次启动 `current_exe()` 自愈改写) |
 | `sid-hwnd-cache.json` | **缓存** | `bind.rs` | sid→HWND，能从 PS 握手重建 |
 | `ps-registry/` `ps-await/` | **缓存/IPC** | `bind.rs` | 跨进程握手，启动重扫 |
@@ -2041,7 +2041,7 @@ throttle / startup-delay），`ticker` 还要写明事件源与退役归属。
 == 登记表条数）。
 
 ⚠ 升格的来历（`设计/99 §4.10.2`）：这张表**一直在管**，却点不到任何要求
-—— 而 2026-09-22 它**还在长**（当天加了 `filewin/shell.rs` 那个 10ms 轮询）
+—— 而 2026-09-22 它**还在长**（当天加了那个 10ms 轮询，今住 `filewin/proc.rs::early_failure`）
 ⇒ 那是一个活着的缺口，不是历史遗留。
 
 ---
@@ -2212,7 +2212,7 @@ CSP 兜底源是 `'self'` · 脚本执行面的几种放开形逐个禁 ＋ 那�
 | 账号配置目录（②） | 〔DUP1〕全表住 `acct-core`（`config_dir_posix_ok` · `config_dir_ok` · `config_dir_char_unsafe`，全仓唯一一份）；`payload.rs::config_dir_command_safe` 与后端 `accounts_query.rs::is_safe_config_dir` 是转手的薄壳；后端 `ccm/plan.rs` 直接用 `config_dir_ok`（`control → observe` 那条禁止边不用破）· `local.rs::validate_config_dir_ps`（Windows 形，〔MIG-2〕本机后端） | `local_tests.rs::every_injection_shape_is_refused_not_sanitized` · `accounts_query_tests.rs::unsafe_config_dirs_are_dropped` · `accounts_query_tests.rs::every_group_of_deceptive_characters_is_rejected_in_a_config_dir` |
 | 远端落点路径（②） | `mcp_edit.rs::project_root`（〔MIG-3a〕项目 `.mcp.json` 的落点进了那台后端：这台上的绝对路径、不含 `..`）（〔MIG-3a · 09-28〕cc-acct-iso 部署落点那道围栏随 monitor 那条部署命令删了：落点由那台后端按自己的家目录算、不收外来路径） | `mcp_edit_tests.rs::a_broken_mcp_json_is_never_overwritten_and_relative_dirs_are_refused` |
 | tmux 目标（已有会话：抓屏 · 结束 · 送键的 §34 Gate 1；〔DUP3〕并进本表 tmux 名那一行的「已有会话」那一条） | `gate_rules::existing_tmux_name_issue`：〔THIN〕monitor 那一份 Gate 1 前检（只剩跨轨锚点在用）删了；三条路的目标由后端入口判（〔TAIL〕`kill.rs::admit_existing_name` → 同一条 `gate_rules`） | 后端 `kill_tests.rs` · `gate_singleton_guard_tests.rs::the_monitor_holds_no_gate_of_its_own` · `tests/frontend/ui/tmux-control.vitest.ts`（界面不判、原样交；后端拒了照原话说） |
-| 自由文本（②：工作目录 · 文件窗口当前目录 · 远端一次性子命令的 argv · 透传给 agent 的参数 · 登记备注 · ccm 继承来的三个变量〔DUP3：启动器挪去 ③〕；〔TL3 · 主会话 09-26 按 V131 裁〕拒绝集**只收 NUL / CR / LF**、**不拒 shell 元字符**，形式按各自语境） | 拒绝集 `shell-quote-core::free_text_ok`（与唯一的 quote 同住）· POSIX 路径形式 `shell-quote-core::posix_free_path_ok`（载荷两处 cwd · `ccm_invocation` 的 `--cwd` · 文件窗口「在此打开终端」）· 后端 `ccm/plan.rs::free_text_gate` / `inherited_gate`（本机语境的「绝对」）· `remote_ask.rs::ask_with` | `shell-quote-core lib_tests::free_text_refuses_exactly_nul_cr_lf_and_lets_real_names_through` · `plan_tests.rs::free_text_values_pass_real_names_and_refuse_what_the_quote_cannot_hold` · `remote_ask_tests.rs::one_shot_argv_refuses_only_what_the_quote_cannot_hold` · `shell_tests.rs::the_open_terminal_cwd_passes_real_names_and_refuses_what_quote_cannot_hold` · `payload_tests.rs::a_free_text_cwd_passes_real_names_and_refuses_what_quote_cannot_hold` |
+| 自由文本（②：工作目录 · 文件窗口当前目录 · 远端一次性子命令的 argv · 透传给 agent 的参数 · 登记备注 · ccm 继承来的三个变量〔DUP3：启动器挪去 ③〕；〔TL3 · 主会话 09-26 按 V131 裁〕拒绝集**只收 NUL / CR / LF**、**不拒 shell 元字符**，形式按各自语境） | 拒绝集 `shell-quote-core::free_text_ok`（与唯一的 quote 同住）· POSIX 路径形式 `shell-quote-core::posix_free_path_ok`（载荷两处 cwd · `ccm_invocation` 的 `--cwd` · 文件窗口「在此打开终端」〔P4：后端 `dial/terminal.rs::command_for_cwd` 拼〕）· 后端 `ccm/plan.rs::free_text_gate` / `inherited_gate`（本机语境的「绝对」）· `remote_ask.rs::ask_with` | `shell-quote-core lib_tests::free_text_refuses_exactly_nul_cr_lf_and_lets_real_names_through` · `plan_tests.rs::free_text_values_pass_real_names_and_refuse_what_the_quote_cannot_hold` · `remote_ask_tests.rs::one_shot_argv_refuses_only_what_the_quote_cannot_hold` · 后端 `dial_terminal_tests.rs::the_open_terminal_cwd_passes_real_names_and_refuses_what_quote_cannot_hold`（〔P4〕拼法随「窗口只交意图」搬进本机后端） · `payload_tests.rs::a_free_text_cwd_passes_real_names_and_refuses_what_quote_cannot_hold` |
 | 远端后端路径（〔E2 · V28〕`backendPath` 那一格删了：落点恒是那台的 `~/.cc-monitor/bin/ccm`，常量住 `relay-route-core`，没有外来值要判） | monitor `ssh_source.rs::BACKEND_CMD` · `sftp.rs::LANDING_REL`（流模式 · 测试连接的探针 · 部署 / 卸载 / 身份扫描 · 常驻起停都只插这一个常量）· 后端 `remote_ask.rs::command_line`（可达表不再登记路径） | `sftp_tests.rs::the_landing_holds_the_backend_bytes_and_nothing_else_is_put_there` · `exec_site_registry_tests.rs::every_remote_exec_declares_where_its_command_came_from` |
 | 启动器（③ 命令片段；〔DUP3〕本机 · 远端载荷 · ccm 三处三条规则收成一张） | `shell_quote_core::launcher_refused_char`：本机后端 `local.rs::checked_launcher`（〔MIG-2〕拼进 PowerShell / bash）· `payload.rs::render_payload`（远端载荷）· 后端 `ccm/plan.rs::free_text_gate` 的 `--launcher` 那一格 | `shell-quote-core lib_tests::a_launcher_is_a_command_fragment_from_one_whitelist` · `local_tests.rs::every_injection_shape_is_refused_not_sanitized` · `payload_tests.rs::the_launcher_is_refused_when_it_carries_injection_chars` · `plan_tests.rs::a_launcher_is_one_command_fragment_from_the_shared_whitelist` |
 

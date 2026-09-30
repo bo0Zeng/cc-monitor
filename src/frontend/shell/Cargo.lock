@@ -764,6 +764,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "cc-monitor-filewin"
+version = "0.1.0"
+dependencies = [
+ "chan-core",
+ "copy-core",
+ "creds-core",
+ "eframe",
+ "egui",
+ "filewin-contract",
+ "futures",
+ "guard-core",
+ "host-core",
+ "relay-route-core",
+ "rfd",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tokio",
+ "tracing",
+ "uuid",
+ "winit",
+]
+
+[[package]]
 name = "cesu8"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -809,6 +833,20 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0ced0551234e87afee12411d535648dd89d2e7f34c78b753395567aff3d447ff"
 dependencies = [
  "libc",
+]
+
+[[package]]
+name = "chan-core"
+version = "0.1.0"
+dependencies = [
+ "copy-core",
+ "futures",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "ts-rs",
+ "uuid",
 ]
 
 [[package]]
@@ -1666,6 +1704,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "filewin-contract"
+version = "0.1.0"
+dependencies = [
+ "chan-core",
+ "copy-core",
+ "host-core",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "find-msvc-tools"
 version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2355,6 +2404,15 @@ name = "hex"
 version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
+
+[[package]]
+name = "host-core"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "windows 0.56.0",
+]
 
 [[package]]
 name = "html5ever"
@@ -3128,22 +3186,22 @@ name = "monitor"
 version = "4.0.0"
 dependencies = [
  "acct-core",
+ "cc-monitor-filewin",
+ "chan-core",
  "copy-core",
  "creds-core",
  "deploy-contract",
  "dirs 5.0.1",
- "eframe",
- "egui",
+ "filewin-contract",
  "futures",
  "guard-core",
+ "host-core",
  "notify",
  "notify-debouncer-mini",
  "parking_lot",
  "relay-route-core",
- "rfd",
  "serde",
  "serde_json",
- "sha2",
  "shell-quote-core",
  "tauri",
  "tauri-build",
@@ -3161,7 +3219,6 @@ dependencies = [
  "walkdir",
  "windows 0.56.0",
  "windows 0.61.3",
- "winit",
 ]
 
 [[package]]

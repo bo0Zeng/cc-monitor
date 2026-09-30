@@ -96,7 +96,7 @@
 //! 两侧都有金标准钉着（`the_two_surviving_wire_values_are_byte_identical`
 //! ＋ `an_unknown_shape_is_refused_not_guessed`）。
 
-use crate::copy_table::copy_text;
+use copy_core::copy_text;
 use serde::de::{Error as DeError, Visitor};
 use serde::{Deserialize, Deserializer, Serialize};
 
@@ -120,8 +120,13 @@ pub const LOCAL: &str = "<local>";
 /// 唯一的不变式（「名字不许是空白」）由 [`Origin::route`] 那个漏斗执行 ——
 /// 装在构造器上反而会把它拆成「构造时拒」与「路由时拒」两处，而那两处会漂。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
+// 〔P4〕本文件今天由 `chan-core` 编：生成物目录相对那个包根（`src/common/chan-core/bindings/`）写；
+//   monitor 的测试档里别的生成类型嵌着它 ⇒ 那边经 `ts` feature 拿到同一个派生（导出只在本 crate 的测试档跑）。
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = "../../../frontend/ui/generated/")
+)]
 #[serde(transparent)]
 pub struct Origin(pub String);
 
@@ -239,6 +244,4 @@ pub enum Route<'a> {
     Remote(&'a str),
 }
 
-#[cfg(test)]
-#[path = "../../../tests/comms/inward/origin_tests.rs"]
-mod tests;
+// 〔P4〕判据 `tests/comms/inward/origin_tests.rs` 挂在 monitor 的 `lib.rs`（它的棘轮扫的是 monitor 的命令面）。

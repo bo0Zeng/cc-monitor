@@ -231,7 +231,7 @@ const REGISTERED: &[(&str, &str)] = &[
 /// ⇒ 这一格是一笔欠账：F2 落第一个真调用点时，`X6` 的人群要扩到 Rust 前端那一侧。
 /// 住址在 `设计/05` 末尾「面 A 的第一个外部客户端：通道」的欠账那一节，不在这里抄第二份。
 ///
-/// 🔴〔F2 · 2026-09-24〕**那一天到了**：文件窗口（`src/frontend/shell/src/filewin/`）是第一个真调用点
+/// 🔴〔F2 · 2026-09-24〕**那一天到了**：文件窗口（〔P4〕今住独立包 `src/frontend/filewin/`）是第一个真调用点
 /// （`source::ask`）。表从两列扩成三列 —— 第二列是**这个入口的前端语料住在哪一种语言里**：
 /// `call` / `subscribe` 这两个裸词在 TS 语料里另有与本通道无关的同名调用
 /// （`launcher-diagnostics.ts` 的本地 `call(true)`、`session-accounts-poll.ts` 的 `subscribe(() => …)`），
@@ -267,12 +267,14 @@ const ENTRIES: &[(&str, &str, &str)] = &[
 
 /// `X6` 的 **Rust 前端语料**：`(目录前缀, 摘掉的文件, 为什么摘)`。
 ///
-/// ⚠ 摘掉的那一份是 **monitor 那一侧**的入口（`entry.rs`）：它调的是通道宿主注入给路由器的
+/// ⚠ 从前摘掉的那一份是 **monitor 那一侧**的入口（`entry.rs`）：它调的是通道宿主注入给路由器的
 /// 那个句柄（`Backends::call`，入参是「这一跳还剩多少」的 `Duration`），不是前端的 `Comms::call`。
+/// 〔P4〕窗口独立成包 `src/frontend/filewin/`：那一侧整个就是这一个前端；monitor 那一侧 `src/frontend/shell/src/filewin/`
+/// （开窗入口 · 起进程 · `[[bin]]` 入口）留在 monitor 进程，同 `entry.rs` 那条理由不进前端语料。
 const RUST_FRONTENDS: &[(&str, &[&str], &str)] = &[(
-    "src/frontend/shell/src/filewin/",
-    &["src/frontend/shell/src/filewin/entry.rs"],
-    "`entry.rs` 住 monitor 进程，调的是宿主句柄 `Backends::call`，不是前端的 `Comms::call`",
+    "src/frontend/filewin/src/",
+    &[],
+    "文件窗口进程（又一个前端）：它经 `chan_core` 的 `Client` 说 `Comms::call` / `subscribe`",
 )];
 
 /// 一份文件是不是某个入口的前端语料（按 [`ENTRIES`] 第二列的语言分）。
@@ -2446,7 +2448,7 @@ fn x6_every_frontend_call_site_passes_an_explicit_budget() {
     );
     assert!(
         all.iter()
-            .any(|(rel, _)| rel == "src/frontend/shell/src/filewin/source.rs"
+            .any(|(rel, _)| rel == "src/frontend/filewin/src/source.rs"
                 && is_frontend_for(rel, "rs", &member_paths)),
         "Rust 前端语料里找不到 `filewin/source.rs`（窗口进程那一处 `call`）—— 语料面坏了"
     );

@@ -54,94 +54,18 @@
 //!   能读 monitor 进程内存的人（同用户 root / ptrace）本来就能直接驱动后端，不在本文件射程。
 //! - **不买连接数上界**：没出示钥匙的连接最多挂 `hello_within` 那么久；出示了钥匙的连接不设上限。
 
-use super::router::{self, Backends, Ended, Terms};
-use super::wire::{
-    Body, By, CallError, CancelToken, Cursor, Item, Key, Kind, Op, Origin, OursFault,
-};
+use super::router::Backends;
+use super::wire::{Body, By, CallError, CancelToken, Cursor, Item, Kind, Op, Origin, OursFault};
 use crate::copy_table::copy_text;
 use crate::{backend_route, inbound_client};
 use futures::future::BoxFuture;
 use futures::stream::BoxStream;
-use serde::{Deserialize, Serialize};
-use std::net::{Ipv4Addr, SocketAddr};
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
-/// 外部前端连上通道要的全部东西：地址 ＋ 钥匙 ＋ 帧长上限。
-///
-/// 它整份过一次进程边界（走子进程的 stdin，见模块头注），所以能序列化。
-#[derive(Clone, Serialize, Deserialize)]
-pub struct Handoff {
-    /// 回环上的那个口。
-    pub addr: SocketAddr,
-    /// 那把钥匙。
-    pub key: Key,
-    /// 帧头 / 帧体各自的字节上限（两端必须同一个数）。
-    pub frame: usize,
-}
-
-impl std::fmt::Debug for Handoff {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Handoff")
-            .field("addr", &self.addr)
-            .field("key", &self.key)
-            .field("frame", &self.frame)
-            .finish()
-    }
-}
-
-/// 造一把钥匙：两枚 v4 UUID（各 122 位来自 OS 随机源）拼成 64 位十六进制。
-pub fn mint_key() -> Key {
-    Key(format!(
-        "{}{}",
-        uuid::Uuid::new_v4().simple(),
-        uuid::Uuid::new_v4().simple()
-    ))
-}
-
-/// 在回环上起一个通道口，把每条接进来的连接交给路由器。回交接件。
-///
-/// `frame` 与 `hello_within` 由调用方给（它们是策略值）。判据用它起一个挂着合成句柄的口。
-///
-/// # Errors
-///
-/// 回环口绑不上。
-pub async fn start_with(
-    backends: Arc<dyn Backends>,
-    key: Key,
-    frame: usize,
-    hello_within: Duration,
-) -> std::io::Result<Handoff> {
-    let listener = tokio::net::TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).await?;
-    let addr = listener.local_addr()?;
-    let terms = Terms {
-        key: key.clone(),
-        frame,
-        hello_within,
-    };
-    tokio::spawn(async move {
-        loop {
-            // `accept` 是内核事件，不是定时器；单次失败（fd 顶满之类）不许把整个口带走。
-            let (stream, _) = match listener.accept().await {
-                Ok(s) => s,
-                Err(e) => {
-                    tracing::warn!("通道：accept 失败（{e}），这一条放过，口照开");
-                    continue;
-                }
-            };
-            let terms = terms.clone();
-            let backends = Arc::clone(&backends);
-            tokio::spawn(async move {
-                match router::serve(stream, terms, backends).await {
-                    Ended::Left => {}
-                    Ended::Denied => tracing::warn!("通道：一条连接没过认证，已关"),
-                    Ended::Broken(why) => tracing::warn!("通道：一条连接坏了，已关（{why}）"),
-                }
-            });
-        }
-    });
-    Ok(Handoff { addr, key, frame })
-}
+// 〔P4〕交接件（[`Handoff`]）· 造钥匙（[`mint_key`]）· 绑回环口起路由器（[`start_with`]）随通道编进共享 crate `chan-core`
+//   （文件窗口独立成包之后它的判据要自己起一个挂着合成句柄的口）；本文件只留 monitor 自己的那几件：生产入口 · 生产句柄 · 传输台那一口。
+pub use chan_core::chan::handoff::{mint_key, start_with, Handoff};
 
 /// 本进程那个通道口的交接件（[`start`] 成功之后才有）。
 static HANDOFF: OnceLock<Handoff> = OnceLock::new();
@@ -183,6 +107,18 @@ pub struct InboundBackends;
 /// 这一跳在面 A 上的编号：路由器 ↔ 后端（`wire::HopId` 头注那两跳里的第 1 跳）。
 const HOP: u8 = 1;
 
+/// 〔P4〕通道上**由 monitor 自己接**、不按 `origin` 转给那台后端的 op：传输台开单两条（本机常驻后端的传输台，经中继 `sftp_pool.rs`）·
+/// 文件窗口「在此打开终端」（[`terminal_open`]）。其余一切照旧按 `origin` 去 `inbound_client`。
+/// 传输那两条从传输台那一份名单取（`sftp_pool::TRANSFER_OPS`，一份名单一个家）。
+pub(crate) const HOST_OPS: [&str; 3] = [
+    crate::sftp_pool::TRANSFER_OPS[0],
+    crate::sftp_pool::TRANSFER_OPS[1],
+    filewin_contract::TERMINAL_OPEN_OP,
+];
+
+/// 开终端那一行由本机后端渲（`src/backend/dial/terminal.rs`，与主界面 `terminal-open.ts` 问的同一条）。
+const TERMINAL_SSH: &str = "terminal-ssh";
+
 impl Backends for InboundBackends {
     fn call(
         &self,
@@ -195,8 +131,12 @@ impl Backends for InboundBackends {
         // 🔴〔F7c · 第三波 09-24〕**传输台那两条开单命令不按 `origin` 去那台机器的后端**：
         //    〔SR1b〕传输台住**本机**常驻后端（SFTP 与其它 SSH 同一条连接），由中继 `sftp_pool.rs` 转过去；
         //    其余一切照旧按 `origin` 去 `inbound_client`。
-        if crate::sftp_pool::is_transfer_op(&op.0) {
-            return Box::pin(transfer_open(origin, op, payload));
+        // 〔P4 · 主会话 09-29 拍板 Q2 A〕通道上由 monitor 自己接的那几条（[`HOST_OPS`]，两向登记在 `command_home_registry_tests::CHANNEL_OWN`）。
+        if HOST_OPS.contains(&op.0.as_str()) {
+            if crate::sftp_pool::is_transfer_op(&op.0) {
+                return Box::pin(transfer_open(origin, op, payload));
+            }
+            return Box::pin(terminal_open(origin, payload, left));
         }
         // 撤单**不在这里接**：路由器在撤单手柄拨下时直接丢掉本 future（`router::run_call`），
         // `inbound_client` 那次调用随之被丢 —— 本句柄再接一次就是第二份「撤了怎么说」。
@@ -296,6 +236,58 @@ async fn transfer_open(origin: Origin, op: Op, payload: Body) -> Result<Body, Ca
     match crate::sftp_pool::transfer_call(cfg, &op.0, &args).await {
         Ok(v) => Ok(Body(serde_json::to_vec(&v).unwrap_or_default())),
         Err((code, message)) => Err(refused(&code, message)),
+    }
+}
+
+/// 〔P4 · 主会话 09-29 拍板 Q2 A〕**文件窗口「在此打开终端」**：窗口只交意图（寻址 ＝ 那台 · 参数 `{cwd}`），这里补那台的机器事实
+/// （monitor 的机器表 ＋ 上次赢的那条，`dial_host::machine_facts`）、问本机后端 `terminal-ssh` 渲那一行、交 `open_terminal_window` 开窗 ——
+/// 与主界面开终端同一条路（`src/frontend/ui/terminal-open.ts`：`terminal_dial` → `terminal-ssh` → `open_terminal_window`）。
+/// 窗口不拼命令、不认识 monitor 的配置；成败作为这一次 `call` 的应答回去，那句话照旧画在窗口上。
+async fn terminal_open(origin: Origin, payload: Body, left: Duration) -> Result<Body, CallError> {
+    let Ok(args) = serde_json::from_slice::<serde_json::Value>(&payload.0) else {
+        return Err(OursFault::Misuse.into());
+    };
+    let Some(cwd) = filewin_contract::terminal_open_cwd(&args) else {
+        return Err(OursFault::Misuse.into());
+    };
+    // 文件窗口只开在远端上（`设计/60 §2.4`）⇒ 本机这一问不存在，说真实原因。
+    if origin.as_wire_str() == inbound_client::LOCAL_ORIGIN {
+        return Err(refused(
+            "local_has_no_file_window",
+            copy_text("rsChanHost.terminal.localNone", &[]),
+        ));
+    }
+    let Some(cfg) = crate::load_remote_config_by_label(origin.as_wire_str()) else {
+        return Err(refused(
+            "no_such_origin",
+            copy_text(
+                "rsChanHost.terminal.noConfig",
+                &[("machine", &(origin.as_wire_str()).to_string())],
+            ),
+        ));
+    };
+    let mut ask = crate::dial_host::machine_facts(&cfg);
+    ask["cwd"] = cwd.clone();
+    let Some(local) = inbound_client::client_for(inbound_client::LOCAL_ORIGIN) else {
+        return Err(backend_route::layer_no_channel(HOP));
+    };
+    let reply = match local.call(TERMINAL_SSH, ask, left).await {
+        Ok(v) => v,
+        Err(e) => return Err(backend_route::layer_call_error(&e, HOP).error),
+    };
+    let Some(line) = reply
+        .as_ref()
+        .and_then(|v| v.get("command"))
+        .and_then(serde_json::Value::as_str)
+    else {
+        return Err(refused(
+            "bad_reply",
+            copy_text("rsChanHost.terminal.badReply", &[]),
+        ));
+    };
+    match crate::launch::open_terminal_window(line.to_string(), true).await {
+        Ok(()) => Ok(Body(b"{}".to_vec())),
+        Err(why) => Err(refused("terminal_failed", why)),
     }
 }
 

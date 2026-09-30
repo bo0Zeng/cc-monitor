@@ -655,11 +655,12 @@ const ASKED_BY_MONITOR_ITSELF: &[(&str, usize, &str)] = &[
         1,
         "文件窗口列目录（`filewin/source.rs::CMD_LS`）：窗口进程自己问那台后端，不是替主界面转",
     ),
-    // 〔FIX4 · `99 §2.1 ⑬`〕文件窗口「在此打开终端」：窗口进程自己问本机后端渲那一行（`filewin/shell.rs::TERMINAL_CMD`）。
+    // 〔FIX4 · `99 §2.1 ⑬`〕文件窗口「在此打开终端」。〔P4 · 主会话 09-29 拍板 Q2〕窗口只交意图（经通道 `terminal-open`），
+    //   monitor 接下来补机器事实、问本机后端渲那一行、开窗（`chan/host.rs::TERMINAL_SSH`）—— 与主界面开终端同一条路。
     (
         "terminal-ssh",
         1,
-        "文件窗口「在此打开终端」（`filewin/shell.rs::TERMINAL_CMD`）：窗口进程自己问本机后端渲 ssh 那一行，不是替主界面转",
+        "文件窗口「在此打开终端」（`chan/host.rs::TERMINAL_SSH`）：monitor 接下窗口交来的意图，问本机后端渲 ssh 那一行",
     ),
 ];
 
@@ -1015,15 +1016,17 @@ fn local_queries_reach_the_running_resident_backend_not_a_file_beside_the_exe() 
     );
     // ④ 给终端窗口导 `CCM_BACKEND_BIN` 的那一格（WIN1 报备的同病）：两处调用都交**正在跑的那一份**。
     //    两向：`backend_bin_env_for_window(` 的生产调用点 == 实参是 `running_backend_bin()` 的那几处。
-    let launch =
-        guard_core::production_code(include_str!("../../../src/frontend/shell/src/launch.rs"));
+    // 〔P4 · 阶段 H〕开窗的两个平台臂（两处调用都在里面）搬进 `platform/terminal.rs`。
+    let launch = guard_core::production_code(include_str!(
+        "../../../src/frontend/shell/src/platform/terminal.rs"
+    ));
     let calls = launch.matches("backend_bin_env_for_window(").count();
     let running = launch
         .matches("backend_bin_env_for_window(\n        crate::local_backend_host::running_backend_bin(),")
         .count();
     assert!(
         calls >= 1,
-        "尺子瞎了：launch.rs 里一处 `backend_bin_env_for_window(` 都没数到"
+        "尺子瞎了：platform/terminal.rs 里一处 `backend_bin_env_for_window(` 都没数到"
     );
     assert_eq!(
         calls, running,

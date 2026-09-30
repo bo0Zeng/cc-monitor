@@ -1,7 +1,7 @@
 // auto-e2e F-E3:`@tauri-apps/api/core` 的 **e2e 命令级 shim**（测试 fixture,非生产/backend 改动）。
 //
 // 诚实层级:Linux headless 下 Tauri IPC 边界结构性不可达（app 不在跑、GUI 触发经
-// `launch.rs::launch_powershell_window` 仅 Windows）。本 shim 把 `restartWithAccount`（真源）
+// `platform/terminal.rs::launch_powershell_window` 仅 Windows）。本 shim 把 `restartWithAccount`（真源）
 // 编排真正发出的每一条 `invoke(...)` **重定向到真 tmux + fake-claude**,并把编排步骤按序写进
 // $CCM_SEQ_LOG。于是被测代码是**真的** account-restart.ts 编排逻辑 + 真 tmux 效果 + 真账号解析,
 // 唯一被替换的只是那道无法在 Linux 触达的 IPC 边界（本就该由后端 Rust 执行 tmux 的地方）。

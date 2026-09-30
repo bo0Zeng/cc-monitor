@@ -300,7 +300,7 @@ pub const PROTO_VERSION: u32 = 1;
 ///      ⇒ `files::index::rebuild_once` 与 `files::browse_watch::set_browsing` 至今
 ///      零生产调用方 ⇒ 真机上 `files-find` 恒回 `index_missing: true`。
 ///      〔⚠ 2026-09-21 收窄：**「零生产调用方」这半已假** —— 波 β 的 `P2` 接上了
-///       `src/frontend/shell/src/filewin/find.rs`。而「恒回 `index_missing`」这半**只在没人
+///       `src/frontend/filewin/src/find.rs`。而「恒回 `index_missing`」这半**只在没人
 ///       开那个窗口去搜的时候**还成立。这一段是当时的账，留着当历史。〕
 ///      这是设计面的缺口（要补得先在那张表上裁第五条），**不在本刀里自己长出来**。
 ///   ② **消费侧还没有** —— `src/frontend/shell` 那一头一个字节没动。
@@ -691,7 +691,9 @@ pub const PROTO_VERSION: u32 = 1;
 /// ★★★ **p6a-terminal-prelude-home**（2026-09-29，P5 合并那一拍）：协议 / 行为 —— 开终端的令牌握手前奏整段由后端渲（新帧命令 `terminal-local`；`terminal-ssh` 多收 `rbindToken`），monitor 只开窗 · 家目录规则收成 `creds-core` 唯一一个函数、两侧共用（Windows `USERPROFILE` → `HOME`，其余 `HOME` → `USERPROFILE`）。
 ///
 /// ★★★ **p6b-deploy-contract**（2026-09-30，P1 合并那一拍）：协议 / 行为 —— `deploy-core` 拆成契约 `deploy-contract` ＋ 后端 `control/deploy_plan.rs` 的判定；本机后端自举改问手上那份字节自己（新一次性子命令 `--place-verdict` · 帧 `place-verdict`）· `deploy-retired` 多入参形 `{text}`（monitor 不再判「是不是我们放的」）· search-core 拆进后端（`agents/claudecode/text.rs` · `observe/search_rules.rs`）· 起会话事实只剩后端一个家（`Adapter.launch`），monitor 画像代码删。
-pub const BUILD_ID: &str = "p6b-deploy-contract";
+///
+/// ★★★ **p6c-filewin-package**（2026-09-30，P4 合并那一拍）：结构 —— 文件窗口独立成包 `src/frontend/filewin/`（`cc-monitor-filewin`，只说 call / subscribe；开终端经通道交 monitor、命令由后端渲）· 新契约 / 宿主 crate `chan-core` · `host-core` · `filewin-contract` · 壳里平台形态全部收进 `platform/`（阶段 H 收完）· 足迹里两个写点住址跟着新住址。行为不变。
+pub const BUILD_ID: &str = "p6c-filewin-package";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src/frontend/shell/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），

@@ -28,7 +28,7 @@ cc-monitor 跟外部进程（PowerShell `__ccm_bind` helper、Claude Code CLI）
 
 1. **UTF-8 无 BOM**。PS 5.1 `Out-File -Encoding utf8` 会写 BOM（前 3 字节 `EF BB BF`），导致 `serde_json::from_str` 失败。源头：PS 端用 `[System.IO.File]::WriteAllText(path, json, [System.Text.UTF8Encoding]::new($false))`。接收端 Rust：`raw.trim_start_matches('\u{feff}')` 兜底剥任何 BOM 再 parse。
 2. **原子写**。两种实现：
-   - **Rust 端**：写 `<path>.tmp` → `MoveFileExW(MOVEFILE_REPLACE_EXISTING)` 一步替换。`std::fs::rename` 在 Windows 上 dst 存在会失败，必须用 `MoveFileExW`。详 [`config.rs::atomic_replace`](../../src/frontend/shell/src/config.rs)。
+   - **Rust 端**：写 `<path>.tmp` → `MoveFileExW(MOVEFILE_REPLACE_EXISTING)` 一步替换。`std::fs::rename` 在 Windows 上 dst 存在会失败，必须用 `MoveFileExW`。详 [`platform/fs.rs::atomic_replace`](../../src/frontend/shell/src/config.rs)。
    - **PS 端**：直接 `[System.IO.File]::WriteAllText` 即可，单调用本身原子。
 
    **作用范围**：本条 `MoveFileExW` 路径**仅适用于** `~/.cc-monitor/` 下 monitor 自己产物（`config.json` / `sid-hwnd-cache.json` / `auto-launch.json` / `history-metadata.json` / `ps-registry/<PID>.json` 等）。**写用户文件**（PowerShell profile 等 monitor data dir 之外的文件）**必须**改走 `ReplaceFileW + backup + 写后校验`——理由是保留 dst 的 ACL/ADS/创建时间 + OneDrive placeholder 风险，详 [INVARIANTS.md § 4](INVARIANTS.md)。两者边界由 INVARIANT § 2（monitor data dir 永远在 `~/.cc-monitor/`）锁定，不会漂移。
@@ -1074,7 +1074,7 @@ SSH 握手，而当时的调用方（用量探针）两段轮询上限 12+20 轮
 
 🔴 **「重走」这件事后端自己不做** —— 后端那条零定时器铁律不许它长出节拍
 （`设计/60 §3.5.2a`：机制在后端、偏好由后端声明、**节拍在调用方**）。
-〔⚠ 2026-09-21 订正：原话「**今天这一族里没有一条命令能触发重走**」**在 `24f` 第三刀（同日更早）落地时就已经假了** —— `files-index-rebuild` 就是那条命令。而它当时没人发；波 β 的 `P2` 之后，发它的是 `src/frontend/shell/src/filewin/find.rs`。⇒ 今天的真话是：**这一族有一条命令能触发重走，而且窗口那一侧真的会在后端说没索引／过期时发它**。〕
+〔⚠ 2026-09-21 订正：原话「**今天这一族里没有一条命令能触发重走**」**在 `24f` 第三刀（同日更早）落地时就已经假了** —— `files-index-rebuild` 就是那条命令。而它当时没人发；波 β 的 `P2` 之后，发它的是 `src/frontend/filewin/src/find.rs`。⇒ 今天的真话是：**这一族有一条命令能触发重走，而且窗口那一侧真的会在后端说没索引／过期时发它**。〕
 
 ⚠ 三个平台上的保鲜机制**本来就不是一件事**（Linux/Windows/macOS 各一套，
 macOS 那一格是文献读数、没实测）。跨 target 要判的是「**能力在不在**」，
@@ -3182,7 +3182,9 @@ marker = `ccm-rbind-token-<令牌>`；marker 前缀与目录名是共享契约�
 ```
 
 入参：那台机器的配置 `machine`（＋ `saved?` · `jump?` · `prefer?`，与 `remote-probe` / `pubkey-push` 同形，组请求走 `dial/machine.rs::resolve`）＋ 要在那台跑的
-`command` ＋ 可空 `rbindToken`（〔P5〕有值 ⇒ 成品前面接令牌握手前奏，同 `terminal-local`）。出：一行 PowerShell `& ssh -t[ -J <跳板用户>@<跳板>[:口]] -p <口>[ -i '<钥匙>'] <用户>@<地址> -- '<bash -lic ''…''>'` —— 地址取竞速顺序第一条
+`command` ＋ 可空 `rbindToken`（〔P5〕有值 ⇒ 成品前面接令牌握手前奏，同 `terminal-local`）。〔P4〕`command` 也可以换成意图 `cwd`（**恰给一格**）：
+当前目录的线上形（字符串或 `{"b16": …}`，同 `files-*` 的路径），由后端拼成 `cd <目录> && exec ${SHELL:-bash} -l`（空 ⇒ 只有后半段；目录过 POSIX 自由文本路径那一关，
+不过 ⇒ `refused`）—— 文件窗口「在此打开终端」经 monitor 接下的通道那一问（`terminal-open`）走这一形，窗口不拼命令。出：一行 PowerShell `& ssh -t[ -J <跳板用户>@<跳板>[:口]] -p <口>[ -i '<钥匙>'] <用户>@<地址> -- '<bash -lic ''…''>'` —— 地址取竞速顺序第一条
 （交了 `prefer` 且仍在这台的地址里 ⇒ 上次赢的那条）；命令包成 `bash -lic '<命令>'` 再以 PowerShell 单引号字面量嵌入；钥匙尾 `\` 剥掉；没钥匙 ⇒ 不带 `-i`（走 agent）。
 **只算不起**：不拨号、不开窗（开窗是 monitor 的事）。码：`invalid_args`（缺 `machine` / `command` · `rbindToken` 不是串也不是 `null`）· `bad_jump`（跳板交不来 / 指自己）·
 `refused`（命令空 / 超长 / 含控制符 / 含双引号 —— PowerShell 5.1 传参畸变面；用户名 · 地址 · 跳板出了白名单；令牌形状不对）。只上帧面（`STREAM_ONLY`）。

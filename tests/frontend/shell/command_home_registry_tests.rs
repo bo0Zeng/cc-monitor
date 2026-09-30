@@ -240,6 +240,45 @@ const PENDING: &[(&str, &str)] = &[
     //   monitor 只起进程、读它那一行（`filewin/proc.rs::first_screen` · `Ready`）⇒ 从本表删，进 `MONITOR_OWN`（开窗）。
 ];
 
+/// 〔P4 · 主会话 09-29 拍板 Q2 A〕通道上**由 monitor 自己接**、不按 `origin` 转给那台后端的 op（`chan/host.rs::HOST_OPS`）：
+/// op · 哪一类 · 理由。它们不是 Tauri 命令，却是同一个问题（「monitor 自己的事」还是「待迁」），照 `MONITOR_OWN` 的写法两向登记。
+const CHANNEL_OWN: &[(&str, Own, &str)] = &[
+    (
+        "transfer-upload",
+        Own::Channel,
+        "〔F7c〕传输台开单：转给本机常驻后端的传输台（经中继 `sftp_pool.rs`），不按寻址去那台",
+    ),
+    (
+        "transfer-download",
+        Own::Channel,
+        "〔F7c〕同上（下载那一形）",
+    ),
+    (
+        "terminal-open",
+        Own::Window,
+        "文件窗口「在此打开终端」只交意图 `{cwd}`：monitor 补机器事实 → 本机后端 `terminal-ssh` 渲那一行 → `open_terminal_window` 开窗（与主界面同一条路）",
+    ),
+];
+
+/// 〔P4〕`HOST_OPS`（代码那一侧）== [`CHANNEL_OWN`]（登记那一侧），两向；每一行都写了理由。
+#[test]
+fn every_op_the_monitor_takes_off_the_channel_is_registered() {
+    let code: BTreeSet<&str> = crate::chan::host::HOST_OPS.iter().copied().collect();
+    let table: BTreeSet<&str> = CHANNEL_OWN.iter().map(|(op, _, _)| *op).collect();
+    assert_eq!(
+        table.len(),
+        CHANNEL_OWN.len(),
+        "`CHANNEL_OWN` 里有重复的 op"
+    );
+    assert_eq!(
+        code, table,
+        "通道上 monitor 自己接的 op（`chan/host.rs::HOST_OPS`）与登记表两向不等 —— 新截下一条就在这里写清它是哪一类、为什么不转给后端"
+    );
+    for (op, _, why) in CHANNEL_OWN {
+        assert!(why.chars().count() >= 8, "`{op}` 的理由写得太短：{why:?}");
+    }
+}
+
 // ---------------------------------------------------------------- 读 `generate_handler!`
 
 /// `generate_handler!` 里每一条：命令名 → 它住的文件（`src/frontend/shell/src` 相对路径）。

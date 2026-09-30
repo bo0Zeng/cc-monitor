@@ -26,13 +26,16 @@ mod asset_sync; // 〔AS2 · 第四波 4B · V113〕资产目录同步：连上�
 mod auto_launch;
 // 🔴 〔步 12 · 09-19〕`origin` 归一的地基：「这一趟问的是哪台机器」的唯一类型。
 mod backend_policy;
-// 〔RE〕通信层成员住 `src/comms/inward/`（`99 §2.1 ⑰`），模块树不变
-#[path = "../../../comms/inward/origin.rs"]
-mod origin; // P2s（C8）：每台机一份后端策略（生效值住内存，持久化归前端）
-            // 🔴 〔步 8 · 归属 2026-09-19〕**它搬不进 `backend/`** —— `backend_policy_tests.rs::
-            //    the_supervisor_itself_never_records_a_death` 逐字：「`backend/` 的生产段里
-            //    出现了 `record_death(` ⇒ 判与记该在**宿主层**，`backend/` 那半**只搬证据**」。
-            //    而 `record_death` 的唯一定义就在本模块里。⇒ 这是**解耦**的活，不是改名一刀能搬的。
+// 〔RE〕通信层成员住 `src/comms/inward/`（`99 §2.1 ⑰`）。〔P4〕`origin` 随通道编进共享 crate `chan-core`（线上词汇要它），这里再导出、路径不变；
+//   它那份判据（含 monitor 这一侧的「origin 归一」棘轮）照旧挂在 monitor 里（`origin_tests` 见下）。
+use chan_core::origin;
+#[cfg(test)]
+#[path = "../../../../tests/comms/inward/origin_tests.rs"]
+mod origin_tests; // P2s（C8）：每台机一份后端策略（生效值住内存，持久化归前端）
+                  // 🔴 〔步 8 · 归属 2026-09-19〕**它搬不进 `backend/`** —— `backend_policy_tests.rs::
+                  //    the_supervisor_itself_never_records_a_death` 逐字：「`backend/` 的生产段里
+                  //    出现了 `record_death(` ⇒ 判与记该在**宿主层**，`backend/` 那半**只搬证据**」。
+                  //    而 `record_death` 的唯一定义就在本模块里。⇒ 这是**解耦**的活，不是改名一刀能搬的。
 mod bind;
 mod ui_contract;
 // 通信层面 A 的第一个进程外客户端那条路（`设计/05` 末尾「面 A 的第一个外部客户端：通道」）。
@@ -425,62 +428,22 @@ pub(crate) fn windows_to_destroy_after<'a>(destroyed: &str, alive: &[&'a str]) -
         .collect()
 }
 
-/// 〔WF2 · WIN3 读数 D〕一台显示器的**工作区**（去掉任务栏 / 程序坞那一块，物理像素）。文件窗口进程拿它夹自己（随种子交过去）。
-#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct WorkArea {
-    pub x: i32,
-    pub y: i32,
-    pub w: u32,
-    pub h: u32,
+/// 那扇窗此刻所在的显示器的工作区（〔P4〕类型与判定住 `host_core`，问 Tauri 这一下留在宿主）；问不到 ⇒ `None`（不夹，照原样开）。
+pub(crate) fn work_area_of(w: &tauri::WebviewWindow) -> Option<host_core::WorkArea> {
+    let m = w.current_monitor().ok().flatten()?;
+    let a = m.work_area();
+    Some(host_core::WorkArea {
+        x: a.position.x,
+        y: a.position.y,
+        w: a.size.width,
+        h: a.size.height,
+    })
 }
 
-impl WorkArea {
-    /// 那扇窗此刻所在的显示器的工作区；问不到 ⇒ `None`（不夹，照原样开）。
-    pub(crate) fn of(w: &tauri::WebviewWindow) -> Option<WorkArea> {
-        let m = w.current_monitor().ok().flatten()?;
-        let a = m.work_area();
-        Some(WorkArea {
-            x: a.position.x,
-            y: a.position.y,
-            w: a.size.width,
-            h: a.size.height,
-        })
-    }
-}
-
-/// 〔WF2 · WIN3 读数 D〕**一扇窗夹进工作区**（纯函数；物理像素）：外框放不下 ⇒ 内框缩到「工作区 − 边框与标题栏」；
-/// 再把外框挪进工作区。回 `(新内框, 新外框左上)`；本来就在里面 ⇒ `None`。
-/// 真机读数：屏 1280×760、工作区 712 高，主窗初始外框 780 高、设置窗 780 高 ⇒ 底边压在任务栏下（toast、测试连接最后一行看不见）。
-pub(crate) fn fit_into_work_area(
-    outer_pos: (i32, i32),
-    outer: (u32, u32),
-    inner: (u32, u32),
-    work: WorkArea,
-) -> Option<((u32, u32), (i32, i32))> {
-    let chrome = (
-        outer.0.saturating_sub(inner.0),
-        outer.1.saturating_sub(inner.1),
-    );
-    let fitted = (outer.0.min(work.w), outer.1.min(work.h));
-    let new_inner = (
-        fitted.0.saturating_sub(chrome.0),
-        fitted.1.saturating_sub(chrome.1),
-    );
-    let slide = |p: i32, lo: i32, span: u32, len: u32| -> i32 {
-        let hi = lo.saturating_add(i32::try_from(span - len).unwrap_or(i32::MAX));
-        p.clamp(lo, hi)
-    };
-    let pos = (
-        slide(outer_pos.0, work.x, work.w, fitted.0),
-        slide(outer_pos.1, work.y, work.h, fitted.1),
-    );
-    (new_inner != inner || pos != outer_pos).then_some((new_inner, pos))
-}
-
-/// 照 [`fit_into_work_area`] 把一扇 Tauri 窗夹进它所在显示器的工作区（开窗之后调一次；问不到尺寸 ⇒ 不动）。
+/// 照 [`host_core::fit_into_work_area`] 把一扇 Tauri 窗夹进它所在显示器的工作区（开窗之后调一次；问不到尺寸 ⇒ 不动）。
 pub(crate) fn fit_window_to_work_area(w: &tauri::WebviewWindow) {
     let (Some(work), Ok(pos), Ok(outer), Ok(inner)) = (
-        WorkArea::of(w),
+        work_area_of(w),
         w.outer_position(),
         w.outer_size(),
         w.inner_size(),
@@ -488,7 +451,7 @@ pub(crate) fn fit_window_to_work_area(w: &tauri::WebviewWindow) {
         tracing::info!("窗口 {} 问不到尺寸或工作区 —— 不夹", w.label());
         return;
     };
-    let Some(((iw, ih), (x, y))) = fit_into_work_area(
+    let Some(((iw, ih), (x, y))) = host_core::fit_into_work_area(
         (pos.x, pos.y),
         (outer.width, outer.height),
         (inner.width, inner.height),
@@ -565,181 +528,9 @@ pub fn run() {
     // 第二个 cc-monitor 实例启动 → 触发本回调（在第一个实例里跑）→ 把主窗口
     // unminimize + show + set_focus → 第二个实例立即退出（plugin 内部处理）。
     // 详 src/doc/INVARIANTS.md § 16。
-    #[allow(unused_mut)]
     let mut builder = tauri::Builder::default();
-    #[cfg(windows)]
-    {
-        builder = builder.plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
-            // 第二个实例若带 --background（cc auto-launch 竞态下偶发）→ 只 show 不抢焦点；
-            // 普通双击拉起第二个实例则照常置前（用户显式想看）。
-            let background = args.iter().any(|a| a == "--background");
-            tracing::info!("second cc-monitor instance detected (background={background})");
-            if let Some(win) = app.get_webview_window("main") {
-                let _ = win.unminimize();
-                let _ = win.show();
-                if !background {
-                    let _ = win.set_focus();
-                }
-            }
-        }));
-
-        // WebView2 maximize / 全屏后内容错位修复（v2.14.0 引入，F12 加固重写）。
-        // 根因是 WebView2 Runtime 内部（浏览器进程）在 maximize / restore / 全屏切换后
-        // 丢失/挂起对宿主 bounds 更新的处理（WebView2Feedback #4095 族，微软未修）：
-        // 宿主侧 put_Bounds 成功、容器 HWND 已是全尺寸，但合成层（"Intermediate D3D
-        // Window"）停在旧尺寸 → 内容不铺满、周围留白。DOM 之下，前端 reflow 够不着。
-        //
-        // v2.14 的手段（±1px webview.set_size 抖动）机制上生效但对 Runtime 内部 bug
-        // 不可靠（1px 差值可能被 Runtime 合并/丢弃），F12 升级为 controller 级三板斧
-        // （with_webview 闭包内直接 COM 调用）：
-        //   1. 双 rect SetBounds（h-1 → h）：让 Runtime 看到「变化后的 rect」重新 put_Bounds
-        //   2. NotifyParentWindowPositionChanged：微软文档明示的宿主位置变化通知
-        //   3. SetIsVisible(false→true) 翻转：强制重建/重挂合成 visual，对 #4095 族最有效；
-        //      仅 maximize/fullscreen 时做（普通拖拽 resize 不翻，避免理论上的闪烁）
-        //
-        // ⚠ 最小化守卫（F12，修"restore 后数秒点不了"）：tao 0.35 在 WM_SIZE(SIZE_MINIMIZED)
-        // 时发 Resized(0,0)（不过滤），而 wry 自己的 subclass 明确跳过 SIZE_MINIMIZED——
-        // 最小化时把 controller bounds 打成 0×0 会让 renderer 视口归零、进入挂起态，
-        // restore 后画面先回、输入 hit-test 层数秒才重建。入口按 0×0 早退 + 线程动作前
-        // 二次守卫（去抖 60ms 期间可能又被最小化），对齐 wry 的保护语义。
-        //
-        // 去抖：resize 期间（含拖拽）每个事件 bump 一个 generation；后台线程等到连续 60ms
-        // 没有新事件（= 过渡稳定）再动手。nudge_pending 保证一个突发 resize 只有一个
-        // 去抖线程在飞。with_webview 的闭包由 tauri 派发到主线程执行——闭包内只做 COM
-        // 调用、禁止 sleep（同一闭包内连续两次不同 rect 已满足重钉条件，v2.14 的 16ms
-        // 间隔不再需要）。
-        builder = builder.on_window_event({
-            use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-            use std::sync::Arc;
-            use std::time::Duration;
-            let resize_gen = Arc::new(AtomicU64::new(0));
-            let nudge_pending = Arc::new(AtomicBool::new(false));
-            // Batch7-F23A：上次 nudge **闭包执行完毕**时的 (尺寸+全屏态) 打包值
-            // （pack_nudge_state；0=从未）。最小化→恢复回到同状态时合成层没有错位
-            // 理由（#4095 是 resize/maximize **过渡** bug），却会因 is_maximized()
-            // 为 true 走 SetIsVisible 翻转 → 拆挂合成 visual 瞬间露白底（用户实测
-            // 白闪）。同状态直接 skip 全部 COM 动作。两条取舍（审计 D 复核后留档）：
-            // ① store 在 with_webview 闭包尾执行——"执行完"= 闭包跑完，单个 COM
-            //   调用失败仍记录（COM 级失败不重试；派发失败才不记录）；
-            // ② 拖拽一圈回到原尺寸的 settle 也会被 skip（终态==上次已修复态，
-            //   wry 自身的 WM_SIZE 路径已实时跟踪中间态，残余风险接受）。
-            // F11 全屏与 maximize 同 inner 尺寸的角例由打包值里的 fullscreen 位
-            // 区分（状态变了照跑三板斧）。
-            let last_nudged = Arc::new(AtomicU64::new(0));
-            move |window, event| {
-                let size = match event {
-                    tauri::WindowEvent::Resized(s) => *s,
-                    _ => return,
-                };
-                // 最小化：绝不动 webview bounds（见块头 ⚠），也不 bump gen
-                if size.width == 0 && size.height == 0 {
-                    return;
-                }
-                resize_gen.fetch_add(1, Ordering::SeqCst);
-                // 已有一个去抖线程在飞 → 它会读到新的 gen 自行续等，不再 spawn
-                if nudge_pending.swap(true, Ordering::SeqCst) {
-                    return;
-                }
-                let window = window.clone();
-                let resize_gen = resize_gen.clone();
-                let nudge_pending = nudge_pending.clone();
-                let last_nudged = last_nudged.clone();
-                std::thread::spawn(move || {
-                    let mut last = resize_gen.load(Ordering::SeqCst);
-                    loop {
-                        std::thread::sleep(Duration::from_millis(60));
-                        let now = resize_gen.load(Ordering::SeqCst);
-                        if now == last {
-                            break;
-                        }
-                        last = now;
-                    }
-                    nudge_pending.store(false, Ordering::SeqCst);
-                    // 二次守卫：去抖期间窗口可能又被最小化 / 尺寸归零
-                    if window.is_minimized().unwrap_or(false) {
-                        tracing::info!("nudge skip: window minimized during debounce");
-                        return;
-                    }
-                    let target = match window.inner_size() {
-                        Ok(t) if t.width > 0 && t.height > 0 => t,
-                        _ => {
-                            tracing::info!("nudge skip: zero/unknown inner_size");
-                            return;
-                        }
-                    };
-                    let maximized = window.is_maximized().unwrap_or(false);
-                    let fullscreen = window.is_fullscreen().unwrap_or(false);
-                    let flip = maximized || fullscreen;
-                    // Batch7-F23A：同(尺寸+全屏态) skip（典型 = 最小化恢复）。
-                    // 判定与打包是纯函数（单测见 nudge_skip_tests）。
-                    let packed =
-                        pack_nudge_state(target.width, target.height, fullscreen);
-                    if nudge_should_skip(last_nudged.load(Ordering::SeqCst), packed) {
-                        tracing::info!(
-                            "nudge skip: size+state unchanged {}x{} fs={fullscreen} (restore-from-minimize path)",
-                            target.width,
-                            target.height
-                        );
-                        return;
-                    }
-                    let Some(webview) = window.webviews().into_iter().next() else {
-                        tracing::warn!("nudge skip: no webview on window");
-                        return;
-                    };
-                    tracing::info!(
-                        "nudge settle: target={}x{} maximized={maximized} fullscreen={fullscreen} flip={flip}",
-                        target.width,
-                        target.height
-                    );
-                    let last_nudged_in = last_nudged.clone();
-                    let res = webview.with_webview(move |pw| {
-                        // RECT 必须来自 webview2-com 0.38 配对的 windows 0.61
-                        // （windows-wv2 rename，见 Cargo.toml），0.56 的类型不互通
-                        use windows_wv2::Win32::Foundation::RECT;
-                        let controller = pw.controller();
-                        let full = RECT {
-                            left: 0,
-                            top: 0,
-                            right: target.width as i32,
-                            bottom: target.height as i32,
-                        };
-                        let shrunk = RECT {
-                            bottom: target.height.saturating_sub(1) as i32,
-                            ..full
-                        };
-                        // 每个 COM 调用的失败单独 warn（不再静默）：理论上存在不对称失败
-                        // ——如 SetIsVisible(false) 成功而 (true) 失败会让 webview 停在隐藏态，
-                        // 无日志就无从取证。失败不中断后续调用（终态尽量推向可见+正确 bounds）。
-                        unsafe {
-                            if let Err(e) = controller.SetBounds(shrunk) {
-                                tracing::warn!("nudge SetBounds(shrunk) failed: {e}");
-                            }
-                            if let Err(e) = controller.SetBounds(full) {
-                                tracing::warn!("nudge SetBounds(full) failed: {e}");
-                            }
-                            if let Err(e) = controller.NotifyParentWindowPositionChanged() {
-                                tracing::warn!("nudge NotifyParentWindowPositionChanged failed: {e}");
-                            }
-                            if flip {
-                                if let Err(e) = controller.SetIsVisible(false) {
-                                    tracing::warn!("nudge SetIsVisible(false) failed: {e}");
-                                }
-                                if let Err(e) = controller.SetIsVisible(true) {
-                                    tracing::warn!("nudge SetIsVisible(true) failed: {e}");
-                                }
-                            }
-                        }
-                        // 闭包执行完毕才记录（with_webview 的 Ok 只代表"已派发到主
-                        // 线程"——审计 D 修订：在这里 store 才是"执行完"的语义）
-                        last_nudged_in.store(packed, Ordering::SeqCst);
-                    });
-                    if let Err(e) = res {
-                        tracing::warn!("nudge with_webview failed: {e}");
-                    }
-                });
-            }
-        });
-    }
+    // 〔P4 · 阶段 H〕Windows 那两件（单实例插件 · WebView2 最大化 / 全屏后内容错位的修复）住壳的平台层：别处原样返回。
+    builder = crate::platform::window::desktop_fixes(builder);
 
     // ST1「关窗改隐藏」的另一半（`设计/01 §1.3` · `70 §1.3 F`）：设置窗关窗 = **隐藏**，永不自己销毁
     // ⇒ 它会把进程吊住（Tauri 是「最后一个窗口销毁才退出」）。主窗一销毁，就把它一起 destroy 掉，
@@ -1033,7 +824,7 @@ pub fn run() {
                             // 否则「上次连上过 ⇒ 立即快速重连」这个判断会拿着旧账做决定。
                             let connected = Arc::new(std::sync::atomic::AtomicBool::new(true));
                             if let Err(e) =
-                                ssh_source::run(cfg, replay, app, connected).await
+                                ssh_source::run(cfg, replay, remote_health_out(app), connected).await
                             {
                                 // S8/S9 会把"connection dropped"做成显眼的前端提示；先大声 log。
                                 tracing::error!("ssh_source::run [{label}] exited: {e}");
@@ -1309,6 +1100,14 @@ pub(crate) fn load_show_bg_sessions() -> bool {
 /// 〔S5 · 第四波 · `99 §1` V41「不为旧配置留兼容」〕旧单对象形态（`"remote": { "enabled": true, "host": …, … }`，
 /// 没有 `hosts` 数组）**不再认**：[`parse_remote_hosts`] 回 `Err`，这里照原样落一条 `error!` 日志、不连任何远端 ——
 /// 不再把它悄悄当成一台，也不装作「没配远端」（D4）。
+/// 〔P4 · `设计/00 §2.2`〕`remote-health` 事件的出口：窗口把手只在这一层，交给 `ssh_source`（它不认识 GUI 宿主）的是一个闭包。
+pub(crate) fn remote_health_out(app: tauri::AppHandle) -> ssh_source::HealthOut {
+    Arc::new(move |payload| {
+        app.emit(ui_contract::events::REMOTE_HEALTH, payload)
+            .map_err(|e| e.to_string())
+    })
+}
+
 pub(crate) fn load_remote_configs() -> Vec<ssh_source::RemoteConfig> {
     let Some(cfg_path) = config::resolve_config_path() else {
         return Vec::new();
@@ -1672,132 +1471,10 @@ fn pct_encode(s: &str) -> String {
 //   `session-lines/<sid>`（`src/frontend/ui/entry-viewer.ts`），留存由那条订阅当场交。
 
 /// v2.4 (issue #2)：把 monitor 自己的主窗口拉到最前 + unminimize + 抢焦点。
-///
-/// 用途：用户在终端敲键时，前端 user-active 信号路径下，若用户开了「拉前
-/// monitor 窗口」toggle 就 invoke 这个 IPC 让 monitor 主动浮上来。
-///
-/// **核心问题**：用户敲终端时前台是 PS/WT，**monitor 不是前台进程** →
-/// `SetForegroundWindow` 直接调被 OS 拒绝（只闪任务栏图标）。这是 Windows
-/// 对前台抢焦的设计限制（防恶意软件偷焦点）。
-///
-/// **解法 = AttachThreadInput hack**：临时把当前线程附加到前台线程的输入
-/// 队列，OS 把它俩视作"同输入上下文" → 借用前台线程的拉前权限 →
-/// SetForegroundWindow 通过 → 立刻 detach。广泛使用的可靠 hack
-/// （Visual Studio / 各 IDE 都用），不被 OS 视为恶意。
-///
-/// v2.4.0 直接用 win.set_focus()（内部就是 SetForegroundWindow）必败，
-/// v2.4.1 hotfix 改这版。
-///
-/// Tauri 内部用 windows crate 0.61（HWND.0 = *mut c_void），我们 0.56
-/// （HWND.0 = isize）；用 `as isize` cast 跨版本兼容。
-#[cfg(windows)]
+/// 〔P4 · 阶段 H〕两个平台臂（Windows 的 AttachThreadInput 那套 · 别处 Tauri 自己的 `set_focus`）住 `platform/window.rs::bring_to_front`，头注随之。
 #[tauri::command]
 async fn bring_monitor_to_front(app: tauri::AppHandle) -> Result<(), String> {
-    use windows::Win32::Foundation::HWND;
-    use windows::Win32::System::Threading::{AttachThreadInput, GetCurrentThreadId};
-    use windows::Win32::UI::Input::KeyboardAndMouse::{
-        keybd_event, KEYEVENTF_EXTENDEDKEY, KEYEVENTF_KEYUP, VK_MENU,
-    };
-    use windows::Win32::UI::WindowsAndMessaging::{
-        BringWindowToTop, GetForegroundWindow, GetWindowThreadProcessId, IsIconic,
-        SetForegroundWindow, SetWindowPos, ShowWindow, HWND_NOTOPMOST, HWND_TOPMOST, SWP_NOMOVE,
-        SWP_NOSIZE, SW_RESTORE, SW_SHOW,
-    };
-
-    tracing::info!("bring_monitor_to_front: invoked");
-
-    // HWND 必须在 webview 所属线程里取（Tauri 内部约束），随即 cast 成
-    // isize 跨线程，INVARIANTS § 19 跨 windows crate 版本约定。
-    let win = app
-        .get_webview_window("main")
-        .ok_or_else(|| "main window not found".to_string())?;
-    let tauri_hwnd = win.hwnd().map_err(|e| format!("hwnd: {e}"))?;
-    let hwnd_value = tauri_hwnd.0 as isize;
-
-    // INVARIANTS § 10：Win32 同步调用必须 spawn_blocking，否则慢路径会让 Tauri
-    // IPC 派发线程排队（v2.4 起 autoFollowUserActive 高频触发该 IPC）。
-    tokio::task::spawn_blocking(move || -> Result<(), String> {
-        unsafe {
-            let h = HWND(hwnd_value);
-            tracing::info!("bring_monitor_to_front: monitor hwnd = {:#x}", hwnd_value);
-
-            // === 三层 hack 突破 Win10/11 前台抢焦限制 ===
-            // 详 ARCHITECTURE.md § 5「bring_monitor_to_front 三层 hack」。
-            // attach/detach + Alt down/up 同闭包内必须配对，整段在同一 blocking
-            // 线程内串行，安全。
-
-            // 1. ShowWindow 先做：可能 minimize 状态
-            if IsIconic(h).as_bool() {
-                tracing::info!("bring_monitor_to_front: window iconic, SW_RESTORE");
-                let _ = ShowWindow(h, SW_RESTORE);
-            } else {
-                let _ = ShowWindow(h, SW_SHOW);
-            }
-
-            // 2. 模拟 Alt 按键（down 阶段，up 在末尾）
-            keybd_event(VK_MENU.0 as u8, 0, KEYEVENTF_EXTENDEDKEY, 0);
-
-            // 3. AttachThreadInput
-            let fg = GetForegroundWindow();
-            let fg_thread = GetWindowThreadProcessId(fg, None);
-            let cur_thread = GetCurrentThreadId();
-            tracing::info!(
-                "bring_monitor_to_front: fg_hwnd={:#x} fg_thread={} cur_thread={}",
-                fg.0,
-                fg_thread,
-                cur_thread
-            );
-            let attached = fg_thread != 0
-                && fg_thread != cur_thread
-                && AttachThreadInput(fg_thread, cur_thread, true).as_bool();
-
-            // 4. TOPMOST 强制 Z 序拉顶 + BringWindowToTop
-            let _ = SetWindowPos(h, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
-            let _ = SetWindowPos(h, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
-            let _ = BringWindowToTop(h);
-
-            // 5. SetForegroundWindow 真正抢焦
-            let ok = SetForegroundWindow(h).as_bool();
-            tracing::info!(
-                "bring_monitor_to_front: attached={} SetForegroundWindow={}",
-                attached,
-                ok
-            );
-
-            // 6. detach + Alt 释放
-            if attached {
-                let _ = AttachThreadInput(fg_thread, cur_thread, false);
-            }
-            keybd_event(
-                VK_MENU.0 as u8,
-                0,
-                KEYEVENTF_EXTENDEDKEY | KEYEVENTF_KEYUP,
-                0,
-            );
-
-            if ok {
-                Ok(())
-            } else {
-                // 拉前真失败也 Z 序已被推顶，视觉上窗口浮起来了
-                // （只是焦点没抢到）。给前端 warn 但不视为 fatal。
-                tracing::warn!("bring_monitor_to_front: SetForegroundWindow rejected (window Z-order raised but no focus)");
-                Err("SetForegroundWindow rejected (window raised but not focused)".into())
-            }
-        }
-    })
-    .await
-    .map_err(|e| format!("spawn_blocking join error: {e}"))?
-}
-
-#[cfg(not(windows))]
-#[tauri::command]
-async fn bring_monitor_to_front(app: tauri::AppHandle) -> Result<(), String> {
-    let win = app
-        .get_webview_window("main")
-        .ok_or_else(|| "main window not found".to_string())?;
-    let _ = win.unminimize();
-    let _ = win.show();
-    win.set_focus().map_err(|e| format!("set_focus: {e}"))
+    crate::platform::window::bring_to_front(app).await
 }
 
 // 〔MIG-1 · ⑬〕`list_session_activity`〔散文墓碑〕· `list_active_sessions`〔散文墓碑〕两条命令退役：本机活会话的骨架与初始灯
@@ -1980,28 +1657,15 @@ async fn open_log_dir(state: tauri::State<'_, Arc<logging::LoggingState>>) -> Re
 /// 复用 tauri-plugin-opener 也行（前端就是走它），但这里在 Rust 端直接调更直接。
 fn open_with_os(path_or_dir: &str) -> Result<(), String> {
     use crate::spawn_managed::{spawn_managed, ConsolePolicy, Lifetime, StderrSink};
-    // 「用哪个程序打开」是平台差异，**留在这儿**；「怎么起它」三条策略走唯一出口。
+    // 「用哪个程序打开」是平台差异（〔P4〕住壳的平台层）；「怎么起它」三条策略走唯一出口。
     //
     // ★ 这一处走的是 `spawn_managed(bin, args, …)` 那个**五参数形态**（`00 §1.5.2`
     //   逐字写的那个签名），而不是它的内层 `spawn_managed_cmd` —— 因为这一跳**真的
     //   只有「一个二进制 ＋ 一串 argv」**：不设 env、不设 cwd、三根 stdio 一根都不碰。
     //   ⚠ 别把这读成「别处偷懒了」：别处要 env / cwd / stdin / stdout，那些不属于
     //   那三条策略，硬塞进这个签名只会长出第七、第八个参数。
-    #[cfg(windows)]
-    // `cmd /C start ""` 兜 path 里的空格；第一个空串是 `start` 的窗口标题位。
-    let (bin, args) = (
-        "cmd",
-        vec![
-            "/C".to_string(),
-            "start".to_string(),
-            String::new(),
-            path_or_dir.to_string(),
-        ],
-    );
-    #[cfg(target_os = "macos")]
-    let (bin, args) = ("open", vec![path_or_dir.to_string()]);
-    #[cfg(all(unix, not(target_os = "macos")))]
-    let (bin, args) = ("xdg-open", vec![path_or_dir.to_string()]);
+    // 〔P4 · 阶段 H〕「用哪个程序打开」按平台选（`cmd /C start ""` · `open` · `xdg-open`）住 `platform/proc.rs::os_opener`。
+    let (bin, args) = crate::platform::proc::os_opener(path_or_dir);
     // 三条策略（`00 §1.5.2`）：
     // · `Hidden` —— 这一跳只是转交给系统默认 opener，**先前那个 `CREATE_NO_WINDOW`
     //   就是这一条**（设计稿逐字点名它是「仓里有、却用在最不需要的那处」的那一份）；
