@@ -105,7 +105,7 @@ pub fn plan_target(path: &str, reveal_file: Option<&str>) -> Result<Target, Stri
     let Some(f) = reveal_file.map(str::trim).filter(|s| !s.is_empty()) else {
         return Ok(Target::Home);
     };
-    let name = super::source::remote_basename(f).to_string();
+    let name = filewin_contract::remote_basename(f).to_string();
     if name.is_empty() {
         return Err(copy_text(
             "rsFilewinEntry.plan.noTarget",
@@ -116,7 +116,7 @@ pub fn plan_target(path: &str, reveal_file: Option<&str>) -> Result<Target, Stri
     //    从前 `parent_dir` 的签名吃 `&Source`（两侧不是同一个切法），于是这一行
     //    得合成一份「一个字段都不会被读」的 `RemoteConfig` 喂给它（`synthetic_remote`）。
     //    本机那一侧退役之后 `parent_dir` 只吃一条字符串 ⇒ 那个占位整个不需要了。
-    let dir = super::source::parent_dir(f);
+    let dir = filewin_contract::parent_dir(f);
     Ok(Target::Reveal { dir, name })
 }
 
@@ -157,7 +157,7 @@ pub fn plan_target(path: &str, reveal_file: Option<&str>) -> Result<Target, Stri
 /// 〔FILES2 · V152〕「复制到另一台」下拉里的机器：本机（`<local>`）＋ 已配的远端（`origin_label`，与通道寻址同一个名字）。
 /// 来自已有的配置读口，不新建数据源。
 fn machine_names() -> Vec<String> {
-    std::iter::once(super::cross_copy::LOCAL_ORIGIN.to_string())
+    std::iter::once(crate::inbound_client::LOCAL_ORIGIN.to_string())
         .chain(
             crate::load_remote_configs()
                 .iter()

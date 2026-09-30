@@ -32,7 +32,7 @@ fn synth_cfg() -> RemoteConfig {
 /// 不是「列不出来」那一形（那一形住 `proc_tests`）。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn without_a_channel_no_window_process_is_started() {
-    let before = crate::filewin::shell::open_requested();
+    let before = cc_monitor_filewin::shell::open_requested();
     for (path, reveal) in [
         ("   ", None),
         ("/srv/whatever", None),
@@ -54,7 +54,7 @@ async fn without_a_channel_no_window_process_is_started() {
         );
     }
     assert_eq!(
-        crate::filewin::shell::open_requested(),
+        cc_monitor_filewin::shell::open_requested(),
         before,
         "没有通道口却请求开窗了"
     );
