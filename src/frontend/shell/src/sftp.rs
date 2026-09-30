@@ -27,7 +27,7 @@
 //! 用户 V89「SFTP 进本机常驻后端，只写暂存区」：SFTP 客户端住本机常驻后端（`src/backend/dial/sftp.rs`，
 //! 与其它 SSH 同一条连接），**远端写只许两处**（`~/.cc-monitor/staging/` · `~/.cc-monitor/bin/`）。
 //! 〔MIG-3b · 4d-lanes 子步 1〕**部署判定也不在本模块了**：该不该换 · 换成哪一格 · 落点那一份是谁由本机常驻后端出计划
-//! （帧命令 `deploy-plan`，本体 `src/backend/control/deploy_plan.rs`，纯判定住共享 crate `deploy-core`）；
+//! （帧命令 `deploy-plan`，本体 `src/backend/control/deploy_plan.rs`，判定住后端那一份、两侧对上的形状住契约 crate `deploy-contract`）；
 //! 本模块只**照计划放字节**（取这一版带着的那一格 · 身份戳自检 · mkdir · 原子上传 ＋ 读回判定 · 删旧落点），
 //! 执行经 [`crate::dial_host::RemoteFs`]（本机后端那条 `files` 链路的一问一答）。〔墓碑 —— 从前本模块自己开 SFTP：`connect_sftp`〔散文墓碑〕在一条
 //! 进程内拨的 russh 连接上开子系统，`upload_atomic`〔散文墓碑〕在这里跑「EXCL 临时件 → 旧的改名 `.bak` → 上位」。
@@ -136,26 +136,26 @@ pub struct BackendBinary {
 }
 
 /// 身份戳的两个界标（`build.rs` 从后端源码抠出来交进来；本文件不许出现那两个字面量）。本机那一份的身份（`local_backend.rs`）也用它。
-pub(crate) const STAMP_MARKS: deploy_core::Marks<'static> = deploy_core::Marks {
+pub(crate) const STAMP_MARKS: deploy_contract::Marks<'static> = deploy_contract::Marks {
     open: env!("BACKEND_STAMP_OPEN"),
     close: env!("BACKEND_STAMP_CLOSE"),
 };
 
-/// 〔MIG-3b〕部署决策住 `deploy-core`（本机常驻后端出计划用它）；本 crate 里还要它的几处从这里拿同一份名字。
-pub use deploy_core::DeployAction;
+/// 〔MIG-3b · P1〕部署计划答话的形状住契约 crate `deploy-contract`（判定住后端 `control/deploy_plan.rs`）；本 crate 里还要它的几处从这里拿同一份名字。
+pub use deploy_contract::DeployAction;
 
 // 〔MIG-3a · 09-28 预裁〕`deploy_decision`〔散文墓碑〕（比旁挂版本标记）删了：它只留给 `acct_iso_deploy` 那条按目录取标记的路，那条路整条退役
-//   （字节随后端二进制走、逐份比内容，`src/backend/assets/acct_iso_install.rs`）。后端那条路的判定住 `deploy_core::identity_decision`。
+//   （字节随后端二进制走、逐份比内容，`src/backend/assets/acct_iso_install.rs`）。后端那条路的判定住 `deploy_contract::identity_decision`。
 
 /// 〔MIG-3b · 4d-lanes 子步 1〕**本机常驻后端出的部署计划**（帧命令 `deploy-plan`，线上形状 `tests/__fixtures__/deploy-plan.golden.json`）。
 /// 该不该换 · 换成哪一格 · 落点那一份是谁 · 旧落点那份删不删 —— 全是后端判的；本模块只照它放字节。
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct Plan {
-    pub(crate) key: deploy_core::Key,
+    pub(crate) key: deploy_contract::Key,
     /// 那一格这一版带着的字节自报的身份（后端拿它当对照物）。
     pub(crate) expected: String,
     pub(crate) action: DeployAction,
-    pub(crate) legacy: deploy_core::LegacyVerdict,
+    pub(crate) legacy: deploy_contract::LegacyVerdict,
     /// 〔WF2 · WIN3 读数 B〕落点目录里没人要的上传残件（家目录相对；后端判的，这里只照删）。
     pub(crate) leftovers: Vec<String>,
     /// 〔MIG-3b 续 · VIS2〕问 `uname` 那一趟拨号的 ack（拨号在本机后端里）：逐地址指纹由 [`ask_plan_for`] 交给
@@ -186,7 +186,7 @@ pub(crate) fn decode_plan(v: &serde_json::Value) -> Result<Plan, String> {
         return Err(bad());
     }
     let text = |k: &str| obj.get(k).and_then(serde_json::Value::as_str);
-    let key = deploy_core::key_of(text("os").unwrap_or(""), text("arch").unwrap_or(""))
+    let key = deploy_contract::key_of(text("os").unwrap_or(""), text("arch").unwrap_or(""))
         .map_err(|_| bad())?;
     let why = text("why").ok_or_else(bad)?.to_string();
     let action = match (text("action"), text("theirs")) {
@@ -199,10 +199,10 @@ pub(crate) fn decode_plan(v: &serde_json::Value) -> Result<Plan, String> {
         _ => return Err(bad()),
     };
     let legacy = match (text("legacy"), text("legacy_why")) {
-        (Some("absent"), None) => deploy_core::LegacyVerdict::Absent,
-        (Some("remove"), None) => deploy_core::LegacyVerdict::Remove,
-        (Some("keep"), None) => deploy_core::LegacyVerdict::Keep,
-        (Some("unknown"), Some(e)) => deploy_core::LegacyVerdict::Unknown(e.to_string()),
+        (Some("absent"), None) => deploy_contract::LegacyVerdict::Absent,
+        (Some("remove"), None) => deploy_contract::LegacyVerdict::Remove,
+        (Some("keep"), None) => deploy_contract::LegacyVerdict::Keep,
+        (Some("unknown"), Some(e)) => deploy_contract::LegacyVerdict::Unknown(e.to_string()),
         _ => return Err(bad()),
     };
     let leftovers: Vec<String> = obj
@@ -242,7 +242,7 @@ async fn ask_plan(cfg: &RemoteConfig) -> Result<Plan, String> {
 /// [`ask_plan`] 的本体，「带着哪几格」由调用方交（生产 = 这一版的槽；回环台架交它送去的那份字节的身份）。
 async fn ask_plan_for(
     cfg: &RemoteConfig,
-    carried: &[(deploy_core::Key, &str)],
+    carried: &[(deploy_contract::Key, &str)],
 ) -> Result<Plan, String> {
     use crate::backend_route::{route_call_error, Routed};
     let carried: Vec<serde_json::Value> = carried
@@ -322,20 +322,20 @@ const LANDING_SHOWN: &str = "~/.cc-monitor/bin/ccm";
 
 /// 〔E2 · E-c〕旧落点那份后端字节：照计划删（后端认出身份戳恰一个 = 我们编的）· 不在 ⇒ 不说话 · 别的 ⇒ 不动、说一句为什么。
 /// 回「要对人说的那一句」（空 = 没东西）。
-async fn apply_legacy(verdict: &deploy_core::LegacyVerdict, fs: &RemoteFs) -> String {
-    let shown = format!("~/{}", deploy_core::LEGACY_BACKEND_REL);
+async fn apply_legacy(verdict: &deploy_contract::LegacyVerdict, fs: &RemoteFs) -> String {
+    let shown = format!("~/{}", deploy_contract::LEGACY_BACKEND_REL);
     match verdict {
-        deploy_core::LegacyVerdict::Absent => String::new(),
-        deploy_core::LegacyVerdict::Remove => {
-            match fs.remove(deploy_core::LEGACY_BACKEND_REL).await {
+        deploy_contract::LegacyVerdict::Absent => String::new(),
+        deploy_contract::LegacyVerdict::Remove => {
+            match fs.remove(deploy_contract::LEGACY_BACKEND_REL).await {
                 Ok(_) => copy_text("rsSftp.legacyBackend.removed", &[("rel", &shown)]),
                 Err(e) => copy_text("rsSftp.legacyBackend.failed", &[("rel", &shown), ("e", &e)]),
             }
         }
-        deploy_core::LegacyVerdict::Keep => {
+        deploy_contract::LegacyVerdict::Keep => {
             copy_text("rsSftp.legacyBackend.kept", &[("rel", &shown)])
         }
-        deploy_core::LegacyVerdict::Unknown(e) => {
+        deploy_contract::LegacyVerdict::Unknown(e) => {
             copy_text("rsSftp.legacyBackend.failed", &[("rel", &shown), ("e", e)])
         }
     }

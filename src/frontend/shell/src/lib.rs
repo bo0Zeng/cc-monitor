@@ -19,7 +19,9 @@
 //! State 注册矩阵见 src/doc/STATE-MATRIX.md；漏 `manage` 不会被 cargo check 抓住（INVARIANT § 8）。
 
 // 〔MIG-3a · 主会话 09-28 预裁〕`acct_iso_deploy`〔散文墓碑〕删了：cc-acct-iso 的字节随后端二进制走（`src/backend/assets/acct_iso_install.rs`），界面问那台 `acct-iso-install`。
-mod adapter;
+// 〔P1 · 第 4 件〕`adapter`（monitor 那一份 agent 适配表 ＋ 画像生成器，`adapter/claude_code.rs` · `adapter/codex.rs`）删了：
+//   起会话事实只住后端适配层（`src/backend/agents/<名>/resume.rs`，注册表 `Adapter.launch`），monitor 读它生成的
+//   `src/frontend/ui/generated/agent-profile-table.ts`（起前清洗那一格，[`nested_env_markers`]）。
 mod asset_sync; // 〔AS2 · 第四波 4B · V113〕资产目录同步：连上那一刻把「怎么够到那台」交给本机常驻后端 `assets-sync`（零判定；〔MIG-3a〕看机器页那一问界面直问）
 mod auto_launch;
 // 🔴 〔步 12 · 09-19〕`origin` 归一的地基：「这一趟问的是哪台机器」的唯一类型。
@@ -63,10 +65,8 @@ mod history;
 //   逐份回真住址（都在壳根，宿主无关 ＋ 平台无关两道判据照旧看着它们：`backend_client_guard_tests.rs`）：
 //   调后端的客户端 —— `inbound_client`（长连接入方向的 wire 客户端）· `frame_query`（只读查询发送端）· `backend_route`（通信层成员，
 //   分流器，住 `src/comms/inward/`）；Tauri 命令层 —— `backend_control`（起 / 停 / 状态）· `cc_bus`（两句说法与 id 规则）；
-//   宿主 —— `local_backend`（本机后端的起与看住）；跨轨对拍锚点 —— `agent_profile_parity`（测试段）。
+//   宿主 —— `local_backend`（本机后端的起与看住）。〔P1〕跨轨对拍锚点 `agent_profile_parity`〔散文墓碑〕 随 monitor 那份适配表删了（对拍随家进了后端 `agents_tests.rs`）。
 //   Gate 1 前检 `tmux` 与 monitor 那一轨 `gate2_parity` 删了（子步 1：门只在后端）。
-#[cfg(test)]
-mod agent_profile_parity;
 mod backend_control;
 #[path = "../../../comms/inward/backend_route.rs"]
 mod backend_route;
@@ -163,7 +163,8 @@ mod frame_tally;
 // **只在测试期编译**——它的消费者全在 `#[cfg(test)]` 里（`sftp.rs` 的 tmux 目标守卫、
 // `tool_registry.rs` 的字段纪律）。这是测试支撑模块，不是被闲置的生产代码；
 // 加 `cfg(test)` 就是把这件事写进类型系统，顺带消掉 5 条 dead_code 警告。
-mod agent_dispatch_registry; // K-W1B D2：桌面侧「通用层认得出某个 adapter」的地方逐条登记 + 递减棘轮（整体 #[cfg(test)]；刻意不叫 agent_boundary_guard —— backend 侧已有同名异职模块，来历见该模块头注）
+// 〔P1 · 第 4 件〕`agent_dispatch_registry`〔散文墓碑〕（桌面侧「通用层认得出某个 adapter」逐条登记 ＋ 递减棘轮）退役：桌面侧没有适配器了，
+//   登记的人群清零；「通用层不按名字够某一家」那一条住后端 `agent_locality_guard`。
 mod arch_doc_shape_guard; // F19：顶层架构文档的结构性存在钉（必须覆盖 backend 边界 / 零轮询 / 两条链）+ 形状钉（逐文件模块表不许长回来）
 /// U1a：`shared/ccm` 的强度契约（仅测试构建）。U9 迁移后由同一份 `measure()` 对拍新构造点。
 ///
@@ -286,7 +287,32 @@ fn scrub_env_vars(keys: &[&str]) -> Vec<String> {
     removed
 }
 
-// F-MA:CC 嵌套会话 env 清单移到 adapter/claude_code.rs（走 adapter.nested_env_to_scrub()）。
+/// 〔P1 · 第 4 件〕起会话事实的生成物（值的家在后端 `agents/<名>/resume.rs`，`npm run gen:types` 重生成，门禁 `generated` 那一格盯着）。
+const AGENT_PROFILE_TABLE_TS: &str = include_str!("../../ui/generated/agent-profile-table.ts");
+
+/// 〔P1 · 第 4 件〕起前要清的嵌套会话标记：画像表生成物里**每一家**的 `nestedEnvVars`（并集，按出现序去重）。
+/// 从前取 monitor `adapter::active()` 那一家（恒是 Claude）；今天不认 agent，每一家的都清（Codex 那一格今天是空的，结果与从前逐字相同）。
+/// 只认生成器写出的那一形（`    nestedEnvVars: ["A", "B"],` 一行一格）；认不出一格就少清一格 —— 判据按金样两向钉住它读全了。
+fn nested_env_markers() -> Vec<&'static str> {
+    let mut out: Vec<&'static str> = Vec::new();
+    for line in AGENT_PROFILE_TABLE_TS.lines() {
+        let Some(inner) = line
+            .trim()
+            .strip_prefix("nestedEnvVars: [")
+            .and_then(|r| r.strip_suffix("],"))
+        else {
+            continue;
+        };
+        for item in inner.split(", ") {
+            if let Some(name) = item.strip_prefix('"').and_then(|r| r.strip_suffix('"')) {
+                if !out.contains(&name) {
+                    out.push(name);
+                }
+            }
+        }
+    }
+    out
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 /// Batch7-F23A：nudge skip 判定的纯函数对（单测钦定，见 MASTERPLAN §6）。
@@ -497,7 +523,7 @@ pub fn run() {
     // issue #24：第一件事就是清嵌套标记——必须在任何线程 spawn 之前
     // （std::env::remove_var 修改进程级环境，单线程窗口内调用才稳妥；
     // 下面 logging::init 就会起 non_blocking writer 线程）。
-    let scrubbed_env = scrub_env_vars(adapter::active().nested_env_to_scrub());
+    let scrubbed_env = scrub_env_vars(&nested_env_markers());
 
     // v2.0.0 (issue #4)：tracing 初始化提前到 Builder 之前 —— 一旦 init 全局
     // dispatcher 锁死，且我们要捕获 setup() 期间的所有 log。
@@ -869,11 +895,10 @@ pub fn run() {
                 }
             }
 
-            // F-MA：agent 数据目录 + 会话源布局都走活跃适配器（Claude Code = 第一个实例；
-            // data_root 仍是三级回退 用户配置 → CLAUDE_CONFIG_DIR → ~/.claude）。子目录名不再硬编码。
-            let agent = adapter::active();
-            let claude_dir = agent.data_root().ok_or("agent data dir not found")?;
-            tracing::info!("monitor using agent [{}] data dir: {}", agent.id(), claude_dir.display());
+            // agent 数据目录：三级回退 用户配置 → CLAUDE_CONFIG_DIR → ~/.claude（〔P1〕从前经 monitor 那份适配器 `active().data_root()`
+            //   转一道，适配器删了之后直接问 `config`，同一个函数）。
+            let claude_dir = config::resolve_claude_dir().ok_or("agent data dir not found")?;
+            tracing::info!("monitor using agent data dir: {}", claude_dir.display());
             // 〔LOC1b · 第四波 4D〕这里原来还算 `sessions_dir`（`<claude_dir>/sessions`，喂 monitor 自己那份判活）——
             //   本机判活改由本机后端的帧来，monitor 不再需要知道 pidfile 住哪。
             // 〔MIG-3b〕这里原来还算 `tasks_dir`（喂 monitor 自己那条任务 notify）—— 监视进了后端，monitor 不再需要知道任务住哪。
@@ -1996,7 +2021,7 @@ fn open_with_os(path_or_dir: &str) -> Result<(), String> {
     .map_err(|e| format!("{bin} failed: {e}"))
 }
 
-// 〔LOC1b · 第四波 4D〕搜索口径那道守卫原挂在 `search.rs` 下；那份文件删了，挂到这里（它读的是 search-core 与后端两份源码）。
+// 〔LOC1b · 第四波 4D〕搜索口径那道守卫原挂在 `search.rs` 下；那份文件删了，挂到这里。〔P1〕今天只剩「monitor 这一侧零处」（「恰一份」那两道随家进了后端）。
 #[cfg(test)]
 #[path = "../../../../tests/frontend/shell/search_kou_jing_guard.rs"]
 mod search_kou_jing_guard;

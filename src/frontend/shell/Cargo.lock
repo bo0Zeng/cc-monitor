@@ -1110,7 +1110,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "deploy-core"
+name = "deploy-contract"
 version = "0.1.0"
 dependencies = [
  "copy-core",
@@ -3130,7 +3130,7 @@ dependencies = [
  "acct-core",
  "copy-core",
  "creds-core",
- "deploy-core",
+ "deploy-contract",
  "dirs 5.0.1",
  "eframe",
  "egui",
@@ -4577,13 +4577,6 @@ dependencies = [
  "memmap2",
  "smithay-client-toolkit 0.19.2",
  "tiny-skia",
-]
-
-[[package]]
-name = "search-core"
-version = "0.1.0"
-dependencies = [
- "serde_json",
 ]
 
 [[package]]

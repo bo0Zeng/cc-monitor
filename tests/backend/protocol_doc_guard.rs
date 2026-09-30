@@ -166,6 +166,12 @@ const DISPATCH_FILES: &[(&str, &str)] = &[
         "control/panorama.rs",
         include_str!("../../src/backend/control/panorama.rs"),
     ),
+    // 〔P1 · 第 4 件〕claude 那一家的起会话事实（`RESUME_TOKEN = "--resume"`）：发给 claude 这个子进程的旗标，
+    //   派生的文件集把它扫了进来 ⇒ 登记在 [`CHILD_PROCESS_FLAGS`]（子进程在仓外，② 那一侧读金样）。
+    (
+        "agents/claudecode/resume.rs",
+        include_str!("../../src/backend/agents/claudecode/resume.rs"),
+    ),
 ];
 
 /// 🔴 **终端命令面**的文件 —— 它们持有 `--旗标` 字面量，但那些**不是 wire 子命令**。
@@ -256,6 +262,15 @@ pub(crate) const CHILD_PROCESS_FLAGS: &[(&str, &str, &[&str], &str)] = &[
         &["--args", "--probe", "--repo", "--store"],
         "`panorama` 起只装引擎的独立小程序时的旗标（`control/panorama.rs::answer_with`）。\
          它们是那个小程序的命令面：后端 argv 从不认它们，线上契约里 op 与参数走 `args` 载荷。",
+    ),
+    // 〔P1 · 第 4 件〕子进程是仓外的 `claude` ⇒ ② 那一侧读金样 `agent-profile-golden.tsv` 里 flag 形的 `resume_token`
+    //   （那张表记的就是各家 agent 的命令形，见接盘判据里按扩展名分的那一支）。
+    (
+        "agents/claudecode/resume.rs",
+        "tests/__fixtures__/agent-profile-golden.tsv",
+        &["--resume"],
+        "`claude` 那一家 resume 的 flag 形字面量（`agents/claudecode/resume.rs::RESUME_TOKEN`，起会话事实的唯一住址）：\
+         它是 claude 这个子进程的命令面，后端 argv 从不认它，线上契约里也没有它的位置。",
     ),
 ];
 
@@ -892,6 +907,17 @@ mod tests {
             // 〔RM1c〕子进程是 Rust 程序 ⇒ 它认的旗标 = 它生产段里的 `"--x"` 字面量（同一把尺子）。
             let mut accepts: Vec<String> = if child.ends_with(".rs") {
                 dashdash_literals(&script)
+            } else if child.ends_with(".tsv") {
+                // 〔P1〕子进程在仓外（`claude`）⇒ 它认的旗标取金样里 flag 形（`--` 开头）的 `resume_token`。
+                script
+                    .lines()
+                    .filter(|l| !l.trim_start().starts_with('#'))
+                    .filter_map(|l| {
+                        let f: Vec<&str> = l.split('\t').collect();
+                        (f.len() == 3 && f[1] == "resume_token" && f[2].starts_with("--"))
+                            .then(|| f[2].to_string())
+                    })
+                    .collect()
             } else if script.lines().any(|l| l.trim() == "while true; do") {
                 shell_loop_flags(&script)
             } else {

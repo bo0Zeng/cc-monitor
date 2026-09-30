@@ -10,7 +10,7 @@
  * - 按 record.type + content 形态分发：user 气泡 / assistant 卡 / 纯工具 → tool-group /
  *   tool_result 注入到对应 tool_use 折叠条；slash / compact / agent / diff / interactive /
  *   api-error 子卡委派给 cards/ 同级模块。
- * - CLI 注入的非真用户输入（含 ESC 中断标记，INVARIANT § 20）：〔RENDER2 · J10〕规则只在 `search-core::user_text`，
+ * - CLI 注入的非真用户输入（含 ESC 中断标记，INVARIANT § 20）：〔RENDER2 · J10〕规则只在 `agents/claudecode/text.rs::user_text`，
  *   monitor 解析时填进记录（`userText.clean`），这里只读成品。
  * - `pendingToolResults`：tool_result 先于 tool_use 到达时先 fallback 渲染，batch 末
  *   `reconcilePendingToolResults` 重新匹配注入。

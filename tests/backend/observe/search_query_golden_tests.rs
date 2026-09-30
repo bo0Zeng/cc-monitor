@@ -96,7 +96,7 @@ pub(super) fn build_corpus(tag: &str) -> std::path::PathBuf {
 
     // b1：单会话超 `PER_SESSION_CAP`；第一行 cwd 是空串（不算），第二行才有。
     let mut b1 = String::new();
-    for i in 0..(search_core::PER_SESSION_CAP + 5) {
+    for i in 0..(crate::observe::search_rules::PER_SESSION_CAP + 5) {
         let mut v = json!({"type":"user","uuid":format!("b1-u{i}"),
             "timestamp":format!("2026-02-{:02}T00:00:00Z", 1 + i % 28),
             "message":{"role":"user","content":format!("docker 第 {i} 条")}});

@@ -16,7 +16,7 @@
  *   远端逐台失败只 `console.warn` 并跳过（不拖垮其余台）。
  * - 选项只下发后端认的：`include_tools` 只在真时给、`scope` 只给 `user` / `assistant`、`after_ms` 只给正数；`limit` 原样。
  * - 合并：〔FIX4 · `设计/90 §3` J15 · 主会话 09-28 裁 B〕各台的会话行一次交给**本机**后端 `history-search-merge`
- *   （`updatedAt` 倒序、稳定 —— `search_core::sort_by_recency`；命中数相加；任一会话 `hitsTruncated` ⇒ 整体 `truncated`，`K-R100`）。
+ *   （`updatedAt` 倒序、稳定 —— `search_rules::sort_by_recency`；命中数相加；任一会话 `hitsTruncated` ⇒ 整体 `truncated`，`K-R100`）。
  *   扇出照旧在这里（各台常驻后端的内存索引保热）；前端那份 `mergeSearchResults`〔散文墓碑〕删了 —— 规则只住 Rust。
  * - 本机的行不带 `origin`（界面按「没有 origin ＝ 本机」画，与迁前逐字相同）；远端的行补上那台的名字。
  * - 「哪几台远端」问的是 `list_remote_mcp_origins`（名字里的 `mcp` 是它第一个用户留下的，不是限定）。

@@ -46,7 +46,7 @@ pub(crate) fn decode_slot(v: &serde_json::Value) -> Result<crate::byte_table::Ke
         return Err(bad());
     }
     let s = |k: &str| obj.get(k).and_then(serde_json::Value::as_str).unwrap_or("");
-    deploy_core::key_of(s("os"), s("arch")).map_err(|_| bad())
+    deploy_contract::key_of(s("os"), s("arch")).map_err(|_| bad())
 }
 
 /// 〔THIN〕问本机常驻后端「那台要哪一格全景字节」（`cfg` = 那台远端；`None` = 本机）。入参只有事实：怎么够到那台 · 这一版带着哪几格。
@@ -95,7 +95,7 @@ fn slot_bytes(key: crate::byte_table::Key) -> Result<&'static [u8], String> {
 }
 
 // 〔TL1 · 4C〕墓碑：这里从前有一个按「那台答的系统 / 架构两个词」直接取字节的函数（DP1 那一拍只改了函数体、委托 `byte_table`）。
-//   远端推字节改走 `byte_table::choose` 之后它零生产调用方 ⇒ 删；两个词 → 键的解析只剩 `deploy_core::key_of` 一处。
+//   远端推字节改走 `byte_table::choose` 之后它零生产调用方 ⇒ 删；两个词 → 键的解析只剩 `deploy_contract::key_of` 一处。
 
 /// 〔RM1e〕推到 home 底下哪个目录（相对段）。== 后端 `exit_policy::DIR_NAME` ＋ `bin`，
 /// 也在 SR1b 那两个远端写根之内（判据读两处后端源码）。

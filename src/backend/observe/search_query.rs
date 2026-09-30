@@ -7,12 +7,12 @@
 //! `{sessionId,projectPath,projectName,jsonlPath,title,updatedAt,hitCount,hits:[{uuid,tsMs,kind,before,matched,after}]}`
 //!
 //! 🔴 语义与本地 `../../bridge/src/search.rs` **不是「对齐」，是同一份**〔`K-R100` 09-13〕：
-//! 抽取 / 匹配 / snippet 的 12 个助手、4 个口径常量、snippet 预算与预算顺序全部住
-//! `../src/common/search-core`，两侧都调它。
+//! 抽取 / 匹配 / snippet 的 12 个助手、4 个口径常量、snippet 预算与预算顺序只有一个家 ——〔P1〕通用那一半住
+//! [`super::search_rules`]，Claude 记录文本那一半（正文 / 工具内容怎么抽 · 注入怎么剥）住适配层 `agents/claudecode/text.rs`（经注册表够）。
 //! 收口前本文件各写了一遍那 12 个（`K-R85` 实测逐字相同），而 monitor 的
 //! `cross_half_edge_registry::CROSS_EDGES` 17 条跨轨边里 **search 零命中** ⇒
 //! **没有任何判据在拦着它们漂开**。判据现在有了，住
-//! `tests/frontend/shell/search_kou_jing_guard.rs::the_search_kou_jing_has_exactly_one_home`。
+//! `tests/backend/observe/search_rules_tests.rs::the_search_kou_jing_has_exactly_one_home`（〔P1〕随家从 monitor 那份守卫搬来）。
 //! backend 无 `parse_line`，故仍直接在 `serde_json::Value` 上抽取 —— 那是**取数**的差别，
 //! 不是**口径**的差别。
 //!
@@ -26,7 +26,7 @@
 use crate::agents::claudecode::paths::projects_root;
 use crate::observe::fence::Fence;
 use crate::observe::fs::mtime_ms;
-use search_core::{SnippetBudget, SnippetVerdict, MAIN_CAP, TOOL_CAP};
+use crate::observe::search_rules::{self, SnippetBudget, SnippetVerdict, MAIN_CAP, TOOL_CAP};
 use serde_json::Value;
 use std::collections::BTreeMap;
 use std::io::Write;
@@ -35,7 +35,7 @@ use walkdir::WalkDir;
 
 // 🔴 口径常量**一个都不在这里**（`K-R100`）——它们就是口径本身，本文件再写一个同样的
 // 字面量 = 又开了第二份。`MAIN_CAP` / `TOOL_CAP` / `SNIPPET_CTX` / `PER_SESSION_CAP` /
-// `DEFAULT_LIMIT` 住 `search_core`，monitor 用的是同一份。
+// `DEFAULT_LIMIT` 住 `search_rules`（〔P1〕原共享 crate `search-core`）。
 
 /// 解析后的查询选项。
 struct SearchOpts {
@@ -88,7 +88,7 @@ fn parse_opts(rest: &[String]) -> SearchOpts {
         include_tools: false,
         scope: None,
         after_ms: 0,
-        limit: search_core::DEFAULT_LIMIT,
+        limit: search_rules::DEFAULT_LIMIT,
     };
     let mut i = 0;
     while i < rest.len() {
@@ -110,8 +110,8 @@ fn parse_opts(rest: &[String]) -> SearchOpts {
             }
             "--limit" => {
                 if let Some(v) = rest.get(i + 1) {
-                    opts.limit = search_core::clamp_limit(
-                        v.parse::<usize>().unwrap_or(search_core::DEFAULT_LIMIT),
+                    opts.limit = search_rules::clamp_limit(
+                        v.parse::<usize>().unwrap_or(search_rules::DEFAULT_LIMIT),
                     );
                     i += 1;
                 }
@@ -280,8 +280,8 @@ fn session_files(fence: &Fence) -> Vec<(PathBuf, i64)> {
             (p, m)
         })
         .collect();
-    // 🔴 `K-R100`：**snippet 预算按最近优先花**（`search_core::sort_by_recency`，理由在它的文档注释里）。
-    search_core::sort_by_recency(&mut files, |(_, m)| *m);
+    // 🔴 `K-R100`：**snippet 预算按最近优先花**（`search_rules::sort_by_recency`，理由在它的文档注释里）。
+    search_rules::sort_by_recency(&mut files, |(_, m)| *m);
     files
 }
 
@@ -385,7 +385,7 @@ impl Facts {
                         continue;
                     };
                     if !rt.is_assistant && self.excerpt.is_empty() && !rt.main.is_empty() {
-                        self.excerpt = search_core::truncate_excerpt(&rt.main, 120);
+                        self.excerpt = search_rules::truncate_excerpt(&rt.main, 120);
                     }
                     let ts_ms = v
                         .get("timestamp")
@@ -574,7 +574,7 @@ impl SearchIndex {
             };
             total += 1;
             if (count as usize) < limit && result.is_ok() {
-                let (before, matched, after) = search_core::make_snippet(hit, q);
+                let (before, matched, after) = search_rules::make_snippet(hit, q);
                 result = on_hit(&serde_json::json!({
                     "uuid": rec.uuid,
                     "kind": kind,
@@ -643,7 +643,7 @@ impl SearchIndex {
 
 /// 一个会话（索引里那一格）的命中 JSON（无命中 → None）。`budget` 跨会话累计已构造
 /// snippet 数，达到 `opts.limit` 后只计数不再构造 snippet（贵活封顶）——
-/// 🔴 判定在 `search_core::SnippetBudget`，与 monitor 同一份，且它**分得清**
+/// 🔴 判定在 `search_rules::SnippetBudget`（只此一份），且它**分得清**
 /// 「全局预算用完」与「单会话满 `PER_SESSION_CAP` 条」（收口前这两件事挤在一个
 /// `if` 里，下游只看得到 `hitCount > hits.len()` 这一个信号）。
 /// `updated_at` 由调用方传入（排序时已 stat 过一次，别再 stat 第二次）。
@@ -679,7 +679,7 @@ fn session_hits_in(
         hit_count += 1;
         match budget.take(hits.len()) {
             SnippetVerdict::Give => {
-                let (before, matched, after) = search_core::make_snippet(text, q_lc);
+                let (before, matched, after) = search_rules::make_snippet(text, q_lc);
                 hits.push(serde_json::json!({
                     "uuid": rec.uuid,
                     "tsMs": rec.ts_ms,
@@ -714,7 +714,7 @@ fn session_hits_in(
     } else {
         &entry.done.excerpt
     };
-    let title = search_core::session_title(
+    let title = search_rules::session_title(
         ai_title.map(String::as_str),
         first_user_excerpt,
         &session_id,
@@ -747,7 +747,7 @@ pub(crate) struct RecordText {
 /// 一条已解析的记录 → 拿去搜的文本；不是 user / assistant ⇒ `None`。
 ///
 /// 🔴 **全局搜索（`--search`）与会话内查找（`--find-in-session`）的口径只有这一个住址**；
-/// 抽取 / 剥注入 / 截断的助手本身住 `search-core`（与 monitor 同一份）。
+/// 抽取 / 剥注入住适配层（经注册表 `agents::main_text` · `tool_text` · `clean_user_text`），截断住 `search_rules`（〔P1〕原 `search-core`）。
 pub(crate) fn record_text(v: &Value, include_tools: bool) -> Option<RecordText> {
     let is_assistant = match v.get("type").and_then(Value::as_str) {
         Some("assistant") => true,
@@ -755,21 +755,16 @@ pub(crate) fn record_text(v: &Value, include_tools: bool) -> Option<RecordText> 
         _ => return None,
     };
     let content_v = v.get("message").and_then(|m| m.get("content"));
-    let raw_main = content_v
-        .map(search_core::extract_text_blocks)
-        .unwrap_or_default();
+    let raw_main = content_v.map(crate::agents::main_text).unwrap_or_default();
     let main = if is_assistant {
-        search_core::truncate_plain(&raw_main, MAIN_CAP)
+        search_rules::truncate_plain(&raw_main, MAIN_CAP)
     } else {
-        search_core::truncate_plain(&search_core::clean_user_text(&raw_main), MAIN_CAP)
+        search_rules::truncate_plain(&crate::agents::clean_user_text(&raw_main), MAIN_CAP)
     };
     let tool = if include_tools {
         content_v
             .map(|c| {
-                search_core::truncate_plain(
-                    &search_core::extract_tool_text(c, is_assistant),
-                    TOOL_CAP,
-                )
+                search_rules::truncate_plain(&crate::agents::tool_text(c, is_assistant), TOOL_CAP)
             })
             .unwrap_or_default()
     } else {
@@ -810,7 +805,7 @@ pub(crate) const FIND_MAX_LIMIT: usize = 2000;
 /// 2. 每条命中一行 `{"uuid","kind","before","matched","after"}`，**按文件序**（= 对话序），最多 `limit` 条；
 /// 3. 尾 `{"kind":"session_find_end","count":N,"total":T}` —— `T` = 全量命中数（≥ N）。**没有尾行 ⇒ 截断**。
 ///
-/// 与 `--search` 的差别只在「扫哪些文件、给多少条」：口径（[`record_text`] / [`record_hit`] ＋ `search-core`
+/// 与 `--search` 的差别只在「扫哪些文件、给多少条」：口径（[`record_text`] / [`record_hit`] ＋ `search_rules`
 /// 的片段）同一份。没有 uuid 的记录不算（跳不过去 —— 列出来就是一条点了没反应的项）。
 /// 只看**完整行**（torn 残尾下一次再看）。空查询 ⇒ 零条。返回 `(count, total)`。
 pub(crate) fn write_session_find<R: std::io::BufRead, W: std::io::Write>(
@@ -873,7 +868,7 @@ pub(crate) fn scan_session_find<R: std::io::BufRead>(
         };
         total += 1;
         if (count as usize) < limit {
-            let (before, matched, after) = search_core::make_snippet(hit, &q);
+            let (before, matched, after) = search_rules::make_snippet(hit, &q);
             on_hit(&serde_json::json!({
                 "uuid": uuid,
                 "kind": kind,
@@ -892,7 +887,7 @@ pub(crate) fn scan_session_find<R: std::io::BufRead>(
 // 🔴 那 12 个助手（`extract_text_blocks` · `extract_tool_text` · `stringify_json` ·
 // `clean_user_text` · `make_snippet` · `find_ci` · `tail_chars` · `head_chars` ·
 // `collapse_ws` · `collapse_ws_keep_ellipsis` · `truncate_plain` · `truncate_excerpt`）
-// 与它们的单元测试全部住 `../src/common/search-core`。monitor 调它，本文件也调它
+// 与它们的单元测试只有一个家：〔P1〕通用的住 `search_rules.rs`，Claude 记录文本那三个住 `agents/claudecode/text.rs`
 // —— **同一份**。别在这里「顺手再写一个小的」：那就是收口前的形状（两份、逐字同、零判据）。
 
 /// 解析 Claude 的 ISO8601 时间戳 `YYYY-MM-DDTHH:MM:SS(.fff)?Z` → epoch ms。
@@ -941,7 +936,7 @@ fn days_from_civil(y: i64, m: i64, d: i64) -> i64 {
 ///
 /// 界面照旧逐台经通道问那台常驻后端的 `history-search`（各台内存索引保热），拿回来的会话行（界面已补 `origin`）原样交到这里：
 /// `{sessions: [<会话行>…]}` ⇒ `{totalHits, sessionCount, truncated, sessions}`。
-/// - 排序：`updatedAt` 倒序、稳定（[`search_core::sort_by_recency`]，与每台后端花 snippet 预算的顺序同一个函数）；
+/// - 排序：`updatedAt` 倒序、稳定（[`search_rules::sort_by_recency`]，与每台后端花 snippet 预算的顺序同一个函数）；
 /// - `totalHits` = 各会话 `hitCount` 之和；任一会话 `hitsTruncated` ⇒ `truncated`（`K-R100`：每一台都被自己的 `limit` 砍过）；
 /// - 会话行其余各格原样透传（形状由界面的解码器收，这里只读排序与计数要的那三格）。
 ///
@@ -972,7 +967,7 @@ pub(crate) fn answer_merge(args: &Value) -> Result<Value, (&'static str, String)
         truncated |= cut;
         sessions.push((updated, row.clone()));
     }
-    search_core::sort_by_recency(&mut sessions, |(updated, _)| *updated);
+    search_rules::sort_by_recency(&mut sessions, |(updated, _)| *updated);
     Ok(serde_json::json!({
         "totalHits": total_hits,
         "sessionCount": sessions.len(),

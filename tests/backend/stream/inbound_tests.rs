@@ -757,6 +757,8 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "launch-render-cli",
         "launch-render-payload",
         "footprint-report",
+        // 〔P1〕本机那一份放不放：读一遍落点那个文件 ⇒ 阻塞档。
+        "place-verdict",
         // 〔W5-ALIAS〕别名预览，阻塞档。
         "ccm-print",
         // 〔AS2 · 第四波 4B〕资产目录两条，阻塞档。

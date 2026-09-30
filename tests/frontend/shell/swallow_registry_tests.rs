@@ -153,8 +153,8 @@ const ALLOWED: &[(&str, &str, usize, Why, &str)] = &[
     ("src/frontend/shell/src/inbound_client.rs", "let _ = w.shutdown().await;", 1, Why::DeadLink, ""),
     ("src/frontend/shell/src/local_backend.rs", "let _ = c.kill();", 3, Why::Reap, ""),
     ("src/frontend/shell/src/local_backend.rs", "let _ = c.wait();", 1, Why::Reap, ""),
-    // 〔E2〕3 → 2：逐字节副本那一处删了。
-    ("src/frontend/shell/src/local_backend.rs", "let _ = std::fs::remove_file(&tmp);", 2, Why::CleanupAfterFailure, "原子写的临时件：换名失败之后删它；主错误已在回，删不掉只剩一份临时件"),
+    // 〔E2〕3 → 2：逐字节副本那一处删了。〔P1〕2 → 1：后端那一份的暂存件改走 `drop_partial`（任何结局都清、清不掉出声，不吞），只剩全景那一份。
+    ("src/frontend/shell/src/local_backend.rs", "let _ = std::fs::remove_file(&tmp);", 1, Why::CleanupAfterFailure, "原子写的临时件：换名失败之后删它；主错误已在回，删不掉只剩一份临时件"),
     // 〔E2〕1 → 2：+1 收换版时挪开的旧 `ccm`（`.old`，Windows 上正在跑的删不掉）；删不掉下次放置时再清。
     ("src/frontend/shell/src/local_backend.rs", "let _ = std::fs::remove_file(ent.path());", 2, Why::CleanupAfterFailure, "清过期的释放半成品（`STALE_PARTIAL_AGE`）· 换版时挪开的旧 `ccm`；删不掉下次再清"),
     ("src/frontend/shell/src/local_backend.rs", "let _ = std::io::copy(&mut o, &mut std::io::sink());", 1, Why::Drain, ""),
@@ -170,6 +170,9 @@ const ALLOWED: &[(&str, &str, usize, Why, &str)] = &[
     ("src/frontend/shell/src/bind.rs", "let _ = unsafe { GetWindowThreadProcessId(hwnd, Some(&mut owner_pid)) };", 1, Why::NotAnError, "要的是出参里的属主 pid，返回值（线程 id）用不上"),
     ("src/frontend/shell/src/ccm_probe.rs", "let _ = child.kill();", 1, Why::Reap, ""),
     ("src/frontend/shell/src/ccm_probe.rs", "let _ = child.wait();", 1, Why::Reap, ""),
+    // 〔P1〕`capture_full` 交入参那条写线程：对面不读 stdin 就退了 ⇒ 写端断，结局由它的退出码与 stderr 说；等那条线程收尾同理。
+    ("src/frontend/shell/src/ccm_probe.rs", "let _ = w.write_all(&bytes);", 1, Why::DeadLink, ""),
+    ("src/frontend/shell/src/ccm_probe.rs", "let _ = w.join();", 1, Why::Signal, ""),
     ("src/comms/inward/chan/client.rs", "tx.send(Err(hop(0, \"read\", Reach::Unknown, HopFault::Dropped))).ok();", 1, Why::PeerGone, ""),
     ("src/comms/inward/chan/client.rs", "tx.send(Job { head, body: Vec::new(), written: None, }).await.ok();", 1, Why::PeerGone, ""),
     ("src/comms/inward/chan/client.rs", "tx.send(r).ok();", 1, Why::PeerGone, ""),

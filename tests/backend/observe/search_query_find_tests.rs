@@ -166,7 +166,7 @@ fn find_and_global_search_agree_on_the_same_file() {
             include_tools: tools,
             scope: None,
             after_ms: 0,
-            limit: search_core::DEFAULT_LIMIT,
+            limit: crate::observe::search_rules::DEFAULT_LIMIT,
         };
         let mut budget = SnippetBudget::new(opts.limit);
         let q = Q.trim().to_lowercase();

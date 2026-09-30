@@ -290,7 +290,8 @@ describe("CP2a · 文案表 ↔ 生产代码引用", () => {
     expect(rsFiles.map((f) => f.file)).toContain(RS_HOME);
     expect(rsRefs.length, "一个 copy_text 调用点都没找到 —— 读口没接上，或者读法坏了").toBeGreaterThan(0);
      // 〔CP2c〕三棵树各自真的扫到了、也各自读到了调用点（扩根那一步没接上时，下面的两向相等会在缺角的集合上成立）。
-    for (const [root, n] of [["src/backend/", 100], ["src/common/", 10]] as const) {
+    // 〔P1〕`src/common/` 10 → 5：`search-core` 删、`deploy-core` 的判定进后端（契约 `deploy-contract` 只剩一份 lib.rs），盘上现 10 份。
+    for (const [root, n] of [["src/backend/", 100], ["src/common/", 5]] as const) {
       expect(rsFiles.filter((f) => f.file.startsWith(root)).length, `${root} 下一个 .rs 都没扫到`).toBeGreaterThan(n);
     }
     expect(rsRefs.some((r) => r.file.startsWith("src/backend/")), "常驻后端一个 copy_text 调用点都没读到").toBe(true);

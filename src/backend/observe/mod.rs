@@ -29,6 +29,8 @@ pub(crate) mod fence;
 pub(crate) mod fs;
 pub mod history_query;
 pub mod search_query;
+// 〔P1〕搜索的通用口径（原共享 crate `search-core` 通用那一半：常量 · snippet 预算 · 最近优先 · 片段 / 截断 · 标题）。
+pub(crate) mod search_rules;
 // 〔MIG-1 · `99 §2.1 ⑬`〕会话账本：可重连 / 已结束由这台后端裁、发成品帧（挂在 watcher 发帧的出口上）。
 pub(crate) mod session_ledger;
 // 〔RM1b · 第四波〕插件市场只读枚举（`plugins-marketplaces` 帧命令的本体；从 monitor `plugins.rs` 原样搬来）。
