@@ -447,13 +447,13 @@ title: string, summary: string,
 /**
  * 这张图**认**哪些输入。不在表里的输入会被忽略(不报错),所以消费方只该给人拧这几个。
  */
-params: Array<DiagramParam>, shape: DiagramShape, };
+params: Array<string>, shape: string, };
 
 /**
  * 一次画图请求。**一个类型喂所有图**;全部字段可缺,缺了取默认。
  * 字段名与 [`DiagramParam::id`] 逐字相同。
  */
-export type DiagramRequest = { symbol: string | null, depth: number | null, max_nodes: number | null, certain_only: boolean | null, exclude_tests: boolean | null, };
+export type DiagramRequest = { symbol?: string | null, depth?: number | null, max_nodes?: number | null, certain_only?: boolean | null, exclude_tests?: boolean | null, };
 
 /**
  * 画图失败。🔴 每一种都是**明说**的失败,没有一种会回落成「画一张别的图」。

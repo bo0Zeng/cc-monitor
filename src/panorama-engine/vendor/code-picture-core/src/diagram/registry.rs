@@ -217,7 +217,11 @@ pub struct DiagramKindInfo {
     pub title: &'static str,
     pub summary: &'static str,
     /// 这张图**认**哪些输入。不在表里的输入会被忽略(不报错),所以消费方只该给人拧这几个。
+    // TS 侧是开集:消费方只拿**自己认得**的旋钮来查这张表,上游多一个旋钮消费方零改动。
+    #[cfg_attr(test, ts(type = "Array<string>"))]
     pub params: &'static [DiagramParam],
+    // TS 侧是开集(同 `DiagramKind`):消费方按形状选渲染器,认不出的如实说「画不出」—— 类型钉成闭集那条路就写不出来。
+    #[cfg_attr(test, ts(type = "string"))]
     pub shape: DiagramShape,
 }
 
@@ -232,7 +236,8 @@ pub fn kinds() -> Vec<DiagramKindInfo> {
 /// 一次画图请求。**一个类型喂所有图**;全部字段可缺,缺了取默认。
 /// 字段名与 [`DiagramParam::id`] 逐字相同。
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+// 它是**输入**:`serde(default)` ⇒ 每一格都可以不给 ⇒ TS 侧每格可缺(给了也可以是 null)。
+#[cfg_attr(test, derive(ts_rs::TS), ts(optional_fields = nullable))]
 #[serde(default, deny_unknown_fields)]
 pub struct DiagramRequest {
     pub symbol: Option<SymbolId>,
