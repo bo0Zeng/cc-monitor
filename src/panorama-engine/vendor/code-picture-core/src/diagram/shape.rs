@@ -17,6 +17,7 @@ use std::collections::HashMap;
 
 /// 一张画好的图。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 pub struct Diagram {
     pub kind: DiagramKind,
     pub honesty: Honesty,
@@ -25,6 +26,7 @@ pub struct Diagram {
 
 /// 按**形状**分的图体。变体集合与 [`DiagramShape::ALL`] 一一对应(有测试钉)。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(tag = "shape", rename_all = "snake_case")]
 pub enum DiagramBody {
     /// 节点 + 带成分的聚合连接。
@@ -58,6 +60,7 @@ impl DiagramBody {
 
 /// 调用子图的一个节点(符号的**画图所需**那几样,不是整个 `Symbol`)。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 pub struct CallNode {
     pub id: SymbolId,
     pub name: String,
@@ -68,6 +71,7 @@ pub struct CallNode {
 
 /// 调用子图的一条边。一条就是一条,不聚合 —— 所以只有一个可信度。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 pub struct CallEdge {
     pub from: SymbolId,
     pub to: SymbolId,
@@ -90,6 +94,7 @@ pub struct CallEdge {
 /// * `omitted` —— **省略**:因为节点上限而没画的节点 / 符号 / 连接(本图)。
 /// * `db_errors` —— **读库出错**:非空 = 这张图不完整。
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 pub struct Honesty {
     pub unresolved_calls: Option<usize>,
     pub ambiguous_calls: Option<usize>,
@@ -101,6 +106,7 @@ pub struct Honesty {
 
 /// 因为节点上限而没画的量。
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 pub struct Omitted {
     pub nodes: usize,
     pub symbols: usize,

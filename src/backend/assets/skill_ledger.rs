@@ -38,8 +38,8 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
-/// 文件名（与 `backend.json` / `assets-catalog.json` 同一个家）。在全部生产代码里只有本模块这一个家（判据钉）。
-pub const FILE_NAME: &str = "skill-installs.json";
+/// 文件名（与 `backend.json` / `assets-catalog.json` 同一个家）。〔P3〕字面量只住契约 crate（`relay_route_core::SKILL_LEDGER_REL`，数据位置页按它列），写者只有本模块（判据钉）。
+pub const FILE_NAME: &str = relay_route_core::file_name_of(relay_route_core::SKILL_LEDGER_REL);
 /// 格式版本。读到更大的 ⇒ 不覆盖。
 pub const FORMAT_V: u64 = 1;
 /// 读一份记录的上限。一个文件一条约 100 字节 ⇒ 4 MiB 装得下四万个文件；超了当读不懂（不拿截断的当完整的）。

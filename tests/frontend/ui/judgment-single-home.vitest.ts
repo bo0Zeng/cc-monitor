@@ -548,6 +548,10 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     DATA_DIR_ENV: NONE,
     HISTORY_METADATA_FILE: NONE,
     monitor_data_dir: NONE,
+    // 〔P5 · 主会话 09-29 裁〕哪个环境变量算家（按平台惯例）：两侧 Rust 都调它；TS 侧零处读家目录 ⇒ NONE。
+    home_dir: NONE,
+    home_dir_from: NONE,
+    home_dir_on: NONE,
     ACCOUNTS_FIELD: NONE,
     ALL: NONE,
     AUTH_STYLE_FIELD: NONE,
@@ -591,7 +595,16 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
   },
   // 〔THIN〕`gate-core` 那一格删了：它收成后端模块（`control/gate_rules.rs`），不再是共享 crate，不在本表人群里。
   "relay-route-core": {
+    // 〔P3 · 主会话 09-29 裁〕后端住在 `~/.cc-monitor` 里的那几样的相对路径（后端各写者引它、monitor 数据位置页按它列）；TS 侧没有孪生。
+    ACCT_ISO_REL: NONE,
     ALL: NONE,
+    ASSET_CATALOG_REL: NONE,
+    BACKEND_POLICY_REL: NONE,
+    file_name_of: NONE,
+    listen_pid_file_name: NONE,
+    POSIX_ALIASES_REL: NONE,
+    PS_ALIASES_REL: NONE,
+    SKILL_LEDGER_REL: NONE,
     // 〔E2 · V28〕后端落点（`~/.cc-monitor/bin/ccm`，两半同一份）；TS 侧没有孪生（界面那句话里的路径在文案表里）。
     BACKEND_LANDING_REL: NONE,
     BACKEND_LANDING_SHELL: NONE,
@@ -602,12 +615,15 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     // 〔HOST〕常驻监听口的门牌（本机宿主与远端 `--resident-ensure` 同一个函数）；TS 侧没有孪生。
     listen_port_for: NONE,
     LISTEN_TOKEN_FILE_REL: NONE,
+    // 〔P3 · V160〕后端住在家里的暂存区与全景索引（后端按它落盘、monitor 的数据位置页按它列）；TS 侧没有孪生。
+    PANORAMA_INDEX_REL: NONE,
     parse_target: NONE,
     PORT: NONE,
     prefix: NONE,
     route_path: NONE,
     segment_is_safe: NONE,
     split_keyed_base_url: NONE,
+    STAGING_DIR_REL: NONE,
   },
   "search-core": {
     clamp_limit: NONE,
@@ -664,6 +680,11 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     rbind_token_ok: "J8",
     RBIND_TOKEN_LEN: NONE,
     RBIND_TOKEN_ALPHABET: NONE,
+    // 〔P5〕令牌握手的 marker 与目录名（写侧后端前奏 · 读侧 monitor `bind.rs` 共用的契约）：TS 侧零处拼 marker、零处写握手文件 ⇒ NONE。
+    RBIND_TOKEN_MARKER_PREFIX: NONE,
+    AWAIT_SUBDIR: NONE,
+    rbind_token_marker: NONE,
+    rbind_token_from_marker: NONE,
     // 〔DUP3 · J3〕启动器命令片段白名单（§47 ③）；两个常量是规则的一部分，TS 不抄 ⇒ NONE。
     launcher_refused_char: "J3",
     LAUNCHER_EXTRA: NONE,

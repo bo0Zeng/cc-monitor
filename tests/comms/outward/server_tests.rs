@@ -1361,12 +1361,9 @@ fn relay_child_process_entry_point() {
             let _ = o.flush();
         }
     });
-    // ⚠ home 走**生产段那条**解析（`resolve_home` 认 `CLAUDE_CONFIG_DIR`）——
-    //   而凭据那份文件的位置由 `CCM_APIKEY_CREDENTIALS` 覆盖，父进程一定会设它
+    // ⚠ 凭据那份文件的位置由 `CCM_APIKEY_CREDENTIALS` 覆盖，父进程一定会设它
     //   （见 `spawn_relay_child_with_creds`）。**绝不能让判据去读用户真实的那份凭据。**
-    let said = crate::accounts::upstream_select::host_relay(
-        &crate::agents::claudecode::paths::resolve_home(),
-    );
+    let said = crate::accounts::upstream_select::host_relay();
     eprintln!("[relay-child] {said}");
     loop {
         std::thread::park();

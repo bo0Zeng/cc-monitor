@@ -431,7 +431,7 @@ export class SkeletonLedger {
 
   /**
    * 列宽变了：整份重估（O(n)，纯算术）。精算过的那几行在新列宽下作废 —— 返回它们（`设计/10 §2.5b`「列宽变化只重算已精算过的」，
-   * 调用方把它们重交 Worker）。⚠ 今天没有调用方：列宽只在模块求值时量一次（`height-estimate.ts::COL_W` 头注）。
+   * 调用方把它们重交 Worker）。调用方：`SkeletonView.relayout`（〔P3〕宿主在消息流尺寸变了、现量列宽变了时调）。
    */
   relayout(colW: number | undefined): number[] {
     const rows = this.rows;

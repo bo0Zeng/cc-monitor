@@ -419,6 +419,7 @@ monitor 记进一张 sid 表，用它 ① 拦掉 `↗` 并给出正确说法 ②
 | `link_end` | `link`, `error?` | **〔SR1a〕这条链路不会再有字节了**，后端已忘掉这个 id。`error` 缺席 = 正常收尾；在 = 非正常收尾的人话。拨不通**不**走这里（那是链路字节里那一行失败的 ack） |
 | `transfer` | `id`, `got`, `total`, `end?` | **〔SR1b〕一趟传输此刻的样子**（`transfer-start` 之后才出现）：每一帧是整份快照（`got` / `total` 字节），不是增量 ⇒ 后端按变更合并、堵住时只合并不堆积。带 `end` 的那一帧是这一趟的**最后一帧**：`{"state":"done","bytes","sha256"?}` · `{"state":"failed","why"}` · `{"state":"cancelled"}`（〔FW1 · 第四波 4D〕`sha256` 只有上传那一路有：整份本机文件的摘要，窗口提交 `files-commit-upload` 时原样交回当 `expect`）。**不丢**：走应答那条独立通道。完整语义在「入方向」那一节的「传输四条」 |
 | `probe` | `ticket`, `cell` | **〔MIG-1 收尾〕测试连接那一趟的一格进度**（`remote-probe` 在跑时才出现）：`cell` 恰好一个键 —— `stage`（拨号阶段行）· `reached`（`ssh` / `hello` / `control`）· `end`（结局，最后一格）。**不丢**：走应答那条独立通道。完整语义在「入方向」那一节的 `remote-probe` |
+| `progress` | `ticket`, `cell` | **〔P7 · V158「长活要有进度」〕一条长活此刻的一格进度**（今天：`panorama` 建索引那一档，请求交了 `ticket` 才出现）：`ticket` = 发起方交的票（进度流 `progress/<ticket>` 的名字，本后端只回填），`cell` = 那个活自己报的一格（一个 JSON 对象，原样不解释；全景是上游 `IndexProgress{phase, done, total}`）。走应答那条独立通道，但**可丢**（满了丢这一格：每格是整份快照，下一格补上；结局照旧在应答里）。完整语义在「入方向」那一节的 `panorama` |
 | `tap` | `stream`, `resp`, `n`, `data?`, `end?` | **〔TAP · V124 · `设计/20 §8`〕中转抄出来的一个 SSE 事件**（或一个响应的收尾）。只有**进程里住着中转的那个后端**（常驻后端，本机远端同形）会发。`stream` = 〔V141〕claude 请求头 `x-claude-code-session-id` 的值（== 它的 sid，新开 / resume / 分叉同一形；没带 / 过不了段闸 ⇒ 空串），后端不解释；`resp` = 本进程第几个响应；`n` = 这一个响应里第几个事件，**从 0 连续** —— 每个事件先占号再投递，丢了的号不出现 ⇒ 接收侧看 `n` 连不连得上就知道缺在哪（原位缺口，`设计/05 §3.3.4`）。`data`（SSE `data:` 后那段原文，**一个 JSON 串**）与 `end`（`"done"` 上游说完 · `"broken"` 转发以错误收尾；这一帧的 `n` = 一共占了几个号）恰有一个。一个事件都没有的响应（非 SSE）不发。**可丢**：走后端自己那条有界 tap 通道（256 件、单件原文 ≤ 16 KiB），不挤出方向的内容帧、不回推中转；SSE 只保快，jsonl 保对（V24） |
 
 ### 入方向：流连接上的命令信封（U6b-1）
@@ -1779,7 +1780,7 @@ monitor 进程内也**不再有它的副本**（原来那条「启动时 / 改�
 | `agent` | → | 这一家 agent 的路由名（第 1 段）|
 | `account` | → | `{"kind":"named","configDir":…}` · `{"kind":"base"}` · 缺席 / `null`（没表态）|
 | `allSessions` | → | 全量注入开关（`/t/` 那几格；monitor 进程环境 `CCM_RELAY_ALL_SESSIONS`，默认开，由调用方带来）|
-| `baseUrl` | ← | 注入的地址（不带钥匙；渲染成 `$(cat "$HOME/.cc-monitor/relay-key")` 那一形是渲染那一侧的事）；`null` = 不注入（含「有它更好而中转没在听 ⇒ 这一发直连」）|
+| `baseUrl` | ← | 注入的地址（不带钥匙；渲染成 `$(cat ~/.cc-monitor/relay-key)` 那一形是渲染那一侧的事）；`null` = 不注入（含「有它更好而中转没在听 ⇒ 这一发直连」）|
 
 **错误码**：`bad_args` · `relay_down`（非它不可 —— API 号代入 `/s/` —— 而这台的中转没在听：拒绝起会话，一句话说清是哪个号）。
 只在要注入时才问中转在不在（读常驻后端进程内的监听状态；〔DEL〕中转只住那台的常驻后端里，不另起一个）。
@@ -1919,8 +1920,9 @@ monitor **从不**对本机那条连接发 `relay-ensure`（本机那一个就�
 | 字段 | 向 | 说明 |
 |---|---|---|
 | `client` | → | 可选。**本机那一栏**才带：monitor 自己进程独有的几条事实 `{home, agentHome, path?}`（`HostScope::Client` 那一族按它们解；本机后端与 monitor 同一台、同一用户 ⇒ stat 仍由这台做，`05 §14.3` E 组）。不带 ⇒ 远端那一栏：住 monitor 那台的那一族不进人群 |
-| `data` | ← | 整份报告：`rows`（每行 `tool_id` · `tool_name` · `tier` · `source_label` · `path_declared` · `path_resolved` · `note` · `host_label` · `effect_label` · `state{kind: present\|absent\|undetermined, detail?\|why?}` · `installable` · `uninstallable`）· `settings_scopes` · `claude_config_dir` · `home` |
+| `data` | ← | 整份报告：`rows`（每行 `tool_id` · `tool_name` · `tier` · `source_label` · `path_declared` · `path_resolved` · `note` · `host_label` · `effect_label` · `state{kind: present\|absent\|undetermined\|expected_absent, detail?\|why?}` · `installable` · `uninstallable`）· `settings_scopes` · `claude_config_dir` · `home` |
 
+- `expected_absent`（带 `detail`）＝ 该不在、确实不在：旧版遗留那一档（认出是我们放的就删）不在，正是该有的样子 —— 结论由后端给（`footprint/rows.rs::read_absence`），界面照档画、不算缺口。
 - 目录最多列 4096 个名字（超了 ⇒ 列不动，**不截断**）· 查 cc-bus 钩子字样的文件最多 1 MiB，**文件内容一个字节都不回**。
 - 环境是这个**后端进程**的（`HOME`，没有再退 `USERPROFILE`；`PATH`）—— 用户交互 shell 的 rc 改过的环境这里看不见。
 
@@ -3135,6 +3137,19 @@ D 组「monitor 算好、后端写」（`设计/05 §14.3`）按用户 09-27「�
 错误码：`unobservable`（输出被改写 —— 段数下溢 ——、超时或起不来：**不是零会话**）· `too_large`。
 ⚠ **CLI 面也有它**（`--tmux-list`，不读 stdin）。
 
+#### `terminal-local`：本机开终端要跑的那一串（〔P5〕09-29；`设计/80 §8.2` 本地半：令牌握手前奏由本机后端渲，monitor 只开终端）
+
+```text
+→ {"id":"tl1","cmd":"terminal-local","args":{"command":"claude --resume s1","rbindToken":"0f1e2d3c4b5a69788796a5b4c3d2e1f0"}}
+← {"kind":"reply","id":"tl1","ok":true,"data":{"command":"& {\n    $m = 'ccm-rbind-token-0f1e2d3c4b5a69788796a5b4c3d2e1f0'\n    …\n}\nclaude --resume s1"}}
+```
+
+入参：要在本机新窗口里跑的 `command`（非空串，原样用）＋ 可空 `rbindToken`（这次拉起的启动期令牌）。出：`rbindToken` 缺席 / `null` ⇒ `command` **逐字节原样**；
+有令牌 ⇒ 令牌握手前奏在前、原串逐字节在后。前奏与 `__ccm_bind` 同一条握手（先设窗口标题、再写 `<monitor 数据目录>/ps-await/<PID>.json`、等 monitor 删），
+marker = `ccm-rbind-token-<令牌>`；marker 前缀与目录名是共享契约（`shell_quote_core`），值进 PowerShell 单引号只经 `dialect::ps_literal`。
+数据目录按 `CCM_DATA_DIR` → `<家目录>/.cc-monitor` 推；推不出 ⇒ 不接前奏、原样回。码：`invalid_args`（缺 `command` / 空串 / `rbindToken` 不是串也不是 `null`）·
+`refused`（令牌形状不对：不是 32 个小写十六进制）。只上帧面（`STREAM_ONLY`）。
+
 #### `terminal-ssh`：给一台远端开终端要跑的那一串（〔FIX4〕09-28；`设计/99 §2.1 ⑬`「待迁」最后一行：ssh 外壳与 PowerShell 窗口载荷由本机后端渲，monitor 只开终端）
 
 ```text
@@ -3143,10 +3158,10 @@ D 组「monitor 算好、后端写」（`设计/05 §14.3`）按用户 09-27「�
 ```
 
 入参：那台机器的配置 `machine`（＋ `saved?` · `jump?` · `prefer?`，与 `remote-probe` / `pubkey-push` 同形，组请求走 `dial/machine.rs::resolve`）＋ 要在那台跑的
-`command`。出：一行 PowerShell `& ssh -t[ -J <跳板用户>@<跳板>[:口]] -p <口>[ -i '<钥匙>'] <用户>@<地址> -- '<bash -lic ''…''>'` —— 地址取竞速顺序第一条
+`command` ＋ 可空 `rbindToken`（〔P5〕有值 ⇒ 成品前面接令牌握手前奏，同 `terminal-local`）。出：一行 PowerShell `& ssh -t[ -J <跳板用户>@<跳板>[:口]] -p <口>[ -i '<钥匙>'] <用户>@<地址> -- '<bash -lic ''…''>'` —— 地址取竞速顺序第一条
 （交了 `prefer` 且仍在这台的地址里 ⇒ 上次赢的那条）；命令包成 `bash -lic '<命令>'` 再以 PowerShell 单引号字面量嵌入；钥匙尾 `\` 剥掉；没钥匙 ⇒ 不带 `-i`（走 agent）。
-**只算不起**：不拨号、不开窗（开窗 · 令牌握手前奏是 monitor 的事）。码：`invalid_args`（缺 `machine` / `command`）· `bad_jump`（跳板交不来 / 指自己）·
-`refused`（命令空 / 超长 / 含控制符 / 含双引号 —— PowerShell 5.1 传参畸变面；用户名 · 地址 · 跳板出了白名单）。只上帧面（`STREAM_ONLY`）。
+**只算不起**：不拨号、不开窗（开窗是 monitor 的事）。码：`invalid_args`（缺 `machine` / `command` · `rbindToken` 不是串也不是 `null`）· `bad_jump`（跳板交不来 / 指自己）·
+`refused`（命令空 / 超长 / 含控制符 / 含双引号 —— PowerShell 5.1 传参畸变面；用户名 · 地址 · 跳板出了白名单；令牌形状不对）。只上帧面（`STREAM_ONLY`）。
 
 #### `tmux-name-mint`：起会话要的 tmux 名（〔FIX4〕09-28；`设计/90 §3` J7「派生 ＋ 避让只留后端」）
 
@@ -3350,9 +3365,10 @@ D 组「monitor 算好、后端写」（`设计/05 §14.3`）按用户 09-27「�
 | `shape` | → | 〔PANO〕要的那一代小程序的形状代号（发起方取自生成物 `engine-contract.json`）；后端拿它与 `--probe` 报的 `shape=` 逐字比，对不上 ⇒ `unsupported`。缺 ⇒ `bad_args` |
 | `repo` | → | 被分析的仓在**这台机器上**的绝对路径（`diagram_kinds` 不要） |
 | `args` | → | 这个 op 自己的参数（JSON 对象；拼错的字段名被拒，不静默忽略） |
+| `ticket` | → | 〔P7〕可缺。交了 ⇒ 小程序报的进度（建索引那一档在 stderr 上写 `progress=<一格 JSON>`，插件口分拣）逐格推成出方向 `progress{ticket, cell}` 帧（见出方向那张表），界面拿它订 `progress/<ticket>`；没交 ⇒ 不推 |
 | `result` | ← | 小程序应答里的 `data` **原样**（形状与 monitor 进程内那套全景命令逐字相同；`node` 查不到是 `null`） |
 
-- CLI 面同样自动派生（`--panorama`，stdin 一段 JSON = 上面那个 `args`），已进 `SUBCOMMANDS`。
+- CLI 面同样自动派生（`--panorama`，stdin 一段 JSON = 上面那个 `args`），已进 `SUBCOMMANDS`（一次性进程里没人订进度，`ticket` 交了也不推）。
 - 期限：按小程序 `--probe` 自报的档 —— `long=` 里的（今天 `index` / `reindex` / `refresh_doc_links`）900 秒，其余 60 秒 —— 给**子进程**的（后端零定时器）。客户端那一侧的等待要比它长。
 - 错误码：`bad_args`（缺 `op` / `shape`、参数不合形，小程序自己那句话原样带回）· `not_installed`（这台没有那个小程序，或找到的那个身份行对不上；整句说清查过哪儿）· `unsupported`（装的那份不会这个 op，点名缺的那一个；或形状代号不是请求要的那一代）· `timed_out`（说清是哪一档期限）· `too_large`（参数塞不进一次命令调用，或结果超过 32 MiB）· `failed`（仓打不开 / 引擎报错 / 被信号打断，带诊断）。
 - 〔RM1d · V110「引擎只算、文件管理来写」〕本命令**不写用户文件**。批注 / 文档关联的 `plan_*` 只读盘上那一两份、回一份编辑计划
@@ -3380,7 +3396,7 @@ D 组「monitor 算好、后端写」（`设计/05 §14.3`）按用户 09-27「�
 #### `panorama-edit`：全景写批注 / 文档关联（〔MIG-3b 续〕09-28；〔RM1d〕V110「引擎只算、文件管理来写」）
 
 ```text
-→ {"id":"g2","cmd":"panorama-edit","args":{"repo":"/home/me/proj","op":"plan_add_annotation","args":{"file":"a.rs","symbol":null,"body":"x","author":"me"},"shape":"<形状代号>"}}
+→ {"id":"g2","cmd":"panorama-edit","args":{"repo":"/home/me/proj","op":"plan_add_annotation","args":{"target":"a.rs#f","body":"x","author":"me"},"shape":"<形状代号>"}}
 ← {"kind":"reply","id":"g2","ok":true,"data":"k3f…"}
 ```
 

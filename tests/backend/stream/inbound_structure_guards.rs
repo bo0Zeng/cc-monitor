@@ -326,6 +326,8 @@ fn every_registered_command_declares_its_run_kind() {
         "ccm-probe",
         // 〔FIX4 · ⑬〕`terminal-ssh`：开终端那一串，纯函数（校验 ＋ quote，不拨号不起进程）⇒ 不进阻塞档。
         "terminal-ssh",
+        // 〔P5〕`terminal-local`：本机那一串接前奏，纯函数（不起进程不碰盘）⇒ 不进阻塞档。
+        "terminal-local",
         // 〔FIX4 · J15〕`history-search-merge`：各台结果合一份，纯计算 ⇒ 不进阻塞档。
         "history-search-merge",
         // 〔AS2 · 第四波 4B〕资产目录的同步：真异步（拨号 / 等远端 capture），在 await 点可取消。

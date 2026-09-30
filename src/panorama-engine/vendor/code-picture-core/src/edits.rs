@@ -33,6 +33,7 @@ use std::path::Path;
 
 /// 一处要落盘的改动。**只描述,不执行**。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 pub struct FileEdit {
     /// 仓相对路径,`/` 分隔。
     pub rel: String,
@@ -48,6 +49,7 @@ pub struct FileEdit {
 ///
 /// 🔴 `edit` 为 `Some` 时 `before != after` 恒成立(构造处归一),写者不用自己再比一遍。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 pub struct Planned<T> {
     pub value: T,
     pub edit: Option<FileEdit>,

@@ -42,6 +42,8 @@ fn entries() -> &'static serde_json::Map<String, serde_json::Value> {
 /// 没给的原样留 `{名}`（Rust 读口的处置，`设计/01 §6.9` 认可的两读口差异，金样 `_differences` 登记着）。
 /// 先前逐个参数对整串 `replace` —— 前一个参数的值里若含 `{后一个参数名}`，会被后一个再换一遍：插值重新解释了值。
 /// 与前端读口 `copy-table.ts::copyText` 那一趟同形（金样 `tests/__fixtures__/copy-interpolation.golden.json` 两侧各对）。
+///
+/// 〔P3 · `rules.json` C-L5〕值与相邻汉字之间的空格随值定（[`join_seams`]）：「{machine}上」与「{machine} 上」同一个意思。
 pub fn copy_text(key: &str, args: &[(&str, &str)]) -> String {
     let Some(zh) = entries()
         .get(key)
@@ -50,10 +52,14 @@ pub fn copy_text(key: &str, args: &[(&str, &str)]) -> String {
     else {
         return format!("〔{key}〕");
     };
-    let mut out = String::with_capacity(zh.len());
+    // 「字面 · 值 · 字面 · 值 … 字面」交替；没给值的 `{x}` 算字面。
+    let mut parts: Vec<String> = vec![String::new()];
     let mut rest = zh;
     while let Some(open) = rest.find('{') {
-        out.push_str(&rest[..open]);
+        parts
+            .last_mut()
+            .expect("parts 恒非空")
+            .push_str(&rest[..open]);
         let after = &rest[open + 1..];
         let given = after.find('}').and_then(|close| {
             let name = &after[..close];
@@ -63,18 +69,102 @@ pub fn copy_text(key: &str, args: &[(&str, &str)]) -> String {
         });
         match given {
             Some((close, value)) => {
-                out.push_str(value);
+                parts.push(value.to_string());
+                parts.push(String::new());
                 rest = &after[close + 1..];
             }
             // 不是一个给了值的占位符 ⇒ 这个 `{` 原样留下，从它后面接着扫（`{a{b}` 里的 `{b}` 照样认）。
             None => {
-                out.push('{');
+                parts.last_mut().expect("parts 恒非空").push('{');
                 rest = after;
             }
         }
     }
-    out.push_str(rest);
-    out
+    parts.last_mut().expect("parts 恒非空").push_str(rest);
+    join_seams(&parts)
+}
+
+fn is_han(c: char) -> bool {
+    matches!(c, '\u{3400}'..='\u{4dbf}' | '\u{4e00}'..='\u{9fff}' | '\u{f900}'..='\u{faff}')
+}
+
+fn is_ascii_visible(c: char) -> bool {
+    matches!(c, '!'..='~')
+}
+
+/// 一道接缝两边的字：汉字挨着 ASCII 可见字符 ⇒ 要一个空格（`Some(true)`）；汉字挨着汉字 ⇒ 不要（`Some(false)`）；别的（全角标点 · 空白 · 其它文字）⇒ 不管。
+fn seam_wants(a: char, b: char) -> Option<bool> {
+    let (ha, hb) = (is_han(a), is_han(b));
+    if (ha && is_ascii_visible(b)) || (is_ascii_visible(a) && hb) {
+        Some(true)
+    } else if ha && hb {
+        Some(false)
+    } else {
+        None
+    }
+}
+
+/// 〔P3 · C-L5〕拼回一句：`parts` 是「字面 · 值 · 字面 · 值 … 字面」交替（字面可为空）。每个非空的值与它两边的**模板字**之间
+/// 按 [`seam_wants`] 补上或拿掉**一个**空格；接缝上两个以上空格是排版，照留；两个值之间只隔空格的那一段不动。
+/// 与前端 `copy-table.ts::joinSeams` 同形（两侧各对插值金样）。
+fn join_seams(parts: &[String]) -> String {
+    let mut lit: Vec<String> = parts
+        .iter()
+        .enumerate()
+        .map(|(i, p)| if i % 2 == 0 { p.clone() } else { String::new() })
+        .collect();
+    let mut i = 1;
+    while i < parts.len() {
+        let v = &parts[i];
+        let (Some(first), Some(last)) = (v.chars().next(), v.chars().next_back()) else {
+            i += 2;
+            continue;
+        };
+        // 左边：前一段字面的尾巴
+        let l: Vec<char> = lit[i - 1].chars().collect();
+        let l_space = l.len() >= 2 && l[l.len() - 1] == ' ' && l[l.len() - 2] != ' ';
+        let lc = if l_space {
+            l.get(l.len() - 2)
+        } else {
+            l.last()
+        };
+        if let Some(&lc) = lc {
+            match seam_wants(lc, first) {
+                Some(true) if !l_space => lit[i - 1].push(' '),
+                Some(false) if l_space => {
+                    lit[i - 1].pop();
+                }
+                _ => {}
+            }
+        }
+        // 右边：后一段字面的开头
+        if i + 1 < lit.len() {
+            let r: Vec<char> = lit[i + 1].chars().collect();
+            let r_space = r.len() >= 2 && r[0] == ' ' && r[1] != ' ';
+            let rc = if r_space { r.get(1) } else { r.first() };
+            if let Some(&rc) = rc {
+                match seam_wants(last, rc) {
+                    Some(true) if !r_space => lit[i + 1].insert(0, ' '),
+                    Some(false) if r_space => {
+                        lit[i + 1].remove(0);
+                    }
+                    _ => {}
+                }
+            }
+        }
+        i += 2;
+    }
+    parts
+        .iter()
+        .enumerate()
+        .map(|(i, p)| {
+            if i % 2 == 0 {
+                lit[i].as_str()
+            } else {
+                p.as_str()
+            }
+        })
+        .collect()
 }
 
 /// 同一条文案，但要一个 `&'static str`（**没有参数**的那种）。

@@ -468,8 +468,8 @@ pub fn run() {
     // logging 模块内部把所有复杂度（rolling file appender / non_blocking writer /
     // ErrorEmitterLayer / EnvFilter reload）封死，对外只暴露 init + state。
     //
-    // **monitor_data_dir 必须能解析**：这里用 dirs::home_dir 兜底，不依赖任何
-    // 配置（避免 log 初始化跟 config 初始化循环依赖）。
+    // **monitor_data_dir 必须能解析**：家目录按两侧同一条规矩（`creds_core::store::home_dir`）推，不依赖任何
+    // 配置（避免 log 初始化跟 config 初始化循环依赖）；推不出退到临时目录。
     let monitor_data_dir = config::resolve_monitor_data_dir()
         .unwrap_or_else(|| std::env::temp_dir().join("cc-monitor-fallback"));
     // 〔DATA-HOME · V160〕数据目录就是 `~/.cc-monitor`（后端的家），本进程里头一个碰它的是下面的日志 ⇒ 先按「只给本人」建好；

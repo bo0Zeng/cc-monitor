@@ -4167,8 +4167,9 @@ fn hx2_a_backend_started_for_another_data_dir_is_refused_out_loud() {
         "CCM_HISTORY_METADATA".into(),
         "/tmp/iso/history-metadata.json".into(),
     ));
+    // 〔P3〕C-L5：值是汉字 ⇒ 与前面的汉字之间不隔空格
     assert!(
-        matches!(hello_verdict(&seen, "b1", "/h/.claude", &more), HelloVerdict::Stranger(w) if w.contains("CCM_HISTORY_METADATA：它用的是 没有")),
+        matches!(hello_verdict(&seen, "b1", "/h/.claude", &more), HelloVerdict::Stranger(w) if w.contains("CCM_HISTORY_METADATA：它用的是没有")),
         "它少一格（没被交注解路径）⇒ 该拒"
     );
     assert!(

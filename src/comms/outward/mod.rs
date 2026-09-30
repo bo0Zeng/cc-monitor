@@ -168,7 +168,7 @@
 //! |---|---|
 //! | `crate::observe::…` | 中转**搬字节、不读世界**。观测面一旦被它认识，「一个进程服务 N 个会话」就会退化成「转发路上顺手替某个会话查点东西」 |
 //! | `crate::control::…` | 中转**不改变世界**（除了把字节递过去）。认识控制面 = 在 HTTP 处理线程上开一条「顺手 kill / launch」的门 |
-//! | `crate::agents::…` | 本文件第一句逐字写着「**它不懂任何 agent 的语义**」。这条今天**承重**：`host(get, home, …)` 的 `home` 是**入参**（`main.rs` 流模式那一处经 `accounts::upstream_select::host_relay` 递进来），不是中转自己去 `agents/` 里问的 |
+//! | `crate::agents::…` | 本文件第一句逐字写着「**它不懂任何 agent 的语义**」。中转要的东西都由宿主递进来（`host(get, startup, tap)`：取值器 · 上游选择那只手 · tap 口），不去 `agents/` 里问 |
 //! | `crate::plugin::…` | 与调用口是**两条互不相干的基础设施**。中转认识它 = HTTP 线程上长出一条起进程的路（★ 这一格括号里原先那半句是假的，订正见表下） |
 //!
 //! ★ **订正**（`K-R31` `D5⑵`，09-06 现打）：最后一格括号里原先写的是
@@ -195,7 +195,7 @@
 //! ## 许引
 //!
 //! `crate::common::…` · `crate::platform::…` · `crate::stream::wire`（通用面），
-//! 以及标准库与本层内部模块。**其余一律走入参**（`E6`）—— `home` 就是活标本。
+//! 以及标准库与本层内部模块。**其余一律走入参**（`E6`）—— `host` 的取值器 `get` 就是活标本（中转要读哪个变量都经它）。
 //!
 //! ## 反过来：**别处不许伸手进来**
 //!
@@ -216,9 +216,7 @@
 //!   记着同一个坑的第一次：写这份注释的第一版就是那么红的）。
 //! - 更曲折的间接（把符号先 `pub use` 到第三个模块再引）也扫不到
 //!   （`refs_to_layer` 头注逐字登记了这一条）。
-//! - **测试段不受管**（判据扫的是 `production_code`）。这是**有意**的：分层是生产架构的性质。
-//!   活标本就在本层：`server_tests.rs::relay_child_process_entry_point` 走
-//!   `crate::agents::claudecode::paths::resolve_home()` —— 那是子进程入口的夹具，**不算违规**。
+//! - **测试段不受管**（判据扫的是 `production_code`）。这是**有意**的：分层是生产架构的性质（子进程入口那类夹具可以伸手）。
 //! - 判据的人群是**层目录**：`src/` 顶层那几个文件（`main.rs` · `listen.rs` · `wire.rs`）
 //!   伸手进 `relay::upstream::…` 这一形，**今天没有判据挡着**（`mod relay;` 声明在 `main.rs`，
 //!   它写的是**裸** `relay::…`，锚点对不上）。如实登记，别读成「全体没有」。
@@ -445,7 +443,6 @@ pub(crate) trait Ready {
     fn into_destinations(
         self: Box<Self>,
         get: &dyn Fn(&str) -> Option<String>,
-        home: &std::path::Path,
         out: &mut dyn std::io::Write,
     ) -> std::sync::Arc<dyn Destinations>;
 }

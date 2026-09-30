@@ -13,7 +13,7 @@ fn answer_now(fixed: &[PathBuf], store: &Path, args: &Value) -> Result<Value, Cm
         .enable_all()
         .build()
         .unwrap()
-        .block_on(answer_with(fixed, store, args))
+        .block_on(answer_with(fixed, store, args, &|_| {}))
 }
 
 /// 私有临时目录（进程号 ＋ 标签 ＋ 序号）。
@@ -148,6 +148,49 @@ fn a_real_process_walks_find_probe_run_and_back() {
             "/r e/p".to_string(),
             "--args".to_string(),
             "{\"budget\":5}".to_string(),
+        ]
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// 要求住址：`97 §8`「要上游给的」④ · `99 §1` V158「长活要有进度」。
+///
+/// ★〔P7〕小程序在 stderr 上报的进度格（一个 JSON 对象）原样交 `progress`；不是对象的那种行（数组 · 坏 JSON）不转；
+/// 应答照旧是 stdout 那一行。真进程当插件。
+#[cfg(unix)]
+#[test]
+fn the_programs_progress_cells_reach_the_sink_and_nothing_else_does() {
+    let dir = scratch("progress");
+    let store = dir.join("store");
+    let bin = fake_program(
+        &dir,
+        "name=cc-monitor-panorama",
+        "index",
+        r#"printf 'progress={"phase":"Parse","done":0,"total":2}\n' >&2
+printf 'progress=[1]\n' >&2
+printf 'progress=not json\n' >&2
+printf 'progress={"phase":"Parse","done":2,"total":2}\n' >&2
+printf '{"ok":true,"data":{"files":2}}\n'"#,
+    );
+    let seen = std::sync::Mutex::new(Vec::<Value>::new());
+    let sink = |cell: Value| seen.lock().unwrap().push(cell);
+    let got = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap()
+        .block_on(answer_with(
+            &[bin],
+            &store,
+            &shaped(json!({"op": "index", "repo": "/r", "ticket": "t"})),
+            &sink,
+        ))
+        .unwrap();
+    assert_eq!(got, json!({"result": {"files": 2}}));
+    assert_eq!(
+        seen.into_inner().unwrap(),
+        [
+            json!({"phase": "Parse", "done": 0, "total": 2}),
+            json!({"phase": "Parse", "done": 2, "total": 2}),
         ]
     );
     let _ = std::fs::remove_dir_all(&dir);

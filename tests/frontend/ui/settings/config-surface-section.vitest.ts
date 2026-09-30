@@ -395,6 +395,33 @@ describe("ConfigSurfaceSection", () => {
     expect(r.querySelector(".config-surface-resolved")).toBeNull();
   });
 
+  // 〔SHOTS 09-29 · 设计/70 §6.1 旧版放的入口 · 主会话 09-29 裁「不在算不算正常由后端给结论」〕界面**只照档画**：
+  // 档是 `expected_absent` ⇒ 正常语气、那一句原样上屏、不算缺口；档是 `absent` ⇒ 照旧是红 —— 两行的效果档措辞**对调**着给，
+  // 证明这一页不看 `effect_label`（按措辞猜就会把两行画反）。
+  it("该不在、确实不在（expected_absent）照档画成正常，不借「不存在」的红；不按效果档措辞推", async () => {
+    const gone = copyText("rsConfigSurface.observe.retiredGone");
+    const legacyEffect = copyText("rsConfigSurface.effect.retiredLegacy");
+    serve(
+      report({
+        rows: [
+          row({ path_declared: "~/.a", effect_label: copyText("rsConfigSurface.effect.ownedFile"), state: { kind: "expected_absent", detail: gone } }),
+          row({ path_declared: "~/.b", effect_label: legacyEffect, state: { kind: "absent" } }),
+        ],
+      }),
+    );
+    const s = new ConfigSurfaceSection();
+    await s.refresh();
+    const [a, b] = [...s.element.querySelectorAll<HTMLElement>(".config-surface-row")];
+    expect(a.dataset.path).toBe("~/.a");
+    expect(a.className).toContain("tone-ok");
+    expect(a.className).not.toContain("tone-bad");
+    expect(a.querySelector(".config-surface-state")?.textContent).toBe(gone);
+    expect(a.querySelector(".config-surface-prompt")).toBeNull();
+    expect(b.className).toContain("tone-bad");
+    expect(gapKindOfState({ kind: "expected_absent", detail: gone })).toBeNull();
+    expect(formatReportText(report({ rows: [row({ state: { kind: "expected_absent", detail: gone } })] }))).toContain(gone);
+  });
+
   it("invoke resolve 成 undefined 不许炸（B03 的真 bug，第三处）", async () => {
     serve(null); // 〔MIG-3b 续〕经通道之后「什么都没回」到了解码器手里就是 `null`
     const s = new ConfigSurfaceSection();

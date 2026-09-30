@@ -284,7 +284,7 @@ async fn terminal_open(origin: Origin, payload: Body, left: Duration) -> Result<
             copy_text("rsChanHost.terminal.badReply", &[]),
         ));
     };
-    match crate::launch::open_terminal_window(line.to_string(), None, true).await {
+    match crate::launch::open_terminal_window(line.to_string(), true).await {
         Ok(()) => Ok(Body(b"{}".to_vec())),
         Err(why) => Err(refused("terminal_failed", why)),
     }

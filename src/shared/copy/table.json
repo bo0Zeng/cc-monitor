@@ -2695,11 +2695,6 @@
       "zh": "人写",
       "args": []
     },
-    "panorama.truncate.ellipsis": {
-      "kind": "body",
-      "zh": "{text}…",
-      "args": ["text"]
-    },
     "panorama.sidebarStatus.symbols": {
       "kind": "title",
       "zh": "符号",
@@ -3178,6 +3173,31 @@
     "panorama.showLoading.cancel": {
       "kind": "action",
       "zh": "取消",
+      "args": []
+    },
+    "panorama.indexProgress.line": {
+      "kind": "body",
+      "zh": "{phase}：{done} / {total}",
+      "args": ["phase", "done", "total"]
+    },
+    "panorama.indexProgress.parse": {
+      "kind": "body",
+      "zh": "解析源文件",
+      "args": []
+    },
+    "panorama.indexProgress.link": {
+      "kind": "body",
+      "zh": "建立调用关系",
+      "args": []
+    },
+    "panorama.indexProgress.relink": {
+      "kind": "body",
+      "zh": "补全调用关系",
+      "args": []
+    },
+    "panorama.indexProgress.docs": {
+      "kind": "body",
+      "zh": "扫描文档",
       "args": []
     },
     "panorama.highlightLegend.text": {
@@ -3805,6 +3825,11 @@
       "kind": "body",
       "zh": "{n} 处调用未解析",
       "args": ["n"]
+    },
+    "layout.label.ellipsis": {
+      "kind": "body",
+      "zh": "{text}…",
+      "args": ["text"]
     },
     "layout.cluster.uncategorized": {
       "kind": "body",
@@ -10035,6 +10060,11 @@
       "zh": "界面数据",
       "args": []
     },
+    "data.card.backend": {
+      "kind": "title",
+      "zh": "本机后端的数据",
+      "args": []
+    },
     "data.card.own": {
       "kind": "title",
       "zh": "cc-monitor 自己的数据",
@@ -12797,6 +12827,11 @@
       "zh": "目录，{count} 项",
       "args": ["count"]
     },
+    "rsConfigSurface.observe.retiredGone": {
+      "kind": "body",
+      "zh": "没有旧版遗留",
+      "args": []
+    },
     "rsConfigSurface.home.multiStar": {
       "kind": "error",
       "zh": "只支持一个 *，实得 {declared}",
@@ -13717,6 +13752,76 @@
         "C-T1": "说的是 WebView2 数据目录里放了什么，WebView2 / localStorage / IndexedDB 是产品与存储类型的原名，用户在资源管理器里看到的就是它们"
       }
     },
+    "rsDataPaths.backend.bin": {
+      "kind": "body",
+      "zh": "cc-monitor 放下的程序：后端、代码全景组件等，缺了会重新放",
+      "args": []
+    },
+    "rsDataPaths.backend.staging": {
+      "kind": "body",
+      "zh": "上传到一半的文件，传完就移走",
+      "args": []
+    },
+    "rsDataPaths.backend.relayKey": {
+      "kind": "body",
+      "zh": "中转用的钥匙。后端运行时要用，删了要重起后端",
+      "args": []
+    },
+    "rsDataPaths.backend.listenToken": {
+      "kind": "body",
+      "zh": "连本机后端用的钥匙。后端运行时要用，删了要重起后端",
+      "args": []
+    },
+    "rsDataPaths.backend.listenPid": {
+      "kind": "body",
+      "zh": "本机常驻后端的进程记录。后端运行时要用，删了要重起后端",
+      "args": []
+    },
+    "rsDataPaths.backend.acctIso": {
+      "kind": "body",
+      "zh": "多账号工具 cc-acct-iso，删了要重装",
+      "args": []
+    },
+    "rsDataPaths.backend.policy": {
+      "kind": "body",
+      "zh": "退出行为：monitor 退出时后端留不留",
+      "args": []
+    },
+    "rsDataPaths.backend.aliasesPosix": {
+      "kind": "body",
+      "zh": "你建的别名（bash、zsh 读这一份）",
+      "args": []
+    },
+    "rsDataPaths.backend.aliasesPs": {
+      "kind": "body",
+      "zh": "你建的别名（PowerShell 读这一份）",
+      "args": []
+    },
+    "rsDataPaths.backend.skillLedger": {
+      "kind": "body",
+      "zh": "从这里装的 skill 的记录，卸的时候按它删",
+      "args": []
+    },
+    "rsDataPaths.backend.assetCatalog": {
+      "kind": "body",
+      "zh": "各台机器上 skill 与 MCP 的清单，删了会重新扫出来",
+      "args": []
+    },
+    "rsDataPaths.backend.apikey": {
+      "kind": "body",
+      "zh": "你填的 API key",
+      "args": []
+    },
+    "rsDataPaths.backend.logs": {
+      "kind": "body",
+      "zh": "本机后端的错误输出（每份至多 4 MB，留两份）",
+      "args": []
+    },
+    "rsDataPaths.backend.panorama": {
+      "kind": "body",
+      "zh": "代码全景的索引，删了要重新建立索引",
+      "args": []
+    },
     "rsDataPaths.monitor.logs": {
       "kind": "body",
       "zh": "诊断日志（按天滚动，保留 3 天）",
@@ -13847,7 +13952,7 @@
       "zh": "拒绝启动：跳板 host 含非法字符：{jumpHost}",
       "args": ["jumpHost"]
     },
-    "rsLaunch.refuse.badToken": {
+    "beTerminal.refuse.badToken": {
       "kind": "error",
       "zh": "拒绝启动：启动令牌格式不对（应为 32 个小写十六进制字符）",
       "args": []
