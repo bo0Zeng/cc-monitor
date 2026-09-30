@@ -2152,12 +2152,13 @@ monitor 照答经**那台**后端的 `files-delete`（带 `expect`）删（`ccm_
 | 字段 | 向 | 意思 |
 |---|---|---|
 | `dial` | → | 怎么够到那台（与 `files` 链路同一份拨号请求）；沿池里那条 SSH 开只读 SFTP：stat ＋ 至多一次读回（上限 256 KiB，与 `files-peek` 同一个口径） |
+| `text` | → | 〔P1〕与 `dial` 二选一：本机 PATH 上另一个 `ccm` 的开头一截（monitor 读的），按同一条规矩认它是不是我们早先放的；不读盘、不拨号（monitor 本机探针只拿来说话，不删） |
 | `verdict` | ← | `absent`（不在）· `remove`（第一行 `#!`、第二行认得出两形记号之一 ⇒ 是我们放的）· `keep`（别的一律不动） |
 | `expect` | ← | 只在 `remove` 时是字符串：读到的全文，删时原样交 `files-delete` 当期望值（盘上变了就不删）；其余 `null` |
 | `why` | ← | 只在 `keep` 时是字符串：为什么不动（不是我们放的 · 读不成文本）；其余 `null` |
 
-错误码：`bad_args`（缺 `dial`：不许退成问本机）· `unreachable`（SFTP 开不成）。
-⚠ **CLI 面也有它**（`--deploy-retired`，入参从 stdin 读）。
+错误码：`bad_args`（`dial` / `text` 恰给一个；都不给不许退成问本机落点）· `unreachable`（SFTP 开不成）。
+⚠ **CLI 面也有它**（`--deploy-retired`，入参从 stdin 读）：monitor 本机探针就是跑自己落点那份 `ccm -- --deploy-retired` 交 `{text}` 问的（同步命令里不连常驻后端）。
 
 #### `deploy-slot`：那台要哪一格字节（THIN，09-29；远端**只读**那台）
 

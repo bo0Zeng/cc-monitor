@@ -593,13 +593,43 @@ async fn retired_only_the_two_forms_we_ever_placed_are_removed_and_with_what_was
     assert!(kept(&retired_at(present, Some(&[0xff, 0xfe, b'\n'])).await));
 }
 
-/// 缺 `dial` ⇒ `bad_args`（不许退成问本机）；SFTP 开不成 ⇒ `unreachable`。
+/// 〔P1 · 第 3 件〕`{text}` 那一形（本机 PATH 上另一个 `ccm` 的开头一截）与 `{dial}` 读回来的走同一条规矩：
+/// 逐条与 [`retired_at`] 读回同一段字节的答相等，且一次 stat / 读都不发（`Fake` 什么都没登记，发了就是 `unreachable`）。
+#[tokio::test]
+async fn retired_text_form_judges_the_same_way_without_touching_any_disk() {
+    let f = Fake::default();
+    for text in [
+        SHIM_0915,
+        SHIM_LAST,
+        LAUNCHER_HEAD,
+        "#!/bin/sh\nexec my-own-ccm \"$@\"\n",
+        "#!/bin/sh\n",
+    ] {
+        let got = answer_retired(&serde_json::json!({ "text": text }), &f)
+            .await
+            .expect("答得出");
+        assert_eq!(
+            got,
+            retired_at((Some(Some(64)), None), Some(text.as_bytes())).await,
+            "{text:?}"
+        );
+    }
+}
+
+/// 缺 `dial` ⇒ `bad_args`（不许退成问本机）；`dial` 与 `text` 都给 ⇒ `bad_args`；SFTP 开不成 ⇒ `unreachable`。
 #[tokio::test]
 async fn retired_refuses_without_a_dial_and_says_unreachable_when_the_link_fails() {
     let f = Fake::default();
     let (code, _) = answer_retired(&serde_json::json!({}), &f)
         .await
         .unwrap_err();
+    assert_eq!(code, "bad_args");
+    let (code, _) = answer_retired(
+        &serde_json::json!({ "dial": { "host": "h" }, "text": SHIM_LAST }),
+        &f,
+    )
+    .await
+    .unwrap_err();
     assert_eq!(code, "bad_args");
     let (code, _) = answer_retired(&serde_json::json!({ "dial": { "host": "h" } }), &f)
         .await

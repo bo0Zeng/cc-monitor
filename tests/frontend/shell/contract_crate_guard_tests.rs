@@ -76,11 +76,6 @@ const DEPLOY_RESIDUAL: &[(&str, &str, &str)] = &[
         "src/frontend/shell/src/local_backend.rs::extract_embedded_to",
         "同上：本机那一份换不换，放完它才有后端",
     ),
-    (
-        "is_ours",
-        "src/frontend/shell/src/ccm_probe.rs::reach_of",
-        "本机探针那一格：PATH 上另一个 `ccm` 是不是我们早先放的旧入口（只用来说话，不删；WF1 写区，另排）",
-    ),
 ];
 
 fn root() -> PathBuf {

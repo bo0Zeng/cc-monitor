@@ -110,6 +110,13 @@ const SITES: &[(&str, &str, &str, &str)] = &[
          ⇒ 两条起法各造一个 `Command`，正是那个共用点存在的前提。",
     ),
     (
+        "ccm_probe.rs",
+        "ask_once",
+        "spawn_managed_cmd",
+        "〔P1〕问我们自己放下去的那份后端一次（帧命令的 CLI 面）：argv 是 `-- --<命令>`、stdin 要接成管道交入参 JSON、\
+         stderr 要接出来读错信封 —— 这三样本处特有，出口只回答三条策略 ⇒ `Command` 由这里装好再递进去。",
+    ),
+    (
         "launch.rs",
         "launch_local_posix_via",
         "spawn_managed_cmd",
