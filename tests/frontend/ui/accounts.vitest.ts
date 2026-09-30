@@ -802,7 +802,7 @@ describe("withAccount（A4 统一编排 resolve+record，三站点共用）", ()
     expect(run).not.toHaveBeenCalled();
     expect(toastMock()).toHaveBeenCalledTimes(1);
     const [, body, opts] = toastMock().mock.calls[0] as [string, string, { onClick?: () => void }];
-    expect(body).toContain("读不到aya的账号清单");
+    expect(body).toContain("读不到 aya 的账号清单"); // 〔P3〕中西文之间的空格由取文口按值补（rules.json C-L5）
     opts.onClick!();
     await vi.waitFor(() =>
       expect(run).toHaveBeenCalledWith({ configDir: undefined, accountName: undefined, modelOverride: undefined }),

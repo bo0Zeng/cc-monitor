@@ -5107,7 +5107,7 @@ describe("〔U4b〕容器 · 说不清 · 记录没了 —— TabManager 真走"
     expect(resumed()).toEqual([]);
     expect(showActionFailureToast).toHaveBeenCalledWith(
       "没法 resume：记录已不在",
-      "本机 的 /h/.claude/projects 里找不到会话 g1 的记录，resume 接不上它，所以没有打开终端。",
+      "本机的 /h/.claude/projects 里找不到会话 g1 的记录，resume 接不上它，所以没有打开终端。", // 〔P3〕C-L5：值是汉字 ⇒ 不隔
     );
     expect(tabOf("g1").state).toEqual(GONE);
     expect(btn().title).toBe("这个会话已结束，它的记录也不在了，没法 resume");
