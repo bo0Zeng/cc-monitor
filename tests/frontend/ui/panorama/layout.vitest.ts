@@ -268,13 +268,15 @@ describe("〔P3〕气泡在子系统盒里居中", () => {
       { file: "b/1.ts", score: 30, symbols: 1 },
     ],
     subsystems: [
-      { label: "a", files: ["a/1.ts", "a/2.ts", "a/3.ts"], size: 3 },
-      { label: "b", files: ["b/1.ts"], size: 1 },
+      { label: "a", files: ["a/1.ts", "a/2.ts", "a/3.ts"], size: 3, member_hash: "", anchors: [], internal_edges: 0, external_edges: 0 },
+      { label: "b", files: ["b/1.ts"], size: 1, member_hash: "", anchors: [], internal_edges: 0, external_edges: 0 },
     ],
     entry_points: [],
     total_symbols: 4,
     total_files: 4,
     unresolved_calls: 0,
+    ambiguous_calls: 0,
+    unresolved_imports: 0,
     parse_errors: 0,
   };
   const PAD = 18;
