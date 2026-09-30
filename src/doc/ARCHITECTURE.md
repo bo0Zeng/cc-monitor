@@ -146,7 +146,7 @@ monitor 的 Rust 半是 Tauri 壳（`src/frontend/shell/`），只留宿主知�
 - 不产观测帧，读都问后端（本机那几问也走 `<local>` 长连接；每问 exec 一次本机后端的那份传输 `local_query`〔散文墓碑〕已删）；
 - 调后端控制面只经通信层那一个分流器 `src/comms/inward/backend_route.rs`（`Done` / `Refused` / `NoChannel` 三态，被门拒绝不另找一条路）；
 - 与后端共用的只放在共享 crate `src/common/` 里；
-- 壳自己的 `platform/` 只住文件原语（不覆盖改名 · 置可执行位 · 只给本人的目录）。
+- 壳自己的 `platform/` 住壳要的平台原语：文件原语（不覆盖改名 · 置可执行位 · 只给本人的目录）与控制台输出的解码（Windows 按那台的 OEM 代码页）。
 
 monitor 里仍直读本机 agent 目录的地方逐处登记，条数以 `local_read_surface_registry` 的机检为准。
 
