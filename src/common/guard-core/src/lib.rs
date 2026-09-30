@@ -2423,3 +2423,8 @@ mod tests;
 #[cfg(test)]
 #[path = "../../../../tests/common/guard-core/test_tiers_tests.rs"]
 mod test_tiers;
+
+/// 仓里零引用仓外的开发文档：全部跟踪文本逐行过一张检测网，命中集 == ∅。
+#[cfg(test)]
+#[path = "../../../../tests/common/guard-core/no_outside_refs_tests.rs"]
+mod no_outside_refs;

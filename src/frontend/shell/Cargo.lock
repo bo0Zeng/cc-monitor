@@ -2319,6 +2319,9 @@ dependencies = [
 [[package]]
 name = "guard-core"
 version = "0.1.0"
+dependencies = [
+ "regex",
+]
 
 [[package]]
 name = "guillotiere"
