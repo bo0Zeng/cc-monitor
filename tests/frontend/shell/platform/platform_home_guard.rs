@@ -30,7 +30,6 @@ enum Presence {
 
 /// **待收名单**：`(模块住址, 归谁收, 在不在)`。收完一份删一行，并把 [`PENDING_LEN`] 同拍减一。
 const PENDING: &[(&str, &str, Presence)] = &[
-    ("bind.rs", "归 P4b 收（本路）", Presence::Now),
     ("cc_bus_deploy.rs", "归 P4b 收（本路）", Presence::Now),
     ("ccm_probe.rs", "归 P4b 收（本路）", Presence::Now),
     ("config.rs", "归 P4 收", Presence::Now),
@@ -56,7 +55,7 @@ const PENDING: &[(&str, &str, Presence)] = &[
 ];
 
 /// 名单条数的上限，与 [`PENDING`] 恒等：删行时同拍减一；**不许加**（加一行 = 往壳里别处又写了平台代码）。
-const PENDING_LEN: usize = 23;
+const PENDING_LEN: usize = 22;
 
 /// `cfg` 谓词里点了操作系统的词（字符串字面量之外，按整词认）。`target_arch` 不在：那是架构，不是操作系统。
 const CFG_WORDS: &[&str] = &[

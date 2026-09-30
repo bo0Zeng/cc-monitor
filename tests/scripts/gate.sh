@@ -1634,8 +1634,10 @@ deadcode_t0=$(date +%s)
 # 🔴 **2026-09-29（P1 · 起会话事实进后端）：12 → 11，现打，逐条记**：−1 `adapter·rs::ALL_AGENT_KINDS`（只有判据读）——
 #    monitor 那份适配表整删（起会话事实只住后端 `agents/<名>/resume.rs`）。⚠ 现打：本工作树（铺了内嵌字节）= 11；
 #    子步 4 那一笔 `52d06e7d` 另起一份工作树现打 = 12，逐条对过只差这一条。
-run_gate deadcode '`cargo check -p monitor` 的非 test 构建里 `never used` 的条数（**恒等**钉在 11，理由见上方注释）。射程只有 monitor 一个包的生产段；backend 那棵树与 cfg(test) 里的死代码本行盖不到' \
-         bash -c 'pin=11; cd src/frontend/shell && out=$(cargo check -p monitor --message-format=short 2>&1); rc=$?; \
+# 🔴 **2026-09-30（P4b · 阶段 H 子步 2）：11 → 8，现打，逐条记**：−3 全出自 `bind·rs`（`entry_from_marker_hit` · `find_window_by_marker_substr` · `process_creation_filetime`）——
+#    它们的生产调用方原先只在 `#[cfg(windows)]` 那一支；cfg 分身合成一份（Win32 读法进 `platform/{hwnd,pid}.rs`）之后 Linux 构建里也有了调用方。⚠ 现打：本工作树 = 8，与基线 11 条逐行 diff 只差这三行。
+run_gate deadcode '`cargo check -p monitor` 的非 test 构建里 `never used` 的条数（**恒等**钉在 8，理由见上方注释）。射程只有 monitor 一个包的生产段；backend 那棵树与 cfg(test) 里的死代码本行盖不到' \
+         bash -c 'pin=8; cd src/frontend/shell && out=$(cargo check -p monitor --message-format=short 2>&1); rc=$?; \
 n=$(printf "%s\n" "$out" | grep -c "never used"); \
 printf "%s\n" "$out" | tail -5; \
 if [ "$rc" -ne 0 ]; then printf "deadcode: cargo check 退出码 %s —— 判不了\n" "$rc"; exit "$rc"; fi; \
