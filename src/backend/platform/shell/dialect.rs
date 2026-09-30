@@ -290,7 +290,8 @@ const POSIX_ARGS: &str = " \"$@\"";
 const POSIX_FN_TAIL: &str = "; }";
 
 /// POSIX 那份别名文件在 home 下的相对路径。〔RW1〕从 `account-aliases.sh` 改名而来，旧名不读不写不删。
-const POSIX_ALIAS_FILE_REL: &str = ".cc-monitor/aliases.sh";
+/// 〔P3〕值只住契约 crate（monitor 的数据位置页按它列出）。
+const POSIX_ALIAS_FILE_REL: &str = relay_route_core::POSIX_ALIASES_REL;
 
 impl Posix {
     /// 一个参数要不要加引号：只由「安全字符」组成的原样放，其余一律 POSIX 单引号
@@ -541,7 +542,8 @@ impl ShellDialect for Posix {
 pub(crate) struct PowerShell;
 
 /// PowerShell 那份别名文件在 home 下的相对路径（交给后端的 `rel` 用 `/`；PowerShell 两种分隔符都认）。
-const PS_ALIAS_FILE_REL: &str = ".cc-monitor/aliases.ps1";
+/// 〔P3〕值只住契约 crate（monitor 的数据位置页按它列出）。
+const PS_ALIAS_FILE_REL: &str = relay_route_core::PS_ALIASES_REL;
 
 /// PowerShell 单引号串里算「引号」的那几个字符：ASCII `'` 之外，PowerShell 还把 `‘ ’ ‚ ‛` 当成同一个引号
 /// （它的词法器逐字如此）⇒ 值里出现任何一个都得双写，否则串在那里就断了。

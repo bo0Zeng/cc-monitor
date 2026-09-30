@@ -266,6 +266,8 @@ fn digest_sees_every_byte_and_nothing_else() {
 fn the_file_name_has_exactly_one_home_in_all_production_code() {
     let src = crate::guard_support::repo_root().join("src");
     let needle = format!("{}-{}.json", "skill", "installs");
+    // 〔P3 · 主会话 09-29 裁〕字面量挪进契约 crate ⇒ 按「字面量或契约常量名」认谁叫得出它。
+    let via_const = format!("{}_{}_REL", "SKILL", "LEDGER");
     let mut scanned = 0usize;
     let mut homes: std::collections::BTreeSet<String> = Default::default();
     for (path, body) in guard_core::scan_tree_excluding(&src, &["rs", "ts", "sh"], &[]) {
@@ -275,7 +277,7 @@ fn the_file_name_has_exactly_one_home_in_all_production_code() {
             Some("ts") => guard_core::strip_comment_lines(&body),
             _ => guard_core::strip_hash_comment_lines(&body),
         };
-        if code.contains(needle.as_str()) {
+        if code.contains(needle.as_str()) || code.contains(via_const.as_str()) {
             homes.insert(
                 path.strip_prefix(&src)
                     .unwrap_or(&path)
@@ -285,12 +287,14 @@ fn the_file_name_has_exactly_one_home_in_all_production_code() {
         }
     }
     assert!(scanned > 500, "只扫到 {scanned} 份源码 —— 遍历坏了");
-    // 两个家、各一个身份：写者（本模块）· 足迹里的**申报字面量**（`skill-install` 那一格，〔MIG-3b 续〕随 Claude 布局那一半住
-    // `agents/claudecode/footprint.rs`；不读不写 ——
-    // V116「足迹里看得见」）。第三个家 ⇒ 红（第二个写者或者第二份申报）。
+    // 四个家、各一个身份：定义（契约 crate）· 写者（本模块）· 足迹里的**申报字面量**（`skill-install` 那一格，〔MIG-3b 续〕随 Claude 布局那一半住
+    // `agents/claudecode/footprint.rs`；不读不写 —— V116「足迹里看得见」）· monitor 数据位置页（只 stat）。
+    // 第五个家 ⇒ 红（第二个写者或者第二份申报）。
     let want: std::collections::BTreeSet<String> = [
+        "common/relay-route-core/src/lib.rs".to_string(),
         "backend/assets/skill_ledger.rs".to_string(),
         "backend/agents/claudecode/footprint.rs".to_string(),
+        "frontend/shell/src/data_paths.rs".to_string(),
     ]
     .into();
     assert_eq!(

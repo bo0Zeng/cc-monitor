@@ -114,6 +114,14 @@ const REGISTERED: &[(&str, &str, usize, &str)] = &[
         "〔MIG-3b 续〕足迹里 monitor 自己那台那几行（`HostScope::Client`）的事实：交一次 monitor 自己的 agent 家（`paths::resolve_claude_dir` 那一处答），\
          再 stat 后端交来的绝对路径 —— 不认识任何工具名。退役归 F10 本体。",
     ),
+    // 〔P3 · 主会话 09-29 裁〕数据位置页列监听口的进程记录：只要它叫什么 ⇒ 按宿主起常驻时同一个算法算口。
+    (
+        "src/data_paths.rs",
+        "payload",
+        1,
+        "〔P3〕拿 Claude 家目录的字符串喂 `relay_route_core::listen_port_for`（与 `local_backend_host` 起常驻时同一个算法）算出 \
+         `listen-<口>.pid` 叫什么；不读 Claude 目录里任何东西 ⇒ 不属 F10 的退役范围。",
+    ),
     // 〔MIG-3b〕`src/hooks_diag.rs` 那一行摘了：钩子诊断进了后端（`hooks-diag`），monitor 不再读 settings。
     // 🔴 〔`K-R48` 第二拍 09-11〕原来这里有一行 `src/ccm_cli_contract.rs`（`non-read` 1 处：
     //    契约清单里出现过 `CLAUDE_CONFIG_DIR` 这个变量名）。本拍把那个模块从 2773 行砍到
@@ -227,6 +235,14 @@ const HOME_REACHES: &[(&str, &str, &str, &str)] = &[
         "footprint_client_facts",
         "足迹里 monitor 自己那几行的根（`home` 那一格）",
         "只读诊断页；只交 monitor 自己进程的几条事实，不 stat，落点由本模块的 claude 棘轮数着",
+    ),
+    // 〔P3 · V160〕数据位置页列本机后端住在家里的那几样：只 stat（在不在 · 多大），不读内容。
+    (
+        "data_paths.rs",
+        "collect",
+        "`~/.cc-monitor` 里后端那几样（`bin/` · `staging/` · 两把钥匙 · `panorama/`）",
+        "**不是伸手拿用户的东西**：cc-monitor 自己的家（后端与 monitor 同住，V160）。只 `is_file` / `is_dir` / 长度，\
+             不读字节 —— 两把钥匙的内容一个字节都不碰；`home_dir()` 只为「每个用户各一份」",
     ),
     // 〔OSA · 主会话 09-28 裁〕`data_paths.rs` 探 `$PROFILE` 候选目录那一行摘了：界面经通道问本机后端（`$PROFILE` 在哪只有后端方言答）。
     // 〔MIG-3b〕钩子诊断那一行摘了：本机那份读盘进了本机后端（`hooks-diag`），monitor 不再伸手进用户 home。

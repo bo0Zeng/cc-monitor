@@ -37,7 +37,7 @@
  */
 import type { RecordTimeline } from "./record-timeline";
 import { SkeletonLedger } from "./live-window";
-import type { SkeletonFacts } from "./height-estimate";
+import { initialColumnWidth, type SkeletonFacts } from "./height-estimate";
 import { copyText } from "./copy-table";
 
 /** 视口上下各多物化多少屏（相对视口高）。 */
@@ -63,6 +63,8 @@ interface Gap {
 export class SkeletonView {
   private gaps: Gap[] = [];
   private disposed = false;
+  /** 〔P3〕列宽变了、在新列宽下作废、还没重交第二级的精算行。 */
+  private stale = new Set<number>();
 
   constructor(
     readonly ledger: SkeletonLedger,
@@ -137,6 +139,42 @@ export class SkeletonView {
    */
   applyRefined(entries: Iterable<readonly [number, number]>): void {
     if (this.disposed || !this.ledger.refine(entries)) return;
+    this.reheightPinned();
+  }
+
+  /**
+   * 〔P3 · `设计/10 §2.5b`「列宽变化只重算已精算过的」〕列宽变了（宿主现量的 `.stream-content` 宽）：账本整份按新列宽重估、
+   * 占位改高（视口钉法同 `applyRefined`），在新列宽下作废的那几行精算记进待重交（[`takeStale`]，不论离视口多远）。
+   * 差不到 1px ⇒ 没变，什么都不动、回 `false`。
+   */
+  relayout(colW: number): boolean {
+    if (this.disposed) return false;
+    const cur = this.ledger.columnWidth ?? initialColumnWidth();
+    if (Math.abs(colW - cur) < 1) return false;
+    for (const s of this.ledger.relayout(colW)) this.stale.add(s);
+    this.reheightPinned();
+    return true;
+  }
+
+  /** 〔P3〕取走至多 `max` 行待重交的精算行（按 seq 升序）。 */
+  takeStale(max: number): number[] {
+    const out = [...this.stale].sort((a, b) => a - b).slice(0, max);
+    for (const s of out) this.stale.delete(s);
+    return out;
+  }
+
+  /** 〔P3〕交出去却没换进账本的（算的途中列宽又变了 ⇒ 那一批作废）放回待重交。 */
+  returnStale(seqs: Iterable<number>): void {
+    for (const s of seqs) if (!this.ledger.isRefined(s)) this.stale.add(s);
+  }
+
+  /** 〔P3〕还有几行待重交。 */
+  get staleCount(): number {
+    return this.stale.size;
+  }
+
+  /** 账本的高变了：占位改高，钉住视口 —— 视口里有已渲染的卡 ⇒ 钉它；整个落在占位里 ⇒ 钉那块占位的顶。 */
+  private reheightPinned(): void {
     const el = this.scrollEl;
     const anchor = this.visibleRenderedAnchor() ?? this.visibleGap();
     const anchorTop = anchor ? anchor.getBoundingClientRect().top : 0;

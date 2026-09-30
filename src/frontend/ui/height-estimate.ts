@@ -41,9 +41,10 @@ const LH_MONO = 13 * 1.55;
 // 量出真列宽 = min(`--stream-max-width`, 流宽 − 两侧内边距) 立刻撤掉。
 // 量不到（jsdom 没有布局 / 该窗口没有消息流）才退回 780 —— 那个数与 tokens.css 的 `--stream-max-width`
 // 由 `tests/frontend/ui/css-ledger.vitest.ts` 格 ⑥ 对拍。
-// ⚠ 买不到：**只量一次**。拉窗口之后不重算 —— 要跟着变，得把本常量改成调用时量，动的是本文件别处
-//   （`USER_BODY_W` 与各估高调用点），不在这一拍的写区。影响面只是「从没渲染过的卡」的初值
-//   （`contain-intrinsic-size: auto` 渲染过一次就用真值），即滚动条精度。
+// 这是**起始值**：骨架账本建起来时用它；〔P3 · `10 §2.5b`〕之后列宽变了由宿主现量、交账本 `relayout`
+//   （`tab-stream-view.ts::relayoutOnColumnChange`），账本从此带着自己的列宽。
+//   ⚠ 本文件的 `USER_BODY_W` 与建卡那一侧的估高（`estimateHeight`）仍只用这个起始值 —— 那一侧估的是「刚建、还没渲染」
+//   那一瞬的占位，渲染过一次就由 `contain-intrinsic-size: auto` 用真值，列宽漂了影响的只是那一瞬。
 const COL_W: number = ((fallback: number): number => {
   const host = typeof document === "undefined" ? null : document.getElementById("message-stream");
   if (!host) return fallback;
@@ -57,6 +58,10 @@ const COL_W: number = ((fallback: number): number => {
   probe.remove();
   return w > 0 ? w : fallback;
 })(780);
+/** 起始列宽（上面量出来的那个；账本没交过列宽时就是它）。 */
+export function initialColumnWidth(): number {
+  return COL_W;
+}
 const USER_BODY_W = COL_W * 0.8 - 34; // 气泡 max-width 80% - padding 16×2 - border 2
 const SUMMARY_H = 38; // 折叠 <details> 只剩 summary 行
 const CODE_BAR_H = 30; // .code-bar(copy 按钮撑高)+ border

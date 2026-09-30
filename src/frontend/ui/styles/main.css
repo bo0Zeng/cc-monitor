@@ -1929,11 +1929,22 @@
   color: var(--text-2);
 }
 
+/* 图铺满这一格；缩放 / 平移由 diagram-view.ts 设在世界那一层（g[data-pano-world]）的 transform 上。 */
 .panorama-diagram-canvas {
   flex: 1;
   min-height: 0;
-  overflow: auto;
-  padding: 8px;
+  overflow: hidden;
+  cursor: grab;
+}
+
+.panorama-diagram-canvas.is-panning {
+  cursor: grabbing;
+}
+
+.panorama-diagram-canvas > svg {
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 
 .panorama-diagram-canvas [data-node] rect {
