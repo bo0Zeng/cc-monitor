@@ -988,7 +988,7 @@ fn a_failed_auto_deploy_reaches_the_screen_through_remote_health() {
     let arm = &arm[..arm.find("\n        }\n").unwrap_or(arm.len())];
     guard_core::find_pinned(arm, "kind: \"deploy\"")
         .unwrap_or_else(|e| panic!("Err 那一支没有恰好一条 `kind: \"deploy\"`（{e}）：\n{arm}"));
-    guard_core::find_pinned(arm, "app.emit(crate::ui_contract::events::REMOTE_HEALTH")
+    guard_core::find_pinned(arm, "health(payload)")
         .unwrap_or_else(|e| panic!("Err 那一支没有恰好一次发到远端健康通道（{e}）：\n{arm}"));
     assert!(arm.contains("e.say()"), "发出去的不是那句话本身：\n{arm}");
     assert!(

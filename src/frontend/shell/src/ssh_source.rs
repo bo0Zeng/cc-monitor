@@ -43,7 +43,6 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
-use tauri::Emitter;
 use tokio::io::{AsyncBufReadExt, BufReader};
 
 use crate::event_replay::EventReplay;
@@ -52,6 +51,11 @@ use crate::event_replay::EventReplay;
 // 〔MIG-1 · `99 §2.1 ⑬`〕会话起停的成品住 `session_book`（后端裁，monitor 只转交）；`session_removed.cause` 这一侧不再读
 //   （那条双写点 `REMOVAL_CAUSE_SUPERSEDED`〔散文墓碑〕随「按 cause 裁可重连」搬进后端 `observe/session_ledger.rs`）。
 use crate::session_book::{Fate, In as BookIn, LiveMeta};
+
+/// 〔P4 · `设计/00 §2.2`「先剥宿主耦合，再搬」〕`remote-health` 的出口：宿主（`lib.rs::remote_health_out`）拿窗口把手造它，
+/// 本模块只调它、不认识 GUI 宿主（`backend_client_guard_tests.rs::GUARDED`）。回 `Err(原话)` ＝ 没发出去，各发射点那句 warn 照旧。
+pub(crate) type HealthOut =
+    Arc<dyn Fn(crate::ui_contract::RemoteHealthPayload) -> Result<(), String> + Send + Sync>;
 
 /// 一行会话记录的成品 ＋ 它在那份文件里的行号（`seq`）—— 进 [`flush_lines`] 之前的形状。
 ///
@@ -588,7 +592,7 @@ impl SnapshotQueue {
 async fn snapshot_dispatcher(
     q: std::sync::Arc<SnapshotQueue>,
     replay: Arc<EventReplay>,
-    app: tauri::AppHandle,
+    health: HealthOut,
     host_label: String,
 ) {
     let sem = std::sync::Arc::new(tokio::sync::Semaphore::new(SNAPSHOT_CONCURRENCY));
@@ -601,7 +605,7 @@ async fn snapshot_dispatcher(
         };
         let q = q.clone();
         let replay = replay.clone();
-        let app = app.clone();
+        let health = health.clone();
         let host_label = host_label.clone();
         // incr 在 spawn 之前（审计 D：上一 task 归零与下一 task 起跑之间的
         // 瞬时 0 窗口会让 300ms 定时器恰好放行 batch）
@@ -655,7 +659,7 @@ async fn snapshot_dispatcher(
                     ],
                 ),
             };
-            if let Err(e) = app.emit(crate::ui_contract::events::REMOTE_HEALTH, payload) {
+            if let Err(e) = health(payload) {
                 tracing::warn!("snapshot remote-health emit failed: {e}");
             }
         });
@@ -1915,7 +1919,7 @@ fn version_warning(
 pub async fn run(
     cfg: RemoteConfig,
     replay: Arc<EventReplay>,
-    app: tauri::AppHandle,
+    health: HealthOut,
     connected: Arc<AtomicBool>,
 ) -> Result<(), String> {
     tracing::info!(
@@ -1949,7 +1953,7 @@ pub async fn run(
         let result = stream_loop(
             &cfg,
             &replay,
-            &app,
+            &health,
             &connected,
             &mut hello_confirmed,
             &mut unsupported,
@@ -1992,7 +1996,7 @@ pub async fn run(
                     kind: "unsupported".to_string(),
                     message: why.clone(),
                 };
-                if let Err(e) = app.emit(crate::ui_contract::events::REMOTE_HEALTH, payload) {
+                if let Err(e) = health(payload) {
                     tracing::warn!("ssh_source remote-health (unsupported) emit failed: {e}");
                 }
                 return Err(why);
@@ -2126,14 +2130,14 @@ impl LineIntake {
         origin_label: String,
         tail_only: bool,
         replay: &Arc<EventReplay>,
-        app: &tauri::AppHandle,
+        health: &HealthOut,
     ) -> Self {
         let snapshots = SnapshotQueue::new();
         if tail_only {
             tauri::async_runtime::spawn(snapshot_dispatcher(
                 snapshots.clone(),
                 replay.clone(),
-                app.clone(),
+                health.clone(),
                 origin_label.clone(),
             ));
         }
@@ -2483,13 +2487,13 @@ pub(crate) const LOCAL_STREAM_TAIL_ONLY: bool = true;
 pub(crate) async fn consume_local(
     mut rx: tokio::sync::mpsc::Receiver<LocalItem>,
     replay: Arc<EventReplay>,
-    app: tauri::AppHandle,
+    health: HealthOut,
 ) {
     let show_bg = crate::load_show_bg_sessions();
     let label = crate::origin::LOCAL.to_string();
     let mut hidden: std::collections::HashSet<String> = std::collections::HashSet::new();
     loop {
-        let mut intake = LineIntake::open(label.clone(), LOCAL_STREAM_TAIL_ONLY, &replay, &app);
+        let mut intake = LineIntake::open(label.clone(), LOCAL_STREAM_TAIL_ONLY, &replay, &health);
         // 〔CF2〕这条流交来第一件东西 ⇒ 本机那台「看得见」（订阅原位收 `Seen`）；流结束 ⇒ `Unseen`。
         let mut seen = false;
         loop {
@@ -2563,7 +2567,7 @@ pub(crate) async fn consume_local(
 async fn stream_loop(
     cfg: &RemoteConfig,
     replay: &Arc<EventReplay>,
-    app: &tauri::AppHandle,
+    health: &HealthOut,
     connected: &Arc<AtomicBool>,
     hello_confirmed: &mut Option<Vec<String>>,
     unsupported: &mut Option<String>,
@@ -2609,7 +2613,7 @@ async fn stream_loop(
                     kind: "deploy".to_string(),
                     message: msg,
                 };
-                if let Err(e) = app.emit(crate::ui_contract::events::REMOTE_HEALTH, payload) {
+                if let Err(e) = health(payload) {
                     tracing::warn!("ssh_source remote-health (deploy) emit failed: {e}");
                 }
                 None
@@ -2703,7 +2707,7 @@ async fn stream_loop(
     // Batch8-F26：旁路快照基础设施（仅 tail-only 生效；每连接一套，函数任何
     // 退出路径随 `intake` 被丢掉而关闭队列——已入队项仍会被分发器拉完，独立连接自灭）。
     // 〔CF1〕攒批 ＋ 静默窗 ＋ 旁路快照收成 [`LineIntake`]，本机那条流用的是同一个。
-    let mut intake = LineIntake::open(host_label.clone(), tail_only, replay, app);
+    let mut intake = LineIntake::open(host_label.clone(), tail_only, replay, health);
     // 〔W5-VIS · `设计/15 §3.4 ②`〕这条流上跳过了几帧认不出的（读任务那边另有一本记非 UTF-8 行）。
     let mut tally = crate::frame_tally::FrameTally::new(format!("ssh_source {host_label}"));
 
@@ -2867,7 +2871,7 @@ async fn stream_loop(
                         kind: "version".to_string(),
                         message: msg,
                     };
-                    if let Err(e) = app.emit(crate::ui_contract::events::REMOTE_HEALTH, payload) {
+                    if let Err(e) = health(payload) {
                         tracing::warn!("ssh_source remote-health (version) emit failed: {e}");
                     }
                 }
@@ -2922,8 +2926,7 @@ async fn stream_loop(
                                 ],
                             ),
                         };
-                        if let Err(e) = app.emit(crate::ui_contract::events::REMOTE_HEALTH, payload)
-                        {
+                        if let Err(e) = health(payload) {
                             tracing::warn!("ssh_source remote-health (degraded) emit failed: {e}");
                         }
                     }
@@ -3055,7 +3058,7 @@ async fn stream_loop(
                     kind: "overflow".to_string(),
                     message,
                 };
-                if let Err(e) = app.emit(crate::ui_contract::events::REMOTE_HEALTH, payload) {
+                if let Err(e) = health(payload) {
                     tracing::warn!("ssh_source remote-health emit failed: {e}");
                 }
             }

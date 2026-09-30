@@ -17,6 +17,10 @@ const GUARDED: &[&str] = &[
     "src/frontend/shell/src/frame_query.rs",
     "src/frontend/shell/src/inbound_client.rs",
     "src/frontend/shell/src/local_backend.rs",
+    // 〔P4 · `90 §1.1`〕原先被 SFTP 拨号挡路石那张底账挡回的那份：那张账随 SR1b 退役，它今天只照本机后端的计划经 `files` 链路放字节，两道都过。
+    "src/frontend/shell/src/sftp.rs",
+    // 〔P4 · `90 §1.1` C13〕原先被宿主无关判据挡回的那份：`remote-health` 改经注入的 `HealthOut`（`lib.rs::remote_health_out` 造），生产段零窗口把手。
+    "src/frontend/shell/src/ssh_source.rs",
     "src/comms/inward/backend_route.rs",
 ];
 
