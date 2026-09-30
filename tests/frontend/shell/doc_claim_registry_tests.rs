@@ -926,10 +926,7 @@ fn every_code_symbol_named_in_the_docs_still_resolves() {
             "setup",
             "tauri 的 `.setup(move |app| …)` 钩子闭包 —— 是真东西，但不是一处声明",
         ),
-        (
-            "monitor_get_active_ids",
-            "`CONTRIBUTING.md` 里的**示例占位符**（教人「照这样加一行」），本就不指向真符号",
-        ),
+        // 〔P6 · 09-29〕「示例占位符」那一行（CONTRIBUTING 教人照着加一条 Tauri 命令的那个假名字）摘了：CONTRIBUTING 按 4.0.0 重写，加命令的做法改成讲帧命令与 `MONITOR_OWN`，那个示例占位符不在了。
         (
             "run_tmux_reconcile_poller",
             "`INVARIANTS.md` 那句逐字写着它**已删**（audit-fixes F03.2）—— 历史句，\
@@ -1214,14 +1211,8 @@ fn every_repo_path_named_in_the_docs_still_resolves() {
             "tests/session-backend-gate.vitest.ts",
             "**历史句**〔LR2〕：`§31` 第①条的旧机检，已由 `tests/frontend/ui/launch-no-shell-in-ts.vitest.ts` 接替",
         ),
-        (
-            "tests/session-backend.test.ts",
-            "**历史句**〔LR2〕：座的套件，已删（与座无关的两条搬进 `tests/frontend/ui/remote-launch.test.ts`）",
-        ),
-        (
-            "src/frontend/ui/cards/memory-recall.ts",
-            "**示例占位**：原文是「通常新建 `…`」，教人照着建一个，本就不指向现存文件",
-        ),
+        // 〔P6 · 09-29〕`tests/session-backend.test.ts` 那一行摘了：唯一点它的 CONTRIBUTING 沿革段随重写删了。
+        // 〔P6 · 09-29〕`src/frontend/ui/cards/memory-recall.ts` 那一行摘了：CONTRIBUTING 的示例改成「写在 `cards/` 下」，不再点那个占位文件名。
         (
             "code-picture/doc/agents/claude-code.md",
             "**跨仓引用**：另一个仓的语料，本仓解析不到是正常的",
