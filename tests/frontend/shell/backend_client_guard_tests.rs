@@ -17,6 +17,10 @@ const GUARDED: &[&str] = &[
     "src/frontend/shell/src/frame_query.rs",
     "src/frontend/shell/src/inbound_client.rs",
     "src/frontend/shell/src/local_backend.rs",
+    // 〔P4 · `90 §1.1`〕原先被 SFTP 拨号挡路石那张底账挡回的那份：那张账随 SR1b 退役，它今天只照本机后端的计划经 `files` 链路放字节，两道都过。
+    "src/frontend/shell/src/sftp.rs",
+    // 〔P4 · `90 §1.1` C13〕原先被宿主无关判据挡回的那份：`remote-health` 改经注入的 `HealthOut`（`lib.rs::remote_health_out` 造），生产段零窗口把手。
+    "src/frontend/shell/src/ssh_source.rs",
     "src/comms/inward/backend_route.rs",
 ];
 
@@ -141,7 +145,7 @@ fn platform_needles() -> Vec<String> {
 /// ② **「已收敛」不是散文** —— 第四列是那句话的机检锚点，锚点没了就红。
 #[allow(clippy::type_complexity)]
 // 〔P4b · 阶段 H〕唯一那一行（`local_backend.rs` 的 `env::consts::`）随 `EXE_SUFFIX` 收进 `platform::proc` 出列，表今天是空的。
-// 上限那行不动（它被 `local_backend_host_tests::this_item_loosened_none_of_the_ratchets_it_touched` 按整行钉着）；
+// 〔P4 · 合 P4b〕上限随之降到 0（递减棘轮只许降；那一行被 `local_backend_host_tests::this_item_loosened_none_of_the_ratchets_it_touched` 按整行钉着，同拍改）；
 // 真正挡「往这组里写平台代码」的已是 `platform/platform_home_guard.rs`：这里加一行例外、那边照样红。
 const PLATFORM_EXCEPTIONS: &[(&str, &str, &str, &str)] = &[];
 
@@ -289,10 +293,10 @@ fn the_platform_exception_table_is_not_dead_wood() {
                  留着就是一条永远不匹配的死规则，而死规则会在下次真有人写它时**悄悄放行**。"
         );
     }
-    // 例外只许少不许多（**递减棘轮**）。
+    // 例外只许少不许多（**递减棘轮**）。〔P4 · 合 P4b〕1 → 0：表空了，上限跟着降到 0。
     assert!(
-        PLATFORM_EXCEPTIONS.len() <= 1,
-        "平台例外涨到 {} 条了 —— 只许降。C10 的意思是「平台原语有唯一的家」，\
+        PLATFORM_EXCEPTIONS.is_empty(),
+        "平台例外涨到 {} 条了 —— 只许降（今天上限 0）。C10 的意思是「平台原语有唯一的家」，\
              例外每多一条，那句话就弱一分。",
         PLATFORM_EXCEPTIONS.len()
     );
@@ -335,8 +339,10 @@ fn the_platform_needles_actually_match_the_platform_heavy_half() {
     // 地板留一格余量（少一种形态不算警报，少两种就说明形态集在烂）。
     // 〔LOC1b · 第四波 4D〕`session_map.rs`（原 4 种）那个锚摘了：monitor 自己那份进程身份判活（`/proc` · `GetProcessTimes`）
     //   随本机判活改由本机后端的帧来删了，那份文件今天零平台形态 —— 它不再是「平台重的那一半」，拿它当锚会恒红。
+    // 〔P4〕`utils.rs`（原 6 种）那个锚换成 `platform/fs.rs`：原子替换那段平台代码搬进了 `host-core`、FileTime 的 Win32 那两件进了 `platform/filetime.rs`，utils 零平台形态；
+    //   阶段 H 把壳里平台形态收进 `platform/` 之后，平台最重的正是那一层。
     // 〔P4b · 阶段 H〕`bind.rs`（原 4 种）那个锚换成它的平台那一半的新住址 `platform/hwnd.rs`：Win32 窗口读法整段搬去了，`bind.rs` 今天零平台形态。
-    for (rel, least) in [("utils.rs", 5usize), ("platform/hwnd.rs", 3usize)] {
+    for (rel, least) in [("platform/fs.rs", 5usize), ("platform/hwnd.rs", 3usize)] {
         let p = src_root.join(rel);
         assert!(
             p.is_file(),

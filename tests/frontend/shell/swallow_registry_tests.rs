@@ -182,28 +182,29 @@ const ALLOWED: &[(&str, &str, usize, Why, &str)] = &[
     ("src/comms/inward/chan/router.rs", "write_frame(&mut wr, &Head::Denied, &[]).await.ok();", 1, Why::DeadLink, ""),
     ("src/comms/inward/chan/wire.rs", "rx.wait_for(|c| *c).await.ok();", 1, Why::Signal, ""),
     ("src/frontend/shell/src/config.rs", "let _ = std::fs::remove_file(&tmp);", 1, Why::CleanupAfterFailure, "〔CFG1〕原子写的临时件：换名失败之后删它；主错误已在回"),
-    ("src/frontend/shell/src/filewin/scale.rs", "let _ = render_headless(&ctx, rows, screen, off);", 1, Why::NotAnError, "量渲染耗时，只要时间不要画出来的东西"),
+    ("src/frontend/filewin/src/scale.rs", "let _ = render_headless(&ctx, rows, screen, off);", 1, Why::NotAnError, "量渲染耗时，只要时间不要画出来的东西"),
     // 〔FILES2 · 第四波〕窗口那几问的答复送回等答的那一趟（它已收场 ⇒ 没人要）· 暂存件收尾删不掉交孤儿扫（不盖下载 / 复制本身的结局）。
-    ("src/frontend/shell/src/filewin/extract.rs", "tx.send(fresh).ok();", 1, Why::PeerGone, "解压撞名那一问的答复；等答的那一趟已收场就没人要"),
-    ("src/frontend/shell/src/filewin/cross_copy.rs", "tx.send(overwrite).ok();", 1, Why::PeerGone, "复制到另一台「盖不盖」那一问的答复；等答的那一趟已收场就没人要"),
-    ("src/frontend/shell/src/filewin/cross_copy.rs", "let _ = super::source::ask(line, &local, \"files-delete\", &serde_json::json!({ \"root\": staging, \"rel\": rel }), super::wri", 1, Why::CleanupAfterFailure, "清本机暂存件（成败都清）；删不掉只剩一份垃圾，不改复制本身的结局"),
-    ("src/frontend/shell/src/filewin/cross_copy.rs", "let _ = super::source::ask(line, &to, \"files-delete\", &serde_json::json!({ \"root\": bstaging, \"rel\": format!(\"{k}.part\") ", 1, Why::CleanupAfterFailure, "半路失败之后清 B 那头开过单的暂存件；主错误已在回，删不掉交那台的孤儿扫"),
+    ("src/frontend/filewin/src/extract.rs", "tx.send(fresh).ok();", 1, Why::PeerGone, "解压撞名那一问的答复；等答的那一趟已收场就没人要"),
+    ("src/frontend/filewin/src/cross_copy.rs", "tx.send(overwrite).ok();", 1, Why::PeerGone, "复制到另一台「盖不盖」那一问的答复；等答的那一趟已收场就没人要"),
+    ("src/frontend/filewin/src/cross_copy.rs", "let _ = super::source::ask(line, &local, \"files-delete\", &serde_json::json!({ \"root\": staging, \"rel\": rel }), super::wri", 1, Why::CleanupAfterFailure, "清本机暂存件（成败都清）；删不掉只剩一份垃圾，不改复制本身的结局"),
+    ("src/frontend/filewin/src/cross_copy.rs", "let _ = super::source::ask(line, &to, \"files-delete\", &serde_json::json!({ \"root\": bstaging, \"rel\": format!(\"{k}.part\") ", 1, Why::CleanupAfterFailure, "半路失败之后清 B 那头开过单的暂存件；主错误已在回，删不掉交那台的孤儿扫"),
     // 〔MOD〕`history.rs` 那一处（读整份会话末块交前端、前端已走）随那条命令退役。
-    ("src/frontend/shell/src/launch.rs", "let _ = child.wait();", 1, Why::Reap, ""),
-    ("src/frontend/shell/src/lib.rs", "let _ = AttachThreadInput(fg_thread, cur_thread, false);", 1, Why::WindowBestEffort, ""),
-    ("src/frontend/shell/src/lib.rs", "let _ = BringWindowToTop(h);", 1, Why::WindowBestEffort, ""),
-    ("src/frontend/shell/src/lib.rs", "let _ = SetWindowPos(h, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);", 1, Why::WindowBestEffort, ""),
-    ("src/frontend/shell/src/lib.rs", "let _ = SetWindowPos(h, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);", 1, Why::WindowBestEffort, ""),
-    ("src/frontend/shell/src/lib.rs", "let _ = ShowWindow(h, SW_RESTORE);", 1, Why::WindowBestEffort, ""),
-    ("src/frontend/shell/src/lib.rs", "let _ = ShowWindow(h, SW_SHOW);", 1, Why::WindowBestEffort, ""),
+    ("src/frontend/shell/src/platform/terminal.rs", "let _ = child.wait();", 1, Why::Reap, ""), // 〔P4 · 阶段 H〕原 `launch.rs`
+    // 〔P4 · 阶段 H〕下面九行原住 `lib.rs`（主窗口拉前 · 单实例回调）：随两个平台臂搬进 `platform/window.rs`，处数不变。
+    ("src/frontend/shell/src/platform/window.rs", "let _ = AttachThreadInput(fg_thread, cur_thread, false);", 1, Why::WindowBestEffort, ""),
+    ("src/frontend/shell/src/platform/window.rs", "let _ = BringWindowToTop(h);", 1, Why::WindowBestEffort, ""),
+    ("src/frontend/shell/src/platform/window.rs", "let _ = SetWindowPos(h, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);", 1, Why::WindowBestEffort, ""),
+    ("src/frontend/shell/src/platform/window.rs", "let _ = SetWindowPos(h, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);", 1, Why::WindowBestEffort, ""),
+    ("src/frontend/shell/src/platform/window.rs", "let _ = ShowWindow(h, SW_RESTORE);", 1, Why::WindowBestEffort, ""),
+    ("src/frontend/shell/src/platform/window.rs", "let _ = ShowWindow(h, SW_SHOW);", 1, Why::WindowBestEffort, ""),
     ("src/frontend/shell/src/lib.rs", "let _ = local_cache.record(sid, pid, bind_registry);", 1, Why::NotAnError, "`None` = 这个会话不是经 cc 起的 / 还没握手完（常态）；绑上了 `record` 自己记日志"),
     // 〔MIG-1〕F5 重放那两处裸 `let _ = handle.emit(…)`（容器 · 可重连）〔MIG-1 · ⑬〕随起停事件并进会话流删了（就绪点在流里原位交成品）。
     ("src/frontend/shell/src/lib.rs", "let _ = w.set_focus();", 2, Why::WindowBestEffort, ""),
     ("src/frontend/shell/src/lib.rs", "let _ = w.show();", 2, Why::WindowBestEffort, ""),
     ("src/frontend/shell/src/lib.rs", "let _ = w.unminimize();", 2, Why::WindowBestEffort, ""),
-    ("src/frontend/shell/src/lib.rs", "let _ = win.set_focus();", 1, Why::WindowBestEffort, ""),
-    ("src/frontend/shell/src/lib.rs", "let _ = win.show();", 2, Why::WindowBestEffort, ""),
-    ("src/frontend/shell/src/lib.rs", "let _ = win.unminimize();", 2, Why::WindowBestEffort, ""),
+    ("src/frontend/shell/src/platform/window.rs", "let _ = win.set_focus();", 1, Why::WindowBestEffort, ""),
+    ("src/frontend/shell/src/platform/window.rs", "let _ = win.show();", 2, Why::WindowBestEffort, ""),
+    ("src/frontend/shell/src/platform/window.rs", "let _ = win.unminimize();", 2, Why::WindowBestEffort, ""),
     ("src/frontend/shell/src/lib.rs", "let _ = window.set_focus();", 1, Why::WindowBestEffort, ""),
     ("src/frontend/shell/src/link_mux.rs", "let _ = slot.tx.send(Piece::End(Some(copy_text(\"rsLinkMux.data.noCredit\", &[]))));", 1, Why::PeerGone, ""),
     ("src/frontend/shell/src/link_mux.rs", "let _ = slot.tx.send(Piece::End(Some(why.to_string())));", 1, Why::PeerGone, ""),
@@ -216,7 +217,7 @@ const ALLOWED: &[(&str, &str, usize, Why, &str)] = &[
     ("src/frontend/shell/src/platform/spawn.rs", "let _ = windows::Win32::Foundation::CloseHandle(h);", 1, Why::Reap, "Windows 句柄 / 内存释放"),
     ("src/frontend/shell/src/ssh_source.rs", "let _ = frame_tx.send(Err(\"ssh backend stdout closed (EOF / connection dropped)\".to_string())).await;", 1, Why::PeerGone, ""),
     ("src/frontend/shell/src/ssh_source.rs", "let _ = frame_tx.send(Err(format!(\"ssh backend stdout read error: {e}\"))).await;", 1, Why::PeerGone, ""),
-    ("src/frontend/shell/src/utils.rs", "let _ = std::fs::remove_file(&tmp);", 1, Why::CleanupAfterFailure, "原子写的临时件：换名失败之后删它；主错误已在回，删不掉只剩一份临时件"),
+    ("src/common/host-core/src/atomic.rs", "let _ = std::fs::remove_file(&tmp);", 1, Why::CleanupAfterFailure, "原子写的临时件：换名失败之后删它；主错误已在回，删不掉只剩一份临时件"),
     ("src/panorama-engine/main.rs", "let _ = std::io::stderr().write_all(stderr.as_bytes());", 1, Why::Diag, ""),
     ("src/panorama-engine/main.rs", "let _ = std::io::stderr().write_all(line.as_bytes());", 1, Why::Diag, "〔P7〕建索引的进度行写 stderr：写不出去（管道已关）就算了，进度只是给人看的，答案走 stdout 那一行"),
     ("src/panorama-engine/main.rs", "let _ = std::io::stdout().write_all(stdout.as_bytes());", 1, Why::Diag, ""),
@@ -539,6 +540,9 @@ fn population() -> BTreeMap<(String, String), usize> {
             &[],
         ));
     }
+    // 〔P4〕壳那棵根的人群声明带进来的兄弟包（`chan-core` · `host-core` …）也住 `src/common` 那棵：同一份只数一次。
+    files.sort_by(|a, b| a.0.cmp(&b.0));
+    files.dedup_by(|a, b| a.0 == b.0);
     let test_only = test_only_modules(&files);
     let root = std::fs::canonicalize(&root).unwrap_or(root);
     let mut out: BTreeMap<(String, String), usize> = BTreeMap::new();
@@ -649,6 +653,9 @@ fn w5vis_test_only_modules_are_derived_and_excluded() {
             &[],
         ));
     }
+    // 〔P4〕壳那棵根的人群声明带进来的兄弟包（`chan-core` · `host-core` …）也住 `src/common` 那棵：同一份只数一次。
+    files.sort_by(|a, b| a.0.cmp(&b.0));
+    files.dedup_by(|a, b| a.0 == b.0);
     let derived = test_only_modules(&files);
     for known in [
         "src/backend/alloc_probe.rs",

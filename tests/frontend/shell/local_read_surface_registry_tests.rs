@@ -175,24 +175,30 @@ fn hits(prod: &str) -> usize {
 fn rust_files() -> Vec<(String, String)> {
     let src = root().join("src");
     let mut out = Vec::new();
-    let mut stack = vec![src.clone()];
-    while let Some(d) = stack.pop() {
-        let Ok(rd) = fs::read_dir(&d) else { continue };
-        for e in rd.flatten() {
-            let p: PathBuf = e.path();
-            if p.is_dir() {
-                stack.push(p);
-                continue;
-            }
-            if p.extension().is_some_and(|x| x == "rs") {
-                let rel = format!(
-                    "src/{}",
-                    p.strip_prefix(&src)
-                        .unwrap_or(&p)
-                        .to_string_lossy()
-                        .replace('\\', "/")
-                );
-                out.push((rel, fs::read_to_string(&p).unwrap_or_default()));
+    // 〔P4〕人群 ＝ 本 crate 的 `src/` ＋ manifest 明写的兄弟包（窗口包 · 通道 · 宿主原语 · 开窗契约，
+    //   `guard_core::population_trees`）—— monitor 的代码搬进去了，人群不变；兄弟包的键带包名。
+    let trees =
+        std::iter::once(("src".to_string(), src.clone())).chain(guard_core::population_trees(&src));
+    for (label, tree) in trees {
+        let mut stack = vec![tree.clone()];
+        while let Some(d) = stack.pop() {
+            let Ok(rd) = fs::read_dir(&d) else { continue };
+            for e in rd.flatten() {
+                let p: PathBuf = e.path();
+                if p.is_dir() {
+                    stack.push(p);
+                    continue;
+                }
+                if p.extension().is_some_and(|x| x == "rs") {
+                    let rel = format!(
+                        "{label}/{}",
+                        p.strip_prefix(&tree)
+                            .unwrap_or(&p)
+                            .to_string_lossy()
+                            .replace('\\', "/")
+                    );
+                    out.push((rel, fs::read_to_string(&p).unwrap_or_default()));
+                }
             }
         }
     }

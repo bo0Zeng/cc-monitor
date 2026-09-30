@@ -294,6 +294,8 @@ fn every_backend_sender_is_registered_and_uses_the_one_router() {
     //   报「backend_kill.rs 生产段却没有 route_call_error」—— 其实是文件根本没读到）。
     let mut by_name: std::collections::HashMap<String, String> = std::collections::HashMap::new();
     let mut all_prod: Vec<(String, String)> = Vec::new();
+    // 〔P4〕通道编进共享 crate `chan-core` 之后，路由器那份不再挂在 monitor 的模块树上 —— 人群照旧：monitor 的 manifest 明写了它
+    //   （`guard_core::population_trees`，`walk_tree` 顺着收）。
     for (p, src) in guard_core::scan_tree!(&dir, &["rs"]) {
         let prod = guard_core::production_code(&src);
         all_prod.push((p.to_string_lossy().replace('\\', "/"), prod.clone()));

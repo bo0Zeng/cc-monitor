@@ -51,7 +51,7 @@ pub fn load(file: &Path) -> AutoLaunchConfig {
 /// 原子写 auto-launch.json — 走 utils::atomic_write_json（Windows ReplaceFileW；
 /// 非 Windows rename），确保 crash 不丢 monitor exe 路径记录。
 pub fn save(file: &Path, cfg: &AutoLaunchConfig) -> std::io::Result<()> {
-    crate::utils::atomic_write_json(file, cfg)
+    host_core::atomic_write_json(file, cfg)
 }
 
 /// monitor 启动时调：把当前 exe 路径更新到 auto-launch.json（保留 auto_launch_enabled）。

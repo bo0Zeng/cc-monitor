@@ -343,6 +343,12 @@ fn every_citation_of_invariant_36_says_which_platform_it_binds() {
         &["rs"],
         &["arch_doc_shape_guard_tests.rs"],
     ));
+    // 〔P4〕文件窗口独立成包（它的代码随上面那棵根的人群声明一起收）：它的判据住 `tests/frontend/filewin/`。
+    files_src.extend(guard_core::scan_tree_excluding(
+        &repo.join("tests/frontend/filewin"),
+        &["rs"],
+        &[],
+    ));
     // 〔RE〕本 crate 的通信层成员（`src/comms/inward/`，经 `#[path]` 由上面那棵根顺进来）的单测镜像住 `tests/comms/inward/`。
     files_src.extend(guard_core::scan_tree_excluding(
         &repo.join("tests/comms/inward"),

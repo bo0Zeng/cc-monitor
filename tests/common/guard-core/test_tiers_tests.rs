@@ -116,18 +116,19 @@ const UNIT: &[&str] = &[
     "tests/common/relay-route-core/lib_tests.rs", // 〔US1〕中转门牌共享 crate
     // 〔P1〕`search-core` 删了：它的纯函数判据随家拆成两份（通用口径 · Claude 记录文本），同层。
     "tests/backend/agents/claudecode/text_tests.rs",
-    "tests/frontend/shell/filewin/corpus_tests.rs",
-    "tests/frontend/shell/filewin/create_tests.rs",
-    "tests/frontend/shell/filewin/editor_tests.rs",
-    "tests/frontend/shell/filewin/preview_tests.rs",
-    "tests/frontend/shell/filewin/picker_tests.rs", // 〔W5-FILES〕原生选文件框（假选择框注入）
-    "tests/frontend/shell/filewin/rows_tests.rs",
-    "tests/frontend/shell/filewin/scale_tests.rs",
-    "tests/frontend/shell/filewin/shell_keys_tests.rs",
-    "tests/frontend/shell/filewin/size_tests.rs", // 〔W5-FILES〕算大小（窗口那一侧）
-    "tests/frontend/shell/filewin/extract_tests.rs", // 〔FILES2〕解压到这里（窗口那一侧，合成后端）
-    "tests/frontend/shell/filewin/workspace_tests.rs",
-    "tests/frontend/shell/filewin/writeops_tests.rs",
+    "tests/frontend/filewin/corpus_tests.rs",
+    "tests/frontend/shell/filewin/cross_half_tests.rs", // 〔P4〕窗口独立成包之后跨两半的那几条（异源一侧在 monitor）
+    "tests/frontend/filewin/create_tests.rs",
+    "tests/frontend/filewin/editor_tests.rs",
+    "tests/frontend/filewin/preview_tests.rs",
+    "tests/frontend/filewin/picker_tests.rs", // 〔W5-FILES〕原生选文件框（假选择框注入）
+    "tests/frontend/filewin/rows_tests.rs",
+    "tests/frontend/filewin/scale_tests.rs",
+    "tests/frontend/filewin/shell_keys_tests.rs",
+    "tests/frontend/filewin/size_tests.rs", // 〔W5-FILES〕算大小（窗口那一侧）
+    "tests/frontend/filewin/extract_tests.rs", // 〔FILES2〕解压到这里（窗口那一侧，合成后端）
+    "tests/frontend/filewin/workspace_tests.rs",
+    "tests/frontend/filewin/writeops_tests.rs",
     "tests/frontend/shell/lib_batch_tests.rs",
     "tests/frontend/shell/lib_nudge_skip_tests.rs",
     "tests/frontend/shell/lib_remote_config_tests.rs",
@@ -399,18 +400,19 @@ const SCAN: &[&str] = &[
     "tests/frontend/shell/frame_tally_tests.rs", // 〔W5-VIS〕丢帧账：账本行为 ＋ 三条读帧循环的接线（剥过的生产文本）
     "tests/frontend/shell/swallow_registry_tests.rs", // 〔W5-VIS〕业务路径零裸吞：人群从四棵生产源码树派生 == 登记表
     // 〔MIG-3a〕`tests/frontend/shell/fenced_block_tests.rs` 随别名那一族进了那台后端（`tests/backend/assets/aliases/`）。
-    "tests/frontend/shell/filewin/bigfile_tests.rs",
+    "tests/frontend/filewin/bigfile_tests.rs",
+    "tests/frontend/filewin/guard_support_tests.rs", // 〔P4〕窗口包的判据住址反空真
     "tests/frontend/shell/filewin/boundary_tests.rs",
-    "tests/frontend/shell/filewin/copy_tests.rs",
-    "tests/frontend/shell/filewin/download_tests.rs",
+    "tests/frontend/filewin/copy_tests.rs",
+    "tests/frontend/filewin/download_tests.rs",
     "tests/frontend/shell/filewin/entry_tests.rs", // 〔TAIL〕INTEGRATION → SCAN：落盘那条（书签旧键搬家）随 V41 退役删了
-    "tests/frontend/shell/filewin/find_tests.rs",
-    "tests/frontend/shell/filewin/grep_tests.rs", // 〔FILES3 · ㉜〕按内容搜：真通道上的合成后端 ＋ 跨半边金样
-    "tests/frontend/shell/filewin/lossy_pull_tests.rs", // 〔FILES2〕有损名下载：合成对端 ＋ 读后端源码钉暂存区常量相等
-    "tests/frontend/shell/filewin/cross_copy_tests.rs", // 〔FILES2〕复制到另一台：合成对端（按 origin 记）＋ 读 app 源码钉 <local> 相等
-    "tests/frontend/shell/filewin/fonts_tests.rs",
-    "tests/frontend/shell/filewin/select_tests.rs",
-    "tests/frontend/shell/filewin/transfer_tests.rs",
+    "tests/frontend/filewin/find_tests.rs",
+    "tests/frontend/filewin/grep_tests.rs", // 〔FILES3 · ㉜〕按内容搜：真通道上的合成后端 ＋ 跨半边金样
+    "tests/frontend/filewin/lossy_pull_tests.rs", // 〔FILES2〕有损名下载：合成对端 ＋ 读后端源码钉暂存区常量相等
+    "tests/frontend/filewin/cross_copy_tests.rs", // 〔FILES2〕复制到另一台：合成对端（按 origin 记）＋ 读 app 源码钉 <local> 相等
+    "tests/frontend/filewin/fonts_tests.rs",
+    "tests/frontend/filewin/select_tests.rs",
+    "tests/frontend/filewin/transfer_tests.rs",
     "tests/frontend/shell/fixture_guard_tests.rs",
     // 〔MIG-3b 续〕`tests/frontend/shell/footprint_remote_tests.rs` 删了：两趟问法随实现进后端 face（`tests/backend/footprint/face_tests.rs`）。
     "tests/frontend/ui/settings/footprint-reads.vitest.ts", // 〔MIG-3b 续〕足迹成品的跨语言金样（TS 那一侧读同一份）
@@ -571,7 +573,7 @@ const INTEGRATION: &[&str] = &[
     "tests/backend/control/overwrite_atomic_tests.rs", // 〔HX1〕W1 ulimit -f 下子进程写到一半被 SIGXFSZ 杀，目标仍是旧整份
     "tests/backend/stream/drain_tests.rs", // 〔HX1〕D2 真子进程 ＋ 真 SIGTERM：在飞阻塞命令做完才退
     "tests/common/shell-quote-core/lib_tests.rs", // 〔FILES2〕单元层 → 集成层：字节形 quote 由真 bash 读回来对拍
-    "tests/frontend/shell/filewin/chunk_upload_tests.rs", // 〔FILES2〕上传块形：临时目录里一份本机文件 ＋ 合成对端
+    "tests/frontend/filewin/chunk_upload_tests.rs", // 〔FILES2〕上传块形：临时目录里一份本机文件 ＋ 合成对端
     "tests/backend/accounts/upstream_select/creds_tests.rs",
     "tests/backend/accounts/upstream_select/endpoint_tests.rs", // 〔US1〕上游选择出的两份成品（金样那条读夹具文件）
     "tests/backend/accounts/upstream_select/file_face_tests.rs",
@@ -672,18 +674,20 @@ const INTEGRATION: &[&str] = &[
     "tests/frontend/shell/chan/chan_tests.rs",
     "tests/frontend/shell/comm_boundary_registry_tests.rs",
     "tests/common/creds-core/perm_tests.rs",
+    "tests/common/host-core/lib_tests.rs", // 〔P4〕原子写（真写临时文件）＋ 窗口几何，原在 `utils_tests` / `lib_window_lifecycle_tests`
     // 〔GP1 · 第四波〕旧版 `~/.local/bin/ccm` 那一份：替身门在临时目录上真读真删。
     "tests/frontend/shell/ccm_legacy_tests.rs",
     "tests/frontend/shell/data_paths_tests.rs",
     "tests/frontend/shell/dial_home_registry_tests.rs",
     "tests/frontend/shell/dial_host_tests.rs",
     "tests/frontend/shell/doc_claim_registry_tests.rs",
-    "tests/frontend/shell/filewin/bookmarks_tests.rs",
+    "tests/frontend/filewin/bookmarks_tests.rs",
+    "tests/frontend/filewin/proc_tests.rs", // 〔P4〕窗口进程那一侧（拨回 · 第一屏 · 就绪那一行）随躯体搬进窗口包
     "tests/frontend/shell/filewin/proc_tests.rs",
-    "tests/frontend/shell/filewin/shell_tests.rs",
-    "tests/frontend/shell/filewin/source_tests.rs",
-    "tests/frontend/shell/filewin/upload_tests.rs",
-    "tests/frontend/shell/filewin/xvfb_rig.rs",
+    "tests/frontend/filewin/shell_tests.rs",
+    "tests/frontend/filewin/source_tests.rs",
+    "tests/frontend/filewin/upload_tests.rs",
+    "tests/frontend/filewin/xvfb_rig.rs",
     "tests/frontend/shell/history_tests.rs",
     "tests/frontend/shell/launch_tests.rs",
     // 〔C4d〕`tests/frontend/shell/local_accounts_tests.rs` 挪进 `UNIT`：驱动本机 manifest 参照实现的那几条（临时目录真写真读）随实现删了，
@@ -733,9 +737,9 @@ const SUPPORT: &[&str] = &[
     "tests/backend/control/identity_tag_door.rs", // 〔RESYNC〕`identity_tag` 起 tmux 那个口的测试构建那一份（假 tmux 注入，§48.3）
     "tests/backend/sftp_rig.rs",
     "tests/frontend/shell/backend_kill_creation_detect.rs",
-    "tests/frontend/shell/filewin/copy_testing.rs",
-    "tests/frontend/shell/filewin/find_testing.rs",
-    "tests/frontend/shell/filewin/rows_testing.rs",
+    "tests/frontend/filewin/copy_testing.rs",
+    "tests/frontend/filewin/find_testing.rs",
+    "tests/frontend/filewin/rows_testing.rs",
     "tests/frontend/shell/shared_crate_registry_ci_yaml.rs",
     "tests/frontend/shell/write_site_registry_writers.rs",
 ];
@@ -896,29 +900,29 @@ const REAL_MACHINE: &[(&str, &str, Trigger)] = &[
         Trigger::Filter { by: "tests/evidence/SR1a-link-loopback.py", needle: "loopback_roundtrip_through_the_resident_backend" },
     ),
     (
-        "tests/frontend/shell/filewin/bigfile_tests.rs",
+        "tests/frontend/filewin/bigfile_tests.rs",
         "the_readings_behind_the_two_thresholds",
         Trigger::Manual("读数不是判据：大文件模式两个门槛的来源，只在 release 档上有意义；跑法住它自己的头注"),
     ),
     (
-        "tests/frontend/shell/filewin/rows_tests.rs",
+        "tests/frontend/filewin/rows_tests.rs",
         "xvfb_worker_real_pointer_events_on_a_row",
-        Trigger::Filter { by: "tests/frontend/shell/filewin/rows_tests.rs", needle: "filewin::rows::tests::xvfb_worker_real_pointer_events_on_a_row" },
+        Trigger::Filter { by: "tests/frontend/filewin/rows_tests.rs", needle: "rows::tests::xvfb_worker_real_pointer_events_on_a_row" },
     ),
     (
-        "tests/frontend/shell/filewin/shell_keys_tests.rs",
+        "tests/frontend/filewin/shell_keys_tests.rs",
         "xvfb_worker_real_keys_on_the_window",
-        Trigger::Filter { by: "tests/frontend/shell/filewin/shell_keys_tests.rs", needle: "filewin::shell::keys_tests::xvfb_worker_real_keys_on_the_window" },
+        Trigger::Filter { by: "tests/frontend/filewin/shell_keys_tests.rs", needle: "shell::keys_tests::xvfb_worker_real_keys_on_the_window" },
     ),
     (
-        "tests/frontend/shell/filewin/shell_tests.rs",
+        "tests/frontend/filewin/shell_tests.rs",
         "xvfb_worker_opens_a_real_window",
-        Trigger::Filter { by: "tests/frontend/shell/filewin/shell_tests.rs", needle: "filewin::shell::tests::xvfb_worker_opens_a_real_window" },
+        Trigger::Filter { by: "tests/frontend/filewin/shell_tests.rs", needle: "shell::tests::xvfb_worker_opens_a_real_window" },
     ),
     (
-        "tests/frontend/shell/filewin/shell_tests.rs",
+        "tests/frontend/filewin/shell_tests.rs",
         "xvfb_worker_opens_with_no_x_server_at_all",
-        Trigger::Filter { by: "tests/frontend/shell/filewin/shell_tests.rs", needle: "filewin::shell::tests::xvfb_worker_opens_with_no_x_server_at_all" },
+        Trigger::Filter { by: "tests/frontend/filewin/shell_tests.rs", needle: "shell::tests::xvfb_worker_opens_with_no_x_server_at_all" },
     ),
     (
         // 〔LR2〕生产命令 `render_launch_payload` 给 e2e 的数据出口（`resume-suite` · `resume-backend-frames` ·
@@ -1030,6 +1034,7 @@ fn rust_test_files(root: &Path) -> BTreeMap<String, String> {
     let mut out = BTreeMap::new();
     for sub in [
         "tests/frontend/shell",
+        "tests/frontend/filewin", // 〔P4〕文件窗口独立成包
         "tests/backend",
         "tests/common",
         "tests/comms",
@@ -1608,7 +1613,12 @@ fn module_path(
     if depth > 8 {
         return None;
     }
-    const ROOTS: &[&str] = &["src/frontend/shell/src/", "src/backend/"];
+    // 〔P4〕文件窗口独立成包：它那棵 `src/` 也按目录推模块路径。
+    const ROOTS: &[&str] = &[
+        "src/frontend/shell/src/",
+        "src/frontend/filewin/src/",
+        "src/backend/",
+    ];
     for r in ROOTS {
         if under(rel, r) {
             let inner = rel[r.len()..].trim_end_matches(".rs");
@@ -1728,7 +1738,7 @@ fn the_tiers_partition_the_test_files_on_disk() {
     assert!(
         problems.is_empty(),
         "测试层分区对不上（{} 处）：\n{}\n\n\
-         本表的人群是 `tests/frontend/shell/**/*.rs` ∪ `tests/backend/**/*.rs` ∪ `tests/common/**/*.rs` ∪ `tests/comms/**/*.rs` ∪ `tests/**/*.{{vitest,test}}.ts`。\n\
+         本表的人群是 `tests/frontend/shell/**/*.rs` ∪ `tests/frontend/filewin/**/*.rs` ∪ `tests/backend/**/*.rs` ∪ `tests/common/**/*.rs` ∪ `tests/comms/**/*.rs` ∪ `tests/**/*.{{vitest,test}}.ts`。\n\
          ⇒ 新加一份测试文件就要在这里登记它的层；那是这张表存在的理由（`设计/16 §5.2`：人群从登记表来，\
          盘上条数 == 登记条数，不是「扫到几个算几个」）。",
         problems.len(),
@@ -1851,6 +1861,15 @@ fn unit_tier_every_file_is_reached_by_its_runner() {
 fn root_fn_base(rel: &str, fname: &str) -> Option<&'static str> {
     // 〔RE〕`tests/comms/outward/` 由后端 crate 挂载 ⇒ 它的 `guard_support` 是后端那一份。
     let backend = under(rel, "tests/backend/") || under(rel, "tests/comms/outward/");
+    // 〔P4〕文件窗口独立成包：它的判据由窗口包挂载 ⇒ `guard_support` 是窗口包那一份（三个根）。
+    if under(rel, "tests/frontend/filewin/") {
+        return match fname {
+            "repo_root" => Some("."),
+            "crate_src_root" => Some("src/frontend/filewin/src"),
+            "crate_root" => Some("src/frontend/filewin"),
+            _ => None,
+        };
+    }
     match (backend, fname) {
         (_, "repo_root") => Some("."),
         (false, "tests_root") => Some("tests"),

@@ -10,7 +10,7 @@
 #   全程 tmux 只有一个 cc-<sid8>（复用,无 -N 孤儿）
 #
 # **为何 backend-frame 级是换号迁移的诚实天花板**:前端 tab 徽章翻转需整个 app 在跑,而 Linux 上 GUI 触发经
-# launch.rs::launch_powershell_window 仅 Windows → 必回退剪贴板、绝不执行(结构性)。故换号的**执行**由真源
+# platform/terminal.rs::launch_powershell_window 仅 Windows → 必回退剪贴板、绝不执行(结构性)。故换号的**执行**由真源
 # restartWithAccount 编排驱动(命令级),换号的**检测**(旧号失去/新号获得)由两个后端判活边沿断言。
 # 红线:backend 零改动(只跑它)/ CLAUDE_CONFIG_DIR 隔离绝不碰真 ~/.claude / 只 kill 本套件建的 cc-<sid8>。
 set -euo pipefail

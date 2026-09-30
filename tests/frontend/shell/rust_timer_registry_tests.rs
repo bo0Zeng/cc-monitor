@@ -16,7 +16,7 @@
 //!
 //! ⚠ 条 43 是 2026-09-22 才有的（`P20` 现打之后用户拍板升格）：
 //! 在那之前本表**一直在管、却点不到任何要求**，而那天它**还在长**
-//!（当天加了 `filewin/shell.rs` 那个 10ms 轮询）⇒ 活着的缺口，不是历史遗留。
+//!（当天加了那个 10ms 轮询，今住 `filewin/proc.rs::early_failure`）⇒ 活着的缺口，不是历史遗留。
 //! 逐条依据住 `设计/99 §4.10.2`。
 //!
 use std::fs;
@@ -106,7 +106,8 @@ const REGISTERED: &[(&str, &str, usize, &str)] = &[
              （而它也顺手把 `EADDRINUSE` 挪到宿主手里）。",
     ),
     (
-        "src/filewin/shell.rs",
+        // 〔P4〕`early_failure` 随「起进程那一侧」留在 monitor（从前住窗口的 `shell.rs`）。
+        "src/filewin/proc.rs",
         "wait-for-condition",
         1,
         "🔴〔第十一刀 2026-09-22〕`early_failure` 里那一跳 10ms 轮询：\
@@ -148,14 +149,21 @@ const REGISTERED: &[(&str, &str, usize, &str)] = &[
              连上之后由 `stream_loop` 阻塞驱动；断线才回到这里。上限 30s 是明写的常量。",
     ),
     (
+        // 〔P4 · 阶段 H〕2 → 1：① 那处（resize 稳定检测，WebView2 错位修复的去抖）随 Windows 那段搬进 `platform/window.rs`（下一行）。
         "src/lib.rs",
         "wait-for-condition",
-        2,
-        "两处都有终止条件：① resize 稳定检测 `loop { sleep(60ms); if now == last { break } }`；\
-             ② `remote-bind-scan` 的 `for _ in 0..15`（每 ~0.6s、最多 ~9s，命中即停；\
-             〔U2〕带启动令牌的会话不起这条线程，见 `lib.rs::wants_title_prescan`）。**两处都不是节拍器。**\
+        1,
+        "有终止条件：`remote-bind-scan` 的 `for _ in 0..15`（每 ~0.6s、最多 ~9s，命中即停；\
+             〔U2〕带启动令牌的会话不起这条线程，见 `lib.rs::wants_title_prescan`）。**不是节拍器。**\
              〔CF1 · 第四波 09-24〕**3 → 2**：原来的第三处「frontend-ready 之后 10ms 一拍等本机 watcher 首扫完成（10s 上限）」\
              随本机 watcher 删了 —— 本机会话内容改走本机后端的 `line` 帧之后与远端同形，replay 不等。",
+    ),
+    (
+        "src/platform/window.rs",
+        "wait-for-condition",
+        1,
+        "〔P4 · 阶段 H〕原 `lib.rs` 那两处的 ①：resize 稳定检测 `loop { sleep(60ms); if now == last { break } }`\
+             （WebView2 最大化 / 全屏后内容错位修复的去抖，Windows 那段随平台臂搬来）。有终止条件，**不是节拍器**。",
     ),
     (
         "src/event_replay.rs",
@@ -182,24 +190,30 @@ fn production(raw: &str) -> String {
 fn rust_files() -> Vec<(String, String)> {
     let src = root().join("src");
     let mut out = Vec::new();
-    let mut stack = vec![src.clone()];
-    while let Some(d) = stack.pop() {
-        let Ok(rd) = fs::read_dir(&d) else { continue };
-        for e in rd.flatten() {
-            let p: PathBuf = e.path();
-            if p.is_dir() {
-                stack.push(p);
-                continue;
-            }
-            if p.extension().is_some_and(|x| x == "rs") {
-                let rel = format!(
-                    "src/{}",
-                    p.strip_prefix(&src)
-                        .unwrap_or(&p)
-                        .to_string_lossy()
-                        .replace('\\', "/")
-                );
-                out.push((rel, fs::read_to_string(&p).unwrap_or_default()));
+    // 〔P4〕人群 ＝ 本 crate 的 `src/` ＋ manifest 明写的兄弟包（窗口包 · 通道 · 宿主原语 · 开窗契约，
+    //   `guard_core::population_trees`）—— monitor 的代码搬进去了，人群不变；兄弟包的键带包名。
+    let trees =
+        std::iter::once(("src".to_string(), src.clone())).chain(guard_core::population_trees(&src));
+    for (label, tree) in trees {
+        let mut stack = vec![tree.clone()];
+        while let Some(d) = stack.pop() {
+            let Ok(rd) = fs::read_dir(&d) else { continue };
+            for e in rd.flatten() {
+                let p: PathBuf = e.path();
+                if p.is_dir() {
+                    stack.push(p);
+                    continue;
+                }
+                if p.extension().is_some_and(|x| x == "rs") {
+                    let rel = format!(
+                        "{label}/{}",
+                        p.strip_prefix(&tree)
+                            .unwrap_or(&p)
+                            .to_string_lossy()
+                            .replace('\\', "/")
+                    );
+                    out.push((rel, fs::read_to_string(&p).unwrap_or_default()));
+                }
             }
         }
     }

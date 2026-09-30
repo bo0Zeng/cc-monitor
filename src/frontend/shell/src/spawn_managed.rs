@@ -23,7 +23,7 @@
 //!
 //! 三个枚举**一个都不给 `Default`**（由 [`tests::the_three_policies_have_no_default`] 钉），
 //! 于是每一个落点在**编译期**被迫各自回答三个问题：要不要窗口 · 要不要随我死 · 错误往哪去。
-//! 「全局加一个 flag」买不到这一条 —— 它会把 `launch.rs::launch_powershell_window`
+//! 「全局加一个 flag」买不到这一条 —— 它会把 `platform/terminal.rs::launch_powershell_window`
 //! 那处**刻意**的 `CREATE_NEW_CONSOLE`（给用户开一个真终端）一起改掉。
 //! 那正是要唯一出口而不要全局开关的理由，也正是 [`ConsolePolicy::NewVisible`] 存在的理由。
 //!
@@ -66,7 +66,7 @@ pub enum ConsolePolicy {
     Hidden,
     /// **开一个真的、用户看得见的终端**（Windows `CREATE_NEW_CONSOLE`）。
     ///
-    /// 今天只有一个用户：`launch.rs::launch_powershell_window` —— 那是本产品的主用途，
+    /// 今天只有一个用户：`platform/terminal.rs::launch_powershell_window` —— 那是本产品的主用途，
     /// 给用户的 claude 会话开一个能敲字的窗口。**别把 `Hidden` 铺到它头上。**
     NewVisible,
     /// **不表态**：继承宿主今天有什么（Windows 上不设任何 creation flag）。

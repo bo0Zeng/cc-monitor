@@ -91,7 +91,8 @@ const PENDING: &[&str] = &[
     "tests/frontend/shell/shared_crate_registry_tests.rs",
     // 〔MIG-1〕`tests/frontend/shell/ssh_source_f032_idle_tests.rs` 这一行删了：那份判据随 monitor 的 idle / tmux 账本一起删 ⇒ 存量少一条，上限同拍往下拧一格。
     "tests/frontend/shell/tmux_backend_gate_guard_tests.rs",
-    "tests/frontend/shell/utils_tests.rs",
+    // 〔P4〕原 `tests/frontend/shell/utils_tests.rs`：那一处 `read_dir`（查临时目录里有没有残留的临时件）随原子写的判据搬进 `host-core`，条数不变。
+    "tests/common/host-core/lib_tests.rs",
     "tests/backend/layering_guard.rs",
     "tests/backend/no_timer_guard.rs",
     // 🔴 〔步 7c 后端剖分 2026-09-19〕**watcher 这一条变成了两条，逐份点名。**
@@ -1284,7 +1285,10 @@ const PROSE_TREES: &[(&str, usize)] = &[
     ("src/frontend/shell/src", 100),
     ("src/common", 8),
     ("src/backend", 58),
-    ("tests/frontend/shell", 140),
+    // 〔P4〕140 → 120：文件窗口那 31 份判据搬去 `tests/frontend/filewin/`（下一行）；〔合并主线 211bb498〕P1 删了 monitor 适配表那一族的判据，这一棵现打 124。
+    ("tests/frontend/shell", 120),
+    // 〔P4〕文件窗口独立成包，它的判据从上一棵搬到这里（地板取现打份数）。
+    ("tests/frontend/filewin", 33),
     ("tests/backend", 65),
     // 〔RE〕通信层成员的单测镜像（从上面两棵里搬出来的 9 份 ＋ 1 份 `.vitest.ts` 不在 `.rs` 人群）；地板取现打份数。
     ("tests/comms", 9),

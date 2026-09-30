@@ -1,7 +1,12 @@
 //! **文件管理器与 app 原生后端那条边界**的判据〔2026-09-23〕。
 //!
-//! 头注（「解耦清楚」被改述成了什么 · 摸底三问的答案 · 抽 crate 的代价 ·
-//! 为什么选乙 · 买不到什么）住 [`super`] 的模块头注那一节，**这里不抄第二份**。
+//! 要求住址：`设计/60 §2.6`「按进程切，两张表各自两向相等；app 侧够到 `filewin/` 只有一条门」·
+//! `设计/90 §0.5.3` ⑰「文件窗口成独立包 `src/frontend/filewin/`」。
+//!
+//! 〔P4〕窗口独立成包之后按进程切就是按 crate 切：窗口进程 ＝ 窗口包 `src/frontend/filewin/src/**`（它编不进 monitor 的库面，
+//! 够不着壳 —— 它够到自己之外的只剩共享 crate，下面 ① 按 `chan_core` / `copy_core` 两条前缀钉那张表）；
+//! monitor 那一侧 ＝ 壳里 `src/frontend/shell/src/filewin/**`（开窗入口 · 起进程 · `[[bin]]` 入口），够到壳的边照旧逐条。
+//! 头注里「摸底三问」那几节住窗口包的 `lib.rs`，**这里不抄第二份**。
 //!
 //! # ⚠ 为什么抽取器住在**判据这一侧**，而不是一个生产模块里
 //!
@@ -182,7 +187,18 @@ fn filewin_dir() -> PathBuf {
     repo_root().join("src/frontend/shell/src/filewin")
 }
 
+/// 〔P4〕窗口包那棵生产树。
+fn window_crate_dir() -> PathBuf {
+    repo_root().join("src/frontend/filewin/src")
+}
+
+/// 〔P4〕窗口包够到自己之外的**通道与文案**那两条前缀（从前是 `crate::chan::…` / `crate::copy_table::…`）。
+/// 别的共享 crate（开窗契约 · 宿主原语 · 家目录与暂存区两条常量）由 `contract_crate_guard` 按类钉，不进这张表。
+const WINDOW_REACH: &[&str] = &["chan_core", "copy_core"];
+
 /// `src/frontend/shell/src` 整棵树，切成**两半**：`filewin/` 里的 · 外面的。
+/// 〔P4〕「外面的」只算 monitor 自己的源码：那棵根的人群声明带进来的兄弟包（窗口包 · 通道 · 宿主原语 · 开窗契约，
+/// `guard_core::population_trees`）不是 app 侧。
 ///
 /// 🔴 **人群从文件系统全集派生**，不是一张手写名单 —— 新加一份 `.rs`
 /// 自动进人群。切法走 `Path::starts_with`（拿**路径**比路径），
@@ -195,8 +211,14 @@ fn filewin_dir() -> PathBuf {
 /// （它住 `tests/frontend/shell/filewin/`，压根不在被扫的那棵树里）。
 fn both_halves() -> (Vec<(PathBuf, String)>, Vec<(PathBuf, String)>) {
     let fw = filewin_dir();
-    guard_core::scan_tree_excluding(&repo_root().join("src/frontend/shell/src"), &["rs"], &[])
+    let shell_src = repo_root().join("src/frontend/shell/src");
+    let siblings: Vec<PathBuf> = guard_core::population_trees(&shell_src)
         .into_iter()
+        .map(|(_, t)| t)
+        .collect();
+    guard_core::scan_tree_excluding(&shell_src, &["rs"], &[])
+        .into_iter()
+        .filter(|(p, _)| !siblings.iter().any(|t| p.starts_with(t)))
         .partition(|(p, _)| p.starts_with(&fw))
 }
 
@@ -217,12 +239,14 @@ fn rel(root: &Path, p: &Path) -> String {
 // 开窗前解 home），其余只在窗口进程里跑。题面那句判据逐字是「**窗口进程的依赖面** ==
 // {通道客户端, 线上类型, 界面库…}，两向相等」⇒ 人群按**进程**切：
 //
-// - monitor 那一侧 ＝ `entry.rs` 整份 ＋ [`MONITOR_FNS`] 里点名的那几个函数；
+// - monitor 那一侧 ＝ `entry.rs` 整份 ＋ 点名的那几个函数；
 // - 窗口进程那一侧 ＝ 其余全部（含每份文件函数外的 `use`）。
 //
 // 切法是**按函数体切块**（[`chunks_by_fn`]）：一行 `fn 名字(` 开一块，块归那个名字。
 // ⚠ 漏判面：写在一个 monitor 函数体里的**闭包**若在别处被调用，按构造算 monitor 那一侧 ——
 // 那是「代码写在哪」而不是「在哪个进程跑」；今天两份表都是现打的，那一形零处。
+//
+// 〔P4〕窗口独立成包：两侧各是一棵树（窗口包 · 壳里 `filewin/`），不再按函数切 —— 切块的抽取器留着给合成语料那几条判据用。
 
 /// 一条边的**类别**。闭集。
 ///
@@ -234,29 +258,20 @@ enum Kind {
     Channel,
     /// 线上类型（`chan::wire::*`，`05 §3.3` 那一套）。**题面要的就是它。**
     Wire,
-    /// 跨机传输那一族够到的 app 侧类型（今天只剩开窗配置的类型 `ssh_source::RemoteConfig`）。
-    /// 〔TL3 · 审计 F 🔴-3 订正〕这里原先写「跨机传输仍走 SFTP、这一类在窗口进程就仍拨第二条 SSH」——
-    /// 今天传输是窗口经通道说 `transfer-*` ＋ 订阅、monitor 只中继、SFTP 住本机常驻后端（`设计/60 §4.2` · `§4.6`），
-    /// 窗口进程零 SFTP、零 SSH（`60 §2.2`）。
-    Transfer,
+    // 〔P4〕「跨机传输那一族够到的 app 侧类型」（`Transfer`，末一条是开窗配置的类型 `ssh_source::RemoteConfig`）清零删了：种子只带那台的名字。
     // 〔F7a · 第三波 09-24〕这里原来还有一类「后端今天没有这条命令」（同机复制：池子那条复制命令 ＋
     //   它的裁决类型，2 条）。后端有了 `files-copy` 之后两条都换走了通道 ⇒ 这一类清零，随之删掉
     //   （`every_declared_edge_falls_in_a_live_category` 逐字要求「一条边都没有就从 `Kind` 里删掉」）。
     // 〔FN1 · 第四波 4C · V119〕这里原来还有一类「本地预判的那道围栏」（1 条：窗口借围栏本家那个判定）。
     //   用户「文件管理器全部都可以改. 不需要任何围栏」⇒ 窗口那道预判删了，这一类清零，随之删掉
     //   （`every_declared_edge_falls_in_a_live_category` 逐字要求「一条边都没有就从 `Kind` 里删掉」）。
-    /// 「在此打开终端」—— **本机**动作（在用户面前这台机器上开一个窗口），后端在对面，够不着。
-    /// 为什么它不归 `Spawn`：那是原语，这是一层编排（按 origin 读落盘的远端配置 ＋ 一条平台裁决）。
-    Terminal,
-    /// 〔FW34 · 第四波 09-24〕**monitor 自己的状态文件**（书签那一份）的原子写。
-    /// 它不是欠账：书签不是用户文件（不归后端写面管），是这个程序自己存下的东西，
-    /// 与 `config.json` 同一族；写口只有 `bookmarks::mutate` 一处（上锁 → 现读 → 改 → 原子换）。
-    OwnState,
+    // 〔P4〕「在此打开终端」那一类（`Terminal`：机器事实 · 开窗两条）清零删了：窗口经通道交意图，monitor 接下来补事实、开窗（`chan/host.rs::terminal_open`）。
+    // 〔P4〕「monitor 自己的状态」那一类（`OwnState`：原子写 · 书签文件名）清零删了：原子写进 `host_core`，书签全路径由开窗入口算好随种子交来。
     /// 〔CP2b · 第四波 4C〕**对外文案表的取文口**（`copy_table::copy_text`）。它不是欠账：
     /// `设计/01 §6.9`「所有对外文案与报错都从一张表来」—— 表是编译期内嵌的一份 JSON，窗口进程与 app 读同一份字节，
     /// 取文口是纯函数（查表 ＋ 填占位符），不碰进程外任何东西。
     Copy,
-    /// 〔WF2 · WIN3 读数 D〕**窗口几何**：工作区那个类型 ＋「一扇窗夹进工作区」那一个判定（`lib.rs::fit_into_work_area`，纯函数）。
+    /// 〔WF2 · WIN3 读数 D〕**窗口几何**：工作区那个类型 ＋「一扇窗夹进工作区」那一个判定（〔P4〕今天住 `host_core`，`geometry.rs::fit_into_work_area`；壳里只剩问 Tauri 的 `lib.rs::work_area_of`）。
     /// 不是欠账：它与 Tauri 那几扇窗共用一个家（一个判定不许两个家），不碰进程外任何东西。
     Geometry,
     /// monitor 那一侧：通道宿主（交接件 · 生产句柄）。
@@ -275,70 +290,59 @@ enum Kind {
     Config,
 }
 
-/// monitor 那一侧的函数（`entry.rs` 整份之外）。**点名，不靠目录。**
-const MONITOR_FNS: &[(&str, &str)] = &[
-    ("proc.rs", "spawn_window"),
-    ("proc.rs", "write_seed"),
-    ("proc.rs", "open_in_new_process"),
-    ("proc.rs", "reap_later"),
-];
-
-/// monitor 那一侧整份算的文件。
-const MONITOR_FILES: &[&str] = &["entry.rs"];
+// 〔P4〕两张点名表（monitor 那一侧的函数 · 整份算那一侧的文件）删了：窗口进程那一侧（`proc::child_main` · `dial_back` · `first_screen`）随躯体搬进窗口包，
+//   壳里 `filewin/` 整棵都是 monitor 那一侧。
 
 /// ★ **窗口进程**够得到的 app 侧符号，逐条。
 ///
 /// 🔴 题面判据的可判形态：`Channel` ＋ `Wire` 两类是「只说 call/subscribe」本身；
 /// 其余三类每一条都是一笔带住址的欠账（见 [`Kind`]；〔F7a 09-24〕「后端缺命令」那一类清零删了）。
+/// 〔P4〕路径带共享 crate 前缀（[`WINDOW_REACH`]）：从前的 `crate::chan::…` → `chan_core::chan::…`，`crate::copy_table::copy_text` → `copy_core::copy_text`；
+///   交接件那个类型随交接件住 `chan_core::chan::handoff`（从前挂在壳 `chan::host` 上）。
 const WINDOW_SIDE: &[(&str, Kind)] = &[
     // ── 通道客户端 ──
-    ("chan::client::Client", Kind::Channel),
-    ("chan::dial::dial", Kind::Channel),
-    ("chan::host::Handoff", Kind::Channel),
+    ("chan_core::chan::client::Client", Kind::Channel),
+    ("chan_core::chan::dial::dial", Kind::Channel),
+    ("chan_core::chan::handoff::Handoff", Kind::Channel),
     // ── 线上类型 ──
-    ("chan::wire::Body", Kind::Wire),
-    ("chan::wire::Budget", Kind::Wire),
-    ("chan::wire::CallError", Kind::Wire),
-    ("chan::wire::CancelToken", Kind::Wire),
+    ("chan_core::chan::wire::Body", Kind::Wire),
+    ("chan_core::chan::wire::Budget", Kind::Wire),
+    ("chan_core::chan::wire::CallError", Kind::Wire),
+    ("chan_core::chan::wire::CancelToken", Kind::Wire),
     // 〔FILES3 · ㉜「可撤」〕按内容搜那一趟的撤单手柄由窗口自己造（「停」拨它）。
-    ("chan::wire::CancelToken::new", Kind::Wire),
-    ("chan::wire::Comms", Kind::Wire),
-    ("chan::wire::HopFault", Kind::Wire),
-    ("chan::wire::Op", Kind::Wire),
-    ("chan::wire::Origin", Kind::Wire),
-    ("chan::wire::OursFault", Kind::Wire),
-    ("chan::wire::PeerFault", Kind::Wire),
-    ("chan::wire::Reach", Kind::Wire),
+    ("chan_core::chan::wire::CancelToken::new", Kind::Wire),
+    ("chan_core::chan::wire::Comms", Kind::Wire),
+    ("chan_core::chan::wire::HopFault", Kind::Wire),
+    ("chan_core::chan::wire::Op", Kind::Wire),
+    ("chan_core::chan::wire::Origin", Kind::Wire),
+    ("chan_core::chan::wire::OursFault", Kind::Wire),
+    ("chan_core::chan::wire::PeerFault", Kind::Wire),
+    ("chan_core::chan::wire::Reach", Kind::Wire),
     // 〔F7c · 第三波 09-24〕订阅那一口（`source::watch`，窗口进程里唯一一处 `subscribe`）用到的四样。
-    ("chan::wire::By", Kind::Wire),
-    ("chan::wire::Item", Kind::Wire),
-    ("chan::wire::Kind", Kind::Wire),
-    ("chan::wire::Sub", Kind::Wire),
+    ("chan_core::chan::wire::By", Kind::Wire),
+    ("chan_core::chan::wire::Item", Kind::Wire),
+    ("chan_core::chan::wire::Kind", Kind::Wire),
+    ("chan_core::chan::wire::Sub", Kind::Wire),
     // 〔NET2〕那台的能力事实（接上通道时问一次，做不到的那一件置灰）。
-    ("chan::wire::Offer", Kind::Wire),
+    ("chan_core::chan::wire::Offer", Kind::Wire),
     // ── 跨机传输 ──
     // 〔F7c · 第三波 09-24〕`§8.4` 拍了（「保留SFTP. 思考怎么干净」）：上传 / 下载经通道开单、订阅进度
     //   （`设计/60 §13`）⇒ `sftp_upload` · `sftp_download` · `TRANSFER_LANE_CAP` 三行走掉；
     //   `sftp_cancel_transfer`〔散文墓碑〕 随复制走后端（F7a，不可取消）一起走掉（`transfer::forward_cancel` 删了）。
-    ("ssh_source::RemoteConfig", Kind::Transfer),
     // ── 本地预判围栏 ──〔FN1 · V119〕那一行（围栏本家那个判定）随窗口那道预判删了：这一类清零。
     // ── 本机动作 ──
     // 〔FIX4 · `99 §2.1 ⑬`〕开终端三步：机器事实（monitor 的机器表 ＋ 上次赢的那条）→ 窗口那条通道问本机后端 `terminal-ssh` →
     //   开窗（`launch_remote_terminal`〔散文墓碑〕那一条拼 ssh 的边退役，ssh 外壳进了本机后端）。
-    ("dial_host::machine_facts", Kind::Terminal),
-    ("launch::open_terminal_window", Kind::Terminal),
     // ── monitor 自己的状态 ──
-    ("utils::atomic_write_json", Kind::OwnState),
+    // 〔P4〕`utils::atomic_write_json` 那一行摘了：原子写搬进共享 crate `host_core`（前端宿主原语），不再是壳里的边。
     // 〔FILES3 · ㉜〕书签那份文件的名字住数据目录的唯一枚举点（设置页「数据位置」列它），窗口这一侧引过来。
-    ("data_paths::FILEWIN_BOOKMARKS_FILE", Kind::OwnState),
     // ── 对外文案表（CP2b）──
-    ("copy_table::copy_text", Kind::Copy),
+    ("copy_core::copy_text", Kind::Copy),
     // ── 窗口几何（〔WF2〕开窗第一拍夹进种子带来的工作区）──
-    ("WorkArea", Kind::Geometry),
-    ("fit_into_work_area", Kind::Geometry),
+    // 〔P4〕`WorkArea` · `fit_into_work_area` 两行摘了：类型与判定搬进 `host_core`（Tauri 那几扇窗与文件窗口共用那一份）。
 ];
 
-/// ★ **monitor 那一侧**（`entry.rs` ＋ [`MONITOR_FNS`]）够得到的 app 侧符号，逐条。
+/// ★ **monitor 那一侧**（〔P4〕壳里 `filewin/` 整棵）够得到的 app 侧符号，逐条。
 const MONITOR_SIDE: &[(&str, Kind)] = &[
     // 〔MIG-3a · 主会话 09-28 裁 3〕开窗前那两问（`files-home` / `files-ls`）进了窗口进程 ⇒ monitor 这一侧问后端的五样
     //   （宿主句柄 `InboundBackends` · `router::Backends` · `wire::Body` / `CancelToken` / `Op`）退役，只剩交接件那一样。
@@ -348,16 +352,22 @@ const MONITOR_SIDE: &[(&str, Kind)] = &[
     ("spawn_managed::ManagedChild", Kind::Spawn),
     ("spawn_managed::StderrSink", Kind::Spawn),
     ("spawn_managed::spawn_managed_cmd", Kind::Spawn),
+    // 〔P4 · 阶段 H〕窗口那份二进制的文件名后缀（`window_bin_in`）：平台原语住壳的平台层。
+    ("platform::proc::EXE_SUFFIX", Kind::Spawn),
     ("ssh_source::RemoteConfig", Kind::Config),
     // 〔FILES2 · V152〕开窗种子带上机器名单（「复制到另一台」那一问的下拉）：已有的配置读口，不新建数据源。
     ("load_remote_configs", Kind::Config),
+    // 〔P4〕名单里本机那一项的名字：从前借窗口那一侧 `cross_copy::LOCAL_ORIGIN`，窗口独立成包之后引 monitor 自己那一份哨兵值。
+    ("inbound_client::LOCAL_ORIGIN", Kind::Config),
     ("config::resolve_monitor_data_dir", Kind::DataDir), // 〔RE〕原 `paths::`（`paths.rs` 并进 `config.rs`）
+    // 〔P4〕书签文件的名字：全路径在这一侧拼好随种子交过去（窗口那一侧不再引它）。
+    ("data_paths::FILEWIN_BOOKMARKS_FILE", Kind::DataDir),
     // 〔CP2b〕monitor 那一侧（entry.rs）的报错也从文案表取。
     ("copy_table::copy_text", Kind::Copy),
     // 〔WF2 · WIN3 读数 D〕问主窗所在显示器的工作区，放进种子。
     ("MAIN_WINDOW_LABEL", Kind::Geometry),
-    ("WorkArea", Kind::Geometry),
-    ("WorkArea::of", Kind::Geometry),
+    // 〔P4〕类型搬进 `host_core`；问 Tauri 那一下留在壳里，改名 `work_area_of`。
+    ("work_area_of", Kind::Geometry),
     // 〔WF2 · WIN3 读数 J〕开出来之后又退了那一句经 `remote-health` 出声。
     ("ui_contract::RemoteHealthPayload", Kind::Notify),
     ("ui_contract::events::REMOTE_HEALTH", Kind::Notify),
@@ -397,44 +407,49 @@ fn chunks_by_fn(prod: &str) -> Vec<(String, String)> {
     out
 }
 
-/// 整棵 `filewin/` 生产段 → `(窗口进程那一侧的边, monitor 那一侧的边, 点名的 monitor 函数找到了几个)`。
+/// 两侧生产段 → `(窗口进程那一侧的边, monitor 那一侧的边)`。
+///
+/// 〔P4〕窗口那一侧 ＝ 窗口包整棵，边 ＝ [`WINDOW_REACH`] 那两条前缀起头的路径 ＋ 任何 `monitor_lib::`（那是够进壳，必须零处）；
+/// monitor 那一侧 ＝ 壳里 `filewin/` 整棵，边 ＝ `crate::…`（不含 `crate::filewin::…`）。
 fn edges_by_process() -> (
     std::collections::BTreeMap<String, Vec<String>>,
     std::collections::BTreeMap<String, Vec<String>>,
-    BTreeSet<(String, String)>,
 ) {
     let (inside, _) = both_halves();
-    assert!(
-        inside.len() >= 16,
-        "`filewin/` 下只扫到 {} 份 `.rs` —— 遍历器坏了（2026-09-24 现打 17）。\
-         人群塌成空集时，下面那两条相等**照样成立**",
-        inside.len()
+    let window_files = guard_core::scan_tree_excluding(&window_crate_dir(), &["rs"], &[]);
+    // 🔴 两侧人群都现数（恒等，不是地板）：塌成空集时下面那两条相等**照样成立**。
+    //   〔P4〕壳里 `filewin/` 现打 4 份（mod · entry · proc · win_main）；窗口包现打 29 份（搬家前那 31 份里 27 份整份搬来 ＋ 新 `proc.rs`（窗口进程那一半）＋ `guard_support.rs`）。
+    //   〔P4 · 阶段 H〕29 → 30：窗口包的平台层 `platform.rs`。
+    assert_eq!(
+        (inside.len(), window_files.len()),
+        (4, 30),
+        "两侧扫到的 `.rs` 份数变了 —— 遍历器坏了，或者两侧有人加 / 删了文件（先回答那份住哪一侧，再改这个数）"
     );
     let root = repo_root();
     let mut window: std::collections::BTreeMap<String, Vec<String>> = Default::default();
     let mut monitor: std::collections::BTreeMap<String, Vec<String>> = Default::default();
-    let mut met: BTreeSet<(String, String)> = BTreeSet::new();
-    for (path, src) in &inside {
+    for (path, src) in &window_files {
         let prod = guard_core::production_code(src);
         guard_core::assert_no_test_code(&rel(&root, path), &prod);
-        let file = path.file_name().unwrap().to_string_lossy().to_string();
-        let whole_monitor = MONITOR_FILES.contains(&file.as_str());
-        for (name, chunk) in chunks_by_fn(&prod) {
-            let named = MONITOR_FNS.iter().any(|(f, n)| *f == file && *n == name);
-            if named {
-                met.insert((file.clone(), name.clone()));
-            }
-            let side = if whole_monitor || named {
-                &mut monitor
-            } else {
-                &mut window
-            };
-            for e in app_side_edges(&chunk) {
-                side.entry(e).or_default().push(format!("{file}::{name}"));
+        let file = rel(&root, path);
+        for ident in WINDOW_REACH.iter().chain(["monitor_lib"].iter()) {
+            for e in paths_from(&prod, ident) {
+                window
+                    .entry(format!("{ident}::{e}"))
+                    .or_default()
+                    .push(file.clone());
             }
         }
     }
-    (window, monitor, met)
+    for (path, src) in &inside {
+        let prod = guard_core::production_code(src);
+        guard_core::assert_no_test_code(&rel(&root, path), &prod);
+        let file = rel(&root, path);
+        for e in app_side_edges(&prod) {
+            monitor.entry(e).or_default().push(file.clone());
+        }
+    }
+    (window, monitor)
 }
 
 fn assert_side_equals(
@@ -461,13 +476,7 @@ fn assert_side_equals(
 /// monitor 那一侧同理对 [`MONITOR_SIDE`]。** 两张表各自两向相等。
 #[test]
 fn every_edge_from_the_file_manager_into_the_app_is_declared() {
-    let (window, monitor, met) = edges_by_process();
-    // ★ 抽取器自检：点名的 monitor 函数**一个都不许找不到**（改名 ⇒ 那一块会悄悄滑进窗口那一侧）。
-    let want_met: BTreeSet<(String, String)> = MONITOR_FNS
-        .iter()
-        .map(|(f, n)| ((*f).to_string(), (*n).to_string()))
-        .collect();
-    assert_eq!(met, want_met, "`MONITOR_FNS` 里点名的函数盘上找不全");
+    let (window, monitor) = edges_by_process();
     assert!(
         window.len() >= 10 && monitor.len() >= 5,
         "抽到的边太少 —— 抽取器坏了"
@@ -484,8 +493,9 @@ fn every_edge_from_the_file_manager_into_the_app_is_declared() {
 /// 零命中守卫 ＋ 反向自检（那几条确实曾经在盘上，见 `git log`；这里喂合成文本证明认得出）。
 #[test]
 fn the_window_process_reaches_the_backend_only_through_the_channel() {
-    let (window, _, _) = edges_by_process();
-    const BANNED_PREFIX: &[&str] = &["backend::"];
+    let (window, _) = edges_by_process();
+    // 〔P4〕窗口包不链 monitor（`contract_crate_guard` ②）⇒ 下面那几条壳里的路按构造够不着；这里再钉一道：一个 `monitor_lib::` 都不许有。
+    const BANNED_PREFIX: &[&str] = &["backend::", "monitor_lib::"];
     const BANNED_EXACT: &[&str] = &[
         "sftp_pool::sftp_list_dir",
         "sftp_pool::sftp_stat",
@@ -501,6 +511,9 @@ fn the_window_process_reaches_the_backend_only_through_the_channel() {
         .keys()
         .filter(|e| {
             BANNED_EXACT.contains(&e.as_str())
+                || BANNED_EXACT
+                    .iter()
+                    .any(|b| e.as_str() == format!("monitor_lib::{b}"))
                 || BANNED_PREFIX.iter().any(|p| starts_with_str(e, p))
         })
         .collect();
@@ -511,9 +524,9 @@ fn the_window_process_reaches_the_backend_only_through_the_channel() {
     );
     // 两类「题面要的」确实在（否则上面那条零命中可能只是因为窗口什么都不够了）。
     for must in [
-        "chan::client::Client",
-        "chan::dial::dial",
-        "chan::wire::Comms",
+        "chan_core::chan::client::Client",
+        "chan_core::chan::dial::dial",
+        "chan_core::chan::wire::Comms",
     ] {
         assert!(
             window.contains_key(must),
@@ -536,9 +549,6 @@ fn every_declared_edge_falls_in_a_live_category() {
     for (k, side) in [
         (Channel, WINDOW_SIDE),
         (Wire, WINDOW_SIDE),
-        (Transfer, WINDOW_SIDE),
-        (Terminal, WINDOW_SIDE),
-        (OwnState, WINDOW_SIDE),
         (Host, MONITOR_SIDE),
         (Spawn, MONITOR_SIDE),
         (Config, MONITOR_SIDE),
@@ -559,22 +569,18 @@ fn every_declared_edge_falls_in_a_live_category() {
             "`Kind::{k:?}` 跑到了另一侧的表里 —— 类别是按进程分的"
         );
     }
-    // 🔴 欠账那几类的**条数恒等**（不是地板）：变多 ＝ 窗口又长出一条不经通道的路；
-    //    变少 ＝ 有一笔欠账还了 —— 好事，但要同拍改这里并写清是哪一笔。
-    let debt = |k: Kind| WINDOW_SIDE.iter().filter(|(_, kk)| *kk == k).count();
+    // 🔴〔P4〕欠账清零：窗口进程够到壳的只剩「题面要的」两类（通道客户端 · 线上类型）＋ 文案取文口 —— 恒等，不是地板。
+    //   变多 ＝ 窗口又长出一条不经通道的路。历史：传输 7 → 5 → 1 → 0（F7a · F7c · P4：开窗配置类型换成名字）·
+    //   本地围栏 1 → 0（FN1）· 本机动作 1 → 2 → 0（FIX4 · P4：开终端交 monitor）· 自己的状态 2 → 0（P4：原子写进 `host_core`、书签名回 monitor）。
+    let kinds: std::collections::BTreeSet<String> =
+        WINDOW_SIDE.iter().map(|(_, k)| format!("{k:?}")).collect();
     assert_eq!(
-        (debt(Transfer), debt(Terminal)),
-        // 〔F7c · 合主线 ＋ 收尾 09-24〕传输 5 → 1：`sftp_upload` · `sftp_download` · `TRANSFER_LANE_CAP`
-        //   （上传下载经通道开单、订阅进度）· `sftp_cancel_transfer`〔散文墓碑〕（复制那一腿的取消，随复制走后端删了）走掉；
-        //   剩 `RemoteConfig`（窗口进程拿着那台机器的配置当种子）。
-        // 〔FN1 · V119〕本地围栏 1 → 0（类别删了）：窗口那道预判随「文件管理器不需要任何围栏」删了。
-        // 〔FIX4 · `99 §2.1 ⑬`〕本机动作 1 → 2：开终端那一条（原先自己拼 ssh 的 `launch_remote_terminal`〔散文墓碑〕）拆成
-        //   机器事实（`dial_host::machine_facts`）＋ 开窗（`launch::open_terminal_window`），ssh 外壳经通道问本机后端 `terminal-ssh`。
-        (1, 2),
-        "窗口进程里「还不是通道」的那几类条数变了（传输 · 本机动作）\
-         〔F7a 09-24〕传输 7 → 5：编辑器读文本那两条（池子那条读文本命令 ＋ 它的上限常量）换成后端 \
-         `files-read-text`，上限常量搬回窗口（`editor::MAX_EDIT_BYTES`）；\
-         后端缺命令 2 → 0（类别删了）：同机复制那两条换成后端 `files-copy`"
+        kinds,
+        ["Channel", "Copy", "Wire"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect::<std::collections::BTreeSet<String>>(),
+        "窗口进程里「还不是通道」的边又长出来了"
     );
 }
 

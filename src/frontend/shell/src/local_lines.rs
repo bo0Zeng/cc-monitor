@@ -45,7 +45,11 @@ pub(crate) fn install(app: tauri::AppHandle, replay: Arc<EventReplay>) {
         tracing::error!("local_lines::install 被调了第二次 —— 本机内容消费者只许有一个，这次不起");
         return;
     }
-    tauri::async_runtime::spawn(crate::ssh_source::consume_local(rx, replay, app));
+    tauri::async_runtime::spawn(crate::ssh_source::consume_local(
+        rx,
+        replay,
+        crate::remote_health_out(app),
+    ));
 }
 
 fn sender() -> Option<&'static tokio::sync::mpsc::Sender<LocalItem>> {

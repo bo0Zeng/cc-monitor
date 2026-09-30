@@ -58,7 +58,6 @@ use crate::copy_table::copy_text;
 use crate::ssh_source::RemoteConfig;
 
 use super::proc::{open_in_new_process, OpenRequest, Unopened};
-use super::source::Source;
 
 /// 这一趟要落在哪儿。
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -106,7 +105,7 @@ pub fn plan_target(path: &str, reveal_file: Option<&str>) -> Result<Target, Stri
     let Some(f) = reveal_file.map(str::trim).filter(|s| !s.is_empty()) else {
         return Ok(Target::Home);
     };
-    let name = super::source::remote_basename(f).to_string();
+    let name = filewin_contract::remote_basename(f).to_string();
     if name.is_empty() {
         return Err(copy_text(
             "rsFilewinEntry.plan.noTarget",
@@ -117,7 +116,7 @@ pub fn plan_target(path: &str, reveal_file: Option<&str>) -> Result<Target, Stri
     //    从前 `parent_dir` 的签名吃 `&Source`（两侧不是同一个切法），于是这一行
     //    得合成一份「一个字段都不会被读」的 `RemoteConfig` 喂给它（`synthetic_remote`）。
     //    本机那一侧退役之后 `parent_dir` 只吃一条字符串 ⇒ 那个占位整个不需要了。
-    let dir = super::source::parent_dir(f);
+    let dir = filewin_contract::parent_dir(f);
     Ok(Target::Reveal { dir, name })
 }
 
@@ -158,7 +157,7 @@ pub fn plan_target(path: &str, reveal_file: Option<&str>) -> Result<Target, Stri
 /// 〔FILES2 · V152〕「复制到另一台」下拉里的机器：本机（`<local>`）＋ 已配的远端（`origin_label`，与通道寻址同一个名字）。
 /// 来自已有的配置读口，不新建数据源。
 fn machine_names() -> Vec<String> {
-    std::iter::once(super::cross_copy::LOCAL_ORIGIN.to_string())
+    std::iter::once(crate::inbound_client::LOCAL_ORIGIN.to_string())
         .chain(
             crate::load_remote_configs()
                 .iter()
@@ -179,7 +178,7 @@ pub async fn open_file_window(
     let work_area = app
         .get_webview_window(crate::MAIN_WINDOW_LABEL)
         .as_ref()
-        .and_then(crate::WorkArea::of);
+        .and_then(crate::work_area_of);
     // 〔WF2 · WIN3 读数 J〕开出来之后又不体面地退了 ⇒ 经远端健康那条通道出声（同一个 toast 出口）。
     let origin = cfg.origin_label();
     let late: super::proc::LateExit = Box::new(move |said| {
@@ -203,13 +202,14 @@ pub(crate) async fn open_with(
     cfg: RemoteConfig,
     path: String,
     reveal_file: Option<String>,
-    work_area: Option<crate::WorkArea>,
+    work_area: Option<host_core::WorkArea>,
     late: super::proc::LateExit,
 ) -> Result<usize, String> {
-    let source = Source::remote(cfg);
-    // 〔FW34〕书签文件住 monitor 自己的数据目录（不是用户文件），路径在这一侧算好交过去。
-    let bookmarks =
-        crate::config::resolve_monitor_data_dir().map(|d| super::bookmarks::file_in(&d));
+    // 〔P4〕窗口进程只拿那台的名字（寻址用，`origin_label` 口径）；它不认识 monitor 的配置类型。
+    let origin = cfg.origin_label();
+    // 〔FW34〕书签文件住 monitor 自己的数据目录（不是用户文件），路径在这一侧算好交过去（名字只住 `data_paths`）。
+    let bookmarks = crate::config::resolve_monitor_data_dir()
+        .map(|d| d.join(crate::data_paths::FILEWIN_BOOKMARKS_FILE));
     // ⓪ 三者优先级 —— 那一段是**纯函数**（[`plan_target`]），理由见它的头注。
     //    〔MIG-3a · 09-28 裁 3〕home 那一支不在这里问了：`cwd` 缺席交给窗口进程（`proc::first_screen`）。
     let (cwd, reveal) = match plan_target(&path, reveal_file.as_deref())? {
@@ -221,7 +221,7 @@ pub(crate) async fn open_with(
     let handoff =
         crate::chan::host::handoff().ok_or_else(|| copy_text("rsFilewinEntry.open.noHost", &[]))?;
     let req = OpenRequest {
-        source,
+        origin,
         cwd,
         reveal,
         handoff,

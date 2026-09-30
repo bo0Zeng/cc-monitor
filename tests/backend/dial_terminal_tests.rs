@@ -312,6 +312,88 @@ fn every_remote_command_the_backend_renders_passes_the_terminal_guard() {
     }
 }
 
+// ── 〔P4〕「在此打开终端」的那一串：原住文件窗口 `tests/frontend/filewin/shell_tests.rs`，随拼法搬来（期望串一个字没改） ──
+
+/// 🔴 **「在此打开终端」拼出来的那一串 —— 三种形状，期望串手写。**
+///
+/// 〔LR2〕这里原来是一条跨语言对拍：期望串现读旧面板那条判据的三行（TS `buildOpenTerminalCmd` 的黄金样例）；
+/// 那份 TS 实现删了之后那三行的字节原样搬进来当期望（行为零变化）。〔P4〕拼法从文件窗口搬进本机后端，期望照旧。
+#[test]
+fn the_open_terminal_command_keeps_its_three_shapes() {
+    const GOLDEN: &[(&str, &str)] = &[
+        ("/home/pi/p", "cd '/home/pi/p' && exec ${SHELL:-bash} -l"),
+        ("  ", "exec ${SHELL:-bash} -l"),
+        ("/a b/c", "cd '/a b/c' && exec ${SHELL:-bash} -l"),
+    ];
+    for (input, want) in GOLDEN {
+        assert_eq!(
+            command_for_cwd(&json!(input)).map_err(|e| e.1).as_deref(),
+            Ok(*want),
+            "入参 {input:?}"
+        );
+    }
+    // ⚠ 双引号那一条：模板自己**一个都不带**（`check_command` 拒掉含双引号的命令）。
+    assert!(!command_for_cwd(&json!("")).unwrap().contains('"'));
+}
+
+/// 〔TL3 · `INVARIANTS §47` ②〕「在此打开终端」的当前目录：自由文本路径，形式 ＋ 拒绝集（只收 NUL / CR / LF），**正反各一格**。
+/// 要求住址：`INVARIANTS §47` ②；主会话 09-26 按 V131 裁「自由文本路径……拒绝集只收控制字符（NUL / CR / LF）……不拒 shell 元字符」。
+#[test]
+fn the_open_terminal_cwd_passes_real_names_and_refuses_what_quote_cannot_hold() {
+    for good in ["/home/u/Bob's notes", "/data/照片 (2019)", "/srv/a&b;c"] {
+        let cmd = command_for_cwd(&json!(good))
+            .unwrap_or_else(|e| panic!("真实好值被拒了：{good:?} ⇒ {e:?}"));
+        assert!(cmd.starts_with("cd '"), "{cmd}");
+    }
+    // CR 放在中间：放两头会被 trim 掉（取出来的值本就不含它）。
+    for bad in [
+        "relative/dir",
+        "/home/u/../etc",
+        "/home/u/x\nrm -rf ~",
+        "/home/u/x\ry",
+        "/home/u/x\0",
+    ] {
+        let e = command_for_cwd(&json!(bad)).expect_err(&format!("坏值放行了：{bad:?}"));
+        assert_eq!(e.0, "refused");
+        assert!(
+            e.1.contains(&format!("{:?}", bad.trim())),
+            "那句话没说清是哪个目录：{e:?}"
+        );
+    }
+    // 〔FILES2 · 非 UTF-8 目录〕有损目录：`cd` 走唯一的 quote 的字节形（原住 `shell_tests` 有损目录那一条里的「开终端」一格）。
+    assert_eq!(
+        command_for_cwd(&json!({ "b16": "2f7372762f64ff" }))
+            .map_err(|e| e.1)
+            .as_deref(),
+        Ok("cd $'/srv/d\\xff' && exec ${SHELL:-bash} -l")
+    );
+}
+
+/// 〔P4 · 主会话 09-29 拍板 Q2〕`terminal-ssh` 收意图 `cwd`：渲出来的那一行与「先拼好命令再交 `command`」**逐字相同**
+/// （文件窗口与主界面开终端同一条路、同一处渲）；`command` 与 `cwd` 恰好给一个，两个都给 / 都不给 ⇒ `invalid_args`。
+#[test]
+fn a_cwd_intent_renders_exactly_like_the_command_it_stands_for() {
+    let m = machine("pi.local", "pi", 22, None);
+    let by_intent = answer(&json!({ "machine": m, "cwd": "/srv/a b" })).unwrap();
+    let by_command = answer(&json!({
+        "machine": m,
+        "command": command_for_cwd(&json!("/srv/a b")).unwrap(),
+    }))
+    .unwrap();
+    assert_eq!(by_intent, by_command);
+    // 反空真：换一个目录，渲出来的那一行跟着变（上面那条相等不是两边都丢了 `cwd`）。
+    assert_ne!(
+        by_intent,
+        answer(&json!({ "machine": m, "cwd": "/srv/c" })).unwrap()
+    );
+    for bad in [
+        json!({ "machine": m, "cwd": "/srv", "command": "ls" }),
+        json!({ "machine": m }),
+    ] {
+        assert_eq!(answer(&bad).unwrap_err().0, "invalid_args", "{bad}");
+    }
+}
+
 // ═══════ 〔P5 · `设计/80 §8.2` 本地半 · 主会话裁「整段前奏由后端渲」〕令牌握手前奏：原 monitor `launch_tests.rs` 那一组搬来 ═══════
 // 期望原样：被测对象从 monitor `launch.rs` 搬进 `with_bind_prelude` / `powershell::rbind_bind_prelude`，解码侧换成两半共用的契约
 // （`shell_quote_core::rbind_token_from_marker`，monitor `bind.rs` 收 await 文件时就是它）。await 文件三键 == `AwaitRequest` 留在读侧

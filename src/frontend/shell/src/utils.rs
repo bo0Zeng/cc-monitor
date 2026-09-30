@@ -1,4 +1,4 @@
-//! 跨模块工具：日期 / 时间换算 + 原子 JSON 写入 + procStart newtype。
+//! 跨模块工具：日期 / 时间换算 + procStart newtype。〔P4〕原子 JSON 写入搬去了 `host_core::atomic_write_json`（两个前端共用的那一份）。
 //!
 //! `days_from_civil`：〔MOD〕按时间戳挑子 agent 那一份进了后端之后，生产段零读者，只剩文件窗口那份日期换算的异源对拍在用。
 //!
@@ -17,15 +17,6 @@
 //!
 //! 两者数值差 504_911_232_000_000_000（NET 从 0001-01-01 起到 1601-01-01
 //! 的 ticks 数）+ 当地时区偏移。`FileTime::to_net_local_ticks()` 做这步转换。
-//!
-//! `atomic_write_json` 是 monitor 自写 data dir 内 JSON 文件（不是用户 profile）
-//! 的统一原子写入入口。早期 `bind.rs` / `history.rs` / `auto_launch.rs` 三处各
-//! 自手写 `write(tmp) + remove + rename` 三步非原子，crash 即丢；统一走本 helper
-//! 后 Windows 上走 `ReplaceFileW`，非 Windows 走 `std::fs::rename`，全程原子。
-//!
-//! **作用范围限于** monitor 数据目录（`~/.cc-monitor/`）下 monitor 自己产物
-//! （详 IPC-PROTOCOL.md § 通用约束）。用户文件（PowerShell profile）必须仍走
-//! `profile_installer` 自己的 backup + 写后校验路径，详 INVARIANTS § 4。
 
 /// Howard Hinnant 的 days_from_civil：把公历 (y, m, d) 转换为相对 1970-01-01 的天数。
 /// 跨月 / 跨年 / 闰年都单调。
@@ -45,75 +36,6 @@ pub fn days_from_civil(y: i64, m: i64, d: i64) -> i64 {
     era * 146097 + doe - 719468
 }
 
-/// 原子 JSON 写入。Windows 走 `ReplaceFileW`（dst 不存在时 fallback 到 rename），
-/// 非 Windows 走 `std::fs::rename`。失败时清理 tmp。
-///
-/// 设计权衡：本 helper 不做 backup / 写后校验（那是 profile_installer 的职责）；
-/// 这里只解决"原子覆盖"问题，避免 `remove + rename` 中间 crash 丢文件。
-pub fn atomic_write_json<T: serde::Serialize>(
-    path: &std::path::Path,
-    value: &T,
-) -> std::io::Result<()> {
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-    let body = serde_json::to_string_pretty(value)
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
-    let ms = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_millis())
-        .unwrap_or(0);
-    let fname = path
-        .file_name()
-        .map(|s| s.to_string_lossy().to_string())
-        .unwrap_or_else(|| "out.json".to_string());
-    let tmp = path.with_file_name(format!("{fname}.ccm-tmp-{ms}-{}", std::process::id()));
-    std::fs::write(&tmp, body)?;
-    let r = atomic_replace_path(&tmp, path);
-    if r.is_err() {
-        let _ = std::fs::remove_file(&tmp);
-    }
-    r
-}
-
-#[cfg(windows)]
-fn atomic_replace_path(src: &std::path::Path, dst: &std::path::Path) -> std::io::Result<()> {
-    use std::os::windows::ffi::OsStrExt;
-    use windows::core::PCWSTR;
-    use windows::Win32::Storage::FileSystem::{ReplaceFileW, REPLACEFILE_WRITE_THROUGH};
-
-    let to_wide = |p: &std::path::Path| -> Vec<u16> {
-        p.as_os_str()
-            .encode_wide()
-            .chain(std::iter::once(0))
-            .collect()
-    };
-    let src_w = to_wide(src);
-    let dst_w = to_wide(dst);
-
-    if !dst.exists() {
-        // dst 不存在 ReplaceFileW 会失败；首次写直接 rename
-        return std::fs::rename(src, dst);
-    }
-
-    unsafe {
-        ReplaceFileW(
-            PCWSTR(dst_w.as_ptr()),
-            PCWSTR(src_w.as_ptr()),
-            PCWSTR::null(),
-            REPLACEFILE_WRITE_THROUGH,
-            None,
-            None,
-        )
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.message().to_string()))
-    }
-}
-
-#[cfg(not(windows))]
-fn atomic_replace_path(src: &std::path::Path, dst: &std::path::Path) -> std::io::Result<()> {
-    std::fs::rename(src, dst)
-}
-
 /// Win32 FILETIME (自 1601-01-01 UTC, 100ns 单位)。
 /// Rust 端 GetProcessTimes / PS 端 `[Process].StartTime.ToFileTime()` 都给这个。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -125,12 +47,7 @@ pub struct FileTime(pub u64);
 pub struct NetTicks(pub u64);
 
 impl FileTime {
-    /// 从 Win32 FILETIME struct 提取 u64。
-    #[cfg(windows)]
-    pub fn from_win32(ft: &windows::Win32::Foundation::FILETIME) -> Self {
-        Self(((ft.dwHighDateTime as u64) << 32) | (ft.dwLowDateTime as u64))
-    }
-
+    // 〔P4 · 阶段 H〕Win32 那两件（`from_win32` · `to_net_local_ticks`，都是 `cfg(windows)`）搬进 `platform/filetime.rs`（同一个类型的第二个 impl 块）。
     /// 从字符串解析（PS 端 ToFileTime() 输出形式）。失败返 None。
     /// 保留未用：将来若给 `verify_binding` 加 ps_proc_start 校验 / 合并
     /// `HwndEntry` 跟 `SidHwndBinding` 时即用。
@@ -142,37 +59,6 @@ impl FileTime {
     #[allow(dead_code)]
     pub fn abs_diff(self, other: Self) -> u64 {
         self.0.abs_diff(other.0)
-    }
-
-    /// FILETIME UTC → .NET Local Ticks。
-    /// Claude Code 写的 procStart 是 .NET 形式；要跟它比较时必须先转。
-    /// Windows-only —— 用 `FileTimeToLocalFileTime` 修当地时区偏移。
-    #[cfg(windows)]
-    pub fn to_net_local_ticks(self) -> NetTicks {
-        use windows::Win32::Foundation::FILETIME;
-        /// 从 .NET 0001-01-01 起到 Win32 1601-01-01 之间的 100ns 数。
-        const NET_EPOCH_TO_WIN32_FILETIME_TICKS: u64 = 504_911_232_000_000_000;
-
-        #[link(name = "kernel32")]
-        extern "system" {
-            fn FileTimeToLocalFileTime(
-                lpFileTime: *const FILETIME,
-                lpLocalFileTime: *mut FILETIME,
-            ) -> i32;
-        }
-
-        let utc = FILETIME {
-            dwLowDateTime: (self.0 & 0xFFFF_FFFF) as u32,
-            dwHighDateTime: (self.0 >> 32) as u32,
-        };
-        let mut local = FILETIME::default();
-        let ok = unsafe { FileTimeToLocalFileTime(&utc, &mut local) };
-        if ok == 0 {
-            // 极罕见 — 退化为 UTC + 偏移（仍然单调但跟 Claude 比有时区差）
-            return NetTicks(self.0 + NET_EPOCH_TO_WIN32_FILETIME_TICKS);
-        }
-        let local_u64 = ((local.dwHighDateTime as u64) << 32) | (local.dwLowDateTime as u64);
-        NetTicks(local_u64 + NET_EPOCH_TO_WIN32_FILETIME_TICKS)
     }
 }
 

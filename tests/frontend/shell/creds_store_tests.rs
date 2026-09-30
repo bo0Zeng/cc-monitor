@@ -135,9 +135,8 @@ fn the_account_id_rule_is_not_reimplemented_on_the_write_side() {
     // 反空真：这把尺子**认得出**那一族针（不是恒 0）。
     // 〔C4d · 第四波 4B〕正控从 `history.rs` 挪到 `remote_history.rs`；〔MIG-3b〕那一句（远端删会话取文件名 stem）随删会话进界面删了，
     //   正控再挪到文件窗口的语料那一处（`filewin/corpus.rs` 取文件名那一句，同一族针 `rsplit('/')`，今天真在）。
-    let other = guard_core::production_code(include_str!(
-        "../../../src/frontend/shell/src/filewin/corpus.rs"
-    ));
+    let other =
+        guard_core::production_code(include_str!("../../../src/frontend/filewin/src/corpus.rs"));
     assert!(
         other.contains("rsplit('/')"),
         "同一把尺子在 `filewin/corpus.rs` 上也数出 0 —— 它恒 0，本条按红处理"

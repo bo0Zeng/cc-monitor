@@ -15,6 +15,7 @@ const RULE: &str = "\
 拿不准就当成用户文件（两种错判的代价不对称：多保留一次 ACL 无害，丢一次 ACL 用户读不了文件）。";
 
 /// 每个生产调用点登记：`(相对 src/frontend/shell/src 的路径, 符号, 处数, 写的是哪类文件, 为什么是这一套)`。
+/// 〔P4〕本包 manifest 明写的兄弟源码树（`guard_core::population_trees`）里那几处写成 `<包名>/<相对它 src 的路径>`。
 ///
 /// ⚠ **登记表不是豁免清单**：新增一处没登记的 ⇒ 下面那条红，并把 `RULE` 原样打出来。
 const SITES: &[(&str, &str, usize, &str, &str)] = &[
@@ -38,7 +39,7 @@ const SITES: &[(&str, &str, usize, &str, &str)] = &[
     ),
     // 〔MIG-3a · 子步 3〕`cc_bus_deploy.rs [rename]` 那一行摘了：覆盖前整目录改名留底随装 cc-bus 进了本机后端（`assets/cc_bus_install.rs`，经 `files-rename`）。
     (
-        "config.rs",
+        "platform/fs.rs", // 〔P4 · 阶段 H〕原住 `config.rs` 的 `atomic_replace`（两个平台臂一起搬进壳的平台层）
         "MoveFileExW",
         1,
         "monitor 自己的 config.json",
@@ -48,7 +49,7 @@ const SITES: &[(&str, &str, usize, &str, &str)] = &[
     // 〔CFG1 · 4D〕`logging.rs [MoveFileExW]` 摘了：诊断写口改经 `config::patch_config_at`（config.json 唯一的写函数），
     //   它那份从 config.rs 复制来的 `atomic_replace` 随之删了。
     (
-        "utils.rs",
+        "host-core/atomic.rs", // 〔P4〕原 `utils.rs`：原子写随两个前端共用搬进 `host-core`
         "ReplaceFileW",
         1,
         "用户文件（`atomic_write_json` 的所有调用方，如 auto-launch.json）",
@@ -60,7 +61,7 @@ const SITES: &[(&str, &str, usize, &str, &str)] = &[
     // ── 〔audit-0805 08-06〕补上 `rename` 那一半（§4 规则原话里第一个被禁的写法）
     // 〔RW1 · 第四波 09-24〕`profile_installer.rs` 的 `rename` 两处（Windows 首装分支 ＋ POSIX 分支）随那份原语一起走了。
     (
-        "utils.rs",
+        "host-core/atomic.rs", // 〔P4〕同上
         "rename",
         2,
         "**用户文件**（`atomic_replace_path` 的第二份副本）",
@@ -69,7 +70,7 @@ const SITES: &[(&str, &str, usize, &str, &str)] = &[
              但刻意复制的代价就是**两处都得被看住** —— 这正是登记表存在的理由。",
     ),
     (
-        "config.rs",
+        "platform/fs.rs", // 〔P4 · 阶段 H〕同上
         "rename",
         1,
         "**monitor 自己的** config.json（POSIX 分支）",
@@ -136,14 +137,31 @@ fn call_sites() -> Vec<(String, String, usize)> {
     let root = src_root();
     let mut files = Vec::new();
     collect_rs(&root, &mut files);
+    // 〔P4〕本包 manifest 明写的兄弟源码树（`guard_core::population_trees`）：键带上包名（`host-core/atomic.rs`），与壳里的相对路径分开。
+    let others: Vec<(PathBuf, String)> = guard_core::population_trees(&root)
+        .into_iter()
+        .map(|(name, r)| (r, name))
+        .collect();
+    for (r, _) in &others {
+        collect_rs(r, &mut files);
+    }
     files.sort();
     let mut out = Vec::new();
     for f in files {
-        let rel = f
-            .strip_prefix(&root)
-            .unwrap_or(&f)
-            .to_string_lossy()
-            .replace('\\', "/");
+        let rel = match others.iter().find(|(r, _)| f.starts_with(r)) {
+            Some((r, name)) => format!(
+                "{name}/{}",
+                f.strip_prefix(r)
+                    .unwrap_or(&f)
+                    .to_string_lossy()
+                    .replace('\\', "/")
+            ),
+            None => f
+                .strip_prefix(&root)
+                .unwrap_or(&f)
+                .to_string_lossy()
+                .replace('\\', "/"),
+        };
         let src = guard_core::strip_comment_lines(&fs::read_to_string(&f).unwrap_or_default());
         for (name, pat) in SCANNED {
             let n = src.matches(pat).count();

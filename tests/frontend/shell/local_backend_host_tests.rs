@@ -940,7 +940,7 @@ fn the_detach_landing_is_the_host_layer_and_the_injection_is_really_used() {
              `the_backend_half_stays_platform_agnostic` 的禁针里 —— 那一层不认识平台。\n\
              ⇒ 脱离的落点只能是**宿主知识层**（`local_backend_host.rs`），\n\
              照 `platform::fs::make_executable` 那个注入先例把「怎么起」喂进去。\n\
-             ⚠ 「加一条平台例外」这条路走不通：`PLATFORM_EXCEPTIONS.len() <= 1` 是递减棘轮（〔P4b〕今天 0 条），壳里平台形态另只许住 `platform/`。"
+             ⚠ 「加一条平台例外」这条路走不通：`PLATFORM_EXCEPTIONS` 是递减棘轮（〔P4b〕今天 0 条，〔P4〕上限随之降到 0），壳里平台形态另只许住 `platform/`。"
     );
 
     // ── ② 位置性 ────────────────────────────────────────────────────
@@ -1140,7 +1140,8 @@ fn this_item_loosened_none_of_the_ratchets_it_touched() {
         (
             // 〔步 7c 剖分 2026-09-19 · C 类〕那条棘轮跟着测试段搬进了 `backend_tests.rs`。
             "backend_client_guard_tests.rs",
-            "PLATFORM_EXCEPTIONS.len() <= 1,",
+            // 〔P4 · 合 P4b〕棘轮降到 0：那一行今天是 `is_empty()`（只收紧，不放宽）。
+            "PLATFORM_EXCEPTIONS.is_empty(),",
             1,
             "递减棘轮：平台例外只许少不许多。**本件正是被它堵着**才把脱离放进宿主层的 —— \
                  松掉它，下一个人就能把 `process_group` 直接写进 `backend/`。",
@@ -3378,6 +3379,8 @@ fn no_monitor_file_falls_back_to_leaving_block_comments_in() {
         &[
             &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src"),
             &crate::guard_support::tests_root().join("frontend/shell"),
+            // 〔P4〕文件窗口独立成包：它的判据搬到 `tests/frontend/filewin/`（代码随 `src` 那棵根的人群声明收）。
+            &crate::guard_support::tests_root().join("frontend/filewin"),
         ],
         100,
         1200,
@@ -4335,7 +4338,8 @@ fn hx1_every_monitor_dir_creation_is_registered_and_only_one_builds_the_backend_
         ),
         ("bind.rs", "spawn", "monitor 数据目录（绑定表）"),
         (
-            "utils.rs",
+            // 〔P4〕原 `utils.rs`：原子写搬进 `host-core`（两个前端共用那一份）。
+            "host-core/atomic.rs",
             "atomic_write_json",
             "调用方给的 JSON 文件的父目录（monitor 数据目录一族）",
         ),
@@ -4346,7 +4350,8 @@ fn hx1_every_monitor_dir_creation_is_registered_and_only_one_builds_the_backend_
         ),
         // 〔合并 LOC1b〕`session_map.rs` 那条 watcher 线程那一行摘了：monitor 自己那份本机判活（连同它盯的 sessions 目录）删了。
         (
-            "filewin/bookmarks.rs",
+            // 〔P4〕文件窗口独立成包：住址带包名。
+            "cc-monitor-filewin/bookmarks.rs",
             "lock_store",
             "monitor 数据目录（书签）",
         ),
@@ -4393,11 +4398,8 @@ fn hx1_every_monitor_dir_creation_is_registered_and_only_one_builds_the_backend_
     assert!(files.len() >= 100, "只扫到 {} 份 —— 遍历坏了", files.len());
     let mut found: Vec<(String, String)> = Vec::new();
     for (path, src) in &files {
-        let rel = path
-            .strip_prefix(&root)
-            .unwrap_or(path)
-            .to_string_lossy()
-            .replace('\\', "/");
+        // 〔P4〕按模块住址认：本包 manifest 明写的兄弟源码树（`host-core` · 文件窗口 …）里的键带包名（`host-core/atomic.rs`）。
+        let rel = guard_core::module_address(&root, path);
         found.extend(creations(&rel, &guard_core::production_code(src)));
     }
     found.sort();

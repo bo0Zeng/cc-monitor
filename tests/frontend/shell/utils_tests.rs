@@ -30,45 +30,6 @@ fn leap_year_feb_29() {
     assert_eq!(mar_1 - feb_29, 1);
 }
 
-#[test]
-fn atomic_write_json_first_write_creates_file() {
-    let tmp = std::env::temp_dir().join(format!(
-        "ccm-utils-test-first-{}-{}.json",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_nanos())
-            .unwrap_or(0)
-    ));
-    let _ = std::fs::remove_file(&tmp);
-    let v = serde_json::json!({ "a": 1, "b": "hi" });
-    atomic_write_json(&tmp, &v).unwrap();
-    let on_disk: serde_json::Value =
-        serde_json::from_str(&std::fs::read_to_string(&tmp).unwrap()).unwrap();
-    assert_eq!(on_disk["a"], 1);
-    assert_eq!(on_disk["b"], "hi");
-    let _ = std::fs::remove_file(&tmp);
-}
-
-#[test]
-fn atomic_write_json_replace_keeps_content() {
-    let tmp = std::env::temp_dir().join(format!(
-        "ccm-utils-test-replace-{}-{}.json",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_nanos())
-            .unwrap_or(0)
-    ));
-    atomic_write_json(&tmp, &serde_json::json!({ "v": 1 })).unwrap();
-    atomic_write_json(&tmp, &serde_json::json!({ "v": 2, "extra": "y" })).unwrap();
-    let on_disk: serde_json::Value =
-        serde_json::from_str(&std::fs::read_to_string(&tmp).unwrap()).unwrap();
-    assert_eq!(on_disk["v"], 2);
-    assert_eq!(on_disk["extra"], "y");
-    let _ = std::fs::remove_file(&tmp);
-}
-
 // 〔MOD〕`parse_iso8601_ms` 那五条随函数删了（按时间戳挑子 agent 那一份进了后端，后端 `search_query` 那份自带判据）。
 
 #[test]
@@ -118,22 +79,6 @@ fn scan_dir_jsons_parses_jsons_only() {
     assert_eq!(m.len(), 2);
     assert!(m.contains_key("one"));
     assert!(m.contains_key("two"));
-    let _ = std::fs::remove_dir_all(&dir);
-}
-
-#[test]
-fn atomic_write_json_no_stray_tmp() {
-    // 写完 dst 父目录里不应该有任何 ccm-tmp-* 残留
-    let dir = std::env::temp_dir().join(format!("ccm-utils-test-tmpcheck-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).unwrap();
-    let dst = dir.join("a.json");
-    let _ = std::fs::remove_file(&dst);
-    atomic_write_json(&dst, &serde_json::json!({ "k": 1 })).unwrap();
-    let stray = std::fs::read_dir(&dir)
-        .unwrap()
-        .filter_map(|e| e.ok())
-        .any(|e| e.file_name().to_string_lossy().contains(".ccm-tmp-"));
-    assert!(!stray, "ccm-tmp- 残留未清理");
     let _ = std::fs::remove_dir_all(&dir);
 }
 

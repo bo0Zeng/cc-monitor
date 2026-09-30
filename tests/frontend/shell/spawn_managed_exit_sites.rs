@@ -42,7 +42,7 @@
 //!   「不进那个出口」并写了理由。同一件事记两张表 ⇒ 两张会各自漂。
 //!   ⇒ 本条的扫描面逐字是 `crate_src_root()` 一棵树，**构建期那一格不归它**。
 //! - **同文件同函数内两处落点，本条区分得开处数、区分不开各自的策略**：
-//!   `launch.rs::launch_powershell_window` 今天就有两跳（`wt.exe` / `powershell.exe`），
+//!   `platform/terminal.rs::launch_powershell_window` 今天就有两跳（`wt.exe` / `powershell.exe`），
 //!   本表为它留**两行同键**、处数对得上；但「哪一跳配哪三格」仍归
 //!   `the_three_policies_each_site_declares_match_the_code`，而那一条自己也说了它看不出来。
 //!   **如实记，两条都没买到那一格。**
@@ -117,14 +117,14 @@ const SITES: &[(&str, &str, &str, &str)] = &[
          stderr 要接出来读错信封 —— 这三样本处特有，出口只回答三条策略 ⇒ `Command` 由这里装好再递进去。",
     ),
     (
-        "launch.rs",
+        "platform/terminal.rs", // 〔P4 · 阶段 H〕原 `launch.rs`
         "launch_local_posix_via",
         "spawn_managed_cmd",
         "argv 来自 `local_posix_spawn_plan`（用户配置的终端出口），cwd 只在真是目录时才设，\
          env 还要带上 `backend_bin_env_for_window` 那一对 —— 三样都是本处特有。",
     ),
     (
-        "launch.rs",
+        "platform/terminal.rs", // 〔P4 · 阶段 H〕原 `launch.rs`
         "launch_powershell_window",
         "spawn_managed_cmd",
         "Plan A（`wt.exe`）那一跳。argv 是「`-d <目录>` ＋ `powershell.exe` ＋ 那三个参数」\
@@ -132,7 +132,7 @@ const SITES: &[(&str, &str, &str, &str)] = &[
          ⚠ 本表两行同键、处数对得上；**哪一跳配哪三格**不归本条（见模块头注的射程边界）。",
     ),
     (
-        "launch.rs",
+        "platform/terminal.rs", // 〔P4 · 阶段 H〕原 `launch.rs`
         "launch_powershell_window",
         "spawn_managed_cmd",
         "Plan B（`powershell.exe` 直起）那一跳 —— 全仓唯一一处 `ConsolePolicy::NewVisible`，\
@@ -140,7 +140,7 @@ const SITES: &[(&str, &str, &str, &str)] = &[
          env 在这一跳**一定继承**（Plan A 未必）⇒ 两跳的 `Command` 内容真的不同。",
     ),
     (
-        "launch.rs",
+        "platform/terminal.rs", // 〔P4 · 阶段 H〕原 `launch.rs`
         "ssh_client_available",
         "spawn_managed_cmd",
         "`where.exe ssh` 探测：stdout 要 piped，因为它的输出**是返回值**\

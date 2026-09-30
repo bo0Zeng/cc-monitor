@@ -13,6 +13,14 @@ const TREES: &[(&str, &str, usize, &str)] = &[
              ⇒ **盘上几份，语料就是几份**。地板取 80",
     ),
     (
+        "文件窗口",
+        "src/frontend/filewin",
+        25,
+        "〔P4〕又一个前端，独立成包（monitor 包里那个 `[[bin]]` 转调它）：它只经通道说 `call` / `subscribe`，\
+             依赖只许契约类（`contract_crate_guard` ②）。monitor 那一行的人群声明也把它带进来 —— 这一行管的是\
+             「清单依赖面盖得住」（09-30 现打 29 份 `.rs`，地板取 25）",
+    ),
+    (
         "backend",
         "src/backend",
         55,

@@ -23,6 +23,14 @@ members = [
     "../../common/upstream-url-core",
     # 〔P1〕部署那一族的契约（表 A 的键与行 · 戳格式 · 答话形状 · 路径）；判定那一半（原 `deploy-core`）进了后端 `control/deploy_plan.rs`。
     "../../common/deploy-contract",
+    # 〔P4 · ⑰〕通道（通信层面 A）的线上词汇 · 客户端 · 路由器 · 拨号与交接件：monitor 与文件窗口进程链同一份。
+    "../../common/chan-core",
+    # 〔P4 · 主会话 09-29 拍板 Q2〕前端宿主原语（两个前端共用、后端不链）：自有状态文件的原子写 · 窗口夹进工作区。
+    "../../common/host-core",
+    # 〔P4 · 主会话 09-29 拍板 Q1〕monitor 与文件窗口进程之间的契约（开窗种子 · 就绪那一行 · 「在此打开终端」那一问）。
+    "../../common/filewin-contract",
+    # 〔P4 · ⑰〕文件窗口（又一个前端）：独立成包，monitor 包里的 `[[bin]] cc-monitor-filewin` 转调它。
+    "../filewin",
     # 〔THIN〕`gate-core` 出列：收成后端模块 `control/gate_rules.rs`（monitor 那一侧的门删了）。
 ]
 # 〔RE〕`exclude = ["vendor/code-picture-core"]` 删了：vendor 随唯一消费者搬进 `src/panorama-engine/vendor/`，
@@ -40,6 +48,17 @@ repository = "https://github.com/local/cc-monitor"
 homepage = "https://github.com/local/cc-monitor"
 keywords = ["claude", "claude-code", "monitor", "tauri", "viewer"]
 categories = ["development-tools", "visualization"]
+
+# 〔P4 · `设计/90 §0.5.3` ⑰〕「monitor 源码树」的判据人群：本包 `src/` ＋ 下面这几包 —— monitor 的代码搬进去的、只有前端链的兄弟包
+#   （通道 · 前端宿主原语 · 开窗契约 · 文件窗口）。`guard_core::walk_tree` / `module_address` 按它收 / 认，按人群扫的判据搬家前后逐条同一群；
+#   两向对着「monitor 生产闭包 − 后端生产闭包」由 `contract_crate_guard_tests.rs` ⑤ 钉住。
+[package.metadata.guard]
+population = [
+    "../../common/chan-core",
+    "../../common/host-core",
+    "../../common/filewin-contract",
+    "../filewin",
+]
 
 [lib]
 name = "monitor_lib"
@@ -99,9 +118,6 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
 tauri-plugin-dialog = "2"
-# 〔W5-FILES · 第五波 · `设计/60 §6.2`「原生选文件框」〕文件窗口（独立 egui 进程）的上传 / 存到哪儿那两问用操作系统自己的选择框。
-# 与 `tauri-plugin-dialog` 同一个版本、同一组 feature（它的缺省 `gtk3` ＋ `common-controls-v6`）⇒ 锁文件不多一个 crate。
-rfd = { version = "0.16", default-features = false, features = ["gtk3", "common-controls-v6"] }
 # Batch14-F42：turn-end 系统通知（Windows toast / Linux notify）
 tauri-plugin-notification = "2"
 
@@ -111,9 +127,6 @@ serde_json = { version = "1", features = ["raw_value"] }
 # F62：从历史某轮创建分支（写 <new-sid>.jsonl）时生成新 sessionId。
 # uuid 1.x 已在 Cargo.lock（tauri 传递依赖）+ 本地 registry 缓存，加 v4 feature 离线可编。
 uuid = { version = "1", features = ["v4"] }
-# 〔FILES2 · Q5〕上传块形（SFTP 起始目录不是后端 home 时窗口经后端链路分块写）要窗口自己算整份摘要交给提交当 `expect`。
-# 已在 lockfile（`0.10.9`，别的依赖带进来的），此处提升为直接依赖、零新包。
-sha2 = "0.10"
 
 # 〔RM1f · V108 后半句「之后本机也走这条路、monitor 摘内嵌引擎」〕`code-picture-core` 这一行删了：
 # 本机全景也走「本机后端 → 插件口 → 全景小程序（`src/panorama-engine`）」，monitor 一行引擎都不链。
@@ -140,6 +153,12 @@ shell-quote-core = { path = "../../common/shell-quote-core" }
 relay-route-core = { path = "../../common/relay-route-core" }
 # 〔P1〕部署那一族的契约（契约类，`设计/00 §1.2`）：取字节口的键与行 · 解计划答话 · 读字节里的身份戳；判定都问后端（自举那一刻问手上那份字节自己，`place-verdict`）。
 deploy-contract = { path = "../../common/deploy-contract" }
+# 〔P4 · ⑰〕通道：成员文件原地住 `src/comms/inward/`，由这个共享 crate 编（壳里 `chan/` 再导出，模块路径不变）。
+chan-core = { path = "../../common/chan-core" }
+# 〔P4〕前端宿主原语（原子写 `atomic_write_json` · `WorkArea` / `fit_into_work_area`）：monitor 与文件窗口共用那一份（`src/common/host-core`）。
+host-core = { path = "../../common/host-core" }
+# 〔P4〕monitor 与文件窗口进程两边对上的形状（种子 · 就绪行 · 开终端那一问）。
+filewin-contract = { path = "../../common/filewin-contract" }
 # 〔THIN〕`gate-core` 删了：monitor 侧的 Gate 1 前检与转调壳（只剩跨轨对拍锚点在用）删掉之后它只剩后端用，收成后端模块 `control/gate_rules.rs`。
 
 # 〔THIN〕`search-core` 删了：monitor 零引用（搜索与记录解释都在后端；`messages.rs` 那一处随记录解释进了后端，MOD）。
@@ -166,76 +185,11 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 # v2.0.0 issue #4：滚动 log 文件 + non_blocking writer，给 GUI app（无 stderr）一个用户可见的诊断通道
 tracing-appender = "0.2"
 
-# 🔴〔步 24e · 2026-09-20〕**原生文件管理窗口**（`设计/60 §4 戊` · `§5` 第三段）。
-# 框架定案 egui 的读数住 `真相源/99`；许可 `MIT OR Apache-2.0`，与「不要 GPL」不冲突。
-#
-# ⚠ **为什么这两条依赖挂在 `monitor` 上，而不是一个新 crate** —— 两条独立的理由，
-#    都不是省事（详细论证与现打依据住 `src/filewin/mod.rs` 的头注）：
-#  ① **进程形态定的是「同进程」**：窗口要直接调 `sftp_pool` 的那些函数，
-#     而那个池是 `sftp_pool.rs:539` 的**进程级 `OnceLock`** ⇒ 换进程 = 换一份池
-#     = 同一台远端第二条 SSH 连接，秤 F4 钉的「6 通道 − 4 车道 = 2」会被悄悄变成两份预算。
-#  ② **门禁 `cargo` 那一格把 workspace 包数**恒等**钉在 9**（`tests/scripts/gate.sh:1351`
-#     的 `run_gate_sum cargo 9`）。新增一个 workspace 成员 ⇒ 那一格当场红，
-#     而那个 `9` 住 `gate.sh`，**不在 24e 的写区** ⇒ 不许为了塞一个 crate 去动判据。
-#     ⇒ 落成 `monitor` 自己的一个模块，包数不动。
-#
-# ⚠ **代价如实记**：这两条把依赖树从 679 个包推到约 1080 个（winit / wgpu / naga / accesskit
-#    一大片）。现打核过它编得过的三档（`cargo check`）：
-#      · 宿主 `x86_64-unknown-linux-gnu`     ✅
-#      · `x86_64-pc-windows-gnu`（门禁 winchk 那一格用的 target）✅ 31.97 秒
-#      · `x86_64-unknown-linux-musl`          ✅（只是 `check`，不是静态链接）
-#    ⚠ `muslbuild` 那一格的射程是 `src/backend`（`gate.sh:1117` 逐字 `cd src/backend`）
-#      ⇒ 本条依赖**碰不到它**；「GUI crate 能不能 musl 静态链接」这个设计题**没被本刀回答**。
-egui = "0.36"
-# 🔴 **渲染后端必须是 `glow`，不能用 eframe 默认的 `wgpu`** —— 理由是现打出来的编译失败，
-#    不是口味。**这一条别顺手改回默认。**
-#
-# ## 为什么：`wgpu` 那条路在本仓交叉编译到 Windows 时**编不过**
-#
-# 门禁 `winchk` 那一格跑 `cargo check --locked --all-targets -p monitor
-# --target x86_64-pc-windows-gnu`。带默认 feature（`wgpu`）时它**红**，10 条类型错全在
-# `wgpu-hal` 的 DX12 后端上（`expected ID3D12Device, found Direct3D12::ID3D12Device` 这一形）。
-#
-# 病根不在 wgpu，在**本仓已经钉着两个 `windows` 大版本**：
-#   · `gpu-allocator 0.28` 的 spec 是 `windows = ">=0.53, <=0.62"`（**很宽**）
-#     ⇒ cargo 拿本仓现成的 **`windows 0.56`** 就把它满足了；
-#   · 而 `wgpu-hal 30.0.1` 自己用 **`windows 0.62`**。
-#   ⇒ 同一段 D3D12 代码里 `ID3D12Device` / `ID3D12Heap` 来自**两个不同的 `windows` crate** ⇒ E0308/E0277。
-# ⚠ 这个组合在一个干净的独立工程里**不出现**（那里没有 0.56/0.61，gpu-allocator 直接拿 0.62）
-#   —— 它是**本仓特有**的，因为 `windows 0.56`（项目自用）与 `windows 0.61`（`windows-wv2`）已经在树上。
-#
-# ⇒ 换 `glow`：`cargo tree -i wgpu` 确认 `wgpu` 整棵离开**构建图**，`winchk` 现打 **rc=0**。
-# ⚠ 代价：OpenGL 而非 Vulkan/D3D12。对一个文件列表够用。**没在真 GPU 上比过两者**。
-#
-# ## ⚠ 它**没有**顺带解决的那条（别把两件事混起来）
-#
-# 门禁 `cargo` 那一格仍然红，红在 `lockfile_conflict_guard` 上：
-# `cfg_aliases` 在 monitor 是 **0.2.2**、在 `src/backend/Cargo.lock` 是 **0.2.1**。
-# 逐个 manifest 现打：`winit` 与 `glutin` 都只要 `^0.2.1`，**只有 `wgpu` 要 `^0.2.2`**——
-# 而 **`Cargo.lock` 记的是所有 feature 的并集**，`egui-wgpu` 作为 eframe 的可选依赖仍留在 lock 里，
-# 把 `^0.2.2` 一起带着 ⇒ 换后端**改不了 lock**，`cargo update -p cfg_aliases --precise 0.2.1` 照样失败。
-# ⇒ 那条只有两条真出路，**都不在 24e 的写区，所以停下报备、不自作主张**：
-#   ① 把 `src/backend/Cargo.lock` 的 `cfg_aliases` 抬到 0.2.2（它只是 `nix` 的 build-dependency，
-#      纯构建期、零运行时面）——**改的是 `src/backend/`**；
-#   ② 不用 `eframe`，自己拼 `egui-winit` ＋ `egui_glow` ＋ `glutin`（scratchpad 现打：
-#      那样 `wgpu` 从 lock 里彻底消失、`cfg_aliases` 钉得回 0.2.1、总包数 308）——
-#      但那是为了躲一行 lockfile 自己重写一遍 eframe 的集成层，是「硬绕」，得先有人拍板。
-eframe = { version = "0.36", default-features = false, features = [
-    "accesskit",
-    "default_fonts",
-    "glow",
-    "links",
-    "wayland",
-    "x11",
-] }
-# `winit` 是 `eframe` 的传递依赖，这里**提升为直接依赖**，只为一件事：
-# `EventLoopBuilderExtX11` / `ExtWayland` / `ExtWindows` 这三个**平台扩展 trait**
-# —— `eframe` 只 re-export 了 `EventLoopBuilder` 本体（`epi.rs:26`），没 re-export 它们，
-# 而「egui 窗口跑在次线程」全靠它们的 `with_any_thread(true)`（见 `src/filewin/mod.rs` 头注）。
-# ★ **版本漂了会怎样：编译器当场报错，不需要额外判据。**
-#   若本条与 `eframe` 解析到两个不同的 winit 大版本，那三个 trait 就不再实现在
-#   `eframe::EventLoopBuilder` 上 ⇒ `filewin::shell` 的 hook 编不过。
-winit = "0.30"
+# 〔P4 · `设计/90 §0.5.3` ⑰ · 主会话 09-29 拍板 Q1〕文件窗口独立成包 `src/frontend/filewin/`：界面库那几条（egui · eframe（glow）·
+#   winit · rfd）与块形上传的 sha2 随窗口搬进那一包的清单（来历与「为什么是 glow」那几段注释逐字跟过去了）。
+#   monitor 链它**只为**本包第二个 `[[bin]] cc-monitor-filewin`（`src/filewin/win_main.rs` 一行转调 `cc_monitor_filewin::run`；
+#   bin 不能有自己的依赖，只能挂在包上）—— monitor 生产段一行都不引它（`contract_crate_guard` 的「前端包」那一类钉住）。
+cc-monitor-filewin = { path = "../filewin" }
 
 [dev-dependencies]
 # C01（rust-ts-boundary）：**故意只在 dev 侧**。`ts-rs` 是 codegen 工具，
@@ -256,6 +210,8 @@ acct-core = { path = "../../common/acct-core" }
 # 起因：monitor 侧的守卫此前各写便宜近似（`split("\n#[cfg(test)]").next()`），
 # 那个近似在 `ssh_source.rs` 上会把扫描面砍掉三分之二（详见 guard-core 头注）。
 guard-core = { path = "../../common/guard-core" }
+# 〔P4〕`Origin` 编进 `chan-core` 之后，本包测试档里别的生成类型（会话流那几帧）嵌着它 ⇒ dev 侧开它的 TS 派生（发布二进制不开）。
+chan-core = { path = "../../common/chan-core", features = ["ts"] }
 
 [target.'cfg(windows)'.dependencies]
 # v1.7.0：cc 注入式绑定恢复 ToolHelp（claude.exe 的 parent_pid 反查 PS） +

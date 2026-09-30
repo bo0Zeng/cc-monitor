@@ -191,7 +191,7 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     (
         "backend→monitor",
         "tests/backend/control/launch_render/payload_tests.rs",
-        "src/frontend/shell/src/launch.rs",
+        "src/frontend/shell/src/platform/terminal.rs", // 〔P4 · 阶段 H〕开窗那一跳从 `launch.rs` 搬进壳的平台层
         "〔MIG-2〕「谁给 agent 进程定 env」那张人群闭表（`the_population_that_renders_env_prefixes_for_the_agent_process_is_enumerated`）\
          跨两半：串级那三处住后端（载荷内核 · 本机起会话 · `ccm` 容器路），进程级那一处（开窗那一跳的 `.env(k, v)`）留在 monitor。\
          多一个决定点就多一个能各自答错「这次走不走中转」的地方 —— 只有同时数两半才验得了。",
@@ -279,7 +279,7 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     ),
     (
         "monitor→backend",
-        "tests/frontend/shell/filewin/transfer_tests.rs",
+        "tests/frontend/filewin/transfer_tests.rs",
         "src/backend/dial/pool.rs",
         "★〔SR1b 09-24 新增〕**窗口一趟拖入起几件，与本机后端那条连接的传输车道 / 通道闸对得上** —— \
          窗口传输那份判据里的 `one_windows_burst_fits_the_transfer_lane_and_never_fills_the_connection`。\
@@ -288,7 +288,7 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     ),
     (
         "monitor→backend",
-        "tests/frontend/shell/filewin/cross_copy_tests.rs",
+        "tests/frontend/filewin/cross_copy_tests.rs",
         "src/backend/control/files_commit.rs",
         "★〔FILES2 · 第四波新增〕**窗口清 B 那头暂存件用的暂存区 == 后端的暂存区** —— \
          `cross_copy_tests.rs::the_staging_dir_is_the_backend_one`。两个 crate 互相引不到，两侧各写一份 \
@@ -296,7 +296,7 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     ),
     (
         "monitor→backend",
-        "tests/frontend/shell/filewin/lossy_pull_tests.rs",
+        "tests/frontend/filewin/lossy_pull_tests.rs",
         "src/backend/files/mod.rs",
         "★〔FILES2 · V152 新增〕**窗口一块读多少 == 后端 `files-read-chunk` 的上限** —— \
          `lossy_pull_tests.rs::the_chunk_is_the_backend_cap`。两侧各写一个数；失效方向：窗口的块比后端的上限大 ⇒ \
@@ -304,7 +304,7 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     ),
     (
         "monitor→backend",
-        "tests/frontend/shell/filewin/chunk_upload_tests.rs",
+        "tests/frontend/filewin/chunk_upload_tests.rs",
         "src/backend/control/transfer.rs",
         "★〔FILES2 · 第四波新增〕**窗口据以换路的收场码 == 传输台发的那个** —— \
          `chunk_upload_tests.rs::the_mismatch_code_is_the_backend_one`。两侧各写一份 `sftp_home_mismatch`；\

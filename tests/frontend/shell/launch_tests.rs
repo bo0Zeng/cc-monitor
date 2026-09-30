@@ -1,4 +1,15 @@
 use super::*;
+// 〔P4 · 阶段 H〕开窗的两个平台臂搬进 `platform/terminal.rs`：本文件那几条照旧判它们。
+#[allow(unused_imports)]
+use crate::platform::terminal::*;
+
+/// 〔P4 · 阶段 H〕开终端这一族今天住两份：`launch.rs`（跑什么 · 两条 Tauri 命令）＋ `platform/terminal.rs`（开窗的两个平台臂）。
+/// 按源码判的那几条读两份的合订本（射程与搬家前那一份 `launch.rs` 相同）。
+const LAUNCH_SRC: &str = concat!(
+    include_str!("../../../src/frontend/shell/src/launch.rs"),
+    "\n",
+    include_str!("../../../src/frontend/shell/src/platform/terminal.rs")
+);
 
 /// ★ U8b：**POSIX 上「不开终端窗口」是既定设计，文案不许暗示「以后会支持」。**
 ///
@@ -22,7 +33,7 @@ use super::*;
 /// 会被数进去 —— 实测裸数是 6，生产里只有 4。
 #[test]
 fn every_terminal_window_backend_opens_carries_the_backend_path() {
-    let src = include_str!("../../../src/frontend/shell/src/launch.rs");
+    let src = LAUNCH_SRC;
     let prod = guard_core::production_code(src);
     let spawns = prod.matches("Command::new(").count();
     // ⚠ 钉**真正的动作** `.env(k, v)`，不是 helper 的调用次数：
@@ -127,6 +138,7 @@ fn no_prose_claims_the_session_container_is_always_tmux() {
         "README.md",
         "README.en.md",
         "src/frontend/shell/src/launch.rs",
+        "src/frontend/shell/src/platform/terminal.rs", // 〔P4 · 阶段 H〕开窗的平台臂连同头注搬到这里
     ] {
         let body = std::fs::read_to_string(root.join(f))
             .unwrap_or_else(|e| panic!("{f} 读不到：{e} —— 文件搬了就把本条一起改"));
@@ -137,7 +149,7 @@ fn no_prose_claims_the_session_container_is_always_tmux() {
     // 08-06 那次（`c87d123`）的账是「扫描面本身是个洞」，扩到了 `doc/` + 两份 README。
     // 今天再量：**洞还在，只是挪了个位置** —— `tests/e2e/restart-cmd-driver.ts:6` 那句
     // 「GUI 全链在 Linux 结构性不可达（launch.rs 仅 Windows→回退剪贴板）」
-    // 就躺在扫不到的地方，而 `launch.rs::launch_local_posix` 明明就在本文件里。
+    // 就躺在扫不到的地方，而 `launch_local_posix` 明明就在本文件扫的那几份里（〔P4〕今天住 `platform/terminal.rs`）。
     //
     // ⇒ **这不是巧合**：扫描面按「想到哪扫哪」长出来，而假话按「写在哪就在哪」分布。
     // 两者的形状不一样，所以「上次扩过了」不等于「这次够了」。
@@ -354,8 +366,7 @@ fn the_terminal_exit_is_picked_in_declared_order() {
 #[cfg(not(windows))]
 #[test]
 fn opening_a_window_does_not_touch_the_payload() {
-    let prod =
-        guard_core::production_code(include_str!("../../../src/frontend/shell/src/launch.rs"));
+    let prod = guard_core::production_code(LAUNCH_SRC);
     let argv: Vec<String> = ["bash", "-lic", "unset X; claude --resume s1"]
         .iter()
         .map(|s| s.to_string())
@@ -407,7 +418,7 @@ fn opening_a_window_does_not_touch_the_payload() {
 /// ★ P5L-Y3：候选表的**理由**必须写在源码里（必需词守卫，同 `P4b-Y3` / `PS1`）。
 #[test]
 fn the_terminal_exit_table_says_why_it_refuses_to_pick() {
-    let me = include_str!("../../../src/frontend/shell/src/launch.rs");
+    let me = LAUNCH_SRC;
     // ★ 反空真：语料真读到了（空串会让下面两条一起「找不到」，而那与
     //   「那段话被删了」在输出上一模一样）。
     assert!(
@@ -483,8 +494,7 @@ fn no_terminal_emulator_is_ever_spawned_from_this_file() {
             "匹配器漏了这种写法：{sample} —— 下面那句「零命中」对它毫无意义"
         );
     }
-    let prod =
-        guard_core::production_code(include_str!("../../../src/frontend/shell/src/launch.rs"));
+    let prod = guard_core::production_code(LAUNCH_SRC);
     let hits: Vec<&String> = emulators
         .iter()
         .filter(|e| prod.contains(e.as_str()))
@@ -1174,8 +1184,7 @@ fn an_open_write_handle_reads_as_an_unmet_premise_not_as_a_broken_spawn() {
 #[cfg(not(windows))]
 #[test]
 fn the_thin_wrapper_hands_the_command_straight_through_to_the_via_form() {
-    let prod =
-        guard_core::production_code(include_str!("../../../src/frontend/shell/src/launch.rs"));
+    let prod = guard_core::production_code(LAUNCH_SRC);
     // 锚点必须**唯一**：Windows 那一份的形参带下划线前缀（`_cmd` / `_cwd`）⇒ 签名不同。
     let head = "pub fn launch_local_posix(cmd: &str, cwd: Option<&str>) -> Result<(), String> {";
     let at = guard_core::find_pinned(&prod, head)
@@ -1235,8 +1244,7 @@ fn the_thin_wrapper_hands_the_command_straight_through_to_the_via_form() {
 /// 装着令牌的那条命令（〔P5〕开窗交来的成品里前奏带着 marker）。切法与 `bind_tests.rs` 那条同名判据同一种。
 #[test]
 fn the_launch_token_never_reaches_a_log_macro_in_launch_rs() {
-    let prod =
-        guard_core::production_code(include_str!("../../../src/frontend/shell/src/launch.rs"));
+    let prod = guard_core::production_code(LAUNCH_SRC);
     assert!(
         prod.len() > 5000,
         "抽出来的生产段只有 {} 字节 —— 抽取器坏了",

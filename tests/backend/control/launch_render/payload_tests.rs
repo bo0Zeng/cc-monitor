@@ -229,18 +229,19 @@ fn the_payload_cd_prefix_is_assembled_in_exactly_one_place() {
         }
     }
     // 〔F5 · 2026-09-24 · 主会话已裁：登记成已知的第二处，不搬进 `launch.rs`〕
-    //   文件窗口「在此打开终端」那一串（`filewin/shell.rs::build_open_terminal_cmd`）也拼 `cd <目录> && `。
+    //   文件窗口「在此打开终端」那一串（〔P4〕今天在本机后端 `dial/terminal.rs::command_for_cwd` 拼）也拼 `cd <目录> && `。
     //   ① 它**不是会话载荷**：不经 `send-keys` 键进任何一场会话，而是整串交给
     //      `launch::launch_remote_terminal` 在一个**新终端**里跑（`ssh -t … '<这一串>'`）；
     //      引号那一格走的是 Rust 侧唯一那份 `shell_quote_core::posix_quote`，与本模块同一个引用规则。
     //   ② 它**进不了 `render_payload`**：那个函数对每个 arg 过 `arg_is_join_safe` 白名单，
     //      而这一串的尾巴 `exec ${SHELL:-bash} -l` 里 `$` `{` `}` 都不在放行集 ⇒ 当场 `Err`；
     //      为它放宽白名单等于给真正的载荷开同一扇门。
-    //   ③ 〔LR2〕旧面板 TS 那一份删了，它是唯一一份；三种形状由 `shell_tests` 的手写期望逐字节钉着。
+    //   ③ 〔LR2〕旧面板 TS 那一份删了，它是唯一一份；三种形状由手写期望逐字节钉着（〔P4〕今天住
+    //      `dial_terminal_tests.rs`：拼法随「窗口只交意图」搬进本机后端，那句写法住 V156 的方言层 `platform/shell/posix.rs`）。
     //   ⇒ 那一处单独登记、**条数恒等 1**；载荷这一族照旧恰好一处。
     let terminal: Vec<&String> = sites
         .iter()
-        .filter(|l| l.starts_with("shell.rs: "))
+        .filter(|l| l.starts_with("posix.rs: "))
         .collect();
     assert_eq!(
         terminal.len(),
@@ -256,7 +257,7 @@ fn the_payload_cd_prefix_is_assembled_in_exactly_one_place() {
     assert_eq!(ccm.len(), 1, "`ccm` 容器路那一处不再恰好一处：{sites:?}");
     let sites: Vec<String> = sites
         .iter()
-        .filter(|l| !l.starts_with("shell.rs: ") && !l.starts_with("plan.rs: "))
+        .filter(|l| !l.starts_with("posix.rs: ") && !l.starts_with("plan.rs: "))
         .cloned()
         .collect();
     assert_eq!(
@@ -1382,8 +1383,9 @@ fn the_population_that_renders_env_prefixes_for_the_agent_process_is_enumerated(
         //   针 `export CLAUDE_CONFIG_DIR=${posixQuote(`，登记为「没接」）。那一族零生产调用、按
         //   `设计/00 §2.5 ④` 删了，发射点随之没了 ⇒ 人群 5 → 4（决定点少了一个，方向是对的）。
         Site {
-            what: "E · launch.rs（进程级，开窗那一跳）",
-            src: include_str!("../../../../src/frontend/shell/src/launch.rs"),
+            // 〔P4 · 阶段 H〕开窗的两个平台臂从 `launch.rs` 搬进 `platform/terminal.rs`（壳的平台层），这一格随之换住址，处数不变。
+            what: "E · platform/terminal.rs（进程级，开窗那一跳）",
+            src: include_str!("../../../../src/frontend/shell/src/platform/terminal.rs"),
             // 3 处：POSIX 开窗 1 + Windows 两个 spawn 点各 1（`launch.rs` 自己那条
             // `every_terminal_window_backend_opens_carries_the_backend_path` 也数这个数）。
             needle: ".env(k, v)",

@@ -273,6 +273,7 @@ describe("CP2a · 文案表 ↔ 生产代码引用", () => {
   //   取文实现本身住 `copy-core`，monitor 的 `copy_table.rs` 只剩转发 ⇒ 这两份是定义不是引用，不进人群。
   const rsFiles = [
     ...productionRsFiles("src/frontend/shell/src"),
+    ...productionRsFiles("src/frontend/filewin/src"), // 〔P4〕文件窗口独立成包（它的取文口调用点从前住上一棵）
     ...productionRsFiles("src/backend"),
     ...productionRsFiles("src/common"),
     ...productionRsFiles("src/comms"), // 〔RE〕通信层成员（两个 crate 经 `#[path]` 编它们）

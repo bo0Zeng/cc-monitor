@@ -288,6 +288,22 @@ const OUTWARD: &[(&str, Kind, &str)] = &[
         Kind::Platform,
         "〔FIX5〕全程 `O_NOFOLLOW`：`files_write::opener` 开文件带的那个旗（unix）",
     ),
+    // 〔P4〕路径字节的线上两种形搬进 `common/path_wire.rs`（原生那一块的「在此打开终端」也读它），本族经 `raw` 的再导出照旧用。
+    (
+        "common::path_wire::from_json",
+        Kind::Common,
+        "〔P4〕入方向路径参数的两种形（字符串 / `{\"b16\"}`）→ 字节",
+    ),
+    (
+        "common::path_wire::to_json",
+        Kind::Common,
+        "〔P4〕回送路径的两种形（字节 → 字符串 / `{\"b16\"}`，双向无损）",
+    ),
+    (
+        "common::path_wire::HEX_KEY",
+        Kind::Common,
+        "〔P4〕线上那个键名 `b16`（本族判据按它对拍）",
+    ),
     (
         "common::contract::malformed",
         Kind::Common,

@@ -98,7 +98,7 @@ impl StartOutcome {
 // `process_group(0)` 来自 `std::os::unix::process::CommandExt`，而 `std::os::unix`
 // 在 `backend_client_guard_tests.rs::the_backend_half_stays_platform_agnostic` 的禁针里
 // ⇒ **写进 `backend/` 当场红**；而「加一条平台例外」这条路被**递减棘轮**堵着
-// （`assert!(PLATFORM_EXCEPTIONS.len() <= 1)`，今天正好 1 条）。
+// （`PLATFORM_EXCEPTIONS`：〔P4b · P4〕今天 0 条、上限 0；壳里平台形态另只许住 `platform/`，`platform_home_guard` 钉）。
 // ⇒ 落点只能是这里，形状照 `platform::fs::make_executable` 那个**注入**先例。
 // ══════════════════════════════════════════════════════════════════════════
 
@@ -114,7 +114,7 @@ impl StartOutcome {
 // ⇒ 今天就是那一天：`ConsolePolicy::Hidden` 住 `spawn_managed.rs`，
 // 那条反向边换成了 `local_backend::supervise_with_stdio` 的 `spawn` 注入参数。
 // ⚠ 那条止血头注里的另一句也一起搬过去了，一个字没丢：
-// **别把 `Hidden` 铺到 `launch.rs::launch_powershell_window` 头上** —— 它是 `NewVisible`。
+// **别把 `Hidden` 铺到 `platform/terminal.rs::launch_powershell_window` 头上** —— 它是 `NewVisible`。
 // ═══════════════════════════════════════════════════════════════════════════
 
 /// 握手那一行（hello / attach 应答）的字节上限。
@@ -219,11 +219,7 @@ fn ensure_listen_token(dir: &std::path::Path) -> Result<String, String> {
     opts.write(true).create_new(true);
     // ★ 权限位就是这一格买的东西 —— 少了它，同机别的用户读得到 token，
     //   而 token 是这条回环口上**唯一**的门。
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::OpenOptionsExt;
-        opts.mode(0o600);
-    }
+    crate::platform::fs::only_me_on_create(&mut opts);
     match opts.open(&p) {
         Ok(mut f) => {
             use std::io::Write;
@@ -310,11 +306,7 @@ fn write_listen_pid(
     let p = pid_path(dir, port);
     let mut opts = std::fs::OpenOptions::new();
     opts.write(true).create(true).truncate(true);
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::OpenOptionsExt;
-        opts.mode(0o600);
-    }
+    crate::platform::fs::only_me_on_create(&mut opts);
     use std::io::Write;
     let body = format!("{pid}\n{}\n", bin.display());
     opts.open(&p)
@@ -644,7 +636,8 @@ impl AttachErr {
 /// ⚠ **`process_group` 不改变父子关系** ⇒ **不 `wait` 就留僵尸**
 /// （`launch.rs:196-198` 头注逐字）。收尸走 [`reap_detached`]，由「流断了」这个**事件**触发，
 /// 不是轮询。monitor 自己退出之后那个进程被 init 接管，由 init 收 —— 那一格不归我们。
-#[cfg(target_os = "linux")]
+///
+/// 〔P4 · 阶段 H〕哪些平台能脱离由 `platform::proc::CAN_DETACH` 答（原先是这里两份 `cfg` 分身）；不能 ⇒ 那句「不支持」照旧。
 fn spawn_detached(
     bin: &std::path::Path,
     port: u16,
@@ -652,6 +645,12 @@ fn spawn_detached(
     extra_env: &[(String, String)],
 ) -> Result<crate::spawn_managed::ManagedChild, String> {
     use crate::spawn_managed::{managed_spawner, ConsolePolicy, Lifetime, StderrSink};
+    if !crate::platform::proc::CAN_DETACH {
+        return Err(copy_text(
+            "rsLocalBackendHost.spawn.unsupported",
+            &[("bin", &(bin.display()).to_string())],
+        ));
+    }
     let mut cmd = std::process::Command::new(bin);
     for (k, v) in extra_env {
         cmd.env(k, v);
@@ -706,19 +705,6 @@ fn spawn_detached(
             &[("bin", &(bin.display()).to_string()), ("e", &e.to_string())],
         ),
     })
-}
-
-#[cfg(not(target_os = "linux"))]
-fn spawn_detached(
-    bin: &std::path::Path,
-    _port: u16,
-    _token: &str,
-    _extra_env: &[(String, String)],
-) -> Result<crate::spawn_managed::ManagedChild, String> {
-    Err(copy_text(
-        "rsLocalBackendHost.spawn.unsupported",
-        &[("bin", &(bin.display()).to_string())],
-    ))
 }
 
 /// 脱离之后手里剩下的东西。
@@ -873,7 +859,7 @@ pub(crate) fn detach_wanted(is_linux: bool, no_detach_env: Option<&str>) -> bool
 /// ⇒ 与 `supervise_with_stdio` 头注记的是**同一条**（那边逐字写过「guard 活在闭包里
 /// ⇒ `wait()` 整段都持着锁，而 `stop()` 第一件事就是取那把锁」）—— 本仓第二次。
 ///
-/// 收尸落在一条**专用线程**上（形状抄 `launch.rs::launch_local_posix_via` 里那条），
+/// 收尸落在一条**专用线程**上（形状抄 `platform/terminal.rs::launch_local_posix_via` 里那条），
 /// 它随子进程结束而结束；`Child` 被取走之后句柄里只剩 pid + 二进制路径，
 /// 「停」那一步照样有凭据（〔STOP〕一次性 `--resident-stop` 用这个二进制、按它自己记的 pid 核身份）。
 fn reap_detached(
@@ -913,12 +899,8 @@ fn reap_detached(
 /// `None` = 既没有退出码也没有信号号。那一格**没有事实可说** ⇒ 调用方出声、不上账；
 /// 编一个 `Exited(0)` 顶上去正是 `platform/fallback_guard.rs` 治的那一族。
 fn outcome_of_status(status: std::process::ExitStatus) -> Option<crate::backend_policy::Outcome> {
-    #[cfg(unix)]
-    {
-        use std::os::unix::process::ExitStatusExt;
-        if let Some(sig) = status.signal() {
-            return Some(crate::backend_policy::Outcome::Signalled(sig));
-        }
+    if let Some(sig) = crate::platform::proc::exit_signal(&status) {
+        return Some(crate::backend_policy::Outcome::Signalled(sig));
     }
     status.code().map(crate::backend_policy::Outcome::Exited)
 }
@@ -1114,7 +1096,7 @@ fn start_detached(
     extra_env: &[(String, String)],
 ) -> DetachOutcome {
     if !detach_wanted(
-        cfg!(target_os = "linux"),
+        crate::platform::proc::CAN_DETACH,
         std::env::var(NO_DETACH_ENV).ok().as_deref(),
     ) {
         return DetachOutcome::NotTaken;

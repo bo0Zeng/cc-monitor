@@ -32,7 +32,7 @@ fn synth_cfg() -> RemoteConfig {
 /// 不是「列不出来」那一形（那一形住 `proc_tests`）。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn without_a_channel_no_window_process_is_started() {
-    let before = crate::filewin::shell::open_requested();
+    let before = cc_monitor_filewin::shell::open_requested();
     for (path, reveal) in [
         ("   ", None),
         ("/srv/whatever", None),
@@ -54,7 +54,7 @@ async fn without_a_channel_no_window_process_is_started() {
         );
     }
     assert_eq!(
-        crate::filewin::shell::open_requested(),
+        cc_monitor_filewin::shell::open_requested(),
         before,
         "没有通道口却请求开窗了"
     );
@@ -177,6 +177,7 @@ fn some_ui_file_other_than_the_wrapper_actually_calls_it() {
 /// 🔴 **空路径那一支真的去问 home，而且排在列目录前面；monitor 这一侧一问都不问。**
 ///
 /// 〔MIG-3a · 主会话 09-28 裁 3〕射程从 `entry.rs` 换到 `proc.rs::first_screen`：那两问进了窗口进程。
+/// 〔P4〕窗口独立成包：`first_screen` 随窗口进程那一半住窗口包的 `proc.rs`；monitor 那一侧的 `proc.rs`（起进程）同 `entry.rs` 一起判零 SFTP。
 /// 行为那一半（没给目录才问 · 问的顺序）住 `proc_tests::the_first_screen_asks_home_only_when_told_nothing`；
 /// 本条钉结构：① `first_screen` 里 home 那一问排在列目录前面、用的是 `files-home` 那个常量；
 /// ② `entry.rs` 生产段里**没有**问后端的写法（宿主句柄 · 两问的命令常量）—— 那正是 `99 §2.1 ⑬` 待迁那一行删掉的理由。
@@ -184,7 +185,9 @@ fn some_ui_file_other_than_the_wrapper_actually_calls_it() {
 /// ⚠ **它买不到那一跳是对的**，只买到它在、在前面、monitor 这一侧不在。别读宽。
 #[test]
 fn the_empty_path_branch_goes_through_the_one_home_resolver_before_listing() {
-    let proc = guard_core::production_code(include_str!(
+    let proc =
+        guard_core::production_code(include_str!("../../../../src/frontend/filewin/src/proc.rs"));
+    let spawner = guard_core::production_code(include_str!(
         "../../../../src/frontend/shell/src/filewin/proc.rs"
     ));
     let at_fn = guard_core::find_pinned(&proc, "pub async fn first_screen(")
@@ -223,7 +226,9 @@ fn the_empty_path_branch_goes_through_the_one_home_resolver_before_listing() {
     // 〔F7a · 第三波 09-24〕一处 SFTP 都不许有。针拼出来，免得命中本文件。
     let pool = format!("sftp_{}::", "pool");
     assert!(
-        !entry.contains(pool.as_str()) && !proc.contains(pool.as_str()),
+        !entry.contains(pool.as_str())
+            && !proc.contains(pool.as_str())
+            && !spawner.contains(pool.as_str()),
         "开窗那条路又够到了 SFTP 那个池子"
     );
 }
@@ -303,4 +308,14 @@ fn a_reveal_request_we_cannot_split_is_an_error_not_a_silent_home() {
     // 阴性对照：一条**正常**的文件路径不会走这一支
     //（少了这一半，上面那一比可以靠「什么都报错」全绿）。
     assert!(plan_target("", Some("/a/b.txt")).is_ok());
+}
+
+/// 〔P4〕开窗种子里那台的名字 ＝ `RemoteConfig::origin_label`（`label` 为空时回退到 `host`）——
+/// 原住 `shell_tests::every_source_has_a_non_empty_label` 的后一半：窗口只拿名字之后，「名字怎么从配置来」是开窗入口这一侧的事。
+#[test]
+fn the_seed_names_the_machine_by_its_origin_label() {
+    assert_eq!(synth_cfg().origin_label(), "synthetic-origin");
+    let mut anon = synth_cfg();
+    anon.label.clear();
+    assert_eq!(anon.origin_label(), "example.invalid");
 }

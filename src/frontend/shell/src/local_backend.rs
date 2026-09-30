@@ -937,7 +937,7 @@ pub fn supervise_with_stdio(
 /// # 为什么是「给窗口设 env」而不是「拼进启动串」
 ///
 /// C9 逐字：frontend 只剩「在用户桌面上**开一个终端窗口**」，**窗口里跑什么由 backend 给**。
-/// 而开窗这一步本来就在 backend 手里（`launch.rs::launch_local_posix` /
+/// 而开窗这一步本来就在 backend 手里（`platform/terminal.rs::launch_local_posix` /
 /// `launch_powershell_window`）⇒ **backend 直接把环境交给它开的窗口**，是这条原则最直接的形态。
 ///
 /// 另外三条候选都要**把一个后端事实塞进前端**（`payload.rs` 编译的 `EnvOp` 由 TS 经 wire 送来）

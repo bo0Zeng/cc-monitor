@@ -111,7 +111,7 @@ pub(crate) const WRITE_SITES: &[(&str, &str, Option<&str>, &str)] = &[
     // ── 〔GP1 · 第四波〕这里原来有一行 `creds_store.rs` 的凭据写口（K-H2a：账号的第三方 API key 那份文件）。
     //    主会话 09-25 裁「每台机器上这份文件的程序写者恰好一个 ＝ 那台的后端」⇒ 本机那一份也交本机常驻后端写
     //    （`apikey-key-set` → `src/backend/accounts/upstream_select/file_face.rs`，第四层后端自有状态），本进程一个字节不落 ⇒ 摘行。
-    ("config.rs", "atomic_replace", None, "原子替换原语的本地副本（同上，归 `atomic_replace_registry` 判）"),
+    ("fs.rs", "atomic_replace", None, "原子替换原语的本地副本（同上，归 `atomic_replace_registry` 判；〔P4 · 阶段 H〕原住 `config.rs`，住壳的平台层）"),
     ("lib.rs", "open_log_dir", None, "打开日志目录前确保它存在"),
     ("logging.rs", "build_rolling_appender", None, "monitor 自己的滚动日志"),
     // 〔CFG1 · 4D〕`logging.rs` 那两行（`write_diagnostics_to_config` · `atomic_replace` 副本）摘了：诊断写口改经
@@ -121,12 +121,13 @@ pub(crate) const WRITE_SITES: &[(&str, &str, Option<&str>, &str)] = &[
     //    围栏补在开单那一刻）—— 落地那一下随传输台搬进了本机常驻后端（第三层文件管理写面 `control/transfer.rs`），
     //    monitor 这一侧零写盘。〔AR1 · V119〕上一版还说「开单时那道本机落点围栏照旧在中继里先判一次
     //    （`sftp_pool.rs::transfer_call`）」—— FN1 把那一判删了（后端那道也没了，本地那道是它的出声早副本）。
-    ("utils.rs", "atomic_write_json", None, "通用原子写原语，调用方各自申报"),
+    // 〔P4〕原 `utils.rs`：随两个前端共用搬进 `host-core`（`src/common/host-core/src/atomic.rs`）。
+    ("atomic.rs", "atomic_write_json", None, "通用原子写原语，调用方各自申报"),
     // 〔FW34 · 第四波 09-24〕文件窗口的书签：锁旁件（空文件，只拿来上锁）＋ 它所在的目录。
     //   书签文件本身走上面那条原子写原语（`filewin/bookmarks.rs::mutate`）。
     ("bookmarks.rs", "lock_store", None,
      "monitor 自己的状态：文件窗口书签的锁旁件（`<数据目录>/filewin-bookmarks.json.lock`，空文件）"),
-    ("utils.rs", "atomic_replace_path", None, "同上，原语的本地副本"),
+    ("atomic.rs", "atomic_replace_path", None, "同上，原语的本地副本"),
     // ── `K-P1`：常驻那条路要写两样东西。**都不是安装动作** —— 写的是 monitor 自己的目录。
     ("local_backend_host.rs", "ensure_listen_token", None,
      "写 `~/.cc-monitor/listen-token`（**`0600`**，`create_new` 只创建一次）。\
@@ -270,6 +271,7 @@ fn src_root() -> PathBuf {
 /// · `src/common` · `src` · `doc` —— **`src/frontend/shell/build.rs` 一张表都没扫到**，
 /// 它是这些扫描面共同的盲点（与 F65「三张表共享同一个没写下来的前提」同族）。
 fn corpus() -> Vec<(PathBuf, String)> {
+    // 〔P4〕人群含本包 manifest 明写的兄弟源码树（`host-core` · 文件窗口 …，`guard_core::population_trees`）：它们也跑在这台机器的前端进程里。
     let mut files = guard_core::scan_tree!(&src_root(), &["rs"]);
     let bs = Path::new(env!("CARGO_MANIFEST_DIR")).join("build.rs");
     let src = std::fs::read_to_string(&bs).expect("读不到 build.rs —— 它是本表的一部分");
@@ -454,7 +456,7 @@ const SITE_CLASS: &[(&str, &str, Lands)] = &[
     ("bind.rs", "cleanup_dead", Lands::OwnState),
     ("config.rs", "patch_config_at", Lands::OwnState),
     // 〔GP1 · 第四波〕`creds_store.rs` 的凭据写口那一行摘了（理由同上一张表）。
-    ("config.rs", "atomic_replace", Lands::OwnState),
+    ("fs.rs", "atomic_replace", Lands::OwnState), // 〔P4 · 阶段 H〕原住 `config.rs`
     ("lib.rs", "open_log_dir", Lands::OwnState),
     ("logging.rs", "build_rolling_appender", Lands::OwnState),
     // 〔CFG1〕`logging.rs` 两行随写盘一起摘（见 `WRITE_SITES` 同处）。
@@ -464,8 +466,8 @@ const SITE_CLASS: &[(&str, &str, Lands)] = &[
     //    FN1 之后只过路径解析）。
     // 通用原语：它自己不定落点，调用方各自申报（今天的调用方全是 monitor 自己的状态文件，
     // 下面第 ② 道把「搬走写盘的那几份文件」里调它也算成一处写）。
-    ("utils.rs", "atomic_write_json", Lands::OwnState),
-    ("utils.rs", "atomic_replace_path", Lands::OwnState),
+    ("atomic.rs", "atomic_write_json", Lands::OwnState),
+    ("atomic.rs", "atomic_replace_path", Lands::OwnState),
     (
         "local_backend_host.rs",
         "ensure_listen_token",

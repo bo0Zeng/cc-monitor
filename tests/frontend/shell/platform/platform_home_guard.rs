@@ -13,9 +13,9 @@ use std::collections::BTreeSet;
 /// 允许区：以 `/` 结尾的按前缀认，否则整串相等。住址是 `guard_core::module_address` 给的模块住址（兄弟包带包名）。
 const HOMES: &[&str] = &[
     "platform/",
-    // 〔P4〕前端宿主原语（两个前端共用）；P4 合入前本树还没有这个包。
+    // 〔P4〕前端宿主原语（两个前端共用）。
     "host-core/",
-    // 〔P4〕文件窗口包自己的平台层（P4 在建）。
+    // 〔P4〕文件窗口包自己的平台层（主会话 09-30 认）。
     "cc-monitor-filewin/platform.rs",
 ];
 
@@ -24,76 +24,16 @@ const HOMES: &[&str] = &[
 enum Presence {
     /// 在盘上、带形态 —— 不在就红（搬走 / 改名了改住址，收完了删行）。
     Now,
-    /// P4 合入后才出现（文件窗口独立成包之后的新住址）：不在盘上不红；在了就与 `Now` 一样判。
-    AfterP4,
+    // 〔P4 · 合 P4b〕「P4 合入后才出现」那一档随 P4 合入退役。
 }
 
 /// **待收名单**：`(模块住址, 归谁收, 在不在)`。收完一份删一行，并把 [`PENDING_LEN`] 同拍减一。
-const PENDING: &[(&str, &str, Presence)] = &[
-    ("config.rs", "归 P4 收", Presence::Now),
-    (
-        "filewin/download.rs",
-        "归 P4 收（随窗口包搬走即删）",
-        Presence::Now,
-    ),
-    (
-        "filewin/fonts.rs",
-        "归 P4 收（随窗口包搬走即删）",
-        Presence::Now,
-    ),
-    (
-        "filewin/lossy_pull.rs",
-        "归 P4 收（随窗口包搬走即删）",
-        Presence::Now,
-    ),
-    ("filewin/proc.rs", "归 P4 收", Presence::Now),
-    (
-        "filewin/scale.rs",
-        "归 P4 收（随窗口包搬走即删）",
-        Presence::Now,
-    ),
-    (
-        "filewin/shell.rs",
-        "归 P4 收（随窗口包搬走即删）",
-        Presence::Now,
-    ),
-    ("launch.rs", "归 P4 收", Presence::Now),
-    ("lib.rs", "归 P4 收", Presence::Now),
-    (
-        "local_backend_host.rs",
-        "归 P4 收（P4 子步 2 已收，合入即删）",
-        Presence::Now,
-    ),
-    ("utils.rs", "归 P4 收", Presence::Now),
-    (
-        "cc-monitor-filewin/download.rs",
-        "归 P4 收（P4 合入后才出现）",
-        Presence::AfterP4,
-    ),
-    (
-        "cc-monitor-filewin/fonts.rs",
-        "归 P4 收（P4 合入后才出现）",
-        Presence::AfterP4,
-    ),
-    (
-        "cc-monitor-filewin/lossy_pull.rs",
-        "归 P4 收（P4 合入后才出现）",
-        Presence::AfterP4,
-    ),
-    (
-        "cc-monitor-filewin/scale.rs",
-        "归 P4 收（P4 合入后才出现）",
-        Presence::AfterP4,
-    ),
-    (
-        "cc-monitor-filewin/shell.rs",
-        "归 P4 收（P4 合入后才出现）",
-        Presence::AfterP4,
-    ),
-];
+// 〔P4 · 合 P4b〕名单上本来全是「归 P4 收」的 16 行（壳 config · launch · lib · utils · local_backend_host · filewin/proc 与窗口包 download · fonts · lossy_pull · scale · shell）：
+//   P4 子步 2 / 7 收成零命中（壳的 `platform/` · 窗口包的 `platform.rs`），16 行删、上限同拍 16 → 0。
+const PENDING: &[(&str, &str, Presence)] = &[];
 
-/// 名单条数的上限，与 [`PENDING`] 恒等：删行时同拍减一；**不许加**（加一行 = 往壳里别处又写了平台代码）。
-const PENDING_LEN: usize = 16;
+/// 名单条数的上限，与 [`PENDING`] 恒等：删行时同拍减一；**不许加**（加一行 = 往壳里别处又写了平台代码）。〔P4 · 合 P4b〕16 → 0。
+const PENDING_LEN: usize = 0;
 
 /// `cfg` 谓词里点了操作系统的词（字符串字面量之外，按整词认）。`target_arch` 不在：那是架构，不是操作系统。
 const CFG_WORDS: &[&str] = &[

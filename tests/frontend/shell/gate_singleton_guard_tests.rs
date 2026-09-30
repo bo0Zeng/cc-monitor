@@ -39,9 +39,16 @@ fn repo_root() -> PathBuf {
 
 fn rust_sources(root: &Path) -> Vec<PathBuf> {
     let mut out = Vec::new();
-    for base in ["src/frontend/shell/src", "src/common", "src/backend"] {
-        walk(&root.join(base), &mut out);
+    // 〔P4〕monitor 那棵根换成它的全部人群根（`guard_support::crate_population_roots`：壳 `src/` ＋ manifest 明写的兄弟包，
+    //   窗口包也在内）；兄弟包有几个住 `src/common/`，下面去重。
+    for base in crate::guard_support::crate_population_roots()
+        .into_iter()
+        .chain(["src/common", "src/backend"].iter().map(|b| root.join(b)))
+    {
+        walk(&base, &mut out);
     }
+    out.sort();
+    out.dedup();
     out
 }
 

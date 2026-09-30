@@ -1405,6 +1405,83 @@ pub fn scan_tree_excluding_self(
         .collect()
 }
 
+/// 〔P4 · `设计/90 §0.5.3` ⑰〕一个包的**源码人群**里、住在它自己 `src/` 之外的兄弟源码树：`(包名, 那棵 src/)`。
+///
+/// 由那个包的 manifest 明写：`[package.metadata.guard]` 下 `population = ["<包目录，相对本 manifest>", …]`。
+/// 用处只有一个：monitor 的代码搬进只有前端链的几个包之后，「monitor 源码树」这一问的人群仍是搬家前那一群
+/// （[`walk_tree`] · [`module_address`] 都按它收 / 认）。`root` 是那个包的目录或它的 `src/` 时才生效，别的根一律空。
+///
+/// # Panics
+///
+/// 明写的目录没有 `Cargo.toml` / 没有包名 / 没有 `src/` —— 声明坏了就当场红，不许静默少扫。
+pub fn population_trees(root: &std::path::Path) -> Vec<(String, std::path::PathBuf)> {
+    let pkg = if root.join("Cargo.toml").is_file() {
+        root.to_path_buf()
+    } else if root.file_name().and_then(|n| n.to_str()) == Some("src")
+        && root
+            .parent()
+            .is_some_and(|p| p.join("Cargo.toml").is_file())
+    {
+        root.parent().expect("上面判过有父目录").to_path_buf()
+    } else {
+        return Vec::new();
+    };
+    let manifest = std::fs::read_to_string(pkg.join("Cargo.toml"))
+        .unwrap_or_else(|e| panic!("读 {:?} 失败: {e}", pkg.join("Cargo.toml")));
+    let text = strip_hash_comment_lines(&manifest);
+    let Some(at) = text.find("\n[package.metadata.guard]") else {
+        return Vec::new();
+    };
+    let section = &text[at + 1..];
+    let section = section[1..]
+        .find("\n[")
+        .map_or(section, |end| &section[..end + 1]);
+    let Some(list) = section.split_once("population").map(|(_, rest)| rest) else {
+        return Vec::new();
+    };
+    let list = list
+        .split_once('[')
+        .and_then(|(_, rest)| rest.split_once(']'))
+        .map(|(inner, _)| inner)
+        .unwrap_or_else(|| panic!("{pkg:?} 的 `[package.metadata.guard] population` 不是一个数组"));
+    list.split(',')
+        .map(|s| s.trim().trim_matches('"'))
+        .filter(|s| !s.is_empty())
+        .map(|rel| {
+            // 词法归一（`shell/../filewin` ⇒ `filewin`）：住址按它拼，带 `..` 的串会让调用方的 `strip_prefix` 对不上。
+            let mut dir = std::path::PathBuf::new();
+            for c in pkg.join(rel).components() {
+                match c {
+                    std::path::Component::ParentDir => {
+                        dir.pop();
+                    }
+                    std::path::Component::CurDir => {}
+                    other => dir.push(other.as_os_str()),
+                }
+            }
+            let raw = std::fs::read_to_string(dir.join("Cargo.toml")).unwrap_or_else(|e| {
+                panic!("{pkg:?} 明写的人群 `{rel}` 下没有 Cargo.toml（{e}）—— 声明坏了")
+            });
+            let name = strip_hash_comment_lines(&raw)
+                .lines()
+                .map(str::trim)
+                .find_map(|l| {
+                    l.strip_prefix("name")?
+                        .trim_start()
+                        .strip_prefix('=')
+                        .map(|v| v.trim().trim_matches('"').to_string())
+                })
+                .unwrap_or_else(|| panic!("{dir:?}/Cargo.toml 没有包名"));
+            let src = dir.join("src");
+            assert!(
+                src.is_dir(),
+                "{pkg:?} 明写的人群 `{rel}` 下没有 src/ —— 声明坏了"
+            );
+            (name, src)
+        })
+        .collect()
+}
+
 /// 两个 `scan_tree_*` 共用的那一趟遍历 —— **只管「收哪些文件」，一个都不摘**。
 ///
 /// 抽出来的理由是 `设计/16 §5.1`（一条形状出现 N 次就抽一个住址）：
@@ -1417,9 +1494,16 @@ pub fn scan_tree_excluding_self(
 /// （通信层成员住 `src/comms/` 之后由壳 / 后端的模块树挂进去，`设计/90 §0.5.3`「目录只是住址」）也算这棵根的人群，
 /// 挂的是 `mod.rs` 就连它那一层目录一起收。指向任何 `tests` 段的挂载不跟（那是测试段，不是生产人群）。
 /// 不跟的话，搬家那一拍两边几百条扫描型判据会**静默少扫**那几份（`设计/16 §5.4b`，搬家时现打普查量过）。
+///
+/// 〔P4〕同一条理由的第二形：根是一个包（或它的 `src/`）而那个包的 manifest 明写了兄弟源码树（[`population_trees`]），
+/// 那几棵也算这棵根的人群 —— 代码从包里搬进只有它链的兄弟包（通道 · 宿主原语 · 文件窗口），「这个包的源码」这一问的人群不变。
 fn walk_tree(root: &std::path::Path, exts: &[&str]) -> Vec<(std::path::PathBuf, String)> {
     let mut out = walk_dir(root, exts);
+    for (_, tree) in population_trees(root) {
+        out.extend(walk_dir(&tree, exts));
+    }
     if !exts.is_empty() && !exts.contains(&"rs") {
+        out.sort_by(|a, b| a.0.cmp(&b.0));
         return out;
     }
     let norm = |p: &std::path::Path| -> std::path::PathBuf {
@@ -1503,63 +1587,81 @@ pub fn module_address(root: &std::path::Path, path: &std::path::Path) -> String 
     if let Ok(rel) = path_n.strip_prefix(&root_n) {
         return fwd(rel);
     }
-    for (host, text) in walk_dir(root, &["rs"]) {
-        let host_n = norm(&host);
-        let Some(dir) = host_n.parent() else { continue };
-        let lines: Vec<&str> = text.lines().collect();
-        for (i, line) in lines.iter().enumerate() {
-            let Some(rest) = line.trim_start().strip_prefix("#[path = \"") else {
-                continue;
-            };
-            let Some(rel) = rest.split('"').next() else {
-                continue;
-            };
-            let target = norm(&dir.join(rel));
-            // 紧跟着的 `mod 名;`（中间只许隔着属性行 / 注释行）。
-            let name = lines[i + 1..]
-                .iter()
-                .map(|l| l.trim_start())
-                .find(|l| !(l.starts_with("#[") || l.starts_with("//")))
-                .and_then(|l| {
-                    let l = l
-                        .strip_prefix("pub(crate) ")
-                        .or_else(|| l.strip_prefix("pub "))
-                        .unwrap_or(l);
-                    l.strip_prefix("mod ")?
-                        .split(|c: char| c == ';' || c.is_whitespace())
-                        .next()
-                })
-                .map(str::to_string);
-            let Some(name) = name else { continue };
-            // 宿主是 `lib.rs` / `main.rs` / `mod.rs` ⇒ 子模块住它那一层；否则住 `<宿主名>/` 下。
-            let host_name = host_n.file_name().and_then(|n| n.to_str()).unwrap_or("");
-            let base = if matches!(host_name, "lib.rs" | "main.rs" | "mod.rs") {
-                dir.to_path_buf()
-            } else {
-                dir.join(host_n.file_stem().unwrap_or_default())
-            };
-            let Ok(base_rel) = base.strip_prefix(&root_n) else {
-                continue;
-            };
-            let base_rel = fwd(base_rel);
-            let join = |tail: &str| {
-                if base_rel.is_empty() {
-                    tail.to_string()
-                } else {
-                    format!("{base_rel}/{tail}")
-                }
-            };
-            if target == path_n {
-                return if target.file_name().and_then(|n| n.to_str()) == Some("mod.rs") {
-                    join(&format!("{name}/mod.rs"))
-                } else {
-                    join(&format!("{name}.rs"))
+    // 〔P4〕人群里的兄弟源码树（[`population_trees`]）：`<包名>/<在那个包里的模块住址>`。
+    let trees: Vec<(String, std::path::PathBuf)> = population_trees(root)
+        .into_iter()
+        .map(|(label, tree)| (label, norm(&tree)))
+        .collect();
+    for (label, tree) in &trees {
+        if let Ok(rel) = path_n.strip_prefix(tree) {
+            return format!("{label}/{}", fwd(rel));
+        }
+    }
+    let bases = std::iter::once((root_n.clone(), String::new()))
+        .chain(trees.into_iter().map(|(l, t)| (t, l)));
+    for (base_root, label) in bases {
+        for (host, text) in walk_dir(&base_root, &["rs"]) {
+            let host_n = norm(&host);
+            let Some(dir) = host_n.parent() else { continue };
+            let lines: Vec<&str> = text.lines().collect();
+            for (i, line) in lines.iter().enumerate() {
+                let Some(rest) = line.trim_start().strip_prefix("#[path = \"") else {
+                    continue;
                 };
-            }
-            if target.file_name().and_then(|n| n.to_str()) == Some("mod.rs") {
-                if let Some(tdir) = target.parent() {
-                    if let Ok(inner) = path_n.strip_prefix(tdir) {
-                        return join(&format!("{name}/{}", fwd(inner)));
+                let Some(rel) = rest.split('"').next() else {
+                    continue;
+                };
+                let target = norm(&dir.join(rel));
+                // 紧跟着的 `mod 名;`（中间只许隔着属性行 / 注释行）。
+                let name = lines[i + 1..]
+                    .iter()
+                    .map(|l| l.trim_start())
+                    .find(|l| !(l.starts_with("#[") || l.starts_with("//")))
+                    .and_then(|l| {
+                        let l = l
+                            .strip_prefix("pub(crate) ")
+                            .or_else(|| l.strip_prefix("pub "))
+                            .unwrap_or(l);
+                        l.strip_prefix("mod ")?
+                            .split(|c: char| c == ';' || c.is_whitespace())
+                            .next()
+                    })
+                    .map(str::to_string);
+                let Some(name) = name else { continue };
+                // 宿主是 `lib.rs` / `main.rs` / `mod.rs` ⇒ 子模块住它那一层；否则住 `<宿主名>/` 下。
+                let host_name = host_n.file_name().and_then(|n| n.to_str()).unwrap_or("");
+                let base = if matches!(host_name, "lib.rs" | "main.rs" | "mod.rs") {
+                    dir.to_path_buf()
+                } else {
+                    dir.join(host_n.file_stem().unwrap_or_default())
+                };
+                let Ok(base_rel) = base.strip_prefix(&base_root) else {
+                    continue;
+                };
+                let base_rel = [label.as_str(), &fwd(base_rel)]
+                    .into_iter()
+                    .filter(|s| !s.is_empty())
+                    .collect::<Vec<_>>()
+                    .join("/");
+                let join = |tail: &str| {
+                    if base_rel.is_empty() {
+                        tail.to_string()
+                    } else {
+                        format!("{base_rel}/{tail}")
+                    }
+                };
+                if target == path_n {
+                    return if target.file_name().and_then(|n| n.to_str()) == Some("mod.rs") {
+                        join(&format!("{name}/mod.rs"))
+                    } else {
+                        join(&format!("{name}.rs"))
+                    };
+                }
+                if target.file_name().and_then(|n| n.to_str()) == Some("mod.rs") {
+                    if let Some(tdir) = target.parent() {
+                        if let Ok(inner) = path_n.strip_prefix(tdir) {
+                            return join(&format!("{name}/{}", fwd(inner)));
+                        }
                     }
                 }
             }
