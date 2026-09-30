@@ -13,7 +13,7 @@
 //! **买不到**：重拨。断了之后要不要再拨、隔多久拨，是外部前端自己的策略，本文件不替它定。
 
 use super::client::Client;
-use super::host::Handoff;
+use super::handoff::Handoff;
 use super::wire::{Budget, CallError, HopFault, HopId, OursFault, Reach};
 
 /// 连上交接件里那个口并出示钥匙。

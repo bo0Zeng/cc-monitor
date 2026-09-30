@@ -24,6 +24,8 @@ members = [
     "../../common/upstream-url-core",
     # 〔MIG-3b〕部署决策（表 A / 表 B · 身份戳 · 只升不降）—— 本机常驻后端出计划、monitor 放字节共用的唯一一份。
     "../../common/deploy-core",
+    # 〔P4 · ⑰〕通道（通信层面 A）的线上词汇 · 客户端 · 路由器 · 拨号与交接件：monitor 与文件窗口进程链同一份。
+    "../../common/chan-core",
     # 〔P4 · 主会话 09-29 拍板 Q2〕前端宿主原语（两个前端共用、后端不链）：自有状态文件的原子写 · 窗口夹进工作区。
     "../../common/host-core",
     # 〔THIN〕`gate-core` 出列：收成后端模块 `control/gate_rules.rs`（monitor 那一侧的门删了）。
@@ -143,6 +145,8 @@ shell-quote-core = { path = "../../common/shell-quote-core" }
 relay-route-core = { path = "../../common/relay-route-core" }
 # 〔MIG-3b〕部署决策的唯一一份：本机常驻后端出计划（`deploy-plan`）用它判，monitor 照计划取字节、本机那一份的身份 · 远端 hello 的新旧 · 全景的表 A/B 也用它。
 deploy-core = { path = "../../common/deploy-core" }
+# 〔P4 · ⑰〕通道：成员文件原地住 `src/comms/inward/`，由这个共享 crate 编（壳里 `chan/` 再导出，模块路径不变）。
+chan-core = { path = "../../common/chan-core" }
 # 〔P4〕前端宿主原语（原子写 `atomic_write_json` · `WorkArea` / `fit_into_work_area`）：monitor 与文件窗口共用那一份（`src/common/host-core`）。
 host-core = { path = "../../common/host-core" }
 # 〔THIN〕`gate-core` 删了：monitor 侧的 Gate 1 前检与转调壳（只剩跨轨对拍锚点在用）删掉之后它只剩后端用，收成后端模块 `control/gate_rules.rs`。
@@ -261,6 +265,8 @@ acct-core = { path = "../../common/acct-core" }
 # 起因：monitor 侧的守卫此前各写便宜近似（`split("\n#[cfg(test)]").next()`），
 # 那个近似在 `ssh_source.rs` 上会把扫描面砍掉三分之二（详见 guard-core 头注）。
 guard-core = { path = "../../common/guard-core" }
+# 〔P4〕`Origin` 编进 `chan-core` 之后，本包测试档里别的生成类型（会话流那几帧）嵌着它 ⇒ dev 侧开它的 TS 派生（发布二进制不开）。
+chan-core = { path = "../../common/chan-core", features = ["ts"] }
 
 [target.'cfg(windows)'.dependencies]
 # v1.7.0：cc 注入式绑定恢复 ToolHelp（claude.exe 的 parent_pid 反查 PS） +

@@ -38,12 +38,12 @@
 //!
 //! - **不买「对端一定按这份协议说话」**：解不出来的头一律是 [`OursFault::Broken`]，
 //!   不猜、不补默认值。
-//! - **不买版本协商**：头里没有协议版本号。今天两端都编自同一个 `monitor_lib`，
+//! - **不买版本协商**：头里没有协议版本号。今天两端都编自同一个 `chan-core`（〔P4〕从前是同一个 `monitor_lib`），
 //!   将来两端能分开升级那一天要补 —— 登记为欠账，不假装已有。
 //! - **不买 `HopId.tag` 的开放集合**：线上只认 `open | auth | write | read | wait` 这五个
 //!   （`§3.3.0` 逐字），认不出的标签当作协议坏了，不当作新标签收下。
 
-use crate::copy_table::copy_text;
+use copy_core::copy_text;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -478,7 +478,7 @@ impl Offer {
 /// ⚠ 编号（`id`）由**客户端**发，一条连接内单调；路由器只拿它配对，不解释。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "t")]
-pub(crate) enum Head {
+pub enum Head {
     // ── 客户端 → 路由器 ──
     Hello {
         key: String,
@@ -529,7 +529,7 @@ pub(crate) enum Head {
 
 /// `CallError` 的线上形状。`Refused` 的那份不透明体走帧体，不进 JSON。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub(crate) enum WireErr {
+pub enum WireErr {
     Hop {
         idx: u8,
         tag: String,
@@ -545,7 +545,7 @@ pub(crate) enum WireErr {
 
 /// `Item` 的线上形状。`Frame` 与 `Closed{by: Peer}` 的体走帧体。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub(crate) enum WireItem {
+pub enum WireItem {
     Frame {
         seq: u64,
     },
@@ -567,7 +567,7 @@ pub(crate) enum WireItem {
 }
 
 /// `CallError` ⇒ 线上头 ＋ 帧体。**穷尽**（`X1`）。
-pub(crate) fn err_to_wire(e: CallError) -> (WireErr, Vec<u8>) {
+pub fn err_to_wire(e: CallError) -> (WireErr, Vec<u8>) {
     match e {
         CallError::Hop { at, reach, why } => (
             WireErr::Hop {
@@ -593,7 +593,7 @@ pub(crate) fn err_to_wire(e: CallError) -> (WireErr, Vec<u8>) {
 }
 
 /// 线上头 ＋ 帧体 ⇒ `CallError`。认不出的跳号标签 ⇒ `Ours{Broken}`（协议坏了，不猜）。
-pub(crate) fn err_from_wire(w: WireErr, body: Vec<u8>) -> CallError {
+pub fn err_from_wire(w: WireErr, body: Vec<u8>) -> CallError {
     match w {
         WireErr::Hop {
             idx,
@@ -620,7 +620,7 @@ pub(crate) fn err_from_wire(w: WireErr, body: Vec<u8>) -> CallError {
 }
 
 /// `Item` ⇒ 线上头 ＋ 帧体。**穷尽**（`X1`）。
-pub(crate) fn item_to_wire(i: Item) -> (WireItem, Vec<u8>) {
+pub fn item_to_wire(i: Item) -> (WireItem, Vec<u8>) {
     match i {
         Item::Frame { seq, body } => (WireItem::Frame { seq }, body.0),
         Item::Gap { from_seq, to_seq } => (WireItem::Gap { from_seq, to_seq }, Vec::new()),
@@ -639,7 +639,7 @@ pub(crate) fn item_to_wire(i: Item) -> (WireItem, Vec<u8>) {
 }
 
 /// 线上头 ＋ 帧体 ⇒ `Item`。认不出的跳号标签 ⇒ `None`（调用方按协议坏了处置）。
-pub(crate) fn item_from_wire(w: WireItem, body: Vec<u8>) -> Option<Item> {
+pub fn item_from_wire(w: WireItem, body: Vec<u8>) -> Option<Item> {
     Some(match w {
         WireItem::Frame { seq } => Item::Frame {
             seq,
@@ -667,7 +667,7 @@ pub(crate) fn item_from_wire(w: WireItem, body: Vec<u8>) -> Option<Item> {
 
 /// 读一帧失败的三种。
 #[derive(Debug)]
-pub(crate) enum ReadFault {
+pub enum ReadFault {
     /// 在帧边界上干净地读到了 EOF —— 对面走了。
     Eof,
     /// 读到一半断了 / 读出错。
@@ -703,7 +703,7 @@ async fn read_segment<R: AsyncRead + Unpin>(
 }
 
 /// 读一整帧：头 ＋ 体。
-pub(crate) async fn read_frame<R: AsyncRead + Unpin>(
+pub async fn read_frame<R: AsyncRead + Unpin>(
     r: &mut R,
     cap: usize,
 ) -> Result<(Head, Vec<u8>), ReadFault> {
@@ -719,7 +719,7 @@ pub(crate) async fn read_frame<R: AsyncRead + Unpin>(
 }
 
 /// 写一整帧并冲刷。
-pub(crate) async fn write_frame<W: AsyncWrite + Unpin>(
+pub async fn write_frame<W: AsyncWrite + Unpin>(
     w: &mut W,
     head: &Head,
     body: &[u8],
