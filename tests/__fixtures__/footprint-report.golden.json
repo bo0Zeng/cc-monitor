@@ -43,7 +43,8 @@
       "path_resolved": "/nonexistent-footprint-golden/.local/bin/ccm",
       "source_label": "随 cc-monitor 一起安装的程序",
       "state": {
-        "kind": "absent"
+        "detail": "没有旧版遗留",
+        "kind": "expected_absent"
       },
       "tier": "AppInstalls",
       "tool_id": "ccm",
@@ -59,7 +60,8 @@
       "path_resolved": "/nonexistent-footprint-golden/.cc-monitor/bin/cc-monitor-backend",
       "source_label": "随 cc-monitor 一起安装的程序",
       "state": {
-        "kind": "absent"
+        "detail": "没有旧版遗留",
+        "kind": "expected_absent"
       },
       "tier": "AppInstalls",
       "tool_id": "ccm",

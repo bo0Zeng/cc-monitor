@@ -12802,6 +12802,11 @@
       "zh": "目录，{count} 项",
       "args": ["count"]
     },
+    "rsConfigSurface.observe.retiredGone": {
+      "kind": "body",
+      "zh": "没有旧版遗留",
+      "args": []
+    },
     "rsConfigSurface.home.multiStar": {
       "kind": "error",
       "zh": "只支持一个 *，实得 {declared}",

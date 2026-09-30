@@ -49,6 +49,8 @@ cc-monitor only observes and launches: `claude` still runs in your own terminal,
 
 ![Settings → Machines](docs/screenshots/machines.png)
 
+![A machine's Footprint: every file cc-monitor wrote on that machine](docs/screenshots/footprint.png)
+
 ### File manager
 - A separate window, for local and remote machines
 - Sort, create, rename, delete, copy, change permissions, upload and download, bookmarks, search by content
