@@ -28,6 +28,14 @@ fn home() -> std::path::PathBuf {
     std::path::PathBuf::from("/home/u")
 }
 
+/// 夹具里「一条绝对路径」**按平台取那一形**：`/tmp/iso-42` 在 Windows 上没有盘符，不是绝对路径
+/// （按进程当前那一盘解）⇒ 拿它当绝对路径的夹具在那边会被**正确地**拒掉。
+const ABS: &str = if cfg!(windows) {
+    r"C:\iso-42"
+} else {
+    "/tmp/iso-42"
+};
+
 /// 没设 ⇒ 默认落点，而它就是设计写死的那一条。
 #[test]
 fn with_nothing_set_it_is_the_documented_default() {
@@ -40,18 +48,18 @@ fn with_nothing_set_it_is_the_documented_default() {
 /// 后一半要紧：掺了的话「隔离到临时目录」会变成「在临时目录下又建一层 .claude」。
 #[test]
 fn an_absolute_override_is_used_verbatim() {
-    let got = monitor_data_dir_from(Some("/tmp/iso-42"), Some(home())).expect("绝对路径被拒了");
-    assert_eq!(got, std::path::PathBuf::from("/tmp/iso-42"));
+    let got = monitor_data_dir_from(Some(ABS), Some(home())).expect("绝对路径被拒了");
+    assert_eq!(got, std::path::PathBuf::from(ABS));
     // 🔴 连 home 都拿不到时它照样成立 —— 证明这条出口**不偷偷依赖 home**。
     assert_eq!(
-        monitor_data_dir_from(Some("/tmp/iso-42"), None),
-        Some(std::path::PathBuf::from("/tmp/iso-42")),
+        monitor_data_dir_from(Some(ABS), None),
+        Some(std::path::PathBuf::from(ABS)),
         "没有 home 时那条绝对路径也被拒了 —— 那说明它偷偷拿 home 兜了一下"
     );
     // 周围空白不算内容。
     assert_eq!(
-        monitor_data_dir_from(Some("  /tmp/iso-42  "), Some(home())),
-        Some(std::path::PathBuf::from("/tmp/iso-42"))
+        monitor_data_dir_from(Some(&format!("  {ABS}  ")), Some(home())),
+        Some(std::path::PathBuf::from(ABS))
     );
 }
 
@@ -82,7 +90,18 @@ fn an_empty_value_means_unset_not_broken() {
 #[test]
 fn a_relative_override_refuses_instead_of_quietly_using_the_real_profile() {
     let real = monitor_data_dir_from(None, Some(home()));
-    for rel in ["iso", "./iso", "../iso", "a/b"] {
+    // Windows 上还有两形也按进程当前那一盘解（与相对路径同一条理由拒）：有根没盘符（`/x` · `\x`）、有盘符没根（`C:x`）。
+    // 同一个 `/x` 在 Linux 上是绝对路径、原样用 —— 那一半由 `ABS`（Linux 上就是这一形）钉着。
+    let windows_relative: &[&str] = if cfg!(windows) {
+        &["/x", r"\x", "C:x"]
+    } else {
+        &[]
+    };
+    for rel in ["iso", "./iso", "../iso", "a/b"]
+        .iter()
+        .chain(windows_relative)
+        .copied()
+    {
         let got = monitor_data_dir_from(Some(rel), Some(home()));
         assert_eq!(
             got, None,
@@ -93,7 +112,7 @@ fn a_relative_override_refuses_instead_of_quietly_using_the_real_profile() {
         assert_ne!(got, real, "`{rel}` 被静默退回了真 profile");
     }
     // 阴性对照：绝对路径**不**走这一支（少了这一半，上面可以靠「什么都拒」全绿）。
-    assert!(monitor_data_dir_from(Some("/x"), Some(home())).is_some());
+    assert!(monitor_data_dir_from(Some(ABS), Some(home())).is_some());
 }
 
 /// 连 home 都拿不到、又没给 env ⇒ `None`（老行为，一个字没改）。

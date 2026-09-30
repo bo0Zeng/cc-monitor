@@ -10,8 +10,8 @@
 //!
 //! # 买到什么
 //!
-//! - 生产句柄对 `transfer/<id>` **真的出帧**：本机后端推上来的进度 ⇒ 进度格序号从 1 连续、已传单调不减、
-//!   最后一格是 `Closed{Peer({"state":"done","bytes"})}`。
+//! - 生产句柄对 `transfer/<id>` **真的出帧**：逐格对拍 ⇒ 进度格序号从 1 连续、每格就是本机后端推上来的那一格，
+//!   最后一格是 `Closed{Peer({"state":"done","bytes","sha256"})}`；流还没被取就收场的那一趟 ⇒ 恰好一格终局（快照合并）。
 //! - **停订就是撤**：经真回环停订 ⇒ 本机后端收到 `transfer-stop {id}`。
 //! - 没有这张票 / 第二次订阅 / 带了 `from` ⇒ 原位 `Closed{Peer}` 说清楚，不装作订阅成功。
 //! - 开单口：没有这台机器的配置 ⇒ `Peer{Refused{"no_such_origin"}}`（不起任何连接）。
@@ -71,6 +71,16 @@ async fn drain(mut sub: impl Sub + Unpin) -> Vec<Item> {
     out
 }
 
+/// 取下一格（10 秒内），取到就再给一格 credit（与 [`drain`] 同一个节奏）。
+async fn one(sub: &mut (impl Sub + Unpin)) -> Item {
+    let i = tokio::time::timeout(Duration::from_secs(10), sub.next())
+        .await
+        .expect("10 秒内没等到下一格")
+        .expect("流没断");
+    sub.want(1);
+    i
+}
+
 fn body_json(b: &Body) -> serde_json::Value {
     serde_json::from_slice(&b.0).expect("流里的体是 JSON")
 }
@@ -92,6 +102,10 @@ async fn open_upload(label: &str) -> String {
 }
 
 /// 🔴🔴 **生产句柄对 `transfer/<id>` 真的出帧**，而且那些帧说的就是本机后端推上来的那几格。
+///
+/// **逐格对拍**：每推一帧，先等流把上一格交出来再推。快照流按设计会合并还没被取走的中间几格
+/// （`sftp_pool::Snap` 头注「合并掉中间几格不丢信息」）⇒ 一口气推完的话看得见几格取决于调度
+/// （Windows CI 上撞到过一格进度都没有、只剩终局那一形 —— 那一形由下一条钉）。对拍之后每一格都是确定的。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn the_production_handle_streams_the_local_backends_frames_over_real_loopback() {
     let _g = crate::inbound_client::local_origin_test_lock();
@@ -99,7 +113,7 @@ async fn the_production_handle_streams_the_local_backends_frames_over_real_loopb
     let client = rig().await;
     let label = "判据机器·transfer-stream";
     let id = open_upload(label).await;
-    let sub = client.subscribe(
+    let mut sub = client.subscribe(
         &crate::chan::wire::Origin(label.to_string()),
         &kind(&id),
         None,
@@ -108,15 +122,18 @@ async fn the_production_handle_streams_the_local_backends_frames_over_real_loopb
     let start = be.next("transfer-start").await;
     assert_eq!(start["args"]["id"], id.as_str(), "订阅没起跑那一趟");
     let total = 300 * 1024 + 17;
+    // 第一格是订阅那一刻的快照：一帧还没推 ⇒ 0 / 0。
+    let mut items = vec![one(&mut sub).await];
     for got in [65_536u64, 196_608, total] {
         be.frame(&format!(
             r#"{{"kind":"transfer","id":{id:?},"got":{got},"total":{total}}}"#
         ));
+        items.push(one(&mut sub).await);
     }
     be.frame(&format!(
-        r#"{{"kind":"transfer","id":{id:?},"got":{total},"total":{total},"end":{{"state":"done","bytes":{total}}}}}"#
+        r#"{{"kind":"transfer","id":{id:?},"got":{total},"total":{total},"end":{{"state":"done","bytes":{total},"sha256":"ab"}}}}"#
     ));
-    let items = drain(sub).await;
+    items.push(one(&mut sub).await);
     let frames: Vec<(u64, serde_json::Value)> = items
         .iter()
         .filter_map(|i| match i {
@@ -124,24 +141,64 @@ async fn the_production_handle_streams_the_local_backends_frames_over_real_loopb
             _ => None,
         })
         .collect();
-    assert!(!frames.is_empty(), "一格进度都没出：{items:?}");
-    let seqs: Vec<u64> = frames.iter().map(|(s, _)| *s).collect();
-    let want: Vec<u64> = (1..=frames.len() as u64).collect();
-    assert_eq!(seqs, want, "进度格的序号不是从 1 连续的");
-    let gots: Vec<u64> = frames
-        .iter()
-        .map(|(_, v)| v["got"].as_u64().expect("got"))
-        .collect();
-    assert!(
-        gots.windows(2).all(|w| w[0] <= w[1]),
-        "已传不是单调不减的：{gots:?}"
+    assert_eq!(
+        frames,
+        vec![
+            (1, serde_json::json!({ "got": 0, "total": 0 })),
+            (2, serde_json::json!({ "got": 65_536, "total": total })),
+            (3, serde_json::json!({ "got": 196_608, "total": total })),
+            (4, serde_json::json!({ "got": total, "total": total })),
+        ],
+        "进度格不是「序号从 1 连续、每格就是本机后端推上来的那一格」：{items:?}"
     );
     let Some(Item::Closed { by: By::Peer(end) }) = items.last() else {
         panic!("最后一格不是对端收场：{items:?}");
     };
-    let end = body_json(end);
-    assert_eq!(end["state"], "done", "{end}");
-    assert_eq!(end["bytes"].as_u64(), Some(total));
+    // 上传那一路的摘要原样到窗口（窗口提交时拿它当 `expect`）。
+    assert_eq!(
+        body_json(end),
+        serde_json::json!({ "state": "done", "bytes": total, "sha256": "ab" })
+    );
+}
+
+/// 🔴 **流第一次被取之前那一趟就收场了 ⇒ 流里恰好一格：终局。** 进度格一格没有，终局不丢、不多出一格假进度。
+///
+/// 这是 Windows CI 上撞到的那一形（订阅那一刻的快照还没被取，本机后端的四帧已经全进了快照）。
+/// 本机上用 credit 造同一形：一格 credit 都不给 ⇒ 路由器不取流；四帧推完、确认本机那条流已吸收之后才给。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_transfer_that_ends_before_the_first_take_streams_just_its_end() {
+    let _g = crate::inbound_client::local_origin_test_lock();
+    let mut be = backend_rig(&ALL);
+    let client = rig().await;
+    let label = "判据机器·transfer-coalesced";
+    let id = open_upload(label).await;
+    let sub = client.subscribe(
+        &crate::chan::wire::Origin(label.to_string()),
+        &kind(&id),
+        None,
+        0,
+    );
+    be.next("transfer-start").await;
+    let total = 300 * 1024 + 17;
+    for got in [65_536u64, 196_608, total] {
+        be.frame(&format!(
+            r#"{{"kind":"transfer","id":{id:?},"got":{got},"total":{total}}}"#
+        ));
+    }
+    be.frame(&format!(
+        r#"{{"kind":"transfer","id":{id:?},"got":{total},"total":{total},"end":{{"state":"done","bytes":{total},"sha256":"ab"}}}}"#
+    ));
+    // 屏障：本机那条流按序吸收 ⇒ 再开一张单，它的应答排在那四帧后面；应答回来 ⇒ 四帧都已进了快照。
+    open_upload(label).await;
+    sub.want(4);
+    let items = drain(sub).await;
+    match items.as_slice() {
+        [Item::Closed { by: By::Peer(end) }] => assert_eq!(
+            body_json(end),
+            serde_json::json!({ "state": "done", "bytes": total, "sha256": "ab" })
+        ),
+        other => panic!("该恰好一格终局：{other:?}"),
+    }
 }
 
 /// 🔴 **停订就是撤**：经真回环停订 ⇒ 本机后端收到 `transfer-stop {id}`。

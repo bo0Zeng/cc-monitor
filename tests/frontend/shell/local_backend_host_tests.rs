@@ -2776,6 +2776,10 @@ fn every_test_that_starts_the_real_backend_demands_a_private_tmux() {
 }
 
 /// token 每次都不一样、够长，而且**不是空串**（空串会让 attach 那道门形同虚设）。
+///
+/// 只在 Linux 上编：token 那条路（`start_detached` → `ensure_listen_token` → `fresh_token`）只在能脱离的平台上走得到，
+/// 门的前提由 [`the_token_cells_run_exactly_where_detaching_is_possible`] 钉着。
+#[cfg(target_os = "linux")]
 #[test]
 fn every_token_is_fresh_and_long_enough() {
     let a = fresh_token().expect("铸 token");
@@ -2786,6 +2790,36 @@ fn every_token_is_fresh_and_long_enough() {
     );
     assert_eq!(a.len(), 32, "token 长度变了（32 个十六进制 = 128 位）");
     assert!(a.chars().all(|c| c.is_ascii_hexdigit()));
+}
+
+/// 要求住址：`INVARIANTS §48.1`「钥匙由宿主生成（新生成时 128 位随机）」· `设计/99 §4.4`「Windows 上本机常驻后端脱离不了」（V109 先不做 Windows 这一族）。
+///
+/// 上面那条与 [`the_listen_token_file_is_pinned_cell_by_cell`] 门在 `target_os = "linux"` 上，理由只有一条：
+/// 铸 token 那条路只经 `start_detached`，而它第一步就问 `platform::proc::CAN_DETACH`，假 ⇒ `NotTaken`，走不到铸 token。
+/// 本条钉这个前提在每个平台上都成立：哪天别的平台也能脱离（`CAN_DETACH` 在那儿变真），本条就在那个平台上红 ——
+/// 那时要把两条的门放开、并让 `fresh_token` 在那个平台上也取得到系统随机数（今天它读 `/dev/urandom`）。
+#[test]
+fn the_token_cells_run_exactly_where_detaching_is_possible() {
+    assert_eq!(
+        crate::platform::proc::CAN_DETACH,
+        cfg!(target_os = "linux"),
+        "能脱离的平台与 token 那两条判据编进来的平台不再是同一组 —— \
+         在能脱离却不编那两条的平台上，铸 token 那条路是活的而没有判据看着"
+    );
+    // 「走不到」的另一半：`start_detached` 先过那道门、后铸 token。反过来的话，不能脱离的平台上
+    // 每次起后端都会先撞上铸 token（Windows 上 `/dev/urandom` 不在 ⇒ 起不来），而不是回落被监护那条。
+    let prod = guard_core::production_code(include_str!(
+        "../../../src/frontend/shell/src/local_backend_host.rs"
+    ));
+    let start = body_of(&prod, "fn start_detached(");
+    let gate = guard_core::find_pinned(&start, "crate::platform::proc::CAN_DETACH")
+        .unwrap_or_else(|e| panic!("`start_detached` 里那道平台门不是恰好一处：{e}"));
+    let mint = guard_core::find_pinned(&start, "ensure_listen_token(&dir)")
+        .unwrap_or_else(|e| panic!("`start_detached` 里铸 token 那一处不是恰好一处：{e}"));
+    assert!(
+        gate < mint,
+        "`start_detached` 先铸 token、后问 `CAN_DETACH` —— 不能脱离的平台上铸 token 那条路就是活的"
+    );
 }
 
 /// ★★ `重-2`：**自动起那条路的「拒绝」不许只进日志。**
@@ -3202,6 +3236,9 @@ fn the_timer_registry_names_every_caller_of_the_one_wait_here() {
 /// 而在我们 `create_new` 之前另一个进程把它建好并写完了」，那是**真的跨进程竞态**，
 /// 单进程里造不出来。⇒ 那半格由下面 ⑤ 的**源码钉**（`create_new(true)` 恰好一处）兜，
 /// 而 ⑤ 买的是「不覆盖」，不是「读回的是赢家那份」。**这一格今天没有行为判据。**
+///
+/// 只在 Linux 上编（同 [`every_token_is_fresh_and_long_enough`]：① 那一格要铸新 token）。
+#[cfg(target_os = "linux")]
 #[test]
 fn the_listen_token_file_is_pinned_cell_by_cell() {
     let dir = std::env::temp_dir().join(format!(
