@@ -389,7 +389,6 @@ const SCAN: &[&str] = &[
     "tests/common/guard-core/lib_tests.rs",
     "tests/common/guard-core/test_tiers_tests.rs",
     "tests/frontend/shell/cross_half_edge_registry_tests.rs",
-    "tests/frontend/shell/design_doc_registry_tests.rs",
     "tests/frontend/shell/doc_claim_registry_daemon_wording_registry.rs",
     "tests/frontend/shell/doc_claim_registry_frozen_daemon_census.rs",
     "tests/frontend/shell/doc_copy_registry_tests.rs",
