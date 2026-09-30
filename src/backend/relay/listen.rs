@@ -231,7 +231,6 @@ pub(crate) fn serve(listener: TcpListener, relay: Arc<Relay>, inflight: Arc<Atom
 fn prepare(
     port: u16,
     get: &dyn Fn(&str) -> Option<String>,
-    home: &std::path::Path,
     startup: &dyn Startup,
     tee: TeeSink,
 ) -> Result<(TcpListener, Arc<Relay>), String> {
@@ -277,7 +276,7 @@ fn prepare(
     }
     // ⚠ 顺序：**起监听之后、进接受循环之前**。放在起监听之前的话，
     //   端口起不来那条支会先把凭据路径印出来，而那时它还不相干。
-    let dest = ready.into_destinations(get, home, &mut std::io::stderr());
+    let dest = ready.into_destinations(get, &mut std::io::stderr());
     let relay = Relay::new(dest, door, tee, DOWNSTREAM_DEADLINE, UPSTREAM_DEADLINE);
     Ok((listener, Arc::new(relay)))
 }
@@ -347,7 +346,6 @@ pub(crate) fn our_relay_listening(port: u16) -> bool {
 /// ③ 起不来不退出（见 [`Hosted`]）。
 pub(crate) fn host(
     get: &dyn Fn(&str) -> Option<String>,
-    home: &std::path::Path,
     startup: &dyn Startup,
     tap: std::sync::Arc<dyn super::tee::TapPort>,
 ) -> Hosted {
@@ -361,7 +359,7 @@ pub(crate) fn host(
             return Hosted::Failed(format!("{ENV_PORT}={raw:?} 不是端口号（{e}）"));
         }
     };
-    let (listener, relay) = match prepare(port, get, home, startup, TeeSink::to_port(tap)) {
+    let (listener, relay) = match prepare(port, get, startup, TeeSink::to_port(tap)) {
         Ok(x) => x,
         Err(why) => return Hosted::Failed(why),
     };

@@ -79,6 +79,10 @@ const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
         "〔STOP〕Win32 **返回码**不是体量：`WaitForSingleObject` 的「期限到了、对象没被触发」（`0x102`）。",
     ),
     (
+        "SIO_TCP_INFO",
+        "〔P2〕Win32 **控制码**不是体量：`WSAIoctl` 问一条 TCP 的往返时间那一问（`_WSAIORW(IOC_VENDOR, 39)`，`platform/tcp_rtt.rs`）。",
+    ),
+    (
         "PROCESS_TERMINATE",
         "〔STOP〕Win32 **访问掩码位**不是体量：开进程句柄时要「能强杀」那一位。",
     ),
