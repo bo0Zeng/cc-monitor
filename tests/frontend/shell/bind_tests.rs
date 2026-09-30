@@ -230,7 +230,7 @@ fn a_remote_session_that_only_went_idle_keeps_its_binding() {
 ///
 /// # 它钉的是一句**负向**的话，为什么值得钉
 ///
-/// `verify_binding` 只看三样：`IsWindow` · 属主 PID · 属主 procStart。
+/// `verify_binding` 只看三样：窗口还在（`IsWindow`，〔P4b〕读法住 `platform::hwnd::exists`）· 属主 PID · 属主 procStart。
 /// 窗口还在、属主进程没换 ⇒ **恒绿**，哪怕那个终端里现在跑的是另一个会话。
 /// 链上唯一能分辨这件事的证据是 `title_at_bind` —— 它**写四处、读作判据零处**
 /// （唯一的非写读点是一句 `tracing::info!`）。
@@ -248,7 +248,7 @@ fn a_remote_session_that_only_went_idle_keeps_its_binding() {
 /// - 买不到「加了标题比对就对了」——标题会被 claude 自己改写，
 ///   正向判据必须在真窗口上验（先例：`remote_bind_finds_real_ccm_rbind_window`
 ///   要在 session 1 跑）。
-/// - 它按**源文本**判，不按行为判 ⇒ 只对 `#[cfg(windows)]` 那一支的**写法**说话；
+/// - 它按**源文本**判，不按行为判 ⇒ 只对 `verify_binding` 这一个函数体的**写法**说话（〔P4b〕cfg 分身已合成一份）；
 ///   哪天有人把标题比对写进一个被调用的 helper 里，本条**看不见**。
 #[test]
 fn verify_binding_cannot_tell_that_the_window_changed_hands() {
@@ -262,9 +262,9 @@ fn verify_binding_cannot_tell_that_the_window_changed_hands() {
             l.is_empty() || l.starts_with(char::is_whitespace) || l.starts_with("pub fn")
         })
         .collect();
-    // 抽取器自检：拿到的必须是 Windows 那一支（非 Windows 那支只有一句 Err），
+    // 抽取器自检：拿到的必须是那个真比对的函数体，
     // 而且它**确实**在看那三样。少了这三句，下面那两句会零命中地绿。
-    for needle in ["IsWindow", "owner_pid", "owner_proc_start"] {
+    for needle in ["hwnd::exists", "owner_pid", "owner_proc_start"] {
         assert!(
             body.iter().any(|l| l.contains(needle)),
             "抽出来的 `verify_binding` 里没有 `{needle}` —— \
@@ -596,7 +596,7 @@ fn the_token_survives_a_monitor_restart_and_old_files_still_load() {
 
 /// ★ 心跳清理那一维也是白拿的：PS 进程死了 ⇒ 条目走 ⇒ 令牌跟着查不到。
 ///
-/// ⚠ **诚实边界**：`is_pid_alive` 在非 Windows 上是恒 `false` 的桩
+/// ⚠ **诚实边界**：〔P4b〕`platform::pid::is_alive` 在非 Windows 上是恒 `false` 的桩
 /// ⇒ 本机上「谁该被清掉」这一问它答不了，本条真正在买的是
 /// **「清掉之后令牌确实查不到了」**（= 没有第二张表漏清）。
 /// 清掉之前那一半（`lookup_hwnd_for_token` 命中）才是本条的正控。
@@ -988,7 +988,7 @@ fn the_book_has_one_writer_in_ssh_source_and_the_front_command_one_dispatcher() 
 /// 而是退到标题路、归因照「有令牌」那一句说。
 ///
 /// 节拍归 `run_heartbeat`（10s，已登记在 `rust_timer_registry`）；本条直接调它每一拍做的那件事
-/// （`cleanup_dead`），不等 10 秒。⚠ `is_pid_alive` 在非 Windows 上恒 `false`
+/// （`cleanup_dead`），不等 10 秒。⚠ `platform::pid::is_alive` 在非 Windows 上恒 `false`
 /// ⇒ 「谁该被清」这一问本机答不了，本条买的是「清掉之后 ↗ 那一侧真的跟着变了」。
 #[test]
 fn the_heartbeat_sweep_takes_a_dead_window_out_of_the_front_dispatch() {
