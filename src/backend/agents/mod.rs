@@ -496,11 +496,6 @@ pub(crate) struct AssetFace {
     pub(crate) project_skills_root: fn(project: &Path) -> PathBuf,
     /// 用户级 MCP 住的那份文件（只读：它是 agent 自己的热状态文件）。
     pub(crate) user_mcp_file: fn() -> Option<PathBuf>,
-    /// 〔MIG-3a〕接进来的 skill 在一个项目里的样子（收件箱那一面的列表）。
-    pub(crate) skill_views: fn(cwd: &Path) -> Vec<serde_json::Value>,
-    /// 〔MIG-3a〕能不能碰那一份可编辑文件 ⇒ `(项目根, 相对段)`（声明集合 ＋ 数据文件的纵深围栏）。
-    pub(crate) skill_editable:
-        fn(skill_id: &str, cwd: &Path, requested: &Path) -> Result<(PathBuf, String), String>,
 }
 
 /// 看到的一个 skill：`project` = `None` 是用户级，`Some(项目目录)` 是那个项目里的。
@@ -563,11 +558,6 @@ pub(crate) fn user_mcp_file() -> Option<PathBuf> {
     REGISTRY
         .iter()
         .find_map(|a| a.assets.and_then(|f| (f.user_mcp_file)()))
-}
-
-/// 〔MIG-3a〕收件箱那一面：注册表里第一家有资产面的那一家（同 [`skills_root`]）。
-pub(crate) fn skill_asset_face() -> Option<AssetFace> {
-    REGISTRY.iter().find_map(|a| a.assets)
 }
 
 /// **这个后端认得哪几个 agent**〔`S5`〕。加一个 agent = 加一行（+ 上面加一行 `mod`）。

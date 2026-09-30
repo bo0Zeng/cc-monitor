@@ -250,7 +250,6 @@ pub const COMMANDS: &[&str] = &[
     "ping",
     // 〔P1〕本机那一份放不放（monitor 自举：放本机后端之前问手上那份字节自己，CLI 面）。**是新命令** ⇒ `build_id_guard` 红是预期的。
     "place-verdict",
-    "plugins-marketplaces",
     // 〔WF1 · L · `设计/99 §2.3`〕PowerShell 执行策略设成当前用户 `RemoteSigned`（用户点了、确认了才发）。**是新命令** ⇒ `build_id_guard` 红是预期的。
     "powershell-policy-set",
     // 〔MIG-3b 续 · ⑬「monitor 零 SSH」〕公钥一键推送：本机后端组请求、读本机那份 `.pub`，经那台后端写或一次 exec。**是新命令**。
@@ -267,10 +266,6 @@ pub const COMMANDS: &[&str] = &[
     "resync",
     // 〔LOC1a · 第四波 4D〕分叉（`fork_write`，本 crate 唯一的 `O_EXCL` 新建写口）：本机远端同一条长连接。
     "session-fork",
-    // 〔MIG-3a〕skill 接入面（收件箱）三条：列 · 读 · 写（声明与围栏住适配层，读写经文件管理面）。**是新命令** ⇒ `build_id_guard` 红是预期的。
-    "skill-host-list",
-    "skill-host-read",
-    "skill-host-write",
     // 〔MIG-3a〕skill 装 / 卸的写那一半进了被写那台（判 · 写 · 记同一台）。**是新命令** ⇒ `build_id_guard` 红是预期的。
     "skill-install-apply",
     // 〔AS2〕skill「装到这台」：来源那台读 · 要被写的那一台判（都只读；写经 `files-put`）。
@@ -2026,7 +2021,7 @@ pub const REGISTRY: &[CommandSpec] = &[
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
-    // 〔SU1 · 第四波 4C · V116〕装记录：`skill-install-record` 是 `~/.cc-monitor/skill-installs.json` 的写口（第四层；
+    // 装记录：`skill-install-record` 是 `~/.cc-monitor/skill-installs.json` 的写口（第四层；
     //   skill 装完记 `add` · 卸掉的摘 `drop`；MCP 那一条 `mcp-add` / `mcp-drop`）。卸在 `ext-uninstall-*`（判 · 删 · 摘同一台）。阻塞档。
     CommandSpec {
         name: "skill-install-record",
@@ -2854,27 +2849,6 @@ pub const REGISTRY: &[CommandSpec] = &[
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
-    // ── 〔RM1b · 第四波〕功能侧只读查询 —— 远端会话的任务列表（`parity_ledger` `session.tasks`）──
-    //
-    // 🔴 此前只有 monitor 直读**本机** `tasks/<sid>/` 那一条路，远端 tab 永远拿不到任务。
-    //   本机后端与远端后端是同一个二进制 ⇒ 读法搬到这里，monitor 按 origin 问（本机也走这里）。
-    // ⚠ 宿主是 `feature_face`，**不是** `read_face`：monitor 侧有一条两向判据数的正是
-    //   「交给 `read_face::answer` 的 == `C1` 那八条」，本族不在其中（理由全文在 `feature_face` 头注）。
-    // ⚠ 阻塞档：读一个目录 ＋ 每个任务文件各一次。`cancel` 命中回 `not_cancellable`（不撒谎）。
-    // 〔RM1b · 第四波〕同族第二条：插件市场只读枚举（`parity_ledger` `plugins.marketplaces`）。
-    //   从 monitor `plugins.rs`（`P8a`）原样搬来，三条出口不变；〔C4b〕应答 = 整份 survey（成品，不再裹成一行）。
-    CommandSpec {
-        name: "plugins-marketplaces",
-        doc_anchor: Some("#### `plugins-marketplaces`"),
-        codes: &["failed", "too_large"],
-        fields: &["entries", "file_absent"],
-        takes_input: false,
-        run: Run::Blocking(|r| {
-            crate::faces::feature_face::answer(&r.cmd, &r.args)
-                .map(Some)
-                .map_err(|(c, m)| (c.to_string(), m))
-        }),
-    },
     // 〔LOC1a · 第四波 4D〕这台机器的 `cc-acct-iso` 两问 —— 与 CLI `--acct-iso-status` / `--acct-iso-shellinit`
     //   同一份本体（`accounts/iso.rs`）。`设计/05 §14.6`：本机那几问从「exec 一次性本机后端」改走 `<local>` 长连接。
     //   `shellinit` 要起一次 `cc-acct-iso`（插件口）⇒ 两条都进阻塞档（`status` 只看文件在不在，同档省一份理由）。
@@ -3410,51 +3384,6 @@ pub const REGISTRY: &[CommandSpec] = &[
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
-    // 〔MIG-3a · D 组〕skill 接入面（收件箱）：`assets/skill_inbox.rs`，声明与围栏在 `agents/claudecode/skill_host.rs`，读写经 [`LocalFiles`]。
-    CommandSpec {
-        name: "skill-host-list",
-        doc_anchor: Some("#### `skill-host-list`"),
-        codes: &["bad_args", "refused"],
-        fields: &[
-            "cwd",
-            "editable",
-            "id",
-            "instances",
-            "label",
-            "missing_reason",
-            "skills",
-        ],
-        takes_input: true,
-        run: Run::Blocking(|r| {
-            crate::assets::skill_inbox::answer_list(&r.args)
-                .map(Some)
-                .map_err(|(c, m)| (c.to_string(), m))
-        }),
-    },
-    CommandSpec {
-        name: "skill-host-read",
-        doc_anchor: Some("#### `skill-host-read`"),
-        codes: &["bad_args", "refused"],
-        fields: &["cwd", "path", "skillId", "text"],
-        takes_input: true,
-        run: Run::Blocking(|r| {
-            crate::assets::skill_inbox::answer_read(&LocalFiles, &r.args)
-                .map(Some)
-                .map_err(|(c, m)| (c.to_string(), m))
-        }),
-    },
-    CommandSpec {
-        name: "skill-host-write",
-        doc_anchor: Some("#### `skill-host-write`"),
-        codes: &["bad_args", "refused", "stale"],
-        fields: &["content", "cwd", "expected", "path", "skillId"],
-        takes_input: true,
-        run: Run::Blocking(|r| {
-            crate::assets::skill_inbox::answer_write(&LocalFiles, &r.args)
-                .map(Some)
-                .map_err(|(c, m)| (c.to_string(), m))
-        }),
-    },
     // 〔RESYNC · V149 · `设计/15 §4.1b`〕手动对齐：整机（或 `sid` 只对一个会话）重跑起步那套对齐，回差异。阻塞档：等每份 watcher 做完。
     CommandSpec {
         name: "resync",
@@ -3614,6 +3543,13 @@ pub const REGISTRY: &[CommandSpec] = &[
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
+    // ── 〔RM1b · 第四波〕功能侧只读查询 —— 远端会话的任务列表（`parity_ledger` `session.tasks`）──
+    //
+    // 🔴 此前只有 monitor 直读**本机** `tasks/<sid>/` 那一条路，远端 tab 永远拿不到任务。
+    //   本机后端与远端后端是同一个二进制 ⇒ 读法搬到这里，monitor 按 origin 问（本机也走这里）。
+    // ⚠ 宿主是 `feature_face`，**不是** `read_face`：monitor 侧有一条两向判据数的正是
+    //   「交给 `read_face::answer` 的 == `C1` 那八条」，本族不在其中（理由全文在 `feature_face` 头注）。
+    // ⚠ 阻塞档：读一个目录 ＋ 每个任务文件各一次。`cancel` 命中回 `not_cancellable`（不撒谎）。
     CommandSpec {
         name: "tasks-list",
         doc_anchor: Some("#### `tasks-list`"),

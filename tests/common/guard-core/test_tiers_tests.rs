@@ -70,7 +70,6 @@ const UNIT: &[&str] = &[
     "tests/backend/assets/hub_tests.rs", // 〔MIG-3a · 主会话 09-28 裁〕两台之间那几件的枢纽（替身的这台 ＋ 替身的远端 capture，纯内存）
     "tests/frontend/ui/cc-bus-install-reads.vitest.ts", // 〔MIG-3a · 子步 3〕cc-bus 装 / 三态走通道：严格收 ＋ 问本机（纯替身）
     "tests/frontend/ui/acct-iso-reads.vitest.ts", // 〔MIG-3a〕acct-iso 两问走通道：严格收 ＋ 问对那台（纯替身，不扫源码）
-    "tests/frontend/ui/skill-inbox-reads.vitest.ts", // 〔MIG-3a〕收件箱三问走通道：严格收 ＋ 问对那台（纯替身）
     // 〔MIG-3a · 09-28 预裁〕`tests/frontend/shell/acct_iso_deploy_tests.rs` 那一行删了：整份随那条部署命令删了（字节随后端二进制走）。
     "tests/backend/agents/claudecode/cards_tests.rs", // 〔THIN〕原 `tests/common/agent-tools-core/lib_tests.rs`：工具词表收进后端适配层（纯函数）
     "tests/backend/observe/facts_query_tests.rs", // 〔DUP2 · J19〕SCAN → UNIT：读生成物那条异源对拍随两份收成一份退役，余下全是行为判据
@@ -202,7 +201,6 @@ const UNIT: &[&str] = &[
     "tests/frontend/ui/settings/machine-list-backend-cells.vitest.ts",
     "tests/frontend/ui/settings/machine-status.vitest.ts",
     "tests/frontend/ui/settings/machine-sync.vitest.ts",
-    "tests/frontend/ui/settings/mcp-section.vitest.ts",
     "tests/frontend/ui/settings/panel-block-isolation.vitest.ts",
     "tests/frontend/ui/settings/panel-deferred-io.vitest.ts",
     "tests/frontend/ui/settings/panel-groups.vitest.ts",
@@ -270,6 +268,8 @@ const UNIT: &[&str] = &[
 
 /// 源码扫描层：读仓内文本（`include_str!` · `repo_root()` 一族 · `readFileSync` 一族）、不碰 OS。
 const SCAN: &[&str] = &[
+    "tests/frontend/ui/ext-reads.vitest.ts", // 扩展页几问走通道：严格收 ＋ 问对那台（假通道 ＋ 金样）
+    "tests/frontend/ui/settings/ext-section.vitest.ts", // 扩展页：表 · 抽屉 · 确认卡（假通道）＋ 界面零判定扫描
     // 〔P1 · 第 4 件〕UNIT → SCAN：起前清洗那份名单读生成物（`include_str!` 画像表），判据对金样读。
     "tests/frontend/shell/lib_env_scrub_tests.rs",
     // 〔P1〕原 `search-core` 纯函数判据的通用那一半 ＋ 「口径只有一个家」那两道（读后端三份生产源码）⇒ 扫描层。
@@ -373,12 +373,10 @@ const SCAN: &[&str] = &[
     "tests/frontend/shell/byte_table_tests.rs",
     "tests/frontend/shell/ccm_cli_contract_tests.rs",
     "tests/frontend/shell/chan/webview_tests.rs",
-    "tests/frontend/ui/mcp-reads.vitest.ts", // 〔MIG-3a〕MCP 读写 / 推拉走通道：解码器读跨语言金样
     "tests/frontend/ui/alias-reads.vitest.ts", // 〔MIG-3a〕别名六问走通道：解码器读跨语言金样 aliases.golden.json ＋ 问对那台
     "tests/backend/platform/shell/dialect_tests.rs", // 〔OSA · V156〕随方言搬进 `platform/shell/` // 〔MIG-3a〕方言进了那台后端（读法 ＋ `$PROFILE` 一个家的全树普查）
     "tests/backend/assets/aliases/fence_tests.rs",   // 〔MIG-3a〕围栏块配对 ＋ 形状账（源码扫描）
     "tests/frontend/shell/cc_bus_deploy_tests.rs", // 〔MIG-3a · 子步 3〕装 / 三态进了后端，只剩装前 `ccm` 预检（纯函数 ＋ 读源码）⇒ INTEGRATION → SCAN
-    "tests/frontend/ui/asset-reads.vitest.ts", // 〔MIG-3a〕资产同步 ＋ skill 装卸走通道：解码器读跨语言金样
     "tests/frontend/shell/command_home_registry_tests.rs", // 〔MIG-3a · `99 §2.1 ⑬`〕Tauri 命令两张封闭表（扫源码）
     "tests/backend/footprint/rows_tests.rs", // 〔MIG-3b 续〕原 `tests/frontend/shell/config_surface_tests.rs` 随判定搬进后端
     "tests/frontend/shell/copy_table_tests.rs",
@@ -521,11 +519,8 @@ const SCAN: &[&str] = &[
     "tests/frontend/ui/settings/base-wording-guard.vitest.ts",
     "tests/frontend/ui/settings/data-section.vitest.ts",
     "tests/frontend/ui/settings/facet-producer-guard.vitest.ts",
-    "tests/frontend/ui/settings/assets-section.vitest.ts", // 〔AS2〕
     "tests/frontend/ui/settings/machine-aliases-naming.vitest.ts", // 〔W5-ALIAS〕读后端 `plan.rs` 原文对拍撞名退让
-    "tests/frontend/ui/settings/mcp-sync.vitest.ts",               // 〔AS1〕
     "tests/frontend/ui/settings/open-settings.vitest.ts",
-    "tests/frontend/ui/settings/plugins-section.vitest.ts",
     "tests/frontend/ui/settings/remote-section.vitest.ts",
     "tests/frontend/ui/settings/settings-source-markdown.vitest.ts",
     // 〔DUP1〕`tests/shell-quote-deceptive-parity.vitest.ts` 删了：它拍的是 TS 那份 `isValidConfigDir` 对 Rust 欺骗字符集，
@@ -543,7 +538,6 @@ const SCAN: &[&str] = &[
     "tests/frontend/ui/turn-notify.vitest.ts",
     "tests/frontend/ui/views/command-bar.vitest.ts",
     "tests/frontend/ui/views/history-fanout.vitest.ts",
-    "tests/frontend/ui/views/inbox-view.vitest.ts",
     "tests/frontend/ui/views/live-user-inputs.vitest.ts",
     "tests/frontend/ui/views/session-viewer-user-inputs.vitest.ts",
     "tests/frontend/ui/upstream-url-parity.vitest.ts", // 〔DUP3 · J9〕读共用金样（仓内文本）⇒ 扫描层
@@ -621,14 +615,13 @@ const INTEGRATION: &[&str] = &[
     "tests/backend/main_fourth_face_tests.rs",
     "tests/backend/assets/mcp_sync_tests.rs",      // 〔AS1〕
     "tests/backend/assets/mcp_edit_tests.rs", // 〔MIG-3a〕MCP 写进了那台后端（临时目录 ＋ 跨语言金样 mcp-edit.golden.json）
-    "tests/backend/assets/mcp_sync_flow_tests.rs", // 〔MIG-3a〕MCP 推拉进了被写那台后端（临时目录 ＋ 金样 mcp-sync-flow.golden.json）
+    "tests/backend/assets/mcp_sync_flow_tests.rs", // 〔MIG-3a〕MCP 装到一台的内层三问（临时目录；密钥值不出来源机）
+    "tests/backend/assets/ext_tests.rs", // 扩展页：表的判定 ＋ 两台（本机 ＋ 假远端）装 / 卸端到端 ＋ 金样 ext-flow.golden.json
     "tests/backend/assets/skill_flow_tests.rs", // 〔MIG-3a〕skill 装卸进了被写那台后端（临时目录 ＋ 金样 skill-flow.golden.json）
     "tests/backend/assets/cc_bus_install_tests.rs", // 〔MIG-3a · 子步 3〕cc-bus 装进了本机后端（临时目录真装 · 真改名备份 · 可执行位）
     "tests/backend/assets/acct_iso_install_tests.rs", // 〔MIG-3a · 09-28 裁 2〕cc-acct-iso 落进用户目录（临时 home 上真建链接 ＋ 真抄配置 ＋ 真记账）
     "tests/backend/assets/aliases/aliases_tests.rs", // 〔MIG-3a〕别名进了那台后端（临时 home 上真走本进程 files-* ＋ 真 bash ＋ 金样 aliases.golden.json）
     "tests/backend/assets/aliases/block_tests.rs", // 〔MIG-3a〕别名块进了那台后端（临时目录真装真卸）
-    "tests/backend/assets/skill_inbox_tests.rs", // 〔MIG-3a〕收件箱读写进了那台后端（临时目录 ＋ 比对写 CAS）
-    "tests/backend/agents/claudecode/skill_host_tests.rs", // 〔MIG-3a〕skill 接入声明落适配层（临时目录 ＋ symlink 围栏）
     "tests/backend/observe/accounts_query_tests.rs",
     "tests/backend/observe/fence_tests.rs", // 〔TL3〕读路径围栏一个家（扫 observe 全树）＋ 放行 / 拒绝行为（临时目录 · symlink）
     "tests/backend/observe/history_query_f07_tests.rs",
@@ -636,7 +629,6 @@ const INTEGRATION: &[&str] = &[
     "tests/backend/observe/history_query_kr83_tests.rs",
     "tests/backend/observe/history_query_tests.rs",
     "tests/backend/observe/history_query_user_inputs_tests.rs",
-    "tests/backend/observe/plugins_query_tests.rs",
     "tests/backend/observe/search_query_find_tests.rs",
     "tests/backend/observe/search_query_tests.rs",
     "tests/backend/observe/tasks_query_tests.rs",

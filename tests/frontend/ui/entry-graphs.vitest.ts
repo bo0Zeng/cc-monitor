@@ -110,7 +110,6 @@ const FORBIDDEN_IN_VIEWER: readonly { pat: string; what: string }[] = [
   { pat: "src/frontend/ui/views/grid-monitor.ts", what: "网格监控" },
   { pat: "src/frontend/ui/views/command-bar.ts", what: "命令栏" },
   { pat: "src/frontend/ui/views/cc-bus-view.ts", what: "cc-bus 视图" },
-  { pat: "src/frontend/ui/views/inbox-view.ts", what: "收件箱视图" },
   { pat: "src/frontend/ui/main.ts", what: "主窗口 bootstrap" },
   { pat: "src/frontend/ui/entry-main.ts", what: "主窗口入口" },
   { pat: "src/frontend/ui/entry-settings.ts", what: "设置窗入口" },
@@ -498,7 +497,7 @@ function builtClasses(win: Win): Set<string> {
 /** 设置窗的 CSS 里不许出现的类族（前缀；`^tab$` 这种精确名也按前缀写，靠 `-` 边界区分）。 */
 const CSS_FORBIDDEN_IN_SETTINGS = ["hljs", "katex", "tab", "card", "code-block", "code-copy", "stream", "block-", "branch-fold", "live-dot"];
 /** viewer 的 CSS 里不许出现的类族。 */
-const CSS_FORBIDDEN_IN_VIEWER = ["settings-panel", "settings-body", "kb-editor", "history-view", "history-entry", "panorama-canvas", "grid-monitor-cell", "command-bar", "mcp-", "accounts-row"];
+const CSS_FORBIDDEN_IN_VIEWER = ["settings-panel", "settings-body", "kb-editor", "history-view", "history-entry", "panorama-canvas", "grid-monitor-cell", "command-bar", "ext-", "accounts-row"];
 function familyHits(classes: Set<string>, fam: string): string[] {
   return [...classes].filter((c) => (fam.endsWith("-") ? c.startsWith(fam) : c === fam || c.startsWith(`${fam}-`)));
 }

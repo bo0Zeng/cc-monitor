@@ -203,7 +203,6 @@ fn every_registered_command_declares_its_run_kind() {
                 | "exit-policy-read"
                 | "exit-policy-set"
                 // 〔RM1b · 第四波〕功能侧只读查询：读一个目录 ＋ 每个文件各一次（同步文件 I/O）。
-                | "plugins-marketplaces"
                 | "tasks-list"
                 // 〔SH1 · V137〕MCP 列表：读 `.claude.json` ＋ 一份 `.mcp.json`（同步文件 I/O）。
                 | "mcp-read"
@@ -236,7 +235,6 @@ fn every_registered_command_declares_its_run_kind() {
                 | "mcp-sync-plan"
                 // 〔MIG-3a〕MCP 写两条 ＋ 推拉三条 ＋ skill 装卸两条：读 / 规划 / 经本进程文件管理面写（同步文件 I/O）。
                 | "skill-install-apply"
-                | "skill-host-list"
                 | "cc-bus-install"
                 // 〔MIG-3a · 09-28 裁 2〕acct-iso 装：经本进程文件管理面建链接 ＋ 抄配置样例（同步文件 I/O）；建链接那条同写面一档。
                 | "acct-iso-install"
@@ -252,8 +250,6 @@ fn every_registered_command_declares_its_run_kind() {
                 | "aliases-block-remove"
                 // 〔WF1 · L〕起一次那一代 PowerShell 设执行策略再现问（同步子进程）。
                 | "powershell-policy-set"
-                | "skill-host-read"
-                | "skill-host-write"
                 | "ext-uninstall-apply"
                 | "mcp-server-put"
                 | "mcp-server-remove"
@@ -409,7 +405,6 @@ fn every_registered_command_declares_its_run_kind() {
         "accounts-trust", // 〔C4c〕
         "exit-policy-read",
         "exit-policy-set",
-        "plugins-marketplaces",
         "tasks-list",
         "mcp-read",
         "tmux-list",
@@ -455,7 +450,6 @@ fn every_registered_command_declares_its_run_kind() {
         "place-verdict",
         // 〔MIG-3a〕MCP 写两条 ＋ 推拉三条 ＋ skill 装卸两条（阻塞档，理由在上面 `expected_blocking`）。
         "skill-install-apply",
-        "skill-host-list",
         "cc-bus-install",
         "acct-iso-install",
         "authorized-keys-add", // 〔MIG-3b 续〕同步文件 I/O（经本进程文件管理面）
@@ -468,8 +462,6 @@ fn every_registered_command_declares_its_run_kind() {
         "aliases-block-install",
         "aliases-block-remove",
         "powershell-policy-set",
-        "skill-host-read",
-        "skill-host-write",
         "ext-uninstall-apply",
         "mcp-server-put",
         "mcp-server-remove",

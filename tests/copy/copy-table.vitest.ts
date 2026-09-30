@@ -402,7 +402,7 @@ describe("[C-L5] 值与汉字之间的空格随值定", () => {
     expect(new RegExp(`${HAN}${ASCII}|${ASCII}${HAN}`).test(raw("在{machine}上", ASCII))).toBe(true);
     expect(new RegExp(`(?!${HANV})${HAN} ${HANV}|${HANV} (?!${HANV})${HAN}`).test(raw("{machine} 上没有", HANV))).toBe(true);
     expect(copyText("launchArrival.arrived.body", { machine: ASCII })).toBe(`${ASCII} 上报出了这个会话。`);
-    expect(copyText("mcpSync.preview.head", { source: HANV, sourcefile: "a", target: "b", targetfile: "c" })).toBe(`从${HANV}的 a 拷到 b 的 c`);
+    expect(copyText("extPage.card.slot", { field: HANV, key: "b" })).toBe(`${HANV}里的 b`);
   });
 });
 

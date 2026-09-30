@@ -30,10 +30,10 @@
       "want": "cc：PATH 上已经有一个同名程序（/usr/bin/cc）。装上之后在终端敲 cc，打到的是这条别名，不再是那个程序"
     },
     {
-      "key": "mcpSync.preview.head",
-      "zh": "从 {source} 的 {sourcefile} 拷到 {target} 的 {targetfile}",
-      "args": { "source": "本机", "sourcefile": "C:\\Users\\u\\.mcp.json", "target": "aya", "targetfile": "$HOME/.mcp.json $& $1" },
-      "want": "从本机的 C:\\Users\\u\\.mcp.json 拷到 aya 的 $HOME/.mcp.json $& $1"
+      "key": "beExt.suspect.absAbsent",
+      "zh": "{field} 里有绝对路径 {value}，{machine} 上没有这个路径。",
+      "args": { "field": "args[0]", "value": "C:\\Users\\u\\x $HOME/y $& $1", "machine": "本机" },
+      "want": "args[0] 里有绝对路径 C:\\Users\\u\\x $HOME/y $& $1，本机上没有这个路径。"
     },
     {
       "_": "〔DUP3 · 主会话 09-26 裁：插值不该重新解释值〕值里带另一个参数的占位符：两个读口都一趟换完，值原样留着（此前 Rust 逐个 replace 会把 {target} 再换成 %1）。",
@@ -72,10 +72,10 @@
     },
     {
       "_": "〔P3 · C-L5〕接缝上两个以上空格是排版，照留。",
-      "key": "mcp.form.jsonHint",
-      "zh": "{a}  或  {b}",
-      "args": { "a": "甲", "b": "乙" },
-      "want": "甲  或  乙"
+      "key": "rsProfileInstaller.hint.line",
+      "zh": "  第 {lineNo} 行  {text}{mark}\n",
+      "args": { "lineNo": "三", "text": "甲", "mark": "" },
+      "want": "  第三行  甲\n"
     }
   ]
 }

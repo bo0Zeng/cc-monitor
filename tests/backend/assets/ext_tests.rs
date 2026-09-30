@@ -571,6 +571,18 @@ async fn an_mcp_entry_goes_over_without_its_secret_and_comes_back_off() {
     let _ = std::fs::remove_dir_all(&base);
 }
 
+/// 那一句话里的路径（按文案表那一句的前后两截切出来，不另写一份拼法）。
+fn said_path(note: &Value, key: &str) -> PathBuf {
+    let tpl = copy_text(key, &[("path", "\u{0}")]);
+    let (pre, post) = tpl.split_once('\u{0}').expect("那一句没有 {path}");
+    let note = note.as_str().expect("没说放到了哪");
+    PathBuf::from(
+        note.strip_prefix(pre)
+            .and_then(|r| r.strip_suffix(post))
+            .unwrap_or_else(|| panic!("认不出那一句：{note}")),
+    )
+}
+
 /// 不是 cc-monitor 装的：卡上明说、先挪 / 抄进备份再删；看过之后变了 ⇒ `stale`、一个字节不动。
 #[test]
 fn a_foreign_skill_or_mcp_entry_is_backed_up_before_it_goes() {
@@ -596,7 +608,7 @@ fn a_foreign_skill_or_mcp_entry_is_backed_up_before_it_goes() {
     assert!(dir.join("SKILL.md").exists());
     let card = answer_uninstall_preview(&LocalFiles, &m.env, &u).unwrap();
     ua["token"] = card["token"].clone();
-    answer_uninstall_apply(&LocalFiles, &m.env, &record, &ua).expect("卸不掉");
+    let done = answer_uninstall_apply(&LocalFiles, &m.env, &record, &ua).expect("卸不掉");
     assert!(!dir.exists(), "没删");
     let backups = m
         .env
@@ -604,15 +616,12 @@ fn a_foreign_skill_or_mcp_entry_is_backed_up_before_it_goes() {
         .clone()
         .unwrap()
         .join(relay_route_core::EXT_BACKUPS_DIR_REL);
-    let kept: Vec<PathBuf> = std::fs::read_dir(&backups)
-        .unwrap()
-        .flatten()
-        .map(|e| e.path())
-        .collect();
-    assert_eq!(kept.len(), 1);
+    let kept = said_path(&done["note"], "beExt.uninstall.movedTo");
+    assert!(kept.starts_with(&backups), "{kept:?} 不在备份目录里");
     assert_eq!(
-        std::fs::read_to_string(kept[0].join("SKILL.md")).unwrap(),
-        "edited\n"
+        std::fs::read_to_string(kept.join("SKILL.md")).unwrap(),
+        "edited\n",
+        "挪进备份的是卸之前那一份"
     );
 
     std::fs::write(
@@ -625,7 +634,7 @@ fn a_foreign_skill_or_mcp_entry_is_backed_up_before_it_goes() {
     assert_eq!(card["recorded"], false);
     let mut ua = u.clone();
     ua["token"] = card["token"].clone();
-    answer_uninstall_apply(&LocalFiles, &m.env, &record, &ua).expect("卸不掉");
+    let done = answer_uninstall_apply(&LocalFiles, &m.env, &record, &ua).expect("卸不掉");
     let after: Value =
         serde_json::from_str(&std::fs::read_to_string(m.proj.join(".mcp.json")).unwrap()).unwrap();
     assert_eq!(
@@ -633,8 +642,15 @@ fn a_foreign_skill_or_mcp_entry_is_backed_up_before_it_goes() {
         json!({ "y": { "command": "d" } }),
         "别的条目动了"
     );
-    let copies = std::fs::read_dir(&backups).unwrap().flatten().count();
-    assert_eq!(copies, 2, "MCP 那份原文没抄进备份");
+    let copy = said_path(&done["note"], "beExt.uninstall.copiedTo");
+    assert!(copy.starts_with(&backups), "{copy:?} 不在备份目录里");
+    let kept: Value =
+        serde_json::from_str(&std::fs::read_to_string(copy.join(".mcp.json")).unwrap()).unwrap();
+    assert_eq!(
+        kept["mcpServers"]["x"],
+        json!({ "command": "c" }),
+        "MCP 那份原文没抄进备份"
+    );
     // 用户级 MCP：只读，卸也拒。
     let (code, _) = answer_uninstall_preview(
         &LocalFiles,
@@ -671,4 +687,59 @@ fn only_one_pair_of_hub_commands_is_left_in_the_repo() {
         .filter(|(_, text)| text.contains(concat!("ext-hub", "-preview")))
         .count();
     assert!(new_pair > 0, "正控没过：尺子数不出新那一套");
+}
+
+/// ★ 跨语言金样：一趟「装上 → 卸掉」的五份线上成品（表 · 确认卡 · 装完 · 卸之前那张卡 · 卸完）== `ext-flow.golden.json`；
+/// 界面的解码器（`ext-reads.ts`）读同一份。临时目录那一截换成 `<BASE>`；只采结构（占位名、占位正文）。
+#[tokio::test]
+async fn the_wire_matches_the_cross_language_golden() {
+    let (base, t) = two("golden");
+    let src = t.a.env.skills.clone().unwrap().join("demo");
+    std::fs::create_dir_all(&src).unwrap();
+    std::fs::write(src.join("SKILL.md"), "---\ndescription: d\n---\n").unwrap();
+    let list = t.list();
+    let (from, scope) = scope_of(t.cell(&list, "demo", 1).action.as_ref().unwrap());
+    let args =
+        json!({ "kind": "skill", "name": "demo", "from": from, "to": "gpd", "scope": scope });
+    let card = ext_preview(&t.here, &args, &t.reach, &t.remote)
+        .await
+        .unwrap();
+    let mut apply = args.clone();
+    apply["tokens"] = card["tokens"].clone();
+    let done = ext_apply(&t.here, &apply, &t.reach, &t.remote)
+        .await
+        .unwrap();
+    let u = json!({ "kind": "skill", "name": "demo", "at": { "level": "user" } });
+    let ucard = answer_uninstall_preview(&LocalFiles, &t.b.env, &u).unwrap();
+    let mut ua = u.clone();
+    ua["token"] = ucard["token"].clone();
+    let ledger = t.b.env.ledger.clone().unwrap();
+    let skills = t.b.env.skills.clone().unwrap();
+    let record = |a: &Value| super::super::skill_ledger::record_at(&ledger, Some(&skills), a);
+    let udone = answer_uninstall_apply(&LocalFiles, &t.b.env, &record, &ua).unwrap();
+    let got = json!({
+        "list": serde_json::to_value(&list).unwrap(),
+        "card": card,
+        "done": done,
+        "uninstallCard": ucard,
+        "uninstallDone": udone,
+    });
+    let got: Value = serde_json::from_str(
+        &got.to_string()
+            .replace(&*base.display().to_string(), "<BASE>"),
+    )
+    .unwrap();
+    let path = crate::guard_support::repo_root().join("tests/__fixtures__/ext-flow.golden.json");
+    let want: Value = serde_json::from_str(
+        &std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("读不到金样 {path:?}：{e}")),
+    )
+    .unwrap();
+    let _ = std::fs::remove_dir_all(&base);
+    assert_eq!(
+        got["list"], want["list"],
+        "表的线上形状变了 —— 真改了就重打金样（界面解码器读同一份）"
+    );
+    for k in ["card", "done", "uninstallCard", "uninstallDone"] {
+        assert_eq!(got[k], want[k], "`{k}` 的线上形状变了");
+    }
 }

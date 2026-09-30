@@ -2,7 +2,7 @@
  * ST1「延后加载」（`设计/70 §5.3` 判据 2：**子页内容只在该子页可见时才发 I/O**）。
  *
  * `panel-deferred-io.vitest.ts` 头注〔射程〕② 登记过一笔债：per-machine 那几块
- * （账号 / 终端集成（〔AL1c〕已并进「别名」）/ MCP / 插件 / cc-bus 钩子）在那边被 stub 掉了，而它们**构造期也发 I/O**
+ * （账号 / 终端集成（〔AL1c〕已并进「别名」）/ cc-bus 钩子）在那边被 stub 掉了，而它们**构造期也发 I/O**
  * —— 落地页是「机器」列表，这几块住在机器子页上，打开设置时那几发是白发的。
  * 本文件**不 stub 它们**，用真分节 ＋ 两层录音机（`commands` 包装层 ＋ 直呼的 `invoke`）量：
  *
@@ -87,30 +87,19 @@ const LOCAL_PAGE_IPC = [
   //   与下面插件那一条同名，不另起一行。
   // 〔AL1c · 4B〕这里原来还有终端集成那两发（终端集成的状态那一发〔AL1d：今天并进 `aliases_read`〕/ `cc_get_auto_launch`）：那块并进了「别名」
   // （一个 `<details>`，**第一次展开**才建它、才发那两发）⇒ 子页可见时不再发，往后又延了一层。
-  // 〔MIG-3a〕MCP（本机）那两发改走通道（`mcp-read` 发给 `<local>`：列表一发 ＋ 项目候选一发）—— 本表按集合比，与插件那一条同名。
-  "chan_call", // 插件（〔C4b〕经通道说 `plugins-marketplaces`，包装层那一条 `chan_call`）
-  // 〔AS2〕资产目录：先让本机后端对这台做一趟同步（〔MIG-3a〕同步那一问也走通道 `assets-sync` 问 `<local>`），再经通道问 `assets-catalog` —— 都是 `chan_call`，同上一行。
+  // MCP · 资产目录 · 插件三块搬去了顶层「扩展」页（它自己那一页可见时才问），不在这一批里。
   "list_remote_mcp_origins", // cc-bus 钩子：认得哪些远端
-  // 〔MIG-3b〕cc-bus 钩子本机诊断改走通道（`hooks-diag` 发给 `<local>`，包装层那一条 `chan_call`，与插件那一条同名，按集合比不另起一行）。
+  "chan_call", // 〔MIG-3b〕cc-bus 钩子本机诊断改走通道（`hooks-diag` 发给 `<local>`，包装层那一条 `chan_call`；账号本机那一问同名，按集合比不另起一行）
 ] as const;
 
 /**
- * 已经放过一次之后切到 aya：只有**跟着机器走、切换即重读**的那一块（MCP）重读。
+ * 已经放过一次之后切到 aya：只有**跟着机器走、切换即重读**的那几块（足迹 · 未识别的数据）重读。
  * 账号那块也订阅了机器，但它只认「已加载的远端清单里有的那台」—— 录音机下清单是空的 ⇒ 不读；
  * cc-bus 钩子切机器**刻意不发**（它的既有语义：远端诊断只在点「检查远端」时发）。
  * 〔ST2 · 用户 09-24 裁「远端也有真栏」〕足迹在远端页上**也去问**（按 aya 那台，回声不对就说答不了）——
  *   它并进了 per-machine 那一批单例，切机器由它自己的订阅重读，恰好一发。
  */
 const SWITCH_TO_AYA_IPC: readonly string[] = [
-  "chan_call", // 〔MIG-3a〕MCP：aya 的项目候选（经通道说 `mcp-read`）
-  "chan_call", // 〔MIG-3a〕MCP：aya 的 user scope（同上一问，列表那一发）
-  // 〔RM1b · 第四波〕插件那块也跟着机器走了（`plugins-marketplaces` 按 origin 问那台后端）。
-  // 〔C4b〕它经通道问 ⇒ 录音机录到的是包装层那一条 `chan_call`。
-  "chan_call",
-  // 〔AS2〕资产目录也跟着机器走：切到 aya 由它自己的订阅重读（先 `assets_sync` 对 aya 做一趟，再经通道问 aya 的目录）。
-  "chan_call", // 〔AS2〕资产目录：先对 aya 做一趟同步（〔MIG-3a〕经通道问本机后端 `assets-sync`，只报 origin）
-  "chan_call", // 〔AS2〕资产目录：经通道问 aya 的目录（与插件那一发同名，带重数比）
-  "chan_call", // 〔SU1〕资产目录：再经通道问 aya 记着的「从别处装来的 skill」（`skill-installs`，目录读没读成都问）
   "chan_call", // 足迹：〔MIG-3b 续〕按 aya 经通道问 `footprint-report`
   // 〔ST3〕「未识别的数据」按机器分：切到 aya 由它自己的订阅重读，按 aya 去问，恰好一发。
   "drift_ledger_report",
@@ -128,12 +117,6 @@ const FIRST_VISIT_AYA_IPC: readonly string[] = [
   "chan_call", // 〔MOD〕未识别的数据里记录那两面：经通道问 aya 那台后端 `drift-report`
   "load_config", // 账号：读远端清单
   "chan_call", // 账号：aya 那一台（〔C4c〕经通道说 `accounts-list`）
-  "chan_call", // MCP：aya 的项目候选（〔MIG-3a〕经通道说 `mcp-read`）
-  "chan_call", // MCP：aya 的 user scope（同上）
-  "chan_call", // 插件：〔C4b〕经通道说 `plugins-marketplaces`
-  "chan_call", // 〔AS2〕资产目录：对 aya 做一趟同步（〔MIG-3a〕经通道问本机后端 `assets-sync`）
-  "chan_call", // 〔AS2〕资产目录：经通道问 aya 的目录（与插件那一发同名，带重数比）
-  "chan_call", // 〔SU1〕资产目录：再经通道问 aya 记着的「从别处装来的 skill」（`skill-installs`）
   "list_remote_mcp_origins",
   "chan_call", // 〔MIG-3b〕cc-bus 钩子：本机诊断（经通道说 `hooks-diag`）
 ];

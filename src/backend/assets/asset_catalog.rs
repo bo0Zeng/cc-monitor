@@ -1,4 +1,4 @@
-//! 〔AS2 · 第四波 4B · V113〕**资产目录** —— 每台后端把它看到的 skill 与 MCP（用户级 ＋ 这台上开过会话的项目里的）记成一份目录，目录在后端之间自动对上。
+//! **资产目录** —— 每台后端把它看到的 skill 与 MCP（用户级 ＋ 这台上开过会话的项目里的）记成一份目录，目录在后端之间自动对上。
 //!
 //! # 用户裁决（2026-09-25，`99 §1` V113，逐字）
 //!
@@ -436,8 +436,8 @@ pub fn note_known(cat: &mut Catalog, now: u64) -> bool {
         .collect();
     let mut noted = false;
     for k in keys {
-        if !cat.known.contains_key(&k) {
-            cat.known.insert(k, now);
+        if let std::collections::btree_map::Entry::Vacant(e) = cat.known.entry(k) {
+            e.insert(now);
             noted = true;
         }
     }

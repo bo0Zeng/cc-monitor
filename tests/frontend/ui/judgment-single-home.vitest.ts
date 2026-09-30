@@ -623,6 +623,7 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     ACCT_ISO_REL: NONE,
     ALL: NONE,
     ASSET_CATALOG_REL: NONE,
+    EXT_BACKUPS_DIR_REL: NONE,
     BACKEND_POLICY_REL: NONE,
     file_name_of: NONE,
     listen_pid_file_name: NONE,

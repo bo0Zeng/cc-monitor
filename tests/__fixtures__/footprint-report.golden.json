@@ -291,7 +291,7 @@
       "effect_label": "整个文件由 cc-monitor 拥有，部署时整体覆盖",
       "host_label": "项目目录",
       "installable": true,
-      "note": "装到某个项目里的 skill 落在那个项目的这个目录下，以 skill 的名字为名",
+      "note": "装进某个项目的 skill 落在这里。在那个项目的这个目录下，以 skill 的名字为名",
       "path_declared": ".claude/skills",
       "path_resolved": null,
       "source_label": "由 cc-monitor 现场生成的文本",
