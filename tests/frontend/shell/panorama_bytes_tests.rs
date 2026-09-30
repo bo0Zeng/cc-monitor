@@ -277,7 +277,7 @@ fn the_local_copy_is_named_the_way_the_local_backend_looks_for_it() {
 /// 置可执行位失败 ⇒ 报、盘上没有半截的正式文件。
 #[test]
 fn placing_the_local_copy_writes_once_and_only_rewrites_when_the_bytes_differ() {
-    use crate::local_backend::place_local_panorama;
+    use crate::local_backend::place_local_program;
     use std::cell::Cell;
     let dir = std::env::temp_dir().join(format!("ccm-rm1f-place-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
@@ -286,7 +286,7 @@ fn placing_the_local_copy_writes_once_and_only_rewrites_when_the_bytes_differ() 
         made.set(made.get() + 1);
         Ok(())
     };
-    let p = place_local_panorama(
+    let p = place_local_program(
         &dir,
         "cc-monitor-panorama",
         b"v1-bytes",
@@ -297,7 +297,7 @@ fn placing_the_local_copy_writes_once_and_only_rewrites_when_the_bytes_differ() 
     assert_eq!(std::fs::read(&p).unwrap(), b"v1-bytes");
     assert_eq!(made.get(), 1, "第一次没置可执行位");
     // 同字节：零写（可执行位那一跳是「写了」的见证）。
-    place_local_panorama(
+    place_local_program(
         &dir,
         "cc-monitor-panorama",
         b"v1-bytes",
@@ -307,7 +307,7 @@ fn placing_the_local_copy_writes_once_and_only_rewrites_when_the_bytes_differ() 
     .unwrap();
     assert_eq!(made.get(), 1, "逐字节相等还重写了一次");
     // 同长不同字节：要重写（只比长度会把旧版当新版留着）。
-    place_local_panorama(
+    place_local_program(
         &dir,
         "cc-monitor-panorama",
         b"v2-bytes",
@@ -319,7 +319,7 @@ fn placing_the_local_copy_writes_once_and_only_rewrites_when_the_bytes_differ() 
     assert_eq!(std::fs::read(&p).unwrap(), b"v2-bytes");
     // 置可执行位失败：报出来，正式文件还是上一份（没有半截的新版顶替它）。
     let bad = |_: &std::path::Path| -> Result<(), String> { Err("不许".to_string()) };
-    assert!(place_local_panorama(
+    assert!(place_local_program(
         &dir,
         "cc-monitor-panorama",
         b"v3-bytes!",

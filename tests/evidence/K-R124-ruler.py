@@ -159,6 +159,13 @@ COMPILE_STEPS = [
     ("build-windows", "Build local panorama (native)",
      "runner host triple 的原生 `cc-monitor-panorama.exe`",
      "本机 Windows x86_64（代码全景；Linux 本机用 musl 那两份，不另编）"),
+    # 文件窗口程序（monitor 包的另一个 `[[bin]]`，内嵌进 exe 让单文件的 monitor 也开得了文件窗口）：同一格平台的**第三件字节**。
+    ("build-windows", "Build local filewin (native)",
+     "runner host triple 的原生 `cc-monitor-filewin.exe`",
+     "本机 Windows x86_64（文件窗口；内嵌进 `monitor.exe`）"),
+    ("build-linux", "Build local filewin (native)",
+     "runner host triple 的原生 glibc `cc-monitor-filewin`（链 GTK，musl 那两份替不了它）",
+     "本机 Linux x86_64（文件窗口；内嵌进裸 `monitor`）"),
     ("build-linux", "Build local backend (native)",
      "runner host triple 的原生 glibc 字节",
      "🟡 **本机 Linux 的第二份来源** —— `设计/96 §7.3` 逐字「哪一份该留、哪一份该删，"
@@ -181,9 +188,13 @@ BYTE_LINES = [
             # 〔RM1f〕同一格的第二件字节：本机原生的全景小程序。
             ("build-windows", "Build local panorama (native)"),
             ("build-windows", "Stage native panorama for self-extract"),
+            # 同一格的第三件字节：文件窗口程序。
+            ("build-windows", "Build local filewin (native)"),
+            ("build-windows", "Stage native filewin for self-extract"),
         ],
         "into": "① Tauri `externalBin` ⇒ **只进安装包**（装完落在 exe 同目录）；"
-                "② `build.rs::embed_native_backend` 的 `include_bytes!` ⇒ **进 exe 本体**（`K-R42`）",
+                "② `build.rs::embed_native_backend` 的 `include_bytes!` ⇒ **进 exe 本体**（`K-R42`）；"
+                "文件窗口程序经 `build.rs::embed_native_filewin` 进 exe 本体",
     },
     {
         "plat": "远端 Linux（musl 两个 arch）",
@@ -204,10 +215,14 @@ BYTE_LINES = [
         "runner": ("build-linux", "ubuntu-latest"),
         "steps": [
             ("build-linux", "Place embedded backends"),
+            # 文件窗口程序：这一格唯一另编的一份（原生 glibc，链 GTK）。
+            ("build-linux", "Build local filewin (native)"),
+            ("build-linux", "Stage native filewin for self-extract"),
         ],
-        "into": "**不另编一份**（`设计/96 §7.1.5` 待点① 逐字：`local_daemon.rs::start_local_backend` 里"
+        "into": "后端与全景小程序**不另编一份**（`设计/96 §7.1.5` 待点① 逐字：`local_daemon.rs::start_local_backend` 里"
                 "那道 `cfg!(target_os = \"linux\")` 闸让本机 Linux 直接用远端那两份 **musl 静态**字节自释放）"
-                "⇒ 这一格的产线增量是 **0**，它要的是**门禁多一格 ＋ 一次真机验**。"
+                "⇒ 这两件的产线增量是 **0**，它要的是**门禁多一格 ＋ 一次真机验**。"
+                "文件窗口程序另编一份，经 `build.rs::embed_native_filewin` 进裸 `monitor` 本体。"
                 "⚠ 真机验这一维本判据**买不到**",
     },
 ]
@@ -267,6 +282,10 @@ MUSL_STEP = ("build-backends", "Cross-compile backend for both musl targets")
 PANORAMA_STEP = ("build-backends", "Cross-compile panorama for both musl targets")
 #: ⑬b 的第二个对照物：两个 job 里那条原生编译（`--native` 那一趟要与它同配方）。
 NATIVE_STEP = "Build local backend (native)"
+#: ⑬b 的第四个对照物：两个 job 里编文件窗口程序那一步（`--native` 那一趟也编它，同配方、同工作目录）。
+FILEWIN_STEP = "Build local filewin (native)"
+FILEWIN_BIN_ARG = "--bin cc-monitor-filewin"
+FILEWIN_WORKDIR = "src/frontend/shell"
 #: ⑬d 注册侧：`build.rs` 里登记落点目录名的那两个常量。
 LANDING_CONSTS = ["EMBEDDED_BACKENDS_DIR", "NATIVE_BACKEND_DIR"]
 #: ⑬d 第三个落点**不在 `build.rs` 里**：它是 Tauri `externalBin` 的暂存区，由
@@ -276,7 +295,7 @@ EXTERNALBIN_LANDING = "binaries"
 #: ⑬d 盘侧：`.gitignore` 里每一行落点上面那句机检锚，逐字。
 LANDING_MARK = "# ⇐ 内嵌落点"
 #: ⑬e：这两个函数体里的**出路**必须点名 `REEMBED_CMD`，各至少两处（重编 ＋ 诚实关闭）。
-EXIT_PATH_FNS = ["embed_backends", "embed_native_backend"]
+EXIT_PATH_FNS = ["embed_backends", "embed_native_backend", "embed_native_filewin"]
 #: ⑬e 禁词 —— 「手抄第二条产字节配方」回来的样子。**只在代码行上判，注释行剥掉**
 #: （墓碑逐字引着那段旧配方，那是账不是指令；剥法见 `rust_code_lines`）。
 BANNED_RECIPE = [
@@ -1106,6 +1125,17 @@ def run_checks(emit):
               "⑬b`--native` 那一趟 ↔ 发版那两步，逐字相同",
               "发版那两步现打 %r · 脚本那一趟是 `cargo build %s` —— 本条盯的是"
               "「本机那一份字节」的配方，与上面 musl 那两格是两条产线" % (native_runs, want))
+        # 文件窗口程序：两个 job 各一步，run 与工作目录逐字相同；脚本 `--native` 在同一个目录里跑同一条。
+        fw = [(str(st.get("run") or "").strip(), str(st.get("working-directory") or ""), jn)
+              for jn, _, st in steps if str(st.get("name") or "") == FILEWIN_STEP]
+        fw_want = "cargo build %s %s" % (want, FILEWIN_BIN_ARG)
+        fw_sh = '( cd "$ROOT/%s" && cargo build "${REEMBED_BUILD_FLAGS[@]}" %s )' % (FILEWIN_WORKDIR, FILEWIN_BIN_ARG)
+        check(sorted(j for _, _, j in fw) == ["build-linux", "build-windows"]
+              and all(r == fw_want and w == FILEWIN_WORKDIR for r, w, _ in fw) and fw_sh in reembed,
+              "⑬b`--native` 编文件窗口那一趟 ↔ 发版那两步，逐字相同",
+              "发版那两步现打 %r（要两个 job 各一步、run = %r、工作目录 = %r）· 脚本里 %r %s —— "
+              "差一格就是「本机铺的那份与发版内嵌的那份不是同一条路编的」，或某个 job 的单文件 monitor 没带它"
+              % (fw, fw_want, FILEWIN_WORKDIR, fw_sh, "在" if fw_sh in reembed else "**不在**"))
 
     # ── ⑬i〔RM1c · 第四波〕全景小程序的字节**一路走到落点**：暂存 → artifact → 两个 job 的铺放 ──────
     #   ⑨ 只看「编它的那一步在不在」；编出来之后每一跳都可能把它静默丢掉（没进 artifact、
