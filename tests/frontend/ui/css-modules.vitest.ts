@@ -39,6 +39,7 @@ import { dirname, join, posix, resolve } from "node:path";
 import ts from "typescript";
 import { describe, it, expect } from "vitest";
 import { buildLedger, type Ledger } from "../../evidence/S25-class-ledger.ts";
+import { toPosix } from "../../test-support/posix-path.ts";
 import { REPO_ROOT } from "../../test-support/repo-root.ts";
 
 /**
@@ -249,7 +250,8 @@ describe("〔UC2〕M⑤ tsc 真吃到逐文件类型（仓里的 tsconfig）", (
     const probes = new Map<string, string>();
     for (const f of moduleFiles(led)) {
       const real = [...(led.moduleClasses.get(f)?.keys() ?? [])].sort()[0];
-      const abs = join(dirname(resolve(REPO_ROOT, f)), `__uc2_probe_${probes.size}__.ts`);
+      // tsc 把喂进来的文件名一律规整成 `/` 再回调 host；键不同形（Windows 上 `join` 吐 `\`）⇒ 探针一份也认不出、零诊断地红。
+      const abs = toPosix(join(dirname(resolve(REPO_ROOT, f)), `__uc2_probe_${probes.size}__.ts`));
       const key = IDENT.test(real) ? `.${real}` : `[${JSON.stringify(real)}]`;
       probes.set(
         abs,
@@ -259,9 +261,9 @@ describe("〔UC2〕M⑤ tsc 真吃到逐文件类型（仓里的 tsconfig）", (
     const host = ts.createCompilerHost(options);
     const baseGet = host.getSourceFile.bind(host);
     host.getSourceFile = (name, lang, onErr, create) =>
-      probes.has(name) ? ts.createSourceFile(name, probes.get(name)!, lang) : baseGet(name, lang, onErr, create);
+      probes.has(toPosix(name)) ? ts.createSourceFile(name, probes.get(toPosix(name))!, lang) : baseGet(name, lang, onErr, create);
     const baseExists = host.fileExists.bind(host);
-    host.fileExists = (name) => probes.has(name) || baseExists(name);
+    host.fileExists = (name) => probes.has(toPosix(name)) || baseExists(name);
     const program = ts.createProgram([...probes.keys(), resolve(REPO_ROOT, "src/frontend/ui/vite-env.d.ts")], options, host);
     return [...probes.keys()].map((file) => {
       const diags = program.getSemanticDiagnostics(program.getSourceFile(file));
