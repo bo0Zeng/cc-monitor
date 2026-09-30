@@ -3135,6 +3135,19 @@ D 组「monitor 算好、后端写」（`设计/05 §14.3`）按用户 09-27「�
 错误码：`unobservable`（输出被改写 —— 段数下溢 ——、超时或起不来：**不是零会话**）· `too_large`。
 ⚠ **CLI 面也有它**（`--tmux-list`，不读 stdin）。
 
+#### `terminal-local`：本机开终端要跑的那一串（〔P5〕09-29；`设计/80 §8.2` 本地半：令牌握手前奏由本机后端渲，monitor 只开终端）
+
+```text
+→ {"id":"tl1","cmd":"terminal-local","args":{"command":"claude --resume s1","rbindToken":"0f1e2d3c4b5a69788796a5b4c3d2e1f0"}}
+← {"kind":"reply","id":"tl1","ok":true,"data":{"command":"& {\n    $m = 'ccm-rbind-token-0f1e2d3c4b5a69788796a5b4c3d2e1f0'\n    …\n}\nclaude --resume s1"}}
+```
+
+入参：要在本机新窗口里跑的 `command`（非空串，原样用）＋ 可空 `rbindToken`（这次拉起的启动期令牌）。出：`rbindToken` 缺席 / `null` ⇒ `command` **逐字节原样**；
+有令牌 ⇒ 令牌握手前奏在前、原串逐字节在后。前奏与 `__ccm_bind` 同一条握手（先设窗口标题、再写 `<monitor 数据目录>/ps-await/<PID>.json`、等 monitor 删），
+marker = `ccm-rbind-token-<令牌>`；marker 前缀与目录名是共享契约（`shell_quote_core`），值进 PowerShell 单引号只经 `dialect::ps_literal`。
+数据目录按 `CCM_DATA_DIR` → `<家目录>/.cc-monitor` 推；推不出 ⇒ 不接前奏、原样回。码：`invalid_args`（缺 `command` / 空串 / `rbindToken` 不是串也不是 `null`）·
+`refused`（令牌形状不对：不是 32 个小写十六进制）。只上帧面（`STREAM_ONLY`）。
+
 #### `terminal-ssh`：给一台远端开终端要跑的那一串（〔FIX4〕09-28；`设计/99 §2.1 ⑬`「待迁」最后一行：ssh 外壳与 PowerShell 窗口载荷由本机后端渲，monitor 只开终端）
 
 ```text
@@ -3143,10 +3156,10 @@ D 组「monitor 算好、后端写」（`设计/05 §14.3`）按用户 09-27「�
 ```
 
 入参：那台机器的配置 `machine`（＋ `saved?` · `jump?` · `prefer?`，与 `remote-probe` / `pubkey-push` 同形，组请求走 `dial/machine.rs::resolve`）＋ 要在那台跑的
-`command`。出：一行 PowerShell `& ssh -t[ -J <跳板用户>@<跳板>[:口]] -p <口>[ -i '<钥匙>'] <用户>@<地址> -- '<bash -lic ''…''>'` —— 地址取竞速顺序第一条
+`command` ＋ 可空 `rbindToken`（〔P5〕有值 ⇒ 成品前面接令牌握手前奏，同 `terminal-local`）。出：一行 PowerShell `& ssh -t[ -J <跳板用户>@<跳板>[:口]] -p <口>[ -i '<钥匙>'] <用户>@<地址> -- '<bash -lic ''…''>'` —— 地址取竞速顺序第一条
 （交了 `prefer` 且仍在这台的地址里 ⇒ 上次赢的那条）；命令包成 `bash -lic '<命令>'` 再以 PowerShell 单引号字面量嵌入；钥匙尾 `\` 剥掉；没钥匙 ⇒ 不带 `-i`（走 agent）。
-**只算不起**：不拨号、不开窗（开窗 · 令牌握手前奏是 monitor 的事）。码：`invalid_args`（缺 `machine` / `command`）· `bad_jump`（跳板交不来 / 指自己）·
-`refused`（命令空 / 超长 / 含控制符 / 含双引号 —— PowerShell 5.1 传参畸变面；用户名 · 地址 · 跳板出了白名单）。只上帧面（`STREAM_ONLY`）。
+**只算不起**：不拨号、不开窗（开窗是 monitor 的事）。码：`invalid_args`（缺 `machine` / `command` · `rbindToken` 不是串也不是 `null`）· `bad_jump`（跳板交不来 / 指自己）·
+`refused`（命令空 / 超长 / 含控制符 / 含双引号 —— PowerShell 5.1 传参畸变面；用户名 · 地址 · 跳板出了白名单；令牌形状不对）。只上帧面（`STREAM_ONLY`）。
 
 #### `tmux-name-mint`：起会话要的 tmux 名（〔FIX4〕09-28；`设计/90 §3` J7「派生 ＋ 避让只留后端」）
 

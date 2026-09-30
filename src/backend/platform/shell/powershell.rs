@@ -37,6 +37,21 @@ pub(crate) fn home_file_between(head: &str, rel: &str, tail: &str) -> String {
     format!("{head} + (Get-Content -Raw -LiteralPath (Join-Path $HOME {rel})).Trim() + {tail}")
 }
 
+/// 〔P5 · `设计/80 §8.2` 本地半〕令牌握手前奏的模板（Era 2 那条握手，marker = 令牌）。
+const RBIND_BIND_PRELUDE_TPL: &str = include_str!("rbind-token-bind.ps1.tpl");
+
+/// 令牌握手前奏：剥掉模板的整行注释（`-EncodedCommand` 额度），`marker` 与 `await_dir` 经 [`ps_literal`] 填进去。
+/// 通用层交成品参数进来（marker 怎么拼、目录在哪不归方言，`dial/terminal.rs::with_bind_prelude`）。
+pub(crate) fn rbind_bind_prelude(marker: &str, await_dir: &str) -> String {
+    let body: String = RBIND_BIND_PRELUDE_TPL
+        .lines()
+        .filter(|l| !l.trim_start().starts_with('#'))
+        .map(|l| format!("{l}\n"))
+        .collect();
+    body.replace("{{MARKER}}", &ps_literal(marker))
+        .replace("{{AWAIT_DIR}}", &ps_literal(await_dir))
+}
+
 // ─── 〔WF1 · L · `设计/99 §2.3`〕执行策略：块装进 `$PROFILE` 之前先问这一代 PowerShell 会不会加载它 ───
 
 /// 生效的那一档 ＋ 组策略两档（有值 ⇒ 改当前用户那一档也没用）。三行，只读。

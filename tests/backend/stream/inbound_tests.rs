@@ -434,6 +434,7 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "acct-iso-cmd",
         "ccm-probe",            // 〔E2〕纯函数，普通 spawn
         "terminal-ssh",         // 〔FIX4 · ⑬〕纯函数（校验 ＋ quote），普通 spawn
+        "terminal-local",       // 〔P5〕纯函数（接前奏），普通 spawn
         "history-search-merge", // 〔FIX4 · J15〕纯计算（合并排序），普通 spawn
         "assets-sync",
         // 〔MIG-3a · 主会话 09-28 裁〕两台之间那几件的枢纽：等远端 capture（真异步），本机那一跳自己挪到阻塞线程池。
@@ -648,6 +649,8 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "ccm-probe",
         // 〔FIX4 · ⑬〕`terminal-ssh`：纯函数，普通 spawn。
         "terminal-ssh",
+        // 〔P5〕`terminal-local`：纯函数，普通 spawn。
+        "terminal-local",
         // 〔FIX4 · J15〕`history-search-merge`：纯计算，普通 spawn。
         "history-search-merge",
         "assets-sync",
