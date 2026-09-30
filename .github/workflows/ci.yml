@@ -126,8 +126,11 @@ jobs:
       # 不动 vendor crate 源码/Cargo.toml（红线：别误伤 vendor）。
       # 〔RM1f · V108 后半句〕monitor 不再依赖它（摘掉了内嵌引擎）⇒ 在 `src/frontend/shell` 里 `-p` 选不到它了；
       #   今天链它的只剩全景小程序 ⇒ 这一步换到那棵树里跑（同一个包、同一份 vendor 源码，`-p` 照旧选中依赖图里的它）。
+      #   它也不是全景小程序的 workspace 成员（那个 crate 不开 workspace）⇒ 在那棵树里 `-p` 会报
+      #   「requires dev-dependencies and is not a member of the workspace」；在它自己的目录里跑，它就是根包。
+      #   它写下的 `Cargo.lock` 由 `.gitignore` 的 `src/panorama-engine/vendor/**/Cargo.lock` 忽略。
       - name: cargo test (vendor code-picture-core)
-        working-directory: src/panorama-engine
+        working-directory: src/panorama-engine/vendor/code-picture-core
         run: cargo test -p code-picture-core
 
   # ── `15 §5.2 B4`：**monitor 这棵树在 Linux 上的行为，云端一次都没有被执行过** ──────
