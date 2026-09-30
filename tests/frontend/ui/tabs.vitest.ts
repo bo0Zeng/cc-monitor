@@ -4771,6 +4771,25 @@ describe("〔设计/10〕骨架接入：索引 → 占位 → 门控 → 跳转"
     expect(indexCalls().length).toBe(1);
   });
 
+  // 〔P3 · `设计/10 §2.5b`〕「列宽变了」的入口：消息流尺寸变了 ⇒ 现量 `.stream-content` 宽交骨架重估；量不到宽不动。
+  it("〔P3〕消息流尺寸变了 ⇒ 现量的列宽交骨架 relayout（后台 tab 也跟上）；量不到宽 ⇒ 不动", async () => {
+    vi.mocked(invoke).mockImplementation(withHistoryReads(withSessionReads((cmd: string) =>
+      Promise.resolve(cmd === "read_session_index" ? idx(300) : undefined),
+    ) as never));
+    const t = replay("cw");
+    await settle();
+    expect(t.skeleton, "前置：骨架要接上").not.toBeNull();
+    const spy = vi.spyOn(t.skeleton!, "relayout");
+    let width = 0;
+    t.stream.contentElement.getBoundingClientRect = () => ({ width }) as DOMRect;
+    home(tm).store.activeId = "other";
+    t.stream.onViewportResize?.();
+    expect(spy, "量不到宽也重估").not.toHaveBeenCalled();
+    width = 640;
+    t.stream.onViewportResize?.();
+    expect(spy.mock.calls).toEqual([[640]]);
+  });
+
   it("老后端（available:false · oldBackend）⇒ 不接、不再问，尾部窗口照旧（账本还在、哨兵还在）", async () => {
     vi.mocked(invoke).mockImplementation(withHistoryReads(withSessionReads((cmd: string) =>
       Promise.resolve(
