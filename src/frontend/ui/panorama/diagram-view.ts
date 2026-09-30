@@ -11,15 +11,21 @@
  * `params`；画成什么样看 `Diagram.body.shape`。上游加一种已有形状的新图 ⇒ 这里零改动。
  * 新形状 ⇒ 如实说「这一版还画不出」＋ 复制 Mermaid。
  *
- * 买到：人能在全景页上选图、拧旋钮、下钻、复制给 agent。
- * **买不到**：图没有缩放 / 拖拽；调用子图每次重画都向后端要一张新图，不做增量。
+ * ## 缩放 / 拖拽（`设计/97 §8` · `99 §4.4`）
+ * 图铺满画布，画出来那一刻按视口适配（小图封顶 [`FIT_MAX_SCALE`] 倍）；滚轮以指针为锚缩放、按住拖动平移、
+ * 顶栏「适配」回到适配；没动过时画布尺寸变了（拉窗口 · 开关侧栏）跟着重新适配。视口数学与气泡全景同一份
+ * （`layout.ts` 的 `fitViewport` / `zoomAt`）。只动世界那一层的变换，节点与边一条不增不减（CP1）。
+ *
+ * 买到：人能在全景页上选图、拧旋钮、下钻、复制给 agent、缩放拖动看大图。
+ * **买不到**：调用子图每次重画都向后端要一张新图，不做增量；真机 WebView2 上的拖动手感没量。
  */
 import * as api from "./api";
 import type { RepoAt } from "./api";
 import { LOCAL_ORIGIN, type Origin } from "../ipc/origin";
 import { clipForDiagram, type IndexStamp } from "./agent-clip";
 import { honestyLine } from "./diagram-honesty";
-import { legendFor, rendererFor, type NodePick } from "./diagram-render";
+import { legendFor, rendererFor, worldOf, type NodePick } from "./diagram-render";
+import { fitViewport, zoomAt, type Viewport } from "./layout";
 import type { DiagramKindInfo, DiagramRequest, PanoramaDiagram } from "./types";
 import { copyText } from "../copy-table";
 
@@ -46,6 +52,15 @@ export interface DiagramHost {
 
 /** 「气泡全景」：本仓自己的默认视图，不是上游的图种。 */
 export const BUBBLE_VIEW = "";
+
+/** 适配时四边留白（屏幕像素）。 */
+const FIT_PAD = 24;
+/** 适配最多放大几倍：一两个节点的小图不该被撑到满屏。 */
+export const FIT_MAX_SCALE = 2;
+/** 滚轮一格缩放的倍数（与气泡全景同）。 */
+const WHEEL_FACTOR = 1.12;
+/** 按下之后移动超过几像素算拖动（拖过之后松开那一下不当点击，同气泡全景）。 */
+const DRAG_SLOP = 3;
 
 /** 旋钮（只显示当前图种 `params` 里声明的那几个）。 */
 interface Knobs {
@@ -77,6 +92,15 @@ export class DiagramPane {
   private noteEl: HTMLElement;
   private knobEls = new Map<string, HTMLElement>();
 
+  // 视口（世界那一层的平移 / 缩放）
+  private vp: Viewport = { x: 0, y: 0, scale: 1 };
+  private world: { el: SVGGElement; w: number; h: number } | null = null;
+  /** 人缩放 / 拖动过 ⇒ 画布尺寸变了不再自动适配（点「适配」或换一张图才回来）。 */
+  private touched = false;
+  private pan: { x: number; y: number; ox: number; oy: number; moved: boolean } | null = null;
+  /** 刚拖完：吞掉松手那一下的点击（不然拖图时会顺手下钻一个节点）。 */
+  private swallowClick = false;
+
   constructor(private host: DiagramHost) {
     this.select = document.createElement("select");
     this.select.className = "panorama-diagram-select";
@@ -102,12 +126,23 @@ export class DiagramPane {
     this.honestyEl.className = "panorama-diagram-honesty";
     this.honestyEl.dataset.pano = "diagram-honesty";
     this.overlay.append(this.noteEl, this.canvasEl, this.legendEl, this.honestyEl);
+    this.bindViewport();
     this.renderOptions();
   }
 
   /** 当前选的图种 id（气泡视图 = `BUBBLE_VIEW`）。 */
   kind(): string {
     return this.current;
+  }
+
+  /** 把当前那张图适配进画布（顶栏「适配」；画出来那一刻也走这里）。画布还没尺寸（没显示）⇒ 不动。 */
+  fit(): void {
+    const w = this.canvasEl.clientWidth;
+    const h = this.canvasEl.clientHeight;
+    if (!this.world || w <= 0 || h <= 0) return;
+    this.vp = fitViewport(this.world.w, this.world.h, w, h, FIT_PAD, FIT_MAX_SCALE);
+    this.touched = false;
+    this.applyViewport();
   }
 
   /**
@@ -133,7 +168,7 @@ export class DiagramPane {
     this.renderOptions();
     const info = this.info();
     if (info && this.last && this.last.info.id === info.id && this.last.view.diagram.body.shape === "clusters") {
-      this.paint(this.last.view, info);
+      this.paint(this.last.view, info, true); // 同一张图只是换了描环 ⇒ 视口不动
     }
   }
 
@@ -282,11 +317,12 @@ export class DiagramPane {
 
   private clearDrawing(): void {
     this.canvasEl.replaceChildren();
+    this.world = null;
     this.legendEl.replaceChildren();
     this.honestyEl.textContent = "";
   }
 
-  private paint(view: PanoramaDiagram, info: DiagramKindInfo): void {
+  private paint(view: PanoramaDiagram, info: DiagramKindInfo, keepView = false): void {
     const { diagram } = view;
     const shape = diagram.body.shape;
     this.clearDrawing();
@@ -305,11 +341,76 @@ export class DiagramPane {
       focusFile: this.host.selectedFile(),
     });
     this.canvasEl.appendChild(svg);
+    this.world = worldOf(svg);
+    if (keepView) this.applyViewport();
+    else this.fit();
     for (const item of legendFor(shape)) {
       const span = document.createElement("span");
       span.dataset.conf = item.conf;
       span.textContent = item.text;
       this.legendEl.appendChild(span);
+    }
+  }
+
+  private applyViewport(): void {
+    const { x, y, scale } = this.vp;
+    this.world?.el.setAttribute("transform", `translate(${x} ${y}) scale(${scale})`);
+  }
+
+  /** 滚轮缩放 · 按住拖动 · 拖完吞点击 · 没动过时画布变了跟着适配。 */
+  private bindViewport(): void {
+    const c = this.canvasEl;
+    c.addEventListener(
+      "wheel",
+      (e) => {
+        if (!this.world) return;
+        e.preventDefault();
+        const rect = c.getBoundingClientRect();
+        this.vp = zoomAt(this.vp, e.clientX - rect.left, e.clientY - rect.top, e.deltaY < 0 ? WHEEL_FACTOR : 1 / WHEEL_FACTOR);
+        this.touched = true;
+        this.applyViewport();
+      },
+      { passive: false },
+    );
+    c.addEventListener("mousedown", (e) => {
+      this.swallowClick = false; // 上一次拖完若在画布外松手，那一下点击根本没来
+      if (e.button !== 0 || !this.world) return;
+      this.pan = { x: e.clientX, y: e.clientY, ox: this.vp.x, oy: this.vp.y, moved: false };
+      c.classList.add("is-panning");
+    });
+    window.addEventListener("mousemove", (e) => {
+      const p = this.pan;
+      if (!p) return;
+      const dx = e.clientX - p.x;
+      const dy = e.clientY - p.y;
+      if (!p.moved && Math.abs(dx) <= DRAG_SLOP && Math.abs(dy) <= DRAG_SLOP) return;
+      p.moved = true;
+      this.vp = { ...this.vp, x: p.ox + dx, y: p.oy + dy };
+      this.touched = true;
+      this.applyViewport();
+    });
+    window.addEventListener("mouseup", () => {
+      const p = this.pan;
+      if (!p) return;
+      this.pan = null;
+      c.classList.remove("is-panning");
+      this.swallowClick = p.moved;
+    });
+    // 捕获阶段：先于节点自己的点击处理
+    c.addEventListener(
+      "click",
+      (e) => {
+        if (!this.swallowClick) return;
+        this.swallowClick = false;
+        e.stopPropagation();
+        e.preventDefault();
+      },
+      true,
+    );
+    if (typeof ResizeObserver !== "undefined") {
+      new ResizeObserver(() => {
+        if (!this.touched) this.fit();
+      }).observe(c);
     }
   }
 
