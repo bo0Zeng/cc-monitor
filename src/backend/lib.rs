@@ -681,7 +681,9 @@ pub const PROTO_VERSION: u32 = 1;
 /// ★★★ **p5v-plain-copy**（2026-09-29，COPY-R 合并那一拍，V161）：文案 —— 用户看得到的文字只说现在是什么、能做什么：去掉演进叙事、内部名挪进句末括号或换成人话、删重复解释（文案表改 282 条；写进用户文件的别名块头注去掉版本沿革）· 后端 IO 错误按种类说人话（`files::io_kind_said`）。子命令没变。
 ///
 /// ★★★ **p5w-readme-shots**（2026-09-29，SHOTS 合并那一拍）：行为 / 协议 —— 足迹行的现状多一档 `expected_absent`（旧版遗留认出就删的那一类不在 ＝ 该有的样子，由后端 `footprint/rows.rs::read_absence` 给结论）· 设置 → 机器那张表补样式 · README 配图 `docs/screenshots/`（合成数据渲染）。子命令没变。
-pub const BUILD_ID: &str = "p5w-readme-shots";
+///
+/// ★★★ **p5x-win-rtt-oem**（2026-09-29，P2 合并那一拍）：行为 —— Windows 上读得到连接往返时间（`SIO_TCP_INFO`，压缩判准不变：局域网远端不再压）· PATH 状态探针直写 UTF-8 字节 · 加 / 撤 PATH 失败时报错按控制台代码页解 · `ssh_config` 走统一的家目录 · 中转删无用参数 · 门读盘那一半只从宿主调有判据。子命令没变。
+pub const BUILD_ID: &str = "p5x-win-rtt-oem";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src/frontend/shell/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），

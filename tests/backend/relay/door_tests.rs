@@ -273,3 +273,73 @@ fn the_key_file_and_the_key_shape_come_from_the_shared_crate() {
     assert_eq!(2 * KEY_BYTES, 64, "铸的长度与共享 crate 的形状闸不一致");
     assert!(key_shape_ok(TEST_KEY), "夹具钥匙过不了共享的形状闸");
 }
+
+/// 住址：`设计/05 §9` 第 11 条「门（`relay/door.rs`）的读盘那一半只从宿主调（`§4.3`）没有判据」·
+/// `05 §4.3`「读 / 铸钥匙文件那一半只由宿主调（`relay/listen.rs` 绑上口之后 `ensure_key`）…；成员 `comms/outward/server.rs` 只收宿主交进来的 `door::Key`」。
+///
+/// `door` 是 `relay` 的**私有**子模块 ⇒ 编译器只让 `relay` 模块那几份够得着它（面 B 成员 `src/comms/outward/*` ＋ 宿主 `listen.rs`）。
+/// 那几份的生产段里（`door.rs` 自己除外）读盘三件的 `(文件, 名字) → 次数` == 宿主那两处（两向）；`mod door;` 仍是私有（人群的前提）。
+/// 正控：往一份成员副本里塞一处 `door::read_key` 数得出。
+#[test]
+fn the_key_files_disk_half_is_called_only_by_the_host() {
+    use std::collections::BTreeMap;
+    const DISK_HALF: &[&str] = &["key_path", "read_key", "ensure_key"];
+    let words_in = |prod: &str| -> BTreeMap<&'static str, usize> {
+        let ident = |c: char| c.is_alphanumeric() || c == '_';
+        let mut out = BTreeMap::new();
+        for w in DISK_HALF {
+            let n = prod
+                .match_indices(w)
+                .filter(|(i, _)| {
+                    !prod[..*i].chars().next_back().is_some_and(ident)
+                        && !prod[i + w.len()..].chars().next().is_some_and(ident)
+                })
+                .count();
+            if n > 0 {
+                out.insert(*w, n);
+            }
+        }
+        out
+    };
+    let repo = crate::guard_support::repo_root();
+    let mut got = BTreeMap::new();
+    for (p, src) in
+        guard_core::scan_tree_excluding(&crate::guard_support::relay_root(), &["rs"], &[])
+    {
+        let mut norm = PathBuf::new();
+        for c in p.components() {
+            match c {
+                std::path::Component::ParentDir => {
+                    norm.pop();
+                }
+                std::path::Component::CurDir => {}
+                other => norm.push(other),
+            }
+        }
+        let rel = norm
+            .strip_prefix(&repo)
+            .unwrap_or(&norm)
+            .to_string_lossy()
+            .replace('\\', "/");
+        if rel == "src/backend/relay/door.rs" {
+            continue;
+        }
+        for (w, n) in words_in(&crate::guard_support::production_side_of(&p, &src)) {
+            got.insert((rel.clone(), w), n);
+        }
+    }
+    let want = BTreeMap::from([
+        (("src/backend/relay/listen.rs".to_string(), "ensure_key"), 1),
+        (("src/backend/relay/listen.rs".to_string(), "key_path"), 1),
+    ]);
+    assert_eq!(
+        got, want,
+        "门读盘那一半（算路径 · 读 · 铸）只许宿主 `listen.rs` 绑上口之后调；成员只收宿主交进来的 `door::Key`"
+    );
+    let mod_rs = std::fs::read_to_string(crate::guard_support::relay_root().join("mod.rs"))
+        .expect("读 relay mod.rs");
+    guard_core::pin_line(&guard_core::production_code(&mod_rs), "mod door;")
+        .unwrap_or_else(|e| panic!("`door` 不再是 relay 的私有子模块 ⇒ 本条的人群前提不成立：{e}"));
+    let planted = "fn f(p: &std::path::Path) {\n    let _ = super::door::read_key(p);\n}\n";
+    assert_eq!(words_in(planted), BTreeMap::from([("read_key", 1)]));
+}
