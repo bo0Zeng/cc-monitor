@@ -35,7 +35,7 @@ Tauri 在 Windows 上要靠 MSVC link.exe / cl.exe 编译 Rust 后端。如果�
 ### 用法
 
 ```powershell
-powershell -NoProfile -File scripts\run.ps1 [dev|build|check|clean]
+powershell -NoProfile -File tests\scripts\run.ps1 [dev|build|check|clean]
 ```
 
 | 子命令 | 等价于 |
@@ -65,4 +65,4 @@ powershell -NoProfile -File scripts\run.ps1 [dev|build|check|clean]
 4. npx tauri $Cmd
 ```
 
-详 [`../../src/`src/doc/DEVELOPMENT.md`](../../src/`src/doc/DEVELOPMENT.md`)。
+详 [`src/doc/DEVELOPMENT.md`](../../src/doc/DEVELOPMENT.md)。

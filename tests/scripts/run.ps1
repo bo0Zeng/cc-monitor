@@ -1,7 +1,7 @@
 # monitor command wrapper: auto-injects MSVC dev shell env.
 # Usage (Windows PowerShell 5.1 / PowerShell 7+):
-#   powershell -NoProfile -File scripts\run.ps1 [dev|build|check|clean] [-- extra args]
-# 例：powershell -NoProfile -File scripts\run.ps1 build -- --bundles nsis
+#   powershell -NoProfile -File tests\scripts\run.ps1 [dev|build|check|clean] [-- extra args]
+# 例：powershell -NoProfile -File tests\scripts\run.ps1 build -- --bundles nsis
 
 param(
     [Parameter(Position=0)]
@@ -31,7 +31,8 @@ if (-not (Test-Path $devShell)) {
 
 & $devShell -SkipAutomaticLocation -Arch amd64 -HostArch amd64 | Out-Null
 
-Set-Location (Resolve-Path "$PSScriptRoot\..")
+# 本脚本住 tests\scripts\ ⇒ 仓根是上两级（tauri CLI 与下面两条 cargo 的 --manifest-path 都按仓根算）。
+Set-Location (Resolve-Path "$PSScriptRoot\..\..")
 
 switch ($Cmd) {
     "dev"   { npx tauri dev @Extra }
