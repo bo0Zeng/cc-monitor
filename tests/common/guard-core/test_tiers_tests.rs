@@ -691,6 +691,7 @@ const INTEGRATION: &[&str] = &[
     // 〔MIG-3b 续〕`tests/frontend/shell/panorama_call_tests.rs` 删了：问 · 交那一环随实现搬进后端（`tests/backend/control/panorama_edit_tests.rs`）。
     // 〔RM1f〕`tests/frontend/shell/panorama_tests.rs` 删了（monitor 的内嵌引擎连同它的判据一起删了）。
     "tests/frontend/shell/profile_installer_tests.rs",
+    "tests/frontend/shell/platform/console_text_tests.rs", // 〔P2〕控制台字节按 OEM 代码页解（Windows 臂 ＋ PowerShell 读数起进程）
     "tests/backend/control/panorama_edit_tests.rs", // 〔MIG-3b 续〕全景写：问 · 交那一环（原 `tests/frontend/shell/panorama_call_tests.rs`）随实现搬来，临时目录当仓
     "tests/backend/assets/pubkey_tests.rs", // 〔MIG-3b 续〕原 `tests/frontend/shell/pubkey_tests.rs` 随实现搬来（真 `sh` 上跑那一串 · 临时目录当家）
     "tests/frontend/shell/scanning_guard_registry_tests.rs",
@@ -986,6 +987,11 @@ const REAL_MACHINE: &[(&str, &str, Trigger)] = &[
         "tests/frontend/shell/profile_installer_tests.rs",
         "p2_the_path_probe_reads_back_a_non_ascii_home_under_an_oem_console",
         Trigger::Manual("〔P2〕读数不是判据：要一个 PowerShell（`CCM_PWSH`）在 936 控制台编码替身下跑 PATH 探针、读回汉字目录；跑法住它自己的头注"),
+    ),
+    (
+        "tests/frontend/shell/platform/console_text_tests.rs",
+        "p2_powershell_under_a_936_console_writes_the_sample_bytes_to_stderr",
+        Trigger::Manual("〔P2〕读数不是判据：要一个 PowerShell（`CCM_PWSH`）核 936 替身字节就是它往 stderr 写的那一段；跑法住它自己的头注"),
     ),
 ];
 

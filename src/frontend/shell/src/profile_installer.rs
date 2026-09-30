@@ -354,9 +354,12 @@ fn run_user_path_powershell(script: &str) -> Result<String, String> {
             "rsProfileInstaller.ps.exitCode",
             &[
                 ("status", &format!("{:?}", out.status.code())),
+                // 〔P2〕stderr 是 PowerShell 按控制台代码页写的（stdout 那一路探针自己写 UTF-8，不走这里）。
                 (
                     "detail",
-                    &(String::from_utf8_lossy(&out.stderr).trim()).to_string(),
+                    &crate::platform::console_text::console_text(&out.stderr)
+                        .trim()
+                        .to_string(),
                 ),
             ],
         ));

@@ -402,6 +402,27 @@ fn p2_the_path_probe_writes_nothing_but_its_utf8_bytes() {
     );
 }
 
+/// 住址：主会话 09-29 裁（`第四波记录/P2.md §6` 第 3 条）「加 / 撤两条失败时 stderr 的解码 —— Windows 臂按那台控制台的 OEM 代码页解」。
+/// 两路按各自怎么写出来的解：stderr（PowerShell 按控制台代码页写）只经 `platform::console_text`；stdout（探针自己写 UTF-8 字节）只按 UTF-8。
+/// 解码本身的判据在 `platform/console_text_tests.rs`。
+#[test]
+fn p2_stderr_and_stdout_are_decoded_the_way_they_were_written() {
+    let prod = guard_core::production_code(include_str!(
+        "../../../src/frontend/shell/src/profile_installer.rs"
+    ));
+    let count = |n: &str| prod.matches(n).count();
+    assert_eq!(
+        (
+            count("console_text(&out.stderr)"),
+            count("from_utf8_lossy(&out.stderr)"),
+            count("from_utf8_lossy(&out.stdout)"),
+            count("console_text(&out.stdout)"),
+        ),
+        (1, 0, 1, 0),
+        "stderr 要按控制台代码页解、stdout 要按 UTF-8 解（探针直写 UTF-8 字节）"
+    );
+}
+
 /// 〔P2〕读数，**不在门禁**（要一个 PowerShell；`CCM_PWSH=<程序> cargo test -- --ignored p2_`，那个程序收一个 `.ps1` 路径去跑）。
 /// 住址同上一条。替身：控制台编码设成 936（中文 Windows PowerShell 5.1 往管道写的那一种）· `USERPROFILE` 含汉字 · `Join-Path` 按 Windows 拼 ·
 /// 用户级 `Path` 换成含我们那一格的字面值（Linux 上没有用户级那一档）。读回走生产那一份解析，期望目录逐字、判「在」。
