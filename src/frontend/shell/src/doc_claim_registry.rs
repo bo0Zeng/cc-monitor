@@ -44,8 +44,8 @@ const STATUS_CELLS: &[(&str, &str)] = &[
     ("U8c-2c-1", "ccm-invocation-kernel-exists"),
     ("U8c-2c-2", "production-ts-calls-the-rust-renderers"),
     ("U8c-3", "ts-renderer-still-there"),
-    // 〔P6 · 09-29 · 主会话裁〕ARCHITECTURE 那张「backend 四层在 monitor 侧落地到哪一步」表（F19 立）退役：
-    //   架构文档不放进度（进度住 `调研/设计/99`，守 V161）。那四格连同各自的量法、普查行与落地探针一起删 ——
+    // ARCHITECTURE 那张「backend 四层在 monitor 侧落地到哪一步」表（F19 立）退役：
+    //   架构文档不放进度（进度住，守）。那四格连同各自的量法、普查行与落地探针一起删 ——
     //   文档里没有那张表，四格的人群就是空的，留着只会是恒真的空转。退役记录在测试文件原处那块墓碑。
 ];
 
@@ -87,7 +87,7 @@ const STATUS_CELLS: &[(&str, &str)] = &[
 #[cfg(test)]
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum MeasureShape {
-    // 〔P6 · 09-29〕「钉住那个唯一的住户」「这条能力线里真有住户」两形只服务那四格落地进度，随它们退役。
+    // 「钉住那个唯一的住户」「这条能力线里真有住户」两形只服务那四格落地进度，随它们退役。
     /// 读**剥过注释的生产段**、在里面找一根裸子串针。
     ProdNeedle,
     /// 读**没剥过注释的原文**（TS / MD）找针 ⇒ 把那句话注释掉，它照样命中。
@@ -154,7 +154,7 @@ const MEASURE_CENSUS: &[(&str, MeasureShape, Verdict, &str)] = &[
         Verdict::Holds,
         "反向量法：`src/session-backend.ts` **不在**才算交付，与那格声称的话对得上。         ⚠ 登记一处**可读性陷阱**（不是洞）：键名逐字是「still-there」，而它为 `true` 时         的意思是「**已经删了**」—— 键名与布尔方向相反，读的人容易读反",
     ),
-    // 〔P6 · 09-29〕`monitor-backend-*-landed` 那四行随 ARCHITECTURE 那张进度表一起退役（见 `STATUS_CELLS` 末尾那段）。
+    // `monitor-backend-*-landed` 那四行随 ARCHITECTURE 那张进度表一起退役（见 `STATUS_CELLS` 末尾那段）。
 ];
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -202,7 +202,7 @@ const THIRTY_THREE_B_QUESTIONS: &[(&str, &[&str])] = &[
         "② attach 那条串归谁产",
         &["〔现打②〕前端仍产 attach", "〔现打②〕后端全产 attach"],
     ),
-    // 🔴 〔步 8 · 条 80 「不要管旧配置」〕**第三问整行删了。**
+    // 🔴 〔条 80 「不要管旧配置」〕**第三问整行删了。**
     //    它是「③ daemonless 的远端还要不要能起会话」。那一档 `K-R59`（09-11）就退役了，
     //    此后唯一还留在盘上的是 `remote-config.ts` 认旧配置的那块墓碑
     //    （`LEGACY_NO_BACKEND_KEY`）—— 而条 80 把那块墓碑也删了。
@@ -272,7 +272,7 @@ enum EnvKeyClaim {
 /// （`the_registry_file_itself_stays_out_of_that_population` 钉着这条性质）。
 #[cfg(test)]
 const ENV_KEY_CLAIM_SITES: &[(&str, &str, EnvKeyClaim)] = &[
-    // 🔴 〔步 7c 后端剖分 2026-09-19 · `设计/16 §6.2` C 类〕
+    // 🔴 〔步 7c 后端剖分 2026-09-19〕
     //    `src/backend/observe/accounts_query.rs` 那 5 行换成
     //    `tests/backend/observe/accounts_query_tests.rs` —— 那 5 份副本全在测试段里，
     //    随剖分整批搬走了。**副本份数一格没变**（`the_environ_key_claim_scan_is_not_zero_hit`
@@ -302,7 +302,7 @@ const ENV_KEY_CLAIM_SITES: &[(&str, &str, EnvKeyClaim)] = &[
         "守的性质：",
         EnvKeyClaim::Asserts,
     ),
-    // 〔C4a · 第四波〕`local_accounts.rs` 那一份（E79 那条本机会话账号查询的头注里讲「抠哪几个环境变量」那一句）
+    // `local_accounts.rs` 那一份（E79 那条本机会话账号查询的头注里讲「抠哪几个环境变量」那一句）
     //   随那条查询整条退役（本机与远端收成一条经通道的路，逐行解释搬去 `src/frontend/ui/accounts.ts`）⇒ 副本少一份，这一行删掉。
     // 发版说明里那一份（`3.7.0` 起草，09-09）。**它在断言当下，不是在引述**：
     // 用户读发版说明是为了知道「装上这一版之后，这东西今天做什么」——
@@ -333,7 +333,7 @@ const ENV_KEY_CLAIM_SITES: &[(&str, &str, EnvKeyClaim)] = &[
     // （本文件那个测试模块**里面**的字面量剥得掉 —— 同文件别处几处带本机数据目录名的串就在
     //  里面、从来没被数进去过；剥不掉的恰恰是模块**外面**的这三张表。这个不对称是全部成因。）
     // ⇒ 这张表里的每一个锚点，都要按「它会被全仓的字面量计数判据看见」来挑。
-    // 〔HX1 · 4D〕`Asserts` → `Quotes`：那一条是**发版记录**（说的是它那一版发出去时读几个键 —— 那时确实两个），
+    // `Asserts` → `Quotes`：那一条是**发版记录**（说的是它那一版发出去时读几个键 —— 那时确实两个），
     //   `ANTHROPIC_BASE_URL` 那个第三键进来之后它照旧是真的历史；改写发版记录去追今天的计数不对。当下的断言住 INVARIANTS / IPC-PROTOCOL。
     (
         "CHANGELOG.md",
@@ -356,7 +356,7 @@ const ENV_KEY_CLAIM_SITES: &[(&str, &str, EnvKeyClaim)] = &[
         "里没点名",
         EnvKeyClaim::Quotes,
     ),
-    // 〔C4a〕`local_accounts.rs` 那句「不同拍改它就是在盘上留一句假话」的引述随同一段头注删了（理由同上）。
+    // `local_accounts.rs` 那句「不同拍改它就是在盘上留一句假话」的引述随同一段头注删了（理由同上）。
     // ── 同句式、别的主语 ──────────────────────────────────────────────────
     (
         "tests/backend/observe/accounts_query_tests.rs",

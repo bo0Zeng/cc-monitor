@@ -1,6 +1,6 @@
 //! P2s（定框 `C8`）：**本机后端的生命周期** —— 起 / 停 / 状态。
 //!
-//! 违反此约束见 `src/doc/INVARIANTS.md` § 48（本机常驻后端的宿主三条：钥匙 · 不留僵尸 · 测试隔离用户 tmux；〔TL2〕照「修改本文档」第 2 条补的反指）。
+//! 违反此约束见 `src/doc/INVARIANTS.md` § 48（本机常驻后端的宿主三条：钥匙 · 不留僵尸 · 测试隔离用户 tmux；照「修改本文档」第 2 条补的反指）。
 //!
 //! # 为什么它不住 `lib.rs`
 //!
@@ -94,18 +94,18 @@ impl StartOutcome {
 // ══════════════════════════════════════════════════════════════════════════
 // `K-P1`：常驻那条路 —— **真脱离 · 一个监听口 · 起时认得出已有实例**
 //
-// 这一段全部住在**宿主知识层**，理由是硬的（`K-P1 §0b-5` 现打）：
+// 这一段全部住在**宿主知识层**，理由是硬的（现打）：
 // `process_group(0)` 来自 `std::os::unix::process::CommandExt`，而 `std::os::unix`
 // 在 `backend_client_guard_tests.rs::the_backend_half_stays_platform_agnostic` 的禁针里
 // ⇒ **写进 `backend/` 当场红**；而「加一条平台例外」这条路被**递减棘轮**堵着
-// （`PLATFORM_EXCEPTIONS`：〔P4b · P4〕今天 0 条、上限 0；壳里平台形态另只许住 `platform/`，`platform_home_guard` 钉）。
+// （`PLATFORM_EXCEPTIONS`：今天 0 条、上限 0；壳里平台形态另只许住 `platform/`，`platform_home_guard` 钉）。
 // ⇒ 落点只能是这里，形状照 `platform::fs::make_executable` 那个**注入**先例。
 // ══════════════════════════════════════════════════════════════════════════
 
 // ═══════════════════════════════════════════════════════════════════════════
-// 🪦〔散文墓碑〕 `CREATE_NO_WINDOW` / `hide_console_window` **搬走了**〔`15 §5.1 A3`，09-18〕
+// 🪦〔散文墓碑〕 `CREATE_NO_WINDOW` / `hide_console_window` **搬走了**
 //
-// 那是 `00 §1.5.1` 步 1 的止血，它自己的头注逐字写着终局：
+// 那是止血，它自己的头注逐字写着终局：
 // 「正确形状是 `spawn_managed(bin, args, ConsolePolicy, Lifetime, StderrSink)` ……
 //   本函数是那个枚举的 `Hidden` 分支**提前落一处**，代价写明：`backend/` 这一侧因此
 //   多了一条 `crate::local_backend_host::` 的反向边（A3 落地时它会被换成注入参数，
@@ -143,9 +143,9 @@ pub(crate) const LISTEN_TOKEN_ENV: &str = "CCM_LISTEN_TOKEN";
 /// 而没有这个开关，那一支在 Linux 上永远走不到 —— 那正是「只有正例的测试永远绿」那一形。
 pub const NO_DETACH_ENV: &str = "CCM_NO_DETACH";
 
-// 〔HOST〕监听口取值区间（`49152..=65535`）与「撞了出声拒绝、绝不换口」的理由随实现搬进 `relay_route_core::listen_port_for`。
+// 监听口取值区间（`49152..=65535`）与「撞了出声拒绝、绝不换口」的理由随实现搬进 `relay_route_core::listen_port_for`。
 
-/// `K-P1`：这台机 + 这个 agent 家目录对应的监听口。〔HOST〕实现搬进共享 crate（远端 `--resident-ensure` 用同一个函数，
+/// `K-P1`：这台机 + 这个 agent 家目录对应的监听口。实现搬进共享 crate（远端 `--resident-ensure` 用同一个函数，
 /// 一台机器一个常驻后端）；算法与「为什么由一处算」的理由住 `relay_route_core::listen_port_for` 头注。
 pub use relay_route_core::listen_port_for;
 
@@ -262,7 +262,7 @@ fn ensure_listen_token(dir: &std::path::Path) -> Result<String, String> {
 
 /// 造一个新 token：**内核密码学随机数** 16 字节 ⇒ 32 位十六进制（`INVARIANTS §48.1`「新生成时 128 位随机」）。
 ///
-/// 🔴〔HX1 · RK1 报 3〕此前取的熵是「纳秒时钟 ⊕ pid ⊕ 进程内计数器」（头注自认非密码学随机）—— 而 token 文件的
+/// 🔴〔RK1 报 3〕此前取的熵是「纳秒时钟 ⊕ pid ⊕ 进程内计数器」（头注自认非密码学随机）—— 而 token 文件的
 /// mtime 就是纳秒量级的铸造时刻，同机另一个用户 `stat` 得到它，猜的空间远小于 128 位。
 /// 🪦〔散文墓碑〕原头注那一段「这里不用 `rand` …… 这个 token 要挡的东西**不需要密码学随机数**」不再成立，整段删。
 /// ⇒ 换成与中转钥匙（后端 `relay/door.rs::mint`，`ring` 的 `SystemRandom`，Linux 上是 `getrandom(2)`）**同一个内核池**：
@@ -282,7 +282,7 @@ fn fresh_token() -> Result<String, String> {
     Ok(buf.iter().map(|b| format!("{b:02x}")).collect())
 }
 
-// 〔HX1 · 拍板项 4〕`~/.cc-monitor` 这一层建的那一下就只给本人：那个函数住 `platform::fs::ensure_private_dir`，
+// 〔拍板项 4〕`~/.cc-monitor` 这一层建的那一下就只给本人：那个函数住 `platform::fs::ensure_private_dir`，
 //   与释放后端二进制那几处（`local_backend.rs`，经注入）共用一份。
 
 /// 记下「谁在听那个口」。**只有起它的那个宿主写**。
@@ -291,7 +291,7 @@ fn fresh_token() -> Result<String, String> {
 /// （见 [`stop_local_backend`]）。没有它，接管者手里只有一条 socket，
 /// 而 socket 关掉不会让对面停 —— 那时「停」就成了一句骗人的话。
 ///
-/// ⚠ 它**不是**真相源：「那个后端还在不在」的真相源永远是**那个口连不连得上**。
+/// ⚠ 它**不是**源头：「那个后端还在不在」的源头永远是**那个口连不连得上**。
 /// 这里记的 pid 只在**杀它**那一步用，且用之前还要过一道 `/proc/<pid>/exe` 的身份核对。
 /// ⚠ **两行，不是一行**：pid **和**它跑的那个二进制。
 /// 只记 pid 的话，接管者杀它之前那道身份核对就没有对照物 ⇒ 只能 fail-open 地杀
@@ -341,7 +341,7 @@ fn read_listen_owner(dir: &std::path::Path, port: u16) -> Option<(u32, std::path
 /// 一条 hello 行的裁决。**纯函数**，所以三张脸都测得到。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum HelloVerdict {
-    /// 是我们的后端：build_id、Claude 家目录、〔HX2〕宿主交给它的那几格（monitor 数据目录落到它身上的全部）都对得上。
+    /// 是我们的后端：build_id、Claude 家目录、宿主交给它的那几格（monitor 数据目录落到它身上的全部）都对得上。
     Ours,
     /// 有人占着这个口，但**不是**我们要找的那个。带上说得清的理由。
     Stranger(String),
@@ -353,7 +353,7 @@ pub(crate) enum HelloVerdict {
 /// ⇒ 连上去**先读 hello 比对**，对不上就出声并拒绝，**不许静默复用**
 /// （`P2t §1` 第 3 问「陈旧端点怎么识别」问的正是这一格）。
 ///
-/// 〔HX2 · 第四波 4D〕第三项：`want_env` = 这一趟要交给后端的那份环境；其中名在 [`HANDED_ENVS`] 的那几格必须与 hello 的
+/// 第三项：`want_env` = 这一趟要交给后端的那份环境；其中名在 [`HANDED_ENVS`] 的那几格必须与 hello 的
 /// `host_env`（后端原样回显它被交的那几格）**两向相等**。口按 Claude 家目录算、不按数据目录算 ⇒ `CCM_DATA_DIR` 隔离跑的
 /// monitor 会连上真 profile 起的那个后端；不比这一项就会接上它、把凭据与历史注解写进那个数据目录（审计 E10）。
 pub(crate) fn hello_verdict(
@@ -402,7 +402,7 @@ pub(crate) fn hello_verdict(
     HelloVerdict::Ours
 }
 
-/// 〔HX2〕起本机后端时交给它、且它会在 hello 里原样回显的那几格环境的**名字**（后端那一侧 `wire::HOST_ECHO_ENVS`，
+/// 起本机后端时交给它、且它会在 hello 里原样回显的那几格环境的**名字**（后端那一侧 `wire::HOST_ECHO_ENVS`，
 /// 两向对拍）。[`relay_host_envs`] 交的正是这几格 —— 中转端口 · 凭据文件路径 · 历史注解路径。
 pub(crate) const HANDED_ENVS: [&str; 3] = [
     "CCM_RELAY_PORT",
@@ -410,7 +410,7 @@ pub(crate) const HANDED_ENVS: [&str; 3] = [
     "CCM_HISTORY_METADATA",
 ];
 
-/// 〔HX2〕hello 的 `host_env` 与这一趟要交的那几格（名在 [`HANDED_ENVS`] 的）两向比；不等 ⇒ 一句点名哪一格、两边各是什么的话。
+/// hello 的 `host_env` 与这一趟要交的那几格（名在 [`HANDED_ENVS`] 的）两向比；不等 ⇒ 一句点名哪一格、两边各是什么的话。
 /// hello 里没有 `host_env`（旧后端 / 一格都没被交）⇒ 当空表比。**纯函数**。
 fn host_env_mismatch(line: &str, want_env: &[(String, String)]) -> Option<String> {
     let theirs: std::collections::BTreeMap<String, String> =
@@ -637,7 +637,7 @@ impl AttachErr {
 /// （`launch.rs:196-198` 头注逐字）。收尸走 [`reap_detached`]，由「流断了」这个**事件**触发，
 /// 不是轮询。monitor 自己退出之后那个进程被 init 接管，由 init 收 —— 那一格不归我们。
 ///
-/// 〔P4 · 阶段 H〕哪些平台能脱离由 `platform::proc::CAN_DETACH` 答（原先是这里两份 `cfg` 分身）；不能 ⇒ 那句「不支持」照旧。
+/// 哪些平台能脱离由 `platform::proc::CAN_DETACH` 答（原先是这里两份 `cfg` 分身）；不能 ⇒ 那句「不支持」照旧。
 fn spawn_detached(
     bin: &std::path::Path,
     port: u16,
@@ -655,8 +655,8 @@ fn spawn_detached(
     for (k, v) in extra_env {
         cmd.env(k, v);
     }
-    // 〔CF1〕流模式起参与 stdio 那条载体共用一份（`local_backend::LOCAL_STREAM_ARGS`：`--tail-only --with-bg`；
-    //   〔LOC1b〕＋ `--with-rbind-token`，让 `session_added` 带 pid）。
+    // 流模式起参与 stdio 那条载体共用一份（`local_backend::LOCAL_STREAM_ARGS`：`--tail-only --with-bg`；
+    // ＋ `--with-rbind-token`，让 `session_added` 带 pid）。
     cmd.args(local_backend::LOCAL_STREAM_ARGS)
         // ★★ **`TMUX` 一律不继承**〔08-11 事故订正，与 `supervise_with_stdio` 同一条〕：
         //   tmux 客户端在 `TMUX` 有值时按它给的 socket 走，`TMUX_TMPDIR` 完全不起作用。
@@ -666,7 +666,7 @@ fn spawn_detached(
         .env(LISTEN_TOKEN_ENV, token)
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null());
-    // 〔NT2 · S1 · `设计/15 §4.7 S1`〕stderr 仍是 null（理由见下），但交它一份自己的诊断文件路径 ⇒ 它把 fd 2
+    // stderr 仍是 null（理由见下），但交它一份自己的诊断文件路径 ⇒ 它把 fd 2
     //   接进一份有上限、滚动的文件（后端 `stderr_log.rs`），设置「日志」里看得到。**只这条载体交**：被监护那条的
     //   stderr 已经进本进程的滚动日志（`StderrSink::ToLog`），交了反而分成两处。目录由这里建好（后端只新建文件、不建目录）；
     //   拿不到数据目录 / 建不了目录 ⇒ 不交，后端照旧不落盘（不猜路径）。
@@ -679,7 +679,7 @@ fn spawn_detached(
     {
         cmd.env(crate::logging::BACKEND_STDERR_LOG_ENV, p);
     }
-    // ★★ 三条策略（`00 §1.5.2`）—— 「三样一起才叫脱离」里的两样现在写在这儿：
+    // ★★ 三条策略—— 「三样一起才叫脱离」里的两样现在写在这儿：
     // · `Hidden` —— 脱离起来的后端**绝不该**在用户桌面上留一个黑框（那个框可关，
     //   一关就是 `CTRL_CLOSE_EVENT` ⇒ 常驻当场没了，而它的全部意义就是「常驻」）。
     //   🔴 这一格**先前没人回答过**：这条路上一个 creation flag 都没有。
@@ -731,12 +731,12 @@ pub struct DetachedHandle {
 /// ⇒ `LOCAL_BACKEND` 的锁是**两条路共用的那道门**，本表只在门内动。
 pub static DETACHED: std::sync::Mutex<Option<DetachedHandle>> = std::sync::Mutex::new(None);
 
-/// 〔LOC1a · 第四波 4D〕被监护那条路（非常驻：Windows / `CCM_NO_DETACH`）起来的那一份二进制。
+/// 被监护那条路（非常驻：Windows / `CCM_NO_DETACH`）起来的那一份二进制。
 /// 常驻那条的记在 [`DETACHED`] 里（`bin`）；这一格只为被监护那条补上同一个事实。
 /// **锁序同 `DETACHED`**：只在持有 [`LOCAL_BACKEND`] 的锁时取。
 static SUPERVISED_BIN: std::sync::Mutex<Option<std::path::PathBuf>> = std::sync::Mutex::new(None);
 
-/// 〔LOC1a · 第四波 4D〕**正在跑的那份**本机常驻后端的二进制 —— 给终端窗口导 `CCM_BACKEND_BIN`（`D11`）。
+/// **正在跑的那份**本机常驻后端的二进制 —— 给终端窗口导 `CCM_BACKEND_BIN`（`D11`）。
 ///
 /// 常驻那条（起的 / 接管的）⇒ `DETACHED.bin`（接管来的从 pid 文件第二行读回；读不回是空的 ⇒ `None`，不猜）；
 /// 被监护那条 ⇒ 起它时解析出的那一份。都不在 ⇒ `None`（窗口里不设，同「本机后端不在」）。
@@ -828,7 +828,7 @@ pub fn take_start_refusal() -> Option<String> {
         .take()
 }
 
-/// `KPY5` 的真相源：**起它的时候走没走脱离那条路**。
+/// `KPY5` 的源头：**起它的时候走没走脱离那条路**。
 ///
 /// ⚠ **不许拿 `channel` 或 `pid` 反推** —— 那正是 `P2d §0a` 翻掉的 `SSH_CONNECTION` 那一形
 /// （假信号不会报错，它只是**一直说是**，而在只有正例的测试里永远绿）。
@@ -861,7 +861,7 @@ pub(crate) fn detach_wanted(is_linux: bool, no_detach_env: Option<&str>) -> bool
 ///
 /// 收尸落在一条**专用线程**上（形状抄 `platform/terminal.rs::launch_local_posix_via` 里那条），
 /// 它随子进程结束而结束；`Child` 被取走之后句柄里只剩 pid + 二进制路径，
-/// 「停」那一步照样有凭据（〔STOP〕一次性 `--resident-stop` 用这个二进制、按它自己记的 pid 核身份）。
+/// 「停」那一步照样有凭据（一次性 `--resident-stop` 用这个二进制、按它自己记的 pid 核身份）。
 fn reap_detached(
     handshake: crate::backend_policy::Handshake,
     reader: crate::backend_policy::ReaderEnd,
@@ -1017,7 +1017,7 @@ fn attach_stream(sock: std::net::TcpStream, hello_line: &str) -> Result<(), Stri
         // ★ `K-P3b`：**我们这一侧的读端怎么结束的**。初值只在真读到 EOF 时才成立 ——
         //   下面那条 `Err` 支会把它换掉，两个出口各写各的。
         let mut reader_end = crate::backend_policy::ReaderEnd::CleanEof;
-        // 〔W5-VIS · `设计/15 §3.4 ②`〕这条载体上丢了几行 / 几帧 —— 原先两处裸 `continue` 一声不吭；记账，流结束出总账。
+        // 这条载体上丢了几行 / 几帧 —— 原先两处裸 `continue` 一声不吭；记账，流结束出总账。
         let mut tally = crate::frame_tally::FrameTally::new("本机常驻后端（脱离载体）");
         loop {
             match crate::ssh_source::read_capped_line(&mut reader, &mut buf, BACKEND_FRAME_LINE_CAP)
@@ -1025,7 +1025,7 @@ fn attach_stream(sock: std::net::TcpStream, hello_line: &str) -> Result<(), Stri
             {
                 Ok(CappedLine::Eof) => break,
                 Ok(CappedLine::TooLong(bytes)) => {
-                    // 丢弃 + 原位说出来，绝不静默（定框 E4；〔RENDER2 · ㉓①〕与远端同形：订阅收一格 `Gap`）。
+                    // 丢弃 + 原位说出来，绝不静默（定框 E4；与远端同形：订阅收一格 `Gap`）。
                     tracing::warn!("本机常驻后端发来一行 {bytes} 字节，超过单行上限；整行丢弃");
                     crate::local_lines::line_lost().await;
                     continue;
@@ -1051,20 +1051,20 @@ fn attach_stream(sock: std::net::TcpStream, hello_line: &str) -> Result<(), Stri
                 }
                 continue;
             };
-            // 本机的 tmux 帧（`P3` 刀 1）·〔SR1a〕应答 · 链路帧 —— 与 stdio 那条载体**同一个吸收点**，
+            // 本机的 tmux 帧（`P3` 刀 1）·应答 · 链路帧 —— 与 stdio 那条载体**同一个吸收点**，
             // 理由与前置条件写在 `local_backend::absorb_local_frame` 的头注上，这里不再抄一份散文。
-            // 〔CF1〕交回来的内容帧送进本机内容通道 —— 这是 tokio 任务 ⇒ `.await` 那一形（满了就停读：级 1 回推）。
+            // 交回来的内容帧送进本机内容通道 —— 这是 tokio 任务 ⇒ `.await` 那一形（满了就停读：级 1 回推）。
             if let Some(f) = crate::local_backend::absorb_local_frame(f, Some(&client)) {
                 crate::local_lines::deliver(f).await;
             }
         }
-        // 〔CF1〕告诉本机内容消费者这条流结束了。
+        // 告诉本机内容消费者这条流结束了。
         crate::local_lines::stream_ended().await;
-        // 〔SR1a〕流没了 ⇒ 经它开的在飞链路全部带原因结束（不让调用方干等到超时）。
+        // 流没了 ⇒ 经它开的在飞链路全部带原因结束（不让调用方干等到超时）。
         crate::link_mux::fail_owned_by(&client, &copy_text("rsLocalBackendHost.stream.lost", &[]));
-        // 〔SR1b〕经它开的传输也一律收场（后端的票表随那条流一起撤了）。
+        // 经它开的传输也一律收场（后端的票表随那条流一起撤了）。
         crate::sftp_pool::fail_owned_by(&client, &copy_text("rsLocalBackendHost.stream.lost", &[]));
-        // 流结束 ⇒ 摘掉登记，别在表里留一个写不进去的 client。〔MIG-1〕monitor 不再存 tmux 原文（没有要清的陈旧证据了）。
+        // 流结束 ⇒ 摘掉登记，别在表里留一个写不进去的 client。monitor 不再存 tmux 原文（没有要清的陈旧证据了）。
         crate::inbound_client::unregister(crate::inbound_client::LOCAL_ORIGIN, &client);
         // 收尸：`process_group` 不改父子关系，不 `wait` 就留 `Z`。**事件驱动，不是轮询。**
         // ★ `K-P3b`：两维证据一起交下去 —— 收尸那一拍才拿得到第三维（退出状态）。
@@ -1143,7 +1143,7 @@ fn start_detached(
         }
         // ⚠ **不静默复用，也不静默再起一个** —— 两条都会让状态更糟。
         Adopt::Refused(why) => {
-            // ★★ `重-2`：**这一臂是「出声并拒绝」里「出声」那一半的真相源。**
+            // ★★ `重-2`：**这一臂是「出声并拒绝」里「出声」那一半的源头。**
             //    自动起那条路（`lib.rs`）拿它决定要不要把话说到用户眼前 ——
             //    而不是去 `reason` 串里认字（那是 `KPY5` 治的那种假信号）。
             note_start_refusal(copy_text(
@@ -1162,7 +1162,7 @@ fn start_detached(
                 looked_at: vec![pid_path(&dir, port), token_path(&dir)],
             });
         }
-        // 〔TAIL · HOST 余项〕常驻后端多客户之后不再有「被另一个 monitor 占着」那一臂（连同两句话删了）。
+        // 〔HOST 余项〕常驻后端多客户之后不再有「被另一个 monitor 占着」那一臂（连同两句话删了）。
         Adopt::None => {}
     }
 
@@ -1275,7 +1275,7 @@ fn probe_and_attach_after_spawn(
     }
 }
 
-/// 〔HX2〕`env` = 这一趟交给（或会交给）后端的那份环境 —— 身份比对的第三项（[`hello_verdict`]）。
+/// `env` = 这一趟交给（或会交给）后端的那份环境 —— 身份比对的第三项（[`hello_verdict`]）。
 fn adopt_with(
     port: u16,
     home: &str,
@@ -1329,7 +1329,7 @@ fn adopt_with(
 /// ⚠ **那条判据眼皮底下真的漂过一次，而它全程绿**：`K-R42` 只给那一份接上了
 /// 「问产物自己带没带」与「释放失败说一句分得开的话」，本函数一个字没动 ——
 /// 顺序没变 ⇒ 判据没红，而同一台机上两条路对同一个失败给出了两句性质不同的话
-/// （本函数那一句逐字是 `K-R42` 从对面删掉的那一句）。读数住件文件 `K-R43 §9`。
+/// （本函数那一句逐字是 `K-R42` 从对面删掉的那一句）。读数住件文件。
 /// ⇒ 处置是**只留一份**，本函数降为适配器：把 `Resolved` 换成这条路要的 `Result`，
 /// 并补上两样**宿主知识**（目标三元组常量 · `make_executable`）。
 ///
@@ -1346,7 +1346,7 @@ fn resolve_backend_bin(
         // `backend-split` 的 C10：平台知识由宿主注入。
         &crate::platform::fs::make_executable,
         &crate::platform::fs::ensure_private_dir,
-        // 〔P1〕放不放问手上那份字节自己（起进程的三条策略由宿主给，`15 §5.1 A3`）。
+        // 放不放问手上那份字节自己（起进程的三条策略由宿主给）。
         &crate::ccm_probe::ask_place_verdict,
     ) {
         Resolved::Found(p) => Ok(p),
@@ -1357,7 +1357,7 @@ fn resolve_backend_bin(
 /// 停掉常驻那个。**调用方必须已经持有 [`LOCAL_BACKEND`] 的锁**（锁序，见 [`DETACHED`]）。
 /// `None` = 没有常驻那个；`Some(Ok)` = 结局（`graceful` / `killed` / `not_running`）；`Some(Err)` = 没停掉（句柄放回去，它还算在跑）。
 ///
-/// 〔STOP · 主会话裁〕**本机远端同一条**：在这台机器上起一次 `<后端> --resident-stop`（同机监督者：请它收尾 → 宽限期内等 → 到点强杀，
+/// **本机远端同一条**：在这台机器上起一次 `<后端> --resident-stop`（同机监督者：请它收尾 → 宽限期内等 → 到点强杀，
 /// 住后端 `control/resident.rs::stop_pid`），这里只拿回结局。monitor 这一侧不再自己发信号、自己等、自己强杀（HX1 那套 `stop_grace` 删了）。
 /// 自己起的那个随后在这里 `wait` 收尸（`process_group` 不改父子关系，`INVARIANTS §48.2`）。
 fn stop_detached_locked() -> Option<Result<crate::remote_resident::StopAnswer, String>> {
@@ -1404,7 +1404,7 @@ fn run_resident_stop(bin: &std::path::Path) -> Result<crate::remote_resident::St
         return Err(copy_text("rsLocalBackendHost.stop.noBin", &[]));
     }
     let mut cmd = std::process::Command::new(bin);
-    // 〔V151〕本机落点就是 `ccm`：打头的 `--` 让它当后端用（没有它整行交给 claude）。
+    // 本机落点就是 `ccm`：打头的 `--` 让它当后端用（没有它整行交给 claude）。
     let words = [local_backend::BACKEND_SEP, "--resident-stop"];
     cmd.args(words)
         .env_remove("TMUX")
@@ -1413,7 +1413,7 @@ fn run_resident_stop(bin: &std::path::Path) -> Result<crate::remote_resident::St
     if let Some(home) = crate::config::resolve_claude_dir() {
         cmd.env("CLAUDE_CONFIG_DIR", home);
     }
-    // 三条策略（`00 §1.5.2`）：`Hidden`（一次性子命令不该闪窗）· `JobKillOnClose`（就地等它退，别留后代）·
+    // 三条策略：`Hidden`（一次性子命令不该闪窗）· `JobKillOnClose`（就地等它退，别留后代）·
     // `Captured`（失败那一句 `{code,message}` 在 stderr 上，要读回来说给人听）。
     let out = spawn_managed_cmd(
         &mut cmd,
@@ -1441,7 +1441,7 @@ fn run_resident_stop(bin: &std::path::Path) -> Result<crate::remote_resident::St
 ///
 /// 死亡账是「**这台机的 backend**」的账，监护器本身是通用的（收 `bin` / `args` / `envs`）⇒ 落进监护器体内，
 /// 它就得多一个「你在监护谁」的概念。⇒ 接线落在**客户这一侧**。
-/// 〔RL1 · V107〕这条理由先前还有一半是「监护器有两种客户（后端与中转）」—— 中转并进常驻后端之后，
+/// 这条理由先前还有一半是「监护器有两种客户（后端与中转）」—— 中转并进常驻后端之后，
 /// 生产上的客户只剩这一条；理由的另一半（监护器不认识客户）照旧成立。
 /// 由 `backend_policy::tests::the_supervisor_itself_never_records_a_death` 钉着。
 ///
@@ -1582,18 +1582,18 @@ pub fn start_local_backend() -> StartOutcome {
     let extract_dir = creds_core::store::home_dir()
         .map(|h| h.join(".cc-monitor").join("bin"))
         .unwrap_or_else(|| std::path::PathBuf::from("/tmp/.cc-monitor/bin"));
-    // 〔HX1 · RK1 小尾巴〕本机上第一个建 `~/.cc-monitor` 的就是这里（释放后端二进制之前）⇒ 先把这一层按「只给本人」建好；
+    // 〔RK1 小尾巴〕本机上第一个建 `~/.cc-monitor` 的就是这里（释放后端二进制之前）⇒ 先把这一层按「只给本人」建好；
     //   `bin/` 那一层由释放那一步照旧建。建不了不挡起后端（释放那一步会出声说它自己的失败）。
     if let Some(home_dir) = extract_dir.parent() {
         if let Err(e) = crate::platform::fs::ensure_private_dir(home_dir) {
             tracing::warn!("{e}");
         }
     }
-    // 〔DP1 · 第四波〕**本机的字节也按 (OS, arch) 从那一张表里取**（`设计/01 §6.7a` 规矩 4：本机只是「目标机器恰好是自己」）。
+    // **本机的字节也按 (OS, arch) 从那一张表里取**（规矩 4：本机只是「目标机器恰好是自己」）。
     //
     // 〔墓碑 —— 这里原来是一道 `cfg!(target_os = "linux")` 的闸（D 阶段补审 08-11）：远端那两份 musl 只按 arch 取、不认 OS，
     //  于是在 Windows 构建上会释放一个 Linux ELF、再报「已起」；那道闸挡住了它，代价是非 Linux 本机一份字节都拿不到，
-    //  由 `local_backend` 那一层再问一次「这份产物自己带没带」补上。`设计/96 §7.1.3`：「这道闸要消失 —— 它是
+    //  由 `local_backend` 那一层再问一次「这份产物自己带没带」补上。：「这道闸要消失 —— 它是
     //  『表没有 OS 轴』逼出来的补丁」。〕今天 `byte_table::choose` 按这台机器的键查表：Windows 那一格就是这一份产物
     //  按 `TARGET` 内嵌的那份，Linux 那一格是 musl（开发树只有原生那份时给原生那份），不承诺 / 没带 ⇒ 那句拒绝的话。
     let this_machine = crate::byte_table::Key::this_machine();
@@ -1615,11 +1615,11 @@ pub fn start_local_backend() -> StartOutcome {
     // 它认识 `process_group(0)` / `/proc` / `~/.cc-monitor`，而 `backend/` 那半一样都不许认识
     // （`the_backend_half_stays_platform_agnostic` 的禁针含 `std::os::unix`）。
     // 走不了（平台不支持 / `CCM_NO_DETACH` 关掉了）才回落到下面那条今天的路。
-    // 〔RL1 · V107〕**中转不再是 monitor 另起的第三个进程**：它住本机常驻后端进程里，
+    // **中转不再是 monitor 另起的第三个进程**：它住本机常驻后端进程里，
     //   由后端自己 `bind`（`relay::listen::host`）。monitor 这一侧只剩一件事 —— 起后端时把
     //   端口与凭据路径交给它（[`relay_host_envs`]），**两条载体同一份**（常驻 / 被监护的 stdio）。
     let relay_envs = relay_host_envs();
-    // 〔DP1〕`embedded` 里可能是那句拒绝的话（`String`），不再是 `Copy` ⇒ 常驻那条拿一份拷贝。
+    // `embedded` 里可能是那句拒绝的话（`String`），不再是 `Copy` ⇒ 常驻那条拿一份拷贝。
     let resolve = || resolve_backend_bin(&extract_dir, embedded.clone());
     match start_detached(&resolve, &relay_envs) {
         // ★ `K-P3b`：这是本函数**两个**返回 `Failed` 的出口之一 —— 都从 `note_never_started` 过。
@@ -1635,16 +1635,16 @@ pub fn start_local_backend() -> StartOutcome {
         &crate::platform::fs::ensure_private_dir,
         // ★ `K-P3b`：backend 这条监护路的死亡账**就记在这个闭包里**（见它的头注）。
         backend_supervise_events(),
-        // ★ `15 §5.1 A3`：起进程那一下的三条答案由**宿主**给（backend 那半不认识平台）。
+        // ★：起进程那一下的三条答案由**宿主**给（backend 那半不认识平台）。
         crate::spawn_managed::local_backend_supervised(),
-        // 〔RL1〕与常驻那条路交的是**同一份**（上面那个 `relay_envs`）。
+        // 与常驻那条路交的是**同一份**（上面那个 `relay_envs`）。
         relay_envs,
-        // 〔P1〕同上：放不放问手上那份字节自己。
+        // 同上：放不放问手上那份字节自己。
         &crate::ccm_probe::ask_place_verdict,
     );
     if let Some(h) = sup {
         *g = Some(h);
-        // 〔LOC1a〕记下被监护那一份的二进制（给窗口导 `CCM_BACKEND_BIN`，见 [`running_backend_bin`]）。
+        // 记下被监护那一份的二进制（给窗口导 `CCM_BACKEND_BIN`，见 [`running_backend_bin`]）。
         if let Resolved::Found(p) = &resolved {
             *SUPERVISED_BIN.lock().unwrap_or_else(|e| e.into_inner()) = Some(p.clone());
         }
@@ -1678,20 +1678,20 @@ pub fn local_pid_and_attempts() -> Result<(Option<u32>, Option<u32>), String> {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// 〔RL1 · V107〕**本机中转住本机常驻后端进程里** —— monitor 只交端口与凭据路径
+// **本机中转住本机常驻后端进程里** —— monitor 只交端口与凭据路径
 // ════════════════════════════════════════════════════════════════════════════
 //
 // 先前这里是 `K-H2b` 那一族：monitor 起本机后端那一刻**另监护一个** `--relay` 子进程（第三个进程），
 // 「停」按钮与退出臂各收它一次，「中转在不在」问的是 monitor 自己内存里那张句柄表
-// （`真相源/70 §7b`：跨 monitor 重启认不出上一次那一个 ⇒ 孤儿必然，「孤儿总是中转」）。
-// 用户 2026-09-24 裁 V107「中转 ＋ 上游选择住本机常驻后端进程，对外端口由它绑；
+// （跨 monitor 重启认不出上一次那一个 ⇒ 孤儿必然，「孤儿总是中转」）。
+// 用户 2026-09-24 裁「中转 ＋ 上游选择住本机常驻后端进程，对外端口由它绑；
 // monitor 不再单独起 / 收中转（本机固定两个进程）」⇒ 那一族整个删掉：
 // - 起：后端流模式进程被交了端口就在本进程里起（`src/backend/relay/listen.rs::host`）；
-// - 收：随常驻后端按「退出行为」留或退（`设计/01 §3.3b`），monitor 一行都不管；
+// - 收：随常驻后端按「退出行为」留或退，monitor 一行都不管；
 // - 在不在：由本机常驻后端自己答（`launch-endpoint` 成品里的 `listening`，与远端同一个判准）；
-//   〔US1〕monitor 这一侧先前那个「回环上连一次」的探针（`relay_running`〔散文墓碑〕）随上游选择整块进后端删了。
+// monitor 这一侧先前那个「回环上连一次」的探针（`relay_running`〔散文墓碑〕）随上游选择整块进后端删了。
 
-/// 〔RL1〕起本机后端时交给它的那份**环境**：中转端口 ＋ 凭据文件路径。**两条载体交的是同一份**
+/// 起本机后端时交给它的那份**环境**：中转端口 ＋ 凭据文件路径。**两条载体交的是同一份**
 /// （常驻那条 `start_detached` 的 `extra_env` · 被监护那条 `local_backend::start_or_extract` 的 `envs`）。
 ///
 /// ★ 端口**显式交**：注入侧（`payload::RELAY_PORT`）与后端里 bind 的是同一个值；后端那一侧**没有缺省值**
@@ -1699,7 +1699,7 @@ pub fn local_pid_and_attempts() -> Result<(Option<u32>, Option<u32>), String> {
 /// ★★ 凭据路径也显式交（`D1 阻-3` 那条理由原样）：不交的话，后端里的上游选择走它自己那条
 ///   `resolve_path` → `resolve_home()`，而那一条认 `CLAUDE_CONFIG_DIR`；monitor 认的那份（它的数据目录下，
 ///   `creds_store::resolve_path`）**不跟随**它 ⇒ 两侧认两份文件，症状是「界面上配好了，上游选择说没配」。
-///   由 monitor 把**它认的那一份**说出来 —— 〔GP1 · US1〕写那份文件的（`apikey-key-set`）与读它的（上游选择）今天都是本机常驻后端，
+///   由 monitor 把**它认的那一份**说出来 —— 写那份文件的（`apikey-key-set`）与读它的（上游选择）今天都是本机常驻后端，
 ///   `CCM_DATA_DIR` 隔离跑时两者因此都跟着 monitor 的数据目录走（接上的是不是这个数据目录的那一个后端，由连接本身答：[`hello_verdict`] 比 hello 的 `host_env`）。
 ///
 /// ⚠ 拿不到家目录时凭据那一格**缺席**（不是空串）：后端那时退回它自己那条解析，
@@ -1710,7 +1710,7 @@ pub(crate) fn relay_host_envs() -> Vec<(String, String)> {
     if let Some(p) = crate::creds_store::resolve_path() {
         envs.push((creds_env.into(), p.display().to_string()));
     }
-    // 〔C4d · 第四波 4B〕历史注解的读写者换成本机常驻后端（主会话 09-25 裁：文件留在原处、同一路径）——
+    // 历史注解的读写者换成本机常驻后端（主会话 09-25 裁：文件留在原处、同一路径）——
     //   同上一格的理由：由知道那份文件在哪的那一侧把路径说出来（值就是 monitor 从前读写它的那一个函数算的）。
     //   拿不到数据目录时这一格缺席 ⇒ 后端那一侧明说「不知道注解文件在哪」，不猜。
     if let Some(p) = crate::history::metadata_path() {
@@ -1719,7 +1719,7 @@ pub(crate) fn relay_host_envs() -> Vec<(String, String)> {
     envs
 }
 
-// 〔US1 · 第四波 4D〕`relay_running` / `relay_listening_at`〔散文墓碑〕退役：本机中转在不在由本机常驻后端自己答
+// `relay_running` / `relay_listening_at`〔散文墓碑〕退役：本机中转在不在由本机常驻后端自己答
 //   （`launch-endpoint` · `apikey-routing` 的成品里那一格，读后端进程内的监听状态 —— 「口上有人 ≠ 我们的中转」那条诚实边界随之收掉）。
 
 /// P2s（`C8`②）：停本机后端。**句柄取走**（`take`）而不是留着 ——
@@ -1730,7 +1730,7 @@ pub fn stop_local_backend() -> Result<crate::remote_resident::StopAnswer, String
     let mut g = LOCAL_BACKEND
         .lock()
         .map_err(|e| copy_text("rsLocalBackendHost.lock.poisoned", &[("e", &e.to_string())]))?;
-    // 〔RL1 · V107〕中转住本机后端进程里 ⇒ 停后端就是停中转，这里不再另收一个。
+    // 中转住本机后端进程里 ⇒ 停后端就是停中转，这里不再另收一个。
     // ★ `K-P1`：常驻那条路的「停」。**锁序**：仍在 `LOCAL_BACKEND` 的锁里动 `DETACHED`。
     if let Some(r) = stop_detached_locked() {
         return r;
@@ -1758,7 +1758,7 @@ pub fn stop_local_backend() -> Result<crate::remote_resident::StopAnswer, String
 // `local_backend.rs` 的三个落点也要走这个口 ⇒ 这个测试模块必须 `pub(crate)`，
 // 它们按 `crate::local_backend_host::tests::demand_tmux_shim(..)` 取。
 //
-// 〔`K-R76` 09-12〕**这里原先多一道绕道，现在拆掉了**：模块写成私有 `mod tests`，再在
+// **这里原先多一道绕道，现在拆掉了**：模块写成私有 `mod tests`，再在
 // 文件末尾补一行 `pub(crate) use tests::demand_tmux_shim;` 重导出一次。那道绕道**不是随手写的**，
 // 它当时有一个真理由 —— 09-01 实打，直接写成 `pub(crate) mod tests` **当场打红 17 条**
 // （`cargo test -p monitor --lib`：`1194 passed; 17 failed; 13 ignored`；`guard-core` 的反向

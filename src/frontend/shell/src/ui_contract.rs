@@ -1,10 +1,10 @@
 //! 前后端契约的单一来源：Tauri 事件名常量 + emit payload schema。
 //!
-//! `events` 子模块定义所有 `emit` 事件名（task-update / remote-health …；〔MIG-1〕会话起停并进了会话流的格）；payload 结构体
+//! `events` 子模块定义所有 `emit` 事件名（task-update / remote-health …；会话起停并进了会话流的格）；payload 结构体
 //! （如 `JsonlLinePayload`，携带 per-file 单调 `seq`，前端 RecordTimeline 据此排序）也在本文件。
 //! 前端 `events.ts` 的 TS 接口须与此保持一致。
 //!
-//! 〔CF2 · 第四波 4B〕**会话内容不再是 Tauri 事件**：原来的 `jsonl-line` / `jsonl-batch` 两个事件
+//! **会话内容不再是 Tauri 事件**：原来的 `jsonl-line` / `jsonl-batch` 两个事件
 //! （与载荷 `JsonlBatchPayload`〔散文墓碑〕）退役，会话内容改走通道的 `subscribe`
 //! （`chan/webview.rs` · `event_replay·rs` 头注「订阅」）；流里每一格的体是 [`SessionStreamFrame`]。
 //!
@@ -13,10 +13,10 @@
 use serde::Serialize;
 
 pub mod events {
-    // 〔MIG-1 · `设计/99 §2.1 ⑬`〕会话起停 / 状态那 9 个事件（`session-started` / `-ended` / `-idle` / `-container` / `-unseen` /
+    // 会话起停 / 状态那 9 个事件（`session-started` / `-ended` / `-idle` / `-container` / `-unseen` /
     //   `-activity` · `remote-session-added` · `origin-sessions-listed` · `snapshot-inflight`）并进了会话流 `subscribe(origin, "session-lines")`：
     //   流里的一格（[`super::SessionStreamFrame`] 的起停那几种），不吃 credit、不丢（[`super::SessionStreamFrame::takes_credit`]）。
-    // 〔MIG-3b · ㉓②〕`task-update` 事件退役：任务变更经通道 `subscribe(origin, "session-tasks")`（后端 `tasks_changed` 帧）。
+    // `task-update` 事件退役：任务变更经通道 `subscribe(origin, "session-tasks")`（后端 `tasks_changed` 帧）。
     /// **方向相反的那一个**（前端 emit、Rust `app.listen` 收）：前端注册完 listener 后
     /// 通知后端开始 replay 历史，payload 见 [`FrontendReadyPayload`]。
     ///
@@ -30,9 +30,9 @@ pub mod events {
     /// 弹 toast。`kind` 区分类别（"overflow" / "version" / …），payload 见
     /// [`RemoteHealthPayload`]。#33 版本协商复用同通道、只换 kind/message，不另造。
     pub const REMOTE_HEALTH: &str = "remote-health";
-    // 〔DL1 · 第五波〕「某台远端的长连接握手完成、能问话了」那个事件（`remote-backend-ready`）退役：
+    // 「某台远端的长连接握手完成、能问话了」那个事件（`remote-backend-ready`）退役：
     //   前端经通道 `subscribe(origin, "accounts-changed")` 收同一件事（`Seen` ＝ 能问了 · `Frame` ＝ 那台账号清单变了），
-    //   句柄是 `event_replay`（头注那张 kind 表）。`设计/01 §2.2`「前端只有两个动作」。
+    //   句柄是 `event_replay`（头注那张 kind 表）。「前端只有两个动作」。
     // FOCUS_SWITCH 已删除：Win11 默认终端 (WindowsTerminal.exe) 是单进程多窗口架构，
     // OS GetForegroundWindow 只能拿到 WT 主进程 PID，无法区分 tab/window 内跑哪个
     // claude session。在 WT 默认环境下永远不工作；非 WT 终端可工作但不值为少数场景维护。
@@ -71,12 +71,12 @@ pub struct JsonlLinePayload {
     #[cfg_attr(test, ts(optional))]
     #[serde(rename = "origin", skip_serializing_if = "Option::is_none")]
     pub origin: Option<String>,
-    /// 〔MOD · `设计/90 §3` 判据 3〕这一行在渲染模型里的样子 —— 那台后端的成品（`agents/claudecode/schema.rs::JsonlRecord`，
+    /// 这一行在渲染模型里的样子 —— 那台后端的成品（`agents/claudecode/schema.rs::JsonlRecord`，
     /// ts-rs 从后端导出），monitor **原样转交、一个字段都不读**。
     #[cfg_attr(test, ts(type = "import(\"./JsonlRecord\").JsonlRecord"))]
     pub message: RecordBody,
-    /// 〔RENDER2 · `设计/10 §3.2`〕`[skipped_from, seq)` 这些行号 monitor **连着见过、都不可显示**（照占号、不出 payload）⇒
-    /// 前端可以把它们记成见过，去重集合成区间、段数不再随会话长度涨（`真相源/130 §3`）。缺 = 没有这一段或不确知（不猜）。
+    /// `[skipped_from, seq)` 这些行号 monitor **连着见过、都不可显示**（照占号、不出 payload）⇒
+    /// 前端可以把它们记成见过，去重集合成区间、段数不再随会话长度涨。缺 = 没有这一段或不确知（不猜）。
     #[cfg_attr(test, ts(optional, type = "number"))]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub skipped_from: Option<u64>,
@@ -86,7 +86,7 @@ pub struct JsonlLinePayload {
     pub rid: Option<String>,
 }
 
-/// 〔MOD · `设计/90 §3` 判据 3〕后端给的一条记录成品（JSON 原文）。monitor 只搬：不解析、不读字段，序列化时原样嵌进去。
+/// 后端给的一条记录成品（JSON 原文）。monitor 只搬：不解析、不读字段，序列化时原样嵌进去。
 #[derive(Debug, Clone, Serialize)]
 #[serde(transparent)]
 pub struct RecordBody(pub Box<serde_json::value::RawValue>);
@@ -107,9 +107,9 @@ impl PartialEq for RecordBody {
 }
 impl Eq for RecordBody {}
 
-/// 〔CF2 · 第四波 4B〕会话内容流（`subscribe(origin, "session-lines"[/<sid>])`）里**一格的体**。
+/// 会话内容流（`subscribe(origin, "session-lines"[/<sid>])`）里**一格的体**。
 ///
-/// 通道只搬不透明字节（`设计/05 §3.3.0`）；读它的是两端的业务那一侧（这里造、`src/frontend/ui/events.ts` 读）。
+/// 通道只搬不透明字节；读它的是两端的业务那一侧（这里造、`src/frontend/ui/events.ts` 读）。
 ///
 /// - `{"line": JsonlLinePayload}`：一行记录（seq = 行号，与实时 / 快照 / 按行号取回同一个空间）。
 /// - `{"batch": "start" | "end"}`：一段**成批**的行（F5 重放 · 一次攒出 ≥ 50 行的大增量）的边界。
@@ -122,12 +122,12 @@ impl Eq for RecordBody {}
 pub enum SessionStreamFrame {
     Line(JsonlLinePayload),
     Batch(BatchEdge),
-    /// 〔FW1 · 第四波 4D · 主会话裁 D-d〕这个会话的记录文件不见了 / 被改过已从头重读（后端 `session_file_gone` /
+    /// 这个会话的记录文件不见了 / 被改过已从头重读（后端 `session_file_gone` /
     /// `session_file_reread`）。与行同一条流、同序（行先冲出去再交它）⇒ 前端落到那个 tab 上说一句话。
     /// ⚠ 不进留存：F5 之后那句话没了（已知缺口，主会话 09-25 认）。
     FileNotice(SessionFileNoticePayload),
-    /// 〔MIG-1 · `设计/99 §2.1 ⑬`〕**会话起停 / 状态的成品**（那台后端裁、`session_book` 原样转）—— 与行同一条流、同一个顺序
-    /// （行与起停的先后就是流的先后，`05 §15.3` 那条「ended 抢在行前面 ⇒ 僵尸」由构造排除）。
+    /// **会话起停 / 状态的成品**（那台后端裁、`session_book` 原样转）—— 与行同一条流、同一个顺序
+    /// （行与起停的先后就是流的先后，那条「ended 抢在行前面 ⇒ 僵尸」由构造排除）。
     /// ⚠ 这几种**不吃 credit、不许丢**（[`Self::takes_credit`]；登记的唯一例外）：丢一格起停别处补不回来。
     /// 活会话（本机远端同一形；`origin` 说哪台）。
     Live(SessionLivePayload),
@@ -150,7 +150,7 @@ pub enum SessionStreamFrame {
 }
 
 impl SessionStreamFrame {
-    /// 〔MIG-1 · ⑬ 登记的例外〕这一格吃不吃 credit：行与批边界 · 记录文件出声吃（可丢、丢了按行号补）；
+    /// 〔⑬ 登记的例外〕这一格吃不吃 credit：行与批边界 · 记录文件出声吃（可丢、丢了按行号补）；
     /// 起停那几种**不吃、不丢**（丢了别处补不回来）。穷尽 `match`：新长一种格编译期就要表态。
     /// TS 那一侧同一张表住 `src/frontend/ui/events.ts::CREDIT_EXEMPT_FRAMES`，两侧对金样 `tests/__fixtures__/session-stream-credit.golden.json`。
     pub fn takes_credit(&self) -> bool {
@@ -171,7 +171,7 @@ impl SessionStreamFrame {
     }
 
     /// 一条订阅（`only` = 只跟某一个会话的那一形）收不收这一格：说某个会话的 ⇒ 是它才收；说整台的 ⇒ 整台订阅都收，
-    /// 只跟一个会话的只收〔MIG-1 续〕机器级「说不清」（那台看不见了，它跟的那一条也说不清了）。
+    /// 只跟一个会话的只收机器级「说不清」（那台看不见了，它跟的那一条也说不清了）。
     pub fn reaches(&self, only: Option<&str>) -> bool {
         match (only, self.session_id()) {
             (None, _) => true,
@@ -209,7 +209,7 @@ pub struct SessionRunsPayload {
     pub runs: RecordBody,
 }
 
-/// 〔MIG-1〕[`SessionStreamFrame::SnapshotInflight`] 的体。
+/// [`SessionStreamFrame::SnapshotInflight`] 的体。
 #[derive(Debug, Serialize, Clone, PartialEq, Eq)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
@@ -217,7 +217,7 @@ pub struct SnapshotInflightPayload {
     pub count: u32,
 }
 
-/// 〔FW1〕[`SessionStreamFrame::FileNotice`] 的体。
+/// [`SessionStreamFrame::FileNotice`] 的体。
 #[derive(Debug, Serialize, Clone, PartialEq, Eq)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
@@ -230,7 +230,7 @@ pub struct SessionFileNoticePayload {
     pub change: String,
 }
 
-/// 〔CF2〕成批那一段的哪一头。
+/// 成批那一段的哪一头。
 #[derive(Debug, Serialize, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
@@ -247,7 +247,7 @@ pub struct SessionEndedPayload {
     pub session_id: String,
 }
 
-/// audit-fixes F03.2：可重连（idle-tmux 灰灯）的 payload（〔MIG-1〕会话流 `idle` 那一格）。独立命名（非复用
+/// audit-fixes F03.2：可重连（idle-tmux 灰灯）的 payload（会话流 `idle` 那一格）。独立命名（非复用
 /// `SessionEndedPayload`）便于 grep 与语义分离——idle ≠ ended。
 #[derive(Debug, Serialize, Clone)]
 #[cfg_attr(test, derive(ts_rs::TS))]
@@ -256,8 +256,8 @@ pub struct SessionIdlePayload {
     pub session_id: String,
 }
 
-/// 〔GP1 · 第四波〕「说不清」的 payload（〔MIG-1〕会话流 `unseen` 那一格）。独立命名，理由同 [`SessionIdlePayload`]：unseen ≠ ended。
-/// 〔MIG-1 续 · 主会话裁〕**机器级**：说的是「那台看不见了 / 那台还没报完清单」，前端对那台上活的 · 可重连的 tab 一并落说不清
+/// 「说不清」的 payload（会话流 `unseen` 那一格）。独立命名，理由同 [`SessionIdlePayload`]：unseen ≠ ended。
+/// **机器级**：说的是「那台看不见了 / 那台还没报完清单」，前端对那台上活的 · 可重连的 tab 一并落说不清
 /// （原先逐会话发一格 `session_id`）。
 #[derive(Debug, Serialize, Clone)]
 #[cfg_attr(test, derive(ts_rs::TS))]
@@ -266,7 +266,7 @@ pub struct SessionUnseenPayload {
     pub origin: crate::origin::Origin,
 }
 
-/// 〔MIG-1〕活会话的成品（会话流里的 [`SessionStreamFrame::Live`]；本机远端同一形，`origin` 说哪台）。
+/// 活会话的成品（会话流里的 [`SessionStreamFrame::Live`]；本机远端同一形，`origin` 说哪台）。
 /// 前端：本机 ⇒ 复活已有 tab / 建骨架（原 `session-started`）；远端 ⇒ 建骨架（原 `remote-session-added`）。先于该会话的行。
 #[derive(Debug, Serialize, Clone)]
 #[cfg_attr(test, derive(ts_rs::TS))]
@@ -276,7 +276,7 @@ pub struct SessionLivePayload {
     /// 哪台机器（本机 `<local>`；远端是 `[label]` Tab 前缀）。
     pub origin: String,
     /// Batch7-F24：pidfile 元信息透传（p1e backend 起有值；旧 backend → None）。
-    /// kind = "interactive"/"bg"（bg → ⚙ 标识；〔V125〕bg 平铺为普通 tab，不再挂宿主排成树）。wire 帧侧因 enum tag
+    /// kind = "interactive"/"bg"（bg → ⚙ 标识；bg 平铺为普通 tab，不再挂宿主排成树）。wire 帧侧因 enum tag
     /// 占用叫 `session_kind`，壳的事件 payload 无此约束，与本地 payload 统一叫 `kind`。
     pub kind: Option<String>,
     /// **E73（additive）：attach 进去对人有没有意义。**
@@ -289,14 +289,14 @@ pub struct SessionLivePayload {
     /// 骨架标题不再等首行——cwd 直接可用（偿还 F18 backlog）。
     pub cwd: Option<String>,
     pub name: Option<String>,
-    /// 〔FIX3 · `99 §2.2 ②`〕启动期令牌（`设计/80 §8.2`）：前端起新会话时铸的那一个，据它认出「我刚起的那条起来了」。
+    /// 启动期令牌：前端起新会话时铸的那一个，据它认出「我刚起的那条起来了」。
     /// 那台后端读不到 / 没索要 ⇒ 缺席。
     #[cfg_attr(test, ts(optional))]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rbind_token: Option<String>,
 }
 
-/// 〔U4b · 第四波〕`container` 格 的 payload。`container` 只有两个值：`"tmux"` / `"none"`
+/// `container` 格 的 payload。`container` 只有两个值：`"tmux"` / `"none"`
 /// （判不了的不发这个事件）。
 #[derive(Debug, Serialize, Clone, PartialEq, Eq)]
 #[cfg_attr(test, derive(ts_rs::TS))]
@@ -306,7 +306,7 @@ pub struct SessionContainerPayload {
     pub container: String,
 }
 
-/// 〔TAP · V124〕会话流 `session-tap`（通道 `subscribe`，`设计/05 §15`）里一格的体：后端 `tap` 帧的字段原样 ＋ 哪台机器。
+/// 会话流 `session-tap`（通道 `subscribe`）里一格的体：后端 `tap` 帧的字段原样 ＋ 哪台机器。
 ///
 /// `stream` = 请求自带的会话标识（== 它的 sid；前端拿它对 tab 的 sid，对不上 / 空 ⇒ 匿名流、不显示）；`run` = 归哪个子运行（缺 ＝ 主运行）；
 /// `resp` · `n` 见后端 `wire::Frame::Tap`；`ev`（归一事件，后端按上游协议折好的）与 `end`（`"done"` / `"broken"`）恰有一个。
@@ -332,7 +332,7 @@ pub struct SessionTapPayload {
     pub end: Option<String>,
 }
 
-/// 〔U4b · 第四波〕`listed` 格 的 payload：哪台机器的清单报完了。
+/// `listed` 格 的 payload：哪台机器的清单报完了。
 #[derive(Debug, Serialize, Clone)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
@@ -352,11 +352,11 @@ pub struct FrontendReadyPayload {
     pub priority_sid: Option<String>,
 }
 
-// 〔MIG-1〕`list_active_sessions` 的返回项 `ActiveSessionPayload`〔散文墓碑〕删了：本机骨架从会话流里的 `live` 成品来
+// `list_active_sessions` 的返回项 `ActiveSessionPayload`〔散文墓碑〕删了：本机骨架从会话流里的 `live` 成品来
 //   （F5 就绪点按成品缓存重放），那条命令随之退役。
 
 /// 远端健康事件 payload（SS-F，issue #32 起）。`origin` = 出问题的远端机器 label
-/// （〔C4b · 第四波〕从 `Option<String>` 改成 `String`：五个发射点全在 `ssh_source.rs`、全都带着那台的 label，
+/// （从 `Option<String>` 改成 `String`：五个发射点全在 `ssh_source.rs`、全都带着那台的 label，
 /// 「没有 origin」从来不是一个会发生的值 —— 类型里就不给它留格子，TS 那侧随之不再装得下 `null`）；
 /// `kind` = 类别（"overflow" / "version" / …）供前端节流键与图标选择；`message` =
 /// 直接展示给用户的人读说明。

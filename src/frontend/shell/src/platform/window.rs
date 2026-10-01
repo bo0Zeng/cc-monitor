@@ -1,4 +1,4 @@
-//! 窗口这一族的平台差异〔P4 · 阶段 H：`设计/90 §4` · `15 §5.3 C6` 余下〕：壳里平台 cfg 的唯一住址（同 [`super::fs`]）。
+//! 窗口这一族的平台差异〔余下〕：壳里平台 cfg 的唯一住址（同 [`super::fs`]）。
 //! 两件都原住 `lib.rs`，逐字搬来：[`desktop_fixes`]（`run()` 里那段 `cfg(windows)` 块）· [`bring_to_front`]（`bring_monitor_to_front` 两个平台臂）。
 
 use tauri::Manager;
