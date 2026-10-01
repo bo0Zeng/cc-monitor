@@ -17,6 +17,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::agents::{ChildRunTag, ToolCard};
+use std::collections::BTreeMap;
 
 /// 〔RENDER2 · J10 · `设计/10 §2.2b ⑤` 那条不等价的根〕一条 user 正文按注入噪声规则判过的成品。
 #[derive(Debug, Serialize, Clone, Default, PartialEq, Eq)]
@@ -195,8 +196,8 @@ pub enum JsonlRecord {
             default,
             skip_serializing_if = "std::collections::BTreeMap::is_empty"
         )]
-        #[cfg_attr(test, ts(optional, as = "Option<std::collections::BTreeMap<String, ChildRunTag>>"))]
-        child_runs: std::collections::BTreeMap<String, ChildRunTag>,
+        #[cfg_attr(test, ts(optional, as = "Option<BTreeMap<String, ChildRunTag>>"))]
+        child_runs: BTreeMap<String, ChildRunTag>,
     },
 
     #[serde(rename = "ai-title")]

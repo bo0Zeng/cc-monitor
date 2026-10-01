@@ -1034,6 +1034,10 @@ fn mig1_the_credit_exemption_is_exactly_the_registered_lifecycle_frames() {
             origin: crate::origin::Origin::local(),
         }),
         F::SnapshotInflight(b::SnapshotInflightPayload { count: 1 }),
+        F::Runs(b::SessionRunsPayload {
+            session_id: "s".into(),
+            runs: b::RecordBody::from_json("[]".into()).unwrap(),
+        }),
     ];
     let key = |f: &F| -> String {
         let v = serde_json::to_value(f).unwrap();
