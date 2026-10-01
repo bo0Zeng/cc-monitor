@@ -256,13 +256,26 @@ fn view_of(store: &Store, conflicts: &[mcp_share::Conflict]) -> AccountMcpView {
     }
 }
 
+/// 账号库在就拿它那把锁（与改账号库那几条命令同一把：锁的是账号库目录本身）。
+/// 不借命令那一层的那一份：那一层还认得 `ccm` 的命令行，扩展页读共享集合时会被连带引用进来。
+fn lock(home: &str) -> Result<Option<crate::platform::lock::DirLock>, Refusal> {
+    let accts = join(home, acct_core::ACCTS_DIR_NAME);
+    if item_at(&accts).exists() {
+        crate::platform::lock::hold(Path::new(&accts))
+            .map(Some)
+            .map_err(|e| ("io_failed", e))
+    } else {
+        Ok(None)
+    }
+}
+
 /// 一趟：锁 → 读 → `decide`（cc-monitor 里定的那一下；同步那一趟原样交回）→ 对照 → 落盘 → 写回共享集合。
 fn run(
     d: &dyn Door,
     decide: &dyn Fn(&Store, &[Seen]) -> Result<Store, Refusal>,
 ) -> Result<AccountMcpView, Refusal> {
     let home = door::home(d).map_err(|e| ("io_failed", e))?;
-    let _held = super::wire::lock(&home)?;
+    let _held = lock(&home)?;
     let Some(list) = accounts_in(&home)? else {
         return Ok(AccountMcpView::default());
     };
