@@ -325,6 +325,12 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "后端出成品 `{diagnosis, snippet, source}`（`observe/cc_bus_hooks.rs`，读那台自己的 `settings.json` ＋ stat，只读）；\
          前端 `src/frontend/ui/cc-bus-hooks-reads.ts::fetchHooksReport` 问（扩展页 cc-bus 那一行每台一问）、`decodeHooksReport` 按恰好的键集合收，monitor 这一侧零发送点",
     ),
+    // 直接敲的 claude 也走中转（可选、生成让你贴）：生来就走通道（从没过 monitor）。
+    (
+        "relay-optin",
+        "后端出成品 `{state, note, missing, source, snippet, listening}`（`accounts/upstream_select/endpoint.rs::answer_optin`，读那台用户级设置文件 ＋ 钥匙文件，只读）；\
+         前端 `src/frontend/ui/relay-optin-reads.ts::fetchRelayOptin` 问（机器页「终端」栏那一块展开时问当前那台）、`decodeRelayOptin` 按恰好的键集合收，monitor 这一侧零发送点",
+    ),
     // 〔⑬「monitor 零 SSH」〕公钥推送：本机后端读 `.pub` · 组请求 · 经那台后端写或一次 exec，界面直接问本机。
     (
         "pubkey-push",
