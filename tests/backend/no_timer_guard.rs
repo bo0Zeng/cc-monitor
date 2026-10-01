@@ -113,7 +113,8 @@ mod f09_external_beat {
     /// 同 `platform/cfgless_guard` 的 `REGISTERED` 那两个方向）。
     const REGISTERED_EXTERNAL_BEATS: &[(&str, &str, &str, &str)] = &[(
         "control/ccm/plan.rs",
-        "Yes, I trust this folder",
+        // 锚在轮询串自己的骨架上：框里那句话是各家适配层的（`LaunchFace::trust_prompt`），串里只剩它的占位。
+        "| grep -q {prompt} && {{ tmux send-keys",
         "C14",
         "`C14`〔实 08-01·inotify 看不见 pane 内容〕逐字：「**预信任的『等信任框』没有内核事件源** \
          —— 它本质就是轮询。**`C8` 的唯一登记例外**：`control/` 继续**以 shell 字符串形态**产出它\

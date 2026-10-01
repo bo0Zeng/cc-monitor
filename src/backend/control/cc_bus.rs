@@ -1174,7 +1174,7 @@ pub(crate) fn parse_spawn(args: &serde_json::Value) -> Result<SpawnArgs, CmdErr>
     ))?;
     let s = |k: &str| obj.get(k).and_then(|v| v.as_str()).unwrap_or("").trim();
     // ⚠ **不在后端白名单 agent 种类**：初版这里是 `matches!(tool, <两个字面量>)`，
-    //   `agent_locality_guard::kind_dispatch_sites_are_enumerated_one_by_one` 当场红 ——
+    //   `agent_locality_guard::the_general_layer_names_no_agent` 当场红 ——
     //   通用层里又多一处「加 agent 要跟着改」的地方。合法性归 cc-spawn 自己
     //   （它的 `case "$tool"` 不认就 rc=2 ⇒ 这里的 `invalid_args`），与 `P4f-Y5`
     //   「收件人合法性归 cc-bus，后端不写第二份白名单」同一条。

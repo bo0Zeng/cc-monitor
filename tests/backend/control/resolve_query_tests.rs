@@ -71,9 +71,10 @@ fn resolve_codex_builds_resume_subcommand_and_cx_name() {
         agent_kind: "codex".into(),
         ..spec(uuid, vec![])
     };
-    let v: Value =
-        serde_json::from_str(&serde_json::to_string(&resolve(crate::agents::REGISTRY, &s).expect("valid")).unwrap())
-            .unwrap();
+    let v: Value = serde_json::from_str(
+        &serde_json::to_string(&resolve(crate::agents::REGISTRY, &s).expect("valid")).unwrap(),
+    )
+    .unwrap();
     assert_eq!(v["command"], format!("codex resume {uuid}"));
     assert_eq!(v["sessionName"], "cx-019f75dd"); // cx-<sid8>（非 cc-）
     assert_eq!(v["mode"], "PtyInject");
@@ -82,9 +83,10 @@ fn resolve_codex_builds_resume_subcommand_and_cx_name() {
         agent_kind: "codex".into(),
         ..spec(uuid, vec![Some("mycodex")])
     };
-    let v2: Value =
-        serde_json::from_str(&serde_json::to_string(&resolve(crate::agents::REGISTRY, &s2).expect("valid")).unwrap())
-            .unwrap();
+    let v2: Value = serde_json::from_str(
+        &serde_json::to_string(&resolve(crate::agents::REGISTRY, &s2).expect("valid")).unwrap(),
+    )
+    .unwrap();
     assert_eq!(v2["command"], format!("mycodex resume {uuid}"));
 }
 
@@ -97,9 +99,10 @@ fn resolve_non_codex_agent_kind_falls_back_to_claude() {
             agent_kind: ak.to_string(),
             ..spec("sid_x", vec![Some("claude")])
         };
-        let v: Value =
-            serde_json::from_str(&serde_json::to_string(&resolve(crate::agents::REGISTRY, &s).expect("valid")).unwrap())
-                .unwrap();
+        let v: Value = serde_json::from_str(
+            &serde_json::to_string(&resolve(crate::agents::REGISTRY, &s).expect("valid")).unwrap(),
+        )
+        .unwrap();
         assert_eq!(
             v["command"], "claude --resume sid_x",
             "agent_kind={ak:?} 应落 Claude"
@@ -130,7 +133,11 @@ fn resolve_rejects_injection_in_session_id() {
         assert_eq!(err.0, "invalid_session_id", "拒 {bad:?}");
     }
     // 合法集通过。
-    assert!(resolve(crate::agents::REGISTRY, &spec("abc-DEF_123", vec![Some("cc")])).is_ok());
+    assert!(resolve(
+        crate::agents::REGISTRY,
+        &spec("abc-DEF_123", vec![Some("cc")])
+    )
+    .is_ok());
 }
 
 /// 审计 security①：B2 对称化——launchCandidate（base）含 shell 元字符 → unsafe_launch_candidate，
@@ -151,14 +158,19 @@ fn resolve_rejects_injection_in_launch_candidate() {
         assert_eq!(err.0, "unsafe_launch_candidate", "拒 base {bad:?}");
     }
     // 合法 launcher（带 flag/路径/等号）通过。
-    assert!(resolve(crate::agents::REGISTRY, &spec("abc123", vec![Some("/usr/bin/cc --foo=bar")])).is_ok());
+    assert!(resolve(
+        crate::agents::REGISTRY,
+        &spec("abc123", vec![Some("/usr/bin/cc --foo=bar")])
+    )
+    .is_ok());
 }
 
 /// 审计 quality-阻塞：`resolve_from_json`（= `run()` 的分发核）真覆盖 happy 路径——
 /// stdin JSON 串 → CommandPlan JSON 串（含 aterm caps 名）。此前 `run()` 零覆盖。
 #[test]
 fn resolve_from_json_happy_returns_command_plan_json() {
-    let out = resolve_from_json(crate::agents::REGISTRY, 
+    let out = resolve_from_json(
+        crate::agents::REGISTRY,
         r#"{"sessionId":"abcd1234-ef","launchCandidates":["cc"],"claudeDir":"/c","fallbackCwd":"/t","alreadyInTmux":false}"#,
     )
     .expect("ok");
@@ -179,13 +191,18 @@ fn resolve_from_json_malformed_is_bad_request() {
 #[test]
 fn resolve_from_json_propagates_validation_errors() {
     assert_eq!(
-        resolve_from_json(crate::agents::REGISTRY, r#"{"sessionId":"a;b"}"#).unwrap_err().0,
+        resolve_from_json(crate::agents::REGISTRY, r#"{"sessionId":"a;b"}"#)
+            .unwrap_err()
+            .0,
         "invalid_session_id"
     );
     assert_eq!(
-        resolve_from_json(crate::agents::REGISTRY, r#"{"sessionId":"ok1","launchCandidates":["c;d"]}"#)
-            .unwrap_err()
-            .0,
+        resolve_from_json(
+            crate::agents::REGISTRY,
+            r#"{"sessionId":"ok1","launchCandidates":["c;d"]}"#
+        )
+        .unwrap_err()
+        .0,
         "unsafe_launch_candidate"
     );
 }

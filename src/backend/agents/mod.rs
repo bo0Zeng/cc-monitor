@@ -23,7 +23,7 @@
 //!
 //! 两条判据钉住这个分界，都住 [`crate::agent_locality_guard`]：
 //! ① 专有的格式针**只许**在 `agents/<名>/` 下出现；
-//! ② 通用层里的 kind 派发点**逐个登记**（今天恰好 1 处）—— 那份登记表**就是**上面说的那份清单。
+//! ② 通用层里**一个 agent 名字面量都没有** —— 按哪一家做什么，只问适配层那一格（如 [`LaunchFace`]）。
 //!
 //! # ⚠ 两个 agent 都在了，但**故意还没有 trait**
 //!
@@ -167,6 +167,9 @@ pub(crate) struct LaunchFace {
     /// resume 那个 tmux 会话名的前缀（会话名 ＝ `<前缀>-<sid 前 8 个字符>`）。
     pub(crate) session_name_prefix: &'static str,
     /// 这一家自己够不着 tmux socket ⇒ 起它时要把 cc-bus 身份（tmux 会话名）经 `CC_BUS_ID` 交进去。
+    ///
+    /// ⚠ 它答的是「**要不要**」，不是「**能不能**」：值恒来自 tmux 的会话名（`control::ccm::BUS_ID_RECIPE`），
+    /// 没有 tmux 就没有这个值 —— 那是载体没了，不是这一家做不到。要不要请一个 `sh` 进来另由 `ccm` 的 `needs_shell` 判。
     pub(crate) needs_bus_id: bool,
     /// 这一家的会话有身份面（`@ccm_sid` 回填）。
     pub(crate) has_identity: bool,
@@ -185,7 +188,8 @@ pub(crate) fn launch_face_among(registry: &[Adapter], kind: &str) -> Option<Laun
         .and_then(|a| a.launch)
 }
 
-/// 某一家（wire 上的 kind）的起会话事实。认不出 ⇒ `None`。
+/// 某一家（wire 上的 kind）在生产注册表里的起会话事实。认不出 ⇒ `None`。生产段一律走 [`launch_face_among`]（注册表是入参）。
+#[cfg(test)]
 pub(crate) fn launch_face_of(kind: &str) -> Option<LaunchFace> {
     launch_face_among(REGISTRY, kind)
 }
