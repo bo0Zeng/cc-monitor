@@ -508,7 +508,7 @@ fn the_tmux_shim_primitive_has_exactly_one_home() {
 /// 写死的名字下，一边收尾的 `kill-server` / `docker rm` 打掉另一边正在跑的那趟，PASS 数随并发漂；
 /// 弱网台架的开跑残留检查还会因别棵树留下的同名容器红。
 ///
-/// 判定（剥注释后的可执行行，`tests/e2e/` 整棵树，命中集 == ∅）：
+/// 判定（剥整行注释后的可执行行，`tests/e2e/` 整棵树，命中集 == ∅；行尾注释不剥，写进去的字面量照样算）：
 /// ① tmux 选择器后面（`-L` / `-S`）是字面量 —— 只放过 `-L default`：canary 问的正是用户那台默认 server；
 /// ② docker 的 `--name` / `--network` / `network create|rm` 后面是字面量 —— docker 自带的网络模式
 ///    （`host` / `none` / `bridge`）不是私有名字，放过；
@@ -598,17 +598,6 @@ tmux select-pane -L -t x; tmux capture-pane -p -S -50\n";
          `. tmux-shim.sh --names-only` 后 `X=\"$(e2e_run_name <前缀>)\"`。",
         hits.join("\n")
     );
-}
-
-/// shell 可执行行：剥整行注释与行尾 ` # …`（引号里恰好有 ` # ` 的会被多剥 —— 只会少报，不会多报）。
-fn shell_exec_lines(src: &str) -> Vec<String> {
-    src.lines()
-        .filter(|l| !l.trim_start().starts_with('#'))
-        .map(|l| match l.find(" # ") {
-            Some(i) => l[..i].to_string(),
-            None => l.to_string(),
-        })
-        .collect()
 }
 
 /// 一个参数位上的值是不是「引用」（变量 / 命令替换 / printf 占位），不是字面量。
@@ -773,10 +762,12 @@ fn assigned_from_ref(value: &str) -> bool {
 /// `${X:-lit}` / `${X:=lit}` 里的 `(X, lit 的头一个字)`，行里任意位置。
 fn parameter_defaults(line: &str) -> Vec<(String, String)> {
     let mut out = Vec::new();
-    let mut i = 0usize;
-    while let Some(off) = line[i..].find("${") {
-        let at = i + off + 2;
-        i = at;
+    let b = line.as_bytes();
+    for open in 0..b.len().saturating_sub(1) {
+        if b[open] != b'$' || b[open + 1] != b'{' {
+            continue;
+        }
+        let at = open + 2;
         let name: String = line[at..]
             .chars()
             .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
@@ -818,7 +809,8 @@ fn hardcoded_private_names(files: &[(String, String)]) -> Vec<String> {
             }
             continue;
         }
-        let lines = shell_exec_lines(src);
+        let code = strip_comments(src);
+        let lines: Vec<&str> = code.lines().collect();
         let mut name_vars: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
         for line in &lines {
             for (slot, arg) in name_arg_slots(line) {
