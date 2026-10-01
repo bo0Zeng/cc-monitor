@@ -39,6 +39,6 @@ describe("diagnoseRemoteLauncher", () => {
     expect(msg).toContain("ccm");
     expect(msg).toContain("账号和模型偏好");
     // 〔AL1〕从前指「下面的生成器」—— 生成器并进了机器页的「别名」，那句话跟着指过去。
-    expect(msg).toContain("本机 → 工具 → 别名");
+    expect(msg).toContain("本机 → 终端 → 别名");
   });
 });

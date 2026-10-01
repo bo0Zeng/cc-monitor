@@ -429,7 +429,9 @@ FRONTEND_PIN: "OrderedDict[str, tuple]" = OrderedDict([
             "`src/frontend/ui/settings/machine-aliases.ts`（别名管理器并进机器页），份数不变",
             "S4 那一拍改这一行。**目标不在这一栏** —— 住 "
             "`FRONTEND_GOAL_PER_ITEM['S4']`")),
-    ("S5", (("src/frontend/ui/settings/cc-bus-section.ts",),
+    ("S5", (("src/frontend/ui/settings/ext-section.ts",),
+            "〔10-01〕份数不变、换了住处：cc-bus 的装口从驾驶舱（`src/frontend/ui/settings/cc-bus-section.ts`）搬进扩展页（③ 那一处），"
+            "装完那一句本机 `ccm` 够不够新（`cc_bus_ccm_precheck`）跟着过去。"
             "〔MIG-3a · 09-28〕**2 → 1**：`src/frontend/ui/views/inbox-view.ts`（收件箱写）改经通道问那台后端。"
             "量于 09-15 · 同上。〔MIG-3a · 09-27〕**3 → 2**：`src/frontend/ui/settings/mcp-section.ts` 那几处（MCP 写 / 推拉 · skill 装卸）"
             "改经通道问那台后端，不再调 S5 的 Tauri 命令",

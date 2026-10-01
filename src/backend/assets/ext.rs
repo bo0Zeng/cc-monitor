@@ -491,13 +491,13 @@ pub(crate) fn mcp_dir(at: &ExtLoc) -> Result<&str, (&'static str, String)> {
     Ok(at.project().unwrap_or_default())
 }
 
-/// cc-monitor 自带的扩展：（种类, 名字, 内置备注的文案键, 要不要列各台的钩子状态）。
-const BUILTIN: &[(ExtKind, &str, &str, bool)] = &[(
-    ExtKind::Skill,
-    super::cc_bus_install::NAME,
-    "beExt.builtin.ccBus",
-    true,
-)];
+/// cc-monitor 自带的扩展：（种类, 名字, 内置备注, 要不要列各台的钩子状态）。
+const BUILTIN: &[(ExtKind, &str, fn() -> String, bool)] =
+    &[(ExtKind::Skill, super::cc_bus_install::NAME, cc_bus_note, true)];
+
+fn cc_bus_note() -> String {
+    copy_text("beExt.builtin.ccBus", &[])
+}
 
 /// 是不是 cc-monitor 自带的那一个（装它用被写那台二进制里那一份，不从别的机器拿）。
 pub(crate) fn is_builtin(kind: ExtKind, name: &str) -> bool {
@@ -620,8 +620,8 @@ fn row(cat: &Catalog, cols: &[Column], kind_s: &str, name: &str, per: &[Vec<&Ass
         about: shown.and_then(about_of),
         detail: shown.map(detail_of).unwrap_or_default(),
         new,
-        builtin: builtin.map(|(_, _, key, hooks)| ExtBuiltin {
-            note: copy_text(key, &[]),
+        builtin: builtin.map(|(_, _, note, hooks)| ExtBuiltin {
+            note: note(),
             hooks: *hooks,
         }),
         note: asset_catalog::note_of(cat, &asset_catalog::entry_key(kind_s, name)),
@@ -765,11 +765,11 @@ fn bring_for(
         .map(|t| t.at.clone());
     let Some(to) = to else {
         let why = if kind == ExtKind::Mcp && c.m.projects.is_empty() {
-            "beExt.note.noProject"
+            copy_text("beExt.note.noProject", &[])
         } else {
-            "beExt.card.sameMachine"
+            copy_text("beExt.card.sameMachine", &[])
         };
-        return (None, Some(copy_text(why, &[])));
+        return (None, Some(why));
     };
     (
         Some(ExtBring {

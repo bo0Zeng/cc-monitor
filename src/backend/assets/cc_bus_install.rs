@@ -229,7 +229,7 @@ pub(crate) fn state_at(skills: &Path) -> Value {
     json!({
         "dest": dest.display().to_string(),
         "writes": writes,
-        "existing": std::fs::symlink_metadata(&dest).is_ok(),
+        "existing": dest.exists(),
         "version": embedded_digest(),
     })
 }

@@ -68,7 +68,7 @@ const UNIT: &[&str] = &[
     "tests/frontend/ui/session-writes.vitest.ts", // 〔MIG-3b〕删会话 · 分叉经通道直说那台后端：解码器读金样 ＋ 替身数请求
     "tests/frontend/ui/pubkey-push.vitest.ts", // 〔MIG-3b 续〕公钥推送走通道：解码器读金样 ＋ 替身数请求
     "tests/backend/assets/hub_tests.rs", // 〔MIG-3a · 主会话 09-28 裁〕两台之间那几件的枢纽（替身的这台 ＋ 替身的远端 capture，纯内存）
-    "tests/frontend/ui/cc-bus-install-reads.vitest.ts", // 〔MIG-3a · 子步 3〕cc-bus 装 / 三态走通道：严格收 ＋ 问本机（纯替身）
+    "tests/frontend/ui/cc-bus-hooks-reads.vitest.ts", // cc-bus 钩子状态走通道：严格收（金样）＋ 四态不误说 ＋ 只问 hooks-diag
     "tests/backend/agents/claudecode/cards_tests.rs", // 〔THIN〕原 `tests/common/agent-tools-core/lib_tests.rs`：工具词表收进后端适配层（纯函数）
     "tests/backend/observe/facts_query_tests.rs", // 〔DUP2 · J19〕SCAN → UNIT：读生成物那条异源对拍随两份收成一份退役，余下全是行为判据
     "tests/frontend/ui/config-lost-update.vitest.ts", // 〔CFG1〕J1 两 realm 11 写者同拍写 · J5 写者路径集合
@@ -192,7 +192,6 @@ const UNIT: &[&str] = &[
     "tests/frontend/ui/session-accounts-poll.vitest.ts",
     "tests/frontend/ui/session-status.vitest.ts",
     "tests/frontend/ui/settings/account-new-form.vitest.ts",
-    "tests/frontend/ui/settings/cc-bus-hooks-section.vitest.ts",
     "tests/frontend/ui/settings/cc-bus-section.vitest.ts",
     "tests/frontend/ui/settings/config-surface-section.vitest.ts",
     "tests/frontend/ui/settings/context-limits-section.vitest.ts", // 〔FIX4〕`contextLimits` 的入口（假 IPC）

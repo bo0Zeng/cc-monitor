@@ -41,7 +41,7 @@ vi.mock("../../../../src/frontend/ui/settings/remote-section", () => ({
           id: string,
           title: string,
           el: HTMLElement,
-          parts?: { connection: HTMLElement; components: HTMLElement; tools: HTMLElement },
+          parts?: { connection: HTMLElement; components: HTMLElement; terminal: HTMLElement },
         ) => void;
       };
     }) {
@@ -57,14 +57,14 @@ vi.mock("../../../../src/frontend/ui/settings/remote-section", () => ({
         conn.textContent = "CONN";
         const comp = document.createElement("div");
         comp.textContent = "COMP";
-        // 〔ST2〕第三块：「工具」栏里那台机器自己的别名（与本机页同一个位置）。
-        const tools = document.createElement("div");
-        tools.textContent = "TOOLS";
-        tools.id = "stub-remote-aliases";
+        // 第三块：「终端」栏里那台机器自己的别名（与本机页同一个位置）。
+        const terminal = document.createElement("div");
+        terminal.textContent = "TERMINAL";
+        terminal.id = "stub-remote-aliases";
         opts?.pages?.addMachinePage("machine:aya", "aya", document.createElement("div"), {
           connection: conn,
           components: comp,
-          tools,
+          terminal,
         });
       }, 0);
     }
@@ -227,7 +227,7 @@ describe("S2 设置面板分页结构", () => {
       // MCP · 资产目录 · 插件三块搬去了顶层「扩展」页（跨机器的一类对象）。
       // 〔FIX4 · `97 §8`〕代码全景组件的卸口（本机与远端页都有）。
       "代码全景组件",
-      "cc-bus 钩子",
+      // cc-bus 钩子那一块拿掉了：cc-bus 是扩展页里的一行，各台的钩子状态在那一行里。
       // 🔴 `70 §10.1`（步 14a）：「足迹」从顶层「改动足迹」页搬进来，是**新增的第五块**。
       "足迹",
       // 〔ST2〕原顶层「改动足迹」页剩下的那一块，同栏。
@@ -369,8 +369,7 @@ describe("S2 设置面板分页结构", () => {
     // **任何时刻恰好一绿一红，两条不可能同时绿**（`N-F1b` 的 `NbM5` 实打过）。
     // ⇒ 同一件事实写在两处，本件改了那件事实 ⇒ 两处一起改，不是二选一。
     expect(visibleTitles).toContain("账号");
-    // cc-bus 钩子两边都有意义
-    expect(visibleTitles).toContain("cc-bus 钩子");
+    expect(visibleTitles).not.toContain("cc-bus 钩子");
   });
 
   it("🔴 步 3：机器页还没注册上来时，列表页上是**骨架**，不是兜底态", async () => {
@@ -399,7 +398,6 @@ describe("S2 设置面板分页结构", () => {
       "账号",
       "别名", // 〔AL1〕本机那一格的 ②，跟着 per-machine 那几块一起留在兜底落点（〔AL1c〕终端集成并进了它）
       "代码全景组件", // 〔FIX4〕
-      "cc-bus 钩子",
       "足迹",
       "未识别的数据",
     ]);
@@ -419,7 +417,7 @@ describe("S2 设置面板分页结构", () => {
     expect(sk?.hidden ?? true, "机器页来了，列表页上那块骨架就该收起来").toBe(true);
   });
 
-  it("★ 远端机器页拆成横向四栏（连接/组件/账号/工具），本机页不拆", async () => {
+  it("★ 远端机器页拆成横向五栏（连接/组件/账号/终端/足迹），本机页不拆；没有「工具」栏", async () => {
     // 分栏复用 SettingsRouter（横向 + 无页头），不另造 tab 原语。
     document.body.replaceChildren();
     new SettingsPanel({ windowMode: true });
@@ -430,7 +428,7 @@ describe("S2 设置面板分页结构", () => {
     )!;
     expect(local.querySelector(".settings-shell-h")).toBeNull();
 
-    // 远端机器页**必须**拆成四栏，且顺序是 连接/组件/账号/工具。
+    // 远端机器页**必须**分栏，且顺序是 连接/组件/账号/终端/足迹。
     const remote = document.querySelector<HTMLElement>(
       '.settings-page[data-route-id="machine:aya"]',
     )!;
@@ -438,7 +436,7 @@ describe("S2 设置面板分页结构", () => {
     expect(strip, "远端机器页必须分栏").not.toBeNull();
     expect(
       [...strip!.querySelectorAll(".settings-nav-item")].map((b) => b.textContent),
-    ).toEqual(["连接", "组件", "账号", "工具", "足迹"]);
+    ).toEqual(["连接", "组件", "账号", "终端", "足迹"]);
     // 「连接」是落地栏，同一时刻只有它可见
     const visible = [...strip!.querySelectorAll<HTMLElement>(".settings-page")].filter(
       (e) => !e.hidden,
@@ -447,7 +445,7 @@ describe("S2 设置面板分页结构", () => {
     expect(visible[0]!.textContent).toContain("CONN");
   });
 
-  it("★ 切到远端机器页 → 那几块分节各自落进「账号 / 工具」栏", async () => {
+  it("★ 切到远端机器页 → 那几块分节各自落进「账号 / 终端」栏；cc-bus 钩子那一块不在任何一栏", async () => {
     // 分栏若不接线，它们会退回「整块搬到页面底部」，四栏就成了空壳。
     document.body.replaceChildren();
     new SettingsPanel({ windowMode: true });
@@ -464,22 +462,18 @@ describe("S2 设置面板分页结构", () => {
       strip.querySelector<HTMLElement>(`.settings-page[data-route-id="machine:aya#${id}"]`)!;
     // 账号块进「账号」栏
     expect(tabPage("acct").querySelector(".accounts-section-stub")).toBeTruthy();
-    // cc-bus 钩子 进「工具」栏（〔AL1c〕终端集成并进了「别名」）
-    const toolTitles = [...tabPage("tools").querySelectorAll(".settings-group-title")].map(
-      (e) => e.textContent,
-    );
-    expect(toolTitles).toContain("代码全景组件");
-    expect(toolTitles).toContain("cc-bus 钩子");
-    // 反向：账号**不该**也出现在工具栏里（搬 DOM 一处一份，不能有两份）
-    expect(toolTitles).not.toContain("账号");
-    // 🔴 〔ST2 · 协调方转主会话裁：别名统一放「工具」栏〕这台机器自己的别名在「工具」栏**最前面**，
-    //   不在「组件」栏 —— 与本机页「工具 → 别名」同一个位置。
-    const tools = tabPage("tools");
-    expect(tools.querySelector("#stub-remote-aliases"), "远端的别名不在「工具」栏").not.toBeNull();
+    const titles = [...strip.querySelectorAll(".settings-group-title")].map((e) => e.textContent);
+    expect(titles, "cc-bus 钩子那一块该拿掉了（它在扩展页 cc-bus 那一行里）").not.toContain("cc-bus 钩子");
+    // 反向：账号**不该**也出现在终端栏里（搬 DOM 一处一份，不能有两份）
+    const termTitles = [...tabPage("term").querySelectorAll(".settings-group-title")].map((e) => e.textContent);
+    expect(termTitles).not.toContain("账号");
+    // 🔴 这台机器自己的别名在「终端」栏**最前面**，不在「组件」栏 —— 与本机页「终端 → 别名」同一个位置。
+    const term = tabPage("term");
+    expect(term.querySelector("#stub-remote-aliases"), "远端的别名不在「终端」栏").not.toBeNull();
     expect(tabPage("comp").querySelector("#stub-remote-aliases")).toBeNull();
-    const stub = tools.querySelector<HTMLElement>("#stub-remote-aliases")!;
-    expect(stub.parentElement!.firstElementChild, "别名不在「工具」栏最前面").toBe(stub);
-    // 本机那一格：「工具」里也有「别名」—— 两边同一个位置。
+    const stub = term.querySelector<HTMLElement>("#stub-remote-aliases")!;
+    expect(stub.parentElement!.firstElementChild, "别名不在「终端」栏最前面").toBe(stub);
+    // 本机那一格：「终端」里也有「别名」—— 两边同一个位置。
     document.querySelector<HTMLButtonElement>("#settings-tab-machine\\:（本机）")!.click();
     const localTitles = [
       ...document.querySelectorAll('.settings-page[data-route-id="machine:（本机）"] .settings-group-title'),
@@ -556,7 +550,7 @@ describe("S9 本机 OS 门（〔AL1c〕别名那一块的平台）", () => {
     });
   }
 
-  it("门只管这一块 —— 同栏的代码全景组件 / cc-bus 钩子在 Linux 上照常在", async () => {
+  it("门只管这一块 —— 同一页上的代码全景组件在 Linux 上照常在", async () => {
     __setHostOsForTests("linux");
     document.body.replaceChildren();
     new SettingsPanel({ windowMode: true });
@@ -569,6 +563,5 @@ describe("S9 本机 OS 门（〔AL1c〕别名那一块的平台）", () => {
         .querySelectorAll(".settings-group-title"),
     ].map((e) => e.textContent);
     expect(titles).toContain("代码全景组件");
-    expect(titles).toContain("cc-bus 钩子");
   });
 });

@@ -42,7 +42,7 @@ const captured = vi.hoisted(() => ({
       id: string,
       title: string,
       el: HTMLElement,
-      parts?: { connection: HTMLElement; components: HTMLElement; tools: HTMLElement },
+      parts?: { connection: HTMLElement; components: HTMLElement; terminal: HTMLElement },
     ) => void;
     removeMachinePage: (id: string) => void;
     navigateToMachinePage: (id: string) => void;
@@ -67,7 +67,7 @@ vi.mock("../../../../src/frontend/ui/settings/remote-section", () => ({
         opts?.pages?.addMachinePage(REMOTE_PAGE, "aya", remote, {
           connection: document.createElement("div"),
           components: document.createElement("div"),
-          tools: document.createElement("div"), // 〔ST2〕那台机器自己的别名（「工具」栏最前面）
+          terminal: document.createElement("div"), // 那台机器自己的别名（「终端」栏最前面）
         });
       }, 0);
     }
