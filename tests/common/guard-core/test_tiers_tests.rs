@@ -97,6 +97,8 @@ const UNIT: &[&str] = &[
     "tests/backend/platform/shell_tests.rs",
     "tests/backend/platform/tcp_rtt_tests.rs", // 〔P2〕Windows 臂 `SIO_TCP_INFO` 的布局与控制码对 SDK
     "tests/backend/plugin/probe_tests.rs",
+    // 〔10-01〕集成 → 单元：真起进程的那几条（可打断的等法）随代码全景删了，剩下的只喂纯函数。
+    "tests/backend/plugin/invoke_tests.rs",
     "tests/comms/outward/http1_tests.rs",
     "tests/comms/outward/route_tests.rs", // 〔US1〕跨半边抠 monitor 源码那几条退役 ⇒ 只剩纯解析 ＋ 成品→决策表（SCAN → UNIT）
     "tests/comms/outward/tee_tests.rs",
@@ -313,6 +315,8 @@ const SCAN: &[&str] = &[
     "tests/backend/files/module_boundary_guard.rs",
     "tests/backend/guard_support_tests.rs",
     "tests/backend/stream/inbound_structure_guards.rs",
+    // 〔10-01〕集成 → SCAN：唯一那条真进程判据（`cancel` 真打断在飞的全景请求）随代码全景删了。
+    "tests/backend/stream/inbound_tests.rs",
     "tests/backend/stream/listen_tests.rs",
     "tests/backend/main_argv_table_guard.rs",
     "tests/backend/main_stream_flag_tests.rs",
@@ -593,8 +597,6 @@ const INTEGRATION: &[&str] = &[
     "tests/backend/files/size_tests.rs", // 〔W5-FILES〕算目录大小（临时目录真走一棵树）
     "tests/backend/files/grep_tests.rs", // 〔FILES3 · ㉜〕按内容搜：真铺一棵临时树、注入设备号与小上界
     "tests/backend/footprint/face_tests.rs", // 〔MIG-3b 续〕`footprint-report` 那一面（真 stat 临时目录；原 `tests/backend/footprint_tests.rs`）
-    // 〔RM1f〕SCAN → 集成：多了一条真进程判据（`cancel` 真打断在飞的 `panorama`，替身小程序是真进程）
-    "tests/backend/stream/inbound_tests.rs",
     "tests/backend/layering_guard.rs",
     "tests/backend/main_fourth_face_tests.rs",
     "tests/backend/assets/mcp_sync_tests.rs",      // 〔AS1〕
@@ -618,8 +620,6 @@ const INTEGRATION: &[&str] = &[
     "tests/backend/observe/tmux_observe_tests.rs",
     "tests/backend/observe/watcher_tests.rs",
     "tests/backend/plugin/discover_tests.rs",
-    // 〔RM1f〕单元 → 集成：`run_abortable` 两条判据真起进程（被丢 ⇒ 整组都没了 · 没被丢 ⇒ 与同步那一形同果）
-    "tests/backend/plugin/invoke_tests.rs",
     "tests/backend/plugin_walk_fixture.rs",
     "tests/backend/faces/read_face_tests.rs",
     // 〔MG1 合 RK1〕中转口的门（403 / 421）：铺真钥匙文件、起真监听 ⇒ 判别器判集成层。
