@@ -940,50 +940,54 @@ pub(crate) fn build_among(
         });
     }
 
-    // ── resume 先查是否已在跑（「只看不吃 `--resume` 以复用 tmux 名」）──
-    //    在跑 ⇒ 接上它，不另起第二份（两份 claude 同写一份记录）。判「在跑」只问避让那同一份快照。
-    if let Some((sid, name)) = o
-        .resumes
-        .as_deref()
-        .and_then(|sid| taken.and_then(|t| t.running(sid)).map(|n| (sid, n)))
-    {
-        return Ok(Plan::Rejoin {
-            name: name.to_string(),
-            sid: sid.to_string(),
-            detach: o.detach,
-        });
-    }
-
     let cwd = resolve_cwd(o, env);
     free_text_gate(&cwd, o)?;
     let (config_dir, account) = resolve_account(o, env, table)?;
-    // 〔§47〕账号配置目录（manifest 里来的）是本仓自管的路径，该走全表。
-    // 全表原先住 `observe/accounts_query.rs`（`control → observe` 是禁止方向，TL3 在这里先只过了自由文本那一层）；
-    //   今天整份搬进共享 crate（`acct_core::config_dir_ok`，全仓唯一一份），这里直接用。空串 = 账号 0 / 继承，不注入、不判。
+    // 〔§47〕账号配置目录（manifest 里来的）是本仓自管的路径，该走全表（`acct_core::config_dir_ok`，全仓唯一一份）。
+    //   空串 = 账号 0 / 继承，不注入、不判。
     if !config_dir.is_empty() && !acct_core::config_dir_ok(&config_dir) {
         return Err(refuse(&env.account_env, &config_dir));
     }
-    // 在跑、却不在 ccm 认得的 tmux 会话里（上面那一格没接上）⇒ 接不上，也不另起第二份：明说。
-    //   判活是观测层起步初扫那一份（`observe::watcher::running_sessions`，入口注入），只对留 pidfile 的那几家问。
-    let scan = env
-        .running_sessions
-        .filter(|_| face.is_some_and(|f| f.has_pidfiles));
-    if let (Some(sid), Some(scan)) = (o.resumes.as_deref(), scan) {
-        let dir = if !config_dir.is_empty() {
-            Some(config_dir.as_str())
-        } else if o.use_base {
-            None
-        } else {
-            env.inherited_config_dir.as_deref()
-        };
-        if let Some((_, pid)) = scan(dir.map(std::path::Path::new))
-            .into_iter()
-            .find(|(s, _)| s == sid)
-        {
-            return Err(Die(copy_text(
-                "bePlan.build.runningElsewhere",
-                &[("sid", sid), ("pid", &pid.to_string())],
-            )));
+    // ── resume 先查是否已在跑（「只看不吃 `--resume` 以复用 tmux 名」）──
+    //    判活是观测层起步初扫那一份（`observe::watcher::running_sessions`，入口注入），只对留 pidfile 的那几家问；
+    //    `None` = 问不了（预览 / 不留 pidfile 的那一家）。
+    let alive = match (o.resumes.as_deref(), env.running_sessions) {
+        (Some(sid), Some(scan)) if face.is_some_and(|f| f.has_pidfiles) => {
+            let dir = if !config_dir.is_empty() {
+                Some(config_dir.as_str())
+            } else if o.use_base {
+                None
+            } else {
+                env.inherited_config_dir.as_deref()
+            };
+            Some(
+                scan(dir.map(std::path::Path::new))
+                    .into_iter()
+                    .find(|(s, _)| s == sid)
+                    .map(|(_, pid)| pid),
+            )
+        }
+        _ => None,
+    };
+    if let Some(sid) = o.resumes.as_deref() {
+        match (taken.and_then(|t| t.running(sid)), alive) {
+            // 标记说它在那个 tmux 会话里，进程也真在（或问不了）⇒ 接上它，不另起第二份（两份 agent 同写一份记录）。
+            //   标记在、进程已经没了（agent 退了、只剩 shell 的那个会话）⇒ 不是在跑：照常起（就地 resume 键进的正是那个 pane）。
+            (Some(name), Some(Some(_)) | None) => {
+                return Ok(Plan::Rejoin {
+                    name: name.to_string(),
+                    sid: sid.to_string(),
+                    detach: o.detach,
+                });
+            }
+            // 在跑、却不在 ccm 认得的 tmux 会话里 ⇒ 接不上，也不另起第二份：明说。
+            (None, Some(Some(pid))) => {
+                return Err(Die(copy_text(
+                    "bePlan.build.runningElsewhere",
+                    &[("sid", sid), ("pid", &pid.to_string())],
+                )));
+            }
+            _ => {}
         }
     }
     // 认不出这一家 ⇒ 空串（exec 当场说起不来，不猜成别的哪一家）。

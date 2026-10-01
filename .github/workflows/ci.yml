@@ -850,7 +850,7 @@ jobs:
           #    gate2-golden.tsv）。⚠ 地板值刻意不在这里重抄，理由见上面那段警告。
           for pair in "tmux-target 26" "ccm-cli 48" "ccm-print-parity 12" \
                       "cc-spawn-uplift 72" \
-                      "restart 24" "resume 17" "graylight-frames 13" "restart-frames 5" "resume-frames 7" \
+                      "restart 25" "resume 17" "graylight-frames 13" "restart-frames 5" "resume-frames 7" \
                       "ccm-rbind-title 8" "backend-fork 10" "inbound-frames 31" \
                       "ccm-contract-parity 45" "backend-gate2 33" "local-backend 14" \
                       "backend-sessions-rewatch 5" "backend-tmux-late-server 2" \
@@ -936,9 +936,6 @@ jobs:
       - name: install tmux + jq
         run: sudo apt-get update && sudo apt-get install -y tmux jq
 
-      - name: tmux 目标精确匹配（F01）
-        run: bash tests/e2e/assert-pass-floor.sh tmux-target 26
-
       # ── 🔴 `K-R122`（2026-09-14）：**四步搬走了 —— 它们要的是 Rust 工具链的产物。** ──
       #
       # 搬去了下面 `e2e-tmux-rust` 的「build debug backend」**之后**，四步逐个点名：
@@ -993,15 +990,6 @@ jobs:
       #    **一条没人在跑的判据，加错了地方也不会有人知道。**
       #    留在这里的只有 `cc-bus-queue-drain`：它收发全走文件，不要二进制（所以它绿了）。
       #    ⇒ 判「这一步该住哪个 job」的尺子只有一把：**它要不要 Rust 工具链的产物**。
-
-      # G-C（解 E41）：这两套只要 node + tmux（经 tsx driver 驱真编排逻辑，不碰后端）。
-      # 它们此前进不了 CI 的原因不是「需要什么」，而是**会踩开发者机器上的真实 tmux 会话**
-      # ——现在每套都把自己钉在私有 socket 上（`unset TMUX` + 短 `TMUX_TMPDIR`），可以进来了。
-      - name: 换号重启编排（F-E3）
-        run: bash tests/e2e/assert-pass-floor.sh restart 24
-
-      - name: resume 编排 + 复用守卫（F-E2）
-        run: bash tests/e2e/assert-pass-floor.sh resume 17
 
       # Phase G 审计：G2 新增的这套**只有 npm 脚本、没进任何门禁**。它已具备入网条件
       # （打印 `合计 PASS=`、`unset TMUX` + 私有 `-L` socket 隔离、不碰真 `~/.claude`），
@@ -1066,6 +1054,17 @@ jobs:
       - name: build debug backend（供 backend-frames 三套）
         working-directory: src/backend
         run: cargo build
+
+      # 起会话交给终端的只是一行 `ccm …` ⇒ 下面三套真跑那一行，要上面刚编出来的后端二进制（以 `ccm` 之名上 PATH，
+      #   `tests/e2e/ccm-shim.sh`）⇒ 从 `e2e-tmux`（不装 Rust）搬到这里，排在 build 之后。
+      - name: tmux 目标精确匹配（F01）
+        run: bash tests/e2e/assert-pass-floor.sh tmux-target 26
+
+      - name: 换号重启编排（F-E3）
+        run: bash tests/e2e/assert-pass-floor.sh restart 25
+
+      - name: resume 编排 + 复用守卫（F-E2）
+        run: bash tests/e2e/assert-pass-floor.sh resume 17
 
       # ── 🔴〔用量下线 2026-09-18〕**「用量探针（F10）」那一步整步删了。** ────────────
       # 它跑的是 `tests/e2e/usage-probe-acceptance.sh`（套件名 `usage-probe`，地板 11），

@@ -13,7 +13,7 @@ const EXEMPT: &[(&str, &str)] = &[
     (
         "rbind-token-endtoend",
         "同上一条：**进的是本机门禁 `tests/scripts/gate.sh`**\
-             （`run_e2e rbind-token-endtoend 9`，exact）。`ci.yml` 计数地板那一行是 `§8.7` 步 3 落地时\
+             （`run_e2e rbind-token-endtoend 10`，exact）。`ci.yml` 计数地板那一行是 `§8.7` 步 3 落地时\
              报备待拍板的（`ci.yml` 同段注释逐字）。拍了加进 `ci.yml` 的那一拍，本行删掉",
     ),
     (

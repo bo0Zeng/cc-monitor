@@ -742,7 +742,7 @@ fn exec_direct(d: &plan::Direct) -> i32 {
     }
     if let Some(url) = &d.relay {
         // 钥匙从这台的钥匙文件读进 agent 进程环境（不进 argv、不进打印出来的命令）。读不到 ⇒ 不起（注进去每一发都被中转拒）。
-        match relay_key()
+        match crate::accounts::upstream_select::endpoint::relay_key(&|k| std::env::var(k).ok())
             .and_then(|k| crate::accounts::upstream_select::endpoint::keyed_base_url(url, &k))
         {
             Some(keyed) => std::env::set_var(plan::BASE_URL_ENV, keyed),
@@ -761,15 +761,6 @@ fn exec_direct(d: &plan::Direct) -> i32 {
     let mut cmd = std::process::Command::new(prog);
     cmd.args(rest);
     exec_or_spawn(cmd, &format!("'{prog}'"))
-}
-
-/// 这台机器上中转钥匙文件里那一把（形状不对 / 不在 ⇒ `None`）。家目录与 `plan::Env::from_process` 同一个取法。
-fn relay_key() -> Option<String> {
-    let home = plan::home_of(|k| std::env::var(k).ok());
-    let raw =
-        std::fs::read_to_string(plan::under_home(&home, relay_route_core::KEY_FILE_REL)).ok()?;
-    let k = raw.trim();
-    relay_route_core::key_shape_ok(k).then(|| k.to_string())
 }
 
 /// POSIX 上就地 `exec`（不多一层进程）；其余平台退成「起它 + 等它 + 透传退出码」。
