@@ -90,6 +90,8 @@ export PATH="$BIN:$PATH"
 #   没有等价物；它发现那个文件在会往 stderr 说一句然后照常跑）⇒ 那个值改走环境变量。
 #   留着 `CCM_CONFIG` 指过去是有意的：它同时验「发现它存在会出声」这条行为没丢。
 # 隔离账号库 / 工作区 / 预信任写入点，绝不碰用户真实文件：账号库跟着家目录走 ⇒ 家目录换成临时目录。
+# 工具链的位置先钉住（下面要 `cargo test` 取渲染器输出；它们默认跟着家目录走，换了家就找不到工具链）。
+export CARGO_HOME="${CARGO_HOME:-$HOME/.cargo}" RUSTUP_HOME="${RUSTUP_HOME:-$HOME/.rustup}"
 export HOME="$TMP/home"
 ACCTS="$HOME/.cc-monitor/accounts"; mkdir -p "$ACCTS/z"
 cat > "$ACCTS/accounts.json" <<JSON
