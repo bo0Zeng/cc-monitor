@@ -188,8 +188,10 @@ fn every_monitor_launch_path_hands_over_one_ccm_line() {
         let ok = match words.first().map(String::as_str) {
             Some("ccm") => true,
             // 外层只包一层：`tmux send-keys -t '=名:' '<那一行>' Enter; tmux attach -t '=名:'`。
-            Some("tmux") => words.get(1).map(String::as_str) == Some("send-keys")
-                && words.get(4).is_some_and(|inner| inner.starts_with("ccm ")),
+            Some("tmux") => {
+                words.get(1).map(String::as_str) == Some("send-keys")
+                    && words.get(4).is_some_and(|inner| inner.starts_with("ccm "))
+            }
             _ => false,
         };
         assert!(ok, "「{}」交出去的不是一行 ccm：{line}", c.name);
