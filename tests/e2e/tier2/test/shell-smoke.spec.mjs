@@ -18,7 +18,7 @@ import { Key } from "webdriverio";
 
 const SHELL = ["#app", "#tab-bar", "#message-stream", "#status-bar"];
 // 🔴 **这张表是手写的，而它腐过一次** —— 2026-09-21 现打逮到：
-// `.usage-trigger` 在 `设计/50 删用量`（09-18）里随那个入口整删，生产里 **0 处**，
+// `.usage-trigger` 在（09-18）里随那个入口整删，生产里 **0 处**，
 // 而本表还列着它并断言 `isClickable` ⇒ 一条**必然失败**的断言。
 //
 // 它为什么能静默活三天：**tier-2 这一档要真 Windows ＋ WebView2 ＋ session-1 hop**

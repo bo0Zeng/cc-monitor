@@ -60,7 +60,7 @@ run() { # run <名字> <目录> <命令...>
 run monitor-lib   "$WT/src/frontend/shell"           cargo check --lib
 run backend        "$WT/src/backend" cargo check --all-targets
 
-# ── 跨 target（`backend-win`）：**这一格的前提早就作废了，08-25 起** 〔`K-R52` 09-11 订正〕──
+# ── 跨 target（`backend-win`）：**这一格的前提早就作废了，08-25 起** ──
 #
 # 这里原本写着一句前提：「backend 是纯 Rust，`check` 不需要链接器（monitor 不行 —— 它有 C
 # 依赖要 lib.exe）」。**那句话自 `K-H1` 引入 TLS（`rustls` → `ring`）起就是假的** ——
@@ -122,7 +122,7 @@ else
   echo "   skip $skipped"
 fi
 
-# ★ **跳过必须改变结论，不能只多打一行**〔audit-0805 08-08〕。
+# ★ **跳过必须改变结论，不能只多打一行**。
 #
 # 08-08 真路实测：把机器上的 windows target 拿掉之后，本脚本打完 `skip backend-win`
 # 仍然原样输出「== 提交状态编得过 ==」并 exit 0 —— 而读门禁的人（和 loop 里的我）
@@ -132,7 +132,7 @@ fi
 # 「Linux 上全绿」。跨 target check 在本机只有这一处真跑（`ci.yml` 那条要 push 才动，
 # 而本仓红线是不 push）⇒ 它一跳过，Windows 那半**本次就是没量**，结论必须自己说出来。
 #
-# 🔴 〔`K-R52` 09-11〕**「量不到」与「跳过」走的是同一个变量 `skipped`，这是刻意的。**
+# 🔴 **「量不到」与「跳过」走的是同一个变量 `skipped`，这是刻意的。**
 #    两者在终端上长得不一样（一个印 `skip`、一个印 `量不到`），但它们对**结论**的意义
 #    **完全相同**：Windows 那半本次没有读数。⇒ 降级结论只许有**一条**住址
 #   （`shared_crate_registry::a_skipped_windows_check_cannot_look_like_a_full_pass`

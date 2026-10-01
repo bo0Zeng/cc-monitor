@@ -1,4 +1,4 @@
-//! 〔C2 · `设计/05 §13`〕拨号应答客户端（`ssh_link`）的判据。
+//! 拨号应答客户端（`ssh_link`）的判据。
 //!
 //! 买到：阶段行按到达顺序交出、ack 读得出 · 拨不通带着指纹回来 · 老代理（不认所请求的用法）出声 ·
 //! 没回应答 / 形状不对 / 行太长各落各的错 · 收全结果与转发计数读得出。
@@ -96,7 +96,7 @@ async fn a_refusal_comes_back_with_the_fingerprint_it_saw() {
             open_refused: None,
         }
     );
-    // 〔WF2〕开通道被回拒的原因码原样带出来（界面据它分「不许端口转发」与「口上还没人」）。
+    // 开通道被回拒的原因码原样带出来（界面据它分「不许端口转发」与「口上还没人」）。
     let out = concat!(
         r#"{"ok":false,"error":"远端 127.0.0.1:4 连不上","fingerprint":null,"open_refused":"administratively_prohibited","v":2,"uses":["tunnel"]}"#,
         "\n"

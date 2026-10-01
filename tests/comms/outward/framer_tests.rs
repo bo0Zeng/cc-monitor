@@ -1,10 +1,10 @@
-//! `relay/framer.rs::LineFramer` 的判据〔SC1 · `设计/17 §3.7`〕。
+//! `relay/framer.rs::LineFramer` 的判据。
 //!
 //! 全部是**次数 / 长度的相等**，不看墙钟：墙钟随机器与负载变，而「每个字节被找几次、被搬几次」
 //! 是算法的形状本身。期望值一律按**输入的形状**手算（`6k + 3` · `7` · `0` · 判据自己数的喂入量），
 //! 不从被测代码里取 —— 账本只在被测那一侧，判据这一侧是另一份算术。
 //!
-//! 设计与读数住 `调研/第四波记录/SC1.md`。
+//! 设计与读数住。
 
 use super::{Ledger, LineFramer};
 use crate::relay::http1::{BodyView, ChunkedView};
@@ -13,7 +13,7 @@ use crate::relay::tee::SseSplitter;
 /// 「这条判据不测上限那一格」：一个永远触发不了的上限（期望值不许拿被测常量算）。
 const NO_CAP: usize = usize::MAX;
 
-/// 一条 617 KiB 的 `data:` 行 —— `设计/17 §1.1` 里那条最大记录的量级。
+/// 一条 617 KiB 的 `data:` 行 —— 里那条最大记录的量级。
 const GIANT: usize = 617 * 1024;
 
 /// 按 `step` 字节一块切（最后一块可短）。`step == 0` 表示整段一次。
@@ -43,7 +43,7 @@ fn small_lines(n: usize) -> Vec<u8> {
 //  F1 · SSE：每个字节恰好被找一次；每次喂入都收在行尾时一个字节都不搬
 // ════════════════════════════════════════════════════════════════════════════
 
-/// ★ F1 —— `17 §3.7` 点名的那一形：一条巨记录卡在缓冲里，按 16 KiB 一块陆续到，完了再跟 1 000 条小行。
+/// ★ F1 —— 点名的那一形：一条巨记录卡在缓冲里，按 16 KiB 一块陆续到，完了再跟 1 000 条小行。
 ///
 /// 先前的 `SseSplitter`：每块都从 `partial` 开头重找 `\n`（617 KiB / 16 KiB ≈ 39 块 ⇒ 扫 ≈ 39²/2 × 16 KiB ≈ 12 MiB），
 /// 巨行吐出之后每切一条小行又 `drain` 一次前缀。今天 `examined == pushed`、`moved == 0`。
@@ -271,7 +271,7 @@ fn f4_a_bare_lf_never_ends_a_chunk_size_line() {
 
 /// `relay/` 生产段（逐份过 `production_code`，再过共享的剥注释原语 —— 散文里提到 `drain` 不算手抄）。
 fn relay_production() -> Vec<(String, String)> {
-    let root = crate::guard_support::relay_root(); // 〔RE〕`relay` 模块的根
+    let root = crate::guard_support::relay_root(); // `relay` 模块的根
     guard_core::scan_tree_excluding(&root, &["rs"], &[])
         .into_iter()
         .map(|(p, raw)| {
@@ -318,7 +318,7 @@ fn f5_relay_has_exactly_one_framer() {
     }
     assert!(
         hits.is_empty(),
-        "`relay/` 里又长出了手抄分帧（`设计/17 §3.7`：该用 `framer.rs::LineFramer`）：{hits:#?}"
+        "`relay/` 里又长出了手抄分帧（该用 `framer.rs::LineFramer`）：{hits:#?}"
     );
     // 正控：那一次（也是唯一一次）前缀搬运住在分帧器里 —— 本条的针认得出它。
     let framer = &files.iter().find(|(n, _)| n == "framer.rs").unwrap().1;

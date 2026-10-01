@@ -28,7 +28,7 @@ cd "$REPO" || exit 1
 ALLOWLIST=(
   tests/e2e/fake-claude          # 作为 launcher 路径喂进 tmux 命令串与 backendPath，被直接 exec
   tests/e2e/backend-wrapper.sh    # 作为 backendPath 由 app 直接执行
-  # 〔audit-0805 08-06〕**同一失效类的第三例，被这条守卫漏了三天**：
+  # **同一失效类的第三例，被这条守卫漏了三天**：
   # `tests/scripts/verify-committed-state.sh` 自 08-04 首次提交起 git 里就是 **100644**，
   # 而它自己的用法行逐字是 `tests/scripts/verify-committed-state.sh [git-ref]`（**直接执行**）
   # ⇒ 干净 checkout 上就是 `Permission denied`。本地照跑是因为 `core.fileMode=false`

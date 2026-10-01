@@ -1,5 +1,5 @@
 /**
- * 〔C4a · 第四波〕通道在 webview 手里那一半（`src/comms/inward/chan.ts`）的判据。
+ * 通道在 webview 手里那一半（`src/comms/inward/chan.ts`）的判据。
  *
  * | 性质 | 判据 |
  * |---|---|
@@ -10,7 +10,7 @@
  * | 解不出来的拒绝一律 `ours/Broken`，不猜 | 「解不出」那一条 |
  * | 成员本身不解释载荷：生产段零 `JSON.parse` / `JSON.stringify`（正控：调用方那一侧的同一个识别器命中） | 最后一条 |
  *
- * 〔CF2 · 第四波 4B〕`subscribe` 那一半（`设计/05 §3.3.4` · `§3.3.5`，末尾「S5」那一组）：
+ * `subscribe` 那一半（末尾「S5」那一组）：
  *
  * | 性质 | 判据 |
  * |---|---|
@@ -19,7 +19,7 @@
  * | `want` / `stop` 各恰好一次 IPC（撤了之后 `want` 不再发） | 「S5 往回说」 |
  * | 解不出的一格 ⇒ 交 `closed{ours: Broken}` 并撤掉，不猜 | 「S5 解不出」 |
  * | 登记那一跳失败 ⇒ 原位 `closed{ours: Broken}`，`subscribe` 本身不抛（`§3.3.5`） | 「S5 不失败」 |
- * | 〔W5-UI〕报信用那一跳失败 ⇒ 同样原位 `closed{ours: Broken}` 并撤掉（原先被吞 ⇒ 静默停流） | 「S5 信用报不上去」 |
+ * | 报信用那一跳失败 ⇒ 同样原位 `closed{ours: Broken}` 并撤掉（原先被吞 ⇒ 静默停流） | 「S5 信用报不上去」 |
  *
  * 买不到：真 Tauri IPC 那一跳（要一个活的 webview）—— 这里 mock 的是 `invoke`，
  * 它之后的那一跳由 Rust 侧 `tests/frontend/shell/chan/webview_tests.rs` 用合成句柄 ＋ 真 `router::settle` 量。
@@ -34,7 +34,7 @@ vi.mock("@tauri-apps/api/core", () => ({
     onmessage: ((v: unknown) => void) | null = null;
   },
 }));
-// 〔CF2〕交格事件按窗口作用域听：记下那个回调，判据往里投递。
+// 交格事件按窗口作用域听：记下那个回调，判据往里投递。
 const itemsListeners: Array<(e: { payload: unknown }) => void> = [];
 vi.mock("@tauri-apps/api/webviewWindow", () => ({
   getCurrentWebviewWindow: () => ({
@@ -146,7 +146,7 @@ describe("〔C4a〕webview 通道客户端", () => {
     expect(plain.callId, "不带撤单的那一问不该带编号").toBeNull();
   });
 
-  it("〔NET2 · `05 §3.3.3`〕本地撤单按手里那份 Offer 说清「那台可能还在跑」：撤不动的带 runsOn、撤得动的不带", async () => {
+  it("〔NET2〕本地撤单按手里那份 Offer 说清「那台可能还在跑」：撤不动的带 runsOn、撤得动的不带", async () => {
     let answer: (v: ArrayBuffer) => void = () => {};
     invokeMock.mockImplementation((cmd: string) =>
       cmd === "chan_offer"
@@ -199,14 +199,14 @@ describe("〔C4a〕webview 通道客户端", () => {
     const code = (rel: string): string => stripComments(readFileSync(resolve(REPO_ROOT, rel), "utf8"), "ts");
     const jsonUses = (c: string): number => (c.match(/\bJSON\.(?:parse|stringify)\s*\(/g) ?? []).length;
     expect(jsonUses(code("src/frontend/ui/ipc/chan-caller.ts")), "正控：调用方那一侧恰好两处（`jsonBody` 的 stringify · `readJson` 的 parse）").toBe(2);
-    expect(jsonUses(code("src/comms/inward/chan.ts")), "通道成员自己解释了载荷 —— `设计/05 §2`：载荷是不透明字节").toBe(0);
+    expect(jsonUses(code("src/comms/inward/chan.ts")), "通道成员自己解释了载荷 ——：载荷是不透明字节").toBe(0);
   });
 });
 
 // ════════════════════════════════════════════════════════════════════════════
-//  〔CF2 · 第四波 4B〕`subscribe` 那一半
+// `subscribe` 那一半
 //
-//  要求住址：`设计/05 §3.3.4`（`Item` 五个变体；「丢必须说」「`Gap` 必须在流里的原位」）·
+// （`Item` 五个变体；「丢必须说」「`Gap` 必须在流里的原位」）·
 //  `§3.3.5`「`call` 会失败、`subscribe` 不会」。
 // ════════════════════════════════════════════════════════════════════════════
 
@@ -232,7 +232,7 @@ describe("〔CF2〕webview 通道客户端 · subscribe", () => {
     const want: Item[] = [
       { t: "frame", seq: 7, body: '{"line":{"x":1}}' },
       { t: "gap", fromSeq: 8, toSeq: 12 },
-      { t: "gap", fromSeq: 13, toSeq: null }, // 〔RENDER2 · ㉓①〕知道丢了、不知道丢到哪
+      { t: "gap", fromSeq: 13, toSeq: null }, // 知道丢了、不知道丢到哪
       { t: "unseen", at: { idx: 1, tag: "open" }, why: "Unreachable" },
       { t: "seen", from: null },
       { t: "seen", from: Uint8Array.from([1, 2]) },
@@ -296,8 +296,8 @@ describe("〔CF2〕webview 通道客户端 · subscribe", () => {
   });
 
   it("★ S5 信用报不上去：`chan_want` 抛了 ⇒ 原位交一格 `closed{ours: Broken}`、撤单、之后的格不再交", async () => {
-    // 〔W5-UI · `audit/E-compat.md §3.3`「`chan_want` 失败被吞 ⇒ 订阅拿不到信用，静默停流」〕
-    // 住址：`设计/05 §3.3.5`「`subscribe` 不会失败」—— 说不了的在流里原位说。
+    // 〔`audit/E-compat.md §3.3`「`chan_want` 失败被吞 ⇒ 订阅拿不到信用，静默停流」〕
+    // 要求：「`subscribe` 不会失败」—— 说不了的在流里原位说。
     invokeMock.mockImplementation(async (cmd: string) => {
       if (cmd === "chan_want") throw new Error("ipc down");
       return undefined;

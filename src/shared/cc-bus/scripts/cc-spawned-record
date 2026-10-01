@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # cc-spawned-record <id> <目录> [初始任务]  往 spawn 台账 `spawned.tsv` 追加一行(加锁)。
 #
-# ## 为什么单独一个脚本〔C15 08-13〕
+# ## 为什么单独一个脚本
 #
 # 这段原来长在 `cc-spawn` 里。`C15`〔用@08-13「cc-bus收进ccm」〕要把台账这件事收进 `ccm`,
 # 而**收进去 ≠ 让 ccm 复刻 cc-bus 的文件格式**:

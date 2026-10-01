@@ -1,5 +1,5 @@
 /**
- * 〔MIG-3a〕MCP 读写 / 推拉改走通道之后的**替身翻译层**（同 `tests/frontend/ui/tasks-panel-origin.vitest.ts` 那一形）：
+ * MCP 读写 / 推拉改走通道之后的**替身翻译层**（同 `tests/frontend/ui/tasks-panel-origin.vitest.ts` 那一形）：
  * 界面发的 `chan.call(origin, op, body)` 按旧命令名交给测试里那份 `invoke` 替身、把它答的东西包成那台后端的成品。
  * 旧名只是替身里的标签（从前各条断言按它们认「问的是哪一种」），生产里那几条 Tauri 命令已删。
  */

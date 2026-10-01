@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # cc-list  列出已登记的 agent 及各自 inbox 待读条数(看谁在线、有没有积压)
-# cc-list --tsv  机器可读形(V136:后端 bus-state / 杀会话顺手注销读它,不读 agents.tsv 本身):
+# cc-list --tsv  机器可读形(后端 bus-state / 杀会话顺手注销读它,不读 agents.tsv 本身):
 #   首行 `#cc-list-tsv<TAB>1` · 每条 `id<TAB>地址<TAB>登记时间<TAB>pane pid<TAB>待读` · 末行 `#skipped<TAB><坏行数>`。
 #   坏行 = 有内容但字段 < 3 或 id 不过字符集(真空行不算)。
 set -euo pipefail

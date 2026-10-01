@@ -3,10 +3,10 @@
  *
  * # 要求住址
  *
- * - `设计/01 §6.9`，逐字：「**所有对外文案与报错都从一张表来**（结构化的 key → 文本，插值点留在表里）」；
- * - `设计/91 §5.1` 决定 2，逐字：「**一份文件，两侧各读，零转换**」—— 后端也读同一份 `table.json`、自己出句子
- *   （选 A 不选「后端回码、monitor 取表」的理由：`调研/第四波记录/CP2c.md §2.1`）；
- * - `设计/91 §6` 第 7 条：后端 crate 没有表的读口 —— 本路定了：`src/common/copy-core`。
+ * -，逐字：「**所有对外文案与报错都从一张表来**（结构化的 key → 文本，插值点留在表里）」；
+ * - 决定 2，逐字：「**一份文件，两侧各读，零转换**」—— 后端也读同一份 `table.json`、自己出句子
+ *   （选 A 不选「后端回码、monitor 取表」的理由：）；
+ * -：后端 crate 没有表的读口 —— 本路定了：`src/common/copy-core`。
  *
  * # 它治的病
  *
@@ -21,13 +21,13 @@
  * # 不判什么（诚实段）
  *
  * - 不判待办表里的文件还剩几条（集合相等，不是逐文件计数）。
- * - 契约错的英文诊断（`common/contract.rs::malformed`）不在人群里 —— 它们该不该是英文，是 CP2c 记录 §3 的裁量，靠人复核。
+ * - 契约错的英文诊断（`common/contract.rs::malformed`）不在人群里 —— 它们该不该是英文靠人复核。
  * - 没有 python3 / python 的机器上**判不了**（`console.warn` 说出来，**不是绿**）。
  * - 终态待办表是空的 ⇒ 「表非空」当不了正控；反空真靠「射程里扫到的生产文件数过地板」＋ 量具现造一棵临时树的探针。
  *
  * # 第二段（COPY · 09-27）：生产代码不许按原文认话
  *
- * 要求住址：`设计/91 §5.5`，逐字：「线上契约 | 不变：`Reply {code, message}`，`code` 仍是命令级粗码」——
+ * 要求：「线上契约 | 不变：`Reply {code, message}`，`code` 仍是命令级粗码」——
  * 判「是哪一种失败」靠 `code` / 结构化字段；句子进了表就会被改写，谁按原文认它，改一个字就静默失灵
  *（CP2c 待办表的理由列：「refuse write:」等前缀被按原文认，先把判定换成码再抽）。
  * 判法：生产段（`src/backend` · `src/frontend/shell/src` · `src/frontend/filewin/src` · `src/common` 的 `.rs` ＋ `src` 的 `.ts`，剥注释）里
@@ -130,9 +130,9 @@ describe("CP2c · 后端与子 crate 里还有对外字面量的文件 == 待办
 });
 
 /**
- * 登记的例外（都在 COPY 写区外，交主会话；`调研/第四波记录/COPY.md` §设计 ①）：
- * - cc_bus 三条认的是 cc-bus 脚本自己的输出行（`设计/91 §3.2`：cc-bus 的文本不归文案表），不是表里的句子；
- * - 〔WF2〕`accounts.ts::deriveUi` 按「过旧」「不支持账号」认的那两条删了（少了两条）：「需更新」改认结构化的 `AccountsState.oldBackend`（`chan-caller.ts::isOldBackend`）；
+ * 登记的例外（都在 COPY 写区外，交主会话； §设计 ①）：
+ * - cc_bus 三条认的是 cc-bus 脚本自己的输出行（cc-bus 的文本不归文案表），不是表里的句子；
+ * - `accounts.ts::deriveUi` 按「过旧」「不支持账号」认的那两条删了（少了两条）：「需更新」改认结构化的 `AccountsState.oldBackend`（`chan-caller.ts::isOldBackend`）；
  * - `tab-drop.ts::defaultGroupName` 认自己起的默认组名「组 N」来续号 —— 那句改写（`tabDrop.group.defaultName`）续号就断。
  */
 const RECOGNIZE_BY_TEXT = [
@@ -173,9 +173,9 @@ describe("COPY · 生产代码不许按原文认话（判是哪种失败靠码�
     const rs = [
       ...productionRsFiles("src/backend"),
       ...productionRsFiles("src/frontend/shell/src"),
-      ...productionRsFiles("src/frontend/filewin/src"), // 〔P4〕文件窗口独立成包
+      ...productionRsFiles("src/frontend/filewin/src"), // 文件窗口独立成包
       ...productionRsFiles("src/common"),
-      ...productionRsFiles("src/comms"), // 〔RE〕通信层成员（两个 crate 经 `#[path]` 编它们）
+      ...productionRsFiles("src/comms"), // 通信层成员（两个 crate 经 `#[path]` 编它们）
     ].map((f) => ({ ...f, lang: "rust" as const }));
     const ts = productionTsFiles("src").map((f) => ({ ...f, lang: "ts" as const }));
     expect(rs.length, "Rust 生产文件一份都没扫到").toBeGreaterThan(100);
