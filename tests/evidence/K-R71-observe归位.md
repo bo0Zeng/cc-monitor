@@ -203,7 +203,7 @@ root.join("src-tauri/src/backend/observe/local_query.rs").is_file(),
 它的报错原文（沙箱现打，逐字）：
 
 ```
-assertion `left == right` failed: ``observe/``：文档那一格说「已交付 = true」（状态列原文 "**已交付**〔2026-09-12 `K-R71`〕—— 目录建起来了，住户只有传输那一跳，见 2.2"），
+assertion `left == right` failed: ``observe/``：文档那一格说「已交付 = true」（状态列原文 "**已交付**—— 目录建起来了，住户只有传输那一跳，见 2.2"），
 而现场量法说「monitor 侧 `backend/observe/` 在，且那个唯一的读面传输住在里面」= false。
   left: false
  right: true

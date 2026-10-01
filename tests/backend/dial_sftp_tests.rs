@@ -1,4 +1,4 @@
-//! 〔SR1b · 2026-09-24〕`dial/sftp.rs` 的判据：远端写围栏（只许两处）· 解链接 · files 链路的一问一答。
+//! `dial/sftp.rs` 的判据：远端写围栏（只许两处）· 解链接 · files 链路的一问一答。
 //!
 //! 台架是 `sftp_rig`（合成 SFTP 服务端，逐条记改动路径）。**判据看服务端的改动表，不信被测侧的自述。**
 
@@ -266,7 +266,7 @@ async fn a_deploy_shaped_session_touches_exactly_the_two_roots_and_refuses_every
     )
     .await;
     assert_eq!(v["data"], crate::stream::wire::b64_encode(b"new"));
-    // 〔MIG-3b 续 · V41〕`stat` 那一问删了（零调用方）⇒ 对端当不认识的一问回 `unknown_op`，链路照常往下走。
+    // `stat` 那一问删了（零调用方）⇒ 对端当不认识的一问回 `unknown_op`，链路照常往下走。
     let v = ask(
         &mut w,
         &mut r,
@@ -397,12 +397,12 @@ async fn a_read_over_the_callers_cap_is_refused_not_truncated() {
     );
 }
 
-/// ★★〔步 23b · 2026-09-19〕**SFTP 那条依赖真的换成了 `russh-sftp` 3.x，而且钉住了。**
+/// ★★**SFTP 那条依赖真的换成了 `russh-sftp` 3.x，而且钉住了。**
 ///
-/// 〔SR1b · 2026-09-24〕**从 monitor 搬来**（`tests/frontend/shell/sftp_tests.rs`）：`russh-sftp` 出了界面清单，今天只在本 crate ——
+/// **从 monitor 搬来**（`tests/frontend/shell/sftp_tests.rs`）：`russh-sftp` 出了界面清单，今天只在本 crate ——
 /// 判据跟着依赖走，读的是本 crate 的清单与 lock。正文逐字未动（除了两份文件的住址）。
 ///
-/// `设计/60 §6.5.3` 现打核过 5 个候选（crates.io / GitHub / docs.rs 三处 API），
+/// 现打核过 5 个候选（crates.io / GitHub / docs.rs 三处 API），
 /// 结论逐字是「选定的库是 **`russh-sftp` 3.0.0**」。而本仓此前钉的是 `russh-sftp = "2"`
 /// —— 本件把它抬到 `"3"`，本条判据就是那一刀的钉子。
 ///
@@ -425,7 +425,7 @@ async fn a_read_over_the_callers_cap_is_refused_not_truncated() {
 ///   （本条判据要跑起来，整棵树就得先用这一版**编过**），
 ///   ⇒ 「3.x 编得过、API 形状对得上」这件事是**本条所在的这一趟**顺带证明的。
 /// - 🔴 **买不到：「连上一台真远端跑过一次 SFTP」。** 本仓**没有真远端** ——
-///   本条只读盘上两份文本，**一个字节都没过网**。`设计/60 §7` 那条「未实测」照旧成立。
+///   本条只读盘上两份文本，**一个字节都没过网**。那条「未实测」照旧成立。
 /// - 🔴 **买不到：3.x 与 2.x 的行为差异有没有被消化。**（比如 3.0.0 给
 ///   `read` / `write` 各补了一次收尾、`io::ErrorKind::TimedOut` 现在会映射成超时错。）
 ///   那几条要真跑才量得出来，本条**不出声**。
@@ -441,7 +441,7 @@ async fn a_read_over_the_callers_cap_is_refused_not_truncated() {
 /// 门禁跑的是 `--locked`，**声明面与锁定面不一致时 cargo 自己就先失败了**
 /// ⇒ 构造不出「声明面还是 3、锁定面掉到 2」这个状态。
 /// ⇒ 那两条今天是**加固**，不是被验过的牙。**别把它们读成「验过了」。**
-/// 〔WF2 · WIN3 读数 B〕认残件的形状 == `put_atomic` 真起的名字（异源 = 生产那个 `trip_tag`）：临时件 · 备份件都认；
+/// 认残件的形状 == `put_atomic` 真起的名字（异源 = 生产那个 `trip_tag`）：临时件 · 备份件都认；
 /// 同一个名字换掉后缀 / 去掉一段 ⇒ 不认。
 #[test]
 fn the_leftover_shape_is_exactly_what_put_atomic_names() {
@@ -481,7 +481,7 @@ fn the_sftp_dependency_is_really_on_russh_sftp_three() {
     let declared = declared[0].trim().trim_matches('"');
     assert!(
         declared.starts_with('3'),
-        "声明面掉版本了：`{CRATE} = {declared}` —— `设计/60 §6.5.3` 选定的是 **3.0.0**，\
+        "声明面掉版本了：`{CRATE} = {declared}` —— 选定的是 **3.0.0**，\
          那张候选表里全部的论证都是对着 3.x 做的"
     );
 
@@ -528,7 +528,7 @@ fn the_sftp_dependency_is_really_on_russh_sftp_three() {
     );
 }
 
-// ═══ 〔HX2 · 主会话 D-b「临时件名唯一」〕两个部署者同一个落点 ═══════════════════════════════
+// ═══ 〔主会话 D-b「临时件名唯一」〕两个部署者同一个落点 ═══════════════════════════════
 //
 // 要求住址：主会话 4D 裁 D-b 逐字「多个 monitor 连同一远端：部署只在「我的比盘上的新」时才换（BUILD_ID 可比序），临时件名唯一」；
 // 审计 `E-compat.md §2.7` 冲突场景 2（「B 删掉 A 正在写的 `.tmp`」）。
@@ -643,8 +643,8 @@ async fn hx2_two_interleaved_deploys_leave_one_whole_copy_and_no_litter() {
     assert!(litter.is_empty(), "留下了临时件 / 备份件：{litter:?}");
 }
 
-/// 〔HX1 · 主会话裁 HX1 拍板项 4〕**部署这一趟建出来的远端目录收成只给本人**（`own_dir::PRIVATE_DIR_MODE`）；
-/// **已在的那一层一个字节不碰**（不对它发 SETSTAT）。守的要求：主会话裁「建自家目录 …… 远端 SFTP 部署建目录 …… 0700、已存在不动」。
+/// 〔主会话裁 HX1 拍板项 4〕**部署这一趟建出来的远端目录收成只给本人**（`own_dir::PRIVATE_DIR_MODE`）；
+/// **已在的那一层一个字节不碰**（不对它发 SETSTAT）。守的要求：「建自家目录 …… 远端 SFTP 部署建目录 …… 0700、已存在不动」。
 /// 形状：合成 SFTP 服务端逐条记改动（台架 `sftp_rig`），判服务端看到的，不信被测侧的自述。
 #[tokio::test]
 async fn hx1_the_dirs_a_deploy_creates_are_made_private_and_an_existing_one_is_left_alone() {

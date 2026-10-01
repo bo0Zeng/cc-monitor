@@ -1,12 +1,12 @@
-//! 〔AL1c · 第四波 4B · 2026-09-24〕**shell 方言：`设计/71 §4.4` 那组平台接口，POSIX 与 PowerShell 各一份实现。**
+//! **shell 方言：那组平台接口，POSIX 与 PowerShell 各一份实现。**
 //!
-//! 〔OSA · `设计/99 §1` V156〕从 `assets/aliases/dialect.rs` 整份搬进后端 OS 适配层（`platform/shell/`）。本层不往上依赖：
+//! 从 `assets/aliases/dialect.rs` 整份搬进后端 OS 适配层（`platform/shell/`）。本层不往上依赖：
 //! `ccm` 那个词与 `--` 分界由通用层作 [`Call`] 交进来，「我们自己那块别名块定义了哪些函数」由通用层交进那块的正文。
 //!
-//! 〔MIG-3a · `设计/99 §2.1 ⑬` · 主会话 09-27 裁〕从 monitor `shell_dialect.rs` 搬来：别名规则与方言住**那台机器的后端**，
+//! 从 monitor `shell_dialect.rs` 搬来：别名规则与方言住**那台机器的后端**，
 //! 「这台说不说 PowerShell」「`PATH` 上有没有同名程序」「文档目录在哪」从此都是**这台自己**的事实（不再是 monitor 那台的）。
 //!
-//! # 判准（`71 §4.1` · 条 33）
+//! # 判准（条 33）
 //!
 //! ```text
 //! 「这个 shell 怎么写 / 文件落在哪 / 名字怎么认」 → 这里（翻译官）
@@ -14,24 +14,24 @@
 //! ```
 //!
 //! 通用层持有的是**结构**（名字 ＋ 一组 ccm 参数），不持有任何一种 shell 的文本 —— 一旦持有一段 POSIX 脚本，
-//! 这里就翻译不了它（`71 §4.2`，`src/backend/platform/shell.rs` 头注那条「交给 PowerShell 不是另一种写法，是另一种语言」）。
+//! 这里就翻译不了它（`src/backend/platform/shell.rs` 头注那条「交给 PowerShell 不是另一种写法，是另一种语言」）。
 //! ⇒ 本模块里**零规则**：V1–V5、控制字符、重名、能力闸都不在这里；这里只答「这个 shell 里怎么写 / 怎么读」。
 //!
-//! # 方言由**目标**决定，不由宿主平台决定（`71 §4.4` 末段）
+//! # 方言由**目标**决定，不由宿主平台决定（末段）
 //!
 //! [`Shell::of_target`] 按目标文件的扩展名判（`.ps1` ⇒ PowerShell），刻意不看 `cfg!(windows)`：
 //! Windows 上的 Git Bash 读的是 `~/.bashrc`（POSIX）；门禁跑在 Linux 上，按 `cfg` 分的话两条臂里恒有一条没人验。
 //!
-//! # `71 §4.4` 七问里不在这里的两问
+//! # 七问里不在这里的两问
 //!
-//! - `atomic_replace()`：〔RW1〕写的序列（CAS · 备份 · 暂存旁名换名上位 · 回读 · 回滚）只住后端
+//! - `atomic_replace()`：写的序列（CAS · 备份 · 暂存旁名换名上位 · 回读 · 回滚）只住后端
 //!   `control/files_write.rs::put_text`，Windows 那一支是就地覆盖保 ACE。方言只多答一格「落盘前要不要加 BOM」
 //!   （[`ShellDialect::encode_for_disk`]）。
-//! - `has_tmux()`：`71 §4.4` 逐字「不进这一族 —— 它是一项能力」⇒ 住通用层 `account_aliases::Caps`。
+//! - `has_tmux()`：「不进这一族 —— 它是一项能力」⇒ 住通用层 `account_aliases::Caps`。
 //!
 //! # 🔴 PowerShell 那一臂的诚实边界
 //!
-//! 本机没有 `pwsh` / `powershell`，Win11 虚拟机不许碰（`99 §2 ⑤` 未拍）⇒ PowerShell 文本在这里**一次都没被
+//! 本机没有 `pwsh` / `powershell`，Win11 虚拟机不许碰（未拍）⇒ PowerShell 文本在这里**一次都没被
 //! PowerShell 解析过**。它买到的只有：函数体逐字照 `src/shared/cc.ps1.tpl` 里那个 `cc` 的形状（`K-R132` 真机上
 //! 那一形 `parse-errors=0`）· 黄金串 · 与 POSIX 臂同契约的对拍（同一份清单两边渲染再各自读回，得回同一份清单）。
 
@@ -40,7 +40,7 @@ use std::path::{Path, PathBuf};
 
 /// 「这是哪种 shell 的方言」—— **唯一一个**回答这一问的枚举。
 ///
-/// 〔AL1c〕它取代了 `profile_installer` 里那个只给别名块用的方言枚举（那一族的旧名见本仓 `git log`）：
+/// 它取代了 `profile_installer` 里那个只给别名块用的方言枚举（那一族的旧名见本仓 `git log`）：
 /// 别名文件、别名块、source 那一行，三件事问的是同一个问题，不许有两个枚举各答一半。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -76,7 +76,7 @@ impl Shell {
 /// 解析回来的一条：`(名字, 参数)`，或者一行认不出的原文 ＋ 原因（**不静默丢**）。
 pub(crate) type Parsed = Result<(String, Vec<String>), String>;
 
-/// 〔OSA〕一条别名调的是谁、argv 里哪个词把两半分开（V151）。**通用层给**（`control::ccm` 那两个常量），方言只照着写与读：
+/// 一条别名调的是谁、argv 里哪个词把两半分开。**通用层给**（`control::ccm` 那两个常量），方言只照着写与读：
 /// 适配层不往上依赖。
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct Call<'a> {
@@ -86,17 +86,17 @@ pub(crate) struct Call<'a> {
     pub(crate) end: &'a str,
 }
 
-/// 〔AL2 · 第四波 4D〕一份启动文件候选：**路径 ＋ 盘上不在时列不列**（「列不列不存在的」是方言的读法，`71 §4.4` 表第一行）。
+/// 一份启动文件候选：**路径 ＋ 盘上不在时列不列**（「列不列不存在的」是方言的读法，表第一行）。
 ///
 /// 方言**只给路径与列法**，一个字节的盘都不读：在不在、里面是什么由**那台机器的后端**答
 /// （`account_aliases::rc_candidates_via` 经 `user_files::Door` 问 `files-peek` / `files-stat`）——
-/// 从前这里自己 `is_file()` / `is_dir()`，量的是 monitor 这台的盘，拿去说远端是错的（`第四波记录/W5-ALIAS.md §2.2`）。
+/// 从前这里自己 `is_file()` / `is_dir()`，量的是 monitor 这台的盘，拿去说远端是错的。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct StartupCandidate {
     /// 那台机器上的绝对路径（按那台 home 的写法拼，见 `user_files::join_under`）。
     pub path: String,
     pub listed: Listed,
-    /// 〔WF1 · L〕哪一代 PowerShell 加载它（执行策略按代问）；POSIX 与人另指的那一份 ⇒ `None`。
+    /// 哪一代 PowerShell 加载它（执行策略按代问）；POSIX 与人另指的那一份 ⇒ `None`。
     pub host: Option<super::PsHost>,
 }
 
@@ -111,10 +111,10 @@ pub(crate) enum Listed {
     IfDirExists(String),
 }
 
-/// 🔴 **`71 §4.4` 那组接口。** 每个方法都只回答「这个 shell 里怎么写 / 怎么读 / 文件在哪」；
+/// 🔴 ** 那组接口。** 每个方法都只回答「这个 shell 里怎么写 / 怎么读 / 文件在哪」；
 /// 任何「合不合格」的判断都不许写进实现里（那是通用层的，两边一模一样）。
 pub(crate) trait ShellDialect: Sync {
-    // 〔TL1 · 4C〕墓碑：这里从前有一格「围栏块的排版」—— 唯一的读者是代装 rc 那一行的那一跳（退役，`71 §6.1`）。
+    // 墓碑：这里从前有一格「围栏块的排版」—— 唯一的读者是代装 rc 那一行的那一跳（退役）。
     //   别名块那一侧的排版按目标文件扩展名走 `profile_installer` 那一份，不经这里。
 
     /// 落盘前的编码。PowerShell 加 BOM（`K-R132`：PS 5.1 把无 BOM 的 `.ps1` 按 ANSI 代码页解，
@@ -127,18 +127,18 @@ pub(crate) trait ShellDialect: Sync {
 
     /// shell 启动时会执行的那几份文件（界面「别名块装进哪份」的候选），按优先级。
     /// 「列不列一份还不存在的文件」是读法，由实现答（POSIX 只列在的 · PowerShell 的 `$PROFILE` 常常要装时才建）。
-    /// 〔AL2〕`home` 是**那台机器**的 home（后端 `files-home` 答的字符串）；这里一个字节的盘都不读（[`StartupCandidate`]）。
+    /// `home` 是**那台机器**的 home（后端 `files-home` 答的字符串）；这里一个字节的盘都不读（[`StartupCandidate`]）。
     fn startup_candidates(&self, home: &str) -> Vec<StartupCandidate>;
 
-    // 〔TL1 · 4C〕墓碑：这里从前有一格「用户选的那份启动文件还不在时，装 source 那一行要不要新建它」——
-    //   代装那一行的那一跳退役了（`71 §6.1`：source 那一行只住别名块里），这一格零调用方 ⇒ 删。
+    // 墓碑：这里从前有一格「用户选的那份启动文件还不在时，装 source 那一行要不要新建它」——
+    //   代装那一行的那一跳退役了（source 那一行只住别名块里），这一格零调用方 ⇒ 删。
     //   （别名块自己那一侧建不建 `$PROFILE`，归 `profile_installer` 那一份规则。）
 
     /// 我们自己那份别名文件在 home 下的相对路径（`/` 分隔，交给后端的 `rel` 就是它）。
     fn our_alias_file_rel(&self) -> &'static str;
 
     /// 「执行我们那份文件」在这个 shell 里怎么写（**一行**）。文件不在时必须是空操作。
-    /// 〔TL1 · 4C〕今天只给人看（选的那份启动文件没接上时，报告里给出这一行、由人自己决定贴不贴）；自动接上那一行住别名块里。
+    /// 今天只给人看（选的那份启动文件没接上时，报告里给出这一行、由人自己决定贴不贴）；自动接上那一行住别名块里。
     fn source_line(&self, our_file: &str) -> String;
 
     /// 这份启动文件是不是已经接上了我们那份（任何一种写法都认，别按整行比 —— 见 POSIX 那一臂的注释）。
@@ -153,7 +153,7 @@ pub(crate) trait ShellDialect: Sync {
     /// 把我们那份文件的正文（BOM 已剥）读回成一条条。注释 / 空行跳过；认不出的原文带原因。
     fn parse_file(&self, call: Call, text: &str) -> Vec<Parsed>;
 
-    /// 〔OSA〕这一行（已去掉行首空白）声明了哪个函数（原住 `assets/aliases/block.rs` 的两份认法，逐字搬来）。
+    /// 这一行（已去掉行首空白）声明了哪个函数（原住 `assets/aliases/block.rs` 的两份认法，逐字搬来）。
     fn declared_function(&self, line: &str) -> Option<String>;
 
     /// 名字的合法字符集。
@@ -163,17 +163,17 @@ pub(crate) trait ShellDialect: Sync {
     fn same_name(&self, a: &str, b: &str) -> bool;
 
     /// 这个名字是不是已经被占了（**只出声、不拦**）。报出来的话里带住址。
-    /// 〔OSA〕`own_block` 是我们自己那块别名块的正文（通用层给：POSIX 是 `src/shared/ccm-aliases.sh`，PowerShell 是模板渲染出来的那一份）。
+    /// `own_block` 是我们自己那块别名块的正文（通用层给：POSIX 是 `src/shared/ccm-aliases.sh`，PowerShell 是模板渲染出来的那一份）。
     ///
-    /// 〔MIG-3a〕`PATH` 那一格查的是**这台后端进程**的 `PATH` —— 规则住在那台机器的后端里，查的就是那台自己
-    /// （从前住 monitor 时远端只能不查，〔AL2〕那一格 `look_on_path`〔散文墓碑〕随之退役）。
+    /// `PATH` 那一格查的是**这台后端进程**的 `PATH` —— 规则住在那台机器的后端里，查的就是那台自己
+    /// （从前住 monitor 时远端只能不查，那一格 `look_on_path`〔散文墓碑〕随之退役）。
     fn name_taken(&self, name: &str, own_block: &str) -> Option<String>;
 
     /// 一个参数能不能**原样**到达 `ccm`（传参那一跳这个 shell 会不会改坏它）。
     fn arg_is_passable(&self, word: &str) -> Result<(), String>;
 }
 
-/// UTF-8 BOM。**闭集只有这一处住址**〔`13b`〕。
+/// UTF-8 BOM。**闭集只有这一处住址**。
 const UTF8_BOM: &str = "\u{feff}";
 
 /// 读进来的那一份：把 BOM 剥掉再交给任何**判内容**的东西（两种方言都剥 —— 读的一侧宽，写的一侧严）。
@@ -285,12 +285,12 @@ const POSIX_RC_CANDIDATES: &[&str] = &[".bashrc", ".zshrc", ".bash_profile", ".p
 /// POSIX 函数声明的头与尾（写与读回共用这一对 —— 渲染与解析不许各写一份字面量）。
 /// ⚠ 住常量还有一个理由：`structural_scan` 那把尺子按大括号配平切函数体，字面量里落单的 `{` 会让它切过界。
 const POSIX_FN_HEAD: &str = "() { ";
-/// 〔V151〕`"$@"`（用户敲别名时跟的参数）落在 `--` 左边 —— 交给 claude；别名自己的 ccm 选项在它后面的 `--` 右边。
+/// `"$@"`（用户敲别名时跟的参数）落在 `--` 左边 —— 交给 claude；别名自己的 ccm 选项在它后面的 `--` 右边。
 const POSIX_ARGS: &str = " \"$@\"";
 const POSIX_FN_TAIL: &str = "; }";
 
-/// POSIX 那份别名文件在 home 下的相对路径。〔RW1〕从 `account-aliases.sh` 改名而来，旧名不读不写不删。
-/// 〔P3〕值只住契约 crate（monitor 的数据位置页按它列出）。
+/// POSIX 那份别名文件在 home 下的相对路径。从 `account-aliases.sh` 改名而来，旧名不读不写不删。
+/// 值只住契约 crate（monitor 的数据位置页按它列出）。
 const POSIX_ALIAS_FILE_REL: &str = relay_route_core::POSIX_ALIASES_REL;
 
 impl Posix {
@@ -364,7 +364,7 @@ impl Posix {
         let (name, body) = rest
             .split_once(POSIX_FN_HEAD)
             .ok_or(&copy_text("rsShellDialect.posix.badShape", &[]))?;
-        // 〔V151〕`ccm <左…> "$@"[ -- <右…>]`：`"$@"` 是分界（最后一处；用户的值经 [`Self::word`] 单引号，不会长成它）。
+        // `ccm <左…> "$@"[ -- <右…>]`：`"$@"` 是分界（最后一处；用户的值经 [`Self::word`] 单引号，不会长成它）。
         let at = body
             .rfind(POSIX_ARGS)
             .ok_or(&copy_text("rsShellDialect.posix.badTail", &[]))?;
@@ -390,7 +390,7 @@ impl Posix {
     }
 }
 
-/// 〔V151〕别名那条 argv 按最后一个 `--` 切成两半（没有 ⇒ 右边 `None`）。两种方言渲染共用。
+/// 别名那条 argv 按最后一个 `--` 切成两半（没有 ⇒ 右边 `None`）。两种方言渲染共用。
 fn split_last_end<'a>(end: &str, argv: &'a [String]) -> (&'a [String], Option<&'a [String]>) {
     match argv.iter().rposition(|w| w == end) {
         Some(k) => (&argv[..k], Some(&argv[k + 1..])),
@@ -503,7 +503,7 @@ impl ShellDialect for Posix {
 
     /// 两条路各查一次，报出来的话里带住址，用户才知道自己在盖掉什么：
     /// ① `src/shared/ccm-aliases.sh` 里自带的那几个（今天是 `cc` / `cct`）——**问的是那份文件本身**
-    ///    （〔OSA〕通用层交进来的 `own_block`），不在这里抄一份名字清单；
+    ///    （通用层交进来的 `own_block`），不在这里抄一份名字清单；
     /// ② `PATH` 上真有一个同名程序 —— 🔴 `cc` 在多数机器上是 C 编译器（`/usr/bin/cc`），
     ///    而自带那份别名只检查「有没有同名**函数**」、不检查程序。
     fn name_taken(&self, name: &str, own_block: &str) -> Option<String> {
@@ -542,7 +542,7 @@ impl ShellDialect for Posix {
 pub(crate) struct PowerShell;
 
 /// PowerShell 那份别名文件在 home 下的相对路径（交给后端的 `rel` 用 `/`；PowerShell 两种分隔符都认）。
-/// 〔P3〕值只住契约 crate（monitor 的数据位置页按它列出）。
+/// 值只住契约 crate（monitor 的数据位置页按它列出）。
 const PS_ALIAS_FILE_REL: &str = relay_route_core::PS_ALIASES_REL;
 
 /// PowerShell 单引号串里算「引号」的那几个字符：ASCII `'` 之外，PowerShell 还把 `‘ ’ ‚ ‛` 当成同一个引号
@@ -554,7 +554,7 @@ const PS_PARAM_OPEN: &str = "    [CmdletBinding()] param(";
 const PS_PARAM_ARG: &str =
     "        [Parameter(ValueFromRemainingArguments = $true)] $RemainingArgs";
 const PS_PARAM_CLOSE: &str = "    )";
-/// 〔`71 §4.6 ②`〕`__ccm_bind` 是**拉前的握手**，留适配层 —— 通用层一个字不知道它。
+/// `__ccm_bind` 是**拉前的握手**，留适配层 —— 通用层一个字不知道它。
 /// 带守卫：终端集成块没装时它不存在，这一行就是空操作（与 POSIX 那一侧「没有握手」同效）。
 const PS_BIND: &str =
     "    if (Get-Command __ccm_bind -CommandType Function -ErrorAction SilentlyContinue) { __ccm_bind }";
@@ -564,10 +564,10 @@ const PS_BLOCK_OPEN: &str = "{";
 const PS_BLOCK_CLOSE: &str = "}";
 /// 最后一行的尾巴：调用时再给的参数原样接在后面（与 `cc` 同一写法：数组变量交给原生程序时逐个展开）。
 const PS_TAIL: &str = " $RemainingArgs";
-/// 〔V151〕分隔 claude / ccm 两半的 `--`：写成单引号字面量（裸 `--` 是 PowerShell 自己的「参数到此为止」记号，会被它吃掉）。
+/// 分隔 claude / ccm 两半的 `--`：写成单引号字面量（裸 `--` 是 PowerShell 自己的「参数到此为止」记号，会被它吃掉）。
 const PS_END: &str = " '--'";
 
-/// 〔OSA〕别名块里那个 `function cc`（原 `assets/aliases/block.rs::render_cc_code` 里拼的那一段，逐字搬来；
+/// 别名块里那个 `function cc`（原 `assets/aliases/block.rs::render_cc_code` 里拼的那一段，逐字搬来；
 /// 握手 `__ccm_bind` 不带守卫 —— 它与 `__ccm_bind` 同块装）。`word` 是通用层交进来的那个词（`KR135D2`：翻正的落点）。
 pub(crate) fn ps_wrapper_function(name: &str, word: &str) -> String {
     format!(
@@ -575,7 +575,7 @@ pub(crate) fn ps_wrapper_function(name: &str, word: &str) -> String {
     )
 }
 
-/// 〔WF1 · `WIN3.md §2` M/N〕**PowerShell 单引号字面量的唯一出口**：`'…'` 包裹，[`PS_QUOTES`] 里每个字符都双写。
+/// 〔`WIN3.md §2` M/N〕**PowerShell 单引号字面量的唯一出口**：`'…'` 包裹，[`PS_QUOTES`] 里每个字符都双写。
 /// 后端生产段凡是把一个值放进 PowerShell 单引号里的都只调它（判据 `shell_home_guard.rs` 零命中）。
 ///
 /// 别名参数也每个都走它、不像 POSIX 那样「安全字符裸放」：PS 5.1 对裸词有 `--%`（停止解析）与 `--x=a.b` 在 `.` 处被劈开两个坑。
@@ -624,7 +624,7 @@ impl PowerShell {
         Ok(out)
     }
 
-    /// `& ccm '…' $RemainingArgs['--' '…']` → 参数（〔V151〕`$RemainingArgs` 是分界：左边交 claude，右边 `'--'` 之后归 ccm）。
+    /// `& ccm '…' $RemainingArgs['--' '…']` → 参数（`$RemainingArgs` 是分界：左边交 claude，右边 `'--'` 之后归 ccm）。
     fn parse_call(call: Call, line: &str) -> Result<Vec<String>, String> {
         let word = call.word;
         let head = format!("    & {word}");
@@ -654,7 +654,7 @@ impl ShellDialect for PowerShell {
     /// PS 7 两份只在 `Documents/PowerShell` 这个目录在时列（说明装过且至少跑过一次）。
     /// **文件不在也列**：`$PROFILE` 通常要装的时候才建。
     ///
-    /// 🔴 〔AL1d · 第四波 4B〕**全仓只有这里答「`$PROFILE` 在哪」**（`调研/第四波记录/AL1d.md §2.3`）：
+    /// 🔴 **全仓只有这里答「`$PROFILE` 在哪」**：
     /// 从前另有四处认法（终端集成的两份发现表、TS 自己换文件名推 AllHosts、数据页探备份目录那张表），
     /// 其中一份还把 `profile.ps1` 判成「装错了的遗留」而这里把它列成合法候选 —— 同一个事实三种说法。
     /// 判据 `dialect_tests.rs::the_profile_location_has_exactly_one_home` 数着这几个文件名 / 目录名只在这里出现。
@@ -662,8 +662,8 @@ impl ShellDialect for PowerShell {
     /// 「文档」目录优先问系统（OneDrive 会把它挪走），问到的不在这个 home 底下时退回 `home/Documents`
     /// （判据拿临时目录当 home，结构上碰不到真实家目录）。
     ///
-    /// 〔AL2 · 第四波 4D〕PS 7 那两份「目录在才列」从前在这里 `is_dir()`，今天交给调用方问那台后端（[`Listed::IfDirExists`]）。
-    /// 〔MIG-3a〕「文档目录在哪」是这台后端问自己的系统（`platform::paths::documents_dir`）—— 这一臂只在说 PowerShell 的
+    /// PS 7 那两份「目录在才列」从前在这里 `is_dir()`，今天交给调用方问那台后端（[`Listed::IfDirExists`]）。
+    /// 「文档目录在哪」是这台后端问自己的系统（`platform::paths::documents_dir`）—— 这一臂只在说 PowerShell 的
     /// 那台上走得到（不在 Windows 的后端在命令口显式拒，[`super::dialect_here`] · 主会话 09-27 裁），路径按这台的写法拼（`Path::join`）。
     fn startup_candidates(&self, home: &str) -> Vec<StartupCandidate> {
         let home = Path::new(home);
@@ -832,11 +832,11 @@ impl ShellDialect for PowerShell {
     ///    问的是那份模板本身（`profile_installer::render_cc_code` 渲染出来的那一份），不抄名单；
     /// ② `PATH` 上的同名程序（按 PowerShell 认的那几种扩展名）。函数的优先级高于外部程序 ⇒ 你这条会赢。
     ///
-    /// ③ 〔FIX · `设计/71 §8` 第 8 条 · WIN2 #4 读数〕PowerShell 的**内建别名**（`ls` / `cd` / `cat` …）优先级**高于**函数 ——
+    /// ③ 〔WIN2 #4 读数〕PowerShell 的**内建别名**（`ls` / `cd` / `cat` …）优先级**高于**函数 ——
     /// 撞上它们的别名定义了也敲不到。问这台：起一次 PowerShell 跑 `Get-Alias`、进程内缓存
     /// （[`ps_builtin_aliases`]），不编一份清单；问不到就说问不到。
     fn name_taken(&self, name: &str, own_block: &str) -> Option<String> {
-        // 〔OSA〕模板里定义了哪几个函数：通用层交进来渲染好的那一份（它喂一个占位数据目录 —— 与名字无关）。
+        // 模板里定义了哪几个函数：通用层交进来渲染好的那一份（它喂一个占位数据目录 —— 与名字无关）。
         let ours = own_block.lines().any(|l| {
             l.trim_start()
                 .strip_prefix("function ")
@@ -849,7 +849,7 @@ impl ShellDialect for PowerShell {
                 &[("name", &name.to_string())],
             ));
         }
-        // 〔MIG-3a〕这台不说 PowerShell ⇒ 没有内建别名可撞（这一臂在命令口已被 `dialect_here` 拒，判据直调方言时走到这里）。
+        // 这台不说 PowerShell ⇒ 没有内建别名可撞（这一臂在命令口已被 `dialect_here` 拒，判据直调方言时走到这里）。
         if crate::platform::shell::speaks_powershell() {
             if let Some(note) = builtin_alias_note(name, ps_builtin_aliases()) {
                 return Some(note);

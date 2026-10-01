@@ -1,5 +1,5 @@
 /**
- * 「秤 5：启动重放队列深度」——`调研/设计/17-算法与复杂度.md` §6 表第 5 行。
+ * 「秤 5：启动重放队列深度」—— §6 表第 5 行。
  *
  * # 它要量什么
  *
@@ -91,7 +91,7 @@ vi.mock("@tauri-apps/api/webviewWindow", () => ({
 vi.mock("../../../src/frontend/ui/ipc/commands", () => ({
   commands: new Proxy({}, { get: () => vi.fn(() => Promise.resolve()) }),
 }));
-// 〔CF2 · 第四波 4B〕会话内容从通道 `subscribe` 来：换成桩，按句柄的形状灌（`test-support/chan-stream-fake.ts`）。
+// 会话内容从通道 `subscribe` 来：换成桩，按句柄的形状灌（`test-support/chan-stream-fake.ts`）。
 //   ⚠ 读数的适用范围跟着变了一格：生产上句柄按 credit 交（`events.ts::STREAM_WINDOW` 格），前端落后超过一个窗口
 //   句柄就**停下等**（重放）/ 丢并报 `gap`（实时）⇒ 队列深度在生产上有上界 = 窗口。本文件的桩**不看 credit**，
 //   量的仍是「前端这一侧的 drain 追不追得上」那条曲线本身。
@@ -106,7 +106,7 @@ import { streamFake } from "../../test-support/chan-stream-fake.ts";
 const FRONT_BATCH_SIZE = 40;
 /** `src/frontend/shell/src/event_replay.rs` 的 `CHUNK_SIZE`：后端 replay 的切块大小。 */
 const BACKEND_CHUNK_SIZE = 600;
-// 〔CF2〕原来还有一个「低于它就不切块、单次 emit」的阈值（200）：重放改走通道的订阅之后没了 ——
+// 原来还有一个「低于它就不切块、单次 emit」的阈值（200）：重放改走通道的订阅之后没了 ——
 //   一块就是一次投递，不足 600 条自然就是一块。
 /** `src/frontend/shell/src/event_replay.rs` 的 `CHUNK_PAUSE_MS`：块与块之间后端 sleep 这么久。 */
 const BACKEND_CHUNK_PAUSE_MS = 10;
@@ -177,7 +177,7 @@ function makePayload(seq: number): unknown {
 /**
  * 复刻 `src/frontend/shell/src/event_replay.rs` 的 `build_chunks`：**从尾往前切**，所以
  * `chunks[0..n-2]` 各 `CHUNK_SIZE` 条，**最后一块**才是余数（可能小于 CHUNK_SIZE）。
- * 〔CF2〕原来还有「低于 200 条不切块」那一支；重放改走订阅之后没了（不足一块自然就是一块）。
+ * 原来还有「低于 200 条不切块」那一支；重放改走订阅之后没了（不足一块自然就是一块）。
  */
 function buildChunkSizes(total: number): number[] {
   const sizes: number[] = [];
@@ -258,7 +258,7 @@ async function runReplay(total: number, ticksPerGap: number): Promise<ReplayResu
     const payloads: unknown[] = [];
     for (let j = 0; j < size; j++) payloads.push(makePayload(seq + j));
     seq += size;
-    // 账本按 `events.ts` 收会话流时真实的 push 顺序记（〔CF2〕句柄那一侧的形状：首块以 `batch:start` 开头、
+    // 账本按 `events.ts` 收会话流时真实的 push 顺序记（句柄那一侧的形状：首块以 `batch:start` 开头、
     // 每块以 `batch:end` 收尾）：第 0 块先一个 batch-start，然后 N 个 payload，最后一个 batch-end。
     if (i === 0) probe.push("batch-start");
     for (let j = 0; j < size; j++) probe.push("payload");
@@ -351,7 +351,7 @@ describe("秤 5 · A：启动重放的队列深度曲线（纯外部观测，0 �
       lines.push("=== 秤 5 · A 队列深度（queue.length 峰值，[下界,上界] 宽度 ≤1） ===");
       lines.push(
         `模型：后端 CHUNK_SIZE=${BACKEND_CHUNK_SIZE} / CHUNK_PAUSE_MS=${BACKEND_CHUNK_PAUSE_MS}` +
-          `；前端 BATCH_SIZE=${FRONT_BATCH_SIZE}（〔CF2〕生产上另有 credit 窗口封顶，本桩不看它）`,
+          `；前端 BATCH_SIZE=${FRONT_BATCH_SIZE}（生产上另有 credit 窗口封顶，本桩不看它）`,
       );
       lines.push(
         "gap内drain | 输入条数 | 块数 | 队列峰值[lo,hi] | 峰值/输入 | 峰值出现在 | 收尾深度 | onLine",
@@ -623,14 +623,14 @@ describe("秤 5 · C：本文件镜像的那 3 个常量没有漂（读，不改
 // ───────────────────────── D. 生产两处出队已换头指针 ─────────────────────────
 
 /**
- * 〔W5-RENDER R1〕`设计/17 §2.10` 逐字：「`Array.prototype.shift()` 当队列（`events.ts` drain · `branching.ts` Kahn），
+ * 「`Array.prototype.shift()` 当队列（`events.ts` drain · `branching.ts` Kahn），
  * 超线性是真的（V8 的 left-trim 快路不是无条件生效的）」「换头指针。顺手改」。
  *
  * B 段证的是「换头指针是等价替换」（复制品上）；本段钉的是**生产那两处真的换了**：两份源码（剥掉注释）里
  * `.shift(` 零命中。正控：同一个剥注释 ＋ 数命中的函数，喂改之前的那两行原文各数得出 1 —— 抽取器瞎了会先在正控上红。
- * 改前 / 改后读数（经生产 `bindEvents` 灌一块 20 000 条、空壳 `onLine` 的排空墙钟）住 `调研/第四波记录/W5-RENDER.md §6`。
+ * 改前 / 改后读数（经生产 `bindEvents` 灌一块 20 000 条、空壳 `onLine` 的排空墙钟）住。
  */
-describe("秤 5 · D：生产两处出队不用 shift()（`设计/17 §2.10`）", () => {
+describe("秤 5 · D：生产两处出队不用 shift()", () => {
   const read = (rel: string): string =>
     readFileSync(fileURLToPath(new URL(rel, import.meta.url)), "utf8");
   /** 剥掉 `//` 行注释与块注释之后，数 `.shift(` 出现几次。 */
@@ -650,7 +650,7 @@ describe("秤 5 · D：生产两处出队不用 shift()（`设计/17 §2.10`）"
     for (const rel of ["../../../src/frontend/ui/events.ts", "../../../src/frontend/ui/branching.ts"]) {
       const src = read(rel);
       expect(src.length, `${rel} 读出来是空的 —— 本条会零命中地绿`).toBeGreaterThan(1000);
-      expect(shiftCalls(src), `${rel} 里又出现了 \`.shift(\` —— \`设计/17 §2.10\` 要头指针出队`).toBe(0);
+      expect(shiftCalls(src), `${rel} 里又出现了 \`.shift(\` —— \`\` 要头指针出队`).toBe(0);
     }
   });
 });

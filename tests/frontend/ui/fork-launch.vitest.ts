@@ -112,14 +112,14 @@ describe("describeSlot", () => {
 
     const dead = inferForkLaunch({ sourceIsLive: false, sourceCwd: "/p" });
     const t = describeSlot("account", dead);
-    // 说清为什么答不出（〔CP2b〕CP1 裁：不说 pidfile，说后果）。〔FIX2 · 99 §2.1 ㉛②〕按文案键断言、不钉原文。
+    // 说清为什么答不出（CP1 裁：不说 pidfile，说后果）。按文案键断言、不钉原文。
     expect(t).toBe(
       copyText("forkLaunch.slot.ask", { label: copyText("forkLaunch.slot.account"), why: copyText("forkLaunch.exited.account") }),
     );
   });
 });
 
-// 〔FIX4 · `设计/90 §3` J7〕这里原来一组 `forkTmuxName`（分叉会话名 `<源名>-fork-cc` ＋ 避让）：它随派生 ＋ 避让搬进后端
+// 这里原来一组 `forkTmuxName`（分叉会话名 `<源名>-fork-cc` ＋ 避让）：它随派生 ＋ 避让搬进后端
 // （`control/ccm/plan.rs::fork_tmux_base`，帧命令 `tmux-name-mint {forkOf}`）。五条期望（与源名不同 · 撞了往后排 · `-cc` 形状 ·
 // 拿 cwd 当源也建得出来 · 空 ⇒ `session-fork-cc`）原样搬进 `tests/backend/control/ccm/plan_tests.rs::the_fork_base_differs_from_its_source_and_is_always_a_legal_new_name`
 // （「建得出来」那一格的消费者换成真正判新建名的 `validate_tmux_name`）。

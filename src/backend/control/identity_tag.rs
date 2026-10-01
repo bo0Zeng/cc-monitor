@@ -70,11 +70,11 @@
 //! 改的是 **tmux server 的运行期状态**，不是后端自己写用户既有数据（同 `tmux_hook`）。
 //!
 //! ═══════════════════════════════════════════════════════════════════════════
-//! # 🔴 本模块的第二张面：**启动期令牌**（`CCM_RBIND_TOKEN`）〔`设计/80 §8.7` 步 2，09-22〕
+//! # 🔴 本模块的第二张面：**启动期令牌**（`CCM_RBIND_TOKEN`）
 //! ═══════════════════════════════════════════════════════════════════════════
 //!
 //! 上面整篇讲的是「**把身份广播到本地**」—— 用户 09-22 逐字裁「**`--ccm-sid` 不要依赖
-//! tmux**」，而 `设计/80 §8.1` 的核心判断逐字：
+//! tmux**」，而核心判断是：
 //!
 //! > 🔴 **tmux 不是在做「发现身份」，是在做「把身份广播到本地」。**
 //! > 而广播这件事，本仓已经有一条正经的、有分帧的、双向的通道 —— 后端的 wire 协议。
@@ -87,7 +87,7 @@
 //!
 //! ## 为什么这件事该由**本模块**做（不是新起一个文件）
 //!
-//! `设计/80 §8.3` 那张「零件都在盘上」的表点的就是本文件，逐条：
+//! 那张「零件都在盘上」的表点的就是本文件，逐条：
 //!
 //! | 零件 | 本轮现打核的结果 |
 //! |---|---|
@@ -114,7 +114,7 @@
 //!    ⚠ 那条铁律的**计数词**说的是 `--session-accounts` 那条查询（`accounts_query.rs`，
 //!    仍是两个键），**不是全后端**；本文件不在它的分母里
 //!    （`accounts_query_tests.rs` 那条判据的头注逐字登记着这件事）。
-//! 2. **令牌不许承载任何权限语义**（`设计/80 §8.6 ③` 逐字）。它**只能是一个不可猜的
+//! 2. **令牌不许承载任何权限语义**。它**只能是一个不可猜的
 //!    关联 id**：拿到它顶多能让某人的 ↗ 拉错窗口，**不能越权**。
 //!    ⇒ 本模块对它**不做任何授权判断**，也不拿它当 join 键去做破坏性动作
 //!    （破坏性动作唯一认的事实仍是 `@ccm_sid`，见上文两通道那一段）。
@@ -136,10 +136,10 @@
 /// 一次打标的结局。**返回而不是吞掉** —— 唯一调用点（`observe/watcher.rs::process_session_added`）
 /// 先经 [`Outcome::failure_note`] 把打不上的那两形说出来，再取 [`Outcome::container`]。
 ///
-/// 〔W5-VIS · `设计/15 §4.7 S2`〕`#[must_use]`：`@ccm_sid` 是破坏性动作**唯一认的事实**（打错 ＝ 杀错），
+/// `#[must_use]`：`@ccm_sid` 是破坏性动作**唯一认的事实**（打错 ＝ 杀错），
 /// 标没写上 ⇒ Gate 2 不过 ⇒ kill / 送键回 `wrong_owner`，而「为什么进不去」整条链零线索 ——
 /// 这个结局被整个丢掉时编译器要说话。
-#[must_use = "打标的结局要经 `failure_note` 说出来（打不上 ⇒ 之后 kill / 送键被身份门拒，设计/15 §4.7 S2）"]
+#[must_use = "打标的结局要经 `failure_note` 说出来（打不上 ⇒ 之后 kill / 送键被身份门拒）"]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Outcome {
     /// 打上了（或从「没有」变成了新值）。带上落地的 `#{session_id}` 句柄。
@@ -149,11 +149,11 @@ pub(crate) enum Outcome {
     AlreadyCurrent,
     /// 这个进程不在 tmux 里：环境**读得到**，`TMUX_PANE` 没设（或是空串）⇒ 没有会话可打。
     ///
-    /// 〔U4b · 第四波〕这一格从此**只**说这一件事 —— 它是 `session_added.container = "none"`
+    /// 这一格从此**只**说这一件事 —— 它是 `session_added.container = "none"`
     /// 的唯一来源（`observe::watcher::container_of`）。环境读不到 / pane id 形状不对的那两支
     /// 挪进 [`Outcome::PaneUnknown`]：它们说的是「不知道」，不是「不在」。
     NotInTmux,
-    /// 〔U4b〕**不知道它在不在 tmux 里**：环境这一刻读不到（`EnvRead::Unreadable`：exec 窗口、
+    /// **不知道它在不在 tmux 里**：环境这一刻读不到（`EnvRead::Unreadable`：exec 窗口、
     /// 僵尸、非 Linux），或者 `TMUX_PANE` 有值但形状过不了 [`pane_is_safe`]。
     ///
     /// 打标上与 `NotInTmux` 一模一样（都不打）；分开它只为了容器那一格**不许把「不知道」报成「不在」**
@@ -168,7 +168,7 @@ pub(crate) enum Outcome {
 }
 
 impl Outcome {
-    /// 〔W5-VIS · `设计/15 §4.7 S2`〕**打不上的那两形说出来**：一句给日志的话；其余五形回 `None`。
+    /// **打不上的那两形说出来**：一句给日志的话；其余五形回 `None`。
     ///
     /// | 结局 | 说不说 | 为什么 |
     /// |---|---|---|
@@ -195,12 +195,12 @@ impl Outcome {
         ))
     }
 
-    /// 〔RESYNC〕这一次真往 tmux 里写了（对账据此决定要不要再探一次快照）。
+    /// 这一次真往 tmux 里写了（对账据此决定要不要再探一次快照）。
     pub(crate) fn wrote(&self) -> bool {
         matches!(self, Outcome::Tagged(_))
     }
 
-    /// 〔U4b · 第四波〕**打标那一次探测的结局 → 这条会话的容器**（`session_added.container`）。
+    /// **打标那一次探测的结局 → 这条会话的容器**（`session_added.container`）。
     ///
     /// | 结局 | 容器 | 为什么 |
     /// |---|---|---|
@@ -261,7 +261,7 @@ fn pane_is_safe(pane: &str) -> bool {
 ///
 /// `proc_env_var` 在**读侧**就把空串压成了 `EnvRead::Unset`（`platform/proc.rs`：
 /// 「值是空串」与「压根没这个键」两支合并）⇒ 下面 `EnvRead::Unset` 那一臂一律早退成 `Outcome::NotInTmux`
-/// （〔U4b〕原先是一个 `.value()?`，换成三臂 `match` 之后这条性质不变）
+/// （原先是一个 `.value()?`，换成三臂 `match` 之后这条性质不变）
 /// ⇒ **`pane_is_safe("")` 永远不会在生产路上被执行到**。
 ///
 /// 🔴 它**不是坏的，是死的**：它挡的是「拿到空串」，而上游让它拿不到。
@@ -273,7 +273,7 @@ fn pane_is_safe(pane: &str) -> bool {
 /// 它是 08-14 一次真事故（`display-message -t ''` 静默解析成「当前会话」⇒ 打错标就杀错）
 /// 撞出来的，那条早退（今天是 `Unset` 那一臂）哪天换成别的写法，它就是唯一还站着的那道门。
 ///
-/// 〔U4b · 第四波〕返回值从 `Option` 换成三态（[`PaneRead`]）：`None` 原先把「没设」与「读不到 /
+/// 返回值从 `Option` 换成三态（[`PaneRead`]）：`None` 原先把「没设」与「读不到 /
 /// 形状不对」合在一起，打标对它们确实等价（都不打），但容器那一格不等价（「不在 tmux 里」vs「不知道」）。
 /// 上面「空串那道防线够不到」那一段**照旧成立**：空串在读侧就成了 `EnvRead::Unset` ⇒ 走 `NotSet`。
 fn pane_of(pid: u32) -> PaneRead {
@@ -302,25 +302,25 @@ enum PaneRead {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// 启动期令牌（`CCM_RBIND_TOKEN`）—— `设计/80 §8.7` 步 2 的读侧。整段论证见本文件头注
+// 启动期令牌（`CCM_RBIND_TOKEN`）的读侧。整段论证见本文件头注
 // 「本模块的第二张面」。
 // ═══════════════════════════════════════════════════════════════════════════
 
-/// tmux 注给 pane 的那个变量名。**从内联字面量提成常量**〔`设计/80 §8.7` 步 2〕：
+/// tmux 注给 pane 的那个变量名。**从内联字面量提成常量**：
 /// 本文件从此读两个环境变量，而「键名不是参数」这条性质要看得见 —— 两个实参都是
 /// 本文件里的 `const`，才能被一条判据数出来（见头注硬约束 1）。
 const TMUX_PANE_ENV: &str = "TMUX_PANE";
 
 /// 🔴 **启动期令牌的变量名 —— 两路共用的契约，钉死，不许改。**
 ///
-/// 写侧住 monitor 的载荷渲染那一族（`设计/80 §8.7` 步 1，`EnvOp` 的窄变体
+/// 写侧住 monitor 的载荷渲染那一族（`EnvOp` 的窄变体
 /// `export-rbind-token`，**另一路在做**）。读侧就是这里。
 ///
 /// ⚠ 双写点的失效方向**极其安静**：两侧漂开 ⇒ 读侧恒 `None` ⇒ 而 `None` 在本查询里
 /// 是**合法值**（「这条会话没有令牌」）⇒ **不会有任何东西报错**，↗ 只是永远降级。
 /// 那正是 `K-P5f` 在 `CCM_LAUNCH_ID` 上栽过的同一个坑
 /// （`accounts_query_tests.rs` 那条双写点判据的诊断逐字记着）。
-/// ⇒ 〔订正 · 令牌步 3〕那条同型的双写点判据**已补**：
+/// ⇒ 〔令牌步 3〕那条同型的双写点判据**已补**：
 /// `payload_tests.rs::the_launch_token_env_var_has_the_same_name_on_both_halves`（两侧异源：读侧抠本行、写侧真跑渲染器）。
 const RBIND_TOKEN_ENV: &str = "CCM_RBIND_TOKEN";
 
@@ -330,19 +330,19 @@ const RBIND_TOKEN_ENV: &str = "CCM_RBIND_TOKEN";
 ///
 /// 它的下游用途是**跨机器的 join 键**：本地那半按同一个串去查 HWND 表。
 /// 一个「差不多对」的串在那张表里查不到，与查错一样糟，但**更难归因**
-/// （`设计/80 §8.5 ②` 的全部价值就是把归因从「四档猜」收成**一个布尔**：
+/// （全部价值就是把归因从「四档猜」收成**一个布尔**：
 /// 这个 sid 有没有令牌 —— 那个布尔只有在「有 = 形状确定对」时才说得准）。
 /// ⇒ 任何偏离一律当**没有**，而不是当「大概是它」。
 ///
 /// ⚠ 与 [`pane_of`] 的 `trim` 刻意不同：pane id 是 tmux 注的、历史上见过带空白的读法；
 /// 令牌是**我们自己注的**，我们知道它长什么样，没有任何理由去宽容它。
 ///
-/// 〔DUP3 · 主会话 09-26 裁 · `设计/01 §5` D1〕判定本体不在这里：写侧（monitor 渲 `export CCM_RBIND_TOKEN=…`）与本读侧
+/// 判定本体不在这里：写侧（monitor 渲 `export CCM_RBIND_TOKEN=…`）与本读侧
 /// 核的是**同一个令牌**，形状全仓只有一份 —— `shell_quote_core::rbind_token_ok`（先前这里手写一份 `[0-9a-f]{32}`，
 /// 与 monitor `payload.rs` 那份逐字同、各自为政）。`token_is_safe` 这个名字是它的再导出（`ccm/plan.rs` 的调用点一个不动）。
 pub(crate) use shell_quote_core::rbind_token_ok as token_is_safe;
 
-/// 〔S5 · 第四波〕令牌那个变量名，给 `ccm` 直路读**自己**的环境用（`control/ccm/plan.rs::Env::from_process`）。
+/// 令牌那个变量名，给 `ccm` 直路读**自己**的环境用（`control/ccm/plan.rs::Env::from_process`）。
 ///
 /// ⚠ 刻意是一个函数、不把上面那行 `const` 改成 `pub(crate)`：那一行的写法被桥侧
 /// `payload_tests.rs::the_launch_token_env_var_has_the_same_name_on_both_halves` 按行首逐字认。
@@ -359,7 +359,7 @@ pub(crate) fn rbind_token_env() -> &'static str {
 /// 合并的依据与 `EnvRead::value()` 那条头注逐字相同：本调用方是 **fail-closed** 的
 /// （四条路都得同一个保守答案「没有令牌 ⇒ ↗ 降级回标题路」），所以对它确实等价。
 ///
-/// 🔴 **不印值。** 令牌是敏感数据（`设计/80 §8.6 ③`）；下面那行 `warn!` 只印**长度**，
+/// 🔴 **不印值。** 令牌是敏感数据；下面那行 `warn!` 只印**长度**，
 /// 让「注进去了但形状不对」这一格可诊断，而不泄漏关联 id 本身。
 /// 这条由 `identity_tag_tests::the_token_value_never_reaches_a_log_macro` 钉住。
 pub(crate) fn rbind_token_of(pid: u32) -> Option<String> {
@@ -415,7 +415,7 @@ pub(crate) mod door;
 
 /// 真写那一下：`set-option -t <句柄> <事实键> <sid>`。
 ///
-/// 〔W5-VIS · `设计/15 §4.7 S4` 同形〕tmux 的 stderr **收下来进原因**（原先丢进 `Stdio::null()`，
+/// 〔同形〕tmux 的 stderr **收下来进原因**（原先丢进 `Stdio::null()`，
 /// 失败只剩一个退出码 —— 「为什么没打上」要靠猜）。`cmd` 由调用方造（生产 = `Command::new("tmux")`），
 /// 判据换一个假 tmux 的绝对路径进来，不碰进程级 `PATH`（`gate_tests` 头注写过为什么不能 `set_var`）。
 fn set_sid(mut cmd: std::process::Command, target: String, sid: &str) -> Outcome {
@@ -438,4 +438,4 @@ fn set_sid(mut cmd: std::process::Command, target: String, sid: &str) -> Outcome
 
 #[cfg(test)]
 #[path = "../../../tests/backend/control/identity_tag_tests.rs"]
-pub(crate) mod tests; // 〔CIFIX-BE〕`pub(crate)`：起 `sleep` 的夹具（`tests::spawn_settled_sleep` · `spawn_token_sleeper`）给 watcher 的单测共用
+pub(crate) mod tests; // `pub(crate)`：起 `sleep` 的夹具（`tests::spawn_settled_sleep` · `spawn_token_sleeper`）给 watcher 的单测共用

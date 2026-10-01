@@ -2,7 +2,7 @@
  * S4b-3b-3：`componentSources` 自身的测试。
  *
  * 它是那几条源码级守卫的地基 —— 地基空转的话，守卫会**全绿地失效**，
- * 而这正是主计划 §5-4 提醒的那种病。
+ * 而这正是提醒的那种病。
  */
 import { describe, it, expect } from "vitest";
 import { componentSources, stripLineComments } from "./component-sources";

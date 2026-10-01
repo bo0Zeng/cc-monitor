@@ -1,5 +1,5 @@
 /**
- * U8c-2c-2：`ccm …` 调用行与载荷渲染的上线形状（TS 侧）。〔MIG-2〕两条都是那台后端的帧命令
+ * U8c-2c-2：`ccm …` 调用行与载荷渲染的上线形状（TS 侧）。两条都是那台后端的帧命令
  * （`launch-render-cli` / `launch-render-payload`，经 `src/frontend/ui/launch-render.ts` 问）。
  *
  * Rust 对侧是 `src/backend/control/launch_render/wire.rs` 的 `CliRenderRequest`/`CliRenderResponse`，
@@ -22,7 +22,7 @@ export type CliWireAccount = { kind: "base" } | { kind: "account"; name: string 
 
 export interface CliRenderRequest {
   isSsh: boolean;
-  // 〔MIG-2〕原先这里有 `ccm`（界面探了再带过去）：渲染进了那台后端，能力问它自己，这一格删了。
+  // 原先这里有 `ccm`（界面探了再带过去）：渲染进了那台后端，能力问它自己，这一格删了。
   action: CliWireAction;
   container: CliWireContainer;
   cwd: string | null;
@@ -49,18 +49,18 @@ export interface CliRenderResponse {
 export type WireEnvOp =
   | { kind: "export-config-dir"; value: string }
   | { kind: "export-model"; value: string }
-  /** `设计/80 §8` 步 1：启动期令牌。Rust 渲染侧对 `[0-9a-f]{32}` 之外的值 fail-closed 拒。 */
+  /** 启动期令牌。Rust 渲染侧对 `[0-9a-f]{32}` 之外的值 fail-closed 拒。 */
   | { kind: "export-rbind-token"; value: string }
-  /** 〔RL1〕中转地址。Rust 渲染侧只收构造口（`relay_route_core::base_url`）产得出的那一形（`base_url_shape_ok`），别的 fail-closed 拒。 */
+  /** 中转地址。Rust 渲染侧只收构造口（`relay_route_core::base_url`）产得出的那一形（`base_url_shape_ok`），别的 fail-closed 拒。 */
   | { kind: "export-relay-base-url"; value: string }
   | { kind: "unset-config-dir" }
   | { kind: "unset-nested-env" };
 
-// 〔C4e · 第四波 4C〕这里原来住着 `backend_send_into`〔散文墓碑〕的上线形状（`SendIntoRequest` / `SendIntoResponse`）：
+// 这里原来住着 `backend_send_into`〔散文墓碑〕的上线形状（`SendIntoRequest` / `SendIntoResponse`）：
 //   就地 resume 那一次键入改由界面经通道直接问那台机器的后端（`src/frontend/ui/tmux-control.ts::sendInto`，
 //   `launch{mode:"send-into"}`），F14 那条「能不能回落」的三态也随之住在那里（`SendIntoOutcome`）。
 
-/** `设计/90 §4 E`：**外层容器那一层**的上线形状。Rust 对侧是 `launch_wire.rs::WireTmuxOuter`
+/** **外层容器那一层**的上线形状。Rust 对侧是 `launch_wire.rs::WireTmuxOuter`
  *  （带 `deny_unknown_fields`）。
  *
  *  ⚠ `quoting` 不是「要不要加引号」，是「**这个名字过的是哪道校验**」——
@@ -96,8 +96,8 @@ export interface PayloadRenderRequest {
   /** 缺席 = `container:"none"` 那一格（本命令原本的唯一形态，字节一个都没变）。
    *  Rust 侧是 `#[serde(default)] pub outer: Option<WireTmuxOuter>`。 */
   outer?: WireTmuxOuter;
-  /** 〔DUP1 · `INVARIANTS §47` ①〕resume 的 sid（`args` 第二格的同一个值，单独再报一次）；不是 resume ⇒ `null`。
-   *  渲染侧拿它过 `shell_quote_core::session_id_ok`、再核它就是 `args` 第二格 —— 前端不判 sid（`设计/90 §3` 判据 2）。
+  /** 〔`INVARIANTS §47` ①〕resume 的 sid（`args` 第二格的同一个值，单独再报一次）；不是 resume ⇒ `null`。
+   *  渲染侧拿它过 `shell_quote_core::session_id_ok`、再核它就是 `args` 第二格 —— 前端不判 sid。
    *  Rust 侧是 `#[serde(default)] pub resume_sid: Option<String>`。 */
   resumeSid: string | null;
 }

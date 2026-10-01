@@ -1,4 +1,4 @@
-//! 〔MIG-3a · D 组〕MCP 装到一台的 I/O 那一半：帧面 `mcp-sync-source` · `mcp-sync-preview` · `mcp-sync-apply`，只看被点的那一条。
+//! 〔D 组〕MCP 装到一台的 I/O 那一半：帧面 `mcp-sync-source` · `mcp-sync-preview` · `mcp-sync-apply`，只看被点的那一条。
 //!
 //! 每一问都只在**一台**上：来源那台交那一条（`mcp-sync-source`）；要被写的那一台自己读自己那份、判、写（`-preview` / `-apply`）。
 //! 🔴 **密钥不出来源机**：`env` / `headers` 的值（与资产目录只记键名的是同一张表，`asset_catalog::MCP_KEYS_ONLY_FIELDS`）

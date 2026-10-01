@@ -1,4 +1,4 @@
-//! 〔TL3 · 审计 F 🔴-2〕**同步 IPC 命令里零 `block_on` / 零同步连后端**（整体 `#[cfg(test)]`）。
+//! 〔审计 F 🔴-2〕**同步 IPC 命令里零 `block_on` / 零同步连后端**（整体 `#[cfg(test)]`）。
 //!
 //! # 守的要求（住址）
 //!
@@ -8,9 +8,9 @@
 //!
 //! # 为什么要有它
 //!
-//! `§10` 此前**一条判据都没有**。US1（第四波 4D）给本机起会话那两条同步命令
-//! （`resume_history_session` · `new_local_session`〔散文墓碑〕，〔MIG-2〕已搬进本机后端 `launch-local`）的链路里加了一次 `block_on` 等本机后端
-//! （最长 10 s）—— 设计篇写着、没人量，于是它合进了主线（审计 F 🔴-2 · 🟠-1）。
+//! `§10` 此前**一条判据都没有**。本机起会话那两条同步命令
+//! （`resume_history_session` · `new_local_session`〔散文墓碑〕，已搬进本机后端 `launch-local`）的链路里加了一次 `block_on` 等本机后端
+//! （最长 10 s）—— 设计写着、没人量，于是它合进了主线。
 //!
 //! # 它量什么（判据住 `tests/frontend/shell/sync_command_registry_tests.rs`，头注写全）
 //!

@@ -1,7 +1,7 @@
 /**
  * G4/G5：分叉按钮 —— 一份实现，两处复用；off-main 的呈现要区分。
  *
- * 最要紧的一条是 **off-main 的判据不许另算一份主线**（主计划 §3 账本第 6 行）。
+ * 最要紧的一条是 **off-main 的判据不许另算一份主线**（账本第 6 行）。
  * 这里用的是「这张卡在不在 `.branch-fold-wrap` 里」——那个 wrap 是
  * `BranchFolder` 依 `computeMainBranch` 包出来的，所以判据**就是**主线判定的结果。
  */
@@ -10,7 +10,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 const { created } = vi.hoisted(() => ({
   created: { args: [] as unknown[], which: [] as string[] },
 }));
-// 🔴 **〔步 12·C 2026-09-20〕这里原先 mock 的是**两条**命令，今天只有一条。**
+// 🔴 **这里原先 mock 的是**两条**命令，今天只有一条。**
 //
 // 这份 mock 本身就是一条判据：`create_remote_branch_session` **已经不在这里了** ——〔散文墓碑〕
 // 生产代码要是还去调它，vitest 会抛 `is not a function`，当场红。
@@ -18,7 +18,7 @@ const { created } = vi.hoisted(() => ({
 //
 // `which` 记的从前是「调了哪条命令」，今天记的是「送过去的 origin 是什么」 ——
 // 那正是这次合并搬家的东西：**分叉点从命令名搬到了参数**。
-// 〔MIG-3b〕分叉改由界面经通道直说那台后端（`session-writes.ts::forkSession`，monitor 那条分叉命令退役）。
+// 分叉改由界面经通道直说那台后端（`session-writes.ts::forkSession`，monitor 那条分叉命令退役）。
 //   替身记下的仍是「送了哪台 · 哪个 sid · 哪条消息」（同一个形状，下面各条断言不改），它就是真发出去的那一发。
 vi.mock("../../../src/frontend/ui/session-writes", () => ({
   forkSession: (origin: string, sid: string, uuid: string) => {
@@ -144,8 +144,8 @@ describe("G5：off-main 的判据与呈现", () => {
   });
 });
 
-// 🔴 **〔步 12·C 2026-09-20〕这一组原先叫「G6：本机 / 远端走两条不同的 IPC」。**
-//    `设计/00 §2.5 ①` 落地之后那个标题是句假话 —— 只有一条 IPC 了。
+// 🔴 **这一组原先叫「G6：本机 / 远端走两条不同的 IPC」。**
+// 落地之后那个标题是句假话 —— 只有一条 IPC 了。
 //    ⚠ **组里那三条判据一条都没删**：它们判的东西（都带 sid、都不带路径、
 //      `null` 不许原样送出去）在合并之后**同样承重**，只是人群从两条命令变成一条。
 describe("步 12·C：本机 / 远端走**同一条** IPC，分叉点在 `origin` 这个参数上", () => {
@@ -156,11 +156,11 @@ describe("步 12·C：本机 / 远端走**同一条** IPC，分叉点在 `origin
   });
 
   /**
-   * ★★〔`K-R88` 09-13〕本机那条**也只带 sid** —— 两条命令的入参形状从此一致。
+   * ★★本机那条**也只带 sid** —— 两条命令的入参形状从此一致。
    * 原文逐字留着：本条原来叫「带的是**路径**」，断言的是 `sourceJsonlPath`。
    * 那不是笔误，是当时的事实；收成一份「按 sid 找那份文件」之后它才不成立。
    */
-  // 〔C4a〕标题原为「没有 origin → 送 `<local>`」：`origin` 现在必填（「没说」不再被当成本机），
+  // 标题原为「没有 origin → 送 `<local>`」：`origin` 现在必填（「没说」不再被当成本机），
   //   本机就是 `LOCAL_ORIGIN` 这个具名值 —— 本条改量「本机那个名字原样过线」。
   it("★ 本机（`LOCAL_ORIGIN`）→ 送 `<local>`，带的是 **sid**，且一个路径字段都没有", async () => {
     const el = card();
@@ -216,12 +216,12 @@ describe("步 12·C：本机 / 远端走**同一条** IPC，分叉点在 `origin
     );
   });
 
-  // 🔴 **〔步 12·C〕这一条比从前更承重，标题跟着改准。**
+  // 🔴 **这一条比从前更承重，标题跟着改准。**
   //    从前它买的是「`null` 走本机那条命令」；今天它买的是
   //    「`null` **在前端就被补成 `"<local>"`**，一个 `null` 都不许过线」——
   //    因为 Rust 侧 `Origin::route` 对 `null` 是 `Err`，
   //    而调用方（tab / 会话卡）**确实**常把 `tab.origin` 直接透传。
-  // 〔C4a〕`null` 在类型上已经装不进 `origin`（`tsc` 当场拒）；本条留着量「过线的那一份里没有 null」。
+  // `null` 在类型上已经装不进 `origin`（`tsc` 当场拒）；本条留着量「过线的那一份里没有 null」。
   it("本机 origin → 线上是 `<local>`，一个 null 都不过线", async () => {
     const el = card();
     attachBranchButton(el, {

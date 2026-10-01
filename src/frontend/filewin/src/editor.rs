@@ -1,19 +1,19 @@
 //! `24e` 第九刀：**改一份远端文本** —— `sftp_read_text_for_edit`〔散文墓碑〕 ＋ `sftp_write_text`。
 //!
-//! 🔴〔F7a · 第三波 2026-09-24〕**读写两半都经通道问后端了**：写那一半 F2 已换成
+//! 🔴**读写两半都经通道问后端了**：写那一半 F2 已换成
 //! `files-write-text`；读那一半这一拍换成 `files-read-text`（[`read_text`]）。标题里那两条
 //! 池子命令是第九刀当时的住址，下面几节讲「上限」「超了怎么办」的推理照旧成立 ——
 //! 变的只是「最终护栏」住哪：从池子那边的解码函数换成后端那条命令（它自己判两次大小）。
 //!
 //! ═══════════════════════════════════════════════════════════════════════
-//! # 🔴 一、`设计/60 §5.4b` 把两个问题**指名**留给了这一刀
+//! # 🔴 一、把两个问题**指名**留给了这一刀
 //! ═══════════════════════════════════════════════════════════════════════
 //!
 //! 那一节的裁定逐字：「256 KiB 上限」与「改流式」都是**面板还是 webview 时**
 //! 写下的；`§4 戊` 已选原生窗口、`§6.6 C` 已改判为退役那块面板
 //! ⇒「在一个要被替换掉的命令上改签名做流式，是**给将死的东西做手术**。
 //! 那个上限该是多少、超了怎么办，要在**原生窗口的文本控件**这个语境里答，
-//! 连 `byte_cap_registry` 一起改。⇒ 归 `99 §4` 的 `24e`。」
+//! 连 `byte_cap_registry` 一起改。⇒ 归 `24e`。」
 //!
 //! ## 问题二「**超了怎么办**」—— 本刀答了，而答案不用改任何签名
 //!
@@ -30,7 +30,7 @@
 //! （「这不是一份文本文件」）⇒ **三件事分成了两句人话，零签名改动、零额外往返。**
 //!
 //! ⚠ 如实登记它**买不到**什么：远端那个文件在「我们读 `size`」与「我们真去读它」
-//! 之间被换掉（变大 / 变成二进制）⇒ 本地预判会放它过去，而〔F7a〕后端 `files-read-text`
+//! 之间被换掉（变大 / 变成二进制）⇒ 本地预判会放它过去，而后端 `files-read-text`
 //! 仍然是最终护栏（它在那台机器上再判两次大小，正是为这个竞态；第九刀时这一格住池子那边）。
 //! ⇒ **本地预判是一句话的来源，不是一道围栏。**
 //!
@@ -108,11 +108,9 @@
 //! 4. **没有语法高亮 / 行号 / 查找替换** —— 那是一个编辑器，不是这一刀。
 //!
 //! ═══════════════════════════════════════════════════════════════════════
-//! # 四、「只排视口内的行」—— **〔F9 2026-09-24〕落地了，住 [`super::bigfile`]**
+//! # 四、「只排视口内的行」—— **落地了，住 [`super::bigfile`]**
 //!
-//! 第十四刀的设计（egui 那一侧的源码级读数 · 十条难题表 · 四个更便宜的等价物）住
-//! `调研/设计/60 §9`；落地的形状、两个阈值的推算、判据与买不到的，住 `设计/60 §9b`
-//! 与 [`super::bigfile`] 头注。
+//! 落地的形状、两个阈值的推算、判据与买不到的，住 [`super::bigfile`] 头注。
 //!
 //! ⚠ 第十四刀留在这里的那一组内核（行索引 · 窗口 · 写回 · 「开窗买不到」那把尺子）
 //! **随落地一起删了**：它们建模的是「窗口化 `TextEdit`」那条路，而落地走的是另一条
@@ -126,7 +124,7 @@ use std::sync::{Arc, Mutex};
 
 /// 编辑上限 ＝ **存得回、也读得回来的量**（8 MiB）。**超上限拒编而非截断**（截断过的文本当编辑源会写坏文件）。
 ///
-/// 🔴〔F9c · 第四波 · 2026-09-24〕**1 MiB → 8 MiB**。上一版（F9 续）这个数被钉成后端入方向**一行**的上限，
+/// 🔴**1 MiB → 8 MiB**。上一版（F9 续）这个数被钉成后端入方向**一行**的上限，
 /// 因为存盘把整份内容装在一条请求行里；现在装不进一行的那几份**分块走暂存区**（[`write_text`]），
 /// 一行的上限不再管「能存多大」⇒ 能存多大改由后端提交那一条的天花板定：`files-commit-text` 只收
 /// `src/backend/files/mod.rs::READ_TEXT_MAX_BYTES` 以内（存得回的要读得回来），而读那一趟的天花板也是它。
@@ -134,11 +132,11 @@ use std::sync::{Arc, Mutex};
 ///   存之前按字节数拒（[`Pane::over_cap`]，与后端 `files-commit-text` 拒 `bytes` 的那一关逐字节同一个界）。
 /// ⚠ 两个 crate 之间引不到对方 ⇒ 由 `byte_cap_registry::the_cross_crate_twins_are_machine_checked_not_hand_copied`
 ///   读两侧源码**对拍相等**（对 E）。
-/// ⚠ 界面那一侧 8 MiB 打得开、打得动字：`设计/60 §9c.1` 的读数（release，经窗口生产路径，大文件模式
+/// ⚠ 界面那一侧 8 MiB 打得开、打得动字（release，经窗口生产路径，大文件模式
 ///   打开约 20 ms、每键 ≤ 3.03 ms）。
 pub const MAX_EDIT_BYTES: usize = 8 * 1024 * 1024;
 
-/// 🔴〔F9c〕**一条请求行最多多长** ＝ 后端入方向一行的上限（`src/backend/stream/inbound.rs::MAX_LINE_BYTES`，
+/// 🔴**一条请求行最多多长** ＝ 后端入方向一行的上限（`src/backend/stream/inbound.rs::MAX_LINE_BYTES`，
 /// 审计加的防 OOM 线，所有命令共用；多一个字节整行丢弃）。
 ///
 /// 存盘用它分两支：整份装得进一行 ⇒ 一条 `files-write-text`；装不进 ⇒ 按它切块（[`plan_chunks`]），
@@ -149,10 +147,10 @@ pub const SAVE_LINE_CAP: usize = 1 << 20;
 /// 存盘那条线上命令的名字（装得进一行的那一支）。量的与发的必须是**同一条**命令同一份参数（[`save_args`]）。
 pub const CMD_WRITE_TEXT: &str = "files-write-text";
 
-/// 〔F9c〕装不进一行的那一支：逐块进暂存区（后端 `control/files_commit.rs`）。
+/// 装不进一行的那一支：逐块进暂存区（后端 `control/files_commit.rs`）。
 pub const CMD_STAGE_CHUNK: &str = "files-stage-chunk";
 
-/// 〔F9c〕装不进一行的那一支：读回拼起来、原地覆盖（与 `files-write-text` 同一个原语）。
+/// 装不进一行的那一支：读回拼起来、原地覆盖（与 `files-write-text` 同一个原语）。
 pub const CMD_COMMIT_TEXT: &str = "files-commit-text";
 
 /// 请求行里 `id` 最长能占多少字节 —— monitor 那一侧 `inbound_client` 发号的形状是
@@ -162,7 +160,7 @@ pub const REQUEST_ID_ROOM: usize = 1 + 32 + 1 + 20 + 1 + 20;
 
 /// 存盘那一趟的参数（路径切成 `(root, rel)` 与写面其余四条同形）。
 ///
-/// 〔FW1 · 第四波 4D · D-c〕`expect` = 「我打开时那一份」的摘要（`files-read-text` 交的、或上一次存成时应答交的），
+/// `expect` = 「我打开时那一份」的摘要（`files-read-text` 交的、或上一次存成时应答交的），
 /// 后端比盘上此刻那一份、对不上就 `stale`、一个字节不写。窗口只把它当不透明令牌原样交回（算法住后端一处）。
 pub fn save_args(path: &str, content: &str, expect_sha256: &str) -> serde_json::Value {
     save_args_at(
@@ -172,7 +170,7 @@ pub fn save_args(path: &str, content: &str, expect_sha256: &str) -> serde_json::
     )
 }
 
-/// 〔W5-FILES · 有损名全寻址〕同 [`save_args`]，路径可以带字节（`root` / `rel` 按字节切，有损那一段发 `{"b16": …}`）。
+/// 〔有损名全寻址〕同 [`save_args`]，路径可以带字节（`root` / `rel` 按字节切，有损那一段发 `{"b16": …}`）。
 pub fn save_args_at(
     at: &super::source::RemotePath,
     content: &str,
@@ -186,12 +184,12 @@ pub fn save_args_at(
     })
 }
 
-/// 〔F9c〕送一块的参数。`key` 是这一次存盘现造的 32 位小写十六进制（后端只收这个形状）。
+/// 送一块的参数。`key` 是这一次存盘现造的 32 位小写十六进制（后端只收这个形状）。
 pub fn stage_args(key: &str, seq: u64, chunk: &str) -> serde_json::Value {
     serde_json::json!({ "key": key, "seq": seq, "content": chunk })
 }
 
-/// 〔F9c〕提交那一趟的参数：块数与总字节数**显式**给，后端读回来必须对得上。
+/// 提交那一趟的参数：块数与总字节数**显式**给，后端读回来必须对得上。
 pub fn commit_args(
     path: &str,
     key: &str,
@@ -208,7 +206,7 @@ pub fn commit_args(
     )
 }
 
-/// 〔W5-FILES〕同 [`commit_args`]，路径可以带字节。
+/// 同 [`commit_args`]，路径可以带字节。
 pub fn commit_args_at(
     at: &super::source::RemotePath,
     key: &str,
@@ -242,30 +240,30 @@ pub fn request_line_len(cmd: &str, args: &serde_json::Value) -> usize {
     serde_json::to_vec(&RequestLine { id: &id, cmd, args }).map_or(usize::MAX, |v| v.len())
 }
 
-/// 〔F9c〕整份装得进**一条** `files-write-text` 吗（真序列化量，按最长 id）。
-/// 〔FW1〕`expect` 那一格定长（摘要恒 [`SHA256_HEX_LEN`] 位），按一份同长的占位量 —— 与真发的逐字节同长。
+/// 整份装得进**一条** `files-write-text` 吗（真序列化量，按最长 id）。
+/// `expect` 那一格定长（摘要恒 [`SHA256_HEX_LEN`] 位），按一份同长的占位量 —— 与真发的逐字节同长。
 pub fn fits_one_line(path: &str, content: &str) -> bool {
     let room = "0".repeat(SHA256_HEX_LEN);
     request_line_len(CMD_WRITE_TEXT, &save_args(path, content, &room)) <= SAVE_LINE_CAP
 }
 
-/// 〔FW1〕后端 CAS 摘要（SHA-256）的十六进制长度。窗口不算摘要，只认形状：读回来的那一格不是这个形状 ⇒ 不打开
+/// 后端 CAS 摘要（SHA-256）的十六进制长度。窗口不算摘要，只认形状：读回来的那一格不是这个形状 ⇒ 不打开
 /// （存不回去的编辑面不该立起来）。与后端 `files::SHA256_HEX_LEN` 同一个数（SHA-256 的定义，不是可调的量）。
 pub const SHA256_HEX_LEN: usize = 64;
 
-/// 〔FW1〕这一格像不像后端交的摘要（64 位小写十六进制）。
+/// 这一格像不像后端交的摘要（64 位小写十六进制）。
 pub fn is_sha256_hex(s: &str) -> bool {
     s.len() == SHA256_HEX_LEN
         && s.bytes()
             .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
 }
 
-/// 〔FW1〕存盘那一问的「盘上那份在你打开之后被改过了」那句（`stale` 那一档；后端原话接在后面）。
+/// 存盘那一问的「盘上那份在你打开之后被改过了」那句（`stale` 那一档；后端原话接在后面）。
 pub fn stale_notice(why: &str) -> String {
     copy_text("rsFilewinEditor.stale.notice", &[("why", why)])
 }
 
-/// 〔F9c〕一个字放进 JSON 字符串之后占几个字节 —— 与 `serde_json` 的转义**逐码位**相同
+/// 一个字放进 JSON 字符串之后占几个字节 —— 与 `serde_json` 的转义**逐码位**相同
 /// （判据对全部 Unicode 标量值对拍）：引号 · 反斜杠 · 五个有短写法的控制字符 ⇒ 2；
 /// 其余 `U+0000..=U+001F` ⇒ 6（`\u00XX`）；别的字原样（UTF-8 字节数）。
 pub fn escaped_len(c: char) -> usize {
@@ -278,13 +276,13 @@ pub fn escaped_len(c: char) -> usize {
     }
 }
 
-/// 〔F9c〕每块内容（转义之后）最多占多少字节 ＝ 一行上限 − 空内容那一块的信封（块号按最大的算）。
+/// 每块内容（转义之后）最多占多少字节 ＝ 一行上限 − 空内容那一块的信封（块号按最大的算）。
 pub fn chunk_budget() -> usize {
     let key = "0".repeat(32);
     SAVE_LINE_CAP - request_line_len(CMD_STAGE_CHUNK, &stage_args(&key, u64::MAX, ""))
 }
 
-/// 〔F9c〕把全文按字切成几块：每块转义之后 ≤ `budget`，**贪心取满**（下一块的第一个字放不进上一块）。
+/// 把全文按字切成几块：每块转义之后 ≤ `budget`，**贪心取满**（下一块的第一个字放不进上一块）。
 ///
 /// 按字符边界切 ⇒ 每块都是合法 UTF-8、能原样作为 JSON 字符串发出去；拼回来逐字节等于原文。
 /// `budget` 至少要放得下一个最长的字（6 字节），否则一块都切不出来 —— 那是调用方的错，这里 `assert`。
@@ -336,10 +334,10 @@ use super::source::Row;
 /// 行上那颗按钮。
 pub static EDIT_LABEL: std::sync::LazyLock<String> =
     std::sync::LazyLock::new(|| copy_text("rsFilewinEditor.label.edit", &[]));
-/// 〔FW1 · D-c〕存盘撞上 stale 之后那两颗按钮（住这里：判据按名字点它们，不在画的地方另写一遍）。
+/// 存盘撞上 stale 之后那两颗按钮（住这里：判据按名字点它们，不在画的地方另写一遍）。
 pub static OVERWRITE_LABEL: std::sync::LazyLock<String> =
     std::sync::LazyLock::new(|| copy_text("rsFilewinEditor.stale.overwrite", &[]));
-/// 〔FW1 · D-c〕同上，另一颗。
+/// 同上，另一颗。
 pub static REOPEN_LABEL: std::sync::LazyLock<String> =
     std::sync::LazyLock::new(|| copy_text("rsFilewinEditor.stale.reopen", &[]));
 
@@ -381,7 +379,7 @@ pub fn why_not_editable(r: &Row) -> Option<String> {
     None
 }
 
-/// 〔W5-FILES · `设计/60 §6.2`「有损名的…编辑」〕**窗口里一行**为什么不能编辑：有损但带着原始字节 ⇒ 名字那一关放行
+/// 〔「有损名的…编辑」〕**窗口里一行**为什么不能编辑：有损但带着原始字节 ⇒ 名字那一关放行
 /// （读 / 存走字节），其余几关（目录 · 超上限）照 [`why_not_editable`]。行上那颗按钮与右键菜单问的是它。
 pub fn why_not_editable_listed(l: &super::source::Listed) -> Option<String> {
     if l.lossy_name && l.raw_name.is_some() {
@@ -392,7 +390,7 @@ pub fn why_not_editable_listed(l: &super::source::Listed) -> Option<String> {
     why_not_editable(&l.row)
 }
 
-/// 〔W5-FILES〕[`why_not_editable_listed`] 的 `is_none()`。
+/// [`why_not_editable_listed`] 的 `is_none()`。
 pub fn editable(l: &super::source::Listed) -> bool {
     why_not_editable_listed(l).is_none()
 }
@@ -426,7 +424,7 @@ pub fn not_text_notice(path: &str) -> String {
 
 /// 打开着的那一份。
 ///
-/// ⚠〔F9〕不再派生 `PartialEq`：[`Self::big`] 是一份共享的界面状态，谈不上「相等」，
+/// ⚠不再派生 `PartialEq`：[`Self::big`] 是一份共享的界面状态，谈不上「相等」，
 /// 而全仓没有一处比较两个 `Pane`。
 #[derive(Clone, Debug)]
 pub struct Pane {
@@ -438,22 +436,22 @@ pub struct Pane {
     /// 🔴 **读回来时的那一份** —— [`Self::dirty`] 靠它，而那是这一刀
     /// 「不静默丢弃」的判据源。
     original: String,
-    /// 〔FW1 · D-c〕**盘上那一份的摘要**（打开时后端交的；每次存成换成应答交的新摘要）—— 存盘 CAS 的 `expect`。
+    /// **盘上那一份的摘要**（打开时后端交的；每次存成换成应答交的新摘要）—— 存盘 CAS 的 `expect`。
     base_sha256: String,
     /// 上一次存盘的结局（`None` = 还没存过）。
     pub last_save: Option<Result<(), String>>,
-    /// 〔FW1 · D-c〕上一次存盘撞上了「盘上那份在你打开之后被改过了」（`stale`）⇒ 编辑面摆两颗按钮让人选
+    /// 上一次存盘撞上了「盘上那份在你打开之后被改过了」（`stale`）⇒ 编辑面摆两颗按钮让人选
     /// （仍然覆盖 · 丢掉我的改动重新打开）。存成 / 重开之后清掉。
     pub stale: bool,
-    /// 〔F9〕大文件模式那一格（`None` 在里面 ＝ 普通路径）。逐条住 [`super::bigfile`] 头注。
+    /// 大文件模式那一格（`None` 在里面 ＝ 普通路径）。逐条住 [`super::bigfile`] 头注。
     pub(crate) big: super::bigfile::BigSlot,
-    /// 〔W5-FILES · 有损名全寻址〕路径不是合法 UTF-8 时那份文件的整条原始字节（读 / 存都走它；`None` ⇒ `path` 就是真字节）。
+    /// 〔有损名全寻址〕路径不是合法 UTF-8 时那份文件的整条原始字节（读 / 存都走它；`None` ⇒ `path` 就是真字节）。
     pub raw_path: Option<Vec<u8>>,
-    /// 〔W5-FILES · `设计/60 §6.2`「查找替换」〕编辑面上那一截查找替换的状态（只在普通路径上画；大文件模式没有，`§5.5`）。
+    /// 〔「查找替换」〕编辑面上那一截查找替换的状态（只在普通路径上画；大文件模式没有，`§5.5`）。
     pub find: FindBar,
 }
 
-/// 〔W5-FILES〕编辑面那一截查找替换的状态。
+/// 编辑面那一截查找替换的状态。
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct FindBar {
     /// 查找框里的字。
@@ -464,7 +462,7 @@ pub struct FindBar {
     pub notice: Option<String>,
 }
 
-/// 〔W5-FILES〕在 `text` 里从第 `from` 个**字**起找 `needle`（区分大小写、字面匹配，不做正则 —— 没人裁过）。
+/// 在 `text` 里从第 `from` 个**字**起找 `needle`（区分大小写、字面匹配，不做正则 —— 没人裁过）。
 ///
 /// 往后找 ⇒ 从 `from` 起第一处，找不到从头绕回；往前找 ⇒ `from` 之前最后一处，找不到从尾绕回。
 /// 回 `(起, 止)`，单位是**字**（egui 光标的单位）。空的查找串 ⇒ `None`。
@@ -487,7 +485,7 @@ pub fn find_from(text: &str, needle: &str, from: usize, backward: bool) -> Optio
     Some((start, start + needle.chars().count()))
 }
 
-/// 〔W5-FILES〕把 `text` 里所有的 `needle` 换成 `with`。回 `(新文本, 换了几处)`。空的查找串 ⇒ 原样、0 处。
+/// 把 `text` 里所有的 `needle` 换成 `with`。回 `(新文本, 换了几处)`。空的查找串 ⇒ 原样、0 处。
 pub fn replace_all(text: &str, needle: &str, with: &str) -> (String, usize) {
     if needle.is_empty() {
         return (text.to_string(), 0);
@@ -496,7 +494,7 @@ pub fn replace_all(text: &str, needle: &str, with: &str) -> (String, usize) {
     (text.replace(needle, with), n)
 }
 
-/// 〔W5-FILES〕把第 `start..end` 个**字**换成 `with`。回新文本。
+/// 把第 `start..end` 个**字**换成 `with`。回新文本。
 pub fn replace_chars(text: &str, start: usize, end: usize, with: &str) -> String {
     let byte_at = |k: usize| -> usize { text.char_indices().nth(k).map_or(text.len(), |(b, _)| b) };
     let (a, b) = (byte_at(start), byte_at(end));
@@ -519,7 +517,7 @@ impl Pane {
         }
     }
 
-    /// 〔FW1〕存盘那一趟该交的 `expect`（盘上那一份的摘要）。
+    /// 存盘那一趟该交的 `expect`（盘上那一份的摘要）。
     pub fn expect_sha256(&self) -> &str {
         &self.base_sha256
     }
@@ -530,7 +528,7 @@ impl Pane {
         self.text != self.original
     }
 
-    /// 存成功了 ⇒ 基准线跟上（从此 [`Self::dirty`] 回 `false`）；〔FW1〕摘要换成后端应答交的那份（写进去那份的）
+    /// 存成功了 ⇒ 基准线跟上（从此 [`Self::dirty`] 回 `false`）；摘要换成后端应答交的那份（写进去那份的）
     /// ⇒ 连存两次不自撞。
     ///
     /// ⚠ 基准线是**发出去的那一份**（`sent`），不是此刻的 `text`：存在路上时用户又敲了字，那几个字没存过，
@@ -542,7 +540,7 @@ impl Pane {
         self.stale = false;
     }
 
-    /// 〔FW1〕存盘撞上 `stale` ⇒ 同 [`Self::mark_failed`]（字一个不动、基准不动），外加摆出那两颗按钮。
+    /// 存盘撞上 `stale` ⇒ 同 [`Self::mark_failed`]（字一个不动、基准不动），外加摆出那两颗按钮。
     pub fn mark_stale(&mut self, why: String) {
         self.last_save = Some(Err(stale_notice(&why)));
         self.stale = true;
@@ -561,7 +559,7 @@ impl Pane {
         MAX_EDIT_BYTES as i64 - self.text.len() as i64
     }
 
-    /// 🔴 **敲超上限了吗。** 超上限的内容存不回去（〔F9c〕后端 `files-commit-text` 拒 `bytes` 超过
+    /// 🔴 **敲超上限了吗。** 超上限的内容存不回去（后端 `files-commit-text` 拒 `bytes` 超过
     /// 同一个数的那一趟；装得进一行的那一支写面不拦大小，但存回去之后下次就读不回来编辑了）
     /// —— 所以要在屏幕上先说，并且不发那一趟。
     pub fn over_cap(&self) -> bool {
@@ -599,7 +597,7 @@ pub enum Arrived {
         path: String,
         name: String,
         text: String,
-        /// 〔FW1〕后端对那份字节算的摘要（存盘 CAS 的 `expect`）。
+        /// 后端对那份字节算的摘要（存盘 CAS 的 `expect`）。
         sha256: String,
     },
     /// 后端说它不可编辑（那句话由 [`not_text_notice`] 给）。
@@ -616,7 +614,7 @@ struct Desk {
     arrived: Option<Arrived>,
     /// 正在存（`None` = 没在存）。
     saving: Option<String>,
-    /// 存的结局（UI 线程取走）。〔FW1〕成 ⇒ 发出去的那一份 ＋ 后端交的新摘要。
+    /// 存的结局（UI 线程取走）。成 ⇒ 发出去的那一份 ＋ 后端交的新摘要。
     saved: Option<Result<Saved, SaveError>>,
 }
 
@@ -710,10 +708,10 @@ impl EditBoard {
 /// 读文本那条线上命令的名字（后端 `files-read` 族第七条）。
 pub const CMD_READ_TEXT: &str = "files-read-text";
 
-/// 读一份文本那一趟的往返上限（调用方给的期限，`05 §3.3.2`）。
+/// 读一份文本那一趟的往返上限（调用方给的期限）。
 pub const READ_BUDGET: std::time::Duration = std::time::Duration::from_secs(20);
 
-/// 读一份远端文本 —— 〔F7a · 第三波 2026-09-24〕经通道问后端 `files-read-text`。
+/// 读一份远端文本 —— 经通道问后端 `files-read-text`。
 ///
 /// 回值：`Ok(Some(文本))` / `Ok(None)` = 后端说它不可编辑（那句话由
 /// [`not_text_notice`] 给）/ `Err` = 那句原话（没走通 / 读不到 …）。
@@ -729,7 +727,7 @@ pub async fn read_text(
     read_text_at(line, origin, &super::source::RemotePath::plain(path)).await
 }
 
-/// 〔W5-FILES · 有损名全寻址〕同 [`read_text`]，路径可以带字节（`path` 发 `{"b16": …}`）。
+/// 〔有损名全寻址〕同 [`read_text`]，路径可以带字节（`path` 发 `{"b16": …}`）。
 pub async fn read_text_at(
     line: &super::source::Line,
     origin: &super::source::Origin,
@@ -741,14 +739,14 @@ pub async fn read_text_at(
     )
 }
 
-/// 〔FW1〕打开那一趟交回来的：全文 ＋ 后端对那份字节算的摘要。
+/// 打开那一趟交回来的：全文 ＋ 后端对那份字节算的摘要。
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Opened {
     pub text: String,
     pub sha256: String,
 }
 
-/// 〔FW1〕[`text_from_reply`] ＋ 摘要那一格。**纯函数**。
+/// [`text_from_reply`] ＋ 摘要那一格。**纯函数**。
 ///
 /// 有文本却没有摘要（或形状不对）⇒ `Err`：没有它就存不回去（存盘必带「我打开时那一份」，后端不收不带的），
 /// 立起一个存不回去的编辑面比不打开更糟 —— 那句话说清是后端太旧。
@@ -791,9 +789,9 @@ pub fn text_from_reply(
     }
 }
 
-/// 存回去 —— 〔F2 · 2026-09-24〕经通道说后端；〔F9c · 第四波〕装不进一行的分块走暂存区。
+/// 存回去 —— 经通道说后端；装不进一行的分块走暂存区。
 ///
-/// 🔴 **路径解析在后端那一层** ⇒ 本模块不自己判一遍（判定只有一个家）。〔FN1 · V119〕从前这里说「写面那道会话数据围栏」，那道拿掉了。
+/// 🔴 **路径解析在后端那一层** ⇒ 本模块不自己判一遍（判定只有一个家）。从前这里说「写面那道会话数据围栏」，那道拿掉了。
 /// 踩线时那句拒绝原样落进 [`Pane::last_save`]。两支落在盘上是**同一个结果**（后端同一个原地覆盖原语）：
 ///
 /// | 整份装得进一行（[`fits_one_line`]） | 一条 `files-write-text` |
@@ -820,7 +818,7 @@ pub async fn write_text(
     .await
 }
 
-/// 〔W5-FILES · 有损名全寻址〕同 [`write_text`]，路径可以带字节。一行装不装得下按真要发的那一形量。
+/// 〔有损名全寻址〕同 [`write_text`]，路径可以带字节。一行装不装得下按真要发的那一形量。
 pub async fn write_text_at(
     line: &super::source::Line,
     origin: &super::source::Origin,
@@ -852,14 +850,14 @@ pub async fn write_text_at(
     saved_from_reply(content, r)
 }
 
-/// 〔FW1〕存成了：发出去的那一份 ＋ 后端交的新摘要（下一次存的 `expect`）。
+/// 存成了：发出去的那一份 ＋ 后端交的新摘要（下一次存的 `expect`）。
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Saved {
     pub sent: String,
     pub sha256: String,
 }
 
-/// 〔FW1〕存没成的两形 —— 下一步完全不同，不压成一句话：
+/// 存没成的两形 —— 下一步完全不同，不压成一句话：
 /// `Stale` = 盘上那份在你打开之后被改过了（让人选：仍然覆盖 / 丢掉重开）；`Failed` = 别的（原话照画）。
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SaveError {
@@ -867,7 +865,7 @@ pub enum SaveError {
     Failed(String),
 }
 
-/// 〔FW1〕存那一趟的结局 → [`Saved`] / [`SaveError`]。**纯函数**（判得动）。
+/// 存那一趟的结局 → [`Saved`] / [`SaveError`]。**纯函数**（判得动）。
 ///
 /// 对端回 `stale` ⇒ `Stale`；成了却没交新摘要（或形状不对）⇒ `Failed`：后端已经写了，但下一次存交不出
 /// 「盘上那份」，那句话照实说（关掉重开就好）。
@@ -890,7 +888,7 @@ pub fn saved_from_reply(
     }
 }
 
-/// 〔FW1 · D-c〕**仍然覆盖**：先问一趟盘上此刻那一份的摘要（重读），拿它当 `expect` 再存。
+/// **仍然覆盖**：先问一趟盘上此刻那一份的摘要（重读），拿它当 `expect` 再存。
 ///
 /// CAS 仍在：重读与再存之间又被人改了 ⇒ 照样 `stale`（那时再让人选一次）。
 /// 盘上那份此刻不是能编辑的文本（被换成二进制 / 超上限 / 不在了）⇒ 拿不到摘要 ⇒ 不写，说清为什么。
@@ -909,7 +907,7 @@ pub async fn overwrite_anyway(
     .await
 }
 
-/// 〔W5-FILES〕同 [`overwrite_anyway`]，路径可以带字节。
+/// 同 [`overwrite_anyway`]，路径可以带字节。
 pub async fn overwrite_anyway_at(
     line: &super::source::Line,
     origin: &super::source::Origin,

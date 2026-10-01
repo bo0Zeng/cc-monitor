@@ -1,5 +1,5 @@
 /**
- * 〔US1 · 第四波 4D〕API key 那两问**走通道，后端出成品**（`设计/05 §14.3` B 组）：
+ * API key 那两问**走通道，后端出成品**：
  *
  * | 问什么 | 帧命令 | 成品 |
  * |---|---|---|
@@ -11,7 +11,7 @@
  * 本机自己读凭据文件、自己连回环口，远端转一条帧命令 —— 那一份解释与人群搬进了后端（`accounts/upstream_select/endpoint.rs`
  * · `file_face.rs`），两条命令退役。跨语言金样 `tests/__fixtures__/apikey.golden.json` 钉着后端出的形状与这里收的形状。
  *
- * 〔HX2 · 第四波 4D〕写 key（`creds.apikey` 写）也走通道：`apikey-key-set`（[`writeApikeyKey`]）。从前它留在 Tauri 命令
+ * 写 key（`creds.apikey` 写）也走通道：`apikey-key-set`（[`writeApikeyKey`]）。从前它留在 Tauri 命令
  * `write_apikey_credentials_key`〔散文墓碑〕里，因为本机那一臂写之前要核「本机后端写的那份 == 这个 monitor 用的那份」（GP1）——
  * 常驻后端的身份带上数据目录之后（`local_backend_host.rs::hello_verdict` 比 hello 的 `host_env`），那一问由**连接本身**答：
  * 接不上一个替别的数据目录干活的后端，`<local>` 那条长连接就不存在。
@@ -158,7 +158,7 @@ export function decodeApikeyWritten(v: unknown): ApikeyWritten {
 }
 
 /**
- * 〔HX2 · 4D〕给 `configDir` 那个号配一把 key（与可选的 Base URL），交**那台机器的后端**写（本机 ＝ `<local>` 那条长连接）。
+ * 给 `configDir` 那个号配一把 key（与可选的 Base URL），交**那台机器的后端**写（本机 ＝ `<local>` 那条长连接）。
  * 明文只在这一发的请求体里（`key`）：不进任何返回值、不进报错文案（报错只说那台后端回的话）。
  * `baseUrl` 缺席 = 不碰那一格。
  */

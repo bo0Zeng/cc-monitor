@@ -29,7 +29,7 @@ fn parse_lock(rel: &str) -> BTreeMap<String, BTreeSet<String>> {
     out
 }
 
-/// 〔SR1b · 2026-09-24〕backend lock 里 `name version` 那一格的**依赖者**（`(包名, 版本)`）。依赖串写成 `"name"`
+/// backend lock 里 `name version` 那一格的**依赖者**（`(包名, 版本)`）。依赖串写成 `"name"`
 /// （全 lock 只有一版时）或 `"name version"`（多版并存时）两种形状 —— 两种都认。
 fn dependents_in_lock(rel: &str, name: &str, version: &str) -> BTreeSet<(String, String)> {
     let body = std::fs::read_to_string(repo_root().join(rel)).expect("读 lock");
@@ -66,8 +66,8 @@ fn dependents_in_lock(rel: &str, name: &str, version: &str) -> BTreeSet<(String,
 
 /// ★ 正题：**真冲突集必须为空**。
 ///
-/// 〔SR1b · 2026-09-24〕**「真」多了一道条件**：backend 那一版的**依赖者（包名 ＋ 版本）全都不在 monitor lock 里** ⇒ 不算。
-/// 起因：monitor 删了 `russh` / `russh-sftp`（界面进程零 SSH，V89）之后，只有 SSH 那棵树要的几个新版密码学包
+/// **「真」多了一道条件**：backend 那一版的**依赖者（包名 ＋ 版本）全都不在 monitor lock 里** ⇒ 不算。
+/// 起因：monitor 删了 `russh` / `russh-sftp`（界面进程零 SSH）之后，只有 SSH 那棵树要的几个新版密码学包
 /// （`sha2 0.11` · `digest 0.11` · `rand 0.10` …）只剩 backend 一侧有 —— 而它们的依赖者（`russh` · `ssh-key` ·
 /// 新版 `sha2` …）**monitor 那一侧一份都不编**。本条要防的是「同一份源码（两侧都编的那个包、同一版）在两边拿到
 /// 不同版本的依赖」，那一形要求依赖者那一格（名 ＋ 版）**两侧都有**；只在 backend 的依赖者没有「同一份源码」这回事。
@@ -90,7 +90,7 @@ fn only_backend_only_dependents(
     !who.is_empty() && who.iter().all(|pair| !monitor_side.contains(pair))
 }
 
-/// 〔SR1b〕放行那一格的**正控**：依赖者两侧都有的那种（`tokio` 依赖的任何一版包都是）不许被放行。
+/// 放行那一格的**正控**：依赖者两侧都有的那种（`tokio` 依赖的任何一版包都是）不许被放行。
 #[test]
 fn the_backend_only_exemption_really_needs_backend_only_dependents() {
     let m = parse_lock("src/frontend/shell/Cargo.lock");

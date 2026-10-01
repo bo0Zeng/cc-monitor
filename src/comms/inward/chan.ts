@@ -1,7 +1,7 @@
 /**
- * 通道 · **webview 手里那一半** —— `设计/05 §3.3` 的 `call(origin, op, payload, budget)` 在主界面上的样子。
+ * 通道 · **webview 手里那一半** —— `call(origin, op, payload, budget)` 在主界面上的样子。
  *
- * # 🔴 通信层成员 `COMM-LAYER-MEMBER`〔C4a · 第四波 · 2026-09-24〕
+ * # 🔴 通信层成员 `COMM-LAYER-MEMBER`
  *
  * 这一枚标记是**盘上那一侧**的凭据（登记那一侧在 `tests/frontend/shell/comm_boundary_registry_tests.rs::REGISTERED`，
  * 两向集合相等）。盖上它 = **上锁**：本文件从此被 `C1`–`C5` ＋ `X1`–`X6` 一起管着。
@@ -21,14 +21,14 @@
  *   已经过了 ⇒ `Hop{0 write, NotSent, Overrun}`，**一个字节都不发**（`§10.4` 那张表第一行）。
  *   第 1 跳的上界由 monitor 那一侧执行（`chan/webview.rs` → `router::settle`）⇒ **本文件零定时器**。
  * - **撤单**：`Budget.cancel`（`AbortSignal`）拨下 ⇒ 立即 `Ours{Cancelled}`（本地撤单，`§3.3.3`）。
- *   〔MIG-3b 续 · 主会话 09-28 裁「撤单不许回退」〕同时带着这一问的编号发 `chan_cancel` ⇒ monitor 那一侧丢掉那次调用、补发 `cancel`
+ *   〔「撤单不许回退」〕同时带着这一问的编号发 `chan_cancel` ⇒ monitor 那一侧丢掉那次调用、补发 `cancel`
  *   给后端 ⇒ 可取消档真停下（全景：小程序那一组子进程被杀）。那台对这一条不认撤（`Offer.stoppable` 里没有）⇒ 仍是 `runsOn`。
  *   〔墓碑 —— 上一版这里写着「⚠ 不买对端撤活：monitor 那一侧照跑到「还剩多少」为止」。〕
  * - **错误三层**（`§3.3.1`）：`hop`（传输错，带跳号 ＋ `reach`）· `peer`（对端说不认 / 说不行，后者带不透明体）·
  *   `ours`（我们自己错）。monitor 交回来的是回环那条同一份线上形状（`wire::err_to_wire`），这里解回三层；
  *   解不出来的一律 `ours/Broken`（对端说的话解不出来 = 内部不变量破了），**不猜**。
  *
- * # 〔CF2 · 第四波 4B〕`subscribe(origin, kind, from, want)`
+ * # `subscribe(origin, kind, from, want)`
  *
  * ```text
  * 调用方 ──chan.subscribe(origin, kind, from, want, sink)──▶ 本文件 ──包装层 chan_subscribe──▶ monitor（句柄）
@@ -147,7 +147,7 @@ export function decodeFail(raw: unknown): CallError {
     if (typeof o.Ours === "string" && OURS_FAULTS.includes(o.Ours)) {
       return { layer: "ours", why: o.Ours as OursFault };
     }
-    // 〔NET2 · additive〕本侧撤了、那台对这一条不认撤 ⇒ 它可能还在跑。
+    // 本侧撤了、那台对这一条不认撤 ⇒ 它可能还在跑。
     if (typeof o.OursRunsOn === "string" && OURS_FAULTS.includes(o.OursRunsOn)) {
       return { layer: "ours", why: o.OursRunsOn as OursFault, runsOn: true };
     }
@@ -156,7 +156,7 @@ export function decodeFail(raw: unknown): CallError {
 }
 
 /**
- * 〔NET2〕那台机器的能力事实（monitor 那边的 `chan::wire::Offer` 判完之后的一份拷贝，`chan/webview.rs::OfferView`）。
+ * 那台机器的能力事实（monitor 那边的 `chan::wire::Offer` 判完之后的一份拷贝，`chan/webview.rs::OfferView`）。
  * 本侧**只查成员**，不另算：做不到的那几条带码；`stoppable` 是撤掉之后停得下的那几条。
  */
 export interface Offer {
@@ -224,7 +224,7 @@ function whenAborted(signal: AbortSignal, runsOn: () => boolean): { promise: Pro
 /** `§3.3.4` 流里的一格（webview 这一跳的样子：体是文本，见头注）。 */
 export type Item =
   | { t: "frame"; seq: number; body: string }
-  /** 〔RENDER2 · `99 §2.1` ㉓①〕`toSeq === null`：知道这里丢了、不知道丢到哪（超长整行没读进来）；补法与有界那一形相同。 */
+  /** `toSeq === null`：知道这里丢了、不知道丢到哪（超长整行没读进来）；补法与有界那一形相同。 */
   | { t: "gap"; fromSeq: number; toSeq: number | null }
   | { t: "unseen"; at: { idx: number; tag: HopTag }; why: HopFault }
   | { t: "seen"; from: Uint8Array | null }
@@ -315,12 +315,12 @@ function dispatchDelivery(raw: unknown): void {
 
 /** 前端对通信层的说法（`§3.1`：前端只有两个动作）。 */
 export const chan = {
-  /** 〔NET2〕那台的能力事实：先问一次（`null` = 没有控制通道）。 */
+  /** 那台的能力事实：先问一次（`null` = 没有控制通道）。 */
   offer(origin: Origin): Promise<Offer | null> {
     return askOffer(origin);
   },
 
-  /** 〔NET2〕手里那份（没问过 ⇒ `undefined`；界面画菜单时用它，同时 `offer()` 去补）。 */
+  /** 手里那份（没问过 ⇒ `undefined`；界面画菜单时用它，同时 `offer()` 去补）。 */
   cachedOffer(origin: Origin): Offer | null | undefined {
     return offers.get(origin);
   },
@@ -340,7 +340,7 @@ export const chan = {
         why: "Overrun",
       });
     }
-    // 〔MIG-3b 续〕撤得掉的那一问带一个编号（撤单那一条按它找到在飞的那一问）。
+    // 撤得掉的那一问带一个编号（撤单那一条按它找到在飞的那一问）。
     const callId = budget.cancel ? crypto.randomUUID() : null;
     const sent = commands
       .chan_call({ origin, op, payload: Array.from(payload), leftMs: left, callId })
@@ -394,7 +394,7 @@ export const chan = {
     const sub: Sub = {
       want: (more) => {
         if (!sinks.has(id) || more <= 0) return;
-        // 〔W5-UI · E §3.3〕信用报不上去 ⇒ monitor 那一侧再也不会交格（实时格没信用就丢）——原先这里吞掉，
+        // 〔E §3.3〕信用报不上去 ⇒ monitor 那一侧再也不会交格（实时格没信用就丢）——原先这里吞掉，
         //   流**静默停住**。按本对象的契约「说不了的在流里原位说」：撤单、交一格 `closed{ours: Broken}`
         //   （与登记那一跳失败同一形），由消费方出声。
         void commands.chan_want({ id, more }).catch(() => {

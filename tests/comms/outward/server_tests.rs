@@ -1,7 +1,7 @@
 use super::*;
 // ⚠ 下面这几条 `use` 是**判据段自己的**，不放在 `server.rs` 文件顶上：放上面会在
 //    非测试构建里变成 unused import。
-//    ⚠⚠ 〔`设计/20 §7` 步 1〕`table` / `creds` 这两条先前是**跟着 `super::*` 蹭进来的**
+//    ⚠⚠ `table` / `creds` 这两条先前是**跟着 `super::*` 蹭进来的**
 //    —— 那时 `server.rs` 自己引着它们。上游选择搬走之后中转不再认识那两个模块，
 //    判据要用就得自己写明白：**判据的人群从哪来，要看得见**。
 use super::super::listen::{
@@ -43,7 +43,7 @@ const TEST_AGENT_B: &str = "agentB";
 /// 问一次，再把答案交给生产段那个渲染函数，返回它吐出来的那串字节。
 ///
 /// ⚠⚠ 判据**不自己判**「这一行该不该换头 / 要不要丢掉客户端那份」——
-/// 那是上游选择的活（`设计/20 §7` 步 1 之后它整条搬过去了）。判据自己再判一遍，
+/// 那是上游选择的活（之后它整条搬过去了）。判据自己再判一遍，
 /// 量到的就是判据里那份副本，不是生产段那一份。
 fn render_via_upstream_selection(
     t: &RoutingTable,
@@ -72,7 +72,7 @@ fn render_via_upstream_selection(
                 Destination::Passthrough { upstream } => {
                     render_upstream_request(head, rest, upstream, None, body_len)
                 }
-                // 〔`P16` 2026-09-22〕上游选择交下来的是一个 `AuthSwap`（头名 ＋ 完整头值 ＋
+                // 上游选择交下来的是一个 `AuthSwap`（头名 ＋ 完整头值 ＋
                 // 要丢的头名全集），中转照写 ⇒ 这里原样把它递进渲染，**不许在判据里自己凑一份**。
                 Destination::Substitute { upstream, auth } => {
                     render_upstream_request(head, rest, upstream, Some(&auth), body_len)
@@ -108,7 +108,7 @@ fn table_of(rows: &[(&str, &Base, Option<&str>)]) -> RoutingTable {
     )
 }
 
-/// 带鉴权头形状的那一版〔`K-R1`〕。走的仍是生产段那条真实的 `RoutingTable::build`。
+/// 带鉴权头形状的那一版。走的仍是生产段那条真实的 `RoutingTable::build`。
 fn table_of_styled(
     rows: &[(&str, &Base, Option<&str>, creds_core::store::AuthStyle)],
 ) -> RoutingTable {
@@ -188,7 +188,7 @@ struct FakeUpstream {
     /// 上游**真的发出**的响应体块数（每块一次 `write_all` + `flush`）。
     /// 「上游发出的块数」是这个数，**不是**判据里写死的常量。
     sent: Arc<AtomicU64>,
-    /// 上游**真的收到**的 `Authorization:` 头**整行**，逐次一条〔`K-H2a` `KS3`〕。
+    /// 上游**真的收到**的 `Authorization:` 头**整行**，逐次一条。
     ///
     /// ⚠ 它与 `seen` 里那个 `auth=<bool>` **不是同一个量**：那个布尔在
     /// 「原样转发」与「换头」两种形状下**一模一样**，证不了换头真的发生了。
@@ -199,9 +199,9 @@ struct FakeUpstream {
     /// `sent` 数的是**网线上的块**（含终止块），`events` 数的是**上游发出的 `data:` 事件**。
     /// `DoD-2㈡` 的「块数对账」用前者，`DoD-3㈠` 的「`event` 数对账」用后者。
     events: Arc<AtomicU64>,
-    /// **下游在响应写完之前就走了**、本桩因此丢掉的连接数〔`K-R126`〕。
+    /// **下游在响应写完之前就走了**、本桩因此丢掉的连接数。
     ///
-    /// 桩那条 accept 线程的把手〔`K-R126`〕—— 判据拿它判「桩整个下线了没有」。
+    /// 桩那条 accept 线程的把手—— 判据拿它判「桩整个下线了没有」。
     ///
     /// ⚠ **为什么不探端口**：`listener` drop 之后那个临时端口回到内核的池子里，
     /// 同一个进程里别的判据 `bind(0)` 有机会抢到它 ⇒ `connect` 又通了
@@ -225,7 +225,7 @@ impl FakeUpstream {
         self.events.load(Ordering::SeqCst)
     }
 
-    /// 见字段头注〔`K-R126`〕。
+    /// 见字段头注。
     fn aborted(&self) -> u64 {
         self.aborted.load(Ordering::SeqCst)
     }
@@ -248,7 +248,7 @@ fn peer_is_gone(e: &std::io::Error) -> bool {
     PEER_LEFT_KINDS.contains(&e.kind())
 }
 
-/// 「对端走了」这个闭集的**唯一住址**〔`K-R126`〕。
+/// 「对端走了」这个闭集的**唯一住址**。
 ///
 /// 下游（`STUB_LAUNCHER` 的 `head -n 1`）在响应写完之前退出时，
 /// 假上游这一侧真正会撞上的就是这几种。判据
@@ -261,7 +261,6 @@ const PEER_LEFT_KINDS: [std::io::ErrorKind; 3] = [
 ];
 
 /// 让假上游的**第 `nth` 条连接**（从 1 数）不管真实 I/O 如何，都按 `kind` 这个错收场
-/// 〔`K-R126`〕。
 ///
 /// # 为什么要注入 —— 这一条是本件最贵的一个读数，别删
 ///
@@ -303,7 +302,7 @@ fn spawn_fake_upstream(gate: Option<mpsc::Receiver<()>>) -> FakeUpstream {
     spawn_fake_upstream_faulted(gate, None)
 }
 
-/// 带注入口的那一版〔`K-R126`〕。`fault` 给 `None` 时与 [`spawn_fake_upstream`]
+/// 带注入口的那一版。`fault` 给 `None` 时与 [`spawn_fake_upstream`]
 /// **逐字节同路**（同一个函数体），既有的那几十条判据一个字都不用改。
 fn spawn_fake_upstream_faulted(
     gate: Option<mpsc::Receiver<()>>,
@@ -444,7 +443,7 @@ fn spawn_fake_upstream_faulted(
                 // 请求体已读干净 ⇒ 这里 drop 发的是 **FIN 不是 RST**。
                 Ok(())
             })();
-            // ★ 注入口〔`K-R126`〕：**只有**判据显式要了 `fault` 才走这里，
+            // ★ 注入口：**只有**判据显式要了 `fault` 才走这里，
             //   `None` 那条路（其余每一条判据）一个分支都不改。
             let outcome = match fault {
                 Some(f) if f.nth == conn_no => Err(std::io::Error::new(
@@ -622,7 +621,7 @@ fn a_stub_failure_that_is_not_the_peer_leaving_still_brings_the_stub_down_loudly
 /// 判据读完就断言 = 在读一个还没收齐的缓冲区，而「tee 是空的」与「还没收齐」
 /// 在断言里**长得一模一样** ⇒ 那是一条会随机说谎的判据。
 /// ⇒ 每收一件往通道投一条；判据用 `TeeTap::wait_events` 等够件数，**等不到当红**。
-/// 〔DEL〕tee 只剩 tap 口那一形：收集面是测试侧的一个 [`TapPort`]（生产里是 `crate::stream::tap` 的 hub）。
+/// tee 只剩 tap 口那一形：收集面是测试侧的一个 [`TapPort`]（生产里是 `crate::stream::tap` 的 hub）。
 struct TeeTap {
     got: Arc<std::sync::Mutex<Vec<TapEvent>>>,
     rx: mpsc::Receiver<()>,
@@ -698,7 +697,7 @@ fn spawn_relay(up: SocketAddr) -> (SocketAddr, Arc<Relay>, TeeTap) {
     (addr, relay, tee)
 }
 
-/// 同上，另交回监听面那份在途计数（〔NET2〕它住宿主 `listen.rs`，不在 `Relay` 身上）。
+/// 同上，另交回监听面那份在途计数（它住宿主 `listen.rs`，不在 `Relay` 身上）。
 fn spawn_relay_counted(up: SocketAddr) -> (SocketAddr, Arc<Relay>, TeeTap, Arc<AtomicUsize>) {
     let got = Arc::new(std::sync::Mutex::new(Vec::new()));
     let (tick, rx) = mpsc::channel();
@@ -745,7 +744,7 @@ fn send_request(addr: SocketAddr, target: &str, extra: &str) -> TcpStream {
     //   · **走得到 `serve()` 的判据 = 6 条**（不是 3 条）。量具：`grep -n 'spawn_relay(' relay/`
     //     去掉定义行与注释行 ⇒ **5** 处，逐条点名 —— `routes_two_keys…` ·
     //     `an_unroutable_path…` · `every_chunk_…` · `the_auth_header…` ·
-    //     `the_relay_port_is_not_reachable…`；再加当时一条经 `--relay` 入口的（自带线程 + 5s `recv_timeout`；〔DEL〕随那一形删了）。
+    //     `the_relay_port_is_not_reachable…`；再加当时一条经 `--relay` 入口的（自带线程 + 5s `recv_timeout`；随那一形删了）。
     //     **本函数覆盖其中 4 条**（前四条都调它），第 5 条不调本函数、自带 `connect_timeout`。
     //
     //   · **测试段客户端 socket 的创建点 = 4 处**（量具 `grep -n 'TcpStream::connect' relay/`
@@ -760,7 +759,7 @@ fn send_request(addr: SocketAddr, target: &str, extra: &str) -> TcpStream {
         .expect("read deadline（风险 5x：把挂住换成红）");
     let body = REQUEST_BODY;
     let req = format!(
-        // 〔RK1〕过门：路径前面挂上夹具那把钥匙、`Host` 用回环字面量（门那三问见 `door.rs`）。
+        // 过门：路径前面挂上夹具那把钥匙、`Host` 用回环字面量（门那三问见 `door.rs`）。
         "POST /{}{target} HTTP/1.1\r\nHost: 127.0.0.1\r\n{extra}Content-Length: {}\r\n\r\n{body}",
         door::door_tests::TEST_KEY,
         body.len()
@@ -777,7 +776,7 @@ fn routes_two_keys_through_one_process_and_strips_the_prefix() {
     let up = spawn_fake_upstream(None);
     // ★ **一个**中转实例，**一个**监听面 —— 两个键都从这里走（`K9` 裁定二第 1 条）。
     let (relay_addr, relay, tee) = spawn_relay(up.addr);
-    // 〔V141〕流标签取自请求自带的会话标识头（路径里没有会话段）。
+    // 流标签取自请求自带的会话标识头（路径里没有会话段）。
     let mut c = send_request(
         relay_addr,
         "/s/agentA/acctA/v1/messages?beta=true",
@@ -804,7 +803,7 @@ fn routes_two_keys_through_one_process_and_strips_the_prefix() {
     assert_eq!(relay.served(), 2, "两个键必须由同一个中转实例服务");
     // 两发响应，每发 `UPSTREAM_EVENTS` 件事件 ＋ 1 件收尾 ⇒ 等够这么多件再读。
     tee.wait_events(2 * (UPSTREAM_EVENTS + 1));
-    // ★ 只认**带事件原文**的那几件，按流标签分（〔V141〕标签取自请求头）。
+    // ★ 只认**带事件原文**的那几件，按流标签分（标签取自请求头）。
     let events = tee.data();
     let a: Vec<&TapEvent> = events.iter().filter(|e| e.stream == "sid-AAA").collect();
     let b: Vec<&TapEvent> = events.iter().filter(|e| e.stream == "sid-BBB").collect();
@@ -1103,7 +1102,7 @@ fn an_interim_1xx_response_is_skipped_instead_of_being_sent_as_the_final_one() {
 /// 上一条判据只喂到 **2** 条 1xx，够不到上限 ⇒ 把 `if interim > INTERIM_RESPONSES_ALLOWED`
 /// 整支拿掉，上一条照样绿，而真机后果是一个坏上游能让中转在那个循环里**一直读下去**。
 /// ⇒ 这一条喂 **9 条**（上限的手写字面量 8 + 1），断它回 **502** ＋ 原因头 `upstream-only-interim`
-/// （`设计/20 §3.1a`：中转自己的传输失败；〔FIX3 · `99 §2.2 ⑫`〕不是超时 ⇒ 502，先前 504）。
+/// （中转自己的传输失败；不是超时 ⇒ 502，先前 504）。
 ///
 /// ⚠ 期望值 `9` 是**手写字面量**，不是拿 `INTERIM_RESPONSES_ALLOWED` 算的
 /// —— 拿被测常量算期望值，改了常量本条会跟着漂、永远绿。
@@ -1146,7 +1145,7 @@ fn too_many_interim_responses_are_refused_with_502() {
 }
 
 /// ★ `TEE_DECODE_CAP` 那条**接线**〔铁律 15 自查补的：两个上限各自有单元判据，
-/// 而「`handle` 有没有把丢掉的字节接到 tee 上」**先前零判据**〕。〔DEL〕今天 tee 只剩 tap 那一形：
+/// 而「`handle` 有没有把丢掉的字节接到 tee 上」**先前零判据**〕。今天 tee 只剩 tap 那一形：
 /// 丢掉的那一截是**占一个号不发**，看得见的是收尾那一件的总号数比交出的事件多。
 ///
 /// 把 `relay.tee.note_dropped_bytes(view.take_dropped() + splitter.take_dropped());`
@@ -1225,7 +1224,7 @@ fn an_over_cap_sse_line_is_reported_on_the_tee_stream_while_downstream_keeps_eve
     );
 }
 
-// 〔DEL〕这里原是「一个卡住的 tee 消费者不许拖停转发」：那一形的落点是阻塞写的 NDJSON 行，随独立 `--relay` 删了。
+// 这里原是「一个卡住的 tee 消费者不许拖停转发」：那一形的落点是阻塞写的 NDJSON 行，随独立 `--relay` 删了。
 //   tap 口的契约是「立刻答收没收」（`TapPort::offer`），跟不上时号照占、转发一个字节不受影响由
 //   `host_tests::a_tap_that_cannot_keep_up_loses_positions_visibly_and_never_touches_the_forwarded_bytes` 钉着。
 
@@ -1341,7 +1340,7 @@ const CHILD_TEST_NAME: &str = "relay::server::tests::relay_child_process_entry_p
 ///
 /// # 它走的是**生产接线**
 ///
-/// 〔DEL〕独立的 `--relay` 进程删了，中转只住常驻后端里 ⇒ 这里调 `main.rs` 流模式**真调的那一个**
+/// 独立的 `--relay` 进程删了，中转只住常驻后端里 ⇒ 这里调 `main.rs` 流模式**真调的那一个**
 /// （`accounts::upstream_select::host_relay`：真环境 · 真上游选择 · tee 落进程级 tap 口）。
 /// tee 的采集面：照两条载体的写者那样从进程级 hub 接一条（`crate::stream::tap::hub().attach()`），
 /// 每件逐字写成 tee 交出的那一行（本文件的 `tee_line`：中转那一侧原样交了什么）落 stdout。
@@ -1377,7 +1376,7 @@ const TAP_DATA: &str = "\"data\":";
 struct RelayChild {
     child: std::process::Child,
     addr: SocketAddr,
-    /// 〔RK1〕子进程的**夹具家目录**（钥匙文件在它底下，预先放好 `door::door_tests::TEST_KEY`）。
+    /// 子进程的**夹具家目录**（钥匙文件在它底下，预先放好 `door::door_tests::TEST_KEY`）。
     home: std::path::PathBuf,
     out: Arc<std::sync::Mutex<String>>,
     err: Arc<std::sync::Mutex<String>>,
@@ -1424,13 +1423,13 @@ fn spawn_relay_child(up: SocketAddr) -> RelayChild {
 ///
 /// ★ `KS3` 的金丝雀走的就是这条路：真子进程 · 真文件 · 真转发 —— 不是在一个 crate 里自问自答。
 fn spawn_relay_child_with_creds(up: SocketAddr, creds_path: &std::path::Path) -> RelayChild {
-    // 〔RK1〕中转绑上口之后会去 `$HOME/.cc-monitor/relay-key` 拿钥匙（没有就铸一把落盘）——
+    // 中转绑上口之后会去 `$HOME/.cc-monitor/relay-key` 拿钥匙（没有就铸一把落盘）——
     //   **不给夹具家目录，子进程就会去用户真实的家目录里写**。⇒ 一律给，并预先放好夹具那一把。
     let home = door::door_tests::seed_test_home(&tmpdir(&format!("child-home-{}", up.port())));
     spawn_relay_child_at(up, creds_path, home)
 }
 
-/// 同上，家目录由调用方给（〔RK1〕泄露判据要一个**空**家目录：让子进程自己铸一把、判据事后才读到它）。
+/// 同上，家目录由调用方给（泄露判据要一个**空**家目录：让子进程自己铸一把、判据事后才读到它）。
 fn spawn_relay_child_at(
     up: SocketAddr,
     creds_path: &std::path::Path,
@@ -1640,7 +1639,7 @@ fn a_sentinel_auth_header_shows_up_in_neither_the_relay_processs_stderr_nor_its_
 ///
 /// - 上游那一跳之后的事（TLS、真 API）—— `C7` 禁「绝不起真 claude」。
 /// - 上游连不上那条错误支（要一台死掉的上游，得再起一个子进程）。**登记为没测**
-///   〔下一条 `each_account_gets_its_own_key_…` 的 ㈢ 补上了；今天那一支回 504，`设计/20 §3.1a`〕。
+///   〔下一条 `each_account_gets_its_own_key_…` 的 ㈢ 补上了；今天那一支回 504，〕。
 #[test]
 fn the_substituted_key_never_shows_up_in_any_of_the_four_exits() {
     // 金丝雀取一个**不可能自然出现**的串，且**不含任何路径成分**
@@ -1791,7 +1790,7 @@ const EPHEMERAL_FLOOR: u16 = 32768;
 /// 后果具体：`acct-dead` 那一行的 `base_url` 指着的不再是「没人听」，
 /// 而是**另一个真在听的进程**。若那个进程恰好是**中转自己**，
 /// 它会收到一条没有 `/s/` 前缀的 `GET /v1/messages`
-/// ⇒ `route::parse` 回 `None` ⇒ **404**，而期望是 504（`设计/20 §3.1a` 之前是 502）。
+/// ⇒ `route::parse` 回 `None` ⇒ **404**，而期望是 504（之前是 502）。
 ///
 /// 🔴 2026-09-22 门禁现打抓到过一次这一形（`each_account_gets_its_own_key_…`
 /// 实得 `HTTP/1.1 404 Not Found` ＋ `Content-Length: 14`）。
@@ -1912,7 +1911,7 @@ fn an_account_that_is_not_in_the_table_gets_404_and_nothing_reaches_upstream() {
 ///
 /// 件计划逐字记着 `K-H2a` 的诚实边界：「**502 那条错误支没测**（已测 404/400）」。
 /// 这里第三个账号 `acct-dead` 的 `base_url` 指着一个**没人监听**的回环端口
-/// ⇒ 连上游失败 ⇒ 走「中转传输失败」那一支（`设计/20 §3.1a` 之后回 **504**，先前是 502），
+/// ⇒ 连上游失败 ⇒ 走「中转传输失败」那一支（之后回 **504**，先前是 502），
 /// 而它的 stderr 那一行（`[relay] upstream failed: …`）也一并进了下面四个出口的扫描面。
 ///
 /// # ⚠ 它**仍然没有**补上的那一格
@@ -2037,7 +2036,7 @@ fn each_account_gets_its_own_key_and_neither_key_shows_up_in_any_exit() {
         "表里查不到的账号段该回 404：{not_found:?}"
     );
 
-    // ── ㈢ **连不上上游那一支**（`K-H2a` 留下的那一格；`设计/20 §3.1a` 之后回 504，〔FIX3 · `99 §2.2 ⑫`〕起 502）──
+    // ── ㈢ **连不上上游那一支**（`K-H2a` 留下的那一格；之后回 504，起 502）──
     let (bad_gateway, _) = send_raw(
         relay.addr,
         "GET /7e577e577e577e577e577e577e577e577e577e577e577e577e577e577e577e57/s/claude-code/acct-dead/v1/messages HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n",
@@ -2073,7 +2072,7 @@ fn each_account_gets_its_own_key_and_neither_key_shows_up_in_any_exit() {
         err.contains("credentials: configured"),
         "非空对照：子进程没报告它读到了凭据 —— 那条路没跑过：{err:?}"
     );
-    // 〔DEL〕tee 只剩 `tap` 帧那一形：它**不带**账号那一格（`设计/20 §11` I2「① 不问账号」）。
+    // tee 只剩 `tap` 帧那一形：它**不带**账号那一格（「① 不问账号」）。
     //   非空对照改成「两发都抄到了」（第二个响应的序号在），账号 id 零出现。
     assert!(
         out.contains("\"resp\":1"),
@@ -2251,7 +2250,7 @@ fn the_auth_header_shape_follows_the_row_and_not_a_process_wide_guess() {
     }
 }
 
-/// 〔`P16` 2026-09-22〕**`every_header_this_relay_may_write_is_in_the_set_it_clears_first`
+/// **`every_header_this_relay_may_write_is_in_the_set_it_clears_first`
 /// 搬去 `creds_guard` 了** —— 墓碑，别在这里重建一份。
 ///
 /// 它焊的两端（「我可能写出来的头名」＝ `auth_header_of` · 「先丢掉哪几个」＝那份名单）
@@ -2621,7 +2620,7 @@ fn response_head_keeps_framing_and_forces_close() {
 ///
 /// # 为什么源码扫描不够
 ///
-/// 〔AR1：那条源码扫描 `nodelay_guard` 已按 `设计/15 §2.1` B3 退役，本格是「关了 Nagle」唯一的判据〕
+/// 〔那条源码扫描 `nodelay_guard` 已按  退役，本格是「关了 Nagle」唯一的判据〕
 /// `nodelay_guard` 数的是**文本**：`production_code()` 只剥掉 `#[cfg(test)]` 段与**行首**
 /// `//` 的行，字符串字面量 / 行尾注释 / 块注释里的同形文本**照样被数进去**。
 /// D2 实测（`D2NG1`）：把 `handle` 里真的 `down.set_nodelay(true)?;` **整个删掉**、
@@ -2984,7 +2983,7 @@ fn the_relay_port_is_not_reachable_from_a_non_loopback_address() {
     );
 }
 
-// 〔DEL〕这里原是 `--relay` 入口那三条（端口的缺省与覆盖 · 环境变量名 → 配置位的接线 · 起不来就退 2）：
+// 这里原是 `--relay` 入口那三条（端口的缺省与覆盖 · 环境变量名 → 配置位的接线 · 起不来就退 2）：
 //   `--relay` 一形删了，那三样代码随之删；进程内那一形的对应格住 `host_tests`（交了认不出的端口 ⇒ 拒而不缺省 ·
 //   端口被占 ⇒ 出声不倒 · 上游配置认不出 ⇒ 绑口之前就失败）。原 ㈢ 那一格（上游选择问的是哪个旋钮）留在下面。
 
@@ -3034,8 +3033,8 @@ printf 'POST %s/v1/messages HTTP/1.1\r\nHost: %s\r\nContent-Length: %d\r\nConnec
 head -n 1 <&3
 "#;
 
-/// 〔RK1〕一条**不带钥匙**的中转 URL → 生产渲染器 `payload::relay_env_prefix_posix` 渲出的前缀（〔WF1〕不再手抄）。
-/// 先摘掉继承来的 `ANTHROPIC_BASE_URL`：那一形在「已设」时不注入（V146），跑测试的环境里可能设着。
+/// 一条**不带钥匙**的中转 URL → 生产渲染器 `payload::relay_env_prefix_posix` 渲出的前缀（不再手抄）。
+/// 先摘掉继承来的 `ANTHROPIC_BASE_URL`：那一形在「已设」时不注入，跑测试的环境里可能设着。
 fn rendered_export(url: &str) -> String {
     format!(
         "unset ANTHROPIC_BASE_URL; {}",
@@ -3056,7 +3055,7 @@ fn rendered_export(url: &str) -> String {
 /// | 上游 | **真的** TCP 假上游，`auth_values` 收的是**整行** `Authorization:` |
 /// | agent | **桩**（红线：绝不起真 claude） |
 ///
-/// 〔WF1〕先前登记的那条「没买到的缝」（env 前缀是本判据手抄的）已合上：渲染器与本判据同在后端，
+/// 先前登记的那条「没买到的缝」（env 前缀是本判据手抄的）已合上：渲染器与本判据同在后端，
 /// 前缀就是生产 `payload::relay_env_prefix_posix` 的返回值（[`rendered_export`]）。当年
 /// monitor 那一侧自己那半由 `the_relay_prefix_is_really_prepended_to_the_command_that_gets_launched` 〔散文墓碑〕
 /// 与 `only_an_account_that_has_a_row_in_the_apikey_table_gets_the_base_url_prefix` 钉着。
@@ -3173,7 +3172,7 @@ fn a_launch_command_carrying_the_relay_env_prefix_reaches_upstream_with_that_acc
 /// 手写一份 JSON 只能证「**我以为写侧会产出的那个形状**能走通」——
 /// 写侧哪天换个形状（换个字段名 / 换一层嵌套 / 换个 id），这条判据**照绿**。
 ///
-/// ⇒ 这里调的是写侧生产段里逐字那两个纯函数（〔GP1 · 第四波〕写侧 ＝ 每台机器那台后端的 `accounts/upstream_select/file_face.rs`，
+/// ⇒ 这里调的是写侧生产段里逐字那两个纯函数（写侧 ＝ 每台机器那台后端的 `accounts/upstream_select/file_face.rs`，
 /// 本机也是；monitor 那侧当年的写口 `write_key_at`〔散文墓碑〕删了）
 /// （`store::merge_account_key` + `store::to_pretty_json`），两侧因此**在 `creds-core`
 /// 这个共同祖先上会合**：backend 单向依赖 `src/common/*`，够得着它们。
@@ -3190,7 +3189,7 @@ fn a_launch_command_carrying_the_relay_env_prefix_reaches_upstream_with_that_acc
 ///
 /// ⚠ 另有一跳**本来就不归本条**：id 是怎么从 `configDir` 推出来的
 /// （`history::apikey_account_id_of_dir`，住 monitor，backend 够不着）——
-/// 那一格由 `file_face_tests::us1_what_the_write_side_wrote_is_exactly_the_row_the_launch_answer_uses` 钉（〔US1〕写口 → 人群 → 成品，都在后端）。
+/// 那一格由 `file_face_tests::us1_what_the_write_side_wrote_is_exactly_the_row_the_launch_answer_uses` 钉（写口 → 人群 → 成品，都在后端）。
 /// **本条从「已经有了一个 id」那一刻接手。**
 #[cfg(unix)]
 fn creds_text_the_write_side_would_produce(rows: &[(&str, &str)]) -> String {
@@ -3216,7 +3215,7 @@ fn creds_text_the_write_side_would_produce(rows: &[(&str, &str)]) -> String {
 /// | 上游 | **真的** TCP 假上游 |
 /// | agent | **桩**（红线：绝不起真 claude） |
 ///
-/// ⚠ 红线的例外口径逐字〔PM 09-02〕：**由测试自己拉起、跑在沙箱容器内、端口 0、
+/// ⚠ 红线的例外口径逐字：**由测试自己拉起、跑在沙箱容器内、端口 0、
 /// 用完即杀的中转子进程，不算「起真后端」**。它**不覆盖**那个会碰 tmux 的 backend ·
 /// 在宿主上拉任何进程 · 手工起后端冒烟。
 #[cfg(unix)]
@@ -3464,7 +3463,7 @@ fn first_non_loopback_v4() -> Option<Ipv4Addr> {
     }
 }
 
-/// 🔴〔`P25` 2026-09-22〕**那个「没人听」的端口，抢不走。**
+/// 🔴**那个「没人听」的端口，抢不走。**
 ///
 /// # 它钉的是一条 TOCTOU 的结构性消除
 ///
@@ -3512,14 +3511,14 @@ fn the_dead_port_is_one_the_kernel_can_never_hand_out() {
         Err(e) => {
             // 不是「跳过」—— 把判不了这件事印出来（本仓那条：跳过与过了长得一样）。
             println!(
-                "〔读数〕读不到 /proc/sys/net/ipv4/ip_local_port_range（{e}）\
+                "读不到 /proc/sys/net/ipv4/ip_local_port_range（{e}）\
                  ⇒ 「本机下界不低于 {EPHEMERAL_FLOOR}」这一格本趟**判不了**"
             );
         }
     }
 }
 
-// ============================================================ `设计/20 §3.1a` · `99 §2.2 ⑫`：中转自己的传输失败回 502 / 504
+// ============================================================：中转自己的传输失败回 502 / 504
 
 /// 一个**读完请求、回一串给定字节、然后按 `hold` 决定关不关**的假上游。
 ///
@@ -3575,7 +3574,7 @@ fn spawn_relay_with_upstream_deadline(
     addr
 }
 
-/// 一个**接下连接就关、一个字节都不读**的假上游 ⇒ 中转往它写一个大请求体时写到一半断（〔FIX3〕原 `WriteFailed` 那一支）。
+/// 一个**接下连接就关、一个字节都不读**的假上游 ⇒ 中转往它写一个大请求体时写到一半断（原 `WriteFailed` 那一支）。
 fn spawn_slamming_upstream() -> SocketAddr {
     let listener = TcpListener::bind(SocketAddr::new(LOOPBACK, 0)).expect("bind");
     let addr = listener.local_addr().expect("addr");
@@ -3587,8 +3586,8 @@ fn spawn_slamming_upstream() -> SocketAddr {
     addr
 }
 
-/// 设计/99 §2.2 ⑫「状态码照 HTTP 代理通行做法 —— 我们拒的 4xx（带原因头），上游不可达 / 超时 502 / 504」·
-/// `设计/20 §3.1a`：**中转自己的传输失败回 502 / 504 ＋ 原因头，body 里一句话说清上游是谁、卡在哪一跳。**
+/// 「状态码照 HTTP 代理通行做法 —— 我们拒的 4xx（带原因头），上游不可达 / 超时 502 / 504」·
+///：**中转自己的传输失败回 502 / 504 ＋ 原因头，body 里一句话说清上游是谁、卡在哪一跳。**
 ///
 /// # 分母：六跳，逐跳一格（期望值全是手写字面量，不拿 `FailedAt::words` / `reason` 算）
 ///
@@ -3699,7 +3698,7 @@ fn relay_transport_failures_answer_502_or_504_saying_who_and_where() {
     assert!(got.contains(&want), "⑤ want {want:?} got {got:?}");
 }
 
-/// 本 crate 生产段里**每一个** HTTP 状态码字面量的住址〔`设计/20 §3.1a` ②，`D2`〕。
+/// 本 crate 生产段里**每一个** HTTP 状态码字面量的住址（`D2`）。
 ///
 /// `(相对 src/backend 的文件, 字面量, 属于哪一组)`。**手写**，与盘上现扫出来的两向相等。
 /// 同一个字面量出现两行 = 两个家（今天只有 404：中转的「路径不是路由形状」与上游选择的
@@ -3731,7 +3730,7 @@ const STATUS_HOMES: &[(&str, &str, StatusGroup)] = &[
         "503 Service Unavailable",
         StatusGroup::Busy,
     ),
-    // 〔FIX3 · `99 §2.2 ⑫`〕上游那侧：不是超时 502 · 超时 504（先前一律 504；502 原先是上游选择的 `/t/` 未登记，改成了 404）。
+    // 上游那侧：不是超时 502 · 超时 504（先前一律 504；502 原先是上游选择的 `/t/` 未登记，改成了 404）。
     (
         "relay/server.rs",
         "502 Bad Gateway",
@@ -3742,7 +3741,7 @@ const STATUS_HOMES: &[(&str, &str, StatusGroup)] = &[
         "504 Gateway Timeout",
         StatusGroup::UpstreamFailed,
     ),
-    // 〔RK1〕门拒绝那两个码：它们住门那一份文件（`door.rs::FORBIDDEN` / `MISDIRECTED`）。
+    // 门拒绝那两个码：它们住门那一份文件（`door.rs::FORBIDDEN` / `MISDIRECTED`）。
     ("relay/door.rs", "403 Forbidden", StatusGroup::Door),
     (
         "relay/door.rs",
@@ -3751,10 +3750,10 @@ const STATUS_HOMES: &[(&str, &str, StatusGroup)] = &[
     ),
 ];
 
-/// 我们自己造的码分几组（`20 §3.1a` 那张表 ＋ 下游请求读不懂那一组）。
+/// 我们自己造的码分几组（那张表 ＋ 下游请求读不懂那一组）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum StatusGroup {
-    /// 下游的请求读不懂（400 / 411 / 413）。`20 §3.1a` 没列它：那是**下游**的错，与三组都不相干。
+    /// 下游的请求读不懂（400 / 411 / 413）。没列它：那是**下游**的错，与三组都不相干。
     Unreadable,
     /// 路由不成立（上游选择 `Refuse` ＋ 中转的「路径不是路由形状」）。
     NoRoute,
@@ -3762,7 +3761,7 @@ enum StatusGroup {
     Busy,
     /// 中转自己的传输失败 —— 上游那侧。
     UpstreamFailed,
-    /// 〔RK1〕门拒绝（没钥匙 / 错钥匙 / 带 Origin ⇒ 403 · Host 非回环 ⇒ 421）。**与 404 不相交** ——
+    /// 门拒绝（没钥匙 / 错钥匙 / 带 Origin ⇒ 403 · Host 非回环 ⇒ 421）。**与 404 不相交** ——
     /// 「钥匙不对」与「钥匙对、表里没这一行」必须可分（`INVARIANTS §48.1a`）。
     Door,
 }
@@ -3791,7 +3790,7 @@ fn status_literals(src: &str) -> Vec<String> {
     out
 }
 
-/// ★★★ `设计/20 §3.1a` 那两条可机检的形状：
+/// ★★★ 那两条可机检的形状：
 /// ① 我们自己造的三组码（上游选择 `Refuse` · 在飞上界 · 中转传输失败）**两两不相交**；
 /// ② 每个码**只有一处常量**，不散在各个返回点上。
 ///
@@ -3802,7 +3801,7 @@ fn status_literals(src: &str) -> Vec<String> {
 /// - 两边做**多重集相等**。散到返回点上的第二处（比如谁又在某个返回点写一遍 `"502 Bad Gateway"`）
 ///   会让盘上多一行 ⇒ 红。
 ///
-/// 然后在登记表上断：三组的码**恰好**是 `20 §3.1a` 那张表的值（相等，手写字面量），且两两不相交。
+/// 然后在登记表上断：三组的码**恰好**是那张表的值（相等，手写字面量），且两两不相交。
 #[test]
 fn every_status_we_make_has_one_home_and_the_three_groups_are_disjoint() {
     // 尺子自检（反空真）：认得该认的、不认不该认的。
@@ -3821,7 +3820,7 @@ fn every_status_we_make_has_one_home_and_the_three_groups_are_disjoint() {
     assert!(files.len() >= 30, "只扫到 {} 份 —— 取法坏了", files.len());
     let mut on_disk: Vec<(String, String)> = Vec::new();
     for (p, raw) in &files {
-        let rel = guard_core::module_address(&root, p); // 〔RE〕按模块住址认（面 B 成员住 `src/comms/outward/`）
+        let rel = guard_core::module_address(&root, p); // 按模块住址认（面 B 成员住 `src/comms/outward/`）
         for lit in status_literals(&crate::guard_support::production_code(raw)) {
             on_disk.push((rel.clone(), lit));
         }
@@ -3835,11 +3834,11 @@ fn every_status_we_make_has_one_home_and_the_three_groups_are_disjoint() {
     assert_eq!(
         on_disk, registered,
         "盘上的状态码字面量与 `STATUS_HOMES` 对不上（多重集相等）。\n\
-         盘上多一行 = 有人把一个码**散到了返回点上**（`20 §3.1a` ②：只许有一处常量）；\n\
+         盘上多一行 = 有人把一个码**散到了返回点上**（只许有一处常量）；\n\
          登记多一行 = 表腐了。"
     );
 
-    // 三组的码 —— 期望值手写（`20 §3.1a` 那张表）。
+    // 三组的码 —— 期望值手写。
     let code = |l: &str| l[..3].parse::<u16>().expect("三位数");
     let codes_of = |g: StatusGroup| -> std::collections::BTreeSet<u16> {
         STATUS_HOMES
@@ -3856,8 +3855,8 @@ fn every_status_we_make_has_one_home_and_the_three_groups_are_disjoint() {
     assert_eq!(
         codes_of(StatusGroup::NoRoute),
         set(&[404]),
-        // 〔FIX3 · `99 §2.2 ⑫`〕我们拒的（读不懂 · 路由不成立 · 门）全是 4xx，上游那侧（下面那组）全是 5xx —— 期望值手写成这样。
-        "路由不成立那一组（〔FIX3〕`/t/` 未登记也是 404，原因头分开）"
+        // 我们拒的（读不懂 · 路由不成立 · 门）全是 4xx，上游那侧（下面那组）全是 5xx —— 期望值手写成这样。
+        "路由不成立那一组（`/t/` 未登记也是 404，原因头分开）"
     );
     assert_eq!(codes_of(StatusGroup::Busy), set(&[503]), "在飞上界那一组");
     assert_eq!(
@@ -3873,7 +3872,7 @@ fn every_status_we_make_has_one_home_and_the_three_groups_are_disjoint() {
     assert_eq!(
         codes_of(StatusGroup::Door),
         set(&[403, 421]),
-        "〔RK1〕门拒绝那一组"
+        "门拒绝那一组"
     );
     // ① 两两不相交（`D7`：同码 ⇒ 分不清是我们配错了还是上游挂了）。
     let groups = [
@@ -3895,8 +3894,8 @@ fn every_status_we_make_has_one_home_and_the_three_groups_are_disjoint() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 〔RK1 · `INVARIANTS §48.1a` 中转口的钥匙〕门：走真 socket 的那一半
-//   设计住 `调研/第四波记录/RK1.md §1.3`；纯判定那一半住 `door_tests.rs`。
+// 〔`INVARIANTS §48.1a` 中转口的钥匙〕门：走真 socket 的那一半
+//   设计住；纯判定那一半住 `door_tests.rs`。
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// 一发带自定头的请求（`Host` 由调用方给，**不**替它补）。

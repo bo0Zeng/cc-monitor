@@ -29,7 +29,7 @@
 # `every_test_that_starts_the_real_backend_demands_a_private_tmux` 守着（按「二进制哪来的」派生，
 # 不看属性，两个文件一起扫）。
 #
-# ⚠ 那两条 + `the_local_tmux_frames_really_land_in_the_ledger`〔散文墓碑〕（〔MIG-1〕已删，见下面 `EMB_TESTS`）都由 `cfg(embedded_backends)` 门着，
+# ⚠ 那两条 + `the_local_tmux_frames_really_land_in_the_ledger`〔散文墓碑〕（已删，见下面 `EMB_TESTS`）都由 `cfg(embedded_backends)` 门着，
 #   而 `embedded-backends/` 是 gitignore 的 ⇒ **干净 clone 与 CI 上它们不编译进来**，
 #   本脚本那时跑到的仍是原来那几条。**别把「本脚本绿了」读成「那三条验过了」** ——
 #   下面 `RAN` 那个自检印的是真实跑成的条数，以它为准。
@@ -51,7 +51,7 @@ BACKEND="${CCM_E2E_BACKEND:-$REPO/.build/backend/debug/cc-monitor-backend}"
 WORK="$(mktemp -d /tmp/e2e-lb.XXXXXX)"
 CLAUDE_DIR="$WORK/claude"; mkdir -p "$CLAUDE_DIR/projects"
 
-# 〔E2 尾 09-27〕**本套件自己的后端**：二进制是 `$BACKEND`、环境里带着本套件的 `$WORK`
+# **本套件自己的后端**：二进制是 `$BACKEND`、环境里带着本套件的 `$WORK`
 #   （Rust 那侧起的每一个都继承 `CCM_E2E_WORK` / 沙箱 `HOME`，两样都在 `$WORK` 底下）。
 #   认的是进程表里的事实（`/proc/<pid>/exe` ＋ `environ`），不是命令行长相 ——
 #   从前收尾是 `pkill -f "$BACKEND"`：模式杀，连带命令行里含这条路径的**调用方 shell**（09-27 实发：
@@ -98,7 +98,7 @@ echo
 
 OUT="$WORK/rust.log"
 # ⚠ **别写成 `cargo test … | tee`** —— 管线会把退出码藏起来。落文件再回显。
-# ★★ **两趟，两个过滤串**〔`K-P1` 08-26〕：真进程判据今天住**两个**模块 ——
+# ★★ **两趟，两个过滤串**：真进程判据今天住**两个**模块 ——
 #    `local_backend`（F05a：监护那条路）与 `local_backend_host`（K-P1：常驻那条路）。
 #
 # ⚠⚠ **为什么不是一趟写两个过滤串**（`… --nocapture … local_backend local_backend_host`）：
@@ -108,7 +108,7 @@ OUT="$WORK/rust.log"
 #    ⇒ 一行只登记得到一个过滤串。写成一行的话，**改掉 `local_backend_host` 那族的测试名不会有任何东西红**，
 #    而 `cargo test` 跑零条测试**退出码是 0** —— 两边都绿，测试其实再没执行过。
 #    ⇒ 一族一趟，每趟自己那一行都带着自己的过滤串。
-# ⚠⚠ 〔E2 尾 09-27〕**第一趟的过滤串是 `local_backend::`（带 `::`），不是 `local_backend`**：libtest 按子串认，
+# ⚠⚠ **第一趟的过滤串是 `local_backend::`（带 `::`），不是 `local_backend`**：libtest 按子串认，
 #    `local_backend` 同时命中 `local_backend_host::…` ⇒ 常驻那族被跑了**两遍**，第一遍接上的后端还活着，
 #    第二遍的「第一个宿主」当场报「已经在跑」（主线本来就红的那一格）。带 `::` 只命中监护那一族。
 #    （`shared_crate_registry` 的抽取器截到 `:` 为止，登记到的仍是 `local_backend`，与原来同一个串。）
@@ -147,7 +147,7 @@ echo
 #   之间，于是那个 `ok` **落在了下一行**，整行匹配永远为 0。
 #   ⇒ 认权威的那一行：`test result: ok. N passed`。
 #   这次是**fail-closed 救的**（报 BROKEN 而不是绿），否则就是一次伪造的绿。
-# ⚠ 〔`K-P1` 08-26〕**两趟之后不能再 `tail -1`** —— 那只会拿到最后一趟的数，
+# ⚠ **两趟之后不能再 `tail -1`** —— 那只会拿到最后一趟的数，
 #   前一趟跑了几条就没人数了（而「少跑了一整族」正是这条自检要抓的形状）。
 #   ⇒ **两趟相加**。同理下面那条「标记数 < 跑成的测试数」比的也是总数。
 RAN=$(sed -n 's/^test result: [A-Za-z]*\. \([0-9]*\) passed.*/\1/p' "$OUT" \
@@ -175,14 +175,14 @@ if [ "$RC" -ne 0 ]; then
 fi
 
 # 每条 ignore 测试至少产一个标记；标记数少于测试数 ⇒ 有测试提前 return 了。
-# ⚠ 〔`K-R7` 08-31〕**这一条对「新接进来的测试」是有门槛的**：接进本套件的每一条
+# ⚠ **这一条对「新接进来的测试」是有门槛的**：接进本套件的每一条
 #    都必须**至少打一个 `E2E-OK` 标记**，否则这条自检会红，而红的理由是**假的**
 #    （不是「断言没走完」，是「那条从来不打标记」）。本轮接进来的两条各补了标记。
 if [ "$MARKS" -lt "$RAN" ]; then
   bad "标记数 $MARKS < 跑成的测试数 $RAN —— 有测试提前退出、断言没走完"
 fi
 
-# 〔DEL 续 · 主会话裁〕**按环境显式分支**：下面这三条起真后端的判据由 `cfg(all(embedded_backends, linux, x86_64))` 门着
+# **按环境显式分支**：下面这三条起真后端的判据由 `cfg(all(embedded_backends, linux, x86_64))` 门着
 #   （`build.rs` 只在 `src/frontend/shell/embedded-backends/` 两个 arch 都齐时置 cfg；那个目录 gitignore）。
 #   没铺 ⇒ 它们不编译进来 ⇒ 那几条断言记 **SKIP** 并说原因；PASS ＋ SKIP 恒等总条数（门禁 `exact-with-skip`，照 `backend-gate2`）。
 #   ⚠ SKIP 只许出现在「环境真不够」时：落点齐了、本机也是 Linux x86_64，却一条都没跑 ⇒ **FAIL**（多半是换了落点之后
@@ -191,7 +191,7 @@ EMB_TESTS=(
   local_backend::tests::the_local_backend_host_really_registers_an_inbound_client
   local_backend_host::tests::the_local_backend_host_can_be_stopped_and_started_again
 )
-# 〔MIG-1 · `99 §2.1 ⑬`〕三条 → 两条：`the_local_tmux_frames_really_land_in_the_ledger`〔散文墓碑〕删了 —— 它钉的是「本机 tmux 快照帧真落进
+# 三条 → 两条：`the_local_tmux_frames_really_land_in_the_ledger`〔散文墓碑〕删了 —— 它钉的是「本机 tmux 快照帧真落进
 #   monitor 那本 tmux 原文账」，而那本账随会话 / tmux 账本进后端删了、快照帧随 V41 删了（后端那本账的真 tmux 实测是
 #   `graylight-backend-frames.sh`）。它打 2 条标记 ⇒ 11 → 9。
 # 那两条合起来打的断言标记数（09-28 在铺了落点的非 ASCII 路径树上现打：24 − 15）。
@@ -213,7 +213,7 @@ else
   bad "那 ${#EMB_TESTS[@]} 条只跑了 $emb_ran 条 —— 门它们的 cfg 分叉了"
 fi
 
-# 〔E2 尾 09-27〕Rust 那侧自己收尸（`E2eSandbox` 的 `Drop` 按句柄收）；跑完还活着的就是**漏网**的 ——
+# Rust 那侧自己收尸（`E2eSandbox` 的 `Drop` 按句柄收）；跑完还活着的就是**漏网**的 ——
 #   从前靠收尾那句模式杀兜着，漏了也看不见（两趟过滤串重叠那次，第一趟接上的后端就是这样留到第二趟、
 #   让它当场报「已经在跑」）。收尾照样会收掉它们，但先记一条红。
 LEFT="$(ours_backends | tr '\n' ' ')"

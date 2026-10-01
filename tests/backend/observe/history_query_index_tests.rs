@@ -1,4 +1,4 @@
-//! 〔`设计/10` 骨架 · 子步 1〕`--read-session-from-offset … --index [--until]` 的判据。
+//! 〔骨架〕`--read-session-from-offset … --index [--until]` 的判据。
 //!
 //! 买到：索引与 seq 空间**逐行对齐**（与 `--read-session-tail` 那份计数同一口径、同一个 `line_counts`）·
 //! 偏移是绝对的、续传从 `end` 接得上 · 宽度无关料按块型分开数 · 选项解析拒写错的尾随参数。
@@ -242,7 +242,7 @@ fn session_index_entry_keeps_the_path_fence() {
     std::fs::remove_dir_all(&tmp).ok();
 }
 
-/// 〔U3b〕**跨 crate 的 seq 空间对拍**：后端索引读同一份夹具，逐行对同一份金标准。
+/// **跨 crate 的 seq 空间对拍**：后端索引读同一份夹具，逐行对同一份金标准。
 /// monitor 那侧（`session_skeleton·rs::LineNumberer`）在 `tests/frontend/shell/session_skeleton_tests.rs`
 /// 对**同一份**金标准 —— 两侧实现不同源，金标准是手算的（见 `.golden` 头注）。
 #[test]

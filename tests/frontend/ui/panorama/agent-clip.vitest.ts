@@ -1,4 +1,4 @@
-// CP7（`设计/97 §2.4`）：「复制给 agent」的文本必须自带住址、索引读数与 CP4 那一行。
+// CP7：「复制给 agent」的文本必须自带住址、索引读数与 CP4 那一行。
 // 纯函数 —— 被判的就是 `src/frontend/ui/panorama/agent-clip.ts` 本身，本文件**零 mock**。
 // 判法全是**整串相等**：少一行、多一行、字改了都红（不是「包含某个词」）。
 import { describe, it, expect } from "vitest";
@@ -14,7 +14,7 @@ import {
 import type { Edge, Symbol as PanoSymbol } from "../../../../src/frontend/ui/panorama/types";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
 
-// 〔COPY-R〕索引时间那一行与「看不见」缺值那一句按文案键取（`设计/91 §6`：判据按键、不钉原文）；其余照旧整串相等。
+// 索引时间那一行与「看不见」缺值那一句按文案键取（判据按键、不钉原文）；其余照旧整串相等。
 const ISO = "2026-09-21T14:13:20.000Z";
 const STAMP = copyText("agentClip.stamp.line", { iso: ISO, indexedAt: 1_790_000_000, stale: "" });
 const STAMP_STALE = copyText("agentClip.stamp.line", { iso: ISO, indexedAt: 1_790_000_000, stale: copyText("agentClip.stamp.stale") });

@@ -1,5 +1,5 @@
 /**
- * 〔U3b〕查看器接骨架的判据（真 `SessionViewer` ＋ 真渲染管线，只有 IPC 是假的，台子见 rig 头注）。
+ * 查看器接骨架的判据（真 `SessionViewer` ＋ 真渲染管线，只有 IPC 是假的，台子见 rig 头注）。
  *
  * 夹具形状：1000 个可计行，偶数行是 user 记录（uuid `u{i}`、seq `2i`），奇数行是不可显示的
  * `permission-mode`（占号、不出 payload）—— 正是子步 1 那次改编号要对上的形状。

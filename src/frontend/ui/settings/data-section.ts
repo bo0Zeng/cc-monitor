@@ -3,7 +3,7 @@
  *
  * 列出 monitor 所有持久化数据的位置 + WebView2 用户数据目录 + localStorage keys，
  * 每项配 [打开] 按钮。**纯展示，不做删除 / 清空操作**——避免误点。
- * 〔用户 09-24 裁，答 `设计/70 §11.6` #1〕「数据位置那一页要不要（删 / 清空），不要，给路径」
+ * 〔用户 09-24 裁，答〕「数据位置那一页要不要（删 / 清空），不要，给路径」
  * ⇒ 这条红线由 `tests/frontend/ui/settings/data-section.vitest.ts` 钉着：效应面两向相等（只读 `get_data_paths`、
  *   只会 `openPath`、`localStorage` 零写）＋ 每一条路径以纯文本上屏。
  *
@@ -40,15 +40,15 @@ import type { DataPathsResponse } from "../generated/DataPathsResponse";
 import { copyText } from "../copy-table";
 
 /**
- * 〔第四波 ST2 · 用户 09-24 裁「真相 / 缓存列提前做」〕每一行那一格「删了会怎样」。
+ * 〔用户 09-24 裁「真相 / 缓存列提前做」〕每一行那一格「删了会怎样」。
  *
  * 值来自后端 `data_paths.rs::DataPathInfo.class`（非可选枚举，`INVARIANTS §2.1` 那两类）。
- * 它治的是 `70 §11.5.2` 写下的那笔代价：用户**看得见每个文件多大，却看不出哪个删了会丢东西**
+ * 它治的是写下的那笔代价：用户**看得见每个文件多大，却看不出哪个删了会丢东西**
  * ⇒ 想清干净的人只能整个目录一起删、或者一个都不敢删。
  * ⚠ 后端加第三类时**不许整页炸**，也不许假装认识它 —— 原样说出来。
  */
 /**
- * 〔ST2 · `70 §11.3.2`〕日志目录那一行的名字 —— 这一行**不自带 [打开]**，改成指向「日志」那一页
+ * 日志目录那一行的名字 —— 这一行**不自带 [打开]**，改成指向「日志」那一页
  * （那一页自己有「打开日志目录」；两处都给就是界面层的重复，而且两处给的还不是同一个数）。
  * ⚠ 跨语言常量：Rust 那侧 `data_paths.rs::LOGS_DIR_LABEL` 同名同值，由 `data-section.vitest.ts` 读那份源码对拍。
  * ⚠ 修在界面层：**不许**从后端那份枚举里删掉这一行（`INVARIANTS §2.1` 的唯一权威枚举点）。
@@ -66,7 +66,7 @@ export function describeDataClass(c: DataClass): string {
   }
 }
 
-/** 一个 `<strong>` —— 让「强调」由 DOM 结构承担，而不是由字符串里的标记承担（`70 §2.3`）。 */
+/** 一个 `<strong>` —— 让「强调」由 DOM 结构承担，而不是由字符串里的标记承担。 */
 function strong(text: string): HTMLElement {
   const el = document.createElement("strong");
   el.textContent = text;
@@ -91,8 +91,8 @@ export class DataSection {
     if (!this.headless) {
       const heading = document.createElement("div");
       heading.className = "settings-group-title";
-      // 🔴 `70 §10.2`「名字」：**「数据存储」→「数据位置」**。
-      // 理由**不是 R5 命中**（「数据存储」本来就是名词短语，`91 §4` 的 R5 抓不到它），
+      // 🔴 「名字」：**「数据存储」→「数据位置」**。
+      // 理由**不是 R5 命中**（「数据存储」本来就是名词短语，R5 抓不到它），
       // 是**同组重名**：同一个折叠组里已经有一块叫「Claude 数据目录」（`panel.ts`），
       // 两个「数据」并排；而这一块的全部内容是**路径 + 大小 + 打开** —— 说的是位置，
       // 不是存储策略。
@@ -102,13 +102,13 @@ export class DataSection {
 
     this.mainBody = document.createElement("div");
     this.mainBody.className = "settings-data-body";
-    // 步 1（`70 §1.3 A`）：**容器先钉住高度**，与骨架同一个数（住址只有 `skeleton.ts` 一处）。
+    // 步 1：**容器先钉住高度**，与骨架同一个数（住址只有 `skeleton.ts` 一处）。
     // 要在这里钉、不能等数据回来再钉 —— 等回来那一跳已经发生过了。
     holdSkeletonHeight(this.mainBody, "data-places");
     this.root.appendChild(this.mainBody);
 
     this.renderPlaceholder();
-    // 🔴 步 2（`70 §1.3 B` · `§10.4`）：**构造期不再发 I/O。**
+    // 🔴 步 2：**构造期不再发 I/O。**
     // 原来这里是 `void this.load()`，而这一块住「应用」页、落地页是「机器」
     // ⇒ 每次打开设置都白发一趟 `get_data_paths`，还正好在那 3 秒重排窗口里。
     // 现在由宿主（`panel.ts`）在**该页首次可见**时调 `loadNow()`。
@@ -141,7 +141,7 @@ export class DataSection {
   private renderPlaceholder(): void {
     this.mainBody.replaceChildren();
     // 步 1：加载态从**会长高的一行字**换成**与渲染态同高**的骨架
-    //（`70 §10.2` 差项 3：「加载中…」→ 4~5 个卡片 ⇒ 重排）。
+    //（差项 3：「加载中…」→ 4~5 个卡片 ⇒ 重排）。
     // ⚠ 类名沿用 `settings-data-loading`（`src/frontend/ui/styles.css` 里那条规则的**唯一读者**）——
     //   换成新类名会当场让那条规则变成死规则，撞 `css-ledger` 的「每个 CSS 类名都说得出
     //   谁在用它」。骨架多出来的那一维（高度、身份）走 `data-*`，不新造类。
@@ -179,7 +179,7 @@ export class DataSection {
       }),
     );
 
-    // 〔P3 · V160「一台机器一个家」〕卡片 1b：本机后端住在同一个家里的那几样（只给路径，V66）
+    // 〔「一台机器一个家」〕卡片 1b：本机后端住在同一个家里的那几样（只给路径）
     this.mainBody.appendChild(
       this.buildBlock({
         title: copyText("data.card.backend"),
@@ -200,7 +200,7 @@ export class DataSection {
       );
     }
 
-    // 〔ST2 · `70 §10.2` · `§11.3.2`〕原来的卡片 3「PowerShell profile 备份」**搬去本机「足迹」栏**：
+    // 原来的卡片 3「PowerShell profile 备份」**搬去本机「足迹」栏**：
     //   它和足迹那张表里的 `$PROFILE` 行讲的是同一件事（「cc-monitor 动过你哪些文件」），
     //   原来住在两个不同的顶层页。`INVARIANTS §4`：备份是「写 profile」那条铁律的产物。
 
@@ -209,9 +209,9 @@ export class DataSection {
 
     // 卡片 5：卸载说明（纯文字提示）
     //
-    // 🔴 `70 §10.2` 差项 5：原来这里是 `note.innerHTML = "🛈 <strong>…</strong>…"`。
+    // 🔴 差项 5：原来这里是 `note.innerHTML = "🛈 <strong>…</strong>…"`。
     // 安全上无碍（常量串），但它是 `§2.3` 那条「**强调由 DOM 结构承担**」的反例 ——
-    // 而且 `91 §5.1` 抽文案表那一步**抽不动**嵌着标记的句子。
+    // 而且抽文案表那一步**抽不动**嵌着标记的句子。
     // ⇒ 换成真 DOM：`<strong>` 由 `document.createElement` 建，文字是纯文本。
     const note = document.createElement("div");
     note.className = "settings-data-note";
@@ -221,7 +221,7 @@ export class DataSection {
       copyText("data.note.byDefault"),
       strong(copyText("data.note.notCleared")),
       copyText("data.note.howToClear"),
-      // 〔ST2〕那一格怎么读：只想腾空间的话，删「可随手删」的就够了。
+      // 那一格怎么读：只想腾空间的话，删「可随手删」的就够了。
       copyText("data.note.classes"),
     );
     this.mainBody.appendChild(note);
@@ -267,7 +267,7 @@ export class DataSection {
 
   private buildItemRow(info: DataPathInfo): HTMLElement {
     const li = document.createElement("li");
-    // 〔W5-AUX · `设计/41 §7`〕条目种类是有限枚举 ⇒ 走 `data-kind`（全仓 `kind` 这个状态名只用这一种载体），不再拼 `kind-<值>` 类名。
+    // 条目种类是有限枚举 ⇒ 走 `data-kind`（全仓 `kind` 这个状态名只用这一种载体），不再拼 `kind-<值>` 类名。
     li.className = `settings-data-item ${info.exists ? "exists" : "absent"}`;
     li.dataset.kind = info.kind;
 
@@ -281,7 +281,7 @@ export class DataSection {
     desc.textContent = info.description;
     li.appendChild(desc);
 
-    // 〔ST2〕「删了会怎样」那一格。类别进 DOM（`data-class`），判据与用户看的是同一份值。
+    // 「删了会怎样」那一格。类别进 DOM（`data-class`），判据与用户看的是同一份值。
     // ⚠ 不挂类名：它只要一段字，不要样式（`css-ledger` ③ 是棘轮，新造一个没规则的类名会抬它）。
     li.dataset.class = info.class;
     const cls = document.createElement("span");
@@ -304,7 +304,7 @@ export class DataSection {
     li.appendChild(meta);
 
     if (info.label.startsWith(LOGS_DIR_LABEL)) {
-      // 〔ST2〕日志目录（〔P3〕连同后端那一份 `logs/backend/`）：这一行只给路径，打开去「日志」那一页（见 `LOGS_DIR_LABEL` 头注）。
+      // 日志目录（连同后端那一份 `logs/backend/`）：这一行只给路径，打开去「日志」那一页（见 `LOGS_DIR_LABEL` 头注）。
       const see = document.createElement("span");
       see.dataset.seeAlso = "logs";
       see.textContent = copyText("data.item.inLogsPage");

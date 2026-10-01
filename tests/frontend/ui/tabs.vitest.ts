@@ -188,7 +188,7 @@ vi.mock("../../../src/frontend/ui/behavior", () => ({
   }),
 }));
 // A5：换号重启编排（单测在 account-restart.vitest）——这里 mock 成 spy，只验 tabs 侧守卫是否放行。
-// 〔FE1〕`restartLocateFailureMessage`（换号重启定位不到时那句话）从 `accounts.ts` 搬来了这里 —— 它是纯函数，用真身；
+// `restartLocateFailureMessage`（换号重启定位不到时那句话）从 `accounts.ts` 搬来了这里 —— 它是纯函数，用真身；
 //   只桩编排器本体。
 vi.mock("../../../src/frontend/ui/account-restart", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../../src/frontend/ui/account-restart")>()),
@@ -262,7 +262,7 @@ import { copyText } from "../../../src/frontend/ui/copy-table";
 import { recordFileWiring } from "../../../src/frontend/ui/record-file-notice";
 import { applyConfigEdits, type Edit } from "./config-patch-fake";
 
-// 〔S4 · 第四波〕`TabManager` 拆开之后各样东西住各自的家（store · tab 栏视图 · 拖拽 · 落盘偏好 · 流视图 · 会话动作）。
+// `TabManager` 拆开之后各样东西住各自的家（store · tab 栏视图 · 拖拽 · 落盘偏好 · 流视图 · 会话动作）。
 // 判据**直接指向新家**；`TabManager` 上不再为旧判据留同名转交。TS 的 `private` 只在编译期，运行时这几个字段就在实例上。仅测试用。
 interface TMHomes {
   store: TabStore;
@@ -277,7 +277,7 @@ const home = (tm: TabManager): TMHomes => tm as unknown as TMHomes;
 const resumed = (): Record<string, unknown>[] => localLaunchCalls(vi.mocked(invoke).mock.calls, "resume_history_session");
 
 /**
- * 〔GRP1 · `设计/99 §1` V140〕摆一份分组：组表只有 `{id, name}`，组员 = `Tab.group`（tab 自己的属性）。
+ * 摆一份分组：组表只有 `{id, name}`，组员 = `Tab.group`（tab 自己的属性）。
  * `tabs` 里的 sid 必须已经在栏里；没列到的 tab 一律散着。
  */
 function setGroups(tm: TabManager, groups: { id: string; name: string; tabs?: string[] }[]): void {
@@ -285,7 +285,7 @@ function setGroups(tm: TabManager, groups: { id: string; name: string; tabs?: st
   for (const t of home(tm).store.tabs.values()) t.group = null;
   for (const g of groups) for (const sid of g.tabs ?? []) home(tm).store.tabs.get(sid)!.group = g.id;
 }
-/** 〔GRP1〕组 `gid` 里此刻有谁（按栏里的顺序）。 */
+/** 组 `gid` 里此刻有谁（按栏里的顺序）。 */
 function membersOf(tm: TabManager, gid: string): string[] {
   return home(tm).store.orderedIds.filter((sid) => home(tm).store.tabs.get(sid)?.group === gid);
 }
@@ -352,7 +352,7 @@ describe("TabManager 生命周期", () => {
     expect(home(tm).store.tabs.get("sk-late")!.state).toEqual(ENDED);
   });
 
-  // === Batch7-F24：bg 会话 ⚙ 标题（〔BG1 · V125「删掉树」〕不再挂宿主排成树：落位 / 拖拽 / 集合
+  // === Batch7-F24：bg 会话 ⚙ 标题（〔「删掉树」〕不再挂宿主排成树：落位 / 拖拽 / 集合
   //     与普通 tab 相同那一组在本文件末尾「〔BG1〕」describe.each 里，两种 tab 各跑一遍） ===
 
   it("bg tab 平铺：顺序 == 到达序（不挂到同 cwd 交互 tab 之后），标题 ⚙ ＋ 任务名", () => {
@@ -394,7 +394,7 @@ describe("TabManager 生命周期", () => {
   });
 
   // === issue #63①：fork 血缘徽标 ===
-  // 〔STC〕分叉血缘改由后端出成品（`history-facts`），这一组搬进文件末尾「〔STC〕会话事实」那组（后端给了什么 ⇒ tab 上是什么）；
+  // 分叉血缘改由后端出成品（`history-facts`），这一组搬进文件末尾「会话事实」那组（后端给了什么 ⇒ tab 上是什么）；
   //   「首条锁定 · 只认 user/assistant」那两条口径住后端 `tests/backend/observe/facts_query_tests.rs`。
 
   // === Batch5-F19：last-active 写回 ===
@@ -507,7 +507,7 @@ describe("TabManager 生命周期", () => {
   });
 
   // ── audit-fixes F03.2：可重连（claude 退、tmux 在）生命周期 ──
-  // 〔U4〕原先这一组断言 `tmuxIdle` ＋ `status`（可重连时 status 仍 live）；两轴之后直接断 `state`。
+  // 原先这一组断言 `tmuxIdle` ＋ `status`（可重连时 status 仍 live）；两轴之后直接断 `state`。
   it("F03.2 markTmuxIdle：进可重连 —— 死 ＋ 容器还在（不是已结束）", () => {
     const tab = tm.ensureTab("gi1", "/x", "p", 0, "pi");
     const btn = () => document.querySelector<HTMLElement>(".tab")!;
@@ -673,7 +673,7 @@ describe("TabManager 生命周期", () => {
   //    —— `TabManager.onLine` 按 seq 门控，`seq < tab.window.floorSeq` 的旧记录只进
   //    `TailWindow` 账本，**根本不建卡不挂 DOM**；后台 virgin tab 在 `onBatchEnd` 空闲物化
   //    尾段 / `switchTo` 时同步物化」——**下面这一组（F40a 门控矩阵 → F40b fill）就是它。**
-  //    `真相源/105 §1.4` 把条 21 记成「全树零命中」并推出「所以它没人守」：读数对
+  // 把条 21 记成「全树零命中」并推出「所以它没人守」：读数对
   //    （没人在散文里点出条号），推论错（第 3 项这一组等值断言一直在守）。
   //    ⚠ 条 21 的第 1/2 项（守卫式 `snap()` · 不手动补偿 scrollTop）**不在这里** ——
   //    那是 `MessageStream` 的性质，本文件把它整个 mock 掉了（见文件抬头）。
@@ -906,8 +906,8 @@ describe("TabManager 生命周期", () => {
 
   it("F40b 哨兵：账本非空显示剩余条数,补尽之后〔CF2〕按行号问一次更早的、问到顶才消失", async () => {
     await spyRender();
-    // 〔CF2〕按行号取回：答一个空页（from 原样、next = from）。
-    // 〔RENDER2〕原先答的是「[from, until) 一条可显示的都没有」—— 答了之后那一段整段记成见过（`seenSeqs.addRange`），
+    // 按行号取回：答一个空页（from 原样、next = from）。
+    // 原先答的是「[from, until) 一条可显示的都没有」—— 答了之后那一段整段记成见过（`seenSeqs.addRange`），
     //   下面「再造残账」那几条 seq 10–14 就成了自相矛盾的夹具（同一段号既说没有、又来了可显示的行）⇒ 改成空页。
     vi.mocked(invoke).mockImplementation(withSessionReads((cmd: string, args?: Record<string, unknown>) =>
       Promise.resolve(
@@ -922,9 +922,9 @@ describe("TabManager 生命周期", () => {
     tm.switchTo("sentB"); // 物化(4 轮×150 上限 → 200 全弹尽)
     const t = home(tm).store.tabs.get("sentB")!;
     expect(t.window.pendingCount).toBe(0);
-    // 〔CF2〕渲染窗口最老那一条是第 100 行（> 0）⇒ 下面可能还有：jsdom 恒不可滚 ⇒ 切入的 R-2 踢链当场问 [0, 100)
+    // 渲染窗口最老那一条是第 100 行（> 0）⇒ 下面可能还有：jsdom 恒不可滚 ⇒ 切入的 R-2 踢链当场问 [0, 100)
     expect(recordReadCalls(vi.mocked(invoke).mock.calls, "read_session_lines")).toEqual([
-      // 〔DL1〕`leftMs`：往上翻是一件一问，交这一问的整份期限（`TabStreamView.BELOW_BUDGET_MS`）
+      // `leftMs`：往上翻是一件一问，交这一问的整份期限（`TabStreamView.BELOW_BUDGET_MS`）
       { origin: "<local>", jsonlPath: "/p/sentB.jsonl", from: 0, until: 100, leftMs: 60_000 },
     ]);
     expect(t.stream.contentElement.querySelector(".stream-more-above")?.textContent).toContain("正在取");
@@ -949,7 +949,7 @@ describe("TabManager 生命周期", () => {
   });
 
   /**
-   * ★ 步 3（`设计/10 §6`）：**「够不够一屏」读的是真实布局，不是 `scrollHeight`。**
+   * ★ 步 3：**「够不够一屏」读的是真实布局，不是 `scrollHeight`。**
    *
    * # 这一格为什么能红
    *
@@ -1046,7 +1046,7 @@ describe("TabManager 生命周期", () => {
 
   it("kind 升格:bg 骨架先到,interactive 宣告后到 → 升格(标题去 ⚙),位置不动", () => {
     // 场景还原(用户截图):bg-spare 的宣告先到,父会话被建成 ⚙;interactive 宣告后到必须升格纠正。
-    // 〔BG1 · V125〕原先升格还会把它摘下来按宿主重新挂树;树删了 ⇒ 位置与 kind 无关、不动。
+    // 原先升格还会把它摘下来按宿主重新挂树;树删了 ⇒ 位置与 kind 无关、不动。
     tm.createSkeletonTab("excel", "/proj/shengwu", LOCAL_ORIGIN, "interactive", null);
     tm.createSkeletonTab("parent", "/proj/shengwu", LOCAL_ORIGIN, "bg", "迁移服务"); // 谎报形态先到
     tm.createSkeletonTab("fork-empty", "/proj/shengwu", LOCAL_ORIGIN, "bg", "迁移服务"); // 空克隆
@@ -1100,8 +1100,8 @@ describe("F41 resumeTab：远端一键拉起 / 本地不变", () => {
     expect(resumed()).toEqual([]);
   });
 
-  // 〔FE1 · D-h〕先前这一条钉的是「退化默认 ＋ 提示」—— 提示完**按基座起**（提示说的「改用上次的账号 / 当前账号」与做的还不一致）。
-  //   今天：**不起**，提示说清读不到清单，点了才以「不指定账号」起（`设计/01 §6.2` ＋ D4）。
+  // 先前这一条钉的是「退化默认 ＋ 提示」—— 提示完**按基座起**（提示说的「改用上次的账号 / 当前账号」与做的还不一致）。
+  //   今天：**不起**，提示说清读不到清单，点了才以「不指定账号」起（＋ D4）。
   it("★ 〔FE1 · D-h〕resumeTab 带账号名但账号库不可用 → **不起**、一条提示；点了才以「不指定账号」起", async () => {
     tm.ensureTab("r1", "/home/pi/proj", "/p/r1.jsonl", 0, "aya");
     tm.archiveTab("r1");
@@ -1173,7 +1173,7 @@ describe("F41 resumeTab：远端一键拉起 / 本地不变", () => {
   //（回退之后恒 `tmuxName: null`，那条照样绿）⇒ 必须再钉正面：知道的时候要铸、且要避让。
   it("P3t-Y2b 本地 resume：本机后端铸了名字 → 原样传给起会话那一问", async () => {
     (invoke as unknown as Mock).mockImplementation(withHistoryReads(launchRenderShim(async (cmd: string) => {
-      // `K-R96`：基名从 cwd 派生 ⇒ `/home/u/p` ⇒ `p-cc`；它已被占 ⇒ 让到 `-2`。〔FIX4 · J7〕派生 ＋ 避让在本机后端（`tmux-name-mint`），
+      // `K-R96`：基名从 cwd 派生 ⇒ `/home/u/p` ⇒ `p-cc`；它已被占 ⇒ 让到 `-2`。派生 ＋ 避让在本机后端（`tmux-name-mint`），
       //   替身写死它铸了 `p-cc-2`；这里钉的是「问了、用的就是它铸的」（下面 `tmuxMintCalls` 那一行）。
       if (cmd === "tmux_name_mint") return "p-cc-2";
       return undefined;
@@ -1204,15 +1204,15 @@ describe("audit-fixes F01 follow-resume pin 现读磁盘（修 B1 内存脏读�
   beforeEach(() => {
     vi.clearAllMocks();
     tm = makeTM();
-    // 内存镜像里种一个**陈旧**值,证明 resume 不依赖它;磁盘(list_last_accounts)才是真相源。
+    // 内存镜像里种一个**陈旧**值,证明 resume 不依赖它;磁盘(list_last_accounts)才是源头。
     tm.setSessionAccounts([], new Map(), new Map([["r1", "STALE"]]));
     vi.mocked(invoke).mockImplementation(withHistoryReads((cmd: string) =>
       cmd === "list_last_accounts"
         ? Promise.resolve({ r1: "z" })
-        // 〔FE1〕零会话 = 空表（线上真形状）；`undefined` 线上不存在，铸名会把它读成「没问到」而不起。
+        // 零会话 = 空表（线上真形状）；`undefined` 线上不存在，铸名会把它读成「没问到」而不起。
         : cmd === "list_remote_tmux"
           ? Promise.resolve([])
-          // 〔FIX4 · J7〕名字问那台后端铸：替身写死它铸了基名（零会话 ⇒ 不用让）。
+          // 名字问那台后端铸：替身写死它铸了基名（零会话 ⇒ 不用让）。
           : cmd === "tmux_name_mint"
             ? Promise.resolve("proj-cc")
             : Promise.resolve(undefined),
@@ -1253,11 +1253,11 @@ describe("audit-fixes F01 follow-resume pin 现读磁盘（修 B1 内存脏读�
 
   // F04：tmux 后端的基座逃生口，与直连对称（两后端一致）。useBase → 不跟随、不读 pin、不注入。
   // 变异锚点：resumeTabTmux 的 follow 去掉 `useBase ?` → 又读 pin → list_last_accounts 被 invoke → 红。
-  // 〔FE1〕`设计/01 §5` D4：全新 resume 那一支要铸名，而 tmux 名单**没问到**（`list_remote_tmux` reject）
+  // 全新 resume 那一支要铸名，而 tmux 名单**没问到**（`list_remote_tmux` reject）
   //   不是「零会话」—— 先前 `?? null` 把两者压成一个、空集铸名（#76 的形状）。⇒ 不起、出声。
   //   正控就是上下那两条：名单回空表 ⇒ 照起、名字 = 基名 `proj-cc`。
   it("★ 〔FE1〕tmux 全新 resume：名单没问到 ⇒ 不起、出声（不拿空集铸名）", async () => {
-    // 〔FIX4 · J7〕名单与名字都没问到（`tmux_name_mint` 不答 = 那台没有控制通道）⇒ 铸不出名字 ⇒ 不起。
+    // 名单与名字都没问到（`tmux_name_mint` 不答 = 那台没有控制通道）⇒ 铸不出名字 ⇒ 不起。
     vi.mocked(invoke).mockImplementation(withHistoryReads((cmd: string) =>
       cmd === "list_remote_tmux" ? Promise.reject(new Error("ssh 抖动")) : Promise.resolve(undefined),
     ));
@@ -1331,9 +1331,9 @@ describe("audit-fixes F03 resumeTabTmux idle-tmux 就地复用", () => {
   });
 
   it("sid 无对应 tmux（全新/漂移占名）→ 起全新 resume，不就地复用", async () => {
-    // 列表里只有别的 sid 的会话 → 目标 sid 既非 live 也无 idle → 问那台后端铸名、新起（〔FIX4 · J7〕）。
+    // 列表里只有别的 sid 的会话 → 目标 sid 既非 live 也无 idle → 问那台后端铸名、新起。
     vi.mocked(invoke).mockImplementation(withHistoryReads((cmd: string) =>
-      // 〔FIX4 · J7〕名字问那台后端铸（派生 ＋ 避让在它那边）：替身写死它铸了什么。
+      // 名字问那台后端铸（派生 ＋ 避让在它那边）：替身写死它铸了什么。
       cmd === "tmux_name_mint"
         ? Promise.resolve("proj-cc")
         : cmd === "list_remote_tmux"
@@ -1355,7 +1355,7 @@ describe("audit-fixes F03 resumeTabTmux idle-tmux 就地复用", () => {
   it("跟随解析命中当前账号 → runRemoteResumeTmux 收到真实 configDir + accountName", async () => {
     invalidateAccountsCache(); // 同上：防陈旧缓存命中挡住下面的自定义 mock
     vi.mocked(invoke).mockImplementation(withHistoryReads(withAccountReads((cmd: string) => {
-      if (cmd === "tmux_name_mint") return Promise.resolve("proj-cc"); // 〔FIX4 · J7〕名字问那台后端铸
+      if (cmd === "tmux_name_mint") return Promise.resolve("proj-cc"); // 名字问那台后端铸
       if (cmd === "list_remote_tmux") {
         return Promise.resolve([
           { name: "cc-other12", path: "/home/pi/proj", command: "bash", attached: false, windows: 1, sid: "other", agent: false },
@@ -1390,7 +1390,7 @@ describe("audit-fixes F03 resumeTabTmux idle-tmux 就地复用", () => {
   it("F07：跟随解析命中当前账号且该账号配了模型偏好 → runRemoteResumeTmux 收到真实 modelOverride", async () => {
     invalidateAccountsCache();
     vi.mocked(invoke).mockImplementation(withHistoryReads(withAccountReads((cmd: string) => {
-      if (cmd === "tmux_name_mint") return Promise.resolve("proj-cc"); // 〔FIX4 · J7〕名字问那台后端铸
+      if (cmd === "tmux_name_mint") return Promise.resolve("proj-cc"); // 名字问那台后端铸
       if (cmd === "list_remote_tmux") {
         return Promise.resolve([
           { name: "cc-other12", path: "/home/pi/proj", command: "bash", attached: false, windows: 1, sid: "other", agent: false },
@@ -1480,7 +1480,7 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
   //    留着它等于让用户点一个必失败的 kill。
   // ② 命中恰好一个 ⇒ 按 `@ccm_sid` 认，**不按名字前缀猜**（下面那条埋了名字诱饵）。
   // ③ 命中 ≥2 个 ⇒ 拒绝，不折叠成第一个（F04 R10 同款分级：破坏性动作代价不可逆）。
-  // 〔REREAD · V155「改. 重新读取对所有tab生效」·「右键菜单那一项删（一个入口）」〕右键菜单里零处「重新读取」；
+  // 〔「改. 重新读取对所有tab生效」·「右键菜单那一项删（一个入口）」〕右键菜单里零处「重新读取」；
   // 正控：同一张菜单开出来了（有「在新窗口打开」），栏顶那颗在。
   it("〔REREAD〕tab 右键菜单里没有「重新读取」，它在栏顶", () => {
     tm.ensureTab("k1abcdef", "/home/u/p", "/p/k1.jsonl", 0, LOCAL_ORIGIN);
@@ -1491,7 +1491,7 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
     expect(document.body.querySelector(".tab-bar-reread")?.textContent).toContain("重新读取");
   });
 
-  // 〔REREAD · V155〕栏顶一按 ⇒ 有打开 tab 的每台**恰好一次**整机 `resync`（不带 sid），台数 == 机器数（两向：多一台少一台都红）；
+  // 栏顶一按 ⇒ 有打开 tab 的每台**恰好一次**整机 `resync`（不带 sid），台数 == 机器数（两向：多一台少一台都红）；
   // 各台并行（全部发出去之后才有一台回来）；在飞时再按不重入；做完按台说一句，没问到的说原因。
   it("〔REREAD〕栏顶「重新读取」⇒ 每台恰好一次整机 resync，并行、在飞不重入、按台汇总", async () => {
     const asked: [string, unknown][] = [];
@@ -1769,7 +1769,7 @@ describe("F09/F52 归档远端 tab 右键：Resume 一级项 + 二级 flyout（t
   };
 
   it("归档远端 tab → 收敛成 1 个「Resume」一级项 + flyout（tmux/直连），旧扁平字符串消失", async () => {
-    // 〔FIX4 · J7〕零会话 ＋ 那台后端铸了基名（名字问后端，替身写死它铸了什么）。
+    // 零会话 ＋ 那台后端铸了基名（名字问后端，替身写死它铸了什么）。
     vi.mocked(invoke).mockImplementation(withHistoryReads((cmd: string) =>
       cmd === "list_remote_tmux" ? Promise.resolve([]) : cmd === "tmux_name_mint" ? Promise.resolve("proj-cc") : Promise.resolve(undefined),
     ));
@@ -1824,7 +1824,7 @@ describe("F09/F52 归档远端 tab 右键：Resume 一级项 + 二级 flyout（t
 
   it("F74 tmux 叶子:@ccm_sid 已知但无一命中(原名被漂移会话占着)→ 起全新 resume 挑不撞名", async () => {
     vi.mocked(invoke).mockImplementation(withHistoryReads((cmd: string) =>
-      // 〔FIX4 · J7〕名字问那台后端铸（派生 ＋ 避让在它那边）：替身写死它铸了什么。
+      // 名字问那台后端铸（派生 ＋ 避让在它那边）：替身写死它铸了什么。
       cmd === "tmux_name_mint"
         ? Promise.resolve("proj-cc-2")
         : cmd === "list_remote_tmux"
@@ -1846,7 +1846,7 @@ describe("F09/F52 归档远端 tab 右键：Resume 一级项 + 二级 flyout（t
 
   it("F74 tmux 叶子:老 wrapper(整表无 @ccm_sid)→ 起全新 fresh resume,不 attach 不确定会话", async () => {
     vi.mocked(invoke).mockImplementation(withHistoryReads((cmd: string) =>
-      // 〔FIX4 · J7〕名字问那台后端铸（派生 ＋ 避让在它那边）：替身写死它铸了什么。
+      // 名字问那台后端铸（派生 ＋ 避让在它那边）：替身写死它铸了什么。
       cmd === "tmux_name_mint"
         ? Promise.resolve("proj-cc")
         : cmd === "list_remote_tmux"
@@ -1968,11 +1968,11 @@ describe("F09/F52 归档远端 tab 右键：Resume 一级项 + 二级 flyout（t
               { name: extraName ?? "b", email: "b@x", configDir: `/h/${extraName ?? "b"}`, isDefault: false, mode: "isolated", exists: true, loggedIn: true, authKind: "subscription", authReady: true },
             ],
           })
-        // 〔FE1〕`list_remote_tmux` 回真实线上形状（零会话 = 空表）。先前落进 `undefined`（线上不存在的值），
+        // `list_remote_tmux` 回真实线上形状（零会话 = 空表）。先前落进 `undefined`（线上不存在的值），
         //   铸名那一格把它读成「没问到」⇒ 不起 —— 桩要说一个真答案，别让它碰巧走通。
         : cmd === "list_remote_tmux"
           ? Promise.resolve([])
-          // 〔FIX4 · J7〕名字问那台后端铸：替身写死它铸了基名。
+          // 名字问那台后端铸：替身写死它铸了基名。
           : cmd === "tmux_name_mint"
             ? Promise.resolve("proj-cc")
             : Promise.resolve(undefined),
@@ -2026,7 +2026,7 @@ describe("F09/F52 归档远端 tab 右键：Resume 一级项 + 二级 flyout（t
   });
 
   // R05 Phase D 审计（第 4 题，**实测修了一个真 bug**）：账号名允许下划线
-  // （当时 `settings/acct-deploy.ts::validateAcctName` 放行 `[A-Za-z0-9._-]`、只禁首字符 `-`/`.`；〔DUP2〕今天它读生成物、
+  // （当时 `settings/acct-deploy.ts::validateAcctName` 放行 `[A-Za-z0-9._-]`、只禁首字符 `-`/`.`；今天它读生成物、
   // 与建号工具同一条 —— 首字符要字母数字，`__base__` 在表单里建不出来了，但下面那条理由照旧成立），
   // 故一个**真实账号**完全可以叫 `__base__`；何况账号也能在 app 之外直接写进账号库、
   // 根本不过这道校验。改造前 `isBase = opt.id === "__base__"` 会把它判成基座：
@@ -2374,7 +2374,7 @@ describe("K-P5g：tmux 定位不到时，那句提示真的由读回来的身份
 const flushMicro = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
 
 describe("F74 findClaudeTmux（精确 tmux↔sid 映射）", () => {
-  // 〔THIN〕`agent` 那一格是那台后端判的（Claude 是 `claude` / `node`）；夹具照那条规则手写，界面不再按命令名自己判。
+  // `agent` 那一格是那台后端判的（Claude 是 `claude` / `node`）；夹具照那条规则手写，界面不再按命令名自己判。
   const S = (name: string, path: string, command: string, sid: string | null) => ({
     name,
     path,
@@ -2410,7 +2410,7 @@ describe("F74 findClaudeTmux（精确 tmux↔sid 映射）", () => {
 // 这组测试锁住"两者在单/零命中场景下逐字节同结果"这条 F04 步骤4 的核心不变量，并新增
 // 之前完全没有覆盖过的"命中 ≥2 个"场景（R10 的字面定义）。
 describe("F04 findClaudeTmuxMatches（不折叠成第一个，R10 根治的类型基础）", () => {
-  // 〔THIN〕`agent` 那一格是那台后端判的（Claude 是 `claude` / `node`）；夹具照那条规则手写，界面不再按命令名自己判。
+  // `agent` 那一格是那台后端判的（Claude 是 `claude` / `node`）；夹具照那条规则手写，界面不再按命令名自己判。
   const S = (name: string, path: string, command: string, sid: string | null) => ({
     name,
     path,
@@ -2448,7 +2448,7 @@ describe("F04 findClaudeTmuxMatches（不折叠成第一个，R10 根治的类�
 // audit-fixes F03（idle-tmux）：findIdleTmux 与 findClaudeTmux 互斥——前者要 @ccm_sid 命中且
 // command≠claude（空 shell），后者要 command=claude。F03.1 就地复用 + F03.3 attach-idle 共用。
 describe("audit-fixes F03 findIdleTmux（sid 命中但 command≠claude 的空 tmux）", () => {
-  // 〔THIN〕`agent` 那一格是那台后端判的（Claude 是 `claude` / `node`）；夹具照那条规则手写。
+  // `agent` 那一格是那台后端判的（Claude 是 `claude` / `node`）；夹具照那条规则手写。
   const S = (name: string, command: string, sid: string | null) => ({
     name,
     path: "/p",
@@ -2478,7 +2478,7 @@ describe("audit-fixes F03 findIdleTmux（sid 命中但 command≠claude 的空 t
 });
 
 // auto-e2e F-E4：可注入 confirm seam（killRemoteTmux）。默认（不传 opts）走应用内对话框
-// （〔W5-UI〕真 app 里 `window.confirm` 是插件注入的 async 替身、恒真值 ⇒ 原先这里从来没问过）；
+// （真 app 里 `window.confirm` 是插件注入的 async 替身、恒真值 ⇒ 原先这里从来没问过）；
 // 注入 confirm 才旁路（headless e2e / DEV）。DOM(jsdom) 层是该 TabManager 方法的诚实天花板。
 describe("auto-e2e F-E4 可注入 confirm seam（killRemoteTmux 行为等价）", () => {
   let tm: TabManager;
@@ -2490,7 +2490,7 @@ describe("auto-e2e F-E4 可注入 confirm seam（killRemoteTmux 行为等价）"
     await Promise.resolve();
     await Promise.resolve();
   };
-  // 〔C4e · 第四波 4C〕杀会话从 Tauri 命令 `kill_remote_tmux`〔散文墓碑〕改成界面经通道直接说后端的 `kill`
+  // 杀会话从 Tauri 命令 `kill_remote_tmux`〔散文墓碑〕改成界面经通道直接说后端的 `kill`
   //   （`src/frontend/ui/tmux-control.ts::killSession`）⇒ 这里数的是那一发 `chan_call`，译回旧形参 `[旧名, {origin, target}]`。
   const killCalls = (): unknown[] => killCallsOf(vi.mocked(invoke).mock.calls);
 
@@ -2559,7 +2559,7 @@ describe("auto-e2e F-E4 可注入 confirm seam（killRemoteTmux 行为等价）"
 });
 
 describe("F74c(#60-B) isCwdFallbackMatch（cwd 回退串味提示判定）", () => {
-  // 〔THIN〕`agent` 那一格是那台后端判的（Claude 是 `claude` / `node`）；夹具照那条规则手写，界面不再按命令名自己判。
+  // `agent` 那一格是那台后端判的（Claude 是 `claude` / `node`）；夹具照那条规则手写，界面不再按命令名自己判。
   const S = (name: string, path: string, command: string, sid: string | null) => ({
     name,
     path,
@@ -2625,14 +2625,14 @@ describe("F79 杀死远端 tmux 会话（二次确认 + kill_remote_tmux）", ()
     tm.killRemoteTmux("hostA", "cc-abc", true);
     const msg = askDialogText();
     await answerAskDialog(false);
-    // 〔U2〕按术语表改词：`@ccm_sid` 是禁词（say：不说标记，说后果「认不出是哪个会话」），
+    // 按术语表改词：`@ccm_sid` 是禁词（say：不说标记，说后果「认不出是哪个会话」），
     //   这一格随改词同拍改 —— 钉的仍是同一件事（回退命中 ⇒ 确认框里有串味警告）。
     expect(msg).toContain("认不出这是哪个会话"); // 未检测到身份标记
     expect(msg).toContain("同目录"); // 可能杀同目录别的 Claude
   });
 });
 
-// 〔STC〕「F70 会话改动集聚合」那一组搬进文件末尾「〔STC〕会话事实」那组：改动文件集由后端出成品（口径 · 去重 · 近因序
+// 「F70 会话改动集聚合」那一组搬进文件末尾「会话事实」那组：改动文件集由后端出成品（口径 · 去重 · 近因序
 //   住 `tests/backend/observe/facts_query_tests.rs`），前端这边只剩「成品 ⇒ `touchedFilesFor` 的门控与透传」。
 
 describe("F91b TabManager.peekSession（监控板内容 peek 纯读派生）", () => {
@@ -2675,7 +2675,7 @@ describe("F91b TabManager.peekSession（监控板内容 peek 纯读派生）", (
     expect(p).toEqual({ model: null, recentFiles: [], agents: [] });
   });
 
-  // F91b-fix(batch18)：touchedFiles 近因序（peek `recentFiles` 尾部 = 最近改的）。〔STC〕近因序今天由后端排
+  // F91b-fix(batch18)：touchedFiles 近因序（peek `recentFiles` 尾部 = 最近改的）。近因序今天由后端排
   //   （`facts_query_tests.rs::the_three_facts_follow_the_moved_rules`），前端只保序透传 —— 那一条在文件末尾「〔STC〕会话事实」那组。
 });
 
@@ -2742,7 +2742,7 @@ describe("A5 compact waiter（awaitCompactFor + onLine 检测）", () => {
   });
 });
 
-// 〔`A3` 第二波〕**本机换号重启**：菜单与编排入口都对本机 tab 开放，origin 取 backend 的 `<local>`。
+// **本机换号重启**：菜单与编排入口都对本机 tab 开放，origin 取 backend 的 `<local>`。
 // 死值验对照：把 `restartTabWithAccount` 开头那条改回 `tab.origin === null ⇒ return false`、
 // 或把右键那一行改回 `origin !== null && t`，下面各红一条。
 describe("A3 本机换号重启：菜单与入口都认本机 tab", () => {
@@ -2796,7 +2796,7 @@ describe("A3 本机换号重启：菜单与入口都认本机 tab", () => {
     await flushMicro();
     expect(menuItems().map((b) => b.textContent)).toContain("换号重启");
     // 账号清单那一跳问的是**本机**，不是拿 `<local>` 去问远端。
-    // 〔C4c〕经通道问 `<local>` 那条长连接的 `accounts-list`（`accountReadCalls` 把一发 `chan_call` 译回旧叫法）。
+    // 经通道问 `<local>` 那条长连接的 `accounts-list`（`accountReadCalls` 把一发 `chan_call` 译回旧叫法）。
     const calls = (invoke as unknown as ReturnType<typeof vi.fn>).mock.calls;
     expect(accountReadCalls(calls, "list_local_accounts")).toHaveLength(1);
     expect(accountReadCalls(calls, "list_remote_accounts")).toHaveLength(0);
@@ -2828,7 +2828,7 @@ describe("A3 本机换号重启：菜单与入口都认本机 tab", () => {
     expect(arg.tmuxName).toBe("proj-cc");
     expect(arg.accountName).toBe("b");
     expect(arg.launcher).toBe(""); // getBehavior 的 mock：resumeCommandLocal = ""（远端那条是 "cct"）
-    // 〔MIG-1 续〕问名单是一发 `chan_call`（op `tmux-list`），`tmuxReadOf` 译回旧叫法：问的是本机那一台。
+    // 问名单是一发 `chan_call`（op `tmux-list`），`tmuxReadOf` 译回旧叫法：问的是本机那一台。
     const asked = (invoke as unknown as ReturnType<typeof vi.fn>).mock.calls.map(([c, a]) => tmuxReadOf(String(c), a)?.[0]);
     expect(asked).toContain("list_local_tmux");
     expect(asked).not.toContain("list_remote_tmux");
@@ -2970,7 +2970,7 @@ describe("account-ux U5 tab 徽章「信息才显」", () => {
     tm.setSessionAccounts(rows, new Map(), last, new Set(["aya"]), current);
   }
 
-  // 〔GAP1 · `设计/01 §1.5`〕「账号快照变了」改订阅 store：宿主整份换进来，徽章**同一拍**就换（与原先宿主直调 `setSessionAccounts` 同时机）。
+  // 「账号快照变了」改订阅 store：宿主整份换进来，徽章**同一拍**就换（与原先宿主直调 `setSessionAccounts` 同时机）。
   it("★ 〔GAP1〕账号快照经 store 换进来 ⇒ 同一拍徽章就挂上（不等任何一拍）", () => {
     appStore.sessionAccounts.__resetForTests(null); // 别的判据留下的 TabManager 不再订阅
     tm = makeTM();
@@ -3026,7 +3026,7 @@ describe("account-ux U5 tab 徽章「信息才显」", () => {
 });
 
 /**
- * ★★ 〔`设计/80 §8.7` 步 4，第二波 T4〕↗ 远端那一格：**前端不再猜，tmux 不在前提链上**。
+ * ★★ ↗ 远端那一格：**前端不再猜，tmux 不在前提链上**。
  *
  * 这里原先是 E73 那组「↗ 失败之后再打一次 `list_remote_tmux` 分四档归因」的判据。
  * 步 4 把「有没有终端」的四套判断（`attachable` 布尔 · `findClaudeTmuxMatches` · 后端 HWND 校验 ·
@@ -3035,7 +3035,7 @@ describe("account-ux U5 tab 徽章「信息才显」", () => {
  * ① 失败时**一次 tmux 查询都不发**（用户逐字「不能依赖 tmux」）；② 后端那句话**原样**给用户；
  * ③ `attachable:false` 不再在前端短路 ↗（那是被收掉的四套之一）。
  */
-describe("设计/80 §8.7 步 4：↗ 远端那一格只问后端一次", () => {
+describe("：↗ 远端那一格只问后端一次", () => {
   const mockInvoke = invoke as unknown as ReturnType<typeof vi.fn>;
   const BACKEND_SAYS = "<后端归因原文>";
   beforeEach(() => {
@@ -3066,7 +3066,7 @@ describe("设计/80 §8.7 步 4：↗ 远端那一格只问后端一次", () => 
       cmds.filter((c) => c === "list_remote_tmux" || c === "list_local_tmux"),
       "↗ 失败之后又去查了一次 tmux —— tmux 回到了 ↗ 的前提链上（E73 那次 RPC 是步 4 要收的四套之一）",
     ).toEqual([]);
-    // 〔U2〕「拉前」是术语表的禁词（say：「切到终端窗口」），这一格随改词同拍改（行为变更是题面要的，不是迁就）。
+    // 「拉前」是术语表的禁词（say：「切到终端窗口」），这一格随改词同拍改（行为变更是题面要的，不是迁就）。
     expect(showActionFailureToast).toHaveBeenCalledWith("切到终端窗口失败", BACKEND_SAYS);
   });
 
@@ -3082,7 +3082,7 @@ describe("设计/80 §8.7 步 4：↗ 远端那一格只问后端一次", () => 
 });
 
 /**
- * ★★ 〔第二波 T4 · LF1〕↗ 在非 Windows 上**别装得能用**。
+ * ★★ ↗ 在非 Windows 上**别装得能用**。
  *
  * 非 Windows 上 ↗ 的最后一跳（`EnumWindows` / `SetForegroundWindow`）在 Rust 侧是恒失败的桩
  * ⇒ 那颗按钮每点必败。门住 `terminal-front.ts`；`unknown` 照常显示（与 `hostOsAllows` 同一条理由）。
@@ -3191,7 +3191,7 @@ describe("tmux 取数点的三态契约（audit-0805 F14 第五刀）", () => {
 
   it("查到会话 → 返回列表，并把它写进缓存", async () => {
     const tm = makeTM();
-    // 〔MIG-1 续〕那台后端 `tmux-list` 的成品（经通道一问）。
+    // 那台后端 `tmux-list` 的成品（经通道一问）。
     const list = [{ name: "cc-a", path: "/w", command: "claude", attached: false, windows: 1, sid: "s1", agent: true }];
     vi.mocked(invoke).mockResolvedValueOnce(chanReply({ installed: true, sessions: list }));
     const got = await home(tm).actions.fetchTmuxFresh("box1");
@@ -3308,7 +3308,7 @@ describe("F15 每行代价的现状基线", () => {
   });
 });
 
-// ===== 已结束的 tab 留在原位（〔步 17·A〕原「P7a-1（#61）独立归档区」，抽屉已删）=====
+// ===== 已结束的 tab 留在原位（原「P7a-1（#61）独立归档区」，抽屉已删）=====
 //
 // `#61` 正文自陈「状态机已经有了，缺的是那个「口」」。判据钉的是**分流**本身：
 // 主栏里没有它 **且** 抽屉里有它 —— 两面都钉，否则「两边各渲一份」也能过。
@@ -3323,12 +3323,12 @@ describe("已结束的 tab 留在原位灰着（原「P7a-1 独立归档区」�
 
 
   it("★ 已结束的 tab 留在主栏，一个都不许消失（连 barEl 没有父节点时也一样）", () => {
-    // 🔴 〔步 17·A · 2026-09-19〕**本条留着，但它买的东西变了 —— 从「边界情形」变成「正题」。**
+    // 🔴 **本条留着，但它买的东西变了 —— 从「边界情形」变成「正题」。**
     //
     // 旧理由：抽屉是 `barEl` 的兄弟，拿不到父节点时若仍把 tab 挪进那个**孤儿**容器，
     // 它就从文档里整个不见了。那时这是一条**边界**判据（只在拿不到父节点时有意义）。
     //
-    // 今天抽屉整个删了（用户逐字「没有归档这个东西……就是灰 tab」，`设计/30 §A`）
+    // 今天抽屉整个删了（用户逐字「没有归档这个东西……就是灰 tab」）
     // ⇒ 「已结束的 tab 留在主栏灰着」**成了正常行为本身**，这一条于是是它的正面断言。
     // ⚠ 孤儿 `barEl` 那个布景**刻意留着**：它仍是一个真的边界情形，而且这条断言
     //   在那个布景下也该成立 —— 顺手把两件事一起买了。
@@ -3351,7 +3351,7 @@ describe("已结束的 tab 留在原位灰着（原「P7a-1 独立归档区」�
 
 // ===== P7a-2（#61）：栏内拖动排序 =====
 //
-// ★ 摸底订正过 ROADMAP 的措辞：tear-off 的 arm 条件是 `e.clientX > barRight + 16`，
+// ★ 摸底订正过措辞：tear-off 的 arm 条件是 `e.clientX > barRight + 16`，
 // 而那是一条**竖栏** ⇒ 空闲的不是「横向」，是 **`clientY` 从没被用过**。
 // 重排走纵向，与撕离天然不争同一根轴。
 
@@ -3361,7 +3361,7 @@ describe("P7a-2 moveTab（纯）", () => {
     expect(moveTab(o, "c", "a")).toEqual(["c", "a", "b", "d"]);
     expect(moveTab(o, "a", "d")).toEqual(["b", "c", "a", "d"]);
     expect(moveTab(o, "a", null)).toEqual(["b", "c", "d", "a"]);
-    // 〔BG1〕原先这里还有一格「多元素的块保持内部相对序」—— 块随 bg 树一起删了。
+    // 原先这里还有一格「多元素的块保持内部相对序」—— 块随 bg 树一起删了。
     // 不改原数组。
     expect(o).toEqual(["a", "b", "c", "d"]);
   });
@@ -3423,7 +3423,7 @@ describe("P7a-2 栏内拖动排序（真拖拽）", () => {
     expect(order()).toEqual(["c", "a", "b"]);
   });
 
-  // 〔BG1 · V125「删掉树」〕原「★ P7a2-Y3：拖交互 tab 时它的 bg 子串跟着走」一格删了 ——
+  // 〔「删掉树」〕原「★ P7a2-Y3：拖交互 tab 时它的 bg 子串跟着走」一格删了 ——
   //   现在反过来钉：拖同 cwd 的宿主**只有它自己动**（本文件末尾「〔BG1〕」那组的 ②，两种 tab 各跑）。
 
   it("★ P7a2-D：拖动时**落点看得见**，撕离那一路不指示，拖完必须清掉", () => {
@@ -3485,9 +3485,9 @@ describe("P7a-2 栏内拖动排序（真拖拽）", () => {
   });
 
   /**
-   * ★ 6d（条 54 · `设计/30 §6 #4`）：**拖到一半，tab 不许自己跳位置。**
+   * ★ 6d（条 54）：**拖到一半，tab 不许自己跳位置。**
    *
-   * `设计/30 §6 #4` 原文：「拖拽进行中注入一次活动事件 ⇒ 松手之前 `#tab-bar` 子节点顺序一次都不变；
+   * 「拖拽进行中注入一次活动事件 ⇒ 松手之前 `#tab-bar` 子节点顺序一次都不变；
    * 松手后那一次重画必须补上（守卫是推迟不是丢弃）。住 `tests/frontend/ui/tabs.vitest.ts`「6d」。」
    *
    * # 机制（已核实，不是推测）
@@ -3498,10 +3498,10 @@ describe("P7a-2 栏内拖动排序（真拖拽）", () => {
    *
    * # 🔴 为什么注入的是「一个按盘上顺序该落在中间的新 tab 到了」
    *
-   * 反空真自检（`设计/01 §7.4`「扫到空集时要红，不是绿」）：注入的事件必须**真的改 `orderedIds` 的中间位置**，
+   * 反空真自检（「扫到空集时要红，不是绿」）：注入的事件必须**真的改 `orderedIds` 的中间位置**，
    * 否则拿掉守卫 DOM 也不动，判据等于没买。
    * 〔AR1 重锚〕上一版注入的是「会话结束」，理由是「归档抽屉是 `barEl` 的兄弟，那个 tab 会整个离开 `#tab-bar`」。
-   *   抽屉删了（`设计/30 §A`）⇒ 会话结束今天**只改那颗按钮的 class、不改顺序**，那一版咬住的只剩
+   *   抽屉删了⇒ 会话结束今天**只改那颗按钮的 class、不改顺序**，那一版咬住的只剩
    *   「拖拽中零 DOM 写」（`barSnap` 连 `className` 一起比），不再是它自称的「跳位置」。
    * ⇒ 换成今天真会从中间插进去的那一路：盘上那份顺序（`savedOrder`）给新到的 `d` 留了 `a` 与 `b` 之间那一格，
    *   `ensureTab("d")` → `TabStore.placeInOrder` → `applySavedOrder` 把它放回那一格。这一路与 bg 树无关。
@@ -3565,9 +3565,9 @@ describe("P7a-2 栏内拖动排序（真拖拽）", () => {
   });
 
   /**
-   * ★ 6d 下半（`设计/30 §6 #4`「松手后那一次重画必须补上（守卫是推迟不是丢弃）」）。
+   * ★ 6d 下半（「松手后那一次重画必须补上（守卫是推迟不是丢弃）」）。
    *
-   * 〔AR1〕上一格松手落在别的 tab 上 ⇒ `applyDrop` 自己就会整刷一次，**盖住了**「推迟的那一次补没补」
+   * 上一格松手落在别的 tab 上 ⇒ `applyDrop` 自己就会整刷一次，**盖住了**「推迟的那一次补没补」
    *   （死值验现打：删掉 `teardownDrag` 里补刷那一句，上一格照样绿）。
    * ⇒ 这一格走撕窗口那一路（`armed`）：它**不碰顺序、不刷栏**（`P7a2-Y2`），松手后唯一的刷新
    *   只能来自 `teardownDrag` 补的那一次。补丢了 ⇒ 拖拽中到的 d 永远不出现在栏里。
@@ -3619,7 +3619,7 @@ describe("P7a-3 集合分组渲染", () => {
   const setCols = (cols: { id: string; name: string; tabs?: string[] }[]): void => setGroups(tm, cols);
   const order = (): string[] => home(tm).store.orderedIds;
 
-  // ── 🔴 〔步 17·A · 2026-09-19〕墓碑：五条测「归档抽屉」的判据整块删除 ──────
+  // ── 🔴 墓碑：五条测「归档抽屉」的判据整块删除 ──────
   //
   // 删的是：`P7a1-Y1`（归档 tab 离开主栏进抽屉）· `P7a1-Y2`（当前 tab 绝不进抽屉）
   // · `P7a1-Y2b`（切走之后才落进抽屉）· `P7a1-Y3`（抽屉里的 tab 不挂 tear-off）
@@ -3627,13 +3627,13 @@ describe("P7a-3 集合分组渲染", () => {
   //
   // **它们没有失效，是被测的那个功能整个不存在了。** 用户 2026-09-19 逐字：
   // 「没有归档这个东西，不要归档，就是灰 tab。现在的归档是错误的，甚至是 bug 的来源，
-  //   全部删掉。」而 `设计/30 §A` 抬头本来就写着「**已定**：删归档抽屉 · 固定灰 tab」。
+  //   全部删掉。」而抬头本来就写着「**已定**：删归档抽屉 · 固定灰 tab」。
   //
   // ⚠ **`P7a3-Y2b` 那条的判词今天正好反过来**：它断言「灰 tab 进抽屉**不进组**」，
   //   而 `§A.3` 逐字「**灰 tab 也能在组里**，更符合直觉」⇒ 留着它就是把设计判红。
   //   下面 `P7a3` 那一族里已经有「按集合分组」的正向判据盖住新行为，不另立。
   //
-  // ⚠ 留下这块墓碑而不是静悄悄删：`设计/16 §5.3` 那条 —— 一条判据消失时，
+  // ⚠ 留下这块墓碑而不是静悄悄删：那条 —— 一条判据消失时，
   //   「它被删了」与「它从来没有过」在盘上长得一模一样。
 
   it("★ P7a3-Y2：成员进它的组，非成员照常直接挂主栏", () => {
@@ -3653,9 +3653,9 @@ describe("P7a-3 集合分组渲染", () => {
     expect(loose).toHaveLength(1);
   });
 
-  // ── 〔W5-UI〕P-extra 组头就地改名（`设计/30 §3.3` 逐字「组头就地 `<input>`：Enter 提交 / Esc 取消 / blur 提交」）──
+  // ── P-extra 组头就地改名（「组头就地 `<input>`：Enter 提交 / Esc 取消 / blur 提交」）──
   describe("P-extra 组头就地改名", () => {
-    // 〔GRP1〕改名只经 `TabBarPrefs.renameGroup`（组表那一条补丁）⇒ 数它收到的 (id, 新名)。
+    // 改名只经 `TabBarPrefs.renameGroup`（组表那一条补丁）⇒ 数它收到的 (id, 新名)。
     const renameWrites = (): { id: string; name: string }[] =>
       (home(tm).prefs.renameGroup as unknown as Mock).mock.calls.map((c) => ({ id: c[0] as string, name: c[1] as string }));
     let promptSpy: ReturnType<typeof vi.spyOn>;
@@ -3755,7 +3755,7 @@ describe("P7a-3 集合分组渲染", () => {
     expect(labels.join("|")).toContain("加入集合");
   });
 
-  // 〔TL2 · E13〕要求住址：`设计/01 §5 D4`「一条都不许静默忽略」。右键菜单那两条入口到上界要出声（正反各一格）。
+  // 要求：「一条都不许静默忽略」。右键菜单那两条入口到上界要出声（正反各一格）。
   it("〔TL2 · E13〕右键「新建集合…」集合数到上界 ⇒ 不弹输入框、说一句；差一个 ⇒ 照常弹", async () => {
     tm.ensureTab("a", "/c1", "p", 0, LOCAL_ORIGIN);
     await tm.loadCollections();
@@ -3786,7 +3786,7 @@ describe("P7a-3 集合分组渲染", () => {
     expect(showActionFailureToast).not.toHaveBeenCalled();
   });
 
-  // 〔GRP1 · `设计/99 §1` V140〕成员上界随成员名单一起作废 ⇒ 原「那一组满了 ⇒ 说一句」一格删了（被测的东西不在了）；
+  // 成员上界随成员名单一起作废 ⇒ 原「那一组满了 ⇒ 说一句」一格删了（被测的东西不在了）；
   //   换成「加入 / 移出就是改这个 tab 自己的组 id」正反各一格。
   it("〔GRP1〕右键「加入集合 › 某组」⇒ 这个 tab 的 `group` 就是那一组、一句话都不说；「移出」⇒ 回到散 tab", async () => {
     tm.ensureTab("a", "/c1", "p", 0, LOCAL_ORIGIN);
@@ -3840,10 +3840,10 @@ describe("P7a-3 集合分组渲染", () => {
     expect(order(), "集合是个视图，不是容器").toEqual(before);
     expect(bar.querySelector(".tab-group"), "组容器该没了").toBeNull();
     expect([...bar.children].filter((e) => e.classList.contains("tab"))).toHaveLength(2);
-    expect(home(tm).store.tabs.get("a")!.group, "〔GRP1〕解散 ⇒ 组员回到散 tab").toBeNull();
+    expect(home(tm).store.tabs.get("a")!.group, "解散 ⇒ 组员回到散 tab").toBeNull();
   });
 
-  // 〔GRP1 · V140〕「空」今天只剩一种来路：重启后组员还没到（意图）—— 组表里有它就画。
+  // 「空」今天只剩一种来路：重启后组员还没到（意图）—— 组表里有它就画。
   it("空集合也留着 —— 刚建的集合不该看不见", () => {
     tm.ensureTab("a", "/c1", "p", 0, LOCAL_ORIGIN);
     setCols([{ id: "g1", name: "空的" }]);
@@ -3854,7 +3854,7 @@ describe("P7a-3 集合分组渲染", () => {
 });
 
 // ==========================================================================
-// 〔步 17·B · `设计/30 §B`〕固定（pinned）—— 「关了 app 再打开它还在」
+// 固定（pinned）—— 「关了 app 再打开它还在」
 //
 // `§B.1` 现打：在这之前全仓 `pinned`/`isPinned`/`pinTab` **零命中**。
 // `§B.3` 的承重：它**必须是正交的一维**，不能做成 `TabStatus` 的第三态 ——
@@ -3887,7 +3887,7 @@ describe("步 17·B 固定：落盘 · 复活 · 正交", () => {
     vi.mocked(invoke).mockImplementation(withHistoryReads((cmd: string, args?: unknown) => {
       if (cmd === "load_config") return Promise.resolve(JSON.parse(JSON.stringify(disk)));
       if (cmd === "patch_config") {
-        // 〔CFG1〕写只交补丁；按与 Rust 写口同一份金样的语义应用（`tests/frontend/ui/config-patch-fake.ts`）。
+        // 写只交补丁；按与 Rust 写口同一份金样的语义应用（`tests/frontend/ui/config-patch-fake.ts`）。
         disk = JSON.parse(applyConfigEdits(JSON.stringify(disk), (args as { edits: Edit[] }).edits));
         return Promise.resolve(undefined);
       }
@@ -3926,7 +3926,7 @@ describe("步 17·B 固定：落盘 · 复活 · 正交", () => {
     };
     await tm.loadPinned();
     const t = tabOf("s1");
-    // 〔U4b · 说不清〕本机还没报过清单 ⇒ **说不清**（`设计/30 §3.5.7a`：`Unseen` 不许显示成已结束）；
+    // 〔说不清〕本机还没报过清单 ⇒ **说不清**（`Unseen` 不许显示成已结束）；
     //   报完了、清单里没有它 ⇒ 已结束（`§B.5` 那句「没有活进程」这才成立）。
     expect(t.state, "那台还没报完清单 ⇒ 说不清，不许说成已结束").toEqual(UNSEEN);
     tm.markOriginSeen(LOCAL_ORIGIN, new Set());
@@ -4093,7 +4093,7 @@ describe("步 17·B 固定：落盘 · 复活 · 正交", () => {
 });
 
 // ==========================================================================
-// 〔步 17·D · `设计/30 §D`〕Edge 式拖动合并成组 —— **纯判定那一半**
+// Edge 式拖动合并成组 —— **纯判定那一半**
 //
 // `§D.1` 现打：数据层全都在（`TabCollection` 与它那五个操作、落盘、上界、组容器渲染）
 // ⇒ **缺的只有那个手势**。所以这一组打的是手势拆出来的那几个纯函数：
@@ -4110,7 +4110,7 @@ describe("步 17·D ⓪ 量具自检：落点函数真的在分三种，不是�
     { sid: "b", top: 28, height: 28 },
     { sid: "c", top: 56, height: 28 },
   ];
-  /** 被拖的那一个不在这组矩形里（〔BG1〕原先这里是「被拖的那一块」空集）。 */
+  /** 被拖的那一个不在这组矩形里（原先这里是「被拖的那一块」空集）。 */
   const none = "（没有）";
 
   it("🔴 三种语义**都出得来**，而且各自出在该出的地方", () => {
@@ -4209,7 +4209,7 @@ describe("步 17·D ① 默认组名（`§D.6`）—— 这条路上不能弹 `w
 });
 
 describe("步 17·D ② 归属跟着落点宿主走（`§D.7` 的「拖出组」与「拖进组」是同一条规则）", () => {
-  // 〔GRP1 · `设计/99 §1` V140〕组员关系是 tab 自己的属性 ⇒ 这里不再重算整张组表（原 `applyDropToCollections` /
+  // 组员关系是 tab 自己的属性 ⇒ 这里不再重算整张组表（原 `applyDropToCollections` /
   //   `collectionsEqual` 随成员名单一起删），纯函数 `groupMoveForDrop` 只回「被拖那个 tab 怎么动」。
   //   每一格对应原来的一格；「建组到上界」那一格挪到了 ④（上界现在由 `TabBarPrefs.foundGroup` 判）。
   const groupOf =
@@ -4225,7 +4225,7 @@ describe("步 17·D ② 归属跟着落点宿主走（`§D.7` 的「拖出组」
     expect(groupMoveForDrop(groupOf({ b: "g1" }), "a", { kind: "onto", sid: "b" })).toEqual({ kind: "join", gid: "g1" });
   });
 
-  // 〔BG1 · V125「删掉树」〕原「整块一起走（交互 tab 连同它的 bg 子串）」一格删了 —— 归属只跟着被拖的
+  // 〔「删掉树」〕原「整块一起走（交互 tab 连同它的 bg 子串）」一格删了 —— 归属只跟着被拖的
   //   那一个走（本文件末尾「〔BG1〕」那组的 ③ ④，两种 tab 各跑）。
 
   it("🔴 `before` 一个**散 tab** ⇒ 从原来的组里**移出**（`§D.7` 的拖出组）", () => {
@@ -4256,7 +4256,7 @@ describe("步 17·D ② 归属跟着落点宿主走（`§D.7` 的「拖出组」
 });
 
 // ==========================================================================
-// 〔步 17·D〕手势接到真 DOM 上那一半：`§D.2` 的两个缺口是不是真的堵上了
+// 手势接到真 DOM 上那一半：`§D.2` 的两个缺口是不是真的堵上了
 // ==========================================================================
 describe("步 17·D ③ 组里的 tab 真的参与落点（`§D.2` 缺口一）", () => {
   let tm: TabManager;
@@ -4337,11 +4337,11 @@ describe("步 17·D ④ 一次落点把顺序与归属**一起**落实（`applyD
     home(tm).dragger.applyDrop("a", { kind: "end" });
     expect(order()).toEqual(["b", "a"]);
     expect(membersOf(tm, "g1")).toEqual([]);
-    expect(colsOf(), "〔V140 · 主会话裁 Q1〕拖出的是在栏里的最后一个 ⇒ 组消失").toEqual([]);
+    expect(colsOf(), "拖出的是在栏里的最后一个 ⇒ 组消失").toEqual([]);
   });
 
-  // 〔TL2 · E13〕要求住址：`设计/01 §5 D4`「一条都不许静默忽略」—— 到上界时这一下没做成，要说出来（正反各一格）。
-  // 〔GRP1 · V140〕原「拖进一个满了的组 ⇒ 说一句『没有加进』」一格删了：成员上界随成员名单一起作废（被测的东西不在了）。
+  // 要求：「一条都不许静默忽略」—— 到上界时这一下没做成，要说出来（正反各一格）。
+  // 原「拖进一个满了的组 ⇒ 说一句『没有加进』」一格删了：成员上界随成员名单一起作废（被测的东西不在了）。
   it("〔TL2 · E13〕集合数到上界时拖放建组 ⇒ 说一句「没有建新集合」；差一个 ⇒ 建出来、不出声", () => {
     const many = (n: number): TabCollection[] =>
       Array.from({ length: n }, (_, i) => ({ id: `c${i}`, name: `组${i}` }));
@@ -4371,13 +4371,13 @@ describe("步 17·D ④ 一次落点把顺序与归属**一起**落实（`applyD
     tm.ensureTab("b", "/c2", "p", 0, LOCAL_ORIGIN);
     home(tm).dragger.applyDrop("b", { kind: "onto", sid: "a" });
     expect(colsOf(), "没读过盘还敢建组 ⇒ 下一次落盘会把用户的集合全冲掉").toEqual([]);
-    expect(home(tm).store.tabs.get("b")!.group, "〔GRP1〕组 id 也一个字不动").toBeNull();
+    expect(home(tm).store.tabs.get("b")!.group, "组 id 也一个字不动").toBeNull();
     expect(order(), "顺序这一半照常").toEqual(["b", "a"]);
   });
 });
 
 // ==========================================================================
-// 〔步 17·D ⑤〕停留计时器**真的接在拖拽上** —— 一次完整的假手势
+// 停留计时器**真的接在拖拽上** —— 一次完整的假手势
 //
 // 🔴 这一格买的是上面那些纯函数买不到的东西：`§D.4` 的整个推理建立在
 //    「**指针停住之后 `mousemove` 就不再来了**」这件事上 ⇒ 必须有计时器。
@@ -4455,7 +4455,7 @@ describe("步 17·D ⑤ 停留 250ms 才成组（假手势打真事件链）", (
     document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
     const cols = home(tm).prefs.collections;
     expect(cols.length, "松手了却没建组 ⇒ 视觉反馈与真实后果脱钩（比没做更坏）").toBe(1);
-    expect(membersOf(tm, cols[0].id), "〔GRP1〕组员 = 带这个组 id 的 tab（a 已插到 b 之前）").toEqual(["a", "b"]);
+    expect(membersOf(tm, cols[0].id), "组员 = 带这个组 id 的 tab（a 已插到 b 之前）").toEqual(["a", "b"]);
     expect(cols[0].name, "默认名走 `§D.6` ①：两个 cwd 的共同前缀目录名").toBe("proj");
   });
 
@@ -4480,7 +4480,7 @@ describe("步 17·D ⑤ 停留 250ms 才成组（假手势打真事件链）", (
 });
 
 // ==========================================================================
-// 步 17·C 顺序落盘 —— **「读回来」那一半**（`设计/30 §C` · `99 §4` 步 17 那行的 🟡）
+// 步 17·C 顺序落盘 —— **「读回来」那一半**（那行的 🟡）
 //
 // 落盘那一侧（`tab-bar-state.ts` 的 `sanitizeOrder` / `getTabOrder` / `setTabOrder`）
 // 已经有 `tests/frontend/ui/tab-bar-state.vitest.ts` 10 格盯着，**那一段是好的**。
@@ -4493,7 +4493,7 @@ describe("步 17·D ⑤ 停留 250ms 才成组（假手势打真事件链）", (
 //   它在那种摆法下是绿的，而在真实时序下整张顺序会被摘掉。
 //   ⚠ 这也正是 `tab-bar-state.vitest.ts` 那条「往返」格量不到的面 ——
 //     它 `setTabOrder(["x","y"])` 之后拿 `getTabOrder(new Set(["x","y"]))` 读，
-//     **`alive` 两侧同源 ⇒ 恒真**（`01 §7.4` 点名的那一形）。
+//     **`alive` 两侧同源 ⇒ 恒真**（点名的那一形）。
 //
 // 🔴 反空真：这一组的 config 是**一份真的在内存里的盘**（走已被 mock 的 `invoke`,
 //   `load_config`/`patch_config`），所以「顺序落没落上」是**读盘对拍**，不是数调用次数。
@@ -4520,7 +4520,7 @@ describe("步 17·C 顺序落盘：读回来那一半", () => {
     await tm.loadPinned();
     await tm.loadOrder();
     for (const sid of arriving) {
-      // 每个 sid 一个自己的 cwd（〔BG1〕原先是为了避开 bg 树状锚定；树删了之后留着无害）。
+      // 每个 sid 一个自己的 cwd（原先是为了避开 bg 树状锚定；树删了之后留着无害）。
       tm.ensureTab(sid, `/proj/${sid}`, `/p/${sid}.jsonl`, 0, LOCAL_ORIGIN, "interactive", null);
     }
   };
@@ -4532,7 +4532,7 @@ describe("步 17·C 顺序落盘：读回来那一半", () => {
     vi.mocked(invoke).mockImplementation(withHistoryReads((cmd: string, args?: unknown) => {
       if (cmd === "load_config") return Promise.resolve(JSON.parse(JSON.stringify(disk)));
       if (cmd === "patch_config") {
-        // 〔CFG1〕写只交补丁；按与 Rust 写口同一份金样的语义应用（`tests/frontend/ui/config-patch-fake.ts`）。
+        // 写只交补丁；按与 Rust 写口同一份金样的语义应用（`tests/frontend/ui/config-patch-fake.ts`）。
         disk = JSON.parse(applyConfigEdits(JSON.stringify(disk), (args as { edits: Edit[] }).edits));
         return Promise.resolve(undefined);
       }
@@ -4560,7 +4560,7 @@ describe("步 17·C 顺序落盘：读回来那一半", () => {
   });
 
   // --- ② 正题：真实启动时序下的「存 → 读回来」--------------------------------
-  it("🔴 顺序跨重启（`设计/30 §6` 验证钩子 9）：盘上一份非默认顺序 ⇒ 会话到齐后**逐位**对上", async () => {
+  it("🔴 顺序跨重启（验证钩子 9）：盘上一份非默认顺序 ⇒ 会话到齐后**逐位**对上", async () => {
     // 用户上次把顺序拖成了 c,b,a（非默认 —— 后端清单给的是 a,b,c）。
     putOrderOnDisk(["c", "b", "a"]);
     await startupThenSessionsArrive(["a", "b", "c"]);
@@ -4666,12 +4666,12 @@ describe("步 17·C 顺序落盘：读回来那一半", () => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════
-// 〔`设计/10` 骨架 · 子步 4〕接入判据：索引 → 占位 → 门控 → 跳转。
+// 〔骨架〕接入判据：索引 → 占位 → 门控 → 跳转。
 // 本文件把 `MessageStream` / `RecordTimeline` mock 掉了 ⇒ 这里只判**接线**（要没要索引、
 // 接没接上、哪些行收纳哪些建卡）；「只物化可见区」本身的几何判据住 `tests/frontend/ui/skeleton-view.vitest.ts`
 // （那边是真 stream ＋ 真 timeline）。
 // ═══════════════════════════════════════════════════════════════════════
-describe("〔设计/10〕骨架接入：索引 → 占位 → 门控 → 跳转", () => {
+describe("骨架接入：索引 → 占位 → 门控 → 跳转", () => {
   let tm: TabManager;
   beforeEach(() => {
     vi.clearAllMocks();
@@ -4700,7 +4700,7 @@ describe("〔设计/10〕骨架接入：索引 → 占位 → 门控 → 跳转"
       pl: 1,
     })),
   });
-  // 〔C4b〕骨架索引改走通道：一发 `chan_call` 译回「哪一问 ＋ 旧形参」（`chan-fake.ts::sessionReadCalls`）。
+  // 骨架索引改走通道：一发 `chan_call` 译回「哪一问 ＋ 旧形参」（`chan-fake.ts::sessionReadCalls`）。
   const indexCalls = () =>
     sessionReadCalls(vi.mocked(invoke).mock.calls, "read_session_index").map((a) => ["read_session_index", a]);
   const settle = () => new Promise((r) => setTimeout(r, 0));
@@ -4740,7 +4740,7 @@ describe("〔设计/10〕骨架接入：索引 → 占位 → 门控 → 跳转"
     expect(indexCalls().length).toBe(1);
   });
 
-  // 〔P3 · `设计/10 §2.5b`〕「列宽变了」的入口：消息流尺寸变了 ⇒ 现量 `.stream-content` 宽交骨架重估；量不到宽不动。
+  // 「列宽变了」的入口：消息流尺寸变了 ⇒ 现量 `.stream-content` 宽交骨架重估；量不到宽不动。
   it("〔P3〕消息流尺寸变了 ⇒ 现量的列宽交骨架 relayout（后台 tab 也跟上）；量不到宽 ⇒ 不动", async () => {
     vi.mocked(invoke).mockImplementation(withHistoryReads(withSessionReads((cmd: string) =>
       Promise.resolve(cmd === "read_session_index" ? idx(300) : undefined),
@@ -4778,7 +4778,7 @@ describe("〔设计/10〕骨架接入：索引 → 占位 → 门控 → 跳转"
     expect(indexCalls().length, "结构性失败不该再问").toBe(1);
   });
 
-  // 〔GAP1 · `设计/10 §7` 第 5 条〕「索引或清单一次瞬时失败（ssh 抖一下）⇒ 这个 tab 灰到关掉重开」⇒ 下一次触发点再问一次。
+  // 「索引或清单一次瞬时失败（ssh 抖一下）⇒ 这个 tab 灰到关掉重开」⇒ 下一次触发点再问一次。
   it("★ 〔GAP1〕瞬时失败 ⇒ 下一次触发点（批结束）再问**一次**；再失败 ⇒ 定死不再问", async () => {
     vi.mocked(invoke).mockImplementation(withHistoryReads(withSessionReads((cmd: string) =>
       Promise.resolve(
@@ -4835,7 +4835,7 @@ describe("〔设计/10〕骨架接入：索引 → 占位 → 门控 → 跳转"
     vi.mocked(invoke).mockImplementation(withHistoryReads(withSessionReads((cmd: string, args?: unknown) => {
       if (cmd === "read_session_index") return Promise.resolve(idx(300));
       if (cmd === "read_session_range") {
-        // 〔MOD〕请求里不再带 `lineCount`（后端自己数）：这一段几行按夹具的行边界算（o = seq × 10、n = 10）。
+        // 请求里不再带 `lineCount`（后端自己数）：这一段几行按夹具的行边界算（o = seq × 10、n = 10）。
         const a = args as { seqBase: number; offset: number; until: number };
         return Promise.resolve(
           Array.from({ length: (a.until - a.offset) / 10 }, (_, k) => mk("miss", a.seqBase + k, `u${a.seqBase + k}`)),
@@ -4888,7 +4888,7 @@ describe("〔设计/10〕骨架接入：索引 → 占位 → 门控 → 跳转"
     vi.mocked(invoke).mockImplementation(withHistoryReads(withSessionReads((cmd: string, args?: unknown) => {
       if (cmd === "read_session_index") return Promise.resolve(idx(1100));
       if (cmd === "read_session_range") {
-        // 〔MOD〕同上：这一段几行按夹具的行边界算。
+        // 同上：这一段几行按夹具的行边界算。
         const a = args as { seqBase: number; offset: number; until: number };
         return Promise.resolve(
           Array.from({ length: (a.until - a.offset) / 10 }, (_, k) => mk("big", a.seqBase + k, `u${a.seqBase + k}`)),
@@ -4912,7 +4912,7 @@ describe("〔设计/10〕骨架接入：索引 → 占位 → 门控 → 跳转"
     // ① 前端账本：只留 seq 最高的 200 条（[800,1000)）
     expect(t.window.pendingCount).toBe(200);
     expect(t.window.peek(1)[0].seq).toBe(800);
-    // ② 〔CF2〕monitor 重放缓冲不再要前端登记（每个会话都只留尾巴）⇒ 零次
+    // ② monitor 重放缓冲不再要前端登记（每个会话都只留尾巴）⇒ 零次
     expect(vi.mocked(invoke).mock.calls.filter((c) => c[0] === "replay_keep_tail_only")).toEqual([]);
     // ③ 滚到被丢掉的那段：按偏移要回来；这些行**见过**（旁路账早记过）⇒ 只建卡，不再走 onLine
     const { renderContentRecord } = await import("../../../src/frontend/ui/render-stream-record");
@@ -4944,7 +4944,7 @@ describe("〔设计/10〕骨架接入：索引 → 占位 → 门控 → 跳转"
     expect(t.skeleton!.isPending(42)).toBe(false);
   });
 
-  // 〔SE1〕数据源换成后端之后，这条路必须照旧通：行是后端清单给的（不是流上攒的），
+  // 数据源换成后端之后，这条路必须照旧通：行是后端清单给的（不是流上攒的），
   //   点**那一行**（不是直接调宿主）⇒ 先按 uuid→seq 物化再跳。
   it("🔴 SE1：大纲的行来自后端清单，点到还在占位里的那一行 ⇒ 先物化那一段再跳", async () => {
     vi.mocked(invoke).mockImplementation(withHistoryReads(withSessionReads((cmd: string) =>
@@ -4981,12 +4981,12 @@ describe("〔设计/10〕骨架接入：索引 → 占位 → 门控 → 跳转"
 });
 
 // ==========================================================================
-// 〔U4b · 第四波 · T3 / T4〕三格后端事实在 `TabManager` 上真走一遍（`调研/第四波记录/U4b.md §2`）。
+// 〔T3 / T4〕三格后端事实在 `TabManager` 上真走一遍。
 // ==========================================================================
 describe("〔U4b〕容器 · 说不清 · 记录没了 —— TabManager 真走", () => {
   let tm: TabManager;
   let disk: Record<string, unknown>;
-  /** 记录那一问的桩答案：`undefined` = 抛错（问不到）。〔C4c〕它经通道问 `history-record`，`withSessionReads` 译回旧叫法。 */
+  /** 记录那一问的桩答案：`undefined` = 抛错（问不到）。它经通道问 `history-record`，`withSessionReads` 译回旧叫法。 */
   let probe: { present: boolean; root: string } | undefined;
   const tabOf = (sid: string): Tab => home(tm).store.tabs.get(sid)!;
   const btn = (): HTMLElement => document.querySelector<HTMLElement>(".tab")!;
@@ -4999,7 +4999,7 @@ describe("〔U4b〕容器 · 说不清 · 记录没了 —— TabManager 真走"
     vi.mocked(invoke).mockImplementation(withHistoryReads(withSessionReads(launchRenderShim((cmd: string, args?: unknown) => {
       if (cmd === "load_config") return Promise.resolve(JSON.parse(JSON.stringify(disk)));
       if (cmd === "patch_config") {
-        // 〔CFG1〕写只交补丁；按与 Rust 写口同一份金样的语义应用（`tests/frontend/ui/config-patch-fake.ts`）。
+        // 写只交补丁；按与 Rust 写口同一份金样的语义应用（`tests/frontend/ui/config-patch-fake.ts`）。
         disk = JSON.parse(applyConfigEdits(JSON.stringify(disk), (args as { edits: Edit[] }).edits));
         return Promise.resolve(undefined);
       }
@@ -5076,7 +5076,7 @@ describe("〔U4b〕容器 · 说不清 · 记录没了 —— TabManager 真走"
     expect(resumed()).toEqual([]);
     expect(showActionFailureToast).toHaveBeenCalledWith(
       "没法 resume：记录已不在",
-      "本机的 /h/.claude/projects 里找不到会话 g1 的记录，resume 接不上它，所以没有打开终端。", // 〔P3〕C-L5：值是汉字 ⇒ 不隔
+      "本机的 /h/.claude/projects 里找不到会话 g1 的记录，resume 接不上它，所以没有打开终端。", // C-L5：值是汉字 ⇒ 不隔
     );
     expect(tabOf("g1").state).toEqual(GONE);
     expect(btn().title).toBe("这个会话已结束，它的记录也不在了，没法 resume");
@@ -5101,7 +5101,7 @@ describe("〔U4b〕容器 · 说不清 · 记录没了 —— TabManager 真走"
     expect(tabOf("g2").state, "问不到不改状态").toEqual(GONE);
   });
 
-  // 设计/99 §2.1 ㉟② · 设计/05 §14.3：「照起但说一句『查不到记录还在不在』；形状不对报两端契约对不上（出声不静默）」。
+  // 「照起但说一句『查不到记录还在不在』；形状不对报两端契约对不上（出声不静默）」。
   it("★ 〔FIX2〕问不到 ⇒ 照起，但说一句查不到；形状不对 ⇒ 那一句说两端版本对不上", async () => {
     tm.ensureTab("g4", "/home/pi/proj", "/p/g4.jsonl", 0, "aya");
     tm.archiveTab("g4");
@@ -5126,8 +5126,8 @@ describe("〔U4b〕容器 · 说不清 · 记录没了 —— TabManager 真走"
 });
 
 /**
- * 〔GP1 · 第四波〕**远端断连 ⇒ 说不清，不是已结束**（`设计/30 §3.5.7a`「`Unseen` 不许被显示成已结束」·
- * `调研/第四波记录/GP1.md §1`）。会话流 `unseen` 格（〔MIG-1 续〕机器级）→ `TabManager.markOriginUnseen`，TabManager 真走。
+ * **远端断连 ⇒ 说不清，不是已结束**（「`Unseen` 不许被显示成已结束」）。
+ * 会话流 `unseen` 格（机器级）→ `TabManager.markOriginUnseen`，TabManager 真走。
  */
 describe("〔GP1〕那台机器看不见了 —— TabManager 真走", () => {
   let tm: TabManager;
@@ -5147,7 +5147,7 @@ describe("〔GP1〕那台机器看不见了 —— TabManager 真走", () => {
     tm.ensureTab("u2", "/x", "p", 0, "pi");
     tm.markTmuxIdle("u2"); // 可重连
     tm.ensureTab("o1", "/x", "p", 0, "mu"); // 别的机器上的活会话
-    tm.markOriginUnseen("pi"); // 〔MIG-1 续〕机器级一格
+    tm.markOriginUnseen("pi"); // 机器级一格
     expect([tabOf("u1").state, tabOf("u2").state]).toEqual([UNSEEN, UNSEEN]);
     expect(tabOf("o1").state, "别的机器不受牵连").toEqual(LIVE);
     // 两颗的提示句都说「说不清」、零处「已结束」（改之前断连那一刻这里是两句「这个会话已结束」）。
@@ -5184,7 +5184,7 @@ describe("〔GP1〕那台机器看不见了 —— TabManager 真走", () => {
     vi.mocked(invoke).mockImplementation(withHistoryReads(withSessionReads((cmd: string, args?: unknown) => {
       if (cmd === "load_config") return Promise.resolve(JSON.parse(JSON.stringify(disk)));
       if (cmd === "patch_config") {
-        // 〔CFG1〕写只交补丁；按与 Rust 写口同一份金样的语义应用（`tests/frontend/ui/config-patch-fake.ts`）。
+        // 写只交补丁；按与 Rust 写口同一份金样的语义应用（`tests/frontend/ui/config-patch-fake.ts`）。
         disk = JSON.parse(applyConfigEdits(JSON.stringify(disk), (args as { edits: Edit[] }).edits));
         return Promise.resolve(undefined);
       }
@@ -5194,8 +5194,8 @@ describe("〔GP1〕那台机器看不见了 —— TabManager 真走", () => {
     expect(tabOf("s2").state).toEqual(UNSEEN);
   });
 
-  // 〔TL2 · GP1 问 3〕要求住址：主会话 4D 裁「可重连 → 断连 → 重连后，tmux 里还在的那几条重新宣告为可重连（不是落已结束）」·
-  // `设计/30 §3.5.6` 转移表（说不清 + idle ⇒ 可重连；已结束 + idle 不动 ⇒ 次序承重）。
+  // 〔GP1 问 3〕要求住址：主会话 4D 裁「可重连 → 断连 → 重连后，tmux 里还在的那几条重新宣告为可重连（不是落已结束）」·
+  // 转移表（说不清 + idle ⇒ 可重连；已结束 + idle 不动 ⇒ 次序承重）。
   it("〔TL2 · GP1 问 3〕可重连 → 断连（说不清）→ 重连：先重宣告 idle、再报完清单 ⇒ 可重连；tmux 不在的那条 ⇒ 已结束", () => {
     tm.ensureTab("k1", "/x", "p", 0, "pi");
     tm.ensureTab("k2", "/x", "p", 0, "pi");
@@ -5226,8 +5226,8 @@ describe("〔GP1〕那台机器看不见了 —— TabManager 真走", () => {
 });
 
 /**
- * 〔GP1 · 第四波〕**resume 之前问记录，问的是这次 resume 要用的那个账号根**（`设计/30 §8` 第 4 条 ·
- * `调研/第四波记录/GP1.md §4` H2）。期望的目录 == 交给起会话那一格的目录（同一次解析，两处读同一个值）。
+ * **resume 之前问记录，问的是这次 resume 要用的那个账号根**。
+ * 期望的目录 == 交给起会话那一格的目录（同一次解析，两处读同一个值）。
  */
 describe("〔GP1〕记录那一问带上这次 resume 的账号根", () => {
   let tm: TabManager;
@@ -5257,7 +5257,7 @@ describe("〔GP1〕记录那一问带上这次 resume 的账号根", () => {
       if (cmd === "list_remote_accounts") return Promise.resolve(remoteAccounts(accounts));
       if (cmd === "list_last_accounts") return Promise.resolve({});
       if (cmd === "list_remote_tmux") return Promise.resolve(tmux);
-      if (cmd === "tmux_name_mint") return Promise.resolve("proj-cc"); // 〔FIX4 · J7〕名字问那台后端铸
+      if (cmd === "tmux_name_mint") return Promise.resolve("proj-cc"); // 名字问那台后端铸
       if (cmd === "probe_session_record") return Promise.resolve({ present: true, root: "/h/.claude-accts/z/projects" });
       return Promise.resolve(undefined);
     }))));
@@ -5310,20 +5310,20 @@ describe("〔GP1〕记录那一问带上这次 resume 的账号根", () => {
   });
 });
 
-// 〔U4b · 第四波〕**接线判据**：`main.ts` 起步那几行（`list_active_sessions`〔散文墓碑〕 之后标本机清单报完 ·
+// **接线判据**：`main.ts` 起步那几行（`list_active_sessions`〔散文墓碑〕 之后标本机清单报完 ·
 // 两个新事件交给 TabManager）没有 DOM 判据够得着（整个 `main.ts` 是入口脚本）⇒ 读源码数调用点，两向恰好一处。
 describe("〔U4b〕main.ts 接线", () => {
-  // 〔MIG-1 · ⑬〕本机的「清单报完了」不再另走 `list_active_sessions`〔散文墓碑〕 那一格：与远端同一格（会话流里的 `listed`）⇒ 本机那条接线零处。
+  // 本机的「清单报完了」不再另走 `list_active_sessions`〔散文墓碑〕 那一格：与远端同一格（会话流里的 `listed`）⇒ 本机那条接线零处。
   it("★ 容器 · 清单报完（本机远端同一格）各恰一处；本机不再另拉清单", () => {
     const main = readFileSync(resolve(REPO_ROOT, "src/frontend/ui/main.ts"), "utf8");
     const n = (needle: string): number => main.split(needle).length - 1;
     expect([
       n("tabs.markOriginSeen(LOCAL_ORIGIN,"),
       n("onSessionContainer: (sessionId, container) => tabs.noteContainer(sessionId, container)"),
-      n("      tabs.markOriginSeen(origin);\n      startup?.onListed(origin);"), // 〔MIG-1 续〕同一格顺手交「启动时记住的那一格」
+      n("      tabs.markOriginSeen(origin);\n      startup?.onListed(origin);"), // 同一格顺手交「启动时记住的那一格」
     ]).toEqual([0, 1, 1]);
   });
-  // 〔GP1 · 第四波〕「那台机器看不见了」两个窗口各接一处（主窗 ＋ 独立会话窗；入口脚本没有 DOM 判据够得着）。
+  // 「那台机器看不见了」两个窗口各接一处（主窗 ＋ 独立会话窗；入口脚本没有 DOM 判据够得着）。
   it("★〔GP1〕session-unseen 接线：main.ts 恰一处 · entry-viewer.ts 恰一处", () => {
     const n = (file: string, needle: string): number =>
       readFileSync(resolve(REPO_ROOT, file), "utf8").split(needle).length - 1;
@@ -5335,9 +5335,9 @@ describe("〔U4b〕main.ts 接线", () => {
 });
 
 /**
- * 〔CF2 · 第四波 4B〕**没接骨架的 tab 按行号往下取**（`TabStreamView.fetchBelow` · `read_session_lines`）。
+ * **没接骨架的 tab 按行号往下取**（`TabStreamView.fetchBelow` · `read_session_lines`）。
  *
- * 要求住址：`设计/99 §4.4`「无索引会话的重放缓冲上界（要先有不依赖索引的取回路）」· `设计/05 §3.3.4`
+ * 要求：「无索引会话的重放缓冲上界（要先有不依赖索引的取回路）」
  * 「⇒ **级 3 是判据**：任何一个订阅侧缓冲都要有上界」—— monitor 的重放缓冲从此每个会话只留尾巴，
  * F5 之后更早的正文就只剩这一条路回来；它不成立，上界就是「丢了就没了」。
  */
@@ -5398,7 +5398,7 @@ describe("〔CF2〕没接骨架的 tab：按行号往下取", () => {
     // 回来的 200 条补上了屏（渲染窗口向下扩到 100）；之后接着问 [0, 100)，到第 0 行为止
     expect(t.window.floorSeq).toBe(0);
     expect(asks()).toEqual([
-      // 〔DL1〕`leftMs`：往上翻一件一问，交整份（`TabStreamView.BELOW_BUDGET_MS`）
+      // `leftMs`：往上翻一件一问，交整份（`TabStreamView.BELOW_BUDGET_MS`）
       { origin: "<local>", jsonlPath: "/p/lb.jsonl", from: 100, until: 300, leftMs: 60_000 },
       { origin: "<local>", jsonlPath: "/p/lb.jsonl", from: 0, until: 100, leftMs: 60_000 },
     ]);
@@ -5455,13 +5455,13 @@ describe("〔CF2〕没接骨架的 tab：按行号往下取", () => {
     tm.switchTo("fb");
     await settle();
     expect(asks().length).toBe(1);
-    // 〔GAP1 · `设计/10 §7` 第 5 条〕第一次失败：不定死，下一次触发点（上翻）再问同一段 —— 恰好一次。
+    // 第一次失败：不定死，下一次触发点（上翻）再问同一段 —— 恰好一次。
     expect(t.window.belowState).toEqual({ kind: "maybe" });
     (home(tm).view as unknown as { fillAbove(t: unknown): void }).fillAbove(t);
     await settle();
     expect(asks().length, "第一次失败之后的下一次上翻该再问一次").toBe(2);
     expect(asks()[1]).toEqual(asks()[0]);
-    // 〔MOD〕失败经通道那一跳说（`chan-caller.ts::saidOf` 带上对端的码），原因那一句原样在里面。
+    // 失败经通道那一跳说（`chan-caller.ts::saidOf` 带上对端的码），原因那一句原样在里面。
     expect(t.window.belowState).toEqual({ kind: "failed", reason: expect.stringContaining("那台后端还不认这条查询") });
     expect(t.stream.contentElement.querySelector(".stream-more-above")?.textContent).toContain(
       "那台后端还不认这条查询",
@@ -5530,7 +5530,7 @@ describe("〔CF2〕没接骨架的 tab：按行号往下取", () => {
       asks()
         .filter((a) => (a as { jsonlPath: string }).jsonlPath === path)
         .map((a) => (a as { from: number; until?: number }));
-    // 〔DL1〕`leftMs` 另判（下面那条「一件事一个总期限」）：这里只看问的是哪几段。
+    // `leftMs` 另判（下面那条「一件事一个总期限」）：这里只看问的是哪几段。
     const noLeft = (a: object): object => {
       const { leftMs: _left, ...rest } = a as { leftMs?: number };
       return rest;
@@ -5550,7 +5550,7 @@ describe("〔CF2〕没接骨架的 tab：按行号往下取", () => {
   });
 
   /**
-   * 〔DL1 · `设计/05 §3.3.2`「一次调用一个绝对时刻……`Duration` 跨跳传递时每一跳都会重新开始计时 —— 那正是病 2 的机制」〕
+   * 〔「一次调用一个绝对时刻……`Duration` 跨跳传递时每一跳都会重新开始计时 —— 那正是病 2 的机制」〕
    * **往后补是一件事、一个总期限**：每一问交的是「那一件还剩多少」（越往后越少，不重新计时）；
    * 总期限过了还没到末尾 ⇒ 不再问（停下、记一行）。正控：期限之内、到末尾就停（上面那条 S3′）。
    * 钟面用替身（`performance.now` 每被读一次走 25 秒），不等真时间。
@@ -5601,9 +5601,9 @@ describe("〔CF2〕没接骨架的 tab：按行号往下取", () => {
 });
 
 /**
- * 〔CF2 · 第四波 4B〕**前端账本有上界**（`live-window.ts::PENDING_CAP` / `PENDING_KEEP`）。
+ * **前端账本有上界**（`live-window.ts::PENDING_CAP` / `PENDING_KEEP`）。
  *
- * 要求住址：`设计/05 §3.3.4`「⇒ **级 3 是判据**：任何一个订阅侧缓冲都要有上界，满了必须落级 1 或级 2，
+ * 要求：「⇒ **级 3 是判据**：任何一个订阅侧缓冲都要有上界，满了必须落级 1 或级 2，
  * **不许静默堆**」—— 出账的那些往上翻时按行号取回（上面那一组 L3），所以这是级 2 不是「丢了就没了」。
  */
 describe("〔CF2〕前端账本的上界", () => {
@@ -5626,11 +5626,11 @@ describe("〔CF2〕前端账本的上界", () => {
 });
 
 // ==========================================================================
-// 〔BG1 · V125〕bg 会话平铺：拖拽 / 集合 / 落位对 bg tab 与普通 tab **行为相同**
+// bg 会话平铺：拖拽 / 集合 / 落位对 bg tab 与普通 tab **行为相同**
 //
-// 守的要求：`设计/99 §1` V125〔选〕「删掉树」原话 ——「后台（bg）会话不再自动挂到宿主下排成树：
+// 守的要求：〔选〕「删掉树」原话 ——「后台（bg）会话不再自动挂到宿主下排成树：
 //   删 `placeInTree` 树状挂载、`dragBlockOf` 拖拽例外、`.tab-bg` 那套；bg 会话就是普通 tab、平铺」；
-//   `设计/30 §7`「自动归组 / 自动固定 —— 手动建，不要自动，纯手动」。
+// 「自动归组 / 自动固定 —— 手动建，不要自动，纯手动」。
 //
 // 形状：**同一组用例两种 tab 各跑**（`describe.each`）。「同 cwd 的那一颗」（`sub`）一跑是普通 tab、
 //   一跑是 bg；期望是**同一份手写表**（不从实现生成）。宿主 `host` 与 `sub` 同 `(cwd, origin)` ——
@@ -5640,7 +5640,7 @@ describe("〔CF2〕前端账本的上界", () => {
 describe.each([
   ["普通 tab", "interactive"],
   ["bg tab", "bg"],
-])("〔BG1〕同 cwd 的那一颗是%s ⇒ 落位 / 拖拽 / 集合与另一跑逐字相同", (_label, subKind) => {
+])("同 cwd 的那一颗是%s ⇒ 落位 / 拖拽 / 集合与另一跑逐字相同", (_label, subKind) => {
   let tm: TabManager;
   const order = (): string[] => home(tm).store.orderedIds;
   const colsOf = (): TabCollection[] => home(tm).prefs.collections;
@@ -5712,7 +5712,7 @@ describe.each([
 });
 
 // ════════════════════════════════════════════════════════════════════════════
-//  〔STC · `设计/90 §4` 阶段 C · `设计/10 §2.2`〕会话事实：**后端给了什么 ⇒ tab 上是什么**
+// 会话事实：**后端给了什么 ⇒ tab 上是什么**
 // ════════════════════════════════════════════════════════════════════════════
 //
 // 分叉血缘 · 改动文件集 · 最新 usage 由后端出成品（帧命令 `history-facts`，`session-reads.ts` 第五问）。
@@ -5852,7 +5852,7 @@ describe("〔STC〕会话事实：后端给了什么 ⇒ tab 上是什么", () =
 
   it("F88b usage：active 的成品一到就推给 HUD；后台 tab 不推；切过去时推那一格", async () => {
     const seen: [string | null, number | null][] = [];
-    tm.active.subscribe((a) => seen.push([a.model, a.promptTokens])); // 〔GAP1〕订阅 store（原先是回调）
+    tm.active.subscribe((a) => seen.push([a.model, a.promptTokens])); // 订阅 store（原先是回调）
     answerFacts((path) =>
       facts({ usage: path.includes("u1") ? { promptTokens: 42, model: "m-a" } : { promptTokens: 7, model: null } }),
     );
@@ -5868,7 +5868,7 @@ describe("〔STC〕会话事实：后端给了什么 ⇒ tab 上是什么", () =
     expect(tm.peekSession("u1")!.model).toBe("m-a");
   });
 
-  // 〔GAP1 · `设计/01 §1.5`〕「当前 tab 变了」改订阅 store 之后的时机差：同值不通知（原先两个回调同值也照调）。
+  // 「当前 tab 变了」改订阅 store 之后的时机差：同值不通知（原先两个回调同值也照调）。
   it("★ 〔GAP1〕当前 tab 那一格同值不通知：可用性重报一次同样的值 ⇒ 零通知；切到别的 tab ⇒ 恰一次", async () => {
     answerFacts((path) => facts({ usage: path.includes("v1") ? { promptTokens: 5, model: "m" } : null }));
     tm.onLine(line("v1", 0));
@@ -5886,7 +5886,7 @@ describe("〔STC〕会话事实：后端给了什么 ⇒ tab 上是什么", () =
 
   it("要不到（老后端不认这条命令）⇒ active 的 HUD 出声（原因非空）、此后不再问；可用 ⇒ 说 null", async () => {
     const said: (string | null)[] = [];
-    tm.active.subscribe((a) => said.push(a.unavailable)); // 〔GAP1〕订阅 store（原先是回调）
+    tm.active.subscribe((a) => said.push(a.unavailable)); // 订阅 store（原先是回调）
     vi.mocked(invoke).mockImplementation(async (cmd: string, args?: unknown) => {
       if (isChanCall(cmd, args, "history-facts")) throw UNSUPPORTED;
       return undefined;
@@ -5907,8 +5907,8 @@ describe("〔STC〕会话事实：后端给了什么 ⇒ tab 上是什么", () =
   });
 });
 
-// ===== 〔FW1 · 第四波 4D · 主会话裁 D-d〕活会话的记录文件不见了 / 被改过 ⇒ 那个 tab 顶上说一句，不碰会话状态 =====
-// 要求住址：题面 `4d-lanes.md`「主会话本批裁的」D-d「删了 / 改名 ⇒ 出声（该 tab 说一句『记录文件不见了』），不崩、不误判结束」。
+// ===== 活会话的记录文件不见了 / 被改过 ⇒ 那个 tab 顶上说一句，不碰会话状态 =====
+// 要求：「删了 / 改名 ⇒ 出声（该 tab 说一句『记录文件不见了』），不崩、不误判结束」。
 // 接线（`record-file-notice.ts::recordFileWiring`）喂的是**真的** `TabManager.streamElOf` 与 `onLine`，与 `main.ts` 同一形。
 describe("〔FW1〕记录文件的出声", () => {
   const mk = (seq: number) => ({
@@ -5950,7 +5950,7 @@ describe("〔FW1〕记录文件的出声", () => {
 });
 
 // ==========================================================================
-// 〔GRP1〕守 `设计/99 §1` V140 原话「分组不应该单独存会话记录. x就是没了, 不存在还要移出分组」。
+// 守原话「分组不应该单独存会话记录. x就是没了, 不存在还要移出分组」。
 // 题面四条判据：J1 盘上零处会话 id 名单形状的组员表（带正控）· J2 × 之后盘与内存零残留 ·
 // J3 最后一个成员关掉组消失 · J4 重启后只有还在栏里的 tab 带组。真 TabManager ＋ 内存假盘，读盘对拍。
 // ==========================================================================
@@ -6115,8 +6115,8 @@ describe("〔GRP1 · V140〕组员关系是 tab 自己的属性", () => {
   });
 });
 
-// ===== 〔RENDER2 · `设计/10 §3.2` · `§7` 第 12 条〕记录文件从头重读 ⇒ 后端行号从 0 重数 ⇒ tab 整份重来 =====
-// 要求住址：`设计/10 §7` 第 12 条逐字「seq ＝ 当前文件里的行号，截断即换代，先发一帧『这份文件重写了』再从 0 重投」。
+// ===== 记录文件从头重读 ⇒ 后端行号从 0 重数 ⇒ tab 整份重来 =====
+// 要求：「seq ＝ 当前文件里的行号，截断即换代，先发一帧『这份文件重写了』再从 0 重投」。
 // 入口只剩按 seq 那一道去重 ⇒ 不重来的话，新的一代的第 0 行会被旧的一代的第 0 行挡掉（渲染内核在本文件里是替身，数它收到了谁）。
 describe("〔RENDER2〕从头重读 ⇒ tab 整份重来", () => {
   const mk = (seq: number, uuid: string) =>
@@ -6143,8 +6143,8 @@ describe("〔RENDER2〕从头重读 ⇒ tab 整份重来", () => {
   });
 });
 
-// ===== 〔RENDER2 · `设计/10 §3.2` · `§7` 第 12 条〕每个 tab 的去重集有上界 =====
-// 要求住址：`设计/10 §3.2` 逐字「`seenSeqs` 换成区间集，上界就变成『段数』…… 不可显示的行照占 seq 却不发 payload，
+// ===== 每个 tab 的去重集有上界 =====
+// 要求：「`seenSeqs` 换成区间集，上界就变成『段数』…… 不可显示的行照占 seq 却不发 payload，
 // 每一处都留一个洞」⇒ monitor 在 payload 上说出前面那一段（`skipped_from`），前端记成区间。
 describe("〔RENDER2〕去重集是区间、收全了的会话收成一段", () => {
   it("SeqSet 与朴素 Set 逐号相等（随机加点 / 加段）", async () => {
@@ -6197,8 +6197,8 @@ describe("〔RENDER2〕去重集是区间、收全了的会话收成一段", () 
   });
 });
 
-// ===== 〔RENDER2 · `设计/17 §1.1`〕批的第二道闸：急路要当场物化的正文字符 =====
-// 要求住址：`设计/17 §1.1` 逐字「批的闸门应是字节预算（或『字节 ＋ 条数』双闸）」＋ 同节「要做的话闸的单位该换成『急路要物化的正文字符』」。
+// ===== 批的第二道闸：急路要当场物化的正文字符 =====
+// 要求：「批的闸门应是字节预算（或『字节 ＋ 条数』双闸）」＋ 同节「要做的话闸的单位该换成『急路要物化的正文字符』」。
 describe("〔RENDER2〕物化一批按正文字符截", () => {
   it("两条长正文合起来超预算 ⇒ 第一批只有最高那条、第二批是另一条连同其余短的 ⇒ 建卡顺序 == 手算的 [149, 0‥148]", async () => {
     const { renderContentRecord } = await import("../../../src/frontend/ui/render-stream-record");

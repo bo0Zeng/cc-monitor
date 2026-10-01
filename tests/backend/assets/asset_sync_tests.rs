@@ -1,7 +1,7 @@
-//! 〔AS2 · 第四波 4B〕`asset_sync.rs` 的判据：一趟「拉 · 并 · 推」做对了、只推对面缺的、变了才扇出。
+//! `asset_sync.rs` 的判据：一趟「拉 · 并 · 推」做对了、只推对面缺的、变了才扇出。
 //!
 //! 守的要求（住址）：用户裁决 **V113** 逐字「本机后端在本机看见一个skill并记录下来, 就会和远端后端同步」
-//! ＋「目录自动同步，装要你点」· `设计/01 §3.5`「观测方沿它本来就拥有的那条连接去拉被观测方」（零新通道）。
+//! ＋「目录自动同步，装要你点」· 「观测方沿它本来就拥有的那条连接去拉被观测方」（零新通道）。
 //!
 //! # 买到的
 //!
@@ -14,10 +14,10 @@
 //!
 //! - 🔴 **真远端**：对面是替身（解析命令、在另一个临时目录上跑同一个写口）；`DialRemote` 那条 capture 没对真 sshd 跑过。
 //! - 远端登录 shell 不是 POSIX（fish 之类）⇒ 管道 ＋ 单引号那一形不成立 —— 与 monitor 起远端后端那条命令同一个假设。
-//! - 🔴 真 Windows 远端：不在承诺面（`01 §6.7a`）。
+//! - 🔴 真 Windows 远端：不在承诺面。
 
 use super::*;
-// 〔C4d〕这三样原先由 `asset_sync.rs` 顺带引入（`Remote` trait 的签名要它们）；那一跳搬去 `remote_ask` 之后测试自己引。
+// 这三样原先由 `asset_sync.rs` 顺带引入（`Remote` trait 的签名要它们）；那一跳搬去 `remote_ask` 之后测试自己引。
 use crate::assets::asset_catalog::{self as cat, Asset, KIND_SKILL};
 use std::future::Future;
 use std::path::{Path, PathBuf};
@@ -115,7 +115,7 @@ impl Remote for FakeRemotes {
                 assert_eq!(stdin, None, "拉那一趟不写 stdin");
                 return m.update(None).map(|v| v.to_string()).map_err(|e| e.1);
             }
-            // 〔W5-AUX〕推那一趟：命令行逐字 == `<落点> --assets-catalog-merge --stdin-line`（不含载荷），载荷恰好一行进 stdin。
+            // 推那一趟：命令行逐字 == `<落点> --assets-catalog-merge --stdin-line`（不含载荷），载荷恰好一行进 stdin。
             if command != push_command() {
                 return Err(format!("认不出的命令：{command}"));
             }
@@ -314,7 +314,7 @@ async fn half_given_arguments_are_refused() {
             .expect_err("收下了");
         assert_eq!(e.0, "bad_args", "{bad}");
     }
-    // 〔MIG-3a〕只给 `origin`（界面直问）而可达表里没有那一台 ⇒ 明说够不到，一次都不拨。
+    // 只给 `origin`（界面直问）而可达表里没有那一台 ⇒ 明说够不到，一次都不拨。
     let e = answer_with(&json!({"origin": "o"}), local.fold(), &fakes, &table)
         .await
         .expect_err("可达表里没有也收了");
@@ -326,7 +326,7 @@ async fn half_given_arguments_are_refused() {
     let ok = answer_with(&json!({"origin": "o"}), local.fold(), &fakes, &table)
         .await
         .expect("登记过的也拒了");
-    // 跨语言金样（设计/05 §14.3「成品的两侧对拍」）：形状 == `assets-sync.golden.json`（id 与那一句错换成占位）；界面读同一份。
+    // 跨语言金样（「成品的两侧对拍」）：形状 == `assets-sync.golden.json`（id 与那一句错换成占位）；界面读同一份。
     let g: Value =
         serde_json::from_str(include_str!("../../__fixtures__/assets-sync.golden.json")).unwrap();
     let mut shape = ok.clone();
@@ -365,10 +365,10 @@ fn push_plan_chunks_under_the_cap_and_refuses_a_single_oversized_machine() {
     assert!(too_big[0].contains("big"));
 }
 
-/// 〔W5-AUX · `设计/96 §3.6`〕推那一趟的**命令行里没有载荷**：不论载荷里有什么（单引号 · 反斜杠 · `$` · 反引号 · 中文），
+/// 推那一趟的**命令行里没有载荷**：不论载荷里有什么（单引号 · 反斜杠 · `$` · 反引号 · 中文），
 /// 命令行逐字 == `command_line(后端, [--assets-catalog-merge, --stdin-line])`；载荷只经 stdin 走、恰好一行。
 ///
-/// 要求住址：`设计/96 §3.6` 逐字「远端命令走 POSIX shell 管道：与 monitor 起远端后端同一个假设；远端登录 shell 是 fish 之类就不成立。
+/// 要求：「远端命令走 POSIX shell 管道：与 monitor 起远端后端同一个假设；远端登录 shell 是 fish 之类就不成立。
 /// 根治要给 CLI 面一个『只读一行 stdin』的入口」。此前的 `printf '%s\n' '<json>' | …` 把载荷过 POSIX 单引号拼进命令行 ——
 /// fish 的单引号里 `\\` 与 `\'` 是转义，JSON 里的反斜杠会被吃掉一个；这一形已退役，本条钉它不回来。
 #[test]
@@ -381,7 +381,7 @@ fn the_push_command_line_carries_no_payload_and_the_payload_rides_stdin_as_one_l
         crate::stream::remote_ask::command_line(&[PUSH_FLAG, crate::STDIN_LINE_FLAG]),
         "推那一趟的命令行不是「后端路径 ＋ 两个旗标」"
     );
-    // 〔E2〕命令行以固定落点打头（它自己带 `"$HOME"`）⇒ 查的是落点之后那一段。
+    // 命令行以固定落点打头（它自己带 `"$HOME"`）⇒ 查的是落点之后那一段。
     let tail = cmd
         .strip_prefix(relay_route_core::BACKEND_LANDING_SHELL)
         .expect("推那一趟的命令行不以后端落点打头");
@@ -411,7 +411,7 @@ fn the_push_command_line_carries_no_payload_and_the_payload_rides_stdin_as_one_l
     assert!(out.status.success(), "{out:?}");
     assert_eq!(
         String::from_utf8(out.stdout).unwrap(),
-        // 〔V151〕打头的 `--` 让那台的 `ccm` 当后端用（替身 `echo` 把它原样印出来）。
+        // 打头的 `--` 让那台的 `ccm` 当后端用（替身 `echo` 把它原样印出来）。
         format!("-- {PUSH_FLAG} {}\n", crate::STDIN_LINE_FLAG)
     );
     assert_eq!(

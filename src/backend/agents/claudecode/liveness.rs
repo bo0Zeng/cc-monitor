@@ -12,7 +12,7 @@
 /// cmdline（**已转小写**）**明显不像** Claude ⇒ `false`；空串或像 ⇒ `true`（放行）。
 ///
 /// `S3` 从 `watcher::add_time_verdict` 里原样搬出（判定一字未改，含"空串放行"那一半）。
-/// 〔THIN〕词表不再内联：与 tmux 那一格（`tmux-list` 的 `agent`，精确比）同一张 [`super::cards::PROCESS_NAMES`] ——
+/// 词表不再内联：与 tmux 那一格（`tmux-list` 的 `agent`，精确比）同一张 [`super::cards::PROCESS_NAMES`] ——
 /// 从前界面一份、这里一份，靠一条跨语言对拍咬着；今天两处判法各自不变（这里子串 ＋ 空串放行，那里精确），词只有一份。
 pub(crate) fn cmdline_may_be_agent(lower: &str) -> bool {
     lower.trim().is_empty()
@@ -21,7 +21,7 @@ pub(crate) fn cmdline_may_be_agent(lower: &str) -> bool {
             .any(|name| lower.contains(name))
 }
 
-// 〔TL1 · 4C〕这里从前挂着一族自己的判据（`liveness_tests.rs`，三个方向各一格）。`99 §6` 第 13 条重判：
+// 这里从前挂着一族自己的判据（`liveness_tests.rs`，三个方向各一格）。重判：
 // 八刀里它没有一刀独占（去 trim / 去空串放行 / 去 claude / 去 node / 恒真 / 恒假 / 且代或，后端
 // `observe/watcher_tests.rs` 经生产调用点 `add_time_verdict` 全接住）；唯一独占的是「放行词多加一个它样本里才有的词」
-// —— 那是样本的差，不是判据的差 ⇒ 样本并进那边、本族删（读数在 `调研/第四波记录/TL1.md` 件 1）。
+// —— 那是样本的差，不是判据的差 ⇒ 样本并进那边、本族删（读数在件 1）。

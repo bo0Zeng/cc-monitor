@@ -7,7 +7,7 @@
  * `transform` 对 fixed containing block 的重置。
  */
 
-// 〔DP1 · 第四波〕这里原来还有一个换文件名的路径小工具（从 `Microsoft.PowerShell_profile.ps1` 推 `profile.ps1`，给「终端集成」页的
+// 这里原来还有一个换文件名的路径小工具（从 `Microsoft.PowerShell_profile.ps1` 推 `profile.ps1`，给「终端集成」页的
 //   AllHosts 选项用）。那一页退役之后它零生产调用方、只剩自己的测试（`AL1d.md §5` 第 6 条）⇒ 连同测试删掉。
 
 /**

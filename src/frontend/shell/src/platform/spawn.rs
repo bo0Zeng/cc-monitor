@@ -1,4 +1,4 @@
-//! 起子进程这一族的平台读法〔P4b · 阶段 H：`设计/90 §4`；原住 `spawn_managed.rs`，逐字搬〕：三条策略里
+//! 起子进程这一族的平台读法〔阶段 H：；原住 `spawn_managed.rs`，逐字搬〕：三条策略里
 //! 「要不要窗口」「随不随我死」在这个平台上**怎么说** —— Windows：creation flags ＋ Job Object；POSIX：`process_group(0)`。
 //!
 //! 三个策略枚举与唯一出口（`spawn_managed` · `spawn_managed_cmd` · `spawn_managed_tokio`）留在 `spawn_managed.rs`；

@@ -111,7 +111,7 @@ fn the_liveness_answer_comes_from_this_moment_not_from_a_cache() {
 ///   （中间不许隔着 `]` —— 隔着就说明它压根不在那个数组里，本条在空转）；
 /// - 反向：把源码**全部空白删掉**之后，不许出现 `"<verb>",UTF8_CLIENT_FLAG`。
 ///
-/// 〔IV1 · V121〕要求住址：`INVARIANTS §49`（tmux 打印通道必须是 UTF-8，段数下溢出声）。
+/// 要求住址：`INVARIANTS §49`（tmux 打印通道必须是 UTF-8，段数下溢出声）。
 #[test]
 fn both_tmux_call_sites_ask_for_a_utf8_client_before_the_subcommand() {
     // 本条数的是**源码文本**，所以要的是那个常量的**名字**，不是它的值。
@@ -175,7 +175,7 @@ fn both_tmux_call_sites_ask_for_a_utf8_client_before_the_subcommand() {
 /// 三列的取值域都排除真 TAB ⇒ 合法内容推不高段数（理由见 `PROBE_FMT_FIELDS` 头注）。
 /// 但判据仍写成「下溢」而不是「不等于」，与另外两处同一口径 —— **口径一致本身是要买的东西**。
 ///
-/// 〔IV1 · V121〕要求住址：`INVARIANTS §49`（tmux 打印通道必须是 UTF-8，段数下溢出声）。
+/// 要求住址：`INVARIANTS §49`（tmux 打印通道必须是 UTF-8，段数下溢出声）。
 #[test]
 fn the_underflow_predicate_catches_the_real_dirty_bytes() {
     assert!(
@@ -197,7 +197,7 @@ fn the_underflow_predicate_catches_the_real_dirty_bytes() {
     );
 }
 
-/// 判定表的**唯一真相源**：后端这一轨与 e2e 各自独立读它（〔THIN〕monitor 那一轨随 monitor 侧的门删了）。
+/// 判定表的**唯一源头**：后端这一轨与 e2e 各自独立读它（monitor 那一轨随 monitor 侧的门删了）。
 const GOLDEN: &str = include_str!("../../__fixtures__/gate2-golden.tsv");
 
 fn golden_rows() -> Vec<(String, String, Option<String>, String)> {
@@ -461,7 +461,7 @@ fn both_gates_always_probe_before_they_act() {
 //   ⚠ 「总槽位」里判定表那一半是**现数的**（`rows`）⇒ 加一行用例，地板要求自动跟着抬一格。
 //     原来那句「加用例时地板要跟着抬」是散文，现在是机械的。
 //
-// ── 🔴 **一格如实登记的诚实边界：本条看不见「豁免的前提还成不成立」**〔09-09 第二拍〕 ──
+// ── 🔴 **一格如实登记的诚实边界：本条看不见「豁免的前提还成不成立」** ──
 //
 // 两条登记豁免的性质**不一样**：
 //   · `meta_colon` 与 tmux 版本无关（`:`→`_` 至今未变，本机 3.6 实测）；
@@ -596,14 +596,14 @@ fn the_gate2_floor_still_makes_a_skip_hurt() {
     //
     // 逐格数出来的：抽取器自检 1 · 目标不存在仍报 `no_such_session` 1 ·
     // 只设 `@ccm_sid_expect` 仍拒 1 · Gate 3 五条 5 · kill 目标不存在 1 · kill 形状门 1 = **10**
-    // 〔RST 续 · V41〕11 → 10：裸键那个 mode（`send-keys-raw`）删了，「它也过同一道门」那一格随之删。
+    // 11 → 10：裸键那个 mode（`send-keys-raw`）删了，「它也过同一道门」那一格随之删。
     // ⇒ 总槽位 = 判定表行数 + 11（08-06 是 25 + 11 = 36，与本文件原来那个 `FLOOR_TODAY`
     //   以及 `tests/e2e/README.md:64` 的 08-13 台账「35 过」＋当时 1 条登记豁免，两份独立读数都对得上）。
     // ⚠ **加/删判定表之外的场景时同拍改这里**；加判定表用例**不用**动它（那一半是现数的）。
     const FIXED_SLOTS: usize = 10;
     let slots = rows + FIXED_SLOTS;
 
-    // ── 输入 ③〔E2 尾 09-27〕：**版本门**条数，从套件自己的 `min_tmux_for()` 现数 ────────────
+    // ── 输入 ③：**版本门**条数，从套件自己的 `min_tmux_for()` 现数 ────────────
     //
     // 版本门那一格在 tmux 够新的机器上真跑（进 PASS）、不够新的机器上记 SKIP ⇒ PASS 数随机器变：
     // CI 那一行判的是 PASS 的 **at-least** ⇒ 按最坏的机器（每一条版本门都跳过）算；
@@ -705,7 +705,7 @@ fn the_selfevidencing_skip_branch_is_still_there() {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// 〔TL2 · 4D · C4e 问 2〕过门的命令，登记表里的码必须盖住门会回的码
+// 〔C4e 问 2〕过门的命令，登记表里的码必须盖住门会回的码
 // ════════════════════════════════════════════════════════════════════════
 
 /// 一段生产源码里「错误元组 / 错误出口」的码：`(` 之后（隔空白）紧跟一个蛇形字面量、再跟 `,`。
@@ -737,7 +737,7 @@ fn tl2_fn_body<'a>(src: &'a str, name: &str) -> &'a str {
     &tail[..tail.find("\n}").expect("函数没收尾")]
 }
 
-/// 〔TL2〕要求住址：`INVARIANTS §34`（tmux 破坏性 / 半破坏性命令三道门）· `INVARIANTS §42`（线上契约文档与代码不许漂）。
+/// 要求住址：`INVARIANTS §34`（tmux 破坏性 / 半破坏性命令三道门）· `INVARIANTS §42`（线上契约文档与代码不许漂）。
 ///
 /// C4e 交上来的缺口逐字：「`launch` 那条后端登记表的 `codes` **没列 `wrong_owner`**，而 `control/launch.rs::run` 经 `gate::admit` 真会回它」。
 /// 病根是「码表手写、没人从门那一侧核」。本条从**门的源码**派生：`admit` / `admit_destructive` 各自会回哪些码（连它们调的 `probe`），

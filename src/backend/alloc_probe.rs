@@ -1,6 +1,6 @@
 //! U-2：**线程级**内存量具（仅测试构建）。
 //!
-//! # 它为什么存在〔audit-0805 F22〕
+//! # 它为什么存在
 //!
 //! `inbound::tests::an_oversized_line_does_not_grow_memory` 要判「一整行没有进内存」。
 //! 它原本读 `/proc/self/status` 的 `VmHWM`，而 `VmHWM` 由内核按**整个进程**维护，

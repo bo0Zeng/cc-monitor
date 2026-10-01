@@ -2,7 +2,7 @@
 //!
 //! 今天只有一条策略：**monitor 退出时要不要主动结束这台机的 backend**，默认 **false（不主动结束）**。
 //!
-//! # 〔B2 · 条 66 · `设计/01 §3.3b`〕那个值**不住 monitor** —— 本模块只是去问、去交写
+//! # 〔条 66〕那个值**不住 monitor** —— 本模块只是去问、去交写
 //!
 //! 搬家前：持久化归前端（monitor 的 `config.json`），本模块持有一张进程内的**生效值表**，
 //! 由前端在启动时与改动时推进来，退出臂读那张表。那张表正是 `E2` 点名的「启动时快照」，
@@ -31,7 +31,7 @@
 //! ⇒ 「勾掉开关」在那一支上**真的**是「继续跑」。
 //!
 //! ⇒ 禁令换成**按状态分档**（`K-P1 KPY4`，由 `tests/frontend/ui/settings/backend-section.vitest.ts` 机检）：
-//! 用户可见的那四句话有**唯一一个家**（〔CP2b〕文案表 `backendPolicy.exit.*`；TS 那侧 `src/frontend/ui/backend-policy.ts` 按名字取）。
+//! 用户可见的那四句话有**唯一一个家**（文案表 `backendPolicy.exit.*`；TS 那侧 `src/frontend/ui/backend-policy.ts` 按名字取）。
 //!
 //! ⚠⚠ **「无人监护」这半是用户裁定的一半，不许省**（`DECISIONS` `K14` 逐字：
 //! 「第一档必须在 UI 上如实说『继续跑，无人监护』，这是本裁定的一半，
@@ -48,14 +48,14 @@ use crate::inbound_client;
 use crate::origin::Origin;
 use serde_json::{json, Value};
 
-// 〔CP2b · 第四波〕这里原来有退出行为的四句（`EXIT_*`）、崩溃读数的四句（`HEALTH_*`）与它们的两张对拍表
+// 这里原来有退出行为的四句（`EXIT_*`）、崩溃读数的四句（`HEALTH_*`）与它们的两张对拍表
 //   （`EXIT_COPY` / `HEALTH_COPY`）和表的清单（`CROSS_LANGUAGE_COPY`）—— Rust 这一份「只为与 TS 那份逐字对拍而存在」，
 //   非 test 构建里没有读者（gate `deadcode` 那 11 条）。文案表立起来之后两侧读**同一条表项**，第二份副本与逐字对拍一起删。
-// 〔PB1 · `设计/90 §4` 阶段 B〕崩溃读数那三档的**判定**也搬到了这里（[`health_face`]，唯一一份）：
+// 崩溃读数那三档的**判定**也搬到了这里（[`health_face`]，唯一一份）：
 //   后端出「健康」那一格的成品（状态 ＋ 格子里那一句 ＋ ⓘ ＋ `[详情]`），界面只排版。TS 那份三档与这里原来那份
-//   同逻辑的第二份一起并掉；那几句的 key 随之归本文件的面（`rsBackendPolicy.health.*`，`设计/91 §5.5`）。
+//   同逻辑的第二份一起并掉；那几句的 key 随之归本文件的面（`rsBackendPolicy.health.*`）。
 
-// 〔C4c · 第四波 4B〕界面那两条（问 / 改那台机器上的值）的期限 `EXIT_POLICY_BUDGET`〔散文墓碑〕随那两条 Tauri 命令一起走了：
+// 界面那两条（问 / 改那台机器上的值）的期限 `EXIT_POLICY_BUDGET`〔散文墓碑〕随那两条 Tauri 命令一起走了：
 //   设置页经通道直接问后端（期限同值 10 秒，住 `settings/backend-section.ts`）。
 
 /// monitor 退出臂那一问的期限。**monitor 正在退**：问不到就按缺省办，不许把退出拖住。
@@ -63,7 +63,7 @@ use serde_json::{json, Value};
 const EXIT_ASK_BUDGET: std::time::Duration = std::time::Duration::from_millis(1500);
 
 /// 发送口（形状照 `frame_query::call`）：没通道 / 旧后端不认 / 调用失败，各说各的话。
-/// 〔C4c · 第四波 4B〕今天只剩一个调用方 —— 退出臂那一问（[`kill_on_exit_now`]，**monitor 自己的事**，不是替界面转）；
+/// 今天只剩一个调用方 —— 退出臂那一问（[`kill_on_exit_now`]，**monitor 自己的事**，不是替界面转）；
 /// 界面那两条（问 / 改）改走通道了。
 async fn exit_policy_call(
     origin: &Origin,
@@ -108,7 +108,7 @@ fn said(r: Routed) -> String {
     }
 }
 
-// 〔C4c · 第四波 4B〕〔B2〕那两条 Tauri 命令（问「退出行为」那个值 · 交那台机器写它：`backend_exit_policy` /
+// 那两条 Tauri 命令（问「退出行为」那个值 · 交那台机器写它：`backend_exit_policy` /
 //   `set_backend_exit_policy`〔散文墓碑〕）退役：它们只在「拦空白名 ＋ 转一条 `exit-policy-read` / `exit-policy-set` ＋ 原样交回」，
 //   解释本来就在界面那一侧（`settings/backend-section.ts::readExitAnswer`）⇒ 设置页经通道直接问，本机与远端同一条路。
 
@@ -117,7 +117,7 @@ pub(crate) fn kill_from_answer(data: &Value) -> Option<bool> {
     data.get("killOnExit").and_then(Value::as_bool)
 }
 
-/// 〔B2 · `§3.3b ④`〕**monitor 退出臂在决定那一刻现问一次**：这台机器要不要跟着结束。
+/// 〔`§3.3b ④`〕**monitor 退出臂在决定那一刻现问一次**：这台机器要不要跟着结束。
 ///
 /// 只问、不记：每次调用都真发一条 `exit-policy-read`，本模块没有任何地方存它的答案。
 /// 问不到（没通道 / 超时 / 旧后端）⇒ **按缺省（不结束）办，并出声** —— 那不等于有人这么选过。
@@ -183,8 +183,8 @@ pub fn kill_on_exit_now(origin: &Origin) -> bool {
 // `local_backend.rs::supervise_with_stdio`（读到 EOF 那一拍）。
 // 两处**都不在本件写区** ⇒ 交回里逐字点名，由 PM 落。
 // ⇒ **本段今天证的是「判据分得开、账写得下、写不进去会出声」，证不了「它已经被调用过」。**
-// 〔K-P3b〕上面那两处后来接上了（`DEATH_RECORD_SITES` 逐处点名）；读数经 `backend_status` 上界面，
-//   〔PB1〕那一格的成品由 [`health_face`] 出。
+// 上面那两处后来接上了（`DEATH_RECORD_SITES` 逐处点名）；读数经 `backend_status` 上界面，
+// 那一格的成品由 [`health_face`] 出。
 // ══════════════════════════════════════════════════════════════════════════
 
 /// 那个进程**怎么没的** —— 这一维只装这一件事。
@@ -343,11 +343,11 @@ pub fn death_kind(d: &Death) -> String {
 /// Windows 的 `STATUS_CONTROL_C_EXIT`：进程被**控制台事件**（Ctrl+C / Ctrl+Break / 关控制台窗口）
 /// 打死时的退出码。按 `i32` 读（`ExitStatus::code()` 的视角）是 `-1073741510`。
 ///
-/// 〔S5 · 第四波 · `设计/00 §1.5.3` 死亡账说人话〕平台无关地比：POSIX 上的退出码只有 0–255，
+/// 〔死亡账说人话〕平台无关地比：POSIX 上的退出码只有 0–255，
 /// 这个值在构造上不会出现 ⇒ 不需要 `cfg`。
 pub const STATUS_CONTROL_C_EXIT: u32 = 0xC000013A;
 
-/// 上面那个码的人话（`00 §1.5.3` 逐字）。进界面（`last_brief`）也进日志（`ledger_line`），同一个来源。
+/// 上面那个码的人话。进界面（`last_brief`）也进日志（`ledger_line`），同一个来源。
 pub static CONSOLE_CTRL_EXIT_SAID: std::sync::LazyLock<String> =
     std::sync::LazyLock::new(|| copy_text("rsBackendPolicy.death.consoleCtrl", &[]));
 
@@ -377,7 +377,7 @@ pub fn exit_status(d: &Death) -> String {
 
 /// 账行破折号后面那一截：**只摆证据的详情**（短摘要 = 判定 ＋ 退出状态，见 [`last_brief`]）。四条两两不同。
 ///
-/// 〔PB1 · `设计/90 §4` 阶段 B · `70 §2.3`〕原来每条还带处方与论证（「先看它拒的是什么」「重起帮不上忙」…），删了。只进日志。
+/// 原来每条还带处方与论证（「先看它拒的是什么」「重起帮不上忙」…），删了。只进日志。
 pub fn death_detail(d: &Death) -> String {
     match d {
         Death::NeverStarted { reason, looked_at } => format!(
@@ -398,8 +398,8 @@ pub fn death_detail(d: &Death) -> String {
 /// 界面上「最后一次」那一格：**判定 ＋ 退出状态**，一句短话（如「崩了，exit -1073741819」；
 /// 认得的码说人话，见 [`exit_code_said`]）。
 ///
-/// 〔第四波 ST2 · 步 7〕它替掉的是原来直接进界面的整条 [`ledger_line`]：那是**日志行格式**
-///（`[死亡账] origin=… 判定=… 退出状态=… —— …`），`70 §2.4` 逐字禁它进界面。
+/// 它替掉的是原来直接进界面的整条 [`ledger_line`]：那是**日志行格式**
+///（`[死亡账] origin=… 判定=… 退出状态=… —— …`），禁它进界面。
 /// 细节（证据、该怎么办）留在日志那一行里，界面上要看就去「日志」。
 pub fn last_brief(d: &Death) -> String {
     format!("{}，{}", death_kind(d), exit_status(d))
@@ -485,7 +485,7 @@ pub struct Health {
     pub misread: u32,
     /// 最后落在账上的那一行（**日志行格式**，只给日志与判据用）。
     pub last: Option<String>,
-    /// 〔ST2 · 步 7〕最后那一次的**短摘要**（[`last_brief`]）—— 进界面的只有这一格。
+    /// 最后那一次的**短摘要**（[`last_brief`]）—— 进界面的只有这一格。
     pub last_brief: Option<String>,
 }
 
@@ -594,15 +594,15 @@ pub enum HealthState {
     Crashed,
 }
 
-/// 〔PB1 · `设计/90 §4` 阶段 B · `设计/70 §2.3`〕设置页「健康」那一格的**成品** —— 界面只排版，不判。
+/// 设置页「健康」那一格的**成品** —— 界面只排版，不判。
 ///
 /// 线上就是这四个键（`backend_status` 的 `health`；形状由金样 `tests/__fixtures__/backend-health.golden.json`
-/// 两侧同读钉住）。四个计数与账行**不上线**：界面拿不到原料，也就没法再判一遍（`90 §3`「前端不做判定」）。
+/// 两侧同读钉住）。四个计数与账行**不上线**：界面拿不到原料，也就没法再判一遍（「前端不做判定」）。
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
 pub struct HealthFace {
-    /// 哪一档。`70 §2.2`「区分保留，用界面状态表达，不用散文表达」—— 界面挂到 DOM 状态上。
+    /// 哪一档。「区分保留，用界面状态表达，不用散文表达」—— 界面挂到 DOM 状态上。
     pub state: HealthState,
-    /// 格子里那一句（`70 §2.3`：「— 无记录」/「⚠ 崩过 N 次 · 最后一次：<判定，退出状态>」）。
+    /// 格子里那一句（「— 无记录」/「⚠ 崩过 N 次 · 最后一次：<判定，退出状态>」）。
     pub summary: String,
     /// ⓘ 里那条完整区分（「无记录 ≠ 没崩过」）。只有「无记录」有。
     pub why: Option<String>,
@@ -614,8 +614,8 @@ pub struct HealthFace {
 ///
 /// ⚠ 第一档的判准是「**这本账上一条记录都没有**」（[`Health::seen`] `== 0`），不是 `crashed == 0`。
 /// 写成后者的话，一台从来没被记过的机器会被说成「一次都没崩过」——
-/// 那正是 `§0-1` 点名不许混用的那两句话（`设计/70 §2.2`）。
-/// 「崩过」那一句接的是**短摘要**（[`last_brief`]），不是账行（日志行格式只落日志，`70 §2.4`）。
+/// 那正是 `§0-1` 点名不许混用的那两句话。
+/// 「崩过」那一句接的是**短摘要**（[`last_brief`]），不是账行（日志行格式只落日志）。
 pub fn health_face(h: &Health) -> HealthFace {
     if h.seen() == 0 {
         return HealthFace {

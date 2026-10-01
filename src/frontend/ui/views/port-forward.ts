@@ -1,7 +1,7 @@
 /**
  * F58：本地端口转发(-L)管理台。overlay 面板(照 SFTP panel 范式,body-level fixed)——
  * 列当前转发 + 加转发表单(选主机/本地端口/远端 host:port)+ 启停 + 刷新。
- * 〔MIG-1 · `设计/99 §2.1 ⑬`〕转发账住本机常驻后端：起 / 停 / 列经通道直接问它（`../port-forward-reads.ts`），
+ * 转发账住本机常驻后端：起 / 停 / 列经通道直接问它（`../port-forward-reads.ts`），
  * 转发走本机后端池里到那台的 SSH 连接（复用连接大脑）。
  */
 import { showActionFailureToast } from "../error-toast";
@@ -174,7 +174,7 @@ class PortForwardPanel {
       return;
     }
     try {
-      // 〔MIG-1 续〕那台的配置（＋ 跳板那一台）一并交：它的流没起来时本机后端按配置自己拨，不拒。
+      // 那台的配置（＋ 跳板那一台）一并交：它的流没起来时本机后端按配置自己拨，不拒。
       const machine = this.hosts.find((h) => hostKey(h) === origin) ?? null;
       const jumpName = machine?.jump.trim() ?? "";
       const jump = jumpName ? (this.hosts.find((h) => hostKey(h) === jumpName) ?? null) : null;

@@ -9,7 +9,7 @@
 //! 功能看起来一样、门禁全绿，而「不许往别人的 tmux 里打字」那道门没了。
 //! 这条路此前由 monitor 的 `tmux_backend_gate_guard`（前提触发器）挡着。
 //!
-//! **判定本身不在这里** —— 在 [`super::gate_rules`]（〔THIN〕monitor 那一侧的门删了，共享 crate `gate-core` 收回本层）。
+//! **判定本身不在这里** —— 在 [`super::gate_rules`]（monitor 那一侧的门删了，共享 crate `gate-core` 收回本层）。
 //! 本模块只负责这一侧的**承载**：怎么把 `@ccm_sid` 从本机 tmux 取回来。
 //!
 //! # ★ 用 `#{session_id}` 当句柄，把 TOCTOU 窗口关掉
@@ -143,7 +143,7 @@ const PROBE_FMT: &str = "#{session_id}\t#{@ccm_sid}\t#{session_windows}";
 /// （`$<数字>` / `[A-Za-z0-9_-]` / 正整数）。
 /// ⇒ 本处的**过溢只可能来自「有人手工把 `@ccm_sid` 设成含 TAB 的值」或格式串被改**，
 /// 那两种都该拒 ⇒ 既有的 fail-closed 处置是对的，**本拍不动它**。
-/// 那条误伤是真的、但只在 `tmux-list` 的解析那一处（〔MIG-1 续〕今天住 `observe/tmux_list.rs::rows`，见该处头注）。
+/// 那条误伤是真的、但只在 `tmux-list` 的解析那一处（今天住 `observe/tmux_list.rs::rows`，见该处头注）。
 const PROBE_FMT_FIELDS: usize = 3;
 
 /// 跑一次 `tmux display-message -p -t <target> '<fmt>'` 并把 stdout 取回来。

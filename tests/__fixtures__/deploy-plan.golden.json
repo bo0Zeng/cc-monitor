@@ -1,5 +1,5 @@
 {
-  "_doc": "〔MIG-3b〕帧命令 deploy-plan 的线上形状（4d-lanes MIG-3b 第 1 条：部署决策进后端、monitor 只放字节）。后端 deploy_plan_tests::the_plan_frame_has_exactly_the_golden_keys 核键集 == 真产出；monitor sftp.rs 的 decode_plan 读同一份（sftp_tests::the_plan_decoder_reads_the_golden）。值是结构占位。〔MIG-3b 续〕ack = 问 uname 那一趟拨号的 DialAck 原样（monitor 按它固化指纹）。〔WF2〕leftovers = 落点目录里没人要的上传残件（家目录相对），monitor 照删。",
+  "_doc": "帧命令 deploy-plan 的线上形状（部署决策进后端、monitor 只放字节）。后端 deploy_plan_tests::the_plan_frame_has_exactly_the_golden_keys 核键集 == 真产出；monitor sftp.rs 的 decode_plan 读同一份（sftp_tests::the_plan_decoder_reads_the_golden）。值是结构占位。ack = 问 uname 那一趟拨号的 DialAck 原样（monitor 按它固化指纹）。leftovers = 落点目录里没人要的上传残件（家目录相对），monitor 照删。",
   "product": {
     "action": "keep",
     "arch": "x86_64",

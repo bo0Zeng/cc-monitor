@@ -119,7 +119,7 @@ GATE: OK —— 13 格全绿
 
 🔴 **PM 单子上那个数今天是旧的：不是 4 条，是 3 条。**
 
-单子逐字：「真相源 `daemon_kill.rs::CREATION_PATHS`（遍历现算）**今天 4 条**：daemon 两条
+单子逐字：「源头 `daemon_kill.rs::CREATION_PATHS`（遍历现算）**今天 4 条**：daemon 两条
 （`control/launch.rs` · `control/ccm/plan.rs`）＋ `account_usage.rs` ＋ `session-backend.ts`」。
 
 现打（`89ce650` 的盘上，`daemon_kill.rs` 里那张表逐行解析）：
@@ -271,7 +271,7 @@ CREATION_PATHS 条目： ['remote-daemon-proto/src/control/launch.rs',
 4. **同职的地方都治了吗** —— 「③ 在等一个已到的决定」这句陈账，现打**两处**
    （`history.rs:1534` 那段 · `parity_ledger.rs` 的 `launch.render-cli` 行），**两处都撤了**；
    `parity_ledger.rs` 的 `launch.render-payload` 行同拍补了今天版。
-   ⚠ 我**没有**去全仓搜第三处（`ROADMAP U10` 那侧不在写区）—— **没搜就是没搜**，已报 PM。
+   ⚠ 我**没有**去全仓搜第三处（那侧不在写区）—— **没搜就是没搜**，已报 PM。
 
 ## `M2` / `M3` —— 交回态两趟（`M2` 红了一格，红得对）
 

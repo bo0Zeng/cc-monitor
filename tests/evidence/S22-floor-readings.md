@@ -41,7 +41,7 @@ truthRows: 83   boxRows: 90   rememberRows: 3   stormTrials: 8   corpusTrials: 4
 | `git log -S "Math.max(24" -- src/height-estimate.ts` | 只有两条：`ea4778eb`（引入）与 `7f8abecf`（同日改常数时**没动它**，只在别处加了说明） |
 | `git show ea4778eb -- src/height-estimate.ts` | 引入那一版 `applyIntrinsicSize` 只有 6 行，`Math.max(24, …)` **没有任何注释**，commit message 通篇（含"vitest 30 / xvfb E2E 三场景"）**一个字都没提这个下限** |
 | `git blame -L 339,345 src/height-estimate.ts` | 代码行 = `ea4778eb`（2026-07-07 **11:00:54**）；上面那行注释「24px 下限：单行文本卡的最小合理占位，防 0/负值」= `aaf9bf68`（2026-07-07 **11:35:25**）——**晚 35 分钟**，来自「F38 审计闭环」那一批 |
-| `grep -rn "contain-intrinsic-size\|地板\|下限" 调研/设计/17-算法与复杂度.md` | 全文**只有一处**提到 `contain-intrinsic-size`（`:133`，说的是 120px 兜底）。**设计文档从来没有规定过这个地板，也没有任何读数支持它** |
+| | 全文**只有一处**提到 `contain-intrinsic-size`（`:133`，说的是 120px 兜底）。**设计文档从来没有规定过这个地板，也没有任何读数支持它** |
 
 **如实说**：24 不是量出来的。它与同一次提交里 `card-api-retry` 的常数（当时也是 24，
 `aaf9bf68` 的 commit message 自陈那是**按 border-box 手算**的）同值 —— 最可能的来历是
@@ -49,7 +49,7 @@ truthRows: 83   boxRows: 90   rememberRows: 3   stormTrials: 8   corpusTrials: 4
 padding 的 border-box 值**，真值是 content-box 的 **17.05**。
 
 ⇒ **地板的出处，是一个今天已经被判错的数。** 注释里的「最小合理占位」当时没有对应读数
-（`设计/17 §5.3` 自己承认过「120px 兜底与真高的偏差今天没有任何读数」），现在有了，见 ③。
+（自己承认过「120px 兜底与真高的偏差今天没有任何读数」），现在有了，见 ③。
 
 ---
 
@@ -277,7 +277,7 @@ border-box 23.05 / 23.00，都是 `card-api-retry`。
 - **代价（大，且是坏结构）**：`applyIntrinsicSize` 只拿得到 `HTMLElement`，
   要分档就得在它里面**再做一次 class 判定** —— 而 class 判定已经整套住在
   `estimateStreamNodeHeight` 里了。⇒ 同一份 class 知识落两处，
-  下次加卡型要改两个地方，正是 `设计/17 §2.2` 那条"下次加新卡型又静默落回兜底"的复发形状。
+  下次加卡型要改两个地方，正是那条"下次加新卡型又静默落回兜底"的复发形状。
 - **而且它解决的问题不存在**：分档下限的正确值，就是各 class 常数本身
   （17/19/19/…），而那些常数**已经是** `estimateStreamNodeHeight` 的返回值。
   ⇒ 分档等于把常数抄第二遍。**不推荐。**
@@ -374,7 +374,7 @@ api-error 70.7/69.8）⇒ 这套算法确实是门禁那一套。
    但 CSS 是 `white-space: nowrap; overflow: hidden` ⇒ **再长的文案也只有一行**，
    这一条把前提的风险压得很小。
 3. **D 段的重试风暴是合成的**（同一张卡 clone 300 次）。真实风暴里卡型会混杂。
-4. **没量"一次强制布局多少钱"**（`设计/17 §5` 第 2 条），也没量改地板对
+4. **没量"一次强制布局多少钱"**，也没量改地板对
    `materializeUntilFilled` 补批轮次的影响（那归秤 3）。
 5. `checkVisibility({contentVisibilityAuto:true})` 两个引擎都不可信（见 ②·2.3），
    本报告一律以高度读数为准；**"到底 skip 没 skip"这一格没有独立证据**。

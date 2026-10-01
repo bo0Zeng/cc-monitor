@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """RT1 · 在 Linux 上交叉编出 Win11 虚拟机真机测试要的全部 Windows 字节（本机侧跑）。
 
-守的要求：用户裁决 V115 逐字「能，用虚拟机」——「Win11 虚拟机可以当真机测试资源」。
+守的要求：「能，用虚拟机」——「Win11 虚拟机可以当真机测试资源」。
 本脚本只产字节，不碰虚拟机（拷过去、起、收是 `RT1-vm.py` 的事）。
 
 配方与 `tests/scripts/re-embed.sh::do_native` 同一条（后端 / 全景小程序 `--release --locked`，
@@ -11,7 +11,7 @@
 ⚠ monitor 本体两处与 `cargo build` 裸跑不同，都照发版那一条补上：
   · `--features tauri/custom-protocol`：`cargo tauri build` 替你加的那一格；不加 ⇒ exe 去连 `devUrl`
     （`localhost:24174`），窗口里是一张「拒绝连接」页（2026-09-25 现打过一次）。
-  · 〔WIN1〕`[lib] crate-type` 从前要在这里**临时**收成 `["rlib"]`（`-gnu` 交叉链接 `monitor_lib.dll`
+  · `[lib] crate-type` 从前要在这里**临时**收成 `["rlib"]`（`-gnu` 交叉链接 `monitor_lib.dll`
     报 `export ordinal too large`，RT1 F1）；WIN1 已把它在 `Cargo.toml` 里收成 `["rlib"]`（全仓没有移动端，
     `cdylib` / `staticlib` 零消费者），门禁 `winlink` 那一格真链接 ⇒ 这里只**核**它还是 `["rlib"]`，不再改文件。
 

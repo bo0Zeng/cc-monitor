@@ -18,7 +18,7 @@
 use super::*;
 
 /// 从一行 JSON 文本读一份**组好的**请求（`DialRequest` 自己的反序列化 —— 生产上线交来的是一台机器的原样配置，
-/// 〔MIG-1 收尾〕经 `machine::resolve` 组成这一形之后走的也是这一份）。
+/// 经 `machine::resolve` 组成这一形之后走的也是这一份）。
 fn parse_request(raw: &str) -> Result<DialRequest, serde_json::Error> {
     serde_json::from_str(raw.trim())
 }
@@ -102,7 +102,7 @@ fn dial_locality(corpus: &[(String, String)]) -> Result<usize, String> {
 /// 裸 `read_dir` 的扫描型判据会**在自己的登记表 / 注释 / 常量里找到自己** ⇒ 恒绿，
 /// `audit-0805` 实测过五次，五次都不是被判据自己逮到的。
 ///
-/// ⚠⚠ **那个「代价」今天不存在，而这一段先前把它当现状写着**〔`P4` 2026-09-21〕。
+/// ⚠⚠ **那个「代价」今天不存在，而这一段先前把它当现状写着**。
 /// 先前逐字：「`scan_tree!` 按构造摘除调用者自己那一份 —— 也就是 `dial/mod.rs`
 /// 不在它返回的人群里」。两处都假：
 /// ① 自摘那一刀**在这一处不生效**（判据由 `#[path]` 挂载 ⇒ `file!()` 是带 `..`
@@ -153,7 +153,7 @@ fn the_dial_only_happens_under_dial_home() {
     }
 }
 
-/// ★ **拨号真的接得到 —— 不只是「代码住在这儿」**（`7u` 探针逮出来的那一格，〔SR1a〕换了入口）。
+/// ★ **拨号真的接得到 —— 不只是「代码住在这儿」**（`7u` 探针逮出来的那一格，换了入口）。
 ///
 /// C2 那一版的入口是 `main.rs` 里那条 `--dial` 分派臂（实打：摘掉那条臂，`dial/` 一个字不动，
 /// backend 侧判据一条都不红 —— 「住在哪」断不了「接没接上」）。SR1a 之后入口换成**流上的链路四条**：
@@ -329,27 +329,27 @@ async fn the_ack_is_exactly_one_newline_terminated_line() {
     assert!(s.ends_with('\n'), "ack 没有以换行收尾：{s:?}");
     let v: serde_json::Value = serde_json::from_str(s.trim()).expect("ack 不是合法 JSON");
     assert_eq!(v["ok"], serde_json::Value::Bool(true));
-    // 〔VIS2 · `设计/15 §3.4 ①`〕逐地址指纹那一格（additive）。
+    // 逐地址指纹那一格（additive）。
     assert_eq!(
         v["fingerprints"],
         serde_json::json!({"a:22": "SHA256:x", "b:22": "SHA256:y"})
     );
-    // 〔MIG-1 收尾〕结构化的胜者与「这一趟是否严格校验」（界面据它记 last-good、判要不要自动固化，不再自己解析地址 / 重推指纹规则）。
+    // 结构化的胜者与「这一趟是否严格校验」（界面据它记 last-good、判要不要自动固化，不再自己解析地址 / 重推指纹规则）。
     assert_eq!(v["winner"], serde_json::json!({"host": "h", "port": 22}));
     assert_eq!(
         (v["strict"].as_bool(), v["jump_strict"].as_bool()),
         (Some(true), Some(false))
     );
-    // 〔FIX · `99 §2 ㊶`〕跳板那一台自己那一格（additive）。
+    // 跳板那一台自己那一格（additive）。
     assert_eq!(
         v["jump_fingerprints"],
         serde_json::json!({"j:22": "SHA256:j"})
     );
-    // 〔WF2〕开通道被回拒的原因码（additive；界面据它分「不许端口转发」与「口上还没人」）。
+    // 开通道被回拒的原因码（additive；界面据它分「不许端口转发」与「口上还没人」）。
     assert_eq!(v["open_refused"], "administratively_prohibited");
 }
 
-/// 〔WF2〕要求住址：`第四波记录/WIN3.md §2` 读数 E（`AllowTcpForwarding no` ⇒ 控制隧道被拒、界面每分钟新拨 33 条）。
+/// （`AllowTcpForwarding no` ⇒ 控制隧道被拒、界面每分钟新拨 33 条）。
 /// 开通道失败的原因码 == RFC 4254 §5.1 那张表（期望逐格取自 RFC 原文的码名，异源于实现）；不是开通道失败 ⇒ 不给码。
 #[test]
 fn channel_open_failures_map_to_the_rfc_reason_words() {
@@ -380,7 +380,7 @@ fn channel_open_failures_map_to_the_rfc_reason_words() {
     guard_core::find_pinned(&prod, "DialAck::open_refused(").expect("装原因码的 ack 不是恰好一处");
 }
 
-/// 〔C2〕v2 的字段全是可选的：老界面（v1 六个字段）发来的请求照样读得动，而且用法缺省是长流。
+/// v2 的字段全是可选的：老界面（v1 六个字段）发来的请求照样读得动，而且用法缺省是长流。
 /// 新字段按蛇形键读：`use` / `endpoints` / `jump` / `capture` / `forward` / `stages` / `probe`。
 #[test]
 fn a_v2_request_reads_and_a_v1_request_still_reads() {
@@ -436,9 +436,9 @@ fn a_v2_request_reads_and_a_v1_request_still_reads() {
         ("stream", Use::Stream),
         ("capture", Use::Capture),
         ("forward", Use::Forward),
-        // 〔SR1b〕受限的远端文件一问一答（部署）。
+        // 受限的远端文件一问一答（部署）。
         ("files", Use::Files),
-        // 〔HOST〕到远端常驻后端监听口的隧道。
+        // 到远端常驻后端监听口的隧道。
         ("tunnel", Use::Tunnel),
     ] {
         let raw = format!(
@@ -455,7 +455,7 @@ fn a_v2_request_reads_and_a_v1_request_still_reads() {
         5,
         "`uses` 与 `Use` 的变体必须一一对应（两向：上面逐个读过，这里数一遍）"
     );
-    // 〔HOST · H1〕隧道：目标口读得进来；它走不占 `MaxSessions` 的那一道（与 `forward` 同，`05 §13.5`）。
+    // 隧道：目标口读得进来；它走不占 `MaxSessions` 的那一道（与 `forward` 同）。
     let tun = r#"{"host":"h","port":1,"user":"u","key_path":null,"host_key_fingerprint":null,"use":"tunnel","tunnel_port":49999}"#;
     assert_eq!(parse_request(tun).unwrap().tunnel_port, Some(49999));
     assert_eq!(
@@ -463,7 +463,7 @@ fn a_v2_request_reads_and_a_v1_request_still_reads() {
         super::uses::Lane::Tunnel,
         "隧道占了 session 通道的格 —— 远端 MaxSessions 会被常驻那条流白白吃掉一格"
     );
-    // 原始子系统字节流刻意不认（〔SR1b〕SFTP 住本机后端，界面只拿 `files` 的一问一答与 `transfer-*`，
+    // 原始子系统字节流刻意不认（SFTP 住本机后端，界面只拿 `files` 的一问一答与 `transfer-*`，
     // 见 `dial/mod.rs` 头注）：读到它就是请求坏了。
     let sub = r#"{"host":"h","port":1,"user":"u","key_path":null,"host_key_fingerprint":null,"use":"subsystem"}"#;
     assert!(
@@ -472,7 +472,7 @@ fn a_v2_request_reads_and_a_v1_request_still_reads() {
     );
 }
 
-/// 〔C2〕ack 与阶段行的线上形状：ack 带 `v`/`uses`/`endpoint`；阶段行是 `{"stage":{"kind":…}}`，
+/// ack 与阶段行的线上形状：ack 带 `v`/`uses`/`endpoint`；阶段行是 `{"stage":{"kind":…}}`，
 /// `kind` 是 camelCase 的六个字面量（界面 `ConnectStage` 那一侧对拍）。
 #[tokio::test]
 async fn the_ack_and_the_stage_lines_have_the_shape_the_monitor_reads() {
@@ -530,7 +530,7 @@ async fn the_ack_and_the_stage_lines_have_the_shape_the_monitor_reads() {
     assert_eq!(
         ack["fingerprints"],
         serde_json::json!({}),
-        "〔VIS2〕失败的 ack 逐地址那一格恒空"
+        "失败的 ack 逐地址那一格恒空"
     );
     // 不要阶段 ⇒ 一个字节的阶段都不出
     let mut quiet: Vec<u8> = Vec::new();
@@ -560,7 +560,7 @@ fn a_dial_error_is_bucketed_into_a_stage_label() {
     assert_eq!(stage_of_russh(&russh::Error::Kex), "other");
 }
 
-/// ★ 〔NT1〕多开的判准只住一处（`dial/pool.rs`；要求住址 V23，见 `dial_pool_tests.rs` 头注 NT1 那一段 —— 行为判据在那边，这一条是源码面的）：`Family::dial_reason` 是生产段里唯一给出 `Why::` 的地方（`place` 只转述它），
+/// ★ 多开的判准只住一处（`dial/pool.rs`；，见 `dial_pool_tests.rs` 头注 NT1 那一段 —— 行为判据在那边，这一条是源码面的）：`Family::dial_reason` 是生产段里唯一给出 `Why::` 的地方（`place` 只转述它），
 /// 且 `Extra(` 只在 `place` 里造。针运行时拼。
 #[test]
 fn the_multi_open_judge_lives_in_one_function() {
@@ -611,10 +611,10 @@ fn the_multi_open_judge_lives_in_one_function() {
     assert!(place_fn.contains(extra.as_str()));
 }
 
-// ═══ 〔NT2 · A4〕capture 那一臂：被丢 ⇒ 远端那条通道被关 ═══════════════════════════════════════
+// ═══ capture 那一臂：被丢 ⇒ 远端那条通道被关 ═══════════════════════════════════════
 //
-// 守的要求（住址，纪律 19）：`设计/15 §3.2` 第 4 条红线（逐字）「复用后它占掉共享连接一个槽永不释放，局部卡死升级成全局卡死」·
-// `设计/05 §3.3.3`（逐字）「**本地撤单**与**对端撤活**是两件事」。现打与设计：`调研/第四波记录/NT2.md §0.1 旁支 · §1.2`。
+// 守的要求（住址，纪律 19）：红线（逐字）「复用后它占掉共享连接一个槽永不释放，局部卡死升级成全局卡死」·
+// 「**本地撤单**与**对端撤活**是两件事」。
 
 /// 一个记账的「写半边」：被关一次记一次。
 struct CountingHalf(std::sync::Arc<std::sync::atomic::AtomicUsize>);

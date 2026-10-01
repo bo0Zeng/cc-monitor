@@ -1,8 +1,8 @@
 /**
- * 要求住址：`设计/05 §9` 第 12 条「删会话 · 分叉仍经 monitor 这一跳转 …… 要先像广播那样收进后端，界面才谈得上直问」·
+ * 要求：「删会话 · 分叉仍经 monitor 这一跳转 …… 要先像广播那样收进后端，界面才谈得上直问」·
  * `§14.3` C 组（读会话正文 · 子 agent · 删会话 · 分叉「本机远端同一条路问那台后端」）。
  *
- * 〔MIG-3b〕界面经通道直说那台后端：分叉 `session-fork` · 删 `files-delete-session`（`src/frontend/ui/session-writes.ts`）。
+ * 界面经通道直说那台后端：分叉 `session-fork` · 删 `files-delete-session`（`src/frontend/ui/session-writes.ts`）。
  * ① 分叉成品两侧对拍：后端测试产出金样 `tests/__fixtures__/session-fork.golden.json`，这里的解码器读同一份（多一格 / 缺一格 / 类型不对 ⇒ 抛）；
  * ② 请求体恰是金样里那两格、发给调用方给的那一台、带期限；③ 删会话只交 sid。夹具只造结构，不含真会话。
  */

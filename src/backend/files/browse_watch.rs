@@ -1,8 +1,8 @@
-//! 〔步 24f · 2026-09-20〕**保鲜的另一半**：只给「用户正在浏览的那几个目录」挂 `inotify`。
+//! **保鲜的另一半**：只给「用户正在浏览的那几个目录」挂 `inotify`。
 //!
 //! # 为什么只挂几十个，而不是全挂
 //!
-//! 这不是取舍，是两条现打把路堵死了（`真相源/98 §3.2` 两行 ＋ `man 2 fanotify_init` 一手）：
+//! 这不是取舍，是两条现打把路堵死了（两行 ＋ `man 2 fanotify_init` 一手）：
 //!
 //! | 现打 | 值 |
 //! |---|---|
@@ -41,7 +41,7 @@
 //! - **平台不对等**，而这一格必须如实声明：Linux 走 `inotify`、Windows 走
 //!   `ReadDirectoryChangesW`、macOS 走 `FSEvents` —— 三家的语义（合并、延迟、
 //!   丢事件的条件）都不是一件事。逐 target 的声明住 `super::FRESHNESS`，
-//!   而 `设计/96 §2.9` 边界② 逐字要求**不许把它们判成相等**。
+//!   而边界② 逐字要求**不许把它们判成相等**。
 
 use std::path::{Path, PathBuf};
 
@@ -49,12 +49,12 @@ use std::path::{Path, PathBuf};
 ///
 /// # 这个数是怎么定的
 ///
-/// `设计/60 §3.5.2` 逐字「几十个 watch」。本机上限现打 **262 144**
-///（`真相源/98 §3.2`）⇒ 64 相对它是 **1/4096**，也就是说：
+/// 「几十个 watch」。本机上限现打 **262 144**
+///⇒ 64 相对它是 **1/4096**，也就是说：
 /// 即使有 4096 个这样的后端同时跑在一台机器上，也吃不满那个上限。
 ///
 /// ⚠ 判据那一侧**刻意用绝对量比**（`64 * 4096 <= 262144`），不写成百分比 ——
-/// `设计/17 §6.9` 那条现打逼出来的纪律：**闸不许比量具自身的分辨率还细**，
+/// 那条现打逼出来的纪律：**闸不许比量具自身的分辨率还细**，
 /// 而 `max_user_watches` 是个可以被管理员随手改成 8192 的整数。
 pub const MAX_BROWSE_WATCHES: usize = 64;
 
@@ -239,7 +239,7 @@ pub fn forget_all() {
 /// 重列一个目录是一次 `read_dir`，代价与目录里的项数同阶、与盘的大小无关。
 pub struct BrowseWatcher {
     inner: notify::RecommendedWatcher,
-    /// 〔W5-FILES〕此刻**真挂着** watch 的那几个目录（[`BrowseWatcher::sync`] 按它与名单算差分）。
+    /// 此刻**真挂着** watch 的那几个目录（[`BrowseWatcher::sync`] 按它与名单算差分）。
     armed: Vec<Vec<u8>>,
 }
 
@@ -265,7 +265,7 @@ impl BrowseWatcher {
         })
     }
 
-    /// 〔W5-FILES · `设计/60 §3.7`「要有人在后端进程里长期持有那个监听器」〕**跟着名单走**：
+    /// 〔「要有人在后端进程里长期持有那个监听器」〕**跟着名单走**：
     /// 名单上新来的挂上、离开的卸掉（按 [`Self::armed`] 算差分，留下的那几个不重挂）。
     /// 返回 `(此刻真挂着的个数, 这一趟挂不上的逐条原因)`。卸不掉的不算失败（那个目录多半已经没了）。
     pub fn sync(&mut self) -> (usize, Vec<String>) {
@@ -320,7 +320,7 @@ impl BrowseWatcher {
     }
 }
 
-/// 〔W5-FILES〕**进程里那一个监听器**（第一次 [`keep_watching`] 时起，此后一直持有 —— 它一被丢掉 watch 就没了）。
+/// **进程里那一个监听器**（第一次 [`keep_watching`] 时起，此后一直持有 —— 它一被丢掉 watch 就没了）。
 static LIVE: std::sync::Mutex<Option<BrowseWatcher>> = std::sync::Mutex::new(None);
 
 /// 一趟 [`keep_watching`] 的读数。
@@ -334,7 +334,7 @@ pub struct Watching {
     pub error: Option<String>,
 }
 
-/// 〔W5-FILES · `设计/60 §3.7` · `96 §2.9` 仍开着第一条〕让进程里那一个监听器跟上此刻的名单（[`set_browsing`] 之后调）。
+/// 〔仍开着第一条〕让进程里那一个监听器跟上此刻的名单（[`set_browsing`] 之后调）。
 ///
 /// 监听器起不来（例如 `inotify` 实例数到顶）⇒ `watching: 0`、`error` 说原因，下一趟再试 —— 不静默。
 /// ⚠ 买不到的与本模块头注同：watch 绑 inode 不绑路径 · 内核队列溢出 · 非 Linux 平台没量。

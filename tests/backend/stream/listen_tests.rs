@@ -1,4 +1,4 @@
-//! # 要求住址：`INVARIANTS §48.1`（本机常驻后端的监听口要钥匙；V121，用户 2026-09-25 拍板）
+//! # 要求住址：`INVARIANTS §48.1`（本机常驻后端的监听口要钥匙；，用户 2026-09-25 拍板）
 //!
 //! 核原文：`§48.1` 逐字「「有口没钥匙」⇒ **拒绝起**；空钥匙 ⇒ 按「没设」算；钥匙逐字节全等才算对」「三种拒法**出声且彼此可分**」——
 //! 本族 `a_port_without_a_token_is_refused` · `empty_strings_count_as_unset` · `an_empty_token_never_matches` · `tokens_match_is_exact` ·
@@ -74,7 +74,7 @@ fn both_present_gives_listen_mode() {
     );
 }
 
-/// 〔HOST · H4〕attach 行可带这条连接的流模式旗标：缺 ⇒ 用进程默认；只认 `STREAM_FLAGS` 里那几个，别的一律当 malformed。
+/// attach 行可带这条连接的流模式旗标：缺 ⇒ 用进程默认；只认 `STREAM_FLAGS` 里那几个，别的一律当 malformed。
 #[test]
 fn attach_flags_are_optional_closed_and_per_connection() {
     assert_eq!(attach_flags(r#"{"attach":"t"}"#), Ok(None));
@@ -138,7 +138,7 @@ fn tokens_match_is_exact() {
     assert!(!tokens_match("ABC", "abc"));
 }
 
-/// ★★ **分档表逐格钉死**。〔HOST · `设计/01 §3.3b ⑥`〕多客户：钥匙对上就交流（不再有「口被占着」那一格）。
+/// ★★ **分档表逐格钉死**。多客户：钥匙对上就交流（不再有「口被占着」那一格）。
 #[test]
 fn the_two_tier_split_is_pinned_cell_by_cell() {
     assert_eq!(admit(Verdict::Attach), Admit::Stream);
@@ -259,7 +259,7 @@ fn every_file_this_head_note_points_at_really_exists() {
         crate::guard_support::tests_root(),
         crate::guard_support::repo_root(),
         crate::guard_support::repo_root().join("src/frontend/shell/src"),
-        // 🔴 〔搬树 2026-09-18 · `设计/16 §5.4b` 纪律 3〕**monitor 也有第二棵树。**
+        // 🔴 〔搬树 2026-09-18 ·  纪律 3〕**monitor 也有第二棵树。**
         //    上一格（`src/frontend/shell/src`）接的是「头注点名 monitor 侧的裸文件名」那一形，
         //    而剖分之后 monitor 的判据整批住 `<repo>/tests/frontend/shell/`
         //    ⇒ 头注里那些 `X_tests.rs` 四个根一个都够不着，被读成「假住址」。
@@ -272,7 +272,7 @@ fn every_file_this_head_note_points_at_really_exists() {
             continue;
         }
         checked += 1;
-        // 〔RE〕`relay/xxx.rs` 是模块住址：`relay` 的根（`mod.rs` 所在）住 `src/comms/outward/`，非成员 door / listen 住 `src/backend/relay/`。
+        // `relay/xxx.rs` 是模块住址：`relay` 的根（`mod.rs` 所在）住 `src/comms/outward/`，非成员 door / listen 住 `src/backend/relay/`。
         let as_relay_module = w
             .strip_prefix("relay/")
             .is_some_and(|r| crate::guard_support::relay_root().join(r).exists());
@@ -295,7 +295,7 @@ fn every_file_this_head_note_points_at_really_exists() {
     // ★ 那条触发器**按名字**指得住：`single_stream_guard.rs` 必须被头注点到。
     assert!(
         head.contains("single_stream_guard.rs"),
-        "头注不再指名那条「多客户端的流」触发器 —— `K-P1 §2` 明确不做的那一半就只剩一句散文"
+        "头注不再指名那条「多客户端的流」触发器 —— 明确不做的那一半就只剩一句散文"
     );
     assert!(
         include_str!("../single_stream_guard.rs")
@@ -375,7 +375,7 @@ fn the_two_exit_codes_are_distinct_and_nonzero() {
     assert!(EXIT_ADDR_IN_USE > 0 && EXIT_BAD_LISTEN_CONFIG > 0);
 }
 
-/// 〔HOST · H2 · `设计/01 §3.3b ⑥`〕多客户：A 与 C 同时连着，A 走了不算「最后一个」；都走了才归零；同一个号走两次不重复扣。
+/// 多客户：A 与 C 同时连着，A 走了不算「最后一个」；都走了才归零；同一个号走两次不重复扣。
 #[test]
 fn the_last_client_is_the_last_of_all_connections_not_the_first_to_leave() {
     let mut c = Clients::default();

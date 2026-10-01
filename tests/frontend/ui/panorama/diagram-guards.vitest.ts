@@ -1,5 +1,5 @@
-// PN1b 选图（`设计/97 §7.2`）的**异源**判据：本仓的渲染器登记 / 诚实信号表，与 **vendored 上游 Rust 源码**逐项两向比。
-// 〔P7 · `99 §1` V158「线上契约由上游给、本仓不手抄」〕原 G3 / G4（手抄的 TS 镜像逐键对拍 vendored 源码）退役：
+// PN1b 选图的**异源**判据：本仓的渲染器登记 / 诚实信号表，与 **vendored 上游 Rust 源码**逐项两向比。
+// 〔「线上契约由上游给、本仓不手抄」〕原 G3 / G4（手抄的 TS 镜像逐键对拍 vendored 源码）退役：
 //   `types.ts` 成了生成物（上游 schema ＋ 小程序自己的应答，`tests/panorama-engine/cli_tests.rs::the_frontend_types_are_generated_from_upstream_and_this_program`
 //   逐字节对拍），没有手抄的镜像可比了。留下的 G1 / G2 比的不是类型，是本仓自己的两张表（渲染器 · 诚实信号那一行的人话）。
 //

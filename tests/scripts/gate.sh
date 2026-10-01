@@ -90,7 +90,7 @@
 # │   `tests/common/guard-core/test_tiers_tests.rs`（测试层分级：分区 ＋ 五层各一条反空真自检 ＋
 # │   `tests/benches/` 登记 ＋ 合成夹具自检，TQ1 09-24 第 29 格），判定（三方对拍 ＋ 两条逐字锚点）逐字写在
 # │   下面那一行 `run_gate test-tiers` 的内联脚本里。条数的唯一住址是那一行的 `pin`。
-# │ 〔自述·退役〕〔第四波 S4〕第 26 格 `f3-copy`（秤 F3 两向）连同它量的那条零流量复制一起退役：
+# │ 〔自述·退役〕第 26 格 `f3-copy`（秤 F3 两向）连同它量的那条零流量复制一起退役：
 # │   窗口的复制早已走后端 `files-copy`（F7a），池子里只剩传输 ⇒ 29 格 → 28 格。
 # │ 〔自述·现物〕`gate-selfdesc` 那一格的判据本体：`tests/evidence/K-R80-gate-cell-coverage.py`
 # │   （09-19 第 22 格）—— **被测对象就是本文件**。它默认读 `tests/scripts/gate.sh`，
@@ -102,7 +102,7 @@
 # │   `cargo check --all-targets`，target 是 `x86_64-pc-windows-gnu`，跑在
 # │   `src/backend` 那个 workspace 上（`K-R122` 09-14 第 18 格）。
 # │ 〔自述·现物〕`winlink` 那一格没有独立的判据文件 —— 它就是一趟 `cargo build --bins`，
-# │   target 是 `x86_64-pc-windows-gnu`，跑在 `src/frontend/shell` 那个 workspace 的 `-p monitor` 上（WIN1 第四波 4D 第 30 格）。
+# │   target 是 `x86_64-pc-windows-gnu`，跑在 `src/frontend/shell` 那个 workspace 的 `-p monitor` 上（WIN1 第 30 格）。
 # │ 〔自述·现物〕`deadcode` 那一格没有独立的判据文件 —— 它就是一趟 `cargo check -p monitor`
 # │   加一个递减棘轮，判定逐字写在下面那一行 `run_gate deadcode` 的内联脚本里（第 15 格）。
 # │ 〔自述·现物〕`tsc` 那一格没有独立的判据文件 —— 它就是一趟 `tsc --noEmit`
@@ -113,7 +113,7 @@
 # │
 # └─ 〔自述·射程〕完 ────────────────────────────────────────────────────────────
 #
-# 🔴 **〔量于 09-12·`K-R91`〕下面凡是点名 `ccm-acceptance` / `ccm-pretrust` 的段落，一律是
+# 🔴 **〔量于 09-12〕下面凡是点名 `ccm-acceptance` / `ccm-pretrust` 的段落，一律是
 #   量于 09-01 / 09-03 / 09-04 的历史账 —— 那两套 09-11 `K-R48` 第二拍随 `shared/ccm`
 #   一起删了，`tests/e2e/` 下现打双 `No such file`。**
 #   旧读数**刻意不删**（它们记着「当初为什么只挂两套」「`jq` 那块拦路石怎么解开的」），
@@ -136,7 +136,7 @@
 #   · `ccm-acceptance` 37.7 秒 · `ccm-pretrust` 35.6 秒
 # 分母：门禁基线墙钟 **148 秒**（09-01，同一沙箱，同一棵树，`k-g3-c1` target）。
 #
-# ⚠⚠ **那个 148 秒今天不能拿来跟本文件里任何新读数相减**〔`K-G7` 09-03〕：
+# ⚠⚠ **那个 148 秒今天不能拿来跟本文件里任何新读数相减**：
 #   它量于 **09-01 的旧镜像**、`k-g3-c1` 那个 target 目录、那一天的主干。
 #   本拍在 **`644ea0ce5c3d` 新镜像** + `k-p2` target（6.0 GB，热）上现打的同一趟基线是
 #   **45 秒**。⇒ 两个数分母不同，**差的 103 秒里有多少是镜像、有多少是 target 冷热、
@@ -238,7 +238,7 @@
 #       而 `cc-spawn-uplift` **今天仍挂不了**（沙箱那 1 条既有红，那是另一笔账 ——
 #       修它要动容器 locale，不在本件写区）。
 #
-# ⚠ **`jq` 哪天从镜像里没了，这两行是 fail-closed 的**（`K-G7 §4` 死值验现打）：
+# ⚠ **`jq` 哪天从镜像里没了，这两行是 fail-closed 的**（死值验现打）：
 #   把 `/usr/bin/jq` 挡掉再跑**整趟**门禁 ⇒ 那两格双双红、诊断原文里带着套件自己打的
 #   「需要 jq」、末行 `GATE: FAIL` ⇒ **不会退化成静默跳过**。
 #
@@ -327,7 +327,7 @@ printf '  ·    %-14s %s\n' "环境" "摘掉了 ${#gate_scrubbed[@]} 个从开�
 #
 # ## 题面：这道门此前**只有人手动跑**
 #
-# 现打（本拍复打，读数与 `真相源/92 §2.1.2` ①那条一致）：
+# 现打（本拍复打，读数与那条一致）：
 #   `grep -c 'bash tests/scripts/gate.sh' .github/workflows/ci.yml` ⇒ 落地前是 **0**；
 #   `.git/hooks/` 下零个非 sample 钩子；`tests/hooks/` 下当时只有一份 `pre-commit`，
 #   而那一份**默认是死的**（要人手 `git config core.hooksPath` 才活）。
@@ -497,7 +497,7 @@ gate_write_receipt() {
 # ⚠ 每行加 `  | ` 前缀是**承重的，不是排版**：被测命令的输出里要是自己打了一行
 #   `GATE: OK` 或 `  ok   xxx`，不带前缀就会**混进本脚本自己的裁决面**。
 #
-# ⚠ **它一个字都没碰任何一条判定**（`K-G3 §143` 硬边界：那五道门的口径不许动）——
+# ⚠ **它一个字都没碰任何一条判定**（硬边界：那五道门的口径不许动）——
 #   `fails+=` 的条件、包数自检、`0 passed 不是绿`，逐字原样。本段只加「印什么」。
 GATE_DIAG_KEY="${GATE_DIAG_KEY:-40}"
 GATE_DIAG_TAIL="${GATE_DIAG_TAIL:-30}"
@@ -548,7 +548,7 @@ GATE_DIAG_PAT='^(error|npm error|npm ERR!|thread .+ panicked|failures:|test resu
 #   ⚠ 去色只喂给 `grep`，也**只影响①段印出来的那几行**（印出来的是去色版，终端上更好读）；
 #     `$out` 本身一个字节没改，②仍拿它原样端。
 #
-# ⚠ **它一个字都没碰任何一条判定**（`K-G3 §143` 硬边界，与上面那段头注同一条）——
+# ⚠ **它一个字都没碰任何一条判定**（硬边界，与上面那段头注同一条）——
 #   `fails+=` 的条件、包数自检、`0 passed 不是绿`，逐字原样。本段仍然只改「印什么」。
 #   ★ **这句话有读数，不是自称**：`run_gate` / `run_gate_sum` / `run_e2e` 三块**整块 md5**
 #     在 `333fcde` 与本拍之间**逐字节相同**（`8d0ac685b949` / `a2da94965516` / `48f1c09cf1b0`），
@@ -606,14 +606,14 @@ gate_diag() {
 #   照退 0 ⇒ `n` 仍是 `test:dom` 的数 ⇒ 全绿。**`C7` 那条「0 passed 不是绿」，
 #   在 16/17 的面上是空的。**
 #
-# ⚠ **本参数不是判据，是分母** —— 它一个字都没改上面那两条自检（`K-G3 §2` 逐字禁止）。
+# ⚠ **本参数不是判据，是分母** —— 它一个字都没改上面那两条自检（禁止）。
 #   买的只有一件事：**那行绿不再自称它不是的东西**。PM 08-29 逐字承认过被它骗：
 #   「我这一整窗汇报里写的每一个 `npm 1512 passed`，读法都错了 —— 那不是
 #   『npm 门跑了 1512 个测试』，是『`test:dom` 这一个套件 1512 个』。」
 #   ⇒ 与 `K-R10` 给 `pb check` 那行加 `[$PB_WS]` 是同一条道理：
 #   **一行不带分母的读数，不论数字是几都不算数。**
 #
-# ⚠ `fails` 那两支**刻意没动**：`K-G3 §2` 写死「`0 passed 不是绿` 这条自检一个字不许改」。
+# ⚠ `fails` 那两支**刻意没动**：写死「`0 passed 不是绿` 这条自检一个字不许改」。
 #   代价如实记：**红的那一行今天仍不带分母。** 要补得连着改那条自检的字面，归 PM 裁。
 run_gate() {
   local name="$1"; local denom="$2"; shift 2
@@ -648,7 +648,7 @@ run_gate() {
 # 现打的分母（08-27，`cargo test -p <名> --lib` 逐个数）：
 #   `guard-core 24 · creds-core 18 · codex-token-core 3 · acct-core 9 · branch-core 8 ·
 #    gate-core 8 · shell-quote-core 1` ⇒ **71 条**，其中 **53 条是本件之前就有的存量**。
-#   ⚠〔09-18〕原文第三项是 `usage-core 11`，合计 **79**、存量 **61** —— 用量下线后那个 crate
+#   ⚠原文第三项是 `usage-core 11`，合计 **79**、存量 **61** —— 用量下线后那个 crate
 #     改建成 `codex-token-core`，现打 `cargo test -p codex-token-core --lib` = **3 条**
 #     ⇒ 合计 71、存量 53（存量 = 合计 − `K-H2a` 新开的 `creds-core` 18，两组数各自自洽）。
 #     （`--exclude` 与**包数都不变**：不是减 crate，是同一格换了被测对象 ⇒ 下面那条
@@ -656,7 +656,7 @@ run_gate() {
 #      `shared_crate_registry::the_gate_package_count_tracks_the_number_of_shared_crates`
 #      用 `find_pinned` 钉的就是那个前缀、**要求全文唯一**，抄一次它当场判红。现打栽过。）
 #
-# 〔TL1 · 4C 拍板 ③〕这里从前写着「`--exclude code-picture-core` 是承重的，不许删成裸 `--workspace`」——
+# 〔4C 拍板 ③〕这里从前写着「`--exclude code-picture-core` 是承重的，不许删成裸 `--workspace`」——
 #   08-27 现打那时 vendor 是 monitor 的 path 依赖，cargo 把它算成成员（`[workspace] exclude` 对 path 依赖不生效），
 #   裸 `--workspace` 会多拉进 vendor 那 25 条我们无权修的判据（`C7`「vendor 不动」）。
 #   RM1f 起 monitor 不再依赖它（链它的只剩 `src/panorama-engine`）⇒ 它不再是成员，那条 `--exclude` 只剩一条
@@ -752,7 +752,7 @@ run_gate_sum() {
 #   ⚠ 垫的条数**现算、不写死**：写死一个常数，哪天有人把 `GATE_DIAG_TAIL` 调到比它大，
 #     这条判据就静默退化成「②兜底了」，而输出长得一模一样。
 #
-# ★ 这是**新加的一格自检**，不是改了哪一道旧门 —— `K-G3 §143` 那五道门的判定口径逐字未动。
+# ★ 这是**新加的一格自检**，不是改了哪一道旧门 —— 那五道门的判定口径逐字未动。
 
 # ── `N-G2`（09-05）：断「**这一条判定还在判**」的六条（探针⑤–⑩） ──────────────
 #
@@ -765,7 +765,7 @@ run_gate_sum() {
 #   `gate_diag`、照旧印出哨兵 ⇒ 四条探针全都满意。**替身接住了，牙一口没咬到。**
 #
 #   ⚠ **这不是漂移，是当初就没人立过这一格**（`NG2D1` 查了五处，头注之外的独立证据三条）：
-#   `K-R22` 的题面逐字是「门禁红了**不说为什么红**」，`K-G3 §143` 又禁它碰任何一条判定
+#   `K-R22` 的题面逐字是「门禁红了**不说为什么红**」，又禁它碰任何一条判定
 #   （逐字：「不动那五道已有的门的判定口径」）；件文件 `KR22D3` 那张探针表把每条探针
 #   「专门盯的失效」写成 `gate_diag` 调用被删 / `D2` 那格退化 / 兜底那半塌掉，并把射程逐字
 #   写成「**`gate_diag` 本体 ＋ `run_gate` / `run_gate_sum` 两个失败支**，8 个调用点里的 2 个」；
@@ -936,7 +936,7 @@ run_gate worktree-clean '判过的条数（抽样的 4 个扩展名 `.sh`/`.mjs`
 #   不必去动真工作树。
 # ⚠ 本格的数是**数出来的**（每个 hook 文件 3 条 ＋ 8 条阳性对照），跟 `fmt` 那几格的
 #   「只有绿/红两态」不同 —— 往 `hooks/` 里加一份 hook，这个数会涨，那是对的。
-run_gate hooks '每个被跟踪的 hook 文件 3 条（盘上可执行 · 库里记着可执行位 · 语法过得了它自己声明的解释器）＋ 8 条阳性对照。⚠〔09-20 订正〕本行原先写着「现打 hooks/ 下 1 个文件 ⇒ 11」——那是个**手抄的份数**，而本拍加了 `tests/hooks/pre-push` 之后盘上是 2 份 ⇒ 14。同 `copy2` 那一拍的订正：**摘掉抄来的数**，份数以判据本体自己印的那一行为准（它每趟从 `git ls-files tests/hooks/` 现算）。hooks/ 之外的任何一棵树本行都盖不到' \
+run_gate hooks '每个被跟踪的 hook 文件 3 条（盘上可执行 · 库里记着可执行位 · 语法过得了它自己声明的解释器）＋ 8 条阳性对照。⚠本行原先写着「现打 hooks/ 下 1 个文件 ⇒ 11」——那是个**手抄的份数**，而本拍加了 `tests/hooks/pre-push` 之后盘上是 2 份 ⇒ 14。同 `copy2` 那一拍的订正：**摘掉抄来的数**，份数以判据本体自己印的那一行为准（它每趟从 `git ls-files tests/hooks/` 现算）。hooks/ 之外的任何一棵树本行都盖不到' \
          bash tests/scripts/hooks-are-runnable.sh
 
 # ── 量具的**还原那一跳**有没有把旧 mtime 搬回被测树（`K-R115` `KR115D1`，09-14，第 14 格）──
@@ -960,14 +960,14 @@ run_gate hooks '每个被跟踪的 hook 文件 3 条（盘上可执行 · 库里
 # ⚠ 本格是**唯一一格盖到 `evidence/`** 的门。那棵树在 `K-R80` 的登记里此前是
 #   「0 格覆盖，而这正是它的用途」（`[J3 陈账]` 死锁的泄压口）—— 本格落地之后那条登记要跟着改，
 #   随动逐处交回 PM，`tests/evidence/K-R115-deathvalue.md` 里点名。
-run_gate copy2 '`evidence/*.py` 里，`shutil` 保元数据复制族（copy2 · copytree · copystat）的**调用点**数，逐处判目的地；绿行那个数就是判过的调用点数。⚠ 〔`K-R122` 09-14 订正〕本行原先写着「现打 176 份」——那是从判据本体那句现算的分母**手抄**过来的第二份，而本件落地前盘上已经是 183、落地后 185 ⇒ **摘掉那个抄来的数**，份数以 `tests/evidence/K-R115-ruler.py` 自己印的那一行为准。⚠ 只看 `evidence/` 下的 `.py`，别的目录、别的语言、shell 串里的 `cp -a` 本行一概盖不到' \
+run_gate copy2 '`evidence/*.py` 里，`shutil` 保元数据复制族（copy2 · copytree · copystat）的**调用点**数，逐处判目的地；绿行那个数就是判过的调用点数。⚠ 本行原先写着「现打 176 份」——那是从判据本体那句现算的分母**手抄**过来的第二份，而本件落地前盘上已经是 183、落地后 185 ⇒ **摘掉那个抄来的数**，份数以 `tests/evidence/K-R115-ruler.py` 自己印的那一行为准。⚠ 只看 `evidence/` 下的 `.py`，别的目录、别的语言、shell 串里的 `cp -a` 本行一概盖不到' \
          bash -c 'python3 tests/evidence/K-R115-ruler.py'
 
 # ── `shellcheck`：**CI 独有的那一格收进门禁**（`K-R122` `KR122D2` 甲，09-14，第 17 格）──
 #
 # ## 题面：这一格在本门禁里**一格都没有**，而它在 CI 里是独立一个 job
 #
-# 〔散文墓碑 · 2026-09-18〕**下面这段立项理由今天已不成立，原话照留。**
+# 〔散文墓碑〕**下面这段立项理由今天已不成立，原话照留。**
 # 原话：「`K-R119`（09-14）推 `v3.8.0` 那一趟被 `release.yml` 自己的 `ci-gate` 拦下，
 # CI 五条红里有一条就是它：`e2e-smoke` job 的 `shellcheck --severity=error`
 # 报 `SC1081` 六处，全在 `tests/e2e/usage-probe-acceptance.sh`（一个叫 `FOR` 的函数，
@@ -1160,7 +1160,7 @@ run_gate ci-e2e-prereq '判过的 e2e 调用行数（`ci.yml` 的 `steps:` 里�
 #
 # 条 63 承诺三格平台，`G4`（上面 `platform` 那一格）已经把「**门禁盖到了哪几格**」对上了。
 # 但那一格读的是**本文件**，它答不了另一半：「**发版那趟真的为那几格产字节吗**」。
-# 两半必须分开，理由是硬的（`设计/96 §7.1.2` 现打）：三个落点全部 gitignore ⇒ **字节不进仓**，
+# 两半必须分开，理由是硬的（现打）：三个落点全部 gitignore ⇒ **字节不进仓**，
 # 三条产线**只由 `release.yml` 一个文件驱动** ⇒ 这张表的门禁**只能建在 `release.yml` 上**。
 # ⇒ 本格从 `19b` 起同时判：⑨ 承诺的平台 ↔ 产线两向相等、本文件里「编后端」的步骤 ↔ 登记
 #   两向相等、target triple 两向相等、runner 标签逐字；⑩ 每一处抠 `const BUILD_ID` /
@@ -1171,17 +1171,17 @@ run_gate ci-e2e-prereq '判过的 e2e 调用行数（`ci.yml` 的 `steps:` 里�
 #   另一处留在 `main.rs`（那里今天没有那个 const）⇒ 真发版会死在抽取上。本拍两件事一起做：
 #   住址收进 `env.CCM_BACKEND_IDENTITY_SRC`（一处），并让判据每趟实打核它指得到真东西。
 #
-# ── 〔`19c` 09-19〕⑬：产字节那条路的**本机那一端** ─────────────────────────────
+# ── ⑬：产字节那条路的**本机那一端** ─────────────────────────────
 # 同一条路，`19b` 收了云端那一端（产线 ＋ 吃字节的 `build.rs`），`19c` 收本机那一端：
 # 「bump 了 `BUILD_ID` 之后，谁把那两份内嵌字节重编回来」。在它之前那条配方**手抄在
 # `build.rs` 的 panic 文案里**，而且与发版那趟**不是同一条路**（`rust-lld` vs `zigbuild`）。
 # ⇒ 收成一条命令 `tests/scripts/re-embed.sh`，两侧配方由本格两向对拍。
 # 🔴 ⑬d 也有现物：步 8 全仓改名之后 `src/frontend/shell/.gitignore` 还写着 `/embedded-daemons/`
 #   与 `/native-daemon/` ⇒ **两个内嵌落点从那天起就没被挡住**（09-19 现打 `git check-ignore`
-#   两条都不命中），而 `设计/96 §7.1.2` 与 `release.yml` 文件头都还把「三个落点全部
+#   两条都不命中），而与 `release.yml` 文件头都还把「三个落点全部
 #   gitignore」当硬事实在用 —— 那句话在本拍之前是假的。
 # ⚠ **本格不因此变成「编译格」**：⑬ 一条字节都不编，⑬g 真跑的只是那条命令的 `--check`（只读）。
-run_gate release-gate '判过的条数（`release.yml` 上逐行印出来的 PASS：三条地板 ＋ ①触发得了 ②手工默认不发布 ③`env.PUBLISH` 字面 ④两处发布步骤的闸 ⑤CI 门的闸 ⑥两处发布步骤各自的正文来源 ⑦生成器排在发布步骤前面 ⑧生成器吐得出本版正文 ＋〔19b〕⑨产字节那条路（承诺的平台 ↔ 产线 · 编后端的步骤 ↔ 登记 · target triple ↔ 登记，三条都是**两向集合相等**；每条产线步骤在那个 job 里 count()==1；runner 标签逐字）⑩每一处抠 `const BUILD_ID`／身份戳界标的住址，逐处计数相等 ＋ **实打去读那份源码**、抠不出恰好一行就红 ⑪`build.rs` 那一侧「抠不到」是所有构建形态都响的失败（`unknown` 兜底从类型上消失）⑫本文件 `muslbuild` 裁词点名的工具链版本 == `release.yml` 真装的那两个 ＋〔19c〕⑬`BUILD_ID` bump 的同拍步骤 re-embed（`tests/scripts/re-embed.sh` 是出路的**唯一住址**，`build.rs::REEMBED_CMD` 逐字指着它；本机那条配方与 `release.yml` 产字节那一步**同源** —— target **两向集合相等** ＋ 旗标逐字相同；它铺的 arch ↔ `build.rs` 吃的 arch **两向集合相等**；三个内嵌落点 ↔ `src/frontend/shell/.gitignore` 里带机检锚的那几行**两向集合相等**；`build.rs` 那两个内嵌函数的出路各点名那条命令 ≥2 处、代码行里不许再手抄第二条产字节配方；mtime 那张安全网仍看**两份**源码；末一条**真跑** `re-embed.sh --check`，要有数）。⚠ 它**不执行 GitHub 的表达式求值器**，也**不跑那条流水线** ⇒ 「盘上这几份文本满足这几条」不等于「云端那一趟会绿」——⑨ 尤其如此：「登记的那一步在文件里」≠「那一步在 runner 上编得出字节」，更不等于「那份字节在目标机器上跑得起来」，真机那一维仍是**判不了**；⚠ 「往 Release 上写」只认两种形状（`softprops/action-gh-release` 的 `uses:` · `run:` 里的 `gh release`/`gh api …/releases`），换第三种路子上传它看不见；⚠ 正文**写得对不对**它一个字都不判；⚠ ⑬ 那一组同一条边界 —— ⑬a–⑬f 全是**盘上文本**的对拍，「配方写得一样」≠「那条命令今天在这台机器上跑得出字节」（它要 zig ＋ cargo-zigbuild，本格一个都不装、不跑）；⑬g 真跑的只是 `--check`（**只读**），在一棵没铺字节的树上它只答得出「这里没有一份对不上的字节」，**不是**「字节是对的」，更不是「发版那一拍办完了」' \
+run_gate release-gate '判过的条数（`release.yml` 上逐行印出来的 PASS：三条地板 ＋ ①触发得了 ②手工默认不发布 ③`env.PUBLISH` 字面 ④两处发布步骤的闸 ⑤CI 门的闸 ⑥两处发布步骤各自的正文来源 ⑦生成器排在发布步骤前面 ⑧生成器吐得出本版正文 ＋⑨产字节那条路（承诺的平台 ↔ 产线 · 编后端的步骤 ↔ 登记 · target triple ↔ 登记，三条都是**两向集合相等**；每条产线步骤在那个 job 里 count()==1；runner 标签逐字）⑩每一处抠 `const BUILD_ID`／身份戳界标的住址，逐处计数相等 ＋ **实打去读那份源码**、抠不出恰好一行就红 ⑪`build.rs` 那一侧「抠不到」是所有构建形态都响的失败（`unknown` 兜底从类型上消失）⑫本文件 `muslbuild` 裁词点名的工具链版本 == `release.yml` 真装的那两个 ＋⑬`BUILD_ID` bump 的同拍步骤 re-embed（`tests/scripts/re-embed.sh` 是出路的**唯一住址**，`build.rs::REEMBED_CMD` 逐字指着它；本机那条配方与 `release.yml` 产字节那一步**同源** —— target **两向集合相等** ＋ 旗标逐字相同；它铺的 arch ↔ `build.rs` 吃的 arch **两向集合相等**；三个内嵌落点 ↔ `src/frontend/shell/.gitignore` 里带机检锚的那几行**两向集合相等**；`build.rs` 那两个内嵌函数的出路各点名那条命令 ≥2 处、代码行里不许再手抄第二条产字节配方；mtime 那张安全网仍看**两份**源码；末一条**真跑** `re-embed.sh --check`，要有数）。⚠ 它**不执行 GitHub 的表达式求值器**，也**不跑那条流水线** ⇒ 「盘上这几份文本满足这几条」不等于「云端那一趟会绿」——⑨ 尤其如此：「登记的那一步在文件里」≠「那一步在 runner 上编得出字节」，更不等于「那份字节在目标机器上跑得起来」，真机那一维仍是**判不了**；⚠ 「往 Release 上写」只认两种形状（`softprops/action-gh-release` 的 `uses:` · `run:` 里的 `gh release`/`gh api …/releases`），换第三种路子上传它看不见；⚠ 正文**写得对不对**它一个字都不判；⚠ ⑬ 那一组同一条边界 —— ⑬a–⑬f 全是**盘上文本**的对拍，「配方写得一样」≠「那条命令今天在这台机器上跑得出字节」（它要 zig ＋ cargo-zigbuild，本格一个都不装、不跑）；⑬g 真跑的只是 `--check`（**只读**），在一棵没铺字节的树上它只答得出「这里没有一份对不上的字节」，**不是**「字节是对的」，更不是「发版那一拍办完了」' \
          python3 tests/evidence/K-R124-ruler.py
 
 # ── `gate-selfdesc`：**门禁自述 ↔ 门禁现状的对拍**（09-19，第 22 格）───────────
@@ -1204,14 +1204,14 @@ run_gate gate-selfdesc '判过的条数（逐项分母由判据本体每趟现�
 
 # ── `muslbuild`：**远端 Linux 那一格**（G4 · 09-19，第 23 格）─────────────────
 #
-# 🔴 **它补的是 `真相源/92 §2` 登记的 G4 空洞①**，逐字：「**musl 那两个 target 在 CI 与
+# 🔴 **它补的是登记的 G4 空洞①**，逐字：「**musl 那两个 target 在 CI 与
 #    本地门禁里都是零命中**（只在 tag 那天编一次）」。远端 Linux 是**条 63 点名的三格
 #    承诺平台之一**，而它在每次提交上一个字节都没人验 —— 坏了要等推 tag 那天才知道。
 #
 # 🔴 **用 `cargo zigbuild`、版本跟 `release.yml` 对齐，这不是洁癖**：
 #    zig **0.14.0** ＋ cargo-zigbuild **0.23.0**。
 #    版本不同 ⇒ 本格的绿**不代表发版那趟会绿**，而那正是这一格要买的东西。
-#    🔴 〔`19b` 09-19〕**这句话从此有人核了**：上面 `release-gate` 那一格的 ⑫ 把
+#    🔴 **这句话从此有人核了**：上面 `release-gate` 那一格的 ⑫ 把
 #      「本格裁词里点名的版本」与「`release.yml` 里真装的那两个」**两向对拍** ——
 #      在那之前这是两处手抄的数，漂了没有任何东西会说话。
 #    ⚠ 原文这里写着 `release.yml:168` / `:173` 两个**行号**，`19b` 删掉了：
@@ -1233,7 +1233,7 @@ run_gate muslbuild '不是数出来的数：两个 musl target 各一趟 `cargo 
 #    在今天的输出面上**一个字都不会说**。这一格买的就是那句话。
 # ⚠ 它是**登记的机检**，不自己编任何东西 —— 判的是「门禁盖到了哪些平台」，
 #   **不判那些平台上真的跑得起来**（那一维仍然判不了，逐字写在判据本体的头注里）。
-run_gate platform '判过的条数（判据本体每趟现算并印在它自己那行上：P1 承诺表↔门禁格**两向集合相等** ＋ P2 每格一条逐字锚点 count()==1 ＋ P3 显式拒绝的那格全仓零脚印；〔S5〕原来的 P4「壳-折」随那一档放弃（V105）删了）。⚠ **反空真锚是 P1 那两向相等**，不是「承诺表里每条都找得到」——后者在表被清空时恒真。⚠ 它不编任何东西：判的是**门禁盖到了哪些平台**，不判那些平台上真跑得起来' \
+run_gate platform '判过的条数（判据本体每趟现算并印在它自己那行上：P1 承诺表↔门禁格**两向集合相等** ＋ P2 每格一条逐字锚点 count()==1 ＋ P3 显式拒绝的那格全仓零脚印；原来的 P4「壳-折」随那一档放弃删了）。⚠ **反空真锚是 P1 那两向相等**，不是「承诺表里每条都找得到」——后者在表被清空时恒真。⚠ 它不编任何东西：判的是**门禁盖到了哪些平台**，不判那些平台上真跑得起来' \
          python3 tests/evidence/K-G4-platform-ledger.py
 
 # ── `installface`：**安装面切件方案与量具的对账**（`K-R128`，09-15，第 21 格）──────
@@ -1346,7 +1346,7 @@ run_gate fmt '不是数出来的数：`cargo fmt --all --check` 只有绿/红两
 #（成因：那棵树的 path 依赖指进 `../../src/frontend/shell`，`cargo fmt --all` 顺着它们走出去；
 #  `cargo metadata --no-deps` 的 `workspace_members` 现打**只有 1 个**，两者不是一回事。）
 # ⇒ 加 `--all` 会把 vendor 那棵**我们无权修**的树拉进出货门禁 —— 与下面 `cargo` 那一格
-#   从前 `--exclude code-picture-core` 要避开的是同一件事（`C7` 逐字「vendor `code-picture-core` **不动**」；〔TL1〕那条 exclude 随 vendor 退出 workspace 删了）：
+#   从前 `--exclude code-picture-core` 要避开的是同一件事（`C7` 逐字「vendor `code-picture-core` **不动**」；那条 exclude 随 vendor 退出 workspace 删了）：
 #   **一道我们满足不了的闸，比没有闸更坏。**
 # ⚠ 不加 `--all` 时 `cargo metadata` 那 11 个一个都不进来（同一趟 `-v` 现打：rustfmt 只收
 #   `src/backend/main.rs` 一个根），读数 6 处不变 ⇒ **少的只有别人家那棵树。**
@@ -1401,9 +1401,9 @@ run_gate fmt-backend '不是数出来的数：`cargo fmt --check` 只有绿/红�
 # ⚠ 依赖沙箱镜像装了 `mingw-w64` 与 `x86_64-pc-windows-gnu`（`.claude/devbox/Dockerfile`，
 #   仓外、不进版本控制）。没装的机器上这一格会红在「找不到 target」——**那是对的**：
 #   fail-closed 比静默跳过好。
-# ⚠⚠ **`--all-targets` 是 `15 §5.1 A5` 补的，它把本格的射程从「生产段」扩到「生产段 ＋ test 档」。**
+# ⚠⚠ **`--all-targets` 是补的，它把本格的射程从「生产段」扩到「生产段 ＋ test 档」。**
 #
-# 题面逐字（`15 §2.6` 漏洞 2）：「**`winchk` 少 `--all-targets`，而兄弟格 `winchk-backend` 有**，
+# 题面逐字（漏洞 2）：「**`winchk` 少 `--all-targets`，而兄弟格 `winchk-backend` 有**，
 # 并注明『云端那 10 个错**全在 test 档**，所以 `--all-targets` 是**承重的**』
 # ⇒ **同一个性质两把不同长度的尺子**。修它只要一个词。」
 #
@@ -1412,14 +1412,14 @@ run_gate fmt-backend '不是数出来的数：`cargo fmt --check` 只有绿/红�
 #   · `winchk-backend` = `src/backend` 一个 crate，生产段 ＋ test 档
 #
 # ⚠ **它买不到的仍然一个字没变**（别因为射程变长就把这句读松）：
-#   · 买的是「**编得过**」，**不是「行为对」**——那要一台真 Windows（`99 §4.5.8` 的 `G2a`）。
+#   · 买的是「**编得过**」，**不是「行为对」**——那要一台真 Windows（`G2a`）。
 #   · 本格是 `-gnu`，**MSVC ABI 专属的那一类照旧盖不到**（`check` 不链接，且沙箱里没有 zig）。
 #   · **包**这一维没变：8 个共享 crate 仍然只有 `-p monitor` 依赖图里的那几个被顺带 check 到，
-#     `creds-core` 的 `--features harden` 那 2 处**本行还是盖不到**（`15 §2.6` 漏洞 4 还欠着）。
+#     `creds-core` 的 `--features harden` 那 2 处**本行还是盖不到**（漏洞 4 还欠着）。
 # ⚠ `--locked` 照旧带着：本格同时是 `src/frontend/shell/Cargo.toml ↔ Cargo.lock` 那条对账的落点
 #   （`doc_claim_registry` 两处逐字点名「门禁 `winchk` 那一格的 `cargo check --locked`」）。
 #   与 `winchk-backend` 刻意不带 `--locked` 的差别是**另一维**，别顺手抹平。
-run_gate winchk '不是数出来的数：`cargo check --all-targets --target x86_64-pc-windows-gnu` 只有绿/红两态。射程 = `-p monitor` 与〔P4〕文件窗口包 `-p cc-monitor-filewin`（搬家前它的代码与判据都在 monitor 包里，射程不缩）两个包的**生产段 ＋ test 档**（`src/frontend/shell/src` 的 67 处 `cfg(windows)`；`--all-targets` 是 `A5` 补的，与兄弟格 `winchk-backend` 对齐 —— 那一格的读数逐字「云端那 10 个错全在 test 档」）；`src/backend` 那 17 处与 `creds-core` 那 2 处本行盖不到' \
+run_gate winchk '不是数出来的数：`cargo check --all-targets --target x86_64-pc-windows-gnu` 只有绿/红两态。射程 = `-p monitor` 与文件窗口包 `-p cc-monitor-filewin`（搬家前它的代码与判据都在 monitor 包里，射程不缩）两个包的**生产段 ＋ test 档**（`src/frontend/shell/src` 的 67 处 `cfg(windows)`；`--all-targets` 是 `A5` 补的，与兄弟格 `winchk-backend` 对齐 —— 那一格的读数逐字「云端那 10 个错全在 test 档」）；`src/backend` 那 17 处与 `creds-core` 那 2 处本行盖不到' \
          bash -c 'cd src/frontend/shell && cargo check --locked --all-targets -p monitor -p cc-monitor-filewin --target x86_64-pc-windows-gnu 2>&1 && echo "winchk: 1 passed"'
 
 # ── `winchk-backend`：**backend 那棵树在 Windows 上编不编得过**（`K-R122` `KR122D2` 甲，09-14，第 18 格）──
@@ -1456,20 +1456,20 @@ run_gate winchk '不是数出来的数：`cargo check --all-targets --target x86
 run_gate winchk-backend '不是数出来的数：`cargo check --all-targets --target x86_64-pc-windows-gnu` 只有绿/红两态。射程 = `src/backend` 这一个 crate 的**生产段 ＋ test 档**（云端那 10 个错全在 test 档，所以 `--all-targets` 是承重的）。⚠ 本格用的是 `-gnu`，云端用的是 `-msvc`（沙箱里没有 zig，`ring` 的 build script 缺 `lib.exe`）⇒ **MSVC ABI 专属的那一类本行盖不到**；`src/frontend/shell` 那棵树由上面 winchk 那一格盖' \
          bash -c 'cd src/backend && cargo check --all-targets --target x86_64-pc-windows-gnu 2>&1 && echo "winchk-backend: 1 passed"'
 
-# ── `winlink`：**monitor 在 Windows 上链不链得起来**（WIN1 · 第四波 4D，第 30 格）──
+# ── `winlink`：**monitor 在 Windows 上链不链得起来**（第 30 格）──
 #
 # 守的要求：用户裁决 **V115**（「Win11 虚拟机可以当真机测试资源」）那一趟 RT1 现打出来的 F1 ——
 # `RT1.md §8` 逐字「`-gnu` 交叉编 monitor **两个 profile 都链不过**：`monitor_lib.dll`（`[lib] crate-type`
 # 里的 `cdylib`）导出序号超 65535（release 125 946 / dev 241 784）。门禁 `winchk` 只 `cargo check`，看不见」。
 # ⇒ 上面 `winchk` 那一格的分母逐字写着「买不到『链接得起来』（`check` 不链接）」—— 这一格补的就是那半。
-# 设计住址：`设计/01 §6.7a` 表 B 逐字「**本机 Windows**（x86_64） | ✅ **承诺** | 独立进程那个壳要有字节、要进门禁」。
-#   以及 `设计/01 §7.3` 逐字「门禁补一格真链接、桌面不需要的 `cdylib` 收掉（4D WIN1）」。
+# 设计要求：「**本机 Windows**（x86_64） | ✅ **承诺** | 独立进程那个壳要有字节、要进门禁」。
+#   以及「门禁补一格真链接、桌面不需要的 `cdylib` 收掉（4D WIN1）」。
 #
 # ## 它买什么 / 不买什么
 #   · 买：`-p monitor` 的**两个二进制**（`cc-monitor` 主程序 ＋ `cc-monitor-filewin` 文件窗口）在
 #     `x86_64-pc-windows-gnu` 上**真走一趟链接器**、链得出 `.exe`。`[lib]` 那一格收成 `rlib` 之后
 #     不再产 dll（WIN1：全仓没有移动端，`cdylib` / `staticlib` 两格零消费者）；有人把 `cdylib` 加回来
-#     ⇒ 这里当场红在 `export ordinal too large`（死值验住 `第四波记录/WIN1.md`）。
+#     ⇒ 这里当场红在 `export ordinal too large`（死值验住）。
 #   · ⚠ 只链、不跑：「链出来的 exe 在 Windows 上起得来」要真机（`RT1.md` 那台虚拟机），本格判不了。
 #   · ⚠ `-gnu` 不是 `-msvc`：发版那一格是 `windows-latest` 原生构建，MSVC 链接器那一类本格盖不到。
 #   · ⚠ dev profile；release 那一档的链接本格不跑（`RT1-build-win.py` 走 release，它不在门禁上）。
@@ -1478,20 +1478,20 @@ run_gate winchk-backend '不是数出来的数：`cargo check --all-targets --ta
 run_gate winlink '不是数出来的数：`cargo build --bins --target x86_64-pc-windows-gnu`（dev）只有绿/红两态。射程 = `-p monitor` 的两个二进制（`cc-monitor` · `cc-monitor-filewin`）**真链接**一趟；⚠ 只链不跑（起不起得来要真机）· `-gnu` 不是 `-msvc` · release 那一档不链 · test 档不链（那一半归 `winchk` 的 `check`）' \
          bash -c 'cd src/frontend/shell && cargo build --locked -p monitor --bins --target x86_64-pc-windows-gnu 2>&1 && echo "winlink: 1 passed"'
 
-# 13 个包 = `monitor` + 12 个共享 crate（〔TL1〕`vendor/code-picture-core` 早已不是成员 —— monitor 不再依赖它 —— 不用再 `--exclude`）。
-# 〔CP2c〕9 → 10：加了 `copy-core`（对外文案表的 Rust 取文口）。
-# 〔US1 · 4D〕〔合并 US1 × 主线〕10 → 11：新共享 crate `relay-route-core`（中转门牌：端口 · 钥匙路径 · 路由语法，`设计/20 §5` 目标）。
-# 〔DUP2 · 4D〕11 → 12：新共享 crate `agent-tools-core`（agent 工具词表：哪些工具名算「展开 = 子会话」，monitor 渲染与后端会话事实共用，J19）。
-# 〔DUP3 · 4D〕12 → 13（本路增量 ＋1）：新共享 crate `upstream-url-core`（上游 base URL 能不能用，J9）。
-# 〔MIG-3b · 4D〕13 → 14（本路增量 ＋1）：新共享 crate `deploy-core`（部署决策：本机常驻后端出计划、monitor 放字节共用）。
-# 〔RE〕14 → 13：`codex-token-core` 搬进后端（`agents/codex/token.rs`，monitor 零引用），它的 3 条随后端那一格跑。
-# 〔THIN〕13 → 12：`gate-core` 收成后端模块 `control/gate_rules.rs`（monitor 那一侧的门删了），它的单测随后端那一格跑。
-# 〔THIN〕12 → 11：`agent-tools-core` 收进后端适配层 `agents/claudecode/cards.rs`（界面不再按工具名判卡型）。
-# 〔THIN〕11 → 10：`branch-core` 收进后端适配层 `agents/claudecode/branch.rs`（monitor 零引用）。
-# 〔P1〕10 → 9：`search-core` 拆进后端（通用口径 `observe/search_rules.rs` · 记录文本 `agents/claudecode/text.rs`），它的单测随后端那一格跑；
+# 13 个包 = `monitor` + 12 个共享 crate（`vendor/code-picture-core` 早已不是成员 —— monitor 不再依赖它 —— 不用再 `--exclude`）。
+# 9 → 10：加了 `copy-core`（对外文案表的 Rust 取文口）。
+# 10 → 11：新共享 crate `relay-route-core`（中转门牌：端口 · 钥匙路径 · 路由语法，目标）。
+# 11 → 12：新共享 crate `agent-tools-core`（agent 工具词表：哪些工具名算「展开 = 子会话」，monitor 渲染与后端会话事实共用，J19）。
+# 12 → 13（本路增量 ＋1）：新共享 crate `upstream-url-core`（上游 base URL 能不能用，J9）。
+# 13 → 14（本路增量 ＋1）：新共享 crate `deploy-core`（部署决策：本机常驻后端出计划、monitor 放字节共用）。
+# 14 → 13：`codex-token-core` 搬进后端（`agents/codex/token.rs`，monitor 零引用），它的 3 条随后端那一格跑。
+# 13 → 12：`gate-core` 收成后端模块 `control/gate_rules.rs`（monitor 那一侧的门删了），它的单测随后端那一格跑。
+# 12 → 11：`agent-tools-core` 收进后端适配层 `agents/claudecode/cards.rs`（界面不再按工具名判卡型）。
+# 11 → 10：`branch-core` 收进后端适配层 `agents/claudecode/branch.rs`（monitor 零引用）。
+# 10 → 9：`search-core` 拆进后端（通用口径 `observe/search_rules.rs` · 记录文本 `agents/claudecode/text.rs`），它的单测随后端那一格跑；
 #   `deploy-core` 改名 `deploy-contract`（契约那一半，成员数不变）。
-# 〔P4〕〔合并 P4 × 主线 211bb498〕9 → 12：新共享 crate `host-core`（前端宿主原语）· `chan-core`（通道）· `filewin-contract`（monitor ↔ 文件窗口进程的契约）。
-# 〔P4〕12 → 13：文件窗口独立成包 `src/frontend/filewin/`（`cc-monitor-filewin`，lib；monitor 包里那个 `[[bin]]` 转调它），它的单测随本格跑。
+# 9 → 12：新共享 crate `host-core`（前端宿主原语）· `chan-core`（通道）· `filewin-contract`（monitor ↔ 文件窗口进程的契约）。
+# 12 → 13：文件窗口独立成包 `src/frontend/filewin/`（`cc-monitor-filewin`，lib；monitor 包里那个 `[[bin]]` 转调它），它的单测随本格跑。
 run_gate_sum cargo 13 bash -c 'cd src/frontend/shell && cargo test --workspace --lib 2>&1'
 
 # ★★ `K-G3`（09-01）：上面那个合计**还缺一个分母** —— `src/frontend/shell/embedded-backends/` 铺没铺。
@@ -1501,10 +1501,10 @@ run_gate_sum cargo 13 bash -c 'cd src/frontend/shell && cargo test --workspace -
 # ⇒ **它跟着「铺没铺」走，不跟着 git 走**。挂 `#[cfg(embedded_backends)]` 的那一族全是
 # 「本地后端真的能起来吗」：`sftp::embedded_backend_binaries_present_and_valid` ·
 # `local_backend_host::the_local_backend_host_can_be_stopped_and_started_again` ·
-# `local_backend::the_local_tmux_frames_really_land_in_the_ledger`〔散文墓碑〕（〔MIG-1〕随 monitor 那本 tmux 原文账删了） ·
+# `local_backend::the_local_tmux_frames_really_land_in_the_ledger`〔散文墓碑〕（随 monitor 那本 tmux 原文账删了） ·
 # `local_backend::the_local_backend_host_really_registers_an_inbound_client`。
 #
-# 病灶逐字（`ROADMAP.md` 风险行 `5t`，PM 08-25 实测撞上、08-29 复打）：
+# 病灶逐字（风险行 `5t`，PM 08-25 实测撞上、08-29 复打）：
 # **「没有任何东西报出『这一跑少编了几条』」** —— 少编与「都跑了」在终端上一模一样，
 # 因为那个合计只会**变小**，而变小没有任何东西认得出来。
 #
@@ -1594,7 +1594,7 @@ fi
 #   并写清降的是哪几条；不写就没人分得开「清理了」与「这一趟根本没编」）。
 # ⚠ **「这一趟根本没编」那一形单独有话说**：`cargo` 对**新鲜**单元会重放缓存里的警告，
 #   万一哪天它不重放了，「一条都没有」与「没编」在终端上一模一样 —— 恒等把它一起接住了。
-# ⚠ 它**不修**任何一条 `dead_code`，只是从此有人在数（`K-R80 §0d` 同一条边界：数出来归数出来）。
+# ⚠ 它**不修**任何一条 `dead_code`，只是从此有人在数（同一条边界：数出来归数出来）。
 #
 # 〔量于 09-14，本工作树 `track/k-r115`，沙箱 `ccmon-devbox:latest`〕**41 条**，本格墙钟 **71 秒**
 #   （冷 target 的第一趟；这个数就是 `KR115D2` 甲的实测代价，同一趟的门禁基线是 4 分 45 秒）。
@@ -1603,7 +1603,7 @@ fi
 #   本格是 `--message-format=short`、不 touch，而且量于另一个主干尖。
 deadcode_t0=$(date +%s)
 # 🔴 **2026-09-18：41 → 33，降的 8 条逐条记在这里**（本格自己要求「回来把数改小，**并写清降的是哪几条**」）。
-# 起因：用量 ②③ 两轴整轴退役（`设计/50`）⇒ `usage.rs` · `account_usage.rs` ·
+# 起因：用量 ②③ 两轴整轴退役⇒ `usage.rs` · `account_usage.rs` ·
 # `observe/usage_query.rs` · `agents/codex/usage.rs` 等整删，它们里面那 8 条死代码**随文件一起消失**，
 # 不是有人去修的。⇒ 这是「真清掉了」那一支，不是「cargo 没重编」那一支 —— 证据：现打 33 条里
 # **一条都不含用量相关符号**（逐条核过）。
@@ -1644,16 +1644,16 @@ deadcode_t0=$(date +%s)
 # ⚠ 🔴 顺带修一条本格自己的腑坏：这个数原先在下面的内联脚本里**手抄了五遍**
 #   （3 处写 33、**2 处还写着更早的 41**）⇒ 终端上印出来的「恒等钉在 41」是假话，
 #   而没有任何东西会因此变红。现在它只住 `pin=` 一处。
-# 🔴 **2026-09-24（第一波合并 T3 令牌步 3）：33 → 35，涨的 2 条逐条记在这里。**
+# 🔴 **2026-09-24（T3 令牌步 3）：33 → 35，涨的 2 条逐条记在这里。**
 # 两条**全部出自 `src/frontend/shell/src/bind.rs`**，都是「接得住、还没人收」那一拍的**预期状态**：
 #   · `lookup_hwnd_for_token` —— 令牌 → HWND 的查询口。消费点（↗ 按令牌分派）是**步 4**，
-#     排在第二波 ⇒ 今天零生产调用方。**步 4 落地那一拍它会自己出列 ⇒ 本格当场红，逼人改回 34。**
+#     排在后面 ⇒ 今天零生产调用方。**步 4 落地那一拍它会自己出列 ⇒ 本格当场红，逼人改回 34。**
 #   · `entry_from_marker_hit` —— 从 `#[cfg(windows)]` 函数体里抽出来、为的是 Linux 上也验得了
 #     （测试段有调用方）。生产调用方只在 Windows 那支 ⇒ 本格（Linux 非 test 构建）看它是死的。
 #     ⚠ 这一条**不会**自己出列；它的代价就是「平台分支抽出来可测」本身，不是漏。
 # ⚠ 这个数是**现打**的（合并后主线 `cargo check -p monitor --message-format=short`），不是 33+2 算的；
 #   两条的新旧由 `9ba7f7a7:src/frontend/shell/src/bind.rs` 里这两个函数**零命中**核过。
-# 🔴 **2026-09-24（第二波 T4 令牌步 4）：35 → 34，降的 1 条逐条记在这里。**
+# 🔴 **2026-09-24（令牌步 4）：35 → 34，降的 1 条逐条记在这里。**
 # **又是那条刻意的耦合按设计开火了，而且上面那段逐字预告过它**：
 #   「`lookup_hwnd_for_token` …… **步 4 落地那一拍它会自己出列 ⇒ 本格当场红，逼人改回 34。**」
 # 吃它的是 `src/frontend/shell/src/bind.rs::resolve_remote_front`（↗ 远端那一格的唯一分派点，
@@ -1664,13 +1664,13 @@ deadcode_t0=$(date +%s)
 # ⚠ 这个数是**现打**的（本工作树 `w2/t4`，`cargo check -p monitor --message-format=short | grep -c "never used"`
 #   = 34，同一趟 `grep bind.rs` 只剩 `entry_from_marker_hit` / `find_window_by_marker_substr` /
 #   `process_creation_filetime` 三条），不是 35−1 算的。
-# 🔴 **2026-09-24（第二波大合并那一拍）：34 → 33，现打，逐条记**：
+# 🔴 **2026-09-24：34 → 33，现打，逐条记**：
 #   R2 让生产改走 `payload.rs` 的 `relay_route_path_in` / `relay_base_url_in`，旧的两口 `relay_route_path` /
 #   `relay_base_url` 与两个跨半边样例常量 `RELAY_ROUTE_SAMPLE` / `RELAY_PASSTHROUGH_SAMPLE` 只剩判据在用
 #   ⇒ 四样都挂 `#[cfg(test)]`（样例常量是后端 `include_str!` 按源码文本读的，挂属性不影响那一读）。
 #   其中 `relay_route_path` 那一条在 33 之前的读数里本来就在（旧的那条 `payload.rs` 警告）⇒ 净 −1。
 #   ⚠ 同一拍 T4 让 `bind.rs::lookup_hwnd_for_token` 有了生产调用方（35→34 那一拍已记）。
-# 🔴 **2026-09-24（第三波 B2 合并）：33 → 34，现打，逐条记**：B2 加了第四句退出文案 `backend_policy.rs::EXIT_UNREADABLE`
+# 🔴 **2026-09-24：33 → 34，现打，逐条记**：B2 加了第四句退出文案 `backend_policy.rs::EXIT_UNREADABLE`
 #   （「那台机器上的退出策略读不出来，按默认办」）。它与同文件已在册的 `EXIT_KILLS` / `EXIT_UNATTENDED` / `EXIT_SELF_DIES` /
 #   `EXIT_COPY` 同一族：Rust 这一份**只为与 TS 那份逐字对拍而存在**（家在 `src/frontend/ui/backend-policy.ts`），非 test 构建里本来就没读者。
 #   ⚠ 这一族要不要整族挂 `#[cfg(test)]` 是另一件事（会一次降 7 条），不在合并这一拍做。
@@ -1680,24 +1680,24 @@ deadcode_t0=$(date +%s)
 #   **刻意没删**：秤 F4（`sftp_pool_f4_tests`）拿它俩量「传输占满车道时浏览还进得来」那条 `6 − 4 = 2` 的设计；
 #   而浏览今天整个走后端 `files-*`，SFTP 上已经没有浏览 ⇒ 车道闸「给浏览留格子」那条前提不在了。
 #   它俩连同 `TRANSFER_LANE_CAP` 的去留是一道设计题（要主会话裁），不是本拍顺手删的活。
-# 🔴 **2026-09-24（第四波 S4 · SFTP 收尾，主会话授权动这个数）：36 → 34，现打，逐条记**：
+# 🔴 **2026-09-24（SFTP 收尾，主会话授权动这个数）：36 → 34，现打，逐条记**：
 #   上一段那两条（`ChannelSet::lease` · `Leased::discard`）**本拍删了** —— 浏览离开 SFTP 之后车道闸没有要保护的东西，
-#   闸（`TRANSFER_LANE_CAP`）、浏览用的借法与它俩一起退役（`设计/99` 第三波留给第四波那一条）。
+#   闸（`TRANSFER_LANE_CAP`）、浏览用的借法与它俩一起退役（留下的那一条）。
 #   同拍删的零流量复制一段（命令 · 核心 · 裸通道借据 · 老 Tauri 进度通道 · 取消登记表）**不带走也不带来**死代码：
 #   它们删之前在生产上都有调用方（那条命令），删之后整块不在了。
 # ⚠ 这个数是**现打**的（本工作树 `w4/s4`，`cargo check -p monitor --message-format=short | grep -c "never used"` = 34），不是 36−2 算的。
-# ⚠ 〔RM1e 09-24〕下面两段原先夹在 `run_gate deadcode … \` 的续行与 `bash -c` 之间 —— 续行接上一行注释 ⇒ 命令在那里就断了、
+# ⚠ 下面两段原先夹在 `run_gate deadcode … \` 的续行与 `bash -c` 之间 —— 续行接上一行注释 ⇒ 命令在那里就断了、
 #    `bash -c` 那一段成了一条游离命令（本格跑的不是它）。挪到 `run_gate` 之上，一字未改。
-# 🔴 **2026-09-24（第四波 SR1b 合并）：34 → 35，现打，逐条记**：多的一条是 `dial_host.rs::RemoteFs::home`（`method home is never used`）。
+# 🔴 **2026-09-24：34 → 35，现打，逐条记**：多的一条是 `dial_host.rs::RemoteFs::home`（`method home is never used`）。
 #    生产侧不读它（`open` 里只核「后端答出了起始目录」）；唯一的读者是真 sshd 那条 `#[ignore]` 读数用例
 #    （`sftp_tests::sr1b_loopback_deploy_and_transfer_through_the_resident_backend` 断言「起始目录就是 sshd 给的那个」）。
 #    ⚠ 没改成 `#[cfg(test)]`：那会把 `src/frontend/shell/src` 的「测试专用支撑项」顶到 16（`structural_scan` 的只许降棘轮，上限 15）——
 #    两条纪律冲突时，动**允许说清理由再改的**这一个数，不动只许降的那一个。
-# 🔴 **2026-09-24（第四波 RM1e 子步 1）：35 → 34，现打，逐条记**：少的那一条正是上一段那条 `RemoteFs::home` ——
+# 🔴 **2026-09-24（子步 1）：35 → 34，现打，逐条记**：少的那一条正是上一段那条 `RemoteFs::home` ——
 #    推全景小程序字节（`panorama_bytes·rs::push_to`）拿它拼远端落点 `<home>/.cc-monitor/bin/cc-monitor-panorama`，
 #    它有了生产读者 ⇒ 出列。同拍 `panorama_bytes` 那两个 `cfg_attr(not(test), allow(dead_code))` 摘了（有了生产调用方），不进这个数。
 #    ⚠ 现打：本工作树 `cargo check -p monitor --message-format=short | grep -c "never used"` = 34。
-# 🔴 **2026-09-25（第四波 CP2b · 文案全量抽表）：34 → 23，现打，逐条记**：降的 11 条正是 B2 合并那段点名的那一族 ——
+# 🔴 **2026-09-25（文案全量抽表）：34 → 23，现打，逐条记**：降的 11 条正是 B2 合并那段点名的那一族 ——
 #    `backend_policy·rs` 的 `EXIT_KILLS` / `EXIT_UNATTENDED` / `EXIT_SELF_DIES` / `EXIT_UNREADABLE` / `EXIT_COPY` /
 #    `HEALTH_UNKNOWN` / `HEALTH_CLEAN` / `HEALTH_CRASHED` / `HEALTH_LAST_MISSING` / `HEALTH_COPY` / `CROSS_LANGUAGE_COPY`。
 #    它们「只为与 TS 那份逐字对拍而存在」；文案表立起来之后两侧读同一条表项（`backendPolicy.*`），Rust 副本与逐字对拍一起删了。
@@ -1705,17 +1705,17 @@ deadcode_t0=$(date +%s)
 #    与删之前那份 34 条逐行 diff 只差这 11 行（其余 23 条原样在）。本路不跑 gate，这个数是写区外动的，已报备。
 # 🔴 **2026-09-26（PB1 · 90 阶段 B）：23 → 21，现打**：`backend_policy·rs` 的 `describe_health` 与只经它活着的 `Health::seen` 出列 ——
 #    前者并进有生产读者的 `health_face`（`backend_status` 调它），后者随之有了生产读者。与基线逐行 diff 只差这 2 行。
-# 🔴 **2026-09-26（第四波 4D SH1）：23 → 22，现打，逐条记**：少的那一条是 cc-bus 驾驶舱远端读 `exec_read` 里那句
+# 🔴 **2026-09-26（SH1）：23 → 22，现打，逐条记**：少的那一条是 cc-bus 驾驶舱远端读 `exec_read` 里那句
 #    「value assigned to `overflowed` is never read」—— 那个函数随读面改问后端整个删了。同拍新长的三条零生产调用项
 #    （monitor `tmux.rs::TMUX_LS_FMT` 双写点 · `spawn_managed` 的 async 出口两项）各带 `cfg_attr(not(test), allow(dead_code))` 与理由，不进这个数。
 # 🔴 **2026-09-26（合并 PB1 × SH1）：23 − 2（PB1）− 1（SH1）= 20**。
 # 🔴 **2026-09-28（MIG-2 · 起会话进后端）：本路 −0**：起会话搬进后端之后 `apikey_remote.rs` 的发送口（`BUDGET` · `call` · `said`）零调用方，
 #    按 V41 整个模块删了（没有抬这个数）。现打本工作树 = 21，多的那一条是 `user_files.rs::delete_empty_dir`，归 MIG-3a（它合后回 20）。
-# 🔴 **2026-09-28（第四波 MIG-3a × MIG-2 合并）：MIG-2 那 −0（`apikey_remote` 整删）＋ MIG-3a 21 → 20 → 19，现打，逐条记**：① −1 `user_files·rs::BackendDoor::delete_empty_dir`（卸 skill 进后端后零生产调用方，连同测试侧假门删，回到 20）；
+# 🔴 **2026-09-28（MIG-3a × MIG-2 合并）：MIG-2 那 −0（`apikey_remote` 整删）＋ MIG-3a 21 → 20 → 19，现打，逐条记**：① −1 `user_files·rs::BackendDoor::delete_empty_dir`（卸 skill 进后端后零生产调用方，连同测试侧假门删，回到 20）；
 #    ② −1 `fenced_block·rs::FENCE_SHAPES`（那张形状账只有判据读，随别名块进后端时住进判据文件 `tests/backend/assets/aliases/fence_tests.rs`）。
 #    同拍另有 `user_files·rs::list_dir` / `LIST_LIMIT`（收件箱进后端）· `rel_under` / `join_under`（别名进后端）四项零调用方，**当拍删了**，不进这个数。
 #    ⚠ 现打：本工作树 `cargo check -p monitor --message-format=short | grep -c "never used"` = 19。
-# 🔴 **2026-09-28（合并 MIG-3b × 主线 5bb03b34）：19 → 18**：−1 `hooks_diag·rs` 第 51 行那一条（钩子诊断整个文件随进后端 `hooks-diag` 删了，〔MIG-3b 子步 2〕）；
+# 🔴 **2026-09-28（合并 MIG-3b × 主线 5bb03b34）：19 → 18**：−1 `hooks_diag·rs` 第 51 行那一条（钩子诊断整个文件随进后端 `hooks-diag` 删了）；
 #    MIG-3b 另删的 `dial_host·rs::RemoteFs::stat`（部署判定进后端后零调用方）当拍就删、没进过这个数。现打本工作树 = 18（主线 5bb03b34 现打 19，逐条对过只差这一条）。
 # 🔴 **2026-09-28（合 MIG-1 × 主线 p5e）：主树现打 19 → 回 18，现打，逐条记**：多的那一条是 `inbound_client·rs::InboundClient::close_write` ——
 #    它唯一的生产调用方（测试连接那次一次性探测）随测试连接进本机后端删了，只剩两条起真后端的判据还用它 ⇒ 连同 `WriteJob::CloseWrite`
@@ -1724,8 +1724,8 @@ deadcode_t0=$(date +%s)
 #    `src/backend/footprint/registry.rs`）：`ToolSpec::touches` · `Provisioning` 的 `ALL`/`label` · `EnvTier` 的 `ALL`/`label` · `NOT_MANAGED` ——
 #    它们在后端那棵树里仍只有判据读（挂 `cfg_attr(not(test), allow(dead_code))` 并写明），本格射程外。
 #    ⚠ 现打：本工作树 = 14；上一拍（`4a223c87`，申报表还在 monitor）另起一份工作树现打 = 18，逐条对过只差这四条。
-# 🔴 **2026-09-28（第四波 MOD · 记录抽取进后端）：14 → 12，现打，逐条记**：−2 全出自 `codex_record·rs`（`token_usage_last` · `turn_context_model`）——
-#    那份文件整批搬进后端 `agents/codex/record.rs`（`90 §3` 判据 3：后端是记录解释的唯一的家），本格射程外。
+# 🔴 **2026-09-28（记录抽取进后端）：14 → 12，现打，逐条记**：−2 全出自 `codex_record·rs`（`token_usage_last` · `turn_context_model`）——
+#    那份文件整批搬进后端 `agents/codex/record.rs`（后端是记录解释的唯一的家），本格射程外。
 #    ⚠ 现打：本工作树 = 12；基线 `95670597` 另起一份工作树现打 = 14，逐条对过只差这两条。
 # 🔴 **2026-09-29（P1 · 起会话事实进后端）：12 → 11，现打，逐条记**：−1 `adapter·rs::ALL_AGENT_KINDS`（只有判据读）——
 #    monitor 那份适配表整删（起会话事实只住后端 `agents/<名>/resume.rs`）。⚠ 现打：本工作树（铺了内嵌字节）= 11；
@@ -1762,7 +1762,7 @@ run_gate backend '单包 src/backend，只有一行 test result ⇒ 最大值 = 
          bash -c 'cd src/backend && cargo test 2>&1'
 run_gate clippy-backend '不是数出来的数：`cargo clippy --all-targets` 只有绿/红两态，射程 = `src/backend` 那一个 crate 的全部 target，与 `ci.yml` 的 `backend` job 那一步同一条命令（不带 `-D warnings` ⇒ 只有 deny 档的 lint 与编译错红）。本格墙钟〔量于 2026-09-30，本工作树〕首趟 32 秒' \
          bash -c 'cd src/backend && out=$(cargo clippy --all-targets 2>&1); rc=$?; if [ "$rc" -ne 0 ]; then printf "%s\n" "$out"; exit "$rc"; fi; printf "%s\n" "$out" | tail -2; echo "clippy-backend: 1 passed"'
-# 〔TAIL · 09-26〕全景小程序是独立 crate（自己一份 Cargo.lock，不进任何 workspace）⇒ 上面两格都编不到它；
+# 全景小程序是独立 crate（自己一份 Cargo.lock，不进任何 workspace）⇒ 上面两格都编不到它；
 #   它自己的 `tests/panorama-engine/cli_tests.rs`（含「引擎零写用户文件」）此前不在任何执行链上。
 run_gate panorama-engine '单包 src/panorama-engine（独立 crate），只有一行 test result ⇒ 最大值 = 合计' \
          bash -c 'cd src/panorama-engine && cargo test 2>&1'
@@ -1800,7 +1800,7 @@ run_gate code-picture-core '单包 vendor code-picture-core（在 `src/panorama-
 # ⇒ 本格把 `--listFiles` 真读进程序的那批文件数出来，与**盘上现打**的 `src/` ＋ `tests/e2e/` 下
 #   `.ts`/`.tsx`/`.mts` 份数对账，**两个数在同一趟里现打**，一个都不写死
 #   （写死一个数，加一份文件就红，那种格三天就会被人调宽）。
-run_gate tsc '不是「几条断言过了」：这个数是**这一趟真读进 tsc 程序**的仓内 `.ts`/`.tsx`/`.mts` 份数（`tsconfig.json` 的 include 现打是 `[\"src\", \"tests\"]`），并与盘上现打的份数**恒等对账**。🔴 〔订正 09-19〕**本行原先两侧都只数 `src` ＋ `tests/e2e`（210 份），而 tsc 真读进去的是 372 份** —— 两侧同时把 `tests/` 的其余 **162** 份剔掉，于是等式照样成立、本格照样绿。⚠ **那不是少印一个数，是一个静默洞**：有人把 `include` 收窄成 `[\"src\", \"tests/e2e\"]`，那 162 份当场不再被检，而 `want` 与 `got` 会一起掉到 210 ⇒ **仍然相等、仍然全绿**。本拍把两侧都改成按 `include` 的真值数（372 == 372），这条路才堵上。⚠ 只判类型（`npm run build` 的前一半）；`vite build` 与 `cargo tauri build` 那两段、以及仓根那几份不在 include 里的 `.ts`（`vite.config.ts` / `vitest.config.ts`），本行一概盖不到' \
+run_gate tsc '不是「几条断言过了」：这个数是**这一趟真读进 tsc 程序**的仓内 `.ts`/`.tsx`/`.mts` 份数（`tsconfig.json` 的 include 现打是 `[\"src\", \"tests\"]`），并与盘上现打的份数**恒等对账**。🔴 **本行原先两侧都只数 `src` ＋ `tests/e2e`（210 份），而 tsc 真读进去的是 372 份** —— 两侧同时把 `tests/` 的其余 **162** 份剔掉，于是等式照样成立、本格照样绿。⚠ **那不是少印一个数，是一个静默洞**：有人把 `include` 收窄成 `[\"src\", \"tests/e2e\"]`，那 162 份当场不再被检，而 `want` 与 `got` 会一起掉到 210 ⇒ **仍然相等、仍然全绿**。本拍把两侧都改成按 `include` 的真值数（372 == 372），这条路才堵上。⚠ 只判类型（`npm run build` 的前一半）；`vite build` 与 `cargo tauri build` 那两段、以及仓根那几份不在 include 里的 `.ts`（`vite.config.ts` / `vitest.config.ts`），本行一概盖不到' \
          bash -c 'out=$(node_modules/.bin/tsc --noEmit --listFiles 2>&1); rc=$?; \
 want=$(find src tests -type f \( -name "*.ts" -o -name "*.tsx" -o -name "*.mts" \) | wc -l | tr -d " "); \
 got=$(printf "%s\n" "$out" | grep -v "/node_modules/" | grep -cE "/(src|tests)/.*\.(ts|tsx|mts)$"); \
@@ -1870,7 +1870,7 @@ run_gate audit '步数：`ci.yml` 的 `npm audit (production deps, high)` 一步
 #   ⚠ **`exact` 是第三个参数、fail-closed**：拼错 ⇒ `exit 2`，**不回落 `at-least`**。
 #     回落等于把「拼错了」静默降级成旧行为 —— 那正是这道闸要治的那一族。
 run_e2e() {
-  # 第三个参数可选：`exact`（缺省）或 `exact-with-skip`（〔E2 尾 09-27〕按 PASS+SKIP 恒等判，给按环境显式分支的套件）。
+  # 第三个参数可选：`exact`（缺省）或 `exact-with-skip`（按 PASS+SKIP 恒等判，给按环境显式分支的套件）。
   local suite="$1"; local floor="$2"; local mode="${3:-exact}"
   # ⚠ 两个名字**刻意不同**：`GATE_ONLY` 里写套件短名（`ccm-cli`），而收据与
   #   `found_cells()` 认的**规范名**带前缀（`ccm tests/e2e/ccm-cli`）。
@@ -2010,14 +2010,14 @@ run_e2e ccm-rbind-title  8
 #   第 281–284（`--print` 纯性，第 281 数「假后端被调几次」⇒ 原生实现恒 0，**空真**）。
 #
 # ⚠ **新增判据落在别处，不在这四格里**：backend 那格 676 → 677（容器路三条转发那条）。
-# 〔2026-09-24 第二波 MC1〕46 → 48：新增两格「设了 CCM_SELF 也不被读」＋ 正控（后端只认 self_invocation）。
-# 〔09-26 AL3 · V138 / V142–V145〕48 → 53：`--cwd ../x` 补绝对 · `new` 保留 · 位置词 `attach` 交 claude · `--ccm-tmux` / `--ccm-agent` 让名 · 启动器拆词各一格（现打 53）。
+# 46 → 48：新增两格「设了 CCM_SELF 也不被读」＋ 正控（后端只认 self_invocation）。
+# 〔V138 / V142–〕48 → 53：`--cwd ../x` 补绝对 · `new` 保留 · 位置词 `attach` 交 claude · `--ccm-tmux` / `--ccm-agent` 让名 · 启动器拆词各一格（现打 53）。
 run_e2e ccm-cli               58
-# 🔴 〔`K-R61` 09-11〕39 → **42**：C 组加了三格（`capabilities=` 声明
+# 🔴 39 → **42**：C 组加了三格（`capabilities=` 声明
 #    `base-url-across-tmux` · 容器载荷真带 `export ANTHROPIC_BASE_URL=` · 反空真）。
 #    判法是 `exact` ⇒ 这个数不改，涨了照样红。**同一拍要改三处**（本行 + `ci.yml` 的
 #    调用行 + 那个 job 里的清单副本），三处都不在 `K-R61` 写区，已点名交回 PM。
-# 🔴 〔`K-R70` 09-12〕42 → **45**：C 组再加三格，问的是**一份真编出来的二进制**
+# 🔴 42 → **45**：C 组再加三格，问的是**一份真编出来的二进制**
 #    「你是哪一次构建」——① 抽取器自检（从后端源码抠得到 `BUILD_ID`）·
 #    ② `--ccm-probe` 的 `build=` 行 == 那个 `BUILD_ID` · ③ `build=` 与 `version=` 不同值
 #    （后者是 CLI 契约版本，答不出身份）。**它是本件唯一跑真二进制的判据**，
@@ -2025,9 +2025,9 @@ run_e2e ccm-cli               58
 #    逐字 diff 已交回 PM（头注那条「三处一起改」的纪律照旧）。
 run_e2e ccm-contract-parity   45
 
-# ── 令牌那两套（第二波 T4，2026-09-24）：**只被 shellcheck、不被执行**的那一格接进执行链 ──
+# ── 令牌那两套（2026-09-24）：**只被 shellcheck、不被执行**的那一格接进执行链 ──
 #
-# 🔴 题面：`设计/80 §8.7` 步 2 立了 `tests/e2e/backend-rbind-token.sh`（真后端报不报得出令牌），
+# 🔴 题面：立了 `tests/e2e/backend-rbind-token.sh`（真后端报不报得出令牌），
 #   步 3 立了 `tests/e2e/rbind-token-endtoend.sh`（生产载荷字节 → 真 bash → 进程环境 → 真后端 → wire）。
 #   两套落地那天都**只进了 `ci.yml` 的 shellcheck 人群**，没有任何一条执行链跑它们 ——
 #   `ci.yml` 两段注释逐字「也没有加 `assert-pass-floor` 那一行 …… **待拍板**」。
@@ -2051,15 +2051,15 @@ run_e2e ccm-contract-parity   45
 #   ⚠ **不在 `ci.yml` 的计数地板里** —— 那一行是 T3/步 2 报备「待拍板」的另一件事，本拍不替它拍；
 #   `tests/frontend/shell/e2e_gate_registry_tests.rs` 的 `EXEMPT` 为此各登记了一条（理由写在那里）。
 # ⚠ 它**买不到**什么：两套都不经 ssh、不经 Windows、不开窗 ⇒ 「↗ 真的把那个窗口拉到前台」
-#   这一维仍是零格（`设计/80 §10.4` / §11 同一句）。
+#   这一维仍是零格（/ §11 同一句）。
 run_e2e backend-rbind-token   11
 run_e2e rbind-token-endtoend   9
-# 〔TAIL · 09-26〕`backend-cc-bus`：DUP2 把拒码改成 `bad_id` 之后它红了 3 条、一整天没人看见 ——
+# `backend-cc-bus`：DUP2 把拒码改成 `bad_id` 之后它红了 3 条、一整天没人看见 ——
 #   它只挂在 `ci.yml` 那条不通电的流水线上。接进本机执行链（isolated tmux socket ＋ jq，fail-closed）。
 #   〔量于 2026-09-26，本工作树 `w4/tail`〕**96 PASS / 0 FAIL**。
-#   〔FIX4〕96 → 97：多一格「杀会话成品的 `bus` 那一格说出注销了谁」（`设计/95 §6`）。
+# 96 → 97：多一格「杀会话成品的 `bus` 那一格说出注销了谁」。
 run_e2e backend-cc-bus        97
-# 〔E2 尾 · 09-27〕同一族的另外四套：只挂在 `ci.yml` 那条不通电的流水线上（本仓不推送），于是各红了几天没人看见 ——
+# 同一族的另外四套：只挂在 `ci.yml` 那条不通电的流水线上（本仓不推送），于是各红了几天没人看见 ——
 #   `backend-gate2` 的 `meta_equals` 判据过时（DUP3 §5 ⑦ 按设计放行 `=`，它仍期望 `invalid_args`）·
 #   `local-backend` 两趟过滤串重叠、常驻那族跑两遍（且第一个宿主起的后端没人收，靠收尾 `pkill -f` 兜着）·
 #   `restart-frames` / `restart` 的驱动器载不了 `.css`、shim 还在说已经退役的 Tauri 命令（真源早改走通道）。
@@ -2068,9 +2068,9 @@ run_e2e backend-cc-bus        97
 #     它记 SKIP 并说原因（套件里的版本门 `min_tmux_for`；版本不够却建得出来 ⇒ FAIL「版本门过时」）⇒ 3.6 上 35+0、
 #     3.4 上 34+1，这一格两边都是 35。只钉 PASS 的话就是把开发机的 tmux 烤进了判据。
 run_e2e backend-gate2         34 exact-with-skip
-#   ★ 〔DEL 续〕`local-backend` 同形按 **PASS+SKIP** 恒等判：三条起真后端的判据由 `cfg(embedded_backends)` 门着，
+#   ★ `local-backend` 同形按 **PASS+SKIP** 恒等判：三条起真后端的判据由 `cfg(embedded_backends)` 门着，
 #     没铺 `src/frontend/shell/embedded-backends/` 的树上它们记 SKIP 并说原因（套件里那一段；落点齐了却不跑 ⇒ FAIL）⇒ 铺了 26+0、没铺 15+11。
-#   〔MIG-1 · `99 §2.1 ⑬`〕26 → 24：起真后端的那三条少了一条 `the_local_tmux_frames_really_land_in_the_ledger`〔散文墓碑〕（它钉的 monitor 本机
+# 26 → 24：起真后端的那三条少了一条 `the_local_tmux_frames_really_land_in_the_ledger`〔散文墓碑〕（它钉的 monitor 本机
 #     tmux 原文账随账本进后端删了，快照帧随 V41 删了；后端那本账由 `graylight-backend-frames.sh` 真 tmux 实测），它打 2 条标记 ⇒
 #     铺了 24+0、没铺 15+9。量于 2026-09-28 铺了落点的非 ASCII 路径工作树。
 run_e2e local-backend         24 exact-with-skip
@@ -2083,12 +2083,12 @@ run_e2e restart               24
 #   〔量于 2026-09-28，主树同形的非 ASCII 路径工作树，本机 tmux 3.6〕2 · 5 PASS / 0 FAIL。
 run_e2e backend-tmux-late-server 2
 run_e2e backend-sessions-rewatch 5
-# 〔MIG-1 续五 · 主会话裁「判据不在执行链上 ≈ 不存在」〕`p3t-local-tmux`（本机拉起真建出 tmux 会话）：此前只挂在不通电的 `ci.yml` 上。
+# 〔MIG-1 续五 · 「判据不在执行链上 ≈ 不存在」〕`p3t-local-tmux`（本机拉起真建出 tmux 会话）：此前只挂在不通电的 `ci.yml` 上。
 #   它跑在 `bash -lic` 里、依赖本机登录 shell —— 由套件自己的 fail-closed 前置罩住（串打头的 `ccm` 钉成本树这一份的绝对路径、
 #   解析到的不是本树那个二进制就 ABORT；登录 shell 里的 tmux / 假 launcher 不是 shim 也 ABORT），不会静默过。
 #   〔量于 2026-09-28，主树同形的非 ASCII 路径工作树，本机 tmux 3.6〕11 PASS / 0 FAIL。
 run_e2e p3t-local-tmux        11
-# 〔FIX3 · 同 E2 尾那一形〕`resume-frames`（就地 resume 复活清灰，后端帧级）：此前只挂在不通电的 `ci.yml` 上，主线 6 过 1 红 ——
+# 〔同 E2 尾那一形〕`resume-frames`（就地 resume 复活清灰，后端帧级）：此前只挂在不通电的 `ci.yml` 上，主线 6 过 1 红 ——
 #   「claude 死后等不到可重连」的根因在套件自己：kill 之后才取帧日志记号，而后端靠 pidfd 判死几乎零延迟，那一拍的 `session_state`
 #   已经落在记号之前（与仓路径是不是 ASCII 无关；后端会话账本那一族没毛病）。记号挪到 kill 之前。
 #   〔量于 2026-09-28，ASCII 工作树连打三趟 ＋ 主树同形的非 ASCII 路径工作树，本机 tmux 3.6〕7 PASS / 0 FAIL。
@@ -2129,15 +2129,15 @@ gate_weaknet() {
 run_gate weak-net '台架实打的 PASS 条数（四维网况 ＋ SSH，改前/改后两个读数），与 `ci.yml` `weak-net` job 那一步的地板**恒等**。⚠ 要 docker；镜像已在就跳过建镜像（建一次约 13 秒，要能装包）；只量容器里自建网络上的网况，真远端、真 Windows 一概不在。本格墙钟〔量于 2026-09-30，本工作树，镜像已在〕约 36 秒' \
          gate_weaknet
 
-# ── 〔第四波 S4〕这里原先是第 26 格 `f3-copy`（秤 F3 两向：零流量复制的包计数对拍，三方对拍 ＋ 两向锚点）。
+# ── 这里原先是第 26 格 `f3-copy`（秤 F3 两向：零流量复制的包计数对拍，三方对拍 ＋ 两向锚点）。
 #   它量的那条池子命令与核心随浏览 / 复制离开 SFTP 一起退役（窗口的复制走后端 `files-copy`），
 #   判据本体那份台架文件一起删了 ⇒ 本格退役，29 格 → 28 格。它的形状（三方对拍 ＋ 写死的 pin）
 #   仍是下面 `comm-boundary` 那一格的取法，说明留在那一格里。
 
 # ── `comm-boundary`：通信层那十七条独立成格（`13b` 步 1 落地，本拍第 27 格）──────
 #
-# 🔴 **题面与当年那一格 `f3-copy`（〔第四波 S4〕已退役）同形，但这一格更要紧 —— 因为那一族的人群可能是空集。**
-#   `tests/frontend/shell/comm_boundary_registry_tests.rs`（1400 行）是 `设计/05 §2`/`§3.3.6`
+# 🔴 **题面与当年那一格 `f3-copy`（已退役）同形，但这一格更要紧 —— 因为那一族的人群可能是空集。**
+#   `tests/frontend/shell/comm_boundary_registry_tests.rs`（1400 行）是
 #   那 C1–C5 ＋ X1–X6 的本体。人群为空时，绿的理由是 `0 == 0` 而不是「扫不到」。
 #   ⚠ **本文件不写人群有几份** —— 见 `〔自述·现物〕` 那一段的理由。
 #   ⇒ 整个模块被从 `lib.rs` 摘掉时，**十七条一条都不跑，连那条元判据也不跑**，
@@ -2145,7 +2145,7 @@ run_gate weak-net '台架实打的 PASS 条数（四维网况 ＋ SSH，改前/�
 #   🔴 一个人群为空的判据族，如果连「它自己还在不在」都没人看，那它买到的是零。
 #   立本格的那一路自己停下报备了这件事（写区不含本文件），这一拍补上。
 #
-# ★ 取法照当年那一格 `f3-copy`（〔第四波 S4〕已退役）：**三方对拍**（本行 `pin=17` · 那份文件现打的 `#[test]` 条数 ·
+# ★ 取法照当年那一格 `f3-copy`（已退役）：**三方对拍**（本行 `pin=17` · 那份文件现打的 `#[test]` 条数 ·
 #   `cargo test` 真跑出的 passed），三个数必须相等。
 # ★ 两个逐字锚点选的是**最承重的两条**，不是随便挑两个名字：
 #   ① `every_criterion_is_on_the_execution_chain` —— 元判据本身（判据清单 ↔ 真实 `#[test]`
@@ -2156,7 +2156,7 @@ run_gate weak-net '台架实打的 PASS 条数（四维网况 ＋ SSH，改前/�
 # ⚠ 本格**不买**「没盖标记的文件不是通信层」—— 那是那张表自己最大的诚实边界
 #   （一份真在做传输的代码不盖标记，它一个字都看不见）。本格只买「这十七条没有静默消失」。
 #
-# ★ 〔2026-09-21〕**这一格的三方对拍逐腿砍过**（`pin` 从 15 抬到 16 那一拍，
+# ★ **这一格的三方对拍逐腿砍过**（`pin` 从 15 抬到 16 那一拍，
 #   还原一律 `cp` 覆盖 ＋ `sha256` 对账，**不搬 mtime**）：
 #   · **`pin` 那条腿** —— 把本行的 `pin=16` 改回 `15` ⇒ 当场红，逐字
 #     「三方对拍分叉 —— 本行钉 15 · … 声明 16 条 · cargo 真跑 16 条」；
@@ -2167,8 +2167,8 @@ run_gate weak-net '台架实打的 PASS 条数（四维网况 ＋ SSH，改前/�
 #   ⚠ 「声明」那条腿与「真跑」那条腿会被**同一次编辑**一起改掉（真删一条判据 ⇒ 两个都变 15），
 #     而那时 `pin` 还是 16 ⇒ 照样红。**本格的反空真锚是那个三方相等，不是任何单独一条腿。**
 #
-# ★ 〔RE · 收尾重排〕`pin` **17 → 18**：`99 §2.1 ⑰` 立「`src/comms/` 下文件集合 == 登记表」那一腿（`the_comms_tree_holds_exactly_the_registered_members`），判据与 `pin` 同拍。
-# ★ 〔2026-09-22〕`pin` **从 16 抬到 17**（`设计/99 §4 P16`「步 4 的剩余」立第十七条：
+# ★ 〔收尾重排〕`pin` **17 → 18**：立「`src/comms/` 下文件集合 == 登记表」那一腿（`the_comms_tree_holds_exactly_the_registered_members`），判据与 `pin` 同拍。
+# ★ `pin` **从 16 抬到 17**（「步 4 的剩余」立第十七条：
 #   面 A 的传输面候选逐份两向集合相等）。同一拍逐腿再砍过一遍，读数与上面那次同形：
 #   · 只加判据**不**抬 `pin` ⇒ 当场红，逐字「本行钉 16 · … 声明 17 条 · cargo 真跑 17 条」；
 #   · 只抬 `pin` 而判据没加 ⇒ 当场红（反方向）。
@@ -2199,7 +2199,7 @@ printf "comm-boundary: %s passed（C1–C5 ＋ X1–X6 ＋ 锚 ＋ 余下五份 
 # 而这一族守的正是「别的判据有没有静默变空」⇒ 它自己静默变空是最贵的那一种。
 # 三方对拍：`pin`（写死在本行）· 那份文件里现打的 `#[test]` 条数 · `cargo` 真跑出来的 passed，三侧异源；
 # 两条锚点：分区那条（五层登记表的人群闸）· 真机层那条（`#[ignore]` 触发链）各在跑过的名单里恰好 1 次。
-# ⚠ 本格**不买**它们判得对（各条头注与 `调研/第四波记录/TQ1.md` 的死值验负责）。
+# ⚠ 本格**不买**它们判得对（各条头注负责）。
 # ⚠ `benches/` 那条判据只判「秤有家、`cargo test` 会跑它的冒烟档」；**墙钟一个都不进本门禁**。
 # ★ 逐腿死值验（TQ1 09-24，还原一律 `shutil.copyfile` ＋ `touch` ＋ sha256 对账）：
 #   · `pin` 那条腿：`pin=12` → `11` ⇒ 当场红（三方对拍分叉）；
@@ -2257,7 +2257,7 @@ printf "test-tiers: %s passed（分区 ＋ 五层自检 ＋ benches/ ＋ 合成�
 # 「这道门查哪个计划工作区必须由调用方指定；不许回落默认值：硬写一个名字正是 `K-R10`
 # 治的那个 bug」。那条**拒绝猜**的纪律本身没错，今天不成立的是它的**对象**：
 #
-#   ① 本仓**没有** `.claude/planned-build/` —— 今天的设计与排期走的是仓外的 `调研/` 那一族文档；
+#   ① 本仓**没有** `.claude/planned-build/` —— 今天的设计与排期走的是仓外的那一族文档；
 #   ② 它调的 `~/.claude-accts/z/skills/planned-build/bin/pb.py` **今天不在盘上**
 #      ⇒ 就算给了 `PB_WS`，这道门也跑不起来。
 #
@@ -2292,7 +2292,7 @@ printf "test-tiers: %s passed（分区 ＋ 五层自检 ＋ benches/ ＋ 合成�
 #   把真正要看的诊断顶下去。
 GATE_BLIND=(
   "windows-runner|Windows runner 上才犯的那一族 —— 本门禁的 npm / tsc / e2e 全跑在 Linux 上，路径分隔符恒是 /。K-R119 那趟云端 vitest 的唯一一条红（1 failed / 1725 passed）就是这一形，本机在构造上红不了"
-  "ci-job-shape|.github/workflows/*.yml 里那些 job 自己的形状 —— 装了哪条工具链、runner 是谁、缓存与 needs 怎么连、每一步的 if 条件。⚠ 这一条已经被收窄过三次，每次只割走一个切片：ci-e2e-prereq 判 ci.yml 里 e2e 步骤的 build 前置齐不齐（K-R122）；release-gate 判 release.yml 的触发器、env.PUBLISH 字面、两处发布步骤与 CI 门那一步的 if、以及两处发布步骤的正文来源（K-R124）；〔19b 09-19〕release-gate 又割走**产字节那条路**——release.yml 里「跑 cargo build/zigbuild」的步骤 ↔ 条 63 承诺的三格（两向）、出现的 target triple（两向）、三个 job 的 runs-on 逐字、每一处抠 const BUILD_ID 的住址实打指得到真东西、setup-zig 与 install-action 那两个版本。**其余全部仍然没人看** —— 包括 ci.yml 那 8 个 job 的 runner/工具链/needs/缓存，和 release.yml 里除上面点名那几处以外的每一步（打包 · 校验和 · 上传清单 · artifact 传递）。⚠ 而且那几个切片买的都只是「盘上这份文本满足这几条」——**云端那一趟会不会绿，见下面 did-ci-actually-run 那一条**"
+  "ci-job-shape|.github/workflows/*.yml 里那些 job 自己的形状 —— 装了哪条工具链、runner 是谁、缓存与 needs 怎么连、每一步的 if 条件。⚠ 这一条已经被收窄过三次，每次只割走一个切片：ci-e2e-prereq 判 ci.yml 里 e2e 步骤的 build 前置齐不齐（K-R122）；release-gate 判 release.yml 的触发器、env.PUBLISH 字面、两处发布步骤与 CI 门那一步的 if、以及两处发布步骤的正文来源（K-R124）；release-gate 又割走**产字节那条路**——release.yml 里「跑 cargo build/zigbuild」的步骤 ↔ 条 63 承诺的三格（两向）、出现的 target triple（两向）、三个 job 的 runs-on 逐字、每一处抠 const BUILD_ID 的住址实打指得到真东西、setup-zig 与 install-action 那两个版本。**其余全部仍然没人看** —— 包括 ci.yml 那 8 个 job 的 runner/工具链/needs/缓存，和 release.yml 里除上面点名那几处以外的每一步（打包 · 校验和 · 上传清单 · artifact 传递）。⚠ 而且那几个切片买的都只是「盘上这份文本满足这几条」——**云端那一趟会不会绿，见下面 did-ci-actually-run 那一条**"
   "msvc-abi|MSVC ABI 专属的那一类跨平台编译问题 —— 两格 Windows 交叉检查用的都是 -gnu（沙箱里没有 zig，ring 的 build script 缺 lib.exe）。只在 msvc 上才犯的毛病本门禁盖不到"
   "did-ci-actually-run|云端那条流水线到底跑没跑、绿没绿 —— 本门禁断网跑（--network none），它一次 gh run view 都做不到。GATE: OK 说的是这棵树在本机这几格上的样子，不是它在云端的样子。⚠〔09-20 收窄一刀，不摘〕本文件此刻已经**被调用方接住了**：.github/workflows/ci.yml 的 local-gate 那个 job 与 tests/hooks/pre-push 都在门禁之后跑 tests/evidence/K-G4C-gate-receipt.py（「这一趟到底跑没跑门禁」从此有判据）。**但那两条路今天一趟都没在云端真跑过** —— 本仓红线是不推送，而 ci.yml 的触发器只有 push(main/v*) 与 pull_request ⇒ 那个 job 在 GitHub runner 上从未起过；pre-push 同理（没有 push 就没有 pre-push）。⇒ 盘上那几份文本满足那几条判据，**不等于**云端那一趟会绿，这一条因此不摘。⚠ 本条刻意不写第二个格数：那个数是**写死在裁决行那一句里的字面量**，由 K-R80 的 C5（数）· C5b（自述节三方对拍）· C5d（裁决行那串点名与盘上两向集合相等）三处钉着。上一版这里逐字声称那个数是门禁自己算出来的 —— **那是假话**（裁决行是字面量，C5 那条正则正是靠它是字面量才钉得住），而说明栏 C5c 逐字声明「一个字都不判」⇒ 那句假话没人守，腐着。C5d 第二半从此把它焊住"
 )
@@ -2346,16 +2346,16 @@ if [ "${#fails[@]}" -eq 0 ]; then
   # 🔴 `K-R124`（09-15）：**19 → 20**，加的是 `release-gate`（第 20 格）。它治的不是
   #   「CI 有、本地没有」，是**更坏的一档**：CI 里那一步从加进去那天起就不可能过，
   #   而它在本地跑不起来（判据本体用了沙箱里没有的 PyYAML）⇒ **两头都看不见**。
-  # 🔴 〔订正 09-19〕**21 → 20，摘掉 `pb check`。** 那一格 09-18 已按用户拍板**整格删除**
+  # 🔴 **21 → 20，摘掉 `pb check`。** 那一格 09-18 已按用户拍板**整格删除**
   #   （`PB_WS` / `planned-build` 在本文件非注释处现打零命中），而这一行与上面自述段
   #   **两处都还在点它的名**，于是门禁整整一天印着一个比实跑多一格的数。
   #   ⚠ **这正是 `C5`/`C5b` 该抓而没抓到的那条** —— 它没瞎，是**没人跑它**：
   #   `K-R80` 不在本脚本的执行链上，且它默认找的是重构前的 `scripts/gate.sh`（现打直接
   #   `FileNotFoundError`）。**两头坏叠在一起 ⇒ 假账在裁决行上挂了一天。**
   #   ⇒ 本拍把它接成真的一格（见下面 `run_gate gate-selfdesc`），不再靠人记得手跑。
-    # 🔴 第二波 T4（09-24）：**27 → 29**，加的是令牌那两套 e2e（`backend-rbind-token` ·
+    # 🔴 （09-24）：**27 → 29**，加的是令牌那两套 e2e（`backend-rbind-token` ·
   #   `rbind-token-endtoend`，见上面 `run_e2e` 那一段）—— 它们此前只被 shellcheck、不被执行。
-  # 〔TAIL · 09-26〕**30 → 31**，加的是 `backend-cc-bus`（见上面 `run_e2e` 那一段）；
+  # **30 → 31**，加的是 `backend-cc-bus`（见上面 `run_e2e` 那一段）；
   #   **31 → 32**，加的是 `panorama-engine`（全景小程序自己的测试，见 `backend` 那一格下面）。
   echo "GATE: OK —— 55 格全绿（worktree-clean · hooks · copy2 · shellcheck · ci-e2e-prereq · release-gate · gate-selfdesc · ccbus-twophase · e2e-smoke · platform · installface · fmt · fmt-backend · winchk · winchk-backend · winlink · muslbuild · cargo · comm-boundary · test-tiers · deadcode · clippy · appbuild · generated · backend · clippy-backend · panorama-engine · code-picture-core · tsc · npm · coverage · audit · ccm-print-parity · ccm-rbind-title · ccm-cli · ccm-contract-parity · backend-rbind-token · rbind-token-endtoend · backend-cc-bus · backend-gate2 · local-backend · restart-frames · restart · backend-tmux-late-server · backend-sessions-rewatch · p3t-local-tmux · resume-frames · cc-spawn-uplift · inbound-frames · graylight-frames · backend-fork · tmux-target · cc-bus-queue-drain · resume · weak-net），可以出货"
   gate_print_blind

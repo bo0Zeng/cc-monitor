@@ -138,8 +138,8 @@ PM 派工单给的口径逐字：**按 `#[test]` 切段，段内出现三个符�
 | 11 | `daemon_kill::the_refusal_wording_matches_the_ssh_path`（写区外） | 反向锚点断「那条 SSH 回落里这几句话还在」 | **对照面换成兄弟命令** `daemon_send_keys` ⇒ 改名 `…_matches_the_sibling_command`。性质（**同一个拒绝只许有一种说法**）没消失，只是「两条路」今天指的是 kill 与 send-keys 这两条后端命令。⚠ 顺带收紧：对照面过 `production_code`（原来是整份源码 `contains`，对面测试里抄一份就能糊弄） |
 | 12 | `daemon_send_keys::the_refusal_wording_matches_the_ssh_path`（写区外） | 同上 | 同上（对照面指回 `daemon_kill`） |
 | 13 | `daemon_kill::the_doc_sentence_about_the_transitional_fallback_cannot_outlive_the_code`（写区外） | 「耐久文档里那句『过渡期回落』不许比代码活得久」 | **判据一个字没动** —— 它是为这一刻设计的**前提触发器**，本件让它**真红了一次**，逼着把 `doc/IPC-PROTOCOL.md` 那两处改成「已删」。今天两侧都是 `false`，**两个方向仍然咬** |
-| 14 | `the_ssh_fallback_always_probes_before_it_acts`（`K-R56` 09-11 买的） | 「探不到就不动手」 | **跨包搬家** ⇒ `remote-daemon-proto/src/control/gate.rs::both_gates_always_probe_before_they_act`。它是 `cargo` 那格 `−1` 与 `daemon` 那格 `+1` 的**同一条**。⚠ 与 `§0d` 冲突，挂 `〔R72a〕` 交 PM |
-| 15 | `a_gate_rejection_is_never_laundered_into_the_ssh_fallback` | **三态不许压成两态** | 名字刻意不改（它记着这条判据当初为什么立）。🔴 **第二拍实打发现第一拍加的那两格是空的** —— 定长窗口换成按 `=>` 切臂、人群从 1 个命令扩到 2 个、另配反向自检。读数与证伪过程住件文件 `§3-1`，请裁记号 `〔R72d〕` |
+| 14 | `the_ssh_fallback_always_probes_before_it_acts`（`K-R56` 09-11 买的） | 「探不到就不动手」 | **跨包搬家** ⇒ `remote-daemon-proto/src/control/gate.rs::both_gates_always_probe_before_they_act`。它是 `cargo` 那格 `−1` 与 `daemon` 那格 `+1` 的**同一条**。⚠ 与 `§0d` 冲突，挂 `` 交 PM |
+| 15 | `a_gate_rejection_is_never_laundered_into_the_ssh_fallback` | **三态不许压成两态** | 名字刻意不改（它记着这条判据当初为什么立）。🔴 **第二拍实打发现第一拍加的那两格是空的** —— 定长窗口换成按 `=>` 切臂、人群从 1 个命令扩到 2 个、另配反向自检。读数与证伪过程住件文件 `§3-1`，请裁记号 `` |
 
 ### ③ 不是判据
 
@@ -159,7 +159,7 @@ stdout 喂 `e2e/tmux-guarded-acceptance.sh`）。它的**输入源被删了**，
 ⚠ **约定型守卫**（扫源码形态），行为那一半在 `e2e/daemon-gate2-acceptance.sh`。
 ⚠ 件文件 `§0d` 写着「不碰 `K-R56` 那条刚买到的判据（要动就交回 PM）」，而派工单 ② 逐字要求
 这 5 条「改写成不依赖那两条回落的形式活下来」——**两句话在这一条上是冲突的**，
-本拍按派工单做，并挂 `〔R72a〕` 交 PM 裁。
+本拍按派工单做，并挂 `` 交 PM 裁。
 
 ---
 
@@ -168,11 +168,11 @@ stdout 喂 `e2e/tmux-guarded-acceptance.sh`）。它的**输入源被删了**，
 🔴 **第一拍在这里写的是「没做，交回 PM 定夺」，第二拍改了这个处置。**
 依据是本区自己的先例，不是我自己放宽的：`DECISIONS.md#R24` 裁定四
 （`structural_scan::TOMBSTONED` **就在那次被追认的四处里**）· `#R25` 裁定四 ·
-`MASTERPLAN` 纪律 ⑯ 逐字「**本条不放宽越界闸**：越了照样当场点名上报；
+纪律 ⑯ 逐字「**本条不放宽越界闸**：越了照样当场点名上报；
 本条改的是**划写区那一刻**」。⇒ **结构性强制的随动当场改掉并逐处点名**是本区既定做法；
 把门禁留成红的交回**不是**。
 
-**12 处逐条住件文件 `§8` 的 `〔R72b〕`**（每处都写了「为什么非改不可」与「改了什么」）。
+**12 处逐条住件文件 `§8` 的 ``**（每处都写了「为什么非改不可」与「改了什么」）。
 这里只补一条第一拍没写、而它把「能不能在写区内绕过去」这个问题**关死**了的事实：
 
 > `every_dead_name_named_in_the_prose_is_declared_dead` 的诊断文案**自己逐字禁掉了那条绕法** ——

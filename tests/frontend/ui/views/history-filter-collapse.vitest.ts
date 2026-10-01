@@ -32,7 +32,7 @@ vi.mock("../../../../src/frontend/ui/behavior", () => ({ getBehavior: () => ({})
 vi.mock("../../../../src/frontend/ui/format", () => ({ formatTimestampSmart: () => "时间" }));
 
 import { invoke } from "@tauri-apps/api/core";
-// 〔C4d〕历史清单改走通道（问本机常驻后端）：旧命令名照旧当「哪一问」的名字，译法住 chan-fake。
+// 历史清单改走通道（问本机常驻后端）：旧命令名照旧当「哪一问」的名字，译法住 chan-fake。
 import { withHistoryReads } from "../../../test-support/chan-fake";
 import { HistoryView } from "../../../../src/frontend/ui/views/history";
 

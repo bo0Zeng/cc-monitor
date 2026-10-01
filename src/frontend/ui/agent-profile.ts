@@ -4,14 +4,14 @@
  * # `K-R93`（09-12）：这里从此不写死任何一格
  *
  * 立件时本文件是一份**手写常量**（`AGENT_PROFILE`），而 monitor 那份适配表另有一份（claude ＋ codex）
- * —— 同一件事两份实现，`K-R54` 表**第 11 行**。〔P1〕今天值的唯一住址是后端适配层 `src/backend/agents/<名>/resume.rs`。
+ * —— 同一件事两份实现，`K-R54` 表**第 11 行**。今天值的唯一住址是后端适配层 `src/backend/agents/<名>/resume.rs`。
  * 🔴 而且前端这一份**只认 claude** ⇒ 接上后端的同一刻，codex 那一格也补上了
  * （**那不是回归，是把一格漏的补上**）。
  *
  * 取值链，一句话：
  *
  * ```text
- * src/backend/agents/<名>/resume.rs（注册表 `Adapter.launch`）   ← 唯一的值源（〔P1〕从前是 monitor `adapter.rs`）
+ * src/backend/agents/<名>/resume.rs（注册表 `Adapter.launch`）   ← 唯一的值源（从前是 monitor `adapter.rs`）
  *   └─（cargo test --lib export_bindings ＝ npm run gen:types）→
  *      src/frontend/ui/generated/agent-profile-table.ts         ← 生成物，不许手改
  *        └─（本文件）→ AGENT_PROFILE / lookupAgentProfile / listAgents
@@ -28,7 +28,7 @@
  *    对表里没有的 agent 回 `{ known: false, message }`，**不许悄悄回落到 claude 那一份**：
  *    那就是「一个值装了两件事」。
  * 2. **`null` ≠ 空** —— 生成物里的 `null` 是「这一格今天没人考据过」，`[]` 才是「考据过、确实是空的」。
- *    〔THIN〕会是 `null` 的那五格（工具 / 判活进程词表）随判定进了后端，今天这张表里没有可空的列表格了。
+ * 会是 `null` 的那五格（工具 / 判活进程词表）随判定进了后端，今天这张表里没有可空的列表格了。
  * 3. **不许在本文件里再写一份工具名 / 进程名 / 启动器名** —— `agent-profile-parity.vitest.ts`
  *    有一条判据扫本文件的生产段，把后端那张表里的**任何一个值**写死进来就红
  *    （`KR93D1` 第三刀）。这也是 `AGENT_PROFILE` 用 `ACTIVE_AGENT` 而不是字面量 `"claude"`
@@ -81,7 +81,7 @@ export function lookupAgentProfile(
 /**
  * 考据齐全的画像 —— 每一格都有值。`AGENT_PROFILE` 就是当前 agent 那一份。
  *
- * 〔THIN · `设计/00 §1.2` 判定只在后端〕从前这里还有五格判定用的词表（agent 工具 · 交互工具 · 写类工具 · markdown 工具 ·
+ * 〔判定只在后端〕从前这里还有五格判定用的词表（agent 工具 · 交互工具 · 写类工具 · markdown 工具 ·
  * 判活进程名），界面按它们判卡型、认 tmux 会话。那几张表进了后端适配层：卡型随记录成品带出（`toolCards`），
  * tmux 那一格随 `tmux-list` 成品带出（`agent`）⇒ 本画像只剩起会话那几格事实。
  */
@@ -89,7 +89,7 @@ export type FullAgentProfile = {
   /**
    * resume/拉起前要 unset 的嵌套会话 env。
    *
-   * ⚠ **顺序不是随手排的**：它逐项同序于后端 `agents/claudecode/resume.rs::NESTED_ENV`（〔P1〕唯一住址），
+   * ⚠ **顺序不是随手排的**：它逐项同序于后端 `agents/claudecode/resume.rs::NESTED_ENV`（唯一住址），
    * 而那个顺序**直接决定了送到远端的那条命令的字节**（`backend/control/payload.rs` 那个载荷内核）。
    * 今天两侧同源（这一格就是从那里来的），顺序天然不会漂。
    */
@@ -114,7 +114,7 @@ export type FullAgentProfile = {
  * 取一份**考据齐全**的画像。
  *
  * 失败**不静默**：agent 不在表里 ⇒ 抛 [`lookupAgentProfile`] 那句话。
- * 〔THIN〕「某一格是 `null` ⇒ 抛」那一半随五格词表进了后端（今天没有可空的列表格）。
+ * 「某一格是 `null` ⇒ 抛」那一半随五格词表进了后端（今天没有可空的列表格）。
  * 🔴 **不许在这里塞一个「回落到 claude」的兜底** —— 那正是 `KR93D3` 禁的那件事。
  */
 export function fullAgentProfile(
@@ -143,7 +143,7 @@ export function fullAgentProfile(
 export const AGENT_PROFILE = fullAgentProfile(ACTIVE_AGENT);
 
 /**
- * 〔MIG-2〕当前 agent 的**适配器 id**（上游选择按它挑那一行，`launch-endpoint` / `launch-local` 的 `agent`）。
+ * 当前 agent 的**适配器 id**（上游选择按它挑那一行，`launch-endpoint` / `launch-local` 的 `agent`）。
  * 取生成物那张表的 `adapterId`（原先是 monitor `history.rs::launch_agent_id`〔散文墓碑〕在 Rust 里取），不另写一份。
  */
 export const AGENT_ADAPTER_ID: string = (() => {

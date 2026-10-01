@@ -6,7 +6,7 @@
  * C04a Phase D 审计（J7）指出：两个守卫各自算仓库根，深度约定已经不一样了
  * ——`generated-boundary-guard.vitest.ts` 在 `src/` 下用 `resolve(dirname, "..")`，
  * `ipc/commands.vitest.ts` 在 `src/frontend/ui/ipc/` 下用 `resolve(dirname, "..", "..")`。
- * 主计划说这个守卫形状要复制 127 次，抄错深度是必然会发生的事。
+ * 说这个守卫形状要复制 127 次，抄错深度是必然会发生的事。
  *
  * 抄错的后果是 `readFileSync` 的 ENOENT **硬失败**（不是静默假绿），所以这不是洞、是效率问题
  * ——但既然本文件所在目录是固定的，让每个守卫自己数 `..` 就没有意义。

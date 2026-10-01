@@ -10,7 +10,7 @@
 本文件**只出读数**：交回时那几个数（`EXEC_SITES` 16 → ?、逐行是哪几行出表、四条命令各走哪条路）
 要能**现算**，而不是抄一份快照 —— `brief` 12：写「可重跑」就要给量具的住址。
 
-⚠ 刻意**不给它第三副牙**（`K-R111 §H2` 那条理由的同族）：同一个事实两副牙，
+⚠ 刻意**不给它第三副牙**（那条理由的同族）：同一个事实两副牙，
 其中一副会在阴性对照那一格替另一副挡枪，挡完之后「那张表到底有没有牙」就量不出来了。
 ⇒ 本文件**退出码恒 0**，除非它自己坏了（抽取器抓不到东西 ⇒ `exit 2`）。
 
@@ -89,7 +89,7 @@ BACKEND_MARKS: tuple[str, ...] = (
     "client.call(",
 )
 
-#: 本件之前 `EXEC_SITES` 里属于这四条的行（`K-R111 §E2` 现打 16 条时的那张表）。
+#: 本件之前 `EXEC_SITES` 里属于这四条的行（现打 16 条时的那张表）。
 #: ⚠ 它是**上一次有人核过的答案**，不是今天的答案 —— 下面现打的与它的差就是本件的账。
 WAS_16: tuple[tuple[str, str], ...] = (
     ("cc_bus.rs", "fetch_remote_cc_bus"),
@@ -98,7 +98,7 @@ WAS_16: tuple[tuple[str, str], ...] = (
     ("tmux.rs", "capture_remote_pane"),
     ("tmux.rs", "list_remote_tmux"),
     ("ccm_probe.rs", "probe_ccm_cli"),
-    # 〔C4d · 第四波 4B〕`("remote_history.rs", "run_list_query")` 那一行摘了：逐次拨号那条路删了。
+    # `("remote_history.rs", "run_list_query")` 那一行摘了：逐次拨号那条路删了。
     ("remote_history.rs", "stream_read_remote_session"),
 )
 
@@ -217,7 +217,7 @@ def main() -> int:
     print("── `exec_site_registry::EXEC_SITES`" + "─" * 42)
     print(f"  条数：{e['本件之前']} → **{e['条数']}**（分母 = 那张具名表现打的行数）")
     print(f"  出表：{e['属于这四条那族里出表的'] or '（一行都没出）'}")
-    print(f"  留表（属于 `K-R111 §E2` 那 8 行里的）：{e['属于那族里留表的']}")
+    print(f"  留表（属于那 8 行里的）：{e['属于那族里留表的']}")
     print()
     s = m["SPAWNS"]
     print("── `write_site_registry::SPAWNS`" + "─" * 45)

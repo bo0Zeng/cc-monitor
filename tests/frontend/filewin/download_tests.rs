@@ -89,7 +89,7 @@ fn the_two_row_gates_agree_today_and_say_so_when_they_stop() {
     let any_false = corpus.iter().any(|r| !is_downloadable(r));
     assert!(any_true && any_false, "语料退化了 —— 本条此刻是空真的");
 
-    // 〔W5-FILES〕**刻意只放开了复制那一侧**：目录能复制（后端 `recursive: true`，`设计/60 §6.2`），
+    // **刻意只放开了复制那一侧**：目录能复制（后端 `recursive: true`），
     //   下载仍只收文件（没有「递归下载」这条路）⇒ 两道闸恰好在「名字寻址得到的目录」这一格上分开，其余逐格相等。
     for r in &corpus {
         let copy = crate::copy::is_copyable(r);
@@ -179,7 +179,7 @@ fn the_existence_check_has_exactly_one_production_address() {
     let prod = guard_core::production_code(include_str!(
         "../../../src/frontend/filewin/src/download.rs"
     ));
-    // 〔FILES2 · Q4〕碰盘那一下挪进了 `dest_exists_at`（落点可以是一条装不进串的原始字节路径），`dest_exists` 转调它 ⇒
+    // 碰盘那一下挪进了 `dest_exists_at`（落点可以是一条装不进串的原始字节路径），`dest_exists` 转调它 ⇒
     //   针从 `Path::new(p).exists()` 换成 `.exists()` 本身：整个生产段恰好一处。
     let needle = format!(".{}()", "exists");
     assert_eq!(
@@ -242,7 +242,7 @@ fn the_outcome_is_visible_before_the_round_counter_moves() {
 
 /// 失败那一支要把**下层那句原话**带着走（后端路径解析的拒绝、连接失败、落地失败）。
 ///
-/// 〔FN1 · V119〕从前这里指着 `sftp_pool_tests` 里那条「中继真的拒（在转给本机后端之前）」；那道拒绝删了
+/// 从前这里指着 `sftp_pool_tests` 里那条「中继真的拒（在转给本机后端之前）」；那道拒绝删了
 /// （用户「文件管理器全部都可以改. 不需要任何围栏」），那条翻成了 `sftp_pool_tests::a_download_onto_a_session_file_is_forwarded_like_any_other`。
 /// 本条钉的仍是「拒的那句话（不管是谁拒的）到得了这一格」；下面那句样本是历史上那道围栏的原话，只当一句字符串用。
 #[test]

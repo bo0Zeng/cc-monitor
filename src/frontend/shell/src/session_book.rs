@@ -1,4 +1,4 @@
-//! 〔MIG-1 · `设计/99 §2.1 ⑬` · `01 §1.1`〕**monitor 手里「这条连接上那台后端说过的会话成品」** —— 纯缓存，不裁决。
+//! **monitor 手里「这条连接上那台后端说过的会话成品」** —— 纯缓存，不裁决。
 //!
 //! 活 / 可重连 / 已结束由那台机器的后端裁（`src/backend/observe/session_ledger.rs`，帧 `session_added` · `session_state` ·
 //! `sessions_replayed`），本机远端同一形。monitor 这一侧只做三件事：
@@ -7,7 +7,7 @@
 //! ③ 留一份最新成品，给 F5 / 开窗的重放用（[`Book::replay`]，就绪点在会话流里原位交）。
 //!
 //! 唯一一件 monitor 自己知道、后端不知道的事是**到那台的连接断了**（[`In::LinkLost`]）：那台的成品随之作废（整份摘掉），
-//! 当时还活的 / 可重连的交出去说「说不清」（`设计/30 §3.5.7a`：不许显示成已结束）。重连之后那台的新连接自己重报一遍。
+//! 当时还活的 / 可重连的交出去说「说不清」（不许显示成已结束）。重连之后那台的新连接自己重报一遍。
 //!
 //! 原先住在这一侧的那一套裁决（tmux 原文账 · idle 账 · `classify_removed` · 两份收割 · 重连后重新裁 · 本机活会话表）已删。
 
@@ -79,7 +79,7 @@ pub struct LiveMeta {
     pub container: Option<Container>,
     /// 那个 claude 进程的 pid（本机 ↗ 绑窗口用；老后端 / 没索要 ⇒ `None`）。
     pub pid: Option<u32>,
-    /// 〔FIX3 · `99 §2.2 ②`〕起会话时铸进进程环境的启动期令牌（那台后端从 environ 读回、形状核过）；前端拿它认「我刚起的那条」。
+    /// 起会话时铸进进程环境的启动期令牌（那台后端从 environ 读回、形状核过）；前端拿它认「我刚起的那条」。
     pub rbind_token: Option<String>,
 }
 
@@ -143,7 +143,7 @@ pub enum Out {
     Listed {
         origin: String,
     },
-    /// 那台看不见了（〔MIG-1 续 · 主会话裁〕**机器级**：线上只一格 `unseen {origin}`，前端按机器落说不清）。
+    /// 那台看不见了（**机器级**：线上只一格 `unseen {origin}`，前端按机器落说不清）。
     /// `sids` = 这一刻落说不清的那几条（排好序），只给 monitor 自己的旁路账用（本机那两份缓存），不上线。
     Unseen {
         origin: String,
@@ -310,7 +310,7 @@ impl Book {
                 None => unseen.entry(origin.clone()).or_default().push(sid.clone()),
             }
         }
-        // 〔MIG-1 续〕机器级「说不清」排在终局最前：它把那台上活的 / 可重连的一并落说不清（前端按机器落），
+        // 机器级「说不清」排在终局最前：它把那台上活的 / 可重连的一并落说不清（前端按机器落），
         //   紧跟着把那台说过的活会话再宣告一次 ⇒ 真活着的翻回活；可重连的就在下面、照常落回可重连。
         let mut front = Vec::new();
         for (origin, sids) in unseen {
@@ -340,7 +340,7 @@ impl Out {
         }
     }
 
-    /// 〔MIG-1 · ⑬〕这件事 ⇒ 会话流里的几格（前端照原样收）。活会话 = `live` ＋ 初始灯 ＋ 容器（判不了的不发）。
+    /// 这件事 ⇒ 会话流里的几格（前端照原样收）。活会话 = `live` ＋ 初始灯 ＋ 容器（判不了的不发）。
     pub fn frames(&self) -> Vec<crate::ui_contract::SessionStreamFrame> {
         use crate::ui_contract::{self as b, SessionStreamFrame as F};
         match self {
@@ -402,9 +402,9 @@ impl Out {
 }
 
 impl Book {
-    /// 〔MIG-1〕旁路快照被取消（会话离开了 / 连接断了）时那条会话**此刻**的终局 —— 快照行可能已经把刚落定的 tab 翻活，
+    /// 旁路快照被取消（会话离开了 / 连接断了）时那条会话**此刻**的终局 —— 快照行可能已经把刚落定的 tab 翻活，
     /// 原样再说一次它现在是什么（原先这里恒补「已结束」，那是 monitor 自己在裁）。活着 ⇒ 不说；这条连接上没说过 ⇒ 说不清。
-    /// 〔MIG-1 续〕没说过它、而那台已报完清单 ⇒ 不在清单里 = 已结束；还没报完 ⇒ 机器级说不清（见 [`Self::unseen_block`]）。
+    /// 没说过它、而那台已报完清单 ⇒ 不在清单里 = 已结束；还没报完 ⇒ 机器级说不清（见 [`Self::unseen_block`]）。
     pub fn settle_again(&self, origin: &str, sid: &str) -> Vec<Out> {
         let b = self.origins.get(origin);
         match b.and_then(|b| b.sessions.get(sid)) {
@@ -423,7 +423,7 @@ impl Book {
         }
     }
 
-    /// 〔MIG-1 续〕连接还在、却说不清某几条（那台还没报完清单）时的那一段：机器级 `unseen` ＋ 那台说过的活会话 / 可重连的再说一次
+    /// 连接还在、却说不清某几条（那台还没报完清单）时的那一段：机器级 `unseen` ＋ 那台说过的活会话 / 可重连的再说一次
     /// （前端按机器落说不清会把它们一并落下，紧跟着翻回来）。
     fn unseen_block(&self, origin: &str, sids: Vec<String>) -> Vec<Out> {
         let mut v = vec![Out::Unseen {

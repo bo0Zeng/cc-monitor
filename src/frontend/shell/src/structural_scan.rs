@@ -24,7 +24,7 @@
 //! 而审计只用五种我没想到的写法就绕过了 B04 那条守卫。
 //! 结构性扫描天然是白名单——它枚举**每一处**出现并要求它们**都**满足好性质，
 //! 新增的出现自动被纳入。这正是固定 needle 永远做不到的。
-// 〔MIG-3b 续〕扫描报告 · 钉逃生口 · 符号地址 · 按动词收 fn 名这几把搬进了共享的 `guard_core`（足迹的申报表与判据进了后端，两侧要用同一把）。
+// 扫描报告 · 钉逃生口 · 符号地址 · 按动词收 fn 名这几把搬进了共享的 `guard_core`（足迹的申报表与判据进了后端，两侧要用同一把）。
 pub(crate) use guard_core::path_before;
 pub use guard_core::{
     fn_names_starting_with, pin_definition, symbol_addresses, ScanReport, SymbolAddress,
@@ -186,7 +186,7 @@ pub type LineAddress = (usize, String, usize);
 /// —— 「试跑那条规则**今天**误红 7 处全是合法文本，把限定词表调到全绿就是曲线拟合」。
 /// ⇒ 由写的人**声明**，不由判据**猜**。
 ///
-/// ⚠ 〔`K-R20` 订正 09-03〕这一句原先写的是「`ratchet_guard.rs` **头注**量过同一格」，
+/// ⚠ 这一句原先写的是「`ratchet_guard.rs` **头注**量过同一格」，
 /// 三处都假：**引了中间人**（`ratchet_guard.rs` 自己是转述，原话在 `frame_cadence_guard.rs`）·
 /// **部位假**（那句话在一条 `///` 上，不在 `//!` 头注里）·
 /// **「今天」掉了**（一个有日期的快照被引成了无时态的性质）。

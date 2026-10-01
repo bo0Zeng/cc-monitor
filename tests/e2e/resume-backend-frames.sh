@@ -8,8 +8,8 @@
 # 序列:
 #   gen-idle-tmux(fake-claude 活 + @ccm_sid)        → SessionAdded(sid)      = live
 #   (kill fake-claude,tmux 会话留活)                → SessionRemoved(sid)    = 灰(claude 死、tmux 在)
-#   SessionState(sid, reconnectable)                  = 灰后端条件(后端会话账本裁,〔MIG-1 续〕原看 tmux 快照帧)
-#   (跑**生产渲染链**〔LR2:生产 planResumeIntoExistingTmux → 生产 Rust render_launch_payload〕就地 resume,复用原名)
+#   SessionState(sid, reconnectable)                  = 灰后端条件(后端会话账本裁,原看 tmux 快照帧)
+#   (跑**生产渲染链**〔生产 planResumeIntoExistingTmux → 生产 Rust render_launch_payload〕就地 resume,复用原名)
 #     → fake-claude 复活(新 pidfile,同 sessionId)   → SessionAdded(sid) 再现 = **复活清灰**(后端边沿)
 #   全程 tmux 只有一个 cc-<sid8>(复用,无 -N 孤儿,治 #76)
 # 红线:backend 零改动(只跑它)/ CLAUDE_CONFIG_DIR 隔离绝不碰真 ~/.claude / 不改 TMUX_LS_FMT。
@@ -45,7 +45,7 @@ CLAUDE_DIR="${CCM_E2E_CLAUDE_DIR:-/tmp/e2e-resume-frames}"
 FAKE="$E2E_DIR/fake-claude"
 DRIVER="$E2E_DIR/resume-cmd-driver.ts"
 WORK="$(mktemp -d /tmp/e2e-resume-frames.XXXXXX)"
-# 〔MIG-1 · 纪律 25〕启动器路径要过 §47 的字符闸（只许 ASCII 那一族）；仓可能住在非 ASCII 目录（如 `~/文档/`）⇒ 同 `restart-backend-frames.sh`，
+# 〔纪律 25〕启动器路径要过 §47 的字符闸（只许 ASCII 那一族）；仓可能住在非 ASCII 目录（如 `~/文档/`）⇒ 同 `restart-backend-frames.sh`，
 #   把 fake-claude 拷进 ASCII 的 $WORK 再当启动器（主树路径下跑，就地 resume 那一步原先 DRIVER_THROW REFUSE）。
 cp "$FAKE" "$WORK/fake-claude" && chmod +x "$WORK/fake-claude" && FAKE="$WORK/fake-claude"
 FRAMES="$WORK/frames.jsonl"
@@ -115,7 +115,7 @@ BACKEND_PID=$!
 SA="$(wait_line 0 "\"kind\":\"session_added\".*$SID" 15)" \
   && ok "SessionAdded(live):$SA" \
   || bad "15s 内未见 SessionAdded($SID)"
-# 〔MIG-1 续 · V41〕「标签挂着谁」直接问 tmux（经 `-L` shim）；原来看的 `tmux_sessions` 快照帧删了。
+# 「标签挂着谁」直接问 tmux（经 `-L` shim）；原来看的 `tmux_sessions` 快照帧删了。
 TAG="$(tmux show-options -v -t "=$SESSION:" @ccm_sid 2>/dev/null || true)"
 [ "$TAG" = "$SID" ] \
   && ok "tmux 会话 $SESSION 挂着 @ccm_sid=$SID(live)" \
@@ -124,7 +124,7 @@ TAG="$(tmux show-options -v -t "=$SESSION:" @ccm_sid 2>/dev/null || true)"
 # ── 2. GRAY:kill fake-claude(留 tmux)→ SessionRemoved + tmux 帧仍含 @ccm_sid ──
 FAKE_PID="$(awk -F'[:,]' '{for(i=1;i<=NF;i++) if($i ~ /"pid"/){print $(i+1); exit}}' "$CLAUDE_DIR"/sessions/*.json)"
 echo "-- kill fake-claude pid=$FAKE_PID(claude 退,tmux 会话保留 = 灰)--"
-# 〔FIX3〕记号必须在 kill **之前**取：后端靠 pidfd 判死、几乎零延迟，kill 之后再数行数，那一拍的 session_state
+# 记号必须在 kill **之前**取：后端靠 pidfd 判死、几乎零延迟，kill 之后再数行数，那一拍的 session_state
 #   可能已经写进帧日志、落在记号之前 ⇒ 「等不到可重连」（主线 6 过 1 红的根因；与仓路径是不是 ASCII 无关）。
 MARK_KILL="$(wc -l <"$FRAMES")"
 kill "$FAKE_PID" 2>/dev/null || true
@@ -132,7 +132,7 @@ FAKE_PID=""
 SR="$(wait_line 0 "\"kind\":\"session_removed\".*$SID" 12)" \
   && ok "SessionRemoved(claude 死 → 灰):$SR" \
   || bad "12s 内未见 SessionRemoved($SID)"
-# claude 死、tmux 会话还挂着它 ⇒ 后端会话账本裁「可重连」（灰）。〔MIG-1 续〕原来 monitor 拿缓存的最后一份 `tmux_sessions` 快照自己裁
+# claude 死、tmux 会话还挂着它 ⇒ 后端会话账本裁「可重连」（灰）。原来 monitor 拿缓存的最后一份 `tmux_sessions` 快照自己裁
 # （E67③ 那段：kill 之后不会有新快照，只能读最近一帧）；裁决进了后端、快照帧删了 ⇒ 等成品帧 `session_state`（它随 session_removed 同拍发）。
 GRAY_ALIVE="$(tmux has-session -t "=$SESSION:" 2>/dev/null && echo 1 || echo 0)"
 SS_GRAY="$(wait_line "$MARK_KILL" "\"kind\":\"session_state\".*$SID" 12 || true)"  # 从 kill 那一刻之后找（它就是这一拍的裁决）

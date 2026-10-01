@@ -6,7 +6,7 @@
 //!
 //! | 它做的 | 为什么归宿主 |
 //! |---|---|
-//! | 绑 `127.0.0.1:0` | `01 §2.1 C5` 逐字：「由**后端** `bind`/`listen`……把 `accept` 到的连接交给面 B」—— 面 A 这里照同一个先例 |
+//! | 绑 `127.0.0.1:0` |：「由**后端** `bind`/`listen`……把 `accept` 到的连接交给面 B」—— 面 A 这里照同一个先例 |
 //! | 造钥匙（OS 随机源） | `C4`：凭据由后端交给通信层 |
 //! | 定帧长上限、认证等待时长 | `C4`：配置与**期限值**都是策略值，归后端 |
 //! | 把 `op` 翻成 `inbound_client` 的一条命令、把载荷当 JSON 读 | 那是后端那一半的实现 —— 路由器不许知道载荷长什么样（`C1`） |
@@ -14,7 +14,7 @@
 //! ⇒ 圈进来的话 `C4`/`C5` 当场破；**不圈它就是它的归属**，与 `relay/listen.rs` 那一份
 //! 「语义上就该在外面」同形。
 //!
-//! # 🔴 「一个对外端口」仍然成立（`01 §4`）
+//! # 🔴 「一个对外端口」仍然成立
 //!
 //! 本文件只绑**回环**（`Ipv4Addr::LOCALHOST`），端口由内核挑 ⇒ 不新开任何对外端口。
 //! 判据里有一条直接看 [`start_with`] 交回来的地址是不是回环。
@@ -27,7 +27,7 @@
 //!    世界可读；不走环境变量 —— `/proc/<pid>/environ` 同用户可读、且会被孙进程继承）；
 //! 4. 外部前端从 stdin 读到它，用 [`super::dial::dial`] 连上并出示钥匙。
 //!
-//! ✅〔F2 · 2026-09-24〕**第 3 步接上了**：`filewin/entry.rs` 取 [`handoff`]，`filewin/proc.rs` 把它连同
+//! ✅**第 3 步接上了**：`filewin/entry.rs` 取 [`handoff`]，`filewin/proc.rs` 把它连同
 //! 开窗种子一起写进窗口进程的 stdin（`proc::OpenRequest::handoff`），窗口进程用 [`super::dial::dial`] 拨回来。
 //! ⚠ **钥匙不进日志**：[`Handoff`] 与 `Key` 的 `Debug` 都手写成不打印内容；本文件的日志只印端口。
 //!
@@ -39,15 +39,15 @@
 //!
 //! # 买不到什么
 //!
-//! - ✅〔F7c · 第三波 · 2026-09-24〕**生产上有了第一条流**：`transfer/<id>`（传输台那一趟的进度，
-//!   `设计/60 §13.2 ①`；翻译住本文件末尾那一节，判据 `transfer_stream_tests` 走真回环 ＋ 真钥匙 ＋ 本句柄）。
+//! - ✅**生产上有了第一条流**：`transfer/<id>`（传输台那一趟的进度；
+//!   翻译住本文件末尾那一节，判据 `transfer_stream_tests` 走真回环 ＋ 真钥匙 ＋ 本句柄）。
 //!   🔴 **其余 `kind` 照旧一条流都没有**：`inbound_client` 只有「一问一答」，后端推上来的帧今天走
 //!   `ssh_source` 的 Tauri 事件那条路 ⇒ [`InboundBackends::subscribe`] 对别的 `kind` 仍原位回
 //!   `Closed{Peer(…)}`（对端说「没有这条流」），**不装作订阅成功**。
 //! - **对端撤活是尽力的**：外部前端撤单 ⇒ 路由器丢掉本 future（`router::run_call`）⇒ 那次 `inbound_client`
-//!   调用随之被丢 ⇒ 它的 `AbandonGuard` 补发一条 `cancel{target}`（〔RM1f〕best-effort、不等应答；判据
+//!   调用随之被丢 ⇒ 它的 `AbandonGuard` 补发一条 `cancel{target}`（best-effort、不等应答；判据
 //!   `inbound_client_tests::abandoning_the_wait_fires_one_cancel_and_finishing_fires_none`）。后端可取消档
-//!   （`Run::Async`）真停下；阻塞档回 `not_cancellable`、照跑完。〔AR1 订正〕上一版写「补发 `cancel` 那一手是
+//!   （`Run::Async`）真停下；阻塞档回 `not_cancellable`、照跑完。上一版写「补发 `cancel` 那一手是
 //!   `inbound_client` 的私有函数，今天够不着 ⇒ 后端可能照跑完」—— RM1f 之后丢 future 就会补发，不用够着它。
 //! - **不买同机其它用户的隔离之外的东西**：回环口上同一台机器的任何进程都能**连**，
 //!   挡它们的只有那把钥匙；钥匙在子进程 stdin 管子里走一次，之后只在两边内存里。
@@ -63,7 +63,7 @@ use futures::stream::BoxStream;
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
-// 〔P4〕交接件（[`Handoff`]）· 造钥匙（[`mint_key`]）· 绑回环口起路由器（[`start_with`]）随通道编进共享 crate `chan-core`
+// 交接件（[`Handoff`]）· 造钥匙（[`mint_key`]）· 绑回环口起路由器（[`start_with`]）随通道编进共享 crate `chan-core`
 //   （文件窗口独立成包之后它的判据要自己起一个挂着合成句柄的口）；本文件只留 monitor 自己的那几件：生产入口 · 生产句柄 · 传输台那一口。
 pub use chan_core::chan::handoff::{mint_key, start_with, Handoff};
 
@@ -107,7 +107,7 @@ pub struct InboundBackends;
 /// 这一跳在面 A 上的编号：路由器 ↔ 后端（`wire::HopId` 头注那两跳里的第 1 跳）。
 const HOP: u8 = 1;
 
-/// 〔P4〕通道上**由 monitor 自己接**、不按 `origin` 转给那台后端的 op：传输台开单两条（本机常驻后端的传输台，经中继 `sftp_pool.rs`）·
+/// 通道上**由 monitor 自己接**、不按 `origin` 转给那台后端的 op：传输台开单两条（本机常驻后端的传输台，经中继 `sftp_pool.rs`）·
 /// 文件窗口「在此打开终端」（[`terminal_open`]）。其余一切照旧按 `origin` 去 `inbound_client`。
 /// 传输那两条从传输台那一份名单取（`sftp_pool::TRANSFER_OPS`，一份名单一个家）。
 pub(crate) const HOST_OPS: [&str; 3] = [
@@ -128,10 +128,10 @@ impl Backends for InboundBackends {
         left: Duration,
         _cancel: CancelToken,
     ) -> BoxFuture<'static, Result<Body, CallError>> {
-        // 🔴〔F7c · 第三波 09-24〕**传输台那两条开单命令不按 `origin` 去那台机器的后端**：
-        //    〔SR1b〕传输台住**本机**常驻后端（SFTP 与其它 SSH 同一条连接），由中继 `sftp_pool.rs` 转过去；
+        // 🔴**传输台那两条开单命令不按 `origin` 去那台机器的后端**：
+        // 传输台住**本机**常驻后端（SFTP 与其它 SSH 同一条连接），由中继 `sftp_pool.rs` 转过去；
         //    其余一切照旧按 `origin` 去 `inbound_client`。
-        // 〔P4 · 主会话 09-29 拍板 Q2 A〕通道上由 monitor 自己接的那几条（[`HOST_OPS`]，两向登记在 `command_home_registry_tests::CHANNEL_OWN`）。
+        // 〔主会话 09-29 拍板 Q2 A〕通道上由 monitor 自己接的那几条（[`HOST_OPS`]，两向登记在 `command_home_registry_tests::CHANNEL_OWN`）。
         if HOST_OPS.contains(&op.0.as_str()) {
             if crate::sftp_pool::is_transfer_op(&op.0) {
                 return Box::pin(transfer_open(origin, op, payload));
@@ -168,7 +168,7 @@ impl Backends for InboundBackends {
         kind: Kind,
         from: Option<Cursor>,
     ) -> BoxStream<'static, Item> {
-        // 🔴〔F7c · 第三波 09-24〕**生产上的第一条流**：`transfer/<id>` ⇒ 传输台那一趟的进度。
+        // 🔴**生产上的第一条流**：`transfer/<id>` ⇒ 传输台那一趟的进度。
         if let Some(id) = kind.0.strip_prefix(crate::sftp_pool::TRANSFER_KIND_PREFIX) {
             return transfer_stream(&origin, id, from);
         }
@@ -184,14 +184,14 @@ impl Backends for InboundBackends {
         }]))
     }
 
-    /// 〔NET2〕那台的能力事实 = 它那条长连接握手时交出的那一份（`inbound_client` 登记表里，一个家）。
+    /// 那台的能力事实 = 它那条长连接握手时交出的那一份（`inbound_client` 登记表里，一个家）。
     fn offer(&self, origin: &Origin) -> Option<super::wire::Offer> {
         inbound_client::client_for(origin.as_wire_str()).map(|c| c.offer())
     }
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-//  〔F7c · 第三波 · 2026-09-24〕传输台那一口：开单 ＋ 进度流（`设计/60 §13.2 ①`）
+// 传输台那一口：开单 ＋ 进度流
 // ════════════════════════════════════════════════════════════════════════════
 //
 // 本文件在这里做的仍然只是**宿主**那几件事：按 `origin` 找那台机器的配置（读配置归宿主，`C4`）、
@@ -239,7 +239,7 @@ async fn transfer_open(origin: Origin, op: Op, payload: Body) -> Result<Body, Ca
     }
 }
 
-/// 〔P4 · 主会话 09-29 拍板 Q2 A〕**文件窗口「在此打开终端」**：窗口只交意图（寻址 ＝ 那台 · 参数 `{cwd}`），这里补那台的机器事实
+/// 〔主会话 09-29 拍板 Q2 A〕**文件窗口「在此打开终端」**：窗口只交意图（寻址 ＝ 那台 · 参数 `{cwd}`），这里补那台的机器事实
 /// （monitor 的机器表 ＋ 上次赢的那条，`dial_host::machine_facts`）、问本机后端 `terminal-ssh` 渲那一行、交 `open_terminal_window` 开窗 ——
 /// 与主界面开终端同一条路（`src/frontend/ui/terminal-open.ts`：`terminal_dial` → `terminal-ssh` → `open_terminal_window`）。
 /// 窗口不拼命令、不认识 monitor 的配置；成败作为这一次 `call` 的应答回去，那句话照旧画在窗口上。
@@ -250,7 +250,7 @@ async fn terminal_open(origin: Origin, payload: Body, left: Duration) -> Result<
     let Some(cwd) = filewin_contract::terminal_open_cwd(&args) else {
         return Err(OursFault::Misuse.into());
     };
-    // 文件窗口只开在远端上（`设计/60 §2.4`）⇒ 本机这一问不存在，说真实原因。
+    // 文件窗口只开在远端上⇒ 本机这一问不存在，说真实原因。
     if origin.as_wire_str() == inbound_client::LOCAL_ORIGIN {
         return Err(refused(
             "local_has_no_file_window",
@@ -308,7 +308,7 @@ fn snap_item(seq: u64, snap: &crate::sftp_pool::Snap) -> Item {
         Some(End::Failed(why)) => Item::Closed {
             by: By::Peer(json(serde_json::json!({ "state": "failed", "why": why }))),
         },
-        // 〔FILES2 · Q5〕带码的失败：码原样交给窗口（它按码换路）。
+        // 带码的失败：码原样交给窗口（它按码换路）。
         Some(End::FailedCoded { why, code }) => Item::Closed {
             by: By::Peer(json(
                 serde_json::json!({ "state": "failed", "why": why, "code": code }),

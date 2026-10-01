@@ -1,4 +1,4 @@
-//! 〔OSA · `设计/99 §1` V156〕**POSIX sh 那几句写法** —— 起会话载荷 · 中转前缀 · `ccm` 直路 · 观测探针，
+//! **POSIX sh 那几句写法** —— 起会话载荷 · 中转前缀 · `ccm` 直路 · 观测探针，
 //! 都只调这里（原各自在 `control/launch_render/payload.rs` · `local.rs` · `control/ccm/{mod,plan}.rs` ·
 //! `observe/watcher.rs` 里手写，逐字搬来，产出逐字节不变）。
 //!
@@ -27,7 +27,7 @@ pub(crate) fn exec<S: AsRef<str>>(words: &[S]) -> String {
     out
 }
 
-/// 〔P4〕「在此打开终端」要在那台跑的那一串（原住文件窗口，〔P4〕随「窗口只交意图」搬进本机后端，产出逐字节不变）：
+/// 「在此打开终端」要在那台跑的那一串（原住文件窗口，随「窗口只交意图」搬进本机后端，产出逐字节不变）：
 /// `cd <已 quote 的目录> && exec ${SHELL:-bash} -l`；没有目录 ⇒ 只有登录 shell 那半段。目录合不合格、怎么 quote 由调用方先办
 /// （`dial/terminal.rs::command_for_cwd`）。
 pub(crate) fn cd_then_login_shell(quoted_dir: Option<&str>) -> String {
@@ -56,7 +56,7 @@ pub(crate) fn if_command(name: &str, then: &str, otherwise: &str) -> String {
 }
 
 /// `VAR` 在这个 shell 里已经有值 ⇒ 说一句 `say`（已成词）、不动它；否则 `export VAR=<词>`。
-/// 〔WF1 · G〕判空写成 `[ ${VAR:+x} ]`（有值 ⇒ 一个词 `x`；没有 ⇒ 零个词、`[ ]` 为假），不带双引号：
+/// 判空写成 `[ ${VAR:+x} ]`（有值 ⇒ 一个词 `x`；没有 ⇒ 零个词、`[ ]` 为假），不带双引号：
 /// 这一段会流进 Windows 那条开终端的路（`dial/terminal.rs`），PowerShell 5.1 向原生程序传参会改坏内嵌的 `"`。
 pub(crate) fn export_unless_set(var: &str, word: &str, say: &str) -> String {
     format!(
@@ -65,7 +65,7 @@ pub(crate) fn export_unless_set(var: &str, word: &str, say: &str) -> String {
     )
 }
 
-/// 〔MIG-3b 续 · F50〕把**一行**（已成词）并进家目录底下 `dir/file`：目录 `700`、文件 `600`；已有整行相等的一行 ⇒ 打 `already`、不写
+/// 把**一行**（已成词）并进家目录底下 `dir/file`：目录 `700`、文件 `600`；已有整行相等的一行 ⇒ 打 `already`、不写
 /// （`grep -qxF`）；否则文件非空且末字节不是换行先补一个、再追加 ⇒ 打 `added`（两个记号已成词）。整串是**一次** exec
 /// （aterm 契约：`printf '%s\n'` 不用 echo · `--` 纵深防御 · 只收单行由调用方先判）。原住 monitor `pubkey.rs`，逐字搬来。
 pub(crate) fn add_line_once(
@@ -83,7 +83,7 @@ pub(crate) fn add_line_once(
 }
 
 /// 一个词：`<head>` ＋ 家目录底下 `rel` 那份文件的内容（**现读**，钥匙不进 argv）＋ `<tail>`（head / tail 已成词）。
-/// 〔WF1 · G〕不带双引号（理由同 [`export_unless_set`]）：`~/` 展开的结果不分词；文件内容是十六进制钥匙，不含空白与通配符。
+/// 不带双引号（理由同 [`export_unless_set`]）：`~/` 展开的结果不分词；文件内容是十六进制钥匙，不含空白与通配符。
 pub(crate) fn home_file_between(head: &str, rel: &str, tail: &str) -> String {
     format!("{head}$(cat ~/{rel}){tail}")
 }

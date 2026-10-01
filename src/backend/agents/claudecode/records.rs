@@ -19,7 +19,7 @@ pub(crate) fn session_file_name(sid: &str) -> String {
     format!("{sid}.{SESSION_EXT}")
 }
 
-/// 〔MOD〕会话文件 ⇒ sid（Claude 的会话文件名就是 `<sid>.jsonl`）。
+/// 会话文件 ⇒ sid（Claude 的会话文件名就是 `<sid>.jsonl`）。
 pub(crate) fn session_id_of(p: &Path) -> Option<String> {
     p.file_stem().and_then(|s| s.to_str()).map(str::to_string)
 }

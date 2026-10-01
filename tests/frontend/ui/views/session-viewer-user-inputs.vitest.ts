@@ -49,7 +49,7 @@ import { LOCAL_ORIGIN } from "../../../../src/frontend/ui/ipc/origin";
 
 let rig: ViewerRigHandles;
 
-/** 〔RENDER2 · J10〕ESC 中断标记那一条：monitor 按 `agents/claudecode/text.rs::user_text` 判出来的成品（夹具显式写，前端不判）。 */
+/** ESC 中断标记那一条：monitor 按 `agents/claudecode/text.rs::user_text` 判出来的成品（夹具显式写，前端不判）。 */
 const INTERRUPT = { clean: "", interrupt: true };
 
 /**
@@ -132,7 +132,7 @@ describe("SE1 清单挂进查看器：后端给什么就列什么（查看器不
     await settleOutline();
     expect(rowsOf(v).length).toBe(0);
     expect(toggleOf(v).disabled).toBe(true);
-    // 〔C4b〕「老后端」那一档今天是通道的「对端事前说不认」（`peer/unsupported`）—— 它不带原因，
+    // 「老后端」那一档今天是通道的「对端事前说不认」（`peer/unsupported`）—— 它不带原因，
     //   那句话由 `session-reads.ts` 说（原因文字只在 `refused` 那一档原样带过来，下一格量它）。
     expect(toggleOf(v).title).toContain("后端版本旧");
     // 瞬时那一档（对端说「不行」）：原因原样带上。
@@ -193,7 +193,7 @@ describe("KR45D1 点一下跳过去", () => {
     expect(rowsOf(v)[0].dataset.unjumpable).toBeUndefined();
   });
 
-  // ★ 活体夹具：清单里有、渲染不建卡的一条（〔RENDER2 · J10〕后端清单今天已按同一条规则排掉剥空的项，
+  // ★ 活体夹具：清单里有、渲染不建卡的一条（后端清单今天已按同一条规则排掉剥空的项，
   //   这一形只剩「清单与渲染之间别的原因」—— 夹具用替身清单造出它）。
   //   `KR45D3` / `§0c` 的红线是「**不许静默产出那一形**」——这里断的就是「它没静默」。
   it("跳不过去的那一条不许静默：标出来（这条不等价是自陈的，这里给它一个活体）", async () => {
@@ -298,7 +298,7 @@ describe("KR45 债二：清单的样式住 styles.css，不再内联", () => {
     expect(cssLines, "「跳不过去那一条变灰」没有宿主 ⇒ 标记还在、但用户看不出来").toContain(
       ".user-input-row[data-unjumpable] {",
     );
-    // `设计/10` 步 2：开关按钮在这之前**全仓零条规则** ⇒ 暗色界面上一个白底默认按钮。
+    // 开关按钮在这之前**全仓零条规则** ⇒ 暗色界面上一个白底默认按钮。
     // 那三条共用规则都被钉住了，唯独它没有 —— 这一格补上。
     expect(cssLines, "开关按钮没有 CSS 宿主 ⇒ 暗色主题上退回浏览器默认按钮（浅底黑字）").toContain(
       ".user-inputs-toggle {",
@@ -316,8 +316,8 @@ describe("KR45 债二：清单的样式住 styles.css，不再内联", () => {
   });
 });
 
-// 〔MIG-2 · `99 §2.1 ㊱③`〕历史查看器的 Ctrl+F 复用 SE2 那块面板（搜索 ／ 大纲），查的是后端 `history-find`。
-//   守的要求（住址逐字）：`99 §2.1 ㊱`「③ 历史查看器 Ctrl+F 复用 SE2 面板 ＋ `history-find`」。
+// 历史查看器的 Ctrl+F 复用 SE2 那块面板（搜索 ／ 大纲），查的是后端 `history-find`。
+//   守的要求（住址逐字）：「③ 历史查看器 Ctrl+F 复用 SE2 面板 ＋ `history-find`」。
 describe("㊱③ 查看器的 Ctrl+F：SE2 那块面板 ＋ 问后端 `history-find`", () => {
   it("打开到「搜索」· 问的是这一份会话 · 后端给什么命中就列什么 · 点命中跳到那张卡", async () => {
     const v = await mount([userLine(1, "u1", "第一句"), assistantLine(2, "a1", "回复里有 needle")]);

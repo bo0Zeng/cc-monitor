@@ -1,4 +1,4 @@
-//! 〔SH1 · V137〕Claude 的 MCP 布局读法：三段条目 ＋ 项目表 ＋ 坏的那份说出来。
+//! Claude 的 MCP 布局读法：三段条目 ＋ 项目表 ＋ 坏的那份说出来。
 use super::*;
 
 fn fixture(tag: &str) -> std::path::PathBuf {
@@ -9,7 +9,7 @@ fn fixture(tag: &str) -> std::path::PathBuf {
 }
 
 /// 跨语言金样：夹具经**生产**读法（`read_at`）＋ **生产**构造器（`feature_face::mcp_reply`）现算 == 手写的 reply。
-/// 要求住址：`99 §1` V137「MCP 列表改由后端出成品」· `设计/05 §14.3`「成品两侧对拍」。
+/// 要求：「MCP 列表改由后端出成品」· 「成品两侧对拍」。
 #[test]
 fn the_mcp_product_matches_the_cross_language_golden() {
     let g: serde_json::Value =

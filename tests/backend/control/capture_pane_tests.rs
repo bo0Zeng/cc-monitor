@@ -201,7 +201,7 @@ fn every_registered_needle_lands_in_its_own_bucket() {
 /// 而不是被拼进 `=name:` 送给 tmux。
 #[test]
 fn a_name_that_would_break_the_target_never_reaches_tmux() {
-    // 〔TAIL · DUP3 §5 ③ ⑦〕规则换成 `gate_rules` 那一份：`"  "` 与 `=a` 是合法的已有会话名（attach 同样放行），不在这里。
+    // 〔DUP3 §5 ③ ⑦〕规则换成 `gate_rules` 那一份：`"  "` 与 `=a` 是合法的已有会话名（attach 同样放行），不在这里。
     for bad in ["", "a:b", "a\nb", "a\u{202e}b"] {
         let e = capture(bad).expect_err("坏形状的名字不许放行");
         assert_eq!(
@@ -222,9 +222,9 @@ fn the_argv_is_the_read_only_capture_form_in_this_exact_order() {
     );
 }
 
-/// ★★〔C4e · 第四波 4C〕**跨语言金样**：界面直接收的这份成品，两侧读同一份 `tests/__fixtures__/tmux-control.golden.json`。
+/// ★★**跨语言金样**：界面直接收的这份成品，两侧读同一份 `tests/__fixtures__/tmux-control.golden.json`。
 ///
-/// 守的要求：`设计/05 §14.3` 逐字「**成品的两侧对拍**：界面按形状严格收（多一格 / 缺一格 / 类型不对 ⇒ 抛「两端契约对不上」，不猜）；
+/// 守的要求：「**成品的两侧对拍**：界面按形状严格收（多一格 / 缺一格 / 类型不对 ⇒ 抛「两端契约对不上」，不猜）；
 /// 线上形状由一份跨语言金样钉住（后端测试产出 == 金样 · TS 解码器读同一份）」。
 /// 抓屏从这一拍起由界面经通道直接问（`src/frontend/ui/tmux-control.ts::capturePane`），monitor 那一跳只搬字节 ——
 /// 于是「成品长什么样」「拒绝码有哪几个」从此只有后端这一侧与金样说了算，TS 那一半在 `tests/frontend/ui/tmux-control.vitest.ts`。

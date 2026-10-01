@@ -41,7 +41,7 @@ mod tests {
     /// 把 `shared/ccm` 那条每秒轮询消掉（用户 08-14：「不要轮询」「ccm 做到必须走后端」）。
     /// 反过来做只是把轮询从 ccm 搬到后端。
     ///
-    /// 〔`设计/80 §8.7` 步 2，09-22〕`identity_tag::rbind_token_of` 的答案**与上面两条同型，
+    /// `identity_tag::rbind_token_of` 的答案**与上面两条同型，
     /// 而且更强一格**：触发时机同样是「某个 pidfile 出现 / 原地换了 sid」
     /// （`sessions/` inotify 观测到的事实），而这一次连**要读的那个 pid** 都只有那一刻在手
     /// —— `(pid, sid)` 是从那份 pidfile 的文件名与内容里同时拿到的。
@@ -51,7 +51,7 @@ mod tests {
     /// ⚠ **为什么住 `control/identity_tag.rs` 而不是让 observe 侧自己读那个环境变量**：
     /// 那个文件是「会话身份」这件事的**唯一住址** —— `/proc/<pid>/environ` 那次读、
     /// 形状白名单、「令牌不许承载任何权限语义」那条纪律，全在它的头注里。
-    /// 搬到 observe 侧会把身份判定拆成两家，而 `设计/80 §8.3` 那张「零件都在盘上」的表
+    /// 搬到 observe 侧会把身份判定拆成两家，而那张「零件都在盘上」的表
     /// 点名的就是这个文件。
     const ALLOWED_OBSERVE_TO_CONTROL: &[&str] = &[
         "crate::control::identity_tag::rbind_token_of",
@@ -59,7 +59,7 @@ mod tests {
         "crate::control::tmux_hook::install_hooks",
     ];
 
-    /// ★★ `KY5`〔`K-W1A` 08-26〕：**谁能碰新立的 `plugin/` 层，逐条登记**（`(哪一层, 符号, 为什么)`）。
+    /// ★★ `KY5`：**谁能碰新立的 `plugin/` 层，逐条登记**（`(哪一层, 符号, 为什么)`）。
     ///
     /// # 为什么新层非要立判据不可 —— 它不是「不撞所以安全」
     ///
@@ -74,10 +74,10 @@ mod tests {
     ///
     /// 这个符号是**调用口的形状**，还是**某个插件的语义**？后者不该跨过来 ——
     /// 它该住在调用方自己那一侧（`E6`）。表里每一条都是前者（条数不在散文里复述，表自己就是那个数）。
-    /// 〔RM1c · 第四波〕② 那一段（协商）有了第一个生产调用方（`control/panorama.rs`），
+    /// ② 那一段（协商）有了第一个生产调用方（`control/panorama.rs`），
     /// 它那几条边随之进表。〔改前原话：「今天这 5 条全是前者，而且全部由 `control/cc_bus.rs`
     /// 一个文件发起：② 那一段（协商）今天零生产调用方，所以不在表里。」—— 写下之后
-    /// `accounts` 那四条（`A3` 第二波）已经让「全部由一个文件发起」不成立。〕
+    /// `accounts` 那四条（`A3`）已经让「全部由一个文件发起」不成立。〕
     ///
     /// ⚠ **类型也要登记，不只是函数**：`Done` / `NotRun` 出现在调用方的签名与 `match` 里，
     /// 它们和函数一样是接口面。漏登记等于「接口只算函数」——那是个会腐的口径。
@@ -106,7 +106,7 @@ mod tests {
             "「根本没跑起来」那一类的类型：调用方要 `match` 它，才分得出\
              「我给的参数太大」（自己能修）与「那个程序坏了」（自己修不了）",
         ),
-        // 〔RM1c · 第四波〕代码全景的适配层（`control/panorama.rs`）—— `probe` 的**第一个生产调用方**。
+        // 代码全景的适配层（`control/panorama.rs`）—— `probe` 的**第一个生产调用方**。
         (
             "control",
             "crate::plugin::probe::negotiate",
@@ -125,7 +125,7 @@ mod tests {
             "④ 骨架里「摘一行」：从 stdout 取第一行非空内容（那个插件的应答行）。\
              怎么读懂那一行是调用方的事，摘这件事不认识任何插件",
         ),
-        // 〔RM1f〕代码全景的适配层改走可打断的那一形（`panorama` 进了 `Run::Async` 档）。
+        // 代码全景的适配层改走可打断的那一形（`panorama` 进了 `Run::Async` 档）。
         (
             "control",
             "crate::plugin::invoke::run_abortable",
@@ -136,7 +136,7 @@ mod tests {
         (
             "control",
             "crate::plugin::invoke::run_abortable_reporting",
-            "〔P7〕同上那一种等法，另把 stderr 上以通用前缀 `progress=` 开头的整行交调用方的回调（插件口那套方言，\
+            "同上那一种等法，另把 stderr 上以通用前缀 `progress=` 开头的整行交调用方的回调（插件口那套方言，\
              同 `--probe` 的 `key=value`）：分拣是调用口的形状，格里是什么由调用方解释（全景：上游 `IndexProgress`）",
         ),
         (
@@ -159,7 +159,7 @@ mod tests {
     /// 跑在一棵真的、盘上存在的小树上。根写死在函数里的话，夹具只能另写一份扫描，
     /// 而「另写一份」证明的是那一份、不是护栏〔`brief` 第 9 条：空真要用**活体**夹具治〕。
     ///
-    /// `label` 只进报错文本里的相对路径前缀，**不进任何断言**〔`6g`：断言别取自夹具的名字〕。
+    /// `label` 只进报错文本里的相对路径前缀，**不进任何断言**〔断言别取自夹具的名字〕。
     fn layer_sources_at(root: &std::path::Path, label: &str) -> Vec<(String, String)> {
         let layer = label;
         let root = root.to_path_buf();
@@ -202,7 +202,7 @@ mod tests {
     ///
     /// # 而那次修法只补了两根针，没有把人群圈出来 —— 于是漏的是**最朴素的一种**
     ///
-    /// 〔audit-0805 08-06〕接着上表往下变异，三条里两条**全绿**：
+    /// 接着上表往下变异，三条里两条**全绿**：
     ///
     /// | 拼法 | 上表那版 | 现在 |
     /// |---|---|---|
@@ -233,7 +233,7 @@ mod tests {
     ///   真判据得上 `syn` 级解析，成本远超本仓需要；写在这里，别让人以为它是完备的。
     fn refs_to_layer(code: &str, layer: &str) -> Vec<String> {
         let mut hits: Vec<String> = Vec::new();
-        // 〔audit-0805 08-06〕**不再一种拼法一根针，改成从层名派生**（理由见上面那张表末行）。
+        // **不再一种拼法一根针，改成从层名派生**（理由见上面那张表末行）。
         //
         // 做法：找出每一处 `crate::<layer>` / `super::super::<layer>`，**按紧随其后的字符分类** ——
         // 后面是 `::` 就是符号路径（照旧抠符号），否则就是**模块级引入**（`;` / `,` / ` as ` / `}`）。
@@ -474,7 +474,7 @@ mod tests {
     /// 形状照 [`ALLOWED_OBSERVE_TO_CONTROL`]：不是禁绝（调用口本来就是给人用的），
     /// 是**让每一条边被人看见一次**。
     ///
-    /// 〔`A3` 第二波〕扫描面加了 **`accounts/`**：账号域从这一拍起经本口起 `cc-acct-iso`
+    /// 扫描面加了 **`accounts/`**：账号域从这一拍起经本口起 `cc-acct-iso`
     /// （`accounts/iso.rs`），不把它纳进来，那几条边就落在盲区里、本条照绿。
     ///
     /// ⚠ 扫的是 **`control/` 与 `observe/` 两层**，不只是 control ——
@@ -625,7 +625,7 @@ mod tests {
     /// 方向 ② 扫的**目标层**。
     ///
     /// 🔴 这三个 `D*_` 常量**不是为了少打几个字** —— 它们是「判据与活体夹具共用同一份
-    /// 权威源」的落点〔`E3`：一个事实恰好一个权威源〕。夹具若各写一份字面量，
+    /// 权威源」的落点〔一个事实恰好一个权威源〕。夹具若各写一份字面量，
     /// 那把某条方向的被禁层改坏，**夹具照样全绿** —— 它证明的是自己那份字面量。
     /// 现在改坏任何一条，对应探针**当场红**（变异表逐刀在件文件里）。
     const D2_REACHING_INTO_RELAY: &[&str] = &["relay"];
@@ -675,24 +675,24 @@ mod tests {
     /// # ⚠ 诚实边界：本判据扫的是 `production_code`，测试段跨层构造夹具看不见，**这是有意的**
     ///
     /// 分层是**生产架构**的性质（`refs_to_layer` 头注同款取舍）。
-    /// 〔RM1a · 第四波〕`relay/` 对外的口（`relay/mod.rs` 里的 `pub(crate) use …`）**逐条登记**：`(项, 为什么它是对外的口)`。
+    /// `relay/` 对外的口（`relay/mod.rs` 里的 `pub(crate) use …`）**逐条登记**：`(项, 为什么它是对外的口)`。
     ///
     /// `relay/mod.rs` 头注逐字：「真要新开口子 ⇒ 加在那一行旁边，并在 `layering_guard` 里配一张**非空**登记表」。
     /// 先前那张表不存在（口子只靠散文守）；本拍新开了两个口（`relay-*` 帧面那两个处理器），表同拍立起来。
     const RELAY_EXPORTS: &[(&str, &str)] = &[
         (
             "listen::host",
-            "〔RL1 · V107〕流模式常驻后端**进程内**起中转的入口；上游选择那只手由 `accounts::upstream_select::host_relay` 递进来",
+            "流模式常驻后端**进程内**起中转的入口；上游选择那只手由 `accounts::upstream_select::host_relay` 递进来",
         ),
         (
             "listen::ENV_PORT",
-            "〔HX2〕中转端口那个环境变量**名**：hello 回显宿主交来的那几格（`wire::HOST_ECHO_ENVS`）要点它，名字只住 `listen.rs` 一处",
+            "中转端口那个环境变量**名**：hello 回显宿主交来的那几格（`wire::HOST_ECHO_ENVS`）要点它，名字只住 `listen.rs` 一处",
         ),
-        // 〔DEL〕`listen::run`（`--relay` 那一臂的中转入口）随独立中转进程一形删了。
-        // 〔DEL〕`machine::answer_ensure` / `machine::answer_status`（帧面 `relay-*` 那两个处理器）随脱离 `--relay` 一族删了。
+        // `listen::run`（`--relay` 那一臂的中转入口）随独立中转进程一形删了。
+        // `machine::answer_ensure` / `machine::answer_status`（帧面 `relay-*` 那两个处理器）随脱离 `--relay` 一族删了。
         (
             "listen::our_relay_listening",
-            "〔US1〕上游选择出成品（`launch-endpoint` · `apikey-routing`）时问「这台机器上我们的中转在不在听」—— 差分探针，只收端口、只回布尔",
+            "上游选择出成品（`launch-endpoint` · `apikey-routing`）时问「这台机器上我们的中转在不在听」—— 差分探针，只收端口、只回布尔",
         ),
         (
             "route::segment_is_safe",
@@ -701,26 +701,26 @@ mod tests {
         (
             "upstream::Base",
             "中转的传输原语：一行的上游是什么，上游选择解析它、焊进行里、原样交回",
-        ),        // 〔TAP · V124〕tee 的第二个落点（三条同一个口：口本身 ＋ 它交出去的那件事的两半）。
+        ),        // tee 的第二个落点（三条同一个口：口本身 ＋ 它交出去的那件事的两半）。
         (
             "tee::TapPort",
-            "〔TAP〕tee 的第二个落点的口：宿主（`crate::stream::tap::TapHub`）实现它，进程内中转经 `listen::host` 收它",
+            "tee 的第二个落点的口：宿主（`crate::stream::tap::TapHub`）实现它，进程内中转经 `listen::host` 收它",
         ),
         (
             "tee::TapEvent",
-            "〔TAP〕tee 交给 tap 口的一件事（`stream` · `resp` · `n` · 事件原文 / 收尾），宿主转成 `tap` 帧",
+            "tee 交给 tap 口的一件事（`stream` · `resp` · `n` · 事件原文 / 收尾），宿主转成 `tap` 帧",
         ),
         (
             "tee::TapBody",
-            "〔TAP〕`TapEvent` 的两形：一个 SSE 事件原文 · 这个响应收尾了（`broken`）",
+            "`TapEvent` 的两形：一个 SSE 事件原文 · 这个响应收尾了（`broken`）",
         ),
     ];
 
-    /// 〔RM1a〕`relay/` 对外的口 == [`RELAY_EXPORTS`]（两向集合相等；从 `relay/mod.rs` 生产段现抠）。
+    /// `relay/` 对外的口 == [`RELAY_EXPORTS`]（两向集合相等；从 `relay/mod.rs` 生产段现抠）。
     #[test]
     fn the_relay_layer_exports_exactly_the_registered_items() {
         let src = std::fs::read_to_string(crate::guard_support::relay_root().join("mod.rs"))
-            .expect("读 relay/mod.rs（〔RE〕住 `src/comms/outward/mod.rs`）");
+            .expect("读 relay/mod.rs（住 `src/comms/outward/mod.rs`）");
         let prod = production_code(&src);
         let mut found: Vec<String> = Vec::new();
         for line in prod.lines() {
@@ -815,7 +815,7 @@ mod tests {
     /// 调用口认识中转，它就不再是「谁都能用的口」。
     ///
     /// ⚠ 本支**刻意与判据 ① 的人群不重叠**（`RELAY_MUST_NOT_KNOW` 里没有 `plugin`）：
-    /// 重叠了就造不出「只由这一支挡住」的探针〔`K22`〕。
+    /// 重叠了就造不出「只由这一支挡住」的探针。
     #[test]
     fn relay_and_plugin_must_not_reference_each_other() {
         let relay = layer_sources("relay");
@@ -851,7 +851,7 @@ mod tests {
     /// 三个方向全 0 ⇒ 三条断言都是 **`[] == []`**，**闸死了照样绿**。
     /// 那份量具自己带**非空对照**（同一把尺子量 `control → plugin`，
     /// 现打 **5** 条边，与 `ALLOWED_INTO_PLUGIN` 的 5 条逐条对上）——
-    /// 「差集为空」与「命令没跑」在终端上一模一样，必须有非空的那一格〔`brief` 12·14w②〕。
+    /// 「差集为空」与「命令没跑」在终端上一模一样，必须有非空的那一格〔`brief` 12〕。
     ///
     /// # 夹具为什么造在**盘上**，而不是喂字符串
     ///
@@ -875,7 +875,7 @@ mod tests {
     ///
     /// ⚠ 夹具的目录名 / 文件名一律**中性**，且下面每一条断言都只认**符号**
     ///（`crate::control::gate` 这一类，来自文件**内容**），不认路径 ——
-    /// 〔`6g`〕断言取自夹具的名字会靠路径恒真。
+    /// 断言取自夹具的名字会靠路径恒真。
     #[test]
     fn the_relay_direction_judgments_actually_bite_on_a_live_tree() {
         // 每棵树都放**两个** `.rs`：一个违规、一个干净。两个的理由有两条 ——
@@ -941,7 +941,7 @@ mod tests {
         assert!(
             violating_edges(&f3, &forbidden1).is_empty(),
             "① 认领了本该只归 ③ 的那条边 —— `RELAY_MUST_NOT_KNOW` 里混进了 `plugin`，\
-             那样 ③ 就再也没有单断探针了〔`K22`〕"
+             那样 ③ 就再也没有单断探针了"
         );
         assert!(
             violating_edges(&f3, D2_REACHING_INTO_RELAY).is_empty(),
@@ -965,7 +965,7 @@ mod tests {
 
         // ② 的**人群**本身也要有牙 —— 上面四个探针盖的是「扫到的东西判得对不对」，
         // 一个都盖不到「**扫了谁**」。人群被缩空或改成不存在的层名，判据会静默变成空转，
-        // 而它的输出与「跑了、没违规」在终端上一模一样〔`brief` 12·14w②〕。
+        // 而它的输出与「跑了、没违规」在终端上一模一样〔`brief` 12〕。
         assert!(
             WHO_MAY_NOT_REACH_INTO_RELAY.len() >= 2,
             "② 的人群缩到了 {} 层 —— 少一层就是少一整面没人看着",
@@ -999,7 +999,7 @@ mod tests {
     /// 给 [`the_relay_direction_judgments_actually_bite_on_a_live_tree`] 造一棵**真**小树。
     ///
     /// `tag` 只用来把四棵树的目录名岔开（配 pid 防并行撞车），**一律取中性名**，
-    /// 且**不许**出现在任何断言里〔`6g`：断言取自夹具名字会靠路径恒真〕。
+    /// 且**不许**出现在任何断言里〔断言取自夹具名字会靠路径恒真〕。
     fn write_probe_tree(tag: &str, dirty: &str, clean: &str) -> std::path::PathBuf {
         let root = std::env::temp_dir().join(format!("ccm-lg-{}-{}", tag, std::process::id()));
         // 先清一次：上一趟留下的文件会让「树上有几个 .rs」这个分母漂。
@@ -1025,7 +1025,7 @@ mod tests {
         // 不该误命中别的层。
         assert!(refs_to_layer("crate::common::fs::read", "observe").is_empty());
         assert!(refs_to_layer("crate::platform::proc::x", "control").is_empty());
-        // 〔audit-0805 08-06〕**模块级引入的三种写法都要认**（上面第二张表）。
+        // **模块级引入的三种写法都要认**（上面第二张表）。
         for form in [
             "use crate::observe;",
             "use crate::observe as ob;",

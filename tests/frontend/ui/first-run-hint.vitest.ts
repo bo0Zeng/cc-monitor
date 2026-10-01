@@ -12,7 +12,7 @@
  * 3. 没缺口时**一个节点都不新增**（`NF3D4`）——「渲染成空」不算，断的是**节点不存在**。
  *
  * ⚠ **本文件的射程**（`§4` 诚实边界同款）：这里证的是「代码走得到、判据断得住」，
- * **不是**「一个真人打开看见了」。真机新用户读数归 `ROADMAP` 的 `n1`，本件不解锁它。
+ * **不是**「一个真人打开看见了」。真机新用户读数本件不解锁。
  */
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { readFileSync } from "node:fs";
@@ -278,7 +278,7 @@ describe("NF3D4 · 没缺口时一个字都不多说", () => {
 describe("〔第四波 ST2〕指路的措辞跟上改名：「诊断」，指向真存在的「设置 → 机器」", () => {
   it("★ 前缀 == 设置面板机器列表页那一块的标题（读 remote-section.ts 对拍，不手抄第二份）", () => {
     const src = readFileSync(join(srcDirOf(__dirname), "settings/remote-section.ts"), "utf8");
-    // 〔CP2b〕那块的标题进了文案表：源码里是 copyText("key")，字住 table.json —— 读 key 再去表里取字（仍是异源：一侧是表，一侧是 first-run-hint 自己取的那条）。
+    // 那块的标题进了文案表：源码里是 copyText("key")，字住 table.json —— 读 key 再去表里取字（仍是异源：一侧是表，一侧是 first-run-hint 自己取的那条）。
     const m = /title\.textContent = copyText\("([^"]+)"\);\n\s+this\.gapsBox\.appendChild\(title\)/.exec(src);
     expect(m, "remote-section.ts 里找不到那块的标题赋值 —— 形状改了就来改这条").not.toBeNull();
     const [title] = copyTableTextsIn(`copyText("${m![1]}")`);

@@ -7,13 +7,12 @@
 挂进 `npm test`：`tests/copy/backend-copy-pending.vitest.ts`
 
 要求住址（逐字）：
-  · `设计/01 §6.9`「**所有对外文案与报错都从一张表来**（结构化的 key → 文本，插值点留在表里）」；
-  · `设计/91 §5.1` 决定 2「**一份文件，两侧各读，零转换**」—— 后端也读同一份 `table.json`（选 A 的理由：
-    `调研/第四波记录/CP2c.md §2.1`）；
-  · `设计/91 §6` 第 7 条「后端 crate 没有表的读口 —— 露得到界面的那部分进表时，读口住哪没定」（本路定了：`copy-core`）。
+  · 「**所有对外文案与报错都从一张表来**（结构化的 key → 文本，插值点留在表里）」；
+  · 决定 2「**一份文件，两侧各读，零转换**」—— 后端也读同一份 `table.json`；
+  · 「后端 crate 没有表的读口 —— 露得到界面的那部分进表时，读口住哪没定」（本路定了：`copy-core`）。
 
 与 CP2b 的 `CP2b-copy-pending.py` **同形**（人群、两向、三刀一样），只是射程是 `src/backend/**` ∪ `src/common/**`。
-两张表各管一半、互不相交：CP2b 那张管前端与 monitor crate（合并时它那张表里这两棵的行删掉，见 CP2c 记录 §7）。
+两张表各管一半、互不相交：CP2b 那张管前端与 monitor crate（合并时它那张表里这两棵的行删掉）。
 
 跑法（仓根下）：
     python3 tests/evidence/CP2c-backend-copy-pending.py            # 判

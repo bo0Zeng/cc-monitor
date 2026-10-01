@@ -1,6 +1,6 @@
 // @vitest-environment node
 /**
- * 三入口拆分的判据（`设计/01 §1.2`）：**对构建产物的模块图做零命中断言。**
+ * 三入口拆分的判据：**对构建产物的模块图做零命中断言。**
  *
  * ```
  * index.html     → entry-main      主窗口
@@ -35,7 +35,7 @@
  * - ❌ 买不到：窗口**真的开得出来、长得对**（本机无图形会话）。dev 模式下 vite 按 url 直接
  *   伺服 `settings.html` / `viewer.html`，与构建产物是同一张 `input` 表，但 dev 那条路本文件没跑。
  * - ❌ 买不到：viewer 闭包里**带进了什么多余的**（`tabs.ts` 的依赖链今天拖进了
- *   `tasks-panel.ts` 等，`tabs.ts` 不在本轮写区；〔F7b〕老 SFTP 面板已退役，那一条不在了）。本文件只钉「不许有」清单，
+ *   `tasks-panel.ts` 等，`tabs.ts` 不在本轮写区；老 SFTP 面板已退役，那一条不在了）。本文件只钉「不许有」清单，
  *   不钉「只许有」—— 钉全集会让每一次 `tabs.ts` 的正常改动都红在一个与拆分无关的数上。
  */
 import { readFileSync } from "node:fs";
@@ -82,7 +82,7 @@ const FORBIDDEN_IN_SETTINGS: readonly { pat: string; what: string }[] = [
   { pat: "src/frontend/ui/tabs.ts", what: "tab 管理" },
   { pat: "src/frontend/ui/tab-bar-state.ts", what: "tab 管理（tab 栏状态）" },
   { pat: "src/frontend/ui/tab-collections.ts", what: "tab 管理（标签页集合）" },
-  // 〔U2 · 第三波〕`tabs.ts` 拆成 13 份之后，「设置窗里没有 tab 管理」要对每一份都成立 ——
+  // `tabs.ts` 拆成 13 份之后，「设置窗里没有 tab 管理」要对每一份都成立 ——
   //   只钉 `tabs.ts` 一个名字，某一份被设置窗间接带进来时这里看不见。正控照旧（每一份都得在主窗 / viewer 的闭包里命中）。
   { pat: "src/frontend/ui/tab-model.ts", what: "tab 管理（tab 的形状与标题）" },
   { pat: "src/frontend/ui/tab-store.ts", what: "tab 管理（会话状态账 / store）" },
@@ -127,7 +127,7 @@ interface Closure {
   readonly facade: string;
   readonly modules: Set<string>;
   readonly cssAssets: Map<string, string>;
-  /** 〔UC2〕闭包里全部 JS chunk 的代码拼起来 —— CSS Modules 的哈希类名要在这里真出现（代码真用上了它）。 */
+  /** 闭包里全部 JS chunk 的代码拼起来 —— CSS Modules 的哈希类名要在这里真出现（代码真用上了它）。 */
   readonly jsCode: string;
 }
 
@@ -228,7 +228,7 @@ describe("三入口 · 住址对账（html ↔ 入口模块 ↔ vite input ↔ T
     const rs = readFileSync(resolve(REPO_ROOT, "src/frontend/shell/src/lib.rs"), "utf8");
     const urls = [...rs.matchAll(/WebviewUrl::App\(\s*(?:format!\()?"([^"]+)"/g)].map((m) => m[1]);
     // 分母：今天恰好两处开窗（设置窗 ＋ viewer 窗）。多了少了都要有人来看一眼。
-    // 〔CF2 · 第四波 4B〕viewer 的 URL 多带一个 `origin`：独立窗口自己订 `session-lines/<sid>`，要知道会话在哪台机器上。
+    // viewer 的 URL 多带一个 `origin`：独立窗口自己订 `session-lines/<sid>`，要知道会话在哪台机器上。
     expect(urls.sort()).toEqual(["settings.html", "viewer.html?viewer={session_id}&origin={origin_q}"]);
     const htmls = new Set<string>(Object.values(WINDOWS).map((w) => w.html));
     for (const u of urls) expect(htmls.has(u.split("?")[0]), `lib.rs 开窗指向 ${u}，它不是构建输入之一`).toBe(true);
@@ -267,14 +267,14 @@ describe("三入口 · 模块图零命中（对构建产物）", () => {
   it("🔴 设置窗：没有语法高亮 / 数学排版 / markdown / 渲染栈 / tab 管理", () => {
     const mods = CLOSURES.settings.modules;
     const leaked = FORBIDDEN_IN_SETTINGS.flatMap((f) => hit(mods, f.pat).map((m) => `${f.what}：${m}`));
-    expect(leaked, "设置窗的模块图里混进了不该有的东西（`设计/01 §1.2`：只含设置面板 ＋ 主题 ＋ 键位）").toEqual([]);
+    expect(leaked, "设置窗的模块图里混进了不该有的东西（只含设置面板 ＋ 主题 ＋ 键位）").toEqual([]);
     console.log(`  ok   entry-graphs  settings 闭包 ${mods.size} 个模块，${FORBIDDEN_IN_SETTINGS.length} 个禁止模式零命中`);
   });
 
   it("🔴 viewer 窗：没有设置面板 / 历史 / 全景 / 网格 / 命令栏", () => {
     const mods = CLOSURES.viewer.modules;
     const leaked = FORBIDDEN_IN_VIEWER.flatMap((f) => hit(mods, f.pat).map((m) => `${f.what}：${m}`));
-    expect(leaked, "viewer 窗的模块图里混进了不该有的东西（`设计/01 §1.2`：只含 tab 管理 ＋ 渲染栈）").toEqual([]);
+    expect(leaked, "viewer 窗的模块图里混进了不该有的东西（只含 tab 管理 ＋ 渲染栈）").toEqual([]);
     console.log(`  ok   entry-graphs  viewer 闭包 ${mods.size} 个模块，${FORBIDDEN_IN_VIEWER.length} 个禁止模式零命中`);
   });
 });
@@ -311,7 +311,7 @@ const CSS_SOURCES: Record<string, string> = Object.fromEntries(
 );
 
 /**
- * 〔UC2 · `设计/41` 件 10〕CSS Modules（`*.module.css`）不走 html 的 `<link>` 清单：它们由 TS
+ * CSS Modules（`*.module.css`）不走 html 的 `<link>` 清单：它们由 TS
  * `import s from "./x.module.css"` 带进窗口的模块图，类名构建时哈希。⇒ 「每份 CSS 都被某个窗口链到」与
  * 「完整性」两条只对**全局**样式文件成立；module 那一侧另有下面「CSS Modules 在产物里」那一组判。
  */
@@ -572,7 +572,7 @@ describe("子步 2 · CSS 按窗口拆（清单 ＝ 各 html 的 <link> 列表�
   }, TIMEOUT_MS);
 });
 
-// ═══════════════════════════ 〔UC2〕CSS Modules 在构建产物里（`设计/41` 件 10）═══════════════════════════
+// ═══════════════════════════ CSS Modules 在构建产物里（件 10）═══════════════════════════
 //
 // 源码那一侧（全局样式文件集合 == 登记表 · 逐文件类型 == 类名集合 · 只经默认导入用 · 每个类都有人取 ·
 // tsc 真吃到逐文件类型）住 `tests/frontend/ui/css-modules.vitest.ts`。这里判**产物**，因为有两件事只在构建里发生：
@@ -581,7 +581,7 @@ describe("子步 2 · CSS 按窗口拆（清单 ＝ 各 html 的 <link> 列表�
 //   ② 次序：JS 导入的 module 样式排在 html 链的全局样式**之后**。示范组件的 delta 与它叠的全局基类
 //      `.status-tasks` 同层同特异度（`font: inherit` 对 `font-variant-numeric` · `:hover` 对 `color`/`background`），
 //      谁后谁赢 —— 这条次序一翻，delta 静默失效。
-//      〔W5-UI · 主会话 09-25 裁〕次序**只对「叠在全局基类上的 delta」**要求：module 的类与某个全局类挂在同一个元素上，
+// 次序**只对「叠在全局基类上的 delta」**要求：module 的类与某个全局类挂在同一个元素上，
 //      才有「同层同特异度谁后谁赢」这回事。不叠在任何全局类上的 module（元素只挂它自己的哈希类）不受次序约束 ——
 //      它被两个窗口共用时 vite 把它的 CSS 放进共享 chunk，那份样式排在全局之前，而那对它不构成任何覆盖关系。
 //      「叠不叠」由 [`moduleStacking`] 从导入方的 TS 里认（下面「叠没叠」那一格 == 手写表，两向）。
@@ -614,7 +614,7 @@ function globalRulesAfterFirstModule(text: string, hashed: readonly string[]): s
 }
 
 /**
- * 〔W5-UI〕一份 module 叠没叠在全局基类上：在导入它的生产 TS 里，看它的类挂到了哪个元素上、那个元素还挂了什么。
+ * 一份 module 叠没叠在全局基类上：在导入它的生产 TS 里，看它的类挂到了哪个元素上、那个元素还挂了什么。
  *
  * 认的挂法（按接收者的**源码文本**归到同一个元素：`btn.className = …` 与 `btn.classList.toggle(…)` 算同一个 `btn`）：
  * - `<接收者>.className = <表达式>` —— 表达式里的字符串 / 模板字面量按空白切出类名，`s.<类>` 认成 module 类；
@@ -706,18 +706,18 @@ function moduleStacking(
 }
 
 /**
- * 〔W5-UI〕每份 module 叠没叠在全局基类上 —— **手写**（期望不从 [`moduleStacking`] 派生）。新长一份 module ⇒ 这张表红，
+ * 每份 module 叠没叠在全局基类上 —— **手写**（期望不从 [`moduleStacking`] 派生）。新长一份 module ⇒ 这张表红，
  * 回来写清它叠不叠、为什么。
  */
 const MODULE_STACKING: Record<string, { stacked: boolean; why: string }> = {
   "src/frontend/ui/usage-hud.module.css": { stacked: true, why: "`.chip` 叠在全局 `.status-tasks` 上（usage-hud.ts 里 btn.className 同时挂 status-tasks 与 s.chip）" },
   "src/frontend/ui/ask-dialog.module.css": { stacked: false, why: "应用内对话框：遮罩 / 面板 / 正文 / 文本框 / 按钮行只挂自己的哈希类" },
-  "src/frontend/ui/live-card.module.css": { stacked: false, why: "〔TAP · V124〕活卡（`live-card-view.ts` 画）：卡 / 顶上那行 / 正文只挂自己的哈希类（不叠全局类）" },
-  "src/frontend/ui/record-file-notice.module.css": { stacked: false, why: "〔FW1 · D-d〕tab 顶上「记录文件不见了 / 已从头重读」那一句：只挂自己的哈希类 `.notice`（不叠全局类）" },
+  "src/frontend/ui/live-card.module.css": { stacked: false, why: "活卡（`live-card-view.ts` 画）：卡 / 顶上那行 / 正文只挂自己的哈希类（不叠全局类）" },
+  "src/frontend/ui/record-file-notice.module.css": { stacked: false, why: "tab 顶上「记录文件不见了 / 已从头重读」那一句：只挂自己的哈希类 `.notice`（不叠全局类）" },
   "src/frontend/ui/tab-group-rename.module.css": { stacked: false, why: "组头就地改名的输入框只挂自己的哈希类" },
 };
 
-describe("〔UC2〕CSS Modules 在构建产物里（设计/41 件 10）", () => {
+describe("〔UC2〕CSS Modules 在构建产物里（件 10）", () => {
   it("每份 .module.css 都进了某个窗口的模块图；每个类在产物 CSS 里恰有一个哈希名、原名不出现、哈希名在那个窗口的 JS 里真出现", () => {
     const mods = Object.keys(MODULE_CLASSES);
     expect(mods.length, "一份 `.module.css` 都没有 —— 本组零命中地绿（件 10 的示范被删了？）").toBeGreaterThan(0);
@@ -762,7 +762,7 @@ describe("〔UC2〕CSS Modules 在构建产物里（设计/41 件 10）", () => 
     let judged = 0;
     for (const win of Object.keys(WINDOWS) as Win[]) {
       const built = builtClasses(win);
-      // 〔W5-UI · 主会话 09-25 裁〕只数叠在全局基类上的那几份（手写表；上一格钉它 == 量具）。
+      // 只数叠在全局基类上的那几份（手写表；上一格钉它 == 量具）。
       const hashed = Object.entries(MODULE_CLASSES)
         .filter(([f]) => MODULE_STACKING[f]?.stacked !== false)
         .flatMap(([, ks]) => ks.flatMap((k) => hashedOf(built, k)));

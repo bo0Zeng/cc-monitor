@@ -1,5 +1,5 @@
 {
-  "说明": "〔CFG1〕config.json 按键补丁的语义金样：手写。Rust 写口（tests/frontend/shell/config_tests.rs::the_golden_cases_hold）与前端测试用的假盘（tests/frontend/ui/config-patch-fake.ts，由 tests/frontend/ui/config-patch-fake.vitest.ts 对拍）各跑一遍同一份。before 是盘上原文；refused 非空 ⇒ 整批拒、盘上字节不变。",
+  "说明": "config.json 按键补丁的语义金样：手写。Rust 写口（tests/frontend/shell/config_tests.rs::the_golden_cases_hold）与前端测试用的假盘（tests/frontend/ui/config-patch-fake.ts，由 tests/frontend/ui/config-patch-fake.vitest.ts 对拍）各跑一遍同一份。before 是盘上原文；refused 非空 ⇒ 整批拒、盘上字节不变。",
   "cases": [
     {
       "name": "段内一个子键：兄弟键不动",
@@ -76,7 +76,7 @@
       "refused": "unreadable"
     },
     {
-      "name": "〔FIX · ㊶〕setin：认出恰好一台、只改它那一格，别的机器与别的键不动",
+      "name": "setin：认出恰好一台、只改它那一格，别的机器与别的键不动",
       "before": "{\"remote\":{\"enabled\":true,\"hosts\":[{\"label\":\"\",\"host\":\"a.lan\",\"user\":\"u\"},{\"label\":\"beta\",\"host\":\"b.lan\",\"hostKeyFingerprint\":\"SHA256:pinned\"}]},\"theme\":{\"x\":1}}",
       "edits": [
         { "op": "setin", "path": ["remote", "hosts"], "where": [{ "fields": ["label", "host"], "equals": "a.lan" }], "field": "user", "value": "v", "ifEmpty": false },
@@ -85,13 +85,13 @@
       "after": {"remote": {"enabled": true, "hosts": [{"label": "", "host": "a.lan", "user": "v"}, {"label": "beta", "host": "b.lan", "hostKeyFingerprint": "SHA256:pinned", "user": "w"}]}, "theme": {"x": 1}}
     },
     {
-      "name": "〔FIX · ㊶〕setin 带 ifEmpty：那一格已有值 ⇒ 不动（CAS）",
+      "name": "setin 带 ifEmpty：那一格已有值 ⇒ 不动（CAS）",
       "before": "{\"remote\":{\"enabled\":true,\"hosts\":[{\"label\":\"\",\"host\":\"a.lan\",\"user\":\"u\"},{\"label\":\"beta\",\"host\":\"b.lan\",\"hostKeyFingerprint\":\"SHA256:pinned\"}]},\"theme\":{\"x\":1}}",
       "edits": [{ "op": "setin", "path": ["remote", "hosts"], "where": [{ "fields": ["label", "host"], "equals": "beta" }], "field": "hostKeyFingerprint", "value": "SHA256:new", "ifEmpty": true }],
       "after": {"remote": {"enabled": true, "hosts": [{"label": "", "host": "a.lan", "user": "u"}, {"label": "beta", "host": "b.lan", "hostKeyFingerprint": "SHA256:pinned"}]}, "theme": {"x": 1}}
     },
     {
-      "name": "〔FIX · ㊶〕setin 认不出那一台 ⇒ 整批拒，同批别的补丁也不落",
+      "name": "setin 认不出那一台 ⇒ 整批拒，同批别的补丁也不落",
       "before": "{\"remote\":{\"enabled\":true,\"hosts\":[{\"label\":\"\",\"host\":\"a.lan\",\"user\":\"u\"},{\"label\":\"beta\",\"host\":\"b.lan\",\"hostKeyFingerprint\":\"SHA256:pinned\"}]},\"theme\":{\"x\":1}}",
       "edits": [
         { "op": "set", "path": ["theme", "x"], "value": 2 },
@@ -100,7 +100,7 @@
       "refused": "element_gone"
     },
     {
-      "name": "〔FIX2 续 · ㊶〕insertin 追加一台；路上缺的段补出来，别的键不动",
+      "name": "insertin 追加一台；路上缺的段补出来，别的键不动",
       "before": "{\"theme\":{\"x\":1}}",
       "edits": [
         {"op": "insertin", "path": ["remote", "hosts"], "where": [{"fields": ["label", "host"], "equals": "gamma"}], "value": {"label": "gamma", "host": "c.lan", "user": "g"}}
@@ -108,7 +108,7 @@
       "after": {"theme": {"x": 1}, "remote": {"hosts": [{"label": "gamma", "host": "c.lan", "user": "g"}]}}
     },
     {
-      "name": "〔FIX2 续 · ㊶〕insertin 那个键已有 ⇒ 整批拒，同批别的补丁也不落",
+      "name": "insertin 那个键已有 ⇒ 整批拒，同批别的补丁也不落",
       "before": "{\"remote\":{\"enabled\":true,\"hosts\":[{\"label\":\"\",\"host\":\"a.lan\",\"user\":\"u\"},{\"label\":\"beta\",\"host\":\"b.lan\",\"hostKeyFingerprint\":\"SHA256:pinned\"}]}}",
       "edits": [
         {"op": "set", "path": ["remote", "enabled"], "value": false},
@@ -117,7 +117,7 @@
       "refused": "element_exists"
     },
     {
-      "name": "〔FIX2 续 · ㊶〕removein 删恰好那一台；另一台刚固化的指纹原样留着",
+      "name": "removein 删恰好那一台；另一台刚固化的指纹原样留着",
       "before": "{\"remote\":{\"enabled\":true,\"hosts\":[{\"label\":\"\",\"host\":\"a.lan\",\"user\":\"u\"},{\"label\":\"beta\",\"host\":\"b.lan\",\"hostKeyFingerprint\":\"SHA256:pinned\"}]}}",
       "edits": [
         {"op": "removein", "path": ["remote", "hosts"], "where": [{"fields": ["label", "host"], "equals": "a.lan"}]}
@@ -125,7 +125,7 @@
       "after": {"remote": {"enabled": true, "hosts": [{"label": "beta", "host": "b.lan", "hostKeyFingerprint": "SHA256:pinned"}]}}
     },
     {
-      "name": "〔FIX2 续 · ㊶〕removein 认不出那一台 ⇒ 整批拒",
+      "name": "removein 认不出那一台 ⇒ 整批拒",
       "before": "{\"remote\":{\"enabled\":true,\"hosts\":[{\"label\":\"\",\"host\":\"a.lan\",\"user\":\"u\"},{\"label\":\"beta\",\"host\":\"b.lan\",\"hostKeyFingerprint\":\"SHA256:pinned\"}]}}",
       "edits": [
         {"op": "removein", "path": ["remote", "hosts"], "where": [{"fields": ["label", "host"], "equals": "gone"}]}

@@ -5,7 +5,7 @@
 set -euo pipefail
 # ⚠ `CC_BUS_HOME` 这里**不再读**:三件全搬进 ccm 之后,本脚本不碰总线目录了。
 #   它仍然要**原样传下去**(env 继承) —— ccm 调的 cc-register/cc-spawned-record 认这个变量。
-# ⚠ 〔`K-R48` 第二拍 09-11〕`SELFDIR` **删了**:它唯一的用途是拼 `$SELFDIR/../../ccm`
+# ⚠ `SELFDIR` **删了**:它唯一的用途是拼 `$SELFDIR/../../ccm`
 #   去找仓内那个 bash 脚本,而那个文件今天不存在了(见下面查找次序那段)。
 #   留一个没人读的变量比删掉更坏 —— 下一个人会以为本脚本还按「自己住哪」找东西。
 # 旗标可在 <目录> 前任意顺序出现。
@@ -55,7 +55,7 @@ LAUNCH="${CCSPAWN_LAUNCH:-$tool}"
 #    `CCM_BIN` 可显式覆盖(测试钩子),语义一个字没变。
 CCM_BIN="${CCM_BIN:-}"
 if [ -z "$CCM_BIN" ]; then
-  # 〔E2 · V28〕后端本身就是 `~/.cc-monitor/bin/ccm`（旧的 `cc-monitor-backend` 落点退役了）。
+  # 后端本身就是 `~/.cc-monitor/bin/ccm`（旧的 `cc-monitor-backend` 落点退役了）。
   for _x in "$HOME/.cc-monitor/bin/ccm" \
             "$(command -v cc-monitor-backend 2>/dev/null)" \
             "$(command -v ccm 2>/dev/null)"; do
@@ -68,14 +68,14 @@ if [ -z "$CCM_BIN" ]; then
     exit 2; }
 fi
 
-# **怎么把它当 `ccm` 叫**:〔主会话 09-27 裁〕后端分流只看 argv、不看文件名 ⇒ 找到的那份叫什么都一样,
+# **怎么把它当 `ccm` 叫**:后端分流只看 argv、不看文件名 ⇒ 找到的那份叫什么都一样,
 #   照 `ccm [交给 claude 的…] -- [ccm 自己的…]` 叫它就行(从前名字不是 `ccm` 时要多垫一个 `ccm` 子命令词,那一形不在了)。
 ccm_prefix=("$CCM_BIN")
 
 # **能力协商**(B02 审计重要-7):cc-spawn 硬依赖 `--detach` 等四项,而用户盘上 PATH 前面
 # 完全可能还躺着一份**旧的 bash `ccm` 副本**(`~/.local/bin/ccm`,实测那份就没有 --detach)。
 # 不检查的话报出来的是 `ccm: 未知选项: --detach` + `建会话失败`,把"版本太旧"说成"建会话失败"。
-# ⚠ 〔`K-R48` 第二拍〕**这道闸今天比从前更要紧**:查找次序末档就是 PATH 上的 `ccm`,
+# ⚠ **这道闸今天比从前更要紧**:查找次序末档就是 PATH 上的 `ccm`,
 #   而那正是旧副本最可能待的地方 —— 它是今天唯一挡得住旧副本的东西。
 # ⚠ **刻意仍按能力协商、不按 `version=` 比大小**:那个号今天是个裸串、没有单调性契约
 #   (`K-R48` `§0-Bx-3㈥` 逐条记着这笔账,归 `KR48D3`)。能力集是**有**契约的那一份。
@@ -84,7 +84,7 @@ ccm_prefix=("$CCM_BIN")
 #   总是 rc=0(它认得 `--ccm-probe`);今天走②那条入口时,一份不认 `ccm` 子命令的旧副本
 #   会 rc≠0 ⇒ `pipefail` 把整条赋值判成失败 ⇒ `set -e` **当场静默退出**,
 #   下面那句「版本太旧」一个字都印不出来。**把诊断掐死在诊断之前**,正是本闸要治的病本身。
-# 〔V151〕`ccm [交给 claude 的…] -- [ccm 自己的…]`：ccm 的诊断口写在 `--` 右边。
+# `ccm [交给 claude 的…] -- [ccm 自己的…]`：ccm 的诊断口写在 `--` 右边。
 _caps=$("${ccm_prefix[@]}" -- --ccm-probe 2>/dev/null | sed -n 's/^capabilities=//p') || true
 for _c in detach tmux-size tmux-base bus-register; do
   case ",$_caps," in
@@ -172,7 +172,7 @@ ccm_args=(--tmux-base="$base" --detach --bus-register --tmux-size 220x50 --cwd "
 # 初始任务作为**位置参数**传给启动器(`exec <launcher> [启动器余下的词] '<任务>'`)。
 passthru=("${launch_argv[@]:1}")
 [ -n "$task" ] && passthru+=("$task")
-# 〔V151〕交给启动器的词在 `--` 左边、ccm 自己的选项在右边（调用那一行按这个顺序拼）。
+# 交给启动器的词在 `--` 左边、ccm 自己的选项在右边（调用那一行按这个顺序拼）。
 # **名字由建它的人报**:ccm 在 `--detach` 时打一行 `ccm-session=<名>`(P4b①)。
 # stdout 捕下来只为摘那一行,**其余原样转发**(不吞 ccm 将来可能打的任何东西)。
 # ★★ 撞名要**重试**〔08-13 实测事故〕：4 个 cc-spawn 同时打进同一目录 ⇒ **只成 1 个**，

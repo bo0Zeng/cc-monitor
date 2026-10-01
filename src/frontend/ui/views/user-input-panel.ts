@@ -1,5 +1,5 @@
 /**
- * K-R45：「大纲」（原名「我说过的 N 句」，`设计/10 §2.2b` 改名）那块**界面**，两条路共用一份。
+ * K-R45：「大纲」（原名「我说过的 N 句」，改名）那块**界面**，两条路共用一份。
  *
  * # 为什么是共用而不是各写一份
  *
@@ -29,12 +29,12 @@
  * ⇒ 判据住 `user-input-panel.vitest.ts`「先跳空、后来跳得过去」那一格，
  *   活体读数（真会发生的那条转移）住 `live-user-inputs.vitest.ts`。
  */
-// 〔SE1〕条目的形状由后端定（〔C4b〕后端帧应答的成品，TS 形状住 `session-reads.ts`）；判定只住后端。
+// 条目的形状由后端定（后端帧应答的成品，TS 形状住 `session-reads.ts`）；判定只住后端。
 import type { UserInputEntry } from "../session-reads";
 import { copyText } from "../copy-table";
 
 /**
- * 这块界面的名字 —— **`大纲`**（`设计/10 §2.2b ③` 定名，步 2）。
+ * 这块界面的名字 —— **`大纲`**（定名，步 2）。
  *
  * 原来叫「我说过的 N 句」，三个毛病叠在一起：
  * ① **app 用第一人称替用户说话** —— 那个「我」指的是用户，可话是 app 说的；
@@ -50,12 +50,12 @@ import { copyText } from "../copy-table";
  */
 export const OUTLINE_LABEL = copyText("userInputPanel.outline.label");
 
-/** 开关的 tooltip（`设计/10 §2.2b ③`）。一个住址：建开关与「要到清单」两处都用它。 */
+/** 开关的 tooltip。一个住址：建开关与「要到清单」两处都用它。 */
 const OUTLINE_HINT = copyText("userInputPanel.outline.hint");
 
 /**
  * 「跳」的结局：真正落到的那张卡 / `null` = 落空。
- * 〔SE2〕可以是 Promise：骨架接上之后，没物化的那段要先按偏移把正文取回来（异步）才建得出卡 ——
+ * 可以是 Promise：骨架接上之后，没物化的那段要先按偏移把正文取回来（异步）才建得出卡 ——
  * 同步那一下去找必然落空（`tab-stream-view.ts::jumpTo` 的头注）。
  */
 export type JumpResult = HTMLElement | null | Promise<HTMLElement | null>;
@@ -72,7 +72,7 @@ export interface UserInputPanelHost {
   /** 跳空时挂在那一行上的一句人话。两条路的原因不同，所以由宿主给。 */
   readonly unjumpableHint: string;
   /**
-   * 〔SE2〕给了 ⇒ **开合归宿主**：开关按钮点下去调它，本类从此不碰 `panel.hidden` 与 `aria-expanded`
+   * 给了 ⇒ **开合归宿主**：开关按钮点下去调它，本类从此不碰 `panel.hidden` 与 `aria-expanded`
    * （实时 tab 把清单挂进查找面板的「大纲」模式，露不露由那块面板的模式决定）。
    * 不给 ⇒ 照旧自己开合（历史查看器）。
    */
@@ -115,7 +115,7 @@ export class UserInputPanel {
     this.toggle = document.createElement("button");
     this.toggle.type = "button";
     this.toggle.className = "user-inputs-toggle";
-    // 标签只有两个字 ⇒ 用 tooltip 说清它是干什么的（`设计/10 §2.2b ③` 的「最终形状」）。
+    // 标签只有两个字 ⇒ 用 tooltip 说清它是干什么的（「最终形状」）。
     this.toggle.title = OUTLINE_HINT;
     this.toggle.addEventListener("click", () =>
       host.openOutline ? host.openOutline() : this.toggleOpen(),
@@ -129,8 +129,8 @@ export class UserInputPanel {
   /**
    * 换一份清单：清空再建表。
    *
-   * 〔SE1〕这里原先是**按 uuid 就地对账**（不碰 `title`、尾部裁剪、写前比一次）——
-   * 那段复杂度只为实时那条路「每来一句就整表交一次」而存在（`设计/10 §2.2b ⑤`）。
+   * 这里原先是**按 uuid 就地对账**（不碰 `title`、尾部裁剪、写前比一次）——
+   * 那段复杂度只为实时那条路「每来一句就整表交一次」而存在。
    * 清单改问后端之后，整表只在**冷启动 / 文件被重写**时换；新来的几条走 [`appendEntries`]。
    */
   setEntries(entries: readonly UserInputEntry[]): void {
@@ -148,7 +148,7 @@ export class UserInputPanel {
       this.panel.appendChild(this.buildRow(entries[i], base + i));
     }
     const n = this.panel.children.length;
-    // `设计/10 §2.2b`：标签只说「点我干什么」，计数用间隔点挂在后面、0 条时不挂。
+    // 标签只说「点我干什么」，计数用间隔点挂在后面、0 条时不挂。
     this.toggle.textContent = n > 0 ? `${OUTLINE_LABEL} · ${n}` : OUTLINE_LABEL;
     this.toggle.title = OUTLINE_HINT;
     // 一条都没有 ⇒ 禁用。不给一个点了没反应的入口。
@@ -156,7 +156,7 @@ export class UserInputPanel {
   }
 
   /**
-   * 〔SE1〕这一趟**要不到**清单（老后端 / 本机后端不在 / 输出被截断）：清空、灰掉，
+   * 这一趟**要不到**清单（老后端 / 本机后端不在 / 输出被截断）：清空、灰掉，
    * 原因挂在开关的提示上 —— 灰掉而不说为什么，与「一条都没有」长得一模一样。
    */
   setUnavailable(reason: string): void {
@@ -205,7 +205,7 @@ export class UserInputPanel {
    * 或者「点了一下什么都没发生」，而没有任何东西说一句话。
    */
   private jump(entry: UserInputEntry, row: HTMLButtonElement): void {
-    // 〔SE2〕标记的加 / 撤搬进 [`markJump`]（查找命中行共用同一个住址）；两样都撤的纪律在那边。
+    // 标记的加 / 撤搬进 [`markJump`]（查找命中行共用同一个住址）；两样都撤的纪律在那边。
     markJump(row, this.host.jumpTo(entry.uuid), entry.excerpt, this.host.unjumpableHint);
   }
 }

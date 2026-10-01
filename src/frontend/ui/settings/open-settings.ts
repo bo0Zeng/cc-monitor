@@ -1,5 +1,5 @@
 /**
- * ST1「点设置有反馈」（`设计/70 §1.2` ④ · `§1.3 E`）。
+ * ST1「点设置有反馈」。
  *
  * 原先主窗里六处都是 `void commands.open_settings_window()`：不 await、不 disable、不给任何迹象，
  * 失败就变成一条未捕获 rejection 落到状态栏的 `REJ:`。用户点下去，要等新窗口建好才知道点没点上，

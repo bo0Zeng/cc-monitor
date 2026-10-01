@@ -1,4 +1,4 @@
-//! 〔LOC1a · 第四波 4D〕帧面 `session-fork` 的宿主 —— 与 `read_face` / `footprint` 同形的一层壳：
+//! 帧面 `session-fork` 的宿主 —— 与 `read_face` / `footprint` 同形的一层壳：
 //! 找家目录（与帧面其余几条同一个出处 `observe::history_query::agent_home`）、交给本体。
 //!
 //! # 为什么要这一层壳（而不是 `control/fork_write.rs` 自己找家）

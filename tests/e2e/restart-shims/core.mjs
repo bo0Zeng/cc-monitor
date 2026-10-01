@@ -8,7 +8,7 @@
 //
 // 失败注入（模拟后端确定性失败,§5.2 边界）：
 //   CCM_KILL_FAIL=1     → kill_remote_tmux 抛（编排必须中止、不续 resume）。
-//   CCM_RESUME_FAIL=1   → open_terminal_window 抛（resume 没起来,不得记账/报成功；〔FIX4〕原 `launch_remote_terminal`）。
+//   CCM_RESUME_FAIL=1   → open_terminal_window 抛（resume 没起来,不得记账/报成功；原 `launch_remote_terminal`）。
 //
 // 账号 fixture 经 CCM_ACCOUNTS_JSON（RawAccountsResult）喂给真源 fetchAccounts/accountConfigDir。
 import { spawnSync } from "node:child_process";
@@ -75,7 +75,7 @@ export async function invoke(cmd, args = {}) {
       seq("kill");
       return undefined;
     }
-    // 〔FIX4 · `设计/99 §2.1 ⑬`〕开终端是三步（`src/frontend/ui/terminal-open.ts`）：monitor 交机器事实（`terminal_dial`）→ 本机后端渲 ssh 那一行
+    // 开终端是三步（`src/frontend/ui/terminal-open.ts`）：monitor 交机器事实（`terminal_dial`）→ 本机后端渲 ssh 那一行
     //   （`terminal-ssh`，见 `chanCall`）→ monitor 开窗（`open_terminal_window`）。夹具不走 ssh：机器事实给个空壳、那一行原样回交进来的
     //   命令，开窗那一步就地用 bash 跑它（与原先 `launch_remote_terminal` 那一臂同一个语义）。
     case "terminal_dial":
@@ -95,14 +95,14 @@ export async function invoke(cmd, args = {}) {
       seq("resume");
       return undefined;
     }
-    // 〔E2 尾 09-27〕账号三问与 tmux 两条控制（结束 · 发按键）今天走**通道**（`chan.call(origin, op, payload)` ⇒
+    // 账号三问与 tmux 两条控制（结束 · 发按键）今天走**通道**（`chan.call(origin, op, payload)` ⇒
     //   包装层 `chan_call`，`src/comms/inward/chan.ts`），不再是各自的 Tauri 命令。旧的那几臂（`list_remote_accounts` ·
     //   `kill_remote_tmux` · `tmux_send_keys` …）从那天起没有调用方，编排拿到 `undefined` 当场判「账号不可用」
     //   ⇒ 本 shim 跟着改成**说通道**：去程是 JSON 字节、回程是 JSON 字节；「不行」按对端拒绝信封
     //   `{err:"Refused", body:<{code,message} 的字节>}` 抛（`chan.ts::decodeFail` 认的那一形）。
     case "chan_call":
       return chanCall(args.op, JSON.parse(Buffer.from(args.payload || []).toString("utf8") || "{}"));
-    // 〔MIG-2〕起会话的渲染 / 中转地址改走通道（`launch-render-*` · `launch-endpoint`，见 `chanCall`）；
+    // 起会话的渲染 / 中转地址改走通道（`launch-render-*` · `launch-endpoint`，见 `chanCall`）；
     //   这里只剩「全部会话走中转」那个开关（monitor 自己的一格：夹具不走中转）。
     case "relay_all_sessions_switch":
       return false;
@@ -130,7 +130,7 @@ function chanCall(op, body) {
       });
     }
     case "terminal-ssh":
-      // 〔FIX4〕ssh 外壳的字节归 Rust（`tests/backend/dial_terminal_tests.rs`）；夹具原样回那串命令。
+      // ssh 外壳的字节归 Rust（`tests/backend/dial_terminal_tests.rs`）；夹具原样回那串命令。
       return enc({ command: body.command });
     case "accounts-trust":
       // trust 只警告不阻断（§5 ①）；e2e 里恒答「不知道」⇒ 走「未知」分支，不影响主流程。
@@ -138,7 +138,7 @@ function chanCall(op, body) {
     case "accounts-sessions":
       return enc({ sessions: [] });
     case "launch": {
-      // 发按键：`send-into`（键入 ＋ 回车；〔RST 续〕裸键 mode 已删）。与后端同构：`=<名>:` 精确寻址（F01）。
+      // 发按键：`send-into`（键入 ＋ 回车；裸键 mode 已删）。与后端同构：`=<名>:` 精确寻址（F01）。
       const { mode, name, payload } = body;
       const label =
         payload === "/compact" ? "compact" : payload === "Escape" ? "escape" : payload === "/exit" ? "exit" : "sendkeys:" + payload;
@@ -150,7 +150,7 @@ function chanCall(op, body) {
       if (r.status !== 0) refused("no_such_session", String(r.stderr || "").trim());
       return enc({ session: name, created: false, typed: true });
     }
-    // 〔MIG-2〕resume 那一串由那台后端出（`src/frontend/ui/launch-render.ts` ⇒ 帧命令 `launch-render-payload`，成品 `{cmd}`）。
+    // resume 那一串由那台后端出（`src/frontend/ui/launch-render.ts` ⇒ 帧命令 `launch-render-payload`，成品 `{cmd}`）。
     //   ⇒ 交给**生产那一条**：`launch-render-emit.sh` → 后端 `emit_launch_render_for_e2e` → 生产
     //   `control/launch_render/wire.rs::render_launch_payload`（与 `launch-render-driver.ts` 同一个出口，一字不另写）。
     //   拒了 ⇒ 与后端 `launch_render::answer_payload` 同一个码 `refused`，原话带出去。
@@ -168,7 +168,7 @@ function chanCall(op, body) {
       //（成品形状 `{ok, cmd, reason}` 里的降级那一形），编排照生产逻辑降级到载荷那条。
       return enc({ ok: false, cmd: null, reason: "e2e shim：那一端没有后端（ccm）可渲" });
     case "history-annotate": {
-      // 换号成功后记账（`account-restart.ts`：kill ＋ resume 全成才记 pin）—— 〔C4d〕问本机常驻后端 `history-annotate`。
+      // 换号成功后记账（`account-restart.ts`：kill ＋ resume 全成才记 pin）—— 问本机常驻后端 `history-annotate`。
       //   记进序列（`record account=<名>`），回成品 `{entry}`（`history-reads.ts::decodeEntry` 逐键要的那一份）。
       const patch = body.patch || {};
       if ("lastAccount" in patch) seq("record account=" + String(patch.lastAccount));
@@ -198,7 +198,7 @@ function chanCall(op, body) {
         refused("no_such_session", String(r.stderr || "").trim());
       }
       seq("kill");
-      // 〔FIX4 · `95 §6`〕成品多一格 `bus`（顺手从 cc-bus 名册注销的结局）；夹具没有名册 ⇒ 什么都没注销（后端同形）。
+      // 成品多一格 `bus`（顺手从 cc-bus 名册注销的结局）；夹具没有名册 ⇒ 什么都没注销（后端同形）。
       return enc({ session: name, killed: true, bus: { removed: [], failed: [], unread: null } });
     }
     default:

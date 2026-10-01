@@ -55,7 +55,7 @@ fn the_outbound_stream_has_exactly_one_writer() {
     //   第一版（判据还住在 `wire.rs` 自己的 `#[cfg(test)]` 段里那会儿）直接用
     //   `scan_tree!`，于是反向锚点当场报「登记的写者 wire.rs 找不到」：
     //   **摘除自己这件事，在「我自己也是被测对象」时会反过来咬人。**
-    // ⚠ 〔`P4` 2026-09-21〕**那一刀今天不生效**：判据搬来 `tests/backend/` 之后由
+    // ⚠ **那一刀今天不生效**：判据搬来 `tests/backend/` 之后由
     //   `#[path]` 挂载 ⇒ `file!()` 是带 `..` 的折返路径 ⇒ 后缀比不命中
     //   ⇒ `wire.rs` 走普通遍历**本来就在**人群里，下面那句 `files.push` 补的是**第二份**。
     //   同一份被数两遍在这里**无害**（下面按文件名分别断「恰好 1 处」，不做跨文件累加），
@@ -320,7 +320,7 @@ fn each_variant_serializes_to_single_line_with_expected_kind() {
             },
             "overflow",
         ),
-        // 〔audit-0805 08-06〕补上此前**测试段零构造**的三个变体。
+        // 补上此前**测试段零构造**的三个变体。
         // `Reply` 的上线形另有 `inbound.rs` 钉着；`TmuxSessionClosed` / `Cancelled`
         // 此前**只有 monitor 侧「解析成 None」的负向断言** —— 那是消费方的行为，
         // 不是后端序列化形态：改掉 kind 标签或字段名，两边都不会红。
@@ -335,11 +335,11 @@ fn each_variant_serializes_to_single_line_with_expected_kind() {
             "reply",
         ),
         (Frame::Cancelled { id: "r1".into() }, "cancelled"),
-        // 〔SR1a〕账号清单变了（无载荷；逐字节形状另由 `link_frames_have_exactly_these_bytes` 钉）。
+        // 账号清单变了（无载荷；逐字节形状另由 `link_frames_have_exactly_these_bytes` 钉）。
         (Frame::AccountsChanged, "accounts_changed"),
-        // 〔MIG-3b · ㉓②〕某个会话的任务清单变了（只带 sid；逐字节形状由 `link_frames_have_exactly_these_bytes` 钉）。
+        // 某个会话的任务清单变了（只带 sid；逐字节形状由 `link_frames_have_exactly_these_bytes` 钉）。
         (Frame::TasksChanged { sid: "s1".into() }, "tasks_changed"),
-        // 〔SR1a〕链路两帧（逐字节形状另由 `link_frames_have_exactly_these_bytes` 钉）。
+        // 链路两帧（逐字节形状另由 `link_frames_have_exactly_these_bytes` 钉）。
         (
             Frame::LinkData {
                 link: "L".into(),
@@ -354,7 +354,7 @@ fn each_variant_serializes_to_single_line_with_expected_kind() {
             },
             "link_end",
         ),
-        // 〔SR1b〕传输进度 / 终局（逐字节形状另由 `transfer_frames_have_exactly_these_bytes` 钉）。
+        // 传输进度 / 终局（逐字节形状另由 `transfer_frames_have_exactly_these_bytes` 钉）。
         (
             Frame::Transfer {
                 id: "xfer-1".into(),
@@ -371,7 +371,7 @@ fn each_variant_serializes_to_single_line_with_expected_kind() {
             },
             "probe",
         ),
-        // 〔P7〕长活的一格进度（格原样；全景是上游 `IndexProgress`）。
+        // 长活的一格进度（格原样；全景是上游 `IndexProgress`）。
         (
             Frame::Progress {
                 ticket: "t-1".into(),
@@ -380,7 +380,7 @@ fn each_variant_serializes_to_single_line_with_expected_kind() {
             "progress",
         ),
         (Frame::SessionsReplayed, "sessions_replayed"),
-        // 〔MIG-1〕会话账本的成品（逐字节形状另由 `mig1_session_state_has_exactly_these_bytes` 钉）。
+        // 会话账本的成品（逐字节形状另由 `mig1_session_state_has_exactly_these_bytes` 钉）。
         (
             Frame::SessionState {
                 sid: "s".into(),
@@ -388,7 +388,7 @@ fn each_variant_serializes_to_single_line_with_expected_kind() {
             },
             "session_state",
         ),
-        // 〔TAP〕中转抄出来的 SSE 事件（逐字节形状另由 `tap_frames_have_exactly_these_bytes` 钉）。
+        // 中转抄出来的 SSE 事件（逐字节形状另由 `tap_frames_have_exactly_these_bytes` 钉）。
         (
             Frame::Tap {
                 stream: "s".into(),
@@ -400,7 +400,7 @@ fn each_variant_serializes_to_single_line_with_expected_kind() {
             },
             "tap",
         ),
-        // 〔FW1 · 第四波 4D〕活会话的记录文件不见了 / 被改过已从头重读（逐字节形状另由
+        // 活会话的记录文件不见了 / 被改过已从头重读（逐字节形状另由
         //   `watcher_tests::the_two_session_file_frames_have_exactly_these_bytes` 钉）。
         (
             Frame::SessionFileGone {
@@ -419,7 +419,7 @@ fn each_variant_serializes_to_single_line_with_expected_kind() {
         ),
     ];
 
-    // ★ 人群自检：**样本必须覆盖 `Frame` 的每一个变体**〔audit-0805 08-06〕。
+    // ★ 人群自检：**样本必须覆盖 `Frame` 的每一个变体**。
     //
     // 原来这里是一张**手写清单**：11 个变体只列了 8 个，而加第 12 个变体时
     // **没有任何东西会红** —— 一条上线契约帧就那样进了协议。
@@ -463,7 +463,7 @@ fn each_variant_serializes_to_single_line_with_expected_kind() {
     );
 }
 
-/// 〔SR1a〕★ W1：链路两帧 ＋ `accounts_changed` 的**逐字节**金标准。`link_end` 的 `error` 缺席时不上线（正常收尾）。
+/// ★ W1：链路两帧 ＋ `accounts_changed` 的**逐字节**金标准。`link_end` 的 `error` 缺席时不上线（正常收尾）。
 #[test]
 fn link_frames_have_exactly_these_bytes() {
     let cases = [
@@ -499,7 +499,7 @@ fn link_frames_have_exactly_these_bytes() {
     }
 }
 
-/// 〔SR1b〕★ B8：`transfer` 帧的**逐字节**金标准（四形：进行中 · 传完 · 失败 · 撤）；`end` 缺席时不上线；
+/// ★ B8：`transfer` 帧的**逐字节**金标准（四形：进行中 · 传完 · 失败 · 撤）；`end` 缺席时不上线；
 /// 它丢了不可恢复（终局丢了，看的人永远等下去）。
 #[test]
 fn transfer_frames_have_exactly_these_bytes() {
@@ -521,7 +521,7 @@ fn transfer_frames_have_exactly_these_bytes() {
             })),
             "{\"kind\":\"transfer\",\"id\":\"xfer-7\",\"got\":262144,\"total\":1000000,\"end\":{\"state\":\"done\",\"bytes\":1000000}}\n",
         ),
-        // 〔FW1 · 第四波 4D〕上传那一路的传完带整份摘要（提交时的对拍依据）；下载那一路没有 ⇒ 上一格原样不上线。
+        // 上传那一路的传完带整份摘要（提交时的对拍依据）；下载那一路没有 ⇒ 上一格原样不上线。
         (
             f(Some(crate::stream::wire::TransferEnd::Done {
                 bytes: 1000000,
@@ -533,7 +533,7 @@ fn transfer_frames_have_exactly_these_bytes() {
             f(Some(crate::stream::wire::TransferEnd::Failed { why: "写暂存件失败".into(), code: None })),
             "{\"kind\":\"transfer\",\"id\":\"xfer-7\",\"got\":262144,\"total\":1000000,\"end\":{\"state\":\"failed\",\"why\":\"写暂存件失败\"}}\n",
         ),
-        // 〔FILES2 · Q5〕带码的那一形（今天只有 SFTP 起始目录不是后端 home 那一码）。
+        // 带码的那一形（今天只有 SFTP 起始目录不是后端 home 那一码）。
         (
             f(Some(crate::stream::wire::TransferEnd::Failed { why: "w".into(), code: Some("sftp_home_mismatch".into()) })),
             "{\"kind\":\"transfer\",\"id\":\"xfer-7\",\"got\":262144,\"total\":1000000,\"end\":{\"state\":\"failed\",\"why\":\"w\",\"code\":\"sftp_home_mismatch\"}}\n",
@@ -549,8 +549,8 @@ fn transfer_frames_have_exactly_these_bytes() {
     }
 }
 
-/// 〔TAP · V124〕`tap` 的逐字节线上形状（期望是手写字面量；monitor 侧 `parse_frame` 拿同样的串核自己）。
-/// `ev` 是归一事件（后端按上游协议折好的，界面不认任何一家的事件名）；`ev` 与 `end` 恰有一个；`run` 缺 ＝ 主运行。可丢（SSE 只保快，V24）。
+/// `tap` 的逐字节线上形状（期望是手写字面量；monitor 侧 `parse_frame` 拿同样的串核自己）。
+/// `ev` 是归一事件（后端按上游协议折好的，界面不认任何一家的事件名）；`ev` 与 `end` 恰有一个；`run` 缺 ＝ 主运行。可丢（SSE 只保快）。
 #[test]
 fn tap_frames_have_exactly_these_bytes() {
     use crate::agents::{BlockKind, StreamEv};
@@ -643,7 +643,7 @@ fn session_runs_frames_have_exactly_these_bytes() {
     );
 }
 
-/// 〔SR1a〕base64 编解码对 **RFC 4648 §10** 的七条标准向量（异源 = RFC；monitor 侧那一份拿同一组向量核自己）。
+/// base64 编解码对 **RFC 4648 §10** 的七条标准向量（异源 = RFC；monitor 侧那一份拿同一组向量核自己）。
 #[test]
 fn b64_matches_the_rfc_4648_test_vectors() {
     let vectors = [
@@ -702,7 +702,7 @@ fn overflow_frame_serializes_with_dropped_count() {
     assert_eq!(v["dropped"], 42);
 }
 
-// 〔MIG-1 续 · V41〕`tmux_sessions` 帧单行转义那条随帧删了（tmux 原文只在进程内喂会话账本）。
+// `tmux_sessions` 帧单行转义那条随帧删了（tmux 原文只在进程内喂会话账本）。
 
 /// F66（#58③）wire 契约：hello 的 `capabilities`。
 /// ① 非空 → 序列化为数组（monitor 据此发 flag）。
@@ -958,7 +958,7 @@ fn the_backend_can_already_discover_homes_it_just_does_not_send_them() {
 
 /// **present 形**（多 agent 的后端）：新字段在线上、snake_case、值域正确。
 ///
-/// ⚠ **测试名刻意不改**〔`S4`〕：`src/doc/IPC-PROTOCOL.md` 与**仓外 aterm** 都按这个名字
+/// ⚠ **测试名刻意不改**：`src/doc/IPC-PROTOCOL.md` 与**仓外 aterm** 都按这个名字
 /// 引用它当 fixture 真值，改名等于在跨仓契约上制造一处找不着。
 /// 它钉的东西没变（「present 形的精确字节」），变的只是承载 agent 维度的字段 ——
 /// `S4` 把 `codex_dir` + `kinds` 换成了通用的 `homes`（`D3`：agent 名只许在值里）。
@@ -1191,7 +1191,7 @@ fn removal_cause_is_additive_on_the_wire() {
     assert_ne!(gone, sup);
 }
 
-/// ★★ `设计/80 §8.7` 步 2：`session_added.rbind_token` 的**线上形状** ——
+/// ★★：`session_added.rbind_token` 的**线上形状** ——
 /// absent 形字节等价 ＋ present 形精确字节。
 ///
 /// # 两条合起来才是那句 additive 承诺（缺任一条它都不成立）
@@ -1255,11 +1255,11 @@ fn session_added_rbind_token_is_additive_present_and_absent() {
     assert_eq!(
         present,
         "{\"kind\":\"session_added\",\"sid\":\"s\",\"rbind_token\":\"0123456789abcdef0123456789abcdef\"}\n",
-        "`rbind_token` 的线上名 / 位置变了 —— 那个名字是两路共用的契约（`设计/80 §8.7` 那张表钉死）"
+        "`rbind_token` 的线上名 / 位置变了 —— 那个名字是两路共用的契约（那张表钉死）"
     );
 }
 
-/// 〔U4b · 第四波〕`session_added.container` 的线上形：**两个字面量 ＋ 缺席**，三格各钉一处。
+/// `session_added.container` 的线上形：**两个字面量 ＋ 缺席**，三格各钉一处。
 ///
 /// - 缺席：与本字段加进来之前逐字节相同（右边那串与上一条 absent 那串刻意逐字重复）。
 /// - `tmux` / `none`：字段按声明序排在最后（`rbind_token` 之后）。这两个字面量是 monitor
@@ -1297,7 +1297,7 @@ fn session_added_container_is_additive_with_two_literals() {
     );
 }
 
-/// 〔MIG-1 · `99 §2.1 ⑬`〕`session_state` 的**逐字节**金标准：两个取值、字段顺序 `sid` 在前。
+/// `session_state` 的**逐字节**金标准：两个取值、字段顺序 `sid` 在前。
 /// monitor `ssh_source::parse_frame` 照这两个字面量认它。
 #[test]
 fn mig1_session_state_has_exactly_these_bytes() {
@@ -1317,7 +1317,7 @@ fn mig1_session_state_has_exactly_these_bytes() {
     }
 }
 
-/// 〔U4b · 第四波〕`sessions_replayed` 的**逐字节**金标准：无载荷，只有 kind。
+/// `sessions_replayed` 的**逐字节**金标准：无载荷，只有 kind。
 /// monitor `ssh_source::parse_frame` 照这个字面量认它。
 #[test]
 fn sessions_replayed_has_exactly_these_bytes() {
@@ -1327,7 +1327,7 @@ fn sessions_replayed_has_exactly_these_bytes() {
     );
 }
 
-/// 〔LOC1b · 第四波 4D〕`session_added.pid` 的线上形：缺席 ⇒ 与本字段加进来之前逐字节相同；带上 ⇒ 排在最后、是个整数。
+/// `session_added.pid` 的线上形：缺席 ⇒ 与本字段加进来之前逐字节相同；带上 ⇒ 排在最后、是个整数。
 #[test]
 fn loc1b_session_added_pid_is_additive() {
     let frame = |pid: Option<u32>| {
@@ -1356,7 +1356,7 @@ fn loc1b_session_added_pid_is_additive() {
     );
 }
 
-// ═══ 〔HX2 · 第四波 4D〕hello 回显宿主交来的那几格（`host_env`）═══════════════════════════════
+// ═══ hello 回显宿主交来的那几格（`host_env`）═══════════════════════════════
 //
 // 要求住址：题面 HX2 逐字「常驻后端身份带数据目录（接错了拒并出声）」；`INVARIANTS §42` → `IPC-PROTOCOL.md §10` hello 那一行
 // （additive：空表省略、线上字节不变）。审计 `E-compat.md` §E10 · `GP1.md §7.6` 第 4 条。
@@ -1451,7 +1451,7 @@ fn hx2_production_hello_bytes_do_not_change_when_nothing_was_handed() {
     );
 }
 
-/// 〔NET2 · additive〕`uncancellable`：空表省略（字节与既有冻结串相同）；有值落在最末（`host_env` 之后）。
+/// `uncancellable`：空表省略（字节与既有冻结串相同）；有值落在最末（`host_env` 之后）。
 #[test]
 fn net2_uncancellable_is_additive_and_last() {
     let hello = |uncancellable: Vec<String>| {

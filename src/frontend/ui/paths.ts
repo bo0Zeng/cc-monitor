@@ -27,7 +27,7 @@ export async function getClaudeDirOverride(): Promise<string | null> {
   }
 }
 
-/** 从一份已读回的配置里取 claudeDir 覆盖（设置窗「读一次配置派生三格」共用这一处，`70 §10` #5）。无字段 → null。 */
+/** 从一份已读回的配置里取 claudeDir 覆盖（设置窗「读一次配置派生三格」共用这一处）。无字段 → null。 */
 export function claudeDirIn(cfg: Record<string, unknown>): string | null {
   const v = cfg[KEY];
   return typeof v === "string" && v.trim() ? v : null;

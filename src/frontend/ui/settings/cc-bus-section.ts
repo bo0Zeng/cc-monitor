@@ -22,7 +22,7 @@
 // 也因此本文件**零引用 launch IR 模块**：spawn 是 fire-and-forget 的远端 exec，不开标签页。
 import { setCurrentMachine, subscribeMachine } from "./machine-context";
 import { commands } from "../ipc/commands";
-// 〔C4e · 第四波 4C〕查在线 · 发消息 · 收掉 · 派生 · 广播五件经通道直接问那台机器的后端（原是五条 Tauri 命令）。
+// 查在线 · 发消息 · 收掉 · 派生 · 广播五件经通道直接问那台机器的后端（原是五条 Tauri 命令）。
 import { agentOnline, broadcast, killAgent, readInbox, readState, sendMessage, spawnAgent, type BusState } from "../cc-bus-control";
 import { saidOfControl } from "../control-said";
 // L2：账号选择复用既有封装——`fetchAccounts` 带 TTL 缓存、`selectableAccounts` 是
@@ -30,10 +30,10 @@ import { saidOfControl } from "../control-said";
 import { selectableAccounts } from "../accounts";
 import { fetchAccounts } from "../account-reads";
 // 本机 origin：`backend-policy.ts` 的 `"<local>"`（与 Rust 侧 `inbound_client::LOCAL_ORIGIN` 逐字相同，跨语言钉住）。
-// 〔C4b〕`accounts.ts` 先前那个同名的 `"__local__"`（账号面的标记）已退役 —— 全仓只剩这一个本机表示。
+// `accounts.ts` 先前那个同名的 `"__local__"`（账号面的标记）已退役 —— 全仓只剩这一个本机表示。
 import { LOCAL_ORIGIN } from "../backend-policy";
 
-// 〔SH1 · V136〕读面经通道直接问后端（`bus-state` / `bus-inbox`），形状由 `cc-bus-control.ts` 的解码器严格收。
+// 读面经通道直接问后端（`bus-state` / `bus-inbox`），形状由 `cc-bus-control.ts` 的解码器严格收。
 import { askConfirm } from "../ask-dialog";
 import { copyText } from "../copy-table";
 
@@ -235,11 +235,11 @@ export class CcBusSection {
     // 账号随机器变——换台机器，上一台的账号名多半不适用
     this.originSel.addEventListener("change", () => {
       // S4a：写进共用 store；实际切换由订阅统一处理。
-      // 〔C4a〕共用 store 与本选择器现在是**同一个表示**（本机 = `LOCAL_ORIGIN`）——原先那处换算没有了。
+      // 共用 store 与本选择器现在是**同一个表示**（本机 = `LOCAL_ORIGIN`）——原先那处换算没有了。
       const v = this.originSel.value;
       setCurrentMachine(v);
       this.syncLocalAffordances();
-      // 〔第三波 S3〕在这里换账号下拉。原先只靠下面那条订阅去换 —— 而订阅看到选择器**已经**是那台
+      // 在这里换账号下拉。原先只靠下面那条订阅去换 —— 而订阅看到选择器**已经**是那台
       // （就是这一行刚选的）就早退，于是在下拉里换机器，账号下拉一直停在上一台的名单上。
       void this.loadAccounts(v);
     });
@@ -256,7 +256,7 @@ export class CcBusSection {
       void this.loadAccounts(want);
     });
     this.syncLocalAffordances();
-    // 〔第三波 S3〕本机也拉账号列表（BS1b 留下的：原先这两处对本机跳过 ⇒ 本机派生只能选「不指定」）。
+    // 本机也拉账号列表（BS1b 留下的：原先这两处对本机跳过 ⇒ 本机派生只能选「不指定」）。
     // `fetchAccounts` 收到后端那个本机串（`backend-policy` 的 `LOCAL_ORIGIN`）自己走本机那条读口
     // （`accounts.ts` 的 `fetchAccounts` 第一行，A3 接的）—— 这里不另写一条本机分支。
     void this.loadAccounts(this.originSel.value);
@@ -279,7 +279,7 @@ export class CcBusSection {
 
   /** 取这台机器（远端或本机）的可选账号。**拿不到就只留「基座」**——宁可少一个选项，
    *  也不能让用户以为选了某个号而其实没生效。 */
-  /** 〔BS1b 09-24〕本机派生今天走后端原语 `bus-spawn`，与远端**同一条路** ⇒ 不再按本机禁用。
+  /** 本机派生今天走后端原语 `bus-spawn`，与远端**同一条路** ⇒ 不再按本机禁用。
    *  （原先这里对本机禁用派生按钮并挂一句「本机还不能派生」—— 那句话等的原语长出来了。）
    *  三处切机器的调用点仍调它：哪天真有「这台机器做不了」的东西，写在这里。 */
   private syncLocalAffordances(): void {
@@ -395,7 +395,7 @@ export class CcBusSection {
     // **在线状态默认「未知」**——这是本设计的要点，不是偷懒：名单证明不了在线，
     // 而全量查是 N 次往返。用户想知道哪一个，就点哪一个。
     const stateEl = document.createElement("span");
-    // 〔AR1 · `设计/41 §7` 约定 3：状态用 `data-*`，不用类名〕此前是 `cc-bus-online-<态>` 五个类名，
+    // 〔约定 3：状态用 `data-*`，不用类名〕此前是 `cc-bus-online-<态>` 五个类名，
     //   CSS 里一条规则都没有（git 史里也从来没有过）⇒ 悬空类；改成 `data-state`，界面上只说那几个字。
     stateEl.className = "cc-bus-online";
     stateEl.dataset.state = "unknown";
@@ -508,7 +508,7 @@ export class CcBusSection {
     if (!origin || !text.trim()) return;
     btn.disabled = true;
     try {
-      // 〔C4e〕那一句由成品的三态说（在线 / 不在线 / 名字没登记过 / 问不到），不再一律「已发送」。
+      // 那一句由成品的三态说（在线 / 不在线 / 名字没登记过 / 问不到），不再一律「已发送」。
       box.textContent = await sendMessage(origin, id, text);
       input.value = "";
     } catch (e) {

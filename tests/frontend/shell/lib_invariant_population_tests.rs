@@ -1,11 +1,11 @@
-//! # 要求住址：`INVARIANTS §49`（tmux 打印通道必须是 UTF-8）· `INVARIANTS §47`（外部值先过放行判定）· `设计/01 §5 D5`
+//! # 要求住址：`INVARIANTS §49`（tmux 打印通道必须是 UTF-8）· `INVARIANTS §47`（外部值先过放行判定）
 //!
 //! 核原文：`§49` 逐字「本仓**每一处**按格式串读 tmux 打印通道的调用点（`list-sessions -F` · `ls -F` · `display-message -p`），
 //! 起的 tmux 客户端都必须是 UTF-8 客户端」；`§47` 逐字「一个值只要从本进程外面来 …… 在它被拼进 shell 命令串、
 //! 或被交给对端去执行 / 去寻址之前，本侧先过一道按这个值的种类写成的放行判定」；`D5` 逐字「判据的人群要从文件系统全集来，
 //! 不从『配置里已经承认的那批』来」。
 //!
-//! 〔TL2 · 4D · IV1 余〕两节升格时（IV1）都在「买不到」里写着同一句：**没有人群判据** —— 每条判据只管它自己那个模块 /
+//! 〔IV1 余〕两节升格时（IV1）都在「买不到」里写着同一句：**没有人群判据** —— 每条判据只管它自己那个模块 /
 //! 那个值，新长一处读 tmux 的调用点、新长一处把值拼进 shell 的地方，一条都不会红。本文件补的就是这两个人群：
 //! 盘上现扫、与登记表两向相等。登记表里每一行都得**说清它是哪一形**；说不清的（违反、或只靠 quote）如实登记，
 //! 不写成豁免 —— 新长出来的那一处因此当场红，逼人回来表态。
@@ -185,35 +185,35 @@ fn tmux_print_sites() -> BTreeMap<(String, String, Carry), usize> {
     out
 }
 
-/// 〔TL2〕`§49` 的人群登记：`(文件, 子命令, 怎么带, 处数, 为什么)`。
+/// `§49` 的人群登记：`(文件, 子命令, 怎么带, 处数, 为什么)`。
 ///
 /// `Carry::None` 的每一行都是**人群外的真实调用点**：`§49` 字面上它们都算违反。按它读的是什么分两类写清 ——
 /// 读出来的字段只可能是 ASCII（pid · 窗口数 · `%N` 形 pane id）⇒ 改写成 `_` 也不改一个字节，今天无害；
 /// 读的是**会话名 / 地址**（用户起的会话名可以是中文）⇒ 非 UTF-8 客户端下会被改写成 `_`，**是真违反，待裁**
 /// （改它们是后端载荷字节 / 随部署脚本字节的变更，不在本件写区，报主会话）。
-/// 〔SH1 · 09-26〕那五处（`BUS_ID_RECIPE` · `cc-register` 登记地址 · `cc-whoami` ×3）按 V121 加了旗、翻成 `Flag`；
+/// 那五处（`BUS_ID_RECIPE` · `cc-register` 登记地址 · `cc-whoami` ×3）按 V121 加了旗、翻成 `Flag`；
 /// 今天 `Carry::None` 只剩读 ASCII 的那几处。
 const TMUX_PRINT_SITES: &[(&str, &str, Carry, usize, &str)] = &[
     ("src/backend/common/session_snapshot.rs", "list-sessions", Carry::Flag, 1, "argv；`session_snapshot_tests.rs` 钉旗在子命令前"),
     ("src/backend/control/gate.rs", "display-message", Carry::Flag, 1, "argv；`gate_tests.rs` 钉旗在子命令前"),
     ("src/backend/observe/tmux_observe.rs", "ls", Carry::Env, 2, "`sh -c` 一段脚本两支（带 / 不带 timeout），env 一行盖住；`watcher_tests.rs` 钉 env"),
     ("src/backend/observe/tmux_observe.rs", "display-message", Carry::Env, 1, "`sh -c`，同上"),
-    // 〔SH1〕monitor `tmux.rs` 那条跨 SSH `ls`（Flag）删了：`list_remote_tmux` 改问那台后端 `tmux-list`（那一趟 `ls` 住 `watcher.rs`，env 形）。
+    // monitor `tmux.rs` 那条跨 SSH `ls`（Flag）删了：`list_remote_tmux` 改问那台后端 `tmux-list`（那一趟 `ls` 住 `watcher.rs`，env 形）。
     ("src/backend/control/ccm/plan.rs", "list-panes", Carry::None, 1, "无害：只读 `#{pane_id}`（`%N`，ASCII，单列、不按 TAB 切）—— IV1 报过"),
-    ("src/backend/control/ccm/mod.rs", "display-message", Carry::Flag, 1, "〔SH1〕`BUS_ID_RECIPE` 读 `#S`（会话名，可以非 ASCII）⇒ 拼进 pane 的命令串，按表用旗；真跑判据 `backend-cc-bus.sh` [SH1-a]"),
+    ("src/backend/control/ccm/mod.rs", "display-message", Carry::Flag, 1, "`BUS_ID_RECIPE` 读 `#S`（会话名，可以非 ASCII）⇒ 拼进 pane 的命令串，按表用旗；真跑判据 `backend-cc-bus.sh` [SH1-a]"),
     ("src/shared/cc-bus/scripts/cc-bus-adapt-posix.sh", "display-message", Carry::None, 1, "无害：只读 `#{pane_pid}`（数字）"),
     ("src/shared/cc-bus/scripts/cc-kill", "display-message", Carry::None, 2, "无害：`#{pane_pid}` · `#{session_windows}`（数字）"),
     ("src/shared/cc-bus/scripts/cc-kill", "list-panes", Carry::None, 1, "无害：`#{pane_pid}`（数字）"),
-    ("src/shared/cc-bus/scripts/cc-register", "display-message", Carry::Flag, 1, "〔SH1〕读 `#{session_name}:…` 当登记地址（会话名可以非 ASCII）⇒ 旗；真跑判据 `backend-cc-bus.sh` [SH1-a]"),
+    ("src/shared/cc-bus/scripts/cc-register", "display-message", Carry::Flag, 1, "读 `#{session_name}:…` 当登记地址（会话名可以非 ASCII）⇒ 旗；真跑判据 `backend-cc-bus.sh` [SH1-a]"),
     ("src/shared/cc-bus/scripts/cc-register", "display-message", Carry::None, 1, "无害：`#{pane_pid}`（数字）"),
     ("src/shared/cc-bus/scripts/cc-agents", "display-message", Carry::None, 1, "无害：`#{pane_pid}`（数字）"),
-    ("src/shared/cc-bus/scripts/cc-whoami", "display-message", Carry::Flag, 1, "〔SH1〕读 `#{session_name}` 当身份 ⇒ 旗（非 UTF-8 客户端下中文被改写成 `_`，消毒之后与 UTF-8 客户端下的身份不同）；真跑判据 `backend-cc-bus.sh` [SH1-a]"),
-    ("src/shared/cc-bus/scripts/cc-whoami", "list-sessions", Carry::Flag, 1, "〔SH1〕`#{session_id} #{session_name}` ⇒ 旗（同上）"),
-    ("src/shared/cc-bus/scripts/cc-whoami", "list-panes", Carry::Flag, 1, "〔SH1〕`#{pane_pid} #{session_name}` ⇒ 旗（同上）"),
-    ("src/backend/control/kill.rs", "list-panes", Carry::Flag, 1, "〔SH1 · D-g〕argv；杀之前读这个会话全部 pane 的根进程 pid（数字，照表仍带旗）"),
+    ("src/shared/cc-bus/scripts/cc-whoami", "display-message", Carry::Flag, 1, "读 `#{session_name}` 当身份 ⇒ 旗（非 UTF-8 客户端下中文被改写成 `_`，消毒之后与 UTF-8 客户端下的身份不同）；真跑判据 `backend-cc-bus.sh` [SH1-a]"),
+    ("src/shared/cc-bus/scripts/cc-whoami", "list-sessions", Carry::Flag, 1, "`#{session_id} #{session_name}` ⇒ 旗（同上）"),
+    ("src/shared/cc-bus/scripts/cc-whoami", "list-panes", Carry::Flag, 1, "`#{pane_pid} #{session_name}` ⇒ 旗（同上）"),
+    ("src/backend/control/kill.rs", "list-panes", Carry::Flag, 1, "argv；杀之前读这个会话全部 pane 的根进程 pid（数字，照表仍带旗）"),
 ];
 
-/// 〔TL2〕`INVARIANTS §49` 人群判据：盘上每一处「tmux 打印子命令 ＋ 读打印通道的旗」== 登记表（两向，含处数与带法）。
+/// `INVARIANTS §49` 人群判据：盘上每一处「tmux 打印子命令 ＋ 读打印通道的旗」== 登记表（两向，含处数与带法）。
 /// 新长一处读 tmux 的调用点 ⇒ 红；它带了旗 / env 就登记成那一形，没带就得说清它读的是什么（ASCII 无害 / 待裁）。
 #[test]
 fn every_tmux_print_site_is_registered_with_how_it_carries_utf8() {
@@ -243,7 +243,7 @@ fn every_tmux_print_site_is_registered_with_how_it_carries_utf8() {
 /// 唯一那份 quote 的**纯转发别名**名（盘上现认）：`use … posix_quote as X` 的 `X`，以及函数体只有一句
 /// `shell_quote_core::posix_quote(参数)` 的那几个函数名。返回 `(名字集, 别名本体所在的文件集)`。
 fn quote_aliases(srcs: &[(String, String)]) -> (Vec<String>, Vec<String>) {
-    // 〔FILES2〕唯一的 quote 多了一个字节形（`posix_quote_bytes`，`$'…'`）—— 同一份 quote 的另一形，同样算拼接点。
+    // 唯一的 quote 多了一个字节形（`posix_quote_bytes`，`$'…'`）—— 同一份 quote 的另一形，同样算拼接点。
     let mut names = vec!["posix_quote".to_string(), "posix_quote_bytes".to_string()];
     let mut bodies = Vec::new();
     for (rel, body) in srcs {
@@ -327,17 +327,17 @@ fn quote_sites() -> (BTreeMap<String, usize>, Vec<String>) {
     (out, names)
 }
 
-/// 〔TL2〕`§47` 的人群登记：`(文件, 处数, 本侧放行判定, 只靠 quote 的外部值, 本侧自己的值)`。
+/// `§47` 的人群登记：`(文件, 处数, 本侧放行判定, 只靠 quote 的外部值, 本侧自己的值)`。
 ///
 /// - 第三列点名的放行判定 `(文件, 函数名)` 逐个在盘上核得到（改名 / 搬家红）。
 /// - 第四列非空 = 🔴 **有外部值只靠 quote**：`§47` ②形要的「拒绝集 ＋ 形式判定」这一层没有 —— 如实登记、**待裁**，不写成豁免。
 /// - 第五列 = 拼进去的**本侧的值**（常量 · 本侧铸的 · 本进程自己的路径 · 本侧已渲染好的整串），`§47` 不管它们。
 ///
-/// 人群 = 生产段里调 quote 的地方（`设计/00 §1.2`「quote 只有一份」⇒ 值进 shell 串的合法入口只有它）。
+/// 人群 = 生产段里调 quote 的地方（「quote 只有一份」⇒ 值进 shell 串的合法入口只有它）。
 /// ⚠ 射程：它逮的是「新长一处拼接点」；**不经 quote 的裸插值**（`format!` 直接把值塞进命令串）它看不见；
 /// 条件 quote 的包装（`plan.rs::qarg` · `ccm_invocation.rs` 的 `argv` · `shell_dialect.rs` 的 `word` · `payload.rs` 的 `token` / `exact`）
 /// 在它自己的文件里算一处，经它的那些调用方不再逐个数；第四列是**按文件**写的，不是逐处。
-/// TS 那一侧（`posixQuote`）不在人群里 —— LR2 在删那几份 TS 命令构造器，「TS 零 shell 串」是 `设计/90 §3` 那条机械判据的活。
+/// TS 那一侧（`posixQuote`）不在人群里 —— LR2 在删那几份 TS 命令构造器，「TS 零 shell 串」是那条机械判据的活。
 type QuoteRow = (
     &'static str,
     usize,
@@ -358,7 +358,7 @@ const QUOTE_SITES: &[QuoteRow] = &[
         "",
         "",
     ),
-    // 〔MIG-3b 续〕公钥推送进了本机后端：一行公钥拼进那一次 exec 之前先过 `sanitize_public_key`（恰一行 · 无控制字符 · 类型前缀 ＋ base64 主体），原住 monitor `pubkey.rs`。
+    // 公钥推送进了本机后端：一行公钥拼进那一次 exec 之前先过 `sanitize_public_key`（恰一行 · 无控制字符 · 类型前缀 ＋ base64 主体），原住 monitor `pubkey.rs`。
     (
         "src/backend/assets/pubkey.rs",
         1,
@@ -366,14 +366,14 @@ const QUOTE_SITES: &[QuoteRow] = &[
         "",
         "",
     ),
-    // 〔TL3 · §47〕那台后端的路径在可达表唯一的写口 `remote_ask::register` 先过放行判定（后端那一份同族判定），第四列清空。
-    // 〔W5-AUX · `设计/96 §3.6`〕3 → 1：推那一趟不再把载荷 quote 进命令行（改走 capture 的 stdin 一行，`--stdin-line`），
+    // 〔§47〕那台后端的路径在可达表唯一的写口 `remote_ask::register` 先过放行判定（后端那一份同族判定），第四列清空。
+    // 3 → 1：推那一趟不再把载荷 quote 进命令行（改走 capture 的 stdin 一行，`--stdin-line`），
     //   后端路径那一格改由 `remote_ask::command_line` 拼（那一份文件的处数不变，它本来就逐格 quote argv）⇒ 本文件只剩拉那一趟的路径。
-    // 〔E2 · V28〕1 → 0：拉那一趟也改由 `remote_ask::command_line` 拼（落点是固定常量，`backendPath` 那一格删了）⇒ 本行出列。
-    // 〔TL3 · §47 · 主会话 09-26 按 V131 裁〕cwd（绝对 · 无 `..` 段）· 启动器 · 透传参数 · 登记备注 · 继承来的三个变量 → 过 `free_text_gate` /
+    // 1 → 0：拉那一趟也改由 `remote_ask::command_line` 拼（落点是固定常量，`backendPath` 那一格删了）⇒ 本行出列。
+    // 〔§47〕cwd（绝对 · 无 `..` 段）· 启动器 · 透传参数 · 登记备注 · 继承来的三个变量 → 过 `free_text_gate` /
     //   `inherited_gate`（拒绝集只收 NUL / CR / LF，住 `shell_quote_core::free_text_ok`）。剩下的见第四列。
-    // 〔AL3 · V138〕29 → 28：`--model` 交给 claude 了，`export ANTHROPIC_MODEL=<quote>` 那一处删；模型名 / resume 的 sid 不再由 ccm 判。
-    // 〔FIX · V138〕28 → 30：resume 接上已在跑的那一个（`Plan::Rejoin`）渲两处 —— attach 目标 `=<名>:` 与 `ccm-session=<名>` 那一行。
+    // 29 → 28：`--model` 交给 claude 了，`export ANTHROPIC_MODEL=<quote>` 那一处删；模型名 / resume 的 sid 不再由 ccm 判。
+    // 28 → 30：resume 接上已在跑的那一个（`Plan::Rejoin`）渲两处 —— attach 目标 `=<名>:` 与 `ccm-session=<名>` 那一行。
     //   名字是 tmux 自己在快照里报的（不是外部输入），只经这一处 quote（同 `Plan::Attach` 那一形）。
     (
         "src/backend/control/ccm/plan.rs",
@@ -386,7 +386,7 @@ const QUOTE_SITES: &[QuoteRow] = &[
                 "src/common/shell-quote-core/src/lib.rs",
                 "free_text_ok",
             ),
-            // 〔DUP1 · §47 ①〕`--ccm-sid` 在 `argv.rs::validate` 进门判（判定住共享 crate）。
+            // 〔§47 ①〕`--ccm-sid` 在 `argv.rs::validate` 进门判（判定住共享 crate）。
             (
                 "src/common/shell-quote-core/src/lib.rs",
                 "session_id_ok",
@@ -394,8 +394,8 @@ const QUOTE_SITES: &[QuoteRow] = &[
             (
                 "src/common/shell-quote-core/src/lib.rs",
                 "account_name_ok",
-            ), // 〔DUP1〕`--account`
-            // 〔DUP1 · §47 ②〕账号配置目录走全表：全表整份搬进共享 crate（`control → observe` 那条禁止边不用破）。
+            ), // `--account`
+            // 〔§47 ②〕账号配置目录走全表：全表整份搬进共享 crate（`control → observe` 那条禁止边不用破）。
             ("src/common/acct-core/src/lib.rs", "config_dir_ok"),
         ],
         "",
@@ -408,8 +408,8 @@ const QUOTE_SITES: &[QuoteRow] = &[
         "",
         "本进程自己的可执行文件路径 · 本侧拼的 hook 命令",
     ),
-    // 〔TL3 · §47〕路径那一格在 `register` 进门判；argv（自由文本）在 `ask_with` 拼之前过拒绝集（只收 NUL / CR / LF，主会话 09-26 按 V131 裁）。
-    // 〔E2 · V28〕2 → 1：那台后端的路径不再登记（固定落点常量打头，不 quote）⇒ 只剩 argv 那一格。
+    // 〔§47〕路径那一格在 `register` 进门判；argv（自由文本）在 `ask_with` 拼之前过拒绝集（只收 NUL / CR / LF，主会话 09-26 按 V131 裁）。
+    // 2 → 1：那台后端的路径不再登记（固定落点常量打头，不 quote）⇒ 只剩 argv 那一格。
     (
         "src/backend/stream/remote_ask.rs",
         1,
@@ -420,8 +420,8 @@ const QUOTE_SITES: &[QuoteRow] = &[
         "",
         "",
     ),
-    // 〔MIG-3a · 09-28 裁 2〕`acct_iso_deploy.rs` 那一行删了：它唯一一处拼 shell（跑安装脚本）随「落进用户目录进那台后端」退役。
-    // 〔TL3 · §47〕cwd（`shell_quote_core::posix_free_path_ok`）· 透传参数（`free_text_ok`）进门判；剩下的见第四列。
+    // 〔09-28 裁 2〕`acct_iso_deploy.rs` 那一行删了：它唯一一处拼 shell（跑安装脚本）随「落进用户目录进那台后端」退役。
+    // 〔§47〕cwd（`shell_quote_core::posix_free_path_ok`）· 透传参数（`free_text_ok`）进门判；剩下的见第四列。
     (
         "src/backend/control/launch_render/ccm_invocation.rs",
         1,
@@ -434,7 +434,7 @@ const QUOTE_SITES: &[QuoteRow] = &[
                 "src/common/shell-quote-core/src/lib.rs",
                 "free_text_ok",
             ),
-            // 〔DUP1 · §47 ①〕resume 的 sid · `--ccm-sid=` · `--model` · `--account`：`Refusal::IdentifierRefused`。
+            // 〔§47 ①〕resume 的 sid · `--ccm-sid=` · `--model` · `--account`：`Refusal::IdentifierRefused`。
             (
                 "src/common/shell-quote-core/src/lib.rs",
                 "session_id_ok",
@@ -451,10 +451,10 @@ const QUOTE_SITES: &[QuoteRow] = &[
         "",
         "",
     ),
-    // 〔E2 · V28〕local_backend.rs 1 → 0：远端三行入口的生成器 `ccm_entry_shim`〔散文墓碑〕删了 ⇒ 出列。
+    // local_backend.rs 1 → 0：远端三行入口的生成器 `ccm_entry_shim`〔散文墓碑〕删了 ⇒ 出列。
     (
         "src/backend/control/launch_render/payload.rs",
-        // 〔E2 · V146〕11 → 12：中转前缀里「用户自己设了端点」那一句话（文案表里的常量句）也过唯一的 quote。
+        // 11 → 12：中转前缀里「用户自己设了端点」那一句话（文案表里的常量句）也过唯一的 quote。
         12,
         &[
             (
@@ -464,40 +464,40 @@ const QUOTE_SITES: &[QuoteRow] = &[
             (
                 "src/common/shell-quote-core/src/lib.rs",
                 "rbind_token_ok",
-            ), // 〔DUP3 · J8〕payload.rs 里是 `pub use … as rbind_token_shape_ok`
+            ), // payload.rs 里是 `pub use … as rbind_token_shape_ok`
             (
                 "src/common/relay-route-core/src/lib.rs",
                 "base_url_shape_ok",
-            ), // 〔US1〕payload.rs 里是 `pub use … as relay_base_url_shape_ok`
+            ), // payload.rs 里是 `pub use … as relay_base_url_shape_ok`
             ("src/backend/control/launch_render/payload.rs", "check"),
             (
                 "src/common/shell-quote-core/src/lib.rs",
                 "posix_free_path_ok",
-            ), // 〔TL3 · §47〕cwd 两处
+            ), // 〔§47〕cwd 两处
             (
                 "src/common/shell-quote-core/src/lib.rs",
                 "session_id_ok",
-            ), // 〔DUP1 · §47 ①〕外层 `@ccm_sid`（原 `ccm_sid_safe` 收进来）
+            ), // 〔§47 ①〕外层 `@ccm_sid`（原 `ccm_sid_safe` 收进来）
             (
                 "src/common/shell-quote-core/src/lib.rs",
                 "model_name_ok",
-            ), // 〔DUP1 · §47 ①〕`export ANTHROPIC_MODEL=`（原「刻意宽容渲染」那一格）
+            ), // 〔§47 ①〕`export ANTHROPIC_MODEL=`（原「刻意宽容渲染」那一格）
         ],
         "",
-        "本侧渲染好的载荷整串 · 〔US1〕中转前缀里的中转口地址与钥匙文件路径（本侧的）",
+        "本侧渲染好的载荷整串 · 中转前缀里的中转口地址与钥匙文件路径（本侧的）",
     ),
-    // 〔THIN〕monitor `tmux.rs` 那一行（Gate 1 前检 ＋ `exact_target` 的 quote，只剩跨轨锚点在用）随整份文件删了：门只在后端。
-    // 〔P4〕`src/frontend/filewin/src/shell.rs` 那一行出表：文件窗口只交意图（当前目录），`cd` 那一串随拼法搬进本机后端
+    // monitor `tmux.rs` 那一行（Gate 1 前检 ＋ `exact_target` 的 quote，只剩跨轨锚点在用）随整份文件删了：门只在后端。
+    // `src/frontend/filewin/src/shell.rs` 那一行出表：文件窗口只交意图（当前目录），`cd` 那一串随拼法搬进本机后端
     //   `dial/terminal.rs::command_for_cwd`（下面那一行 1 → 3，两道放行判定跟着过去）。
     (
         "src/backend/control/launch_render/local.rs",
         1,
         &[],
         "",
-        "本侧铸的启动 id（〔MIG-2〕本机起会话搬进本机后端，原住 monitor `history.rs`）",
+        "本侧铸的启动 id（本机起会话搬进本机后端，原住 monitor `history.rs`）",
     ),
-    // 〔FIX4 · `99 §2.1 ⑬`〕`src/frontend/shell/src/launch.rs` 那一行出表：远端那条 ssh 外壳（包一层 `bash -lic`）随渲染进了本机后端。
-    // 〔P4〕1 → 3：文件窗口「在此打开终端」的当前目录（自由文本路径）在这里拼进 `cd`：拼之前过 `posix_free_path_ok`
+    // `src/frontend/shell/src/launch.rs` 那一行出表：远端那条 ssh 外壳（包一层 `bash -lic`）随渲染进了本机后端。
+    // 1 → 3：文件窗口「在此打开终端」的当前目录（自由文本路径）在这里拼进 `cd`：拼之前过 `posix_free_path_ok`
     //   （POSIX 绝对 · 无 `..` 段 · 不含 NUL / CR / LF）；非 UTF-8 的走字节形 `posix_quote_bytes`，过 `posix_free_path_bytes_ok`。
     (
         "src/backend/dial/terminal.rs",
@@ -513,11 +513,11 @@ const QUOTE_SITES: &[QuoteRow] = &[
             ),
         ],
         "",
-        "〔FIX4〕开终端那一行里要在远端跑的整条命令（拼它的那几处各自判过；这里只包一层 `bash -lic`，本侧再判控制符 · 双引号 · 长度）",
+        "开终端那一行里要在远端跑的整条命令（拼它的那几处各自判过；这里只包一层 `bash -lic`，本侧再判控制符 · 双引号 · 长度）",
     ),
-    // 〔E2 · V28〕2 → 1：身份扫描那条命令的落点是固定常量的 shell 写法（不再 quote 一条外来路径）⇒ 只剩身份戳正则。
-    // 〔MIG-3b〕那条命令随部署判定搬进共享的 `deploy-core`（本机常驻后端出计划时拼、在那台上跑）：`sftp.rs` 出列、这一行换住址，处数不变。
-    // 〔P1〕`deploy-core` 拆开：扫戳命令是戳格式（契约），随契约那一半住 `deploy-contract`，处数不变。
+    // 2 → 1：身份扫描那条命令的落点是固定常量的 shell 写法（不再 quote 一条外来路径）⇒ 只剩身份戳正则。
+    // 那条命令随部署判定搬进共享的 `deploy-core`（本机常驻后端出计划时拼、在那台上跑）：`sftp.rs` 出列、这一行换住址，处数不变。
+    // `deploy-core` 拆开：扫戳命令是戳格式（契约），随契约那一半住 `deploy-contract`，处数不变。
     (
         "src/common/deploy-contract/src/lib.rs",
         1,
@@ -525,10 +525,10 @@ const QUOTE_SITES: &[QuoteRow] = &[
         "",
         "身份戳正则（构建期常量拼的）",
     ),
-    // 〔TL3 · §47〕订正：词本身**是判了的** —— 渲染只经 `account_aliases::render`，它先过 `check_alias`（拒控制字符 · `arg_is_passable` · 旗表闭集），
+    // 〔§47〕订正：词本身**是判了的** —— 渲染只经 `account_aliases::render`，它先过 `check_alias`（拒控制字符 · `arg_is_passable` · 旗表闭集），
     //   不过的那一条进 `problems`、不渲。那道拒绝集收的是全部控制字符（比主会话 09-26 裁的 NUL / CR / LF 宽一点，既有、没放松）。
-    // 〔MIG-3a〕别名那一族进了那台后端（`assets/aliases/`），这一行跟着换住址，判法一字没变。
-    // 〔OSA · V156〕方言再搬一次：进后端 OS 适配层（`platform/shell/`），判法一字没变。
+    // 别名那一族进了那台后端（`assets/aliases/`），这一行跟着换住址，判法一字没变。
+    // 方言再搬一次：进后端 OS 适配层（`platform/shell/`），判法一字没变。
     (
         "src/backend/platform/shell/dialect.rs",
         1,
@@ -544,17 +544,17 @@ const QUOTE_SITES: &[QuoteRow] = &[
         "",
         "这台后端自己的 skills 根下那两个脚本的路径",
     ),
-    // 〔E2 · V28〕ssh_source.rs 2 → 0 · remote_resident.rs 2 → 0：远端后端落点是固定常量 `BACKEND_CMD`（`backendPath` 那一格删了），
+    // ssh_source.rs 2 → 0 · remote_resident.rs 2 → 0：远端后端落点是固定常量 `BACKEND_CMD`（`backendPath` 那一格删了），
     //   流 / 探针 / 常驻起停四条命令不再 quote 任何外来值 ⇒ 两行出列。
 ];
 
-/// 〔TL2〕`INVARIANTS §47` 人群判据：盘上每一份调 quote 的 Rust 生产文件 == 登记表（两向，含处数）；
+/// `INVARIANTS §47` 人群判据：盘上每一份调 quote 的 Rust 生产文件 == 登记表（两向，含处数）；
 /// 登记里点名的放行判定逐个在那份文件里声明着。
 #[test]
 fn every_file_that_quotes_a_value_into_a_shell_line_is_registered() {
     let (on_disk, names) = quote_sites();
     assert!(
-        // 〔THIN〕monitor `ssh_source` 那层转调壳删了（零生产调用方）⇒ 认得出的别名只剩后端 `tmux_hook::sq`；本体名照旧在。
+        // monitor `ssh_source` 那层转调壳删了（零生产调用方）⇒ 认得出的别名只剩后端 `tmux_hook::sq`；本体名照旧在。
         names.iter().any(|n| n == "sq") && names.iter().any(|n| n == "posix_quote"),
         "别名认法坏了：{names:?}"
     );
@@ -590,11 +590,11 @@ fn every_file_that_quotes_a_value_into_a_shell_line_is_registered() {
     }
     // 读数（不是判据）：只靠 quote 的文件有几份 —— 报告里要写这个数，改了会在这里看到。
     let open = QUOTE_SITES.iter().filter(|r| !r.3.is_empty()).count();
-    assert_eq!(open, 0, "「有外部值只靠 quote」的文件数变了（登记 0 份；〔DUP1 · §47 ①〕模型名 / sid 住进 shell-quote-core、三处接上 ⇒ payload.rs 出列 ⇒ 3 → 2；账号名进 shell-quote-core、配置目录全表搬进 acct-core ⇒ plan.rs · ccm_invocation.rs 出列 ⇒ 2 → 0；〔LOC1a 合入〕remote_branch.rs 的 exec 那一趟删了 ⇒ 10 → 9；\
-        〔TL3 · §47〕`backendPath` 一族补上形式判定 ＋ 拒绝集 ⇒ asset_sync.rs · sftp.rs · ssh_source.rs 三份出列 ⇒ 9 → 6；\
-        〔TL3 · 主会话 09-26 按 V131 裁〕自由文本那一层补上 ⇒ remote_ask.rs · filewin/shell.rs · shell_dialect.rs（订正）三份出列 ⇒ 6 → 3，\
+    assert_eq!(open, 0, "「有外部值只靠 quote」的文件数变了（登记 0 份；〔§47 ①〕模型名 / sid 住进 shell-quote-core、三处接上 ⇒ payload.rs 出列 ⇒ 3 → 2；账号名进 shell-quote-core、配置目录全表搬进 acct-core ⇒ plan.rs · ccm_invocation.rs 出列 ⇒ 2 → 0；〔LOC1a 合入〕remote_branch.rs 的 exec 那一趟删了 ⇒ 10 → 9；\
+        〔§47〕`backendPath` 一族补上形式判定 ＋ 拒绝集 ⇒ asset_sync.rs · sftp.rs · ssh_source.rs 三份出列 ⇒ 9 → 6；\
+自由文本那一层补上 ⇒ remote_ask.rs · filewin/shell.rs · shell_dialect.rs（订正）三份出列 ⇒ 6 → 3，\
         余下 plan.rs · payload.rs · ccm_invocation.rs 卡在模型名 / sid（交 DUP1）与账号名 / 配置目录的家）：多了是新缺口，少了是补上了 —— 改这个数并在提交信息里写清是哪份");
 }
 
-// 〔E2 · V28〕`every_read_of_the_backend_path_field_is_registered`〔散文墓碑〕 与它的登记表删了：`RemoteConfig` 没有 `backend_path` 这一格了
+// `every_read_of_the_backend_path_field_is_registered`〔散文墓碑〕 与它的登记表删了：`RemoteConfig` 没有 `backend_path` 这一格了
 //   （落点恒是 `relay_route_core::BACKEND_LANDING_SHELL`），「裸读那个字段」这一形编译期就不存在。

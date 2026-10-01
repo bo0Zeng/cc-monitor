@@ -1,12 +1,12 @@
 /**
- * 起会话请求构造的纯逻辑断言脚本（〔FIX4 · J7〕会话名铸造口 `remote-launch.ts` 删了：派生 ＋ 避让只在后端，见下）。Batch14-F41（接替 remote-resume-cmd.test.ts）。
+ * 起会话请求构造的纯逻辑断言脚本（会话名铸造口 `remote-launch.ts` 删了：派生 ＋ 避让只在后端，见下）。Batch14-F41（接替 remote-resume-cmd.test.ts）。
  * 跑法：`node tests/frontend/ui/remote-launch.test.ts` 或 `npm run test:remote-launch`。
  * 同 api-error.test.ts：零 node 依赖、失败 throw 非零退出。
  *
- * 〔LR2〕这里原来有一大半测的是 `remote-launch.ts` 那五个 builder 渲出的**字节**
+ * 这里原来有一大半测的是 `remote-launch.ts` 那五个 builder 渲出的**字节**
  * （`buildResumeDirectCmd` · `buildResumeTmuxCmd` · `buildResumeIntoExistingTmuxCmd` · `buildLauncherCmd` ·
  * `buildAttachCmd`）。它们零生产调用（生产那一行由 Rust `render_launch_payload` 渲染），按
- * `设计/00 §2.5 ④` 删了。那些用例钉的性质分两半，各归其所：
+ * 删了。那些用例钉的性质分两半，各归其所：
  *  - **生产 TS 那一半**（意图 → plan → 交给后端的请求：校验拒什么、cwd / 名字 / 账号 / launcher
  *    落进请求的哪一格）⇒ 本文件改测 `launch-requests.ts::plan*` ＋ `buildLaunchRenderRequest`（生产同一个）。
  *  - **请求 → 字节那一半**（引号、`=名:`、`&&` 结构、`@ccm_sid` 与 set-titles 的位置）⇒ 归 Rust：
@@ -42,7 +42,7 @@ function eq(actual: unknown, expected: unknown, msg?: string): void {
     throw new Error(`${msg ?? "eq"}: expected ${b}, got ${a}`);
   }
 }
-// 〔DUP2 · J6〕原来这里还有一个 `throws` 助手：它最后几个用户（tmux 会话名在 TS 那两个谓词上 throw）随谓词一起走了。
+// 原来这里还有一个 `throws` 助手：它最后几个用户（tmux 会话名在 TS 那两个谓词上 throw）随谓词一起走了。
 
 console.log("remote-launch.test.ts");
 
@@ -59,10 +59,10 @@ test("嵌套 env 列表：含四个标记、不含 CLAUDE_CONFIG_DIR；请求里
   eq(req(planResumeDirect("s1", "", "claude")).nestedEnv, AGENT_PROFILE.nestedEnvVars);
 });
 
-// 〔DUP1 · `设计/90 §3` 判据 2〕这里原来是 `isValidSessionId`〔散文墓碑〕的五条断言。那份删了：sid 规则只有一份
+// 这里原来是 `isValidSessionId`〔散文墓碑〕的五条断言。那份删了：sid 规则只有一份
 // （`shell_quote_core::session_id_ok`，Rust 侧 `lib_tests.rs` 正反各一格 ＋ 共用金样），渲染侧与后端 ccm 各自判。
 
-// 〔DUP1 · `设计/90 §3` 判据 2〕这里原来是 `sanitizeRemoteLauncher`〔散文墓碑〕的十条用例（空 → claude · 注入字符 → **静默换成** claude）。
+// 这里原来是 `sanitizeRemoteLauncher`〔散文墓碑〕的十条用例（空 → claude · 注入字符 → **静默换成** claude）。
 // 那份删了：字符集只在 Rust 载荷渲染判（`payload_tests.rs::the_launcher_is_refused_when_it_carries_injection_chars`，拒并说清），
 // 前端只剩「空白 ⇒ 默认启动器」这一格缺省（`remote-launch-run.ts::launcherOrDefault`，下面这条钉）。
 test("〔DUP1〕launcher：空白 ⇒ 默认启动器；带注入字符的原样上线（字符集只在 Rust 判，不再静默换成 claude）", () => {
@@ -72,7 +72,7 @@ test("〔DUP1〕launcher：空白 ⇒ 默认启动器；带注入字符的原样
   eq(req(planResumeDirect("abc-123", "", "cc; rm -rf /")).launcher, "cc; rm -rf /", "不许悄悄换成默认那个");
 });
 
-// ───────── 〔LR2〕直起（`container:"none"`）：planResumeDirect → 请求 ─────────
+// ───────── 直起（`container:"none"`）：planResumeDirect → 请求 ─────────
 // 字节那一半：`payload-golden.json`「只有 cwd」「resume（flag 已展开进 args）」「cwd 里有单引号」等条。
 
 test("直起：cwd 原样进请求（引号归 Rust）、resume flag 展开进 args、不带 outer", () => {
@@ -83,7 +83,7 @@ test("直起：cwd 原样进请求（引号归 Rust）、resume flag 展开进 a
     args: RESUME("abc-123"),
     nestedEnv: AGENT_PROFILE.nestedEnvVars,
     wrap: [],
-    resumeSid: "abc-123", // 〔DUP1〕resume 的 sid 单报一次，渲染侧判
+    resumeSid: "abc-123", // resume 的 sid 单报一次，渲染侧判
   });
   eq(req(planResumeDirect("s1", "/home/pi/a'b", "claude")).cwd, "/home/pi/a'b", "单引号原样交给后端");
 });
@@ -93,14 +93,14 @@ test("直起：cwd 空/空白 → 请求里没有 cwd（后端就不加 cd）", 
   eq(req(planResumeDirect("abc-123", "   ", "claude")).cwd, null);
 });
 
-// 〔DUP1〕第三格原来断「注入 fail-closed 成 claude」（TS 那份静默换掉）；今天原样上线、由 Rust 载荷渲染拒（D4）。
+// 第三格原来断「注入 fail-closed 成 claude」（TS 那份静默换掉）；今天原样上线、由 Rust 载荷渲染拒（D4）。
 test("直起：自定义 launcher 透传、空白回退 claude、注入字符原样上线（Rust 那侧拒）", () => {
   eq(req(planResumeDirect("abc-123", "/home/pi/p", "cct")).launcher, "cct");
   eq(req(planResumeDirect("abc-123", "", "  ")).launcher, "claude");
   eq(req(planResumeDirect("s1", "", "cct; curl evil")).launcher, "cct; curl evil");
 });
 
-// 〔DUP1〕这条原来断「非法 sid ⇒ plan 那一步 throw」（TS 那份 `isValidSessionId`〔散文墓碑〕判的）。
+// 这条原来断「非法 sid ⇒ plan 那一步 throw」（TS 那份 `isValidSessionId`〔散文墓碑〕判的）。
 // 今天前端不判 sid：怪值原样上线，并在 `resumeSid` 里单报一次，渲染侧（`launch_wire.rs`）过共享那一份再核它就是 args 第二格。
 test("直起：sid 前端不判 —— 原样进 args，并在 resumeSid 单报一次（渲染侧判）", () => {
   const r = req(planResumeDirect("a; rm -rf /", "/p", "claude"));
@@ -109,7 +109,7 @@ test("直起：sid 前端不判 —— 原样进 args，并在 resumeSid 单报�
   eq(req(planResumeDirect("abc-123", "/p", "claude")).resumeSid, "abc-123");
 });
 
-// ───────── 〔LR2〕tmux 新建（create）：planResumeTmux → 请求 ─────────
+// ───────── tmux 新建（create）：planResumeTmux → 请求 ─────────
 // 字节那一半：`tmux-outer-golden.json` 的 create 那几条（`new-session … && (set-option @ccm_sid …) &&
 // set-titles … && send-keys … && attach`，C14 之后不吞错、不无条件 attach）。
 
@@ -121,7 +121,7 @@ test("tmux 新建：cwd 归外层 -c、内层没有 cd；@ccm_sid 带完整 sid�
     args: RESUME("abc-123"),
     nestedEnv: AGENT_PROFILE.nestedEnvVars,
     wrap: [],
-    resumeSid: "abc-123", // 〔DUP1〕resume 的 sid 单报一次，渲染侧判
+    resumeSid: "abc-123", // resume 的 sid 单报一次，渲染侧判
     outer: { mode: "create", name: "abc-123-cc", quoting: "raw", cwd: "/home/pi/proj", ccmSid: "abc-123" },
   });
 });
@@ -151,7 +151,7 @@ test("就地复用：基座 → send-into 那一格、env 前置 unset-config-di
     args: RESUME("s1"),
     nestedEnv: AGENT_PROFILE.nestedEnvVars,
     wrap: [],
-    resumeSid: "s1", // 〔DUP1〕resume 的 sid 单报一次，渲染侧判
+    resumeSid: "s1", // resume 的 sid 单报一次，渲染侧判
     outer: { mode: "send-into", name: "cc-s1", quoting: "raw" },
   });
 });
@@ -184,7 +184,7 @@ test("#72 tmux 新建：@ccm_sid 用**完整 sid**（不是会话名前 8 位）
   eq(o?.name, "deadbeef-cc");
 });
 
-// 〔FIX4 · `设计/90 §3` J7〕这里原来四条钉 TS 铸名口（`mintTmuxName` 避让 · `mintSessionTmuxName` 基名 · 两者不可分离）。
+// 这里原来四条钉 TS 铸名口（`mintTmuxName` 避让 · `mintSessionTmuxName` 基名 · 两者不可分离）。
 // 被测对象删了：tmux 名的派生 ＋ 避让只在后端（`control/ccm/plan.rs`：`derive_tmux_name` · `mint_tmux_name` · `fork_tmux_base`），
 // 界面问那台后端的 `tmux-name-mint`。期望原样搬进 `tests/backend/control/ccm/plan_tests.rs`（派生 · 避让 · 分叉基名）与
 // `ccm_tests.rs::the_mint_frame_derives_here_and_steps_aside_on_this_machines_snapshot`（帧那一格）。请求逐字用传进来的名 ⇒ 下面这条。
@@ -195,7 +195,7 @@ test("铸好的名字：请求逐字用传进来的名，不自己派生任何�
 
 test("★★ KR96D3 铸名口:名字可读、sid 一个片段都不进去（用户 R55：「要是可读的名字 / 不要id」）", () => {
   const SID = "cb3230f3-dead-beef-0000-111122223333";
-  // 〔FIX4 · J7〕名字由后端铸（`tmux-name-mint {cwd}`，派生只收 cwd ⇒ 结构上进不去 sid；`/home/pi/my-proj` ⇒ `my-proj-cc`，
+  // 名字由后端铸（`tmux-name-mint {cwd}`，派生只收 cwd ⇒ 结构上进不去 sid；`/home/pi/my-proj` ⇒ `my-proj-cc`，
   //   Rust `plan_tests.rs::the_session_name_derivation_rule` 那一族钉）。这里钉请求那一半：名字原样、sid 骑在 `@ccm_sid` 上。
   const name = "my-proj-cc";
   // ① 名字里出现 sid 片段 ⇒ 红。逐字扫**每一个** ≥4 字符的前缀，不是只看 8 位那一种
@@ -208,7 +208,7 @@ test("★★ KR96D3 铸名口:名字可读、sid 一个片段都不进去（用�
     }
   }
   if (checked < 30) throw new Error(`只扫了 ${checked} 个片段 —— 扫描器坏了，本条在空转`);
-  // ② ③（撞名避让 ⇒ `<项目名>-cc-2`）〔FIX4 · J7〕随铸名口搬进后端：`plan_tests.rs` 的避让那一族。
+  // ② ③（撞名避让 ⇒ `<项目名>-cc-2`）随铸名口搬进后端：`plan_tests.rs` 的避让那一族。
   // ④ sid **必须还在** —— 只是不在名字里：它的载体是 tmux 的 `@ccm_sid`，
   //    而那一格由请求的 `outer.ccmSid` 交给后端写进命令串（字节那一半归 Rust 夹具）。
   //    把它一起去掉 ⇒ 本行当场红。
@@ -229,7 +229,7 @@ test("F74 tmux 新建：显式 name → 用它作会话名（灰会话 fresh res
   });
 });
 
-// 〔DUP2 · J6〕这里原来是「F74 非法显式 name（空格 / tmux 保留字符 / 注入 / 前导 -）throw」：那道 TS 内联式子删了 ——
+// 这里原来是「F74 非法显式 name（空格 / tmux 保留字符 / 注入 / 前导 -）throw」：那道 TS 内联式子删了 ——
 // 名字的规则只有一份（gate-core 新建那一条：前导 `-` · `.:=*?` · 控制符 · 欺骗字符 · 超长），渲染侧判；`raw` 那一支另有裸拼前提
 // （空格 · `;` 进不去）。逐格坏样本归 Rust：`tests/common/gate-core/lib_tests.rs` ＋ `payload_tests.rs`。这里只钉「原样上线」。
 test("F74 tmux 新建：显式 name 原样上线（形状交渲染侧判，〔DUP2〕）", () => {
@@ -238,16 +238,16 @@ test("F74 tmux 新建：显式 name 原样上线（形状交渲染侧判，〔DU
   }
 });
 
-// 〔FIX4 · J7〕这里原来一条 `mintSessionTmuxName` 的避让逐格（空闲 ⇒ 基名 · 被占 ⇒ 第一个空位 · 根 ⇒ `session-cc`）：
+// 这里原来一条 `mintSessionTmuxName` 的避让逐格（空闲 ⇒ 基名 · 被占 ⇒ 第一个空位 · 根 ⇒ `session-cc`）：
 // 随铸名口搬进后端（`plan_tests.rs`：`the_session_name_derivation_rule` · 退让规则那几格）。
 
-// 〔LR2〕这里原来有一条 `buildOpenTerminalCmd`（旧面板「在此打开终端」那颗按钮的 TS 那份）。
-// 生产调用方 0（旧面板已退役；文件窗口那一串〔P4〕今天由本机后端 Rust `dial/terminal.rs::command_for_cwd` 拼），
-// 主会话按 `设计/00 §2.5 ④` ＋ `90 §3`（前端零 shell 串）裁删；三行期望原样搬进了
+// 这里原来有一条 `buildOpenTerminalCmd`（旧面板「在此打开终端」那颗按钮的 TS 那份）。
+// 生产调用方 0（旧面板已退役；文件窗口那一串今天由本机后端 Rust `dial/terminal.rs::command_for_cwd` 拼），
+// 主会话按（前端零 shell 串）裁删；三行期望原样搬进了
 // `tests/frontend/filewin/shell_tests.rs::the_open_terminal_command_keeps_its_three_shapes`。
 
-// 〔DUP2 · 主会话 09-26 裁 J6〕这里原来有三条（TS 的两个 tmux 名谓词逐格：attach 那条的拒绝面 · F01 新建禁 glob ·
-// F04b 新建禁 `=`）。被测的两个谓词删了（`设计/90 §3` 判据 2），规则住 gate-core、只有一份 ⇒ 三条的期望原样搬进
+// 这里原来有三条（TS 的两个 tmux 名谓词逐格：attach 那条的拒绝面 · F01 新建禁 glob ·
+// F04b 新建禁 `=`）。被测的两个谓词删了，规则住 gate-core、只有一份 ⇒ 三条的期望原样搬进
 // `tests/common/gate-core/lib_tests.rs`（新建 / 已有会话两条，正反各一格）；F04b「建得出来就杀得掉」的跨轨那条
 // 在 `tests/frontend/shell/backend_kill_tests.rs` 改钉 gate-core 那一个禁字集。
 
@@ -265,16 +265,16 @@ test("attach：名字按 quoted 交给后端、不带任何载荷字段；名字
     args: [],
     nestedEnv: AGENT_PROFILE.nestedEnvVars,
     wrap: [],
-    resumeSid: null, // 〔DUP1〕resume 的 sid 单报一次，渲染侧判
+    resumeSid: null, // resume 的 sid 单报一次，渲染侧判
     outer: { mode: "attach", name: "cc-abc12345", quoting: "quoted" },
   });
   eq(req(planAttach("web 1")).outer?.name, "web 1", "空格名原样（引号归 Rust）");
   eq(req(planAttach("a'b")).outer?.name, "a'b", "单引号原样（逃逸归 Rust）");
-  // 〔DUP2 · J6〕空名 / 含换行不再在 TS throw：gate-core 已有会话那一条（非空 · 无控制符与欺骗字符）在渲染侧判。
+  // 空名 / 含换行不再在 TS throw：gate-core 已有会话那一条（非空 · 无控制符与欺骗字符）在渲染侧判。
   eq(req(planAttach("x\ny")).outer?.name, "x\ny", "含换行原样（Rust 那侧拒）");
 });
 
-// 〔FIX4 · J7〕这里原来一条 `deriveTmuxName` 的派生逐格：规则只剩后端那一份（`plan_tests.rs::the_session_name_derivation_rule`）。
+// 这里原来一条 `deriveTmuxName` 的派生逐格：规则只剩后端那一份（`plan_tests.rs::the_session_name_derivation_rule`）。
 
 test("起新会话：create 那一格、名字按 quoted、cwd 归外层、没有 --resume、没有 @ccm_sid", () => {
   eq(req(planLauncher("/home/pi/proj", "cc-proj", "claude")), {
@@ -284,7 +284,7 @@ test("起新会话：create 那一格、名字按 quoted、cwd 归外层、没�
     args: [],
     nestedEnv: AGENT_PROFILE.nestedEnvVars,
     wrap: [],
-    resumeSid: null, // 〔DUP1〕resume 的 sid 单报一次，渲染侧判
+    resumeSid: null, // resume 的 sid 单报一次，渲染侧判
     outer: { mode: "create", name: "cc-proj", quoting: "quoted", cwd: "/home/pi/proj", ccmSid: null },
   });
 });
@@ -304,10 +304,10 @@ test("起新会话：名含空格原样（quoted）/ 怪名也原样上线（〔
 });
 
 // ───────────────────────── A4：CLAUDE_CONFIG_DIR 账号前缀注入 ─────────────────────────
-// 〔LR2〕这里原来有三条 `buildEnvPrefix`（TS 那份 `export CLAUDE_CONFIG_DIR='…'; ` 前缀拼接）。
+// 这里原来有三条 `buildEnvPrefix`（TS 那份 `export CLAUDE_CONFIG_DIR='…'; ` 前缀拼接）。
 // 它只给 TS 兜底渲染器用，随之删了；前缀的字节归 Rust（`payload-golden.json`「具名账号」那条），
-// 「非法 dir 拒绝拼入命令」这道闸〔DUP1〕今天只在拼命令的那一侧（Rust `payload.rs::config_dir_command_safe`）：
-// 前端那份逐项手抄的 `isValidConfigDir`〔散文墓碑〕删了（`设计/90 §3` 判据 2）。下面这条钉「前端真的不再判、原样上线」。
+// 「非法 dir 拒绝拼入命令」这道闸今天只在拼命令的那一侧（Rust `payload.rs::config_dir_command_safe`）：
+// 前端那份逐项手抄的 `isValidConfigDir`〔散文墓碑〕删了。下面这条钉「前端真的不再判、原样上线」。
 const ACCT_DIR = "/home/z/.claude-accts/z";
 
 test("〔DUP1〕configDir 前端不判：怪值原样进上线请求，由 Rust 渲染侧拒", () => {
@@ -338,13 +338,13 @@ test("tmux / 起新会话带 configDir → export-config-dir 排第一；不带 
   }
 });
 
-// ───────── 〔LR2〕从 `tests/session-backend.test.ts` 搬来的两条（那份套件随 TS 座删了，这两条与座无关）─────────
+// ───────── 从 `tests/session-backend.test.ts` 搬来的两条（那份套件随 TS 座删了，这两条与座无关）─────────
 
 // F01 漂移守卫（INVARIANTS §31a）：`=名:` 精确目标形态今天编码在 Rust 的
 // `backend/control/payload.rs`（外层三格）与 `backend/control/tmux.rs::exact_target`，以及
 // `tests/e2e/restart-shims/core.mjs`。shim 是 Tauri IPC 边界的 mock，**结构上无法 import Rust，去重不可能**，
 // 只能靠守卫钉住：它一旦退回裸目标，e2e 会对「杀错会话 / 按键投错会话」这条整类 bug 假绿
-// （生产已精确、探针仍前缀匹配 → 测不出差异）。〔LR2〕原来它比的对侧是 TS 座；座删了，比的形态一个字没变。
+// （生产已精确、探针仍前缀匹配 → 测不出差异）。原来它比的对侧是 TS 座；座删了，比的形态一个字没变。
 test("F01 漂移守卫：e2e shim 的 tmux 目标是 =名: 精确形态", () => {
   const shim = readFileSync(new URL("../../e2e/restart-shims/core.mjs", import.meta.url), "utf8");
   eq(shim.includes("`=${target}:`"), true, "shim 必须用 =名: 精确形态（见 INVARIANTS §31a）");
@@ -356,7 +356,7 @@ test("F01 漂移守卫：e2e shim 的 tmux 目标是 =名: 精确形态", () => 
   );
 });
 
-// 〔FIX4 · `设计/90 §3` J7〕这里原来一条「P3s-Y2：新造名字的路径，`deriveTmuxName` 的结果必须过铸造口」（源码数据流扫 TS）。
+// 这里原来一条「P3s-Y2：新造名字的路径，`deriveTmuxName` 的结果必须过铸造口」（源码数据流扫 TS）。
 // TS 那份派生删了 ⇒ 被测的数据流不存在了：界面零铸名（`tests/frontend/ui/judgment-single-home.vitest.ts` J7 翻 `zero` ·
 // `tests/frontend/shell/session_name_registry_tests.rs` 的递减棘轮 —— 前端零 `-cc` 产名点）；名字一律问后端 `tmux-name-mint`。
 

@@ -1,4 +1,4 @@
-//! 设计/96 §3.5：「写：一趟，不重算」·「`stale` ⇒ 停、说清停在哪 / 前面写了哪几个，**不重读**」—— skill 装 / 卸的写那一半进了被写那台（MIG-3a）。
+//! 「写：一趟，不重算」·「`stale` ⇒ 停、说清停在哪 / 前面写了哪几个，**不重读**」—— skill 装 / 卸的写那一半进了被写那台（MIG-3a）。
 use super::*;
 use crate::assets::mcp_sync::There;
 use crate::stream::inbound::LocalFiles;

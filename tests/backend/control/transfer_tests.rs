@@ -1,4 +1,4 @@
-//! 〔SR1b · 2026-09-24〕`control/transfer.rs` 的判据：传输台住本机常驻后端。
+//! `control/transfer.rs` 的判据：传输台住本机常驻后端。
 //!
 //! 台架：`dial::sftp::rig`（合成 SFTP 服务端，逐条记改动路径与写偏移）＋ 本机临时目录。
 //! 上传 / 下载两份本体的语料是一条 SFTP 会话（`Session::over` —— 生产那一个口），判据直接喂它；
@@ -58,7 +58,7 @@ fn outside_staging(fs: &Arc<Mutex<rig::Fs>>) -> Vec<(String, String)> {
 
 // ═══ 上传 ══════════════════════════════════════════════════════════════════════════════
 
-/// 🔴🔴 **暂存区之外零写**（`设计/60 §13.6` 判据 2）：成功 · 失败 · 续传 · 撤四趟，
+/// 🔴🔴 **暂存区之外零写**：成功 · 失败 · 续传 · 撤四趟，
 /// 服务端记下的每一个改动路径都在暂存区底下。**正控**：同一台服务端上一次暂存区外的写被这张表认出来（表不瞎）。
 #[tokio::test]
 async fn a_staging_upload_writes_nothing_outside_the_staging_area() {
@@ -97,7 +97,7 @@ async fn a_staging_upload_writes_nothing_outside_the_staging_area() {
     sftp::make_dir(&s, ".cc-monitor/bin")
         .await
         .expect("正控：bin 是另一个根");
-    // 〔HX1〕新建的那一层随即收成只给本人（SETSTAT）—— 同一个根外的第二条改动。
+    // 新建的那一层随即收成只给本人（SETSTAT）—— 同一个根外的第二条改动。
     assert_eq!(
         outside_staging(&fs),
         vec![
@@ -122,7 +122,7 @@ async fn the_bytes_land_at_the_staging_part_verbatim() {
         .await
         .unwrap();
     assert_eq!(n, body.len() as u64);
-    // 〔FW1〕整份摘要 == 本机那份的（另一份实现对拍，异源）。
+    // 整份摘要 == 本机那份的（另一份实现对拍，异源）。
     assert_eq!(sha, sha2_hex(&body), "上传交的摘要不是本机那份的");
     assert_eq!(
         fs.lock().unwrap().bytes(&staging_part(KEY)),
@@ -139,7 +139,7 @@ async fn the_bytes_land_at_the_staging_part_verbatim() {
 
 /// 失败 ⇒ **留**暂存件；重拖同一份 ⇒ 从尾块接上（服务端记下的第一个写偏移 == 续传起点）。
 ///
-/// 〔DP1 · 第四波〕这一条在负载 ~18 的机器上全量跑时红过一次（单跑绿）。病根不是墙钟，是**在路上的写**：
+/// 这一条在负载 ~18 的机器上全量跑时红过一次（单跑绿）。病根不是墙钟，是**在路上的写**：
 /// `russh-sftp` 的写是流水线的，第一条坏回话就让上传返回，后面已发出的写还没被服务端处理；本条随即把
 /// `fail_write_after` 清掉 ⇒ 那几条晚到的写**成功**落盘（`write_offsets` 第一格不再是续传起点，暂存件中间留一个洞）。
 /// 调度快的时候它们恰好在返回之前处理完 —— 所以只在负载高时现形。
@@ -187,7 +187,7 @@ async fn a_failed_upload_keeps_the_part_and_the_retry_resumes_from_its_tail() {
         Some(&(have as u64)),
         "续传没从尾块接上"
     );
-    // 〔FW1〕续传那一趟交的也是**整份**的摘要（前缀在本机读一遍算进去），不是只算接上之后那一截。
+    // 续传那一趟交的也是**整份**的摘要（前缀在本机读一遍算进去），不是只算接上之后那一截。
     assert_eq!(sha, sha2_hex(&body), "续传交的摘要没把前缀算进去");
     assert_eq!(fs.lock().unwrap().bytes(&staging_part(KEY)), Some(body));
 }
@@ -283,7 +283,7 @@ fn remote_file(fs: &Arc<Mutex<rig::Fs>>, path: &str, bytes: Vec<u8>) {
     g.files.insert(path.to_string(), Entry { bytes });
 }
 
-/// 〔FILES2 · Q4〕要求住址：`_施工/4d-lanes.md` `### FILES2` Q4「落到 Linux 本机 ⇒ 字节原样当文件名」。
+/// `### FILES2` Q4「落到 Linux 本机 ⇒ 字节原样当文件名」。
 /// 本机落点是非 UTF-8 的原始字节（线上 `local_path: {"b16": …}`）⇒ 落出来的那份文件名逐字节就是它，`.part` 不留。
 #[cfg(unix)]
 #[tokio::test]
@@ -374,7 +374,7 @@ async fn a_download_with_a_mismatched_part_starts_over_instead_of_stitching() {
     assert_eq!(seen.into_inner().unwrap().first(), Some(&0));
 }
 
-/// 撤 ⇒ **留** `.part`（续传的本钱）。〔DP1〕失败（读到半路那台答坏 / 连接没了）⇒ **也留**；只有一个字节都没落的空 `.part` 才清。
+/// 撤 ⇒ **留** `.part`（续传的本钱）。失败（读到半路那台答坏 / 连接没了）⇒ **也留**；只有一个字节都没落的空 `.part` 才清。
 #[tokio::test]
 async fn a_cancelled_or_failed_download_keeps_its_part_unless_nothing_landed() {
     let fs = rig::home(false, false);
@@ -402,7 +402,7 @@ async fn a_cancelled_or_failed_download_keeps_its_part_unless_nothing_landed() {
     assert!(!tmp.path("e.bin").exists());
 }
 
-/// 〔DP1 · 第四波〕**T1：下载读到半路断了 ⇒ `.part` 留着，重拖同一份从它的尾巴接上**（`设计/60 §4.3`「失败留」· NT1 报备 2）。
+/// **T1：下载读到半路断了 ⇒ `.part` 留着，重拖同一份从它的尾巴接上**（「失败留」· NT1 报备 2）。
 ///
 /// 判据全用字节数的相等：① 留下的 `.part` 恰是那一份的前缀（长度 L > 0，逐字节 == 源的前 L 字节）；
 /// ② 重拖那一趟，服务端（台架自己记，异源）收到的偏移 < L 的读 **恰好**是尾块对拍那一格（`L − min(L, 块)`）——
@@ -451,7 +451,7 @@ async fn a_download_cut_off_midway_keeps_its_part_and_the_retry_resumes_from_its
     assert!(!tmp.path("f.bin.part").exists(), "上位之后 `.part` 还在");
 }
 
-/// 〔FW1 · 第四波〕**续传不多读一个预读窗**（`设计/60 §7` 第 8 条「一次续传多读一个预读窗口」· DP1 报备 9）。
+/// **续传不多读一个预读窗**（「一次续传多读一个预读窗口」· DP1 报备 9）。
 ///
 /// 判据是字节数的相等（台架自己记、异源）：重拖那一趟服务端交出去的读字节 **恰好** == 从探针起点到末尾的长度
 /// （`total − (have − 探针)`）—— 每个字节只交一次。探针之后 seek 一下（哪怕 seek 回原地）⇒ russh-sftp 的读缓冲被扔掉、
@@ -480,7 +480,7 @@ async fn a_resumed_download_asks_for_every_byte_from_the_probe_on_exactly_once()
     assert_eq!(std::fs::read(&local).unwrap(), body, "落地不是源的字节");
 }
 
-/// 🔴 **B6**〔FN1 · V119 翻面〕：本机落点是一份 Claude 会话记录的形状 ⇒ **照样开得出单**。
+/// 🔴 **B6**〔V119 翻面〕：本机落点是一份 Claude 会话记录的形状 ⇒ **照样开得出单**。
 ///
 /// 从前这一格叫「落点是会话数据 ⇒ 围栏拒」。用户「文件管理器全部都可以改. 不需要任何围栏」⇒
 /// 下载落点只过路径解析（绝对路径 · 有文件名 · 父目录在盘上、解开之后落点仍在它底下）。
@@ -545,7 +545,7 @@ async fn the_desk_books_tickets_and_refuses_what_it_should_with_a_code() {
         &serde_json::json!({"dial": dial(), "local_path": tmp.0.to_string_lossy()}),
     ));
     assert_eq!(code.as_deref(), Some("bad_args"));
-    // 下载落点过不了路径解析（父目录不在）⇒ refused。〔FN1〕从前这里的语料是一份会话文件，今天那一形放行。
+    // 下载落点过不了路径解析（父目录不在）⇒ refused。从前这里的语料是一份会话文件，今天那一形放行。
     let (_, code, _) = reply_of(&desk.download(
         "r5",
         &serde_json::json!({"dial": dial(), "remote_path": "/x", "local_path": tmp.0.join("nope/abc-1.jsonl").to_string_lossy()}),
@@ -729,9 +729,9 @@ fn sha2_hex(bytes: &[u8]) -> String {
         .collect()
 }
 
-/// 〔FW1 · 第四波 4D〕**「前缀 ＋ 洞 ＋ 尾巴」尾块对拍看不见，提交那一下看得见**（`设计/60 §7` 第 8 条 · 主会话裁 09-25）。
+/// **「前缀 ＋ 洞 ＋ 尾巴」尾块对拍看不见，提交那一下看得见**（主会话裁 09-25）。
 ///
-/// 要求住址：`设计/60 §4.3`「只看长度会缝出一个坏文件」＋ §7 第 8 条「续传的尾块对拍看不见中间的洞 …… 要堵得换对拍方式」。
+/// 要求：「只看长度会缝出一个坏文件」＋ §7 第 8 条「续传的尾块对拍看不见中间的洞 …… 要堵得换对拍方式」。
 /// 形状（逐步，台架与真盘各半）：① 上传到半路坏了、暂存件留着；② 在暂存件**中间**改坏一截（演「失败后晚到的写留下的洞」，
 /// 尾巴原样）；③ 重拖 ⇒ 尾块对得上、**照样续传**（这一步证「尾块对拍确实看不见」—— 正控，不是缺陷被修掉的地方）；
 /// ④ 把合成服务端上那份暂存件原样落到一个真 home 的暂存区里，拿上传交的摘要去 `commit_upload` ⇒ `stale`、目标不在、
@@ -802,7 +802,7 @@ async fn a_hole_the_tail_probe_cannot_see_is_caught_by_the_commit() {
     }
 }
 
-/// 〔FILES2 · Q5〕要求住址：`_施工/4d-lanes.md` `### FILES2` Q5「连上时比 SFTP `realpath(".")` 与那台后端的 `$HOME`；不一致 ⇒
+/// `### FILES2` Q5「连上时比 SFTP `realpath(".")` 与那台后端的 `$HOME`；不一致 ⇒
 /// 这台的上传改走后端链路分块写」。判定：去尾 `/` 逐字节相等才算一致（正）；chroot 形（`/` 对 `/home/u`）· 别的目录（反）⇒ 说出两个路径。
 #[test]
 fn the_start_dir_check_passes_the_same_home_and_names_both_paths_otherwise() {

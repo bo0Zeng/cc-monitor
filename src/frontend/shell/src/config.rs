@@ -4,22 +4,22 @@
 //! 只负责读、**按键补丁**写 ＋ 文件缺失时给出最小骨架。
 //!
 //! 配置文件位置走 [`resolve_config_path`] —— monitor 自己的设置永远在
-//! 默认 `~/.cc-monitor/` 下（V160：一台机器一个家，与后端同一个），不跟随 `claudeDir` 字段变化。
+//! 默认 `~/.cc-monitor/` 下（一台机器一个家，与后端同一个），不跟随 `claudeDir` 字段变化。
 //!
-//! 🔴 〔CFG1 · 4D〕**写 `config.json` 只有一个口：[`patch_config_at`]。** 整份替换那一形（旧 `save_config`）删了。 〔散文墓碑〕
+//! 🔴 **写 `config.json` 只有一个口：[`patch_config_at`]。** 整份替换那一形（旧 `save_config`）删了。 〔散文墓碑〕
 //!
 //! 从前每个前端模块「读整份 → 改自己的键 → 整份写回」，主窗（tab 栏的分组 / 固定 / 顺序）与设置窗
 //! （行为 / 主题 / 快捷键 / 账号 / 远端）是同一进程里的两个 webview，两次读-改-写一交错，
 //! 后写的整份就把先写的键盖掉（E §E1：拖放同拍发分组 ＋ 顺序，分组那次没落盘）。
-//! 守的要求：`设计/30 §4`「各自只写自己那个键」· `设计/70 §6.3` 红线 ④「读不懂的 `config.json` 不写」。
+//! 守的要求：「各自只写自己那个键」· 红线 ④「读不懂的 `config.json` 不写」。
 //!
 //! 现在前端只交「改哪几条路径」（[`ConfigEdit`]），这里在**一把进程级锁里现读盘、逐条应用、原子替换** ——
 //! 主窗 / 设置窗 / `logging.rs` 的诊断写口都走这一个函数，谁写的键谁的值留在盘上。
-//! 〔HX2 · 4D〕两个 monitor 进程同写（Linux / macOS 今天没有单实例）也串起来了：进程内那把锁里面、现读之前，
+//! 两个 monitor 进程同写（Linux / macOS 今天没有单实例）也串起来了：进程内那把锁里面、现读之前，
 //! 再拿 `config.json` 所在目录的**跨进程**锁（`platform::fs::hold_dir_lock`：unix 对目录 `flock` · Windows 命名互斥量，与后端第四层同一种锁）。
 //! 〔墓碑 —— CFG1 那一版这里写「射程：锁是进程内的。两个 monitor 进程同写仍在锁外；丢更新的窗口缩到读与 rename 之间」。〕
 //!
-//! # 〔RE · `设计/15 §2.2`「`config` ＋ `paths` → 一处」〕数据目录与配置文件路径（原 `paths.rs`，整份并进本文件、只挪住址）
+//! # 〔「`config` ＋ `paths` → 一处」〕数据目录与配置文件路径（原 `paths.rs`，整份并进本文件、只挪住址）
 //!
 //! Claude 数据目录与 monitor 自己配置文件的路径解析。
 //!
@@ -39,7 +39,7 @@
 //!
 //! 文档化为"monitor 设置永远在默认位置，'Claude 数据目录'只影响数据源指向"。
 //!
-//! ### 🔴 那句「永远在默认位置」有一个出口〔2026-09-22 `P17`〕
+//! ### 🔴 那句「永远在默认位置」有一个出口
 //!
 //! `CCM_DATA_DIR`（[`DATA_DIR_ENV`]）**只为「把这个进程整体挪到别处跑」而存在** ——
 //! 跑自动化测试、跑一次性复算。它**不是**给用户搬家用的设置面
@@ -85,7 +85,7 @@ pub enum ConfigEdit {
     Remove {
         path: Vec<String>,
     },
-    /// 〔FIX · `设计/99 §2 ㊶` 第一问〕**按键认数组元素**：`path` 指到一个数组，在里面认出满足 `where` 每一条的**恰好一个**对象，
+    /// 〔第一问〕**按键认数组元素**：`path` 指到一个数组，在里面认出满足 `where` 每一条的**恰好一个**对象，
     /// 只改它的 `field` 那一格（锁内现读现判 ⇒ 别的元素、别的格与并发写者的改动都不会被一份锁外算好的整列盖掉）。
     /// `ifEmpty` = CAS：那一格已有值（非空串 / 非 null）就不动。认不出 / 认出多个 ⇒ 不动（结局见 [`Applied`]）。
     #[serde(rename = "setin", rename_all = "camelCase")]
@@ -98,7 +98,7 @@ pub enum ConfigEdit {
         #[serde(default)]
         if_empty: bool,
     },
-    /// 〔FIX2 续 · `99 §2 ㊶`〕**按键插一个元素**（设置页新增一台机器）：`path` 指到的数组里已有满足 `where` 的元素 ⇒ 不动、整批拒
+    /// **按键插一个元素**（设置页新增一台机器）：`path` 指到的数组里已有满足 `where` 的元素 ⇒ 不动、整批拒
     /// （[`ConfigWriteError::ElementExists`]）；否则追加到末尾。路上缺的段与数组本身照 `set` 的口径补出来（第一台机器）。
     #[serde(rename = "insertin", rename_all = "camelCase")]
     InsertIn {
@@ -107,7 +107,7 @@ pub enum ConfigEdit {
         #[cfg_attr(test, ts(type = "unknown"))]
         value: Value,
     },
-    /// 〔FIX2 续 · `99 §2 ㊶`〕**按键删一个元素**（设置页删一台机器）：认出恰好一个才删；认不出 / 认出多个 ⇒ 整批拒（同 `setin`）。
+    /// **按键删一个元素**（设置页删一台机器）：认出恰好一个才删；认不出 / 认出多个 ⇒ 整批拒（同 `setin`）。
     #[serde(rename = "removein", rename_all = "camelCase")]
     RemoveIn {
         path: Vec<String>,
@@ -164,19 +164,19 @@ impl ConfigEdit {
 /// [`patch_config_at`] 失败的三种。分开是为了让调用方各说各的话（`logging.rs` 那句「诊断设置没有存」原样保留）。
 #[derive(Debug)]
 pub(crate) enum ConfigWriteError {
-    /// 盘上那份读不懂 / 根不是对象 ⇒ **一个字节没写**（`设计/70 §6.3` 红线 ④）。
+    /// 盘上那份读不懂 / 根不是对象 ⇒ **一个字节没写**（红线 ④）。
     Unreadable {
         path: PathBuf,
         detail: String,
     },
     /// 补丁本身不成形（空路径 —— 那就是「整份替换」换了个名字）⇒ 整批拒，盘上一个字节不动。
     BadEdit(String),
-    /// 〔FIX · `99 §2 ㊶`〕`setin` 认不出那一个元素（`ambiguous` = 认出了不止一个）⇒ **整批拒**，盘上一个字节不动
+    /// `setin` 认不出那一个元素（`ambiguous` = 认出了不止一个）⇒ **整批拒**，盘上一个字节不动
     /// （设置页按格改一台，而那台在盘上已被改名 / 删掉：不许一半落盘、一半静默丢掉）。
     NoSuchElement {
         ambiguous: bool,
     },
-    /// 〔FIX2 续〕`insertin` 要插的那个键盘上已经有了 ⇒ **整批拒**，盘上一个字节不动（不静默变成改那一台）。
+    /// `insertin` 要插的那个键盘上已经有了 ⇒ **整批拒**，盘上一个字节不动（不静默变成改那一台）。
     ElementExists,
     Io(String),
 }
@@ -235,7 +235,7 @@ pub(crate) fn patch_config_at(
     }
     // ② 串行化。锁中毒（别的写者 panic 了）不妨碍这一次：锁只护「读-改-写」这一段，没有要恢复的内存状态。
     let _guard = WRITE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
-    // ②b 〔HX2 · 4D〕跨进程：两个 monitor 进程同写也串起来 —— 先保证目录在（锁的就是它），再拿它的锁，锁住之后才现读。
+    // ②b 跨进程：两个 monitor 进程同写也串起来 —— 先保证目录在（锁的就是它），再拿它的锁，锁住之后才现读。
     let dir = path
         .parent()
         .ok_or_else(|| ConfigWriteError::Io(format!("no parent dir for {}", path.display())))?;
@@ -423,7 +423,7 @@ fn apply_edit(root: &mut Map<String, Value>, edit: &ConfigEdit) -> Applied {
     }
 }
 
-// 〔P4 · 阶段 H〕`atomic_replace`（两个平台臂：`MoveFileExW` / `rename`）搬进 `platform/fs.rs`，本文件经 `crate::platform::fs::atomic_replace` 调。
+// `atomic_replace`（两个平台臂：`MoveFileExW` / `rename`）搬进 `platform/fs.rs`，本文件经 `crate::platform::fs::atomic_replace` 调。
 
 /// 文件缺失时返回的最小骨架。仅做占位，前端读到没有 `theme` 字段会用 :root 默认值。
 fn default_config() -> Value {
@@ -431,7 +431,7 @@ fn default_config() -> Value {
 }
 
 /// F87b③ 起：**已配置且启用**的远端 origin（canonical `origin_label()`）。今天它是通用的「列远端配置标签」（历史清单 · 搜索 ·
-/// cc-bus 两块 · MCP 推 / 拉面板都用它）：读的是 monitor 自己的配置 —— 〔MIG-3a〕从 `mcp.rs` 挪来（MCP 读写进了那台后端，`mcp.rs` 删了）。
+/// cc-bus 两块 · MCP 推 / 拉面板都用它）：读的是 monitor 自己的配置 —— 从 `mcp.rs` 挪来（MCP 读写进了那台后端，`mcp.rs` 删了）。
 #[tauri::command]
 pub async fn list_remote_mcp_origins() -> Result<Vec<String>, String> {
     tokio::task::spawn_blocking(|| {
@@ -445,7 +445,7 @@ pub async fn list_remote_mcp_origins() -> Result<Vec<String>, String> {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// 〔RE〕原 `paths.rs` 的正文：Claude 数据目录 · monitor 数据目录 · 配置文件路径（头注见本文件顶上那一节）。
+// 原 `paths.rs` 的正文：Claude 数据目录 · monitor 数据目录 · 配置文件路径（头注见本文件顶上那一节）。
 // ═══════════════════════════════════════════════════════════════════════
 
 /// Claude 数据目录根（即 `.claude` 的实际位置）。所有 projects / sessions 读取都从这里派生。
@@ -486,13 +486,13 @@ pub const DATA_DIR_ENV: &str = creds_core::store::DATA_DIR_ENV;
 
 /// Monitor 自己的 user-data 目录。
 ///
-/// 默认 `~/.cc-monitor/`（V160）—— **不跟随 `claudeDir` 变化**
+/// 默认 `~/.cc-monitor/`—— **不跟随 `claudeDir` 变化**
 /// （避免循环依赖、且保留用户设置在切换数据目录后仍存在）。
 ///
-/// # 🔴 那个 env 出口为什么必须有（`设计/99 §4.9.7 P17`）
+/// # 🔴 那个 env 出口为什么必须有
 ///
 /// 这个目录是**用户手写的真相**的家：`config.json` · tab 集合名 · 固定了哪些 tab
-/// · 凭据库 · 历史元数据 · 全景引擎。`设计/30 §B.4` 逐字的理由是
+/// · 凭据库 · 历史元数据 · 全景引擎。理由是
 /// 「**集合名是用户手写的真相，不是能重算的缓存 ⇒ 它必须活过一次清缓存**」。
 ///
 /// ⇒ 而在这之前它**没有任何出口** ⇒ 任何一趟「把 monitor 跑起来量点东西」
@@ -528,7 +528,7 @@ pub fn resolve_monitor_data_dir() -> Option<PathBuf> {
 /// ⇒ 判据**不许**去动那个 env；它把值当参数喂进来。
 /// （同族先例：`filewin::download::judge_dest` 把「那儿有没有东西」注进来。）
 pub fn monitor_data_dir_from(env_val: Option<&str>, home: Option<PathBuf>) -> Option<PathBuf> {
-    // 〔TAIL〕规则本身住 `creds_core::store::monitor_data_dir`（远端常驻后端按同一份推默认路径）；这里只留两句日志。
+    // 规则本身住 `creds_core::store::monitor_data_dir`（远端常驻后端按同一份推默认路径）；这里只留两句日志。
     // 设成空串 == 没设（shell 里 `CCM_DATA_DIR=` 是最常见的「取消」写法）。
     let set = env_val.map(str::trim).filter(|t| !t.is_empty());
     let r = creds_core::store::monitor_data_dir(env_val, home);
@@ -558,7 +558,7 @@ fn read_user_override() -> Option<PathBuf> {
     if !cfg.exists() {
         return None;
     }
-    // 〔W5-VIS · E 吞错普查点名〕文件在而读不动 / 不是 JSON ⇒ 设置里那条「Claude 目录」覆盖这一次**不生效**、回到默认目录。
+    // 〔E 吞错普查点名〕文件在而读不动 / 不是 JSON ⇒ 设置里那条「Claude 目录」覆盖这一次**不生效**、回到默认目录。
     // 原先两个 `.ok()?` 把它折成「没设」—— 用户以为改了目录，实际读的是默认那一份，一句话都没有。
     // 这个函数调用得很勤（每次解析 Claude 目录都读一遍）⇒ 同一个进程里只说一次。
     let value: serde_json::Value = match std::fs::read_to_string(&cfg)
@@ -588,7 +588,7 @@ fn read_user_override() -> Option<PathBuf> {
 #[path = "../../../../tests/frontend/shell/config_tests.rs"]
 mod tests;
 
-// 〔RE〕原 `paths.rs` 那份单测（文件不改名，挂在本模块下；`use super::*` 照旧够到这些项）。
+// 原 `paths.rs` 那份单测（文件不改名，挂在本模块下；`use super::*` 照旧够到这些项）。
 #[cfg(test)]
 #[path = "../../../../tests/frontend/shell/paths_tests.rs"]
 mod paths_tests;

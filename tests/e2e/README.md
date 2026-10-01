@@ -63,7 +63,7 @@ tmux server（跑前跑后 `tmux -L default ls` 逐字对比，**9 个会话，�
 | `graylight-backend-frames` | 12 过 / 0 败 | |
 | `backend-gate2-acceptance` | 35 过 / 0 败 | ★ 修了它自己开的方子（登记豁免），此前每跑必 RC=1 |
 | `local-backend-supervise` | 7 过 / 0 败 | ★ 修前 7/1 —— 那条 `#[ignore]` 首跑就红，见 `P3 §0h-2` |
-| ~~`usage-probe-acceptance`~~ | — | 🔴 〔`设计/50` 09-18〕**整套删了**：用量 ②③ 两轴整轴退役 ⇒ 被测对象没了（不是断言变少了）。CI 里那条 `assert-pass-floor.sh` 的通过下限同拍**整条**摘掉（地板值的家在 `ci.yml` 的调用行，这里不存副本）|
+| ~~`usage-probe-acceptance`~~ | — | 🔴 **整套删了**：用量 ②③ 两轴整轴退役 ⇒ 被测对象没了（不是断言变少了）。CI 里那条 `assert-pass-floor.sh` 的通过下限同拍**整条**摘掉（地板值的家在 `ci.yml` 的调用行，这里不存副本）|
 | `ccm-print-parity` | 12 过 / 0 败 | |
 | `ccm-contract-parity` | 61 过 / 0 败 | |
 | `tmux-target-acceptance` | 26 过 / 0 败 | |
@@ -167,7 +167,7 @@ DISPLAY=:80 CCM_NO_DEVTOOLS=1 npx tauri dev &   # 等编译完、窗口出现
 | `e2e-tmux` | tmux-target · ccm-cli · ccm-print-parity · ccm-contract-parity · cc-spawn-uplift · cc-bus-queue-drain · restart · resume · ccm-rbind-title |
 | `e2e-tmux-rust` | inbound-frames · backend-gate2 · local-backend · graylight-frames · restart-frames · resume-frames · backend-fork · backend-sessions-rewatch · backend-tmux-late-server · backend-cc-bus · p3t-local-tmux |
 
-> 〔`K-R72` 09-12〕`tmux-guarded-acceptance.sh` **整套删了**：它的输入源是 `tmux.rs` 那两条
+> `tmux-guarded-acceptance.sh` **整套删了**：它的输入源是 `tmux.rs` 那两条
 > 桌面侧 SSH 回落的 builder，回落删净之后它连命令串都取不到 ⇒ 跑不起来。三道门的真机覆盖
 > 转由 `backend-gate2-acceptance.sh` 承担（真后端二进制 + 真 tmux server，用例逐行来自
 > 同一张 `gate2-golden.tsv`）。
@@ -258,13 +258,13 @@ fixtures:
 1. **backend-frame 级(无 GUI,最稳,后端半场)**:`bash tests/e2e/graylight-backend-frames.sh`
    (需仓内 debug 后端;缺则 `CCM_E2E_BACKEND=<某个 p1p+ 的 cc-monitor-backend>`)。断言后端 stdout 帧:
    `session_added` → (kill fake-claude) `session_removed` **且** `session_state` = `reconnectable`
-   (=灰) → (kill-session) `session_state` = `ended`(=归档边沿；〔MIG-1 续〕原看 `tmux_sessions` 快照帧，那一帧删了)。
+   (=灰) → (kill-session) `session_state` = `ended`(=归档边沿；原看 `tmux_sessions` 快照帧，那一帧删了)。
 
 2. **全链级(GUI + loopback SSH)**:前置同 f40(Xvfb + dev 实例)+ config.json 配一个 loopback 远端,
    `backendPath` 指向 `backend-wrapper.sh`。然后 `E2E_DISPLAY=:80 bash tests/e2e/graylight-suite.sh`。断言 monitor
-   日志:`[e2e] tab-state … liveness=dead recoverability=attachable`(可重连;〔U4〕原先是 `status=live tmuxIdle=1`)→
+   日志:`[e2e] tab-state … liveness=dead recoverability=attachable`(可重连;原先是 `status=live tmuxIdle=1`)→
    `… liveness=dead recoverability=resumable`(已结束)。**★ app 会自动部署后端**:backendPath 同目录须放一个 `.build_id`(内容=app
-   **内嵌** 后端的 build_id;〔MIG-3a · 09-28〕那条按旁挂标记判的路已删,今天后端读字节自报的身份戳,见后端 `control/deploy_plan.rs` 的 `identity_decision`——不是 `EXPECTED_BACKEND_BUILD_ID`),否则
+   **内嵌** 后端的 build_id;那条按旁挂标记判的路已删,今天后端读字节自报的身份戳,见后端 `control/deploy_plan.rs` 的 `identity_decision`——不是 `EXPECTED_BACKEND_BUILD_ID`),否则
    app 会用内嵌二进制覆盖写 backendPath(把 wrapper 冲掉)。杀 fake-claude **前须等 > 一个 8s 发帧周期**,
    让 app 先收到含 @ccm_sid 的 `TmuxSessions` 帧,否则 removed 到达时 tmux 账本无此 sid → 判 Archive 丢灰。
 
@@ -276,7 +276,7 @@ fixtures:
 **★ 诚实分层(硬结构限)**:Linux headless 的 GUI resume **结构性不可执行**——一键拉起走
 `platform/terminal.rs::launch_powershell_window`,该函数 `#[cfg(not(windows))]` 直接 `Err("拉起终端窗口仅支持
 Windows")`,故 app 里点 resume 在 Linux 必回退剪贴板、**绝不真执行**命令。因此 argv/孤儿断言的诚实天花板
-= **命令级**:直接驱**生产渲染链**(〔LR2〕生产 `launch-requests.ts::plan*` → 生产 `buildLaunchRenderRequest` →
+= **命令级**:直接驱**生产渲染链**(生产 `launch-requests.ts::plan*` → 生产 `buildLaunchRenderRequest` →
 生产 Rust `render_launch_payload`,经 `resume-cmd-driver.ts` → `launch-render-driver.ts`,不重写)拿到 app **真正会跑**的命令串,再把该串真跑到真 tmux + fake-claude,
 断言 argv.log(`--resume <sid>` + `CLAUDE_CONFIG_DIR`)与 `tmux ls` 孤儿数。复活(灰→live)的**检测**由
 后端判活边沿断言(后端半场)。本地 resume(`resume_history_session`)同为 Windows-only,Linux 不可执行。
@@ -302,7 +302,7 @@ fixtures / 驱动:
 
 ## auto-e2e:换号重启编排(F-E3,#68/#69)
 
-命令级 + backend-frame 验换号:`compact→kill→resume(新账号)` 序列（〔V154〕不再键入 /exit，直接杀）、resume 落新账号 `CLAUDE_CONFIG_DIR`、失败中止语义(kill 失败不续 resume / resume 未起不记账)、批量对齐 idle/busy 分流。诚实分层同 F-E2(GUI 结构性不可执行 → 命令级天花板)。
+命令级 + backend-frame 验换号:`compact→kill→resume(新账号)` 序列（不再键入 /exit，直接杀）、resume 落新账号 `CLAUDE_CONFIG_DIR`、失败中止语义(kill 失败不续 resume / resume 未起不记账)、批量对齐 idle/busy 分流。诚实分层同 F-E2(GUI 结构性不可执行 → 命令级天花板)。
 - `restart-cmd-driver.ts` + `restart-shims/`(ESM loader 只重定向 Tauri IPC 边界到真 tmux+fake-claude,其余全真源;含 kill/resume 失败注入)。
 - 跑:`bash tests/e2e/restart-suite.sh`(命令级 24/0) + `bash tests/e2e/restart-backend-frames.sh`(5/0:旧号 `SessionRemoved`→新号 `SessionAdded` 迁移、无孤儿)。批量对齐 idle/busy 另由 `tabs.vitest.ts`「account-ux U6」覆盖。
 

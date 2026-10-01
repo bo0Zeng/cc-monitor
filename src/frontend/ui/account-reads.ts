@@ -1,10 +1,10 @@
 /**
- * 〔FE1 · 第四波 4D〕**账号域的读面**：经通道问那台机器（本机也一样）的后端，带 per-origin TTL 缓存 ＋ 手动刷新。
+ * **账号域的读面**：经通道问那台机器（本机也一样）的后端，带 per-origin TTL 缓存 ＋ 手动刷新。
  *
- * 三条帧命令：账号清单 `accounts-list`（〔C4c〕）· 会话 ↔ 账号 `accounts-sessions`（〔C4a〕）· 信任预检 `accounts-trust`（〔C4c〕），
+ * 三条帧命令：账号清单 `accounts-list`· 会话 ↔ 账号 `accounts-sessions`· 信任预检 `accounts-trust`，
  * 外加本机 apikey 表那一问（`apikey_routing_for`）。全程走 A2 的 `available:false` 降级：未迁移 / 旧后端一律安静隐藏账号 UI，不报错。
  *
- * 从 `accounts.ts` 拆出来（审计 B §6 必须拆 4；守的要求 `设计/01 §5` D1「一个判定只有一个家」）：
+ * 从 `accounts.ts` 拆出来（审计 B §6 必须拆 4；守的要求「一个判定只有一个家」）：
  * 形状与规则留在 `accounts.ts`（纯），这里只管「去问、收、缓存」。
  */
 import { putAccounts } from "./app-store";
@@ -14,7 +14,7 @@ import { budgetWithin, isOldBackend, jsonBody, linesOf, readJson, saidOf } from 
 import { ACTIVE_AGENT, lookupAgentProfile } from "./agent-profile";
 import { decodeAccountsList, decodeTrust } from "./accounts-decode";
 import type { AccountsState, SessionAccount } from "./accounts";
-// 〔US1〕API key 那两问的成品（`apikey-routing`）住 `apikey-reads.ts`；本文件只给账号面包一层（`agent` 与账号清单同一个出处）。
+// API key 那两问的成品（`apikey-routing`）住 `apikey-reads.ts`；本文件只给账号面包一层（`agent` 与账号清单同一个出处）。
 import { fetchApikeyRouting, type ApikeyRoutingView } from "./apikey-reads";
 import { getDefaultName } from "./account-prefs";
 import { copyText } from "./copy-table";
@@ -31,7 +31,7 @@ const sessionAccountsCache = new Map<string, CacheEntry<SessionAccount[]>>();
 /**
  * 取那台机器（**本机也一样**）的账号状态（带 TTL 缓存）。force=true 或缓存过期时重发。
  *
- * 〔C4c · 第四波 4B〕**走通道，后端出成品**：`chan.call(origin, "accounts-list", {agent}, …)` —— 帧命令直接问那台机器的后端
+ * **走通道，后端出成品**：`chan.call(origin, "accounts-list", {agent}, …)` —— 帧命令直接问那台机器的后端
  * （本机那台由 `<local>` 那条长连接答），应答就是界面要的形状（[`decodeAccountsList`] 按形状收，不解释）。
  * 在此之前是两条 Tauri 命令（远端 `list_remote_accounts` 走帧面、本机 `list_local_accounts` 每次 exec 一次性后端），
  * monitor 在两条路上各把行解析一遍、本机那条另并一次 apikey 表 —— 那一份解释与并表整个挪进了后端
@@ -76,7 +76,7 @@ export async function fetchAccounts(origin: Origin, force = false): Promise<Acco
     };
   }
   accountsCache.set(origin, { at: now, value: state });
-  putAccounts(origin, state); // 〔GAP1 · `设计/01 §1.5`〕每台的账号快照只住 store 一处，读者订阅它
+  putAccounts(origin, state); // 每台的账号快照只住 store 一处，读者订阅它
   return state;
 }
 
@@ -89,12 +89,12 @@ const ACCOUNTS_BUDGET_MS = 30_000;
 const TRUST_BUDGET_MS = 30_000;
 
 /** 那台后端比「账号清单上帧面」还老（不认这条命令）时的那句话。含「过旧」⇒ [`deriveUi`] 落「需更新」那一档。 */
-// 〔CP2b〕取值器、用到时才取文（模块顶层不留取文口调用 —— 顶层调用会让 Rollup 挪 chunk）。
+// 取值器、用到时才取文（模块顶层不留取文口调用 —— 顶层调用会让 Rollup 挪 chunk）。
 const accountsOldBackend = (): string => copyText("accounts.oldBackend.accounts");
 
 /**
  * 这次起会话的是哪一家（适配器 id，后端并 apikey 表时认它）。**值从后端来**：生成物里的 `ACTIVE_AGENT`
- * 与那一行的 `adapterId`（后端 `src/backend/agents/<名>/` 注册表 `Adapter.launch` 那张表，〔P1〕从前是 monitor `adapter.rs`），与 monitor 侧 `history::launch_agent_id` 〔散文墓碑〕
+ * 与那一行的 `adapterId`（后端 `src/backend/agents/<名>/` 注册表 `Adapter.launch` 那张表，从前是 monitor `adapter.rs`），与 monitor 侧 `history::launch_agent_id` 〔散文墓碑〕
  * 同一个事实（起会话那一侧写进中转路由键第 1 段的就是它）。表里没有 ⇒ 抛（不回落到任何一家）。
  */
 function launchAgentId(): string {
@@ -108,13 +108,13 @@ export async function fetchLocalApikeyRouting(configDirs: string[]): Promise<Api
   return await fetchMachineApikeyRouting(LOCAL_ORIGIN, configDirs);
 }
 
-/** 〔US1〕那台机器的那两格事实（`apikey-routing`，本机由 `<local>` 那条长连接答）；`agent` 与账号清单同一个出处（后端不猜是哪一家）。 */
+/** 那台机器的那两格事实（`apikey-routing`，本机由 `<local>` 那条长连接答）；`agent` 与账号清单同一个出处（后端不猜是哪一家）。 */
 export async function fetchMachineApikeyRouting(origin: Origin, configDirs: string[]): Promise<ApikeyRoutingView> {
   return await fetchApikeyRouting(origin, launchAgentId(), configDirs);
 }
 
 /**
- * 取**这台机器**的账号状态 —— 〔C4c〕就是 `fetchAccounts(LOCAL_ORIGIN, …)`：本机与远端同一条路、同一个缓存键空间。
+ * 取**这台机器**的账号状态 —— 就是 `fetchAccounts(LOCAL_ORIGIN, …)`：本机与远端同一条路、同一个缓存键空间。
  *
  * 〔来历〕L3a 起它是 `fetchAccounts` 的本地对侧（`list_local_accounts`：`N-F1c` 之后 exec 一次本机后端的
  * `--list-accounts`，另在 monitor 里并一次本机 apikey 表）；C4b 把缓存键统一成 `LOCAL_ORIGIN`；C4c 把两条路合成一条
@@ -127,9 +127,9 @@ export async function fetchLocalAccounts(force = false): Promise<AccountsState> 
 /**
  * 那台机器（**本机也一样**）上正在跑的会话各属于哪个账号（带 TTL 缓存；`force` 绕过缓存）。
  *
- * 〔C4a · 第四波 · 子步 3〕**走通道**：`chan.call(origin, "accounts-sessions", …)` —— 帧命令直接问那台机器的后端，
+ * **走通道**：`chan.call(origin, "accounts-sessions", …)` —— 帧命令直接问那台机器的后端，
  * 本机与远端**同一条路**（本机那台由 `<local>` 那条长连接答）。在此之前是两条 Tauri 命令
- * （远端那条走帧面 · 本机那条〔E79〕每次 exec 一个本机后端），
+ * （远端那条走帧面 · 本机那条每次 exec 一个本机后端），
  * 各在 Rust 里把同一种行解析一遍 —— 两条命令与那两份解析一起退役，行的解释只剩 [`parseSessionAccountLines`] 一处。
  *
  * 失败（没有控制通道 / 后端不认 / 对端说不行 / 期限到）一律按「这一次没问出来」：空表、`console.warn`，
@@ -168,7 +168,7 @@ const optBool = (v: unknown): v is boolean | undefined => v === undefined || typ
 const optBoolOrNull = (v: unknown): v is boolean | null | undefined => v === null || optBool(v);
 
 /**
- * 〔HX1 · D-f〕「停本机后端之前数一数」那一问：**现问**（不走 [`fetchSessionAccounts`] 的缓存），而且**问不到就是 `null`**
+ * 「停本机后端之前数一数」那一问：**现问**（不走 [`fetchSessionAccounts`] 的缓存），而且**问不到就是 `null`**
  * —— 不像那一条把失败折成空表：这里空表的意思是「没有会话会断」，问不到折成空表就是一句假话（出声不静默）。
  */
 export async function fetchSessionAccountsOrNull(origin: Origin): Promise<SessionAccount[] | null> {
@@ -248,7 +248,7 @@ export interface TrustResult {
 /**
  * Z01：`configDir` 传 `null` = 问账号 0（它的 `.claude.json` 在那台机器的 `$HOME`）。**绝不传空串**——那会被后端判成不安全路径拒掉。
  *
- * 〔C4c · 第四波 4B〕**走通道**：`chan.call(origin, "accounts-trust", {configDir, cwd}, …)`，本机与远端同一条路。
+ * **走通道**：`chan.call(origin, "accounts-trust", {configDir, cwd}, …)`，本机与远端同一条路。
  * 在此之前是 Tauri 命令 `check_account_trust`：远端每问一次经本机后端开一条链路、在那台 exec 一次后端（最后两条仍逐次拨号的
  * 子命令），本机每问一次 exec 一次性本机后端。失败一律 `available:false` ＋ 一句人话（调用方按「未知信任状态」只警告不拦）。
  */

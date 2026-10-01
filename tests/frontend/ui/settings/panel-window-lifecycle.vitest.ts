@@ -1,10 +1,10 @@
 /**
- * ST1「关窗改隐藏」＋「未保存关窗拦截」（`设计/01 §1.3` · `70 §1.3 F` · `§6` #1 · `§8` #7）。
+ * ST1「关窗改隐藏」＋「未保存关窗拦截」。
  *
  * 窗口模式下：
  * - 系统 X（close-requested）一律 `preventDefault`，交给面板判；**放行的动作是 `hide()`**，
  *   面板从不调 `close()` / `destroy()`（主窗销毁时由后端把本窗一起收掉 —— `lib.rs` 那条纯函数有自己的测试）。
- * - 〔第四波 ST2 · `70 §6` #2 · 第二刀 步 9〕保存模型统一成**全即时**：外观 / Claude 数据目录改了就落
+ * - 保存模型统一成**全即时**：外观 / Claude 数据目录改了就落
  *   （`change`），页脚的「保存」「取消」与「未保存关窗拦截」那一条一起退场；关窗前还没触发 `change`
  *   的那一格由关窗那一下顺手落掉 —— **不静默丢**这件事换了兑现方式，没有丢。
  * - 藏起来之后又拿到焦点（= 被 `open_settings_window` 重新 show）⇒ 重跑 `open()`（重读设置、回落地页）。
@@ -81,7 +81,7 @@ vi.mock("../../../../src/frontend/ui/settings/mcp-section", () => ({
 vi.mock("../../../../src/frontend/ui/settings/plugins-section", () => ({
   PluginsSection: class { element = document.createElement("div"); loadNow() {} },
 }));
-// 〔AL1c · 4B〕`cc_integration.ts` 并进了 `machine-aliases.ts`（终端集成成了「别名」那一块 PowerShell 那一侧），它的替身随之删掉。
+// `cc_integration.ts` 并进了 `machine-aliases.ts`（终端集成成了「别名」那一块 PowerShell 那一侧），它的替身随之删掉。
 vi.mock("../../../../src/frontend/ui/keybindings/editor", () => ({
   KeybindingsEditor: class { element = document.createElement("div"); },
 }));
@@ -211,7 +211,7 @@ describe("ST1：设置窗关窗 ＝ 隐藏；〔ST2〕全即时：改了就落�
 
   it("藏起来之后再拿到焦点（= 被重新 show）⇒ 重跑 open()：重读外观；没藏过的焦点不算", async () => {
     await mount();
-    // 〔FIX2〕「重读」＝ 那一发 load_config（三格从同一份配置派生，`70 §10` #5）。
+    // 「重读」＝ 那一发 load_config（三格从同一份配置派生）。
     const reads = () => ipc.calls.filter((c) => c === "load_config").length;
     ipc.calls = [];
     win.focus!({ payload: true }); // 没藏过：只是普通的切回来
@@ -227,7 +227,7 @@ describe("ST1：设置窗关窗 ＝ 隐藏；〔ST2〕全即时：改了就落�
   });
 });
 
-// 〔W5-UI · 设计/70 §7 #4〕「浏览…」那一下：选目录的窗口打不开（插件抛）原先只打 console —— 点了什么都没发生。
+// 「浏览…」那一下：选目录的窗口打不开（插件抛）原先只打 console —— 点了什么都没发生。
 describe("〔W5-UI〕选 Claude 数据目录的窗口打不开 ⇒ 说出来", () => {
   beforeEach(() => {
     document.body.replaceChildren();

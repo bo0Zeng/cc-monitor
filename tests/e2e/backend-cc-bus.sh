@@ -19,7 +19,7 @@
 #   验的是仓里这一版，与 `exec-bit-guard` 的口径一致；
 # · ★★ **全程把 shim 放在 PATH 最前面**，任何裸 `tmux` 都被强制 `-L <隔离socket>`
 #   （`C7i`：backend 与 cc-bus 内部都是裸调 `tmux`，塞不进 `-L`，只能这样拦）。
-#   ⚠⚠ **这条是事故换来的**〔08-13〕：本套件原来只在用到 tmux 的那一格前面挂 shim，
+#   ⚠⚠ **这条是事故换来的**：本套件原来只在用到 tmux 的那一格前面挂 shim，
 #   头注还写着「本套件不用 tmux」。后来我往 `[15]` 里加了几行裸 `tmux new-session` ——
 #   **那句过时的注释正是我省掉 shim 的理由** —— 于是 `kreal_cc` / `kocc_cc`
 #   **建到了用户的默认 socket 上**（事后按名字精确收掉了，两个里面都只有本套件的 sleep）。
@@ -102,7 +102,7 @@ chk "★ 收件箱真的多了一行" "$(( $(wc -l < "$BUS/inbox/alpha_cc.jsonl"
 chk "  正文一字不差" \
   "$(tail -1 "$BUS/inbox/alpha_cc.jsonl" | jq -r .text)" "来自后端的一条"
 
-echo "[4] ★ 收件人非法：交给 cc-send 之前后端先判形状（〔DUP2〕INVARIANTS §47 ①，拒码 bad_id）"
+echo "[4] ★ 收件人非法：交给 cc-send 之前后端先判形状（INVARIANTS §47 ①，拒码 bad_id）"
 printf '{"to":"a/b","text":"x"}' | d --bus-send >"$SANDBOX/o4.txt"; rc4=$?
 chk "退出码非 0" "$([ "$rc4" -ne 0 ] && echo yes || echo no)" "yes"
 chk "码是 bad_id" "$(jq -r .code < "$SANDBOX/err.txt" 2>/dev/null)" "bad_id"
@@ -159,7 +159,7 @@ _el=$(( $(date +%s) - _t0 ))
 chk "★ 2 秒的期限：真的在 5 秒内回来了（不是等到我们从外面掐）" \
   "$([ "$_el" -le 5 ] && echo yes || echo "no（用了 ${_el}s）")" "yes"
 chk "  码是 timed_out（不是笼统的 failed）" "$(jq -r .code < "$SANDBOX/err8.txt" 2>/dev/null)" "timed_out"
-chk "  消息说得出多半卡在哪（cc-bus 的锁；〔TAIL〕flock 是禁档词，句子改说「锁」）" \
+chk "  消息说得出多半卡在哪（cc-bus 的锁；flock 是禁档词，句子改说「锁」）" \
   "$(jq -r .message < "$SANDBOX/err8.txt" 2>/dev/null | grep -c '锁')" "1"
 
 echo "[9] ★ 声明「不收输入」的命令，stdin 不关时必须秒回"
@@ -305,7 +305,7 @@ chk "★★ 名字被别人占：**不是 killed**，而是 stale_only" \
 chk "★★ 无辜会话还在" "$(tmux has-session -t '=kocc_cc' 2>/dev/null && echo 在 || echo 没了)" "在"
 chk "★★ 无辜进程还在" "$(ps -p "$_occpid" >/dev/null 2>&1 && echo 在 || echo 被杀了)" "在"
 _dk 'bad/id' >/dev/null
-chk "  非法 id ⇒ bad_id（交给 cc-kill 之前后端先判形状，〔DUP2〕§47 ①）" \
+chk "  非法 id ⇒ bad_id（交给 cc-kill 之前后端先判形状，§47 ①）" \
   "$(jq -r .code < "$SANDBOX/kerr.txt" 2>/dev/null)" "bad_id"
 
 echo "[16] ★ bus-spawn：本机派生走后端原语（BS1b）—— 真跑 cc-spawn，启动器是假 agent"
@@ -316,7 +316,7 @@ echo "[16] ★ bus-spawn：本机派生走后端原语（BS1b）—— 真跑 cc
 #   沙箱 HOME 里没有 `~/.cc-monitor/bin/`、PATH 上也没有 `cc-monitor-backend` ⇒ cc-spawn 按查找次序
 #   落到 PATH 上的 `ccm`（= 本工作树刚 build 的那一份），它再起 PATH 上的
 #   `claude`（= 下面那个只记参数然后 sleep 的假 agent）。
-# 〔主会话 09-27 裁〕分流只看 argv、不看 argv[0] ⇒ 叫 `ccm` 还是叫 `cc-monitor-backend` 走同一条规则；
+# 分流只看 argv、不看 argv[0] ⇒ 叫 `ccm` 还是叫 `cc-monitor-backend` 走同一条规则；
 #   从前的入口②（`cc-monitor-backend ccm …`）〔散文墓碑〕。两个名字同形由下面 [17] 真跑判。
 _SB="$SANDBOX/spawnbin"; _SH="$SANDBOX/spawnhome"; _SW="$SANDBOX/spawnwork"
 mkdir -p "$_SB" "$_SH" "$_SW/proj"
@@ -367,7 +367,7 @@ chk "  …而且没起出第二个会话" "$(tmux has-session -t '=proj_cc-2' 2>
 fi
 echo "[17] ★ ccm 在 pane 里重起自己：名叫 ccm 与名叫 cc-monitor-backend 同形（CC1；分流不看 argv0）"
 # 〔BS1b 现打〕从前走入口②时，pane 里那一跳丢了 `ccm` 这个词 ⇒ 空 bash 而 cc-spawn 照报 rc=0（假成功）。
-#   〔09-27〕入口②删了、分流不看名字 ⇒ 本格改钉「换个文件名结果逐字节一样」：两个名字各真跑一次
+# 入口②删了、分流不看名字 ⇒ 本格改钉「换个文件名结果逐字节一样」：两个名字各真跑一次
 #   cc-spawn，把 pane 里真正执行的那条 argv 抓出来比。
 # ⚠ **两个入口是同一份 wrapper 换个名字**：它把「自己被怎么叫」（`$0` ＋ argv）按 NUL 逐字落一个文件，
 #   再用**同一个 argv0**（`exec -a`）交给真二进制 ⇒ ccm 看到的入口就是那个名字，而我们看到的是
@@ -438,7 +438,7 @@ chk "  两个名字都登记上了总线（各一条）" \
 
 echo "[17b] ★ pane 里起的东西当场报参数错误 ⇒ cc-spawn **不许**报成功、**不许**登记（CC1）"
 # 造一个「不认这套参数」的入口（旧副本的形状：认不得就 exit 2），让 ccm 在 pane 里叫的是它。
-# 〔MC1 · 2026-09-24〕从前经环境变量 `CCM_SELF` 指过去；那个变量删了（`设计/01 §6.7b`），内层载荷
+# 从前经环境变量 `CCM_SELF` 指过去；那个变量删了，内层载荷
 #   只认「这个进程自己被怎么叫的」⇒ 改成**真的**那样叫它：一个入口脚本 `exec -a <旧副本路径>` 真身，
 #   真身跑起来 `argv[0]` 就是旧副本的路径（basename 仍是 `ccm` ⇒ 入口①）——正是「PATH 上那个 `ccm`
 #   是一份不认新参数的旧副本」的现场形状。这一格钉的「假成功看得见」一个字没变。
@@ -485,7 +485,7 @@ tmux kill-session -t '=bcast_cc' 2>/dev/null || true
 tmux kill-session -t '=bcme_cc' 2>/dev/null || true
 
 echo "[SH1-a] ★ INVARIANTS §49：读会话名 / 地址的 tmux 客户端是 UTF-8 客户端（非 UTF-8 locale ＋ 中文会话名）"
-# 〔SH1 · V121〕`cc-register` 记登记地址 · `cc-whoami` 三条认身份的路，读的都是**会话名**（可以是中文）。
+# `cc-register` 记登记地址 · `cc-whoami` 三条认身份的路，读的都是**会话名**（可以是中文）。
 # 台架：pane 里整条命令跑在 `LC_ALL=C` 下 —— tmux 只看 `LC_ALL`→`LC_CTYPE`→`LANG` 第一个非空值有没有 `UTF-8`，
 # 这一形就是「非 UTF-8 客户端」。不带旗的话，中文被改写成 `_`、退出码仍是 0。
 # 期望值由**同一个 locale 下的同一条消毒**现算（`cc-whoami::resolve` 的那条 sed），不写死。
@@ -555,7 +555,7 @@ printf '{"from":"x","text":"占位"}\n' >> "$BUS/inbox/dg_cc.jsonl"
 chk "  台架：两个会话都登记上了（带 pane pid）" "$(awk -F'\t' '$4!=""{n++} END{print n+0}' "$BUS/agents.tsv")" "2"
 out="$(printf '{"name":"dg-cc"}' | d --kill)"
 chk "杀会话本身照旧成功" "$(printf '%s' "$out" | jq -c '[.session, .killed]')" '["dg-cc",true]'
-# 〔FIX4 · 设计/95 §6〕注销的结局进成品的 `bus` 那一格：注销了谁 · 谁没注销成 · 名册读得到。
+# 注销的结局进成品的 `bus` 那一格：注销了谁 · 谁没注销成 · 名册读得到。
 chk "★ 成品 bus 那一格说出注销了 dg_cc（没有失败、名册读得到）" "$(printf '%s' "$out" | jq -c '[.bus.removed, .bus.failed, .bus.unread]')" '[["dg_cc"],[],null]'
 chk "★ 登记在被杀会话上的 dg_cc 从名册里没了" "$(awk -F'\t' '$1=="dg_cc"' "$BUS/agents.tsv" | wc -l | tr -d ' ')" "0"
 chk "★ 它的收件箱也清了（cc-bus「收掉成员」的全套）" "$([ -e "$BUS/inbox/dg_cc.jsonl" ] && echo 在 || echo 没了)" "没了"

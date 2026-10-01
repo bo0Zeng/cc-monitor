@@ -26,7 +26,7 @@
 //!   与 `src/backend/files/index.rs` 那份（连续 blob ＋ u32 界桩 ＋ overlay）**不是同一份实现**。
 //!   ⇒ 本摞判据买到的是**客户端侧那条链**（发命令 · 解析回参 · 画到帧上）真的通，
 //!   **不是**后端那份真索引的正确性 —— 后者的判据住 `tests/backend/files/`。
-//! - 〔F2 · 2026-09-24〕**它挂在通道宿主的 `Backends` 那一格上**（[`wire_up`]：真回环口、
+//! - **它挂在通道宿主的 `Backends` 那一格上**（[`wire_up`]：真回环口、
 //!   真钥匙、真 `dial`，窗口手里拿的就是生产那个 `chan::client::Client`）。
 //!   ⇒ 「窗口 → 通道 → 路由器」在射程里；**宿主往 `inbound_client` 转交那一跳不在**
 //!   （这台合成后端就坐在那一跳的位置上）。那一跳的能力协商（后端没声明的命令一个字节都不发）
@@ -42,7 +42,7 @@
 //! ⚠ **为了能落到真文件系统上，段长与深度被夹紧了**（[`SEG_CAP`] / [`DEPTH_CAP`]）：
 //! `corpus` 那份采样会产出单段上千字符、深度几十级的路径，而
 //! Linux 的单段上限是 255 字节、Windows 的整条路径上限是 260 字符。
-//! ⇒ **这棵树刻意不与 `真相源/99 §四` 那张分布表对拍** —— 那一条是
+//! ⇒ **这棵树刻意不与那张分布表对拍** —— 那一条是
 //! `corpus_tests` 的活，本模块要的只是「一棵形状不平凡、内容全合成的真树」。
 //! 夹紧这件事有判据看着：[`super::tests::the_synthetic_tree_is_not_a_trivial_shape`]。
 
@@ -96,9 +96,9 @@ impl SynthTree {
 
 /// 本机夹具路径 → 当「远端」交给窗口的那一形：分隔符一律 `/`。
 ///
-/// 要求住址 `设计/60 §2.4`「只有远端，没有本机」：远端路径恒用 `/`，窗口切路径只认 `/`（`source::parent_dir` 头注）。
+/// 要求：「只有远端，没有本机」：远端路径恒用 `/`，窗口切路径只认 `/`（`source::parent_dir` 头注）。
 /// 本摞拿本机临时目录演那台远端 —— Linux 上恒等；Windows 上 `C:\…\x` 换成 `C:/…/x`（Windows 的文件 API 两种都认，
-/// 合成后端拿它回盘上照样打得开）。不换 ⇒ 窗口把整条 `C:\…\x` 当成一个名字（〔CIFIX-FW〕Windows runner 上那几条红）。
+/// 合成后端拿它回盘上照样打得开）。不换 ⇒ 窗口把整条 `C:\…\x` 当成一个名字（Windows runner 上那几条红）。
 pub fn remote_form(local: &str) -> String {
     remote_form_with(local, std::path::MAIN_SEPARATOR)
 }
@@ -125,7 +125,7 @@ pub fn remote_form_with(local: &str, sep: char) -> String {
 /// ⇒ 改成取**最后** `DEPTH_CAP` 段：那个长文件名留下来了，
 /// [`SEG_CAP`] 从此**真的**在夹它，而刀 20 会红。
 /// ⚠ 顺带一个好处：这棵树的形状从此更像真数据
-/// （`真相源/99 §4.1` 逐字「深路径段短，末尾常有一个长文件名」）。
+/// （「深路径段短，末尾常有一个长文件名」）。
 fn clamped_relatives(n: usize, seed: u64) -> std::collections::BTreeSet<Vec<String>> {
     let mut out = std::collections::BTreeSet::new();
     for p in crate::corpus::synth_paths(n, seed) {
@@ -211,9 +211,9 @@ pub struct Declared {
     pub truncated: bool,
     pub browse_watches: u64,
     pub browse_watch_cap: u64,
-    /// 〔第四波 S4 · Q5〕后端声明的冷启动首建估计。
+    /// 后端声明的冷启动首建估计。
     pub cold_first_build_secs: u64,
-    /// 〔W5-FILES〕没走进去的挂载点个数。
+    /// 没走进去的挂载点个数。
     pub skipped_mounts: u64,
 }
 
@@ -247,22 +247,22 @@ pub struct FakeBackend {
     /// 它声明自己认得哪几条命令（`hello.commands`）。
     pub offered: Vec<String>,
     pub log: WireLog,
-    /// 〔F9c〕送进来的块（`(key, seq)` → 内容），`files-commit-text` 按块号读回拼起来。
+    /// 送进来的块（`(key, seq)` → 内容），`files-commit-text` 按块号读回拼起来。
     chunks: std::collections::BTreeMap<(String, u64), String>,
-    /// 〔F9c〕最近一次提交成功拼出来的那一份（`(root/rel, 全文)`）—— 判据拿它与原文比。
+    /// 最近一次提交成功拼出来的那一份（`(root/rel, 全文)`）—— 判据拿它与原文比。
     pub committed: std::sync::Arc<std::sync::Mutex<Option<(String, String)>>>,
-    /// 〔F9c〕第几块（块号）起按「盘满」那一档拒（演「送到一半断了」）。
+    /// 第几块（块号）起按「盘满」那一档拒（演「送到一半断了」）。
     pub refuse_stage_at: Option<u64>,
-    /// 〔FW1〕合成后端的「盘」：完整路径 → 此刻那份文本（没登记的路径 = `text of <path>`）。
+    /// 合成后端的「盘」：完整路径 → 此刻那份文本（没登记的路径 = `text of <path>`）。
     /// 读交出这一份的摘要，存盘（`files-write-text` / `files-commit-text`）按 CAS 比它 —— 判据改它就是「别人在这期间写了」。
     pub disk: std::sync::Arc<std::sync::Mutex<std::collections::HashMap<String, String>>>,
-    /// 〔第四波 S4 · Q5〕给了 ⇒ `files-index-rebuild` 的**应答扣住**，等用例放行才回。
+    /// 给了 ⇒ `files-index-rebuild` 的**应答扣住**，等用例放行才回。
     /// 索引照常当场建好（与后端「走完才回」的时序不同，但窗口只看应答什么时候到）——
     /// 判据要在「重走还在飞」那一刻跑一帧，看首建那一行在不在。
     hold_rebuild: Option<std::sync::Arc<tokio::sync::Notify>>,
-    /// 〔FILES3〕`files-grep` 回的那一份成品（`None` ⇒ 按「这台后端拒」那一档：`unreadable`）。
+    /// `files-grep` 回的那一份成品（`None` ⇒ 按「这台后端拒」那一档：`unreadable`）。
     pub grep_reply: Option<serde_json::Value>,
-    /// 〔FILES3〕给了 ⇒ `files-grep` 的应答扣住，等用例放行才回（「停」那条判据要在它还在飞那一刻撤）。
+    /// 给了 ⇒ `files-grep` 的应答扣住，等用例放行才回（「停」那条判据要在它还在飞那一刻撤）。
     hold_grep: Option<std::sync::Arc<tokio::sync::Notify>>,
 }
 
@@ -283,13 +283,13 @@ impl FakeBackend {
         }
     }
 
-    /// 〔FILES3〕把 `files-grep` 的应答扣到 `gate` 被 `notify_one` 为止。
+    /// 把 `files-grep` 的应答扣到 `gate` 被 `notify_one` 为止。
     pub fn holding_grep(mut self, gate: std::sync::Arc<tokio::sync::Notify>) -> Self {
         self.hold_grep = Some(gate);
         self
     }
 
-    /// 〔FW1〕合成盘上此刻那一份。
+    /// 合成盘上此刻那一份。
     fn on_disk(&self, path: &str) -> String {
         self.disk
             .lock()
@@ -299,7 +299,7 @@ impl FakeBackend {
             .unwrap_or_else(|| format!("text of {path}"))
     }
 
-    /// 〔FW1〕CAS 那一关（同后端 `overwrite_text_expecting` 的形状）：`expect.sha256` 必须等于盘上那份的摘要。
+    /// CAS 那一关（同后端 `overwrite_text_expecting` 的形状）：`expect.sha256` 必须等于盘上那份的摘要。
     fn cas(
         &self,
         path: &str,
@@ -356,7 +356,7 @@ impl FakeBackend {
         Option<serde_json::Value>,
     ) {
         match cmd {
-            // 〔FILES3〕按内容搜：回用例给的那一份成品（窗口侧只判收、画、跳；走树的正确性判在 `tests/backend/files/grep_tests.rs`）。
+            // 按内容搜：回用例给的那一份成品（窗口侧只判收、画、跳；走树的正确性判在 `tests/backend/files/grep_tests.rs`）。
             "files-grep" => match &self.grep_reply {
                 Some(v) => (true, None, None, Some(v.clone())),
                 None => (
@@ -465,7 +465,7 @@ impl FakeBackend {
                     })),
                 )
             }
-            // 〔F2〕列目录：走 `list_local`（理由同 [`walk`] 头注：扫描型判据不许裸遍历），
+            // 列目录：走 `list_local`（理由同 [`walk`] 头注：扫描型判据不许裸遍历），
             //   按线上契约把每一条摊成 `{path, kind, size}`。
             "files-ls" => {
                 let Some(dir) = args.get("path").and_then(|v| v.as_str()) else {
@@ -498,7 +498,7 @@ impl FakeBackend {
                     Err(e) => (false, Some("unreadable".into()), Some(e), None),
                 }
             }
-            // 〔F2〕那条路径上有没有东西：列它的上一级，找那个名字。
+            // 那条路径上有没有东西：列它的上一级，找那个名字。
             "files-stat" => {
                 let Some(p) = args.get("path").and_then(|v| v.as_str()) else {
                     return (
@@ -514,7 +514,7 @@ impl FakeBackend {
                     .map(|rows| rows.iter().any(|r| r.name == name))
                     .unwrap_or(false);
                 if hit {
-                    // 〔GP1 · 第四波〕照后端那一格：unix 上送 `mode`（盘上那个文件真的低 12 位），非 unix 缺席。
+                    // 照后端那一格：unix 上送 `mode`（盘上那个文件真的低 12 位），非 unix 缺席。
                     let mut v = serde_json::json!({ "path": p, "kind": "file" });
                     #[cfg(unix)]
                     {
@@ -533,7 +533,7 @@ impl FakeBackend {
                     )
                 }
             }
-            // 〔F7a · 第三波 09-24〕读一份文本：按路径里的字眼演后端那几形
+            // 读一份文本：按路径里的字眼演后端那几形
             //   （`binary` ⇒ `not_text` · `huge` ⇒ `too_large` · `gone` ⇒ `unreadable`），其余交回
             //   `text of <path>` —— 判据要的是「窗口发了什么、怎么落那几形」，不是真读盘。
             "files-read-text" => {
@@ -565,7 +565,7 @@ impl FakeBackend {
                     ),
                 )
             }
-            // 〔FILES2〕解压：只记下来、不落盘；`rel` 里带 `taken` 且没带 `fresh` ⇒ 按「落点已在」答 `exists`；
+            // 解压：只记下来、不落盘；`rel` 里带 `taken` 且没带 `fresh` ⇒ 按「落点已在」答 `exists`；
             //   带 `bad` ⇒ 按「不认这种包」拒；否则回一组定值（落点带不带 ` (2)` 看 `fresh`）。
             "files-extract" => {
                 let rel = args.get("rel").and_then(|v| v.as_str()).unwrap_or("");
@@ -596,7 +596,7 @@ impl FakeBackend {
                     })),
                 )
             }
-            // 〔W5-FILES〕算大小：只记下来、回一组定值；`path` 里带 `refuse` ⇒ 按「读不到」拒。
+            // 算大小：只记下来、回一组定值；`path` 里带 `refuse` ⇒ 按「读不到」拒。
             "files-size" => {
                 let path = args.get("path").and_then(|v| v.as_str()).unwrap_or("");
                 if path.contains("refuse") {
@@ -617,7 +617,7 @@ impl FakeBackend {
                     })),
                 )
             }
-            // 〔F7a · 第三波 09-24〕复制：只记下来、不落盘；`root` 里带 `refuse` ⇒ 按围栏那一档拒，
+            // 复制：只记下来、不落盘；`root` 里带 `refuse` ⇒ 按围栏那一档拒，
             //   否则回一个定值字节数（判据要的是「那个数原样带回来」）。
             "files-copy" => {
                 let root = args.get("root").and_then(|v| v.as_str()).unwrap_or("");
@@ -629,7 +629,7 @@ impl FakeBackend {
                         None,
                     );
                 }
-                // 〔W5-FILES〕应答照新后端：`files` / `dirs` 恒在；带 `recursive: true` ⇒ 按「一棵」回一组定值。
+                // 应答照新后端：`files` / `dirs` 恒在；带 `recursive: true` ⇒ 按「一棵」回一组定值。
                 let tree = args.get("recursive").and_then(|v| v.as_bool()) == Some(true);
                 let (files, dirs) = if tree { (3, 2) } else { (1, 0) };
                 (
@@ -641,9 +641,9 @@ impl FakeBackend {
                     ),
                 )
             }
-            // 〔F2〕写面五条：**只记下来、不落盘**（判据要的是「窗口发了哪一条、参数长什么样」），
+            // 写面五条：**只记下来、不落盘**（判据要的是「窗口发了哪一条、参数长什么样」），
             //   `root` 里带 `refuse` 的一律按后端围栏那一档拒（`refused`）。
-            // 〔FW1〕存盘那一条：先过 CAS（盘上那份 == 打开时那份），过了才记进合成盘、交新摘要。
+            // 存盘那一条：先过 CAS（盘上那份 == 打开时那份），过了才记进合成盘、交新摘要。
             "files-write-text" => {
                 let root = args.get("root").and_then(|v| v.as_str()).unwrap_or("");
                 let rel = args.get("rel").and_then(|v| v.as_str()).unwrap_or("");
@@ -682,7 +682,7 @@ impl FakeBackend {
                 }
                 (true, None, None, Some(serde_json::json!({ "path": root })))
             }
-            // 〔F7b〕新建空文件：同写面五条「只记下来、不落盘」；`root` 带 `refuse` ⇒ 围栏那一档，
+            // 新建空文件：同写面五条「只记下来、不落盘」；`root` 带 `refuse` ⇒ 围栏那一档，
             //   `rel` 带 `exists` ⇒ 「目标已经在了」那一档（后端 `O_EXCL` 失败走的是 `io_failed`）。
             "files-create" => {
                 let root = args.get("root").and_then(|v| v.as_str()).unwrap_or("");
@@ -710,7 +710,7 @@ impl FakeBackend {
                     Some(serde_json::json!({ "path": format!("{root}/{rel}"), "bytes": 0 })),
                 )
             }
-            // 〔F9c〕存盘的两步：按后端 `control/files_commit.rs` 的契约演 —— 同一块只收一次；
+            // 存盘的两步：按后端 `control/files_commit.rs` 的契约演 —— 同一块只收一次；
             //   提交按块号 `0..chunks` 读回拼起来、总长必须恰好等于 `bytes`，否则拒；不论成败删掉这一键的块。
             "files-stage-chunk" => {
                 let key = args["key"].as_str().unwrap_or("").to_string();
@@ -892,7 +892,7 @@ fn walk(root: &std::path::Path) -> Vec<Vec<u8>> {
     out
 }
 
-/// 一台**挂在通道宿主上**的合成后端（〔F2 · 2026-09-24〕从前挂在进程级登记表上）。
+/// 一台**挂在通道宿主上**的合成后端（从前挂在进程级登记表上）。
 ///
 /// 回的那个 `WireLog` 是**它收到过的每一行请求**（按顺序）——
 /// `§3.5.2a` 那条判据数的就是它里面的 `files-index-rebuild`。
@@ -1047,7 +1047,7 @@ impl Wired {
 /// 🔴 **每条用例一个自己的 label** —— 不是洁癖：入方向通道登记表是一张
 /// **进程内全局**表（`local_origin_test_lock` 的头注逐字讲过两条用例互相
 /// 看见对方通道那一形）⇒ 各用各的键就不用抢那把锁。
-/// ⚠〔2026-09-23〕从前这句话写的是「用 `Source::Remote` 而不是 `Source::Local`，
+/// ⚠从前这句话写的是「用 `Source::Remote` 而不是 `Source::Local`，
 /// 后者的 origin 是 `inbound_client::LOCAL_ORIGIN`（一个全局键）」——
 /// 本机侧退役之后**没有别的选择了**，但那条纪律本身照旧成立。
 ///
@@ -1144,7 +1144,7 @@ pub async fn settle(board: &crate::find::SearchBoard, before: u64, who: &str) {
     panic!("{who}：等了 3 秒那块板子还是没有新答案（rounds 仍是 {before}）");
 }
 
-/// 〔FW1〕合成后端的「摘要」：64 位小写十六进制、内容不同就不同（判据只要这两条；窗口把它当不透明令牌）。
+/// 合成后端的「摘要」：64 位小写十六进制、内容不同就不同（判据只要这两条；窗口把它当不透明令牌）。
 /// 不是 SHA-256 —— 窗口从不自己算，算法对不对由后端那一侧的判据对拍 `sha2`。
 pub fn fake_sha256(text: &str) -> String {
     use std::hash::{Hash, Hasher};

@@ -1,8 +1,8 @@
 /**
- * 〔CFG1 · 4D〕tab 栏宽度收进 tab 栏自己的模块、经存储接入层（D §D5）。
+ * tab 栏宽度收进 tab 栏自己的模块、经存储接入层（D §D5）。
  *
  * 守的要求（住址）：`INVARIANTS §14`「前端任何持久化到 localStorage / IndexedDB 的 key 必须以 `cc-monitor.` 开头」
- * 与它的附带契约（写共享 key 要在接入层 `LS_KEYS` 旁边被审视）· `设计/30 §1`「显式宽度 = `--tab-bar-w`」。
+ * 与它的附带契约（写共享 key 要在接入层 `LS_KEYS` 旁边被审视）· 「显式宽度 = `--tab-bar-w`」。
  */
 import { describe, it, expect, beforeEach } from "vitest";
 import { readFileSync } from "node:fs";

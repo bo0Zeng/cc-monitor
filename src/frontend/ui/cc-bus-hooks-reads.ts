@@ -29,7 +29,7 @@ const HOOKS_DIAG_BUDGET_MS = 30_000;
  */
 export function decodeHooksReport(v: unknown): HooksReport {
   const bad = (what: string): never => {
-    throw new Error(`hooks-diag reply shape mismatch: ${what}`); // 〔CP2b〕程序员错误，刻意英文
+    throw new Error(`hooks-diag reply shape mismatch: ${what}`); // 程序员错误，刻意英文
   };
   const obj = (x: unknown, what: string, keys: string[]): Record<string, unknown> => {
     if (x === null || typeof x !== "object" || Array.isArray(x)) return bad(`${what} is not an object`);

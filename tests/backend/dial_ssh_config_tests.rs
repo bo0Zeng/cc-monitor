@@ -1,4 +1,4 @@
-//! 设计/99 §2.1 ⑯「`ssh -G` 解析与 `~/.ssh/config` 读取搬进本机常驻后端」—— `dial/ssh_config.rs` 的规则判据（从 monitor `ssh_source_tier1_tests.rs` 原样搬来）。
+//! 「`ssh -G` 解析与 `~/.ssh/config` 读取搬进本机常驻后端」—— `dial/ssh_config.rs` 的规则判据（从 monitor `ssh_source_tier1_tests.rs` 原样搬来）。
 use super::*;
 
 /// ★ 那一处读出来的东西**只许是别名**：配置里的敏感值一个都不许流出去。
@@ -169,7 +169,7 @@ fn aggregate_proxyjump_and_dedup() {
 
 /// allowlist：合法字符通过，含空格 / 选项前缀 / shell 元字符的别名被拒。
 ///
-/// 〔IV1 · V121〕要求住址：`INVARIANTS §47`（外部值拼进 shell / 交给对端之前本侧先过放行判定）；①形。
+/// 要求住址：`INVARIANTS §47`（外部值拼进 shell / 交给对端之前本侧先过放行判定）；①形。
 #[test]
 fn is_safe_alias_allowlist() {
     assert!(is_safe_alias("pi"));
@@ -210,7 +210,7 @@ fn expand_tilde_basics() {
     );
 }
 
-/// 设计/05 §14.3「成品的两侧对拍」：三条 `ssh-config-*` 的线上形状 == 跨语言金样 `tests/__fixtures__/ssh-config.golden.json`
+/// 「成品的两侧对拍」：三条 `ssh-config-*` 的线上形状 == 跨语言金样 `tests/__fixtures__/ssh-config.golden.json`
 /// （TS 解码器 `src/frontend/ui/ssh-config-reads.ts` 读同一份）。成品由生产构造器出（`answer_*` 用的同一个 `to_value` ＋ 聚合）。
 #[test]
 fn the_three_products_match_the_cross_language_golden() {

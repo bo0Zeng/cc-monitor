@@ -61,7 +61,7 @@ mod tests {
         // `common/` 整层：`S3` 把 `projects_root` 搬进适配层之后 `common/paths.rs` 整个文件消失了
         //（它当初就违反 `common/` 三条门槛的第③条「无域知识」——`projects` 是 Claude 的布局）。
         "common/fs.rs",
-        // ── `S4b`〔08-14〕：**这一轮一个都没加，而这是量出来的，不是忘了** ────────────
+        // ── `S4b`：**这一轮一个都没加，而这是量出来的，不是忘了** ────────────
         //
         // `S4`/`L1` 都写着「`claude_dir` 改完名，`watcher`/`accounts_query`/`history_query`
         // 就能进表」。`S4b` 改完名之后**实测这三个文件**，那句话**不成立**：
@@ -80,7 +80,7 @@ mod tests {
         // `agent_locality_guard::ADAPTER_CALL_SITES` **逐条登记**（共 8 文件 / 27 处），
         // 收进接口一处、那张表短一条、这里就能进一个文件。
         //
-        // ── `K-W1A`〔08-26〕：**新立的 `plugin/` 整层进表** ─────────────────────
+        // ── `K-W1A`：**新立的 `plugin/` 整层进表** ─────────────────────
         //
         // ★ 这一批与上面几批**性质不同**：上面是「把已有文件搬干净之后收进来」，
         // 这一批是**新造的层从第一天就进表**。理由是这条判据的一个结构性质：
@@ -157,7 +157,7 @@ mod tests {
     /// 没有解锁条件的「冻结」只是「永久豁免」的好听说法
     /// （`every_frozen_compat_entry_states_how_it_gets_unfrozen` 钉住这条）。
     ///
-    /// ⚠〔`S4b`〕本表与 `agent_locality_guard::AGENT_NAMED_WIRE_FIELDS` **在 `wire.rs` 这一行
+    /// ⚠本表与 `agent_locality_guard::AGENT_NAMED_WIRE_FIELDS` **在 `wire.rs` 这一行
     /// 重叠，但不是重复登记，别合并**：本表的作用域是「**已宣称通用的文件**（[`CORE_FILES`]）里的
     /// agent **字面量**」，那张是「**整棵 `src/`** 里 `<名>_dir` 这一形的**标识符**」。
     /// 证据是：那张表逼出了 `control/resolve_query.rs::ResumeSpec.claude_dir`（同样是冻结的

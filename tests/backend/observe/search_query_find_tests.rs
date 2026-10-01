@@ -1,4 +1,4 @@
-//! 〔SE2 · `设计/10 §6 步 6`〕会话内查找（`--find-in-session`）的判据。
+//! 会话内查找（`--find-in-session`）的判据。
 //!
 //! 买到：命中集合两向（期望取自夹具的 uuid 命名 `hit-*` / `miss-*`，不取自判定函数）· 文件序 ·
 //! `--include-tools` 两态 · 上限只砍「列」不砍「数」· 与 `--search` 对同一份文件给出同一组命中与片段 ·
@@ -170,7 +170,7 @@ fn find_and_global_search_agree_on_the_same_file() {
         };
         let mut budget = SnippetBudget::new(opts.limit);
         let q = Q.trim().to_lowercase();
-        // 〔SX1〕会话那一格来自索引：整份读进一格 `FileEntry`。
+        // 会话那一格来自索引：整份读进一格 `FileEntry`。
         let mut entry = FileEntry::empty(None, true);
         entry.take(None, &std::fs::read(&p).expect("读夹具"));
         let s = session_hits_in(&p, &entry, &q, &opts, &mut budget, 0).expect("有命中");
@@ -199,7 +199,7 @@ fn find_and_global_search_agree_on_the_same_file() {
     std::fs::remove_dir_all(&tmp).ok();
 }
 
-/// ★ 〔GAP1 · `设计/10 §7` 第 10 条〕「会话内查找每次从头扫一遍文件」⇒ `history-find` 走 SX1 常驻索引：
+/// ★ 「会话内查找每次从头扫一遍文件」⇒ `history-find` 走 SX1 常驻索引：
 /// 应答 == 现扫（`scan_session_find`，两态 `include_tools`；torn 残尾与没 uuid 的行照样不列），追加之后那一问只读尾巴。
 #[test]
 fn gap1_history_find_rides_the_resident_index_and_equals_the_plain_scan() {

@@ -5,13 +5,13 @@
 // 必须活过一次清缓存）。所以判据要钉**它写的是 config.json 那条路**，
 // 并钉 **localStorage 一个字都没写**。
 //
-// 〔GRP1 · `设计/99 §1` V140〕「分组不应该单独存会话记录」⇒ 组只存 `{id, name}`；组员关系改住 tab 自己身上
+// 「分组不应该单独存会话记录」⇒ 组只存 `{id, name}`；组员关系改住 tab 自己身上
 //（`Tab.group` ＋ `tabBar.groupOf.<sid>`）。测成员名单 / 成员上界 / 「组员满了」的格随被测的东西一起删了，
 // 组员那一半的判据住 `tests/tab-group-v140.vitest.ts`。
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const store = vi.hoisted(() => ({ cfg: {} as Record<string, unknown>, saves: 0 }));
-// 〔CFG1〕写只交补丁（`patchConfig`）；按与 Rust 写口同一份金样的语义（`tests/frontend/ui/config-patch-fake.ts`）应用到 `store.cfg`。
+// 写只交补丁（`patchConfig`）；按与 Rust 写口同一份金样的语义（`tests/frontend/ui/config-patch-fake.ts`）应用到 `store.cfg`。
 vi.mock("../../../src/frontend/ui/config", async (orig) => {
   const actual = await orig<Record<string, unknown>>();
   const { applyConfigEdits } = await import("./config-patch-fake");
@@ -121,9 +121,9 @@ describe("P7a-3 集合：存到哪儿", () => {
   });
 });
 
-// 〔TL2 · E13〕要求住址：`设计/01 §5 D4`「一条都不许静默忽略」—— 到上界时数据层照旧原样返回，
+// 要求：「一条都不许静默忽略」—— 到上界时数据层照旧原样返回，
 // 但得有一个判定说得出「为什么没做」，调用方据它出声。期望手写（不从被测函数生成），正反各一格。
-// 〔GRP1 · V140〕「组员满了」那一种随成员上界作废；只剩组数到上界这一种。
+// 「组员满了」那一种随成员上界作废；只剩组数到上界这一种。
 describe("〔TL2 · E13〕到上界：为什么没做", () => {
   const many = (n: number): TabCollection[] => Array.from({ length: n }, (_, i) => c(`c${i}`, `组${i}`));
 
@@ -144,7 +144,7 @@ describe("〔TL2 · E13〕到上界：为什么没做", () => {
   });
 });
 
-// 〔GRP1 · V140〕拖放对组的后果（`tab-drop.ts::groupMoveForDrop`）—— 手写表，期望不从被测函数生成。
+// 拖放对组的后果（`tab-drop.ts::groupMoveForDrop`）—— 手写表，期望不从被测函数生成。
 describe("〔GRP1〕拖放：归属跟着落点宿主走（`§D.7`），只回「被拖那个 tab 怎么动」", () => {
   // a 在 g1；b 在 g1；x 在 g2；s、t 散着。
   const groups: Record<string, string | null> = { a: "g1", b: "g1", x: "g2", s: null, t: null };

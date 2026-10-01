@@ -1,6 +1,6 @@
 {
   "说明": [
-    "术语对照表（设计/91 §5.2④）：内部词 → 对外词。与 R1 禁词表一体两面：R1 说不许出现什么，本表说该说什么。",
+    "术语对照表：内部词 → 对外词。与 R1 禁词表一体两面：R1 说不许出现什么，本表说该说什么。",
     "三档：正名 = 对外就叫这个（写文案时用它）· 限用 = 外部真实存在、用户自己也这么叫的词，只在 context 写明的语境里许说（R1b）· 禁 = 我们内部起的名，对外不许出现（R1），say 写换成什么。",
     "禁档的 points（可选）必须指向本表里一条正名或限用；say 是给写文案的人的一句换法，不是定稿。",
     "scan：给文案表（src/shared/copy/table.json）跑 R1 扫描用的正则（JS 语法）；null 表示判不了（单字、普通词的内部义），noScanWhy 写为什么，该词只靠人工 review。",
@@ -8,22 +8,22 @@
     "census：这条对应普查量具 K-T68-A1 的 R1_WORDS / R1_CANDIDATES 里哪个名字（两向相等，见 tests/copy/copy-terms.vitest.ts）。",
     "ledger：这条覆盖 CP1 台账依据列里哪些「新词:」标记（两向相等：台账每出现一个新标记，本表就得给出处置）。",
     "ask：术语本身定了、但具体一句话还要用户拍板的，写成要问用户的一句话。",
-    "tally / inTable（只限用档）：限用词计数棘轮（设计/91 §4 R1b「计数只许变少」· §5.7 第 4 步）。tally 是计数正则（不是 scan —— 非禁词带 scan 会被 R1 扫红），inTable 是文案表里命中它的条数；判据要求现打 == inTable（相等不是地板：多一条少一条都得回来改这个数，改的时候人会看见它）。"
+    "tally / inTable（只限用档）：限用词计数棘轮（「计数只许变少」· §5.7 第 4 步）。tally 是计数正则（不是 scan —— 非禁词带 scan 会被 R1 扫红），inTable 是文案表里命中它的条数；判据要求现打 == inTable（相等不是地板：多一条少一条都得回来改这个数，改的时候人会看见它）。"
   ],
   "terms": [
     {
       "word": "后端",
       "tier": "正名",
-      "meaning": "每台机器上跑的那个 cc-monitor 程序（本机与远端同一个，落在 ~/.cc-monitor/bin/ccm；设计/01 §6.7b）。",
-      "source": "设计/91 §3.1 · 用户 2026-09-17「现在没有 daemon，只有 backend」",
+      "meaning": "每台机器上跑的那个 cc-monitor 程序（本机与远端同一个，落在 ~/.cc-monitor/bin/ccm）。",
+      "source": "用户 2026-09-17「现在没有 daemon，只有 backend」",
       "ledger": [],
-      "note": "「后端二进制」「后端程序」对外一律说「后端」；要强调是那个文件时说「后端程序」。台账里「二进制」一词原先也归这里（〔DP1〕标它的那几行部署原因改写后退役，ledger 随之清空）。"
+      "note": "「后端二进制」「后端程序」对外一律说「后端」；要强调是那个文件时说「后端程序」。台账里「二进制」一词原先也归这里（标它的那几行部署原因改写后退役，ledger 随之清空）。"
     },
     {
       "word": "中转",
       "tier": "正名",
-      "meaning": "HTTP 那一层本身：本机那个中转进程让 Claude 的请求经过它、拿到流式消息（SSE 流）。按账号换上 API key、改写端点是上游选择（apikey）的事，不叫中转（设计/20 术语归属）。",
-      "source": "设计/20 · 设计/90 §1.2（relay → 中转）",
+      "meaning": "HTTP 那一层本身：本机那个中转进程让 Claude 的请求经过它、拿到流式消息（SSE 流）。按账号换上 API key、改写端点是上游选择（apikey）的事，不叫中转（术语归属）。",
+      "source": "（relay → 中转）",
       "ledger": [],
       "note": "⚠ 只指这一件。文件传输里「退回中转」（数据经本机转一次）是另一件事，别用这个词 —— 那里说「经本机转发」。"
     },
@@ -38,7 +38,7 @@
       "word": "会话",
       "tier": "正名",
       "meaning": "一次 Claude Code / codex 对话（resume 能接回去的那个单位）。",
-      "source": "设计/91 §5.2④ 例（sid → 会话）",
+      "source": "改写示例（sid → 会话）",
       "note": "要露出它的编号时说「会话 ID」，不说 sid / session id / uuid。"
     },
     {
@@ -51,36 +51,36 @@
       "word": "机器",
       "tier": "正名",
       "meaning": "一台跑着后端的主机。自己这台叫「本机」，别的叫「远端」或直接叫它的名字（aya / gpd）。",
-      "source": "设计/91 §5.2④ 例（origin → 机器）· 设计/70 §5.3「机器」页"
+      "source": "改写示例（origin → 机器）· 「机器」页"
     },
     {
       "word": "账号",
       "tier": "正名",
       "meaning": "一个 Claude 登录身份（订阅或 API key）。",
-      "source": "设计/70 §4",
+      "source": "对外文案",
       "note": "「号」「切号」「换号」是口语简称：按钮与标题上写「账号」「切换账号」；正文里许用简称（主观项，不机检）。"
     },
     {
       "word": "别名",
       "tier": "正名",
-      "meaning": "写进 shell 配置的一行命令（如 zcc、cct），本质是给 ccm 预先带上一组参数（设计/71）。",
-      "source": "设计/71 · 设计/70 §3.3"
+      "meaning": "写进 shell 配置的一行命令（如 zcc、cct），本质是给 ccm 预先带上一组参数。",
+      "source": "对外文案"
     },
     {
       "word": "部署",
       "tier": "正名",
-      "meaning": "把后端装到另一台机器上（设计/70 §3.3 ①，只对别的机器）。",
-      "source": "设计/70 §3.3"
+      "meaning": "把后端装到另一台机器上（只对别的机器）。",
+      "source": "对外文案"
     },
     {
       "word": "tmux",
       "tier": "限用",
       "tally": { "re": "\\btmux\\b", "flags": "i" },
       "inTable": 109,
-      "inTableNote": "〔THIN〕113 → 111：monitor 侧 Gate 1 前检删了，它那两句（rsTmux.target.empty · rsTmux.target.badChar，「非法 tmux 目标」）随之出表。〔FIX4 · 90 §3 J7〕114 → 113：铸名那一族换口（名字问那台后端铸），「没问到那台机器上已有哪些 tmux 会话」那一句（tmuxMint.unknown.notAsked）删了；新添的两句（tmuxMint.backend.tooOld · tmuxMint.reply.badShape）不提 tmux。〔FIX3 · 99 §2.2 ②〕116 → 114：起会话那几条「窗口正在连接…」的正文删了 5 句（resumeTmux.startedBody · launcher.startedBody · inPlace.doneBody · inPlace.doneByBackend · inPlaceLocal.doneBody，见到会话才说、改用 launchArrival.arrived.body）＋ 没看到会话那三句说「tmux 会话「名」那一屏」（launchArrival.missed.words / emptyScreen / noScreen）。〔COPY-R〕111 → 110：拒请求那句（rsLaunchWire.cwd.both）只留「同时给了两个工作目录」，不再讲 tmux 外层 / 内层怎么分工。〔COPY-R〕110 → 109：远端 ↗ 那段帮助（remote.wrapper.help）删了「让 tmux 会话记下它是哪个会话」那句机制交代。",
+      "inTableNote": "113 → 111：monitor 侧 Gate 1 前检删了，它那两句（rsTmux.target.empty · rsTmux.target.badChar，「非法 tmux 目标」）随之出表。114 → 113：铸名那一族换口（名字问那台后端铸），「没问到那台机器上已有哪些 tmux 会话」那一句（tmuxMint.unknown.notAsked）删了；新添的两句（tmuxMint.backend.tooOld · tmuxMint.reply.badShape）不提 tmux。116 → 114：起会话那几条「窗口正在连接…」的正文删了 5 句（resumeTmux.startedBody · launcher.startedBody · inPlace.doneBody · inPlace.doneByBackend · inPlaceLocal.doneBody，见到会话才说、改用 launchArrival.arrived.body）＋ 没看到会话那三句说「tmux 会话「名」那一屏」（launchArrival.missed.words / emptyScreen / noScreen）。111 → 110：拒请求那句（rsLaunchWire.cwd.both）只留「同时给了两个工作目录」，不再讲 tmux 外层 / 内层怎么分工。110 → 109：远端 ↗ 那段帮助（remote.wrapper.help）删了「让 tmux 会话记下它是哪个会话」那句机制交代。",
       "meaning": "用户机器上的终端复用程序。",
       "context": "讲用户自己能 attach / 看得见的 tmux 会话时许说（「tmux 会话」比「终端复用会话」清楚）。我们对 tmux 的用法（send-keys · capture-pane · @ccm_sid 这类会话标记）不许露，见禁档。",
-      "source": "设计/91 §4 R1b（2026-09-18 裁定）",
+      "source": "R1b",
       "census": "tmux"
     },
     {
@@ -88,10 +88,10 @@
       "tier": "限用",
       "tally": { "re": "\\bssh\\b", "flags": "i" },
       "inTable": 53,
-      "inTableNote": "〔COPY-R〕58 → 56：讲「远端 SSH 由本机后端来拨」的两句（rsDialHost.local.absent · local.tooOld）删了那段架构交代。56 → 53：账号库收进后端 −1；机器页里 MCP · 资产目录两块拿走 −2（跨机器的 skill / MCP 今天在「扩展」页）。",
+      "inTableNote": "58 → 56：讲「远端 SSH 由本机后端来拨」的两句（rsDialHost.local.absent · local.tooOld）删了那段架构交代。56 → 53：账号库收进后端 −1；机器页里 MCP · 资产目录两块拿走 −2（跨机器的 skill / MCP 今天在「扩展」页）。",
       "meaning": "连远端用的 ssh。",
       "context": "讲连接、主机、密钥、主机指纹时许说。",
-      "source": "设计/91 §4 R1b"
+      "source": "R1b"
     },
     {
       "word": "git",
@@ -100,27 +100,27 @@
       "inTable": 1,
       "meaning": "版本控制程序。",
       "context": "讲仓库、分支时许说。",
-      "source": "设计/91 §4 R1b"
+      "source": "R1b"
     },
     {
       "word": "PowerShell",
       "tier": "限用",
       "tally": { "re": "powershell", "flags": "i" },
       "inTable": 44,
-      "inTableNote": "〔P3 · 主会话 09-29 裁〕43 → 44：数据位置页 PowerShell 那份别名文件的说明（rsDataPaths.backend.aliasesPs「你建的别名（PowerShell 读这一份）」，用户自己的 shell 名）。〔FIX4 · 71 §8 第 7 条〕36 → 37：认不出本机系统时别名那一格那句（machineAliases.unknownOs.said）点名 PowerShell（与 bash 并列，说明为什么不猜）。〔WF1 · L〕37 → 43：执行策略那一族（machineAliases.policy.hostPowershell / hostPwsh / confirm / setDone / afterInstall · rsPsPolicy.listing.unreadable）说的就是 $PROFILE 由哪一代 PowerShell 加载、它的执行策略。",
+      "inTableNote": "43 → 44：数据位置页 PowerShell 那份别名文件的说明（rsDataPaths.backend.aliasesPs「你建的别名（PowerShell 读这一份）」，用户自己的 shell 名）。36 → 37：认不出本机系统时别名那一格那句（machineAliases.unknownOs.said）点名 PowerShell（与 bash 并列，说明为什么不猜）。37 → 43：执行策略那一族（machineAliases.policy.hostPowershell / hostPwsh / confirm / setDone / afterInstall · rsPsPolicy.listing.unreadable）说的就是 $PROFILE 由哪一代 PowerShell 加载、它的执行策略。",
       "meaning": "Windows 上的 shell。",
       "context": "讲终端集成、$PROFILE 时许说；不许缩写成 PS。",
-      "source": "设计/91 §4 R1b"
+      "source": "R1b"
     },
     {
       "word": "ccm",
       "tier": "限用",
       "tally": { "re": "(?<![\\w-])ccm(?![\\w-])", "flags": "i" },
       "inTable": 70,
-      "inTableNote": "〔FIX3 · 99 §2.2 ㉔〕69 → 73：本机那一格的三句（rsCcmProbe.cell.ours / elsewhere / absent）＋ 旧入口那句（rsCcmProbe.hint.oldEntry），都在讲「终端里敲 ccm」。〔COPY-R〕73 → 70：足迹与部署那三句里「今天后端就是 ~/.cc-monitor/bin/ccm」的括号删了（rsSftp.legacyBackend.removed · rsToolRegistry.tools.backendLegacyNote · backendLegacyExtractNote）。",
-      "meaning": "用户在 shell 里敲的那个命令；它就是后端程序本身（设计/01 §6.7b）。",
+      "inTableNote": "69 → 73：本机那一格的三句（rsCcmProbe.cell.ours / elsewhere / absent）＋ 旧入口那句（rsCcmProbe.hint.oldEntry），都在讲「终端里敲 ccm」。73 → 70：足迹与部署那三句里「今天后端就是 ~/.cc-monitor/bin/ccm」的括号删了（rsSftp.legacyBackend.removed · rsToolRegistry.tools.backendLegacyNote · backendLegacyExtractNote）。",
+      "meaning": "用户在 shell 里敲的那个命令；它就是后端程序本身。",
       "context": "只在讲「shell 里敲的命令」时许说（ccm 的参数、别名、写进 ~/.bashrc 的那一段）。讲「机器上装的那个程序」时说「后端」。「ccm 助手」「ccm wrapper」是我们起的名，禁。",
-      "source": "设计/01 §6.7b · 设计/70 §5（MC1：「ccm 助手」删掉）· CP1 判不了之一（settings/machine-card.ts「卸载 ccm 中」）· 用户 09-24「继续叫卸载ccm」（99 §1 V80：原先那条 ask 结案删掉）",
+      "source": "（MC1：「ccm 助手」删掉）· CP1 判不了之一（settings/machine-card.ts「卸载 ccm 中」）· 用户 09-24「继续叫卸载ccm」（原先那条 ask 结案删掉）",
       "census": "ccm"
     },
     {
@@ -169,7 +169,7 @@
       "points": "会话",
       "scan": { "re": "@ccm_sid", "flags": "" },
       "census": "@ccm_sid",
-      "source": "设计/91 §4 R1 · §2.1"
+      "source": "R1"
     },
     {
       "word": "ccm wrapper",
@@ -178,7 +178,7 @@
       "points": "ccm",
       "scan": { "re": "ccm\\s*wrapper", "flags": "i" },
       "census": "ccm wrapper",
-      "source": "设计/91 §4 R1"
+      "source": "R1"
     },
     {
       "word": "hwnd cache",
@@ -186,7 +186,7 @@
       "say": "不说。",
       "scan": { "re": "hwnd\\s*cache", "flags": "i" },
       "census": "hwnd cache",
-      "source": "设计/91 §4 R1"
+      "source": "R1"
     },
     {
       "word": "daemon",
@@ -195,7 +195,7 @@
       "points": "后端",
       "scan": { "re": "daemon", "flags": "i" },
       "census": "daemon",
-      "source": "设计/91 §3.1 · §4 R1"
+      "source": "R1"
     },
     {
       "word": "pidfile",
@@ -203,7 +203,7 @@
       "say": "不说。",
       "scan": { "re": "pid\\s*file", "flags": "i" },
       "census": "pidfile",
-      "source": "设计/91 §4 R1"
+      "source": "R1"
     },
     {
       "word": "jsonl",
@@ -212,7 +212,7 @@
       "points": "会话记录",
       "scan": { "re": "jsonl", "flags": "i" },
       "census": "jsonl",
-      "source": "设计/91 §4 R1"
+      "source": "R1"
     },
     {
       "word": "inotify",
@@ -220,7 +220,7 @@
       "say": "不说；要说后果时说「自动刷新不工作」。",
       "scan": { "re": "inotify", "flags": "i" },
       "census": "inotify",
-      "source": "设计/91 §4 R1"
+      "source": "R1"
     },
     {
       "word": "HWND",
@@ -228,7 +228,7 @@
       "say": "终端窗口。",
       "scan": { "re": "\\bHWND\\b", "flags": "" },
       "census": "HWND",
-      "source": "设计/91 §4 R1"
+      "source": "R1"
     },
     {
       "word": "relay",
@@ -237,7 +237,7 @@
       "points": "中转",
       "scan": { "re": "\\brelay\\b", "flags": "i" },
       "census": "relay",
-      "source": "设计/91 §4 R1 · 设计/90 §1.2"
+      "source": "R1"
     },
     {
       "word": "sid",
@@ -247,7 +247,7 @@
       "scan": { "re": "(?<![\\w@])sid(?!\\w)", "flags": "i" },
       "counterExamples": ["@ccm_sid", "inside"],
       "census": "sid",
-      "source": "设计/91 §4 R1"
+      "source": "R1"
     },
     {
       "word": "判据",
@@ -255,7 +255,7 @@
       "say": "不说（我们内部对「测试」的叫法）。报错里说发生了什么。",
       "scan": { "re": "判据", "flags": "" },
       "census": "判据",
-      "source": "设计/91 §2.2 · §4 R1"
+      "source": "R1"
     },
     {
       "word": "守卫",
@@ -263,7 +263,7 @@
       "say": "不说（用户 2026-09-17「没有守卫这种东西，都是测试」）。报错里说被拦下的原因。",
       "scan": { "re": "守卫", "flags": "" },
       "census": "守卫",
-      "source": "设计/91 §2.2 · §4 R1"
+      "source": "R1"
     },
     {
       "word": "死亡账",
@@ -272,7 +272,7 @@
       "points": "后端",
       "scan": { "re": "死亡账", "flags": "" },
       "census": "死亡账",
-      "source": "设计/91 §2.5 · §4 R1"
+      "source": "自造比喻 · R1"
     },
     {
       "word": "尺子",
@@ -280,7 +280,7 @@
       "say": "不说。",
       "scan": { "re": "尺子", "flags": "" },
       "census": "尺子",
-      "source": "设计/91 §2.5 · §4 R1"
+      "source": "自造比喻 · R1"
     },
     {
       "word": "棘轮",
@@ -288,7 +288,7 @@
       "say": "不说。",
       "scan": { "re": "棘轮", "flags": "" },
       "census": "棘轮",
-      "source": "设计/91 §2.5 · §4 R1"
+      "source": "自造比喻 · R1"
     },
     {
       "word": "空真",
@@ -296,7 +296,7 @@
       "say": "不说。",
       "scan": { "re": "空真", "flags": "" },
       "census": "空真",
-      "source": "设计/91 §2.5 · §4 R1"
+      "source": "自造比喻 · R1"
     },
     {
       "word": "恒绿",
@@ -304,7 +304,7 @@
       "say": "不说。",
       "scan": { "re": "恒绿", "flags": "" },
       "census": "恒绿",
-      "source": "设计/91 §2.5 · §4 R1"
+      "source": "自造比喻 · R1"
     },
     {
       "word": "墓碑",
@@ -312,7 +312,7 @@
       "say": "不说。",
       "scan": { "re": "墓碑", "flags": "" },
       "census": "墓碑",
-      "source": "设计/91 §2.5 · §4 R1"
+      "source": "自造比喻 · R1"
     },
     {
       "word": "活体",
@@ -320,7 +320,7 @@
       "say": "不说。",
       "scan": { "re": "活体", "flags": "" },
       "census": "活体",
-      "source": "设计/91 §2.5 · §4 R1"
+      "source": "自造比喻 · R1"
     },
     {
       "word": "写区",
@@ -328,7 +328,7 @@
       "say": "不说。",
       "scan": { "re": "写区", "flags": "" },
       "census": "写区",
-      "source": "设计/91 §2.5 · §4 R1"
+      "source": "自造比喻 · R1"
     },
     {
       "word": "定框",
@@ -336,7 +336,7 @@
       "say": "不说。",
       "scan": { "re": "定框", "flags": "" },
       "census": "定框",
-      "source": "设计/91 §2.5 · §4 R1"
+      "source": "自造比喻 · R1"
     },
     {
       "word": "铸名",
@@ -344,17 +344,17 @@
       "say": "不说；要说时说「起名」。",
       "scan": { "re": "铸名", "flags": "" },
       "census": "铸名",
-      "source": "设计/91 §2.5 · §4 R1"
+      "source": "自造比喻 · R1"
     },
     {
       "word": "灰",
       "tier": "禁",
-      "say": "说状态本身：「已结束」或「可重连」（设计/30 §3.5.2）。纯颜色义（灰色 / 灰度 / 灰阶）不在此列。",
+      "say": "说状态本身：「已结束」或「可重连」。纯颜色义（灰色 / 灰度 / 灰阶）不在此列。",
       "scan": { "re": "灰(?![色度阶])", "flags": "" },
       "examples": ["tab 稍后自动变灰"],
       "counterExamples": ["灰色", "灰度"],
       "census": "灰",
-      "source": "设计/30 §3.5.2 · 设计/91 §4 R1"
+      "source": "R1"
     },
     {
       "word": "IPC",
@@ -418,7 +418,7 @@
       "say": "后端（英文 backend 夹在中文里一律换）。",
       "points": "后端",
       "scan": { "re": "\\bbackend\\b", "flags": "i" },
-      "source": "设计/91 §7.3"
+      "source": "内部行话"
     },
     {
       "word": "origin",
@@ -426,7 +426,7 @@
       "say": "机器。",
       "points": "机器",
       "scan": { "re": "\\borigin\\b", "flags": "i" },
-      "source": "设计/91 §5.2④ 例"
+      "source": "改写示例"
     },
     {
       "word": "apikey",
@@ -443,7 +443,7 @@
       "tier": "禁",
       "say": "账号清单（~/.claude-accts/accounts.json）；版本不对时说「账号清单格式版本」。",
       "scan": { "re": "\\bmanifest\\b", "flags": "i" },
-      "source": "设计/91 §7.3"
+      "source": "内部行话"
     },
     {
       "word": "kill",
@@ -451,7 +451,7 @@
       "say": "「结束」（结束会话 / 结束进程）。",
       "scan": { "re": "\\bkill\\b", "flags": "i" },
       "source": "CP1 台账",
-      "note": "〔C4e · 第四波 4C〕台账里标着「新词:kill」的那几行随 monitor 的杀会话 / 送键发送端迁到界面退役（那几句改写进文案表 tmuxControl.*，不再说 kill），ledger 摘掉；本条的扫描照旧拦新的。"
+      "note": "台账里标着「新词:kill」的那几行随 monitor 的杀会话 / 送键发送端迁到界面退役（那几句改写进文案表 tmuxControl.*，不再说 kill），ledger 摘掉；本条的扫描照旧拦新的。"
     },
     {
       "word": "英文实现词",
@@ -460,7 +460,7 @@
       "scan": { "re": "\\b(?:watcher|invoke|spawn|dispatch|panic|tokio|pidfd|rollback|flock|uuid|vendored|Win32|SessionMap|ToolSpec|copy-data|sftp-server)\\b|CLI\\s*渲染器|SFTP\\s*句柄|编译期内嵌|交叉编译内嵌", "flags": "i" },
       "examples": ["tokio运行时", "watcher", "SFTP句柄"],
       "ledger": [],
-      "source": "设计/91 §7.3（英文我方名）· CP1 台账"
+      "source": "内部行话（英文我方名）· CP1 台账"
     },
     {
       "word": "系统错误码",
@@ -478,7 +478,7 @@
       "scan": { "re": "\\b[a-z]+(?:[A-Z][a-z0-9]*)+\\b|\\b(?:ADDED|ALREADY|Exact|Heuristic|DynamicGuess|bad_args|bad_path|accounts-meta|agents\\.tsv|__ccm_bind|auto-launch|touches|localStorage|UserDataFolder)\\b|\\.?build_id\\b", "flags": "" },
       "examples": ["backendPath", "cliFlags", "__ccm_bind", ".build_id", "ADDED"],
       "counterExamples": ["API key", "Claude Code"],
-      "source": "设计/91 §7.3（配置键名直出）· CP1 台账",
+      "source": "内部行话（配置键名直出）· CP1 台账",
       "note": "label / jump / kind 是普通英文单词，正则认不出它们是配置键 ⇒ 这三个只靠人工 review。"
     },
     {
@@ -489,7 +489,7 @@
       "examples": ["C14", "K-R49", "U4b", "C8①"],
       "counterExamples": ["SHA256", "UTF-8", "Win32"],
       "ledger": ["C8①"],
-      "source": "设计/91 §7.3"
+      "source": "内部行话"
     },
     {
       "word": "TOFU",
@@ -514,7 +514,7 @@
       "points": "tmux",
       "scan": { "re": "send-keys|send-into|capture-pane|tmux-hook|tmux\\s*标记", "flags": "i" },
       "examples": ["send-keys", "capture-pane"],
-      "source": "设计/91 §4 R1b 第 2 条 · §7.3"
+      "source": "R1b · 内部行话"
     },
     {
       "word": "通信层行话",
@@ -524,16 +524,16 @@
       "scan": { "re": "首帧|帧面|hello\\s*帧|\\bhello\\b|\\back\\b|握手|应答形状|协议漂移|控制通道|控制面|入方向|能力声明|能力协商|能力\\s*token|读面|写面|读端|拨号任务|拨号代理|另一条路|路由段", "flags": "i" },
       "examples": ["握手时没报", "hello帧", "能力token", "拨号代理拨不通"],
       "ledger": ["流"],
-      "source": "设计/91 §7.3（通道/协议行话）· CP1 台账",
-      "note": "帧 / 口 / 流 / 通道 / 链路 / 管道 / 腿 / 能力 / 契约 / 载荷 / 应答 / 对侧 是单字或普通词，正则扫它们会把「流程」「端口」「能力」的正常用法一起扫掉 ⇒ 这几个只靠人工 review。〔第三波 C2 09-24〕台账里唯一标着「新词:ack」的那一行（拨号代理 ack 序列化失败的兜底 JSON）随拨号代理重写一起删了 ⇒ 本条不再认领 `ack`（ledger 两向相等那条判据要求如此）；`\\back\\b` 仍在 scan 里，词本身照旧归「后端」。"
+      "source": "内部行话（通道/协议行话）· CP1 台账",
+      "note": "帧 / 口 / 流 / 通道 / 链路 / 管道 / 腿 / 能力 / 契约 / 载荷 / 应答 / 对侧 是单字或普通词，正则扫它们会把「流程」「端口」「能力」的正常用法一起扫掉 ⇒ 这几个只靠人工 review。台账里唯一标着「新词:ack」的那一行（拨号代理 ack 序列化失败的兜底 JSON）随拨号代理重写一起删了 ⇒ 本条不再认领 `ack`（ledger 两向相等那条判据要求如此）；`\\back\\b` 仍在 scan 里，词本身照旧归「后端」。"
     },
     {
       "word": "拉前",
       "tier": "禁",
       "say": "「切到终端窗口」。",
       "scan": { "re": "拉前", "flags": "" },
-      "source": "设计/91 §7.3（自造概念名）",
-      "note": "〔第二波 T4 09-24〕CP1 台账里标着「新词:拉前」的四行随它们的原文一起删了（tabs.ts 里 ↗ 失败后按 tmux 实况猜归因的那段 E73 代码整段退役）⇒ 本条不再认领台账标记（ledger 两向相等那条判据要求如此）。词本身仍禁：tabs.ts 里还剩两处「拉前失败」toast 标题，普查不把它们算进存疑带，归 CP2 那一波改。"
+      "source": "内部行话（自造概念名）",
+      "note": "CP1 台账里标着「新词:拉前」的四行随它们的原文一起删了（tabs.ts 里 ↗ 失败后按 tmux 实况猜归因的那段 E73 代码整段退役）⇒ 本条不再认领台账标记（ledger 两向相等那条判据要求如此）。词本身仍禁：tabs.ts 里还剩两处「拉前失败」toast 标题，普查不把它们算进存疑带，归 CP2 那一波改。"
     },
     {
       "word": "容器",
@@ -542,14 +542,14 @@
       "points": "tmux",
       "scan": { "re": "容器", "flags": "" },
       "ledger": [],
-      "source": "设计/91 §7.3"
+      "source": "内部行话"
     },
     {
       "word": "落点",
       "tier": "禁",
       "say": "「安装位置」或直接写路径。",
       "scan": { "re": "落点", "flags": "" },
-      "source": "设计/91 §7.3"
+      "source": "内部行话"
     },
     {
       "word": "基座",
@@ -557,7 +557,7 @@
       "say": "「不指定账号」（不做账号隔离，用那台机器 ~/.claude 那一套）。",
       "points": "账号",
       "scan": { "re": "基座", "flags": "" },
-      "source": "设计/99 §2.2 ㉙③（主会话 09-28 按 V157 裁：界面文字不用架构行话）· 设计/80 §9.0 · 设计/91 §4 R1",
+      "source": "界面文字不用架构行话 · R1",
       "note": "内部标识符（kind:\"base\" · useBase · --base）不动，那是实现词；管的是对外文字。"
     },
     {
@@ -565,7 +565,7 @@
       "tier": "禁",
       "say": "「cc-monitor 加的那一段」（BEGIN / END 标记之间）；围栏外的「裸行」→「那一段之外的行」。",
       "scan": { "re": "围栏|裸行", "flags": "" },
-      "source": "设计/91 §7.3"
+      "source": "内部行话"
     },
     {
       "word": "常驻实例",
@@ -582,14 +582,14 @@
       "say": "「后端版本」；没有时说「远端还没装后端」。",
       "points": "后端",
       "scan": { "re": "版本标记", "flags": "" },
-      "source": "设计/91 §7.3"
+      "source": "内部行话"
     },
     {
       "word": "重走",
       "tier": "禁",
       "say": "「重新扫描」（重走周期 →「扫描间隔」· 走完 →「扫完」）。",
       "scan": { "re": "重走", "flags": "" },
-      "source": "设计/91 §7.3",
+      "source": "内部行话",
       "note": "「走完」是普通词，不扫。"
     },
     {
@@ -598,7 +598,7 @@
       "say": "「较慢的方式」。",
       "scan": { "re": "慢路", "flags": "" },
       "source": "CP1 台账",
-      "note": "〔F7a · 第三波 09-24〕标「新词:慢路」的那一行（文件窗口复制的退路前缀）随复制换到后端删了（在那台机器上复制，没有慢路可喊），`ledger` 认领随之摘掉；词照旧禁 —— 老面板那一处还在，归 F7b 删面板。"
+      "note": "标「新词:慢路」的那一行（文件窗口复制的退路前缀）随复制换到后端删了（在那台机器上复制，没有慢路可喊），`ledger` 认领随之摘掉；词照旧禁 —— 老面板那一处还在，归 F7b 删面板。"
     },
     {
       "word": "零流量复制",
@@ -613,7 +613,7 @@
       "say": "说它是什么、不能做什么：in-place 账号 →「不支持切换」。",
       "points": "in-place",
       "scan": { "re": "逃生口", "flags": "" },
-      "source": "设计/91 §2.5 同族（accounts.ts 账号徽标的字，本拍术语表里现打出来的）"
+      "source": "自造比喻 同族（accounts.ts 账号徽标的字，术语表里现打出来的）"
     },
     {
       "word": "自造概念名",
@@ -622,7 +622,7 @@
       "scan": { "re": "数据面漂移记账|诚实降级|如实降级|平价预言机|分流器|原语|身份配方|身份行|装口|抢救|铸|申报|意图标|开窗预算|浏览名单|拉起器|起法|同寿|一次性模式|双向绑定|反推", "flags": "" },
       "examples": ["诚实降级", "开窗预算"],
       "ledger": [],
-      "source": "设计/91 §2.5 · §7.3",
+      "source": "自造比喻 · 内部行话",
       "note": "「避让」是普通词，不扫。"
     },
     {
@@ -641,7 +641,7 @@
       "scan": { "re": "\\bSome\\(|\\bNone\\b", "flags": "" },
       "examples": ["pid=Some(1234)", "账号：None"],
       "counterExamples": ["none", "Nonesuch", "Something"],
-      "source": "设计/91 §6 第 9 条 · 设计/99 §2.2（FIX5）",
+      "source": "R1",
       "note": "只认得表里写死的形；插值实参在运行期才变成 Some(…)（{x:?} 喂 Option 进占位符）的那一形静态看不见。"
     },
     {
@@ -651,7 +651,7 @@
       "scan": { "re": "(?<![\\w=\\-./:?&%])[A-Za-z_][A-Za-z0-9_]*=(?!=)", "flags": "" },
       "examples": ["version=5", "（kind=k-calls）", "HOME=/home/u", "control=unsupported：后端太旧"],
       "counterExamples": ["--ccm-tmux=<名> 与 --tmux-base 只能选一个", "地址里缺 ?viewer= 参数", "留空 = claude", "长度非法（1..=64）", "a == b"],
-      "source": "设计/91 §6 第 9 条 · 设计/99 §2.2（FIX5）",
+      "source": "R1",
       "note": "只认 ASCII 键；「解析为=…」这种中文键的写法认不出。运行期拼出来的日志行（Rust 里纯英文的 format!）不在表里，也不在这一格的射程里。"
     }
   ]

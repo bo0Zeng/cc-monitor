@@ -167,12 +167,12 @@ describe("KR45D0 SessionViewer.scrollToMessage —— 今天零判据的那个�
 });
 
 /**
- * 〔W5-RENDER R5〕`设计/10 §3.5` D2 逐字：「`render.ts` 的 IntersectionObserver 没有 root —— 用浏览器视口而真实滚动容器是
+ * 「`render.ts` 的 IntersectionObserver 没有 root —— 用浏览器视口而真实滚动容器是
  * `.stream`，查看器里几何不同 ⇒ lazy 高亮触发时机不可靠」。修法：每个滚动容器一个 IO，root = 那个容器。
  * 本组在真渲染管线（本文件的台子）上钉：查看器 lazy 渲染出来的每张卡，都交给了 root === 它自己滚动容器的那一个 IO；
  * 换会话 / 关掉时那个 IO 被断开。
  */
-describe("D2 · lazy 补算的 IO 以查看器自己的滚动容器为 root（`设计/10 §3.5`）", () => {
+describe("D2 · lazy 补算的 IO 以查看器自己的滚动容器为 root", () => {
   class FakeIO {
     static all: FakeIO[] = [];
     readonly observed = new Set<Element>();
@@ -214,12 +214,12 @@ describe("D2 · lazy 补算的 IO 以查看器自己的滚动容器为 root（`�
 });
 
 /**
- * 〔W5-RENDER R11〕`设计/10 §7` 第 10 条逐字：「命中落在工具结果里（`--include-tools`）时那条记录可能被并进工具组卡、
+ * 「命中落在工具结果里（`--include-tools`）时那条记录可能被并进工具组卡、
  * 找不到 `[data-uuid]` ⇒ 标『跳不过去』」。修法：被并入 / 被注入的记录给落点记 `data-member-uuid`，`revealCard` 两种键都认。
  * 判据（集合相等）：一条典型工具链（tool_use → tool_result → 又一个 tool_use 并进同一组 → 它的 tool_result）里，
  * 四条记录的 uuid 全都跳得到，而且跳到的元素是它自己那一块（不是整组外壳）。
  */
-describe("R11 · 工具组里被并入 / 被注入的记录也跳得到（`设计/10 §7` 第 10 条）", () => {
+describe("R11 · 工具组里被并入 / 被注入的记录也跳得到", () => {
   const ts = (s: number): string => `2026-09-10T00:00:${String(s).padStart(2, "0")}.000Z`;
   const use = (seq: number, uuid: string, id: string, cmd: string): RigPayload =>
     line(seq, {

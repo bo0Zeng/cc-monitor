@@ -1,5 +1,5 @@
 /**
- * 🔴 `设计/70 §2.4` 那条通用纪律的判据（第二刀 · 步 8）＋ `§8` 判据 **#5**（界面上零 markdown 标记）。
+ * 🔴 那条通用纪律的判据（第二刀 · 步 8）＋ `§8` 判据 **#5**（界面上零 markdown 标记）。
  *
  * 纪律逐字：
  * > **后端返回的字符串，凡是会直接进界面的，都不许包含：
@@ -8,18 +8,18 @@
  * # 这一条判的是**前端这一侧**，而且**不冒充**判了后端那一侧
  *
  * 纪律的主语是「后端返回的字符串」，而**同一条形状前端自己也犯**：
- * `70 §10.4` 第二刀那一行点名的六条现打实例里，有四条在 `src/frontend/ui/settings/` 里
+ * 第二刀那一行点名的六条现打实例里，有四条在 `src/frontend/ui/settings/` 里
  *（`diagnostics-section.ts` 的源码住址与三处内部标识符 · `data-section.ts` 的文案嵌 HTML ·
  * `config-surface-section.ts` 的设计承诺当文案与欠账当文案）。本条盯的就是它们。
  *
  * 🔴 **〔射程 · 说清它盖不到什么〕**
  * - **盖不到后端产的那一半**：`**下一步：…**`（`src/frontend/shell/src/backend_policy.rs::death_copy`）
  *   与整条 `ledger_line` 是**运行期**才拼出来的，jsdom 里没有真后端 ⇒ 这把尺子看不见它们。
- *   那是 `70 §7` **第二刀 步 7** 的活，住 `src/frontend/shell/`（本轮写区之外）。
+ *   那是 **第二刀 步 7** 的活，住 `src/frontend/shell/`（本轮写区之外）。
  *   它们登记在下面的 `BACKEND_SIDE_DEBT` 里 —— **登记不等于判了**，写出来是为了
  *   「没提」不被读成「治好了」。
  * - **盖不到运行期才灌进来的后端字符串**：`data_paths.rs` 那条带 `sid` / `HWND` 的说明
- *   （`70 §10.2` 差项 4）是后端给的数据，本条扫的是**前端源码里写死的那些句子**
+ *   （差项 4）是后端给的数据，本条扫的是**前端源码里写死的那些句子**
  *   ＋ **真渲染出来的 DOM**（而 DOM 里那部分今天是 mock 出来的）。
  * - **盖不到「文案写得好不好」**：它只认那五种**形状**。
  *
@@ -40,10 +40,10 @@ vi.mock("../../../../src/frontend/ui/ipc/commands", () => ({
     {
       get: (_t, name: string) => (args?: unknown) => {
         ipc.calls.push(name);
-        // 〔ST2 · `70 §11.4` 末〕默认一律 reject（各块自有 catch）；给了答复的命令照答复回 ——
+        // 〔末〕默认一律 reject（各块自有 catch）；给了答复的命令照答复回 ——
         //   原来这里**只有** reject ⇒ 足迹那张表一行都不渲染 ⇒ `describeUndo` / `summarizeOwedInstallers`
         //   的输出**从来没上过被扫的 DOM**（「判据不在执行链上就等于不存在」的一个活例）。
-        // 〔MIG-3b 续〕答复可以是函数（按入参答：足迹经通道问，`chan_call` 要看 op 与载荷）。
+        // 答复可以是函数（按入参答：足迹经通道问，`chan_call` 要看 op 与载荷）。
         if (ipc.replies.has(name)) {
           const r = ipc.replies.get(name);
           return typeof r === "function" ? (r as (a: unknown) => Promise<unknown>)(args) : Promise.resolve(r);
@@ -81,7 +81,7 @@ vi.mock("../../../../src/frontend/ui/settings/mcp-section", () => ({
 vi.mock("../../../../src/frontend/ui/settings/plugins-section", () => ({
   PluginsSection: class { element = document.createElement("div"); },
 }));
-// 〔AL1c · 4B〕`cc_integration.ts` 并进了 `machine-aliases.ts`（终端集成成了「别名」那一块 PowerShell 那一侧），它的替身随之删掉。
+// `cc_integration.ts` 并进了 `machine-aliases.ts`（终端集成成了「别名」那一块 PowerShell 那一侧），它的替身随之删掉。
 vi.mock("../../../../src/frontend/ui/keybindings/editor", () => ({
   KeybindingsEditor: class { element = document.createElement("div"); },
 }));
@@ -104,43 +104,43 @@ import { copyText } from "../../../../src/frontend/ui/copy-table";
 import { __setHostOsForTests } from "../../../../src/frontend/ui/settings/host-os";
 import { __resetMachineContextForTests } from "../../../../src/frontend/ui/settings/machine-context";
 
-/** `70 §2.4` 那五种形状，一条规则一个名字（红的时候要说得出是哪一种）。 */
+/** 那五种形状，一条规则一个名字（红的时候要说得出是哪一种）。 */
 const SHAPES: ReadonlyArray<{ name: string; re: RegExp; why: string }> = [
   {
     name: "markdown 标记",
     // `**粗体**`。⚠ 只认成对的，单个星号（`*.log` 之类）不算。
     re: /\*\*[^*\n]+\*\*/g,
-    why: "界面不渲染 markdown ⇒ 星号会连着一起显示给用户看（`70 §2.1` #1）",
+    why: "界面不渲染 markdown ⇒ 星号会连着一起显示给用户看",
   },
   {
     name: "源码住址",
     // `foo.rs` / `bar.ts:123` / `a::b`。⚠ **刻意不认** `.json` / `.log` / `.sh`
     // ——那些是**用户自己机器上的文件路径**，纪律里写明「文件路径以外的源码住址」。
     re: /[\w/-]+\.(?:rs|ts|tsx|mts|mjs)\b|[A-Za-z_]\w*::[A-Za-z_]\w*|\b\w+_subsystem\s*=/g,
-    why: "用户不需要知道这件事发生在我们哪个文件的第几行（`70 §2.4`）",
+    why: "用户不需要知道这件事发生在我们哪个文件的第几行",
   },
   {
     name: "内部标识符",
     re: /\btracing\b|\bts-rs\b|\bserde\b|\bOnceCell\b|\bspawn_blocking\b/g,
-    why: "我们这一侧的词（`91 §2.1` 那一族）——用户不知道我们用的是哪个库",
+    why: "我们这一侧的词——用户不知道我们用的是哪个库",
   },
   {
     name: "日志行格式",
     re: /\[死亡账\]|\borigin=|\b判定=|\b退出状态=/g,
-    why: "`ledger_line` 自己的注释就写着「落点是 monitor 自己的滚动日志」（`70 §2.1` #3）",
+    why: "`ledger_line` 自己的注释就写着「落点是 monitor 自己的滚动日志」",
   },
   {
     name: "设计论证 / 下一步处方",
     re: /下一步：|放大器|本条不推翻|如实登记|判不了/g,
-    why: "写给开发文档看的论证，不该出现在设置面板上（`70 §2.1` #2）",
+    why: "写给开发文档看的论证，不该出现在设置面板上",
   },
   {
-    // 〔V161〕用户 09-29「所有文案…不能把开发过程混进去」⇒ 「还没有安装入口 / 暂未提供 / 今天还没有」也归这一形。
-    // 〔ST2 · `70 §11.4` 末那条射程缺口〕五种形状里原来**没有这一种** ⇒ 足迹那两句
+    // 用户 09-29「所有文案…不能把开发过程混进去」⇒ 「还没有安装入口 / 暂未提供 / 今天还没有」也归这一形。
+    // 〔末那条射程缺口〕五种形状里原来**没有这一种** ⇒ 足迹那两句
     //   「该由 cc-monitor 自带、而安装入口还没写」这把尺子一条都逮不到。
     name: "欠账当产品文案",
     re: /该由 cc-monitor 自带|入口还没写|还没写|我们欠|还没有安装|暂未提供|今天还没有/g,
-    why: "把我们还没做完的实现写成给用户看的话（`70 §11.4` #1 / #2 · V161）——说现状与你能做什么（「这项不能在这里装」），不说「还没有 / 今天 / 以后」",
+    why: "把我们还没做完的实现写成给用户看的话（/ #2）——说现状与你能做什么（「这项不能在这里装」），不说「还没有 / 今天 / 以后」",
   },
 ];
 
@@ -158,10 +158,10 @@ export function violationsOf(text: string): { shape: string; hit: string }[] {
  * 逐条：住址 → 它今天产的是哪一种形状。
  */
 const BACKEND_SIDE_DEBT: Readonly<Record<string, string>> = {
-  // 〔第四波 ST2 · 步 7〕`backend_policy.rs::death_copy` / `::ledger_line` 两条**还清了**：
+  // `backend_policy.rs::death_copy` / `::ledger_line` 两条**还清了**：
   //   death_copy 不再产 markdown / 论证；界面上「最后一次」接的是 `last_brief`（判定 ＋ 退出状态），
   //   账行只落日志。判据在 Rust 那侧：`backend_policy_tests.rs::what_reaches_the_settings_panel_carries_no_markdown_no_argument_no_log_format`。
-  // 〔第四波 ST2 · 子步 6〕`data_paths.rs` 那条（条目说明里的 `sid` / `HWND`）**还清了**，
+  // `data_paths.rs` 那条（条目说明里的 `sid` / `HWND`）**还清了**，
   //   判据在 Rust 那侧：`data_paths_tests.rs::no_entry_description_speaks_our_internal_words`。
 };
 
@@ -185,7 +185,7 @@ function visibleCopy(root: HTMLElement): string {
   return parts.join("\n");
 }
 
-describe("`70 §2.4` 文案纪律 ＋ `§8` #5：界面上零 markdown / 零源码住址", () => {
+describe(" 文案纪律 ＋ `§8` #5：界面上零 markdown / 零源码住址", () => {
   beforeEach(() => {
     ipc.calls = [];
     document.body.replaceChildren();
@@ -216,7 +216,7 @@ describe("`70 §2.4` 文案纪律 ＋ `§8` #5：界面上零 markdown / 零源�
     const p = new SettingsPanel({ windowMode: true });
     await p.open();
     await tick();
-    // 两个顶层页 + 本机子页都走一遍（〔ST2〕顶层「改动足迹」已删）—— 只看落地页等于只判了一部分。
+    // 两个顶层页 + 本机子页都走一遍（顶层「改动足迹」已删）—— 只看落地页等于只判了一部分。
     for (const id of ["app", "app-appearance", "app-logs", "app-data", "machine:（本机）", "machines"]) {
       const btn = document.querySelector<HTMLButtonElement>(
         `[id="settings-tab-${id}"]`,
@@ -224,7 +224,7 @@ describe("`70 §2.4` 文案纪律 ＋ `§8` #5：界面上零 markdown / 零源�
       btn?.click();
       await tick();
     }
-    // 〔ST2〕漂移记账在本机子页的「足迹」栏里（per-machine 那一批）—— 走过本机子页它就在被扫的 DOM 里。
+    // 漂移记账在本机子页的「足迹」栏里（per-machine 那一批）—— 走过本机子页它就在被扫的 DOM 里。
     expect(document.querySelector(".drift-ledger-section"), "本机子页上没有「未识别的数据」那一块").not.toBeNull();
     const root = document.querySelector<HTMLElement>(".settings-panel")!;
     const copy = visibleCopy(root);
@@ -233,7 +233,7 @@ describe("`70 §2.4` 文案纪律 ＋ `§8` #5：界面上零 markdown / 零源�
     const bad = violationsOf(copy);
     expect(
       bad.map((v) => `${v.shape}: ${v.hit}`).sort(),
-      `设置面板上出现了 ${bad.length} 处 \`70 §2.4\` 禁的形状。\n` +
+      `设置面板上出现了 ${bad.length} 处 \`\` 禁的形状。\n` +
         SHAPES.map((s) => `  · ${s.name} —— ${s.why}`).join("\n"),
     ).toEqual([]);
   });
@@ -253,7 +253,7 @@ describe("`70 §2.4` 文案纪律 ＋ `§8` #5：界面上零 markdown / 零源�
       uninstallable: false,
       tier,
     });
-    // 〔MIG-3b 续〕足迹经通道问本机后端（`footprint-report`，一问）；monitor 自己进程的那几条事实问 `footprint_client_facts`。
+    // 足迹经通道问本机后端（`footprint-report`，一问）；monitor 自己进程的那几条事实问 `footprint_client_facts`。
     const report = {
       rows: [
         row("AppInstalls", "甲", { kind: "present", detail: "文件，1 字节" }),
@@ -282,7 +282,7 @@ describe("`70 §2.4` 文案纪律 ＋ `§8` #5：界面上零 markdown / 零源�
       const rows = document.querySelectorAll(".config-surface-row");
       expect(rows.length, "表一行都没上屏 ⇒ 下面的零命中是空转（原来就是这样空转的）").toBe(4);
       const root = document.querySelector<HTMLElement>(".config-surface-section")!;
-      // 反空真：欠的那一档那句话**真的在**被扫的文字里（〔V161〕按文案键取，不钉原文）。
+      // 反空真：欠的那一档那句话**真的在**被扫的文字里（按文案键取，不钉原文）。
       expect(visibleCopy(root)).toContain(copyText("configSurface.summarizeOwedInstallers.owed", { namesCount: 1 }));
       expect(violationsOf(visibleCopy(root)).map((v) => `${v.shape}: ${v.hit}`)).toEqual([]);
     } finally {
@@ -294,7 +294,7 @@ describe("`70 §2.4` 文案纪律 ＋ `§8` #5：界面上零 markdown / 零源�
     // 这一格不是断言代码，是断言**我们没有假装那几条已经没了**。
     // 它会在有人把登记清空时红 —— 那时要么债真还了（去 `src/frontend/shell/` 核过再删），
     // 要么是有人把不方便的话删掉了。
-    // 〔ST2〕三条全还清 ⇒ 0。再有人往这里登记，就是又欠了一笔（要写清住址与理由）。
+    // 三条全还清 ⇒ 0。再有人往这里登记，就是又欠了一笔（要写清住址与理由）。
     expect(Object.keys(BACKEND_SIDE_DEBT).length).toBe(0);
     for (const [addr, why] of Object.entries(BACKEND_SIDE_DEBT)) {
       expect(addr.startsWith("src/frontend/shell/"), `${addr} 不在后端那一侧，登记错地方了`).toBe(true);

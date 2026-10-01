@@ -1,4 +1,4 @@
-//! 〔SR1a · 2026-09-24〕**链路**：monitor 经它与本机常驻后端之间**那条已有的流**开的、到某台远端的一条字节通道。
+//! **链路**：monitor 经它与本机常驻后端之间**那条已有的流**开的、到某台远端的一条字节通道。
 //!
 //! # 它替掉的是什么
 //!
@@ -167,9 +167,9 @@ impl Table {
                 &crate::common::contract::malformed("missing `dial` (a dial request)"),
             );
         };
-        // 🔴 **原始子系统字节流不交给界面**（〔SR1b〕SFTP 住本机常驻后端 `dial/sftp.rs`：界面只有两条路 ——
+        // 🔴 **原始子系统字节流不交给界面**（SFTP 住本机常驻后端 `dial/sftp.rs`：界面只有两条路 ——
         //    部署走 `use:"files"` 的一问一答、传输走 `transfer-*` 命令；把协议字节交出去 = SFTP 协议又回到界面进程，
-        //    V89「界面进程零 SSH」当场破）。协议上认得这个词，说得出为什么不做。
+        //   「界面进程零 SSH」当场破）。协议上认得这个词，说得出为什么不做。
         if dial.get("use").and_then(serde_json::Value::as_str) == Some("subsystem") {
             return err(
                 id,

@@ -179,7 +179,7 @@ def main():
         if os.path.isdir(d0):
             files += [os.path.join(d0, x) for x in sorted(os.listdir(d0)) if x.endswith(".md")]
     # ⚠ 分母只许数 .md —— 上一版这里用 len(os.listdir(...)) 数的是【全部条目】，
-    #   今天两个目录恰好只有 .md ⇒ 两个口径同值。那是巧合不是正确（K-R6 §4.10 自逮）。
+    #   今天两个目录恰好只有 .md ⇒ 两个口径同值。那是巧合不是正确（自逮）。
     n_f = len([x for x in os.listdir(feats) if x.endswith(".md")]) if os.path.isdir(feats) else 0
     n_a = len([x for x in os.listdir(auds) if x.endswith(".md")]) if os.path.isdir(auds) else 0
     print(f"    分母 = {len(files)} 份 md（features {n_f} · audits {n_a}；口径：只数 .md）")

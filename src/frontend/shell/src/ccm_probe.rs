@@ -1,7 +1,7 @@
 //! F03（unify-launch）：探测 `ccm`（F02 统一启动 CLI）装没装及其能力集。
-//! 〔MIG-2 · `99 §2.1 ⑬`〕远端那一条（`probe_ccm_cli`，一次性 headless SSH exec，照当年 F60 抓屏那条
+//! 远端那一条（`probe_ccm_cli`，一次性 headless SSH exec，照当年 F60 抓屏那条
 //! `capture_remote_pane`〔散文墓碑〕的范式）与前端缓存 `src/ccm-probe.ts` 删了：
-//! 起会话的渲染住进那台后端，装没装由它在自己机器上现查（`src/backend/control/launch_render/wire.rs::render_ccm_launch`：`ccm` 就是那台后端本身（V28），能力是它自己的）。
+//! 起会话的渲染住进那台后端，装没装由它在自己机器上现查（`src/backend/control/launch_render/wire.rs::render_ccm_launch`：`ccm` 就是那台后端本身，能力是它自己的）。
 //! 本文件今天只剩**本机 PATH 上那个 `ccm`** 的探测（`local_ccm_entry_status` 那一族用）。
 
 use crate::copy_table::copy_text;
@@ -32,7 +32,7 @@ pub struct CcmProbeResult {
     #[cfg_attr(test, ts(optional))]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub build: Option<String>,
-    /// 〔FIX3 · `99 §2.2 ㉔`〕登录 shell 里 `command -v ccm` 答的那一句（一般是一个路径；函数 / 别名时是它们自己的写法）。
+    /// 登录 shell 里 `command -v ccm` 答的那一句（一般是一个路径；函数 / 别名时是它们自己的写法）。
     /// 只有「问 PATH 上那个」那一条探针带它；它不参与「答没答出名片」（`installed`）—— 答不出名片的旧入口照样有住址。
     #[cfg_attr(test, ts(optional))]
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -42,7 +42,7 @@ pub struct CcmProbeResult {
 /// 解析 `ccm --ccm-probe` 的输出。首行非字面 `name=ccm` → 判定未装/不兼容——防止 PATH 里
 /// 已有同名但无关的自定义 `ccm`（用户自己的脚本）被误判为本工具的 CLI。
 fn parse_probe_output(out: &str) -> CcmProbeResult {
-    // 〔FIX3〕`at=` 那一行是探针自己补在最后的（[`CCM_PROBE_CMD`]），不归名片 ⇒ 先摘出来、不论名片认不认得。
+    // `at=` 那一行是探针自己补在最后的（[`CCM_PROBE_CMD`]），不归名片 ⇒ 先摘出来、不论名片认不认得。
     let at = out
         .lines()
         .filter_map(|l| l.strip_prefix("at="))
@@ -86,9 +86,9 @@ fn parse_probe_output(out: &str) -> CcmProbeResult {
 
 /// 探「本机交互 shell 的 `PATH` 上那个 `ccm`」的命令（交给 `bash -lic`）。
 ///
-/// 〔E2〕远端那一跳不再用它：`ccm` 就是那台后端本身，改问那台后端的 `ccm-probe`（〔MIG-3b〕今天界面经通道直问，`src/ccm-probe.ts`）。
+/// 远端那一跳不再用它：`ccm` 就是那台后端本身，改问那台后端的 `ccm-probe`（今天界面经通道直问，`src/ccm-probe.ts`）。
 /// 本机仍问它：`KR69D2`「你 PATH 上那个是不是我们这一份」答的正是交互 shell 的 `PATH`。
-/// 〔FIX3 · `99 §2.2 ㉔`〕名片之后补一行 `at=<command -v ccm>`：敲 `ccm` 走到的是哪一份（旧入口答不出名片也说得出住址）。
+/// 名片之后补一行 `at=<command -v ccm>`：敲 `ccm` 走到的是哪一份（旧入口答不出名片也说得出住址）。
 const CCM_PROBE_CMD: &str = "command -v ccm >/dev/null 2>&1 && { ccm -- --ccm-probe; printf '\\nat=%s\\n' \"$(command -v ccm)\"; } || printf 'NO_CCM\\n'";
 
 /// 本机探测结果的缓存。TTL 与前端 `ccm-probe.ts::CCM_PROBE_TTL_MS` 同为 5 分钟 ——
@@ -104,7 +104,7 @@ const LOCAL_PROBE_TTL: std::time::Duration = std::time::Duration::from_secs(300)
 ///
 /// # 为什么本机这条是同步的，而远端那条是 async
 ///
-/// 调用方是 〔MIG-2〕原先是 `history.rs` 的本机拉起（`resume_history_session` / `new_local_session`〔散文墓碑〕
+/// 调用方是原先是 `history.rs` 的本机拉起（`resume_history_session` / `new_local_session`〔散文墓碑〕
 /// 两个 `#[tauri::command]` 的同步调用链）。远端那条是 async 因为 ssh 本来就要 await；
 /// 本机没有那一跳，`bash -lic` 直接跑 —— 为了它把整条链改成 async 是纯粹的传染。
 ///
@@ -161,8 +161,8 @@ const LOCAL_PROBE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(
 /// `Command::output()` 没有超时形态（std 不提供 `wait_timeout`），所以这里自己拼：
 /// stdout 交给一条读线程（不读会在管道写满时把子进程堵死），主线程按截止时间轮询 `try_wait`。
 ///
-/// 〔WF1 · `99 §2.2 ㉔`〕Windows 那一形：新开一个 PowerShell 窗口时敲 `ccm` 走到哪（见 [`probe_via_fresh_powershell`]）。
-/// 〔P4b · 阶段 H〕两份 cfg 分身合成一份：本机新开终端是哪一族 shell 由 `platform::login_shell::LOGIN_SHELL` 答。
+/// Windows 那一形：新开一个 PowerShell 窗口时敲 `ccm` 走到哪（见 [`probe_via_fresh_powershell`]）。
+/// 两份 cfg 分身合成一份：本机新开终端是哪一族 shell 由 `platform::login_shell::LOGIN_SHELL` 答。
 pub(crate) fn probe_local_ccm_uncached(timeout: std::time::Duration) -> CcmProbeResult {
     use crate::platform::login_shell::{LoginShell, LOGIN_SHELL};
     match LOGIN_SHELL {
@@ -171,9 +171,9 @@ pub(crate) fn probe_local_ccm_uncached(timeout: std::time::Duration) -> CcmProbe
     }
 }
 
-/// 〔WF1 · ㉔〕Windows 上「新开一个终端窗口时的 PATH」：注册表里机器级 ＋ 用户级（展开之后）现拼 ——
+/// Windows 上「新开一个终端窗口时的 PATH」：注册表里机器级 ＋ 用户级（展开之后）现拼 ——
 /// 本进程继承来的是 monitor 起的那一刻的那一份，用户刚在设置里加过的用户级 PATH 它看不到。
-/// 〔P1 · 同 P2 那一形（`profile_installer::render_user_path_probe_command`）〕自己编成 UTF-8 字节、直写标准输出流：
+/// 〔同 P2 那一形（`profile_installer::render_user_path_probe_command`）〕自己编成 UTF-8 字节、直写标准输出流：
 /// 不经控制台编码（中文系统是 936）、也不去改控制台代码页 ⇒ PATH 里有非 ASCII 目录时读回不坏。
 const FRESH_PATH_PS: &str = "$t = (@([Environment]::GetEnvironmentVariable('Path', 'Machine'), [Environment]::GetEnvironmentVariable('Path', 'User')) | Where-Object { $_ }) -join ';'\n\
 $b = [Text.Encoding]::UTF8.GetBytes($t + [char]10)\n\
@@ -181,9 +181,9 @@ $o = [Console]::OpenStandardOutput()\n\
 $o.Write($b, 0, $b.Length)\n\
 $o.Flush()\n";
 
-/// 〔WF1 · ㉔〕Windows 那一形的探测串，跑在**照常加载 profile** 的 PowerShell 里（`$PROFILE` 在哪、怎么加载由 PowerShell 自己答）。
+/// Windows 那一形的探测串，跑在**照常加载 profile** 的 PowerShell 里（`$PROFILE` 在哪、怎么加载由 PowerShell 自己答）。
 /// 输出与 [`CCM_PROBE_CMD`] 同形：名片 ＋ 空行 ＋ `at=<住址>`，找不到 ⇒ `NO_CCM`；住址：程序 ⇒ 它的路径，函数 / 别名 ⇒ 名字（同 `command -v`）。
-/// 〔P1〕整段拼好、编成 UTF-8 字节直写标准输出流（同上）：住址（用户目录）含非 ASCII 时不坏；名片那几行是 ASCII，经 PowerShell 读回不受代码页影响。
+/// 整段拼好、编成 UTF-8 字节直写标准输出流（同上）：住址（用户目录）含非 ASCII 时不坏；名片那几行是 ASCII，经 PowerShell 读回不受代码页影响。
 const CCM_PROBE_PS: &str = "$c = Get-Command ccm -ErrorAction SilentlyContinue | Select-Object -First 1\n\
 $t = if ($c) { ((& ccm '--' '--ccm-probe') -join [char]10) + [char]10 + [char]10 + 'at=' + $(if ($c.CommandType -eq 'Application') { $c.Source } else { $c.Name }) + [char]10 } else { 'NO_CCM' + [char]10 }\n\
 $b = [Text.Encoding]::UTF8.GetBytes($t)\n\
@@ -235,7 +235,7 @@ fn probe_with(timeout: std::time::Duration, cmd: &str) -> CcmProbeResult {
         c.args(["-lic", cmd])
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::piped());
-        // 三条策略（`00 §1.5.2`）：`Hidden`（探针绝不该在用户桌面上闪窗口）·
+        // 三条策略：`Hidden`（探针绝不该在用户桌面上闪窗口）·
         // `JobKillOnClose`（超时那条路要把 `-lic` 起出来的**整棵**树收掉 —— 用户 rc 里
         // 起了什么我们不知道，只杀 `bash` 本身漏得掉）· `Null`（rc 的抱怨不是我们的诊断，
         // 而这一跳唯一有用的字节在 stdout 上）。
@@ -266,7 +266,7 @@ pub(crate) fn probe_binary_uncached(
     use crate::spawn_managed::{spawn_managed_cmd, ConsolePolicy, Lifetime, StderrSink};
     probe_spawned(timeout, &|| {
         let mut c = std::process::Command::new(bin);
-        // 〔V151〕`ccm -- --ccm-probe`：ccm 自己的诊断口写在 `--` 右边。
+        // `ccm -- --ccm-probe`：ccm 自己的诊断口写在 `--` 右边。
         c.args(["--", "--ccm-probe"])
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::piped());
@@ -353,7 +353,7 @@ fn capture_full(
     let drain = |pipe: Option<Box<dyn Read + Send>>| {
         std::thread::spawn(move || {
             let mut buf = Vec::new();
-            // 〔W5-VIS · E 吞错普查点名〕读错**带回来**：原先 `let _ =` 吞掉，读坏了与「没输出」长得一样（都判成没装）。
+            // 〔E 吞错普查点名〕读错**带回来**：原先 `let _ =` 吞掉，读坏了与「没输出」长得一样（都判成没装）。
             let read = match pipe {
                 Some(mut s) => s.read_to_end(&mut buf).err().map(|e| e.to_string()),
                 None => None,
@@ -412,7 +412,7 @@ fn capture_full(
     })
 }
 
-/// 〔P1 · `设计/00 §1.2` 判定只在后端〕[`ask_once`] 没问成的几形。
+/// 〔判定只在后端〕[`ask_once`] 没问成的几形。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum OnceErr {
     /// 起不来（原话）。
@@ -425,7 +425,7 @@ pub(crate) enum OnceErr {
     Unreadable(String),
 }
 
-/// 〔P1〕**问我们自己放下去的那一份后端一次**：帧命令的 CLI 面 `<bin> -- --<cmd>`（`control/cli_control.rs`：入参 JSON 走 stdin、
+/// **问我们自己放下去的那一份后端一次**：帧命令的 CLI 面 `<bin> -- --<cmd>`（`control/cli_control.rs`：入参 JSON 走 stdin、
 /// 读到 EOF；exit 0 ⇒ stdout 一行 JSON · exit 2 ⇒ stderr 一行 `{code, message}`），不经 shell。
 /// 同步命令里问后端就走这一条（`INVARIANTS §10`：同步命令里不 `block_on` 连常驻后端）；本机后端自举（[`ask_place_verdict`]）也走它。
 pub(crate) fn ask_once(
@@ -440,7 +440,7 @@ pub(crate) fn ask_once(
         timeout,
         &|| {
             let mut c = std::process::Command::new(bin);
-            // 〔V151〕后端认的 argv 写在 `--` 右边（`control::ccm::route`）。
+            // 后端认的 argv 写在 `--` 右边（`control::ccm::route`）。
             c.args(["--", flag.as_str()])
                 .stdin(std::process::Stdio::piped())
                 .stdout(std::process::Stdio::piped());
@@ -484,11 +484,11 @@ pub(crate) fn ask_once(
     }
 }
 
-/// 〔P1〕本机后端自举那一问的上限：一个后端进程起来、读一遍落点那个文件（约 10 MB）就答；Windows 上第一次跑一份新写的 exe
+/// 本机后端自举那一问的上限：一个后端进程起来、读一遍落点那个文件（约 10 MB）就答；Windows 上第一次跑一份新写的 exe
 /// 杀毒软件会先扫一遍（几秒）⇒ 放宽到 20 秒。本机后端引导持锁等它（`local_backend_host::start_local_backend` 头注的代价那一段）。
 pub(crate) const PLACE_ASK_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(20);
 
-/// 〔P1 · 形状 A〕宿主交给 `local_backend::extract_embedded_to` 的问话口（`local_backend::PlaceAsk`）：跑暂存件的 `--place-verdict` 问一次。
+/// 〔形状 A〕宿主交给 `local_backend::extract_embedded_to` 的问话口（`local_backend::PlaceAsk`）：跑暂存件的 `--place-verdict` 问一次。
 pub(crate) fn ask_place_verdict(
     staged: &std::path::Path,
     args: &serde_json::Value,
@@ -496,7 +496,7 @@ pub(crate) fn ask_place_verdict(
     ask_once(staged, "place-verdict", args, PLACE_ASK_TIMEOUT)
 }
 
-/// 〔P1 · 第 3 件〕PATH 上另一个 `ccm` 的开头一截是不是我们早先放的旧入口 —— **问我们自己那一份后端**（`deploy-retired` 的 `{text}` 形），
+/// PATH 上另一个 `ccm` 的开头一截是不是我们早先放的旧入口 —— **问我们自己那一份后端**（`deploy-retired` 的 `{text}` 形），
 /// 本文件不认记号。问不成 ⇒ `false`（说不清就不说「是旧的」，退回泛泛那一句），记一行 debug。
 fn old_entry_by_backend(ours: &std::path::Path, head: &str) -> bool {
     match ask_once(
@@ -513,7 +513,7 @@ fn old_entry_by_backend(ours: &std::path::Path, head: &str) -> bool {
     }
 }
 
-// 🪦〔MIG-2 · `99 §2.1 ⑬`〕这里原来是 Tauri 命令 `probe_ccm_cli`〔散文墓碑〕（界面先问那台后端 `ccm-probe`、再把结果带去渲染）：
+// 🪦这里原来是 Tauri 命令 `probe_ccm_cli`〔散文墓碑〕（界面先问那台后端 `ccm-probe`、再把结果带去渲染）：
 //   `ccm …` 调用行的渲染进了那台后端，能力问它自己（`launch_render/wire.rs::render_ccm_launch`），这一跳删了。
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -562,14 +562,14 @@ pub struct LocalCcmEntry {
     pub verdict: PathCcmVerdict,
     /// 给人读的那句话。没有话要说时是**空串**（`Ours` 那一档）。
     pub message: String,
-    /// 〔FIX3 · `99 §2.2 ㉔` · `15 §5.4 D5`〕机器列表本机那一格（`ccm`）记什么：`Some(true)` = 两件都成
+    /// 机器列表本机那一格（`ccm`）记什么：`Some(true)` = 两件都成
     /// （我们那份装下来了 ＋ 登录 shell 里敲 `ccm` 走到的就是它）· `Some(false)` = 有一件不成 · `None` = 说不清（不写账本）。
     pub ok: Option<bool>,
     /// 那一格的一句话，两件都说。
     pub summary: String,
 }
 
-/// 〔FIX3 · `99 §2.2 ㉔`〕登录 shell 里敲 `ccm` 落在哪 —— 与我们落点上那一份是不是**同一个文件**。
+/// 登录 shell 里敲 `ccm` 落在哪 —— 与我们落点上那一份是不是**同一个文件**。
 ///
 /// 名片（[`classify_path_ccm`]）分不开「同一套契约、不同文件」（旧 shim 转给一份同版本的后端就是这样）；
 /// ㉔ 问的是「走到的是不是它」⇒ 能落到文件上的先比文件本身（解过链接），落不到文件上的（函数 / 别名）才回退比名片。
@@ -579,14 +579,14 @@ pub(crate) enum Reach {
     Nothing,
     /// 解过链接就是我们落点上那一份。
     Landing,
-    /// 另一个文件。`old_entry` = 认得出是 cc-monitor 早先放的旧入口（三行 shim / bash 启动器）—— 〔P1〕认的是后端（`deploy-retired`）。
+    /// 另一个文件。`old_entry` = 认得出是 cc-monitor 早先放的旧入口（三行 shim / bash 启动器）—— 认的是后端（`deploy-retired`）。
     OtherFile { path: String, old_entry: bool },
     /// 不是一个文件路径（shell 函数 / 别名）。
     NotAFile,
 }
 
 /// `at` = 登录 shell 里 `command -v ccm` 的答；`landing` = 我们那一份的绝对路径（没装 ⇒ `None`）；
-/// `old_entry_of` = 另一个文件开头那一截是不是我们早先放的旧入口（〔P1〕生产 = [`old_entry_by_backend`]：判在后端）。
+/// `old_entry_of` = 另一个文件开头那一截是不是我们早先放的旧入口（生产 = [`old_entry_by_backend`]：判在后端）。
 pub(crate) fn reach_of(
     at: Option<&str>,
     landing: Option<&std::path::Path>,
@@ -707,7 +707,7 @@ pub fn render_path_ccm_hint(
     let ours_card = describe_card(ours);
     let not_installed = copy_text("rsCcmProbe.hint.notInstalled", &[]);
     let where_ours = entry.unwrap_or(&not_installed);
-    // 〔FIX3 · ㉔〕走到别处就明说是哪一份：`command -v ccm` 答的原话。
+    // 走到别处就明说是哪一份：`command -v ccm` 答的原话。
     let at = on_path.at.clone().unwrap_or_else(|| "ccm".to_string());
     match verdict {
         PathCcmVerdict::Ours => String::new(),
@@ -764,13 +764,13 @@ fn describe_card(r: &CcmProbeResult) -> String {
 /// 不需要 [`LOCAL_PROBE_TIMEOUT`] 那么宽（那一档的宽度是留给用户 rc 的）。
 const OURS_PROBE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(3);
 
-/// 你 PATH 上那个 `ccm` 是谁：交互 shell 里敲 `ccm` 走到哪（POSIX `bash -lic` · 〔WF1 · ㉔〕Windows 新开的 PowerShell），
+/// 你 PATH 上那个 `ccm` 是谁：交互 shell 里敲 `ccm` 走到哪（POSIX `bash -lic` · Windows 新开的 PowerShell），
 /// 不是照着 `PATH` 变量自己走一遍（那样少了 rc / profile 那一层）。
 fn probe_path_ccm() -> Option<CcmProbeResult> {
     Some(probe_local_ccm())
 }
 
-/// 〔E2 · `96 §7.2.2`〕这个文件的字节是不是我们编的后端（身份戳恰一个）—— 只读字节，不跑它。
+/// 这个文件的字节是不是我们编的后端（身份戳恰一个）—— 只读字节，不跑它。
 pub(crate) fn ours_by_bytes(p: &std::path::Path) -> bool {
     std::fs::read(p).is_ok_and(|b| {
         matches!(
@@ -787,13 +787,13 @@ pub(crate) fn ours_by_bytes(p: &std::path::Path) -> bool {
 /// 起进程面：两次 `--ccm-probe`（`write_site_registry::SPAWNS` 里登记着）。
 /// **一个字节都不写。**
 ///
-/// 〔FIX4 · 主会话裁⑥ · V149 手动兜底〕`fresh` = 先作废 PATH 探针那份 5 分钟缓存再问（「重新对齐」那一下交；缺席 = 照缓存）。
+/// 〔V149 手动兜底〕`fresh` = 先作废 PATH 探针那份 5 分钟缓存再问（「重新对齐」那一下交；缺席 = 照缓存）。
 #[tauri::command]
 pub fn local_ccm_entry_status(fresh: Option<bool>) -> LocalCcmEntry {
     if fresh == Some(true) {
         *LOCAL_PROBE_CACHE.lock().unwrap_or_else(|e| e.into_inner()) = None;
     }
-    // 〔P1 · P5 裁〕家目录只有一条规矩（`creds_core::store::home_dir`，两侧共用）。
+    // 家目录只有一条规矩（`creds_core::store::home_dir`，两侧共用）。
     let home = creds_core::store::home_dir();
     let path = home.as_ref().map(|h| {
         h.join(".cc-monitor")
@@ -801,7 +801,7 @@ pub fn local_ccm_entry_status(fresh: Option<bool>) -> LocalCcmEntry {
             .join(crate::local_backend::local_ccm_entry_name())
     });
     let installed = path.as_ref().filter(|p| p.is_file());
-    // 〔E2 · `96 §7.2.2`〕**先读字节认身份，再决定跑不跑**：落点上那一份自报的身份戳恰一个（是我们编的后端）才起它问
+    // **先读字节认身份，再决定跑不跑**：落点上那一份自报的身份戳恰一个（是我们编的后端）才起它问
     //   `--ccm-probe`；认不出（不是我们的 / 读不了）⇒ 不跑，按「没装我们这一份」答。
     let ours_bytes = installed.is_some_and(|p| ours_by_bytes(p));
     let ours = match installed {
@@ -821,7 +821,7 @@ pub fn local_ccm_entry_status(fresh: Option<bool>) -> LocalCcmEntry {
     let (on_path, verdict, old_entry) = match probe_path_ccm() {
         None => (parse_probe_output(""), PathCcmVerdict::Undetermined, false),
         Some(on_path) => {
-            // 〔P1〕「是不是我们早先放的」问我们自己那一份（字节认得出是我们编的才跑它，同上面 `--ccm-probe` 那一条）。
+            // 「是不是我们早先放的」问我们自己那一份（字节认得出是我们编的才跑它，同上面 `--ccm-probe` 那一条）。
             let asked = |head: &str| match installed {
                 Some(p) if ours_bytes => old_entry_by_backend(p, head),
                 _ => false,

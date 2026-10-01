@@ -1,5 +1,5 @@
 /**
- * 设置面板「日志」区（v2.0.0 落地 issue #4；`70 §10.3` 09-19 改名）。
+ * 设置面板「日志」区（v2.0.0 落地 issue #4； 09-19 改名）。
  *
  * 给用户：
  * - 看到日志文件路径 + 当前大小
@@ -47,12 +47,12 @@ export interface DiagnosticsSectionOptions {
 }
 
 /** 给 collapsible header 复用的 i 图标说明文字。headless 模式丢失了内嵌图标 → 让外面挂一下。 */
-// 🔴 `70 §10.3` 差项 2/3：原文逐字是「monitor 是 GUI 应用（`windows_subsystem=windows`），
+// 🔴 差项 2/3：原文逐字是「monitor 是 GUI 应用（`windows_subsystem=windows`），
 //    没有 stderr 控制台」＋三处 `tracing` / `tracing layer` / `tracing::error!`。
 //    前者正是 `§2.4` 那条纪律逐字禁的「**文件路径以外的源码住址**」，
-//    后者是 `91 §2.1` 那一族的**内部标识符外泄** —— 用户不需要知道我们用的是哪个日志库。
+//    后者是那一族的**内部标识符外泄** —— 用户不需要知道我们用的是哪个日志库。
 //    ⇒ 说**用户看得见的事实**（日志写到哪、什么时候弹提示），不说我们是怎么实现的。
-// 〔CP2b〕做成函数、用到时才取文（模块顶层不留取文口调用 —— 顶层调用会让 Rollup 把设置面板挪进主窗共享 chunk）。
+// 做成函数、用到时才取文（模块顶层不留取文口调用 —— 顶层调用会让 Rollup 把设置面板挪进主窗共享 chunk）。
 const DIAGNOSTICS_INFO_TEXT = (): string =>
   copyText("diagnostics.info.logs");
 
@@ -72,17 +72,17 @@ export class DiagnosticsSection {
   private pathSpan!: HTMLSpanElement;
   private sizeSpan!: HTMLSpanElement;
   private openFileBtn!: HTMLButtonElement;
-  /** 〔NT2 · S1〕本机常驻后端（脱离那条载体）的输出：路径 · 大小 · 打开。 */
+  /** 本机常驻后端（脱离那条载体）的输出：路径 · 大小 · 打开。 */
   private backendSpan!: HTMLSpanElement;
   private openBackendBtn!: HTMLButtonElement;
   private backendPath: string | null = null;
-  /** `70 §11.3.3`：读不到当前设置时，原因落在这一块上（不再只进 console）。 */
+  /** 读不到当前设置时，原因落在这一块上（不再只进 console）。 */
   private readFailLine!: HTMLElement;
 
   constructor(opts: DiagnosticsSectionOptions = {}) {
     this.headless = opts.headless ?? false;
     this.root = this.build();
-    // 🔴 步 2（`70 §1.3 B` · `§10.4`）：**构造期不再发 I/O。**
+    // 🔴 步 2：**构造期不再发 I/O。**
     // 原来这里是 `void this.refresh()`，而它一次发 **2 发** IPC
     // （`get_diagnostics_config` + `get_log_file_info`），且这一块住「应用」页、
     // 落地页是「机器」⇒ 那 2 发在用户还没点进「应用」之前就打出去了。
@@ -110,21 +110,21 @@ export class DiagnosticsSection {
       // 标题 + 信息图标
       const heading = document.createElement("div");
       heading.className = "settings-group-title";
-      // 🔴 `70 §10.3`「名字」：**「诊断」→「日志」**。
+      // 🔴 「名字」：**「诊断」→「日志」**。
       // 理由是**重名**，不是 R5：`§5.3` 把机器列表页那块「还差什么（诊断汇总）」
       // 改名成「诊断」，那一落地设置面板里就会同时有两个「诊断」——
       // 一个是「这台机器还缺什么」，一个是「monitor 的日志开关」，两者毫无关系。
       // ⇒ 这一块让名。它的全部内容（写不写日志文件 / 级别 / 错误提示 / 路径 / 大小 / 打开）
       //   都是日志的事。
       // ⚠ `§10.3` 逐字要求这次改名与 `§5.3` 那个改名**同拍**，怕的是中间有一段时间
-      //   两个「诊断」并存。这一个先改了；〔ST1 · 09-24〕`§5.3` 那一半也落了
+      //   两个「诊断」并存。这一个先改了；`§5.3` 那一半也落了
       //   （`remote-section.ts::renderGaps` 的块标题）。判据 `settings-unique-names.vitest.ts`（`§8 #11`）。
       heading.textContent = copyText("diagnostics.build.title");
       heading.appendChild(makeInfoIcon(DIAGNOSTICS_INFO_TEXT()));
       group.appendChild(heading);
     }
 
-    // 🔴 `70 §11.4` 那处真缺陷 ＋ `§8` 判据 #2（「没有复选框在加载后自己改状态」）：
+    // 🔴 那处真缺陷 ＋ `§8` 判据 #2（「没有复选框在加载后自己改状态」）：
     //    读失败原先只 `console.warn` ⇒ 三个控件**静默显示构造期默认值**，用户一点就把
     //    假状态写回去 —— 与 `§1` 那个「启用远端模式」自己从 ☐ 跳到 ☑ 是**同一种伤**。
     //    ⇒ 失败落在这一块上，并且三个控件在**读回来之前不可交互**（见 `setControlsReady`）。
@@ -142,11 +142,11 @@ export class DiagnosticsSection {
     logRow.appendChild(this.logEnabledCheckbox);
     const logLabel = document.createElement("span");
     logLabel.className = "settings-checkbox-label";
-    // `70 §10.3` 差项 4（中英混写）＋ 那条「R5 规矩文字命中、检法抓不到」的建议：
+    // 差项 4（中英混写）＋ 那条「R5 规矩文字命中、检法抓不到」的建议：
     // 「启用 log 文件」是**动宾**且中英混写 ⇒ 改成名词短语「日志文件」，
     // 「启用不启用」由复选框这个控件本身表达。
     // ⚠ **「复选框标签要不要给 R5 开豁免」这件事本篇判不了**（`§10.5` #3：规矩禁祈使、
-    //   检法只扫问号与口语词，两者不一致，是 `91 §4` 的洞）—— 这里只按建议改措辞，
+    //   检法只扫问号与口语词，两者不一致，是个洞）—— 这里只按建议改措辞，
     //   **不动 R5 的检法**，也不声称这一格已决。
     logLabel.textContent = copyText("diagnostics.file.enable");
     logRow.appendChild(logLabel);
@@ -212,7 +212,7 @@ export class DiagnosticsSection {
     this.pathSpan.style.fontFamily = "var(--font-mono, monospace)";
     this.pathSpan.style.fontSize = "11px";
     this.pathSpan.style.wordBreak = "break-all";
-    // 步 1（`70 §10.3` 差项 5）：**这一块骨架基本不欠** —— 结构在 `build()` 里就搭齐、
+    // 步 1（差项 5）：**这一块骨架基本不欠** —— 结构在 `build()` 里就搭齐、
     // 刷新只改文本。唯一会长高的是这条 `word-break: break-all` 的路径：
     // 从 `—` 变成一条可换行的长路径 ⇒ 它下面的东西往下掉。
     // ⇒ 只钉这一行的高度，别的不动（不欠的地方不假装补）。
@@ -233,7 +233,7 @@ export class DiagnosticsSection {
     sizeRow.appendChild(this.sizeSpan);
     group.appendChild(sizeRow);
 
-    // 5. 〔NT2 · S1 · `15 §4.7 S1`〕本机常驻后端的输出。它脱离 monitor 常驻时没有别的地方可说话
+    // 5. 本机常驻后端的输出。它脱离 monitor 常驻时没有别的地方可说话
     //    （拨号的 host key 警告、中转起不来的原因都在它那里）⇒ 它自己落一份有上限、滚动的文件，这里看得到。
     const backendRow = document.createElement("div");
     backendRow.className = "settings-row settings-row-stack";
@@ -265,7 +265,7 @@ export class DiagnosticsSection {
     this.openFileBtn.type = "button";
     this.openFileBtn.className = "settings-btn";
     this.openFileBtn.textContent = copyText("diagnostics.build.openFile");
-    // 步 4·E（`70 §1.3 E`）：这三个都会走一次 IPC，期间按住对应的按钮。
+    // 步 4·E：这三个都会走一次 IPC，期间按住对应的按钮。
     this.openFileBtn.addEventListener("click", () =>
       void withPending(this.openFileBtn, copyText("diagnostics.build.opening"), () => this.openFile()),
     );
@@ -295,7 +295,7 @@ export class DiagnosticsSection {
     return group;
   }
 
-  /** 三个会写回后端的控件：读回来之前一律不可交互（`70 §8` 判据 #2 的形状）。 */
+  /** 三个会写回后端的控件：读回来之前一律不可交互（判据 #2 的形状）。 */
   private setControlsReady(ready: boolean): void {
     for (const c of [this.logEnabledCheckbox, this.levelSelect, this.errorToastCheckbox]) {
       c.disabled = !ready;
@@ -331,7 +331,7 @@ export class DiagnosticsSection {
         this.sizeSpan.textContent = copyText("diagnostics.refresh.empty");
         this.openFileBtn.disabled = true;
       }
-      // 〔NT2 · S1〕本机后端那一份（新在前；有旧的一份也不列 —— 打开目录就看得见）。
+      // 本机后端那一份（新在前；有旧的一份也不列 —— 打开目录就看得见）。
       const latest = info.backend_stderr[0];
       if (latest) {
         this.backendPath = latest.path;

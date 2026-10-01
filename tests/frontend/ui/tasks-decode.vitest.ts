@@ -1,7 +1,7 @@
 /**
- * 〔LOC1a · 第四波 4D · C4e 批 4〕`tasks-list` 成品的界面解码器（`src/frontend/ui/tasks-panel.ts::decodeTasks`）。
+ * `tasks-list` 成品的界面解码器（`src/frontend/ui/tasks-panel.ts::decodeTasks`）。
  *
- * 要求住址：`设计/05 §14.3` 逐字「界面按形状严格收（多一格 / 缺一格 / 类型不对 ⇒ 抛『两端契约对不上』，不猜）；
+ * 要求：「界面按形状严格收（多一格 / 缺一格 / 类型不对 ⇒ 抛『两端契约对不上』，不猜）；
  * 线上形状由一份跨语言金样钉住（后端测试产出 == 金样 · TS 解码器读同一份）」。
  * 异源：金样的 `product` 由后端 `feature_face_tests::the_tasks_product_matches_the_cross_language_golden` 从生产路径现算核过；
  * 本文件读同一份。夹具只造结构（占位字段），不采任何真会话正文。

@@ -1,5 +1,5 @@
 /**
- * 〔W5-UI · `设计/30 §3.3` P-extra〕组头就地改名的输入框（`tab-bar-view.ts::beginGroupRename`）。
+ * 〔-extra〕组头就地改名的输入框（`tab-bar-view.ts::beginGroupRename`）。
  * 占住名字按钮让出来的那一格：同字号、同左对齐，只多一道边框让人看出「现在可以打字」。
  */
 @layer components {

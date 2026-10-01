@@ -6,7 +6,7 @@
 
 量具两条腿：
 
-- **真相源** —— `src-tauri/src/sftp_move_ledger.rs`（Rust 判据，从源码派生再逐格比对）。
+- **源头** —— `src-tauri/src/sftp_move_ledger.rs`（Rust 判据，从源码派生再逐格比对）。
 - **第二条腿** —— `evidence/K-R78-dial-census.py`（同一把尺子的 python 实现，PM 不进沙箱也能复算）。
   两条腿今天同值；`.py` 头注写死了它与 `guard_core::production_code` 剥法不同的那一格。
 

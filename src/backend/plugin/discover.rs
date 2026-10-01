@@ -36,7 +36,7 @@ use std::path::{Path, PathBuf};
 /// 〔那份头注与它的 `g6_reach::counterexample_b…` 已**同轮摘登记**，改成过去时；
 ///  那条反例从**活体**退成了**合成**，差别写在它自己的头注里。〕
 ///
-/// 〔RM1f〕**Windows 那一臂今天有了真实现**（[`windows_launchable_name`]：只认 `.exe`，理由在它的头注）；
+/// **Windows 那一臂今天有了真实现**（[`windows_launchable_name`]：只认 `.exe`，理由在它的头注）；
 /// 其余非 unix 平台仍是下面这段说的保守 `false`。〔下面三段是 `K-R52` 那一拍的原话，留作来历。〕
 ///
 /// # 改成 `false` 是「保守方向」，不是 Windows 实现
@@ -72,7 +72,7 @@ pub(crate) fn is_executable(p: &Path) -> bool {
     }
 }
 
-/// 〔RM1f〕Windows 上「这个普通文件能不能被当程序起」—— **只认 `.exe`**（大小写不敏感）。
+/// Windows 上「这个普通文件能不能被当程序起」—— **只认 `.exe`**（大小写不敏感）。
 ///
 /// # 为什么今天要它（上面 `K-R52` 那段「本件不写，已走上报口交回 PM」的那一次产品决策）
 ///

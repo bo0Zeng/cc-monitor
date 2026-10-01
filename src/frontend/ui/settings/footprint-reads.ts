@@ -1,9 +1,9 @@
 /**
- * 〔MIG-3b 续 · 主会话 09-28 裁①〕「足迹」**经通道问那台后端要成品**（帧命令 `footprint-report`，本体 `src/backend/footprint/`）。
+ * 「足迹」**经通道问那台后端要成品**（帧命令 `footprint-report`，本体 `src/backend/footprint/`）。
  *
  * - 远端那一台：一问即得（住 monitor 那台的那一族不进人群）。
  * - 本机那一栏：`HostScope::Client` 那一族（monitor 自己那台的东西）要的、只有 monitor 知道的事实（它自己进程的家目录 · agent 家 · PATH）
- *   先问 monitor 一次（`footprint_client_facts`），原样带给本机后端，一问出整份报告（同一台、同一用户，stat 在后端；〔主会话 09-28 裁〕两拍）。
+ *   先问 monitor 一次（`footprint_client_facts`），原样带给本机后端，一问出整份报告（同一台、同一用户，stat 在后端；两拍）。
  * - 形状严格收（多一格 / 少一格 / 类型不对 ⇒「两端契约对不上」，不猜）；线上形状由跨语言金样 `footprint-report.golden.json` 钉着。
  * 〔墓碑 —— 从前是 Tauri 命令 `config_surface_report`〔散文墓碑〕（判定住 monitor），类型是 ts-rs 生成物。〕
  */
@@ -17,7 +17,7 @@ import { copyText } from "../copy-table";
 /** app 与一个环境项的关系（四档，后端 `footprint/registry.rs::EnvTier` 派生）。 */
 export type EnvTier = "AppInstalls" | "AppShipsNoInstallerYet" | "UserInstallsWePrompt" | "AppOnlyChecks";
 /** 现状。没有「疑似缺失」这一档。 */
-// 〔SHOTS 09-29〕`expected_absent`：该不在、确实不在（旧版遗留那一档）—— 结论是后端给的（`footprint/rows.rs::read_absence`），界面照档画。
+// `expected_absent`：该不在、确实不在（旧版遗留那一档）—— 结论是后端给的（`footprint/rows.rs::read_absence`），界面照档画。
 export type SurfaceState =
   | { kind: "present"; detail: string }
   | { kind: "absent" }

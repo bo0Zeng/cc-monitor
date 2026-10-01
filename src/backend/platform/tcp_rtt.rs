@@ -1,6 +1,6 @@
-//! 〔NT1 · 2026-09-24〕**一条已连上的 TCP 此刻的往返时间 —— 问内核，不自己掐表。**
+//! **一条已连上的 TCP 此刻的往返时间 —— 问内核，不自己掐表。**
 //!
-//! 用户 V23（`设计/99 §1`，逐字）：「今天每台机器只有一条连接可以看情况多开. 智能一点. 这是属于 ssh 优化的部分.
+//! 用户 V23：「今天每台机器只有一条连接可以看情况多开. 智能一点. 这是属于 ssh 优化的部分.
 //! 智能多开链接\压缩等等」。压缩「开不开」的判准（`dial/connect.rs::compression_for`）要知道这一跳**真的远不远**：
 //! 按地址段判是错的（用户的远端大半走 EasyTier 覆盖网，地址全在 RFC 1918 私网段、RTT 12–577 ms，`NT1.md §0.3`）。
 //!
@@ -10,7 +10,7 @@
 //! # 平台
 //!
 //! - Linux：`getsockopt(IPPROTO_TCP, TCP_INFO)`，读 `tcpi_rtt`（平滑 RTT，握手之后就有第一份样本）。
-//! - Windows：〔P2 · `设计/99 §2.3` WF2 报备〕`WSAIoctl(SIO_TCP_INFO)`（Windows 10 1703 起），读 `TCP_INFO_v0.RttUs`；
+//! - Windows：`WSAIoctl(SIO_TCP_INFO)`（Windows 10 1703 起），读 `TCP_INFO_v0.RttUs`；
 //!   更老的系统那一问失败 ⇒ `None`。照 `win_proc.rs` 先例手写 `extern "system"`，不为一个函数加 `windows-sys`。
 //! - 其余（macOS）：**答不上来就说不知道**（`None`）—— 判准那一侧对「不知道」有明文处置（按「远」压）。
 //!

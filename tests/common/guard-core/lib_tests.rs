@@ -3,7 +3,7 @@ use super::*;
 /// 🔴 **`scan_tree!` 这个宏的自摘，在本 crate 这棵树上不生效** ——
 /// 剖分之后没有一个调用者能在这里让那一刀落下。
 ///
-/// # 它换掉了谁、为什么〔步 7c 2026-09-19 · `设计/16 §6.2` **D 类**〕
+/// # 它换掉了谁、为什么〔**D 类**〕
 ///
 /// 原来这里住的是 `the_caller_never_gets_its_own_source_back`〔散文墓碑〕，断言
 /// 「本 crate 的 `src/` 里只有 `lib.rs`（= **调用者自己**），摘除生效 ⇒ 结果为空」。
@@ -18,7 +18,7 @@ use super::*;
 /// 的折返路径；本 crate 这棵树的根（`CARGO_MANIFEST_DIR/src`）里**没有** `..`
 /// ⇒ 后缀比不命中 ⇒ **自摘在这一处恒空转**。本条就断言这件事，因此：
 ///
-/// 🔴 **⚠ 别把本条读成「自摘在本仓一处都不生效」**〔`P4` 2026-09-21 订正〕。
+/// 🔴 **⚠ 别把本条读成「自摘在本仓一处都不生效」**。
 /// 这一段先前逐字就是那么写的，而**那句话是过宽的**：后缀比命不命中只取决于
 /// 扫描根的字符串里有没有和 `file!()` 同一段 `..`。现打：backend 的
 /// `guard_support::tests_root()` 逐字是 `CARGO_MANIFEST_DIR.join("../../tests/backend")`
@@ -55,7 +55,7 @@ fn the_scan_tree_macro_no_longer_excludes_its_caller_after_the_split() {
          而它在本仓本来是**不生效**的，本条就是钉住那件事的。\n\
          \n\
          本条不是在报故障，是在报一个**纪律要重读**的信号：\n\
-         `设计/16 §5.4b` 纪律 4 说「摘掉我自己」不许靠 `file!()`，理由之一是\n\
+纪律 4 说「摘掉我自己」不许靠 `file!()`，理由之一是\n\
          它失效时**安静**。它一旦重新生效，本仓那 80 余处 `scan_tree!(` 调用点的语料面会\n\
          各自**静默少一份文件**，而少扫不会红。\n\
          ⇒ 先去核那些调用点里有几处的语料根含判据自己那棵树（`tests/`）——\n\
@@ -82,7 +82,7 @@ fn without_the_exclusion_the_caller_would_be_included() {
 
 /// 🔴 **`file!()` 自摘在「判据被 `#[path]` 引进来」时是空转的** —— 条 73 的成因钉。
 ///
-/// 仓库重组（`设计/16`）之后，测试模块长这样：
+/// 仓库重组之后，测试模块长这样：
 /// `#[cfg(test)] #[path = "../../../../src/bridge/tests/bridge/X_tests.rs"] mod tests;`
 /// 被引进来的那份文件里 `file!()` 给的是 `src/../../../tests/bridge/X_tests.rs` ——
 /// **带 `..` 的折返路径**，而草垛是规范化过的绝对路径 ⇒ 后缀比**恒不命中**。
@@ -255,7 +255,7 @@ fn a_bodyless_cfg_test_mod_declaration_swallows_nothing() {
 
 /// ★ U8a-2a 逮出的那条：`#[cfg(all(test, target_os = "linux"))]` 也是测试模块。
 ///
-/// 病灶原样照抄当年 `session_map.rs` 那个 Linux 判活测试模块（U7d 加的；〔LOC1b〕已随那份判活删了）：只认逐字 `#[cfg(test)]`
+/// 病灶原样照抄当年 `session_map.rs` 那个 Linux 判活测试模块（U7d 加的；已随那份判活删了）：只认逐字 `#[cfg(test)]`
 /// 的锚点会漏掉它，那 5 个 `#[test]` 就留在「生产段」里了。
 #[test]
 fn strips_test_modules_behind_a_compound_cfg() {
@@ -556,7 +556,7 @@ fn a_broken_model_strips_nothing_and_says_so() {
 /// ⚠ 09-04（`K-R25`）起两个单位一起量：整份文件 ＋ 按 `#[test]` 切出的每一块。
 #[test]
 fn this_crate_never_falls_back_to_not_stripping() {
-    // 🔴 〔步 7c 剖分 2026-09-19 · `设计/16 §6.2` B 类〕**语料根要跨两棵树。**
+    // 🔴 〔步 7c 剖分 2026-09-19〕**语料根要跨两棵树。**
     //
     // 本条的块那一半数的是「按 `#[test]` 切出来的块」，而本 crate 的测试模块
     // 剖分之后整个住进了 `<repo>/tests/common/guard-core/`。

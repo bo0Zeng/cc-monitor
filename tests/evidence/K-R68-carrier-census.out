@@ -183,7 +183,7 @@ tree-a git status --porcelain 行数 = 2
       · code-picture-sidecar
 
   ToolDestination 变体 7 个：['RemoteHomeRelative', 'BothHomeRelative', 'LocalHomeRelative', 'UserShellProfile', 'ProjectRelative', 'UserConfiguredPath', 'NotInstalledByUs']
-  ⚠ 现算，不写死〔13b〕。
+  ⚠ 现算，不写死。
 
 ==============================================================================
 §8 三条产出路在 release.yml 上的住址（量于 tree-a 的 .github/workflows/release.yml）

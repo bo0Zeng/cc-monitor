@@ -3,8 +3,7 @@
 """步 8（全仓改名）的**判据影响面**普查 —— 只产地图，不产改动。
 
 住址：`<仓根>/tests/evidence/S28-rename-criteria-census.py`
-服务的设计篇：`调研/设计/90-命名清理与前后端归属.md` `§1.1`/`§1.4`
-读数落点：`调研/真相源/95-步8改名-判据影响面地图.md` ＋ `tests/evidence/S28-readings.md`
+读数落点：`tests/evidence/S28-readings.md`
 
 跑法（仓根下）：
     python3 tests/evidence/S28-rename-criteria-census.py             # 主报告（四面）
@@ -41,7 +40,7 @@
 
 **(1) 六个旧名（`NAMES`）**
 
-  `设计/90 §1.1` 那张表里**要改**的六行，逐字：
+那张表里**要改**的六行，逐字：
     `daemon` · `cc-monitor-remote` · `sidecar` · `relay` ＋ `中转` · `proto` · `rbind`
   **不含** `ccm`（用户敲的命令名）与 `monitor`（产品名）—— 那两行 `§1.1` 明写不改。
 
@@ -53,7 +52,7 @@
 
   一处 = **一个字符串字面量里的一次命中**（同一字面量命中两个名字算两处）。
   只在下面这些树里取 —— 理由逐条：
-    · `tests/**` 的 `.rs`        —— 本仓的 Rust 判据全住这里（`设计/16` 步 7c 剖分之后）
+    · `tests/**` 的 `.rs`        —— 本仓的 Rust 判据全住这里（剖分之后）
     · `tests/**` 的 `.ts/.mts`   —— vitest / tsx 判据
     · `tests/**` 的 `.sh`        —— e2e 与闸门脚本
     · `tests/evidence/*.py`      —— 尺子（其中 5 把是**活门**，见 `LIVE_RULERS`）
@@ -64,7 +63,7 @@
     · `.github/workflows/*.yml`  —— 云端门的 job 名 / 步骤名，被 `README.md` 与 `K-R122` 对拍
     · `package.json`             —— 套件名，被 `K-P2-F-suites.py` 与 `ci.yml` 对拍
 
-  **不在人群里**：`src/**/*.ts` 前端生产源（那是被判的对象，不是判据）· `调研/**`（散文）·
+  **不在人群里**：`src/**/*.ts` 前端生产源（那是被判的对象，不是判据）·
   `node_modules/` · `.build/` · `coverage/` · `src/frontend/ui/generated/`（生成物，重生成即改）。
 
 **(3) 四形（`WHAT`）—— 任务书那四档，逐处只落一档**
@@ -273,7 +272,7 @@ def population(root: Path) -> list[Path]:
 RUNNER = re.compile(r"^(bash|sh|python3?|node|npx\s+tsx|npx|tsx|cargo\s+\S+)\s+")
 # 仓根锚：只有以这些段打头的路径才拿去盘上查存在性
 ROOT_ANCHORS = ("src/", "tests/", "doc/", "scripts/", ".github/", "hooks/", "audits/",
-                "e2e/", "调研/", "coverage/", "./", "crates/")
+                "e2e/", "", "coverage/", "./", "crates/")
 # 本仓的三个「根」—— 登记表里的相对住址按哪个根解读，要看它住在谁家
 ALT_ROOTS = (".", "src/frontend/shell", "src/backend", "src/frontend/shell/src")
 

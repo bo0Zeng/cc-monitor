@@ -1,11 +1,11 @@
-//! 设计/99 §2.1 ⑬「会话 / tmux 账本（会话表 · tmux 快照 · 容器判定 · 可重连判定）进那台后端；monitor 只收成品帧」· `设计/30 §3.5.6`（可恢复性由容器定）。
+//! 「会话 / tmux 账本（会话表 · tmux 快照 · 容器判定 · 可重连判定）进那台后端；monitor 只收成品帧」· 可恢复性由容器定。
 //!
 //! 一张真值表钉 `observe::session_ledger` 的全部裁决（从 monitor 搬来的那几条性质，本机远端同一份）：
 //! 摘除按 cause ＋ 快照 · 两种收割 · 没进过 tmux 的不收割 · 不可观测不收割 · 每一份快照推出（没报过的）可重连 · 清单压到快照之后。
 use super::*;
 use crate::stream::wire::{Frame, RemovalCause, SessionFate};
 
-/// 账本的一格输入：一帧（要发出去的）或一份 tmux 观测（〔MIG-1 续〕观测不再是帧）。
+/// 账本的一格输入：一帧（要发出去的）或一份 tmux 观测（观测不再是帧）。
 enum Ev {
     F(Frame),
     T(String, Option<&'static str>),

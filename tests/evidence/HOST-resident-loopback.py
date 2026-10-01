@@ -157,7 +157,7 @@ def main():
         if not cond:
             fails.append(name)
 
-    # 中转口 8788 是这台机器上真会话在用的门牌：台架起的常驻后端会去 bind 它（V139）。口空着时先由脚本占住（不 accept），
+    # 中转口 8788 是这台机器上真会话在用的门牌：台架起的常驻后端会去 bind 它。口空着时先由脚本占住（不 accept），
     # 让台架那一位的中转「起不来、出声」而不是真去答话 —— 不替这台机器上的真会话接请求。
     hold = socket.socket()
     try:
@@ -200,8 +200,8 @@ def main():
         env_raw = open(f"/proc/{pid1}/environ", "rb").read() if pid1 and pid_alive(pid1) else b""
         cmd_raw = open(f"/proc/{pid1}/cmdline", "rb").read() if pid1 and pid_alive(pid1) else b""
         check("钥匙不在子进程的 env / argv 里（env 里只有钥匙文件路径）", bool(token) and token.encode() not in env_raw and token.encode() not in cmd_raw and b"CCM_LISTEN_TOKEN_FILE=" in env_raw)
-        check("子进程被交了中转口（V139：远端中转进程内起）", b"CCM_RELAY_PORT=8788" in env_raw)
-        log = os.path.join(rhome, ".cc-monitor", "logs", "backend", "stderr.log")  # 〔GAP1〕与本机同一层级
+        check("子进程被交了中转口（远端中转进程内起）", b"CCM_RELAY_PORT=8788" in env_raw)
+        log = os.path.join(rhome, ".cc-monitor", "logs", "backend", "stderr.log")  # 与本机同一层级
         check("它的诊断落进远端家目录下的 stderr 文件、里面有中转那一句", wait_for(lambda: os.path.exists(log) and "relay" in open(log, errors="replace").read(), 5))
 
         print("② 接：tunnel → hello → attach（多客户：两条同时）")
@@ -269,7 +269,7 @@ def main():
         print("⑥ 停：--resident-stop")
         c5 = be.capture("s1", base, f"{remote} --resident-stop")
         ans5 = json.loads(c5["stdout"]) if c5 and c5.get("exit_status") == 0 else {}
-        # 〔STOP〕结局三个词：那台自己等到它退了才答 ⇒ 答回来的那一刻它已经不在（不用再等）。
+        # 结局三个词：那台自己等到它退了才答 ⇒ 答回来的那一刻它已经不在（不用再等）。
         check("答 graceful ＋ 那个 pid", ans5 == {"stopped": "graceful", "pid": pid_new}, ans5)
         check("答回来时它已经退了、口关了", not pid_alive(pid_new) and socket.socket().connect_ex(("127.0.0.1", rport)) != 0)
         c6 = be.capture("s2", base, f"{remote} --resident-stop")

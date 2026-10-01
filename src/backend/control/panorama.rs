@@ -1,21 +1,21 @@
-//! 〔RM1c · 第四波〕**代码全景**的帧命令 `panorama` —— 后端经插件通用调用口起那个只装引擎的
+//! **代码全景**的帧命令 `panorama` —— 后端经插件通用调用口起那个只装引擎的
 //! 独立小程序（用户 09-24 V108 选 B），自己一行引擎代码都不链。
 //!
 //! # 为什么是「起一个进程」，不是「链进来」
 //!
-//! 引擎 ≈19.6 MB / 架构（`调研/第四波记录/RM1b.md §3`）。编进后端本体 = 每一台远端都背它，
-//! 且与 `C21`「code-picture 走独立二进制……**也不编进 backend**」、`95 §0`「不并进后端本体」正面相撞；
-//! 那两条由 `plugin_class_registry` ②③ 与 `panorama_locus_guard` 正题①（链接面）· monitor 侧 `panorama_seam_registry::engine_port_scope`（取用面，〔TL1〕原 `panorama_locus_guard` 正题② 并进去了）钉着，本模块一条都不碰。
+//! 引擎 ≈19.6 MB / 架构。编进后端本体 = 每一台远端都背它，
+//! 且与 `C21`「code-picture 走独立二进制……**也不编进 backend**」、「不并进后端本体」正面相撞；
+//! 那两条由 `plugin_class_registry` ②③ 与 `panorama_locus_guard` 正题①（链接面）· monitor 侧 `panorama_seam_registry::engine_port_scope`（取用面，原 `panorama_locus_guard` 正题② 并进去了）钉着，本模块一条都不碰。
 //! ⇒ 解析发生在**被起的那个进程**里；本模块只做插件口的四段里**属于这个插件**的那几样：
 //!
 //! | 段 | 本模块给的 |
 //! |---|---|
 //! | ① 找它 | 候选：后端自己那个可执行文件旁边 → `<家>/.cc-monitor/bin/`；**不兜 `PATH`**（同名的无关程序由身份行再挡一道） |
 //! | ② 问它会什么 | 要的能力 = 这一次的 op（缺哪个说哪个 —— 「这台装的小程序太旧」与「调用失败」是两件事）；要的那一代 = 请求带来的 `shape` |
-//! | ③ 起它 | 期限按它自报的档：长活档（`long=`）一档、其余一档（`u64` 秒，交给子进程的 `timeout` 前缀；**后端零定时器不破**）；〔P7〕它在 stderr 上写的进度行（插件口分拣）交发起方订的进度流 |
+//! | ③ 起它 | 期限按它自报的档：长活档（`long=`）一档、其余一档（`u64` 秒，交给子进程的 `timeout` 前缀；**后端零定时器不破**）；它在 stderr 上写的进度行（插件口分拣）交发起方订的进度流 |
 //! | ④ 码 → 语义 | **这张表只住这里**（插件口只抽骨架）：见 [`classify`] |
 //!
-//! # 后端不带引擎知识（〔PANO〕`99 §1` V158）
+//! # 后端不带引擎知识
 //!
 //! 本模块**不存** op 表、不存形状代号：会哪些 op、哪个是长活，由小程序 `--probe` 自报（`capabilities=` · `long=`）；
 //! 要的是哪一代，由发起方在请求里带上 `shape`（前端取自与小程序同源的生成物 `src/frontend/ui/panorama/engine-contract.json`）。
@@ -32,14 +32,14 @@
 //!
 //! 后端进程自己**零写盘**。被起的那个进程只写**索引**，落 [`store_dir`]
 //! （那台机器上后端自己的数据目录 `<家>/.cc-monitor/panorama/`，不是用户文件）。
-//! 〔RM1d · 用户 09-24 V110「引擎只算、文件管理来写」〕批注 / 文档关联：小程序只有 `plan_*`
+//! 〔用户 09-24「引擎只算、文件管理来写」〕批注 / 文档关联：小程序只有 `plan_*`
 //! （读盘上现状 ＋ 算出新内容，交回 `{value, edit: {rel, before, after, parents}}`）；
 //! 落盘是**另一条**命令 —— monitor 拿着计划去问同一台后端的 `files-put`（带 `expect = before`）/
 //! `files-delete`，本命令里一个字节都不写。
 //!
 //! # 诚实边界
 //!
-//! - 〔RM1f〕**打得断**：异步档（`Run::Async`），两次起进程都走 `plugin::invoke::run_abortable` ——
+//! - **打得断**：异步档（`Run::Async`），两次起进程都走 `plugin::invoke::run_abortable` ——
 //!   `cancel` 命中 ⇒ 处理器 future 被丢 ⇒ 小程序连同 `timeout` 前缀那一组子进程一起被杀、回 `cancelled`。
 //!   期限照旧住子进程（[`BUILD_DEADLINE_SECS`]）；「长期限 ＋ 可取消」（`RM1b.md §3.3` ③）两半都齐了。
 //!   〔墓碑 —— RM1c 那一版这里写着「**打不断**：阻塞档（起进程、等它退出），`cancel` 命中回 `not_cancellable`。
@@ -47,9 +47,9 @@
 //!   ⚠ 被杀的那一趟索引留在 SQLite 自己的事务语义下（小程序没有写到一半的中间态要收拾；
 //!   锁是 `flock`，进程一死就放）。
 //! - 机器上没有 `timeout(1)` ⇒ 插件口如实裸跑（没有期限），那一条降级由插件口自己的判据钉着。
-//! - **字节怎么到那台机器上**不归本模块：〔RM1e〕monitor 听到本模块回 `not_installed` / `unsupported`
+//! - **字节怎么到那台机器上**不归本模块：monitor 听到本模块回 `not_installed` / `unsupported`
 //!   ⇒ 经本机常驻后端那条 `files` 链路把内嵌字节推到 `<家>/.cc-monitor/bin/`（[`fixed_candidates`] 的第二个候选）
-//!   再问一次（〔MIG-3b 续〕界面 `src/frontend/ui/panorama/api.ts::askOrPlace`）。本模块只认「在不在、是不是它、会不会这个 op」，
+//!   再问一次（界面 `src/frontend/ui/panorama/api.ts::askOrPlace`）。本模块只认「在不在、是不是它、会不会这个 op」，
 //!   不在就说 `not_installed` ＋ 查过哪儿 —— **这两个码是推字节的触发条件**（界面那一侧的 `PUSH_ON`（`src/frontend/ui/panorama/api.ts`）
 //!   与下面 `discover::find` / `negotiate` 两处映射出的码两向相等，判据读本文件）。
 
@@ -90,7 +90,7 @@ const PLUGIN_EXIT_BAD_ARGS: i32 = 2;
 /// 小程序的退出码：形状对、做不成（仓打不开 / 引擎报错）。
 const PLUGIN_EXIT_FAILED: i32 = 3;
 
-/// 〔RM1f〕小程序每条输出流最多留多少字节（交给插件口 `run_abortable`，多出来的它照读照丢）：
+/// 小程序每条输出流最多留多少字节（交给插件口 `run_abortable`，多出来的它照读照丢）：
 /// 与「结果太大」那一格（[`classify`]）**同一个**上限 `read_face::LINES_CAP_BYTES` ⇒ `len() >` 它就是 `too_large`。
 fn keep() -> u64 {
     crate::faces::read_face::LINES_CAP_BYTES as u64
@@ -99,7 +99,7 @@ fn keep() -> u64 {
 /// 找不到时那句话的尾巴（这个插件自己的话）。
 ///
 /// ⚠ 只说「没装」，不许说「重装后端就有了」：重装后端**不带**这份小程序（它只推给开过远端全景的机器）。
-/// 〔RM1e〕界面听到 `not_installed` 会请 monitor 放一次字节再问（〔MIG-3b 续〕界面 `src/frontend/ui/panorama/api.ts::askOrPlace`），推完仍缺才把这句话交到人眼前。
+/// 界面听到 `not_installed` 会请 monitor 放一次字节再问（界面 `src/frontend/ui/panorama/api.ts::askOrPlace`），推完仍缺才把这句话交到人眼前。
 static NOT_INSTALLED_HINT: std::sync::LazyLock<String> =
     std::sync::LazyLock::new(|| copy_text("bePanorama.notInstalledHint.say", &[]));
 
@@ -112,12 +112,12 @@ fn home() -> Option<PathBuf> {
 }
 
 /// 索引落哪：那台机器上后端自己的数据目录下 `panorama/`（**不是**被分析的仓）。
-/// 〔P3〕住址只住契约 crate（`relay_route_core::PANORAMA_INDEX_REL`：monitor 的数据位置页按同一个常量列出它）。
+/// 住址只住契约 crate（`relay_route_core::PANORAMA_INDEX_REL`：monitor 的数据位置页按同一个常量列出它）。
 pub(crate) fn store_dir(home: &Path) -> PathBuf {
     home.join(relay_route_core::PANORAMA_INDEX_REL)
 }
 
-/// 〔RM1f〕盘上那个可执行文件的**文件名**：身份名 ＋ 这台机器的可执行后缀（Windows 上 `.exe`，别处空串）。
+/// 盘上那个可执行文件的**文件名**：身份名 ＋ 这台机器的可执行后缀（Windows 上 `.exe`，别处空串）。
 ///
 /// 身份（`--probe` 首行、[`PLUGIN_NAME`]）不带后缀；只有「去盘上哪儿找」这一格要它 ——
 /// Windows 本机那一份是 `cc-monitor-panorama.exe`（monitor 按目标平台放下来的，`panorama_bytes::local_file_name`）。
@@ -143,8 +143,8 @@ pub(crate) fn fixed_candidates(exe_dir: Option<&Path>, home: Option<&Path>) -> V
     out
 }
 
-/// 帧面入口。〔RM1f〕异步：`cancel` 命中 ⇒ 这个 future 被丢 ⇒ 小程序那一组子进程被杀。
-/// 〔P7〕`progress`：小程序报的每一格进度（一个 JSON 对象，原样；格里是什么由界面解释）往哪儿交 ——
+/// 帧面入口。异步：`cancel` 命中 ⇒ 这个 future 被丢 ⇒ 小程序那一组子进程被杀。
+/// `progress`：小程序报的每一格进度（一个 JSON 对象，原样；格里是什么由界面解释）往哪儿交 ——
 /// 帧面上是「推进本请求那张票的进度流」（`stream::inbound::Progress`），CLI 一次性进程里没人订、是空的。
 pub(crate) async fn answer(
     args: &Value,
@@ -156,7 +156,7 @@ pub(crate) async fn answer(
         .map_err(|(c, m)| (c.to_string(), m))
 }
 
-/// 〔PANO〕「算」那一问（`panorama-edit` 用）：同 [`answer`]，另要求 `op` 在小程序自报的写表（`plans=`）里，
+/// 「算」那一问（`panorama-edit` 用）：同 [`answer`]，另要求 `op` 在小程序自报的写表（`plans=`）里，
 /// 应答多一格 `then`（写成之后要跑的 op，没有 = `null`）。不在表里 ⇒ `bad_args`、不起那个 op。
 pub(crate) async fn answer_plan(args: &Value) -> Result<Value, (String, String)> {
     let (fixed, store) = where_to_look()?;
@@ -249,7 +249,7 @@ async fn run_op(
     let bin = crate::plugin::discover::find(PLUGIN_NAME, fixed, false, &NOT_INSTALLED_HINT)
         .map_err(|m| ("not_installed", m))?;
     // ② 问它会什么：要的就是这一次的 op（未知的 op 也落在这里：它没自报 ⇒ `unsupported`）。
-    // 〔RM1f〕两次起进程都走可打断的那一形（探测也是：它卡住时同样要能被撤掉）。
+    // 两次起进程都走可打断的那一形（探测也是：它卡住时同样要能被撤掉）。
     let probe =
         crate::plugin::invoke::run_abortable(&bin, &[PROBE_FLAG], PROBE_DEADLINE_SECS, &[], keep())
             .await;
@@ -301,7 +301,7 @@ async fn run_op(
     if let Some(a) = op_args.as_deref() {
         argv.extend(["--args", a]);
     }
-    // 〔P7〕插件口分拣出来的进度行：只认一个 JSON 对象（一格），别的形不转（格是什么由界面严格收）。
+    // 插件口分拣出来的进度行：只认一个 JSON 对象（一格），别的形不转（格是什么由界面严格收）。
     let mut on_line = |line: &str| {
         if let Ok(cell @ Value::Object(_)) = serde_json::from_str::<Value>(line) {
             progress(cell);
@@ -323,7 +323,7 @@ async fn run_op(
     Ok(got)
 }
 
-/// 〔FIX4 · `97 §8` · 主会话 09-28 裁「受管工具都应可卸，照 SU1 装卸账」〕**卸掉这台上的全景小程序**（帧 `panorama-uninstall`）。
+/// 〔「受管工具都应可卸，照 SU1 装卸账」〕**卸掉这台上的全景小程序**（帧 `panorama-uninstall`）。
 ///
 /// 装的那一下只写一份文件（落点 `~/.cc-monitor/bin/<`[`program_file_name`]`>`，`panorama_bytes` 放的）⇒ 卸只删那一份：
 /// 先问它是不是全景小程序（`--probe` 首行认身份，认不出 / 跑不起来 ⇒ `not_ours`、一个字节不动），再经这台文件管理面带 CAS 删

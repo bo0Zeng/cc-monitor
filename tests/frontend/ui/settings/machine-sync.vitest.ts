@@ -2,14 +2,14 @@
  * S4a：**跨分节同步**的行为测试 —— 这才是本轮要交付的东西。
  *
  * `machine-context.vitest.ts` 钉的是 store 本体；这里钉的是「四块真的接上去了」。
- * 主计划 §5-4 记的病是：几块分节各维护一份 `this.origin`，用户在一处切了机器，另外几处还停在上一台。
+ * 记的病是：几块分节各维护一份 `this.origin`，用户在一处切了机器，另外几处还停在上一台。
  *
  * 用 cc-bus 驾驶舱做主验：它的下拉既能驱动共用 store，也跟着 store 走（机器详情页切页那条真实路径）。
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn(), Channel: class {} }));
-// 〔FE1〕读面拆去了 `account-reads.ts`，规则留在 `accounts.ts`：两处各桩各的。
+// 读面拆去了 `account-reads.ts`，规则留在 `accounts.ts`：两处各桩各的。
 vi.mock("../../../../src/frontend/ui/account-reads", () => ({
   fetchAccounts: vi.fn().mockResolvedValue({ accounts: [] }),
 }));
@@ -36,7 +36,7 @@ function routeInvoke(cmd: string): unknown {
       return ORIGINS;
     case "read_cc_bus_state":
       return { agents: [], skipped: 0 };
-    // 〔MIG-3b〕钩子诊断改走通道（`chan_call`）：本条不看它的结果，落 `default`。
+    // 钩子诊断改走通道（`chan_call`）：本条不看它的结果，落 `default`。
     default:
       return undefined;
   }
@@ -99,9 +99,9 @@ describe("S4a 跨分节机器同步", () => {
     setCurrentMachine(LOCAL_ORIGIN);
     await settle();
     expect(busSel.value).toBe("<local>"); // 跟着切到「本机」
-    // 〔C4a〕store 与选择器现在是同一个表示（本机 = `LOCAL_ORIGIN`），原先那处换算没有了。
+    // store 与选择器现在是同一个表示（本机 = `LOCAL_ORIGIN`），原先那处换算没有了。
     expect(getCurrentMachine()).toBe(LOCAL_ORIGIN);
-    // 〔BS1b 09-24 订正〕本机派生已走后端 `bus-spawn` 原语（本机、远端同一条路）⇒ 切到本机时派生按钮**不再**禁用。
+    // 本机派生已走后端 `bus-spawn` 原语（本机、远端同一条路）⇒ 切到本机时派生按钮**不再**禁用。
     //   原来这里钉的是「写面在本机没有对侧 ⇒ 当场禁用」，那个前提被 BS1b 拆掉了（`refuse_local_write` 已删）。
     const spawn = bus.element.querySelector(".cc-bus-spawn-go") as HTMLButtonElement;
     expect(spawn.disabled).toBe(false);

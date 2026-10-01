@@ -102,7 +102,7 @@ else
   # U0（2026-08-01）：与 `ccm-cli.test.sh` 缺 npx 那处**一字不差的病**，一并修。
   # 静默 SKIP 掉 2 条 ⇒ 合计 PASS 26→24 ⇒ `assert-pass-floor.sh tmux-target 26` 判红，
   # 而它的判词是「断言数缩水」—— **真因是环境缺 `script(1)`，报的是套件被削弱**。
-  # `gate-integrity/MASTERPLAN.md:18` 早把这两处并列记成「静默 SKIP 分支」（第三处
+  # 早把这两处并列记成「静默 SKIP 分支」（第三处
   # `cc-spawn-uplift:22` 已在 Phase G 修掉）。诊断说真话，别让人去翻这套件最近改了什么。
   FAIL=$((FAIL + 2))
   # 诊断一律**单引号**：双引号里的反引号会被 bash 当命令替换执行（这里就踩过一次，

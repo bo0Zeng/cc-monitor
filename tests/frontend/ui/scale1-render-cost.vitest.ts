@@ -1,5 +1,5 @@
 /**
- * 秤 1 ——「单条渲染成本直方图」（`设计/17 §6` 表第 1 行，**最高优先**那一行）。
+ * 秤 1 ——「单条渲染成本直方图」（表第 1 行，**最高优先**那一行）。
  *
  * 设计逐字要的是：
  *   「`renderContentRecord`（`render-stream-record.ts`）wall time，**按记录字节分桶**，
@@ -14,7 +14,7 @@
  * # 语料
  *
  * `tests/__fixtures__/scale2-height-records.jsonl`（**与秤 2 同一份，不另造**）。
- * 🔴 **结构采自真机、正文一个字都不是真的** —— `设计/17 §6` 的数据源纪律
+ * 🔴 **结构采自真机、正文一个字都不是真的** —— 数据源纪律
  * 2026-09-18 已改判成「结构照真的，内容一律合成」（用户逐字「这是测试啊 / 不应该进」）。
  * 产出它的是 `tests/evidence/U-scale2-sample-records.ts`（逐字符同形替换 ＋ 两道自检）。
  * 桶边界与秤 2（`tests/frontend/ui/scale2-height-corpus.ts` 的 `BUCKETS`）**逐字同一套**。
@@ -86,7 +86,7 @@ const fixtureLines = readFileSync(FIXTURE, "utf8")
   .filter((l) => l.trim().length > 0);
 
 /**
- * `设计/17 §6` 秤 1 的桶边界，**与秤 2（`tests/frontend/ui/scale2-height-corpus.ts`）逐字同一套**。
+ * 秤 1 的桶边界，**与秤 2（`tests/frontend/ui/scale2-height-corpus.ts`）逐字同一套**。
  * 改这里等于改秤 —— 改了下面那格登记表当场对不上。
  */
 const BUCKETS: readonly (readonly [string, number, number])[] = [
@@ -138,14 +138,14 @@ const EXPECTED_SAMPLES_PER_BUCKET: Readonly<Record<string, number>> = {
 /** 样本总数的绝对登记（同上，独立写死） */
 const EXPECTED_SAMPLES = 552;
 
-// ── 🔴 〔SC1 · 第四波〕成本轴换成**卡型** ──────────────────────────────────────
+// ── 🔴 成本轴换成**卡型** ──────────────────────────────────────
 //
-// 本秤自己的读数推翻了「字节即成本」（`设计/17 §6`「装秤之后改过的三条判断」第 1 条），
+// 本秤自己的读数推翻了「字节即成本」（「装秤之后改过的三条判断」第 1 条），
 // 而判据一直拿 `branch === "card"` 当「建卡那条路」—— **分支比卡型粗一层**：
 // 现打 `card` 分支里混着 `card-compact`（23 KB 的记录只物化 27 个字，是一张**便宜**的卡），
 // 它落在 `8-32K` 桶里，和贵的 `card-assistant` 一起算 p50。
 // ⇒ 样本上多了 `card`（卡型）与 `domChars`（物化进 DOM 的字符数），下面三张表是这一轴的地基。
-// 设计与读数住 `调研/第四波记录/SC1.md`。
+// 设计与读数住。
 
 /**
  * 每个卡型的**绝对**样本数（69 条 × 8 遍；独立写死，理由同 `EXPECTED_SAMPLES_PER_BUCKET`）。
@@ -159,7 +159,7 @@ const EXPECTED_SAMPLES_PER_CARD: Readonly<Record<string, number>> = {
   skip: 56,
 };
 /**
- * **折叠卡型**：正文留在 DOM 外（`设计/17 §2.8` 的惰性 body / compact 摘要），
+ * **折叠卡型**：正文留在 DOM 外（惰性 body / compact 摘要），
  * 物化量**不随记录字节变** —— 这就是它们便宜的机制。
  */
 const FOLDED_CARD_TYPES: ReadonlySet<string> = new Set([
@@ -212,7 +212,7 @@ function freshCtx(): RenderContext {
 /**
  * 把一遍语料喂进 `renderContentRecord`。
  *
- * 口径：`enhanceRoot` 缺省（不交给任何 IO；〔W5-RENDER R5〕原字段 `observeForLazyEnhance` 取 false 的那一形），
+ * 口径：`enhanceRoot` 缺省（不交给任何 IO；原字段 `observeForLazyEnhance` 取 false 的那一形），
  * 对应 `ctx.lazy === false` 的 eager 渲染 —— batch 期那条 lazy 路本秤没量。
  */
 function drivePass(lines: string[]): void {
@@ -224,7 +224,7 @@ function drivePass(lines: string[]): void {
   const sink: StreamSink = { timeline, onBranchRecord: () => {} };
   let seq = 0;
   for (const line of lines) {
-    const message = withUserText(JSON.parse(line) as JsonlRecord); // 〔RENDER2 · J10〕monitor 那一格成品
+    const message = withUserText(JSON.parse(line) as JsonlRecord); // monitor 那一格成品
     const payload: JsonlLinePayload = {
       session_id: "scale1",
       cwd: null,
@@ -260,7 +260,7 @@ let inflatedSamples: RenderCostSample[] = [];
 /** 语料每条记录的**原始 jsonl 行字节**，按喂入顺序 —— 用来跟探针自报的字节对拍 */
 const lineBytes = fixtureLines.map((l) => new TextEncoder().encode(l).length);
 
-// 🔴 **超时给到 60s，理由要写清**〔2026-09-18〕：这一段真渲 `69 × (8+1) = 621` 条记录，
+// 🔴 **超时给到 60s，理由要写清**：这一段真渲 `69 × (8+1) = 621` 条记录，
 // 单独跑约 4.5s，而 **vitest 全量并发时它和另外 130 个文件抢 CPU** ⇒ 实测在默认 10s 上
 // **随机超时**（S21 那一路先撞见，单独跑 14/14 全过）。
 // ⚠ **一个会随机红的判据 ＝ 一个会随机骗人的判据** —— 它红的时候没人分得清
@@ -283,7 +283,7 @@ beforeAll(() => {
   inflatedSamples = readRenderCostSamples();
   disableRenderCostProbe();
 
-  // ── 报表（`设计/17 §6` 逐字要的 n / p50 / p90 / max）────────────────────
+  // ── 报表（要的 n / p50 / p90 / max）────────────────────
   const lines: string[] = [];
   lines.push("");
   lines.push(
@@ -357,7 +357,7 @@ beforeAll(() => {
     lines.push(`| ${name} | ${cells.join(" | ")} |`);
   }
   lines.push("");
-  lines.push("只看**正文卡型**（`BODY_CARD_TYPES`）逐桶 ——〔SC1〕先前是「`card` 分支」，那里混着便宜的 `card-compact`：");
+  lines.push("只看**正文卡型**（`BODY_CARD_TYPES`）逐桶 ——先前是「`card` 分支」，那里混着便宜的 `card-compact`：");
   lines.push(
     "| 桶 | n | total p50 | total p90 | total max | render p50 | render 占比 p50 |",
   );
@@ -568,7 +568,7 @@ describe("秤 1 · 〔SC1〕成本轴是卡型 —— 不看墙钟的那一半",
     );
   });
 
-  // 🔴 S2 就是「字节不是成本轴，卡型才是」（`设计/17 §6`）的**可红形态**：
+  // 🔴 S2 就是「字节不是成本轴，卡型才是」的**可红形态**：
   //   同一条记录只加字节，物化量变不变，由卡型决定 —— 折叠卡型不变，正文卡型跟着涨。
   //   哪天工具结果改成急切把正文塞进 DOM ⇒ `card-tool-group` 从折叠集跳到正文集 ⇒ 红；
   //   哪天正文卡型不再渲正文 ⇒ 反方向红。一毫秒墙钟都不用。
@@ -601,16 +601,16 @@ describe("秤 1 · 〔SC1〕成本轴是卡型 —— 不看墙钟的那一半",
 describe("秤 1 · 它要验的那条声称：长尾桶被 O(len) 操作主导", () => {
   // 🔴 **这一组的写法是被读数改过一次的，别照「设计怎么说」回写。**
   //
-  // 第一版逐字照 `设计/17 §6` 的声称写成「按字节分桶，桶越大越贵」，**当场红**：
+  // 第一版照声称写成「按字节分桶，桶越大越贵」，**当场红**：
   // 现打 `32-128K` 桶的 total p50 只有 **0.157 ms**，比 `2-8K` 桶的 **1.891 ms**
   // 便宜一个量级。原因不是仪表坏了，是**桶的轴选错了**——
   // 最大的那几条记录全是 `tool_result` 回灌，渲染成**折叠的 tool-group**，
-  // 正文根本不进 DOM（`buildResultBody` 要展开才建，`设计/17 §2.8` 自己写着这一条，
+  // 正文根本不进 DOM（`buildResultBody` 要展开才建，自己写着这一条，
   // 只是把它归成了**内存**问题而不是时间问题 —— 本秤证实了那个归类是对的）。
   // ⇒ 下面钉三件**确实成立**的事，外加一格把那条**反例**本身钉住，
   //   免得下一个人又按「字节即成本」去改口径。原文见 `tests/evidence/S1-render-cost.md`。
 
-  // 🔴 **人群是「建卡那条路」，不是「每个非空桶」**〔2026-09-18 订正〕
+  // 🔴 **人群是「建卡那条路」，不是「每个非空桶」**
   //
   // 第一版写的是「每个非空桶」，在全量并发下**红过一次**：`32-128K` 桶的
   // `render` 占比掉到 **53.0%**（阈值 55%）。
@@ -623,7 +623,7 @@ describe("秤 1 · 它要验的那条声称：长尾桶被 O(len) 操作主导",
   //   而「字节不是成本轴，卡型才是」正是本秤最重要的那条产出。判据跟着它走。
   //   纯 merged 那一档由下面那条**单独**钉（`merge` 占大头在那里是正确态）。
   //
-  // 〔SC1 · 第四波〕人群再收一层：从「`card` 分支」收到「**正文卡型**」（`BODY_CARD_TYPES`）。
+  // 人群再收一层：从「`card` 分支」收到「**正文卡型**」（`BODY_CARD_TYPES`）。
   //   `card` 分支里的 `card-compact` 是折叠卡型（物化 27 个字），拿它算「O(len) 还是不是大头」
   //   同样是判一条它压根不走的路。阈值与本组另两条的阈值一个不动。
   //   ⚠ 本组仍是**墙钟**判据，随负载抖；「卡型才是成本轴」这句话今天由上一组 S2（不看墙钟）承担。
@@ -727,7 +727,7 @@ describe("秤 1 · 它要验的那条声称：长尾桶被 O(len) 操作主导",
       branches,
       "32-128K 桶的成分变了 —— 上面那段「轴选错了」的诊断要重做",
     ).toEqual(["tool-group-merged"]);
-    // ①′〔SC1〕按卡型说同一件事：字节最重的那一桶里只有一种卡，而且是**折叠卡型**
+    // ①′按卡型说同一件事：字节最重的那一桶里只有一种卡，而且是**折叠卡型**
     const cards = [...new Set(tail.map((s) => s.card))].sort();
     expect(cards, "32-128K 桶的卡型变了").toEqual(["card-tool-group"]);
     expect(FOLDED_CARD_TYPES.has(cards[0])).toBe(true);

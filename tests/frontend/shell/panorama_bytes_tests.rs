@@ -1,8 +1,8 @@
-//! 〔RM1c · 第四波〕`panorama_bytes.rs` 的判据：(OS, arch) 选字节。
+//! `panorama_bytes.rs` 的判据：(OS, arch) 选字节。
 
 use super::*;
 
-/// 〔DP1〕键的解析与字节住 `byte_table`：本条判的是「全景这一类字节认哪几格」（Linux 两格 ＋ 〔RM1f〕Windows x86_64
+/// 键的解析与字节住 `byte_table`：本条判的是「全景这一类字节认哪几格」（Linux 两格 ＋ Windows x86_64
 /// 那一格的原生产线），与「别的 OS / arch 答没有、不把一份 Linux ELF 推过去」。
 #[test]
 fn only_the_panorama_cells_with_a_production_line_get_bytes() {
@@ -19,7 +19,7 @@ fn only_the_panorama_cells_with_a_production_line_get_bytes() {
         ("linux", "amd64", linux(Arch::X86_64)),
         ("Linux", "aarch64", linux(Arch::Aarch64)),
         ("Linux", "arm64", linux(Arch::Aarch64)),
-        // 〔RM1f〕Windows x86_64 那一格有原生产线（`release.yml` 的 `Stage native panorama for self-extract`）。
+        // Windows x86_64 那一格有原生产线（`release.yml` 的 `Stage native panorama for self-extract`）。
         (
             "MINGW64_NT-10.0",
             "x86_64",
@@ -40,8 +40,8 @@ fn only_the_panorama_cells_with_a_production_line_get_bytes() {
             .filter(|k| LINES.contains(&(Product::Panorama, *k)));
         assert_eq!(got, want, "{os} / {arch}");
         if want.is_none() {
-            // 〔TL1 · 4C〕从前判的是一个按两个词直接取字节的函数（远端推字节改走 `choose` 之后它删了）；
-            //   今天判那个口本身：拒。〔P1〕`choose` 不再分本机 / 远端（表 B 的承诺是判定，住后端）。
+            // 从前判的是一个按两个词直接取字节的函数（远端推字节改走 `choose` 之后它删了）；
+            //   今天判那个口本身：拒。`choose` 不再分本机 / 远端（表 B 的承诺是判定，住后端）。
             assert!(
                 crate::byte_table::choose(Product::Panorama, key_of(os, arch)).is_err(),
                 "{os} / {arch} 不该有字节"
@@ -107,9 +107,9 @@ fn the_embedded_bytes_are_the_right_arch() {
     }
 }
 
-// ── 〔RM1e〕推上去 ─────────────────────────────────────────────────────────────────
+// ── 推上去 ─────────────────────────────────────────────────────────────────
 //
-// 要求住址：用户 09-24 **V108**（`设计/99 §1`）「随后端部署、只传给开过远端全景的机器，后端经插件通用调用口按需起它」；
+// 要求住址：用户 09-24 **V108**「随后端部署、只传给开过远端全景的机器，后端经插件通用调用口按需起它」；
 // V89（`SR1b.md`）「只写暂存区」——远端写只许 `~/.cc-monitor/staging` 与 `~/.cc-monitor/bin`。
 
 fn backend_prod(rel: &str) -> String {
@@ -139,7 +139,7 @@ fn the_push_lands_where_the_backend_looks_and_inside_a_remote_write_root() {
         "名字两边对不上"
     );
     // 后端 `fixed_candidates` 的第二个候选是按 家 → DIR_NAME → "bin" → 文件名 拼的；
-    // 〔RM1f〕文件名 = `program_file_name()` = PLUGIN_NAME ＋ 那台机器的可执行后缀（Windows 本机 `.exe`）。
+    // 文件名 = `program_file_name()` = PLUGIN_NAME ＋ 那台机器的可执行后缀（Windows 本机 `.exe`）。
     let at = pano
         .find("fn fixed_candidates(")
         .expect("后端没有 fixed_candidates");
@@ -180,16 +180,16 @@ fn the_push_lands_where_the_backend_looks_and_inside_a_remote_write_root() {
     );
 }
 
-/// ★〔TL1 · 4C〕**问那台是什么机器，monitor 生产段零处**（`DP1.md` 报备 7「两份 `uname -s -m`」收成一份；〔THIN〕那一份进了后端）。
+/// ★**问那台是什么机器，monitor 生产段零处**（`DP1.md` 报备 7「两份 `uname -s -m`」收成一份；那一份进了后端）。
 ///
-/// 要求住址：`设计/96 §7.1.1b`「全仓唯一的取字节口」（`byte_table.rs` 头注逐字）＋ `设计/01 §6.7a` 规矩 4
-/// （本机只是「目标机器恰好是自己」—— 两件产物、两条路走同一张表）＋ `设计/00 §1.2`「判定只在后端」（〔THIN〕表 B 的承诺是裁决）。
-/// 两向：`uname -s -m` 这个命令串在 monitor 生产段 ∪ 共享 crate 的住址集合 == {`deploy-contract`}（〔P1〕契约那一半；它的唯一消费者今天是后端
+/// 要求：「全仓唯一的取字节口」（`byte_table.rs` 头注逐字）＋规矩 4
+/// （本机只是「目标机器恰好是自己」—— 两件产物、两条路走同一张表）＋「判定只在后端」（表 B 的承诺是裁决）。
+/// 两向：`uname -s -m` 这个命令串在 monitor 生产段 ∪ 共享 crate 的住址集合 == {`deploy-contract`}（契约那一半；它的唯一消费者今天是后端
 /// `deploy_plan::slot_of`）；全景推字节两臂都问本机常驻后端 `deploy-slot`（`ask_slot(Some(&cfg), …)` · `ask_slot(None, …)`），
 /// 取字节只按答里那一格（`slot_bytes`）—— monitor 零处 `choose(Product::Panorama` · 零处 `probe_key`（读本模块生产段，异源于 `byte_table` 自己的判据）。
 #[test]
 fn asking_what_the_machine_is_lives_in_one_place_and_the_push_goes_through_choose() {
-    // 〔MIG-3b · P1〕命令串随表 A 搬进共享 crate（今天是契约那一半 `deploy-contract`）⇒ 射程是 monitor 生产段 ∪ 共享 crate，住址集合 == {`src/common/deploy-contract/src/lib.rs`}。
+    // 命令串随表 A 搬进共享 crate（今天是契约那一半 `deploy-contract`）⇒ 射程是 monitor 生产段 ∪ 共享 crate，住址集合 == {`src/common/deploy-contract/src/lib.rs`}。
     let base = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
     let needle = format!("uname -s {}", "-m");
     let mut at: Vec<String> = Vec::new();
@@ -234,7 +234,7 @@ fn asking_what_the_machine_is_lives_in_one_place_and_the_push_goes_through_choos
             "panorama_bytes.rs 生产段里找不到 `{want}`"
         );
     }
-    // 〔THIN〕monitor 不再判「那台要哪一格」：零处 `choose(Product::Panorama` · 零处 `probe_key`。
+    // monitor 不再判「那台要哪一格」：零处 `choose(Product::Panorama` · 零处 `probe_key`。
     for gone in ["choose(Product::Panorama", "probe_key("] {
         assert!(
             !me.contains(gone),
@@ -243,12 +243,12 @@ fn asking_what_the_machine_is_lives_in_one_place_and_the_push_goes_through_choos
     }
 }
 
-// ── 〔RM1f〕本机那一份 ───────────────────────────────────────────────────────────
+// ── 本机那一份 ───────────────────────────────────────────────────────────
 //
-// 要求住址：用户 09-24 **V108**（`设计/99 §1`）「之后本机也走这条路、monitor 摘内嵌引擎」·
+// 要求住址：用户 09-24 **V108**「之后本机也走这条路、monitor 摘内嵌引擎」·
 // `INVARIANTS §40`（本机 ＝ 不走 ssh 的远端：本机后端也经插件口起那个小程序）。
 
-/// ★〔RM1f · L1〕本机放下来的那一份，名字 == 本机后端去找的那个名字：`PROGRAM_NAME` ＋ **这台**的可执行后缀
+/// ★本机放下来的那一份，名字 == 本机后端去找的那个名字：`PROGRAM_NAME` ＋ **这台**的可执行后缀
 /// （monitor 这一侧取 `build.rs` 按 `TARGET` 算的后缀，后端那一侧取它自己的 `EXE_SUFFIX` —— 同一台机器上必须相等；
 /// 本判据跑在的就是 `TARGET` 那台）；落点目录与推到远端同一个 [`PUSH_DIR`]（上一条钉它 == 后端第二候选的目录）。
 #[test]
@@ -262,7 +262,7 @@ fn the_local_copy_is_named_the_way_the_local_backend_looks_for_it() {
     )
     .expect("读 panorama_bytes.rs");
     let prod = guard_core::production_code(&src);
-    // 〔THIN〕`place_local` 改收字节（哪一格由本机常驻后端 `deploy-slot` 答），签名跟着变。
+    // `place_local` 改收字节（哪一格由本机常驻后端 `deploy-slot` 答），签名跟着变。
     let at = prod.find("fn place_local(bytes").expect("没有 place_local");
     let body: String = prod[at..at + prod[at..].find("\n}\n").unwrap()]
         .split_whitespace()
@@ -273,7 +273,7 @@ fn the_local_copy_is_named_the_way_the_local_backend_looks_for_it() {
     );
 }
 
-/// ★〔RM1f · L2〕放那一份：第一次写（且置可执行位）；**逐字节相等**的第二次零写；字节变了就重写；
+/// ★放那一份：第一次写（且置可执行位）；**逐字节相等**的第二次零写；字节变了就重写；
 /// 置可执行位失败 ⇒ 报、盘上没有半截的正式文件。
 #[test]
 fn placing_the_local_copy_writes_once_and_only_rewrites_when_the_bytes_differ() {
@@ -331,7 +331,7 @@ fn placing_the_local_copy_writes_once_and_only_rewrites_when_the_bytes_differ() 
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// ★〔RM1f · L3〕本机原生小程序的落点名字**四处同一个串**：`build.rs` 的 `NATIVE_BACKEND_DIR` ＋
+/// ★本机原生小程序的落点名字**四处同一个串**：`build.rs` 的 `NATIVE_BACKEND_DIR` ＋
 /// `NATIVE_PANORAMA_FILE` == 消费侧 `include_bytes!` 那个字面量 == `re-embed.sh --native` 铺的 ==
 /// `release.yml` Windows 那一格铺的。名字是定死的（字面量 `include_bytes!` 逼的），漂了就是「编进去一个空 cfg」
 /// 或「铺了没人吃」。异源：四份文件现读。
@@ -349,7 +349,7 @@ fn the_native_panorama_landing_is_spelled_the_same_in_all_four_places() {
         landing, "native-backend/cc-monitor-panorama",
         "正控：抠得到"
     );
-    // 〔DP1 · 第四波〕消费侧那个 `include_bytes!` 搬进了 `byte_table.rs`（全仓唯一的取字节口）。
+    // 消费侧那个 `include_bytes!` 搬进了 `byte_table.rs`（全仓唯一的取字节口）。
     let bytes_src = guard_core::production_code(&read("src/frontend/shell/src/byte_table.rs"));
     // 针在运行时拼（整串写死在本文件里，`cross_half_edge_registry` 会把它当成一处解析不出路径的内嵌）。
     let needle = format!("{}!(\"../{landing}\")", "include_bytes");
@@ -374,8 +374,8 @@ fn the_native_panorama_landing_is_spelled_the_same_in_all_four_places() {
     );
 }
 
-/// 〔THIN〕`deploy-slot` 的答严格收：恰 `{os, arch, label, ack}`、键认得出（金样同 `IPC-PROTOCOL.md` 那一节）；多一格 · 少一格 · 认不出 ⇒ 错。
-/// 要求住址：`设计/00 §1.2`「共享 crate 只放契约」（表 A 的键是两侧对上的契约）。
+/// `deploy-slot` 的答严格收：恰 `{os, arch, label, ack}`、键认得出（金样同 `IPC-PROTOCOL.md` 那一节）；多一格 · 少一格 · 认不出 ⇒ 错。
+/// 要求：「共享 crate 只放契约」（表 A 的键是两侧对上的契约）。
 #[test]
 fn the_slot_answer_is_read_strictly() {
     use serde_json::json;

@@ -1,10 +1,10 @@
 /**
- * 〔RESYNC · V149 · `设计/15 §4.1b`〕**手动对齐**：问那台机器的后端 `resync`（本机与远端同一条 `chan.call`）。
+ * **手动对齐**：问那台机器的后端 `resync`（本机与远端同一条 `chan.call`）。
  *
  * 事件驱动漏一拍就一直错（tmux 选项被外部改掉、inotify 换 inode）；后端零定时器，所以兜底是**用户按按钮**，
  * 后端重跑起步那一套、只对差异发帧。三个落点共用本文件这一个口：
  * 设置页机器一行「重新对齐」（整机）· 关卡 2 拒绝提示「对齐后重试」（带 sid，只对那一个会话：重验 ＋ 重打 ＋ 再过一次关卡）·
- * 〔REREAD · V155〕tab 栏「重新读取」（有打开 tab 的每台各一次整机，`resyncMachines`）。
+ * tab 栏「重新读取」（有打开 tab 的每台各一次整机，`resyncMachines`）。
  */
 import { copyText } from "./copy-table";
 import { ControlError, exactKeys, isObj, settle, unreadable, type Refusals } from "./control-said";
@@ -21,7 +21,7 @@ export interface Resynced {
   added: number;
   removed: number;
   retagged: number;
-  /** 〔REREAD · V155〕在跟的会话这趟从游标补读出几行（补出来的行照常经流到达）。 */
+  /** 在跟的会话这趟从游标补读出几行（补出来的行照常经流到达）。 */
   caughtUp: number;
   watchers: number;
 }
@@ -62,7 +62,7 @@ export async function resync(origin: Origin, sid?: string): Promise<Resynced> {
   return decodeResynced(origin, v);
 }
 
-/** 对齐的结果 ⇒ 一句话：对齐差异 ＋ 〔REREAD · V155〕补读了几条（0 ⇒「没有漏的」）。 */
+/** 对齐的结果 ⇒ 一句话：对齐差异 ＋补读了几条（0 ⇒「没有漏的」）。 */
 export function resyncSaid(r: Resynced): string {
   if (r.watchers === 0) return copyText("resync.done.nobody");
   const diff =
@@ -73,12 +73,12 @@ export function resyncSaid(r: Resynced): string {
   return `${caught}${diff}`;
 }
 
-/** 〔REREAD · V155〕一台的结果：对上了（差异），或没问到（原因）。 */
+/** 一台的结果：对上了（差异），或没问到（原因）。 */
 export type MachineResynced = { origin: Origin; r: Resynced } | { origin: Origin; why: string };
 
 /**
- * 〔REREAD · V155〕tab 栏「重新读取」：每台（去重）发一次整机 `resync`，各台并行、互不等；一台失败不拖别的台。
- * 整机那一趟后端会让每个在跟的会话从游标补读（`设计/15 §4.1b`）。
+ * tab 栏「重新读取」：每台（去重）发一次整机 `resync`，各台并行、互不等；一台失败不拖别的台。
+ * 整机那一趟后端会让每个在跟的会话从游标补读。
  */
 export function resyncMachines(origins: Iterable<Origin>): Promise<MachineResynced[]> {
   return Promise.all(
