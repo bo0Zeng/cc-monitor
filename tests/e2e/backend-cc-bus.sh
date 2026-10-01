@@ -389,7 +389,7 @@ chmod +x "$_EW/bin/fake-agent"
 _sp() {  # $1.. = 额外的 VAR=值；目录与任务两个入口一样（那样内层参数才可能逐字相等）
   env -u TMUX -u TMUX_PANE -u CC_BUS_ID HOME="$_EW" CC_BUS_HOME="$_EW/bus" \
       CC_BUS_SCRIPTS="$SCRIPTS" CCSPAWN_LAUNCH="$_EW/bin/fake-agent" CCM_NO_PRETRUST=1 \
-      CCM_CONFIG=/nonexistent CCM_ACCTS_MANIFEST=/nonexistent/accounts.json "$@" \
+      CCM_CONFIG=/nonexistent "$@" \
       "$TIMEOUT" 60 bash "$SCRIPTS/cc-spawn" --base "$_EW/proj" "任务乙"
 }
 # 判据：每个入口的调用按内容分三类（探针 `--ccm-probe` / 建会话那趟 `--detach` / 其余 = pane 里那一跳；
@@ -455,7 +455,7 @@ chmod +x "$_EW/e4/ccm"
 mkdir -p "$_EW/bad"
 _ob="$(env -u TMUX -u TMUX_PANE -u CC_BUS_ID HOME="$_EW" CC_BUS_HOME="$_EW/bus" \
       CC_BUS_SCRIPTS="$SCRIPTS" CCSPAWN_LAUNCH="$_EW/bin/fake-agent" CCM_NO_PRETRUST=1 \
-      CCM_CONFIG=/nonexistent CCM_ACCTS_MANIFEST=/nonexistent/accounts.json \
+      CCM_CONFIG=/nonexistent \
       CCM_BIN="$_EW/e4/ccm" \
       "$TIMEOUT" 60 bash "$SCRIPTS/cc-spawn" --base "$_EW/bad" "任务丙" 2>"$_EW/errb.txt")"; _rb=$?
 for _i in $(seq 1 30); do tmux capture-pane -p -t '=bad_cc:' 2>/dev/null | grep -q '未知选项' && break; sleep 0.1; done
