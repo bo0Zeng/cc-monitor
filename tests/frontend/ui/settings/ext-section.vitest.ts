@@ -159,6 +159,25 @@ describe("扩展页：表 · 抽屉 · 确认卡", () => {
     expect(err.textContent).toContain("看过之后又变了");
     expect([...err.querySelectorAll("button")].map((b) => b.textContent)).toEqual([copyText("extPage.card.again")]);
   });
+
+  it("后端答了一个错误 ⇒ 那一行就是「装到 <那台> 失败：」＋ 它那一句本身，码不上屏、不再套「后端没有答出来」", async () => {
+    const said = "项目目录「w/x」不是绝对路径。要从根目录或盘符写起，中间不能有 ..";
+    backend([listWith(cell("missing", install))]);
+    const answer = invokeMock.getMockImplementation() as (cmd: string, a: ChanCallArgs) => Promise<unknown>;
+    invokeMock.mockImplementation(async (cmd: string, a: ChanCallArgs) => {
+      if (cmd === "chan_call" && a.op === "ext-hub-preview") throw refusedReply("bad_path", said);
+      return answer(cmd, a);
+    });
+    const s = new ExtSection();
+    document.body.replaceChildren(s.element);
+    s.loadNow();
+    await settle();
+    (s.element.querySelector('.ext-row[data-key="skill/demo"]') as HTMLButtonElement).click();
+    const bring = () => [...s.element.querySelectorAll(".ext-drawer .ext-machine")][1];
+    (bring().querySelector(".ext-machine-top button") as HTMLButtonElement).click();
+    await settle();
+    expect(bring().querySelector(".ext-error")!.textContent).toBe(copyText("extPage.error.install", { machine: "laptop", said }));
+  });
 });
 
 /** 一份源码里「比较指纹」的痕迹：出现摘要这个词，或拿记号去比。注释先剥掉。 */

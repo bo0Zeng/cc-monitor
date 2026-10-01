@@ -50,16 +50,11 @@ function refusals(): Refusals {
   return {
     byCode(code, detail) {
       switch (code) {
-        // 这几档的话那台后端已经说成人话了（为什么拒 · 做到第几步停下 · 这台做不了多账号），原样上屏。
-        case "refused":
-        case "not_enabled":
-        case "io_failed":
-        case "unsupported":
-          return detail;
+        // 契约对不上是两端版本不配；其余各档那台后端已经说成人话了，原样上屏（码不上屏）。
         case "bad_args":
           return copyText("accountOps.said.contract", { detail });
         default:
-          return copyText("accountOps.said.otherCode", { code, detail });
+          return detail.trim() !== "" ? detail : copyText("accountOps.said.noReason");
       }
     },
     noReason: () => copyText("accountOps.said.noReason"),
