@@ -1706,12 +1706,17 @@ fn send_line(
         _ => None,
     });
     // §2.1 不变量并存：Line 逐行照发**每一条**；turn-end 是额外的边沿信号，不替代、不过滤 Line。
-    let turn_uuid = face.and_then(|f| f.turn_end).and_then(|t| t(&line.raw));
+    let rec = runs.main_record(session_id, &line.raw);
+    // 子运行的记录（适配层 `run_of` 答得出）一轮收尾 ≠ 主运行一轮结束 ⇒ 不报轮次边沿。
+    let turn_uuid = face
+        .and_then(|f| f.turn_end)
+        .and_then(|t| t(&line.raw))
+        .filter(|_| !rec.in_run);
     let (message, cwd) = match parsed {
         Some(p) => (Some(p.message), p.cwd),
         None => (None, None),
     };
-    let (rid, runs_changed) = runs.main_record(session_id, &line.raw);
+
     sink.send(Frame::Line {
         session_id: session_id.to_string(),
         path: path_str.to_string(),
@@ -1719,7 +1724,7 @@ fn send_line(
         message,
         cwd,
         byte_offset: line.byte_offset, // backend-01 gap#2：累计原始字节（对齐 aterm LineFramer）
-        rid,
+        rid: rec.rid,
     });
     // **先 Line 后 TurnEnd**：对齐 aterm β 的按行序处理——TurnEnd 结算时 currentOffset 已含本行。
     // TurnEnd 不带 byte_offset（只 Line 带）。
@@ -1729,7 +1734,7 @@ fn send_line(
             uuid,
         });
     }
-    runs_changed
+    rec.changed
 }
 
 /// 〔RENDER2 · `设计/10 §3.1` A6〕**从游标补读这个会话的 jsonl**（与文件事件同一个 [`process_jsonl`]，不另写一条路）。

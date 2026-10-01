@@ -8,7 +8,7 @@
 //! - **不进任何缓冲**：不进 `local_lines`（内容通道）、不进重放缓冲（`EventReplay.history`）、不攒 —— 收一帧，
 //!   交给此刻订了 `session-tap` 的订阅（有 credit 当场交，没 credit 丢、位置照占、原位 `Gap`：`05 §3.3.4` 级 2）。
 //!   ⇒ SSE 那一路断 / 丢 / 挤都碰不到 jsonl 那条对的路（V24：SSE 只保快，落盘保对）。
-//! - **不认识 SSE**：`data` 原样交前端（前端的活卡状态机认 `message_start` / `content_block_delta` …）；
+//! - **不认识流协议**：`ev`（后端已按上游协议折好的归一事件）与 `run`（后端归好的位）原样交前端；
 //!   `stream` 原样交（前端拿它对 tab 的 sid）；缺口由前端看 `n` 算（`设计/05 §3.3.4`：检漏纯算术 · 判可恢复归上层）。
 //! - 〔HOST · V139〕本机那条流（中转住本机常驻后端，V107）与远端那条流（远端中转住远端常驻后端）都有它，origin 各是各的。
 
@@ -18,15 +18,17 @@ use std::sync::OnceLock;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Tap {
     pub stream: String,
+    /// 归哪个子运行（主运行 ⇒ `None`）。
+    pub run: Option<String>,
     pub resp: u64,
     pub n: u64,
     pub body: TapBody,
 }
 
-/// `tap` 帧的两形：一个 SSE 事件原文 · 这个响应收尾了。
+/// `tap` 帧的两形：一件归一事件（JSON 对象原文，不解释）· 这一段收尾了。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TapBody {
-    Data(String),
+    Ev(crate::ui_contract::RecordBody),
     End(TapEnd),
 }
 
@@ -71,16 +73,17 @@ pub fn install_sink(f: impl Fn(crate::ui_contract::SessionTapPayload) + Send + S
 
 /// 一帧 → 发给前端的那一件（纯函数：字段一一照搬，`origin` 由调用方给）。
 pub fn to_payload(origin: &str, t: Tap) -> crate::ui_contract::SessionTapPayload {
-    let (data, end) = match t.body {
-        TapBody::Data(d) => (Some(d), None),
+    let (ev, end) = match t.body {
+        TapBody::Ev(e) => (Some(e), None),
         TapBody::End(e) => (None, Some(e.as_wire().to_string())),
     };
     crate::ui_contract::SessionTapPayload {
         origin: crate::origin::Origin(origin.to_string()),
         stream: t.stream,
+        run: t.run,
         resp: t.resp,
         n: t.n,
-        data,
+        ev,
         end,
     }
 }

@@ -315,7 +315,7 @@ struct TeeTap {
 struct FramingTap(Arc<Mutex<Vec<u8>>>, Mutex<mpsc::Sender<()>>);
 impl TapPort for FramingTap {
     fn offer(&self, ev: TapEvent) -> bool {
-        let mut line = serde_json::to_string(&crate::stream::tap::to_frame(ev)).expect("tap 帧");
+        let mut line = crate::stream::tap::tee_line(&ev);
         line.push('\n');
         self.0
             .lock()

@@ -250,8 +250,8 @@ describe("〔MOD〕会话正文：按形状收那台后端出的成品", () => {
     readFileSync(resolve(REPO_ROOT, "tests/__fixtures__/record-reads.golden.json"), "utf8"),
   ) as Record<string, unknown>;
 
-  it("★★ 金样：整份读 · 按行号 · 子 agent 三份成品读得懂；远端那台的载荷带上它的名字、本机不带", async () => {
-    const { decodePage, decodeLines, decodeSubagent } = await import("../../../src/frontend/ui/record-reads");
+  it("★★ 金样：整份读 · 按行号 · 一个子运行（按运行读）三份成品读得懂；远端那台的载荷带上它的名字、本机不带", async () => {
+    const { decodePage, decodeLines, decodeRun } = await import("../../../src/frontend/ui/record-reads");
     const page = decodePage("<local>", recordGolden["history-page"]);
     expect([page.next, page.nextSeq, page.eof]).toEqual([273, 3, true]);
     expect(page.payloads.map((p) => [p.seq, p.session_id, p.cwd, (p.message as { uuid?: string }).uuid])).toEqual([
@@ -265,8 +265,8 @@ describe("〔MOD〕会话正文：按形状收那台后端出的成品", () => {
       [1, "devbox"],
       [2, "devbox"],
     ]);
-    const sub = decodeSubagent(recordGolden["history-subagent"]);
-    expect([sub.agent_id, sub.records.length]).toEqual(["a1", 1]);
+    const run = decodeRun(recordGolden["history-run"]);
+    expect([run.run, run.rows.length, run.rows.map((r) => r.rid ?? null), run.more]).toEqual(["a1", 2, [null, "m-s2"], false]);
     // 反向：外层多一格 ⇒ 不收（两端契约对不上，不猜）。
     expect(() => decodePage("<local>", { ...(recordGolden["history-page"] as object), extra: 1 })).toThrow();
   });

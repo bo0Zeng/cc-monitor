@@ -36,9 +36,6 @@ pub mod events {
     // FOCUS_SWITCH 已删除：Win11 默认终端 (WindowsTerminal.exe) 是单进程多窗口架构，
     // OS GetForegroundWindow 只能拿到 WT 主进程 PID，无法区分 tab/window 内跑哪个
     // claude session。在 WT 默认环境下永远不工作；非 WT 终端可工作但不值为少数场景维护。
-    //
-    // SUBAGENT_LINE 已废弃：subagent 不走实时 watcher，由前端 invoke
-    // `load_subagent` 在用户展开 Task 折叠卡时按需加载。
 }
 
 /// P5.1：`seq` 字段是 same-session 内单调递增的行号（watcher 给每文件维护
@@ -83,6 +80,10 @@ pub struct JsonlLinePayload {
     #[cfg_attr(test, ts(optional, type = "number"))]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub skipped_from: Option<u64>,
+    /// 这一行的对账键（那台后端给，原样转交）：活卡按它把同一次应答的那段流整轮撤掉。没有 ⇒ 省略。
+    #[cfg_attr(test, ts(optional))]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rid: Option<String>,
 }
 
 /// 〔MOD · `设计/90 §3` 判据 3〕后端给的一条记录成品（JSON 原文）。monitor 只搬：不解析、不读字段，序列化时原样嵌进去。
@@ -144,6 +145,8 @@ pub enum SessionStreamFrame {
     Listed(OriginSessionsListedPayload),
     /// 旁路快照在途几份（全局电平；批模式据此不提前收尾）。
     SnapshotInflight(SnapshotInflightPayload),
+    /// 一个会话的运行表（那台后端给，原样转）：主 tab 上每个在跑的子运行一行，跑完收进派出它的那张工具卡。
+    Runs(SessionRunsPayload),
 }
 
 impl SessionStreamFrame {
@@ -162,7 +165,8 @@ impl SessionStreamFrame {
             | SessionStreamFrame::Ended(_)
             | SessionStreamFrame::Unseen(_)
             | SessionStreamFrame::Listed(_)
-            | SessionStreamFrame::SnapshotInflight(_) => false,
+            | SessionStreamFrame::SnapshotInflight(_)
+            | SessionStreamFrame::Runs(_) => false,
         }
     }
 
@@ -186,12 +190,23 @@ impl SessionStreamFrame {
             SessionStreamFrame::Container(p) => Some(&p.session_id),
             SessionStreamFrame::Idle(p) => Some(&p.session_id),
             SessionStreamFrame::Ended(p) => Some(&p.session_id),
+            SessionStreamFrame::Runs(p) => Some(&p.session_id),
             SessionStreamFrame::Batch(_)
             | SessionStreamFrame::Unseen(_)
             | SessionStreamFrame::Listed(_)
             | SessionStreamFrame::SnapshotInflight(_) => None,
         }
     }
+}
+
+/// [`SessionStreamFrame::Runs`] 的体：那台后端 `session_runs` 帧的 `runs`（原样，不解释）。
+#[derive(Debug, Serialize, Clone, PartialEq, Eq)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
+pub struct SessionRunsPayload {
+    pub session_id: String,
+    #[cfg_attr(test, ts(type = "Array<import(\"./RunInfo\").RunInfo>"))]
+    pub runs: RecordBody,
 }
 
 /// 〔MIG-1〕[`SessionStreamFrame::SnapshotInflight`] 的体。
@@ -293,22 +308,25 @@ pub struct SessionContainerPayload {
 
 /// 〔TAP · V124〕会话流 `session-tap`（通道 `subscribe`，`设计/05 §15`）里一格的体：后端 `tap` 帧的字段原样 ＋ 哪台机器。
 ///
-/// `stream` = claude 请求头里自带的会话标识（〔V141〕== 它的 sid；前端拿它对 tab 的 sid，对不上 / 空 ⇒ 匿名流、不显示）；`resp` · `n` 见后端 `wire::Frame::Tap`；
-/// `data`（SSE 事件原文，一个 JSON 串）与 `end`（`"done"` / `"broken"`）恰有一个。
+/// `stream` = 请求自带的会话标识（== 它的 sid；前端拿它对 tab 的 sid，对不上 / 空 ⇒ 匿名流、不显示）；`run` = 归哪个子运行（缺 ＝ 主运行）；
+/// `resp` · `n` 见后端 `wire::Frame::Tap`；`ev`（归一事件，后端按上游协议折好的）与 `end`（`"done"` / `"broken"`）恰有一个。
 #[derive(Debug, Serialize, Clone, PartialEq, Eq)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
 pub struct SessionTapPayload {
     pub origin: crate::origin::Origin,
     pub stream: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub run: Option<String>,
     // C03 大整数策略：本进程第几个响应 / 响应里第几个事件，远在 2^53 之内；线上是 JSON 文本，`bigint` 是错的。
     #[cfg_attr(test, ts(type = "number"))]
     pub resp: u64,
     #[cfg_attr(test, ts(type = "number"))]
     pub n: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional))]
-    pub data: Option<String>,
+    #[cfg_attr(test, ts(optional, type = "import(\"./StreamEv\").StreamEv"))]
+    pub ev: Option<RecordBody>,
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(test, ts(optional))]
     pub end: Option<String>,

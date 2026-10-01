@@ -16,13 +16,13 @@
 import { isRemoteOrigin, LOCAL_ORIGIN } from "./ipc/origin";
 import { emit } from "@tauri-apps/api/event";
 import { commands } from "./ipc/commands";
-import { loadSubagent } from "./record-reads";
+import { loadRunPage } from "./record-reads";
 import { LS_KEYS, safeGet, safeSet } from "./local-storage";
 import { StartupActive } from "./startup-active";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { bindEvents } from "./events";
 import { TabManager } from "./tabs";
-import { paintLiveCards } from "./live-card-view";
+import { livePainter } from "./live-card-view";
 import { mountTabBarResizer } from "./tab-bar-width";
 import { terminalFrontCommand } from "./terminal-front-command";
 import { loadTheme } from "./theme";
@@ -183,7 +183,9 @@ window.addEventListener("DOMContentLoaded", async () => {
     agentsPanel,
   );
   // 〔TAP · V124〕活卡的画法（带 `.module.css`）只由主窗口入口装进来 —— 理由见 `live-card-view.ts` 头注。
-  tabs.setLivePainter(paintLiveCards);
+  tabs.setLivePainter(
+    livePainter({ timeline: (sid, run) => tabs.runTimeline(sid, run), closed: (sid, run) => tabs.closeRunTimeline(sid, run) }),
+  );
   // P7a-3（#61）：启动时拉一次标签页集合（住 `config.json`，不是 localStorage —— 见
   // `tab-collections.ts` 头注：集合名是用户手写的真相，必须活过一次清缓存）。
   void tabs.loadCollections();
@@ -312,16 +314,12 @@ window.addEventListener("DOMContentLoaded", async () => {
     }
   };
   agentsPanel.onAgentOpen = (entry) => {
-    const actx = tabs.getActiveSubagentContext();
+    const actx = tabs.getActiveRunContext();
     if (!actx) return;
     void (async () => {
       try {
-        // C04d 批 5b：这里原来写 `invoke<{ path: string }>` —— **同一个命令在全仓有两种 TS 类型**
-        // （`cards/subagent.ts` 用完整的 `SubagentLoadResult`，这里只声明 `path`）。
-        // 包装层收敛成一处后这类分叉结构性消失：本处只读 `.path`，用完整类型完全够。
-        // 〔MOD〕经通道直接问那台后端 `history-subagent`（`src/frontend/ui/record-reads.ts`）。★ 用 trim 后的原始 desc
-        //   （非展示 label）—— 后端按它精确串等挑；`actx.origin` 本机就是 `LOCAL_ORIGIN`。
-        const result = await loadSubagent(actx.origin, actx.parentPath, entry.desc, entry.timestamp);
+        // 按运行读（通用命令 `history-run`）：派出它的那次工具调用 id ⇒ 那个子运行的记录在哪；查看器整份打开那一份。
+        const result = await loadRunPage(actx.origin, actx.parentPath, { tool: entry.id });
         closeAgentViewer(); // 关掉上一个（单例语义）
         agentViewerMount = document.createElement("div");
         agentViewerMount.className = "agent-records-viewer-mount"; // fixed 全屏 + 高 z-index
@@ -344,7 +342,7 @@ window.addEventListener("DOMContentLoaded", async () => {
         });
         agentViewerMount.focus?.(); // 让 Esc keydown 能落到挂载壳
       } catch (e) {
-        showActionFailureToast(copyText("main.subagent.loadFailed"), String(e));
+        showActionFailureToast(copyText("main.run.loadFailed"), String(e));
       }
     })();
   };
@@ -711,6 +709,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     },
     // 〔TAP · V124〕中转抄出来的 SSE 事件（会话流 `session-tap`）→ 活卡（jsonl 到了整轮覆盖）；那台看不见了 ⇒ 活卡全撤。
     onSessionTap: (e) => tabs.onSessionTap(e),
+    onSessionRuns: (p) => tabs.onSessionRuns(p),
     onSessionTapLost: (origin) => tabs.dropLiveCards(origin),
     // 〔DL1〕那台的长连接又通了 / 那台账号清单变了 ⇒ 强制刷账号清单 ＋ chip（`accounts-changed` 流）。
     onAccountsChanged,

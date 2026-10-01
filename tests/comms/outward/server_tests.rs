@@ -1344,7 +1344,7 @@ const CHILD_TEST_NAME: &str = "relay::server::tests::relay_child_process_entry_p
 /// 〔DEL〕独立的 `--relay` 进程删了，中转只住常驻后端里 ⇒ 这里调 `main.rs` 流模式**真调的那一个**
 /// （`accounts::upstream_select::host_relay`：真环境 · 真上游选择 · tee 落进程级 tap 口）。
 /// tee 的采集面：照两条载体的写者那样从进程级 hub 接一条（`crate::stream::tap::hub().attach()`），
-/// 每件逐字写成**线上那一形 `tap` 帧**（`tap::to_frame`）落 stdout —— 判据读到的就是会上 wire 的那几帧。
+/// 每件逐字写成 tee 交出的那一行（`tap::tee_line`：中转那一侧原样交了什么）落 stdout。
 #[test]
 #[ignore = "子进程入口：只在被父判据用 CCM_RELAY_TEST_CHILD 拉起时才当中转跑"]
 fn relay_child_process_entry_point() {
@@ -1355,7 +1355,7 @@ fn relay_child_process_entry_point() {
     std::thread::spawn(move || {
         use std::io::Write;
         while let Some(ev) = rx.blocking_recv() {
-            let line = serde_json::to_string(&crate::stream::tap::to_frame(ev)).expect("tap 帧");
+            let line = crate::stream::tap::tee_line(&ev);
             let mut o = std::io::stdout().lock();
             let _ = writeln!(o, "{line}");
             let _ = o.flush();
@@ -1370,7 +1370,7 @@ fn relay_child_process_entry_point() {
     }
 }
 
-/// 子进程 stdout 上一帧**带事件原文**的 `tap` 帧（线上形：`{"kind":"tap",…,"data":…}`）的标记。
+/// 子进程 stdout 上一件**带事件原文**的 tee 行（`{"kind":"tap",…,"data":…}`，见 `tap::tee_line`）的标记。
 const TAP_DATA: &str = "\"data\":";
 
 /// 一个跑在**真子进程**里的中转，连同它 stdout / stderr 的全量收集面。

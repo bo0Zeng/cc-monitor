@@ -298,8 +298,9 @@ fn assistant_rec(uuid: String, ts: Option<String>, role: &str, content: Value) -
         is_api_error_message: false,
         error: None,
         api_error_status: None,
-        // 〔THIN〕Codex 的工具名今天没人考据过⇒ 不带卡型。
+        // 〔THIN〕Codex 的工具名今天没人考据过⇒ 不带卡型；它不声明子运行 ⇒ 不带派出标签。
         tool_cards: Default::default(),
+        child_runs: Default::default(),
     }
 }
 

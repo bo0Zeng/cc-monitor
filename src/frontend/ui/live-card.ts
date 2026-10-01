@@ -1,28 +1,33 @@
 /**
- * 〔TAP · V124〕**活卡**：中转抄出来的 SSE 事件（`session-tap`）先上屏，jsonl 那一轮到了就整轮覆盖。
+ * 〔TAP · V124〕**活卡**：中转抄出来的流（`session-tap`）先上屏，记录那一轮到了就整轮覆盖。
  *
- * 要求出处：`设计/20 §8`（V24「SSE 确保快，落盘确保对」—— SSE 只保快、jsonl 到了整轮覆盖、对账键 `message.id`、
- * 不做记录级合并；按 sid 对账，对不上的只能当匿名流）· `设计/10 §2.3`（「活卡 → 定稿」）· `设计/05 §3.3.4`（缺口原位、纯算术）。
- * 设计与上界表住仓外 `调研/第四波记录/TAP.md §1.3 · §2 · §4 · §5`。
+ * SSE 只保快、记录到了整轮覆盖、对账键是后端给的 `rid`（记录那一侧是 `line.rid`，流那一侧是归一事件 `start` 带的），不做记录级合并；
+ * 按 sid 对账，对不上的只能当匿名流；缺口原位、纯算术。界面只收**归一事件**（后端按上游协议折好、归好位），不认任何一家的事件名。
  *
  * 两层：
- * - {@link LiveCore}：**纯状态机**（无 DOM、无定时器）。吃 tap 事件与「一条 jsonl 记录过了去重」，产出每个 tab 此刻该显示的活卡。
+ * - {@link LiveCore}：**纯状态机**（无 DOM、无定时器）。吃 tap 事件与「一条记录过了去重」，产出每个 tab 此刻该显示的活卡；
+ *   归到子运行的那几段（`run` 有值）不进主 tab 的活卡，只给那个子运行的行与它的时间线。
  * - {@link LiveCards}：把状态画到每个 tab 流尾巴上的那一块（`MessageStream.trailerElement`）。活卡**不进时间线**：
  *   不占 seq、不进去重集、不进大纲 / 查找 / 改动集 —— 全会话事实只读 json（`设计/10 §2.2`）。
  */
 import { copyText } from "./copy-table";
+import type { StreamEv } from "./generated/StreamEv";
+import type { RunInfo } from "./generated/RunInfo";
+import { RunBoard, runRowText, type RunRow } from "./runs";
 
 /** `session-tap` 的载荷（与 `src/frontend/ui/generated/SessionTapPayload.ts` 同形；这里只取要用的几格）。 */
 export interface TapPayload {
   origin: string;
   stream: string;
+  /** 归哪个子运行（缺 ＝ 主运行）。 */
+  run?: string;
   resp: number;
   n: number;
-  data?: string;
+  ev?: StreamEv;
   end?: string;
 }
 
-/** 每个 tab 最多几张活卡（主线程那一个 ＋ 并发的一个）。 */
+/** 每个运行（主运行 ＋ 每个子运行各算一个）最多几张活卡（主线程那一个 ＋ 并发的一个）。 */
 export const LIVE_PER_TAB = 2;
 /** 单张活卡正文最多留几个字符（只留尾巴）。 */
 export const LIVE_TEXT_KEEP = 32_768;
@@ -33,14 +38,14 @@ export const TOMB_KEEP = 64;
 /** 记住几个「不再收」的响应（断了 / 匿名 / 已覆盖），先进先出。 */
 const DEAD_KEEP = 256;
 
-type BlockKind = "text" | "thinking" | "tool_use" | "other";
+type BlockKind = import("./generated/BlockKind").BlockKind;
 
 /** 活卡里的一块（按 SSE 的 `index`）。 */
 export interface LiveBlock {
   kind: BlockKind;
   /** `text` 块的正文；其余块不留正文（思考不展开、工具入参不显示）。 */
   text: string;
-  /** `tool_use` 块的工具名。 */
+  /** 工具块的工具名。 */
   tool?: string;
 }
 
@@ -59,6 +64,8 @@ interface Resp {
   key: string;
   origin: string;
   sid: string;
+  /** 归哪个子运行；`null` ＝ 主运行。 */
+  run: string | null;
   next: number;
   messageId: string | null;
   blocks: LiveBlock[];
@@ -114,7 +121,7 @@ export class LiveCore {
     if (this.dead.has(key)) return touched;
     let r = this.resps.get(key);
     if (!r) {
-      // 头一件就不是 0 号 ⇒ 开头丢了（message_start 在里面），这个响应认不全 ⇒ 不收。
+      // 头一件就不是 0 号 ⇒ 开头丢了（对账键在里面），这个响应认不全 ⇒ 不收。
       if (p.n !== 0) {
         this.dead.add(key);
         return touched;
@@ -129,6 +136,7 @@ export class LiveCore {
         key,
         origin: p.origin,
         sid,
+        run: p.run ?? null,
         next: 0,
         messageId: null,
         blocks: [],
@@ -155,26 +163,33 @@ export class LiveCore {
       }
       return touched;
     }
-    if (p.data !== undefined) this.apply(r, p.data, touched);
+    if (p.ev !== undefined) this.apply(r, p.ev, touched);
     return touched;
   }
 
   /**
-   * 一条 jsonl 记录**过了双重去重**（`TabManager.onLine` 那一处）。`message` 是那条记录本身。
-   * 同 `message.id` 的活卡 ⇒ 整张撤（定稿，该 id 进墓碑）；已收尾而 id 不同的活卡 ⇒ 撤（它的 id 不会再落进这份 jsonl 了）。
+   * 一条记录**过了双重去重**（`TabManager.onLine` 那一处；子运行的时间线读到的记录也走这里，`run` 说是哪个）。`rid` 是它的对账键。
+   * 同 `rid` 的活卡 ⇒ 整张撤（定稿，该 id 进墓碑）；同一个运行里已收尾而 id 不同的活卡 ⇒ 撤（它的 id 不会再落进这份记录了）。
    */
-  record(sid: string, message: unknown): Touched {
+  record(sid: string, rid: string | null | undefined, run: string | null = null): Touched {
     const touched: Touched = new Set();
-    const id = messageIdOf(message);
+    const id = rid ?? null;
     if (id !== null) this.tombOf(sid).add(id);
     for (const r of [...this.resps.values()]) {
       if (r.sid !== sid) continue;
       if (id !== null && r.messageId === id) {
         this.kill(r, touched);
-      } else if (r.stopped) {
+      } else if (r.stopped && r.run === run) {
         this.kill(r, touched);
       }
     }
+    return touched;
+  }
+
+  /** 这个子运行收场了 ⇒ 它在攒的几段全撤。 */
+  dropRun(sid: string, run: string): Touched {
+    const touched: Touched = new Set();
+    for (const r of [...this.resps.values()]) if (r.sid === sid && r.run === run) this.kill(r, touched);
     return touched;
   }
 
@@ -193,10 +208,10 @@ export class LiveCore {
     return touched;
   }
 
-  /** 一个 tab 此刻的活卡（先来的在前）。 */
-  cardsOf(sid: string): LiveCardState[] {
+  /** 一个 tab 里某个运行此刻的活卡（先来的在前；`run` 缺 ＝ 主运行）。 */
+  cardsOf(sid: string, run: string | null = null): LiveCardState[] {
     return [...this.resps.values()]
-      .filter((r) => r.sid === sid && r.messageId !== null)
+      .filter((r) => r.sid === sid && r.run === run && r.messageId !== null)
       .sort((a, b) => a.born - b.born)
       .map((r) => ({
         key: r.key,
@@ -213,8 +228,10 @@ export class LiveCore {
   }
 
   private admit(r: Resp, touched: Touched): void {
-    // 同 tab 满了 ⇒ 先挤最老的已收尾那个，没有就挤最老的；全局满了 ⇒ 挤全局最老的。
-    const mine = [...this.resps.values()].filter((x) => x.sid === r.sid).sort((a, b) => a.born - b.born);
+    // 同一个运行满了 ⇒ 先挤最老的已收尾那个，没有就挤最老的；全局满了 ⇒ 挤全局最老的。
+    const mine = [...this.resps.values()]
+      .filter((x) => x.sid === r.sid && x.run === r.run)
+      .sort((a, b) => a.born - b.born);
     if (mine.length >= LIVE_PER_TAB) {
       const victim = mine.find((x) => x.stopped) ?? mine[0];
       if (victim) this.kill(victim, touched);
@@ -241,61 +258,53 @@ export class LiveCore {
     return t;
   }
 
-  /** 认几种 Anthropic SSE 事件；其余（`ping` · `message_delta` · 不认识的新事件 · 读不懂的原文）不理。 */
-  private apply(r: Resp, data: string, touched: Touched): void {
-    let ev: unknown;
-    try {
-      ev = JSON.parse(data);
-    } catch {
-      return;
-    }
-    if (typeof ev !== "object" || ev === null) return;
-    const e = ev as Record<string, unknown>;
-    switch (e.type) {
-      case "message_start": {
-        const m = e.message as Record<string, unknown> | undefined;
-        const id = typeof m?.id === "string" ? m.id : null;
-        if (id === null) return;
-        // 同 id 已经定稿过（jsonl 先到了）⇒ 这张卡不该出现。
-        if (this.tombOf(r.sid).has(id)) {
+  /** 一件归一事件：开始（对账键）· 一块开始 · 文字增量 · 收尾（报错收尾 ⇒ 撤）。 */
+  private apply(r: Resp, ev: StreamEv, touched: Touched): void {
+    switch (ev.t) {
+      case "start": {
+        // 同 id 已经定稿过（记录先到了）⇒ 这张卡不该出现。
+        if (this.tombOf(r.sid).has(ev.rid)) {
           this.kill(r, touched);
           return;
         }
-        r.messageId = id;
+        r.messageId = ev.rid;
         touched.add(r.sid);
         return;
       }
-      case "content_block_start": {
-        const i = e.index;
-        const b = e.content_block as Record<string, unknown> | undefined;
-        if (typeof i !== "number" || !b) return;
-        const kind: BlockKind =
-          b.type === "text" || b.type === "thinking" || b.type === "tool_use" ? b.type : "other";
-        r.blocks[i] = { kind, text: "", tool: typeof b.name === "string" ? b.name : undefined };
+      case "block": {
+        r.blocks[ev.i] = { kind: ev.kind, text: "", tool: ev.tool };
         touched.add(r.sid);
         return;
       }
-      case "content_block_delta": {
-        const i = e.index;
-        const d = e.delta as Record<string, unknown> | undefined;
-        if (typeof i !== "number" || !d) return;
-        const b = r.blocks[i];
-        if (!b || b.kind !== "text" || d.type !== "text_delta" || typeof d.text !== "string") return;
-        b.text += d.text;
+      case "text": {
+        const b = r.blocks[ev.i];
+        if (!b || b.kind !== "text") return;
+        b.text += ev.s;
         this.clip(r);
         touched.add(r.sid);
         return;
       }
-      case "message_stop":
+      case "stop":
+        if (!ev.ok) {
+          this.kill(r, touched);
+          return;
+        }
         r.stopped = true;
         touched.add(r.sid);
-        return;
-      case "error":
-        this.kill(r, touched);
         return;
       default:
         return;
     }
+  }
+
+  /** 某个子运行此刻在生成的那一块（给它那一行的「最近：…」）：最新那一段的最后一块；没有在生成的 ⇒ `null`。 */
+  liveBlockOf(sid: string, run: string): LiveBlock | null {
+    const rs = [...this.resps.values()]
+      .filter((r) => r.sid === sid && r.run === run && !r.stopped && r.messageId !== null)
+      .sort((a, b) => b.born - a.born);
+    const blocks = rs[0]?.blocks.filter((b) => b !== undefined) ?? [];
+    const last = blocks[blocks.length - 1];
+    return last ? { ...last } : null;
   }
 
   /** 正文总长超 `LIVE_TEXT_KEEP` ⇒ 从最前面的块开始截头。 */
@@ -312,15 +321,6 @@ export class LiveCore {
   }
 }
 
-/** 一条 jsonl 记录的 `message.id`（assistant 记录才有；没有 ⇒ `null`）。 */
-export function messageIdOf(record: unknown): string | null {
-  if (typeof record !== "object" || record === null) return null;
-  const m = (record as { message?: unknown }).message;
-  if (typeof m !== "object" || m === null) return null;
-  const id = (m as { id?: unknown }).id;
-  return typeof id === "string" && id.length > 0 ? id : null;
-}
-
 /** 把一张活卡画成纯文本行（视图与判据共用；不走 Markdown / 高亮 —— 定稿那一张卡才走渲染管线）。 */
 export function renderCardText(card: LiveCardState): { head: string; body: string } {
   const head =
@@ -333,7 +333,7 @@ export function renderCardText(card: LiveCardState): { head: string; body: strin
     if (!b) continue;
     if (b.kind === "text") parts.push(b.text);
     else if (b.kind === "thinking") parts.push(copyText("liveCard.block.thinking"));
-    else if (b.kind === "tool_use") parts.push(copyText("liveCard.block.toolUse", { tool: b.tool ?? "?" }));
+    else if (b.kind === "tool") parts.push(copyText("liveCard.block.toolUse", { tool: b.tool ?? "?" }));
   }
   return { head, body: parts.filter((x) => x.length > 0).join("\n") };
 }
@@ -347,7 +347,12 @@ export type TrailerOf = (sid: string) => HTMLElement | null;
  * 而 `.module.css` 进共享块会让它的规则排在主窗口全局样式之前（`entry-graphs` 的次序判据）—— 画法只有主窗口要
  * （只有它订 `session-tap`），所以样式跟着画法住主窗口独有的那一块。
  */
-export type LivePainter = (host: HTMLElement, cards: LiveCardState[]) => void;
+export interface LivePainter {
+  /** 流尾巴那一整块：子运行的行 ＋ 主运行的活卡。 */
+  trailer(host: HTMLElement, sid: string, cards: LiveCardState[], rows: RunRow[]): void;
+  /** 只画几张活卡（子运行时间线尾巴上那一截）。 */
+  cards(host: HTMLElement, cards: LiveCardState[]): void;
+}
 
 /**
  * 视图：每个被改过的 tab，把它流尾巴上那一块整块重画成此刻的活卡（张数 ≤ `LIVE_PER_TAB`，正文 ≤ `LIVE_TEXT_KEEP`）。
@@ -355,6 +360,8 @@ export type LivePainter = (host: HTMLElement, cards: LiveCardState[]) => void;
  */
 export class LiveCards {
   readonly core: LiveCore;
+  /** 每个会话的运行表（后端 `session_runs` 给的成品）。 */
+  readonly board = new RunBoard();
   private painter: LivePainter | null = null;
 
   constructor(
@@ -369,14 +376,42 @@ export class LiveCards {
   }
 
   onTap(p: TapPayload): void {
-    this.paint(this.core.tap(p));
+    const touched = this.core.tap(p);
+    this.paint(touched);
+    if (p.run !== undefined) for (const sid of touched) this.onRunLive?.(sid, p.run);
   }
 
-  onRecord(sid: string, message: unknown): void {
-    this.paint(this.core.record(sid, message));
+  /** 一个会话的运行表到了：主 tab 上的行跟着变；收场的子运行撤掉它在攒的那几段。回：这一次收场的那几个。 */
+  onRuns(sid: string, runs: RunInfo[]): RunInfo[] {
+    const finished = this.board.set(sid, runs);
+    for (const r of finished) this.core.dropRun(sid, r.run);
+    this.paint(new Set([sid]));
+    return finished;
+  }
+
+  /** 把某个子运行此刻的活卡画进 `host`（没装画法 ⇒ 不画）。 */
+  paintCards(host: HTMLElement, sid: string, run: string): void {
+    this.painter?.cards(host, this.core.cardsOf(sid, run));
+  }
+
+  /** 主 tab 上此刻每个在跑的子运行那一行。 */
+  rowsOf(sid: string): RunRow[] {
+    return this.board.running(sid).map((r) => ({ run: r.run, text: runRowText(r, this.core.liveBlockOf(sid, r.run)) }));
+  }
+
+  /** 某个子运行的流有动静（它的时间线开着的话要重画活卡那一截）。宿主装。 */
+  onRunLive: ((sid: string, run: string) => void) | null = null;
+
+  onRecord(sid: string, rid: string | null | undefined, run: string | null = null): void {
+    this.paint(this.core.record(sid, rid, run));
+  }
+
+  dropRun(sid: string, run: string): void {
+    this.paint(this.core.dropRun(sid, run));
   }
 
   dropTab(sid: string): void {
+    this.board.drop(sid);
     this.paint(this.core.dropTab(sid));
   }
 
@@ -389,7 +424,7 @@ export class LiveCards {
     if (!painter) return;
     for (const sid of touched) {
       const host = this.trailerOf(sid);
-      if (host) painter(host, this.core.cardsOf(sid));
+      if (host) painter.trailer(host, sid, this.core.cardsOf(sid), this.rowsOf(sid));
     }
   }
 }

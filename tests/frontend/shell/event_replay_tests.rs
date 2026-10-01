@@ -11,6 +11,7 @@ fn payload(sid: &str, idx: usize) -> JsonlLinePayload {
         origin: None,
         message: crate::ui_contract::RecordBody::from_json("{}".into()).unwrap(),
         skipped_from: None,
+        rid: None,
     }
 }
 
@@ -766,9 +767,10 @@ fn tap(origin: &str, n: u64) -> crate::ui_contract::SessionTapPayload {
     crate::ui_contract::SessionTapPayload {
         origin: crate::origin::Origin(origin.to_string()),
         stream: "sid-t".into(),
+        run: None,
         resp: 0,
         n,
-        data: Some(format!("{{\"i\":{n}}}")),
+        ev: crate::ui_contract::RecordBody::from_json(format!("{{\"t\":\"text\",\"i\":{n},\"s\":\"x\"}}")),
         end: None,
     }
 }

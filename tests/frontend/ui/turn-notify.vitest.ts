@@ -108,25 +108,6 @@ describe("F42 TurnEndNotifier", () => {
     expect(send).not.toHaveBeenCalled();
   });
 
-  it("isSidechain 行(旧版 CC subagent 写主文件)→ 不通知", async () => {
-    const { n, send } = makeNotifier();
-    n.observe(
-      "s1",
-      "t",
-      {
-        message: {
-          type: "assistant",
-          timestamp: new Date(T0).toISOString(),
-          isSidechain: true,
-          message: { stop_reason: "end_turn" },
-        },
-      },
-      false,
-    );
-    await flush();
-    expect(send).not.toHaveBeenCalled();
-  });
-
   // ★★ audit-0805 F12 / 报告 §4.1「turn-end 判定两份」。
   //
   // backend 侧 `agents/claudecode/turn.rs` 的四条件里有 `!isApiErrorMessage`，TS 这份**少了一条** ——
@@ -208,7 +189,7 @@ describe("F42 TurnEndNotifier", () => {
 // 现在人群从 `is_turn_end` 的**合取项本身**派生，新条件不登记就红（默认拒绝）。
 //
 // ⚠ 另一半：断言看的是 TS 的**实现区**（`observe(` 之后），不是整份文件 ——
-// `isApiErrorMessage` / `isSidechain` 在最小契约的**类型声明**里也各出现一次，
+// `isApiErrorMessage` 在最小契约的**类型声明**里也出现一次，
 // 拿整份文件做主语的话，「删掉那行 if、留着类型字段」照样绿。
 // （那半今天另有行为测试接住，两层失效模式不同 ⇒ 是真纵深；但断言本身要说对话。）
 //
@@ -270,7 +251,6 @@ describe("turn-end 判定的跨语言对拍（audit-0805 F12）", () => {
       { rust: "is_assistant", ts: '"assistant"', what: "assistant 类型判别" },
       { rust: "stop_reason", ts: "end_turn", what: "stop_reason == end_turn" },
       { rust: "is_api_error", ts: "isApiErrorMessage", what: "API 错误消息要排除" },
-      { rust: "is_sidechain", ts: "isSidechain", what: "subagent 行要排除" },
     ];
     const used = new Set<string>();
     for (const c of conjuncts) {
