@@ -74,13 +74,14 @@ use table::{RoutingTable, Row};
 ///
 /// 表的键改成 `(agent, 账号)` 之后，装表那一步得知道每一行属于谁 ——
 /// 而 `creds-core` 那份文件格式**今天没有 agent 这一维**（只有账号 id）。
-/// 那份文件是界面上给 **claude-code 的账号**配第三方 key 时写出来的 ⇒ 它的每一行今天都是这一家的。
+/// 那份文件的行挂在哪一家名下由适配层那一格声明（`agents::DefaultUpstream::owns_credentials_file`），
+/// 这里只取它的路由名；本层不认识任何一家的名字。
 ///
 /// 它**只有这一份**：先前 monitor 那一侧决定「这次拉起要不要注入」时另写一份（`payload::APIKEY_TABLE_AGENT`〔散文墓碑〕），
 /// 由一条跨半边判据现抠字面量对拍；那张决策表搬进本层（[`endpoint`]）之后，读它的只剩本层自己。
 /// ⚠ 买不到：「那份文件**将来**会不会装进别家的行」—— 那要文件格式多一维（`creds-core`，
 /// 不在本层），那一天本常量整删、换成逐行读出来的 agent。
-pub(crate) const CREDENTIALS_FILE_AGENT: &str = "claude-code";
+pub(crate) const CREDENTIALS_FILE_AGENT: &str = crate::agents::credentials_file_agent();
 
 // 这里原先是 `AgentUpstream` 与每 agent 一行的默认上游表 `AGENT_UPSTREAMS`〔散文墓碑〕。
 // 用户「写死, 跟着适配层」⇒ 那一格搬回 `agents::Adapter::upstream`（claude-code 那一行住 `agents/claudecode`），

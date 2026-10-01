@@ -437,8 +437,8 @@ pub(crate) struct Container {
     /// **同一条内层命令的自检形**：同一段 `export` 前缀、同一个入口、同一串参数，
     /// 只在 `--` 前多一个 `--ccm-print`。收尾那段在登记之前先跑它（见 [`render_container_tail`]）。
     pub(crate) self_check: String,
-    /// 要不要挂那段「抓信任框、自动按 Enter」的兜底轮询。
-    pub(crate) trust_poll: bool,
+    /// 那段「抓信任框、自动按 Enter」的兜底轮询认的那句话（这一家的 `LaunchFace::trust_prompt`）；`None` ＝ 不挂。
+    pub(crate) trust_prompt: Option<&'static str>,
     // ★★ **`avoid_collision` 这个字段删了** —— 散文墓碑留在这里。
     //
     // 它从前的意思是「这个名字撞了要不要退让」，而退让本身发生在 `mod.rs::execute`
@@ -870,6 +870,19 @@ pub(crate) fn build(
     table: &AccountTable,
     taken: Option<&TakenNames>,
 ) -> Result<Plan, Die> {
+    build_among(crate::agents::REGISTRY, o, env, table, taken)
+}
+
+/// [`build`] 的内核：按哪一家起会有什么不同，**只问** `registry` 里这一家的起会话事实（`agents::LaunchFace`），
+/// 不认名字。生产走 `agents::REGISTRY`；判据喂含夹具家的合成注册表。认不出这一家 ⇒ 每一格都按「没有」算。
+pub(crate) fn build_among(
+    registry: &[crate::agents::Adapter],
+    o: &Opts,
+    env: &Env,
+    table: &AccountTable,
+    taken: Option<&TakenNames>,
+) -> Result<Plan, Die> {
+    let face = crate::agents::launch_face_among(registry, &o.agent);
     // ── attach：不起 agent，早于容器逻辑就定了 ──────────────────────────
     if !o.attach_name.is_empty() {
         // `ccm --attach foo --tmux --detach` 从前会**静默吞掉** `--detach` 照样 attach。
@@ -909,8 +922,11 @@ pub(crate) fn build(
         return Err(refuse(&env.account_env, &config_dir));
     }
     // 在跑、却不在 ccm 认得的 tmux 会话里（上面那一格没接上）⇒ 接不上，也不另起第二份：明说。
-    //   判活是观测层起步初扫那一份（`observe::watcher::running_sessions`，入口注入）。
-    if let (Some(sid), Some(scan)) = (o.resumes.as_deref(), env.running_sessions) {
+    //   判活是观测层起步初扫那一份（`observe::watcher::running_sessions`，入口注入），只对留 pidfile 的那几家问。
+    let scan = env
+        .running_sessions
+        .filter(|_| face.is_some_and(|f| f.has_pidfiles));
+    if let (Some(sid), Some(scan)) = (o.resumes.as_deref(), scan) {
         let dir = if !config_dir.is_empty() {
             Some(config_dir.as_str())
         } else if o.use_base {
@@ -928,8 +944,9 @@ pub(crate) fn build(
             )));
         }
     }
+    // 认不出这一家 ⇒ 空串（exec 当场说起不来，不猜成别的哪一家）。
     let launcher = if o.launcher.is_empty() {
-        super::default_launcher(&o.agent).to_string()
+        face.map_or("", |f| f.default_launcher).to_string()
     } else {
         o.launcher.clone()
     };
@@ -1077,7 +1094,9 @@ pub(crate) fn build(
             detach: o.detach,
             payload,
             self_check,
-            trust_poll: o.agent == "claude" && !env.no_pretrust,
+            trust_prompt: face
+                .and_then(|f| f.trust_prompt)
+                .filter(|_| !env.no_pretrust),
             bus,
         }));
     }
@@ -1088,17 +1107,19 @@ pub(crate) fn build(
 
     Ok(Plan::Direct(Direct {
         ccm_env: env.ccm_env.clone(),
-        bus_id_recipe: super::needs_bus_id(&o.agent),
+        bus_id_recipe: face.is_some_and(|f| f.needs_bus_id),
         // 与那段配方的 `if [ -n "${TMUX:-}" ]` **同一个判准**：`Env::tmux` 就是
         // `var("TMUX").ok().filter(|v| !v.is_empty())` ⇒ 两侧逐字等价，不是近似。
         inside_tmux: env.tmux.is_some(),
         account_env: env.account_env.clone(),
         config_dir,
         unset_config_dir: o.use_base,
-        nested: super::nested_env(&o.agent),
+        nested: face
+            .map(|f| f.nested_env.iter().map(|s| s.to_string()).collect())
+            .unwrap_or_default(),
         cwd,
         argv,
-        has_identity: super::has_identity(&o.agent),
+        has_identity: face.is_some_and(|f| f.has_identity),
         identity: direct_identity(&o.ccm_sid, env.launch_token.as_deref()),
     }))
 }
@@ -1197,9 +1218,10 @@ pub(crate) fn render_container_tail(c: &Container) -> String {
     // 改成「表达式」之后，`format!(` 的续行不再掉出人群）⇒ 它在
     // `no_timer_guard::f09_external_beat::REGISTERED_EXTERNAL_BEATS` 上**签了字**。
     // 改这一段之前先看那张表：动了这条串的形状，那边会红。
-    if c.trust_poll {
+    if let Some(prompt) = c.trust_prompt {
+        let prompt = sq(prompt);
         seq.push_str(&format!(
-            " && {{ (for _i in 1 2 3 4 5 6; do sleep 0.5; tmux capture-pane -t {t} -p 2>/dev/null | grep -q 'Yes, I trust this folder' && {{ tmux send-keys -t {t} Enter; break; }}; done) || true; }}"
+            " && {{ (for _i in 1 2 3 4 5 6; do sleep 0.5; tmux capture-pane -t {t} -p 2>/dev/null | grep -q {prompt} && {{ tmux send-keys -t {t} Enter; break; }}; done) || true; }}"
         ));
     }
     if !c.detach {

@@ -262,20 +262,26 @@ fn the_base_url_token_is_declared_because_the_tmux_path_really_forwards_it() {
     );
 }
 
-/// 闭集只有一处住址（注册表里带起会话事实的那几家）：它与那几个按 agent 分支的函数必须**逐个对得上**。
+/// 闭集只有一处住址（注册表里带起会话事实的那几家），每一家按哪几格起都由它那一格声明；
+/// 这里逐格钉住两家今天的组合（ccm 按这几格起，行为与按名字分叉时逐条相同）。
 #[test]
 fn the_agent_set_has_one_address_and_every_member_is_wired() {
     assert_eq!(agents(), ["claude", "codex"]);
+    let face = |a: &str| crate::agents::launch_face_of(a).expect("注册表里有这一家的起会话事实");
     for a in agents() {
-        assert!(!default_launcher(a).is_empty(), "{a} 没有默认启动器");
+        assert!(!face(a).default_launcher.is_empty(), "{a} 没有默认启动器");
     }
-    assert_eq!(nested_env("claude").len(), 4);
+    assert_eq!(argv::Defaults::agent(), "claude", "不给 `--agent` 起的那一家变了");
+    assert_eq!(face("claude").nested_env.len(), 4);
     assert!(
-        nested_env("codex").is_empty(),
+        face("codex").nested_env.is_empty(),
         "codex 不清 claude 的嵌套标记"
     );
-    assert!(needs_bus_id("codex") && !needs_bus_id("claude"));
-    assert!(has_identity("claude") && !has_identity("codex"));
+    assert!(face("codex").needs_bus_id && !face("claude").needs_bus_id);
+    assert!(face("claude").has_identity && !face("codex").has_identity);
+    assert!(face("claude").has_pidfiles && !face("codex").has_pidfiles);
+    assert_eq!(face("claude").trust_prompt, Some("Yes, I trust this folder"));
+    assert_eq!(face("codex").trust_prompt, None);
 }
 
 /// 〔搬自 `ccm-rbind-title` 的 format 那一格〕
@@ -345,7 +351,7 @@ fn the_container_launch_goes_through_the_one_door_with_every_field_intact() {
         detach: true,
         payload: "'/usr/local/bin/ccm' '--cwd' '/p'".into(),
         self_check: "'/usr/local/bin/ccm' '--cwd' '/p' '--print'".into(),
-        trust_poll: true,
+        trust_prompt: Some("t"),
         bus: None,
     };
     let req = crate::control::launch::parse_request(&launch_args(&c)).expect("该过得了门");
