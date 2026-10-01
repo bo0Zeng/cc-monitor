@@ -9,7 +9,7 @@ use super::*;
 use std::cell::RefCell;
 use std::path::{Path, PathBuf};
 
-// 〔MIG-3b 续〕门的 `put` 删了（最后一个用户是全景写，进了那台后端）⇒ 替身记账那一格（`PutCall` / 插外部改动）随之删。
+// 〔MIG-3b 续〕门的 `put` 删了（最后一个用户进了那台后端）⇒ 替身记账那一格（`PutCall` / 插外部改动）随之删。
 
 /// 一扇**只在判据里**用的门：落在本机临时目录上。
 pub(crate) struct DiskDoor {
@@ -119,7 +119,7 @@ fn every_command_the_door_sends_is_registered_on_the_backend_and_the_new_trio_ha
     let sent = door_commands();
     let (write_face, read_family) = backend_declared();
     assert!(
-        // 〔MIG-3b 续〕门 5 → 4：`files-chmod` 随公钥推送进本机后端出列；4 → 3：`files-put` 随全景写进那台后端出列；
+        // 〔MIG-3b 续〕门 5 → 4：`files-chmod` 随公钥推送进本机后端出列；4 → 3：`files-put` 随它最后那个用户进了那台后端出列；
         // 〔THIN〕3 → 2：`files-peek` 随「认旧入口」进本机常驻后端出列。
         sent.len() >= 2 && write_face.len() >= 8 && read_family.len() >= 5,
         "人群塌了（门 {} 条 · 写面 {} 条 · 读族 {} 条）—— 抽取器坏了，本条空转",
@@ -137,11 +137,11 @@ fn every_command_the_door_sends_is_registered_on_the_backend_and_the_new_trio_ha
     );
     // 反向：`RW1` 在后端写面加的三条，每一条在 monitor 这一侧都有消费者（不许登记了没人用）。
     // 〔MIG-3b〕`files-delete-session` 出了这一组：删会话由界面经通道直说那台后端，门不再发它（消费者在 `src/frontend/ui/session-writes.ts`）。
-    // 〔MIG-3b 续〕`files-put` 出了这一组：最后经门写的全景批注进了那台后端（`panorama-edit` 在后端里经 `LocalFiles` 发它）。
+    // 〔MIG-3b 续〕`files-put` 出了这一组：最后经门写的那个用户进了那台后端。
     // 〔THIN〕`files-peek` 也出了这一组：门上最后一个读的用户（`ccm_legacy` 认旧入口）进了本机常驻后端（`deploy-retired`）；
     //   它在后端照旧是写面「读改写」的读那一半（别的面在后端里直接调）。反向那一格随之无对象。
     // 写面里门会发的那几条，恰好是这一集合（多发一条写面命令 ⇒ 先回答它为什么经门）。
-    // 〔RM1d · 第四波〕+`files-delete`：全景删批注侧车（V110「引擎只算、文件管理来写」；计划里 `after = null`）。
+    // `files-delete`：`ccm_legacy` 删旧入口（带读到的那一份当期望值）。
     let sent_writes: std::collections::BTreeSet<&str> = sent
         .iter()
         .filter(|c| write_face.contains(*c))
@@ -153,7 +153,7 @@ fn every_command_the_door_sends_is_registered_on_the_backend_and_the_new_trio_ha
             // 〔MIG-3b 续〕`files-chmod` 出列：唯一用它的公钥推送进了本机后端。
             "files-delete",
             // 〔THIN〕`files-peek` 出列：见上。
-            // 〔MIG-3b 续〕`files-put` 出列：唯一用它的全景批注 / 文档关联写进了那台后端（`control/panorama_edit.rs`）。
+            // 〔MIG-3b 续〕`files-put` 出列：唯一用它的那个用户写进了那台后端。
             // 〔MIG-3a · 子步 3〕`files-rename` 出列：唯一用它的 cc-bus 装前整目录备份进了本机后端。
         ]
         .into_iter()

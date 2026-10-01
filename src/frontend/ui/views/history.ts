@@ -185,7 +185,7 @@ export class HistoryView {
   // `history-fanout.vitest.ts`。
   /** ① 搜索输入去抖句柄。 */
   private searchDebounce: ReturnType<typeof setTimeout> | null = null;
-  /** ① 去抖窗口。250ms 照 `views/panorama.ts:382` 的现成范式，不另发明一个数。 */
+  /** ① 去抖窗口 250ms。 */
   private static readonly SEARCH_DEBOUNCE_MS = 250;
   /** ② 「已排程重画」去重位。范式取自 `tabs.ts:713-737`（schedule-once），不是 `:2714` 那个裸 rAF。 */
   private renderScheduled = false;

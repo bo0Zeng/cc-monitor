@@ -44,7 +44,6 @@ import {
 } from "./remote-section";
 import { DataSection } from "./data-section";
 import { ContextLimitsSection } from "./context-limits-section"; // 〔FIX4〕`contextLimits` 的入口
-import { PanoramaSection } from "./panorama-section"; // 〔FIX4〕全景小程序卸口
 import { RemoteSection } from "./remote-section";
 import type { MachineCardParts } from "./machine-card";
 import { BackendSection } from "./backend-section"; // P2s（C8）：每台机一个后端开关
@@ -1127,12 +1126,6 @@ export class SettingsPanel {
       },
       // 〔MCP · 资产目录 · 插件〕三块搬走了：skill / MCP 是跨机器的一类对象，住顶层「扩展」页（一张表 ＋ 一个抽屉）；
       //   插件只读列表没有可做的事，先拿掉。
-      // 〔FIX4 · `97 §8`〕代码全景组件的卸口（那台后端 `panorama-uninstall`；本机远端同一条）。
-      {
-        appliesTo: "both",
-        tab: "tools",
-        ...this.loadableBlock(copyText("panorama.uninstall.title"), () => new PanoramaSection()),
-      },
       // B04：钩子诊断。**只读**——不替用户改 ~/.claude/settings.json（共享全局配置）。
       // 本机与远端都要诊断（§2.4 表里这一行两栏都写着「诊断 + 待贴片段」）。
       {

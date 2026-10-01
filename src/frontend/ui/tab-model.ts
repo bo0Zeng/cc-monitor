@@ -93,7 +93,7 @@ export interface Tab {
   // 〔U4〕原先这里是 `tmuxIdle: boolean`（「claude 已退但 tmux 会话还在」，与 `status` 正交、却让 `status` 留在 live）。
   //   它说的是可恢复性那一轴 ⇒ 并进 `state`：`RECONNECTABLE`（死 ＋ 容器还在）。
   /** F70：本会话写类工具（Edit/Write/MultiEdit/NotebookEdit）碰过的文件路径（原样、去重、近因序）。
-   * 〔STC〕后端出成品（`history-facts` 的 `touchedFiles`），供「点会话 → 全景图高亮它改过的节点」。纯内存、不落盘（守 §28）。 */
+   * 〔STC〕后端出成品（`history-facts` 的 `touchedFiles`），供监控板 peek 列最近改过的文件。纯内存、不落盘（守 §28）。 */
   touchedFiles: Set<string>;
   /** F88b：本会话**最新一条带 usage 的 assistant 记录**的 prompt token（input+cache 合计）与
    *  model——供 HUD 算 context 占用%。〔STC〕后端按**文件序**取最后一条（成品的 `usage`），不再看到达序。

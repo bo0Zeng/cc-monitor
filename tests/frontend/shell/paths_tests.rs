@@ -17,7 +17,7 @@ use super::*;
 // `lib_env_scrub_tests` 那条判据的头注逐字：
 // 「**绝不能在测试里 set/remove 真实的 `CLAUDE_*` 变量（会干扰并发测试与宿主环境）**」
 // —— cargo test 多线程跑、进程级 env 是共享的，而 `resolve_monitor_data_dir`
-// 有 **8 处**消费者（凭据库 · 历史元数据 · 自启 · 全景 · config.json · 设置面板那一块 …）。
+// 有 **8 处**消费者（凭据库 · 历史元数据 · 自启 · config.json · 设置面板那一块 …）。
 // ⇒ 本摞全部走 `monitor_data_dir_from(env_val, home)` 这个**纯**入口，一次 `set_var` 都没有。
 //
 // ⚠ 代价如实记：**「`resolve_monitor_data_dir` 真的去读那个 env」这一格本摞买不到**。

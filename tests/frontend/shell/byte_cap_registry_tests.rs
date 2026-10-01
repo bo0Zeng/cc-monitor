@@ -129,11 +129,6 @@ const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
              不限任何东西的大小。",
     ),
     (
-        "PUSH_MODE",
-        "〔RM1e 09-24〕**权限位**不是体量：全景小程序推到远端 `~/.cc-monitor/bin/` 时给的 unix 模式（`0o755`，\
-             `panorama_bytes·rs::push_to`）。",
-    ),
-    (
         "LINK_STEP",
         "〔SR1a 09-24〕**步长**不是体量：monitor 往链路里送上行字节时一次切多大（`link_mux·rs::LinkStream` 的 \
              `poll_write`）。多出来的留给调用方下一次写 —— **不丢、不截**，它不限任何总量。\
@@ -1521,15 +1516,6 @@ const PARAMETRIC_READ_CAPS: &[(&str, &str, &str)] = &[
         "len",
         "`files-read-chunk` 的 `len` 是入参，入口先判 `1..=READ_CHUNK_MAX_BYTES`（已在 `CAPS` 里）；回 `eof` / `size`，\
              调用方读到 `eof` 为止 —— 不是截断后当完整的用。",
-    ),
-    // 〔RM1f〕插件口可打断那一形（`run_abortable`）每条子进程流留 `keep ＋ 1` 字节，`keep` 是入参；
-    // 唯一调用方 `control/panorama.rs` 给的是具名常量 `read_face::LINES_CAP_BYTES`（已在 `CAPS` 里）。
-    // ⚠ 不是静默截断：多出来的照读照丢（子进程不被管道卡住），调用方见 `len() > keep` 回 `too_large` 明拒。
-    (
-        "src/backend/plugin/invoke.rs",
-        "keep.saturating_add(1)",
-        "`run_abortable` 的每条流上限是入参，调用方给 `read_face::LINES_CAP_BYTES`（已在 `CAPS` 里）；\
-             留 keep＋1、其余读掉丢弃，调用方按「超了」明拒（`too_large`）—— 不是截断后当完整的用。",
     ),
     // 〔`C1` · 09-24〕`history_query::read_page` 的一页上限是入参；唯一调用点
     // （`read_face.rs`）给的是具名常量 `READ_PAGE_BYTES`（已在 `CAPS` 里）。

@@ -64,12 +64,12 @@ pub(crate) const WRITE_SITES: &[(&str, &str, Option<&str>, &str)] = &[
     ("local_backend.rs", "sweep_legacy_extracts", None,
      "〔E2 · E-c〕删旧版本机释放的 `~/.cc-monitor/bin/cc-monitor-backend-<build_id>` —— 身份戳恰一个（是我们编的）才删，\
           认不出的不动、删不掉（正在跑）不管。"),
-    // ── 〔RM1f〕**本机那一份代码全景小程序**。不是安装动作 —— 我们自己的部署物，放在我们自己的目录里。
+    // ── **本机那一份文件窗口程序**。不是安装动作 —— 我们自己的部署物，放在我们自己的目录里。
     ("local_backend.rs", "place_local_program", None,
-     "把这一份产物带着的、没有身份戳的本机程序放到 `~/.cc-monitor/bin/<file>`：代码全景小程序 \
-          `cc-monitor-panorama[.exe]`（本机后端找它的第二个候选）· 文件窗口程序 `cc-monitor-filewin[.exe]`（monitor 旁边没有它时）。\
+     "把这一份产物带着的、没有身份戳的本机程序放到 `~/.cc-monitor/bin/<file>`：文件窗口程序 \
+          `cc-monitor-filewin[.exe]`（monitor 旁边没有它时）。\
           写法与 `extract_embedded_to` 同一套（`.partial` + 置可执行位 + 上位走 `rename_into_place`）；盘上那份逐字节相等就零写。\
-          两个调用点：`panorama_bytes::place_local`（本机后端答「没装 / 装的太旧」时才走到）· `filewin::proc::resolve_window_bin`（开窗时）。\
+          调用点：`filewin::proc::resolve_window_bin`（开窗时）。\
           不碰用户既有环境、不注册到任何用户配置里。"),
     // ── 往 `~/.cc-monitor/bin` 放程序的两条路共用的上位那一步（旧的正在跑 ⇒ 先挪开）。不是安装动作。
     ("local_backend.rs", "rename_into_place", None,
@@ -90,10 +90,6 @@ pub(crate) const WRITE_SITES: &[(&str, &str, Option<&str>, &str)] = &[
           ⚠ 〔`K-R70` 09-12 订正本行后半句〕它**不再读旁边那份 `.build_id` 清单** —— \
           身份改从二进制字节里扫（`CC_MONITOR_BUILD_STAMP`），\
           由 `sftp_tests.rs::the_embedded_identity_comes_from_the_bytes_not_from_a_label` 守着"),
-    ("build.rs", "embed_panoramas", None,
-     "〔RM1c · 第四波〕把 `embedded-backends/cc-monitor-panorama-<arch>`（只装代码全景引擎的独立小程序，\
-          两个 musl arch）复制进 `OUT_DIR`，供 `panorama_bytes.rs` 的 `include_bytes!` 内嵌。\
-          同上一行：写的是 cargo 自己的构建目录，不碰用户环境、不是安装动作"),
     // ── 〔RW1 · 第四波 · 2026-09-24〕这里原来有收件箱写（`write_skill_file`〔散文墓碑〕）一行（项目里的
     //    `.claude/planned-build/INBOX.txt`，本进程 `fs::write` ＋ `verified_write` 回读回滚）。用户裁「远端（和本机，
     //    同一条路）的 `INBOX.txt` 能编辑、经那台机器后端的文件管理那一面写」⇒ 读写都改经后端（`files-peek` /
@@ -447,7 +443,7 @@ const SITE_CLASS: &[(&str, &str, Lands)] = &[
         "sweep_legacy_extracts",
         Lands::OwnDeployment,
     ),
-    // 〔RM1f〕本机那一份代码全景小程序：同上，我们自己目录里的部署物。
+    // 本机那一份文件窗口程序：同上，我们自己目录里的部署物。
     (
         "local_backend.rs",
         "place_local_program",
@@ -459,8 +455,6 @@ const SITE_CLASS: &[(&str, &str, Lands)] = &[
         Lands::OwnDeployment,
     ),
     ("build.rs", "embed_backends", Lands::BuildOutput),
-    // 〔合并 RM1c〕全景小程序的内嵌字节：同上一行，往 `OUT_DIR` 放构建产物。
-    ("build.rs", "embed_panoramas", Lands::BuildOutput),
     ("bind.rs", "spawn", Lands::OwnState),
     ("bind.rs", "process_await_file", Lands::OwnState),
     ("bind.rs", "cleanup_dead", Lands::OwnState),

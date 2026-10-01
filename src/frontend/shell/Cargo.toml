@@ -4,9 +4,6 @@
 # 代价：门禁得在八个地方分别跑（~17 条 `--manifest-path`/`-p`），且每个 crate 单独 test 时
 # 会各落一个游离 `Cargo.lock`（`.gitignore` 为此打过补丁）。
 #
-# ⚠ `vendor/code-picture-core` **刻意 exclude**：它是 vendor 进来的第三方内核，
-# 不该被 `--workspace` 的 fmt/clippy/test 扫到（也不该因为我们的 lint 设置而红）。
-# 〔RM1f〕monitor 已不再依赖它（链它的只剩全景小程序 `src/panorama-engine`）；它仍住本目录之下 ⇒ exclude 照留。
 # ⚠ `src/backend` **不在这里** —— 它有自己独立的 `Cargo.lock`，
 # 那条隔离是真架构约束（Linux/Windows CI runner），见它自己的 `Cargo.toml` 头注。
 [workspace]
@@ -33,13 +30,11 @@ members = [
     "../filewin",
     # 〔THIN〕`gate-core` 出列：收成后端模块 `control/gate_rules.rs`（monitor 那一侧的门删了）。
 ]
-# 〔RE〕`exclude = ["vendor/code-picture-core"]` 删了：vendor 随唯一消费者搬进 `src/panorama-engine/vendor/`，
-#   不在本 workspace 根下面，按构造就成不了成员（path 依赖只有住在根目录里才自动入圈）。
 
 [package]
 name = "monitor"
 version = "4.0.2"
-description = "cc-monitor — Claude Code 的开发工作台：只读渲染会话输出 + 本机/远端会话管理 + 代码全景 + skill 接入面（Tauri 2 + TypeScript，Windows / Linux）"
+description = "cc-monitor — Claude Code 的开发工作台：只读渲染会话输出 + 本机/远端会话管理 + skill 接入面（Tauri 2 + TypeScript，Windows / Linux）"
 authors = ["cc-monitor contributors"]
 edition = "2021"
 license = "MIT"
@@ -132,9 +127,6 @@ serde_json = { version = "1", features = ["raw_value"] }
 # uuid 1.x 已在 Cargo.lock（tauri 传递依赖）+ 本地 registry 缓存，加 v4 feature 离线可编。
 uuid = { version = "1", features = ["v4"] }
 
-# 〔RM1f · V108 后半句「之后本机也走这条路、monitor 摘内嵌引擎」〕`code-picture-core` 这一行删了：
-# 本机全景也走「本机后端 → 插件口 → 全景小程序（`src/panorama-engine`）」，monitor 一行引擎都不链。
-# vendored 副本〔RE〕随唯一消费者搬进 `src/panorama-engine/vendor/code-picture-core`（`99 §2.1 ⑰`）。
 # 〔THIN〕`branch-core` 删了：monitor 零引用（本机分叉也问本机后端），它收进后端适配层 `agents/claudecode/branch.rs`。
 # 〔RE〕`codex-token-core` 删了：monitor 零引用，它搬进后端 `agents/codex/token.rs`。
 # 〔THIN〕`agent-tools-core` 删了：画像表里那几张判卡型的词表进了后端适配层（`agents/claudecode/cards.rs`），monitor 零引用。

@@ -274,8 +274,8 @@ async fn ask_plan_for(
 
 /// 〔MIG-3b〕照计划取字节：那一格这一版带着的那一份（`byte_table::pick`）。计划说的身份与字节自报的对不上 ⇒ 两侧漂了，不推。
 fn planned_binary(plan: &Plan) -> Result<BackendBinary, String> {
-    crate::byte_table::pick(crate::byte_table::Product::Backend, plan.key)
-        .and_then(|p| p.build_id.map(|id| (p.bytes, id)))
+    crate::byte_table::pick(plan.key)
+        .map(|p| (p.bytes, p.build_id))
         .filter(|(_, id)| *id == plan.expected)
         .map(|(bytes, build_id)| BackendBinary {
             build_id,

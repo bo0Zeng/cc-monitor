@@ -1,12 +1,12 @@
 /**
  * 〔U2 · 拆 `tabs.ts` ⑤〕**右键一个 tab，菜单里放哪几项** —— 以及那几格要异步就绪的项怎么就绪。
  *
- * 在新窗口打开 · 加入 / 移出集合 · 固定 · 全景高亮 · Resume（容器 × 账号 flyout）· Attach · 预览 ·
+ * 在新窗口打开 · 加入 / 移出集合 · 固定 · Resume（容器 × 账号 flyout）· Attach · 预览 ·
  * 杀死会话 · 就地 resume · 换号重启。项怎么画、菜单怎么开关住 `tab-context-menu.ts`；
  * 点下去真正做事的住 `tab-session-actions.ts`（本文件直接调它，不经 `TabManager` 转一手）。
  *
  * 方法体逐字从 `tabs.ts` 搬来（右键处理器的函数体缩进少了两格，其余一字不差），
- * 唯一的改写是宿主读数：`this.tabs.get(` / 集合 / 固定 / 全景回调 换成 `this.host.…`，
+ * 唯一的改写是宿主读数：`this.tabs.get(` / 集合 / 固定 换成 `this.host.…`，
  * 会话动作与 tmux 缓存换成 `this.actions.…` —— **都在点击 / 就绪那一刻现读**，与原先读字段的时机相同。
  */
 import { showActionFailureToast } from "./error-toast";
@@ -88,8 +88,6 @@ export interface TabMenuHost {
   /** 同上一条理由：没 `loadPinned` 过就不给固定入口。 */
   pinnedLoaded(): boolean;
   togglePin(sid: string): void;
-  /** F70：「在全景高亮本会话改动」—— 宿主注入的回调（没注入就什么都不做）。 */
-  requestPanoramaHighlight(sid: string): void;
 }
 
 export class TabMenu {
@@ -147,14 +145,6 @@ export class TabMenu {
       });
     }
     // 〔REREAD · V155〕「重新读取」不在这里：挪成 tab 栏上常驻的一颗（`tab-bar-view.ts`），一按对所有打开的 tab 生效。
-    // F70（护城河）：本地会话 + 有改动集 → 「在全景高亮本会话改动」。远端（代码不在本机、
-    // code-picture 索引不到）/ 无改动 都不显示（门控之一，另两道在 touchedFilesFor + highlightSession）。
-    if (t && isLocalOrigin(t.origin) && t.touchedFiles.size > 0) {
-      items.push({
-        label: copyText("tabMenu.open.panoramaHighlight"),
-        onClick: () => this.host.requestPanoramaHighlight(sid),
-      });
-    }
     // F37：灰 tab（会话已结束）右键手动 resume——不用绕去历史浏览器。
     // F41 起本地与远端都是一键拉起新终端（远端=wt.exe 跑 ssh -t，失败才回退复制命令）。
     // F09：远端归档 tab 收敛成 1 个「Resume」一级项 + 二级 flyout（容器×账号，MASTERPLAN
