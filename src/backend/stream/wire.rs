@@ -313,6 +313,9 @@ pub enum Frame {
         /// U6a 审计抓到：一条把不存在的实现点写成契约锚的注释，下一个人照它去 monitor 找会扑空。
         #[serde(default)]
         byte_offset: u64,
+        /// 这一行的对账键（适配层 `RecordFace::response_id` 给；流的「开始」带同一个值）。没有 ⇒ 不上线。
+        #[serde(skip_serializing_if = "Option::is_none")]
+        rid: Option<String>,
     },
     /// A new session file appeared.
     ///
@@ -464,7 +467,7 @@ pub enum Frame {
         cause: RemovalCause,
     },
     /// phase②（backend-09）：turn-end 边沿（一轮 assistant 完成）。**方案 C：raw-per-record、backend
-    /// 不 dedup**——每见一条 turn-end 记录（`end_turn && !isApiError && !isSidechain`，见 `agents/claudecode/turn.rs`）
+    /// 不 dedup**——每见一条 turn-end 记录（判词住适配层，见 `agents/claudecode/turn.rs`）
     /// 发一帧；aterm 侧 **rolling-latest + debounce(1200ms) `baselineByPath`** 塌合同 turn 的多记录、
     /// 首见吞历史不通知、offset 续拉重放 uuid ≤ 基线不通知（**transport-agnostic、与 β 逐字同语义、
     /// gap#6 闭**；backend 不猜消息边界）。`uuid` = 完成记录**顶层 uuid** = 客户端 dedup 键。
@@ -634,13 +637,53 @@ pub enum Frame {
     /// SSE 只保快，jsonl 保对（V24）。旧 monitor / 仓外 aterm 不认这个 kind ⇒ 忽略（additive）。
     Tap {
         stream: String,
+        /// 这段流归哪个子运行（主运行 ⇒ 不上线）。由后端归位（`run_route`）：请求自报了就定；没自报 ⇒ 没有在跑的子运行就归主，
+        /// 有 ⇒ 先挂起、等记录对上对账键再放出来。
+        #[serde(skip_serializing_if = "Option::is_none")]
+        run: Option<String>,
         resp: u64,
         n: u64,
+        /// 归一事件（上游原始事件已在后端按协议面折过；界面不认任何一家的事件名）。
         #[serde(skip_serializing_if = "Option::is_none")]
-        data: Option<String>,
+        ev: Option<crate::agents::StreamEv>,
         #[serde(skip_serializing_if = "Option::is_none")]
         end: Option<TapEnd>,
     },
+    /// 一个会话的运行表（主运行之外的那几个子运行：标签 · 状态 · 最近一件事 · 派出它的那次工具调用）。表变了就整份发一次。
+    SessionRuns { sid: String, runs: Vec<RunInfo> },
+}
+
+/// 一个子运行此刻的样子（[`Frame::SessionRuns`] 的一项）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub struct RunInfo {
+    pub run: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub label: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub kind: Option<String>,
+    /// 派出它的那次工具调用（父侧 id）；还没对上 ⇒ 不上线。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub tool: Option<String>,
+    pub state: RunState,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub last: Option<crate::agents::RunDid>,
+}
+
+/// 子运行的三态。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(rename_all = "lowercase")]
+pub enum RunState {
+    Running,
+    Done,
+    Failed,
 }
 
 /// 〔TAP〕一个响应怎么收场的（[`Frame::Tap`] 的 `end`）。
@@ -753,6 +796,8 @@ impl Frame {
             // 〔TAP〕SSE 只保快：它说的事 jsonl 那一侧都有（落盘保对，V24），丢了由位置号 `n` 原位说出来。
             // ⚠ 它**不走**出方向那条通道（走 tap 自己那条），列在这里只为穷尽。
             Frame::Tap { .. } => true,
+            // 整份快照：下一次表一变就整份重发；丢了那个会话的子运行行停在旧的那一份，直到下一次变（带身份，客户端知道）。
+            Frame::SessionRuns { .. } => false,
         }
     }
 
@@ -786,6 +831,7 @@ impl Frame {
             Frame::Probe { ticket, .. } => ("probe", Some(ticket.clone())),
             Frame::Progress { ticket, .. } => ("progress", Some(ticket.clone())),
             Frame::Tap { stream, .. } => ("tap", Some(stream.clone())),
+            Frame::SessionRuns { sid, .. } => ("session_runs", Some(sid.clone())),
         };
         LostFrame { kind, subject }
     }

@@ -70,7 +70,9 @@ use crate::stream::wire::AgentHome;
 use std::path::{Path, PathBuf};
 
 pub mod claudecode;
+// 上游协议的流面（按协议分，不按 agent 分）。
 pub(crate) mod codex;
+pub(crate) mod sse_anthropic;
 
 /// 〔`S6`〕**夹具家** —— 本区验收件的最小假 agent。
 ///
@@ -219,13 +221,6 @@ pub(crate) fn build_branch_records(
     }
 }
 
-/// 〔THIN〕记录树那一家（[`stream_record_face`]）怎么画这个工具名 —— 通用层（会话事实）认 agent 工具的唯一入口。
-pub(crate) fn tool_card_of(name: &str) -> Option<ToolCard> {
-    stream_record_face()
-        .and_then(|r| r.tool_card)
-        .and_then(|f| f(name))
-}
-
 /// 〔THIN〕这个 tmux 前台命令是不是注册表里某一家的进程（[`Adapter::processes`]）—— `tmux-list` 每一行的 `agent`。
 pub(crate) fn is_agent_process(command: &str) -> bool {
     REGISTRY
@@ -243,8 +238,6 @@ pub(crate) struct RecordFace {
     pub(crate) sid: fn(&Path) -> Option<String>,
     /// 这一行是不是一轮的结束 ⇒ 那条记录的 uuid（`turn_end` 帧）。`None` ＝ 这一家今天不报轮次边沿。
     pub(crate) turn_end: Option<fn(&str) -> Option<String>>,
-    /// 〔THIN〕一个工具名在界面上画成哪一种卡（[`ToolCard`]）。`None` ＝ 这一家的工具名今天没人考据过（一律普通工具卡）。
-    pub(crate) tool_card: Option<fn(&str) -> Option<ToolCard>>,
     /// 〔THIN〕在这一家的记录树（`records_root`）下按 sid 找那份会话文件（原共享 crate `branch-core`）。`None` ＝ 这一家不按 sid 找。
     pub(crate) find_session: Option<fn(&Path, &str) -> Result<PathBuf, String>>,
     /// 〔THIN〕分叉的记录变换：`(记录, 分叉点 uuid, 源 sid, 新 sid)` ⇒ 新会话的记录（原共享 crate `branch-core`）。`None` ＝ 这一家不分叉。
@@ -255,6 +248,179 @@ pub(crate) struct RecordFace {
     pub(crate) text: Option<TextFace>,
     /// 〔MOD · 子步 4〕删历史会话那一条的两问（按 sid 找那一份 · 它是不是一份会话记录）；`None` ＝ 这一家不删。
     pub(crate) delete: Option<SessionDelete>,
+    /// 一条记录与流对账用的键（同一次上游应答写出的记录都带它）。`None` ＝ 这一家的流对不上记录（活卡不定稿，只靠收尾撤）。
+    pub(crate) response_id: Option<fn(&serde_json::Value) -> Option<String>>,
+    /// 这条记录属于哪个子运行（主运行的记录 ⇒ `None`）。`None` 这一格 ＝ 这一家没有子运行。
+    pub(crate) run_of: Option<fn(&serde_json::Value) -> Option<RunMark>>,
+    /// 父记录里「派出了一个子运行」的那几条（给出父侧工具调用 id、标签，知道时也给出子运行是哪个）。
+    pub(crate) child_link: Option<fn(&serde_json::Value) -> Vec<ChildLink>>,
+    /// 子运行的记录住哪（由父记录路径推出）。`None` ＝ 这一家没有单独存放的子运行记录。
+    pub(crate) children: Option<ChildFace>,
+}
+
+/// 一条子运行记录说了什么：属于哪个运行 · 是不是它的终局 · 它做的那件事（行上「最近：…」）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct RunMark {
+    pub(crate) run: String,
+    pub(crate) end: Option<RunEnd>,
+    pub(crate) did: Option<RunDid>,
+}
+
+/// 子运行怎么收场的。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum RunEnd {
+    Done,
+    Failed,
+}
+
+/// 一个运行最近做的那件事（通用的值域；某一家的哪种记录算哪一件由那一家判）。
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(tag = "t", rename_all = "lowercase")]
+pub enum RunDid {
+    /// 在写回复。
+    Say,
+    /// 在想。
+    Think,
+    /// 调用了一个工具。
+    Tool { name: String },
+}
+
+/// 父记录里的一条「派出子运行」：父侧工具调用 id 必有；标签 · 类别 · 子运行是哪个 · 收没收场，记录里有才有。
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub(crate) struct ChildLink {
+    pub(crate) tool: String,
+    pub(crate) label: Option<String>,
+    pub(crate) kind: Option<String>,
+    pub(crate) run: Option<String>,
+    /// 父侧说这个子运行已经收场了（前台跑完的那次结果 · 报错）；没说 ⇒ `None`。
+    pub(crate) end: Option<RunEnd>,
+}
+
+/// 记录成品里「这次工具调用派出了一个子运行」的那一格（父侧工具调用 id ⇒ 它）：界面按它给那张工具卡起名，不认工具名与入参。
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub struct ChildRunTag {
+    pub label: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub kind: Option<String>,
+}
+
+/// 子运行的记录住哪：父记录路径 ⇒ 此刻在盘上的子运行记录路径们（不在 ⇒ 空）。通用 watcher 拿这些路径走与主记录同一条事件管线。
+#[derive(Clone, Copy)]
+pub(crate) struct ChildFace {
+    pub(crate) sources: fn(&Path) -> Vec<PathBuf>,
+}
+
+/// 一个上游协议的流面：把一个原始流事件（SSE `data:` 后面那段原文）折成归一事件。认不出 ⇒ 空。
+/// 按上游协议分，不按 agent 分：哪家走哪个协议由那一家的 [`DefaultUpstream::stream`] 说。
+#[derive(Clone, Copy)]
+pub(crate) struct StreamFace {
+    pub(crate) fold: fn(&str) -> Vec<StreamEv>,
+}
+
+/// 归一流事件（界面只收这个，不收任何一家的原始事件）。
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(tag = "t", rename_all = "lowercase")]
+pub enum StreamEv {
+    /// 一次应答开始：对账键（与记录的 [`RecordFace::response_id`] 同一个值域）。
+    Start { rid: String },
+    /// 第 `i` 块开始了。
+    Block {
+        #[cfg_attr(test, ts(type = "number"))]
+        i: u64,
+        kind: BlockKind,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(test, ts(optional))]
+        tool: Option<String>,
+    },
+    /// 第 `i` 块的一段文字。
+    Text {
+        #[cfg_attr(test, ts(type = "number"))]
+        i: u64,
+        s: String,
+    },
+    /// 上游说完了（`ok` ＝ 正常说完；`false` ＝ 上游报错收尾）。
+    Stop { ok: bool },
+}
+
+/// 归一流里一块是什么。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(rename_all = "lowercase")]
+pub enum BlockKind {
+    Text,
+    Thinking,
+    Tool,
+    Other,
+}
+
+/// 通用层要的那一组面（记录 ＋ 子运行住址）：流式 watcher 跟的那一家给；判据喂别的一组（假适配层）。
+#[derive(Clone, Copy)]
+pub(crate) struct RunFaces {
+    pub(crate) response_id: Option<fn(&serde_json::Value) -> Option<String>>,
+    pub(crate) run_of: Option<fn(&serde_json::Value) -> Option<RunMark>>,
+    pub(crate) child_link: Option<fn(&serde_json::Value) -> Vec<ChildLink>>,
+    pub(crate) children: Option<ChildFace>,
+}
+
+impl RunFaces {
+    /// 一家的记录面 ⇒ 它的运行面。
+    pub(crate) fn of(r: &RecordFace) -> Self {
+        Self {
+            response_id: r.response_id,
+            run_of: r.run_of,
+            child_link: r.child_link,
+            children: r.children,
+        }
+    }
+
+    /// 什么都不填 ⇒ 没有子运行、流对不上记录。
+    pub(crate) const NONE: Self = Self {
+        response_id: None,
+        run_of: None,
+        child_link: None,
+        children: None,
+    };
+
+    pub(crate) fn response_id(&self, v: &serde_json::Value) -> Option<String> {
+        self.response_id.and_then(|f| f(v))
+    }
+
+    pub(crate) fn run_of(&self, v: &serde_json::Value) -> Option<RunMark> {
+        self.run_of.and_then(|f| f(v))
+    }
+
+    pub(crate) fn child_links(&self, v: &serde_json::Value) -> Vec<ChildLink> {
+        self.child_link.map(|f| f(v)).unwrap_or_default()
+    }
+
+    pub(crate) fn sources(&self, parent: &Path) -> Vec<PathBuf> {
+        self.children
+            .map(|c| (c.sources)(parent))
+            .unwrap_or_default()
+    }
+}
+
+/// 流式 watcher 跟的那一家的运行面（没有 ⇒ [`RunFaces::NONE`]）。
+pub(crate) fn stream_run_faces() -> RunFaces {
+    stream_record_face().map_or(RunFaces::NONE, |r| RunFaces::of(&r))
+}
+
+/// 一条已解析的记录在会话里属于哪个运行（主运行 ⇒ `None`）—— 通用层（大纲 · 骨架索引）判「这条是不是子运行的」的唯一入口。
+pub(crate) fn run_of_record(v: &serde_json::Value) -> Option<RunMark> {
+    stream_run_faces().run_of(v)
+}
+
+/// 一条已解析的记录里派出子运行的那几条 —— 通用层（会话事实）认「派出了子运行」的唯一入口。
+pub(crate) fn child_links_of(v: &serde_json::Value) -> Vec<ChildLink> {
+    stream_run_faces().child_links(v)
 }
 
 /// 〔P1〕一家的记录文本面（原共享 crate `search-core` 里 Claude 记录文本那一半）：函数指针（同 [`Adapter::home`]，不立 trait）。
@@ -465,6 +631,11 @@ pub(crate) struct DefaultUpstream {
     pub(crate) fallback: &'static str,
     /// 〔V141〕这一家的请求里**它自己带着会话标识**的那个头（中转拿它给流打标签）。`None` = 说不出 ⇒ 流不带标签。
     pub(crate) session_header: Option<&'static str>,
+    /// 这一家的上游说哪种流协议（归一流的折法）。`None` ＝ 它的流不折（活卡认不得）。
+    pub(crate) stream: Option<StreamFace>,
+    /// 请求本身就说出「我是哪个子运行」的那个头（值 ＝ 子运行的标识，与 [`RecordFace::run_of`] 同一个值域）。
+    /// 声明了 ⇒ 带头的请求归那个子运行、不带头的就是主运行（当场定）；`None` ＝ 请求认不出运行 ⇒ 通用层按记录对账归位。
+    pub(crate) owner_header: Option<&'static str>,
 }
 
 /// 〔NT2 · V25〕登记了默认上游的每一家：`(路由名, 那一格)`。**上游选择读默认上游的唯一入口**。
@@ -484,6 +655,42 @@ pub(crate) fn session_headers() -> Vec<&'static str> {
         }
     }
     v
+}
+
+/// 各家登记的「请求说出子运行」的头（注册序、去重）：中转按它从请求里认运行。
+pub(crate) fn owner_headers() -> Vec<&'static str> {
+    let mut v: Vec<&'static str> = Vec::new();
+    for h in REGISTRY
+        .iter()
+        .filter_map(|a| a.upstream.as_ref()?.owner_header)
+    {
+        if !v.contains(&h) {
+            v.push(h);
+        }
+    }
+    v
+}
+
+/// 一家上游在流归位那里的样子：它的流协议面 ＋ 它的请求是否自报运行（声明了 [`DefaultUpstream::owner_header`]）。
+#[derive(Clone, Copy)]
+pub(crate) struct StreamFamily {
+    pub(crate) face: StreamFace,
+    /// 声明了自报运行的头 ⇒ 带头的归那个子运行、不带头的就是主运行（当场定，不挂起）。
+    pub(crate) owns: bool,
+}
+
+/// 各家上游的流协议面（注册序）。一条应答用哪一个，由通用层按头一件事认（认得出「开始」的那一个）。
+pub(crate) fn stream_families() -> Vec<StreamFamily> {
+    REGISTRY
+        .iter()
+        .filter_map(|a| {
+            let u = a.upstream.as_ref()?;
+            Some(StreamFamily {
+                face: u.stream?,
+                owns: u.owner_header.is_some(),
+            })
+        })
+        .collect()
 }
 
 /// 〔C4d〕一家的合成历史面：函数指针（同 [`Adapter::home`]，不立 trait）。

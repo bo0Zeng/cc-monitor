@@ -8,6 +8,7 @@ fn line(sid: &str, seq: u64) -> JsonlLine {
         message: crate::ui_contract::RecordBody::from_json(format!("{{\"seq\":{seq}}}")),
         cwd: None,
         end: None,
+        rid: None,
     }
 }
 

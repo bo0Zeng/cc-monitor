@@ -128,7 +128,7 @@ fn facts_count_prose_code_and_folded_units_separately() {
 
 #[test]
 fn facts_for_user_string_meta_sidechain_system_and_garbage() {
-    let u = r#"{"type":"user","isMeta":true,"isSidechain":true,"message":{"role":"user","content":"两行\n第二行"}}"#;
+    let u = r#"{"type":"user","isMeta":true,"isSidechain":true,"agentId":"a1","message":{"role":"user","content":"两行\n第二行"}}"#;
     let r = index_row(u.as_bytes(), 0, 0);
     assert!(r.mt && r.sc);
     assert_eq!((r.pl, r.ch, r.cj), (2, 5, 5));

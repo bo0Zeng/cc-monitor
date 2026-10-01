@@ -21,7 +21,7 @@ fn fixture() -> Vec<String> {
         "\u{feff}  {\"type\":\"user\",\"uuid\":\"in-bom\",\"message\":{\"content\":\"bom\"}}  ".into(),
         // ── 不该进的 ──
         r#"{"type":"user","uuid":"out-meta","isMeta":true,"message":{"content":"injected"}}"#.into(),
-        r#"{"type":"user","uuid":"out-side","isSidechain":true,"message":{"content":"sub agent prompt"}}"#.into(),
+        r#"{"type":"user","uuid":"out-side","isSidechain":true,"agentId":"a1","message":{"content":"sub agent prompt"}}"#.into(),
         r#"{"type":"user","uuid":"out-toolresult","message":{"content":[{"type":"tool_result","content":"x"}]}}"#.into(),
         r#"{"type":"user","uuid":"out-blank","message":{"content":"   \n\t "}}"#.into(),
         r#"{"type":"user","uuid":"out-emptyblocks","message":{"content":[{"type":"text","text":""}]}}"#.into(),

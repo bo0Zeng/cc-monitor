@@ -29,6 +29,7 @@ import { buildAgentCard } from "./subagent";
 import { buildDiffBody } from "./diff";
 import { buildInteractiveCard, markInteractiveAnswer } from "./interactive";
 import type { ToolCard } from "../generated/ToolCard";
+import type { ChildRunTag } from "../generated/ChildRunTag";
 import { buildApiErrorCard, buildApiRetryCard } from "./api-error";
 import { LS_KEYS, safeGet, safeSet } from "../local-storage";
 import { firstLineOf, formatTimestampShort, jsonPrefix } from "../format";
@@ -51,6 +52,12 @@ type ToolCards = Readonly<Record<string, ToolCard>>;
 const NO_CARDS: ToolCards = Object.freeze({});
 function toolCardsOf(rec: JsonlRecord): ToolCards {
   return rec.type === "assistant" ? rec.toolCards ?? NO_CARDS : NO_CARDS;
+}
+/** 派出子运行的那几次调用的通用标签（后端随记录成品带出的 `childRuns`）。 */
+type ChildRuns = Readonly<Record<string, ChildRunTag>>;
+const NO_RUNS: ChildRuns = Object.freeze({});
+function childRunsOf(rec: JsonlRecord): ChildRuns {
+  return rec.type === "assistant" ? rec.childRuns ?? NO_RUNS : NO_RUNS;
 }
 
 // === Rust 端 JsonlRecord 的 TS 镜像 ===
@@ -99,7 +106,7 @@ export type ContentBlock =
  * 字段命名保持稳定 —— 跨模块（cards/subagent、tabs）依赖。
  */
 export interface RenderContext {
-  /** 父 JSONL 路径，subagent 模块用它定位 `<parent>/subagents/` 目录 */
+  /** 父记录路径：派出子运行的那张卡按它（＋ 工具调用 id）读那个子运行的记录 */
   parentPath: string;
   /**
    * Batch9-F29：会话来源（本机 = `LOCAL_ORIGIN`；其余 = 远端机器 label）。
@@ -120,6 +127,8 @@ export interface RenderContext {
    * 看到参数 + 输出"的合并 UX。
    */
   toolUseElements: Map<string, HTMLElement>;
+  /** 派出子运行的那几张卡（父侧工具调用 id → 卡）；不需要按运行表标卡的调用方不给。 */
+  runCards?: Map<string, HTMLElement>;
   /**
    * v2.3.1 (issue #1)：切块场景下 tool_result 可能在 tool_use 之前到达
    * （head 块含 result，older 块才有 tool_use）。此时 injectOrBuildToolResult
@@ -217,7 +226,7 @@ export function renderMessage(rec: JsonlRecord, ctx: RenderContext): RenderResul
       );
       if (blocks.length === 0) return { kind: "skip" };
       const units = blocks
-        .map((b) => renderBlock(b, rec.timestamp, ctx, NO_CARDS))
+        .map((b) => renderBlock(b, ctx, NO_CARDS))
         .filter((el): el is HTMLElement => el !== null);
       if (units.length === 0) return { kind: "skip" };
       return {
@@ -268,7 +277,7 @@ export function renderMessage(rec: JsonlRecord, ctx: RenderContext): RenderResul
       }
       // 全是 thinking / tool_use / tool_result → 工具组成员
       const units = meaningful
-        .map((b) => renderBlock(b, rec.timestamp, ctx, cards))
+        .map((b) => renderBlock(b, ctx, cards, childRunsOf(rec)))
         .filter((el): el is HTMLElement => el !== null);
       if (units.length === 0) return { kind: "skip" };
       return {
@@ -399,7 +408,7 @@ function buildAssistantCard(
   body.className = "card-body";
   const cards = toolCardsOf(rec);
   for (const block of meaningful) {
-    const el = renderBlock(block, rec.timestamp, ctx, cards);
+    const el = renderBlock(block, ctx, cards, childRunsOf(rec));
     if (el) body.appendChild(el);
   }
   card.appendChild(body);
@@ -412,9 +421,9 @@ function buildAssistantCard(
  */
 function renderBlock(
   block: ContentBlock,
-  timestamp: string,
   ctx: RenderContext,
   cards: ToolCards,
+  runs: ChildRuns = NO_RUNS,
 ): HTMLElement | null {
   switch (block.type) {
     case "text":
@@ -438,14 +447,11 @@ function renderBlock(
       const card = cards[block.id];
       ctx.toolUseNames.set(block.id, { name: block.name, card });
 
-      // 〔THIN〕卡型是那台后端判的（`toolCards`）；子 agent 工具 → 折叠卡内嵌渲染 subagent JSONL
+      // 〔THIN〕卡型是那台后端判的（`toolCards`）；派出子运行的那次调用 → 折叠卡，展开是那个子运行的时间线（按运行读）
       if (card === "agent") {
-        return buildAgentCard(
-          block.input as Parameters<typeof buildAgentCard>[0],
-          timestamp,
-          ctx,
-          renderMessage,
-        );
+        const runCard = buildAgentCard(block.id, block.name, runs[block.id], ctx, renderMessage);
+        ctx.runCards?.set(block.id, runCard);
+        return runCard;
       }
       // issue #21：交互等待工具 → 默认展开的提问卡 / plan 卡（用户在被等着，
       // 折叠会误以为 LLM 还在输出）。畸形 input throw → 回退通用折叠卡。

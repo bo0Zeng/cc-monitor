@@ -118,21 +118,30 @@ pub(crate) fn record_lines_of_page(
     )
 }
 
-/// 一份子 agent 记录的全部记录（`history-subagent`）：认得出的每一条都给（进不进界面由界面按记录类型定 —— 与
-/// 主会话那条路不同，这一面是「整份摆出来看」，原先 monitor 那一份也是照收不滤）。解析不出的行跳过。
-pub(crate) fn all_records(face: &RecordFace, bytes: &[u8]) -> Vec<Value> {
+/// 一页子运行记录（`history-run`）：认得出的每一条给 `{message, rid?}`（进不进界面由界面按记录类型定 —— 这一面是
+/// 「整份摆出来看」，与主会话那条路不同）；`rid` 是它的对账键（界面拿它撤那个子运行的活卡）。解析不出的行跳过。
+pub(crate) fn run_rows(face: &RecordFace, bytes: &[u8]) -> Vec<Value> {
+    let faces = crate::agents::RunFaces::of(face);
     split_lines(0, bytes)
         .into_iter()
-        .filter_map(
-            |(body, _)| match (face.parse)(&String::from_utf8_lossy(body)) {
-                Ok(Some(p)) => Some(p.message),
-                Ok(None) => None,
+        .filter_map(|(body, _)| {
+            let text = String::from_utf8_lossy(body);
+            let message = match (face.parse)(&text) {
+                Ok(Some(p)) => p.message,
+                Ok(None) => return None,
                 Err(e) => {
-                    tracing::warn!("subagent parse skip: {e}");
-                    None
+                    tracing::warn!("run record parse skip: {e}");
+                    return None;
                 }
-            },
-        )
+            };
+            let rid = serde_json::from_str::<Value>(text.trim_start_matches('\u{feff}').trim())
+                .ok()
+                .and_then(|v| faces.response_id(&v));
+            Some(match rid {
+                Some(rid) => serde_json::json!({ "message": message, "rid": rid }),
+                None => serde_json::json!({ "message": message }),
+            })
+        })
         .collect()
 }
 

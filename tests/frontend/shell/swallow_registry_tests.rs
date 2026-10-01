@@ -143,8 +143,8 @@ const ALLOWED: &[(&str, &str, usize, Why, &str)] = &[
     ("src/backend/relay/listen.rs", "let _ = server::respond_and_drain(&mut stream, server::BUSY, \"busy\");", 1, Why::DeadLink, "回一句「忙」给被拒的那条连接"),
     ("src/comms/outward/server.rs", "let _ = down.set_nonblocking(false);", 1, Why::DeadLink, "已经答完的那条连接上排掉已到的字节，排不掉就算了"),
     ("src/comms/outward/server.rs", "let _ = down.set_nonblocking(true);", 1, Why::DeadLink, "已经答完的那条连接上排掉已到的字节，排不掉就算了"),
-    ("src/comms/outward/tee.rs", "let _ = self.port.offer(TapEvent { stream: id.stream.to_string(), resp: at.resp, n, body: TapBody::Data(payload.to_strin", 1, Why::Backpressure, "〔TAP〕投不进就丢：号照占，缺口在接收侧按号算得出（`20 §8`「SSE 保快、jsonl 保对」）"),
-    ("src/comms/outward/tee.rs", "let _ = self.port.offer(TapEvent { stream: id.stream.to_string(), resp: at.resp, n: at.n, body: TapBody::End { broken },", 1, Why::Backpressure, "〔TAP〕同上（收尾那一件）"),
+    ("src/comms/outward/tee.rs", "let _ = self.port.offer(TapEvent { stream: id.stream.to_string(), owner: id.owner.to_string(), resp: at.resp, n, body: T", 1, Why::Backpressure, "〔TAP〕投不进就丢：号照占，缺口在接收侧按号算得出（`20 §8`「SSE 保快、jsonl 保对」）"),
+    ("src/comms/outward/tee.rs", "let _ = self.port.offer(TapEvent { stream: id.stream.to_string(), owner: id.owner.to_string(), resp: at.resp, n: at.n, b", 1, Why::Backpressure, "〔TAP〕同上（收尾那一件）"),
     // 〔DEL〕NDJSON 那一形的四行（写线程 · 两处 `write_all` · `flush`）随独立 `--relay` 删了。
     ("src/backend/assets/skill_ledger.rs", "let _ = std::fs::remove_file(&tmp);", 1, Why::CleanupAfterFailure, "原子写的临时件：换名失败之后删它；主错误已在回，删不掉只剩一份临时件"),
     ("src/backend/stderr_log.rs", "let _ = f.write_all(roll_note(&self.old).as_bytes());", 1, Why::Diag, "「写不进去不拖垮后端」（`15 §4.7 S1` 脱离载体那一格）"),

@@ -198,7 +198,12 @@ const FRAMES: &[(&str, &str)] = &[
     // 〔TAP · V124〕中转抄出来的 SSE 事件 —— 不是会话内容（jsonl 才是），就地转给前端，不进内容通道。
     (
         "tap",
-        r#"{"kind":"tap","stream":"s1","resp":0,"n":0,"data":"{}"}"#,
+        r#"{"kind":"tap","stream":"s1","resp":0,"n":0,"ev":{"t":"stop","ok":true}}"#,
+    ),
+    // 一个会话的运行表 —— 会话成品，与起停同一条有序通道。
+    (
+        "session_runs",
+        r#"{"kind":"session_runs","sid":"s1","runs":[]}"#,
     ),
 ];
 
@@ -234,6 +239,7 @@ fn the_absorb_point_hands_back_exactly_the_content_and_lifecycle_frames() {
                     | (&"sessions_replayed", InboundFrame::SessionsReplayed)
                     | (&"tasks_changed", InboundFrame::TasksChanged { .. })
                     | (&"progress", InboundFrame::Progress { .. })
+                    | (&"session_runs", InboundFrame::SessionRuns { .. })
                     | (
                         &("session_file_gone" | "session_file_reread"),
                         InboundFrame::SessionFileNotice { .. }
@@ -259,6 +265,8 @@ fn the_absorb_point_hands_back_exactly_the_content_and_lifecycle_frames() {
             "tasks_changed",
             // 〔P7〕建索引的进度格（同上，交 `on_progress`）。
             "progress",
+            // 运行表（会话成品，交会话账）。
+            "session_runs",
         ]
         .iter()
         .map(|s| s.to_string())
@@ -293,6 +301,7 @@ fn the_local_dispatch_core_matches_the_hand_written_table() {
         message: crate::ui_contract::RecordBody::from_json(r#"{"x":1}"#.into()),
         cwd: None,
         end: None,
+        rid: None,
     };
     let line_b = LocalStep::Line {
         session_id: "b".into(),
@@ -301,6 +310,7 @@ fn the_local_dispatch_core_matches_the_hand_written_table() {
         message: None,
         cwd: None,
         end: None,
+        rid: None,
     };
 
     // ① 显示 bg：一切照转。

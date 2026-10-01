@@ -334,6 +334,7 @@ fn parses_two_line_frames_with_all_fields() {
             message: crate::ui_contract::RecordBody::from_json(r#"{"type":"user"}"#.to_string()),
             cwd: Some("/w".to_string()),
             end: None, // 〔RENDER2〕这条金样没带 `byte_offset`
+            rid: None,
         }
     );
 
@@ -833,21 +834,33 @@ fn sessions_replayed_is_known() {
     );
 }
 
-/// 〔TAP · V124〕`tap` 两形（字面量与后端 `wire_tests::tap_frames_have_exactly_these_bytes` 同一串 —— 异源 = 各自对手写字面量）；
-/// `data` 与 `end` 都缺 · `end` 不认识 · `data` 不是串 · 缺 `n` ⇒ 整帧 `None`（坏帧，不猜）。
+/// 〔TAP · V124〕`tap` 的几形（字面量与后端 `wire_tests::tap_frames_have_exactly_these_bytes` 同一串 —— 异源 = 各自对手写字面量）；
+/// `ev` 与 `end` 都缺 · `end` 不认识 · `ev` 不是对象 · 缺 `n` · `run` 不是串 ⇒ 整帧 `None`（坏帧，不猜）。
 #[test]
-fn tap_frames_parse_into_the_two_shapes_and_bad_ones_are_none() {
+fn tap_frames_parse_into_their_shapes_and_bad_ones_are_none() {
     use crate::session_tap::{Tap, TapBody, TapEnd};
-    let data = "{\"kind\":\"tap\",\"stream\":\"0b6c1f7e-sid\",\"resp\":12,\"n\":3,\"data\":\"{\\\"type\\\":\\\"ping\\\"}\"}";
+    let body =
+        |s: &str| TapBody::Ev(crate::ui_contract::RecordBody::from_json(s.to_string()).unwrap());
+    let start = "{\"kind\":\"tap\",\"stream\":\"0b6c1f7e-sid\",\"resp\":12,\"n\":0,\"ev\":{\"t\":\"start\",\"rid\":\"r-1\"}}";
     assert_eq!(
-        parse_frame(data),
+        parse_frame(start),
         Some(InboundFrame::Tap(Tap {
             stream: "0b6c1f7e-sid".into(),
+            run: None,
             resp: 12,
-            n: 3,
-            body: TapBody::Data("{\"type\":\"ping\"}".into()),
+            n: 0,
+            body: body(r#"{"t":"start","rid":"r-1"}"#),
         }))
     );
+    let block = "{\"kind\":\"tap\",\"stream\":\"0b6c1f7e-sid\",\"run\":\"a1\",\"resp\":12,\"n\":1,\"ev\":{\"t\":\"block\",\"i\":0,\"kind\":\"tool\",\"tool\":\"Bash\"}}";
+    match parse_frame(block) {
+        Some(InboundFrame::Tap(t)) => {
+            assert_eq!(t.run.as_deref(), Some("a1"));
+            assert_eq!(t.n, 1);
+            assert!(matches!(t.body, TapBody::Ev(_)));
+        }
+        other => panic!("带运行的那一形没解出来：{other:?}"),
+    }
     for (word, want) in [("done", TapEnd::Done), ("broken", TapEnd::Broken)] {
         let line = format!(
             "{{\"kind\":\"tap\",\"stream\":\"0b6c1f7e-sid\",\"resp\":12,\"n\":9,\"end\":\"{word}\"}}"
@@ -856,6 +869,7 @@ fn tap_frames_parse_into_the_two_shapes_and_bad_ones_are_none() {
             parse_frame(&line),
             Some(InboundFrame::Tap(Tap {
                 stream: "0b6c1f7e-sid".into(),
+                run: None,
                 resp: 12,
                 n: 9,
                 body: TapBody::End(want),
@@ -865,11 +879,33 @@ fn tap_frames_parse_into_the_two_shapes_and_bad_ones_are_none() {
     for bad in [
         r#"{"kind":"tap","stream":"s","resp":1,"n":0}"#,
         r#"{"kind":"tap","stream":"s","resp":1,"n":0,"end":"maybe"}"#,
-        r#"{"kind":"tap","stream":"s","resp":1,"n":0,"data":{"type":"ping"}}"#,
-        r#"{"kind":"tap","stream":"s","resp":1,"data":"{}"}"#,
+        r#"{"kind":"tap","stream":"s","resp":1,"n":0,"ev":"{}"}"#,
+        r#"{"kind":"tap","stream":"s","resp":1,"ev":{"t":"stop","ok":true}}"#,
+        r#"{"kind":"tap","stream":"s","run":7,"resp":1,"n":0,"ev":{"t":"stop","ok":true}}"#,
     ] {
         assert_eq!(parse_frame(bad), None, "坏的 tap 帧被当成好帧解了：{bad}");
     }
+}
+
+/// 运行表那一帧（字面量与后端 `wire_tests::session_runs_frames_have_exactly_these_bytes` 同形）：`runs` 原样收下（不解释）；不是数组 ⇒ 坏帧。
+#[test]
+fn session_runs_frames_carry_the_runs_verbatim() {
+    let line = r#"{"kind":"session_runs","sid":"s1","runs":[{"run":"a2","state":"done","last":{"t":"say"}}]}"#;
+    match parse_frame(line) {
+        Some(InboundFrame::SessionRuns { sid, runs }) => {
+            assert_eq!(sid, "s1");
+            assert_eq!(
+                runs.0.get(),
+                r#"[{"run":"a2","state":"done","last":{"t":"say"}}]"#
+            );
+        }
+        other => panic!("运行表没解出来：{other:?}"),
+    }
+    assert_eq!(
+        parse_frame(r#"{"kind":"session_runs","sid":"s1","runs":{}}"#),
+        None,
+        "runs 不是数组却被收下了"
+    );
 }
 
 /// 〔TAP〕转交是纯照搬：帧 → `session-tap` 的 payload（origin 由调用方给；`end` 用线上那个字）。
@@ -880,6 +916,7 @@ fn a_tap_frame_becomes_the_session_tap_payload_field_for_field() {
         "<local>",
         Tap {
             stream: "sid".into(),
+            run: None,
             resp: 4,
             n: 2,
             body: TapBody::End(TapEnd::Broken),
@@ -893,14 +930,18 @@ fn a_tap_frame_becomes_the_session_tap_payload_field_for_field() {
         "<local>",
         Tap {
             stream: "sid".into(),
+            run: Some("a1".into()),
             resp: 4,
             n: 1,
-            body: TapBody::Data("{}".into()),
+            body: TapBody::Ev(
+                crate::ui_contract::RecordBody::from_json(r#"{"t":"stop","ok":true}"#.into())
+                    .unwrap(),
+            ),
         },
     );
     assert_eq!(
         serde_json::to_string(&p).unwrap(),
-        r#"{"origin":"<local>","stream":"sid","resp":4,"n":1,"data":"{}"}"#
+        r#"{"origin":"<local>","stream":"sid","run":"a1","resp":4,"n":1,"ev":{"t":"stop","ok":true}}"#
     );
 }
 

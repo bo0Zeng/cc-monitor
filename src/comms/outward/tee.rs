@@ -87,6 +87,8 @@ impl SseSplitter {
 pub(crate) struct TapEvent {
     /// 〔V141〕请求自带的会话标识头的值（中转不解释它；消费侧拿它对 sid）；没有 ⇒ 空串。
     pub(crate) stream: String,
+    /// 第二个标签（请求自带的另一个头的值，中转不解释它）；没有 ⇒ 空串。
+    pub(crate) owner: String,
     /// 本进程第几个响应（跨连接单调，[`TeeSink`] 那一个计数器）。
     pub(crate) resp: u64,
     /// 这一个响应里第几个事件（从 0 连续）；收尾那一件是「一共占了几个号」。
@@ -113,7 +115,7 @@ pub(crate) trait TapPort: Send + Sync {
 
 /// 〔TAP〕单个事件原文的字节上限。超了**不交**、号照占（缺口可见）。
 ///
-/// 值怎么定的：Anthropic 的 SSE 是 token 级增量，`message_start` 带整份 usage 也在 KiB 级；
+/// 值怎么定的：上游的 SSE 是 token 级增量，开头那一件带整份 usage 也在 KiB 级；
 /// 16 KiB 以上的一个事件只可能来自不正常的上游。它同时把「宿主通道满载」封在 `容量 × 16 KiB`。
 /// 登记住址 `src/frontend/shell/src/byte_cap_registry.rs`（尺寸类常量不登记就红）。
 pub(crate) const TAP_DATA_CAP: usize = 16 * 1024;
@@ -169,6 +171,7 @@ impl TeeSink {
         if payload.len() <= TAP_DATA_CAP {
             let _ = self.port.offer(TapEvent {
                 stream: id.stream.to_string(),
+                owner: id.owner.to_string(),
                 resp: at.resp,
                 n,
                 body: TapBody::Data(payload.to_string()),
@@ -191,6 +194,7 @@ impl TeeSink {
         if at.n > 0 {
             let _ = self.port.offer(TapEvent {
                 stream: id.stream.to_string(),
+                owner: id.owner.to_string(),
                 resp: at.resp,
                 n: at.n,
                 body: TapBody::End { broken },

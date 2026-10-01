@@ -22,15 +22,17 @@ fn line(seq: u64) -> Frame {
         message: Some(serde_json::json!({ "i": seq })),
         cwd: None,
         byte_offset: 0,
+        rid: None,
     }
 }
 
 fn tapf(n: u64) -> Frame {
     Frame::Tap {
         stream: "sid-w".into(),
+        run: None,
         resp: 0,
         n,
-        data: Some("{}".into()),
+        ev: Some(cc_monitor_backend::agents::StreamEv::Stop { ok: true }),
         end: None,
     }
 }

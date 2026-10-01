@@ -19,7 +19,7 @@ const MD_TOOLS: &[&str] = &["Read", "Grep", "WebFetch", "NotebookRead", "TodoWri
 /// tmux 前台命令算 Claude 的会话（Claude Code 是 Node CLI，视启动路径也可能报解释器 `node`）。注册表 `Adapter.processes` 那一格。
 pub(crate) const PROCESS_NAMES: &[&str] = &["claude", "node"];
 
-/// 这个工具名画成哪一种卡（**大小写敏感**，工具名原样比）；普通工具卡 ⇒ `None`。注册表 `RecordFace.tool_card` 那一格。
+/// 这个工具名画成哪一种卡（**大小写敏感**，工具名原样比）；普通工具卡 ⇒ `None`。解析时填进记录成品（`schema.rs::with_tool_cards`）；派出子运行的那一类也由它认（`runs.rs::child_link`）。
 pub(crate) fn tool_card(name: &str) -> Option<ToolCard> {
     [
         (AGENT_TOOLS, ToolCard::Agent),

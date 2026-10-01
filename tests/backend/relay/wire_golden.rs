@@ -315,7 +315,7 @@ struct TeeTap {
 struct FramingTap(Arc<Mutex<Vec<u8>>>, Mutex<mpsc::Sender<()>>);
 impl TapPort for FramingTap {
     fn offer(&self, ev: TapEvent) -> bool {
-        let mut line = serde_json::to_string(&crate::stream::tap::to_frame(ev)).expect("tap 帧");
+        let mut line = tee_line(&ev);
         line.push('\n');
         self.0
             .lock()
@@ -481,4 +481,38 @@ fn the_bytes_on_all_three_wires_match_the_golden_table_verbatim() {
         reached_upstream, GOLDEN_CASES_REACHING_UPSTREAM,
         "真把字节送到上游的格数变了 —— `upstream_head: None` 那几格就成了空真"
     );
+}
+
+/// tee 交出的一件，写成一行 JSON（判据用：中转那一侧原样交了什么）。⚠ **不是线上帧** —— 线上的 `tap` 帧由流归位折过、归过位
+/// （`stream::run_route`）；这一行只说中转抄出来的那一件本身（会话标签 · 自报的运行 · 第几段 · 第几件 · 原文 / 收尾）。
+fn tee_line(ev: &crate::relay::TapEvent) -> String {
+    #[derive(serde::Serialize)]
+    struct TeeLine<'a> {
+        kind: &'static str,
+        stream: &'a str,
+        #[serde(skip_serializing_if = "str::is_empty")]
+        owner: &'a str,
+        resp: u64,
+        n: u64,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        data: Option<&'a str>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        end: Option<&'static str>,
+    }
+    let (data, end) = match &ev.body {
+        crate::relay::TapBody::Data(d) => (Some(d.as_str()), None),
+        crate::relay::TapBody::End { broken } => {
+            (None, Some(if *broken { "broken" } else { "done" }))
+        }
+    };
+    serde_json::to_string(&TeeLine {
+        kind: "tap",
+        stream: &ev.stream,
+        owner: &ev.owner,
+        resp: ev.resp,
+        n: ev.n,
+        data,
+        end,
+    })
+    .expect("tee 那一件写不成 JSON")
 }
