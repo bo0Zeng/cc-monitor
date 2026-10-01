@@ -139,6 +139,7 @@ pub(crate) const RECORDS: super::RecordFace = super::RecordFace {
         sources: runs::sources,
         hint: runs::hint,
     }),
+    project_dir: Some(parse::project_dir),
 };
 
 pub(crate) const ASSETS: super::AssetFace = super::AssetFace {

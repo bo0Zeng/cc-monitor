@@ -1643,6 +1643,52 @@ fn with_bg_announces_bg_with_metadata() {
     std::fs::remove_dir_all(&dir).ok();
 }
 
+/// 宣告帧的项目目录读记录开头那一条（后面进了子目录也不漂，也不是 pidfile 那一格）；记录还没写出来 ⇒ pidfile 记的起会话目录。
+#[cfg(target_os = "linux")]
+#[test]
+fn session_added_carries_the_project_dir_from_the_record_head() {
+    let _iso = crate::control::identity_tag::door::isolate(); // §48.3：打标只落假 tmux
+    let dir = std::env::temp_dir().join(format!("ccm-projdir-added-{}", std::process::id()));
+    let proj = dir.join("projects").join("-a-proj");
+    std::fs::create_dir_all(&proj).unwrap();
+    let pid = std::process::id();
+    let ticks = proc_starttime(pid).expect("own starttime");
+    let pidfile = dir.join(format!("{pid}.json"));
+    let announce = |sid: &str| {
+        std::fs::write(
+            &pidfile,
+            format!(r#"{{"pid":{pid},"sessionId":"{sid}","cwd":"/launched/here","procStart":"{ticks}"}}"#),
+        )
+        .unwrap();
+        let (tx, mut rx) = tokio::sync::mpsc::channel::<Frame>(64);
+        let mut sink = FrameSink::new(tx);
+        let mut state = ReaderState::new(dir.join("projects"), false, true);
+        process_session_added(&pidfile, &mut state, &mut sink);
+        match rx.try_recv() {
+            Ok(Frame::SessionAdded {
+                cwd, project_dir, ..
+            }) => (cwd, project_dir),
+            other => panic!("expected SessionAdded, got {other:?}"),
+        }
+    };
+    let rec = |cwd: &str| format!("{{\"type\":\"user\",\"cwd\":\"{cwd}\"}}\n");
+    std::fs::write(
+        proj.join("pd-sid.jsonl"),
+        rec("/a/proj") + &rec("/a/proj/sub") + &rec("/a/proj/sub"),
+    )
+    .unwrap();
+    let (cwd, project_dir) = announce("pd-sid");
+    assert_eq!(project_dir.as_deref(), Some("/a/proj"));
+    assert_eq!(cwd.as_deref(), Some("/launched/here"), "pidfile 那一格原样");
+    let (_, fresh) = announce("pd-fresh");
+    assert_eq!(
+        fresh.as_deref(),
+        Some("/launched/here"),
+        "还没有记录 ⇒ pidfile 记的起会话目录"
+    );
+    std::fs::remove_dir_all(&dir).ok();
+}
+
 // === Batch6-F21：kind 交互性门 ===
 
 #[test]
@@ -1933,6 +1979,7 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         session_kind: None,
         attachable: None,
         cwd: None,
+        project_dir: None,
         name: None,
         path: None,
         lines: None,
@@ -1949,6 +1996,7 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         session_kind: None,
         attachable: None,
         cwd: None,
+        project_dir: None,
         name: None,
         path: None,
         lines: None,
@@ -1971,6 +2019,7 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         session_kind: None,
         attachable: None,
         cwd: None,
+        project_dir: None,
         name: None,
         path: None,
         lines: None,
@@ -1987,6 +2036,7 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         session_kind: None,
         attachable: None,
         cwd: None,
+        project_dir: None,
         name: None,
         path: None,
         lines: None,
@@ -2003,6 +2053,7 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         session_kind: None,
         attachable: None,
         cwd: None,
+        project_dir: None,
         name: None,
         path: None,
         lines: None,
@@ -2042,6 +2093,7 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         session_kind: None,
         attachable: None,
         cwd: None,
+        project_dir: None,
         name: None,
         path: None,
         lines: None,

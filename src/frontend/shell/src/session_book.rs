@@ -72,7 +72,10 @@ pub struct LiveMeta {
     /// `session_kind`（"interactive" / "bg"；旧 CC 缺）。
     pub kind: Option<String>,
     pub attachable: Option<bool>,
+    /// pidfile 记的起会话目录（认「我刚起的那条」用）。
     pub cwd: Option<String>,
+    /// 会话的项目目录（那台后端给的；tab 标题用它）。
+    pub project_dir: Option<String>,
     pub name: Option<String>,
     pub status: Option<String>,
     pub waiting_for: Option<String>,
@@ -352,6 +355,7 @@ impl Out {
                         kind: meta.kind.clone(),
                         attachable: meta.attachable,
                         cwd: meta.cwd.clone(),
+                        project_dir: meta.project_dir.clone(),
                         name: meta.name.clone(),
                         rbind_token: meta.rbind_token.clone(),
                     }),

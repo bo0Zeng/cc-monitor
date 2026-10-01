@@ -90,8 +90,8 @@ pub fn run(agent_home: &Path, args: &[String]) -> i32 {
 
 /// `--list-projects`：每个项目目录一行 JSON：
 /// `{"dirName","projectPath","sessionCount","lastActivityMs","sessionIds"}`
-/// projectPath 从该项目**最新** jsonl 的头部记录提取 cwd（对齐本地口径：真实工作
-/// 目录，而非编码过的目录名）；提取不到则空字符串，monitor 侧回退显示 dirName。
+/// projectPath = 该项目**最新** jsonl 的项目目录（适配层 `RecordFace.project_dir`：真实目录，
+/// 而非编码过的目录名）；读不到则空字符串，monitor 侧回退显示 dirName。
 ///
 /// # `sessionIds`（`K-R83` 09-12）：这一行**带得出下游要算的那三个数**
 ///
@@ -222,7 +222,7 @@ fn project_row(dir: &Path, dir_name: String) -> Option<serde_json::Value> {
         return None; // 空目录（全删过/只剩本机后端）不展示
     }
     let project_path = newest_jsonl
-        .and_then(|(_, p)| extract_cwd_from_head(&p))
+        .and_then(|(_, p)| crate::agents::project_dir_of(&p))
         .unwrap_or_default();
     // 排序**不是**为了好看：`read_dir` 的顺序是文件系统给的，两趟未必一样，
     // 而下游要拿这份清单做对拍与缓存 key —— 不稳定的顺序会让「同一份数据」看起来变了。
@@ -1501,40 +1501,12 @@ fn created_ms_or_mtime(p: &Path) -> i64 {
         .unwrap_or(0)
 }
 
-/// 从 jsonl 头部（前 40 行）提取首个带 cwd 的记录的 cwd。
-/// ⚠〔audit-0805 F07 / 报告 I-10〕**只看前 40 行，就别整读**。
-///
-/// 这里原本是 `read_to_string(p)` —— 一个 257 MB 的会话会被整份读进内存，
-/// 而下一行就是 `.take(40)`。`--list-projects` 对**每个项目**都会调它一次。
-///
-/// ★ 对照 —— 〔`K-R97` 09-12 改写，上一版说的是 monitor 侧那一份〕：monitor 从前也有一份
-/// 同功能的头部提取（`BufReader` + 前 30 行早返回），于是同一个问题两边给两个答案。
-/// 本机项目列表改走本查询之后，**那一份连同它唯一的调用点一起没了** ——
-/// 这件事今天全仓只剩这一处。原话记的那条「强机器整读、弱机器流式，正好反了」（同 B-4）
-/// 仍然是本函数存在的理由。
-fn extract_cwd_from_head(p: &Path) -> Option<String> {
-    use std::io::BufRead;
-    let file = std::fs::File::open(p).ok()?;
-    let reader = std::io::BufReader::new(file);
-    for line in reader.lines().map_while(Result::ok).take(40) {
-        let line = line.as_str();
-        if let Ok(v) = serde_json::from_str::<serde_json::Value>(line) {
-            if let Some(cwd) = v.get("cwd").and_then(|c| c.as_str()) {
-                if !cwd.is_empty() {
-                    return Some(cwd.to_string());
-                }
-            }
-        }
-    }
-    None
-}
-
 /// 单个会话的元数据提取（整文件扫描，跑在那台机器的 CPU 上）：
 /// - messageCountApprox = 非空行数
 /// - firstUserExcerpt = 首条"真用户输入"（跳过 isMeta / 工具结果 / 纯中断标记，剥 CLI 注入的包装）的前 120 字符
 ///   （换行折成空格、超了加 `…`）
 /// - aiTitle = 最后一条标题记录（`ai-title` 的 `aiTitle` 与 CC v2.1.x 起的 `custom-title` 的 `customTitle`，取最新）
-/// - cwd = 首个带 cwd 的记录
+/// - cwd = 会话的项目目录（适配层 `RecordFace.project_dir`：只读开头，与活 tab 的标题同一个函数）
 /// - startedAtMs = 首条 user / assistant 记录的 `timestamp`；一条都解析不出 ⇒ 文件建立时刻（拿不到 ⇒ 修改时刻）
 /// - forkedFromSessionId / forkedFromMessageUuid = 首条带 `forkedFrom` 的 user / assistant 记录（`/branch` 分叉来的）
 ///
@@ -1550,7 +1522,6 @@ fn analyze_session(p: &Path) -> serde_json::Value {
     let mut count = 0u32;
     let mut excerpt = String::new();
     let mut ai_title: Option<String> = None;
-    let mut cwd: Option<String> = None;
     let mut started_at: Option<i64> = None;
     let mut forked: Option<(String, String)> = None;
     // Batch11-F32：CC 2.1.x 后台分身会话（←/bg/退出转后台 fork 出的 worker）——
@@ -1576,13 +1547,6 @@ fn analyze_session(p: &Path) -> serde_json::Value {
             };
             if !is_bg && v.get("sessionKind").and_then(|k| k.as_str()) == Some("bg") {
                 is_bg = true;
-            }
-            if cwd.is_none() {
-                if let Some(c) = v.get("cwd").and_then(|c| c.as_str()) {
-                    if !c.is_empty() {
-                        cwd = Some(c.to_string());
-                    }
-                }
             }
             let kind = v.get("type").and_then(|t| t.as_str());
             if matches!(kind, Some("user") | Some("assistant")) {
@@ -1635,7 +1599,7 @@ fn analyze_session(p: &Path) -> serde_json::Value {
         "messageCountApprox": count,
         "firstUserExcerpt": excerpt,
         "aiTitle": ai_title,
-        "cwd": cwd,
+        "cwd": crate::agents::project_dir_of(p),
         "isBg": is_bg,
         "forkedFromSessionId": forked_sid,
         "forkedFromMessageUuid": forked_uuid,

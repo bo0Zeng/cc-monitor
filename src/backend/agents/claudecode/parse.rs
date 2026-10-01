@@ -84,6 +84,17 @@ pub(crate) fn parsed_line(raw: &str) -> Result<Option<crate::agents::ParsedLine>
     }))
 }
 
+/// 会话的项目目录 ＝ 记录开头第一条带 `cwd` 的那一条的 `cwd`：会话起在哪。之后 shell 进了子目录，后面的记录写的就是子目录。
+/// 注册表 `RecordFace.project_dir`；只读开头、有上界（[`crate::agents::first_in_head`]）。
+pub(crate) fn project_dir(p: &std::path::Path) -> Option<String> {
+    crate::agents::first_in_head(p, |v| {
+        v.get("cwd")
+            .and_then(serde_json::Value::as_str)
+            .filter(|c| !c.is_empty())
+            .map(str::to_string)
+    })
+}
+
 /// F63：从已解析的 `Value` 抢救链上身份 + 原文，组 `Unrecognized`。
 ///
 /// 只取**链需要的**四个字段（uuid / parentUuid / timestamp / type）——其余靠 `raw`
