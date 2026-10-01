@@ -208,7 +208,7 @@ const LEDGER: &[(&str, &str, Side)] = &[
     // 接上去拿到的是 `--tmux`，也就是本机旧路结构上产不出来的**会话容器**。
     //
     // 本行仍是 `Side::Remote`，但理由换了：**POSIX 本机不需要一条 IPC 命令** ——
-    // 它的渲染器就住在 Rust 里（本机后端 `local.rs::render_ccm`），前端不必绕一圈问自己。
+    // 它的渲染器就住在 Rust 里（本机后端 `control/launch_render/local.rs::plan`），前端不必绕一圈问自己。
     // ★★ **P3b 结清（08-12）：这一行从 `Remote` 变 `Both`，不再是不对称。**
     //
     // 它原来的注释写「Remote-only 且未裁定 —— 本机该不该也有一个后端进程来收这件事，
@@ -301,7 +301,7 @@ const LEDGER: &[(&str, &str, Side)] = &[
 
 /// **不对称能力的理由**。键集合必须**恰好等于**从 `LEDGER` 算出来的不对称集合。
 const ASYMMETRY_REASONS: &[(&str, Asym, &str)] = &[
-    // `probe_ccm_cli`（Remote）退役之后 `ccm.status` 只剩本机那一条。
+    // 远端 `ccm` 探针那条（Remote）退役之后 `ccm.status` 只剩本机那一条。
     ("ccm.status", Asym::NaturallyAsymmetric, "本机那一条（`local_ccm_entry_status`）问的是「本机 PATH 上那个 `ccm` 是不是我们那一份」—— 那是本机后端引导那一格的事。远端那一侧不再有对应命令：远端的 `ccm` 就是那台后端本身，它会哪些由那台后端在渲染时自己答（`launch-render-cli`），界面不再先探一遍。"),
     ("ccm.user-path", Asym::NaturallyAsymmetric, "🔴 `K-R135`：「把我们那个 bin 目录放上**用户级** PATH」。**天然只有本机一侧，而且这一条的『天然』是可证的，不是图省事**：① **远端那一侧同一件事已经有答案，只是载体不同** —— 远端 `ccm` 落 `~/.local/bin`，而把它放上 PATH 的是写进远端 rc 的那个围栏块（`install_remote_alias_block` ＋ `src/shared/ccm-aliases.sh` 里那一行 —— 那一行正是 `K-R135` 本轮修的：它此前只加 `~/.local/bin`，对本机那一边是错的）。⇒ 欠的不是「远端没有这项能力」，是**两边的机制本来就不同**。② **「用户级 PATH」这一档是 Windows 独有的**（注册表 `HKCU` 下那个 `Environment` 键），而远端按 `K32` 是 Linux ⇒ 那台机器上根本没有这一档可改，补一条对侧命令只能是个空壳。⚠ **诚实边界**：哪天真出现「远端是 Windows」这一形，本条要回来重裁 —— 那时它就不再是 `NaturallyAsymmetric`，而是 `ParityDebt`。今天不给它发明一条够不着的对侧。"),
     // `acct-iso.deploy` 那一行摘了：那条 Remote 命令退役，这项能力不再有 Tauri 命令可记账。
@@ -1208,7 +1208,7 @@ fn the_remote_side_column_is_signed_off() {
     // 🔴 **地板 26 → 24。** acct-iso 那两条 `Side::Remote`（远端那一对）并进带 origin 的 `Both`，人群真少了 2 个，现打 24。
     // 🔴 **地板再 −2（与 SH1 合并：26 − 2 − 2 = 22）。** 远端装 / 卸别名块两条 `Side::Remote` 并进 `aliases_block_*`（`Both`），人群真少了 2 个，现打 24。
     // 🔴 **地板 22 → 20。** 远端 MCP 读两条 `Side::Remote`（user 段 · 项目 `.mcp.json`）退役（界面经通道直问那台后端），人群真少了 2 个，现打 20。
-    // 🔴 **地板 20 → 17。** `probe_ccm_cli` · `render_ccm_launch` · `render_launch_payload` 三条 `Side::Remote` 退役
+    // 🔴 **地板 20 → 17。** `probe_ccm_cli` · `render_ccm_launch` · `render_launch_payload` 三条 `Side::Remote` 退役〔散文墓碑〕
     //    （渲染与探测住进那台后端，界面经通道直问），人群真少了 3 个，现打 17。
     // 🔴 **地板 17 → 16。** 远端钩子诊断那条 `Side::Remote` 退役（MIG-3b）。
     // 🔴 **地板 20 → 17。** `~/.ssh/config` 导入那三条 `Side::Remote` 搬进后端帧命令，人群真少了 3 个。

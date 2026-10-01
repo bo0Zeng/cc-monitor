@@ -146,7 +146,7 @@ impl Env {
                 .unwrap_or_default(),
             tmux: get("TMUX"),
             anthropic_base_url: get("ANTHROPIC_BASE_URL"),
-            ccm_launch_id: get("CCM_LAUNCH_ID"),
+            ccm_launch_id: get(LAUNCH_ID_ENV),
             launch_token: get(crate::control::identity_tag::rbind_token_env()),
             ccm_env: pick("CCM_ENV", Defaults::ENV.to_string()),
             accts_manifest: pick(
@@ -879,7 +879,7 @@ fn inherited_gate(env: &Env) -> Result<(), Die> {
             env.inherited_config_dir.as_deref(),
         ),
         ("ANTHROPIC_BASE_URL", env.anthropic_base_url.as_deref()),
-        ("CCM_LAUNCH_ID", env.ccm_launch_id.as_deref()),
+        (LAUNCH_ID_ENV, env.ccm_launch_id.as_deref()),
     ] {
         if let Some(v) = v.filter(|v| !shell_quote_core::free_text_ok(v)) {
             return Err(refuse(what, v));
@@ -1092,7 +1092,7 @@ pub(crate) fn build_among(
             );
         }
         if let Some(v) = env.ccm_launch_id.as_deref().filter(|v| !v.is_empty()) {
-            payload = format!("{}{payload}", posix::export("CCM_LAUNCH_ID", &sq(v)));
+            payload = format!("{}{payload}", posix::export(LAUNCH_ID_ENV, &sq(v)));
         }
         // 自检**共用载荷那一段 export 前缀**（它要在 pane 那份环境里跑）：上面只往前面加，
         // ⇒ 前缀 = 载荷去掉末尾那段裸命令。

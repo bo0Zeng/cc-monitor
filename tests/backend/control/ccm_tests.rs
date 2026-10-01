@@ -214,9 +214,8 @@ fn the_base_url_token_is_declared_because_the_tmux_path_really_forwards_it() {
     // ① 申报这一半。
     assert!(
         CAPABILITIES.contains(&"base-url-across-tmux"),
-        "`base-url-across-tmux` 不在 CAPABILITIES 里了 —— 那么 monitor 侧\n\
-             `local.rs::RELAY_KEEPS_THE_OLD_PATH` 的退役条件就**又没有落点了**，\n\
-             而它正是 `K-R61` 立件的原因（前提指着一个已经被删掉的文件）。"
+        "`base-url-across-tmux` 不在 CAPABILITIES 里了 —— 容器路把继承来的中转地址带过 tmux 边界那件事\n\
+             就**又没有申报了**，而它正是 `K-R61` 立件的原因（前提指着一个已经被删掉的文件）。"
     );
 
     // ② 实现这一半 —— 真算一遍，只喂替身环境，一个字节不碰这台机器（`K31`）。
@@ -1202,15 +1201,22 @@ fn nothing_but_ccm_renders_a_command_that_starts_an_agent() {
     let mut outside: Vec<String> = Vec::new();
     let mut registry_hits = 0;
     for (path, src) in guard_core::scan_tree_excluding(&root, &["rs"], &[]) {
-        let rel = path
-            .strip_prefix(&root)
-            .map(|p| p.to_string_lossy().replace('\\', "/"))
-            .unwrap_or_else(|_| path.to_string_lossy().replace('\\', "/"));
+        let under = path.strip_prefix(&root).unwrap_or(&path);
+        let rel = under.to_string_lossy().replace('\\', "/");
         let code = guard_core::strip_comment_lines(&crate::guard_support::production_code(&src));
         let hits = direct_agent_launch_hits(&code, &launchers, &tokens);
-        if rel.starts_with("agents/") {
+        // 按路径分量认住址（逐段相等，不是拿串的前缀比）：注册表那一侧 = `agents/` 整棵；`ccm` 自己 = `control/ccm/` 整棵。
+        let seg: Vec<String> = under
+            .iter()
+            .map(|c| c.to_string_lossy().into_owned())
+            .collect();
+        let top = (
+            seg.first().map(String::as_str),
+            seg.get(1).map(String::as_str),
+        );
+        if top.0 == Some("agents") {
             registry_hits += hits.len();
-        } else if !rel.starts_with("control/ccm/") {
+        } else if top != (Some("control"), Some("ccm")) {
             outside.extend(hits.into_iter().map(|h| format!("{rel}：{h}")));
         }
     }

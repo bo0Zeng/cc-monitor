@@ -293,15 +293,8 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     //   `relay_endpoint_for_launch` · `new_local_session` / `resume_history_session` / `render_local_attach`〔散文墓碑〕）。
     (
         "launch-render-cli",
-        "`ccm …` 调用行：后端出成品 `{ok, cmd, reason}`（`control/launch_render/wire.rs`）；前端 `src/frontend/ui/launch-render.ts::renderCli` 按形状收",
-    ),
-    (
-        "launch-render-payload",
-        "裸载荷 / 外层 tmux 三格：后端出成品 `{cmd}`，坏输入回码 `refused`；前端 `src/frontend/ui/launch-render.ts::renderPayload`",
-    ),
-    (
-        "launch-endpoint",
-        "这一发的中转地址：后端出成品 `{baseUrl}`（「不在时拒还是直连」也判完）；前端 `src/frontend/ui/launch-render.ts::launchEndpoint`，monitor 零发送点",
+        "起会话那一行 `ccm …`：后端出成品 `{cmd}`，渲不出来回码 `refused`（`control/launch_render/wire.rs`）；前端 `src/frontend/ui/launch-render.ts::renderCli`。\
+         环境与中转地址由起 agent 那台的 `ccm` 在最终 exec 那一处定（载荷那一条与「这一发的中转地址」那一条随之删了）",
     ),
     (
         "launch-local",

@@ -1124,13 +1124,20 @@ fn no_e2e_script_inherits_a_dev_machine_path_it_may_write_to() {
                   export CLAUDE_CONFIG_DIR=\"$SBX/claude\"\n";
     assert_eq!(
         inherited_path_defaults(corpus),
-        [("CCM_ACCTS_MANIFEST".to_string(), 1), ("CC_BUS_HOME".to_string(), 1)],
+        [
+            ("CCM_ACCTS_MANIFEST".to_string(), 1),
+            ("CC_BUS_HOME".to_string(), 1)
+        ],
         "针在现造语料上失准"
     );
     let root = crate::guard_support::repo_root();
     let dir = root.join("tests").join("e2e");
     let files = guard_core::files_under(&dir);
-    assert!(files.len() > 30, "tests/e2e/ 下只看到 {} 份 —— 扫描面塌了", files.len());
+    assert!(
+        files.len() > 30,
+        "tests/e2e/ 下只看到 {} 份 —— 扫描面塌了",
+        files.len()
+    );
     let mut found: Vec<(String, String)> = Vec::new();
     for f in &files {
         let Ok(text) = std::fs::read_to_string(dir.join(f)) else {
@@ -1152,6 +1159,9 @@ fn no_e2e_script_inherits_a_dev_machine_path_it_may_write_to() {
          少了的 ⇒ 那一处改掉了，同拍把登记摘掉"
     );
     for (f, _, why) in INHERITED_PATH_ALLOWED {
-        assert!(why.chars().count() >= 15, "`{f}` 没写清为什么它不是往真路径里写");
+        assert!(
+            why.chars().count() >= 15,
+            "`{f}` 没写清为什么它不是往真路径里写"
+        );
     }
 }

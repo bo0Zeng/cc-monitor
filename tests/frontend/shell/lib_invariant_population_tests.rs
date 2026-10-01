@@ -335,7 +335,7 @@ fn quote_sites() -> (BTreeMap<String, usize>, Vec<String>) {
 ///
 /// 人群 = 生产段里调 quote 的地方（「quote 只有一份」⇒ 值进 shell 串的合法入口只有它）。
 /// ⚠ 射程：它逮的是「新长一处拼接点」；**不经 quote 的裸插值**（`format!` 直接把值塞进命令串）它看不见；
-/// 条件 quote 的包装（`plan.rs::qarg` · `ccm_invocation.rs` 的 `argv` · `shell_dialect.rs` 的 `word` · `payload.rs` 的 `token` / `exact`）
+/// 条件 quote 的包装（`plan.rs::qarg` · `ccm_invocation.rs` 的 `argv` · `shell_dialect.rs` 的 `word`）
 /// 在它自己的文件里算一处，经它的那些调用方不再逐个数；第四列是**按文件**写的，不是逐处。
 /// TS 那一侧（`posixQuote`）不在人群里 —— LR2 在删那几份 TS 命令构造器，「TS 零 shell 串」是那条机械判据的活。
 type QuoteRow = (
@@ -377,9 +377,12 @@ const QUOTE_SITES: &[QuoteRow] = &[
     //   名字是 tmux 自己在快照里报的（不是外部输入），只经这一处 quote（同 `Plan::Attach` 那一形）。
     // 30 → 31：信任框轮询认的那句话从串里的字面量换成适配层那一格（`LaunchFace::trust_prompt`），拼进去时 quote 一次
     //   （值是适配层的常量，不是外部输入；产出的字节与从前写死的 `'…'` 逐字相同）。
+    // 31 → 35：直路自己定中转地址与身份那几格（起会话只交一行 `ccm …`，env 归 `ccm` 在最终 exec 那一处定）——
+    //   中转地址那一词的两段常量与「拿不到钥匙时整串」三处 · 启动期令牌 / 身份 token 那两句 `export` 共用的一处。
+    //   令牌与 token 在 `argv.rs::validate` 进门判（`rbind_token_ok` · 段闸 `segment_is_safe`）；中转地址是本侧上游选择出的。
     (
         "src/backend/control/ccm/plan.rs",
-        31,
+        35,
         &[
             ("src/backend/control/ccm/plan.rs", "validate_tmux_name"),
             ("src/backend/control/ccm/plan.rs", "free_text_gate"),
@@ -399,9 +402,17 @@ const QUOTE_SITES: &[QuoteRow] = &[
             ), // `--account`
             // 〔§47 ②〕账号配置目录走全表：全表整份搬进共享 crate（`control → observe` 那条禁止边不用破）。
             ("src/common/acct-core/src/lib.rs", "config_dir_ok"),
+            (
+                "src/common/shell-quote-core/src/lib.rs",
+                "rbind_token_ok",
+            ), // `--ccm-rbind-token`
+            (
+                "src/common/relay-route-core/src/lib.rs",
+                "segment_is_safe",
+            ), // `--ccm-launch-id`
         ],
         "",
-        "tmux 目标 `=名:` 的形 · 两个提示格式串常量 · cc-bus 脚本路径 · 本侧拼好的载荷",
+        "tmux 目标 `=名:` 的形 · 两个提示格式串常量 · cc-bus 脚本路径 · 本侧拼好的载荷 · 本侧上游选择出的中转地址（口是常量，路由段过段闸）",
     ),
     (
         "src/backend/control/tmux_hook.rs",
@@ -424,9 +435,11 @@ const QUOTE_SITES: &[QuoteRow] = &[
     ),
     // 〔09-28 裁 2〕`acct_iso_deploy.rs` 那一行删了：它唯一一处拼 shell（跑安装脚本）随「落进用户目录进那台后端」退役。
     // 〔§47〕cwd（`shell_quote_core::posix_free_path_ok`）· 透传参数（`free_text_ok`）进门判；剩下的见第四列。
+    // 1 → 3：就地 resume 回落那一形外层包一层 tmux —— 目标 `=名:`（名字过 `gate_rules::existing_tmux_name_issue`）·
+    //   键进 pane 的那一行直路 `ccm …`（本侧渲好的整串）。
     (
         "src/backend/control/launch_render/ccm_invocation.rs",
-        1,
+        3,
         &[
             (
                 "src/common/shell-quote-core/src/lib.rs",
@@ -449,55 +462,26 @@ const QUOTE_SITES: &[QuoteRow] = &[
                 "src/common/shell-quote-core/src/lib.rs",
                 "account_name_ok",
             ),
-        ],
-        "",
-        "",
-    ),
-    // local_backend.rs 1 → 0：远端三行入口的生成器 `ccm_entry_shim`〔散文墓碑〕删了 ⇒ 出列。
-    (
-        "src/backend/control/launch_render/payload.rs",
-        // 11 → 12：中转前缀里「用户自己设了端点」那一句话（文案表里的常量句）也过唯一的 quote。
-        12,
-        &[
-            (
-                "src/backend/control/launch_render/payload.rs",
-                "config_dir_command_safe",
-            ),
+            ("src/common/acct-core/src/lib.rs", "config_dir_ok"), // `--account-dir`
+            ("src/backend/control/gate_rules.rs", "existing_tmux_name_issue"), // 就地 resume 的目标
             (
                 "src/common/shell-quote-core/src/lib.rs",
                 "rbind_token_ok",
-            ), // payload.rs 里是 `pub use … as rbind_token_shape_ok`
+            ), // `--ccm-rbind-token`
             (
                 "src/common/relay-route-core/src/lib.rs",
-                "base_url_shape_ok",
-            ), // payload.rs 里是 `pub use … as relay_base_url_shape_ok`
-            ("src/backend/control/launch_render/payload.rs", "check"),
-            (
-                "src/common/shell-quote-core/src/lib.rs",
-                "posix_free_path_ok",
-            ), // 〔§47〕cwd 两处
-            (
-                "src/common/shell-quote-core/src/lib.rs",
-                "session_id_ok",
-            ), // 〔§47 ①〕外层 `@ccm_sid`（原 `ccm_sid_safe` 收进来）
-            (
-                "src/common/shell-quote-core/src/lib.rs",
-                "model_name_ok",
-            ), // 〔§47 ①〕`export ANTHROPIC_MODEL=`（原「刻意宽容渲染」那一格）
+                "segment_is_safe",
+            ), // `--ccm-launch-id`
         ],
         "",
-        "本侧渲染好的载荷整串 · 中转前缀里的中转口地址与钥匙文件路径（本侧的）",
+        "本侧渲染好的那一行直路 `ccm …`（就地 resume 回落那一形键进 pane 的整串）",
     ),
+    // local_backend.rs 1 → 0：远端三行入口的生成器 `ccm_entry_shim`〔散文墓碑〕删了 ⇒ 出列。
+    // `launch_render/payload.rs` 那一行（12）随文件删了：起会话只交一行 `ccm …`，载荷那一层整层删了。
     // monitor `tmux.rs` 那一行（Gate 1 前检 ＋ `exact_target` 的 quote，只剩跨轨锚点在用）随整份文件删了：门只在后端。
     // `src/frontend/filewin/src/shell.rs` 那一行出表：文件窗口只交意图（当前目录），`cd` 那一串随拼法搬进本机后端
     //   `dial/terminal.rs::command_for_cwd`（下面那一行 1 → 3，两道放行判定跟着过去）。
-    (
-        "src/backend/control/launch_render/local.rs",
-        1,
-        &[],
-        "",
-        "本侧铸的启动 id（本机起会话搬进本机后端，原住 monitor `history.rs`）",
-    ),
+    // `launch_render/local.rs` 那一行（1）出列：身份 token 不再拼成 `export` 前缀，作为 `--ccm-launch-id` 交给 `ccm`（经调用行渲染器的 `argv`）。
     // `src/frontend/shell/src/launch.rs` 那一行出表：远端那条 ssh 外壳（包一层 `bash -lic`）随渲染进了本机后端。
     // 1 → 3：文件窗口「在此打开终端」的当前目录（自由文本路径）在这里拼进 `cd`：拼之前过 `posix_free_path_ok`
     //   （POSIX 绝对 · 无 `..` 段 · 不含 NUL / CR / LF）；非 UTF-8 的走字节形 `posix_quote_bytes`，过 `posix_free_path_bytes_ok`。

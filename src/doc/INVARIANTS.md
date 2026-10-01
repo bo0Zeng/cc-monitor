@@ -66,7 +66,7 @@ monitor 进程**一个字节都不直接写用户文件**。rc / `$PROFILE` / �
 **A2 多账号只读查询是本约的「读」面延伸（澄清，非例外/非松动）**：`src/backend/observe/accounts_query.rs`（monitor 那一侧已无文件：界面经通道问、后端出成品）为「按会话切账号」新增三条**纯只读**远端查询（`--list-accounts` / `--session-accounts` / `--account-trust`），**零写入**、**不 shell out**。它把后端的读面从 `<claude_dir>` 扩到三处新位置，各自有硬边界:
 
 1. **`$ACCTS_DIR/accounts.json`**（账号库的 manifest，契约 v1；写它的是后端 `accounts/manage/`，本节这条查询只读）—— 只读整份 JSON;`configDir` 视为**不可信字符串**，逐条过 shell-safe 白名单（与建账号库时判配置目录的 `acct-core::config_dir_posix_ok` 同一套字符集），不合格的账号直接丢弃。
-2. **`/proc/<pid>/environ`** —— **只抠三个写死的键**（`CLAUDE_CONFIG_DIR` · `CCM_LAUNCH_ID` ·`ANTHROPIC_BASE_URL` —— 最后那个的值带中转钥匙，只折成「走不走本机中转」一个布尔、值本身不出参），绝不回传整个环境快照（那里面有用户全部的密钥类环境变量）。pid 来自 `<claude_dir>/sessions/<PID>.json` 的文件名。⚠ **第二个键是 `K-P5f` 加的**（会话身份 token，写侧住`local.rs::LAUNCH_ID_VAR`，本机后端 `control/launch_render/local.rs`）；**变的只是那个计数词，这条铁律一格都没松**：键名**不是参数**（后端侧两个常量），所以这条查询仍然不是「任意环境变量读」原语，也仍然绝不回传整个快照。⚠ 这句话在盘上**散着好几份副本**（`src/doc/IPC-PROTOCOL.md` 的 `--session-accounts` 那一行、后端侧 `accounts_query.rs` 头注、monitor 侧 `local_accounts.rs`）——`K-P5f` 改了其中三处、**漏了本处**，`K-P5g` 补上并把这一族副本登记进 `doc_claim_registry.rs`（那张表的判据从生产代码里数出今天真读几个键，再与每一份副本的计数词对拍）。
+2. **`/proc/<pid>/environ`** —— **只抠三个写死的键**（`CLAUDE_CONFIG_DIR` · `CCM_LAUNCH_ID` ·`ANTHROPIC_BASE_URL` —— 最后那个的值带中转钥匙，只折成「走不走本机中转」一个布尔、值本身不出参），绝不回传整个环境快照（那里面有用户全部的密钥类环境变量）。pid 来自 `<claude_dir>/sessions/<PID>.json` 的文件名。⚠ **第二个键是 `K-P5f` 加的**（会话身份 token，写侧是 `ccm` 自己：`control/ccm/plan.rs::LAUNCH_ID_ENV`，本机起会话把 token 作为 `--ccm-launch-id` 交给它、它在最终 exec 那一处放进 agent 进程环境）；**变的只是那个计数词，这条铁律一格都没松**：键名**不是参数**（后端侧两个常量），所以这条查询仍然不是「任意环境变量读」原语，也仍然绝不回传整个快照。⚠ 这句话在盘上**散着好几份副本**（`src/doc/IPC-PROTOCOL.md` 的 `--session-accounts` 那一行、后端侧 `accounts_query.rs` 头注、monitor 侧 `local_accounts.rs`）——`K-P5f` 改了其中三处、**漏了本处**，`K-P5g` 补上并把这一族副本登记进 `doc_claim_registry.rs`（那张表的判据从生产代码里数出今天真读几个键，再与每一份副本的计数词对拍）。
 3. **`<configDir>/.claude.json`** —— **只取 `projects[<cwd>].hasTrustDialogAccepted` 一个布尔**，绝不回传文件内容（内含 `mcpServers` 的环境变量，可能有 API key）。且 `configDir` **必须逐字等于 manifest 里某个账号的 configDir**，否则拒绝——否则 `--account-trust` 就退化成任意文件读原语。
 
 **`.credentials.json` 只 stat 存在性、永不读内容**（`loggedIn` 字段就是这么来的）。**账号库的改动（建库 · 添加 · 删除 · 设默认 · 修复 · 隔离 · 回滚）住后端 `accounts/manage/`，与本节的只读查询分开**：查询这一面照旧零写入；改动那一面每次先备份再经文件管理面落盘，可回滚到改动前。订阅号的登录（`/login` 必须走 TTY）仍弹一个**用户可见的终端窗口**由 claude 自己完成，界面向后端要那一行命令（`accounts-login-cmd`）。
@@ -876,8 +876,9 @@ set-option / show-options / kill-session / has-session / attach **全部**动词
 
 **四处同源**（F02 新增第四处，照 §I8 `TMUX_LS_FMT` 双写范式立条）：
 1. ~~`src/session-backend.ts` 的 `exactTarget()` —— 前端 shell 渲染面~~ 〔LR2 2026-09-25：座删了；
-   shell 渲染面今天是 Rust `src/backend/control/launch_render/payload.rs`（搬进后端）的外层三格（`TmuxTarget` 渲 `=名:`，
-   由 `tmux-outer-golden.json` 逐字节钉着）〕
+   shell 渲染面后来搬进后端载荷那一层的外层三格；起会话只交一行 `ccm …` 之后那一层整层删了，
+   今天渲 `=名:` 的是调用行渲染器 `src/backend/control/launch_render/ccm_invocation.rs` 就地 resume 回落那一形（`send-keys -t '=名:'`，
+   由 `cli-golden.json` 逐字节钉着）与 `ccm` 自己（`control/ccm/plan.rs`）〕
 2. ~~monitor 壳里 `tmux.rs` 那份 `exact_target()` —— IPC 控制面~~ 〔THIN：只剩跨轨对拍锚点在用，删了；
    控制面今天是后端 `control/launch.rs::exact_target`（argv 直传，`exact_target_is_the_exact_match_shape` 钉着）〕
 3. `tests/e2e/restart-shims/core.mjs` —— Tauri IPC 边界的 mock，**结构上无法 import Rust，去重不可能**；
@@ -984,21 +985,34 @@ attach 已有会话走宽松的 `gate_rules::existing_tmux_name_issue`（②：�
   `wire.rs::render_ccm_launch`，住后端 `control/launch_render/`）。说不出的维度 ⇒ `Refusal::DimensionCannotSpeak`（整条放弃，
   不跳过）；`send-into` ⇒ `Refusal::SendIntoHasNoCliForm`；attach 分支在维度循环之前 return（豁免照旧）。
 - 验证：`tests/backend/control/launch_render/ccm_invocation_tests.rs` 的
-  `a_dimension_that_cannot_speak_abandons_the_whole_line` · `send_into_is_refused_before_any_dimension_runs` ·
-  `attach_reads_the_container_name_and_no_modifiers_at_all`（attach 豁免三道闸一次钉）· `a_triggered_dimension_carries_its_own_capability_requirement`；
-  外加入库夹具 `fixtures/cli-golden.json`（`req` 由生产的 TS 请求构造现产、`out` 是 `src/frontend/ui/launch-cli-golden.ts`
+  `every_refusal_reason_is_pinned_byte_for_byte`（说不出 · 缺能力 · 接回要 tmux 逐条一句）·
+  `unconditional_caps_are_always_required_and_conditional_ones_only_when_used`（只向用到的那一格要能力；接回不读修饰）·
+  `send_into_wraps_exactly_the_direct_line`（就地 resume 回落那一形只包一层 tmux，包的就是那一行直路）；
+  外加入库夹具 `fixtures/cli-golden.json`（`req` 由生产的 TS 请求构造现产、`out` 是 `tests/test-support/launch-cli-golden.ts`
   用例表里的手写期望，`launch_cli_parity.rs` 跑生产命令逐字节比，ok / refusal 两类各自条数恒等）。
-- ⚠ 「两种语言各一份、逐字节对拍」这一层没了（已知代价，理由见 `src/frontend/ui/launch-cli-golden.ts` 头注）；
+- ⚠ 「两种语言各一份、逐字节对拍」这一层没了（已知代价，理由见 `tests/test-support/launch-cli-golden.ts` 头注）；
   「渲染器该做什么」的独立说法只剩上面两份手写期望。
 
 ### LR2 更新（2026-09-25，U8c-3 后一半）：另一个渲染器（兜底 `renderFallback`）也删了
 
 上面背景段里「两个渲染器」的另一个 —— `renderFallback` 与它问的座 `SESSION_BACKEND` —— 同样零生产调用
 （步 22b·B 起外层三格也走 Rust），LR2 按把它们连同 `remote-launch.ts` 五个 builder 删了。
-**「表达不了就放弃、强制走载荷渲染器」这条今天的分流点**是 `remote-launch-run.ts::renderLaunchCommand`：
+**「表达不了就放弃、强制走载荷渲染器」这条当时的分流点**是 `remote-launch-run.ts::renderLaunchCommand`：
 `render_ccm_launch` 回 `ok:false` ⇒ 走 `render_launch_payload`（请求由 `buildLaunchRenderRequest` 挑形状）。
-载荷那一侧的字节由 `payload-golden.json` / `tmux-outer-golden.json` 两份入库夹具逐字节钉着（左边是
+载荷那一侧的字节当时由 `payload-golden.json` / `tmux-outer-golden.json` 两份入库夹具逐字节钉着（左边是
 `tests/test-support/launch-payload-golden.ts` / `tests/test-support/launch-tmux-outer-golden.ts` 用例表里的手写期望）。
+
+### 今天：起会话只有 `ccm` 一处，交给终端的只是一行 `ccm …`
+
+载荷那一层（裸载荷 · 外层 tmux 三格 · 「这一发的中转地址」）整层删了，两份夹具与它们的用例表一起删了。
+monitor 的每一条起会话路径（新起 · resume · 换号重启 · 分叉 · 远端开新会话 · 本机拉起 · cc-bus 派生 · 就地 resume）
+问那台后端要的都只是一行 `ccm [交给 agent 的…] -- [ccm 自己的…]`；环境、中转地址、身份标记、预信任由**那台机器上的 `ccm`**
+在最终 exec 那一处定。外层容器（tmux 建会话 / 键进已有 pane）只包这一行。
+**「表达不了就放弃」照旧**：渲不出来 ⇒ 帧命令回码 `refused`、带那一句，调用方不回落、不拼第二条。
+验证：`launch_cli_parity_tests.rs::every_monitor_launch_path_hands_over_one_ccm_line`（每条远端路径真发出去的那一形逐条以 `ccm ` 开头）·
+`local_tests.rs::every_local_launch_shape_is_one_ccm_line`（本机那几形）·
+`ccm_tests.rs::nothing_but_ccm_renders_a_command_that_starts_an_agent`（后端生产段里除 `ccm` 自己的最终 exec 外，
+零处渲出直接起 agent 的命令；名字取自注册表、带正控；唯一登记的例外是给仓外 aterm 冻结的 `resolve_query.rs`）。
 
 ## 33a. `ccm --print` 是平价预言机——它对**环境变量**说的必须逐条等于真跑做的（U9a / unified-backend）
 
@@ -1072,9 +1086,9 @@ U8c-1 摸底后拆成三步：
 > `session-backend.ts` 与 `launch-render-fallback.ts` 今天的生产调用方是 0。**
 >
 > 「launch 渲染链搬后端」收官：22b·A 在
-> `backend::control::payload::render_tmux_outer` 补出了**外层 tmux 那三格**
+> 后端载荷那一层补出了**外层 tmux 那三格**
 >（`container:tmux` 的 `create` / `send-into` ＋ `action:attach`）
-> 并立了一份入库的逐字节金标准（`fixtures/tmux-outer-golden.json`，13 条）；
+> 并立了一份入库的逐字节金标准（外层那一份夹具，13 条；随载荷那一层删了）；
 > **22b·B 把生产接过去了** —— `remote-launch-run.ts::renderLaunchCommand` 最后那一格
 > 改问 `commands.render_launch_payload` 要（请求带 `outer`），
 > `renderFallback` 的 `import` 与调用一起退役，**不留回落、不留开关、不留双写**。
@@ -1101,7 +1115,7 @@ U8c-1 摸底后拆成三步：
 > · `U8c-3` 状态仍是**待做**：那两个 TS 文件**没删**，它们今天是两份入库夹具的**左边**
 >  （「另一种语言的独立说法」）；删了就把跨语言对拍降级成「Rust 没变」的冻结快照
 >  —— `launch-render-cli.ts` 曾按同一条先例留着；它已删（U8c-3 前一半），
->  夹具的左边换成了用例表里的手写期望（`src/frontend/ui/launch-cli-golden.ts` 头注）。兜底这一族仍待做。
+>  夹具的左边换成了用例表里的手写期望（今天住 `tests/test-support/launch-cli-golden.ts` 头注）。兜底这一族仍待做。
 >   逐处住址与「还站不站在生产路上」两把尺子当时住 `launch_wire_f07_main_path_tests.rs` 的两张消费者表〔已删，见下一块〕。
 >
 > 🔴🔴 **U8c-3 后一半交付：`launch-render-fallback.ts` · `session-backend.ts` ·
@@ -1117,11 +1131,11 @@ U8c-1 摸底后拆成三步：
 
 | 件 | 内容 | 状态 |
 |---|---|---|
-| **U8c-1** | 载荷编译器进共享 crate `launch-core` + 跨语言逐字节对拍；`history.rs` POSIX 分支改调内核 | **2026-08-02 已交付**。⚠ **P4b 起内核不在共享 crate 里了** —— 它在 `src/backend/control/launch_render/payload.rs`（从 monitor 的 `backend/control/` 搬进真后端；放共享 crate 的真实原因是 monitor 当时没有 `backend/` 边界）；那个 crate P4c 改名 `shell-quote-core`，只剩 `posix_quote` |
+| **U8c-1** | 载荷编译器进共享 crate `launch-core` + 跨语言逐字节对拍；`history.rs` POSIX 分支改调内核 | **2026-08-02 已交付**。⚠ **P4b 起内核不在共享 crate 里了** —— 它搬进了真后端 `control/launch_render/`（放共享 crate 的真实原因是 monitor 当时没有 `backend/` 边界）；那个 crate P4c 改名 `shell-quote-core`，只剩 `posix_quote`。🔴 **后来载荷那一层整层删了**：起会话只交一行 `ccm …`（见 §33 末尾「今天」那一段） |
 | **U8c-2b-0** ✅ | 账本 S5：POSIX quote 五处合一 + 零命中守卫 | 2026-08-02 |
 | **U8c-2c-1** ✅ | **ccm 调用行**进内核（**P4b 起**在 `backend::control::ccm_invocation::render_ccm_invocation`；交付时在共享 crate 的 `launch_core::cli`）+ 跨语言对拍。**不切生产** | 2026-08-02 |
 | **U8c-2c-2** | 生产切换：`remote-launch-run.ts` 改调 Rust（需 tauri 命令 + IR 上线形状） | **已交付**（F07 2026-08-04 实测订正：本列此前写「待做」，是**过期陈述** —— 实测两条 tauri 命令 `render_ccm_launch`/`render_launch_payload` 都已注册，生产 TS 三处在调（`remote-launch-run.ts:72,96,301`），`parity_ledger` 也有 `launch.render-cli`/`launch.render-payload` 两条能力） |
-| **U8c-3** | 删 TS 渲染器 + IR，收敛下面六条 | **已交付**（LR1 2026-09-25 删 `ccm …` 调用行那一份；LR2 2026-09-25 删兜底那一族 ＋ 座。本列此前写「待做」。⚠ IR 本身〔`launch-plan.ts` · `launch-dimensions.ts` · `launch-requests.ts`〕**没删** —— 它是生产的请求构造，不是渲染器；「收敛下面六条」各自的今天版见下面那张表） |
+| **U8c-3** | 删 TS 渲染器 + IR，收敛下面六条 | **已交付**（LR1 2026-09-25 删 `ccm …` 调用行那一份；LR2 2026-09-25 删兜底那一族 ＋ 座。本列此前写「待做」。⚠ IR 本身〔`launch-plan.ts` · `launch-dimensions.ts`〕当时**没删**（它是生产的请求构造，不是渲染器）；起会话只交一行 `ccm …` 之后它也删了，`launch-requests.ts` 只剩构造那一行要的请求；「收敛下面六条」各自的今天版见下面那张表） |
 
 ### 外层容器那半为什么本轮不搬（**不是因为它没了** —— 我第一版就是这么写的，被工程审计证伪）
 
@@ -1146,7 +1160,7 @@ U8c-1 摸底后拆成三步：
 
 | 产出方 | 实况 |
 |---|---|
-| `session-backend.ts`（TS） | 🔴 **已删**；外层三格今天只有 `payload::render_tmux_outer` 一个家。以下是删之前的原文留档（点名的那几条判据与两张消费者表随那一族删了〔散文墓碑〕）：<br>🔴 **生产调用方 0。** 原文逐字「**生产远端主路**，天天在跑」—— 收官之后那条 `↗` 主路改问 `commands.render_launch_payload` 要（带 `outer`），承接方是 `payload::render_tmux_outer`。座今天只被 `launch-render-fallback.ts` 引，而后者只被两个**金样本发生器**引 ⇒ 它站的是「逐字节对拍的左边」这个位置，不是生产路。⚠ **没退役**：它仍在盘上、仍是那份独立说法，`the_ts_fallback_renderer_now_stands_on_its_own_consumers` 的 ④ 反过来钉着「承接方那两个文件本身还在」 |
+| `session-backend.ts`（TS） | 🔴 **已删**；外层三格后来只剩后端载荷那一层一个家，那一层也随起会话只交一行 `ccm …` 删了（就地 resume 回落那一形今天由调用行渲染器包一层 tmux）。以下是删之前的原文留档（点名的那几条判据与两张消费者表随那一族删了〔散文墓碑〕）：<br>🔴 **生产调用方 0。** 原文逐字「**生产远端主路**，天天在跑」—— 收官之后那条 `↗` 主路改问 `commands.render_launch_payload` 要（带 `outer`），承接方是 `payload::render_tmux_outer`。座今天只被 `launch-render-fallback.ts` 引，而后者只被两个**金样本发生器**引 ⇒ 它站的是「逐字节对拍的左边」这个位置，不是生产路。⚠ **没退役**：它仍在盘上、仍是那份独立说法，`the_ts_fallback_renderer_now_stands_on_its_own_consumers` 的 ④ 反过来钉着「承接方那两个文件本身还在」 |
 | `control/launch.rs`（Rust argv，U8a-2b 建的） | ⚠ **F11 2026-08-04 订正：这一格原写「零生产调用方 —— 全仓 `.call("launch", …)` 只有一处且在 `#[cfg(test)]` 里」，那句已经假了。**〔机检〕生产段 `.call("launch")` 处数：0 处（原来那两处 —— 就地 resume 的 `send-into` = U8a-2c-1 · 送键 = F04c —— 连同 monitor 那两个发送端迁到界面，今天由 `src/frontend/ui/tmux-control.ts` 经通道直接说 `launch`）。⚠ **那两处当年都不是「又切了一格起会话」**——`create-or-attach` 与 attach 两格仍未切。⚠ `ssh_source.rs` 那条 `!client.accepts("launch")` 仍在，但它断言的是「某个 hello 没声明 launch」，**不是「生产不调 launch」**（F07 已订正过同一句话在三问表里的那一份 —— **这一格当时漏了**）。🔴**这里原来钉着 `:2208` 这个行号 —— 现打那一行是 `SNAPSHOT_MAX_BYTES`，那条断言今天住在别处、而且住在 `#[cfg(test)]` 里**。⇒ 行号撤掉，改指符号（`src/doc/INVARIANTS.md` 里指进本树的行号，要么带逐字校验位，要么别写）。⚠ 那个数**只有这一个家**：`doc_claim_registry::the_doc_number_for_production_launch_calls_matches_reality` 从这里把它读出来与现场数比，多一处调用而不改这里就红 |
 | `shared/ccm` | 用户终端那条路 |
 
@@ -1182,7 +1196,7 @@ U8c-1 摸底后拆成三步：
 `R61` 裁定三之后，②「attach 归谁产」那一格**本机那半有承接方了**（今天是本机后端 `local.rs::plan` 的接回那一格，帧命令 `launch-local`；原 Tauri 命令 `render_local_attach`〔散文墓碑〕）。
 于是「删 `session-backend.ts`」这件事第一次可以问得很具体 —— 现打（量具 `tests/evidence/K-R106-ruler.py`，人群 = `src/**` 去掉 `*.test.ts`/`*.vitest.ts`，剥法与 `launch_wire::production_ts` 同口径）：
 - 🔴 **`K-R109` 09-13 订正：这两条今天各只对一半。** 原文写「座今天有**两个**生产消费者文件：`launch-render-fallback.ts` 与 `remote-launch-run.ts`」＋「`remote-launch-run.ts` 那一处差的只是把前端接过去」。**接过去了** —— 那一处现在问 `commands.render_local_attach` 要（注册面三处同一拍落地）⇒ **`remote-launch-run.ts` 不再是座的消费者**。⚠ **数字不在这儿抄**：逐格处数的家是 `launch_wire_f07_main_path_tests.rs::TS_FALLBACK_KEEPERS`，而「有没有多出一个没登记的消费者」由同一条判据的第 ⑤ 格（`K-R109` 加的**反向闭合**）从源码派生 —— 本行只留住址；
-- 🔴🔴 **这一条被证伪了，而且它错在哪很值得写下来。** 原文逐字：「**`launch-render-fallback.ts` 那一处不是「差接线」，是差一个承接方**：它要座产的是 `container: tmux` 的 **`create` / `send-into` / `attach`** 三格外层 tmux 命令，而它被走到的**前提**恰恰是「后端那条渲染器拒了」（探测 unknown / 没装 ccm / 有维度说不出 CLI 语法）—— **那时按定义就没有后端命令行入口可问**。」<br>⚠ **「按定义就没有」那一步是错的，而且是一个有名字的错**：那句话里的「后端」指的是**远端那台机器上的 ccm**（拒的正是它），而承接方本来可以是、今天就是 **monitor 自己进程里的那份 Rust 渲染器**（`backend::control::payload`，一个 tauri 命令，不经网络、不依赖远端）。⇒ 把两侧压成一个「后端」——**这正是 `R61` 裁定三禁的那一形**（那条裁定立下的纪律是：不许再用那个旧词把「远端常驻的那份」与「后端」压成一个；逐字原文在同一节 ② 那一格里），而本节 ② 那一格早就为它挨过一次（`K-R106` 第六次订正：「那句头注今天仍然对，而它的射程是**远端**」）。**同一个混淆，在同一节里犯了两次。**<br>⇒ 现打：22b·A 补出承接方（`render_tmux_outer` ＋ 13 条入库金标准），22b·B 接线，**「差一个承接方」这句话今天不成立**。
+- 🔴🔴 **这一条被证伪了，而且它错在哪很值得写下来。** 原文逐字：「**`launch-render-fallback.ts` 那一处不是「差接线」，是差一个承接方**：它要座产的是 `container: tmux` 的 **`create` / `send-into` / `attach`** 三格外层 tmux 命令，而它被走到的**前提**恰恰是「后端那条渲染器拒了」（探测 unknown / 没装 ccm / 有维度说不出 CLI 语法）—— **那时按定义就没有后端命令行入口可问**。」<br>⚠ **「按定义就没有」那一步是错的，而且是一个有名字的错**：那句话里的「后端」指的是**远端那台机器上的 ccm**（拒的正是它），而承接方本来可以是、今天就是 **monitor 自己进程里的那份 Rust 渲染器**（`backend::control::payload`，一个 tauri 命令，不经网络、不依赖远端）。⇒ 把两侧压成一个「后端」——**这正是 `R61` 裁定三禁的那一形**（那条裁定立下的纪律是：不许再用那个旧词把「远端常驻的那份」与「后端」压成一个；逐字原文在同一节 ② 那一格里），而本节 ② 那一格早就为它挨过一次（`K-R106` 第六次订正：「那句头注今天仍然对，而它的射程是**远端**」）。**同一个混淆，在同一节里犯了两次。**<br>⇒ 现打：22b·A 补出承接方（`render_tmux_outer`〔散文墓碑〕 ＋ 13 条入库金标准，后来随载荷那一层删了），22b·B 接线，**「差一个承接方」这句话今天不成立**。
 ⇒ 🔴 **「删掉座」的代价也换人了。** 原文逐字：「**删掉座 = 把那条兜底路整条删掉**，而那是「没装 ccm 的远端」那一格的事（六格表第 ⑤ 格，`K27`/`K34` 判它是**部署面**），不是 attach 这一格的事。」—— 今天删掉座**不会**动「没装 ccm 的远端」那一格的能力（那一格已经由 Rust 渲染器服务），它动的是**两份入库夹具的左边**：`payload-golden.json` 与 `tmux-outer-golden.json` 的左边都是 TS 的真渲染器 + 真座，删了它们，跨语言逐字节对拍就退化成「Rust 没变」的冻结快照。⇒ **代价从「部署面」变成「独立说法」**，逐字见 `the_two_reasons_u8c3_cannot_delete_the_ts_renderer_still_hold`〔散文墓碑〕（已改写成 `the_create_or_attach_mode_is_sent_only_by_the_ccm_container_path`，依据一整条随 TS 兜底一族删了）的**依据一 c**（本拍新立，两个发生器 ＋ 两份夹具逐个钉在盘上）。
 ⚠ **两件事别再压平**：`K-R54` 表第 3 行问的是「attach 归谁产」，它今天在本机这一侧**答完了**；而「座能不能删」还压着**另一格**（部署）。
 ⇒ **结论仍然没变（今天删不得），但理由第五次换人了。** 逐处读数与量法住 `tests/evidence/K-R89-deathvalue.md`；六格今天版住 `src/frontend/shell/src/history.rs::tests::THE_SIX_WAYS_THE_OLD_PATH_STILL_WINS`（由 `every_one_of_the_six_cells_is_measured_not_narrated` 逐格**真去驱动**，改了行为不改说法当场红）。 〔散文墓碑〕
@@ -1261,21 +1275,21 @@ U8c-1 摸底后拆成三步：
 `history.rs` 的 POSIX 校验换成 `acct-core` 并集之后，同一个含 `U+3000` 的 configDir：
 **本机 Rust 拉起拒绝、远端 TS 拉起放行**（TS `shell-quote.ts::isValidConfigDir` 仍是旧集合）。
 迁移前两侧都用旧集合、是一致的。⇒ **这是变严的诚实代价**，U8c-2/U8c-3 收编 TS 时一并收口。
-收口了，收法是**删**：TS 那份 `isValidConfigDir`〔散文墓碑〕按删掉，configDir 只在拼命令的那一侧（`payload.rs::config_dir_command_safe`）判。
+收口了，收法是**删**：TS 那份 `isValidConfigDir`〔散文墓碑〕按删掉，configDir 只在拼命令的那一侧判（当时是载荷那一层的 `config_dir_command_safe`〔散文墓碑〕；今天是 `acct-core` 那张全表，载荷那一层随起会话只交一行 `ccm …` 删了）。
 
 ### 跨语言一致性靠什么保住（U8c-1 的核心交付）
 
 **入库夹具 + 两侧各自与它比**，不是注释：
 
 ```text
-  tests/test-support/launch-payload-golden.ts（用例表 ＋ 手写期望；原住 src/、原先调真 renderFallback）
-        │ npm run gen:payload-golden
+  tests/test-support/launch-cli-golden.ts（用例表 ＋ 手写期望；`req` 由生产的请求构造现产）
+        │ npm run gen:cli-golden
         ▼
-  src/backend/control/launch_render/fixtures/payload-golden.json   ← 入库（P4b 起）
-        ▲                                    ▲
-        │ launch-payload-golden.vitest.ts    │ launch_payload_parity.rs
-        │ 「入库的 == 现场渲染的」            │ 「Rust 渲染的 == 入库的」
+  src/backend/control/launch_render/fixtures/cli-golden.json   ← 入库
+        ▲
+        │ launch_cli_parity.rs「Rust 渲染的 == 入库的」（ok / refusal 两类各自条数恒等）
 ```
+（载荷那一份夹具与它的两侧对拍随载荷那一层删了。）
 
 ⚠ **两侧都必须有计数自检**（`MIN_CASES`）：夹具被清空/截断时，「逐条循环」在两种语言里
 都会零命中零失败地绿。⚠ **绝不能让 Rust 侧去调 TS 现场生成** —— 那就成了自洽夹具
@@ -1390,13 +1404,13 @@ plan，只要满足其余 CLI 渲染条件，会被 `renderCli` 吐成一条**�
 
 **背景**：F06 曾把本地 resume/新建两条路径折进 `LaunchContext`/`LaunchPlan` IR（`src/frontend/ui/launch-requests.ts::planLocal`），跑一遍 `LAUNCH_DIMENSIONS` 注册表。**R07 已把这一遍删掉**（理由见下方 R07 段），该函数现名 `validateLocalLaunch`、只做 sid 校验、不构造任何 IR。下面这段描述的是"当时为什么算了却不消费"，其结论（**别给本地渲染器补一段读 env 的代码**）在 R07 之后依然是铁律，只是理由更直接了：本地路径压根不产出 `plan.env`。
 
-（**当时**的机制：`NESTED_ENV_RESET_DIMENSION`（issue #24：清 Claude 自己的嵌套会话标记 `CLAUDECODE`/`CLAUDE_CODE_SESSION_ID` 等）的 `applies` 只看 `ctx.action.kind==="new"||"resume"`、不看 `transport`——local 场景走到这里恒真，`plan.env` 会真的被塞进一条 `unset` `EnvOp`，而本地渲染器（今天是本机后端 `local.rs::build_ps`；当时是 monitor 的 `build_local_ps_command`〔散文墓碑〕）**故意完全不读**它。这条"注册表对 local 也会产出 env op"的事实**今天依然成立**，只是本地路径不再去调它了——证据见 `tests/frontend/ui/launch-requests.vitest.ts` 的「维度注册表在 transport:local 下的行为」那组测试，它直接冲 `buildLaunchPlan` 去验，不借道任何生产函数。）
+（**当时**的机制：`NESTED_ENV_RESET_DIMENSION`（issue #24：清 Claude 自己的嵌套会话标记 `CLAUDECODE`/`CLAUDE_CODE_SESSION_ID` 等）的 `applies` 只看 `ctx.action.kind==="new"||"resume"`、不看 `transport`——local 场景走到这里恒真，`plan.env` 会真的被塞进一条 `unset` `EnvOp`，而本地渲染器（后来是本机后端 `build_ps`〔散文墓碑〕；当时是 monitor 的 `build_local_ps_command`〔散文墓碑〕）**故意完全不读**它。这条"注册表对 local 也会产出 env op"的事实**今天依然成立**，只是本地路径不再去调它了——证据见 `tests/frontend/ui/launch-requests.vitest.ts` 的「维度注册表在 transport:local 下的行为」那组测试，它直接冲 `buildLaunchPlan` 去验，不借道任何生产函数。）
 
 **为什么不消费是对的**：`NESTED_ENV_RESET_DIMENSION` 保护的攻击面是"tmux **持久 server** 进程的环境表跨多次 resume 累积污染"——远端场景里，同一个 tmux server 可能存活很久，每次新 resume 进去的 shell 都从 server 环境继承，之前一次 `claude` 进程留下的 `CLAUDECODE=1` 等标记会一直挂在那，必须每次显式 `unset`。本地 Windows 场景没有这个"持久 server"概念——`launch_powershell_window`（`src/frontend/shell/src/launch.rs`）每次都是全新 `Command::new("wt.exe"/"powershell.exe").spawn()`，唯一可能的污染源是"cc-monitor.exe 自己被某个带毒环境启动"（如从一个嵌套的 Claude 会话终端里启动 cc-monitor 自身）——这条攻击面已经在**进程启动阶段一次性堵死**：`src/frontend/shell/src/lib.rs::run()` 里 `scrub_env_vars(&nested_env_markers())`（名单读后端生成的画像表 `agent-profile-table.ts`，从前是 monitor 那份适配器） 是 Tauri `Builder` 构造之前就跑的第一批实质语句，直接 `std::env::remove_var` 清掉 cc-monitor.exe 自己进程的环境；`Command::new(...)` 默认继承（已清洗过的）父进程环境，无需每次 launch 前再清一次。
 
 **铁律**：**给本地渲染器补一段读 `plan.env`、把 `unset` 翻成 PowerShell `Remove-Item Env:\X` 的代码，是错的"修复"**——两层保护本来就分工不同（远端：渲染期逐次清；本地：启动期一次清），本地补一层不会更安全，只会引入一段从未有真机（Windows/`pwsh`）验证过的新 PowerShell 语法，纯增加风险不增加收益。若未来真的发现本地场景存在启动期清洗覆盖不到的污染路径（例如 cc-monitor 在自己生命周期内某处被重新 exec、绕开了 `run()` 的这次清洗），应该去修**启动期清洗本身的覆盖面**，而不是在本地渲染器里加一段渗透式的补丁。
 
-**验证**：`tests/frontend/ui/launch-requests.vitest.ts` 的「维度注册表在 transport:local 下的行为」组锁死本地 `LaunchContext` 经 `buildLaunchPlan` 产出的 `plan.env` 对 new/resume 两个动作恒非空（证明维度确实触发了）、account 维度对 base 态是 no-op、`cwd: null` 原样透传（R07 Phase D 审计发现拆分中丢过这条，已补回；它是**共享代码**，远端路径也吃），且 `history.rs` 侧未新增任何消费 `plan.env`/`unset`/`Remove-Item` 的代码路径（Phase D 审计已核对 `scrub_env_vars` 的调用时点严格早于任何窗口 spawn，且全仓无绕开它的自重启路径）。
+**验证**（当时；今天见本节末尾「今天」那一段）：`tests/frontend/ui/launch-requests.vitest.ts` 的「维度注册表在 transport:local 下的行为」组锁死本地 `LaunchContext` 经 `buildLaunchPlan` 产出的 `plan.env` 对 new/resume 两个动作恒非空（证明维度确实触发了）、account 维度对 base 态是 no-op、`cwd: null` 原样透传（R07 Phase D 审计发现拆分中丢过这条，已补回；它是**共享代码**，远端路径也吃），且 `history.rs` 侧未新增任何消费 `plan.env`/`unset`/`Remove-Item` 的代码路径（Phase D 审计已核对 `scrub_env_vars` 的调用时点严格早于任何窗口 spawn，且全仓无绕开它的自重启路径）。
 
 **R07 补充（2026-07-28）：本地路径是「借 IR 做校验、不消费其输出」，这是设计不是半成品。**
 上面说的"`plan.env` 算出来不消费"其实是更大一件事的一个切面——**整个 `LaunchPlan` 都不被消费**。
@@ -1445,9 +1459,15 @@ plan，只要满足其余 CLI 渲染条件，会被 `renderCli` 吐成一条**�
 但审计实测该声称**零门禁守护**（删掉整段 ctx 构造 + 调用、只留 `void cwd;` → `tsc` 与
 `npm test` 705 全绿；改造前同一变异红 5 条，因为那时返回类型让它在**类型层**承重）。
 而它想验的东西 `launch-render-cli.test.ts` 已在验（`ctxOf({transport:{kind:"local"}})` → `buildLaunchPlan`；
-那份套件已删，这一格今天由 `tests/frontend/ui/launch-requests.vitest.ts`「维度注册表在 transport:local 下的行为」管）。
+那份套件已删，这一格后来由 `tests/frontend/ui/launch-requests.vitest.ts`「维度注册表在 transport:local 下的行为」管，那份也随 IR 删了）。
 生产侧它纯属浪费，且是 **fail-closed 风险**：将来任何对 `transport:local` 抛异常的新维度，
 都会让本地 resume 彻底拉不起来而收益为零。
+
+**今天（起会话只交一行 `ccm …`）**：本机那几形由本机后端 `control/launch_render/local.rs::plan` 出成品，Windows 那一格也只是一行
+`ccm --resume <sid> -- …`（没有 tmux ⇒ 直路；接回说不出 ⇒ 拒），**本地渲染器不渲任何清变量的代码** —— 本节铁律照旧。
+清 Claude 自己的嵌套会话标记归 `ccm` 在最终 exec 那一处（进程内 `remove_var`，不是一段 PowerShell 语法），本机远端、两个平台同一处。
+⚠ 这一形要 `ccm` 在用户的 `PATH` 上（Windows 那个 PowerShell 窗口里同样）。
+验证：`local_tests.rs::windows_launches_go_the_direct_way_and_attach_is_refused`。
 
 ## 37. 新维度的 `applies` 该不该恒真，看这个维度的"沉默"是否等价于用户期望——不是看它是不是账号相关（F07 / unify-launch）
 
@@ -1487,7 +1507,7 @@ plan，只要满足其余 CLI 渲染条件，会被 `renderCli` 吐成一条**�
 根本跑不到"（结构性检测不到）；这里 `applies` 会在配了偏好时正确变真，null 检查确实跑到并
 正确返回 `false`——是"检测到了、诚实报告降级"，不是"检测不到、悄悄放过"。`canRenderCli` 对
 这条降级有专门的端到端测试锁定（`launch-render-cli.test.ts` 的两条 `modelOverride` 用例；
-那份套件已删，今天由 `ccm_invocation_tests.rs::model_dimension_is_conditional_by_design` 与夹具
+那份套件已删，今天由 `ccm_invocation_tests.rs::unconditional_caps_are_always_required_and_conditional_ones_only_when_used` 与夹具
 「已触发的 model 维度要的能力缺失」那条用例管），
 不只是孤立测 `cliFlags()` 的返回值。
 
@@ -2146,7 +2166,7 @@ CSP 兜底源是 `'self'` · 脚本执行面的几种放开形逐个禁 ＋ 那�
   **字符集白名单**（闭集，默认拒）＋ 不许 `-` 开头（选项注入）＋ 有长度上界的就钉上界。
 - **② 自由文本类**（路径 · 用户已有 tmux 会话的 attach 目标）：字符集**放不成闭集**（路径里中文、空格是合法的；已有会话名里真有 glob 字符）
   ⇒ 走**唯一的 quote**＋ 这一种值的**形式判定**（绝对路径 · 不含 `..` · 不空）＋ 那一张**拒绝集**权威表
-  （控制字符 · shell 元字符 · 视觉欺骗字符，住 `payload.rs::config_dir_command_safe` 那一族）。
+  （控制字符 · shell 元字符 · 视觉欺骗字符，住 `acct-core` 的 `config_dir_char_unsafe` 那一族）。
   🔴 这一形**是拒绝集、不是白名单**，如实写在这里：别把「②」读成「白名单已经覆盖了」。
 - **③ 命令片段类**（启动器；〔主会话 09-26 代用户裁，用户可推翻〕）：它**不 quote** —— 要被 shell 拆词、按 alias / PATH 解析
   （`ccr code` · `cct` · `/usr/local/bin/claude`），`'ccr code'` 找不到命令、alias 不展开，所以不是「一个词 ＋ quote」；
@@ -2178,20 +2198,20 @@ CSP 兜底源是 `'self'` · 脚本执行面的几种放开形逐个禁 ＋ 那�
 | cc-bus agent id（①；**后端交给 `cc-send` / `cc-kill` 之前**） | `shell_quote_core::bus_id_ok`（全仓唯一一份）：后端 `control/cc_bus.rs` 的 `parse_send` / `parse_kill` 入口（拒码 `bad_id`）·读收件箱搬进后端 `bus-inbox` 的 `parse_inbox`（拒码 `bad_id`，交给 `cc-log` 之前判）；monitor `cc_bus.rs` 留 `is_valid_bus_id` 这个再导出名。查在线不把 id 交给任何人，不判。`bus-send` / `bus-broadcast` 给的 `from`（作 `CC_BUS_ID` 交给 `cc-send`，`given_sender`，拒码 `bad_id`）· 广播名单里的收件人（`cc-list` 的输出、对端来的值，`recipient_refused`：不发、照实进 `failed`）同一个判定 | 后端 `cc_bus_tests.rs::bus_ids_are_judged_here_before_they_reach_cc_bus`（金样 `tests/__fixtures__/cc-bus-control.golden.json` 的 `ids` 正反两向，拒在起进程之前）· monitor `cc_bus_tests.rs::rejects_leading_dash_ids_from_real_disk` · `cc_bus_tests.rs::rejects_shell_metachars_and_control` · `cc_bus_tests.rs::accepts_real_ids` · 后端 `cc_bus_tests.rs::the_cockpit_read_products_match_the_cross_language_golden`（`--help` 当收件箱 id 在起进程之前拒）· `cc_bus_tests.rs::the_bus_id_rule_agrees_with_the_shared_samples`（同一份 `ids`）· `tests/frontend/ui/cc-bus-control.vitest.ts`（界面不判、原样交；`bad_id` 逐动作一句、带后端原话） · 后端 `cc_bus_tests.rs::senders_and_broadcast_recipients_are_judged_before_they_reach_cc_send`（同一份 `ids` 正反两向） |
 | 派生时的账号名（①；**后端交给 `cc-spawn` 之前**） | 同一个 `shell_quote_core::bus_id_ok`：后端 `parse_spawn` 入口（拒码 `bad_id`；那一道原住界面 `checkSpawnShape`，界面今天只判「选了 tool · 目录非空」） | 后端 `cc_bus_tests.rs::bus_ids_are_judged_here_before_they_reach_cc_bus` · `tests/frontend/ui/cc-bus-control.vitest.ts`（含「不许白名单 agent 种类」那一格） |
 | 唯一的 quote（②） | `shell-quote-core::posix_quote`（monitor 那层转调壳零生产调用、删了） | `cc_bus_tests.rs::quote_roundtrip_is_the_real_property` |
-| 本工具新建的 tmux 会话名（①；载荷外层 · `ccm …` 调用行 · 后端 ccm） | `gate_rules::new_tmux_name_issue`（全仓唯一一份，后端 `control/gate_rules.rs`）：`payload.rs` 的 `TmuxTarget::check`（新建那一格）· `ccm_invocation.rs` 的 `--tmux=`（`Refusal::IdentifierRefused`）· 后端 `plan.rs::validate_tmux_name`（只管说哪一句）。attach / 送进已有会话走 `gate_rules::existing_tmux_name_issue`（②：拒绝集 ＋ 非空，寻址 `=<名>:`） | `gate_rules_tests::a_new_session_name_passes_real_names_and_refuses_what_would_confuse_tmux` · `lib_tests::an_existing_session_name_is_refused_only_for_what_quote_and_exact_match_cannot_hold` · `payload_tests.rs::a_tmux_name_follows_the_create_or_existing_rule_from_gate_core` · `ccm_invocation_tests.rs::a_tmux_name_is_judged_before_it_becomes_a_ccm_argument` · `plan_tests.rs::a_session_name_that_would_confuse_tmux_is_refused` |
+| 本工具新建的 tmux 会话名（①；`ccm …` 调用行 · 后端 ccm） | `gate_rules::new_tmux_name_issue`（全仓唯一一份，后端 `control/gate_rules.rs`）：`ccm_invocation.rs` 的 `--ccm-tmux=`（`Refusal::IdentifierRefused`）· 后端 `plan.rs::validate_tmux_name`（只管说哪一句）。attach / 就地 resume 的目标走 `gate_rules::existing_tmux_name_issue`（②：拒绝集 ＋ 非空，寻址 `=<名>:`） | `gate_rules_tests::a_new_session_name_passes_real_names_and_refuses_what_would_confuse_tmux` · `lib_tests::an_existing_session_name_is_refused_only_for_what_quote_and_exact_match_cannot_hold` · `ccm_invocation_tests.rs::every_value_is_judged_before_it_becomes_a_ccm_argument` · `plan_tests.rs::a_session_name_that_would_confuse_tmux_is_refused` |
 | 分叉的 sid / 消息 uuid（①；**后端 `session-fork` 入口**：界面经通道直说、不判） | 后端 `fork_write.rs::answer_wire_at`（判定取 `shell-quote-core::session_id_ok`，「长度不对 / 形状不对」两句人话在那里；拒码 `bad_args`、源一个字节不读） | 后端 `fork_write_tests.rs::the_fork_ids_are_whitelisted_at_the_frame_face` |
-| session id（①：resume 的 sid · `@ccm_sid` / `--ccm-sid` · 按 sid 找会话文件；〔主会话 09-26「J5 那一族统一」〕六份收成一份，规则取交集） | `shell-quote-core::session_id_ok`（后端按 sid 找会话文件那一处 `agents/claudecode/branch.rs::find_session_file` 直呼它）· 接在载荷外层 · 载荷线 `resumeSid` · `ccm_invocation` · 本机拉起 · 后端 `ccm/argv.rs::validate`。⚠ 后端 `resolve` 那条（`resolve_query.rs::is_valid_session_id`）刻意不收：行为冻结给仓外 aterm（`V126`） | `shell-quote-core lib_tests::a_session_id_is_a_short_plain_token_that_never_starts_with_a_dash` · `payload_tests.rs::a_resume_sid_and_a_session_mark_are_judged_before_they_enter_the_payload` · `ccm_invocation_tests.rs::an_identifier_is_refused_before_it_becomes_a_ccm_argument` · 后端 `argv_tests.rs::a_session_id_is_judged_before_it_goes_anywhere` |
-| 模型名（①；〔主会话 09-26「两侧同一份、真实模型名都放行」〕） | `shell-quote-core::model_name_ok` · 接在载荷 `ExportModel` · `ccm_invocation` 的 `--model` · 后端 `ccm/argv.rs::validate`；前端写入点读生成物 `src/frontend/ui/generated/judgment-rules.ts`（同一组常量现生成） | `shell-quote-core lib_tests::real_model_names_pass_and_option_or_shell_shapes_do_not` · `payload_judgment_rules.rs::the_shared_golden_agrees_with_the_one_rule` ＋ `tests/frontend/ui/identifier-rules-parity.vitest.ts`（两侧对同一份金样）· `payload_tests.rs::the_model_export_passes_real_names_and_refuses_the_rest` |
-| 账号名（①，`--account`；建账号库与 `ccm --account` 同一条） | `shell-quote-core::account_name_ok` · 接在 `ccm_invocation` · 后端 `ccm/argv.rs::validate` · 后端 `accounts/manage/model.rs::name_ok`（建号 · 删号 · 登录那一行都过它；新建账号表单的即时那一句读生成物 `src/frontend/ui/generated/judgment-rules.ts`） | `shell-quote-core lib_tests::an_account_name_is_what_the_account_tool_would_have_created` · `ccm_invocation_tests.rs::an_account_name_is_refused_before_it_becomes_a_ccm_argument` · 后端 `accounts_face_tests.rs::init_refusals_leave_nothing_behind` · `tests/frontend/ui/identifier-rules-parity.vitest.ts`（生成物对同一份金样） |
+| session id（①：resume 的 sid · `@ccm_sid` / `--ccm-sid` · 按 sid 找会话文件；〔主会话 09-26「J5 那一族统一」〕六份收成一份，规则取交集） | `shell-quote-core::session_id_ok`（后端按 sid 找会话文件那一处 `agents/claudecode/branch.rs::find_session_file` 直呼它）· 接在 `ccm_invocation`（本机远端同一个调用行渲染器）· 后端 `ccm/argv.rs::validate`。⚠ 后端 `resolve` 那条（`resolve_query.rs::is_valid_session_id`）刻意不收：行为冻结给仓外 aterm（`V126`） | `shell-quote-core lib_tests::a_session_id_is_a_short_plain_token_that_never_starts_with_a_dash` · `ccm_invocation_tests.rs::every_value_is_judged_before_it_becomes_a_ccm_argument` · 后端 `argv_tests.rs::a_session_id_is_judged_before_it_goes_anywhere` |
+| 模型名（①；〔主会话 09-26「两侧同一份、真实模型名都放行」〕） | `shell-quote-core::model_name_ok` · 接在 `ccm_invocation` 的 `--model` · 后端 `ccm/argv.rs::validate`；前端写入点读生成物 `src/frontend/ui/generated/judgment-rules.ts`（同一组常量现生成） | `shell-quote-core lib_tests::real_model_names_pass_and_option_or_shell_shapes_do_not` · `payload_judgment_rules.rs::the_shared_golden_agrees_with_the_one_rule` ＋ `tests/frontend/ui/identifier-rules-parity.vitest.ts`（两侧对同一份金样）· `ccm_invocation_tests.rs::every_value_is_judged_before_it_becomes_a_ccm_argument` |
+| 账号名（①，`--account`；建账号库与 `ccm --account` 同一条） | `shell-quote-core::account_name_ok` · 接在 `ccm_invocation` · 后端 `ccm/argv.rs::validate` · 后端 `accounts/manage/model.rs::name_ok`（建号 · 删号 · 登录那一行都过它；新建账号表单的即时那一句读生成物 `src/frontend/ui/generated/judgment-rules.ts`） | `shell-quote-core lib_tests::an_account_name_is_what_the_account_tool_would_have_created` · `ccm_invocation_tests.rs::every_value_is_judged_before_it_becomes_a_ccm_argument` · 后端 `accounts_face_tests.rs::init_refusals_leave_nothing_behind` · `tests/frontend/ui/identifier-rules-parity.vitest.ts`（生成物对同一份金样） |
 | 导入的凭据文件路径（②；`accounts-add` 的 `credFile`） | 后端 `accounts/manage/wire.rs::cred_path`（家目录底下的绝对路径或 `~/…` · 无 `..` 段 · 无控制符）；落盘前计划那一层再拒链接 / 空文件 / 不在（`layout.rs::plan_add`）。它不拼进任何 shell 串，只作文件管理面复制的源 | 后端 `accounts_face_tests.rs::add_refusals_leave_no_half_built_account` |
 | ssh 别名（①；`-` 开头另挡；随 `~/.ssh/config` 导入搬进后端） | 后端 `ssh_config.rs::is_safe_alias` | 后端 `dial_ssh_config_tests.rs::is_safe_alias_allowlist` |
 | 端口转发规格（①；随转发账搬进本机常驻后端，围栏在查可达表 / 拨号之前） | 后端 `forwards.rs::parse_spec` | 后端 `dial_forwards_tests.rs::the_spec_fence_stands_before_any_lookup_or_dial` |
-| 账号配置目录（②） | 全表住 `acct-core`（`config_dir_posix_ok` · `config_dir_ok` · `config_dir_char_unsafe`，全仓唯一一份）；`payload.rs::config_dir_command_safe` 与后端 `accounts_query.rs::is_safe_config_dir` 是转手的薄壳；后端 `ccm/plan.rs` 直接用 `config_dir_ok`（`control → observe` 那条禁止边不用破）· `local.rs::validate_config_dir_ps`（Windows 形，本机后端） | `local_tests.rs::every_injection_shape_is_refused_not_sanitized` · `accounts_query_tests.rs::unsafe_config_dirs_are_dropped` · `accounts_query_tests.rs::every_group_of_deceptive_characters_is_rejected_in_a_config_dir` |
+| 账号配置目录（②） | 全表住 `acct-core`（`config_dir_posix_ok` · `config_dir_ok` · `config_dir_char_unsafe`，全仓唯一一份）；后端 `accounts_query.rs::is_safe_config_dir` 是转手的薄壳；调用行渲染器（`--account-dir`）与后端 `ccm/plan.rs` 直接用 `config_dir_ok`（`control → observe` 那条禁止边不用破；任一平台形，Windows 那一格也在这里判） | `ccm_invocation_tests.rs::every_value_is_judged_before_it_becomes_a_ccm_argument` · `accounts_query_tests.rs::unsafe_config_dirs_are_dropped` · `accounts_query_tests.rs::every_group_of_deceptive_characters_is_rejected_in_a_config_dir` |
 | 远端落点路径（②） | `mcp_edit.rs::project_root`（项目 `.mcp.json` 的落点进了那台后端：这台上的绝对路径、不含 `..`）（账号库的落点由那台后端按自己的家目录算、不收外来路径：`accounts/manage/scan.rs::Roots::check`） | `mcp_edit_tests.rs::a_broken_mcp_json_is_never_overwritten_and_relative_dirs_are_refused` |
 | tmux 目标（已有会话：抓屏 · 结束 · 送键的 §34 Gate 1；并进本表 tmux 名那一行的「已有会话」那一条） | `gate_rules::existing_tmux_name_issue`：monitor 那一份 Gate 1 前检（只剩跨轨锚点在用）删了；三条路的目标由后端入口判（`kill.rs::admit_existing_name` → 同一条 `gate_rules`） | 后端 `kill_tests.rs` · `gate_singleton_guard_tests.rs::the_monitor_holds_no_gate_of_its_own` · `tests/frontend/ui/tmux-control.vitest.ts`（界面不判、原样交；后端拒了照原话说） |
-| 自由文本（②：工作目录 · 文件窗口当前目录 · 远端一次性子命令的 argv · 透传给 agent 的参数 · 登记备注 · ccm 继承来的三个变量〔启动器挪去 ③〕；拒绝集**只收 NUL / CR / LF**、**不拒 shell 元字符**，形式按各自语境；ccm 收的透传给 agent 的参数与登记备注**可以跨行**（多行初始任务是真实能力，「位置参数原样交给 claude」：LF 在单引号里 quote 挡得住，拒它是拒过头），这两格的拒绝集只收 NUL / CR） | 拒绝集 `shell-quote-core::free_text_ok`（与唯一的 quote 同住；ccm 的透传参数 · 登记备注走同住的 `arg_text_ok`）· POSIX 路径形式 `shell-quote-core::posix_free_path_ok`（载荷两处 cwd · `ccm_invocation` 的 `--cwd` · 文件窗口「在此打开终端」〔后端 `dial/terminal.rs::command_for_cwd` 拼〕）· 后端 `ccm/plan.rs::free_text_gate` / `inherited_gate`（本机语境的「绝对」）· `remote_ask.rs::ask_with` | `shell-quote-core lib_tests::free_text_refuses_exactly_nul_cr_lf_and_lets_real_names_through` · `lib_tests::an_agent_argument_may_span_lines_but_never_carries_nul_or_cr` · `plan_tests.rs::free_text_values_pass_real_names_and_refuse_what_the_quote_cannot_hold`（多行初始任务那一格正着放）· e2e `cc-spawn-uplift.sh` [14]（多行任务起得来、上总线、台账一行）· `remote_ask_tests.rs::one_shot_argv_refuses_only_what_the_quote_cannot_hold` · 后端 `dial_terminal_tests.rs::the_open_terminal_cwd_passes_real_names_and_refuses_what_quote_cannot_hold`（拼法随「窗口只交意图」搬进本机后端） · `payload_tests.rs::a_free_text_cwd_passes_real_names_and_refuses_what_quote_cannot_hold` |
+| 自由文本（②：工作目录 · 文件窗口当前目录 · 远端一次性子命令的 argv · 透传给 agent 的参数 · 登记备注 · ccm 继承来的三个变量〔启动器挪去 ③〕；拒绝集**只收 NUL / CR / LF**、**不拒 shell 元字符**，形式按各自语境；ccm 收的透传给 agent 的参数与登记备注**可以跨行**（多行初始任务是真实能力，「位置参数原样交给 claude」：LF 在单引号里 quote 挡得住，拒它是拒过头），这两格的拒绝集只收 NUL / CR） | 拒绝集 `shell-quote-core::free_text_ok`（与唯一的 quote 同住；ccm 的透传参数 · 登记备注走同住的 `arg_text_ok`）· POSIX 路径形式 `shell-quote-core::posix_free_path_ok`（`ccm_invocation` 的 `--cwd` · 文件窗口「在此打开终端」〔后端 `dial/terminal.rs::command_for_cwd` 拼〕）· 后端 `ccm/plan.rs::free_text_gate` / `inherited_gate`（本机语境的「绝对」）· `remote_ask.rs::ask_with` | `shell-quote-core lib_tests::free_text_refuses_exactly_nul_cr_lf_and_lets_real_names_through` · `lib_tests::an_agent_argument_may_span_lines_but_never_carries_nul_or_cr` · `plan_tests.rs::free_text_values_pass_real_names_and_refuse_what_the_quote_cannot_hold`（多行初始任务那一格正着放）· e2e `cc-spawn-uplift.sh` [14]（多行任务起得来、上总线、台账一行）· `remote_ask_tests.rs::one_shot_argv_refuses_only_what_the_quote_cannot_hold` · 后端 `dial_terminal_tests.rs::the_open_terminal_cwd_passes_real_names_and_refuses_what_quote_cannot_hold`（拼法随「窗口只交意图」搬进本机后端） · `ccm_invocation_tests.rs::every_value_is_judged_before_it_becomes_a_ccm_argument` |
 | 远端后端路径（`backendPath` 那一格删了：落点恒是那台的 `~/.cc-monitor/bin/ccm`，常量住 `relay-route-core`，没有外来值要判） | monitor `ssh_source.rs::BACKEND_CMD` · `sftp.rs::LANDING_REL`（流模式 · 测试连接的探针 · 部署 / 卸载 / 身份扫描 · 常驻起停都只插这一个常量）· 后端 `remote_ask.rs::command_line`（可达表不再登记路径） | `sftp_tests.rs::the_landing_holds_the_backend_bytes_and_nothing_else_is_put_there` · `exec_site_registry_tests.rs::every_remote_exec_declares_where_its_command_came_from` |
-| 启动器（③ 命令片段；本机 · 远端载荷 · ccm 三处三条规则收成一张） | `shell_quote_core::launcher_refused_char`：本机后端 `local.rs::checked_launcher`（拼进 PowerShell / bash）· `payload.rs::render_payload`（远端载荷）· 后端 `ccm/plan.rs::free_text_gate` 的 `--launcher` 那一格 | `shell-quote-core lib_tests::a_launcher_is_a_command_fragment_from_one_whitelist` · `local_tests.rs::every_injection_shape_is_refused_not_sanitized` · `payload_tests.rs::the_launcher_is_refused_when_it_carries_injection_chars` · `plan_tests.rs::a_launcher_is_one_command_fragment_from_the_shared_whitelist` |
+| 启动器（③ 命令片段；本机 · ccm 两处一张规则） | `shell_quote_core::launcher_refused_char`：本机后端 `local.rs::checked_launcher`（`--launcher` 进那一行之前）· 后端 `ccm/plan.rs::free_text_gate` 的 `--launcher` 那一格 | `shell-quote-core lib_tests::a_launcher_is_a_command_fragment_from_one_whitelist` · `local_tests.rs::bad_inputs_are_refused_before_anything_is_rendered` · `plan_tests.rs::a_launcher_is_one_command_fragment_from_the_shared_whitelist` |
 
 **与邻居的关系**：管「quote 只有一份」—— 它是②形的一半，不管①形，也不管「本侧先判」；
 `§34` 管 tmux 破坏性命令的三道门 —— 那是**动作**的门，本条是**值**的门；`§31a` 管 tmux 目标的精确形态 `=<名>:`。三条都不是本条。
@@ -2246,9 +2266,12 @@ CSP 兜底源是 `'self'` · 脚本执行面的几种放开形逐个禁 ＋ 那�
 过了才剥掉那一段交给路由（`/s/` 与 `/t/` 一样要过）⇒ 「钥匙对、表里没这一行」仍是 **404**，与 403 **可分**；三种拒法各带一句说得清是哪一问的话。
 钥匙 256 位（OS 密码学随机数），住**中转所在那台机器**的 `~/.cc-monitor/relay-key`（`0600`），由中转自己在**绑上口之后**读回或铸（只有绑上口的那一个会写）；
 拿不到钥匙 ⇒ **不起**（出声、后端照常）。钥匙**跨中转重起不变** —— 端口是固定常量，老会话手里的 URL 重起后本来就还有效，换钥匙会打断每一条活会话。
-**钥匙只从那份文件进 agent 进程自己的 env**：注入的 URL 本身不带钥匙，渲染器把钥匙段写成 `$(cat ~/.cc-monitor/relay-key)`、在那台机器的 pane shell 里展开
+**钥匙只从那份文件进 agent 进程自己的 env**：交给终端的那一行 `ccm …` 不带中转地址也不带钥匙；`ccm` 直路在自己进程里读那份文件、拼进 agent 进程的环境再 exec，
+非得经 shell 那一趟（与 `--ccm-print` 预览同形）把钥匙段写成 `$(cat ~/.cc-monitor/relay-key)`、在那台机器的 shell 里展开
 ⇒ 载荷、`tmux send-keys` 的 argv、shell 历史、终端回滚、webview 里都没有它；后端 / monitor 自己的 argv、env、日志、tee、上游、成品应答里也没有它。
-「我们的中转在不在」（`launch-endpoint` 的 `listening`）读常驻后端进程内的监听状态（中转住这里），不从外面探口 —— 口上有人 ≠ 我们的中转。
+「我们的中转在不在」由起 agent 那台的 `ccm` 在最终 exec 那一处判：这台的钥匙文件读得到、且回环端口连得上，两样都有才算在听
+（`accounts/upstream_select/endpoint.rs::relay_for_exec`）。⚠ **诚实边界**：`ccm` 是一次性进程，读不到常驻后端进程内的监听状态 ⇒
+「口上有人 ≠ 我们的中转」那一格今天没收住（钥匙文件在、口被别人占着时会被认成在听）；别名预览那一面（常驻后端里）仍读进程内的状态。
 
 **为什么不能松动**：回环 TCP 没有权限位；中转会**代入账号的凭据**去打上游 —— 门开着，同机任何进程（别的 OS 用户、浏览器里的一张网页）就能以这个账号的额度与身份发请求。
 路由键第三段（会话 id / nonce）是公开可铸的标签，**不是**认证。
@@ -2259,7 +2282,8 @@ CSP 兜底源是 `'self'` · 脚本执行面的几种放开形逐个禁 ＋ 那�
 `server_tests.rs::rk1_the_door_refuses_without_the_key_and_that_is_not_a_404` · `server_tests.rs::rk1_browser_and_rebinding_requests_are_refused_but_the_cli_shape_passes` ·
 `server_tests.rs::rk1_the_minted_key_never_shows_up_in_logs_tee_argv_env_or_upstream`（真子进程 · 零命中带正控）·
 `host_tests.rs::our_relay_listening_answers_from_the_hosts_own_state_not_from_who_answers_the_port`；
-monitor 那一半 `payload_tests.rs::the_rendered_relay_export_carries_no_key_and_a_real_shell_expands_it_from_home`；
+起会话那一半 `plan_tests.rs::the_relay_address_is_decided_at_the_final_exec_and_only_there`（`ccm` 直路在进程内把钥匙拼进 agent 的环境，非得经 shell 那一趟渲成读钥匙文件的命令替换）·
+e2e `restart-suite.sh`（换号重启经 `ccm` 起的进程环境里有中转地址，只看变量在不在）；
 写口登记 `readonly_guard` 第四层（`relay/door.rs`，门 `relay/listen.rs`）。设计与读数住。
 
 **诚实边界**：钥匙挡的是**读不到那份 `0600` 文件**的人 —— 能读你家目录的（root、你自己的进程、你起的 agent）本来就能以你的身份跑东西。
