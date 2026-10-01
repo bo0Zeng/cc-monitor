@@ -656,7 +656,7 @@ cell(
     **{
         "src/": (PART, "只有 `src/panorama-engine/`（单包全量 `cargo test`）＋ `cli_tests` 跨树读写两份生成物 `src/frontend/ui/panorama/types.ts`（〔P7〕上游 schema ＋ 自己的应答）· `src/frontend/ui/panorama/engine-contract.json`（〔PANO〕）（漂了当场重写并红）"),
         "tests/": (PART, "只有 `tests/panorama-engine/cli_tests.rs`（由 `main.rs` 的 `#[path]` 挂进来）"),
-        VENDOR: (PART, "编 `code-picture-core`（path 依赖）但不跑它的测试（那归 `ci.yml` 的 `-p code-picture-core`）"),
+        VENDOR: (PART, "编 `code-picture-core`（path 依赖）但不跑它的测试（那归 `code-picture-core` 那一格）"),
         "src/frontend/shell/": (PART, "编 `guard-core`（dev 依赖）但不跑它的测试"),
     },
 )
@@ -708,10 +708,9 @@ cell(
     },
 )
 
-E2E_NOTE = ("七套后端二进制 e2e 之一（`ccm` 四套 ＋ 第二波 T4 接进来的令牌两套 ＋ 〔TAIL〕`backend-cc-bus`）。`e2e/` 下的套件今天远不止四套 —— "
-            "`ccm-acceptance` / `ccm-pretrust` / `cc-spawn-uplift` 等**都不在这道门里**"
-            "（那笔账逐字记在本文件头注引的 `gate.sh` 那一段：一次真行为变更的 71 条红里"
-            "「这道门看得见 9 条、看不见 62 条」）")
+E2E_NOTE = ("`gate.sh` 里 `run_e2e` 那一批之一：`ci.yml` 里每一套带 `assert-pass-floor.sh` 地板的 e2e 都在这里"
+            "（两向由 `shared_crate_registry` 那条映射判据钉着），另加 `ci.yml` 没有地板行的令牌两套。"
+            "⚠ `package.json` 里不带地板的那几套（`graylight` · `f40` 全链级）不在这道门里，理由登记在 `e2e_gate_registry` 的 `EXEMPT`")
 for suite, anchor in [
     ("ccm tests/e2e/ccm-print-parity", "run_e2e ccm-print-parity 12"),
     ("ccm tests/e2e/ccm-rbind-title", "run_e2e ccm-rbind-title  8"),
@@ -735,6 +734,14 @@ for suite, anchor in [
     ("ccm tests/e2e/p3t-local-tmux", "run_e2e p3t-local-tmux        11"),
     # 〔FIX3〕就地 resume 复活清灰（后端帧级），同样只挂在不通电的 `ci.yml` 上。
     ("ccm tests/e2e/resume-frames", "run_e2e resume-frames          7"),
+    # `ci.yml` 有地板行、此前只在 CI 上跑的七套。
+    ("ccm tests/e2e/cc-spawn-uplift", "run_e2e cc-spawn-uplift       72"),
+    ("ccm tests/e2e/inbound-frames", "run_e2e inbound-frames        32"),
+    ("ccm tests/e2e/graylight-frames", "run_e2e graylight-frames      13"),
+    ("ccm tests/e2e/backend-fork", "run_e2e backend-fork          10"),
+    ("ccm tests/e2e/tmux-target", "run_e2e tmux-target           26"),
+    ("ccm tests/e2e/cc-bus-queue-drain", "run_e2e cc-bus-queue-drain    43"),
+    ("ccm tests/e2e/resume", "run_e2e resume                17"),
 ]:
     cell(
         suite,
@@ -748,6 +755,86 @@ for suite, anchor in [
                                            "（`K-R48` 第二拍起）——买的是行为，不是它的源码"),
         },
     )
+
+# ── `ci.yml` 里此前只在 CI 上跑的那几步，各收成一格 ───────────────────────────────
+cell(
+    "e2e-smoke",
+    anchor="run_gate e2e-smoke '步数：",
+    cwd="仓根",
+    cmd="gate_ci_steps：照 ci.yml 原样跑 python syntax compile · G-A/G-C 覆盖面地板 · exec-bit guard",
+    **{
+        "tests/e2e/": (PART, "只判 `tests/e2e/*.py` 过不过 `py_compile`（语法），shell 套件一份不跑"),
+        "src/shared/": (PART, "只判带 shebang 的文件在 git 里是不是 100755（`tests/e2e/exec-bit-guard.sh`）"),
+        ".github/": (PART, "那张「每套 e2e 都带断言数地板」的自检：数的是 `ci.yml` 自己的调用行与套件/地板对"),
+    },
+)
+cell(
+    "clippy",
+    anchor="run_gate clippy '不是数出来的数",
+    cwd="src/frontend/shell/",
+    cmd="cargo clippy --workspace --all-targets",
+    **{
+        "src/frontend/shell/": (PART, "全部 workspace 成员的全部 target 过 clippy；不带 `-D warnings` ⇒ 只有 deny 档 lint 与编译错红"),
+        "tests/": (PART, "`tests/frontend/shell/` 等由 `#[path]` 挂进 test target 的 `.rs` 一起过 clippy；`.ts` 一份不碰"),
+    },
+)
+cell(
+    "appbuild",
+    anchor="run_gate appbuild '不是数出来的数",
+    cwd="src/frontend/shell/",
+    cmd="cargo build",
+    **{
+        "src/frontend/shell/": (PART, "根包 `monitor` 的 lib 与两个二进制在 Linux 上真编真链；test 档与别的成员不编"),
+    },
+)
+cell(
+    "clippy-backend",
+    anchor="run_gate clippy-backend '不是数出来的数",
+    cwd="src/backend/",
+    cmd="cargo clippy --all-targets",
+    **{
+        "src/backend/": (PART, "单包全部 target 过 clippy；不带 `-D warnings` ⇒ 只有 deny 档 lint 与编译错红"),
+        "tests/": (PART, "`tests/backend/` 由 `#[path]` 挂进 test target 的 `.rs` 一起过 clippy"),
+    },
+)
+cell(
+    "code-picture-core",
+    anchor="run_gate code-picture-core '单包 vendor code-picture-core",
+    cwd="src/panorama-engine/vendor/code-picture-core/",
+    cmd="cargo test -p code-picture-core",
+    **{
+        VENDOR_PANO: (FULL, "vendor 那份 crate 自己的全部判据（lib ＋ doctest），与 `ci.yml` 同一条命令；只读地跑，源码不动"),
+    },
+)
+cell(
+    "coverage",
+    anchor="run_gate coverage '这一趟 vitest（带 v8 覆盖率）",
+    cwd="仓根",
+    cmd="gate_ci_steps：照 ci.yml 原样跑 npm run coverage ＋ node tests/scripts/assert-coverage-floors.mjs",
+    **{
+        "src/": (PART, "覆盖率只量 `src/**/*.ts`（`vitest.config.ts` 的 include）：全局阈值 ＋ 逐文件地板 ＋ 零覆盖棘轮；tsx 套件与 `.tsx` 不进分母"),
+        "tests/": (PART, "`tests/**/*.vitest.ts` 带插桩再跑一遍；`.rs` 与 tsx 套件不跑"),
+        "tests/scripts/": (PART, "跑 `tests/scripts/assert-coverage-floors.mjs` 这一份（逐文件地板与零覆盖清单住在它里面）"),
+    },
+)
+cell(
+    "audit",
+    anchor="run_gate audit '步数：",
+    cwd="仓根",
+    cmd="gate_ci_steps：照 ci.yml 原样跑 npm audit --omit=dev --audit-level=high",
+    **{
+        ROOTFILES: (PART, "只判 `package-lock.json` 里的生产依赖在 registry 当下的漏洞库里有没有 high 及以上；dev 依赖不看；要联网"),
+    },
+)
+cell(
+    "weak-net",
+    anchor="run_gate weak-net '台架实打的 PASS 条数",
+    cwd="仓根",
+    cmd="gate_ci_steps：照 ci.yml 原样跑 build-image.sh ＋ assert-floor.sh <地板>，PASS 与地板恒等",
+    **{
+        "tests/e2e/": (PART, "只跑 `tests/e2e/weak-net/` 那套台架（docker 里自建网络造网况）；别的套件不碰"),
+    },
+)
 
 # 🔴 〔墓碑 09-19〕**`pb check` 那一格的登记整块删掉。**
 #   那一格 09-18 已按用户拍板**从 `gate.sh` 整格删除**（`PB_WS` / `planned-build` 在
@@ -1457,12 +1544,30 @@ for _s in ("backend-rbind-token", "rbind-token-endtoend"):
            "⇒ 云端这一格零覆盖。本格只把它接进**本机**执行链，不替那件待拍板的事拍板")
 for _s in ("ccm-print-parity", "ccm-rbind-title", "ccm-cli", "ccm-contract-parity", "backend-cc-bus",
            "backend-gate2", "local-backend", "restart-frames", "restart",
-           "backend-tmux-late-server", "backend-sessions-rewatch", "p3t-local-tmux", "resume-frames"):
+           "backend-tmux-late-server", "backend-sessions-rewatch", "p3t-local-tmux", "resume-frames",
+           "cc-spawn-uplift", "inbound-frames", "graylight-frames", "backend-fork", "tmux-target",
+           "cc-bus-queue-drain", "resume"):
     invoke("ccm tests/e2e/" + _s, ELSEWHERE,
            "云端有一条同套件的 `assert-pass-floor.sh` 调用行。"
            "⚠ 那几条调用行**在 GitHub runner 上一趟都没跑过**（本仓不推送）—— "
            "`ci.yml` 里 `weak-net` 那一步的头注已经为同一笔账登记过一次",
            anchor="assert-pass-floor.sh " + _s)
+invoke("e2e-smoke", ELSEWHERE, "`e2e-smoke` 那个 job 跑同样三步（本格就是从那儿原样取的命令）",
+       anchor="name: python syntax compile")
+invoke("clippy", ELSEWHERE, "`rust` 那个 job（windows-latest）跑同一条命令。⚠ 云端在 Windows 上、本格在 Linux 上",
+       anchor="cargo clippy --workspace --all-targets")
+invoke("appbuild", ELSEWHERE, "`linux-app-build` 那个 job 跑同一条命令（先 `npm run build`）",
+       anchor="name: cargo build (full app binary, not --lib)")
+invoke("clippy-backend", ELSEWHERE, "`backend` 那个 job（ubuntu-latest）在 `src/backend` 上跑同一条命令",
+       anchor="run: cargo clippy --all-targets")
+invoke("code-picture-core", ELSEWHERE, "`rust` 那个 job 在 vendor 目录里跑同一条命令",
+       anchor="cargo test -p code-picture-core")
+invoke("coverage", ELSEWHERE, "`frontend` 那个 job 跑同样两步（本格就是从那儿原样取的命令）",
+       anchor="run: npm run coverage")
+invoke("audit", ELSEWHERE, "`frontend` 那个 job 跑同一步（本格就是从那儿原样取的命令）",
+       anchor="npm audit --omit=dev --audit-level=high")
+invoke("weak-net", ELSEWHERE, "`weak-net` 那个 job 跑同样两步；⚠ 云端那一步按 `at-least` 判，本格按恒等判",
+       anchor="bash tests/e2e/weak-net/assert-floor.sh")
 
 # ── 云端零覆盖的那几格：明写缺什么，**不许给锚点** ──────────────────────────────
 invoke("muslbuild", NOWHERE,

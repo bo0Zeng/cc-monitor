@@ -122,7 +122,8 @@ jobs:
           }
 
       # F09：vendor code-picture-core 是 path 依赖、**非** workspace 成员 → `--all` 测不到它。
-      # 显式 `-p` 把它的 25 个测试跑起来（tree-sitter 符号索引 + git 锚点 + SQLite 内核）。
+      # 显式 `-p` 把它的测试跑起来（tree-sitter 符号索引 + git 锚点 + SQLite 内核）。
+      # 本地门禁 `tests/scripts/gate.sh` 的 `code-picture-core` 那一格在同一目录跑同一条命令。
       # 不动 vendor crate 源码/Cargo.toml（红线：别误伤 vendor）。
       # 〔RM1f · V108 后半句〕monitor 不再依赖它（摘掉了内嵌引擎）⇒ 在 `src/frontend/shell` 里 `-p` 选不到它了；
       #   今天链它的只剩全景小程序 ⇒ 这一步换到那棵树里跑（同一个包、同一份 vendor 源码，`-p` 照旧选中依赖图里的它）。
@@ -975,9 +976,9 @@ jobs:
       # 而那条拆法正是为了同一族缺陷立的。⇒ **搬步骤，不搬工具链。**
       #
       # ⚠ **也不是「删掉」** —— 删之前现打问过「题面是不是已经被别的门覆盖了」，答案是**没有**：
-      #   · `tests/scripts/gate.sh` 那四行 `run_e2e` 跑的是 `ccm-print-parity` / `ccm-rbind-title` /
-      #     `ccm-cli` / `ccm-contract-parity`，**不含 `cc-spawn-uplift`**；而且那是**本地出货门禁**，
-      #     不是 CI —— `K-R119` 那一趟的读数逐字就是「本地 16 格全绿 ≠ CI 会绿」。
+      #   · 本地出货门禁 `tests/scripts/gate.sh` 今天对本文件里每一套带 `assert-pass-floor.sh` 地板的 e2e 都有一行
+      #     `run_e2e`（四套全在，含 `cc-spawn-uplift`；两向由 `shared_crate_registry` 那条映射判据钉着）——
+      #     但那是本机门禁，不是 CI：本地全绿 ≠ CI 会绿。
       #   · 现打整份 `ci.yml`：这四个套件名各自**只**出现在搬走的那一步上，别的 job 一条都没有。
       #   ⇒ 删掉 = 把四套真机覆盖从云端交出去。**搬家是唯一不丢覆盖的处置。**
       #
@@ -1340,7 +1341,7 @@ jobs:
       #    不是「少跑一格」（`gate_check_only`）。而这一行整体与 `INVOCATION` 里标着
       #    「进云端子集」的那几格由 `C8d` 两向对拍 —— 这一行是那张登记的**唯一**第二住址，
       #    而它被钉住了。
-      # ⚠ 跳过的那 18 格 `gate.sh` 会逐字印出来，且裁决行会是 `GATE: PARTIAL` 而**不是**
+      # ⚠ 跳过的那几格 `gate.sh` 会逐字印出来，且裁决行会是 `GATE: PARTIAL` 而**不是**
       #    `GATE: OK` —— `GATE: OK` 那四个字只许有一个意思：盘上每一格都跑过了。
       - name: 跑本地门禁的云端子集（GATE_ONLY，裁决行只会是 PARTIAL）
         env:
