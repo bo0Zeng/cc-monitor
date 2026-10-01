@@ -205,3 +205,64 @@ pub struct VerifyReport {
 pub struct AccountLoginCmd {
     pub cmd: String,
 }
+
+/// `accounts-mcp-remove`：从这台各号共用的用户级 MCP 里删一条（所有号一起撤）。
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../../frontend/ui/generated/"))]
+pub struct AccountMcpNameArgs {
+    pub name: String,
+}
+
+/// `accounts-mcp-pick`：两边都改了的那一条，用哪一版。`from` = 那个号里的那一版；缺席 / `null` = 共享的那一版。
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../../frontend/ui/generated/"))]
+pub struct AccountMcpPickArgs {
+    pub name: String,
+    #[cfg_attr(test, ts(optional))]
+    pub from: Option<String>,
+}
+
+/// 冲突里的一版（只带号名，不带定义 —— 定义里可能有密钥）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../../frontend/ui/generated/"))]
+pub struct AccountMcpChoice {
+    /// 挑这一版时交回去的 `from`（`None` = 共享的那一版）。
+    pub from: Option<String>,
+    /// 此刻是这一版的那几个号。
+    pub holders: Vec<String>,
+    /// 这一版是「没有这一条」（在 cc-monitor 里删过）。
+    pub gone: bool,
+}
+
+/// 两边都改了、等用户挑的一条。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../../frontend/ui/generated/"))]
+pub struct AccountMcpConflict {
+    pub name: String,
+    pub choices: Vec<AccountMcpChoice>,
+}
+
+/// `accounts-mcp-read` · `accounts-mcp-remove` · `accounts-mcp-pick` 的成品：这台各号共用的用户级 MCP 此刻的样子。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Default)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../../frontend/ui/generated/"))]
+pub struct AccountMcpView {
+    /// 这台有没有账号库（没有 ⇒ 不做同步，下面几格都是空的）。
+    pub enabled: bool,
+    /// 共享集合里的名字（排好序）。
+    pub servers: Vec<String>,
+    pub conflicts: Vec<AccountMcpConflict>,
+    /// 这一趟改写了哪几个号（只读那一条恒空）。
+    pub changed: Vec<String>,
+    /// 提示（某个号读不出来 · 这一趟没写进去）。
+    pub notes: Vec<String>,
+}

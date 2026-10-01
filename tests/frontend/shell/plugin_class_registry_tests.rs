@@ -17,9 +17,8 @@ enum Semantics {
 
 /// 轴二（`C21` 三档 → **几个二进制**）。⚠ **提案，未获批**。
 ///
-/// ⚠ `BuiltIn` 今天**没有候选落在它上面** —— 那本身是一条读数
-/// （`C21` 那三档里，今天有真实实例的只有 `Plugin` 与 `LocalBackend`（且本机后端那格还是提案）），
-/// 不是死代码。删掉它等于让「三档」在类型上悄悄变成两档，
+/// ⚠ `BuiltIn` 与 `LocalBackend` 今天**没有候选落在它们上面** —— 那本身是一条读数
+/// （`C21` 那三档里，今天有真实实例的只有 `Plugin`），不是死代码。删掉它等于让「三档」在类型上悄悄变成两档，
 /// 而下一个人再想把某个候选归到「内建」时，会发现这个选项根本不存在。
 #[allow(dead_code)]
 #[derive(Debug, PartialEq, Eq)]
@@ -53,7 +52,8 @@ struct Candidate {
     gap: &'static str,
 }
 
-/// ★ `E4` 那张表的四行。**分类两列是提案；`today`/`gap` 两列才是本模块钉的东西。**
+/// ★ `E4` 那张表今天还在仓里的三行（`code-picture` 那一行随代码全景整条摘掉删了：它在 cc-monitor 里零实现，
+/// 只作为扩展经扩展页装）。**分类两列是提案；`today`/`gap` 两列才是本模块钉的东西。**
 const REGISTERED: &[Candidate] = &[
     Candidate {
         id: "cc-bus",
@@ -65,18 +65,6 @@ const REGISTERED: &[Candidate] = &[
         gap:
             "还差「插件」这个名分（`EU3`：粒度是命令还是包）—— **通用口那一半 `K-W1A` 已经补上**：\
                   今天那处口不再是 cc-bus 专用的，壳只是它的第一个消费者",
-    },
-    Candidate {
-        id: "code-picture",
-        // 住址从 vendor 副本换到那个小程序：今天「它」是后端经插件口起的那个独立二进制。
-        home: "src/panorama-engine",
-        semantics: Semantics::Plugin,
-        shape: Shape::LocalBackend,
-        today: "只装引擎的**独立小程序**（`src/panorama-engine`，path 依赖 vendor crate）；\
-                    本机与远端都由那台机器的后端经插件通用调用口起它。monitor 与 backend 两棵树**零引擎**",
-        gap: "无差 —— `EU5` 兑现：轴二（本机后端那一档）对上了，形状是「后端经插件口按需起的独立二进制」。\
-                  〔墓碑 —— 改前这一格写着「★ **今天对不上**：轴二说本机后端，而 monitor 侧是内嵌。\
-                  `E10` 裁『本区不做』、待决 `EU5` 记着这笔账」；`today` 那一格写着「由 path 依赖**编进 monitor**」。〕",
     },
     Candidate {
         id: "cc-spawn",
@@ -246,7 +234,7 @@ fn ccm_per_agent_fns() -> Vec<String> {
 /// cc-bus **专有**的数据布局针（与后端的 `cc_bus_boundary_guard` 同一组）。
 ///
 /// ⚠ 运行时拼：写成字面量的话，本文件就成了下一个扫描型判据的假语料
-/// （`panorama_seam_registry` 头注逐字记过「判据的针不只会读到自己，还会喂给别人」）。
+/// （判据的针不只会读到自己，还会喂给别人）。
 /// ⚠ 只留 cc-bus **专有**的名字：那条判据第一版把 `.jsonl` 列进来，
 /// 误伤了读 Claude 转录的两个文件 —— 判据一旦误伤，它的诊断文案就成了假话。
 fn bus_data_needles() -> Vec<String> {
@@ -261,14 +249,14 @@ fn bus_data_needles() -> Vec<String> {
 
 // ───────────────────────────── 判据 ─────────────────────────────
 
-/// `EF01-Y1`：登记表就是 `E4` 点名的那四个候选，**一个不多一个不少**，且住址不烂。
+/// `EF01-Y1`：登记表就是 `E4` 点名、今天还在仓里的那三个候选，**一个不多一个不少**，且住址不烂。
 #[test]
-fn the_registry_covers_exactly_the_four_candidates_the_charter_names() {
+fn the_registry_covers_exactly_the_candidates_the_charter_names_that_still_live_here() {
     let mut ids: Vec<&str> = REGISTERED.iter().map(|c| c.id).collect();
     ids.sort_unstable();
     assert_eq!(
         ids,
-        vec!["cc-bus", "cc-spawn", "ccm", "code-picture"],
+        vec!["cc-bus", "cc-spawn", "ccm"],
         "分类表的候选集变了。\n\
              ⇒ **别直接改这里**：`E4` 那张表是定框条款（且今天还没获批），\
              多一个候选意味着先去那张表里答完两轴，再回来登记它今天的形态。"
@@ -314,9 +302,7 @@ fn every_candidate_answers_both_axes_and_states_its_gap() {
     assert!(
         unanswered.is_empty(),
         "这些格子没答：{unanswered:?}\n\
-             ⇒ `E3` 逐字「每个候选必须**同时**答两轴，缺一轴的结论不算结论」。\
-             实测过一次代价：`code-picture` 当初只答了轴二（local_backend）没答轴一，\
-             于是 monitor 侧内嵌那笔账拖到 `E10` 才被量出来。"
+             ⇒ `E3` 逐字「每个候选必须**同时**答两轴，缺一轴的结论不算结论」。"
     );
     assert!(
         silent.is_empty(),
@@ -432,133 +418,6 @@ fn cc_bus_is_reached_only_through_its_command_surface_today() {
              ⇒ 本表说 cc-bus 那格「零文件格式耦合」，而那句话完全压在那条判据上。\
              `E6` 说的是**每加一个插件加它自己那组专有针**（针只增不减，且不许用一根通用针盖住所有插件）\
              —— 所以这个数变大是好事，但要有人当场看见。"
-    );
-}
-
-/// `EF01-Y4`：`code-picture` 今天**住它自己的小程序里**，**不在 monitor 里、也不在后端里**。
-///
-/// 〔V108 后半句「之后本机也走这条路、monitor 摘内嵌引擎」〕这一格原来是本表唯一一处
-/// 「提案与现状对不上」（编进 monitor），钉成会红的；本机对称那一拍把它**对上了** ——
-/// 钉子干对了活（当场红：「那条 vendor path 依赖不见了」），而断言的主语跟着事实换：
-/// ① monitor 清单**零**那条依赖、monitor 源码树**零**引擎词；② 小程序清单里那条 path 依赖**整行**在；
-/// ③ ④ backend 清单与源码树零命中（原样）。
-/// 〔改前测试名 `code_picture_is_compiled_into_the_monitor_and_absent_from_the_backend`〔散文墓碑〕。〕
-#[test]
-fn code_picture_lives_in_its_own_program_and_neither_in_the_monitor_nor_the_backend() {
-    // ① monitor 侧：清单里零那条依赖（剥 `#` 注释后按词找），源码树生产段零引擎词。
-    let cargo =
-        guard_core::strip_hash_comment_lines(&must_read("src/frontend/shell/Cargo.toml", 1_000));
-    assert!(
-        !guard_core::contains_word(&cargo, "code-picture-core ="),
-        "monitor 的 `Cargo.toml` 又依赖上了 vendor 全景引擎 —— monitor 已经摘掉内嵌引擎（后半句），\
-             全景本机远端都经那台机器的后端起小程序。要回到内嵌，先去 `EU5` 把账改了。"
-    );
-    let root = repo_root();
-    let monitor_files = guard_core::scan_tree!(&root.join("src/frontend/shell/src"), &["rs"]);
-    assert!(
-        monitor_files.len() >= 80,
-        "只遍历到 {} 个 monitor 源文件 —— 遍历坏了，本条此刻是空转的",
-        monitor_files.len()
-    );
-    // 〔RM1f 死值验 K15b 逼出来的〕两根针都要：`contains_word` 把 `_` 当词内字符，只拿 `code_picture`
-    // 认不出 `code_picture_core`（真正的导入形）—— 首刀往 monitor 生产段塞一行 `"code_picture_core"`，本条照绿。
-    let words = [
-        format!("code{}picture", '_'),
-        format!("code{u}picture{u}core", u = '_'),
-    ];
-    let in_monitor: Vec<String> = monitor_files
-        .iter()
-        .filter(|(_, src)| {
-            let prod = guard_core::production_code(src);
-            words.iter().any(|w| guard_core::contains_word(&prod, w))
-        })
-        .map(|(p, _)| p.to_string_lossy().replace('\\', "/"))
-        .collect();
-    assert!(
-        in_monitor.is_empty(),
-        "monitor 的源码树（生产段）里又出现了全景引擎：{in_monitor:?}"
-    );
-    // ② 小程序那一侧：那条 path 依赖**整行**在（`pin_line` 而不是子串 —— 事实就是「有这么一行」；
-    //    用整行相等是刻意的：子串会被「path 改指别处」这种撑大式改动从缝里溜过去）。
-    let program = must_read("src/panorama-engine/Cargo.toml", 300);
-    let dep = format!(
-        "code-picture-core = {} path = \"vendor/code-picture-core\" {}",
-        '{', '}'
-    );
-    guard_core::pin_line(&program, &dep).unwrap_or_else(|e| {
-        panic!(
-            "全景小程序的 `Cargo.toml` 里那条 vendor path 依赖不见了或变形了：{e}\n\
-                 ⇒ 本表 `code-picture` 那一行的 `today` 说它住这个小程序里。真换了形态，先改那一行。"
-        )
-    });
-
-    // ② backend 侧的依赖清单：零命中（**第一层**；③ 是第二层，扫源码树）。
-    //    ⚠ 这两层守的是「**vendor 全景引擎不许进 backend**」，**不是** `C18`「依赖树零 C」——
-    //    后者**已被推翻（08-29）**，盘上逐字「~~**C18** backend 不引 C 生态链~~ 已被推翻（08-29）」
-    //    （住址 backend-consolidation 的；现行版本是 `K30`）。
-    //    **规矩没变，换的是理由** —— 新理由（`C21` ＋ 实测代价）写在下面两条的失败文案里，
-    //    刻意各写一份：谁踩到哪一条，就只看得到哪一段字。
-    let backend_cargo =
-        guard_core::strip_hash_comment_lines(&must_read("src/backend/Cargo.toml", 500));
-    assert!(
-        !guard_core::contains_word(&backend_cargo, "code-picture-core"),
-        "backend 的**依赖树**里出现了 vendor 全景引擎（`code-picture-core`）——\
-             这一条今天仍是红线，不是权衡项。\n\
-             ⚠ **别拿 `C18` 当它的理由**：那条「backend 不引 C 生态链」**已被推翻** ——\
-             盘上逐字「~~**C18** backend 不引 C 生态链~~ **已被推翻（08-29）**」\
-             （住址 backend-consolidation 的；现行版本是 `K30`）。\
-             **规矩没变，换的是理由**，而撑着它的两样就写在这里，不用去别处找：\n\
-             ① `C21`〔用户 08-14 当面裁〕逐字「code-picture 走『一等公民 + 独立二进制』（local_backend），\
-             不是第三方插件，**也不编进 backend**」—— 这一条是主理由；\n\
-             ② 实测代价（`K-R2` 的 `§0b`，09-04 沙箱现打，量于 `e1944e8`，\
-             与发版同版本的 zig 0.14.0 + cargo-zigbuild 0.23.0，同一趟同一提交的基线）：\
-             backend 二进制**每架构 +18.87～18.88 MB**（x86_64 4.55→23.43 · aarch64 4.07→22.94，×5.15–5.64），\
-             而安装包内嵌两个架构 ⇒ **+37.75 MB**（`rusqlite(bundled)` 是整份 SQLite C 源码 + 9 门 tree-sitter grammar）。\
-             而 `K30③`「体积在预算内」的**那个预算今天没有人定过** ⇒ 今天没有账能证明它在预算内。\n\
-             ⚠ **盘上流传的两个旧数别再抄**：「3.5 MB → 17.43 MB」**分母与增量都馊了**\
-             （旧增量 +13.93 MB，少算约 5 MB）；「aarch64 交叉编译当场失败」是**裸 `cargo build`** 在\
-             没装 `aarch64-linux-musl-gcc` 的机器上量的，换成发版真正在用的 zigbuild，\
-             `K-R2` 实测**两个架构都 EXIT=0** ⇒ **交叉编译今天不是拦路虎**，是尺子换了，不是结论翻了。"
-    );
-
-    // ③ backend 侧**整棵源码树**：零命中（第二层 —— 这一层 `protocol_doc_guard` 够不到，
-    //    它只扫协议面那两个文件）。
-    let root = repo_root();
-    let files = guard_core::scan_tree!(&root.join("src/backend"), &["rs"]);
-    assert!(
-        files.len() >= 30,
-        "只遍历到 {} 个后端源文件 —— 遍历坏了，本条此刻是空转的（08-14 实测 53）",
-        files.len()
-    );
-    let needle = format!("code{}picture", '_');
-    let mut hits: Vec<String> = Vec::new();
-    for (path, src) in &files {
-        if guard_core::contains_word(&guard_core::production_code(src), &needle) {
-            hits.push(
-                path.strip_prefix(&root)
-                    .unwrap_or(path)
-                    .to_string_lossy()
-                    .replace('\\', "/"),
-            );
-        }
-    }
-    assert!(
-        hits.is_empty(),
-        "backend 的**源码树**（生产段）里出现了全景引擎：{hits:?}\n\
-             ⇒ 本条钉的是「**vendor 全景引擎不许进 backend**」—— 上面 ② 钉依赖树，这一条钉源码树。\n\
-             ⚠ **别拿 `C18` 当它的理由**：那条「backend 的依赖树里不许出现 C」**已被推翻** ——\
-             盘上逐字「~~**C18** backend 不引 C 生态链~~ **已被推翻（08-29）**」\
-             （住址 backend-consolidation 的；现行版本是 `K30`）。\
-             **规矩没变，换的是理由**，而撑着它的两样就写在这里，不用去别处找：\n\
-             ① `C21`〔用户 08-14 当面裁〕逐字「code-picture 走『一等公民 + 独立二进制』（local_backend），\
-             不是第三方插件，**也不编进 backend**」⇒ 要给后端全景能力，答案是本机后端，不是内嵌\
-             （独立二进制，它自己那份 C 依赖跟着它走）；\n\
-             ② 实测代价（`K-R2` 的 `§0b`，09-04 沙箱现打，量于 `e1944e8`，与发版同版本的 zigbuild）：\
-             backend 二进制**每架构 +18.87～18.88 MB**（×5.15–5.64），安装包内嵌两个架构 ⇒ **+37.75 MB**；\
-             而 `K30③`「体积在预算内」的**那个预算今天没有人定过** ⇒ 今天没有账能证明它在预算内。\n\
-             ⚠ **盘上流传的两个旧数别再抄**：「3.5 MB → 17.43 MB」**分母与增量都馊了**（旧增量少算约 5 MB）；\
-             「aarch64 交叉编译当场失败」是**裸 `cargo build`** 在没装 `aarch64-linux-musl-gcc` 的机器上量的，\
-             换成发版真正在用的 zigbuild，`K-R2` 实测**两个架构都 EXIT=0** ⇒ **交叉编译今天不是拦路虎**。"
     );
 }
 

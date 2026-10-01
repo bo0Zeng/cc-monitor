@@ -1,8 +1,7 @@
 //! 守的要求（用户裁决，逐字）：「产物（cc-monitor 仓）不能引用任何仓外的东西；产物文档只描述现状，不能引用任何开发文档。」
 //!
-//! 人群：`git ls-files` 的全部文本文件。跳过三类：含 NUL 的二进制（与 git 判二进制同一口径）；
-//! 锁文件（`Cargo.lock` · `package-lock.json`：工具写的依赖清单，里面没有人写的文字）；
-//! 上游原样拷来的源码（`src/panorama-engine/vendor/`：只照上游改，里面的字是上游写的）。
+//! 人群：`git ls-files` 的全部文本文件。跳过两类：含 NUL 的二进制（与 git 判二进制同一口径）；
+//! 锁文件（`Cargo.lock` · `package-lock.json`：工具写的依赖清单，里面没有人写的文字）。
 //! 判定：逐行过检测网，命中集 == ∅。点名仓里一份 `.md` 的（`INVARIANTS §48.1` · `IPC-PROTOCOL §10`）是仓内引用，放过。
 //!
 //! 本文件不排除：网眼与夹具都在运行期拼，它在人群里照扫。
@@ -19,9 +18,6 @@ use std::path::{Path, PathBuf};
 
 /// 锁文件：工具生成的依赖清单。
 const LOCK_FILES: &[&str] = &["Cargo.lock", "package-lock.json"];
-
-/// 上游原样拷来的源码树（副本只照上游改）。
-const UPSTREAM_COPIES: &[&str] = &["src/panorama-engine/vendor/"];
 
 /// 仓根（本 crate 住 `src/common/guard-core`）。
 fn repo() -> PathBuf {
@@ -95,10 +91,7 @@ fn tracked_texts(root: &Path) -> Vec<(String, String)> {
     let mut texts = Vec::new();
     for rel in String::from_utf8_lossy(&out.stdout).split('\0') {
         let name = rel.rsplit('/').next().unwrap_or(rel);
-        if rel.is_empty()
-            || LOCK_FILES.contains(&name)
-            || UPSTREAM_COPIES.iter().any(|d| rel.starts_with(d))
-        {
+        if rel.is_empty() || LOCK_FILES.contains(&name) {
             continue;
         }
         let p = root.join(rel);

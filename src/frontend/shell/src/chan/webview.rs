@@ -158,8 +158,7 @@ pub(crate) fn cancel_inflight(id: &str) -> bool {
 }
 
 /// 主界面撤掉一问（`src/comms/inward/chan.ts`：`Budget.cancel` 拨下 ⇒ 带着那一问的编号发这一条）。
-/// 撤单手柄拨下 ⇒ `router::settle` 丢掉那次调用 ⇒ `inbound_client` 的放弃守卫补发 `cancel{target}` ⇒ 后端可取消档停下
-/// （全景：小程序连同 `timeout` 前缀那一组子进程被杀）。
+/// 撤单手柄拨下 ⇒ `router::settle` 丢掉那次调用 ⇒ `inbound_client` 的放弃守卫补发 `cancel{target}` ⇒ 后端可取消档停下。
 #[tauri::command]
 pub fn chan_cancel(id: String) -> bool {
     cancel_inflight(&id)

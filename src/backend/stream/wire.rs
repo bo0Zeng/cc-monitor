@@ -611,17 +611,6 @@ pub enum Frame {
         cell: serde_json::Value,
     },
 
-    /// **一条长活此刻的一格进度**（今天：`panorama` 建索引那一档）。
-    ///
-    /// `ticket` = 发起方在请求里交的票（进度流 `progress/<ticket>` 的名字，本后端只当不透明的串回填）；
-    /// `cell` = 那个活自己报的一格（一个 JSON 对象，原样；全景是上游 `IndexProgress{phase, done, total}`），本后端不解释。
-    /// 走应答通道，但**可丢**（满了丢这一格，`stream::inbound::Progress`）：每格是一整份快照，下一格补上；结局照旧在应答里。
-    /// 旧 monitor / 仓外 aterm 不认这个 kind ⇒ 忽略（additive）。
-    Progress {
-        ticket: String,
-        cell: serde_json::Value,
-    },
-
     /// **中转抄出来的一个 SSE 事件**（或一个响应的收尾）。
     ///
     /// 常驻后端会发（中转住在它进程里，`relay::host`；本机远端同形）。
@@ -796,8 +785,6 @@ impl Frame {
             Frame::Transfer { .. } => false,
             // 测试连接的进度 / 结局：同上（走应答通道）。
             Frame::Probe { .. } => false,
-            // 长活的一格进度：每格是整份快照、结局在应答里 ⇒ 丢一格下一格补上（它自己就是 `try_send` 发的）。
-            Frame::Progress { .. } => true,
             // SSE 只保快：它说的事 jsonl 那一侧都有（落盘保对），丢了由位置号 `n` 原位说出来。
             // ⚠ 它**不走**出方向那条通道（走 tap 自己那条），列在这里只为穷尽。
             Frame::Tap { .. } => true,
@@ -834,7 +821,6 @@ impl Frame {
             Frame::LinkEnd { link, .. } => ("link_end", Some(link.clone())),
             Frame::Transfer { id, .. } => ("transfer", Some(id.clone())),
             Frame::Probe { ticket, .. } => ("probe", Some(ticket.clone())),
-            Frame::Progress { ticket, .. } => ("progress", Some(ticket.clone())),
             Frame::Tap { stream, .. } => ("tap", Some(stream.clone())),
             Frame::SessionRuns { sid, .. } => ("session_runs", Some(sid.clone())),
         };

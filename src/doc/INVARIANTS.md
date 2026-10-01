@@ -176,7 +176,7 @@ monitor 进程**一个字节都不直接写用户文件**。rc / `$PROFILE` / �
 它**只为「把这个进程整体挪到别处跑」而存在**（跑自动化测试、跑一次性复算），**不是**给用户搬家用的设置面（设置页「数据位置」只读展示）。规矩四条：
 1. 只认**绝对路径**；空串 == 没设（shell 里 `CCM_DATA_DIR=` 是最常见的「取消」写法）。
 2. 给了但不合法（相对路径）⇒ **`None`，不退回用户真 profile** —— 退回去等于让一趟以为自己被隔离了的自动化去写用户的东西，而且没有一句话；宁可各消费者**可见地降级**。
-3. 它挪的是**整个** data dir（`config.json` · 凭据库 · 历史元数据 · 自启 · 全景 …）；默认住址只在 `creds_core::store::monitor_data_dir` 拼，monitor 全树只经 `config.rs::resolve_monitor_data_dir` 派生，别处不许自己拼数据目录。
+3. 它挪的是**整个** data dir（`config.json` · 凭据库 · 历史元数据 · 自启 …）；默认住址只在 `creds_core::store::monitor_data_dir` 拼，monitor 全树只经 `config.rs::resolve_monitor_data_dir` 派生，别处不许自己拼数据目录。
 4. 它**不**改本条的另一半：`claudeDir` 照旧不影响 data dir 的位置。
 
 **谁在守**：`paths_tests.rs::with_nothing_set_it_is_the_documented_default`（本条正文那一半）· `paths_tests.rs::an_absolute_override_is_used_verbatim` ·
@@ -200,8 +200,8 @@ data dir 里两类东西**语义上一刀两断**，别搅混到「迁移/重建
 | `sid-hwnd-cache.json` | **缓存** | `bind.rs` | sid→HWND，能从 PS 握手重建 |
 | `ps-registry/` `ps-await/` | **缓存/IPC** | `bind.rs` | 跨进程握手，启动重扫 |
 | `logs/` | **缓存/派生** | `logging.rs` · 本机常驻后端 | 诊断日志：`monitor/` 是本进程按天滚动、保留 3 天（§15）；`backend/` 是脱离运行的本机后端 stderr |
-| `bin/` `staging/` `logs/backend/` `panorama/` `assets-catalog.json` | **缓存** | 本机后端（`bin/` 里的后端与全景组件由宿主放） | 〔V160 一台机器一个家〕后端住在同一个家里、能重建的：程序（缺了重放）· 上传暂存区 · 错误输出 · 全景索引 · 资产目录（重新扫出来、各台之间再对上） |
-| `relay-key` `listen-token` `listen-<口>.pid` `backend.json` `aliases.sh` `aliases.ps1` `skill-installs.json` `backups/` `apikey-credentials.json` | **真相** | 本机后端（`listen-token` · 进程记录由宿主铸 / 写） | 删了会丢的：后端跑着时要用的两把钥匙与进程记录（删了要重起后端）· 退出行为设置 · 你建的别名 · skill / MCP 装记录 · 从「扩展」卸掉不是 cc-monitor 装的东西之前放的那一份 · 你填的 API key。名字各取契约常量（`relay_route_core` · `creds_core::store`）与宿主那一处（`logging::backend_stderr_log_path`），`data_paths.rs::backend_entries` 列它们 |
+| `bin/` `staging/` `logs/backend/` `assets-catalog.json` | **缓存** | 本机后端（`bin/` 里的后端由宿主放） | 〔V160 一台机器一个家〕后端住在同一个家里、能重建的：程序（缺了重放）· 上传暂存区 · 错误输出 · 资产目录（重新扫出来、各台之间再对上） |
+| `relay-key` `listen-token` `listen-<口>.pid` `backend.json` `aliases.sh` `aliases.ps1` `skill-installs.json` `backups/` `accounts-mcp.json` `apikey-credentials.json` | **真相** | 本机后端（`listen-token` · 进程记录由宿主铸 / 写） | 删了会丢的：后端跑着时要用的两把钥匙与进程记录（删了要重起后端）· 退出行为设置 · 你建的别名 · skill / MCP 装记录 · 从「扩展」卸掉不是 cc-monitor 装的东西之前放的那一份 · 你填的 API key。名字各取契约常量（`relay_route_core` · `creds_core::store`）与宿主那一处（`logging::backend_stderr_log_path`），`data_paths.rs::backend_entries` 列它们 |
 
 - **真相** = 用户手写/意图，**删了丢东西、要备份、要迁移友好**。
 - **缓存/派生** = 能从别处重建，**随便删**。
@@ -682,7 +682,7 @@ Batch8-F25/26 起（p1f 后端 + tail-only）：后端连接时把各文件 seq 
 
 **铁律**：任何会被**持久化（落盘）或跨进程 / 上 wire 协议暴露**的身份标识，必须
 **opaque + 稳定 + 出生一次 + 永不从名字 / 路径 / 位置算**。**想不清就先别发**——用外部
-已有的稳定 id 顶着（Claude Code 的 `sessionId`、或 code-picture 的 uuid）。
+已有的稳定 id 顶着（Claude Code 的 `sessionId`）。
 
 **为什么是单向门**：id 一旦被别处引用或落盘就锁死，事后没法把「会变的 key」换成
 「稳定 id」而不断掉所有引用。反例是 Claude Code 自己的 `enc(cwd)`——拿位置相关的
@@ -699,7 +699,6 @@ cc-monitor **没有一个**「自铸 opaque id + 落盘/上 wire + 从路径算�
 - 会话表 / 历史 metadata / 窗口句柄缓存 key = Claude Code `sessionId`（`session_map.rs`、后端 `history_annotations.rs::Table`、`bind.rs::SidHwndBinding`）。
 - ps-registry key = OS `pid`（`bind.rs`）。
 - 唯一自铸的 opaque token = bind 握手 marker `ccm-bind-{PID}-{随机8字符UUID}`（`bind.rs`）——**瞬时握手、用完即删、不从路径算**，不当持久身份，合规。
-- panorama 进程内选 Engine 的 key 用仓根路径，但**纯内存、绝不落盘**（保持现状，别存盘）。持久的节点身份由 **code-picture-core** 写进侧车 DB、守它自己的 uuid 规矩，cc-monitor 只消费不自铸。〔RM1f 09-25：monitor 进程内那个 Engine 池随内嵌引擎删了（本机全景也经本机后端起全景小程序，一问一进程）⇒ 前半句今天**没有对象**；后半句照旧成立 —— 身份仍由小程序里那份 core 写、monitor 只消费。〕
 
 ### `origin` 边界（有意的外部稳定 id，别手滑）
 `RemoteConfig.label`（`ssh_source.rs`，空则回退 `host`）是唯一「持久（config.json）+
@@ -709,15 +708,7 @@ cc-monitor **没有一个**「自铸 opaque id + 落盘/上 wire + 从路径算�
 登记表的主键**（history-metadata 主键是 `sessionId`）。**守则**：别哪天把它换成从 IP /
 路径现算的脆弱值，也别把它降格当 cc-monitor 内部的 opaque id。
 
-### 对齐 code-picture（要持久身份就复用，别自造）
-cc-monitor 一旦需要**持久化**「哪个仓 / 哪个节点」，直接复用 code-picture 的 uuid
-（code-picture `decisions.md` **D3** crypto-RNG uuid、**D18** 存中央 journal、**D26**
-惰性激活才发号），**绝不另发一套从路径算的持久 key**。
-
-### 未来约束（F70 / F90 落地那天守本约）
-- **F70**（#51 点会话高亮改动）：当「某会话改过哪些节点」要**跨会话留存/引用**时，节点
-  身份必须用 code-picture uuid，**不许每次从 `file_path` 现算**（否则一改路径高亮全丢）。
-  现状 F70 缝即时返回、不落盘，仍在安全侧。
+### 未来约束（F90 落地那天守本约）
 - **F90**（#48 后端登记表）：会话/后端登记表主键必须 opaque + 稳定，用 Claude Code
   `sessionId` 顶着，**不许拿 tmux 会话名 / 主机名 / 路径当持久主键**——否则 §SS-12
   「一端起的会话另一端必须能接」当场崩（换后端 / 换机名字变了就对不上）。

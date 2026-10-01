@@ -225,8 +225,6 @@ describe("S2 设置面板分页结构", () => {
       // 别名并进机器页，从「应用 → 行为」搬来。
       "别名",
       // MCP · 资产目录 · 插件三块搬去了顶层「扩展」页（跨机器的一类对象）。
-      // 代码全景组件的卸口（本机与远端页都有）。
-      "代码全景组件",
       // cc-bus 钩子那一块拿掉了：cc-bus 是扩展页里的一行，各台的钩子状态在那一行里。
       // 🔴 （步 14a）：「足迹」从顶层「改动足迹」页搬进来，是**新增的第五块**。
       "足迹",
@@ -397,7 +395,6 @@ describe("S2 设置面板分页结构", () => {
       "远端连接",
       "账号",
       "别名", // 本机那一格的 ②，跟着 per-machine 那几块一起留在兜底落点（终端集成并进了它）
-      "代码全景组件", //
       "足迹",
       "未识别的数据",
     ]);
@@ -550,7 +547,7 @@ describe("S9 本机 OS 门（〔AL1c〕别名那一块的平台）", () => {
     });
   }
 
-  it("门只管这一块 —— 同一页上的代码全景组件在 Linux 上照常在", async () => {
+  it("门只管这一块 —— 同一页上的足迹在 Linux 上照常在", async () => {
     __setHostOsForTests("linux");
     document.body.replaceChildren();
     new SettingsPanel({ windowMode: true });
@@ -562,6 +559,6 @@ describe("S9 本机 OS 门（〔AL1c〕别名那一块的平台）", () => {
         )!
         .querySelectorAll(".settings-group-title"),
     ].map((e) => e.textContent);
-    expect(titles).toContain("代码全景组件");
+    expect(titles).toContain("足迹");
   });
 });

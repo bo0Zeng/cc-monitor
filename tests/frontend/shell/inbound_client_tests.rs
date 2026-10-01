@@ -677,8 +677,8 @@ async fn a_timeout_fires_a_cancel_for_the_abandoned_id() {
 /// ★**调用方放弃等待**（future 被丢）⇒ 同样补发一条 `cancel{target: 那条 id}`；
 /// 拿到结局之后再丢 ⇒ 一条都不发；超时 ⇒ 恰一条（上面那条钉「有」，这里钉「不多发」）。
 ///
-/// 为什么非有它：后端 `panorama` 进了可取消档（`Run::Async`），而界面「取消建索引」在 monitor 这一侧
-/// 落成的是「把等应答的那个 future 丢掉」—— 丢了不发 `cancel`，后端那条建索引照跑到 900 s 期限。
+/// 为什么非有它：界面撤一问在 monitor 这一侧落成的是「把等应答的那个 future 丢掉」——
+/// 丢了不发 `cancel`，后端可取消档那一条照跑到它自己的期限。
 #[tokio::test]
 async fn abandoning_the_wait_fires_one_cancel_and_finishing_fires_none() {
     // ① 被丢：已入队、还没结局。

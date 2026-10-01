@@ -75,7 +75,7 @@ export default tseslint.config(
     // 那天剩三处：`src/frontend/ui/settings/machine-aliases.ts` 里那四处空 catch（原「终端集成」
     //   记住上次选择的 localStorage 写）随那段代码删了（`tests/frontend/ui/eslint-baseline.vitest.ts` 的基线常量同拍 7 → 3）。
     // 那天剩两处：`src/frontend/ui/shell-quote.ts` 那处 `no-control-regex` 随 `isValidConfigDir` 删了（基线常量同拍 3 → 2）。
-    // 那天剩一处：`tests/frontend/ui/panorama/session-files.test.ts` 随被测对象（写类工具口径搬进后端）整份删了，
+    // 那天剩一处：写类工具口径的前端那份测试随被测对象（搬进后端）整份删了，
     //   它那一处未用变量跟着没了（合并 DUP1 时按「基数 3 ＋ 两边各 −1」算成 1，eslint 现打核过）。
     // 〔发版后〕今天全仓 0 个：`render.ts` 那处 `no-control-regex`（代码 stub 的 `\u0000` 哨兵）换成非字符 `\uFDD0`。
     files: ["tests/e2e/**/*.mjs"],

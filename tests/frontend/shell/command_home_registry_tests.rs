@@ -197,12 +197,6 @@ const MONITOR_OWN: &[(&str, Own, &str)] = &[
         Own::Footprint,
         "足迹里 monitor 自己那台那几行（`HostScope::Client`）只有 monitor 知道的事实：它自己进程的家目录 · agent 家 · PATH（stat 与判定在本机后端 `footprint-report`）",
     ),
-    // 那台后端回「没装 / 太旧」时界面请 monitor 放全景小程序的字节（判定「缺不缺」是那台后端答的码）。
-    (
-        "panorama_place",
-        Own::Place,
-        "放 monitor 带着的全景小程序字节：远端经本机后端 `files` 链路推、本机放到 `~/.cc-monitor/bin/`（触发是那台后端回的码）",
-    ),
 ];
 
 /// 「待迁」：命令 · 卡在哪。今天为空（「哪一路」那一格随 `Lane` 一起收了）。
@@ -234,8 +228,7 @@ const PENDING: &[(&str, &str)] = &[
     // 原先 C 段没人点名的那几行已指派（MIG-1 端口转发 · MIG-2 会话读面 · MIG-3b 探针 / 公钥 / 全景 · MIG-3a 开文件窗）。
     // 公钥推送那一条已迁（界面经通道问本机后端 `pubkey-push`），行删了。
     // 端口转发三条（起 · 停 · 列）迁走：账住本机常驻后端（`dial/forwards.rs`），界面经通道问 `forward-*`。
-    // 全景问 · 写 · 撤三条已迁（界面经通道直问那台后端 `panorama` / `panorama-edit`，撤单过通道那一跳），
-    //   行删了；放字节那一条（`panorama_place`）进「monitor 自己的事」`Place`，撤单那一条（`chan_cancel`）进 `Channel`。
+    // 撤单那一条（`chan_cancel`）进 `Channel`。
     // 〔主会话 09-28 裁 3〕`open_file_window` 已迁：开窗前那一屏（`files-home` / `files-ls`）进了窗口进程自己问，
     //   monitor 只起进程、读它那一行（`filewin/proc.rs::first_screen` · `Ready`）⇒ 从本表删，进 `MONITOR_OWN`（开窗）。
 ];

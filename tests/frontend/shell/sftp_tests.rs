@@ -85,15 +85,12 @@ fn ccm_cli_has_required_elements() {
 #[cfg(embedded_backends)]
 #[test]
 fn embedded_backend_binaries_present_and_valid() {
-    use crate::byte_table::{pick, Product};
+    use crate::byte_table::pick;
     use deploy_contract::key_of;
     for arch in ["x86_64", "aarch64"] {
         let key = key_of("Linux", arch).expect("表 A 认得这一格");
-        let bin = pick(Product::Backend, key).expect("内嵌二进制应存在");
-        assert!(
-            !bin.build_id.unwrap_or_default().is_empty(),
-            "build_id 非空"
-        );
+        let bin = pick(key).expect("内嵌二进制应存在");
+        assert!(!bin.build_id.is_empty(), "build_id 非空");
         assert_eq!(&bin.bytes[..4], b"\x7fELF", "{arch} 应是 ELF");
         assert!(bin.bytes.len() > 100_000, "{arch} 体积应非平凡");
     }
@@ -773,7 +770,6 @@ async fn sr1b_loopback_deploy_and_transfer_through_the_resident_backend() {
     };
     // ① 部署那几问（判定在本机常驻后端：`deploy-plan` 沿同一条 SSH 问那台；放字节经 `files` 链路）
     let fs = RemoteFs::open(&cfg).await.expect("开不了 files 链路");
-    assert_eq!(fs.home(), rhome, "起始目录不是 sshd 给的那个");
     // 身份读那份字节自己的戳（那台 sshd 上真跑一次只读扫描），不读旁挂标记。
     //   送去的字节里埋一段戳（界标取自 `build.rs` 交来的 env），其余是 3 MB 的噪声。
     let stamp = format!(

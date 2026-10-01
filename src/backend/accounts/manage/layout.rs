@@ -39,6 +39,11 @@ pub(crate) fn identity_config_file() -> &'static str {
     face().map_or("", |f| f.config_file)
 }
 
+/// 那份配置文件里装用户级 MCP 的顶层键（账号之间同步只碰它）。
+pub(crate) fn user_mcp_key() -> &'static str {
+    face().map_or("", |f| f.user_mcp_key)
+}
+
 pub(crate) fn is_identity(name: &str) -> bool {
     identity().iter().any(|(n, _, _)| *n == name)
 }

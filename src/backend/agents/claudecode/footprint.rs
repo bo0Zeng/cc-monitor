@@ -153,14 +153,34 @@ pub(crate) const TOOLS: &[ToolSpec] = &[
             what: Text(|| copy_text("rsToolRegistry.tools.accountsWhat", &[])),
             source: ToolSource::Generated,
             destination: ToolDestination::LocalHomeRelative(ACCOUNTS_ROOT_REL),
-            touches: &[TouchedFile {
-                path: ACCOUNTS_ROOT,
-                host: HostScope::Either,
-                note: Some(Text(|| {
-                    copy_text("rsToolRegistry.tools.accountsVaultNote", &[])
-                })),
-                effect: TouchEffect::OwnedFile,
-            }],
+            touches: &[
+                TouchedFile {
+                    path: ACCOUNTS_ROOT,
+                    host: HostScope::Either,
+                    note: Some(Text(|| {
+                        copy_text("rsToolRegistry.tools.accountsVaultNote", &[])
+                    })),
+                    effect: TouchEffect::OwnedFile,
+                },
+                // 各号共用的用户级 MCP：共享集合 ＋ 上次同步时各号的样子（这台后端自己的状态，里面有 MCP 的密钥 ⇒ 0600）。
+                TouchedFile {
+                    path: "~/.cc-monitor/accounts-mcp.json",
+                    host: HostScope::Either,
+                    note: Some(Text(|| {
+                        copy_text("rsToolRegistry.tools.accountsMcpStoreNote", &[])
+                    })),
+                    effect: TouchEffect::OwnedFile,
+                },
+                // 同步改写某个号的配置文件之前，那份原文放这里（每个号一份）。
+                TouchedFile {
+                    path: "~/.cc-monitor/backups/accounts-mcp",
+                    host: HostScope::Either,
+                    note: Some(Text(|| {
+                        copy_text("rsToolRegistry.tools.accountsMcpBackupNote", &[])
+                    })),
+                    effect: TouchEffect::OwnedFile,
+                },
+            ],
         }],
     },
     // **skill「装到这台」**：资产目录里别的机器有的 skill，用户点了才装到这台 ——

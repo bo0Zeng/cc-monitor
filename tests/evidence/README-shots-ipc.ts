@@ -20,12 +20,6 @@ import {
   LOCAL,
   MACHINES,
   NOW_ISO,
-  PANO_CALLS,
-  PANO_CALLS_HONESTY,
-  PANO_CENTER,
-  PANO_MODULES,
-  PANO_SYMBOLS,
-  PANO_UNRESOLVED,
   REMOTE,
   SEARCH_WORD,
   SESSIONS,
@@ -98,84 +92,6 @@ function searchHits(p: ShotProject): Json[] {
         ]
       : [],
   );
-}
-
-// ─── 代码全景（`panorama` 帧命令：`{op, repo, args}` ⇒ `{result}`） ───
-// 图种清单是全景引擎的成品，逐字抄自 `src/panorama-engine/vendor/code-picture-core/src/diagram/registry.rs::DiagramKind::info`。
-const DIAGRAM_KINDS = [
-  { id: "module", title: "模块依赖图", summary: "目录当节点、跨目录的调用当连接 —— 你声明的结构", params: ["max_nodes", "certain_only", "exclude_tests"], shape: "clusters" },
-  { id: "arch", title: "架构图(社区)", summary: "按调用密度切出的子系统当节点 —— 实际存在的耦合;与模块图不一致处最值得看", params: ["max_nodes", "certain_only", "exclude_tests"], shape: "clusters" },
-  { id: "calls", title: "调用子图", summary: "某个符号周围的调用关系(双向,按跳数)", params: ["symbol", "depth", "certain_only"], shape: "call_graph" },
-  { id: "uml", title: "类图(UML)", summary: "类型 · 实现 · 组合 —— 关系来自声明,不是推断", params: ["max_nodes"], shape: "type_graph" },
-];
-const panoFiles = PANO_MODULES.flatMap((m) => m.files.map((f) => ({ file: `${m.dir}/${f.name}`, symbols: f.symbols })));
-const panoSymbolCount = panoFiles.reduce((n, f) => n + f.symbols, 0);
-const symbolOf = ([id, line]: [string, number]): Json => {
-  const [file, name] = id.split("#");
-  return { id, name, file, kind: "Function", lang: "TypeScript", start_line: line, end_line: line + 12, signature: null };
-};
-const edgeOf = ([from, to, confidence]: [string, string, string]): Json => ({ from, to, kind: "Calls", call_site_line: null, confidence });
-
-function panorama(op: string, args: Json | null): unknown {
-  switch (op) {
-    case "diagram_kinds":
-      return DIAGRAM_KINDS;
-    case "status":
-      return { stale: false, indexedAt: Math.floor(NOW / 1000) - 600, symbols: panoSymbolCount };
-    case "overview":
-      return {
-        spine_files: panoFiles.map((f) => ({ file: f.file, score: f.symbols / 14, symbols: f.symbols })),
-        subsystems: PANO_MODULES.map((m, i) => ({
-          label: baseName(m.dir),
-          files: m.files.map((f) => `${m.dir}/${f.name}`),
-          size: m.files.reduce((n, f) => n + f.symbols, 0),
-          member_hash: (0x9e3779b1 * (i + 1)).toString(16).slice(-8),
-          anchors: [],
-          internal_edges: m.files.length * 3,
-          external_edges: m.files.length,
-        })),
-        entry_points: [{ id: "src/routes/index.ts#mountRoutes", file: "src/routes/index.ts", symbol: "mountRoutes" }], // 上游 `SymbolRef`
-        total_symbols: panoSymbolCount,
-        total_files: panoFiles.length,
-        unresolved_calls: PANO_UNRESOLVED,
-        parse_errors: 0,
-        ambiguous_calls: 0,
-        unresolved_imports: 0,
-        db_errors: [],
-      };
-    case "search": {
-      const q = String(args?.query ?? "").toLowerCase();
-      return PANO_SYMBOLS.filter(([id]) => id.toLowerCase().includes(q)).map(symbolOf);
-    }
-    case "node": {
-      const hit = PANO_SYMBOLS.find(([id]) => id === args?.symbol);
-      if (!hit) return null;
-      return {
-        symbol: symbolOf(hit),
-        callers: PANO_CALLS.filter((c) => c[1] === hit[0]).map(edgeOf),
-        callees: PANO_CALLS.filter((c) => c[0] === hit[0]).map(edgeOf),
-        docs: [],
-        annotations: [],
-      };
-    }
-    case "diagram":
-      if (args?.kind !== "calls") return undefined;
-      return {
-        diagram: {
-          kind: "calls",
-          honesty: PANO_CALLS_HONESTY,
-          body: {
-            shape: "call_graph",
-            center: PANO_CENTER,
-            depth: 2,
-            nodes: PANO_SYMBOLS.map(([id, line]) => ({ id, name: id.split("#")[1], file: id.split("#")[0], kind: "Function", start_line: line })),
-            edges: PANO_CALLS.map(([from, to, confidence]) => ({ from, to, confidence, candidates: null, call_site_line: null })),
-          },
-        },
-        mermaid: ["flowchart LR", ...PANO_CALLS.map(([a, b]) => `  ${a.split("#")[1]} --> ${b.split("#")[1]}`)].join("\n"),
-      };
-  }
-  return undefined;
 }
 
 /**
@@ -277,10 +193,6 @@ const OPS: Record<string, (origin: string, body: Json) => unknown> = {
   "exit-policy-read": () => ({ state: "absent", killOnExit: false, reason: null, path: null, said: copyText("backendPolicy.exit.unattended") }),
   "ssh-config-aliases": () => ({ aliases: [REMOTE.label] }),
   "footprint-report": () => footprint(),
-  panorama: (_o, body) => {
-    const result = panorama(String(body.op), (body.args as Json | null) ?? null);
-    return result === undefined ? undefined : { result };
-  },
 };
 /** 按行那一族（`{"lines": [...]}`）。 */
 const LINE_OPS = new Set(["accounts-sessions", "history-search"]);

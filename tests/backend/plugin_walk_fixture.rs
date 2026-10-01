@@ -82,9 +82,6 @@
 //! 而且**对拍的是那个真适配层今天的活体**（`control/cc_bus.rs` 的函数与生产段），
 //! 不是手抄的死 fixture。
 //!
-//! ⚠ 同时**刻意避开代码全景那一族的词汇**（`K-W2D` 正在写 `sidecars/codepicture/`，
-//! 撞形状会让两件的读数互相污染）：本夹具一个字都不提全景 / 图 / 调用者 / 索引那一族。
-//!
 //! # 诚实边界（写在这里，因为它们删了不会红）
 //!
 //! - 跳①③⑨ **本地验不了**，不是「以后再说」：它们要一个真后端收发帧。今天真跑过那条路的
@@ -551,13 +548,12 @@ mod tests {
         let text = String::from_utf8_lossy(&out.stdout).into_owned();
         // ★ `why` 原样带上通用口那句话：它会**点名缺的那一个 token**，
         //   而不是「缺能力」四个字，也不是「调用失败」（`probe` 那 8 条判据守的就是这个）。
-        let answer =
-            crate::plugin::probe::negotiate(&text, &name, required, None).map_err(|e| {
-                Stop::Rejected {
-                    hop: HOPS[3],
-                    why: e.message(),
-                }
-            })?;
+        let answer = crate::plugin::probe::negotiate(&text, &name, required).map_err(|e| {
+            Stop::Rejected {
+                hop: HOPS[3],
+                why: e.message(),
+            }
+        })?;
         done.push(HOPS[3]);
 
         // ── 跳⑦ 拿码摘诊断：真活两趟（一趟被拒、一趟成事）─────────────────
@@ -1340,9 +1336,8 @@ mod tests {
     ///
     /// `plugin::layer_guard::the_generic_port_names_no_concrete_plugin` 的分母是
     /// `layer_guard::concrete_plugin_words` 那张表（成员与条数只住那一处，这里**不复述**）。
-    /// 09-04 之前那张表只有**一族**词；同日加了**第二族**（代码全景那个插件）。
-    /// 而它的头注逐字仍然写着「**换一族词汇的插件它一个都认不出来**」——
-    /// ⇒ 本夹具换的正是**第三族**词，那条判据对它**零覆盖**，别指望它接住。
+    /// 那张表今天只有**一族**词（总线那个插件），而它的头注逐字写着「**换一族词汇的插件它一个都认不出来**」——
+    /// ⇒ 本夹具换的正是另一族词，那条判据对它**零覆盖**，别指望它接住。
     /// 这一格就是 `E6` 那句「每加一个插件要加它自己那组专有针」在本件上的兑现。
     ///
     /// ⚠ 本条的**射程**：分母 = [`fixture_vocabulary`] 那张表（今天现算，见报错文案里的数），
@@ -1544,7 +1539,7 @@ mod tests {
         let out = crate::plugin::invoke::run(&bin, &probe_argv(), DEADLINE_SECS, &[])
             .unwrap_or_else(|e| panic!("那个假插件没跑起来：{}", why_not_run(e)));
         let text = String::from_utf8_lossy(&out.stdout).into_owned();
-        let answer = crate::plugin::probe::negotiate(&text, &name, REQUIRED_CAPS, None)
+        let answer = crate::plugin::probe::negotiate(&text, &name, REQUIRED_CAPS)
             .unwrap_or_else(|e| panic!("协商没过：{}", e.message()));
         let parent = answer
             .extras
@@ -1681,7 +1676,7 @@ mod tests {
         let out = crate::plugin::invoke::run(&bin, &probe_argv(), DEADLINE_SECS, &[])
             .unwrap_or_else(|e| panic!("那个假插件没跑起来：{}", why_not_run(e)));
         let text = String::from_utf8_lossy(&out.stdout).into_owned();
-        let answer = crate::plugin::probe::negotiate(&text, &name, REQUIRED_CAPS, None)
+        let answer = crate::plugin::probe::negotiate(&text, &name, REQUIRED_CAPS)
             .unwrap_or_else(|e| panic!("协商没过：{}", e.message()));
         let child_path = answer
             .extras

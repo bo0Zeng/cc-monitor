@@ -43,7 +43,6 @@ import {
 } from "./remote-section";
 import { DataSection } from "./data-section";
 import { ContextLimitsSection } from "./context-limits-section"; // `contextLimits` 的入口
-import { PanoramaSection } from "./panorama-section"; // 全景小程序卸口
 import { RemoteSection } from "./remote-section";
 import type { MachineCardParts } from "./machine-card";
 import { BackendSection } from "./backend-section"; // P2s（C8）：每台机一个后端开关
@@ -1125,12 +1124,6 @@ export class SettingsPanel {
       },
       // 〔资产目录 · 插件〕三块搬走了：skill / MCP 是跨机器的一类对象，住顶层「扩展」页（一张表 ＋ 一个抽屉）；
       //   插件只读列表没有可做的事，先拿掉。
-      // 代码全景组件的卸口（那台后端 `panorama-uninstall`；本机远端同一条）。
-      {
-        appliesTo: "both",
-        tab: "term",
-        ...this.loadableBlock(copyText("panorama.uninstall.title"), () => new PanoramaSection()),
-      },
       // cc-bus 钩子那一块拿掉了：cc-bus 是扩展页里的一行，它的内置备注下面每台一行钩子状态与要加的内容。
       // 🔴 步 14a（那张图的第五栏）：**「足迹」**。
       //

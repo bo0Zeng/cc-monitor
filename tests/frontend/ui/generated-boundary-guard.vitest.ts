@@ -148,6 +148,12 @@ describe("C01 边界生成物", () => {
       "AccountIsolateArgs.ts",
       "AccountKind.ts",
       "AccountLoginCmd.ts",
+      // 各账号共用的 MCP 那三条（`accounts-mcp-*`）的入参与成品。
+      "AccountMcpChoice.ts",
+      "AccountMcpConflict.ts",
+      "AccountMcpNameArgs.ts",
+      "AccountMcpPickArgs.ts",
+      "AccountMcpView.ts",
       "AccountNameArgs.ts",
       "AccountRef.ts",
       "AccountRemoveArgs.ts",

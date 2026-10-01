@@ -77,6 +77,7 @@ const UNIT: &[&str] = &[
     "tests/frontend/ui/account-commands.vitest.ts",
     "tests/frontend/ui/account-restart.vitest.ts",
     "tests/frontend/ui/accounts.vitest.ts",
+    "tests/frontend/ui/settings/accounts-mcp-block.vitest.ts", // 账号页各账号共用的 MCP 那一块：只画名字与各版、只交意图（纯替身）
     "tests/frontend/ui/backend-policy.vitest.ts",
     "tests/backend/accounts/upstream_select/table_tests.rs",
     "tests/backend/accounts/manage/aliases_tests.rs",
@@ -84,6 +85,8 @@ const UNIT: &[&str] = &[
     "tests/backend/accounts/manage/layout_tests.rs",
     "tests/backend/accounts/manage/model_tests.rs",
     "tests/backend/accounts/manage/verify_tests.rs",
+    "tests/backend/accounts/manage/json_key_tests.rs", // 账号之间同步 MCP：只换一个键、别的字节不动（扫描一张排版各异的原文表）
+    "tests/backend/accounts/manage/mcp_share_tests.rs", // 账号之间同步 MCP：三方对照（纯）
     "tests/backend/agents/claudecode/records_tests.rs",
     "tests/backend/agents/claudecode/resume_tests.rs",
     "tests/backend/agents/codex/parse_tests.rs",
@@ -96,6 +99,8 @@ const UNIT: &[&str] = &[
     "tests/backend/platform/shell_tests.rs",
     "tests/backend/platform/tcp_rtt_tests.rs", // Windows 臂 `SIO_TCP_INFO` 的布局与控制码对 SDK
     "tests/backend/plugin/probe_tests.rs",
+    // 集成 → 单元：真起进程的那几条（可打断的等法）随代码全景删了，剩下的只喂纯函数。
+    "tests/backend/plugin/invoke_tests.rs",
     "tests/comms/outward/http1_tests.rs",
     "tests/comms/outward/route_tests.rs", // 跨半边抠 monitor 源码那几条退役 ⇒ 只剩纯解析 ＋ 成品→决策表（SCAN → UNIT）
     "tests/comms/outward/tee_tests.rs",
@@ -175,11 +180,6 @@ const UNIT: &[&str] = &[
     "tests/frontend/ui/launch-requests.vitest.ts",
     "tests/frontend/ui/launcher-diagnostics.vitest.ts",
     "tests/frontend/ui/live-window.vitest.ts",
-    "tests/frontend/ui/panorama/agent-clip.vitest.ts",
-    "tests/frontend/ui/panorama/d20-gate.vitest.ts",
-    "tests/frontend/ui/panorama/layout.vitest.ts",
-    // `tests/frontend/ui/panorama/session-files.test.ts` 出列：被测对象（写类工具口径）搬进后端，七条搬成 `tests/backend/observe/facts_query_tests.rs` 里一条。
-    "tests/frontend/ui/panorama/subgraph-layers.vitest.ts",
     "tests/frontend/ui/reconcile-shell.vitest.ts",
     "tests/frontend/ui/record-timeline.vitest.ts",
     "tests/frontend/ui/remote-health.test.ts",
@@ -206,7 +206,6 @@ const UNIT: &[&str] = &[
     "tests/frontend/ui/settings/panel-block-isolation.vitest.ts",
     "tests/frontend/ui/settings/panel-deferred-io.vitest.ts",
     "tests/frontend/ui/settings/panel-groups.vitest.ts",
-    "tests/frontend/ui/settings/panorama-section.vitest.ts", // 全景小程序卸口（假通道）
     "tests/frontend/ui/settings/panel-machine-page-visibility.vitest.ts",
     "tests/frontend/ui/settings/panel-per-machine-deferred-io.vitest.ts",
     "tests/frontend/ui/settings/panel-window-lifecycle.vitest.ts",
@@ -245,16 +244,6 @@ const UNIT: &[&str] = &[
     "tests/frontend/ui/views/history-search.vitest.ts",
     "tests/frontend/ui/views/history-source-cache.vitest.ts",
     "tests/frontend/ui/views/pane-preview.vitest.ts",
-    "tests/frontend/ui/views/panorama-ann-queue.vitest.ts",
-    "tests/frontend/ui/views/panorama-copy-agent.vitest.ts",
-    "tests/frontend/ui/views/panorama-d20.vitest.ts",
-    "tests/frontend/ui/views/panorama-diagram.vitest.ts",
-    "tests/frontend/ui/views/panorama-f71.vitest.ts",
-    "tests/frontend/ui/views/panorama-f72.vitest.ts",
-    "tests/frontend/ui/views/panorama-highlight.vitest.ts",
-    "tests/frontend/ui/views/panorama-p7b.vitest.ts",
-    "tests/frontend/ui/views/panorama-pick-repo.vitest.ts",
-    "tests/frontend/ui/views/panorama-remote.vitest.ts",
     "tests/frontend/ui/views/session-find.vitest.ts",
     "tests/frontend/ui/views/session-viewer-scroll.vitest.ts",
     "tests/frontend/ui/views/session-viewer-skeleton.vitest.ts",
@@ -327,13 +316,14 @@ const SCAN: &[&str] = &[
     "tests/backend/files/module_boundary_guard.rs",
     "tests/backend/guard_support_tests.rs",
     "tests/backend/stream/inbound_structure_guards.rs",
+    // 集成 → SCAN：唯一那条真进程判据（`cancel` 真打断在飞的全景请求）随代码全景删了。
+    "tests/backend/stream/inbound_tests.rs",
     "tests/backend/stream/listen_tests.rs",
     "tests/backend/main_argv_table_guard.rs",
     "tests/backend/main_stream_flag_tests.rs",
     "tests/backend/main_window_raise_guard.rs",
     "tests/backend/no_timer_guard.rs",
     // 会话事实的口径与续传（纯字节）＋ 一条异源对拍读生成物 `src/frontend/ui/generated/agent-profile-table.ts` ⇒ 判别器判扫描层。
-    "tests/backend/panorama_locus_guard.rs",
     "tests/backend/platform/cfgless_guard.rs",
     "tests/backend/platform/fallback_guard.rs",
     "tests/backend/platform/pidwatch/linux_tests.rs",
@@ -428,8 +418,6 @@ const SCAN: &[&str] = &[
     "tests/frontend/shell/lockfile_conflict_guard_tests.rs",
     "tests/frontend/shell/needle_anchor_registry_tests.rs",
     "tests/comms/inward/origin_tests.rs",
-    "tests/frontend/shell/panorama_seam_registry_engine_port_scope.rs",
-    "tests/frontend/shell/panorama_seam_registry_tests.rs",
     "tests/frontend/shell/parity_ledger_tests.rs",
     "tests/frontend/shell/paths_tests.rs",
     "tests/frontend/shell/plugin_class_registry_tests.rs",
@@ -496,8 +484,6 @@ const SCAN: &[&str] = &[
     "tests/frontend/ui/origin-single-home.vitest.ts",
     // overlay 路由的语义 ＋ `main.ts` 零处自判开没开（源码扫描）。
     "tests/frontend/ui/overlay-router.vitest.ts",
-    "tests/frontend/ui/panorama/api-remote.vitest.ts",
-    "tests/frontend/ui/panorama/diagram-guards.vitest.ts",
     "tests/frontend/ui/paste-block-guard.vitest.ts",
     "tests/frontend/ui/cc-bus-hooks-reads.vitest.ts", // cc-bus 钩子状态：严格收（金样）＋ 四态不误说 ＋ 读口源码只问 hooks-diag（读源码 ⇒ 扫描层）
     "tests/frontend/ui/paste-block.vitest.ts",
@@ -575,6 +561,8 @@ const INTEGRATION: &[&str] = &[
     "tests/backend/accounts/upstream_select/endpoint_tests.rs", // 上游选择出的两份成品（金样那条读夹具文件）
     "tests/backend/accounts/upstream_select/file_face_tests.rs",
     "tests/backend/faces/accounts_face_tests.rs", // 账号库那几条命令在临时家目录上真建目录 · 链接 · 复制 · 回滚
+    // 账号之间同步 MCP：临时家目录上两个号真走建库 · 加号 · 同步 · 删 · 冲突 ＋ 文件事件触发
+    "tests/backend/accounts/manage/mcp_share_exec_tests.rs",
     "tests/backend/agents/claudecode/assets_tests.rs", //
     "tests/backend/agents/claudecode/paths_tests.rs", // 设置文件压不压过进程环境里的上游地址（临时目录夹具）
     "tests/frontend/shell/ccm_probe_tests.rs", // SCAN → INTEGRATION：多了「先读字节认身份」那条（临时文件夹具）
@@ -600,7 +588,6 @@ const INTEGRATION: &[&str] = &[
     "tests/backend/control/fork_write_tests.rs",
     "tests/backend/control/identity_tag_tests.rs",
     "tests/backend/control/launch_tests.rs", // 由扫描层挪来：S4 那条判据真起一个假 tmux 子进程（`ran` 收 stderr）
-    "tests/backend/control/panorama_tests.rs",
     "tests/backend/control/resident_tests.rs", // 临时目录上真铸钥匙、读钥匙文件 ·真 sh 子进程 ＋ 真信号：graceful / killed / not_running
     "tests/backend/control/transfer_tests.rs",
     "tests/backend/dial_compress_tests.rs",
@@ -614,8 +601,6 @@ const INTEGRATION: &[&str] = &[
     "tests/backend/files/size_tests.rs", // 算目录大小（临时目录真走一棵树）
     "tests/backend/files/grep_tests.rs", // 按内容搜：真铺一棵临时树、注入设备号与小上界
     "tests/backend/footprint/face_tests.rs", // `footprint-report` 那一面（真 stat 临时目录；原 `tests/backend/footprint_tests.rs`）
-    // SCAN → 集成：多了一条真进程判据（`cancel` 真打断在飞的 `panorama`，替身小程序是真进程）
-    "tests/backend/stream/inbound_tests.rs",
     "tests/backend/layering_guard.rs",
     "tests/backend/main_fourth_face_tests.rs",
     "tests/backend/assets/mcp_sync_tests.rs",        //
@@ -639,8 +624,6 @@ const INTEGRATION: &[&str] = &[
     "tests/backend/observe/tmux_observe_tests.rs",
     "tests/backend/observe/watcher_tests.rs",
     "tests/backend/plugin/discover_tests.rs",
-    // 单元 → 集成：`run_abortable` 两条判据真起进程（被丢 ⇒ 整组都没了 · 没被丢 ⇒ 与同步那一形同果）
-    "tests/backend/plugin/invoke_tests.rs",
     "tests/backend/plugin_walk_fixture.rs",
     "tests/backend/faces/read_face_tests.rs",
     // 〔MG1 合 RK1〕中转口的门（403 / 421）：铺真钥匙文件、起真监听 ⇒ 判别器判集成层。
@@ -691,13 +674,8 @@ const INTEGRATION: &[&str] = &[
     "tests/frontend/shell/local_backend_host_tests.rs",
     "tests/frontend/shell/local_lines_tests.rs",
     "tests/frontend/shell/logging_tests.rs",
-    // SCAN → 集成：本机那一份小程序的放法（临时目录真写 · 逐字节相等零写 · 字节变了重写）
-    "tests/frontend/shell/panorama_bytes_tests.rs",
-    // `tests/frontend/shell/panorama_call_tests.rs` 删了：问 · 交那一环随实现搬进后端（`tests/backend/control/panorama_edit_tests.rs`）。
-    // `tests/frontend/shell/panorama_tests.rs` 删了（monitor 的内嵌引擎连同它的判据一起删了）。
     "tests/frontend/shell/profile_installer_tests.rs",
     "tests/frontend/shell/platform/console_text_tests.rs", // 控制台字节按 OEM 代码页解（Windows 臂 ＋ PowerShell 读数起进程）
-    "tests/backend/control/panorama_edit_tests.rs", // 全景写：问 · 交那一环（原 `tests/frontend/shell/panorama_call_tests.rs`）随实现搬来，临时目录当仓
     "tests/backend/assets/pubkey_tests.rs", // 原 `tests/frontend/shell/pubkey_tests.rs` 随实现搬来（真 `sh` 上跑那一串 · 临时目录当家）
     "tests/frontend/shell/scanning_guard_registry_tests.rs",
     // `search_tests.rs` 随 monitor 内存索引删了；`session_map_linux_liveness.rs` 随本机判活删了；`session_map_tests.rs` 挪进 SCAN（判据里多了读源码的那两条）。

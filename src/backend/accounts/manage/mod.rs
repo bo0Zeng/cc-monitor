@@ -10,6 +10,10 @@
 //! | [`exec`] | 按计划落盘、先备份再改、按备份回滚 —— 每一步经文件管理面（`assets::door::Door`）| 写 |
 //! | [`verify`] | 快照 ⇒ 核对报告（链接 · 权限 · 邮箱）| 纯 |
 //! | [`aliases`] | 账号表 ⇒ 每个号一条 `<名>cc` 别名，并进用户那份别名清单 | 纯 |
+//! | [`mcp_share`] | 各号共用的用户级 MCP：共享集合 ＋ 底 ＋ 各号此刻 ⇒ 计划（三方对照）| 纯 |
+//! | [`json_key`] | 一份 JSON 原文里只换顶层一个键的值，别的字节不动 | 纯 |
+//! | [`mcp_share_exec`] | 读各号与共享集合 → 算 → 备份 → CAS 写那一个键 → 写回共享集合 | 写 |
+//! | [`mcp_share_watch`] | 常驻后端里盯各号配置文件的文件事件，一有动静同步一趟（不轮询）| 起线程 |
 //! | [`wire`] | 入参严格收 → 快照 → 计划 → 预演或执行 | 经上面几块 |
 //!
 //! 平台差异（符号链接 · 权限位 · 这台做不做得了多账号）只在 `platform::acct_view`。
@@ -18,7 +22,11 @@
 
 pub(crate) mod aliases;
 pub(crate) mod exec;
+pub(crate) mod json_key;
 pub(crate) mod layout;
+pub(crate) mod mcp_share;
+pub(crate) mod mcp_share_exec;
+pub(crate) mod mcp_share_watch;
 pub(crate) mod model;
 pub(crate) mod scan;
 pub(crate) mod verify;

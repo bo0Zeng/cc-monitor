@@ -536,17 +536,16 @@ fn remote_host_never_resolves_to_a_local_path() {
     // 计数自检：一条 Remote 都没扫到 = 守卫空转
     // **等号而不是 `>=`**（T04 审计重要 5）：真实是 5 条，写 `>= 4` 恰好容忍一次
     // 静默降级——审计实测单独改一条 host 就是全绿。改 TOOLS 时要来改这个数。
-    // 4 → 5：`panorama` 推给远端那台的那一份（`~/.cc-monitor/bin/cc-monitor-panorama`，`Remote`）。
     // 6 → 7：`ccm` 多一行旧落点 `~/.cc-monitor/bin/cc-monitor-backend`（旧默认 `backendPath`，认出是我们编的就删，`RetiredLegacy`）；
     //   `backend` 推给远端那一格从 `$BACKEND_PATH` 换成固定落点 `~/.cc-monitor/bin/ccm`（条数不变）。
     // 7 → 6：旧工具推给远端那一格（`$ACCT_ISO_DEST`）随它删了（账号库改由那台后端自己建，`Either`）。
+    // 6 → 5：代码全景组件推给远端那一格随代码全景一起删了。
     assert_eq!(
-        checked, 6,
-        "Remote 条目数变了（真实应为 6）——改 TOOLS 就要来确认这个数。\
+        checked, 5,
+        "Remote 条目数变了（真实应为 5）——改 TOOLS 就要来确认这个数。\
              ★ P4c（08-12）5→4：`~/.cc-bus/` 转 Either（`P4a` 把读面做成本机可用）；\
-4→5：代码全景组件推给远端那一份；\
 5→6：`ccm` 多一行旧版入口 `~/.local/bin/ccm`（认出是我们放的就删；合并时按两边增量相加）；\
-6→7：`ccm` 多一行旧落点 `~/.cc-monitor/bin/cc-monitor-backend`"
+6→7：`ccm` 多一行旧落点 `~/.cc-monitor/bin/cc-monitor-backend`；7→6 旧工具那一格删；6→5 代码全景组件那一格删"
     );
 }
 
@@ -594,6 +593,9 @@ fn every_host_declaration_is_pinned() {
         ("cc-bus", "~/.cc-bus/", Either),
         // 账号库：哪台机器的后端建它就在哪台（本机远端同一条路）→ 两端皆可。
         ("accounts", "~/.claude-accts/", Either),
+        // 各号共用的用户级 MCP 与改写前的备份：那台后端自己的状态，账号库在哪台就写哪台 ⇒ `Either`。
+        ("accounts", "~/.cc-monitor/accounts-mcp.json", Either),
+        ("accounts", "~/.cc-monitor/backups/accounts-mcp", Either),
         // 🔴 `remote-daemon` → `backend`，而它今天有**三行**：
         //    同一份后端的三种载体（`K-R68` 现打）。三行的 `host` 逐条不同源：
         //    ① 安装包旁边那份与 ② 自释放那份都落在 monitor 跑着的**这台**（`Client`）；
@@ -604,11 +606,6 @@ fn every_host_declaration_is_pinned() {
         // 自释放那一份的本机落点并进 `ccm` 那一条（`~/.cc-monitor/bin/ccm*`）；旧释放名挂成那一条的 `RetiredLegacy`。
         // `$BACKEND_PATH` → 固定落点（它就是远端的 `ccm`，与下面 `ccm` 那一行是同一个文件的两种说法）。
         ("backend", "~/.cc-monitor/bin/ccm", Remote),
-        // 代码全景小程序（RM1f 起有落点的部署物）：两个载体、同一个相对落点、两台机器 ——
-        //    本机那份是 monitor 跑着的这台放的（`place_local`，`Client`）；远端那份推给那台（`push_to`，`Remote`）。
-        //    ⚠ 标 `Either` 会说假话：两份的来源与放法不同（本机原生 / 远端 musl），一台上有不等于另一台上有。
-        ("panorama", "~/.cc-monitor/bin/cc-monitor-panorama", Client),
-        ("panorama", "~/.cc-monitor/bin/cc-monitor-panorama", Remote),
         ("project-mcp", ".mcp.json", ProjectDir),
         // 同一份文件的第二个写入来源（推 / 拉：条目原样从另一台机器拷来）。
         //    `ProjectDir` 与上一行同一条理由：写在你选定的那个项目目录里，那个目录在哪台机器上就算哪台的。

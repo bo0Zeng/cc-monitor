@@ -42,9 +42,6 @@ function headlineFor(kind: string): string {
     // 文件窗口开出来之后又不体面地退了（`filewin/entry.rs::FILEWIN_EXIT_KIND`），正文带退出码。
     case "filewin-exit":
       return copyText("remoteHealth.head.fileWindowGone");
-    // 推代码全景组件之前那一句（`panorama_bytes.rs::install_notice`）。不是故障，所以不带 ⚠。
-    case "panorama-install":
-      return copyText("remoteHealth.head.panoramaInstalling");
     default:
       return copyText("remoteHealth.head.notice");
   }
