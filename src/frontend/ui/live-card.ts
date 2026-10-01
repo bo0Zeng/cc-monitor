@@ -1,5 +1,5 @@
 /**
- * 〔TAP · V124〕**活卡**：中转抄出来的流（`session-tap`）先上屏，记录那一轮到了就整轮覆盖。
+ * **活卡**：中转抄出来的流（`session-tap`）先上屏，记录那一轮到了就整轮覆盖。
  *
  * SSE 只保快、记录到了整轮覆盖、对账键是后端给的 `rid`（记录那一侧是 `line.rid`，流那一侧是归一事件 `start` 带的），不做记录级合并；
  * 按 sid 对账，对不上的只能当匿名流；缺口原位、纯算术。界面只收**归一事件**（后端按上游协议折好、归好位），不认任何一家的事件名。
@@ -8,7 +8,7 @@
  * - {@link LiveCore}：**纯状态机**（无 DOM、无定时器）。吃 tap 事件与「一条记录过了去重」，产出每个 tab 此刻该显示的活卡；
  *   归到子运行的那几段（`run` 有值）不进主 tab 的活卡，只给那个子运行的行与它的时间线。
  * - {@link LiveCards}：把状态画到每个 tab 流尾巴上的那一块（`MessageStream.trailerElement`）。活卡**不进时间线**：
- *   不占 seq、不进去重集、不进大纲 / 查找 / 改动集 —— 全会话事实只读 json（`设计/10 §2.2`）。
+ *   不占 seq、不进去重集、不进大纲 / 查找 / 改动集 —— 全会话事实只读 json。
  */
 import { copyText } from "./copy-table";
 import type { StreamEv } from "./generated/StreamEv";
@@ -128,7 +128,7 @@ export class LiveCore {
       }
       const sid = this.route(p.origin, p.stream);
       if (sid === null) {
-        // 对不上 tab ⇒ 匿名流：不显示、不留（`20 §8`）。
+        // 对不上 tab ⇒ 匿名流：不显示、不留。
         this.dead.add(key);
         return touched;
       }
@@ -146,7 +146,7 @@ export class LiveCore {
       };
       this.admit(r, touched);
     }
-    // 缺口：号连不上 ⇒ 这个响应断了。不补（补是 jsonl 的事，V24），撤卡。
+    // 缺口：号连不上 ⇒ 这个响应断了。不补（补是 jsonl 的事），撤卡。
     if (p.n !== r.next) {
       this.kill(r, touched);
       return touched;

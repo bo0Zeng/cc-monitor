@@ -1,5 +1,5 @@
 /**
- * 〔C4e · 第四波 4C〕**界面直接说控制类帧命令时共用的那一薄层**：一次动作没做成怎么抛、通道三层怎么说人话、
+ * **界面直接说控制类帧命令时共用的那一薄层**：一次动作没做成怎么抛、通道三层怎么说人话、
  * 成品形状怎么核、机器怎么称呼。
  *
  * 调用方：`src/frontend/ui/tmux-control.ts`（抓屏 · 结束会话 · 发按键 · 就地 resume）· `src/frontend/ui/cc-bus-control.ts`
@@ -74,7 +74,7 @@ export function saidOfTransport(origin: Origin, err: CallError): string {
       return copyText("control.channel.oldBackend", { machine: machineName(origin) });
     case "ours":
       if (err.why !== "Cancelled") return copyText("control.channel.broken");
-      // 〔NET2 · `05 §3.3.3`〕那台对这一条不认撤 ⇒ 说它可能还在跑。
+      // 那台对这一条不认撤 ⇒ 说它可能还在跑。
       return err.runsOn === true ? copyText("control.channel.cancelledRunsOn") : copyText("control.channel.cancelled");
   }
 }
@@ -110,7 +110,7 @@ export async function settle(origin: Origin, op: string, sent: Promise<Uint8Arra
 }
 
 /**
- * 〔NET2 · 主会话 09-27 裁 A〕`origin` 那台握手时说过做不到 `op` ⇒ 界面置灰时说的那一句；做得到 / 没把握 ⇒ `null`。
+ * `origin` 那台握手时说过做不到 `op` ⇒ 界面置灰时说的那一句；做得到 / 没把握 ⇒ `null`。
  * 事实只住 monitor 那份 `Offer`（本侧拿的是拷贝，`chan.cachedOffer`）；还没问过那台 ⇒ 去问（不等），这一回照常画。
  */
 export function unavailableSaid(origin: Origin, op: string): string | null {

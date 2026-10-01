@@ -1,17 +1,17 @@
 /**
  * **主窗口**的 bootstrap（入口模块是 `entry-main.ts`，由 `index.html` 加载）。
- * 〔三入口拆分 · `设计/01 §1.2`〕独立 viewer 窗与设置窗各有自己的入口，不加载本文件。
+ * 〔三入口拆分〕独立 viewer 窗与设置窗各有自己的入口，不加载本文件。
  * DOMContentLoaded 后按序：
  * 1. `loadTheme()` 从 config.json 应用 CSS 变量
  * 2. 实例化 TabManager / SettingsPanel / HistoryView / TasksPanel
- * 3. `bindEvents()` 订阅通道那几条流：会话行（〔MIG-1〕含起停那几格）· tap · 账号 · 任务
+ * 3. `bindEvents()` 订阅通道那几条流：会话行（含起停那几格）· tap · 账号 · 任务
  * 4. 装全局快捷键 dispatcher（keybindings/）+ 外链 click 代理（openUrl）+ ERROR toast
  * 5. `emit("frontend-ready")` 通知后端 replay 历史
  *
  * 另持有启动 perf 测量（`window.__ccmPerf`，与后端 lib.rs 的 t0 互补看完整启动管线）。
  * HMR 走 full reload（不引框架，原生 DOM，强制整页重载简化心智模型）。
  */
-// `LOCAL_ORIGIN`〔`设计/05 §8` 步 2〕：本机那个 origin 的**唯一住址**（Rust 侧是
+// `LOCAL_ORIGIN`：本机那个 origin 的**唯一住址**（Rust 侧是
 // `origin::LOCAL`，三处由 `origin_tests.rs::the_sentinel_agrees_with_the_two_existing_homes` 钉着）。
 import { isRemoteOrigin, LOCAL_ORIGIN } from "./ipc/origin";
 import { emit } from "@tauri-apps/api/event";
@@ -105,7 +105,7 @@ if (import.meta.hot) {
 }
 
 // 全局错误捕获（渲染到 status-bar）搬去了 `entry-common.ts` —— 三个入口共用，
-// 原先靠「三个窗口都加载 main.ts」顺带拿到（`设计/01 §1.2` 三入口拆分）。
+// 原先靠「三个窗口都加载 main.ts」顺带拿到（三入口拆分）。
 
 window.addEventListener("DOMContentLoaded", async () => {
   window.__ccmPerf.domContentLoaded = performance.now();
@@ -116,7 +116,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   await loadTheme();
   window.__ccmPerf.themeLoaded = performance.now();
 
-  // 〔三入口拆分 · `设计/01 §1.2`〕独立只读窗口与独立设置窗口**不再经过这里**：
+  // 〔三入口拆分〕独立只读窗口与独立设置窗口**不再经过这里**：
   // 它们各有自己的 html 与入口模块（`viewer.html → src/frontend/ui/entry-viewer.ts`、
   // `settings.html → src/frontend/ui/entry-settings.ts`），模块图里根本没有本文件。
   // 原先这里按 `?viewer=` / `?settings=1` 分叉，代价是两个精简窗也要加载主窗口的整份包。
@@ -130,9 +130,9 @@ window.addEventListener("DOMContentLoaded", async () => {
     return;
   }
 
-  // 〔B2 · 条 66〕这里原来在启动时把 config.json 里的后端策略**推**给 Rust。
-  //   那个值搬到了后端所在那台机器上（`设计/01 §3.3b`），由后端在决定那一刻现读 ⇒
-  //   **没有东西要推了**，这一步整条删掉（留着就是第二个真相源）。
+  // 〔条 66〕这里原来在启动时把 config.json 里的后端策略**推**给 Rust。
+  //   那个值搬到了后端所在那台机器上，由后端在决定那一刻现读 ⇒
+  //   **没有东西要推了**，这一步整条删掉（留着就是第二个源头）。
 
   status.innerHTML = "";
   const statusMsg = document.createElement("span");
@@ -157,7 +157,7 @@ window.addEventListener("DOMContentLoaded", async () => {
 
   // F88b（#52）：context% HUD chip——活跃会话「最新一轮 prompt token ÷ 模型上限」实时占用。
   // 挂 agents chip 旁；TabManager.onActiveUsageChanged 喂数据。**只读 chip，不可点** ——
-  // 它当初点开的那个跨会话聚合视图（`views/usage-view.ts`）已随 `设计/50` 退役。
+  // 它当初点开的那个跨会话聚合视图（`views/usage-view.ts`）已随退役。
   const usageHud = new UsageHud();
   status.appendChild(usageHud.summaryElement);
 
@@ -166,7 +166,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   empty.innerHTML = copyText("main.empty.noSessions");
   streamRoot.appendChild(empty);
 
-  // Batch5-F19：启动时记住的那一格（上次所在的 tab）—— 〔MIG-1 续 · 主会话裁〕只在那个会话出现时恢复、就绪前不许被覆盖、
+  // Batch5-F19：启动时记住的那一格（上次所在的 tab）—— 只在那个会话出现时恢复、就绪前不许被覆盖、
   //   没等到就明说（`src/frontend/ui/startup-active.ts`）。原先的 30 s 启动窗口（迟到的宣告静默不切、窗口内记忆早被别的 tab 写掉）换成按事件判。
   let startup: StartupActive | null = null;
 
@@ -182,17 +182,17 @@ window.addEventListener("DOMContentLoaded", async () => {
     tasksPanel,
     agentsPanel,
   );
-  // 〔TAP · V124〕活卡的画法（带 `.module.css`）只由主窗口入口装进来 —— 理由见 `live-card-view.ts` 头注。
+  // 活卡的画法（带 `.module.css`）只由主窗口入口装进来 —— 理由见 `live-card-view.ts` 头注。
   tabs.setLivePainter(
     livePainter({ timeline: (sid, run) => tabs.runTimeline(sid, run), closed: (sid, run) => tabs.closeRunTimeline(sid, run) }),
   );
   // P7a-3（#61）：启动时拉一次标签页集合（住 `config.json`，不是 localStorage —— 见
   // `tab-collections.ts` 头注：集合名是用户手写的真相，必须活过一次清缓存）。
   void tabs.loadCollections();
-  // 〔步 17·C〕顺序也要拉回来。排在集合之后：两者都只改内存 + 重画，互不依赖，
+  // 顺序也要拉回来。排在集合之后：两者都只改内存 + 重画，互不依赖，
   // 但集合决定分组容器、顺序决定容器内次序 —— 先有容器再排，少一次无谓重画。
   //
-  // 〔步 17·B〕固定表排在顺序之前，串着跑（不是并排 `void`）。
+  // 固定表排在顺序之前，串着跑（不是并排 `void`）。
   // ⚠ **2026-09-21 订正：这个次序不再是承重的。** 原先这儿写着「**必须**排在顺序之前」，
   //   理由是「`loadOrder` 按今天真的存在的 sid 过滤，固定的 tab 得先造出来，
   //   否则位置会被当成已删会话整条摘掉」——**那道读时过滤本身就是步 17·C 那个 bug**
@@ -234,7 +234,7 @@ window.addEventListener("DOMContentLoaded", async () => {
       const cfg = await readRemoteConfig();
       if (mySeq !== refreshSeq) return; // 有更晚的刷新已开始 → 本次作废，别覆盖它
       if (!cfg.enabled) {
-        // 〔GAP1 · `设计/01 §1.5`〕账号快照整份换进 store，tab 栏徽章订阅它（同一拍应用）。
+        // 账号快照整份换进 store，tab 栏徽章订阅它（同一拍应用）。
         appStore.sessionAccounts.set({
           rows: [],
           emailByName: new Map(),
@@ -258,7 +258,7 @@ window.addEventListener("DOMContentLoaded", async () => {
       // 由 cc-monitor 记在本机），live 探测不到时徽章兜底显「上次用本工具起」。失败 → 空表降级。
       let lastByS = new Map<string, string>();
       try {
-        // 〔C4d〕问本机常驻后端（注解的读写者）。
+        // 问本机常驻后端（注解的读写者）。
         const raw = await lastAccounts();
         lastByS = new Map(Object.entries(raw));
       } catch (e) {
@@ -270,30 +270,30 @@ window.addEventListener("DOMContentLoaded", async () => {
       console.warn("refreshSessionAccounts failed:", e);
     }
   };
-  // 🔴 〔`C1` · 2026-09-24〕那个 10 秒轮询**删了**（理由整段在 `session-accounts-poll.ts` 头注）：
+  // 🔴 那个 10 秒轮询**删了**（理由整段在 `session-accounts-poll.ts` 头注）：
   // 两条查询搬上了已有的长连接，而「会话 ↔ 账号」只在会话起停时变 —— 那本来就有事件。
   // ⇒ 刷新改由事件驱动，零定时器：
   //   · 某台的长连接握手完成（启动 / 重连）或那台账号清单变了 ⇒ 强制刷账号清单，
-  //     账号 chip 也在这一刻重取（在那之前问只会拿到「没有控制通道」）—— 〔DL1〕经通道订的 `accounts-changed`；
+  //     账号 chip 也在这一刻重取（在那之前问只会拿到「没有控制通道」）—— 经通道订的 `accounts-changed`；
   //   · 远端 `live` 格 / `ended` 格：会话起停；
   //   · 本 UI 切号：上面 `onDefaultChanged`。
   const accountsRefresher = createEventRefresher(refreshSessionAccounts);
   accountsRefresher.request();
-  // 〔DL1〕「某台长连接握手完成 / 那台账号清单变了」⇒ 强制刷账号清单 ＋ chip。原先听裸事件 `remote-backend-ready`；
+  // 「某台长连接握手完成 / 那台账号清单变了」⇒ 强制刷账号清单 ＋ chip。原先听裸事件 `remote-backend-ready`；
   //   今天经通道订每台的 `accounts-changed`（下面 `bindEvents` 的 `accounts` ＋ `onAccountsChanged`）。
   const onAccountsChanged = (): void => {
     accountsRefresher.request(true);
     void accountChip.refresh(true);
   };
-  // 〔MIG-1 续〕会话起停那一格（原先听裸事件 `remote-session-added`〔散文墓碑〕/ `session-ended`〔散文墓碑〕，那两个事件已并进会话流）：
+  // 会话起停那一格（原先听裸事件 `remote-session-added`〔散文墓碑〕/ `session-ended`〔散文墓碑〕，那两个事件已并进会话流）：
   //   下面 `bindEvents` 的 `onRemoteSessionAdded` / `onSessionEnded` 里各请一次。
 
   // Batch5-F19（G 验收）：用户手动切过 tab 后，迟到的宣告不再补切抢焦点（用户的选择优先，记下此刻所在那一格）
   tabs.onManualSwitch = () => {
     startup?.onManualSwitch();
   };
-  // F88b：当前 tab 那一格变了 → 刷新 HUD context% chip（〔STC〕后端的会话事实到了 / switchTo 切会话 / 要不到 ⇒ chip 说原因）。
-  // 〔GAP1 · `设计/01 §1.5`〕订阅 store（原先是两个点对点回调）。
+  // F88b：当前 tab 那一格变了 → 刷新 HUD context% chip（后端的会话事实到了 / switchTo 切会话 / 要不到 ⇒ chip 说原因）。
+  // 订阅 store（原先是两个点对点回调）。
   tabs.active.subscribe((a) => {
     usageHud.setActive(a.model, a.promptTokens);
     usageHud.setUnavailable(a.unavailable);
@@ -335,7 +335,7 @@ window.addEventListener("DOMContentLoaded", async () => {
         void agentViewer.load({
           jsonlPath: result.path,
           displayTitle: entry.label,
-          // 〔C4a〕子 agent 的文件在父会话那台机器上。上一版这里**没传** origin，
+          // 子 agent 的文件在父会话那台机器上。上一版这里**没传** origin，
           // 而查看器把「没说」当本机 ⇒ 远端子 agent 的记录被拿去本机读（读不到）。
           origin: actx.origin,
           suppressBranch: true,
@@ -361,9 +361,9 @@ window.addEventListener("DOMContentLoaded", async () => {
   // 用户去设置里补齐了一格，广播过来这一拍就是「状态维」该重算的那一刻；
   // 不挂的话「补齐了 ⇒ 指路消失」要等下次启动才兑现（那就成了一句半真的话）。
   let refreshFirstRunHint: () => void = () => {};
-  // 〔RESYNC · `99 §2.1` ㉟①〕设置窗「重新对齐」做完 ⇒ 标出那台上记录没了的固定条（不自动摘）。
+  // 设置窗「重新对齐」做完 ⇒ 标出那台上记录没了的固定条（不自动摘）。
   void listen<{ origin: string }>(RESYNC_DONE_EVENT, (e) => void tabs.flagPinsWithoutRecord(e.payload.origin));
-  // 〔FIX3 · `99 §2.2 ②`〕任何窗口起会话之后交过来的「等它」都在这里收（主窗口订着每台的会话流）。
+  // 任何窗口起会话之后交过来的「等它」都在这里收（主窗口订着每台的会话流）。
   bindLaunchArrivals();
   void listen(SETTINGS_APPLIED_EVENT, () => {
     void loadTheme(); // 主题：loadTheme 内部 applyTheme
@@ -374,9 +374,9 @@ window.addEventListener("DOMContentLoaded", async () => {
     });
     void accountChip.refresh(true); // A3：远端配置/默认账号可能变了，刷新账号 chip
     refreshFirstRunHint(); // N-F3：账本/远端列表可能变了 → 「还差什么」现算一遍
-    void usageHud.loadLimitOverrides(); // 〔FIX4〕上下文上限覆盖表可能在设置页改过
+    void usageHud.loadLimitOverrides(); // 上下文上限覆盖表可能在设置页改过
   });
-  // Batch11-F33：竖直 tab 栏——右缘拖拽调宽。〔CFG1〕整段搬进 tab 栏自己的模块（`tab-bar-width.ts`），
+  // Batch11-F33：竖直 tab 栏——右缘拖拽调宽。整段搬进 tab 栏自己的模块（`tab-bar-width.ts`），
   // 宽度经 `LS_KEYS` ＋ `safeGet/safeSet` 记忆（D §D5：原先住这里、直调 localStorage、键不在登记里）。
   mountTabBarResizer();
 
@@ -392,13 +392,13 @@ window.addEventListener("DOMContentLoaded", async () => {
 
   // 历史浏览器入口 —— 顶栏右侧，紧邻设置按钮左边
   // v2.5+: HistoryView 不再接管 streamRoot，自挂 body 作 fixed overlay
-  // 〔FW1 · 第四波 4D · D-d〕记录文件不见了 / 被改过 ⇒ 那个 tab 顶上说一句（只在主窗口接，理由见 `record-file-notice.ts`）。
+  // 记录文件不见了 / 被改过 ⇒ 那个 tab 顶上说一句（只在主窗口接，理由见 `record-file-notice.ts`）。
   const recordFile = recordFileWiring((sid) => tabs.streamElOf(sid));
   const historyView = new HistoryView();
-  // 〔GAP1 · `设计/01 §1.5`〕overlay 开关只经路由（顶栏按钮 · 快捷键 · 命令面板同一口）。
+  // overlay 开关只经路由（顶栏按钮 · 快捷键 · 命令面板同一口）。
   const overlays = new OverlayRouter();
   overlays.register("history", historyView);
-  // 〔FW1 · 第四波 4D · D-e〕删会话前看活不活：条目自己那一格可能是列表拉下来那一刻的，tab 栏是此刻的。
+  // 删会话前看活不活：条目自己那一格可能是列表拉下来那一刻的，tab 栏是此刻的。
   historyView.liveInTabs = (sid) => tabs.isSessionLive(sid);
   const historyTrigger = document.createElement("button");
   historyTrigger.type = "button";
@@ -445,7 +445,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   document.getElementById("app")?.appendChild(gridTrigger);
 
   // F83（#39）：顶栏远端文件入口 —— 设置搬独立窗后腾出的入口位。点击按远端主机数分支：
-  // 0 台提示 / 1 台直开 / 多台选单（选单见 openSftpFromTopbar）。〔F7b〕终点是原生文件窗口（`file-window.ts`）。
+  // 0 台提示 / 1 台直开 / 多台选单（选单见 openSftpFromTopbar）。终点是原生文件窗口（`file-window.ts`）。
   const sftpTrigger = document.createElement("button");
   sftpTrigger.type = "button";
   sftpTrigger.className = "sftp-trigger";
@@ -482,7 +482,7 @@ window.addEventListener("DOMContentLoaded", async () => {
       { id: "open-sftp", title: copyText("main.cmd.openFiles"), keywords: copyText("main.cmd.filesKeywords"), run: () => void openSftpFromTopbar(sftpTrigger) },
       { id: "win-minimize", title: copyText("main.cmd.minimize"), keywords: copyText("main.cmd.minimizeKeywords"), hint: chordHint("app.minimize"), run: () => void getCurrentWindow().minimize() },
       { id: "win-fullscreen", title: copyText("main.cmd.fullscreen"), keywords: copyText("main.cmd.fullscreenKeywords"), hint: chordHint("app.toggle-fullscreen"), run: () => { const w = getCurrentWindow(); void w.isFullscreen().then((f) => w.setFullscreen(!f)).catch((e) => console.warn("toggle-fullscreen failed:", e)); } },
-      // 〔U2〕↗ 那一项只在 ↗ 真能用的机器上列出来（非 Windows 不列；门与 tab 上那颗按钮是同一道，见 `terminal-front-command.ts`）。
+      // ↗ 那一项只在 ↗ 真能用的机器上列出来（非 Windows 不列；门与 tab 上那颗按钮是同一道，见 `terminal-front-command.ts`）。
       ...terminalFrontCommand({ id: "term-front", title: copyText("main.cmd.terminalFront"), keywords: copyText("main.cmd.terminalFrontKeywords"), hint: chordHint("terminal.bring-front"), run: () => tabs.bringActiveTerminalToFront() }),
       { id: "toggle-tasks", title: copyText("main.cmd.tasks"), keywords: copyText("main.cmd.tasksKeywords"), hint: chordHint("panel.toggle-tasks"), run: () => tasksPanel.toggle() },
       { id: "tab-next", title: copyText("main.cmd.tabNext"), keywords: copyText("main.cmd.tabNextKeywords"), hint: chordHint("tab.next"), run: () => tabs.cycleActive(1) },
@@ -555,7 +555,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   // 补齐了自己就消失、又缺了自己就回来。两者的值一个都不共用，见 first-run-hint.ts 头注。
   //
   // ⚠ 只在主窗口挂：独立 viewer 窗与设置窗各走自己的入口（`entry-viewer.ts` / `entry-settings.ts`），不经过本文件。
-  // 🔴 〔`P12` 收尾 2026-09-21〕**「配置里有个键没生效」这句话要在主窗口也说得出来。**
+  // 🔴 **「配置里有个键没生效」这句话要在主窗口也说得出来。**
   //
   // `P12` 那一刀把它做在了设置面板顶上，而做那一刀的人自己报备了剩下的缺口，逐字：
   // 「**从没打开过设置的用户今天仍然看不到**」——`SettingsPanel` 只在设置窗构造。
@@ -617,7 +617,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   dispatcher.bind("tab.close-archived", () => tabs.closeActiveIfArchived());
   dispatcher.bind("tab.open-cwd", () => tabs.openActiveTabCwd());
   dispatcher.bind("tab.pop-out", () => tabs.openActiveInNewWindow());
-  // 〔SE2〕会话内查找（大纲同一块面板）；〔MIG-2 · ㊱③〕历史查看器开着时落在它上面（它盖在 tab 上）。
+  // 会话内查找（大纲同一块面板）；历史查看器开着时落在它上面（它盖在 tab 上）。
   dispatcher.bind("session.find", () => {
     if (!historyView.openFind()) tabs.openFind();
   });
@@ -679,7 +679,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     }
   }
 
-  // 〔CF2 · 第四波 4B〕会话内容经通道 `subscribe` 来：每台机器一条 `session-lines`。哪几台由后端注册表说了算
+  // 会话内容经通道 `subscribe` 来：每台机器一条 `session-lines`。哪几台由后端注册表说了算
   //   （`backend_machines`：本机恒第一，远端是起步时各起了一条流的那几台）。问不到 ⇒ 至少订本机。
   let machines: string[] = [LOCAL_ORIGIN];
   try {
@@ -693,32 +693,32 @@ window.addEventListener("DOMContentLoaded", async () => {
     // P5.2 B 重构：onLine 不再带 source 参数（前端按 seq timeline 排，不分 batch/live）
     onLine: (e) => {
       tabs.onLine(e);
-      recordFile.afterLine(e.session_id); // 〔FW1 · D-d〕又来了一行 ⇒ 「记录文件不见了」那一句收掉
+      recordFile.afterLine(e.session_id); // 又来了一行 ⇒ 「记录文件不见了」那一句收掉
     },
     onSessionEnded: (sessionId) => {
       tabs.archiveTab(sessionId);
-      accountsRefresher.request(); // 〔MIG-1 续〕会话结束了（原先听裸事件）
+      accountsRefresher.request(); // 会话结束了（原先听裸事件）
     },
     // audit-fixes F03.2：远端 claude 退但 tmux 会话仍在 → 灰灯（idle-tmux 第三态，非归档）。
     onSessionIdle: (sessionId) => tabs.markTmuxIdle(sessionId),
-    // 〔U4b · 第四波〕活会话的容器（G3）· 某台机器的活会话清单报完了（说不清 → 已结束）。
+    // 活会话的容器（G3）· 某台机器的活会话清单报完了（说不清 → 已结束）。
     onSessionContainer: (sessionId, container) => tabs.noteContainer(sessionId, container),
     onOriginSessionsListed: (origin) => {
       tabs.markOriginSeen(origin);
-      startup?.onListed(origin); // 〔MIG-1 续〕每台都报完了、记住的那一格还没出现 ⇒ 明说
+      startup?.onListed(origin); // 每台都报完了、记住的那一格还没出现 ⇒ 明说
     },
-    // 〔TAP · V124〕中转抄出来的 SSE 事件（会话流 `session-tap`）→ 活卡（jsonl 到了整轮覆盖）；那台看不见了 ⇒ 活卡全撤。
+    // 中转抄出来的 SSE 事件（会话流 `session-tap`）→ 活卡（jsonl 到了整轮覆盖）；那台看不见了 ⇒ 活卡全撤。
     onSessionTap: (e) => tabs.onSessionTap(e),
     onSessionRuns: (p) => tabs.onSessionRuns(p),
     onSessionTapLost: (origin) => tabs.dropLiveCards(origin),
-    // 〔DL1〕那台的长连接又通了 / 那台账号清单变了 ⇒ 强制刷账号清单 ＋ chip（`accounts-changed` 流）。
+    // 那台的长连接又通了 / 那台账号清单变了 ⇒ 强制刷账号清单 ＋ chip（`accounts-changed` 流）。
     onAccountsChanged,
-    // 〔FW1 · 第四波 4D · D-d〕记录文件不见了 / 被改过已从头重读 ⇒ 那个 tab 顶上说一句。
+    // 记录文件不见了 / 被改过已从头重读 ⇒ 那个 tab 顶上说一句。
     onSessionFileNotice: (sessionId, change) => {
-      tabs.onRecordFileReread(sessionId, change); // 〔RENDER2〕从头重读 ⇒ tab 整份重来（先重来、再在新的流容器上说那一句）
+      tabs.onRecordFileReread(sessionId, change); // 从头重读 ⇒ tab 整份重来（先重来、再在新的流容器上说那一句）
       recordFile.onSessionFileNotice(sessionId, change);
     },
-    // 〔GP1 · 第四波〕那台机器看不见了 ⇒ 那台上活的 · 可重连的说不清（不是已结束）。〔MIG-1 续〕机器级一格。
+    // 那台机器看不见了 ⇒ 那台上活的 · 可重连的说不清（不是已结束）。机器级一格。
     onOriginUnseen: (origin) => tabs.markOriginUnseen(origin),
     // 会话复活（resume）：后端 liveness 门控后才发，复活已归档的本地 Tab，免 F5。
     // Batch7-F24：无 Tab（= 运行中途**新出现**的本地会话）→ 建骨架——bg 会话必须
@@ -738,9 +738,9 @@ window.addEventListener("DOMContentLoaded", async () => {
       //       在这里起一个新的周期唤醒就是开倒车（`polling_registry` 那两张表在管这件事）。
       //    ⚠ 不 `await`：回填是补记账，失败也不该影响建 tab 这条主路（它自己吞异常）。
       void resolvePendingLocalLaunches();
-      // 〔MIG-1〕本机骨架也在就绪点才到（与远端同一条路）⇒ 上次所在 tab 是本机会话时同样在这里补切。
+      // 本机骨架也在就绪点才到（与远端同一条路）⇒ 上次所在 tab 是本机会话时同样在这里补切。
       startup?.onAppeared(sessionId);
-      noteLive(LOCAL_ORIGIN, sessionId, { cwd: meta.cwd, rbindToken: meta.rbindToken }); // 〔FIX3 · ②〕起会话的真成功正信号
+      noteLive(LOCAL_ORIGIN, sessionId, { cwd: meta.cwd, rbindToken: meta.rbindToken }); // 起会话的真成功正信号
     },
     // 启动重放（jsonl-batch）期间走 batch 模式（lazy hljs + BranchFolder.batchMode），
     // 结束时 flush。onChunk 已删 —— B 重构后 chunk 切边界对前端不可见。
@@ -754,15 +754,15 @@ window.addEventListener("DOMContentLoaded", async () => {
       tabs.onBatchEnd();
     },
     // v2.3.0 issue #11: task watcher 推送的 task 列表更新
-    // 〔MIG-3b · ㉓②〕那台后端说这几个会话的任务变了（或期间可能漏了）⇒ 重问 `tasks-list`。
+    // 那台后端说这几个会话的任务变了（或期间可能漏了）⇒ 重问 `tasks-list`。
     onTasksChanged: (origin, sids, all) => tabs.refreshTasks(origin, sids, all),
     // issue #23: 会话红绿灯（busy=绿 / idle·shell=红 / waiting=黄）
     onSessionActivity: (e) =>
       tabs.updateActivity(e.session_id, e.status, e.waiting_for),
     // Batch5-F18：远端会话宣告 → 骨架 Tab。Batch7-F24：p1e backend 附 cwd/kind/name
-    // ——骨架标题即时完整（bg → ⚙ ＋ 任务名；〔BG1〕不再挂宿主排成树）；旧后端缺省照旧 sid 前缀。
+    // ——骨架标题即时完整（bg → ⚙ ＋ 任务名；不再挂宿主排成树）；旧后端缺省照旧 sid 前缀。
     onRemoteSessionAdded: (sessionId, origin, meta) => {
-      noteLive(origin, sessionId, { cwd: meta.cwd, rbindToken: meta.rbindToken }); // 〔FIX3 · ②〕起会话的真成功正信号
+      noteLive(origin, sessionId, { cwd: meta.cwd, rbindToken: meta.rbindToken }); // 起会话的真成功正信号
       tabs.createSkeletonTab(
         sessionId,
         meta.cwd || null,
@@ -773,21 +773,21 @@ window.addEventListener("DOMContentLoaded", async () => {
       );
       // Batch5-F19：上次所在 tab 是远端会话时在此补切（应用一次即清）。
       startup?.onAppeared(sessionId);
-      accountsRefresher.request(); // 〔MIG-1 续〕会话起了（原先听裸事件）
+      accountsRefresher.request(); // 会话起了（原先听裸事件）
 
     },
-    // 〔CF2〕那台机器的会话流丢了几格 ⇒ 那台的每个 tab 按行号补（`TabManager.onStreamGap`）。
+    // 那台机器的会话流丢了几格 ⇒ 那台的每个 tab 按行号补（`TabManager.onStreamGap`）。
     onStreamGap: (origin) => tabs.onStreamGap(origin),
   }, {
     streams: machines.map((origin) => ({ origin, kind: "session-lines" })),
-    // 〔HOST · V139〕每台的中转都住那台的常驻后端 ⇒ 每台都订 tap（与会话行同一份机器清单）。
+    // 每台的中转都住那台的常驻后端 ⇒ 每台都订 tap（与会话行同一份机器清单）。
     taps: machines,
-    // 〔DL1〕每台一条 `accounts-changed`（替掉裸事件 `remote-backend-ready`）。
+    // 每台一条 `accounts-changed`（替掉裸事件 `remote-backend-ready`）。
     accounts: machines,
-    // 〔MIG-3b · ㉓②〕每台一条 `session-tasks`（替掉本机那个裸事件 `task-update`；远端第一次有推送）。
+    // 每台一条 `session-tasks`（替掉本机那个裸事件 `task-update`；远端第一次有推送）。
     tasks: machines,
   });
-  // 〔DL1 · `设计/01 §2.2`〕账号那一格经通道订（每台一条 `accounts-changed`，上面 `bindEvents` 的 `accounts`）。
+  // 账号那一格经通道订（每台一条 `accounts-changed`，上面 `bindEvents` 的 `accounts`）。
   //   订阅登记之前那一窗里连上的不会有 `seen`（句柄只在状态变时说）⇒ `bindEvents` 返回（订阅都登记好了）之后补刷一次 ——
   //   与「独立窗口的订阅本身就是它的就绪点」同一个道理。
   onAccountsChanged();
@@ -797,7 +797,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   // issue #32 (SS-F)：远端健康事件（拥塞丢行 / 版本不符）→ 右下角 info toast
   bindRemoteHealthToast();
 
-  // Batch5-F19（G 验收 B-1）：**先读记忆再建骨架**——骨架（〔MIG-1〕本机远端一样，都是会话流里的 `live` 成品，
+  // Batch5-F19（G 验收 B-1）：**先读记忆再建骨架**——骨架（本机远端一样，都是会话流里的 `live` 成品，
   //   在下面 `frontend-ready` 的就绪点才到）一建出来就可能经 switchTo 写回 localStorage，读晚了就把记忆覆写掉。
   // 启动 active = 上次所在 tab：此刻还没有骨架 ⇒ 挂 pending，等它的 `live` 到达时补切（本机 `onSessionStarted` ·
   //   远端 `onRemoteSessionAdded` 两处同一段；应用一次即清，30 s 之后不再抢焦点）。
@@ -832,7 +832,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   const frontendReady: FrontendReadyPayload = { prioritySid: lastActive };
   void emit("frontend-ready", frontendReady);
 
-  // 〔MIG-1〕红绿灯的初始值随 `live` 成品一起在就绪点交（`activity` 那一格），不再另拉快照（`list_session_activity`〔散文墓碑〕）。
+  // 红绿灯的初始值随 `live` 成品一起在就绪点交（`activity` 那一格），不再另拉快照（`list_session_activity`〔散文墓碑〕）。
 
   // 注：maximize / 全屏后内容错位的修复在 Rust 侧（src/frontend/shell/src/lib.rs on_window_event：
   // 去抖后微调 webview 尺寸强制 wry 重新 put_Bounds，把 WebView2 合成层钉回左上角）。

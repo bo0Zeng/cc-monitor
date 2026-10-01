@@ -20,7 +20,7 @@ import { budgetWithin, jsonBody, readJson, saidOf } from "../ipc/chan-caller";
 import { buildPasteBlock, type PasteBlock } from "../paste-block"; // T03
 import { copyText } from "../copy-table";
 
-// 〔MIG-3b · `设计/95 §6`〕诊断由**那台机器的后端**出成品（帧命令 `hooks-diag`，`src/backend/observe/cc_bus_hooks.rs`），
+// 诊断由**那台机器的后端**出成品（帧命令 `hooks-diag`，`src/backend/observe/cc_bus_hooks.rs`），
 // 本机远端同一条 `chan.call(origin, …)`；monitor 那两条 Tauri 命令与判定本体删了。下面四个类型是成品的线上形状，
 // 由跨语言金样 `tests/__fixtures__/hooks-diag.golden.json` 钉住（后端产出 == 金样 · {@link decodeHooksReport} 读同一份）。
 // `HookState` 是 `#[serde(tag = "kind", rename_all = "kebab-case")]` 的内部标记枚举 → 判别联合。
@@ -148,7 +148,7 @@ export class CcBusHooksSection {
 
   /**
    * 「检查远端」要诊断的那台远端；`null` = **没有可诊断的远端**（在看本机，或 store 给的那台不在已配置清单里）。
-   * 〔C4a〕它不是 origin（上一版叫 `origin`、`null` 同时装着「本机」与「不认得」两件事）——本机在 store 里是
+   * 它不是 origin（上一版叫 `origin`、`null` 同时装着「本机」与「不认得」两件事）——本机在 store 里是
    * `LOCAL_ORIGIN`，这一格只回答「按钮该打向哪台远端」。
    */
   private diagnosable: string | null = null;
@@ -169,7 +169,7 @@ export class CcBusHooksSection {
   }
 
   /**
-   * ST1「延后加载」（`设计/70 §5.3` 判据 2：**子页内容只在该子页可见时才发 I/O**）：
+   * ST1「延后加载」（**子页内容只在该子页可见时才发 I/O**）：
    * 构造期不再发 I/O；宿主（`panel.ts`）在**某台机器的子页第一次可见**时调它。
    * 重开设置后宿主会再调一次（重开要看新读数）。
    */

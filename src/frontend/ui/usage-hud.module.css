@@ -1,5 +1,5 @@
 /**
- * 用量 HUD chip 的样式 —— 本仓第一份 CSS Modules（`设计/41` 件 10「渐进式 CSS Modules」的示范）。
+ * 用量 HUD chip 的样式 —— 本仓第一份 CSS Modules（件 10「渐进式 CSS Modules」的示范）。
  *
  * 类名经 `import s from "./usage-hud.module.css"` 用（`s.chip` / `s.high`），构建时哈希；
  * 写错名 ⇒ `tsc` 红（类型住隔壁 `usage-hud.module.d.css.ts`，与本文件的类名集合由

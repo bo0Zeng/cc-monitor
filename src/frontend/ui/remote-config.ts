@@ -27,7 +27,7 @@ export interface RemoteHostConfig {
    */
   jump: string;
   /**
-   * S4b-3（主计划 §5-1）：**这台机器**的 resume 启动命令。空 = 用全局默认
+   * S4b-3：**这台机器**的 resume 启动命令。空 = 用全局默认
    *（`behavior.resumeCommandRemote`）。
    *
    * 为什么必须 per-machine：「装 ccm 助手」是**每台机器一个按钮**，而 resume 命令
@@ -48,7 +48,7 @@ export function parseAddressLines(text: string): string[] {
     .filter((l) => l.length > 0);
 }
 
-// 🔴 〔步 8 · 条 80 「不要管旧配置」〕**那块墓碑整个删了。**
+// 🔴 〔条 80 「不要管旧配置」〕**那块墓碑整个删了。**
 //    这里原先住着 `LEGACY_NO_BACKEND_KEY = "daemonless"` —— 用户盘上那个已退役开关的键名，
 //    连同 `legacyNoBackendHosts()`、`RemoteConfig.legacyNoBackend` 字段与
 //    `settings/readiness.ts` 上那条指名告知。它**不驱动任何行为**，唯一作用是在
@@ -63,7 +63,7 @@ export interface RemoteConfig {
   enabled: boolean;
   hosts: RemoteHostConfig[];
   /**
-   * 〔S5 · 第四波 · V41〕`remote` 段在、却认不出（没有 `hosts` 数组 —— 旧的单台写法、或 `hosts` 写成了别的类型）
+   * `remote` 段在、却认不出（没有 `hosts` 数组 —— 旧的单台写法、或 `hosts` 写成了别的类型）
    * 时那一句原因；认得出 / 没有 `remote` 段 ⇒ 不给。认不出时 `hosts` 恒空（不猜那是哪台），
    * 设置页把这一句说在机器列表顶上。Rust 那一侧同一个判准（`lib.rs::parse_remote_hosts`），落 `error!` 日志。
    */
@@ -71,7 +71,7 @@ export interface RemoteConfig {
 }
 
 /**
- * 〔S5 · 第四波 · V41「不为旧配置留兼容」〕`remote` 段认不出时，机器列表顶上那一句。
+ * 〔「不为旧配置留兼容」〕`remote` 段认不出时，机器列表顶上那一句。
  * 从前旧的单对象写法（`remote: { enabled, host, … }`）会被悄悄当成 1 台；那一支删了。
  */
 export const REMOTE_CONFIG_UNRECOGNIZED =
@@ -133,7 +133,7 @@ function coerceHost(obj: Record<string, unknown>): RemoteHostConfig {
 /**
  * 读 config.json 的 `remote` 段 → RemoteConfig。有 `hosts` 数组 → 逐台读；`remote` 段在而没有
  * `hosts` 数组 ⇒ **认不出**（`hosts` 空 ＋ `unrecognized` 那一句）；没有 `remote` 段 → 空列表。永不抛。
- * 〔S5 · V41〕从前「无 `hosts` 但有 `host`（旧单对象）→ 归一成 1 台」那一支删了。
+ * 从前「无 `hosts` 但有 `host`（旧单对象）→ 归一成 1 台」那一支删了。
  */
 export async function readRemoteConfig(): Promise<RemoteConfig> {
   try {
@@ -196,7 +196,7 @@ export async function resolveRemoteConfigByOrigin(
  * - `jump`（F56 D-B1）：「设置卡填的跳板被静默丢弃」——用户填了，存不下来。
  * - `daemonless`（F59，**已于 `K-R59` 整格退役**）：补的时候注释里写着
  *   「同 D-B1 教训：枚举字段必逐个写全」。今天这个键**不在清单里**是有意的 ——
- *   一次保存就把用户盘上那份旧值写没。〔步 8 · 条 80〕那句「写没之前先指名告知一次」
+ *   一次保存就把用户盘上那份旧值写没。〔条 80〕那句「写没之前先指名告知一次」
  *   随那块墓碑一起删了：用户裁了「不要管旧配置」。
  *
  * 两次都是**事后**补的。下面那个 `MissingField` 检查把它变成**编译期**问题：
@@ -233,7 +233,7 @@ function serializeHost(h: RemoteHostConfig): Record<string, unknown> {
 
 /** S1：一台机器在盘上的定位键 = 它的 origin（与 [`findHostByOrigin`] 同口径）。 */
 /**
- * S4b-3（主计划 §5-1）：某台机器该用哪条 resume 启动命令。**纯函数。**
+ * S4b-3：某台机器该用哪条 resume 启动命令。**纯函数。**
  *
  * **per-machine 优先，全局兜底。** 全局值（`behavior.resumeCommandRemote`）从「唯一真相」
  * 降级为「默认值」—— 这样没填过 per-machine 的机器行为**一字不变**，不需要数据迁移
@@ -273,7 +273,7 @@ export interface RemoteHostsPatch {
   enabled?: boolean;
   /**
    * 要写入的机器。`key` = 这条记录**在盘上当前的 origin**；`null` = 新增（追加到末尾）。
-   * key 在盘上找不到（被别处删了/改了）⇒ 整批拒、说出来（〔FIX · ㊶〕不再「找不到就当新增」）。
+   * key 在盘上找不到（被别处删了/改了）⇒ 整批拒、说出来（不再「找不到就当新增」）。
    */
   upsert?: { key: string | null; value: RemoteHostConfig; was?: RemoteHostConfig }[];
   /** 要删除的机器，按 origin。 */
@@ -281,7 +281,7 @@ export interface RemoteHostsPatch {
 }
 
 /**
- * S1：UI 侧写远端配置的唯一入口。〔FIX2 续〕补丁全按键认元素（[`remoteHostsEdits`]），不读、不整段写 ——
+ * S1：UI 侧写远端配置的唯一入口。补丁全按键认元素（[`remoteHostsEdits`]），不读、不整段写 ——
  * 认元素在 Rust 写口锁内现读现判（`config.rs::patch_config_at`）。
  */
 export async function patchRemoteConfig(
@@ -292,7 +292,7 @@ export async function patchRemoteConfig(
 }
 
 /**
- * 〔FIX · ㊶ · FIX2 续〕一次局部修改 ⇒ 交给唯一写口的补丁：**全部按键认元素，没有整段写 `remote`**。**纯函数。**
+ * 一次局部修改 ⇒ 交给唯一写口的补丁：**全部按键认元素，没有整段写 `remote`**。**纯函数。**
  *
  * - 删（`remove`）⇒ 每台一条 `removein`：盘上认不出 / 认出多台 ⇒ 整批拒；
  * - 改（`key` ＋ 加载时那份 `was`）⇒ 动过的格各一条 `setin`（[`hostCellEdits`]）；
@@ -324,7 +324,7 @@ function hostWhere(key: string): { fields: string[]; equals: string }[] {
 }
 
 /**
- * 〔FIX · ㊶〕一台已在盘上的机器（加载时 origin = `key`、加载时的样子 `was`）改成 `now`：只出动过的那几格，每格一条 `setin`。**纯函数。**
+ * 一台已在盘上的机器（加载时 origin = `key`、加载时的样子 `was`）改成 `now`：只出动过的那几格，每格一条 `setin`。**纯函数。**
  *
  * 认它的键就是 origin，改 `label` / `host` 会换掉它 ⇒ 顺序：两者动了任一 ⇒ 先按旧 origin 把 `label` 写成表单值（盘上空 `label`
  * 读进来时被补成了 `host`，照写才与整台写那一形同一个 origin）；其余格随后按新 origin 认（`label` 空 ⇒ 仍是旧 `host`），`host` 排最后。

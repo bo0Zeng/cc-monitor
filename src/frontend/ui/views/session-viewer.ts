@@ -9,7 +9,7 @@
  * 关闭查看器后状态彻底释放。
  */
 
-// 〔步 12·C〕本机那个 origin 的**唯一住址**（Rust 侧是 `inbound_client::LOCAL_ORIGIN`，
+// 本机那个 origin 的**唯一住址**（Rust 侧是 `inbound_client::LOCAL_ORIGIN`，
 // 两侧由 `origin_tests::the_sentinel_agrees_with_the_two_existing_homes` 两向钉着）。
 import type { Origin } from "../ipc/origin";
 import { MessageStream } from "../stream";
@@ -29,16 +29,16 @@ import {
   type StreamSink,
 } from "../render-stream-record";
 import { UnrenderedRanges } from "../render-window";
-// 〔U3b〕查看器接骨架：与实时 tab **同一个** `SkeletonView`（占位 ＋ 只物化可见区）。
+// 查看器接骨架：与实时 tab **同一个** `SkeletonView`（占位 ＋ 只物化可见区）。
 import { SkeletonView, ledgerFromIndex } from "../skeleton-view";
 import { findInSession, readSessionIndex, type SessionIndexResult } from "../session-reads";
 import { readWholeSession } from "../record-reads";
 import { attachBranchButton } from "../branch-button";
 import { runForkFlow } from "../fork-flow"; // G6：分叉完把新会话起起来（E78 起连反馈也在里面）
 import type { BranchResult } from "../session-writes";
-// 〔SE1〕大纲的清单问后端要（判定只住后端），实时 tab 用的是同一个类
+// 大纲的清单问后端要（判定只住后端），实时 tab 用的是同一个类
 import { OutlineSource } from "./outline-source";
-// 〔MIG-2 · `99 §2.1 ㊱③`〕查找面板与实时 tab 同一块（SE2：搜索 ／ 大纲两个模式；大纲那一半就是 K-R45 那份清单界面）
+// 查找面板与实时 tab 同一块（SE2：搜索 ／ 大纲两个模式；大纲那一半就是 K-R45 那份清单界面）
 import { SessionFindPanel } from "./session-find";
 import { copyText } from "../copy-table";
 
@@ -69,7 +69,7 @@ import { copyText } from "../copy-table";
 export function revealCard(container: HTMLElement, uuid: string): HTMLElement | null {
   // CSS.escape 防 uuid 里有特殊字符破坏选择器
   const key = CSS.escape(uuid);
-  // 〔W5-RENDER R11 · `设计/10 §7` 第 10 条〕卡找不到 ⇒ 再找「被并进工具组 / 被注入进 tool_use」的那一块（`data-member-uuid`）
+  // 卡找不到 ⇒ 再找「被并进工具组 / 被注入进 tool_use」的那一块（`data-member-uuid`）
   const el =
     container.querySelector<HTMLElement>(`[data-uuid="${key}"]`) ??
     container.querySelector<HTMLElement>(`[data-member-uuid="${key}"]`);
@@ -131,7 +131,7 @@ export interface ViewerOptions {
   scrollToUuid?: string;
   /**
    * issue #16：哪台机器的会话（本机 = `LOCAL_ORIGIN`）。
-   * 〔C4a · `设计/05 §8` 步 2〕上一版是「`undefined` = 本地」—— 「没说」被当成本机；
+   * 上一版是「`undefined` = 本地」—— 「没说」被当成本机；
    * 现在**必填**（子 agent 查看器就曾因此把远端子 agent 的文件拿去本机读）。
    */
   origin: Origin;
@@ -161,7 +161,7 @@ export class SessionViewer {
   private unrendered: UnrenderedRanges | null = null;
   private uuidToIdx = new Map<string, number>();
   /**
-   * 〔U3b〕骨架层：没渲染的 seq 区间由占位顶住（滚动条一开始就是全会话的），滚到哪物化哪。
+   * 骨架层：没渲染的 seq 区间由占位顶住（滚动条一开始就是全会话的），滚到哪物化哪。
    * `null` = 没接上（本机后端不在 / 老后端 / Codex 会话 / seq 对不上）⇒ 行为与之前逐字相同。
    * ⚠ 查看器仍然**全量收正文**（大纲 / 分叉折叠要全量记录，SE1 那一路在把大纲搬到后端）——
    * 骨架在这里买的是滚动条与「只建可见区」，**不是**内存。
@@ -183,10 +183,10 @@ export class SessionViewer {
   private titleEl!: HTMLElement;
   private subtitleEl!: HTMLElement;
   private statusEl!: HTMLElement;
-  // 〔MIG-2 · ㊱③〕查找面板（SE2 那一块：Ctrl+F 搜索 ／ 大纲），与实时 tab **同一个类**；
+  // 查找面板（SE2 那一块：Ctrl+F 搜索 ／ 大纲），与实时 tab **同一个类**；
   // 大纲那一半（K-R45 甲的用户输入清单）就是它的 `outline`。
   private find!: SessionFindPanel;
-  /** 〔SE1〕大纲的数据源；`where` 在 `load` 时换成这一份会话。 */
+  /** 大纲的数据源；`where` 在 `load` 时换成这一份会话。 */
   private outline!: OutlineSource;
   private outlineWhere: { origin: string; jsonlPath: string } | null = null;
   /** 用户点"返回历史"时调用 */
@@ -204,13 +204,13 @@ export class SessionViewer {
   /**
    * Batch13-F39:两阶段加载(实测 37MB 全量渲染 65.5s → 首屏 1.1s)。
    *
-   * 阶段一(收集):〔MOD〕那台后端按页（≤ 1 MiB 原文）出记录行,前端只收集 payload +
+   * 阶段一(收集):那台后端按页（≤ 1 MiB 原文）出记录行,前端只收集 payload +
    * 预提取 branch/queue 数据,**不渲染**。
    * 阶段二(增量渲染):收齐后渲染末尾 TAIL_INITIAL 条首屏(+深链岛)→ fold 一次
    * 重建 → 贴底/定位;此后上翻由 maybeFillAbove 按批补渲染,每批先摊平再插入再重折。
    *
    * 取消:dispose() 时 stream = null + loadGeneration 递增,后续 chunk/异步残余
-   * 双守卫丢弃;〔MOD〕翻页循环每页核一次世代号，换了会话就不再问下一页。
+   * 双守卫丢弃;翻页循环每页核一次世代号，换了会话就不再问下一页。
    */
   async load(opts: ViewerOptions): Promise<void> {
     this.titleEl.textContent = opts.displayTitle;
@@ -241,7 +241,7 @@ export class SessionViewer {
       timeline,
       onBranchRecord: () => {},
       onQueueOperation: () => {},
-      enhanceRoot: this.streamEl, // 〔W5-RENDER R5 · `设计/10 §3.5` D2〕IO 的 root = 查看器自己的滚动容器
+      enhanceRoot: this.streamEl, // IO 的 root = 查看器自己的滚动容器
       // F62 / **G6**：给每张 user/assistant 卡挂「从这一轮分叉」按钮。**远端也挂**——
       // 远端走后端的 `--fork-session`（只认 sid），不再受"远端 jsonl 本机够不着"所限。
       // F77：子 agent 记录 `suppressBranch` 仍关掉（子 agent jsonl 不是可分支的会话）。
@@ -274,9 +274,9 @@ export class SessionViewer {
       onQueueOperation: (content) => queuedContents.push(content),
       onTitleUpdate: () => {}, // viewer 标题静态,不消费 ai-title
     };
-    // 〔U3b〕骨架索引与正文**并行**要（索引是另一个后端进程，~0.1 s / 50 MB）；接骨架在首屏之后。
+    // 骨架索引与正文**并行**要（索引是另一个后端进程，~0.1 s / 50 MB）；接骨架在首屏之后。
     const origin = opts.origin;
-    // 〔C4b〕经通道直接问那台后端（`session-reads.ts`）；要不到 ⇒ `available:false`，它自己不抛。
+    // 经通道直接问那台后端（`session-reads.ts`）；要不到 ⇒ `available:false`，它自己不抛。
     const indexP = readSessionIndex(origin, opts.jsonlPath, 0);
     const onChunk = (chunk: JsonlLinePayload[]): void => {
       if (!this.stream || this.loadGeneration !== gen) return; // 已 dispose / 已换会话
@@ -294,7 +294,7 @@ export class SessionViewer {
     };
 
     try {
-      // 〔MOD · `05 §14.3` C 组〕经通道直接问那台后端（`history-page`，`src/frontend/ui/record-reads.ts::readWholeSession`）：
+      // 经通道直接问那台后端（`history-page`，`src/frontend/ui/record-reads.ts::readWholeSession`）：
       //   后端出记录行（记录解释住后端），按页交 `onChunk`、同一个 Promise 链里交完 ⇒ 不再有「两条 IPC 通道谁先到」那一格。
       //   本机与远端同一条路（`origin` 必填，本机就是 `LOCAL_ORIGIN`）。
       await readWholeSession(opts.origin, opts.jsonlPath, onChunk, () => !this.stream || this.loadGeneration !== gen);
@@ -337,7 +337,7 @@ export class SessionViewer {
       this.streamEl.addEventListener("scroll", this.onScrollFill, { passive: true });
       // R1(D 审计):短会话首屏不足一屏时永远不会有 scroll 事件——主动踢一脚自链
       requestAnimationFrame(() => void this.maybeFillAbove());
-      // 〔U3b〕索引到了就接骨架（首屏已经在了，不等它）
+      // 索引到了就接骨架（首屏已经在了，不等它）
       void indexP.then((res) => this.attachSkeleton(gen, res));
     } catch (e) {
       this.statusEl.textContent = copyText("sessionViewer.load.failed", { e: String(e) });
@@ -357,7 +357,7 @@ export class SessionViewer {
   }
 
   /**
-   * 〔U3b〕接骨架。先对拍 seq 空间（抽几条 payload，它们的 uuid 在索引里必须落在同一个 seq 上 ——
+   * 接骨架。先对拍 seq 空间（抽几条 payload，它们的 uuid 在索引里必须落在同一个 seq 上 ——
    * 查看器两条读路子步 1 起按可计行编号；Codex 会话 / 读完之间文件被改写 ⇒ 对不上就不接），
    * 再把 `UnrenderedRanges` 的每个洞翻成 seq 区间画成占位：洞 `[a,b)` 的 seq 区间从上一个已渲染记录的
    * 下一行起、到下一个已渲染记录为止（夹在中间的不可显示行一并归进去，高为 0）。
@@ -457,7 +457,7 @@ export class SessionViewer {
     if (!uuid) return;
     attachBranchButton(cardEl, {
       uuid,
-      // 两条路都只认 sid（〔`K-R88` 09-13〕本机那条也收成 sid 了）。查看器手上没有独立的
+      // 两条路都只认 sid（本机那条也收成 sid 了）。查看器手上没有独立的
       // sid 字段，但历史会话的文件名**就是** sid（`remote_history::jsonl_stem` 是同一口径），
       // 所以从路径取。
       sourceSessionId: sidFromJsonlPath(jsonlPath),
@@ -535,7 +535,7 @@ export class SessionViewer {
    * 批后自链复检(R1:零高批/短内容场景没有 scroll 事件可依赖)。
    */
   private async maybeFillAbove(): Promise<void> {
-    // 〔U3b〕接上骨架 ⇒ 不再「从顶上往上一批批补」，只物化与视口相交的那段占位（不自链）
+    // 接上骨架 ⇒ 不再「从顶上往上一批批补」，只物化与视口相交的那段占位（不自链）
     if (this.skeleton) {
       if (this.skeleton.fillVisible() > 0) this.updateStatus(this.payloads.length);
       return;
@@ -598,7 +598,7 @@ export class SessionViewer {
   private scrollToMessage(uuid: string): HTMLElement | null {
     // F39:目标还没渲染(非首屏路径调进来,如未来的重复定位)→ 先渲染目标岛
     const idx = this.uuidToIdx.get(uuid);
-    // 〔U3b〕接上骨架 ⇒ 岛也经骨架物化（占位要跟着切开，不许在占位中间凭空插一段卡）
+    // 接上骨架 ⇒ 岛也经骨架物化（占位要跟着切开，不许在占位中间凭空插一段卡）
     const seq = idx !== undefined ? this.payloads[idx]?.seq : undefined;
     if (this.skeleton && seq !== undefined && this.skeleton.isPending(seq)) {
       this.skeleton.ensure(seq, 100);
@@ -619,7 +619,7 @@ export class SessionViewer {
   // ==== K-R45 甲 · 用户输入清单（大纲） ====
 
   /**
-   * 〔SE1 · `设计/10 §2.2b ⑥`〕清单**问后端要**（`--list-user-inputs`），不再扫 `payloads`。
+   * 清单**问后端要**（`--list-user-inputs`），不再扫 `payloads`。
    *
    * 原先这里对全量 `payloads` 调前端那份 `collectUserInputs` —— 口径没错，但它是前端的判定，
    * 后端出了这份清单之后留着它就是「各写一遍判定」（设计逐字禁掉的那一形）⇒ 判定只住后端，
@@ -631,7 +631,7 @@ export class SessionViewer {
     void this.outline.refresh();
   }
 
-  /** 〔MIG-2 · ㊱③〕Ctrl+F（动作 `session.find`）落在查看器上：查找面板打开到「搜索」、焦点进输入框。 */
+  /** Ctrl+F（动作 `session.find`）落在查看器上：查找面板打开到「搜索」、焦点进输入框。 */
   openFind(): void {
     this.find.open("search");
   }
@@ -643,12 +643,12 @@ export class SessionViewer {
 
   private disposeStream(): void {
     this.streamEl?.removeEventListener("scroll", this.onScrollFill);
-    if (this.streamEl) releaseEnhanceRoot(this.streamEl); // 〔W5-RENDER R5〕上一个会话的卡随 IO 一起放掉
+    if (this.streamEl) releaseEnhanceRoot(this.streamEl); // 上一个会话的卡随 IO 一起放掉
     if (this.stream) {
       this.stream.dispose();
       this.stream = null;
     }
-    // 〔U3b〕骨架随会话走
+    // 骨架随会话走
     this.skeleton?.dispose();
     this.skeleton = null;
     // F39:释放增量渲染状态(payloads 可达 37MB 量级)
@@ -663,9 +663,9 @@ export class SessionViewer {
     this.lastFirstScreenMs = null;
     // K-R45 甲：清单也要跟着释放 —— 留着就是上一个会话的句子挂在下一个会话上，
     // 点下去按 uuid 找不到卡，正好落进「静默跳到看不见的东西上」那一形。
-    // 〔SE1〕`reset` 同时让在途那趟回来后不许回写（换会话之后迟到的清单不属于这一份）。
+    // `reset` 同时让在途那趟回来后不许回写（换会话之后迟到的清单不属于这一份）。
     this.outline?.reset();
-    // 〔㊱③〕查找那一半同理：结果清空、在途那趟作废、收起。
+    // 查找那一半同理：结果清空、在途那趟作废、收起。
     this.find?.reset();
   }
 
@@ -688,7 +688,7 @@ export class SessionViewer {
     backBtn.addEventListener("click", () => this.onBack());
     bar.appendChild(backBtn);
 
-    // 〔MIG-2 · ㊱③〕查找面板（与实时 tab 共用一份实现，SE2）。宿主的三件事：
+    // 查找面板（与实时 tab 共用一份实现，SE2）。宿主的三件事：
     // ① 怎么查 —— 问那台后端 `history-find`（经通道，`session-reads.ts::findInSession`），问的是查看器此刻这一份会话；
     // ② 怎么跳 —— `scrollToMessage`（大纲行与命中行同一个住址）；
     // ③ 跳空了怎么解释 —— 查看器这一侧落空的成因是自陈的那条不等价：渲染会再剥一层 `stripInternalNoise`，
@@ -728,7 +728,7 @@ export class SessionViewer {
     this.streamEl.className = "stream session-viewer-stream";
     view.appendChild(this.streamEl);
 
-    // 〔㊱③〕查找面板悬浮在流上（`.session-find` 的位置规则与实时 tab 同一条）：入口按钮「大纲 · N」＋ 收着的面板。
+    // 查找面板悬浮在流上（`.session-find` 的位置规则与实时 tab 同一条）：入口按钮「大纲 · N」＋ 收着的面板。
     view.appendChild(this.find.el);
 
     return view;

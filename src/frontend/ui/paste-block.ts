@@ -2,7 +2,7 @@
 //
 // ## 为什么是三个消费者，而不是计划里写的两个
 //
-// MASTERPLAN 与 STATUS 都写「两个真实消费者」。实际数下来族 A 有 **3 处**
+// 与 STATUS 都写「两个真实消费者」。实际数下来族 A 有 **3 处**
 // （`launcher-diagnostics.ts` 的别名生成器、`cc-bus-hooks-section.ts` 的钩子片段、
 // `remote-section.ts` 的 `CCM_WRAPPER_SNIPPET`），而第三处**行为和另两处不一致**：
 // 它没有粘后指引，而且**复制失败时把错误吞进 `console.warn`**——用户点了「复制」，
@@ -78,7 +78,7 @@ function requireThreeSentences(spec: PasteSpec): void {
   ] as const) {
     if (!v || !v.trim()) {
       throw new Error(
-        `bug: PasteSpec.${k} is empty — where / how to merge / when it takes effect are the reason this component exists`, // 〔CP2b〕程序员错误，刻意英文
+        `bug: PasteSpec.${k} is empty — where / how to merge / when it takes effect are the reason this component exists`, // 程序员错误，刻意英文
       );
     }
   }

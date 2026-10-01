@@ -1,5 +1,5 @@
 /**
- * PN1b（`设计/97 §7.3`）：全景页里「选图」那一整块 —— 选择器 ＋ 旋钮 ＋ 图 ＋ 图例 ＋ 诚实信号。
+ * PN1b：全景页里「选图」那一整块 —— 选择器 ＋ 旋钮 ＋ 图 ＋ 图例 ＋ 诚实信号。
  *
  * ## 与 `views/panorama.ts` 的分工（解耦成一个宿主接口）
  * 本类只管「图」：取注册表、按旋钮拼请求、按形状选渲染器、摆图例与诚实信号、复制。
@@ -11,7 +11,7 @@
  * `params`；画成什么样看 `Diagram.body.shape`。上游加一种已有形状的新图 ⇒ 这里零改动。
  * 新形状 ⇒ 如实说「这一版还画不出」＋ 复制 Mermaid。
  *
- * ## 缩放 / 拖拽（`设计/97 §8` · `99 §4.4`）
+ * ## 缩放 / 拖拽
  * 图铺满画布，画出来那一刻按视口适配（小图封顶 [`FIT_MAX_SCALE`] 倍）；滚轮以指针为锚缩放、按住拖动平移、
  * 顶栏「适配」回到适配；没动过时画布尺寸变了（拉窗口 · 开关侧栏）跟着重新适配。视口数学与气泡全景同一份
  * （`layout.ts` 的 `fitViewport` / `zoomAt`）。只动世界那一层的变换，节点与边一条不增不减（CP1）。
@@ -78,7 +78,7 @@ export class DiagramPane {
   readonly overlay: HTMLElement;
 
   private kinds: DiagramKindInfo[] | null = null;
-  /** 〔RM1c〕上面那份注册表是哪台机器的。 */
+  /** 上面那份注册表是哪台机器的。 */
   private kindsOrigin: Origin = LOCAL_ORIGIN;
   private current = BUBBLE_VIEW;
   private knobs: Knobs = { certain_only: true, exclude_tests: true, max_nodes: 12 };
@@ -147,7 +147,7 @@ export class DiagramPane {
 
   /**
    * 取一次注册表（打开全景时调；同一台机器取过就不再取 —— 它编在那台的全景程序里，不会变）。
-   * 〔RM1c〕按机器取：本机那份编在 monitor 里，远端那份问那台机器上的全景程序（两台版本可以不同）。
+   * 按机器取：本机那份编在 monitor 里，远端那份问那台机器上的全景程序（两台版本可以不同）。
    */
   async ensureKinds(): Promise<void> {
     const origin: Origin = this.host.repo()?.origin ?? LOCAL_ORIGIN;

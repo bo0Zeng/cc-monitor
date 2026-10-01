@@ -1,5 +1,5 @@
 /**
- * 三个入口共用的那一小撮（`设计/01 §1.2` 三入口拆分）。
+ * 三个入口共用的那一小撮（三入口拆分）。
  *
  * | html | 入口模块 | 装什么 |
  * |---|---|---|
@@ -8,7 +8,7 @@
  * | `viewer.html` | `entry-viewer.ts` | 只含 tab 管理 ＋ 渲染栈 |
  *
  * 🔴 **本文件会进三个窗口的模块图** ⇒ 它只许 import 三个窗口都该有的东西。
- * 今天两个：`@tauri-apps/plugin-opener`（外链走系统浏览器）· 〔FIX5〕`css-marks.ts`（CSS 里的符号从文案表来，文案表本来就在三个窗口里）。代码块「复制」那半只有主窗与
+ * 今天两个：`@tauri-apps/plugin-opener`（外链走系统浏览器）· `css-marks.ts`（CSS 里的符号从文案表来，文案表本来就在三个窗口里）。代码块「复制」那半只有主窗与
  * viewer 要，住 `entry-render-common.ts`。往这里加一个 import，
  * 就是往设置窗里塞一个模块 —— `tests/frontend/ui/entry-graphs.vitest.ts` 对构建产物的模块图做零命中断言，
  * 塞进高亮 / 数学排版 / tab 管理会当场红。
@@ -18,7 +18,7 @@
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { installCssMarks } from "./css-marks";
 
-// 〔FIX5〕CSS 伪元素里的符号从文案表来（`css-marks.ts`）：模块一求值就装上，三个窗口都一样。
+// CSS 伪元素里的符号从文案表来（`css-marks.ts`）：模块一求值就装上，三个窗口都一样。
 installCssMarks();
 
 // 全局错误捕获 —— 渲染到 status-bar 便于无 devtools 也能诊断。

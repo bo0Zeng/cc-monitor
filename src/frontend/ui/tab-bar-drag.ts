@@ -1,5 +1,5 @@
 /**
- * 〔U2 · 拆 `tabs.ts` ④〕**tab 栏上的拖拽状态机**：栏内拖动排序 · 压住停留成组 / 拖进拖出组 ·
+ * 〔拆 `tabs.ts` ④〕**tab 栏上的拖拽状态机**：栏内拖动排序 · 压住停留成组 / 拖进拖出组 ·
  * 拖出右缘松手撕成独立窗口。
  *
  * 「落在哪」的算术全在 `tab-drop.ts`（纯函数，判据直接打它）；这里只管量尺寸、挂 / 摘 document 监听、
@@ -45,18 +45,18 @@ export class TabBarDrag {
   private drag: {
     sid: string;
     /**
-     * 〔步 17·D〕松手时的落点。**三种语义**（`§D.3`）——在这之前这里是
+     * 松手时的落点。**三种语义**（`§D.3`）——在这之前这里是
      * `dropBefore?: string | null`（只有「插到谁之前」与「末尾」两种）。只在**未 armed** 时有意义。
      */
     dropTarget: DropTarget;
-    /** 〔步 17·D〕指针此刻压着谁（停留计时的对象）。`null` = 没压在任何 tab 上。 */
+    /** 指针此刻压着谁（停留计时的对象）。`null` = 没压在任何 tab 上。 */
     dwellSid: string | null;
-    /** 〔步 17·D〕停留已经攒满的那个 sid。计时器到点才写，抖动 / 换目标即清回 `null`。 */
+    /** 停留已经攒满的那个 sid。计时器到点才写，抖动 / 换目标即清回 `null`。 */
     dwellArmed: string | null;
-    /** 〔步 17·D〕本轮停留的锚点。指针离它超过 `DWELL_MOVE_PX` 就重新计时。 */
+    /** 本轮停留的锚点。指针离它超过 `DWELL_MOVE_PX` 就重新计时。 */
     dwellX: number;
     dwellY: number;
-    /** 〔步 17·D〕停留计时器句柄。`teardownDrag` 必须清 —— 否则它会在拖拽结束后才到点。 */
+    /** 停留计时器句柄。`teardownDrag` 必须清 —— 否则它会在拖拽结束后才到点。 */
     dwellTimer: number | null;
     startX: number;
     startY: number;
@@ -66,7 +66,7 @@ export class TabBarDrag {
     armed: boolean;
     ghost: HTMLElement | null;
     /**
-     * 〔UP1 · `设计/30 §3` P3〕栏里每个 tab 的矩形，**起拖后第一次要用时量一次**，之后 mousemove 只做算术。
+     * 栏里每个 tab 的矩形，**起拖后第一次要用时量一次**，之后 mousemove 只做算术。
      * `null` = 该量了。原先每次 mousemove 量 2N 次（停留判定与落点各一遍），而且紧挨在前面有一次写
      * （`ghost.style.left/top`）⇒ 读前有写，每次 mousemove 都是一次强制同步布局。
      *
@@ -82,7 +82,7 @@ export class TabBarDrag {
     onUp: (e: MouseEvent) => void;
   } | null = null;
   /**
-   * 〔UP1 · P3〕此刻打着落点标记的是谁（`drop-before` / `drop-onto` 各一个）。
+   * 此刻打着落点标记的是谁（`drop-before` / `drop-onto` 各一个）。
    * 换标记只动**旧的与新的**那两个，不再遍历全部 N 个按钮。
    */
   private marked: { before: string | null; onto: string | null } = { before: null, onto: null };
@@ -171,7 +171,7 @@ export class TabBarDrag {
     };
     document.addEventListener("mousemove", onMove);
     document.addEventListener("mouseup", onUp);
-    // 〔UP1 · P3〕缓存的矩形只在这两件事上过期（见 `rects` 头注）。捕获阶段挂在 `barEl` 上：
+    // 缓存的矩形只在这两件事上过期（见 `rects` 头注）。捕获阶段挂在 `barEl` 上：
     // `scroll` 不冒泡，捕获才收得到栏里任何一层滚动。
     this.barEl.addEventListener("scroll", onInvalidate, true);
     window.addEventListener("resize", onInvalidate);
@@ -215,7 +215,7 @@ export class TabBarDrag {
 
     // P7a-2：**纵向那根轴今天一个消费者都没有** —— arm 只看 `clientX`（见下一行）。
     // 所以栏内重排走 `clientY`，与 tear-off 天然不争同一根轴。
-    // 〔步 17·D〕这里先更新停留状态，再算落点 —— 落点的 `onto` 那一支要读停留的结论。
+    // 这里先更新停留状态，再算落点 —— 落点的 `onto` 那一支要读停留的结论。
     this.updateDwell(e.clientX, e.clientY);
     d.dropTarget = this.computeDropTarget(e.clientY);
     // ★ **落点要看得见**〔D 阶段补审〕：只搬不指示的话，「拖动排序」是一次盲操作 ——
@@ -237,7 +237,7 @@ export class TabBarDrag {
   }
 
   /**
-   * 〔步 17·D · `§D.2`〕量一遍栏里每个 tab 在纵轴上占的那一段。
+   * 〔`§D.2`〕量一遍栏里每个 tab 在纵轴上占的那一段。
    *
    * 🔴 **`parentElement !== this.barEl` 那道过滤没了。**
    *   `§D.2` 现打它是两个缺口之一：它把**组里的 tab 整体排除**在落点之外
@@ -245,7 +245,7 @@ export class TabBarDrag {
    *   组里的 tab 因此照常参与，而栏外的东西（撕出去的窗口等）仍然不参与。
    *
    * ⚠ 返回纯数据 —— 判定逻辑在 `pickDropTarget`（纯函数，判据直接打它）。
-   *   〔UP1〕原先这里自称「顺带守住 `§3 P3`」，其实每次 mousemove 都调它两次（量 2N 次）；
+   * 原先这里自称「顺带守住 `§3 P3`」，其实每次 mousemove 都调它两次（量 2N 次）；
    *   「一次拖拽只量一次」现在住 `dragRects`（缓存 ＋ 滚动 / 改尺寸作废），本函数只管量。
    */
   tabRects(): TabRect[] {
@@ -258,7 +258,7 @@ export class TabBarDrag {
     return out;
   }
 
-  /** 〔UP1 · P3〕拖拽期间用的矩形：缓存里有就用缓存，没有（刚起拖 / 刚过期）才量一次。 */
+  /** 拖拽期间用的矩形：缓存里有就用缓存，没有（刚起拖 / 刚过期）才量一次。 */
   private dragRects(): TabRect[] {
     const d = this.drag;
     if (!d) return this.tabRects();
@@ -266,7 +266,7 @@ export class TabBarDrag {
     return d.rects;
   }
 
-  /** 〔步 17·D〕现在的落点。三种语义的判定住 `pickDropTarget`，这里只负责喂它读数。 */
+  /** 现在的落点。三种语义的判定住 `pickDropTarget`，这里只负责喂它读数。 */
   private computeDropTarget(clientY: number): DropTarget {
     const d = this.drag;
     if (!d) return { kind: "end" };
@@ -279,7 +279,7 @@ export class TabBarDrag {
   }
 
   /**
-   * 〔步 17·D · `§D.4`〕停留（dwell）判定：**压住 ≥250ms 且抖动 <4px ⇒ 切进 `onto` 态**。
+   * 〔`§D.4`〕停留（dwell）判定：**压住 ≥250ms 且抖动 <4px ⇒ 切进 `onto` 态**。
    *
    * 🔴 **必须用计时器，不能只在 `mousemove` 里数时间** —— 指针停住之后
    *   `mousemove` 就不再来了，靠事件驱动的话「停留」永远攒不满，这个手势等于没做。
@@ -316,13 +316,13 @@ export class TabBarDrag {
   /**
    * P7a-2 D 补审：给落点那个 tab 打标（`null` = 不指示，armed 那一路用）。
    *
-   * 〔步 17·D · `§D.5`〕两种态两种标：`before` 顶部一条线（原样）· `onto` 整块描边 + 轻微放大。
+   * 〔`§D.5`〕两种态两种标：`before` 顶部一条线（原样）· `onto` 整块描边 + 轻微放大。
    * `end` 不标（原样 —— 末尾没有可以描的对象）。
    */
   private markDropTarget(target: DropTarget | null): void {
     const beforeSid = target?.kind === "before" ? target.sid : null;
     const ontoSid = target?.kind === "onto" ? target.sid : null;
-    // 〔UP1 · P3〕只动旧的与新的那两个（原先每次 mousemove 遍历全部 N 个按钮、各 toggle 两次）。
+    // 只动旧的与新的那两个（原先每次 mousemove 遍历全部 N 个按钮、各 toggle 两次）。
     const flip = (sid: string | null, cls: string, on: boolean): void => {
       if (sid !== null) this.buttons.get(sid)?.root.classList.toggle(cls, on);
     };
@@ -339,17 +339,17 @@ export class TabBarDrag {
   }
 
   /**
-   * 〔步 17·D〕把一次落点的**全部后果**落实：顺序 ＋ 集合归属，一拍做完。
+   * 把一次落点的**全部后果**落实：顺序 ＋ 集合归属，一拍做完。
    *
    * 🔴 **两件事不许分两拍** —— 顺序没变（拖回原位）但归属变了（从组里拖出来）是
    *   真实情形；反过来也是。谁先 `return`，另一半就静默丢了。
    *   在这之前这里叫 `applyReorder`，只管顺序、`if (没变化) return` 直接结束。
    */
   applyDrop(sid: string, target: DropTarget): void {
-    // 〔BG1 · V125「删掉树」〕只拖被按下的那一个：原先这里先算「一块」（交互 tab 连同紧跟其后的
+    // 〔「删掉树」〕只拖被按下的那一个：原先这里先算「一块」（交互 tab 连同紧跟其后的
     //   同 `(cwd, origin)` bg 子串）再整块改顺序与归属 —— 树删了，bg tab 与普通 tab 拖法相同。
     // ① 集合归属跟着落点宿主走（`§D.7` 的「拖出组」与「拖进组」是同一条规则的两侧）。
-    //   〔GRP1 · V140〕组员关系是 tab 自己的属性 ⇒ 只改被拖那个 tab（现建组时连落点那个）的 `group`，
+    // 组员关系是 tab 自己的属性 ⇒ 只改被拖那个 tab（现建组时连落点那个）的 `group`，
     //   先改内存（下面统一重画一次），再由落盘偏好把那几条补丁一次写掉；归属没变（`stay`）⇒ 零写。
     if (this.prefs.collectionsLoaded) {
       const move = groupMoveForDrop((s) => this.store.tabs.get(s)?.group ?? null, sid, target);
@@ -359,7 +359,7 @@ export class TabBarDrag {
           this.store.tabs.get(move.with)?.cwd ?? null,
           this.prefs.collections.map((c) => c.name),
         );
-        // 〔TL2 · E13〕组数到上界、没建出来 ⇒ 说出来；顺序那一半照常做。
+        // 组数到上界、没建出来 ⇒ 说出来；顺序那一半照常做。
         const why = this.prefs.foundGroup([move.with, sid], name, newCollectionId());
         if (why) sayCollectionRefusal(why);
       } else if (move.kind === "join") {
@@ -382,7 +382,7 @@ export class TabBarDrag {
     }
     this.store.orderedIds = next;
     this.host.refreshTabBar();
-    // 🔴 〔步 17·C · 2026-09-19〕**拖动的结果要落盘** —— `设计/30 §C` 逐字「今天拖了白拖」。
+    // 🔴 **拖动的结果要落盘** —— 「今天拖了白拖」。
     //   在这之前 `orderedIds` 的 8 个写入点零持久化，而集合（`tabCollections`）是落盘的
     //   ⇒ 同一个栏里两种寿命：**你建的分组活过重启，你拖的顺序活不过**。
     //   `tab-collections.ts` 立集合落盘的理由是「用户手写的真相，不是能重算的缓存」，
@@ -400,7 +400,7 @@ export class TabBarDrag {
     document.removeEventListener("mouseup", d.onUp);
     this.barEl.removeEventListener("scroll", d.onInvalidate, true);
     window.removeEventListener("resize", d.onInvalidate);
-    // 〔步 17·D〕停留计时器必须在这里清。不清的话它会在拖拽结束之后才到点，
+    // 停留计时器必须在这里清。不清的话它会在拖拽结束之后才到点，
     // 往一个已经收尾的状态上写 `onto` —— 而那时 `this.drag` 已是 null，
     // 回调里的守卫会吞掉它，但计时器本身是条悬空引线（同 `pendingMenuTimers` 那条教训）。
     if (d.dwellTimer !== null) window.clearTimeout(d.dwellTimer);
@@ -423,7 +423,7 @@ export class TabBarDrag {
   private onDragUp(e: MouseEvent): void {
     const d = this.drag;
     if (!d) return;
-    // 〔步 17·D〕落点要在 `teardownDrag` 之前取出来 —— 它会把整个 `drag` 清成 null。
+    // 落点要在 `teardownDrag` 之前取出来 —— 它会把整个 `drag` 清成 null。
     const { dragging, armed, sid, dropTarget } = d;
     this.teardownDrag();
 
