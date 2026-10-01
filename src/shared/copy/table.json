@@ -241,7 +241,7 @@
     },
     "rsToolRegistry.tools.accountsVaultNote": {
       "kind": "body",
-      "zh": "账号库：清单 accounts.json、每个号的目录和改动前的备份都在这里。启用多账号时，这台现在登录的身份文件（~/.claude/.credentials.json、~/.claude.json）会搬进默认号的目录。",
+      "zh": "账号库：清单 accounts.json、每个号的目录和改动前的备份都在这里。启用多账号时，这台现在登录的身份文件（~/.claude/.credentials.json、~/.claude.json）会搬进默认号的目录。之后各号的 .claude.json 里只有用户级 MCP 那一段会被同步改写，各号共用一份，别的内容一个字节不碰。",
       "args": []
     },
     "beAcctExec.apply.stopped": {
@@ -19501,6 +19501,236 @@
     "rsRun.load.notLinked": {
       "kind": "error",
       "zh": "还不知道这次调用派出的是哪个子 agent。前台派出的要等它跑完才知道",
+      "args": []
+    },
+    "beAcctJsonKey.parse.notObject": {
+      "kind": "error",
+      "zh": "这份配置文件不是一个完整的 JSON 对象，这一次不改它。",
+      "args": []
+    },
+    "beAcctJsonKey.parse.duplicate": {
+      "kind": "error",
+      "zh": "要改的那一段出现了不止一次。分不清以哪一个为准，这一次不改它。",
+      "args": []
+    },
+    "beAcctJsonKey.render.failed": {
+      "kind": "error",
+      "zh": "新内容排不出来：{e}",
+      "args": ["e"]
+    },
+    "beAcctJsonKey.verify.failed": {
+      "kind": "error",
+      "zh": "改完之后核对没通过，这一次不写。要改的那一段之外的内容变了，或那一段不是要写的那一版。",
+      "args": []
+    },
+    "beAcctMcpShare.store.badShape": {
+      "kind": "error",
+      "zh": "格式不对",
+      "args": []
+    },
+    "beAcctMcpShare.store.badJson": {
+      "kind": "error",
+      "zh": "第 {line} 行解不开",
+      "args": ["line"]
+    },
+    "beAcctMcpShare.store.unreadable": {
+      "kind": "error",
+      "zh": "读不了各账号共用的 MCP 那份文件 {path}：{e}",
+      "args": ["path", "e"]
+    },
+    "beAcctMcpShare.store.cannotUse": {
+      "kind": "error",
+      "zh": "各账号共用的 MCP 那份文件 {path} 用不了（{e}）。这一次不同步；把它挪走之后会按各账号现在的样子重建。",
+      "args": ["path", "e"]
+    },
+    "beAcctMcpShare.store.writeFailed": {
+      "kind": "error",
+      "zh": "各账号共用的 MCP 那份文件没写进去：{e}",
+      "args": ["e"]
+    },
+    "beAcctMcpShare.read.notText": {
+      "kind": "error",
+      "zh": "不是文本文件",
+      "args": []
+    },
+    "beAcctMcpShare.read.notFile": {
+      "kind": "error",
+      "zh": "不是一份普通文件（是链接、目录或别的）",
+      "args": []
+    },
+    "beAcctMcpShare.read.badJson": {
+      "kind": "error",
+      "zh": "第 {line} 行解不开",
+      "args": ["line"]
+    },
+    "beAcctMcpShare.read.notObject": {
+      "kind": "error",
+      "zh": "不是一个 JSON 对象",
+      "args": []
+    },
+    "beAcctMcpShare.read.serversNotObject": {
+      "kind": "error",
+      "zh": "MCP 那一段不是一个对象",
+      "args": []
+    },
+    "beAcctMcpShare.note.unreadable": {
+      "kind": "body",
+      "zh": "{account} 号的配置 {path} 读不出来（{e}），这一次不同步它。",
+      "args": ["account", "path", "e"]
+    },
+    "beAcctMcpShare.note.backupFailed": {
+      "kind": "error",
+      "zh": "改之前的备份没留下，这一次不改：{e}",
+      "args": ["e"]
+    },
+    "beAcctMcpShare.note.writeFailed": {
+      "kind": "body",
+      "zh": "{account} 号这一次没同步上：{e}",
+      "args": ["account", "e"]
+    },
+    "beAcctMcpShare.note.stale": {
+      "kind": "body",
+      "zh": "{account} 号的配置刚被改过，这一次没写；它一改完会再同步一次。",
+      "args": ["account"]
+    },
+    "beAcctMcpShare.name.unknown": {
+      "kind": "error",
+      "zh": "各账号共用的 MCP 里没有 {name}。",
+      "args": ["name"]
+    },
+    "beAcctMcpShare.pick.noSuch": {
+      "kind": "error",
+      "zh": "{account} 号里现在没有 {name} 这一条，选不了它那一版。刷新之后再选。",
+      "args": ["name", "account"]
+    },
+    "beAcctFace.mcp.synced": {
+      "kind": "body",
+      "zh": "各账号共用的 MCP 已同步到：{accounts}。新开的会话才用上。",
+      "args": ["accounts"]
+    },
+    "beAcctFace.mcp.conflicts": {
+      "kind": "body",
+      "zh": "各账号共用的 MCP 里 {names} 两边都改了，没有自动选；到账号页里挑一版。",
+      "args": ["names"]
+    },
+    "beAcctFace.mcp.failed": {
+      "kind": "body",
+      "zh": "各账号共用的 MCP 这一次没同步：{e}",
+      "args": ["e"]
+    },
+    "rsToolRegistry.tools.accountsMcpStoreNote": {
+      "kind": "body",
+      "zh": "这台各账号共用的用户级 MCP，以及上次同步时每个号的样子。在任一个号里加或改的 MCP 会进这里、再同步到所有号；里面带着 MCP 的密钥，只有你自己读得了。",
+      "args": []
+    },
+    "rsToolRegistry.tools.accountsMcpBackupNote": {
+      "kind": "body",
+      "zh": "同步改写之前的原文放在这里。改写某个号的 .claude.json 之前留一份，每个号一份，下一次改写前换成新的；要找回就从这里拿。",
+      "args": []
+    },
+    "rsDataPaths.backend.accountsMcp": {
+      "kind": "body",
+      "zh": "各账号共用的用户级 MCP",
+      "args": []
+    },
+    "accountsMcp.block.title": {
+      "kind": "title",
+      "zh": "各账号共用的 MCP",
+      "args": []
+    },
+    "accountsMcp.block.shared": {
+      "kind": "body",
+      "zh": "这台的各个号共用一份用户级 MCP。在任一个号里加或改的，会同步到所有号。",
+      "args": []
+    },
+    "accountsMcp.block.deleteHere": {
+      "kind": "body",
+      "zh": "删除只在这里做：在某个号里删掉不算数，会被补回去。",
+      "args": []
+    },
+    "accountsMcp.block.newSessions": {
+      "kind": "body",
+      "zh": "已经在跑的会话不会重读，新开的会话才用上。",
+      "args": []
+    },
+    "accountsMcp.list.empty": {
+      "kind": "body",
+      "zh": "还没有共用的 MCP。",
+      "args": []
+    },
+    "accountsMcp.list.remove": {
+      "kind": "action",
+      "zh": "删除",
+      "args": []
+    },
+    "accountsMcp.remove.confirm": {
+      "kind": "body",
+      "zh": "从这台所有号里删掉 {name}？已经在跑的会话不受影响，新开的会话里就没有它了。",
+      "args": ["name"]
+    },
+    "accountsMcp.remove.done": {
+      "kind": "title",
+      "zh": "已从所有号里删掉 {name}",
+      "args": ["name"]
+    },
+    "accountsMcp.remove.failed": {
+      "kind": "error",
+      "zh": "没删成",
+      "args": []
+    },
+    "accountsMcp.conflict.head": {
+      "kind": "body",
+      "zh": "{name} 两边都改了，没有自动选。用哪一版？",
+      "args": ["name"]
+    },
+    "accountsMcp.conflict.shared": {
+      "kind": "action",
+      "zh": "用共享的那一版",
+      "args": []
+    },
+    "accountsMcp.conflict.gone": {
+      "kind": "action",
+      "zh": "删掉它",
+      "args": []
+    },
+    "accountsMcp.conflict.from": {
+      "kind": "action",
+      "zh": "用 {holders} 号里的那一版",
+      "args": ["holders"]
+    },
+    "accountsMcp.pick.done": {
+      "kind": "title",
+      "zh": "{name} 已统一成你选的那一版",
+      "args": ["name"]
+    },
+    "accountsMcp.pick.failed": {
+      "kind": "error",
+      "zh": "没选成",
+      "args": []
+    },
+    "accountsMcp.read.reading": {
+      "kind": "body",
+      "zh": "正在读各账号共用的 MCP…",
+      "args": []
+    },
+    "accountsMcp.read.failed": {
+      "kind": "body",
+      "zh": "读不出各账号共用的 MCP：{e}",
+      "args": ["e"]
+    },
+    "accountsMcp.change.synced": {
+      "kind": "body",
+      "zh": "改写了：{accounts}",
+      "args": ["accounts"]
+    },
+    "accountsMcp.list.sep": {
+      "kind": "body",
+      "zh": "、",
+      "args": []
+    },
+    "beAcctFace.mcp.listSep": {
+      "kind": "body",
+      "zh": "、",
       "args": []
     }
   }

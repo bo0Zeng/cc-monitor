@@ -36,6 +36,7 @@ pub(crate) const NATIVE_IDENTITY: &[(&str, IdentityRoot, IdentityClass)] = &[
 pub(crate) const FACE: AccountsFace = AccountsFace {
     identity: NATIVE_IDENTITY,
     config_file: CONFIG_FILE_NAME,
+    user_mcp_key: super::assets::SERVERS_KEY,
     shared_root: shared_root_in,
     email_in: |root| oauth_email_in(&config_path_in(root)),
 };

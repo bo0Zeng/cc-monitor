@@ -244,6 +244,10 @@ fn every_registered_command_declares_its_run_kind() {
                 | "accounts-rollback"
                 | "accounts-verify"
                 | "accounts-login-cmd"
+                // 各账号共用的用户级 MCP：读各号配置文件、只改一个键、写回共享集合（同步文件 I/O，经本进程文件管理面）。
+                | "accounts-mcp-read"
+                | "accounts-mcp-remove"
+                | "accounts-mcp-pick"
                 // 公钥并进这台的 `authorized_keys`：同步文件 I/O（经本进程文件管理面）。
                 | "authorized-keys-add"
                 | "files-link"
@@ -463,6 +467,9 @@ fn every_registered_command_declares_its_run_kind() {
         "accounts-rollback",
         "accounts-verify",
         "accounts-login-cmd",
+        "accounts-mcp-read",
+        "accounts-mcp-remove",
+        "accounts-mcp-pick",
         "authorized-keys-add", // 同步文件 I/O（经本进程文件管理面）
         "files-link",
         "cc-bus-install-state",

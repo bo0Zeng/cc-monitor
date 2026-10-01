@@ -10,6 +10,7 @@
  * | 按备份还原 | `accounts-rollback` |
  * | 核对（只读） | `accounts-verify` |
  * | 在终端里登录一个号的那一行 | `accounts-login-cmd` |
+ * | 各号共用的用户级 MCP：看 · 删一条 · 两边都改了时挑一版 | `accounts-mcp-read` · `accounts-mcp-remove` · `accounts-mcp-pick` |
  *
  * 界面只交意图（名字 · 类型 · 凭据文件 / 地址与 key · 是否默认）、只显那台后端答的那几句；
  * 建目录、搭链接、写清单、放凭据或 key、重写别名文件都由那台后端做。每条都能先 `dryRun` 预演（回将要做的那几步）。
@@ -27,10 +28,11 @@ import type { AccountRemoveArgs } from "./generated/AccountRemoveArgs";
 import type { AccountRepairArgs } from "./generated/AccountRepairArgs";
 import type { AccountRollbackArgs } from "./generated/AccountRollbackArgs";
 import type { AliasChange } from "./generated/AliasChange";
+import type { AccountMcpView } from "./generated/AccountMcpView";
 import type { VerifyCheck } from "./generated/VerifyCheck";
 import type { VerifyReport } from "./generated/VerifyReport";
 
-export type { AccountAddArgs, AccountChange, VerifyReport, VerifyCheck };
+export type { AccountAddArgs, AccountChange, AccountMcpView, VerifyReport, VerifyCheck };
 
 export type NameCheck = { ok: true } | { ok: false; reason: string };
 
@@ -189,4 +191,43 @@ export async function accountsLoginCmd(origin: Origin, name: string): Promise<st
     throw unreadable(origin, "accounts-login-cmd", "is not exactly {cmd} (one non-empty string)");
   }
   return v.cmd;
+}
+
+/** 各号共用的用户级 MCP 那三条的成品。形状不对 ⇒ `null`。 */
+export function decodeAccountMcpView(v: unknown): AccountMcpView | null {
+  if (!isObj(v) || !exactKeys(v, ["enabled", "servers", "conflicts", "changed", "notes"])) return null;
+  if (typeof v.enabled !== "boolean" || !strList(v.servers) || !strList(v.changed) || !strList(v.notes) || !Array.isArray(v.conflicts)) return null;
+  const choiceOk = (x: unknown): boolean =>
+    isObj(x) && exactKeys(x, ["from", "holders", "gone"]) && optStr(x.from) && strList(x.holders) && typeof x.gone === "boolean";
+  const ok = v.conflicts.every(
+    (c: unknown) => isObj(c) && exactKeys(c, ["name", "choices"]) && typeof c.name === "string" && Array.isArray(c.choices) && c.choices.every(choiceOk),
+  );
+  return ok ? (v as unknown as AccountMcpView) : null;
+}
+
+function mcpView(origin: Origin, op: string, v: unknown): AccountMcpView {
+  const got = decodeAccountMcpView(v);
+  if (!got) throw unreadable(origin, op, "is not a shared MCP view");
+  return got;
+}
+
+/** 这台各号共用的用户级 MCP 此刻的样子（只读）。 */
+export async function accountsMcpRead(origin: Origin): Promise<AccountMcpView> {
+  const body = jsonBody({});
+  const budget = budgetWithin(READ_BUDGET_MS);
+  return mcpView(origin, "accounts-mcp-read", await settle(origin, "accounts-mcp-read", chan.call(origin, "accounts-mcp-read", body, budget), refusals()));
+}
+
+/** 从各号共用的用户级 MCP 里删一条（所有号一起撤）。 */
+export async function accountsMcpRemove(origin: Origin, name: string): Promise<AccountMcpView> {
+  const body = jsonBody({ name });
+  const budget = budgetWithin(CHANGE_BUDGET_MS);
+  return mcpView(origin, "accounts-mcp-remove", await settle(origin, "accounts-mcp-remove", chan.call(origin, "accounts-mcp-remove", body, budget), refusals()));
+}
+
+/** 两边都改了的那一条用哪一版：`from` = 那个号里的；`null` = 共享的那一版。 */
+export async function accountsMcpPick(origin: Origin, name: string, from: string | null): Promise<AccountMcpView> {
+  const body = jsonBody(from === null ? { name } : { name, from });
+  const budget = budgetWithin(CHANGE_BUDGET_MS);
+  return mcpView(origin, "accounts-mcp-pick", await settle(origin, "accounts-mcp-pick", chan.call(origin, "accounts-mcp-pick", body, budget), refusals()));
 }

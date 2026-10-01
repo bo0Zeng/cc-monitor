@@ -26,6 +26,7 @@ import { POSIX_NO_WINDOW_MARKER } from "../remote-launch-run";
 //—— 两者是同一个问题（「这台机器的终端怎么找到 ccm」）的两条路。
 // A2：新建账号那张表单。
 import { renderNewAccountForm, type NewAccountRequest } from "./account-new-form";
+import { renderSharedMcp } from "./accounts-mcp-block";
 import { SETTINGS_APPLIED_EVENT } from "./events";
 import { recordFacet, LOCAL_MACHINE_KEY } from "./machine-status";
 // 改账号库的那几件都问这一页那台机器的后端（本机远端同一条路）。
@@ -439,6 +440,7 @@ export class AccountsSection {
     AccountsSection.line(box, "accounts-hint accounts-local-hint", copyText("accountsLocal.list.scope"));
     // 本机也能新建账号：与远端同一张表单、同一条 `accounts-add`，只是问的是本机后端。
     box.appendChild(this.localNewForm());
+    box.appendChild(renderSharedMcp(BACKEND_LOCAL_ORIGIN));
     box.appendChild(this.renderMaintenance());
   }
 
@@ -826,6 +828,9 @@ export class AccountsSection {
     // 🔴 （A2）：**新建账号是一张常驻的表单**，不再藏在「维护」折叠组里、
     //    也不再是红色按钮。岔口（订阅 / 第三方 apikey）在表单里问。
     this.body.appendChild(renderNewAccountForm(this.origin, (req) => this.createAccount(req)));
+
+    // 各账号共用的用户级 MCP（那台后端同步、这里只列名字与冲突）。
+    this.body.appendChild(renderSharedMcp(this.origin));
 
     this.body.appendChild(this.renderMaintenance());
   }

@@ -706,7 +706,9 @@ pub const PROTO_VERSION: u32 = 1;
 /// p6g-child-runs：子 agent 的流归各自的运行，主 tab 上每个在跑的子运行一行；通用层只认运行，各家的形状住适配层。
 ///
 /// p6h-runs-panel：子 agent 不进主 tab，只在 agent 面板里列；收场以派出它的那一方为准；扩展页的项目目录由它所属的那台判。
-pub const BUILD_ID: &str = "p6h-runs-panel";
+///
+/// p6i-accounts-mcp：这台各账号共用一份用户级 MCP，三方对照同步，只改各号 .claude.json 的 mcpServers 那一键。
+pub const BUILD_ID: &str = "p6i-accounts-mcp";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src/frontend/shell/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），
@@ -780,6 +782,10 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--accounts-init",
     "--accounts-isolate",
     "--accounts-login-cmd",
+    // 各号共用的用户级 MCP 那三条（`accounts-mcp-*`）派生的 CLI 面；`remove` / `pick` 的入参从 stdin 读。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
+    "--accounts-mcp-pick",
+    "--accounts-mcp-read",
+    "--accounts-mcp-remove",
     "--accounts-remove",
     "--accounts-repair",
     "--accounts-rollback",

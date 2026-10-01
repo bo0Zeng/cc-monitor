@@ -95,6 +95,10 @@ pub const COMMANDS: &[&str] = &[
     "accounts-isolate",
     "accounts-list",
     "accounts-login-cmd",
+    // 各号共用的用户级 MCP：此刻的样子 · 删一条（所有号一起撤）· 两边都改了时挑一版。写经 [`LocalFiles`]。**是新命令** ⇒ `build_id_guard` 红是预期的。
+    "accounts-mcp-pick",
+    "accounts-mcp-read",
+    "accounts-mcp-remove",
     "accounts-remove",
     "accounts-repair",
     "accounts-rollback",
@@ -1117,6 +1121,11 @@ pub fn uncancellable() -> Vec<String> {
         .filter(|s| matches!(s.run, Run::Blocking(_)))
         .map(|s| s.name.to_string())
         .collect()
+}
+
+/// 常驻后端里起「各号的配置文件一变就同步一趟用户级 MCP」那个监听器（写经 [`LocalFiles`]，与帧命令同一扇门）。
+pub fn watch_account_mcp() {
+    crate::accounts::manage::mcp_share_watch::start(&LocalFiles);
 }
 
 /// 改账号库那几条（`accounts-*`）递给执行器的 key 表几口：写 key · 删号清那一行 · 回滚放回去 · 表在哪。
@@ -3029,6 +3038,77 @@ pub const REGISTRY: &[CommandSpec] = &[
         doc_anchor: Some("#### `accounts-login-cmd`"),
         codes: &["bad_args", "io_failed", "refused", "unsupported"],
         fields: &["cmd", "name"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::faces::accounts_face::answer(&LocalFiles, &r.cmd, &r.args, &ACCOUNT_KEYS)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    // 各号共用的用户级 MCP（本体 `accounts/manage/mcp_share_exec.rs`）：读各号的配置文件、只改那一个键、写回共享集合 ⇒ 阻塞档。
+    //   成品只有名字与号名，不带定义里的任何值。
+    CommandSpec {
+        name: "accounts-mcp-read",
+        doc_anchor: Some("#### `accounts-mcp-read`"),
+        codes: &["bad_args", "io_failed", "refused"],
+        fields: &[
+            "changed",
+            "choices",
+            "conflicts",
+            "enabled",
+            "from",
+            "gone",
+            "holders",
+            "name",
+            "notes",
+            "servers",
+        ],
+        takes_input: false,
+        run: Run::Blocking(|r| {
+            crate::faces::accounts_face::answer(&LocalFiles, &r.cmd, &r.args, &ACCOUNT_KEYS)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    CommandSpec {
+        name: "accounts-mcp-remove",
+        doc_anchor: Some("#### `accounts-mcp-remove`"),
+        codes: &["bad_args", "io_failed", "not_found", "refused"],
+        fields: &[
+            "changed",
+            "choices",
+            "conflicts",
+            "enabled",
+            "from",
+            "gone",
+            "holders",
+            "name",
+            "notes",
+            "servers",
+        ],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::faces::accounts_face::answer(&LocalFiles, &r.cmd, &r.args, &ACCOUNT_KEYS)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    CommandSpec {
+        name: "accounts-mcp-pick",
+        doc_anchor: Some("#### `accounts-mcp-pick`"),
+        codes: &["bad_args", "io_failed", "not_found", "refused"],
+        fields: &[
+            "changed",
+            "choices",
+            "conflicts",
+            "enabled",
+            "from",
+            "gone",
+            "holders",
+            "name",
+            "notes",
+            "servers",
+        ],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::faces::accounts_face::answer(&LocalFiles, &r.cmd, &r.args, &ACCOUNT_KEYS)
