@@ -1121,7 +1121,7 @@ const PENDING: Record<string, string> = {
 };
 
 /** 基线之后现打的人群条数（带类型标注、名字带 origin 的声明）。 */
-const POPULATION = 310; // 三路增量相加：钩子诊断那一块删 −7 ＋ 读口 +1（`cc-bus-hooks-reads.ts::fetchHooksReport`）；代码全景那几份 TS 整删 −19；账号之间共用的 MCP 那几处 +5（`account-ops.ts` 四处 ＋ `settings/accounts-mcp-block.ts::renderSharedMcp` 一处）
+const POPULATION = 311; // +1：读口 `relay-optin-reads.ts::fetchRelayOptin`（「终端」栏直接敲的也走中转）· 三路增量相加：钩子诊断那一块删 −7 ＋ 读口 +1（`cc-bus-hooks-reads.ts::fetchHooksReport`）；代码全景那几份 TS 整删 −19；账号之间共用的 MCP 那几处 +5（`account-ops.ts` 四处 ＋ `settings/accounts-mcp-block.ts::renderSharedMcp` 一处）
 
 interface Decl {
   /** `文件::宿主.名字`（宿主 = 外层接口 / 类 / 类型别名 / 函数名；顶层是 `<top>`）。 */

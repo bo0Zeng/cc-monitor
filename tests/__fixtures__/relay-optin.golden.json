@@ -1,0 +1,8 @@
+{
+  "listening": true,
+  "missing": "",
+  "note": "",
+  "snippet": "{\n  \"env\": {\n    \"ANTHROPIC_BASE_URL\": \"http://127.0.0.1:8788/2222222222222222222222222222222222222222222222222222222222222222/t/claude-code/_\"\n  }\n}",
+  "source": "/HOME/.claude/settings.json",
+  "state": "stale"
+}

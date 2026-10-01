@@ -57,7 +57,7 @@ pub(super) const MISDIRECTED: &str = "421 Misdirected Request";
 pub(crate) struct Key(String);
 
 impl Key {
-    /// 唯一的取值口。生产段只有两处用它：门里比对 · 探针拼请求（`machine.rs`）。
+    /// 唯一的取值口。生产段只有本模块用它：落盘 · 门里比对 · 给用户要贴的那一段插钥匙（[`keyed_with_key_on_disk`]）。
     pub(crate) fn expose(&self) -> &str {
         &self.0
     }
@@ -91,6 +91,14 @@ pub(crate) fn read_key(path: &Path) -> Option<Key> {
     std::fs::read_to_string(path)
         .ok()
         .and_then(|s| Key::from_text(&s))
+}
+
+/// 给一条中转地址（构造口产物）插上这台盘上那把钥匙（家目录底下 [`KEY_FILE_REL`]，**只读**）⇒
+/// 用户自己贴进 agent 设置文件的那一段要的展开形（那里写不了 `$(cat …)`）。钥匙在这里插、不以裸值出本模块；
+/// 钥匙文件不在 / 形状不对 / 地址不是构造口产物 ⇒ `None`。
+pub(crate) fn keyed_with_key_on_disk(home: &Path, url: &str) -> Option<String> {
+    let key = read_key(&home.join(KEY_FILE_REL))?;
+    relay_route_core::keyed_base_url(url, key.expose())
 }
 
 /// 中转起来时拿钥匙：读回；没有或坏了就铸一把新的落盘。**本模块唯一的写口**
