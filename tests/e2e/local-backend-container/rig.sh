@@ -25,8 +25,10 @@
 # ## 跑完不留东西
 #
 # 容器、自建网络、临时目录跑完都删；宿主的 `docker network ls` 与 `ip link` 跑前跑后**逐字比**。
-# 开跑前还会先查一遍「上一趟有没有留垃圾」——**刻意不做「先强删再建」**：那样清理这一步
-# 被拆掉也照样绿（第二趟会替第一趟擦屁股），而这里要的正是「没清干净时第二趟当场红」。
+# 网络与容器名一趟一个（共享原语 `tests/e2e/tmux-shim.sh` 的 `e2e_run_name`：前缀 ＋ 工作树短哈希 ＋ 本趟 pid），
+# 两棵树、同一棵树的两趟同时跑互不打架：收尾只删本趟那几个，开跑前的残留检查只认本趟的名字，
+# 宿主快照剔掉同族别的趟建的网络与网卡（`e2e_docker_host_snapshot`）。
+# **刻意不做「先强删再建」**：清理这一步被拆掉时，本趟收尾那几格（「跑完没了」）当场红。
 # ⚠ 那条 `ip link` 逐字比有一个**已知假红**（件 `K-R136`）：带加速网卡的机器上 VF 会内核热插拔，
 #   与本台架无关。撞上了照实报，**别去改这条自检**。
 #
@@ -42,7 +44,7 @@
 #   #     --pattern 'cc-monitor_X.Y.Z_amd64.deb' --pattern 'cc-monitor' --dir <某个目录>
 #   bash tests/e2e/local-backend-container/build-image.sh
 #   LBC_ARTIFACTS=<某个目录> bash tests/e2e/local-backend-container/rig.sh
-#   bash tests/e2e/local-backend-container/rig.sh --clean    # 只清上一趟崩掉时留下的容器/网络
+#   bash tests/e2e/local-backend-container/rig.sh --clean    # 只清本棵树里主人已不在的趟留下的容器/网络
 #
 # 环境变量：
 #   LBC_IMAGE      默认 ccmon-lbc:latest（由 build-image.sh 建）
@@ -52,9 +54,14 @@ set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 IMG="${LBC_IMAGE:-ccmon-lbc:latest}"
-NET="ccmon-lbc-net"
-CT="ccmon-lbc-box"
-CT_BARE="ccmon-lbc-bare"
+# shellcheck source=tests/e2e/tmux-shim.sh
+. "$HERE/../tmux-shim.sh" --names-only || exit 2
+NET_PRE=ccmon-lbc-net
+CT_PRE=ccmon-lbc-box
+CT_BARE_PRE=ccmon-lbc-bare
+NET="$(e2e_run_name "$NET_PRE")" || exit 2
+CT="$(e2e_run_name "$CT_PRE")" || exit 2
+CT_BARE="$(e2e_run_name "$CT_BARE_PRE")" || exit 2
 ART="${LBC_ARTIFACTS:-}"
 DEB="${LBC_DEB:-cc-monitor_3.8.0_amd64.deb}"
 
@@ -94,8 +101,13 @@ finish() { # $1 = 退出码
 }
 
 if [ "${1:-}" = "--clean" ]; then
-  cleanup_rig
-  echo "[rig] 已清掉 $CT / $CT_BARE / $NET（若在）"
+  # 本棵树、主人那条进程已经不在的趟（崩掉的）留下的；活着的那趟与别棵树的不碰。
+  dead_ct="$(docker ps -a --format '{{.Names}}' 2>/dev/null | e2e_dead_runs "$CT_PRE" "$CT_BARE_PRE")"
+  dead_net="$(docker network ls --format '{{.Name}}' 2>/dev/null | e2e_dead_runs "$NET_PRE")"
+  for c in $dead_ct; do docker rm -f "$c" >/dev/null 2>&1; done
+  for n in $dead_net; do docker network rm "$n" >/dev/null 2>&1; done
+  # shellcheck disable=SC2086  # 按词拆开印
+  echo "[rig] 已清掉：$(printf '%s ' $dead_ct $dead_net)"
   exit 0
 fi
 
@@ -154,17 +166,16 @@ for c in "$CT" "$CT_BARE"; do
 done
 [ -n "$(docker network ls -q -f "name=^${NET}$")" ] && leftover="$leftover $NET"
 if [ -n "$leftover" ]; then
-  no "上一趟没清干净，盘上还留着：$leftover"
+  no "盘上已有本趟名字的东西（同一个 pid 的上一趟没清干净）：$leftover"
   echo "::error::台架不替上一趟擦屁股（那会让「清理」这一步被拆掉也照样绿）。" >&2
   echo "::error::⇒ 先跑 bash tests/e2e/local-backend-container/rig.sh --clean，再重跑。" >&2
   finish 7
 fi
-ok "盘上没有上一趟的残留"
+ok "盘上没有本趟名字的残留"
 
 SNAP="$(mktemp -d /tmp/ccmon-lbc-snap.XXXXXX)"
 trap on_exit EXIT
-docker network ls > "$SNAP/net.before" 2>&1
-ip link            > "$SNAP/link.before" 2>&1
+e2e_docker_host_snapshot "$NET_PRE" "$NET" "$SNAP/before"
 ok "宿主快照已取（docker network ls · ip link）"
 line
 
@@ -328,17 +339,16 @@ chk "容器跑完没了" "$(docker ps -aq -f "name=^${CT}$" | wc -l)" "0"
 chk "裸容器跑完没了" "$(docker ps -aq -f "name=^${CT_BARE}$" | wc -l)" "0"
 chk "自建网络跑完没了" "$(docker network ls -q -f "name=^${NET}$" | wc -l)" "0"
 
-docker network ls > "$SNAP/net.after" 2>&1
-ip link            > "$SNAP/link.after" 2>&1
-if diff -q "$SNAP/net.before" "$SNAP/net.after" >/dev/null 2>&1; then
+e2e_docker_host_snapshot "$NET_PRE" "$NET" "$SNAP/after"
+if diff -q "$SNAP/before.net" "$SNAP/after.net" >/dev/null 2>&1; then
   ok "宿主 docker network ls 跑前跑后逐字相同"
 else
-  no "宿主 docker network ls 变了：$(diff "$SNAP/net.before" "$SNAP/net.after" | tr '\n' ' ')"
+  no "宿主 docker network ls 变了：$(diff "$SNAP/before.net" "$SNAP/after.net" | tr '\n' ' ')"
 fi
-if diff -q "$SNAP/link.before" "$SNAP/link.after" >/dev/null 2>&1; then
+if diff -q "$SNAP/before.link" "$SNAP/after.link" >/dev/null 2>&1; then
   ok "宿主 ip link 跑前跑后逐字相同"
 else
-  no "宿主 ip link 变了（⚠ 已知假红 K-R136：加速网卡 VF 热插拔）：$(diff "$SNAP/link.before" "$SNAP/link.after" | tr '\n' ' ')"
+  no "宿主 ip link 变了（⚠ 已知假红 K-R136：加速网卡 VF 热插拔）：$(diff "$SNAP/before.link" "$SNAP/after.link" | tr '\n' ' ')"
 fi
 
 TMPDIR_KEEP="$SNAP"

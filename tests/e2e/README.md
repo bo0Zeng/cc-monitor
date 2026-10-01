@@ -20,13 +20,17 @@
 **任何会碰 tmux 的套件，隔离只有一种做法**：
 
 ```sh
-TMUX_SHIM_SOCK=e2eYourSuite
 # shellcheck source=tests/e2e/tmux-shim.sh
-. "$(cd "$(dirname "$0")" && pwd)/tmux-shim.sh"
+. "$(cd "$(dirname "$0")" && pwd)/tmux-shim.sh" e2eYourSuite
 trap 'tmux_shim_cleanup' EXIT
 ```
 
 它把一个 `$BIN/tmux` shim 放进 PATH 最前，`exec` 真 tmux 并**强插 `-L <私有名>`**。
+私有名是**这一趟的**：`<前缀>-<工作树路径短哈希>-<本趟 pid>`（`e2e_run_name`，在 `$TMUX_SHIM_SOCK` 里）——
+两棵工作树同时跑门禁、同一棵树里同时起两趟，谁收尾的 `kill-server` 都打不到别人。
+自带 shim 的套件与 docker 台架（网络名、容器名）用 `. tmux-shim.sh --names-only` 只取名字，
+套件里只写前缀、不写名字本身；写死的私有名字由 `e2e_gate_registry` 的扫描判据拦（`-L default` 那一处
+canary 例外：它问的正是用户那台默认 server）。
 调用点一个字都不用改，连套件 shell out 出去的东西（`ccm` / `cc-spawn` 内部也裸调 tmux）
 也一并覆盖。
 

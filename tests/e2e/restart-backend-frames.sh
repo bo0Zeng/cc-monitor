@@ -35,36 +35,15 @@ set -euo pipefail
 # ⇒ C7i 立为红线：**tmux 命令一律带 socket 选择器（`-S <绝对路径>` 或 `-L <名>`），
 #   禁止靠 `TMUX_TMPDIR`/`unset TMUX` 做隔离。**
 #
-# 现在的形态：把 `$BIN/tmux` 放进 PATH 最前，它 `exec` 真 tmux 并**强插 `-L e2eRestartFrames`**。
+# 现在的形态：把 `$BIN/tmux` 放进 PATH 最前，它 `exec` 真 tmux 并**强插 `-L <本趟私有名>`**（名字与 shim 都取自共享原语 `tmux-shim.sh`）。
 # · 漏什么环境变量都打不偏 —— 选择器写死在 shim 里，不依赖「记得清某个变量」；
 # · 零调用点改动的好处**原样保留**：套件里的裸 `tmux` 一个不用改，
 #   连它 shell out 出去的东西（`ccm` / `cc-spawn` 内部也裸调 tmux）也一并覆盖；
 # · `unset TMUX` **仍然保留**，但它现在只是「让被测行为发生」（tmux 内会退化成就地起），
 #   **不再是隔离手段** —— 隔离由 shim 独自负责。
-unset TMUX TMUX_PANE
-_GC_SOCK="e2eRestartFrames"
-_GC_REAL_TMUX="$(command -v tmux)" || { echo "需要 tmux"; exit 1; }
-_GC_BIN="$(mktemp -d /tmp/e2e-tmuxshim.XXXXXX)"
-printf '#!/bin/sh\nexec %s -L %s "$@"\n' "$_GC_REAL_TMUX" "$_GC_SOCK" > "$_GC_BIN/tmux"
-chmod +x "$_GC_BIN/tmux"
-export PATH="$_GC_BIN:$PATH"
-
-# ★ 前置断言**经登录 shell 问** —— 08-12 实测教训：在外层 shell 量 `command -v tmux` 会报 PASS，
-#   而命令真正跑在 `bash -lic` 里（PATH 被 profile 重排过）⇒「隔离没生效」以 PASS 的形式呈现。
-_gc_probe="$(bash -lic 'command -v tmux' 2>/dev/null | tail -1)"
-if [ "$_gc_probe" != "$_GC_BIN/tmux" ]; then
-  echo "  ABORT 隔离没生效：登录 shell 里的 tmux 是 '$_gc_probe'，不是 shim $_GC_BIN/tmux"
-  echo "        绝不降级裸跑 —— 那会打到用户真实 tmux server 上（C7i 红线）。"
-  rm -rf -- "$_GC_BIN"
-  exit 2
-fi
-
-# 收尾：只收自己那台（`-L` 选择器在，绝不裸 `kill-server`）。
-_gc_sock_cleanup() {
-  set +e
-  [ -n "${_GC_REAL_TMUX:-}" ] && "$_GC_REAL_TMUX" -L "$_GC_SOCK" kill-server 2>/dev/null
-  [ -n "${_GC_BIN:-}" ] && rm -rf -- "$_GC_BIN"
-}
+# shellcheck source=tests/e2e/tmux-shim.sh
+. "$(cd "$(dirname "$0")" && pwd)/tmux-shim.sh" e2eRestartFrames
+_gc_sock_cleanup() { tmux_shim_cleanup; }
 # ─────────────────────────────────────────────────────────────────────────────
 
 E2E="$(cd "$(dirname "$0")" && pwd)"

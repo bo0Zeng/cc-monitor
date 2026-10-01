@@ -23,6 +23,9 @@ RIG="$SBX/rig"
 BACKEND="$REPO/.build/backend/debug/cc-monitor-backend"
 # 真 HOME —— 前提 1：沙箱 HOME 会把 rustup 的家一起换掉，这两个要显式指回来。
 REAL_HOME="$(getent passwd "$(id -un)" | cut -d: -f6)"
+# 台架那份私有 tmux socket 名取自共享原语（setup 写进 `$RIG/tmux-sock`，wrapper 与套件都读它）。
+# shellcheck source=tests/e2e/tmux-shim.sh
+. "$REPO/tests/e2e/tmux-shim.sh" --names-only
 
 die() { echo "❌ $*" >&2; exit 1; }
 
@@ -56,6 +59,8 @@ setup() {
   # wrapper 离开仓之后 `$REPO` 解析到别处 ⇒ 它会走「自愈」静默换二进制。
   # 旁边这个 `backend-path` 钉死用哪个（env 传不进来，SSH exec 不带）。
   printf '%s' "$BACKEND" > "$RIG/backend-path"
+  # 后端经 SSH 起、读不到套件的 env ⇒ 私有 tmux socket 名也落成旁边一个文件。
+  e2e_run_name e2eGray > "$RIG/tmux-sock"
 
   python3 - "$SBX" "$RIG" "$fp" "$REAL_HOME" <<'PY'
 import json, os, sys
@@ -113,11 +118,13 @@ run() {
   local log
   log="$(ls -t "$SBX"/.cc-monitor/logs/monitor/monitor.*.log 2>/dev/null | head -1 || true)"
   [ -n "$log" ] || die "沙箱里没有 monitor 日志 —— dev 实例在跑吗？（bash $0 dev）"
+  [ -s "$RIG/tmux-sock" ] || die "台架目录里没有 tmux-sock —— 先跑 setup"
   echo "  日志：$log"
   local rc=0
   for s in graylight-suite f40-suite; do
     printf '▼ %s\n' "$s"
     E2E_DISPLAY="$DISP" E2E_LOG="$log" HOME="$SBX" CLAUDE_CONFIG_DIR="$SBX/.claude" \
+      CCM_E2E_TMUX_SOCK="$(cat "$RIG/tmux-sock")" \
       bash "$REPO/tests/e2e/$s.sh" || { rc=$?; echo "  rc=$rc"; }
   done
   return "$rc"
