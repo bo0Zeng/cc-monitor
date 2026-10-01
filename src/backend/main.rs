@@ -238,6 +238,8 @@ async fn main() {
     match mode {
         None => run_over_stdio(hello, agent_home, with_bg, tail_only, with_rbind_token).await,
         Some((port, token)) => {
+            // 这台账号库里各号共用的用户级 MCP：常驻那条载体上盯各号的配置文件，一有动静同步一趟（一次性的 stdio 那条不起）。
+            inbound::watch_account_mcp();
             // 停机信号只挂**一次**（不在 accept 循环里每轮重装一个 SIGTERM 处理器）。
             // 〔HX1〕收到之后监听口随 `serve_listening` 一起丢（不再接新连接）；已接上的那条流是独立任务，
             //   排空期间照常写应答，新来的阻塞命令回 `shutting_down`（`inbound::exit_after_drain`）。
