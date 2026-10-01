@@ -7,11 +7,11 @@
 #   - 本机可读 monitor 日志(fe_perf/[e2e] 行是断言数据源)。
 # 序列(跨进程整链,单测碰不到):
 #   建 fixture(fake-claude 活 + @ccm_sid) → app 经 backend SessionAdded 建 live 远端 tab
-#   → kill fake-claude(留 tmux shell) → backend SessionRemoved + SessionState(reconnectable)（〔MIG-1 续〕后端会话账本裁）
+#   → kill fake-claude(留 tmux shell) → backend SessionRemoved + SessionState(reconnectable)（后端会话账本裁）
 #     → 会话流 `idle` 格 → tabs.markTmuxIdle → `[e2e] tab-state … liveness=dead recoverability=attachable`(可重连)
 #   → tmux kill-session(另留一个无关 cc-* 防空 backend 卡灰,§24bis) → @ccm_sid 消失
 #     → 收割/对账 retire → SESSION_ENDED → tabs.archiveTab → `[e2e] tab-state … liveness=dead recoverability=resumable`(已结束)
-# 〔U4〕探针行的两个键就是两个轴(原先是 `status=live tmuxIdle=1` / `status=archived`)。「进可重连之前是活的」
+# 探针行的两个键就是两个轴(原先是 `status=live tmuxIdle=1` / `status=archived`)。「进可重连之前是活的」
 #   不再靠同一行里的 `status=live` 证明:markTmuxIdle 只在活着时才转移、才打这一行(`tab-session-state.ts::nextState`),
 #   打出来本身就是证明。两条 grep 模式与探针真吐的行由 `tests/frontend/ui/tab-session-state.vitest.ts` 对拍。
 set -euo pipefail
@@ -26,7 +26,7 @@ set -euo pipefail
 # 而正确的结论是「**别靠环境变量做隔离**」。08-11 的事故正是漏了那两件里的一件。
 # 保留这几行是为了让下一个人知道**为什么不能改回去**。
 #
-# ★★★ **C7i 红线改造〔08-12〕：隔离改成 `-L` shim，不再靠环境变量。**
+# ★★★ **C7i 红线改造：隔离改成 `-L` shim，不再靠环境变量。**
 #
 # 上面那段（已删）逐字写着「两件事都必须做，缺一就不隔离」——`unset TMUX` + `TMUX_TMPDIR`。
 # **那个形态本身就是病灶**：2026-08-11 实测事故 —— 一条探针写了 `TMUX_TMPDIR=… tmux kill-server`
@@ -77,7 +77,7 @@ ARCH_WAIT="${E2E_ARCH_WAIT:-40}"    # 归档:kill-session 后 hook → 重探 �
 
 [ -f "$LOG" ] || { echo "monitor 日志不存在:$LOG(dev 实例在跑吗?)"; exit 1; }
 
-# ★★★ **开跑前自证台架**〔P0b 08-12〕。**不满足一律 `ABORT`（exit 2），不许 FAIL。**
+# ★★★ **开跑前自证台架**。**不满足一律 `ABORT`（exit 2），不许 FAIL。**
 #
 # 病史：查 #60 时**连着六次**跑出「1 过 2 败」，而**每一次的成因都不是 #60** ——
 #   ① 陈旧 pidfile（读到上一跑的残骸，kill 打给死 pid）
@@ -300,7 +300,7 @@ done
   && ok "live 前置:fake-claude pidfile 落地 pid=$FAKE_PID(app 经 backend SessionAdded 建 live tab)" \
   || bad "10s 内 fake-claude 未落 pidfile 到隔离目录(fixture 失败)"
 
-# 〔MIG-1 续〕裁决在后端会话账本：它要先见过一份挂着 @ccm_sid=sid 的 tmux 快照（起步初探即有）再杀 claude，
+# 裁决在后端会话账本：它要先见过一份挂着 @ccm_sid=sid 的 tmux 快照（起步初探即有）再杀 claude，
 # 否则 SessionRemoved 那一刻账本判不出「还挂着」→ 裁已结束而非可重连。留一段余量（原来等的是 app 收到 TmuxSessions 帧，那一帧已删）。
 TMUX_SETTLE="${E2E_TMUX_SETTLE:-14}"
 echo "-- 等 ${TMUX_SETTLE}s 让后端会话账本见过含 @ccm_sid 的 tmux 快照 --"

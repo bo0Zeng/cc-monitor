@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# `P0b-Y2`〔08-13〕：backend 盯着的 `<claude_dir>/sessions/` **被换掉 / 还没出现**时仍要宣告会话。
+# `P0b-Y2`：backend 盯着的 `<claude_dir>/sessions/` **被换掉 / 还没出现**时仍要宣告会话。
 #
 # ## 为什么这条必须是真跑，不能是单测
 #
@@ -26,7 +26,7 @@
 set -o pipefail
 
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
-D="${CCM_E2E_BACKEND_BIN:-${CARGO_TARGET_DIR:-$REPO/.build/backend}/debug/cc-monitor-backend}"  # 〔OSA〕同 backend-rbind-token：认 `CARGO_TARGET_DIR`（门禁与工作树都把 target 放在仓外）
+D="${CCM_E2E_BACKEND_BIN:-${CARGO_TARGET_DIR:-$REPO/.build/backend}/debug/cc-monitor-backend}"  # 同 backend-rbind-token：认 `CARGO_TARGET_DIR`（门禁与工作树都把 target 放在仓外）
 [ -x "$D" ] || { echo "需要后端二进制：$D（先 cargo build -p cc-monitor-backend）"; exit 1; }
 
 W="$(mktemp -d /tmp/e2e-rewatch.XXXXXX)"

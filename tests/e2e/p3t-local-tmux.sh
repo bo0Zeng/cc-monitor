@@ -82,9 +82,9 @@ CCM_NATIVE="${CARGO_TARGET_DIR:-$REPO/.build/backend}/debug/cc-monitor-backend"
 ln -sf "$CCM_NATIVE" "$BIN/ccm"
 
 export PATH="$BIN:$PATH"
-# 〔MC1 · 2026-09-24〕这里从前 `export CCM_SELF="$BIN/ccm"`：那个环境变量删了（`设计/01 §6.7b`）——
+# 这里从前 `export CCM_SELF="$BIN/ccm"`：那个环境变量删了——
 # 经 `$BIN/ccm` 这条软链进来，`argv[0]` 本来就是它（入口①），内层载荷取的就是这个名字。
-# ⚠ 〔`K-R48` 第二拍〕下面那份 `$TMP/ccm-config` **原生实现不读**（旧版是 source 一段 bash，
+# ⚠ 下面那份 `$TMP/ccm-config` **原生实现不读**（旧版是 source 一段 bash，
 #   没有等价物；它发现那个文件在会往 stderr 说一句然后照常跑）⇒ 那两个值改走环境变量。
 #   留着 `CCM_CONFIG` 指过去是有意的：它同时验「发现它存在会出声」这条行为没丢。
 # 隔离账号库 / 工作区 / 预信任写入点，绝不碰用户真实文件（同 ccm-acceptance.sh 的手法）
@@ -137,7 +137,7 @@ ok "C7d 前置：登录 shell 里的 $LAUNCHER 是假 launcher（$GOT_LAUNCHER�
 #     那样 ccm 根本不会去 PATH 上找 `claude`，「真 claude 不许被起」就不再依赖 PATH 顺序。
 
 # ── 取生产渲染器的真输出
-# 〔MIG-2〕本机起会话的计划与渲染住进本机后端（`src/backend/control/launch_render/local.rs`）⇒ 在后端那个工程里跑出口。
+# 本机起会话的计划与渲染住进本机后端（`src/backend/control/launch_render/local.rs`）⇒ 在后端那个工程里跑出口。
 RAW="$(cd "$REPO/src/backend" && P3T_E2E_SID="$SID" P3T_E2E_TMUX="$TMUXNAME" P3T_E2E_LAUNCHER="$LAUNCHER" \
   cargo test --lib -- --ignored --nocapture emit_local_launch_command_for_e2e 2>/dev/null)"
 CMD="$(printf '%s' "$RAW" | sed -n 's/.*P3T_CMD<<<\(.*\)>>>.*/\1/p')"
@@ -239,6 +239,6 @@ fi
 
 kill "$LAUNCH_PID" 2>/dev/null
 echo
-# 〔TL1 · 4C〕收尾行换成 `assert-pass-floor.sh` 认的那一形（它只认「合计 PASS=<n>」）—— 本套接回执行链（`ci.yml` 地板一行）。
+# 收尾行换成 `assert-pass-floor.sh` 认的那一形（它只认「合计 PASS=<n>」）—— 本套接回执行链（`ci.yml` 地板一行）。
 echo "===== 合计 PASS=$PASS FAIL=$FAIL ====="
 [ "$FAIL" -eq 0 ] || exit 1

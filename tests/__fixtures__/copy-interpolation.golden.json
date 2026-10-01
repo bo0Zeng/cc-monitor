@@ -1,7 +1,7 @@
 {
-  "_": "〔DUP2 · 设计/01 §6.9〕文案表两个读口（前端 copy-table.ts::copyText · Rust copy-core::copy_text）的插值对拍金样。两侧各自读这一份逐条跑、对手写的 want（不是彼此对拍）：Rust tests/common/copy-core/lib_tests.rs · TS tests/copy/copy-table.vitest.ts。只收合法插值（key 在表里 · 参数恰好是表里登记的 args）。zh 抄的是表里那一条的原文：表改了字，两侧先在「模板还是这一句」那一格红，照新句子改 want。",
+  "_": "文案表两个读口（前端 copy-table.ts::copyText · Rust copy-core::copy_text）的插值对拍金样。两侧各自读这一份逐条跑、对手写的 want（不是彼此对拍）：Rust tests/common/copy-core/lib_tests.rs · TS tests/copy/copy-table.vitest.ts。只收合法插值（key 在表里 · 参数恰好是表里登记的 args）。zh 抄的是表里那一条的原文：表改了字，两侧先在「模板还是这一句」那一格红，照新句子改 want。",
   "_differences": [
-    "缺键：TS 抛（程序员错误）· Rust 回 〔key〕（不许一句话缺了拖垮它所在的路）—— 设计/01 §6.9 认可的两个读口各自的处置，照现状登记。",
+    "缺键：TS 抛（程序员错误）· Rust 回（不许一句话缺了拖垮它所在的路）—— 认可的两个读口各自的处置，照现状登记。",
     "参数对不上：TS 抛 · Rust 照填给了的、没给的原样留 {x}、多给的不用 —— 同上。"
   ],
   "cases": [
@@ -36,42 +36,42 @@
       "want": "args[0] 里有绝对路径 C:\\Users\\u\\x $HOME/y $& $1，本机上没有这个路径。"
     },
     {
-      "_": "〔DUP3 · 主会话 09-26 裁：插值不该重新解释值〕值里带另一个参数的占位符：两个读口都一趟换完，值原样留着（此前 Rust 逐个 replace 会把 {target} 再换成 %1）。",
+      "_": "〔主会话 09-26 裁：插值不该重新解释值〕值里带另一个参数的占位符：两个读口都一趟换完，值原样留着（此前 Rust 逐个 replace 会把 {target} 再换成 %1）。",
       "key": "panePreview.head.title",
       "zh": "预览画面 · [{origin}] tmux: {target}",
       "args": { "origin": "{target}", "target": "%1" },
       "want": "预览画面 · [{target}] tmux: %1"
     },
     {
-      "_": "〔P3 · rules.json C-L5〕值与相邻汉字之间的空格随值定：模板紧贴着写、值以字母数字收尾 ⇒ 补一个空格。",
+      "_": "〔rules.json C-L5〕值与相邻汉字之间的空格随值定：模板紧贴着写、值以字母数字收尾 ⇒ 补一个空格。",
       "key": "launchArrival.arrived.body",
       "zh": "{machine}上报出了这个会话。",
       "args": { "machine": "lx" },
       "want": "lx 上报出了这个会话。"
     },
     {
-      "_": "〔P3 · C-L5〕同一句，值是汉字 ⇒ 不补。",
+      "_": "同一句，值是汉字 ⇒ 不补。",
       "key": "launchArrival.arrived.body",
       "zh": "{machine}上报出了这个会话。",
       "args": { "machine": "本机" },
       "want": "本机上报出了这个会话。"
     },
     {
-      "_": "〔P3 · C-L5〕值以全角标点收尾 ⇒ 接缝不管；后一个值是数字、模板已写了空格 ⇒ 照留（不叠第二个）。",
+      "_": "值以全角标点收尾 ⇒ 接缝不管；后一个值是数字、模板已写了空格 ⇒ 照留（不叠第二个）。",
       "key": "beCcBus.deliver.tooLong",
       "zh": "{reason}这条消息有 {n} 字节。",
       "args": { "reason": "消息太长：", "n": "70000" },
       "want": "消息太长：这条消息有 70000 字节。"
     },
     {
-      "_": "〔P3 · C-L5〕两个值之间只隔空格的那一段不动（值是汉字也不并）；值与后面的汉字之间的空格照留。",
+      "_": "两个值之间只隔空格的那一段不动（值是汉字也不并）；值与后面的汉字之间的空格照留。",
       "key": "diagramRender.edge.pick",
       "zh": "{base} {candidates} 选 1",
       "args": { "base": "动态派发", "candidates": "3" },
       "want": "动态派发 3 选 1"
     },
     {
-      "_": "〔P3 · C-L5〕接缝上两个以上空格是排版，照留。",
+      "_": "接缝上两个以上空格是排版，照留。",
       "key": "rsProfileInstaller.hint.line",
       "zh": "  第 {lineNo} 行  {text}{mark}\n",
       "args": { "lineNo": "三", "text": "甲", "mark": "" },

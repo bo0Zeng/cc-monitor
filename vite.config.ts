@@ -15,14 +15,14 @@ const port = Number(process.env.VITE_PORT) || 24174;
 const hmrPort = port + 1;
 
 /**
- * 〔`设计/41 §3` · 层真包进去〕把**第三方**样式表（`node_modules` 里的 `.css`，今天是 highlight.js 主题
+ * 〔层真包进去〕把**第三方**样式表（`node_modules` 里的 `.css`，今天是 highlight.js 主题
  * 与 KaTeX）整份包进 `@layer vendor`。
  *
  * 为什么必须包：`@layer` 的规则是「**无层的样式赢过所有有层的**」。我们自己的样式全部进了层之后，
  * 第三方那两份如果还是无层，就会**反过来压住我们所有的覆盖** —— 例如 `.code-block pre code.hljs`
  * 给代码块定的 `padding` / 透明底，会输给 hljs 主题的 `pre code.hljs { padding: 1em }` 与
  * `.hljs { background: … }`。包进 `vendor`（排在 `reset` 之后、我们所有层之前）⇒ 我们的规则一律压过第三方，
- * 与拆层之前「我们的覆盖靠更高特异度赢」的结果相同（离线核对见 `设计/41` 末尾追加的那一节）。
+ * 与拆层之前「我们的覆盖靠更高特异度赢」的结果相同（离线核对末尾追加的那一节）。
  *
  * 为什么在构建配置里包、而不是改成在 CSS 里 `@import … layer(vendor)`：这两份是 `src/frontend/ui/render.ts` 用
  * `import "<包>/….css"` 引进来的 —— `tests/evidence/S25-class-ledger.ts` 的「第三方类名」一族正是从这一形
@@ -63,7 +63,7 @@ export default defineConfig(async () => ({
   build: {
     outDir: ".build/dist",
     emptyOutDir: true,
-    // 〔三入口拆分 · `设计/01 §1.2`〕三个 html 各带一个入口模块，各自一张模块图：
+    // 〔三入口拆分〕三个 html 各带一个入口模块，各自一张模块图：
     //   index.html    → src/frontend/ui/entry-main.ts      主窗口
     //   settings.html → src/frontend/ui/entry-settings.ts  只含设置面板 ＋ 主题 ＋ 键位
     //   viewer.html   → src/frontend/ui/entry-viewer.ts    只含 tab 管理 ＋ 渲染栈

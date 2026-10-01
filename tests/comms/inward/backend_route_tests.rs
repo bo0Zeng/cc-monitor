@@ -70,7 +70,7 @@ fn only_the_errors_that_prove_nothing_was_sent_allow_a_fallback() {
 ///
 /// 第一版是**手写的两条清单**（`backend_kill.rs` / `backend_send_keys.rs`）——
 /// Phase G 的 `/full-audit` 当场指出：同一个目录里**第三个**走后端的发送端
-/// `backend_launch.rs` 里的 `backend_send_into`〔散文墓碑〕（U8a-2c-1，早于本工作区；〔C4e〕随就地 resume 迁到界面删了）**不在清单里**，
+/// `backend_launch.rs` 里的 `backend_send_into`〔散文墓碑〕（U8a-2c-1，早于本工作区；随就地 resume 迁到界面删了）**不在清单里**，
 /// 于是它自己 match 一整套 `CallError`、把**每一档**都折成「诚实降级」，
 /// 而调用方拿到降级就**回落到 TS 渲染的整串**（那条串没有 §34 的 Gate 2）。
 ///
@@ -84,112 +84,112 @@ fn only_the_errors_that_prove_nothing_was_sent_allow_a_fallback() {
 /// 目录里每个 `.call(` 的文件都必须在下表里，要么用分流器、要么是**带理由的刻意例外**。
 #[cfg(test)]
 const SENDERS: &[(&str, Verdict)] = &[
-    // 〔C4e · 第四波 4C〕这里原来头三行是 `backend_kill.rs` / `backend_send_keys.rs` / `backend_launch.rs`
+    // 这里原来头三行是 `backend_kill.rs` / `backend_send_keys.rs` / `backend_launch.rs`
     //   （杀会话 · 送键 · 就地 resume 三个发送端，都 `UsesRouter`；`backend_launch` 那一行还记着 F14 的
     //   「`may_fall_back` 第三个字段 · 上一版误记成例外、改好当天如设计般红过一次」）。三条 Tauri 命令迁到界面
     //   （`src/frontend/ui/tmux-control.ts` 经通道直接说 `kill` / `launch`），发送端整份删了，发现阶段扫不到它们 ⇒ 三行摘掉。
     //   它们守的那件事没丢：Rust 这一侧的分层判定照旧只在 `backend_route::layer_call_error` 一处（通道宿主 `host.rs` 用它）；
     //   F14 那条「能不能回落」在界面那一侧的同义一份（`ipc/chan-caller.ts::provablyNotSent`）由跨语言金样
     //   `tests/__fixtures__/reach-collapse.golden.json` 与本侧 `route_call_error` 对拍（`chan/webview_tests.rs`）。
-    // 〔MIG-1 续〕`ssh_source.rs` 那一行（08-08 扩面逮出的第四个发送端：`probe_backend`〔散文墓碑〕 里那条 `ping`，只渲染诊断串、不做回落决策）
+    // `ssh_source.rs` 那一行（08-08 扩面逮出的第四个发送端：`probe_backend`〔散文墓碑〕 里那条 `ping`，只渲染诊断串、不做回落决策）
     //   摘了：测试连接搬进本机后端（`dial/probe.rs`），monitor 这一侧不再发那一问。
 
-    // 〔C4e · 第四波 4C〕**`cc_bus.rs` 那一行退役了**：P4f 起它把 cc-bus 写面（发消息 · 收掉 · 派生 · 查在线）经后端的
+    // **`cc_bus.rs` 那一行退役了**：P4f 起它把 cc-bus 写面（发消息 · 收掉 · 派生 · 查在线）经后端的
     //   `bus-*` 原语转一手、走分流器；现在界面经通道直接说（`src/frontend/ui/cc-bus-control.ts`，广播的挑人也搬进了后端 `bus-broadcast`），
     //   monitor 的 `cc_bus.rs` 只剩读名单 / 读收件箱两条 shell 读，不再是走后端的发送端 —— 从登记表删，不留过渡格。
     //   「monitor 里写面一条路都不剩」由 `cc_bus_tests.rs::the_monitor_has_no_cc_bus_write_path_any_more` 两向判。
-    // ★ `K-R112` 09-13：**第七个发送端** —— 抓屏（`capture_via_backend`〔散文墓碑〕，〔C4e〕已删）
+    // ★ `K-R112` 09-13：**第七个发送端** —— 抓屏（`capture_via_backend`〔散文墓碑〕，已删）
     //   改走帧面 `capture-pane`。它**没有第二条路可回落**（那条一次性 SSH 本件删净了），
     //   但**照样走分流器**，理由与 `cc_bus.rs` 那条逐字相同：
-    //   〔`设计/50`：原话还并列了 `account_usage.rs`（`K-R104` 的第六个发送端）——
+    //   〔：原话还并列了 `account_usage.rs`（`K-R104` 的第六个发送端）——
     //    用量 ③ 轴整轴退役，那个发送端不存在了，发送端从七个变回六个。〕
     //   本模块的三态是从 `Routed` 搬过来的，不是它自己 match 一遍错误枚举。
     //   ⚠ 它回的是 `Result<String, Routed>` —— 「拿到了那一屏」与「三态里的另外两态」
     //   在类型上分得开，怎么对用户说由调用方 `capture_remote_pane` 决定。〔散文墓碑〕
-    // 〔C4e · 第四波 4C〕**上面那一行（`tmux.rs`）退役了**：抓屏改由界面经通道直接问那台机器的后端
+    // **上面那一行（`tmux.rs`）退役了**：抓屏改由界面经通道直接问那台机器的后端
     //   （`src/frontend/ui/tmux-control.ts::capturePane`），monitor 里那个发送端（`capture_via_backend`〔散文墓碑〕）删了 ——
     //   `tmux.rs` 从此不再直连 `inbound_client`，发现阶段扫不到它，登记跟着摘。分层判定照旧只在
     //   `backend_route::layer_call_error` 一处（通道宿主 `host.rs` 用它），界面那一侧只把分好层的结果翻成一句话。
     // ★ 〔步 `24f` 第四刀 09-21〕**第七个发送端** —— 原生文件窗口那一侧的搜索
     //   （`filewin/find.rs`，`files-find` / `files-index-status` /
     //   `files-index-rebuild` / `files-browse` 四条）。
-    //   它**没有第二条路可回落**，而且这一次那句话是硬的：`设计/60 §2 档①` 逐字
+    //   它**没有第二条路可回落**，而且这一次那句话是硬的：
     //   「SFTP 只能递归 `READDIR`，N 次往返；而且**协议里没有「放一份常驻索引」这个概念**」
     //   ⇒ 搜索在 SFTP 那一侧**结构上不存在**，不是「今天还没做」。
     //   但**照样走分流器**，理由与 `cc_bus.rs` / `tmux.rs` 那两条逐字相同：
     //   分流规则一有第二份实现，「被门拒绝」就会在某一份里被洗成「换条路重做」。
     //   ⚠ 它回的是 `Result<Value, Routed>`（同 `tmux.rs` 那一处的形状）——
     //   「拿到了那一份 data」与「三态里的另外两态」在类型上分得开。
-    // 〔F2 · 2026-09-24〕**上面那一行（`find.rs`）退役了**：文件窗口成了独立进程，只经通道说 `call`，
+    // **上面那一行（`find.rs`）退役了**：文件窗口成了独立进程，只经通道说 `call`，
     //   搜索不再直连进程级登记表（`inbound_client`），分层判定在通道宿主那一侧（`host.rs`，
     //   走分流器的分层出口）。窗口一侧只把分好层的结果翻成一句人话（`filewin/source.rs::said`）。
     //   ⇒ 两份新发现的 `.call(` 都**不做回落决策、也碰不到 inbound**，牙与纯路由器那一档同一套：
     // · `source.rs` —— 窗口进程里说 `Comms::call` 的唯一一处（`filewin/source.rs::ask`）。
     ("source.rs", Verdict::PureRouterNoFallbackDecision),
-    // · 〔MIG-3a · 主会话 09-28 裁 3〕`entry.rs` 那一行删了：monitor 开窗前替窗口列第一屏那一问进了窗口进程
+    // · 〔主会话 09-28 裁 3〕`entry.rs` 那一行删了：monitor 开窗前替窗口列第一屏那一问进了窗口进程
     //   （`filewin/proc.rs::first_screen` → 上面 `source.rs` 那一处），`entry.rs` 生产段里一个 `.call(` 都没有了。
     // ★ 〔面 A 通道，2026-09-24〕**不是发送端，是纯路由器**（`chan/router.rs`）。
     //   发现阶段看见它，是因为它生产段里有 `.call(` —— 那是**注入的** `Backends` 句柄的
     //   `call`，不是 `inbound_client` 的；它生产段里的 `CallError::` 也是通道自己的
-    //   （`05 §3.3.1` 那三层），不是本模块分流的那个枚举。
+    //   （那三层），不是本模块分流的那个枚举。
     //   ⇒ 登记成 `PureRouterNoFallbackDecision`，牙见那一档的判法：它连
     //   `inbound_client` 这个名字都不许碰 —— 碰了就说明它不再「只转交」了。
     ("router.rs", Verdict::PureRouterNoFallbackDecision),
-    // ★ 〔C4a · 第四波 · 2026-09-24〕**主界面那一跳的宿主**（`chan/webview.rs`）。发现阶段看见它，是因为
+    // ★ **主界面那一跳的宿主**（`chan/webview.rs`）。发现阶段看见它，是因为
     //   它生产段里有 `.call(` —— 那是**注入的** `Backends` 句柄（生产注入 `chan::host::InboundBackends`，
     //   从前与 `entry.rs` 同一个〔09-28 裁 3 起它不再问〕），期限与撤单交给路由器那一份 `settle`。它不碰 inbound、不做回落判断，
     //   牙与纯路由器那一档同一套。
     ("webview.rs", Verdict::PureRouterNoFallbackDecision),
     // ★ 〔面 A 通道，2026-09-24〕**第八个发送端** —— 通道的生产句柄（`chan/host.rs`），
     //   外部前端经路由器转来的 `call` 在这里走 `inbound_client`。
-    //   它要的不是三态而是 `05 §3.3.1` 的分层结果（层 × `reach` × `why`），
+    //   它要的不是三态而是分层结果（层 × `reach` × `why`），
     //   ⇒ 走分流器的**第二个出口** `layer_call_error`（三态正是从它收拢出来的，同出一源），
     //   「没有控制通道」走 `layer_no_channel`。它自己**不** match inbound 的错误枚举。
     ("host.rs", Verdict::UsesRouter),
-    // ★ 〔`C1` · 2026-09-24〕**第九个发送端** —— 只读查询面（`frame_query.rs`，
+    // ★ **第九个发送端** —— 只读查询面（`frame_query.rs`，
     //   `history-*` / `accounts-*` 八条）。它**没有第二条路可回落**：逐次拨 SSH 那条正是
     //   本件要删的东西，长连接不在时明说「没有控制通道」。但**照样走分流器**
     //   （`route_call_error` ＋ `no_channel`），理由与 `cc_bus.rs` / `tmux.rs` / `find.rs` 逐字相同。
     ("frame_query.rs", Verdict::UsesRouter),
-    // ★ 〔SR1a · 2026-09-24〕**又一个发送端** —— 链路的 monitor 这一侧（`link_mux.rs`，`link-*` 四条，
+    // ★ **又一个发送端** —— 链路的 monitor 这一侧（`link_mux.rs`，`link-*` 四条，
     //   经本机常驻后端那条流开到各远端的字节流）。它**没有第二条路可回落**（`D11`：不起代理进程、
     //   不进程内拨），失败只渲染成一句话；**照样走分流器**，理由与 `frame_query.rs` 那一行逐字相同。
     ("link_mux.rs", Verdict::UsesRouter),
-    // ★ 〔B2 · 条 66 · 2026-09-24〕**第十个发送端** —— 「退出行为」那个值搬到后端所在那台机器上之后，
+    // ★ 〔条 66〕**第十个发送端** —— 「退出行为」那个值搬到后端所在那台机器上之后，
     //   monitor 问它 / 交它写 / 退出臂现问它，都经 `backend_policy.rs::exit_policy_call` 这一口。
     //   没有第二条路可回落（值只在那台机器上），长连接不在时明说「没有控制通道」；**照样走分流器**，
     //   理由与 `frame_query.rs` 那条逐字相同。
     ("backend_policy.rs", Verdict::UsesRouter),
-    // 〔MIG-2〕`apikey_remote.rs`〔散文墓碑〕那一行摘了：那一口（上游选择的帧面发送口）最后只剩起会话问 `launch-endpoint` 一个调用方，
+    // `apikey_remote.rs`〔散文墓碑〕那一行摘了：那一口（上游选择的帧面发送口）最后只剩起会话问 `launch-endpoint` 一个调用方，
     //   起会话搬进后端之后零调用方、整个模块删了（界面经通道直问）。
-    // 〔DEL〕`remote_relay.rs` 那一行摘了：远端「用到才起」的脱离中转一族删了（中转只住那台的常驻后端里）。
-    // 〔MIG-3b 续〕「足迹」那一行（`footprint_remote.rs`〔散文墓碑〕）摘了：成品由那台后端出，界面经通道直问 `footprint-report`。
-    // 〔MIG-3a〕`mcp_sync.rs`〔散文墓碑〕那一行摘了：MCP 推 / 拉的编排进了被写那台后端，界面经通道直问。
-    // ★ 〔AS2 · 第四波 4B〕资产目录同步：把「怎么够到那台」交给**本机**后端 `assets-sync`，经
+    // `remote_relay.rs` 那一行摘了：远端「用到才起」的脱离中转一族删了（中转只住那台的常驻后端里）。
+    // 「足迹」那一行（`footprint_remote.rs`〔散文墓碑〕）摘了：成品由那台后端出，界面经通道直问 `footprint-report`。
+    // `mcp_sync.rs`〔散文墓碑〕那一行摘了：MCP 推 / 拉的编排进了被写那台后端，界面经通道直问。
+    // ★ 资产目录同步：把「怎么够到那台」交给**本机**后端 `assets-sync`，经
     //   `asset_sync.rs::ResidentBackend::call` 这一口；失败经共用分流器翻成人话。形状与理由同上几条。
     ("asset_sync.rs", Verdict::UsesRouter),
-    // 〔MIG-3a〕skill「装到这台」那一行（原住 `skill_install.rs`）摘了：装 / 卸的编排进了被写那台后端，界面经通道直问。
-    // ★ 〔RW1 · 第四波 · 2026-09-24〕**第十一个发送端** —— 用户文件的读改写 ＋ 删历史会话
+    // skill「装到这台」那一行（原住 `skill_install.rs`）摘了：装 / 卸的编排进了被写那台后端，界面经通道直问。
+    // ★ **第十一个发送端** —— 用户文件的读改写 ＋ 删历史会话
     //   （`user_files.rs::BackendDoor`：`files-home` / `files-peek` / `files-put` / `files-rename` /
     //   `files-chmod` / `files-delete-session`）。用户裁「只允许后端的文件管理部分写文件」也管本机
     //   ⇒ **没有第二条路可回落**（直写正是被裁掉的那一形，`D11`）；长连接不在时明说「后端没连上」。
     //   **照样走分流器**（`route_call_error` ＋ `no_channel`），理由与 `frame_query.rs` 那条逐字相同；
     //   它要的 `stale` 那一档是从分流器递回来的 `(code, message)` 里认的，不自己 match 错误枚举。
     ("user_files.rs", Verdict::UsesRouter),
-    // 〔MIG-3b 续〕代码全景那一问的发送端（`panorama_call.rs`〔散文墓碑〕）删了：界面经通道直问那台后端，按码放字节那一步在界面（`src/frontend/ui/panorama/api.ts::askOrPlace`）。
-    // ★ 〔SR1b · 第四波〕传输台的中继（`sftp_pool.rs`）：窗口的开单 / 订阅经它转给**本机**常驻后端
+    // 代码全景那一问的发送端（`panorama_call.rs`〔散文墓碑〕）删了：界面经通道直问那台后端，按码放字节那一步在界面（`src/frontend/ui/panorama/api.ts::askOrPlace`）。
+    // ★ 传输台的中继（`sftp_pool.rs`）：窗口的开单 / 订阅经它转给**本机**常驻后端
     //   （`transfer-*` 四条，传输台住那里）。没有第二条路可回落（`D11`：不进程内开 SFTP），
     //   后端说的码原样带回窗口；**照样走分流器**，理由与 `link_mux.rs` 那一行逐字相同。
     ("sftp_pool.rs", Verdict::UsesRouter),
-    // ★ 〔MIG-3b · 4d-lanes 子步 1〕部署计划：把「怎么够到那台 ＋ 这一版带着哪几格」交给**本机**后端 `deploy-plan`，
+    // ★ 〔4d-lanes 子步 1〕部署计划：把「怎么够到那台 ＋ 这一版带着哪几格」交给**本机**后端 `deploy-plan`，
     //   经 `sftp.rs::ask_plan_for` 这一口；判定住后端，没有第二条路可回落（判定不回到 monitor）。形状与 `asset_sync.rs` 那一行同。
     ("sftp.rs", Verdict::UsesRouter),
-    // 〔THIN〕远端常驻后端 hello 的新旧改问本机常驻后端（`resident-verdict`，判定只在后端）：一问一答，照样走分流器，
+    // 远端常驻后端 hello 的新旧改问本机常驻后端（`resident-verdict`，判定只在后端）：一问一答，照样走分流器，
     //   理由与 `sftp.rs` 问部署计划那条逐字相同（长连接不在时明说，没有第二条路可回落）。
     ("remote_resident.rs", Verdict::UsesRouter),
-    // 〔THIN〕全景推字节之前「那台要哪一格」改问本机常驻后端（`deploy-slot`）：一问一答，照样走分流器（理由同上两行）。
+    // 全景推字节之前「那台要哪一格」改问本机常驻后端（`deploy-slot`）：一问一答，照样走分流器（理由同上两行）。
     ("panorama_bytes.rs", Verdict::UsesRouter),
-    // 〔THIN〕旧入口 `~/.local/bin/ccm` 的去向改问本机常驻后端（`deploy-retired`）：一问一答，照样走分流器。
+    // 旧入口 `~/.local/bin/ccm` 的去向改问本机常驻后端（`deploy-retired`）：一问一答，照样走分流器。
     ("ccm_legacy.rs", Verdict::UsesRouter),
 ];
 
@@ -228,7 +228,7 @@ enum Verdict {
     /// ⚠ 与上面那一档**刻意分开**：`ExemptPendingF14` 说的是「本该走分流器、
     /// 但今天还差一步」，这一档说的是「**根本没有回落这回事**」。
     /// 合成一档会让「欠着」与「不适用」长得一样。
-    /// 〔MIG-1 续〕今天没有住户（唯一那个 `ssh_source.rs` 的探测随测试连接搬进本机后端）；档位留着，下一个探测型发送端来了照样得表态。
+    /// 今天没有住户（唯一那个 `ssh_source.rs` 的探测随测试连接搬进本机后端）；档位留着，下一个探测型发送端来了照样得表态。
     #[allow(dead_code)]
     ProbeOnlyNoFallbackDecision,
     /// **纯路由器**：它的 `.call(` 调的是**别人注入的句柄**，自己够不着任何后端发送端，
@@ -284,7 +284,7 @@ fn every_backend_sender_is_registered_and_uses_the_one_router() {
     //   ★ 扩面当场逮出**第四个真实发送端**（`ssh_source.rs` 的探测 ping），此前整个在扫描面之外。
     let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
     // 目录里所有「走后端」的文件：生产段出现 `.call(` 的。
-    // 〔DL1〕另一个动词 `.call_until(`（`InboundClient::call_until`：截止时刻由调用方给的那一形）同样是发送 ——
+    // 另一个动词 `.call_until(`（`InboundClient::call_until`：截止时刻由调用方给的那一形）同样是发送 ——
     //   只认 `.call(` 的话，改用它的发送端会整个逃出扫描面（`frame_query.rs` 改成它的那一拍当场从人群里消失，本条因此红过）。
     let verb = format!(".call({}", "");
     let verb_until = format!(".call_until({}", "");
@@ -294,7 +294,7 @@ fn every_backend_sender_is_registered_and_uses_the_one_router() {
     //   报「backend_kill.rs 生产段却没有 route_call_error」—— 其实是文件根本没读到）。
     let mut by_name: std::collections::HashMap<String, String> = std::collections::HashMap::new();
     let mut all_prod: Vec<(String, String)> = Vec::new();
-    // 〔P4〕通道编进共享 crate `chan-core` 之后，路由器那份不再挂在 monitor 的模块树上 —— 人群照旧：monitor 的 manifest 明写了它
+    // 通道编进共享 crate `chan-core` 之后，路由器那份不再挂在 monitor 的模块树上 —— 人群照旧：monitor 的 manifest 明写了它
     //   （`guard_core::population_trees`，`walk_tree` 顺着收）。
     for (p, src) in guard_core::scan_tree!(&dir, &["rs"]) {
         let prod = guard_core::production_code(&src);
@@ -335,7 +335,7 @@ fn every_backend_sender_is_registered_and_uses_the_one_router() {
         assert!(
             homes.len() == 1
                 && homes[0].1 == 1
-                && homes[0].0.ends_with("comms/inward/backend_route.rs"), // 〔RE〕通信层成员的家
+                && homes[0].0.ends_with("comms/inward/backend_route.rs"), // 通信层成员的家
             "分流器出口 `{exit}` 的定义应当**恰好一处、住 `backend_route.rs`**，实得 {homes:?}"
         );
     }
@@ -393,7 +393,7 @@ fn every_backend_sender_is_registered_and_uses_the_one_router() {
                 assert!(
                     !uses,
                     "`{name}` 已经在用 `route_call_error` 了 —— **这多半是好事**（F14 做完了）：\n\
-                         把它的登记从 `ExemptPendingF14` 改成 `UsesRouter`，并关掉 ROADMAP 的 F14。"
+                         把它的登记从 `ExemptPendingF14` 改成 `UsesRouter`，并关掉 F14。"
                 );
             }
         }
@@ -461,8 +461,8 @@ fn the_collapse_to_three_states_is_byte_identical_to_the_table_before_layering()
             | CallError::Remote { .. } => {}
         }
     }
-    // 〔CP2b · CP1 裁「改·§2.4」〕说法换了（去掉 ** 与「另一条路」，不点命令名与声明的能力），三态一格没动。
-    // 〔FIX2 · 99 §2.1 ㉛②〕那句话按文案键断言、不抄原文：三态（NoChannel / Refused）与取的是哪一条仍逐格钉死。
+    // 〔CP1 裁「改·§2.4」〕说法换了（去掉 ** 与「另一条路」，不点命令名与声明的能力），三态一格没动。
+    // 那句话按文案键断言、不抄原文：三态（NoChannel / Refused）与取的是哪一条仍逐格钉死。
     let t = |k: &str| copy_text(k, &[]);
     let unsure = |s: String| copy_text("rsBackendRoute.route.unsure", &[("s", &s)]);
     let table: Vec<(CallError, Routed)> = vec![
@@ -537,7 +537,7 @@ fn the_exit_definition_counter_sees_definitions_only() {
 }
 
 /// ★★ **分层表逐档穷举** —— `layer_call_error` 对 `inbound_client::CallError` 每一个变体的
-/// `05 §3.3.1` 形状（层 · `reach` · `why` · 跳号标签 · 不透明 body）逐格钉死。
+/// 形状（层 · `reach` · `why` · 跳号标签 · 不透明 body）逐格钉死。
 ///
 /// 期望值是**字面量**（与 `layer_call_error` 头注那张分层表逐行对应），不调任何映射函数去算。
 /// 收拢那一侧由 `the_collapse_to_three_states_is_byte_identical_to_the_table_before_layering` 管；

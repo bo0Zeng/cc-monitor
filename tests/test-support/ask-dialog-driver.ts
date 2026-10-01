@@ -1,5 +1,5 @@
 /**
- * 〔W5-UI〕在 jsdom 里「当用户」答 `src/frontend/ui/ask-dialog.ts` 弹出来的应用内对话框。
+ * 在 jsdom 里「当用户」答 `src/frontend/ui/ask-dialog.ts` 弹出来的应用内对话框。
  *
  * 判据点的是**真按钮**、等的是**真 Promise** —— 与真 app 同形（答案是异步到的）。
  * 从前各处 `vi.spyOn(window, "confirm").mockReturnValue(false)` 测的是一个同步的原生 `confirm`，

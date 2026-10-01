@@ -1,32 +1,32 @@
 //! tee：把响应体里的 SSE 事件抄一份出去。**只抄响应体，永不抄请求头。**
 //!
-//! # 🔴 通信层成员 `COMM-LAYER-MEMBER`〔DEL〕
+//! # 🔴 通信层成员 `COMM-LAYER-MEMBER`
 //!
 //! 登记那一侧在 `tests/frontend/shell/comm_boundary_registry_tests.rs::REGISTERED`（两向集合相等）。先前挡着它的只有 `X4`
 //! （NDJSON 行落点的 `try_send`，丢了不说）；那个落点随独立 `--relay` 删了，剩下的 tap 那一形「丢必须说」由位置号原位兑现。
 //!
-//! # 落点：**tap**（常驻后端进程内那一份中转，〔TAP · V124〕）
+//! # 落点：**tap**（常驻后端进程内那一份中转）
 //!
 //! 中转住常驻后端进程里（`listen::host`），那个进程的 stdout 是 wire（stdio 载体）或 null（脱离载体），不能写行 ⇒ 落点是一个
 //! [`TapPort`]：每个 SSE 事件交一个 [`TapEvent`]（**结构体，不是格式串** —— 线上字段名住
-//! `wire.rs::Frame::Tap` 的 serde 名，`05 §9` 第 4 条那道「字段名住哪」的答案），由宿主转成 `tap` 帧。
-//! 〔DEL〕先前还有一个 NDJSON 行落点（独立 `--relay` 进程的 stdout，零消费者，`设计/20 §8` 第 3 条），随那一形删了。
+//! `wire.rs::Frame::Tap` 的 serde 名，那道「字段名住哪」的答案），由宿主转成 `tap` 帧。
+//! 先前还有一个 NDJSON 行落点（独立 `--relay` 进程的 stdout，零消费者），随那一形删了。
 //!
-//! - **四样东西**：`stream`（〔V141〕请求自带的会话标识头，中转不解释它）· `resp`（本进程第几个响应）·
-//!   `n`（这一个响应里第几个事件，从 0 连续）· 事件原文 / 收尾方式。**不带路由那两段**：挂载物 ① 不问账号（`20 §11` I2）。
+//! - **四样东西**：`stream`（请求自带的会话标识头，中转不解释它）· `resp`（本进程第几个响应）·
+//!   `n`（这一个响应里第几个事件，从 0 连续）· 事件原文 / 收尾方式。**不带路由那两段**：挂载物 ① 不问账号。
 //! - **丢必须说，而且说在原位**：每个事件**先占号再投递**；投不进（宿主通道满 / 没人连着）、单个事件超
 //!   [`TAP_DATA_CAP`]、解码那一路丢了半行 ⇒ 号照占、事件没了 ⇒ 接收侧看 `n` 连不连得上就知道丢在哪两个号之间
-//!   （`05 §3.3.4` 的 `Gap{from_seq,to_seq}` 那一形，纯算术，不要旁路计数行）。收尾那一件带「一共占了几个号」⇒ 尾巴上的缺口也看得见。
+//!   （`Gap{from_seq,to_seq}` 那一形，纯算术，不要旁路计数行）。收尾那一件带「一共占了几个号」⇒ 尾巴上的缺口也看得见。
 //! - **永不阻塞转发**：`TapPort::offer` 的契约是「立刻答收没收」（宿主用 `try_send`）。
 //! - **事件原文是敌手可控的字节**：原样交出去（`K9` 裁定二「内容一律原样透传」），上线时是 `tap` 帧里的**一个 JSON 串**，
 //!   不参与帧结构（序列化由 serde 做，不手拼）。
 //!
-//! 设计与读数住仓外 `调研/第四波记录/TAP.md`。
+//! 设计与读数住仓外。
 
 /// SSE 拆行器 —— 增量喂字节，吐出 `data:` 行的载荷。
 ///
 /// 它只认 SSE 的**分帧**（行、`data:` 前缀），不认里面是什么。
-/// 切行交给 [`super::framer::LineFramer`]（`relay/` 里唯一的增量分帧器，`设计/17 §3.7`）——
+/// 切行交给 [`super::framer::LineFramer`]（`relay/` 里唯一的增量分帧器）——
 /// 这里只剩 SSE 自己的那一层：`data:` 前缀、`[DONE]`、上限。
 pub(crate) struct SseSplitter {
     pub(super) framer: super::framer::LineFramer,
@@ -82,10 +82,10 @@ impl SseSplitter {
     }
 }
 
-/// 〔TAP〕tee 交给宿主的一件事（[`TapPort::offer`]）。字段语义见本文件头注「第二个落点」。
+/// tee 交给宿主的一件事（[`TapPort::offer`]）。字段语义见本文件头注「第二个落点」。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct TapEvent {
-    /// 〔V141〕请求自带的会话标识头的值（中转不解释它；消费侧拿它对 sid）；没有 ⇒ 空串。
+    /// 请求自带的会话标识头的值（中转不解释它；消费侧拿它对 sid）；没有 ⇒ 空串。
     pub(crate) stream: String,
     /// 第二个标签（请求自带的另一个头的值，中转不解释它）；没有 ⇒ 空串。
     pub(crate) owner: String,
@@ -96,7 +96,7 @@ pub(crate) struct TapEvent {
     pub(crate) body: TapBody,
 }
 
-/// 〔TAP〕一件事是什么。
+/// 一件事是什么。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum TapBody {
     /// 一个 SSE 事件：`data:` 后面那段原文（敌手可控字节，原样；上线时是一个 JSON 串，不参与帧结构）。
@@ -105,22 +105,22 @@ pub(crate) enum TapBody {
     End { broken: bool },
 }
 
-/// 〔TAP〕tee 的第二个落点的**口**：宿主实现它（常驻后端的 `tap::TapHub`）。
+/// tee 的第二个落点的**口**：宿主实现它（常驻后端的 `tap::TapHub`）。
 ///
 /// ★ 契约：**立刻答收没收**，永不阻塞 —— 它在转发线程上被调（`pump` 的 `on_chunk` 里），
-/// 阻塞 = 让「有它更好」变成「非它不可」（`05 §4.5.3` ③）。答 `false` 的那一件号已占，接收侧看得见缺口。
+/// 阻塞 = 让「有它更好」变成「非它不可」。答 `false` 的那一件号已占，接收侧看得见缺口。
 pub(crate) trait TapPort: Send + Sync {
     fn offer(&self, ev: TapEvent) -> bool;
 }
 
-/// 〔TAP〕单个事件原文的字节上限。超了**不交**、号照占（缺口可见）。
+/// 单个事件原文的字节上限。超了**不交**、号照占（缺口可见）。
 ///
 /// 值怎么定的：上游的 SSE 是 token 级增量，开头那一件带整份 usage 也在 KiB 级；
 /// 16 KiB 以上的一个事件只可能来自不正常的上游。它同时把「宿主通道满载」封在 `容量 × 16 KiB`。
 /// 登记住址 `src/frontend/shell/src/byte_cap_registry.rs`（尺寸类常量不登记就红）。
 pub(crate) const TAP_DATA_CAP: usize = 16 * 1024;
 
-/// 〔TAP〕一个响应在 tee 这一侧的游标：`resp` 与下一个要占的号 `n`。由 [`TeeSink::open`] 发出，
+/// 一个响应在 tee 这一侧的游标：`resp` 与下一个要占的号 `n`。由 [`TeeSink::open`] 发出，
 /// 同一个响应的 `event` / `note_dropped_bytes` / `close` 都拿它（响应之间互不相干，所以不放进共享的 `TeeSink`）。
 #[derive(Debug)]
 pub(crate) struct TeeStream {
@@ -147,7 +147,7 @@ pub(crate) struct TeeSink {
 }
 
 impl TeeSink {
-    /// 〔TAP · V124〕**tap 口**落点：常驻后端进程内那一份中转用它（`listen::host`）。
+    /// **tap 口**落点：常驻后端进程内那一份中转用它（`listen::host`）。
     ///
     /// 那个进程的 stdout 在 stdio 载体上**就是 wire**（一行一帧，`wire.rs` 头注），在脱离载体上是 null
     /// ⇒ 不写行，把每个事件交给宿主的 [`TapPort`]（宿主转成 `tap` 帧，走它自己那条有界通道）。
