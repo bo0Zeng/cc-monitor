@@ -1,6 +1,6 @@
 // @vitest-environment node
 /**
- * 〔U2 · 第三波 · `设计/01 §1.5`「一个 store，一个 router」〕**拆 `tabs.ts` 的判据：拆出来的每一份职责单一。**
+ * 〔「一个 store，一个 router」〕**拆 `tabs.ts` 的判据：拆出来的每一份职责单一。**
  *
  * 拆之前 `tabs.ts` 是一个类干五件事（会话状态账 · 路由 · 实时流视图 · tab 栏视图 · 会话动作，
  * 逐件现打写在 `tabs.ts` 的头注里）。拆完是 13 份。「看起来拆开了」有两种假法，本文件各钉一条：
@@ -12,7 +12,7 @@
  *    ⇒ `tabs.ts` 的顶层声明 == `{TabManager}`，导出面 == 登记（它对外的 import 面，拆前拆后逐字相同）。
  *
  * 外加三条分工的零命中（**每条带同一谓词的正控**，免得零命中是因为谓词拼错）：
- * - 直呼 `invoke`（`@tauri-apps/api/core`）在 tab 层**零处**（〔C4a〕原先只在 `tab-session-actions.ts`，那 11 处收进了包装层）；
+ * - 直呼 `invoke`（`@tauri-apps/api/core`）在 tab 层**零处**（原先只在 `tab-session-actions.ts`，那 11 处收进了包装层）；
  * - 渲染栈（流 / 时间线 / 折叠层 / 卡片 / 逐条渲染）只在 `tab-stream-view.ts`（组装根除外）；
  * - 纯模块（形状 / 落点算术 / store / 路由 / 事实抽取）一处 `document.` / `window.` 都不碰。
  *
@@ -66,7 +66,7 @@ export function runtimeImports(rel: string, src: string = read(rel)): string[] {
     }
     const base = resolve(dirname(abs), spec.replace(/\.ts$/, ""));
     let hit: string | null = null;
-    // 〔W5-UI〕带扩展名的非 TS 模块（`./x.module.css`）按原样认：它是真的运行期依赖（样式随模块图进窗口）。
+    // 带扩展名的非 TS 模块（`./x.module.css`）按原样认：它是真的运行期依赖（样式随模块图进窗口）。
     for (const cand of [`${base}.ts`, join(base, "index.ts"), resolve(dirname(abs), spec)]) {
       try {
         if (statSync(cand).isFile()) {
@@ -91,13 +91,13 @@ const DEPS: Record<string, readonly string[]> = {
   // 组装根：把下面每一份接起来 ＋ 原样 re-export 旧的 import 面（tab-drop / tab-model / tmux-sessions）。
   "src/frontend/ui/tabs.ts": [
     "src/frontend/ui/accounts.ts", // debugSessionsSnapshot 的「账号不一致」派生（detectAccountMismatch）
-    "src/frontend/ui/app-store.ts", // 〔GAP1 · `设计/01 §1.5`〕「账号快照变了」改订阅 store（`appStore.sessionAccounts`）
+    "src/frontend/ui/app-store.ts", // 「账号快照变了」改订阅 store（`appStore.sessionAccounts`）
     "src/frontend/ui/cards/index.ts", // onLine：这一行是不是 compact 摘要（换号重启的等待者）；子运行时间线用同一套渲染器
     "src/frontend/ui/cards/subagent.ts", // 运行表到了：派出子运行的那张卡标上是哪个、什么状态
     "src/frontend/ui/error-toast.ts", // bringActiveTerminalToFront：非 Windows 说一句实话
     "src/frontend/ui/fork-flow.ts", // startForkedSession（E78：fork-flow.vitest 钉「tabs.ts 调 runForkFlow」）
-    "src/frontend/ui/ipc/origin.ts", // 〔C4a〕本机 / 远端只经这一处判（线上缺省 = 本机的那一下表示法转换也在这里）
-    "src/frontend/ui/live-card.ts", // 〔TAP · V124〕中转抄出的流式活卡：tap 格进状态机、同对账键的记录落盘即撤卡；子运行那几行
+    "src/frontend/ui/ipc/origin.ts", // 本机 / 远端只经这一处判（线上缺省 = 本机的那一下表示法转换也在这里）
+    "src/frontend/ui/live-card.ts", // 中转抄出的流式活卡：tap 格进状态机、同对账键的记录落盘即撤卡；子运行那几行
     "src/frontend/ui/live-window.ts", // ensureTab：新 tab 的尾部窗口
     "src/frontend/ui/run-timeline.ts", // 主 tab 上那一行点开：那个子运行的实时时间线（按运行续读）
     "src/frontend/ui/tab-bar-drag.ts",
@@ -109,7 +109,7 @@ const DEPS: Record<string, readonly string[]> = {
     "src/frontend/ui/tab-router.ts",
     "src/frontend/ui/tab-session-actions.ts",
     "src/frontend/ui/tab-session-facts.ts",
-    "src/frontend/ui/tab-session-state.ts", // 〔U4〕会话状态只经 `nextState` 改（转移表）＋ 关 / 拉前两道谓词
+    "src/frontend/ui/tab-session-state.ts", // 会话状态只经 `nextState` 改（转移表）＋ 关 / 拉前两道谓词
     "src/frontend/ui/tab-store.ts",
     "src/frontend/ui/tab-stream-view.ts",
     "src/frontend/ui/tasks-panel.ts", // ensureTab：初始 task 快照
@@ -117,64 +117,64 @@ const DEPS: Record<string, readonly string[]> = {
     "src/frontend/ui/tmux-sessions.ts", // re-export
     "src/frontend/ui/turn-notify.ts", // onLine：轮次结束通知
     "src/frontend/ui/views/context-limit.ts", // snapshotSessions 的 context%
-    "src/frontend/ui/views/facts-source.ts", // 〔STC〕ensureTab：每个 tab 一份会话事实的数据源（问后端 `history-facts`）
+    "src/frontend/ui/views/facts-source.ts", // ensureTab：每个 tab 一份会话事实的数据源（问后端 `history-facts`）
   ],
   // ① 形状：只有类型。
   "src/frontend/ui/tab-model.ts": [],
   // ④ 落点算术：纯函数，只认集合表的增删。
-  //   〔CP2b〕默认组名「组 N」进了文案表 ⇒ 取文口。
-  //   〔GRP1〕组员是 `Tab.group` ⇒ 不再改组表，只回「怎么动」。
+  // 默认组名「组 N」进了文案表 ⇒ 取文口。
+  // 组员是 `Tab.group` ⇒ 不再改组表，只回「怎么动」。
   "src/frontend/ui/tab-drop.ts": ["src/frontend/ui/copy-table.ts"],
-  // ① store：只存东西、只做顺序运算、只有一份订阅。〔U4〕摘要按活性分 ⇒ 要 `isLive` 那一个谓词。
-  //   〔GAP1〕「只有一份订阅」建在唯一的 pub-sub 原语上（`app-store.ts::Slice`）。
+  // ① store：只存东西、只做顺序运算、只有一份订阅。摘要按活性分 ⇒ 要 `isLive` 那一个谓词。
+  // 「只有一份订阅」建在唯一的 pub-sub 原语上（`app-store.ts::Slice`）。
   "src/frontend/ui/tab-store.ts": ["src/frontend/ui/app-store.ts", "src/frontend/ui/tab-session-state.ts"],
-  // ① 〔U4〕会话状态的两个轴：形状 ＋ 转移 ＋ 谓词 ＋ 呈现。呈现的字只经文案表取（`sessionState.*`）。
+  // ① 会话状态的两个轴：形状 ＋ 转移 ＋ 谓词 ＋ 呈现。呈现的字只经文案表取（`sessionState.*`）。
   "src/frontend/ui/tab-session-state.ts": ["src/frontend/ui/copy-table.ts"],
-  // ② 路由：只写「上次的 tab」那一格 localStorage。〔U4〕已结束的不自动跟随 ⇒ `isResumeOnly`。
+  // ② 路由：只写「上次的 tab」那一格 localStorage。已结束的不自动跟随 ⇒ `isResumeOnly`。
   "src/frontend/ui/tab-router.ts": ["src/frontend/ui/local-storage.ts", "src/frontend/ui/tab-session-state.ts"],
-  // ① 〔STC〕会话事实的投影（后端出成品 ⇒ tab 上的 Map / Set / 两格）：只有类型依赖。
+  // ① 会话事实的投影（后端出成品 ⇒ tab 上的 Map / Set / 两格）：只有类型依赖。
   //   原先的两条（agent 工具名判定 `cards/subagent.ts` · 写类工具表 `panorama/session-files.ts`）随抽取器一起搬进了后端。
   "src/frontend/ui/tab-session-facts.ts": [],
-  // ③ 实时流视图：渲染栈 ＋ 骨架 ＋ 大纲 ＋ 分叉按钮，〔MOD〕骨架索引与正文都经通道问那台后端。
-  //   〔SE2〕大纲的界面从直接建 `UserInputPanel` 换成建查找面板（它里面挂着大纲）⇒ `user-input-panel` 只剩类型依赖。
+  // ③ 实时流视图：渲染栈 ＋ 骨架 ＋ 大纲 ＋ 分叉按钮，骨架索引与正文都经通道问那台后端。
+  // 大纲的界面从直接建 `UserInputPanel` 换成建查找面板（它里面挂着大纲）⇒ `user-input-panel` 只剩类型依赖。
   "src/frontend/ui/tab-stream-view.ts": [
     "src/frontend/ui/branch-button.ts",
     "src/frontend/ui/branch-fold.ts",
     "src/frontend/ui/cards/index.ts",
-    "src/frontend/ui/copy-table.ts", // 〔CP2b〕上翻哨兵 · 查找失败那几句进了文案表
+    "src/frontend/ui/copy-table.ts", // 上翻哨兵 · 查找失败那几句进了文案表
     "src/frontend/ui/height-estimate.ts",
-    "src/frontend/ui/height-refiner.ts", // 〔RENDER2 · `设计/10 §2.5b`〕第二级估高：视口附近的占位行交 Worker 精算
-    "src/frontend/ui/ipc/chan-caller.ts", // 〔DL1〕丢格之后往后补那一件的期限：开头 `budgetWithin` 造一次（`设计/05 §3.3.2` 造期限的那一手）
-    "src/comms/inward/chan.ts", // 〔DL1〕同上：每问交 `remaining(budget)`（那一件还剩多少，不重新计时）
-    // 〔MOD〕`ipc/commands.ts` 出列：按偏移 / 按行号取正文那两条包装退役，改经 `record-reads.ts` 走通道。
-    "src/frontend/ui/live-window.ts", // 〔RENDER2〕从头重读 ⇒ tab 整份重来时新建 `TailWindow` / `SeqSet`（原先只有类型依赖）
-    "src/frontend/ui/record-reads.ts", // 〔MOD〕按偏移 / 按行号取正文经通道问那台后端（`history-page` · `history-lines`，后端出记录行）
+    "src/frontend/ui/height-refiner.ts", // 第二级估高：视口附近的占位行交 Worker 精算
+    "src/frontend/ui/ipc/chan-caller.ts", // 丢格之后往后补那一件的期限：开头 `budgetWithin` 造一次（造期限的那一手）
+    "src/comms/inward/chan.ts", // 同上：每问交 `remaining(budget)`（那一件还剩多少，不重新计时）
+    // `ipc/commands.ts` 出列：按偏移 / 按行号取正文那两条包装退役，改经 `record-reads.ts` 走通道。
+    "src/frontend/ui/live-window.ts", // 从头重读 ⇒ tab 整份重来时新建 `TailWindow` / `SeqSet`（原先只有类型依赖）
+    "src/frontend/ui/record-reads.ts", // 按偏移 / 按行号取正文经通道问那台后端（`history-page` · `history-lines`，后端出记录行）
     "src/frontend/ui/record-timeline.ts",
     "src/frontend/ui/render-stream-record.ts",
-    "src/frontend/ui/render.ts", // 〔W5-RENDER R5〕关 tab 时 `releaseEnhanceRoot`：lazy 补算的 IO 按滚动容器分（`设计/10 §3.5` D2）
-    "src/frontend/ui/session-reads.ts", // 〔C4b〕会话读面三问改走通道：骨架索引 ＋ 会话内查找经它问那台后端（替掉包装层那两条）
+    "src/frontend/ui/render.ts", // 关 tab 时 `releaseEnhanceRoot`：lazy 补算的 IO 按滚动容器分
+    "src/frontend/ui/session-reads.ts", // 会话读面三问改走通道：骨架索引 ＋ 会话内查找经它问那台后端（替掉包装层那两条）
     "src/frontend/ui/skeleton-view.ts",
     "src/frontend/ui/stream.ts",
-    "src/frontend/ui/tab-session-state.ts", // 〔U4〕已结束的不进后台物化队列
+    "src/frontend/ui/tab-session-state.ts", // 已结束的不进后台物化队列
     "src/frontend/ui/views/outline-source.ts",
-    "src/frontend/ui/views/session-find.ts", // 〔SE2〕查找面板（搜索 ／ 大纲两个模式）
+    "src/frontend/ui/views/session-find.ts", // 查找面板（搜索 ／ 大纲两个模式）
     "src/frontend/ui/views/session-viewer.ts", // 只为 revealCard（方向别扭的那条，理由在 import 处）
   ],
   // ④ tab 栏视图：画按钮（账号徽章 · 状态灯 · 分组 · ↗ 的 OS 门），手势全交宿主。
   "src/frontend/ui/tab-bar-view.ts": [
     "src/frontend/ui/account-color.ts",
     "src/frontend/ui/accounts.ts",
-    "src/frontend/ui/copy-table.ts", // 〔CP2b〕按钮上的图标 · 悬停提示 · 集合名提示进了文案表
-    "src/frontend/ui/ipc/origin.ts", // 〔C4a〕远端 tab 才挂 `.remote` / 走远端那条 ↗
-    "src/frontend/ui/keybindings/registry.ts", // 〔W5-UI〕组头就地改名：改名时 Esc 走 overlay 栈
-    "src/frontend/ui/tab-group-rename.module.css", // 〔W5-UI〕组头就地改名那个输入框的样式（UC2：新样式一律 module）
+    "src/frontend/ui/copy-table.ts", // 按钮上的图标 · 悬停提示 · 集合名提示进了文案表
+    "src/frontend/ui/ipc/origin.ts", // 远端 tab 才挂 `.remote` / 走远端那条 ↗
+    "src/frontend/ui/keybindings/registry.ts", // 组头就地改名：改名时 Esc 走 overlay 栈
+    "src/frontend/ui/tab-group-rename.module.css", // 组头就地改名那个输入框的样式（UC2：新样式一律 module）
     "src/frontend/ui/session-status.ts",
-    "src/frontend/ui/tab-session-state.ts", // 〔U4〕按钮上的两个状态类 · ↗ / 中键的两道门
+    "src/frontend/ui/tab-session-state.ts", // 按钮上的两个状态类 · ↗ / 中键的两道门
     "src/frontend/ui/terminal-front.ts",
   ],
   // ④ 拖拽：落点算术 ＋ 建组时铸一个集合 id。
-  //   〔CP2b〕「松开 → 独立窗口」进了文案表 ⇒ 取文口。
-  //   〔TL2 · E13〕拖进满了的组 / 建不出组 ⇒ 经落盘偏好那一份的 `sayCollectionRefusal` 说一句。
+  // 「松开 → 独立窗口」进了文案表 ⇒ 取文口。
+  // 拖进满了的组 / 建不出组 ⇒ 经落盘偏好那一份的 `sayCollectionRefusal` 说一句。
   "src/frontend/ui/tab-bar-drag.ts": [
     "src/frontend/ui/copy-table.ts",
     "src/frontend/ui/tab-bar-prefs.ts",
@@ -182,13 +182,13 @@ const DEPS: Record<string, readonly string[]> = {
     "src/frontend/ui/tab-drop.ts",
   ],
   // ④ 落盘偏好：集合 / 固定 / 顺序的盘上那一层。
-  //   〔U4〕固定复活出来的是「已结束」· 落盘的「最后活动时刻」按活性判。
-  //   〔U4〕固定复活的空态文字住文案表（说到会话状态的字一处定）。
-  //   〔TL2 · E13〕集合到上界说那一句的出口（`sayCollectionRefusal`）也住这里。
+  // 固定复活出来的是「已结束」· 落盘的「最后活动时刻」按活性判。
+  // 固定复活的空态文字住文案表（说到会话状态的字一处定）。
+  // 集合到上界说那一句的出口（`sayCollectionRefusal`）也住这里。
   "src/frontend/ui/tab-bar-prefs.ts": [
-    "src/frontend/ui/config.ts", // 〔GRP1〕分组一次改动的全部补丁一次 `patchConfig`
+    "src/frontend/ui/config.ts", // 分组一次改动的全部补丁一次 `patchConfig`
     "src/frontend/ui/copy-table.ts",
-    "src/frontend/ui/error-toast.ts", // 〔CFG1〕分组 / 固定 / 顺序落盘失败出声（INVARIANTS §12）·〔TL2 · E13〕集合到上界那一句
+    "src/frontend/ui/error-toast.ts", // 分组 / 固定 / 顺序落盘失败出声（INVARIANTS §12）·集合到上界那一句
     "src/frontend/ui/tab-bar-state.ts",
     "src/frontend/ui/tab-collections.ts",
     "src/frontend/ui/tab-session-state.ts",
@@ -196,51 +196,51 @@ const DEPS: Record<string, readonly string[]> = {
   // ⑤ 菜单放哪几项：账号 flyout · tmux 判据 · attach / 预览 · 菜单控件 · 会话动作。
   "src/frontend/ui/tab-menu.ts": [
     "src/frontend/ui/agent-profile.ts",
-    "src/frontend/ui/ask-dialog.ts", // 〔W5-UI〕「新建集合…」问名字（原 `window.prompt`）
+    "src/frontend/ui/ask-dialog.ts", // 「新建集合…」问名字（原 `window.prompt`）
     "src/frontend/ui/behavior.ts",
-    "src/frontend/ui/control-said.ts", // 〔NET2〕那台握手时说过做不到的几项置灰：`unavailableSaid`（事实住 monitor 那份 Offer）
-    "src/frontend/ui/copy-table.ts", // 〔U4〕固定那一项的两句提示（说到会话状态）住文案表
+    "src/frontend/ui/control-said.ts", // 那台握手时说过做不到的几项置灰：`unavailableSaid`（事实住 monitor 那份 Offer）
+    "src/frontend/ui/copy-table.ts", // 固定那一项的两句提示（说到会话状态）住文案表
     "src/frontend/ui/error-toast.ts",
-    "src/frontend/ui/ipc/origin.ts", // 〔C4a〕本机 / 远端各给哪几项（原先是 backend-policy 的 LOCAL_ORIGIN ＋ 各处 `=== null`）
+    "src/frontend/ui/ipc/origin.ts", // 本机 / 远端各给哪几项（原先是 backend-policy 的 LOCAL_ORIGIN ＋ 各处 `=== null`）
     "src/frontend/ui/launch-menu.ts",
     "src/frontend/ui/remote-launch-run.ts",
-    "src/frontend/ui/tab-bar-prefs.ts", // 〔TL2 · E13〕「加入集合 / 新建集合」到上界 ⇒ `sayCollectionRefusal`
+    "src/frontend/ui/tab-bar-prefs.ts", // 「加入集合 / 新建集合」到上界 ⇒ `sayCollectionRefusal`
     "src/frontend/ui/tab-collections.ts",
     "src/frontend/ui/tab-context-menu.ts",
     "src/frontend/ui/tab-session-actions.ts",
-    "src/frontend/ui/tab-session-state.ts", // 〔U4〕给 Resume 还是给换号重启 · 本机「杀死会话」占位
+    "src/frontend/ui/tab-session-state.ts", // 给 Resume 还是给换号重启 · 本机「杀死会话」占位
     "src/frontend/ui/tmux-sessions.ts",
     "src/frontend/ui/views/pane-preview.ts",
   ],
   // ⑤ 菜单控件：零依赖（纯 DOM）。
   "src/frontend/ui/tab-context-menu.ts": [],
-  // ⑤ 会话动作。〔C4a · 子步 2〕原先是「tab 层唯一直呼 invoke 的一份」；那 11 处收进了包装层，
+  // ⑤ 会话动作。原先是「tab 层唯一直呼 invoke 的一份」；那 11 处收进了包装层，
   //   本份从此与其余几份一样只经 `ipc/commands.ts` 说话。
   "src/frontend/ui/tab-session-actions.ts": [
     "npm:@tauri-apps/plugin-opener",
-    "src/frontend/ui/account-reads.ts", // 〔RESYNC · ㉟①〕标记录没了的固定条：先解出 resume 会查的那棵账号树（同 `withAccount` 跟随）
+    "src/frontend/ui/account-reads.ts", // 标记录没了的固定条：先解出 resume 会查的那棵账号树（同 `withAccount` 跟随）
     "src/frontend/ui/account-restart.ts",
-    "src/frontend/ui/accounts.ts", // 〔RESYNC · ㉟①〕同上（`resolveAccount`）
-    "src/frontend/ui/ask-dialog.ts", // 〔W5-UI〕杀会话的确认（原 `window.confirm`：真 app 里恒真值，等于没问）
+    "src/frontend/ui/accounts.ts", // 同上（`resolveAccount`）
+    "src/frontend/ui/ask-dialog.ts", // 杀会话的确认（原 `window.confirm`：真 app 里恒真值，等于没问）
     "src/frontend/ui/behavior.ts",
-    "src/frontend/ui/copy-table.ts", // 〔U4〕杀空 tmux / 杀会话的确认与回执（说到会话状态）住文案表
+    "src/frontend/ui/copy-table.ts", // 杀空 tmux / 杀会话的确认与回执（说到会话状态）住文案表
     "src/frontend/ui/error-toast.ts",
-    "src/frontend/ui/file-window.ts", // F78：远端会话「打开工作目录」（〔F7b〕老 SFTP 面板删了，改开文件窗口）
-    "src/frontend/ui/history-reads.ts", // 〔C4d〕resume 前现读那条会话的 pin（上次账号表归本机常驻后端，经通道问 `history-last-accounts`）
+    "src/frontend/ui/file-window.ts", // F78：远端会话「打开工作目录」（老 SFTP 面板删了，改开文件窗口）
+    "src/frontend/ui/history-reads.ts", // resume 前现读那条会话的 pin（上次账号表归本机常驻后端，经通道问 `history-last-accounts`）
     "src/frontend/ui/ipc/commands.ts",
-    "src/frontend/ui/ipc/origin.ts", // 〔C4a〕本机 / 远端各走哪条动作
-    // 〔FE1 子步 5〕`withAccount` 随起停那一格从 `accounts.ts` 拆去了 `launch-account.ts`（本份对 `accounts.ts` 只剩 type-only）。
+    "src/frontend/ui/ipc/origin.ts", // 本机 / 远端各走哪条动作
+    // `withAccount` 随起停那一格从 `accounts.ts` 拆去了 `launch-account.ts`（本份对 `accounts.ts` 只剩 type-only）。
     "src/frontend/ui/launch-account.ts",
-    // 〔FE1〕本机 resume 的编排收进 `local-resume.ts`（校验 sid · 铸名 · 账号 · 记 pin 都在里面）
+    // 本机 resume 的编排收进 `local-resume.ts`（校验 sid · 铸名 · 账号 · 记 pin 都在里面）
     //   ⇒ 本份不再直接要 `launch-requests.ts`（sid 校验）与 `remote-launch.ts`（内联铸名那六行）。
     "src/frontend/ui/local-resume.ts",
     "src/frontend/ui/remote-config.ts",
     "src/frontend/ui/remote-launch-run.ts",
-    "src/frontend/ui/resync.ts", // 〔RESYNC · V149〕关卡 2 拒了结束会话 ⇒ 提示带「对齐后重试」（认拒绝码 ＋ 对齐 ＋ 再做一次，都在那一个口）
-    "src/frontend/ui/session-reads.ts", // 〔C4c〕resume 之前问记录还在不在（经通道问 `history-record`）
-    "src/frontend/ui/tmux-control.ts", // 〔C4e〕杀会话经通道直接说后端的 `kill`（原 Tauri 命令 `kill_remote_tmux` 退役）
-    "src/frontend/ui/tmux-name-mint.ts", // 〔FE1〕tmux 全新 resume 的铸名只经这一个家（名单没问到 ⇒ 不起、说清）
-    "src/frontend/ui/tmux-reads.ts", // 〔MIG-1 续〕tmux 名单那唯一的取数点经通道问那台后端 `tmux-list`（原 Tauri 命令 `list_*_tmux` 退役）
+    "src/frontend/ui/resync.ts", // 关卡 2 拒了结束会话 ⇒ 提示带「对齐后重试」（认拒绝码 ＋ 对齐 ＋ 再做一次，都在那一个口）
+    "src/frontend/ui/session-reads.ts", // resume 之前问记录还在不在（经通道问 `history-record`）
+    "src/frontend/ui/tmux-control.ts", // 杀会话经通道直接说后端的 `kill`（原 Tauri 命令 `kill_remote_tmux` 退役）
+    "src/frontend/ui/tmux-name-mint.ts", // tmux 全新 resume 的铸名只经这一个家（名单没问到 ⇒ 不起、说清）
+    "src/frontend/ui/tmux-reads.ts", // tmux 名单那唯一的取数点经通道问那台后端 `tmux-list`（原 Tauri 命令 `list_*_tmux` 退役）
     "src/frontend/ui/tmux-sessions.ts",
   ],
 };
@@ -302,7 +302,7 @@ describe("〔U2〕拆 tabs.ts：每一份的直接运行期依赖 == 登记（�
 });
 
 describe("〔U2〕分工的三条边界（零命中 ＋ 同一谓词的正控）", () => {
-  // 〔C4a · 子步 2〕原题「直呼 invoke 只在 tab-session-actions.ts」：那一份的 11 处收进了包装层
+  // 原题「直呼 invoke 只在 tab-session-actions.ts」：那一份的 11 处收进了包装层
   //   （`src/frontend/ui/ipc/commands.ts`），tab 层从此**零处**直呼。正控改到包装层自己身上（同一个谓词）。
   it("★ 直呼 invoke 在 tab 层零处（正控：包装层自己命中）", () => {
     const hits = SPLIT.filter((f) => runtimeImports(f).includes(INVOKE));
@@ -340,7 +340,7 @@ describe("〔U2〕tabs.ts 只剩组装根", () => {
     expect(decls).toEqual(["TabManager"]);
   });
 
-  // 〔S4 · 第四波〕U2 拆完时 `TabManager` 上给旧判据留了二十来个同名 `protected` 转交（值住新家），
+  // U2 拆完时 `TabManager` 上给旧判据留了二十来个同名 `protected` 转交（值住新家），
   // 只为 `tabs.vitest.ts` 按旧私有名直读。判据已改成直指新家（那边的 `TMHomes`）⇒ 转交删光。
   // 本格钉「不再长回来」：`protected` 在这个类里**只**有过这一种用途。
   it("★ 〔S4〕TabManager 上零 `protected` 成员（给旧判据的转交不再长回来；同一谓词的正控）", () => {
@@ -365,7 +365,7 @@ describe("〔U2〕tabs.ts 只剩组装根", () => {
         "TabManager",
         // tab-model.ts
         "Tab",
-        // 〔U4〕`TabStatus` 退役：会话状态换成两轴（`tab-session-state.ts::SessionState`），唯一的外部使用者
+        // `TabStatus` 退役：会话状态换成两轴（`tab-session-state.ts::SessionState`），唯一的外部使用者
         //   `tab-menu.ts` 改从新家拿 ⇒ 旧 import 面少这一个名字。
         "TabsSummary",
         // tab-drop.ts
@@ -374,7 +374,7 @@ describe("〔U2〕tabs.ts 只剩组装根", () => {
         "tabUnderY",
         "commonDirName",
         "defaultGroupName",
-        "groupMoveForDrop", // 〔GRP1〕替 applyDropToCollections / collectionsEqual
+        "groupMoveForDrop", // 替 applyDropToCollections / collectionsEqual
         "GroupMove",
         "DWELL_MS",
         "DWELL_MOVE_PX",

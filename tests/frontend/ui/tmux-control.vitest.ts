@@ -1,21 +1,21 @@
 /**
- * 〔C4e · 第四波 4C〕界面直接说的 tmux 控制类帧命令（`src/frontend/ui/tmux-control.ts`）的判据。
+ * 界面直接说的 tmux 控制类帧命令（`src/frontend/ui/tmux-control.ts`）的判据。
  *
- * 守的要求：`设计/05 §14.3` 逐字「正路是**把解释挪进后端、直接出成品**：后端帧命令的应答就是界面要的那个形状，
+ * 守的要求：「正路是**把解释挪进后端、直接出成品**：后端帧命令的应答就是界面要的那个形状，
  * 前端经 `chan.call` 直接问、按形状收（不解释），monitor 那一份解释与发送点一起删」·「成品的两侧对拍：界面按形状严格收
  * （多一格 / 缺一格 / 类型不对 ⇒ 抛「两端契约对不上」，不猜）；线上形状由一份跨语言金样钉住」。
- * 另守 `§34` Gate 1 〔DUP3〕「界面不判目标名」（Gate 1 并进 `gate-core` 那一族、TS 零：空目标原样交给后端，后端拒了照原话说）与 `设计/01 §5 D7`
+ * 另守 `§34` Gate 1 「界面不判目标名」（Gate 1 并进 `gate-core` 那一族、TS 零：空目标原样交给后端，后端拒了照原话说）与
  * 「失败要显式、归因要准确」（本机与远端的下一步不同，话就不许一样）。
  *
  * | 性质 | 判据 |
  * |---|---|
  * | TS 解码器读得懂后端真出的成品 —— 同一份跨语言金样，后端那侧 `capture_pane_tests::the_capture_product_matches_the_cross_language_golden` 对拍它（异源：Rust 构造器造、TS 解） | 「金样」 |
  * | 形状不对 ⇒ 抛（多一格 / 缺一格 / 类型不对），不猜 | 「形状不对」 |
- * | 〔DUP3〕界面不判目标名：空目标原样交给后端；后端 `invalid_args` ⇒ 各动作那句「后端不接受这个会话名」带后端原话 | 「空目标」 |
+ * | 界面不判目标名：空目标原样交给后端；后端 `invalid_args` ⇒ 各动作那句「后端不接受这个会话名」带后端原话 | 「空目标」 |
  * | 本机与远端同一条路（`<local>` 照样经通道问），通道不在时两句话不同、远端那句点得出是哪台 | 「本机」「通道不在」 |
  * | 拒绝码逐码一句、两两不同、带上会话名与后端原话；认不出的码原样带出去、不被猜成已知档（码集合取自金样，不是手抄） | 「拒绝码」 |
- * | 〔批 2〕结束会话 / 发按键：请求体 == 金样；`enter` 落在两个 mode 名上；`killed` / `typed` 不为真不当成功；门拒绝 ≠ 通道不在 | 「结束会话 · 发按键」两组 |
- * | 〔批 2〕就地 resume（F14）：只有能证明没发出去才回落 —— TS `provablyNotSent` == Rust `route_call_error`（跨语言金样 `reach-collapse.golden.json`，Rust 侧 `chan/webview_tests.rs` 产） | 「就地 resume」 |
+ * | 结束会话 / 发按键：请求体 == 金样；`enter` 落在两个 mode 名上；`killed` / `typed` 不为真不当成功；门拒绝 ≠ 通道不在 | 「结束会话 · 发按键」两组 |
+ * | 就地 resume（F14）：只有能证明没发出去才回落 —— TS `provablyNotSent` == Rust `route_call_error`（跨语言金样 `reach-collapse.golden.json`，Rust 侧 `chan/webview_tests.rs` 产） | 「就地 resume」 |
  *
  * 买不到：真 Tauri IPC 与真后端（后端那一侧在 Rust 里；monitor 那一跳由 `webview_tests` 量）；真 tmux 会话上的一屏。
  */
@@ -232,7 +232,7 @@ describe("〔C4e〕结束会话 · 发按键：按形状收", () => {
 });
 
 describe("FIX4 · 杀会话顺手注销的结局", () => {
-  /** 设计/95 §6「杀会话顺手注销的结局只进日志：界面不说『顺手注销了谁 / 没注销成』；要说得给 kill 的成品加一格（界面、金样、文案同拍）」。 */
+  /** 「杀会话顺手注销的结局只进日志：界面不说『顺手注销了谁 / 没注销成』；要说得给 kill 的成品加一格（界面、金样、文案同拍）」。 */
   it("★ bus 那一格 ⇒ 一句话：注销了谁 · 谁没注销成 · 名册读不到；全空不说；那一格缺 / 形状不对 ⇒ 读不懂", () => {
     const bus = (b: unknown) => ({ ...KILL.reply, bus: b });
     expect(decodeKilled("aya", "demo-cc", KILL.reply)).toBeNull();
@@ -341,7 +341,7 @@ describe("〔C4e〕就地 resume（F14：只有能证明没发出去才许回落
     expect((await sendInto("aya", "demo-cc", "PAYLOAD")).verdict).toBe("refused");
   });
 
-  it("★ 〔FIX · `99 §2 ㊹`〕会话名或载荷为空 ⇒ 原样交给后端，后端拒 ⇒ refused（界面零判定）", async () => {
+  it("★ 〔FIX〕会话名或载荷为空 ⇒ 原样交给后端，后端拒 ⇒ refused（界面零判定）", async () => {
     answer({ fail: refusedReply("invalid_args", "name is empty") });
     expect((await sendInto("aya", "  ", "PAYLOAD")).verdict).toBe("refused");
     expect(sentCalls().at(-1)).toEqual(["aya", "launch", { mode: "send-into", name: "  ", payload: "PAYLOAD" }]);

@@ -1,10 +1,10 @@
 /**
  * 历史全文搜索（`src/frontend/ui/views/history-search.ts`）：本机与各台远端同一条路。
  *
- * 〔C4a · 第四波〕合并与远端 fan-out 从 Rust 搬来时，判据跟着它的家走（原 `tests/frontend/shell/search_tests.rs` 那一组逐条同形）。
- * 〔LOC1b · 第四波 4D〕本机那一半也改问本机后端（`chan.call(LOCAL_ORIGIN, "history-search")`），monitor 内存索引删了 ⇒
+ * 合并与远端 fan-out 从 Rust 搬来时，判据跟着它的家走（原 `tests/frontend/shell/search_tests.rs` 那一组逐条同形）。
+ * 本机那一半也改问本机后端（`chan.call(LOCAL_ORIGIN, "history-search")`），monitor 内存索引删了 ⇒
  * 合并只剩「一组会话行」这一形；「本机 indexing」那两条随那一态删了。
- * 要求住址：`设计/00 §2.5 ①` 逐字「历史 / 账号 / tmux / MCP 四个面，本机与远端走同一条代码路径」。
+ * 要求：「历史 / 账号 / tmux / MCP 四个面，本机与远端走同一条代码路径」。
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
@@ -68,7 +68,7 @@ function passMerge(args: ChanCallArgs): ArrayBuffer {
 
 beforeEach(() => invokeMock.mockReset());
 
-// 〔FIX4 · `设计/90 §3` J15 · 主会话 09-28 裁 B〕这里原来三条钉前端 `mergeSearchResults`〔散文墓碑〕（倒序 · 总数相加 · 任一被砍 ⇒ truncated · 空）：
+// 这里原来三条钉前端 `mergeSearchResults`〔散文墓碑〕（倒序 · 总数相加 · 任一被砍 ⇒ truncated · 空）：
 //   合并排序搬进本机后端 `history-search-merge`（`search_rules::sort_by_recency`），期望原样搬进
 //   `tests/backend/observe/search_query_tests.rs::the_merge_frame_sorts_newest_first_stably_and_sums_what_each_machine_said`。
 //   这里钉界面那一半：交给它的是什么、用的是不是它合好的那一份、它回的形状不认怎么办。
@@ -132,7 +132,7 @@ describe("后端 `--search` 的逐行", () => {
     expect(sh.hits).toHaveLength(1);
     expect(sh.hitsTruncated, "老后端缺 hitsTruncated ⇒ false").toBe(false);
     expect(sh.origin).toBe("pi");
-    // 〔LOC1b〕本机那一台：不补 origin（界面按「缺 ＝ 本机」画）。
+    // 本机那一台：不补 origin（界面按「缺 ＝ 本机」画）。
     const [mine] = parseSessionHitsLines([line], undefined);
     expect("origin" in mine).toBe(false);
   });

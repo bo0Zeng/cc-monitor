@@ -1,5 +1,5 @@
-// 起会话请求构造（`planXxx`）的单测。〔DUP1〕开头那组原来测 `validateLocalLaunch`〔散文墓碑〕（本地路径的前置校验：sid 字符集），
-// 那个函数按 `设计/90 §3` 判据 2 删了；这里剩 `transport:{kind:"local"}` 走一遍维度注册表不抛异常，以及各请求的形状。纯函数，零 tauri/config 依赖，无需 mock。
+// 起会话请求构造（`planXxx`）的单测。开头那组原来测 `validateLocalLaunch`〔散文墓碑〕（本地路径的前置校验：sid 字符集），
+// 那个函数按删了；这里剩 `transport:{kind:"local"}` 走一遍维度注册表不抛异常，以及各请求的形状。纯函数，零 tauri/config 依赖，无需 mock。
 //
 // **R07 订正**：这段头注原写"证明本地路径真的在用同一套维度注册表（不是套了个类型皮的假装）"
 // ——**那句是假的**。4 个生产调用点全部把返回值当语句丢弃，真命令由 Rust 独立构造
@@ -18,10 +18,10 @@ import { buildLaunchPlan } from "../../../src/frontend/ui/launch-plan.ts";
 import { buildLaunchRenderRequest } from "../../../src/frontend/ui/remote-launch-run.ts";
 import type { LaunchAction, LaunchContext } from "../../../src/frontend/ui/launch-types.ts";
 
-/** `设计/80 §8` 步 1：形状合法的启动期令牌（32 个小写 hex）。 */
+/** 形状合法的启动期令牌（32 个小写 hex）。 */
 const TOK = "0f1e2d3c4b5a69788796a5b4c3d2e1f0";
 
-// 〔DUP1 · `设计/90 §3` 判据 2〕这里原来是 `validateLocalLaunch`〔散文墓碑〕的两条（sid 字符集 throw · 合法输入不拦）。
+// 这里原来是 `validateLocalLaunch`〔散文墓碑〕的两条（sid 字符集 throw · 合法输入不拦）。
 // 它唯一的一格（sid）交 Rust 判（`history.rs` 本机决策 → `shell_quote_core::session_id_ok`），函数与四个调用点一起删了。
 
 // R07：这一组的被测对象**不是** `validateLocalLaunch`，是**维度注册表在 `transport:local` 下的行为**
@@ -113,7 +113,7 @@ describe("R03：修饰只能以命名字段传入（类型层）", () => {
     }
   });
 
-  // `设计/80 §8` 步 1：第四个修饰字段（启动期令牌）也要真落进 ctx。
+  // 第四个修饰字段（启动期令牌）也要真落进 ctx。
   // ⚠ 上面那条判据的头注记着 M5 那个变异（`planResumeTmux` 不消费 `mods.modelOverride`
   // ⇒ 三道门全瞎）—— 令牌这一维的同形变异后果更重：`↗` 静默失效、归因指向别处。
   it("启动期令牌也真的落进 ctx（四条 planXxx 逐条，不只是 resume-direct）", () => {
@@ -166,7 +166,7 @@ describe("F08 下半：远端 resume 的会话容器", () => {
   });
 });
 
-// ═══ `设计/80 §8.4`：**`EnvOp` 容器无关 ⇒ 两条起法同一套机制** ════════════════
+// ═══：**`EnvOp` 容器无关 ⇒ 两条起法同一套机制** ════════════════
 //
 // 🔴 这一组是 `§8.4` 那张表在本仓的**现打读数**，也是整个方案 E 最要紧的那句主张：
 // 「『直接起和 tmux 用同一套机制』不是要额外做的事，**是这个设计的自动结果**」。
@@ -177,14 +177,14 @@ describe("F08 下半：远端 resume 的会话容器", () => {
 // `container:{kind:"none"}`（`planResumeDirect` —— `§6.1`/`§5 方案 A` 明确不覆盖、
 // 今天 `↗` 做不到的那一档）与 `container:{kind:"tmux"}` 的三格**一视同仁**。
 //
-// 〔LR2〕这一组原来比的是 TS 兜底渲染器渲出的**字节**；那份渲染器零生产调用、按 `设计/00 §2.5 ④`
+// 这一组原来比的是 TS 兜底渲染器渲出的**字节**；那份渲染器零生产调用、按
 // 删了。现在比的是**生产**那一跳的请求（`buildLaunchRenderRequest`，`renderLaunchCommand` 用的同一个）；
 // 请求 → 字节那一段归 Rust：`payload-golden.json`「只有启动期令牌」与
 // `tmux-outer-golden.json`「create：启动期令牌」两条逐字节钉着（`launch_*_parity.rs`）。
 //
 // ⚠ **反空真**：每一条都配一个「不传令牌 ⇒ 零命中」的对照组。少了对照组，
 // 「请求构造把令牌硬编码进去」与「令牌真的从 ctx 流过来」在这把尺子上同形。
-describe("设计/80 §8.4：EnvOp 容器无关 —— 两条起法都自动带上启动期令牌", () => {
+describe("：EnvOp 容器无关 —— 两条起法都自动带上启动期令牌", () => {
   const TOKEN_OP = { kind: "export-rbind-token", value: TOK } as const;
   const hasToken = (env: readonly { kind: string }[]): boolean =>
     env.some((op) => op.kind === "export-rbind-token");

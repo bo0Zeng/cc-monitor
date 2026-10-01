@@ -1,6 +1,6 @@
 // @vitest-environment node
 /**
- * 〔UC2〕**渐进式 CSS Modules 的判据**（`设计/41 §1` 选项 D · `§12` 件 10：「新组件一律 Modules；旧的动到哪个迁哪个」）。
+ * **渐进式 CSS Modules 的判据**（选项 D · `§12` 件 10：「新组件一律 Modules；旧的动到哪个迁哪个」）。
  *
  * 件 10 批准了却「零落地、零判据」—— 纪律不在执行链上等于不存在。本文件把它能机判的那几半接进 `npm test`：
  *
@@ -31,8 +31,8 @@
  * - M③ / M④ 走 TS 的 AST（不是正则）；M④ 按名字认导入对象、不做作用域分析 —— 同一份文件里另有局部变量与它同名会
  *   **假红**（吵闹，不静默）。
  * - M③ / M④ 只看 `src`；`tests/` 里的导入不算「有人用」（与类名账本同一条口径：测试不是用户）。
- * - 视觉：示范组件迁完「长得一样」没有目视（本机没有图形会话）；级联上的论证写在 `usage-hud.module.css` 头注与
- *   `调研/第四波记录/UC2.md §1.4`，次序由 entry-graphs 钉。
+ * - 视觉：示范组件迁完「长得一样」没有目视（本机没有图形会话）；级联上的论证写在 `usage-hud.module.css` 头注，
+ *   次序由 entry-graphs 钉。
  */
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, posix, resolve } from "node:path";
@@ -44,14 +44,14 @@ import { REPO_ROOT } from "../../test-support/repo-root.ts";
 import { SCAN_TIMEOUT_MS } from "../../test-support/production-sources.ts";
 
 /**
- * ★ **全局样式文件登记表**（M①）。今天 10 份，全是三入口拆分那一拍按「哪几个窗口要它」切出来的（`设计/41 §9`）。
+ * ★ **全局样式文件登记表**（M①）。今天 10 份，全是三入口拆分那一拍按「哪几个窗口要它」切出来的。
  *
  * 🔴 **只许缩**：一份全局样式整份迁成 module 之后删掉对应条目（两向相等会逼你删）；
  * 要新增一份全局样式文件 ⇒ 先问「它为什么不能是 `.module.css`」，答得出来再加一条并写清理由。
  * ⚠ 并发：同波别的路新建全局样式文件时，本表会在合并那一拍红 —— 那是本条要的红，不是假红。
  */
 const GLOBAL_STYLESHEETS: readonly { file: string; why: string }[] = [
-  { file: "src/frontend/ui/styles/layers.css", why: "层声明，三窗第一个链（`设计/41 §3`）" },
+  { file: "src/frontend/ui/styles/layers.css", why: "层声明，三窗第一个链" },
   { file: "src/frontend/ui/styles/reset.css", why: "最小重置，元素选择器（`§4`）" },
   { file: "src/frontend/ui/styles/tokens.css", why: "`:root` 令牌（`§2`）" },
   { file: "src/frontend/ui/styles/layout.css", why: "`#app` 网格与格子认领（id 选择器）" },
@@ -150,7 +150,7 @@ describe("〔UC2〕M① 全局样式文件 == 登记表（新样式一律 .modul
     expect(
       got,
       "全局样式文件集合与 `GLOBAL_STYLESHEETS` 不等。\n" +
-        "★ 多出来的：新样式请写成 `<组件>.module.css`（`设计/41` 件 10：新组件一律 Modules）。真要一份全局文件，先在登记表里写清为什么不能是 module。\n" +
+        "★ 多出来的：新样式请写成 `<组件>.module.css`（件 10：新组件一律 Modules）。真要一份全局文件，先在登记表里写清为什么不能是 module。\n" +
         "★ 少了的：那份全局样式迁走 / 删掉了 —— 把登记表里那一条一起删（本表只许缩）。",
     ).toEqual(want);
     console.log(`  ok   UC2-M①  ${got.length} 份全局样式文件 == 登记表；module ${moduleFiles(led).length} 份`);

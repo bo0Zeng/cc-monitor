@@ -1,7 +1,7 @@
 /**
- * 设计/99 §2.1 ⑬ 主会话裁「`test_remote_connection`：界面把表单里（未保存的）那台配置交给本机后端，后端组拨号请求、拨一次」——
+ * 「`test_remote_connection`：界面把表单里（未保存的）那台配置交给本机后端，后端组拨号请求、拨一次」——
  * 界面那一侧：交过去的是表单那一台 ＋ 已保存的同名那一份 ＋ 跳板那一台（问 `<local>` 的 `remote-probe`）；结局按形状严格收。
- * 〔MIG-1 收尾 · 主会话裁「进度不许倒退」〕进度边拨边推：先订 `probe-progress/<票>` 再问；握手那几行边收边交 `onStage`；
+ * 〔「进度不许倒退」〕进度边拨边推：先订 `probe-progress/<票>` 再问；握手那几行边收边交 `onStage`；
  * 结局是进度流的最后一格（可以晚于应答到）；到点没等到结局 ⇒ `ProbeStalled` 说出停在哪一段（最后收到的那一格）。
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";

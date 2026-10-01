@@ -1,10 +1,10 @@
 /**
- * 〔W5-UI〕应用内对话框收口的判据。
+ * 应用内对话框收口的判据。
  *
  * # 要求住址
  *
- * - `设计/70 §10 #1` 逐字「全仓 `window.prompt` / `window.confirm` 收口 …… 独立一件，牵扯 `plugin:dialog` 被 ACL 拒」。
- * - `设计/30 §7` 逐字「全仓 `window.prompt/confirm` 的收口 | 独立一件（牵扯 `plugin:dialog` 的 ACL）」。
+ * - 「全仓 `window.prompt` / `window.confirm` 收口 …… 独立一件，牵扯 `plugin:dialog` 被 ACL 拒」。
+ * - 「全仓 `window.prompt/confirm` 的收口 | 独立一件（牵扯 `plugin:dialog` 的 ACL）」。
  * - `INVARIANTS §13`「任何用 `position: fixed` 实现的浮层 …… **必须**挂到 `document.body`」。
  *
  * # 为什么这不是洁癖（`src/frontend/ui/ask-dialog.ts` 头注）

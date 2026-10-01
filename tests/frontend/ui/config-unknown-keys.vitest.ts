@@ -1,5 +1,5 @@
 /**
- * 🔴 〔`设计/99 §2.5 P12` 2026-09-21〕**「配置里出现不认识的键」必须出声**，
+ * 🔴 **「配置里出现不认识的键」必须出声**，
  * 以及那一刀的由头 —— 落盘键 `forceLegacyLaunchRenderer` → `forceLaunchPayloadRenderer`。
  *
  * # 这一族守的是什么
@@ -30,7 +30,7 @@ const store = vi.hoisted(() => ({
   cfg: {} as Record<string, unknown>,
   /** 每次写完之后盘上的整份。 */
   saved: [] as Record<string, unknown>[],
-  /** 每次写交来的补丁（〔CFG1〕写只交「改哪几条路径」）。 */
+  /** 每次写交来的补丁（写只交「改哪几条路径」）。 */
   edits: [] as (readonly { op: string; path: string[] }[])[],
 }));
 
@@ -60,7 +60,7 @@ import { getBehavior, setBehavior } from "../../../src/frontend/ui/behavior";
 
 /** 退役的那个旧名字。**逐字**写在这里 —— 本条判据的全部意义就是它出现时会红。 */
 const RETIRED_KEY = "forceLegacyLaunchRenderer";
-/** 〔LR2 2026-09-25〕它改名之后的名字也退役了（整个逃生口删了，理由在 `src/frontend/ui/behavior.ts`）⇒ 同样是未知键。 */
+/** 它改名之后的名字也退役了（整个逃生口删了，理由在 `src/frontend/ui/behavior.ts`）⇒ 同样是未知键。 */
 const RETIRED_KEY_2 = "forceLaunchPayloadRenderer";
 
 const sorted = (xs: readonly string[]): string[] => [...xs].sort();
@@ -81,7 +81,7 @@ const CENSUS: readonly string[] = [
   "claudeDir", // src/frontend/ui/paths.ts
   "keybindings", // src/frontend/ui/keybindings/store.ts
   "accounts", // src/frontend/ui/accounts.ts
-  // 〔B2 · 条 66〕`backendPolicy` 退役（值搬到后端那台机器上）⇒ 这一行删掉，两份普查恒等地各少一键。
+  // 〔条 66〕`backendPolicy` 退役（值搬到后端那台机器上）⇒ 这一行删掉，两份普查恒等地各少一键。
   "remote", // src/frontend/ui/remote-config.ts
   "tabBar", // src/frontend/ui/tab-bar-state.ts
   "tabCollections", // src/frontend/ui/tab-collections.ts
@@ -94,8 +94,8 @@ const CENSUS: readonly string[] = [
   "resumeCommandLocalPresets",
   "resumeCommandRemotePresets",
   "notifyTurnEnd",
-  // 〔LR2〕`forceLaunchPayloadRenderer` 退役 ⇒ 这一行删，两份普查恒等地各少一键。
-  // 〔CFG1 · 4D〕现打反扫 Rust 侧补一个：`src/frontend/shell/src/logging.rs::write_diagnostics_to_config` 写的 `diagnostics`。
+  // `forceLaunchPayloadRenderer` 退役 ⇒ 这一行删，两份普查恒等地各少一键。
+  // 现打反扫 Rust 侧补一个：`src/frontend/shell/src/logging.rs::write_diagnostics_to_config` 写的 `diagnostics`。
   //   上面那句「Rust 侧另读三个」漏了它 ⇒ 存过一次诊断设置的用户，设置页「认不出的键」提示条会把它点名（假警报）。
   "diagnostics",
 ];
@@ -121,7 +121,7 @@ describe("P12 ① 那个逃生口的两代落盘键都退役了（`forceLegacyLa
     const before = await getBehavior();
     await setBehavior(before);
     expect(store.edits.length, "`setBehavior` 根本没写盘").toBe(1);
-    // 〔CFG1〕看它**交了哪几条路径**（不是写完之后盘上有什么 —— 那里还有别人的键）。
+    // 看它**交了哪几条路径**（不是写完之后盘上有什么 —— 那里还有别人的键）。
     const written = sorted(store.edits[0]!.map((e) => e.path.join(".")));
     const owned = sorted(
       KNOWN_CONFIG_KEYS.filter((k) => CONFIG_KEY_OWNERS[k] === "src/frontend/ui/behavior.ts"),
@@ -205,9 +205,9 @@ describe("P12 ③ 登记表自己得是真的（否则上面每一条都在拿�
 
   it("分母：登记了多少个主人", () => {
     const owners = new Set(Object.values(CONFIG_KEY_OWNERS));
-    // 〔B2 · 条 66〕10 → 9：`src/frontend/ui/backend-policy.ts` 不再是任何配置键的主人（`backendPolicy` 退役，
+    // 〔条 66〕10 → 9：`src/frontend/ui/backend-policy.ts` 不再是任何配置键的主人（`backendPolicy` 退役，
     //   「退出行为」那个值搬到后端所在那台机器上）。少的就是它这一个，别的主人一个没动。
-    // 〔CFG1 · 4D〕9 → 10：补上 `src/frontend/shell/src/logging.rs`（`diagnostics` 那一键的主人，Rust 写的）。多的就是它这一个。
+    // 9 → 10：补上 `src/frontend/shell/src/logging.rs`（`diagnostics` 那一键的主人，Rust 写的）。多的就是它这一个。
     expect(owners.size, `主人 ${owners.size} 个（现打 10）`).toBe(10);
   });
 

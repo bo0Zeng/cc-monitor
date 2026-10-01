@@ -24,7 +24,7 @@ vi.mock("../../../src/frontend/ui/behavior", () => ({
 }));
 vi.mock("../../../src/frontend/ui/fork-ask", () => ({ askForkLaunch: vi.fn() }));
 vi.mock("../../../src/frontend/ui/remote-launch-run", () => ({
-  // 〔FIX4 ④〕分叉走「等到了没有」那一形。
+  // 分叉走「等到了没有」那一形。
   runRemoteResumeAndWait: vi.fn().mockResolvedValue("arrived"),
   runRemoteResumeTmuxAndWait: vi.fn().mockResolvedValue("arrived"),
 }));
@@ -49,7 +49,7 @@ type TmuxRow = {
   sid: string | null;
   agent: boolean;
 };
-// 〔THIN〕`agent` 那一格是那台后端判的（Claude 是 `claude` / `node`）；夹具照那条规则手写。
+// `agent` 那一格是那台后端判的（Claude 是 `claude` / `node`）；夹具照那条规则手写。
 const T = (name: string, sid: string | null, command = "claude"): TmuxRow => ({
   name,
   path: "/p",
@@ -114,7 +114,7 @@ describe("deriveForkSource", () => {
     const f = deriveForkSource([], [T("other-cc", "别的-sid")], "s1", "/p");
     expect(f.source.sourceIsLive).toBe(false);
     expect(f.sourceTmuxName).toBeNull();
-    // 〔FIX4 · J7〕「它的名字仍要进已占用」那一格随避让搬进后端（`tmux-name-mint` 问那台自己的会话快照）。
+    // 「它的名字仍要进已占用」那一格随避让搬进后端（`tmux-name-mint` 问那台自己的会话快照）。
   });
 
   it("两份快照都取不到（远端不可达）→ 全落「不知道」，不落具体值", () => {
@@ -142,7 +142,7 @@ describe("E78：两个调用点不许各自再拼一遍", () => {
 
   it("★ 成功 toast 的文案只出现在 fork-flow.ts 里", () => {
     const marker = "已从这一轮分叉并起新会话";
-    // 〔CP2b〕那句话进了文案表：「一个文件说的话」= 它的源码 ＋ 它经 copyText 取的表条目。
+    // 那句话进了文案表：「一个文件说的话」= 它的源码 ＋ 它经 copyText 取的表条目。
     const spoken = (f: string): string => [read(f), ...copyTableTextsIn(read(f))].join("\n");
     expect(spoken("src/frontend/ui/fork-flow.ts"), "接线层自己得有它，否则这条守卫在守空气").toContain(marker);
     for (const f of CALL_SITES) {
@@ -207,7 +207,7 @@ describe("E79：本机只有账号那一半时的推断", () => {
 // 本条与 `views/history.ts` 那条先前都没传（只有 `tabs.ts` 传了）。
 //
 // 🔴 **这条路上这一格先前尤其贵**：POSIX 后端当时只有「显式账号 0」那一态渲染得出容器
-// （〔MIG-2〕今天是本机后端 `local.rs::render_ccm_with`：具名账号说不出 `--account <名字>` ⇒ §35 降级；
+// （今天是本机后端 `local.rs::render_ccm_with`：具名账号说不出 `--account <名字>` ⇒ §35 降级；
 //  「没表态」⇒ 直接拒），而**分叉是全仓唯一说得出 `{ kind: "base" }` 的生产路**
 // （`localLaunchAccountSync` 只回 `named` / `undefined`，回不出 `base`）。
 // ⇒ 名字没传的时候，这里是本来最有机会建出容器、却建不成的那一条。
@@ -230,14 +230,14 @@ describe("K-R46：分叉本机起会话的 tmux 名（行为）", () => {
   const NEW = "deadbeef-2222-4333-8444-555566667777";
 
   /** 源会话活着、账号确认是「账号 0」（⇒ 三格全 known ⇒ 一次都不用问）。 */
-  /** 那台（本机）后端铸名那一问被问到的入参（〔FIX4 · J7〕名字问后端，判据只核问了什么、用了什么）。 */
+  /** 那台（本机）后端铸名那一问被问到的入参（名字问后端，判据只核问了什么、用了什么）。 */
   const mintAsks: { origin: string; args: { cwd?: string; forkOf?: string } }[] = [];
 
   /** 源会话活着、账号确认是「账号 0」（⇒ 三格全 known ⇒ 一次都不用问）。`minted`：本机后端铸回的名字；`null` = 问不到。 */
   function serveLocal(minted: string | null): void {
     mintAsks.length = 0;
     invokeMock.mockImplementation(launchRenderShim((cmd: string, args: unknown) => {
-      // 〔C4a〕本机「会话 ↔ 账号」经通道问本机后端（原先是 E79 那条已退役的本机 Tauri 命令）。
+      // 本机「会话 ↔ 账号」经通道问本机后端（原先是 E79 那条已退役的本机 Tauri 命令）。
       if (isChanCall(cmd, args, "accounts-sessions")) {
         return Promise.resolve(
           linesReply([
@@ -279,8 +279,8 @@ describe("K-R46：分叉本机起会话的 tmux 名（行为）", () => {
   });
 
   it("★★ 载荷里的 `tmuxName` 是本机后端铸回来的那个（问的是新会话的 cwd，不是拼出来的）", async () => {
-    // 〔FIX4 · `设计/90 §3` J7〕派生（`<项目名>-cc`）＋ 避让（`-2`）在后端：这里替身写死它铸了 `p-cc-2`。
-    // 〔`K-R96` 09-12〕基名从 **cwd**（`/p`）派生，不再是 `<sid8>-cc`（用户 `R55`：「要是可读的名字 / 不要id」）。
+    // 派生（`<项目名>-cc`）＋ 避让（`-2`）在后端：这里替身写死它铸了 `p-cc-2`。
+    // 基名从 **cwd**（`/p`）派生，不再是 `<sid8>-cc`（用户 `R55`：「要是可读的名字 / 不要id」）。
     serveLocal("p-cc-2");
     expect(await fork()).toBe("started");
     // 反空真：三格全 known ⇒ **一次追问小窗都不该弹**（弹了说明事实喂错了，下面在测别的东西）。

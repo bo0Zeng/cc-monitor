@@ -8,7 +8,7 @@ const fetchAccountsMock = vi.fn();
 const invokeMock = vi.fn();
 vi.mock("../../../src/frontend/ui/remote-config", () => ({ readRemoteConfig: () => readRemoteConfigMock() }));
 vi.mock("../../../src/frontend/ui/error-toast", () => ({ showActionFailureToast: vi.fn() }));
-// 〔`设计/50`〕chip 自己不直接调 invoke（只经 `fetchAccounts`）——这个 mock 原先是为
+// chip 自己不直接调 invoke（只经 `fetchAccounts`）——这个 mock 原先是为
 // 用量懒加载那条路装的，那条路整轴退役了；mock 留着是因为下面几条仍要拦住一切 invoke，
 // 好断言「chip 不该再发任何用量请求」。
 vi.mock("@tauri-apps/api/core", () => ({ invoke: (...a: unknown[]) => invokeMock(...a) }));
@@ -21,7 +21,7 @@ import {
 import type { RemoteHostConfig } from "../../../src/frontend/ui/remote-config";
 import type { AccountsState, Account } from "../../../src/frontend/ui/accounts";
 import * as accountsMod from "../../../src/frontend/ui/accounts";
-// 〔FE1〕读面与偏好从 `accounts.ts` 拆出去了（`account-reads.ts` / `account-prefs.ts`），桩打在它们真住的模块上。
+// 读面与偏好从 `accounts.ts` 拆出去了（`account-reads.ts` / `account-prefs.ts`），桩打在它们真住的模块上。
 import * as readsMod from "../../../src/frontend/ui/account-reads";
 import * as prefsMod from "../../../src/frontend/ui/account-prefs";
 // `D4 阻-4`：命令面板那一侧的**生产段**（chip 的快照就是喂给它的）。
@@ -102,7 +102,7 @@ describe("pickPrimaryOrigin", () => {
   it("label 空 → 用 host", () => {
     expect(pickPrimaryOrigin([host({ label: "", host: "aya.local" })])).toBe("aya.local");
   });
-  // 〔C4a〕「没有一台有身份的远端」就是本机（上一版回 `null`、调用方再把 `null` 读成本机）。
+  // 「没有一台有身份的远端」就是本机（上一版回 `null`、调用方再把 `null` 读成本机）。
   it("label 与 host 都空 → 本机（那台远端没有身份）", () => {
     expect(pickPrimaryOrigin([host({ label: "", host: "" })])).toBe(LOCAL_ORIGIN);
   });
@@ -118,7 +118,7 @@ describe("chipLabel", () => {
   it("旧 backend → 后端需更新", () => {
     expect(chipLabel(state({ available: false, oldBackend: true, error: "版本过旧" }))).toBe("后端需更新");
   });
-  // 〔WF2 · WIN3 读数 C〕没问出来 ≠ 要更新。
+  // 没问出来 ≠ 要更新。
   it("查询失败 → 账号没查到（不说需更新）", () => {
     expect(chipLabel(state({ available: false, error: "现在够不着那台机器的后端" }))).toBe("账号没查到");
   });
@@ -197,7 +197,7 @@ describe("account-ux U8 chip 头像休眠", () => {
     expect(icon(chip).querySelector(".acct-avatar")).not.toBeNull();
   });
 
-  // 〔GAP1 · `设计/01 §1.5`〕chip 不再自存一份账号清单：store 里它那台换了一份（本窗口任何一次取回），它同一拍重画，不等自己 refresh。
+  // chip 不再自存一份账号清单：store 里它那台换了一份（本窗口任何一次取回），它同一拍重画，不等自己 refresh。
   it("★ 〔GAP1〕store 里 chip 那台的账号清单换了 ⇒ 同一拍重画（不调 refresh、不再取）", async () => {
     const chip = await mountWith(state({ accounts: [acct({ name: "wei" }), acct({ name: "amy" })], defaultName: "wei" }));
     expect(chip.element.textContent).toContain("wei");
@@ -224,11 +224,11 @@ describe("account-ux U8 chip 头像休眠", () => {
   });
 });
 
-// 〔`设计/50` 删用量〕原先这里是「F10 chip 用量摘要：菜单展开懒加载」整组
+// 〔删用量〕原先这里是「F10 chip 用量摘要：菜单展开懒加载」整组
 // （懒加载 · 去抖缓存 · 「刷新用量」按钮 · 原文一屏渲染 · 占位符 …）。
 // 用量 ③ 轴（探针）整轴退役 ⇒ **被测对象没了**，不是断言变少了。
 // 这里换成一条**翻面**的判据：chip 今天不许再发任何用量请求、也不许再长出那个按钮。
-describe("设计/50：chip 上的用量面已退役（翻面判据）", () => {
+describe("：chip 上的用量面已退役（翻面判据）", () => {
   it("展开菜单不发任何 invoke，且没有「刷新用量」这个动作", async () => {
     readRemoteConfigMock.mockResolvedValue({ enabled: true, hosts: [host({ label: "aya" })] });
     fetchAccountsMock.mockResolvedValue(

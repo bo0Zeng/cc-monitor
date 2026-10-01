@@ -32,15 +32,15 @@ let status: Record<string, unknown> = { channel: true, pid: 42 };
 /** 按顺序喂给 `backend_status` 的前几次读数（用完退回 `status`）。 */
 let statusQueue: Record<string, unknown>[] = [];
 /**
- * 〔B2〕后端 `exit-policy-read` 回的那一份（值住后端那台机器上）。`null` ⇒ 这台问不到（命令抛错）。
+ * 后端 `exit-policy-read` 回的那一份（值住后端那台机器上）。`null` ⇒ 这台问不到（命令抛错）。
  * 键名与后端 `exit_policy::wire` 逐格一致：`state` / `killOnExit`（`reason` / `path` 本区不用）。
  */
 let exitAnswer: Record<string, unknown> | null = null;
-/** 〔C4c〕下一次「交后端写」要回的失败（`null` = 照常写）。原先用 `spyOn(commands.set_backend_exit_policy)`，那条命令退役了。 */
+/** 下一次「交后端写」要回的失败（`null` = 照常写）。原先用 `spyOn(commands.set_backend_exit_policy)`，那条命令退役了。 */
 let failNextSet: Error | null = null;
-/** 〔STOP〕`backend_stop` 这一趟回的结局。 */
+/** `backend_stop` 这一趟回的结局。 */
 let stopAnswer: { stopped: "graceful" | "killed" | "not_running"; pid: number | null } = { stopped: "graceful", pid: 42 };
-/** 〔GAP1〕`backend-log` 那一问各台答什么（按 origin；缺 ⇒ 通道失败）。 */
+/** `backend-log` 那一问各台答什么（按 origin；缺 ⇒ 通道失败）。 */
 let logAnswers: Record<string, unknown> = {};
 
 vi.mock("../../../../src/frontend/ui/ipc/commands", () => ({
@@ -68,7 +68,7 @@ vi.mock("../../../../src/frontend/ui/ipc/commands", () => ({
       calls.push({ name: "backend_machines", args: null });
       return Promise.resolve(["<local>", "甲机"]);
     },
-    // 〔C4c · 第四波 4B〕「退出行为」两问改走通道：`chan_call`（op = `exit-policy-read` / `exit-policy-set`）。
+    // 「退出行为」两问改走通道：`chan_call`（op = `exit-policy-read` / `exit-policy-set`）。
     //   这里把一发 `chan_call` 译回判据里的旧叫法（`backend_exit_policy` / `set_backend_exit_policy`），
     //   回包译成后端那份字节（`ArrayBuffer`），问不到译成通道那一跳「没有控制通道」的线上形状。
     chan_call: (a: { origin: string; op: string; payload: number[] }) => {
@@ -99,7 +99,7 @@ vi.mock("../../../../src/frontend/ui/ipc/commands", () => ({
           const refusal = Array.from(new TextEncoder().encode(JSON.stringify({ code: "write_failed", message: why })));
           return Promise.reject({ err: "Refused", body: refusal });
         }
-        // 〔B2〕后端写完**读回**的那一份：这里就让「盘上」变成写进去的值，后续每一次现问都读到它。
+        // 后端写完**读回**的那一份：这里就让「盘上」变成写进去的值，后续每一次现问都读到它。
         exitAnswer = { state: "chosen", killOnExit: kill, reason: null, path: "x", said: kill ? EXIT_KILLS : EXIT_SELF_DIES };
         return bytes(exitAnswer);
       }
@@ -114,18 +114,18 @@ vi.mock("../../../../src/frontend/ui/remote-config", () => ({
 }));
 
 vi.mock("../../../../src/frontend/ui/error-toast", () => ({ showActionFailureToast: () => {} }));
-// 〔RESYNC ㉟①〕「重新对齐」做完经 Tauri 事件通知主窗口；这里没有 Tauri 运行时 ⇒ 换成空的 emit。
+// 「重新对齐」做完经 Tauri 事件通知主窗口；这里没有 Tauri 运行时 ⇒ 换成空的 emit。
 vi.mock("@tauri-apps/api/event", () => ({ emit: vi.fn(async () => {}), listen: vi.fn(async () => () => {}) }));
 
 import { BACKEND_COLUMNS, BackendSection, decodeHealthFace, readBackendLog, stopSaid, stopWarning } from "../../../../src/frontend/ui/settings/backend-section";
 import type { SessionAccount } from "../../../../src/frontend/ui/accounts";
 import { srcDirOf } from "../../../test-support/repo-root";
 import COPY_TABLE from "../../../../src/shared/copy/table.json";
-// 〔PB1〕「健康」那一格的成品金样：Rust 侧由生产的 `health_face` 现产、逐格相等（`backend_policy_tests.rs`），这里读同一份。
+// 「健康」那一格的成品金样：Rust 侧由生产的 `health_face` 现产、逐格相等（`backend_policy_tests.rs`），这里读同一份。
 import HEALTH_GOLDEN from "../../../__fixtures__/backend-health.golden.json";
 import { LOCAL_ORIGIN } from "../../../../src/frontend/ui/backend-policy";
 
-// 〔MIG-2 · `99 §2.1 ㊴`〕那四句由后端出成品（`exit-policy-read` 的 `said`，判定与十格穷举住 `exit_policy_tests.rs`）；
+// 那四句由后端出成品（`exit-policy-read` 的 `said`，判定与十格穷举住 `exit_policy_tests.rs`）；
 //   这里只取表里的原文当桩里后端回的那一句，判界面原样摆、不再判。
 const tableZhOf = (key: string): string => (COPY_TABLE.entries as Record<string, { zh: string }>)[key]!.zh;
 const EXIT_KILLS = tableZhOf("backendPolicy.exit.kills");
@@ -141,7 +141,7 @@ const FACE: Record<string, GoldenFace> = Object.fromEntries(
 
 /**
  * 人群：这一区的用户可见文案今天住在哪几个文件里。**扩人群是翻转的一半。**
- * 〔CP2b〕家搬进了文案表 ⇒ 人群 +1（`table.json`），而「唯一一个家」从 `backend-policy.ts` 换成表。
+ * 家搬进了文案表 ⇒ 人群 +1（`table.json`），而「唯一一个家」从 `backend-policy.ts` 换成表。
  */
 const TABLE_REL = "../../../shared/copy/table.json";
 const COPY_POPULATION = ["backend-section.ts", "../backend-policy.ts", TABLE_REL] as const;
@@ -168,7 +168,7 @@ beforeEach(() => {
   failNextSet = null;
   stopAnswer = { stopped: "graceful", pid: 42 };
   exitAnswer = { state: "absent", killOnExit: false, reason: null, path: "x", said: EXIT_SELF_DIES };
-  // 〔PB1〕`backend_status` 今天恒带 `health` 成品（远端那一格恒是「无记录」）；缺它的那一形单列一格判。
+  // `backend_status` 今天恒带 `health` 成品（远端那一格恒是「无记录」）；缺它的那一形单列一格判。
   status = { channel: true, pid: 42, health: FACE["无记录"] };
   statusQueue = [];
 });
@@ -185,11 +185,11 @@ describe("P2s backend 开关区", () => {
     //   而 `K-P3` 交付时这一格只由 Rust 那侧的 `the_backend_policy_copy_has_exactly_one_home` 看着
     //   （那份 vitest 当时不在它的写区）。两侧各有一条不是重复：
     //   Rust 那条的人群含 `backend_control.rs`，这一条的人群是前端那两份。
-    // 〔B2 · E3〕人群 +1：「读不出来」那一句（`设计/01 §3.3b ⑤`，三句变四句）。
-    // 〔CP2b〕HEALTH_CRASHED / HEALTH_DETAIL 两个带占位符的模板不再是导出常量（由 copyText 填），直接取表里那一格的原文。
+    // 人群 +1：「读不出来」那一句（三句变四句）。
+    // HEALTH_CRASHED / HEALTH_DETAIL 两个带占位符的模板不再是导出常量（由 copyText 填），直接取表里那一格的原文。
     const tableZh = (key: string): string =>
       (COPY_TABLE.entries as Record<string, { zh: string }>)[key]!.zh;
-    // 〔PB1〕健康那六句的取文口搬到了后端（`backend_policy.rs::health_face`，key 归 `rsBackendPolicy.health.*`）——
+    // 健康那六句的取文口搬到了后端（`backend_policy.rs::health_face`，key 归 `rsBackendPolicy.health.*`）——
     //   前端这两份里更不许出现它们的原文（界面只排版后端给的成品）。
     const literals = [
       EXIT_KILLS,
@@ -200,7 +200,7 @@ describe("P2s backend 开关区", () => {
       tableZh("rsBackendPolicy.health.clean"),
       tableZh("rsBackendPolicy.health.crashed"),
       tableZh("rsBackendPolicy.health.lastMissing"),
-      // 〔ST2 · 步 6〕长的那一半挪进 ⓘ / `[详情]` 之后多出来的两句，同一条规矩。
+      // 长的那一半挪进 ⓘ / `[详情]` 之后多出来的两句，同一条规矩。
       tableZh("rsBackendPolicy.health.unknownWhy"),
       tableZh("rsBackendPolicy.health.detail"),
     ];
@@ -212,7 +212,7 @@ describe("P2s backend 开关区", () => {
           "★ 那几句的唯一一个家是文案表（table.json）。抄进别处 = 下一次只改一处。",
       ).toEqual([TABLE_REL]);
     }
-    // 反过来：这一区摆的是**后端的成品**（〔㊴〕`said`），不是自己拼一份。
+    // 反过来：这一区摆的是**后端的成品**（`said`），不是自己拼一份。
     const section = files.find((f) => f.name === "backend-section.ts")!.src;
     expect(visibleOf(section).includes("answer.said"), "`backend-section.ts` 不摆后端的 `said` —— 那它的文案是从哪来的？").toBe(true);
   });
@@ -226,7 +226,7 @@ describe("P2s backend 开关区", () => {
     expect(
       hits.map((x) => x.name),
       "人群里一处「无人监护」都没有 —— 常驻做了、而界面没说，那正是 `K14` 点名不许的那一半。",
-    ).toContain(TABLE_REL); // 〔CP2b〕家是表；backend-policy.ts 里那行单行 JSDoc 也提到它（注释，不是第二个家）
+    ).toContain(TABLE_REL); // 家是表；backend-policy.ts 里那行单行 JSDoc 也提到它（注释，不是第二个家）
   });
 
   it("本机永远在第一行——它不是另一种机器，只是不走 ssh 的那一台", async () => {
@@ -310,7 +310,7 @@ describe("P2s backend 开关区", () => {
   });
 
   it("★★ K-P3b：读数**另起一行**画出来，而退出那一行一个字节不变", async () => {
-    // 〔PB1〕桩里那一格就是后端 `backend_status` 的 `health` 成品（金样「崩过」那一形）。
+    // 桩里那一格就是后端 `backend_status` 的 `health` 成品（金样「崩过」那一形）。
     const health = FACE["崩过"];
     status = { channel: true, pid: 42, detached: true, health };
     exitAnswer = { state: "absent", killOnExit: false, reason: null, path: "x", said: EXIT_UNATTENDED };
@@ -333,7 +333,7 @@ describe("P2s backend 开关区", () => {
   it("★★ 〔PB1 · P5〕`health` 缺席 / 形状不对 ⇒ 只在那一格说「格式不对」，不替后端编一档，状态格照画", async () => {
     // ⚠ 原来缺席 ⇒ 画「— 无记录」—— 那是一条**前端的回落判定**（缺格当无记录）。
     //   `backend_status` 是 monitor 自己的命令、与界面同一个构建，缺格只能是程序错 ⇒ 说出来（D7 / D11），
-    //   更不许补一个「四个 0」去让谁判出「没崩过」（`K-P3 §0-1`：「答不出来」与「没崩过」不许混用）。
+    //   更不许补一个「四个 0」去让谁判出「没崩过」（「答不出来」与「没崩过」不许混用）。
     const badShape = (COPY_TABLE.entries as Record<string, { zh: string }>)["backend.health.badShape"]!.zh;
     const unknown = FACE["无记录"]!;
     for (const [what, health] of [
@@ -465,7 +465,7 @@ describe("P2s backend 开关区", () => {
     expect([...row.querySelectorAll("button")].map((b) => b.textContent)).toEqual(["起", "停", "日志", "重新对齐"]);
     expect(row.querySelector(".backend-row-state")?.textContent).toBe("已连上（pid 42）");
   });
-  // 〔RESYNC · V149 · `设计/15 §4.1b`「机器一行『重新对齐』（上面整套）」〕按一下 ⇒ 问**那一行那台**的后端 `resync`、整机（不带 sid）。
+  // 〔「机器一行『重新对齐』（上面整套）」〕按一下 ⇒ 问**那一行那台**的后端 `resync`、整机（不带 sid）。
   it("★ 〔RESYNC〕[重新对齐] 问的是那一行那台的后端、整机", async () => {
     const s = new BackendSection({ headless: true });
     await flush();
@@ -481,7 +481,7 @@ describe("P2s backend 开关区", () => {
       { origin: rows[0].dataset.backendCells, body: {} },
     ]);
   });
-  /** 主会话 09-28 裁 FIX4 ⑥（V149 手动兜底）：「本机 PATH 探针的 5 分钟缓存在『重新对齐』时作废，不再多等」。 */
+  /** 主会话 09-28 裁 FIX4 ⑥（手动兜底）：「本机 PATH 探针的 5 分钟缓存在『重新对齐』时作废，不再多等」。 */
   it("FIX4 ⑥：本机那一行 [重新对齐] 作废本机 ccm 那份缓存（`fresh`）；远端那一行不碰", async () => {
     const s = new BackendSection({ headless: true });
     await flush();
@@ -501,7 +501,7 @@ describe("P2s backend 开关区", () => {
   });
 });
 
-describe("〔ST2 · 设计/70 第二刀 步 6〕后端开关表格式四栏：长文案进 ⓘ / [详情]", () => {
+describe("〔ST2 · 第二刀 步 6〕后端开关表格式四栏：长文案进 ⓘ / [详情]", () => {
   it("★ 每一行恰好四格、顺序与表头一致（状态 / 操作 / 退出行为 / 健康）", async () => {
     const s = new BackendSection({ headless: true });
     await flush();
@@ -518,7 +518,7 @@ describe("〔ST2 · 设计/70 第二刀 步 6〕后端开关表格式四栏：�
       expect(cells.dataset.backendCells).toBe(r.dataset.origin);
       expect([...cells.children].map((c) => (c as HTMLElement).dataset.col)).toEqual(want);
       // 控件各归各格：按钮在「操作」、勾在「退出行为」、读数在「健康」。
-      expect(cells.querySelector('[data-col="ops"]')!.querySelectorAll("button").length).toBe(4); // 起 · 停 ·〔GAP1〕日志 ·〔RESYNC〕重新对齐
+      expect(cells.querySelector('[data-col="ops"]')!.querySelectorAll("button").length).toBe(4); // 起 · 停 ·日志 ·重新对齐
       expect(cells.querySelector('[data-col="exit"] .backend-row-kill')).not.toBeNull();
       expect(cells.querySelector('[data-col="health"] .backend-row-health')).not.toBeNull();
     }
@@ -556,7 +556,7 @@ describe("〔ST2 · 设计/70 第二刀 步 6〕后端开关表格式四栏：�
     expect(more.querySelector(".settings-hint")?.textContent).toBe(face.detail);
     for (const n of ["崩了 4 次", "被拒 1 次", "没起来 0 次", "读坏了 2 次"]) expect(face.detail).toContain(n);
     expect(col.querySelector('[data-health-extra="why"]'), "有记录还挂着「无记录」的 ⓘ").toBeNull();
-    // `70 §2.1` 那五种里后端曾经带进来的三种：markdown · 日志行格式 · 设计论证。
+    // 那五种里后端曾经带进来的三种：markdown · 日志行格式 · 设计论证。
     expect(col.textContent).not.toMatch(/\*\*|\[死亡账\]|origin=|下一步：|放大器/);
   });
 
@@ -594,15 +594,15 @@ describe("〔ST2 · 设计/70 第二刀 步 6〕后端开关表格式四栏：�
   });
 });
 
-// 〔PB1 · `设计/90 §4` 阶段 B〕原来这里是「详情那一段按四个计数分开填」（喂 TS 那份 `describeHealthDetail`）。
+// 原来这里是「详情那一段按四个计数分开填」（喂 TS 那份 `describeHealthDetail`）。
 //   `[详情]` 那一句改由后端出（`backend_policy.rs::health_face`），TS 那份删了 ⇒ 这一组退役：
 //   计数分开填 · 占位符填掉由 Rust 侧金样与三档逐格判据管，这里上面那条逐形画、逐格比。
 
 /**
- * 〔HX1 · 主会话裁 HX1 拍板项 3 · D-f〕**停本机后端之前数一数走本机中转的活会话，>0 就先问一句、说几条会断**。
- * 守的要求：主会话 D-f 逐字「停后端时有走中转的活会话 ⇒ 先确认（说几条会断）」；主会话裁「设置页『停』前 >0 就确认，说几条会断」
+ * 〔主会话裁 HX1 拍板项 3〕**停本机后端之前数一数走本机中转的活会话，>0 就先问一句、说几条会断**。
+ * 守的要求：主会话 D-f 逐字「停后端时有走中转的活会话 ⇒ 先确认（说几条会断）」；「设置页『停』前 >0 就确认，说几条会断」
  * ＋ 用 `ask-dialog.ts::askConfirm`（真 app 里 `window.confirm` 从来不拦）。形状：话按表逐格相等；接线两向（答否 ⇒ 零次 `backend_stop` ·
- * 答是 ⇒ 恰好一次；一条都没有 ⇒ 不问；问不到 ⇒ 照样问；〔TAIL〕远端 ⇒ 数那台、照样问（V139 后远端中转住那台常驻后端里）。
+ * 答是 ⇒ 恰好一次；一条都没有 ⇒ 不问；问不到 ⇒ 照样问；远端 ⇒ 数那台、照样问（后远端中转住那台常驻后端里）。
  */
 describe("〔HX1 · D-f〕停后端之前数走中转的会话", () => {
   const row = (o: Partial<SessionAccount>): SessionAccount => ({
@@ -683,7 +683,7 @@ describe("〔HX1 · D-f〕停后端之前数走中转的会话", () => {
     await until(() => stops() === 2);
     expect(asked, "没有走中转的会话也问了").toEqual([]);
     await until(() => !localStop!.disabled);
-    // 〔TAIL〕远端 ⇒ 数那台的会话、有走中转的就问；答否不停。
+    // 远端 ⇒ 数那台的会话、有走中转的就问；答否不停。
     sessionsAsked = [];
     asked = [];
     answer = false;
@@ -700,8 +700,8 @@ describe("〔HX1 · D-f〕停后端之前数走中转的会话", () => {
   });
 });
 
-// 〔STOP〕T6「停」的结局说出来：`{stopped: graceful | killed | not_running}` 三个词各一句，落在那一行上（不只进 console）。
-// 守的要求：`4d-lanes.md` `### STOP`（主会话裁）逐字「monitor 发一次远端 exec、按结局出声」· `70 §2.3`「强杀 / 没停掉出声」。
+// T6「停」的结局说出来：`{stopped: graceful | killed | not_running}` 三个词各一句，落在那一行上（不只进 console）。
+// 守的要求：`4d-lanes.md` `### STOP`逐字「monitor 发一次远端 exec、按结局出声」· 「强杀 / 没停掉出声」。
 describe("〔STOP〕停的结局在机器页那一行说一句", () => {
   const zh = (k: string, args: Record<string, string> = {}) =>
     (COPY_TABLE.entries as Record<string, { zh: string }>)[k].zh.replace(/\{(\w+)\}/g, (_m, n: string) => String(args[n]));
@@ -745,7 +745,7 @@ describe("〔STOP〕停的结局在机器页那一行说一句", () => {
   });
 });
 
-// 〔GAP1 · `设计/15 §4.7 S1`〕「远端后端的诊断要有读者」：机器页那一行点「日志」⇒ 经那台后端的只读面（`backend-log`）取回来摆出来。
+// 「远端后端的诊断要有读者」：机器页那一行点「日志」⇒ 经那台后端的只读面（`backend-log`）取回来摆出来。
 describe("〔GAP1〕每台一行的「日志」：问的是那一台、摆的是它回的那份", () => {
   it("★ 点远端那一行的「日志」⇒ 问那一台的 backend-log，头一行是路径与大小，正文原样；再点收起", async () => {
     logAnswers = {

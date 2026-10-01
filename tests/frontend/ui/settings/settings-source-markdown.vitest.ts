@@ -1,11 +1,11 @@
 /**
- * ST1「屏幕上那几处星号」（`设计/70 §2.1` #1 · `§8` 判据 #5：界面上零 markdown 标记）。
+ * ST1「屏幕上那几处星号」（判据 #5：界面上零 markdown 标记）。
  *
  * # 为什么 `ui-copy-discipline.vitest.ts` 那把尺子没逮住它们
  *
  * 那条扫的是**真渲染出来的 DOM** —— 而它为了跑得动，把账号 / MCP / 插件 / cc-bus 钩子 /
  * 终端集成这几块全 stub 掉了，其余块又跑在「IPC 全 reject」的录音机下 ⇒ 这些块里的句子
- * **从来没上过那张被扫的 DOM**。星号偏偏就住在这几块里（`70 §11.4` 末段记的是同一个洞）。
+ * **从来没上过那张被扫的 DOM**。星号偏偏就住在这几块里（末段记的是同一个洞）。
  *
  * ⇒ 本条换一个人群：**设置窗入口（`src/frontend/ui/entry-settings.ts`）静态可达的每一份生产源码里的
  * 每一个字符串字面量 / 模板片段**。量具是 TypeScript 自己的语法树（不是正则切源码 ——
@@ -99,7 +99,7 @@ export function starsIn(file: string, src: string): string[] {
  * 两向相等：谁改掉了它，这里就得删一行；谁新加一处，这里就红。
  */
 const REGISTERED: Readonly<Record<string, string>> = {
-  // 〔MC1 · 2026-09-24〕从前这里登着 `machine-card.ts` 的「**是同一套实现**」一行（机器页归 MC1+AL1）。
+  // 从前这里登着 `machine-card.ts` 的「**是同一套实现**」一行（机器页归 MC1+AL1）。
   // 那段「安装位置」长说明随 8 颗按钮 → 3 个动作一起重写掉了 ⇒ 这一行删掉，表空了。
 };
 
@@ -112,7 +112,7 @@ describe("ST1：设置窗屏幕上的字符串里零 markdown 星号", () => {
       "src/frontend/ui/settings/accounts-section.ts",
       "src/frontend/ui/settings/account-new-form.ts",
       "src/frontend/ui/settings/ext-section.ts",
-      "src/frontend/ui/settings/machine-aliases.ts", // 〔AL1c〕原 `cc_integration.ts` 并进了它
+      "src/frontend/ui/settings/machine-aliases.ts", // 原 `cc_integration.ts` 并进了它
       "src/frontend/ui/settings/remote-section.ts",
       "src/frontend/ui/accounts.ts",
     ]) {
@@ -135,7 +135,7 @@ describe("ST1：设置窗屏幕上的字符串里零 markdown 星号", () => {
     const got = files.flatMap((f) => starsIn(f, readFileSync(resolve(ROOT, f), "utf8"))).sort();
     expect(
       got,
-      "设置窗的字符串里出现了 markdown 星号 —— 界面不渲染 markdown，星号会原样显示给用户（70 §2.1 #1）。\n" +
+      "设置窗的字符串里出现了 markdown 星号 —— 界面不渲染 markdown，星号会原样显示给用户。\n" +
         "强调改由句子结构或 DOM 结构承担（`data-section.ts` 的 strong() 是样板）。",
     ).toEqual(Object.keys(REGISTERED).sort());
   });
