@@ -48,9 +48,6 @@ mod layering_guard; // U3：§1.1 第二条解耦线的机器判据（observe↔
 #[path = "../../tests/backend/no_timer_guard.rs"]
 mod no_timer_guard; // P6：零定时器护栏（内部整体 #[cfg(test)]，生产构建为空）
 pub mod observe; // U3：观测面 —— 读，不改变世界
-#[cfg(test)]
-#[path = "../../tests/backend/panorama_locus_guard.rs"]
-mod panorama_locus_guard; // K-W2D KW2D3：全景的解析发生在哪个进程的地址空间（整体 #[cfg(test)]）
 pub mod platform; // U2：唯一允许平台原语与平台 cfg 的层（§1.1 第一条解耦线）
 pub mod plugin; // K-W1A：插件通用调用口 —— 找它 / 传 argv 起它 / 问它会什么（方向由 layering_guard 钉）
 #[cfg(test)]
@@ -435,7 +432,7 @@ pub const PROTO_VERSION: u32 = 1;
 /// ＋ 线上：`session_added` 多一个可选字段 `container`（tmux / none）· 新出方向帧 `sessions_replayed`。
 ///
 /// ★★★ **p3c-panorama-plan**（2026-09-24）：子命令集不变，**行为**变更 ——
-/// 后端 `panorama` 的 op 表 ＋7（六个 `plan_*` 只回算好的新内容、不写盘 ＋ `refresh_doc_links`）；
+/// 后端 `panorama` 的 op 表 ＋7（六个 `plan_*` 只回算好的新内容、不写盘 ＋ `refresh_doc_links`〔散文墓碑〕）；
 /// 旧后端不认 ⇒ 写批注会回 `unsupported` ⇒ 必须判 stale。照 p1v 先例不加历史行。
 ///
 /// ★★★ **p3d-sftp-resident**（2026-09-24）：子命令 ＋4 —— `ch:transfer-upload` / `-download` / `-start` / `-stop`
@@ -708,7 +705,9 @@ pub const PROTO_VERSION: u32 = 1;
 /// p6h-runs-panel：子 agent 不进主 tab，只在 agent 面板里列；收场以派出它的那一方为准；扩展页的项目目录由它所属的那台判。
 ///
 /// p6i-accounts-mcp：这台各账号共用一份用户级 MCP，三方对照同步，只改各号 .claude.json 的 mcpServers 那一键。
-pub const BUILD_ID: &str = "p6i-accounts-mcp";
+///
+/// p6j-no-panorama：cc-monitor 不再带代码全景；code-picture 只作为扩展（skill ＋ MCP）。
+pub const BUILD_ID: &str = "p6j-no-panorama";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src/frontend/shell/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），
@@ -837,14 +836,10 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--resident-verdict",
     // 那台旧入口的去向（帧面 `deploy-retired` 的 CLI 面，自动派生）。⇒ `build_id_guard` 红是预期的（本路不 bump）。
     "--deploy-retired",
-    // 那台要哪一格字节（帧面 `deploy-slot` 的 CLI 面，自动派生）。⇒ `build_id_guard` 红是预期的（本路不 bump）。
-    "--deploy-slot",
     // 本机那一份放不放（帧面 `place-verdict` 的 CLI 面，自动派生；monitor 自举时跑手上那份字节问它）。⇒ `build_id_guard` 红是预期的（本路不 bump）。
     "--place-verdict",
     // 这台后端的漂移账（帧面 `drift-report` 的 CLI 面，自动派生）。⇒ `build_id_guard` 红是预期的（本路不 bump）。
     "--drift-report",
-    // 全景写（帧面 `panorama-edit` 的 CLI 面，自动派生）。
-    "--panorama-edit",
     // 公钥推送两条（帧面 `pubkey-push` / `authorized-keys-add` 的 CLI 面，自动派生；远端那台被 `remote_ask::ask_json` 走的就是后一条）。
     "--authorized-keys-add",
     "--pubkey-push",
@@ -1014,10 +1009,6 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--list-user-inputs",
     "--list-projects",
     "--list-sessions",
-    // `panorama` 帧命令**自动派生**出来的 CLI 面（`cli_control::cli_exposed`），
-    // 登记理由同 `--tasks-list` 那一段：不在表里 ⇒ `is_query_mode` 当未知 flag ⇒ 静默进流模式。
-    // ⚠ 新子命令 ⇒ `build_id_guard` 红是预期的，BUILD_ID 由合并那一拍统一 bump（本路不 bump）。
-    "--panorama",
     "--ping",
     "--read-session",
     "--read-session-from-offset",
@@ -1899,9 +1890,6 @@ pub const EMITS: &[&str] = &[
     // 测试连接那一趟的进度与结局（`dial/probe.rs` 真发，登记 = 承诺真发）。只在 `remote-probe` 在跑时出现；
     // 旧客户端不认 ⇒ 忽略（additive）。⚠ hello 字节变了 ⇒ 合并那一拍 bump `BUILD_ID`。
     "probe",
-    // 长活的一格进度（`stream::inbound::Progress` 真发，登记 = 承诺真发）：只在请求交了 `ticket` 的 `panorama` 建索引时出现；
-    // 旧客户端不认 ⇒ 忽略（additive）。⚠ hello 字节变了 ⇒ 合并那一拍 bump `BUILD_ID`。
-    "progress",
     // 中转抄出来的 SSE 事件（`tap::attach` 的接收端经 `writer_task` 真发，登记 = 承诺真发）。
     // 只有进程里住着中转的那个后端（本机常驻）才会有；旧客户端不认 ⇒ 忽略（additive）。
     "tap",

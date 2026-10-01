@@ -44,7 +44,7 @@
 //! - [`paths`]：`path_key`（NTFS 大小写折叠 —— **路径**语义，不是 `/proc`）
 //!   ＋ `temp_root` / `current_uid`（`K-R55` 09-11 从 `observe/watcher.rs` 下沉）
 //! - [`pidwatch`]：`pidfd_open` + [`pidwatch::watch_pid_until_exit`]
-//! - [`signal`]：`send_sigusr1`（U3 从 `control/tmux_hook.rs` 下沉）· `kill_group`（插件口可打断的那一形被丢时收掉整组子进程）
+//! - [`signal`]：`send_sigusr1`（U3 从 `control/tmux_hook.rs` 下沉）
 //! - [`ssh_agent`]：连本机 ssh-agent（Unix 套接字 / Windows 命名管道）—— 拨号代理没配私钥路径时用
 //! - [`stderr_fd`]：把本进程的 fd 2 换到一份文件上 · 问它多长（脱离常驻的后端把 stderr 落盘，`crate::stderr_log`）
 //! - [`tcp_rtt`]：一条已连上的 TCP 的往返时间（问内核 `TCP_INFO`，不掐表）—— 压缩判准要它（`dial/connect.rs::compression_for`）

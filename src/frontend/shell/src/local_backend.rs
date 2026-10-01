@@ -1213,9 +1213,8 @@ pub fn extract_embedded_to(
     Ok(dest)
 }
 
-/// **把一份没有身份戳的本机程序放到 `dir/<file>`**（`dir` 由调用方给 ＝ `~/.cc-monitor/bin`）。两个调用方：
-/// 本机的代码全景小程序（`panorama_bytes::place_local`，本机后端找它的第二个候选）· 文件窗口程序
-/// （`filewin::proc::resolve_window_bin`，monitor 旁边没有它时）。
+/// **把一份没有身份戳的本机程序放到 `dir/<file>`**（`dir` 由调用方给 ＝ `~/.cc-monitor/bin`）。调用方：
+/// 文件窗口程序（`filewin::proc::resolve_window_bin`，monitor 旁边没有它时）。
 ///
 /// 与 [`extract_embedded_to`] 同一套落盘：暂存旁名 `.<file>.<pid>.partial` → 置可执行位（平台知识由宿主注入）
 /// → 上位（[`rename_into_place`]：Windows 上旧的那份正在跑 ⇒ 先挪开再上位，挪开的下次放置时收）。
@@ -1593,8 +1592,6 @@ pub(crate) fn absorb_local_frame(
         | InboundFrame::SessionFileNotice { .. }
         // 任务清单变了 ⇒ 交回读循环（`consume_local` 交重放缓冲那张订阅表，与远端同一个口）。
         | InboundFrame::TasksChanged { .. }
-        // 本机那一趟建索引的进度格 ⇒ 同上（`consume_local` 交 `on_progress`，与远端同一个口）。
-        | InboundFrame::Progress { .. }
         // 一个会话的运行表 ⇒ 同一条有序通道（排在那个会话的宣告之后；`consume_local` 交会话账）。
         | InboundFrame::SessionRuns { .. }) => return Some(f),
         // 其余帧（hello · 溢出 …）本机这条流今天不消费。

@@ -700,33 +700,24 @@ pub(crate) type Readback = Option<(u64, Option<u64>)>;
 /// 丢掉它 = 关链路 = 后端收掉那条 sftp 通道（那条 SSH 连接不跟着断）。
 pub(crate) struct RemoteFs {
     link: tokio::sync::Mutex<DialStream>,
-    home: String,
 }
 
 impl RemoteFs {
-    /// 开一条 `files` 链路（拨号 / 池里复用 · 开 sftp 子系统），问一次起始目录。
+    /// 开一条 `files` 链路（拨号 / 池里复用 · 开 sftp 子系统），问一次起始目录（答得出 = 链路通了；值本身没人要）。
     pub(crate) async fn open(cfg: &RemoteConfig) -> Result<RemoteFs, String> {
         let req = request(cfg, "files", serde_json::json!({}))?;
         let (link, _) = open(cfg, &req, "files", &mut |_| {})
             .await
             .map_err(|(e, _)| e)?;
-        let mut fs = RemoteFs {
+        let fs = RemoteFs {
             // 长活：一次部署问好几次，**每一问**自带期限（[`FILES_ASK_DEADLINE`] / [`FILES_PUT_DEADLINE`]）。
             link: tokio::sync::Mutex::new(link.lives_long()),
-            home: String::new(),
         };
         let v = fs.ask(serde_json::json!({"op": "home"}), None).await?;
-        fs.home = v
-            .get("home")
+        v.get("home")
             .and_then(serde_json::Value::as_str)
-            .ok_or_else(|| copy_text("rsDialHost.open.noHome", &[("v", &v.to_string())]))?
-            .to_string();
+            .ok_or_else(|| copy_text("rsDialHost.open.noHome", &[("v", &v.to_string())]))?;
         Ok(fs)
-    }
-
-    /// 远端 SFTP 的起始目录（真路径）。
-    pub(crate) fn home(&self) -> &str {
-        &self.home
     }
 
     /// 一问一答。`bytes` 跟在请求行后面（只有 `put` 用）。失败那一形（`{"code","message"}`）⇒ `Err(message)`。

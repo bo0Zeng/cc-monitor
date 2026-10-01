@@ -23,7 +23,7 @@
 
 ```bash
 npm install                                  # 一次性
-bash tests/scripts/re-embed.sh --native      # 编本机原生后端、全景小程序与文件窗口程序，铺进内嵌目录
+bash tests/scripts/re-embed.sh --native      # 编本机原生后端与文件窗口程序，铺进内嵌目录
 npx tauri dev                                # 在仓根跑：起 vite、编 monitor、弹 1100×800 窗口
 ```
 
@@ -55,19 +55,16 @@ cargo clippy --workspace --all-targets
 cargo test
 cargo fmt --check
 cargo clippy --all-targets
-
-# 全景小程序（也自成一份）：在 src/panorama-engine 里
-cargo test
 ```
 
-三处要分别跑：在 `src/frontend/shell` 里跑的任何 cargo 命令都覆不到后端与全景小程序（理由见 [ARCHITECTURE.md § 2.7](ARCHITECTURE.md#27-共享-crate-与-workspace)）。每条 cargo 命令前带 `CARGO_BUILD_JOBS=4` 可以压住并行编译的内存；跑会碰 tmux 的测试前摘掉 `TMUX` / `TMUX_PANE`（`env -u TMUX -u TMUX_PANE …`），测试起的 tmux 与后端一律隔离，不碰用户那一个。
+两处要分别跑：在 `src/frontend/shell` 里跑的任何 cargo 命令都覆不到后端（理由见 [ARCHITECTURE.md § 2.7](ARCHITECTURE.md#27-共享-crate-与-workspace)）。每条 cargo 命令前带 `CARGO_BUILD_JOBS=4` 可以压住并行编译的内存；跑会碰 tmux 的测试前摘掉 `TMUX` / `TMUX_PANE`（`env -u TMUX -u TMUX_PANE …`），测试起的 tmux 与后端一律隔离，不碰用户那一个。
 
 ### 前端
 
 | 层 | 跑法 | 覆盖 |
 |---|---|---|
 | node 纯函数套件（`tests/**/*.test.ts`） | `npm test` 的前段（每套一个 `test:*` 脚本，`tsx` 跑） | diff · branching · 报错卡 · bash 卡 · 格式化 · 历史缓存等纯逻辑。清单的单一事实源是 `tests/frontend/ui/node-suite-registry-guard.vitest.ts` 的 `NODE_SUITES` |
-| vitest ＋ jsdom（`tests/**/*.vitest.ts`） | `npm run test:dom`；单跑一份 `npx vitest run <文件>`；覆盖率 `npm run coverage` | DOM · 生命周期 · 通道替身协作：tab 门控与物化、账本、估高、设置面板、全景视图等 |
+| vitest ＋ jsdom（`tests/**/*.vitest.ts`） | `npm run test:dom`；单跑一份 `npx vitest run <文件>`；覆盖率 `npm run coverage` | DOM · 生命周期 · 通道替身协作：tab 门控与物化、账本、估高、设置面板等 |
 | 类型 | `npx tsc --noEmit`；`npm run check:types`（重生成 Rust 导出的类型并要求 `src/frontend/ui/generated/` 无差异） | 全部源码与测试文件 |
 | lint | `npm run lint` · `npm run lint:css` | CI 里只作参考；eslint 基线由 `tests/frontend/ui/eslint-baseline.vitest.ts` 钉着 |
 

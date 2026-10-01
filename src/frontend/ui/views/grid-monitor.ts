@@ -1,6 +1,6 @@
 /**
  * F91（#27）：多 agent 并排**监控**——跨机器只读 mission-control 状态板。
- * 全屏 overlay（照 HistoryView/PanoramaView/UsageView 的 body-level fixed overlay 范式）。
+ * 全屏 overlay（照 HistoryView 的 body-level fixed overlay 范式）。
  *
  * **只读 view，零后端、零写、零落盘**（守 INVARIANTS §1 只读铁律 + 北极星「不做驾驶舱」）：
  * 一屏 grid，一 cell/会话（本地 + 所有远端），按机器(origin)分组；每 cell 显红绿灯 / 标题 / cwd /

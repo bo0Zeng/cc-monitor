@@ -419,7 +419,6 @@ monitor 记进一张 sid 表，用它 ① 拦掉 `↗` 并给出正确说法 ②
 | `link_end` | `link`, `error?` | **这条链路不会再有字节了**，后端已忘掉这个 id。`error` 缺席 = 正常收尾；在 = 非正常收尾的人话。拨不通**不**走这里（那是链路字节里那一行失败的 ack） |
 | `transfer` | `id`, `got`, `total`, `end?` | **一趟传输此刻的样子**（`transfer-start` 之后才出现）：每一帧是整份快照（`got` / `total` 字节），不是增量 ⇒ 后端按变更合并、堵住时只合并不堆积。带 `end` 的那一帧是这一趟的**最后一帧**：`{"state":"done","bytes","sha256"?}` · `{"state":"failed","why"}` · `{"state":"cancelled"}`（`sha256` 只有上传那一路有：整份本机文件的摘要，窗口提交 `files-commit-upload` 时原样交回当 `expect`）。**不丢**：走应答那条独立通道。完整语义在「入方向」那一节的「传输四条」 |
 | `probe` | `ticket`, `cell` | **测试连接那一趟的一格进度**（`remote-probe` 在跑时才出现）：`cell` 恰好一个键 —— `stage`（拨号阶段行）· `reached`（`ssh` / `hello` / `control`）· `end`（结局，最后一格）。**不丢**：走应答那条独立通道。完整语义在「入方向」那一节的 `remote-probe` |
-| `progress` | `ticket`, `cell` | **〔「长活要有进度」〕一条长活此刻的一格进度**（今天：`panorama` 建索引那一档，请求交了 `ticket` 才出现）：`ticket` = 发起方交的票（进度流 `progress/<ticket>` 的名字，本后端只回填），`cell` = 那个活自己报的一格（一个 JSON 对象，原样不解释；全景是上游 `IndexProgress{phase, done, total}`）。走应答那条独立通道，但**可丢**（满了丢这一格：每格是整份快照，下一格补上；结局照旧在应答里）。完整语义在「入方向」那一节的 `panorama` |
 | `tap` | `stream`, `run?`, `resp`, `n`, `ev?`, `end?` | **中转抄出来的一段流里的一件归一事件**（或一段的收尾）。只有**进程里住着中转的那个后端**（常驻后端，本机远端同形）会发。`stream` = 请求自带的会话标识头的值（Claude Code 是 `x-claude-code-session-id`，头名由适配层登记；没带 / 过不了段闸 ⇒ 这段不发）；`resp` = 本进程第几段；`n` = 这一段里第几件，**从 0 连续**（后端归位之后重新编号）⇒ 接收侧看 `n` 连不连得上就知道缺在哪。上游的原始事件**在后端按上游协议面折过**（适配层 `StreamFace`，按协议分），界面只收 `ev`：`{"t":"start","rid":…}` · `{"t":"block","i":…,"kind":"text"\|"thinking"\|"tool"\|"other","tool"?:…}` · `{"t":"text","i":…,"s":…}` · `{"t":"stop","ok":…}`；`end`（`"done"` 上游说完 · `"broken"` 转发以错误收尾或上游那一侧缺了号）与 `ev` 恰有一个。**`run`**：这段归哪个子运行（主运行 ⇒ 省略）。归位在后端：请求自报了运行（适配层登记的头，Claude Code 是 `x-claude-code-agent-id`）⇒ 就是它；这一家登记了那个头而请求没带 ⇒ 就是主运行（当场定）；这一家没登记那个头 ⇒ 这个会话此刻没有在跑的子运行就归主运行，有就先挂起、等哪条记录的 `rid` 对上再按它的归属放出（挂起那段对上之前不上任何活卡）。**可丢**：走后端自己那条有界 tap 通道（256 件、单件原文 ≤ 16 KiB），不挤出方向的内容帧、不回推中转；SSE 只保快，jsonl 保对 |
 | `session_runs` | `sid`, `runs` | **一个会话的运行表**（主运行之外的子运行），表一变就整份发一次。`runs` 每项 `{run, label?, kind?, tool?, state, last?}`：`run` 子运行标识（适配层 `run_of` 的值域）· `label` / `kind` 派出它的那次调用给的标签与类别 · `tool` 父侧工具调用 id（还没对上 ⇒ 省略）· `state` `running` / `done` / `failed` / `stopped`（被叫停）/ `unknown`（没有任何收场信号、子记录又 15 分钟没再写；只在读记录 / 收到文件事件时算，不轮询）· `last` 最近一件事 `{"t":"say"}` / `{"t":"think"}` / `{"t":"tool","name":…}`。按最近一次动静排，最早动过的在前。收场以派出那一方为准（前台：那次调用拿到结果；后台：父记录里关于它的收场通知），子记录自己写出终局也算，先到先算、收场之后不再翻回在跑。子运行的记录住哪、哪条记录属于谁、哪条派出了谁 / 说它收场了，全问适配层（`ChildFace` · `run_of` · `child_link`）；只读尾巴的流接上会话时，父记录已有的那一截按 `ChildFace::hint` 预筛、只解析说到子运行的那几行；watcher 走与主记录同一条文件事件管线读它们。丢了不可恢复（`overflow.lost` 带身份，subject = sid），下一次表变了自然补上。monitor 收到交给前端：会话流 `session-lines` 里一格 `{"runs": {session_id, runs}}`（不吃 credit、F5 照最新一份重放） |
 
@@ -2163,29 +2162,6 @@ monitor 照答经**那台**后端的 `files-delete`（带 `expect`）删（`ccm_
 错误码：`bad_args`（`dial` / `text` 恰给一个；都不给不许退成问本机落点）· `unreachable`（SFTP 开不成）。
 ⚠ **CLI 面也有它**（`--deploy-retired`，入参从 stdin 读）：monitor 本机探针就是跑自己落点那份 `ccm -- --deploy-retired` 交 `{text}` 问的（同步命令里不连常驻后端）。
 
-#### `deploy-slot`：那台要哪一格字节（THIN，09-29；远端**只读**那台）
-
-「判定只在后端」：表 A（有没有产线）· 表 B（这个 origin 承不承诺）· 这一版带没带，是 `deploy-plan` 的第 ① 步，单拿出来给**代码全景小程序**
-推字节之前问（monitor 只按答里那一格取自己带着的字节放上去）。只有**本机常驻后端**有意义。有 `dial` ⇒ 沿池里那条 SSH capture `uname -s -m`、按远端那一行判；
-没有 ⇒ 本机：这台自己的 (OS, arch)、按本机那一行判（规矩 4：本机只是「目标机器恰好是自己」）。拒绝点在写第一个字节之前；**一个字节都不写**。
-
-```text
-→ {"id":"s1","cmd":"deploy-slot","args":{"product":"panorama","machine":"dev","dial":{"host":"10.0.0.2","port":22,"user":"u","key_path":"~/.ssh/id_ed25519","use":"files"},"carried":[{"os":"Linux","arch":"x86_64"},{"os":"Linux","arch":"arm64"}]}}
-← {"kind":"reply","id":"s1","ok":true,"data":{"os":"Linux","arch":"x86_64","label":"Linux / x86_64","ack":{"ok":true,"fingerprints":{"10.0.0.2:22":"SHA256:…"}}}}
-```
-
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `product` | → | `panorama`（全景小程序）· `backend`（后端本体；部署走 `deploy-plan`，这一形只为同一张表） |
-| `machine` | → | 那台的名字（只用来说话；本机交「本机」） |
-| `dial` | → | 可缺：那台的拨号请求（同 `deploy-plan`）；缺 ⇒ 问的是本机 |
-| `carried` | → | 这一版为这件产物带着字节的格：每格 `{os, arch}`（表 A 认得的词）。认不出 ⇒ `bad_args` |
-| `os` / `arch` / `label` | ← | 那台是表 A 的哪一格 |
-| `ack` | ← | 问 `uname` 那一趟拨号的 `DialAck` 原样（monitor 按它固化指纹）；本机 `null` |
-
-**错误码**：`bad_args`（`product` / `machine` / `carried` 缺或认不出）· `unreachable`（`uname` 那一问没问成：链路）· `refused`（表 A / 表 B / 这一版没带 —— `message` 就是对人说的那一句）。
-⚠ **CLI 面也有它**（`--deploy-slot`，入参从 stdin 读；按派生规则「非内建即上 CLI」）：真正的用法是本机常驻后端的帧面。
-
 #### `place-verdict`：本机那一份放不放（P1，09-29；只读落点那一个文件）
 
 「判定只在后端」：monitor 放本机后端（`~/.cc-monitor/bin/ccm`）之前还没有常驻后端可问 —— 可 `ccm` 就是后端本体，
@@ -3461,70 +3437,6 @@ marker = `ccm-rbind-token-<令牌>`；marker 前缀与目录名是共享契约�
 
 - 那个 sid **没有任务目录** ⇒ 空 `lines`（诚实的空）；目录**在但读不了** ⇒ `failed`（不说成「没有任务」）。
 - 半截 / 解不成对象的文件跳过（写者持锁那一刻读到半截是正常时序）；单个文件超过 1 MiB ⇒ 跳过并 `warn!` 点名。
-
-#### `panorama`：代码全景（用户 09-24 V108 选 B）
-
-后端**不链**全景引擎：它经插件通用调用口（找它 → `--probe` 问它会不会这个 op → 传 argv 起它，期限走 `timeout` 前缀）起那个只装引擎的独立小程序 `cc-monitor-panorama`，解析发生在被起的那个进程里；索引落**这台机器上后端自己的数据目录**（`~/.cc-monitor/panorama/`），不落进被分析的仓。本机与远端同一条命令。
-
-```text
-→ {"id":"g1","cmd":"panorama","args":{"op":"overview","repo":"/home/me/proj","args":{"budget":4000},"shape":"<形状代号>"}}
-← {"kind":"reply","id":"g1","ok":true,"data":{"result":{…}}}
-```
-
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `op` | → | **只说查询语义**：`status` · `index` · `reindex` · `overview` · `node` · `neighborhood`（邻域，每个符号带距根几跳：`{root, reached: [{id, depth}]}`）· `callers` · `callees` · `impact` · `search` · `docs_for` · `touching` · `symbols_in_file` · `drift` · `list_annotations` · `diagram_kinds` · `diagram`；「算」：`plan_add_annotation` · `plan_propose_annotation` · `plan_approve_annotation` · `plan_remove_annotation` · `plan_write_doc_link` · `plan_remove_doc_link`；`refresh_doc_links`（存储 / grammar / 解析开关一个都不上线，`protocol_doc_guard` 钉着）。后端不存这张表：认得的词 = 小程序 `--probe` 自报的 `capabilities=`（生成物 `src/frontend/ui/panorama/engine-contract.json` 是它的镜子） |
-| `shape` | → | 要的那一代小程序的形状代号（发起方取自生成物 `engine-contract.json`）；后端拿它与 `--probe` 报的 `shape=` 逐字比，对不上 ⇒ `unsupported`。缺 ⇒ `bad_args` |
-| `repo` | → | 被分析的仓在**这台机器上**的绝对路径（`diagram_kinds` 不要） |
-| `args` | → | 这个 op 自己的参数（JSON 对象；拼错的字段名被拒，不静默忽略） |
-| `ticket` | → | 可缺。交了 ⇒ 小程序报的进度（建索引那一档在 stderr 上写 `progress=<一格 JSON>`，插件口分拣）逐格推成出方向 `progress{ticket, cell}` 帧（见出方向那张表），界面拿它订 `progress/<ticket>`；没交 ⇒ 不推 |
-| `result` | ← | 小程序应答里的 `data` **原样**（形状与 monitor 进程内那套全景命令逐字相同；`node` 查不到是 `null`） |
-
-- CLI 面同样自动派生（`--panorama`，stdin 一段 JSON = 上面那个 `args`），已进 `SUBCOMMANDS`（一次性进程里没人订进度，`ticket` 交了也不推）。
-- 期限：按小程序 `--probe` 自报的档 —— `long=` 里的（今天 `index` / `reindex` / `refresh_doc_links`）900 秒，其余 60 秒 —— 给**子进程**的（后端零定时器）。客户端那一侧的等待要比它长。
-- 错误码：`bad_args`（缺 `op` / `shape`、参数不合形，小程序自己那句话原样带回）· `not_installed`（这台没有那个小程序，或找到的那个身份行对不上；整句说清查过哪儿）· `unsupported`（装的那份不会这个 op，点名缺的那一个；或形状代号不是请求要的那一代）· `timed_out`（说清是哪一档期限）· `too_large`（参数塞不进一次命令调用，或结果超过 32 MiB）· `failed`（仓打不开 / 引擎报错 / 被信号打断，带诊断）。
-- 〔「引擎只算、文件管理来写」〕本命令**不写用户文件**。批注 / 文档关联的 `plan_*` 只读盘上那一两份、回一份编辑计划
-  `{"value": …, "edit": null | {"rel", "before", "after", "parents"}}`（`rel` 仓相对；`before` = 算的那一刻盘上原样、`null` = 不存在；
-  `after = null` = 删；`edit = null` = 盘上已经是想要的样子）。拿着计划落盘的是同一台后端的 `panorama-edit`（下一节），不再是 monitor。
-- **可取消**：异步档（起进程走插件口的 `run_abortable`，异步等子进程）⇒ `cancel` 命中时处理器被撤、小程序连同 `timeout` 前缀那一组子进程一起被杀，回 `cancelled` 帧。〔墓碑 —— RM1c 那一版是阻塞档：`cancel` 命中回 `not_cancellable`。〕
-- 〔「只传给开过远端全景的机器」〕`not_installed` / `unsupported` 是**推字节的触发条件**：界面（经通道直问）听到这两个码
-  ⇒ 请 monitor 放字节（Tauri 命令 `panorama_place`）：`uname -s -m` 选内嵌字节 → 经本机常驻后端那条 `files` 链路（部署那一问一答，写只许 `~/.cc-monitor/bin/` 与暂存区）
-  推到 `~/.cc-monitor/bin/cc-monitor-panorama`（`0755`，后端读回逐字节比对）→ **再问一次**；仍是这两个码 ⇒ 原话交给人，不循环。
-  本命令自己不推、不写。
-  〔本机对称〕本机那一台同一个触发点：本机后端答这两个码 ⇒ monitor 把它自己带着的那一份（按 `TARGET` 内嵌的原生小程序，Linux 本机退用 musl 那份）
-  放到 `~/.cc-monitor/bin/cc-monitor-panorama[.exe]`（逐字节相等就不写）→ 再问一次。Windows 上后端找的文件名带 `.exe`、插件口的 Windows 臂只认 `.exe`。
-
-#### `panorama-uninstall`：卸掉这台的全景小程序（09-28；「受管工具都应可卸，照 SU1 装卸账」）
-
-```text
-→ {"id":"pu1","cmd":"panorama-uninstall"}
-← {"kind":"reply","id":"pu1","ok":true,"data":{"removed":true,"path":"/home/u/.cc-monitor/bin/cc-monitor-panorama","index":"/home/u/.cc-monitor/panorama"}}
-```
-
-装那一下只放一份文件（落点 `~/.cc-monitor/bin/cc-monitor-panorama[.exe]`）⇒ 卸只删那一份：先 `--probe` 认身份（认不出 / 跑不起来 ⇒ `not_ours`，一个字节不动），
-再经这台文件管理面带逐字节 `expect` 删（与刚读到的不等 ⇒ `stale`）。它跑出来的索引（`index`）不是装时写的，不删、只说在哪。不在 ⇒ `removed: false`。
-后端旁边随后端一起铺的那一份不碰（不是装进来的）。码：`not_ours` · `failed`（没有家目录 / 读不了）· `stale` · `refused` · `io_failed`（删那一跳的原码）。
-
-#### `panorama-edit`：全景写批注 / 文档关联（09-28；「引擎只算、文件管理来写」）
-
-```text
-→ {"id":"g2","cmd":"panorama-edit","args":{"repo":"/home/me/proj","op":"plan_add_annotation","args":{"target":"a.rs#f","body":"x","author":"me"},"shape":"<形状代号>"}}
-← {"kind":"reply","id":"g2","ok":true,"data":"k3f…"}
-```
-
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `repo` | → | 被写的仓在**这台机器上**的绝对路径 |
-| `op` | → | 写哪一种 = 小程序 `--probe` 的写表 `plans=` 里的「算」op（今天 `plan_add_annotation` · `plan_propose_annotation` · `plan_approve_annotation` · `plan_remove_annotation` · `plan_write_doc_link` · `plan_remove_doc_link`；不在表里 ⇒ `bad_args`）。后端不存这张表 |
-| `args` | → | 这一种写自己的参数（原样交给那个「算」op） |
-| `shape` | → | 同 `panorama` 的 `shape`：每次问小程序（算 · 写成之后要跑的那一个）都原样转交 |
-| `data` | ← | 计划里的 `value` 原样（id / 在不在 / `null`，随 op 而定） |
-
-- 一件事全在这台：① 问这台的小程序要计划（`panorama` 的 `plan_*`，不写）→ ② `edit = null` ⇒ 原样回 → ③ 经**这台的文件管理面**落盘
-  （`files-put`：`root` = 仓、`expect = before`、`parents`；`after = null` ⇒ `files-delete` 带 `expect = before`）→ ④ `stale` ⇒ 回 ① 重算，最多 3 趟
-  → ⑤ 写成之后，写表里这一项若写了 `><op>`（今天文档关联那两种 `>refresh_doc_links`），再跑那一个。写的规则（CAS · 暂存旁名换名上位 · 回读 · 围栏）只在文件管理面。
-- 错误码：「算」那一步的码原样交回（`not_installed` / `unsupported` 同样是界面请 monitor 放字节、再问一次的触发条件）· `stale`（3 趟都撞上别人改）·
-  文件管理面的码原样（`refused` 等）· `failed`（计划形状对不上）。可取消档（同 `panorama`）。CLI 面自动派生（`--panorama-edit`）。
 
 #### `backend-log`：这台后端的 stderr 诊断文件尾部（2026-09-26）
 

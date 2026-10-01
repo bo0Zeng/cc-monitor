@@ -1,7 +1,7 @@
 /**
  * **独立只读窗**的入口（`viewer.html?viewer=<sid>&origin=<机器>` 加载它）。：只含 tab 管理 ＋ 渲染栈。
  *
- * 🔴 本窗的模块图里**没有**设置面板 / 历史 / 全景 / SFTP / 命令栏 —— 判据是
+ * 🔴 本窗的模块图里**没有**设置面板 / 历史 / SFTP / 命令栏 —— 判据是
  * `tests/frontend/ui/entry-graphs.vitest.ts`（真跑 `vite build`，对本入口 chunk 的传递闭包做零命中断言），
  * 同一条还反过来钉住「tab 管理与渲染栈**确实在**」，免得零命中是因为整张图空了。
  *

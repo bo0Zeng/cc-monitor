@@ -41,7 +41,7 @@ use serde_json::Value;
 // 搬进适配层 `agents/claudecode/` 就要从这里直呼它 ⇒ `agent_locality_guard::NEW_AGENT_GAP_BASELINE` 26 → 27，
 // 而那是只许降的棘轮 ⇒ 不抬。收进接口（`L2`/`S6`）时这两张随本文件一起走。
 //
-// 写类工具表**只有这一份**（前端 `panorama/session-files.ts` 整份随搬家删了）。
+// 写类工具表**只有这一份**（前端那份随搬家删了）。
 
 /// 写类工具 → 取路径的键。Edit / Write / MultiEdit 用 `file_path`；NotebookEdit 用 `notebook_path`。
 /// 与渲染那边的「写类」（卡型 `diff`，适配层 `agents/claudecode/cards.rs` 那张写类工具表，行级 diff）**不是同一个问题**：

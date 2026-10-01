@@ -130,15 +130,13 @@ fn an_answer_that_is_not_utf8_is_not_parroted_as_mojibake() {
         let Err(refusal @ Refusal::OsUnknown { .. }) = &r else {
             panic!("不是 UTF-8 的回话照样该是「问不出 OS」：{r:?}");
         };
-        for product in [Product::Backend, Product::Panorama] {
-            let said = refusal.say(product, "vmself");
-            assert!(!said.contains('\u{FFFD}'), "界面那句里照抄了乱码：{said}");
-            assert!(
-                said.contains("不是 UTF-8"),
-                "那句话没说出「不是 UTF-8」：{said}"
-            );
-            assert!(said.contains("vmself"), "{said}");
-        }
+        let said = refusal.say("vmself");
+        assert!(!said.contains('\u{FFFD}'), "界面那句里照抄了乱码：{said}");
+        assert!(
+            said.contains("不是 UTF-8"),
+            "那句话没说出「不是 UTF-8」：{said}"
+        );
+        assert!(said.contains("vmself"), "{said}");
     }
     // 正控：UTF-8 的回话（英文 Windows / 真 POSIX 的报错）照旧原样带出 —— 本件不许把它们也吞掉。
     match key_from_uname(Some(1), "", "'uname' is not recognized") {
@@ -150,7 +148,7 @@ fn an_answer_that_is_not_utf8_is_not_parroted_as_mojibake() {
     }
 }
 
-// ═══ 拒绝点：六键 × 两路 × 两类字节的全表 ═══════════════════════════════════════════════
+// ═══ 拒绝点：六键 × 两路的全表 ═══════════════════════════════════════════════
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum Want {
@@ -165,42 +163,30 @@ enum Want {
 fn choose_answers_every_cell_of_table_a() {
     use Arch::*;
     use Os::*;
-    use Product::*;
     use Want::*;
-    let expect: &[(Product, Key, Want)] = &[
-        (Backend, k(Windows, X86_64), Give),
+    let expect: &[(Key, Want)] = &[
+        (k(Windows, X86_64), Give),
         // 用户 09-18「不含 arm64」⇒ 无产线。
-        (Backend, k(Windows, Aarch64), Unsupported),
-        (Backend, k(Linux, X86_64), Give),
-        (Backend, k(Linux, Aarch64), Give),
-        (Backend, k(Mac, X86_64), Unsupported),
-        (Backend, k(Mac, Aarch64), Unsupported),
-        // 全景：Linux 两格的 musl 产线 ＋ Windows x86_64 的原生产线。
-        (Panorama, k(Windows, X86_64), Give),
-        (Panorama, k(Windows, Aarch64), Unsupported),
-        (Panorama, k(Linux, X86_64), Give),
-        (Panorama, k(Linux, Aarch64), Give),
-        (Panorama, k(Mac, X86_64), Unsupported),
-        (Panorama, k(Mac, Aarch64), Unsupported),
+        (k(Windows, Aarch64), Unsupported),
+        (k(Linux, X86_64), Give),
+        (k(Linux, Aarch64), Give),
+        (k(Mac, X86_64), Unsupported),
+        (k(Mac, Aarch64), Unsupported),
     ];
-    for &(product, key, want) in expect {
-        let got = choose(product, Ok(key));
+    for &(key, want) in expect {
+        let got = choose(Ok(key));
         match (want, &got) {
-            (Give, Ok(_)) => assert!(pick(product, key).is_some()),
-            (Give, Err(Refusal::NotCarried { .. })) => assert!(
-                pick(product, key).is_none(),
-                "{product:?} {key:?}：表里有字节却说没带"
-            ),
+            (Give, Ok(_)) => assert!(pick(key).is_some()),
+            (Give, Err(Refusal::NotCarried { .. })) => {
+                assert!(pick(key).is_none(), "{key:?}：表里有字节却说没带")
+            }
             (Unsupported, Err(Refusal::UnsupportedMachine { .. })) => {}
-            _ => panic!("{product:?} {key:?}：期望 {want:?}，实得 {got:?}"),
+            _ => panic!("{key:?}：期望 {want:?}，实得 {got:?}"),
         }
     }
     // 键问不出 ⇒ 原样交回（不走表）。
     let os_unknown = Refusal::OsUnknown { why: "x".into() };
-    assert_eq!(
-        choose(Backend, Err(os_unknown.clone())).unwrap_err(),
-        os_unknown
-    );
+    assert_eq!(choose(Err(os_unknown.clone())).unwrap_err(), os_unknown);
 }
 
 /// B4b：每一形拒绝都说得出「哪台 · 什么机器」，且 key 在文案表里（取不到时 `copy_text` 回 ``）。
@@ -234,20 +220,9 @@ fn every_refusal_names_the_machine_and_what_it_is() {
         },
     ];
     let mut said = BTreeSet::new();
-    // 两件产物各一组话：全景推字节也走 `choose` 之后，同一种拒绝对两件产物说两句（后果不同）。
-    for (r, product) in cases
-        .iter()
-        .flat_map(|r| [(r, Product::Backend), (r, Product::Panorama)])
-    {
-        let s = r.say(product, "devbox");
-        let noun = match product {
-            Product::Backend => "后端",
-            Product::Panorama => "代码全景组件",
-        };
-        assert!(s.contains(noun), "{r:?} / {product:?} 没说是哪件东西：{s}");
-        if product == Product::Panorama {
-            assert!(!s.contains("后端"), "全景那一句说成了后端：{s}");
-        }
+    for r in &cases {
+        let s = r.say("devbox");
+        assert!(s.contains("后端"), "{r:?} 没说是哪件东西：{s}");
         assert!(!s.contains('〔'), "{r:?} 的 key 不在文案表里：{s}");
         assert!(s.contains("devbox"), "{r:?} 没说是哪台：{s}");
         assert!(!s.contains('{'), "{r:?} 还有没填的占位符：{s}");
@@ -282,10 +257,6 @@ fn every_refusal_names_the_machine_and_what_it_is() {
         // 每一形说的是**自己那一句** —— 按文案键比，不再按那张表各取一个独有词
         //   （用户 09-29「所有文案…不能把开发过程混进去」之后那几句不再说「今天 / 承诺 / 没有验过」）。
         //   只比「五句互不相同」挡不住「一形借了另一形的句子、填了不同的参数」（死值验 K6 首刀没砍中，补这一向）。
-        let family = match product {
-            Product::Backend => "deploy",
-            Product::Panorama => "panorama",
-        };
         let (form, os, arch, why) = match r {
             Refusal::UnsupportedMachine { os, arch } => {
                 ("unsupportedMachine", os.as_str(), arch.as_str(), "")
@@ -306,16 +277,16 @@ fn every_refusal_names_the_machine_and_what_it_is() {
             Refusal::NotCarried { os, arch } => ("notCarried", os.as_str(), arch.as_str(), ""),
         };
         let own = crate::copy_table::copy_text(
-            &format!("{family}.refused.{form}"),
+            &format!("deploy.refused.{form}"),
             &[("machine", "devbox"), ("os", os), ("arch", arch), ("why", why)],
         );
-        assert_eq!(s, own, "{r:?} / {product:?} 说的不是自己那一句");
+        assert_eq!(s, own, "{r:?} 说的不是自己那一句");
         said.insert(s);
     }
     assert_eq!(
         said.len(),
-        cases.len() * 2,
-        "五形（不承诺那一形分本机 / 远端两句）× 两件产物里有两句说成了同一句"
+        cases.len(),
+        "五形（不承诺那一形分本机 / 远端两句）里有两句说成了同一句"
     );
 }
 
@@ -348,9 +319,9 @@ fn include_targets(prod: &str) -> Vec<String> {
         .collect()
 }
 
-/// B2：`byte_table.rs` 的每个槽恰挂表 A 的一个键（从 `include_bytes!` 的目标名读：`<类>-<arch>` ⇒ (类, Linux, arch)；
-/// 本机原生那两份 ⇒ 这一份产物的 `TARGET` 那一格）。一个 (类, 键) 恰一个槽，**仅有的例外**是本机原生那两槽（后端 ·
-/// 全景）在 Linux 构建上与 musl 同格（第一条，没裁），例外名单两向相等。
+/// B2：`byte_table.rs` 的每个槽恰挂表 A 的一个键（从 `include_bytes!` 的目标名读：`backend-<arch>` ⇒ (Linux, arch)；
+/// 本机原生那一份 ⇒ 这一份产物的 `TARGET` 那一格）。一个键恰一个槽，**仅有的例外**是本机原生那一槽
+/// 在 Linux 构建上与 musl 同格（第一条，没裁），例外名单两向相等。
 /// 不挂表 A 的槽只许文件窗口程序那一个（monitor 自己的窗口进程，只在本机起、从不部署到别的机器），名单两向相等。
 #[test]
 fn every_slot_hangs_on_exactly_one_key_and_one_key_has_one_slot_but_the_one_listed_exception() {
@@ -359,8 +330,8 @@ fn every_slot_hangs_on_exactly_one_key_and_one_key_has_one_slot_but_the_one_list
     let targets = include_targets(&prod);
     assert_eq!(
         targets.len(),
-        7,
-        "byte_table.rs 生产段里 `include_bytes!` 应当恰好 7 处（后端 musl 2 · 全景 musl 2 · 本机原生 2：后端 ＋全景 · 文件窗口程序 1）：{targets:?}"
+        4,
+        "byte_table.rs 生产段里 `include_bytes!` 应当恰好 4 处（后端 musl 2 · 本机原生后端 1 · 文件窗口程序 1）：{targets:?}"
     );
     // 不挂表 A 的槽恰好文件窗口程序那一个；别的槽下面逐个认名字，认不出就红（不会有第二个不挂表 A 的槽混过去）。
     const FILEWIN_SLOT: &str = "\"../native-backend/cc-monitor-filewin\"";
@@ -373,12 +344,10 @@ fn every_slot_hangs_on_exactly_one_key_and_one_key_has_one_slot_but_the_one_list
         "文件窗口程序那一槽应当恰好一处（字面量 {FILEWIN_SLOT}）：{targets:?}"
     );
     let native_key = Key::this_machine().expect("这一份产物的 TARGET 不在表 A 的轴上");
-    let mut slots: Vec<(Product, Key)> = Vec::new();
+    let mut slots: Vec<Key> = Vec::new();
     for t in targets.iter().filter(|t| t.as_str() != FILEWIN_SLOT) {
         let slot = if t.contains("native-backend/cc-monitor-native") {
-            (Product::Backend, native_key)
-        } else if t.contains("native-backend/cc-monitor-panorama") {
-            (Product::Panorama, native_key)
+            native_key
         } else {
             let name = t
                 .rsplit('/')
@@ -388,39 +357,32 @@ fn every_slot_hangs_on_exactly_one_key_and_one_key_has_one_slot_but_the_one_list
             let (kind, arch) = name
                 .split_once('-')
                 .unwrap_or_else(|| panic!("认不出这一槽的名字：{t}"));
-            let product = match kind {
-                "backend" => Product::Backend,
-                "panorama" => Product::Panorama,
-                other => panic!("认不出这一槽是哪一类字节：{other}（{t}）"),
-            };
-            let key = key_of("Linux", arch).unwrap_or_else(|r| panic!("{t}：{r:?}"));
-            (product, key)
+            assert_eq!(kind, "backend", "认不出这一槽是哪一类字节（{t}）");
+            key_of("Linux", arch).unwrap_or_else(|r| panic!("{t}：{r:?}"))
         };
         slots.push(slot);
     }
     let mut seen = BTreeSet::new();
     let mut doubled = BTreeSet::new();
-    for (p, key) in &slots {
-        if !seen.insert((*p == Product::Backend, *key)) {
-            doubled.insert((*p == Product::Backend, *key));
+    for key in &slots {
+        if !seen.insert(*key) {
+            doubled.insert(*key);
         }
     }
-    let expected_doubled: BTreeSet<(bool, Key)> = if native_key.os == Os::Linux {
-        [(true, native_key), (false, native_key)]
-            .into_iter()
-            .collect()
+    let expected_doubled: BTreeSet<Key> = if native_key.os == Os::Linux {
+        [native_key].into_iter().collect()
     } else {
         BTreeSet::new()
     };
     assert_eq!(
         doubled, expected_doubled,
-        "一格两槽的名单变了 —— 只许本机原生那两槽在 Linux 构建上与 musl 同格（第一条）"
+        "一格两槽的名单变了 —— 只许本机原生那一槽在 Linux 构建上与 musl 同格（第一条）"
     );
     // 每个槽的键都在表 A 的产线里（槽挂在一个没有产线的键上 = 那一格的字节永远没人选）。
-    for (p, key) in &slots {
+    for key in &slots {
         assert!(
-            LINES.contains(&(*p, *key)),
-            "{p:?} {key:?} 有一槽字节，而 `LINES` 说那一格没有产线"
+            LINES.contains(key),
+            "{key:?} 有一槽字节，而 `LINES` 说那一格没有产线"
         );
     }
 }
@@ -456,12 +418,12 @@ fn byte_table_is_the_only_home_of_embedded_executables() {
 
 /// B3：`LINES`（表 A 里有产线的格子）== `release.yml` 真编得出字节的那几格（**异源**：读发版流水线）。
 ///
-/// 读法：`Cross-compile backend|panorama for both musl targets` 那两步里的 `--target <arch>-unknown-linux-musl` ⇒ (类, Linux, arch)；
-/// `runs-on: windows-latest` 那个 job 里名为 `Stage native <类> for self-extract` 的步 ⇒ (类, Windows, x86_64)。
+/// 读法：`Cross-compile backend for both musl targets` 那一步里的 `--target <arch>-unknown-linux-musl` ⇒ (Linux, arch)；
+/// `runs-on: windows-latest` 那个 job 里名为 `Stage native backend for self-extract` 的步 ⇒ (Windows, x86_64)。
 #[test]
 fn lines_are_exactly_what_the_release_pipeline_builds() {
     let yml = read(".github/workflows/release.yml");
-    let mut built: BTreeSet<(bool, Key)> = BTreeSet::new();
+    let mut built: BTreeSet<Key> = BTreeSet::new();
     // 按 job 切：顶层 job 以两格缩进的 `<名>:` 起头。
     let mut jobs: Vec<String> = Vec::new();
     let mut in_jobs = false;
@@ -489,26 +451,21 @@ fn lines_are_exactly_what_the_release_pipeline_builds() {
         let windows = job.contains("runs-on: windows-latest");
         for step in job.split("- name:").skip(1) {
             let name = step.lines().next().unwrap_or_default().trim();
-            for (label, backend) in [("backend", true), ("panorama", false)] {
-                if name == format!("Cross-compile {label} for both musl targets") {
-                    for l in step.lines() {
-                        if let Some(rest) = l.split("--target ").nth(1) {
-                            let triple = rest.split_whitespace().next().unwrap_or_default();
-                            let arch = triple.split('-').next().unwrap_or_default();
-                            built.insert((backend, key_of("Linux", arch).expect(triple)));
-                        }
+            if name == "Cross-compile backend for both musl targets" {
+                for l in step.lines() {
+                    if let Some(rest) = l.split("--target ").nth(1) {
+                        let triple = rest.split_whitespace().next().unwrap_or_default();
+                        let arch = triple.split('-').next().unwrap_or_default();
+                        built.insert(key_of("Linux", arch).expect(triple));
                     }
                 }
-                if windows && name == format!("Stage native {label} for self-extract") {
-                    built.insert((backend, k(Os::Windows, Arch::X86_64)));
-                }
+            }
+            if windows && name == "Stage native backend for self-extract" {
+                built.insert(k(Os::Windows, Arch::X86_64));
             }
         }
     }
-    let lines: BTreeSet<(bool, Key)> = LINES
-        .iter()
-        .map(|(p, key)| (*p == Product::Backend, *key))
-        .collect();
+    let lines: BTreeSet<Key> = LINES.iter().copied().collect();
     assert_eq!(
         lines, built,
         "`byte_table::LINES` 与 `release.yml` 的产线对不上（左：表；右：流水线）"
@@ -557,13 +514,11 @@ fn musl_bytes_only_ever_land_on_linux_cells() {
     for os in [Os::Linux, Os::Windows, Os::Mac] {
         for arch in [Arch::X86_64, Arch::Aarch64] {
             let key = k(os, arch);
-            for product in [Product::Backend, Product::Panorama] {
-                if os != Os::Linux && Some(key) != native {
-                    assert!(
-                        pick(product, key).is_none(),
-                        "{product:?} {key:?}：非 Linux、也不是这一份产物自己那一格，却给出了字节"
-                    );
-                }
+            if os != Os::Linux && Some(key) != native {
+                assert!(
+                    pick(key).is_none(),
+                    "{key:?}：非 Linux、也不是这一份产物自己那一格，却给出了字节"
+                );
             }
         }
     }
@@ -578,9 +533,10 @@ fn musl_bytes_only_ever_land_on_linux_cells() {
             "musl 那几槽在一条不是 Linux 的臂里被取了：{line}"
         );
     }
-    assert!(
-        body.lines().filter(|l| l.contains("musl_")).count() >= 2,
-        "pick 里一处 musl 都没找到 —— 切歪了"
+    assert_eq!(
+        body.lines().filter(|l| l.contains("musl_")).count(),
+        1,
+        "pick 里 musl 那一臂应当恰好一行 —— 切歪了"
     );
 }
 

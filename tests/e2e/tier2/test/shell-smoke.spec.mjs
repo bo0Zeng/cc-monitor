@@ -4,10 +4,9 @@
 //   1. 壳元素存在：#app / #tab-bar / #message-stream / #status-bar
 //   2. 状态栏文案：.status-msg 含「等待活跃」、.status-count 含「活跃 0」、
 //      .empty-state 可见含「暂无活跃会话」
-//   3. 5 顶栏钮 + .status-cmdk 存在且可点（isClickable，不实际点——避免开窗/弹层副作用）
+//   3. 4 顶栏钮 + .status-cmdk 存在且可点（isClickable，不实际点——避免开窗/弹层副作用）
 //   4. overlay 快捷键（物理码，dispatcher 按 KeyboardEvent.code 归一）：
 //        KeyH → 历史 overlay 出现；Escape → 关；
-//        KeyG → 全景 overlay 显示；Escape → 隐；
 //        Ctrl+KeyK → 命令栏出现；Escape → 关。
 //
 // 键盘用 browser.keys（真 WebDriver Actions），比 execute 合成事件更强的活证。
@@ -32,7 +31,6 @@ const SHELL = ["#app", "#tab-bar", "#message-stream", "#status-bar"];
 const TOPBAR = [
   ".settings-trigger",
   ".history-trigger",
-  ".panorama-trigger",
   ".grid-monitor-trigger",
   ".sftp-trigger",
   ".status-cmdk",
@@ -97,7 +95,7 @@ describe("F-E5a cc-monitor 裸壳 DOM 冒烟", () => {
     expect(emptyText).toContain("暂无活跃会话");
   });
 
-  it("3) 5 顶栏钮 + status-cmdk 存在且可点", async () => {
+  it("3) 4 顶栏钮 + status-cmdk 存在且可点", async () => {
     for (const sel of TOPBAR) {
       const el = $(sel);
       const exists = await el.isExisting();
@@ -117,16 +115,6 @@ describe("F-E5a cc-monitor 裸壳 DOM 冒烟", () => {
     await $(".history-view").waitForExist({ reverse: true, timeout: 8000, timeoutMsg: "Escape 未关历史" });
     console.log("[E5a] Escape → .history-view existing =", await $(".history-view").isExisting());
     expect(await $(".history-view").isExisting()).toBe(false);
-  });
-
-  it("4b) KeyG 开全景 overlay，Escape 隐", async () => {
-    await browser.keys(["g"]);
-    await $(".panorama-view").waitForDisplayed({ timeout: 8000, timeoutMsg: "KeyG 未显全景" });
-    console.log("[E5a] KeyG → .panorama-view displayed =", await $(".panorama-view").isDisplayed());
-    await browser.keys([Key.Escape]);
-    await $(".panorama-view").waitForDisplayed({ reverse: true, timeout: 8000, timeoutMsg: "Escape 未隐全景" });
-    console.log("[E5a] Escape → .panorama-view displayed =", await $(".panorama-view").isDisplayed());
-    expect(await $(".panorama-view").isDisplayed()).toBe(false);
   });
 
   it("4c) Ctrl+KeyK 开命令栏，Escape 关", async () => {

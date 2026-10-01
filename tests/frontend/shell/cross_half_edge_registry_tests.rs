@@ -305,13 +305,13 @@ fn every_non_literal_include_is_registered_with_a_reason() {
     /// 解析不出字面量路径的 `include_*!`：`(文件, 处数, 为什么不是跨界边)`。
     const NON_LITERAL_INCLUDES: &[(&str, usize, &str)] = &[(
         "src/frontend/shell/src/byte_table.rs",
-        4,
-        "`include_bytes!(concat!(env!(\"OUT_DIR\"), \"/backend-<arch>\" | \"/panorama-<arch>\"))` —— \
-             读的是 build script 放进 `OUT_DIR` 的**产物**（远端那两份 musl 后端 · 全景小程序两份 musl），\
+        2,
+        "`include_bytes!(concat!(env!(\"OUT_DIR\"), \"/backend-<arch>\"))` —— \
+             读的是 build script 放进 `OUT_DIR` 的**产物**（远端那两份 musl 后端），\
              不是对面那一半的**源码** ⇒ 不属两半编译期互咬。\
              ⚠ 但它确实是一条编译期边：`OUT_DIR` 里没有那个文件就编不过 —— \
-             那条边由 `build.rs`（`embedded_backends` / `embedded_panoramas` 两个 cfg）与 `shared_crate_registry` 的 CI 步骤那侧管。\
-             〔从前这四处分住 `sftp.rs`（后端 2）与 `panorama_bytes.rs`（全景 2），全仓唯一的取字节口立起来之后收进这一份。〕",
+             那条边由 `build.rs`（`embedded_backends` 那个 cfg）与 `shared_crate_registry` 的 CI 步骤那侧管。\
+             〔从前这两处住 `sftp.rs`，全仓唯一的取字节口立起来之后收进这一份。〕",
     )];
     let mut found: Vec<(String, usize)> = Vec::new();
     let mut total_invocations = 0usize;

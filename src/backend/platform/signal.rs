@@ -72,32 +72,6 @@ pub(crate) fn send_sigusr1(pid: u32) -> bool {
     }
 }
 
-/// 给**整个进程组** `pgid` 发 `SIGKILL`。返回是否发成功。
-///
-/// 谁要它：`plugin::invoke::run_abortable` —— 调用方放弃等待时，要连同 `timeout(1)` 前缀
-/// 起的那个孙进程一起收掉（只杀直接子进程会留下干活的那一个）。组是起的时候自己立的
-/// （`detach::detach` 那一格），组号 == 子进程 pid。
-///
-/// **非 Unix 上恒返回 `false`**（保守方向，同 [`send_sigusr1`]）：那边没有「一组」这一格，
-/// 调用方另有 `kill_on_drop` 杀直接子进程，本函数发不出去就当没发。
-///
-/// # SAFETY
-///
-/// `killpg` 是 async-signal-safe 的 libc 调用。**调用方必须保证那个组还是它立的那一个** ——
-/// 组长 pid 在被收尸之前不会被复用（`run_abortable` 只在收尸之前开这一枪）。
-pub(crate) fn kill_group(pgid: u32) -> bool {
-    #[cfg(unix)]
-    {
-        // SAFETY: 见头注 —— 组号的来历由调用方保证，这里只做系统调用。
-        unsafe { libc::killpg(pgid as libc::pid_t, libc::SIGKILL) == 0 }
-    }
-    #[cfg(not(unix))]
-    {
-        let _ = pgid;
-        false
-    }
-}
-
 /// **一个要被停的进程的把手** —— 「请它收尾 → 宽限期内等 → 强杀」三步都经它（`control/resident.rs::stop_pid`）。
 /// Linux 是 pidfd：信号经它发、退出经它等，拿到把手之后 pid 被复用也打不到别人；Windows 是进程句柄（没有「请它收尾」那一格）。
 /// 只给一次性子命令用：带期限的等待登记在 `no_timer_guard::REGISTERED_ONE_SHOT_CLI_WAITS`。

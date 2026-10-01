@@ -20,11 +20,6 @@
 //!
 //! 回计划，一个字节都不写：放字节（mkdir · 原子上传 · 读回比对）与删旧落点 · 删残件仍是 monitor 经 `files` 链路做（SR1b 那条路不变）。
 //!
-//! # 帧命令 `deploy-slot`（同一家，第 ① 步单拿出来）
-//!
-//! 全景小程序推字节之前「那台要哪一格」：远端问 `uname`、本机取这台的键 → 表 A / 表 B → 这一版带没带（[`answer_slot`]）；
-//! `deploy-plan` 的第 ① 步走同一个 `slot_of`。monitor 只按答里那一格取字节。
-//!
 //! # 帧命令 `resident-verdict`（同一家）
 //!
 //! 远端常驻后端 hello 报的 build 比 monitor 手上这一版旧 ⇒ 换一次（[`resident_verdict`]）；monitor 只照做（`remote_resident::attach`）。
@@ -50,8 +45,7 @@ use std::pin::Pin;
 
 use copy_core::copy_text;
 use deploy_contract::{
-    Arch, DeployAction, Key, LegacyVerdict, Marks, Os, Product, Refusal, RemoteIdentity, Route,
-    LINES,
+    Arch, DeployAction, Key, LegacyVerdict, Marks, Os, Refusal, RemoteIdentity, Route, LINES,
 };
 use serde_json::{json, Value};
 
@@ -108,10 +102,10 @@ pub fn promised(route: Route, key: Key) -> bool {
 
 /// 拒绝点的前三步（在向目标机器写第一个字节之前）：键 → 产线 → 承诺。四形各在一步上，不合并；
 /// 第五形「这一版带没带」看放字节的一侧交来的事实（`carried`，[`slot_of`]）。
-pub fn judge(product: Product, route: Route, key: Result<Key, Refusal>) -> Result<Key, Refusal> {
+pub fn judge(route: Route, key: Result<Key, Refusal>) -> Result<Key, Refusal> {
     let key = key?;
     let (os, arch) = (key.os.label().to_string(), key.arch.label().to_string());
-    if !LINES.contains(&(product, key)) {
+    if !LINES.contains(&key) {
         return Err(Refusal::UnsupportedMachine { os, arch });
     }
     if !promised(route, key) {
@@ -339,45 +333,30 @@ async fn identity_at(facing: &dyn Facing, rel: &str, word: &str) -> Result<Remot
     })
 }
 
-/// **那台要哪一格字节** —— 部署计划的第 ① 步，两件产物共用（`deploy-plan` 与 `deploy-slot` 都走它）。
+/// **那台要哪一格字节** —— 部署计划的第 ① 步。
 ///
-/// 远端（有 `facing`）：问 `uname -s -m`（[`deploy_contract::key_from_uname`]）；本机（`None`）：这台自己的键（`Key::this_machine`，
-/// 规矩 4：本机只是「目标机器恰好是自己」）。→ 表 A / 表 B（[`judge`]）→ 这一版带没带那一格（`carried`）。
-/// 拒绝点在写第一个字节之前；回那一格与问 `uname` 那一趟拨号的 ack（本机 `Null`）。
+/// 问 `uname -s -m`（[`deploy_contract::key_from_uname`]）→ 表 A / 表 B（[`judge`]）→ 这一版带没带那一格（`carried`）。
+/// 拒绝点在写第一个字节之前；回那一格与问 `uname` 那一趟拨号的 ack。
 async fn slot_of(
-    facing: Option<&dyn Facing>,
-    product: Product,
+    facing: &dyn Facing,
     carried: &[Key],
     machine: &str,
 ) -> Result<(Key, Value), (&'static str, String)> {
-    let said = |r: Refusal| ("refused", r.say(product, machine));
-    let (raw, route, ack) = match facing {
-        Some(f) => {
-            let (got, ack) = f
-                .exec(deploy_contract::UNAME_CMD.to_string())
-                .await
-                .map_err(|e| {
-                    let said = match product {
-                        Product::Backend => copy_text(
-                            "rsSftp.deploy.unameFailed",
-                            &[("machine", machine), ("e", &e)],
-                        ),
-                        Product::Panorama => copy_text(
-                            "beDeploySlot.uname.failed",
-                            &[("machine", machine), ("e", &e)],
-                        ),
-                    };
-                    ("unreachable", said)
-                })?;
+    let said = |r: Refusal| ("refused", r.say(machine));
+    let (got, ack) = facing
+        .exec(deploy_contract::UNAME_CMD.to_string())
+        .await
+        .map_err(|e| {
             (
-                deploy_contract::key_from_uname(got.exit_status, &got.stdout, &got.stderr),
-                Route::Remote,
-                ack,
+                "unreachable",
+                copy_text(
+                    "rsSftp.deploy.unameFailed",
+                    &[("machine", machine), ("e", &e)],
+                ),
             )
-        }
-        None => (Key::this_machine(), Route::Local, Value::Null),
-    };
-    let key = judge(product, route, raw).map_err(said)?;
+        })?;
+    let raw = deploy_contract::key_from_uname(got.exit_status, &got.stdout, &got.stderr);
+    let key = judge(Route::Remote, raw).map_err(said)?;
     if !carried.contains(&key) {
         return Err(said(Refusal::NotCarried {
             os: key.os.label().to_string(),
@@ -395,7 +374,7 @@ pub async fn plan(
     now_secs: u64,
 ) -> Result<Plan, (&'static str, String)> {
     let keys: Vec<Key> = carried.iter().map(|(k, _)| *k).collect();
-    let (key, ack) = slot_of(Some(facing), Product::Backend, &keys, machine).await?;
+    let (key, ack) = slot_of(facing, &keys, machine).await?;
     let expected = carried
         .iter()
         .find(|(k, _)| *k == key)
@@ -666,47 +645,6 @@ fn retired_json(r: Retired) -> Value {
     }
 }
 
-// ═══ 那台要哪一格（帧命令 `deploy-slot`）═══════════════════════════════════════════
-//
-// 全景小程序推字节之前那一问（表 A / 表 B 的承诺是裁决 ⇒ 住后端；monitor 只按答里那一格取字节）。
-// 从前 monitor 自己问 `uname`（`byte_table::probe_key`〔散文墓碑〕）再 `choose`；今天远端本机两形都问本机常驻后端。
-
-/// 帧面入口：`{product, machine, carried: [{os, arch}], dial?}` → `{os, arch, label, ack}`。有 `dial` ⇒ 那台远端；没有 ⇒ 本机。
-pub async fn answer_slot(
-    args: &Value,
-    facing: Option<&dyn Facing>,
-) -> Result<Value, (&'static str, String)> {
-    let bad = |m: &str| ("bad_args", crate::common::contract::malformed(m));
-    let product = args
-        .get("product")
-        .and_then(Value::as_str)
-        .and_then(Product::of_wire)
-        .ok_or_else(|| bad("`product` must be `backend` or `panorama`"))?;
-    let machine = args
-        .get("machine")
-        .and_then(Value::as_str)
-        .filter(|m| !m.trim().is_empty())
-        .ok_or_else(|| bad("missing `machine` (string)"))?;
-    let carried: Vec<Key> = args
-        .get("carried")
-        .and_then(Value::as_array)
-        .ok_or_else(|| bad("missing `carried` (array)"))?
-        .iter()
-        .map(|r| {
-            let s = |k: &str| r.get(k).and_then(Value::as_str).unwrap_or("");
-            deploy_contract::key_of(s("os"), s("arch"))
-                .map_err(|_| bad("`carried` row names a machine outside table A"))
-        })
-        .collect::<Result<_, _>>()?;
-    let (key, ack) = slot_of(facing, product, &carried, machine).await?;
-    Ok(json!({
-        "os": key.os.label(),
-        "arch": key.arch.label(),
-        "label": key.label(),
-        "ack": ack,
-    }))
-}
-
 // ═══ 远端常驻后端 hello 的新旧（帧命令 `resident-verdict`）═══════════════════════════
 //
 // monitor 接远端常驻后端时读到 hello，从前自己判「那台比手上这一版旧 ⇒ 换一次」（`is_newer`）；
@@ -777,8 +715,7 @@ pub fn place_verdict(
     machine: &str,
     dest: &str,
 ) -> Result<Placed, (&'static str, String)> {
-    judge(Product::Backend, Route::Local, me)
-        .map_err(|r| ("refused", r.say(Product::Backend, machine)))?;
+    judge(Route::Local, me).map_err(|r| ("refused", r.say(machine)))?;
     let id = match disk {
         Ok(None) => RemoteIdentity::Missing,
         Ok(Some(b)) => deploy_contract::identity_of_bytes(&b, MARKS),

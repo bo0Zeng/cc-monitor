@@ -1103,52 +1103,6 @@ async fn the_session_tasks_stream_carries_the_sid_that_changed_and_nothing_else(
     assert_eq!(got, vec![(1, serde_json::json!({"sid": "s1"}))]);
 }
 
-/// 要求：「要上游给的」④「插件口转订阅流」· 「长活要有进度」。
-///
-/// `progress/<票>` 流：**那台**机器的后端推来一格 ⇒ 只有订了那台、那张票的收，体原样（monitor 不解释）；
-/// 别台同票 · 同台别票都不收；本机远端同一个口（这里拿远端那台演）。空票那一形订不上。期望手写。
-#[tokio::test]
-async fn the_progress_stream_carries_the_cell_to_that_machines_ticket_only() {
-    let (r, rec) = hub();
-    let local = crate::origin::Origin::local();
-    let box_a = crate::origin::Origin("box-a".into());
-    r.subscribe("w", 1, &box_a, "progress/t-1", None, 4);
-    r.subscribe("w", 2, &box_a, "progress/t-2", None, 4);
-    r.subscribe("w", 3, &local, "progress/t-1", None, 4);
-    rec.clear();
-    r.subscribe("w", 4, &box_a, "progress/", None, 4);
-    let refused =
-        rec.0.lock().unwrap().iter().any(|(_, id, items)| {
-            *id == 4 && items.iter().any(|i| matches!(i, WItem::Closed { .. }))
-        });
-    assert!(refused, "空票那一形该当场说没有这条流");
-    rec.clear();
-    r.on_progress(
-        &box_a,
-        "t-1",
-        r#"{"phase":"Parse","done":1,"total":2}"#.to_string(),
-    );
-    let got: Vec<(u64, serde_json::Value)> = rec
-        .0
-        .lock()
-        .unwrap()
-        .iter()
-        .flat_map(|(_, id, items)| {
-            items.iter().filter_map(move |i| match i {
-                WItem::Frame { body, .. } => Some((*id, serde_json::from_slice(&body.0).unwrap())),
-                _ => None,
-            })
-        })
-        .collect();
-    assert_eq!(
-        got,
-        vec![(
-            1,
-            serde_json::json!({"phase": "Parse", "done": 1, "total": 2})
-        )]
-    );
-}
-
 /// 〔「测试连接的进度不许倒退」〕`probe-progress/<票>` 流：本机后端推来一格 ⇒ 只有订了**那张票**的收、
 /// 体原样（monitor 不解释）；别的票 · 别台同名 · 空票都不收（空票那一形订不上：`no-such-stream`）。期望手写。
 #[tokio::test]

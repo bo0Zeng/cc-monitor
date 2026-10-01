@@ -183,9 +183,6 @@ const MUTATORS = new Set(["set", "add", "delete", "clear"]);
 /** `(文件, 所在声明)` —— 今天对这几个名字的全部写者，逐条写理由。 */
 const FACT_WRITERS: ReadonlyArray<readonly [string, string, string]> = [
   ["src/frontend/ui/tab-session-facts.ts", "applyFacts", "后端成品的投影：三样整份替换（唯一的正门）"],
-  ["src/frontend/ui/views/panorama.ts", "PanoramaView.load", "同名不同物：全景图自己的高亮态（`this.touchedFiles`，null = 不高亮），换仓时清掉"],
-  ["src/frontend/ui/views/panorama.ts", "PanoramaView.highlightSession", "同名不同物：同上，按 `touching` 命中的符号派生出来的高亮集（`touchedFiles`）"],
-  ["src/frontend/ui/views/panorama.ts", "PanoramaView.clearHighlight", "同名不同物：同上，取消高亮"],
 ];
 
 /** 一个节点所在的「顶层声明 / 类方法」名（类成员记成 `类.成员`）。 */

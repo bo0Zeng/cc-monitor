@@ -55,12 +55,6 @@ const NOT_ON_CLI: &[(&str, &str)] = &[
         "ext-hub-apply",
         "同 `ext-hub-preview`：两头都要经本进程的可达表够到 ⇒ 只上帧面（`STREAM_ONLY`）。",
     ),
-    // 卸全景小程序：机器页上点的破坏性动作。
-    (
-        "panorama-uninstall",
-        "它是界面在机器页上点、二次确认过的破坏性动作（删 `~/.cc-monitor/bin` 里那份小程序）；第三方 skill 没有卸它的理由，\
-         开 CLI 口只多一个不经确认就能删文件的入口 ⇒ 只上帧面（`STREAM_ONLY`）。",
-    ),
     // 起会话要的 tmux 名。
     (
         "tmux-name-mint",
@@ -362,8 +356,6 @@ fn the_no_input_commands_are_registered_and_declared_consistently() {
         "ssh-config-import",
         // 这台的 cc-bus 钩子诊断：无入参（问的就是「这台」）。
         "hooks-diag",
-        // 卸这台的全景小程序：无入参（落点固定）。
-        "panorama-uninstall",
     ];
     let declared: Vec<&str> = REGISTRY
         .iter()

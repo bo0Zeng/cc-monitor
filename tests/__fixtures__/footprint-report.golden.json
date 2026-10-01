@@ -86,22 +86,6 @@
     },
     {
       "effect_label": "整个文件由 cc-monitor 拥有，部署时整体覆盖",
-      "host_label": "远端",
-      "installable": true,
-      "note": "只推给开过远端代码全景的机器；经那台的后端写，写完读回来逐字节比对",
-      "path_declared": "~/.cc-monitor/bin/cc-monitor-panorama",
-      "path_resolved": "/nonexistent-footprint-golden/.cc-monitor/bin/cc-monitor-panorama",
-      "source_label": "随 cc-monitor 一起安装的程序",
-      "state": {
-        "kind": "absent"
-      },
-      "tier": "AppInstalls",
-      "tool_id": "panorama",
-      "tool_name": "代码全景组件",
-      "uninstallable": true
-    },
-    {
-      "effect_label": "整个文件由 cc-monitor 拥有，部署时整体覆盖",
       "host_label": "项目目录",
       "installable": true,
       "note": "相对你选定的项目目录",

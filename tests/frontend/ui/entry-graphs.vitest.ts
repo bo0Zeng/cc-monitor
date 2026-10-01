@@ -106,7 +106,6 @@ const FORBIDDEN_IN_VIEWER: readonly { pat: string; what: string }[] = [
   { pat: "src/frontend/ui/settings/panel.ts", what: "设置面板" },
   { pat: "src/frontend/ui/keybindings/editor.ts", what: "键位编辑器（设置面板的一节）" },
   { pat: "src/frontend/ui/views/history.ts", what: "历史视图" },
-  { pat: "src/frontend/ui/views/panorama.ts", what: "代码全景" },
   { pat: "src/frontend/ui/views/grid-monitor.ts", what: "网格监控" },
   { pat: "src/frontend/ui/views/command-bar.ts", what: "命令栏" },
   { pat: "src/frontend/ui/views/cc-bus-view.ts", what: "cc-bus 视图" },
@@ -271,7 +270,7 @@ describe("三入口 · 模块图零命中（对构建产物）", () => {
     console.log(`  ok   entry-graphs  settings 闭包 ${mods.size} 个模块，${FORBIDDEN_IN_SETTINGS.length} 个禁止模式零命中`);
   });
 
-  it("🔴 viewer 窗：没有设置面板 / 历史 / 全景 / 网格 / 命令栏", () => {
+  it("🔴 viewer 窗：没有设置面板 / 历史 / 网格 / 命令栏", () => {
     const mods = CLOSURES.viewer.modules;
     const leaked = FORBIDDEN_IN_VIEWER.flatMap((f) => hit(mods, f.pat).map((m) => `${f.what}：${m}`));
     expect(leaked, "viewer 窗的模块图里混进了不该有的东西（只含 tab 管理 ＋ 渲染栈）").toEqual([]);
@@ -285,7 +284,7 @@ describe("三入口 · 模块图零命中（对构建产物）", () => {
 // 下面三条都从那份清单出发：
 //   ① 清单自洽 —— `layers.css` 排第一（它定层的先后）、每个 `src/**/*.css` 至少被一个窗口链到；
 //   ② 🔴 零命中（对**构建产物**的 CSS）—— 设置窗的 CSS 里没有高亮 / 数学 / tab / 卡片 / 流；
-//      viewer 的 CSS 里没有设置面板 / 历史视图 / 全景 / 网格 / 命令栏；
+//      viewer 的 CSS 里没有设置面板 / 历史视图 / 网格 / 命令栏；
 //   ③ 完整性 —— 窗口模块图里的代码**挂得上**的类，它在 CSS 里的每一条规则都在这个窗口的清单里
 //      （拆文件最怕的就是「某个窗口少链了一份，样式静默没了」）。
 //
@@ -497,7 +496,7 @@ function builtClasses(win: Win): Set<string> {
 /** 设置窗的 CSS 里不许出现的类族（前缀；`^tab$` 这种精确名也按前缀写，靠 `-` 边界区分）。 */
 const CSS_FORBIDDEN_IN_SETTINGS = ["hljs", "katex", "tab", "card", "code-block", "code-copy", "stream", "block-", "branch-fold", "live-dot"];
 /** viewer 的 CSS 里不许出现的类族。 */
-const CSS_FORBIDDEN_IN_VIEWER = ["settings-panel", "settings-body", "kb-editor", "history-view", "history-entry", "panorama-canvas", "grid-monitor-cell", "command-bar", "ext-", "accounts-row"];
+const CSS_FORBIDDEN_IN_VIEWER = ["settings-panel", "settings-body", "kb-editor", "history-view", "history-entry", "grid-monitor-cell", "command-bar", "ext-", "accounts-row"];
 function familyHits(classes: Set<string>, fam: string): string[] {
   return [...classes].filter((c) => (fam.endsWith("-") ? c.startsWith(fam) : c === fam || c.startsWith(`${fam}-`)));
 }
@@ -533,7 +532,7 @@ describe("子步 2 · CSS 按窗口拆（清单 ＝ 各 html 的 <link> 列表�
     expect(leaked, "设置窗的 CSS 里混进了渲染栈 / tab 管理的样式").toEqual([]);
   });
 
-  it("🔴 viewer 的构建产物 CSS：没有设置面板 / 历史视图 / 全景 / 网格 / 命令栏", () => {
+  it("🔴 viewer 的构建产物 CSS：没有设置面板 / 历史视图 / 网格 / 命令栏", () => {
     const got = builtClasses("viewer");
     expect(got.size, "viewer 的构建 CSS 一个类都没读到 —— 零命中不作数").toBeGreaterThan(200);
     const leaked = CSS_FORBIDDEN_IN_VIEWER.flatMap((f) => familyHits(got, f));

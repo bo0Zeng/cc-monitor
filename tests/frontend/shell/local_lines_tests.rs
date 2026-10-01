@@ -190,11 +190,6 @@ const FRAMES: &[(&str, &str)] = &[
         "probe",
         r#"{"kind":"probe","ticket":"no-such-ticket","cell":{"reached":"ssh"}}"#,
     ),
-    // 本机那一趟建索引的进度格 —— 交回读循环（本机消费者交重放缓冲那张订阅表，与远端同一个口）。
-    (
-        "progress",
-        r#"{"kind":"progress","ticket":"no-such-ticket","cell":{"phase":"Parse","done":0,"total":1}}"#,
-    ),
     // 中转抄出来的 SSE 事件 —— 不是会话内容（jsonl 才是），就地转给前端，不进内容通道。
     (
         "tap",
@@ -238,7 +233,6 @@ fn the_absorb_point_hands_back_exactly_the_content_and_lifecycle_frames() {
                     | (&"session_status", InboundFrame::SessionStatus { .. })
                     | (&"sessions_replayed", InboundFrame::SessionsReplayed)
                     | (&"tasks_changed", InboundFrame::TasksChanged { .. })
-                    | (&"progress", InboundFrame::Progress { .. })
                     | (&"session_runs", InboundFrame::SessionRuns { .. })
                     | (
                         &("session_file_gone" | "session_file_reread"),
@@ -263,8 +257,6 @@ fn the_absorb_point_hands_back_exactly_the_content_and_lifecycle_frames() {
             "session_file_reread",
             // 任务清单变了（本机消费者交重放缓冲那张订阅表）。
             "tasks_changed",
-            // 建索引的进度格（同上，交 `on_progress`）。
-            "progress",
             // 运行表（会话成品，交会话账）。
             "session_runs",
         ]
