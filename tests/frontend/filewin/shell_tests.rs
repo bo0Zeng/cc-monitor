@@ -2561,6 +2561,15 @@ async fn a_lossy_directory_is_entered_and_everything_inside_is_addressed_by_its_
     assert_eq!(w.cwd_raw.as_deref(), Some(&b"/srv/d\xff"[..]));
     wait_for(&wired, "files-ls", before + 1).await;
     assert_eq!(last_args(&wired, "files-ls")["path"], b16(b"/srv/d\xff"));
+    // 先等这一趟列目录的应答落地：它晚到的话会盖掉下面摆进去的那一行（慢的机器上真发生过）。
+    for _ in 0..600 {
+        if !w.listing.is_loading() {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+    }
+    assert!(!w.listing.is_loading(), "等了 3 秒目录还没列完");
+    *w.listing.error.lock().unwrap() = None;
     // 里面一个有损名文件。
     let file = Listed {
         raw_name: Some(b"f\xfe".to_vec()),
