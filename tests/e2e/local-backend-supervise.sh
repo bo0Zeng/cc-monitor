@@ -38,13 +38,12 @@
 # 跑法：bash tests/e2e/local-backend-supervise.sh   （npm run test:local-backend）
 set -uo pipefail
 
-# `C7i` 隔离：走**共享原语**（`P0e` 08-12）。shim 强插 `-L e2eLocalBackend`。
+# `C7i` 隔离：走**共享原语**（`P0e` 08-12）。shim 强插 `-L <本趟私有名>`。
 # ⚠⚠ 本套件与别的不同：它还要把隔离**传给被监护的 backend**（backend 自己会跑 `tmux ls`）。
 #   原来传的是 `TMUX_TMPDIR` —— 而 `$TMUX` 一有值就会压过它（08-11 事故的机制）。
 #   ⇒ 改传 **shim 目录**：backend 的 PATH 前面挂上它，它 shell out 的 tmux 一样被强插 `-L`。
-TMUX_SHIM_SOCK=e2eLocalBackend
 # shellcheck source=tests/e2e/tmux-shim.sh
-. "$(cd "$(dirname "$0")" && pwd)/tmux-shim.sh"
+. "$(cd "$(dirname "$0")" && pwd)/tmux-shim.sh" e2eLocalBackend
 E2E_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(cd "$E2E_DIR/../.." && pwd)"
 BACKEND="${CCM_E2E_BACKEND:-$REPO/.build/backend/debug/cc-monitor-backend}"

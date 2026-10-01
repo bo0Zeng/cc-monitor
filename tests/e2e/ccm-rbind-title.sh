@@ -24,13 +24,11 @@ bad() { FAIL=$((FAIL+1)); printf '  FAIL %s\n     %s\n' "$1" "${2:-}"; }
 
 # ① unset TMUX：从 tmux 里跑时 $TMUX 会让客户端连**外层那台 server** 并忽略 TMUX_TMPDIR。
 # ② TMUX_TMPDIR 必须短：unix socket 路径上限 108 字节。
-# `C7i` 隔离：走**共享原语**（`P0e` 08-12）。shim 强插 `-L e2eRbind`，漏什么环境变量都打不偏。
+# `C7i` 隔离：走**共享原语**（`P0e` 08-12）。shim 强插 `-L <本趟私有名>`，漏什么环境变量都打不偏。
 # ⚠ 此前靠 `TMUX_TMPDIR`，那是 `C7i` 逐字禁止的形态（08-11 同形态探针打没了用户 9 个真实会话）。
-TMUX_SHIM_SOCK=e2eRbind
 # shellcheck source=tests/e2e/tmux-shim.sh
-. "$(cd "$(dirname "$0")" && pwd)/tmux-shim.sh"
-SOCK=(-L e2e-rbind)
-cleanup() { tmux "${SOCK[@]}" kill-server 2>/dev/null || true; rm -rf; }
+. "$(cd "$(dirname "$0")" && pwd)/tmux-shim.sh" e2eRbind
+cleanup() { tmux_shim_cleanup; }
 trap cleanup EXIT
 
 SID="9d66c46d-bf88-4f99-877e-455555555555"
@@ -47,20 +45,20 @@ FMT="$(sed -n 's/^pub(crate) const TERMINAL_BIND_TITLE_FORMAT: &str = "\(.*\)";$
 [ -n "$FMT" ] && ok "从 ccm::TERMINAL_BIND_TITLE_FORMAT 读到 format：$FMT" \
   || { bad "读不到 TERMINAL_BIND_TITLE_FORMAT" "那个 const 改形状了？住址 $CCM_SRC"; echo "FAIL=$FAIL"; exit 1; }
 
-tmux "${SOCK[@]}" new-session -d -s probe -x 80 -y 24
-tmux "${SOCK[@]}" set-option -t probe set-titles on
-tmux "${SOCK[@]}" set-option -t probe set-titles-string "$FMT"
-title() { tmux "${SOCK[@]}" display-message -p -t probe "$FMT"; }
+tmux new-session -d -s probe -x 80 -y 24
+tmux set-option -t probe set-titles on
+tmux set-option -t probe set-titles-string "$FMT"
+title() { tmux display-message -p -t probe "$FMT"; }
 
 echo "== 1. @ccm_sid 还没回填时回退 pane 标题（不产出空的 ccm-rbind-） =="
-tmux "${SOCK[@]}" select-pane -t probe -T "plain-shell"
+tmux select-pane -t probe -T "plain-shell"
 [ "$(title)" = "plain-shell" ] && ok "回退到 #T" || bad "回退" "got: $(title)"
 case "$(title)" in ccm-rbind-) bad "产出了空 marker";; *) ok "没有产出空 marker";; esac
 
 echo "== 2. ★ 回填 sid 后，pane 标题被 claude 那种状态串冲掉也不影响 =="
-tmux "${SOCK[@]}" set-option -t probe @ccm_sid "$SID"
+tmux set-option -t probe @ccm_sid "$SID"
 for clobber in "⠐ 理解re-vendor的含义" "✳ Thinking…" "bash" ""; do
-  tmux "${SOCK[@]}" select-pane -t probe -T "$clobber"
+  tmux select-pane -t probe -T "$clobber"
   got="$(title)"
   [ "$got" = "ccm-rbind-$SID" ] \
     && ok "pane 标题=[${clobber:-<空>}] 时窗口标题仍是 marker" \
@@ -68,9 +66,9 @@ for clobber in "⠐ 理解re-vendor的含义" "✳ Thinking…" "bash" ""; do
 done
 
 echo "== 3. 反向自检：这条套件真的能红（把 format 换回 #T 就该失败） =="
-tmux "${SOCK[@]}" set-option -t probe set-titles-string "#T"
-tmux "${SOCK[@]}" select-pane -t probe -T "⠐ busy"
-[ "$(tmux "${SOCK[@]}" display-message -p -t probe '#T')" != "ccm-rbind-$SID" ] \
+tmux set-option -t probe set-titles-string "#T"
+tmux select-pane -t probe -T "⠐ busy"
+[ "$(tmux display-message -p -t probe '#T')" != "ccm-rbind-$SID" ] \
   && ok "用 #T 时确实拿不到 marker（判据有牙）" \
   || bad "反向自检失效" "用 #T 竟也拿到了 marker"
 

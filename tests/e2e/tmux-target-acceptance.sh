@@ -14,14 +14,18 @@ SP="$(mktemp -d)"
 trap 'rm -rf "$SP"' EXIT
 # 生产命令串来自**生产渲染链**（不手搓等价命令）——见 tmux-target-emit.mts 头注
 (cd "$REPO" && npx tsx tests/e2e/tmux-target-emit.mts) > "$SP/f01-cmds.tsv"
-SOCK=ccmF01
+# shellcheck source=tests/e2e/tmux-shim.sh
+. "$HERE/tmux-shim.sh" --names-only
+SOCK="$(e2e_run_name ccmF01)" || exit 2
 # 缺 tmux 必须硬失败（Phase G 审阅）：原先这行**完全没有守卫**，`TMUX_BIN` 会是空串，
-# shim 变成 `exec  -L ccmF01 "$@"`，套件在一堆看不懂的报错里跑，而不是明确说"需要 tmux"。
+# shim 变成 `exec  -L <私有名> "$@"`，套件在一堆看不懂的报错里跑，而不是明确说"需要 tmux"。
 TMUX_BIN="$(command -v tmux)" || { echo "需要 tmux"; exit 1; }
 SHIM="$SP/shim"; rm -rf "$SHIM"; mkdir -p "$SHIM"
 printf '#!/bin/sh\nexec %s -L %s "$@"\n' "$TMUX_BIN" "$SOCK" > "$SHIM/tmux"
 chmod +x "$SHIM/tmux"
 export PATH="$SHIM:$PATH"
+# 收尾只收自己这一趟那台（中途退出也收，别留一台孤儿 server）。
+trap '"$TMUX_BIN" -L "$SOCK" kill-server 2>/dev/null; rm -rf "$SP"' EXIT
 
 CMD() { grep -P "^$1\t" "$SP/f01-cmds.tsv" | cut -f2-; }
 T() { "$TMUX_BIN" -L "$SOCK" "$@"; }

@@ -26,7 +26,9 @@ command -v tmux >/dev/null 2>&1 || { echo "需要 tmux"; exit 1; }
 REALTMUX="$(command -v tmux)"
 
 W="$(mktemp -d /tmp/e2e-lateserver.XXXXXX)"
-SOCK="lateSrv$$"
+# shellcheck source=tests/e2e/tmux-shim.sh
+. "$REPO/tests/e2e/tmux-shim.sh" --names-only
+SOCK="$(e2e_run_name lateSrv)" || exit 2
 cleanup() {
   set +e
   "$REALTMUX" -L "$SOCK" kill-server 2>/dev/null

@@ -421,7 +421,10 @@ fn no_e2e_suite_isolates_with_tmux_tmpdir() {
         // 两个 fixture 会话落到了用户的默认 socket 上（事后按精确名字收回）。
         //
         // ⇒ 规则：**要么挂 shim（共享原语或自建），要么每一处都自带选择器**。
-        let uses_shared_shim = exec.iter().any(|l| l.contains("tmux-shim.sh"));
+        // `--names-only` 只取名字、不装 shim ⇒ 不算挂了共享原语（那样的套件要么自建 shim，要么每处自带选择器）。
+        let uses_shared_shim = exec
+            .iter()
+            .any(|l| l.contains("tmux-shim.sh") && !l.contains("--names-only"));
         // 自建 shim 的形状 = **两件事同时成立**：
         // ① 往一个**名为 `tmux` 的文件**里写；② 那个文件里 `exec` 时带选择器。
         //
@@ -467,7 +470,7 @@ fn no_e2e_suite_isolates_with_tmux_tmpdir() {
     assert!(
         bad.is_empty(),
         "这些套件的 tmux 隔离不合 `C7i`：\n{}\n\
-             ⇒ 改用共享原语 `tests/e2e/tmux-shim.sh`（`TMUX_SHIM_SOCK=<私有名>` + `.` 进来），\
+             ⇒ 改用共享原语 `tests/e2e/tmux-shim.sh`（`. tmux-shim.sh <前缀>` 进来），\
              它把 shim 放进 PATH 最前并**强插 `-L`** —— 调用点一个字都不用改。\n\
              ⚠ 裸调那几条同理：**要么挂 shim，要么每一处自带 `-L`/`-S`**。\n\
              08-13 实测过后果：fixture 会话建到了用户的默认 socket 上。",
@@ -497,6 +500,370 @@ fn the_tmux_shim_primitive_has_exactly_one_home() {
         guard_core::find_pinned(&shim, r#"-L "$TMUX_SHIM_SOCK" kill-server"#).is_ok(),
         "收尾必须自己带选择器收自己那台（`C7i`：`kill-server` 不许没有选择器）"
     );
+}
+
+/// 要求：两趟 e2e 同时跑（两棵工作树的门禁，或同一棵树的两次调用）互不打架 —— 私有 tmux socket、
+/// docker 网络与容器的名字一趟一个，只经共享原语 `tests/e2e/tmux-shim.sh` 的 `e2e_run_name` 取。
+///
+/// 写死的名字下，一边收尾的 `kill-server` / `docker rm` 打掉另一边正在跑的那趟，PASS 数随并发漂；
+/// 弱网台架的开跑残留检查还会因别棵树留下的同名容器红。
+///
+/// 判定（剥注释后的可执行行，`tests/e2e/` 整棵树，命中集 == ∅）：
+/// ① tmux 选择器后面（`-L` / `-S`）是字面量 —— 只放过 `-L default`：canary 问的正是用户那台默认 server；
+/// ② docker 的 `--name` / `--network` / `network create|rm` 后面是字面量 —— docker 自带的网络模式
+///    （`host` / `none` / `bridge`）不是私有名字，放过；
+/// ③ 名字变量（①② 位置上引用过的变量，加上名字里带 `sock` 的）被赋成字面量，
+///    或带字面量缺省值（`${X:-lit}` / `${X:=lit}`）—— 值必须从 `$` 起（原语、或别的名字变量派生）；
+///    名字带 `sock` 却赋成绝对路径的（X11 的 socket 文件）不是私有名字，放过；
+/// ④ JS 里 `"-L", "<字面量>"` 这一形；
+/// ⑤ `e2e_run_name()` 只定义在 `tmux-shim.sh` 一处，调了它的文件都 `.` 了那个原语。
+/// 正控：下面那几段合成语料，坏的每一段都必须被点名、好的一段都不许被点名。
+///
+/// 买不到：拼在运行期的名字（`$(echo lit)`、`printf` 拼串）——这条防手滑，不防故意绕。
+/// 射程只到 `tests/e2e/`；`tests/evidence/` 下的一次性量具自带名字，不在人群里。
+#[test]
+fn every_private_e2e_name_comes_from_the_one_primitive() {
+    let bad_corpus: &[(&str, &str)] = &[
+        ("t1.sh", "tmux -L e2eFoo ls\n"),
+        ("t2.sh", "\"$REALTMUX\" -S /tmp/x kill-server\n"),
+        ("t3.sh", "SOCK=p3tY5\n"),
+        ("t4.sh", "_GC_SOCK=\"e2eGray\"\n"),
+        ("t5.sh", "SOCK=(-L e2e-rbind)\n"),
+        ("t6.sh", ": \"${CCM_E2E_TMUX_SOCK:=e2eGray}\"\n"),
+        ("t7.sh", "TMUX_SHIM_SOCK=e2eGate2\n. \"$HERE/tmux-shim.sh\"\n"),
+        ("t8.sh", "NET=\"ccmon-weaknet-net\"\ndocker network create \"$NET\"\n"),
+        ("t9.sh", "docker run -d --name ccmon-x img sleep 1\n"),
+        ("t10.sh", "docker network create --internal ccmon-n\n"),
+        ("t11.mjs", "spawnSync(\"tmux\", [\"-L\", \"e2eX\", \"ls\"]);\n"),
+        ("t12.sh", "S=\"sockX\"\n\"$TMUX_BIN\" -L \"$S\" ls\n"),
+        ("t13.sh", "NET=\"${WEAKNET_NET:-ccmon-weaknet-net}\"\ndocker run --network \"$NET\" img\n"),
+        ("t14.sh", "local F=\"$W\" sock=lateSrv\n"),
+        ("t15.sh", "SOCK=\"$(e2e_run_name p3t)\"\n"),
+    ];
+    // 每段坏语料都配一份带定义的原语 ⇒ 点名只能来自那段语料自己（⑤ 不会替它们恒红）。
+    let shim_def = "e2e_run_name() {\n  printf x\n}\n";
+    for (name, src) in bad_corpus {
+        let hits = hardcoded_private_names(&[
+            (name.to_string(), src.to_string()),
+            ("tmux-shim.sh".to_string(), shim_def.to_string()),
+        ]);
+        assert!(
+            !hits.is_empty(),
+            "判定漏了一形（合成语料 {name}）：\n{src}"
+        );
+    }
+    let good = "\
+# tmux -L e2eGray 这是注释\n\
+# shellcheck source=tests/e2e/tmux-shim.sh\n\
+. \"$HERE/tmux-shim.sh\" --names-only\n\
+SOCK=\"$(e2e_run_name p3tY5)\" || exit 2\n\
+SOCK8=\"${SOCK}b\"\n\
+local F=\"$W/$label\" sock=\"$SOCK$label\"\n\
+_GC_SOCK=\"${CCM_E2E_TMUX_SOCK:-$(e2e_run_name e2eGray)}\"\n\
+[ -n \"${FAKE_BACKEND_TMUX_SOCK:-}\" ] || echo \"需要 FAKE_BACKEND_TMUX_SOCK=<私有 socket 名>\"\n\
+\"$REALTMUX\" -L default has-session -t \"=x\"\n\
+\"$REALTMUX\" -L \"$SOCK\" kill-server\n\
+printf '#!/bin/sh\\nexec %s -L %s \"$@\"\\n' \"$R\" \"$SOCK\" > \"$B/tmux\"\n\
+rsh 'dpkg -L cc-monitor | wc -l'\n\
+local sock=\"/tmp/.X11-unix/X${DISP#:}\"\n\
+IMG=\"${WEAKNET_IMAGE:-ccmon-weaknet:latest}\"\n\
+NET_PRE=ccmon-weaknet-net\n\
+NET=\"$(e2e_run_name \"$NET_PRE\")\" || exit 2\n\
+docker network create --internal \"$NET\"\n\
+docker run -d --name \"$CA\" --network \"$NET\" --cap-add=NET_ADMIN \"$IMG\" sleep infinity\n\
+CA=\"$(e2e_run_name ccmon-weaknet-a)\"\n\
+tmux select-pane -L -t x; tmux capture-pane -p -S -50\n";
+    let hits = hardcoded_private_names(&[
+        ("good.sh".to_string(), good.to_string()),
+        ("tmux-shim.sh".to_string(), shim_def.to_string()),
+    ]);
+    assert!(hits.is_empty(), "好语料被误点名：\n{}", hits.join("\n"));
+
+    let dir = crate::guard_support::repo_root().join("tests").join("e2e");
+    let files: Vec<(String, String)> =
+        guard_core::scan_tree!(&dir, &["sh", "mjs", "mts", "ts"])
+            .into_iter()
+            .map(|(p, s)| (p.to_string_lossy().replace('\\', "/"), s))
+            .collect();
+    assert!(
+        files.iter().filter(|(p, _)| p.ends_with(".sh")).count() >= 30,
+        "只扫到 {} 份 `tests/e2e/**/*.sh` —— 扫描坏了（建判据当天 44 份）",
+        files.iter().filter(|(p, _)| p.ends_with(".sh")).count()
+    );
+    let hits = hardcoded_private_names(&files);
+    assert!(
+        hits.is_empty(),
+        "`tests/e2e/` 下有写死的私有名字（tmux socket / docker 网络 / 容器）—— 两趟同时跑会互相打掉：\n{}\n\
+         ⇒ 只给前缀，名字经共享原语取：`. tmux-shim.sh <前缀>`（装 shim）或 \
+         `. tmux-shim.sh --names-only` 后 `X=\"$(e2e_run_name <前缀>)\"`。",
+        hits.join("\n")
+    );
+}
+
+/// shell 可执行行：剥整行注释与行尾 ` # …`（引号里恰好有 ` # ` 的会被多剥 —— 只会少报，不会多报）。
+fn shell_exec_lines(src: &str) -> Vec<String> {
+    src.lines()
+        .filter(|l| !l.trim_start().starts_with('#'))
+        .map(|l| match l.find(" # ") {
+            Some(i) => l[..i].to_string(),
+            None => l.to_string(),
+        })
+        .collect()
+}
+
+/// 一个参数位上的值是不是「引用」（变量 / 命令替换 / printf 占位），不是字面量。
+fn name_arg_is_ref(tok: &str) -> bool {
+    let t = tok.trim_start_matches(['"', '\'']);
+    t.starts_with('$') || t.starts_with("%s")
+}
+
+/// `"$X"` / `${X}` / `"$X$y"` / `"${X}b"` → `X`。
+fn referenced_var(tok: &str) -> Option<String> {
+    let t = tok.trim_start_matches(['"', '\'']);
+    let t = t.strip_prefix('$')?;
+    let t = t.strip_prefix('{').unwrap_or(t);
+    let v: String = t
+        .chars()
+        .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+        .collect();
+    (!v.is_empty() && !v.starts_with(|c: char| c.is_ascii_digit())).then_some(v)
+}
+
+/// `rest` 开头那个参数（到空白或 `)` 为止）。
+fn first_arg(rest: &str) -> &str {
+    rest.trim_start()
+        .split(|c: char| c.is_whitespace() || c == ')')
+        .next()
+        .unwrap_or("")
+}
+
+/// 一行里所有「名字参数位」：tmux 的 `-L`/`-S` 与 docker 的 `--name`/`--network`/`network create|rm`。
+/// 交出 `(位置说明, 那个参数)`；`-L default` 不交（canary 问的是用户那台默认 server）。
+fn name_arg_slots(line: &str) -> Vec<(String, String)> {
+    let mut out = Vec::new();
+    let bytes = line.as_bytes();
+    for flag in ["-L", "-S"] {
+        let mut i = 0usize;
+        while let Some(off) = line[i..].find(flag) {
+            let at = i + off;
+            i = at + flag.len();
+            let left_ok = at == 0 || matches!(bytes[at - 1], b' ' | b'\t' | b'(' | b'"');
+            let right_ok = bytes.get(at + flag.len()).is_some_and(|b| *b == b' ');
+            if !left_ok || !right_ok {
+                continue;
+            }
+            let seg = line[..at].rsplit([';', '|', '&']).next().unwrap_or("");
+            if !(seg.to_ascii_lowercase().contains("tmux") || seg.contains("exec %s")) {
+                continue;
+            }
+            let arg = first_arg(&line[i..]);
+            // 子命令自己的 `-L` / `-S`（`select-pane -L`、`capture-pane -S -50`）后面不是名字。
+            if arg.is_empty() || arg.starts_with('-') || arg.bytes().all(|b| b.is_ascii_digit()) {
+                continue;
+            }
+            if flag == "-L" && arg == "default" {
+                continue;
+            }
+            out.push((format!("tmux {flag}"), arg.to_string()));
+        }
+    }
+    if line.contains("docker") {
+        for flag in ["--name", "--network"] {
+            let mut i = 0usize;
+            while let Some(off) = line[i..].find(flag) {
+                let at = i + off;
+                i = at + flag.len();
+                let rest = &line[i..];
+                let rest = match rest.as_bytes().first() {
+                    Some(b' ') | Some(b'=') => &rest[1..],
+                    _ => continue,
+                };
+                let arg = first_arg(rest);
+                // docker 自带的网络模式（`docker build --network host` 装包那一步）不是私有名字；
+                // 运行面用不用宿主网络归 `guard-run-netns.sh` 管。
+                if flag == "--network" && matches!(arg, "host" | "none" | "bridge" | "default") {
+                    continue;
+                }
+                out.push((format!("docker {flag}"), arg.to_string()));
+            }
+        }
+        for sub in ["network create", "network rm"] {
+            if let Some(at) = line.find(sub) {
+                let name = line[at + sub.len()..]
+                    .split_whitespace()
+                    .find(|t| !t.starts_with('-'))
+                    .unwrap_or("");
+                let name = name.split(|c: char| c == ')' || c == ';').next().unwrap_or("");
+                out.push((format!("docker {sub}"), name.to_string()));
+            }
+        }
+    }
+    out
+}
+
+/// 一行打头那串赋值（`export` / `local` / `readonly` / `declare` 之后、命令之前）：`(变量名, 值)`。
+/// 值按 shell 的引号与 `$(…)` 配对切 —— 不在命令位上的 `X=…`（比如 `echo` 文案里那种）不算赋值。
+fn leading_assignments(line: &str) -> Vec<(String, String)> {
+    let mut out = Vec::new();
+    let mut s = line.trim_start();
+    for kw in ["export ", "local ", "readonly ", "declare "] {
+        if let Some(r) = s.strip_prefix(kw) {
+            s = r.trim_start();
+            while let Some(r) = s.strip_prefix('-') {
+                s = r.trim_start_matches(|c: char| c.is_ascii_alphabetic()).trim_start();
+            }
+            break;
+        }
+    }
+    loop {
+        let name: String = s
+            .chars()
+            .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+            .collect();
+        if name.is_empty() || name.starts_with(|c: char| c.is_ascii_digit()) {
+            break;
+        }
+        let Some(rest) = s[name.len()..].strip_prefix('=') else {
+            break;
+        };
+        let (mut depth, mut quote, mut end) = (0i32, None::<char>, rest.len());
+        let chars: Vec<(usize, char)> = rest.char_indices().collect();
+        let mut k = 0usize;
+        while k < chars.len() {
+            let (pos, c) = chars[k];
+            match (quote, c) {
+                (Some(q), c) if c == q && (q == '\'' || depth == 0) => quote = None,
+                (Some('"'), '\\') => k += 1,
+                (None, '\\') => k += 1,
+                (None, '"') | (None, '\'') => quote = Some(c),
+                (_, '(') if pos > 0 && rest.as_bytes()[pos - 1] == b'$' => depth += 1,
+                (None, '(') => depth += 1,
+                (_, ')') if depth > 0 => depth -= 1,
+                (None, c) if c.is_whitespace() && depth == 0 => {
+                    end = pos;
+                    break;
+                }
+                _ => {}
+            }
+            k += 1;
+        }
+        out.push((name, rest[..end].to_string()));
+        s = rest[end..].trim_start();
+    }
+    out
+}
+
+/// 值是不是「从 `$` 起、且不带字面量缺省值」。
+fn assigned_from_ref(value: &str) -> bool {
+    let v = value.trim_start_matches(['"', '\'']);
+    if !v.starts_with('$') {
+        return false;
+    }
+    if let Some(inner) = v.strip_prefix("${") {
+        for op in [":-", ":="] {
+            if let Some(at) = inner.find(op) {
+                let dflt = &inner[at + op.len()..];
+                return dflt.starts_with('$') || dflt.starts_with('}');
+            }
+        }
+    }
+    true
+}
+
+/// `${X:-lit}` / `${X:=lit}` 里的 `(X, lit 的头一个字)`，行里任意位置。
+fn parameter_defaults(line: &str) -> Vec<(String, String)> {
+    let mut out = Vec::new();
+    let mut i = 0usize;
+    while let Some(off) = line[i..].find("${") {
+        let at = i + off + 2;
+        i = at;
+        let name: String = line[at..]
+            .chars()
+            .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+            .collect();
+        let rest = &line[at + name.len()..];
+        if name.is_empty() {
+            continue;
+        }
+        for op in [":-", ":="] {
+            if let Some(d) = rest.strip_prefix(op) {
+                out.push((name.clone(), d.to_string()));
+            }
+        }
+    }
+    out
+}
+
+/// 判定本体：`(路径, 源码)` → 命中（`路径: 说明`）。每份文件先收自己的「名字变量」，再查它们的赋值；
+/// 带 `sock` 的变量名跨文件也认（`TMUX_SHIM_SOCK` 在套件里赋、在原语里用）。
+fn hardcoded_private_names(files: &[(String, String)]) -> Vec<String> {
+    let is_js = |p: &str| p.ends_with(".mjs") || p.ends_with(".mts") || p.ends_with(".ts");
+    let mut hits = Vec::new();
+    let mut defined_in: Vec<&str> = Vec::new();
+    for (path, src) in files {
+        if is_js(path) {
+            for flag in ["\"-L\"", "'-L'", "\"-S\"", "'-S'"] {
+                let mut i = 0usize;
+                while let Some(off) = src[i..].find(flag) {
+                    let at = i + off + flag.len();
+                    i = at;
+                    let next = src[at..].trim_start().trim_start_matches(',').trim_start();
+                    let lit = next.starts_with('"')
+                        || next.starts_with('\'')
+                        || (next.starts_with('`') && !next[1..].starts_with("${"));
+                    if lit {
+                        hits.push(format!("{path}: tmux {flag} 后面是字面量"));
+                    }
+                }
+            }
+            continue;
+        }
+        let lines = shell_exec_lines(src);
+        let mut name_vars: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+        for line in &lines {
+            for (slot, arg) in name_arg_slots(line) {
+                if name_arg_is_ref(&arg) {
+                    if let Some(v) = referenced_var(&arg) {
+                        name_vars.insert(v);
+                    }
+                } else {
+                    hits.push(format!("{path}: {slot} 后面是字面量 `{arg}`：{}", line.trim()));
+                }
+            }
+        }
+        let watched = |v: &str| name_vars.contains(v) || v.to_ascii_lowercase().contains("sock");
+        if lines.iter().any(|l| l.trim_start().starts_with("e2e_run_name()")) {
+            defined_in.push(path);
+        }
+        let calls = lines.iter().any(|l| l.contains("e2e_run_name ") && !l.contains("e2e_run_name()"));
+        let sources = lines.iter().any(|l| l.contains("tmux-shim.sh"));
+        if calls && !sources && !path.ends_with("tmux-shim.sh") {
+            hits.push(format!("{path}: 调了 e2e_run_name 却没 `.` 共享原语 tmux-shim.sh"));
+        }
+        for line in &lines {
+            for (var, value) in leading_assignments(line) {
+                if !watched(&var) {
+                    continue;
+                }
+                let path_like = !name_vars.contains(&var)
+                    && value.trim_start_matches(['"', '\'']).starts_with('/');
+                if !assigned_from_ref(&value) && !path_like {
+                    hits.push(format!("{path}: 名字变量 {var} 赋成了字面量：{}", line.trim()));
+                }
+            }
+            for (var, dflt) in parameter_defaults(line) {
+                if watched(&var) && !(dflt.starts_with('$') || dflt.starts_with('}')) {
+                    hits.push(format!("{path}: 名字变量 {var} 带字面量缺省值：{}", line.trim()));
+                }
+            }
+        }
+    }
+    if defined_in.len() != 1 || !defined_in[0].ends_with("tmux-shim.sh") {
+        hits.push(format!(
+            "e2e_run_name() 应当恰好定义在 tests/e2e/tmux-shim.sh 一处，实得：{defined_in:?}"
+        ));
+    }
+    hits
 }
 
 /// 命令位上的裸 `tmux`（没有 `-L`/`-S` 紧跟）。
@@ -554,6 +921,7 @@ fn strip_comments(src: &str) -> String {
 /// 起了一次 PATH 上**真的** claude。合法的叫法只有台架那一形（`tier2-rig.sh` 拷进台架目录、旁边放
 /// `backend-path`，由 app 经 SSH 执行）—— SSH exec 不带 env，所以认的是那个文件。
 /// 两向：① 仓里那份直接跑 ⇒ 退 2、说清是夹具、替身后端一次都没被叫到、tap 一个字节没写；
+/// ①b 台架目录缺 `tmux-sock` ⇒ 同样退 2（没有私有 socket 名就没有隔离可给后端）；
 /// ② 正控：台架那一形 ⇒ 真转到替身（否则 ① 可以靠「这脚本什么都转不过去」绿）。
 /// PATH 只放它要的那几个工具、**不放 tmux** ⇒ 正控那一趟不在 `/tmp` 下建 tmux 垫片目录。
 #[cfg(unix)]
@@ -618,12 +986,23 @@ fn the_backend_wrapper_fixture_refuses_to_run_outside_a_rig() {
         "拒之前已经写了 tap（副作用在防呆前面）"
     );
 
-    // ② 正控：台架那一形。
+    // ①b 台架目录里缺 `tmux-sock`（台架那份私有 tmux socket 名）⇒ 没有隔离可给后端，同样拒。
     let rig = d.join("rig");
     std::fs::create_dir_all(&rig).expect("建台架目录");
     std::fs::copy(&wrapper, rig.join("backend-wrapper.sh")).expect("拷夹具");
     std::fs::write(rig.join("backend-path"), stub.to_string_lossy().as_bytes())
         .expect("写 backend-path");
+    let out = run(&rig.join("backend-wrapper.sh"));
+    assert_eq!(
+        out.status.code(),
+        Some(2),
+        "缺 tmux-sock 没被拒：{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(!reached.exists(), "缺 tmux-sock 时已经把参数交给后端了");
+
+    // ② 正控：台架那一形（两份文件都在）。
+    std::fs::write(rig.join("tmux-sock"), b"e2eWrapperProbe").expect("写 tmux-sock");
     let out = run(&rig.join("backend-wrapper.sh"));
     assert!(
         out.status.success(),

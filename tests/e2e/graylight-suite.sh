@@ -36,14 +36,18 @@ set -euo pipefail
 # ⇒ C7i 立为红线：**tmux 命令一律带 socket 选择器（`-S <绝对路径>` 或 `-L <名>`），
 #   禁止靠 `TMUX_TMPDIR`/`unset TMUX` 做隔离。**
 #
-# 现在的形态：把 `$BIN/tmux` 放进 PATH 最前，它 `exec` 真 tmux 并**强插 `-L e2eGray`**。
+# 现在的形态：把 `$BIN/tmux` 放进 PATH 最前，它 `exec` 真 tmux 并**强插 `-L <私有名>`**。
 # · 漏什么环境变量都打不偏 —— 选择器写死在 shim 里，不依赖「记得清某个变量」；
 # · 零调用点改动的好处**原样保留**：套件里的裸 `tmux` 一个不用改，
 #   连它 shell out 出去的东西（`ccm` / `cc-spawn` 内部也裸调 tmux）也一并覆盖；
 # · `unset TMUX` **仍然保留**，但它现在只是「让被测行为发生」（tmux 内会退化成就地起），
 #   **不再是隔离手段** —— 隔离由 shim 独自负责。
 unset TMUX TMUX_PANE
-_GC_SOCK="e2eGray"
+# 名字取自共享原语。全链跑法下后端在 SSH 那头起（`backend-wrapper.sh`），它与本套件必须落在同一台 server 上
+# ⇒ `tier2-rig.sh run` 把台架那份名字（台架目录里的 `tmux-sock`）经 `CCM_E2E_TMUX_SOCK` 交进来；单跑时用本趟自己的。
+# shellcheck source=tests/e2e/tmux-shim.sh
+. "$(cd "$(dirname "$0")" && pwd)/tmux-shim.sh" --names-only
+_GC_SOCK="${CCM_E2E_TMUX_SOCK:-$(e2e_run_name e2eGray)}"
 _GC_REAL_TMUX="$(command -v tmux)" || { echo "需要 tmux"; exit 1; }
 _GC_BIN="$(mktemp -d /tmp/e2e-tmuxshim.XXXXXX)"
 printf '#!/bin/sh\nexec %s -L %s "$@"\n' "$_GC_REAL_TMUX" "$_GC_SOCK" > "$_GC_BIN/tmux"
