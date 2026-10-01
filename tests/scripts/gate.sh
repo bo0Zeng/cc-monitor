@@ -1751,15 +1751,17 @@ esac
 # `rust` job 的 `cargo clippy --workspace --all-targets`（不带 `-D warnings`，但 clippy 默认 deny 的那几类
 # lint 与编译错照样红）· `linux-app-build` job 的 `cargo build`（真编 bin 并链接；上面 `cargo` 那格带 `--lib`、
 # `deadcode` 那格只 check，两格都不链 Linux 上的那两个二进制）。
+# ⚠ 三格成功时只印输出尾部两行：警告片段会原样带出源码里的散文（如某句注释里的「1277 passed」），
+#   而 `run_gate` 取输出里最大的那个数 ⇒ 不滤就会把散文读成读数。红的时候整份输出照印。
 run_gate clippy '不是数出来的数：`cargo clippy --workspace --all-targets` 只有绿/红两态，分母是 `src/frontend/shell` 那个 workspace 的全部成员与全部 target（含 test 档）。⚠ 与 CI 那一步同一条命令、不加 `-D warnings` ⇒ 警告不红，只有 deny 档的 lint 与编译错红；CI 那一步跑在 windows-latest 上，本格跑在 Linux 上（Windows 那一维由 `winchk` 盖）。本格墙钟〔量于 2026-09-30，本工作树〕首趟 73 秒、源码没变时 4 秒' \
-         bash -c 'cd src/frontend/shell && cargo clippy --workspace --all-targets 2>&1 && echo "clippy: 1 passed"'
+         bash -c 'cd src/frontend/shell && out=$(cargo clippy --workspace --all-targets 2>&1); rc=$?; if [ "$rc" -ne 0 ]; then printf "%s\n" "$out"; exit "$rc"; fi; printf "%s\n" "$out" | tail -2; echo "clippy: 1 passed"'
 run_gate appbuild '不是数出来的数：`cargo build`（dev）只有绿/红两态，射程 = `src/frontend/shell` 根包 `monitor` 的 lib 与两个二进制（`cc-monitor` · `cc-monitor-filewin`）在 Linux 上**真编真链**一趟，与 `ci.yml` 的 `linux-app-build` 那一步同一条命令。⚠ 只链不跑；release 档不编；前端产物（`dist/`）由 `npm` 那格里的真 vite 构建与 `tsc` 那格盖。本格墙钟〔量于 2026-09-30，本工作树〕首趟（依赖全量编译）106 秒' \
-         bash -c 'cd src/frontend/shell && cargo build 2>&1 && echo "appbuild: 1 passed"'
+         bash -c 'cd src/frontend/shell && out=$(cargo build 2>&1); rc=$?; if [ "$rc" -ne 0 ]; then printf "%s\n" "$out"; exit "$rc"; fi; printf "%s\n" "$out" | tail -2; echo "appbuild: 1 passed"'
 
 run_gate backend '单包 src/backend，只有一行 test result ⇒ 最大值 = 合计' \
          bash -c 'cd src/backend && cargo test 2>&1'
 run_gate clippy-backend '不是数出来的数：`cargo clippy --all-targets` 只有绿/红两态，射程 = `src/backend` 那一个 crate 的全部 target，与 `ci.yml` 的 `backend` job 那一步同一条命令（不带 `-D warnings` ⇒ 只有 deny 档的 lint 与编译错红）。本格墙钟〔量于 2026-09-30，本工作树〕首趟 32 秒' \
-         bash -c 'cd src/backend && cargo clippy --all-targets 2>&1 && echo "clippy-backend: 1 passed"'
+         bash -c 'cd src/backend && out=$(cargo clippy --all-targets 2>&1); rc=$?; if [ "$rc" -ne 0 ]; then printf "%s\n" "$out"; exit "$rc"; fi; printf "%s\n" "$out" | tail -2; echo "clippy-backend: 1 passed"'
 # 〔TAIL · 09-26〕全景小程序是独立 crate（自己一份 Cargo.lock，不进任何 workspace）⇒ 上面两格都编不到它；
 #   它自己的 `tests/panorama-engine/cli_tests.rs`（含「引擎零写用户文件」）此前不在任何执行链上。
 run_gate panorama-engine '单包 src/panorama-engine（独立 crate），只有一行 test result ⇒ 最大值 = 合计' \
@@ -2097,7 +2099,7 @@ run_e2e resume-frames          7
 #   地板取的是本机实打的 PASS（`inbound-frames` 32 · `graylight-frames` 13 比 `ci.yml` 那两行的 30 · 12 高 ——
 #   CI 那边是 `at-least`，只挡缩水）。〔量于 2026-09-30，本工作树，本机 tmux 3.6〕各套墙钟：
 #   cc-spawn-uplift 44 秒 · inbound-frames 2 秒 · graylight-frames 3 秒 · backend-fork 不到 1 秒 ·
-#   tmux-target 48 秒 · cc-bus-queue-drain 4 秒 · resume 16 秒。
+#   tmux-target 9–48 秒（两趟）· cc-bus-queue-drain 4 秒 · resume 16 秒。
 run_e2e cc-spawn-uplift       72
 run_e2e inbound-frames        32
 run_e2e graylight-frames      13
