@@ -2652,14 +2652,38 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
     /// 另有**真新增的一条**（退役判据留下的墓碑），挂在本表末尾、单独写了理由。
     const TOMBSTONED: &[(&str, &str, usize)] = &[
         // cc-bus 装 / 三态那两条旧 Tauri 命令：代码里最后一处（驾驶舱判据里的替身）随驾驶舱装口删了 ⇒ 点它们的那几行墓碑从此落在死名人群上。
-        ("src/frontend/shell/src/cc_bus_deploy.rs", "deploy_local_cc_bus", 1),
-        ("src/frontend/shell/src/cc_bus_deploy.rs", "cc_bus_install_state", 1),
+        (
+            "src/frontend/shell/src/cc_bus_deploy.rs",
+            "deploy_local_cc_bus",
+            1,
+        ),
+        (
+            "src/frontend/shell/src/cc_bus_deploy.rs",
+            "cc_bus_install_state",
+            1,
+        ),
         ("src/frontend/ui/ipc/commands.ts", "deploy_local_cc_bus", 1),
         ("src/frontend/ui/ipc/commands.ts", "cc_bus_install_state", 1),
-        ("tests/frontend/shell/frame_query_tests.rs", "deploy_local_cc_bus", 1),
-        ("tests/frontend/shell/frame_query_tests.rs", "cc_bus_install_state", 1),
-        ("tests/frontend/shell/parity_ledger_tests.rs", "deploy_local_cc_bus", 1),
-        ("tests/frontend/shell/parity_ledger_tests.rs", "cc_bus_install_state", 1),
+        (
+            "tests/frontend/shell/frame_query_tests.rs",
+            "deploy_local_cc_bus",
+            1,
+        ),
+        (
+            "tests/frontend/shell/frame_query_tests.rs",
+            "cc_bus_install_state",
+            1,
+        ),
+        (
+            "tests/frontend/shell/parity_ledger_tests.rs",
+            "deploy_local_cc_bus",
+            1,
+        ),
+        (
+            "tests/frontend/shell/parity_ledger_tests.rs",
+            "cc_bus_install_state",
+            1,
+        ),
         // gate-core 收成后端模块：零调用方的取反名删了 · monitor 转调壳那条判据翻面，原处各一块。
         ("src/backend/control/gate_rules.rs", "needs_remote_sid", 1),
         (

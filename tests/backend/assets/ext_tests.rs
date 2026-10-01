@@ -58,7 +58,13 @@ fn at_s(l: &ExtLoc) -> &str {
 
 /// 一格压成一句好比的话：点 · 各处（态，`+卸` = 有卸载，`!` = 不能卸、说了为什么）· 「装到…」（来源 · 建议的那一处 · 各选项，`✗` = 不可选）或没有它的那一句。
 fn brief(c: &ExtCell) -> String {
-    let st = |s: ExtState| serde_json::to_value(s).unwrap().as_str().unwrap().to_string();
+    let st = |s: ExtState| {
+        serde_json::to_value(s)
+            .unwrap()
+            .as_str()
+            .unwrap()
+            .to_string()
+    };
     let places: Vec<String> = c
         .places
         .iter()
@@ -169,7 +175,8 @@ fn the_table_judges_every_cell_place_and_target() {
             "m-proj".into(),
             false,
             vec![
-                "project:user=missing,/h/p=same+卸 bring<here@/h/p>@/shared [user✗ /h/p✗ /shared]".into(),
+                "project:user=missing,/h/p=same+卸 bring<here@/h/p>@/shared [user✗ /h/p✗ /shared]"
+                    .into(),
                 format!("missing:user=missing {no_proj}"),
                 format!("missing:user=missing {off}"),
             ],
@@ -234,10 +241,17 @@ fn the_table_judges_every_cell_place_and_target() {
             hooks: true
         })
     );
-    assert!(list.rows.iter().filter(|r| r.name != "cc-bus").all(|r| r.builtin.is_none()));
+    assert!(list
+        .rows
+        .iter()
+        .filter(|r| r.name != "cc-bus")
+        .all(|r| r.builtin.is_none()));
     let cc_bring = cc.cells[0].bring.as_ref().unwrap();
     assert_eq!(cc_bring.from_name, n("beExt.from.builtin"));
-    assert_eq!(cc_bring.targets[1].note, Some(n("beExt.target.builtinUserOnly")));
+    assert_eq!(
+        cc_bring.targets[1].note,
+        Some(n("beExt.target.builtinUserOnly"))
+    );
     let wire = serde_json::to_string(&list).unwrap();
     assert!(
         !wire.contains("digest") && !wire.contains("\"d1\""),
@@ -675,9 +689,16 @@ async fn the_hub_refuses_a_target_the_table_greys_out() {
     )
     .unwrap();
     let list = t.list();
-    let b = t.cell(&list, "m", 1).bring.expect("那台有项目，该有「装到…」");
+    let b = t
+        .cell(&list, "m", 1)
+        .bring
+        .expect("那台有项目，该有「装到…」");
     assert_eq!(
-        (b.targets[0].at.clone(), b.targets[0].ok, b.targets[0].note.clone()),
+        (
+            b.targets[0].at.clone(),
+            b.targets[0].ok,
+            b.targets[0].note.clone()
+        ),
         (
             ExtLoc::User,
             false,
@@ -720,7 +741,8 @@ fn a_note_travels_with_the_catalog_to_the_other_backend() {
     let (base, t) = two("note");
     let key = asset_catalog::entry_key(KIND_SKILL, "cc-bus");
     let (ca, changed) =
-        asset_catalog::update_noting(&t.a.cat, t.a.scan(), "a", (&key, "  先装钩子  "), 101).unwrap();
+        asset_catalog::update_noting(&t.a.cat, t.a.scan(), "a", (&key, "  先装钩子  "), 101)
+            .unwrap();
     assert!(changed);
     let row = |cat: &Catalog| {
         table(cat, &[])
@@ -732,16 +754,26 @@ fn a_note_travels_with_the_catalog_to_the_other_backend() {
     };
     assert_eq!(row(&ca), Some("先装钩子".to_string()));
     let cb = t.b.refresh(Some(ca.machines.clone()));
-    assert_eq!(row(&cb), Some("先装钩子".to_string()), "备注没随目录到另一台");
-    let (cb, _) = asset_catalog::update_noting(&t.b.cat, t.b.scan(), "b", (&key, "改过了"), 102).unwrap();
+    assert_eq!(
+        row(&cb),
+        Some("先装钩子".to_string()),
+        "备注没随目录到另一台"
+    );
+    let (cb, _) =
+        asset_catalog::update_noting(&t.b.cat, t.b.scan(), "b", (&key, "改过了"), 102).unwrap();
     let ca = t.a.refresh(Some(cb.machines.clone()));
-    assert_eq!(row(&ca), Some("改过了".to_string()), "后写的那一条没压过前一条");
+    assert_eq!(
+        row(&ca),
+        Some("改过了".to_string()),
+        "后写的那一条没压过前一条"
+    );
     let (ca, _) = asset_catalog::update_noting(&t.a.cat, t.a.scan(), "a", (&key, ""), 103).unwrap();
     assert_eq!(row(&ca), None);
     let cb = t.b.refresh(Some(ca.machines.clone()));
     assert_eq!(row(&cb), None, "清掉的那一下没传过去");
     // 同样的字再存一次：目录不变（不扇出）。
-    let (_, again) = asset_catalog::update_noting(&t.a.cat, t.a.scan(), "a", (&key, ""), 104).unwrap();
+    let (_, again) =
+        asset_catalog::update_noting(&t.a.cat, t.a.scan(), "a", (&key, ""), 104).unwrap();
     assert!(!again);
     let _ = std::fs::remove_dir_all(&base);
 }
@@ -755,7 +787,8 @@ async fn cc_bus_installs_from_the_target_binary_and_shows_as_this_version() {
     let there = t.cell(&list, "cc-bus", 1);
     assert_eq!(there.state, ExtState::Missing);
     let (from, scope) = bring_of(&there);
-    let args = json!({ "kind": "skill", "name": "cc-bus", "from": from, "to": "gpd", "scope": scope });
+    let args =
+        json!({ "kind": "skill", "name": "cc-bus", "from": from, "to": "gpd", "scope": scope });
     let card = ext_preview(&t.here, &args, &t.reach, &t.remote)
         .await
         .expect("看卡");
@@ -769,13 +802,19 @@ async fn cc_bus_installs_from_the_target_binary_and_shows_as_this_version() {
     assert_eq!(done["changed"], card["writes"]);
     assert_eq!(
         t.remote.1.lock().unwrap().clone(),
-        vec!["cc-bus-install-state", "cc-bus-install-state", "cc-bus-install"],
+        vec![
+            "cc-bus-install-state",
+            "cc-bus-install-state",
+            "cc-bus-install"
+        ],
         "自带的那一个只问被写那台"
     );
     let there = t.cell(&t.list(), "cc-bus", 1);
     assert_eq!(there.state, ExtState::Same, "装完那一格没变 ●");
     assert_eq!(removable(&there), ExtLoc::User);
-    let card = ext_preview(&t.here, &args, &t.reach, &t.remote).await.unwrap();
+    let card = ext_preview(&t.here, &args, &t.reach, &t.remote)
+        .await
+        .unwrap();
     assert_eq!(card["unchanged"], true, "装好之后再看：没有要写的");
     let _ = std::fs::remove_dir_all(&base);
 }
@@ -806,7 +845,11 @@ fn no_production_code_writes_the_agent_settings_file() {
     let files: Vec<(PathBuf, String)> =
         guard_core::scan_tree_excluding(&repo.join("src"), &["rs", "ts"], &[])
             .into_iter()
-            .filter(|(p, _)| !p.to_string_lossy().replace('\\', "/").contains("/src/vendor/"))
+            .filter(|(p, _)| {
+                !p.to_string_lossy()
+                    .replace('\\', "/")
+                    .contains("/src/vendor/")
+            })
             .collect();
     let mut seen: Vec<String> = files
         .iter()
@@ -820,20 +863,31 @@ fn no_production_code_writes_the_agent_settings_file() {
         })
         .collect();
     seen.sort();
-    assert_eq!(seen, READ_ONLY, "提到 settings.json 的生产代码多了 / 少了一份");
+    assert_eq!(
+        seen, READ_ONLY,
+        "提到 settings.json 的生产代码多了 / 少了一份"
+    );
     for (p, text) in &files {
         if code(text).contains(NEEDLE) {
-            assert!(!writes(&code(text)), "{} 提到 settings.json 又有写盘的写法", p.display());
+            assert!(
+                !writes(&code(text)),
+                "{} 提到 settings.json 又有写盘的写法",
+                p.display()
+            );
         }
     }
     // 正控：现造一段往 settings.json 写的代码 ⇒ 两条都认得出。
-    let fake = "let p = home.join(\".claude/settings.json\");\nstd::fs::write(&p, b\"{}\").unwrap();";
+    let fake =
+        "let p = home.join(\".claude/settings.json\");\nstd::fs::write(&p, b\"{}\").unwrap();";
     assert!(code(fake).contains(NEEDLE) && writes(&code(fake)));
     let writer = files
         .iter()
         .find(|(p, _)| p.ends_with("assets/asset_catalog.rs"))
         .expect("正控：那份写目录文件的模块不在扫描范围里");
-    assert!(writes(&code(&writer.1)), "正控：写法表认不出一份真在写盘的模块");
+    assert!(
+        writes(&code(&writer.1)),
+        "正控：写法表认不出一份真在写盘的模块"
+    );
 }
 
 /// 那一句话里的路径（按文案表那一句的前后两截切出来，不另写一份拼法）。

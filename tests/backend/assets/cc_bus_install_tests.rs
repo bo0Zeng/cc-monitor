@@ -273,7 +273,11 @@ fn a_regular_file_at_the_destination_is_not_installed_and_gets_backed_up() {
     let d = tmpdir("file-at-dest");
     std::fs::create_dir_all(d.0.join("skills")).unwrap();
     std::fs::write(d.0.join("skills/cc-bus"), b"i am a file, not a dir").unwrap();
-    assert_eq!(writes(&d.0.join("skills")), all_files(), "落点是文件 ⇒ 全部要写");
+    assert_eq!(
+        writes(&d.0.join("skills")),
+        all_files(),
+        "落点是文件 ⇒ 全部要写"
+    );
     assert_eq!(
         state_at(&d.0.join("skills"))["existing"],
         json!(true),
