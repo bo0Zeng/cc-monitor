@@ -48,6 +48,8 @@ pub(crate) mod parse;
 pub mod paths;
 pub(crate) mod records;
 pub(crate) mod resume;
+// 子运行（子 agent）的形状：对账键 · 归属 · 派出链接 · 记录住址 · 请求自报身份的头。
+pub(crate) mod runs;
 pub(crate) mod schema;
 // 〔P1〕记录文本：正文 / 工具内容怎么抽 · CLI 注入怎么剥（原共享 crate `search-core` 的 Claude 那一半）。
 pub(crate) mod text;
@@ -74,6 +76,8 @@ pub(crate) const UPSTREAM: super::DefaultUpstream = super::DefaultUpstream {
     fallback: "https://api.anthropic.com",
     // 〔V141 · RL2〕真 claude（2.1.283）每条 `POST /v1/messages` 都带它：UUID 形，== 它落盘的 jsonl 文件名。
     session_header: Some("x-claude-code-session-id"),
+    stream: Some(super::sse_anthropic::FACE),
+    owner_header: Some(runs::OWNER_HEADER),
 };
 
 /// 〔P1 · 第 4 件〕本家的**起会话事实**（注册表 `Adapter.launch` 那一格）：`ccm` 按它起、界面按生成物 `agent-profile-table.ts` 读，同一份。
@@ -106,7 +110,6 @@ pub(crate) const RECORDS: super::RecordFace = super::RecordFace {
     parse: parse::parsed_line,
     sid: records::session_id_of,
     turn_end: Some(turn::turn_end_uuid_of),
-    tool_card: Some(cards::tool_card),
     find_session: Some(branch::find_session_file),
     branch: Some(branch::build_branch_records),
     drift: Some(drift::report),
@@ -118,6 +121,12 @@ pub(crate) const RECORDS: super::RecordFace = super::RecordFace {
     delete: Some(super::SessionDelete {
         locate: paths::session_file_for_delete,
         is_record: paths::is_session_record_path,
+    }),
+    response_id: Some(runs::response_id),
+    run_of: Some(runs::run_of),
+    child_link: Some(runs::child_link),
+    children: Some(super::ChildFace {
+        sources: runs::sources,
     }),
 };
 

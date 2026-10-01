@@ -40,8 +40,6 @@ pub(crate) const RECORDS: crate::agents::RecordFace = crate::agents::RecordFace 
     parse: record::parsed_line,
     sid: parse::codex_sid_from_path,
     turn_end: None,
-    // 〔THIN〕Codex 的工具名今天没人考据过（`codex_record.rs` 的真机样本里只见过 `shell`）⇒ 不给卡型，界面画普通工具卡。
-    tool_card: None,
     // 〔THIN〕Codex 的会话不在按项目分的记录树里、今天也不分叉 ⇒ 这两格没有。
     find_session: None,
     branch: None,
@@ -49,6 +47,12 @@ pub(crate) const RECORDS: crate::agents::RecordFace = crate::agents::RecordFace 
     // 〔P1〕Codex 的记录不进全局搜索 / 摘录那几条通用路（它们只走记录树那一家）⇒ 不给文本面。
     text: None,
     delete: None,
+    // Codex 的记录里今天没有委派出去的运行 ⇒ 不声明子运行（通用层把它的一切都归主运行）。它的流也不经中转（未登记默认上游），
+    // 对账键因此也没有读者。
+    response_id: None,
+    run_of: None,
+    child_link: None,
+    children: None,
 };
 // 〔`设计/50` 删用量〕**原 `pub(crate) mod usage;` 删了。**
 // `agents/codex/usage.rs` 是用量**聚合轴**（②）的 Codex 半：它的唯一调用方是
