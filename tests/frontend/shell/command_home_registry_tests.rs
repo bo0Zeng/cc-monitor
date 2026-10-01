@@ -1,7 +1,7 @@
 //! 「Tauri 命令分两张封闭表「monitor 自己的事」（逐行理由）与「待迁」（逐行卡在哪），命令实现经 `inbound_client` / `BackendDoor` 碰到后端的必须在「待迁」」。
 //!
 //! 分母只数「前端对后端」的 IPC（产物来自某台后端的）；窗口 · 本机 monitor 配置 · 日志 · 拉前 · 本机后端的起停与引导
-//! 是 monitor 自己的事，外加通信层面 A 客户端本身与「放字节」（`4d-lanes` C 段共同目标）。
+//! 是 monitor 自己的事，外加通信层面 A 客户端本身与「放字节」。
 //!
 //! 三条判据：
 //! 1. 两表不相交、并集 == `lib.rs` 的 `generate_handler!`（两向）。
@@ -32,7 +32,7 @@ enum Own {
     Lifecycle,
     /// 通信层面 A 客户端本身。
     Channel,
-    /// 放字节：照那台后端判好的计划往那台放 / 删 monitor 带着的字节（`4d-lanes` C 段共同目标「monitor 只放字节」）。
+    /// 放字节：照那台后端判好的计划往那台放 / 删 monitor 带着的字节（「monitor 只放字节」）。
     Place,
     /// 足迹里 monitor 自己那台那几行的**事实**（判定在后端）。
     Footprint,
@@ -181,7 +181,7 @@ const MONITOR_OWN: &[(&str, Own, &str)] = &[
         Own::Config,
         "全量注入开关 = monitor 进程环境 `CCM_RELAY_ALL_SESSIONS`（monitor 自己的配置，界面带给那台后端）",
     ),
-    // 〔4d-lanes 子步 1〕放字节：判定（该不该换 · 换成哪一格 · 落点那一份是谁）住本机常驻后端 `deploy-plan`。
+    // 放字节：判定（该不该换 · 换成哪一格 · 落点那一份是谁）住本机常驻后端 `deploy-plan`。
     (
         "deploy_remote_backend",
         Own::Place,

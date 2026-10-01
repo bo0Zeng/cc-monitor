@@ -701,7 +701,7 @@ describe("〔HX1 · D-f〕停后端之前数走中转的会话", () => {
 });
 
 // T6「停」的结局说出来：`{stopped: graceful | killed | not_running}` 三个词各一句，落在那一行上（不只进 console）。
-// 守的要求：`4d-lanes.md` `### STOP`逐字「monitor 发一次远端 exec、按结局出声」· 「强杀 / 没停掉出声」。
+// 要求：「monitor 发一次远端 exec、按结局出声」· 「强杀 / 没停掉出声」。
 describe("〔STOP〕停的结局在机器页那一行说一句", () => {
   const zh = (k: string, args: Record<string, string> = {}) =>
     (COPY_TABLE.entries as Record<string, { zh: string }>)[k].zh.replace(/\{(\w+)\}/g, (_m, n: string) => String(args[n]));

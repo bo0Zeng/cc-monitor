@@ -58,7 +58,7 @@ fn exec(stdout: &str, stderr: &str, code: Option<u32>) -> crate::ssh_source::Rem
 /// D2 `--resident-ensure` 的答：成了 ⇒ 端口；那台脱离不了（`unsupported`，非 unix）⇒ **明说**「远端只支持 Unix」、
 /// 带上那台原话，并归成 `Unsupported`（`run` 据此不再自动重连）；别的失败 ⇒ 那台原话原样；
 /// 老后端掉进流模式发 hello ⇒ 「太旧」（`Failed`：部署会把它换掉，照常重连）。四样都是失败，没有「回落」那一格。
-/// 守的要求：`4d-lanes.md` `## DEL` 逐字「非 unix 远端（Windows 远端，V29 / V132 不承诺）连不上常驻时**明说**不支持，不静默」。
+/// 要求：「非 unix 远端（Windows 远端，V29 / V132 不承诺）连不上常驻时**明说**不支持，不静默」。
 #[test]
 fn the_ensure_answer_names_a_non_unix_remote_as_unsupported_and_never_falls_back() {
     let ok = parse_answer(&exec(r#"{"port":51000,"token":"ab","pid":7}"#, "", Some(0))).unwrap();
@@ -111,7 +111,7 @@ fn the_attach_line_carries_the_token_and_exactly_the_negotiated_flags() {
 
 /// T4 **停的结局只认三个词**（本机远端同一个读法）：`graceful` · `killed` · `not_running` 各落一格、pid 原样；
 /// 认不出的词 / 老后端那一形（`{"stopped":<pid>}`）⇒ 错，不猜成「停了」；退出 2 ⇒ stderr 那句原样。
-/// 守的要求：`4d-lanes.md` `### STOP`逐字「回结局 `{stopped: "graceful" | "killed" | "not_running"}` …… monitor 发一次远端 exec、按结局出声」。
+/// 要求：「回结局 `{stopped: "graceful" | "killed" | "not_running"}` …… monitor 发一次远端 exec、按结局出声」。
 #[test]
 fn the_stop_answer_is_one_of_three_words_or_an_error() {
     for (line, want) in [
@@ -165,7 +165,7 @@ fn the_stop_answer_is_one_of_three_words_or_an_error() {
 
 /// **monitor 等那一趟的期限 > 那台停它的最长时间**（宽限期 ＋ 强杀后再等的那一段）：否则 monitor 先放弃、
 /// 那台其实停成了，界面却说「超时」。跨半边：现抠后端 `control/resident.rs` 两个毫秒字面量（各恰好一处），与 `dial_host::ONE_SHOT_DEADLINE` 比。
-/// 守的要求：`4d-lanes.md` `### STOP` 逐字「远端控制方只发一次『停』并拿回结局，不远程轮询」。
+/// 要求：「远端控制方只发一次『停』并拿回结局，不远程轮询」。
 #[test]
 fn the_one_shot_deadline_outlasts_the_remote_stop() {
     let be = guard_core::production_code(include_str!("../../../src/backend/control/resident.rs"));

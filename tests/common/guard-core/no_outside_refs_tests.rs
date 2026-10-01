@@ -8,7 +8,7 @@
 //! 本文件不排除：网眼与夹具都在运行期拼，它在人群里照扫。
 //! 生成物（`src/frontend/ui/generated/`）也不跳：它随仓发出去；那里的命中来自 Rust 源码注释，源头清了、重新生成就没了。
 //!
-//! 第二张网（施工说法）：开发过程的阶段名「第 N 波」。同一个人群，命中集 == ∅；
+//! 第二张网（施工说法）：开发过程的阶段名「第 N 波」与施工记录名 `4d-…`。同一个人群，命中集 == ∅；
 //! 测试声明行（`it(` · `test(` · `describe(` · `bench(` 打头）不扫 —— 测试名不改。
 //!
 //! 买不到：换了说法、不落在网眼上的指路；施工路代号、用户裁决编号这类还留在测试名与判据钉着的串里，没进网。
@@ -55,9 +55,10 @@ fn net() -> Regex {
     Regex::new(&alts.join("|")).expect("检测网拼不成正则")
 }
 
-/// 施工说法的网：「第 N 波」。拆两段拼 ⇒ 本文件里没有一处完整的网眼。
+/// 施工说法的网：「第 N 波」· 施工记录名 `4d-…`。拆两段拼 ⇒ 本文件里没有一处完整的网眼。
 fn process_net() -> Regex {
-    Regex::new(&format!("第[一二三四五六七八九十]{}", "波")).expect("施工说法网拼不成正则")
+    Regex::new(&format!("第[一二三四五六七八九十]{}|4d-{}", "波", "lanes"))
+        .expect("施工说法网拼不成正则")
 }
 
 /// 测试声明行：测试名不改，第二张网不扫它。
@@ -223,7 +224,7 @@ fn no_tracked_text_names_a_dev_process_wave() {
     }
     assert!(
         hits.is_empty(),
-        "仓里有 {} 行写着开发过程的阶段名（「第 N 波」）：只写现状，删掉。前 50 处：\n{}",
+        "仓里有 {} 行写着开发过程的阶段名或施工记录名：只写现状，删掉。前 50 处：\n{}",
         hits.len(),
         hits.iter().take(50).cloned().collect::<Vec<_>>().join("\n")
     );
@@ -238,6 +239,7 @@ fn the_process_net_catches_wave_names_and_spares_test_declarations() {
         format!("/// 子命令 ＋1（2026-09-26，第五{} W5-ALIAS 合并）", "波"), // 2 ✔
         format!("describe(\"〔第四{} ST2〕指路\", () => {{", "波"), // 3 ✘ 测试名不改
         "// 波形 · 第 4 波段 · 第四版".to_string(), // 4 ✘
+        format!("//! 要求住址：`4d-{}.md ### P1` 第 2 件", "lanes"), // 5 ✔
     ];
     let got: BTreeSet<usize> = lines
         .iter()
@@ -247,7 +249,7 @@ fn the_process_net_catches_wave_names_and_spares_test_declarations() {
         .collect();
     assert_eq!(
         got,
-        BTreeSet::from([1, 2]),
-        "施工说法网在合成夹具上抓到的行 ≠ 标定（该抓 1、2；该放过 3、4）—— 网坏了，全仓那条零命中不作数"
+        BTreeSet::from([1, 2, 5]),
+        "施工说法网在合成夹具上抓到的行 ≠ 标定（该抓 1、2、5；该放过 3、4）—— 网坏了，全仓那条零命中不作数"
     );
 }

@@ -1,7 +1,7 @@
 //! **退出之前先排空停不下来的那一档** —— 判据。
 //!
 //! 守的要求（住址）：
-//! - 主会话 4D 裁 D-a（`4d-lanes.md`「主会话本批裁的」）逐字：「后端收 SIGTERM 先排空在飞写（有上限）再退」；
+//! - 要求：「后端收 SIGTERM 先排空在飞写（有上限）再退」；
 //! - 审计 E §E2：「流模式后端 `exit(0)` 或被 SIGKILL 时，**不等正在跑的阻塞写做完**」；
 //! -：「**值**住后端 · **执行**住通信层」—— 本件的「上限」由叫它退的那一方执行（第二次停机信号 ⇒ 立刻退）。
 //! 设计与读数住 §1。
@@ -555,7 +555,7 @@ fn x15_the_process_exits_only_in_main_and_exit_after_drain() {
 // ── A1（同住本文件：都是 `main.rs` 流模式那几行的接线）────────────────────
 
 /// 〔NT2 问 3 ＋ RT1 F3〕后端 `tracing` 只在 stderr 是终端时上色。
-/// 守的要求：主会话 4D 裁「写进文件 / monitor 日志的 stderr 关 ANSI 颜色」（`4d-lanes.md`）。
+/// 守的要求：「写进文件 / monitor 日志的 stderr 关 ANSI 颜色」。
 /// 形状：`main.rs` 生产段里 `.with_ansi(` 恰好一处，参数恰是「stderr 是不是终端」；`fmt()` 恰好一处（没有第二个不设它的初始化）。
 #[test]
 fn a1_the_backend_log_is_colored_only_on_a_terminal() {

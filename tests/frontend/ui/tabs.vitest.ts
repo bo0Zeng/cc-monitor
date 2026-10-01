@@ -5974,7 +5974,7 @@ describe("〔STC〕会话事实：后端给了什么 ⇒ tab 上是什么", () =
 });
 
 // ===== 活会话的记录文件不见了 / 被改过 ⇒ 那个 tab 顶上说一句，不碰会话状态 =====
-// 要求住址：题面 `4d-lanes.md`「主会话本批裁的」D-d「删了 / 改名 ⇒ 出声（该 tab 说一句『记录文件不见了』），不崩、不误判结束」。
+// 要求：「删了 / 改名 ⇒ 出声（该 tab 说一句『记录文件不见了』），不崩、不误判结束」。
 // 接线（`record-file-notice.ts::recordFileWiring`）喂的是**真的** `TabManager.streamElOf` 与 `onLine`，与 `main.ts` 同一形。
 describe("〔FW1〕记录文件的出声", () => {
   const mk = (seq: number) => ({

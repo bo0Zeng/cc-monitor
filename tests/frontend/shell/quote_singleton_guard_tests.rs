@@ -172,7 +172,7 @@ fn ps_quoter_census(src: &str) -> std::collections::BTreeMap<&'static str, usize
         .collect()
 }
 
-/// ★ 住址：`4d-lanes` P5 ——「判据：monitor 生产段零 PowerShell 引号器（零命中）」
+/// ★ 要求：「判据：monitor 生产段零 PowerShell 引号器（零命中）」
 /// （主会话裁：V156 方言只住后端，PowerShell 字面量只走后端 `platform/shell/dialect.rs::ps_literal`）。
 /// 人群：前端树 `src/frontend/**.rs` 的生产段（剥注释与测试段）。零命中；正控两条：同一把尺子量后端那唯一的出口恰好量出四个引号字符 ·
 /// 往 `launch.rs` 副本塞回旧的只转 ASCII 那一形数得出。买不到：按码点现算出引号、不写任何字面量的等价实现这把尺子看不见。

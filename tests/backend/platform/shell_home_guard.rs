@@ -1,5 +1,5 @@
 //! ——「生成alias这个东西是不是也应该后端搞? 这样就可以融入os适配层」⇒ shell 方言知识只住后端 OS 适配层
-//! `platform/shell/`（判据原文：「PowerShell / fish 语法字面量在 `platform/shell/` 之外零命中（两向）」；`4d-lanes` OSA 加了 POSIX 那几样）。
+//! `platform/shell/`（判据原文：「PowerShell / fish 语法字面量在 `platform/shell/` 之外零命中（两向）」；加了 POSIX 那几样）。
 //!
 //! 人群：后端 `src/backend/` 生产段（`guard_core::production_code`：剥注释与测试段）里**字符串字面量的内容**
 //! （转义与续行解开；字符字面量不算）。数的是 [`NEEDLES`] 那张方言专属语法字面量清单，`(文件, 记号) → 处数`：
