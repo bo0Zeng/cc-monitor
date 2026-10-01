@@ -1597,10 +1597,9 @@ pub fn start_local_backend() -> StartOutcome {
     //  『表没有 OS 轴』逼出来的补丁」。〕今天 `byte_table::choose` 按这台机器的键查表：Windows 那一格就是这一份产物
     //  按 `TARGET` 内嵌的那份，Linux 那一格是 musl（开发树只有原生那份时给原生那份），不承诺 / 没带 ⇒ 那句拒绝的话。
     let this_machine = crate::byte_table::Key::this_machine();
-    let embedded: Result<(&str, &[u8]), String> =
-        crate::byte_table::choose(this_machine)
-            .map(|p| (p.build_id, p.bytes))
-            .map_err(|r| r.say(&copy_text("rsLocalBackendHost.local.machine", &[])));
+    let embedded: Result<(&str, &[u8]), String> = crate::byte_table::choose(this_machine)
+        .map(|p| (p.build_id, p.bytes))
+        .map_err(|r| r.say(&copy_text("rsLocalBackendHost.local.machine", &[])));
     // ★★ `K-P1`：**先走常驻那条路** —— 认得出已有实例就接上它，没有就起一个脱离的。
     //
     // 这就是「怎么起」那个注入点：`start_detached` 是**这一层**（宿主知识层）的东西，

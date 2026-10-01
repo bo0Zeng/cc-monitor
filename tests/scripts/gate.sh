@@ -2080,12 +2080,13 @@ run_e2e resume-frames          7
 # ── `ci.yml` 里带 `assert-pass-floor.sh` 地板、此前只在 CI 上跑的七套 ─────────────────────────────
 #   `cc-spawn-uplift` 有一个真回归在 CI 上红了四天，本机门禁一格都看不见。七套全走隔离的 tmux socket
 #   （`-L` 或 tmux shim）或根本不碰 tmux，本机跑得动 ⇒ 接进执行链，判法同上面各套（`exact`：PASS 恒等）。
-#   地板取的是本机实打的 PASS（`inbound-frames` 32 · `graylight-frames` 13 比 `ci.yml` 那两行的 30 · 12 高 ——
+#   地板取的是本机实打的 PASS（`inbound-frames` 31 · `graylight-frames` 13 比 `ci.yml` 那两行的 30 · 12 高 ——
 #   CI 那边是 `at-least`，只挡缩水）。〔量于 2026-09-30，本工作树，本机 tmux 3.6〕各套墙钟：
 #   cc-spawn-uplift 44 秒 · inbound-frames 2 秒 · graylight-frames 3 秒 · backend-fork 不到 1 秒 ·
 #   tmux-target 9–48 秒（两趟）· cc-bus-queue-drain 4 秒 · resume 16 秒。
 run_e2e cc-spawn-uplift       72
-run_e2e inbound-frames        32
+# inbound-frames 32 → 31：hello 命令清单里全景那一格随代码全景删了。
+run_e2e inbound-frames        31
 run_e2e graylight-frames      13
 run_e2e backend-fork          10
 run_e2e tmux-target           26

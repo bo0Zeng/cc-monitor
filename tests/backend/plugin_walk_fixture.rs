@@ -548,13 +548,12 @@ mod tests {
         let text = String::from_utf8_lossy(&out.stdout).into_owned();
         // ★ `why` 原样带上通用口那句话：它会**点名缺的那一个 token**，
         //   而不是「缺能力」四个字，也不是「调用失败」（`probe` 那 8 条判据守的就是这个）。
-        let answer =
-            crate::plugin::probe::negotiate(&text, &name, required).map_err(|e| {
-                Stop::Rejected {
-                    hop: HOPS[3],
-                    why: e.message(),
-                }
-            })?;
+        let answer = crate::plugin::probe::negotiate(&text, &name, required).map_err(|e| {
+            Stop::Rejected {
+                hop: HOPS[3],
+                why: e.message(),
+            }
+        })?;
         done.push(HOPS[3]);
 
         // ── 跳⑦ 拿码摘诊断：真活两趟（一趟被拒、一趟成事）─────────────────

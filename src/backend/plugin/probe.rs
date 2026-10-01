@@ -181,7 +181,11 @@ pub(crate) fn require(answer: &Answer, required: &[&str]) -> Result<(), Rejected
 }
 
 /// 一步走完：认身份 → 逐个查必需清单。
-pub(crate) fn negotiate(text: &str, want_name: &str, required: &[&str]) -> Result<Answer, Rejected> {
+pub(crate) fn negotiate(
+    text: &str,
+    want_name: &str,
+    required: &[&str],
+) -> Result<Answer, Rejected> {
     let answer = parse(text, want_name)?;
     require(&answer, required)?;
     Ok(answer)
