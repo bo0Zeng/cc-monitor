@@ -1,4 +1,4 @@
-//! 〔MIG-1 · `设计/99 §2.1 ⑬`〕**端口转发（F58，`-L`）的账住本机常驻后端**：起 · 停 · 列三条帧命令，界面经
+//! **端口转发（F58，`-L`）的账住本机常驻后端**：起 · 停 · 列三条帧命令，界面经
 //! `chan.call(<local>, "forward-*", …)` 直接问（monitor 那三条 Tauri 命令与它手里那张转发账退役）。
 //!
 //! # 形状
@@ -7,7 +7,7 @@
 //!  界面 ── forward-start {origin, localPort, remoteHost, remotePort} ──▶ 本机后端
 //!           ① 规格先过围栏（任何查表 / 拨号之前）
 //!           ② 查可达表（`remote_ask::REACH`：monitor 在每台远端流握手那一刻登记的「怎么够到那台」）；
-//!              〔MIG-1 续〕表里没有（那台的流没起来）⇒ 按界面一并交来的那台配置自己组请求（`dial/machine.rs`），不拒
+//! 表里没有（那台的流没起来）⇒ 按界面一并交来的那台配置自己组请求（`dial/machine.rs`），不拒
 //!           ③ 把那份拨号请求改成 `use: forward` ⇒ `dial::uses::run`（池里那条 SSH 连接；绑本机回环口是它的事）
 //!           ④ 等 ack：口绑好了、连上了才算起来；不成 ⇒ 原话回、不进账
 //!           ⑤ 进账：一个任务读「接进了第 n 条连接」那几行，计数照抄
@@ -15,7 +15,7 @@
 //!  界面 ── forward-list ──▶ {forwards:[{id, origin, localPort, remoteHost, remotePort, state, connCount}]}
 //! ```
 //!
-//! **账是本进程一张**（不是每条流连接一张）：常驻后端活得比界面长（V105），界面重开之后列得出、停得掉上次开的转发。
+//! **账是本进程一张**（不是每条流连接一张）：常驻后端活得比界面长，界面重开之后列得出、停得掉上次开的转发。
 //! v1 仍是即席（不落盘）：后端重启 ⇒ 账空、口全放。
 //!
 //! 零定时器：没有「过一会儿再看看」—— 状态是读出来的（那个任务收工了没有），不是轮询出来的。
@@ -163,7 +163,7 @@ where
     Fut: Future<Output = ()> + Send + 'static,
 {
     let spec = parse_spec(args)?;
-    // 〔MIG-1 续 · 主会话裁〕那台的流握手过 ⇒ 用可达表里那份（带着 monitor 排好的 last-good 顺序与它的 agent 套接字）；
+    // 那台的流握手过 ⇒ 用可达表里那份（带着 monitor 排好的 last-good 顺序与它的 agent 套接字）；
     //   没握手过（流没起来）⇒ **不拒**：按界面交来的那台配置自己组请求、自己拨（与起流同一个池，`dial/machine.rs`）。
     let reached = remote_ask::lock(reach)
         .get(&spec.origin)

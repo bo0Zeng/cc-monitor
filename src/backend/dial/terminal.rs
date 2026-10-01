@@ -1,4 +1,4 @@
-//! 〔FIX4 · `设计/99 §2.1 ⑬`「待迁」最后一行〕**给一台远端开终端要跑的那一串** —— `ssh -t[ -J …] …` 外壳与
+//! 〔「待迁」最后一行〕**给一台远端开终端要跑的那一串** —— `ssh -t[ -J …] …` 外壳与
 //! PowerShell 窗口载荷，在本机常驻后端里渲（原住 monitor `launch.rs` 的 `build_remote_ssh_ps_command`〔散文墓碑〕，逐字搬来）。
 //!
 //! 界面交来的是那台机器的配置（`{machine, saved?, jump?, prefer?}`，monitor 从它自己的机器表与「上次赢的那条」给出，
@@ -15,7 +15,7 @@
 //! 那是**这条送法**的约束）· 用户名 / 地址 / 跳板用户 / 跳板地址出了白名单（它们是拼进命令体的裸词）。
 //! 只算不起：不拨号、不开窗（开窗是 monitor 的事，它只开窗）。
 //!
-//! 〔P5 · `设计/80 §8.2` 本地半〕**令牌握手前奏也在这里接**（原在 monitor `launch.rs`）：`terminal-ssh` 带 `rbindToken` ⇒
+//! 〔本地半〕**令牌握手前奏也在这里接**（原在 monitor `launch.rs`）：`terminal-ssh` 带 `rbindToken` ⇒
 //! 成品 = 前奏 ＋ 那一行；本机那一串走 `terminal-local`（同形：后端出成品，monitor 只开窗）。见 [`with_bind_prelude`]。
 
 use copy_core::copy_text;
@@ -138,7 +138,7 @@ pub(crate) fn render(req: &super::DialRequest) -> Result<String, CmdErr> {
     ))
 }
 
-/// 给一条要在新窗口里跑的 PowerShell 命令接上令牌握手前奏（`设计/80 §8.2` 本地半：窗口以 `ccm-rbind-token-<令牌>` 登记进 monitor 那张表）。
+/// 给一条要在新窗口里跑的 PowerShell 命令接上令牌握手前奏（本地半：窗口以 `ccm-rbind-token-<令牌>` 登记进 monitor 那张表）。
 ///
 /// - `token = None` ⇒ **逐字节原样**（`attach` · 部署那几条不起 agent 进程的）。
 /// - 令牌形状不对 ⇒ `refused`（有没有数据目录都拒：铸币口与载荷渲染器各有一道同形闸，走到这里是编程错误）。
@@ -194,8 +194,8 @@ fn command_arg(args: &Value) -> Result<&str, CmdErr> {
     })
 }
 
-/// 「在此打开终端」要在那台跑的那一串（〔P4〕原住文件窗口那一侧的 `build_open_terminal_cmd`〔散文墓碑〕 · `_at`，逐字搬来：
-/// 窗口只交意图 `{cwd}`，命令由这里拼，`设计/60 §2.3` · 主会话 09-29 拍板 Q2）。
+/// 「在此打开终端」要在那台跑的那一串（原住文件窗口那一侧的 `build_open_terminal_cmd`〔散文墓碑〕 · `_at`，逐字搬来：
+/// 窗口只交意图 `{cwd}`，命令由这里拼， · 主会话 09-29 拍板 Q2）。
 ///
 /// 逐字：`cd <quoted> && exec ${SHELL:-bash} -l`（`cwd` 为空 ⇒ 只有后半段）。当前目录是那台列出来的**自由文本路径** ⇒
 /// 拼进 `cd` 之前先过形式 ＋ 拒绝集（`shell_quote_core::posix_free_path_ok`：POSIX 绝对 · 无 `..` 段 · 不含 NUL / CR / LF；
@@ -237,7 +237,7 @@ pub(crate) fn command_for_cwd(cwd: &Value) -> Result<String, CmdErr> {
 }
 
 /// 帧命令 `terminal-ssh`：`{machine, saved?, jump?, prefer?, command | cwd, rbindToken?}` ⇒ `{command: "<前奏？＋那一行 PowerShell>"}`。
-/// 〔P4〕`command`（主界面交成品命令）与 `cwd`（文件窗口「在此打开终端」只交意图，命令由 [`command_for_cwd`] 拼）**恰好给一个**。
+/// `command`（主界面交成品命令）与 `cwd`（文件窗口「在此打开终端」只交意图，命令由 [`command_for_cwd`] 拼）**恰好给一个**。
 pub(crate) fn answer(args: &Value) -> Result<Value, CmdErr> {
     let token = token_arg(args)?;
     let req = super::machine::resolve(&dial_args(args)?)?;
@@ -245,7 +245,7 @@ pub(crate) fn answer(args: &Value) -> Result<Value, CmdErr> {
     Ok(json!({ "command": line }))
 }
 
-/// 〔P4〕`command` 与 `cwd` 恰好给一个；给的是 `cwd` ⇒ 由 [`command_for_cwd`] 拼好放进 `command`（拨号请求只认 `command`）。
+/// `command` 与 `cwd` 恰好给一个；给的是 `cwd` ⇒ 由 [`command_for_cwd`] 拼好放进 `command`（拨号请求只认 `command`）。
 fn dial_args(args: &Value) -> Result<Value, CmdErr> {
     match (args.get("command"), args.get("cwd")) {
         (Some(_), Some(_)) => Err((

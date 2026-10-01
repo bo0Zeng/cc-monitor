@@ -1,9 +1,9 @@
-//! 〔SU1 · 第四波 4C · V116〕**skill 装记录** —— 从别的机器「装到这台」的 skill，装时写进了哪几个文件（第四层，后端自有状态）。
+//! **skill 装记录** —— 从别的机器「装到这台」的 skill，装时写进了哪几个文件（第四层，后端自有状态）。
 //!
 //! # 用户裁决（逐字）
 //!
 //! V116〔选〕「**要，只删装时写进去的文件**」：从别的机器「装到这台」的 skill 要能卸 —— 装的时候记下写了哪些文件，
-//! 卸只删这些（装完用户自己改过的先问），足迹里看得见。设计全文 `调研/第四波记录/SU1.md §1`。
+//! 卸只删这些（装完用户自己改过的先问），足迹里看得见。。
 //!
 //! # 文件（`~/.cc-monitor/skill-installs.json`，与资产目录同一个家、同一族写法）
 //!
@@ -38,7 +38,7 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
-/// 文件名（与 `backend.json` / `assets-catalog.json` 同一个家）。〔P3〕字面量只住契约 crate（`relay_route_core::SKILL_LEDGER_REL`，数据位置页按它列），写者只有本模块（判据钉）。
+/// 文件名（与 `backend.json` / `assets-catalog.json` 同一个家）。字面量只住契约 crate（`relay_route_core::SKILL_LEDGER_REL`，数据位置页按它列），写者只有本模块（判据钉）。
 pub const FILE_NAME: &str = relay_route_core::file_name_of(relay_route_core::SKILL_LEDGER_REL);
 /// 格式版本。读到更大的 ⇒ 不覆盖。
 pub const FORMAT_V: u64 = 1;
@@ -173,7 +173,7 @@ fn write_at(path: &Path, ledger: &Ledger) -> Result<(), String> {
             &[("path", &path.display().to_string())],
         )
     })?;
-    // 〔HX1〕那一层目录由 [`record_at`] 在拿锁之前经 `own_dir::ensure_private_dir` 建（〔HX2〕挪过去：锁的是这个目录，它得先在）。
+    // 那一层目录由 [`record_at`] 在拿锁之前经 `own_dir::ensure_private_dir` 建（挪过去：锁的是这个目录，它得先在）。
     let body = serde_json::to_string(ledger)
         .map_err(|e| copy_text("beSkillLedger.write.encodeFailed", &[("e", &e.to_string())]))?;
     let tmp = dir.join(format!("{FILE_NAME}.{}.tmp", std::process::id()));
@@ -215,7 +215,7 @@ fn write_at(path: &Path, ledger: &Ledger) -> Result<(), String> {
     result
 }
 
-// 〔HX2 · 第四波 4D〕墓碑：这里从前是一把**进程内** `Mutex`（「同一进程里的读—改—写串起来」）。两个后端进程
+// 墓碑：这里从前是一把**进程内** `Mutex`（「同一进程里的读—改—写串起来」）。两个后端进程
 //   （两台 monitor 各自连着这台时的两条远端流 ＋ 一次性 CLI）同时记装记录 ⇒ 后写的整份盖掉先写的一条，
 //   **那一趟装的文件从此卸不掉、而且没人说**（审计 `E-compat.md` §E6）。今天读—改—写整段在那个目录的**跨进程**锁里
 //   （`platform/lock.rs`，[`record_at`] 开头拿）。
@@ -330,7 +330,7 @@ pub fn record_at(path: &Path, skills_root: Option<&Path>, args: &Value) -> Answe
         "bad_args",
         crate::common::contract::malformed("missing `op` (add, drop, mcp-add or mcp-drop)"),
     ))?;
-    // 〔HX2〕先建那一层目录（在就算了），再拿它的跨进程锁，锁住之后才读。
+    // 先建那一层目录（在就算了），再拿它的跨进程锁，锁住之后才读。
     let lock_dir = path.parent().ok_or((
         "io_failed",
         copy_text(
@@ -338,7 +338,7 @@ pub fn record_at(path: &Path, skills_root: Option<&Path>, args: &Value) -> Answe
             &[("path", &path.display().to_string())],
         ),
     ))?;
-    // 〔HX1〕只建那一层、建的那一下就是 0700（`own_dir`：后端建自家目录的那一个函数）。
+    // 只建那一层、建的那一下就是 0700（`own_dir`：后端建自家目录的那一个函数）。
     crate::common::own_dir::ensure_private_dir(lock_dir).map_err(|e| {
         (
             "io_failed",
@@ -368,7 +368,7 @@ pub fn record_at(path: &Path, skills_root: Option<&Path>, args: &Value) -> Answe
                 .to_string();
             let files = files_arg(args)?;
             // 目录自己算：与 `skill-install-plan` 答 `dir` 的是同一个根（不收调用方给的路径）。
-            // 〔MIG-3a · 子步 3 · 主会话 09-28 裁〕`at: "home"`（闭集，只此一个值）：装的东西落在家目录底下、不在 skill 根下
+            // `at: "home"`（闭集，只此一个值）：装的东西落在家目录底下、不在 skill 根下
             //   ⇒ 键 = 本记录自己所在的那个家（`<家>/.cc-monitor/<本文件>` 的上两层），
             //   `files` 的路径相对它。同一份账、同一个形（主会话：不另立第二份账）。
             let project = args.get("project").and_then(Value::as_str);

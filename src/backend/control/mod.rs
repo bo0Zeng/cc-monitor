@@ -3,21 +3,21 @@
 //! §1.1 第二条解耦线的另一半。三个模块各自改变的东西不同：
 //!
 //! - [`fork_write`]：**写文件系统**（`O_EXCL` 新建一个 `<new-sid>.jsonl`）。
-//!   红线 I7 的第一个洞口。⚠ 〔步 23b · 09-19〕本行原先写着「全 crate **唯一**的
+//!   红线 I7 的第一个洞口。⚠ 本行原先写着「全 crate **唯一**的
 //!   写盘白名单模块」—— 那句话今天不成立了，见下面 [`files_write`]。
 //!   白名单从来就是**一张表**（`K-W2D` 09-10 起），唯一的真相在
 //!   `readonly_guard::WRITE_WHITELIST_MODULES`，**别在散文里再抄一份数**。
 //! - [`files_write`]（步 23b，09-19）：**写文件系统**（`O_EXCL` 在用户指定的文件管理目标下
-//!   新建一份此前不存在的文件）。红线 I7 的第二个洞口，`设计/60 §6.5.2 A` 拍板的那个
-//!   「带围栏的模块」。〔订正 · F1 · p2o〕已接命令面（`files-create` ＋ 改动既有数据的五件），
+//!   新建一份此前不存在的文件）。红线 I7 的第二个洞口，拍板的那个
+//!   「带围栏的模块」。已接命令面（`files-create` ＋ 改动既有数据的五件），
 //!   并已从白名单层搬到 `readonly_guard` 第三层（「改，但每一处先过围栏、且只从文件管理面来」）。
-//! - [`exit_policy`]（B2 · 条 66，`设计/01 §3.3b`）：**写后端自己的那一份状态文件**
+//! - [`exit_policy`]（B2 · 条 66）：**写后端自己的那一份状态文件**
 //!   （`~/.cc-monitor/backend.json`，「退出行为」那个值）。它**不碰用户数据** ——
 //!   `readonly_guard` 为它单开一层「后端自有状态文件」（按文件登记、动词闭集、只从 `inbound.rs` 进），
 //!   理由与射程住那一层的登记表。
 //! - [`tmux_hook`]：**改 tmux server 状态**（`tmux set-hook -g`）+ **发信号**（`SIGUSR1`）。
 //! - [`gate`]（F03）：**§34 Gate 2（identity）在本侧的承载** —— 探一次 tmux 拿回
-//!   `@ccm_sid` 与 `#{session_id}` 句柄，判定本身在 [`gate_rules`]（〔THIN〕从共享 crate 收回本层）。
+//!   `@ccm_sid` 与 `#{session_id}` 句柄，判定本身在 [`gate_rules`]（从共享 crate 收回本层）。
 //!   它**只读** tmux，但归 control/ —— 因为它是「能不能改这个会话」这个**决策**的一部分
 //!   （定框 C13：区别不在进程在哪，在它有没有决策权）。
 //! - [`identity_tag`]（`U-NP④`）：**把 `@ccm_sid` 打到 tmux 会话上**（改 tmux server 运行期状态）。
@@ -49,7 +49,7 @@
 //!   起进程（转调本机的 cc-bus 命令，argv 直传不过 shell），**一处**，已登记进
 //!   `readonly_guard::ALLOWED`。⚠ 它**不读** cc-bus 的任何数据文件 ——
 //!   用户 08-13 明说「后面我可能要改ccbus」⇒ 只把它的**命令**当接口。
-//! - [`panorama`]（RM1c · 第四波，V108）：**代码全景** —— 经插件通用调用口起那个只装引擎的
+//! - [`panorama`]：**代码全景** —— 经插件通用调用口起那个只装引擎的
 //!   独立小程序（`cc-monitor-panorama`），后端自己一行引擎都不链。起进程走 `plugin::invoke::run`
 //!   （起进程点一处不增）；被起的那个进程只写**索引**（落后端自己的数据目录，不是用户文件）。
 //! - [`deploy_plan`]（MIG-3b）：产出「那台的后端要不要换、换成哪一格」的部署计划（帧命令 `deploy-plan`）。
@@ -72,25 +72,25 @@ pub mod cli_control;
 pub mod deploy_plan;
 pub mod exit_policy;
 pub mod files_commit;
-// 〔FILES2〕解压（`files-extract`）＋ 第三层「建链接」那一个动词的住址（复制链接本身 · 解压包里的链接）。
+// 解压（`files-extract`）＋ 第三层「建链接」那一个动词的住址（复制链接本身 · 解压包里的链接）。
 pub mod files_extract;
-// 〔FILES2 · Q5〕上传的块形：把送进暂存区的块拼成暂存件（SFTP 起始目录不是后端 home 时走这条）。
+// 上传的块形：把送进暂存区的块拼成暂存件（SFTP 起始目录不是后端 home 时走这条）。
 pub mod files_upload_chunks;
 pub mod files_write;
 pub mod fork_write;
 pub(crate) mod gate;
-// 〔THIN〕§34 Gate 2 与 tmux 会话名两条规则（原共享 crate `gate-core`：monitor 那一侧的门删了，只剩本层用）。
+// §34 Gate 2 与 tmux 会话名两条规则（原共享 crate `gate-core`：monitor 那一侧的门删了，只剩本层用）。
 pub(crate) mod gate_rules;
 pub(crate) mod identity_tag;
 pub(crate) mod kill;
 pub(crate) mod launch;
-// 〔MIG-2 · `99 §2.1 ⑬`〕起会话的计划与渲染（从 monitor 搬来）：本机起会话 · `ccm …` 调用行 · 载荷 ＋ 外层 tmux 三格。
+// 起会话的计划与渲染（从 monitor 搬来）：本机起会话 · `ccm …` 调用行 · 载荷 ＋ 外层 tmux 三格。
 pub mod launch_render;
 pub(crate) mod panorama;
-// 〔MIG-3b 续〕全景写批注 / 文档关联：问这台的小程序要计划、经这台文件管理面落盘（帧命令 `panorama-edit`）。
+// 全景写批注 / 文档关联：问这台的小程序要计划、经这台文件管理面落盘（帧命令 `panorama-edit`）。
 pub(crate) mod panorama_edit;
 pub mod resident;
 pub mod resolve_query;
 pub mod tmux_hook;
-// 〔SR1b · 2026-09-24〕传输台住本机常驻后端（第三层成员：本机下载落点的写 · 票表 · 进度帧）。
+// 传输台住本机常驻后端（第三层成员：本机下载落点的写 · 票表 · 进度帧）。
 pub mod transfer;

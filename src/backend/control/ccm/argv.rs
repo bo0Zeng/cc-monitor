@@ -25,7 +25,7 @@ use copy_core::copy_text;
 
 /// 每个 `--flag` 的字面量，**唯一住址**。
 ///
-/// 〔V138〕ccm 是 claude 的壳：它只认下面这些（壳层选项 ＋ `--ccm-*` 诊断口 ＋ `--`），其余每个词原样交给 agent。
+/// ccm 是 claude 的壳：它只认下面这些（壳层选项 ＋ `--ccm-*` 诊断口 ＋ `--`），其余每个词原样交给 agent。
 /// 用户 09-26：与 claude 同名的两个改名 `--ccm-tmux` / `--ccm-agent`（claude 2.1.283 自己有 `--tmux` / `--agent`）。
 pub(crate) mod flag {
     pub(crate) const TMUX: &str = "--ccm-tmux";
@@ -45,17 +45,17 @@ pub(crate) mod flag {
     pub(crate) const CCM_VERSION: &str = "--ccm-version";
     pub(crate) const CCM_PROBE: &str = "--ccm-probe";
     pub(crate) const CCM_SID: &str = "--ccm-sid";
-    /// 〔V151〕分隔符：最后一个 `--` 左边交 agent、右边归 ccm。
+    /// 分隔符：最后一个 `--` 左边交 agent、右边归 ccm。
     pub(crate) const END: &str = "--";
-    /// 〔V153 · 用户 09-27〕位置动作「起新会话」：ccm 自己的词，只许是 `--` 右边的第一个词（`ccm [claude 的] -- new [ccm 选项]`）。
+    /// 〔用户 09-27〕位置动作「起新会话」：ccm 自己的词，只许是 `--` 右边的第一个词（`ccm [claude 的] -- new [ccm 选项]`）。
     /// 起新会话本来就是缺省，写出来是给想说清楚的人与渲染器用的；`ccm new`（没有 `--`）照 V151 整行交 claude。
     pub(crate) const NEW: &str = "new";
 }
 
-/// 〔E2〕这个词是不是 ccm 自己认的（壳层选项 ＋ `--ccm-*` 诊断口）—— 问的就是真解析器（放在 `--` 右边喂它）。
+/// 这个词是不是 ccm 自己认的（壳层选项 ＋ `--ccm-*` 诊断口）—— 问的就是真解析器（放在 `--` 右边喂它）。
 /// 后端 CLI 面不许派生出这样的名字（`cli_control::cli_exposed`）。
 pub(crate) fn is_ccm_word(word: &str) -> bool {
-    // 〔V151〕放在 `--` 右边问：只要不是「认不得这个词」那两句，就是 ccm 的词（缺值 / 组合不对也算认得）。
+    // 放在 `--` 右边问：只要不是「认不得这个词」那两句，就是 ccm 的词（缺值 / 组合不对也算认得）。
     let unknown = [
         copy_text("beArgv.parse.unknownRight", &[("w", word)]),
         copy_text("beArgv.parse.backendWordAfterClaudeArgs", &[("w", word)]),
@@ -133,9 +133,9 @@ pub(crate) struct Opts {
     pub(crate) print: bool,
     pub(crate) detach: bool,
     pub(crate) tmux_size: String,
-    /// 交给 agent 的那一串，按用户写的顺序（V138：ccm 不认的词全在这里，含 `--resume` / `--model`）。
+    /// 交给 agent 的那一串，按用户写的顺序（ccm 不认的词全在这里，含 `--resume` / `--model`）。
     pub(crate) passthru: Vec<String>,
-    /// 〔FIX · V138〕透传里 resume 的那条会话（只看不吃：词仍原样在 `passthru` 里）；见 [`resume_sid`]。
+    /// 透传里 resume 的那条会话（只看不吃：词仍原样在 `passthru` 里）；见 [`resume_sid`]。
     pub(crate) resumes: Option<String>,
 }
 
@@ -181,14 +181,14 @@ pub(crate) enum Parsed {
     Opts(Box<Opts>),
 }
 
-/// 〔V151〕`args` 里**最后一个** `--` 的位置（没有 ⇒ `None`）。左边交 claude、右边归 ccm —— 切法只住这一处。
+/// `args` 里**最后一个** `--` 的位置（没有 ⇒ `None`）。左边交 claude、右边归 ccm —— 切法只住这一处。
 pub(crate) fn last_end(args: &[String]) -> Option<usize> {
     args.iter().rposition(|a| a == flag::END)
 }
 
 /// 🔴 **这套 argv 的唯一解析口。**
 ///
-/// 〔V151 · 用户 09-27〕格式 `ccm [交给 claude 的…] -- [ccm 自己的…]`：没有 `--` ⇒ 整行原样交 agent（[`Opts::passthru`]，
+/// 〔用户 09-27〕格式 `ccm [交给 claude 的…] -- [ccm 自己的…]`：没有 `--` ⇒ 整行原样交 agent（[`Opts::passthru`]，
 /// 一个词都不拦）；有 ⇒ 按**最后一个** `--` 切（[`last_end`]），左边原样交 agent（claude 自己的 `--` 照写，
 /// 没有 ccm 部分时末尾补一个空 `--`），右边逐词只认 ccm 表（壳层选项 ＋ `--ccm-*` 诊断口），认不得就报错、不猜。
 /// 〔墓碑 —— V138 那一版：壳层选项在任何位置都认、首词 `new` 是 ccm 的位置动作、`--` 之后一律透传。〕
@@ -265,9 +265,9 @@ pub(crate) fn parse(args: &[String]) -> Result<Parsed, Die> {
             flag::CCM_PROBE => return Ok(Parsed::Early(Early::Probe)),
             flag::CCM_VERSION => return Ok(Parsed::Early(Early::Version)),
             flag::CCM_HELP => return Ok(Parsed::Early(Early::Help)),
-            // 〔V153〕`new` 只许打头 ⇒ 别处出现说清为什么，不落到「不是 ccm 的选项」那句。
+            // `new` 只许打头 ⇒ 别处出现说清为什么，不落到「不是 ccm 的选项」那句。
             flag::NEW => return die(copy_text("beArgv.parse.newNotFirst", &[])),
-            // 〔V151〕右边认不得 ⇒ 报错。是后端子命令 / 流词（它们只能紧跟打头的 `--`）⇒ 说清为什么。
+            // 右边认不得 ⇒ 报错。是后端子命令 / 流词（它们只能紧跟打头的 `--`）⇒ 说清为什么。
             _ if i == 0 && crate::control::ccm::is_backend_word(a) => {
                 return die(copy_text(
                     "beArgv.parse.backendWordAfterClaudeArgs",
@@ -349,7 +349,7 @@ fn validate(o: &Opts) -> Result<(), Die> {
             &[("size", &o.tmux_size.to_string())],
         ));
     }
-    // 〔DUP1 · `INVARIANTS §47` ①〕标识符在拼进容器路那条 shell 串之前先过放行判定
+    // 〔`INVARIANTS §47` ①〕标识符在拼进容器路那条 shell 串之前先过放行判定
     // （判定住 `shell-quote-core`，全仓唯一一份；quote 只管元字符，管不了 `-` 开头的选项注入）。
     if !o.ccm_sid.is_empty() && !shell_quote_core::session_id_ok(&o.ccm_sid) {
         return die(copy_text(
@@ -380,7 +380,7 @@ pub(crate) fn parse_size(s: &str) -> Option<(String, String)> {
 
 #[cfg(test)]
 #[path = "../../../../tests/backend/control/ccm/argv_tests.rs"]
-pub(crate) mod tests; // 〔V151〕`pub(crate)`：旧写法夹具的换排列 `tests::v138_to_v151` 给同族几份单测共用
+pub(crate) mod tests; // `pub(crate)`：旧写法夹具的换排列 `tests::v138_to_v151` 给同族几份单测共用
 
 #[cfg(test)]
 #[path = "../../../../tests/backend/control/ccm/claude_flags_tests.rs"]

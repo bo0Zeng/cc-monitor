@@ -1,7 +1,7 @@
 //! U8c-1：`backend::control::payload` 的载荷渲染 **↔** 入库夹具 `payload-golden.json` 的**逐字节对拍**。
 //!
-//! 〔LR2〕夹具左边原来是 TS 兜底渲染器（`launch-render-fallback.ts`）现场渲的串；那份零生产调用、
-//! 按 `设计/00 §2.5 ④` 删了，左边换成 `tests/test-support/launch-payload-golden.ts` 用例表里的**手写期望**
+//! 夹具左边原来是 TS 兜底渲染器（`launch-render-fallback.ts`）现场渲的串；那份零生产调用、
+//! 按删了，左边换成 `tests/test-support/launch-payload-golden.ts` 用例表里的**手写期望**
 //! （值就是它最后一次渲出、与 Rust 对过的原样）。下面的历史段落照旧留着 —— 它们讲的「自洽夹具」
 //! 纪律今天仍是本对拍的骨架：夹具入库，两侧各自与它比。
 //!
@@ -25,7 +25,7 @@
 //! 入库夹具照样全绿（复盘审计用变异实测过）。夹具挡的是**单侧静默漂移**，不是两侧同错。
 //!
 //! 真正挡「两侧同错」的是**各侧自己的语义判据**：Rust 侧自己的单测（`payload_tests.rs`）。
-//! 〔LR2〕TS 那半在 U8c-3 删了（LR1 删 CLI 那份、LR2 删兜底这份）—— 本对拍从此是「手写规格 vs Rust 生产」，
+//! TS 那半在 U8c-3 删了（LR1 删 CLI 那份、LR2 删兜底这份）—— 本对拍从此是「手写规格 vs Rust 生产」，
 //! 与 `ccm_invocation_tests.rs`「判据自带清单」同一性质。
 
 use serde::Deserialize;
@@ -45,7 +45,7 @@ const TS_HALF: &str = include_str!("../../../../tests/frontend/ui/launch-payload
 /// **是 `assert_eq!` 不是地板**（审计建议）：地板只维持到加第 11 条用例为止 ——
 /// 加到 11 之后再删掉一条，`>= 10` 照样绿。写成相等就把「地板」变成**强制触碰**：
 /// 加/删用例都必须回来改这个数，改的时候人会看见它。
-/// 2026-08-02 U8c-1 交付时 10 条；`设计/80 §8` 步 1（2026-09-23）加了启动期令牌两条中的
+/// 2026-08-02 U8c-1 交付时 10 条；（2026-09-23）加了启动期令牌两条中的
 /// 一条新用例（另一条是把「四种 EnvOp 同时出现」扩成五种，不增条数）⇒ **11 条**。
 const EXPECT_CASES: usize = 11;
 
@@ -99,7 +99,7 @@ enum FixtureEnvOp {
         #[allow(dead_code)]
         value: String,
     },
-    /// `设计/80 §8` 步 1：启动期令牌。
+    /// 启动期令牌。
     ExportRbindToken {
         #[allow(dead_code)]
         value: String,

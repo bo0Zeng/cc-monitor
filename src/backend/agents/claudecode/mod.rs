@@ -5,13 +5,13 @@
 //! | [`paths`] | 配置目录怎么解析（环境变量名 + `.claude`）· `projects/` 与 `sessions/` 两个子目录 |
 //! | [`records`] | 会话记录的后缀与命名（`<sid>.jsonl`） |
 //! | [`liveness`] | 判活时"这个 cmdline 看起来像不像 Claude" |
-//! | [`cards`] | 〔THIN〕工具名 → 卡型 · tmux 前台命令哪几个算它（界面不认工具名，卡型随记录成品带出） |
-//! | [`branch`] | 〔THIN〕按 sid 找那份会话文件 · 分叉的记录变换（原共享 crate `branch-core`） |
+//! | [`cards`] | 工具名 → 卡型 · tmux 前台命令哪几个算它（界面不认工具名，卡型随记录成品带出） |
+//! | [`branch`] | 按 sid 找那份会话文件 · 分叉的记录变换（原共享 crate `branch-core`） |
 //! | [`accounts`] | `.claude.json` 的信任判定（`projects[cwd].hasTrustDialogAccepted`） |
 //! | [`resume`] | resume 的命令形状与会话名前缀（与 [`super::codex::resume`] 对称） |
-//! | [`assets`] | 〔AS2〕资产布局：`skills/<名>/` · `SKILL.md` 的 `description:` · `.claude.json` 的 `projects` × `<项目>/.mcp.json` |
-//! | [`text`] | 〔P1〕记录文本：`message.content` 的正文块 / 工具内容怎么抽 · user 正文里 CLI 注入的包装与样板怎么剥（原共享 crate `search-core` 的这一半） |
-//! | [`schema`] · [`parse`] · [`turn`] · [`drift`] | 〔MOD〕**记录解释**：一行 jsonl 的线上形状（界面收到的就是它）· 抢救与记账 · 轮次边沿 · 漂移账（从 monitor 搬来，`设计/90 §3` 判据 3） |
+//! | [`assets`] | 资产布局：`skills/<名>/` · `SKILL.md` 的 `description:` · `.claude.json` 的 `projects` × `<项目>/.mcp.json` |
+//! | [`text`] | 记录文本：`message.content` 的正文块 / 工具内容怎么抽 · user 正文里 CLI 注入的包装与样板怎么剥（原共享 crate `search-core` 的这一半） |
+//! | [`schema`] · [`parse`] · [`turn`] · [`drift`] | **记录解释**：一行 jsonl 的线上形状（界面收到的就是它）· 抢救与记账 · 轮次边沿 · 漂移账（从 monitor 搬来） |
 //!
 //! # ⚠ 搬进来的是**知识**，不是**机器**
 //!
@@ -24,7 +24,7 @@
 //!
 //! # ⚠ 本层**不**代表 Claude 那半已经分干净
 //!
-//! 〔`S4b` 08-14 订正〕`claude_dir` 那个**参数名已经清了**（生产段 64 行 → 3 行，
+//! `claude_dir` 那个**参数名已经清了**（生产段 64 行 → 3 行，
 //! 剩下的 3 处全是冻结的 wire 字段名）。
 //! 而 `watcher`/`accounts_query`/`history_query` **仍然进不了** `S1` 的 `CORE_FILES` ——
 //! `S4b` 实测：改完名之后这三个文件在 `S1` 六根针下还剩 **6 / 5 / 5** 处（共 16），其中
@@ -35,12 +35,12 @@
 
 pub(crate) mod accounts;
 pub(crate) mod assets;
-// 〔THIN〕分叉的记录变换 ＋ 按 sid 找那份会话文件（原共享 crate `branch-core`，只剩后端用）。
+// 分叉的记录变换 ＋ 按 sid 找那份会话文件（原共享 crate `branch-core`，只剩后端用）。
 pub(crate) mod branch;
-// 〔THIN〕工具词表（卡型 · 判活进程名）：从 monitor `adapter.rs` 画像表与共享 crate `agent-tools-core` 收进来。
+// 工具词表（卡型 · 判活进程名）：从 monitor `adapter.rs` 画像表与共享 crate `agent-tools-core` 收进来。
 pub(crate) mod cards;
 pub(crate) mod drift;
-// 〔MIG-3b 续〕「足迹」里的 Claude 布局（`~/.claude/…` 的基准 · settings 两个作用域）。
+// 「足迹」里的 Claude 布局（`~/.claude/…` 的基准 · settings 两个作用域）。
 pub(crate) mod footprint;
 pub(crate) mod liveness;
 pub(crate) mod mcp;
@@ -51,12 +51,12 @@ pub(crate) mod resume;
 // 子运行（子 agent）的形状：对账键 · 归属 · 派出链接 · 记录住址 · 请求自报身份的头。
 pub(crate) mod runs;
 pub(crate) mod schema;
-// 〔P1〕记录文本：正文 / 工具内容怎么抽 · CLI 注入怎么剥（原共享 crate `search-core` 的 Claude 那一半）。
+// 记录文本：正文 / 工具内容怎么抽 · CLI 注入怎么剥（原共享 crate `search-core` 的 Claude 那一半）。
 pub(crate) mod text;
-// 〔MIG-3a〕skill 接入面的声明（收件箱那几个人要改的文件 ＋ Claude 数据文件的纵深围栏）：从 monitor 搬来。
+// skill 接入面的声明（收件箱那几个人要改的文件 ＋ Claude 数据文件的纵深围栏）：从 monitor 搬来。
 pub(crate) mod turn;
 
-/// 本 agent 在 wire 上的 **`agent_kind` 值**〔`S5`〕。
+/// 本 agent 在 wire 上的 **`agent_kind` 值**。
 ///
 /// ⚠ **是 `claude` 不是 `claudecode`** —— 模块名与 wire 值域是两件事，别顺手对齐：
 /// 值域由既有契约定死（`ResumeSpec.agentKind` 逐字「缺/`""`/`"claude"`=claude」·
@@ -67,20 +67,20 @@ pub(crate) mod turn;
 /// 也该是那个 agent 自己）。
 pub(crate) const AGENT_KIND: &str = "claude";
 
-/// 〔NT2 · V25〕本 agent 的**默认上游**（用户 V25「写死, 跟着适配层」）：路由里叫 `claude-code`；
-/// `CCM_AGENT_UPSTREAM_CLAUDE_CODE` 盖掉它（名字照 `CCM_AGENT_UPSTREAM_<agent>` 的形状，`设计/20` R3）；
+/// 本 agent 的**默认上游**（用户「写死, 跟着适配层」）：路由里叫 `claude-code`；
+/// `CCM_AGENT_UPSTREAM_CLAUDE_CODE` 盖掉它（名字照 `CCM_AGENT_UPSTREAM_<agent>` 的形状）；
 /// 内置默认是 Anthropic 官方端点。上游选择只经 `agents::default_upstreams` 读它。
 pub(crate) const UPSTREAM: super::DefaultUpstream = super::DefaultUpstream {
     route_id: "claude-code",
     env: "CCM_AGENT_UPSTREAM_CLAUDE_CODE",
     fallback: "https://api.anthropic.com",
-    // 〔V141 · RL2〕真 claude（2.1.283）每条 `POST /v1/messages` 都带它：UUID 形，== 它落盘的 jsonl 文件名。
+    // 真 claude（2.1.283）每条 `POST /v1/messages` 都带它：UUID 形，== 它落盘的 jsonl 文件名。
     session_header: Some("x-claude-code-session-id"),
     stream: Some(super::sse_anthropic::FACE),
     owner_header: Some(runs::OWNER_HEADER),
 };
 
-/// 〔P1 · 第 4 件〕本家的**起会话事实**（注册表 `Adapter.launch` 那一格）：`ccm` 按它起、界面按生成物 `agent-profile-table.ts` 读，同一份。
+/// 本家的**起会话事实**（注册表 `Adapter.launch` 那一格）：`ccm` 按它起、界面按生成物 `agent-profile-table.ts` 读，同一份。
 pub(crate) const LAUNCH: super::LaunchFace = super::LaunchFace {
     adapter_id: UPSTREAM.route_id,
     default_launcher: resume::DEFAULT_COMMAND,
@@ -89,7 +89,7 @@ pub(crate) const LAUNCH: super::LaunchFace = super::LaunchFace {
     nested_env: resume::NESTED_ENV,
 };
 
-/// 本 agent 在这台机器上的 home 目录 —— **只答"它该在哪"，不答"在不在"**〔`S5`〕。
+/// 本 agent 在这台机器上的 home 目录 —— **只答"它该在哪"，不答"在不在"**。
 ///
 /// 「在不在」的判准是通用层的机器（`agents::visible_homes`），不是每家自己定一套 ——
 /// 那正是 `S3` 立的分界（知识住适配层、机器留通用层）在发现这件事上的兑现。
@@ -101,11 +101,11 @@ pub(crate) fn home() -> Option<std::path::PathBuf> {
     Some(paths::resolve_home())
 }
 
-/// 〔AS2 · 第四波 4B〕本家的资产面（注册表 `Adapter.assets` 那一格）：skill 与项目级 MCP 的布局知识住 [`assets`]。
-/// 〔SH1 · V137〕注册表 `mcp` 那一格。
+/// 本家的资产面（注册表 `Adapter.assets` 那一格）：skill 与项目级 MCP 的布局知识住 [`assets`]。
+/// 注册表 `mcp` 那一格。
 pub(crate) const MCP: super::McpFace = super::McpFace { read: mcp::read };
 
-/// 〔MOD〕记录解释面（注册表 `Adapter.records` 那一格）。
+/// 记录解释面（注册表 `Adapter.records` 那一格）。
 pub(crate) const RECORDS: super::RecordFace = super::RecordFace {
     parse: parse::parsed_line,
     sid: records::session_id_of,

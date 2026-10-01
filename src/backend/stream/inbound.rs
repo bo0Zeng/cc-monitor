@@ -39,7 +39,7 @@ use std::sync::{Arc, Mutex};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::sync::mpsc;
 
-/// 〔MOD · 子步 4 · 主会话裁〕删历史会话那一条要问的两件事，从原生那一侧（适配层注册表）的窄口取来，
+/// 删历史会话那一条要问的两件事，从原生那一侧（适配层注册表）的窄口取来，
 /// 由本门递给文件管理写面 —— 写面自己一家 agent 的布局都不认（`files/module_boundary_guard.rs` 围栏那一类为零）。
 const SESSION_PORT: crate::control::files_write::SessionPort =
     crate::control::files_write::SessionPort {
@@ -82,7 +82,7 @@ pub const REPLY_CHANNEL_CAPACITY: usize = 256;
 /// 能力协商此前只有出方向那一半（`capabilities` 说「我认识哪些流 flag」）。
 /// 入方向同样需要：客户端得知道发什么过去才有人接，否则只能试错。
 ///
-/// **这是单一真相源** —— `hello` 从这里取值，`dispatch` 必须恰好处理这些。
+/// **这是单一源头** —— `hello` 从这里取值，`dispatch` 必须恰好处理这些。
 /// 两者由 `inbound_structure_guards.rs::the_commands_mirror_matches_the_registry` 钉住，不许各写各的。
 /// ⚠ 09-03 订正〔`K-R19` 摸底逮到，PM 自己落 —— 本文件 PM 持有，派不出去〕：
 ///   这里原先写的是 `hello_commands_match_the_dispatch_table`，**那个符号全仓零定义**
@@ -100,10 +100,10 @@ pub const COMMANDS: &[&str] = &[
     "accounts-rollback",
     "accounts-sessions",
     "accounts-set-default",
-    // 〔C4c · 第四波 4B〕换号前的信任预检（替掉最后两条仍逐次拨号的 `--account-trust*`）。
+    // 换号前的信任预检（替掉最后两条仍逐次拨号的 `--account-trust*`）。
     "accounts-trust",
     "accounts-verify",
-    // 〔MIG-3a · 主会话 09-27 裁〕别名六条：规则 · 方言 · 围栏住这台（`assets/aliases/`），写经 [`LocalFiles`]。**是新命令** ⇒ `build_id_guard` 红是预期的。
+    // 别名六条：规则 · 方言 · 围栏住这台（`assets/aliases/`），写经 [`LocalFiles`]。**是新命令** ⇒ `build_id_guard` 红是预期的。
     "aliases-block-install",
     "aliases-block-remove",
     "aliases-block-render",
@@ -112,19 +112,19 @@ pub const COMMANDS: &[&str] = &[
     "aliases-render",
     "apikey-key-set",
     "apikey-read",
-    // 〔US1 · 第四波 4D〕界面「这几个号在这台的表里有没有行 · 这台的中转在不在」（成品，界面经 `chan.call` 直接问）。
+    // 界面「这几个号在这台的表里有没有行 · 这台的中转在不在」（成品，界面经 `chan.call` 直接问）。
     "apikey-routing",
-    // 〔AS2 · 第四波 4B · V113〕资产目录（后端自有状态，第四层）：现扫 ＋ 记 · 并进别处的整份。
+    // 资产目录（后端自有状态，第四层）：现扫 ＋ 记 · 并进别处的整份。
     "assets-catalog",
     "assets-catalog-merge",
-    // 〔AS2〕本机常驻后端沿池里那条 SSH 拉 / 并 / 推远端的目录（事件触发：连上 · 看机器页）。
+    // 本机常驻后端沿池里那条 SSH 拉 / 并 / 推远端的目录（事件触发：连上 · 看机器页）。
     "assets-sync",
-    // 〔MIG-3b 续〕公钥写进这台的 `authorized_keys`（被写那台答；本机后端的 `pubkey-push` 经可达表问它）。**是新命令** ⇒ `build_id_guard` 红是预期的。
+    // 公钥写进这台的 `authorized_keys`（被写那台答；本机后端的 `pubkey-push` 经可达表问它）。**是新命令** ⇒ `build_id_guard` 红是预期的。
     "authorized-keys-add",
-    // 〔GAP1 · `设计/15 §4.7 S1`〕这台后端自己的 stderr 诊断文件（尾部，只读）。**是新命令** ⇒ `build_id_guard` 红是预期的。
+    // 这台后端自己的 stderr 诊断文件（尾部，只读）。**是新命令** ⇒ `build_id_guard` 红是预期的。
     "backend-log",
     "bus-broadcast",
-    // 〔SH1 · V136〕只读看一个 agent 收件箱的尾巴（转调 `cc-log`，不推已读位置）。
+    // 只读看一个 agent 收件箱的尾巴（转调 `cc-log`，不推已读位置）。
     "bus-inbox",
     "bus-kill",
     "bus-list",
@@ -133,20 +133,20 @@ pub const COMMANDS: &[&str] = &[
     "bus-state",
     "cancel",
     "capture-pane",
-    // 〔MIG-3a · 子步 3 · 主会话 09-27 裁 ⑯〕cc-bus 装到这台（资产的装不算部署：判 · 写 · 记都在这台，装卸账复用 skill 装记录）。**是新命令** ⇒ `build_id_guard` 红是预期的。
+    // cc-bus 装到这台（资产的装不算部署：判 · 写 · 记都在这台，装卸账复用 skill 装记录）。**是新命令** ⇒ `build_id_guard` 红是预期的。
     "cc-bus-install",
     "cc-bus-install-state",
-    // 〔W5-ALIAS · 第五波先行〕别名预览：一条别名的预置参数 → `ccm --print` 那一行（`设计/71 §2.3`）。
+    // 别名预览：一条别名的预置参数 → `ccm --print` 那一行。
     "ccm-print",
-    // 〔E2 · `96 §7.2.2`〕这台的 `ccm` 会哪些（与 `ccm --ccm-probe` 同一份）：monitor 远端那一跳改问这里，不再进交互 shell 查 `PATH`。
+    // 这台的 `ccm` 会哪些（与 `ccm --ccm-probe` 同一份）：monitor 远端那一跳改问这里，不再进交互 shell 查 `PATH`。
     "ccm-probe",
-    // 〔MIG-3b〕部署计划：那台的后端要不要换、换成哪一格（本机常驻后端沿池里那条 SSH 问那台，monitor 只放字节）。**是新命令** ⇒ `build_id_guard` 红是预期的。
+    // 部署计划：那台的后端要不要换、换成哪一格（本机常驻后端沿池里那条 SSH 问那台，monitor 只放字节）。**是新命令** ⇒ `build_id_guard` 红是预期的。
     "deploy-plan",
-    // 〔THIN〕那台旧入口 `~/.local/bin/ccm` 的去向（认出是我们放的才删 ⇒ 后端判，monitor 照删）。**是新命令** ⇒ `build_id_guard` 红是预期的。
+    // 那台旧入口 `~/.local/bin/ccm` 的去向（认出是我们放的才删 ⇒ 后端判，monitor 照删）。**是新命令** ⇒ `build_id_guard` 红是预期的。
     "deploy-retired",
-    // 〔THIN〕那台要哪一格字节（表 A / 表 B 的承诺是裁决 ⇒ 后端判；全景推字节之前问它）。**是新命令** ⇒ `build_id_guard` 红是预期的。
+    // 那台要哪一格字节（表 A / 表 B 的承诺是裁决 ⇒ 后端判；全景推字节之前问它）。**是新命令** ⇒ `build_id_guard` 红是预期的。
     "deploy-slot",
-    // 〔MOD〕这台后端的漂移账（看不懂的记录类型；记录解释进了后端，账跟着解析走）。**是新命令** ⇒ `build_id_guard` 红是预期的。
+    // 这台后端的漂移账（看不懂的记录类型；记录解释进了后端，账跟着解析走）。**是新命令** ⇒ `build_id_guard` 红是预期的。
     "drift-report",
     "exit-policy-read",
     "exit-policy-set",
@@ -164,139 +164,139 @@ pub const COMMANDS: &[&str] = &[
     "files-create",
     "files-delete",
     "files-delete-session",
-    // 〔FILES2 · 第四波〕解压（`设计/60 §6.2` · §7 第 9 条 Q3）。**是新子命令** ⇒ `build_id_guard` 红是预期的。
+    // 解压（§7 第 9 条 Q3）。**是新子命令** ⇒ `build_id_guard` 红是预期的。
     "files-extract",
     "files-find",
-    // 〔FILES3 · `99 §2.2 ㉜`〕文件管理器按内容搜（那台后端走一遍、有字节与条数上界、可撤、不跟链接）。**是新命令** ⇒ `build_id_guard` 红是预期的。
+    // 文件管理器按内容搜（那台后端走一遍、有字节与条数上界、可撤、不跟链接）。**是新命令** ⇒ `build_id_guard` 红是预期的。
     "files-grep",
     "files-home",
     "files-index-rebuild",
     "files-index-status",
-    // 〔MIG-3a · 子步 3 · 主会话 09-28 裁〕建链接的帧面入口（写面闭集里 FILES2 那个动词 `files_extract::land_link`，不另起原语）。**是新命令** ⇒ `build_id_guard` 红是预期的。
+    // 建链接的帧面入口（写面闭集里 FILES2 那个动词 `files_extract::land_link`，不另起原语）。**是新命令** ⇒ `build_id_guard` 红是预期的。
     "files-link",
     "files-ls",
     "files-mkdir",
     "files-peek",
     "files-put",
-    // 〔FILES2 · V152〕读族第十条：按字节寻址分块读回。**是新子命令** ⇒ `build_id_guard` 红是预期的。
+    // 读族第十条：按字节寻址分块读回。**是新子命令** ⇒ `build_id_guard` 红是预期的。
     "files-read-chunk",
     "files-read-text",
     "files-rename",
-    // 〔W5-FILES · 第五波〕读族第九条：算目录大小（`设计/60 §6.2`）。**是新子命令** ⇒ `build_id_guard` 红是预期的。
+    // 读族第九条：算目录大小。**是新子命令** ⇒ `build_id_guard` 红是预期的。
     "files-size",
     "files-stage-chunk",
     "files-stat",
     "files-write-text",
-    // 〔MIG-3b 续〕「足迹」出成品（替掉只交事实的 `footprint-probe`）。**是新命令** ⇒ `build_id_guard` 红是预期的。
+    // 「足迹」出成品（替掉只交事实的 `footprint-probe`）。**是新命令** ⇒ `build_id_guard` 红是预期的。
     "footprint-report",
-    // 〔MIG-1 · `99 §2.1 ⑬`〕端口转发的账住本机常驻后端（`dial/forwards.rs`）：界面经 `chan.call(<local>, …)` 起 · 停 · 列。
+    // 端口转发的账住本机常驻后端（`dial/forwards.rs`）：界面经 `chan.call(<local>, …)` 起 · 停 · 列。
     "forward-list",
     "forward-start",
     "forward-stop",
-    // 〔C4d · 第四波 4B〕历史注解（星标 / 改名 / 隐藏 / 上次账号）的读写者换成本机常驻后端（第四层；文件原地不动）。
+    // 历史注解（星标 / 改名 / 隐藏 / 上次账号）的读写者换成本机常驻后端（第四层；文件原地不动）。
     "history-annotate",
-    // 〔STC · `设计/90 §4` 阶段 C〕会话事实出成品（分叉血缘 · 改动文件集 · agent 列表 · 最新 usage）。
+    // 会话事实出成品（分叉血缘 · 改动文件集 · agent 列表 · 最新 usage）。
     "history-facts",
     "history-find",
     "history-forget",
     "history-index",
     "history-last-accounts",
-    // 〔CF2 · 第四波 4B〕按行号取回一段（不依赖骨架索引，`history_query::read_lines`）。
+    // 按行号取回一段（不依赖骨架索引，`history_query::read_lines`）。
     "history-lines",
-    // 〔MOD · `05 §14.3` C 组〕按字节分页读、出记录行（查看器整份读 · 骨架按偏移取一段；界面直接问）。
+    // 按字节分页读、出记录行（查看器整份读 · 骨架按偏移取一段；界面直接问）。
     "history-page",
     "history-projects",
     "history-read",
-    // 〔U4b · 第四波〕这条会话的记录还在不在（resume 一跳先问，`设计/01 §6.2` 最后一条）。
+    // 这条会话的记录还在不在（resume 一跳先问，最后一条）。
     "history-record",
     // 一个子运行的记录（按运行读：父记录 ＋ 子运行 ‖ 派出它的工具调用），通用层不认任何一家的目录与字段。
     "history-run",
     "history-search",
-    // 〔FIX4 · `90 §3` J15〕各台搜索结果合成一份（界面逐台扇出，合并排序在本机后端）。**是新命令** ⇒ `build_id_guard` 红是预期的。
+    // 各台搜索结果合成一份（界面逐台扇出，合并排序在本机后端）。**是新命令** ⇒ `build_id_guard` 红是预期的。
     "history-search-merge",
     "history-sessions",
     "history-tail",
     "history-user-inputs",
-    // 〔MIG-3b〕cc-bus 钩子诊断成品（本机远端一条；monitor 那两条 Tauri 命令删了）。**是新子命令** ⇒ `build_id_guard` 红是预期的。
+    // cc-bus 钩子诊断成品（本机远端一条；monitor 那两条 Tauri 命令删了）。**是新子命令** ⇒ `build_id_guard` 红是预期的。
     "hooks-diag",
     "kill",
     "launch",
-    // 〔US1 · 第四波 4D〕「这个号这一发走哪、注入什么」（上游选择出成品，`设计/20 §3.2` 那张表搬进后端）。
+    // 「这个号这一发走哪、注入什么」（上游选择出成品，那张表搬进后端）。
     "launch-endpoint",
-    // 〔MIG-2 · `99 §2.1 ⑬`〕起会话的计划与渲染进了那台后端（原 monitor `history.rs` / `launch_wire.rs`）：
+    // 起会话的计划与渲染进了那台后端（原 monitor `history.rs` / `launch_wire.rs`）：
     //   本机起会话一整条 · `ccm …` 调用行 · 裸载荷 / 外层 tmux 三格。**是新命令** ⇒ `build_id_guard` 红是预期的。
     "launch-local",
     "launch-render-cli",
     "launch-render-payload",
-    // 〔SR1a〕链路四条（`dial/link.rs`）：本机常驻后端替 monitor 持有并复用到各远端的 SSH 连接。
+    // 链路四条（`dial/link.rs`）：本机常驻后端替 monitor 持有并复用到各远端的 SSH 连接。
     "link-close",
     "link-credit",
     "link-data",
     "link-open",
-    // 〔SH1 · V137〕MCP 列表出成品（读法住适配层那一格 `agents::Adapter.mcp`）。
+    // MCP 列表出成品（读法住适配层那一格 `agents::Adapter.mcp`）。
     "mcp-read",
-    // 〔MIG-3a〕项目 `.mcp.json` 增改 / 删（那台后端自己算、经自己的文件管理面写）。**是新命令** ⇒ `build_id_guard` 红是预期的。
+    // 项目 `.mcp.json` 增改 / 删（那台后端自己算、经自己的文件管理面写）。**是新命令** ⇒ `build_id_guard` 红是预期的。
     "mcp-server-put",
     "mcp-server-remove",
-    // 〔MIG-3a〕MCP 推 / 拉的 I/O 那一半：来源那台交原文 · 要被写那台自己读、判、写。**是新命令** ⇒ `build_id_guard` 红是预期的。
+    // MCP 推 / 拉的 I/O 那一半：来源那台交原文 · 要被写那台自己读、判、写。**是新命令** ⇒ `build_id_guard` 红是预期的。
     "mcp-sync-apply",
-    // 〔AS1 · 第四波 4B〕MCP 资产同步的判定（只读；写经文件管理那一面 `files-put`）。
+    // MCP 资产同步的判定（只读；写经文件管理那一面 `files-put`）。
     "mcp-sync-plan",
     "mcp-sync-preview",
     "mcp-sync-source",
-    // 〔RM1c · 第四波〕代码全景（V108 选 B）：后端经插件口起独立小程序，只说查询语义。
+    // 代码全景（选 B）：后端经插件口起独立小程序，只说查询语义。
     "panorama",
-    // 〔MIG-3b 续〕全景写：这台算计划、这台文件管理面落盘（原 monitor 那一跳在中间转）。**是新命令** ⇒ `build_id_guard` 红是预期的。
+    // 全景写：这台算计划、这台文件管理面落盘（原 monitor 那一跳在中间转）。**是新命令** ⇒ `build_id_guard` 红是预期的。
     "panorama-edit",
-    // 〔FIX4 · `97 §8`〕全景小程序卸口：只删装时放下的那一份（先认身份、CAS 删）。**是新命令** ⇒ `build_id_guard` 红是预期的。
+    // 全景小程序卸口：只删装时放下的那一份（先认身份、CAS 删）。**是新命令** ⇒ `build_id_guard` 红是预期的。
     "panorama-uninstall",
     "ping",
-    // 〔P1〕本机那一份放不放（monitor 自举：放本机后端之前问手上那份字节自己，CLI 面）。**是新命令** ⇒ `build_id_guard` 红是预期的。
+    // 本机那一份放不放（monitor 自举：放本机后端之前问手上那份字节自己，CLI 面）。**是新命令** ⇒ `build_id_guard` 红是预期的。
     "place-verdict",
-    // 〔WF1 · L · `设计/99 §2.3`〕PowerShell 执行策略设成当前用户 `RemoteSigned`（用户点了、确认了才发）。**是新命令** ⇒ `build_id_guard` 红是预期的。
+    // PowerShell 执行策略设成当前用户 `RemoteSigned`（用户点了、确认了才发）。**是新命令** ⇒ `build_id_guard` 红是预期的。
     "powershell-policy-set",
-    // 〔MIG-3b 续 · ⑬「monitor 零 SSH」〕公钥一键推送：本机后端组请求、读本机那份 `.pub`，经那台后端写或一次 exec。**是新命令**。
+    // 〔⑬「monitor 零 SSH」〕公钥一键推送：本机后端组请求、读本机那份 `.pub`，经那台后端写或一次 exec。**是新命令**。
     "pubkey-push",
-    // 〔DEL〕`relay-ensure` / `relay-status` 删了：远端中转住那台的常驻后端里（V139），不再起脱离的 `--relay`。
-    // 〔C4d · 第四波 4B〕本机后端的可达表：monitor 在每台远端流握手那一刻交「怎么够到那台」（只登记）。
-    // 〔MIG-1 续 · ⑬〕测试连接：界面交那台（可能没保存的）配置，这台后端组请求、拨一次、回结局（`dial/probe.rs`）。
+    // `relay-ensure` / `relay-status` 删了：远端中转住那台的常驻后端里，不再起脱离的 `--relay`。
+    // 本机后端的可达表：monitor 在每台远端流握手那一刻交「怎么够到那台」（只登记）。
+    // 测试连接：界面交那台（可能没保存的）配置，这台后端组请求、拨一次、回结局（`dial/probe.rs`）。
     "remote-probe",
     "remote-reach",
-    // 〔THIN〕远端常驻后端 hello 的新旧（换 / 接）由本机常驻后端判，monitor 只照做（与 `deploy-plan` 一家）。**是新命令** ⇒ `build_id_guard` 红是预期的。
+    // 远端常驻后端 hello 的新旧（换 / 接）由本机常驻后端判，monitor 只照做（与 `deploy-plan` 一家）。**是新命令** ⇒ `build_id_guard` 红是预期的。
     "resident-verdict",
     "resolve",
-    // 〔RESYNC · V149〕手动对齐（`resync_face`；本体 `observe/watcher.rs::resync`）。
+    // 手动对齐（`resync_face`；本体 `observe/watcher.rs::resync`）。
     "resync",
-    // 〔LOC1a · 第四波 4D〕分叉（`fork_write`，本 crate 唯一的 `O_EXCL` 新建写口）：本机远端同一条长连接。
+    // 分叉（`fork_write`，本 crate 唯一的 `O_EXCL` 新建写口）：本机远端同一条长连接。
     "session-fork",
-    // 〔MIG-3a〕skill 装 / 卸的写那一半进了被写那台（判 · 写 · 记同一台）。**是新命令** ⇒ `build_id_guard` 红是预期的。
+    // skill 装 / 卸的写那一半进了被写那台（判 · 写 · 记同一台）。**是新命令** ⇒ `build_id_guard` 红是预期的。
     "skill-install-apply",
-    // 〔AS2〕skill「装到这台」：来源那台读 · 要被写的那一台判（都只读；写经 `files-put`）。
+    // skill「装到这台」：来源那台读 · 要被写的那一台判（都只读；写经 `files-put`）。
     "skill-install-plan",
-    // 〔SU1 · 第四波 4C · V116〕skill 装记录（第四层）：装完记下写了哪几个 · 卸掉的摘掉。
+    // skill 装记录（第四层）：装完记下写了哪几个 · 卸掉的摘掉。
     "skill-install-record",
     "skill-read",
-    // 〔MIG-1 · `99 §2.1 ⑯`〕`~/.ssh/config` 的解读（`dial/ssh_config.rs`）：界面经 `chan.call(<local>, …)` 问本机常驻后端。
+    // `~/.ssh/config` 的解读（`dial/ssh_config.rs`）：界面经 `chan.call(<local>, …)` 问本机常驻后端。
     "ssh-config-aliases",
     "ssh-config-import",
     "ssh-config-resolve",
     "tasks-list",
-    // 〔P5 · `设计/80 §8.2` 本地半〕本机开终端那一串接上令牌握手前奏（同 `terminal-ssh` 那一形：后端出成品、monitor 只开窗）。**是新命令** ⇒ `build_id_guard` 红是预期的。
+    // 〔本地半〕本机开终端那一串接上令牌握手前奏（同 `terminal-ssh` 那一形：后端出成品、monitor 只开窗）。**是新命令** ⇒ `build_id_guard` 红是预期的。
     "terminal-local",
-    // 〔FIX4 · `99 §2.1 ⑬`「待迁」最后一行〕给一台远端开终端要跑的那一串（`ssh -t …` 外壳 ＋ PowerShell 窗口载荷），本机后端渲、monitor 只开窗。**是新命令** ⇒ `build_id_guard` 红是预期的。
+    // 〔「待迁」最后一行〕给一台远端开终端要跑的那一串（`ssh -t …` 外壳 ＋ PowerShell 窗口载荷），本机后端渲、monitor 只开窗。**是新命令** ⇒ `build_id_guard` 红是预期的。
     "terminal-ssh",
-    // 〔SH1〕列这台的 tmux 会话（原样行；monitor `list_remote_tmux` 那条拨号 shell 退役）。
+    // 列这台的 tmux 会话（原样行；monitor `list_remote_tmux` 那条拨号 shell 退役）。
     "tmux-list",
-    // 〔FIX4 · `90 §3` J7〕起会话要的 tmux 名：这台派生 ＋ 按这台那张会话快照避让（前端那份铸名口删了）。**是新命令** ⇒ `build_id_guard` 红是预期的。
+    // 起会话要的 tmux 名：这台派生 ＋ 按这台那张会话快照避让（前端那份铸名口删了）。**是新命令** ⇒ `build_id_guard` 红是预期的。
     "tmux-name-mint",
-    // 〔SR1b〕传输四条（`control/transfer.rs`）：传输台住本机常驻后端，SFTP 跟其它 SSH 同一条连接。
+    // 传输四条（`control/transfer.rs`）：传输台住本机常驻后端，SFTP 跟其它 SSH 同一条连接。
     "transfer-download",
     "transfer-start",
     "transfer-stop",
     "transfer-upload",
 ];
 
-/// 〔MIG-3a〕资产域（`assets/`）够用户文件的那一扇门：**本进程里那几条 `files-*` 帧命令本身**（阻塞档，原样调它们的 `run`）。
+/// 资产域（`assets/`）够用户文件的那一扇门：**本进程里那几条 `files-*` 帧命令本身**（阻塞档，原样调它们的 `run`）。
 /// 住这里是因为 `readonly_guard` 第三层只许 `inbound.rs` 够得着写面；资产模块只拿这个句柄，不直呼 `files_write`。
 #[derive(Clone, Copy)]
 pub(crate) struct LocalFiles;
@@ -323,7 +323,7 @@ impl crate::assets::door::Door for LocalFiles {
     }
 }
 
-/// 〔MIG-3a · 主会话 09-28 裁〕两台之间那几件的枢纽问**这台自己**的那一跳：本进程那几条内层命令本身（阻塞档，原样调它们的 `run`）。
+/// 两台之间那几件的枢纽问**这台自己**的那一跳：本进程那几条内层命令本身（阻塞档，原样调它们的 `run`）。
 /// 限 [`HUB_INNER`] 那几条 —— 枢纽不是一扇通到任意命令的门。
 pub(crate) struct LocalFrames;
 
@@ -376,7 +376,7 @@ struct InFlight {
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-//  〔HX1 · 4D〕**退出之前先排空停不下来的那一档**（`调研/第四波记录/HX1.md` §1）
+// **退出之前先排空停不下来的那一档**（§1）
 // ══════════════════════════════════════════════════════════════════════════
 //
 // 🔴 出处：E §E2 ＋ 主会话 D-a「后端收 SIGTERM 先排空在飞写（有上限）再退」。
@@ -392,7 +392,7 @@ struct InFlight {
 //   这是后端零定时器（`no_timer_guard`）**唯一**让位的地方，登记在那张表的 `REGISTERED_EXIT_DEADLINE`（恰好一行）。
 //   为什么非它不可：远端后端在 SSH 断开那一刻没人叫它退、也没人给上限 —— 阻塞在一个挂死的文件系统上的那一条
 //   会把进程无限期留下（一个没有宿主的后端进程）。叫它退的一方仍可以更早：**第二次停机信号 = 立刻退**；
-//   机器页「停」等得比它久一点（〔STOP〕一次性子命令 `--resident-stop` 的宽限期 `control/resident.rs::STOP_GRACE_MS`，35 秒），好让后端先把「哪几条没做完」说出来再退。
+//   机器页「停」等得比它久一点（一次性子命令 `--resident-stop` 的宽限期 `control/resident.rs::STOP_GRACE_MS`，35 秒），好让后端先把「哪几条没做完」说出来再退。
 
 /// 退出排空期限（**唯一**一个会让后端自己醒来的构件，只在收场时装一次）。
 ///
@@ -551,7 +551,7 @@ where
         }
         std::future::pending::<()>().await
     };
-    // 〔HX1 · 主会话裁〕后端零定时器唯一让位的一处（`no_timer_guard::REGISTERED_EXIT_DEADLINE`）：只在收场时装这一次。
+    // 后端零定时器唯一让位的一处（`no_timer_guard::REGISTERED_EXIT_DEADLINE`）：只在收场时装这一次。
     let expired = tokio::time::sleep(deadline);
     tokio::select! {
         _ = DRAIN.drained() => {
@@ -599,17 +599,17 @@ where
 {
     tokio::spawn(async move {
         let running: Running = Arc::new(Mutex::new(HashMap::new()));
-        // 〔SR1a〕本连接的链路表：随本读循环一起死 ⇒ monitor 走了，它开的链路一条不留
+        // 本连接的链路表：随本读循环一起死 ⇒ monitor 走了，它开的链路一条不留
         // （`dial::link::Table` 的 `Drop`）。
         let links = crate::dial::link::Table::new(replies.clone());
-        // 〔SR1b〕本连接的传输票表：同上，随本读循环一起死 ⇒ monitor 走了，它开的传输一律撤
+        // 本连接的传输票表：同上，随本读循环一起死 ⇒ monitor 走了，它开的传输一律撤
         // （`control::transfer::Desk` 的 `Drop`）。
         let xfers = crate::control::transfer::Desk::new(replies.clone());
         let mut rd = BufReader::new(stdin);
         let mut buf: Vec<u8> = Vec::new();
         // 本行是否已经超限。超限之后**只丢字节、不再往 buf 里塞**（O(1) 内存）。
         let mut overflowed = false;
-        // 〔F9c · 第四波〕超限那一刻从行首抠出来的 `id`（抠不出 ⇒ 空串，见 [`sniff_id`]）。
+        // 超限那一刻从行首抠出来的 `id`（抠不出 ⇒ 空串，见 [`sniff_id`]）。
         let mut overflow_id = String::new();
         loop {
             let chunk = match rd.fill_buf().await {
@@ -664,17 +664,17 @@ where
     })
 }
 
-/// 〔F9c · 第四波〕超长行只看行首这么多字节去找 `id`。
+/// 超长行只看行首这么多字节去找 `id`。
 ///
 /// 整行已经不进内存（[`MAX_LINE_BYTES`] 头注那条「读的时候就生效」），这里多留的只有这一小段，
 /// 与行长无关。4 KiB 远够：monitor 发号最长 75 字节、且 `id` 是信封的第一个键
 /// （`inbound_client::encode_request` 的字段顺序）；排在它前面的键再长也只是「抠不出 ⇒ 空串」，回到旧行为。
 pub const ID_SNIFF_BYTES: usize = 4 * 1024;
 
-/// 〔F9c · 第四波〕从一行**开头的一段**里尽力抠出信封的 `id`（顶层对象里、值是字符串的那一个）。
+/// 从一行**开头的一段**里尽力抠出信封的 `id`（顶层对象里、值是字符串的那一个）。
 ///
 /// 为什么要它：超长行整行丢弃，此前回的 `line_too_long` 带**空** `id` ⇒ 发这一行的调用方等不到
-/// 自己的应答，要熬满它自己的预算才超时，看到的是「超时」而不是真原因（`设计/60 §9c.2`）。
+/// 自己的应答，要熬满它自己的预算才超时，看到的是「超时」而不是真原因。
 ///
 /// ⚠ 只认**顶层**的 `"id"`：排在前面的键值原样跳过（字符串 / 数 / 嵌套对象与数组都认得），
 /// 嵌套对象里的 `"id"` 不算。段不完整、形状不对、`id` 不是字符串 ⇒ `None`（调用方回空串，即旧行为）。
@@ -800,7 +800,7 @@ async fn handle_line(
         // ★ 同步阻塞处理器：进 `spawn_blocking` 的专用线程池，**不占 tokio worker**。
         //   `cancellable: false` —— `spawn_blocking` 起的活 abort 不了，说实话。
         Disposition::SpawnBlocking(req, run) => {
-            // 〔HX1〕取票在起跑之前：闸关了（进程在收场）⇒ 一个字节不动、回协议级 `shutting_down`。
+            // 取票在起跑之前：闸关了（进程在收场）⇒ 一个字节不动、回协议级 `shutting_down`。
             let Some(ticket) = DRAIN.enter(format!("{}（id={}）", req.cmd, req.id)) else {
                 send(
                     replies,
@@ -888,7 +888,7 @@ fn dispatch(
     xfers: &crate::control::transfer::Desk,
 ) -> Disposition {
     match req.cmd.as_str() {
-        // 〔SR1a〕链路四条：要碰**本连接的链路表**与应答通道 ⇒ 与 `cancel` 同一档（硬臂、就地做完）。
+        // 链路四条：要碰**本连接的链路表**与应答通道 ⇒ 与 `cancel` 同一档（硬臂、就地做完）。
         // ★ `link-data` **必须就地**（不 `spawn`）：同一条链路的上行块按到达顺序进队，
         //   交给独立 task 就不再保序。它成功时的应答由上行泵在写进管子之后发（背压）。
         "link-open" => Disposition::Reply(links.open(&req.id, &req.args)),
@@ -898,9 +898,9 @@ fn dispatch(
         },
         "link-credit" => Disposition::Reply(links.credit(&req.id, &req.args)),
         "link-close" => Disposition::Reply(links.close(&req.id, &req.args)),
-        // 〔SR1b〕传输四条：要碰**本连接的票表**与应答通道（进度帧走应答通道）⇒ 同一档硬臂。
+        // 传输四条：要碰**本连接的票表**与应答通道（进度帧走应答通道）⇒ 同一档硬臂。
         //   开单 / 起跑 / 撤都是就地做完的记账（起跑那一下 `spawn` 两个任务，不 await）。
-        // 〔MIG-1 收尾〕测试连接：进度格走**本连接的应答通道**（不丢、与应答同序）⇒ 与传输四条同一档硬臂；
+        // 测试连接：进度格走**本连接的应答通道**（不丢、与应答同序）⇒ 与传输四条同一档硬臂；
         //   本体照旧是真异步、`cancel` 能在 await 点打断（交给通用的 spawn 那一路登记）。
         "remote-probe" => {
             let tx = replies.clone();
@@ -1011,11 +1011,11 @@ fn dispatch(
 /// - [`Run::Blocking`]：**同步阻塞**（起进程 / 扫全库）⇒ 进 `spawn_blocking` 的专用线程池。
 ///   ⚠ 它**开跑之后打不断** —— 这一档不是「修好了取消」，是**停止假装能取消**：
 ///   `cancel` 命中它时回 `not_cancellable`，而不是撒一条 `cancelled` 的谎。
-/// - [`Run::Builtin`]：`dispatch` 里的硬臂（`cancel` ＋ 〔SR1a〕链路四条）。它要 `replies`/`running`，
+/// - [`Run::Builtin`]：`dispatch` 里的硬臂（`cancel` ＋链路四条）。它要 `replies`/`running`，
 ///   与别的命令签名不同 —— 硬塞进统一签名等于给每条命令都递上「自己发帧 / 碰登记表」的能力，
 ///   而那条性质今天是成立的，不该为了整齐拆掉。**但它仍要在注册表里占一行**，
 ///   否则「镜子 == 注册表」覆盖不到它。
-/// - 〔P7〕[`Run::AsyncProgress`]：同 `Async`，另收一个 [`Progress`] —— **只能**往本请求那张票的进度流里推格的窄口
+/// - [`Run::AsyncProgress`]：同 `Async`，另收一个 [`Progress`] —— **只能**往本请求那张票的进度流里推格的窄口
 ///   （推不了别的帧、碰不到登记表 ⇒ 上面那条性质不破）。建索引那一类长活用；CLI 一次性进程里它是空的（没人订）。
 pub(crate) enum Run {
     Async(fn(Request) -> BoxFut),
@@ -1024,7 +1024,7 @@ pub(crate) enum Run {
     Builtin,
 }
 
-/// 〔P7 · `97 §8`「要上游给的」④ · V158「长活要有进度」〕一条长活往**发起方订的进度流**里推格的窄口。
+/// 一条长活往**发起方订的进度流**里推格的窄口。
 ///
 /// 票是发起方在请求里交的 `ticket`（不透明的串，界面拿它订 `progress/<ticket>`，本后端只回填）；没交票 ⇒ 空口，推了也不发。
 /// 走本连接的应答通道（与应答同一条、同序），但**满了就丢这一格**（`try_send`）：每格是一整份快照，
@@ -1109,7 +1109,7 @@ pub(crate) struct CommandSpec {
     pub(crate) run: Run,
 }
 
-/// 〔NET2〕撤不动的那几条：阻塞档（`Run::Blocking`）开跑之后打不断，`cancel` 命中回 `not_cancellable`。
+/// 撤不动的那几条：阻塞档（`Run::Blocking`）开跑之后打不断，`cancel` 命中回 `not_cancellable`。
 /// hello 的 `uncancellable` 就是它 —— 与 `dispatch` 按档位分流读的是同一张表。
 pub fn uncancellable() -> Vec<String> {
     REGISTRY
@@ -1143,14 +1143,14 @@ pub const REGISTRY: &[CommandSpec] = &[
         takes_input: false,
         run: Run::Blocking(|_r| crate::control::cc_bus::list_for_inbound().map(Some)),
     },
-    // 〔C4e · 第四波 4C〕广播：列名单（同 `bus-list` 那一个函数）→ 挑在线的 → 逐个投递（同 `bus-send` 那一处起进程）。
+    // 广播：列名单（同 `bus-list` 那一个函数）→ 挑在线的 → 逐个投递（同 `bus-send` 那一处起进程）。
     //   原是 monitor 里的组合；界面改经通道直接说后端（`src/frontend/ui/cc-bus-control.ts`），组合收进这一侧（业务解释只有一个家）。
     //   起子进程并等它们退出 ⇒ 阻塞档，同下面几条。部分投递失败**不整条回错**（成品里逐个列），
     //   只有「一条都还没发」的那一步（列名单）失败才回码。
     CommandSpec {
         name: "bus-broadcast",
         doc_anchor: Some("#### `bus-broadcast`"),
-        // 〔DUP3〕`bad_id`：给的 `from` 形状过不了 `shell_quote_core::bus_id_ok`（交给 `cc-send` 之前先判，一个人都没发）。
+        // `bad_id`：给的 `from` 形状过不了 `shell_quote_core::bus_id_ok`（交给 `cc-send` 之前先判，一个人都没发）。
         codes: &[
             "invalid_args",
             "not_installed",
@@ -1191,7 +1191,7 @@ pub const REGISTRY: &[CommandSpec] = &[
         doc_anchor: Some("#### `bus-send`"),
         codes: &[
             "invalid_args",
-            // 〔DUP2 · J12〕收件人的形状在交给 `cc-send` 之前就过不了（`INVARIANTS §47` ①）。
+            // 收件人的形状在交给 `cc-send` 之前就过不了（`INVARIANTS §47` ①）。
             "bad_id",
             "not_installed",
             "rejected",
@@ -1203,7 +1203,7 @@ pub const REGISTRY: &[CommandSpec] = &[
         takes_input: true,
         run: Run::Blocking(|r| crate::control::cc_bus::send_for_inbound(&r.args).map(Some)),
     },
-    // 〔BS1b 09-24〕派生一个协作 agent（转调 `cc-spawn`）。起子进程并等它退出 ⇒ 阻塞档，
+    // 派生一个协作 agent（转调 `cc-spawn`）。起子进程并等它退出 ⇒ 阻塞档，
     // 同上面那三条。**会起一个真 agent 进程（烧额度）** —— 这一跳不重试由调用方负责，
     // 超时那一档的说法里明写「可能已经起来了」（`control::cc_bus::classify_spawn`）。
     CommandSpec {
@@ -1230,7 +1230,7 @@ pub const REGISTRY: &[CommandSpec] = &[
         name: "bus-state",
         doc_anchor: Some("#### `bus-state`"),
         codes: &["not_installed", "timed_out", "failed"],
-        // 〔SH1 · V136〕多了 `registered_at` · `spawned_at` · `skipped`（cc-bus 的 `--tsv` 形答）。
+        // 多了 `registered_at` · `spawned_at` · `skipped`（cc-bus 的 `--tsv` 形答）。
         fields: &[
             "agents",
             "ccm_sid",
@@ -1248,7 +1248,7 @@ pub const REGISTRY: &[CommandSpec] = &[
         takes_input: false,
         run: Run::Blocking(|_r| crate::control::cc_bus::state_for_inbound().map(Some)),
     },
-    // 〔SH1 · V136〕驾驶舱读收件箱：转调 `cc-log`（只读，不推已读位置 —— 不是 `bus-recv`，`设计/95 §3.3`）。阻塞档。
+    // 驾驶舱读收件箱：转调 `cc-log`（只读，不推已读位置 —— 不是 `bus-recv`）。阻塞档。
     CommandSpec {
         name: "bus-inbox",
         doc_anchor: Some("#### `bus-inbox`"),
@@ -1312,7 +1312,7 @@ pub const REGISTRY: &[CommandSpec] = &[
     //
     // 🔴 **处理器不住 `control/`，这是本仓第一条** —— 而且它必须不住那里：
     //   `control/` 的定义是「**会改变世界**」（`§1.1` 第二条线），而这一族整族纯读
-    //   （`设计/96 §2.9` 边界①，`readonly_guard` 4259 行一行没动）；
+    //   （边界①，`readonly_guard` 4259 行一行没动）；
     //   而读面 `observe/` 又被本文件头注那条硬约束挡着（`inbound` 不许出现 `observe::`，
     //   `inbound_structure_guards::inbound_never_reaches_into_the_observe_layer` 在钉）。
     //   ⇒ 它住顶层 `files/`（`lib.rs` 一条 `pub mod`，`readonly_guard::BACKEND_CORE_MODULES`
@@ -1326,13 +1326,13 @@ pub const REGISTRY: &[CommandSpec] = &[
     //   翻译（`-` → `.`）只有 `files::answer_wire` 一处，理由整段在那个函数的头注。
     //
     // ⚠ 四条全在 `Run::Blocking`：`files::answer` 是**同步**函数，前两条真的做文件系统
-    //   I/O，`files-find` 在 64 万条量纲上的现打外推是 20–50 ms（`设计/60 §3.5.3`）——
+    //   I/O，`files-find` 在 64 万条量纲上的现打外推是 20–50 ms——
     //   那是不该占住 worker 的时长；而把「哪条够快可以走 `Run::Async`」拆成两档，
     //   等于给同一个同步入口记两份账。⇒ 一族一档。
     //   代价如实写：它们因此**取消不掉**，`cancel` 命中时回 `not_cancellable`（不撒谎）。
-    // ── 〔步 `24f` 第三刀 09-21〕`设计/96 §2.9` 裁出来的第五、第六条 ──────────────
+    // ── 〔步 `24f` 第三刀 09-21〕裁出来的第五、第六条 ──────────────
     //
-    // 🔴 **它们补的是那两段「机制」的线上面** —— `设计/60 §3.5.2` 那张三段表
+    // 🔴 **它们补的是那两段「机制」的线上面** —— 那张三段表
     //   （建索引 / 保鲜 / 查询）里，第二刀只把「查」那一段接上了线。
     //   在这两条之前，`files::index::rebuild_once` 与 `files::browse_watch::set_browsing`
     //   **零生产调用方** ⇒ 真机上 `files-find` 恒回 `index_missing: true`。
@@ -1340,12 +1340,12 @@ pub const REGISTRY: &[CommandSpec] = &[
     // 🔴 **节拍仍然不归后端**，一个字没松：这两条与 `capture-pane` 那两条**同一形** ——
     //   「**只做一次**……『隔多久再做一次』留在调用方」（`K37`：后端只给机制，不给偏好），
     //   `no_timer_guard` 在后端侧零容忍地钉着。
-    //   ⚠ **别把这一刀读成「`设计/60 §3.5.2a` 那个缺口填上了」**：调用方不发这条命令，
+    //   ⚠ **别把这一刀读成「那个缺口填上了」**：调用方不发这条命令，
     //   索引照旧永远不会自己变新，而「调用方到底发不发」后端这棵树的判据钉不住。
     //
     // ⚠ 两条的 `run` 与同族那四条逐字同形，理由同上一段（名字从 `r.cmd` 来 ⇒
     //   「登记的名字」与「真被调的能力」在类型上是同一个值）。
-    // ── 〔波 5 ㈠ · 2026-09-23〕`设计/60 §8.6` **第 2 步**：把那份零消费者的写原语接上 ──
+    // ── 〔波 5 ㈠〕 **第 2 步**：把那份零消费者的写原语接上 ──
     //
     // 🔴 **这一条是本族第一条会往盘上写的命令，而它不花用户那句「允许」**：
     //   `control/files_write.rs` 自 09-19 起就在 `readonly_guard` 的写白名单上，
@@ -1356,7 +1356,7 @@ pub const REGISTRY: &[CommandSpec] = &[
     //
     // 🔴 **处理器住 `control/`，与 `files-read` 那六条刻意不同层**：`control/` 的定义是
     //   「**会改变世界**」（`§1.1` 第二条线）—— 这一条真的改变世界，所以它回到了那一层；
-    //   而 `files/` 那一族整族纯读（`设计/96 §2.9` 边界①），**一个字节都不许被这一条带脏**。
+    //   而 `files/` 那一族整族纯读（边界①），**一个字节都不许被这一条带脏**。
     //   ⇒ 两面分家：`files-*` 这个线上前缀底下从此有两族，
     //   由 `inbound_structure_guards` 那两条**互不相交**的相等断言各钉一族。
     //
@@ -1364,13 +1364,13 @@ pub const REGISTRY: &[CommandSpec] = &[
     //   ⇒ 这一条同拍上了 `lib.rs::SUBCOMMANDS`（不加就当未知 flag、静默进流模式）。
     //   ⇒ 「入口窄」这件事不靠命令面，靠 `readonly_guard` 第三层那条
     //   「**谁引用得到 `control/files_write`**」。理由整段在那个模块的命令面那一节。
-    // 〔B2 · 条 66 · `设计/01 §3.3b`〕「退出行为」那个值的两条命令 —— 值住**后端所在那台机器**
+    // 〔条 66〕「退出行为」那个值的两条命令 —— 值住**后端所在那台机器**
     //   （`~/.cc-monitor/backend.json`），前端要读要改都经这两条，**前端从不碰那个文件**。
     //   ⚠ 两条都在阻塞档：同步文件 I/O，开跑之后打不断 ⇒ `cancel` 命中回 `not_cancellable`。
     //   ⚠ `exit-policy-read` **没有错误码**：「读不出来」是一个**状态**（`state: "unreadable"` ＋ `reason`），
     //     不是一次失败 —— 调用方要的就是那一句「读不出来，按默认办」（`§3.3b ⑤`）。
     //   ⚠ CLI 面同样是派生的必然（`cli_control::cli_exposed`），理由同下面 `files-create` 那一段。
-    // 〔W5-ALIAS · 第五波先行〕**别名预览**（`设计/71 §2.3`「生成器旁边显示这条别名实际会执行什么，是真验证，
+    // **别名预览**（「生成器旁边显示这条别名实际会执行什么，是真验证，
     //   不是前端拼串」）：与 `ccm --print` 同一个计划函数，环境是「这台机器家目录里的一个新终端」。
     //   只读（不起进程、不写盘），阻塞档（读账号库 manifest ＋ 问会话快照）。
     CommandSpec {
@@ -1385,7 +1385,7 @@ pub const REGISTRY: &[CommandSpec] = &[
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
-    // 〔E2 · `96 §7.2.2`〕**这台的 `ccm` 会哪些**：`ccm` 就是这台后端本身（V28），「PATH 上那个是谁」退化成问它自己。
+    // **这台的 `ccm` 会哪些**：`ccm` 就是这台后端本身，「PATH 上那个是谁」退化成问它自己。
     //   纯函数（拼 `--ccm-probe` 那几行），不起进程、不碰盘 ⇒ 不进阻塞档（同 `ping` 那一形）。
     CommandSpec {
         name: "ccm-probe",
@@ -1397,7 +1397,7 @@ pub const REGISTRY: &[CommandSpec] = &[
             Box::pin(async move { Ok(Some(crate::control::ccm::answer_probe())) })
         }),
     },
-    // 〔MIG-3b · 4d-lanes 子步 1〕**部署计划**：`{dial, carried, machine}` → 换成哪一格 · 落点那一份是谁 · 该不该换 · 旧落点那份删不删。
+    // 〔4d-lanes 子步 1〕**部署计划**：`{dial, carried, machine}` → 换成哪一格 · 落点那一份是谁 · 该不该换 · 旧落点那份删不删。
     //   真异步（拨号 / 等远端）；一个字节都不写（放字节是 monitor 经 `files` 链路的事）。本体 `control/deploy_plan.rs`。
     CommandSpec {
         name: "deploy-plan",
@@ -1438,9 +1438,9 @@ pub const REGISTRY: &[CommandSpec] = &[
             })
         }),
     },
-    // 〔THIN〕**那台旧入口的去向**：`{dial}` → `{verdict, expect, why}`（沿池里那条 SSH 开只读 SFTP，stat ＋ 读回，真异步）。
+    // **那台旧入口的去向**：`{dial}` → `{verdict, expect, why}`（沿池里那条 SSH 开只读 SFTP，stat ＋ 读回，真异步）。
     //   本体 `control/deploy_plan.rs::answer_retired`（与上传残件同一家：落点上该清的东西）。
-    //   〔P1〕另一形 `{text}`：本机 PATH 上另一个 `ccm` 的开头一截，只判不读盘（monitor 本机探针拿来说话）。
+    // 另一形 `{text}`：本机 PATH 上另一个 `ccm` 的开头一截，只判不读盘（monitor 本机探针拿来说话）。
     CommandSpec {
         name: "deploy-retired",
         doc_anchor: Some("#### `deploy-retired`"),
@@ -1462,7 +1462,7 @@ pub const REGISTRY: &[CommandSpec] = &[
             })
         }),
     },
-    // 〔THIN〕**那台要哪一格字节**：`{product, machine, carried, dial?}` → `{os, arch, label, ack}`（有 `dial` ⇒ 沿池里那条 SSH 问 `uname`，真异步；
+    // **那台要哪一格字节**：`{product, machine, carried, dial?}` → `{os, arch, label, ack}`（有 `dial` ⇒ 沿池里那条 SSH 问 `uname`，真异步；
     //   没有 ⇒ 本机那一格）。本体 `control/deploy_plan.rs::answer_slot`（与 `deploy-plan` 第 ① 步同一个 `slot_of`）。
     CommandSpec {
         name: "deploy-slot",
@@ -1488,8 +1488,8 @@ pub const REGISTRY: &[CommandSpec] = &[
             })
         }),
     },
-    // 〔THIN〕**远端常驻后端 hello 的新旧**：`{mine, theirs, replaced}` → `{action, older}`（纯判定，不碰盘不拨号 ⇒ 不进阻塞档）。
-    //   本体 `control/deploy_plan.rs::answer_resident_verdict`（判定只在后端，`设计/00 §1.2`）。
+    // **远端常驻后端 hello 的新旧**：`{mine, theirs, replaced}` → `{action, older}`（纯判定，不碰盘不拨号 ⇒ 不进阻塞档）。
+    //   本体 `control/deploy_plan.rs::answer_resident_verdict`（判定只在后端）。
     CommandSpec {
         name: "resident-verdict",
         doc_anchor: Some("#### `resident-verdict`"),
@@ -1504,7 +1504,7 @@ pub const REGISTRY: &[CommandSpec] = &[
             })
         }),
     },
-    // 〔P1〕**本机那一份放不放**：`{dest, machine}` → `{action: place|keep, why}`（只读落点那一个文件 ⇒ 阻塞档）。
+    // **本机那一份放不放**：`{dest, machine}` → `{action: place|keep, why}`（只读落点那一个文件 ⇒ 阻塞档）。
     //   monitor 放本机后端之前还没有常驻后端 ⇒ 跑手上那份字节的 CLI 面问它（`--place-verdict`）。本体 `control/deploy_plan.rs::answer_place`。
     CommandSpec {
         name: "place-verdict",
@@ -1518,7 +1518,7 @@ pub const REGISTRY: &[CommandSpec] = &[
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
-    // 〔MIG-3b 续〕**公钥一键推送**（本机常驻后端答）：`{machine, saved?, jump?, pubKeyPath?}` → `{outcome, pubPath, via}`。
+    // **公钥一键推送**（本机常驻后端答）：`{machine, saved?, jump?, pubKeyPath?}` → `{outcome, pubPath, via}`。
     //   那台在可达表里 ⇒ 问它 `authorized-keys-add`；不在 ⇒ 沿池里那条 SSH 一次 exec（只写这一件）。本体 `assets/pubkey.rs`。
     CommandSpec {
         name: "pubkey-push",
@@ -1547,7 +1547,7 @@ pub const REGISTRY: &[CommandSpec] = &[
             })
         }),
     },
-    // 〔MIG-3b 续〕**公钥写进这台的 `authorized_keys`**（被写那台答）：算经 `assets/pubkey.rs`，写经 [`LocalFiles`]（CAS ＋ 建父目录 ＋ 700 / 600）。
+    // **公钥写进这台的 `authorized_keys`**（被写那台答）：算经 `assets/pubkey.rs`，写经 [`LocalFiles`]（CAS ＋ 建父目录 ＋ 700 / 600）。
     CommandSpec {
         name: "authorized-keys-add",
         doc_anchor: Some("#### `authorized-keys-add`"),
@@ -1580,8 +1580,8 @@ pub const REGISTRY: &[CommandSpec] = &[
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
-    // 〔RM1a · 第四波〕**上游选择**那份凭据文件在**这台机器上**的读写口 —— 上游选择自己的状态，
-    //   不是用户文件（判清全文 `调研/第四波记录/RM1a.md §1`）⇒ 写口登记在 `readonly_guard` 第四层，
+    // **上游选择**那份凭据文件在**这台机器上**的读写口 —— 上游选择自己的状态，
+    //   不是用户文件（判清全文）⇒ 写口登记在 `readonly_guard` 第四层，
     //   **只从这里一扇门进来**。远端账号页配的 key 从此落在会话跑的那台机器上。
     //   ⚠ 明文只在 `apikey-key-set` 的 `args.key` 里（帧面：长连接入方向；派生 CLI 面：stdin），
     //     **不进 argv / env / 日志**；两条的应答都只有掩码。
@@ -1591,7 +1591,7 @@ pub const REGISTRY: &[CommandSpec] = &[
         name: "apikey-key-set",
         doc_anchor: Some("#### `apikey-key-set`"),
         codes: &["bad_args", "bad_file", "io_failed"],
-        // 〔HX2 · 4D〕入 `configDir`（账号 id 由后端推）· 出 `account`（推出来的那个）。
+        // 入 `configDir`（账号 id 由后端推）· 出 `account`（推出来的那个）。
         fields: &["account", "baseUrl", "configDir", "key", "masked", "path"],
         takes_input: true,
         run: Run::Blocking(|r| {
@@ -1604,7 +1604,7 @@ pub const REGISTRY: &[CommandSpec] = &[
         name: "apikey-read",
         doc_anchor: Some("#### `apikey-read`"),
         codes: &[],
-        // 〔US1〕`rows` 退出线上：「表里有哪几行」只在这台后端里用（`file_face::rows_at`，三处读者同一份）。
+        // `rows` 退出线上：「表里有哪几行」只在这台后端里用（`file_face::rows_at`，三处读者同一份）。
         fields: &["configured", "masked", "notice", "path", "problem"],
         takes_input: false,
         run: Run::Blocking(|_r| {
@@ -1613,10 +1613,10 @@ pub const REGISTRY: &[CommandSpec] = &[
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
-    // 〔US1 · 第四波 4D〕上游选择出的两份成品（`accounts/upstream_select/endpoint.rs`）。
+    // 上游选择出的两份成品（`accounts/upstream_select/endpoint.rs`）。
     //   阻塞档：读一次凭据文件、装一次表；「中转在不在」读本进程的监听状态（中转住这里）。
-    //   〔DEL 续〕只上流面（`cli_control::STREAM_ONLY`）：一次性进程里没有中转，答 `listening:false` 是假话。
-    // 〔MIG-2〕成品只剩 `baseUrl`：「中转不在时拒还是直连」也在这里判完（非它不可 ⇒ `relay_down`）。
+    // 只上流面（`cli_control::STREAM_ONLY`）：一次性进程里没有中转，答 `listening:false` 是假话。
+    // 成品只剩 `baseUrl`：「中转不在时拒还是直连」也在这里判完（非它不可 ⇒ `relay_down`）。
     CommandSpec {
         name: "launch-endpoint",
         doc_anchor: Some("#### `launch-endpoint`"),
@@ -1629,7 +1629,7 @@ pub const REGISTRY: &[CommandSpec] = &[
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
-    // 〔MIG-2 · `99 §2.1 ⑬`〕起会话的计划与渲染（`control/launch_render/`）。
+    // 起会话的计划与渲染（`control/launch_render/`）。
     //   `launch-local`：本机起会话整条（阻塞档：探一次 `ccm`、读一次凭据表、探一次中转）；
     //   两条渲染是纯函数（不碰盘、不起进程）。
     CommandSpec {
@@ -1717,12 +1717,12 @@ pub const REGISTRY: &[CommandSpec] = &[
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
-    // 〔DEL〕这里原是 `relay-status` / `relay-ensure`（这台机器上脱离的 `--relay` 在不在 · 起一个）：
-    //   中转只住常驻后端进程里（本机远端同形，V139），那一族随回落一形删了。
-    // 〔MIG-3b 续 · 主会话 09-28 裁①〕「足迹」由这台后端出整份成品（申报表 ＋ 判定都在 `footprint/`）；
+    // 这里原是 `relay-status` / `relay-ensure`（这台机器上脱离的 `--relay` 在不在 · 起一个）：
+    //   中转只住常驻后端进程里（本机远端同形），那一族随回落一形删了。
+    // 「足迹」由这台后端出整份成品（申报表 ＋ 判定都在 `footprint/`）；
     //   本机那一栏 `client` 带 monitor 自己进程独有的几条事实（家目录 · agent 家 · PATH），`HostScope::Client` 那一族按它们解、这台 stat。只读，阻塞档。
     //   〔墓碑 —— RM1a 那一版这里是 `footprint-probe`：只交路径事实，判定住 monitor。〕
-    // 〔MOD〕漂移账出成品（`read_face.rs` 那一臂 ＋ 注册表 `RecordFace.drift`）。纯内存读一把锁，不进阻塞档（同 `forward-list`）。
+    // 漂移账出成品（`read_face.rs` 那一臂 ＋ 注册表 `RecordFace.drift`）。纯内存读一把锁，不进阻塞档（同 `forward-list`）。
     CommandSpec {
         name: "drift-report",
         doc_anchor: Some("#### `drift-report`"),
@@ -1749,7 +1749,7 @@ pub const REGISTRY: &[CommandSpec] = &[
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
-    // 〔MIG-1 · `99 §2.1 ⑬`〕端口转发（F58）的账住本机常驻后端（`dial/forwards.rs`；monitor 那三条 Tauri 命令退役）。
+    // 端口转发（F58）的账住本机常驻后端（`dial/forwards.rs`；monitor 那三条 Tauri 命令退役）。
     //   起 = 真异步（查可达表 · 池里那条 SSH 上开 `use: forward` 链路 · 等 ack），`cancel` 能在 await 点打断；
     //   停 / 列 = 纯内存（一把锁），同 `remote-reach` 不进阻塞档。三条都只在流面上有意义（`cli_control::STREAM_ONLY`）。
     CommandSpec {
@@ -1783,9 +1783,9 @@ pub const REGISTRY: &[CommandSpec] = &[
             })
         }),
     },
-    // 〔MIG-1 续 · `99 §2.1 ⑬` · 主会话裁「后端持有全部 SSH」〕测试连接（monitor 那条 Tauri 命令 `test_remote_connection` 退役）：
+    // 〔「后端持有全部 SSH」〕测试连接（monitor 那条 Tauri 命令 `test_remote_connection` 退役）：
     //   真异步（拨号 · 读 hello · 控制通道往返；本后端零定时器，期限归发起方），`cancel` 能在 await 点打断；短命探活、不进连接池。
-    // 〔MIG-1 收尾〕进度边拨边推（`probe` 帧，走本连接的应答通道）⇒ `Run::Builtin`：只在帧面，分派在 `dispatch` 那条硬臂。
+    // 进度边拨边推（`probe` 帧，走本连接的应答通道）⇒ `Run::Builtin`：只在帧面，分派在 `dispatch` 那条硬臂。
     CommandSpec {
         name: "remote-probe",
         doc_anchor: Some("#### `remote-probe`"),
@@ -1841,7 +1841,7 @@ pub const REGISTRY: &[CommandSpec] = &[
             Box::pin(async move { Ok(Some(crate::dial::forwards::answer_list())) })
         }),
     },
-    // 〔AS1 · 第四波 4B〕**MCP 资产同步的判定**（`设计/96` 的 B，用户 09-24 V111 · V112）：两份原文进、
+    // **MCP 资产同步的判定**（B，用户 09-24）：两份原文进、
     //   差异四态 ＋ 可疑项（带这台机器的事实）＋「写哪几条」出。由**要被写的那一台**跑（事实是那台的）。
     //   只读：原文由 monitor 经 `files-peek` 读来，写经 `files-put`（CAS）—— 本条一个字节都不落盘。阻塞档（`stat`）。
     CommandSpec {
@@ -1856,7 +1856,7 @@ pub const REGISTRY: &[CommandSpec] = &[
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
-    // 〔AS2 · 第四波 4B · V113〕**资产目录**：这台现扫一次 skill 与项目级 MCP、记进后端自有的
+    // **资产目录**：这台现扫一次 skill 与项目级 MCP、记进后端自有的
     //   `~/.cc-monitor/assets-catalog.json`（第四层，变了才写）、回整份目录 ＋「这台缺什么」的判定。
     //   `-merge` 那条再把另一台后端的整份并进来（同一台取 `gen` 大的整份）。一个用户文件都不写。阻塞档（扫盘）。
     CommandSpec {
@@ -1885,13 +1885,13 @@ pub const REGISTRY: &[CommandSpec] = &[
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
-    // 〔AS2〕**资产目录的自动同步**：本机常驻后端沿池里那条 SSH 连接（多开一个 exec 通道，零新连接）
+    // **资产目录的自动同步**：本机常驻后端沿池里那条 SSH 连接（多开一个 exec 通道，零新连接）
     //   拉远端的目录、并进本机、把远端缺的推过去。写口（`answer_merge`）由这扇门递进去 —— `asset_sync.rs`
     //   自己不直呼它（`readonly_guard` 第四层 ④：写口只从 `inbound.rs` 进来）。真异步（拨号 / 等远端）。
     CommandSpec {
         name: "assets-sync",
         doc_anchor: Some("#### `assets-sync`"),
-        // 〔MIG-3a〕`unreachable`：只给 `origin`（界面直问）而可达表里还没有那一台。
+        // `unreachable`：只给 `origin`（界面直问）而可达表里还没有那一台。
         codes: &["bad_args", "io_failed", "unreachable"],
         fields: &["dial", "origin", "reach", "self", "synced"],
         takes_input: true,
@@ -1910,7 +1910,7 @@ pub const REGISTRY: &[CommandSpec] = &[
             })
         }),
     },
-    // 〔C4d · 第四波 4B〕**可达表登记**：monitor（宿主，只交事实）在每台远端流握手成功那一刻交「怎么够到那台」
+    // **可达表登记**：monitor（宿主，只交事实）在每台远端流握手成功那一刻交「怎么够到那台」
     //   （拨号请求 ＋ 那台后端的路径），本机后端记进内存可达表（`remote_ask`，后端重启就空）。**只登记，不拨号**：
     //   之后「本机后端问远端后端」的两路（资产目录同步 · 历史跨机 join）都查这张表。老远端也登记（历史问它的是老子命令）。
     CommandSpec {
@@ -1928,8 +1928,8 @@ pub const REGISTRY: &[CommandSpec] = &[
             })
         }),
     },
-    // 〔C4d · 第四波 4B〕**历史注解**（星标 / 改名 / 隐藏 / 上次用哪个号起）的读写者换成本机常驻后端 ——
-    //   主会话 09-25 裁「文件留在原处、同一路径，不迁移、一条不丢」：路径由 monitor 起本机后端时显式交（`CCM_HISTORY_METADATA`），
+    // **历史注解**（星标 / 改名 / 隐藏 / 上次用哪个号起）的读写者换成本机常驻后端 ——
+    //   「文件留在原处、同一路径，不迁移、一条不丢」：路径由 monitor 起本机后端时显式交（`CCM_HISTORY_METADATA`），
     //   写是第四层（`history_annotations.rs`，读不懂就拒写、只改那一条、认不出的键原样留着）。三条都是阻塞档（读写一份小文件）。
     CommandSpec {
         name: "history-annotate",
@@ -1986,7 +1986,7 @@ pub const REGISTRY: &[CommandSpec] = &[
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
-    // 〔AS2 · 第四波 4B · V113〕**skill「装到这台」**：`skill-read` 在来源那台读出这个 skill 的全部文件（原文 ＋ 执行位）；
+    // **skill「装到这台」**：`skill-read` 在来源那台读出这个 skill 的全部文件（原文 ＋ 执行位）；
     //   `skill-install-plan` 在要被写的那一台判 —— 差异四态与「不同的要显式说盖」那道闸原样用 AS1 的 `mcp_sync::{diff, plan}`，
     //   可疑项（可执行 · 二进制 · 绝对路径 · `#!` 要的命令）带那台的事实。两条都只读；写经 `files-put`（CAS）。阻塞档（扫盘）。
     CommandSpec {
@@ -2024,7 +2024,7 @@ pub const REGISTRY: &[CommandSpec] = &[
             "take",
             "target",
             "write",
-            // 〔SU1〕给了 `take` 才有：真要写的那几个的摘要 ＋ 装之前在不在（装完原样交回 `skill-install-record`）。
+            // 给了 `take` 才有：真要写的那几个的摘要 ＋ 装之前在不在（装完原样交回 `skill-install-record`）。
             "ledger",
         ],
         takes_input: true,
@@ -2078,7 +2078,7 @@ pub const REGISTRY: &[CommandSpec] = &[
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
-    // ── 〔波 5 ㈡ · 2026-09-23〕`设计/60 §8.6` **第 3 步**：改动既有数据的那五条 ──────────
+    // ── 〔波 5 ㈡〕 **第 3 步**：改动既有数据的那五条 ──────────
     //
     // 🔴 **这五条才花掉用户那句话**：「现在只允许后端的文件管理部分写文件」。
     //   处理器同住 `control/files_write.rs`（`readonly_guard` 第三层唯一登记的模块），
@@ -2114,8 +2114,8 @@ pub const REGISTRY: &[CommandSpec] = &[
         name: "files-delete",
         doc_anchor: Some("#### `files-delete`"),
         codes: &["bad_args", "bad_path", "io_failed", "refused", "stale"],
-        // 〔FW5〕`recursive`（入）· `removed`（出）：显式才删整棵树，逐条目过围栏。
-        // 〔RM1e〕`expect`（入）：给了 ⇒ 盘上逐字节等于它才删一份普通文件，否则 `stale`。
+        // `recursive`（入）· `removed`（出）：显式才删整棵树，逐条目过围栏。
+        // `expect`（入）：给了 ⇒ 盘上逐字节等于它才删一份普通文件，否则 `stale`。
         fields: &["expect", "path", "recursive", "rel", "removed", "root"],
         takes_input: true,
         run: Run::Blocking(|r| {
@@ -2127,7 +2127,7 @@ pub const REGISTRY: &[CommandSpec] = &[
     CommandSpec {
         name: "files-chmod",
         doc_anchor: Some("#### `files-chmod`"),
-        // 〔FW5〕`no_unix_mode`：这个平台没有 unix 权限位（target 轴从这一格现推 Windows 那一格）。
+        // `no_unix_mode`：这个平台没有 unix 权限位（target 轴从这一格现推 Windows 那一格）。
         codes: &[
             "bad_args",
             "bad_path",
@@ -2143,14 +2143,14 @@ pub const REGISTRY: &[CommandSpec] = &[
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
-    // 〔F7a · 第三波 09-24〕写面第七条：同根内复制（`设计/60 §13`）。与上面五条同住一个模块、
+    // 写面第七条：同根内复制。与上面五条同住一个模块、
     //   同一扇门、同档（同步文件 I/O，取消不掉）。它**不给第三层添动词**：由 `O_EXCL` 新建 ＋
     //   换名 ＋ 删自己刚建的那一份拼出来（理由住 `control/files_write.rs::copy_entry`）。
     CommandSpec {
         name: "files-copy",
         doc_anchor: Some("#### `files-copy`"),
         codes: &["bad_args", "bad_path", "io_failed", "refused"],
-        // 〔W5-FILES〕`recursive`（入）· `files` / `dirs`（出）：显式才复制目录。
+        // `recursive`（入）· `files` / `dirs`（出）：显式才复制目录。
         fields: &[
             "bytes",
             "dirs",
@@ -2170,7 +2170,7 @@ pub const REGISTRY: &[CommandSpec] = &[
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
-    // 〔FILES2 · 第四波 09-27〕解压（`设计/60 §6.2` · `§7` 第 9 条 Q3，主会话按通行做法裁）：处理器住
+    // 解压（主会话按通行做法裁）：处理器住
     //   `control/files_extract.rs`（第三层第四个登记的模块），本文件照旧是那一层唯一的门。阻塞档（同步读包 ＋ 落盘）。
     CommandSpec {
         name: "files-extract",
@@ -2193,7 +2193,7 @@ pub const REGISTRY: &[CommandSpec] = &[
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
-    // 〔MIG-3a · 子步 3〕建一条链接（`files_extract.rs::land_link` 那一个动词，FILES2 已在写面闭集里）：链接那条路径过根底下的解析，
+    // 建一条链接（`files_extract.rs::land_link` 那一个动词，FILES2 已在写面闭集里）：链接那条路径过根底下的解析，
     //   目标文本原样（同 `cp -P`）。阻塞档（一次 `symlink`）。
     CommandSpec {
         name: "files-link",
@@ -2221,13 +2221,13 @@ pub const REGISTRY: &[CommandSpec] = &[
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
-    // ── 〔RW1 · 第四波 · 2026-09-24〕用户文件的读改写 ＋ 删历史会话 ─────────────────────────
+    // ── 用户文件的读改写 ＋ 删历史会话 ─────────────────────────
     //
     // 🔴 用户裁「只允许后端的文件管理部分写文件」**只管用户的文件、本机也管** ⇒ monitor 进程
     //   不再直接写用户文件；本机与远端都经这三条（`call(origin, …)`，同一条路）。处理器同住
     //   `control/files_write.rs`（第三层），本文件照旧是那一层唯一的门。阻塞档（同步文件 I/O）。
     //   `files-delete-session` 只收 sid（理由住那个模块的 `delete_session`）。
-    //   〔AR1 · V119〕上一版说它是「会话文件围栏**唯一的例外**」—— FN1 之后文件管理写面已不设会话文件围栏，
+    // 上一版说它是「会话文件围栏**唯一的例外**」—— FN1 之后文件管理写面已不设会话文件围栏，
     //   这一条「只许删会话形状那一份」的限制是它自己的，不是谁的例外。
     CommandSpec {
         name: "files-peek",
@@ -2275,13 +2275,13 @@ pub const REGISTRY: &[CommandSpec] = &[
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
-    // ── 〔F7c · 第三波 · 2026-09-24〕`设计/60 §13`：上传的**提交** ──────────────────────
+    // ──：上传的**提交** ──────────────────────
     //
     // 🔴 SFTP 缩成只做传输之后，上传只写暂存区（`~/.cc-monitor/staging/<key>.part`）；
     //   把它挪进用户目标的**那一下**在这里 —— 用户逐字「现在只允许后端的文件管理部分写文件」。
     //   处理器住 `control/files_commit.rs`（`readonly_guard` 第三层第二个登记的模块），
     //   本文件照旧是那一层唯一的门。阻塞档：同步文件系统 I/O（围栏的 `canonicalize` ＋ 改名）。
-    // ── 〔F9c · 第四波〕存盘装不进一条请求行时：逐块进暂存区 ＋ 读回拼起来原地覆盖 ──────────
+    // ── 存盘装不进一条请求行时：逐块进暂存区 ＋ 读回拼起来原地覆盖 ──────────
     //   同住 `control/files_commit.rs`（第三层第二个模块），阻塞档理由同上一条。
     CommandSpec {
         name: "files-stage-chunk",
@@ -2334,7 +2334,7 @@ pub const REGISTRY: &[CommandSpec] = &[
         name: "files-browse",
         doc_anchor: Some("#### `files-browse`"),
         codes: &["bad_args", "bad_path"],
-        // 〔W5-FILES〕+`watching` · `watch_failed` · `watch_error`（进程里那一个监听器跟上名单，`设计/60 §3.7`）。
+        // +`watching` · `watch_failed` · `watch_error`（进程里那一个监听器跟上名单）。
         fields: &[
             "added",
             "browse_watch_cap",
@@ -2355,7 +2355,7 @@ pub const REGISTRY: &[CommandSpec] = &[
     CommandSpec {
         name: "files-index-rebuild",
         doc_anchor: Some("#### `files-index-rebuild`"),
-        // `already_rebuilding`〔2026-09-21〕：非阻塞互斥抢不到那个位。
+        // `already_rebuilding`：非阻塞互斥抢不到那个位。
         codes: &["already_rebuilding", "bad_path", "unreadable"],
         fields: &[
             "entries",
@@ -2372,7 +2372,7 @@ pub const REGISTRY: &[CommandSpec] = &[
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
-    // 〔FILES3 · `设计/99 §2.2 ㉜`〕**按内容搜**：`{path, needle, ignore_ascii_case?, limit?}` ⇒ 命中的那几份（第一处命中那一行 ＋ 命中几行）
+    // **按内容搜**：`{path, needle, ignore_ascii_case?, limit?}` ⇒ 命中的那几份（第一处命中那一行 ＋ 命中几行）
     //   ＋ 走了多少。**可撤** ⇒ 异步档：走那一趟放进阻塞线程池，`cancel` 丢掉这个 future 时守卫置取消位、那一趟随即停
     //   （`files/mod.rs::answer_grep_cancellable`）。纯读。
     CommandSpec {
@@ -2476,7 +2476,7 @@ pub const REGISTRY: &[CommandSpec] = &[
         name: "files-stat",
         doc_anchor: Some("#### `files-stat`"),
         codes: &["bad_path", "unreadable"],
-        // 〔GP1 · 第四波〕+`mode`（能力 `files.stat` 同拍加的那一格；非 unix 缺席）。
+        // +`mode`（能力 `files.stat` 同拍加的那一格；非 unix 缺席）。
         fields: &["kind", "mode", "mtime_secs", "path", "readonly", "size"],
         takes_input: true,
         run: Run::Blocking(|r| {
@@ -2485,10 +2485,10 @@ pub const REGISTRY: &[CommandSpec] = &[
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
-    // ── 〔F7a · 第三波 · 2026-09-24〕`设计/60 §13`：窗口换走通道的那两问 ────────────────
+    // ──：窗口换走通道的那两问 ────────────────
     //
     // 🔴 **同一族（`files-read`）的第七、第八条，整族照旧纯读**：编辑器读一份文本 ·
-    //   开窗前「那台机器的 home 在哪」。此前窗口为这两问各拨一条 SFTP（`设计/60 §12.3`
+    //   开窗前「那台机器的 home 在哪」。此前窗口为这两问各拨一条 SFTP（
     //   那张欠账表），现在经通道问后端 —— 窗口进程够后端**只剩通道**这一条路。
     // ⚠ `run` 与同族那六条逐字同形（名字从 `r.cmd` 来）；同在 `Run::Blocking`、同样取消不掉。
     CommandSpec {
@@ -2509,7 +2509,7 @@ pub const REGISTRY: &[CommandSpec] = &[
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
-    // 〔FILES2 · V152〕读族第十条：按字节寻址分块读回（非 UTF-8 名的下载）。同族同形、同在阻塞档。
+    // 读族第十条：按字节寻址分块读回（非 UTF-8 名的下载）。同族同形、同在阻塞档。
     CommandSpec {
         name: "files-read-chunk",
         doc_anchor: Some("#### `files-read-chunk`"),
@@ -2522,7 +2522,7 @@ pub const REGISTRY: &[CommandSpec] = &[
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
-    // 〔W5-FILES · 第五波〕读族第九条：算目录大小（`设计/60 §6.2`）。与同族那几条逐字同形、同在阻塞档。
+    // 读族第九条：算目录大小。与同族那几条逐字同形、同在阻塞档。
     CommandSpec {
         name: "files-size",
         doc_anchor: Some("#### `files-size`"),
@@ -2556,7 +2556,7 @@ pub const REGISTRY: &[CommandSpec] = &[
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
-    // ── 〔`C1` · 2026-09-24〕只读查询面上线 —— `设计/15 §3.2` 层 1 ＋ `99 §4.19.2 ⑥` ──────────
+    // ── 只读查询面上线 —— 层 1 ＋ ──────────
     //
     // 🔴 **这八条此前全是一次性子命令**：monitor 每问一次就新拨一条 SSH（握手 ＋ 鉴权 ＋ exec），
     //   而这条长连接明明已经在那儿。账号那两条还被一个 10 秒的轮询按台数翻倍。
@@ -2574,7 +2574,7 @@ pub const REGISTRY: &[CommandSpec] = &[
     //
     // ⚠ 全在 `Run::Blocking`：它们都做文件 I/O（`history-search` 扫全库）。代价同 `files-*`：
     //   `cancel` 命中时回 `not_cancellable`（不撒谎）。
-    // 〔C4d · 第四波 4B〕这两条**出成品**：历史跨机 join 的唯一的家（`history_join.rs`）—— 这台（记录树 ＋ 合成历史 ＋ pidfile 判活）
+    // 这两条**出成品**：历史跨机 join 的唯一的家（`history_join.rs`）—— 这台（记录树 ＋ 合成历史 ＋ pidfile 判活）
     //   或可达表里的那一台（`remote_ask` 问它的 CLI 老子命令 `--list-projects` / `--list-sessions`），并上这台的注解。
     //   真异步（远端那一跳要等）；本机扫盘那一段挪到阻塞线程池（`history_join::blocking`）。
     CommandSpec {
@@ -2626,7 +2626,7 @@ pub const REGISTRY: &[CommandSpec] = &[
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
-    // 〔FIX4 · `90 §3` J15 · 主会话 09-28 裁 B〕**各台 `history-search` 的会话行合成一份**：`updatedAt` 倒序（`search_rules::sort_by_recency`）·
+    // **各台 `history-search` 的会话行合成一份**：`updatedAt` 倒序（`search_rules::sort_by_recency`）·
     //   命中数相加 · 任一行被砍 ⇒ `truncated`。本体 `observe/search_query.rs::answer_merge`（经只读宿主 `read_face` 那一臂）；纯计算 ⇒ 不进阻塞档（同 `ping`）。
     CommandSpec {
         name: "history-search-merge",
@@ -2664,13 +2664,13 @@ pub const REGISTRY: &[CommandSpec] = &[
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
-    // 〔U4b · 第四波〕resume 之前问「这条会话的记录还在不在」。同族同档（一次目录枚举 ⇒ 阻塞档）、
+    // resume 之前问「这条会话的记录还在不在」。同族同档（一次目录枚举 ⇒ 阻塞档）、
     // 同一个只读宿主。**只收 sid**（找文件那一步与分叉 / 删会话同一份 `agents::find_session_file`）。
     CommandSpec {
         name: "history-record",
         doc_anchor: Some("#### `history-record`"),
         codes: &["bad_args"],
-        // 〔GP1 · 第四波〕+`configDir`（可选入参：这次 resume 要用的账号根）。
+        // +`configDir`（可选入参：这次 resume 要用的账号根）。
         fields: &["configDir", "present", "root", "sid"],
         takes_input: true,
         run: Run::Blocking(|r| {
@@ -2679,7 +2679,7 @@ pub const REGISTRY: &[CommandSpec] = &[
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
-    // 〔CF2 · 第四波 4B〕按**行号**取回（没接骨架的会话丢掉的正文从这里要回来）。同族同档、同一个只读宿主。
+    // 按**行号**取回（没接骨架的会话丢掉的正文从这里要回来）。同族同档、同一个只读宿主。
     CommandSpec {
         name: "history-lines",
         doc_anchor: Some("#### `history-lines`"),
@@ -2704,7 +2704,7 @@ pub const REGISTRY: &[CommandSpec] = &[
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
-    // 〔MOD〕按字节分页读、出记录行（`read_face.rs` 那一臂 ＋ `observe/record_page.rs`）。同族同档、同一个只读宿主。
+    // 按字节分页读、出记录行（`read_face.rs` 那一臂 ＋ `observe/record_page.rs`）。同族同档、同一个只读宿主。
     CommandSpec {
         name: "history-page",
         doc_anchor: Some("#### `history-page`"),
@@ -2725,10 +2725,10 @@ pub const REGISTRY: &[CommandSpec] = &[
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
-    // 〔SR1a · 2026-09-24〕骨架索引与大纲清单上帧面（此前它们在远端走逐次拨号 —— `STILL_DIALED` 那两行）。
+    // 骨架索引与大纲清单上帧面（此前它们在远端走逐次拨号 —— `STILL_DIALED` 那两行）。
     // 同族同档（同步文件 I/O ⇒ 阻塞档）、同一个只读宿主（`read_face::answer`）。
-    // 〔SR1a × SE2〕会话内查找上帧面（此前走逐次拨号 —— `STILL_DIALED` 那一行）。同族同档。
-    // 〔STC · `设计/90 §4` 阶段 C〕会话事实（`read_face.rs` 那一臂 ＋ `observe/facts_query.rs`）。同族同档、同一个只读宿主。
+    // 会话内查找上帧面（此前走逐次拨号 —— `STILL_DIALED` 那一行）。同族同档。
+    // 会话事实（`read_face.rs` 那一臂 ＋ `observe/facts_query.rs`）。同族同档、同一个只读宿主。
     //   `prior` 是调用方上一次拿到的应答原样（续传令牌）；应答五格即成品。
     CommandSpec {
         name: "history-facts",
@@ -2766,7 +2766,7 @@ pub const REGISTRY: &[CommandSpec] = &[
         name: "history-find",
         doc_anchor: Some("#### `history-find`"),
         codes: &["bad_args", "failed", "too_large"],
-        fields: &["hits", "include_tools", "limit", "path", "query", "total"], // 〔C4b〕应答出成品：`lines` ⇒ `total` / `hits`
+        fields: &["hits", "include_tools", "limit", "path", "query", "total"], // 应答出成品：`lines` ⇒ `total` / `hits`
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::faces::read_face::answer(&r.cmd, &r.args)
@@ -2778,7 +2778,7 @@ pub const REGISTRY: &[CommandSpec] = &[
         name: "history-index",
         doc_anchor: Some("#### `history-index`"),
         codes: &["bad_args", "failed", "too_large"],
-        fields: &["end", "from", "offset", "path", "rows", "until"], // 〔C4b〕应答出成品：`lines` ⇒ `from` / `end` / `rows`
+        fields: &["end", "from", "offset", "path", "rows", "until"], // 应答出成品：`lines` ⇒ `from` / `end` / `rows`
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::faces::read_face::answer(&r.cmd, &r.args)
@@ -2790,7 +2790,7 @@ pub const REGISTRY: &[CommandSpec] = &[
         name: "history-user-inputs",
         doc_anchor: Some("#### `history-user-inputs`"),
         codes: &["bad_args", "failed", "too_large"],
-        fields: &["end", "entries", "from", "path"], // 〔C4b〕应答出成品：`lines` ⇒ `from` / `end` / `entries`
+        fields: &["end", "entries", "from", "path"], // 应答出成品：`lines` ⇒ `from` / `end` / `entries`
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::faces::read_face::answer(&r.cmd, &r.args)
@@ -2810,7 +2810,7 @@ pub const REGISTRY: &[CommandSpec] = &[
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
-    // 〔C4c · 第四波 4B〕出成品：`{meta, accounts, notice}`，并上这台机器自己那份 apikey 表；`agent` 随请求带（必填）。
+    // 出成品：`{meta, accounts, notice}`，并上这台机器自己那份 apikey 表；`agent` 随请求带（必填）。
     CommandSpec {
         name: "accounts-list",
         doc_anchor: Some("#### `accounts-list`"),
@@ -2835,7 +2835,7 @@ pub const REGISTRY: &[CommandSpec] = &[
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
-    // 〔C4c · 第四波 4B〕换号前的信任预检：`configDir`（缺席 / null = 账号 0）＋ `cwd` → `{trusted, known}`。
+    // 换号前的信任预检：`configDir`（缺席 / null = 账号 0）＋ `cwd` → `{trusted, known}`。
     //   同族同档（读一份 manifest ＋ 一份 `.claude.json` ⇒ 阻塞档）、同一个只读宿主。
     CommandSpec {
         name: "accounts-trust",
@@ -3037,7 +3037,7 @@ pub const REGISTRY: &[CommandSpec] = &[
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
-    // 〔LOC1a · 第四波 4D〕分叉：与 CLI `--fork-session` 同一个本体（`control/fork_write.rs::run_inner`，
+    // 分叉：与 CLI `--fork-session` 同一个本体（`control/fork_write.rs::run_inner`，
     //   读 → 适配层的分叉变换（`agents::build_branch_records`）→ `O_EXCL` 新建）。本机远端同一条长连接；读整份 jsonl ⇒ 阻塞档。
     //   ⚠ 名字刻意不是 `fork-session`：自动派生的 CLI 面会与对 aterm 冻结的 `--fork-session`（argv 形）撞名。
     CommandSpec {
@@ -3052,7 +3052,7 @@ pub const REGISTRY: &[CommandSpec] = &[
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
-    // 〔SH1 · V137〕MCP 列表成品：user / local / project 三段 ＋ 用过的项目目录 ＋ 读不出来的那几份。阻塞档（同步文件 I/O）。
+    // MCP 列表成品：user / local / project 三段 ＋ 用过的项目目录 ＋ 读不出来的那几份。阻塞档（同步文件 I/O）。
     CommandSpec {
         name: "mcp-read",
         doc_anchor: Some("#### `mcp-read`"),
@@ -3074,7 +3074,7 @@ pub const REGISTRY: &[CommandSpec] = &[
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
-    // 〔MIG-3a · D 组〕项目 `.mcp.json` 增改 / 删：计算（`assets/mcp_edit.rs`）与写（本进程文件管理面 [`LocalFiles`]）在同一台。
+    // 〔D 组〕项目 `.mcp.json` 增改 / 删：计算（`assets/mcp_edit.rs`）与写（本进程文件管理面 [`LocalFiles`]）在同一台。
     CommandSpec {
         name: "mcp-server-put",
         doc_anchor: Some("#### `mcp-server-put`"),
@@ -3099,7 +3099,7 @@ pub const REGISTRY: &[CommandSpec] = &[
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
-    // 〔MIG-3a · 子步 3〕cc-bus 装到这台：`assets/cc_bus_install.rs`；写经 [`LocalFiles`]，装记录写口由本门递进去（第四层 ④）。
+    // cc-bus 装到这台：`assets/cc_bus_install.rs`；写经 [`LocalFiles`]，装记录写口由本门递进去（第四层 ④）。
     CommandSpec {
         name: "cc-bus-install-state",
         doc_anchor: Some("#### `cc-bus-install-state`"),
@@ -3272,7 +3272,7 @@ pub const REGISTRY: &[CommandSpec] = &[
             .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
-    // 〔MIG-3a · D 组〕MCP 推 / 拉：每一问只在一台上（`assets/mcp_sync_flow.rs`）；判定原样是 `mcp_sync::answer_with`，写经 [`LocalFiles`]。
+    // 〔D 组〕MCP 推 / 拉：每一问只在一台上（`assets/mcp_sync_flow.rs`）；判定原样是 `mcp_sync::answer_with`，写经 [`LocalFiles`]。
     CommandSpec {
         name: "mcp-sync-source",
         doc_anchor: Some("#### `mcp-sync-source`"),
@@ -3349,7 +3349,7 @@ pub const REGISTRY: &[CommandSpec] = &[
             .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
-    // 〔MIG-3a · D 组〕skill 装 / 卸的写那一半（`assets/skill_flow.rs`）：判（`skill_install`）· 写（[`LocalFiles`]）·
+    // 〔D 组〕skill 装 / 卸的写那一半（`assets/skill_flow.rs`）：判（`skill_install`）· 写（[`LocalFiles`]）·
     //   记（`skill_ledger::answer_record`，第四层写口只从这扇门递进去）同一台。
     CommandSpec {
         name: "skill-install-apply",
@@ -3386,7 +3386,7 @@ pub const REGISTRY: &[CommandSpec] = &[
             .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
-    // 〔MIG-3a · 主会话 09-27 裁〕别名六条：`assets/aliases/`（规则 · 方言 · 围栏），读写经 [`LocalFiles`]。
+    // 别名六条：`assets/aliases/`（规则 · 方言 · 围栏），读写经 [`LocalFiles`]。
     CommandSpec {
         name: "aliases-render",
         doc_anchor: Some("#### `aliases-render`"),
@@ -3482,7 +3482,7 @@ pub const REGISTRY: &[CommandSpec] = &[
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
-    // 〔WF1 · L〕起一次那一代 PowerShell（同步子进程）⇒ 阻塞档。
+    // 起一次那一代 PowerShell（同步子进程）⇒ 阻塞档。
     CommandSpec {
         name: "powershell-policy-set",
         doc_anchor: Some("#### `powershell-policy-set`"),
@@ -3495,7 +3495,7 @@ pub const REGISTRY: &[CommandSpec] = &[
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
-    // 〔RESYNC · V149 · `设计/15 §4.1b`〕手动对齐：整机（或 `sid` 只对一个会话）重跑起步那套对齐，回差异。阻塞档：等每份 watcher 做完。
+    // 手动对齐：整机（或 `sid` 只对一个会话）重跑起步那套对齐，回差异。阻塞档：等每份 watcher 做完。
     CommandSpec {
         name: "resync",
         doc_anchor: Some("#### `resync`"),
@@ -3517,7 +3517,7 @@ pub const REGISTRY: &[CommandSpec] = &[
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
-    // 〔MIG-1 · `99 §2.1 ⑯`〕`~/.ssh/config` 的解读（`dial/ssh_config.rs`，从 monitor `ssh_source.rs` 原样搬来）。
+    // `~/.ssh/config` 的解读（`dial/ssh_config.rs`，从 monitor `ssh_source.rs` 原样搬来）。
     //   阻塞档：读一份文件 ／ 起 `ssh -G`（只读配置、不建连接）并等它退出。
     CommandSpec {
         name: "ssh-config-aliases",
@@ -3559,7 +3559,7 @@ pub const REGISTRY: &[CommandSpec] = &[
         takes_input: false,
         run: Run::Blocking(|_r| Ok(Some(crate::dial::ssh_config::answer_import()))),
     },
-    // 〔P5 · `设计/80 §8.2` 本地半〕**本机开终端那一串**：`{command, rbindToken?}` ⇒ `{command}`（有令牌 ⇒ 前奏在前、原串逐字节在后）。
+    // 〔本地半〕**本机开终端那一串**：`{command, rbindToken?}` ⇒ `{command}`（有令牌 ⇒ 前奏在前、原串逐字节在后）。
     //   纯函数：不起进程、不碰盘（数据目录只算路径）⇒ 不进阻塞档，同 `terminal-ssh`。
     CommandSpec {
         name: "terminal-local",
@@ -3575,8 +3575,8 @@ pub const REGISTRY: &[CommandSpec] = &[
             })
         }),
     },
-    // 〔FIX4 · `99 §2.1 ⑬`「待迁」最后一行〕**开终端那一串**：`{machine, saved?, jump?, prefer?, command, rbindToken?}` ⇒ `{command}`（一行 PowerShell：
-    //   `& ssh -t[ -J …] -p … [-i …] user@host -- '<bash -lic …>'`；〔P5〕带令牌 ⇒ 前面接令牌握手前奏）。组请求走 `dial/machine.rs::resolve`，本体 `dial/terminal.rs`。
+    // 〔「待迁」最后一行〕**开终端那一串**：`{machine, saved?, jump?, prefer?, command, rbindToken?}` ⇒ `{command}`（一行 PowerShell：
+    //   `& ssh -t[ -J …] -p … [-i …] user@host -- '<bash -lic …>'`；带令牌 ⇒ 前面接令牌握手前奏）。组请求走 `dial/machine.rs::resolve`，本体 `dial/terminal.rs`。
     //   纯函数：校验 ＋ quote，不拨号、不起进程、不碰盘 ⇒ 不进阻塞档（同 `ping` 那一形）。
     CommandSpec {
         name: "terminal-ssh",
@@ -3592,7 +3592,7 @@ pub const REGISTRY: &[CommandSpec] = &[
             })
         }),
     },
-    // 〔SH1〕列这台的 tmux 会话。〔MIG-1 续〕成品 `{installed, sessions}`（`observe/tmux_list.rs`；原先是原样行、解析在 monitor）。阻塞档（起一次 `sh` ＋ `tmux`）。
+    // 列这台的 tmux 会话。成品 `{installed, sessions}`（`observe/tmux_list.rs`；原先是原样行、解析在 monitor）。阻塞档（起一次 `sh` ＋ `tmux`）。
     CommandSpec {
         name: "tmux-list",
         doc_anchor: Some("#### `tmux-list`"),
@@ -3614,7 +3614,7 @@ pub const REGISTRY: &[CommandSpec] = &[
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
-    // 〔FIX4 · `90 §3` J7〕**起会话要一个 tmux 名 —— 问这台**：`{cwd}`（`<项目名>-cc`）或 `{forkOf}`（`<…>-fork-cc`）⇒ `{name}`（按这台那张会话快照避让）。
+    // **起会话要一个 tmux 名 —— 问这台**：`{cwd}`（`<项目名>-cc`）或 `{forkOf}`（`<…>-fork-cc`）⇒ `{name}`（按这台那张会话快照避让）。
     //   本体 `control/ccm/mod.rs::answer_tmux_name_mint`；阻塞档（快照问一次就起一次 `tmux`）。
     CommandSpec {
         name: "tmux-name-mint",
@@ -3628,7 +3628,7 @@ pub const REGISTRY: &[CommandSpec] = &[
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
-    // 〔MIG-3b · `设计/95 §6`〕cc-bus 钩子诊断：这台自己的 `settings.json` ＋ stat ⇒ 诊断 ＋ 两种待贴片段（`observe/cc_bus_hooks.rs`）。阻塞档（同步文件 I/O）。
+    // cc-bus 钩子诊断：这台自己的 `settings.json` ＋ stat ⇒ 诊断 ＋ 两种待贴片段（`observe/cc_bus_hooks.rs`）。阻塞档（同步文件 I/O）。
     CommandSpec {
         name: "hooks-diag",
         doc_anchor: Some("#### `hooks-diag`"),
@@ -3654,7 +3654,7 @@ pub const REGISTRY: &[CommandSpec] = &[
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
-    // ── 〔RM1b · 第四波〕功能侧只读查询 —— 远端会话的任务列表（`parity_ledger` `session.tasks`）──
+    // ── 功能侧只读查询 —— 远端会话的任务列表（`parity_ledger` `session.tasks`）──
     //
     // 🔴 此前只有 monitor 直读**本机** `tasks/<sid>/` 那一条路，远端 tab 永远拿不到任务。
     //   本机后端与远端后端是同一个二进制 ⇒ 读法搬到这里，monitor 按 origin 问（本机也走这里）。
@@ -3665,7 +3665,7 @@ pub const REGISTRY: &[CommandSpec] = &[
         name: "tasks-list",
         doc_anchor: Some("#### `tasks-list`"),
         codes: &["bad_args", "failed", "too_large"],
-        // 〔LOC1a · 第四波 4D · C4e 批 4〕应答换成成品 `{tasks: [...]}`（原是原样对象的 `lines`）⇒ 后端行为变更，合并那拍 bump。
+        // 应答换成成品 `{tasks: [...]}`（原是原样对象的 `lines`）⇒ 后端行为变更，合并那拍 bump。
         fields: &[
             "activeForm",
             "blockedBy",
@@ -3684,13 +3684,13 @@ pub const REGISTRY: &[CommandSpec] = &[
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
-    // ── 〔RM1c · 第四波〕代码全景（用户 09-24 V108 选 B）────────────────────────────
+    // ── 代码全景（用户 09-24 V108 选 B）────────────────────────────
     //
     // 后端**不链**引擎：经插件通用调用口起那个只装引擎的独立小程序（`control/panorama.rs`），
     // 解析发生在被起的那个进程里；索引落这台机器上后端自己的数据目录。
     // ⚠ 只说查询语义：`op` 只许小程序 `--probe` 自报的词（== 签字白名单，`protocol_doc_guard` 那条 `P7c-2` 约束）；
-    //   〔PANO〕要的那一代由发起方带 `shape`，后端不存 op 表与形状代号。
-    // 〔RM1f〕**异步档**：起进程走 `plugin::invoke::run_abortable`（异步等子进程）⇒ `cancel` 命中时
+    // 要的那一代由发起方带 `shape`，后端不存 op 表与形状代号。
+    // **异步档**：起进程走 `plugin::invoke::run_abortable`（异步等子进程）⇒ `cancel` 命中时
     //   处理器 future 被丢、小程序那一组子进程被杀、回 `cancelled` —— 建索引（可到分钟级）打得断了。
     //   〔墓碑 —— RM1c 那一版是阻塞档：「起一个进程、等它退出。`cancel` 命中回 `not_cancellable`（不撒谎）」。〕
     CommandSpec {
@@ -3706,7 +3706,7 @@ pub const REGISTRY: &[CommandSpec] = &[
         ],
         fields: &["args", "op", "repo", "result", "shape", "ticket"],
         takes_input: true,
-        // 〔P7〕建索引那一档的进度格经 `Progress` 进发起方订的 `progress/<ticket>`（没交票就不推）。
+        // 建索引那一档的进度格经 `Progress` 进发起方订的 `progress/<ticket>`（没交票就不推）。
         run: Run::AsyncProgress(|r, p| {
             Box::pin(async move {
                 let push = move |cell: serde_json::Value| p.push(cell);
@@ -3716,7 +3716,7 @@ pub const REGISTRY: &[CommandSpec] = &[
             })
         }),
     },
-    // 〔FIX4 · `97 §8` · 主会话 09-28 裁〕**卸掉这台的全景小程序**：认身份（`--probe`）→ 这台文件管理面 CAS 删那一份；索引不动。本体 `control/panorama.rs::answer_uninstall`。
+    // **卸掉这台的全景小程序**：认身份（`--probe`）→ 这台文件管理面 CAS 删那一份；索引不动。本体 `control/panorama.rs::answer_uninstall`。
     CommandSpec {
         name: "panorama-uninstall",
         doc_anchor: Some("#### `panorama-uninstall`"),
@@ -3731,7 +3731,7 @@ pub const REGISTRY: &[CommandSpec] = &[
             })
         }),
     },
-    // 〔MIG-3b 续 · RM1d〕**全景写批注 / 文档关联**：`{repo, op, args}` → 这台的小程序算计划 → 这台文件管理面落盘（CAS，`stale` 重算）→
+    // **全景写批注 / 文档关联**：`{repo, op, args}` → 这台的小程序算计划 → 这台文件管理面落盘（CAS，`stale` 重算）→
     //   文档关联那两种再刷一次索引。「算」那一步的码原样交回（`not_installed` / `unsupported` ⇒ 界面放字节再问一次）。本体 `control/panorama_edit.rs`。
     CommandSpec {
         name: "panorama-edit",
@@ -3776,7 +3776,7 @@ pub const REGISTRY: &[CommandSpec] = &[
     CommandSpec {
         name: "launch",
         doc_anchor: Some("#### `launch`"),
-        // 〔TL2 · C4e 问 2〕+`wrong_owner`：`send-into` 过 `gate::admit`（§34 Gate 2），
+        // 〔C4e 问 2〕+`wrong_owner`：`send-into` 过 `gate::admit`（§34 Gate 2），
         // 它真会回这个码，登记表原先漏了。由 `gate_tests.rs::every_command_that_passes_the_gate_lists_the_gates_codes` 从 gate.rs 源码派生钉住。
         codes: &[
             "invalid_args",
@@ -3798,7 +3798,7 @@ pub const REGISTRY: &[CommandSpec] = &[
         takes_input: true,
         run: Run::Blocking(|r| crate::control::launch::launch_for_inbound(&r.args).map(Some)),
     },
-    // 〔SR1a · 2026-09-24〕**链路四条** —— 用户裁「改成单一常驻后端」：本机只常驻一个后端，
+    // **链路四条** —— 用户裁「改成单一常驻后端」：本机只常驻一个后端，
     // 到各远端的 SSH 连接由它持有、按拨号身份复用（`dial/pool.rs`）；monitor 经这条流开「链路」，
     // 链路上的字节与 C2 那个 `--dial` 子进程的 stdout 逐字节同形（`dial/mod.rs` 头注）。
     // 四条都是 `Run::Builtin`：要碰本连接的链路表 ⇒ **只在帧面**，CLI 面不派生（一次性进程没有「连接」可言）。
@@ -3839,8 +3839,8 @@ pub const REGISTRY: &[CommandSpec] = &[
         takes_input: true,
         run: Run::Builtin,
     },
-    // 〔SR1b · 2026-09-24〕**传输四条** —— 用户 V89「SFTP 进本机常驻后端，只写暂存区」：传输台从 monitor 搬进
-    // 本机常驻后端（`设计/60 §4.6`）。四条都是 `Run::Builtin`：要碰本连接的票表与应答通道 ⇒ **只在帧面**。
+    // **传输四条** —— 用户「SFTP 进本机常驻后端，只写暂存区」：传输台从 monitor 搬进
+    // 本机常驻后端。四条都是 `Run::Builtin`：要碰本连接的票表与应答通道 ⇒ **只在帧面**。
     CommandSpec {
         name: "transfer-upload",
         doc_anchor: Some("#### `transfer-upload`"),
@@ -3888,9 +3888,9 @@ pub const REGISTRY: &[CommandSpec] = &[
     CommandSpec {
         name: "resolve",
         doc_anchor: Some("#### `resolve`"),
-        // 〔V126 · TL2〕原来只列两个，而 `resolve_from_json` 还会回 `invalid_session_id` /
+        // 原来只列两个，而 `resolve_from_json` 还会回 `invalid_session_id` /
         // `unsafe_launch_candidate`（B2 两道校验）⇒ 登记表比真回的少两个。补齐；
-        // 与跨仓承诺的码全集两向相等由 `resolve_query_tests.rs` 〔V126〕那一族钉着
+        // 与跨仓承诺的码全集两向相等由 `resolve_query_tests.rs` 那一族钉着
         //（`stdin_read_failed` 只有一次性那条会出，不在这里）。
         codes: &[
             "bad_request",
@@ -4067,7 +4067,7 @@ async fn send(replies: &mpsc::Sender<Frame>, frame: Frame) {
 #[path = "../../../tests/backend/stream/inbound_tests.rs"]
 mod tests;
 
-// 〔HX1〕退出排空的判据（闸本体 · 真子进程 ＋ 真信号 · 接线）。
+// 退出排空的判据（闸本体 · 真子进程 ＋ 真信号 · 接线）。
 // 〔p3q 门禁 winchk-backend 红后补〕判据里用了 `std::os::unix` / `libc::kill` / FIFO —— 只在 unix 上编；Windows 那一形的排空没量（HX1.md 买不到）。
 #[cfg(all(test, unix))]
 #[path = "../../../tests/backend/stream/drain_tests.rs"]

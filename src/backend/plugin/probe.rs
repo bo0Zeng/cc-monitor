@@ -15,8 +15,8 @@
 //! | `name` | ★ **身份行，必须是第一行、必须逐字对上** | 防 `PATH` 上同名的无关程序被当成插件 |
 //! | `version` | **只进诊断文案**，不参与「能不能用」的判断 | `E7` 逐字排除了比版本号大小 |
 //! | `capabilities` | 逗号列表，**集合语义**，做**子集检查** | 加 token 安全，删/改名才危险 |
-//! | `long` | 〔PANO〕长活档的能力（逗号列表，⊆ `capabilities`）；不在里面的是短活档 | 宿主按档给期限，档 → 秒数住调用方适配层（`99 §1` V158「后端不带引擎知识」） |
-//! | `shape` | 〔FIX2〕形状代号：调用方给了期望就**逐字比**，对不上（含缺这一行）= 旧一代 | 能力表相同、应答形状变了那一形（`设计/97 §8`） |
+//! | `long` | 长活档的能力（逗号列表，⊆ `capabilities`）；不在里面的是短活档 | 宿主按档给期限，档 → 秒数住调用方适配层（「后端不带引擎知识」） |
+//! | `shape` | 形状代号：调用方给了期望就**逐字比**，对不上（含缺这一行）= 旧一代 | 能力表相同、应答形状变了那一形 |
 //! | 其余 | 该插件自己的域枚举（它支持哪些东西） | 插件自己定，本层原样带回 |
 //!
 //! # ★★ 为什么不比版本号
@@ -33,7 +33,7 @@
 //!
 //! # 诚实边界
 //!
-//! - 〔RM1c〕生产调用方今天一个：`control/panorama.rs`（见 [`super`] 的头注）。判据钉的仍是机制。
+//! - 生产调用方今天一个：`control/panorama.rs`（见 [`super`] 的头注）。判据钉的仍是机制。
 //! - 判据的对拍语料读的是那个插件的**源码**（`include_str!`）⇒ 它挡得住「改源码」，
 //!   **挡不住**「同名的另一份装在 `PATH` 上」。真跑那条命令的判据住 e2e，
 //!   而出货门禁一套 e2e 都不跑（`KY7`）。这一档由谁跑、什么时候跑，写在件文件里。
@@ -48,12 +48,12 @@ pub(crate) struct Answer {
     pub(crate) version: Option<String>,
     /// 能力 token 集合。
     pub(crate) capabilities: Vec<String>,
-    /// 〔PANO〕长活档的能力（`long=` 那一行；没有这一行 = 全是短活档）。
+    /// 长活档的能力（`long=` 那一行；没有这一行 = 全是短活档）。
     pub(crate) long: Vec<String>,
-    /// 〔FIX2〕形状代号（`shape=` 那一行；老一代没有这一行）。
+    /// 形状代号（`shape=` 那一行；老一代没有这一行）。
     pub(crate) shape: Option<String>,
     /// 该插件自己的其它键（域枚举之类），原样带回，本层不解释。
-    /// 〔PANO〕第一个生产读者：代码全景的写表（`plans=`，由那个插件的适配层解释）。
+    /// 第一个生产读者：代码全景的写表（`plans=`，由那个插件的适配层解释）。
     pub(crate) extras: Vec<(String, String)>,
 }
 
@@ -71,7 +71,7 @@ impl Answer {
             .map(|(_, v)| v.as_str())
     }
 
-    /// 〔PANO〕这件事是不是插件自报的长活档（宿主据此给长的那一档期限）。
+    /// 这件事是不是插件自报的长活档（宿主据此给长的那一档期限）。
     pub(crate) fn is_long(&self, token: &str) -> bool {
         self.long.iter().any(|c| c == token)
     }
@@ -87,7 +87,7 @@ pub(crate) enum Rejected {
         token: String,
         version: Option<String>,
     },
-    /// 〔FIX2 · `设计/97 §8`〕能力都在，但形状代号与调用方要的那一代对不上（或压根没报）。
+    /// 能力都在，但形状代号与调用方要的那一代对不上（或压根没报）。
     StaleShape {
         plugin: String,
         version: Option<String>,
@@ -226,7 +226,7 @@ pub(crate) fn require(answer: &Answer, required: &[&str]) -> Result<(), Rejected
 
 /// 一步走完：认身份 → 判代（给了 `want_shape` 才判）→ 逐个查必需清单。
 ///
-/// 〔FIX2 · `设计/97 §8` · `99 §2.1 ㉝①`〕判代在查能力之前：旧一代的能力表可能恰好够，而形状已经不对。
+/// 判代在查能力之前：旧一代的能力表可能恰好够，而形状已经不对。
 pub(crate) fn negotiate(
     text: &str,
     want_name: &str,

@@ -41,7 +41,7 @@
 use std::collections::BTreeMap;
 use std::path::Path;
 
-/// 〔HX2 · 主会话 D-b「tmux hook 槽位按实例区分、起时清死 pid 的槽」〕hook 槽位**段**：`[HOOK_SLOT_BASE, HOOK_SLOT_BASE + HOOK_SLOT_COUNT)`。
+/// 〔主会话 D-b「tmux hook 槽位按实例区分、起时清死 pid 的槽」〕hook 槽位**段**：`[HOOK_SLOT_BASE, HOOK_SLOT_BASE + HOOK_SLOT_COUNT)`。
 ///
 /// 每个后端实例占其中**一格**（三个事件同一个下标）。调研实测全局 `[50]` 空着；仍用下标（而不是追加到一串未知 hook 后面）
 /// 是为了**可撤销**（`tmux set-hook -gu 'session-closed[<下标>]'`）。
@@ -77,7 +77,7 @@ pub(crate) fn hook_set_args(
     pid: u32,
     starttime: u64,
 ) -> Vec<String> {
-    // 〔V151〕本二进制就叫 `ccm` ⇒ 叫后端子命令一律 `<exe> -- <子命令>`（没有 `--` 会整行交给 claude）。
+    // 本二进制就叫 `ccm` ⇒ 叫后端子命令一律 `<exe> -- <子命令>`（没有 `--` 会整行交给 claude）。
     let payload = format!(
         "{} -- {NOTIFY_FLAG} {pid} {starttime}",
         sq(&exe.to_string_lossy())
@@ -90,7 +90,7 @@ pub(crate) fn hook_set_args(
     ]
 }
 
-/// 摘一格（〔HX2〕生产只用它摘**死槽**：载荷认得出、那个 pid 的 starttime 对不上的那几格）。
+/// 摘一格（生产只用它摘**死槽**：载荷认得出、那个 pid 的 starttime 对不上的那几格）。
 ///
 /// **停机时不摘自己那一格**：留着的 hook 指向一个已死的 pid，`notify` 那边 starttime 校验不过就静默 no-op；
 /// 下一个起来的后端会把它当死槽清掉；server 重启 hook 本就没了。
@@ -173,7 +173,7 @@ pub(crate) fn preferred_slot(pid: u32) -> u32 {
     HOOK_SLOT_BASE + pid % HOOK_SLOT_COUNT
 }
 
-/// 〔HX2〕选格 ＋ 清死槽。**纯函数**：`alive(pid, start)` 由调用方给（生产 = 真 `/proc`）。
+/// 选格 ＋ 清死槽。**纯函数**：`alive(pid, start)` 由调用方给（生产 = 真 `/proc`）。
 ///
 /// - 段内 `Backend(p, s)` 且不是自己、`alive` 说不在 ⇒ 摘（死槽）；段外一格都不看；`Foreign` 一格都不碰。
 /// - 已有一格三个事件都是自己 ⇒ 复用那一格；否则从首选格起绕段一圈，挑第一格「三个事件在这一格都空、或都是自己」。
@@ -273,7 +273,7 @@ pub(crate) fn backend_alive(pid: u32, starttime: u64) -> bool {
 
 /// [`install_hooks`] 的本体（执行器与「那个后端还在不在」由调用方给）。
 ///
-/// 〔HX2〕读段 → [`plan`]（摘死槽 · 挑一格）→ 装三条 → **再读一遍核「三个事件这一格都是我」**；
+/// 读段 → [`plan`]（摘死槽 · 挑一格）→ 装三条 → **再读一遍核「三个事件这一格都是我」**；
 /// 不是（与另一个同时起的后端撞了同一格）⇒ 重来一趟（有界：段长）。读不了段（老 tmux 不认 `show-hooks` 那一形）
 /// ⇒ 不清死槽、直接装进首选格并说一句（装不装由 tmux 答）。
 pub(crate) fn install_hooks_with(
@@ -328,7 +328,7 @@ pub(crate) fn install_hooks_with(
 }
 
 fn set_three(run: TmuxRun<'_>, slot: u32, exe: &Path, pid: u32, starttime: u64) -> usize {
-    // 〔HX2〕三条在**一次** tmux 调用里（命令之间用 `;` 分开）：tmux 把一个客户端的一串命令排进它自己的队列一口气跑完，
+    // 三条在**一次** tmux 调用里（命令之间用 `;` 分开）：tmux 把一个客户端的一串命令排进它自己的队列一口气跑完，
     //   另一个后端的那一串插不进中间 ⇒ 两个同时起的后端撞了同一格时，这一格要么整格是我、要么整格是它（装完那一读据此换格），
     //   不会出现「三个事件一半是我一半是它」、再被换格那一趟摘掉一半的残格。
     let mut args: Vec<String> = Vec::new();

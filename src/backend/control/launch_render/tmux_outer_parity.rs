@@ -1,8 +1,8 @@
-//! `设计/90 §4 E`：**外层 tmux 命令那三格**的逐字节金标准。
+//! **外层 tmux 命令那三格**的逐字节金标准。
 //!
 //! Rust 那半住 [`super::payload::render_tmux_outer`]（并进「Rust 载荷」那一份，不新开模块 ——
-//! `设计/00 §2.5 ④` 要的是**消灭副本**）。〔LR2〕夹具左边原来是 TS 兜底渲染器 ＋ 座（`renderFallback`
-//! → `SESSION_BACKEND`）现场渲的串；那一族零生产调用、按 `00 §2.5 ④` 删了，左边换成
+//! 要的是**消灭副本**）。夹具左边原来是 TS 兜底渲染器 ＋ 座（`renderFallback`
+//! → `SESSION_BACKEND`）现场渲的串；那一族零生产调用、按删了，左边换成
 //! `tests/test-support/launch-tmux-outer-golden.ts` 用例表里的**手写期望**（值就是 TS 那份最后一次渲出、与 Rust 对过的原样）。
 //! `req` 仍由生产的 `buildTmuxOuterRenderRequest` 现产 ⇒ 本对拍钉的是「生产请求 → 线 → 生产命令」这一整条。
 //!
@@ -18,7 +18,7 @@
 //!
 //! # 诚实边界
 //!
-//! - 〔LR2〕**「两种语言渲出同一串」那一维没了**（TS 那份删了）：左边是手写期望，
+//! - **「两种语言渲出同一串」那一维没了**（TS 那份删了）：左边是手写期望，
 //!   「期望本身写错」只有人读 diff 才看得见 —— 与 `cli-golden.json` 在 LR1 之后同一性质。
 //! - **非法输入那一维进不了夹具**：Rust 侧对空会话名 / 越界 `@ccm_sid` / 空 cwd 一律 `Err`，
 //!   那一维由本模块自己的语义判据兜
@@ -43,7 +43,7 @@ const TS_HALF: &str =
 /// **是 `assert_eq!` 不是地板**：地板在「变少」方向是瞎的，而这三格的覆盖面
 /// （create 的 cwd × ccm_sid × quoting 组合 · send-into · attach）恰恰是靠条数撑起来的。
 /// 写成相等 ⇒ 加/删用例都必须回来改这个数，改的时候人会看见它。
-/// 🔴 `设计/80 §8` 步 1（2026-09-23）：13 → **14**，多的那条是「tmux 那一格也带启动期令牌」
+/// 🔴 （2026-09-23）：13 → **14**，多的那条是「tmux 那一格也带启动期令牌」
 /// —— `§8.4` 说的「`EnvOp` 容器无关」在这三格上的逐字节读数。
 const EXPECT_CASES: usize = 14;
 
@@ -72,7 +72,7 @@ struct Case {
     mode: String,
     /// ★ **生产 wire 类型**（由 TS 的 `buildTmuxOuterRenderRequest` 构造）。
     req: crate::control::launch_render::wire::PayloadRenderRequest,
-    /// 〔LR2〕用例表里**手写**的期望串（原来是 TS 兜底渲染器现场渲的；那份删了）。
+    /// 用例表里**手写**的期望串（原来是 TS 兜底渲染器现场渲的；那份删了）。
     cmd: String,
 }
 

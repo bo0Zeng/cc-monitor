@@ -1,4 +1,4 @@
-//! 中转口的**门**〔RK1 · `INVARIANTS §48.1a` 中转口的钥匙〕：钥匙住哪 · 谁铸 · 进门三问。
+//! 中转口的**门**〔`INVARIANTS §48.1a` 中转口的钥匙〕：钥匙住哪 · 谁铸 · 进门三问。
 //!
 //! # 为什么要有这扇门（主会话判「缺口，不是取舍」）
 //!
@@ -6,7 +6,7 @@
 //! 浏览器里一张网页向 `127.0.0.1` 发的请求 —— 连得上它。门开着的时候，谁走 `/s/<agent>/<账号>/…`
 //! 就能让中转代入那一行的凭据去打上游。路由键第三段（会话 id / nonce）**不是**认证：它是公开可铸的标签。
 //!
-//! # 钥匙住哪、谁铸（`调研/第四波记录/RK1.md §1.1`）
+//! # 钥匙住哪、谁铸
 //!
 //! - 住址：**中转所在那台机器**的 `$HOME/`[`KEY_FILE_REL`]，出生即只给本人（`creds_core::perm::create_private`，`O_EXCL`）。
 //! - 谁铸：**中转自己**，在**绑上口之后**（`listen::prepare`）—— 读回；读不出或形状不对就铸一把新的
@@ -21,7 +21,7 @@
 //! 起会话载荷渲染 `export ANTHROPIC_BASE_URL=…` 时，钥匙那一段写成**读这个文件的命令替换** `$(cat ~/<KEY_FILE_REL>)`，
 //! 在那台机器的 pane shell 里展开（`control/launch_render/payload.rs::relay_env_prefix_posix`，shell 写法出自 `platform/shell/posix.rs::home_file_between`）。
 //! ⇒ 钥匙只从这个文件进 agent 进程自己的 env；载荷、`tmux send-keys` 的 argv、shell 历史、webview 里都只有那几个字。
-//! 〔US1〕两半的相对路径是同一个 const（共享 crate `relay_route_core::KEY_FILE_REL`），不再各写一份再对拍。
+//! 两半的相对路径是同一个 const（共享 crate `relay_route_core::KEY_FILE_REL`），不再各写一份再对拍。
 //!
 //! # 进门三问（[`admit`]，顺序固定，都在读请求体之前）
 //!
@@ -40,7 +40,7 @@ use super::http1::RequestHead;
 use copy_core::copy_text;
 use std::path::{Path, PathBuf};
 
-/// 钥匙文件相对家目录的路径。〔US1 · 4D〕值只住共享 crate `relay_route_core::KEY_FILE_REL`：
+/// 钥匙文件相对家目录的路径。值只住共享 crate `relay_route_core::KEY_FILE_REL`：
 /// 起会话载荷渲染 `$(cat ~/…)` 用的 `control/launch_render/payload.rs::RELAY_KEY_FILE_REL` 是同一个 const。
 pub(crate) const KEY_FILE_REL: &str = relay_route_core::KEY_FILE_REL;
 
@@ -75,7 +75,7 @@ impl std::fmt::Debug for Key {
     }
 }
 
-/// 钥匙的形状：恰好 `2 × KEY_BYTES` 个小写十六进制字符。〔US1〕唯一住址是共享 crate（`ccm` 认继承来的地址也用它）；
+/// 钥匙的形状：恰好 `2 × KEY_BYTES` 个小写十六进制字符。唯一住址是共享 crate（`ccm` 认继承来的地址也用它）；
 /// 本模块铸的长度与它对得上由 `door_tests` 那条「铸出来的过形状闸」钉着。
 pub(crate) use relay_route_core::key_shape_ok;
 
@@ -99,7 +99,7 @@ pub(crate) fn ensure_key(path: &Path) -> Result<Key, String> {
     if let Some(k) = read_key(path) {
         return Ok(k);
     }
-    // 〔HX2〕读 → 铸 → 写整段在那个目录的跨进程锁里（`platform/lock.rs`），锁里再读一次：
+    // 读 → 铸 → 写整段在那个目录的跨进程锁里（`platform/lock.rs`），锁里再读一次：
     //   两个进程同时发现没钥匙时，只有先拿到锁的那一个铸，后一个读回它那一把。
     let dir = path.parent().ok_or_else(|| {
         copy_text(
@@ -107,7 +107,7 @@ pub(crate) fn ensure_key(path: &Path) -> Result<Key, String> {
             &[("path", &path.display().to_string())],
         )
     })?;
-    // 〔HX1〕只建那一层、建的那一下就是 0700（`own_dir`：后端建自家目录的那一个函数）。〔HX2〕挪到拿锁之前：锁的是这个目录，它得先在。
+    // 只建那一层、建的那一下就是 0700（`own_dir`：后端建自家目录的那一个函数）。挪到拿锁之前：锁的是这个目录，它得先在。
     crate::common::own_dir::ensure_private_dir(dir).map_err(|e| {
         copy_text(
             "beDoor.fs.mkdirFailed",
@@ -249,7 +249,7 @@ pub(crate) fn admit(head: &RequestHead, key: &Key) -> Verdict {
 }
 
 /// `Host` 那一格是不是回环字面量：`127.0.0.1` · `localhost` · `[::1]`，可带 `:<十进制口>`。大小写不敏感。
-/// 〔DUP3 · 主会话 09-26 裁（丙）〕防 DNS 重绑，只认三个字面量是设计；与上游那条「这个地址在不在本机」
+/// 〔主会话 09-26 裁（丙）〕防 DNS 重绑，只认三个字面量是设计；与上游那条「这个地址在不在本机」
 /// （`upstream_url_core::upstream_is_loopback`，整个 `127/8`）是两个判定，不许并。
 pub(crate) fn host_header_is_loopback_literal(raw: &str) -> bool {
     let h = raw.trim().to_ascii_lowercase();

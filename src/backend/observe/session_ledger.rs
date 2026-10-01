@@ -1,4 +1,4 @@
-//! 〔MIG-1 · `设计/99 §2.1 ⑬` · `01 §1.1`「一切判定都在后端」〕**会话账本**：这台机器上一条会话离开「活」之后是
+//! 〔「一切判定都在后端」〕**会话账本**：这台机器上一条会话离开「活」之后是
 //! **可重连**（claude 退了、tmux 会话还在）还是**已结束**，由这台后端自己裁、发成品帧 [`Frame::SessionState`]。
 //!
 //! 原先这一套住 monitor（`ssh_source` 的 tmux 原文账 · idle 账 · `classify_removed` · 两份收割器 · 重连后重新裁），
@@ -7,7 +7,7 @@
 //! # 形状：看着自己发出去的帧
 //!
 //! 挂在 watcher 发帧的唯一出口上（`watcher::FrameSink`，每条流一份）：每一帧发出去之前问 [`SessionLedger::on_frame`]，
-//! 回「这一帧自己发不发」＋「紧跟它之后补发哪几帧」；每一份 tmux 观测交 [`SessionLedger::on_tmux`]（〔MIG-1 续 · V41〕tmux 快照
+//! 回「这一帧自己发不发」＋「紧跟它之后补发哪几帧」；每一份 tmux 观测交 [`SessionLedger::on_tmux`]（tmux 快照
 //! **不再上线**：原 `tmux_sessions` / `tmux_session_closed` 两帧删了，快照只喂这本账）。它不起线程、不读盘、不定时 —— 输入只有这几样：
 //!
 //! | 看见 | 做什么 |
