@@ -51,8 +51,9 @@ export function decodeRelayOptin(v: unknown): RelayOptinReport {
 /** 问 `origin` 那台后端要一份成品（本机逐字 `LOCAL_ORIGIN`）。问不出来 ⇒ 抛（带那台的原话）。 */
 export async function fetchRelayOptin(origin: Origin): Promise<RelayOptinReport> {
   try {
+    const body = jsonBody({});
     const budget = budgetWithin(RELAY_OPTIN_BUDGET_MS);
-    return decodeRelayOptin(readJson(await chan.call(origin, "relay-optin", jsonBody({}), budget)));
+    return decodeRelayOptin(readJson(await chan.call(origin, "relay-optin", body, budget)));
   } catch (e) {
     throw new Error(saidOf(e, copyText("relayOptin.fetch.oldBackend")));
   }
