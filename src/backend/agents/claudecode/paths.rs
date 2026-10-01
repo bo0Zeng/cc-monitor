@@ -54,6 +54,47 @@ pub(crate) fn settings_may_set_base_url(
     })
 }
 
+/// 直接敲的 claude 也走中转（注册表 `DefaultUpstream.settings_env` 那一格）：`~/.claude/settings.json` 的 `env.ANTHROPIC_BASE_URL`。
+/// 各号的设置文件都链回这一份 ⇒ 写进去对这台所有号同时生效；它**压过**进程环境（见 [`settings_may_set_base_url`]）。
+pub(crate) const SETTINGS_ENV: super::super::SettingsEnvFace = super::super::SettingsEnvFace {
+    file: user_settings_file,
+    base_url: settings_base_url,
+    snippet: settings_env_snippet,
+};
+
+/// `$HOME/.claude/settings.json`（不看 `CLAUDE_CONFIG_DIR`：直接敲的 claude 没设它时读的就是这一份）。
+fn user_settings_file(home: &Path) -> PathBuf {
+    home.join(HOME_DIR_NAME).join("settings.json")
+}
+
+/// 原文 → `env.ANTHROPIC_BASE_URL`。BOM 容忍；空串当没写；顶层 / `env` 不是对象、值不是串 ⇒ 读不懂（不猜成没写）。
+fn settings_base_url(raw: &str) -> super::super::SettingsBaseUrl {
+    use super::super::SettingsBaseUrl as S;
+    let Ok(v) = serde_json::from_str::<serde_json::Value>(raw.trim_start_matches('\u{feff}'))
+    else {
+        return S::Unreadable;
+    };
+    let Some(top) = v.as_object() else {
+        return S::Unreadable;
+    };
+    match top.get("env") {
+        None | Some(serde_json::Value::Null) => S::Unset,
+        Some(serde_json::Value::Object(env)) => match env.get(BASE_URL_ENV) {
+            None | Some(serde_json::Value::Null) => S::Unset,
+            Some(serde_json::Value::String(u)) if u.is_empty() => S::Unset,
+            Some(serde_json::Value::String(u)) => S::Set(u.clone()),
+            Some(_) => S::Unreadable,
+        },
+        Some(_) => S::Unreadable,
+    }
+}
+
+/// 要合并进那份文件的那一段：`{"env": {"ANTHROPIC_BASE_URL": "<地址>"}}`（两格缩进）。
+fn settings_env_snippet(url: &str) -> String {
+    let v = serde_json::json!({ "env": { BASE_URL_ENV: url } });
+    serde_json::to_string_pretty(&v).unwrap_or_default()
+}
+
 /// 默认配置根在 `$HOME` 下的名字。
 pub(crate) const HOME_DIR_NAME: &str = ".claude";
 

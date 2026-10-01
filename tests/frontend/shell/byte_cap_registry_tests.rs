@@ -780,6 +780,14 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
         "`hooks-diag` 读那台 agent 配置根下的 `settings.json` 多大",
         "降级+说清",
     ),
+    // 「直接敲的也走中转」（`relay-optin`，只读）读那台用户级设置文件多大；超了按「读不了」说，不当没装。
+    (
+        "src/backend/accounts/upstream_select/endpoint.rs",
+        "OPTIN_SETTINGS_CAP_BYTES",
+        1 << 20,
+        "`relay-optin` 读那台 `~/.claude/settings.json` 多大",
+        "降级+说清",
+    ),
     // 资产目录那六个数（`agents/claudecode/assets.rs` · `asset_catalog.rs` · `asset_sync.rs`）。
     (
         "src/backend/agents/claudecode/assets.rs",

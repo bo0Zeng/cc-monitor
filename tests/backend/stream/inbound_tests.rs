@@ -736,6 +736,7 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "apikey-read",
         "apikey-routing",  //
         "launch-endpoint", //
+        "relay-optin",     // 读一份设置文件 ＋ 一份钥匙文件
         // 起会话的计划与渲染：本机那条探一次 `ccm`（起进程）⇒ 阻塞档；两条渲染是纯函数 ⇒ 普通 spawn。
         "launch-local",
         "launch-render-cli",

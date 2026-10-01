@@ -104,6 +104,8 @@ pub(super) mod tests {
         "Startup",
         // 常驻后端进程内起中转的入口；上游选择的 `host_relay` 把 `Boot` 递进去。
         "host",
+        // 出「直接敲的也走中转」那一段（`relay-optin`）时把这台的钥匙插进地址（只交插好的地址）。
+        "keyed_with_key_on_disk",
         // 出成品时问「这台机器上我们的中转在不在听」（`launch-endpoint` 的 `listening` · `apikey-routing` 的 `running`）。
         "our_relay_listening",
         // `run`（`--relay` 进程的中转入口）随那一形删了。

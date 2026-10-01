@@ -114,3 +114,37 @@ fn a_keyed_url_splits_only_when_the_key_and_the_route_both_have_our_shape() {
     }
     assert!(key_shape_ok(&key) && !key_shape_ok(&key[..63]) && !key_shape_ok(&key.to_uppercase()));
 }
+
+/// 插钥匙是切钥匙的逆：插出来的切得回原来两半、钥匙段恰是那一把；地址或钥匙形状不对 ⇒ 不插。
+#[test]
+fn keying_a_url_is_the_inverse_of_splitting_it() {
+    let key = "0123456789abcdef".repeat(4);
+    for (m, a, b) in [
+        (RouteMode::Passthrough, "claude-code", "_"),
+        (RouteMode::Substitute, "claude-code", "work"),
+    ] {
+        let url = base_url(PORT, m, a, b).unwrap();
+        let keyed = keyed_base_url(&url, &key).expect("合法地址 ＋ 合法钥匙插不进去");
+        let (head, tail) = split_keyed_base_url(&keyed).expect("插出来的切不开");
+        assert_eq!(format!("{head}{}", &tail[1..]), url, "去掉钥匙段 == 原地址");
+        assert_eq!(
+            &keyed[head.len()..head.len() + key.len()],
+            key,
+            "钥匙段就是那一把"
+        );
+    }
+    let url = base_url(PORT, RouteMode::Passthrough, "claude-code", "_").unwrap();
+    assert_eq!(keyed_base_url(&url, &key[..63]), None, "短钥匙");
+    assert_eq!(keyed_base_url(&url, &key.to_uppercase()), None, "大写钥匙");
+    assert_eq!(
+        keyed_base_url("https://api.example.com/v1", &key),
+        None,
+        "别人的地址"
+    );
+    let already = keyed_base_url(&url, &key).unwrap();
+    assert_eq!(
+        keyed_base_url(&already, &key),
+        None,
+        "已经带钥匙的不再插一次"
+    );
+}

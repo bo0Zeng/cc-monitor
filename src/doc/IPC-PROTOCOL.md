@@ -1765,6 +1765,28 @@ monitor 进程内也**不再有它的副本**（原来那条「启动时 / 改�
 
 **错误码**：`bad_args`。界面经 `chan.call` 直接问（金样同上）。
 
+#### `relay-optin`：直接敲的 claude 也走中转（可选、生成让你贴）
+
+这台那份用户级设置文件（Claude 是 `~/.claude/settings.json`，各号都链回它）里写没写上游地址、是不是这台中转现在那一条，并给要合并进 `env` 的那一段。
+**只读**：那份文件由用户自己合并，后端一个字节不写。该贴的那一条 = 决策表（`decide_launch`）里「没表态是哪个号」那一发（`/t/<agent>/_`，全量注入按「是」）插上这台盘上那把中转钥匙。
+只在流面上有（「中转在不在」读本进程的监听状态，一次性进程里恒「不在」）。
+
+```text
+→ {"id":"k5","cmd":"relay-optin","args":{}}
+← {"kind":"reply","id":"k5","ok":true,"data":{"state":"stale","note":"","missing":"","source":"/h/.claude/settings.json","snippet":"{\n  \"env\": {\n    \"ANTHROPIC_BASE_URL\": \"http://127.0.0.1:8788/<钥匙>/t/claude-code/_\"\n  }\n}","listening":true}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `state` | ← | `installed`（写着的就是现在那一条）· `stale`（是我们那一形 —— 回环 ＋ 钥匙段 ＋ 我们的路由 —— 但钥匙 / 端口 / 路由不对了）· `absent`（文件不在，或没写 / 写了空串）· `other`（写了别的上游地址）· `unreadable`（读不了 / 读不懂；**不当没装**）|
+| `note` | ← | 那份文件为什么读不了（`unreadable` 才有，其余空串）|
+| `missing` | ← | 那一段为什么生成不了（这台的中转还没起来过、没有钥匙 · 决策表不给这一条）；已装 / 生成得了 ⇒ 空串 |
+| `source` | ← | 读的是哪份文件（这台后端看到的路径）|
+| `snippet` | ← | 要合并进 `env` 的那一段（**带钥匙**：设置文件里写不了 `$(cat …)`）；`installed` 或生成不了 ⇒ `null` |
+| `listening` | ← | 这台我们的中转此刻在不在听（与 `apikey-routing.running` 同一个判准）|
+
+**错误码**：`failed`（这台没有 HOME / 没有哪一家有这一形）。界面经 `chan.call` 直接问（金样 `tests/__fixtures__/relay-optin.golden.json`）。
+
 #### `launch-endpoint`：这个号这一发走哪、注入什么（US1 · 4D）
 
 起会话那一侧（本机与远端同一条）问一次：往 `ANTHROPIC_BASE_URL` 里写哪个中转地址，或者不写。决策表是那一张（上游选择 `accounts/upstream_select/endpoint.rs::decide_launch` 是唯一实现）。

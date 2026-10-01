@@ -15114,6 +15114,46 @@
       "zh": "{field} 要一个对象或空",
       "args": ["field"]
     },
+    "beUpstreamEndpoint.optin.noHome": {
+      "kind": "error",
+      "zh": "这台机器上没有 HOME，找不到 claude 的设置文件。",
+      "args": []
+    },
+    "beUpstreamEndpoint.optin.noAgent": {
+      "kind": "error",
+      "zh": "这台后端里没有哪一家 agent 能这样接中转。",
+      "args": []
+    },
+    "beUpstreamEndpoint.optin.notFile": {
+      "kind": "body",
+      "zh": "那不是一个普通文件",
+      "args": []
+    },
+    "beUpstreamEndpoint.optin.tooLarge": {
+      "kind": "body",
+      "zh": "文件超过 {cap} 字节",
+      "args": ["cap"]
+    },
+    "beUpstreamEndpoint.optin.unreadable": {
+      "kind": "body",
+      "zh": "读不了这份文件（{why}），装没装说不清。",
+      "args": ["why"]
+    },
+    "beUpstreamEndpoint.optin.badShape": {
+      "kind": "body",
+      "zh": "这份文件读得到但读不懂（不是 JSON 对象，或者 env 那一块写法不对），装没装说不清。先把它修好。",
+      "args": []
+    },
+    "beUpstreamEndpoint.optin.noKey": {
+      "kind": "body",
+      "zh": "这台的中转还没起来过，还没有钥匙，生成不了要贴的内容。等这台的 cc-monitor 后端起来之后再看。",
+      "args": []
+    },
+    "beUpstreamEndpoint.optin.noRoute": {
+      "kind": "body",
+      "zh": "这台的中转不收不带账号的 claude 请求，生成不了要贴的内容。",
+      "args": []
+    },
     "beUpstreamEndpoint.relay.thisMachine": {
       "kind": "body",
       "zh": "这台机器",
