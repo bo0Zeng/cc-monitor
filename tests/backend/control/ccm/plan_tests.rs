@@ -1863,3 +1863,32 @@ fn the_relay_address_is_decided_at_the_final_exec_and_only_there() {
         Plan::Container(_)
     ));
 }
+
+/// 就地 resume 键进去的正是那个 agent 已退、只剩 shell 的 tmux 会话：标记（`@ccm_sid`）还在，进程已经没了 ⇒
+/// 不是「在跑」，照常起；进程真在 ⇒ 接上它（不另起第二份）；问不了进程 ⇒ 照旧按标记接上。
+#[test]
+fn a_stale_session_mark_alone_does_not_make_a_resume_rejoin() {
+    let tagged = crate::common::session_snapshot::SessionSnapshot::with_prober(|| {
+        Ok(vec![crate::common::session_snapshot::SessionRow {
+            name: "p-cc".into(),
+            ccm_sid: "s1".into(),
+        }])
+    })
+    .taken_names()
+    .unwrap();
+    fn dead(_: Option<&std::path::Path>) -> Vec<(String, u32)> {
+        vec![]
+    }
+    fn live(_: Option<&std::path::Path>) -> Vec<(String, u32)> {
+        vec![("s1".into(), 4242)]
+    }
+    let a: Vec<String> = ["--resume", "s1", "--", "--base"].iter().map(|s| s.to_string()).collect();
+    let Parsed::Opts(o) = crate::control::ccm::argv::parse(&a).unwrap() else { panic!() };
+    let mut e = env();
+    e.running_sessions = Some(dead);
+    assert!(matches!(build(&o, &e, &AccountTable::default(), Some(&tagged)).unwrap(), Plan::Direct(_)));
+    e.running_sessions = Some(live);
+    assert!(matches!(build(&o, &e, &AccountTable::default(), Some(&tagged)).unwrap(), Plan::Rejoin { .. }));
+    e.running_sessions = None;
+    assert!(matches!(build(&o, &e, &AccountTable::default(), Some(&tagged)).unwrap(), Plan::Rejoin { .. }));
+}

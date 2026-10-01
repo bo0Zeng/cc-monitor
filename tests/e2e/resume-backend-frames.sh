@@ -34,7 +34,10 @@ set -euo pipefail
 #   （08-11 一条同形态的探针把用户 **9 个真实会话**打没了）。
 # shellcheck source=tests/e2e/tmux-shim.sh
 . "$(cd "$(dirname "$0")" && pwd)/tmux-shim.sh" e2eResumeFrames
-_gc_sock_cleanup() { tmux_shim_cleanup; }
+# 就地 resume 键进去的是一行 `ccm …` ⇒ 后端二进制以 `ccm` 之名上 PATH；家目录等沙箱无条件给（后端也在这份沙箱里起）。
+# shellcheck source=tests/e2e/ccm-shim.sh
+. "$(cd "$(dirname "$0")" && pwd)/ccm-shim.sh"
+_gc_sock_cleanup() { tmux_shim_cleanup; ccm_shim_cleanup; }
 # ─────────────────────────────────────────────────────────────────────────────
 
 E2E_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -140,11 +143,11 @@ if [ "$GRAY_ALIVE" = 1 ] && printf '%s' "$SS_GRAY" | grep -q '"state":"reconnect
 else bad "claude 死后会话没了($GRAY_ALIVE) 或没裁成可重连(不该):$SS_GRAY"; fi
 
 # ── 3. REVIVE:跑真源就地 resume 命令(复用原名)→ fake-claude 复活 → SessionAdded 再现 = 清灰 ──
-echo "-- 就地 resume(生产渲染链 planResumeIntoExistingTmux → render_launch_payload,复用 $SESSION,注入后端所看目录)--"
+echo "-- 就地 resume(生产渲染链 planResumeIntoExistingTmux → render_ccm_launch,复用 $SESSION,账号目录 = 后端所看目录)--"
 # configDir = backend 监视目录 → 复活的 fake-claude pidfile 落这里,backend 判活得到 = 后端复活。
 CMD="$(npx tsx "$DRIVER" into-existing "$SID" "$SESSION" "$FAKE" "$CLAUDE_DIR")"
 echo "   cmd: $CMD"
-echo "$CMD" | grep -q "send-keys -t =$SESSION: " && ! echo "$CMD" | grep -q "new-session" \
+echo "$CMD" | grep -qF "send-keys -t '=$SESSION:' 'ccm --resume $SID " && ! echo "$CMD" | grep -q "new-session\|--ccm-tmux" \
   && ok "resume 命令就地复用 $SESSION、无 new-session(#76)" \
   || bad "resume 命令未就地复用"
 MARK_REVIVE="$(wc -l <"$FRAMES")"

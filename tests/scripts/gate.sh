@@ -2027,8 +2027,7 @@ run_e2e ccm-contract-parity   45
 # ★ **反空真锚**不是这个数，是每套自带的「量具自检」格：`session_added` 真的到了
 #   （`added_count == 1`）才判帧上有没有令牌；阴性组（不跑载荷前缀 / 没索要 / 形状不对）
 #   与正题组**同一形态**，只差被测的那一个变量 ⇒ 「帧根本没到」读不成「令牌不在」。
-#   端到端那套还有一道取值自检：从金标准里抽不到**恰好一条**带令牌的载荷就当场 `exit 1`
-#   （先于「合计」行 ⇒ 这里红在「退出码」那一支，不是「抓不到数」那一支）。
+#   端到端那套跑的是生产渲染链现产的那一行 `ccm …`（令牌由 ccm 放进进程环境）。
 #
 # 〔量于 2026-09-24，本工作树 `w2/t4`，本机非沙箱〕`backend-rbind-token` **11 PASS / 0 FAIL** ·
 #   `rbind-token-endtoend` **9 PASS / 0 FAIL**，两套连打两趟同值。
@@ -2037,7 +2036,8 @@ run_e2e ccm-contract-parity   45
 # ⚠ 它**买不到**什么：两套都不经 ssh、不经 Windows、不开窗 ⇒ 「↗ 真的把那个窗口拉到前台」
 #   这一维仍是零格（/ §11 同一句）。
 run_e2e backend-rbind-token   11
-run_e2e rbind-token-endtoend   9
+# 9 → 10：起会话只交一行 `ccm …` 之后，那一行由生产渲染链现产、令牌由 ccm 放进环境 ⇒ [0] 那一组换成三格（打头是 ccm · 带令牌 · 没有 export）。
+run_e2e rbind-token-endtoend  10
 # `backend-cc-bus`：DUP2 把拒码改成 `bad_id` 之后它红了 3 条、一整天没人看见 ——
 #   它只挂在 `ci.yml` 那条不通电的流水线上。接进本机执行链（isolated tmux socket ＋ jq，fail-closed）。
 #   〔量于 2026-09-26，本工作树 `w4/tail`〕**96 PASS / 0 FAIL**。
@@ -2060,7 +2060,7 @@ run_e2e backend-gate2         34 exact-with-skip
 run_e2e local-backend         24 exact-with-skip
 # 〔MIG-2 合后〕`restart-frames` 5 → 6：加一格「kill→resume→记账 znew、没有 shim 不认的问」（换号成功后记 pin 那一步此前没被测到）；量于主树同形的非 ASCII 路径。
 run_e2e restart-frames         6
-run_e2e restart               24
+run_e2e restart               25
 # 〔MIG-1 续四 · 同 E2 尾那一形〕#60 那一族的两套：同样只挂在不通电的 `ci.yml` 上。`backend-tmux-late-server` 在主线红 1 格（`late`）——
 #   后端先起、tmux server 后起时会话账本只在**第一份**快照推可重连（那一份是「零会话」），之后那台 server 上挂着 `@ccm_sid` 的会话
 #   再没人报 ⇒ 真缺陷，修在 `observe/session_ledger.rs`（每一份可观测快照都推没报过的可重连）。`backend-sessions-rewatch` 主线本就绿。

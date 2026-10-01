@@ -4,7 +4,7 @@
 # 与黄金串的分工：黄金串断言「命令串长什么样」，本脚本断言「这条命令在真 tmux 上干了什么」。
 # 二者缺一不可——上一轮修复三门禁全绿却让 send-keys 完全失效，正是因为只有前者。
 #
-# 输入 = 生产渲染链产出的命令串（tests/e2e/tmux-target-emit.mts → launch-render-driver.ts → Rust render_launch_payload）。
+# 输入 = 生产渲染链产出的那一行 `ccm …`（tests/e2e/tmux-target-emit.mts → launch-render-driver.ts → Rust render_ccm_launch），真跑它。
 # 隔离 -L socket + tmux shim，不碰用户任何真实会话。
 # 跑法：bash tests/e2e/tmux-target-acceptance.sh   （需要 tmux；npm run test:tmux-target）
 set -o pipefail
@@ -24,8 +24,11 @@ SHIM="$SP/shim"; rm -rf "$SHIM"; mkdir -p "$SHIM"
 printf '#!/bin/sh\nexec %s -L %s "$@"\n' "$TMUX_BIN" "$SOCK" > "$SHIM/tmux"
 chmod +x "$SHIM/tmux"
 export PATH="$SHIM:$PATH"
+# 起会话交出去的是一行 `ccm …` ⇒ 后端二进制以 `ccm` 之名上 PATH（要先 build：.build/backend/debug/cc-monitor-backend），沙箱无条件给。
+# shellcheck source=tests/e2e/ccm-shim.sh
+. "$HERE/ccm-shim.sh"
 # 收尾只收自己这一趟那台（中途退出也收，别留一台孤儿 server）。
-trap 'e2e_tmux_reap "$TMUX_BIN" "$SOCK"; rm -rf "$SP"' EXIT
+trap 'e2e_tmux_reap "$TMUX_BIN" "$SOCK"; ccm_shim_cleanup; rm -rf "$SP"' EXIT
 
 CMD() { grep -P "^$1\t" "$SP/f01-cmds.tsv" | cut -f2-; }
 T() { "$TMUX_BIN" -L "$SOCK" "$@"; }
@@ -86,7 +89,8 @@ sleep 1
 ck "cc-p1 被建出来" "yes" "$(T has-session -t '=cc-p1:' 2>/dev/null && echo yes || echo no)"
 ck "载荷落进新建的 cc-p1" "HIT" "$(pane cc-p1 | grep -q CCMPROBE && echo HIT || echo MISS)"
 ck "兄弟 cc-p1-2 未被污染" "clean" "$(pane cc-p1-2 | grep -q CCMPROBE && echo POLLUTED || echo clean)"
-ck "@ccm_sid 写在 cc-p1 上" "p1" "$(T show-options -v -t '=cc-p1:' @ccm_sid 2>/dev/null)"
+# ccm 建会话时写的是**意图**那一格（`@ccm_sid_expect`）；事实那一格 `@ccm_sid` 等后端认过会话文件才写。
+ck "@ccm_sid_expect 写在 cc-p1 上" "p1" "$(T show-options -v -t '=cc-p1:' @ccm_sid_expect 2>/dev/null)"
 
 echo
 echo "===== 场景 E：posixQuote 名路径（buildLauncherCmd 生产串）+ pty 下 attach 正例 ====="

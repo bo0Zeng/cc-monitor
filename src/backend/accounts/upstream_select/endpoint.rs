@@ -150,7 +150,8 @@ pub(crate) fn relay_port(get: &dyn Fn(&str) -> Option<String>) -> u16 {
 }
 
 /// **ccm 在最终 exec 那一处问的那一句**：这一发往 `ANTHROPIC_BASE_URL` 里写哪个地址（不带钥匙；`None` = 不注入）。
-/// ccm 是一次性进程，中转住同机的常驻后端里 ⇒「在不在」= 回环口连得上（连不上立刻被拒，不等）。
+/// ccm 是一次性进程，中转住同机的常驻后端里 ⇒「在不在」= 这台家目录下的钥匙读得到，且回环口连得上（连不上立刻被拒，不等）。
+/// 钥匙那一格先判：口上的是别人（同机另一个用户）的中转时，这个用户没有那一把，当它不在。
 pub(crate) fn relay_for_exec(
     agent: &str,
     account: &LaunchAccount,
@@ -162,8 +163,18 @@ pub(crate) fn relay_for_exec(
         all_sessions_on(&get),
         relay_port(&get),
         &super::file_face::machine_rows(),
-        &|port| std::net::TcpStream::connect(("127.0.0.1", port)).is_ok(),
+        &|port| {
+            relay_key(&get).is_some() && std::net::TcpStream::connect(("127.0.0.1", port)).is_ok()
+        },
     )
+}
+
+/// 这台机器上中转钥匙文件里那一把（家目录底下 `relay_route_core::KEY_FILE_REL`）。不在 / 形状不对 ⇒ `None`。只读。
+pub(crate) fn relay_key(get: &dyn Fn(&str) -> Option<String>) -> Option<String> {
+    let home = crate::platform::paths::home_dir_from(&|k| get(k).map(Into::into))?;
+    let raw = std::fs::read_to_string(home.join(relay_route_core::KEY_FILE_REL)).ok()?;
+    let k = raw.trim();
+    relay_route_core::key_shape_ok(k).then(|| k.to_string())
 }
 
 /// 同上，答的是常驻后端自己（别名预览 `ccm-print`）：中转就在本进程里，读本进程的监听状态。

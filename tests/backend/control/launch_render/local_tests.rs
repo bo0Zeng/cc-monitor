@@ -139,3 +139,18 @@ fn bad_inputs_are_refused_before_anything_is_rendered() {
     assert!(plan(&bad, &POSIX).is_err());
     assert!(plan(&req(LocalAction::Attach), &POSIX).is_err());
 }
+
+/// 生产渲染器的真输出吐给 e2e（`tests/e2e/p3t-local-tmux.sh`）：串必须从这里出去，脚本里不手抄。
+/// 跑法：`cargo test --lib emit_local_launch_command_for_e2e -- --ignored --nocapture`。
+#[test]
+#[ignore]
+fn emit_local_launch_command_for_e2e() {
+    let sid = std::env::var("P3T_E2E_SID").unwrap_or_else(|_| "s1abcdef".into());
+    let name = std::env::var("P3T_E2E_TMUX").unwrap_or_else(|_| "s1abcdef-cc".into());
+    let mut r = req(LocalAction::Resume { sid });
+    r.launcher = std::env::var("P3T_E2E_LAUNCHER").ok();
+    r.account = Some(LaunchAccount::Base);
+    r.tmux_name = Some(name);
+    let cmd = plan(&r, &POSIX).expect("渲染不出来 —— e2e 无对象可跑").cmd;
+    println!("P3T_CMD<<<{cmd}>>>");
+}
