@@ -1124,7 +1124,7 @@ pub fn uncancellable() -> Vec<String> {
 }
 
 /// 常驻后端里起「各号的配置文件一变就同步一趟用户级 MCP」那个监听器（写经 [`LocalFiles`]，与帧命令同一扇门）。
-pub(crate) fn watch_account_mcp() {
+pub fn watch_account_mcp() {
     crate::accounts::manage::mcp_share_watch::start(&LocalFiles);
 }
 
