@@ -10,7 +10,7 @@
 //!    先挂起、记录对上之后才放出，没自报的子运行段按它的记录归位；子运行写出终局 ⇒ 运行表里它变完成；都收场之后主运行的流直接上。
 //! 3. **收场判定，两套形状各跑一遍**（各家的收场写法走它自己的那几格）：前台跑完 · 后台完成通知 · 后台失败 · 被叫停 ·
 //!    被额度打断（无通知、子记录停写超过 `STALE_AFTER`）· 真在跑；前五个一个都不许是在跑，阈值两侧各钉一格。
-//!    接上会话的两条路（实时逐行 · 只读尾巴时补读已有的那一截）读出同一张表。
+//!    接上会话的两条路（实时逐行 · 只读尾巴时补读已有的那一截）读出同一张表；会话退休 ⇒ 还算在跑的变状态不明。
 
 use crate::agents::{RunEnd, RunFaces, StreamEv, StreamFamily};
 use crate::observe::runs::{RunBook, RunTrack, STALE_AFTER};
@@ -592,6 +592,29 @@ fn completion_scenario(shape: &Shape, via_prime: bool) -> Vec<(String, RunState)
             .collect::<Vec<_>>(),
         vec!["w5", "w7"],
         "[{}] 运行表按最近一次动静排，最早动过的在前",
+        shape.name
+    );
+    // 会话退休（派出它们的那一方没了）⇒ 还算在跑的那两个变状态不明，已收场的不动。
+    let Some(Frame::SessionRuns { runs: last, .. }) = track.retire(SID) else {
+        panic!(
+            "[{}] 会话退休时有在跑的子运行，却没出最后那一帧",
+            shape.name
+        );
+    };
+    let mut after: Vec<_> = last
+        .iter()
+        .filter(|r| r.run == "w6" || r.run == "w7" || r.run == "w1")
+        .map(|r| (r.run.clone(), r.state))
+        .collect();
+    after.sort_by(|a, b| a.0.cmp(&b.0));
+    assert_eq!(
+        after,
+        vec![
+            ("w1".to_string(), RunState::Done),
+            ("w6".to_string(), RunState::Unknown),
+            ("w7".to_string(), RunState::Unknown),
+        ],
+        "[{}] 会话退休：在跑的 ⇒ 状态不明，收场的不动",
         shape.name
     );
     let _ = std::fs::remove_dir_all(&dir);
