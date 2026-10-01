@@ -898,6 +898,8 @@ pub const SUBCOMMANDS: &[&str] = &[
     // 扩展页「从这台卸」那两条（`ext-uninstall-preview` / `ext-uninstall-apply`）派生的 CLI 面。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
     "--ext-uninstall-preview",
     "--ext-uninstall-apply",
+    // 扩展页写备注那一条（`ext-note-set`）派生的 CLI 面。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
+    "--ext-note-set",
     // 〔C4d · 第四波 4B〕可达表登记（`inbound::REGISTRY` 的 `remote-reach`）派生的 CLI 面，入参从 stdin 读。
     // ⚠ 一次性进程的可达表随进程退出就空 —— 真正的用法是常驻后端的帧面。加这一行会逼出一次 `BUILD_ID` bump，本路**不 bump**。
     "--remote-reach",
