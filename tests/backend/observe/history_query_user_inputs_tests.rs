@@ -1,4 +1,4 @@
-//! 〔SE1〕`--list-user-inputs` 的 argv 与文件那一层（纯核的判据在 `user_inputs_tests.rs`）。
+//! `--list-user-inputs` 的 argv 与文件那一层（纯核的判据在 `user_inputs_tests.rs`）。
 
 use super::*;
 
@@ -74,7 +74,7 @@ fn run_dispatches_the_subcommand() {
     std::fs::remove_dir_all(&tmp).ok();
 }
 
-// ── 〔SE2〕`--find-in-session` 的 argv 与文件那一层（内核的判据在 `search_query_find_tests.rs`）──
+// ── `--find-in-session` 的 argv 与文件那一层（内核的判据在 `search_query_find_tests.rs`）──
 
 #[test]
 fn find_argv_takes_the_query_as_an_option_value_and_rejects_anything_else() {

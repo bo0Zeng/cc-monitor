@@ -1,4 +1,4 @@
-//! 〔F1 · 波 5 · 2026-09-24〕**文件管理后端模块**与原生后端那条边界的判据。
+//! 〔波 5〕**文件管理后端模块**与原生后端那条边界的判据。
 //!
 //! 用户逐字：「甲, 窗口变成独立前端. 我说了后端要模块化, 即**原生后端＋文件管理后端**.
 //! **现在先解耦清楚**. 然后 monitor 可以打开文件管理器的前端」。
@@ -7,7 +7,7 @@
 //!
 //! | # | 用户那句话落成的性质 | 判据 |
 //! |---|---|---|
-//! | ① | 这个模块**只许依赖** `platform` / `common` / 下面一层的基础设施（〔MOD · 主会话裁〕业务模块之间零依赖；适配层那一类为零） | [`every_edge_out_of_the_file_backend_is_declared`]：模块生产段够到外面的**每一条**符号路径，与 [`OUTWARD`] **逐格相等**；每一格的类别必须与它的路径首段对得上 |
+//! | ① | 这个模块**只许依赖** `platform` / `common` / 下面一层的基础设施（业务模块之间零依赖；适配层那一类为零） | [`every_edge_out_of_the_file_backend_is_declared`]：模块生产段够到外面的**每一条**符号路径，与 [`OUTWARD`] **逐格相等**；每一格的类别必须与它的路径首段对得上 |
 //! | ② | 原生后端**零处**伸手进它**内部** | [`the_native_backend_reaches_the_file_backend_only_through_its_doors`]：模块之外的后端生产段够到模块的符号，集合 == [`DOORS`]（几个入口函数，零个内部符号） |
 //! | ③ | 外界够到它**只有一扇门**（命令注册那一处） | 同上那一条的**文件**那一维：[`DOORS`] 里除了挂载／汇总那一格，住址全是 `inbound.rs` |
 //!
@@ -141,10 +141,10 @@ fn has_prefix(hay: &str, prefix: &str) -> bool {
 // ═══════════════════════════════════════════════════════════════════
 
 /// 模块成员里**不住 `files/` 目录**的那几份（仓相对 `src/backend`）。
-/// 〔F7c · 第三波 09-24〕`control/files_commit.rs`（上传的提交）同一条理由住 `control/`：
+/// `control/files_commit.rs`（上传的提交）同一条理由住 `control/`：
 /// 它会改变世界；而 `files/` 那一族的头注逐字「整族纯读」，放进去那句话就当场变假。
-/// 〔SR1b · 第四波 09-24〕`control/transfer.rs`（传输台住本机后端：下载的本机落点在这里写）同一条理由住 `control/`。
-/// 〔FILES2 · 第四波 09-27〕`control/files_extract.rs`（解压 ＋ 建链接）同一条理由住 `control/`。
+/// `control/transfer.rs`（传输台住本机后端：下载的本机落点在这里写）同一条理由住 `control/`。
+/// `control/files_extract.rs`（解压 ＋ 建链接）同一条理由住 `control/`。
 const MEMBERS_ELSEWHERE: &[&str] = &[
     "control/files_commit.rs",
     "control/files_extract.rs",
@@ -228,7 +228,7 @@ fn inward_edges(prod: &str) -> BTreeSet<String> {
 
 /// 一条外向边的类别。**闭集三类**。
 ///
-/// 〔MOD · 子步 4 · 主会话裁〕`01 §3.2`「两块零互相依赖（共用 platform / common 除外）」读成
+/// 「两块零互相依赖（共用 platform / common 除外）」读成
 /// **业务模块之间**零依赖：文件模块往外只许够到**下面那几层** —— 没有一类装得下原生那一块的业务
 /// （会话 · tmux · 账号 · 资产 · 历史），也没有一类装得下适配层（`agents::`）：
 /// 删会话那两问（落点 · 形状）由门经 `control::files_write::SessionPort` 递进来，文件模块不认任何一家的记录布局。
@@ -240,7 +240,7 @@ enum Kind {
     Platform,
     /// `common/` —— 两块共用的判定。
     Common,
-    /// 🔴 **下面一层的基础设施**（主会话裁）：传输层（`dial` 的 SFTP 原语 · `stream::wire` 的帧）与 `lib.rs` 的能力声明轴。
+    /// 🔴 **下面一层的基础设施**：传输层（`dial` 的 SFTP 原语 · `stream::wire` 的帧）与 `lib.rs` 的能力声明轴。
     /// 两块都可用；只许三个前缀（[`INFRA_PREFIXES`] ＋ target 轴），每一格的理由写在 [`OUTWARD`] 第三列。
     Infra,
 }
@@ -256,7 +256,7 @@ const OUTWARD: &[(&str, Kind, &str)] = &[
     (
         "platform::paths::device_of",
         Kind::Platform,
-        "〔W5-FILES〕设备号（`设计/60 §3.7`）：算目录大小与建索引要判这一层是不是挂着另一个文件系统",
+        "设备号：算目录大小与建索引要判这一层是不是挂着另一个文件系统",
     ),
     (
         "platform::paths::current_uid",
@@ -266,12 +266,12 @@ const OUTWARD: &[(&str, Kind, &str)] = &[
     (
         "platform::paths::home_dir",
         Kind::Platform,
-        "〔WF1 · F〕这台后端的家目录只在平台层答（`HOME` → `USERPROFILE`）：`files-home` 与暂存区都拼在它底下",
+        "这台后端的家目录只在平台层答（`HOME` → `USERPROFILE`）：`files-home` 与暂存区都拼在它底下",
     ),
     (
         "platform::fs::rename_noreplace",
         Kind::Platform,
-        "〔FIX5 · `设计/60 §7` 第 7 条〕不覆盖改名（改名 · 复制上位 · 读改写新建那一形）：原子的「目标已在就失败」是平台原语",
+        "不覆盖改名（改名 · 复制上位 · 读改写新建那一形）：原子的「目标已在就失败」是平台原语",
     ),
     (
         "platform::fs::noreplace_unsupported",
@@ -281,33 +281,33 @@ const OUTWARD: &[(&str, Kind, &str)] = &[
     (
         "platform::fs::rename_by_link",
         Kind::Platform,
-        "〔主会话 09-28 裁〕盘不认不覆盖改名时，普通文件走 `link` ＋ `unlink`（目标已在 ⇒ 原子失败）",
+        "盘不认不覆盖改名时，普通文件走 `link` ＋ `unlink`（目标已在 ⇒ 原子失败）",
     ),
     (
         "platform::fs::NO_FOLLOW",
         Kind::Platform,
-        "〔FIX5〕全程 `O_NOFOLLOW`：`files_write::opener` 开文件带的那个旗（unix）",
+        "全程 `O_NOFOLLOW`：`files_write::opener` 开文件带的那个旗（unix）",
     ),
-    // 〔P4〕路径字节的线上两种形搬进 `common/path_wire.rs`（原生那一块的「在此打开终端」也读它），本族经 `raw` 的再导出照旧用。
+    // 路径字节的线上两种形搬进 `common/path_wire.rs`（原生那一块的「在此打开终端」也读它），本族经 `raw` 的再导出照旧用。
     (
         "common::path_wire::from_json",
         Kind::Common,
-        "〔P4〕入方向路径参数的两种形（字符串 / `{\"b16\"}`）→ 字节",
+        "入方向路径参数的两种形（字符串 / `{\"b16\"}`）→ 字节",
     ),
     (
         "common::path_wire::to_json",
         Kind::Common,
-        "〔P4〕回送路径的两种形（字节 → 字符串 / `{\"b16\"}`，双向无损）",
+        "回送路径的两种形（字节 → 字符串 / `{\"b16\"}`，双向无损）",
     ),
     (
         "common::path_wire::HEX_KEY",
         Kind::Common,
-        "〔P4〕线上那个键名 `b16`（本族判据按它对拍）",
+        "线上那个键名 `b16`（本族判据按它对拍）",
     ),
     (
         "common::contract::malformed",
         Kind::Common,
-        "〔COPY · 09-27〕契约错只进表一句（`设计/91 §5.5`「请求格式不对：{detail}」）",
+        "契约错只进表一句（「请求格式不对：{detail}」）",
     ),
     (
         "common::own_dir::ensure_private_dir",
@@ -324,13 +324,13 @@ const OUTWARD: &[(&str, Kind, &str)] = &[
     (
         "dial::sftp::Dial",
         Kind::Infra,
-        "〔SR1b〕传输台要一条 sftp 会话才搬得动字节：只经 `dial/sftp.rs` 包出来的 `Dial`，手里不拿 `DialRequest`",
+        "传输台要一条 sftp 会话才搬得动字节：只经 `dial/sftp.rs` 包出来的 `Dial`，手里不拿 `DialRequest`",
     ),
     ("dial::sftp::Session", Kind::Infra, "同上一格：那一条 sftp 会话本身"),
     (
         "stream::wire::Frame",
         Kind::Infra,
-        "〔SR1b〕传输进度要出方向那一种帧才报得出",
+        "传输进度要出方向那一种帧才报得出",
     ),
     ("stream::wire::TransferEnd", Kind::Infra, "同上一格：传输结束那一帧的收尾格"),
 ];
@@ -392,7 +392,7 @@ enum Door {
 /// （`files::index::*` / `files::raw::*` / 围栏那几个函数 —— 原生后端一个都够不到）。
 const DOORS: &[(&str, &str, Door)] = &[
     ("stream/inbound.rs", "files::answer_wire", Door::Command),
-    // 〔FILES3 · `99 §2.2 ㉜`〕按内容搜要**可撤**（异步档：阻塞线程上那一趟看取消位）⇒ 同一族的第二个入口函数，
+    // 按内容搜要**可撤**（异步档：阻塞线程上那一趟看取消位）⇒ 同一族的第二个入口函数，
     //   不是内部符号：它自己再进 `answer_grep`（与唯一入口 `answer` 里那一臂同一个本体）。
     (
         "stream/inbound.rs",
@@ -404,19 +404,19 @@ const DOORS: &[(&str, &str, Door)] = &[
         "control::files_write::answer_wire",
         Door::Command,
     ),
-    // 〔F7c · 第三波 09-24〕上传的提交（`设计/60 §13`）：同一扇门里的第三个入口函数。
+    // 上传的提交：同一扇门里的第三个入口函数。
     (
         "stream/inbound.rs",
         "control::files_commit::answer_wire",
         Door::Command,
     ),
-    // 〔FILES2 · 第四波 09-27〕解压（`files-extract`）：同一扇门里的又一个入口函数。
+    // 解压（`files-extract`）：同一扇门里的又一个入口函数。
     (
         "stream/inbound.rs",
         "control::files_extract::answer_wire",
         Door::Command,
     ),
-    // 〔SR1b · 第四波 09-24〕传输台（`control/transfer.rs`）：**每条流连接一张票表**（同 `dial::link::Table`）
+    // 传输台（`control/transfer.rs`）：**每条流连接一张票表**（同 `dial::link::Table`）
     //   ⇒ 这一面的入口是「造表 ＋ 答口」两个函数，外加读循环 / 分派签名里点名的那个表类型。
     //   四条 `transfer-*` 硬臂**全**经 `answer_wire` 进来（它们是 `Run::Builtin`，要碰本连接的票表与应答通道）。
     (
@@ -434,7 +434,7 @@ const DOORS: &[(&str, &str, Door)] = &[
         "control::transfer::Desk::answer_wire",
         Door::Command,
     ),
-    // 〔MOD · 子步 4〕删会话那两问的窄口：门把适配层那两个函数装进这个类型递给写面（`SESSION_PORT`）。
+    // 删会话那两问的窄口：门把适配层那两个函数装进这个类型递给写面（`SESSION_PORT`）。
     (
         "stream/inbound.rs",
         "control::files_write::SessionPort",
@@ -474,7 +474,7 @@ fn the_native_backend_reaches_the_file_backend_only_through_its_doors() {
     );
 }
 
-/// 〔MOD · 子步 4 · `01 §3.2` ＋ 主会话裁〕**文件模块与原生那一块的业务零依赖**：往外只够到下面那几层。
+/// 〔＋ 主会话裁〕**文件模块与原生那一块的业务零依赖**：往外只够到下面那几层。
 ///
 /// - 每一格的类别与路径首段对得上（没有这一条，`OUTWARD` 可以把一条 `observe::…` 登记成 `Kind::Common` 让上一条变绿）；
 /// - 基础设施那一类只许 [`INFRA_PREFIXES`] 与 target 轴，每一格都写得出理由，条数**相等**；
@@ -526,9 +526,9 @@ fn the_doors_are_the_command_registry_plus_one_ledger_read() {
     );
     let command = DOORS.iter().filter(|(_, _, d)| *d == Door::Command).count();
     assert_eq!(
-        // 〔FILES2 · 第四波 09-27〕6 → 7：多了解压面 `control::files_extract::answer_wire`（`设计/60 §6.2` Q3）。
-        // 〔MOD · 子步 4〕7 → 8：多了删会话那两问的窄口类型 `control::files_write::SessionPort`。
-        // 〔FILES3 · `99 §2.2 ㉜`〕8 → 9：读那一面多一个可撤的入口 `files::answer_grep_cancellable`（按内容搜，异步档）。
+        // 6 → 7：多了解压面 `control::files_extract::answer_wire`。
+        // 7 → 8：多了删会话那两问的窄口类型 `control::files_write::SessionPort`。
+        // 8 → 9：读那一面多一个可撤的入口 `files::answer_grep_cancellable`（按内容搜，异步档）。
         command, 9,
         "命令注册那一处够到的入口从 9 个变成了 {command} 个 —— \
          四面（读 `files::answer_wire` ／ 写 `control::files_write::answer_wire` ／ \
@@ -546,11 +546,11 @@ fn the_file_backend_is_mounted_from_exactly_its_three_declarations() {
     for (file, line) in [
         ("lib.rs", "pub mod files;"),
         ("control/mod.rs", "pub mod files_write;"),
-        // 〔F7c · 第三波 09-24〕上传的提交那一份。
+        // 上传的提交那一份。
         ("control/mod.rs", "pub mod files_commit;"),
-        // 〔SR1b · 第四波 09-24〕传输台那一份。
+        // 传输台那一份。
         ("control/mod.rs", "pub mod transfer;"),
-        // 〔FILES2 · 第四波 09-27〕解压 ＋ 建链接那一份；上传块形那一份。
+        // 解压 ＋ 建链接那一份；上传块形那一份。
         ("control/mod.rs", "pub mod files_extract;"),
         ("control/mod.rs", "pub mod files_upload_chunks;"),
     ] {

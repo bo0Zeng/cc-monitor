@@ -3,7 +3,7 @@ use std::path::PathBuf;
 
 const P: Shell = Shell::Posix;
 
-/// 〔MIG-3a〕判据用的门：本进程那几条 `files-*` 原样走（[`crate::stream::inbound::LocalFiles`]），只有 `files-home` 答临时目录 ——
+/// 判据用的门：本进程那几条 `files-*` 原样走（[`crate::stream::inbound::LocalFiles`]），只有 `files-home` 答临时目录 ——
 /// 写的规则不在这里判（那一份住后端 `files_write_tests.rs`），也**绝不碰真实家目录**。
 pub(crate) struct HomeDoor(pub PathBuf);
 impl Door for HomeDoor {
@@ -58,7 +58,7 @@ impl Drop for TmpHome {
         let _ = std::fs::remove_dir_all(&self.0);
     }
 }
-/// 〔RW1 · 第四波 09-24〕落盘经「门」（生产 = 本机后端的文件管理那一面）；判据用落在临时目录上的替身门。
+/// 落盘经「门」（生产 = 本机后端的文件管理那一面）；判据用落在临时目录上的替身门。
 /// 写的规则（备份 · 原子替换 · 回读 · 回滚）不在这里判 —— 那一份住后端（`files_write_tests.rs`）。
 fn door(h: &TmpHome) -> HomeDoor {
     HomeDoor(h.0.clone())
@@ -66,7 +66,7 @@ fn door(h: &TmpHome) -> HomeDoor {
 fn hs(h: &TmpHome) -> String {
     h.0.display().to_string()
 }
-/// 〔MIG-3a〕后端这一族是同步的（门就是本进程的 `files-*`）；留一个恒等包装，判据正文不必逐处改写。
+/// 后端这一族是同步的（门就是本进程的 `files-*`）；留一个恒等包装，判据正文不必逐处改写。
 fn run<T>(x: T) -> T {
     x
 }
@@ -83,7 +83,7 @@ fn tmp_home(tag: &str) -> TmpHome {
     TmpHome(d)
 }
 
-// 〔AL1 · 2026-09-24〕这里原来是「形状围栏」那一条（`validate_alias_line`〔散文墓碑〕只放行
+// 这里原来是「形状围栏」那一条（`validate_alias_line`〔散文墓碑〕只放行
 // `名字() { ccm <已知修饰...> "$@"; }` 一形）与四条 `apply(dry_run)` 的判据。前端不再递 shell 文本
 // （递的是结构，文本由 `render` 出），围栏没有输入了 ⇒ 挡注入那件事换成下面
 // `injection_attempts_arrive_as_plain_args_in_bash`：**让真 bash 执行渲染出来的那一行**，
@@ -173,12 +173,12 @@ fn duplicate_names_are_refused() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// 〔TL1 · 4C〕`设计/71 §6.1`「source 那一行只许一处装」：接上别名文件的那一行**只住别名块里**（两种方言），
+// 「source 那一行只许一处装」：接上别名文件的那一行**只住别名块里**（两种方言），
 // 选了 rc 的「安装」只查不写（提供检测，不代装）。从前这里的六条判的是代装那一跳（加一次 · 认 `$HOME` 形 ·
 // 旧名改写 · 围栏损坏中止 · 围栏）—— 那一跳退役，判据换成下面这几条。
 // ═══════════════════════════════════════════════════════════════════════════
 
-/// 🔴 **选了 rc，rc 一个字节都不动** —— 没接上就说清楚、给出那一行，由人自己决定（`71 §6.1`「不代装」）。
+/// 🔴 **选了 rc，rc 一个字节都不动** —— 没接上就说清楚、给出那一行，由人自己决定（「不代装」）。
 #[test]
 fn a_chosen_rc_is_only_checked_never_written() {
     let h = tmp_home("rc");
@@ -246,8 +246,8 @@ fn an_rc_that_already_sources_it_via_home_var_is_recognized() {
     assert!(me.sourced, "候选表没认出 `$HOME` 那一形：{me:?}");
 }
 
-/// 🔴〔RW1 · 第四波 09-24〕别名文件改名 `account-aliases.sh` → `aliases.sh`，**不留兼容**：
-/// 指着旧名的那一段**不算接上**（只认新名），〔TL1〕而且**也不改写它**（从前下一次「安装」会整块改写成新名 —— 那是代装，退役了）；
+/// 🔴别名文件改名 `account-aliases.sh` → `aliases.sh`，**不留兼容**：
+/// 指着旧名的那一段**不算接上**（只认新名），而且**也不改写它**（从前下一次「安装」会整块改写成新名 —— 那是代装，退役了）；
 /// 旧文件在盘上也不读。
 #[test]
 fn an_rc_with_the_old_file_name_is_not_taken_as_sourced_and_not_rewritten() {
@@ -284,7 +284,7 @@ fn an_rc_with_the_old_file_name_is_not_taken_as_sourced_and_not_rewritten() {
     );
 }
 
-/// 那一行在文件不存在时**必须返回 0** —— 它是 `ccm-aliases.sh` 的最后一行（〔TL1〕今天也是报告里给人贴的那一行）。
+/// 那一行在文件不存在时**必须返回 0** —— 它是 `ccm-aliases.sh` 的最后一行（今天也是报告里给人贴的那一行）。
 #[test]
 fn the_source_line_is_a_no_op_when_the_file_is_absent() {
     let line = source_line(Path::new("/nowhere/aliases.sh"));
@@ -332,7 +332,7 @@ fn the_rc_path_cannot_escape_home() {
     );
 }
 
-/// ★★〔TL1 · 4C〕**两种方言对称：别名块里恰好一行接上别名文件**（`71 §6.1`「source 那一行只许一处装」；
+/// ★★**两种方言对称：别名块里恰好一行接上别名文件**（「source 那一行只许一处装」；
 /// `AL1d.md §5` 第 4 条：从前 PowerShell 的别名块不接，那一侧只剩代装那一处）。
 ///
 /// 人群：POSIX 别名块 = `block::CCM_WRAPPER_SNIPPET`（就是 `src/shared/ccm-aliases.sh`）；PowerShell 别名块 =
@@ -422,10 +422,10 @@ fn the_generated_file_is_byte_stable() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// 〔AL1 · 2026-09-24〕`设计/71`：一类别名 · 两跳（渲染纯 / 写入唯一副作用）· 读回口
+// 一类别名 · 两跳（渲染纯 / 写入唯一副作用）· 读回口
 // ═══════════════════════════════════════════════════════════════════════
 
-/// 〔V151〕本文件的夹具沿用 V138 写法（ccm 选项与 claude 的词混写、`--` 之后全交 claude）⇒ 换成 V151 排列
+/// 本文件的夹具沿用 V138 写法（ccm 选项与 claude 的词混写、`--` 之后全交 claude）⇒ 换成 V151 排列
 /// （`<交给 claude 的…> -- <ccm 自己的…>`），意图逐词不变。ccm 的词 = [`ALIAS_FLAGS`] ∪ [`NOT_IN_ALIASES`] ∪ `--ccm-tmux=…`。
 fn al(name: &str, args: &[&str]) -> Alias {
     let (mut left, mut right) = (Vec::new(), Vec::new());
@@ -468,7 +468,7 @@ fn al(name: &str, args: &[&str]) -> Alias {
     }
 }
 
-/// 黄金串：同一份清单渲染出的每一行逐字钉住（`71 §12.9` W4）。
+/// 黄金串：同一份清单渲染出的每一行逐字钉住。
 #[test]
 fn rendering_is_byte_stable_and_quotes_only_what_needs_it() {
     let r = render(
@@ -486,7 +486,7 @@ fn rendering_is_byte_stable_and_quotes_only_what_needs_it() {
     assert_eq!(
         r.lines,
         vec![
-            // 〔V151〕调用时跟的参数（`"$@"`）交 claude，别名自己的 ccm 选项在 `--` 右边。
+            // 调用时跟的参数（`"$@"`）交 claude，别名自己的 ccm 选项在 `--` 右边。
             r#"zcc() { ccm "$@" -- --account z; }"#.to_string(),
             r#"convz() { ccm "$@" -- --ccm-tmux --account z --cwd '/home/u/文档/c c'; }"#
                 .to_string(),
@@ -526,7 +526,7 @@ fn a_rendered_alias_really_appends_the_callers_args_in_bash() {
         .lines()
         .map(str::to_string)
         .collect();
-    // 〔V151〕调用时跟的参数落在 `--` 左边（交 claude），别名自己的 ccm 选项留在右边。
+    // 调用时跟的参数落在 `--` 左边（交 claude），别名自己的 ccm 选项留在右边。
     let cut = a.args.iter().rposition(|w| w == "--").expect("有 ccm 部分");
     let mut want = a.args[..cut].to_vec();
     want.extend(["--cwd".to_string(), "/elsewhere".to_string()]);
@@ -613,7 +613,7 @@ fn the_reader_takes_the_old_file_and_names_what_it_cannot_parse() {
     assert!(!l.exists && l.aliases.is_empty());
 }
 
-/// V1–V5（`71 §5`）：每一条规则各有一个会被拦下的例子；有一条不合格 ⇒ **整批不写**。
+/// V1–V5：每一条规则各有一个会被拦下的例子；有一条不合格 ⇒ **整批不写**。
 #[test]
 fn every_combination_rule_stops_a_bad_alias_and_nothing_is_written() {
     let bad = [
@@ -623,7 +623,7 @@ fn every_combination_rule_stops_a_bad_alias_and_nothing_is_written() {
         al("c", &["--ccm-tmux", "--bus-register"]),
         al("d", &["--detach"]),
         al("e", &["--tmux-size", "80x24"]),
-        // V138：第三档改名后的样子（诊断口 · `--attach`）；`71 §8 #11` 相对 / 带 `..` 的 `--cwd`。
+        // V138：第三档改名后的样子（诊断口 · `--attach`）；相对 / 带 `..` 的 `--cwd`。
         al("f", &["--ccm-print"]),
         al("g", &["--attach", "abc"]),
         al("j", &["--cwd", "rel/dir"]),
@@ -684,7 +684,7 @@ fn every_combination_rule_stops_a_bad_alias_and_nothing_is_written() {
 /// 反向：用法里那几个「每次取值都不同」的（第三档）不许混进来。
 #[test]
 fn every_alias_flag_is_a_real_ccm_flag() {
-    // 〔CP2c〕`--help` 正文进了文案表（`beCcm.usage.body`）：后端 ccm 那份源码取的就是这一条，正文从表里读。
+    // `--help` 正文进了文案表（`beCcm.usage.body`）：后端 ccm 那份源码取的就是这一条，正文从表里读。
     let ccm_src = std::fs::read_to_string(
         crate::guard_support::repo_root().join("src/backend/control/ccm/mod.rs"),
     )
@@ -712,13 +712,13 @@ fn every_alias_flag_is_a_real_ccm_flag() {
     ] {
         assert!(
             ALIAS_FLAGS.iter().all(|(f, _)| f != &third),
-            "`{third}` 每次取值都不同，做成固定别名没意义（`71 §4` 第三档）"
+            "`{third}` 每次取值都不同，做成固定别名没意义（第三档）"
         );
     }
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// 〔AL1c · 第四波 4B〕`设计/71 §7` W2 / W4：通用层零 shell 文本 · 能力闸 · PowerShell 那一臂的写与读回
+// / W4：通用层零 shell 文本 · 能力闸 · PowerShell 那一臂的写与读回
 // ═══════════════════════════════════════════════════════════════════════
 
 const PS: Shell = Shell::PowerShell;
@@ -754,9 +754,9 @@ fn the_generic_layer_holds_no_shell_text() {
     assert_eq!(
         shell_syntax_hits(generic),
         Vec::<String>::new(),
-        "通用层长出了某种 shell 的文本 —— 写法 / 读法归 `shell_dialect.rs` 那一族（`71 §4.4`）"
+        "通用层长出了某种 shell 的文本 —— 写法 / 读法归 `shell_dialect.rs` 那一族"
     );
-    // 〔OSA · V156〕方言住后端 OS 适配层。
+    // 方言住后端 OS 适配层。
     let dialect = include_str!("../../../../src/backend/platform/shell/dialect.rs");
     let hits = shell_syntax_hits(dialect);
     for must in ["$@", "RemainingArgs", "Test-Path"] {
@@ -894,14 +894,14 @@ fn powershell_duplicates_fold_case() {
 /// PowerShell 传不过去的值在渲染前就拦住（方言答「传不传得过去」，通用层判「那就不合格」）。
 #[test]
 fn a_value_powershell_would_mangle_is_a_problem_there_only() {
-    // `71 §8 #11` 之后 `--cwd` 要是这种 shell 的绝对路径 ⇒ 把那个值换到交给 claude 的位置上测。
+    // 之后 `--cwd` 要是这种 shell 的绝对路径 ⇒ 把那个值换到交给 claude 的位置上测。
     let a = al("x", &["--", "C:\\a \"b\""]);
     assert!(check_alias(&a, PS).is_err());
     assert_eq!(check_alias(&a, P), Ok(()));
 }
 
 /// 🔴 PowerShell 那一臂的写与读回：别名文件 `aliases.ps1` 带 BOM；读回的清单 == 写进去的；再写一次一个字节都不动；
-/// POSIX 那份文件不受影响。〔TL1 · 4C〕选了 `$PROFILE` ⇒ **只查**：还不在就不建、说「没接上」并给 PowerShell 那一行；
+/// POSIX 那份文件不受影响。选了 `$PROFILE` ⇒ **只查**：还不在就不建、说「没接上」并给 PowerShell 那一行；
 /// 往里装上别名块（生产那一跳同一个函数）之后，同一问答「已经接上」—— 与 POSIX 那一侧对称（从前这里代建 `$PROFILE`、代装那一行）。
 #[test]
 fn the_powershell_arm_writes_and_reads_back_the_same_list() {
@@ -981,7 +981,7 @@ fn the_powershell_arm_writes_and_reads_back_the_same_list() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// 〔AL1d · 第四波 4B〕别名块与别名文件那一行共用一份候选、一次扫描（`调研/第四波记录/AL1d.md §2.1`）
+// 别名块与别名文件那一行共用一份候选、一次扫描
 // ═══════════════════════════════════════════════════════════════════════════
 
 /// 🔴 **P3**：别名块的现状**随候选走**，不另起一扫 —— 往某一份候选里装了块，读回口报「块在」的候选集合
@@ -1027,7 +1027,7 @@ fn the_block_state_rides_on_the_candidates_it_was_installed_into() {
         hit.exists && hit.block.version.is_some(),
         "PowerShell 那一对围栏带版本串：{hit:?}"
     );
-    // 〔TL1 · 4C〕同一次读：装了别名块就接上了别名文件（块结尾那一行）—— 与 POSIX 对称；
+    // 同一次读：装了别名块就接上了别名文件（块结尾那一行）—— 与 POSIX 对称；
     //   从前这里断言「仍是假」（PowerShell 的别名块不接，那一侧只有代装那一处，`AL1d.md §5` 第 4 条）。
     assert!(hit.sourced, "{hit:?}");
 }
@@ -1047,12 +1047,12 @@ fn another_startup_file_goes_through_the_fence_before_it_is_read() {
     assert!(ok.rc_candidates.iter().any(|c| c.path == want && !c.exists));
 }
 
-/// 〔WIN1 · 第四波 4D · RT1 F8〕别名文件那条**给人看、也写进启动文件那一行**的绝对路径逐段拼。
+/// 别名文件那条**给人看、也写进启动文件那一行**的绝对路径逐段拼。
 ///
-/// 要求住址：`设计/01 §3.1` 逐字「「怎么读到这个事实」   → platform      （各平台读法不同）」——
+/// 要求：「「怎么读到这个事实」   → platform      （各平台读法不同）」——
 /// `our_alias_file_rel` 是 `/` 分隔的**通用层结构**（交给后端的 `rel`），翻成那台机器上的路径是平台那一步；
-/// 读数出处 `第四波记录/RT1.md §8` F8 逐字「`aliases_read` 回的路径分隔符混用：`C:\Users\zbl\.cc-monitor/aliases.ps1`」。
-/// 〔AL2 · 第四波 4D〕拼法从 `Path::join`（monitor 这台的分隔符）换成 `user_files::join_under`（**那台 home 自己的分隔符**）：
+/// 读数要求：「`aliases_read` 回的路径分隔符混用：`C:\Users\zbl\.cc-monitor/aliases.ps1`」。
+/// 拼法从 `Path::join`（monitor 这台的分隔符）换成 `user_files::join_under`（**那台 home 自己的分隔符**）：
 /// 从前「行为这一半只能在真 Windows 上看」，今天是纯字符串 ⇒ 在这台 Linux 上就能把 Windows 那一形判完 ——
 /// ① Windows 的 home 全用 `\`（F8 不回来）② 远端 POSIX 的 home 全用 `/`（Windows 上的 monitor 拼远端不再混出 `\`）
 /// ③ 生产那一口就是交给 `join_under`（不在这里另拼一份）。
@@ -1092,8 +1092,8 @@ fn the_alias_file_path_is_joined_segment_by_segment() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// 〔AL2 · 第四波 4D〕远端别名清单 → 〔MIG-3a · 主会话 09-27 裁〕规则进了那台后端，`origin` 退役
-// 住址：`设计/71 §6` 逐字「`origin` 是本机还是远端，对这些命令没有区别」· `设计/99 §2.1 ⑬`。
+// 远端别名清单 → 规则进了那台后端，`origin` 退役
+// 要求：「`origin` 是本机还是远端，对这些命令没有区别」。
 // 从前这里三条判「本机 / 远端同一个函数只差 origin」「远端撞名不拿 monitor 的 PATH 说事」「远端围栏不量 monitor 的盘」——
 // 规则住那台后端之后三件事都是**这台自己的事实**（同一个函数、查这台的 PATH、量这台的盘），那一维没了 ⇒ 三条退役，
 // 换成下面两条：撞名查这台的 `PATH`（正反两向）· 围栏量这台的盘（符号链接那一步本机远端都做）。
@@ -1152,7 +1152,7 @@ fn the_fence_is_lexical_then_measures_this_machines_disk() {
     }
 }
 
-/// 🔴 候选**经门**、按各自方言的列法列（`71 §4.4` 表第一行；`AL2.md §2.4`）：
+/// 🔴 候选**经门**、按各自方言的列法列（表第一行；`AL2.md §2.4`）：
 /// POSIX 只列在的（盘上只放 `.zshrc` ⇒ 候选恰好这一份）；PowerShell 5.1 两份恒列、7 的两份目录在才列 ——
 /// 「目录在不在」问的是门（`stat_kind`），不是 monitor 这台的盘（替身门恰好落在同一块盘上，所以另数一遍门被问了什么）。
 #[test]
@@ -1203,7 +1203,7 @@ fn an_unreadable_candidate_is_listed_with_the_backends_words() {
     assert_eq!(zsh.unreadable, None, "{zsh:?}");
 }
 
-/// 🔴 **P1′**（主会话 09-27 裁）：这台后端说不说 PowerShell 只问它自己的平台（`platform::shell::speaks_powershell`）——
+/// 🔴 **P1′**：这台后端说不说 PowerShell 只问它自己的平台（`platform::shell::speaks_powershell`）——
 /// 不在 Windows ⇒ PowerShell 形拒、话里点名这台与 PowerShell；POSIX 恒放行（正控）。
 /// ⚠ 门禁跑在 Linux 上 ⇒ 只判得到「拒」那一臂；Windows 那一臂放行由 `speaks_powershell` 的 `cfg!(windows)` 一处答。
 #[test]
@@ -1223,7 +1223,7 @@ fn a_dialect_this_machine_does_not_speak_is_refused_out_loud() {
     }
 }
 
-/// 〔V153〕`new` 是 ccm 自己的位置词：别名里只许是 `--` 右边第一个词；写在左边就是交给 claude 的一个词（照放）。
+/// `new` 是 ccm 自己的位置词：别名里只许是 `--` 右边第一个词；写在左边就是交给 claude 的一个词（照放）。
 #[test]
 fn new_is_accepted_only_as_the_first_word_right_of_the_end() {
     let raw = |args: &[&str]| Alias {
@@ -1243,7 +1243,7 @@ fn new_is_accepted_only_as_the_first_word_right_of_the_end() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// 〔MIG-3a · `设计/99 §2.1 ⑬`〕线上那六口：跨语言金样（界面 `src/frontend/ui/alias-reads.ts` 的解码器读同一份）＋ 码集合 == 登记表
+// 线上那六口：跨语言金样（界面 `src/frontend/ui/alias-reads.ts` 的解码器读同一份）＋ 码集合 == 登记表
 // ═══════════════════════════════════════════════════════════════════════════
 
 fn golden() -> Value {
@@ -1302,7 +1302,7 @@ fn the_alias_wire_matches_the_cross_language_golden() {
     assert_eq!(serde_json::to_value(&codes).unwrap(), g["codes"]);
 }
 
-/// 〔MIG-3a〕从 monitor `user_files_tests.rs` 搬来：`door::rel_under` 两种路径写法都把写圈在 home 里。
+/// 从 monitor `user_files_tests.rs` 搬来：`door::rel_under` 两种路径写法都把写圈在 home 里。
 #[test]
 fn rel_under_keeps_writes_inside_home_on_both_path_styles() {
     assert_eq!(
@@ -1319,7 +1319,7 @@ fn rel_under_keeps_writes_inside_home_on_both_path_styles() {
     }
 }
 
-/// ★ 住址：`设计/99 §2.3`「L 的做法：那台后端只读现问生效策略，块不会加载就明说」。
+/// ★ 要求：「L 的做法：那台后端只读现问生效策略，块不会加载就明说」。
 /// 每份 `$PROFILE` 候选带**加载它的那一代**的执行策略（5.1 目录 ⇒ `powershell`，7 目录 ⇒ `pwsh`）；同一代一次读只问一次；
 /// POSIX 候选与人另指的那一份不带（说不出是哪一代加载它）。
 #[test]

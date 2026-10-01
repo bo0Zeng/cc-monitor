@@ -1,11 +1,11 @@
-//! 〔C4d · 第四波 4B〕`remote_ask` 的判据。
+//! `remote_ask` 的判据。
 //!
 //! # 守的要求（住址）
 //!
-//! - 主会话 09-25 裁（`调研/第四波记录/C4d.md` 「主会话裁」第 1 条，逐字）：「**口收成一份**：把 `DialRemote` ＋ 可达表从
+//! - 主会话 09-25 裁（「主会话裁」第 1 条，逐字）：「**口收成一份**：把 `DialRemote` ＋ 可达表从
 //!   `asset_sync.rs` 提到中立住址 `src/backend/stream/remote_ask.rs`（逻辑一字不改），`asset_sync` 改调它；判据钉
 //!   「**后端生产树里开远端一次性 exec 的只有这一处**」」。
-//! - `设计/01 §3.5`（逐字）：「观测方沿它本来就拥有的那条连接去拉被观测方。」
+//! - （逐字）：「观测方沿它本来就拥有的那条连接去拉被观测方。」
 //!
 //! # 判据
 //!
@@ -143,8 +143,8 @@ async fn a_registered_origin_is_asked_with_exactly_its_dial_and_a_quoted_command
     assert_eq!(calls.len(), 1);
     assert_eq!(calls[0].0, reach_args("dev", "10.0.0.2")["dial"]);
     // 期望值手写成字面量（不拿 `command_line` 去比它自己 —— 死值验 A3：那样两侧同源，拿掉引号也恒绿）。
-    // 〔FIX · `设计/96 §3.6`〕命令行里只剩落点与旗标；项目目录名（带 `'`）走 stdin 一行。
-    // 〔E2〕那台后端恒在固定落点：`"$HOME"` 在那台上展开（fish 的双引号里同样展开），其后是安全字节。
+    // 命令行里只剩落点与旗标；项目目录名（带 `'`）走 stdin 一行。
+    // 那台后端恒在固定落点：`"$HOME"` 在那台上展开（fish 的双引号里同样展开），其后是安全字节。
     assert_eq!(
         calls[0].1,
         r#""$HOME"/.cc-monitor/bin/ccm -- '--list-sessions' '--stdin-line'"#
@@ -152,7 +152,7 @@ async fn a_registered_origin_is_asked_with_exactly_its_dial_and_a_quoted_command
     assert_eq!(calls[0].2.as_deref(), Some("[\"-home-u-it's\"]\n"));
 }
 
-/// ★ 〔FIX · `设计/96 §3.6`〕守的要求（逐字）：「起远端后端的命令、历史跨机那几问的 argv 仍拼在远端命令行里 ⇒
+/// ★ 守的要求（逐字）：「起远端后端的命令、历史跨机那几问的 argv 仍拼在远端命令行里 ⇒
 /// 远端登录 shell 是 fish 之类时这几条仍不成立」。发的一侧（`ask_with`）交出去的命令行交真 `sh` 拆词、stdin 那一行交收的一侧
 /// （`cli_control::expand_stdin_argv`）⇒ 拼回来的 argv 与调用方给的逐格相等；命令行里没有任何一格自由文本
 /// （只剩后端路径与旗标 —— 那几格不含 `'` 与 `\`，fish 与 POSIX 单引号同读）。
@@ -241,7 +241,7 @@ fn a_real_posix_shell_reads_every_argument_back_verbatim() {
     let tricky = ["it's", "say \"hi\"", "$HOME", "`id`", "a b", "中文-项目"];
     let mut argv = vec!["%s\\n"];
     argv.extend(tricky.iter());
-    // 〔E2〕落点是固定常量 ⇒ 把打头那一格换成 `printf` 再交给真 `sh`（量的是 argv 那几格的引号）。
+    // 落点是固定常量 ⇒ 把打头那一格换成 `printf` 再交给真 `sh`（量的是 argv 那几格的引号）。
     let line = command_line(&argv).replacen(relay_route_core::BACKEND_LANDING_SHELL, "printf", 1);
     assert!(line.starts_with("printf "), "命令行不以落点打头：{line}");
     let out = std::process::Command::new("sh")
@@ -258,7 +258,7 @@ fn a_real_posix_shell_reads_every_argument_back_verbatim() {
         got,
         tricky.iter().map(|s| s.to_string()).collect::<Vec<_>>()
     );
-    // 〔E2〕落点那一格在真 `sh` 里展开成「那台的家目录 ＋ `/.cc-monitor/bin/ccm`」（家目录带空格也不拆词）。
+    // 落点那一格在真 `sh` 里展开成「那台的家目录 ＋ `/.cc-monitor/bin/ccm`」（家目录带空格也不拆词）。
     let out = std::process::Command::new("sh")
         .arg("-c")
         .arg(format!(
@@ -274,10 +274,10 @@ fn a_real_posix_shell_reads_every_argument_back_verbatim() {
     );
 }
 
-// ═══ 〔NT2 · A4〕外层被丢 ⇒ 内层服务任务一起收 ═══════════════════════════════════════════════════
+// ═══ 外层被丢 ⇒ 内层服务任务一起收 ═══════════════════════════════════════════════════
 //
-// 守的要求（住址，纪律 19）：`设计/15 §3.2` 第 4 条红线（逐字）「复用后它占掉共享连接一个槽永不释放，局部卡死升级成全局卡死」·
-// `设计/05 §3.3.3`（逐字）「在飞槽位一定回收」。现打：`调研/第四波记录/NT2.md §0.1` 第 7 行
+// 守的要求（住址，纪律 19）：红线（逐字）「复用后它占掉共享连接一个槽永不释放，局部卡死升级成全局卡死」·
+// 「在飞槽位一定回收」。
 //（`spawn` 出去的任务，句柄被丢 = 脱钩；`task.abort()` 只写在正常返回那一支）。
 
 /// 一个会在被丢时报信的哨兵（代表内层任务手里攥着的那一格）。
@@ -330,7 +330,7 @@ async fn an_abandoned_ask_takes_its_inner_task_down_with_it() {
         .expect("哨兵没报信就没了");
 }
 
-/// ★ 〔TL3 · `INVARIANTS §47` ②〕一次性子命令的 argv 是自由文本：拒绝集只收 NUL / CR / LF（**不拒 shell 元字符**），
+/// ★ 〔`INVARIANTS §47` ②〕一次性子命令的 argv 是自由文本：拒绝集只收 NUL / CR / LF（**不拒 shell 元字符**），
 /// 判不过一次都不拨；真实名字（带 `'` `(` `&` 的目录名 · 中文 · 空格）照发。要求住址：`INVARIANTS §47` ②；
 /// 主会话 09-26 按 V131 裁「自由文本路径……拒绝集只收控制字符（NUL / CR / LF）……不拒 shell 元字符（拒过头同样违反 §47）」。
 #[tokio::test]
@@ -353,7 +353,7 @@ async fn one_shot_argv_refuses_only_what_the_quote_cannot_hold() {
     assert_eq!(far.n.load(Ordering::SeqCst), 3, "拒了却还是去拨了");
 }
 
-/// 〔W5-AUX · `设计/96 §3.6`〕交给 capture 的 stdin 真进了拨号请求的 `capture.stdin`（缺席 = 一个字节不写），
+/// 交给 capture 的 stdin 真进了拨号请求的 `capture.stdin`（缺席 = 一个字节不写），
 /// 命令原样、用法是 capture —— 生产那一个对面（`DialRemote`）就是拿这份请求去跑 `dial::uses::run` 的。
 /// ⚠ 买不到：「写进远端进程 stdin」那一跳要真 sshd（读数见 `W5-AUX.md §7`，不进门禁）。
 #[test]
@@ -386,7 +386,7 @@ fn the_capture_request_carries_the_stdin_line_verbatim_and_only_when_given() {
     );
 }
 
-/// ★ 〔MIG-3a · 主会话 09-28 裁〕远端那一跳没成时**码随原话一起交回**：那台 CLI 信封 `{code, message}` 的码原样进 [`Said`]，
+/// ★ 远端那一跳没成时**码随原话一起交回**：那台 CLI 信封 `{code, message}` 的码原样进 [`Said`]，
 /// 不压成一个；信封读不出来（不是 JSON）⇒ 码缺席、原话照交。
 #[tokio::test]
 async fn a_failed_remote_command_keeps_its_envelope_code() {

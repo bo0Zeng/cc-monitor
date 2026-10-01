@@ -1,8 +1,8 @@
-//! # 要求住址：`设计/01 §5 D2` ＋ `D1`（「tmux 客户端按 UTF-8 打」这个口径只有一个家）
+//! # ＋ `D1`（「tmux 客户端按 UTF-8 打」这个口径只有一个家）
 //!
 //! 核原文：`D2` 逐字「一个数只有一个住址」、`D1` 逐字「一个判定只有一个家」—— 本族判那两个口径常量与段数下溢谓词只在本文件声明、
 //! 两个消费层只引用；`the_one_home_scan_actually_bites` 是那两条的量具（丙）。
-//! 口径本身（「tmux 的打印通道必须是 UTF-8、段数下溢要出声」）已升格：`INVARIANTS §49`（V121，用户 2026-09-25 拍板）——
+//! 口径本身（「tmux 的打印通道必须是 UTF-8、段数下溢要出声」）已升格：`INVARIANTS §49`（用户 2026-09-25 拍板）——
 //! 本族不判调用点带没带，只判它的家唯一（`§49`「谁在守」第三行）。〔JA1 点址 2026-09-24 · IV1 改指 2026-09-25〕
 
 use super::*;
@@ -52,7 +52,7 @@ use super::*;
 /// 实测两趟：夹具从**锚点文本**派生那一版，把锚点末尾那个 `:` 去掉 ⇒ 反向自检**照样绿**；
 /// 改成从**标识符**派生之后，同一刀当场 `FAILED`（报文逐字：
 /// 「`const UTF8_CLIENT_FLAGX` 这样一个改了名的声明也被算成第二个家」）。
-/// 〔`E3`：判据与活体夹具必须共用同一份权威源 —— 这里那份权威源是标识符，不是锚点〕
+/// 〔判据与活体夹具必须共用同一份权威源 —— 这里那份权威源是标识符，不是锚点〕
 fn kou_jing_homes() -> Vec<(&'static str, &'static str, &'static str)> {
     vec![
         ("UTF-8 客户端旗（argv 形）", "const", "UTF8_CLIENT_FLAG"),
@@ -73,7 +73,7 @@ fn decl_anchor(kind: &str, ident: &str) -> String {
 }
 
 /// 本 crate 里**引用**这个家的两个消费者（相对 `src/`）—— 层各一个，正是门槛 ① 的那两层。
-const CONSUMERS: &[&str] = &["control/gate.rs", "observe/tmux_observe.rs"]; // 〔RE · C4〕observe 这一层的消费者随 A 块从 `watcher.rs` 搬走
+const CONSUMERS: &[&str] = &["control/gate.rs", "observe/tmux_observe.rs"]; // observe 这一层的消费者随 A 块从 `watcher.rs` 搬走
 
 /// 判据的**核**：给一份 `(名字, 生产段)` 表与一条声明，数出「除家以外还有谁也声明了它」。
 ///
@@ -96,7 +96,7 @@ fn second_homes(files: &[(String, String)], decl: &str) -> Vec<String> {
 
 /// 本 crate 生产段语料（**摘除那个「家」所在的文件** —— 不摘它就会把家本身算成「第二个家」）。
 ///
-/// 🔴 〔步 7c 剖分 2026-09-19 · `设计/16 §5.4b` 纪律 4〕
+/// 🔴 〔步 7c 剖分 2026-09-19 ·  纪律 4〕
 /// 原来走 `scan_tree!`：家与判据当年**同住** `src/backend/common/tmux_utf8.rs`，
 /// 于是 `file!()` 自摘恰好摘掉了家那一份。剖分之后判据住
 /// `tests/backend/common/tmux_utf8_tests.rs` ⇒ `file!()` 是折返路径 ⇒ 自摘空转 ⇒
@@ -221,7 +221,7 @@ fn both_consumer_layers_reference_the_home_instead_of_declaring_their_own() {
 #[test]
 fn the_one_home_scan_actually_bites() {
     // ⚠ 夹具的文件名取**中性名**，且下面的断言只认**声明本身**（来自内容），不认路径
-    //   〔`6g`：断言取自夹具的名字会靠路径恒真〕。
+    //   〔断言取自夹具的名字会靠路径恒真〕。
     let homes = kou_jing_homes();
     for (label, kind, ident) in &homes {
         let decl = decl_anchor(kind, ident);

@@ -1,6 +1,6 @@
-//! 〔RL1 · V107〕常驻后端**进程内**的中转：`relay::listen::host` 与它在 `main.rs` 里的那一处接线。
+//! 常驻后端**进程内**的中转：`relay::listen::host` 与它在 `main.rs` 里的那一处接线。
 //!
-//! 判据（记录住 `调研/第四波记录/RL1.md §3` H1–H4）：
+//! 判据（记录住 –H4）：
 //! - H1 交了端口 ⇒ 真在听、真转发一段 SSE（假上游是本文件自己的 socket —— 异源）；
 //! - H2 没交端口 ⇒ `NotAsked`、零监听；交了但起不来（端口被占 / 端口认不出 / 上游配置认不出）⇒ `Failed`，不退出；
 //! - H3 生产接线（`accounts::upstream_select::host_relay`，`main.rs` 调的就是它）在**真子进程**里：
@@ -46,7 +46,7 @@ fn fake_upstream() -> SocketAddr {
     addr
 }
 
-/// 〔TAP〕这几条只量「起没起来 / 转没转发」，不看 tee 抄了什么 ⇒ 给一个自己的 hub（不碰进程级那一个）。
+/// 这几条只量「起没起来 / 转没转发」，不看 tee 抄了什么 ⇒ 给一个自己的 hub（不碰进程级那一个）。
 fn no_tap() -> std::sync::Arc<dyn super::super::TapPort> {
     std::sync::Arc::new(crate::stream::tap::TapHub::default())
 }
@@ -72,7 +72,7 @@ fn creds_fixture(tag: &str) -> std::path::PathBuf {
     p
 }
 
-/// 喂给 `host` 的取值器：端口 ＋ 默认上游 ＋ 凭据路径 ＋〔RK1〕夹具家目录（钥匙文件在它底下，
+/// 喂给 `host` 的取值器：端口 ＋ 默认上游 ＋ 凭据路径 ＋夹具家目录（钥匙文件在它底下，
 /// 预先放好 `door::door_tests::TEST_KEY` —— 不给的话中转会去用户真实的家目录里铸钥匙）。
 fn env_of(
     port: Option<&str>,
@@ -93,7 +93,7 @@ fn env_of(
     }
 }
 
-/// 经中转发一条请求，读完整个应答（带读期限）。〔V141〕带 claude 那个会话标识头（值 `k-rl1`）。
+/// 经中转发一条请求，读完整个应答（带读期限）。带 claude 那个会话标识头（值 `k-rl1`）。
 fn through(addr: SocketAddr) -> String {
     through_with(addr, "x-claude-code-session-id: k-rl1\r\n")
 }
@@ -105,7 +105,7 @@ fn through_with(addr: SocketAddr, extra: &str) -> String {
         .expect("读期限（风险 5x）");
     let body = "{}";
     let req = format!(
-        // 〔RK1〕过门：钥匙段挂在最前、`Host` 用回环字面量。
+        // 过门：钥匙段挂在最前、`Host` 用回环字面量。
         "POST /{}/s/claude-code/acctA/v1/messages HTTP/1.1\r\nHost: 127.0.0.1\r\n{extra}Content-Type: application/json\r\nContent-Length: {}\r\n\r\n{body}",
         door::door_tests::TEST_KEY,
         body.len()
@@ -159,7 +159,7 @@ fn a_handed_port_really_listens_and_forwards_the_upstream_sse_byte_for_byte() {
     assert_eq!(body, SSE_BODY, "下游收到的 SSE 与上游发的逐字节不等");
 }
 
-/// 〔DEL 续 · 主会话裁〕「我们的中转在不在听」读的是**宿主自己那份监听状态**（`设计/20 §3.3`：中转住这个进程里）：
+/// 「我们的中转在不在听」读的是**宿主自己那份监听状态**（中转住这个进程里）：
 /// 起成了 ⇒ 那个口答 `true`；口被别人占着（起不来）⇒ 那个口答 `false` —— 就算口上**确实有人在听**
 /// （正是从外面探会认错的那一形：连得上 ≠ 是我们的）。
 #[test]
@@ -317,7 +317,7 @@ fn the_production_wiring_hosts_the_relay_and_never_writes_tee_lines_to_stdout() 
         )
         .env("CCM_APIKEY_CREDENTIALS", &creds)
         .env("CLAUDE_CONFIG_DIR", &home)
-        // 〔RK1〕钥匙文件落在夹具家目录里（预先放好夹具那一把），不碰用户真实的家目录。
+        // 钥匙文件落在夹具家目录里（预先放好夹具那一把），不碰用户真实的家目录。
         .env("HOME", door::door_tests::seed_test_home(&home))
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
@@ -405,8 +405,8 @@ fn main_hosts_the_relay_exactly_once_between_the_one_shot_dispatch_and_the_carri
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  〔TAP · V124〕tee 的第二个落点：进程内中转抄出来的 SSE 事件交到 tap 口
-//  （设计住仓外 `调研/第四波记录/TAP.md §1.1 · §3`；出处 `设计/20 §8` · `设计/05 §4.5.3` ③）
+// tee 的第二个落点：进程内中转抄出来的 SSE 事件交到 tap 口
+//  （设计住仓外；出处）
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// 手写的一轮上游 SSE：`event:` 行、`data:` 行、空行、`ping`、`[DONE]` 都有（期望值只从这张表来，异源）。
@@ -500,7 +500,7 @@ fn drain(
 }
 
 /// T1：真中转 ＋ 假上游 ⇒ tap 口收到的事件 **==** 上游那一串 `data:`（逐字节、同序；`[DONE]` 与空行不算事件），
-/// 位置号 `n` == 0..k 连续，最后一件是 `End{broken:false}` 且 `n == k`；`stream` == 请求自带的会话标识头（〔V141〕）；
+/// 位置号 `n` == 0..k 连续，最后一件是 `End{broken:false}` 且 `n == k`；`stream` == 请求自带的会话标识头；
 /// 下游收到的字节照旧 == 上游发的（抄一份不动主路）。
 #[test]
 fn tap_gets_every_sse_data_payload_in_order_with_contiguous_positions_and_a_clean_end() {
@@ -537,8 +537,8 @@ fn tap_gets_every_sse_data_payload_in_order_with_contiguous_positions_and_a_clea
     assert_eq!(got, want, "tap 收到的事件序列与上游发的不等");
 }
 
-/// 〔V141 · R1〕**流标签 == claude 请求头里自带的会话标识**，与路径无关（路径里没有会话段）。
-/// 守的要求：用户裁决 V141「中转从 claude 自己发的请求里认出这是哪个会话 …… 启动器不往中转地址里塞任何会话身份」。
+/// **流标签 == claude 请求头里自带的会话标识**，与路径无关（路径里没有会话段）。
+/// 守的要求：「中转从 claude 自己发的请求里认出这是哪个会话 …… 启动器不往中转地址里塞任何会话身份」。
 /// 名单走生产接线（`host` → 上游选择 → 适配层 `session_header`）；缺头 / 值过不了段闸 ⇒ 空标签（前端当匿名流）。
 #[test]
 fn the_stream_label_is_the_session_id_the_agent_sends_in_its_own_request_header() {
@@ -605,7 +605,7 @@ fn the_run_a_request_names_rides_along_with_its_tee_events() {
 }
 
 /// T2：tap 那一侧跟不上（通道只容 1 件、接收端不读）⇒ **下游字节一个不少**；收到的那几件的位置号
-/// 是 0..k 的**真子集**、`End.n == k` ⇒ 缺在哪两号之间，接收侧纯算术算得出（`05 §3.3.4` 的 `Gap` 形）。
+/// 是 0..k 的**真子集**、`End.n == k` ⇒ 缺在哪两号之间，接收侧纯算术算得出（`Gap` 形）。
 /// 同一趟里「没人连着」（发送端不在）⇒ 转发照常、一件都收不到。
 #[test]
 fn a_tap_that_cannot_keep_up_loses_positions_visibly_and_never_touches_the_forwarded_bytes() {

@@ -8,7 +8,7 @@ use super::*;
 ///
 /// # 为什么要有这张表（而不是把它写进某段注释里）
 ///
-/// `K-R62 §0c` 现打到的那条：同一件事按宿主分了三套形状，判定那一半 `fenced_block`
+/// 现打到的那条：同一件事按宿主分了三套形状，判定那一半 `fenced_block`
 /// 已经收了（三套全走 [`find_pair`]），**装与卸那一半没收**。
 /// 那段话本来只活在件文件的正文里 —— 而 `K-R60` / `K-R61` 两件已经连着证明：
 /// **写在注释里而字段 / 判据看不见，等于没写**（一句真话摆错了格，和假话一样是假举证，`K29`）。
@@ -47,7 +47,7 @@ pub(crate) const FENCE_SHAPES: &[FenceShape] = &[
         host: "远端 POSIX 的 ~/<用户选的那份 rc>",
         what_goes_in: "整块别名 snippet（src/shared/ccm-aliases.sh）",
         begin_marker: super::super::block::CCM_PROFILE_BEGIN,
-        // 〔AL2 · 第四波 4D〕远端那两条命令并进 `aliases_block_*`（带 `origin`）⇒ 装口与本机同一处。
+        // 远端那两条命令并进 `aliases_block_*`（带 `origin`）⇒ 装口与本机同一处。
         install_site: "block.rs::install_to_profile",
         uninstall_site: Some("block.rs::uninstall_from_profile"),
         pairing: "fence.rs::find_pair",
@@ -64,10 +64,10 @@ pub(crate) const FENCE_SHAPES: &[FenceShape] = &[
         differs_in: "内容是**现渲**的（命令名与要不要带 cc 函数由界面给），另两套写的是仓里那份文件本身；\
                      而且它要保住 CRLF（fence.rs::detect_eol，`Layout::PowerShell` 那一臂）",
     },
-    // 〔TL1 · 4C〕墓碑：这里从前还有一行 `local-posix-source-line`（本机 rc 里包着「一行 source」的那一对围栏，
-    //   唯一**没有卸口**的一套）。那一步退役了（`设计/71 §6.1`「source 那一行只许一处装」：接上别名文件的那一行只住别名块里，
+    // 墓碑：这里从前还有一行 `local-posix-source-line`（本机 rc 里包着「一行 source」的那一对围栏，
+    //   唯一**没有卸口**的一套）。那一步退役了（「source 那一行只许一处装」：接上别名文件的那一行只住别名块里，
     //   选了 rc 只查不装）⇒ 这一套不再存在，账降一行；「装得进去卸不掉」那一格随之清零。盘上已有的那一块不读不删。
-    // ★★ 〔`K-R62` 09-11〕**本件新加的那条路，就是这一行。**
+    // ★★ **本件新加的那条路，就是这一行。**
     FenceShape {
         id: "local-posix-block",
         host: "本机 POSIX 的 ~/<用户选的那份 rc>",
@@ -89,7 +89,7 @@ pub(crate) const FENCE_SHAPES: &[FenceShape] = &[
     },
 ];
 
-/// 〔MIG-3a〕从 monitor 搬来时，住址抽取器（`structural_scan::symbol_addresses` / `fn_names_starting_with`）留在 monitor ——
+/// 从 monitor 搬来时，住址抽取器（`structural_scan::symbol_addresses` / `fn_names_starting_with`）留在 monitor ——
 /// 这里是本族够用的两把小尺（`<文件>.rs::<符号>` 形态 · 生产段里 `fn <前缀>…` 的名字）。
 fn symbol_addresses(text: &str) -> Vec<String> {
     let mut out = Vec::new();
@@ -231,7 +231,7 @@ fn every_fence_shape_names_code_addresses() {
 /// ★★ **围栏标记指常量，不抄字面量** —— 而且「哪两套该共用、哪两套不许共用」判得出来。
 ///
 /// 共用错了的后果不是难看，是**装一个把另一个整块替换掉**
-/// （〔TL1〕从前 `account_aliases` 那对标记刻意不同前缀；那一对随代装 rc 那一行退役了）。
+/// （从前 `account_aliases` 那对标记刻意不同前缀；那一对随代装 rc 那一行退役了）。
 #[test]
 fn the_markers_are_shared_exactly_where_they_should_be() {
     let by = |id: &str| {
@@ -242,7 +242,7 @@ fn the_markers_are_shared_exactly_where_they_should_be() {
     };
     let remote = by("remote-posix-block");
     let local_block = by("local-posix-block");
-    // 〔TL1 · 4C〕从前还有 `local-posix-source-line` 那一家（rc 里包一行 source 的第三对围栏），那一步退役、账降一行。
+    // 从前还有 `local-posix-source-line` 那一家（rc 里包一行 source 的第三对围栏），那一步退役、账降一行。
     let windows = by("local-windows-ps");
 
     // ① 两套「整块进 POSIX rc」必须是同一对围栏 —— 那是 `KR62D1`「不是第四套」的一半。
@@ -289,18 +289,18 @@ fn the_pairing_half_is_converged_and_the_install_half_is_not() {
     let mut installs: Vec<&str> = FENCE_SHAPES.iter().map(|s| s.install_site).collect();
     installs.sort_unstable();
     installs.dedup();
-    // 〔TL1 · 4C〕3 → 2：「本机 POSIX 那一行 source」那一套退役（`71 §6.1`：接上别名文件的那一行只住别名块里）。
-    // 〔AL2 · 第四波 4D〕2 → 1：远端那一套并进同一个装口（`install_to_profile`，门按 `origin` 取）—— 收敛了。
+    // 3 → 2：「本机 POSIX 那一行 source」那一套退役（接上别名文件的那一行只住别名块里）。
+    // 2 → 1：远端那一套并进同一个装口（`install_to_profile`，门按 `origin` 取）—— 收敛了。
     assert_eq!(
         installs.len(),
         1,
         "「装」那一半今天有 {} 处独立实现（远端 SFTP · 本机 PowerShell；`K-R62` 新加的那条路**借的是本机 \
-             PowerShell 那一台安装器**，所以不是另一处；原先的第三处「本机 POSIX 那一行 source」〔TL1〕退役了）。\
+             PowerShell 那一台安装器**，所以不是另一处；原先的第三处「本机 POSIX 那一行 source」退役了）。\
              这个数变了就来改它 —— 变小 = 有人收敛了（好事，顺手降账）；变大 = 又长出一套（`KR62D1` 的失效方向）。实得：{installs:?}",
         installs.len()
     );
 
-    // 「有装口没卸口」的那几套，逐条点得出名字 —— 〔TL1 · 4C〕这一格今天**零条**（原先唯一那条
+    // 「有装口没卸口」的那几套，逐条点得出名字 —— 这一格今天**零条**（原先唯一那条
     //   `local-posix-source-line` 随那一步退役了）。再长出一条 ⇒ 红。
     let no_uninstall: Vec<&str> = FENCE_SHAPES
         .iter()
@@ -326,7 +326,7 @@ const SHAPE_FILES: &[(&str, &str)] = &[
     ),
 ];
 
-/// ★★ 〔`K-R63` 09-11〕**这张账的「卸」那一格也是一句申报，而申报要对得上现实。**
+/// ★★ **这张账的「卸」那一格也是一句申报，而申报要对得上现实。**
 ///
 /// # 它补的是哪半边
 ///
@@ -336,7 +336,7 @@ const SHAPE_FILES: &[(&str, &str)] = &[
 /// 也不会有人回来改它。那正是 `registry.rs::TOOLS` 上 `remote-daemon` 栽的坑
 /// （`sftp.rs::uninstall_remote_backend` 是设置面板上的按钮，而字段写着卸不掉）。
 ///
-/// # 🔴 本条同时是 `K-R63 §0c-2` 要的那个**射程读数**
+/// # 🔴 本条同时是要的那个**射程读数**
 ///
 /// 件文件写着：`K-R63` 落地之后要回头看 `local-posix-source-line`
 /// （唯一 `uninstall_site: None` 的一套）红没红，**没红先查射程是不是漏了它**。
@@ -344,7 +344,7 @@ const SHAPE_FILES: &[(&str, &str)] = &[
 /// （下面的计数自检钉死「一行都不许跳过」）。
 ///
 /// 它今天**绿**，而绿的理由写清楚：本条判的是「**申报 ↔ 现实一致**」，
-/// 〔TL1 · 4C 补〕那一行后来整行退役了（`71 §6.1`），今天账上没有 `None` 那一格 —— 下面 `None` 那一臂是给下一条长出来的留的。
+/// 那一行后来整行退役了，今天账上没有 `None` 那一格 —— 下面 `None` 那一臂是给下一条长出来的留的。
 /// 而那一行的申报（`None`）与现实（`account_aliases.rs` 生产段里
 /// 一个 `fn uninstall… / remove… / strip… / purge…` 都没有）**是一致的** ——
 /// 它是**缺实现**，不是**假申报**。要它红需要的是另一条性质
@@ -429,10 +429,10 @@ fn a_shape_that_declares_no_uninstall_really_has_none() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// 〔AL1 · 2026-09-24〕`设计/71 §12.5`：**规则只有一份** —— 拼接与落盘序列的判据
+// **规则只有一份** —— 拼接与落盘序列的判据
 // ═══════════════════════════════════════════════════════════════════════
 
-// 〔W5-ALIAS · 第五波先行〕这里原来是落盘序列 `apply`〔散文墓碑〕的五条判据（相同不写 · 备份只给非空用户文件 ·
+// 这里原来是落盘序列 `apply`〔散文墓碑〕的五条判据（相同不写 · 备份只给非空用户文件 ·
 //   读回不对就撤 · 撤的措辞只说真发生的事 · 读不出就不写）与它的内存落点。那一个序列删了（零调用方：用户文件经后端
 //   `files-put` 写，序列与这几条性质住后端 `control/files_write.rs::put_text` 与它的判据；远端 `ccm` 入口改走 `sftp::upload_verified`）。
 
@@ -465,16 +465,16 @@ fn splicing_is_idempotent_and_keeps_every_user_line() {
     }
 }
 
-/// 🔴 **规则只有一个住址**：两家（别名文件 `account_aliases.rs` · 别名块 `profile_installer.rs`，〔W5-ALIAS〕远端 rc 那一份
+/// 🔴 **规则只有一个住址**：两家（别名文件 `account_aliases.rs` · 别名块 `profile_installer.rs`，远端 rc 那一份
 /// 也搬进了后者）的生产段里，「配对 ＋ 读回比对」的原语**零命中**。
-/// 〔W5-ALIAS · 第五波先行〕正控换了：从前是本模块 `apply`〔散文墓碑〕里恰好一处 `verify_readback(`；那个序列删了
+/// 正控换了：从前是本模块 `apply`〔散文墓碑〕里恰好一处 `verify_readback(`；那个序列删了
 /// （零调用方），「备份 · 原子替换 · 回读 · 回滚」今天只住后端 `control/files_write.rs::put_text` —— 正控钉它在、且恰好一处定义；
 /// 本模块生产段里**没有**任何异步落盘序列（`async fn` 零处）。别名块「写口只有一个」那条住
 /// `block_tests.rs::the_alias_block_is_written_through_exactly_one_door`。
 ///
 /// 死值验：往 `account_aliases.rs` 的写别名文件那一跳里放回一行
 /// `verify_and_rollback(`（一个回滚写入器的调用形）⇒ 本条红在第一个断言。
-/// 〔TL1 · 4C〕原句点的是代装 rc 那一行的那一跳（`ensure_rc_source_line`〔散文墓碑〕），那一跳退役了。
+/// 原句点的是代装 rc 那一行的那一跳（`ensure_rc_source_line`〔散文墓碑〕），那一跳退役了。
 #[test]
 fn the_write_rule_has_exactly_one_home() {
     let root = crate::guard_support::repo_root().join("src/backend/assets/aliases");

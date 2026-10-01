@@ -1,4 +1,4 @@
-//! 〔步 24f〕保鲜的另一半（挂 watch 那一档）的判据。
+//! 保鲜的另一半（挂 watch 那一档）的判据。
 //!
 //! # 它买到的
 //!
@@ -84,7 +84,7 @@ fn going_over_the_cap_is_reported_not_swallowed() {
 
 /// 上限与**本机现打**的 `inotify` 上限对比。
 ///
-/// 🔴 **绝对量比，不写成百分比**（`设计/17 §6.9` 那条现打逼出来的纪律：
+/// 🔴 **绝对量比，不写成百分比**（那条现打逼出来的纪律：
 /// 闸不许比量具自身的分辨率还细）。
 #[test]
 fn the_cap_leaves_room_for_thousands_of_backends_on_one_machine() {
@@ -315,8 +315,8 @@ fn the_real_watcher_arms_and_delivers() {
     );
 }
 
-/// 〔W5-FILES〕要求住址：`设计/60 §3.7`「`browse_watch::BrowseWatcher` **零生产调用方** ⇒ `files-browse` 买到的是『发命令那一刻重列一遍』，
-/// 不是『一有动静就跟着新』（要有人在后端进程里长期持有那个监听器）」＋ `设计/96 §2.9` 仍开着第一条。
+/// 要求：「`browse_watch::BrowseWatcher` **零生产调用方** ⇒ `files-browse` 买到的是『发命令那一刻重列一遍』，
+/// 不是『一有动静就跟着新』（要有人在后端进程里长期持有那个监听器）」＋仍开着第一条。
 ///
 /// 走的是**线上那一面**（`files-browse`），不直接碰 `BrowseWatcher`：名单登记之后造一份文件，
 /// 有界等待里 overlay 必须出现它 —— 没有那个长期持有的监听器，overlay 只有登记那一刻的重列，永远等不到。

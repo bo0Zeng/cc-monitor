@@ -1,4 +1,4 @@
-//! 〔PR1 · 2026-09-24〕**四个 target 横向对等** —— `设计/96 §2` 第 3 层的机器形态。
+//! **四个 target 横向对等** —— 第 3 层的机器形态。
 //!
 //! # `K-G6` `KG62`：性质与人群，两行逐字（各自只许有一句）
 //!
@@ -22,15 +22,15 @@
 //!    - `files-read` 逐条的 `targets` 本段不读（开门在写区外，理由住 `lib.rs::TARGET_NARROWINGS` 头注）。
 //! 2. **判的是「做得到」这根轴的声明，不是「编得过」，更不是「真机上跑得起来」。**
 //!    编得过归门禁的 `winchk` / `winchk-backend` / `muslbuild`（**macOS 一格都没有**）；
-//!    真机归 `真相源/106` 那种现打。产物层（每个 `[[bin]]` ↔ 入包路线）归
+//!    真机归那种现打。产物层（每个 `[[bin]]` ↔ 入包路线）归
 //!    `tests/evidence/K-R124-ruler.py` ⑭，本份不复制。
-//! 3. **macOS 那一列是纯声明**：没有产线、没有编译门禁（`设计/96 §7.1.1b` 第 5、6 行），
+//! 3. **macOS 那一列是纯声明**：没有产线、没有编译门禁（第 5、6 行），
 //!    ⇒ 本条对它判的只是「声明上与 Linux 一样」。
 //! 4. **档分得对不对判不了** —— 只判「`why` 的措辞与档不自相矛盾」（判准住 `lib.rs::GapKind` 头注）。
 //! 5. **`CCM_TMUX_CARRIED` 是一条手写的机制声明**：往 `ccm-launcher` 加一条靠 tmux 活着的新能力
 //!    却没登记进它 ⇒ 那条能力在 Windows 上被现推成「做得到」，本条看不见。
 //!    帧面**同形**：一条新命令真起 `tmux` 却没在 `codes` 里声明 `no_tmux`，本条同样看不见。
-//!    〔W5-AUX · 96 #7〕这两形的反方向判据已补在本文件末尾（本条仍只读声明，那两条从实现那一侧对声明）：
+//!    〔96 #7〕这两形的反方向判据已补在本文件末尾（本条仍只读声明，那两条从实现那一侧对声明）：
 //!    [`every_frame_command_that_can_reach_tmux_declares_no_tmux`]（文件级可达 ＋ 登记「tmux 可选」）·
 //!    [`every_ccm_capability_that_rides_tmux_is_declared_tmux_carried`]（真解析器 ＋ 真计划现推 ＋ 登记例外）。
 //!    它们自己的「买不到」写在那一段的段首。
@@ -82,7 +82,7 @@ fn every_gap_speaks_in_the_voice_of_its_own_tier() {
     );
 }
 
-/// 〔TL3 · 审计 F 🔴-11〕V109 点名的那 14 行：`ccm-launcher × Windows` 8 行 ＋ 命令面 × Windows 6 行
+/// 〔审计 F 🔴-11〕V109 点名的那 14 行：`ccm-launcher × Windows` 8 行 ＋ 命令面 × Windows 6 行
 /// （**手抄自 V109 原文**「`TARGET_GAPS` 里 `ccm-launcher × Windows` 那 8 行 ＋ 命令面 6 行继续记欠账」，与理由串异源）。
 const V109_ROWS: &[(&str, &str)] = &[
     ("ccm-launcher", "tmux"),
@@ -104,18 +104,18 @@ const V109_ROWS: &[(&str, &str)] = &[
 /// 理由串里一旦出现就等于替用户选了 V109 三选一里的某一种（丙 · 乙 · 甲）。
 const MECHANISM_WORDS: &[&str] = &["后台服务", "ConPTY", "控制台窗口本身"];
 
-/// 🔴 〔TL3 · 审计 F 🔴-11〕**理由串不替用户选 Windows 那一族的机制。**
+/// 🔴 〔审计 F 🔴-11〕**理由串不替用户选 Windows 那一族的机制。**
 ///
 /// # 守的要求（住址）
 ///
-/// `设计/99 §1` **V109**〔选〕「先不做 Windows 这一族」—— 题：Windows 上会话要能放后台 / 接回 / 看一眼画面 / 往里送字，
+/// **V109**〔选〕「先不做 Windows 这一族」—— 题：Windows 上会话要能放后台 / 接回 / 看一眼画面 / 往里送字，
 /// 用哪种机制（甲 · 控制台窗口本身就是容器 / 乙 · 常驻后端用 ConPTY 托管 / 丙 · 真 Windows 服务）⇒ 都先不做。
-/// `设计/96 §2.3`：「`TARGET_GAPS` 里各行 `why` 的原文仍引 09-21 那句，以 V109 为准」。
+/// 「`TARGET_GAPS` 里各行 `why` 的原文仍引 09-21 那句，以 V109 为准」。
 /// 出处：审计 F 🔴-11 —— 9 行理由串写着「将来由 **Windows 自己的后台服务** 承担」，等于替用户选了丙。
 ///
 /// # 判（两向相等）
 ///
-/// - 理由串里引 `V109` 的行集合 == [`V109_ROWS`]（V109 原文点名的 14 行）—— 同时是正控：扫描器读得到理由串、认得出子串。
+/// - 理由串里引 `V109` 的行集合 == [`V109_ROWS`]（原文点名的 14 行）—— 同时是正控：扫描器读得到理由串、认得出子串。
 /// - 理由串里点名任一机制（[`MECHANISM_WORDS`]）的行 == ∅。
 ///
 /// 买不到：换一个没登记的说法预设机制（新词）看不见；V109 裁定之后这张表要跟着改（选了哪种，哪一格就能写它）。
@@ -142,7 +142,7 @@ fn no_gap_rationale_picks_the_windows_mechanism() {
         .collect();
     assert!(
         picks.is_empty(),
-        "\n🔴 理由串替用户选了 Windows 那一族的机制（V109：甲 · 乙 · 丙都先不做，**机制未定**）：\n{}\n\
+        "\n🔴 理由串替用户选了 Windows 那一族的机制（甲 · 乙 · 丙都先不做，**机制未定**）：\n{}\n\
          ⇒ 改成「等 V109 那一族选定机制」这一类不预设的说法；用户真裁了哪一种，先改本条的 `MECHANISM_WORDS`。",
         picks.join("\n")
     );
@@ -159,9 +159,9 @@ fn no_gap_rationale_picks_the_windows_mechanism() {
 /// - **欠着 12**：同一格的 `tmux` · `attach` · `detach` · `bus-register` · `ccm-sid` · `base-url-across-tmux`
 ///   （原文都答了「暂时不做 / 将来」—— 用户 09-21 裁「Windows 用 Windows 自己的后台服务，后面再做」）；
 ///   ＋ 命令面 × Windows 6 条（帧面 `capture-pane` / `kill` / `launch` ＋ CLI 面同名 3 条，子步 3 被横向对等现推出来）。
-/// - 〔FW5 · 09-24〕**结构 2 → 4**：多了帧面 `files-chmod` 与 CLI 面 `--files-chmod`（× Windows）。
+/// - **结构 2 → 4**：多了帧面 `files-chmod` 与 CLI 面 `--files-chmod`（× Windows）。
 ///   它们不是新裁的差异：`change_mode` 在非 unix 上从来就改不了；FW5 给那条命令声明了 `no_unix_mode` 码，
-///   现推段（`unix_mode_bits_on` × 码）才第一次看见它们（`设计/96 §8.4` 买不到 1 · `§8.5` 待拍 3）。
+///   现推段（`unix_mode_bits_on` × 码）才第一次看见它们（买不到 1 · `§8.5` 待拍 3）。
 ///   档判结构：能力的定义就是「改 unix 权限位」，Windows 没有那套位；那边改访问权限是另一条能力。
 #[test]
 fn both_tiers_have_real_members_and_their_sizes_are_pinned() {
@@ -308,7 +308,7 @@ fn the_target_axis_agrees_with_the_host_tmux_platform() {
     );
 }
 
-/// ★〔FW5〕**unix 权限位那根轴在本机这一格对得上**：[`unix_mode_bits_on`] 给本机的答案 ==
+/// ★**unix 权限位那根轴在本机这一格对得上**：[`unix_mode_bits_on`] 给本机的答案 ==
 /// 这份测试二进制真编进去的 `cfg(unix)`（`change_mode` 走哪一支看的就是它）。
 ///
 /// Windows 那一格由 `lib.rs` 里 `#[cfg(windows)]` 那条编译期断言钉（本机门禁上它不存在）。
@@ -396,7 +396,7 @@ fn every_parity_face_is_populated_on_every_target() {
 
 // ══════════════════ 🔴🔴 正题：四个 target 的能力集两向相等，差异 == 登记表 ══════════════════
 
-/// 四个 target 以 `设计/96` 为准（`§2.9` 那张表：Linux musl / native · Windows · macOS）。
+/// 四个 target 以为准（`§2.9` 那张表：Linux musl / native · Windows · macOS）。
 ///
 /// ⚠ 这里用一个**穷尽的 `match`** 而不是再抄一份名单：[`Target`] 长出第五个成员时本函数编不过，
 /// 于是「`TARGETS` 忘了加它」这一形（新 target 整列不在人群里，对等断言对它全称成立）没有机会发生。
@@ -408,7 +408,7 @@ fn every_variant_is_in_targets(t: Target) -> bool {
     }
 }
 
-/// 🔴🔴 **`设计/96 §2` 第 3 层**：四个 target 的能力集**完全相等**，
+/// 🔴🔴 ** 第 3 层**：四个 target 的能力集**完全相等**，
 /// 不相等的每一格都要在 `TARGET_GAPS` 里有一行（理由 ＋ 档），**两向**。
 ///
 /// # 两侧从哪来（刻意异源）
@@ -434,7 +434,7 @@ fn every_target_has_the_same_capabilities_except_the_registered_gaps() {
     assert_eq!(
         TARGETS.len(),
         4,
-        "target 全集现打 {} 个（`设计/96` 定的是四个：Linux gnu · Linux musl · Windows · macOS）。\n\
+        "target 全集现打 {} 个（定的是四个：Linux gnu · Linux musl · Windows · macOS）。\n\
          变了就回那一篇核「四个」还成不成立，再改这个数。",
         TARGETS.len()
     );
@@ -513,9 +513,9 @@ fn every_target_has_the_same_capabilities_except_the_registered_gaps() {
     );
 }
 
-// ══════════════ 〔W5-AUX · 96 #7〕机制声明的反方向（本文件头注「买不到」第 5 条的兑现）══════════════
+// ══════════════ 〔96 #7〕机制声明的反方向（本文件头注「买不到」第 5 条的兑现）══════════════
 //
-// 要求住址：`设计/96 §2.3`「买不到」第 2 条逐字「**机制声明没有反方向判据**：`CCM_TMUX_CARRIED` 漏登一条靠 tmux 的新能力、
+// 要求：「买不到」第 2 条逐字「**机制声明没有反方向判据**：`CCM_TMUX_CARRIED` 漏登一条靠 tmux 的新能力、
 // 或一条新命令真起 `tmux` 却没声明 `no_tmux`，看不见」。现推（`capabilities_on`）只读声明 —— 声明漏一格，
 // 那条能力在 Windows 上就被现推成「做得到」，而上面那条两向相等照样绿。下面两条从**实现**那一侧去对声明：
 //
@@ -543,7 +543,7 @@ fn backend_tree() -> Tree {
     guard_core::scan_tree!(&root, &["rs"])
         .into_iter()
         .map(|(p, raw)| {
-            // 〔RE〕顺着 `#[path]` 收进来的（面 B 成员住 `src/comms/outward/`）按模块住址认。
+            // 顺着 `#[path]` 收进来的（面 B 成员住 `src/comms/outward/`）按模块住址认。
             let rel = guard_core::module_address(&root, &p);
             (rel, guard_core::production_code(&raw))
         })
@@ -811,37 +811,37 @@ fn handler_files(
 const REACHES_TMUX_WITHOUT_NO_TMUX: &[(&str, &str)] = &[
     (
         "aliases-block-install",
-        "〔MIG-3a〕别名那一族（`assets/aliases/`）只从 `control/ccm/mod.rs` 取 `SUBCOMMAND_WORD` 那一个词（命令名 `ccm`）——\
+        "别名那一族（`assets/aliases/`）只从 `control/ccm/mod.rs` 取 `SUBCOMMAND_WORD` 那一个词（命令名 `ccm`）——\
          按文件画的引用图因此连到了 tmux；本族不问 tmux、不起 tmux（tmux 那几格是能力闸，按方言判，`Caps::of`）",
     ),
     (
         "aliases-block-remove",
-        "〔MIG-3a〕别名那一族（`assets/aliases/`）只从 `control/ccm/mod.rs` 取 `SUBCOMMAND_WORD` 那一个词（命令名 `ccm`）——\
+        "别名那一族（`assets/aliases/`）只从 `control/ccm/mod.rs` 取 `SUBCOMMAND_WORD` 那一个词（命令名 `ccm`）——\
          按文件画的引用图因此连到了 tmux；本族不问 tmux、不起 tmux（tmux 那几格是能力闸，按方言判，`Caps::of`）",
     ),
     (
         "aliases-block-render",
-        "〔MIG-3a〕别名那一族（`assets/aliases/`）只从 `control/ccm/mod.rs` 取 `SUBCOMMAND_WORD` 那一个词（命令名 `ccm`）——\
+        "别名那一族（`assets/aliases/`）只从 `control/ccm/mod.rs` 取 `SUBCOMMAND_WORD` 那一个词（命令名 `ccm`）——\
          按文件画的引用图因此连到了 tmux；本族不问 tmux、不起 tmux（tmux 那几格是能力闸，按方言判，`Caps::of`）",
     ),
     (
         "aliases-install",
-        "〔MIG-3a〕别名那一族（`assets/aliases/`）只从 `control/ccm/mod.rs` 取 `SUBCOMMAND_WORD` 那一个词（命令名 `ccm`）——\
+        "别名那一族（`assets/aliases/`）只从 `control/ccm/mod.rs` 取 `SUBCOMMAND_WORD` 那一个词（命令名 `ccm`）——\
          按文件画的引用图因此连到了 tmux；本族不问 tmux、不起 tmux（tmux 那几格是能力闸，按方言判，`Caps::of`）",
     ),
     (
         "aliases-read",
-        "〔MIG-3a〕别名那一族（`assets/aliases/`）只从 `control/ccm/mod.rs` 取 `SUBCOMMAND_WORD` 那一个词（命令名 `ccm`）——\
+        "别名那一族（`assets/aliases/`）只从 `control/ccm/mod.rs` 取 `SUBCOMMAND_WORD` 那一个词（命令名 `ccm`）——\
          按文件画的引用图因此连到了 tmux；本族不问 tmux、不起 tmux（tmux 那几格是能力闸，按方言判，`Caps::of`）",
     ),
     (
         "aliases-render",
-        "〔MIG-3a〕别名那一族（`assets/aliases/`）只从 `control/ccm/mod.rs` 取 `SUBCOMMAND_WORD` 那一个词（命令名 `ccm`）——\
+        "别名那一族（`assets/aliases/`）只从 `control/ccm/mod.rs` 取 `SUBCOMMAND_WORD` 那一个词（命令名 `ccm`）——\
          按文件画的引用图因此连到了 tmux；本族不问 tmux、不起 tmux（tmux 那几格是能力闸，按方言判，`Caps::of`）",
     ),
     (
         "powershell-policy-set",
-        "〔WF1 · L〕与别名那一族同住 `assets/aliases/mod.rs`（引用图按文件算，因此连带）；设执行策略本身只起 PowerShell，不碰 tmux",
+        "与别名那一族同住 `assets/aliases/mod.rs`（引用图按文件算，因此连带）；设执行策略本身只起 PowerShell，不碰 tmux",
     ),
     (
         "accounts-add",
@@ -887,7 +887,7 @@ const REACHES_TMUX_WITHOUT_NO_TMUX: &[(&str, &str)] = &[
     ("bus-state", "同 `bus-list`（`agents` 那一半就是 `bus-list` 那一个函数）"),
     (
         "ccm-probe",
-        "〔E2〕同 `ccm-print` 那一族（`control/ccm/mod.rs`）：`--ccm-probe` 那几行里 `capabilities=` 按本二进制的平台档摘掉 tmux 载体，\
+        "同 `ccm-print` 那一族（`control/ccm/mod.rs`）：`--ccm-probe` 那几行里 `capabilities=` 按本二进制的平台档摘掉 tmux 载体，\
          不问 tmux server；命令本身恒答",
     ),
     (
@@ -898,10 +898,10 @@ const REACHES_TMUX_WITHOUT_NO_TMUX: &[(&str, &str)] = &[
     ),
     // 〔合并 SH1 × W5-AUX 时本判据当场点出〕
     ("bus-inbox", "同 `bus-list` 那个文件（`control/cc_bus.rs` 经 gate 挂 `live`）；读收件箱本身转调 `cc-log`，不用 tmux"),
-    ("resync", "〔RESYNC · V149〕打标经 `identity_tag::tag`：不在 tmux / tmux 起不来 ⇒ 那个会话不打（结局说进日志），对齐照做、照回差异；它的能力是对表，不是 tmux"),
-    ("hooks-diag", "〔MIG-3b〕同 `mcp-read`：只因与 `tmux-list` 同住 `feature_face.rs` 被连带；读 settings ＋ stat 本身不碰 tmux"),
-    ("tmux-list", "〔SH1〕`tmux_observe::list_for_query` 问不到 tmux ⇒ 回 `installed: false` ＋ 空行（如实说没装），命令照答，不回 `no_tmux`"),
-    ("tmux-name-mint", "〔FIX4 · J7〕铸名只拿会话快照避让：这台没装 tmux ⇒ 一个名字都没占 ⇒ 交基名，命令照答，不回 `no_tmux`（起不起得来归起会话那一步说）"),
+    ("resync", "打标经 `identity_tag::tag`：不在 tmux / tmux 起不来 ⇒ 那个会话不打（结局说进日志），对齐照做、照回差异；它的能力是对表，不是 tmux"),
+    ("hooks-diag", "同 `mcp-read`：只因与 `tmux-list` 同住 `feature_face.rs` 被连带；读 settings ＋ stat 本身不碰 tmux"),
+    ("tmux-list", "`tmux_observe::list_for_query` 问不到 tmux ⇒ 回 `installed: false` ＋ 空行（如实说没装），命令照答，不回 `no_tmux`"),
+    ("tmux-name-mint", "铸名只拿会话快照避让：这台没装 tmux ⇒ 一个名字都没占 ⇒ 交基名，命令照答，不回 `no_tmux`（起不起得来归起会话那一步说）"),
     ("mcp-read", "与 `tmux-list` 同一个宿主 `feature_face::answer`（引用图按文件算，因此连带）；读 MCP 本身不碰 tmux"),
     ("tasks-list", "同 `mcp-read`：只因与 `tmux-list` 同住 `feature_face.rs` 被连带；本身不碰 tmux"),
 ];
@@ -914,7 +914,7 @@ const NO_HANDLER_PATH: &[(&str, &str)] = &[
     ),
     (
         "link-close",
-        "`Run::Builtin`：链路四条住 `inbound::dispatch` 的硬臂（〔SR1a〕）",
+        "`Run::Builtin`：链路四条住 `inbound::dispatch` 的硬臂",
     ),
     ("link-credit", "同上"),
     ("link-data", "同上"),
@@ -929,7 +929,7 @@ const NO_HANDLER_PATH: &[(&str, &str)] = &[
     ("transfer-upload", "同上"),
     (
         "remote-probe",
-        "〔MIG-1 收尾〕`inbound::dispatch` 的硬臂（进度格要拿本连接的应答通道）；本体 `dial::probe` 只拨 SSH、读 hello、发一次 ping，不起 tmux",
+        "`inbound::dispatch` 的硬臂（进度格要拿本连接的应答通道）；本体 `dial::probe` 只拨 SSH、读 hello、发一次 ping，不起 tmux",
     ),
 ];
 
@@ -1089,7 +1089,7 @@ const CCM_TMUX_EXCEPTIONS: &[(&str, bool, &str)] = &[
     (
         "ccm-sid",
         true,
-        "直路上**有**效果（〔S5〕启动期令牌，计划与基线不同 ⇒ 计划层判它「不靠 tmux」），但 Windows 上后端读不到别的进程的环境 ⇒ 认不回 agent 进程 —— 平台原语那一层计划里看不见，归 tmux 档（`control/ccm/mod.rs::CCM_TMUX_CARRIED` 那一行的依据）",
+        "直路上**有**效果（启动期令牌，计划与基线不同 ⇒ 计划层判它「不靠 tmux」），但 Windows 上后端读不到别的进程的环境 ⇒ 认不回 agent 进程 —— 平台原语那一层计划里看不见，归 tmux 档（`control/ccm/mod.rs::CCM_TMUX_CARRIED` 那一行的依据）",
     ),
     ("new", false, "默认动作本身：探针与基线同形是定义使然（「直路上有没有效果」对它不成立）"),
     ("print", false, "渲染方式（吐出计划还是执行它），不进计划 —— 计划与基线同形是定义使然"),
@@ -1119,7 +1119,7 @@ fn every_ccm_capability_that_rides_tmux_is_declared_tmux_carried() {
     }]);
     let plan_of = |args: &[&str]| -> Result<Plan, String> {
         let a: Vec<String> = args.iter().map(|s| s.to_string()).collect();
-        // 〔V151〕探针沿用 V138 写法（ccm 选项在前）⇒ 喂解析器前换成 V151 排列。
+        // 探针沿用 V138 写法（ccm 选项在前）⇒ 喂解析器前换成 V151 排列。
         match parse(&crate::control::ccm::argv::tests::v138_to_v151(&a)) {
             Ok(Parsed::Opts(o)) => build(&o, &env, &table, None).map_err(|d| d.0),
             Ok(Parsed::Early(e)) => Err(format!("落进了立即结束那一支：{e:?}")),

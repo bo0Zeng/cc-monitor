@@ -2,7 +2,6 @@
 //!
 //! 核原文：`bus-list` 节逐字「`live` / `ccm_sid` 由后端 **去问 tmux**（一次 `list-sessions` 列全部，不是每个成员探一次）」——
 //! 本族判问一次必重探、焐的陈值不外交、全模块只有一处起 tmux。
-//! ⚠ 铸名避让那一半（问一次就刷新的已占用名单）只在决策记录 R52 里，设计篇与红线族都没写成要求 —— 这一半住址偏弱。〔JA1 点址 2026-09-24〕
 
 use super::*;
 
@@ -89,7 +88,7 @@ fn the_stale_read_door_never_appears_in_production_code() {
     // ⚠ **必须走 `scan_tree!`，不许自己 `read_dir`** —— 裸遍历会让判据在**自己的语料**
     //   里找到自己 ⇒ 恒绿；那条纪律由 monitor 侧 `scanning_guard_registry` 机检
     //   （本条第一版就是这么红的）。
-    // ⚠ 〔`P4` 2026-09-21〕宏自称的「摘掉调用者自己那一份」**在这一处不生效**
+    // ⚠ 宏自称的「摘掉调用者自己那一份」**在这一处不生效**
     //   （判据由 `#[path]` 挂载 ⇒ `file!()` 是折返路径 ⇒ 后缀比不命中）。
     //   本条不在自己的语料里靠的是**住址**：它住 `tests/backend/common/`，扫的是 `src/backend`。
     let src_dir = crate::guard_support::src_root();
@@ -124,7 +123,7 @@ fn the_stale_read_door_never_appears_in_production_code() {
 /// 为什么这一条只能是「扫源码」、以及它守不住什么，见 `control/gate.rs` 同名判据的头注
 /// （行为那一半的死值在 `tests/evidence/K-R12-deathvalue.md`）。
 ///
-/// 〔IV1 · V121〕要求住址：`INVARIANTS §49`（tmux 打印通道必须是 UTF-8，段数下溢出声）。
+/// 要求住址：`INVARIANTS §49`（tmux 打印通道必须是 UTF-8，段数下溢出声）。
 #[test]
 fn the_one_list_sessions_call_asks_for_a_utf8_client_before_the_subcommand() {
     const FLAG_IDENT: &str = "UTF8_CLIENT_FLAG";
@@ -162,7 +161,7 @@ fn the_one_list_sessions_call_asks_for_a_utf8_client_before_the_subcommand() {
 
 /// ★ `K-R12 J1`：段数下溢 ⇒ 整行不当好数据（本处这一侧）。
 ///
-/// 〔IV1 · V121〕要求住址：`INVARIANTS §49`（tmux 打印通道必须是 UTF-8，段数下溢出声）。
+/// 要求住址：`INVARIANTS §49`（tmux 打印通道必须是 UTF-8，段数下溢出声）。
 #[test]
 fn a_tab_starved_line_is_dropped_instead_of_becoming_a_session() {
     // 通道被改写：TAB 变 `_` ⇒ 整行只切出 1 段。

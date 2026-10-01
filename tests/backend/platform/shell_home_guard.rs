@@ -1,4 +1,4 @@
-//! 住址：`设计/99 §1` V156 ——「生成alias这个东西是不是也应该后端搞? 这样就可以融入os适配层」⇒ shell 方言知识只住后端 OS 适配层
+//! ——「生成alias这个东西是不是也应该后端搞? 这样就可以融入os适配层」⇒ shell 方言知识只住后端 OS 适配层
 //! `platform/shell/`（判据原文：「PowerShell / fish 语法字面量在 `platform/shell/` 之外零命中（两向）」；`4d-lanes` OSA 加了 POSIX 那几样）。
 //!
 //! 人群：后端 `src/backend/` 生产段（`guard_core::production_code`：剥注释与测试段）里**字符串字面量的内容**
@@ -55,7 +55,7 @@ const PROSE: &[(&str, &str, usize)] = &[
     ("lib.rs", "exec ", 1),
     // 判活那一格的说明（「exec 窗口，或进程已成僵尸」）。
     ("platform/proc.rs", "exec ", 1),
-    // 〔MIG-3b 续〕足迹申报表里 `ccm` 远端那一份碰的 rc 文件（`~/.bashrc`，一条**申报路径**，给人看「动过哪份文件」，不产 shell）。
+    // 足迹申报表里 `ccm` 远端那一份碰的 rc 文件（`~/.bashrc`，一条**申报路径**，给人看「动过哪份文件」，不产 shell）。
     ("footprint/registry.rs", ".bashrc", 1),
 ];
 
@@ -228,7 +228,7 @@ fn shell_dialect_syntax_lives_only_in_the_platform_shell_layer() {
         .collect();
     assert_eq!(
         outside, want,
-        "shell 方言的写法长在了 `platform/shell/` 之外（V156：方言知识只住后端 OS 适配层）。\n\
+        "shell 方言的写法长在了 `platform/shell/` 之外（方言知识只住后端 OS 适配层）。\n\
          ⇒ 那一句改调 `platform::shell::{{posix, powershell, dialect}}`；是散文不是 shell 的，写进 `PROSE` 并说清。"
     );
     let inside: BTreeSet<&str> = all
@@ -300,7 +300,7 @@ fn sq_census_of(src: &str) -> BTreeMap<&'static str, usize> {
         .collect()
 }
 
-/// ★ 住址：`设计/99 §2.3`「高危四条（M/N PowerShell 引号注入 …）发版前修」。
+/// ★ 要求：「高危四条（M/N PowerShell 引号注入 …）发版前修」。
 /// 后端生产段里 PowerShell 单引号字面量只有一个出口（`platform/shell/dialect.rs::ps_literal`）：
 /// 两根手写形的命中 == [`SQ_ELSEWHERE`]（两向）；正控：往副本里塞回旧的只转 ASCII 那一形数得出。
 #[test]
@@ -333,10 +333,10 @@ fn powershell_single_quoted_literals_have_one_exit() {
     );
 }
 
-/// 〔WF1 · F〕家目录那两个环境变量名（字面量**整串相等**才算，`"$HOME/…"` 这类 shell 文本不算）。
+/// 家目录那两个环境变量名（字面量**整串相等**才算，`"$HOME/…"` 这类 shell 文本不算）。
 const HOME_VARS: &[&str] = &["HOME", "USERPROFILE"];
 
-/// 后端生产段里允许的命中（逐条说清）。〔P5〕读法本身住共享契约 `creds_core::store::home_dir_on`，后端一处都不写。
+/// 后端生产段里允许的命中（逐条说清）。读法本身住共享契约 `creds_core::store::home_dir_on`，后端一处都不写。
 const HOME_ELSEWHERE: &[(&str, &str, usize)] = &[
     // 交给插件子进程**透传**的变量名表（不是读家目录）。
     ("plugin/invoke.rs", "HOME", 1),
@@ -353,10 +353,10 @@ fn home_census_of(src: &str) -> (BTreeMap<&'static str, usize>, usize) {
     (vars, prod.matches("env::home_dir").count())
 }
 
-/// ★ 住址：`设计/99 §2.3`「高危四条 … 与中低各条发版前修」· `第四波记录/WIN3.md §2` F（后端多处只读 `HOME`、另有多处各自手写 `HOME.or(USERPROFILE)`）。
-/// 〔P5 · 主会话 09-29 裁〕读家目录的规矩只在共享契约 `creds_core::store::home_dir_on` 一处（后端 `platform::paths::home_dir` 转调它）：
+/// ★ 要求：「高危四条 … 与中低各条发版前修」（后端多处只读 `HOME`、另有多处各自手写 `HOME.or(USERPROFILE)`）。
+/// 读家目录的规矩只在共享契约 `creds_core::store::home_dir_on` 一处（后端 `platform::paths::home_dir` 转调它）：
 /// 后端生产段 `"HOME"` / `"USERPROFILE"` 字面量的 `(文件, 名字) → 处数` == [`HOME_ELSEWHERE`]（两向）· 契约那份各恰好 1 处；
-/// `std::env::home_dir` 的调用零处（〔P2〕`dial/ssh_config.rs` 那最后一处改调了 `platform::paths::home_dir`）。
+/// `std::env::home_dir` 的调用零处（`dial/ssh_config.rs` 那最后一处改调了 `platform::paths::home_dir`）。
 /// 正控：往副本里塞回一处手写读数 · 一处 `std::env::home_dir` 都数得出。
 #[test]
 fn the_home_directory_is_read_in_one_place() {

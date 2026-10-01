@@ -1,11 +1,11 @@
-//! 〔F7c · 第三波 · 2026-09-24〕`control/files_commit.rs` 的行为判据 —— **上传的提交**。
+//! `control/files_commit.rs` 的行为判据 —— **上传的提交**。
 //!
 //! 全部在本机临时目录上真跑（一个假的 `home` ＋ 一个目标根），不是源码扫描。
 //!
 //! # 买到什么
 //!
 //! - 提交**先过围栏**：目标是一份会话文件 / 带上跳段 ⇒ 拒，而且盘上零新增、暂存件原样留着
-//!   （把提交改成「直接改名到拼出来的路径」⇒ 这里当场红，见 `设计/60 §13.6` 判据 3）；
+//!   （把提交改成「直接改名到拼出来的路径」⇒ 这里当场红，见）；
 //! - 两支各自的语义：不覆盖 ⇒ 目标已在就拒、目标**一个字节没动**；覆盖 ⇒ 整份换掉；
 //! - 暂存件的路径**调用方指不到**：键不合法 ⇒ 拒（`../` · 大写 · 长度不对）；
 //! - 暂存件被**消耗**（改名，不是复制）：提交成功后暂存区里那一份没了 —— 暂存区清理的「传完」那一格。
@@ -17,7 +17,7 @@
 use super::*;
 use crate::control::files_write::overwrite_text;
 
-/// 〔FW1〕此刻暂存区里这个键那份暂存件的整份摘要（提交时的 `expect`）。没有 / 键不合法 ⇒ 全零串（那几条判的是别的拒）。
+/// 此刻暂存区里这个键那份暂存件的整份摘要（提交时的 `expect`）。没有 / 键不合法 ⇒ 全零串（那几条判的是别的拒）。
 fn staged_sha(home: &Path, key: &str) -> String {
     staged_path(home, key)
         .ok()
@@ -125,9 +125,9 @@ fn commit_with_overwrite_replaces_the_target_whole() {
 
 /// 🔴🔴 **提交先过路径解析**：目标带上跳段 / 是绝对路径 ⇒ 拒；盘上零新增；暂存件原样。
 ///
-/// 这一条就是 `设计/60 §13.6` 判据 3 的行为那一半：把 `commit_upload` 里那句
+/// 这一条是行为那一半：把 `commit_upload` 里那句
 /// 路径解析换成「直接拼 `root.join(rel)`」⇒ 上跳那一格会真的落到根外 ⇒ 红。
-/// 〔FN1 · V119〕从前第一格是「目标是一份会话文件 ⇒ 拒」；用户「文件管理器全部都可以改. 不需要任何围栏」
+/// 从前第一格是「目标是一份会话文件 ⇒ 拒」；用户「文件管理器全部都可以改. 不需要任何围栏」
 /// ⇒ 那一格翻成正控（提交**落得进**会话文件那个位置），见本条末尾。
 #[test]
 fn commit_goes_through_the_fence_and_leaves_the_disk_alone_when_refused() {
@@ -154,7 +154,7 @@ fn commit_goes_through_the_fence_and_leaves_the_disk_alone_when_refused() {
         );
     }
     assert_eq!(std::fs::read(&staged).unwrap(), b"would clobber a session");
-    // 〔FN1 · V119〕正控：同一份暂存件提交到会话文件那个位置 ⇒ 落得进去。
+    // 正控：同一份暂存件提交到会话文件那个位置 ⇒ 落得进去。
     commit_upload(
         &home,
         KEY,
@@ -251,7 +251,7 @@ fn the_wire_face_requires_an_explicit_overwrite_and_knows_only_its_command() {
     }
 }
 
-// ═══ 孤儿扫（`设计/60 §13.2 ④`：暂存区清理只靠事件 —— 这一格的事件是「一次提交成功」）═══
+// ═══ 孤儿扫（暂存区清理只靠事件 —— 这一格的事件是「一次提交成功」）═══
 
 /// 把一份暂存件的修改时间拨到 `secs`（判据自己定时间，不等墙钟）。
 fn set_mtime(p: &Path, secs: u64) {
@@ -332,7 +332,7 @@ fn a_successful_commit_is_the_event_that_sweeps() {
     );
 }
 
-// ═══ 〔F9c · 第四波〕存盘的块：`files-stage-chunk` ＋ `files-commit-text` ═══
+// ═══ 存盘的块：`files-stage-chunk` ＋ `files-commit-text` ═══
 
 /// 一台还**没有**暂存区的 home ＋ 一个目标根（块那一条要自己建暂存区）。
 fn bare_rig(tag: &str) -> (PathBuf, PathBuf) {
@@ -355,7 +355,7 @@ fn send_chunk(home: &Path, key: &str, seq: u64, bytes: &[u8]) -> Answer {
 
 /// 经线上那一面提交。
 fn send_commit(home: &Path, key: &str, chunks: u64, bytes: u64, root: &Path, rel: &str) -> Answer {
-    // 〔FW1〕CAS 必给：交「此刻盘上那一份」的摘要（读不到就交一个全零串 —— 那一形由判据自己看码）。
+    // CAS 必给：交「此刻盘上那一份」的摘要（读不到就交一个全零串 —— 那一形由判据自己看码）。
     let expect = std::fs::read(root.join(rel))
         .map(|b| content_sha256(&b))
         .unwrap_or_else(|_| "0".repeat(crate::control::files_write::SHA256_HEX_LEN));
@@ -612,7 +612,7 @@ fn a_chunk_is_written_once_and_never_through_a_link() {
 }
 
 /// ★ 提交先过写面那道路径解析：上跳 / 不存在的目标 ⇒ 拒、盘上零改动、块照样删掉。
-/// 〔FN1 · V119〕从前第一格是「会话文件 ⇒ 拒」；今天那一格翻成正控：存盘改得动会话文件。
+/// 从前第一格是「会话文件 ⇒ 拒」；今天那一格翻成正控：存盘改得动会话文件。
 #[test]
 fn a_text_commit_goes_through_the_write_fence() {
     let (home, root) = bare_rig("cfence");
@@ -620,7 +620,7 @@ fn a_text_commit_goes_through_the_write_fence() {
     std::fs::create_dir_all(&proj).unwrap();
     let session = proj.join("s.jsonl");
     std::fs::write(&session, b"{}\n").unwrap();
-    // 〔FW1 · 第四波 4D〕不存在的目标从前是 `refused`（解不到底）；带了 CAS 之后是 `stale`（「你打开的时候还在」）—— 逐格钉码。
+    // 不存在的目标从前是 `refused`（解不到底）；带了 CAS 之后是 `stale`（「你打开的时候还在」）—— 逐格钉码。
     for (i, (rel, code)) in [("../escape.txt", "refused"), ("nope.txt", "stale")]
         .iter()
         .enumerate()
@@ -697,7 +697,7 @@ fn the_sweep_also_collects_stale_chunks() {
     }
 }
 
-/// 〔FW1 · 第四波 4D〕**分块那一支同一道 CAS**（主会话裁 D-c；两支存盘同一种结果）：盘上那份在读之后被改了 ⇒ `stale`，
+/// **分块那一支同一道 CAS**（主会话裁 D-c；两支存盘同一种结果）：盘上那份在读之后被改了 ⇒ `stale`，
 /// 目标一个字节没动、块照样删掉；拿「此刻那一份」的摘要 ⇒ 写成，应答交新摘要 == 写进去那份的。
 #[test]
 fn a_chunked_save_over_a_changed_file_is_stale_like_the_one_line_save() {
@@ -740,9 +740,9 @@ fn a_chunked_save_over_a_changed_file_is_stale_like_the_one_line_save() {
     assert_eq!(e.0, "bad_args");
 }
 
-/// 〔FW1 · 第四波 4D〕提交的整份摘要：**必给**（缺 ⇒ `bad_args`）；对不上 ⇒ `stale`、目标一个字节没动、坏暂存件删掉；
+/// 提交的整份摘要：**必给**（缺 ⇒ `bad_args`）；对不上 ⇒ `stale`、目标一个字节没动、坏暂存件删掉；
 /// 对得上 ⇒ 照旧上位。要求住址：主会话裁 09-25「`files-commit-upload` 必给 `expect:{sha256}` → 远端后端改名上位前核，
-/// 不等 ⇒ stale、删坏暂存件」· `设计/60 §7` 第 8 条。
+/// 不等 ⇒ stale、删坏暂存件」。
 #[test]
 fn the_commit_checks_the_whole_staged_file_against_the_digest_it_is_given() {
     let (home, root) = rig("fw1-digest");
@@ -768,7 +768,7 @@ fn the_commit_checks_the_whole_staged_file_against_the_digest_it_is_given() {
     assert!(!staged.exists());
 }
 
-/// 〔HX1 · RK1 小尾巴〕后端**这一趟建出来的** `~/.cc-monitor` 与暂存区是 0700（不按 umask）；**已在的**不动。
+/// 〔RK1 小尾巴〕后端**这一趟建出来的** `~/.cc-monitor` 与暂存区是 0700（不按 umask）；**已在的**不动。
 /// 守的要求：RK1 报备 §5.4 最后一条「`~/.cc-monitor` 这一层目录若由中转第一个建出来，权限是 umask 默认（本机现打 0775）」，
 /// `4d-lanes.md` HX1 出处「RK1 小尾巴（`~/.cc-monitor` 首建权限按 umask ⇒ 0700）」。形状：两向（新建 ⇒ 0700 · 已在 0755 ⇒ 仍 0755）。
 #[test]
@@ -814,7 +814,7 @@ fn hx1_the_staging_dirs_are_born_private_and_an_existing_one_is_left_alone() {
     std::fs::remove_dir_all(&home).ok();
 }
 
-/// 〔W5-FILES〕要求住址：`设计/60 §7 #7`「跨盘提交与非标准 SFTP 起始目录 —— `staging/` 与目标不在同一个盘 ⇒ `EXDEV`，
+/// 要求：「跨盘提交与非标准 SFTP 起始目录 —— `staging/` 与目标不在同一个盘 ⇒ `EXDEV`，
 /// 上传提交失败原样带回（要做就得『复制 ＋ 删』，一步复制在禁表里）」＋ `§5.1` 那张表「暂存区与目标不同盘 ⇒ `EXDEV` 失败」。
 ///
 /// 注入「改名上位回 `EXDEV`」（跨盘在测试里造不出来，如实）：两支（不覆盖 · 覆盖）各一趟 ⇒ 目标逐字节等于暂存件、暂存件被消耗、
@@ -868,8 +868,8 @@ fn a_cross_device_commit_falls_back_to_copy_and_delete() {
     assert!(!staged.exists());
 }
 
-/// 〔FILES2 · Q5〕线上那一臂：`files-commit-upload` 带 `chunks` ⇒ 先把块拼成暂存件再走同一条提交（整份摘要照核）；
-/// 摘要对不上 ⇒ `stale`、目标不在（块形与 SFTP 那条路同一道 CAS）。要求住址：`设计/60 §7` 第 9 条 Q5。
+/// 线上那一臂：`files-commit-upload` 带 `chunks` ⇒ 先把块拼成暂存件再走同一条提交（整份摘要照核）；
+/// 摘要对不上 ⇒ `stale`、目标不在（块形与 SFTP 那条路同一道 CAS）。。
 #[test]
 fn the_commit_face_assembles_chunks_when_asked() {
     let h = std::env::temp_dir().join(format!("ccm-fc-chunks-{}", std::process::id()));
@@ -903,7 +903,7 @@ fn the_commit_face_assembles_chunks_when_asked() {
     std::fs::remove_dir_all(&h).ok();
 }
 
-/// 〔FILES2 · V152〕`rel` 收 `{"b16": …}`：本机落点是非 UTF-8 名（有损名下载在 Linux 上按原始字节落名）⇒ 落出来的名字逐字节就是它。
+/// `rel` 收 `{"b16": …}`：本机落点是非 UTF-8 名（有损名下载在 Linux 上按原始字节落名）⇒ 落出来的名字逐字节就是它。
 #[test]
 #[cfg(unix)]
 fn the_commit_face_lands_under_a_byte_named_rel() {

@@ -1,6 +1,6 @@
-//! 〔RENDER2 · 第四波〕后端 jsonl 增量读（watcher D 块）的判据。
+//! 后端 jsonl 增量读（watcher D 块）的判据。
 //!
-//! 守的要求：`设计/10 §3.1` A6 逐字「写端写完整 JSON 没写换行就被 kill ⇒ 该行 live 永不投递」。
+//! 守的要求：「写端写完整 JSON 没写换行就被 kill ⇒ 该行 live 永不投递」。
 //! 语料是结构性的假行（`{"n":…}`），不含任何真会话正文。
 
 use super::*;
@@ -26,7 +26,7 @@ fn rig(
     (dir, path, state, FrameSink::new(tx), rx)
 }
 
-/// 这一趟收到的行帧：`(seq, byte_offset)`。〔MOD〕帧上不再带原文（带的是成品；这里的假行没有读者 ⇒ 不带成品），
+/// 这一趟收到的行帧：`(seq, byte_offset)`。帧上不再带原文（带的是成品；这里的假行没有读者 ⇒ 不带成品），
 /// 哪一行由行号与它的末端字节认。
 fn lines(rx: &mut tokio::sync::mpsc::Receiver<Frame>) -> Vec<(u64, u64)> {
     let mut out = Vec::new();
@@ -87,7 +87,7 @@ fn frames(rx: &mut tokio::sync::mpsc::Receiver<Frame>) -> Vec<String> {
     out
 }
 
-/// `设计/10 §7` 第 12 条逐字「要后端给『seq 跨截断稳定』的保证 …… seq ＝ 当前文件里的行号，截断即换代，
+/// 「要后端给『seq 跨截断稳定』的保证 …… seq ＝ 当前文件里的行号，截断即换代，
 /// 先发一帧『这份文件重写了』再从 0 重投」。截短 / 原地改写 / 删了又长回来三种从 0 重读 ⇒ 出声在前、行号从 0 数。
 #[test]
 fn a_reread_restarts_the_line_numbers_after_saying_so() {

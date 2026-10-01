@@ -46,7 +46,7 @@ const FILES_IN_THIS_LAYER: &[&str] = &["discover.rs", "invoke.rs", "mod.rs", "pr
 /// ⚠ 走共享原语而不是自己 `read_dir`：`scanning_guard_registry` 逐字要求如此
 /// （治「判据在自己的语料里找到自己 ⇒ 恒绿」那一族，实测五次）。
 ///
-/// 🔴 〔步 7c 剖分 2026-09-19 · `设计/16 §6.2` A 类 ＋ `§5.4b` 纪律 4〕
+/// 🔴 〔步 7c 剖分 2026-09-19 ·  纪律 4〕
 /// **从 `scan_tree!` 换成 `scan_tree_excluding(.., &[])`，而且那个射程缺口补上了。**
 ///
 /// 上一版的头注逐字写着：`scan_tree!` 按构造摘掉调用者自己那份，「所以下面扫到的集合里
@@ -81,7 +81,7 @@ fn plugin_sources() -> Vec<(String, String)> {
 fn the_plugin_layer_collection_is_complete() {
     let files = plugin_sources();
     let mut got: Vec<String> = files.iter().map(|(n, _)| n.clone()).collect();
-    // 🔴 〔步 7c〕**原来这里有一句 `got.push("mod.rs")`，已删。**
+    // 🔴 **原来这里有一句 `got.push("mod.rs")`，已删。**
     //    它补的是 `scan_tree!` 自摘掉的那一份；剖分之后自摘不再命中（理由见
     //    `plugin_sources` 头注），`mod.rs` 本来就在 `got` 里 ⇒ 补一遍就成了重复项。
     got.sort();
@@ -200,7 +200,7 @@ fn the_port_guard_actually_bites() {
 }
 
 // ───────────────────────────────────────────────────────────────────────
-// 环境那一族〔`K-R26` 09-05〕：**「哪些键交给子进程」只许有一个家**
+// 环境那一族：**「哪些键交给子进程」只许有一个家**
 //
 // 病历住 `invoke::INHERITED_ENV_KEYS` 的头注（本层此前不清环境 ⇒ 子进程继承 backend
 // 的整份环境，常驻监听口的地址与令牌跟着漏过去）。本族守的是**修法不会悄悄散开**：
@@ -251,7 +251,7 @@ fn env_call_census(files: &[(String, String)]) -> Vec<(String, String, usize)> {
 /// - **别处零处**：本层其余文件里一处都没有；
 /// - **调用面登记**：动子进程环境的调用形逐处对账 —— 多一处就得有人来回答一句。
 ///
-/// ⚠ **射程订正**〔`P4` 2026-09-21〕：先前这里写着「采集面里**没有 `mod.rs`**
+/// ⚠ **射程订正**：先前这里写着「采集面里**没有 `mod.rs`**
 /// （`scan_tree!` 按构造摘掉调用者自己）⇒ 有人把第二份白名单写进 `mod.rs` 的生产段，
 /// 本条看不见」。**那个缺口今天不存在**：自摘那一刀在这一处不生效，而 [`plugin_sources`]
 /// 已经改成 `scan_tree_excluding(.., &[])`（明写「一份都不排除」）
