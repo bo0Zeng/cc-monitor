@@ -26,7 +26,6 @@ const FAMILY_B = [
   // 共用的 `entry-render-common.ts`（viewer 不再加载 `main.ts`）。语义一字未改。
   "src/frontend/ui/entry-render-common.ts",
   "src/frontend/ui/remote-launch-run.ts", // 回退：复制命令让用户自己跑
-  "src/frontend/ui/views/panorama.ts", // 代码全景「复制给 agent」（`设计/97` CP7）：贴进对话，不贴进任何配置
   // 〔`设计/50`〕原先这里还有 `src/frontend/ui/views/usage-view.ts`（用量视图里「复制这一屏」）——
   // 用量 ② 轴整轴退役，那份文件整删。
   "src/frontend/ui/paste-block.ts", // 组件自己

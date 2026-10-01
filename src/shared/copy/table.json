@@ -2740,11 +2740,6 @@
       "zh": "✕",
       "args": []
     },
-    "diagramRender.edge.pick": {
-      "kind": "body",
-      "zh": "{base} {candidates} 选 1",
-      "args": ["base", "candidates"]
-    },
     "cards.truncate.ellipsis": {
       "kind": "body",
       "zh": "{text}…",

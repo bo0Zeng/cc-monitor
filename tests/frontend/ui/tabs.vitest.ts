@@ -2633,7 +2633,7 @@ describe("F79 杀死远端 tmux 会话（二次确认 + kill_remote_tmux）", ()
 });
 
 // 〔STC〕「F70 会话改动集聚合」那一组搬进文件末尾「〔STC〕会话事实」那组：改动文件集由后端出成品（口径 · 去重 · 近因序
-//   住 `tests/backend/observe/facts_query_tests.rs`），前端这边只剩「成品 ⇒ `touchedFilesFor` 的门控与透传」。
+//   住 `tests/backend/observe/facts_query_tests.rs`），前端这边只剩「成品 ⇒ 监控板 peek 的透传」。
 
 describe("F91b TabManager.peekSession（监控板内容 peek 纯读派生）", () => {
 
@@ -5836,17 +5836,12 @@ describe("〔STC〕会话事实：后端给了什么 ⇒ tab 上是什么", () =
     expect(home(tm).store.tabs.get("b1")!.forkedFromSessionId).toBe("src"); // 后台 tab 也有 ↳
   });
 
-  it("F70 改动文件集：成品原样透传（近因序由后端排）；远端 / 没有这个会话 ⇒ `touchedFilesFor` 返 null", async () => {
+  it("改动文件集：成品原样透传给监控板 peek（近因序由后端排）；远端问的是那台", async () => {
     answerFacts(() => facts({ touchedFiles: ["/proj/b.rs", "/proj/a.ts"] }));
     tm.onLine(line("s-local", 0));
     tm.onLine(line("s-remote", 0, "devbox"));
     await settle();
-    const info = tm.touchedFilesFor("s-local");
-    expect(info?.origin).toBe(LOCAL_ORIGIN);
-    expect(info?.files).toEqual(["/proj/b.rs", "/proj/a.ts"]);
     expect(tm.peekSession("s-local")!.recentFiles).toEqual(["/proj/b.rs", "/proj/a.ts"]); // F91b：尾 = 最近改
-    expect(tm.touchedFilesFor("s-remote")).toBeNull();
-    expect(tm.touchedFilesFor("does-not-exist")).toBeNull();
     expect(asked.find((a) => a.path.includes("s-remote"))?.origin).toBe("devbox"); // 远端问的是那台
   });
 

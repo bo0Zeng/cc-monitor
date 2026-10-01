@@ -2376,13 +2376,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         //      「代码里没有这个名字」这件事该由本表说出来，而不是靠一处夹具替它遮着。
         //    ⚠ 这正是本条头注那句话的又一个实例：一个名字「在代码里出现过」不等于它活着。
         ("src/frontend/shell/README.md", "daemonless_stream_loop", 1),
-        // 〔P7〕仓外名字（另一个仓）：`types.ts` 是上游 schema 的生成物，它原样带着上游 code-picture 仓的文档注释，
-        //   里面点了上游 `graph::collect_local_types`（住 code-picture 仓；本仓只有它的 vendored 副本，而副本不在本条语料里）。
-        (
-            "src/frontend/ui/panorama/types.ts",
-            "collect_local_types",
-            1,
-        ),
         (
             "src/frontend/shell/src/ssh_source.rs",
             "daemonless_stream_loop",
@@ -2514,18 +2507,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             // 〔搬树 2026-09-18〕散文随测试段搬家，处数一格没变。
             "tests/frontend/shell/local_backend_host_tests.rs",
             "the_two_inputs_at_the_call_site_are_still_the_two_take_points",
-            1,
-        ),
-        // 〔RM1d · 第四波〕`tests/frontend/shell/panorama_tests.rs` 那 1 处 `guard_doc_rel` 的存量行**摘了**：
-        //   那条判据改判上游「算」那一层（`edits::plan_*_doc_link` 过 `guard_doc_rel`），测试段代码里
-        //   有了这个名字（按名字切函数体），它不再「只活在散文里」。
-        // 〔RM1c · 第四波〕`src/frontend/shell/src/panorama.rs` 那 3 处 `symbols_in_file` 的存量行**摘了**：
-        //   独立全景小程序（`src/panorama-engine/main.rs`）的 op 表里有了这个名字（代码侧活了），
-        //   那几句散文从此不再「只活在散文里」。
-        (
-            // 〔步 7c 剖分 2026-09-19〕散文随测试段搬家，处数一格没变。
-            "tests/frontend/shell/panorama_seam_registry_tests.rs",
-            "panorama_raw_query",
             1,
         ),
         (
@@ -3269,31 +3250,11 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             "the_write_side_no_longer_targets_the_legacy_top_level_slot",
             1,
         ),
-        // 🔴 〔RM1f · V108 后半句〕monitor 摘掉内嵌引擎：`panorama.rs` 与它的判据文件删了，三处散文里的旧名挂墓碑。
-        ("src/panorama-engine/main.rs", "collect_symbols_in_file", 1),
-        (
-            "tests/frontend/shell/panorama_seam_registry_tests.rs",
-            "panorama_diagram_kinds",
-            1,
-        ),
+        // 🔴 〔RM1f · V108 后半句〕monitor 摘掉内嵌引擎：`panorama.rs` 与它的判据文件删了，散文里的旧名挂墓碑。
+        //   〔10-01〕代码全景整条摘掉：挂墓碑的那几份文件大多随之删了，只剩增量账里那一行。
         (
             "tests/frontend/shell/parity_ledger_tests.rs",
             "panorama_diagram_kinds",
-            1,
-        ),
-        (
-            "tests/backend/panorama_locus_guard.rs",
-            "the_monitor_tree_keeps_exactly_one_parse_entrance",
-            1,
-        ),
-        (
-            "tests/frontend/shell/plugin_class_registry_tests.rs",
-            "code_picture_is_compiled_into_the_monitor_and_absent_from_the_backend",
-            1,
-        ),
-        (
-            "tests/frontend/ui/panorama/diagram-guards.vitest.ts",
-            "the_diagram_commands_pass_the_upstream_through_untouched",
             1,
         ),
         // 〔S5 · 第四波 · V41〕`parse_remote_hosts` 旧单对象那一支删了，守它的测试随之删；
@@ -4935,8 +4896,6 @@ fn every_prose_tombstone_mark_is_registered() {
         // 〔THIN〕新行两条：全景「那台要哪一格」进了本机常驻后端 —— monitor 那个问 `uname` 的口（`probe_key`）原处一块 · 后端那一节点它的旧名一块。
         ("src/frontend/shell/src/byte_table.rs", 1),
         ("src/backend/control/deploy_plan.rs", 1),
-        ("src/frontend/shell/src/panorama_bytes.rs", 1), // 〔MIG-3b 续〕新行：全景问 · 写 · 撤那一跳（`panorama_call.rs`）删了，放字节那一半搬来，点旧住址
-        ("src/frontend/ui/panorama/api.ts", 1), // 〔MIG-3b 续〕新行：原 Tauri 命令三条删了（界面直问那台后端）
         ("tests/frontend/shell/ssh_source_write_half_guard.rs", 2), // 〔MIG-1 续〕测试连接搬进本机后端，旧名挂墓碑 1 → 2 // 〔MIG-1〕新行：会话 / tmux 账本搬进后端，点旧名的散文挂墓碑
         ("tests/frontend/shell/ssh_source_capped_line_tests.rs", 2), // 〔MIG-1〕新行：会话 / tmux 账本搬进后端，点旧名的散文挂墓碑
         ("tests/frontend/shell/rust_timer_registry_tests.rs", 1), // 〔MIG-1〕新行：会话 / tmux 账本搬进后端，点旧名的散文挂墓碑
@@ -5144,10 +5103,6 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/frontend/shell/src/user_files.rs", 8), // 〔MIG-3b 续〕+2：读改写那一环（`edit` / `Edited`）删了，原地一块 // 〔合并 MIG-3b × 主线 5bb03b34〕两边各自贴的墓碑相加，按盘上现数（跑出来核过） // 〔MIG-3a · 子步 3〕+2：`rename` / `stat_kind` 两形零调用方删了，trait 上留墓碑 // // 〔MIG-3a〕+1：`rel_under` / `join_under` 随别名进后端删了，留一句墓碑 // // 〔MIG-3a〕+1：列目录那一形（list_dir）随收件箱进后端删了，trait 上留一句墓碑 // // 〔MIG-3a〕+1：只删空目录那一形随卸 skill 进后端删了
         ("tests/frontend/shell/parity_ledger_tests.rs", 72), // 扩展页 70 → 72：插件只读列表删了，点它旧命令名那两句挂墓碑 // 〔FIX4 · ⑬〕69 → 70：开终端 ssh 外壳进本机后端，点旧名的散文挂墓碑 // 〔MIG-3b 续〕67 → 69：足迹那两处（命令行 · ORIGIN 那一条）出表 // 〔MIG-3b 续〕66 → 67：全景问 · 写 · 撤三行出表那一块 // 〔MIG-3b 续〕+1：`Mixed` 那一行点公钥推送旧命令名 // 〔MIG-3a · 09-28 预裁〕61 → 65：点 `deploy_remote_acct_iso` 旧名那几处挂墓碑 // // 〔合并 MIG-3b × 主线 5bb03b34〕两边各自贴的墓碑相加，按盘上现数（跑出来核过） // 〔合并 MIG-3a × 主线 5b52f042〕基数 44 ＋ MIG-3a +10 ＋ 主线 +5 ⇒ 59 // 〔MIG-3a〕+1：`assets_sync` 那一条理由随命令摘掉 // // 〔MIG-3a〕+1：理由表摘掉 MCP 三条处一块 // // 〔SH1〕+2：acct-iso 两对合一处点的旧名 // 〔合并 HX2 × 主线 99b8adb6〕主线 39 ＋ HX2 +1（写 key 那条命令退役） // 〔合并 LOC1a × 主线 e37faea3〕主线 37 ＋ LOC1a +2（`get_session_tasks` 退役：LEDGER 那一行 ＋ 理由表那一行）// 〔CFG1〕+1：整份写口 `save_config` 删了，讲来历那一句挂墓碑 // 〔合并 US1 × 主线〕主线 35 ＋ US1 +1 // 〔C4e 批 3b〕33 → 35（cc-bus 写面五条退役：LEDGER 那一块 ＋ `FRAME_PLANE_VERDICTS` 那三行） // 〔C4e 批 2〕28 → 33（杀会话 · 送键 · 就地 resume 三条命令退役：LEDGER 两处 ＋ `FRAME_PLANE_VERDICTS` 那一行 ＋ `tmux.manage` 那条理由第七次订正 ＋ `设计/50` 那一层点的送键命令） // 〔C4e〕23 → 28（抓屏那条命令退役：LEDGER 那一行 · `FRAME_PLANE_VERDICTS` 那一行 · 地板那段 · `tmux.manage` 那条理由里 `设计/50` 那一层点的发送端 ＋ 第七次订正） // 〔合并 C4d × 主线 303fed89〕主线 22 ＋ 本路 +1 ⇒ 23（〔C4d〕历史清单与注解搬进本机常驻后端，点旧名的散文挂墓碑） // 〔合并 CF2 × 主线 1cd64271〕主线 18 ＋ 本路 +4（`replay_keep_tail_only` / `replay_session_to_window` 各退役：LEDGER 那一行 ＋ Local/Both 账那一句）⇒ 22 // 〔合并 RM1f × 主线 362611a9〕主线 17 ＋ 本路 1 ⇒ 18（PN1b 那行增量账里 `panorama_diagram_kinds` 随内嵌引擎退役，挂墓碑） // 〔C4c〕16 → 17（「退出行为」两条退役，`ORIGIN_TAKING_BOTH` 摘掉处一块） // 〔合并 C4c × 主线 c13402ce〕12 ＋ 本路 2 ＋ AL1d 2 ⇒ 16 // 〔C4c〕12 → 14（信任预检 · 记录那一问两条命令退役，`ORIGIN_TAKING_BOTH` 那两条摘掉处各挂一块） // 〔AL1d〕12 → 14（「终端集成」退役的两行 LEDGER 注释挂墓碑） // 〔C4a · 第四波〕11 → 12（E79 那条本机会话账号命令退役，账本那一行挂墓碑） // 〔F7c 收尾 09-24〕10 → 11（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑） // 〔MIG-2〕44 → 49
         ("tests/frontend/shell/plugin_class_registry_tests.rs", 3), // 〔RM1f〕2 → 3：`code-picture` 那一格对上之后，旧测试名挂墓碑
-        ("src/panorama-engine/main.rs", 1), // 〔RM1f〕monitor 那份按文件列符号的旧函数名（随内嵌引擎删了）
-        ("tests/frontend/shell/panorama_seam_registry_tests.rs", 2), // 〔MIG-3b 续〕1 → 2：问 · 写 · 撤三条随界面直问删了那一行 // 〔RM1f〕PN1b 那一行增量账里的旧命令名（随内嵌引擎退役）
-        ("tests/backend/panorama_locus_guard.rs", 1), // 〔RM1f〕正题③改名前的旧测试名
-        ("tests/frontend/ui/panorama/diagram-guards.vitest.ts", 1), // 〔RM1f〕它原先点的那条 monitor 真引擎判据（随内嵌引擎删了）
         ("tests/frontend/shell/polling_registry_tests.rs", 1),
         // 〔AL1 · 2026-09-24〕+1：`rollback_note_matches_what_actually_happened` 搬走的那块墓碑。
         ("tests/frontend/shell/sftp_tests.rs", 16), // 〔MIG-3a · 09-28 预裁〕14 → 16：点 `deploy_remote_acct_iso` 旧名那几处挂墓碑 // // 〔MIG-3a · 09-28 预裁〕12 → 14：比标记真值表 · 受管路径谓词两条判据随函数删了 // // 〔E2〕10 → 12：点两条删掉的判据（围栏 · 远端入口） // 〔W5-ALIAS · 删 `fenced_block::apply` 那一族〕5 → 8：读取器四条判据的墓碑（四块）＋ 回报换型那一句（一块）进；随判据删掉的两块出 // 〔SR1b〕+1：`SftpFile` 改名 `RemoteFile`

@@ -17,7 +17,7 @@
     python3 tests/evidence/CP2b-copy-pending.py --list     # 逐文件列出还剩的对外字面量（抽表时用）
     python3 tests/evidence/CP2b-copy-pending.py --selftest # 死值验三刀
 
-退出码：0 = 两向相等 · 1 = 不相等 / 待办表形状不对 · 3 = 空转（普查一个对外字面量都没数到 —— 尺子没切到东西）
+退出码：0 = 两向相等 · 1 = 不相等 / 待办表形状不对 · 3 = 空转（普查连出口里的取文口调用都没认出一条 —— 尺子没切到东西）
 
 ═══════════════════════════════════════════════════════════════════════════════
  一、「对外字面量」—— 人群全部借来，本文件不写一条正则
@@ -37,7 +37,10 @@
   · 按文件：`91 §5.1` 决定 1「key 的第一段与文件面对齐」—— 一个文件抽一次，key 前缀天然分块。
   · 集合、不是逐文件计数：待办表里的文件别的路照样会加字，逐文件计数会让每一句新字都来改这张表；
     本判据要挡的是 **抽完的文件（不在表里）又长回字面量** 与 **抽完了没划掉**。
-  · 不是地板：抽完一个文件，必须回来删掉那一行（强制触碰）；终态只剩射程外那几行。
+  · 不是地板：抽完一个文件，必须回来删掉那一行（强制触碰）。
+  · 〔10-01〕终态到了：射程外最后那一份（另一个可执行文件）随它整棵删了，待办表抽空、对外字面量 0 条。
+    ⇒「表非空 / 字面量非 0」当不了反空真（同 CP2c 那一形）；反空真改靠普查在同一趟里认出的取文口调用条数（`via_table`）
+      ＋ 下面那几条固定样本的正控 —— 尺子没切到东西时这个数是 0。
 """
 
 import argparse
@@ -156,7 +159,7 @@ def run_check(lits, pending_path: Path, as_json: bool) -> int:
     have = Counter(x["file"] for x in lits)
     unlisted = sorted(set(have) - set(rows))      # 抽完的文件长回了字面量 / 新文件没进表
     stale = sorted(set(rows) - set(have))         # 待办表说还没抽，其实已经一条不剩
-    empty = len(lits) == 0
+    empty = PROBE.get("via_table", 0) == 0
     ok = not (unlisted or stale or problems or empty)
     rep = dict(ok=ok, literals=len(lits), files=len(have), pending=len(rows),
                unlisted=[f"{f}（{have[f]} 条）" for f in unlisted][:40], stale=stale[:40],
@@ -175,7 +178,7 @@ def run_check(lits, pending_path: Path, as_json: bool) -> int:
         for p in problems:
             print(f"  ✘ {p}")
         if empty:
-            print("  ✘ 一个对外字面量都没数到 ⇒ 普查没切到东西（空转），不是抽完了")
+            print("  ✘ 出口里的取文口调用一条都没认出 ⇒ 普查没切到东西（空转），不是抽完了")
     if empty:
         return 3
     return 0 if ok else 1
@@ -201,8 +204,10 @@ def selftest() -> int:
     rows, _ = read_pending(PENDING)
     victim = next((f for f in sorted(rows) if any(x["file"] == f for x in lits)), None)
     if victim is None:
-        print("  ✘ 待办表里没有一个还有字面量的文件 —— ② 没有靶子")
-        return 1
+        # 终态（待办表抽空了）：拿一个射程内的真文件造靶 —— 往语料里假装它还有一条字面量（同 CP2c）
+        victim = "src/frontend/ui/main.ts"
+        lits = lits + [dict(file=victim, line=1, text="死值验", src="造")]
+        rows = {**rows, victim: "死值验"}
     with tempfile.TemporaryDirectory() as td:
         p = Path(td) / "p.tsv"
         body = [f"{f}\t{r}" for f, r in sorted(rows.items())]

@@ -176,7 +176,6 @@ const SENDERS: &[(&str, Verdict)] = &[
     //   **照样走分流器**（`route_call_error` ＋ `no_channel`），理由与 `frame_query.rs` 那条逐字相同；
     //   它要的 `stale` 那一档是从分流器递回来的 `(code, message)` 里认的，不自己 match 错误枚举。
     ("user_files.rs", Verdict::UsesRouter),
-    // 〔MIG-3b 续〕代码全景那一问的发送端（`panorama_call.rs`〔散文墓碑〕）删了：界面经通道直问那台后端，按码放字节那一步在界面（`src/frontend/ui/panorama/api.ts::askOrPlace`）。
     // ★ 〔SR1b · 第四波〕传输台的中继（`sftp_pool.rs`）：窗口的开单 / 订阅经它转给**本机**常驻后端
     //   （`transfer-*` 四条，传输台住那里）。没有第二条路可回落（`D11`：不进程内开 SFTP），
     //   后端说的码原样带回窗口；**照样走分流器**，理由与 `link_mux.rs` 那一行逐字相同。
@@ -187,8 +186,6 @@ const SENDERS: &[(&str, Verdict)] = &[
     // 〔THIN〕远端常驻后端 hello 的新旧改问本机常驻后端（`resident-verdict`，判定只在后端）：一问一答，照样走分流器，
     //   理由与 `sftp.rs` 问部署计划那条逐字相同（长连接不在时明说，没有第二条路可回落）。
     ("remote_resident.rs", Verdict::UsesRouter),
-    // 〔THIN〕全景推字节之前「那台要哪一格」改问本机常驻后端（`deploy-slot`）：一问一答，照样走分流器（理由同上两行）。
-    ("panorama_bytes.rs", Verdict::UsesRouter),
     // 〔THIN〕旧入口 `~/.local/bin/ccm` 的去向改问本机常驻后端（`deploy-retired`）：一问一答，照样走分流器。
     ("ccm_legacy.rs", Verdict::UsesRouter),
 ];
