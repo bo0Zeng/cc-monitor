@@ -63,7 +63,7 @@ describe("account-ux U8：账号快捷键", () => {
   });
 });
 
-// 〔第四波 S4〕用不上的预留位不留：`app.search-history`〔散文墓碑〕（历史浏览器全文搜索的预留位，
+// 用不上的预留位不留：`app.search-history`〔散文墓碑〕（历史浏览器全文搜索的预留位，
 //   `default: null` / `available: false`，从没上线）删了；真要给它一个快捷键时再加一条**已上线**的。
 describe("〔S4〕预留位不留", () => {
   const reserved = (xs: ReadonlyArray<{ id: string; available: boolean }>): string[] =>

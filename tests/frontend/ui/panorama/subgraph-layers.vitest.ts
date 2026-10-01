@@ -1,5 +1,5 @@
 // P7b（全景 P4，#79）：邻域 / 影响面分层的**纯**那半。
-// 〔PANO · CP1〕跳数由那台给（影响面：上游 `impact`；邻域：小程序 `neighborhood`，判据住 `tests/panorama-engine/cli_tests.rs`），
+// 跳数由那台给（影响面：上游 `impact`；邻域：小程序 `neighborhood`，判据住 `tests/panorama-engine/cli_tests.rs`），
 // 这里只钉「按给的 depth 分组」这一层的呈现规则。
 import { describe, it, expect } from "vitest";
 import { clampDepth, layerByDepth, MAX_DEPTH, MAX_PER_LAYER } from "../../../../src/frontend/ui/panorama/subgraph-layers";

@@ -1,5 +1,5 @@
 /**
- * 〔F7b〕原生文件窗口的前端开口（`src/frontend/ui/file-window.ts`）与**全部入口**的判据。
+ * 原生文件窗口的前端开口（`src/frontend/ui/file-window.ts`）与**全部入口**的判据。
  *
  * 两件事，各一种判法：
  *
@@ -84,7 +84,7 @@ function entryCensus(): string[] {
 }
 
 /**
- * 入口全表（`设计/60 §14`〔F7b〕那五处）。**改入口就改这张表**，理由写在行尾。
+ * 入口全表（那五处）。**改入口就改这张表**，理由写在行尾。
  */
 const ENTRIES: readonly string[] = [
   "src/frontend/ui/cards/index.ts · 定位文件", // 会话工具卡上的文件链接（老面板 revealPath，F54）
@@ -92,7 +92,7 @@ const ENTRIES: readonly string[] = [
   "src/frontend/ui/main.ts · home", // 顶栏 / 命令面板：多台时选单里点一台
   "src/frontend/ui/settings/ext-section.ts · 目录", // 扩展页抽屉：远端那台上一个 skill 的目录「在文件窗口里打开」
   "src/frontend/ui/settings/machine-card.ts · home", // 机器页「文件」按钮
-  // 〔U2 · 第三波〕住址随会话动作从 `src/frontend/ui/tabs.ts` 搬到 `src/frontend/ui/tab-session-actions.ts`（openTabCwd 逐字随行）。
+  // 住址随会话动作从 `src/frontend/ui/tabs.ts` 搬到 `src/frontend/ui/tab-session-actions.ts`（openTabCwd 逐字随行）。
   "src/frontend/ui/tab-session-actions.ts · 目录", // 远端会话「打开工作目录」（老面板 initialDir，F78）
 ];
 

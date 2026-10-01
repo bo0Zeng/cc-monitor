@@ -1,10 +1,10 @@
 /**
- * 〔FE1 · 第四波 4D〕**起会话的两件事各只有一个家**：铸 tmux 名（`src/frontend/ui/tmux-name-mint.ts`）·
+ * **起会话的两件事各只有一个家**：铸 tmux 名（`src/frontend/ui/tmux-name-mint.ts`）·
  * 本机 resume 的编排（`src/frontend/ui/local-resume.ts`）。
  *
  * 守的要求（住址逐字）：
- * - `设计/01 §5` D1「**一个判定只有一个家**」——「同一条规则有两份实现，它们就会漂；而漂开的后果是静默的错，不是报错」；
- * - `设计/01 §5` D4「**一条都不许静默忽略**」——「要了、没做、也不说 —— 那是最坏的失效形态」。
+ * - 「**一个判定只有一个家**」——「同一条规则有两份实现，它们就会漂；而漂开的后果是静默的错，不是报错」；
+ * - 「**一条都不许静默忽略**」——「要了、没做、也不说 —— 那是最坏的失效形态」。
  *
  * 出处：审计 B §2.6（本机 resume 编排抄 4 份；「列远端 tmux 再铸名」两份逐字副本、列不出就空集铸名，
  * 与本机「绝不退化成空集」（#76）相反）。FE1 现打另找出同形的两处（`resumeTabTmuxInner` 全新支 · 分叉远端）。
@@ -13,14 +13,14 @@
  *
  * | # | 性质 | 形状 |
  * |---|---|---|
- * | K1 | 铸名只有一个家 | 〔FIX4 · J7〕生产段发 `tmux-name-mint`（问那台后端铸名）的文件集合 == `{tmux-name-mint.ts}`；问 tmux 名单的文件集合 == 手写集合（两向） |
+ * | K1 | 铸名只有一个家 | 生产段发 `tmux-name-mint`（问那台后端铸名）的文件集合 == `{tmux-name-mint.ts}`；问 tmux 名单的文件集合 == 手写集合（两向） |
  * | K2 | 本机 resume 编排只有一个家 | 生产段以 resume 动作问本机后端起会话（`launchLocal(` / `planLocalLaunch(` ＋ `kind: "resume"`）的文件集合 == `{local-resume.ts}`（两向） |
  * | K3 | 问不到 ⇒ 不铸名 | `readTmuxListing` 三态逐格 == 手写表；`mintFreshTmuxName` 问不到 / 形状不认 ⇒ `ok:false`；本机 resume 问不到 ⇒ 交 `tmuxName: null` |
  *
  * | K4 | D-h：本机跟随时 pin 那个号选不了 ⇒ 不起、说清、给「用当前账号」的显式选择 | 零次本机 resume（`launch-local`）＋ 一条可点提示；点了 ⇒ 以当前号起；正控：pin 可选 ⇒ 带 pin 起 |
  *
- * K4 另守一处住址：主会话 4D 裁 D-h（「选不了原账号时 resume ⇒ 照 `01 §6.2` / D4：不静默换号，拒并说清、给「用当前账号」的显式选择」）
- * ＋ `设计/01 §6.2`「「哪个账号」非有不可 —— 缺了 resume 会静默落到默认号，撞 `D4`」。远端那一半（`withAccount`）住 `accounts.vitest.ts`「〔FE1 · D-h〕」那几条。
+ * K4 另守一处住址：主会话 4D 裁 D-h（「选不了原账号时 resume ⇒ 照 / D4：不静默换号，拒并说清、给「用当前账号」的显式选择」）
+ * ＋「哪个账号」非有不可 —— 缺了 resume 会静默落到默认号，撞 `D4`」。远端那一半（`withAccount`）住 `accounts.vitest.ts`「〔FE1 · D-h〕」那几条。
  *
  * K3 的四个远端入口各有一条行为判据，住各自的测试文件（那里有现成的桩）：
  * `remote-launch-run.vitest.ts`「列不出会话 ⇒ 不起、出声」· `settings/remote-section.vitest.ts`「开新 Claude …」·
@@ -63,7 +63,7 @@ function filesMatching(re: RegExp, skip: readonly string[] = []): string[] {
 }
 
 describe("K1 · 铸名只有一个家", () => {
-  // 〔FIX4 · `设计/90 §3` J7〕派生 ＋ 避让搬进后端：前端铸名 = 问那台后端 `tmux-name-mint`，发这一问的只许一个家。
+  // 派生 ＋ 避让搬进后端：前端铸名 = 问那台后端 `tmux-name-mint`，发这一问的只许一个家。
   it("★ 生产段发 `tmux-name-mint` 的文件 == {tmux-name-mint.ts}", () => {
     expect(
       filesMatching(/["']tmux-name-mint["']/),
@@ -73,10 +73,10 @@ describe("K1 · 铸名只有一个家", () => {
   });
 
   it("★ 问 tmux 名单的生产文件 == 手写集合（两向）", () => {
-    // 手写期望，不从实现生成。每一格为什么在（〔MIG-1 续〕取法换成读口 `listTmux(`；读口的定义处 `tmux-reads.ts` 除外）：
+    // 手写期望，不从实现生成。每一格为什么在（取法换成读口 `listTmux(`；读口的定义处 `tmux-reads.ts` 除外）：
     // - `tmux-name-mint.ts`：`readTmuxListing`（分叉那条要知道源会话此刻在哪个 tmux 里）。
     // - `tab-session-actions.ts`：`fetchTmuxFresh`，TabManager 唯一取数点（attach / kill / 就地 resume 要**活的**那一份；
-    //   全新那一支要名字 ⇒ 问后端铸，〔FIX4 · J7〕不拿这份名单自己铸）。
+    //   全新那一支要名字 ⇒ 问后端铸，不拿这份名单自己铸）。
     const want = ["src/frontend/ui/tab-session-actions.ts", "src/frontend/ui/tmux-name-mint.ts"];
     expect(
       filesMatching(/\b(?:listTmux|list_(?:local|remote)_tmux)\s*\(/, ["src/frontend/ui/tmux-reads.ts"]),
@@ -86,7 +86,7 @@ describe("K1 · 铸名只有一个家", () => {
 });
 
 describe("K2 · 本机 resume 编排只有一个家", () => {
-  // 〔MIG-2〕本机起会话的计划与渲染搬进本机后端（`launch-local`，`src/frontend/ui/launch-render.ts` 是那一问的唯一出口）⇒
+  // 本机起会话的计划与渲染搬进本机后端（`launch-local`，`src/frontend/ui/launch-render.ts` 是那一问的唯一出口）⇒
   //   人群从「调 Tauri 命令 `resume_history_session(`」换成「以 resume 动作调那个出口」。
   it("★ 生产段以 resume 动作调 `launchLocal(` / `planLocalLaunch(` 的文件 == {local-resume.ts}", () => {
     expect(
@@ -128,7 +128,7 @@ describe("K3 · 列不出 ⇒ 不铸名（三态不许压成两态）", () => {
     }
   });
 
-  /** 〔FIX4 · J7〕那台后端铸名那一问：名字 ⇒ 成品；`null` ⇒ 问不到；`"bad"` ⇒ 回了认不得的形状。记下被问的入参。 */
+  /** 那台后端铸名那一问：名字 ⇒ 成品；`null` ⇒ 问不到；`"bad"` ⇒ 回了认不得的形状。记下被问的入参。 */
   const mintAsks: { origin: string; args: { cwd?: string; forkOf?: string } }[] = [];
   const replyMint = (minted: string | null | { bad: unknown }): void => {
     mintAsks.length = 0;
@@ -169,7 +169,7 @@ describe("K3 · 列不出 ⇒ 不铸名（三态不许压成两态）", () => {
     expect(sent().account).toEqual({ kind: "base" });
   });
 
-  // 〔DUP1 · `设计/90 §3` 判据 2〕这条原来断「sid 不合法 ⇒ 一次 IPC 都不发」（前端那道 `validateLocalLaunch`〔散文墓碑〕判的）。
+  // 这条原来断「sid 不合法 ⇒ 一次 IPC 都不发」（前端那道 `validateLocalLaunch`〔散文墓碑〕判的）。
   // 今天前端不判 sid：照发给本机后端，后端（`history.rs` 本机决策 → `shell_quote_core::session_id_ok`）拒 ⇒ 出声、回 false。
   it("本机 resume：sid 不合法 ⇒ 前端不判、照发，后端拒 ⇒ 出声、回 false", async () => {
     invokeMock.mockImplementation(launchRenderShim((cmd: string) =>

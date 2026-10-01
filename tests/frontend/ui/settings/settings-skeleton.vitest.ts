@@ -1,9 +1,9 @@
 /**
- * 🔴 `设计/70 §1.3 A`（第一刀 · 步 1）：**固定高度的加载态**。
+ * 🔴 （第一刀 · 步 1）：**固定高度的加载态**。
  *
  * # 它钉的是什么
  *
- * `70 §1` 那两张相隔 3 秒的真机截图给出的病是**整页重排**：每一块在数据回来前是一行字
+ * 那两张相隔 3 秒的真机截图给出的病是**整页重排**：每一块在数据回来前是一行字
  *（「扫描中…」「加载中…」），回来变成一整张表 ⇒ 块长高 ⇒ 下面的东西全部往下掉，
  * 那 3 秒里点任何东西都会点在错的地方。
  *
@@ -18,12 +18,12 @@
  * 或有人新加一块骨架不进登记表，当场分叉）；④ 每一处的 `min-height` 与登记表**逐字相等**。
  *
  * 🔴 **〔射程 · 说清它盖不到什么〕**
- * - **不量真实排版**：jsdom 没有排版引擎 ⇒ `70 §8` 判据 #1 那条「加载期高度变化 = 0」
+ * - **不量真实排版**：jsdom 没有排版引擎 ⇒ 判据 #1 那条「加载期高度变化 = 0」
  *   要真机挂 `ResizeObserver` 才量得到，本条**不声称**它绿了。
  * - `min-height` 是**下限**不是等高：内容比它高时仍会长高。本条买的是
  *   「不会从一行字跳成一整屏」，不是像素级零位移。
  * - 那几块 per-machine 分节（账号 / MCP / 工具 …）本条没盖 —— 它们不在
- *   `70 §10.4` 第一刀那三块的射程里。
+ * 第一刀那三块的射程里。
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
@@ -64,7 +64,7 @@ vi.mock("../../../../src/frontend/ui/settings/plugins-section", () => ({
 vi.mock("../../../../src/frontend/ui/settings/cc-bus-hooks-section", () => ({
   CcBusHooksSection: class { element = document.createElement("div"); },
 }));
-// 〔AL1c · 4B〕`cc_integration.ts` 并进了 `machine-aliases.ts`（终端集成成了「别名」那一块 PowerShell 那一侧），它的替身随之删掉。
+// `cc_integration.ts` 并进了 `machine-aliases.ts`（终端集成成了「别名」那一块 PowerShell 那一侧），它的替身随之删掉。
 vi.mock("../../../../src/frontend/ui/keybindings/editor", () => ({
   KeybindingsEditor: class { element = document.createElement("div"); },
 }));
@@ -96,7 +96,7 @@ import {
 const tick = () => new Promise((r) => setTimeout(r, 0));
 const sorted = (xs: Iterable<string>) => [...new Set(xs)].sort();
 
-/** 把面板整个走一遍（两个顶层页 + 本机子页；〔ST2〕顶层「改动足迹」已删），让每一块都至少渲染过一次骨架。 */
+/** 把面板整个走一遍（两个顶层页 + 本机子页；顶层「改动足迹」已删），让每一块都至少渲染过一次骨架。 */
 async function openAllPages(): Promise<HTMLElement> {
   const p = new SettingsPanel({ windowMode: true });
   await p.open();
@@ -108,7 +108,7 @@ async function openAllPages(): Promise<HTMLElement> {
   return document.querySelector<HTMLElement>(".settings-panel")!;
 }
 
-describe("`70 §1.3 A`：骨架与它替代的那块内容**同一个高度**（第一刀 · 步 1）", () => {
+describe("：骨架与它替代的那块内容**同一个高度**（第一刀 · 步 1）", () => {
   beforeEach(() => {
     document.body.replaceChildren();
     __resetMachineContextForTests();
@@ -166,7 +166,7 @@ describe("`70 §1.3 A`：骨架与它替代的那块内容**同一个高度**（
     }
   });
 
-  it("骨架不是空的，也不冒充兜底态（`70 §1.1`「没有第三态」那一格）", () => {
+  it("骨架不是空的，也不冒充兜底态（「没有第三态」那一格）", () => {
     const sk = makeSkeleton("footprint", "正在扫这台机器上的足迹…");
     expect(sk.textContent, "空骨架与「加载失败」在屏幕上分不开").not.toBe("");
     expect(sk.getAttribute("aria-busy"), "读屏器那一侧也要知道它在忙").toBe("true");

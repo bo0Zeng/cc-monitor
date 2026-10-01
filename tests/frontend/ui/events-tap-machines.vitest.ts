@@ -1,5 +1,5 @@
-// 〔HOST · H8〕主界面 `bindEvents` 的 tap 订阅清单（读 `src/frontend/ui/main.ts` 的接线；`events-tap.vitest.ts` 管订阅本身）。
-// 守的要求（住址）：`99 §1` V139「远端常驻、本机远端同形」—— 远端中转住远端常驻后端，tap 沿那台的流回 monitor。
+// 主界面 `bindEvents` 的 tap 订阅清单（读 `src/frontend/ui/main.ts` 的接线；`events-tap.vitest.ts` 管订阅本身）。
+// 守的要求（住址）：「远端常驻、本机远端同形」—— 远端中转住远端常驻后端，tap 沿那台的流回 monitor。
 
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";

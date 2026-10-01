@@ -28,7 +28,7 @@ import { srcDirOf } from "../../test-support/repo-root";
 const SRC = resolve(srcDirOf(__dirname));
 
 /**
- * 取数的写法：〔MIG-1 续〕那两条 Tauri 命令退役，今天唯一的取法是读口 `tmux-reads.ts::listTmux(`（经通道问那台后端 `tmux-list`）。
+ * 取数的写法：那两条 Tauri 命令退役，今天唯一的取法是读口 `tmux-reads.ts::listTmux(`（经通道问那台后端 `tmux-list`）。
  * 旧的两形（裸 `invoke("list_remote_tmux")`〔散文墓碑〕 · 经 `commands.` 包装）一并留着认 —— 哪天长回来也数得到。
  */
 const PATTERNS = [
@@ -45,24 +45,24 @@ const PATTERNS = [
 const EXEMPT: ReadonlyArray<readonly [file: string, why: string]> = [
   [
     "tmux-reads.ts",
-    "读口本体（〔MIG-1 续〕原来这一格是 IPC 包装本体 `ipc/commands.ts`）—— 它就是那一问，不是调用方。缓存策略不该住在读口" +
+    "读口本体（原来这一格是 IPC 包装本体 `ipc/commands.ts`）—— 它就是那一问，不是调用方。缓存策略不该住在读口" +
       "（住进去等于让每个调用方都被动吃 8s 陈旧数据，包括 attach/kill 这些对新鲜度最敏感的）。",
   ],
   [
     "tmux-name-mint.ts",
-    "另一个模块，够不到 `TabManager` 的私有 `tmuxCache`。〔FE1 · 第四波 4D〕它是起会话铸名的唯一家：" +
+    "另一个模块，够不到 `TabManager` 的私有 `tmuxCache`。它是起会话铸名的唯一家：" +
       "先前登记在这里的三条（`fork-flow.ts` · `settings/machine-card.ts` · `remote-launch-run.ts`）" +
       "都是「列名单 → 铸名」的副本，三条里两条列不出就拿空集铸名（#76 的形状），一条 `.catch(() => null)` " +
       "把「没问到」压成「没有会话」。收进这里之后三态保留（`TmuxListing`：known / unknown），" +
       "**这一次取数的意义就是要最新的**（拿 8s 前的快照去避让，正好会让到一个刚被占掉的名字）。",
   ],
-  // 〔墓碑·第二波 T4 09-24〕`tabs.ts::explainBringFrontFailure` 这一条删了：那个函数整个删了 ——
-  //   它是 `设计/80 §8.7` 步 4 点名要收的「四套有没有终端的判断」之一（E73 那次远端 RPC），
+  // 〔墓碑〕`tabs.ts::explainBringFrontFailure` 这一条删了：那个函数整个删了 ——
+  //   它是点名要收的「四套有没有终端的判断」之一（E73 那次远端 RPC），
   //   ↗ 的归因从此只住后端一处（`bind.rs::resolve_remote_front`），tmux 不在 ↗ 的前提链上。
 ] as const;
 
 /**
- * 唯一取数点住哪个文件。〔U2 · 第三波〕`TabManager` 拆开之后，会话动作（连同 `tmuxCache` 与
+ * 唯一取数点住哪个文件。`TabManager` 拆开之后，会话动作（连同 `tmuxCache` 与
  * `fetchTmuxFresh`）搬进了 `tab-session-actions.ts` —— **住址换了，性质一字不变**：
  * tab 层仍然恰好一个取数点，且它就是写缓存的那一个。原先这里写死的是 `"tabs.ts"`。
  */
@@ -109,7 +109,7 @@ describe("tmux 会话列表的取数点（audit-0805 F14 第五刀，E3）", () 
     const sites = fetchSites();
     const total = sites.reduce((a, s) => a + s.count, 0);
     // 抽取器自检：扫不到东西时下面的对拍会两边都空、静默变绿。
-    // 〔FE1〕地板 `≥ 4` 换成相等：包装层 1（〔MIG-1 续〕今天是读口 `listTmux` 的定义那一处）＋ `tab-session-actions.ts::fetchTmuxFresh` 1 ＋
+    // 地板 `≥ 4` 换成相等：包装层 1（今天是读口 `listTmux` 的定义那一处）＋ `tab-session-actions.ts::fetchTmuxFresh` 1 ＋
     //   `tmux-name-mint.ts::readTmuxListing` 1 = 3（少掉的是 fork-flow · machine-card · remote-launch-run 三份副本）。
     //   抽取器坏了会少、有人新长一处会多，两个方向都红。
     expect(
@@ -131,7 +131,7 @@ describe("tmux 会话列表的取数点（audit-0805 F14 第五刀，E3）", () 
 
   it("★ TabManager 类内只剩一个取数点，且它就是写缓存的那一个", () => {
     const src = stripLineComments(readFileSync(join(SRC, HOME), "utf8"));
-    // 〔C4a · 子步 2〕原先只数裸 `invoke` 那一形（`PATTERNS[0]`）：那一处收进了包装层，这里改数两形之和
+    // 原先只数裸 `invoke` 那一形（`PATTERNS[0]`）：那一处收进了包装层，这里改数两形之和
     //   —— 只数一形的话「取数点换了写法」就会被读成「取数点没了」。
     const fetches = PATTERNS.reduce((a, re) => a + (src.match(re) ?? []).length, 0);
     const writes = (src.match(/this\.tmuxCache\.set\(/g) ?? []).length;
@@ -139,8 +139,8 @@ describe("tmux 会话列表的取数点（audit-0805 F14 第五刀，E3）", () 
     expect(
       fetches,
       `${HOME} 里有 ${fetches} 个取数点。只允许一个：类内唯一的 \`fetchTmuxFresh\`。` +
-        "〔第二波 T4：2 → 1〕少掉的那一个是模块级 `explainBringFrontFailure`（↗ 失败后按 tmux 实况猜归因），" +
-        "`设计/80 §8.7` 步 4 把它收进后端那一个布尔之后整个删了。" +
+        "〔2 → 1〕少掉的那一个是模块级 `explainBringFrontFailure`（↗ 失败后按 tmux 实况猜归因），" +
+        " 把它收进后端那一个布尔之后整个删了。" +
         "多出来的那个 —— 它是不是本来就该走 `fetchTmuxFresh`？" +
         "★ 报告 I9′ 那条毛病（取而不写）就是这么来的：取数与写缓存是两件能分开做的事。",
     ).toBe(1);

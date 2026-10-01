@@ -1,4 +1,4 @@
-// ST1「点设置有反馈」（`设计/70 §1.2` ④ · `§1.3 E`）：在路上说在路上、同一时刻只一趟、失败说出来。
+// ST1「点设置有反馈」：在路上说在路上、同一时刻只一趟、失败说出来。
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const { cmd, toast } = vi.hoisted(() => ({
@@ -63,7 +63,7 @@ describe("ST1 点设置有反馈", () => {
   it("本模块不 import 设置面板（主窗的模块图里不该有它）", () => {
     const src = readFileSync("src/frontend/ui/settings/open-settings.ts", "utf8");
     const imports = [...src.matchAll(/^import .* from "([^"]+)";/gm)].map((m) => m[1]).sort();
-    // 〔CP2b〕+ 取文口（失败 toast 那句进了文案表）—— 它不是设置面板。
+    // + 取文口（失败 toast 那句进了文案表）—— 它不是设置面板。
     expect(imports).toEqual(["../copy-table", "../error-toast", "../ipc/commands"]);
   });
 });

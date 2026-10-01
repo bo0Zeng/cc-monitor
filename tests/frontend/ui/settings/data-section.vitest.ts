@@ -1,9 +1,9 @@
 /**
  * 「数据位置」那一块：**给路径，不给删 / 清空**（用户 09-24 裁：「数据位置那一页要不要，不要，给路径」
- * —— 答的是 `设计/70 §11.6` #1「要不要给删 / 清空按钮」）。
+ * —— 答的是「要不要给删 / 清空按钮」）。
  *
- * 头注那条红线（「纯展示，不做删除 / 清空操作 —— 避免误点」）此前**没有判据看着**
- * （`70 §11.5.2` / `§11.8` 步 15a）。本文件立两条：
+ * 头注那条红线（「纯展示，不做删除 / 清空操作 —— 避免误点」）此前**没有判据看着**。
+ * 本文件立两条：
  *
  * ① **效应面两向相等**：这一块源码里调到的后端命令 == {`get_data_paths`}；
  *    从外面拿进来的「会动东西」的函数 == {`openPath`}（打开到文件管理器，不改盘）；
@@ -83,7 +83,7 @@ describe("数据位置：给路径，不给删 / 清空", () => {
       "../local-storage": ["enumeratePrefix"],
       "../format": ["formatBytes"],
       "./skeleton": ["holdSkeletonHeight", "makeSkeleton"],
-      "../copy-table": ["copyText"], // 〔CP2b〕取文口：只读一张表，不是效应
+      "../copy-table": ["copyText"], // 取文口：只读一张表，不是效应
     });
     expect(face.storageWrites).toEqual([]);
   });
@@ -103,7 +103,7 @@ describe("数据位置：给路径，不给删 / 清空", () => {
       item("history-metadata.json", "/h/.cc-monitor/history-metadata.json"),
     ];
     const webview = item("EBWebView", "/h/AppData/EBWebView");
-    // 〔P3 · V160〕本机后端住在同一个家里的那几样：同样只给路径
+    // 本机后端住在同一个家里的那几样：同样只给路径
     const backend = [item("relay-key", "/h/.cc-monitor/relay-key"), item("panorama/", "/h/.cc-monitor/panorama")];
     paths.value = {
       monitorDataDir: "/h/.cc-monitor",
@@ -119,9 +119,9 @@ describe("数据位置：给路径，不给删 / 清空", () => {
     const shown = [...sec.element.querySelectorAll(".settings-data-item-path")].map(
       (e) => e.textContent,
     );
-    // 〔ST2 · 步 15〕「PowerShell profile 备份」那张卡片搬去了本机「足迹」栏 ⇒ 这里不再有它。
+    // 「PowerShell profile 备份」那张卡片搬去了本机「足迹」栏 ⇒ 这里不再有它。
     expect(shown).toEqual([...entries, ...backend, webview].map((e) => e.path));
-    // 〔OSA · 主会话 09-28 裁〕`get_data_paths` 不再带备份那一格（界面经通道问本机后端）⇒ 「备份目录不在数据位置里」结构上成立。
+    // `get_data_paths` 不再带备份那一格（界面经通道问本机后端）⇒ 「备份目录不在数据位置里」结构上成立。
     const buttons = [...sec.element.querySelectorAll("button")].map((b) => b.textContent ?? "");
     expect(buttons.length, "一颗按钮都没有 —— 下面的「没有删」是空真").toBeGreaterThan(0);
     expect(buttons.filter((t) => /删|清/.test(t))).toEqual([]);
@@ -174,7 +174,7 @@ describe("〔ST2 · 用户 09-24 裁〕数据位置「真相 / 缓存」那一�
   });
 });
 
-describe("〔ST2 · `70 §11.3.2` · 步 15〕logs/ 那一行指向「日志」、不再自带 [打开]", () => {
+describe("〔ST2 · 步 15〕logs/ 那一行指向「日志」、不再自带 [打开]", () => {
   beforeEach(() => document.body.replaceChildren());
 
   it("★ 跨语言常量对拍：TS 的 LOGS_DIR_LABEL == Rust 的 data_paths.rs::LOGS_DIR_LABEL", () => {
@@ -198,7 +198,7 @@ describe("〔ST2 · `70 §11.3.2` · 步 15〕logs/ 那一行指向「日志」�
     paths.value = {
       monitorDataDir: "/h",
       entries: [mk("ps-registry/"), mk(LOGS_DIR_LABEL)],
-      // 〔P3〕后端那一份错误输出在 `logs/backend/`：同样指向「日志」页
+      // 后端那一份错误输出在 `logs/backend/`：同样指向「日志」页
       backendHome: "/h",
       backendEntries: [mk(`${LOGS_DIR_LABEL}backend/`)],
       webviewUserDataDir: null,

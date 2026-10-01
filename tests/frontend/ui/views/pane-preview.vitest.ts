@@ -1,4 +1,4 @@
-// 〔audit-0805 08-06〕**「抓取途中被关 / 换」这条竞态守卫此前零覆盖。**
+// **「抓取途中被关 / 换」这条竞态守卫此前零覆盖。**
 //
 // # 怎么找到它的
 //
@@ -21,7 +21,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 const capture = vi.fn<(args: { origin: string; target: string }) => Promise<string>>();
 const toast = vi.fn();
 
-// 〔C4e · 第四波 4C〕抓屏从 monitor 的 `capture_remote_pane`〔散文墓碑〕换成界面直接经通道问（`src/frontend/ui/tmux-control.ts`）：
+// 抓屏从 monitor 的 `capture_remote_pane`〔散文墓碑〕换成界面直接经通道问（`src/frontend/ui/tmux-control.ts`）：
 //   本文件只关心「回包晚于关闭」这条竞态，于是把那一问整个替掉（通道那一跳的判据在 `tests/frontend/ui/tmux-control.vitest.ts`）。
 vi.mock("../../../../src/frontend/ui/tmux-control", () => ({
   capturePane: (origin: string, target: string) => capture({ origin, target }),
@@ -112,7 +112,7 @@ describe("★ 竞态：回包晚于关闭 / 换预览", () => {
   });
 });
 
-// 〔CP2a〕本文件是抽表的样板区（`调研/设计/91 §5.1`）：文案搬进了 `src/shared/copy/table.json`。
+// 本文件是抽表的样板区：文案搬进了 `src/shared/copy/table.json`。
 // 抽表这一拍**不许改任何一个字** ⇒ 下面把抽表前界面上的每一句逐字钉住（原文取自抽表前的源码）。
 describe("抽表前后界面文字逐字不变（CP2a 样板区）", () => {
   it("标题 · 两个按钮 · 加载中 · 空画面 · 失败 toast", async () => {

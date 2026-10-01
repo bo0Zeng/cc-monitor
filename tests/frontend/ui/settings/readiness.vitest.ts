@@ -108,8 +108,8 @@ describe("computeGaps", () => {
     ).toBe(true);
   });
 
-  it("★ 本机的 ccm 照常算数（〔WF1 · `99 §2.2 ㉔`〕两平台同一条规则：Windows 上的写点是新开的 PowerShell 里敲 `ccm` 走到哪）", () => {
-    // 〔S9〕从前 Windows 本机这一格判不适用、要注入 monitor 跑在哪个 OS；那条豁免与那个入参一起删了（`readiness.ts::notApplicable` 头注第 3 条）。
+  it("★ 本机的 ccm 照常算数（〔WF1〕两平台同一条规则：Windows 上的写点是新开的 PowerShell 里敲 `ccm` 走到哪）", () => {
+    // 从前 Windows 本机这一格判不适用、要注入 monitor 跑在哪个 OS；那条豁免与那个入参一起删了（`readiness.ts::notApplicable` 头注第 3 条）。
     const gaps = computeGaps({ origins: [LOCAL_MACHINE_KEY], statusOf: none });
     expect(gaps.some((g) => g.facet === "ccm")).toBe(true);
     expect(gaps.some((g) => g.facet === "accounts")).toBe(true);
@@ -123,7 +123,7 @@ describe("computeGaps", () => {
     expect(gaps.some((g) => g.facet === "backend")).toBe(false);
   });
 
-  // 🔴 〔步 8 · 条 80 「不要管旧配置」〕**`KR59D3` 那条整条退役了。**
+  // 🔴 〔条 80 「不要管旧配置」〕**`KR59D3` 那条整条退役了。**
   //    它断的是「盘上还带着旧 `daemonless: true` 的主机要给一条指名的告知」，
   //    而那条告知（`NO_BACKEND_GAP_CODE` / `NO_BACKEND_CONSEQUENCE`）与它背后的
   //    `legacyNoBackend` 入参这一拍整块删了 ⇒ **它已经没有被测对象**。
@@ -205,12 +205,12 @@ describe("N-F2 NF2D3：本机全绿 + 没有远端 ⇒ 那张清单该整块消�
       "accounts:unknown",
     ]);
     const s = summarizeGaps(gaps);
-    // 〔W5-VIS · 缺口三〕后端那一格是必需的，另几格可选 —— 摘要按轻重分开说。
+    // 〔缺口三〕后端那一格是必需的，另几格可选 —— 摘要按轻重分开说。
     expect(s).toBe("必需：1 项还没测过；可选：2 项还没测过");
   });
 
   it("★ 本机的 `ccm` 一格照常算数：没记 ⇒ 剩它一条，记上 ok ⇒ 清空", () => {
-    // 〔FIX3 · `99 §2.2 ㉔`〕这一格先前全仓没有写点（本条当年是把那个缺口钉在明处）；今天写点是
+    // 这一格先前全仓没有写点（本条当年是把那个缺口钉在明处）；今天写点是
     // `remote-section.ts::noteLocalCcm`（打开设置面板时问一次本机，接线由 `remote-section.vitest.ts` 那条 FIX3 ㉔ 钉）。
     const rest = computeGaps({
       origins: [LOCAL_MACHINE_KEY],
@@ -250,7 +250,7 @@ describe("summarizeGaps —— 措辞必须区分「缺」与「没测过」", (
   });
 
   /**
-   * 〔W5-VIS · `设计/15 §4.5` 缺口三〕逐字：「**摘要不分严重度** —— blocking 的后端与 optional 的 ccm
+   * 〔缺口三〕逐字：「**摘要不分严重度** —— blocking 的后端与 optional 的 ccm
    * 在摘要那行读起来一模一样（信息在，只是摘要没说）」。四种组合逐格相等（两档各自的缺 / 没测过分开数，
    * 只有一档就只说那一档，必需那一档排在前面）。
    */
@@ -310,7 +310,7 @@ describe("describeGap", () => {
     expect(t).not.toContain("缺");
   });
 
-  // 🔴 〔`K-R65`〕这一对词今天**有第二个读者**（配置面审计那一页）⇒ 它必须只有一个住址。
+  // 🔴 这一对词今天**有第二个读者**（配置面审计那一页）⇒ 它必须只有一个住址。
   // 上面两条断的是字面「缺」/「未测过」；本条断的是**那两个字面真的来自 `GAP_HEAD`** ——
   // 把 `GAP_HEAD` 改掉而 `describeGap` 里又抄了一份，上面两条照绿，本条红。
   it("「缺」/「未测过」这两个字只有一个住址（GAP_HEAD）", () => {

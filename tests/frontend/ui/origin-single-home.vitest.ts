@@ -1,10 +1,10 @@
 /**
- * 〔TL3 · 审计 F 🔴-5〕「是不是本机」只在 `src/frontend/ui/ipc/origin.ts` 判：别处零直比 `LOCAL_ORIGIN` / `"<local>"`。
+ * 〔审计 F 🔴-5〕「是不是本机」只在 `src/frontend/ui/ipc/origin.ts` 判：别处零直比 `LOCAL_ORIGIN` / `"<local>"`。
  *
  * ## 守的要求（住址）
  *
- * - `设计/00 §2.5` ① 今天那一句，逐字：「TS 侧 `origin` 去 `null`、本机只有 `"<local>"` 一种写法（判定唯一住址 `src/frontend/ui/ipc/origin.ts`）」。
- * - `设计/01 §5` **D1**「一个判定只有一个家」—— 「同一条规则有两份实现，它们就会漂；而漂开的后果是静默的错，不是报错」。
+ * - 今天那一句，逐字：「TS 侧 `origin` 去 `null`、本机只有 `"<local>"` 一种写法（判定唯一住址 `src/frontend/ui/ipc/origin.ts`）」。
+ * - **D1**「一个判定只有一个家」—— 「同一条规则有两份实现，它们就会漂；而漂开的后果是静默的错，不是报错」。
  * - `src/frontend/ui/ipc/origin.ts` 头注，逐字：「「是不是本机」只在这里判（[`isLocalOrigin`] / [`isRemoteOrigin`]），调用处不许自己比」。
  *
  * 出处：审计 F 🔴-5 —— 那条规则没有判据守，`=== LOCAL_ORIGIN` 在调用处长回来 8 处（`account-restart` · `remote-launch-run` ·
@@ -22,7 +22,7 @@
  * ## 买不到
  *
  * - 转一手再比（`const L = LOCAL_ORIGIN; x === L`）· `Set` / `Map` 查表 · `startsWith("<")` 之类的变形。
- * - Rust 侧的「是不是本机」（`origin.rs::Route` 一族）：不在 `00 §2.5 ①` 这一句（说的是 TS 侧）的射程。
+ * - Rust 侧的「是不是本机」（`origin.rs::Route` 一族）：不在这一句（说的是 TS 侧）的射程。
  */
 import ts from "typescript";
 import { describe, it, expect } from "vitest";
@@ -114,7 +114,7 @@ describe("〔TL3 · 🔴-5〕「是不是本机」只在 origin.ts 判", () => {
     }
     expect(
       away,
-      "调用处在自己比「是不是本机」—— 改 `isLocalOrigin(origin)` / `isRemoteOrigin(origin)`（`src/frontend/ui/ipc/origin.ts`，`设计/00 §2.5 ①` · `01 §5 D1`）",
+      "调用处在自己比「是不是本机」—— 改 `isLocalOrigin(origin)` / `isRemoteOrigin(origin)`（`src/frontend/ui/ipc/origin.ts`，）",
     ).toEqual([]);
     expect([...home].sort(), "origin.ts 里那两个判定变了形 / 扫描器看不见它们 —— 上一格的零命中此刻不可信").toEqual([
       "isLocalOrigin",

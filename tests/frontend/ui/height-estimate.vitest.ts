@@ -131,7 +131,7 @@ describe("estimateStreamNodeHeight", () => {
     // `contain-intrinsic-size` 吃 content-box;原来的 34 是按 border-box 手算的,
     // 多了一份 padding 6×2 ⇒ p90 相对误差 82.9%)。
     // ⚠ 2026-09-18 之前 `applyIntrinsicSize` 的 24px 地板会把 19 顶成 24(写进 style 的是 24);
-    //   地板已按 `99 条 75` / `设计/17 订正④` 去掉 ⇒ 现在 19 原样出货,见下面那个 describe。
+    //   地板已按 `99 条 75` / 去掉 ⇒ 现在 19 原样出货,见下面那个 describe。
     expect(estimateStreamNodeHeight(slash)).toBe(19);
   });
   it("认不出的形态返回 null(CSS 兜底接管)", () => {
@@ -150,7 +150,7 @@ describe("applyIntrinsicSize(F39 复用的契约面)", () => {
     const v = el.style.getPropertyValue("contain-intrinsic-size");
     expect(v).toMatch(/^auto \d+px$/);
     // 🔴 这一条 2026-09-18 之前断的是 `>= 24`(`applyIntrinsicSize` 里那个 `Math.max(24, …)` 地板)。
-    //   地板已整个去掉(`99 条 75` / `设计/17 订正④`,读数 `tests/evidence/S22-floor-readings.md`):
+    //   地板已整个去掉(`99 条 75` /,读数 `tests/evidence/S22-floor-readings.md`):
     //   它防的两件事都是空集(0 不可达、负值写不出来且浏览器自己会拒),而它让 13/83 张卡虚高,
     //   300 张细条卡的风暴里总高虚高 +20.5%/+23.8%。保险职责搬到判据层 ——
     //   秤 2 的 **F1**「每 class 估值最小值 ≥ 登记常数」会红,`Math.max` 只会静默抹平。
