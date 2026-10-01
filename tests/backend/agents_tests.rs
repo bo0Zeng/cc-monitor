@@ -222,6 +222,32 @@ fn the_launch_faces_agree_with_the_golden_table() {
     );
 }
 
+/// ★ 「不说是哪一家时起谁」与「凭据文件的行挂在谁名下」各由注册表里**恰一家**声明（两家都声明 ⇒ 谁先谁赢，那是静默）。
+#[test]
+fn exactly_one_family_is_the_default_and_exactly_one_owns_the_credentials_file() {
+    let defaults: Vec<&str> = REGISTRY
+        .iter()
+        .filter(|a| a.launch.is_some_and(|f| f.is_default))
+        .map(|a| a.kind)
+        .collect();
+    assert_eq!(
+        defaults,
+        [crate::agents::default_kind()],
+        "声明默认的不是恰一家：{defaults:?}"
+    );
+    let owners: Vec<&str> = REGISTRY
+        .iter()
+        .filter_map(|a| a.upstream.as_ref())
+        .filter(|u| u.owns_credentials_file)
+        .map(|u| u.route_id)
+        .collect();
+    assert_eq!(
+        owners,
+        [crate::agents::credentials_file_agent()],
+        "声明拥有凭据文件的不是恰一家：{owners:?}"
+    );
+}
+
 /// ★ `resume_kind` 那一列不是凭空写的：夹具说 flag 的必须以 `--` 开头，说 subcommand 的必须不以 `--` 开头（从 monitor 搬来）。
 #[test]
 fn the_resume_kind_column_matches_reality() {
