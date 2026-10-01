@@ -80,7 +80,7 @@ monitor 进程**一个字节都不直接写用户文件**。rc / `$PROFILE` / �
 四个配套要求**一条都不许省**，实现在 `src/frontend/shell/src/cc_bus_deploy.rs`
 （〔RW1 · 第四波 2026-09-24〕**落盘经本机后端**：读 `files-peek` · 备份改名 `files-rename` · 写 `files-put` 带 `parents` · 可执行位 `files-chmod`；
 `fenced_dest` 只读判、后端那道围栏是第二道 —— 四个配套一条没省）：
-1. **用户显式动作** —— 只由设置页那个按钮调，**绝不**在启动/后台路径上跑；
+1. **用户显式动作** —— 只由扩展页 cc-bus 那一行的确认卡触发（经本机后端枢纽 `ext-hub-apply` 交被写那台装），**绝不**在启动/后台路径上跑；
 2. **独立 realpath 白名单** —— `fenced_dest`：`canonicalize` 之后必须仍在 `claude_dir` 底下，
    挡「`skills` 是个指向别处的软链」；判据 `a_symlinked_skills_dir_is_refused` 钉着；
 3. **幂等** —— 逐文件比内容，一致就**一个字节都不写、也不备份**；

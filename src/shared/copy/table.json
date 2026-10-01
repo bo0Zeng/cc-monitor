@@ -18865,7 +18865,7 @@
     },
     "beExt.note.userMcpReadOnly": {
       "kind": "body",
-      "zh": "这台的用户级 MCP 由 Claude 自己管，这里只读。可以把它装进别的机器的项目里。",
+      "zh": "全局的 MCP 由 Claude 自己管，这里只读。",
       "args": []
     },
     "extReads.backend.tooOld": {
