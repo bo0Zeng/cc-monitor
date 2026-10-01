@@ -17,6 +17,9 @@
 
 pub mod accounts; // 账号域：上游选择（`resolve` 那张决策表 ＋ 表 ＋ 凭据 ＋ 热重载）＋ `iso`。**不是中转**，不住 relay/
 #[cfg(test)]
+#[path = "../../tests/backend/runs_guard.rs"]
+mod runs_guard; // 子运行：通用层只认「运行」（扫描 ＋ 假适配层与 Claude Code 两套形状跑同一批判据）
+#[cfg(test)]
 #[path = "../../tests/backend/agent_boundary_guard.rs"]
 mod agent_boundary_guard; // S1：通用层不许知道任何 agent 的名字与文件格式（整体 #[cfg(test)]）
 #[cfg(test)]
