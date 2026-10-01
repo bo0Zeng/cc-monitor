@@ -163,8 +163,8 @@ async fn a_refusal_from_the_backend_fence_comes_back_as_a_sentence() {
     .await
     .expect_err("后端拒了，窗口这一侧却成了");
     assert!(
-        e.contains("refused") && e.contains("refuse write"),
-        "那句话里没有后端的码与原话：`{e}`"
+        e.contains("refuse write") && !e.contains("refused"),
+        "那句话里没有后端的原话，或错误码上了屏：`{e}`"
     );
     // 阴性对照：同一条命令在普通路径上成（否则上面可以靠「什么都失败」蒙过去）。
     super::apply_remote(

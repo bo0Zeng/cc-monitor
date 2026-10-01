@@ -88,10 +88,12 @@ pub(crate) fn parse_answer(
                 .as_str()
                 .map(str::to_string)
                 .unwrap_or_else(|| {
-                    copy_text(
-                        "rsRemoteResident.ensure.exitCode",
-                        &[("code", &format!("{:?}", exec.exit_status))],
-                    )
+                    // 退出码只进日志；给人看的只说没起来、没说原因。
+                    tracing::warn!(
+                        "resident ensure exited {:?} without a reason",
+                        exec.exit_status
+                    );
+                    copy_text("rsRemoteResident.ensure.noReason", &[])
                 });
             if err["code"] == "unsupported" {
                 Err(AttachErr::Unsupported(copy_text(
