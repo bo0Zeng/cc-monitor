@@ -7,7 +7,7 @@
 
 盘上有两组数，同一个符号读出两个值：
 
-| 符号 | `K-P6 §0-订正` | `K-P6b §0c`（PM 09-06 现打） |
+| 符号 | | （PM 09-06 现打） |
 |---|---|---|
 | `connect_session` | 7 处 / 3 份 | 生产 4 处 / 3 份 |
 | `connect_and_exec_cmd` | 18 处 / 11 份 | 生产 18 处 / 11 份 |
@@ -108,12 +108,12 @@ SYMBOLS = ["connect_session", "connect_and_exec_cmd", "connect_sftp"]
 
 # 盘上那两组数，逐字抄自件文件（`处/份`，只取生产那一格）。
 ON_DISK = {
-    "K-P6 §0-订正": {
+    "订正": {
         "connect_session": (7, 3),
         "connect_and_exec_cmd": (18, 11),
         "connect_sftp": (14, 4),
     },
-    "K-P6b §0c 生产": {
+    " 生产": {
         "connect_session": (4, 3),
         "connect_and_exec_cmd": (18, 11),
         "connect_sftp": (15, 4),

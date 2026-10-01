@@ -20,8 +20,8 @@
   ④ 上传：只写 `~/.cc-monitor/staging/<key>.part`，逐字节等于本机那份；帧序 got 单调、最后一帧 done
   ⑤ 续传：暂存件先放前 N 字节 ⇒ sftp-server 记下的这一趟写入字节数 == 总长 − N
   ⑥ 撤：上传撤 ⇒ 暂存件删；下载撤 ⇒ `.part` 留
-  ⑦ 下载：落地逐字节对、`.part` 不留；远端不存在 ⇒ failed、`.part` 不留；本机落点是会话文件 ⇒ 照样开单（〔WF2 跟上〕V119 之后没有数据围栏，`设计/60 §3.5`）
-  ⑧ 〔NT1 改〕长流 ＋ files 链路一条、全部传输分道一条：sshd **恰好两次**鉴权、**恰好两条** TCP
+  ⑦ 下载：落地逐字节对、`.part` 不留；远端不存在 ⇒ failed、`.part` 不留；本机落点是会话文件 ⇒ 照样开单（V119 之后没有数据围栏）
+  ⑧ 长流 ＋ files 链路一条、全部传输分道一条：sshd **恰好两次**鉴权、**恰好两条** TCP
   ⑨ 子系统留口仍不开：use=subsystem ⇒ unsupported_use
 
 退出码：0 = 全过 · 1 = 有一条不对 · 3 = 起不来 sshd / 找不到二进制（环境不满足，不是被测对象坏了）
@@ -235,7 +235,7 @@ def main():
                     n = int(ln.rsplit(" written ", 1)[1].split()[0])
             return n
 
-        # 〔WF2 · WIN3 §2〕拨号只收界面那一格原样的配置（MIG-1 之后 `dial/machine.rs::resolve`）；平铺 host/port 那一形会被回 `invalid_args`。
+        # 〔WIN3 §2〕拨号只收界面那一格原样的配置（MIG-1 之后 `dial/machine.rs::resolve`）；平铺 host/port 那一形会被回 `invalid_args`。
         base = {"machine": {"host": "127.0.0.1", "port": port, "user": user, "label": "sr1b", "keyPath": f"{d}/client_key"}}
         be = Backend(bin_path, home)
         cmds = be.hello.get("commands", [])
@@ -260,7 +260,7 @@ def main():
         blob = os.urandom(3 * 1024 * 1024 + 17)
         bp = f"{rhome}/.cc-monitor/bin/ccm"
         st0 = fs.ask({"op": "stat", "path": bp})
-        check("〔MIG-3b 续 · V41〕stat 那一问删了 ⇒ unknown_op", st0.get("code") == "unknown_op", st0)
+        check("stat 那一问删了 ⇒ unknown_op", st0.get("code") == "unknown_op", st0)
         r = fs.ask({"op": "mkdirs", "path": f"{rhome}/.cc-monitor/bin"})
         check("mkdirs ok", r == {}, r)
         r = fs.ask({"op": "put", "path": bp, "size": len(blob), "mode": 0o700, "verify": True}, blob)
@@ -316,7 +316,7 @@ def main():
         last = be.end_of(xid)
         frames = be.xfer.get(xid, [])
         gots = [f["got"] for f in frames]
-        # 〔WF2 跟上〕FW1 之后 done 帧带整份摘要（`sha256`，提交那一步要它）⇒ 摘要也要等于本机那份。
+        # FW1 之后 done 帧带整份摘要（`sha256`，提交那一步要它）⇒ 摘要也要等于本机那份。
         with open(up, "rb") as fh:
             up_sha = hashlib.sha256(fh.read()).hexdigest()
         check("终局 done、bytes == 本机大小、sha256 == 本机那份", bool(last) and last["end"] == {"state": "done", "bytes": os.path.getsize(up), "sha256": up_sha}, last)
@@ -394,9 +394,9 @@ def main():
         check("远端不存在 ⇒ failed、.part 不留", bool(last) and last["end"].get("state") == "failed" and not os.path.exists(miss + ".part") and not os.path.exists(miss), last)
         sess = os.path.join(home, ".claude", "projects", "p", "x.jsonl")
         r = be.call("transfer-download", {"dial": base, "remote_path": rsrc, "local_path": sess})
-        check("本机落点是会话文件 ⇒ 照样开单（V119：没有数据围栏）", bool(r) and r["ok"], r)
+        check("本机落点是会话文件 ⇒ 照样开单（没有数据围栏）", bool(r) and r["ok"], r)
 
-        # 〔NT1 · 2026-09-24〕长流在时传输分道（`dial/pool.rs`：主连接上有长流 ⇒ 传输另开一条批量连接，
+        # 长流在时传输分道（`dial/pool.rs`：主连接上有长流 ⇒ 传输另开一条批量连接，
         #   被主连接托着、之后的传输都复用它）⇒ 长流 ＋ files 一条、六趟传输一条：恰好两次鉴权、两条 TCP。
         #   分道本身的读数（下载期间长流回声 314 → 116 ms）住 `NT1-net-loopback.py` ①⑤。
         print("⑧ 两条连接（长流 ＋ files 一条 · 传输分道一条）")

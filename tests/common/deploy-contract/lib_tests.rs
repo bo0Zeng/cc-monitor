@@ -1,6 +1,6 @@
-//! 要求住址：`4d-lanes.md ## 发版后四路 ### P1` 第 1 件 —— 部署那一族的契约（键 · 戳格式 · 答话形状 · 路径）；`设计/96 §7.2.1`「读它字节里那段身份戳，不跑它」。
+//! 要求住址：`4d-lanes.md ## 发版后四路 ### P1` 第 1 件 —— 部署那一族的契约（键 · 戳格式 · 答话形状 · 路径）；「读它字节里那段身份戳，不跑它」。
 //!
-//! 〔P1〕判定那几格（身份判定 · 取样解释 · 只升不降 · 旧入口 · 旧落点 · 表 A / 表 B 的判序）随判定搬进后端 `tests/backend/control/deploy_plan_tests.rs`；
+//! 判定那几格（身份判定 · 取样解释 · 只升不降 · 旧入口 · 旧落点 · 表 A / 表 B 的判序）随判定搬进后端 `tests/backend/control/deploy_plan_tests.rs`；
 //! 这里只剩戳的格式（扫描命令 · 扫描回话 · 字节自报 · 序键）。界标由参数交（[`Marks`]）⇒ 用一对**占位界标**（规矩只看「两个界标之间 `[[:alnum:]_.-]+`」）。
 
 use super::*;
@@ -22,9 +22,9 @@ fn stamp_scan_cmd(word: &str) -> String {
     super::stamp_scan_cmd(word, M)
 }
 
-// ═══ 〔DP1 · 第四波〕远端判身份认字节（`设计/96 §7.2`）═══════════════════════════════
+// ═══ 远端判身份认字节═══════════════════════════════
 //
-// 要求住址：`设计/96 §7.2.1`，逐字：「**读它字节里那段身份戳，不跑它**」；`§7.2.4`：「读不出来时的显式失败 —— 四态，不许合并」。
+// 要求：「**读它字节里那段身份戳，不跑它**」；「读不出来时的显式失败 —— 四态，不许合并」。
 
 /// I2：扫描的回话 → 身份。退出码 0 / 1 / 其它 · 重复戳去重 · 两个不同戳 · 空身份不收。
 #[test]
@@ -70,7 +70,7 @@ fn the_stamp_scan_answer_maps_to_exactly_one_identity_state() {
 /// I2b：那条命令只读、界标不写字面量、路径过引号、身份至少一个字符（与 `build.rs::bytes_build_id` 同一条纪律）。
 #[test]
 fn the_stamp_scan_command_is_read_only_and_quoted() {
-    // 〔E2〕落点是固定常量、以 shell 写法交进来（`"$HOME"` 在那台上展开），不再是要 quote 的外来路径。
+    // 落点是固定常量、以 shell 写法交进来（`"$HOME"` 在那台上展开），不再是要 quote 的外来路径。
     let cmd = stamp_scan_cmd(LANDING_SHELL);
     assert!(cmd.starts_with("LC_ALL=C grep -aoE "), "{cmd}");
     assert!(
@@ -92,7 +92,7 @@ fn the_stamp_scan_command_is_read_only_and_quoted() {
     }
 }
 
-// ═══ 〔HX2 · 主会话 D-b〕戳的序键（「只升不降」那条判定住后端）══════════════════════════════
+// ═══ 戳的序键（「只升不降」那条判定住后端）══════════════════════════════
 
 /// B1a：序键手写表 —— 合法形 · 多位代号 · 缺字母 · 大写 · 缺名 · 缺前缀。
 #[test]
@@ -115,7 +115,7 @@ fn hx2_build_order_reads_generation_and_letter_and_refuses_other_shapes() {
     }
 }
 
-// 〔MIG-3b〕B1b（出过的每一个 `BUILD_ID` 都有序、历史表爬升）住后端 `deploy_plan_tests.rs`：它读的是后端源码里的历史表，
+// B1b（出过的每一个 `BUILD_ID` 都有序、历史表爬升）住后端 `deploy_plan_tests.rs`：它读的是后端源码里的历史表，
 //   放在后端那一侧不跨两半（`cross_half_edge_registry`）。
 
 /// 手上一份字节自报的身份：与远端那条扫描同一条规矩（恰好一个才是身份 · 重复去重 · 空身份不收 · 0 字节是 Empty）。

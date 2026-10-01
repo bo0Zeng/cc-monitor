@@ -1,4 +1,4 @@
-//! 前端自有状态文件（不是用户文件）的原子覆盖〔P4：原 `src/frontend/shell/src/utils.rs`，逐字搬来〕。
+//! 前端自有状态文件（不是用户文件）的原子覆盖〔原 `src/frontend/shell/src/utils.rs`，逐字搬来〕。
 //!
 //! 早期 `bind.rs` / `history.rs` / `auto_launch.rs` 三处各自手写 `write(tmp) + remove + rename` 三步非原子，crash 即丢；
 //! 统一走本 helper 后 Windows 上走 `ReplaceFileW`，非 Windows 走 `std::fs::rename`，全程原子。
