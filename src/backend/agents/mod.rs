@@ -743,13 +743,11 @@ pub(crate) struct DefaultUpstream {
     pub(crate) settings_env: Option<SettingsEnvFace>,
 }
 
-/// 一家的用户级设置文件里「上游地址」那一格：住哪 · 怎么读出来 · 要贴的那一段长什么样（格式知识都在这一家）。
+/// 一家的用户级设置文件里「上游地址」那一格：住哪 · 怎么读出来 · 要贴的那一段长什么样（格式知识与那一次只读都在这一家）。
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct SettingsEnvFace {
-    /// 家目录（`$HOME`）→ 那份文件（各号共用的那一份）。
-    pub(crate) file: fn(&Path) -> PathBuf,
-    /// 那份文件的原文 → 里面写的上游地址。
-    pub(crate) base_url: fn(&str) -> SettingsBaseUrl,
+    /// 家目录（`$HOME`）→ 那份文件（各号共用的那一份）＋ 里面写的上游地址（**只读**）。
+    pub(crate) read: fn(&Path) -> (PathBuf, SettingsBaseUrl),
     /// 地址 → 要合并进那份文件的那一段。
     pub(crate) snippet: fn(&str) -> String,
 }
@@ -757,12 +755,25 @@ pub(crate) struct SettingsEnvFace {
 /// 设置文件里上游地址那一格读出来的样子。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum SettingsBaseUrl {
-    /// 没写（或写了空串）。
+    /// 文件不在，或没写（或写了空串）。
     Unset,
     /// 写了这个地址。
     Set(String),
-    /// 读得到原文但读不懂（坏 JSON · 顶层或那一块不是对象 · 值不是串）⇒ 装没装说不清。
-    Unreadable,
+    /// 读不了 / 读不懂 ⇒ 装没装说不清。
+    Unreadable(SettingsUnreadable),
+}
+
+/// 为什么读不了。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum SettingsUnreadable {
+    /// 读的时候出错（权限 · I/O），带系统的原话。
+    Io(String),
+    /// 那不是一个普通文件。
+    NotFile,
+    /// 超过这个字节数。
+    TooLarge(u64),
+    /// 读得到但读不懂（坏 JSON · 顶层或那一块不是对象 · 值不是串）。
+    BadShape,
 }
 
 /// 声明拥有 API key 凭据文件（[`DefaultUpstream::owns_credentials_file`]）的第一家的路由名；没有一家 ⇒ 空串（上游选择据此起不来）。

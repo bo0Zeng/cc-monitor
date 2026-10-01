@@ -34,7 +34,7 @@
 //! ⚠ ① 与 ⑥ 的降级**刻意不同**，而且从此写在线上（`whenDown`）—— 「把这两种降级写成一样是最容易犯的错」。
 
 use super::CREDENTIALS_FILE_AGENT;
-use crate::agents::{SettingsBaseUrl, SettingsEnvFace};
+use crate::agents::{SettingsBaseUrl, SettingsEnvFace, SettingsUnreadable};
 use copy_core::copy_text;
 use relay_route_core::{base_url, RouteMode, PORT};
 use serde_json::{json, Value};
@@ -247,26 +247,6 @@ pub(crate) fn answer_routing_with(
     }))
 }
 
-/// 读那份设置文件的上限（几 KB 的配置；超了按「读不了」说，不当没装）。
-const OPTIN_SETTINGS_CAP_BYTES: u64 = 1 << 20;
-
-/// 读那份设置文件：不在 ⇒ `Ok(None)`；不是普通文件 / 超上限 / 读不动 ⇒ `Err(为什么)`（降级成「读不了」并说出来，不当没装）。
-fn read_settings(file: &std::path::Path) -> Result<Option<String>, String> {
-    match std::fs::metadata(file) {
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
-        Err(e) => Err(e.to_string()),
-        Ok(m) if !m.is_file() => Err(copy_text("beUpstreamEndpoint.optin.notFile", &[])),
-        Ok(m) if m.len() > OPTIN_SETTINGS_CAP_BYTES => {
-            let cap = OPTIN_SETTINGS_CAP_BYTES.to_string();
-            let error = copy_text("beUpstreamEndpoint.optin.tooLarge", &[("cap", &cap)]);
-            Err(error)
-        }
-        Ok(_) => std::fs::read_to_string(file)
-            .map(Some)
-            .map_err(|e| e.to_string()),
-    }
-}
-
 /// 那份设置文件里的地址和现在该贴的那一条比，是哪一态。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum OptinState {
@@ -303,7 +283,7 @@ fn ours(url: &str) -> bool {
 /// ★ 判态（纯函数）：读出来的那一格 × 现在该贴的那一条（`None` ＝ 生成不了）。
 pub(crate) fn optin_state(found: &SettingsBaseUrl, expected: Option<&str>) -> OptinState {
     match found {
-        SettingsBaseUrl::Unreadable => OptinState::Unreadable,
+        SettingsBaseUrl::Unreadable(_) => OptinState::Unreadable,
         SettingsBaseUrl::Unset => OptinState::Absent,
         SettingsBaseUrl::Set(u) if Some(u.as_str()) == expected => OptinState::Installed,
         SettingsBaseUrl::Set(u) if ours(u) => OptinState::Stale,
@@ -341,12 +321,7 @@ pub(crate) fn optin_at(
     registered: bool,
     listening: &dyn Fn(u16) -> bool,
 ) -> Value {
-    let file = (face.file)(home);
-    let (found, unread) = match read_settings(&file) {
-        Ok(None) => (SettingsBaseUrl::Unset, None),
-        Ok(Some(raw)) => ((face.base_url)(&raw), None),
-        Err(error) => (SettingsBaseUrl::Unreadable, Some(error)),
-    };
+    let (file, found) = (face.read)(home);
     let expected = match decide_launch(agent, &LaunchAccount::Undeclared, true, routed, registered)
     {
         Endpoint::Inject { url, .. } => Some(
@@ -365,11 +340,22 @@ pub(crate) fn optin_at(
         .flatten()
         .map(|u| (face.snippet)(u));
     // 两句各说各的：`note` 说那份文件为什么读不了；`missing` 说那一段为什么生成不了（已装 / 生成得了 ⇒ 空）。
-    let note = match (&found, unread) {
-        (SettingsBaseUrl::Unreadable, Some(why)) => {
+    let note = match &found {
+        SettingsBaseUrl::Unreadable(SettingsUnreadable::BadShape) => {
+            copy_text("beUpstreamEndpoint.optin.badShape", &[])
+        }
+        SettingsBaseUrl::Unreadable(why) => {
+            let why = match why {
+                SettingsUnreadable::Io(e) => e.clone(),
+                SettingsUnreadable::NotFile => copy_text("beUpstreamEndpoint.optin.notFile", &[]),
+                SettingsUnreadable::TooLarge(cap) => copy_text(
+                    "beUpstreamEndpoint.optin.tooLarge",
+                    &[("cap", &cap.to_string())],
+                ),
+                SettingsUnreadable::BadShape => String::new(),
+            };
             copy_text("beUpstreamEndpoint.optin.unreadable", &[("why", &why)])
         }
-        (SettingsBaseUrl::Unreadable, None) => copy_text("beUpstreamEndpoint.optin.badShape", &[]),
         _ => String::new(),
     };
     let missing = match expected {
