@@ -303,6 +303,10 @@ impl Destinations for Accounts {
     fn stream_label_headers(&self) -> Vec<&'static str> {
         crate::agents::session_headers()
     }
+
+    fn stream_owner_headers(&self) -> Vec<&'static str> {
+        crate::agents::owner_headers()
+    }
 }
 
 /// 上游选择 `Refuse` 的码 —— **只有这一处**〔`设计/20 §3.1a` ②〕。

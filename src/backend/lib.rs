@@ -985,10 +985,10 @@ pub const SUBCOMMANDS: &[&str] = &[
     // 〔U4b · 第四波〕`history-record` 的 CLI 面（CLI 面从 `REGISTRY` 派生，`is_query_mode` 那道闸门读本表）。
     // **是新子命令** ⇒ `build_id_guard` 红是预期的，BUILD_ID 由合并那一拍统一 bump（本路不 bump）。
     "--history-record",
+    // 按运行读一个子运行的记录（替掉按目录与描述挑的那一条）。**子命令换了** ⇒ `build_id_guard` 红是预期的（本路不 bump）。
+    "--history-run",
     "--history-search",
     "--history-sessions",
-    // 〔MOD〕`history-subagents`（只列候选）换成 `history-subagent`（出成品）。⇒ `build_id_guard` 红是预期的（本路不 bump）。
-    "--history-subagent",
     "--history-tail",
     "--history-user-inputs",
     // 〔MIG-3b〕帧面 `hooks-diag` 自动派生的 CLI 面。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
@@ -996,7 +996,6 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--kill",
     "--launch",
     "--list-accounts",
-    "--list-subagents",
     // 〔`设计/10 §2.2b ⑥` · SE1〕大纲的数据源：「你说过的话」清单。**是新子命令** ⇒
     // `build_id_guard` 红是预期的，BUILD_ID 由合并那一拍统一 bump（本路不 bump）。
     "--list-user-inputs",

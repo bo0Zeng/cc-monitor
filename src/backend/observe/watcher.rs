@@ -33,8 +33,9 @@
 //! read from `cursor.consumed` up to the **last `\n`** in the new region — a
 //! torn tail without a trailing `\n` is deferred to the next event, never
 //! emitted half-way (Batch4-F14). BOM strip via
-//! `trim_start_matches('\u{feff}')`, skip blank lines, and `is_subagent_path`
-//! excludes any path containing a `subagents` segment. Truncation is detected
+//! `trim_start_matches('\u{feff}')`, skip blank lines; only active sessions' own record
+//! files stream as `line` frames (sub-run records feed the run book instead, see
+//! [`crate::observe::runs`]). Truncation is detected
 //! against `cursor.seen_len` (the observed EOF high-water mark, which covers a
 //! deferred torn tail); on truncation the cursor resets to byte 0 and
 //! 〔RENDER2〕[`process_jsonl`] restarts the per-file seq after announcing the
@@ -697,6 +698,7 @@ pub fn spawn(
     with_bg: bool,
     tail_only: bool,
     with_rbind_token: bool,
+    book: std::sync::Arc<crate::observe::runs::RunBook>,
 ) -> (mpsc::Receiver<Frame>, WatcherPoke) {
     let (tx, rx) = mpsc::channel::<Frame>(CHANNEL_CAPACITY);
     // P4：事件 channel 从 `watch_loop` 内部**上提到这里**造 —— 因为 poke 句柄必须在线程
@@ -715,6 +717,7 @@ pub fn spawn(
                 with_bg,
                 tail_only,
                 with_rbind_token,
+                book,
                 events_tx,
                 events_rx,
             );
@@ -826,6 +829,7 @@ fn watch_loop(
     with_bg: bool,
     tail_only: bool,
     with_rbind_token: bool,
+    book: std::sync::Arc<crate::observe::runs::RunBook>,
     events_tx: std::sync::mpsc::Sender<WatchEvent>,
     events_rx: std::sync::mpsc::Receiver<WatchEvent>,
 ) {
@@ -841,6 +845,8 @@ fn watch_loop(
     // 〔`设计/80 §8.7` 步 2〕注入「客户端索要了启动期令牌」这一位。**不进 `new` 的签名**
     // 的理由写在那个字段的头注里（同 `events_tx` 那条既有纪律）。
     state.with_rbind_token = with_rbind_token;
+    // 运行簿：与这条连接的流归位共用一本（流按它定归哪个运行）。
+    state.runs.book = book;
     // All frames go out through a FrameSink: a bounded-channel sender that counts
     // frames dropped on a full channel and emits a single `Overflow` signal once
     // the channel drains enough to accept it (#32). Never blocks this reader.
@@ -963,7 +969,17 @@ fn watch_loop(
                         start_tmux_probe(&mut tmux_inflight, &events_tx);
                         continue;
                     }
-                    if is_jsonl(p) && !is_subagent_path(p) {
+                    // 子运行的记录（适配层说住哪）：读新行进运行簿、表变了发一帧；不发 `line`（它们不属于主时间线）。
+                    let child = if p.starts_with(&state.projects) {
+                        state.runs.on_path(p)
+                    } else {
+                        None
+                    };
+                    if let Some((sid, changed)) = child {
+                        if changed {
+                            sink.send(state.runs.frame(&sid));
+                        }
+                    } else if is_jsonl(p) {
                         // process_jsonl skips sids not in active_sids.
                         process_jsonl(p, &mut state, &mut sink);
                     } else if is_session_json(p) {
@@ -1199,6 +1215,8 @@ struct ReaderState {
     ///    （论证住 `wire.rs` 那个字段的头注）。
     /// 生产路由 [`watch_loop`] 注入；夹具直接置字段。
     with_rbind_token: bool,
+    /// 子运行：运行面 ＋ 这条连接的运行簿（[`watch_loop`] 换成 `spawn` 交进来的那一本；夹具用自带的一本）＋ 子运行记录的游标。
+    runs: crate::observe::runs::RunTrack,
 }
 
 impl ReaderState {
@@ -1216,6 +1234,10 @@ impl ReaderState {
             with_bg,
             tail_only,
             with_rbind_token: false,
+            runs: crate::observe::runs::RunTrack::new(
+                crate::agents::stream_run_faces(),
+                std::sync::Arc::default(),
+            ),
         }
     }
 }
@@ -1657,8 +1679,12 @@ fn process_jsonl(path: &Path, state: &mut ReaderState, sink: &mut FrameSink) -> 
         });
     }
     let n = lines.len();
+    let mut runs_changed = state.runs.adopt(&session_id, path);
     for line in lines {
-        send_line(&session_id, &path_str, line, sink);
+        runs_changed |= send_line(&session_id, &path_str, line, &state.runs, sink);
+    }
+    if runs_changed {
+        sink.send(state.runs.frame(&session_id));
     }
     n
 }
@@ -1666,8 +1692,14 @@ fn process_jsonl(path: &Path, state: &mut ReaderState, sink: &mut FrameSink) -> 
 /// 一行交出去：`Line` 帧，是轮次结束就紧跟一帧 `TurnEnd`。增量读与写端死后收尾（[`catch_up_session`]）共用这一份。
 ///
 /// 〔MOD〕这一行在渲染模型里是什么、是不是一轮的结束，都问注册表里流式那一家的记录解释面（`agents::stream_record_face`）；
-/// 本函数只搬。解析不出 ⇒ 帧照发（占号）、不带成品。
-fn send_line(session_id: &str, path_str: &str, line: ReadLine, sink: &mut FrameSink) {
+/// 本函数只搬。解析不出 ⇒ 帧照发（占号）、不带成品。对账键与派出链接记进运行簿（回：运行表变没变）。
+fn send_line(
+    session_id: &str,
+    path_str: &str,
+    line: ReadLine,
+    runs: &crate::observe::runs::RunTrack,
+    sink: &mut FrameSink,
+) -> bool {
     let face = crate::agents::stream_record_face();
     let parsed = face.and_then(|f| match (f.parse)(&line.raw) {
         Ok(Some(p)) if p.displayable => Some(p),
@@ -1679,6 +1711,7 @@ fn send_line(session_id: &str, path_str: &str, line: ReadLine, sink: &mut FrameS
         Some(p) => (Some(p.message), p.cwd),
         None => (None, None),
     };
+    let (rid, runs_changed) = runs.main_record(session_id, &line.raw);
     sink.send(Frame::Line {
         session_id: session_id.to_string(),
         path: path_str.to_string(),
@@ -1686,6 +1719,7 @@ fn send_line(session_id: &str, path_str: &str, line: ReadLine, sink: &mut FrameS
         message,
         cwd,
         byte_offset: line.byte_offset, // backend-01 gap#2：累计原始字节（对齐 aterm LineFramer）
+        rid,
     });
     // **先 Line 后 TurnEnd**：对齐 aterm β 的按行序处理——TurnEnd 结算时 currentOffset 已含本行。
     // TurnEnd 不带 byte_offset（只 Line 带）。
@@ -1695,6 +1729,7 @@ fn send_line(session_id: &str, path_str: &str, line: ReadLine, sink: &mut FrameS
             uuid,
         });
     }
+    runs_changed
 }
 
 /// 〔RENDER2 · `设计/10 §3.1` A6〕**从游标补读这个会话的 jsonl**（与文件事件同一个 [`process_jsonl`]，不另写一条路）。
@@ -1714,7 +1749,7 @@ fn catch_up_session(
     let mine: Vec<PathBuf> = state
         .offsets
         .keys()
-        .filter(|k| file_stem_str(k).as_deref() == Some(sid) && !is_subagent_path(k))
+        .filter(|k| file_stem_str(k).as_deref() == Some(sid))
         .cloned()
         .collect();
     let mut n = 0;
@@ -1755,7 +1790,9 @@ fn flush_final_line(path: &Path, sid: &str, state: &mut ReaderState, sink: &mut 
         raw: raw.to_string(),
         byte_offset: cursor.consumed + rest.len() as u64,
     };
-    send_line(sid, &path.to_string_lossy(), line, sink);
+    if send_line(sid, &path.to_string_lossy(), line, &state.runs, sink) {
+        sink.send(state.runs.frame(sid));
+    }
 }
 
 /// ★★ `P0b-Y2`〔08-13〕：`<claude_dir>/sessions/` **换了 inode 或刚出现**，重新挂上并重扫。
@@ -2038,6 +2075,14 @@ fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameS
             process_jsonl(p, state, sink);
         }
     }
+    // 这个会话此刻已有的子运行（宣告之前就派出去的那几个）：收进来、从头读一遍，有就发一帧运行表。
+    let mut runs_changed = false;
+    for p in &jsonls {
+        runs_changed |= state.runs.adopt(&sid, p);
+    }
+    if runs_changed {
+        sink.send(state.runs.frame(&sid));
+    }
     wrote
 }
 
@@ -2181,6 +2226,7 @@ fn retire_sid_if_unreferenced(
     }
     catch_up_session(sid, true, state, sink); // 〔RENDER2 · A6〕写端已死：补读 ＋ 收尾残行（D 块）
     state.active_sids.remove(sid);
+    state.runs.forget(sid);
     sink.send(Frame::SessionRemoved {
         sid: sid.to_string(),
         cause,
@@ -2200,7 +2246,6 @@ fn find_sid_jsonls(projects: &Path, sid: &str) -> Vec<std::path::PathBuf> {
         .map(|e| e.into_path())
         .filter(|p| {
             is_jsonl(p)
-                && !is_subagent_path(p)
                 && p.file_stem().and_then(|s| s.to_str()) == Some(sid)
         })
         .collect();
@@ -2583,12 +2628,6 @@ fn is_jsonl(p: &Path) -> bool {
 /// the sessions dir, so an extension check suffices.
 fn is_session_json(p: &Path) -> bool {
     p.extension().is_some_and(|e| e == "json")
-}
-
-/// subagent JSONL is excluded: any path containing a `subagents` segment.
-fn is_subagent_path(p: &Path) -> bool {
-    p.components()
-        .any(|c| c.as_os_str().eq_ignore_ascii_case("subagents"))
 }
 
 fn file_stem_str(p: &Path) -> Option<String> {

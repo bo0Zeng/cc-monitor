@@ -112,44 +112,31 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answ
         }
         // 〔C4d · 第四波 4B〕`history-projects` / `history-sessions` 两臂搬走了：它们从此出成品（并注解 ＋ 判活 ＋ 远端那一跳），
         //   住 `history_join.rs`（历史跨机 join 的唯一的家）；这里只剩按行 / 按页的换壳。
-        // 〔MOD · `05 §14.3` C 组〕子 agent 那一份出成品：列候选 ＋ 挑（description 精确串等 ＋ 时间戳最近）＋ 读 ＋ 解析都在这台后端，
-        //   界面经通道直接问（原先 monitor `subagent.rs` 列了再挑、再读、再解析）。挑的规则只此一份（`history_query::pick_subagent`）。
-        "history-subagent" => {
+        // 一个子运行的记录（按运行读，不认任何一家的目录 / 字段）：父记录 ＋（子运行 ‖ 派出它的那次工具调用）⇒ 那份记录从 `from` 起的一页成品。
+        //   `end` ＝ 读到哪了（下次从这里续）；`more` ＝ 这一页没读完。
+        "history-run" => {
             let parent = str_arg(args, "parent")?;
-            let description = str_arg(args, "description")?;
-            let timestamp = str_arg(args, "timestamp")?;
-            let mut listing = CappedBuf::default();
-            let listed = history_query::list_subagents_into(home, parent, &mut listing);
-            if listing.over {
-                return Err(too_large(listing.seen));
-            }
-            listed?;
-            let text = String::from_utf8_lossy(&listing.buf);
-            let rows: Vec<&str> = text
-                .lines()
-                .map(str::trim)
-                .filter(|l| !l.is_empty())
-                .collect();
-            let Some(picked) = history_query::pick_subagent(&rows, description, timestamp) else {
-                return Err((
-                    "not_found",
-                    copy_text(
-                        "rsSubagent.load.notFound",
-                        &[("description", &format!("{description:?}"))],
-                    ),
-                ));
-            };
-            let picked_str = picked.to_string_lossy().into_owned();
-            let (target, face) = record_face(home, &picked_str)?;
-            let bytes =
-                std::fs::read(&target).map_err(|e| ("failed", format!("read failed: {e}")))?;
-            let records = crate::observe::record_page::all_records(&face, &bytes);
-            let v = json!({
-                "path": picked_str,
-                "agent_id": picked.file_stem().and_then(|s| s.to_str()).and_then(|s| s.strip_prefix("agent-")).unwrap_or(""),
+            let run = opt_str_arg(args, "run")?;
+            let tool = opt_str_arg(args, "tool")?;
+            let from = u64_arg(args, "from")?.unwrap_or(0);
+            let (source, run) = history_query::run_source(home, parent, run, tool)?;
+            let source_str = source.to_string_lossy().into_owned();
+            let (_, face) = record_face(home, &source_str)?;
+            let page = history_query::read_page(
+                home,
+                &source_str,
+                from,
+                None,
+                READ_PAGE_BYTES,
+                LINE_CAP_BYTES,
+            )?;
+            let records = crate::observe::record_page::all_records(&face, &page.bytes);
+            capped(json!({
+                "run": run,
                 "records": records,
-            });
-            capped(v)
+                "end": page.next,
+                "more": !page.eof,
+            }))
         }
         // 〔MOD〕这台后端的漂移账（看不懂的记录类型）出成品：`{faces: [...]}`（各家的面并在一起，注册序）。
         "drift-report" => {
@@ -550,6 +537,18 @@ fn str_arg<'a>(args: &'a Value, key: &str) -> Result<&'a str, (&'static str, Str
         "bad_args",
         crate::common::contract::malformed(&format!("missing `{key}` (a string)")),
     ))
+}
+
+/// 可缺的串参数：缺 / `null` ⇒ `None`；在而不是串 ⇒ `bad_args`。
+fn opt_str_arg<'a>(args: &'a Value, key: &str) -> Result<Option<&'a str>, (&'static str, String)> {
+    match args.get(key) {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::String(v)) => Ok(Some(v)),
+        Some(_) => Err((
+            "bad_args",
+            crate::common::contract::malformed(&format!("{key} must be a string")),
+        )),
+    }
 }
 
 fn u64_arg(args: &Value, key: &str) -> Result<Option<u64>, (&'static str, String)> {
