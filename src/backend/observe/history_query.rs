@@ -603,6 +603,12 @@ pub(crate) fn open_user_inputs_at(
     Ok(std::io::BufReader::new(f))
 }
 
+/// `history-facts` 的项目目录那一格：过读会话那同一道围栏，再问记录归属的那一家（只读开头）。
+pub(crate) fn facts_project_dir(agent_home: &Path, jsonl_path: &str) -> Option<String> {
+    let target = validate_session_path(agent_home, jsonl_path).ok()?;
+    crate::agents::project_dir_of(&target)
+}
+
 /// `history-facts` 的续点：从 `from` 接着读之前先核两件事，任一不成立 ⇒ 报错（调用方从 0 重要一份）：
 /// ① `from` 不越过文件尾（越过 = 截断 / 重写）；② `from > 0` 时文件第 `from-1` 字节是 `\n`
 /// （续点恒是某个完整行的末字节 —— 不在行边界上 = 被重写过，接着读会从半行起、把后面的事实算歪）。

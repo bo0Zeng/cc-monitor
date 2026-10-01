@@ -876,7 +876,7 @@ describe("K-H2b D5 阻-2：tab 栏那条本机 resume 也是**行为**判据（�
     const root = document.createElement("div");
     document.body.append(bar, root);
     const tm = new TabManager(bar, root);
-    tm.ensureTab(sid, "/home/u/p", `/p/${sid}.jsonl`, 0, LOCAL_ORIGIN);
+    tm.ensureTab(sid, "/home/u/p", `/p/${sid}.jsonl`, LOCAL_ORIGIN);
     tm.archiveTab(sid);
     // 会话动作住 `tab-session-actions.ts`；`TabManager` 上不再留同名转交 ⇒ 直接指向新家。
     await (tm as unknown as { actions: TabSessionActions }).actions.resumeTab(sid);

@@ -146,6 +146,7 @@ export interface PinnedTab {
   sid: string;
   /** = `Tab.parentPath`。空串 = 这条从没收到过带路径的行（`§B.6` 第一格：降级，不是丢）。 */
   jsonlPath: string;
+  /** = `Tab.projectDir`（后端给的项目目录；复活时先用它，那台再宣告 / 会话事实到了就对齐）。 */
   cwd: string | null;
   /**
    * 哪台机器（决定复活后走哪条读命令 / resume 往哪台机去）。本机 = `LOCAL_ORIGIN`。
