@@ -1,5 +1,6 @@
-//! 要求：设置「扩展」页 —— 各台目录合成「条目 × 机器」一张表、每格的态与唯一那个按钮都由后端判（界面只画，线上没有摘要）；
-//! 装 / 卸跨两台走同一对枢纽命令，看过之后源变了 ⇒ `stale`、目标零写；卸：cc-monitor 装的按装记录撤，不是的先备份再删。
+//! 要求：设置「扩展」页 —— 各台目录合成「条目 × 机器」一张表、每格的点 · 那台上的各处 · 「装到…」能装到哪几处都由后端判（界面只画，线上没有摘要）；
+//! 装 / 卸跨两台走同一对枢纽命令，装到哪由用户选（skill：全局 / 项目；MCP：只项目，全局由后端拒），看过之后源变了 ⇒ `stale`、目标零写；
+//! 卸：cc-monitor 装的按装记录撤，不是的先备份再删；备注随目录同步到别的后端；cc-bus 是自带的一行，装它用被写那台二进制里那一份。
 use super::*;
 use crate::assets::asset_catalog::{Scanned, Snapshot, Visits};
 use crate::assets::hub::{ext_apply, ext_preview, Here};
@@ -47,37 +48,53 @@ fn snap(label: &str, assets: Vec<Asset>, projects: &[&str]) -> Snapshot {
         seen_at: 0,
         assets,
         project_dirs: projects.iter().map(|p| p.to_string()).collect(),
+        notes: BTreeMap::new(),
     }
 }
 
-/// 一格压成一句好比的话：态 ＋ 那个按钮（或没有按钮的那一句）。
-fn brief(c: &ExtCell) -> String {
-    let state = serde_json::to_value(c.state).unwrap();
-    let act = match &c.action {
-        None => format!("note:{}", c.note.clone().unwrap_or_default()),
-        Some(ExtAction::Uninstall { at }) => {
-            format!("uninstall@{}", at.project().unwrap_or("user"))
-        }
-        Some(ExtAction::Install { from, scope, .. }) => format!(
-            "install<{}@{}>@{}",
-            from.as_deref().unwrap_or("here"),
-            scope.from.project().unwrap_or("user"),
-            scope.to.project().unwrap_or("user")
-        ),
-        Some(ExtAction::Replace { from, scope, .. }) => format!(
-            "replace<{}@{}>@{}",
-            from.as_deref().unwrap_or("here"),
-            scope.from.project().unwrap_or("user"),
-            scope.to.project().unwrap_or("user")
-        ),
-    };
-    format!("{}:{act}", state.as_str().unwrap())
+fn at_s(l: &ExtLoc) -> &str {
+    l.project().unwrap_or("user")
 }
 
-/// ★ 表格判据：持有人最多的那一版算「这一版」、打平时本机优先 · 只在项目里有 ⇒ `project` · 用户级 MCP 只读 ·
-/// 没连上的那台没有按钮 · MCP 只装进项目、那台没项目就说出来 · 「新见到」只标上次来看之后第一次见到的。
+/// 一格压成一句好比的话：点 · 各处（态，`+卸` = 有卸载，`!` = 不能卸、说了为什么）· 「装到…」（来源 · 建议的那一处 · 各选项，`✗` = 不可选）或没有它的那一句。
+fn brief(c: &ExtCell) -> String {
+    let st = |s: ExtState| serde_json::to_value(s).unwrap().as_str().unwrap().to_string();
+    let places: Vec<String> = c
+        .places
+        .iter()
+        .map(|p| {
+            let mark = if p.uninstall {
+                "+卸"
+            } else if p.note.is_some() {
+                "!"
+            } else {
+                ""
+            };
+            format!("{}={}{mark}", at_s(&p.at), st(p.state))
+        })
+        .collect();
+    let tail = match &c.bring {
+        None => format!("note:{}", c.note.clone().unwrap_or_default()),
+        Some(b) => format!(
+            "bring<{}@{}>@{} [{}]",
+            b.from.as_deref().unwrap_or("here"),
+            at_s(&b.scope.from),
+            at_s(&b.scope.to),
+            b.targets
+                .iter()
+                .map(|t| format!("{}{}", at_s(&t.at), if t.ok { "" } else { "✗" }))
+                .collect::<Vec<_>>()
+                .join(" ")
+        ),
+    };
+    format!("{}:{} {tail}", st(c.state), places.join(","))
+}
+
+/// ★ 表格判据：持有人最多的那一版算「这一版」、打平时本机优先 · 只在项目里有 ⇒ `project` · 每台展开成各处（全局一行 ＋ 每个装着它的项目）·
+/// 用户级 MCP 只读（那一处没有卸载、「装到…」里全局不可选）· 来源那一处不可选 · 建议的落点与来源同级、不行就挑第一个能选的 ·
+/// 没连上的那台没有「装到…」也没有卸载 · MCP 那台没项目就说出来 · 自带的 cc-bus 永远有一行、只装全局 · 「新见到」只标上次来看之后第一次见到的。
 #[test]
-fn the_table_judges_every_cell_and_names_its_one_button() {
+fn the_table_judges_every_cell_place_and_target() {
     let n = |k: &str| copy_text(k, &[]);
     let mut cat = asset_catalog::fresh("h".into());
     cat.machines.insert(
@@ -146,56 +163,81 @@ fn the_table_judges_every_cell_and_names_its_one_button() {
         .map(|r| (r.name.clone(), r.new, r.cells.iter().map(brief).collect()))
         .collect();
     let off = format!("note:{}", n("beExt.note.offline"));
-    let ro = format!("note:{}", n("beExt.note.userMcpReadOnly"));
     let no_proj = format!("note:{}", n("beExt.note.noProject"));
     let want: Vec<(String, bool, Vec<String>)> = vec![
         (
             "m-proj".into(),
             false,
             vec![
-                "project:uninstall@/h/p".into(),
-                format!("missing:{no_proj}"),
-                format!("missing:{off}"),
+                "project:user=missing,/h/p=same+卸 bring<here@/h/p>@/shared [user✗ /h/p✗ /shared]".into(),
+                format!("missing:user=missing {no_proj}"),
+                format!("missing:user=missing {off}"),
             ],
         ),
         (
             "m-user".into(),
             false,
             vec![
-                format!("same:{ro}"),
-                format!("missing:{no_proj}"),
-                format!("missing:{off}"),
+                "same:user=same! bring<here@user>@/h/p [user✗ /h/p /shared]".into(),
+                format!("missing:user=missing {no_proj}"),
+                format!("missing:user=missing {off}"),
+            ],
+        ),
+        (
+            "cc-bus".into(),
+            false,
+            vec![
+                "missing:user=missing bring<here@user>@user [user /h/p✗ /shared✗]".into(),
+                "missing:user=missing bring<here@user>@user [user]".into(),
+                format!("missing:user=missing {off}"),
             ],
         ),
         (
             "s-major".into(),
             false,
             vec![
-                "same:uninstall@user".into(),
-                "same:uninstall@user".into(),
-                format!("differs:{off}"),
+                "same:user=same+卸 bring<here@user>@/h/p [user✗ /h/p /shared]".into(),
+                "same:user=same+卸 bring<here@user>@user [user]".into(),
+                format!("differs:user=differs {off}"),
             ],
         ),
         (
             "s-proj".into(),
             true,
             vec![
-                "missing:install<devbox@/shared>@/shared".into(),
-                "project:uninstall@/shared".into(),
-                format!("missing:{off}"),
+                "missing:user=missing bring<devbox@/shared>@/shared [user /h/p /shared]".into(),
+                "project:user=missing,/shared=same+卸 bring<devbox@/shared>@user [user]".into(),
+                format!("missing:user=missing {off}"),
             ],
         ),
         (
             "s-tie".into(),
             false,
             vec![
-                "same:uninstall@user".into(),
-                "differs:replace<here@user>@user".into(),
-                format!("missing:{off}"),
+                "same:user=same+卸 bring<here@user>@/h/p [user✗ /h/p /shared]".into(),
+                "differs:user=differs+卸 bring<here@user>@user [user]".into(),
+                format!("missing:user=missing {off}"),
             ],
         ),
     ];
     assert_eq!(got, want);
+    // 不可选的那几项各说为什么（同一句话只住后端一处）。
+    let m_user = &list.rows[1].cells[0];
+    assert_eq!(m_user.places[0].note, Some(n("beExt.note.userMcpReadOnly")));
+    let targets = &m_user.bring.as_ref().unwrap().targets;
+    assert_eq!(targets[0].note, Some(n("beExt.note.userMcpReadOnly")));
+    let cc = &list.rows[2];
+    assert_eq!(
+        cc.builtin,
+        Some(ExtBuiltin {
+            note: n("beExt.builtin.ccBus"),
+            hooks: true
+        })
+    );
+    assert!(list.rows.iter().filter(|r| r.name != "cc-bus").all(|r| r.builtin.is_none()));
+    let cc_bring = cc.cells[0].bring.as_ref().unwrap();
+    assert_eq!(cc_bring.from_name, n("beExt.from.builtin"));
+    assert_eq!(cc_bring.targets[1].note, Some(n("beExt.target.builtinUserOnly")));
     let wire = serde_json::to_string(&list).unwrap();
     assert!(
         !wire.contains("digest") && !wire.contains("\"d1\""),
@@ -289,6 +331,10 @@ impl M {
             }
             "mcp-sync-apply" => {
                 super::super::mcp_sync_flow::answer_apply(&LocalFiles, &record, args)
+            }
+            "cc-bus-install-state" => Ok(super::super::cc_bus_install::state_at(&skills)),
+            "cc-bus-install" => {
+                super::super::cc_bus_install::install_at(&LocalFiles, &skills, &record)
             }
             other => Err(("unknown_command", other.to_string())),
         };
@@ -393,13 +439,17 @@ impl Two {
     }
 }
 
-fn scope_of(a: &ExtAction) -> (Option<String>, ExtScope) {
-    match a {
-        ExtAction::Install { from, scope, .. } | ExtAction::Replace { from, scope, .. } => {
-            (from.clone(), scope.clone())
-        }
-        ExtAction::Uninstall { .. } => panic!("这一格是卸"),
-    }
+/// 那一格「装到…」的来源与建议的那一处。
+fn bring_of(c: &ExtCell) -> (Option<String>, ExtScope) {
+    let b = c.bring.as_ref().expect("这一格没有「装到…」");
+    (b.from.clone(), b.scope.clone())
+}
+
+/// 那一格里能卸的那一处（只许一处）。
+fn removable(c: &ExtCell) -> ExtLoc {
+    let at: Vec<&ExtPlace> = c.places.iter().filter(|p| p.uninstall).collect();
+    assert_eq!(at.len(), 1, "该有且只有一处能卸：{c:?}");
+    at[0].at.clone()
 }
 
 /// ★ 端到端：本机有个 skill、假远端没有 —— 表上远端那一格 ○ → 装（中途改源 ⇒ `stale`、远端零写）→ ● → 卸 → ○。
@@ -416,8 +466,9 @@ async fn a_skill_goes_to_the_other_machine_and_comes_back_off() {
     assert_eq!(t.cell(&list, "demo", 0).state, ExtState::Same);
     let there = t.cell(&list, "demo", 1);
     assert_eq!(there.state, ExtState::Missing);
-    let (from, scope) = scope_of(there.action.as_ref().expect("缺的那一格没按钮"));
+    let (from, scope) = bring_of(&there);
     assert_eq!(from, None, "来源是本机");
+    assert_eq!(scope.to, ExtLoc::User, "来源在全局 ⇒ 建议装到全局");
     let args =
         json!({ "kind": "skill", "name": "demo", "from": from, "to": "laptop", "scope": scope });
 
@@ -465,9 +516,7 @@ async fn a_skill_goes_to_the_other_machine_and_comes_back_off() {
     let list = t.list();
     let there = t.cell(&list, "demo", 1);
     assert_eq!(there.state, ExtState::Same, "装完那一格没变 ●");
-    let Some(ExtAction::Uninstall { at }) = there.action else {
-        panic!("● 那一格的按钮该是卸：{there:?}")
-    };
+    let at = removable(&there);
 
     // 卸在被卸那台上判、写（界面直问那台）：装记录里有 ⇒ 只撤装时写的。
     let u = json!({ "kind": "skill", "name": "demo", "at": at });
@@ -505,7 +554,7 @@ async fn an_mcp_entry_goes_over_without_its_secret_and_comes_back_off() {
     let list = t.list();
     let there = t.cell(&list, "m", 1);
     assert_eq!(there.state, ExtState::Missing);
-    let (from, scope) = scope_of(there.action.as_ref().unwrap());
+    let (from, scope) = bring_of(&there);
     assert_eq!(
         scope.to,
         ExtLoc::Project {
@@ -544,9 +593,7 @@ async fn an_mcp_entry_goes_over_without_its_secret_and_comes_back_off() {
     let list = t.list();
     let there = t.cell(&list, "m", 1);
     assert_eq!(there.state, ExtState::Project, "装进项目之后那一格是 ◎");
-    let Some(ExtAction::Uninstall { at }) = there.action else {
-        panic!("◎ 那一格的按钮该是卸：{there:?}")
-    };
+    let at = removable(&there);
     let u = json!({ "kind": "mcp", "name": "m", "at": at });
     let card = answer_uninstall_preview(&LocalFiles, &t.b.env, &u).unwrap();
     assert_eq!(
@@ -569,6 +616,224 @@ async fn an_mcp_entry_goes_over_without_its_secret_and_comes_back_off() {
         "卸完没从装记录里摘掉"
     );
     let _ = std::fs::remove_dir_all(&base);
+}
+
+/// ★ 装到哪由用户选（正）：本机全局里的一个 skill，在远端那一格「装到…」里全局与那台的项目都能选；选项目 ⇒ 写进那个项目的
+/// `.claude/skills/<名>/`，那一格变 ◎、那一处可卸，全局那一处照旧「没有」。
+#[tokio::test]
+async fn a_user_level_skill_goes_into_a_project_on_the_other_machine() {
+    let (base, t) = two("into-project");
+    let src = t.a.env.skills.clone().unwrap().join("demo");
+    std::fs::create_dir_all(&src).unwrap();
+    std::fs::write(src.join("SKILL.md"), "---\ndescription: d\n---\n").unwrap();
+    let list = t.list();
+    let there = t.cell(&list, "demo", 1);
+    let b = there.bring.clone().expect("缺的那一格没有「装到…」");
+    let proj = ExtLoc::Project {
+        dir: t.b.proj.display().to_string(),
+    };
+    assert_eq!(
+        b.targets
+            .iter()
+            .map(|x| (x.at.clone(), x.ok))
+            .collect::<Vec<_>>(),
+        vec![(ExtLoc::User, true), (proj.clone(), true)],
+        "skill：全局与那台开过会话的项目都能选"
+    );
+    let args = json!({ "kind": "skill", "name": "demo", "from": b.from, "to": "laptop",
+        "scope": { "from": b.scope.from, "to": proj } });
+    let card = ext_preview(&t.here, &args, &t.reach, &t.remote)
+        .await
+        .expect("看卡");
+    let mut apply = args.clone();
+    apply["tokens"] = card["tokens"].clone();
+    ext_apply(&t.here, &apply, &t.reach, &t.remote)
+        .await
+        .expect("装不进项目");
+    assert!(t.b.proj.join(".claude/skills/demo/SKILL.md").is_file());
+    assert!(
+        !t.b.env.skills.clone().unwrap().join("demo").exists(),
+        "选的是项目，却写进了全局"
+    );
+    let there = t.cell(&t.list(), "demo", 1);
+    assert_eq!(there.state, ExtState::Project);
+    assert_eq!(
+        brief(&there).split(' ').next().unwrap(),
+        format!("project:user=missing,{}=same+卸", t.b.proj.display())
+    );
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// ★ MCP 选全局 ⇒ 后端拒（反）：卡上那一项显示但不可选；就算界面硬交上来，枢纽也在发出任何一跳之前拒掉（来源与被写那台都没被问）。
+/// 自带的 cc-bus 选项目同样拒。
+#[tokio::test]
+async fn the_hub_refuses_a_target_the_table_greys_out() {
+    let (base, t) = two("refuse-user");
+    std::fs::write(
+        t.a.proj.join(".mcp.json"),
+        json!({ "mcpServers": { "m": { "command": "srv" } } }).to_string(),
+    )
+    .unwrap();
+    let list = t.list();
+    let b = t.cell(&list, "m", 1).bring.expect("那台有项目，该有「装到…」");
+    assert_eq!(
+        (b.targets[0].at.clone(), b.targets[0].ok, b.targets[0].note.clone()),
+        (
+            ExtLoc::User,
+            false,
+            Some(copy_text("beExt.note.userMcpReadOnly", &[]))
+        )
+    );
+    let user = json!({ "level": "user" });
+    for (kind, name, to, why) in [
+        ("mcp", "m", user.clone(), "beExt.note.userMcpReadOnly"),
+        (
+            "skill",
+            "cc-bus",
+            json!({ "level": "project", "dir": t.b.proj.display().to_string() }),
+            "beExt.target.builtinUserOnly",
+        ),
+    ] {
+        let args = json!({ "kind": kind, "name": name, "from": b.from, "to": "laptop",
+            "scope": { "from": b.scope.from, "to": to }, "tokens": { "source": "s", "target": null } });
+        let (code, said) = ext_preview(&t.here, &args, &t.reach, &t.remote)
+            .await
+            .expect_err("不可选的那一处也给看卡了");
+        assert_eq!((code.as_str(), said), ("refused", copy_text(why, &[])));
+        let (code, _) = ext_apply(&t.here, &args, &t.reach, &t.remote)
+            .await
+            .expect_err("不可选的那一处也给装了");
+        assert_eq!(code, "refused");
+    }
+    assert_eq!(
+        t.remote.1.lock().unwrap().clone(),
+        Vec::<String>::new(),
+        "拒之前已经问过那台了"
+    );
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// ★ 备注随目录同步：一台上写的备注记在它自己那一格，整份并进另一台之后那一行带着它；另一台后来改的（`rev` 更大）压过前一条；
+/// 清掉（空串）也照样传过去。
+#[test]
+fn a_note_travels_with_the_catalog_to_the_other_backend() {
+    let (base, t) = two("note");
+    let key = asset_catalog::entry_key(KIND_SKILL, "cc-bus");
+    let (ca, changed) =
+        asset_catalog::update_noting(&t.a.cat, t.a.scan(), "a", (&key, "  先装钩子  "), 101).unwrap();
+    assert!(changed);
+    let row = |cat: &Catalog| {
+        table(cat, &[])
+            .rows
+            .into_iter()
+            .find(|r| r.name == "cc-bus")
+            .unwrap()
+            .note
+    };
+    assert_eq!(row(&ca), Some("先装钩子".to_string()));
+    let cb = t.b.refresh(Some(ca.machines.clone()));
+    assert_eq!(row(&cb), Some("先装钩子".to_string()), "备注没随目录到另一台");
+    let (cb, _) = asset_catalog::update_noting(&t.b.cat, t.b.scan(), "b", (&key, "改过了"), 102).unwrap();
+    let ca = t.a.refresh(Some(cb.machines.clone()));
+    assert_eq!(row(&ca), Some("改过了".to_string()), "后写的那一条没压过前一条");
+    let (ca, _) = asset_catalog::update_noting(&t.a.cat, t.a.scan(), "a", (&key, ""), 103).unwrap();
+    assert_eq!(row(&ca), None);
+    let cb = t.b.refresh(Some(ca.machines.clone()));
+    assert_eq!(row(&cb), None, "清掉的那一下没传过去");
+    // 同样的字再存一次：目录不变（不扇出）。
+    let (_, again) = asset_catalog::update_noting(&t.a.cat, t.a.scan(), "a", (&key, ""), 104).unwrap();
+    assert!(!again);
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// ★ cc-bus 是自带的一行：没人装过也在表上；「装到…」交被写那台用它自己二进制里那一份装（不从别的机器拿）；
+/// 装完那一格 ●（与本机后端带的那一版相同）、全局那一处可卸（装记录里有）。
+#[tokio::test]
+async fn cc_bus_installs_from_the_target_binary_and_shows_as_this_version() {
+    let (base, t) = two("cc-bus");
+    let list = t.list();
+    let there = t.cell(&list, "cc-bus", 1);
+    assert_eq!(there.state, ExtState::Missing);
+    let (from, scope) = bring_of(&there);
+    let args = json!({ "kind": "skill", "name": "cc-bus", "from": from, "to": "laptop", "scope": scope });
+    let card = ext_preview(&t.here, &args, &t.reach, &t.remote)
+        .await
+        .expect("看卡");
+    assert_eq!(card["unchanged"], false);
+    assert_eq!(card["suspects"], json!([]), "那台原来没有 ⇒ 不用备份");
+    let mut apply = args.clone();
+    apply["tokens"] = card["tokens"].clone();
+    let done = ext_apply(&t.here, &apply, &t.reach, &t.remote)
+        .await
+        .expect("装不上");
+    assert_eq!(done["changed"], card["writes"]);
+    assert_eq!(
+        t.remote.1.lock().unwrap().clone(),
+        vec!["cc-bus-install-state", "cc-bus-install-state", "cc-bus-install"],
+        "自带的那一个只问被写那台"
+    );
+    let there = t.cell(&t.list(), "cc-bus", 1);
+    assert_eq!(there.state, ExtState::Same, "装完那一格没变 ●");
+    assert_eq!(removable(&there), ExtLoc::User);
+    let card = ext_preview(&t.here, &args, &t.reach, &t.remote).await.unwrap();
+    assert_eq!(card["unchanged"], true, "装好之后再看：没有要写的");
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// ★ 扫描判据：全仓生产代码里提到 agent 设置文件（`settings.json`）的那几份 == 登记的只读那几份，而且它们一个写盘的写法都没有。
+/// 正控：同一把尺子认得出一段现造的「往 settings.json 写」，也认得出一份真在写盘的模块。
+#[test]
+fn no_production_code_writes_the_agent_settings_file() {
+    const NEEDLE: &str = "settings.json";
+    const WRITES: &[&str] = &[
+        "fs::write",
+        "File::create",
+        "OpenOptions",
+        "write_all",
+        "door::put",
+        "files-put",
+        "fs::rename",
+        "door::rename",
+    ];
+    const READ_ONLY: &[&str] = &[
+        "src/backend/agents/claudecode/footprint.rs",
+        "src/backend/agents/claudecode/paths.rs",
+        "src/backend/observe/cc_bus_hooks.rs",
+    ];
+    let code = |text: &str| guard_core::strip_comment_lines(text);
+    let writes = |text: &str| WRITES.iter().any(|w| text.contains(w));
+    let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let files: Vec<(PathBuf, String)> =
+        guard_core::scan_tree_excluding(&repo.join("src"), &["rs", "ts"], &[])
+            .into_iter()
+            .filter(|(p, _)| !p.to_string_lossy().replace('\\', "/").contains("/src/vendor/"))
+            .collect();
+    let mut seen: Vec<String> = files
+        .iter()
+        .filter(|(_, text)| code(text).contains(NEEDLE))
+        .map(|(p, _)| {
+            p.strip_prefix(&repo)
+                .unwrap_or(p)
+                .display()
+                .to_string()
+                .replace('\\', "/")
+        })
+        .collect();
+    seen.sort();
+    assert_eq!(seen, READ_ONLY, "提到 settings.json 的生产代码多了 / 少了一份");
+    for (p, text) in &files {
+        if code(text).contains(NEEDLE) {
+            assert!(!writes(&code(text)), "{} 提到 settings.json 又有写盘的写法", p.display());
+        }
+    }
+    // 正控：现造一段往 settings.json 写的代码 ⇒ 两条都认得出。
+    let fake = "let p = home.join(\".claude/settings.json\");\nstd::fs::write(&p, b\"{}\").unwrap();";
+    assert!(code(fake).contains(NEEDLE) && writes(&code(fake)));
+    let writer = files
+        .iter()
+        .find(|(p, _)| p.ends_with("assets/asset_catalog.rs"))
+        .expect("正控：那份写目录文件的模块不在扫描范围里");
+    assert!(writes(&code(&writer.1)), "正控：写法表认不出一份真在写盘的模块");
 }
 
 /// 那一句话里的路径（按文案表那一句的前后两截切出来，不另写一份拼法）。
@@ -698,7 +963,7 @@ async fn the_wire_matches_the_cross_language_golden() {
     std::fs::create_dir_all(&src).unwrap();
     std::fs::write(src.join("SKILL.md"), "---\ndescription: d\n---\n").unwrap();
     let list = t.list();
-    let (from, scope) = scope_of(t.cell(&list, "demo", 1).action.as_ref().unwrap());
+    let (from, scope) = bring_of(&t.cell(&list, "demo", 1));
     let args =
         json!({ "kind": "skill", "name": "demo", "from": from, "to": "laptop", "scope": scope });
     let card = ext_preview(&t.here, &args, &t.reach, &t.remote)

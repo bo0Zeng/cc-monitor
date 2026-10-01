@@ -9,7 +9,7 @@
  *
  * 1. `persistedKey` —— **卡片身份**（这张卡对应盘上哪一条）。S1 加的，不是渲染细节：
  *    origin 可被用户编辑，没有它改个名就会变成「新增一台 + 留下孤儿」。
- * 2. `parts()` —— 交出「连接 / 组件」两块，详情页据此分栏（S4b-3b-2）；〔ST2〕外加「工具」栏那一块（别名）。
+ * 2. `parts()` —— 交出「连接 / 组件」两块，详情页据此分栏（S4b-3b-2）；外加「终端」栏那一块（别名）。
  * 3. `setPageMode()` —— 进入独占一页的形态（去折叠箭头与删除按钮）。
  */
 import { listen } from "@tauri-apps/api/event";
@@ -180,11 +180,11 @@ export function shouldShowResetFingerprint(current: string): boolean {
   return current.trim().length > 0;
 }
 
-/** 〔ST2〕一张机器卡交给详情页的三块：连接 / 组件 / 工具（别名）。 */
+/** 一张机器卡交给详情页的三块：连接 / 组件 / 终端（别名）。 */
 export interface MachineCardParts {
   connection: HTMLElement;
   components: HTMLElement;
-  tools: HTMLElement;
+  terminal: HTMLElement;
 }
 
 /** 按钮结果写在哪一栏。 */
@@ -235,11 +235,9 @@ export class MachineCard {
   private connectionPart!: HTMLElement;
   private componentsPart!: HTMLElement;
   /**
-   * 〔第四波 ST2 · 协调方转主会话裁〕「工具」栏里的那一块：② 别名。
-   * 原来远端的别名住「组件」栏、本机的住「工具 → 别名」—— 同一个动作两个位置（`71 §5`：每张卡上同一个动作）。
-   * ⇒ 统一放「工具」栏：本机远端同一个位置。
+   * 「终端」栏里的那一块：② 别名（这台终端认识 `cc` / `cct` / 账号快捷命令）。本机远端同一个位置。
    */
-  private toolsPart!: HTMLElement;
+  private terminalPart!: HTMLElement;
   /** legend 里承载机器名的 span（label || host）。 */
   private nameSpan!: HTMLElement;
   /** legend 左侧折叠指示符（▸ 折叠 / ▾ 展开）。 */
@@ -375,10 +373,10 @@ export class MachineCard {
     this.componentsPart = document.createElement("div");
     this.componentsPart.className = "machine-part machine-part-components";
     this.body.appendChild(this.componentsPart);
-    // 〔ST2〕第三块：「工具」栏（别名）。不挂类名：它只负责装东西，样式沿用里面那几行自己的类。
-    this.toolsPart = document.createElement("div");
-    this.toolsPart.dataset.machinePart = "tools";
-    this.body.appendChild(this.toolsPart);
+    // 第三块：「终端」栏（别名）。不挂类名：它只负责装东西，样式沿用里面那几行自己的类。
+    this.terminalPart = document.createElement("div");
+    this.terminalPart.dataset.machinePart = "terminal";
+    this.body.appendChild(this.terminalPart);
 
     let body = this.connectionPart;
 
@@ -480,7 +478,7 @@ export class MachineCard {
     //   · 前四颗动的是**这条连接**（验它 · 免密 · 用它看文件 / 起会话）⇒ 回「连接」栏，挨着它们用的那几格；
     //   · 后四颗是两件事的四个开关（装后端 · 「ccm 助手」），而「ccm 助手」自己又是两件事
     //     （`71 §13.1`：① 推入口 ② 写别名块）⇒ 推入口并进 ①（**一颗按钮**），写别名块归 ②；
-    //   · ③ 不是按钮：skill / MCP / 插件 / 账号在这一页的「账号」「工具」两栏。
+    //   · ③ 不是按钮：账号在这一页的「账号」栏，skill / MCP 在顶层「扩展」页。
     //   「ccm 助手 / ccm 启动器」这个词整个删掉（用户 2026-09-17 逐字「装/卸 ccm 助手是假的」）。
     const mkBtn = (
       label: string,
@@ -595,8 +593,8 @@ export class MachineCard {
     this.actionResult.style.display = "none";
     body.appendChild(this.actionResult);
 
-    // ↓↓ 从这里起归「工具」栏 ↓↓〔ST2：原来在「组件」栏，与本机那一格不在同一个位置〕
-    body = this.toolsPart;
+    // ↓↓ 从这里起归「终端」栏 ↓↓
+    body = this.terminalPart;
 
     // ── ② 别名 ──〔AL2 · 第四波 4D〕与本机同一个组件（`设计/71 §5`）：清单在这台读、在这台写，别名块装 / 卸 / 预览都在里面。
     const aliasTitle = document.createElement("div");
@@ -693,9 +691,9 @@ export class MachineCard {
     this.hooks.onStatusChanged?.(this);
   }
 
-  /** S4b-3b-2：交出「连接 / 组件」两块，供宿主拆成两栏。〔ST2〕外加「工具」栏那一块（别名）。 */
+  /** S4b-3b-2：交出「连接 / 组件」两块，供宿主拆成两栏；外加「终端」栏那一块（别名）。 */
   parts(): MachineCardParts {
-    return { connection: this.connectionPart, components: this.componentsPart, tools: this.toolsPart };
+    return { connection: this.connectionPart, components: this.componentsPart, terminal: this.terminalPart };
   }
 
   /** 结果区：哪一栏的按钮，结果就写在哪一栏里。 */
@@ -1010,7 +1008,7 @@ export class MachineCard {
      * 停在旧结论上，而 UI 上看不出来。
      */
     ledger?: { facet: MachineFacet; ok: string; fail: string },
-    /** 〔MC1〕结果写到哪一栏：「连接」栏的动作写 `testResult`，「组件」栏的写 `actionResult`（〔AL2〕「工具」栏的别名那一块自带结果区）。 */
+    /** 〔MC1〕结果写到哪一栏：「连接」栏的动作写 `testResult`，「组件」栏的写 `actionResult`（「终端」栏的别名那一块自带结果区）。 */
     where: ResultArea = "conn",
   ): Promise<void> {
     const out = this.resultArea(where);

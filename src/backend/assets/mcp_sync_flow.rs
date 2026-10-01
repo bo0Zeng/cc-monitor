@@ -62,10 +62,6 @@ fn file_of(
     }
 }
 
-fn read_only() -> (&'static str, String) {
-    ("refused", copy_text("beExt.note.userMcpReadOnly", &[]))
-}
-
 /// `mcp-sync-source {name, at}`（来源那台）：那一条，密钥值换成空位 `{path, def, slots, token}`。
 /// `token` 按**原样那一条**（含密钥值）算：它变了（连只改了一个密钥值也算）⇒ 应用时判 `stale`。
 pub(crate) fn answer_source(
@@ -123,7 +119,7 @@ fn def_arg(args: &Value) -> Result<Value, (&'static str, String)> {
 type Target = (String, door::Peeked, Map<String, Value>);
 
 fn target_of(d: &dyn Door, at: &ExtLoc) -> Result<Target, (&'static str, String)> {
-    let dir = at.project().ok_or_else(read_only)?;
+    let dir = crate::assets::ext::mcp_dir(at)?;
     let tgt = door::peek(d, dir, MCP_JSON).map_err(|m| ("refused", m))?;
     let servers = servers_of(
         tgt.text.as_deref(),
