@@ -20,7 +20,9 @@
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(cd "$HERE/../.." && pwd)"
-SOCK=p3tY5
+# shellcheck source=tests/e2e/tmux-shim.sh
+. "$HERE/tmux-shim.sh" --names-only
+SOCK="$(e2e_run_name p3tY5)" || exit 2
 SID=p3te2e01
 TMUXNAME=p3te2e01-cc
 # ★★ launcher 名字**独一无二**，PATH 上不可能有第二个。见下面 ② 的事故记录。
@@ -35,7 +37,7 @@ TMP="$(mktemp -d /tmp/p3t-y5.XXXXXX)"
 # 收尾：**只收自己那台**（`-L` 选择器在，绝不裸 kill-server）。
 cleanup() {
   "$TMUX_BIN" -L "$SOCK" kill-session -t "=$TMUXNAME:" 2>/dev/null
-  "$TMUX_BIN" -L "$SOCK" kill-server 2>/dev/null
+  e2e_tmux_reap "$TMUX_BIN" "$SOCK"
   [ -n "${P3T_KEEP:-}" ] && { echo "  [keep] $TMP"; return; }
   rm -rf -- "$TMP"
 }

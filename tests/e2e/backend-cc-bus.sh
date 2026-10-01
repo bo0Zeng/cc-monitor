@@ -40,7 +40,11 @@ BUS="$SANDBOX/bus"; CLA="$SANDBOX/claude"; EMPTY="$SANDBOX/empty"; NOHOME="$SAND
 mkdir -p "$BUS"/{inbox,state,log,queue} "$CLA/projects" "$EMPTY" "$NOHOME"
 
 # ===== 起飞前：把 tmux 钉死在隔离 socket 上（C7i）=====
-_SOCK="ccbusid$$"
+# shellcheck source=tests/e2e/tmux-shim.sh
+. "$REPO/tests/e2e/tmux-shim.sh" --names-only
+_SOCK="$(e2e_run_name ccbusid)" || exit 2
+# 收尾只收自己这一趟那台（中途退出也收）。
+trap 'e2e_tmux_reap "$REALTMUX" "$_SOCK"; rm -rf "$SANDBOX"' EXIT
 _SHIM="$SANDBOX/shim"; mkdir -p "$_SHIM"
 printf '#!/bin/bash\nexec %s -L %s "$@"\n' "$REALTMUX" "$_SOCK" > "$_SHIM/tmux"
 chmod +x "$_SHIM/tmux"

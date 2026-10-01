@@ -22,9 +22,10 @@ REPO=$(CDPATH= cd -- "$E2E_DIR/../.." && pwd)
 #   认的是那个文件，不是环境变量 —— SSH exec 不带 env（下面 `backend-path` 那段同一个理由）。
 #   不拒的后果现打过：分流不看 argv0 之后，没有打头 `--` 的调用就是「起 claude」⇒ 在仓里直接跑它
 #   会起一次 PATH 上**真的** claude。拒在一切副作用之前（tap 文件、自愈换二进制都在后面）。
-if [ ! -f "$E2E_DIR/backend-path" ]; then
-  echo "backend-wrapper.sh 是夹具：由 tier-2 台架布进台架目录（旁边带 backend-path）后经 app 调用，不直接跑（跑法见 tests/e2e/README.md「全链套件怎么跑」）。" >&2
-  echo "  直接跑会把参数原样交给真后端，没有打头的 -- 时就起真 claude —— 拒绝（$E2E_DIR 下没有 backend-path）。" >&2
+#   台架目录里还要有 `tmux-sock`（台架那份私有 tmux socket 名）：缺了就没有隔离可给后端，同样拒。
+if [ ! -f "$E2E_DIR/backend-path" ] || [ ! -s "$E2E_DIR/tmux-sock" ]; then
+  echo "backend-wrapper.sh 是夹具：由 tier-2 台架布进台架目录（旁边带 backend-path 与 tmux-sock）后经 app 调用，不直接跑（跑法见 tests/e2e/README.md「全链套件怎么跑」）。" >&2
+  echo "  直接跑会把参数原样交给真后端，没有打头的 -- 时就起真 claude —— 拒绝（$E2E_DIR 下缺 backend-path 或 tmux-sock）。" >&2
   exit 2
 fi
 : "${CCM_E2E_CLAUDE_DIR:=/tmp/e2e-remote-claude}"
@@ -55,7 +56,7 @@ fi
 #
 # `P0d` 把套件的 tmux 隔离从 `TMUX_TMPDIR` 换成 `-L <名>` shim（C7i 红线），
 # 这一步是对的 —— 但它**把一个功能前提悄悄拿掉了**：
-# 套件把会话建在 `-L e2eGray` 上，而 **backend 跑在 SSH 那头、不继承本 shell 的 PATH**
+# 套件把会话建在 `-L <私有名>` 上，而 **backend 跑在 SSH 那头、不继承本 shell 的 PATH**
 # ⇒ 它 `tmux ls` 读的是**默认 socket**，**看不见 fixture 会话**
 # ⇒ `session_added` 根本不发 ⇒ 全链套件从此测不到任何东西。
 #
@@ -64,13 +65,10 @@ fi
 #   全链那套的后端在 SSH 那头 ⇒ 断。**判据的射程比它自称的窄，
 #   而窄的那一格恰好是全链。**
 #
-# ⇒ 由调用方经 `CCM_E2E_TMUX_SOCK` 告诉它用哪个 socket，wrapper 在这里造一份同款 shim
-#   塞进后端的 PATH。**不设就退回默认 socket**（与本改动之前逐字同行为）——
-#   帧级那套不传它，照旧工作。
-# 默认值不能省：本脚本经 SSH exec 时 env 不带 CCM_E2E_*（头注第 19 行的既定纪律）
-# ⇒ 靠调用方传 env 行不通，必须像 CCM_E2E_CLAUDE_DIR 那样给一个与套件约定一致的默认。
-# e2eGray = graylight-suite.sh 用的那个名字（两处是双写点，改一处要改两处）。
-: "${CCM_E2E_TMUX_SOCK:=e2eGray}"
+# ⇒ wrapper 在这里造一份同款 shim 塞进后端的 PATH，socket 名读台架目录里的 `tmux-sock`
+#   （`tier2-rig.sh setup` 经共享原语 `tmux-shim.sh` 取名写下；`tier2-rig.sh run` 把同一个名字交给套件）。
+#   经 SSH exec 时 env 不带 CCM_E2E_*，文件是唯一传得进来的东西（同 `backend-path`）；缺了它上面已经拒了。
+CCM_E2E_TMUX_SOCK=$(cat "$E2E_DIR/tmux-sock")
 if [ -n "${CCM_E2E_TMUX_SOCK:-}" ]; then
   _real_tmux=$(command -v tmux 2>/dev/null)
   if [ -n "$_real_tmux" ]; then
@@ -102,7 +100,7 @@ fi
 # ⚠ `stdbuf -oL` 不能省：不加的话 tee 到管道会变**块缓冲**，把帧攒住、改变时序。
 # ⚠ 不设就是**原样 exec**（与本改动之前逐字同行为）——默认路径一个字节不变。
 #
-# ★★ **给它一个默认值**。理由与 `CCM_E2E_CLAUDE_DIR`/`CCM_E2E_TMUX_SOCK`
+# ★★ **给它一个默认值**。理由与 `CCM_E2E_CLAUDE_DIR`
 # 逐字相同:**经 SSH exec 本脚本时 env 不带 `CCM_E2E_*`** ⇒ 靠调用方传是传不进来的,
 # 而没有 tap 就回到「只能看 monitor 记了什么」——那分不清「没发」与「发了没收到」,
 # 正是这条排除链前六拍卡住的原因。本脚本是**测试 fixture**,写 /tmp 是它的本分。

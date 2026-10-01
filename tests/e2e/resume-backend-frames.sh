@@ -29,12 +29,11 @@ set -euo pipefail
 # 这样做的好处是**零调用点改动**：套件里 84 处裸 `tmux` 一个都不用改，
 # 也自动覆盖它 shell out 出去的东西（`ccm` / `cc-spawn` 内部也是裸调 tmux）。
 # `C7i` 隔离：走**共享原语**（`P0e` 08-12 抽出来的，原本这段在各套件里各抄一份）。
-# 它把 `$BIN/tmux` shim 放进 PATH 最前、强插 `-L e2eResumeFrames` —— 漏什么环境变量都打不偏。
+# 它把 `$BIN/tmux` shim 放进 PATH 最前、强插 `-L <本趟私有名>` —— 漏什么环境变量都打不偏。
 # ⚠ 本套件此前靠 `TMUX_TMPDIR` 隔离，那是 `C7i` 逐字禁止的形态
 #   （08-11 一条同形态的探针把用户 **9 个真实会话**打没了）。
-TMUX_SHIM_SOCK=e2eResumeFrames
 # shellcheck source=tests/e2e/tmux-shim.sh
-. "$(cd "$(dirname "$0")" && pwd)/tmux-shim.sh"
+. "$(cd "$(dirname "$0")" && pwd)/tmux-shim.sh" e2eResumeFrames
 _gc_sock_cleanup() { tmux_shim_cleanup; }
 # ─────────────────────────────────────────────────────────────────────────────
 

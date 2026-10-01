@@ -18,11 +18,10 @@ set -euo pipefail
 # ── 隔离（同 inbound-backend-frames.sh 的两件事，缺一不可）──────────────────────
 #   ① unset TMUX —— 否则 $TMUX 会让客户端连外层那台 server 并**完全忽略** TMUX_TMPDIR；
 #   ② TMUX_TMPDIR 必须是短路径 —— unix socket 路径上限 108 字节。
-# `C7i` 隔离：走**共享原语**（`P0e` 08-12）。shim 强插 `-L e2eGate2`，漏什么环境变量都打不偏。
+# `C7i` 隔离：走**共享原语**（`P0e` 08-12）。shim 强插 `-L <本趟私有名>`，漏什么环境变量都打不偏。
 # ⚠ 此前靠 `TMUX_TMPDIR`，那是 `C7i` 逐字禁止的形态（08-11 同形态探针打没了用户 9 个真实会话）。
-TMUX_SHIM_SOCK=e2eGate2
 # shellcheck source=tests/e2e/tmux-shim.sh
-. "$(cd "$(dirname "$0")" && pwd)/tmux-shim.sh"
+. "$(cd "$(dirname "$0")" && pwd)/tmux-shim.sh" e2eGate2
 TMUX_BIN="$(command -v tmux)" || { echo "需要 tmux"; exit 1; }
 
 E2E_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -39,8 +38,8 @@ cleanup() {
   set +e
   exec 3>&- 2>/dev/null
   [ -n "${BACKEND_PID:-}" ] && kill "$BACKEND_PID" 2>/dev/null
-  # C7i：socket 显式给死（见 local-backend-supervise.sh 的同款注释）
-  "$TMUX_BIN" -L "$TMUX_SHIM_SOCK" kill-server 2>/dev/null
+  # C7i：只收本趟那台（shim 的收尾：带选择器 kill-server、删它的 socket 文件与 shim 目录）
+  tmux_shim_cleanup
   rm -rf -- "$WORK"
 }
 trap cleanup EXIT
