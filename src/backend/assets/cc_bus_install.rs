@@ -7,7 +7,7 @@
 //!
 //! # `INVARIANTS` 第 7 条例外的四个配套要求（一条都不许省，逐条对应到下面）
 //!
-//! - **用户显式动作**：只由设置页那颗按钮经通道说 `cc-bus-install`，启动 / 后台路径一处都不调。
+//! - **用户显式动作**：只由扩展页 cc-bus 那一行的确认卡经枢纽说 `cc-bus-install`（`assets/hub.rs`），启动 / 后台路径一处都不调。
 //! - **独立 realpath 白名单**：[`fenced_root`] —— `<skills 根>` 若已在，解到底必须仍在它的上一层（claude 目录）底下。
 //! - **幂等**：逐文件比内容，全一致就一个字节不写、不备份。
 //! - **可撤销**：覆盖前把整个目录改名成 `cc-bus.bak-<秒>`（`files-rename`，原子、不留半份）。
@@ -200,42 +200,50 @@ fn rel_of(skills: &Path, rel: &str) -> String {
     format!("{}/{NAME}/{rel}", skills_name(skills))
 }
 
-/// 查这台装的是哪一版（**只读**）：`{state: "not_installed" | "up_to_date" | "drifted", differing?, missing?}`。
-/// 三态刻意不合并：「没装」并进「不是最新」⇒ 以为点一下是更新；「不是最新」并进「已装」⇒ 装着旧的没人去点。
+/// 内嵌那一份在资产目录里的摘要：与 `asset_catalog::skill_asset` 对一个装好的目录算出来的相同
+/// （按目录走的顺序 —— 逐级按名字排 —— 逐个喂（相对路径, 内容））。扩展页拿它当 cc-bus 的「这一版」。
+pub(crate) fn embedded_digest() -> String {
+    let mut files: Vec<&(&str, &[u8])> = FILES.iter().collect();
+    files.sort_by(|a, b| a.0.split('/').cmp(b.0.split('/')));
+    let mut f = crate::assets::asset_catalog::Fnv::default();
+    f.part(crate::assets::asset_catalog::KIND_SKILL.as_bytes());
+    for (rel, bytes) in files {
+        f.part(rel.as_bytes()).part(bytes);
+    }
+    f.hex()
+}
+
+/// 装之前看一眼（**只读**）：`{dest, writes, existing, version}` —— 内容会变的那几个（缺的 ＋ 不一样的）· 落点上有没有东西
+/// （在而且要写 ⇒ 装的时候整个改名留作备份）· 内嵌那一份的摘要。确认卡由枢纽拿它拼。
 pub(crate) fn state_at(skills: &Path) -> Value {
     let dest = skills.join(NAME);
-    if !dest.is_dir() {
-        return json!({ "state": "not_installed" });
-    }
-    let (mut differing, mut missing) = (0u32, 0u32);
-    for (rel, bytes) in FILES {
-        let p = dest.join(rel);
-        if !p.exists() {
-            missing += 1;
-        } else if std::fs::read(&p).map(|got| got != *bytes).unwrap_or(true) {
-            differing += 1;
-        }
-    }
-    if differing == 0 && missing == 0 {
-        json!({ "state": "up_to_date" })
-    } else if missing as usize == FILES.len() {
-        // 目录在、一个内嵌文件都没有 ⇒ 那不是「装了个旧版」，是根本没装。
-        json!({ "state": "not_installed" })
-    } else {
-        json!({ "state": "drifted", "differing": differing, "missing": missing })
-    }
+    let writes: Vec<&str> = FILES
+        .iter()
+        .filter(|(rel, bytes)| {
+            std::fs::read(dest.join(rel))
+                .map(|got| got != *bytes)
+                .unwrap_or(true)
+        })
+        .map(|(rel, _)| *rel)
+        .collect();
+    json!({
+        "dest": dest.display().to_string(),
+        "writes": writes,
+        "existing": std::fs::symlink_metadata(&dest).is_ok(),
+        "version": embedded_digest(),
+    })
 }
 
 fn skills_root() -> Result<PathBuf, (&'static str, String)> {
     crate::agents::skills_root().ok_or(("refused", copy_text("beCcBusInstall.root.unknown", &[])))
 }
 
-/// `cc-bus-install-state {}` → 三态。
+/// `cc-bus-install-state {}` → [`state_at`]。
 pub(crate) fn answer_state() -> Answer {
     Ok(state_at(&skills_root()?))
 }
 
-/// `cc-bus-install {}` → `{dest, written, unchanged, backup, recordFailed}`。
+/// `cc-bus-install {}` → `{dest, written, backup, recordFailed}`（`written` = 写了的那几个相对路径；全都一致 ⇒ 空、一个字节不动）。
 pub(crate) fn answer_install(d: &dyn Door, record: Record) -> Answer {
     install_at(d, &skills_root()?, record)
 }
@@ -258,9 +266,7 @@ pub(crate) fn install_at(d: &dyn Door, skills: &Path, record: Record) -> Answer 
         }
     }
     if all_same {
-        return Ok(
-            json!({ "dest": dest_s, "written": 0, "unchanged": FILES.len(), "backup": null, "recordFailed": null }),
-        );
+        return Ok(json!({ "dest": dest_s, "written": [], "backup": null, "recordFailed": null }));
     }
     // ★ 可撤销：整个目录改名（原子）。已经一致时走不到这里 ⇒ 不攒垃圾备份。
     let backup = if door::stat_kind(d, &dest_s)
@@ -313,8 +319,7 @@ pub(crate) fn install_at(d: &dyn Door, skills: &Path, record: Record) -> Answer 
         .map(|(_, e)| copy_text("beCcBusInstall.record.failed", &[("e", &e)]));
     Ok(json!({
         "dest": dest_s,
-        "written": FILES.len(),
-        "unchanged": 0,
+        "written": FILES.iter().map(|(rel, _)| *rel).collect::<Vec<_>>(),
         "backup": backup,
         "recordFailed": record_failed,
     }))

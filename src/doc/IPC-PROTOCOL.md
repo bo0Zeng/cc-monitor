@@ -2954,27 +2954,48 @@ D 组「monitor 算好、后端写」（`设计/05 §14.3`）按用户 09-27「�
 
 #### `ext-list`：设置「扩展」页那张表（09-30，**只读用户文件 · 写后端自有状态**）
 
-这台现扫一次、记进资产目录，各台目录合成「条目 × 机器」一张表。判定全在这里：每格的态、那一格唯一的那个按钮做什么、从哪台拿哪一版、没有按钮时为什么。**线上没有摘要**（界面没有东西可比）。
+这台现扫一次、记进资产目录，各台目录合成「条目 × 机器」一张表。判定全在这里：每格的点、那台上的各处与各自的态和「卸载」、机器那一行的「装到…」（从哪台拿哪一版 · 建议装到哪 · 能装到哪几处、不能的为什么）。**线上没有摘要**（界面没有东西可比）。
 
 ```text
 → {"id":"e1","cmd":"ext-list","args":{"visit":true}}
-← {"kind":"reply","id":"e1","ok":true,"data":{"machines":[{"key":null,"here":true,"reachable":true,"name":"u@h","projects":["/home/u/p"]}],"rows":[{"kind":"skill","name":"demo","about":"…","detail":[{"label":"…","value":"…"}],"new":false,"cells":[{"state":"same","places":[{"level":"user"}],"dir":"/home/u/.claude/skills/demo","action":{"verb":"uninstall","at":{"level":"user"}},"note":null}]}],"problems":[]}}
+← {"kind":"reply","id":"e1","ok":true,"data":{"machines":[{"key":null,"here":true,"reachable":true,"name":"u@h","projects":["/home/u/p"]}],"rows":[{"kind":"skill","name":"demo","about":"…","detail":[{"label":"…","value":"…"}],"new":false,"builtin":null,"note":null,"cells":[{"state":"same","places":[{"at":{"level":"user"},"state":"same","dir":"/home/u/.claude/skills/demo","uninstall":true,"note":null}],"bring":{"from":null,"fromName":"本机","scope":{"from":{"level":"user"},"to":{"level":"project","dir":"/home/u/p"}},"targets":[{"at":{"level":"user"},"ok":false,"note":"…"},{"at":{"level":"project","dir":"/home/u/p"},"ok":true,"note":null}]},"note":null}]}],"problems":[]}}
 ```
 
 | 字段 | 向 | 说明 |
 |---|---|---|
 | `visit` | → | 可缺席：`true` = 这一问算「来看了一次」（扩展页每次变可见时的第一问）—— 「新见到」按上一次来看算 |
 | `machines` | ← | 每台一列 `{key, here, reachable, name, projects}`：`key` = 枢纽认它的键（本机后端自己 = `null`；没连上的也是 `null` 且 `reachable: false`）；`projects` = 那台上开过会话的项目目录 |
-| `rows` | ← | 每个条目一行 `{kind, name, about, detail, new, cells}`，`cells` 与 `machines` 同序 |
-| `cells[].state` | ← | 闭集 `same`（用户级有，且是持有人最多的那一版；打平时本机那一份优先）· `differs` · `missing` · `project`（用户级没有、只在项目里有） |
-| `cells[].action` | ← | 那一格唯一的按钮：`{verb:"install" \| "replace", from, fromName, scope:{from, to}}`（`from` 同枢纽的键）或 `{verb:"uninstall", at}`；没有 ⇒ `null`，`note` 说为什么（没连上 · 用户级 MCP 只读 · 那台没有项目 …） |
+| `rows` | ← | 每个条目一行 `{kind, name, about, detail, new, builtin, note, cells}`，`cells` 与 `machines` 同序；cc-monitor 自带的（cc-bus）没人装过也有一行 |
+| `builtin` | ← | 自带的扩展才有：`{note, hooks}` —— 内置备注 · 要不要在抽屉里列各台的钩子状态（界面问那台 `hooks-diag`） |
+| `note` | ← | 用户写的备注（`ext-note-set`；随目录同步，各台里最新的那一条），没有 ⇒ `null` |
+| `cells[].state` | ← | 表上那个点，闭集 `same`（用户级有，且是持有人最多的那一版；打平时本机那一份优先；自带的 = 本机后端二进制里那一份）· `differs` · `missing` · `project`（用户级没有、只在项目里有） |
+| `cells[].places` | ← | 那台上的各处：全局一行在前（没有也列），再是每个装着它的项目，各 `{at, state, dir, uninstall, note}`：`state` 全局那一行 `same` / `differs` / `missing`、项目那几行 `same` / `differs`（与「这一版」比）；`uninstall` = 这一处有「卸载」；有它却不能卸 ⇒ `note` 说为什么（用户级 MCP 只读） |
+| `cells[].bring` | ← | 机器那一行的「装到…」：`{from, fromName, scope:{from, to}, targets}`（`from` 同枢纽的键；`scope.to` = 建议的那一处，与来源同级）；`targets` = 能选的各处 `{at, ok, note}`，全局一项 ＋ 那台每个开过会话的项目，不能选的 `ok: false` 带一句（用户级 MCP 只读 · 自带的只装全局 · 就是来源那一处）；没有 ⇒ `null`，`cells[].note` 说为什么（没连上 · 没有来源 · 那台没有项目） |
 | `problems` | ← | 这台扫的时候读不出来的那几份 |
 
-用户级 MCP（agent 自己的热状态文件）只读：只当来源装进别的机器的项目。错误码：`bad_args` · `catalog_unreadable` · `io_failed`。读本进程的可达表 ⇒ **只在帧面上**（没有 CLI 面）。
+错误码：`bad_args` · `catalog_unreadable` · `io_failed`。读本进程的可达表 ⇒ **只在帧面上**（没有 CLI 面）。
+
+#### `ext-note-set`：写 / 改 / 清一个扩展的备注（10-01，**写后端自有状态**）
+
+记进这台资产目录自己那一格（`rev` = 这台目录里同一条目各台备注的最大值 ＋ 1），随目录同步到别的后端；生效的是各台里 `rev` 最大的那一条。
+
+```text
+→ {"id":"n1","cmd":"ext-note-set","args":{"kind":"skill","name":"cc-bus","text":"先加钩子"}}
+← {"kind":"reply","id":"n1","ok":true,"data":{"note":"先加钩子"}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `kind` · `name` | → | `skill` / `mcp` · 名字 |
+| `text` | → | 备注正文（首尾空白去掉；空串 = 清掉；最长 2000 字，超了拒、不截断） |
+| `note` | ← | 现在生效的那一份（清掉了 ⇒ `null`） |
+
+错误码：`bad_args` · `catalog_unreadable` · `io_failed`。⚠ **CLI 面也有它**（`--ext-note-set`）。
 
 #### `ext-hub-preview`：装到一台之前那张确认卡，本机后端当枢纽（09-30，**只读**）
 
-skill 与 MCP 同一条：本机后端向 `from` 取、交 `to` 判，拼成确认卡。skill 走 `skill-read` → `skill-install-plan`；MCP 走 `mcp-sync-source` → `mcp-sync-preview`。
+skill 与 MCP 同一条：本机后端向 `from` 取、交 `to` 判，拼成确认卡。skill 走 `skill-read` → `skill-install-plan`；MCP 走 `mcp-sync-source` → `mcp-sync-preview`；
+cc-monitor 自带的那一个（cc-bus）不从别的机器拿，交被写那台用它自己二进制里那一份（`cc-bus-install-state`）。
 
 ```text
 → {"id":"e2","cmd":"ext-hub-preview","args":{"kind":"mcp","name":"fs","from":null,"to":"aya","scope":{"from":{"level":"project","dir":"/home/u/p"},"to":{"level":"project","dir":"/srv/q"}}}}
@@ -2985,7 +3006,7 @@ skill 与 MCP 同一条：本机后端向 `from` 取、交 `to` 判，拼成确�
 |---|---|---|
 | `kind` · `name` | → | `skill` / `mcp` · 名字 |
 | `from` · `to` | → | 来源那台 · 被写那台：可达表的键，**`null` = 这台自己** |
-| `scope` | → | `{from, to}`，各是 `{level:"user"}` 或 `{level:"project", dir}`（那台上的绝对路径） |
+| `scope` | → | `{from, to}`，各是 `{level:"user"}` 或 `{level:"project", dir}`（那台上的绝对路径）；`to` = 用户在确认卡上选的那一处 |
 | `path` · `writes` | ← | 被写那台上的落点 · 要写的那几个（skill：目录里的相对路径；MCP：那份配置文件） |
 | `unchanged` | ← | 装上之后和现在一样 |
 | `suspects` | ← | 要留意的几件（说人话） |
@@ -2993,7 +3014,7 @@ skill 与 MCP 同一条：本机后端向 `from` 取、交 `to` 判，拼成确�
 | `config` · `slots` | ← | MCP：装上之后那一条（待填的值是 `null`）· 每个空位 `{field, key, kept}` |
 | `tokens` | ← | 两头看过的那一份的记号 `{source, target}` —— 应用时原样交回 |
 
-同一台同一处 ⇒ `refused`。错误码：`bad_args` · `bad_file` · `missing` · `refused` · `unreachable`（可达表里没有那台）· `io_failed`；远端那一跳的码原样转回。**只在帧面上**。
+`scope.to` 先过表上那一道（用户级 MCP 只读 · 自带的只装全局），不行 ⇒ `refused`、一跳都不发；同一台同一处 ⇒ `refused`。错误码：`bad_args` · `bad_file` · `missing` · `refused` · `unreachable`（可达表里没有那台）· `io_failed`；远端那一跳的码原样转回。**只在帧面上**。
 
 #### `ext-hub-apply`：装到一台，本机后端当枢纽（09-30，**写用户文件**）
 
@@ -3009,7 +3030,7 @@ skill 与 MCP 同一条：本机后端向 `from` 取、交 `to` 判，拼成确�
 | `fill` | → | MCP：用户填的值（同 `mcp-sync-apply`）；来源机上的值从不经过这里 |
 | `path` · `changed` · `note` | ← | 写到了哪 · 写了的那几个 · 做成了但要知道的一件（执行位没改成 · 没记下来） |
 
-skill 交 `skill-install-apply`（`take` = 卡上 `writes`，`differs` 的算用户已同意盖）；MCP 交 `mcp-sync-apply`。错误码：`bad_args` · `bad_file` · `missing` · `needs_input` · `refused` · `stale` · `unreachable` · `io_failed`。**只在帧面上**。
+skill 交 `skill-install-apply`（`take` = 卡上 `writes`，`differs` 的算用户已同意盖）；MCP 交 `mcp-sync-apply`；自带的 cc-bus 交 `cc-bus-install`（`note` 带原来那个目录留作备份的去处）。错误码：`bad_args` · `bad_file` · `missing` · `needs_input` · `refused` · `stale` · `unreachable` · `io_failed`。**只在帧面上**。
 
 #### `ext-uninstall-preview`：从这台卸一个扩展之前那张卡（09-30，**只读**）
 
@@ -3156,35 +3177,37 @@ cc-monitor 装的：skill 按装记录逐文件删（带逐字节 `expect`），
 只做一件固定的事（`Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned`），不收策略值；界面只在用户点了、确认了之后发（`设计/99 §2.3`，不代改）。
 这台不说 PowerShell ⇒ `refused`。错误码：`bad_args` · `refused`。⚠ **CLI 面也有它**（`--powershell-policy-set`）。
 
-#### `cc-bus-install-state`：这台装的 cc-bus 是哪一版（MIG-3a 子步 3，09-28，**只读**）
+#### `cc-bus-install-state`：装 cc-bus 到这台之前看一眼（扩展页的确认卡用，09-28，**只读**）
 
 ```text
 → {"id":"c1","cmd":"cc-bus-install-state"}
-← {"kind":"reply","id":"c1","ok":true,"data":{"state":"drifted","differing":1,"missing":0}}
+← {"kind":"reply","id":"c1","ok":true,"data":{"dest":"/home/u/.claude/skills/cc-bus","writes":["SKILL.md"],"existing":true,"version":"…"}}
 ```
 
 | 字段 | 向 | 说明 |
 |---|---|---|
-| `state` | ← | `not_installed` · `up_to_date` · `drifted`（三态刻意不合并） |
-| `differing` · `missing` | ← | 只 `drifted` 有：与这台二进制带着的那一份逐文件比，内容不同几个 · 缺几个（清单外的文件不算） |
+| `dest` | ← | 落点（`<skills 根>/cc-bus`） |
+| `writes` | ← | 与这台二进制带着的那一份逐文件比，内容会变的那几个（缺的 ＋ 不一样的；清单外的文件不算）；空 ⇒ 已是这一版 |
+| `existing` | ← | 落点上已经有东西（要写时先整个改名留作备份） |
+| `version` | ← | 内嵌那一份的摘要（只答「相同 / 不同」；枢纽拿它当卡上的记号） |
 
-错误码：`refused`（这台后端不认得带 skill 的 agent）。⚠ **CLI 面也有它**（`--cc-bus-install-state`）。
+枢纽经可达表问被写那台（本机那一跳不走 ssh）。错误码：`refused`（这台后端不认得带 skill 的 agent）。⚠ **CLI 面也有它**（`--cc-bus-install-state`）。
 
-#### `cc-bus-install`：把这台二进制带着的 cc-bus 装到这台（MIG-3a 子步 3，09-28，**写用户文件**）
+#### `cc-bus-install`：把这台二进制带着的 cc-bus 装到这台（09-28，**写用户文件**）
 
 ```text
 → {"id":"c2","cmd":"cc-bus-install"}
-← {"kind":"reply","id":"c2","ok":true,"data":{"dest":"/home/u/.claude/skills/cc-bus","written":28,"unchanged":0,"backup":null,"recordFailed":null}}
+← {"kind":"reply","id":"c2","ok":true,"data":{"dest":"/home/u/.claude/skills/cc-bus","written":["SKILL.md","…"],"backup":null,"recordFailed":null}}
 ```
 
 | 字段 | 向 | 说明 |
 |---|---|---|
 | `dest` | ← | 落点（`<skills 根>/cc-bus`，过独立 realpath 围栏） |
-| `written` · `unchanged` | ← | 写了几个 · 全一致时跳过的个数（全一致 ⇒ 一个字节不写、不备份、不记） |
+| `written` | ← | 写了的那几个相对路径（全一致 ⇒ 空：一个字节不写、不备份、不记） |
 | `backup` | ← | 覆盖前整个目录改名成的那一份（`cc-bus.bak-<秒>`，`null` = 之前没装过） |
 | `recordFailed` | ← | 装好了但没记进 skill 装记录时那一句（这一趟装的卸不掉）；装卸账复用 `skill-install-record` 那一份 |
 
-写经本进程文件管理面（`files-rename` / `files-put` / `files-chmod`）。只由用户显式点「装」触发（`INVARIANTS` 第 7 条例外）。错误码：`bad_file` · `refused`。⚠ **CLI 面也有它**（`--cc-bus-install`）。
+写经本进程文件管理面（`files-rename` / `files-put` / `files-chmod`）。只由用户在扩展页确认卡上点确认触发（经枢纽 `ext-hub-apply`，`INVARIANTS` 第 7 条例外）。错误码：`bad_file` · `refused`。⚠ **CLI 面也有它**（`--cc-bus-install`）。
 
 #### `tmux-list`：这台机器的 tmux 会话（SH1，09-26，**只读**）
 
@@ -3367,7 +3390,7 @@ marker = `ccm-rbind-token-<令牌>`；marker 前缀与目录名是共享契约�
 
 ```text
 → {"id":"h1","cmd":"hooks-diag","args":{}}
-← {"kind":"reply","id":"h1","ok":true,"data":{"diagnosis":{"session_start":{"kind":"installed-via-path","command":"cc-register"},"stop":{"kind":"not-installed"},"note":""},"snippet_home":{"text":"…","warning":null},"snippet_bare":{"text":"…","warning":null},"source":"/home/u/.claude/settings.json"}}
+← {"kind":"reply","id":"h1","ok":true,"data":{"diagnosis":{"session_start":{"kind":"installed-via-path","command":"cc-register"},"stop":{"kind":"not-installed"},"note":""},"snippet":"{…}","source":"/home/u/.claude/settings.json"}}
 ```
 
 | 字段 | 向 | 说明 |
@@ -3376,11 +3399,10 @@ marker = `ccm-rbind-token-<令牌>`；marker 前缀与目录名是共享契约�
 | `session_start` / `stop` / `note` | ← | 见上一行 |
 | `kind` | ← | 一态：`not-installed` · `installed-via-path` · `installed-at-path` · `path-missing` · `unknown`；除第一态都带 `command`，两种显式路径态另带 `path` |
 | `command` / `path` | ← | 钩子原文（去首尾空白）· 它点名的路径（原样，`$HOME` 未展开） |
-| `snippet_home` / `snippet_bare` | ← | 两种待贴片段（`$HOME/.local/bin/…` 显式路径 · 裸命令）：`text` ＋ `warning`（形态与这台实况**确定**冲突才有，否则 `null`） |
-| `text` / `warning` | ← | 见上一行 |
+| `snippet` | ← | 要合并进那份文件的内容：两条钩子直接指向这台 `<skills 根>/cc-bus/scripts/` 里那两个脚本（家目录底下写 `"$HOME/…"`，否则绝对路径），不依赖 `PATH`；那两个脚本不在（cc-bus 没装）⇒ `null` |
 | `source` | ← | 读的是哪份文件：这台后端的 agent 配置根下的 `settings.json` |
 
-本体 `observe/cc_bus_hooks.rs`：读这台自己的 `settings.json`（只读）、按这台的 `HOME` 展开 `$HOME/…` 就地 stat、按这台的 `PATH`（本平台分隔符）反查裸命令。本机远端同一条（monitor 那两条本机 / 远端各一条的诊断 Tauri 命令删了，`设计/95 §6`）；界面按形状严格收，线上形状由跨语言金样 `tests/__fixtures__/hooks-diag.golden.json` 钉住。
+本体 `observe/cc_bus_hooks.rs`：读这台自己的 `settings.json`（只读，不写）、按这台的 `HOME` 展开 `$HOME/…` 就地 stat。界面在扩展页 cc-bus 那一行的抽屉里每台问一次。本机远端同一条（monitor 那两条本机 / 远端各一条的诊断 Tauri 命令删了，`设计/95 §6`）；界面按形状严格收，线上形状由跨语言金样 `tests/__fixtures__/hooks-diag.golden.json` 钉住。
 错误码：`failed`（序列化失败）· `too_large`。
 
 #### `tasks-list`：一个会话的任务列表

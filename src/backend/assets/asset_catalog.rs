@@ -95,6 +95,16 @@ pub struct Snapshot {
     /// 那台上开过会话的项目目录（装到项目时给人选；随整份一起换）。
     #[serde(default)]
     pub project_dirs: Vec<String>,
+    /// 用户在这台上写下的备注（[`entry_key`] → 那一条）。随整份一起同步；生效的是各台里 `rev` 最大的那一条（[`note_of`]）。
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub notes: BTreeMap<String, Note>,
+}
+
+/// 一条备注。`rev` 是写它那一刻这台目录里同一条目各台备注的最大 `rev` ＋ 1（不比墙钟）；`text` 空 = 清掉了。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Note {
+    pub text: String,
+    pub rev: u64,
 }
 
 /// 「上次来看扩展页」那两格（本机那一份自己记，不随同步走）：`prev` 之后第一次见到的条目算「新见到」。
@@ -414,6 +424,11 @@ pub fn refresh_self(
         }
     }
     let gen = cat.machines.get(&id).map_or(0, |s| s.gen) + 1;
+    let notes = cat
+        .machines
+        .get(&id)
+        .map(|s| s.notes.clone())
+        .unwrap_or_default();
     cat.machines.insert(
         id,
         Snapshot {
@@ -422,8 +437,49 @@ pub fn refresh_self(
             seen_at: now,
             assets,
             project_dirs: projects,
+            notes,
         },
     );
+    true
+}
+
+/// 一个条目现在生效的备注：各台里 `rev` 最大的那一条（打平按机器 id）；没有 / 清掉了 ⇒ `None`。
+pub fn note_of(cat: &Catalog, key: &str) -> Option<String> {
+    cat.machines
+        .iter()
+        .filter_map(|(id, s)| s.notes.get(key).map(|n| (n.rev, id, n)))
+        .max_by(|a, b| (a.0, a.1).cmp(&(b.0, b.1)))
+        .map(|(_, _, n)| n.text.clone())
+        .filter(|t| !t.is_empty())
+}
+
+/// 用户写 / 改 / 清（空串）一条备注：记进**这台自己那一格**（真变了才 `gen + 1`），随目录推到别的后端。回「变了没有」。
+/// 自己那一格还没有 ⇒ 不记（调用方先现扫一次）。
+pub fn set_note(cat: &mut Catalog, key: &str, text: &str, now: u64) -> bool {
+    let text = text.trim();
+    if note_of(cat, key).as_deref().unwrap_or("") == text {
+        return false;
+    }
+    let rev = cat
+        .machines
+        .values()
+        .filter_map(|s| s.notes.get(key).map(|n| n.rev))
+        .max()
+        .unwrap_or(0)
+        + 1;
+    let id = cat.self_id.clone();
+    let Some(me) = cat.machines.get_mut(&id) else {
+        return false;
+    };
+    me.notes.insert(
+        key.to_string(),
+        Note {
+            text: text.to_string(),
+            rev,
+        },
+    );
+    me.gen += 1;
+    me.seen_at = now;
     true
 }
 
@@ -521,6 +577,7 @@ pub fn wire(cat: &Catalog, problems: &[String], changed: bool, path: Option<&Pat
                 "seenAt": s.seen_at,
                 "assets": s.assets,
                 "projectDirs": s.project_dirs,
+                "notes": s.notes,
             })
         })
         .collect();
@@ -585,6 +642,14 @@ pub fn machines_from_wire(v: &Value) -> Result<BTreeMap<String, Snapshot>, Strin
                 ))
             })?,
         };
+        let notes: BTreeMap<String, Note> = match m.get("notes") {
+            None | Some(Value::Null) => BTreeMap::new(),
+            Some(v) => serde_json::from_value(v.clone()).map_err(|e| {
+                crate::common::contract::malformed(&format!(
+                    "a machine `notes` must map entries to {{text, rev}}: {e}"
+                ))
+            })?,
+        };
         if let Some(a) = assets.iter().find(|a| !KINDS.contains(&a.kind.as_str())) {
             return Err(crate::common::contract::malformed(&format!(
                 "asset kind `{}` is not one of {KINDS:?}",
@@ -599,6 +664,7 @@ pub fn machines_from_wire(v: &Value) -> Result<BTreeMap<String, Snapshot>, Strin
                 seen_at,
                 assets,
                 project_dirs,
+                notes,
             },
         );
     }
@@ -777,6 +843,29 @@ pub fn update_with(
     visit: bool,
     now: u64,
 ) -> Result<(Catalog, Vec<String>, bool), (&'static str, String)> {
+    update_core(path, scanned, label, incoming, visit, None, now)
+}
+
+/// [`update_with`] 再加一笔备注（`(条目键, 正文)`，见 [`set_note`]）：同一把锁里现扫 · 记备注 · 落盘。
+pub fn update_noting(
+    path: &Path,
+    scanned: Scanned,
+    label: &str,
+    note: (&str, &str),
+    now: u64,
+) -> Result<(Catalog, bool), (&'static str, String)> {
+    update_core(path, scanned, label, None, false, Some(note), now).map(|(c, _, ch)| (c, ch))
+}
+
+fn update_core(
+    path: &Path,
+    scanned: Scanned,
+    label: &str,
+    incoming: Option<BTreeMap<String, Snapshot>>,
+    visit: bool,
+    note: Option<(&str, &str)>,
+    now: u64,
+) -> Result<(Catalog, Vec<String>, bool), (&'static str, String)> {
     let dir = path.parent().ok_or((
         "io_failed",
         copy_text(
@@ -808,6 +897,9 @@ pub fn update_with(
     let mut changed = refresh_self(&mut cat, assets, projects, label, now);
     if let Some(inc) = incoming {
         changed |= merge(&mut cat, inc);
+    }
+    if let Some((key, text)) = note {
+        changed |= set_note(&mut cat, key, text, now);
     }
     let mut dirty = changed | note_known(&mut cat, now);
     if visit {
@@ -846,6 +938,13 @@ pub(crate) fn answer_current(
         now_secs(),
     )?;
     Ok((cat, problems))
+}
+
+/// 扩展页写备注那一问（**写口**，只从 `inbound.rs` 递出去）：这台现扫一次、把备注记进自己那一格，交回整份。
+pub(crate) fn answer_note(key: &str, text: &str) -> Result<Catalog, (&'static str, String)> {
+    let path =
+        catalog_path().ok_or(("io_failed", copy_text("beAssetCatalog.write.noHome", &[])))?;
+    update_noting(&path, scan_here(), &machine_label(), (key, text), now_secs()).map(|(c, _)| c)
 }
 
 /// `assets-catalog`：这台现扫一次、记下（变了才写），回整份目录 ＋「这台缺什么」。

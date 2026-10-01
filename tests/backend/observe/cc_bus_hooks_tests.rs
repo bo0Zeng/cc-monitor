@@ -152,133 +152,55 @@ fn bom_is_tolerated() {
     assert!(diagnose(Some(raw), &always).stop.is_working());
 }
 
-/// 一切正常的探测（两种形态都不该有 warning）。
-fn ok_probe() -> SnippetProbe {
-    SnippetProbe {
-        home_path_exists: Some(true),
-        on_path: Some(true),
+/// 在 `<skills>/cc-bus/scripts/` 放上那两个脚本（空文件，只造结构）。
+fn put_scripts(skills: &std::path::Path) {
+    let dir = skills.join("cc-bus").join("scripts");
+    std::fs::create_dir_all(&dir).unwrap();
+    for p in PROGRAMS {
+        std::fs::write(dir.join(p), b"").unwrap();
     }
 }
 
+/// ★ 要加的内容只有一形：两条钩子直接指向这台 skills 根下 cc-bus 里那两个脚本（家目录底下 ⇒ `"$HOME/…"`，否则绝对路径），
+/// 不依赖 `PATH`、也不依赖别处的链接；合法 JSON，喂回自己的诊断两条都算「装了」（不生成一段自己都不认的文本）；
+/// 那两个脚本不在（cc-bus 没装）⇒ 不给。
 #[test]
-fn snippet_is_valid_json_and_round_trips() {
-    for home in [true, false] {
-        let sn = snippet(home, &ok_probe());
-        let v: serde_json::Value =
-            serde_json::from_str(&sn.text).expect("生成的片段必须是合法 JSON");
-        // 把自己生成的东西再喂给自己的诊断——闭环，防止生成一段自己都不认的文本
-        let d = diagnose(Some(&sn.text), &always);
-        assert!(
-            d.session_start.is_working(),
-            "home={home} 生成的片段自己都不认: {}",
-            sn.text
-        );
-        assert!(d.stop.is_working(), "home={home}");
-        assert!(v.get("hooks").is_some());
-        assert!(sn.warning.is_none(), "探测一切正常时不该有警示");
-    }
-    assert!(snippet(true, &ok_probe())
-        .text
-        .contains("$HOME/.local/bin/"));
-    assert!(!snippet(false, &ok_probe()).text.contains("$HOME"));
-}
-
-/// **上一版 `snippet(home: bool)` 只按布尔选形态，完全不看实况**：于是面板可以推荐
-/// `$HOME/.local/bin/cc-register` 而那个文件根本不存在，贴上去就是一个 `path-missing`
-/// 的钩子，而这一步没有任何测试能发现。这条测试就是那个缺口。
-#[test]
-fn home_form_warns_when_the_path_is_not_on_disk() {
-    let probe = SnippetProbe {
-        home_path_exists: Some(false),
-        on_path: Some(true),
-    };
-    let sn = snippet(true, &probe);
-    let w = sn.warning.expect("显式路径形态 + 路径不存在 → 必须警示");
-    assert!(w.contains("$HOME/.local/bin/"), "要指名那个路径：{w}");
-    // 〔CP2b〕原来靠诊断内部码 path-missing 说后果；CP1 台账裁掉内部码，后果改用人话「用不了」。
-    assert!(w.contains("用不了"), "要说清后果：{w}");
-    // **闭环验证后果是真的**：把这段喂回自己的诊断，`exists` 说不存在 → 真的 PathMissing
-    let d = diagnose(Some(&sn.text), &|_| false);
+fn the_snippet_points_at_the_installed_scripts_and_reads_back_as_installed() {
+    let home = scratch("snippet");
+    let skills = home.join(".claude").join("skills");
+    assert_eq!(snippet(&skills, Some(&home)), None, "cc-bus 没装 ⇒ 不给");
+    put_scripts(&skills);
+    let text = snippet(&skills, Some(&home)).expect("装着就该给");
+    let v: serde_json::Value = serde_json::from_str(&text).expect("要加的内容必须是合法 JSON");
+    assert_eq!(
+        v["hooks"]["SessionStart"][0]["hooks"][0]["command"],
+        serde_json::json!("\"$HOME/.claude/skills/cc-bus/scripts/cc-register\" >/dev/null 2>&1 || true")
+    );
+    assert_eq!(
+        v["hooks"]["Stop"][0]["hooks"][0]["command"],
+        serde_json::json!("\"$HOME/.claude/skills/cc-bus/scripts/cc-bus-stop-hook\"")
+    );
+    let exists = |s: &str| expand(s, Some(&home)).exists();
+    let d = diagnose(Some(&text), &exists);
     assert!(
-        matches!(d.session_start, HookState::PathMissing { .. }),
-        "警示说的后果得是真的，实得 {:?}",
+        matches!(d.session_start, HookState::InstalledAtPath { .. }),
+        "{:?}",
         d.session_start
     );
-    // 同一份探测下裸命令形态没问题 → 不该警示（否则两种形态都报警，用户无从选择）
-    assert!(snippet(false, &probe).warning.is_none());
-}
-
-#[test]
-fn bare_form_warns_when_not_on_path() {
-    let probe = SnippetProbe {
-        home_path_exists: Some(true),
-        on_path: Some(false),
-    };
-    let w = snippet(false, &probe)
-        .warning
-        .expect("裸命令形态 + 不在 PATH → 必须警示");
-    assert!(w.contains("PATH"), "{w}");
-    assert!(snippet(true, &probe).warning.is_none());
-}
-
-/// **取不到就别猜**：`on_path: None` 时裸命令形态不许警示
-/// （报一个我们并不知道的问题，和漏报一样是失信）。
-#[test]
-fn unknown_path_status_does_not_fabricate_a_warning() {
-    let probe = SnippetProbe {
-        home_path_exists: Some(true),
-        on_path: None,
-    };
-    assert!(snippet(false, &probe).warning.is_none());
-    assert!(snippet(true, &probe).warning.is_none());
-}
-
-/// **按平台构造 PATH**（T03 审计阻塞 1）。旧版这条测试硬编码 `"/usr/bin:/opt/bin"`，
-/// 锁死的是 Unix 语义——于是 `split(':')` 这个在**生产平台 Windows 上算错**的实现
-/// 被它钉成了绿的。现在用 `std::env::join_paths` 按当前平台拼，Linux 与 Windows 同一条测试。
-#[test]
-fn resolves_on_path_uses_the_injected_exists() {
-    let sep_dir = if cfg!(windows) {
-        "C:\\opt\\bin"
-    } else {
-        "/opt/bin"
-    };
-    let other = if cfg!(windows) {
-        "C:\\Windows"
-    } else {
-        "/usr/bin"
-    };
-    let join = |dirs: &[&str]| -> String {
-        std::env::join_paths(dirs.iter().map(std::path::Path::new))
-            .unwrap()
-            .to_string_lossy()
-            .into_owned()
-    };
-    let want = format!("{}/cc-register", sep_dir.trim_end_matches(['/', '\\']));
-    let ex = |s: &str| s == want;
-    assert_eq!(
-        resolves_on_path("cc-register", Some(&join(&[other, sep_dir])), &ex),
-        Some(true),
-        "PATH 必须按当前平台的分隔符切"
+    assert!(matches!(d.stop, HookState::InstalledAtPath { .. }), "{:?}", d.stop);
+    // skills 根不在家目录底下 ⇒ 绝对路径（POSIX 单引号）。
+    let other = scratch("snippet-elsewhere");
+    let text = snippet(&skills, Some(&other)).unwrap();
+    let abs = skills.join("cc-bus/scripts/cc-bus-stop-hook");
+    assert!(
+        text.contains(&shell_quote_core::posix_quote(&abs.display().to_string())),
+        "{text}"
     );
-    assert_eq!(
-        resolves_on_path("cc-register", Some(&join(&[other])), &ex),
-        Some(false)
-    );
-    // **取不到 PATH → None，不猜 false**
-    assert_eq!(resolves_on_path("cc-register", None, &ex), None);
-    assert_eq!(resolves_on_path("cc-register", Some("   "), &ex), None);
-}
-
-/// 两个字段现在**同一档口径**：`None` 一律不警示。
-#[test]
-fn unknown_home_path_does_not_fabricate_a_warning() {
-    let probe = SnippetProbe {
-        home_path_exists: None,
-        on_path: None,
-    };
-    assert!(snippet(true, &probe).warning.is_none());
-    assert!(snippet(false, &probe).warning.is_none());
+    // 少一个脚本也不给（半套钩子装上去照样收不到信）。
+    std::fs::remove_file(skills.join("cc-bus/scripts/cc-bus-stop-hook")).unwrap();
+    assert_eq!(snippet(&skills, Some(&home)), None);
+    let _ = std::fs::remove_dir_all(&home);
+    let _ = std::fs::remove_dir_all(&other);
 }
 
 /// **B04 登记项②**：`trim_matches` 逐字符两端剥，会把不配对的也剥掉。
@@ -381,8 +303,8 @@ fn scratch(tag: &str) -> std::path::PathBuf {
 /// 金样里那台机器的家目录占位（夹具建在临时目录，出金样前把它换成这个）。
 const HOME_MARK: &str = "/HOME";
 
-/// ★ 成品两侧对拍：一台造好的机器（显式路径那一格在盘上 · 裸命令那一格 `PATH` 上没有）⇒ 整份成品 == 金样。
-/// 金样同时是界面解码器（`src/frontend/ui/settings/cc-bus-hooks-section.ts::decodeHooksReport`）的输入。
+/// ★ 成品两侧对拍：一台造好的机器（cc-bus 装着 · 一条钩子是显式路径且在盘上 · 一条包在 `sh -c` 里）⇒ 整份成品 == 金样。
+/// 金样同时是界面解码器（`src/frontend/ui/cc-bus-hooks-reads.ts::decodeHooksReport`）的输入。
 #[test]
 fn the_product_is_the_golden_the_ui_decodes() {
     let home = scratch("golden");
@@ -400,10 +322,9 @@ fn the_product_is_the_golden_the_ui_decodes() {
           "Stop":[{"hooks":[{"type":"command","command":"sh -c cc-bus-stop-hook"}]}]}}"#,
     )
     .unwrap();
-    let empty_path_dir = home.join("nothing-here");
-    std::fs::create_dir_all(&empty_path_dir).unwrap();
-    let path_env = std::env::join_paths([&empty_path_dir]).unwrap();
-    let rep = answer_at(Some(&home), &agent, path_env.to_str());
+    let skills = agent.join("skills");
+    put_scripts(&skills);
+    let rep = answer_at(Some(&home), &agent, Some(&skills));
     let got = serde_json::to_string_pretty(&rep)
         .unwrap()
         .replace(&home.display().to_string(), HOME_MARK);
@@ -421,10 +342,10 @@ fn the_product_is_the_golden_the_ui_decodes() {
 fn a_machine_without_settings_says_so() {
     let home = scratch("none");
     let agent = home.join(".claude");
-    let rep = answer_at(Some(&home), &agent, None);
+    let rep = answer_at(Some(&home), &agent, Some(&agent.join("skills")));
     assert!(rep.diagnosis.note.contains("没读到"), "{:?}", rep.diagnosis);
     assert_eq!(rep.diagnosis.session_start, HookState::NotInstalled);
     assert!(rep.source.ends_with("settings.json"));
-    assert_eq!(rep.snippet_bare.warning, None, "PATH 取不到 ⇒ 不警示");
+    assert_eq!(rep.snippet, None, "cc-bus 没装 ⇒ 不给要加的内容");
     let _ = std::fs::remove_dir_all(&home);
 }

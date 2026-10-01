@@ -2,7 +2,9 @@
 //!
 //! 界面只 `call(<local>, …)` 一次（带 `kind` · `name` · `from` / `to` · `scope`），**本机常驻后端当枢纽**：向来源那台取、
 //! 交被写那台判与写（被写那台照旧自己判 CAS、`stale` 就停）。种类在这里分派到原来那两条内层路：
-//! skill = `skill-read` → `skill-install-plan` / `skill-install-apply`；MCP = `mcp-sync-source` → `mcp-sync-preview` / `mcp-sync-apply`。
+//! skill = `skill-read` → `skill-install-plan` / `skill-install-apply`；MCP = `mcp-sync-source` → `mcp-sync-preview` / `mcp-sync-apply`；
+//! cc-monitor 自带的那一个（cc-bus）不从别的机器拿：被写那台用它自己二进制里那一份（`cc-bus-install-state` / `cc-bus-install`）。
+//! 落点先过 `ext::target_refused`（用户级 MCP 只读 · 自带的只装全局），不行就拒、一跳都不发。
 //! 本机那一跳就是「不走 ssh 的远端」—— 同一条内层命令，本机经 [`Here`]（本进程 `REGISTRY` 的 `run`），远端经
 //! `remote_ask`（池里那条 SSH 上多开一个 capture，跑那台 CLI 面的同名子命令）。
 //!
@@ -31,7 +33,10 @@ use copy_core::copy_text;
 use serde_json::{json, Value};
 use std::sync::Arc;
 
-use super::ext::{token_of, ExtCard, ExtDone, ExtKind, ExtLoc, ExtSlot, ExtTokens};
+use super::ext::{
+    is_builtin, same_place, target_refused, token_of, ExtCard, ExtDone, ExtKind, ExtLoc, ExtSlot,
+    ExtTokens,
+};
 use crate::stream::remote_ask::{Remote, Table};
 
 type Answer = Result<Value, (String, String)>;
@@ -147,7 +152,10 @@ fn ask_of(args: &Value) -> Result<Ask<'_>, (String, String)> {
     let (from, to) = (machine_of(args, "from")?, machine_of(args, "to")?);
     let name = str_arg(args, "name")?;
     let (at_from, at_to) = scope_of(args)?;
-    if from == to && at_from == at_to {
+    if let Some(why) = target_refused(kind, name, &at_to) {
+        return Err(("refused".to_string(), why));
+    }
+    if !is_builtin(kind, name) && same_place(from.as_deref(), &at_from, to.as_deref(), &at_to) {
         return Err((
             "refused".to_string(),
             copy_text("beExt.card.sameMachine", &[]),
@@ -334,6 +342,48 @@ fn mcp_card(a: &Ask<'_>, src: &Value, pre: &Value) -> ExtCard {
     }
 }
 
+/// 自带的那一个（cc-bus）：不从别的机器拿 —— 被写那台用它自己二进制里那一份装（`cc-bus-install-state` / `cc-bus-install`）。
+async fn builtin_look(
+    here: &Arc<dyn Here>,
+    a: &Ask<'_>,
+    table: &Table,
+    remote: &dyn Remote,
+) -> Answer {
+    ask_one(
+        here,
+        a.to.as_deref(),
+        "cc-bus-install-state",
+        json!({}),
+        table,
+        remote,
+    )
+    .await
+}
+
+/// 自带的那一个的确认卡：写哪几个（内容会变的）· 那台已有目录 ⇒ 装之前整个改名留作备份。
+fn builtin_card(a: &Ask<'_>, st: &Value) -> ExtCard {
+    let writes = strs(&st["writes"]);
+    let mut suspects = Vec::new();
+    if st["existing"] == true && !writes.is_empty() {
+        suspects.push(copy_text("beExt.card.builtinBackup", &[]));
+    }
+    ExtCard {
+        kind: a.kind,
+        name: a.name.to_string(),
+        path: st["dest"].as_str().unwrap_or_default().to_string(),
+        unchanged: writes.is_empty(),
+        writes,
+        suspects,
+        stop: None,
+        config: None,
+        slots: Vec::new(),
+        tokens: ExtTokens {
+            source: st["version"].as_str().unwrap_or_default().to_string(),
+            target: Some(token_of(st)),
+        },
+    }
+}
+
 fn card_value(card: ExtCard) -> Answer {
     serde_json::to_value(card).map_err(|e| ("io_failed".to_string(), e.to_string()))
 }
@@ -346,6 +396,10 @@ pub(crate) async fn ext_preview(
     remote: &dyn Remote,
 ) -> Answer {
     let a = ask_of(args)?;
+    if is_builtin(a.kind, a.name) {
+        let st = builtin_look(here, &a, table, remote).await?;
+        return card_value(builtin_card(&a, &st));
+    }
     match a.kind {
         ExtKind::Skill => {
             let (source, plan) = skill_look(here, &a, table, remote).await?;
@@ -380,6 +434,35 @@ pub(crate) async fn ext_apply(
         )
     })?;
     let done = match a.kind {
+        _ if is_builtin(a.kind, a.name) => {
+            let st = builtin_look(here, &a, table, remote).await?;
+            if builtin_card(&a, &st).tokens != tokens {
+                return Err(changed_since());
+            }
+            let out = ask_one(
+                here,
+                a.to.as_deref(),
+                "cc-bus-install",
+                json!({}),
+                table,
+                remote,
+            )
+            .await?;
+            let note: Vec<String> = [
+                out["backup"]
+                    .as_str()
+                    .map(|b| copy_text("beExt.done.builtinBackup", &[("path", b)])),
+                out["recordFailed"].as_str().map(str::to_string),
+            ]
+            .into_iter()
+            .flatten()
+            .collect();
+            ExtDone {
+                path: out["dest"].as_str().unwrap_or_default().to_string(),
+                changed: strs(&out["written"]),
+                note: (!note.is_empty()).then(|| note.join(" ")),
+            }
+        }
         ExtKind::Skill => {
             let (source, plan) = skill_look(here, &a, table, remote).await?;
             let card = skill_card(&a, &source, &plan);

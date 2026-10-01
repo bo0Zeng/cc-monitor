@@ -3,9 +3,10 @@
  *
  * | 做什么 | 问哪台 | 命令 |
  * |---|---|---|
- * | 那张表（条目 × 机器，每格的态与唯一那个按钮） | 本机后端 | `ext-list` |
+ * | 那张表（条目 × 机器：每格的点、那台上的各处、「装到…」能装到哪几处） | 本机后端 | `ext-list` |
  * | 装到一台之前那张确认卡 / 装 | 本机后端（枢纽，向来源取、交被写那台写） | `ext-hub-preview` / `ext-hub-apply` |
- * | 从一台卸之前那张卡 / 卸 | 被卸的那一台 | `ext-uninstall-preview` / `ext-uninstall-apply` |
+ * | 从一台的某一处卸之前那张卡 / 卸 | 被卸的那一台 | `ext-uninstall-preview` / `ext-uninstall-apply` |
+ * | 写 / 改 / 清一个条目的备注 | 本机后端（记进它的目录，随目录同步） | `ext-note-set` |
  *
  * 判定全在后端：这里只按形状严格收（形状由后端的类型生成，`generated/Ext*.ts`；线上形状由金样
  * `tests/__fixtures__/ext-flow.golden.json` 钉），不比较、不推断。形状不对 ⇒ 抛「两端版本对不上」。
@@ -14,7 +15,8 @@ import { chan, ChanError, type Budget } from "../../comms/inward/chan";
 import { budgetWithin, jsonBody, readJson, refusalOf, saidOf } from "./ipc/chan-caller";
 import { LOCAL_ORIGIN, type Origin } from "./ipc/origin";
 import { copyText } from "./copy-table";
-import type { ExtAction } from "./generated/ExtAction";
+import type { ExtBring } from "./generated/ExtBring";
+import type { ExtBuiltin } from "./generated/ExtBuiltin";
 import type { ExtCard } from "./generated/ExtCard";
 import type { ExtCell } from "./generated/ExtCell";
 import type { ExtDone } from "./generated/ExtDone";
@@ -22,12 +24,14 @@ import type { ExtKind } from "./generated/ExtKind";
 import type { ExtList } from "./generated/ExtList";
 import type { ExtLoc } from "./generated/ExtLoc";
 import type { ExtMachine } from "./generated/ExtMachine";
+import type { ExtPlace } from "./generated/ExtPlace";
 import type { ExtRow } from "./generated/ExtRow";
 import type { ExtScope } from "./generated/ExtScope";
 import type { ExtSlot } from "./generated/ExtSlot";
+import type { ExtTarget } from "./generated/ExtTarget";
 import type { ExtUninstallCard } from "./generated/ExtUninstallCard";
 
-export type { ExtAction, ExtCard, ExtCell, ExtDone, ExtKind, ExtList, ExtLoc, ExtMachine, ExtRow, ExtScope, ExtSlot, ExtUninstallCard };
+export type { ExtBring, ExtBuiltin, ExtCard, ExtCell, ExtDone, ExtKind, ExtList, ExtLoc, ExtMachine, ExtPlace, ExtRow, ExtScope, ExtSlot, ExtTarget, ExtUninstallCard };
 
 type Obj = Record<string, unknown>;
 const bad = (): Error => new Error(copyText("extReads.reply.badShape"));
@@ -75,21 +79,31 @@ function scope(v: unknown): ExtScope {
   return { from: loc(o.from), to: loc(o.to) };
 }
 
-function action(v: unknown): ExtAction | null {
+function target(v: unknown): ExtTarget {
+  const o = obj(v, ["at", "ok", "note"]);
+  return { at: loc(o.at), ok: bool(o.ok), note: optStr(o.note) };
+}
+
+function bring(v: unknown): ExtBring | null {
   if (v === null) return null;
-  if (!isObj(v)) throw bad();
-  if (v.verb === "uninstall") {
-    const o = obj(v, ["verb", "at"]);
-    return { verb: "uninstall", at: loc(o.at) };
-  }
-  const o = obj(v, ["verb", "from", "fromName", "scope"]);
-  const verb = oneOf(o.verb, ["install", "replace"] as const);
-  return { verb, from: optStr(o.from), fromName: str(o.fromName), scope: scope(o.scope) };
+  const o = obj(v, ["from", "fromName", "scope", "targets"]);
+  return { from: optStr(o.from), fromName: str(o.fromName), scope: scope(o.scope), targets: arr(o.targets, target) };
+}
+
+function place(v: unknown): ExtPlace {
+  const o = obj(v, ["at", "state", "dir", "uninstall", "note"]);
+  return { at: loc(o.at), state: oneOf(o.state, STATES), dir: optStr(o.dir), uninstall: bool(o.uninstall), note: optStr(o.note) };
 }
 
 function cell(v: unknown): ExtCell {
-  const o = obj(v, ["state", "places", "dir", "action", "note"]);
-  return { state: oneOf(o.state, STATES), places: arr(o.places, loc), dir: optStr(o.dir), action: action(o.action), note: optStr(o.note) };
+  const o = obj(v, ["state", "places", "bring", "note"]);
+  return { state: oneOf(o.state, STATES), places: arr(o.places, place), bring: bring(o.bring), note: optStr(o.note) };
+}
+
+function builtin(v: unknown): ExtBuiltin | null {
+  if (v === null) return null;
+  const o = obj(v, ["note", "hooks"]);
+  return { note: str(o.note), hooks: bool(o.hooks) };
 }
 
 function machine(v: unknown): ExtMachine {
@@ -98,14 +112,14 @@ function machine(v: unknown): ExtMachine {
 }
 
 function row(v: unknown, width: number): ExtRow {
-  const o = obj(v, ["kind", "name", "about", "detail", "new", "cells"]);
+  const o = obj(v, ["kind", "name", "about", "detail", "new", "builtin", "note", "cells"]);
   const cells = arr(o.cells, cell);
   if (cells.length !== width) throw bad();
   const detail = arr(o.detail, (d) => {
     const x = obj(d, ["label", "value"]);
     return { label: str(x.label), value: str(x.value) };
   });
-  return { kind: oneOf(o.kind, KINDS), name: str(o.name), about: optStr(o.about), detail, new: bool(o.new), cells };
+  return { kind: oneOf(o.kind, KINDS), name: str(o.name), about: optStr(o.about), detail, new: bool(o.new), builtin: builtin(o.builtin), note: optStr(o.note), cells };
 }
 
 /** `ext-list` 的成品。严格收：每行的格数必须与机器数相等。 */
@@ -196,8 +210,8 @@ export function extList(visit: boolean): Promise<ExtList> {
   return ask((body, budget) => chan.call(LOCAL_ORIGIN, "ext-list", body, budget), { visit }, LIST_BUDGET_MS, decodeExtList);
 }
 
-/** 装到一台时要交给枢纽的那几格（`from` / `to` = 枢纽认的键，`null` = 本机后端自己）。 */
-export interface ExtBring {
+/** 装到一台时要交给枢纽的那几格（`from` / `to` = 枢纽认的键，`null` = 本机后端自己；`scope.to` = 用户在卡上选的那一处）。 */
+export interface ExtAsk {
   kind: ExtKind;
   name: string;
   from: string | null;
@@ -206,12 +220,12 @@ export interface ExtBring {
 }
 
 /** 确认卡（只问本机后端：它当枢纽）。 */
-export function extHubPreview(b: ExtBring): Promise<ExtCard> {
+export function extHubPreview(b: ExtAsk): Promise<ExtCard> {
   return ask((body, budget) => chan.call(LOCAL_ORIGIN, "ext-hub-preview", body, budget), { ...b }, WRITE_BUDGET_MS, decodeExtCard);
 }
 
 /** 装：卡上的记号原样交回；`fill` = 用户在卡上填的值（`{env: {键: 值}}`）。 */
-export function extHubApply(b: ExtBring, card: ExtCard, fill: Record<string, Record<string, string>>): Promise<ExtDone> {
+export function extHubApply(b: ExtAsk, card: ExtCard, fill: Record<string, Record<string, string>>): Promise<ExtDone> {
   return ask((body, budget) => chan.call(LOCAL_ORIGIN, "ext-hub-apply", body, budget), { ...b, tokens: card.tokens, fill }, WRITE_BUDGET_MS, decodeExtDone);
 }
 
@@ -224,4 +238,14 @@ export function extUninstallPreview(on: Origin, kind: ExtKind, name: string, at:
 export function extUninstallApply(on: Origin, card: ExtUninstallCard, at: ExtLoc): Promise<ExtDone> {
   const args = { kind: card.kind, name: card.name, at, token: card.token };
   return ask((body, budget) => chan.call(on, "ext-uninstall-apply", body, budget), args, WRITE_BUDGET_MS, decodeExtDone);
+}
+
+/** `ext-note-set` 的成品：现在生效的那一份备注（清掉了 ⇒ `null`）。 */
+export function decodeExtNote(v: unknown): string | null {
+  return optStr(obj(v, ["note"]).note);
+}
+
+/** 写 / 改 / 清（空串）一个条目的备注（记进本机后端的目录，随目录同步到别的后端）。 */
+export function extNoteSet(kind: ExtKind, name: string, text: string): Promise<string | null> {
+  return ask((body, budget) => chan.call(LOCAL_ORIGIN, "ext-note-set", body, budget), { kind, name, text }, LIST_BUDGET_MS, decodeExtNote);
 }

@@ -1,15 +1,17 @@
 //! 设置里「扩展」那一页的后端：skill 与 MCP 跨机器的一张表（`ext-list`）· 装到一台的确认卡（枢纽 `ext-hub-*`，住 [`super::hub`]）·
-//! 从一台卸掉（`ext-uninstall-*`，在被卸的那一台上判、写）。
+//! 从一台卸掉（`ext-uninstall-*`，在被卸的那一台上判、写）· 条目的备注（`ext-note-set`）。
 //!
 //! # 判定只在这里
 //!
-//! 界面只画格子：每格的态（`same` · `differs` · `missing` · `project`）、那一格唯一的那个按钮做什么、从哪台拿哪一版、
-//! 为什么没有按钮，全由 [`table`] 答；摘要不出后端（线上一个 `digest` 都没有），界面没有东西可比。
+//! 界面只画：每格的点（`same` · `differs` · `missing` · `project`）、那台上的各处（全局一行 ＋ 每个装着它的项目一行，各自的态与「卸载」）、
+//! 机器那一行的「装到…」（从哪台拿哪一版 · 建议装到哪 · 哪几处能选、不能选的为什么），全由 [`table`] 答；摘要不出后端（线上一个 `digest` 都没有）。
 //!
 //! - `same` / `differs` 只拿**用户级**那几份比：持有人最多的那一版算「这一版」（打平时本机那一份优先），和它一样 ⇒ `same`。
+//!   cc-monitor 自带的（[`BUILTIN`]）「这一版」= 本机后端二进制里那一份，装它用被写那台自己二进制里那一份。
 //! - 用户级没有、只在项目里有 ⇒ `project`；哪儿都没有 ⇒ `missing`。
-//! - 用户级 MCP 住 agent 自己的热状态文件（它自己一直在重写）⇒ 只读：能当来源装进别的机器的项目 `.mcp.json`，这里不往它里面写、也不从它里面删。
+//! - 哪一处能写只问 [`writable`] / [`target_refused`]：用户级 MCP 住 agent 自己的热状态文件（它自己一直在重写）⇒ 只读；自带的只装全局。
 //! - 「新见到」：这台目录第一次见到这个条目的时刻晚于上一次来看这一页（`asset_catalog::Visits`）。
+//! - 备注：内置的（自带的扩展）＋ 用户写的（记在本机目录自己那一格，随目录同步；生效的是各台里最新的那一条，`asset_catalog::note_of`）。
 //!
 //! # 卸
 //!
@@ -75,29 +77,44 @@ pub struct ExtScope {
     pub to: ExtLoc,
 }
 
-/// 一格上那唯一的按钮。`from` = 来源那台的键（`null` = 本机后端自己，同枢纽的 `from` / `to`）。
+/// 「装到哪」的一个选项。`ok = false` 的照样列出来（显示但不可选），`note` 说为什么。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[serde(
-    tag = "verb",
-    rename_all = "lowercase",
-    rename_all_fields = "camelCase"
-)]
-pub enum ExtAction {
-    Install {
-        from: Option<String>,
-        from_name: String,
-        scope: ExtScope,
-    },
-    Replace {
-        from: Option<String>,
-        from_name: String,
-        scope: ExtScope,
-    },
-    Uninstall {
-        at: ExtLoc,
-    },
+pub struct ExtTarget {
+    pub at: ExtLoc,
+    pub ok: bool,
+    pub note: Option<String>,
+}
+
+/// 机器那一行的「装到…」：从哪台拿哪一版（`from` = 来源那台的键，`null` = 本机后端自己，同枢纽的 `from` / `to`）·
+/// 建议的落点（与来源同级）· 可选的各处。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(rename_all = "camelCase")]
+pub struct ExtBring {
+    pub from: Option<String>,
+    /// 来源给人看的名字（本机 · 别的台 · cc-monitor 自带）。
+    pub from_name: String,
+    pub scope: ExtScope,
+    pub targets: Vec<ExtTarget>,
+}
+
+/// 抽屉里那台机器的一处（全局一行 ＋ 每个装着它的项目一行）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub struct ExtPlace {
+    pub at: ExtLoc,
+    /// 全局那一行：`same` · `differs` · `missing`；项目那几行：`same` · `differs`（与「这一版」比）。
+    pub state: ExtState,
+    /// skill：那一处的目录（「在文件窗口里打开」用）。
+    pub dir: Option<String>,
+    /// 这一处有「卸载」。
+    pub uninstall: bool,
+    /// 有它、却没有「卸载」时为什么。
+    pub note: Option<String>,
 }
 
 /// 表里一台机器（一列）。
@@ -116,18 +133,17 @@ pub struct ExtMachine {
     pub projects: Vec<String>,
 }
 
-/// 一格。
+/// 一格（一台机器）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub struct ExtCell {
+    /// 表上那个点。
     pub state: ExtState,
-    /// 在那台上住哪几处（用户级在前）。
-    pub places: Vec<ExtLoc>,
-    /// skill：那台上的目录（「在文件窗口里打开」用）。
-    pub dir: Option<String>,
-    pub action: Option<ExtAction>,
-    /// 没有按钮时为什么（现状 ＋ 能做什么）。
+    /// 那台上的各处：全局一行在前（没有也列），再是每个装着它的项目。
+    pub places: Vec<ExtPlace>,
+    pub bring: Option<ExtBring>,
+    /// 没有「装到…」时为什么（现状 ＋ 能做什么）。
     pub note: Option<String>,
 }
 
@@ -140,6 +156,16 @@ pub struct ExtDetail {
     pub value: String,
 }
 
+/// cc-monitor 自带的扩展：内置备注 ＋ 要不要列各台的钩子状态。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub struct ExtBuiltin {
+    pub note: String,
+    /// 装上之后要在那台的 agent 配置里加钩子：抽屉里每台一行钩子状态（问那台的 `hooks-diag`）。
+    pub hooks: bool,
+}
+
 /// 表里一行（一个条目）。`cells` 与 [`ExtList::machines`] 同序。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
@@ -150,6 +176,9 @@ pub struct ExtRow {
     pub about: Option<String>,
     pub detail: Vec<ExtDetail>,
     pub new: bool,
+    pub builtin: Option<ExtBuiltin>,
+    /// 用户写的备注（随目录在后端之间同步）。
+    pub note: Option<String>,
     pub cells: Vec<ExtCell>,
 }
 
@@ -297,6 +326,14 @@ impl ExtLoc {
 }
 
 impl ExtKind {
+    /// 目录里那一格的写法（`asset_catalog::KINDS`）。
+    pub(crate) fn wire(self) -> &'static str {
+        match self {
+            ExtKind::Skill => KIND_SKILL,
+            ExtKind::Mcp => KIND_MCP,
+        }
+    }
+
     pub(crate) fn from_arg(args: &Value) -> Result<ExtKind, (&'static str, String)> {
         serde_json::from_value(args.get("kind").cloned().unwrap_or(Value::Null)).map_err(|_| {
             (
@@ -438,10 +475,63 @@ fn detail_of(a: &Asset) -> Vec<ExtDetail> {
     out
 }
 
+// ───────────────────────── 哪一处能写（全仓只此一处判） ─────────────────────────
+
+/// 这一级能不能往里写 / 从里删：用户级 MCP 住 agent 自己的热状态文件（它自己一直在重写）⇒ 只读。
+pub(crate) fn writable(kind: ExtKind, at: &ExtLoc) -> Result<(), String> {
+    match (kind, at) {
+        (ExtKind::Mcp, ExtLoc::User) => Err(copy_text("beExt.note.userMcpReadOnly", &[])),
+        _ => Ok(()),
+    }
+}
+
+/// MCP 那一处的项目目录；用户级 ⇒ 按 [`writable`] 拒。
+pub(crate) fn mcp_dir(at: &ExtLoc) -> Result<&str, (&'static str, String)> {
+    writable(ExtKind::Mcp, at).map_err(|why| ("refused", why))?;
+    Ok(at.project().unwrap_or_default())
+}
+
+/// cc-monitor 自带的扩展：（种类, 名字, 内置备注的文案键, 要不要列各台的钩子状态）。
+const BUILTIN: &[(ExtKind, &str, &str, bool)] = &[(
+    ExtKind::Skill,
+    super::cc_bus_install::NAME,
+    "beExt.builtin.ccBus",
+    true,
+)];
+
+/// 是不是 cc-monitor 自带的那一个（装它用被写那台二进制里那一份，不从别的机器拿）。
+pub(crate) fn is_builtin(kind: ExtKind, name: &str) -> bool {
+    BUILTIN.iter().any(|(k, n, _, _)| *k == kind && *n == name)
+}
+
+/// 装到这一处行不行（表上「装到哪」的选项与枢纽收到的落点只问这里）：不能写的那一级 · 自带的只装全局。行 ⇒ `None`。
+pub(crate) fn target_refused(kind: ExtKind, name: &str, at: &ExtLoc) -> Option<String> {
+    if let Err(why) = writable(kind, at) {
+        return Some(why);
+    }
+    (is_builtin(kind, name) && *at != ExtLoc::User)
+        .then(|| copy_text("beExt.target.builtinUserOnly", &[]))
+}
+
+/// 来源与目标是同一台的同一处（枢纽拒、表上那一项不可选）。
+pub(crate) fn same_place(
+    from: Option<&str>,
+    at_from: &ExtLoc,
+    to: Option<&str>,
+    at_to: &ExtLoc,
+) -> bool {
+    from == to && at_from == at_to
+}
+
 /// 各台目录 ＋ 可达表（`origin` → 那台目录的 id）⇒ 条目 × 机器一张表。**判定只在这里。**
 pub fn table(cat: &Catalog, reach: &[(String, Option<String>)]) -> ExtList {
     let cols = columns(cat, reach);
     let mut by_key: BTreeMap<(String, String), Vec<Vec<&Asset>>> = BTreeMap::new();
+    for (k, n, _, _) in BUILTIN {
+        by_key
+            .entry((k.wire().to_string(), n.to_string()))
+            .or_insert_with(|| vec![Vec::new(); cols.len()]);
+    }
     for (i, c) in cols.iter().enumerate() {
         for a in &cat.machines[c.id].assets {
             by_key
@@ -461,61 +551,235 @@ pub fn table(cat: &Catalog, reach: &[(String, Option<String>)]) -> ExtList {
     }
 }
 
-fn row(cat: &Catalog, cols: &[Column], kind: &str, name: &str, per: &[Vec<&Asset>]) -> ExtRow {
-    let is_mcp = kind == KIND_MCP;
+/// 「装到…」从哪来：自带的 ⇒ 被写那台二进制里那一份；否则某一台上的那一份。
+enum Source<'c, 'a> {
+    Builtin,
+    Machine(&'c Column<'a>, &'a Asset),
+}
+
+fn row(cat: &Catalog, cols: &[Column], kind_s: &str, name: &str, per: &[Vec<&Asset>]) -> ExtRow {
+    let kind = if kind_s == KIND_MCP {
+        ExtKind::Mcp
+    } else {
+        ExtKind::Skill
+    };
+    let builtin = BUILTIN
+        .iter()
+        .find(|(k, n, _, _)| *k == kind && *n == name);
     let user: Vec<Option<&Asset>> = per
         .iter()
         .map(|v| v.iter().copied().find(|a| a.project.is_none()))
         .collect();
-    let canon = canonical(&user, cols);
-    // 来源：持有「这一版」的那几台里本机优先、再按列序、要连得上；用户级谁都没有 ⇒ 项目里有的那几台里同样挑。
-    let held: Vec<Option<&Asset>> = match canon {
-        Some(d) => user.iter().map(|a| a.filter(|a| a.digest == d)).collect(),
-        None => per.iter().map(|v| v.first().copied()).collect(),
+    // 「这一版」：自带的 ⇒ 本机后端二进制里那一份；否则用户级持有人最多的那一版。
+    let canon: Option<String> = match builtin {
+        Some(_) => Some(super::cc_bus_install::embedded_digest()),
+        None => canonical(&user, cols).map(str::to_string),
     };
-    let source = pick_source(cols, &held);
-    let shown = source
-        .map(|(_, a)| a)
-        .or_else(|| per.iter().flatten().next().copied());
-    let first_seen = cat.known.get(&asset_catalog::entry_key(kind, name));
+    // 来源：持有「这一版」的那几台里本机优先、再按列序、要连得上；用户级谁都没有 ⇒ 项目里有的那几台里同样挑。
+    let source = match builtin {
+        Some(_) => Some(Source::Builtin),
+        None => {
+            let held: Vec<Option<&Asset>> = match canon.as_deref() {
+                Some(d) => user.iter().map(|a| a.filter(|a| a.digest == d)).collect(),
+                None => per.iter().map(|v| v.first().copied()).collect(),
+            };
+            pick_source(cols, &held).map(|(c, a)| Source::Machine(c, a))
+        }
+    };
+    // 项目里那几处与谁比：「这一版」；用户级谁都没有 ⇒ 「装到…」会拿过去的那一版。
+    let reference: Option<String> = canon.clone().or_else(|| match &source {
+        Some(Source::Machine(_, a)) => Some(a.digest.clone()),
+        _ => None,
+    });
+    let shown = match &source {
+        Some(Source::Machine(_, a)) => Some(*a),
+        _ => None,
+    }
+    .or_else(|| per.iter().flatten().next().copied());
+    let first_seen = cat.known.get(&asset_catalog::entry_key(kind_s, name));
     let new = cat.visits.prev > 0 && first_seen.is_some_and(|t| *t > cat.visits.prev);
     let cells = cols
         .iter()
         .enumerate()
         .map(|(i, c)| {
-            let mut places: Vec<ExtLoc> = per[i].iter().map(|a| ExtLoc::of(a)).collect();
-            places.sort_by_key(|l| l.project().map(str::to_string));
-            let state = match (user[i], canon) {
-                (Some(a), Some(d)) if a.digest == d => ExtState::Same,
-                (Some(_), _) => ExtState::Differs,
-                (None, _) if !per[i].is_empty() => ExtState::Project,
-                (None, _) => ExtState::Missing,
-            };
-            let dir = if is_mcp {
-                None
-            } else {
-                user[i]
-                    .or_else(|| per[i].first().copied())
-                    .and_then(|a| a.dir.clone())
-            };
-            let (action, note) = action_for(c, state, &places, is_mcp, source);
-            ExtCell {
-                state,
-                places,
-                dir,
-                action,
-                note,
-            }
+            cell(
+                kind,
+                name,
+                c,
+                &per[i],
+                user[i],
+                canon.as_deref(),
+                reference.as_deref(),
+                source.as_ref(),
+            )
         })
         .collect();
     ExtRow {
-        kind: if is_mcp { ExtKind::Mcp } else { ExtKind::Skill },
+        kind,
         name: name.to_string(),
         about: shown.and_then(about_of),
         detail: shown.map(detail_of).unwrap_or_default(),
         new,
+        builtin: builtin.map(|(_, _, key, hooks)| ExtBuiltin {
+            note: copy_text(key, &[]),
+            hooks: *hooks,
+        }),
+        note: asset_catalog::note_of(cat, &asset_catalog::entry_key(kind_s, name)),
         cells,
     }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn cell(
+    kind: ExtKind,
+    name: &str,
+    c: &Column,
+    mine: &[&Asset],
+    user: Option<&Asset>,
+    canon: Option<&str>,
+    reference: Option<&str>,
+    source: Option<&Source>,
+) -> ExtCell {
+    let is_this = |a: &Asset, d: Option<&str>| {
+        if Some(a.digest.as_str()) == d {
+            ExtState::Same
+        } else {
+            ExtState::Differs
+        }
+    };
+    let state = match user {
+        Some(a) => is_this(a, canon),
+        None if !mine.is_empty() => ExtState::Project,
+        None => ExtState::Missing,
+    };
+    let live = c.m.reachable;
+    let mut places = vec![place(
+        kind,
+        ExtLoc::User,
+        user,
+        user.map_or(ExtState::Missing, |a| is_this(a, canon)),
+        live,
+    )];
+    let mut in_projects: Vec<&Asset> = mine
+        .iter()
+        .copied()
+        .filter(|a| a.project.is_some())
+        .collect();
+    in_projects.sort_by(|a, b| a.project.cmp(&b.project));
+    for a in in_projects {
+        places.push(place(
+            kind,
+            ExtLoc::of(a),
+            Some(a),
+            is_this(a, reference),
+            live,
+        ));
+    }
+    let (bring, note) = if !live {
+        (None, Some(copy_text("beExt.note.offline", &[])))
+    } else {
+        match source {
+            None => (None, Some(copy_text("beExt.note.noSource", &[]))),
+            Some(src) => bring_for(kind, name, c, src),
+        }
+    };
+    ExtCell {
+        state,
+        places,
+        bring,
+        note,
+    }
+}
+
+/// 一处：有它 ⇒ 能写的那一级给「卸载」（那台连着才给），不能写的说为什么；没有 ⇒ 只给态。
+fn place(
+    kind: ExtKind,
+    at: ExtLoc,
+    held: Option<&Asset>,
+    state: ExtState,
+    live: bool,
+) -> ExtPlace {
+    let dir = match kind {
+        ExtKind::Mcp => None,
+        ExtKind::Skill => held.and_then(|a| a.dir.clone()),
+    };
+    let (uninstall, note) = match (held, writable(kind, &at)) {
+        (None, _) => (false, None),
+        (Some(_), Ok(())) => (live, None),
+        (Some(_), Err(why)) => (false, Some(why)),
+    };
+    ExtPlace {
+        at,
+        state,
+        dir,
+        uninstall,
+        note,
+    }
+}
+
+/// 机器那一行的「装到…」：可选的各处（全局 ＋ 那台每个开过会话的项目，不行的照列、说为什么）＋ 建议的那一处（与来源同级）。
+fn bring_for(
+    kind: ExtKind,
+    name: &str,
+    c: &Column,
+    src: &Source,
+) -> (Option<ExtBring>, Option<String>) {
+    let (from, from_name, from_loc) = match src {
+        Source::Builtin => (None, copy_text("beExt.from.builtin", &[]), ExtLoc::User),
+        Source::Machine(col, a) => (
+            col.m.key.clone(),
+            if col.m.here {
+                copy_text("beExt.machine.here", &[])
+            } else {
+                col.m.name.clone()
+            },
+            ExtLoc::of(a),
+        ),
+    };
+    let from_machine = matches!(src, Source::Machine(..));
+    let targets: Vec<ExtTarget> = std::iter::once(ExtLoc::User)
+        .chain(c.m.projects.iter().map(|d| ExtLoc::Project { dir: d.clone() }))
+        .map(|at| {
+            let why = target_refused(kind, name, &at).or_else(|| {
+                (from_machine
+                    && same_place(from.as_deref(), &from_loc, c.m.key.as_deref(), &at))
+                .then(|| copy_text("beExt.card.sameMachine", &[]))
+            });
+            ExtTarget {
+                ok: why.is_none(),
+                note: why,
+                at,
+            }
+        })
+        .collect();
+    let like = match &from_loc {
+        ExtLoc::User => ExtLoc::User,
+        ExtLoc::Project { dir } => pick_project(&c.m, Some(dir))
+            .map(|dir| ExtLoc::Project { dir })
+            .unwrap_or(ExtLoc::User),
+    };
+    let to = targets
+        .iter()
+        .find(|t| t.ok && t.at == like)
+        .or_else(|| targets.iter().find(|t| t.ok))
+        .map(|t| t.at.clone());
+    let Some(to) = to else {
+        let why = if kind == ExtKind::Mcp && c.m.projects.is_empty() {
+            "beExt.note.noProject"
+        } else {
+            "beExt.card.sameMachine"
+        };
+        return (None, Some(copy_text(why, &[])));
+    };
+    (
+        Some(ExtBring {
+            from,
+            from_name,
+            scope: ExtScope { from: from_loc, to },
+            targets,
+        }),
+        None,
+    )
 }
 
 /// 有这一版、连得上的那几台里挑一台：本机优先，再按列序。
@@ -527,64 +791,6 @@ fn pick_source<'c, 'a>(
         .zip(held)
         .filter_map(|(c, a)| a.filter(|_| c.m.reachable).map(|a| (c, a)))
         .min_by_key(|(c, _)| !c.m.here)
-}
-
-fn action_for(
-    c: &Column,
-    state: ExtState,
-    places: &[ExtLoc],
-    is_mcp: bool,
-    source: Option<(&Column, &Asset)>,
-) -> (Option<ExtAction>, Option<String>) {
-    if !c.m.reachable {
-        return (None, Some(copy_text("beExt.note.offline", &[])));
-    }
-    let uninstall = |at: ExtLoc| (Some(ExtAction::Uninstall { at }), None);
-    let bring = |replace: bool| -> (Option<ExtAction>, Option<String>) {
-        let Some((src, a)) = source else {
-            return (None, Some(copy_text("beExt.note.noSource", &[])));
-        };
-        let from_loc = ExtLoc::of(a);
-        let to = if is_mcp || (!replace && from_loc != ExtLoc::User) {
-            match pick_project(&c.m, from_loc.project()) {
-                Some(dir) => ExtLoc::Project { dir },
-                None if is_mcp => return (None, Some(copy_text("beExt.note.noProject", &[]))),
-                None => ExtLoc::User,
-            }
-        } else {
-            ExtLoc::User
-        };
-        let scope = ExtScope { from: from_loc, to };
-        let (from, from_name) = (src.m.key.clone(), src.m.name.clone());
-        let act = if replace {
-            ExtAction::Replace {
-                from,
-                from_name,
-                scope,
-            }
-        } else {
-            ExtAction::Install {
-                from,
-                from_name,
-                scope,
-            }
-        };
-        (Some(act), None)
-    };
-    match state {
-        ExtState::Same if is_mcp => (None, Some(copy_text("beExt.note.userMcpReadOnly", &[]))),
-        ExtState::Same => uninstall(ExtLoc::User),
-        ExtState::Differs if is_mcp => (None, Some(copy_text("beExt.note.userMcpReadOnly", &[]))),
-        ExtState::Differs => bring(true),
-        ExtState::Missing => bring(false),
-        ExtState::Project => uninstall(
-            places
-                .iter()
-                .find(|l| **l != ExtLoc::User)
-                .cloned()
-                .unwrap_or(ExtLoc::User),
-        ),
-    }
 }
 
 /// 目录的写口（现扫 ＋ 记下 ＋ 交回整份与读不出来的那几份）：生产 = `asset_catalog::answer_current`。
@@ -611,6 +817,38 @@ pub(crate) fn answer_list(
     let mut list = table(&cat, reach);
     list.problems = problems;
     serde_json::to_value(list).map_err(|e| ("io_failed", e.to_string()))
+}
+
+/// 备注最长多少个字（超了拒，不截断）。
+pub const NOTE_MAX_CHARS: usize = 2000;
+
+/// 备注的写口（现扫 ＋ 记进本机目录自己那一格 ＋ 交回整份）：生产 = `asset_catalog::answer_note`。
+pub(crate) type NoteWrite<'a> = &'a dyn Fn(&str, &str) -> Result<Catalog, (&'static str, String)>;
+
+/// `ext-note-set {kind, name, text}`：用户写 / 改 / 清（空串）一个条目的备注。记在本机目录自己那一格，随目录同步到别的后端。
+/// 回 `{note}`（现在生效的那一份，清掉了 ⇒ `null`）。
+pub(crate) fn answer_note(args: &Value, write: NoteWrite) -> Answer {
+    let kind = ExtKind::from_arg(args)?;
+    let name = str_arg(args, "name")?;
+    if name.trim().is_empty() {
+        return Err((
+            "bad_args",
+            crate::common::contract::malformed("`name` is empty"),
+        ));
+    }
+    let text = str_arg(args, "text")?;
+    if text.chars().count() > NOTE_MAX_CHARS {
+        return Err((
+            "bad_args",
+            copy_text(
+                "beExt.note.tooLong",
+                &[("max", &NOTE_MAX_CHARS.to_string())],
+            ),
+        ));
+    }
+    let key = asset_catalog::entry_key(kind.wire(), name);
+    let cat = write(&key, text)?;
+    Ok(json!({ "note": asset_catalog::note_of(&cat, &key) }))
 }
 
 /// 可达表的一份快照：`(origin, 那台目录的 id)`。
@@ -772,9 +1010,7 @@ fn mcp_here(
     name: &str,
     at: &ExtLoc,
 ) -> Result<McpHere, (&'static str, String)> {
-    let Some(dir) = at.project() else {
-        return Err(("refused", copy_text("beExt.note.userMcpReadOnly", &[])));
-    };
+    let dir = mcp_dir(at)?;
     let got = door::peek(d, dir, super::mcp_edit::MCP_JSON).map_err(|m| ("refused", m))?;
     let text = got.text.ok_or((
         "not_found",
