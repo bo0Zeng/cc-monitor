@@ -19722,6 +19722,16 @@
       "kind": "body",
       "zh": "改写了：{accounts}",
       "args": ["accounts"]
+    },
+    "accountsMcp.list.sep": {
+      "kind": "body",
+      "zh": "、",
+      "args": []
+    },
+    "beAcctFace.mcp.listSep": {
+      "kind": "body",
+      "zh": "、",
+      "args": []
     }
   }
 }

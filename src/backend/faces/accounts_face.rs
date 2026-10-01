@@ -112,7 +112,10 @@ fn sync_mcp(d: &dyn Door, change: &mut AccountChange) {
             if !v.changed.is_empty() {
                 change.notes.push(copy_text(
                     "beAcctFace.mcp.synced",
-                    &[("accounts", &v.changed.join(" · "))],
+                    &[(
+                        "accounts",
+                        &v.changed.join(&copy_text("beAcctFace.mcp.listSep", &[])),
+                    )],
                 ));
             }
             change.notes.extend(v.notes);
@@ -120,7 +123,10 @@ fn sync_mcp(d: &dyn Door, change: &mut AccountChange) {
                 let names: Vec<&str> = v.conflicts.iter().map(|c| c.name.as_str()).collect();
                 change.notes.push(copy_text(
                     "beAcctFace.mcp.conflicts",
-                    &[("names", &names.join(" · "))],
+                    &[(
+                        "names",
+                        &names.join(&copy_text("beAcctFace.mcp.listSep", &[])),
+                    )],
                 ));
             }
         }
