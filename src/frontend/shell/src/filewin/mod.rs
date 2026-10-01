@@ -1,4 +1,4 @@
-//! monitor **开文件窗口那一侧**（〔P4 · `设计/90 §0.5.3` ⑰〕窗口本体独立成包 `src/frontend/filewin/`，crate `cc_monitor_filewin`）：
+//! monitor **开文件窗口那一侧**（窗口本体独立成包 `src/frontend/filewin/`，crate `cc_monitor_filewin`）：
 //!
 //! - [`entry`] —— 开窗入口（Tauri 命令 `open_file_window`，界面唯一的开口）：算好种子（那台的名字 · 落点 · 书签全路径 · 工作区 · 通道交接件）；
 //! - [`proc`] —— 起窗口进程、把种子写进它的 stdin、读它说的就绪那一行、收尸（进程形态与为什么住那份头注）；
@@ -9,12 +9,12 @@
 pub mod entry;
 pub mod proc;
 
-// 🔴〔2026-09-23〕解耦那条边界的判据（〔P4〕窗口本体搬成独立包之后，它判的是 app 侧只有一条门、窗口包的依赖只许契约类）。
+// 🔴解耦那条边界的判据（窗口本体搬成独立包之后，它判的是 app 侧只有一条门、窗口包的依赖只许契约类）。
 #[cfg(test)]
 #[path = "../../../../../tests/frontend/shell/filewin/boundary_tests.rs"]
 mod boundary_tests;
 
-// 〔P4〕跨两半的几条（一侧窗口包、异源一侧 monitor）：只有 monitor 的测试档两边都够得着。
+// 跨两半的几条（一侧窗口包、异源一侧 monitor）：只有 monitor 的测试档两边都够得着。
 #[cfg(test)]
 #[path = "../../../../../tests/frontend/shell/filewin/cross_half_tests.rs"]
 mod cross_half_tests;

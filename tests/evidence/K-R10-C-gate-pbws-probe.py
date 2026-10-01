@@ -25,7 +25,7 @@
 本文件自己**不跑任何被测代码**：它只组装 `docker run`，被测的 `gate.sh` 在
 `ccmon-devbox:latest` 容器里跑。走的是**直接 `docker run`**，不是 `.claude/devbox/gate`
 那个包装（包装里 `bash scripts/gate.sh` 写死、且不透传 `PB_WS`，覆盖不了本量具要拧的两个旋钮）。
-`K-R10 §0a 二` 已裁这条路合规，并要求「绕开包装时把挂载逐条写出来」⇒ 见下面 MOUNTS，
+已裁这条路合规，并要求「绕开包装时把挂载逐条写出来」⇒ 见下面 MOUNTS，
 与 `.claude/devbox/gate:71-80` 逐条对齐，差异也在那里逐条写明。
 
 # ⚠⚠ 桩的射程 —— 这是本量具最该被人怀疑的一格，先自己写出来
@@ -38,7 +38,7 @@ gate.sh 一共五格：cargo · generated · daemon · npm · pb check。
 真门禁读数一律以 `.claude/devbox/gate` 那一趟为准，本文件替代不了它。
 桩的好处是：`gate.sh` 本体**没有被改过**，第 5 格执行的是盘上那份的逐字原文。
 
-# 三格判据（照 `K-R10 §0a 五`，PM 一字不改的那三条）
+# 三格判据（照，PM 一字不改的那三条）
 
 (a) 误指到一个「绿的别人」必须红。
     `PB_WS=devbench`（盘上现成不绿：`FAIL=1 BROKEN=1`），被测树是 k-r10 ⇒ 门禁必须红，
@@ -66,7 +66,7 @@ gate.sh 一共五格：cargo · generated · daemon · npm · pb check。
     c1  `PB_WS` **不存在**（`env -u`）⇒ 必须红，红因点名 `pb check`。
     c2  `PB_WS=""`（存在但空）⇒ 必须红。空串与不存在是两条不同的路，各收一格。
 
-# 🔴 验收纪律（`K-R10 §0a 五` 末，逐字）
+# 🔴 验收纪律（末，逐字）
 
 这五格**必须先在改 gate.sh 之前跑一遍确认它们是红的**。哪一格开局就绿，那一格就是仪式。
 本量具因此把「改前基线」当成一等公民：`--baseline` 只是给读数打个标签，判据完全一样。
@@ -82,7 +82,7 @@ WT = PROJ + "/.claude/worktrees/k-r10"
 TAG = "k-r10-c1"
 IMAGE = "ccmon-devbox:latest"
 
-# 挂载逐条写出来（`K-R10 §0a 二` 的口径），与 `.claude/devbox/gate:71-80` 对齐：
+# 挂载逐条写出来（口径），与 `.claude/devbox/gate:71-80` 对齐：
 #   -v $PROJ:$PROJ                     ← 同（工作树 · 计划仓 · pm-targets 都在里面）
 #   -v $SKILL:$SKILL:ro                ← 同（gate.sh:161 硬写要它）
 #   -e HOME=/home/user                  ← 同

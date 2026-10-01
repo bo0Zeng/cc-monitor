@@ -2,7 +2,7 @@
  * Z02（account-zero）：**跨语言双写点守卫** —— monitor 侧「基座 = 不注入」这套语义，
  * 全部压在一个**没有任何东西钉住**的假设上：
  *
- * > monitor 的 CLI 渲染器（〔LR1〕今天只在 Rust `ccm_invocation.rs`）对非 `account` 态吐 `--base`，而 `ccm` 收到
+ * > monitor 的 CLI 渲染器（今天只在 Rust `ccm_invocation.rs`）对非 `account` 态吐 `--base`，而 `ccm` 收到
  * > `--base` 会 **`unset CLAUDE_CONFIG_DIR`**。
  *
  * ## 🔴 `K-R48` 第二拍（2026-09-11）：另一侧换了语言
@@ -19,7 +19,7 @@
  * 钉着这条结构事实）⇒ 那两段不可能分家。「两处都要有」这个要求**被结构吃掉了**，
  * 不是被删掉了。本文件下面因此只钉一处，并单独钉住容器路那一侧。
  *
- * 当时 `launch-dimensions.test.ts` 只断言 monitor **发**了 `--base`（〔LR1〕那一格今天在 Rust `ccm_invocation_tests.rs`）；
+ * 当时 `launch-dimensions.test.ts` 只断言 monitor **发**了 `--base`（那一格今天在 Rust `ccm_invocation_tests.rs`）；
  * **没有任何东西断言 ccm 会照它 unset**。这条契约一旦漂（比如 ccm 哪天把 `--base` 改成
  * 「什么都不做」），表现是**静默错**：CLI 路径起出来的会话继承远端 shell 里那句
  * `export CLAUDE_CONFIG_DIR=<默认账号>`（用户自己写的，或早先的账号工具留下的），
@@ -47,7 +47,7 @@ const CCM_DIR = resolve(ROOT, "src/backend/control/ccm");
 const ccmArgv = readFileSync(resolve(CCM_DIR, "argv.rs"), "utf8");
 const ccmPlan = readFileSync(resolve(CCM_DIR, "plan.rs"), "utf8");
 const ccm = `${ccmArgv}\n${ccmPlan}`;
-// 〔LR1 · U8c-3〕monitor 这一侧「发 `--base`」的那一份今天只在 Rust（`ccm_invocation.rs` 的
+// monitor 这一侧「发 `--base`」的那一份今天只在 Rust（`ccm_invocation.rs` 的
 // `account` 维度）—— TS 维度上的 `cliFlags` 随 TS 渲染器删了。这里原来调
 // `ACCOUNT_DIMENSION.cliFlags` 断言它的返回值，那时判的已经是一个不在执行链上的值
 // （生产从 U8c-2c-2 起就走 Rust）；改读生产那一份的源码锚，与本文件读 `ccm/argv.rs` /
@@ -82,19 +82,19 @@ describe("Z02：`--base` 跨语言契约（monitor ↔ shared/ccm）", () => {
     // `CLAUDE_CONFIG_DIR` —— 判据刻意钉**那条渲染**，不钉变量名的字面量：
     // 变量名今天有唯一住址（`agents/mod.rs`），在这里再抄一份就是第三个双写点。
     expect(ccmPlan).toContain("unset_config_dir: o.use_base,");
-    // 〔OSA · V156〕`unset` 的写法搬进后端 OS 适配层（`platform::shell::posix::unset`），落点这一行跟着换形。
+    // `unset` 的写法搬进后端 OS 适配层（`platform::shell::posix::unset`），落点这一行跟着换形。
     expect(ccmPlan).toContain("line.push_str(&posix::unset(&[cfg_env]));");
   });
 
   it("★ 容器路那一侧也要显式表态（内层载荷带 `--base`，不靠继承穿 tmux 边界）", () => {
     // 这一条接的是 bash 那版「两处落点」里的第二处：从前是两段手写副本各 unset 一次，
     // 今天是「容器路把 `--base` 原样传进内层，内层再走同一条渲染」。
-    // 〔V151〕内层 `self <交给 agent 的…> -- <ccm 的…>`：`--base` 进 ccm 那一半（`opts`）。
+    // 内层 `self <交给 agent 的…> -- <ccm 的…>`：`--base` 进 ccm 那一半（`opts`）。
     expect(ccmPlan).toContain("opts.push(flag::BASE.into());");
   });
 
   it("`--account` 与 `--base` 互斥仍在 ccm 里（否则可能同时 export + unset，顺序决定结果）", () => {
-    // 〔CP2c〕那句话进了文案表（`src/shared/copy/table.json`）：判的是「argv.rs 在那一格取这句」＋「这句说的是互斥」。
+    // 那句话进了文案表（`src/shared/copy/table.json`）：判的是「argv.rs 在那一格取这句」＋「这句说的是互斥」。
     expect(ccmArgv).toContain('"beArgv.validate.accountAndBase"');
     expect(loadTable()["beArgv.validate.accountAndBase"]?.zh).toContain("--account 与 --base 互斥");
   });
@@ -141,7 +141,7 @@ it("★ ccm 建会话必须是 detached（`new-session -d`）—— 08-06 抽样
   // ⚠ **只认真正构造命令的那一行**：那份源码里有好几处**注释**也提到 `tmux new-session`，
   //   第一版用 `includes` 直接 find，命中的是注释行 ⇒ 判据在未变异的源码上就红了。
   //   （F24 那一族：匹配单位比事实小 —— 这次是「行的选择」而不是「串的长度」。）
-  // ⚠ 〔`K-R48` 第二拍 09-11〕抽取口径跟着另一侧换语言改了一次：从前认的是 bash 里
+  // ⚠ 抽取口径跟着另一侧换语言改了一次：从前认的是 bash 里
   //   `seq="{ tmux new-session …` 那一行（不是 `#` 注释 + 同时含 `seq="` 与 `tmux new-session`），
   //   今天认的是 Rust 里那个 `format!` 模板行（不是 `//` 注释 + 含 `tmux new-session`）。
   //   **钉的性质一个字没变**：那条真正构造命令的行必须带 `-d`。

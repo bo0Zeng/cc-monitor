@@ -1,4 +1,4 @@
-//! 设计/99 §2.1 ⑬：「命令实现经 `inbound_client` / `BackendDoor` 碰到后端的必须在「待迁」」—— D 组 MCP 写进了那台后端自己（`mcp-server-put` / `-remove`）。
+//! 「命令实现经 `inbound_client` / `BackendDoor` 碰到后端的必须在「待迁」」—— D 组 MCP 写进了那台后端自己（`mcp-server-put` / `-remove`）。
 use super::*;
 use crate::stream::inbound::LocalFiles;
 

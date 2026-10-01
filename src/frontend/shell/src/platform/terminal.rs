@@ -1,4 +1,4 @@
-//! 开终端窗口的平台那一半〔P4 · 阶段 H：`设计/90 §4` · `15 §5.3 C6` 余下〕：壳里平台 cfg 的唯一住址（同 [`super::fs`]）。
+//! 开终端窗口的平台那一半〔余下〕：壳里平台 cfg 的唯一住址（同 [`super::fs`]）。
 //! 原住 `launch.rs`，逐字搬来（头注与判据来历一个字没动）：POSIX 那条路（规范化终端出口 · `bash -lic` 的 spawn 计划）·
 //! Windows 那条路（`wt.exe` / `powershell.exe` 开窗 · `ssh.exe` 预检）。「跑什么」的校验与 argv 照旧住 `launch.rs::build_local_posix_argv`；
 //! 两条 Tauri 命令（`open_terminal_window` · `open_local_terminal`）也留在 `launch.rs`，经本文件的 [`open_local`] · [`ssh_client_missing`] 分平台。
@@ -147,13 +147,13 @@ fn which_exists(cmd: &str) -> bool {
 ///   ★ 同一条推理本仓在别处写对过：`src/doc/IPC-PROTOCOL.md` 逐字
 ///   「决定性的事实是 `stdin` 不接键盘（`stdin=DEVNULL`）—— 用户敲进去的字会被脚本吃掉」。
 ///   ★★ **P3t（2026-08-11）已经改了一半，本段随之更新。**
-///   〔MIG-2〕本机起会话的计划（今天在本机后端 `local.rs::plan`）现在**先过 CLI 渲染器**（`render_local_ccm`），渲得出来就带
+/// 本机起会话的计划（今天在本机后端 `local.rs::plan`）现在**先过 CLI 渲染器**（`render_local_ccm`），渲得出来就带
 ///   `--tmux` ⇒ ccm 走容器分支、会话留在 tmux 里有真 tty，本函数只负责把它拉起来。
 ///   上面那句「产出的是一个无 tty、无 tmux 的进程」现在只描述**回落那条路**
 ///   （渲染器拒了才走的 `build_local_posix_command`），由 〔散文墓碑〕
 ///   `the_local_resume_payload_has_no_session_container_today` 继续钉； 〔散文墓碑〕
 ///   正面事实由 `the_rendered_local_command_really_carries_the_container` 钉。 〔散文墓碑〕
-///   ⚠ 会话名要由前端传下来（P3t-Y2b；〔FIX4 · `90 §3` J7〕前端问本机后端的 `tmux-name-mint` 铸，问不到 ⇒ `None` ⇒ 走回落）。
+///   ⚠ 会话名要由前端传下来（P3t-Y2b；前端问本机后端的 `tmux-name-mint` 铸，问不到 ⇒ `None` ⇒ 走回落）。
 ///   功能后果（claude 在 `stdin=/dev/null` 下具体怎么表现）红线内**没实测**，是推的。
 /// - **脱离 app 的进程组**（`process_group(0)`）+ stdio 全 null：
 ///   否则子进程会跟着 app 的 Ctrl-C 一起走，也会把 app 的 stdio 占住。
@@ -229,7 +229,7 @@ pub(crate) fn launch_local_posix_via(
         builder.env(k, v);
     }
     builder.stdin(Stdio::null()).stdout(Stdio::null());
-    // 三条策略（`00 §1.5.2`）：
+    // 三条策略：
     // · `Hidden` —— POSIX 上没有「控制台窗口」这回事，这一条在这儿是空的；
     //   **窗口是 `program` 自己开的**（`local_posix_spawn_plan` 选出来的那个终端出口），
     //   不是 `CreateProcess` 的 flag 开的。别把它读成「这条路不开窗」。
@@ -345,7 +345,7 @@ pub fn launch_local_posix(_cmd: &str, _cwd: Option<&str>) -> Result<(), String> 
 /// - 同一条腿上的 [`crate::utils::powershell_encoded_command`] **没有 `cfg`、在 Linux 上真编译**
 ///   ⇒ 不属于本族（`D8 阻-2`）；第九轮已给它配了
 ///   `utils_tests.rs::the_relay_prefix_survives_the_powershell_encoding_byte_for_byte`。
-/// - 〔MIG-2〕原 `history.rs` 的 `PRODUCTION_LAUNCH_SINK`〔散文墓碑〕（今天是 `launch.rs::open_local_terminal`） 的 `#[cfg(windows)]` 那一支（`D8` 表里的 `F3`，
+/// - 原 `history.rs` 的 `PRODUCTION_LAUNCH_SINK`〔散文墓碑〕（今天是 `launch.rs::open_local_terminal`） 的 `#[cfg(windows)]` 那一支（`D8` 表里的 `F3`，
 ///   `D8` **没打**、标着「推的」）第九轮打了、**是红的**；`C` 第十轮刀 `R10M8` 复打，
 ///   读数一致：**`1244 passed; 1 failed`**，红的是
 ///   `payload_tests.rs` 的 `nobody_reaches_the_relay_take_points_without_going_through_the_seam`〔散文墓碑〕。
@@ -387,7 +387,7 @@ pub fn launch_powershell_window(ps_command: &str, local_cwd: Option<&str>) -> Re
     if let Some((k, v)) = backend_env.clone() {
         wt.env(k, v);
     }
-    // ★★ 三条策略（`00 §1.5.2`）。**Plan A 与 Plan B 只有第一格不同，而那是照着盘面写的：**
+    // ★★ 三条策略。**Plan A 与 Plan B 只有第一格不同，而那是照着盘面写的：**
     //   · `Inherit`（本处，Plan A）—— 🔴 `wt.exe` 今天**一个 creation flag 都没带**，
     //     而且它多半只是把请求转交给**已在跑的** Windows Terminal 进程（这一格的诚实边界
     //     上面那段注释已经写过一次）⇒ 真正开窗的不是这次 `CreateProcess`。
@@ -441,8 +441,8 @@ pub fn launch_powershell_window(ps_command: &str, local_cwd: Option<&str>) -> Re
 /// （gnome-terminal / konsole / alacritty / kitty / wezterm / …），**那是一个平白引入的、
 /// 会在别人机器上错的决定**。
 ///
-/// ⚠⚠ **本段原先还接着「而容器一定是 tmux —— 命令跑完，会话留在那儿等 attach」，那是假的**
-/// 〔audit-0805 F08 下半〕。本函数服务的正是**远端**那条路，而它走
+/// ⚠⚠ **本段原先还接着「而容器一定是 tmux —— 命令跑完，会话留在那儿等 attach」，那是假的**。
+/// 本函数服务的正是**远端**那条路，而它走
 /// `runRemoteResume` → `planResumeDirect`，那里逐字是 `container: { kind: "none" }`
 /// （`launch-requests.ts:45`，全文件唯一一个 `none`；其余四个 plan 才是 tmux）。
 /// ⇒ 「不开终端窗口」这个决定**站得住**（POSIX 没有唯一的终端，这条理由本身没问题），
@@ -453,7 +453,7 @@ pub fn launch_powershell_window(ps_command: &str, local_cwd: Option<&str>) -> Re
 /// 它暗示「v2 会支持」，而实际上这件事**没排期、而且方向是反的**（U8b 订正）。
 ///
 /// ⚠ **这不代表 POSIX 上「远端拉起」这件事就该只复制命令** —— 那是另一个缺口：
-/// 本机 resume 有 OS 分派（〔MIG-2〕今天在本机后端 `local.rs::plan`），远端**没有**（开窗 `open_terminal_window`
+/// 本机 resume 有 OS 分派（今天在本机后端 `local.rs::plan`），远端**没有**（开窗 `open_terminal_window`
 /// 一律走本函数）。补它要等前端改成发结构化请求（U8c）之后走后端的 `launch`，
 /// 登记在 **U8a-2c**。今天硬补只能 fire-and-forget，而那会**静默失败**（见 U8b 计划）。
 #[cfg(not(windows))]
@@ -481,7 +481,7 @@ pub(crate) fn ssh_client_available() -> bool {
     use crate::spawn_managed::{spawn_managed_cmd, ConsolePolicy, Lifetime, StderrSink};
     let mut cmd = std::process::Command::new("where.exe");
     cmd.arg("ssh").stdout(std::process::Stdio::piped());
-    // 三条策略（`00 §1.5.2`）：
+    // 三条策略：
     // · `Hidden` —— 🔴 **这处先前是裸 `.output()`，也就是没人回答过这个问题**：
     //   monitor 是 `windows_subsystem = "windows"` 的 GUI app，起一个控制台子系统的
     //   `where.exe` 而不带 `CREATE_NO_WINDOW` ⇒ 用户桌面上会闪一个黑框。

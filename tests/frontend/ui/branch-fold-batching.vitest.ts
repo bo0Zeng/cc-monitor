@@ -141,7 +141,7 @@ function iso(i: number): string {
 }
 
 /**
- * `设计/17 §7` 第 6 条 ＝ `§2.7` 档 3：**`addQueuedContent` 接上同一个帧末合批**。
+ * ＝ `§2.7` 档 3：**`addQueuedContent` 接上同一个帧末合批**。
  *
  * # 它钉的那条链
  *
@@ -152,7 +152,7 @@ function iso(i: number): string {
  * **与 F15 修掉之前的 `recordAdded` 是同一个形状**：M 条 enqueue × O(N) = O(M·N)，
  * 而且与同一帧里 `recordAdded` 排的那次**各算各的**。
  *
- * `设计/17 §2.7` 逐字把它列在「一个没合批的兄弟」下面，修法逐字是「接上合批 —— 一行，立刻做」。
+ * 把它列在「一个没合批的兄弟」下面，修法逐字是「接上合批 —— 一行，立刻做」。
  *
  * # 判据钉什么
  *
@@ -169,7 +169,7 @@ function iso(i: number): string {
  * ⇒ **那一格量的是「算出什么」，不是「谁排的活」**；「谁排的活」归上面
  * 「反向：不许变成永远不算」那条（`M7` 下它红），两条合起来才盖满。
  */
-describe("`设计/17 §2.7` 档 3：addQueuedContent 接上帧末合批", () => {
+describe(" 档 3：addQueuedContent 接上帧末合批", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     spy.compute = 0;
@@ -298,13 +298,13 @@ describe("`设计/17 §2.7` 档 3：addQueuedContent 接上帧末合批", () => 
 });
 
 /**
- * 〔W5-RENDER R13〕`设计/10 §3.4` C1 逐字：「`BranchFolder.rebuild()` 全量 unwrap ＋ 重新包裹」—— 三处「主动放弃增量」的 DOM 操作之一。
+ * 「`BranchFolder.rebuild()` 全量 unwrap ＋ 重新包裹」—— 三处「主动放弃增量」的 DOM 操作之一。
  * 修法：按段差量（恰好等于目标段的现存 wrap 原地不动，只拆 / 建归属变了的段）。
  * 判据（异源）：随机操作序列（插卡 —— 包括插进折叠段里、按 R6 的 `insertNode` 口径插在锚点前 —— ＋ 换主线集合），
  * 每一步之后差量重折的 DOM == 同一逻辑序列在**平铺容器**上从零折一遍的 DOM（另一个实例）；
  * 以及「主线没变 / 只在尾巴长一条」时一个节点都不搬。
  */
-describe("C1 · 差量重折 == 从零折（`设计/10 §3.4`）", () => {
+describe("C1 · 差量重折 == 从零折", () => {
   type Priv = { lastMainBranch: Set<string>; rebuild(): void };
   const priv = (f: BranchFolder): Priv => f as unknown as Priv;
   function rng(seed: number): () => number {

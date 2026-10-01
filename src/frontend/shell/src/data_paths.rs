@@ -37,7 +37,7 @@ use tauri::{AppHandle, Manager};
 pub struct DataPathInfo {
     /// 用户可见的简短名字（如 "config.json"）
     pub label: String,
-    /// 〔第四波 ST2 · 用户 09-24 裁「提前做」· `INVARIANTS §2.1` 末条〕**真相还是缓存**。
+    /// 〔用户 09-24 裁「提前做」· `INVARIANTS §2.1` 末条〕**真相还是缓存**。
     ///
     /// **非可选**：[`probe_file`] / [`probe_dir`] 不收它就编不过 ⇒ 「新文件必须选类」由类型系统兜住，
     /// 不再只靠 `INVARIANTS §2.1` 那张散文表。设置面板「数据位置」每一行照它说「删了会丢 / 可随手删」。
@@ -81,7 +81,7 @@ pub struct DataPathInfo {
     ///      `bigint` 没有该方法 ⇒ 真是 BigInt 的话生产里早就 `TypeError`。
     ///      **它只证明「今天不是 bigint」，不证明「不可能是」。**
     ///    - **仓内同向先例**：用量那一轴的四个 `u64` 字段曾跨边界、TS 侧声明 `number`
-    ///      并直接做算术。〔`设计/50`：那一轴整轴退役，**先例的样本没了、结论没变** ——
+    ///      并直接做算术。〔：那一轴整轴退役，**先例的样本没了、结论没变** ——
     ///      全仓无 BigInt 这一条今天照样现打得出来。〕
     ///
     ///    **收窄成 `number` 在这里是安全的**：本字段只用于展示文件大小，
@@ -93,7 +93,7 @@ pub struct DataPathInfo {
     pub size_bytes: Option<u64>,
 }
 
-/// 〔ST2〕`INVARIANTS §2.1` 那两类：**真相**（用户手写 / 意图，删了丢东西）与**缓存 / 派生**（能从别处重建，随便删）。
+/// `INVARIANTS §2.1` 那两类：**真相**（用户手写 / 意图，删了丢东西）与**缓存 / 派生**（能从别处重建，随便删）。
 ///
 /// ⚠ 只有两档，没有「混」：`auto-launch.json` 那种「一个文件里既有真相又有派生」按**真相**记 ——
 /// 这一格回答的是「删了会不会丢东西」，混着真相的文件删了就会丢。
@@ -116,17 +116,17 @@ pub struct DataPathsResponse {
     pub monitor_data_dir: String,
     /// monitor 自己的持久化数据（按类别有序）
     pub entries: Vec<DataPathInfo>,
-    /// 〔P3 · V160「一台机器一个家」〕本机后端的家（`~/.cc-monitor`，按家目录算，不随 `CCM_DATA_DIR` 漂）
+    /// 〔「一台机器一个家」〕本机后端的家（`~/.cc-monitor`，按家目录算，不随 `CCM_DATA_DIR` 漂）
     pub backend_home: String,
-    /// 〔P3〕本机后端住在这个家里的那几样（[`backend_entries`]）
+    /// 本机后端住在这个家里的那几样（[`backend_entries`]）
     pub backend_entries: Vec<DataPathInfo>,
     /// WebView2 用户数据目录推断路径（cache / localStorage / IndexedDB / cookies）
     pub webview_user_data_dir: Option<DataPathInfo>,
-    // 〔OSA · 主会话 09-28 裁〕这里原来有 `$PROFILE` 备份目录那一格 —— 「`$PROFILE` 在哪」只由后端方言答，
+    // 这里原来有 `$PROFILE` 备份目录那一格 —— 「`$PROFILE` 在哪」只由后端方言答，
     //   界面经通道直接问本机后端（`src/frontend/ui/settings/profile-backups.ts`），本命令不再带它。
 }
 
-/// 日志目录那一行的名字。〔ST2 · `70 §11.3.2`〕设置面板认它：那一行不自带 [打开]，改成指向「日志」那一块
+/// 日志目录那一行的名字。设置面板认它：那一行不自带 [打开]，改成指向「日志」那一块
 /// （越界是界面层的重复，修在界面层 —— **不许**从这份枚举里删掉它，`INVARIANTS §2.1` 的唯一权威枚举点）。
 /// ⚠ 跨语言常量：TS 那侧 `settings/data-section.ts::LOGS_DIR_LABEL` 同名同值，由那边的 vitest 读本文件对拍。
 pub const LOGS_DIR_LABEL: &str = "logs/";
@@ -137,7 +137,7 @@ pub fn collect(handle: &AppHandle) -> DataPathsResponse {
         crate::config::resolve_monitor_data_dir().unwrap_or_else(|| PathBuf::from("(unknown)"));
 
     let entries = monitor_entries(&monitor_data_dir);
-    // 〔P3〕后端的家按家目录算（它自己也是这么落盘的）；取不到家目录 ⇒ 这一张卡空着，不猜。
+    // 后端的家按家目录算（它自己也是这么落盘的）；取不到家目录 ⇒ 这一张卡空着，不猜。
     // 常驻监听口：与宿主同一个算法（按 Claude 家目录，`local_backend_host` 起常驻时就是这么算的）。
     let listen_port = crate::config::resolve_claude_dir()
         .map(|d| relay_route_core::listen_port_for(&d.to_string_lossy()));
@@ -160,12 +160,12 @@ pub fn collect(handle: &AppHandle) -> DataPathsResponse {
     }
 }
 
-/// 〔FILES3 · `设计/99 §2.2 ㉜`〕文件管理窗口书签那份文件的名字 —— **唯一住址**（本文件是数据目录的唯一权威枚举点）。
+/// 文件管理窗口书签那份文件的名字 —— **唯一住址**（本文件是数据目录的唯一权威枚举点）。
 /// 窗口进程那一侧（`filewin/bookmarks.rs`）引它，app 这一侧不去够窗口模块（「文件管理器可以单独搞」那道门只有一扇）。
 pub const FILEWIN_BOOKMARKS_FILE: &str = "filewin-bookmarks.json";
 
 /// monitor data dir 下逐个文件 / 目录的枚举 —— **唯一权威枚举点**（`INVARIANTS §2.1`）。
-/// 〔ST2〕从 [`collect`] 里抽出来，只为让「每一项是哪一类」能不带 `AppHandle` 地被判据逐项对拍。
+/// 从 [`collect`] 里抽出来，只为让「每一项是哪一类」能不带 `AppHandle` 地被判据逐项对拍。
 fn monitor_entries(monitor_data_dir: &Path) -> Vec<DataPathInfo> {
     vec![
         probe_file(
@@ -174,8 +174,8 @@ fn monitor_entries(monitor_data_dir: &Path) -> Vec<DataPathInfo> {
             &copy_text("rsDataPaths.monitor.config", &[]),
             DataClass::Truth,
         ),
-        // 🔴 〔ST2 · `70 §6.2`〕原文「cc 集成的 sid → 终端 HWND 持久绑定」—— `sid` / `HWND`
-        //   都在 `91 §4` R1 的词表里（我们这侧的词）。换成用户看得懂的说法。
+        // 🔴 原文「cc 集成的 sid → 终端 HWND 持久绑定」—— `sid` / `HWND`
+        //   都是我们这侧的词。换成用户看得懂的说法。
         probe_file(
             monitor_data_dir.join("sid-hwnd-cache.json"),
             "sid-hwnd-cache.json",
@@ -195,8 +195,8 @@ fn monitor_entries(monitor_data_dir: &Path) -> Vec<DataPathInfo> {
             &copy_text("rsDataPaths.monitor.historyMeta", &[]),
             DataClass::Truth,
         ),
-        // 〔FILES3 · `设计/99 §2.2 ㉜`〕文件管理窗口的书签（`设计/60 §2.8`：monitor 自己的状态文件，与 `config.json` 同一族）。
-        //   名字只住本文件 [`FILEWIN_BOOKMARKS_FILE`] 一处（〔P4〕开窗入口 `filewin/entry.rs::open_with` 用它拼好全路径、随种子交给窗口）；你收藏的目录 ⇒ 删了会丢，按真相记。
+        // 文件管理窗口的书签（monitor 自己的状态文件，与 `config.json` 同一族）。
+        //   名字只住本文件 [`FILEWIN_BOOKMARKS_FILE`] 一处（开窗入口 `filewin/entry.rs::open_with` 用它拼好全路径、随种子交给窗口）；你收藏的目录 ⇒ 删了会丢，按真相记。
         probe_file(
             monitor_data_dir.join(FILEWIN_BOOKMARKS_FILE),
             FILEWIN_BOOKMARKS_FILE,
@@ -245,8 +245,8 @@ fn home_rel_label(rel: &str, dir: bool) -> String {
     }
 }
 
-/// 〔P3 · `设计/70 §6.2` · `INVARIANTS §2.1` · V160「一台机器一个家」· 主会话 09-29 裁「家里的都进这一份枚举」〕
-/// **本机后端住在同一个家里的那几样**（V66：只给路径，不给删）。
+/// 〔`INVARIANTS §2.1`〕一台机器一个家，家里的都进这一份枚举。
+/// **本机后端住在同一个家里的那几样**（只给路径，不给删）。
 ///
 /// 名字各取唯一住址，这里不写字面量：`~/.cc-monitor/` 下相对家目录的那一族取契约常量（`relay_route_core`，后端按同一份落盘；
 /// 程序目录 = 后端落点的上一层）· 监听口的进程记录按同一个口（`listen_port` = 宿主按 Claude 家目录算的那个，`None` ⇒ 这一行不列）·
@@ -420,7 +420,7 @@ fn detect_webview_data_dir(handle: &AppHandle) -> Option<DataPathInfo> {
     ))
 }
 
-// 〔OSA · 主会话 09-28 裁〕这里原来有 `$PROFILE` 备份目录那一族（探 `$PROFILE` 两个目录名 · 目录里有没有 `.ccm-backup-`）——
+// 这里原来有 `$PROFILE` 备份目录那一族（探 `$PROFILE` 两个目录名 · 目录里有没有 `.ccm-backup-`）——
 //   `$PROFILE` 位置的第二个读者；搬到界面经通道问本机后端（`src/frontend/ui/settings/profile-backups.ts`）。
 
 /// IPC：前端设置面板「数据」区打开时调一次。

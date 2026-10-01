@@ -235,7 +235,7 @@ def simulate(root: str, han_per_line: int = 30, max_lines: int = 8):
     ★ 追加形状必须是 `"# …\\n"`（ccm 末字节已是 `\\n`），**不是** `"\\n# …"`。
       后者会在文件里多插一个**空行**，而空行不以 `#` 开头 ⇒ 它被 `strip_hash_comment_lines`
       **留下**，`prod` 因此 +1 字节（22849 -> 22850），`prod*4` 就多算 4，余量从 97 变成 101。
-      〔K-R14 C 拍 09-01〕**PM 派工单里的 101 正是这个口径差**；`K-G3` 报的 97 才与真 Rust
+**PM 派工单里的 101 正是这个口径差**；`K-G3` 报的 97 才与真 Rust
       对得上（实测：真 Rust 的失败报文印出 `prod = 22849`，见交回里的夹逼实验）。
     """
     ccm_path = os.path.join(root, "shared", "ccm")
@@ -375,7 +375,7 @@ def census(root: str):
 def emit_fixture(root: str, out_path: str, n_lines: int, han: int) -> dict:
     """把 `shared/ccm` 拷成一份**副本**并在末尾追加 `n_lines` 行纯注释。
 
-    ★ 只写 `out_path`，**绝不碰被测树里的 `shared/ccm`**（K-R14 §4④：本件不动它本身）。
+    ★ 只写 `out_path`，**绝不碰被测树里的 `shared/ccm`**（本件不动它本身）。
     追加形状刻意是「文件末尾直接接 `# …\\n`」——因为 ccm 末字节已是 `\\n`，
     这样**不会**多出一个空行 ⇒ `prod` 逐字节不变，翻红的唯一原因就是 `raw` 涨了。
     """

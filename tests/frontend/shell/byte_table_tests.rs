@@ -1,15 +1,15 @@
-//! 〔DP1 · 第四波〕`byte_table.rs` 的判据：全仓唯一的取字节口 · 表 A（键 (OS, arch)）· 表 B（承诺面）· 拒绝点。
+//! `byte_table.rs` 的判据：全仓唯一的取字节口 · 表 A（键 (OS, arch)）· 表 B（承诺面）· 拒绝点。
 //!
 //! # 要求住址
 //!
-//! - `设计/01 §6.7a` 规矩 4，逐字：「**选哪份字节，按目标机器的 (OS, arch) 选** —— 不按『本机 / 远端』选」；
+//! - 规矩 4，逐字：「**选哪份字节，按目标机器的 (OS, arch) 选** —— 不按『本机 / 远端』选」；
 //!   同节表 B：「本机 Windows ✅ 承诺 · 远端 Linux（x86_64 · aarch64）✅ 承诺 · 本机 macOS · 远端 Windows · 远端 macOS ⬜ 现在不做 ⇒ 显式拒绝」。
-//! - `设计/96 §7.1.1b`，逐字：「**`pick(os, arch)` 是全仓唯一的取字节入口**，两条投递路都从它取；判据：每个 `include_bytes!`
+//! -，逐字：「**`pick(os, arch)` 是全仓唯一的取字节入口**，两条投递路都从它取；判据：每个 `include_bytes!`
 //!   内嵌槽恰好挂在表 A 的一个键上，一个键恰好一个槽」。
-//! - `设计/96 §7.1.4`，逐字：「**OS 问不出来 ＝ 拒绝，不是回落**：不许『问不出 OS 就当它是 Linux』」。
+//! -，逐字：「**OS 问不出来 ＝ 拒绝，不是回落**：不许『问不出 OS 就当它是 Linux』」。
 //!
 //! 期望值一律手写自上面三处原文（**不**取自被测的 `LINES`），两侧同源会恒真。
-//! 〔P1〕表 B（承诺面）是判定、住后端：它的判据（判序 · 账本 == 代码）随 `promised` 搬进 `tests/backend/control/deploy_plan_tests.rs`。
+//! 表 B（承诺面）是判定、住后端：它的判据（判序 · 账本 == 代码）随 `promised` 搬进 `tests/backend/control/deploy_plan_tests.rs`。
 
 use super::*;
 use deploy_contract::{key_from_uname, key_of, Route};
@@ -109,10 +109,10 @@ fn uname_answers_map_to_a_key_or_a_named_refusal() {
     ));
 }
 
-/// 〔WIN1 · 第四波 4D · RT1 F4〕Windows 那台用本地代码页（GBK）回话 ⇒ 界面上**不照抄乱码**，拒绝照旧。
+/// Windows 那台用本地代码页（GBK）回话 ⇒ 界面上**不照抄乱码**，拒绝照旧。
 ///
-/// 要求住址：`设计/96 §7.1.4` 第 2 条逐字「**拒绝是一个会到达用户的结论，不是一行 `debug` 日志**；文案照 `01 §6.9`」
-/// 与第 4 条「**OS 问不出 ＝ 拒绝，不是回落**」；读数出处 `第四波记录/RT1.md §8` F4 逐字
+/// 要求：「**拒绝是一个会到达用户的结论，不是一行 `debug` 日志**；文案照」
+/// 与第 4 条「**OS 问不出 ＝ 拒绝，不是回落**」；读数
 /// 「Windows 远端 `uname` 的回话在 toast / 日志里是**乱码**：PowerShell 按控制台代码页（GBK）吐错误，我们按 UTF-8 解」。
 /// 异源：语料是**手写的 GBK 字节**（「无法将“uname”」），走与后端 `dial/uses.rs` 同一种有损解（`from_utf8_lossy`）；
 /// 期望是「整句里零个 U+FFFD」＋「说得出不是 UTF-8」，不从被测常量里抠。正控：UTF-8 的回话照旧原样带出。
@@ -160,7 +160,7 @@ enum Want {
 }
 
 /// B4：`choose` 的判序（monitor 这一侧只剩查表 · 事实）：键问不出 ⇒ 原样交回；不在表 A 有产线的行里 ⇒ `unsupported_machine`；
-/// 带没带 ⇒ 按 `pick`。期望手写自 `96 §7.1.1b` 表 A 的「有没有产线」一栏（〔P1〕表 B 那一维随判定进了后端）。
+/// 带没带 ⇒ 按 `pick`。期望手写自表 A 的「有没有产线」一栏（表 B 那一维随判定进了后端）。
 #[test]
 fn choose_answers_every_cell_of_table_a() {
     use Arch::*;
@@ -175,7 +175,7 @@ fn choose_answers_every_cell_of_table_a() {
         (Backend, k(Linux, Aarch64), Give),
         (Backend, k(Mac, X86_64), Unsupported),
         (Backend, k(Mac, Aarch64), Unsupported),
-        // 全景：Linux 两格的 musl 产线 ＋ 〔RM1f〕Windows x86_64 的原生产线。
+        // 全景：Linux 两格的 musl 产线 ＋ Windows x86_64 的原生产线。
         (Panorama, k(Windows, X86_64), Give),
         (Panorama, k(Windows, Aarch64), Unsupported),
         (Panorama, k(Linux, X86_64), Give),
@@ -203,7 +203,7 @@ fn choose_answers_every_cell_of_table_a() {
     );
 }
 
-/// B4b：每一形拒绝都说得出「哪台 · 什么机器」，且 key 在文案表里（取不到时 `copy_text` 回 `〔key〕`）。
+/// B4b：每一形拒绝都说得出「哪台 · 什么机器」，且 key 在文案表里（取不到时 `copy_text` 回 ``）。
 #[test]
 fn every_refusal_names_the_machine_and_what_it_is() {
     let cases = [
@@ -222,7 +222,7 @@ fn every_refusal_names_the_machine_and_what_it_is() {
             arch: "x86_64".into(),
             route: Route::Remote,
         },
-        // 〔V132〕本机那一句：同一形、另一句话（远端那句「只在本机用得上」对本机是假话）。
+        // 本机那一句：同一形、另一句话（远端那句「只在本机用得上」对本机是假话）。
         Refusal::NotPromisedHere {
             os: "Linux".into(),
             arch: "arm64".into(),
@@ -234,7 +234,7 @@ fn every_refusal_names_the_machine_and_what_it_is() {
         },
     ];
     let mut said = BTreeSet::new();
-    // 〔TL1 · 4C〕两件产物各一组话：全景推字节也走 `choose` 之后，同一种拒绝对两件产物说两句（后果不同）。
+    // 两件产物各一组话：全景推字节也走 `choose` 之后，同一种拒绝对两件产物说两句（后果不同）。
     for (r, product) in cases
         .iter()
         .flat_map(|r| [(r, Product::Backend), (r, Product::Panorama)])
@@ -265,7 +265,7 @@ fn every_refusal_names_the_machine_and_what_it_is() {
                 assert!(s.contains(why.as_str()), "{s}")
             }
         }
-        // `96 §7.1.4b` 的禁词表。
+        // 禁词表。
         for banned in [
             "musl",
             "glibc",
@@ -279,7 +279,7 @@ fn every_refusal_names_the_machine_and_what_it_is() {
         ] {
             assert!(!s.contains(banned), "{r:?} 说了禁词 {banned}：{s}");
         }
-        // 〔V161〕每一形说的是**自己那一句** —— 按文案键比（`设计/91 §6`），不再按 `96 §7.1.4b` 那张表各取一个独有词
+        // 每一形说的是**自己那一句** —— 按文案键比，不再按那张表各取一个独有词
         //   （用户 09-29「所有文案…不能把开发过程混进去」之后那几句不再说「今天 / 承诺 / 没有验过」）。
         //   只比「五句互不相同」挡不住「一形借了另一形的句子、填了不同的参数」（死值验 K6 首刀没砍中，补这一向）。
         let family = match product {
@@ -297,7 +297,7 @@ fn every_refusal_names_the_machine_and_what_it_is() {
                 arch,
                 route: Route::Remote,
             } => ("notPromisedHere", os.as_str(), arch.as_str(), ""),
-            // 〔V132〕本机那一形另有一句。
+            // 本机那一形另有一句。
             Refusal::NotPromisedHere {
                 os,
                 arch,
@@ -350,7 +350,7 @@ fn include_targets(prod: &str) -> Vec<String> {
 
 /// B2：`byte_table.rs` 的每个槽恰挂表 A 的一个键（从 `include_bytes!` 的目标名读：`<类>-<arch>` ⇒ (类, Linux, arch)；
 /// 本机原生那两份 ⇒ 这一份产物的 `TARGET` 那一格）。一个 (类, 键) 恰一个槽，**仅有的例外**是本机原生那两槽（后端 ·
-/// 〔RM1f〕全景）在 Linux 构建上与 musl 同格（`96 §7.3` 第一条，没裁），例外名单两向相等。
+/// 全景）在 Linux 构建上与 musl 同格（第一条，没裁），例外名单两向相等。
 /// 不挂表 A 的槽只许文件窗口程序那一个（monitor 自己的窗口进程，只在本机起、从不部署到别的机器），名单两向相等。
 #[test]
 fn every_slot_hangs_on_exactly_one_key_and_one_key_has_one_slot_but_the_one_listed_exception() {
@@ -360,7 +360,7 @@ fn every_slot_hangs_on_exactly_one_key_and_one_key_has_one_slot_but_the_one_list
     assert_eq!(
         targets.len(),
         7,
-        "byte_table.rs 生产段里 `include_bytes!` 应当恰好 7 处（后端 musl 2 · 全景 musl 2 · 本机原生 2：后端 ＋ 〔RM1f〕全景 · 文件窗口程序 1）：{targets:?}"
+        "byte_table.rs 生产段里 `include_bytes!` 应当恰好 7 处（后端 musl 2 · 全景 musl 2 · 本机原生 2：后端 ＋全景 · 文件窗口程序 1）：{targets:?}"
     );
     // 不挂表 A 的槽恰好文件窗口程序那一个；别的槽下面逐个认名字，认不出就红（不会有第二个不挂表 A 的槽混过去）。
     const FILEWIN_SLOT: &str = "\"../native-backend/cc-monitor-filewin\"";
@@ -414,7 +414,7 @@ fn every_slot_hangs_on_exactly_one_key_and_one_key_has_one_slot_but_the_one_list
     };
     assert_eq!(
         doubled, expected_doubled,
-        "一格两槽的名单变了 —— 只许本机原生那两槽在 Linux 构建上与 musl 同格（`96 §7.3` 第一条）"
+        "一格两槽的名单变了 —— 只许本机原生那两槽在 Linux 构建上与 musl 同格（第一条）"
     );
     // 每个槽的键都在表 A 的产线里（槽挂在一个没有产线的键上 = 那一格的字节永远没人选）。
     for (p, key) in &slots {
@@ -426,7 +426,7 @@ fn every_slot_hangs_on_exactly_one_key_and_one_key_has_one_slot_but_the_one_list
 }
 
 /// B1：`src/frontend/shell/src` 生产段里 `include_bytes!` 住哪几个文件 == {`byte_table.rs`（可执行字节）}，两向。
-/// 〔MIG-3a · 子步 3〕`cc_bus_deploy.rs`（cc-bus skill 的文件）出列：装 cc-bus 进了本机后端，字节随它住 `src/backend/assets/cc_bus_install.rs`。
+/// `cc_bus_deploy.rs`（cc-bus skill 的文件）出列：装 cc-bus 进了本机后端，字节随它住 `src/backend/assets/cc_bus_install.rs`。
 /// **别的文件长出一槽可执行字节 ⇒ 红**：它就是第二个取字节口（题面「今天两条内嵌路径各按一个错的轴选」的复发形）。
 #[test]
 fn byte_table_is_the_only_home_of_embedded_executables() {
@@ -446,7 +446,7 @@ fn byte_table_is_the_only_home_of_embedded_executables() {
         }
     }
     assert!(scanned > 50, "只扫到 {scanned} 份 .rs —— 扫描口坏了");
-    // 〔MIG-3a · 09-28 预裁〕`acct_iso_deploy.rs`（vendored 脚本）出去了：账号库改由后端自己建，那份 vendored 脚本整棵删了。
+    // `acct_iso_deploy.rs`（vendored 脚本）出去了：账号库改由后端自己建，那份 vendored 脚本整棵删了。
     let want: BTreeSet<String> = ["byte_table.rs"].into_iter().map(String::from).collect();
     assert_eq!(homes, want);
     // 正控：一段带 `include_bytes!` 的合成生产代码认得出来。
@@ -584,4 +584,4 @@ fn musl_bytes_only_ever_land_on_linux_cells() {
     );
 }
 
-// 〔V132 · TL2 · P1〕承诺面「账本 == 代码」那条随 `promised` 搬进后端：`deploy_plan_tests::the_promise_face_in_the_ledger_equals_the_code`。
+// 承诺面「账本 == 代码」那条随 `promised` 搬进后端：`deploy_plan_tests::the_promise_face_in_the_ledger_equals_the_code`。

@@ -1,6 +1,6 @@
 {
   "说明": [
-    "〔C4e · 第四波 4C〕界面直接说的 tmux 控制类帧命令：请求样例 · 成品样例 · 拒绝码集合。",
+    "界面直接说的 tmux 控制类帧命令：请求样例 · 成品样例 · 拒绝码集合。",
     "后端侧（tests/backend/control/*_tests.rs）：请求样例过各自的解析器 · 成品 == 抽出来的纯构造器 · 码集合 == inbound::REGISTRY 那一块的 codes。",
     "界面侧（tests/frontend/ui/tmux-control.vitest.ts）：解码器读同一份成品 · 同一份码集合逐码说出一句各不相同的话。",
     "内容是结构占位（会话名 demo-cc，屏幕两行中性字），不含真会话正文。"

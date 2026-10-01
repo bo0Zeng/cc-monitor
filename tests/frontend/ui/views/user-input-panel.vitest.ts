@@ -165,7 +165,7 @@ describe("K-R45 清单面板：开关与收起", () => {
     f.panel.setEntries([]);
     expect(f.rows().length).toBe(0);
     expect(f.panel.toggle.disabled).toBe(true);
-    expect(f.panel.toggle.textContent).toBe("大纲"); // 0 条不挂计数（`设计/10 §2.2b ③`）
+    expect(f.panel.toggle.textContent).toBe("大纲"); // 0 条不挂计数
   });
 
   it("面板默认收着，点开关才展开（默认收着 ⇒ 对宿主既有布局零影响）", () => {
@@ -187,7 +187,7 @@ describe("K-R45 清单面板：开关与收起", () => {
     expect(f.rows().length).toBe(0);
     expect(f.panel.panel.hidden).toBe(true);
     expect(f.panel.toggle.disabled).toBe(true);
-    expect(f.panel.toggle.textContent).toBe("大纲"); // 0 条不挂计数（`设计/10 §2.2b ③`）
+    expect(f.panel.toggle.textContent).toBe("大纲"); // 0 条不挂计数
     expect(f.panel.toggle.getAttribute("aria-expanded")).toBe("false");
   });
 });

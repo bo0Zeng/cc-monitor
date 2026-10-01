@@ -191,10 +191,10 @@ fn resolve_from_json_propagates_validation_errors() {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// 〔V126 · TL2〕`resolve` / `--resolve` 是给仓外 aterm 的**跨仓承诺**
+// `resolve` / `--resolve` 是给仓外 aterm 的**跨仓承诺**
 // ════════════════════════════════════════════════════════════════════════
 //
-// 要求住址：用户裁决 **`V126`**（`设计/99 §1`，2026-09-25）逐字「后端 `resolve` 帧命令与 `--resolve`
+// 要求住址：用户裁决 **`V126`**（2026-09-25）逐字「后端 `resolve` 帧命令与 `--resolve`
 // 子命令（给 aterm 冻结的跨仓契约）保留；在设计里登记为跨仓承诺并加判据钉住形状」；
 // 契约正文住 `src/doc/IPC-PROTOCOL.md` §10「`resolve`」一节的「跨仓承诺」小节。
 //
@@ -235,7 +235,7 @@ fn v126_prod_src() -> String {
     guard_core::strip_comment_lines(&crate::guard_support::production_code(raw))
 }
 
-/// 〔V126〕R1 样例逐字节：金样每条请求过**生产** `resolve_from_json` ⇒ 成品串逐字节 == 金样；
+/// R1 样例逐字节：金样每条请求过**生产** `resolve_from_json` ⇒ 成品串逐字节 == 金样；
 /// 错误样例 ⇒ 码 == 金样；成品的键集 ⊆ 承诺的出参字段、`capabilities` 键集 == 四名、`mode` ∈ 承诺的取值。
 #[test]
 fn v126_every_frozen_sample_still_produces_the_same_bytes() {
@@ -301,7 +301,7 @@ fn v126_wire_fields(src: &str, decl: &str) -> Vec<String> {
     );
     let body = &src[start..start + src[start..].find("\n}").expect("结构体没收尾")];
     // 字段上的 `serde(rename…)` / `alias` 会让线上名与标识符分家 —— 那样下面读标识符就是在读错的东西
-    //（`ResumeSpec.claude_dir` 头注逐字：「除非再挂一条 `serde(rename)` —— 那是把一条契约拆成两个真相源」）。
+    //（`ResumeSpec.claude_dir` 头注逐字：「除非再挂一条 `serde(rename)` —— 那是把一条契约拆成两个源头」）。
     for bad in ["rename", "alias"] {
         assert!(
             !body.contains(bad),
@@ -339,7 +339,7 @@ fn v126_wire_fields(src: &str, decl: &str) -> Vec<String> {
     fields
 }
 
-/// 〔V126〕R2 三个线上结构体的字段名（生产源码现读）== 金样（两向）：
+/// R2 三个线上结构体的字段名（生产源码现读）== 金样（两向）：
 /// `ResumeSpec` == `request_fields` · `CommandPlan` == `plan_fields` · `Capabilities` == `capabilities`。
 /// 样例逐字节（R1）看不见**缺席即省略**的那几个出参（`launchLabel` / `substitutedFrom` 今天恒缺席），这一条补上。
 #[test]
@@ -359,7 +359,7 @@ fn v126_the_wire_field_names_are_the_frozen_ones() {
     }
 }
 
-/// 〔V126〕R3 错误码全集：生产段交给错误出口的码字面量集合 == 金样 `error_codes`（两向）；
+/// R3 错误码全集：生产段交给错误出口的码字面量集合 == 金样 `error_codes`（两向）；
 /// 流那条的登记表 `codes` == 全集减去只属于一次性那条的；信封只有 `code` / `message` 两键、退出码 == 金样。
 #[test]
 fn v126_the_error_codes_and_the_envelope_are_the_frozen_ones() {
@@ -425,7 +425,7 @@ fn v126_the_error_codes_and_the_envelope_are_the_frozen_ones() {
     );
 }
 
-/// 〔V126〕R4 两条入口都在：流命令（`inbound::REGISTRY` 的 `resolve`，经 `resolve_json_for_inbound`）·
+/// R4 两条入口都在：流命令（`inbound::REGISTRY` 的 `resolve`，经 `resolve_json_for_inbound`）·
 /// 一次性（`main.rs` 分派那一臂 ＋ `SUBCOMMANDS` 有 `--resolve`）。仓内零调用方 ⇒ 删掉哪一条仓里都不会有别的东西红。
 #[test]
 fn v126_both_entry_points_of_the_commitment_are_still_wired() {
@@ -453,7 +453,7 @@ fn v126_both_entry_points_of_the_commitment_are_still_wired() {
     );
 }
 
-/// 〔V126〕R5 文档那一节与金样两向相等：`IPC-PROTOCOL.md`「跨仓承诺」小节里四行列表
+/// R5 文档那一节与金样两向相等：`IPC-PROTOCOL.md`「跨仓承诺」小节里四行列表
 /// （入参 / 出参 / `capabilities` 四名 / 错误码）逐行取反引号里的名字 == 金样四个集合。
 #[test]
 fn v126_the_protocol_doc_lists_exactly_the_frozen_shape() {
@@ -462,7 +462,7 @@ fn v126_the_protocol_doc_lists_exactly_the_frozen_shape() {
             .expect("读不到 IPC-PROTOCOL.md");
     let start = doc
         .find("##### ★ 跨仓承诺（`V126`")
-        .expect("IPC-PROTOCOL 里找不到「跨仓承诺（V126）」小节");
+        .expect("IPC-PROTOCOL 里找不到「跨仓承诺」小节");
     let sec = &doc[start..];
     let sec = &sec[..sec[5..].find("\n#").map(|i| i + 5).unwrap_or(sec.len())];
     let names_after = |lead: &str| -> Vec<String> {

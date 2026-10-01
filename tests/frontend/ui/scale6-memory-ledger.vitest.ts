@@ -1,5 +1,5 @@
 /**
- * 秤 6 ——「内存」（`设计/17 §6` 表第 6 行）。
+ * 秤 6 ——「内存」（表第 6 行）。
  *
  * 设计逐字要三样：
  *   ①「`buildResultBody` 闭包持有的文本总字节」——「`cards/index.ts:570` 累加 `text.length`」
@@ -30,7 +30,7 @@
  * # 语料
  *
  * `tests/__fixtures__/scale2-height-records.jsonl` —— **结构采自真机、正文全部合成**
- * （`设计/17 §6` 数据源纪律 2026-09-18 改判，用户逐字「这是测试啊 / 不应该进」）。
+ * （数据源纪律 2026-09-18 改判，用户逐字「这是测试啊 / 不应该进」）。
  * 本文件**不读** `~/.claude/projects`，也不新造含真实会话正文的夹具。
  *
  * 复算：`npx vitest run tests/frontend/ui/scale6-memory-ledger.vitest.ts`
@@ -42,12 +42,12 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 // --- 只 mock「会真的去碰机器」的那几样；渲染管线保持真身（同 live-user-inputs.vitest.ts）---
-// 〔SE1〕大纲清单问后端要 ⇒ `list_user_inputs` 由台子里的替身回答（其余命令照旧回 undefined）
+// 大纲清单问后端要 ⇒ `list_user_inputs` 由台子里的替身回答（其余命令照旧回 undefined）
 vi.mock("@tauri-apps/api/core", async () => {
   const rig = await import("../../test-support/session-viewer-rig");
   const { withSessionReads } = await import("../../test-support/chan-fake");
   return {
-    // 〔C4b〕会话读面三问改走通道（`withSessionReads` 译 `chan_call` ⇄ 旧名字 ＋ 旧回包）。
+    // 会话读面三问改走通道（`withSessionReads` 译 `chan_call` ⇄ 旧名字 ＋ 旧回包）。
     invoke: vi.fn(
       withSessionReads(async (cmd: string, args: Record<string, unknown>) =>
         cmd === "list_user_inputs" ? rig.answerListUserInputs(args as { fromOffset: number }) : undefined,
@@ -176,7 +176,7 @@ function utf8Bytes(s: string): number {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 甲：`buildResultBody` 闭包持有的文本总量 —— `设计/17 §5.5` 点名的那个累加
+// 甲：`buildResultBody` 闭包持有的文本总量 —— 点名的那个累加
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("秤 6 甲：计数器本身先得是准的（不然下面所有读数都是装饰）", () => {
@@ -231,7 +231,7 @@ describe("秤 6 甲：计数器本身先得是准的（不然下面所有读数�
   });
 });
 
-describe("秤 6 甲：69 条语料上的读数（`设计/17 §2.8` 那 7 MB 的现打版）", () => {
+describe("秤 6 甲：69 条语料上的读数（那 7 MB 的现打版）", () => {
   beforeEach(() => {
     document.body.replaceChildren();
     resetResultTextLedger();
@@ -409,7 +409,7 @@ describe("🔴 秤 6 乙：核对 `tabs.ts` 那句「一条记录的文本在前
         parentUuid: null,
         timestamp: "2026-09-18T12:00:00.000Z",
         message: { role: "user", content: LONG_TEXT },
-        userText: { clean: LONG_TEXT.trim(), interrupt: false }, // 〔RENDER2 · J10〕monitor 那一格成品
+        userText: { clean: LONG_TEXT.trim(), interrupt: false }, // monitor 那一格成品
       } as unknown as JsonlRecord,
       ctx,
     );
@@ -459,7 +459,7 @@ describe("秤 6 丙：三个账本的大小进 `debugSnapshot`", () => {
    *
    * - `branchRecords = 4`：4 条带 uuid 的记录（收纳的那两条也喂 —— `routeMetaAndBranch`
    *   是两条路径的单一来源）
-   * - `userInputs   = 3`：〔SE1〕大纲的条数 = **后端**说的那 3 条（清单问后端要，前端不攒）
+   * - `userInputs   = 3`：大纲的条数 = **后端**说的那 3 条（清单问后端要，前端不攒）
    * - `pending      = 2`：尾块先到钉住 floor=100 ⇒ seq 1/2 进收纳账本
    */
   async function threeLedgersNonEmpty(): Promise<void> {

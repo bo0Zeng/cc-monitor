@@ -1,13 +1,13 @@
 /**
- * 〔BG1〕tab 代码里「按 bg 分叉」只住登记的那几处；tab 栏通用代码零处。
+ * tab 代码里「按 bg 分叉」只住登记的那几处；tab 栏通用代码零处。
  *
  * ## 守的要求（住址）
  *
- * - 用户裁决 `设计/99 §1` **V125**〔选〕「删掉树」，原话：「后台（bg）会话不再自动挂到宿主下排成树：
+ * - 用户裁决 **V125**〔选〕「删掉树」，原话：「后台（bg）会话不再自动挂到宿主下排成树：
  *   删 `placeInTree` 树状挂载、`dragBlockOf` 拖拽例外、`.tab-bg` 那套；bg 会话就是普通 tab、平铺，
- *   只留「显示 bg 会话」开关 —— 与 `30 §7`「不做自动归组、集合是唯一分类维」一致」。
- * - `设计/30 §7`：「自动归组 / 自动固定 | 同一条先例：『手动建，不要自动，纯手动』」。
- * - `设计/30 §1` 不变量 3：「**正交而非枚举** —— 会话状态 · `pinned` · 集合归属（你怎么分类），各管一件事。」
+ *   只留「显示 bg 会话」开关 —— 与「不做自动归组、集合是唯一分类维」一致」。
+ * -：「自动归组 / 自动固定 | 同一条先例：『手动建，不要自动，纯手动』」。
+ * - 不变量 3：「**正交而非枚举** —— 会话状态 · `pinned` · 集合归属（你怎么分类），各管一件事。」
  *
  * ## 两条判据
  *
@@ -19,20 +19,20 @@
  *   `bgName` 算针是因为 `if (tab.bgName)` 同样是按 bg 分叉、却不带字面量；于是只搬运它的几处也得登记。
  *
  * **B2 · CSS**：`src/**` 下全部 `.css`（现派生）剥 `/* … *\/` 注释后，类选择器 `.tab-bg` 零处。
- *   正控：同一个扫描器在同一批文件里找得到 `.drop-onto`（`设计/30 §D.5` 的拖动描边类，tab 栏样式真在扫描面里）。
+ *   正控：同一个扫描器在同一批文件里找得到 `.drop-onto`（拖动描边类，tab 栏样式真在扫描面里）。
  *
  * ## 人群与同波别路
  *
  * 同波 FE1 / CFG1 / W5-UI 若在 `src/frontend/ui/tabs.ts` / `src/tab-*.ts` 里新写 `bgName` / `"bg"` / `"interactive"`，
  * 或把登记的那几处挪进别的函数 / 别的文件 ⇒ B1 红。修法：确认它不是按 bg 分叉（只搬运）⇒ 登记一行并写理由；
- * 是分叉 ⇒ 别在 tab 代码里分，或先问 V125。
+ * 是分叉 ⇒ 别在 tab 代码里分，或先问。
  *
  * ⚠ 行为那一半（拖拽 / 集合 / 落位对 bg tab 与普通 tab 相同）在 `tests/frontend/ui/tabs.vitest.ts` 末尾
  *   「〔BG1〕」`describe.each`：本文件只管「代码里没有分叉的地方」，那组管「分叉即便换了写法也看得见」。
  */
 import ts from "typescript";
 import { describe, it, expect } from "vitest";
-import { productionCssFiles, productionTsFiles } from "../../test-support/production-sources.ts";
+import { productionCssFiles, productionTsFiles, SCAN_TIMEOUT_MS } from "../../test-support/production-sources.ts";
 
 /** `(文件, 所在声明)` —— 今天 tab 代码里按 bg 分叉 / 搬运 bg 字段的全部住处，逐条写理由。 */
 const REGISTERED: ReadonlyArray<readonly [string, string, string]> = [
@@ -139,7 +139,7 @@ describe("〔BG1 · V125〕tab 代码里按 bg 分叉只住登记的那几处", 
     const want = new Set(REGISTERED.map(([f, o]) => `${f} :: ${o}`));
     expect(want.size, "登记表里有重复行").toBe(REGISTERED.length);
     expect([...got].sort()).toEqual([...want].sort());
-  });
+  }, SCAN_TIMEOUT_MS);
 
   it("★ B2：`src/**` 的 CSS 里 `.tab-bg` 零处（正控 `.drop-onto` 在）", () => {
     const files = productionCssFiles("src").map((s) => [s.file, s.text] as const);
@@ -155,5 +155,5 @@ describe("〔BG1 · V125〕tab 代码里按 bg 分叉只住登记的那几处", 
       "src/frontend/ui/styles.css",
     ]);
     expect(cssFilesWithClass(files, "tab-bg")).toEqual([]);
-  });
+  }, SCAN_TIMEOUT_MS);
 });

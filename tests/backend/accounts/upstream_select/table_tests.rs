@@ -357,7 +357,7 @@ fn every_auth_style_other_than_the_default_gets_announced() {
 // ════════════════════════════════════════════════════════════════════════════
 //
 // 期望值一律**手写字面量**（`"claude-code"` · `"CCM_AGENT_UPSTREAM_CLAUDE_CODE"` · 那条官方 URL 的主机名），
-// 不拿被测的 `CREDENTIALS_FILE_AGENT` / 适配层那一格（`agents::Adapter::upstream`，〔NT2 · V25〕）去算 —— 拿被测常量写期望值再拿它去读，
+// 不拿被测的 `CREDENTIALS_FILE_AGENT` / 适配层那一格（`agents::Adapter::upstream`）去算 —— 拿被测常量写期望值再拿它去读，
 // 两侧同源，恒真。
 
 use super::super::{decide, Upstreams};
@@ -366,7 +366,7 @@ use crate::relay::{Destination, Mode, RouteKey};
 /// 问一次生产段那张决策表，把答案压成一个好比对的形状。
 #[derive(Debug, PartialEq, Eq)]
 enum Said {
-    /// `(状态行, 原因头)`〔FIX3：两格同是 404，靠原因头分开〕。
+    /// `(状态行, 原因头)`〔两格同是 404，靠原因头分开〕。
     Refuse(&'static str, &'static str),
     Passthrough(String),
     /// `(上游主机, 要写的那个头值)`。
@@ -466,9 +466,9 @@ fn rows_loaded_from_the_credentials_file_belong_to_the_agent_they_were_loaded_un
 }
 
 /// ★★★ **条 59 ＋ 「未登记直接拒」**：`/t/` ＋ 表里无行 ⇒ **登记过的那家**发到它**自己那一行**，
-/// **未登记的**被拒（〔FIX3 · `99 §2.2 ⑫`〕我们拒的一律 4xx：404 ＋ 原因头 `agent-not-registered`，先前 502）。两格用同一把尺子量，互为对照。
+/// **未登记的**被拒（我们拒的一律 4xx：404 ＋ 原因头 `agent-not-registered`，先前 502）。两格用同一把尺子量，互为对照。
 ///
-/// 🔴 那个拒绝 **不许**变成「透传到某一家」：那正是 `设计/20 §3.1` 第 4 行那条 🔴 禁的回落。
+/// 🔴 那个拒绝 **不许**变成「透传到某一家」：那正是那条 🔴 禁的回落。
 #[test]
 fn passthrough_without_a_row_goes_to_that_agents_own_upstream_and_an_unregistered_agent_is_refused()
 {
@@ -520,7 +520,7 @@ fn each_agents_env_knob_overrides_only_that_agents_default() {
 }
 
 /// ★ 每家一行的默认上游**自己的形状**：家名不重 · 旋钮不重 · 凭据文件那一家登记了。
-/// 〔NT2 · V25〕那一格住适配层（`agents::Adapter::upstream`），这里读的是上游选择读它的那个唯一入口。
+/// 那一格住适配层（`agents::Adapter::upstream`），这里读的是上游选择读它的那个唯一入口。
 ///
 /// ⚠ 这是一条**构造期**断言（注册表是一个 `const`），它买的是「加第二家时不会把旋钮抄成同一个」。
 #[test]
@@ -545,13 +545,13 @@ fn the_per_agent_upstream_table_has_no_duplicate_agent_or_knob_and_holds_the_cre
     );
 }
 
-/// 〔NT2 · V25〕V1 ★ **上游选择的默认上游只来自适配层那一格**（两向集合相等）：
+/// V1 ★ **上游选择的默认上游只来自适配层那一格**（两向集合相等）：
 /// 上游选择装出来的「登记了默认上游的家」== 适配层注册表里 `upstream` 那一格填了的家（按路由名）；
 /// 适配层里那一格没填的每一家（按注册表逐家问）在上游选择里都查不到。
 ///
-/// 守的要求（住址，纪律 19）：用户 V25（`99 §1`，逐字）「**写死, 跟着适配层**」· 主会话 4C 第二批裁（逐字）
-/// 「每家 agent 的默认上游挪回 `agents::Adapter` 上那一格，上游选择只查它」· `设计/20 §3.1`「⚠ 住址今天是上游选择那一张表 ……
-/// 与原话『跟着适配层』的住处不是同一格，待主会话对齐」。设计：`调研/第四波记录/NT2.md §3`。
+/// 守的要求（住址，纪律 19）：用户 V25「**写死, 跟着适配层**」· 主会话 4C 第二批裁（逐字）
+/// 「每家 agent 的默认上游挪回 `agents::Adapter` 上那一格，上游选择只查它」· 「⚠ 住址今天是上游选择那一张表 ……
+/// 与原话『跟着适配层』的住处不是同一格，待对齐」。
 /// 异源：左边是上游选择**运行期装出来的表**，右边是适配层注册表（不经 `default_upstreams` 那个入口，直接逐家读 `REGISTRY`）。
 /// 另一半（「上游选择里没有第二个默认上游的来源」—— URL 字面量与旧表名的处数）住 `relay::table_guard`。
 #[test]

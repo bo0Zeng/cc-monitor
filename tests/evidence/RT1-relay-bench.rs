@@ -1,11 +1,11 @@
-//! RT1 · V120「几十个会话同时走中转，不卡不丢」的真机台架（Win11 虚拟机上跑）。
+//! 「几十个会话同时走中转，不卡不丢」的真机台架（Win11 虚拟机上跑）。
 //! 不是 cargo target，独立交叉编译：
 //!
 //!     rustc -O --edition 2021 --target x86_64-pc-windows-gnu -o rt1-bench.exe tests/evidence/RT1-relay-bench.rs
 //!
-//! 守的要求：用户裁决 V120 逐字「真机测试量一次并发再开」——「中转全量注入（`CCM_RELAY_ALL_SESSIONS`）
+//! 守的要求：「真机测试量一次并发再开」——「中转全量注入（`CCM_RELAY_ALL_SESSIONS`）
 //! 先在虚拟机真机测试里量『几十个会话同时走中转不卡不丢』，过了就默认开」；
-//! `设计/20 §7` 步 4 逐字「必须带开关，默认关；真机验过再默认开」。
+//! 「必须带开关，默认关；真机验过再默认开」。
 //!
 //! 两个角色，一个 exe：
 //!   · `rt1-bench upstream <port> <gap_ms>` —— 假上游：每条请求按请求头 `x-rt1-seed` / `x-rt1-events`

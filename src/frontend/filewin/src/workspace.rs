@@ -1,7 +1,7 @@
-//! 〔FW34 · 第四波 2026-09-24〕窗口的最外一层：**标签页 ＋ 双栏 ＋ 复制到另一栏**（预览开关也挂在这儿，
+//! 窗口的最外一层：**标签页 ＋ 双栏 ＋ 复制到另一栏**（预览开关也挂在这儿，
 //! 预览本身住 [`super::preview`]：右侧一块，跟焦点那一栏）。
 //!
-//! 设计住 `调研/第四波记录/FW34.md` 第三节；这里只留落地要知道的。
+//! 设计住第三节；这里只留落地要知道的。
 //!
 //! # 一、形状：`FileWindow` 不拆，它就是一个标签页
 //!
@@ -32,7 +32,7 @@
 //! # ⚠ 买不到什么
 //!
 //! - 真窗口真画在屏幕上（要图形会话）；判据跑的是生产那个 [`Workspace::frame`]，读这一帧画出来的字。
-//! - 〔W5-FILES〕**拖**一行到另一栏做了（行上命中矩形换成 `click_and_drag`，松手落在另一栏 ⇒ 同一个「复制到另一栏」入口，
+//! - **拖**一行到另一栏做了（行上命中矩形换成 `click_and_drag`，松手落在另一栏 ⇒ 同一个「复制到另一栏」入口，
 //!   [`Workspace::settle_drag`]）；判据喂的是合成指针事件，真鼠标买不到。
 //! - 后台标签（不在任何一栏上）的「一问」要切回去才看得见；标签名前那个「●」就是为这个。
 
@@ -80,7 +80,7 @@ pub static CLOSE_TAB_LABEL: std::sync::LazyLock<String> =
 pub static BUSY_MARK: std::sync::LazyLock<String> =
     std::sync::LazyLock::new(|| copy_text("rsFilewinWorkspace.label.busyMark", &[]));
 
-/// 〔W5-FILES · `设计/60 §6.2`〕标签页快捷键想干什么。**只是意图**，做不做由 [`Workspace::apply_tab_keys`] 过闸。
+/// 标签页快捷键想干什么。**只是意图**，做不做由 [`Workspace::apply_tab_keys`] 过闸。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TabKey {
     /// Ctrl+T（macOS ⌘T）＝ 焦点那一栏的「＋」。
@@ -321,9 +321,9 @@ impl Workspace {
         true
     }
 
-    /// 〔W5-FILES〕这一帧的 Ctrl+T / Ctrl+W。回值 ＝ 认出了几件（做不了的那几形由 `open_tab` / `close_tab` 出声）。
+    /// 这一帧的 Ctrl+T / Ctrl+W。回值 ＝ 认出了几件（做不了的那几形由 `open_tab` / `close_tab` 出声）。
     ///
-    /// 🔴 **闸与列表同一道**：焦点那一栏当前那个标签的 `keys_blocked`（`设计/60 §6.3` 四道闸 ——
+    /// 🔴 **闸与列表同一道**：焦点那一栏当前那个标签的 `keys_blocked`（四道闸 ——
     /// 模态框 · 右键菜单 · 搜索命中那一摞 · 控件拿着键盘焦点）。不另立一道：分成两份的症状是
     /// 「框开着，按 Ctrl+W 把框底下那个标签关了」。
     pub fn apply_tab_keys(&mut self, ctx: &egui::Context) -> usize {
@@ -353,7 +353,7 @@ impl Workspace {
 
     /// 🔴 **复制到另一栏**：焦点那一栏选中的**那一摞**（文件与目录都行）→ 另一栏当前目录、同名。
     ///
-    /// 〔W5-FILES · `设计/60 §6.2`「复制目录 · 批量复制」〕此前只收「恰好一个文件」。今天走一摞复制
+    /// 〔「复制目录 · 批量复制」〕此前只收「恰好一个文件」。今天走一摞复制
     /// （[`super::copy::run_copy_batch`]：逐件探目标 → 撞名的目录整摞不做 → 撞名的文件一次问完 → 逐件发），
     /// 后端 `files-copy`（目录带 `recursive: true`），**起在目标那一栏上** ⇒ 问与结局画在那一侧，跑完那一栏重列目录。
     /// `§6.3`：每一项都能复制才给（有损名那一项在，整摞不做、出声）。回值 ＝ 真的起来了。
@@ -385,7 +385,7 @@ impl Workspace {
         let jobs: Vec<CopyJob> = rows
             .iter()
             .map(|r| {
-                // 〔W5-FILES · 有损名全寻址〕源 ＝ 源那一栏当前目录的字节 ＋ 名字的字节；目标 ＝ 另一栏当前目录的字节 ＋ 同一个名字。
+                // 〔有损名全寻址〕源 ＝ 源那一栏当前目录的字节 ＋ 名字的字节；目标 ＝ 另一栏当前目录的字节 ＋ 同一个名字。
                 let src = from.row_path(r);
                 let dst = super::shell::join_path(&dest_path, &super::shell::name_bytes(r));
                 CopyJob {
@@ -420,7 +420,7 @@ impl Workspace {
 
     /// 🔴 **每一帧的正文**（`eframe::App::ui` 只剩一句委派，判据直接喂它 —— 同 `FileWindow::frame_body`）。
     pub fn frame(&mut self, ui: &mut egui::Ui) {
-        // ── 〔W5-FILES〕标签页快捷键：先于两栏的正文（那里才是列表接键盘的地方）──
+        // ── 标签页快捷键：先于两栏的正文（那里才是列表接键盘的地方）──
         let ctx = ui.ctx().clone();
         self.apply_tab_keys(&ctx);
         // ── 工具条：双栏 · 预览 · 复制到另一栏 ──
@@ -503,7 +503,7 @@ impl Workspace {
         self.settle_drag(ui, &rects);
     }
 
-    /// 〔W5-FILES · `设计/60 §6.2`「行拖到另一栏的手势」〕有一栏在拖：拖着时在指针旁说一句「复制 N 项到另一栏」
+    /// 〔「行拖到另一栏的手势」〕有一栏在拖：拖着时在指针旁说一句「复制 N 项到另一栏」
     /// （只在指针落在另一栏里时说）；**松手**那一帧落在另一栏 ⇒ 走「复制到另一栏」**那一个入口**（[`Self::copy_to_other`]，
     /// 不另起一条复制路）；落在本栏 / 窗外 ⇒ 什么都不做。只有一栏时没有「另一栏」，拖了也不做（与按钮同）。V122：不往 OS 拖出。
     fn settle_drag(&mut self, ui: &mut egui::Ui, rects: &[egui::Rect]) {
@@ -619,7 +619,7 @@ pub fn common_dir(a: &str, b: &str) -> String {
 ///   「那一行的路径」写法不一致时拼到别处去）—— 这里是另一件事（用户明说「放到另一栏那个目录」），
 ///   所以另起一个，不去放宽那一道。后端的 `from` / `to` 本来就收多段相对路径（逐段过词法围栏）。
 pub fn across_args(job: &CopyJob, overwrite: bool) -> Result<serde_json::Value, String> {
-    // 〔W5-FILES · 有损名全寻址〕按**字节**切（合法 UTF-8 时与按串切逐字节同：`common_dir` 与它同一个按段比的口径）。
+    // 〔有损名全寻址〕按**字节**切（合法 UTF-8 时与按串切逐字节同：`common_dir` 与它同一个按段比的口径）。
     let (from, to) = (job.from_path(), job.to_path());
     let root = super::source::common_dir_bytes(&from.parent().bytes(), &to.parent().bytes());
     let root_path = super::source::RemotePath::from_bytes(&root);
@@ -647,7 +647,7 @@ pub fn across_args(job: &CopyJob, overwrite: bool) -> Result<serde_json::Value, 
     Ok(v)
 }
 
-/// 跨目录复制那一趟（经通道问后端 `files-copy`）。回这一件复制了什么（〔W5-FILES〕目录那一件是整棵）。
+/// 跨目录复制那一趟（经通道问后端 `files-copy`）。回这一件复制了什么（目录那一件是整棵）。
 pub async fn copy_across(
     line: &super::source::Line,
     origin: &super::source::Origin,

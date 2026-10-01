@@ -1,11 +1,11 @@
-//! 〔C4d · 第四波 4B〕**历史跨机 join 的唯一的家** —— 项目 / 会话清单 ＋ 注解 ＋ 判活，在本机常驻后端里并成成品。
+//! **历史跨机 join 的唯一的家** —— 项目 / 会话清单 ＋ 注解 ＋ 判活，在本机常驻后端里并成成品。
 //!
 //! # 裁决与出处
 //!
-//! 主会话 09-25 裁（`调研/第四波记录/C4d.md`「主会话裁」第 2 条，逐字）：「本机注解的**读写者**换成本机常驻后端 ——
+//! 主会话 09-25 裁（「主会话裁」第 2 条，逐字）：「本机注解的**读写者**换成本机常驻后端 ——
 //! 文件留在原处、同一路径，不迁移、一条不丢；本机后端经 `remote_ask` 问远端那台的项目 / 会话清单、并上注解、出成品；
 //! 前端经 `chan.call`。codex 合成的项目与会话一起进后端（join 只一个家）」。`D1`：一个判定一个家。
-//! `设计/01 §3.5`：「观测方沿它本来就拥有的那条连接去拉被观测方」—— 远端那一跳是 [`crate::stream::remote_ask`]。
+//! 「观测方沿它本来就拥有的那条连接去拉被观测方」—— 远端那一跳是 [`crate::stream::remote_ask`]。
 //!
 //! # 形状
 //!
@@ -13,7 +13,7 @@
 //! history-projects {origin?}            origin 缺席 = 这台（本机常驻后端自己）；给了 = 可达表里的那一台
 //!   这台：记录树（`--list-projects` 那一行）＋ 合成历史（注册表 `Adapter.history`：Codex）＋ 自己判活（pidfile）
 //!   远端：remote_ask(origin, ["--list-projects"])（远端 CLI 老子命令，stdout 一个字节不变 ⇒ 远端不必升级）；
-//!         〔GAP1〕判活再问那台一条 `--session-accounts`（那台后端答）；问不到 ⇒「不知道」
+//! 判活再问那台一条 `--session-accounts`（那台后端答）；问不到 ⇒「不知道」
 //!   ⇒ 并上这台的注解（`history_annotations`）⇒ {rows:[HistoryProject…], notice}
 //! history-sessions {project_dir, origin?}  同上两支（`--list-sessions <dir>`；`<kind>:<cwd>` 那一形 = 合成历史）
 //!   ⇒ {rows:[HistorySessionEntry…], notice}
@@ -26,9 +26,9 @@
 //!
 //! - 项目那三个数（星标数 · 隐藏数 · 有没有活会话）是 [`Counted`]：算得出 = `Known`（含真的是 0），算不出 = `Unknown(为什么)`，
 //!   过线时 `Unknown` ⇒ `null`。远端那一行不带 sid 清单（老后端）/ 清单与条数对不上（行坏了）⇒ 三个数都「不知道」；
-//! - 判活由 [`Liveness`] 答：这台 = pidfile 真相源（`observe::accounts_query::live_session_ids`）；远端 = 那台 `--session-accounts`
+//! - 判活由 [`Liveness`] 答：这台 = pidfile 源头（`observe::accounts_query::live_session_ids`）；远端 = 那台 `--session-accounts`
 //!   的 `alive`（问不到 ⇒「不知道」）；合成历史 = 「不知道」；
-//! - 〔C4d 新〕注解读不懂 / 没交路径 ⇒ 星标数 · 隐藏数「不知道」，`notice` 说一句为什么（从前 monitor 那份是当空、说成 0）。
+//! - 注解读不懂 / 没交路径 ⇒ 星标数 · 隐藏数「不知道」，`notice` 说一句为什么（从前 monitor 那份是当空、说成 0）。
 //!
 //! # 买不到
 //!
@@ -91,7 +91,7 @@ pub(crate) trait Liveness {
     fn is_live(&self, sid: &str) -> Counted<bool>;
 }
 
-/// 这台机器：pidfile 真相源答得出真值。
+/// 这台机器：pidfile 源头答得出真值。
 pub(crate) struct LiveSet(pub(crate) BTreeSet<String>);
 
 impl Liveness for LiveSet {
@@ -439,7 +439,7 @@ pub(crate) fn local_projects_with(
     live: &dyn Liveness,
 ) -> Result<Value, (&'static str, String)> {
     let mut buf = Vec::new();
-    // 〔WF2 · WIN3 读数 H〕记录树根不在 ⇒ 零个记录树项目（合成历史照并）：界面照空态画，不整页失败。
+    // 记录树根不在 ⇒ 零个记录树项目（合成历史照并）：界面照空态画，不整页失败。
     let _has_records = crate::observe::history_query::list_projects_into(home, &mut buf)
         .map_err(|e| ("failed", e))?;
     let text = String::from_utf8_lossy(&buf);
@@ -457,7 +457,7 @@ pub(crate) fn local_projects_with(
     capped(json!({ "rows": projects, "notice": ann.err() }))
 }
 
-/// 〔GAP1 · `设计/05 §14.5`〕那台 `--session-accounts` 的 stdout ⇒ 此刻活着的 sid（`alive:true` 且有 `sessionId` 的那几行）。
+/// 那台 `--session-accounts` 的 stdout ⇒ 此刻活着的 sid（`alive:true` 且有 `sessionId` 的那几行）。
 pub(crate) fn live_from_session_accounts(stdout: &str) -> LiveSet {
     LiveSet(
         nonempty_lines(stdout)
@@ -644,7 +644,7 @@ pub async fn answer_projects_with(
         }
         Some(o) => {
             let o = o.to_string();
-            // 〔WF2 · WIN3 读数 H〕那台没起过会话：它的 CLI 出声、但带码 `no_record_tree` ⇒ 零个项目（界面画「这台还没有会话记录」），
+            // 那台没起过会话：它的 CLI 出声、但带码 `no_record_tree` ⇒ 零个项目（界面画「这台还没有会话记录」），
             //   不并进「部分远端没加载上」。认的是码，不是话。
             let out = match crate::stream::remote_ask::ask_with_coded(
                 &o,

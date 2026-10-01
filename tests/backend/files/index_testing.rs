@@ -1,6 +1,6 @@
 //! [`crate::files::index::testing`] 的体 —— 判据专用的那两个口。
 //!
-//! 🔴 **它住这儿而不是生产树里**：`设计/16 §3.1` 逐字要求生产树里只留三行桩
+//! 🔴 **它住这儿而不是生产树里**：要求生产树里只留三行桩
 //! （`#[cfg(test)]` ＋ `#[path]` ＋ `mod X;`），测试体住 `<repo>/tests/`。
 //! 2026-09-21 我第一版把它内联写在 `index.rs` 里，
 //! `structural_scan::the_split_stays_done_and_p9_is_blocked_for_a_reason_that_says_itself`

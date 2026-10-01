@@ -1,5 +1,5 @@
 /**
- * 〔FW1 · 第四波 4D · 主会话裁 D-d〕活会话的记录文件不见了 / 被改过已从头重读 —— 那个 tab 顶上的一句话。
+ * 活会话的记录文件不见了 / 被改过已从头重读 —— 那个 tab 顶上的一句话。
  *
  * 类名经 `import s from "./record-file-notice.module.css"` 用（`s.notice`），类型住隔壁 `.module.d.css.ts`
  * （`tests/frontend/ui/css-modules.vitest.ts` 逐字对拍）。它是流容器的第一个孩子、贴在顶上（`sticky`），不进记录那一层

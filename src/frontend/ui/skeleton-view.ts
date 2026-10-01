@@ -1,5 +1,5 @@
 /**
- * 〔`设计/10` 骨架 · 子步 4〕**骨架层**：拿到索引就画出总高与滚动条，**只物化可见区**。
+ * 〔骨架〕**骨架层**：拿到索引就画出总高与滚动条，**只物化可见区**。
  *
  * # 形状
  *
@@ -27,7 +27,7 @@
  * # 买不到
  *
  * - **精度**：占位高是第一级粗估，滚到那里、建了卡才换成真高（`applyIntrinsicSize` ＋ `contain-intrinsic-size: auto`）；
- *   〔RENDER2〕视口上下几屏之内的占位行由 Worker 精算（第二级，`applyRefined` · `nearbyUnrefined`，宿主 `tab-stream-view.ts`），
+ * 视口上下几屏之内的占位行由 Worker 精算（第二级，`applyRefined` · `nearbyUnrefined`，宿主 `tab-stream-view.ts`），
  *   更远的一直是第一级。
  * - **正文仍从前端账本取**：宿主的 `materialize` 今天从 `TailWindow.pending` 拿 payload（重放已经推过来了）；
  *   没到的行先空着，到了由宿主按 `isPending` 判定直接建卡。「骨架不带正文、按偏移取」那一半
@@ -63,7 +63,7 @@ interface Gap {
 export class SkeletonView {
   private gaps: Gap[] = [];
   private disposed = false;
-  /** 〔P3〕列宽变了、在新列宽下作废、还没重交第二级的精算行。 */
+  /** 列宽变了、在新列宽下作废、还没重交第二级的精算行。 */
   private stale = new Set<number>();
 
   constructor(
@@ -84,7 +84,7 @@ export class SkeletonView {
   }
 
   /**
-   * 〔U3b〕骨架接上：任意一组**不相交**的 seq 区间画成占位（查看器用 —— 它首屏除了尾巴，
+   * 骨架接上：任意一组**不相交**的 seq 区间画成占位（查看器用 —— 它首屏除了尾巴，
    * 可能还有一个深链岛，已渲染集不是后缀）。空区间与越出账本的部分照收（高按账本算，越界为 0）。
    *
    * 视口稳定：**钉住视口里最上面那张已渲染卡的屏幕位置**（占位可能同时插在它上方和下方，
@@ -134,7 +134,7 @@ export class SkeletonView {
   }
 
   /**
-   * 〔RENDER2 · `设计/10 §2.5b` 第二级〕Worker 精算回来的高换进账本、占位跟着改高。视口钉法同物化：
+   * 〔第二级〕Worker 精算回来的高换进账本、占位跟着改高。视口钉法同物化：
    * 视口里有已渲染的卡 ⇒ 钉住它的屏幕位置；视口整个落在占位里 ⇒ 钉住那块占位的顶（它上面的改动不许把视口推走）。
    */
   applyRefined(entries: Iterable<readonly [number, number]>): void {
@@ -143,7 +143,7 @@ export class SkeletonView {
   }
 
   /**
-   * 〔P3 · `设计/10 §2.5b`「列宽变化只重算已精算过的」〕列宽变了（宿主现量的 `.stream-content` 宽）：账本整份按新列宽重估、
+   * 〔「列宽变化只重算已精算过的」〕列宽变了（宿主现量的 `.stream-content` 宽）：账本整份按新列宽重估、
    * 占位改高（视口钉法同 `applyRefined`），在新列宽下作废的那几行精算记进待重交（[`takeStale`]，不论离视口多远）。
    * 差不到 1px ⇒ 没变，什么都不动、回 `false`。
    */
@@ -156,19 +156,19 @@ export class SkeletonView {
     return true;
   }
 
-  /** 〔P3〕取走至多 `max` 行待重交的精算行（按 seq 升序）。 */
+  /** 取走至多 `max` 行待重交的精算行（按 seq 升序）。 */
   takeStale(max: number): number[] {
     const out = [...this.stale].sort((a, b) => a - b).slice(0, max);
     for (const s of out) this.stale.delete(s);
     return out;
   }
 
-  /** 〔P3〕交出去却没换进账本的（算的途中列宽又变了 ⇒ 那一批作废）放回待重交。 */
+  /** 交出去却没换进账本的（算的途中列宽又变了 ⇒ 那一批作废）放回待重交。 */
   returnStale(seqs: Iterable<number>): void {
     for (const s of seqs) if (!this.ledger.isRefined(s)) this.stale.add(s);
   }
 
-  /** 〔P3〕还有几行待重交。 */
+  /** 还有几行待重交。 */
   get staleCount(): number {
     return this.stale.size;
   }
@@ -191,8 +191,8 @@ export class SkeletonView {
   }
 
   /**
-   * 〔RENDER2 · 第二级「按需 ＋ 后台」〕视口上下各 `screens` 屏之内、还在占位里、没精算过的行（按 seq 升序）。
-   * 视口拿不到布局 ⇒ 空（不猜）。远处的一行都不给 —— 「全量精算」那一版不建（`设计/10 §2.5b` 规模那一段）。
+   * 〔第二级「按需 ＋ 后台」〕视口上下各 `screens` 屏之内、还在占位里、没精算过的行（按 seq 升序）。
+   * 视口拿不到布局 ⇒ 空（不猜）。远处的一行都不给 —— 「全量精算」那一版不建（规模那一段）。
    */
   nearbyUnrefined(screens: number): number[] {
     const view = this.scrollEl.getBoundingClientRect();
@@ -372,7 +372,7 @@ export type LedgerFetch =
   | { ok: false; reason: string };
 
 /**
- * 把一次骨架索引的回包（〔C4b〕`session-reads.ts::readSessionIndex`）折成账本。`base` = 这份索引第一行的 seq
+ * 把一次骨架索引的回包（`session-reads.ts::readSessionIndex`）折成账本。`base` = 这份索引第一行的 seq
  * （冷启动 0；续传 = 旧账本的 `endSeq`，由调用方 `append`）。
  */
 export function ledgerFromIndex(

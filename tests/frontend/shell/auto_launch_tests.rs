@@ -1,9 +1,8 @@
-//! # 要求住址：`INVARIANTS §2.1`（`auto-launch.json` 两个字段的类）＋ `设计/01 §5 D3`（诚实的默认 ＝ 不作为）
+//! # 要求住址：`INVARIANTS §2.1`（`auto-launch.json` 两个字段的类）＋（诚实的默认 ＝ 不作为）
 //!
 //! 核原文：`INVARIANTS §2.1` 那一行逐字「`enabled`=真相；`monitor_exe_path`=派生」—— `auto_launch.rs::save` /
 //! `auto_launch.rs::load` 往返不丢这两格；`D3` 逐字「诚实的默认 ＝ 恒等 / 不作为 / 沿用调用者已有状态」—— 文件不在 ⇒ 不自启。
-//! ⚠ 住址偏弱：这项功能本身（cc 函数在 monitor 没跑时拉起它）在设计篇没有行为节。
-//! 〔JA1 点址 2026-09-24〕〔TL1 · 4C〕原先的 `roundtrip_serialize`（只测 serde 往返）退役：五刀里凡红它的，`save_and_load_roundtrip`
+//! 〔JA1 点址 2026-09-24〕原先的 `roundtrip_serialize`（只测 serde 往返）退役：五刀里凡红它的，`save_and_load_roundtrip`
 //! 都红（它走的链是后者的子链）；两条都放过的那一刀（字段改线上名）〔TL1 拍板 ④〕今天由 `the_wire_names_are_the_same_in_the_powershell_reader_and_the_rust_writer` 接住（读数在 `TL1.md` 件 1）。
 
 use super::*;
@@ -33,7 +32,7 @@ fn save_and_load_roundtrip() {
     let _ = fs::remove_file(&tmp);
 }
 
-/// ★〔TL1 · 4C · 拍板 ④〕**`auto-launch.json` 的线上名，两种语言两向相等。**
+/// ★〔拍板 ④〕**`auto-launch.json` 的线上名，两种语言两向相等。**
 ///
 /// 要求住址：`INVARIANTS §2.1` 那一行逐字「`enabled`=真相；`monitor_exe_path`=派生」—— 写它的是 monitor（Rust，
 /// `auto_launch.rs::save`），读它的是 PowerShell 别名块里的 `__ccm_bind`（`src/shared/cc.ps1.tpl`，monitor 没在跑时据它拉起 monitor）。

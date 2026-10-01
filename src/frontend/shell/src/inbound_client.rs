@@ -31,13 +31,13 @@
 //!
 //! # 超时归客户端
 //!
-//! 主计划已定「超时一律推给客户端」（backend 的零定时器铁律不改，登记表仍 1 条）。
+//! 已定「超时一律推给客户端」（backend 的零定时器铁律不改，登记表仍 1 条）。
 //! 所以 [`InboundClient::call`] 自带超时，且超时后**补发一条 `cancel`**，让后端别白跑 ——
 //! 这顺带让 U6b-1 写好的 `cancel` 命令第一次有真调用方。
-//! 〔RM1f〕**调用方放弃等待**（这个 future 被丢）与超时同一格：命令已入队、还没拿到结局就走人
+//! **调用方放弃等待**（这个 future 被丢）与超时同一格：命令已入队、还没拿到结局就走人
 //! ⇒ 同一条 `cancel` 补发（`AbandonGuard`）。对后端的可取消档（`Run::Async`）这一条真能把活停下；
 //! 对阻塞档它照旧回 `not_cancellable`。
-//! 〔NET2 · `05 §3.3.3`〕对端不认撤单要说出来：握手没交出 `cancel` ⇒ 不补发、`Timeout.withdraw` 带
+//! 对端不认撤单要说出来：握手没交出 `cancel` ⇒ 不补发、`Timeout.withdraw` 带
 //! `NotOffered`（那句话多说一句）＋ warn；补发之后被回 `not_cancellable` ⇒ warn 点名那条命令。
 
 use crate::chan::wire::{Offer, Withdraw, WITHDRAW_OP, WITHDRAW_REFUSED};
@@ -76,10 +76,10 @@ pub enum CallError {
     Disconnected,
     /// backend 回了 `{"kind":"cancelled"}`。
     Cancelled,
-    /// 〔NET2〕握手时那台说过「这条我接得下、这台做不到」（`hello.unavailable`）⇒ **不发**，事前就拒。
+    /// 握手时那台说过「这条我接得下、这台做不到」（`hello.unavailable`）⇒ **不发**，事前就拒。
     /// `code` 与那台事后会回的同一个（如 `no_tmux`），调用方那张「码 → 人话」表不用另写。**别重试**（换台机器或装上再连）。
     Unavailable { cmd: String, code: String },
-    /// 本地超时。`withdraw` 说对端那一半：没发出去 / 已补发撤单（best-effort）/ 对端不认撤单（〔NET2〕要说出来）。
+    /// 本地超时。`withdraw` 说对端那一半：没发出去 / 已补发撤单（best-effort）/ 对端不认撤单（要说出来）。
     Timeout { after: Duration, withdraw: Withdraw },
     /// backend 回了 `ok:false`。`code`/`message` 原样透出（形状对齐 `--resolve` 的错误契约）。
     Remote { code: String, message: String },
@@ -116,7 +116,7 @@ impl std::fmt::Display for CallError {
                     Withdraw::Unsent | Withdraw::Asked => {
                         copy_text("rsInboundClient.error.timeout", &[("after", &ms)])
                     }
-                    // 〔NET2 · `05 §3.3.3`〕对端不认撤单：本地照撤，结果里说出来。
+                    // 对端不认撤单：本地照撤，结果里说出来。
                     Withdraw::NotOffered => {
                         copy_text("rsInboundClient.error.timeoutPeerRunsOn", &[("after", &ms)])
                     }
@@ -163,7 +163,7 @@ enum Outcome {
 /// 它真正的收尾靠的是整条 SSH channel 被 drop。
 enum WriteJob {
     Line(String),
-    /// 〔MIG-1 · 测试连接进本机后端〕生产里唯一的调用方（一次性探测 `probe_backend`）随测试连接删了 ⇒ 只编进测试档：
+    /// 〔测试连接进本机后端〕生产里唯一的调用方（一次性探测 `probe_backend`）随测试连接删了 ⇒ 只编进测试档：
     /// 两条起真后端的判据拿它演「宿主走了 / 关写端不带走后端」（C8）。生产里不再有关写半边这回事。
     #[cfg(test)]
     CloseWrite,
@@ -175,7 +175,7 @@ enum WriteJob {
 /// 字段私有 ⇒ 外部造不出来。
 #[derive(Debug, Clone)]
 pub struct BackendHello {
-    /// 〔NET2〕握手交出的 op 集 —— 「认不认」只问它（家在 `chan::wire::Offer`）。
+    /// 握手交出的 op 集 —— 「认不认」只问它（家在 `chan::wire::Offer`）。
     offer: Offer,
 }
 
@@ -191,7 +191,7 @@ impl BackendHello {
     }
 }
 
-/// 〔NET2〕hello 帧 ⇒ 那台机器的能力事实（`chan::wire::Offer`，一个家）。非 hello ⇒ 空。
+/// hello 帧 ⇒ 那台机器的能力事实（`chan::wire::Offer`，一个家）。非 hello ⇒ 空。
 fn offer_of(frame: &InboundFrame) -> Offer {
     match frame {
         InboundFrame::Hello {
@@ -204,7 +204,7 @@ fn offer_of(frame: &InboundFrame) -> Offer {
     }
 }
 
-/// 〔RESYNC · V149〕「重新对齐」那条帧命令：它的应答顺带交回那台当下的能力事实（见 [`InboundClient::take_fresh_facts`]）。
+/// 「重新对齐」那条帧命令：它的应答顺带交回那台当下的能力事实（见 [`InboundClient::take_fresh_facts`]）。
 pub const RESYNC_OP: &str = "resync";
 
 /// **停在手里的写半边** —— 身上没有任何写方法。
@@ -338,7 +338,7 @@ where
 
 /// 一条连接上的入方向客户端。
 pub struct InboundClient {
-    /// 〔RESYNC〕握手那一刻的能力事实；`resync` 的应答会把它换成那台当下的（[`RESYNC_OP`]）。
+    /// 握手那一刻的能力事实；`resync` 的应答会把它换成那台当下的（[`RESYNC_OP`]）。
     offer: std::sync::RwLock<Offer>,
     /// 本连接的号段前缀。**每连接一套** —— 重连后的 `id` 与上一条连接不撞。
     nonce: String,
@@ -347,19 +347,19 @@ pub struct InboundClient {
     pending: Mutex<HashMap<String, Waiter>>,
 }
 
-/// 登记表里的一格：等结局的那一头 ＋〔NET2〕它若是补发的撤单，撤的是哪条命令（回「停不下来」时点名）。
+/// 登记表里的一格：等结局的那一头 ＋它若是补发的撤单，撤的是哪条命令（回「停不下来」时点名）。
 struct Waiter {
     tx: oneshot::Sender<Outcome>,
     withdraws: Option<String>,
 }
 
 impl InboundClient {
-    /// backend 声明接受这条命令吗。答案只住 [`Offer::admits`]（〔NET2〕能力协商的家）。
+    /// backend 声明接受这条命令吗。答案只住 [`Offer::admits`]（能力协商的家）。
     pub fn accepts(&self, cmd: &str) -> bool {
         self.offer_now().admits(cmd)
     }
 
-    /// 〔NET2〕那台机器的能力事实（拷贝一份给 webview / 外部前端）。
+    /// 那台机器的能力事实（拷贝一份给 webview / 外部前端）。
     pub fn offer(&self) -> Offer {
         self.offer_now().clone()
     }
@@ -368,7 +368,7 @@ impl InboundClient {
         self.offer.read().unwrap_or_else(|e| e.into_inner())
     }
 
-    /// 〔RESYNC〕`resync` 应答里那台当下的能力事实 ⇒ 换进 [`Offer`]（唯一住处）。应答里没有这两格（旧后端）⇒ 不动。
+    /// `resync` 应答里那台当下的能力事实 ⇒ 换进 [`Offer`]（唯一住处）。应答里没有这两格（旧后端）⇒ 不动。
     fn take_fresh_facts(&self, data: Option<&Value>) {
         let Some(obj) = data.and_then(Value::as_object) else {
             return;
@@ -404,7 +404,7 @@ impl InboundClient {
     ///   → backend stdout 反压
     ///   → backend 应答通道满（IPC-PROTOCOL 第 4 条：「满时阻塞入方向正是想要的」）
     ///   → backend 停读 stdin
-    ///   → monitor 的 write_all 永久 pending（MASTERPLAN 逐字记着这条）
+    ///   → monitor 的 write_all 永久 pending（记着这条）
     ///   → 写队列（64）填满
     ///   → call() **无视自己的 timeout 永久挂起**
     /// ```
@@ -429,10 +429,10 @@ impl InboundClient {
             .await
     }
 
-    /// 〔DL1 · `设计/05 §3.3.2`「一次调用一个绝对时刻」〕与 [`Self::call`] 同一件事，只是截止时刻由**调用方**给。
+    /// 〔「一次调用一个绝对时刻」〕与 [`Self::call`] 同一件事，只是截止时刻由**调用方**给。
     ///
     /// 一件事由好几问组成时（分页读），发起方造一次截止时刻、每一问都拿**同一个**去等 ⇒ 越往后剩得越少，
-    /// 没有一问会重新拿一整份（`设计/15 §3.6` 病 2：「每 59 s 吐一个字节的对端能拖到无限」）。
+    /// 没有一问会重新拿一整份（病 2：「每 59 s 吐一个字节的对端能拖到无限」）。
     /// 本函数**只用、不造**：写入 ＋ 等应答两段共用这一个时刻（上面「两段共用一个 deadline」同一条理由）。
     /// [`Self::call`] 是它的薄壳（`now + timeout`），其余调用方行为逐字不变。
     pub async fn call_until(
@@ -459,7 +459,7 @@ impl InboundClient {
                 offered: self.offer_now().ops().to_vec(),
             });
         }
-        // 〔NET2 · 主会话 09-27 裁〕那台握手时说过做不到 ⇒ 不发，事前就拒（一个字节不出本侧）。
+        // 那台握手时说过做不到 ⇒ 不发，事前就拒（一个字节不出本侧）。
         if let Some(code) = self.offer_now().unavailable(cmd).map(str::to_string) {
             return Err(CallError::Unavailable {
                 cmd: cmd.to_string(),
@@ -484,7 +484,7 @@ impl InboundClient {
                 });
             }
         }
-        // 〔RM1f〕从这一刻起它**已经入队**、后端会去跑它 ⇒ 调用方在拿到结局之前走人（超时，或者这个
+        // 从这一刻起它**已经入队**、后端会去跑它 ⇒ 调用方在拿到结局之前走人（超时，或者这个
         // future 被丢：`select!` 输了 / 任务被撤 / 界面点了「取消」）都要补发一条 `cancel`，让后端别白跑。
         // 〔墓碑 —— RM1f 之前只有超时那一臂补发：调用方放弃等待（future 被丢）时一条都不发，
         //  后端那条命令照跑到它自己的期限（建索引 900 s）。〕
@@ -547,7 +547,7 @@ impl InboundClient {
 
     /// **显式关掉写半边** —— backend 的入方向 reader 见 EOF 后寿终。
     ///
-    /// 〔MIG-1〕原先只有一次性探测调它（`ssh_source::probe_backend`，随测试连接进本机后端删了）⇒ 今天只编进测试档。
+    /// 原先只有一次性探测调它（`ssh_source::probe_backend`，随测试连接进本机后端删了）⇒ 今天只编进测试档。
     /// 长连接上调它 = 之后**再也发不出任何命令**，而连接看起来一切正常。
     /// 之所以做成一条要主动发的指令而不是「writer task 结束时顺手做」，就是为了让这个
     /// 区别在调用点显形。
@@ -607,7 +607,7 @@ impl InboundClient {
             }
             return false;
         };
-        // 〔NET2 · `05 §3.3.3`〕补发的撤单被回「停不下来」⇒ 说出来（先前落 debug，等于静默）。
+        // 补发的撤单被回「停不下来」⇒ 说出来（先前落 debug，等于静默）。
         if let (
             Some(cmd),
             Outcome::Reply {
@@ -680,7 +680,7 @@ impl InboundClient {
         let w = self.offer_now().withdraw(cmd);
         match w {
             Withdraw::Asked => {}
-            // 〔NET2 · `05 §3.3.3`〕对端不认撤单：本地照撤、一帧不补，但要说出来（先前静默 return）。
+            // 对端不认撤单：本地照撤、一帧不补，但要说出来（先前静默 return）。
             Withdraw::NotOffered => {
                 tracing::warn!("对端不认撤单：`{cmd}` 没法叫它停，可能照跑完（本地已不再等它）");
                 return;
@@ -702,7 +702,7 @@ impl InboundClient {
     }
 }
 
-/// 〔RM1f〕**已入队、还没拿到结局**的那一条命令：这个守卫被析构时（调用方超时 / future 被丢）
+/// **已入队、还没拿到结局**的那一条命令：这个守卫被析构时（调用方超时 / future 被丢）
 /// 补发一条 `cancel{target: id}`（[`InboundClient::fire_and_forget_cancel`]，best-effort、不等应答）。
 /// 拿到结局的那一刻 `id` 被取走 ⇒ 不发。
 struct AbandonGuard<'a> {
@@ -744,9 +744,9 @@ pub fn encode_request(id: &str, cmd: &str, args: &Value) -> String {
     s
 }
 
-// 🔴 〔`设计/05 §8.1` 步 3.5，2026-09-21〕**`launch` / `capture-pane` 的参数构造器
+// 🔴 〔.5，2026-09-21〕**`launch` / `capture-pane` 的参数构造器
 //    与 `LaunchExtras` 搬走了** —— 新家 `backend/control/command_args.rs`。
-//    搬的理由不是整理：`C1`（`设计/05 §2` 零业务语义）在本文件上咬到 `sid` 与 `agent`
+//    搬的理由不是整理：`C1`（零业务语义）在本文件上咬到 `sid` 与 `agent`
 //    两个词，**两处都在那三样身上**（`ccm_sid` 参数 · `extras.agent` 字段）。
 //    「一条命令要带哪几个业务字段」是**载荷的内容**，而本文件只该管载荷的搬运。
 //    ⚠ 那三样的单元判据**没有跟着搬**（跨半边 include 被别人的登记表按文件路径钉着）——

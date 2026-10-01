@@ -1,4 +1,4 @@
-//! Win32 `FILETIME` 那两件〔P4 · 阶段 H：`设计/90 §4` · `15 §5.3 C6` 余下〕：[`crate::utils::FileTime`] 的平台那一半，
+//! Win32 `FILETIME` 那两件〔余下〕：[`crate::utils::FileTime`] 的平台那一半，
 //! 逐字从 `utils.rs` 搬来（同一个类型的第二个 impl 块 —— 调用方照旧写 `FileTime::from_win32`）。
 
 #[cfg(windows)]

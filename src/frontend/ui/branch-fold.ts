@@ -19,7 +19,7 @@
  * **折叠状态保留**：fold-wrap 在 unwrap 前把 expanded 写到 `foldExpanded` Map
  * （key = run 的首条 uuid，稳定）；wrap 时按 key 查表恢复。
  *
- * **仪表**（设计 17 §6 秤 4「每帧账本」）：本文件末尾那一段把 `computeMain()` 的
+ * **仪表**（设计「每帧账本」）：本文件末尾那一段把 `computeMain()` 的
  * 每次调用（N / ms / 来源 / 帧号）、`rebuild()` 的搬动节点数、以及 §2.7 档 1
  * 「脏标记快路」的**影子命中判定**累加进 `window.__ccmPerf.branchLedger`。
  * **仪表不参与折叠决策** —— 判定结果只写账本，一个字节都不回流到 mainBranch。
@@ -50,7 +50,7 @@ export class BranchFolder {
   private queuedContents = new Set<string>();
   /**
    * issue #25：已见 uuid 集，recordAdded 拒重。投递层是 at-least-once（违反此约束见
-   * src/doc/INVARIANTS.md § 25；〔RENDER2〕截断重读已改成换代、tab 整份重来，这一道留作纵深防御），重复记录会毒化 computeMainBranch 的 Kahn 拓扑 →
+   * src/doc/INVARIANTS.md § 25；截断重读已改成换代、tab 整份重来，这一道留作纵深防御），重复记录会毒化 computeMainBranch 的 Kahn 拓扑 →
    * 大段误折叠。computeMainBranch 入口也有去重（双层防御）；这里挡住还能避免
    * records 数组被重投无界增长。
    */
@@ -59,7 +59,7 @@ export class BranchFolder {
   private lastMainBranch: Set<string> = new Set();
   /** 折叠 ID（每个 fold 的第一条 uuid） → 用户是否手动展开了 */
   private foldExpanded = new Map<string, boolean>();
-  /** 〔W5-RENDER R13〕每个 wrap 包它时有几条（标题上那个数）—— 差量重折判「这个 wrap 还原样可用吗」用 */
+  /** 每个 wrap 包它时有几条（标题上那个数）—— 差量重折判「这个 wrap 还原样可用吗」用 */
   private wrapSize = new WeakMap<Element, number>();
   /**
    * v2.2 (issue #12 性能优化)：batch 模式。
@@ -91,7 +91,7 @@ export class BranchFolder {
   private ledgerShadowAdd = new Set<string>();
   private ledgerSinceCompute = 0;
   private ledgerMissSinceCompute = 0;
-  /** 〔RENDER2〕上次真算之后队列豁免集合变过（档 1 快路不认这种帧）。 */
+  /** 上次真算之后队列豁免集合变过（档 1 快路不认这种帧）。 */
   private queuedDirty = false;
 
   constructor(container: HTMLElement) {
@@ -118,7 +118,7 @@ export class BranchFolder {
   }
 
   /**
-   * §2.7 档 1「脏标记快路」的**判定**（〔RENDER2〕已不只是影子：帧末那一次全命中 ⇒ `fastMain` 跳掉全量重算）。
+   * §2.7 档 1「脏标记快路」的**判定**（已不只是影子：帧末那一次全命中 ⇒ `fastMain` 跳掉全量重算）。
    * 这里只记「这条走不走得了 O(1)」与账本；折叠结果由帧末那一次定。
    *
    * 档 1 的谓词逐字是「新记录的 parent 是当前主线叶子且原本无 child ⇒ 只 `add(uuid)`」，
@@ -158,7 +158,7 @@ export class BranchFolder {
   }
 
   /**
-   * live 模式的**帧末合批**〔audit-0805 F15〕。
+   * live 模式的**帧末合批**。
    *
    * 原来这里是逐条同步 `computeMain()` + 可能 `rebuild()`。两者都 **O(N)**
    * （`computeMainBranch` 是扫全部 records 的 Kahn 拓扑），⇒ N 条记录 **O(N²)**。
@@ -204,7 +204,7 @@ export class BranchFolder {
   }
 
   /**
-   * 〔RENDER2 · `设计/17 §2.7` 档 1〕**脏标记快路**：上次真算之后来的记录**全都**接在主线叶子上、父亲原本无 child
+   * 〔档 1〕**脏标记快路**：上次真算之后来的记录**全都**接在主线叶子上、父亲原本无 child
    * （影子判定全命中，`noteFastPathShadow`），队列豁免也没变 ⇒ 主线 = 上次 ∪ 它们，不重扫 `computeMainBranch`。
    * 有一条没命中（分叉 / 链断 / 接在旧分支上）或豁免变了 ⇒ `null`，照旧全量算。
    * verify 档（判据专用）照旧全量算并逐元素比影子结果（`computeMain`），不走这里。
@@ -258,10 +258,10 @@ export class BranchFolder {
     const t = content.trim();
     if (!t || this.queuedContents.has(t)) return;
     this.queuedContents.add(t);
-    this.queuedDirty = true; // 〔RENDER2〕豁免变了 ⇒ 下一次不走档 1 快路
+    this.queuedDirty = true; // 豁免变了 ⇒ 下一次不走档 1 快路
     // 已渲染状态下追加豁免可能改变折叠结果（queue-operation 行可能晚于 user 行到达）
     //
-    // `设计/17 §2.7` 档 3「`addQueuedContent` 接上合批」：这里原先**同步**跑一次
+    // 档 3「`addQueuedContent` 接上合批」：这里原先**同步**跑一次
     // 全量 `computeMain()`（`computeMainBranch` 是扫全部 records 的 Kahn 拓扑 ⇒ O(N)，
     // 变了还要再走一次 O(N) 的 DOM `rebuild()`），而它由 `tabs.ts` 的 `onQueueOperation`
     // **每条 enqueue 记录喂一次** ⇒ 与 F15 修掉之前的 `recordAdded` 是**同一个形状**：
@@ -379,7 +379,7 @@ export class BranchFolder {
   // === 内部 DOM 操作 ===
 
   /**
-   * 按主线集合重折 fold 结构 —— 〔W5-RENDER R13 · `设计/10 §3.4` C1〕**按段差量**，不再「全量 unwrap ＋ 重包」。
+   * 按主线集合重折 fold 结构 —— **按段差量**，不再「全量 unwrap ＋ 重包」。
    *
    * 1. 现打**逻辑序列**：顶层子节点依次读；遇到 wrap 就读它 inner 里的卡（不搬）。
    * 2. 目标段：逻辑序列里连续的 off-main 卡（带 `data-uuid` 且不在主线；无 `data-uuid` 的元素断段 —— 同原规则）。
@@ -491,7 +491,7 @@ export class BranchFolder {
     return this.unwrapFolds(Array.from(this.container.querySelectorAll(`:scope > .${FOLD_WRAP_CLASS}`)));
   }
 
-  /** 解开给定的这几个 wrap（〔W5-RENDER R13〕差量重折只解归属变了的那几个）。 */
+  /** 解开给定的这几个 wrap（差量重折只解归属变了的那几个）。 */
   private unwrapFolds(wraps: ReadonlyArray<Element>): { wraps: number; moved: number } {
     let moved = 0;
     for (const wrap of wraps) {
@@ -590,7 +590,7 @@ export class BranchFolder {
 }
 
 // ===========================================================================
-// === 秤 4 仪表：每帧账本（设计 17 §6 表第 4 行）=============================
+// === 秤 4 仪表：每帧账本（设计表第 4 行）=============================
 // ===========================================================================
 //
 // **量什么**（逐字照 §6 表）：`computeMainBranch` 一帧调几次、每次的 N 与 ms；
@@ -614,7 +614,7 @@ export class BranchFolder {
 //  2. **ms 是 node/jsdom 的读数还是 WebView2 的，账本自己不知道。** §2.7 的
 //     3.45 ms 是 node 上打的；这套仪表在生产代码里，真机跑一次就能拿到 WebView2 的
 //     同一列数，但**本轮没有真机读数**。
-//  3. 〔RENDER2〕档 1 已装：影子判定全命中的那一帧由 `fastMain` 真跳掉（`computesSkipped`），verify 档照旧全量算来比对。
+//  3. 档 1 已装：影子判定全命中的那一帧由 `fastMain` 真跳掉（`computesSkipped`），verify 档照旧全量算来比对。
 //  4. **`verify` 档只在「整段全命中」那些次上比对。** 有未命中的那些次，档 1 本来
 //     就要落回全量算，正确性不由快路负责，所以不比。
 //  5. **搬动节点数只数 move 的次数，不数浏览器为此付的布局/重绘代价。**
@@ -628,7 +628,7 @@ const LEDGER_SAMPLE_CAP = 5000;
 /**
  * 一次 `computeMain()` 是被谁叫起来的。只是账本的一列，计算本身不看。
  *
- * 🔴 **`"queued-content"` 这一档 2026-09-19 随 `设计/17 §2.7` 档 3 一起删掉**：
+ * 🔴 **`"queued-content"` 这一档 2026-09-19 随档 3 一起删掉**：
  * `addQueuedContent` 改成排帧末合批之后，它产生的那次真算就是普通的 `"live-frame"`，
  * **再没有任何一处产得出这个值** ⇒ 留着就是一条挂空号的登记（本仓判据一族专治这个形状）。
  * ⚠ 历史读数 `tests/evidence/S4-frame-ledger.md` 里那份 `via` 枚举照旧写着它
@@ -704,9 +704,9 @@ export interface BranchFrameLedger {
   fastPathSamples: BranchFastPathSample[];
   fastPathSamplesDropped: number;
 
-  /** 这次真算之前那一段记录**全部命中** ⇒ 档 1 能整个跳掉这次 O(N)（〔RENDER2〕档 1 落地后只在 verify 档下还会真算到这一格） */
+  /** 这次真算之前那一段记录**全部命中** ⇒ 档 1 能整个跳掉这次 O(N)（档 1 落地后只在 verify 档下还会真算到这一格） */
   computesSkippable: number;
-  /** 〔RENDER2〕档 1 快路**真跳掉**的次数（不在 `computes` 里） */
+  /** 档 1 快路**真跳掉**的次数（不在 `computes` 里） */
   computesSkipped: number;
   /** 那一段里至少一条没命中 ⇒ 这次 O(N) 跑不掉 */
   computesUnskippable: number;

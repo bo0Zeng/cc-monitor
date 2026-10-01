@@ -1,7 +1,7 @@
 /**
  * F01 真机验收的**输入源**：从生产渲染链取命令串（不手搓等价命令）。
  *
- * 〔LR2〕此前取自 `remote-launch.ts` 那四个 builder；步 22b·B 之后它们零生产调用（生产那一行由
+ * 此前取自 `remote-launch.ts` 那四个 builder；步 22b·B 之后它们零生产调用（生产那一行由
  * Rust `render_launch_payload` 渲染），LR2 删了。现在走 `launch-render-driver.ts`：生产 `plan*`
  * → 生产 `buildLaunchRenderRequest` → 生产 Rust 命令 —— 本套件验的就是生产那一行。
  *

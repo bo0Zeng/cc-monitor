@@ -47,10 +47,10 @@ describe("stripComments", () => {
     // 🔴 〔步 7b 剖分 2026-09-18〕**这条原来按写死的行号区间取样（800–1290）**，
     //    而剖分把 `config_surface.rs` 从 1296+ 行削到 853 行、测试段整份搬走
     //    ⇒ 那个窗口落到空处，反空真自检当场红（「取样区间里应当有真函数」1 > 5 不成立）。
-    //    ⚠ **只把行号改对是错的修法** —— `设计/16 §5.4b` 纪律 4 逐字：
+    //    ⚠ **只把行号改对是错的修法** —— 纪律 4 逐字：
     //    「按位置认的针」与「靠位置的排除」是同一族，下次再搬还会静默抽到零。
     //    ⇒ 改成**按内容锚定**：从那个当年触发吞噬的字面量往后取，行号漂了也不影响。
-    const CORPUS = "tests/backend/footprint/rows_tests.rs"; // 测试段今天的家（〔MIG-3b 续〕随判定搬进后端）
+    const CORPUS = "tests/backend/footprint/rows_tests.rs"; // 测试段今天的家（随判定搬进后端）
     const ANCHOR = '"~/.local/*/bin"'; // 旧实现就是从这个串开始一路吞
     const raw = readFileSync(resolve(REPO_ROOT, CORPUS), "utf8");
     const out = stripComments(raw, "rust");

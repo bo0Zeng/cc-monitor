@@ -1,4 +1,4 @@
-//! 文件管理窗口那个**独立进程**的入口。真正的躯体住独立包 `cc_monitor_filewin`（`src/frontend/filewin/`，〔P4〕原住 `monitor_lib::filewin::proc`）。
+//! 文件管理窗口那个**独立进程**的入口。真正的躯体住独立包 `cc_monitor_filewin`（`src/frontend/filewin/`，原住 `monitor_lib::filewin::proc`）。
 //!
 //! 🔴 为什么这个文件只有一行：它是一个 `[[bin]]` 的 crate 根，**不是**库里的一个模块
 //! （`filewin/mod.rs` 刻意不 `mod` 它）。把躯体写在这里的代价是它从此

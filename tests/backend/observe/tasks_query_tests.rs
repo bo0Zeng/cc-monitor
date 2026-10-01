@@ -3,7 +3,7 @@
 //! 核原文：`tasks-list` 节逐字「那个 sid **没有任务目录** ⇒ 空 `lines`（诚实的空）；目录**在但读不了** ⇒ `failed`（不说成「没有任务」）」——
 //! 本族判这两条出口，以及同节写明的数字升序、对象原样透传、超限跳过并点名、sid 围栏。〔JA1 点址 2026-09-24〕
 //!
-//! 〔RM1b · 第四波〕`tasks-list` 本体的判据。
+//! `tasks-list` 本体的判据。
 //!
 //! 夹具只造**结构**（目录名、文件名、占位字段），不采任何真会话正文。
 //! 口径逐条对着搬家前 monitor 那份直读实现的判据（跳旁文件 · 按数字排 · 半截 JSON 跳过 ·
@@ -85,7 +85,7 @@ fn every_field_goes_through_untouched() {
     assert_eq!(got.len(), 1);
     let back: serde_json::Value = serde_json::from_str(&got[0]).unwrap();
     let want: serde_json::Value = serde_json::from_str(body).unwrap();
-    // 两向：读那一层原样（`future` 也过去）—— 〔LOC1a〕字段语义只在下一层一处（`task_entry`，成品判据在 `feature_face_tests`）。
+    // 两向：读那一层原样（`future` 也过去）—— 字段语义只在下一层一处（`task_entry`，成品判据在 `feature_face_tests`）。
     assert_eq!(back, want);
 }
 

@@ -1,7 +1,7 @@
 //! **拨号应答的客户端**：在一条**交给它的**双工管子上，读完拨号代理（后端 `--dial`）的
 //! 阶段行与 ack，之后要么把管子原样交回（字节流），要么读一行收全的 exec 结果，要么逐行读转发计数。
 //!
-//! # 🔴 通信层成员 `COMM-LAYER-MEMBER`〔C2 · 2026-09-24，`设计/05 §13.7`〕
+//! # 🔴 通信层成员 `COMM-LAYER-MEMBER`
 //!
 //! 这一枚标记是**盘上那一侧**的凭据（登记那一侧在
 //! `tests/frontend/shell/comm_boundary_registry_tests.rs` 的 `REGISTERED`，两向集合相等）。
@@ -10,9 +10,9 @@
 //!
 //! # 它为什么是通信层成员
 //!
-//! 它原来埋在 `ssh_source.rs` 里（那时连 `russh` 握手也在界面进程里跑）。`设计/05 §13` 把 SSH 的全部活
+//! 它原来埋在 `ssh_source.rs` 里（那时连 `russh` 握手也在界面进程里跑）。把 SSH 的全部活
 //! 搬进后端的拨号代理之后，界面这一侧与 SSH 有关的**传输**只剩「读代理的应答」这一件 —— 就是本文件。
-//! `05 §2` 那四样它只碰两样：**流**（交给它的管子）与**载荷**（ack 之后的字节它不看）。
+//! 那四样它只碰两样：**流**（交给它的管子）与**载荷**（ack 之后的字节它不看）。
 //!
 //! - `C4`：不读盘、不读环境变量 —— 行长上限由调用方给；
 //! - `C5`：不起进程、不绑端口 —— 起代理进程的是宿主（`dial_host.rs`，不是成员），
@@ -22,7 +22,7 @@
 //!
 //! # 线上形状（与后端 `dial/mod.rs` 头注同一份，住那边，这里不抄第二份）
 //!
-//! ack 之前零到多行 `{"stage":{…}}` → 恰好一行 ack → 之后按用法（〔SR1b〕`files` 是一问一答，读应答那一行用 [`reply_line`]）。
+//! ack 之前零到多行 `{"stage":{…}}` → 恰好一行 ack → 之后按用法（`files` 是一问一答，读应答那一行用 [`reply_line`]）。
 //! 🔴 **老代理出声**：ack 的 `uses` 不含所请求的用法 ⇒ [`LinkError::TooOld`]，不去解后面那些字节。
 
 use crate::copy_table::copy_text;
@@ -34,7 +34,7 @@ use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncReadExt};
 /// 后端拨号代理在 ack 之前逐行报出来（请求带 `stages=true` 时），本侧**原样反序列化**进这个类型 ——
 /// 形状两侧逐字段相同（后端 `dial::Stage`），对拍判据住 `ssh_link_tests.rs`。
 /// 阶段取 russh 能干净观测的粒度 —— 不含 KEX（HostKey 触发即隐含 TCP ＋ KEX 已过）。
-/// 〔C2〕搬自 `ssh_source.rs`：类型名与线上形状一个字没动（前端生成物 `ConnectStage.ts` 只有这段注释变了）。
+/// 搬自 `ssh_source.rs`：类型名与线上形状一个字没动（前端生成物 `ConnectStage.ts` 只有这段注释变了）。
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
@@ -66,25 +66,25 @@ pub struct Ack {
     /// 握手时看到的 host key 指纹（失败时也尽量带上）。
     #[serde(default)]
     pub fingerprint: Option<String>,
-    /// 〔VIS2〕这一趟报过指纹的每条地址 → 指纹（老后端不报 ⇒ 空）。
+    /// 这一趟报过指纹的每条地址 → 指纹（老后端不报 ⇒ 空）。
     #[serde(default)]
     pub fingerprints: std::collections::BTreeMap<String, String>,
-    /// 〔FIX · `设计/99 §2 ㊶`〕经跳板时跳板那一台报过的指纹（老后端 / 直连 ⇒ 空）。
+    /// 经跳板时跳板那一台报过的指纹（老后端 / 直连 ⇒ 空）。
     #[serde(default)]
     pub jump_fingerprints: std::collections::BTreeMap<String, String>,
     /// 竞速胜出的地址（`host:port`，给人看）。
     #[serde(default)]
     pub endpoint: Option<String>,
-    /// 〔MIG-1 收尾〕同一条胜者，结构化 —— 记 last-good 用它（地址不在界面进程里解析）。
+    /// 同一条胜者，结构化 —— 记 last-good 用它（地址不在界面进程里解析）。
     #[serde(default)]
     pub winner: Option<crate::ssh_source::Endpoint>,
-    /// 〔MIG-1 收尾〕这一趟目标那台是否已严格校验指纹（后端组请求时定的，`dial/machine.rs`）。
+    /// 这一趟目标那台是否已严格校验指纹（后端组请求时定的，`dial/machine.rs`）。
     #[serde(default)]
     pub strict: bool,
-    /// 〔MIG-1 收尾〕同上，跳板那一台。
+    /// 同上，跳板那一台。
     #[serde(default)]
     pub jump_strict: bool,
-    /// 〔WF2〕开通道被远端回拒时 SSH 协议给的原因码（RFC 4254 §5.1，如 `administratively_prohibited` · `connect_failed`）；老后端 / 别的失败 ⇒ `None`。
+    /// 开通道被远端回拒时 SSH 协议给的原因码（RFC 4254 §5.1，如 `administratively_prohibited` · `connect_failed`）；老后端 / 别的失败 ⇒ `None`。
     #[serde(default)]
     pub open_refused: Option<String>,
     #[serde(default)]
@@ -111,7 +111,7 @@ pub enum LinkError {
     Refused {
         why: String,
         fingerprint: Option<String>,
-        /// 〔WF2〕开通道被回拒的原因码（[`Ack::open_refused`] 原样）。
+        /// 开通道被回拒的原因码（[`Ack::open_refused`] 原样）。
         open_refused: Option<String>,
     },
     /// 代理不认所请求的用法 —— 它比界面老。
@@ -239,7 +239,7 @@ pub async fn captured<R: AsyncBufRead + Unpin>(r: &mut R, cap: u64) -> Result<Ca
     })
 }
 
-/// 〔SR1b〕`files` 用法：ack 之后一问一答，这里读**一行应答**（JSON 对象）。管子关了 ⇒ [`LinkError::Silent`]。
+/// `files` 用法：ack 之后一问一答，这里读**一行应答**（JSON 对象）。管子关了 ⇒ [`LinkError::Silent`]。
 pub async fn reply_line<R: AsyncBufRead + Unpin>(
     r: &mut R,
     cap: u64,

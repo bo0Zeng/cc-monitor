@@ -1,12 +1,12 @@
-// 〔RM1c · 第四波〕远端会话的全景（jsdom）：看那台机器上的仓。
-// 〔RM1d · V110〕远端也能写批注 / 文档关联（那台算、那台后端的文件管理写）⇒ RM1c 那一拍的「只读」取消。
+// 远端会话的全景（jsdom）：看那台机器上的仓。
+// 远端也能写批注 / 文档关联（那台算、那台后端的文件管理写）⇒ RM1c 那一拍的「只读」取消。
 //
 // 🔴 **被判的那块没被 mock**：`PanoramaView` 的 evaluateRepo / load / 节点详情 / 审批队列都是真的，
 //   写入口背后的 `panorama/api.ts` 写函数也是真的（一路走到 `invoke`）；
 //   被 mock 的只有读那几条封装（status / node / listAnnotations …）与 `invoke` 本身。
 // 判法：① 远端会话打开全景 ⇒ `status` 恰问那台机器的那个路径；
 //       ② 远端仓的节点详情：写入口集合 == 本机仓的（两向，同一套步骤并排跑）；
-//       ③ 点远端仓的「添加批注」/「批准」⇒ 发出去的恰是通道上的 `panorama-edit`，origin 是那台机器、仓是那台上的路径（〔MIG-3b 续〕界面直问那台后端）。
+//       ③ 点远端仓的「添加批注」/「批准」⇒ 发出去的恰是通道上的 `panorama-edit`，origin 是那台机器、仓是那台上的路径（界面直问那台后端）。
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { Annotation, NodeView } from "../../../../src/frontend/ui/panorama/types";
 
@@ -41,7 +41,7 @@ const clickButton = (v: PanoramaView, text: string): void => {
   expect(b, `没有「${text}」按钮`).toBeTruthy();
   (b as HTMLButtonElement).click();
 };
-/** 〔MIG-3b 续〕通道上的 `panorama-edit` 那几发：`{origin, repo, op, args}`（origin 取通道那一格，其余取请求体）。 */
+/** 通道上的 `panorama-edit` 那几发：`{origin, repo, op, args}`（origin 取通道那一格，其余取请求体）。 */
 const edits = (): { cmd: string; args: Record<string, unknown> }[] =>
   vi
     .mocked(invoke)
@@ -138,7 +138,7 @@ describe("远端会话的全景（RM1c · RM1d）", () => {
     expect(edits()[0].args.args).toEqual({ target: "src/lib.rs#f", body: "新批注", author: "me" });
   });
 
-  /** 〔MIG-3b 续〕建索引那一问挂着不回来；撤单那一条恰带着它的编号。 */
+  /** 建索引那一问挂着不回来；撤单那一条恰带着它的编号。 */
   function hangIndex(): void {
     vi.mocked(invoke).mockImplementation(((cmd: string) => {
       if (cmd === "chan_call") return new Promise(() => {});

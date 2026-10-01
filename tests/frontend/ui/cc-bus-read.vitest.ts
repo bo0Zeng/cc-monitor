@@ -1,6 +1,6 @@
 /**
- * 〔SH1 · V136〕驾驶舱读面（`bus-state` · `bus-inbox`）的界面那一侧：按形状严格收、经通道问、拒绝码逐码一句。
- * 要求住址：`设计/05 §14.3`「成品的两侧对拍 … 后端测试产出 == 金样 · TS 解码器读同一份」· `设计/95 §4.2`（驾驶舱读面经通道）。
+ * 驾驶舱读面（`bus-state` · `bus-inbox`）的界面那一侧：按形状严格收、经通道问、拒绝码逐码一句。
+ * 要求：「成品的两侧对拍 … 后端测试产出 == 金样 · TS 解码器读同一份」· 驾驶舱读面经通道。
  * 金样 `tests/__fixtures__/cc-bus-read.golden.json` 与后端 `cc_bus_tests.rs::the_cockpit_read_products_match_the_cross_language_golden` 读同一份。
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";

@@ -1,6 +1,6 @@
 /**
- * 〔U2 · 拆 `tabs.ts` ④〕**tab 栏视图**：每个 tab 一颗按钮（状态灯 · 标题 · 账号徽章 · 未读数 · 📌 ·
- * 📂 / ↗ / × 三个子动作）、按集合分的组容器、整刷（删 / 建 / 更新 / 排序）与帧末合批、栏顶「重新读取」（V155）。
+ * 〔拆 `tabs.ts` ④〕**tab 栏视图**：每个 tab 一颗按钮（状态灯 · 标题 · 账号徽章 · 未读数 · 📌 ·
+ * 📂 / ↗ / × 三个子动作）、按集合分的组容器、整刷（删 / 建 / 更新 / 排序）与帧末合批、栏顶「重新读取」。
  *
  * 只画、只把用户手势转交出去：点按钮切 tab、按下起拖、右键开菜单、子动作按钮 —— 做事的都经
  * `TabBarViewHost` 交给宿主（路由 / 拖拽 / 菜单 / 会话动作），本文件不 import 它们。
@@ -32,18 +32,18 @@ export interface TabButtonRefs {
   acctBadge: HTMLSpanElement;
   cwdBtn: HTMLSpanElement;
   /**
-   * 〔步 17·B〕📌 角标。**纯展示，不可点** —— 与 `.tab-badge`（未读数）同族。
+   * 📌 角标。**纯展示，不可点** —— 与 `.tab-badge`（未读数）同族。
    * 固定是右键菜单那一项的事；这里再放一个能点的东西就是同一个动作两个入口。
    */
   pinBadge: HTMLSpanElement;
   /**
-   * 〔UP1 · `设计/30 §3` P7〕这颗按钮上次**画出去的样子**（class 开关 ＋ title ＋ 标题 ＋ 未读数拼成一串）。
+   * 这颗按钮上次**画出去的样子**（class 开关 ＋ title ＋ 标题 ＋ 未读数拼成一串）。
    * 一样 ⇒ `updateTabButton` 一个 DOM 都不写。按**输出**比而不是按输入比：输入散在 store 的好几张表里，
    * 漏一个就是静默不刷；输出只有这几项。`null` = 还没画过。
    */
   drawn: string | null;
   /**
-   * 〔UP1 · P2〕账号徽章上次画出去的样子：`""` = 藏着（`createTabButton` 建出来就是藏着的，所以初值是 `""`
+   * 账号徽章上次画出去的样子：`""` = 藏着（`createTabButton` 建出来就是藏着的，所以初值是 `""`
    * 而不是 `null` —— 新 tab 没有账号时一个 DOM 都不写）；否则是「账号名 · 幽灵态 · 提示」拼成的一串。
    */
   acctDrawn: string;
@@ -69,7 +69,7 @@ export interface TabBarViewHost {
   takeSuppressedClick(sid: string): boolean;
   /** 右键：开这个 tab 的菜单。 */
   openMenu(e: MouseEvent, sid: string): void;
-  /** 〔REREAD · V155〕栏顶「重新读取」：有打开 tab 的每台对齐 ＋ 补读一次；做完才 resolve。 */
+  /** 栏顶「重新读取」：有打开 tab 的每台对齐 ＋ 补读一次；做完才 resolve。 */
   rereadAll(): Promise<void>;
 }
 
@@ -78,27 +78,27 @@ export class TabBarView {
   readonly tabButtons = new Map<string, TabButtonRefs>();
   /** 每个集合在主栏里的容器（组头 + 成员列表）。 */
   private readonly groupEls = new Map<string, { wrap: HTMLElement; head: HTMLElement; list: HTMLElement }>();
-  // 🔴 〔步 17·A · 2026-09-19〕**`ensureArchiveUi()` 整个删掉。**
+  // 🔴 **`ensureArchiveUi()` 整个删掉。**
   //
-  // `设计/30 §A` 抬头逐字「**已定**：删归档抽屉 · 固定灰 tab」，三条独立理由：
+  // 抬头逐字「**已定**：删归档抽屉 · 固定灰 tab」，三条独立理由：
   //   ① 它永久吃 450px 屏宽（`.tab-archive` 是 `#app` 的 grid item 却没认领格子）
   //   ② 它是个撕窗口陷阱（tear-off 判定线对抽屉没有意义）
   //   ③ **它的存在理由本来就自相矛盾** —— 原 `belongsInArchive` 的注释自己写着：
   //      active tab 会「在你正看着它的时候」掉进折叠的抽屉里 ⇒ 已经为 active 开了例外。
   //      把例外推广到全部，抽屉就没了。
   //
-  // ⚠ **删的是抽屉，不是状态。** 已结束（〔U4〕`isResumeOnly(tab.state)`）照旧存在，那种 tab
-  //   **留在原位变淡**（`.tab.ended`，〔U4〕原名 `.tab.archived`，`§A.3` 逐字「不用新写」）。
+  // ⚠ **删的是抽屉，不是状态。** 已结束（`isResumeOnly(tab.state)`）照旧存在，那种 tab
+  //   **留在原位变淡**（`.tab.ended`，原名 `.tab.archived`，`§A.3` 逐字「不用新写」）。
   //   用户 2026-09-19 逐字：「没有归档这个东西，不要归档，就是灰 tab。」
 
   /**
-   * 〔UP1 · `设计/30 §3` P8〕按钮根 → sid。事件委托靠它从 `closest(".tab")` 找回 sid（不往 DOM 上加属性）。
+   * 按钮根 → sid。事件委托靠它从 `closest(".tab")` 找回 sid（不往 DOM 上加属性）。
    * `WeakMap`：按钮被摘掉之后这一条跟着它一起被回收，不用另外清。
    */
   private readonly sidOf = new WeakMap<Element, string>();
 
   /**
-   * 〔REREAD · V155「重新读取对所有tab生效」〕栏顶常驻的一颗：永远是 `barEl` 的第一个子元素（整刷的散 tab 游标从它之后起）。
+   * 〔「重新读取对所有tab生效」〕栏顶常驻的一颗：永远是 `barEl` 的第一个子元素（整刷的散 tab 游标从它之后起）。
    * 点击走下面那个委托的 click；在飞时 `disabled`，不重入。
    */
   private readonly rereadBtn: HTMLButtonElement;
@@ -109,7 +109,7 @@ export class TabBarView {
     private readonly barEl: HTMLElement,
     private readonly host: TabBarViewHost,
   ) {
-    // 〔UP1 · `设计/30 §3` P8〕**事件委托**：整条栏只在 `barEl` 上挂三个监听器，不再每个 tab 挂 10 个
+    // **事件委托**：整条栏只在 `barEl` 上挂三个监听器，不再每个 tab 挂 10 个
     // （原先 📂 / ↗ / × 各 click ＋ mousedown，根上 click ＋ 两个 mousedown ＋ contextmenu）。
     //
     // 原先三颗子按钮上的 `stopPropagation` 有两层意思，这里都保住：
@@ -166,9 +166,9 @@ export class TabBarView {
         // 📂 打开工作目录（cwd）—— 系统默认文件管理器
         void this.host.openTabCwd(sid);
       } else if (sub.classList.contains("tab-focus")) {
-        // ↗ 拉对应终端窗口。〔第二波 T4 · LF1〕非 Windows 不渲（`terminal-front.ts`）——不渲就点不到。
+        // ↗ 拉对应终端窗口。非 Windows 不渲（`terminal-front.ts`）——不渲就点不到。
         const t = this.store.tabs.get(sid);
-        if (!t || !hasTerminal(t.state)) return; // 〔U4〕活着，或可重连（ssh 窗还在）才拉
+        if (!t || !hasTerminal(t.state)) return; // 活着，或可重连（ssh 窗还在）才拉
         // Feature ②：远端 Tab → 后端唯一分派点（先启动令牌、后 ccm-rbind 标题退路）；
         // 本地 Tab → 走原 sid_hwnd_cache 路径。
         if (isRemoteOrigin(t.origin)) {
@@ -196,7 +196,7 @@ export class TabBarView {
     }
     if (e.button === 0) {
       // 左键 mousedown：候选 Tab 撕离拖拽（越过阈值才真拖，否则仍是普通 click）。
-      // 〔步 17·A〕原先这里有一条「归档区里的 tab 不参与拖拽」的例外 ——
+      // 原先这里有一条「归档区里的 tab 不参与拖拽」的例外 ——
       // 抽屉没了，那条例外自动不需要（`§A.3` 逐字「净收益」）。
       this.host.beginDrag(e, hit.sid, hit.root);
       return;
@@ -211,7 +211,7 @@ export class TabBarView {
     }
   }
 
-  /** issue #10：右键菜单「在新窗口打开」（双屏 / 并排）。〔U2〕菜单里放哪几项住 `tab-menu.ts`。 */
+  /** issue #10：右键菜单「在新窗口打开」（双屏 / 并排）。菜单里放哪几项住 `tab-menu.ts`。 */
   private onBarContextMenu(e: MouseEvent): void {
     const hit = this.hitOf(e);
     if (!hit) return;
@@ -245,10 +245,10 @@ export class TabBarView {
     }
 
     // 2 + 3 + 4. 创建 / 更新 / 排序
-    // 〔步 17·A〕抽屉没了 ⇒ 只剩主栏 ＋ 按集合分的若干组
+    // 抽屉没了 ⇒ 只剩主栏 ＋ 按集合分的若干组
     // ⇒ 推广成「**每容器一个游标**」。
     // 组容器按集合顺序先摆好（空集合也留着 —— 用户刚建的集合不该看不见）。
-    // 〔GRP1 · V140〕「空」今天只剩一种来路：重启后组员还没到（意图在 `TabBarPrefs.savedGroupOf`）。
+    // 「空」今天只剩一种来路：重启后组员还没到（意图在 `TabBarPrefs.savedGroupOf`）。
     //   在栏里的最后一个离开（× · 拖出 · 移出 · 挪组）⇒ 组已从组表里摘掉，画不出来。
     for (const [id, g] of this.groupEls) {
       if (!this.prefs.collections.some((x) => x.id === id)) {
@@ -264,10 +264,10 @@ export class TabBarView {
     // 而 `P7a3-Y2` 逐字写的是「未归组的照常**在后面**」。
     // 实现与自己的 DoD 措辞不符，是那种「读起来都对、跑起来是另一回事」的差错。
     // ⇒ 把 `barEl` 的起点定在最后一个组容器上（没有组则是栏顶那颗「重新读取」）。
-    // 〔UP1 · `设计/30 §3` P6〕「最后一个组容器」不再把 `barEl.children` 物化成数组去找。
+    // 「最后一个组容器」不再把 `barEl.children` 物化成数组去找。
     // 组容器只在建的那一刻 `appendChild` 到 `barEl` 末尾、之后从不挪（挪的只有 tab 按钮），
     // 删的时候同时出 `groupEls` ⇒ **`groupEls` 的插入序就是组容器在 DOM 里的顺序**，最后一个就是它。
-    // 〔REREAD〕没有组时从栏顶那颗「重新读取」之后起，它恒在第一个。
+    // 没有组时从栏顶那颗「重新读取」之后起，它恒在第一个。
     let lastGroup: HTMLElement = this.rereadBtn;
     for (const g of this.groupEls.values()) lastGroup = g.wrap;
     cursors.set(this.barEl, lastGroup);
@@ -280,9 +280,9 @@ export class TabBarView {
         this.tabButtons.set(sid, refs);
       }
       this.updateTabButton(refs, sid, tab);
-      // 〔步 17·A〕分流从三路（抽屉 / 组 / 主栏）降到**两路**（组 / 主栏）。
+      // 分流从三路（抽屉 / 组 / 主栏）降到**两路**（组 / 主栏）。
       // 「归档优先于集合」那条判定整条消失 ⇒ **灰 tab 也能在组里**（`§A.3` 逐字）。
-      // 〔GRP1 · V140〕在哪个组读 tab 自己的 `group`（组表只有 `{id, name}`，不再扫成员名单）。
+      // 在哪个组读 tab 自己的 `group`（组表只有 `{id, name}`，不再扫成员名单）。
       const col =
         tab.group === null ? undefined : this.prefs.collections.find((c) => c.id === tab.group);
       const host = col ? this.groupElFor(col) : this.barEl;
@@ -299,7 +299,7 @@ export class TabBarView {
   }
 
   /**
-   * `refreshTabBar` 的**帧末合批**入口〔audit-0805 F15〕。
+   * `refreshTabBar` 的**帧末合批**入口。
    *
    * 排一次位（`tabBarRefreshScheduled`）+ 无 rAF 时 `setTimeout` 兜底，
    * 范式与 `tab-stream-view.ts` 的 `scheduleIdleMaterialize` 一致（拆之前两者同住 `tabs.ts`）。
@@ -312,7 +312,7 @@ export class TabBarView {
     this.tabBarRefreshScheduled = true;
     const run = (): void => {
       this.tabBarRefreshScheduled = false;
-      // 〔U2〕经宿主刷 —— `TabManager.refreshTabBar`（拖拽守卫在那里）；判据会把它换成计数替身。
+      // 经宿主刷 —— `TabManager.refreshTabBar`（拖拽守卫在那里）；判据会把它换成计数替身。
       this.host.refreshTabBar();
     };
     if (typeof requestAnimationFrame === "function") {
@@ -356,15 +356,15 @@ export class TabBarView {
       g = { wrap, head, list };
       this.groupEls.set(col.id, g);
     }
-    // 〔UP1〕名字没变就不写 —— 这里每次整刷都走一遍，无条件写就是每个组每次一条 DOM 写。
+    // 名字没变就不写 —— 这里每次整刷都走一遍，无条件写就是每个组每次一条 DOM 写。
     const nameEl = g.head.firstElementChild as HTMLElement;
     if (nameEl.textContent !== col.name) nameEl.textContent = col.name;
     return g.list;
   }
 
   /**
-   * P-extra（`设计/30 §3.3`）：组头**就地**改名 —— 名字那一格换成 `<input>`：Enter 提交 / Esc 取消 / blur 提交。
-   * 〔W5-UI〕原先是 `window.prompt`（原生阻塞弹窗，`真相源/05 I5`）。
+   * P-extra：组头**就地**改名 —— 名字那一格换成 `<input>`：Enter 提交 / Esc 取消 / blur 提交。
+   * 原先是 `window.prompt`（原生阻塞弹窗）。
    *
    * - 名字按钮只藏不摘（`hidden`），输入框插在它后面 ⇒ 整刷那条「名字没变就不写」照旧写在按钮上，不碰输入框。
    * - Esc 走 overlay 栈（INVARIANTS「别手搓 window 级 Esc 监听」）：改名时 Esc 只取消改名，不连带关别的弹层；
@@ -440,7 +440,7 @@ export class TabBarView {
    * §1"不做什么"——批量/一键对齐是组合层便利,不做等价替代,用户改走 flyout 逐会话操作）。
    */
   private updateAccountBadge(refs: TabButtonRefs, sid: string, tab: Tab): void {
-    // 〔UP1 · `设计/30 §3` P2〕先算出**要画成什么样**，与上次画出去的一样就一个 DOM 都不写。
+    // 先算出**要画成什么样**，与上次画出去的一样就一个 DOM 都不写。
     // 原先每次整刷都 `textContent=""` ＋ 新建一个头像 span（3 次内联样式写）＋ 写 title ＋ 写 display，
     // 20 个 tab 就是每次整刷 20 个新 span、20 个旧 span 变垃圾。
     const hide = (): void => {
@@ -477,7 +477,7 @@ export class TabBarView {
   }
 
   private createTabButton(sid: string): TabButtonRefs {
-    // 〔UP1 · P8〕按钮本身**一个监听器都不挂** —— 手势全在 `barEl` 上委托（见构造体）。
+    // 按钮本身**一个监听器都不挂** —— 手势全在 `barEl` 上委托（见构造体）。
     const root = document.createElement("button");
     root.className = "tab";
     this.sidOf.set(root, sid);
@@ -500,7 +500,7 @@ export class TabBarView {
     badge.className = "tab-badge";
     root.appendChild(badge);
 
-    // 〔步 17·B〕📌 固定角标。默认不显（CSS `.tab:not(.pinned) .tab-pin { display:none }`），
+    // 📌 固定角标。默认不显（CSS `.tab:not(.pinned) .tab-pin { display:none }`），
     // `updateTabButton` 只翻 `.pinned` 这一个类 —— 与其它 5 个子元素同一套「一次性 append、
     // 可见性交给 class」的形状（见 `.tab .tab-badge` 那条注释）。
     const pinBadge = document.createElement("span");
@@ -516,7 +516,7 @@ export class TabBarView {
     cwdBtn.title = copyText("tabBarView.tab.cwdHint");
     root.appendChild(cwdBtn);
 
-    // ↗ 拉对应终端窗口（v1.7 用 sid_hwnd_cache）。〔第二波 T4 · LF1〕非 Windows 不渲（`terminal-front.ts`）。
+    // ↗ 拉对应终端窗口（v1.7 用 sid_hwnd_cache）。非 Windows 不渲（`terminal-front.ts`）。
     if (terminalFrontAvailable()) {
       const focusBtn = document.createElement("span");
       focusBtn.className = "tab-focus";
@@ -535,16 +535,16 @@ export class TabBarView {
   }
 
   private updateTabButton(refs: TabButtonRefs, sid: string, tab: Tab): void {
-    // 〔UP1 · `设计/30 §3` P7〕先把**要画成什么样**整个算出来，与上次画出去的比 —— 一样就一个 DOM 都不写。
+    // 先把**要画成什么样**整个算出来，与上次画出去的比 —— 一样就一个 DOM 都不写。
     //
     // ⚠ 下面那几个 `classList.toggle(x, 布尔)` 状态没变时本来就不写（DOM 规范：`force` 与现状一致
     //   直接返回，不跑 update steps、不排 mutation record）；**真在每次整刷里写 DOM 的是 `title`**
     //   （属性赋值不管值变没变都写）。这一段早退省下的是那次写 ＋ 这一堆字符串拼接。
     const active = sid === this.store.activeId;
-    // 〔U4〕两个轴怎么画（类 · 提示句）只从 `stateView` 取：已结束（只能 resume）· 可重连（死了、容器还在）。
+    // 两个轴怎么画（类 · 提示句）只从 `stateView` 取：已结束（只能 resume）· 可重连（死了、容器还在）。
     const view = stateView(tab.state);
     const ended = view.ended;
-    // 〔步 17·B〕固定：**只多一个 📌 角标，位置一个字不动**（`§B.3b`：没有「固定区」，
+    // 固定：**只多一个 📌 角标，位置一个字不动**（`§B.3b`：没有「固定区」，
     // pin 管的是「别丢」不是「排前面」；位置由 `§C` 的顺序落盘管，两者不抢）。
     const pinned = tab.pinned;
     const hasCwd = !!tab.cwd;
@@ -561,7 +561,7 @@ export class TabBarView {
     // `.reconnectable` 把 .live-dot 覆写成暗色、压过红绿黄。
     const reconnectable = view.reconnectable;
     const titleParts: string[] = [];
-    // 〔U4〕第一行说状态（活着不说）。
+    // 第一行说状态（活着不说）。
     if (view.tooltip !== null) titleParts.push(view.tooltip);
     // 「等待操作」只对活着的会话说：可重连的会话 claude 已经没了，留着的活动信号是陈旧的
     // （改两轴之前灯被 CSS 盖住了，tooltip 却还挂着这一句）。

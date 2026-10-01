@@ -7,7 +7,7 @@
 //! `guard_core::scan_tree!`，那条纪律治的是「判据在自己的语料里找到自己 ⇒ 恒绿」
 //! 那一族（audit-0805 实测五次）。
 //!
-//! ⚠ 〔`P4` 2026-09-21〕先前这里写着「它**按构造摘掉调用者自己**…自排除仍然成立」。
+//! ⚠ 先前这里写着「它**按构造摘掉调用者自己**…自排除仍然成立」。
 //! 那一刀**在这一处不生效**：判据一律由 `#[path]` 挂进生产树 ⇒ `file!()` 是带 `..`
 //! 的折返路径 ⇒ 后缀比不命中
 //! （`the_scan_tree_macro_no_longer_excludes_its_caller_after_the_split` 守着这件事）。
@@ -60,7 +60,7 @@ mod tests {
             format!("cc-bus{}inbox", "/"),
             format!("lastread{}", "-"),
         ];
-        // 〔MIG-3b 续 · 要主会话拍板〕足迹申报表随「一处后端」（主会话 09-28 裁①）进了后端：cc-bus 那一行申报「这个目录会因为你在
+        // 〔要主会话拍板〕足迹申报表随「一处后端」（主会话 09-28 裁①）进了后端：cc-bus 那一行申报「这个目录会因为你在
         //   cc-monitor 里点了一下而被 cc-bus 的命令写」（`IndirectWrite`）。它只 stat 那个目录、数一层名字，一个数据文件都不读 ——
         //   是**告知**，不是绕到 cc-bus 背后读数据。在 monitor 那一半时这一格本来就在（它不在本判据射程里）。
         const DECLARED_NOT_READ: &[(&str, &str)] = &[("agents/claudecode/footprint.rs", ".cc-bus")];

@@ -1,4 +1,4 @@
-//! `K-P6b` `D2` 判据的**甲半**（界面这一侧）＋ 它的反向自检 —— 〔C2 · `设计/05 §13`〕改成「拨号全搬走了」的形状。
+//! `K-P6b` `D2` 判据的**甲半**（界面这一侧）＋ 它的反向自检 —— 改成「拨号全搬走了」的形状。
 //!
 //! # 它断的是哪一个性质
 //!
@@ -24,7 +24,7 @@ use guard_core::production_code;
 ///
 /// `(文件, 生产段里的调用点处数, 这一处的拨号搬走了没有, 它是什么, 解锁条件)`
 ///
-/// 🔴 **`pub(crate)` 是承重的，别顺手收回去**〔`K-R74` 09-12〕：
+/// 🔴 **`pub(crate)` 是承重的，别顺手收回去**：
 /// `dial_home_registry` 那条递减棘轮拿本表 `moved == false` 的**处数合计**当今天的读数，
 /// 再对着 `ssh_source.rs` 的 git 历史比「历史上出现过的最低档」。
 /// 收回成私有 ⇒ 那条棘轮编不过；改成在那边抄一份数字 ⇒ 同一个值两个家，本区最贵的那条病。
@@ -37,7 +37,7 @@ pub(crate) const DIAL_SITES: &[(&str, usize, bool, &str, &str)] = &[
         "ssh_source.rs",
         0,
         true,
-        "〔C2 09-24〕**搬走了**：跳板 · 一次性 exec · 收全 exec · 测试连接 · 后端长连接流全部改经拨号代理的宿主 \
+        "**搬走了**：跳板 · 一次性 exec · 收全 exec · 测试连接 · 后端长连接流全部改经拨号代理的宿主 \
              （`dial_host`），拨号本身在后端 `dial/`。\
              〔棘轮史：`K-P6b` 09-06 登记 5 处 → `K-R59` 09-11 退役 `daemonless` 一处 → 4 → C2 → **0**。〕",
         "已经是 0。这一行留着是为了让「又长回来一处」当场红（处数钉成 0，不是删行）。",
@@ -46,14 +46,14 @@ pub(crate) const DIAL_SITES: &[(&str, usize, bool, &str, &str)] = &[
         "sftp.rs",
         0,
         true,
-        "〔SR1b 09-24〕**搬走了**：SFTP 进了本机常驻后端（用户 V89），与其它 SSH 同一条连接；\
+        "**搬走了**：SFTP 进了本机常驻后端（用户），与其它 SSH 同一条连接；\
              部署经那条 `files` 链路（`dial_host::RemoteFs`），传输经 `transfer-*`。\
              〔从前：「SFTP 会话要一个 russh 连接句柄，不是一条字节流 ⇒ 仍在界面进程里拨，用 `inproc_dial.rs` 那一份」。〕",
         "已经是 0。这一行留着是为了让「又长回来一处」当场红（处数钉成 0，不是删行）。",
     ),
-    // 〔MIG-1 · `99 §2.1 ⑬`〕`port_forward.rs` 那一行（C2 起处数钉 0）随文件删了：转发账也进了本机常驻后端
+    // `port_forward.rs` 那一行（C2 起处数钉 0）随文件删了：转发账也进了本机常驻后端
     //   （`src/backend/dial/forwards.rs`），界面 crate 里没有这份文件了。先例同下面 `inproc_dial.rs` 那一行。
-    // 〔SR1b 09-24〕`inproc_dial.rs` 那一行（进程内那一份自己的跳板，只服务 `sftp.rs`）**兑现了它写的解锁条件**：
+    // `inproc_dial.rs` 那一行（进程内那一份自己的跳板，只服务 `sftp.rs`）**兑现了它写的解锁条件**：
     //   「与 `sftp.rs` 那一行同一天删：SFTP 换走 ⇒ 本文件整份删 ⇒ `russh` 出 `Cargo.toml`」—— 三件同拍。文件不在了，行随之删。
 ];
 
@@ -62,7 +62,7 @@ pub(crate) const DIAL_SITES: &[(&str, usize, bool, &str, &str)] = &[
 /// 🔴 这条与函数体那条地板一起，是 `P6bM4` 的被测对象。
 const CORPUS_FLOOR_BYTES: usize = 80_000;
 /// 入口函数体的地板：切不出函数体（或切出个空壳）时判据必须**自己先红**。
-/// 〔C2 09-24〕**200 → 120**：判据的靶换成了拿链路的原语 `connect_and_exec_cmd`，它今天只转一句
+/// **200 → 120**：判据的靶换成了拿链路的原语 `connect_and_exec_cmd`，它今天只转一句
 /// （现打 178 字节）；120 仍比「切出来的是个空壳」（签名 ＋ 一对括号，约 90 字节）大。
 const BODY_FLOOR_BYTES: usize = 120;
 
@@ -153,16 +153,16 @@ fn backend_stream_dial_verdict(body: &str) -> Result<(), String> {
 
 /// ★ 甲半：**拿链路的原语只经拨号代理的宿主；零回落。**
 ///
-/// 〔C2 09-24〕判据的靶是 `connect_and_exec_cmd` 的函数体：十来处一次性查询共用的那个原语，钉住它就钉住了全部。
+/// 判据的靶是 `connect_and_exec_cmd` 的函数体：十来处一次性查询共用的那个原语，钉住它就钉住了全部。
 /// 收全 exec 那个原语另钉一条（走 `dial_host::capture(`）。
-/// 〔DEL〕远端后端长连接流的入口今天是 `remote_resident::attach`（capture ＋ `dial_host::tunnel`），不再经本文件起流。
+/// 远端后端长连接流的入口今天是 `remote_resident::attach`（capture ＋ `dial_host::tunnel`），不再经本文件起流。
 #[test]
 fn the_backend_stream_entry_hands_the_dial_to_another_process() {
     let (_, prod) = corpus()
         .into_iter()
         .find(|(n, _)| *n == "ssh_source.rs")
         .expect("语料里没有 ssh_source.rs");
-    // 〔MIG-3b 续 · V41〕流那一个原语（`connect_and_exec_cmd`）随最后一个调用方（公钥推送）进本机后端删了 ⇒
+    // 流那一个原语（`connect_and_exec_cmd`）随最后一个调用方（公钥推送）进本机后端删了 ⇒
     //   本条的靶只剩收全那一个；「界面进程零拨号」照旧钉：整份生产段里零处自己拨、零处开流用法的链路。
     assert_eq!(
         (
@@ -214,12 +214,12 @@ fn six_of_the_seven_dial_sites_are_still_in_this_process() {
     }
     assert_eq!(
         total, 0,
-        "界面侧拨号调用点总数是 {total}，登记的是 **0**（〔SR1b 09-24〕**2 → 0**：SFTP 那一家 —— `sftp.rs` 1 ＋ \
+        "界面侧拨号调用点总数是 {total}，登记的是 **0**（**2 → 0**：SFTP 那一家 —— `sftp.rs` 1 ＋ \
              它用的 `inproc_dial.rs` 跳板 1 —— 进了本机常驻后端，界面进程零 SSH）。\n\
-             ⚠ 〔C2 09-24〕**6 → 2**：`ssh_source.rs` 4 与 `port_forward.rs` 1 搬进拨号代理；\
+             ⚠ **6 → 2**：`ssh_source.rs` 4 与 `port_forward.rs` 1 搬进拨号代理；\
              `inproc_dial.rs` 那 1 处是 `ssh_source.rs` 原来那 4 处里的跳板一处**原样搬过去**的（只服务 SFTP）。\n\
              这两个数必须一起动 —— 本表就是那句话的家。\n\
-             ⚠ 棘轮史：**7**（`K-P6b` 件文件 09-06 现打，逐处点名）→ **6**〔`K-R59` 09-11〕：\n\
+             ⚠ 棘轮史：**7**（`K-P6b` 件文件 09-06 现打，逐处点名）→ **6**：\n\
              `daemonless` 轮询流那一处**退役**（`K35`：没有「没有后端」这回事）。\n\
              🔴 **本函数的名字里那个 `seven` 是 09-06 那一刻的数，刻意没改** ——\n\
              改名会打断 `K-P6b` 件文件（`:652` / `:803`）与 `audits/K-P6b-PM.md:281` 三处\n\
@@ -236,8 +236,8 @@ fn six_of_the_seven_dial_sites_are_still_in_this_process() {
     let moved = DIAL_SITES.iter().filter(|(_, _, m, ..)| *m).count();
     assert_eq!(
         moved, 2,
-        "登记表说有 {moved} 份文件的拨号已经搬走了（C2 之后 `ssh_source.rs` 与 `port_forward.rs` 两份；〔SR1b〕+ `sftp.rs`；\
-         〔MIG-1〕3 → 2：`port_forward.rs` 整份删了、那一行随之删）"
+        "登记表说有 {moved} 份文件的拨号已经搬走了（C2 之后 `ssh_source.rs` 与 `port_forward.rs` 两份；+ `sftp.rs`；\
+3 → 2：`port_forward.rs` 整份删了、那一行随之删）"
     );
 }
 
@@ -257,10 +257,10 @@ fn every_registered_dial_site_says_what_it_is_and_when_it_could_go() {
     }
 }
 
-// 〔C2 09-24〕原来这里有一条 `every_registered_fallback_is_actually_decided_in_the_entry` 〔散文墓碑〕
+// 原来这里有一条 `every_registered_fallback_is_actually_decided_in_the_entry` 〔散文墓碑〕
 // （逐条回落在入口函数体里真的有一个判断在做它）—— 回落整张删了，它随之删。
 
-/// 🔴 **本件改动之前**的远端起流入口函数体，**逐字冻结**（那个入口〔DEL〕随远端流模式一形删了，冻结的是历史文本）。
+/// 🔴 **本件改动之前**的远端起流入口函数体，**逐字冻结**（那个入口随远端流模式一形删了，冻结的是历史文本）。
 ///
 /// 出处：`git show f10581c:src/frontend/shell/src/ssh_source.rs` 的 `:1304-1321`
 /// （分支尖 `f10581c` = 本件第二轮的最后一个提交，那时生产段一个字节都还没动）。
@@ -305,7 +305,7 @@ fn body_before_this_item() -> String {
     s
 }
 
-/// 〔C2〕**C2 之前**的 `connect_and_exec_cmd` 函数体，逐字冻结（出处：`git show bf3cdc83:src/frontend/shell/src/ssh_source.rs`）。
+/// **C2 之前**的 `connect_and_exec_cmd` 函数体，逐字冻结（出处：`git show bf3cdc83:src/frontend/shell/src/ssh_source.rs`）。
 /// 逐行存的理由与上面那份一样（列 0 的 `}` 会弄坏共用剥法）。
 const PRIM_BEFORE_C2_LINES: &[&str] = &[
     "pub async fn connect_and_exec_cmd(",
@@ -352,7 +352,7 @@ fn the_shape_before_this_item_is_caught_and_named() {
         e.contains("dial_host::open_stream(") && e.contains("0 处"),
         "判据红了，但**没点名是哪一处** —— 只说「有问题」的诊断等于没有诊断。实得：{e}"
     );
-    // 〔C2〕第二份冻结反例：C2 之前的那个**原语**本体（进程内 `connect_session` ＋ 开通道 ＋ exec）。
+    // 第二份冻结反例：C2 之前的那个**原语**本体（进程内 `connect_session` ＋ 开通道 ＋ exec）。
     let prim_before = PRIM_BEFORE_C2_LINES.join("\n") + "\n";
     let e = backend_stream_dial_verdict(&prim_before)
         .expect_err("C2 之前的原语（进程内拨号）居然判绿了");
@@ -380,7 +380,7 @@ fn an_empty_body_makes_the_judge_red_by_itself() {
 /// 照红 ⇒ 刀太粗（它其实在钉「这段文本一个字都不许动」，而不是钉那个性质）。
 #[test]
 fn a_comment_only_edit_does_not_move_the_verdict() {
-    // 〔MIG-3b 续〕真身删了（流那一个原语随公钥推送进本机后端）⇒ 喂它删之前那一版的形状（合成，逐字抄当时的函数体）。
+    // 真身删了（流那一个原语随公钥推送进本机后端）⇒ 喂它删之前那一版的形状（合成，逐字抄当时的函数体）。
     let body = "pub async fn connect_and_exec_cmd(\n    cfg: &RemoteConfig,\n    cmd: &str,\n) -> Result<crate::dial_host::DialStream, String> {\n    \
                 // 〔C2 → SR1a〕拨号在本机常驻后端里；这里拿到的是它开的一条链路（读端 = 远端命令的 stdout）。\n\
                 \x20   crate::dial_host::open_stream(cfg, cmd).await\n}\n"
@@ -396,10 +396,10 @@ fn a_comment_only_edit_does_not_move_the_verdict() {
         .expect("只加了一行注释，判据就红了 ⇒ 刀太粗，它钉的是文本不是性质");
 }
 
-// 〔C2 09-24〕原来这里还有两条：请求行按蛇形键写（`the_request_line_is_written_with_snake_case_keys`）〔散文墓碑〕
+// 原来这里还有两条：请求行按蛇形键写（`the_request_line_is_written_with_snake_case_keys`）〔散文墓碑〕
 // 与代理二进制只从两处解析（`the_proxy_is_resolved_from_exactly_two_places_and_never_from_home`）〔散文墓碑〕。
 // 请求的造法与解析搬进了宿主 `dial_host`，前一条的性质由
-// `dial_host_tests::the_request_keys_are_the_ones_the_proxy_reads`〔散文墓碑〕接住（而且改成与后端源码异源对拍；〔MIG-1 收尾〕今天是 `the_request_hands_over_the_machine_as_is`）；
+// `dial_host_tests::the_request_keys_are_the_ones_the_proxy_reads`〔散文墓碑〕接住（而且改成与后端源码异源对拍；今天是 `the_request_hands_over_the_machine_as_is`）；
 // 后一条的性质**改了**：`D11` 之后找不到代理要报而不是回落，开发树上要能找到，于是解析多了
 // 「本机后端自释放那一份」这一处（读 `~/.cc-monitor/bin`，登记在 `local_read_surface_registry`）。
 
@@ -425,15 +425,15 @@ fn the_shared_stripper_keeps_the_entry_body_this_guard_must_scan() {
     guard_core::assert_stripper_keeps(
         "ssh_source_dial_move_judge · ssh_source.rs",
         include_str!("../../../src/frontend/shell/src/ssh_source.rs"),
-        // 〔MIG-3b 续〕锚点换成收全那一个原语（流那一个删了）；它同样在第一个测试模块之后。
+        // 锚点换成收全那一个原语（流那一个删了）；它同样在第一个测试模块之后。
         &["pub async fn connect_and_exec_capture("],
     );
     // ⚠ 本判据的语料是**四份**文件，这里只立了 `ssh_source.rs` 那一份的对照 ——
-    //    另两份（`sftp.rs` / `port_forward.rs`；〔SR1b〕`inproc_dial.rs` 那份整份删了）的针在它们各自第一个测试模块**之前**，
+    //    另两份（`sftp.rs` / `port_forward.rs`；`inproc_dial.rs` 那份整份删了）的针在它们各自第一个测试模块**之前**，
     //    便宜近似留得住 ⇒ 立对照会恒真。**那不是「已守住」，是「这一形在那两份上不成立」。**
 }
 
-/// 〔C2 · `设计/05 §13.8 ①`〕→〔SR1b · 2026-09-24〕**界面 crate 里点名 `russh` / `russh_sftp` 的文件：零**（带正控）。
+/// →**界面 crate 里点名 `russh` / `russh_sftp` 的文件：零**（带正控）。
 ///
 /// C2 那一版钉的是「== {SFTP 那一家}」（`inproc_dial.rs` · `sftp.rs`），逐字写着「SFTP 换走了 ⇒ 把 `inproc_dial.rs` 整份删掉、
 /// `Cargo.toml` 的 `russh` 一起删，本条改成零命中」—— 这一拍就是那一刀（用户 V89：SFTP 进本机常驻后端，界面进程零 SSH）。
@@ -493,7 +493,7 @@ fn russh_is_named_nowhere_in_the_monitor_crate() {
             !manifest
                 .lines()
                 .any(|l| l.trim_start().starts_with(line.as_str())),
-            "`src/frontend/shell/Cargo.toml` 里又声明了 `{dep}` —— 界面进程零 SSH（V89）"
+            "`src/frontend/shell/Cargo.toml` 里又声明了 `{dep}` —— 界面进程零 SSH"
         );
     }
     assert!(

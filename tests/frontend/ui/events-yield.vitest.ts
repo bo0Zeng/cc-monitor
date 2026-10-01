@@ -1,5 +1,5 @@
 /**
- * ★ 步 4（`设计/10 §2.4`）：**让开机制** —— 换 `MessageChannel` ＋ 「干多久」从猜改成问。
+ * ★ 步 4：**让开机制** —— 换 `MessageChannel` ＋ 「干多久」从猜改成问。
  *
  * # 这里钉的是两件事，它们各有各的降级
  *
@@ -19,7 +19,7 @@
  *
  * # ⚠ 诚实边界
  *
- * - 这里量不到「真机上鼠标卡不卡」。那要真 webview + 真输入，登记在 `设计/10 §7`
+ * - 这里量不到「真机上鼠标卡不卡」。那要真 webview + 真输入，登记在
  *   （`window.__ccmPerf` 那条读数）。
  * - ①的**正向**那一半（真用上了 `MessageChannel`）只能断「建了通道」——
  *   `MessagePort` 的投递时机**不归假定时器管**（实测：`advanceTimersByTime` 推不动它），
@@ -48,7 +48,7 @@ vi.mock("../../../src/frontend/ui/ipc/commands", () => ({
   commands: new Proxy({}, { get: () => vi.fn().mockResolvedValue(undefined) }),
 }));
 
-// 〔CF2 · 第四波 4B〕会话内容从通道 `subscribe` 来：换成桩，按句柄的形状灌（`test-support/chan-stream-fake.ts`）。
+// 会话内容从通道 `subscribe` 来：换成桩，按句柄的形状灌（`test-support/chan-stream-fake.ts`）。
 vi.mock("../../../src/comms/inward/chan", async () => (await import("../../test-support/chan-stream-fake.ts")).chanStreamModule);
 
 import { bindEvents } from "../../../src/frontend/ui/events";

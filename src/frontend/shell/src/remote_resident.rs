@@ -1,13 +1,13 @@
-//! 〔HOST · V139〕**远端常驻后端，monitor 这一侧**（`99 §1` V139「远端常驻、本机远端同形」· `设计/01 §3.3` · `05 §5.2`）。
+//! **远端常驻后端，monitor 这一侧**（「远端常驻、本机远端同形」·）。
 //!
-//! 与本机宿主（`local_backend_host`）同形的四件：起 · 找 · 只升不降 · 停。设计住仓外 `调研/第四波记录/HOST.md §1`。
+//! 与本机宿主（`local_backend_host`）同形的四件：起 · 找 · 只升不降 · 停。设计住仓外。
 //! - 起 · 找：经链路 `capture` 在远端跑 `--resident-ensure`（它无条件起一个脱离的自己；口上已有常驻后端时子进程退 3）→
 //!   回 `{port, token}`；再经链路 `tunnel`（本机常驻后端开 direct-tcpip 到远端回环口）连上去读 hello、交 attach 行。
 //! - 只升不降：hello 的 build 比手上这一版旧 ⇒ `--resident-ensure --replace` 一次；比我新 ⇒ 照接。
-//!   〔THIN〕「换不换」由本机常驻后端判（帧命令 `resident-verdict`，与 `deploy-plan` 一家；`设计/00 §1.2` 判定只在后端），这里只照做。
-//! - 停：`--resident-stop`（〔STOP〕那台自己做「请它收尾 → 宽限期内等 → 到点强杀」，这里只发一次、拿回 `graceful | killed | not_running`）。
+//! 「换不换」由本机常驻后端判（帧命令 `resident-verdict`，与 `deploy-plan` 一家；判定只在后端），这里只照做。
+//! - 停：`--resident-stop`（那台自己做「请它收尾 → 宽限期内等 → 到点强杀」，这里只发一次、拿回 `graceful | killed | not_running`）。
 //!
-//! 〔DEL〕远端只有常驻这一形：那台答「脱离不了」（非 unix）⇒ 明说不支持；太旧不认这条子命令 ⇒ 出声报错（V41）。
+//! 远端只有常驻这一形：那台答「脱离不了」（非 unix）⇒ 明说不支持；太旧不认这条子命令 ⇒ 出声报错。
 //! 不回落到随 SSH 生死的流模式。
 //! ⚠ 钥匙只在内存里过一趟（ensure 的 stdout → attach 行），不进日志、不进报错。
 
@@ -42,9 +42,9 @@ impl std::fmt::Debug for Ensured {
 /// 为什么没接上那台的常驻后端。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum AttachErr {
-    /// 〔DEL 续 · 主会话裁〕那台不是 Unix（后端脱离不了）⇒ **永久不支持**：记在那台的连接状态里，
+    /// 那台不是 Unix（后端脱离不了）⇒ **永久不支持**：记在那台的连接状态里，
     /// 不再自动按退避重连；界面出声，用户点「起」（`backend_start`）才再试一次。
-    /// 〔WF2 · WIN3 读数 E〕那台 sshd 不许端口转发（控制隧道被回拒 `administratively_prohibited`）同属这一形：重试不会变，要那台改配置。
+    /// 那台 sshd 不许端口转发（控制隧道被回拒 `administratively_prohibited`）同属这一形：重试不会变，要那台改配置。
     Unsupported(String),
     /// 别的失败 ⇒ 照常按退避重连。
     Failed(String),
@@ -66,7 +66,7 @@ impl AttachErr {
 }
 
 /// 读 `--resident-ensure` / `--resident-stop` 那一趟的结果（纯函数）：退出 0 ⇒ stdout 那一行；退出 2 ⇒ stderr 的 `{code,message}`。
-/// 〔DEL〕`unsupported`（那台脱离不了，非 unix）明说「远端只支持 Unix」；老后端 ⇒ 「太旧」—— 都是失败，没有回落。
+/// `unsupported`（那台脱离不了，非 unix）明说「远端只支持 Unix」；老后端 ⇒ 「太旧」—— 都是失败，没有回落。
 pub(crate) fn parse_answer(
     exec: &crate::ssh_source::RemoteExec,
 ) -> Result<serde_json::Value, AttachErr> {
@@ -121,7 +121,7 @@ fn parse_ensured(v: &serde_json::Value) -> Result<Ensured, String> {
 }
 
 async fn ensure(cfg: &RemoteConfig, replace: bool) -> Result<Ensured, AttachErr> {
-    // 〔V151〕`ccm -- --resident-ensure`（打头的 `--` 让那台的 `ccm` 当后端用）。
+    // `ccm -- --resident-ensure`（打头的 `--` 让那台的 `ccm` 当后端用）。
     let mut cmd = format!(
         "{} {} --resident-ensure",
         crate::ssh_source::BACKEND_CMD,
@@ -136,7 +136,7 @@ async fn ensure(cfg: &RemoteConfig, replace: bool) -> Result<Ensured, AttachErr>
 }
 
 /// hello 那一行里那台报的 build（纯函数，只读线上形状）。口上不是常驻后端（第一行不是 hello）⇒ `Err`（那句话）。
-/// 〔THIN〕从前这里还判「换不换」（`hello_decision`〔散文墓碑〕调共享判定 `is_newer`，今天住后端 `control/deploy_plan.rs`）：判定进了本机常驻后端（[`ask_verdict`]）。
+/// 从前这里还判「换不换」（`hello_decision`〔散文墓碑〕调共享判定 `is_newer`，今天住后端 `control/deploy_plan.rs`）：判定进了本机常驻后端（[`ask_verdict`]）。
 pub(crate) fn hello_build(line: &str) -> Result<String, String> {
     let v: serde_json::Value = serde_json::from_str(line.trim()).unwrap_or_default();
     if v["kind"] != "hello" {
@@ -145,13 +145,13 @@ pub(crate) fn hello_build(line: &str) -> Result<String, String> {
     Ok(v["build_id"].as_str().unwrap_or_default().to_string())
 }
 
-/// 〔THIN〕本机常驻后端那条命令的名字（与 `src/backend/stream/inbound.rs::REGISTRY` 同名）。
+/// 本机常驻后端那条命令的名字（与 `src/backend/stream/inbound.rs::REGISTRY` 同名）。
 pub(crate) const VERDICT_CMD: &str = "resident-verdict";
 
 /// 问那一趟的上限：纯判定、不拨号，只是本机那条长连接上一问一答。
 const VERDICT_BUDGET: Duration = Duration::from_secs(10);
 
-/// 〔THIN〕本机常驻后端对 hello 那一问的答：`replace` = 换掉再接 · `older` = 那台比手上这一版旧（版本那句话按它挑）。
+/// 本机常驻后端对 hello 那一问的答：`replace` = 换掉再接 · `older` = 那台比手上这一版旧（版本那句话按它挑）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Verdict {
     pub(crate) replace: bool,
@@ -250,12 +250,12 @@ async fn read_line(
 pub struct Replayed {
     head: std::io::Cursor<Vec<u8>>,
     inner: DialStream,
-    /// 〔THIN〕接上那一刻本机常驻后端答的「那台比手上这一版旧」（版本提示那句话按它挑，monitor 不自己比）。
+    /// 接上那一刻本机常驻后端答的「那台比手上这一版旧」（版本提示那句话按它挑，monitor 不自己比）。
     older: bool,
 }
 
 impl Replayed {
-    /// 〔THIN〕接上那一刻本机常驻后端答的「那台比手上这一版旧」。
+    /// 接上那一刻本机常驻后端答的「那台比手上这一版旧」。
     pub(crate) fn remote_is_older(&self) -> bool {
         self.older
     }
@@ -311,7 +311,7 @@ async fn tunnel_when_bound(cfg: &RemoteConfig, port: u16) -> Result<DialStream, 
 /// authorized_keys 的 `no-port-forwarding` / `permitopen` 都回它；口上没人听回的是 `connect_failed`）。
 pub(crate) const FORWARDING_PROHIBITED: &str = "administratively_prohibited";
 
-/// [`tunnel_when_bound`] 的编排（`open` = 开一次隧道；判据用替身）。〔WF2 · WIN3 读数 E〕回拒码是
+/// [`tunnel_when_bound`] 的编排（`open` = 开一次隧道；判据用替身）。回拒码是
 /// [`FORWARDING_PROHIBITED`] ⇒ **当场停**、[`AttachErr::Unsupported`]（重试不会变：从前这里照样再开 29 次，每次一条新 SSH，
 /// 接着整条流按退避重连 —— 真机每分钟 33 条拨号）；别的失败（口上还没人）照旧隔一会儿再开。
 pub(crate) async fn retry_tunnel<T, F, Fut>(mut open: F, port: u16) -> Result<T, AttachErr>
@@ -352,7 +352,7 @@ pub(crate) async fn attach(
         let mut r = tokio::io::BufReader::new(link);
         let hello = read_line(&mut r, true).await?;
         let theirs = hello_build(&hello)?;
-        // 〔THIN〕换不换问本机常驻后端（判定只在后端），这里只照做。
+        // 换不换问本机常驻后端（判定只在后端），这里只照做。
         let verdict = ask_verdict(
             crate::ssh_source::EXPECTED_BACKEND_BUILD_ID,
             &theirs,
@@ -399,14 +399,14 @@ pub(crate) async fn attach(
         );
         return Ok(Replayed {
             head: std::io::Cursor::new(head),
-            // 接成了就是订阅：摘掉一次性总时限（`05 §3.3.2`，同流模式那一条）。
+            // 接成了就是订阅：摘掉一次性总时限（同流模式那一条）。
             inner: r.into_inner().lives_long(),
             older: verdict.older,
         });
     }
 }
 
-/// 〔STOP〕「停」的结局 —— 后端 `--resident-stop` 那一行原样的三个词（`control/resident.rs::Stopped`）。
+/// 「停」的结局 —— 后端 `--resident-stop` 那一行原样的三个词（`control/resident.rs::Stopped`）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum StopWord {
@@ -418,7 +418,7 @@ pub enum StopWord {
     NotRunning,
 }
 
-/// 〔STOP〕`backend_stop` 交给机器页的结局：`{stopped, pid}`（本机远端同形）。
+/// `backend_stop` 交给机器页的结局：`{stopped, pid}`（本机远端同形）。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct StopAnswer {
     pub stopped: StopWord,
@@ -445,7 +445,7 @@ pub(crate) fn read_stop(exec: &crate::ssh_source::RemoteExec) -> Result<StopAnsw
 
 /// **停那台的常驻后端**（机器页「停」）：发**一次** `--resident-stop`，等与强杀由那台自己做（同机监督者），这里只拿回结局。
 pub(crate) async fn stop(cfg: &RemoteConfig) -> Result<StopAnswer, String> {
-    // 〔E2 · V151〕落点固定、打头的 `--` 让那台的 `ccm` 当后端用。
+    // 落点固定、打头的 `--` 让那台的 `ccm` 当后端用。
     let cmd = format!(
         "{} {} --resident-stop",
         crate::ssh_source::BACKEND_CMD,

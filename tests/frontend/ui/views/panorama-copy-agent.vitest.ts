@@ -26,7 +26,7 @@ import type { FileBubble, PanoramaLayout } from "../../../../src/frontend/ui/pan
 import { LOCAL_ORIGIN } from "../../../../src/frontend/ui/ipc/origin";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
 
-// 〔COPY-R〕索引时间那一行按文案键取（`设计/91 §6`：判据按键、不钉原文）。
+// 索引时间那一行按文案键取（判据按键、不钉原文）。
 const STAMP_HEAD = `${copyText("agentClip.stamp.failed").split("：")[0]}：`;
 const STAMP_STALE = copyText("agentClip.stamp.line", {
   iso: "2026-09-21T14:13:20.000Z",

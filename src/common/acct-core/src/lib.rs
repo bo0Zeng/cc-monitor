@@ -43,7 +43,7 @@ pub const AUTH_KIND_API_KEY: &str = "api-key";
 ///
 /// ⚠ **本数组只是「今天认识哪些字面量」，不是「将来只会有这两个」。**
 /// 加第三档的步骤：这里加一个常量 + `auth_ready` 里给它一条规则 +
-/// TS 侧 `src/frontend/ui/accounts.ts` 的 `AuthKind` 联合加一支（〔C4d〕monitor 那份 Rust 枚举与生成物已退役；
+/// TS 侧 `src/frontend/ui/accounts.ts` 的 `AuthKind` 联合加一支（monitor 那份 Rust 枚举与生成物已退役；
 /// 后端成品与跨语言金样 `tests/__fixtures__/accounts.golden.json` 跟着变，TS 解码器不认就红）。
 pub const AUTH_KINDS: [&str; 2] = [AUTH_KIND_SUBSCRIPTION, AUTH_KIND_API_KEY];
 
@@ -64,7 +64,7 @@ pub fn auth_kind_from_manifest(raw: Option<&str>) -> &'static str {
     }
 }
 
-/// 〔第三波 S3 · 2026-09-24〕分类的**第二个输入**：这台机器的 apikey 表里有没有这个号的一行。
+/// 分类的**第二个输入**：这台机器的 apikey 表里有没有这个号的一行。
 ///
 /// 有 ⇒ [`AUTH_KIND_API_KEY`]；没有 ⇒ 原样回 `manifest_kind`（[`auth_kind_from_manifest`] 的结论，一格不动）。
 ///
@@ -78,7 +78,7 @@ pub fn auth_kind_from_manifest(raw: Option<&str>) -> &'static str {
 /// 「这个号是什么种类」只许有一个家（主会话裁 D1）。界面各处（徽章 / 按钮 / 下拉）照读 `authKind`，
 /// 一份新判定都不长；可选性也经 [`auth_ready`] 跟着对上。
 ///
-/// 〔C4c · 第四波 4B〕喂第二个输入的是**那台机器自己的后端**（`accounts-list` 出成品时读它自己那份 apikey 表，
+/// 喂第二个输入的是**那台机器自己的后端**（`accounts-list` 出成品时读它自己那份 apikey 表，
 /// 本机远端同一条路）。〔旧文要点：「只有本机那个生产者（monitor 的 `local_accounts.rs`）喂得出第二个输入，
 /// 远端清单今天不经这一格」—— RM1a 起每台机器一份表、那台后端读写，C4c 起清单由那台后端并表。〕
 pub fn auth_kind_with_apikey_table(
@@ -92,7 +92,7 @@ pub fn auth_kind_with_apikey_table(
     }
 }
 
-/// 〔C4c · 第四波 4B · 从 monitor `history.rs` 搬来〕「一个 configDir 对应 apikey 表里哪个 id」
+/// 〔从 monitor `history.rs` 搬来〕「一个 configDir 对应 apikey 表里哪个 id」
 /// —— 路径的最后一段（`Path::file_name`，逐字节照搬旧那一份）。**这是这条规则的唯一住址**：
 /// monitor（起会话那一侧 · `apikey_routing_for` · 写 key 那两处）与后端（`accounts-list` 出成品时并表）
 /// 调的是这一份。两边各写一个 basename 规则，漂开的那天症状是「账号页说走 apikey 端点改写、
@@ -104,11 +104,11 @@ pub fn apikey_account_id_of_dir(config_dir: &str) -> Option<String> {
         .map(str::to_string)
 }
 
-/// 〔C4c · 第四波 4B · 从 monitor `history.rs` 搬来〕给一批 configDir 与这台机器 apikey 表里的 id，
+/// 〔从 monitor `history.rs` 搬来〕给一批 configDir 与这台机器 apikey 表里的 id，
 /// 答「哪几个号在表里有行」。**这是这条规则的唯一住址**（同上一条的两个调用方）。
 ///
-/// 「有行」说的是 **(agent, 账号) 这一对**〔条 49 · `设计/90 §1.2`〕：凭据文件里的行只属于
-/// `table_agent` 那一家（〔US1〕今天只有后端一个调用方，传 `accounts::upstream_select::CREDENTIALS_FILE_AGENT`；
+/// 「有行」说的是 **(agent, 账号) 这一对**〔条 49〕：凭据文件里的行只属于
+/// `table_agent` 那一家（今天只有后端一个调用方，传 `accounts::upstream_select::CREDENTIALS_FILE_AGENT`；
 /// monitor 那一份常量随上游选择整块进后端删了）⇒ `agent` 不是那一家 ⇒ 空集。
 ///
 /// ⚠ 它答的是「表里有没有这一行」，**不是**「这个 key 能不能用」，也不是「这次拉起会不会真的注入」
@@ -155,7 +155,7 @@ pub fn auth_ready(auth_kind: &str, credentials_present: bool) -> bool {
 /// `expect_auth_kind` / `expect_auth_ready` 是**期望**（写成字面量，**不是**由
 /// [`auth_ready`] 算出来的 —— 算出来就成了循环自证）。两者的一致性由
 /// `tests::the_golden_matches_the_rule` 单独钉住：改了规则不改金样、或反过来，都红。
-/// 〔THIN〕测试夹具 ⇒ 在 `fixtures` feature 后面（本 crate 自己的测试照带；后端 `[dev-dependencies]` 开它）：契约 crate 里不带夹具进发布二进制。
+/// 测试夹具 ⇒ 在 `fixtures` feature 后面（本 crate 自己的测试照带；后端 `[dev-dependencies]` 开它）：契约 crate 里不带夹具进发布二进制。
 #[cfg(any(test, feature = "fixtures"))]
 pub struct AuthKindParityCase {
     /// 账号名，同时也是它在夹具根下的目录名。
@@ -177,7 +177,7 @@ pub struct AuthKindParityCase {
 /// 两个生产者住在**两个不同的 crate**（`src/backend` 是 bin-only、刻意不进
 /// workspace），它们唯一共享的东西就是本 crate。夹具放文件里要各写一份读法与各自的路径，
 /// 那正是本 crate 存在的理由所反对的（「双写点必须有守卫」不如「让双写不可表示」）。
-/// 〔THIN〕从前「代价如实写：这张表会编进两个二进制」（RE 现打：Windows 调试版 `monitor.exe` · `cc-monitor-filewin.exe` 里各一处）；
+/// 从前「代价如实写：这张表会编进两个二进制」（RE 现打：Windows 调试版 `monitor.exe` · `cc-monitor-filewin.exe` 里各一处）；
 /// 今天它在 `fixtures` feature 后面，只有测试构建开它 ⇒ 发布二进制里没有它。
 ///
 /// # 六格各自在守什么
@@ -309,7 +309,7 @@ pub fn is_deceptive_char(c: char) -> bool {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// 〔DUP1 · `设计/90 §3` 判据 2 · `01 §5` D1 · `INVARIANTS §47` ②〕**账号配置目录的全表** —— 全仓唯一一份。
+// 〔`INVARIANTS §47` ②〕**账号配置目录的全表** —— 全仓唯一一份。
 //
 // 配置目录是本仓自管的路径（manifest 里来的），拼进命令之前走**全表**：形式（绝对 · 无 `..` 段）＋ 拒绝集
 // （控制符 · 元字符 · 视觉欺骗字符），不是自由文本那一层的「只拒 NUL / CR / LF」。

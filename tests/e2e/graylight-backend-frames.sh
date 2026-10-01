@@ -8,7 +8,7 @@
 #   SessionState(sid, reconnectable) —— **关键**:claude 死但 tmux 还挂着 @ccm_sid → 后端会话账本裁「可重连」(灰)
 #   (tmux kill-session)
 #   SessionState(sid, ended)        —— 会话名消失 = 确证关了 → 后端裁「已结束」(归档边沿)
-# 〔MIG-1 续 · V41〕原来看的是 `tmux_sessions` 快照帧（monitor 拿它自己裁）；裁决进了后端的会话账本
+# 原来看的是 `tmux_sessions` 快照帧（monitor 拿它自己裁）；裁决进了后端的会话账本
 # （`observe/session_ledger.rs`），快照帧删了 ⇒ 本套件改看成品帧 `session_state`；「标签挂着谁」直接问 tmux（经 shim）。
 # 前端 emitter→灰灯半场由单测(tabs.vitest.ts)+ 全链 GUI 跑覆盖;本脚本钉住后端边沿。
 # 红线:backend 零改动(只跑它) / 不碰真 ~/.claude(CLAUDE_CONFIG_DIR 隔离) / 不改 TMUX_LS_FMT。
@@ -24,7 +24,7 @@ set -euo pipefail
 # 而正确的结论是「**别靠环境变量做隔离**」。08-11 的事故正是漏了那两件里的一件。
 # 保留这几行是为了让下一个人知道**为什么不能改回去**。
 #
-# ★★★ **C7i 红线改造〔08-12〕：隔离改成 `-L` shim，不再靠环境变量。**
+# ★★★ **C7i 红线改造：隔离改成 `-L` shim，不再靠环境变量。**
 #
 # 上面那段（已删）逐字写着「两件事都必须做，缺一就不隔离」——`unset TMUX` + `TMUX_TMPDIR`。
 # **那个形态本身就是病灶**：2026-08-11 实测事故 —— 一条探针写了 `TMUX_TMPDIR=… tmux kill-server`
@@ -191,7 +191,7 @@ else
     || bad "S0：原地换 sid 后 12s 内未见新 sid 的 session_added"
   # 对照组：**真死**那条路不能被误标成 superseded（下面第 2 节杀进程时验，见那里）。
   #
-  # ★★★ 〔09-09〕**这里原来立着一条今天两头都不成立的假设，留碑，别改回去。**
+  # ★★★ **这里原来立着一条今天两头都不成立的假设，留碑，别改回去。**
   #
   # 原文逐字是：「真机上 `shared/ccm` 有个 1 秒 poller 会把标签改成新 sid
   #（`shared/ccm:612` 注释自陈就是为了「随 /branch 漂移」），**本 fixture 没有那个 poller**」

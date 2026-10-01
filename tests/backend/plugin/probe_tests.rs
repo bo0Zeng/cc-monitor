@@ -171,8 +171,8 @@ fn the_message_does_not_blame_the_call() {
         .err()
         .expect("该拒的没拒");
     let msg = err.message();
-    // 〔CP2c〕句子照 CP1 裁词去掉了「这不是调用失败」那半句反驳（`91 §2.2`）；要的仍是「归因到能力」。
-    // 〔FIX2 · 99 §2.1 ㉛②〕按拒绝种类断言、不钉原文：拒的是「缺能力」那一种、缺的是那一个。
+    // 句子照 CP1 裁词去掉了「这不是调用失败」那半句反驳；要的仍是「归因到能力」。
+    // 按拒绝种类断言、不钉原文：拒的是「缺能力」那一种、缺的是那一个。
     assert!(
         matches!(&err, Rejected::MissingCapability { token, .. } if *token == required[0]),
         "没归因到能力，调用方会去查错方向：{msg}"
@@ -245,7 +245,7 @@ fn whitespace_and_trailing_commas_do_not_become_tokens() {
     assert_eq!(a.capabilities, vec!["a", "b", "c"]);
     assert!(a.can("b"));
     assert!(!a.can(""));
-    // 〔PANO〕长活档：同一套逗号规则；没有这一行 = 全是短活档。
+    // 长活档：同一套逗号规则；没有这一行 = 全是短活档。
     let a = parse(&format!("{text}long= c ,\n"), &plugin_name())
         .ok()
         .expect("该解析得出来");
@@ -256,7 +256,7 @@ fn whitespace_and_trailing_commas_do_not_become_tokens() {
         .is_long("c"));
 }
 
-/// 设计/97 §8 · 99 §2.1 ㉝①：给了期望的形状代号才判代；对不上 / 缺这一行 ⇒ `StaleShape`（点名是哪个插件），对上 ⇒ 照常查能力。
+/// 给了期望的形状代号才判代；对不上 / 缺这一行 ⇒ `StaleShape`（点名是哪个插件），对上 ⇒ 照常查能力。
 #[test]
 fn a_wanted_shape_is_compared_verbatim_and_its_absence_means_old() {
     let base = format!("name={}\nversion=9\ncapabilities=a\n", plugin_name());

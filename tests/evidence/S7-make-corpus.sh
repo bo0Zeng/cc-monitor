@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# 秤 7（`调研/设计/17 §6` 表第 7 行）的**夹具生成器** —— 一条命令重建，产物不进 git。
+# 秤 7（表第 7 行）的**夹具生成器** —— 一条命令重建，产物不进 git。
 #
-# 🔴 语料纪律（`设计/17 §6`「数据源纪律」2026-09-18 改判）：
+# 🔴 语料纪律（「数据源纪律」2026-09-18 改判）：
 #     **结构照真的，内容一律合成。真机会话的正文一个字都不许进仓。**
 # 本脚本**只读仓内那份已经合成过的语料** `tests/__fixtures__/scale2-height-records.jsonl`
 # （69 条 / 451 573 B，形状指纹见 `tests/evidence/U-scale2-corpus-shape.json`），
-# 按**结构**把它放大到 `设计/17 §1` 那一档的单会话字节（max 15.1 MB）。
+# 按**结构**把它放大到那一档的单会话字节（max 15.1 MB）。
 # **它不读 `~/.claude/projects`，一次都不读。** 放大 = 循环拼接 + uuid 尾号按轮次重编
 # （等宽替换 ⇒ 每行字节数一字不变 ⇒ 行长分布逐字保持）。
 #
@@ -17,14 +17,14 @@
 #
 # 产出（daemon 的路径围栏 `fence_under_projects` 要求落在 `<agent_home>/projects/` 下，
 # 故造一个假 agent home；bench 靠 `CLAUDE_CONFIG_DIR` 指过去）：
-#   <OUT_DIR>/home/projects/s7-bench/s7-p50.jsonl       ← 990 KiB（`设计/17 §1` 单会话字节**中位**）
+#   <OUT_DIR>/home/projects/s7-bench/s7-p50.jsonl       ← 990 KiB（单会话字节**中位**）
 #   <OUT_DIR>/home/projects/s7-bench/s7-p90.jsonl       ← 4318 KiB（同表 **p90**）
 #   <OUT_DIR>/home/projects/s7-bench/s7-main.jsonl      ← 15.1 MiB（同表 **max**），无巨记录
 #   <OUT_DIR>/home/projects/s7-bench/s7-longtail.jsonl  ← 同 max + 每 1000 条插一条 631 672 B 巨记录
-#                                                         （`设计/17 §1.1` 推论二：按 617 KB 估，不按 1.6 KB）
+#                                                         （推论二：按 617 KB 估，不按 1.6 KB）
 #   <OUT_DIR>/home/projects/s7-bench/s7-empty.jsonl     ← 0 字节，喂给 bench 的反空真自检
 #
-# 三档 p50/p90/max 同形同源 ⇒ 「耗时 ∝ 文件字节」这条斜率量得出来（`设计/17 §3.1` 的
+# 三档 p50/p90/max 同形同源 ⇒ 「耗时 ∝ 文件字节」这条斜率量得出来（
 # 「O(文件) 不可避免」要的就是这个斜率）。
 #
 # ⚠ `LC_ALL=C`：awk 的 `length()` 必须按**字节**算（语料含原生 CJK，UTF-8 locale 下
@@ -57,7 +57,7 @@ p90="$sess/s7-p90.jsonl"
 main="$sess/s7-main.jsonl"
 longtail="$sess/s7-longtail.jsonl"
 empty="$sess/s7-empty.jsonl"
-# `设计/17 §1` 单会话字节：中位 990 KB · p90 4318 KB · max 15.1 MB（按 KiB/MiB 取）
+# 单会话字节：中位 990 KB · p90 4318 KB · max 15.1 MB（按 KiB/MiB 取）
 target_p50=$((990 * 1024))
 target_p90=$((4318 * 1024))
 
@@ -72,7 +72,7 @@ gen() { # gen <out> <target-bytes> <giant-every-n-records:0=off>
       # 的 latin/digits/cjk（88972 / 9650 / 60919）。**合成，不是任何真正文。**
       unit = "abcdefghijklmnopqrstuvwxyz 0123456789 一二三四五六七八九十 "
       pad = unit
-      GIANT_LINE = 631672   # = `设计/17 §1` 的「单条记录字节 最大 631672 B ＝ 617 KB」
+      GIANT_LINE = 631672   # = 「单条记录字节 最大 631672 B ＝ 617 KB」
       while (length(pad) < GIANT_LINE) pad = pad pad
 
       rep = 0; bytes = 0; emitted = 0

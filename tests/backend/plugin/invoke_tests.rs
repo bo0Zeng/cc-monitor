@@ -99,7 +99,7 @@ fn invalid_utf8_output_still_yields_a_line() {
     assert_eq!(first_line(&[0xff, 0xfe, b'\n', b'x']), "\u{fffd}\u{fffd}");
 }
 
-// ── 〔RM1f〕可打断的那一形：`run_abortable` ─────────────────────────────────────
+// ── 可打断的那一形：`run_abortable` ─────────────────────────────────────
 
 /// 私有临时目录（进程号 ＋ 标签 ＋ 序号）。
 #[cfg(unix)]
@@ -139,7 +139,7 @@ fn alive(pid: u32) -> bool {
     }
 }
 
-/// ★〔RM1f · C1〕**被丢 ⇒ 整组都没了**，不只是直接子进程。
+/// ★**被丢 ⇒ 整组都没了**，不只是直接子进程。
 ///
 /// 替身插件自己再起一个长睡的孙进程、把两个 pid 写进文件（**pid 从它写的文件里读** ——
 /// 不是我们记下的那一个，异源），然后等着。宿主那一侧有 `timeout(1)` 前缀时，
@@ -219,7 +219,7 @@ fn dropping_the_wait_kills_the_whole_group_not_just_the_direct_child() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// ★〔RM1f · C2〕**没被丢 ⇒ 与同步那一形同形同果**（码 · 两条流逐字节相等）。
+/// ★**没被丢 ⇒ 与同步那一形同形同果**（码 · 两条流逐字节相等）。
 #[cfg(unix)]
 #[test]
 fn an_undisturbed_abortable_run_ends_exactly_like_the_blocking_one() {
@@ -260,7 +260,7 @@ fn an_undisturbed_abortable_run_ends_exactly_like_the_blocking_one() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// ★〔RM1f〕**每条流最多留 `keep ＋ 1` 字节，其余照读照丢**：多写的那个子进程照样正常退出
+/// ★**每条流最多留 `keep ＋ 1` 字节，其余照读照丢**：多写的那个子进程照样正常退出
 /// （不读的话它写满管道就卡住），调用方看 `len() > keep` 就知道超了。
 #[cfg(unix)]
 #[test]
@@ -295,9 +295,9 @@ fn an_oversized_stream_is_kept_to_one_past_the_cap_and_the_rest_is_drained() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// 要求住址：`97 §8`「要上游给的」④「小程序写成进度行 → 插件口转订阅流」。
+/// 要求：「要上游给的」④「小程序写成进度行 → 插件口转订阅流」。
 ///
-/// ★〔P7〕给了回调 ⇒ stderr 上**整行**的 `progress=` 行交回调（前缀后面那段、去行尾），不进诊断，别的照旧留；
+/// ★给了回调 ⇒ stderr 上**整行**的 `progress=` 行交回调（前缀后面那段、去行尾），不进诊断，别的照旧留；
 /// 没写完的半行（没有换行）不算进度。没给回调 ⇒ 同一串字节原样全留（进度行就是普通 stderr）。
 #[cfg(unix)]
 #[test]

@@ -1,5 +1,5 @@
 /**
- * V7-3〔audit-0805 · 2026-08-09 `/full-audit`〕：**eslint 的基线数与它的作用面必须有人数着**。
+ * V7-3〔2026-08-09 `/full-audit`〕：**eslint 的基线数与它的作用面必须有人数着**。
  *
  * ## 这条为什么存在（病史，别当背景故事读）
  *
@@ -14,7 +14,7 @@
  * shellcheck 的文件数被 `shell_lint_registry` 钉成**等号**、e2e 套数被 `e2e_gate_registry`
  * 四份副本对拍、覆盖率有地板与递减棘轮 —— 唯独 eslint/stylelint 靠散文。
  * 而 `ci.yml` 那步当时是 `npm run lint || true`（结构上不会红）⇒ CI 也接不住。
- * 〔P3 · 主会话 09-29 裁〕基线清到 0 之后那一步去掉 `|| true`、改成会拦；③ 钉它（基线不是 0 时那一步不许拦，是 0 时必须拦）。
+ * 基线清到 0 之后那一步去掉 `|| true`、改成会拦；③ 钉它（基线不是 0 时那一步不许拦，是 0 时必须拦）。
  *
  * ## 两条腿，各堵一半（**刻意不合成一条**）
  *
@@ -59,7 +59,7 @@ import { REPO_ROOT } from "../../test-support/repo-root.ts";
  * ⚠ 改这个数之前先问：是修好了一条（往下调，欢迎），还是**又有一批没被 globals 认领的文件
  * 溜进了作用面**（那是 V7-3 的复发，去看第二条判据说了什么）。
  */
-const ESLINT_ERROR_BASELINE = 0; // 〔P3 · 发版后〕1 → 0：`render.ts` 那处 `no-control-regex`（代码 stub 的 `\u0000` 哨兵）换成非字符 `\uFDD0` // 〔STC · 4D〕〔合并 DUP1〕基数 3 ＋ DUP1 −1 ＋ STC −1 ⇒ 1：`tests/frontend/ui/panorama/session-files.test.ts` 随被测对象（写类工具口径搬进后端）整份删了，它那一处未用变量跟着没了；剩 `render.ts` 一处（eslint 现打核过） // 〔DUP1 · 4D〕3 → 2：`shell-quote.ts` 那处 `no-control-regex` 随 `isValidConfigDir` 删了（`设计/90 §3` 判据 2）；剩 `render.ts` 一处与 `session-files.test.ts` 一处 // 〔AL1d · 第四波 4B · 09-24〕7 → 3：`src/frontend/ui/settings/machine-aliases.ts` 那四处 `no-empty`（原「终端集成」记住上次选择的 localStorage 写，四个空 catch）随那段代码删了；剩下三处是 `render.ts` / `shell-quote.ts` 的 `no-control-regex` 与 `tests/frontend/ui/panorama/session-files.test.ts` 的一个未用变量
+const ESLINT_ERROR_BASELINE = 0; // 〔发版后〕1 → 0：`render.ts` 那处 `no-control-regex`（代码 stub 的 `\u0000` 哨兵）换成非字符 `\uFDD0` // 基数 3 ＋ DUP1 −1 ＋ STC −1 ⇒ 1：`tests/frontend/ui/panorama/session-files.test.ts` 随被测对象（写类工具口径搬进后端）整份删了，它那一处未用变量跟着没了；剩 `render.ts` 一处（eslint 现打核过） // 3 → 2：`shell-quote.ts` 那处 `no-control-regex` 随 `isValidConfigDir` 删了；剩 `render.ts` 一处与 `session-files.test.ts` 一处 // 7 → 3：`src/frontend/ui/settings/machine-aliases.ts` 那四处 `no-empty`（原「终端集成」记住上次选择的 localStorage 写，四个空 catch）随那段代码删了；剩下三处是 `render.ts` / `shell-quote.ts` 的 `no-control-regex` 与 `tests/frontend/ui/panorama/session-files.test.ts` 的一个未用变量
 
 /** `eslint.config.js` 与 `ci.yml` 里那两句散文声称的数 —— 它们必须与上面这个常量同一个值。 */
 const PROSE_CLAIM = /全仓(?:实测仍是)?\s*\*{0,2}(\d+)\s*(?:个|项)/g;

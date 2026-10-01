@@ -1,4 +1,4 @@
-//! 〔`设计/10 §2.2b ⑥` · SE1〕**「你说过的话」清单**：会话里每一条**主线用户输入**，按文件顺序。
+//! **「你说过的话」清单**：会话里每一条**主线用户输入**，按文件顺序。
 //!
 //! 大纲（原名「我说过的 N 句」）的数据源。前端从此不再自己攒这份清单 —— 它问后端要。
 //!
@@ -6,12 +6,12 @@
 //!
 //! | 宿主 | 今天的数据源 | 病 |
 //! |---|---|---|
-//! | 实时 tab | **旁路账本** `tabs.ts` 的 `Tab.userInputs`：`onLine` 在双重去重之后调 `trackUserInput`，一条一条喂 `user-input-index.ts::toUserInputEntry`（它再调 `collectUserInputs`）攒出来的数组，每来一句整表交给 `UserInputPanel.setEntries` 就地对账 | ① **到达序不是对话序**：重放是「尾块先到、老块后到」⇒ 编号错（`设计/10 §2.2` 第 2 条）；② monitor 起得晚 / 只重放尾部时**清单不全**；③ 每个 tab 各攒一份 |
+//! | 实时 tab | **旁路账本** `tabs.ts` 的 `Tab.userInputs`：`onLine` 在双重去重之后调 `trackUserInput`，一条一条喂 `user-input-index.ts::toUserInputEntry`（它再调 `collectUserInputs`）攒出来的数组，每来一句整表交给 `UserInputPanel.setEntries` 就地对账 | ① **到达序不是对话序**：重放是「尾块先到、老块后到」⇒ 编号错；② monitor 起得晚 / 只重放尾部时**清单不全**；③ 每个 tab 各攒一份 |
 //! | 历史查看器 | `session-viewer.ts::rebuildUserInputs`：`collectUserInputs(this.payloads…)`，payloads 是收集阶段读进来的**全量** | 判定口径与实时 tab 共用一个 TS 住址，没毛病；但它是前端的判定 —— 后端一旦出这份清单，留着它就是「各写一遍判定」 |
 //!
 //! ⇒ 判定（四条口径）从 TS 搬到这里，**全仓只剩这一个住址**；两个宿主都经 monitor 的
 //!   `list_user_inputs`（走 `subagent::Backend` 的本机/远端分流）来要，TS 那份删掉。
-//!   〔C4b · 第四波 4B〕monitor 那条命令也退役了：界面经通道直接说帧命令 `history-user-inputs`，
+//! monitor 那条命令也退役了：界面经通道直接说帧命令 `history-user-inputs`，
 //!   本文件的扫描直接出成品（`read_face.rs`），本机与远端同一条路。
 //!
 //! # 口径（四条，逐字从被删掉的 `user-input-index.ts::collectUserInputs` 搬过来）
@@ -25,7 +25,7 @@
 //!
 //! 另：**没有 uuid 的不要**（跳不过去，列出来就是一条点了没反应的项）。
 //!
-//! 〔RENDER2 · J10〕第 4 条的「纯文本」先过注入噪声那一条规则（`agents/claudecode/text.rs::user_text`，渲染同一份；经注册表 `agents::clean_user_text` 够）再判空 ——
+//! 第 4 条的「纯文本」先过注入噪声那一条规则（`agents/claudecode/text.rs::user_text`，渲染同一份；经注册表 `agents::clean_user_text` 够）再判空 ——
 //! 原先「渲染还会再剥一层、清单多出没有卡的项」那条不等价在后端这一侧销了；前端渲染那一份何时改读后端成品见 J10 登记。
 //!
 //! # 出什么（逐行 JSON，形状登记在 `IPC-PROTOCOL.md §10.4`）
@@ -63,9 +63,9 @@ pub(crate) fn user_input_row(line: &[u8]) -> Option<UserInputRow> {
 
 /// 一条**已解析**的记录 → 是用户输入就给一条 [`UserInputRow`]。**四条口径的唯一住址**（见头注）。
 ///
-/// 〔SE2〕从 [`user_input_row`] 里拆出来：骨架索引（`history_query::index_row`）已经解析过这一行，
+/// 从 [`user_input_row`] 里拆出来：骨架索引（`history_query::index_row`）已经解析过这一行，
 /// 顺带问一句「是不是用户输入」就不用再解析一遍 —— 首屏的「索引」与「大纲清单」由此合成一趟读
-/// （`设计/10 §9.5` 那条欠账）。**判定没有第二份**：两个出口都调这里。
+/// （那条欠账）。**判定没有第二份**：两个出口都调这里。
 pub(crate) fn user_input_of(v: &Value) -> Option<UserInputRow> {
     if v.get("type").and_then(Value::as_str) != Some("user") {
         return None;
@@ -81,7 +81,7 @@ pub(crate) fn user_input_of(v: &Value) -> Option<UserInputRow> {
         .and_then(Value::as_str)
         .filter(|u| !u.is_empty())?;
     let body = plain_text(v.get("message").and_then(|m| m.get("content")));
-    // 〔RENDER2 · J10〕与渲染同一条规则剥注入噪声：剥空的（ESC 中断标记 · 纯包装）不列。
+    // 与渲染同一条规则剥注入噪声：剥空的（ESC 中断标记 · 纯包装）不列。
     let body = crate::agents::clean_user_text(&body);
     if body.is_empty() {
         return None;
@@ -132,7 +132,7 @@ fn collapse_ws(s: &str) -> String {
     out
 }
 
-/// 摘要：**先截断再折叠**（`设计/17 §2.1`：44 万字符的一条整段折叠要 11.56 ms，只为取 80 个字）。
+/// 摘要：**先截断再折叠**（44 万字符的一条整段折叠要 11.56 ms，只为取 80 个字）。
 ///
 /// 边界：前缀里几乎全是空白（640 个空格 + 正文）时截过再折叠会少字 ⇒ 折叠后不够长就退回整条
 /// ⇒ 摘要语义不因「先截断」而变。这一支只在病态输入上走。
@@ -173,7 +173,7 @@ pub(crate) fn write_user_inputs<R: std::io::BufRead, W: std::io::Write>(
     Ok(count)
 }
 
-/// 〔C4b · 第四波 4B〕[`write_user_inputs`] 的中段：逐条交给 `on_row`，回 `(count, end)`（`end` = 最后一个
+/// [`write_user_inputs`] 的中段：逐条交给 `on_row`，回 `(count, end)`（`end` = 最后一个
 /// 完整行的末字节）。CLI 那一臂（写头尾三段）与帧面那一臂（`read_face.rs` 的 `history-user-inputs`，
 /// 装成成品 `{from, end, entries}`）跑的是**同一个**扫描 —— 「什么算一条用户输入」仍只住 [`user_input_of`]。
 pub(crate) fn scan_user_inputs<R: std::io::BufRead>(

@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 
 /// 账本里「起一条会话」的能力。
 ///
-/// `session.launch` 是**从界面起**的那几条路。〔C4e · 第四波 4C〕原来还有第二项 `launch.send-into`
+/// `session.launch` 是**从界面起**的那几条路。原来还有第二项 `launch.send-into`
 /// （「往**已存在**的 tmux 送载荷」那条，它同样会让一个 agent 进程出生 ⇒ 同属本表的人群）：
 /// 它唯一的命令 `backend_send_into`〔散文墓碑〕迁到界面（`src/frontend/ui/tmux-control.ts::sendInto` 经通道直接说后端的 `launch`），
 /// 那项能力随之从账本里没了 ⇒ `L3` 从「账本那半」挪到「锚点那半」（人群一个没少，见 `REGISTERED` 那一行）。
@@ -17,7 +17,7 @@ const PLANTED_JUDGE: &str = "the_identity_token_is_planted_and_handed_back";
 
 /// 一处**起会话方**。
 ///
-/// 「起会话方」的口径（`K-P5 §3 二` 定的，本表原样沿用）：生产代码里**最后一处能决定
+/// 「起会话方」的口径（定的，本表原样沿用）：生产代码里**最后一处能决定
 /// 那次 agent 进程启动环境**的地方 —— 它产出的那一串 / 那一组 argv 直接导致一个 agent
 /// 进程出生，且在它之后没有别的生产代码还有机会往这次启动的环境里加东西。
 struct Launcher {
@@ -33,23 +33,23 @@ struct Launcher {
     why: &'static str,
 }
 
-/// **今天的 5 个起会话方**（`K-P5 §3 二` 现打，PM `§6 裁一` 采纳）。
+/// **今天的 5 个起会话方**（现打，PM `§6 裁一` 采纳）。
 ///
 /// 🔴 多一处 ⇒ 红；少一处 ⇒ 也红。新增一个起会话方**必须**来这里加一行，
 /// 并回答「它把身份塞进环境了吗；没有的话为什么、归谁」。
 const REGISTERED: &[Launcher] = &[
     Launcher {
-        // 〔MIG-2 · `99 §2.1 ⑬`〕住址换了：计划与渲染搬进本机后端（帧命令 `launch-local`，`control/launch_render/local.rs::plan`），
+        // 住址换了：计划与渲染搬进本机后端（帧命令 `launch-local`，`control/launch_render/local.rs::plan`），
         //   monitor 只剩开终端窗口那一条 Tauri 命令（`open_local_terminal`）⇒ 账本那半是它，锚点那半指后端那一处。
         label: "L1 · 本机 UI 起（本机后端 `launch-local` → monitor `open_local_terminal`）",
         ledger_cmds: &["open_local_terminal"],
         anchors: &[("src/backend/control/launch_render/local.rs", "let prefix = identity_prefix(&token, facts.windows);", 1)],
         plants: true,
-        why: "★ **本拍落的就是这一处**：〔MIG-2〕本机后端 `local.rs::plan` 在拼装那一行把 \
+        why: "★ **本拍落的就是这一处**：本机后端 `local.rs::plan` 在拼装那一行把 \
                   `launch_identity` 算出来的那句前缀拼进真正交出去的那一串，token 由 \
                   `payload::route_key_for_session` 铸（**共用那一份，不是第二份**）。\
                   行为判据见 `PLANTED_JUDGE`。\
-                  ★〔`K-P5h` `KP5HD1`〕**同一处今天还多买到一格**：那个铸出来的 token \
+                  ★**同一处今天还多买到一格**：那个铸出来的 token \
                   不再被扔掉，而是经 `launch_local` → `new_local_session` 交回给调用方 \
                   （判据 `the_minted_identity_token_is_handed_back_to_the_caller`）—— \
                   `K-P5g` 现打的卡点「写侧把 token 铸完就扔」在这一处收掉了。\
@@ -58,13 +58,13 @@ const REGISTERED: &[Launcher] = &[
                   外侧这句 `export` 会在 tmux 边界被吃掉（tmux server 的 `update-environment` \
                   默认列表不含它）—— 与 `K-H2b` 给 `ANTHROPIC_BASE_URL` 踩过的**同一个坑**，\
                   那一次的修法是在容器载荷**内侧**补一句转发。\
-                  ★〔`K-R48` 第二拍 09-11 订正〕**那个洞今天补上了**：容器路三条转发\
+                  ★**那个洞今天补上了**：容器路三条转发\
                   （`CLAUDE_CONFIG_DIR` / `ANTHROPIC_BASE_URL` / `CCM_LAUNCH_ID`）都在，\
                   由 `control::ccm::plan::tests::the_container_path_forwards_every_inherited_variable_inward` \
                   逐条钉。⚠ 补的是**转发**那一格，不是本行的 `plants` —— 塞不塞进环境与转不转发是两件事。",
     },
     Launcher {
-        // 〔FIX4 · `99 §2.1 ⑬`〕住址换了：ssh 外壳进本机后端（`terminal-ssh`），monitor 只剩开窗那一条（`open_terminal_window`）。
+        // 住址换了：ssh 外壳进本机后端（`terminal-ssh`），monitor 只剩开窗那一条（`open_terminal_window`）。
         label: "L2 · 开窗（`launch.rs::open_terminal_window`，远端与本机开窗共用）",
         // 账本那半是 `terminal_dial`（`session.launch` 远端那一侧：交开终端要的机器事实）；开窗本身归账本另一格能力
         //   `terminal.window`（`Both`），不在「起会话方」人群里 ⇒ 用人点的锚点钉住那一处。
@@ -73,13 +73,13 @@ const REGISTERED: &[Launcher] = &[
         plants: false,
         why: "今天没落，两条理由。① **它的漏斗在前端**（`remote-launch-run.ts` 的 \
                   `invokeLaunchOrCopyFallback`），而 `K-P5b` 的写区里一个 `.ts` 都没有。\
-                  ② 更要紧的一条：`K-P5 §3 四` 现打过，这条路上**今天已经有一个起会话时\
+                  ② 更要紧的一条：现打过，这条路上**今天已经有一个起会话时\
                   打身份的落点**（`src/session-backend.ts` 的 `setSid`，写的是 tmux option）\
                   ⇒ 它要做的是**换载体**，不是像 `L1` 那样**加一条线**，形状不同，不许照抄。\
                   **归 PM 下一拍（写区要含前端）。**",
     },
     Launcher {
-        // 〔C4e · 第四波 4C〕住址换了：monitor 的 Tauri 命令 `backend_send_into`〔散文墓碑〕→ 界面 `src/frontend/ui/tmux-control.ts::sendInto`
+        // 住址换了：monitor 的 Tauri 命令 `backend_send_into`〔散文墓碑〕→ 界面 `src/frontend/ui/tmux-control.ts::sendInto`
         //   （经通道直接说后端的 `launch{mode:"send-into"}`）。它不再是 Tauri 命令 ⇒ 进不了账本，改成人点的锚点。
         label: "L3 · 往已存在的 tmux 送载荷（`src/frontend/ui/tmux-control.ts::sendInto`）",
         ledger_cmds: &[],
@@ -87,14 +87,14 @@ const REGISTERED: &[Launcher] = &[
         plants: false,
         why: "今天没落，理由是**它不是「起一条新会话」**：send-into 把载荷送进一条\
                   **已经存在**的 tmux 会话，那条会话的身份在它**建的时候**就该打过了 —— \
-                  `K-P5 §3 三` 现打：这条路的 `ccmSid` 逐字是 `undefined`，\
+现打：这条路的 `ccmSid` 逐字是 `undefined`，\
                   注释写着「复用会话已在建时打过标」。在这里再塞一次会造出**第二个身份来源**，\
                   而那正是本族要消灭的东西。**归 `L2` 那一拍一起想**（同一条前端漏斗）。",
     },
     Launcher {
         label: "T1 · POSIX 终端里的那一下（`control/ccm` 的 `exec`）",
         ledger_cmds: &[],
-        // 🔴 〔`K-R48` 第二拍 09-11〕**住址换了：`shared/ccm` → `control/ccm/mod.rs`。**
+        // 🔴 **住址换了：`shared/ccm` → `control/ccm/mod.rs`。**
         //    〔用@09-11 `K33`〕那个 bash 脚本删了，`exec` 那一下搬进了后端二进制的
         //    一次性模式（`exec_or_spawn`：POSIX 上 `CommandExt::exec`，非 unix 退成
         //    「起它 + 等它 + 透传退出码」）。**这一处今天仍然没落身份**，理由见 `why`。
@@ -116,15 +116,15 @@ const REGISTERED: &[Launcher] = &[
     Launcher {
         label: "T2 · Windows 终端里的那一下（`platform/shell/dialect.rs` 写的 `function cc`，别名块经 `assets/aliases/block.rs` 装）",
         ledger_cmds: &[],
-        // 🔴 〔`KR135D2` 09-15〕**锚点跟着翻正了**：那一行从 `& claude $RemainingArgs`
+        // 🔴 **锚点跟着翻正了**：那一行从 `& claude $RemainingArgs`
         //    改成走 `ccm`（`K33`「所有命令只许有一处」＋ `K28`）。`K-R132` 上一轮现打
         //    验过「动那一行 ⇒ 本条与 profile_installer 那条同时红」——**两处一起改**
         //    正是它当时要求的，不是绕过它。
         //    ⚠ 锚点钉的是**源码里那个 format 串**（`{word}` 现算自 `CCM_ENTRY_WORD`），
         //    不是渲染后的文本 —— 抄一份 `ccm` 进来就是那个词的第二个住址。
-        // 〔MIG-3a · 主会话 09-27 裁〕别名块进了那台后端：生成 `function cc` 的那一处住 `src/backend/assets/aliases/block.rs`
+        // 别名块进了那台后端：生成 `function cc` 的那一处住 `src/backend/assets/aliases/block.rs`
         //   （`{word}` 现算自后端 `control::ccm::SUBCOMMAND_WORD`）。
-        // 〔OSA · V156〕PowerShell 那个 `function cc` 的写法搬进后端 OS 适配层（`platform/shell/dialect.rs::ps_wrapper_function`），
+        // PowerShell 那个 `function cc` 的写法搬进后端 OS 适配层（`platform/shell/dialect.rs::ps_wrapper_function`），
         //   `{word}` 仍由通用层交进来（`control::ccm::SUBCOMMAND_WORD`）。
         anchors: &[(
             "src/backend/platform/shell/dialect.rs",
@@ -133,7 +133,7 @@ const REGISTERED: &[Launcher] = &[
         )],
         plants: false,
         why: "今天没落，理由**不是技术上做不到，是件计划逐字禁止在本件单独裁它**：\
-                  `K-P5b §4` 写着 `T2` 与 `K-P4`（调出终端两平台一套语义）在同一片面上，\
+写着 `T2` 与 `K-P4`（调出终端两平台一套语义）在同一片面上，\
                   而 `K-P4` 下一拍也是摸底 ⇒ **两件一起想，别在这里单独裁一半**。\
                   ⚠ 现打的一格值得记：这条路**已经在铸 nonce 了**\
                   （`cc.ps1.tpl` 的 `$marker = \"ccm-bind-<PID>-<guid8>\"`），\
@@ -156,13 +156,13 @@ fn repo_root() -> PathBuf {
 /// 裸数字面串会把它们一起数进来）。
 ///
 /// ⚠ 它认**单行三元组**与 rustfmt 拆开的那一形（`(` 下紧跟两行字面量）；别的跨行写法抠不到。所以下面的自检钉的是「抠到的总行数」，
-/// 而那个数是**下界**，不是账本大小（`K-P5 §3 六` 记过同一格：116 / 141 / 145 是三把
+/// 而那个数是**下界**，不是账本大小（记过同一格：116 / 141 / 145 是三把
 /// 作用域不同的尺子，别混读）。
 fn ledger_rows(raw: &str) -> Vec<(String, String)> {
     let mut out = Vec::new();
     let lines: Vec<&str> = raw.lines().map(str::trim).collect();
     for (k, t) in lines.iter().enumerate() {
-        // 〔MIG-2 · 合并 fmt 之后〕rustfmt 会把放不下一行的三元组拆成 `(` / `"命令",` / `"能力",` / … / `),`
+        // 〔合并 fmt 之后〕rustfmt 会把放不下一行的三元组拆成 `(` / `"命令",` / `"能力",` / … / `),`
         //   ⇒ 两种排法都认：拆开那一形取紧跟 `(` 的两行（同样只认「两个字面量打头」）。
         if *t == "(" {
             let lit = |l: Option<&&str>| -> Option<String> {
@@ -204,20 +204,20 @@ fn the_ledger_half_of_the_launcher_population_matches_the_registry() {
     let rows = ledger_rows(&raw);
 
     // 抽取器自检 ①：抠得到东西（否则下面是空真）。
-    // 〔C4e · 第四波 4C〕地板 100 → 99：抓屏 · 杀会话 · 送键 · 就地 resume 四条命令退役，单行三元组人群真少了 4 行（现打 99）。
-    // 〔C4e 批 3b〕地板 99 → 94：cc-bus 查在线 · 发消息 · 派生 · 广播 · 收掉五条命令退役，单行三元组人群真少了 5 行（现打 94）。
-    // 〔US1 · 第四波 4D〕地板 94 → 93：`read_apikey_credentials_status` / `apikey_routing_for` 两条退役（单行三元组人群真少了；现打 93）。
-    // 〔HX2 · 第四波 4D〕地板 93 → 92：`write_apikey_credentials_key` 退役（单行三元组人群真少了 1 行；现打 92）。
-    // 〔LOC1a · 第四波 4D〕地板 93 → 92：`get_session_tasks` 退役（单行三元组人群真少了 1 行；现打 92）。
-    // 〔合并 LOC1b × 主线 99b8adb6〕主线 92 ＋ LOC1b −3（全文搜索 · 查索引状态 · 重建索引）⇒ 89。
-    // 〔SH1 · 4D〕地板 88 → 86：驾驶舱读面两条命令退役（单行三元组人群真少了 2 行）。
-    // 〔MIG-3a〕地板 86 → 79：MCP 读写六条 ＋ 推拉两条命令退役（单行三元组人群真少了 7 行；现打 79）。
-    // 〔MIG-3a〕地板 79 → 75：资产同步 ＋ skill 装卸三条命令退役（单行三元组人群真少了 4 行；现打 75）。
-    // 〔MIG-3a〕地板 75 → 73：acct-iso 两问退役（现打 73）。
-    // 〔MIG-3a〕地板 73 → 70：收件箱三条退役（现打 70）。
-    // 〔MIG-3a〕地板 70 → 65：别名六条退役 −6、`bound_terminal_count` ＋1（现打 65）。
+    // 地板 100 → 99：抓屏 · 杀会话 · 送键 · 就地 resume 四条命令退役，单行三元组人群真少了 4 行（现打 99）。
+    // 地板 99 → 94：cc-bus 查在线 · 发消息 · 派生 · 广播 · 收掉五条命令退役，单行三元组人群真少了 5 行（现打 94）。
+    // 地板 94 → 93：`read_apikey_credentials_status` / `apikey_routing_for` 两条退役（单行三元组人群真少了；现打 93）。
+    // 地板 93 → 92：`write_apikey_credentials_key` 退役（单行三元组人群真少了 1 行；现打 92）。
+    // 地板 93 → 92：`get_session_tasks` 退役（单行三元组人群真少了 1 行；现打 92）。
+    // 主线 92 ＋ LOC1b −3（全文搜索 · 查索引状态 · 重建索引）⇒ 89。
+    // 地板 88 → 86：驾驶舱读面两条命令退役（单行三元组人群真少了 2 行）。
+    // 地板 86 → 79：MCP 读写六条 ＋ 推拉两条命令退役（单行三元组人群真少了 7 行；现打 79）。
+    // 地板 79 → 75：资产同步 ＋ skill 装卸三条命令退役（单行三元组人群真少了 4 行；现打 75）。
+    // 地板 75 → 73：acct-iso 两问退役（现打 73）。
+    // 地板 73 → 70：收件箱三条退役（现打 70）。
+    // 地板 70 → 65：别名六条退役 −6、`bound_terminal_count` ＋1（现打 65）。
     assert!(
-        rows.len() >= 43, // 〔MOD〕47 → 43：会话正文四条退役（现打 43）// 〔MIG-3b 续〕48 → 47：全景问 · 写 · 撤三行退役、`panorama_place` · `chan_cancel` 两行进（现打 47）// 〔MIG-3b 续〕49 → 48：公钥推送那一行退役（现打 48）// 〔MIG-3a · 09-28 预裁〕50 → 49：`deploy_remote_acct_iso`〔散文墓碑〕 退役（现打 49）// 〔合并 MIG-1 × 主线 8c6cdc0e〕主线 57 ＋ MIG-1 本路退役的单行三元组（列 tmux 两条 · 测试连接 · 端口转发 · 活会话等）⇒ 现打 50 // 〔合并 MIG-3b × 主线 5bb03b34〕主线 60 ＋ MIG-3b −3（钩子诊断本机那一行 · 删会话 · 分叉三条单行三元组退役）// 〔合并 MIG-3a × 主线 5b52f042〕基数 75 ＋ MIG-3a −11（acct-iso −2 · 收件箱 −3 · 别名 −5 · cc-bus −1）＋ MIG-2 −4 ⇒ 60（现打；MIG-2 那一侧的读数写的是 −3，合并后实数 −4） // 〔MIG-2〕75 → 72：本机起会话 ＋ 渲染 ＋ 探针那几条单行命令退役 −5、`open_local_terminal` / `relay_all_sessions_switch` 进 +2（现打 72）// 〔合并 HX2 × 主线 267588ca〕基于 99b8adb6：LOC1b −3 ＋ HX2 −1 ⇒ 88。〔SH1〕−2 ⇒ 86。
+        rows.len() >= 43, // 47 → 43：会话正文四条退役（现打 43）// 48 → 47：全景问 · 写 · 撤三行退役、`panorama_place` · `chan_cancel` 两行进（现打 47）// 49 → 48：公钥推送那一行退役（现打 48）// 50 → 49：`deploy_remote_acct_iso`〔散文墓碑〕 退役（现打 49）// 主线 57 ＋ MIG-1 本路退役的单行三元组（列 tmux 两条 · 测试连接 · 端口转发 · 活会话等）⇒ 现打 50 // 主线 60 ＋ MIG-3b −3（钩子诊断本机那一行 · 删会话 · 分叉三条单行三元组退役）// 基数 75 ＋ MIG-3a −11（acct-iso −2 · 收件箱 −3 · 别名 −5 · cc-bus −1）＋ MIG-2 −4 ⇒ 60（现打；MIG-2 那一侧的读数写的是 −3，合并后实数 −4） // 75 → 72：本机起会话 ＋ 渲染 ＋ 探针那几条单行命令退役 −5、`open_local_terminal` / `relay_all_sessions_switch` 进 +2（现打 72）// 基于 99b8adb6：LOC1b −3 ＋ HX2 −1 ⇒ 88。−2 ⇒ 86。
         "只从账本里抠到 {} 行单行三元组（09-02 现打 116）—— 抽取器坏了，本条会零命中地绿",
         rows.len()
     );
@@ -344,7 +344,7 @@ fn exactly_one_launcher_plants_the_identity_today() {
         "还没落身份的起会话方从 4 处变了 —— 棘轮该往下拧了（或者有人往回走了）"
     );
 
-    // `L1` 那条路的行为判据还在 —— 它没了，本表也要红。〔MIG-2〕判据随那条路搬进了后端测试段。
+    // `L1` 那条路的行为判据还在 —— 它没了，本表也要红。判据随那条路搬进了后端测试段。
     let hist = read("tests/backend/control/launch_render/local_tests.rs");
     assert!(
         hist.contains(PLANTED_JUDGE),
@@ -357,7 +357,7 @@ fn exactly_one_launcher_plants_the_identity_today() {
 ///
 /// 人群 = `src/frontend/shell/src` **整棵树**的 `.rs` 生产段（`scan_tree!` 目录扫描，不是手写名单）。
 ///
-/// ⚠ 〔`P4` 2026-09-21〕先前括号里那两道保险的**第一道今天不生效**：原文是「本文件
+/// ⚠ 先前括号里那两道保险的**第一道今天不生效**：原文是「本文件
 /// 按构造被摘除，而且它整个在 `#[cfg(test)]` 里，剥完也是空的」。「按构造被摘除」那一刀
 /// 在这一处不生效（判据由 `#[path]` 挂载 ⇒ `file!()` 是折返路径 ⇒ 后缀比不命中）。
 /// ⇒ 承重的是另外两样：**住址**（本文件住 `tests/frontend/shell/`，不在这棵树里）＋ 它整个在
@@ -372,7 +372,7 @@ fn exactly_one_launcher_plants_the_identity_today() {
 ///   后者是 `PLANTED_JUDGE` 那五格的活。
 #[test]
 fn the_identity_token_has_exactly_one_mint_and_one_env_var_name() {
-    // 〔MIG-2〕身份那一格随本机起会话搬进后端：人群 = 两棵 Rust 生产树（monitor ＋ 后端）。
+    // 身份那一格随本机起会话搬进后端：人群 = 两棵 Rust 生产树（monitor ＋ 后端）。
     let files: Vec<(PathBuf, String)> = ["src/frontend/shell/src", "src/backend"]
         .iter()
         .flat_map(|t| guard_core::scan_tree_excluding(&repo_root().join(t), &["rs"], &[]))
@@ -386,7 +386,7 @@ fn the_identity_token_has_exactly_one_mint_and_one_env_var_name() {
     let probes: [(&str, usize, &str); 2] = [
         (
             "\"CCM_LAUNCH_ID\"",
-            // 〔OSA · V156〕4 → 5：容器路「往里转」那一处从格式串 `"export CCM_LAUNCH_ID={}; …"` 换成 `posix::export("CCM_LAUNCH_ID", …)`
+            // 4 → 5：容器路「往里转」那一处从格式串 `"export CCM_LAUNCH_ID={}; …"` 换成 `posix::export("CCM_LAUNCH_ID", …)`
             //   （`export` 的写法搬进 `platform::shell::posix`），同一处、变量名成了独立字面量 —— 家没多。
             5,
             "写侧 `launch_render/local.rs::LAUNCH_ID_VAR` 1 ＋ 读侧 `observe/accounts_query.rs::LAUNCH_ID_ENV` 1 ＋ `ccm/plan.rs` 容器路三处（读继承的 · 判继承值 · 往里转）",

@@ -1,8 +1,8 @@
-// 〔TAP · V124〕`events.ts` 的 `session-tap` 订阅：tap 走通道 `subscribe`（与会话行同一条帧路，`设计/05 §15`），
-// 不开裸 Tauri 事件（`设计/01 §2.2`：前端只有 `call` / `subscribe`）。
+// `events.ts` 的 `session-tap` 订阅：tap 走通道 `subscribe`（与会话行同一条帧路），
+// 不开裸 Tauri 事件（前端只有 `call` / `subscribe`）。
 //
-// 守的要求（住址）：`设计/05 §15.3`「经通道 `subscribe`」· `§3.3.4`「credit 的单位是格，前端每处理完一批就批量还」·
-// `设计/20 §8`（SSE 只保快：缺口不补，活卡那一侧按位置号自己撤）。设计住仓外 `调研/第四波记录/TAP.md §1.3`。
+// 守的要求（住址）：「经通道 `subscribe`」· `§3.3.4`「credit 的单位是格，前端每处理完一批就批量还」·
+// （SSE 只保快：缺口不补，活卡那一侧按位置号自己撤）。设计住仓外。
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
@@ -48,9 +48,9 @@ describe("〔TAP〕session-tap 走 subscribe（不是裸事件）", () => {
     );
     expect(streamFake.subscriptions.map((s) => [s.origin, s.kind])).toEqual([["<local>", "session-tap"]]);
     expect(chanStreamModule.chan.subscribe.mock.calls[0]?.[3]).toBe(TAP_WINDOW);
-    // 没有叫 session-tap 的裸事件监听（零命中，正控：task-update 那一个在；〔MIG-1〕session-ended 并进了会话流）。
+    // 没有叫 session-tap 的裸事件监听（零命中，正控：task-update 那一个在；session-ended 并进了会话流）。
     expect(subs.has("session-tap")).toBe(false);
-    // 〔合并 MIG-1 × 主线 8c6cdc0e〕`bindEvents` 里最后几条裸 Tauri 监听两边各自退役（`task-update` · 会话起停），正控已无可指 ⇒ 改判「一条裸监听都没有」（`listen` 仍被替身截着，谁长回来谁红）。
+    // `bindEvents` 里最后几条裸 Tauri 监听两边各自退役（`task-update` · 会话起停），正控已无可指 ⇒ 改判「一条裸监听都没有」（`listen` 仍被替身截着，谁长回来谁红）。
     expect(subs.size).toBe(0);
 
     const rec = streamFake.subscriptions[0]!;
@@ -74,9 +74,9 @@ describe("〔TAP〕session-tap 走 subscribe（不是裸事件）", () => {
   });
 });
 
-// 〔DL1 · 第五波〕`accounts-changed`（替掉裸事件 `remote-backend-ready`）与 tap 同一条帧路、同一处 `chan.subscribe`。
-// 守的要求：`设计/01 §2.2`「前端只有两个动作」· `设计/05 §15.3`「经通道 `subscribe`」· `§3.3.4`（credit 按格还）。
-// 设计住仓外 `调研/第四波记录/DL1.md §3`。
+// `accounts-changed`（替掉裸事件 `remote-backend-ready`）与 tap 同一条帧路、同一处 `chan.subscribe`。
+// 守的要求：「前端只有两个动作」· 「经通道 `subscribe`」· `§3.3.4`（credit 按格还）。
+// 设计住仓外。
 describe("〔DL1〕accounts-changed 走 subscribe（不是裸事件）", () => {
   beforeEach(() => {
     subs.clear();
@@ -101,7 +101,7 @@ describe("〔DL1〕accounts-changed 走 subscribe（不是裸事件）", () => {
     ]);
     // 没有叫 remote-backend-ready 的裸事件监听（零命中，正控：task-update 那一个在）。
     expect(subs.has(["remote", "backend", "ready"].join("-"))).toBe(false);
-    // 〔合并 MIG-1 × 主线 8c6cdc0e〕`bindEvents` 里最后几条裸 Tauri 监听两边各自退役（`task-update` · 会话起停），正控已无可指 ⇒ 改判「一条裸监听都没有」（`listen` 仍被替身截着，谁长回来谁红）。
+    // `bindEvents` 里最后几条裸 Tauri 监听两边各自退役（`task-update` · 会话起停），正控已无可指 ⇒ 改判「一条裸监听都没有」（`listen` 仍被替身截着，谁长回来谁红）。
     expect(subs.size).toBe(0);
 
     const a = streamFake.subscriptions[1]!;
@@ -122,7 +122,7 @@ describe("〔DL1〕accounts-changed 走 subscribe（不是裸事件）", () => {
   });
 });
 
-// 〔MIG-3b · 要求住址 `设计/99 §2.1 ㉓②`「`session.tasks` 推送改 `chan.subscribe(origin, …)`，监视进后端，本机远端同形，monitor 的 notify 与 `task-update` 事件删」〕
+// 〔要求住址 「`session.tasks` 推送改 `chan.subscribe(origin, …)`，监视进后端，本机远端同形，monitor 的 notify 与 `task-update` 事件删」〕
 // 每台一条 `session-tasks`；一格 = 一个 sid 要重问；seen / gap ⇒ 那台整台重问；frame 的 credit 当场还；没有 `task-update` 裸事件。
 describe("〔MIG-3b〕session-tasks 走 subscribe（不是裸事件 task-update）", () => {
   beforeEach(() => {
@@ -144,7 +144,7 @@ describe("〔MIG-3b〕session-tasks 走 subscribe（不是裸事件 task-update�
     expect(SESSION_TASKS_KIND).toBe("session-tasks");
     expect(chanStreamModule.chan.subscribe.mock.calls.map((c) => c[3])).toEqual([SESSION_TASKS_WINDOW, SESSION_TASKS_WINDOW]);
     expect(subs.has(["task", "update"].join("-")), "裸事件 task-update 又长回来了").toBe(false);
-    // 〔合并 MIG-1 × 主线 8c6cdc0e〕`bindEvents` 里最后几条裸 Tauri 监听两边各自退役（`task-update` · 会话起停），正控已无可指 ⇒ 改判「一条裸监听都没有」（`listen` 仍被替身截着，谁长回来谁红）。
+    // `bindEvents` 里最后几条裸 Tauri 监听两边各自退役（`task-update` · 会话起停），正控已无可指 ⇒ 改判「一条裸监听都没有」（`listen` 仍被替身截着，谁长回来谁红）。
     expect(subs.size).toBe(0);
 
     const a = streamFake.subscriptions[1]!;

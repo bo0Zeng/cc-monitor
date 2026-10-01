@@ -1,5 +1,5 @@
-//! 〔FILES2 · 第四波 · 2026-09-27〕`control/files_upload_chunks.rs` 的行为判据。
-//! 要求住址：`设计/60 §7` 第 9 条 Q5；主会话 09-27 裁「不一致 ⇒ 这台的上传改走后端链路分块写（`files-stage-chunk` 那一族）」。
+//! `control/files_upload_chunks.rs` 的行为判据。
+//! 要求：「不一致 ⇒ 这台的上传改走后端链路分块写（`files-stage-chunk` 那一族）」。
 //! 块形拼成暂存件之后走的是与 SFTP 那条路**同一条**提交（整份摘要核 · 改名上位）；线上那一臂（`chunks` 参数）的接线判据住
 //! `files_commit_tests::the_commit_face_assembles_chunks_when_asked`。
 

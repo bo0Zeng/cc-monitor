@@ -1,9 +1,9 @@
-//! 〔AS2 · 第四波 4B · V113〕**skill「装到这台」** —— 两条只读帧命令：读来源那台的 skill · 在要被写的那一台上判。
-//! 〔SU1 · 第四波 4C · V116〕又多两条只读帧命令：`skill-installs`（这台记着哪几个从别处装来的）· `skill-uninstall-plan`（卸：判在被卸的那一台）—— 见文件末尾那一段。
+//! **skill「装到这台」** —— 两条只读帧命令：读来源那台的 skill · 在要被写的那一台上判。
+//! 又多两条只读帧命令：`skill-installs`（这台记着哪几个从别处装来的）· `skill-uninstall-plan`（卸：判在被卸的那一台）—— 见文件末尾那一段。
 //!
 //! # 用户裁决（逐字）
 //!
-//! V113「目录自动同步，**装要你点**」· 「这样远端后端也能在远端装skill或者mcp」；V112「内容，原样拷过去并标出可疑项」
+//!「目录自动同步，**装要你点**」· 「这样远端后端也能在远端装skill或者mcp」；「内容，原样拷过去并标出可疑项」
 //! —— 不替用户改写。题面补一句：「skill 可能带脚本 / 二进制：可疑项规则要覆盖『可执行文件 / 绝对路径 / 对面未必有的命令』」。
 //!
 //! # 两条命令
@@ -45,7 +45,7 @@ const MAX_PATHS_PER_FILE: usize = 8;
 /// 这一族的应答。
 pub type Answer = Result<Value, (&'static str, String)>;
 
-/// skill 名：一段目录名（不许带分隔符 / `..` / 点开头 / NUL）。〔SU1〕装记录的写口也用它（`skill_ledger::record_at`）。
+/// skill 名：一段目录名（不许带分隔符 / `..` / 点开头 / NUL）。装记录的写口也用它（`skill_ledger::record_at`）。
 pub(crate) fn valid_name(name: &str) -> bool {
     !name.is_empty()
         && name.len() <= 128
@@ -446,7 +446,7 @@ pub(crate) fn answer_plan_with(facts: &dyn Facts, root: Option<&Path>, args: &Va
             Some(mcp_sync::plan(&rows, &t, &overwrite.unwrap_or_default())?)
         }
     };
-    // 〔SU1 · V116〕真要写的那几个各自「装时写进去的那一份」的摘要 ＋ 装之前在不在（`new` ⇒ 新建；`differs` ⇒ 盖掉原有的）。
+    // 真要写的那几个各自「装时写进去的那一份」的摘要 ＋ 装之前在不在（`new` ⇒ 新建；`differs` ⇒ 盖掉原有的）。
     //   monitor 写完把真写成了的那几个原样交回 `skill-install-record`（摘要与新旧是**这台**判的，不由 monitor 算）。
     let ledger = write.as_ref().map(|w| {
         let states: BTreeMap<&str, State> = rows.iter().map(|(p, s)| (p.as_str(), *s)).collect();
@@ -503,7 +503,7 @@ pub(crate) fn answer_plan_with(facts: &dyn Facts, root: Option<&Path>, args: &Va
     }))
 }
 
-// ═══════════════════════ 〔SU1 · 第四波 4C · V116〕卸 ═══════════════════════
+// ═══════════════════════ 卸 ═══════════════════════
 //
 // 用户裁决 V116〔选〕「要，只删装时写进去的文件」：卸只删装记录（`skill_ledger.rs`）里那几个文件；
 // 装完用户自己改过的先问（`SU1.md §1.3`）。两条只读命令，判定都在**被卸的那一台**：

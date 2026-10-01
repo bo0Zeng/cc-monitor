@@ -1,4 +1,4 @@
-//! 〔B2 · 条 66〕`control/exit_policy.rs` 的判据 —— `设计/01 §3.3b` 的 `E1` / `E2` 后端那一半 ＋ 三态行为。
+//! `control/exit_policy.rs` 的判据 —— `E1` / `E2` 后端那一半 ＋ 三态行为。
 //!
 //! # 买到的
 //!
@@ -126,13 +126,13 @@ fn the_wire_shape_carries_the_three_states() {
     assert!(v["reason"].is_null());
 }
 
-/// 〔S5 · 第四波 · V105 清账〕线上形状**恰好**是登记的那几格 —— 两侧异源、按集合相等：
+/// 〔V105 清账〕线上形状**恰好**是登记的那几格 —— 两侧异源、按集合相等：
 ///
 /// - 一侧是**真跑出来的** JSON（三态 × 常驻 / 被监护各跑一遍 `wire_as`，取键的并集）；
 /// - 另一侧是 `inbound.rs::REGISTRY` 里两条命令手写的 `fields`（也是 `protocol_doc_guard` 拿去钉文档的那一份）。
 ///
-/// 它防的是 `shell` 那一格的回潮（「折进前端进程」那一档已放弃，`99 §1` V105）。任何一侧单独加回一格都红；
-/// 两侧一起加回 ⇒ 下面那条字面量对照红（第三个来源：`01 §3.3b` 的四格 ＋ 〔MIG-2 · `99 §2.1 ㊴`〕成品 `said`）。
+/// 它防的是 `shell` 那一格的回潮（「折进前端进程」那一档已放弃）。任何一侧单独加回一格都红；
+/// 两侧一起加回 ⇒ 下面那条字面量对照红（第三个来源：四格 ＋ 成品 `said`）。
 #[test]
 fn the_wire_shape_is_exactly_the_registered_fields() {
     let mut produced = std::collections::BTreeSet::new();
@@ -170,7 +170,7 @@ fn the_wire_shape_is_exactly_the_registered_fields() {
     );
 }
 
-/// 〔MIG-2 · `99 §2.1 ㊴` · `01 §3.3b ⑤`〕「这台退出时会发生什么」逐格相等（四种读数 × 常驻 / 被监护，外加读不出来的两格），
+/// 「这台退出时会发生什么」逐格相等（四种读数 × 常驻 / 被监护，外加读不出来的两格），
 /// 期望按键写（异源：本表是读 `§3.3b` 手写的规格，不是抄 `said` 的分支）。原先这张表在前端 `describeExitBehavior`，
 /// 判定挪进后端之后判据跟着挪。「无人监护」只许出现在「没勾 ＋ 常驻」那一格（K14）。
 #[test]
@@ -229,7 +229,7 @@ fn the_said_line_is_exact_on_every_cell() {
     }
 }
 
-/// 〔MIG-2 · ㊴〕生产那一格真读载体：一次性（测试进程没有监听口环境）⇒ 被监护那一句。
+/// 生产那一格真读载体：一次性（测试进程没有监听口环境）⇒ 被监护那一句。
 #[test]
 fn the_production_wire_reads_the_carrier_from_the_listen_mode() {
     assert!(
@@ -279,7 +279,7 @@ fn code_of(path: &std::path::Path, src: &str) -> String {
 
 /// ★★ `E1` 的全仓半：**`backend.json` 这个名字在 `src/` 全部生产代码里谁叫得出**（字面量或契约常量名）。
 ///
-/// 〔P3 · 主会话 09-29 裁「家里的都进数据位置那一份唯一枚举」〕三个家：定义（契约 crate `relay_route_core::BACKEND_POLICY_REL`）·
+/// 〔「家里的都进数据位置那一份唯一枚举」〕三个家：定义（契约 crate `relay_route_core::BACKEND_POLICY_REL`）·
 /// 写者（本模块）· monitor 数据位置页（`data_paths.rs`，只 stat 在不在 / 多大，不读不写）。前端 `.ts` 仍零命中。
 /// **两向集合相等**：多一个家 = 第二个写者（或读者）冒出来了；少了本模块 = 正控失败（判据在一个空集上绿）。
 ///
@@ -319,7 +319,7 @@ fn the_file_name_has_exactly_one_home_in_all_production_code() {
         want,
         "\n`{needle}` 在生产代码里的家与期望对不上。\n  多出来的（🔴 第二个写者 / 读者）：{:?}\n  \
          少了的（本模块自己都没命中 ⇒ 判据在空转）：{:?}\n\
-         `设计/01 §3.3b ③`：只有后端写，前端改它走一条后端命令，**前端从不碰那个文件**。",
+只有后端写，前端改它走一条后端命令，**前端从不碰那个文件**。",
         homes.difference(&want).collect::<Vec<_>>(),
         want.difference(&homes).collect::<Vec<_>>()
     );
@@ -384,7 +384,7 @@ fn the_decision_path_has_exactly_the_registered_cache_points() {
         found.len(),
         CACHE_POINTS.len(),
         "`exit_policy.rs` 生产段的缓存构件 {found:?} 与登记表（{} 条）对不上。\n\
-         `设计/01 §3.3b ④`：**不缓存、不在启动时读一次存内存** —— 用户可能刚从另一台 monitor 改过它。\n\
+**不缓存、不在启动时读一次存内存** —— 用户可能刚从另一台 monitor 改过它。\n\
          缓存回来 ⇒ 远端改了不生效，**而且不报错**（E2 防的就是这一形）。",
         CACHE_POINTS.len()
     );

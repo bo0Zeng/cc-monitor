@@ -1,6 +1,6 @@
-//! # 要求住址：`设计/01 §1.3`（窗口生命周期：设置窗关了是隐藏，主窗走时带它一起走）
+//! # （窗口生命周期：设置窗关了是隐藏，主窗走时带它一起走）
 //!
-//! 核原文：`设计/01 §1.3` 设置窗那一行逐字「隐藏的窗口会吊住进程 ⇒ 主窗销毁时连带销毁它（`lib.rs::windows_to_destroy_after`）」
+//! 核原文：设置窗那一行逐字「隐藏的窗口会吊住进程 ⇒ 主窗销毁时连带销毁它（`lib.rs::windows_to_destroy_after`）」
 //! —— 前四条判的正是这个决策（带走设置窗 · viewer 不动 · 别的窗销毁不牵连），第五条判主窗标签与 `tauri.conf.json` 对得上。〔JA1 点址 2026-09-24〕
 //!
 //! ST1「关窗改隐藏」的生命周期缝（`lib.rs::windows_to_destroy_after`）。
@@ -22,7 +22,7 @@ fn main_destroyed_takes_the_hidden_settings_window_with_it() {
 #[test]
 fn viewers_are_left_alone_they_are_visible_and_closable() {
     // 非空对照：同一个输入里 viewer 在，但不在输出里（它看得见、用户自己关得掉；
-    // 「主窗关了 viewer 还开着」时进程该不该活，是 `01 §3.3b` 的事，这里不改）。
+    // 「主窗关了 viewer 还开着」时进程该不该活是另一件事，这里不改）。
     let alive = [SETTINGS_WINDOW_LABEL, "viewer-abc"];
     assert!(!windows_to_destroy_after(MAIN_WINDOW_LABEL, &alive).contains(&"viewer-abc"));
 }
@@ -67,7 +67,7 @@ fn the_main_label_is_the_one_tauri_conf_declares() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════════════
-// 〔S5 · 第四波 · `INVARIANTS §22` 第 1、2 条〕开窗 IPC 的两格 —— 从前只写在散文里、没有一条会红的判据
+// 〔`INVARIANTS §22` 第 1、2 条〕开窗 IPC 的两格 —— 从前只写在散文里、没有一条会红的判据
 // （`tests/frontend/ui/invariants-frontend-guard.vitest.ts` 头注从前登记着「22.1/22.2 没人守」，本拍改指这里）。
 //
 // 要求住址：`src/doc/INVARIANTS.md §22`，逐字：「**开窗 IPC 必须 `async`**」·「**禁止**用 `&str` 目标
@@ -183,7 +183,7 @@ fn every_emit_to_targets_a_webview_window_not_a_bare_label() {
     got.dedup();
     assert_eq!(
         got,
-        // 〔CF2 · 第四波 4B〕定向投递换了住址：独立窗口的定向重放（原 `event_replay` 那一处）退役，
+        // 定向投递换了住址：独立窗口的定向重放（原 `event_replay` 那一处）退役，
         //   今天唯一的一处是会话流的交格 —— 通道 webview 宿主的出口（主窗口与独立窗口都是定向）。
         vec!["webview.rs::deliver".to_string()],
         "`emit_to` 的调用点与登记对不上（两向）。新写一处定向投递 ⇒ 先回答 `INVARIANTS §22` 第 2 条，再登记进来"
@@ -216,7 +216,7 @@ fn every_emit_to_targets_a_webview_window_not_a_bare_label() {
     }
 }
 
-// 〔P4〕「一扇窗夹进工作区」那条真值判据随判定搬去了 `tests/common/host-core/lib_tests.rs`。
+// 「一扇窗夹进工作区」那条真值判据随判定搬去了 `tests/common/host-core/lib_tests.rs`。
 
 /// 三扇 Tauri 窗开出来都经那一个判定夹一次（主窗在 `setup` 里、设置窗与会话窗在建窗之后）—— 在执行链上。
 #[test]

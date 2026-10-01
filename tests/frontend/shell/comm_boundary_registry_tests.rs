@@ -10,7 +10,7 @@ fn repo_root() -> PathBuf {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-//  一、边界登记表本体（`设计/05 §8` 步 1 的另一半：画出通信层的边界）
+//  一、边界登记表本体（另一半：画出通信层的边界）
 // ════════════════════════════════════════════════════════════════════════════
 
 /// ★★ **边界登记表** —— `(仓根相对路径, 为什么它属于通信层)`。
@@ -24,27 +24,27 @@ fn repo_root() -> PathBuf {
 /// `§8` 步 3 逐字：「把传输面（SSH / SFTP / 池 / 重连）从 `monitor` 的 Rust 半
 /// **圈出来**，业务先不动」。现打的结论是：**那三份今天一份都圈不进来** ——
 /// `ssh_source.rs` / `sftp.rs` / `sftp_pool.rs` 的**公开面**上都命名了业务概念，
-/// 而 `设计/05 §2` 逐字「**`C1` 的豁免必须为零**」⇒ 不许开口子，只能不圈 ＋ 写清。
-/// 逐份咬在哪（名字 · 处数 · 判词）写在 `真相源/` 那份读数里，**不在这里抄第二份**。
+/// 而「**`C1` 的豁免必须为零**」⇒ 不许开口子，只能不圈 ＋ 写清。
+/// 逐份咬在哪（名字 · 处数 · 判词）写在那份读数里，**不在这里抄第二份**。
 /// ⚠ 〔2026-09-21 换射程后现打〕**三份一份都没掉到零** —— 处数掉了约 91%，
-/// 而剩下的那些是它们自己起的公开名字（`is_safe_remote_jsonl`〔散文墓碑〕（〔RW1〕已随 F11 删）· `SESSION_CHANNEL_CAP` ·
+/// 而剩下的那些是它们自己起的公开名字（`is_safe_remote_jsonl`〔散文墓碑〕（已随 F11 删）· `SESSION_CHANNEL_CAP` ·
 /// `InboundFrame` 的会话/tmux 变体一族…），**改得了，所以它是账不是命**。
 ///
 /// ⇒ 下面**头两份**是**通信层自己的词汇**那一档（`§2` 逐字四样里的「地址」与
 /// `§4.5.2` 的「失败语义」），不是传输面。**别把非空读成「传输面进来了」。**
 ///
-/// # 🔴 〔`设计/05 §8` 步 4，2026-09-21〕后两份：`C4` 第一次有**真东西**可判
+/// # 🔴 后两份：`C4` 第一次有**真东西**可判
 ///
 /// 步 4 逐字是「**`creds.rs` ＋ `table.rs` 搬去后端**，通信层改成『收一张表』
 /// ｜ ✅ `C4` 从这一步起可以真断言零读盘」。现打两句：
 ///
-/// 1. **搬家那半已经做完了**（`99 §4` 的 `14-i` 带走的）—— 那两份今天住
+/// 1. **搬家那半已经做完了**（`14-i` 带走的）—— 那两份今天住
 ///    `src/backend/accounts/`（先住 `relay/accounts/`，2026-09-24 搬出中转层），与 `impl Destinations`（那张决策表的唯一实现）同一层，
 ///    中转手里只剩一个 `Arc<dyn Destinations>` ⇒「收一张表」的**接法**也在盘上了。
 /// 2. **而「圈进来」那半一直没人做** ⇒ `C4` 一直绿着，却**一份 `relay/` 的文件都没扫过**：
 ///    它成立在一个不含被它点名的那个东西的人群上。这一拍补的就是那一半。
 ///
-/// ⚠ **只进得来两份，不是整层。** `设计/05 §4.3` 把 `relay/` 按 `C4` 切开、归通信层那一列
+/// ⚠ **只进得来两份，不是整层。** 把 `relay/` 按 `C4` 切开、归通信层那一列
 /// 点了六份，加上后来的 `listen.rs` 共七份，而只有 `route.rs` 与 `http1.rs` 十一条全绿。
 ///
 /// 🔴 **还进不来的那几份各被哪几条咬，从 2026-09-21 起不再写在这段散文里** ——
@@ -55,7 +55,7 @@ fn repo_root() -> PathBuf {
 /// ⇒ 一个事实一个住址（`E12`），而这个住址现在是**机检的**那一侧。
 /// **豁免仍为零** —— 变的是人群与射程，不是例外。
 ///
-/// ⚠ 另有一格是**全绿而不该圈**（`真相源/100 §二` 那一形的第二例）：
+/// ⚠ 另有一格是**全绿而不该圈**（那一形的第二例）：
 /// `accounts/policy.rs` 十一条一条不咬，而它是**上游选择** —— 那份凭据文件的热重载，
 /// 正是 `C4` 那句话要挡在外面的那一类。**不圈它**，理由写在这里而不是等人来问。
 ///
@@ -71,14 +71,14 @@ fn repo_root() -> PathBuf {
 const REGISTERED: &[(&str, &str)] = &[
     (
         "src/comms/inward/origin.rs",
-        "面 A 的**寻址键**本体。`设计/05 §2` 逐字列了这一层认识的四样东西，第一样是\
+        "面 A 的**寻址键**本体。列了这一层认识的四样东西，第一样是\
          「**地址**（`origin` / 路由键）」；`§4` 那张一层两面图里面 A 的寻址逐字就是 `origin`。\
          它**只是**那个地址：零业务词 · 零读盘 · 零起进程 · 零期限字面量。\
          步 2 刚把它收得更紧（`Unspecified` 退役 ⇒ 地址只有一种线上形状，`null` 进不来）。",
     ),
     (
         "src/comms/inward/backend_route.rs",
-        "面 A 的**失败语义**本体（`设计/05 §4.5.2`）。它把 `CallError` 翻成三态，\
+        "面 A 的**失败语义**本体。它把 `CallError` 翻成三态，\
          判准逐字是「能不能证明这条命令根本没发出去」—— 那就是 `§3.3.1` 的 `reach` \
          在今天这棵树上的样子，也是 `X1` 点名的三个线上类型之一（`CallError`）\
          今天唯一一处**穷尽**的 `match`。它不知道会话/账号/skill/agent/tmux，\
@@ -90,8 +90,8 @@ const REGISTERED: &[(&str, &str)] = &[
     // ── 〔步 4，2026-09-21〕面 B 那一侧：凭据搬走之后**只收不取**的那两份 ──────────
     (
         "src/comms/outward/route.rs",
-        "面 B 的**路由键**本体 —— `设计/05 §2` 四样里第一样「**地址**（`origin` / 路由键）」\
-         在外向那一面的样子。更要紧的是它是 `设计/01 §2.1` 那条 🔴「怎么做到零豁免」的**现物**：\
+        "面 B 的**路由键**本体 —— 四样里第一样「**地址**（`origin` / 路由键）」\
+         在外向那一面的样子。更要紧的是它是那条 🔴「怎么做到零豁免」的**现物**：\
          逐字「通信层的类型里用**位置**称呼它搬的东西（「路径的第 1/2 段」＋一个不透明的流标签），\
          业务名只出现在后端那一半的实现里」⇒ 盘上就是 `Route` ＋ `RouteKey{ seg1, seg2 }`（条 48）。\
          它**只切键、不解释键**：谁是 agent、谁是账号只在 `accounts/` 那一层才有名字。\
@@ -101,7 +101,7 @@ const REGISTERED: &[(&str, &str)] = &[
     (
         "src/comms/outward/mod.rs",
         "面 B 的**层间契约本体** —— `Destination` / `Destinations` / `Mode` / `RouteKey` / \
-         `AuthSwap` 都住这儿，`设计/05 §4.3` 归通信层那一列也点名了它。\
+         `AuthSwap` 都住这儿，归通信层那一列也点名了它。\
          🔴 **那道「边界契约文件自己算不算成员」的题，用户 2026-09-22 裁「照圈」**，\
          裁词逐字：本文件里那行 `mod accounts;`（`accounts/` 是上游选择）是 **Rust 模块树的\
          机械产物** —— 子模块只能由父模块声明，语言里没有第二种写法 ⇒ \
@@ -112,8 +112,8 @@ const REGISTERED: &[(&str, &str)] = &[
     ),
     (
         "src/comms/outward/server.rs",
-        "面 B 的**交换面**本体（`20 §4` 要的那个名字正是 `exchange.rs`），\
-         `设计/05 §4.3` 归通信层那一列的第一个。\
+        "面 B 的**交换面**本体（要的那个名字正是 `exchange.rs`），\
+归通信层那一列的第一个。\
          它先前差两条，`P16` 同拍清掉：`C2`（`Destination::Substitute` 不再带 `creds-core` \
          的类型，连明文都碰不到了 —— 那一句搬去了上游选择）＋ `X2`（那个 30 秒的**值**搬去 \
          `listen.rs`，装它的那一手留在本文件、改成收入参）。\
@@ -124,12 +124,12 @@ const REGISTERED: &[(&str, &str)] = &[
     (
         "src/comms/outward/upstream.rs",
         "面 B 的**上游那一跳**本体 —— 它头注第一行逐字「连出去、把请求**原样**递上去」，\
-         那就是 `设计/05 §2` 四样里的「**载荷**（不透明字节）」在外向那一面的样子。\
-         归属的依据是 `设计/01 §0` 那张图（面 B ＝ agent ↔ 上游 API，**本来就在通信层内**）\
-         ＋ `设计/05 §4.3` 归通信层那一列点名了它。它既不是上游选择（那是 `accounts/`）、\
-         也不是一张登记表 ⇒ **不属于** `真相源/100 §二` 那个「全绿而不该圈」的形状。\
+         那就是四样里的「**载荷**（不透明字节）」在外向那一面的样子。\
+         归属的依据是那张图（面 B ＝ agent ↔ 上游 API，**本来就在通信层内**）\
+         ＋归通信层那一列点名了它。它既不是上游选择（那是 `accounts/`）、\
+         也不是一张登记表 ⇒ **不属于** 那个「全绿而不该圈」的形状。\
          **它先前只差 `X2` 一条**：那个 600 秒的**值**住在它自己文件里；`P16` 按 \
-         `设计/01 §2.1 C4`（「**期限值**全部由后端交给它」）把值搬去 `listen.rs`，\
+（「**期限值**全部由后端交给它」）把值搬去 `listen.rs`，\
          装它的那一手仍留在本文件（`connect` 收入参，`§3.3.2`「值归后端 · 执行归通信层」）\
          ⇒ 十一条现打全绿。\
          ⚠ **它带着 TLS 与 tee 明文进来，而一条豁免都没开**（`C1` 的豁免必须为零）：\
@@ -140,42 +140,42 @@ const REGISTERED: &[(&str, &str)] = &[
     ),
     (
         "src/comms/outward/http1.rs",
-        "面 B 的**协议编解码**本体 —— `设计/05 §4.2` 那张「四样不共享」表里，面 B 的「协议」\
+        "面 B 的**协议编解码**本体 —— 那张「四样不共享」表里，面 B 的「协议」\
          一栏逐字是「手写 HTTP/1.1 ＋ SSE」。它只解析中转必须懂的那几样（请求行 · 头 · \
          `Content-Length` · chunked 拆帧），别的一律当**不透明字节** —— 就是 `§2` 四样里的\
          「**载荷**（不透明字节）」。零 HTTP 框架（`K8`/`D4` 白名单一字没松）· 零业务 · 零读盘。\
          ⚠ 它**不买**「HTTP 解析对不对」—— 那由 `http1_tests.rs` 与 `wire_golden` 的\
          逐字节金标准负责；这枚标记只买「它没在这一层里长出业务、也没伸手去拿东西」。",
     ),
-    // ── 〔SC1 · 第四波 4B〕面 B 那一侧：分帧从 `http1.rs` 里抽出来单住一份，同拍圈进来 ─────
+    // ── 面 B 那一侧：分帧从 `http1.rs` 里抽出来单住一份，同拍圈进来 ─────
     (
         "src/comms/outward/framer.rs",
         "面 B 协议编解码的**分帧**那一半 —— 先前就住在成员 `http1.rs` 的 `ChunkedView` 里\
-         （外加 `tee.rs` 的一份手抄），`设计/17 §3.7` 把两份收成一个增量分帧器。\
+         （外加 `tee.rs` 的一份手抄），把两份收成一个增量分帧器。\
          它只认**字节与一个分隔符**，不认里面是什么（`§2` 四样里的「载荷（不透明字节）」）：\
          零业务词 · 零读盘 · 零环境变量 · 零起进程 · 零绑端口 · 零期限 · 零尺寸常量（上限由调用方给）。\
          🔴 **不同拍圈进来就是变松**：那段代码在 `http1.rs` 里时受十一条管着，搬出来不盖标记就出了锁。\
          ⚠ 这枚标记**不买**「切得对 / 是 O(n)」—— 那由 `framer_tests.rs` 的次数与长度相等断言负责。",
     ),
-    // ── 〔DEL〕面 B 那一侧：tee 的 NDJSON 行落点删了之后，挡它的 `X4` 清空，同拍圈进来 ─────
+    // ── 面 B 那一侧：tee 的 NDJSON 行落点删了之后，挡它的 `X4` 清空，同拍圈进来 ─────
     (
         "src/comms/outward/tee.rs",
-        "面 B 上「搬完抄一份」的那一半（`设计/05 §4.3` 归通信层那一列点名了它；`设计/20 §11` 挂载物 ①）：\
+        "面 B 上「搬完抄一份」的那一半（归通信层那一列点名了它；挂载物 ①）：\
          拆 SSE 的 `data:` 行、给每件占号、交给宿主的 tap 口。它不认识会话 / 账号 / agent（流标签是不透明串，\
-         路由那两段不进 tee —— `20 §11` I2「① 不问账号」）· 零读盘 · 零环境变量 · 零起进程 · 零绑端口 · 零期限。\
+         路由那两段不进 tee —— 「① 不问账号」）· 零读盘 · 零环境变量 · 零起进程 · 零绑端口 · 零期限。\
          先前挡它的 `X4`（NDJSON 行落点的 `try_send`：投不进就丢、不说）随独立 `--relay` 一起删了；\
-         tap 那一形「丢必须说」由位置号 `n` 原位兑现（`05 §3.3.4` 的 `Gap` 那一形，纯算术）。\
+         tap 那一形「丢必须说」由位置号 `n` 原位兑现（`Gap` 那一形，纯算术）。\
          ⚠ 这枚标记**不买**「抄得全」—— 那由 `host_tests` 的逐件相等与缺口判据负责。",
     ),
     // ── 〔面 A 第一个外部客户端，2026-09-24〕通道那三份：进来那天就是十一条全绿 ─────────
     //    用户裁「甲, 窗口变成独立前端」：文件窗口是独立进程，够不着后端 ⇒ 它是又一个前端，
-    //    说的正是 `01 §2.2` 那两个动作。同目录另两份（`host.rs` 绑口造钥匙、`dial.rs` 拨号）
+    //    说的正是那两个动作。同目录另两份（`host.rs` 绑口造钥匙、`dial.rs` 拨号）
     //    **刻意不圈** —— 它们做的正是 `C4`/`C5` 不许成员做的事，理由逐字住那两份的头注。
     (
         "src/comms/inward/chan/wire.rs",
-        "面 A 的**线上词汇本体** —— `设计/05 §3.3.0` 那「五个不透明类型 ＋ 一个手柄 ＋ 一个跳号」、\
+        "面 A 的**线上词汇本体** —— 那「五个不透明类型 ＋ 一个手柄 ＋ 一个跳号」、\
          `§3.3.1` 的三层错误、`§3.3.4` 的 `Item`、以及 `Comms`/`Sub` 两个 trait 第一次在盘上有了类型。\
-         每一个公开名字都是位置名或传输词（`01 §2.1`：用**位置**称呼它搬的东西）。\
+         每一个公开名字都是位置名或传输词（用**位置**称呼它搬的东西）。\
          载荷走帧体、不进 JSON ⇒ 对载荷形状零假设；帧长上限由调用方给（`C4`），本文件零尺寸常量、零期限常量。",
     ),
     (
@@ -183,44 +183,44 @@ const REGISTERED: &[(&str, &str)] = &[
         "面 A 上**进程外前端**进来的那扇门：认证 ＋ 按 `origin` 把 `call`/`subscribe` 转给**注入的**句柄 ＋ \
          撤单 ＋ credit。它是一个**纯路由器**：`op`/`kind`/载荷原样交出去、一个都不解释（`C1`）；\
          钥匙、帧长上限、认证等待时长全由宿主交进来（`C4`）；**绑回环与 `accept` 在宿主那一份**，\
-         它只有 `serve(stream)`（`C5`，照 `01 §2.1` 面 B 那个先例逐字同形）。\
+         它只有 `serve(stream)`（`C5`，照面 B 那个先例逐字同形）。\
          ⚠ 它**不买**「那个 `origin` 真有人服务」—— 那是句柄的活。",
     ),
     (
         "src/comms/inward/chan/client.rs",
-        "`01 §2.2`「前端只有两个动作」在**进程外前端**手里的样子 —— 它实现 `05 §3.3.0` 的 `Comms`，\
+        "「前端只有两个动作」在**进程外前端**手里的样子 —— 它实现 `Comms`，\
          签名参数名与顺序一字不改（`budget` 是绝对时刻 · `from` 原样过线 · `want` 是 credit）。\
          它收的是一条**已经连好**的流与一把**已经交到手里**的钥匙：不拨号（拨号在 `dial.rs`，不是成员）、\
          不读钥匙、不造期限（`C4`/`C5`/`X2`）。⚠ 它**不买**自动重连：只有交给它的那一条流。",
     ),
-    // ── 〔C4a · 第四波 · 2026-09-24〕通道在 **webview** 手里的那一半（主界面第一次说 `call`）──────
+    // ── 通道在 **webview** 手里的那一半（主界面第一次说 `call`）──────
     (
         "src/comms/inward/chan.ts",
-        "`01 §2.2`「前端只有两个动作」在**主界面**（webview）手里的样子 —— 与 `chan/client.rs`（进程外前端那一半）\
+        "「前端只有两个动作」在**主界面**（webview）手里的样子 —— 与 `chan/client.rs`（进程外前端那一半）\
          是同一件东西的两个住址：`call(origin, op, payload, budget)` 参数名与顺序一字不改，`Budget.until` 是绝对时刻、\
          过线换成「还剩多少」，过期不发；本地撤单立即回；三层错误按 monitor 交回的线上形状解回（解不出就 `Broken`）。\
          载荷两个方向原样（不 `JSON.parse` / `stringify`，那是调用方 ＋ `ipc/chan-caller.ts` 的事）。\
          它经包装层 `chan_call` 过 Tauri IPC；那一跳的宿主 `chan/webview.rs` **不是成员**（碰 Tauri、注入生产句柄）。\
          ⚠ 它**不买**对端撤活与 `subscribe`（webview 这一侧本拍零条流）。",
     ),
-    // ── 〔C2 · 2026-09-24〕`Q6` 选甲的收回：传输面洗干净的那两份（`设计/05 §13.7`）──────────
+    // ── `Q6` 选甲的收回：传输面洗干净的那两份──────────
     //    ⚠ 四份候选里 `ssh_source.rs` / `pubkey.rs` **不收** —— 理由逐份住 `TRANSPORT_LEFT_OUTSIDE`；
     //    `sftp_pool.rs` 是 `F7c` 独占，下一拍。
     (
         "src/comms/inward/ssh_link.rs",
         "面 A 的 **SSH 链路**那一段：在一条**交给它的**管子上读拨号代理的阶段行与 ack、收全结果 —— \
-         `05 §2` 四样里的「流」与「载荷」（ack 之后的字节它一个都不看）。它原来埋在 `ssh_source.rs` 里；\
+四样里的「流」与「载荷」（ack 之后的字节它一个都不看）。它原来埋在 `ssh_source.rs` 里；\
          C2 把 SSH 的全部活搬进后端的拨号代理之后，界面侧与 SSH 有关的**传输**就只剩这一件。\
          起代理进程、读配置、定期限都在宿主 `dial_host.rs`（不是成员，做的正是 `C4`/`C5`/`X2` 不许成员做的事）。\
          ⚠ 它**不买**「代理拨得对」—— 那归后端 `dial_tests` 与读数脚本 `C2-dial-loopback.py`。",
     ),
-    // 〔MIG-1 · `99 §2.1 ⑬`〕`port_forward.rs` 那一行随文件删了（不是摘标记）：三条命令与转发账进了本机常驻后端
+    // `port_forward.rs` 那一行随文件删了（不是摘标记）：三条命令与转发账进了本机常驻后端
     //   （`src/backend/dial/forwards.rs`），界面经通道直问 —— 界面 crate 里再没有端口转发这一面。
 ];
 
 /// 通信层**对前端的入口符号** —— `(符号名, 说明)`。`C3` 与 `X6` 的人群从这儿派生。
 ///
-/// `设计/05 §3.1`：前端只有两个动作（`call` / `subscribe`）。
+/// 前端只有两个动作（`call` / `subscribe`）。
 ///
 /// 🔴 〔2026-09-24，通道那一拍〕两个动作**在盘上有了**：
 /// `src/comms/inward/chan/client.rs` 的 `Client` 实现了 `Comms`。
@@ -229,9 +229,9 @@ const REGISTERED: &[(&str, &str)] = &[
 /// 下一波 F2 才接）。把 `call` 填进来的话，`X6` 会去 TS 语料里数与本通道无关的 `call(`
 /// （`fn.call(this, …)` 那一族），那是假红；而 Rust 那一侧今天**零个**真调用点。
 /// ⇒ 这一格是一笔欠账：F2 落第一个真调用点时，`X6` 的人群要扩到 Rust 前端那一侧。
-/// 住址在 `设计/05` 末尾「面 A 的第一个外部客户端：通道」的欠账那一节，不在这里抄第二份。
+/// 住址在末尾「面 A 的第一个外部客户端：通道」的欠账那一节，不在这里抄第二份。
 ///
-/// 🔴〔F2 · 2026-09-24〕**那一天到了**：文件窗口（〔P4〕今住独立包 `src/frontend/filewin/`）是第一个真调用点
+/// 🔴**那一天到了**：文件窗口（今住独立包 `src/frontend/filewin/`）是第一个真调用点
 /// （`source::ask`）。表从两列扩成三列 —— 第二列是**这个入口的前端语料住在哪一种语言里**：
 /// `call` / `subscribe` 这两个裸词在 TS 语料里另有与本通道无关的同名调用
 /// （`launcher-diagnostics.ts` 的本地 `call(true)`、`session-accounts-poll.ts` 的 `subscribe(() => …)`），
@@ -240,27 +240,27 @@ const ENTRIES: &[(&str, &str, &str)] = &[
     (
         "chan.call",
         "ts",
-        "〔C4a · 第四波〕**主界面**（webview）说 `call` 的入口（`src/comms/inward/chan.ts` 的 `chan.call`）。\
+        "**主界面**（webview）说 `call` 的入口（`src/comms/inward/chan.ts` 的 `chan.call`）。\
          入口名带着 `chan.` 前缀，是因为 TS 语料里另有与本通道无关的裸 `call(`（`fn.call(this, …)` 一族）——\
          按语言分人群之外再按全名收窄，才不假红。期限由调用方给（`Budget.within(…)`）。",
     ),
     (
         "call",
         "rs",
-        "一次性请求（`05 §3.3.0` 的 `Comms::call`）—— 期限由调用方给（`Budget`，绝对时刻）",
+        "一次性请求（`Comms::call`）—— 期限由调用方给（`Budget`，绝对时刻）",
     ),
     (
         "chan.subscribe",
         "ts",
-        "〔CF2 · 第四波 4B〕**主界面**（webview）说 `subscribe` 的入口（`src/comms/inward/chan.ts` 的 `chan.subscribe`，会话内容流）。\
+        "**主界面**（webview）说 `subscribe` 的入口（`src/comms/inward/chan.ts` 的 `chan.subscribe`，会话内容流）。\
          同 `chan.call` 那一行按全名收窄（TS 语料里另有与本通道无关的裸 `subscribe(`）。它**没有期限参数**\
-         （`05 §3.3.0`：订阅是长期意向）⇒ 只进调用点条数恒等，不进「显式给 `Budget`」那条。",
+         （订阅是长期意向）⇒ 只进调用点条数恒等，不进「显式给 `Budget`」那条。",
     ),
     (
         "subscribe",
         "rs",
-        "订阅（`Comms::subscribe`）—— 〔F7c 09-24〕窗口恰好一处（`filewin/source.rs::watch`，传输进度流\
-         `transfer/<id>`，生产上第一条流）。⚠ 它**没有期限参数**（`05 §3.3.0` 的签名逐字：订阅是长期意向，\
+        "订阅（`Comms::subscribe`）—— 窗口恰好一处（`filewin/source.rs::watch`，传输进度流\
+         `transfer/<id>`，生产上第一条流）。⚠ 它**没有期限参数**（签名逐字：订阅是长期意向，\
          不被一次调用的期限拴住）⇒ 本表这一格不进「显式给 `Budget`」那条，只进调用点条数恒等",
     ),
 ];
@@ -269,7 +269,7 @@ const ENTRIES: &[(&str, &str, &str)] = &[
 ///
 /// ⚠ 从前摘掉的那一份是 **monitor 那一侧**的入口（`entry.rs`）：它调的是通道宿主注入给路由器的
 /// 那个句柄（`Backends::call`，入参是「这一跳还剩多少」的 `Duration`），不是前端的 `Comms::call`。
-/// 〔P4〕窗口独立成包 `src/frontend/filewin/`：那一侧整个就是这一个前端；monitor 那一侧 `src/frontend/shell/src/filewin/`
+/// 窗口独立成包 `src/frontend/filewin/`：那一侧整个就是这一个前端；monitor 那一侧 `src/frontend/shell/src/filewin/`
 /// （开窗入口 · 起进程 · `[[bin]]` 入口）留在 monitor 进程，同 `entry.rs` 那条理由不进前端语料。
 const RUST_FRONTENDS: &[(&str, &[&str], &str)] = &[(
     "src/frontend/filewin/src/",
@@ -283,8 +283,8 @@ fn is_frontend_for(rel: &str, lang: &str, member_paths: &BTreeSet<&str>) -> bool
         return false;
     }
     match lang {
-        // 〔C4a · 第四波〕只算**生产**前端：`tests/` 那棵树不是调用方，是判据（`chan.vitest.ts` 自己就说了六次
-        //   `chan.call(`）。测试文件整棵住 `tests/`（仓库重组 `设计/16`：src 与 tests 分离），`src/` 下没有 ——
+        // 只算**生产**前端：`tests/` 那棵树不是调用方，是判据（`chan.vitest.ts` 自己就说了六次
+        //   `chan.call(`）。测试文件整棵住 `tests/`（仓库重组：src 与 tests 分离），`src/` 下没有 ——
         //   所以按第一段路径分就够。TS 人群第一次非空，这一格才第一次有牙。
         "ts" => rel.ends_with(".ts") && rel.split('/').next() == Some("src"),
         "rs" => {
@@ -308,7 +308,7 @@ const MARK: &str = "COMM-LAYER-MEMBER";
 //  二、语料（盘上那一侧）
 // ════════════════════════════════════════════════════════════════════════════
 
-/// 语料根 ＋ 每根**明写的**排除名单（`设计/16 §5.4b` 纪律 2、4）。
+/// 语料根 ＋ 每根**明写的**排除名单（纪律 2、4）。
 ///
 /// ⚠ 两个根**互不包含**（纪律 1）。排除的那两份是本判据自己的两半 ——
 /// 它们里面逐字写着 [`MARK`]，收进语料就是「判据在自己的散文里找到了自己」
@@ -491,7 +491,7 @@ fn production_of(rel: &str, raw: &str) -> String {
 
 /// ★★ **每条判据的第一句**：先做那条相等断言，再把人群交出去。
 ///
-/// `设计/05 §3.3.6` 逐字：绿的两条理由是 ①「盘上实际条数 == 登记表条数」
+/// 绿的两条理由是 ①「盘上实际条数 == 登记表条数」
 /// ②「人群里没有违例」。**① 在这里，② 在各条判据里** —— 一个事实一个住址（`E3`）：
 /// 十一条判据不许各写一份自己的相等断言，那样十一份会各自漂。
 fn boundary() -> Vec<Member> {
@@ -546,7 +546,7 @@ fn assert_the_two_sides_agree() {
     assert!(
         unregistered.is_empty(),
         "这几份文件**自称**通信层成员（文件里盖着那枚标记），却不在登记表里：{unregistered:?}\n\n\
-         ⇒ 搬进来了而没人挡 —— `设计/05 §8` 逐字警告过的那一形：\n\
+         ⇒ 搬进来了而没人挡 —— 警告过的那一形：\n\
          「否则搬进来的东西没人挡，通信层当天就长业务」。\n\
          ⇒ 处置：往 `REGISTERED` 里加一行并写清**为什么它是纯传输**，\n\
          然后跑一遍 `C1`–`C5` / `X1`–`X6`（它们从此开始管这份文件）。"
@@ -593,7 +593,7 @@ const CRITERIA: &[(&str, &str, &str)] = &[
     (
         "C1",
         "c1_no_business_concept_is_named_on_the_public_surface",
-        "公开面上不许命名业务概念（`设计/05 §2` ＋ `§8.1.4`，豁免必须为零）",
+        "公开面上不许命名业务概念（豁免必须为零）",
     ),
     (
         "C2",
@@ -658,7 +658,7 @@ const CRITERIA: &[(&str, &str, &str)] = &[
     (
         "住址",
         "the_comms_tree_holds_exactly_the_registered_members",
-        "`src/comms/` 下的文件集合 == 登记表（〔RE〕`99 §2.1 ⑰`）",
+        "`src/comms/` 下的文件集合 == 登记表",
     ),
     (
         "元",
@@ -671,11 +671,11 @@ const CRITERIA: &[(&str, &str, &str)] = &[
 //  五、锚：相等断言 ＋ 散文对拍 ＋ 识别器阳性对照
 // ════════════════════════════════════════════════════════════════════════════
 
-/// ★ 〔RE · 收尾重排〕**住址那一腿：`src/comms/` 下的文件集合 == [`REGISTERED`]**（两向）。
+/// ★ 〔收尾重排〕**住址那一腿：`src/comms/` 下的文件集合 == [`REGISTERED`]**（两向）。
 ///
-/// 要求住址：`设计/99 §2.1 ⑰`「立两向判据：`comms/` 下文件集合 == 通信层登记表 == 带标记文件；非成员各回家」。
+/// 要求：「立两向判据：`comms/` 下文件集合 == 通信层登记表 == 带标记文件；非成员各回家」。
 /// 「登记表 == 带标记文件」由主锚（下一条）钉着；本条只加住址那一腿 —— 三者两两相等。
-/// 目录只是住址、成员资格仍由登记表认（`90 §0.5.3`）：成员搬出 `comms/`、非成员住进 `comms/`，都当场红。
+/// 目录只是住址、成员资格仍由登记表认：成员搬出 `comms/`、非成员住进 `comms/`，都当场红。
 /// 走的是**只按目录**的那一口（`guard_core::files_under`，不顺 `#[path]`：`comms/outward/mod.rs` 挂回的 door / listen 不许算进来）。
 #[test]
 fn the_comms_tree_holds_exactly_the_registered_members() {
@@ -694,7 +694,7 @@ fn the_comms_tree_holds_exactly_the_registered_members() {
     let away: Vec<&String> = registered.difference(&on_disk).collect();
     assert!(
         stray.is_empty() && away.is_empty(),
-        "`src/comms/` 的住户与通信层登记表对不上（`99 §2.1 ⑰`）：\n\
+        "`src/comms/` 的住户与通信层登记表对不上：\n\
          住在 `comms/` 却没登记（非成员该回家）：{stray:?}\n\
          登记了却不住 `comms/`（成员该搬进来）：{away:?}"
     );
@@ -716,11 +716,11 @@ fn the_comms_tree_holds_exactly_the_registered_members() {
 /// 本条**一个字都看不见**（`src/frontend/shell/src/comm_boundary_registry.rs` 头注逐字登记过这条边界）。
 #[test]
 fn the_boundary_registry_and_the_disk_agree_two_ways() {
-    // 🔴 同一件事的第二半〔`P16` 2026-09-22〕：**谁是成员**这条锚，还得管住
+    // 🔴 同一件事的第二半：**谁是成员**这条锚，还得管住
     //    「成员资格不沿模块树往下传」—— 理由整段写在那个函数的头注里。
     //    ⚠ 它刻意**不是**一条独立的 `#[test]`：门禁 `comm-boundary` 那一格的 `pin` 与
     //      本族条数是一条**三方恒等**腿，而 `tests/scripts/gate.sh` 本拍不在写区
-    //      ⇒ 条数一个都不许动（同 `设计/99 §4 Q8` 那一格的处置：判据与 `pin` 同拍改，
+    //      ⇒ 条数一个都不许动（同那一格的处置：判据与 `pin` 同拍改，
     //      改不了 `pin` 就别偷偷加条数）。本条在执行链上，那才是要紧的。
     assert_membership_does_not_inherit_down_the_module_tree();
     assert_the_two_sides_agree();
@@ -760,14 +760,14 @@ fn population_claimed_in_prose(module_src: &str) -> usize {
 }
 
 /// **上游选择的住址前缀** —— 下面那条「成员资格不传递」判据的人群。
-const UPSTREAM_SELECTION_PREFIX: &str = "src/backend/accounts/upstream_select/"; // 〔`A3` 第二波〕上游选择从账号域根收窄到 `upstream/` 子树（`accounts/iso.rs` 不是上游选择）
+const UPSTREAM_SELECTION_PREFIX: &str = "src/backend/accounts/upstream_select/"; // 上游选择从账号域根收窄到 `upstream/` 子树（`accounts/iso.rs` 不是上游选择）
 
 /// 上游选择今天有几份文件。**相等，不是地板** —— 多一份就回来改这个数并重读下面那条。
-const UPSTREAM_SELECTION_FILES: usize = 6; // 〔US1 · 4D〕5 → 6：多了 `endpoint.rs`（起会话那一发走哪、注入什么 · 界面「表里有没有行」，`设计/20 §3.2` 那张表从 monitor 搬来）。〔RM1a · 第四波〕4 → 5：多了 `file_face.rs`（这台机器上那份凭据文件的帧面读写口，上游选择自己的状态）。〔`A3` 第二波〕中途 4 → 5（`acct_iso.rs` 当时落在上游选择根底下）→ 回到 4：上游选择收进 `accounts/upstream_select/` 子树，`accounts/iso.rs` 不在这个前缀里。
+const UPSTREAM_SELECTION_FILES: usize = 6; // 5 → 6：多了 `endpoint.rs`（起会话那一发走哪、注入什么 · 界面「表里有没有行」，那张表从 monitor 搬来）。4 → 5：多了 `file_face.rs`（这台机器上那份凭据文件的帧面读写口，上游选择自己的状态）。中途 4 → 5（`acct_iso.rs` 当时落在上游选择根底下）→ 回到 4：上游选择收进 `accounts/upstream_select/` 子树，`accounts/iso.rs` 不在这个前缀里。
 
 /// ★★ **成员资格说的是「这份文件里的代码属于中转」，不是「它的模块子树都属于中转」。**
 ///
-/// # 🔴 它为什么必须存在（`设计/99 §4 P16`，2026-09-22 用户裁「`mod.rs` 照圈」的同拍前置）
+/// # 🔴 它为什么必须存在（2026-09-22 用户裁「`mod.rs` 照圈」的同拍前置）
 ///
 /// `relay/mod.rs` 入圈之后，它里面那行 `mod accounts;` 会让人读成「上游选择也跟着进来了」。
 /// **没有这一条，那句读法就是对的** —— 而那正是 `C2`（不许依赖业务模块）存在的理由，
@@ -826,7 +826,7 @@ fn assert_membership_does_not_inherit_down_the_module_tree() {
          🔴 **成员资格不沿模块树往下传。** `relay/mod.rs` 入圈说的是「**那一份文件里的\
          代码**属于中转」，不是「它的模块子树都属于中转」。\n\
          上游选择的整个活就是把两个不透明段读成 agent 与账号 ⇒ 它的公开面上必然有业务名\
-         ⇒ 盖了标记，`C1` 当场破，而 `C1` 的豁免必须为零（`设计/01 §2.1`）。\n\
+         ⇒ 盖了标记，`C1` 当场破，而 `C1` 的豁免必须为零。\n\
          ⇒ 处置只有一条：**把那枚标记摘掉**。不是往 `REGISTERED` 加一行。"
     );
 
@@ -948,15 +948,15 @@ fn the_membership_scanner_would_see_a_new_member_and_ignore_a_bystander() {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-//  六、C1–C5：`设计/05 §2` 的铁律
+//  六、C1–C5：通信层的铁律
 // ════════════════════════════════════════════════════════════════════════════
 
-/// 业务词表 —— `设计/05 §2` 的 `C1` 逐字九个概念，**每个带它的复数形**
-/// 〔用户 2026-09-21：「看怎么加」；`设计/05 §8.1.5`〕。
+/// 业务词表 —— `C1` 的九个概念，**每个带它的复数形**
+/// 〔用户 2026-09-21：「看怎么加」；〕。
 ///
 /// # 为什么是 `(单数, 复数)` 的**对**，不是一张摊平的十八词表
 ///
-/// `真相源/103 §P5.3 ③` 现打了一个洞：词表全是单数，而匹配单位是标识符子词
+/// 现打了一个洞：词表全是单数，而匹配单位是标识符子词
 /// ⇒ `tmux_sessions` 切出 `[tmux, sessions]`，而 `sessions ≠ session`。
 /// 那一篇数出**十处真业务 `C1` 完全看不见**，含 `"/sessions/"`（那道 Claude 数据围栏
 /// 自己的路径串）与 `reaper_tracked` 的形参 `announced_sids`（七行纯业务，一个词都不咬）。
@@ -985,7 +985,7 @@ fn business_word_forms() -> Vec<&'static str> {
     BUSINESS_WORDS.iter().flat_map(|(s, p)| [*s, *p]).collect()
 }
 
-/// ★★ **加复数买到了什么** —— `(标识符, 靠哪个复数形咬住, 它是什么)`〔本拍现打，`设计/05 §8.1.5`〕。
+/// ★★ **加复数买到了什么** —— `(标识符, 靠哪个复数形咬住, 它是什么)`〔本拍现打，〕。
 ///
 /// 🔴 **这张表是「加复数前后」那个读数唯一活着的住址，而它刻意不记处数。**
 /// 处数（本拍：整个传输面 365 ⇒ 375 处，新增 10 处）会随任何一次编辑腐掉，
@@ -994,7 +994,7 @@ fn business_word_forms() -> Vec<&'static str> {
 /// （⇐ 这一条就是「加复数之前它完全看不见」，做成了可机检的形状）。
 ///
 /// ⚠ `tmux_sessions` / `TmuxSessions` **刻意不在表里**：它们本来就被 `tmux` 咬住，
-/// 复数只是多给了一个判词，不是新咬住。`真相源/103 §P5.3 ③` 那十处里，
+/// 复数只是多给了一个判词，不是新咬住。那十处里，
 /// 这一族占 5 处 —— 把它们混进来就是把「多一个判词」读成「补了一个洞」。
 ///
 /// ⚠ **假红那一侧本拍量过**：`src/` 233 份 `.rs` 的生产段上，加复数**新增的命中一处假红都没有**
@@ -1017,7 +1017,7 @@ const PLURALS_NEWLY_CAUGHT: &[(&str, &str, &str)] = &[
         "announced_sids",
         "sids",
         "`reaper_tracked` 的形参 —— 收割器要对账「哪些 sid 该在 tmux 后端里」。\
-         那个函数**七行纯业务**而 `C1` 一个词都不咬，是 `真相源/103 §P5.3 ③` 最值钱的一格",
+         那个函数**七行纯业务**而 `C1` 一个词都不咬，是最值钱的一格",
     ),
 ];
 
@@ -1049,12 +1049,12 @@ fn push_subwords(ident: &str, out: &mut BTreeSet<String>) {
     }
 }
 
-/// `C1` 的**匹配单位**：把一段文本切成标识符子词（小写、去重）〔`设计/05 §8.1.2`，09-21〕。
+/// `C1` 的**匹配单位**：把一段文本切成标识符子词（小写、去重）。
 ///
 /// 两刀，顺序固定：
 /// 1. 切**标识符** —— 连续的标识符字符（字母 / 数字 / `_` / `-`）算一个，其余一律是分隔。
 ///    ⇒ `path.ends_with(".jsonl")` 里那个 `jsonl` 也进得来：**字符串字面量里的业务词算数**，
-///    它照样是这一层认识了业务（`设计/05 §2` 的铁律说的是「不知道」，不是「不直接命名」）。
+///    它照样是这一层认识了业务（铁律说的是「不知道」，不是「不直接命名」）。
 /// 2. 每个标识符走 [`push_subwords`]。
 ///
 /// # 为什么这一刀不住 `guard_core`
@@ -1088,7 +1088,7 @@ fn business_words_in(text: &str) -> Vec<&'static str> {
         .collect()
 }
 
-// ── `C1` 的射程：**公开面上的声明名字**〔用户 2026-09-21 拍板，`设计/05 §8.1.4`〕 ──────
+// ── `C1` 的射程：**公开面上的声明名字**〔用户 2026-09-21 拍板，〕 ──────
 
 /// 一段文本切成标识符记号 `(起, 止, 文本)`（下标按 `char`，不按字节）。
 fn ident_tokens(line: &str) -> Vec<(usize, usize, String)> {
@@ -1129,7 +1129,7 @@ const BRACED_ITEMS: &[&str] = &["struct", "enum", "trait", "union"];
 /// | 类型引用（`:` 右侧 · `->` 之后） | `-> Result<SftpSession, E>` | ❌ 不算 |
 /// | 带 `::` 的路径段 | `russh_sftp::client::SftpSession` | ❌ 不算 |
 ///
-/// ⇒ `真相源/103 §P5.3 ①` 那条反驳（「要放过第三方名字就得解析类型」）在这个射程下
+/// ⇒ 那条反驳（「要放过第三方名字就得解析类型」）在这个射程下
 /// **不需要回答**：第三方的名字之所以过得去，不是因为判据认出它是第三方的，
 /// 而是因为它出现在**引用位**。同一份文件里我们自己起的 `SshSession` 照样咬住
 /// （`103 §P5.4` 订正 4 逐字：它是我们自己的 `type` 别名，**改得了**）。
@@ -1340,7 +1340,7 @@ fn offences_among(names: Vec<(String, String)>) -> Vec<(String, Vec<&'static str
         .collect()
 }
 
-/// 〔C4a · 第四波〕按成员的语言取公开面：`.ts` 成员（`src/comms/inward/chan.ts`）走 [`ts_public_surface_names`]，
+/// 按成员的语言取公开面：`.ts` 成员（`src/comms/inward/chan.ts`）走 [`ts_public_surface_names`]，
 /// 其余走 Rust 的 [`public_surface_names`]。**判词表与匹配单位同一份**（[`business_words_in`]）——
 /// 只有「什么算公开面」随语言的可见性规矩换。
 fn surface_names_of(rel: &str, prod: &str) -> Vec<(String, String)> {
@@ -1366,7 +1366,7 @@ const TS_DECL_KEYWORDS: &[&str] = &[
     "enum",
 ];
 
-/// 〔C4a · 第四波〕**TS 成员的公开面** —— TS 的可见性规矩是 `export`：
+/// **TS 成员的公开面** —— TS 的可见性规矩是 `export`：
 ///
 /// | 档 | 什么算公开面 |
 /// |---|---|
@@ -1426,9 +1426,9 @@ fn ts_public_surface_names(prod: &str) -> Vec<(String, String)> {
     out
 }
 
-/// ★ `C1` —— **公开面上不许命名业务概念**〔用户 2026-09-21 拍板，`设计/05 §8.1.4`〕。
+/// ★ `C1` —— **公开面上不许命名业务概念**〔用户 2026-09-21 拍板，〕。
 ///
-/// `设计/05 §2` 逐字：「⚠ **`C1` 的豁免必须为零。** 一旦开始豁免，它就变成第三个业务的家」
+/// 「⚠ **`C1` 的豁免必须为零。** 一旦开始豁免，它就变成第三个业务的家」
 /// ⇒ 本条**没有白名单，也不给一个**。要留口子，先去改设计。
 ///
 /// # ★★ 用户的裁决：「零业务判断」，不是「零业务语义」
@@ -1450,11 +1450,11 @@ fn ts_public_surface_names(prod: &str) -> Vec<(String, String)> {
 /// | 守住的还是 | 「不许有第三个业务家」 | **同一条** —— 业务**判断**靠的是公开面上的类型，不是内部提到谁 |
 ///
 /// 🔴 **豁免仍为零，变的是射程，不是例外。** 这与 2026-09-18 那次「人群不含注释」
-/// 是同一个动作，`设计/01 §2.1` 那一次的措辞逐字就是这一句。
+/// 是同一个动作，那一次的措辞逐字就是这一句。
 ///
-/// # 🔴 它为什么绕得开 `真相源/103 §P5.3` 那三条结构性反驳
+/// # 🔴 它为什么绕得开那三条结构性反驳
 ///
-/// `103` 否掉的是**另一条**候选（`设计/05 §8.1.1` 那个「第三方 crate 的导入名不算」），
+/// `103` 否掉的是**另一条**候选（那个「第三方 crate 的导入名不算」），
 /// 三条理由逐条对照本射程：
 ///
 /// | `103` 的反驳 | 本射程怎么绕开 | 现打的证据 |
@@ -1471,13 +1471,13 @@ fn ts_public_surface_names(prod: &str) -> Vec<(String, String)> {
 /// 🔴 这一格**今天判不了**，缺的证据是一份「线上契约的字段名住哪」的独立读数。
 /// 挡它的不是本条，是 `X1` 那一族（线上类型必须穷尽）与金标准逐字节对拍。
 ///
-/// # 匹配单位仍是**标识符子词**〔`设计/05 §8.1.2`〕，词表本拍加了复数〔`§8.1.5`〕
+/// # 匹配单位仍是**标识符子词**，词表本拍加了复数〔`§8.1.5`〕
 ///
 /// 走 [`identifier_subwords`]：先切标识符，再按 `_`/`-` 与驼峰拆。
 /// · `sid` 当形参名 ⇒ 咬 · `SshSession` ⇒ `[ssh, session]` 咬 · `tmux_sessions` ⇒ `[tmux, sessions]` 咬
 /// · `considered` ⇒ `[considered]` ≠ `sid` **不假红**
 ///
-/// 🔴 **裸 `contains` 那条路是被否掉的，别退回去**（`设计/05 §8.1.2` 逐字）。
+/// 🔴 **裸 `contains` 那条路是被否掉的，别退回去**。
 /// 下面那条阴性对照钉着它，退回去**当场红**。
 ///
 /// **买到**：登记成员的公开面上，那九个概念（单数与复数两形）一个都不许出现 ——
@@ -1488,12 +1488,12 @@ fn ts_public_surface_names(prod: &str) -> Vec<(String, String)> {
 /// ① 注释里的业务词（本条只看生产段，理由见 [`production_of`]）；
 /// ② **换了名字的业务** —— 把 `sid` 改叫 `handle` 照样过。改名不是剥；
 ///    **剥是把业务语义搬出这一层**。本射程让这条诱惑更便宜了：只要别写在公开面上。
-/// ③ 🔴 **实现里的业务判断** —— `真相源/103 §P5.3 ③` 那个 `reaper_tracked`
+/// ③ 🔴 **实现里的业务判断** —— 那个 `reaper_tracked`
 ///    （七行纯业务：收割器要对账的 sid 集合）是个**私有** `fn`
 ///    ⇒ 上一版看不见它（复数），本版**照样看不见**（不在公开面）。
 ///    加复数买到的是它那两个形参在**别处**被数出来，不是这一条咬住了它。
 /// ④ 🔴 **既没有分隔符、也没有驼峰的连写** —— `sessionid` / `session2` / `sidfoo`
-///    拆不出子词 ⇒ 看不见。`设计/05 §8.1.2` 裁定逐字只给了「`_` 与驼峰」两刀，
+///    拆不出子词 ⇒ 看不见。裁定逐字只给了「`_` 与驼峰」两刀，
 ///    **数字边界不在裁定里，本件没有擅自加**。
 /// ⑤ 宏展开出来的公开面、私有类型上的 `pub fn` —— 逐格记在 [`public_surface_names`] 里。
 ///
@@ -1522,10 +1522,10 @@ fn c1_no_business_concept_is_named_on_the_public_surface() {
     assert!(
         offenders.is_empty(),
         "通信层成员的**公开面**上命名了业务概念：\n{}\n\n\
-         `设计/05 §2` 铁律：**通信层不知道什么是会话、账号、skill、agent。**\n\
+铁律：**通信层不知道什么是会话、账号、skill、agent。**\n\
          它只知道地址（`origin` / 路由键）· 操作名 · 载荷 · 流的订阅与分发。\n\
          ⚠ **豁免必须为零** —— 本条没有白名单，别来加。\n\
-         ⚠ 处置不是「把名字挪进实现」那种凑绿：`设计/01 §2.1` 逐字给的是\n\
+         ⚠ 处置不是「把名字挪进实现」那种凑绿：给的是\n\
          **用位置称呼它搬的东西**（`RouteKey{{ seg1, seg2 }}`），业务名只出现在后端那一半。",
         offenders.join("\n")
     );
@@ -1628,14 +1628,14 @@ fn c1_no_business_concept_is_named_on_the_public_surface() {
     }
 
     // ── 🔴 阴性对照二：**被撑大的那一族不许命中**（匹配单位没有放宽成裸 `contains`）。
-    //    `设计/05 §8.1.2` 逐字否掉了那条路。谁把 [`identifier_subwords`] 换回
+    // 否掉了那条路。谁把 [`identifier_subwords`] 换回
     //    `text.contains(w)`，这里当场红。
     let stretched = "pub fn route(considered: u8, residual: u8, sessionize: u8, accounting: u8, \
          skillet: u8, claudette: u8, mcpx: u8, agentic: u8, sideline: u8) -> u8 { 0 }\n";
     assert!(
         public_surface_offences(stretched).is_empty(),
         "被撑大的标识符（`considered` / `sessionize` / `accounting` / `agentic` / `sideline` …）\
-         被判成业务词 —— 匹配单位放宽过头了（裸 `contains` 那条路 `设计/05 §8.1.2` 逐字否掉过）。\
+         被判成业务词 —— 匹配单位放宽过头了（裸 `contains` 那条路否掉过）。\
          假红比不查更坏：它会训练人绕过判据。实际命中：{:?}",
         public_surface_offences(stretched)
     );
@@ -1645,7 +1645,7 @@ fn c1_no_business_concept_is_named_on_the_public_surface() {
         "一段**只用位置词**的干净公开面被判成有业务词 —— 假红比不查更坏"
     );
 
-    // ── 🔴〔C4a〕TS 那一门的牙：导出面上的业务名必须咬（函数名 · 形参 · 导出接口的成员）；
+    // ── 🔴TS 那一门的牙：导出面上的业务名必须咬（函数名 · 形参 · 导出接口的成员）；
     //    只用位置词的导出面不许咬；**未导出**的不算（与 Rust「私有的不算」同一条规矩）。
     let ts_bad = "export function sessionFor(account: string): void {}\n\
                   export interface Face {\n  tmuxName: string;\n}\n";
@@ -1686,7 +1686,7 @@ fn c1_no_business_concept_is_named_on_the_public_surface() {
         mute.join("\n")
     );
 
-    // ── 🔴 复数那一改补上的那个洞，逐个标识符钉住〔`设计/05 §8.1.5`〕。
+    // ── 🔴 复数那一改补上的那个洞，逐个标识符钉住。
     //    这一段是「加复数前后」那个读数**唯一活着的住址**：处数会腐，标识符不会。
     for (ident, plural, what) in PLURALS_NEWLY_CAUGHT {
         let now = business_words_in(ident);
@@ -1704,7 +1704,7 @@ fn c1_no_business_concept_is_named_on_the_public_surface() {
             singular_only.is_empty(),
             "登记表把 `{ident}`（{what}）记成「加复数之前完全看不见」，\
              而只拿单数去比也抓到了 {singular_only:?} —— 那这一行买到的不是复数这一改，\
-             登记错了（`真相源/103 §P5.3 ③` 那十处里，`tmux_sessions` 一族正是靠 `tmux` 咬住的，\
+             登记错了（那十处里，`tmux_sessions` 一族正是靠 `tmux` 咬住的，\
              它们**不该**进这张表）"
         );
     }
@@ -1721,9 +1721,9 @@ fn c1_no_business_concept_is_named_on_the_public_surface() {
     );
 }
 
-/// 业务 crate —— `设计/05 §2` 的 `C2` 逐字五个（`creds-core` 是它特意加粗的那个）。
+/// 业务 crate —— `C2` 的五个（`creds-core` 是它特意加粗的那个）。
 ///
-/// ⚠ `usage-core` 今天盘上**不存在**（`设计/50` 把用量整删了）。留在表里是对的：
+/// ⚠ `usage-core` 今天盘上**不存在**（把用量整删了）。留在表里是对的：
 /// 本表是**禁入名单**，不是现存清单 —— 哪天它回来，这条闸已经在那儿了。
 const BUSINESS_CRATES: &[&str] = &[
     "branch-core",
@@ -1751,7 +1751,7 @@ fn business_crates_in(text: &str) -> Vec<&'static str> {
 /// **买不到**：① **传递依赖** —— 本条读的是文本，不是 `cargo metadata` 的依赖图；
 /// 经由第三个 crate 间接吃进 `creds-core` 它看不见。那一格要等通信层真有自己的
 /// `Cargo.toml` 之后才判得了（缺的证据：一份该 crate 的 `cargo tree` 读数）。
-/// ② **别的业务 crate** —— 名单是 `设计/05 §2` 那五个，第六个业务 crate 不在人群里。
+/// ② **别的业务 crate** —— 名单是那五个，第六个业务 crate 不在人群里。
 #[test]
 fn c2_no_business_crate_dependency_inside_the_boundary() {
     let pop = boundary();
@@ -1765,7 +1765,7 @@ fn c2_no_business_crate_dependency_inside_the_boundary() {
     assert!(
         offenders.is_empty(),
         "通信层成员引到了业务 crate：\n{}\n\n\
-         `设计/05 §2` `C2`：通信层是纯基础设施，业务 crate 一个都不许依赖。\n\
+`C2`：通信层是纯基础设施，业务 crate 一个都不许依赖。\n\
          ⇒ 真需要那份数据，让**后端交给它**（`C4` 是同一句话的另一面）。",
         offenders.join("\n")
     );
@@ -1795,7 +1795,7 @@ fn public_line_leaks_transport(line: &str) -> bool {
 
 /// ★ `C3` —— 前端发出的请求里不许含 `transport`。
 ///
-/// `设计/05 §3.2` 逐字：「`transport` 是通信层的**内部**选择，前端不知道」
+/// 「`transport` 是通信层的**内部**选择，前端不知道」
 /// ⇒ 这个词在层**内部**是合法的，只有跨出边界的那一面不许有它。
 ///
 /// 本条按后缀分两档判：
@@ -1828,7 +1828,7 @@ fn c3_the_word_transport_never_crosses_the_boundary() {
     assert!(
         offenders.is_empty(),
         "`transport` 漏到了通信层的公开面上：\n{}\n\n\
-         `设计/05 §3.2`：**`transport` 是通信层的内部选择，前端不知道。**\n\
+**`transport` 是通信层的内部选择，前端不知道。**\n\
          前端只给 `origin`（`§3.1`：本机也带值，不是 `null`），选哪条路是本层的事。",
         offenders.join("\n")
     );
@@ -1858,7 +1858,7 @@ fn c3_the_word_transport_never_crosses_the_boundary() {
 
 /// `C4` 的形状表 —— `(串, 出处)`。
 ///
-/// 前三条是 `设计/05 §2` 逐字点名的（`read_to_string` / `File::open` / `env::var`）；
+/// 前三条是点名的（`read_to_string` / `File::open` / `env::var`）；
 /// 后三条是同族的别名，本件补的 —— 补的理由：只挡三种写法等于给第四种写法留门，
 /// 而「换个写法就过」在本仓有记录（`readonly_guard` 的前身栽过）。
 /// 🔴 **串一律运行时拼**：写成字面量的话，本文件自己就是一处「读盘点」，
@@ -1900,7 +1900,7 @@ fn disk_and_env_tags_in(prod: &str) -> BTreeSet<&'static str> {
 
 /// ★ `C4` —— 不许读盘、不许读环境变量。
 ///
-/// `设计/05 §2.1`：这是用户那句「**key 什么的这些应该要归后端管，通信只负责流量**」
+/// 这是用户那句「**key 什么的这些应该要归后端管，通信只负责流量**」
 /// 的操作化 —— 凭据不是"它去拿"，是"后端给它"。
 ///
 /// **买不到**：① `include_str!` 那种**编译期**读盘；② 经由别的 crate 间接读盘；
@@ -1911,11 +1911,11 @@ fn disk_and_env_tags_in(prod: &str) -> BTreeSet<&'static str> {
 /// `read_to_string(` 是个**形状**，它认不出左边那个接收者是盘还是一条已经拿到手的流。
 /// 活样本：`pubkey.rs` 整份文件**只被本条咬住**，而它那个判词下面的两处命中里
 /// **只有一处是读盘**（本机 `.pub`）；另一处是 `reader.read_to_string(&mut out)`，
-/// 读的是 `connect_and_exec_cmd` 交回来的那条 SSH 流 —— 也就是 `设计/05 §2.1 C5` 逐字
+/// 读的是 `connect_and_exec_cmd` 交回来的那条 SSH 流 —— 也就是
 /// 「**只使用别人交给它的通道**」正要它干的那件事。
 /// ⇒ **「本条咬了几处」不等于「这一层伸手拿了几次东西」**，报数时别把两者读成一个。
 ///
-/// ⚠ **今天刻意不收窄**：`设计/05 §2` 那三条判词是**逐字**点名的，收窄成
+/// ⚠ **今天刻意不收窄**：那三条判词是**逐字**点名的，收窄成
 /// `fs::read_to_string(` 会漏掉 `std::fs` 之外的写法。要动它是改 `§2` 那张表，
 /// 不是在这里放宽。下面有一条**钉住这个假阳类**的断言 —— 谁把形状表收窄了那一条当场红，
 /// 逼他回来改这一段话（而不是让这段话安静地变成假的）。
@@ -1945,7 +1945,7 @@ fn c4_nothing_inside_the_boundary_reads_disk_or_environment() {
     assert!(
         offenders.is_empty(),
         "通信层成员自己去读盘 / 读环境变量了：\n{}\n\n\
-         `设计/05 §2.1` 把用户那句话操作化成这一条：\n\
+把用户那句话操作化成这一条：\n\
          「key 什么的这些应该要归后端管，**通信只负责流量**」\n\
          ⇒ 凭据、配置、账号映射全部由后端**交给它**（步 4：`creds.rs` ＋ `table.rs` 搬去后端）。",
         offenders.join("\n")
@@ -1983,7 +1983,7 @@ fn c4_nothing_inside_the_boundary_reads_disk_or_environment() {
     );
 }
 
-/// `C5` 的形状表 —— 前两条是 `设计/05 §2` 逐字点名的，其余是同族别名。
+/// `C5` 的形状表 —— 前两条是点名的，其余是同族别名。
 fn spawn_and_bind_needles() -> Vec<(String, &'static str)> {
     vec![
         (format!("Command::{}(", "new"), "§2 C5 逐字"),
@@ -1995,7 +1995,7 @@ fn spawn_and_bind_needles() -> Vec<(String, &'static str)> {
 
 /// ★ `C5` —— 不许起进程、不许绑端口。
 ///
-/// `设计/05 §2.1`：用户那句「**我不希望一个 app 占用三个端口、三个进程**」的操作化 ——
+/// 用户那句「**我不希望一个 app 占用三个端口、三个进程**」的操作化 ——
 /// 谁起进程、谁绑端口是**后端生命周期**的事，通信层无权。
 /// 它只使用别人交给它的通道（一个 `AsyncRead + AsyncWrite`）。
 ///
@@ -2018,7 +2018,7 @@ fn c5_nothing_inside_the_boundary_spawns_a_process_or_binds_a_port() {
     assert!(
         offenders.is_empty(),
         "通信层成员自己起进程 / 绑端口了：\n{}\n\n\
-         `设计/05 §2.1`：「我不希望一个 app 占用三个端口、三个进程」\n\
+「我不希望一个 app 占用三个端口、三个进程」\n\
          ⇒ 生命周期归后端，本层只**使用**别人交给它的那条通道。",
         offenders.join("\n")
     );
@@ -2038,7 +2038,7 @@ fn c5_nothing_inside_the_boundary_spawns_a_process_or_binds_a_port() {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-//  七、X1–X6：`设计/05 §3.3.6` 的签名判据（与 C1–C5 共用上面那张表）
+//  七、X1–X6：签名判据（与 C1–C5 共用上面那张表）
 // ════════════════════════════════════════════════════════════════════════════
 
 /// 从 `at` 起第一对配平花括号里的内容。
@@ -2065,7 +2065,7 @@ fn braced_block(text: &str, at: usize) -> Option<&str> {
     None
 }
 
-/// `设计/05 §3.3.0` 那三个线上类型 —— `X1` 的人群按它们认。
+/// 那三个线上类型 —— `X1` 的人群按它们认。
 const WIRE_TYPES: &[&str] = &["CallError", "Item", "Reach"];
 
 /// 生产段里「对那三个类型的 `match`」中带 `_ =>` 的那些（返回每处的片段）。
@@ -2110,7 +2110,7 @@ fn x1_every_match_on_the_three_wire_types_is_exhaustive() {
     assert!(
         offenders.is_empty(),
         "这几处对线上类型的 `match` 用了通配臂：\n{}\n\n\
-         `设计/05 §3.3.6` `X1`：三个类型的每一处 `match` 必须**穷尽、零 `_ =>`**。\n\
+`X1`：三个类型的每一处 `match` 必须**穷尽、零 `_ =>`**。\n\
          ⇒ 通配臂的代价是：错误面加一个变体时，**没有任何地方会红** —— \n\
          新错误被悄悄归进旧分支，而那正是这一层最不能出的事。",
         offenders.join("\n")
@@ -2159,7 +2159,7 @@ fn deadline_literals(prod: &str) -> Vec<String> {
 
 /// ★ `X2` —— 通信层生产段**零期限字面量**。
 ///
-/// `设计/05 §3.3.2`：**值归后端 · 执行归通信层 · 说法归调用方**。
+/// **值归后端 · 执行归通信层 · 说法归调用方**。
 /// 期限的**值**一个字都不许写在这一层里 —— 它是后端交下来的。
 ///
 /// **买不到**：① 从别处 `use` 进来的常量（本条只看这一层自己的文本）；
@@ -2181,7 +2181,7 @@ fn x2_no_deadline_literal_lives_inside_the_boundary() {
     assert!(
         offenders.is_empty(),
         "通信层生产段里出现了期限字面量：\n{}\n\n\
-         `设计/05 §3.3.2`：**值归后端**。期限从 `Budget` 里进来，不在这一层里写死。",
+**值归后端**。期限从 `Budget` 里进来，不在这一层里写死。",
         offenders.join("\n")
     );
     assert_eq!(
@@ -2222,7 +2222,7 @@ fn hop_sites_without_reach(prod: &str) -> Vec<String> {
 
 /// ★ `X3` —— `CallError::Hop` 的每一个构造点都**显式给 `reach`**。
 ///
-/// `设计/05 §3.3.1`：错误分三层（传输错 · 对端错 · 我们自己错），
+/// 错误分三层（传输错 · 对端错 · 我们自己错），
 /// 而 `reach`（这一跳到底走到哪儿了）是调用方唯一能据以决定"要不要重试"的东西。
 /// 给它默认值 = 把"不知道"伪装成"知道"。
 ///
@@ -2243,7 +2243,7 @@ fn x3_every_hop_construction_names_its_reach() {
     assert!(
         offenders.is_empty(),
         "这几处 `Hop` 构造点没有显式给 `reach`：\n{}\n\n\
-         `设计/05 §3.3.6` `X3`：**无默认值、无 `..Default::default()`**。\n\
+`X3`：**无默认值、无 `..Default::default()`**。\n\
          ⇒ `reach` 是调用方判断「能不能重试」的唯一依据；给它默认值 =\n\
          把「不知道走到哪儿了」伪装成「知道」。",
         offenders.join("\n")
@@ -2286,7 +2286,7 @@ fn silent_drop_sites(prod: &str) -> Vec<String> {
 
 /// ★ `X4` —— 丢弃只能经 `Item::Gap` 表达。
 ///
-/// `设计/05 §3.3.4`：**回推优先 · 推不动才丢 · 丢必须说**。
+/// **回推优先 · 推不动才丢 · 丢必须说**。
 /// `try_send` 与 `let _ = …send(…)` 都是「推不动就当没发生」——
 /// 订阅方**看不出**中间少了东西，而流的语义整个塌在这一点上。
 ///
@@ -2308,7 +2308,7 @@ fn x4_the_only_way_to_drop_is_to_say_gap() {
     assert!(
         offenders.is_empty(),
         "这几处在**静默地**丢东西：\n{}\n\n\
-         `设计/05 §3.3.4`：**回推优先 · 推不动才丢 · 丢必须说**。\n\
+**回推优先 · 推不动才丢 · 丢必须说**。\n\
          ⇒ 丢了就发一个 `Item::Gap`，让订阅方知道中间缺了东西。",
         offenders.join("\n")
     );
@@ -2356,7 +2356,7 @@ fn loose_until_derivations(prod: &str) -> Vec<String> {
 
 /// ★ `X5` —— `Budget.until` 的每一处派生都是 `min`。
 ///
-/// `设计/05 §3.3.2`：期限沿着调用链**只许越来越紧**。
+/// 期限沿着调用链**只许越来越紧**。
 /// 一处 `+` 或一次重新 `now() + …`，就把上游给的那个期限放宽了 ——
 /// 而放宽之后没有任何人会发现：请求只是"慢了一点"。
 ///
@@ -2379,7 +2379,7 @@ fn x5_every_budget_until_derivation_only_tightens() {
     assert!(
         offenders.is_empty(),
         "`until` 的这几处派生不是「只收紧」：\n{}\n\n\
-         `设计/05 §3.3.6` `X5`：**每一处派生都是 `min` —— 零 `+` / `max` / 重新 `now() + …`**。\n\
+`X5`：**每一处派生都是 `min` —— 零 `+` / `max` / 重新 `now() + …`**。\n\
          ⇒ 放宽上游给的期限之后，症状只是「慢了一点」，没有任何人会发现。",
         offenders.join("\n")
     );
@@ -2426,7 +2426,7 @@ fn call_sites_without_budget(text: &str, entry: &str) -> Vec<String> {
 
 /// ★ `X6` —— 前端侧的调用点**一律显式给 `Budget`**，零处"用库里的默认"。
 ///
-/// `设计/05 §3.3.2`：**说法归调用方**。一个藏在库里的默认期限意味着
+/// **说法归调用方**。一个藏在库里的默认期限意味着
 /// 「这条路该等多久」没有任何调用方想过，而 `§9` 逐字记着：
 /// 那 8 条无期限路径今天**连实测分布都没有**。
 ///
@@ -2454,10 +2454,10 @@ fn x6_every_frontend_call_site_passes_an_explicit_budget() {
     );
     let mut offenders: Vec<String> = Vec::new();
     let mut sites = 0usize;
-    // 〔F7c 09-24〕按入口分开数：`subscribe` 进来了（窗口里第一处），而它**没有期限参数**
-    //   （`05 §3.3.0` 签名逐字）⇒ 「显式给 `Budget`」只对带期限的入口判；条数两个入口各自恒等。
+    // 按入口分开数：`subscribe` 进来了（窗口里第一处），而它**没有期限参数**
+    //   （签名逐字）⇒ 「显式给 `Budget`」只对带期限的入口判；条数两个入口各自恒等。
     let mut per_entry: std::collections::BTreeMap<&str, usize> = Default::default();
-    // 〔C4a · 第四波〕`chan.call`（主界面那一侧）同样带期限 —— 死值验现打：只写 `call` 的话，
+    // `chan.call`（主界面那一侧）同样带期限 —— 死值验现打：只写 `call` 的话，
     //   把主界面某处调用的期限换成一个不叫 budget 的东西，本条**照绿**（入口按全名分，`chan.call` 不在这张表里就不判）。
     const HAS_DEADLINE: &[&str] = &["call", "chan.call"];
     for (entry, lang, _) in ENTRIES {
@@ -2481,80 +2481,80 @@ fn x6_every_frontend_call_site_passes_an_explicit_budget() {
     assert!(
         offenders.is_empty(),
         "前端这几处调用通信层入口时没有显式给 `Budget`（本趟共扫到 {sites} 个调用点）：\n{}\n\n\
-         `设计/05 §3.3.2`：**说法归调用方**。库里的默认期限 =\n\
+**说法归调用方**。库里的默认期限 =\n\
          「这条路该等多久」没有任何调用方想过（`§9`：那 8 条无期限路径连实测分布都没有）。",
         offenders.join("\n")
     );
-    // 🔴〔F2〕调用点**条数恒等**（不是地板）：`call` 恰好 1 处（`filewin/source.rs::ask`）；
-    //    〔F7c 09-24〕`subscribe` 恰好 1 处（`filewin/source.rs::watch`）。
+    // 🔴调用点**条数恒等**（不是地板）：`call` 恰好 1 处（`filewin/source.rs::ask`）；
+    // `subscribe` 恰好 1 处（`filewin/source.rs::watch`）。
     //    变多 ＝ 窗口里长出了第二处说它的地方（期限 / 撤的住址跟着分家）；
     //    变少 ＝ 那一处没了 —— 上面那条零违例会在零个调用点上**恒绿**。
-    // 〔C4a · 第四波〕`chan.call`（TS，主界面）恰好 2 处：`account-reads.ts::fetchSessionAccounts`（`accounts-sessions`）·
+    // `chan.call`（TS，主界面）恰好 2 处：`account-reads.ts::fetchSessionAccounts`（`accounts-sessions`）·
     //    `views/history-search.ts` 逐台那一问（`history-search`）。**X6 的 TS 人群第一次非空。**
-    // 〔C4b · 第四波 4B〕2 → 5：`session-reads.ts` 的三问（`history-index` / `history-user-inputs` / `history-find`，
+    // 2 → 5：`session-reads.ts` 的三问（`history-index` / `history-user-inputs` / `history-find`，
     //    会话读面那三条从 monitor 的 Tauri 命令改走通道；每处显式给期限）。5 → 6：`settings/plugins-section.ts::fetchSurvey`
     //    （`plugins-marketplaces`）。
-    // 〔C4c · 第四波 4B〕6 → 8：`account-reads.ts::fetchAccounts`（`accounts-list`）· `account-reads.ts::checkTrust`（`accounts-trust`）——
+    // 6 → 8：`account-reads.ts::fetchAccounts`（`accounts-list`）· `account-reads.ts::checkTrust`（`accounts-trust`）——
     //    账号清单与信任预检从 monitor 的三条 Tauri 命令改走通道；每处显式给期限。
     //    8 → 9：`session-reads.ts::probeSessionRecord`（`history-record`，resume 之前问记录还在不在）。
     //    9 → 11：`settings/backend-section.ts::askExitPolicy` / `putExitPolicy`（「退出行为」问 / 交写）。
-    //    〔合并 AS2〕11 → 12：`settings/assets-section.ts` 问那台的资产目录（`assets-catalog`，显式给期限）。
-    // 〔C4d · 第四波 4B〕12 → 18：`history-reads.ts` 六处（`history-projects` 本机 · 逐台远端两处 · `history-sessions` ·
+    // 11 → 12：`settings/assets-section.ts` 问那台的资产目录（`assets-catalog`，显式给期限）。
+    // 12 → 18：`history-reads.ts` 六处（`history-projects` 本机 · 逐台远端两处 · `history-sessions` ·
     //    `history-annotate` · `history-forget` · `history-last-accounts`）—— 历史清单与注解从 monitor 的五条 Tauri 命令改走通道，
     //    一律问本机常驻后端（远端那台由它去问）；每处显式给期限。
-    // 〔SU1 · 第四波 4C〕18 → 20：`settings/assets-section.ts` 问那台记着的「从别处装来的 skill」（`skill-installs`）·
+    // 18 → 20：`settings/assets-section.ts` 问那台记着的「从别处装来的 skill」（`skill-installs`）·
     //    点「卸」之后问那台的卸判定（`skill-uninstall-plan`）；两处都显式给期限。
-    // 〔C4e · 第四波 4C〕18 → 19：`tmux-control.ts::capturePane`（`capture-pane`，预览窗抓一屏从 monitor 的 Tauri 命令改走通道；
+    // 18 → 19：`tmux-control.ts::capturePane`（`capture-pane`，预览窗抓一屏从 monitor 的 Tauri 命令改走通道；
     //    显式给期限）。
-    //    〔C4e〕19 → 22：`tmux-control.ts` 的 `killSession`（`kill`）· `sendKeys` · `sendInto`（都是 `launch`）——
+    // 19 → 22：`tmux-control.ts` 的 `killSession`（`kill`）· `sendKeys` · `sendInto`（都是 `launch`）——
     //    杀会话 / 送键 / 就地 resume 三条 Tauri 命令改走通道；每处显式给期限（操作名留在调用点写字面量，见 `settle` 头注）。
-    //    〔C4e〕22 → 27：`cc-bus-control.ts` 五处（`bus-list` 查在线 · `bus-send` · `bus-kill` · `bus-spawn` · `bus-broadcast`）——
+    // 22 → 27：`cc-bus-control.ts` 五处（`bus-list` 查在线 · `bus-send` · `bus-kill` · `bus-spawn` · `bus-broadcast`）——
     //    cc-bus 驾驶舱的写面从 monitor 的五条 Tauri 命令改走通道；每处显式给期限。
-    // 〔MG1 · 合并 SU1 ＋ C4e〕基数 18 ＋ SU1 增量 2 ＋ C4e 增量 9 = 29（两路各自从 18 起算；上面两段各写各的增量）。
-    // 〔US1 · 第四波 4D〕〔合并 US1 × 主线〕主线 29 ＋ 2：`apikey-reads.ts::readApikeyStatus`（`apikey-read`）· `fetchApikeyRouting`（`apikey-routing`）——
+    // 〔合并 SU1 ＋ C4e〕基数 18 ＋ SU1 增量 2 ＋ C4e 增量 9 = 29（两路各自从 18 起算；上面两段各写各的增量）。
+    // 主线 29 ＋ 2：`apikey-reads.ts::readApikeyStatus`（`apikey-read`）· `fetchApikeyRouting`（`apikey-routing`）——
     //    API key 那两问从 monitor 的两条 Tauri 命令改走通道；每处显式给期限。
-    // 〔HX1 · 4D · D-f〕31 → 32：`account-reads.ts::fetchSessionAccountsOrNull`（`accounts-sessions`，机器页「停」本机后端之前
+    // 31 → 32：`account-reads.ts::fetchSessionAccountsOrNull`（`accounts-sessions`，机器页「停」本机后端之前
     //    现问一次走中转的活会话；不走缓存、问不到回 `null`）；显式给期限。
-    // 〔LOC1a · 第四波 4D〕〔合并 LOC1a × 主线 4837d0bd〕主线 31 ＋ 1：`tasks-panel.ts::fetchSessionTasks`（`tasks-list`）——
+    // 主线 31 ＋ 1：`tasks-panel.ts::fetchSessionTasks`（`tasks-list`）——
     //    任务快照从 monitor 的 Tauri 命令改走通道（C4e 批 4）；显式给期限。
-    // 〔合并 HX1 × LOC1a〕两路各自 31 ＋ 1 ⇒ 31 ＋ 2 = 33。
-    // 〔HX2 · 4D〕〔合并 HX2 × 主线 99b8adb6〕主线 33 ＋ 1 ⇒ 34：`apikey-reads.ts::writeApikeyKey`（`apikey-key-set`，写 key 从 monitor 那条 Tauri 命令改走通道）；显式给期限。
-    // 〔STC · 第四波 4D〕〔合并 STC × 主线 aa8c29f3〕主线 35 ＋ 1 ⇒ 36：`session-reads.ts::readSessionFacts`（`history-facts`，会话事实出成品 ——
+    // 两路各自 31 ＋ 1 ⇒ 31 ＋ 2 = 33。
+    // 主线 33 ＋ 1 ⇒ 34：`apikey-reads.ts::writeApikeyKey`（`apikey-key-set`，写 key 从 monitor 那条 Tauri 命令改走通道）；显式给期限。
+    // 主线 35 ＋ 1 ⇒ 36：`session-reads.ts::readSessionFacts`（`history-facts`，会话事实出成品 ——
     //    此前是前端 `onLine` 旁路自己攒的，不是替掉一条 Tauri 命令）；显式给期限（`READ_BUDGET_MS`）。
-    // 〔CF2 · 第四波 4B〕`chan.subscribe`（TS，主界面）恰好 1 处：`events.ts::bindEvents` 按 `streams` 订会话内容流
+    // `chan.subscribe`（TS，主界面）恰好 1 处：`events.ts::bindEvents` 按 `streams` 订会话内容流
     //    （主窗口每台机器一条、独立窗口一条，都经这一处）。
-    // 〔TAP〕`session-tap` 与会话行走同一处（`plan` 里多一种流），仍是 1。
-    // 〔DL1 · 第五波〕`accounts-changed`（替掉裸事件 `remote-backend-ready`；`设计/01 §2.2`「前端只有两个动作」）同样经这一处
+    // `session-tap` 与会话行走同一处（`plan` 里多一种流），仍是 1。
+    // `accounts-changed`（替掉裸事件 `remote-backend-ready`；「前端只有两个动作」）同样经这一处
     //    （合并 TAP 时从单独一处 `watchAccountsChanged` 收回 `bindEvents` 的 `plan`，照 TAP 那一形）⇒ 仍是 1。
-    // 〔W5-ALIAS · 第五波先行〕＋1（合并主线 3c815828 之后 34 → 35；那一拍两边各自写成 34、git 当同一行合了，现打 35）：`settings/machine-aliases.ts::previewAlias` 一处（别名预览 `ccm-print`，
-    //    问本机常驻后端「这条别名实际会执行什么」，`设计/71 §2.3`）；显式给期限（`PREVIEW_BUDGET_MS`）。
-    // 〔DUP2 · J4〕36 → 37：`settings/acct-deploy.ts::askAcctIsoCmd` 一处（cc-acct-iso 步骤那一行问那台后端 `acct-iso-cmd`；
+    // ＋1（合并主线 3c815828 之后 34 → 35；那一拍两边各自写成 34、git 当同一行合了，现打 35）：`settings/machine-aliases.ts::previewAlias` 一处（别名预览 `ccm-print`，
+    //    问本机常驻后端「这条别名实际会执行什么」）；显式给期限（`PREVIEW_BUDGET_MS`）。
+    // 36 → 37：`settings/acct-deploy.ts::askAcctIsoCmd` 一处（cc-acct-iso 步骤那一行问那台后端 `acct-iso-cmd`；
     //    新建表单预览 · 启用向导预览 · 弹终端三个用处都经这一处）；显式给期限（`CMD_BUDGET_MS`）。
-    // 〔SH1 · 4D〕37 → 39：`cc-bus-control.ts::readState` / `readInbox`（`bus-state` / `bus-inbox`，驾驶舱读面从 monitor 那两条 Tauri 命令改走通道）；显式给期限（`READ_BUDGET_MS`）。
-    // 〔GAP1 · `设计/15 §4.7 S1`〕39 → 40：`settings/backend-section.ts::askBackendLog`（`backend-log`，那台后端的诊断文件尾部）；显式给期限。
-    // 〔RESYNC · V149〕基数 40 → 增量 +1 ⇒ 41：`resync.ts::resync`（`resync`，机器一行「重新对齐」与关卡 2「对齐后重试」共用这一处）；显式给期限（`RESYNC_BUDGET_MS`）。
-    // 〔MIG-3a〕基数 41 → 增量 +6 ⇒ 47：`mcp-reads.ts` 三处（`mcp-read` · `mcp-server-put` / `-remove`）＋ `mcp-sync-reads.ts` 三处（`mcp-sync-source` / `-preview` / `-apply`），
+    // 37 → 39：`cc-bus-control.ts::readState` / `readInbox`（`bus-state` / `bus-inbox`，驾驶舱读面从 monitor 那两条 Tauri 命令改走通道）；显式给期限（`READ_BUDGET_MS`）。
+    // 39 → 40：`settings/backend-section.ts::askBackendLog`（`backend-log`，那台后端的诊断文件尾部）；显式给期限。
+    // 基数 40 → 增量 +1 ⇒ 41：`resync.ts::resync`（`resync`，机器一行「重新对齐」与关卡 2「对齐后重试」共用这一处）；显式给期限（`RESYNC_BUDGET_MS`）。
+    // 基数 41 → 增量 +6 ⇒ 47：`mcp-reads.ts` 三处（`mcp-read` · `mcp-server-put` / `-remove`）＋ `mcp-sync-reads.ts` 三处（`mcp-sync-source` / `-preview` / `-apply`），
     //    MCP 读写与推拉从 monitor 那八条 Tauri 命令改走通道；显式给期限（`MCP_BUDGET_MS` / `SYNC_BUDGET_MS`）。
-    // 〔MIG-3a〕基数 47 → 增量 +5 ⇒ 52：`skill-install-reads.ts` 四处（`skill-read` · `skill-install-plan` · `-apply` · `skill-uninstall-apply`）
+    // 基数 47 → 增量 +5 ⇒ 52：`skill-install-reads.ts` 四处（`skill-read` · `skill-install-plan` · `-apply` · `skill-uninstall-apply`）
     //    ＋ `assets-sync-reads.ts` 一处（`assets-sync`）；显式给期限（`SKILL_BUDGET_MS` / `SYNC_BUDGET_MS`）。
-    // 〔合并 MIG-3a × 主线 5b52f042〕基数 52 ＋ MIG-3a +11 ＋ MIG-2 +4 ⇒ 67。
-    // 〔MIG-3a · 子步 3〕基数 61 → 增量 +2 ⇒ 63：`cc-bus-install-reads.ts` 两处（`cc-bus-install` / `-state`）。
-    // 〔MIG-3a · 主会话 09-28 裁〕基数 63 → 增量 −2 ⇒ 61：MCP 推拉 3 → 2、skill 装 3 → 2（经前端中继那一形改成只问本机枢纽一次）。
-    // 〔MIG-3a〕基数 57 → 增量 +6 ⇒ 63：`alias-reads.ts` 六处（`aliases-*`）；显式给期限（`ALIAS_BUDGET_MS`）。
-    // 〔MIG-3a〕基数 54 → 增量 +3 ⇒ 57：`skill-inbox-reads.ts` 三处（`skill-host-list` / `-read` / `-write`）；显式给期限（`INBOX_BUDGET_MS`）。
-    // 〔MIG-3a〕基数 52 → 增量 +2 ⇒ 54：`acct-iso-reads.ts` 两处（`acct-iso-status` · `acct-iso-shellinit`）；显式给期限（`ACCT_ISO_BUDGET_MS`）。
-    // 〔MIG-3a · 09-28 裁 2〕基数 67 → 增量 +1 ⇒ 68：`acct-iso-reads.ts` 一处（`acct-iso-install`）；显式给期限（`ACCT_ISO_BUDGET_MS`）。
-    // 〔MIG-1 · `99 §2.1 ⑯`〕基数 41 → 增量 +3 ⇒ 44：`ssh-config-reads.ts` 三处（`ssh-config-aliases` · `-resolve` · `-import`，`~/.ssh/config` 导入从 monitor 三条 Tauri 命令改问本机常驻后端）；各自显式给期限。
-    // 〔合并 MIG-1 × 主线 b9818369〕基数 41 ＋ MIG-3a 11 ＋ MIG-1 3 ⇒ 55。
-    // 〔MIG-2〕基数 52 → 增量 +4 ⇒ 56：`launch-render.ts` 四处（`launch-render-cli` · `launch-render-payload` · `launch-endpoint` · `launch-local`），
+    // 基数 52 ＋ MIG-3a +11 ＋ MIG-2 +4 ⇒ 67。
+    // 基数 61 → 增量 +2 ⇒ 63：`cc-bus-install-reads.ts` 两处（`cc-bus-install` / `-state`）。
+    // 基数 63 → 增量 −2 ⇒ 61：MCP 推拉 3 → 2、skill 装 3 → 2（经前端中继那一形改成只问本机枢纽一次）。
+    // 基数 57 → 增量 +6 ⇒ 63：`alias-reads.ts` 六处（`aliases-*`）；显式给期限（`ALIAS_BUDGET_MS`）。
+    // 基数 54 → 增量 +3 ⇒ 57：`skill-inbox-reads.ts` 三处（`skill-host-list` / `-read` / `-write`）；显式给期限（`INBOX_BUDGET_MS`）。
+    // 基数 52 → 增量 +2 ⇒ 54：`acct-iso-reads.ts` 两处（`acct-iso-status` · `acct-iso-shellinit`）；显式给期限（`ACCT_ISO_BUDGET_MS`）。
+    // 〔09-28 裁 2〕基数 67 → 增量 +1 ⇒ 68：`acct-iso-reads.ts` 一处（`acct-iso-install`）；显式给期限（`ACCT_ISO_BUDGET_MS`）。
+    // 基数 41 → 增量 +3 ⇒ 44：`ssh-config-reads.ts` 三处（`ssh-config-aliases` · `-resolve` · `-import`，`~/.ssh/config` 导入从 monitor 三条 Tauri 命令改问本机常驻后端）；各自显式给期限。
+    // 基数 41 ＋ MIG-3a 11 ＋ MIG-1 3 ⇒ 55。
+    // 基数 52 → 增量 +4 ⇒ 56：`launch-render.ts` 四处（`launch-render-cli` · `launch-render-payload` · `launch-endpoint` · `launch-local`），
     //    起会话的渲染 / 中转地址 / 本机计划从 monitor 那几条 Tauri 命令改走通道；显式给期限（`budgetWithin(...)`）。
-    // 〔合并 MIG-1 × 主线 bc175f33〕主线 56 ＋ MIG-1 本路 6（ssh 配置三问 ＋ 端口转发三问）⇒ 62。
+    // 主线 56 ＋ MIG-1 本路 6（ssh 配置三问 ＋ 端口转发三问）⇒ 62。
     assert_eq!(
         per_entry,
         [
             ("call", 1usize),
-            ("chan.call", 88usize), // 〔合并扩展页 × 账号库〕两边的增量相加：95 ＋ 账号库 +3 ＋ 扩展页 −10 ⇒ 88 // 扩展页原注：删 15 处（`mcp-reads.ts` 3 · `mcp-sync-reads.ts` 2 · `skill-install-reads.ts` 3 · `skill-inbox-reads.ts` 3 · `plugins-section.ts` 1 · `assets-section.ts` 3）、加 5 处（`ext-reads.ts`：`ext-list` · `ext-hub-preview` / `-apply` · `ext-uninstall-preview` / `-apply`，各自显式给期限） // 账号库原注：账号库那一族：−4（`acct-iso-reads.ts` 三处 · `acct-deploy.ts` 一处随旧工具删）＋ 7（`account-ops.ts` 七条命令各一处，显式给期限 `CHANGE_BUDGET_MS` / `READ_BUDGET_MS`）// 〔P5〕+1：`terminal-open.ts::openTerminal` 本机那一支问本机后端 `terminal-local`（令牌握手前奏由后端接）；显式给期限（`RENDER_BUDGET_MS`） // 〔WF1 · L〕+1：`alias-reads.ts::allowLocalScripts`（`powershell-policy-set`，用户确认后改执行策略）；显式给期限（`ALIAS_BUDGET_MS`） // 〔FIX4 · J15〕+1：`views/history-search.ts::searchAllMachines`（`history-search-merge`，各台结果合一份问本机后端）；显式给期限（`MERGE_BUDGET_MS`） // 〔FIX4 · ⑬〕+1：`terminal-open.ts::openTerminal` 远端那一支（`terminal-ssh`，开终端那一行问本机后端渲）；显式给期限（`RENDER_BUDGET_MS`） // 〔FIX4 · J7〕+1：`tmux-name-mint.ts::askMint`（`tmux-name-mint`，起会话要的 tmux 名问那台后端铸）；显式给期限（`MINT_BUDGET_MS`） // 〔FIX4〕+1：`settings/panorama-section.ts::uninstallPanorama`（`panorama-uninstall`，全景小程序卸口）；显式给期限（`UNINSTALL_BUDGET_MS`） // 〔MOD〕+5：`record-reads.ts` 五处（`history-page` 两处 · `history-lines` · `history-subagent` · `drift-report`；会话正文四条从 monitor 那几条 Tauri 命令改走通道，漂移账记录那两面问那台后端）// 〔MIG-3b 续〕+1：`settings/footprint-reads.ts` 的 `ask`（`footprint-report`，足迹从 monitor 那条 Tauri 命令改走通道）// 〔MIG-3b 续〕+2：`panorama/api.ts` 的 `remote`（`panorama`）· `edit`（`panorama-edit`），全景从 monitor 那三条 Tauri 命令改走通道 // 〔MIG-3b 续〕+1：`pubkey-push.ts::pushPublicKey` 问本机 `pubkey-push` // 〔OSA〕基数 79 → 增量 +1：`settings/profile-backups.ts` 问本机 `files-ls`（`$PROFILE` 备份那一格） // 〔合并 MIG-3a × 主线 f5a294e1〕基数 67 ＋ 主线 +11（78）＋ MIG-3a +1（`acct-iso-install`）⇒ 79
-            ("chan.subscribe", 3usize), // 〔P7〕2 → 3：`panorama/api.ts::followProgress` 订那一趟建索引的进度流（`progress/<票>`，一问一条、问完就撤）—— 同下一条，不是长活的会话流 // 〔MIG-1 收尾〕1 → 2：`remote-probe.ts::probeMachine` 订那一趟测试连接的进度流（`probe-progress/<票>`，一次一条、结局到了就撤）—— 它不是长活的会话流，不进 `bindEvents` 的 `plan`
+            ("chan.call", 88usize), // 〔合并扩展页 × 账号库〕两边的增量相加：95 ＋ 账号库 +3 ＋ 扩展页 −10 ⇒ 88 // 扩展页原注：删 15 处（`mcp-reads.ts` 3 · `mcp-sync-reads.ts` 2 · `skill-install-reads.ts` 3 · `skill-inbox-reads.ts` 3 · `plugins-section.ts` 1 · `assets-section.ts` 3）、加 5 处（`ext-reads.ts`：`ext-list` · `ext-hub-preview` / `-apply` · `ext-uninstall-preview` / `-apply`，各自显式给期限） // 账号库原注：账号库那一族：−4（`acct-iso-reads.ts` 三处 · `acct-deploy.ts` 一处随旧工具删）＋ 7（`account-ops.ts` 七条命令各一处，显式给期限 `CHANGE_BUDGET_MS` / `READ_BUDGET_MS`）// +1：`terminal-open.ts::openTerminal` 本机那一支问本机后端 `terminal-local`（令牌握手前奏由后端接）；显式给期限（`RENDER_BUDGET_MS`） // +1：`alias-reads.ts::allowLocalScripts`（`powershell-policy-set`，用户确认后改执行策略）；显式给期限（`ALIAS_BUDGET_MS`） // +1：`views/history-search.ts::searchAllMachines`（`history-search-merge`，各台结果合一份问本机后端）；显式给期限（`MERGE_BUDGET_MS`） // +1：`terminal-open.ts::openTerminal` 远端那一支（`terminal-ssh`，开终端那一行问本机后端渲）；显式给期限（`RENDER_BUDGET_MS`） // +1：`tmux-name-mint.ts::askMint`（`tmux-name-mint`，起会话要的 tmux 名问那台后端铸）；显式给期限（`MINT_BUDGET_MS`） // +1：`settings/panorama-section.ts::uninstallPanorama`（`panorama-uninstall`，全景小程序卸口）；显式给期限（`UNINSTALL_BUDGET_MS`） // +5：`record-reads.ts` 五处（`history-page` 两处 · `history-lines` · `history-subagent` · `drift-report`；会话正文四条从 monitor 那几条 Tauri 命令改走通道，漂移账记录那两面问那台后端）// +1：`settings/footprint-reads.ts` 的 `ask`（`footprint-report`，足迹从 monitor 那条 Tauri 命令改走通道）// +2：`panorama/api.ts` 的 `remote`（`panorama`）· `edit`（`panorama-edit`），全景从 monitor 那三条 Tauri 命令改走通道 // +1：`pubkey-push.ts::pushPublicKey` 问本机 `pubkey-push` // 基数 79 → 增量 +1：`settings/profile-backups.ts` 问本机 `files-ls`（`$PROFILE` 备份那一格） // 基数 67 ＋ 主线 +11（78）＋ MIG-3a +1（`acct-iso-install`）⇒ 79
+            ("chan.subscribe", 3usize), // 2 → 3：`panorama/api.ts::followProgress` 订那一趟建索引的进度流（`progress/<票>`，一问一条、问完就撤）—— 同下一条，不是长活的会话流 // 1 → 2：`remote-probe.ts::probeMachine` 订那一趟测试连接的进度流（`probe-progress/<票>`，一次一条、结局到了就撤）—— 它不是长活的会话流，不进 `bindEvents` 的 `plan`
             ("subscribe", 1usize)
         ]
         .into_iter()
@@ -2601,20 +2601,20 @@ fn x6_every_frontend_call_site_passes_an_explicit_budget() {
 /// 而那时该做的是**把它圈进来**（盖标记 ＋ 加进 `REGISTERED` ＋ 改散文那个 N），
 /// 不是回来把这一行删掉了事。
 ///
-/// ⚠ **它不买「圈进来就对了」** —— `真相源/100 §二` 那一形（十一条全绿而语义上不该圈）
+/// ⚠ **它不买「圈进来就对了」** —— 那一形（十一条全绿而语义上不该圈）
 /// 本条一个字都不说。归属判断永远是人做的，本表只保证那段理由不是假的。
 const RELAY_LEFT_OUTSIDE: &[(&str, &[&str], &[&str], &str)] = &[
-    // 〔DEL〕`relay/tee.rs` 那一行摘了：挡它的 `X4`（NDJSON 行落点的 `try_send`）随独立 `--relay` 删了 ⇒ 圈进 `REGISTERED`。
+    // `relay/tee.rs` 那一行摘了：挡它的 `X4`（NDJSON 行落点的 `try_send`）随独立 `--relay` 删了 ⇒ 圈进 `REGISTERED`。
     (
         "src/backend/relay/listen.rs",
         &["C5", "X2"],
         &[],
-        "自己 `TcpListener::bind` 端口（`C5`）。〔DEL〕先前还自己 `std::env::var` 读环境（`C4`，`--relay` 入口那一处）—— 那一形删了，\
+        "自己 `TcpListener::bind` 端口（`C5`）。先前还自己 `std::env::var` 读环境（`C4`，`--relay` 入口那一处）—— 那一形删了，\
          进程内那一形的取值器是宿主递进来的。\
-         按 `设计/05 §2.1` `C5` 括号里那条，端口与端口号本来就归后端 ⇒ \
+         按 `C5` 括号里那条，端口与端口号本来就归后端 ⇒ \
          这一份**语义上就该在外面**，不是「等它变干净」。\
          🔴 **`X2` 是 `P16`（2026-09-22）新加的一条，而它是「变干净」的反面**：\
-         中转那两个期限**常量**搬到了这一份里（`设计/01 §2.1 C4` 逐字把「期限值」\
+         中转那两个期限**常量**搬到了这一份里（把「期限值」\
          算进「全部由后端交给它」）⇒ 这一份**更**该在外面了，而中转少了两处 `X2`。\
          这一格是那张表少见的「多一条反而是对的」—— 别顺手把它改回去。",
     ),
@@ -2625,7 +2625,7 @@ const RELAY_LEFT_OUTSIDE: &[(&str, &[&str], &[&str], &str)] = &[
 ///
 /// 🔴 **这张表治的病与 [`RELAY_LEFT_OUTSIDE`] 逐字相同，只是换了一个面。**
 /// 那一拍（2026-09-21）给**面 B** 把「为什么进不来」从散文换成了机检，而**面 A 一直没有** ——
-/// 它那几份的判词只住 `真相源/100`，也就是一份**会腐的读数**。
+/// 它那几份的判词只住，也就是一份**会腐的读数**。
 ///
 /// # 🔴 它不是「多一张表」，它补的是一个现打出来的洞
 ///
@@ -2638,17 +2638,17 @@ const RELAY_LEFT_OUTSIDE: &[(&str, &[&str], &[&str], &str)] = &[
 ///
 /// # 人群从哪来（**不是**「扫哪个目录」）
 ///
-/// `设计/05 §8.1.4` 那张「传输面在新射程下还咬」的表点了四份，**减去** `sftp_move_ledger.rs`
-/// （它今天一条都不咬），**加上** `pubkey.rs`（`真相源/100 §一` 逐份试圈的第 5 行，
-/// 也是 `设计/99 §4 P16` 完成判据里点名的三份之一）。
+/// 那张「传输面在新射程下还咬」的表点了四份，**减去** `sftp_move_ledger.rs`
+/// （它今天一条都不咬），**加上** `pubkey.rs`（逐份试圈的第 5 行，
+/// 也是完成判据里点名的三份之一）。
 ///
-/// ⚠ **`sftp_move_ledger.rs` 为什么不列进来**：它是 `真相源/100 §二` 那一形的第三例
+/// ⚠ **`sftp_move_ledger.rs` 为什么不列进来**：它是那一形的第三例
 /// —— 十一条一条不咬，**而它仍然不该圈**。列进来的话这张表第一天就红，
 /// 而那条红指向的处置（「阻塞清空了 ⇒ 把它圈进来」）**恰好是错的**。
 /// 归属判断永远是人做的 ⇒ 照 [`RELAY_LEFT_OUTSIDE`] 对 `accounts/policy.rs` 的处置办：
 /// **不列，理由写在这里而不是等人来问。**
 ///
-/// # 🔴 `设计/99 §4 P16` 那个「**5 处读盘**」，机检住址就在这张表的第三列
+/// # 🔴 那个「**5 处读盘**」，机检住址就在这张表的第三列
 ///
 /// 那个数**不写在任何一句散文里** —— 它是这张表第三列的**处数合计**，
 /// 由下面那条判据与 `expected_c4_sites` 做**相等**断言（不是地板）。
@@ -2667,36 +2667,36 @@ const TRANSPORT_LEFT_OUTSIDE: &[(&str, &[&str], &[&str], &str)] = &[
         "src/frontend/shell/src/ssh_source.rs",
         &["C1", "X2"],
         &[],
-        "〔C2 · 2026-09-24，`设计/05 §13`〕**传输那一段已经搬出去了**：SSH 的全部活进了后端的拨号代理，\
+        "**传输那一段已经搬出去了**：SSH 的全部活进了后端的拨号代理，\
          界面侧读应答的那一段是新的通信层成员 `ssh_link.rs`，起代理的是宿主 `dial_host.rs`。\
          今天咬它的两条**全是业务该做的事**，不是传输面没洗干净：`C1` 公开面上是会话/tmux/agent 那一族\
          （远端数据源本来就是业务）· `X2` 重连退避与快照重试的期限值。\
          ⇒ **这一份不是「还差一点就进来」，是「本来就不该进来」**：登记它等于把业务家圈进通信层。\
          〔`C4` 原来还有一个判词「读环境OS」—— 拨号代理二进制的解析搬去了宿主，那一处随之离开。\
-          〔MIG-1〕`C4`「读文本」（读 `~/.ssh/config`）与 `C5`（起 `ssh -G`）随「从 ssh config 导入」搬进后端 `dial/ssh_config.rs` 一起离开。〕",
+`C4`「读文本」（读 `~/.ssh/config`）与 `C5`（起 `ssh -G`）随「从 ssh config 导入」搬进后端 `dial/ssh_config.rs` 一起离开。〕",
     ),
     (
         "src/frontend/shell/src/sftp.rs",
         &["X2"],
         &[],
-        "〔MIG-3b · 4d-lanes 子步 1〕**今天咬 `X2` 一条**：部署判定进了本机常驻后端（`deploy-plan`），本文件问它要计划那一问         定了一个期限值（`PLAN_BUDGET`）—— 期限值归宿主（`05 §3.3.2`），而它就是宿主那一侧的调用方（形状同下一行 `sftp_pool.rs`），         照实登记、不圈。         〔RW1 · 第四波 09-24〕**原来只差 `C1` 一条，后来一条都不咬了** —— 咬它的那个词随 F11 那条 SFTP 直删\
-         （连同它的结构守卫〔散文墓碑〕）改经远端后端删一起走了（`设计/05 §8.1.3` 说的「要清掉那个词得连它一起搬」，\
+        "**今天咬 `X2` 一条**：部署判定进了本机常驻后端（`deploy-plan`），本文件问它要计划那一问         定了一个期限值（`PLAN_BUDGET`）—— 期限值归宿主，而它就是宿主那一侧的调用方（形状同下一行 `sftp_pool.rs`），         照实登记、不圈。 **原来只差 `C1` 一条，后来一条都不咬了** —— 咬它的那个词随 F11 那条 SFTP 直删\
+         （连同它的结构守卫〔散文墓碑〕）改经远端后端删一起走了（说的「要清掉那个词得连它一起搬」，\
          搬的是用户裁的 RW1）。🔴 **而它仍然不圈**，这是一次归属判断、不是判据没跑：\
-         本文件今天剩下的是 F08 的**部署**（后端二进制 · 入口 shim · 卸载）（〔W5-ALIAS〕远端 rc 别名块的**规划**\
+         本文件今天剩下的是 F08 的**部署**（后端二进制 · 入口 shim · 卸载）（远端 rc 别名块的**规划**\
          `merge_profile_block` / `strip_profile_block` / `CCM_WRAPPER_SNIPPET` 搬去了 `profile_installer.rs`）—— 都是业务，不是传输；\
-         SFTP 整体进常驻后端是 4B 的 `SR1b`，这一份的去留归它裁。十一条全绿不等于该圈（`真相源/100 §二` 那一形）。",
+         SFTP 整体进常驻后端是 4B 的 `SR1b`，这一份的去留归它裁。十一条全绿不等于该圈。",
     ),
     (
         "src/frontend/shell/src/sftp_pool.rs",
         &["X2"],
         &[],
-        "〔SR1b · 2026-09-24〕**传输本体整段搬进了本机常驻后端**（SFTP 客户端 `dial/sftp.rs`、传输台 `control/transfer.rs`），\
+        "**传输本体整段搬进了本机常驻后端**（SFTP 客户端 `dial/sftp.rs`、传输台 `control/transfer.rs`），\
          这份只剩中继：开单 / 起跑 / 撤原样转给本机后端，`transfer` 帧翻成窗口那几格。\
          〔墓碑 —— 从前咬它的是 `C1`（公开面上的传输业务词）与 `C4` 两个判词「开文件」「以选项开」（用户那次传输的本地那一头）；\
          两样都跟着传输本体走了。〕今天只剩 `X2`：它给本机后端那几条**就地记账**命令的应答定了一个期限值（`CALL_BUDGET`）—— \
-         期限值归宿主（`05 §3.3.2`），而它**就是**宿主那一侧的中继，不是传输面候选 ⇒ 不圈，照实登记。",
+         期限值归宿主，而它**就是**宿主那一侧的中继，不是传输面候选 ⇒ 不圈，照实登记。",
     ),
-    // 〔MIG-3b 续 · ⑬〕`pubkey.rs` 那一行摘了：它「正解是搬去后端」—— 公钥推送整件进了本机后端（`pubkey-push`，`src/backend/assets/pubkey.rs`：
+    // `pubkey.rs` 那一行摘了：它「正解是搬去后端」—— 公钥推送整件进了本机后端（`pubkey-push`，`src/backend/assets/pubkey.rs`：
     //   读本机 `.pub` · 组请求 · 那台后端在就经它写 / 不在就一次 exec），monitor 那份文件删了。
 ];
 
@@ -2746,7 +2746,7 @@ fn criteria_biting(rel: &str, prod: &str) -> BTreeSet<&'static str> {
     }
     if ENTRIES
         .iter()
-        // 〔F2〕人群与 `X6` 同一个口径（按入口的语言分前端语料），不另写一份。
+        // 人群与 `X6` 同一个口径（按入口的语言分前端语料），不另写一份。
         .any(|(e, lang, _)| {
             is_frontend_for(rel, lang, &BTreeSet::new())
                 && !call_sites_without_budget(prod, e).is_empty()
@@ -2783,7 +2783,7 @@ fn criteria_biting(rel: &str, prod: &str) -> BTreeSet<&'static str> {
 ///
 /// - **只有 `C4` 收到了判词那一层。** `C2`（业务 crate 名）· `C5`（起进程/绑端口）·
 ///   `X1`–`X6` 今天仍**只比编号集合** ⇒ 那几条各自「少了一处」的方向**照样瞎**。
-///   这一格是有意的：`设计/99 §4 P16` 的完成判据点名的是「那 5 处读盘」，
+///   这一格是有意的：完成判据点名的是「那 5 处读盘」，
 ///   把六条判据的判词全立起来会变成一张没人读的大表。**要补是另一件活，不是这一件的漏。**
 /// - **不买「表里那几份该不该进来」** —— 归属判断永远是人做的，见两张表各自的头注。
 fn assert_left_outside(
@@ -2879,7 +2879,7 @@ fn assert_left_outside(
          ② **少了一条**（表写了而不咬）⇒ 那条阻塞被清掉了。\n\
             🔴 处置**不是**把这一行改小了事 —— 该问的是「它现在圈得进来了吗」：\n\
             阻塞清空 ⇒ 盖 [`MARK`] ＋ 往 `REGISTERED` 加一行 ＋ 改模块头注那个份数 N。\n\
-            ⚠ 而「十一条全绿」不等于「该圈」（`真相源/100 §二` 那一形），归属判断仍是人做的。",
+            ⚠ 而「十一条全绿」不等于「该圈」，归属判断仍是人做的。",
         diverged.join("\n")
     );
 
@@ -2935,10 +2935,10 @@ fn assert_left_outside(
 
 /// ★ **面 B 剩下的那几份** —— `relay/` 进不来的那几份，逐份**被哪几条咬**与 [`RELAY_LEFT_OUTSIDE`] 两向相等。
 ///
-/// `设计/05 §4.3` 把 `relay/` 按 `C4` 切开、归通信层那一列点了六份，加上后来的 `listen.rs`
+/// 把 `relay/` 按 `C4` 切开、归通信层那一列点了六份，加上后来的 `listen.rs`
 /// 共七份。**为什么其余的进不来**先前只是散文。
 ///
-/// ⚠ 〔`P16` 2026-09-22〕这张表从 5 行掉到 **2 行**：`upstream.rs` · `server.rs` · `mod.rs`
+/// ⚠ 这张表从 5 行掉到 **2 行**：`upstream.rs` · `server.rs` · `mod.rs`
 /// 三份**都圈进来了**（`C2` ＋ `X2` 一清，它们十一条全绿；归属逐份已裁，理由住
 /// [`REGISTERED`] 各自那一行）。⇒ 面 B 归通信层那一列七份里，今天**只剩这两份**在外面。
 ///
@@ -2947,16 +2947,16 @@ fn assert_left_outside(
 /// # 买不到
 ///
 /// - **不买「表里那几份该不该进来」** —— 见 [`RELAY_LEFT_OUTSIDE`] 头注。
-/// - **不买「`relay/` 就是这七份」** —— 人群是 `设计/05 §4.3` 那张表给的，本条不去数目录。
+/// - **不买「`relay/` 就是这七份」** —— 人群是那张表给的，本条不去数目录。
 ///   哪天 `relay/` 多一份文件，本条**一个字都不说**（挡那一形的是 `BACKEND_FILES` 那张表）。
 #[test]
 fn the_relay_files_left_outside_are_blocked_by_exactly_the_criteria_the_prose_names() {
     assert_left_outside(
         RELAY_LEFT_OUTSIDE,
         "`relay/` 今天还进不来的那几份（面 B）",
-        // 〔DEL〕份数 2 → 1：`tee.rs` 圈进来了，只剩 `listen.rs`。
+        // 份数 2 → 1：`tee.rs` 圈进来了，只剩 `listen.rs`。
         1,
-        // 〔DEL〕`C4` 判词处数 1 → 0：`relay/listen.rs` 那一处读环境（`--relay` 入口）随那一形删了；
+        // `C4` 判词处数 1 → 0：`relay/listen.rs` 那一处读环境（`--relay` 入口）随那一形删了；
         //   那一份仍被 `C5` / `X2` 咬 ⇒ 仍圈不进来（份数 2 不变）。
         0,
     );
@@ -2964,7 +2964,7 @@ fn the_relay_files_left_outside_are_blocked_by_exactly_the_criteria_the_prose_na
 
 /// ★ **传输面那四份** —— 面 A 的候选逐份**被哪几条咬**与 [`TRANSPORT_LEFT_OUTSIDE`] 两向相等。
 ///
-/// 〔`设计/99 §4 P16`「步 4 的剩余」，2026-09-22 立〕面 B 那张表 2026-09-21 就有了，
+/// 〔「步 4 的剩余」，2026-09-22 立〕面 B 那张表 2026-09-21 就有了，
 /// **面 A 一直没有** ⇒ 「面 A 还剩几处读盘」这件事此前**完全不在执行链上**
 /// （死值验：摘掉一处读环境变量，这一族当时那十六条一条都没红）。人群与逐份理由住
 /// [`TRANSPORT_LEFT_OUTSIDE`]，反空真那三样与面 B 那条共用 [`assert_left_outside`]。
@@ -2973,21 +2973,21 @@ fn the_relay_files_left_outside_are_blocked_by_exactly_the_criteria_the_prose_na
 ///
 /// - **不买「这四份该不该进来」** —— 见 [`TRANSPORT_LEFT_OUTSIDE`] 头注；
 ///   其中 `pubkey.rs` 与 `sftp_move_ledger.rs` 两格的正解都**不是**「圈进来」。
-/// - **不买「传输面就是这四份」** —— 人群是 `设计/05 §8.1.4` 那张表 ＋ `真相源/100 §一` 给的，
+/// - **不买「传输面就是这四份」** —— 人群是那张表 ＋给的，
 ///   本条**不去数目录**。哪天传输面多一份文件，本条一个字都不说。
 /// - **不买「这几处读盘清得掉」** —— 它只买「那段解释为什么清不掉的理由不是假的」。
 ///   逐处的写区外前置（另一族判据正着钉住那处环境变量 · 6 条互锁登记表 · 一道未拍的设计题）
 ///   写在表里各自那一行。
 #[test]
 fn the_transport_candidates_left_outside_are_blocked_by_exactly_the_criteria_the_prose_names() {
-    // 〔C2 · 2026-09-24〕`C4` 判词处数 5 → **4**：少的是 `ssh_source.rs` 的「读环境OS」——
+    // `C4` 判词处数 5 → **4**：少的是 `ssh_source.rs` 的「读环境OS」——
     //   拨号代理二进制的解析（`CCM_DIAL_PROXY`）随拨号搬去了宿主 `dial_host.rs`（不是成员，那一处本来就归它）。
-    // 〔SR1b · 2026-09-24〕`C4` 判词处数 4 → **2**：少的是 `sftp_pool.rs` 的「开文件」「以选项开」——
+    // `C4` 判词处数 4 → **2**：少的是 `sftp_pool.rs` 的「开文件」「以选项开」——
     //   用户那次传输的本地那一头随传输台搬进了本机常驻后端（`control/transfer.rs`）。份数仍是 4（它还是候选，只剩 `X2`）。
-    // 〔MIG-1 · `99 §2.1 ⑯`〕`C4` 判词处数 2 → **1**：少的是 `ssh_source.rs` 的「读文本」（读 `~/.ssh/config`）——
+    // `C4` 判词处数 2 → **1**：少的是 `ssh_source.rs` 的「读文本」（读 `~/.ssh/config`）——
     //   「从 ssh config 导入」搬进后端 `dial/ssh_config.rs`。份数仍是 4。
-    // 〔MIG-3b 续〕4 → 3：`pubkey.rs` 随公钥推送进本机后端删了。
-    // 〔MIG-3b 续〕判词处数 1 → 0：那一处读盘就是 `pubkey.rs` 读本机 `.pub`（它搬进了本机后端）。
+    // 4 → 3：`pubkey.rs` 随公钥推送进本机后端删了。
+    // 判词处数 1 → 0：那一处读盘就是 `pubkey.rs` 读本机 `.pub`（它搬进了本机后端）。
     assert_left_outside(TRANSPORT_LEFT_OUTSIDE, "面 A 的传输面那三份候选", 3, 0);
 }
 
@@ -3028,14 +3028,14 @@ fn test_fn_names(src: &str) -> BTreeSet<String> {
 /// # 它治什么
 ///
 /// 删掉一条判据而把表留着（读的人以为那条性质有人守着）· 加一条判据而不登记
-/// （`设计/05` 的编号与盘上的东西对不上）· 把 `X4` 悄悄改名（闭集按名字认）。
+/// （编号与盘上的东西对不上）· 把 `X4` 悄悄改名（闭集按名字认）。
 ///
 /// # ⚠ 它**接不住**的那一格（如实登记，这是本件已知的洞）
 ///
 /// **整个模块被从 `lib.rs` 摘掉**。那时本文件一条都不跑，本条也不跑 ——
 /// 「摘掉了」与「全绿」在终端上一模一样。挡这一形要在 `tests/scripts/gate.sh` 上
 /// 给这一族开一个**自己的格**（形状照 `f3-copy`：pin · declared · ran 三方相等）。
-/// ⚠ 〔2026-09-22〕**那一格今天已经在了** —— `tests/scripts/gate.sh` 的 `comm-boundary`，
+/// ⚠ **那一格今天已经在了** —— `tests/scripts/gate.sh` 的 `comm-boundary`，
 /// 它的 `pin` 与本表条数是一条**恒等**腿（不是上限）⇒ 真加/删一条判据，`pin` 必须**同拍**抬。
 #[test]
 fn every_criterion_is_on_the_execution_chain() {
@@ -3075,10 +3075,7 @@ fn every_criterion_is_on_the_execution_chain() {
     let got_x: BTreeSet<&str> = ids.iter().filter(|i| i.starts_with('X')).copied().collect();
     assert_eq!(
         got_c, want_c,
-        "`设计/05 §2` 的铁律恰好五条（C1–C5），盘上是 {got_c:?}"
+        "通信层的铁律恰好五条（C1–C5），盘上是 {got_c:?}"
     );
-    assert_eq!(
-        got_x, want_x,
-        "`设计/05 §3.3.6` 的签名判据恰好六条（X1–X6），盘上是 {got_x:?}"
-    );
+    assert_eq!(got_x, want_x, "签名判据恰好六条（X1–X6），盘上是 {got_x:?}");
 }

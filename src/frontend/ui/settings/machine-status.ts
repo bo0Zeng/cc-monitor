@@ -3,7 +3,7 @@
  *
  * # 它为什么不去查状态
  *
- * 主计划 §1-2 是条红线：**状态灯绝不引入轮询**。依据是 `INVARIANTS §41`
+ * 是条红线：**状态灯绝不引入轮询**。依据是 `INVARIANTS §41`
  * （backend 生产段零定时器，`no_timer_guard` 钉住）以及 `cc-bus-section.ts` /
  * `config-surface-section.ts` 文件头各自写死的「不新增轮询」。
  *
@@ -58,7 +58,7 @@ export const FACET_LABELS: Record<MachineFacet, string> = {
 export interface FacetState {
   /**
    * - `ok` / `fail`：上次动作的结论。
-   * - `na`：**不适用** —— 例如本机不需要后端（主计划 §2.4 逐字写着「不需要」，
+   * - `na`：**不适用** —— 例如本机不需要后端（写着「不需要」，
    *   `watcher.rs` 直读 jsonl）。**这和「没测过」是两回事**：混成一个值的话，
    *   用户会以为本机缺了个组件。「没测过」的表示是**这个 facet 压根不在表里**。
    */

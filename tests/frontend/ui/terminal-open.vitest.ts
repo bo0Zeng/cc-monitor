@@ -1,12 +1,12 @@
 /**
- * 要求住址：`设计/99 §2.1 ⑬`「待迁」最后一行 ——「远端拉起那串的 ssh 外壳（`ssh -t -J … host '<串>'` · PowerShell 窗口载荷）
+ * 要求：「待迁」最后一行 ——「远端拉起那串的 ssh 外壳（`ssh -t -J … host '<串>'` · PowerShell 窗口载荷）
  * 由本机后端渲（组请求用 `dial/machine.rs::resolve`），monitor 只开终端」（FIX4 题面第 1 条）。
  *
  * | 性质 | 判据 |
  * |---|---|
  * | 远端三步：monitor 交机器事实 → 本机后端 `terminal-ssh` 渲 → monitor 开窗（交的是后端渲的那一行，`ssh: true`） | 「远端」 |
  * | 本机同形：本机后端 `terminal-local` 交回那一串 → monitor 开窗（`ssh: false`），不问机器事实 | 「本机」 |
- * | 〔P5 · `设计/80 §8.2` 本地半〕令牌只交给本机后端（两条都是）、开窗那一跳不带令牌 | 「远端」「本机」 |
+ * | 〔本地半〕令牌只交给本机后端（两条都是）、开窗那一跳不带令牌 | 「远端」「本机」 |
  * | 后端回的形状不认 / 问不到 ⇒ 抛，一个窗口都不开（不拿原串顶上） | 「问不到」 |
  * | 开窗只有一个家：生产段调 `commands.open_terminal_window(` / `commands.terminal_dial(` 的文件 == {terminal-open.ts} | 「一个家」 |
  *
@@ -20,7 +20,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { openTerminal, decodeTerminalLine } from "../../../src/frontend/ui/terminal-open";
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
 import { chanArgsJson, chanReply, isChanCall, NO_CHANNEL, type ChanCallArgs } from "../../test-support/chan-fake";
-import { productionTsFiles } from "../../test-support/production-sources.ts";
+import { productionTsFiles, SCAN_TIMEOUT_MS } from "../../test-support/production-sources.ts";
 import { stripComments } from "../../test-support/strip-comments.ts";
 
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
@@ -104,5 +104,5 @@ describe("一个家", () => {
       .map((f) => f.file)
       .sort();
     expect(hits, "有别处自己开终端了 —— 开终端只经 `src/frontend/ui/terminal-open.ts::openTerminal`").toEqual(["src/frontend/ui/terminal-open.ts"]);
-  });
+  }, SCAN_TIMEOUT_MS);
 });

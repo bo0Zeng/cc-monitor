@@ -1,7 +1,7 @@
-//! 〔MIG-3a · 子步 3〕装 / 三态那几条判据随装 cc-bus 进了后端（`tests/backend/assets/cc_bus_install_tests.rs`）；这里只剩装前那道本机 `ccm` 预检。
+//! 装 / 三态那几条判据随装 cc-bus 进了后端（`tests/backend/assets/cc_bus_install_tests.rs`）；这里只剩装前那道本机 `ccm` 预检。
 use super::*;
 
-/// ★★ 装前那道能力预检**列的东西必须与 `cc-spawn` 真正协商的一致**〔08-13〕。
+/// ★★ 装前那道能力预检**列的东西必须与 `cc-spawn` 真正协商的一致**。
 ///
 /// 两边是**同一个事实的两份表达**（Rust 的 `CC_SPAWN_NEEDS` 与 shell 里那行 `for _c in …`）。
 /// 抽不成一份（一个是编译进 monitor 的常量、一个是要部署出去的 shell）⇒ 只能钉一致。
@@ -35,7 +35,7 @@ fn the_deploy_precheck_lists_what_cc_spawn_negotiates() {
     );
 }
 
-/// ★★ Windows 那条预检**真探了**，而且五种情形的话**互相分得开**〔ccbus-win 09-24〕。
+/// ★★ Windows 那条预检**真探了**，而且五种情形的话**互相分得开**。
 ///
 /// 🪦 上一版这里是 `windows_says_the_precheck_did_not_happen_instead_of_staying_silent`〔散文墓碑〕
 /// （`#[cfg(windows)]`，断言那句话里有「没做预检」）。那一版的前提 ——「monitor 在 Windows 上

@@ -1,4 +1,4 @@
-// A2（`设计/70 §4.4`）：新建账号那张表单 —— 岔口在表单里、「哪个账号」只问一次、创建不是红色。
+// A2：新建账号那张表单 —— 岔口在表单里、「哪个账号」只问一次、创建不是红色。
 //
 // 本文件判**表单自己**：交出去的请求形状、两支的显隐、校验挡不挡得住绕过 disabled 的点击。
 // 「交出去之后账号分节怎么把 key 写给那个号」在 `accounts-section.vitest.ts` 的 A2 那一族。
@@ -182,7 +182,7 @@ describe("A2 新建账号表单", () => {
     expect(f.seen).toEqual([{ name: "b", kind: "subscription", isDefault: true }]);
   });
 
-  it("🔴 `70 §4.3` ②：「创建」不是红色；表单里没有 `.danger`，也没有账号下拉", () => {
+  it("🔴：「创建」不是红色；表单里没有 `.danger`，也没有账号下拉", () => {
     const f = form();
     expect(f.el.querySelectorAll(".danger").length).toBe(0);
     expect(f.btn("创建").className).toContain("settings-btn-primary");
@@ -190,7 +190,7 @@ describe("A2 新建账号表单", () => {
   });
 });
 
-describe("〔ST2 · `70 §4.4` 线框〕apikey 那一支的 Base URL", () => {
+describe("〔ST2 · 线框〕apikey 那一支的 Base URL", () => {
   it("★ 形状关：留空合法（默认上游）· https 收 · 明文 http 只收本机回环 · 别的一律不收", () => {
     expect(checkBaseUrl("  ")).toEqual({ ok: true, value: undefined });
     expect(checkBaseUrl(" https://api.example.com/v1 ")).toEqual({ ok: true, value: "https://api.example.com/v1" });

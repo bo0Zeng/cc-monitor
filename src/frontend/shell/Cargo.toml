@@ -6,7 +6,7 @@
 #
 # ⚠ `vendor/code-picture-core` **刻意 exclude**：它是 vendor 进来的第三方内核，
 # 不该被 `--workspace` 的 fmt/clippy/test 扫到（也不该因为我们的 lint 设置而红）。
-# 〔RM1f〕monitor 已不再依赖它（链它的只剩全景小程序 `src/panorama-engine`）；它仍住本目录之下 ⇒ exclude 照留。
+# monitor 已不再依赖它（链它的只剩全景小程序 `src/panorama-engine`）；它仍住本目录之下 ⇒ exclude 照留。
 # ⚠ `src/backend` **不在这里** —— 它有自己独立的 `Cargo.lock`，
 # 那条隔离是真架构约束（Linux/Windows CI runner），见它自己的 `Cargo.toml` 头注。
 [workspace]
@@ -18,22 +18,22 @@ members = [
     "../../common/relay-route-core",
     "../../common/shell-quote-core",
     "../../common/copy-core",
-    # 〔THIN〕`agent-tools-core` 出列：界面不再按工具名判卡型（卡型随记录成品带出），它只剩后端用，收进后端适配层。
-    # 〔DUP3 · J9〕上游 base URL 能不能用 —— 后端中转 · 上游选择 · 写口与界面生成物共用的唯一一份。
+    # `agent-tools-core` 出列：界面不再按工具名判卡型（卡型随记录成品带出），它只剩后端用，收进后端适配层。
+    # 上游 base URL 能不能用 —— 后端中转 · 上游选择 · 写口与界面生成物共用的唯一一份。
     "../../common/upstream-url-core",
-    # 〔P1〕部署那一族的契约（表 A 的键与行 · 戳格式 · 答话形状 · 路径）；判定那一半（原 `deploy-core`）进了后端 `control/deploy_plan.rs`。
+    # 部署那一族的契约（表 A 的键与行 · 戳格式 · 答话形状 · 路径）；判定那一半（原 `deploy-core`）进了后端 `control/deploy_plan.rs`。
     "../../common/deploy-contract",
-    # 〔P4 · ⑰〕通道（通信层面 A）的线上词汇 · 客户端 · 路由器 · 拨号与交接件：monitor 与文件窗口进程链同一份。
+    # 通道（通信层面 A）的线上词汇 · 客户端 · 路由器 · 拨号与交接件：monitor 与文件窗口进程链同一份。
     "../../common/chan-core",
-    # 〔P4 · 主会话 09-29 拍板 Q2〕前端宿主原语（两个前端共用、后端不链）：自有状态文件的原子写 · 窗口夹进工作区。
+    # 〔主会话 09-29 拍板 Q2〕前端宿主原语（两个前端共用、后端不链）：自有状态文件的原子写 · 窗口夹进工作区。
     "../../common/host-core",
-    # 〔P4 · 主会话 09-29 拍板 Q1〕monitor 与文件窗口进程之间的契约（开窗种子 · 就绪那一行 · 「在此打开终端」那一问）。
+    # 〔主会话 09-29 拍板 Q1〕monitor 与文件窗口进程之间的契约（开窗种子 · 就绪那一行 · 「在此打开终端」那一问）。
     "../../common/filewin-contract",
-    # 〔P4 · ⑰〕文件窗口（又一个前端）：独立成包，monitor 包里的 `[[bin]] cc-monitor-filewin` 转调它。
+    # 文件窗口（又一个前端）：独立成包，monitor 包里的 `[[bin]] cc-monitor-filewin` 转调它。
     "../filewin",
-    # 〔THIN〕`gate-core` 出列：收成后端模块 `control/gate_rules.rs`（monitor 那一侧的门删了）。
+    # `gate-core` 出列：收成后端模块 `control/gate_rules.rs`（monitor 那一侧的门删了）。
 ]
-# 〔RE〕`exclude = ["vendor/code-picture-core"]` 删了：vendor 随唯一消费者搬进 `src/panorama-engine/vendor/`，
+# `exclude = ["vendor/code-picture-core"]` 删了：vendor 随唯一消费者搬进 `src/panorama-engine/vendor/`，
 #   不在本 workspace 根下面，按构造就成不了成员（path 依赖只有住在根目录里才自动入圈）。
 
 [package]
@@ -51,7 +51,7 @@ categories = ["development-tools", "visualization"]
 # 主二进制是 `cc-monitor`（与包名不同）⇒ 用 `default-run` 点名它：`cargo run` 起它，打包器（tauri-cli）也按它认主二进制。
 default-run = "cc-monitor"
 
-# 〔P4 · `设计/90 §0.5.3` ⑰〕「monitor 源码树」的判据人群：本包 `src/` ＋ 下面这几包 —— monitor 的代码搬进去的、只有前端链的兄弟包
+# 「monitor 源码树」的判据人群：本包 `src/` ＋ 下面这几包 —— monitor 的代码搬进去的、只有前端链的兄弟包
 #   （通道 · 前端宿主原语 · 开窗契约 · 文件窗口）。`guard_core::walk_tree` / `module_address` 按它收 / 认，按人群扫的判据搬家前后逐条同一群；
 #   两向对着「monitor 生产闭包 − 后端生产闭包」由 `contract_crate_guard_tests.rs` ⑤ 钉住。
 [package.metadata.guard]
@@ -74,7 +74,7 @@ crate-type = ["rlib"]
 name = "cc-monitor"
 path = "src/main.rs"
 
-# 🔴〔第十三刀 2026-09-23〕**文件管理窗口的独立进程**（`设计/60 §4.8` 作废重写 · `§8.5`）。
+# 🔴**文件管理窗口的独立进程**（作废重写 · `§8.5`）。
 #
 # 为什么它是**本包的第二个 bin** 而不是一个新 crate：与 `filewin` 当初落成模块
 # 同一条理由 —— 门禁 `cargo` 那一格把 workspace 包数**恒等**钉在 9
@@ -126,23 +126,23 @@ tauri-plugin-dialog = "2"
 tauri-plugin-notification = "2"
 
 serde = { version = "1", features = ["derive"] }
-# 〔MOD〕`raw_value`：会话行的成品（后端给的记录）原样转交、monitor 不解析它（`ui_contract::JsonlLinePayload::message`）。
+# `raw_value`：会话行的成品（后端给的记录）原样转交、monitor 不解析它（`ui_contract::JsonlLinePayload::message`）。
 serde_json = { version = "1", features = ["raw_value"] }
 # F62：从历史某轮创建分支（写 <new-sid>.jsonl）时生成新 sessionId。
 # uuid 1.x 已在 Cargo.lock（tauri 传递依赖）+ 本地 registry 缓存，加 v4 feature 离线可编。
 uuid = { version = "1", features = ["v4"] }
 
-# 〔RM1f · V108 后半句「之后本机也走这条路、monitor 摘内嵌引擎」〕`code-picture-core` 这一行删了：
+# 〔V108 后半句「之后本机也走这条路、monitor 摘内嵌引擎」〕`code-picture-core` 这一行删了：
 # 本机全景也走「本机后端 → 插件口 → 全景小程序（`src/panorama-engine`）」，monitor 一行引擎都不链。
-# vendored 副本〔RE〕随唯一消费者搬进 `src/panorama-engine/vendor/code-picture-core`（`99 §2.1 ⑰`）。
-# 〔THIN〕`branch-core` 删了：monitor 零引用（本机分叉也问本机后端），它收进后端适配层 `agents/claudecode/branch.rs`。
-# 〔RE〕`codex-token-core` 删了：monitor 零引用，它搬进后端 `agents/codex/token.rs`。
-# 〔THIN〕`agent-tools-core` 删了：画像表里那几张判卡型的词表进了后端适配层（`agents/claudecode/cards.rs`），monitor 零引用。
-# 〔THIN〕`acct-core` 挪到 dev 侧（见下）：monitor 生产段零引用，只有生成器（`AUTH_KINDS` → `judgment-rules.ts`）用它。
-# 〔CP2c〕对外文案表的 Rust 取文口（唯一一份实现；`copy_table.rs` 转发它）。常驻后端与 creds-core 也链它。
+# vendored 副本随唯一消费者搬进 `src/panorama-engine/vendor/code-picture-core`。
+# `branch-core` 删了：monitor 零引用（本机分叉也问本机后端），它收进后端适配层 `agents/claudecode/branch.rs`。
+# `codex-token-core` 删了：monitor 零引用，它搬进后端 `agents/codex/token.rs`。
+# `agent-tools-core` 删了：画像表里那几张判卡型的词表进了后端适配层（`agents/claudecode/cards.rs`），monitor 零引用。
+# `acct-core` 挪到 dev 侧（见下）：monitor 生产段零引用，只有生成器（`AUTH_KINDS` → `judgment-rules.ts`）用它。
+# 对外文案表的 Rust 取文口（唯一一份实现；`copy_table.rs` 转发它）。常驻后端与 creds-core 也链它。
 copy-core = { path = "../../common/copy-core" }
 # K-H2a：第三方 API key 的唯一住址（类型 / 落盘格式 / 权限判断），与远端后端共用。
-# 〔US1 · 第四波 4D〕**不开 `harden`**：monitor 既不写（GP1 起本机那一份的写者是本机常驻后端）也不读（US1 起本机那份的状态
+# **不开 `harden`**：monitor 既不写（GP1 起本机那一份的写者是本机常驻后端）也不读（US1 起本机那份的状态
 #   由本机常驻后端答 `apikey-read`）这份文件，只用 `store::FILE_NAME` 算「本 monitor 认的那一份在哪」（`creds_store::resolve_path`）。
 #   「monitor 写不了这份文件」从判据兜换回**编译器兜**：写半边（`perm::create_private` / `make_private`）只在 `harden` 下存在。
 # 〔墓碑 —— GP1 那一版开着它「只为 Windows 上读 DACL」（`perm::probe` 那一臂）：读者随 `creds_store::read_status`〔散文墓碑〕一起没了。〕
@@ -153,26 +153,26 @@ creds-core = { path = "../../common/creds-core" }
 # ⚠ 原注释说「backend 侧刻意还没加这条依赖」已经过期两轮：U8c-2b-0 起后端的
 # `control/tmux_hook.rs::sq` 就在调它，那也是它今天唯一的后端用量。
 shell-quote-core = { path = "../../common/shell-quote-core" }
-# 〔US1 · 4D · P3〕后端的门牌与家的契约（端口 · 钥匙 · 路由语法 · `~/.cc-monitor/` 下每一样的相对路径），与后端同一份（`设计/20 §5` 目标）。
+# 后端的门牌与家的契约（端口 · 钥匙 · 路由语法 · `~/.cc-monitor/` 下每一样的相对路径），与后端同一份（目标）。
 relay-route-core = { path = "../../common/relay-route-core" }
-# 〔P1〕部署那一族的契约（契约类，`设计/00 §1.2`）：取字节口的键与行 · 解计划答话 · 读字节里的身份戳；判定都问后端（自举那一刻问手上那份字节自己，`place-verdict`）。
+# 部署那一族的契约（契约类）：取字节口的键与行 · 解计划答话 · 读字节里的身份戳；判定都问后端（自举那一刻问手上那份字节自己，`place-verdict`）。
 deploy-contract = { path = "../../common/deploy-contract" }
-# 〔P4 · ⑰〕通道：成员文件原地住 `src/comms/inward/`，由这个共享 crate 编（壳里 `chan/` 再导出，模块路径不变）。
+# 通道：成员文件原地住 `src/comms/inward/`，由这个共享 crate 编（壳里 `chan/` 再导出，模块路径不变）。
 chan-core = { path = "../../common/chan-core" }
-# 〔P4〕前端宿主原语（原子写 `atomic_write_json` · `WorkArea` / `fit_into_work_area`）：monitor 与文件窗口共用那一份（`src/common/host-core`）。
+# 前端宿主原语（原子写 `atomic_write_json` · `WorkArea` / `fit_into_work_area`）：monitor 与文件窗口共用那一份（`src/common/host-core`）。
 host-core = { path = "../../common/host-core" }
-# 〔P4〕monitor 与文件窗口进程两边对上的形状（种子 · 就绪行 · 开终端那一问）。
+# monitor 与文件窗口进程两边对上的形状（种子 · 就绪行 · 开终端那一问）。
 filewin-contract = { path = "../../common/filewin-contract" }
-# 〔THIN〕`gate-core` 删了：monitor 侧的 Gate 1 前检与转调壳（只剩跨轨对拍锚点在用）删掉之后它只剩后端用，收成后端模块 `control/gate_rules.rs`。
+# `gate-core` 删了：monitor 侧的 Gate 1 前检与转调壳（只剩跨轨对拍锚点在用）删掉之后它只剩后端用，收成后端模块 `control/gate_rules.rs`。
 
-# 〔THIN〕`search-core` 删了：monitor 零引用（搜索与记录解释都在后端；`messages.rs` 那一处随记录解释进了后端，MOD）。
-#   〔P1〕workspace 成员也出列、crate 删了：通用口径进后端 `observe/search_rules.rs`，Claude 记录文本那一半进 `agents/claudecode/text.rs`。
+# `search-core` 删了：monitor 零引用（搜索与记录解释都在后端；`messages.rs` 那一处随记录解释进了后端，MOD）。
+# workspace 成员也出列、crate 删了：通用口径进后端 `observe/search_rules.rs`，Claude 记录文本那一半进 `agents/claudecode/text.rs`。
 
 notify = "6"
 notify-debouncer-mini = "0.4"
 walkdir = "2"
 
-# 〔SR1b · 2026-09-24〕**`russh` / `russh-sftp` / `primefield` 三行出了本清单：界面进程零 SSH**（用户 V89
+# **`russh` / `russh-sftp` / `primefield` 三行出了本清单：界面进程零 SSH**（用户
 # 「SFTP 进本机常驻后端」；SR1a 已把其余拨号搬进本机常驻后端）。那三行的来历（ring 后端 · 3.0.0 选型 ·
 # primefield rc.9 的解析杠杆）逐字搬进了 `../backend/Cargo.toml` 那两行的注释旁边 —— 那一侧今天是唯一的 SSH 客户端。
 # 终点判据：`dial_home_registry` 的二值旗（`russh` 不在界面 manifest 里）翻面、`the_monitor_manifest_names_no_ssh_crate` 零命中。
@@ -189,7 +189,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 # v2.0.0 issue #4：滚动 log 文件 + non_blocking writer，给 GUI app（无 stderr）一个用户可见的诊断通道
 tracing-appender = "0.2"
 
-# 〔P4 · `设计/90 §0.5.3` ⑰ · 主会话 09-29 拍板 Q1〕文件窗口独立成包 `src/frontend/filewin/`：界面库那几条（egui · eframe（glow）·
+# 〔主会话 09-29 拍板 Q1〕文件窗口独立成包 `src/frontend/filewin/`：界面库那几条（egui · eframe（glow）·
 #   winit · rfd）与块形上传的 sha2 随窗口搬进那一包的清单（来历与「为什么是 glow」那几段注释逐字跟过去了）。
 #   monitor 链它**只为**本包第二个 `[[bin]] cc-monitor-filewin`（`src/filewin/win_main.rs` 一行转调 `cc_monitor_filewin::run`；
 #   bin 不能有自己的依赖，只能挂在包上）—— monitor 生产段一行都不引它（`contract_crate_guard` 的「前端包」那一类钉住）。
@@ -204,9 +204,9 @@ cc-monitor-filewin = { path = "../filewin" }
 # 供应链增量本来就小（`ts-rs` + `ts-rs-macros` + `termcolor`，后两者是 proc-macro/构建期），
 # 但「codegen 工具不进产物」是正确的依赖方向。
 ts-rs = "12.0.1"
-# 〔DUP3 · J9〕上游 base URL 能不能用：monitor 生产树零引用，只有生成器（`export_bindings_judgment_rules`）与金样那条判据用它 ⇒ dev 侧。
+# 上游 base URL 能不能用：monitor 生产树零引用，只有生成器（`export_bindings_judgment_rules`）与金样那条判据用它 ⇒ dev 侧。
 upstream-url-core = { path = "../../common/upstream-url-core" }
-# 〔THIN〕账号种类取值集 `AUTH_KINDS`（J16）：monitor 生产树零引用，只有生成器（`export_bindings_judgment_rules`）用它 ⇒ dev 侧，
+# 账号种类取值集 `AUTH_KINDS`（J16）：monitor 生产树零引用，只有生成器（`export_bindings_judgment_rules`）用它 ⇒ dev 侧，
 #   发布二进制里不再链它（连同它那张对拍夹具 —— 夹具另在 `fixtures` feature 后面，这里也不开）。
 acct-core = { path = "../../common/acct-core" }
 # U8a-2a：源码扫描型守卫的「只留生产段」剥法，与远端后端共用同一份。
@@ -214,7 +214,7 @@ acct-core = { path = "../../common/acct-core" }
 # 起因：monitor 侧的守卫此前各写便宜近似（`split("\n#[cfg(test)]").next()`），
 # 那个近似在 `ssh_source.rs` 上会把扫描面砍掉三分之二（详见 guard-core 头注）。
 guard-core = { path = "../../common/guard-core" }
-# 〔P4〕`Origin` 编进 `chan-core` 之后，本包测试档里别的生成类型（会话流那几帧）嵌着它 ⇒ dev 侧开它的 TS 派生（发布二进制不开）。
+# `Origin` 编进 `chan-core` 之后，本包测试档里别的生成类型（会话流那几帧）嵌着它 ⇒ dev 侧开它的 TS 派生（发布二进制不开）。
 chan-core = { path = "../../common/chan-core", features = ["ts"] }
 
 [target.'cfg(windows)'.dependencies]
@@ -236,7 +236,7 @@ windows = { version = "0.56", features = [
     #   不加这一行时 `windows::Win32::System::JobObjects` 是 `E0432 unresolved import`，
     #   编译器自己指出「the item is gated behind the `Win32_System_JobObjects` feature」。
     "Win32_System_JobObjects",
-    # 〔US1 · 第四波 4D〕`CreateJobObjectW` 的签名收 `Option<*const SECURITY_ATTRIBUTES>` ⇒ 要 `Win32_Security`。
+    # `CreateJobObjectW` 的签名收 `Option<*const SECURITY_ATTRIBUTES>` ⇒ 要 `Win32_Security`。
     #   先前它是从 `creds-core` 的 `harden` 那边 feature 合并**顺带**开的（下面那段 `KS5` 注释说的「事实上是开的」）；
     #   monitor 不开 `harden` 之后那条顺带没了，`cargo check -p monitor --target x86_64-pc-windows-gnu` 现打
     #   `E0432 unresolved import …CreateJobObjectW` ⇒ 在真用它的这一侧显式声明。
@@ -247,7 +247,7 @@ windows = { version = "0.56", features = [
     "Win32_UI_Input_KeyboardAndMouse",
 ] }
 # K-H2a `KS5`：`Win32_Security_Authorization` **不加在这里** —— 设 / 读凭据文件 DACL 的 Win32 调用住 `crates/creds-core`
-# （「一个安全性质只许有一个实现」）。〔US1〕monitor 今天既不读也不写那份文件、不开 `harden`；`Win32_Security` 上面那一条是
+# （「一个安全性质只许有一个实现」）。monitor 今天既不读也不写那份文件、不开 `harden`；`Win32_Security` 上面那一条是
 # Job Object 的签名要的，与凭据文件无关。
 # issue #9：single-instance lock。第二个 cc-monitor 实例启动时立即退出，
 # 第一个窗口拉到前台。Tauri 官方 plugin，user-scoped mutex，跨 user session 不冲突。

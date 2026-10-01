@@ -59,6 +59,6 @@ fn an_endless_sse_line_is_dropped_and_counted_instead_of_growing_forever() {
     );
 }
 
-// 〔DEL〕这里原是 NDJSON 行落点那几条（meta 行 · 序号单调 · 上游载荷逃不出 `event` 那一格 · 队列满丢行且报账 · JSON 转义）：
+// 这里原是 NDJSON 行落点那几条（meta 行 · 序号单调 · 上游载荷逃不出 `event` 那一格 · 队列满丢行且报账 · JSON 转义）：
 //   那个落点随独立 `--relay` 删了。tap 那一形的逐件语义（先占号再投递 · 超界 / 投不进号照占 · 收尾带总号数 · 非 SSE 不交）
 //   住 `host_tests`（真起中转、走生产接线）。

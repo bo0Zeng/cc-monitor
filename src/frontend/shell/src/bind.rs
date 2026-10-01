@@ -27,15 +27,15 @@
 //! 每 10s 扫一遍内存中的 ps-registry，对每个 PS_PID 调 `is_process_alive`〔散文墓碑〕，
 //! 死 PS 的条目从内存 + 磁盘移除。避免长期累积。
 //!
-//! 〔第二波 T4〕它同时是 ↗ 令牌路的「死绑定周期清」（`设计/80 §0.1` ④）：
+//! 它同时是 ↗ 令牌路的「死绑定周期清」：
 //! [`resolve_remote_front`] 按令牌查的就是这张表，死掉的窗口 10s 内出表 ⇒ ↗ 退到标题路。
 //! 节拍只有这一个（归 [`BindRegistry`]）；令牌账本 [`RbindTokenBook`] 是事件驱动的，不另起节拍器。
 //!
-//! ## 🔴 第二种 marker 来源：**启动期令牌**（`设计/80 §8.7` 步 3，2026-09-23）
+//! ## 🔴 第二种 marker 来源：**启动期令牌**（2026-09-23）
 //!
 //! 上面那条链一个字都没改。这一节只说**多出来的那一种 marker 来源**。
 //!
-//! `设计/80 §8.1` 的判断逐字：「**tmux 不是在做发现身份，是在做把身份广播到本地**」——
+//! 判断是：「**tmux 不是在做发现身份，是在做把身份广播到本地**」——
 //! 而 `↗ 拉前终端` 需要的全部东西只是一个映射 `(sid) → (本地 HWND)`。今天那个映射靠
 //! tmux 会话级 option `@ccm_sid` ＋ `set-titles-string` 合成的窗口标题，**跳五次、无回执**，
 //! 而且 `container:"none"`（直连、没有 tmux）那一档**根本没有**这个映射。
@@ -62,10 +62,10 @@
 //!
 //! ### ⚠ 本模块**买不到**什么（别把这一段读大）
 //!
-//! - 〔第二波 T4 订正〕步 3 落地那天这里写的是「今天没有任何生产代码往 `ps-await` 里写一个
+//! - 步 3 落地那天这里写的是「今天没有任何生产代码往 `ps-await` 里写一个
 //!   带令牌的 marker ⇒ 本模块买到的是『接得住』，不是『已经在收』」—— **那句话到此作废**：
 //!   写入方接上了，是开终端时接在命令前面的那段令牌握手前奏
-//!   （〔P5〕本机后端渲：`src/backend/dial/terminal.rs::with_bind_prelude` ＋ `platform/shell/rbind-token-bind.ps1.tpl`，
+//!   （本机后端渲：`src/backend/dial/terminal.rs::with_bind_prelude` ＋ `platform/shell/rbind-token-bind.ps1.tpl`，
 //!   与 `__ccm_bind` 同一条握手、只差 marker 的形状；marker 前缀与目录名是共享契约 `shell_quote_core`）。
 //!   ⚠ 但「那段 PowerShell 在真 Windows 上真的跑通、表里真的多了一条」**本机一格都买不到**
 //!   （没有 `pwsh`、没有 Windows）；判据只钉得住交给 PowerShell 的那段**文字**。
@@ -111,7 +111,7 @@ pub struct HwndEntry {
     pub title_at_bind: String,
     /// Unix 毫秒
     pub registered_at: i64,
-    /// `设计/80 §8.7` 步 3：这次绑定的**启动期令牌**（`[0-9a-f]{32}`），
+    /// 这次绑定的**启动期令牌**（`[0-9a-f]{32}`），
     /// 由 [`rbind_token_from_marker`] 从 marker 里解出来。
     ///
     /// **`None` 是绝大多数条目的正常取值** —— Era 2 那条链（PowerShell profile 的
@@ -177,7 +177,7 @@ impl BindRegistry {
         self.by_ps_pid.read().get(&ps_pid).cloned()
     }
 
-    /// `设计/80 §8.7` 步 3：**按启动期令牌查那个窗口** —— 方案 E 要的 `token → HWND`。
+    /// **按启动期令牌查那个窗口** —— 方案 E 要的 `token → HWND`。
     ///
     /// # 为什么是「在同一张表上扫」而不是第二份索引
     ///
@@ -237,7 +237,7 @@ impl BindRegistry {
     }
 }
 
-// `设计/80 §8.7` 步 3：带令牌的那一种 marker 长什么样 —— 三种 marker 在同一个 `title.contains` 的世界里互不误命中：
+// 带令牌的那一种 marker 长什么样 —— 三种 marker 在同一个 `title.contains` 的世界里互不误命中：
 //
 // | 来源 | 形状 | 键 |
 // |---|---|---|
@@ -245,7 +245,7 @@ impl BindRegistry {
 // | Era 3 · 远端 tmux 标题（`RemoteHwndCache`） | `ccm-rbind-<sid>` | `sid` |
 // | **方案 E · 启动期令牌（本节）** | `ccm-rbind-token-<32hex>` | **令牌** |
 //
-// 〔P5〕写侧（开终端前奏）搬进本机后端之后，前缀 · 拼 / 解 · 握手目录名 `ps-await` 住共享契约 `shell_quote_core`
+// 写侧（开终端前奏）搬进本机后端之后，前缀 · 拼 / 解 · 握手目录名 `ps-await` 住共享契约 `shell_quote_core`
 // （两侧 `use` 同一份）；本模块是读方：[`BindRegistry::spawn`] 监听那个目录、[`entry_from_marker_hit`] 从 marker 解令牌。
 // 令牌形状同一份（`shell_quote_core::rbind_token_ok`，DUP2）⇒「本地表的键」与「wire 上读回来的串」按构造同源。
 pub(crate) use shell_quote_core::rbind_token_ok as rbind_token_shape_ok;
@@ -276,7 +276,7 @@ fn redact_marker(text: &str) -> String {
 /// 把「扫到的那个窗口」＋「await 请求」组装成一条绑定。
 ///
 /// **刻意是平台无关的**（Win32 那一跳全在 [`find_window_by_marker_substr`] 里）：
-/// `设计/80 §8.7` 步 3 新增的那一格 —— marker 里的令牌要跟着进表 —— 如果写在
+/// 新增的那一格 —— marker 里的令牌要跟着进表 —— 如果写在
 /// `#[cfg(windows)]` 的函数体里，本仓 Linux 门禁**一条判据都够不到它**
 /// （`cfg(not(windows))` 那支是恒 `None` 的桩）。抽出来之后那一格在任何机器上都验得了。
 fn entry_from_marker_hit(req: &AwaitRequest, hit: MarkerHit, owner_proc_start: u64) -> HwndEntry {
@@ -288,7 +288,7 @@ fn entry_from_marker_hit(req: &AwaitRequest, hit: MarkerHit, owner_proc_start: u
         ps_proc_start: req.proc_start.clone(),
         title_at_bind: hit.title,
         registered_at: crate::utils::now_ms(),
-        // `设计/80 §8.7` 步 3：令牌**就是 marker 本身**（`§8.2` 逐字「marker = token」）。
+        // 令牌**就是 marker 本身**（`§8.2` 逐字「marker = token」）。
         // 不是这一种 marker ⇒ `None` ⇒ 这条绑定只能按 `ps_pid` 查（= 今天的行为）。
         rbind_token: rbind_token_from_marker(&req.marker).map(str::to_string),
     }
@@ -297,7 +297,7 @@ fn entry_from_marker_hit(req: &AwaitRequest, hit: MarkerHit, owner_proc_start: u
 /// 启动时扫已有 ps-registry/*.json（应对 monitor 重启）。
 /// P3 归并：走 utils::scan_dir_jsons。
 ///
-/// ⚠ `设计/80 §8.7` 步 3 之后这一句**同时**把 `token → HWND` 那张表恢复了 ——
+/// ⚠ 之后这一句**同时**把 `token → HWND` 那张表恢复了 ——
 /// 因为根本没有第二张表（见 [`BindRegistry::lookup_hwnd_for_token`] 的头注）。
 /// 「持久化」这一维是白拿的，不是又实现了一遍。
 fn scan_registry_dir(dir: &Path) -> HashMap<u32, HwndEntry> {
@@ -384,7 +384,7 @@ fn process_await_file(this: &BindRegistry, await_file: &Path) {
     let entry = match found {
         Some(e) => e,
         None => {
-            // 🔴 `设计/80 §8.7` 步 3：marker 今天**可能就是令牌本身**
+            // 🔴：marker 今天**可能就是令牌本身**
             //    ⇒ 原样打出去等于把敏感值写进滚动日志（`§8.6 ③`）。过一道脱敏。
             tracing::warn!(
                 "bind: no window found with marker={:?} ps_pid={} (retried 600ms)",
@@ -429,7 +429,7 @@ fn process_await_file(this: &BindRegistry, await_file: &Path) {
     }
 }
 
-/// `find_window_by_marker_substr` 命中的窗口快照（〔P4b〕住 `platform::hwnd`，这里再导出）。
+/// `find_window_by_marker_substr` 命中的窗口快照（住 `platform::hwnd`，这里再导出）。
 /// `find_window_for_marker`（本地 ps-bind）和 `RemoteHwndCache::try_bind`（远端
 /// sid-bind）共用这同一个 EnumWindows 扫描，只是后续组的 struct 不同。
 pub use crate::platform::hwnd::MarkerHit;
@@ -441,7 +441,7 @@ fn title_carries_marker(title: &str, marker: &str) -> bool {
 
 /// 扫一遍所有可见窗口，返回 **title 子串包含 `marker`** 的第一个窗口。
 ///
-/// 〔P4b · 阶段 H〕EnumWindows 那一跳（读法）住 `platform::hwnd::first_visible_window`（别处恒 `None`）；
+/// EnumWindows 那一跳（读法）住 `platform::hwnd::first_visible_window`（别处恒 `None`）；
 /// 「哪个标题算命中」这条规则是上面那个 [`title_carries_marker`]，留在这里。
 fn find_window_by_marker_substr(marker: &str) -> Option<MarkerHit> {
     crate::platform::hwnd::first_visible_window(marker, title_carries_marker)
@@ -455,14 +455,14 @@ fn find_window_for_marker(req: &AwaitRequest) -> Option<HwndEntry> {
         .unwrap_or(0);
 
     // 组装那一步是**平台无关**的（见 `entry_from_marker_hit` 头注：写在这里的话
-    // `设计/80 §8.7` 步 3 那一格在 Linux 门禁上一条判据都够不到）。
+    // 那一格在 Linux 门禁上一条判据都够不到）。
     Some(entry_from_marker_hit(req, m, owner_proc_start))
 }
 
 /// 验证 hwnd 仍合法 + 当前 owner_pid 跟绑定时一致 + 该进程 procStart 一致。
 /// 返回 Ok(()) 表示通过，Err(reason) 描述失败原因（给 toast 用）。
 ///
-/// 〔P4b · 阶段 H〕三样事实（窗口还在 · 属主 · 属主起始时刻）由 `platform::{hwnd, pid}` 读，三格比对留在这里；
+/// 三样事实（窗口还在 · 属主 · 属主起始时刻）由 `platform::{hwnd, pid}` 读，三格比对留在这里；
 /// 这台没有桌面窗口那一族 ⇒ 原先非 Windows 那一句。
 pub fn verify_binding(binding: &SidHwndBinding) -> Result<(), String> {
     use crate::platform::hwnd;
@@ -495,7 +495,7 @@ pub fn verify_binding(binding: &SidHwndBinding) -> Result<(), String> {
 }
 
 /// 把窗口拉到前台。失败时返 Err（不致命，OS 会让窗口在任务栏闪烁）。
-/// 〔P4b〕拉法住 `platform::hwnd::bring_to_front`，这里只答「拉不动说哪句」。
+/// 拉法住 `platform::hwnd::bring_to_front`，这里只答「拉不动说哪句」。
 pub fn activate(hwnd: isize) -> Result<(), String> {
     if !crate::platform::hwnd::SUPPORTED {
         return Err("only supported on Windows".into());
@@ -584,7 +584,7 @@ impl SidHwndCache {
     ///
     /// # 今天的行为，逐字一句
     ///
-    /// **离开活跃集的一律忘**（〔MIG-1〕可重连 · 已结束 · 说不清三种去向都走这里，由 `lib.rs::session_side_effects` 调）：
+    /// **离开活跃集的一律忘**（可重连 · 已结束 · 说不清三种去向都走这里，由 `lib.rs::session_side_effects` 调）：
     /// 本机 ↗ 只在 Windows 上有，而 Windows 没有 tmux ⇒ 本机走不到「可重连」；被顶替的旧 sid 连 attach 都接不上。
     pub fn apply_local_removal(&self, sid: &str) {
         self.forget(sid);
@@ -628,14 +628,14 @@ impl RemoteHwndCache {
 
     /// K-W1C：**远端**一条会话的去向到达时，这份缓存该变成什么样。
     ///
-    /// 〔MIG-1〕去向是那台后端裁好的成品（`session_state`，`ended` = 已结束）—— 本方法**只答缓存忘不忘**，不重算去向。
+    /// 去向是那台后端裁好的成品（`session_state`，`ended` = 已结束）—— 本方法**只答缓存忘不忘**，不重算去向。
     ///
     /// # 今天的行为，两句
     ///
     /// - 已结束（claude 死了、tmux 那一格也没了）⇒ **忘**。
     /// - 可重连（claude 退了、tmux 会话还在，灰灯那一格）⇒ **不忘**：
     ///   本地那个 ssh 窗口可能还开着，那条绑定仍然拉得前。
-    /// - 〔GP1 · 第四波〕`Unseen`（到那台的连接断了，说不清）⇒ **不忘**，理由同 `Idle`：monitor 那条后端连接断了
+    /// - `Unseen`（到那台的连接断了，说不清）⇒ **不忘**，理由同 `Idle`：monitor 那条后端连接断了
     ///   不等于用户那个 ssh 窗口没了；重连之后会话若还活着，↗ 照旧指得到它。代价如实记：重连后它若不在清单里
     ///   （前端落已结束），这条绑定没有人来忘 —— 一个 sid 一格，量级 = 会话数。
     ///
@@ -645,7 +645,7 @@ impl RemoteHwndCache {
     pub fn apply_remote_disposition(&self, sid: &str, ended: bool) {
         if ended {
             self.forget(sid);
-            // 〔`设计/80 §8.7` 步 4，第二波 T4〕令牌账本跟着忘，口径与上面那条绑定**同一条**：
+            // 令牌账本跟着忘，口径与上面那条绑定**同一条**：
             // 已结束忘、可重连不忘（本地那个 ssh 窗口可能还开着，令牌指的正是它）。
             remote_rbind_tokens().forget(sid);
         }
@@ -687,7 +687,7 @@ impl RemoteHwndCache {
     /// `spawn_blocking` 里，sleep 不阻塞主线程。
     ///
     /// ⚠️ **窗口长度待真机实测调**（四跳 + tmux 截断 + 用户点击后的可接受等待，`ON_DEMAND_BIND_*`）。
-    /// 〔P4b〕这台没有桌面窗口那一族（`platform::hwnd::SUPPORTED`）⇒ 不扫不等，直接回 `false`（原先非 Windows 那一份）。
+    /// 这台没有桌面窗口那一族（`platform::hwnd::SUPPORTED`）⇒ 不扫不等，直接回 `false`（原先非 Windows 那一份）。
     pub fn try_bind_with_retry(&self, sid: &str, attempts: u32, step_ms: u64) -> bool {
         if !crate::platform::hwnd::SUPPORTED {
             return false;
@@ -705,7 +705,7 @@ impl RemoteHwndCache {
     }
 }
 
-// ═══════ 🔴 `设计/80 §8.7` 步 4 / 步 5：**↗ 远端那一格的唯一分派点** ═══════════════════
+// ═══════ 🔴：**↗ 远端那一格的唯一分派点** ═══════════════════
 //
 // 步 4 逐字：「↗ 改走 join；四套『有没有终端』的判断收敛成一句」。那四套是
 // `attachable` 布尔 · `findClaudeTmuxMatches` · 后端 HWND 校验 · E73 那次远端 RPC（`§8.5 ②`）。
@@ -729,7 +729,7 @@ impl RemoteHwndCache {
 
 /// 远端会话 `sid → 启动期令牌`（wire 上 `SessionAdded.rbind_token` 读回来的那个）。
 ///
-/// **不落盘，刻意的**：真相源在远端那个进程的 `environ` 里（后端每次重连 / 重新宣告都会
+/// **不落盘，刻意的**：源头在远端那个进程的 `environ` 里（后端每次重连 / 重新宣告都会
 /// 再报一遍）。在本地再存一份只会多一个会陈旧的副本 —— monitor 重启之后，
 /// `令牌 → HWND` 那一半由 `ps-registry/*.json` 重载（持久化），`sid → 令牌` 这一半由
 /// 重连后的 `SessionAdded` 重新喂进来，join 自然恢复。判据见 `bind_tests.rs` 的重启那一条。
@@ -801,7 +801,7 @@ fn binding_from_entry(e: HwndEntry) -> SidHwndBinding {
 /// 有令牌、却切不到窗口时说的话（`§8.5 ②`：失败归因只由「有没有令牌」一个布尔决定）。
 ///
 /// 🔴 两句话的**开头**是分派的对外面：前端不再猜（E73 那次远端 RPC 已删），用户读到的就是这里。
-/// ⚠ 措辞过 `设计/91` 的术语表：不说「令牌」「拉前」「拉起」（前两个是内部词，后一个是禁档），
+/// ⚠ 措辞过术语表：不说「令牌」「拉前」「拉起」（前两个是内部词，后一个是禁档），
 ///   说用户看得见的那件事 —— 「是不是 cc-monitor 启动的」。
 pub(crate) static FRONT_FAIL_WITH_TOKEN: std::sync::LazyLock<String> =
     std::sync::LazyLock::new(|| copy_text("rsBind.front.failWithToken", &[]));

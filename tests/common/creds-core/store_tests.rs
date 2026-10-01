@@ -1,8 +1,8 @@
 //! # 要求住址：`INVARIANTS §42` → `src/doc/IPC-PROTOCOL.md` 的 `apikey-key-set` / `apikey-read` 两节（改一个键不许吃掉人手编的内容）
 //!
 //! 核原文：`apikey-key-set` 节逐字「别的行与未知键一个不动」·「`bad_file`（现有文件解析不了 ⇒ **不覆盖**，人手编的内容不许被抹掉）」；
-//! `apikey-read` 节逐字「解析不了不退化成「没配」」。〔GP1 · 第四波〕写者今天只剩一种 —— 每台机器那台后端的
-//! `accounts/upstream_select/file_face.rs`（本机也是；monitor 那侧的写口删了）—— 它用本模块的纯逻辑兑现这几句 —— 本族判的就是那份共用逻辑。手编 JSON 原样即用、模板自带字段名那几条守 `设计/05 §4.4`
+//! `apikey-read` 节逐字「解析不了不退化成「没配」」。写者今天只剩一种 —— 每台机器那台后端的
+//! `accounts/upstream_select/file_face.rs`（本机也是；monitor 那侧的写口删了）—— 它用本模块的纯逻辑兑现这几句 —— 本族判的就是那份共用逻辑。手编 JSON 原样即用、模板自带字段名那几条守
 //! 逐字「只放一个凭据文件、一次界面都不开，中转就能用那把 key」。
 //! ⚠ 落盘键序（按名 · 递归 · 数组保序）与 `auth_style` 往返那几条今天没有逐字原文。
 //! ⚠ `INVARIANTS §42` 的机检只核字段名落节、不核行为；契约里行为句不漂靠的是本族（射程待主会话确认，见 `JA1.md`）。〔JA1 点址 2026-09-24〕
@@ -707,7 +707,7 @@ fn the_template_notes_come_from_the_copy_table_and_the_error_names_the_file() {
     assert!(!said.contains("_note"), "报错里又贴了整份模板：{said}");
 }
 
-// ═══════ 〔P5 · 主会话 09-29 裁〕家目录：哪个环境变量算家，两侧一条规矩 ═══════════════════
+// ═══════ 家目录：哪个环境变量算家，两侧一条规矩 ═══════════════════
 
 /// 注入的环境（`(变量, 值)`；不在表里 ⇒ 没设）。
 fn env_of(
@@ -758,8 +758,8 @@ fn the_home_is_picked_by_the_platform_convention() {
 
 /// 两棵生产树（monitor 前端树 · 后端）里 `dirs::home_dir` 的调用：允许的只有下面这几处，逐条说理由（其余一律改调 [`home_dir`]）。
 const DIRS_HOME_ELSEWHERE: &[(&str, &str)] = &[
-    // 〔P1〕`ccm_probe.rs` 那一行摘了：`local_ccm_entry_status` 改调 `home_dir`。
-    // 〔P4〕`src/frontend/filewin/src/shell.rs` 那一行（`local_home`）摘了：改调本函数（文件窗口包链 `creds-core`，契约类）。
+    // `ccm_probe.rs` 那一行摘了：`local_ccm_entry_status` 改调 `home_dir`。
+    // `src/frontend/filewin/src/shell.rs` 那一行（`local_home`）摘了：改调本函数（文件窗口包链 `creds-core`，契约类）。
 ];
 
 /// 一份源码（原文）的生产段里 `dirs::home_dir(` 几处。
@@ -801,7 +801,7 @@ fn both_halves_read_the_home_through_this_one_function() {
     let mut got: Vec<String> = Vec::new();
     for tree in ["src/frontend", "src/backend"] {
         let mut files = guard_core::scan_tree_excluding(&root.join(tree), &["rs"], &[]);
-        // 〔P4〕前端那一侧 ＋ monitor 人群声明里住在它外面的兄弟包（通道 · 宿主原语 · 开窗契约）：通道成员从前经壳 `#[path]` 挂在前端树的人群里。
+        // 前端那一侧 ＋ monitor 人群声明里住在它外面的兄弟包（通道 · 宿主原语 · 开窗契约）：通道成员从前经壳 `#[path]` 挂在前端树的人群里。
         let frontend = root.join("src/frontend");
         if tree == "src/frontend" {
             for (_, t) in guard_core::population_trees(&frontend.join("shell/src")) {

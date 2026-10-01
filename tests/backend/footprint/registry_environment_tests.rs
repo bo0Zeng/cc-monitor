@@ -2,7 +2,7 @@ use super::*;
 use copy_core::copy_text;
 use std::collections::BTreeSet;
 
-/// 〔MIG-3b 续〕受管工具 / 手写环境项的**全集**（本表 ＋ 注册表里各家足迹面带来的那一半）—— 判据按全集判，与搬家前同一个人群。
+/// 受管工具 / 手写环境项的**全集**（本表 ＋ 注册表里各家足迹面带来的那一半）—— 判据按全集判，与搬家前同一个人群。
 static TOOLS: std::sync::LazyLock<Vec<crate::footprint::registry::ToolSpec>> =
     std::sync::LazyLock::new(|| {
         crate::footprint::registry::tools()
@@ -62,12 +62,12 @@ fn the_environment_is_one_closed_list() {
 /// 这一条就是 `K-R60` 那件正题的门禁：把手写那一半从 [`UNMANAGED_ENV`]
 /// 里删光（回到那件之前「不写进去就算另一档」的盘面）⇒ 本条红。
 ///
-/// 🔴 〔`K-R65` 09-11〕**本条自己的报错逐字兑现过一次**：`K38` 把 10 项从
+/// 🔴 **本条自己的报错逐字兑现过一次**：`K38` 把 10 项从
 /// 「app 假设它在」搬空之后那一档空了，而报错逐字写着「要么给它一个成员，
 /// **要么把这一档从 EnvTier 里删掉**」⇒ 删掉了那一档，档数从三变四（新增两档）。
 /// 一条判据把自己的两条出路都写出来，走的是哪一条**有记录**，这就是那次记录。
 ///
-/// 分母现算（`EnvTier::ALL`），不写死一个基数〔`13b`：报一个基数也是复述〕。
+/// 分母现算（`EnvTier::ALL`），不写死一个基数〔报一个基数也是复述〕。
 #[test]
 fn every_tier_has_members_so_absence_never_encodes_a_judgement() {
     // 今天可以是空的那几档（`(档, 为什么)`）；列在这里的必须**真是空的**（有了成员就摘掉这一行）。
@@ -136,7 +136,7 @@ fn every_unmanaged_entry_names_a_code_address() {
 
     let mut checked = 0usize;
     for u in UNMANAGED_ENV.iter() {
-        // 〔CP2b〕住址从 `why`（给人看的话，进了文案表）拆到了 `site`。
+        // 住址从 `why`（给人看的话，进了文案表）拆到了 `site`。
         let addrs = addresses_in(u.site);
         assert!(
             !addrs.is_empty(),
@@ -195,7 +195,7 @@ fn posix_rc_aliases_sits_in_the_first_tier_now() {
     );
 }
 
-// 🔴 〔`K-R65` 09-11〕〔散文墓碑〕**`a_hand_written_entry_is_never_app_installs` 删了。**
+// 🔴 〔散文墓碑〕**`a_hand_written_entry_is_never_app_installs` 删了。**
 //
 // 它逐字断言 `UNMANAGED_ENV` 每一条的 `tier != EnvTier::AppInstalls`，
 // 理由是「装得了就该有一条 `ToolSpec`」。那时 `tier` 是**手填**的 ⇒ 它真有牙。
@@ -303,12 +303,12 @@ fn the_tier_for_owed_installers_is_countable_and_not_empty() {
 /// - `code-picture-sidecar` **不在 `K38` 的举例里**，是用户当拍凭记忆追问出来的
 ///   （PM 拟这条 dod 时只数出两样）⇒ **点名清单本身就会漏**，
 ///   这正是「人群必须是数出来的」那句话的来历。
-///   ⚠ 〔条 67 · 09-18〕那一项**已随 `sidecars/` 整棵删除而摘掉** —— 留这段话是因为
+///   ⚠ 〔条 67〕那一项**已随 `sidecars/` 整棵删除而摘掉** —— 留这段话是因为
 ///   「点名清单本身就会漏」这条教训与它在不在表上无关。
 ///
 /// **死值验**：把 `cc-bus` 从「自带」里摘掉（例如在 [`environment`] 里给它硬写
 /// `Provisioning::NotAnInstall`）⇒ 本条红。
-/// ⚠ 〔条 67 · 09-18〕**第二条死值验没有了** —— 它钉的是 `sidecars/` 那一层，
+/// ⚠ 〔条 67〕**第二条死值验没有了** —— 它钉的是 `sidecars/` 那一层，
 /// 而那一层整棵删了。⇒ 今天这条判据**只剩一条死值验**（`cc-bus` 那条）。
 /// 如实记：射程比 09-11 那一拍窄了一格，不是"一样强"。
 #[test]
@@ -366,7 +366,7 @@ fn everything_the_charter_named_as_ours_is_in_the_shipped_population() {
     );
 }
 
-// 🔴 **〔条 67 · 2026-09-18〕那条「我们随产品分发二进制的那一层」跨半判据删了。**
+// 🔴 **〔条 67〕那条「我们随产品分发二进制的那一层」跨半判据删了。**
 // 它钉的是「`sidecars/` 那一层还在盘上」∧「闭集里申报了它」同时成立。
 // 那一层删了、那条申报也摘了 ⇒ 判据的两边都不在，**留着它就是一条恒红或恒空真的尺子**。
 // ⚠ 它当初买的那个道理**别丢**：「光在闭集里加一行是**申报**，申报会在那一层被掏空之后
@@ -481,7 +481,7 @@ fn every_managed_tool_reaches_the_closed_set() {
     }
 }
 
-// 🔴 〔`K-R63` 09-11〕**`KR60D3` 那条判据从这里搬走了，而不是删掉。**
+// 🔴 **`KR60D3` 那条判据从这里搬走了，而不是删掉。**
 //
 // 它做的事（左边读 `cc-bus` 的 `installable` 字段、右边用 `pin_definition` 钉
 // `cc_bus_deploy.rs` 里那个部署函数的签名、两边 `assert_eq!`）今天由

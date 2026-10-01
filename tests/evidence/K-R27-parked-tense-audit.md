@@ -45,7 +45,7 @@
 
 口径：**证据**栏给的是**今天现打**的命令与命中数；判「已被做掉」的点名提交/件，
 判「仍成立」的给今天仍然存在的物证。「面 0 提交」= `git log --oneline 3ed7f1b..HEAD -- <路径> | wc -l` 为 0
-（`3ed7f1b` = 09-04 23:57 第五波最后一条合入，即这批 `parked` 落笔的那一刻附近）。
+（`3ed7f1b` = 09-04 23:57 最后一条合入，即这批 `parked` 落笔的那一刻附近）。
 
 ### K-P3（3 条）
 
@@ -69,7 +69,7 @@
 | # | 待办 | 判 | 证据 |
 |---|---|---|---|
 | W1C-1 | `D4` 甲留未决（Windows 真机可达性） | **仍成立** | `evidence/K-W1C-D4-reachability.md` 仍是唯一读数（判不了 + 可照做的步骤）；仓里没有任何 Windows 真机读数落盘；`src-tauri/src/bind.rs` 面 **0 提交** |
-| W1C-2 | `D2` **跨区那一行**由 PM 落（往 `unified-backend/ROADMAP.md` 的 `U8e` 下加订正） | **仍成立** | `grep -c 'K-W1C' unified-backend/ROADMAP.md` → **0**；`U8e` 那一行今天仍逐字写着「杀会话/换会话时**没有任何机制**去 `forget` 那条缓存」；`stat` 该文件 mtime = **2026-09-01 18:30**（早于这条待办诞生）⇒ 09-04 之后没人碰过它 |
+| W1C-2 | `D2` **跨区那一行**由 PM 落（往 `U8e` 下加订正） | **仍成立** | **0**；`U8e` 那一行今天仍逐字写着「杀会话/换会话时**没有任何机制**去 `forget` 那条缓存」；`stat` 该文件 mtime = **2026-09-01 18:30**（早于这条待办诞生）⇒ 09-04 之后没人碰过它 |
 | W1C-3 | `D5`/`D6` 只有论据 | **仍成立** | 件文件 `§5-5` 标题逐字仍是「`D5` / `D6` —— **只写论据，不改**」，正文逐字「我按前者给论据，**不动代码、不自批结论**」；今天盘上对上：边表里 verify-fail 那条边（`src-tauri/src/lib.rs:2030` 逐字 `cache.forget(&session_id);`）判据栏仍 **0**，`git grep verify_binding -- src/` → **0 命中**（`D6` 那一侧一个字没接） |
 | W1C-4 | 建边 3 条 + verify-fail 那条 + emitter→入口那一跳仍 0 判据 | **仍成立** | 现打 `python3 evidence/K-W1C-D1-edge-ruler.py`：**7 条边 · 有判据 2 条 · 判据栏 0 的 5 条**（机检口径）＝ 登记 6 行口径下「建边 3 + verify-fail 1 = 4」。⚠ **两个口径都要写**：机检 7 条 ↔ 登记 6 行（一行盖住两个逐字同形的调用点），单报一个会被读成漂移。与 09-04 的「七条边（判据栏 2/7 有名）」逐字相同 |
 | W1C-5 | `lib.rs` 改点①上方残注释由 PM 落 | **已被做掉** | 提交 `261fcc1`（merge `a4e0acb`），`src-tauri/src/lib.rs:693-698` 那段注释换成「「两种 cause 一视同仁」这句话的正主住 `SidHwndCache::apply_local_removal` 的头注」 |
@@ -127,7 +127,7 @@
 | R12-1 | 「旗真的被走到了」仍只由上一拍 evidence 背书 | **仍成立** | `remote-daemon-proto/src/common/` 面 **0 提交**；`common/tmux_utf8.rs` 里的判据都是结构形（家唯一 `:246` · 消费者只引用 `:286` · 反向自检 `:318`），没有一条证「运行时真被走到」 |
 | R12-2 | SSH 送 env 那行仍未实测 | **仍成立** | 09-05 唯一碰真 SSH 的是 `W-F1b`（`7265f7d`，5 份量具 + 5 份 `.out`）：`grep -c 'LC_ALL\|send_env\|SendEnv' evidence/W-F1b-*` → **10 个文件全 0**；`e2e/weak-net/` 5 个脚本里也没有 |
 | R12-3 | `K-R23 D4` 另立 | **仍成立** | `features/` 61 件里没有承接 `K-R23 D4` 的新件（`ls features/ \| grep -c 'K-R23'` → 1，就是 K-R23 自己）；`K-R23 state: 未开` |
-| R12-4 | 🔴 PM 补定框 | **已被做掉** | 计划仓提交 **`17ac1c5`**（09-04 23:43）标题逐字「backend-consolidation: 第五波回收中段 —— 六道审计 + 合并记录 + R2 落定 + **K-R12/K-P3 补定框链接**」。<br>**尺子**：`git log -L3,3:'backend-consolidation/features/K-R12-tmux34上那条静默失效.md'` 在计划仓里跑，那一行的历史只有两笔 —— `b124d9a` 建件时 `links: K-R8, K-R7`，`17ac1c5` 改成 `links: K-R8, K-R7, K7`。`K7` 是 `MASTERPLAN.md` 里的 charter（本区 charter 闭集现打 **20** 条）。<br>🔴 **这一行是我自己纠回来的**：初判写的是「说不准 —— 计划仓不在 git 里」，那是**量具的作用域对错了对象** —— 我量的是 `.claude/`（确实不是 git 仓），而真正的仓根是 `.claude/planned-build/`（`git rev-parse --show-toplevel` 现打就是它，件文件也真的被跟踪）。**见 §E-3** |
+| R12-4 | 🔴 PM 补定框 | **已被做掉** | 计划仓提交 **`17ac1c5`**（09-04 23:43）标题逐字「backend-consolidation: 回收中段 —— 六道审计 + 合并记录 + R2 落定 + **K-R12/K-P3 补定框链接**」。<br>**尺子**：`git log -L3,3:'backend-consolidation/features/K-R12-tmux34上那条静默失效.md'` 在计划仓里跑，那一行的历史只有两笔 —— `b124d9a` 建件时 `links: K-R8, K-R7`，`17ac1c5` 改成 `links: K-R8, K-R7, K7`。`K7` 是里的 charter（本区 charter 闭集现打 **20** 条）。<br>🔴 **这一行是我自己纠回来的**：初判写的是「说不准 —— 计划仓不在 git 里」，那是**量具的作用域对错了对象** —— 我量的是 `.claude/`（确实不是 git 仓），而真正的仓根是 `.claude/planned-build/`（`git rev-parse --show-toplevel` 现打就是它，件文件也真的被跟踪）。**见 §E-3** |
 
 ### K-R22（2 条 —— 🔴 PM 已核 1 条，本件复打）
 

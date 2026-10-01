@@ -1,7 +1,7 @@
 use super::*;
 use serde_json::json;
 
-/// 〔`KR113D2` 09-13〕**本模块每一条「转调 shell 脚本」的裁定，逐条写成数据。**
+/// **本模块每一条「转调 shell 脚本」的裁定，逐条写成数据。**
 ///
 /// `(被调命令, 写面, 这一趟为什么不收进后端, 解锁条件)`
 ///
@@ -66,14 +66,14 @@ const TRANSCALLS: &[(&str, &str, &str, &str)] = &[
     (
         "cc-log",
         "只读（共享锁，不推已读位置）",
-        "〔SH1 · V136〕驾驶舱读收件箱的尾巴：收件箱与它的锁是 cc-bus 的私有格式（`inbox/<id>.jsonl` ＋ `<inbox>.lock`），\
-             `95 §3.3` 把命令当接口 ⇒ 后端转调它、不读那份文件；消费性读仍只走 `cc-peek` / `cc-commit`。",
+        "驾驶舱读收件箱的尾巴：收件箱与它的锁是 cc-bus 的私有格式（`inbox/<id>.jsonl` ＋ `<inbox>.lock`），\
+把命令当接口 ⇒ 后端转调它、不读那份文件；消费性读仍只走 `cc-peek` / `cc-commit`。",
         "同 `cc-list`：cc-bus 本身被收成后端的一部分的那天。",
     ),
     (
         "cc-spawn",
         "写：起一个真 agent 会话（tmux ＋ claude/codex 进程，烧额度）· 登记进名册与 spawn 台账 · 预信任目录",
-        "〔ccbus-spawn 09-24〕`bus-spawn` 那条原语的实现（**今天没登记进帧面**，等 `BUILD_ID`）。\
+        "`bus-spawn` 那条原语的实现（**今天没登记进帧面**，等 `BUILD_ID`）。\
              命名避让 / 总线登记 / 台账 / 预信任全在 `cc-spawn`（它内部再经 `ccm`），\
              后端重写一份就是第二处起会话 —— 那正是账本 `K8` 消灭的病。",
         "`cc-spawn` 本身被收成 `ccm` 的一条子命令（它今天已经是「`ccm` 外面一层壳」）；\
@@ -168,7 +168,7 @@ fn every_shelled_out_command_carries_a_written_ruling() {
     }
 }
 
-/// ★ `KR113D1`：`bus-state` **一次回全**（两半在同一个函数里取）。〔SH1〕两半改读 cc-bus 的机器可读形。
+/// ★ `KR113D1`：`bus-state` **一次回全**（两半在同一个函数里取）。两半改读 cc-bus 的机器可读形。
 #[test]
 fn bus_state_answers_both_halves_from_one_call() {
     let prod = crate::guard_support::production_code(include_str!(
@@ -187,8 +187,8 @@ fn bus_state_answers_both_halves_from_one_call() {
     }
 }
 
-/// 〔SH1 · V136〕**跨语言金样**：驾驶舱读面两份成品，两侧读同一份 `tests/__fixtures__/cc-bus-read.golden.json`。
-/// 要求住址：`设计/05 §14.3`「成品的两侧对拍 … 后端测试产出 == 金样 · TS 解码器读同一份」· V136（登记时间 · 派生时间 · 坏行数 · 收件箱只看尾巴）。
+/// **跨语言金样**：驾驶舱读面两份成品，两侧读同一份 `tests/__fixtures__/cc-bus-read.golden.json`。
+/// 要求：「成品的两侧对拍 … 后端测试产出 == 金样 · TS 解码器读同一份」· V136（登记时间 · 派生时间 · 坏行数 · 收件箱只看尾巴）。
 /// 异源：输入样例经**生产**解析器（`parse_roster_tsv` / `parse_spawned_tsv` / `parse_inbox` / `inbox_reply`）现算，reply 是手写期望；码集合 == `inbound::REGISTRY`。
 #[test]
 fn the_cockpit_read_products_match_the_cross_language_golden() {
@@ -251,8 +251,8 @@ fn the_cockpit_read_products_match_the_cross_language_golden() {
     }
 }
 
-/// 〔SH1 · D-g〕杀会话顺手注销：只认名册第 4 列 pane pid 落在那个会话 pane 上的 id（主会话裁 TL2 A：不按会话名猜）。
-/// 要求住址：`4d-lanes.md` AL3「〔09-26 追加进 SH1〕D-g …… 认人核 `agents.tsv` 第 4 列的 pane pid（不按会话名猜）」。
+/// 杀会话顺手注销：只认名册第 4 列 pane pid 落在那个会话 pane 上的 id（主会话裁 TL2 A：不按会话名猜）。
+/// 要求：「认人核 `agents.tsv` 第 4 列的 pane pid（不按会话名猜）」。
 #[test]
 fn only_ids_registered_on_the_killed_panes_are_unregistered() {
     let row = |id: &str, target: &str, pid: Option<u32>| RosterRow {
@@ -273,7 +273,7 @@ fn only_ids_registered_on_the_killed_panes_are_unregistered() {
     assert!(ids_on_panes(&rows, &[]).is_empty());
 }
 
-/// 〔SH1 · V136〕老 cc-bus（不认 `--tsv` / 没有 `cc-log`）与半份输出都**明说**，不猜着解成一份空名单。
+/// 老 cc-bus（不认 `--tsv` / 没有 `cc-log`）与半份输出都**明说**，不猜着解成一份空名单。
 #[test]
 fn an_old_cc_bus_or_a_half_read_is_said_not_read_as_empty() {
     let human = "ID           TMUX               待读\nx_cc         x_cc:0.0           2\n";
@@ -351,11 +351,11 @@ fn the_three_exit_codes_map_to_three_different_meanings() {
     assert_eq!(killed, other, "被信号打断与其它失败同档（都是 failed）");
 }
 
-/// 〔DUP2 · 主会话 09-26 裁 J12 · `INVARIANTS §47` ①〕**id 的形状在交给 `cc-send` / `cc-kill` / `cc-spawn` 之前先判**，
+/// 〔`INVARIANTS §47` ①〕**id 的形状在交给 `cc-send` / `cc-kill` / `cc-spawn` 之前先判**，
 /// 规则是共享那一份（`shell_quote_core::bus_id_ok`，全仓唯一；monitor 读收件箱用的是同一个函数）。
 ///
 /// 这一条替掉了 `P4f-Y5` 那一格原来的判据（「backend 不重复校验收件人合法性，放行到 cc-send 那一步由它拒」）：
-/// `§47` 逐字「**『对端会校验』不是理由**」—— 界面那一道按 `设计/90 §3` 判据 2 删了之后，「本侧」就是真把 id 交出去的这一侧。
+/// `§47` 逐字「**『对端会校验』不是理由**」—— 界面那一道按删了之后，「本侧」就是真把 id 交出去的这一侧。
 /// ⚠ 判的是**形状**不是**成员资格**：一个形状合法但没登记过的名字照样发（`registered:false` 如实回），不在这里拒。
 ///
 /// 样本取跨语言金样 `cc-bus-control.golden.json` 的 `ids`（手写：`--help` 在盘上真出现过）：三个入口正反各一格。
@@ -515,7 +515,7 @@ fn bus_spawn_timeout_warns_that_the_agent_may_already_be_running() {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-//  〔C4e · 第四波 4C〕`bus-broadcast`（广播这个组合收进后端）＋ 界面直接收的成品金样
+// `bus-broadcast`（广播这个组合收进后端）＋ 界面直接收的成品金样
 // ════════════════════════════════════════════════════════════════════════════
 
 /// ★★ **广播不许再打进幽灵收件箱**〔P4f 08-13，用户机器上实测出来的；C4e 随组合从 monitor 搬来〕。
@@ -575,14 +575,14 @@ fn a_broadcast_without_text_is_refused_before_anyone_is_asked() {
     );
 }
 
-/// ★★〔C4e · 第四波 4C〕**跨语言金样**：界面直接收的 cc-bus 那几份成品，两侧读同一份 `tests/__fixtures__/cc-bus-control.golden.json`。
+/// ★★**跨语言金样**：界面直接收的 cc-bus 那几份成品，两侧读同一份 `tests/__fixtures__/cc-bus-control.golden.json`。
 ///
-/// 守的要求：`设计/05 §14.3` 逐字「**成品的两侧对拍**：界面按形状严格收……线上形状由一份跨语言金样钉住
+/// 守的要求：「**成品的两侧对拍**：界面按形状严格收……线上形状由一份跨语言金样钉住
 /// （后端测试产出 == 金样 · TS 解码器读同一份）」。查在线 · 发消息 · 收掉 · 派生 · 广播五件从这一拍起由界面经通道直接说
 /// （`src/frontend/ui/cc-bus-control.ts`），monitor 那一跳只搬字节。
 ///
 /// 各格异源：请求样例过**生产**解析器（`parse_send` / `parse_kill` / `parse_spawn` / `parse_broadcast`）·
-/// 成品 == **生产**构造器（`bus-list` 由金样里那份 `cc-list --tsv` 输出样例经生产的 `parse_roster_tsv` ＋ `join_identity` 现算 —— 〔FIX · ㊷〕与 `bus-state` 同一个解析器；
+/// 成品 == **生产**构造器（`bus-list` 由金样里那份 `cc-list --tsv` 输出样例经生产的 `parse_roster_tsv` ＋ `join_identity` 现算 —— 与 `bus-state` 同一个解析器；
 /// 广播由同一份名单经生产的 `pick_broadcast_targets` 挑人再经 `broadcast_reply` 装）· 码集合 == `inbound::REGISTRY` 那一块。
 #[test]
 fn the_bus_products_match_the_cross_language_golden() {
@@ -698,7 +698,7 @@ fn the_bus_products_match_the_cross_language_golden() {
     );
 }
 
-/// 〔DUP3 · 主会话 09-26 裁 · `INVARIANTS §47`「交给对端之前本侧先判」〕`from`（`bus-send` · `bus-broadcast`，作 `CC_BUS_ID` 交给 `cc-send`）
+/// 〔`INVARIANTS §47`「交给对端之前本侧先判」〕`from`（`bus-send` · `bus-broadcast`，作 `CC_BUS_ID` 交给 `cc-send`）
 /// 与广播名单里的收件人（`cc-list` 的输出 —— 对端来的值）都过同一个 `bus_id_ok`，正反各一格（样本同上一条，取跨语言金样的 `ids`）：
 /// - `from` 判不过 ⇒ 整条 `bad_id`、那一句点出是哪个值（一个进程都不起 —— 解析器在起进程之前）；
 /// - 名单收件人判不过 ⇒ 不交给 `cc-send`，成品 `failed` 里照实一格 `{id, error:"bad_id", detail}`（不静默跳过、不整条回错）；

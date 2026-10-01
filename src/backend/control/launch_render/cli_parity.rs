@@ -4,7 +4,7 @@
 //! 机制与 `launch_payload_parity.rs` 相同（入库夹具，两侧各自与它比，
 //! 绝不让 Rust 去调 TS 现场生成 —— 那是 U7-4 的自洽夹具病根）。
 //!
-//! # 〔LR1 · U8c-3〕左边换了：从「TS 渲染器的产出」换成「手写期望」
+//! # 左边换了：从「TS 渲染器的产出」换成「手写期望」
 //!
 //! TS 那份 `ccm …` 渲染器（`tryRenderCli`）已删 —— 生产从 U8c-2c-2 起只走 Rust。
 //! 这份夹具**没跟着删**，因为它一直在钉两件事，只有第一件随渲染器走：
@@ -26,9 +26,9 @@ const FIXTURE: &str = include_str!("fixtures/cli-golden.json");
 
 /// 与 `launch_payload_parity` 同理：写成相等而不是地板，加/删用例被迫回来改这个数。
 ///
-/// 🔴 〔LR1〕16 → 20：`ccm-print-parity` 那四个场景搬进来当用例（那套 e2e 从本夹具按名取行，
+/// 🔴 16 → 20：`ccm-print-parity` 那四个场景搬进来当用例（那套 e2e 从本夹具按名取行，
 /// 取代它原先现场跑的 TS 渲染器）。原 16 例一例没少。
-const EXPECT_CASES: usize = 20; // 〔LR2 · R95b〕20 → 21：+「没探出来」；〔MIG-2〕21 → 20：那一态产不出来了（能力问那台后端自己）
+const EXPECT_CASES: usize = 20; // 20 → 21：+「没探出来」；21 → 20：那一态产不出来了（能力问那台后端自己）
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -47,7 +47,7 @@ struct Fixture {
 #[serde(deny_unknown_fields)]
 struct Case {
     name: String,
-    /// 〔MIG-2〕那台 `ccm` 的能力（`null` = 没装）：不上线（生产上问那台后端自己），对拍这一侧拿它喂 `render_ccm_launch_with`。
+    /// 那台 `ccm` 的能力（`null` = 没装）：不上线（生产上问那台后端自己），对拍这一侧拿它喂 `render_ccm_launch_with`。
     caps: Option<Vec<String>>,
     /// ★ **生产 wire 类型** —— 由 TS 的 `buildCliRenderRequest`（`renderCliViaBackend` 用的
     /// 同一个）构造、落盘。用它而不是自己再镜像一份，是本轮复盘的核心修复：

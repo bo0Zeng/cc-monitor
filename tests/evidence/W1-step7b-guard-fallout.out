@@ -4,14 +4,14 @@
 #   `src/backend` 703 条 · 0 红（那边另有 2 条同族的红 —— 本文件这一趟只跑了 bridge，
 #   没记下来：`guard_support::the_two_strip_clean_notes_stay_one_sentence` 与
 #   `listen::every_file_this_head_note_points_at_really_exists` —— 一并修了）。
-#   四类各怎么修的、还欠 `P9` 什么，逐条住 `调研/设计/16 §6.3`。
+#   四类各怎么修的、还欠 `P9` 什么，逐条住。
 #   🔴 **本文件以下是那一刻的生数，保持原样不改** —— 它记的是「搬树之后尺子没跟着搬」
 #   长什么样，那是这一族判据第一次大规模被正向验证的证据。
 #
-# 步 7b（`设计/16 §6` 第 3 批）剖分之后的守卫落点 —— 现打读数，不是结论
+# 步 7b（第 3 批）剖分之后的守卫落点 —— 现打读数，不是结论
 #
 # 量法：git checkout w1/split-mixed-files && cd src/bridge && cargo test --workspace
-# 分类与结论住 `调研/设计/16 §6.2`；本文件只放**生数**。
+# 分类与结论住；本文件只放**生数**。
 #
 # 剖分这一半的读数（可证的那一半）：
 #   混合文件 src/bridge/  69 → 6        （全仓 100 → 37；行数 113 219 → 36 735）
@@ -106,7 +106,7 @@ assertion `left == right` failed: 载荷的 `cd <目录> && ` 片段在 monitor 
   payload.rs: Some(c) => format!("cd {} && ", shell_quote_core::posix_quote(c)),
   payload.rs: Some(c) => format!("cd {} && ", shell_quote_core::posix_quote(c)),
 
-⚠ 头注第一行写着本模块是「那一段串的**唯一 Rust 真相源**」。
+⚠ 头注第一行写着本模块是「那一段串的**唯一 Rust 源头**」。
 第二份拼装会与这一份各自演化引用规则与拼接顺序，而载荷是**原样键进会话**的 —— 
 漂开的后果不是「样式不一致」，是**一边转义、一边不转义**。
 真要复用，调 `render_payload`。
@@ -357,7 +357,7 @@ thread 'spawn_managed::tests::the_spawn_verbs_and_platform_primitives_live_only_
   <repo>/src/bridge/src/spawn_managed.rs: `.process_group(`
   <repo>/src/bridge/src/spawn_managed.rs: `.kill_on_drop(`
 
-★ `15 §5.1 A3` / `00 §1.5.2`：起子进程的三个问题（要不要窗口 · 要不要随我死 · 错误往哪去）**必须在编译期各自回答一遍**。
+★：起子进程的三个问题（要不要窗口 · 要不要随我死 · 错误往哪去）**必须在编译期各自回答一遍**。
 ⇒ 把 `cmd.spawn()` 换成 `crate::spawn_managed::spawn_managed_cmd(&mut cmd, …)`，三个策略照实写；`backend/` 那一半收注入参数（`ManagedSpawn`），不许自己认平台。
 ⚠ 别在落点上直接写 `creation_flags` / `process_group` / `kill_on_drop` —— 那正是「同一形状出现三次」的来路。
 

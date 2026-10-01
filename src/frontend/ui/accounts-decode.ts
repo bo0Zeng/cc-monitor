@@ -1,5 +1,5 @@
 /**
- * 〔C4c · 第四波 4B〕后端账号那两条帧命令的**成品** ⇒ 界面要的形状（按形状收，不解释）。
+ * 后端账号那两条帧命令的**成品** ⇒ 界面要的形状（按形状收，不解释）。
  *
  * - `accounts-list` ⇒ [`decodeAccountsList`]：`{meta, accounts, notice}`，并表（apikey 表 ⇒ `authKind` / `authReady`）
  *   **已在那台机器的后端做完**（`src/backend/observe/accounts_query.rs::list_product`，规则住 `acct-core`）；
@@ -12,7 +12,7 @@
  */
 import type { Account, AccountsMeta, AuthKind } from "./accounts";
 import { copyText } from "./copy-table";
-// 〔DUP2 · `设计/90 §3` 判据 2〕账号种类的取值集只有一份（`acct_core::AUTH_KINDS`），这里读它现生成的那份，不手抄。
+// 账号种类的取值集只有一份（`acct_core::AUTH_KINDS`），这里读它现生成的那份，不手抄。
 import { AUTH_KINDS } from "./generated/judgment-rules";
 
 const isObj = (v: unknown): v is Record<string, unknown> =>
@@ -25,7 +25,7 @@ const sameKeys = (o: Record<string, unknown>, want: readonly string[]): boolean 
 const nullableStr = (v: unknown): v is string | null => v === null || typeof v === "string";
 
 /**
- * 〔C4c · 第四波 4B〕后端 `accounts-list` 的成品 ⇒ 界面那三格。**严格收**（口径同 C4b 的 `decodeSurvey`）：
+ * 后端 `accounts-list` 的成品 ⇒ 界面那三格。**严格收**（口径同 C4b 的 `decodeSurvey`）：
  * 顶层 / `meta` / 每个账号的键集合都要恒等，类型逐格核；多一格、缺一格、类型不对 ⇒ 抛「两端契约对不上」——
  * 不替后端补一个值（那会把一个坏掉的号悄悄变成一个能选的号）。老后端回的 `{"lines": […]}` 也落这里。
  * 跨语言金样 `tests/__fixtures__/accounts.golden.json` 钉着两侧。
@@ -105,7 +105,7 @@ export function decodeAccountsList(v: unknown): {
   return { meta, accounts, notice: v.notice };
 }
 
-/** 〔C4c〕后端 `accounts-trust` 的成品 ⇒ `{trusted, known}`。严格收（同上）。 */
+/** 后端 `accounts-trust` 的成品 ⇒ `{trusted, known}`。严格收（同上）。 */
 export function decodeTrust(v: unknown): { trusted: boolean; known: boolean } {
   if (
     !isObj(v) ||

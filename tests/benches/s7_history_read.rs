@@ -1,4 +1,4 @@
-//! 秤 7 ——「Rust 侧」的量具。`调研/设计/17 §6` 表**第 7 行**，验的是 `§3.1` 那句
+//! 秤 7 ——「Rust 侧」的量具。表**第 7 行**，验的是 `§3.1` 那句
 //! 「取尾是 O(文件) 时间但 O(N) 内存，且首次打开必须数总行数，这个 O(文件) 是**不可避免**的」。
 //!
 //! 要回答的那一问逐字：**「若实测很贵，则值得缓存 `(size, mtime) → (total, tail_from)`
@@ -11,7 +11,7 @@
 //! 里的**私有 fn**，而本 crate 是**纯 bin**（`Cargo.toml` 只有 `[[bin]]`，没有 `[lib]`）
 //! ⇒ 外部 target 够不着它们。两条路：
 //!
-//! - ❌ **在 bench 里手抄一份同形实现** —— `设计/17 §0` 逐字警告过这一形
+//! - ❌ **在 bench 里手抄一份同形实现** —— 警告过这一形
 //!   （「手抄的有漂移风险，进仓固化时必须改成 import 真模块」）。本秤不走。
 //! - ✅ **spawn 真二进制的真 CLI 入口**（`--read-session-tail` / `--read-session`
 //!   / `--read-session-from-offset`）。`CARGO_BIN_EXE_*` 由 cargo 在**构建 bench target
@@ -31,10 +31,10 @@
 //!
 //! `K` 就是「`(size, mtime)` 缓存能省掉的那一块」。**判断值不值得做，看的是 K，不是总数。**
 //!
-//! # 两档：`cargo bench` 出读数，`cargo test` 只证明「跑得起来」〔TQ1 2026-09-24〕
+//! # 两档：`cargo bench` 出读数，`cargo test` 只证明「跑得起来」
 //!
 //! 本文件原住 `tests/evidence/S7-history-read.rs`（量具与历史读数那棵树，规矩是「不许改」），
-//! TQ1 把它搬进 `tests/benches/` —— bench 源码从此有一个家（`设计/99 §3`「度量能力」那一格）。
+//! TQ1 把它搬进 `tests/benches/` —— bench 源码从此有一个家（「度量能力」那一格）。
 //!
 //! - **`cargo bench --bench s7_history_read`**（cargo 给目标传 `--bench`）⇒ 下面那张读数表，照旧。
 //!   🔴 墙钟**不当判据**：这一档从不进门禁。
@@ -47,7 +47,7 @@
 //!
 //! # 它量不到什么（别把这份读数当全部）
 //!
-//! - **只是 Linux**。Windows 客户端上没量（`设计/17 §1` 自己也写着 Windows 那侧只跑 monitor）。
+//! - **只是 Linux**。Windows 客户端上没量（自己也写着 Windows 那侧只跑 monitor）。
 //! - **热页缓存**。夹具刚生成就读，文件整个在 page cache 里。冷缓存要 root 才能
 //!   `drop_caches`，本秤不做 ⇒ 读数是**计算 + 内存拷贝**的下界，不是磁盘的。
 //! - **stdout 丢进 `/dev/null`**，不过 SSH。生产里这些字节要过网络，那一段不在读数里。
@@ -82,14 +82,14 @@ fn main() {
     let home = resolve_home();
     let sess = home.join("projects/s7-bench");
 
-    println!("== 秤 7：Rust 侧（`设计/17 §6` 表第 7 行）==");
+    println!("== 秤 7：Rust 侧（表第 7 行）==");
     print_machine_banner();
     println!("被测二进制 : {BIN}");
     println!("夹具目录   : {}", sess.display());
     println!("重建夹具   : tests/evidence/S7-make-corpus.sh   （产物落 .build/，不进 git）\n");
 
     // ── 反空真自检：先证明「输入不存在 / 是空的」会被当成失败 ───────────────
-    // `设计/17` 全篇的教训之一：恒绿看起来和真绿一模一样。一把量文件的秤，
+    // 全篇的教训之一：恒绿看起来和真绿一模一样。一把量文件的秤，
     // 最容易的坏法就是「文件没生成 → 什么都没读 → 0 ms → 绿」。
     let missing = sess.join("s7-does-not-exist.jsonl");
     let empty = sess.join("s7-empty.jsonl");
@@ -114,7 +114,7 @@ fn main() {
     }
     println!();
 
-    // ── 夹具：三档大小同形同源（`设计/17 §1` 单会话字节 中位/p90/max）+ 长尾变体 ──
+    // ── 夹具：三档大小同形同源（单会话字节 中位/p90/max）+ 长尾变体 ──
     let fixtures: [(&str, &str, u64); 4] = [
         ("p50 990 KiB", "s7-p50.jsonl", 990 * 1024),
         ("p90 4318 KiB", "s7-p90.jsonl", 4318 * 1024),
@@ -171,7 +171,7 @@ fn main() {
         ],
         REPS_SMALL,
     ));
-    // ④ 续拉：`stream_from_offset`。增量取 `设计/17 §1`「单条记录字节」那一列的分位。
+    // ④ 续拉：`stream_from_offset`。增量取「单条记录字节」那一列的分位。
     for (label, delta, reps) in [
         ("中位 1 641 B", 1_641u64, REPS_SMALL),
         ("p90 6 431 B", 6_431, REPS_SMALL),
@@ -286,7 +286,7 @@ fn main() {
 
 /// 冒烟档（`cargo test` 跑它）：证明这把秤**跑得起来、量的是它自称的那件事**，不出任何耗时。
 ///
-/// 语料：仓内那份已经合成过的 `tests/__fixtures__/scale2-height-records.jsonl`（`设计/17 §6.2`：
+/// 语料：仓内那份已经合成过的 `tests/__fixtures__/scale2-height-records.jsonl`（
 /// 结构照真的、内容一律合成），原样放进一个一次性 agent home（后端的路径围栏要它落在
 /// `<home>/projects/` 下）。期望值**全部由本函数按行切原文算**，不问被测二进制：
 ///
@@ -372,7 +372,7 @@ fn smoke() {
         );
         let out = Command::new(BIN)
             .env("CLAUDE_CONFIG_DIR", &home)
-            .arg("--") // 〔V151 · 09-27〕调后端一律带打头的 `--`（分流不看 argv0）
+            .arg("--") // 调后端一律带打头的 `--`（分流不看 argv0）
             .args(args)
             .stdin(Stdio::null())
             .output()
@@ -432,7 +432,7 @@ fn o(s: &str) -> std::ffi::OsString {
 /// 跑一格：`reps` 次计时（stdout 丢 `/dev/null`）+ 1 次管道跑读回出字节数。
 ///
 /// **退出码非 0 当场中止** —— 不然一条 exit 2 的错误路径会伪装成一个漂亮的小读数
-/// （`设计/17` 那条「恒绿看起来和真绿一模一样」的同族）。
+/// （那条「恒绿看起来和真绿一模一样」的同族）。
 fn measure(label: &str, home: &Path, args: &[std::ffi::OsString], reps: usize) -> Row {
     let warm = spawn_timed(home, args);
     if warm.1 != 0 {
@@ -564,7 +564,7 @@ fn resolve_home() -> PathBuf {
         .to_path_buf()
 }
 
-/// 🔴 **毫秒不可跨机比较。** `设计/17 §2.7` 那组数既没记机器也没记语料，
+/// 🔴 **毫秒不可跨机比较。** 那组数既没记机器也没记语料，
 /// 于是「对不上」是谁的问题今天没人判得了。这把秤自己把机器打在读数第一屏。
 fn print_machine_banner() {
     let host = std::fs::read_to_string("/etc/hostname")

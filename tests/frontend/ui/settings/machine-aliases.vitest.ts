@@ -1,4 +1,4 @@
-// 〔AL1 · 2026-09-24〕机器页 ②「别名」（`设计/71` · `设计/70 §3.3`）。
+// 机器页 ②「别名」。
 //
 // 这里钉的是**界面那一半**：清单从读回口开始 · 表单 ↔ 参数 · 两跳各在什么时候发 · 默认不动用户配置 ·
 // 构造零 I/O。shell 文本长什么样、真 bash 执行下来对不对，归后端 `tests/backend/assets/aliases/aliases_tests.rs`
@@ -32,7 +32,7 @@ describe("表单 ↔ 一条别名（纯函数）", () => {
     const a = m.formToAlias(f);
     expect(a).toEqual({
       name: "convz",
-      // 〔V151〕`<交给 claude 的…> -- <ccm 自己的…>`
+      // `<交给 claude 的…> -- <ccm 自己的…>`
       args: [
         "--model", "opus",
         "--verbose", "--x",
@@ -51,7 +51,7 @@ describe("表单 ↔ 一条别名（纯函数）", () => {
     expect(m.aliasToForm(a)).toEqual(f);
   });
 
-  it("`71 §5` 在控件这一侧：不进 tmux ⇒ 容器那几格一个都不出现；不 --detach ⇒ 不登记 cc-bus", async () => {
+  it(" 在控件这一侧：不进 tmux ⇒ 容器那几格一个都不出现；不 --detach ⇒ 不登记 cc-bus", async () => {
     const m = await import("../../../../src/frontend/ui/settings/machine-aliases");
     const noTmux = m.formToAlias({
       ...m.emptyForm(),
@@ -73,7 +73,7 @@ describe("表单 ↔ 一条别名（纯函数）", () => {
       "--",
       "--base",
     ]);
-    // 〔V151〕只有交给 claude 的、里面又带它自己的 `--` ⇒ 末尾补一个空的 `--`。
+    // 只有交给 claude 的、里面又带它自己的 `--` ⇒ 末尾补一个空的 `--`。
     expect(m.formToAlias({ ...m.emptyForm(), name: "d", passthru: "-p -- -x" }).args).toEqual([
       "-p", "--", "-x", "--",
     ]);
@@ -94,28 +94,28 @@ describe("表单 ↔ 一条别名（纯函数）", () => {
   });
 });
 
-// 〔AL1c · 第四波 4B〕两套合一（`设计/71 §7` W5）：从前 POSIX 一套、Windows 那一块（`cc_integration.ts`）
+// 两套合一：从前 POSIX 一套、Windows 那一块（`cc_integration.ts`）
 // 零单测、在面板测试里全被替身掉。今天是**一份组件、平台是入参** ⇒ 同一套断言对两个平台各跑一遍，
 // 平台那几格（tmux 能力 · 别名块是哪一种 · 首开发哪几发）各有各的期望。
 type Plat = "posix" | "powershell";
 
 describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）：两跳 ＋ 读回口 ＋ 默认不动用户配置", (plat) => {
   let seen: Array<{ cmd: string; args?: unknown }>;
-  /** 〔W5-ALIAS〕预览那一发要不要失败。 */
+  /** 预览那一发要不要失败。 */
   let previewFails = false;
   let disk: Alias[];
   let problems: Array<{ name: string; message: string }>;
   /** 替身盘面：哪几份候选里装着别名块（装 / 卸会改它，读回口照它答）。 */
   let blockAt: Set<string>;
-  /** 〔TL1〕装着旧版别名块的那几份（装一次 = 换成新版 ⇒ 从这里摘掉）。 */
+  /** 装着旧版别名块的那几份（装一次 = 换成新版 ⇒ 从这里摘掉）。 */
   let oldAt: Set<string>;
-  /** 〔W5-UI〕非 null ⇒ 读「自动打开 monitor」那项设置失败，拒绝原因就是它。 */
+  /** 非 null ⇒ 读「自动打开 monitor」那项设置失败，拒绝原因就是它。 */
   let autoLaunchFail: string | null;
-  /** 〔WF1 · L〕`/h/rc-a` 那份候选带的执行策略（后端现问的那一份）；点了「允许」之后换成 `policyAfter`。 */
+  /** `/h/rc-a` 那份候选带的执行策略（后端现问的那一份）；点了「允许」之后换成 `policyAfter`。 */
   let policyA: ExecPolicy | null;
   let policyAfter: ExecPolicy | null;
 
-  /** 〔AL1d〕一份候选（别名文件那一行与别名块共用）；`block` 是后端那一次扫描带回来的别名块现状。 */
+  /** 一份候选（别名文件那一行与别名块共用）；`block` 是后端那一次扫描带回来的别名块现状。 */
   const cand = (
     path: string,
     over: { exists?: boolean; present?: boolean; hint?: string; outdated?: boolean; policy?: ExecPolicy | null } = {},
@@ -147,7 +147,7 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）：两跳
     policyAfter = null;
     vi.resetModules();
     vi.doMock("@tauri-apps/plugin-opener", () => ({ openPath: vi.fn() }));
-    // 〔W5-ALIAS〕预览走通道（`chan.call(origin, "ccm-print", …)`）：替身把每一发记进同一本账（`chan:<op>`），
+    // 预览走通道（`chan.call(origin, "ccm-print", …)`）：替身把每一发记进同一本账（`chan:<op>`），
     //   首开那几发的集合相等判据因此也看得见「展开时有没有偷问预览」。
     previewFails = false;
     vi.doMock("../../../../src/comms/inward/chan", () => ({
@@ -164,7 +164,7 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）：两跳
         },
       },
     }));
-    // 〔MIG-3a〕别名六问走通道（`src/frontend/ui/alias-reads.ts`）：替身按旧命令名记账（`aliases_*`），判据的集合相等照旧成立。
+    // 别名六问走通道（`src/frontend/ui/alias-reads.ts`）：替身按旧命令名记账（`aliases_*`），判据的集合相等照旧成立。
     vi.doMock("../../../../src/frontend/ui/alias-reads", () => ({
         readAliases: (origin: string, shell: Plat, rcPath: string | null) => {
           const a = { origin, shell, rcPath };
@@ -299,12 +299,12 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）：两跳
 
   /**
    * 首开那几发：两个平台共有的读回 ＋ 渲染，再加各自那一格（POSIX：本机 ccm；PowerShell：自动打开 monitor ＋ 用户级 PATH）。
-   * 〔AL1d〕PowerShell 那一侧**不再有**「终端集成」的状态 / 扫一份两发：别名块的现状随读回口的候选一起到。
+   * PowerShell 那一侧**不再有**「终端集成」的状态 / 扫一份两发：别名块的现状随读回口的候选一起到。
    */
   const FIRST_OPEN: Record<Plat, string[]> = {
     posix: ["aliases_read", "aliases_render", "local_ccm_entry_status"],
-    // 〔MIG-3a〕握手终端数从读回口的成品里拆出来、另问 monitor（`bound_terminal_count`）⇒ PowerShell 那一侧首开多这一发。
-    // 〔WF1 · `99 §2.2 ㉔`〕本机 ccm 那一格 Windows 上也问（新开的 PowerShell 里敲 `ccm` 走到哪）。
+    // 握手终端数从读回口的成品里拆出来、另问 monitor（`bound_terminal_count`）⇒ PowerShell 那一侧首开多这一发。
+    // 本机 ccm 那一格 Windows 上也问（新开的 PowerShell 里敲 `ccm` 走到哪）。
     powershell: ["aliases_read", "aliases_render", "bound_terminal_count", "cc_get_auto_launch", "ccm_user_path_status", "local_ccm_entry_status"],
   };
 
@@ -442,7 +442,7 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）：两跳
     expect(tmux.value).toBe("none");
   });
 
-  // ── 〔AL1d · 第四波 4B〕别名块：两种 shell 同一块、同一个选择器、同一族命令（`aliases_block_*`）──────────
+  // ── 别名块：两种 shell 同一块、同一个选择器、同一族命令（`aliases_block_*`）──────────
   const pick = async (el: HTMLElement, path: string): Promise<void> => {
     const sel = el.querySelector<HTMLSelectElement>(".ccm-acct-alias-rc")!;
     sel.value = path;
@@ -492,7 +492,7 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）：两跳
       "betacc",
       "mine",
     ]);
-    clickText(el, "卸载 ccm"); // 用户 09-26：本机那颗与远端同叫「卸载 ccm」（V134）
+    clickText(el, "卸载 ccm"); // 用户 09-26：本机那颗与远端同叫「卸载 ccm」
     await flush();
     expect(seen.find((c) => c.cmd === "aliases_block_remove")!.args).toEqual({
       origin: "<local>",
@@ -566,7 +566,7 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）：两跳
   });
 
   if (plat === "powershell") {
-    // 〔W5-UI · 设计/70 §7 #4〕读不到时别把「不知道」画成「没勾」。
+    // 读不到时别把「不知道」画成「没勾」。
     it("读「自动打开 monitor」失败 ⇒ 复选框禁用、路径那格说读不到（原因原样）；读到 ⇒ 可点（正控）", async () => {
       autoLaunchFail = "boom-autolaunch";
       let el = await mount();
@@ -625,7 +625,7 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）：两跳
       });
     });
 
-    // 〔WF1 · L · `设计/99 §2.3`〕执行策略：块不会被加载 ⇒ 不说「装好了」、说原因、给标准做法的按钮；点了先确认才发；组策略钉着 ⇒ 只照说。
+    // 执行策略：块不会被加载 ⇒ 不说「装好了」、说原因、给标准做法的按钮；点了先确认才发；组策略钉着 ⇒ 只照说。
     const pol = (effective: string, loads: boolean | null, groupPolicy = false): ExecPolicy => ({
       host: "powershell",
       effective,
@@ -689,9 +689,9 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）：两跳
   }
 
   /**
-   * 〔AL2 · 第四波 4D〕**B5**：远端卡与本机是同一个组件（`设计/71 §5` · `§6`「`origin` 是本机还是远端，对这些命令没有区别」）——
+   * **B5**：远端卡与本机是同一个组件（「`origin` 是本机还是远端，对这些命令没有区别」）——
    * 每一发 `aliases_*` 与别名预览都带那台的 origin；首开集合相等（本机才答得了的那几发一发都没有）；
-   * 平台格与「打开这份文件」不挂、块预览挂（`71 §8 #6`）；卸那颗叫「卸载 ccm」（V134）。
+   * 平台格与「打开这份文件」不挂、块预览挂；卸那颗叫「卸载 ccm」。
    */
   // 远端恒 POSIX（表 B）：不管这一轮 `plat` 是哪种，远端卡都按 `posix` 建（两轮各跑一遍，结论相同）。
   it("〔AL2〕B5：远端卡是同一个组件，每一发都带那台的 origin，只本机的那几格不挂", async () => {
@@ -742,7 +742,7 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）：两跳
     expect(done).toEqual(["install:ok", "remove:ok"]);
     expect(el.querySelector(".ccm-user-path-block")).toBeNull();
     expect([...el.querySelectorAll("button")].map((b) => b.textContent)).not.toContain("打开这份文件");
-    // 〔MIG-3a〕撞名由那台后端查它自己的 `PATH` ⇒ 〔AL2〕「远端 PATH 没查」那句说明退役。
+    // 撞名由那台后端查它自己的 `PATH` ⇒ 「远端 PATH 没查」那句说明退役。
     expect(el.textContent).not.toContain("PATH 上的同名程序没查");
   });
 });
@@ -752,7 +752,7 @@ describe("localShell：本机用哪种方言", () => {
     const { __setHostOsForTests } = await import("../../../../src/frontend/ui/settings/host-os");
     __setHostOsForTests(null);
   });
-  /** 设计/71 §8 第 7 条（主会话 09-28 裁 FIX4）「认不出 OS 时：不猜方言 —— 明说、安装入口置灰」。 */
+  /** （主会话 09-28 裁 FIX4）「认不出 OS 时：不猜方言 —— 明说、安装入口置灰」。 */
   it("Windows ⇒ powershell；Linux / macOS ⇒ posix；认不出 ⇒ 不猜（null），那一格明说、装的入口置灰", async () => {
     vi.resetModules();
     const { __setHostOsForTests } = await import("../../../../src/frontend/ui/settings/host-os");

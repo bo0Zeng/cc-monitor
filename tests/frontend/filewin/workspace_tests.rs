@@ -1,9 +1,5 @@
-//! # 要求住址：〔缺址〕🔴 **设计篇缺节**（候选升格进 `设计/60 §6.1`）—— 行为设计今天只住 `调研/第四波记录/FW34.md` 第三节
-//!
-//! 焦点闸（只有焦点那一栏接键盘与拖入）· 新标签 / 右栏沿用同一条通道 · 有活的标签关不掉并说出是哪件：
-//! 设计篇 / `INVARIANTS` / D 号 / V 号里都没有逐字，而 `设计/60 §6.2` 还把双栏 / 标签页记作「未做」（已过期）。
-//! 只有「复制到另一栏」那两格点得到：走后端 `files-copy`、不下载再上传，对 `设计/60 §1.1` 逐字
-//! 「在那台机器上能就地完成的事，不该让字节跑一趟网络」。〔JA1 点址 2026-09-24〕
+//! 焦点闸（只有焦点那一栏接键盘与拖入）· 新标签 / 右栏沿用同一条通道 · 有活的标签关不掉并说出是哪件。
+//! 「复制到另一栏」走后端 `files-copy`、不下载再上传：在那台机器上能就地完成的事，不该让字节跑一趟网络。
 //!
 //! [`super`] 的判据 —— **标签页 ＋ 双栏 ＋ 复制到另一栏**（每一条都真跑生产那个 [`Workspace::frame`]）。
 //!
@@ -18,10 +14,10 @@
 //! | [`right_click_menus_open_on_both_sides`] | 两栏各右键一次，两次菜单**都真的摆出来**（序号是进程级的，两栏不撞） | 菜单那一块的矩形从 egui 的内存里读 |
 //! | [`copy_across_speaks_files_copy_with_a_common_root`] | 线上那一行 `files-copy` 的 `root` / `from` / `to` 逐格相等（合成后端） | 期望手写；实得是合成后端真收到的那一行 |
 //! | [`copy_across_refuses_what_it_cannot_do_and_sends_nothing`] | 没开双栏 / 没选 / 选中里有有损名 / 两栏同目录 ⇒ 出声、线上零条（带正控：合法那一摞恰好两条） | 零命中读的是线上那本账 |
-//! | [`copy_across_takes_the_whole_selection_and_a_directory_goes_recursive`] | 〔W5-FILES · `设计/60 §6.2`〕一摞（文件 ＋ 目录）⇒ 线上两行逐格相等，目录那行带 `recursive: true` | 期望手写；实得是合成后端真收到的 |
+//! | [`copy_across_takes_the_whole_selection_and_a_directory_goes_recursive`] | 一摞（文件 ＋ 目录）⇒ 线上两行逐格相等，目录那行带 `recursive: true` | 期望手写；实得是合成后端真收到的 |
 //! | [`across_args_cuts_paths_at_the_common_directory`] | 公共前缀那一刀逐格相等（含只在根下相交的那一形） | 期望手写 |
-//! | [`dragging_rows_onto_the_other_side_copies_them_and_dropping_back_does_nothing`] | 〔W5-FILES · `设计/60 §6.2`「行拖到另一栏的手势」〕合成指针拖起左栏一行 ⇒ 拖着时画「复制 1 项到另一栏」、松在右栏 ⇒ 线上恰一条 `files-copy`（逐格相等）；阴性：拖回本栏松手 ⇒ 零条 | 实得是合成后端真收到的；期望手写 |
-//! | [`ctrl_t_and_ctrl_w_open_and_close_tabs_on_the_focused_side`] | 〔W5-FILES · `设计/60 §6.2` 标签页快捷键 ＋ `§6.3` 键盘四道闸〕Ctrl+T / Ctrl+W 只作用于焦点那一栏（两栏各自的标签数逐格相等）；有一问摆着 ⇒ 零作用；不按 Ctrl 的 T ⇒ 零作用 | 标签数读的是各栏自己的表；期望手写 |
+//! | [`dragging_rows_onto_the_other_side_copies_them_and_dropping_back_does_nothing`] | 〔「行拖到另一栏的手势」〕合成指针拖起左栏一行 ⇒ 拖着时画「复制 1 项到另一栏」、松在右栏 ⇒ 线上恰一条 `files-copy`（逐格相等）；阴性：拖回本栏松手 ⇒ 零条 | 实得是合成后端真收到的；期望手写 |
+//! | [`ctrl_t_and_ctrl_w_open_and_close_tabs_on_the_focused_side`] | 〔标签页快捷键 ＋ `§6.3` 键盘四道闸〕Ctrl+T / Ctrl+W 只作用于焦点那一栏（两栏各自的标签数逐格相等）；有一问摆着 ⇒ 零作用；不按 Ctrl 的 T ⇒ 零作用 | 标签数读的是各栏自己的表；期望手写 |
 //!
 //! ⚠ 买不到：真窗口真画在屏幕上；真的拖一行过去（手势没做，理由住 `super` 头注）。
 
@@ -428,7 +424,7 @@ async fn copy_across_speaks_files_copy_with_a_common_root() {
     assert_eq!(ws.pane_on(0).copy_board.rounds(), 0);
 }
 
-/// 〔W5-FILES〕做不了的那几形：没开双栏 / 一项都没选 / 选了有损名 / 两栏同目录 ⇒ 出声、线上零条（带正控）。
+/// 做不了的那几形：没开双栏 / 一项都没选 / 选了有损名 / 两栏同目录 ⇒ 出声、线上零条（带正控）。
 /// 〔FW34 那一版〕「选了目录」「选了两项」也在这里 —— 今天那两形**做得了**（见下一条），从阴性挪成了正控。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn copy_across_refuses_what_it_cannot_do_and_sends_nothing() {
@@ -479,7 +475,7 @@ async fn copy_across_refuses_what_it_cannot_do_and_sends_nothing() {
     assert_eq!(wired.count("files-copy"), 2);
 }
 
-/// 〔W5-FILES〕要求住址：`设计/60 §6.2`「复制目录 · 批量复制」＋ `§6.3`「多选时要每一项都能…才给」。
+/// 要求：「复制目录 · 批量复制」＋ `§6.3`「多选时要每一项都能…才给」。
 ///
 /// 左栏选中一个文件 ＋ 一个目录 ⇒ 线上两行 `files-copy` 逐格相等：文件那一行与 FW34 那一形逐字同（不多一个键），
 /// 目录那一行多 `recursive: true`、`overwrite: false`；结局一句把两件的条数加起来（合成后端：文件 1/0、目录 3/2）。
@@ -561,7 +557,7 @@ fn tab_counts(ws: &Workspace) -> Vec<usize> {
     (0..ws.sides()).map(|k| ws.tabs_on(k)).collect()
 }
 
-/// 〔W5-FILES〕要求住址：`设计/60 §6.2`「标签页快捷键（Ctrl+T / Ctrl+W）」＋ `§6.3`「键盘归谁，四道闸」。
+/// 要求：「标签页快捷键（Ctrl+T / Ctrl+W）」＋ `§6.3`「键盘归谁，四道闸」。
 #[test]
 fn ctrl_t_and_ctrl_w_open_and_close_tabs_on_the_focused_side() {
     let mut ws = two_sides(pane("/l", &["a"]), pane("/r", &["b"]));
@@ -608,7 +604,7 @@ fn ctrl_t_and_ctrl_w_open_and_close_tabs_on_the_focused_side() {
     );
 }
 
-/// 〔W5-FILES〕要求住址：`设计/60 §6.2`「行拖到另一栏的手势 —— 今天只有『复制到另一栏』按钮；行上命中矩形是 `Sense::click()`，
+/// 要求：「行拖到另一栏的手势 —— 今天只有『复制到另一栏』按钮；行上命中矩形是 `Sense::click()`，
 /// 要换成可拖并带出『从哪一行拖起』」。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn dragging_rows_onto_the_other_side_copies_them_and_dropping_back_does_nothing() {
@@ -673,7 +669,7 @@ async fn dragging_rows_onto_the_other_side_copies_them_and_dropping_back_does_no
     );
 }
 
-/// 〔W5-FILES · 有损名全寻址（`设计/60 §6.2`）〕跨目录那一形按**字节**切：源在一个有损名目录里 ⇒ 根照样是按段比的公共前缀，
+/// 〔有损名全寻址（）〕跨目录那一形按**字节**切：源在一个有损名目录里 ⇒ 根照样是按段比的公共前缀，
 /// 有损那一段发 `{"b16": …}`、合法 UTF-8 那一段照旧是字符串（期望手写）。
 #[test]
 fn across_args_cut_lossy_paths_by_their_bytes() {

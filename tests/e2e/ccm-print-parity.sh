@@ -1,7 +1,7 @@
 #!/bin/bash
 # F03「--print 平价预言机」：验证**生产渲染器**产出的 `ccm …` 调用行，被真 ccm 解析后，
 # 展开结果里确实含有渲染器想表达的每个意图（sid / tmux 名 / cwd / launcher / ccm-sid）。
-# 〔LR1 · U8c-3〕生产渲染器是 Rust（`ccm_invocation::render_ccm_invocation`）；那几行从入库夹具
+# 生产渲染器是 Rust（`ccm_invocation::render_ccm_invocation`）；那几行从入库夹具
 # `cli-golden.json` 取（cargo 逐字节保证它们 == 生产产出，来历链见 `ccm-print-parity-emit.mts` 头注）。
 # 原先现场跑 TS 渲染器 `renderCli`（已删，零生产调用）。**12 条断言一个字没改。**
 #
@@ -27,7 +27,7 @@ contains() { case "$2" in *"$1"*) echo yes ;; *) echo no ;; esac; }
 #
 # ★ `K-R48` 第二拍（09-11）：`ccm` 从**仓内 bash 脚本**换成**后端二进制本体**。
 #   〔用@09-11 `K33`〕逐字「后端**只有一个**，**不要有什么 bash 脚本**，**不要有什么单独的 ccm**」
-#   ⇒ 终端里敲的 `ccm` 就是 `cc-monitor-backend`（〔09-27〕分流不看 argv[0]：没有打头的 `--` 就是一次性模式）。
+#   ⇒ 终端里敲的 `ccm` 就是 `cc-monitor-backend`（分流不看 argv[0]：没有打头的 `--` 就是一次性模式）。
 #   **本套件 12 条断言一个字都没改** —— 它测的一直是「renderCli 渲出来的那行，被真 `ccm`
 #   解析后展开成什么」，那是后端今天仍要保证的命令契约，与用什么语言实现无关。
 #   依据是 `K-R48` 第一拍的逐字节对拍（`tests/evidence/K-R48-native-vs-bash-parity.py`，SAME=27/DIFF=2）。
@@ -81,8 +81,8 @@ NEEDLE_TMUX_NAME="-s 'cc-p1'"
 NEEDLE_CWD="-c '/tmp'"
 NEEDLE_SID_TAG="@ccm_sid_expect 'p1'"
 NEEDLE_BASE="'--base'"
-# 〔AL3 · V138〕`--resume` 是交给 claude 的词，内层放在 `--` 后面原样带进去。
-ck "--resume 被内层 ccm 原样带进去（V138：交给 claude 的词）" yes "$(contains "--resume" "$OUT")"
+# `--resume` 是交给 claude 的词，内层放在 `--` 后面原样带进去。
+ck "--resume 被内层 ccm 原样带进去（交给 claude 的词）" yes "$(contains "--resume" "$OUT")"
 ck "sid p1 出现在内层调用里" yes "$(contains "p1" "$OUT")"
 ck "tmux 名 cc-p1 出现在 new-session" yes "$(contains "$NEEDLE_TMUX_NAME" "$OUT")"
 ck "cwd /tmp 出现在 -c" yes "$(contains "$NEEDLE_CWD" "$OUT")"

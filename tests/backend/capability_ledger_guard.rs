@@ -1,8 +1,8 @@
-//! 〔步 `8a` · 2026-09-21〕**能力清单汇总的护栏** —— `设计/96 §2` 第 2 层的机器形态。
+//! 〔步 `8a`〕**能力清单汇总的护栏** —— 第 2 层的机器形态。
 //!
 //! # `K-G6` `KG62`：性质与人群，两行逐字（各自只许有一句）
 //!
-//! - **它守的性质是**：`设计/96 §2` 第 2 层那份「由各能力面**汇总**而来」的清单，
+//! - **它守的性质是**：第 2 层那份「由各能力面**汇总**而来」的清单，
 //!   装的恰好是各族**自己**声明的那些能力 —— 一族不许漏进来，一条不许凭空多出来，
 //!   而且射程那两类（资产 / 协议）各有真成员。
 //! - **它扫的人群是**：`src/backend/` 下递归全部 `.rs` 的**生产段**里那些
@@ -12,7 +12,7 @@
 //! # 🔴 两侧为什么不同源（这是本份最贵的一条，别读成样板话）
 //!
 //! [`crate::capability_ledger`] 是一个对 [`crate::CAPABILITY_FACES`] 的**纯函数** ——
-//! 那是刻意的（`设计/96 §2` 第 2 层买的是「**不可能**不一致」，不是「不一致会被逮到」）。
+//! 那是刻意的（第 2 层买的是「**不可能**不一致」，不是「不一致会被逮到」）。
 //! 代价：拿它去对「各族声明的并集」会是 `x == x`，本仓对这一形的说法逐字
 //! **「恒等两侧同源会恒真」**。
 //!
@@ -29,7 +29,7 @@
 //! # ⚠ 它**买不到**什么（逐条，别读宽）
 //!
 //! 1. **`ROSTER` 是一张点名表，它证明不了「这些能力该存在」。** 它只证明
-//!    「今天在盘上的这些，是被逐条看过一遍的」。该不该存在住 `设计/96 §2.9` 那种裁决里。
+//!    「今天在盘上的这些，是被逐条看过一遍的」。该不该存在住那种裁决里。
 //!    ⇒ 与 `files/capability_guard.rs` 的 `REGISTERED` 同一条口径，那份头注逐字写过：
 //!    **不许**为了让某一侧变绿而从点名表里摘一个名字。
 //! 2. **`targets` 那一栏是声明，不是编译结果。** 「这四个 target 上都编得过」的真判据是
@@ -39,16 +39,15 @@
 //!    那条已登记的边界）：钉的是「说得出来」，不是「真的想过」。
 //! 4. 🔴 **它完全不碰「在这台机器上做不到」那个轴**（`wire::Unavailable`）。
 //!    那个轴是**运行期逐机器**的，本份与 [`crate::capability_ledger`] 都是**编译期**的。
-//!    两者今天**谁也没汇进谁**，而那不是缺陷 —— 是 `设计/96 §2` 自己分开的两个轴
-//!    （「target 答每个平台编不编得过」）。对上那两个轴是步 `8b` 的活，登记在
-//!    `设计/99 §4.8.3 P12`，**挡在步 3.5 上**。
+//!    两者今天**谁也没汇进谁**，而那不是缺陷 —— 是自己分开的两个轴
+//!    （「target 答每个平台编不编得过」）。对上那两个轴是步 `8b` 的活，**挡在步 3.5 上**。
 
 use super::{
     capability_ledger, parity_faces, CapabilityKind, Target, CAPABILITIES, CAPABILITY_FACES,
     TARGETS, TARGET_GAPS,
 };
 
-/// 〔PR1〕第 3 层人群里**声明过**的全部 `(面, 名)`（两张面表的 `declares()` 连起来，不收窄）。
+/// 第 3 层人群里**声明过**的全部 `(面, 名)`（两张面表的 `declares()` 连起来，不收窄）。
 fn parity_declared() -> Vec<(&'static str, &'static str)> {
     parity_faces()
         .flat_map(|f| (f.declares)().into_iter().map(move |n| (f.family, n)))
@@ -69,7 +68,7 @@ fn parity_declared() -> Vec<(&'static str, &'static str)> {
 /// 🔴 **不许**为了让断言变绿就往本表里补一行了事 —— 补那一行的意思是
 /// 「我看过这条能力，它该在清单里」。那句话有分量。
 const ROSTER: &[(&str, &str)] = &[
-    // ── `ccm-launcher`（`control/ccm/mod.rs`，`设计/96 §2` 射程：资产轴）────────────
+    // ── `ccm-launcher`（`control/ccm/mod.rs`，射程：资产轴）────────────
     ("ccm-launcher", "account"),
     ("ccm-launcher", "account-via-backend"),
     ("ccm-launcher", "agent"),
@@ -88,30 +87,30 @@ const ROSTER: &[(&str, &str)] = &[
     ("ccm-launcher", "tmux"),
     ("ccm-launcher", "tmux-base"),
     ("ccm-launcher", "tmux-size"),
-    // ── `files-read`（`files/mod.rs`，`设计/96 §2.9` 那张表）──────────────────────
+    // ── `files-read`（`files/mod.rs`，那张表）──────────────────────
     ("files-read", "files.browse"),
     ("files-read", "files.find"),
-    // 〔F7a · 第三波 09-24〕我看过这条能力，它该在清单里：窗口「开在 home」那一问经通道问后端
-    // （`设计/60 §13`；此前 monitor 为它单拨一条 SFTP）。纯读，资产轴，四个 target 都有。
+    // 我看过这条能力，它该在清单里：窗口「开在 home」那一问经通道问后端
+    // （此前 monitor 为它单拨一条 SFTP）。纯读，资产轴，四个 target 都有。
     ("files-read", "files.home"),
     ("files-read", "files.index.rebuild"),
     ("files-read", "files.index.status"),
     ("files-read", "files.ls"),
-    // 〔W5-FILES · 第五波〕我看过这条能力，它该在清单里：算目录大小（`设计/60 §6.2`，V45「能连 ssh 做什么后端就能做什么」）。
+    // 我看过这条能力，它该在清单里：算目录大小（「能连 ssh 做什么后端就能做什么」）。
     // 纯读，资产轴，四个 target 都有（非 unix 上「不进别的文件系统」那一判不开口，如实写在 `files/size.rs` 头注）。
     ("files-read", "files.size"),
-    // 〔FILES3 · `设计/99 §2.2 ㉜`〕我看过这条能力，它该在清单里：按内容搜（那台后端走一遍、有字节与条数上界、可撤、不跟链接）。
+    // 我看过这条能力，它该在清单里：按内容搜（那台后端走一遍、有字节与条数上界、可撤、不跟链接）。
     //   纯读，资产轴，四个 target 都有（非 unix 上「不进别的文件系统」那一判不开口，同 `files.size`）。
     ("files-read", "files.grep"),
-    // 〔FILES2 · V152〕我看过这条能力，它该在清单里：按字节寻址分块读回（非 UTF-8 名的下载，下载对远端只读）。纯读，四个 target 都有。
+    // 我看过这条能力，它该在清单里：按字节寻址分块读回（非 UTF-8 名的下载，下载对远端只读）。纯读，四个 target 都有。
     ("files-read", "files.read.chunk"),
-    // 〔F7a · 第三波 09-24〕同上：编辑器读一份文本经通道问后端（此前 SFTP 整份搬字节）。
+    // 同上：编辑器读一份文本经通道问后端（此前 SFTP 整份搬字节）。
     // 纯读，超上限整趟拒不截断，上限由调用方给、后端有自己的天花板。
     ("files-read", "files.read.text"),
     ("files-read", "files.stat"),
-    // ── `stream-flags`（`lib.rs`，`设计/96 §2` 射程：**协议**轴）────────────────────
+    // ── `stream-flags`（`lib.rs`，射程：**协议**轴）────────────────────
     ("stream-flags", "bg"),
-    // 〔`设计/80 §8.7` 步 2，09-22〕**启动期令牌**（`CCM_RBIND_TOKEN`）。
+    // **启动期令牌**（`CCM_RBIND_TOKEN`）。
     // 补这一行的意思是「我看过这条能力，它该在清单里」，逐条如下：
     // · 它是**协议轴**的（`CapabilityKind::Protocol`）—— 说的是「我认不认
     //   `--with-rbind-token` 这条流 flag」，与 `bg` / `tail-only` 同型；
@@ -128,7 +127,7 @@ const ROSTER: &[(&str, &str)] = &[
 ///
 /// 🔴 **走 [`guard_core::scan_tree_excluding`] 的明写排除那一支。**
 ///
-/// 依据是 `设计/99` 条 73 那条纪律逐字：「『摘掉我自己』**不许靠 `file!()`**」——
+/// 依据是条 73 那条纪律逐字：「『摘掉我自己』**不许靠 `file!()`**」——
 /// 那条靠 `file!()` 做后缀比的自摘，在「判据由 `#[path]` 挂进来」这一处**不生效**
 ///（给出来的是带 `..` 的折返路径，比不中规范化过的草垛）。
 ///
@@ -186,7 +185,7 @@ const NOT_A_PRODUCTION_FACE: &[&str] = &[
 
 /// 🔴🔴 **正题**：汇总之后那份清单，与 [`ROSTER`] 逐条相等（**双向差集空**）。
 ///
-/// 这就是 `设计/96 §2` 第 2 层那条「`CAPABILITIES` 由它们汇总而来」的会红形态。
+/// 这就是第 2 层那条「`CAPABILITIES` 由它们汇总而来」的会红形态。
 #[test]
 fn the_ledger_is_exactly_the_roster_that_was_adjudicated() {
     let ledger: std::collections::BTreeSet<(String, String)> = capability_ledger()
@@ -219,7 +218,7 @@ fn the_ledger_is_exactly_the_roster_that_was_adjudicated() {
         "\n🔴 **汇总出来的清单与被裁过的那份点名表对不上。**\n\n\
          `ROSTER` 里有、汇总里没有（**能力被删/改名了，而消费方还当它在**）：{missing:?}\n\
          汇总里有、`ROSTER` 里没有（**多长出一条没人裁过的能力**）：{extra:?}\n\n\
-         `设计/96 §2` 第 2 层逐字：「能力清单从实现派生，`CAPABILITIES` 由它们**汇总**而来，\n\
+第 2 层逐字：「能力清单从实现派生，`CAPABILITIES` 由它们**汇总**而来，\n\
          不许手写」。汇总那一侧（[`crate::capability_ledger`]）是纯函数、改不了；\n\
          ⇒ 两条出路，**没有第三条**：\n\
          ① 那条能力本来就该加/该删 ⇒ 往 `ROSTER` 补/摘那一行，\n\
@@ -265,7 +264,7 @@ fn the_ledger_really_carries_the_files_read_family() {
     assert!(
         families.len() >= 2,
         "汇总里只有 {} 个族（{families:?}）—— 「汇总」这个词至少要有两个东西可汇。\n\
-         只有一族时，`设计/96 §2` 第 3 层那条跨 target 对等断言也无处可落。",
+         只有一族时，第 3 层那条跨 target 对等断言也无处可落。",
         families.len()
     );
     assert!(
@@ -333,7 +332,7 @@ fn every_capability_table_in_the_tree_is_a_registered_face() {
         unregistered.is_empty(),
         "\n🔴 **源码树上有能力声明表没汇进 `CAPABILITY_FACES`：**{unregistered:?}\n\n\
          这一形是**静默**的：那一族的能力照样能用、它自己的判据照样绿，\n\
-         而 `设计/96 §2` 那份清单里没有它 ⇒ 第 3 层那条跨 target 对等断言\n\
+         而那份清单里没有它 ⇒ 第 3 层那条跨 target 对等断言\n\
          **对它整族全称成立**（空集），而空集上的全称命题恒真。\n\
          ⇒ 出路：往 `CAPABILITY_FACES` 加一行（顺带把它的 `targets` / `target_basis` 想清楚），\n\
          或者 —— 它真的不是一个对外声明的能力面的话 —— 往 `NOT_A_PRODUCTION_FACE` 上\n\
@@ -349,7 +348,7 @@ fn every_capability_table_in_the_tree_is_a_registered_face() {
 
 // ══════════════════ 面自己那几栏：说了话，而且不是空话 ══════════════════
 
-/// ★ **射程那两类各要有真成员** —— `设计/96 §2` 那条「清单的射程要能装下协议级能力」。
+/// ★ **射程那两类各要有真成员** —— 那条「清单的射程要能装下协议级能力」。
 ///
 /// 只剩一类的时候，[`CapabilityKind`] 那个枚举就是装饰，而那条射程要求就是空话
 ///（同 `files::Effect` 那条「一个只有一个成员的枚举没法承载一条相等断言」）。
@@ -369,8 +368,8 @@ fn both_halves_of_the_declared_reach_have_a_real_member() {
         assert!(
             !faces.is_empty(),
             "射程里的 `{want:?}` 这一类**一个面都没有**。\n\
-             `设计/96 §2` 逐字：「清单的条目 ＝『我能管哪几类资产』＋『我认不认这条协议帧』\n\
-             两类，第 2 层那条派生要把后者也派生进来；否则 `05 §8` 步 8 接上来的时候，\n\
+「清单的条目 ＝『我能管哪几类资产』＋『我认不认这条协议帧』\n\
+             两类，第 2 层那条派生要把后者也派生进来；否则接上来的时候，\n\
              它要协商的东西在清单里找不到住址。」\n\
              ⇒ 这一类空着 = 那句话今天只是写在注释里。"
         );
@@ -401,17 +400,17 @@ fn every_face_declares_its_targets_and_says_on_what_basis() {
         );
         assert!(
             !f.targets.is_empty(),
-            "面 `{}` 的 `targets` 是空的 —— `设计/96 §2` 第 2 层逐字要求\
+            "面 `{}` 的 `targets` 是空的 —— 第 2 层逐字要求\
              「每个能力面**声明自己在哪些 target 上有实现**」。\n\
              空表的语义是「一个平台都没有」，而它显然编得出来 ⇒ 这是漏填，不是声明。",
             f.family
         );
         // 🔴 依据不许留空，也不许是一句敷衍 —— 同 `files::Freshness::gap` 那条地板。
-        //    这条地板挡的是「抄一个 `TARGETS` 上去」，`设计/96 §2.9` 管那叫**假声明**。
+        //    这条地板挡的是「抄一个 `TARGETS` 上去」，管那叫**假声明**。
         assert!(
             f.target_basis.chars().count() >= 30,
             "面 `{}` 的 `target_basis` 只有 {} 个字符 —— 太短，等于没说。\n\
-             `设计/96 §2.9` 逐字：判成相等会**逼人写假声明**。这一栏就是防那一形的：\n\
+判成相等会**逼人写假声明**。这一栏就是防那一形的：\n\
              写不出依据的话，那个 `targets` 是抄上去的。",
             f.family,
             f.target_basis.chars().count()
@@ -494,7 +493,7 @@ fn the_stream_flag_list_keeps_its_own_narrow_semantics() {
 /// 那正是本仓「不许留用不上的豁免」那条纪律要挡的形。
 #[test]
 fn every_target_gap_names_a_capability_that_really_exists() {
-    // 〔PR1〕人群从第 2 层汇总扩到第 3 层那两张面表（命令面的豁免也在这张表里）。
+    // 人群从第 2 层汇总扩到第 3 层那两张面表（命令面的豁免也在这张表里）。
     let ledger = parity_declared();
     let mut bad = Vec::new();
     for gap in TARGET_GAPS {
@@ -554,7 +553,7 @@ fn every_target_gap_says_why_and_what_happens_next() {
 /// **不许为了绿把它算出来**（两侧同源就退化成恒真）。
 #[test]
 fn the_gap_table_never_exempts_a_whole_face_and_its_size_is_pinned() {
-    // 〔PR1〕同上：命令面的豁免也在表里，`all` 要从第 3 层那两张面表里取，
+    // 同上：命令面的豁免也在表里，`all` 要从第 3 层那两张面表里取，
     // 否则命令面那几族的 `all.len()` 是 0，下面那一减会下溢。
     let ledger = parity_declared();
     let gaps = TARGET_GAPS;
@@ -562,16 +561,16 @@ fn the_gap_table_never_exempts_a_whole_face_and_its_size_is_pinned() {
     assert_eq!(
         gaps.len(),
         16,
-        "逐能力豁免现打 {} 条（〔FW5 · 09-24〕**16** = PR1 那 14 条 ＋ `files-chmod` / `--files-chmod` × Windows 2 条\n\
+        "逐能力豁免现打 {} 条（**16** = PR1 那 14 条 ＋ `files-chmod` / `--files-chmod` × Windows 2 条\n\
           —— 那条命令声明了 `no_unix_mode` 之后被现推出来，档 = 结构，理由住 `lib.rs` 表尾。\n\
-         〔PR1 · 09-24〕**14** = 下面那 8 条 ＋ 命令面 6 条：\n\
+**14** = 下面那 8 条 ＋ 命令面 6 条：\n\
           · 帧面 `capture-pane` / `kill` / `launch` × Windows 3 条、CLI 面同名 3 条 ——\n\
             不是新裁的，是命令面并进第 3 层之后被横向两向相等**现推出来**的，理由住 `lib.rs` 表尾。\n\
          2026-09-22 现打 8，全在 `ccm-launcher` × Windows：\n\
           · 6 条 = tmux 那一族，**读源码**推出来的；\n\
           · 2 条 = `bus-register` / `ccm-sid`，**真机现打**补的\n\
             —— 上一版的账把它们记成「做得到」，那两格是**错的**不是缺的，\n\
-            逐条读数住 `真相源/106`）。\n\
+            逐条读数住）。\n\
          🔴 `P19`（09-22）把这个数从 **9** 减到 8：`agent` 那一条删了 —— 它那句「做不到」\n\
          的根因（`needs_bus_id(\"codex\")` 恒真 ⇒ 整条改走 `sh -c`）在源码里没了。\n\
          ⚠ **那一减不是真机复验来的**（Win11 虚拟机本轮没动）：对价是 `CAPABILITY_FACES`\n\
@@ -618,7 +617,7 @@ fn the_gap_table_never_exempts_a_whole_face_and_its_size_is_pinned() {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// 〔PR1 · 2026-09-24〕`设计/96 §2` 第 3 层：四个 target 横向对等 ＋ 差异两档 —— 住隔壁那份
+// 第 3 层：四个 target 横向对等 ＋ 差异两档 —— 住隔壁那份
 // ═══════════════════════════════════════════════════════════════════
 #[path = "target_parity_guard.rs"]
 mod target_parity_guard;

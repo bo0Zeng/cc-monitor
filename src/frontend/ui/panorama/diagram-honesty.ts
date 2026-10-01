@@ -1,5 +1,5 @@
 /**
- * PN1b（`设计/97 §7.2` · CP4）：图下常驻的那一行诚实信号。
+ * PN1b（CP4）：图下常驻的那一行诚实信号。
  *
  * 数据**只**来自上游 `Diagram.honesty`（公共结构 `Honesty`），本仓不另算。
  * 这里只有一张「字段 → 人话」的表，而这张表的**键集合与上游 `Honesty` 的字段两向相等**
@@ -17,7 +17,7 @@ import { copyText } from "../copy-table";
 
 type Cell = (h: Honesty) => string;
 
-/** 〔CP2b〕不适用 / 有数 两句各自整句进表（不再拼「名 ＋ 数 ＋ 量词」三截碎片）。 */
+/** 不适用 / 有数 两句各自整句进表（不再拼「名 ＋ 数 ＋ 量词」三截碎片）。 */
 const count = (v: number | null, na: string, some: (n: number) => string): string => (v === null ? na : some(v));
 
 /** 字段 → 人话。**键集合 == 上游 `Honesty` 的字段**（判据两向钉）。顺序即显示顺序。 */

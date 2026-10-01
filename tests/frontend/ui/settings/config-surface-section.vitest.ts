@@ -7,14 +7,14 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
 
-/** 〔V161〕「欠的那一档」计数行，一项时那一句（按文案键取，不钉原文）。 */
+/** 「欠的那一档」计数行，一项时那一句（按文案键取，不钉原文）。 */
 const OWED_1 = copyText("configSurface.summarizeOwedInstallers.owed", { namesCount: 1 });
 
 const invokeMock = vi.fn();
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: (...a: unknown[]) => invokeMock(...a),
 }));
-// 〔OSA · 主会话 09-28 裁〕`$PROFILE` 备份那一格经通道问本机后端（`profile-backups.ts`，它自己的判据在 `profile-backups.vitest.ts`）；
+// `$PROFILE` 备份那一格经通道问本机后端（`profile-backups.ts`，它自己的判据在 `profile-backups.vitest.ts`）；
 //   本文件只管这一格怎么上屏 ⇒ 替身交它的答案。
 const backupsMock = vi.fn((): Promise<string[]> => Promise.resolve([]));
 vi.mock("../../../../src/frontend/ui/settings/profile-backups", () => ({
@@ -45,10 +45,10 @@ import { setCurrentMachine, __resetMachineContextForTests } from "../../../../sr
 import { LOCAL_ORIGIN } from "../../../../src/frontend/ui/ipc/origin";
 import { chanArgsJson, chanReply, isChanCall, UNSUPPORTED, type ChanCallArgs } from "../../../test-support/chan-fake";
 
-/** 〔MIG-3b 续〕monitor 自己进程独有的那几条事实（本机那一栏先问它一次）。 */
+/** monitor 自己进程独有的那几条事实（本机那一栏先问它一次）。 */
 const CLIENT_FACTS = { home: "/m", agentHome: "/m/.claude", path: null };
 
-/** 〔MIG-3b 续〕足迹经通道问那台后端，一问回整份报告。 */
+/** 足迹经通道问那台后端，一问回整份报告。 */
 function footprintInvoke(rep: unknown): (cmd: string, args?: unknown) => Promise<unknown> {
   return async (cmd: string, args?: unknown) => {
     if (cmd === "footprint_client_facts") return CLIENT_FACTS;
@@ -73,7 +73,7 @@ function row(over: Partial<SurfaceRow> = {}): SurfaceRow {
     state: { kind: "present", detail: "文件，1024 字节" },
     installable: true,
     uninstallable: true,
-    // 〔`K-R65`〕档进了线上形状 ⇒ 夹具也得有它。默认给「app 装的」——
+    // 档进了线上形状 ⇒ 夹具也得有它。默认给「app 装的」——
     // 那是 `ccm` 这一行真实的档，不是随手挑的。
     tier: "AppInstalls",
     ...over,
@@ -152,8 +152,8 @@ describe("describeUndo", () => {
     expect(t).not.toContain("可按片段");
     expect(t).toContain("手动");
   });
-  // 〔V161〕用户 09-29「不能把开发过程混进去」⇒ 欠的那一档说现状，不再说「还没有」；按文案键断言。
-  // 🔴 〔`K-R65`〕上一版这一条逐字断的是「尚未支持部署」，而那句话是**两头下注**的
+  // 用户 09-29「不能把开发过程混进去」⇒ 欠的那一档说现状，不再说「还没有」；按文案键断言。
+  // 🔴 上一版这一条逐字断的是「尚未支持部署」，而那句话是**两头下注**的
   // （原文「尚未支持部署，**或**本来就不该由它装」）—— 读者读不出自己这一行是哪一种。
   // 档进线上形状之后，四档各说各的话，这一条跟着按档断。
   it("按档给撤销说法：四档各不相同，且「欠的实现」不许被说成「不该我们装」", () => {
@@ -162,12 +162,12 @@ describe("describeUndo", () => {
     const owed = say("AppShipsNoInstallerYet");
     const theirs = say("UserInstallsWePrompt");
     const notOurs = say("AppOnlyChecks");
-    // 〔V161〕用户 09-29「所有文案…不能把开发过程混进去」：这一档说现状（这里装不了），不再留「还没有」那层意思；
-    //   仍**不许**说成「不该由它装」（`KR65D2`），也不用「谁欠谁」的话说（〔ST2 · `70 §11.4` #1〕）。按文案键断言。
+    // 用户 09-29「所有文案…不能把开发过程混进去」：这一档说现状（这里装不了），不再留「还没有」那层意思；
+    //   仍**不许**说成「不该由它装」（`KR65D2`），也不用「谁欠谁」的话说。按文案键断言。
     expect(owed).toBe(copyText("configSurface.undo.noInstaller"));
     expect(owed).not.toContain("不该");
     expect(owed).not.toMatch(/该由 cc-monitor 自带|还没写|还没有|暂无|今天/);
-    // 「你自己装」那一档要说清是你自己装（〔CP2b〕CP1 裁 §2.2）。〔FIX2 · 99 §2.1 ㉛②〕按文案键断言、不钉原文。
+    // 「你自己装」那一档要说清是你自己装（CP1 裁 §2.2）。按文案键断言、不钉原文。
     expect(theirs).toBe(copyText("configSurface.undo.userInstalls"));
     // 三档措辞两两不同 —— 一句话涵盖三档就等于没有档
     expect(new Set([owed, theirs, notOurs]).size).toBe(3);
@@ -253,7 +253,7 @@ describe("K-R65：「提示用户装」那一档真的会出声", () => {
     expect(p!.textContent).toContain("自己装");
   });
 
-  // 〔V161〕那一格的话按文案键取（不再钉「还没有安装入口」原文）；数得出来这一点照旧。
+  // 那一格的话按文案键取（不再钉「还没有安装入口」原文）；数得出来这一点照旧。
   it("KR65D2：「app 该自带而还没有装口」那一格**在屏幕上数得出来**", async () => {
     const owed = prompted({
       tool_id: "example-owed-tool",
@@ -264,7 +264,7 @@ describe("K-R65：「提示用户装」那一档真的会出声", () => {
     // 一项都没有时整行不渲染，不写「0 项」
     expect(summarizeOwedInstallers([prompted()])).toBeNull();
     const txt = summarizeOwedInstallers([owed])!;
-    // 〔ST2 · `§11.3.1`〕数照旧数得出来，措辞不再说「我们欠」；名单挪进展开。〔V161〕按文案键断言。
+    // 〔`§11.3.1`〕数照旧数得出来，措辞不再说「我们欠」；名单挪进展开。按文案键断言。
     expect(txt).toBe(OWED_1);
     expect(owedInstallerNames([owed, prompted()])).toEqual(["示例工具本机那份"]);
 
@@ -295,7 +295,7 @@ describe("K-R65：「提示用户装」那一档真的会出声", () => {
       }),
     );
     expect(txt).toContain("自己装");
-    // 〔ST2〕计数与名单都进可复制文本（名单不许只在屏幕上）。
+    // 计数与名单都进可复制文本（名单不许只在屏幕上）。
     expect(txt).toContain(`${OWED_1}：示例工具本机那份`);
   });
 
@@ -395,7 +395,7 @@ describe("ConfigSurfaceSection", () => {
     expect(r.querySelector(".config-surface-resolved")).toBeNull();
   });
 
-  // 〔SHOTS 09-29 · 设计/70 §6.1 旧版放的入口 · 主会话 09-29 裁「不在算不算正常由后端给结论」〕界面**只照档画**：
+  // 〔旧版放的入口 · 「不在算不算正常由后端给结论」〕界面**只照档画**：
   // 档是 `expected_absent` ⇒ 正常语气、那一句原样上屏、不算缺口；档是 `absent` ⇒ 照旧是红 —— 两行的效果档措辞**对调**着给，
   // 证明这一页不看 `effect_label`（按措辞猜就会把两行画反）。
   it("该不在、确实不在（expected_absent）照档画成正常，不借「不存在」的红；不按效果档措辞推", async () => {
@@ -423,7 +423,7 @@ describe("ConfigSurfaceSection", () => {
   });
 
   it("invoke resolve 成 undefined 不许炸（B03 的真 bug，第三处）", async () => {
-    serve(null); // 〔MIG-3b 续〕经通道之后「什么都没回」到了解码器手里就是 `null`
+    serve(null); // 经通道之后「什么都没回」到了解码器手里就是 `null`
     const s = new ConfigSurfaceSection();
     await expect(s.refresh()).resolves.toBeUndefined();
     // **必须断言是形状校验拦下的**，不能只断言"报了个失败"（T02 审计重要 4）。
@@ -497,7 +497,7 @@ describe("ConfigSurfaceSection", () => {
     expect(hostEl, "位置徽章必须在 DOM 里").not.toBeNull();
     expect(hostEl!.textContent).toBe("远端");
     expect(eff!.textContent).toBe("整个文件由 cc-monitor 拥有，部署时整体覆盖");
-    // 〔`K-R65`〕这一行的夹具是 `tier: "AppInstalls"`（`row()` 的默认）⇒ 撤销那一列
+    // 这一行的夹具是 `tier: "AppInstalls"`（`row()` 的默认）⇒ 撤销那一列
     // 说的是「手动处理」。上一版这里断的是「尚未支持部署」，那句两头下注的话已删。
     expect(undo!.textContent).toContain("手动处理");
   });
@@ -506,14 +506,14 @@ describe("ConfigSurfaceSection", () => {
     serve(report());
     const s = new ConfigSurfaceSection();
     await s.refresh();
-    // 〔ST2〕读面：配置面那一条（〔OSA〕「PowerShell profile 备份」那一格改问本机后端，不再借 `get_data_paths`）。
+    // 读面：配置面那一条（「PowerShell profile 备份」那一格改问本机后端，不再借 `get_data_paths`）。
     const names = new Set(invokeMock.mock.calls.map((c) => c[0]));
-    // 〔MIG-3b 续〕成品经通道问本机后端（`chan_call`），monitor 自己那几行的事实问 `footprint_client_facts`。
+    // 成品经通道问本机后端（`chan_call`），monitor 自己那几行的事实问 `footprint_client_facts`。
     expect([...names].sort()).toEqual(["chan_call", "footprint_client_facts"]);
   });
 });
 
-describe("〔ST2 · `70 §10.2` · 步 15〕「PowerShell profile 备份」搬进本机「足迹」", () => {
+describe("〔ST2 · 步 15〕「PowerShell profile 备份」搬进本机「足迹」", () => {
   const answer = (dirs: string[]) => {
     backupsMock.mockResolvedValueOnce(dirs);
     return footprintInvoke(report());

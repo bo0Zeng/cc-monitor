@@ -1,5 +1,5 @@
 /**
- * 〔U2 · 拆 `tabs.ts` ⑤〕**右键一个 tab，菜单里放哪几项** —— 以及那几格要异步就绪的项怎么就绪。
+ * 〔拆 `tabs.ts` ⑤〕**右键一个 tab，菜单里放哪几项** —— 以及那几格要异步就绪的项怎么就绪。
  *
  * 在新窗口打开 · 加入 / 移出集合 · 固定 · 全景高亮 · Resume（容器 × 账号 flyout）· Attach · 预览 ·
  * 杀死会话 · 就地 resume · 换号重启。项怎么画、菜单怎么开关住 `tab-context-menu.ts`；
@@ -27,7 +27,7 @@ import {
 } from "./launch-menu";
 import { runLocalResumeIntoExistingTmux, runRemoteAttach } from "./remote-launch-run";
 import { AGENT_PROFILE } from "./agent-profile";
-// 〔C4a〕本机 = `LOCAL_ORIGIN`（`"<local>"`）；「是不是本机」只经 `ipc/origin.ts` 判。
+// 本机 = `LOCAL_ORIGIN`（`"<local>"`）；「是不是本机」只经 `ipc/origin.ts` 判。
 import { isLocalOrigin, isRemoteOrigin, LOCAL_ORIGIN, type Origin } from "./ipc/origin";
 import { openPanePreview } from "./views/pane-preview";
 import { getBehavior } from "./behavior";
@@ -48,10 +48,10 @@ import {
 import { TMUX_CACHE_TTL_MS, type TabSessionActions } from "./tab-session-actions";
 import { unavailableSaid } from "./control-said";
 
-/** 〔NET2〕菜单项 id ⇒ 它要那台后端做的那条命令（那台握手时说过做不到 ⇒ 置灰并说为什么）。 */
+/** 菜单项 id ⇒ 它要那台后端做的那条命令（那台握手时说过做不到 ⇒ 置灰并说为什么）。 */
 const ITEM_OPS: Readonly<Record<string, string>> = { kill: "kill", preview: "capture-pane", "resume-into": "launch" };
 
-/** 〔NET2〕按 `origin` 那台的能力事实给一项置灰：做不到 ⇒ 不可点、字后面带一句为什么。 */
+/** 按 `origin` 那台的能力事实给一项置灰：做不到 ⇒ 不可点、字后面带一句为什么。 */
 export function gateByOffer(origin: Origin, item: TabMenuItem): TabMenuItem {
   const op = item.id !== undefined ? ITEM_OPS[item.id] : undefined;
   if (op === undefined || item.enabled === false) return item;
@@ -64,7 +64,7 @@ import { askText } from "./ask-dialog";
 /** F74c(#60-B)：cwd 回退串味风险提示（attach 到可能是同目录别的会话前）。 */
 function warnCwdFallbackAttach(): void {
   showActionFailureToast(
-    // 〔U2 · 按 `terms.json` 改词〕不说标记（`@ccm_sid` 禁：说后果「认不出是哪个会话」），
+    // 〔按 `terms.json` 改词〕不说标记（`@ccm_sid` 禁：说后果「认不出是哪个会话」），
     //   不派「重装 ccm 助手」这件用户做了也未必好的活（「ccm 助手」禁；CP1 口径 §2.3）。
     copyText("tabMenu.cwdFallback.title"),
     copyText("tabMenu.cwdFallback.body"),
@@ -79,7 +79,7 @@ export interface TabMenuHost {
   /** 这个实例拉过集合没有（撕离出来的 viewer 窗口从不拉 ⇒ 不给集合入口）。 */
   collectionsLoaded(): boolean;
   collections(): TabCollection[];
-  /** 〔GRP1 · V140〕这个 tab 在哪个组（读 `Tab.group`）。下面三个动作改完内存就重画、落盘由落盘偏好那一份做。 */
+  /** 这个 tab 在哪个组（读 `Tab.group`）。下面三个动作改完内存就重画、落盘由落盘偏好那一份做。 */
   groupOf(sid: string): TabCollection | null;
   joinGroup(sid: string, gid: string): void;
   /** 建组并把这几个 tab 放进去；组数到上界 ⇒ 回拒绝原因、什么都不做。 */
@@ -107,7 +107,7 @@ export class TabMenu {
     // P7a-3（#61）：集合 —— **纯手动**〔用 08-11「手动建, 不要自动, 纯手动」〕。
     // 二级 flyout：现有集合各一条 + 「新建集合…」；已归组的再给一条「移出集合」。
     const here = this.host.collectionsLoaded() ? this.host.groupOf(sid) : null;
-    // 〔GRP1 · V140〕成员上界随成员名单一起作废 ⇒ 「那一组满了」这一句也没了，加进去就是改这个 tab 的组 id。
+    // 成员上界随成员名单一起作废 ⇒ 「那一组满了」这一句也没了，加进去就是改这个 tab 的组 id。
     const joinItems: TabMenuItem[] = this.host.collections()
       .filter((col) => col.id !== here?.id)
       .map((col) => ({
@@ -117,7 +117,7 @@ export class TabMenu {
     joinItems.push({
       label: copyText("tabMenu.collection.new"),
       onClick: () => void (async () => {
-        // 〔TL2 · E13〕到上界先说，再问名字（不让用户白填一次）。
+        // 到上界先说，再问名字（不让用户白填一次）。
         const full = createRefusal(this.host.collections());
         if (full) return sayCollectionRefusal(full);
         const name = await askText(copyText("tabMenu.collection.namePrompt"));
@@ -128,12 +128,12 @@ export class TabMenu {
       })(),
     });
     if (this.host.collectionsLoaded()) items.push({ label: copyText("tabMenu.collection.add"), submenu: joinItems });
-    // 〔步 17·B · `§B.7`〕固定 —— 与「加入集合」同级。**这是唯一的入口**（不做自动固定）。
+    // 〔`§B.7`〕固定 —— 与「加入集合」同级。**这是唯一的入口**（不做自动固定）。
     // ⚠ `pinnedLoaded` 那道门与集合同一条理由：没读过盘就改，等于把用户上次固定的清空。
     if (t && this.host.pinnedLoaded()) {
       items.push({
         label: t.pinned ? copyText("tabMenu.pin.unpin") : copyText("tabMenu.pin.pin"),
-        // 〔U4〕说到会话状态的句子住文案表 `sessionState.*`；原句里的「变灰」「灰着」是禁用词（`设计/91 §4`）。
+        // 说到会话状态的句子住文案表 `sessionState.*`；原句里的「变灰」「灰着」是禁用词。
         title: t.pinned
           ? copyText("sessionState.pin.unpinHint")
           : copyText("sessionState.pin.pinHint"),
@@ -146,7 +146,7 @@ export class TabMenu {
         onClick: () => this.host.leaveGroup(sid),
       });
     }
-    // 〔REREAD · V155〕「重新读取」不在这里：挪成 tab 栏上常驻的一颗（`tab-bar-view.ts`），一按对所有打开的 tab 生效。
+    // 「重新读取」不在这里：挪成 tab 栏上常驻的一颗（`tab-bar-view.ts`），一按对所有打开的 tab 生效。
     // F70（护城河）：本地会话 + 有改动集 → 「在全景高亮本会话改动」。远端（代码不在本机、
     // code-picture 索引不到）/ 无改动 都不显示（门控之一，另两道在 touchedFilesFor + highlightSession）。
     if (t && isLocalOrigin(t.origin) && t.touchedFiles.size > 0) {
@@ -157,7 +157,7 @@ export class TabMenu {
     }
     // F37：灰 tab（会话已结束）右键手动 resume——不用绕去历史浏览器。
     // F41 起本地与远端都是一键拉起新终端（远端=wt.exe 跑 ssh -t，失败才回退复制命令）。
-    // F09：远端归档 tab 收敛成 1 个「Resume」一级项 + 二级 flyout（容器×账号，MASTERPLAN
+    // F09：远端归档 tab 收敛成 1 个「Resume」一级项 + 二级 flyout（容器×账号，
     // §2.6）——顶层 tmux/直连两项跟随默认账号（sticky pin，同旧版 plain「Resume（tmux/直连）」
     // 行为逐字节保持）；账号项（基座/具名账号，各自再嵌一层容器子选择）由 showTabContextMenu
     // 后**异步追加**（appendAccountMenuItems→updateTabContextMenuItem，复用 F51 代次守卫），
@@ -178,7 +178,7 @@ export class TabMenu {
     }
     // F51：远端 tab（有 cwd）——反查该 cwd 正跑 claude 的 tmux 会话 → Attach。
     // 缓存命中同步定夺(无占位闪烁);未命中先禁用占位「检测中」+ 异步查询就绪。
-    // 〔C4a〕下面这一段只对**远端** tab：`remote` = 那台远端的名字；本机 tab / 没有这个 tab ⇒ `null`。
+    // 下面这一段只对**远端** tab：`remote` = 那台远端的名字；本机 tab / 没有这个 tab ⇒ `null`。
     const remote = t !== undefined && isRemoteOrigin(t.origin) ? t.origin : null;
     const cwd = t?.cwd ?? null;
     let needAsyncAttach = false;
@@ -298,7 +298,7 @@ export class TabMenu {
       });
       needAsyncLocalKill = true;
     }
-    // 〔NET2〕那台握手时说过做不到的那几项置灰（事实住 monitor 那份 `Offer`）。
+    // 那台握手时说过做不到的那几项置灰（事实住 monitor 那份 `Offer`）。
     showTabContextMenu(e.clientX, e.clientY, t ? items.map((i) => gateByOffer(t.origin, i)) : items);
     if (needAsyncAttach && remote !== null && cwd) {
       void this.resolveAttachMenuItem(remote, cwd, sid);
@@ -307,7 +307,7 @@ export class TabMenu {
       void this.resolveLocalKillMenuItem(sid);
     }
     // A4/A5：远端 tab → 异步追加账号项（归档=「把此会话切到账号 X（resume）」/ 活=「…（重启）」）。
-    // 〔`A3` 第二波〕本机 tab 也进来（`<local>`）—— 只拿「换号重启」那一项，见 appendAccountMenuItems。
+    // 本机 tab 也进来（`<local>`）—— 只拿「换号重启」那一项，见 appendAccountMenuItems。
     if (t) void this.appendAccountMenuItems(t.origin, sid, t.state);
   }
 
@@ -556,9 +556,9 @@ export class TabMenu {
     sid: string,
     state: SessionState,
   ): Promise<void> {
-    // 〔U4〕「给 Resume 还是给换号重启」按 `isResumeOnly` 分，与菜单主体那一格同一个谓词（原先是 `status === "archived"`）。
+    // 「给 Resume 还是给换号重启」按 `isResumeOnly` 分，与菜单主体那一格同一个谓词（原先是 `status === "archived"`）。
     const resumeOnly = isResumeOnly(state);
-    // 〔`A3` 第二波〕本机已结束的 tab 不带账号选择（本机 Resume 走那条会话上次的号，
+    // 本机已结束的 tab 不带账号选择（本机 Resume 走那条会话上次的号，
     // 见 `launch-account.ts::localLaunchAccountSync`）⇒ 本机只进下面「换号重启」那一支。
     if (isLocalOrigin(origin) && resumeOnly) return;
     const gen = menuGeneration(); // 捕获这一代菜单

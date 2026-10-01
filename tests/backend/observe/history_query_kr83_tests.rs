@@ -40,7 +40,7 @@ fn string_leaves(v: &serde_json::Value) -> Vec<String> {
 ///
 /// # 判的是什么
 ///
-/// 那三个数的真相源全在 monitor 那侧、且**全部按会话 sid 索引**
+/// 那三个数的源头全在 monitor 那侧、且**全部按会话 sid 索引**
 ///（本机 metadata 按 sid 查 star/hide；`SessionMap` 按 sid 查活）——
 /// 所以「这一行够不够用」这个性质，逐字等于「**这一行说不说得出这个项目下有哪几个 sid**」。
 ///

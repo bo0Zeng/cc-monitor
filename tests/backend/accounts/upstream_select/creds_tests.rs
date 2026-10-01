@@ -33,7 +33,7 @@ fn tmpdir(tag: &str) -> PathBuf {
     d
 }
 
-/// 这个临时「家」下那份文件的默认落点（〔V160〕数据目录 `~/.cc-monitor` 根上；期望手写，不借生产那一份）。
+/// 这个临时「家」下那份文件的默认落点（数据目录 `~/.cc-monitor` 根上；期望手写，不借生产那一份）。
 fn default_file(home: &Path) -> PathBuf {
     home.join(".cc-monitor").join(store::FILE_NAME)
 }
@@ -98,13 +98,13 @@ fn env_overrides_the_default_location() {
     // 非空对照：空串的覆盖**不算覆盖**，回默认路径。
     let dflt = resolve_path(&env_with(&home, Some("   ")));
     assert_eq!(dflt, Ok(default_file(&home)));
-    // 〔V160〕默认臂按用户家推、不认 agent 家：给了 `CLAUDE_CONFIG_DIR` 也落在同一份。
+    // 默认臂按用户家推、不认 agent 家：给了 `CLAUDE_CONFIG_DIR` 也落在同一份。
     let with_agent_home = |k: &str| match k {
         "CLAUDE_CONFIG_DIR" => Some("/elsewhere/.claude-acct".to_string()),
         _ => env_with(&home, None)(k),
     };
     assert_eq!(resolve_path(&with_agent_home), Ok(default_file(&home)));
-    // 〔DATA-HOME · 主会话裁〕数据目录与 monitor 同一条规矩：`CCM_DATA_DIR`（绝对）⇒ 它根上那一份（期望手写）；
+    // 数据目录与 monitor 同一条规矩：`CCM_DATA_DIR`（绝对）⇒ 它根上那一份（期望手写）；
     //   设了却是相对路径 ⇒ 出声（`Err`），不退回家目录下那一份；显式给的 `CCM_APIKEY_CREDENTIALS` 仍优先。
     let with_data_dir = |dd: &'static str, creds: Option<&'static str>| {
         let base = env_with(&home, creds);

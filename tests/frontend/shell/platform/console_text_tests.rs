@@ -1,4 +1,4 @@
-//! 住址：主会话 09-29 裁（`第四波记录/P2.md §6` 第 3 条）「加 / 撤两条失败时 stderr 的解码 —— Windows 臂按那台控制台的 OEM 代码页解 …；非 Windows 照旧 UTF-8」。
+//! 住址：主会话 09-29 裁「加 / 撤两条失败时 stderr 的解码 —— Windows 臂按那台控制台的 OEM 代码页解 …；非 Windows 照旧 UTF-8」。
 //! 替身字节逐字节手写（「张三：拒绝访问。」的 936 编码），不由被测代码算；它就是真 PowerShell 在 936 控制台下写的那一段，由末尾那条读数核。
 
 use super::*;
@@ -27,7 +27,7 @@ fn elsewhere_console_bytes_read_as_utf8() {
     assert_eq!(console_text(SAMPLE_TEXT.as_bytes()), SAMPLE_TEXT);
 }
 
-/// 〔P2〕读数，**不在门禁**（要一个 PowerShell；`CCM_PWSH=<程序> cargo test -- --ignored p2_`，那个程序收一个 `.ps1` 路径去跑）。
+/// 读数，**不在门禁**（要一个 PowerShell；`CCM_PWSH=<程序> cargo test -- --ignored p2_`，那个程序收一个 `.ps1` 路径去跑）。
 /// 核替身字节不是编的：PowerShell 把控制台编码设成 936 之后抛一句 [`SAMPLE_TEXT`]，stderr 里恰好有 [`SAMPLE_936`] 那一段、没有它的 UTF-8。
 /// 买不到：Windows PowerShell 5.1 真控制台（这里是 PowerShell 7 容器，936 是替身）。
 #[test]

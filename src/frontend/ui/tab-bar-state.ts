@@ -1,7 +1,7 @@
 /**
  * `config.json` 的 `tabBar` 段 —— **tab 栏里那些「用户手写的真相」**。
  *
- * # 它为什么存在（`设计/30 §C.2` 逐字：**这是设计漏洞，不是未做的功能**）
+ * # 它为什么存在（**这是设计漏洞，不是未做的功能**）
  *
  * `tab-collections.ts` 立集合落盘时写的理由是：
  * 「**用户手写的真相，不是能重算的缓存**」。
@@ -26,8 +26,8 @@
  *   🔴 这条不靠自觉：`writeSegKey` 是**两个键唯一的写口**（下面那个函数），
  *   而 `tests/frontend/ui/tab-bar-state.vitest.ts` 对 `order`/`pinned` **各有一格**专盯它。
  *
- * 〔GRP1 · `设计/99 §1` V140〕第三个键 `groupOf`：**每个 tab 自己的组 id**（`tabBar.groupOf.<sid> = <组 id>`）。
- * V140「组员关系是 tab 自己的属性（tab 上带组 id，随 tab 的持久记录一起存）」⇒ 与固定 / 顺序同段；
+ * 第三个键 `groupOf`：**每个 tab 自己的组 id**（`tabBar.groupOf.<sid> = <组 id>`）。
+ *「组员关系是 tab 自己的属性（tab 上带组 id，随 tab 的持久记录一起存）」⇒ 与固定 / 顺序同段；
  * 它的写**按 tab 一条路径**（[`groupOfEdit`] 是这条路径唯一的造法），不整张重写 —— 于是盘上没有「一个组的成员名单」这种东西。
  */
 import { loadConfig, patchConfig, removeAt, setAt, type ConfigEdit } from "./config";
@@ -36,7 +36,7 @@ import type { Origin } from "./ipc/origin";
 const KEY = "tabBar";
 
 /**
- * 🔴 **段里两个键唯一的写口** —— 只交 `tabBar.<field>` 这一条路径（〔CFG1〕按键补丁；从前是
+ * 🔴 **段里两个键唯一的写口** —— 只交 `tabBar.<field>` 这一条路径（按键补丁；从前是
  * 「读出整段、只覆盖 `field`、写回去」，同一拍 order 与 pinned 各读各写仍会互盖，分组那一键更是整份被盖）。
  *
  * 为什么抽成一个函数而不是两处各写一遍：`§B` 与 `§C` 是**同一条不变量的两侧**
@@ -134,11 +134,11 @@ export async function setTabOrder(order: readonly string[]): Promise<void> {
 // ===== `§B` 固定（pinned）=====
 
 /**
- * 一条固定记录。**字段表逐条照 `设计/30 §B.5`**，一个不多一个不少 ——
+ * 一条固定记录。**字段表逐条照 **，一个不多一个不少 ——
  * 那张表不是清单，是由「重启后要把一个**没有活进程**的 tab 恢复出来」反推出来的。
  *
  * 🔴 **落盘的是条目，不是内容**（`§3.5.7` 逐字）：内容由 resume 拿
- * （`99 §2.5 P3` 已裁定「已结束的会话点进去**不能**看内容，只能 resume」）
+ * （已裁定「已结束的会话点进去**不能**看内容，只能 resume」）
  * ⇒ 不需要回答「存全量还是存尾部」那类容量问题。
  */
 export interface PinnedTab {
@@ -149,7 +149,7 @@ export interface PinnedTab {
   cwd: string | null;
   /**
    * 哪台机器（决定复活后走哪条读命令 / resume 往哪台机去）。本机 = `LOCAL_ORIGIN`。
-   * 〔C4a · `设计/05 §8` 步 2〕上一版这里是 `null` = 本机；盘上的旧 `null` **不兼容**，
+   * 上一版这里是 `null` = 本机；盘上的旧 `null` **不兼容**，
    * 由 [`sanitizePinned`] 按坏行丢（与 Rust `Origin` 反序列化那道闸同形）。
    */
   origin: Origin;
@@ -161,7 +161,7 @@ export interface PinnedTab {
   account: string | null;
   /**
    * 列表排序与「说不清」那一态要用（`§B.5` 逐字）。
-   * ⚠ `null` = **说不清**（`01 §6.9`：判不了就说判不了）。今天只有 live tab 落盘时
+   * ⚠ `null` = **说不清**（判不了就说判不了）。今天只有 live tab 落盘时
    *   才有一个诚实的读数（「此刻它还活着」）；已经灰了的 tab 什么时候最后活动过，
    *   前端**没有这个数**（`Tab` 上零时间戳字段，现打），所以原样沿用盘上那份、否则 `null`。
    */
@@ -197,8 +197,8 @@ function pinStrOrNull(v: unknown): string | null {
  *
  * 逐条筛的四条：
  * 1. `sid` 是主键 —— 空的 / 重复的整条丢（重复会让同一个 tab 被复活两遍）。
- * 1b. 〔C4a〕`origin` 不是非空字符串 ⇒ 整条丢：本机也有名字（`"<local>"`），
- *    「没写哪台机」复活不出来 —— 猜成本机就是 `设计/05 §8` 步 2 治的那件事。
+ * 1b. `origin` 不是非空字符串 ⇒ 整条丢：本机也有名字（`"<local>"`），
+ *    「没写哪台机」复活不出来 —— 猜成本机就是治的那件事。
  * 2. `jsonlPath` 为空**保留**（`§4` 逐字「保留但标记降级」）—— 丢掉它等于
  *    「用户固定过的东西第二天自己没了」，那比降级坏。降级的判词住 `isDegradedPin`。
  * 3. 文件已被删的那一条要自动摘除（`§4`）—— **今天做不到**，理由写在
@@ -240,7 +240,7 @@ export function sanitizePinned(raw: unknown): PinnedTab[] {
  * 🔴 **`§4` 还要求「文件不存在的自动摘除」，那一条今天做不到，如实记在这里**：
  * 前端一侧**没有任何文件存在性探针** —— `src/frontend/ui/ipc/commands.ts` 里零个 `exists`
  * 类命令，`package.json` 也没有 `@tauri-apps/plugin-fs`（两处现打）。
- * 唯一能碰到那个文件的是 `stream_read_session_jsonl`，而 `99 §2.5 P3` 已裁定
+ * 唯一能碰到那个文件的是 `stream_read_session_jsonl`，而已裁定
  * **复活不读内容** ⇒ 拿它当存在性探针就是绕过那条裁定。
  * ⇒ 要做这一条得先加一个后端命令，**那不在本刀的写区**。判不了就写判不了。
  */
@@ -268,7 +268,7 @@ export async function setPinned(list: readonly PinnedTab[]): Promise<void> {
   await writeSegKey("pinned", sanitizePinned(list));
 }
 
-// ===== 〔GRP1 · `设计/99 §1` V140〕tab 的组 id（`tabBar.groupOf.<sid>`）=====
+// ===== tab 的组 id（`tabBar.groupOf.<sid>`）=====
 
 /**
  * 清洗盘上的 `tabBar.groupOf`：`{ <sid>: <组 id> }`。认不出就丢，不抛（照 `sanitizePinned`）。

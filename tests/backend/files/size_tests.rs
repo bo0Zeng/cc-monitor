@@ -1,7 +1,7 @@
-//! 〔W5-FILES · 第五波〕`files/size.rs` 的判据 —— **算目录大小**。
+//! `files/size.rs` 的判据 —— **算目录大小**。
 //!
-//! 要求住址：`设计/60 §6.2`「复制目录 · 批量复制 · 跨机复制 · **算目录大小** · 解压」＋ `§3.7`「不跨文件系统边界那一档没做
-//! （设备号要走 `platform/`）」＋ 用户 V45「我能连 ssh 对机器文件进行什么操作，后端就应该能进行什么操作」。
+//! 要求：「复制目录 · 批量复制 · 跨机复制 · **算目录大小** · 解压」＋ `§3.7`「不跨文件系统边界那一档没做
+//! （设备号要走 `platform/`）」＋ 用户「我能连 ssh 对机器文件进行什么操作，后端就应该能进行什么操作」。
 //!
 //! | 判据 | 钉的那一形 | 两侧异源在哪 |
 //! |---|---|---|
@@ -132,7 +132,7 @@ fn the_command_face_answers_exactly_the_declared_fields() {
     )
     .expect_err("不存在的路径算出了大小");
     assert_eq!(e.0, "unreadable");
-    // 〔COPY-R〕原因说成人话，不把 `ErrorKind` 的调试名（`NotFound`）原样上屏。
+    // 原因说成人话，不把 `ErrorKind` 的调试名（`NotFound`）原样上屏。
     let not_found = copy_core::copy_text("beFilesRead.ioKind.notFound", &[]);
     assert_eq!(
         e.1,
@@ -144,7 +144,7 @@ fn the_command_face_answers_exactly_the_declared_fields() {
     std::fs::remove_dir_all(&base).ok();
 }
 
-/// 〔W5-FILES〕要求住址：`设计/60 §3.7`「不跨文件系统边界那一档没做（设备号要走 `platform/`）」。
+/// 要求：「不跨文件系统边界那一档没做（设备号要走 `platform/`）」。
 ///
 /// 索引那一侧同一个判法：注入「这个子目录在另一个设备上」⇒ 那个目录本身在索引里、它底下的不在、`skipped_mounts == 1`；
 /// 正控：不注入 ⇒ 底下的在、`skipped_mounts == 0`。期望手写（真挂载点造不出来，如实）。

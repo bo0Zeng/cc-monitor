@@ -15,19 +15,19 @@ const RULE: &str = "\
 拿不准就当成用户文件（两种错判的代价不对称：多保留一次 ACL 无害，丢一次 ACL 用户读不了文件）。";
 
 /// 每个生产调用点登记：`(相对 src/frontend/shell/src 的路径, 符号, 处数, 写的是哪类文件, 为什么是这一套)`。
-/// 〔P4〕本包 manifest 明写的兄弟源码树（`guard_core::population_trees`）里那几处写成 `<包名>/<相对它 src 的路径>`。
+/// 本包 manifest 明写的兄弟源码树（`guard_core::population_trees`）里那几处写成 `<包名>/<相对它 src 的路径>`。
 ///
 /// ⚠ **登记表不是豁免清单**：新增一处没登记的 ⇒ 下面那条红，并把 `RULE` 原样打出来。
 const SITES: &[(&str, &str, usize, &str, &str)] = &[
     (
         "local_backend.rs",
         "rename",
-        // 〔E2 · V28〕3 → 4：逐字节副本那一处删（-1）；落点就是 `ccm` 之后，上位那一步多一条「旧的正在跑 ⇒ 先改名挪开、再上位」（+2）。
+        // 3 → 4：逐字节副本那一处删（-1）；落点就是 `ccm` 之后，上位那一步多一条「旧的正在跑 ⇒ 先改名挪开、再上位」（+2）。
         //   仍是 monitor 自己目录里的部署物（`~/.cc-monitor/bin/ccm`），结论不变。
         // 4 → 3：上位那一步收成一个共用的 `rename_into_place`（三处 rename 都在它里面）：本机后端那一条与 `place_local_program`
         //   （代码全景小程序 · 文件窗口程序）都经它上位，`place_local_program` 自己那一处 rename 没了（-1）。结论不变。
         3,
-        "monitor 自己的缓存（自释放出来的后端二进制 · `K-R69` 起还有本机那条 `ccm` 入口 · 〔RM1f〕本机那一份代码全景小程序）",
+        "monitor 自己的缓存（自释放出来的后端二进制 · `K-R69` 起还有本机那条 `ccm` 入口 · 本机那一份代码全景小程序）",
         "P2z 的自释放：先写 `.partial` 再 rename，防的是**半截文件被当成可执行的后端起起来**。\
              §4 把 `ReplaceFileW` 的要求限定在**用户文件**（要保 ACL/ADS），这里写的是 monitor 自己\
              刚建的新文件、dst 通常压根不存在 ⇒ 没有要保留的 ACL，`rename` 的语义正合适。\
@@ -39,50 +39,50 @@ const SITES: &[(&str, &str, usize, &str, &str)] = &[
              🔴 〔RM1f 从 2 处涨到 3 处，重判一次 —— 结论不变〕第三处是放本机代码全景小程序那一处（今天是 `place_local_program`，也放文件窗口程序），\
              落点同是 `~/.cc-monitor/bin/`，我们自己放、本机后端自己起 ⇒ 没有要保留的 ACL，`rename` 正合适。",
     ),
-    // 〔MIG-3a · 子步 3〕`cc_bus_deploy.rs [rename]` 那一行摘了：覆盖前整目录改名留底随装 cc-bus 进了本机后端（`assets/cc_bus_install.rs`，经 `files-rename`）。
+    // `cc_bus_deploy.rs [rename]` 那一行摘了：覆盖前整目录改名留底随装 cc-bus 进了本机后端（`assets/cc_bus_install.rs`，经 `files-rename`）。
     (
-        "platform/fs.rs", // 〔P4 · 阶段 H〕原住 `config.rs` 的 `atomic_replace`（两个平台臂一起搬进壳的平台层）
+        "platform/fs.rs", // 原住 `config.rs` 的 `atomic_replace`（两个平台臂一起搬进壳的平台层）
         "MoveFileExW",
         1,
         "monitor 自己的 config.json",
         "写的是我们自己的配置文件，tmp 的 ACL 覆盖到 dst 没有受害者。\
              §4 把 ReplaceFileW 的要求**限定在用户文件**，这里不在其中。",
     ),
-    // 〔CFG1 · 4D〕`logging.rs [MoveFileExW]` 摘了：诊断写口改经 `config::patch_config_at`（config.json 唯一的写函数），
+    // `logging.rs [MoveFileExW]` 摘了：诊断写口改经 `config::patch_config_at`（config.json 唯一的写函数），
     //   它那份从 config.rs 复制来的 `atomic_replace` 随之删了。
     (
-        "host-core/atomic.rs", // 〔P4〕原 `utils.rs`：原子写随两个前端共用搬进 `host-core`
+        "host-core/atomic.rs", // 原 `utils.rs`：原子写随两个前端共用搬进 `host-core`
         "ReplaceFileW",
         1,
         "用户文件（`atomic_write_json` 的所有调用方，如 auto-launch.json）",
         "必须保留 dst 原有 ACL。dst 不存在时 fallback 到 rename（首次写，新文件本来就继承父目录 ACL）。",
     ),
-    // 〔RW1 · 第四波 09-24〕这里原来有 `profile_installer.rs` 的 `ReplaceFileW` 一行（PowerShell profile ·
+    // 这里原来有 `profile_installer.rs` 的 `ReplaceFileW` 一行（PowerShell profile ·
     //   `.mcp.json` 的本机写）。用户文件改经后端写之后那份原语零调用方、删了 ⇒ 摘行。
     //   「替换保住 explicit ACE」这条性质住到了后端 `files_write.rs::swap_in` 的 `cfg(windows)` 那一支。
-    // ── 〔audit-0805 08-06〕补上 `rename` 那一半（§4 规则原话里第一个被禁的写法）
-    // 〔RW1 · 第四波 09-24〕`profile_installer.rs` 的 `rename` 两处（Windows 首装分支 ＋ POSIX 分支）随那份原语一起走了。
+    // ── 补上 `rename` 那一半（§4 规则原话里第一个被禁的写法）
+    // `profile_installer.rs` 的 `rename` 两处（Windows 首装分支 ＋ POSIX 分支）随那份原语一起走了。
     (
-        "host-core/atomic.rs", // 〔P4〕同上
+        "host-core/atomic.rs", // 同上
         "rename",
         2,
         "**用户文件**（`atomic_replace_path` 的第二份副本）",
-        "与从前 profile_installer 那两处逐行同形（Windows 首装分支 + POSIX 分支；〔RW1〕那两处今天已删）。\
+        "与从前 profile_installer 那两处逐行同形（Windows 首装分支 + POSIX 分支；那两处今天已删）。\
              ⚠ 副本是**刻意**的（模块头注论证过不建统一写入器：两类文件的正确行为本来就不同），\
              但刻意复制的代价就是**两处都得被看住** —— 这正是登记表存在的理由。",
     ),
     (
-        "platform/fs.rs", // 〔P4 · 阶段 H〕同上
+        "platform/fs.rs", // 同上
         "rename",
         1,
         "**monitor 自己的** config.json（POSIX 分支）",
         "同文件那条 `MoveFileExW` 的 `cfg(not(windows))` 对侧。写的是我们自己的配置，\
              POSIX 上 rename 即原子替换，无 ACL 顾虑。",
     ),
-    // 〔CFG1 · 4D〕`logging.rs [rename]` 同上一起摘。
-    // 〔SR1b · 2026-09-24〕`sftp.rs [rename] 2`（远端上传落地的两步：旧的改名 `.bak` · 临时件上位）摘了 ——
+    // `logging.rs [rename]` 同上一起摘。
+    // `sftp.rs [rename] 2`（远端上传落地的两步：旧的改名 `.bak` · 临时件上位）摘了 ——
     //   那段原子上传随 SFTP 搬进本机常驻后端（`src/backend/dial/sftp.rs::put_atomic`，写只许两处）；本表只管 monitor。
-    // 〔SR1b · 2026-09-24〕`sftp_pool.rs [rename]`（`download_inner`：下载先写 `<local>.part` 再 rename 落地）这一行摘了 ——
+    // `sftp_pool.rs [rename]`（`download_inner`：下载先写 `<local>.part` 再 rename 落地）这一行摘了 ——
     //   下载的本机落点随传输台搬进了本机常驻后端（`control/transfer.rs`，第三层文件管理写面），monitor 这一侧零 rename。
 ];
 
@@ -109,7 +109,7 @@ fn collect_rs(dir: &Path, out: &mut Vec<PathBuf>) {
 /// 改名了也不会静默失效：新名字会以「未登记」的身份出现在下面那条里。
 /// 被扫的原子替换原语：`(显示名, 匹配串)`。
 ///
-/// 〔audit-0805 08-06〕**补上 `rename`** —— `src/doc/INVARIANTS.md §4` 那条规则的原话是
+/// **补上 `rename`** —— `src/doc/INVARIANTS.md §4` 那条规则的原话是
 /// 「不能用 `std::fs::rename` / `MoveFileExW` 直接覆盖用户文件」，
 /// 而本登记表此前只扫两个 **Win32** 符号 ⇒ **规则里第一个被点名的写法根本不在人群里**。
 /// 于是「把 §4 从散文变成机检」（定框 E12）这件事只做到了三分之二。
@@ -139,7 +139,7 @@ fn call_sites() -> Vec<(String, String, usize)> {
     let root = src_root();
     let mut files = Vec::new();
     collect_rs(&root, &mut files);
-    // 〔P4〕本包 manifest 明写的兄弟源码树（`guard_core::population_trees`）：键带上包名（`host-core/atomic.rs`），与壳里的相对路径分开。
+    // 本包 manifest 明写的兄弟源码树（`guard_core::population_trees`）：键带上包名（`host-core/atomic.rs`），与壳里的相对路径分开。
     let others: Vec<(PathBuf, String)> = guard_core::population_trees(&root)
         .into_iter()
         .map(|(name, r)| (r, name))
@@ -191,7 +191,7 @@ fn every_atomic_replace_call_site_says_which_semantics_and_why() {
              下面的对拍会在两边都空的情况下变绿"
     );
 
-    // 🔴 〔步 7c 2026-09-19〕**这里原来有一条「排除项自检」，连同它自检的那条排除一起删了。**
+    // 🔴 **这里原来有一条「排除项自检」，连同它自检的那条排除一起删了。**
     // 理由写在上面 `SELF` 原址那段注里：示例字面量随测试段搬走 ⇒ 排除成了死规则。
     // ⚠ 它换来的那一格保护**没有丢**：那条排除的风险是「排掉之后没人看那份文件」，
     //   而现在那份文件**在人群里**（不再被排除），下面的对拍直接看着它。
