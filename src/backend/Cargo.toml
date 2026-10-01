@@ -154,10 +154,6 @@ tokio = { version = "1", features = [
     "signal",
     "fs",
     "time",
-    # `plugin::invoke::run_abortable`：异步等插件子进程 —— 那个 future 被丢 = 子进程被杀，
-    # 后端 `cancel` 才打得断建索引（`Run::Blocking` 那一档 `abort()` 是空操作）。只加 feature：
-    # 它要的 `signal-hook-registry` / `mio` 本 crate 的 lock 里早就有（`signal` 那一格在用）。
-    "process",
 ] }
 # P2（zero-poll-liveness）：pidfd_open + poll。**已是 tokio 在 unix 上的传递依赖**
 # （本 crate Cargo.lock 里 libc 0.2.186 早已解析）⇒ 声明它不动 lock、离线可用。

@@ -692,8 +692,8 @@ fn the_local_backend_only_takes_a_binary_this_platform_can_run() {
     assert!(key < take, "键在取字节之后才定 —— 取用点的形状变了");
     let tail = &body[take..];
     assert!(
-        tail.contains("Product::Backend") && !tail.contains("Route::"),
-        "本机那条取用点不是「这台 · 后端」那一格（表 B 不在 monitor 判，取用点不该再带 origin）：\n{tail}"
+        tail.contains("choose(this_machine)") && !tail.contains("Route::"),
+        "本机那条取用点不是「这台」那一格（表 B 不在 monitor 判，取用点不该再带 origin）：\n{tail}"
     );
 }
 
@@ -4354,7 +4354,7 @@ fn hx1_the_monitor_home_dir_is_born_private_and_an_existing_one_is_left_alone() 
 }
 
 /// 〔主会话裁 HX1 拍板项 4〕**monitor 生产段每一处建目录都登记在案，建后端自家目录（`~/.cc-monitor` 一族）的只有
-/// `platform::fs::ensure_private_dir` 一处**（本机起后端前 · token / pid 那一层 · 释放二进制 / 全景小程序 / ccm 入口那几处经注入）。
+/// `platform::fs::ensure_private_dir` 一处**（本机起后端前 · token / pid 那一层 · 释放二进制 / ccm 入口那几处经注入）。
 /// 守的要求：「建自家目录收成一个小函数 …… 判据：生产段建 `~/.cc-monitor` 的调用点 == 那个函数一处（两向，带正控）」。
 /// 形状：`src/frontend/shell/src` 生产段里 `fs::create_dir(` / `fs::create_dir_all(` / `fs::DirBuilder::new(` 的所在 (文件, 函数) == 登记表（两向）；
 /// 登记表里「后端自家目录」那一格恰好是那一个函数；正控：合成语料里多一处必被认出。后端那一半另有一份（`own_dir_tests`）。

@@ -86,18 +86,13 @@ jobs:
       # fmt/clippy**（当时正好有 3 处未格式化）；`usage-core`/`acct-core` 曾**一条 CI
       # 步骤都没有**，它们的 8+4 条测试在 CI 里等于不存在。根因就是没有 `[workspace]`
       # —— 每加一个 crate 都要人记得补三处。**现在补不补由 cargo 自己决定。**
-      #
-      # ⚠ 这里从前带 `--exclude code-picture-core`：vendor 那个 crate 曾是 monitor 的 path 依赖、
-      # cargo 把它算成 workspace 成员（`[workspace] exclude` 对 path 依赖**不生效**，实测），显式排除才不动它。
-      # RM1f 起 monitor 不再依赖它（链它的只剩 `src/panorama-engine`）⇒ 它不再是成员，那条 `--exclude` 只剩一条
-      # cargo warning ⇒ 删了。vendor 自己的测试仍由下面那条独立步骤在 `src/panorama-engine` 里跑。
       - name: cargo fmt --check（整个 workspace）
         run: cargo fmt --all --check
 
-      - name: cargo clippy（整个 workspace，vendor 除外）
+      - name: cargo clippy（整个 workspace）
         run: cargo clippy --workspace --all-targets
 
-      - name: cargo test（整个 workspace，vendor 除外）
+      - name: cargo test（整个 workspace）
         run: cargo test --workspace --no-fail-fast
 
       # C05（rust-ts-boundary）：**生成物必须最新**。上一步的 `cargo test --workspace` 会跑
@@ -120,19 +115,6 @@ jobs:
             git diff --stat -- ../src/frontend/ui/generated/
             exit 1
           }
-
-      # F09：vendor code-picture-core 是 path 依赖、**非** workspace 成员 → `--all` 测不到它。
-      # 显式 `-p` 把它的测试跑起来（tree-sitter 符号索引 + git 锚点 + SQLite 内核）。
-      # 本地门禁 `tests/scripts/gate.sh` 的 `code-picture-core` 那一格在同一目录跑同一条命令。
-      # 不动 vendor crate 源码/Cargo.toml（红线：别误伤 vendor）。
-      # 〔V108 后半句〕monitor 不再依赖它（摘掉了内嵌引擎）⇒ 在 `src/frontend/shell` 里 `-p` 选不到它了；
-      #   今天链它的只剩全景小程序 ⇒ 这一步换到那棵树里跑（同一个包、同一份 vendor 源码，`-p` 照旧选中依赖图里的它）。
-      #   它也不是全景小程序的 workspace 成员（那个 crate 不开 workspace）⇒ 在那棵树里 `-p` 会报
-      #   「requires dev-dependencies and is not a member of the workspace」；在它自己的目录里跑，它就是根包。
-      #   它写下的 `Cargo.lock` 由 `.gitignore` 的 `src/panorama-engine/vendor/**/Cargo.lock` 忽略。
-      - name: cargo test (vendor code-picture-core)
-        working-directory: src/panorama-engine/vendor/code-picture-core
-        run: cargo test -p code-picture-core
 
   # ──：**monitor 这棵树在 Linux 上的行为，云端一次都没有被执行过** ──────
   #
@@ -206,7 +188,7 @@ jobs:
         run: |
           sudo apt-get install -y xvfb xdotool fonts-noto-cjk libxkbcommon-x11-0
 
-      - name: cargo test（整个 workspace，vendor 除外；Linux 执行面）
+      - name: cargo test（整个 workspace；Linux 执行面）
         run: cargo test --workspace --no-fail-fast
 
   frontend:
@@ -242,7 +224,7 @@ jobs:
       # **全仓实测当时仍是 7 项**，基线数字不变、覆盖面变大。那天剩三项：
       # `src/frontend/ui/settings/machine-aliases.ts` 那四处空 catch 随原「终端集成」记住上次选择的那段代码删了。
       # 那天剩两项：`src/frontend/ui/shell-quote.ts` 那处 `no-control-regex` 随 `isValidConfigDir` 删了。
-      # 那天剩一项：`tests/frontend/ui/panorama/session-files.test.ts` 随被测对象（写类工具口径搬进后端）整份删了。
+      # 那天剩一项：写类工具口径的前端那份测试随被测对象（搬进后端）整份删了。
       # 〔发版后〕今天全仓 0 项：`render.ts` 那处 `no-control-regex` 随代码 stub 的哨兵换成非字符 `\uFDD0` 没了。
       - name: eslint (blocking, baseline 0)
         run: npm run lint
@@ -868,7 +850,7 @@ jobs:
           for pair in "tmux-target 26" "ccm-cli 48" "ccm-print-parity 12" \
                       "cc-spawn-uplift 72" \
                       "restart 24" "resume 17" "graylight-frames 13" "restart-frames 5" "resume-frames 7" \
-                      "ccm-rbind-title 8" "backend-fork 10" "inbound-frames 32" \
+                      "ccm-rbind-title 8" "backend-fork 10" "inbound-frames 31" \
                       "ccm-contract-parity 45" "backend-gate2 33" "local-backend 14" \
                       "backend-sessions-rewatch 5" "backend-tmux-late-server 2" \
                       "cc-bus-queue-drain 43" "backend-cc-bus 50" "p3t-local-tmux 10"; do
@@ -1148,7 +1130,8 @@ jobs:
       #      写的那个失效模式：**不是变红，是静默缩水**。**先跑再棘**的「跑」这一次由 PM 在沙箱里做。
       - name: 入方向后端帧（U8a-2a）
         # 33 → 30：裸键 mode `send-keys-raw` 删了，「被接受 · 没附回车 · 补 Enter 才执行」三格随之删。
-        run: bash tests/e2e/assert-pass-floor.sh inbound-frames 32
+        # 32 → 31：hello 命令清单里全景那一条随代码全景删了（「hello.commands 声明了它」那一格随之没了）。
+        run: bash tests/e2e/assert-pass-floor.sh inbound-frames 31
 
       # F03：§34 Gate 2 在后端侧的真机验收。用例逐行来自那张唯一的判定表
       # `tests/__fixtures__/gate2-golden.tsv`（后端与本套两条轨道同一份）。

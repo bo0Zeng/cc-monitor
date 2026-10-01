@@ -371,14 +371,6 @@ fn each_variant_serializes_to_single_line_with_expected_kind() {
             },
             "probe",
         ),
-        // 长活的一格进度（格原样；全景是上游 `IndexProgress`）。
-        (
-            Frame::Progress {
-                ticket: "t-1".into(),
-                cell: serde_json::json!({"phase": "Parse", "done": 1, "total": 2}),
-            },
-            "progress",
-        ),
         (Frame::SessionsReplayed, "sessions_replayed"),
         // 会话账本的成品（逐字节形状另由 `mig1_session_state_has_exactly_these_bytes` 钉）。
         (

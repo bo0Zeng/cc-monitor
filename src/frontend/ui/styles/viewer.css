@@ -15,7 +15,6 @@ body.viewer-mode #tab-bar,
 body.viewer-mode #tab-bar-resizer,
 body.viewer-mode .settings-trigger,
 body.viewer-mode .history-trigger,
-body.viewer-mode .panorama-trigger,
 body.viewer-mode .sftp-trigger,
 body.viewer-mode .grid-monitor-trigger {
   display: none;

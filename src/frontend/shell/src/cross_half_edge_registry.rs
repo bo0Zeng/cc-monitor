@@ -83,12 +83,6 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     (
         "backend→monitor",
         "tests/backend/footprint/registry_tests.rs",
-        "src/frontend/shell/src/panorama_bytes.rs",
-        "申报表 `panorama` 那一行的装口（monitor 放全景小程序字节 `push_to`）：同上一条，逐字签名一致",
-    ),
-    (
-        "backend→monitor",
-        "tests/backend/footprint/registry_tests.rs",
         "src/frontend/shell/src/local_backend.rs",
         "申报的本机 `ccm` 落点末段要盖得住 monitor 真放下去的那个名字（`CCM_ENTRY_WORD` ＋ 可执行后缀），\
          词住 monitor（本机那份由它释放）⇒ 读它的源码现抠（本侧抄一份就成了两侧同源的恒等）",

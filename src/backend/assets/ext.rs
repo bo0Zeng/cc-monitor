@@ -864,7 +864,7 @@ pub(crate) fn reach_of(table: &crate::stream::remote_ask::Table) -> Vec<(String,
 pub(crate) struct Env {
     /// 用户级 skill 的根。
     pub skills: Option<PathBuf>,
-    /// 用户级 MCP 那份文件（只读）。
+    /// 用户级 MCP 那份文件（有账号库 ⇒ 各号共用的那一份；没有 ⇒ agent 自己那一份）。
     pub user_mcp: Option<PathBuf>,
     /// 装记录那份文件。
     pub ledger: Option<PathBuf>,
@@ -876,7 +876,7 @@ impl Env {
     pub(crate) fn here() -> Env {
         Env {
             skills: crate::agents::skills_root(),
-            user_mcp: crate::agents::user_mcp_file(),
+            user_mcp: crate::accounts::manage::mcp_share_exec::user_mcp_file(),
             ledger: super::skill_ledger::ledger_path(),
             home: crate::platform::paths::home_dir(),
         }

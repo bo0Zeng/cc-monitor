@@ -26,7 +26,7 @@ const SKILL_DOC: &str = "SKILL.md";
 /// 项目级 MCP 配置的文件名。
 pub(crate) const PROJECT_MCP_FILE: &str = ".mcp.json";
 /// `.mcp.json` / `.claude.json` 里装 server 表的键。
-const SERVERS_KEY: &str = "mcpServers";
+pub(crate) const SERVERS_KEY: &str = "mcpServers";
 /// 一份项目 `.mcp.json` 的读取上限（手写的配置，远不到这个量级；超了说出来，不截断）。
 pub(crate) const MAX_PROJECT_MCP_BYTES: u64 = 4 * 1024 * 1024;
 /// `SKILL.md` 的读取上限（找头部 `description:` 用；手写的说明远不到这个量级）。超了 ⇒ 不取说明、说出来。
@@ -51,9 +51,9 @@ pub(crate) fn project_skills_root(project: &Path) -> PathBuf {
     project.join(PROJECT_CONFIG_DIR).join(SKILLS_DIR)
 }
 
-/// 注册表那一格的实现：用户级两个根 ＋ 交进来的每个项目各两处，现扫。
-pub(crate) fn scan(projects: &[String]) -> Sightings {
-    scan_at(skills_root().as_deref(), claude_json().as_deref(), projects)
+/// 注册表那一格的实现：用户级 skill 的根 ＋ 交进来的那份用户级 MCP ＋ 每个项目各两处，现扫。
+pub(crate) fn scan(projects: &[String], user_mcp: Option<&Path>) -> Sightings {
+    scan_at(skills_root().as_deref(), user_mcp, projects)
 }
 
 /// [`scan`] 的本体：用户级两个根由调用方给（判据拿临时家目录喂）。

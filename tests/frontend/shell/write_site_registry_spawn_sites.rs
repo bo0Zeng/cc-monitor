@@ -18,12 +18,7 @@ use std::path::{Path, PathBuf};
 /// 两种三元组）。它接得住的是「某个落点改了策略而账本没跟」「策略名被改掉」
 /// 这两族，接不住同文件内的对调。别把它读成更强的东西。
 const SPAWNS: &[(&str, &str, &str, &str, &str)] = &[
-    // ── 构建期（`build.rs`）：**每次 `cargo build`／`cargo check` 都在开发者机器上真跑**。
-    // 08-08 并进本表之前，它整个在所有登记表的扫描面之外。
-    ("build.rs", "check_vendor_freshness", "`git`（读 vendor 目录的最后一次改动）",
-     "vendor 新鲜度自检：只读地问 git，参数是仓内固定路径、不吃用户输入。\
-          它必须起进程是因为「vendor 目录相对上游有没有漂」这件事只有 git 知道",
-     "—— **不进那个出口**：它跑在构建期、在开发者机器上，那三个问题对它一个都不成立（没有 GUI 宿主可弹窗、没有 monitor 进程可随、错误就该打到 `cargo` 的 stderr 上）"),
+    // 构建期（`build.rs`）那一行（vendor 新鲜度自检起 `git`）随 vendored 引擎整棵删了。
     ("ccm_probe.rs", "probe_with", "`bash -lic <常量探测串>`",
      "P3t-Y2：本机 ccm 的**能力集**探测。命令串是 `CCM_PROBE_CMD` —— 与远端那条**逐字同一个常量**，\
           零插值。必须起进程的理由是「本机装没装 ccm、装的是哪一版」只有这台机器自己知道；\
@@ -363,11 +358,11 @@ fn the_three_policies_each_site_declares_match_the_code() {
         checked += 1;
     }
     // 3 → 2：`build.rs` 里给旧账号工具算指纹的那一处随那份 vendor 删了。
+    // 2 → 1：`build.rs` 里 vendor 新鲜度自检那一处随 vendored 引擎整棵删了。
     assert_eq!(
-        opted_out, 2,
-        "「不进那个出口」的落点从 2 处变成了 {opted_out} 处。\n\
-             今天那两处是：`build.rs` 一处（构建期）＋ 出口自己那一处。\
-             多一处 = 有人给自己开了豁免；少一处 = 构建期那两条被并进来了（那是好事，改这个数）。"
+        opted_out, 1,
+        "「不进那个出口」的落点从 1 处变成了 {opted_out} 处。\n\
+             今天只剩出口自己那一处。多一处 = 有人给自己开了豁免。"
     );
     // 地板 14 → 13：本机一次性查询那一个落点（`local_query` 模块的 `run_query`〔散文墓碑〕）随本机那几问
     //   改走 `<local>` 长连接删了 ⇒ 人群恰好少一个（15 → 13 的另一个见失败读数，人群按现打为准）。

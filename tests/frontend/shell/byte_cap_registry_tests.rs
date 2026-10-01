@@ -129,11 +129,6 @@ const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
              不限任何东西的大小。",
     ),
     (
-        "PUSH_MODE",
-        "**权限位**不是体量：全景小程序推到远端 `~/.cc-monitor/bin/` 时给的 unix 模式（`0o755`，\
-             `panorama_bytes·rs::push_to`）。",
-    ),
-    (
         "LINK_STEP",
         "**步长**不是体量：monitor 往链路里送上行字节时一次切多大（`link_mux·rs::LinkStream` 的 \
              `poll_write`）。多出来的留给调用方下一次写 —— **不丢、不截**，它不限任何总量。\
@@ -745,6 +740,21 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
         "MAX_UNDO_BYTES",
         4 * 1024 * 1024,
         "回滚时读一份备份里的撤销清单（每一行一条路径）",
+        "跳过+说清",
+    ),
+    // 账号之间同步用户级 MCP 读盘那一步：清单 · 共享集合一个上限，各号配置文件一个上限（同适配层读那份文件的量级）。
+    (
+        "src/backend/accounts/manage/mcp_share_exec.rs",
+        "MAX_SMALL_BYTES",
+        8 * 1024 * 1024,
+        "同步之前读账号清单与各号共用的 MCP 那份文件",
+        "硬报错",
+    ),
+    (
+        "src/backend/accounts/manage/mcp_share_exec.rs",
+        "MAX_CONFIG_BYTES",
+        32 * 1024 * 1024,
+        "同步之前读一个号的配置文件（会被项目历史与 MCP 配置撑大）",
         "跳过+说清",
     ),
     // 〔RM1a → MIG-3b 续〕「足迹」由那台后端出成品（`footprint-report`，只读）那两个数（两拍之后 monitor 不再 stat，它那两个数与收 `client.stat` 那一个随之删）。
@@ -1529,15 +1539,6 @@ const PARAMETRIC_READ_CAPS: &[(&str, &str, &str)] = &[
         "`files-read-chunk` 的 `len` 是入参，入口先判 `1..=READ_CHUNK_MAX_BYTES`（已在 `CAPS` 里）；回 `eof` / `size`，\
              调用方读到 `eof` 为止 —— 不是截断后当完整的用。",
     ),
-    // 插件口可打断那一形（`run_abortable`）每条子进程流留 `keep ＋ 1` 字节，`keep` 是入参；
-    // 唯一调用方 `control/panorama.rs` 给的是具名常量 `read_face::LINES_CAP_BYTES`（已在 `CAPS` 里）。
-    // ⚠ 不是静默截断：多出来的照读照丢（子进程不被管道卡住），调用方见 `len() > keep` 回 `too_large` 明拒。
-    (
-        "src/backend/plugin/invoke.rs",
-        "keep.saturating_add(1)",
-        "`run_abortable` 的每条流上限是入参，调用方给 `read_face::LINES_CAP_BYTES`（已在 `CAPS` 里）；\
-             留 keep＋1、其余读掉丢弃，调用方按「超了」明拒（`too_large`）—— 不是截断后当完整的用。",
-    ),
     // `history_query::read_page` 的一页上限是入参；唯一调用点
     // （`read_face.rs`）给的是具名常量 `READ_PAGE_BYTES`（已在 `CAPS` 里）。
     // ⚠ 不是静默截断：读满一页就停、**回续点 `next`**，调用方循环到 `eof` —— 一个字节都不丢。
@@ -1842,7 +1843,7 @@ fn every_uncapped_stream_read_has_an_owner() {
     //    **不存在了** ⇒ 人群**恰好少两处**。⚠ 同样不是「挡路就放宽」。
     // 地板 11 → **10**：钩子诊断远端那处 `read_to_end`（一次性 SSH 的 stdout）随改问那台后端不存在了；→ **9**：MCP 远端那处同理。
     assert!(
-        population >= 5, // 6 → 5：公钥推送那处 `read_to_string`（远端那一趟的 stdout）随进本机后端没了 // 〔09-28 裁 2〕7 → 6：部署 cc-acct-iso 那处 `read_to_end`（安装脚本的 stdout）随改问那台后端不存在了 // 9 → 8：列 tmux 那处 `read_to_end` 随改问后端不存在了 // 8 → 7：远端 `ccm` 探针那处 `read_to_end` 随改问那台后端 `ccm-probe` 不存在了
+        population >= 4, // 5 → 4：插件口可打断那一形读子进程 stderr 的那处 `read_until`（带上限）随代码全景删了 // 6 → 5：公钥推送那处 `read_to_string`（远端那一趟的 stdout）随进本机后端没了 // 〔09-28 裁 2〕7 → 6：部署 cc-acct-iso 那处 `read_to_end`（安装脚本的 stdout）随改问那台后端不存在了 // 9 → 8：列 tmux 那处 `read_to_end` 随改问后端不存在了 // 8 → 7：远端 `ccm` 探针那处 `read_to_end` 随改问那台后端 `ccm-probe` 不存在了
         "只扫到 {population} 处异步流读（08-10 G 审计后实测 18，`K-R104` 09-13 现打 13，\
              `K-R112` 09-13 现打 11，SH1 09-26 现打 10）—— 抽取器坏了，本条此刻是空转的"
     );

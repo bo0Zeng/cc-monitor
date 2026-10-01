@@ -423,8 +423,6 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
     );
     // 纯计算的两条留在普通 spawn 上（它们能在 await 点被真取消）。
     // `assets-sync`：等拨号 / 等远端 capture —— 真异步，也在普通 spawn 上。
-    // `panorama` 起进程，但**异步等**（`plugin::invoke::run_abortable`）⇒ 同在这一档：
-    //   不占 worker（等的是子进程退出，不是一段同步计算），`cancel` 命中时 future 被丢、子进程组被杀。
     // `remote-reach`：纯内存登记（一把锁、插一行），同 `ping` 在普通 spawn 上。
     // 历史两条出成品：远端那一支等 `remote_ask`（真异步），本机扫盘那段自己挪到阻塞线程池。
     for c in [
@@ -438,15 +436,11 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         // 两台之间「装」那一件的枢纽：等远端 capture（真异步），本机那一跳自己挪到阻塞线程池。
         "ext-hub-preview",
         "ext-hub-apply",
-        "pubkey-push",        // 等远端（问那台后端 / 一次 exec），真异步
-        "panorama-edit",      // 同 `panorama`（起小程序、等它），落盘那一步挪到阻塞线程池
-        "panorama-uninstall", // 同上：起小程序认身份、等它；读与删挪到阻塞线程池
-        "files-grep",         // 可撤：走那一趟在阻塞线程池上、看取消位，future 被丢即收手
-        "deploy-plan",        // 真异步（拨号 / 等远端 capture · SFTP），在 await 点可取消
-        "resident-verdict",   // 纯判定，普通 spawn
-        "deploy-slot",        // 有 `dial` 时真异步（等远端 capture），在 await 点可取消
-        "deploy-retired",     // 真异步（沿池里那条 SSH 开 SFTP），在 await 点可取消
-        "panorama",
+        "pubkey-push",      // 等远端（问那台后端 / 一次 exec），真异步
+        "files-grep",       // 可撤：走那一趟在阻塞线程池上、看取消位，future 被丢即收手
+        "deploy-plan",      // 真异步（拨号 / 等远端 capture · SFTP），在 await 点可取消
+        "resident-verdict", // 纯判定，普通 spawn
+        "deploy-retired",   // 真异步（沿池里那条 SSH 开 SFTP），在 await 点可取消
         "remote-reach",
         "history-projects",
         "history-sessions",
@@ -567,8 +561,6 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "hooks-diag",
         // 手动对齐：等每份 watcher 做完（对表 ＋ 打标起 tmux），阻塞档。
         "resync",
-        // `panorama` 从这里挪走了：起进程改走 `invoke::run_abortable`（异步等子进程），
-        //   上面「纯计算留在普通 spawn」那一格里单列它（可取消档）。
         // 上游选择那份凭据文件的两条：同步文件 I/O（读 / 原子写那一份）。
         "apikey-key-set",
         "apikey-read",
@@ -615,6 +607,9 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "accounts-rollback",
         "accounts-verify",
         "accounts-login-cmd",
+        "accounts-mcp-read",
+        "accounts-mcp-remove",
+        "accounts-mcp-pick",
         "authorized-keys-add", // 同步文件 I/O（经本进程文件管理面）
         "files-link",
         "cc-bus-install-state",
@@ -655,16 +650,12 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "assets-sync",
         "ext-hub-preview",
         "ext-hub-apply",
-        "pubkey-push",        // 等远端（问那台后端 / 一次 exec），真异步
-        "panorama-edit",      // 同 `panorama`（起小程序、等它），落盘那一步挪到阻塞线程池
-        "panorama-uninstall", // 同上：起小程序认身份、等它；读与删挪到阻塞线程池
-        "files-grep",         // 可撤：走那一趟在阻塞线程池上、看取消位，future 被丢即收手
+        "pubkey-push", // 等远端（问那台后端 / 一次 exec），真异步
+        "files-grep",  // 可撤：走那一趟在阻塞线程池上、看取消位，future 被丢即收手
         // 部署计划：真异步（拨号 / 等远端），普通 spawn。
         "deploy-plan",
         // 远端常驻后端 hello 的新旧：纯判定，普通 spawn。
         "resident-verdict",
-        // 那台要哪一格：远端真异步（等 capture），本机纯判定。
-        "deploy-slot",
         // 那台旧入口的去向：真异步（SFTP stat ＋ 读回）。
         "deploy-retired",
         // 可达表登记（纯内存，普通 spawn）。
@@ -741,7 +732,6 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "ssh-config-resolve", // 起一次 `ssh -G`
         "hooks-diag",         //
         "resync",             //
-        "panorama",
         "apikey-key-set",
         "apikey-read",
         "apikey-routing",  //
@@ -788,6 +778,9 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "accounts-rollback",
         "accounts-verify",
         "accounts-login-cmd",
+        "accounts-mcp-read",
+        "accounts-mcp-remove",
+        "accounts-mcp-pick",
         "authorized-keys-add", // 同步文件 I/O（经本进程文件管理面）
         "files-link",
         "cc-bus-install-state",
@@ -1084,152 +1077,4 @@ async fn cancelling_an_unknown_id_is_idempotent_not_an_error() {
             .any(|l| l.contains("\"id\":\"c\"") && l.contains("\"ok\":true")),
         "{out:?}"
     );
-}
-
-/// ★**`cancel` 打得断在飞的 `panorama`**：回 `cancelled`（不是 `not_cancellable`），
-/// 小程序那一组子进程没了。
-///
-/// 处理器走**真的** `control::panorama::answer_with`（找它 · 问它会什么 · 起它全是真进程：
-/// 一个说小程序那套方言的 sh 替身，`index` 那一问睡着、把自己的 pid 写进文件），
-/// 登记走真的 `spawn_handler`、`cancel` 走真的 `handle_line`。
-/// 档位那一格（`dispatch` 把 `panorama` 放进可取消档）由上面 `the_dispatch_table_puts_…` 钉。
-#[cfg(unix)]
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn a_cancel_really_stops_an_in_flight_panorama_index() {
-    use std::os::unix::fs::PermissionsExt;
-    let dir = std::env::temp_dir().join(format!("ccm-be-inbound-pano-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    let pidf = dir.join("pid");
-    let bin = dir.join(crate::control::panorama::PLUGIN_NAME);
-    std::fs::write(
-        &bin,
-        format!(
-            "#!/bin/sh\nif [ \"$1\" = \"--probe\" ]; then printf 'name=cc-monitor-panorama\\nversion=t\\ncapabilities=index\\nlong=index\\nshape=t1\\n'; exit 0; fi\n\
-             echo $$ > '{p}.tmp'; mv '{p}.tmp' '{p}'\nexec sleep 300\n",
-            p = pidf.display(),
-        ),
-    )
-    .unwrap();
-    std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
-
-    let (tx, mut rx) = chan();
-    let running: Running = Arc::new(Mutex::new(HashMap::new()));
-    let (fixed, store) = (vec![bin.clone()], dir.join("store"));
-    spawn_handler(
-        Request {
-            id: "pano".into(),
-            cmd: "panorama".into(),
-            args: serde_json::json!({"op": "index", "repo": "/r", "shape": "t1"}),
-        },
-        tx.clone(),
-        running.clone(),
-        move |r: Request| async move {
-            crate::control::panorama::answer_with(&fixed, &store, &r.args, &|_| {})
-                .await
-                .map(Some)
-                .map_err(|(c, m)| (c.to_string(), m))
-        },
-        true,
-    )
-    .await;
-    // 等替身把 pid 写出来（= 它真的在跑了）。
-    let mut pid = None;
-    for _ in 0..200 {
-        if let Ok(s) = std::fs::read_to_string(&pidf) {
-            pid = s.trim().parse::<u32>().ok();
-            if pid.is_some() {
-                break;
-            }
-        }
-        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-    }
-    let pid = pid.expect("替身小程序 10 秒内没起来 —— 本条判不了");
-    let alive = |p: u32| {
-        std::fs::read_to_string(format!("/proc/{p}/stat")).is_ok_and(|s| {
-            s.rsplit_once(')')
-                .and_then(|(_, r)| r.split_whitespace().next())
-                .is_some_and(|st| st != "Z" && st != "X")
-        })
-    };
-    assert!(alive(pid), "正控：取消之前它在跑");
-
-    let links = crate::dial::link::Table::new(tx.clone());
-    let xfers = crate::control::transfer::Desk::new(tx.clone());
-    handle_line(
-        br#"{"id":"c1","cmd":"cancel","args":{"target":"pano"}}"#,
-        &tx,
-        &running,
-        &links,
-        &xfers,
-    )
-    .await;
-    let mut frames = Vec::new();
-    for _ in 0..2 {
-        frames.push(
-            tokio::time::timeout(std::time::Duration::from_secs(5), rx.recv())
-                .await
-                .expect("5 秒内没等到应答")
-                .expect("通道关了"),
-        );
-    }
-    assert!(
-        frames
-            .iter()
-            .any(|f| matches!(f, Frame::Cancelled { id } if id == "pano")),
-        "没有 `cancelled{{pano}}` 帧：{frames:?}"
-    );
-    assert!(
-        !frames.iter().any(|f| matches!(
-            f,
-            Frame::Reply { code: Some(c), .. } if c == "not_cancellable"
-        )),
-        "`panorama` 又回了 `not_cancellable`：{frames:?}"
-    );
-    let mut dead = false;
-    for _ in 0..100 {
-        if !alive(pid) {
-            dead = true;
-            break;
-        }
-        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-    }
-    let _ = std::process::Command::new("kill")
-        .args(["-9", &pid.to_string()])
-        .stderr(std::process::Stdio::null())
-        .status();
-    assert!(
-        dead,
-        "`cancelled` 回了，小程序（{pid}）5 秒后还在跑 —— 那是一条撒谎的 `cancelled`"
-    );
-    let _ = std::fs::remove_dir_all(&dir);
-}
-
-/// 要求：「要上游给的」④「插件口转订阅流」· 「长活要有进度」。
-///
-/// ★进度的窄口只推**本请求那张票**的 `progress` 帧：请求交了 `ticket` ⇒ 推一格就是一帧 `progress{ticket, cell}`（原样）；
-/// 没交 / 交了空串 / CLI 那个空口 ⇒ 一帧都不发。
-#[test]
-fn the_progress_capability_only_pushes_frames_for_the_requests_own_ticket() {
-    let (tx, mut rx) = mpsc::channel::<Frame>(4);
-    let cell = serde_json::json!({"phase": "Parse", "done": 1, "total": 2});
-    Progress::for_request(&tx, &serde_json::json!({"op": "index", "ticket": "t-1"}))
-        .push(cell.clone());
-    match rx.try_recv() {
-        Ok(Frame::Progress { ticket, cell: got }) => {
-            assert_eq!(ticket, "t-1");
-            assert_eq!(got, cell);
-        }
-        other => panic!("交了票却没推出那一帧：{other:?}"),
-    }
-    Progress::for_request(&tx, &serde_json::json!({"op": "index"})).push(cell.clone());
-    Progress::for_request(&tx, &serde_json::json!({"op": "index", "ticket": ""}))
-        .push(cell.clone());
-    Progress::none().push(cell);
-    assert!(rx.try_recv().is_err(), "没交票也推出了帧");
-    // 注册表里 `panorama` 是收这个口的那一档（否则上面那张票根本递不到它手里）。
-    assert!(matches!(
-        lookup("panorama").expect("注册表里有 panorama").run,
-        Run::AsyncProgress(_)
-    ));
 }

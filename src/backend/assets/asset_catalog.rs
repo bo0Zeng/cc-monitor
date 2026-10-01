@@ -387,7 +387,11 @@ pub(crate) fn session_projects_at(agent_home: &Path) -> (Vec<String>, Option<Str
 /// 这台现扫一次：先取项目清单，再交适配层扫用户级 ＋ 那几个项目。
 pub(crate) fn scan_here() -> Scanned {
     let (projects, why) = session_projects();
-    let (assets, mut problems) = assets_from(&crate::agents::asset_sightings(&projects));
+    let user_mcp = crate::accounts::manage::mcp_share_exec::user_mcp_file();
+    let (assets, mut problems) = assets_from(&crate::agents::asset_sightings(
+        &projects,
+        user_mcp.as_deref(),
+    ));
     problems.extend(why);
     Scanned {
         assets,

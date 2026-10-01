@@ -64,11 +64,11 @@
       "want": "消息太长：这条消息有 70000 字节。"
     },
     {
-      "_": "两个值之间只隔空格的那一段不动（值是汉字也不并）；值与后面的汉字之间的空格照留。",
-      "key": "diagramRender.edge.pick",
-      "zh": "{base} {candidates} 选 1",
-      "args": { "base": "动态派发", "candidates": "3" },
-      "want": "动态派发 3 选 1"
+      "_": "两个值之间只隔空格的那一段不动（值是汉字也不并）；模板里汉字与汉字值之间那个空格照接缝规则去掉。",
+      "key": "main.cmd.switchSessionKeywords",
+      "zh": "switch session 切换 会话 {cwd} {machine}",
+      "args": { "cwd": "工程", "machine": "本机" },
+      "want": "switch session 切换 会话工程 本机"
     },
     {
       "_": "接缝上两个以上空格是排版，照留。",

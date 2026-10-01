@@ -45,8 +45,8 @@ const SUMMARY = resolve(REPO, "coverage/coverage-summary.json");
  * # 为什么加分支那一列〔audit-0805 §5 2b〕
  *
  * 2b 逐字写着「一个模块 statements 不掉、branches 掉光，本判据看不见」。
- * 量下去证实这不是假设：`views/panorama.ts` 今天 statements **56.5%** 而 branches
- * 只有 **24.8%** —— 一半以上的分支从没被走过，而语句地板一点反应都没有。
+ * 量下去证实这不是假设：当时有一个视图文件 statements **56.5%** 而 branches
+ * 只有 **24.8%** —— 一半以上的分支从没被走过，而语句地板一点反应都没有（那份文件今天已删）。
  *
  * ⚠ 分支地板同样设在**当前值下方 ~5 点**（与语句同一套纪律），只挡明显回归；
  * 分支覆盖比语句更容易被 v8 版本差与用例增删扰动，余量不能收得太紧。
@@ -60,7 +60,6 @@ const PER_FILE_FLOORS = [
   ["src/frontend/ui/tab-menu.ts", 66, 71.4, 70, 75.4],
   ["src/frontend/ui/tab-bar-view.ts", 82, 87.5, 72, 77.4],
   ["src/frontend/ui/views/history.ts", 63, 68.8, 45, 50.0],
-  ["src/frontend/ui/views/panorama.ts", 51, 56.5, 19, 24.8],
   ["src/frontend/ui/settings/panel.ts", 75, 80.6, 50, 55.6],
   ["src/frontend/ui/settings/accounts-section.ts", 75, 80.7, 49, 54.2],
   ["src/frontend/ui/settings/remote-section.ts", 60, 65.6, 40, 45.1],
@@ -200,7 +199,7 @@ for (const [rel, floor, measured, bFloor, bMeasured] of PER_FILE_FLOORS) {
     );
   }
   // ★〔audit-0805 §5 2b〕**分支单独判**：语句不掉、分支掉光时，上面那条一点反应都没有。
-  // 实测样本：`views/panorama.ts` 语句 56.5% 而分支只有 24.8%。
+  // 实测样本：当时一个视图文件语句 56.5% 而分支只有 24.8%。
   if (v.branches.pct < bFloor) {
     problems.push(
       `  ${rel}：分支 ${v.branches.pct}% < 地板 ${bFloor}%（写下这条时实测 ${bMeasured}%）\n` +

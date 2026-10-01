@@ -575,6 +575,8 @@ pub(crate) struct AccountsFace {
     pub(crate) identity: &'static [(&'static str, IdentityRoot, IdentityClass)],
     /// 账号级配置文件的名字（原生根是家目录的那一份，账号 0 的住 `$HOME`）。
     pub(crate) config_file: &'static str,
+    /// 那份配置文件里装用户级 MCP 的顶层键（账号之间同步的就是它，别的键不碰）。
+    pub(crate) user_mcp_key: &'static str,
     /// 没设账号时的配置根（= 各号链回去的共享库）。
     pub(crate) shared_root: fn(&Path) -> PathBuf,
     /// 一个配置根下登录的邮箱（读不到 ⇒ `None`）。
@@ -743,13 +745,14 @@ pub(crate) fn history_roots() -> Vec<PathBuf> {
 #[derive(Clone, Copy)]
 pub(crate) struct AssetFace {
     /// 按这台机器的环境现解根、现扫：用户级那一份 ＋ 交进来的那几个项目目录（这台上开过会话的项目）。
+    /// 用户级 MCP 读哪份文件由调用方交（有账号库的机器上是各号共用的那一份，格式与本家那份同一种）。
     /// 交回原始事实（还没有摘要 —— 摘要是通用层的机器）。
-    pub(crate) scan: fn(projects: &[String]) -> Sightings,
+    pub(crate) scan: fn(projects: &[String], user_mcp: Option<&Path>) -> Sightings,
     /// 这一家用户级 skill 的根（「装到这台」读 / 写 skill 的落点从这里来；与扫描同一个家）。
     pub(crate) skills_root: fn() -> Option<PathBuf>,
     /// 一个项目目录里 skill 的根（项目级 skill 的落点，与扫描同一个家）。
     pub(crate) project_skills_root: fn(project: &Path) -> PathBuf,
-    /// 用户级 MCP 住的那份文件（只读：它是 agent 自己的热状态文件）。
+    /// 这一家自己存用户级 MCP 的那份文件（没有账号库的机器上，用户级 MCP 就是它）。
     pub(crate) user_mcp_file: fn() -> Option<PathBuf>,
 }
 
@@ -783,10 +786,10 @@ pub(crate) struct Sightings {
 }
 
 /// 注册表里每一家有资产面的，各扫一遍（注册序）。
-pub(crate) fn asset_sightings(projects: &[String]) -> Vec<Sightings> {
+pub(crate) fn asset_sightings(projects: &[String], user_mcp: Option<&Path>) -> Vec<Sightings> {
     REGISTRY
         .iter()
-        .filter_map(|a| a.assets.map(|f| (f.scan)(projects)))
+        .filter_map(|a| a.assets.map(|f| (f.scan)(projects, user_mcp)))
         .collect()
 }
 

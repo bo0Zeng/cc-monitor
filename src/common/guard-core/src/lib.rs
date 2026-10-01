@@ -1230,7 +1230,7 @@ pub fn assert_test_module_ranges_are_brace_balanced(who: &str, src: &str) {
 ///
 /// 09-12 现打（`KR75D3`，量法与逐份清单住 `tests/evidence/K-R75-剥法认形状与真静默读数.md`）：
 /// 全仓 git 跟踪的 `.rs` **230** 份，落在本函数三个调用点的根之下的 **198** 份，
-/// **32 份在射程之外**（其中 `src/panorama-engine/vendor/code-picture-core` 23 份、
+/// **32 份在射程之外**（其中 vendored 的第三方引擎 23 份（今天已删）、
 /// `src/common/*-core` 八份、`src/frontend/shell/build.rs` 一份）。
 /// 那 32 份里加一个剥法认不出的测试模块 —— **实测谁都不红**（死值验读数在同一份 evidence 里）。
 /// 🔴 这是**读数不是现状判词**：要不要把射程铺过去归 PM，别顺手在这里改根。
@@ -2034,9 +2034,6 @@ fn ident_char(c: char) -> bool {
 ///
 /// 🔴 这一形不是假想：2026-09-23 往 `monitor` 包里加第二个 `[[bin]]` 时当场撞上了，
 /// 而它对**任何人**加第二个 bin/example/test 都会犯，不是某一次的手滑。
-/// 同一条口径 `panorama_seam_registry` 那一族早就写死过（逐字「只认依赖段：
-/// `[[bin]]` 那条 `path` 指的是入口文件，不是一棵树」）⇒ 在它搬进来之前，
-/// 这条口径有**两个家**（`D1`）。
 ///
 /// # 判准是**形状**，不是白名单
 ///

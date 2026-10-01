@@ -95,6 +95,10 @@ pub const COMMANDS: &[&str] = &[
     "accounts-isolate",
     "accounts-list",
     "accounts-login-cmd",
+    // 各号共用的用户级 MCP：此刻的样子 · 删一条（所有号一起撤）· 两边都改了时挑一版。写经 [`LocalFiles`]。**是新命令** ⇒ `build_id_guard` 红是预期的。
+    "accounts-mcp-pick",
+    "accounts-mcp-read",
+    "accounts-mcp-remove",
     "accounts-remove",
     "accounts-repair",
     "accounts-rollback",
@@ -144,8 +148,6 @@ pub const COMMANDS: &[&str] = &[
     "deploy-plan",
     // 那台旧入口 `~/.local/bin/ccm` 的去向（认出是我们放的才删 ⇒ 后端判，monitor 照删）。**是新命令** ⇒ `build_id_guard` 红是预期的。
     "deploy-retired",
-    // 那台要哪一格字节（表 A / 表 B 的承诺是裁决 ⇒ 后端判；全景推字节之前问它）。**是新命令** ⇒ `build_id_guard` 红是预期的。
-    "deploy-slot",
     // 这台后端的漂移账（看不懂的记录类型；记录解释进了后端，账跟着解析走）。**是新命令** ⇒ `build_id_guard` 红是预期的。
     "drift-report",
     "exit-policy-read",
@@ -246,12 +248,6 @@ pub const COMMANDS: &[&str] = &[
     "mcp-sync-plan",
     "mcp-sync-preview",
     "mcp-sync-source",
-    // 代码全景（选 B）：后端经插件口起独立小程序，只说查询语义。
-    "panorama",
-    // 全景写：这台算计划、这台文件管理面落盘（原 monitor 那一跳在中间转）。**是新命令** ⇒ `build_id_guard` 红是预期的。
-    "panorama-edit",
-    // 全景小程序卸口：只删装时放下的那一份（先认身份、CAS 删）。**是新命令** ⇒ `build_id_guard` 红是预期的。
-    "panorama-uninstall",
     "ping",
     // 本机那一份放不放（monitor 自举：放本机后端之前问手上那份字节自己，CLI 面）。**是新命令** ⇒ `build_id_guard` 红是预期的。
     "place-verdict",
@@ -982,10 +978,6 @@ fn dispatch(
         other => match lookup(other) {
             Some(spec) => match spec.run {
                 Run::Async(f) => Disposition::Spawn(req, Box::new(f)),
-                Run::AsyncProgress(f) => {
-                    let p = Progress::for_request(replies, &req.args);
-                    Disposition::Spawn(req, Box::new(move |r: Request| f(r, p)))
-                }
                 Run::Blocking(f) => Disposition::SpawnBlocking(req, Box::new(f)),
                 // `cancel` 在上面那条硬臂里处理完了，走不到这儿。
                 Run::Builtin => Disposition::Reply(err(
@@ -1019,51 +1011,10 @@ fn dispatch(
 ///   与别的命令签名不同 —— 硬塞进统一签名等于给每条命令都递上「自己发帧 / 碰登记表」的能力，
 ///   而那条性质今天是成立的，不该为了整齐拆掉。**但它仍要在注册表里占一行**，
 ///   否则「镜子 == 注册表」覆盖不到它。
-/// - [`Run::AsyncProgress`]：同 `Async`，另收一个 [`Progress`] —— **只能**往本请求那张票的进度流里推格的窄口
-///   （推不了别的帧、碰不到登记表 ⇒ 上面那条性质不破）。建索引那一类长活用；CLI 一次性进程里它是空的（没人订）。
 pub(crate) enum Run {
     Async(fn(Request) -> BoxFut),
-    AsyncProgress(fn(Request, Progress) -> BoxFut),
     Blocking(fn(Request) -> CmdResult),
     Builtin,
-}
-
-/// 一条长活往**发起方订的进度流**里推格的窄口。
-///
-/// 票是发起方在请求里交的 `ticket`（不透明的串，界面拿它订 `progress/<ticket>`，本后端只回填）；没交票 ⇒ 空口，推了也不发。
-/// 走本连接的应答通道（与应答同一条、同序），但**满了就丢这一格**（`try_send`）：每格是一整份快照，
-/// 丢一格下一格补上，而这是在建索引的读流里同步推的 —— 不许为它阻塞（阻塞就是背压回插件的 stderr 管子）。
-#[derive(Clone)]
-pub(crate) struct Progress {
-    to: Option<(mpsc::Sender<Frame>, String)>,
-}
-
-impl Progress {
-    /// 没人订的那一个（CLI 一次性进程 · 没交票的请求）。
-    pub(crate) fn none() -> Progress {
-        Progress { to: None }
-    }
-
-    /// 本请求的：请求里有 `ticket`（非空串）才通。
-    pub(crate) fn for_request(replies: &mpsc::Sender<Frame>, args: &serde_json::Value) -> Progress {
-        let ticket = args
-            .get("ticket")
-            .and_then(serde_json::Value::as_str)
-            .filter(|t| !t.is_empty());
-        Progress {
-            to: ticket.map(|t| (replies.clone(), t.to_string())),
-        }
-    }
-
-    /// 推一格（原样；格里是什么由界面解释）。
-    pub(crate) fn push(&self, cell: serde_json::Value) {
-        if let Some((tx, ticket)) = &self.to {
-            let _ = tx.try_send(Frame::Progress {
-                ticket: ticket.clone(),
-                cell,
-            });
-        }
-    }
 }
 
 /// 一条入方向命令的登记。**名字与处理器绑在同一个值里。**
@@ -1121,6 +1072,11 @@ pub fn uncancellable() -> Vec<String> {
         .filter(|s| matches!(s.run, Run::Blocking(_)))
         .map(|s| s.name.to_string())
         .collect()
+}
+
+/// 常驻后端里起「各号的配置文件一变就同步一趟用户级 MCP」那个监听器（写经 [`LocalFiles`]，与帧命令同一扇门）。
+pub fn watch_account_mcp() {
+    crate::accounts::manage::mcp_share_watch::start(&LocalFiles);
 }
 
 /// 改账号库那几条（`accounts-*`）递给执行器的 key 表几口：写 key · 删号清那一行 · 回滚放回去 · 表在哪。
@@ -1463,32 +1419,6 @@ pub const REGISTRY: &[CommandSpec] = &[
                     .await
                     .map(Some)
                     .map_err(|(c, m)| (c.to_string(), m))
-            })
-        }),
-    },
-    // **那台要哪一格字节**：`{product, machine, carried, dial?}` → `{os, arch, label, ack}`（有 `dial` ⇒ 沿池里那条 SSH 问 `uname`，真异步；
-    //   没有 ⇒ 本机那一格）。本体 `control/deploy_plan.rs::answer_slot`（与 `deploy-plan` 第 ① 步同一个 `slot_of`）。
-    CommandSpec {
-        name: "deploy-slot",
-        doc_anchor: Some("#### `deploy-slot`"),
-        codes: &["bad_args", "refused", "unreachable"],
-        fields: &[
-            "ack", "arch", "carried", "dial", "label", "machine", "os", "product",
-        ],
-        takes_input: true,
-        run: Run::Async(|r| {
-            Box::pin(async move {
-                let dial = r.args.get("dial").cloned();
-                let facing = dial.map(crate::control::deploy_plan::DialFacing::new);
-                crate::control::deploy_plan::answer_slot(
-                    &r.args,
-                    facing
-                        .as_ref()
-                        .map(|f| f as &dyn crate::control::deploy_plan::Facing),
-                )
-                .await
-                .map(Some)
-                .map_err(|(c, m)| (c.to_string(), m))
             })
         }),
     },
@@ -3040,6 +2970,77 @@ pub const REGISTRY: &[CommandSpec] = &[
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
+    // 各号共用的用户级 MCP（本体 `accounts/manage/mcp_share_exec.rs`）：读各号的配置文件、只改那一个键、写回共享集合 ⇒ 阻塞档。
+    //   成品只有名字与号名，不带定义里的任何值。
+    CommandSpec {
+        name: "accounts-mcp-read",
+        doc_anchor: Some("#### `accounts-mcp-read`"),
+        codes: &["bad_args", "io_failed", "refused"],
+        fields: &[
+            "changed",
+            "choices",
+            "conflicts",
+            "enabled",
+            "from",
+            "gone",
+            "holders",
+            "name",
+            "notes",
+            "servers",
+        ],
+        takes_input: false,
+        run: Run::Blocking(|r| {
+            crate::faces::accounts_face::answer(&LocalFiles, &r.cmd, &r.args, &ACCOUNT_KEYS)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    CommandSpec {
+        name: "accounts-mcp-remove",
+        doc_anchor: Some("#### `accounts-mcp-remove`"),
+        codes: &["bad_args", "io_failed", "not_found", "refused"],
+        fields: &[
+            "changed",
+            "choices",
+            "conflicts",
+            "enabled",
+            "from",
+            "gone",
+            "holders",
+            "name",
+            "notes",
+            "servers",
+        ],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::faces::accounts_face::answer(&LocalFiles, &r.cmd, &r.args, &ACCOUNT_KEYS)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    CommandSpec {
+        name: "accounts-mcp-pick",
+        doc_anchor: Some("#### `accounts-mcp-pick`"),
+        codes: &["bad_args", "io_failed", "not_found", "refused"],
+        fields: &[
+            "changed",
+            "choices",
+            "conflicts",
+            "enabled",
+            "from",
+            "gone",
+            "holders",
+            "name",
+            "notes",
+            "servers",
+        ],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::faces::accounts_face::answer(&LocalFiles, &r.cmd, &r.args, &ACCOUNT_KEYS)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
     // 分叉：与 CLI `--fork-session` 同一个本体（`control/fork_write.rs::run_inner`，
     //   读 → 适配层的分叉变换（`agents::build_branch_records`）→ `O_EXCL` 新建）。本机远端同一条长连接；读整份 jsonl ⇒ 阻塞档。
     //   ⚠ 名字刻意不是 `fork-session`：自动派生的 CLI 面会与对 aterm 冻结的 `--fork-session`（argv 形）撞名。
@@ -3695,78 +3696,6 @@ pub const REGISTRY: &[CommandSpec] = &[
             crate::faces::feature_face::answer(&r.cmd, &r.args)
                 .map(Some)
                 .map_err(|(c, m)| (c.to_string(), m))
-        }),
-    },
-    // ── 代码全景（用户 09-24 V108 选 B）────────────────────────────
-    //
-    // 后端**不链**引擎：经插件通用调用口起那个只装引擎的独立小程序（`control/panorama.rs`），
-    // 解析发生在被起的那个进程里；索引落这台机器上后端自己的数据目录。
-    // ⚠ 只说查询语义：`op` 只许小程序 `--probe` 自报的词（== 签字白名单，`protocol_doc_guard` 那条 `P7c-2` 约束）；
-    // 要的那一代由发起方带 `shape`，后端不存 op 表与形状代号。
-    // **异步档**：起进程走 `plugin::invoke::run_abortable`（异步等子进程）⇒ `cancel` 命中时
-    //   处理器 future 被丢、小程序那一组子进程被杀、回 `cancelled` —— 建索引（可到分钟级）打得断了。
-    //   〔墓碑 —— RM1c 那一版是阻塞档：「起一个进程、等它退出。`cancel` 命中回 `not_cancellable`（不撒谎）」。〕
-    CommandSpec {
-        name: "panorama",
-        doc_anchor: Some("#### `panorama`"),
-        codes: &[
-            "bad_args",
-            "not_installed",
-            "unsupported",
-            "timed_out",
-            "too_large",
-            "failed",
-        ],
-        fields: &["args", "op", "repo", "result", "shape", "ticket"],
-        takes_input: true,
-        // 建索引那一档的进度格经 `Progress` 进发起方订的 `progress/<ticket>`（没交票就不推）。
-        run: Run::AsyncProgress(|r, p| {
-            Box::pin(async move {
-                let push = move |cell: serde_json::Value| p.push(cell);
-                crate::control::panorama::answer(&r.args, &push)
-                    .await
-                    .map(Some)
-            })
-        }),
-    },
-    // **卸掉这台的全景小程序**：认身份（`--probe`）→ 这台文件管理面 CAS 删那一份；索引不动。本体 `control/panorama.rs::answer_uninstall`。
-    CommandSpec {
-        name: "panorama-uninstall",
-        doc_anchor: Some("#### `panorama-uninstall`"),
-        codes: &["not_ours", "failed", "stale", "refused", "io_failed"],
-        fields: &["index", "path", "removed"],
-        takes_input: false,
-        run: Run::Async(|_r| {
-            Box::pin(async move {
-                crate::control::panorama::answer_uninstall(LocalFiles)
-                    .await
-                    .map(Some)
-            })
-        }),
-    },
-    // **全景写批注 / 文档关联**：`{repo, op, args}` → 这台的小程序算计划 → 这台文件管理面落盘（CAS，`stale` 重算）→
-    //   文档关联那两种再刷一次索引。「算」那一步的码原样交回（`not_installed` / `unsupported` ⇒ 界面放字节再问一次）。本体 `control/panorama_edit.rs`。
-    CommandSpec {
-        name: "panorama-edit",
-        doc_anchor: Some("#### `panorama-edit`"),
-        codes: &[
-            "bad_args",
-            "not_installed",
-            "unsupported",
-            "timed_out",
-            "too_large",
-            "failed",
-            "stale",
-            "refused",
-        ],
-        fields: &["args", "op", "repo", "shape"],
-        takes_input: true,
-        run: Run::Async(|r| {
-            Box::pin(async move {
-                crate::control::panorama_edit::answer(LocalFiles, &r.args)
-                    .await
-                    .map(Some)
-            })
         }),
     },
     // F04a：**第一条破坏性命令。** 三道门在 `control/gate::admit_destructive`，

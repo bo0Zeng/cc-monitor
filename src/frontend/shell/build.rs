@@ -3,11 +3,8 @@ use std::path::{Path, PathBuf};
 fn main() {
     emit_backend_build_id();
     emit_backend_capabilities();
-    check_vendor_freshness();
     embed_backends();
-    embed_panoramas();
     embed_native_backend();
-    embed_native_panorama();
     embed_native_filewin();
     tauri_build::build()
 }
@@ -117,65 +114,6 @@ fn backend_source_build_id() -> String {
                 p.display()
             )
         })
-}
-
-/// F68：vendor 副本过期检查（SS-10「过期看得见」）。从 `VENDOR.md` **单源**抠 pin + 上游
-/// 仓路径，若上游 sibling 仓存在则比对 `pin..HEAD` 有没有未 re-vendor 的 core 改动，非空
-/// 发**可见的 `cargo:warning`**。**上游仓缺席（CI/Windows）→ 静默 no-op，绝不拖垮构建**
-/// （同 `embed_backends` 二进制缺席 no-op）。软警告非硬失败——开发期上游领先副本是常态。
-fn check_vendor_freshness() {
-    // vendor 随唯一消费者搬进 `src/panorama-engine/vendor/`；本检查原地留在这里、只改住址。
-    let vendor_md = Path::new("../../panorama-engine/vendor/code-picture-core/VENDOR.md");
-    println!("cargo:rerun-if-changed={}", vendor_md.display());
-    let Ok(text) = std::fs::read_to_string(vendor_md) else {
-        return;
-    };
-    let (Some(pin), Some(up)) = (
-        extract_backtick_after(&text, "vendored commit:"),
-        extract_backtick_after(&text, "上游仓:"),
-    ) else {
-        return;
-    };
-    let up = Path::new(&up);
-    if !up.join(".git").exists() {
-        return; // 上游仓缺席 → no-op
-    }
-    let Ok(out) = std::process::Command::new("git")
-        .arg("-C")
-        .arg(up)
-        .args([
-            "log",
-            "--oneline",
-            &format!("{pin}..HEAD"),
-            "--",
-            // 只比对**真被 vendor 的内容**（src + Cargo.toml）；tests/ 不 vendor，
-            // 上游只改 tests 的提交不该触发"过期"（审计建议收窄）。
-            "crates/code-picture-core/src",
-            "crates/code-picture-core/Cargo.toml",
-        ])
-        .output()
-    else {
-        return;
-    };
-    let n = out
-        .stdout
-        .split(|&b| b == b'\n')
-        .filter(|l| !l.is_empty())
-        .count();
-    if n > 0 {
-        println!(
-            "cargo:warning=vendor code-picture-core 过期:上游 core 有 {n} 个未 re-vendor 的提交(pin={pin})。见 src/panorama-engine/vendor/code-picture-core/VENDOR.md 的 re-vendor 菜谱。"
-        );
-    }
-}
-
-/// 从含 `label` 的行里抠出**第一个反引号包裹**的内容（pin / 上游路径）。
-fn extract_backtick_after(text: &str, label: &str) -> Option<String> {
-    let line = text.lines().find(|l| l.contains(label))?;
-    let after = &line[line.find(label)? + label.len()..];
-    let start = after.find('`')? + 1;
-    let rel_end = after[start..].find('`')?;
-    Some(after[start..start + rel_end].to_string())
 }
 
 /// 从后端源码（[`backend_lib_rs`]，现打 `src/backend/lib.rs`）提取 `const BUILD_ID`，
@@ -536,45 +474,6 @@ fn embed_backends() {
     }
 }
 
-/// 把交叉编译好的**全景小程序**（`src/panorama-engine`，只装代码全景引擎的
-/// 独立二进制，用户 09-24 V108 选 B）两个 musl arch 复制进 OUT_DIR，置 `embedded_panoramas` cfg；
-/// 任一缺失 ⇒ 不置 cfg ＋ **可见的** warning（`byte_table::choose` 那一格答「这一版没带」〔原先点的是 `panorama_bytes` 里一个按两个词取字节的函数，删了〕，
-/// 远端全景那一台就只能报「这台机器上还没装」）。
-///
-/// # 与 [`embed_backends`] 同一个落点、同一条配方，**不同的一件事**
-///
-/// - 落点同是 [`EMBEDDED_BACKENDS_DIR`]（远端部署产物那一类；已被 gitignore 挡着），
-///   文件名 `cc-monitor-panorama-<arch>`。产它的同样只有两条路：发版那趟 `release.yml` 的
-///   `Cross-compile panorama for both musl targets`，本机那趟 [`REEMBED_CMD`]（配方逐字同源）。
-/// - **没有身份戳、没有半 bump 守卫**：它不随 `BUILD_ID` 走（后端的协议面与它无关），
-///   「这份字节与源码是不是同一代」由 [`REEMBED_CMD`] 的 `--check` 真起一趟 `--probe`、
-///   比它报的能力表与源码那张 op 表来答（能跑的那个 arch）。
-/// - ⚠ **缺席不 panic**：它是「只传给开过远端全景的机器」的可选件，缺了只是远端全景那一格关着，
-///   不是「装出去就无限重装」那种坏。
-fn embed_panoramas() {
-    println!("cargo:rustc-check-cfg=cfg(embedded_panoramas)");
-    let out = std::env::var("OUT_DIR").expect("OUT_DIR");
-    let dir = Path::new(EMBEDDED_BACKENDS_DIR);
-    let mut all = true;
-    for arch in ["x86_64", "aarch64"] {
-        let src = dir.join(format!("cc-monitor-panorama-{arch}"));
-        println!("cargo:rerun-if-changed={}", src.display());
-        if src.exists() {
-            let dst = Path::new(&out).join(format!("panorama-{arch}"));
-            std::fs::copy(&src, &dst).expect("copy embedded panorama binary");
-        } else {
-            println!(
-                "cargo:warning=缺少内嵌全景小程序 {arch}（{}）——远端代码全景那一格将没有字节可推（embedded_panoramas cfg 不置）。要它就跑 `{REEMBED_CMD}`",
-                src.display()
-            );
-            all = false;
-        }
-    }
-    if all {
-        println!("cargo:rustc-cfg=embedded_panoramas");
-    }
-}
-
 /// 目标平台的可执行后缀。
 ///
 /// 🔴 **由 `TARGET` 算，不许用 `std::env::consts::EXE_SUFFIX`** —— build script 跑在
@@ -758,60 +657,6 @@ fn embed_native_backend() {
     println!("cargo:rustc-cfg=embedded_native_backend");
 }
 
-/// 本机原生全景小程序的文件名（落点目录同 [`NATIVE_BACKEND_DIR`]，旁挂 `.target` 清单同那一对）。
-/// `byte_table.rs`（全仓唯一的取字节口）用**同一条路径的字面量** `include_bytes!` 它
-/// （四处同一个串：本常量 · 那个字面量 · `re-embed.sh --native` · `release.yml` 的 Windows 那一格 —— 判据对拍）。
-const NATIVE_PANORAMA_FILE: &str = "cc-monitor-panorama";
-
-/// 〔V108 后半句「之后本机也走这条路、monitor 摘内嵌引擎」〕**把本机原生的全景小程序也内嵌进 exe**。
-///
-/// # 为什么要它
-///
-/// monitor 摘掉内嵌引擎之后，本机全景 = 「本机后端 → 插件口 → `cc-monitor-panorama`」。本机后端要在
-/// `~/.cc-monitor/bin/` 找到一份**这台机器能跑的**小程序 ⇒ 字节得跟着 monitor 走（本机不经推送，
-/// 由 monitor 放下来：`local_backend::place_local_program`）。Linux 本机用远端那两份 musl 就跑得起来
-/// （本机那一份的第二个来源，`byte_table::pick` 的全景那一臂）；**Windows / macOS 本机没有**，只能按 `TARGET` 原生编一份。
-///
-/// # 形状与 [`embed_native_backend`] 同一套（理由逐字住那里，不抄第二份）
-///
-/// 定死名字（消费侧 `include_bytes!` 要字面量）· 旁挂 `.target` 清单（名字里没有 triple，只能靠它）·
-/// 对不上当场 panic（内嵌一个别的平台的程序 = 放到用户盘上起不来）· 缺席 ⇒ 不置 cfg ＋ **可见的** warning。
-/// ⚠ **没有身份戳、没有半 bump 守卫**：它不随 `BUILD_ID` 走（同 [`embed_panoramas`] 那一条）；
-/// 「与源码是不是同一代」由 [`REEMBED_CMD`] 的 `--check` 真起一趟 `--probe` 比能力表来答。
-/// ⚠ **不往 `OUT_DIR` 拷**（同 [`embed_native_backend`] 末尾那条：少一个要申报的写点）。
-fn embed_native_panorama() {
-    println!("cargo:rustc-check-cfg=cfg(embedded_native_panorama)");
-    let target = std::env::var("TARGET").unwrap_or_else(|_| "unknown-target".into());
-    let dir = Path::new(NATIVE_BACKEND_DIR);
-    let src = dir.join(NATIVE_PANORAMA_FILE);
-    let target_manifest = dir.join(format!("{NATIVE_PANORAMA_FILE}.target"));
-    for f in [&src, &target_manifest] {
-        println!("cargo:rerun-if-changed={}", f.display());
-    }
-    if !src.exists() {
-        println!(
-            "cargo:warning=没有本机内嵌全景小程序（src/frontend/shell/{}）⇒ 这一趟编出来的可执行文件在**非 Linux 本机**上\
-             没有代码全景（Linux 本机用远端那两份 musl 字节，若铺了）。要它：`{REEMBED_CMD} --native`。",
-            src.display()
-        );
-        return;
-    }
-    let staged_target = read_trimmed(&target_manifest);
-    if staged_target != target {
-        panic!(
-            "本机内嵌全景小程序（src/frontend/shell/{}）是给 `{}` 编的，而这一趟的 TARGET 是 `{target}`。\n\
-             （清单读作 `{staged_target}`；空串 = 根本没有 `{}.target` 这个文件。）\n\
-             内嵌一个别的平台的程序 = 放到用户盘上起不来。\
-             出路二选一，**两条都是同一条命令**：① `{REEMBED_CMD} --native` 为这一趟的 TARGET 重编重铺；\
-             ② `{REEMBED_CMD} --clean` 删掉落点（本机全景诚实关着，编译立刻恢复）。",
-            src.display(),
-            staged_target,
-            NATIVE_PANORAMA_FILE,
-        );
-    }
-    println!("cargo:rustc-cfg=embedded_native_panorama");
-}
-
 /// 文件窗口那份程序的文件名（落点目录同 [`NATIVE_BACKEND_DIR`]，旁挂 `.target` 清单同那两份）。
 /// 与 `filewin::proc::BIN_STEM`（monitor 包那个 `[[bin]]` 的名字）是同一个词；`byte_table.rs` 用**同一条路径的字面量**
 /// `include_bytes!` 它；`re-embed.sh --native` 与 `release.yml` 两个 job 按同一个名字铺（判据对拍）。
@@ -820,7 +665,7 @@ const NATIVE_FILEWIN_FILE: &str = "cc-monitor-filewin";
 /// **把文件窗口那份程序也内嵌进 exe**：单文件的 monitor 自己带着它，开窗时旁边没有就放到 `~/.cc-monitor/bin/` 再起
 /// （`filewin::proc::resolve_window_bin`）。
 ///
-/// # 形状与 [`embed_native_panorama`] 同一套
+/// # 形状与 [`embed_native_backend`] 同一套
 ///
 /// 定死名字（消费侧 `include_bytes!` 要字面量）· 旁挂 `.target` 清单（名字里没有 triple）· 对不上当场 panic
 /// （内嵌一个别的平台的程序 = 放到用户盘上起不来）· 缺席 ⇒ 不置 cfg ＋ **可见的** warning。

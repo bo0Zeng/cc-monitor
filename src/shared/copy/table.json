@@ -241,7 +241,7 @@
     },
     "rsToolRegistry.tools.accountsVaultNote": {
       "kind": "body",
-      "zh": "账号库：清单 accounts.json、每个号的目录和改动前的备份都在这里。启用多账号时，这台现在登录的身份文件（~/.claude/.credentials.json、~/.claude.json）会搬进默认号的目录。",
+      "zh": "账号库：清单 accounts.json、每个号的目录和改动前的备份都在这里。启用多账号时，这台现在登录的身份文件（~/.claude/.credentials.json、~/.claude.json）会搬进默认号的目录。之后各号的 .claude.json 里只有用户级 MCP 那一段会被同步改写，各号共用一份，别的内容一个字节不碰。",
       "args": []
     },
     "beAcctExec.apply.stopped": {
@@ -1827,36 +1827,6 @@
       "zh": "这一版 cc-monitor 没有带 {os} / {arch} 的后端，所以装不到 {machine}。发布版带着它。",
       "args": ["machine", "os", "arch"]
     },
-    "panorama.refused.unsupportedMachine": {
-      "kind": "error",
-      "zh": "{machine} 是 {os} / {arch} 的机器，cc-monitor 没有这种机器用的代码全景组件。那台机器上看不了代码全景。",
-      "args": ["machine", "os", "arch"]
-    },
-    "panorama.refused.osUnknown": {
-      "kind": "error",
-      "zh": "问不出 {machine} 是什么系统，不知道该给它哪一份代码全景组件。查了什么：问过它，{why}。",
-      "args": ["machine", "why"]
-    },
-    "panorama.refused.archUnknown": {
-      "kind": "error",
-      "zh": "问不出 {machine} 是什么处理器架构，挑不出该给它的代码全景组件。查了什么：问过它，{why}。",
-      "args": ["machine", "why"]
-    },
-    "panorama.refused.notPromisedHere": {
-      "kind": "error",
-      "zh": "{machine} 是 {os} 机器，这种系统只在本机放代码全景组件，不装到远端。",
-      "args": ["machine", "os"]
-    },
-    "panorama.refused.notPromisedLocal": {
-      "kind": "error",
-      "zh": "本机不放代码全景组件：{machine} 是 {os} / {arch}，cc-monitor 不支持这种机器。",
-      "args": ["machine", "os", "arch"]
-    },
-    "panorama.refused.notCarried": {
-      "kind": "error",
-      "zh": "这一版 cc-monitor 没有带 {os} / {arch} 的代码全景组件，所以装不到 {machine}。发布版带着它。",
-      "args": ["machine", "os", "arch"]
-    },
     "liveCard.state.streaming": {
       "kind": "body",
       "zh": "生成中…",
@@ -2770,1207 +2740,6 @@
       "zh": "✕",
       "args": []
     },
-    "panorama.confidenceHint.dynamicGuess": {
-      "kind": "body",
-      "zh": "动态猜测：接收者类型未知，尽力猜测",
-      "args": []
-    },
-    "panorama.confidenceHint.heuristic": {
-      "kind": "body",
-      "zh": "启发：多个候选，按启发式选定",
-      "args": []
-    },
-    "panorama.confidenceHint.dispatch": {
-      "kind": "body",
-      "zh": "动态派发：候选是某个 trait 或接口在仓内的全部实现。运行时才定是哪一个。",
-      "args": []
-    },
-    "panorama.confidenceHint.exact": {
-      "kind": "body",
-      "zh": "精确：全局唯一名匹配（未验证 import / 作用域）",
-      "args": []
-    },
-    "panorama.confidenceLabel.dynamicGuess": {
-      "kind": "body",
-      "zh": "动态猜测",
-      "args": []
-    },
-    "panorama.confidenceLabel.heuristic": {
-      "kind": "body",
-      "zh": "启发",
-      "args": []
-    },
-    "panorama.confidenceLabel.dispatch": {
-      "kind": "body",
-      "zh": "派发",
-      "args": []
-    },
-    "panorama.confidenceLabel.exact": {
-      "kind": "body",
-      "zh": "精确",
-      "args": []
-    },
-    "panorama.originLabel.unknown": {
-      "kind": "body",
-      "zh": "来源未记录",
-      "args": []
-    },
-    "panorama.originLabel.agent": {
-      "kind": "body",
-      "zh": "agent 提议",
-      "args": []
-    },
-    "panorama.originLabel.human": {
-      "kind": "body",
-      "zh": "人写",
-      "args": []
-    },
-    "panorama.sidebarStatus.symbols": {
-      "kind": "title",
-      "zh": "符号",
-      "args": []
-    },
-    "panorama.sidebar.closeHint": {
-      "kind": "body",
-      "zh": "关闭侧栏 (Esc)",
-      "args": []
-    },
-    "panorama.sidebar.close": {
-      "kind": "action",
-      "zh": "✕",
-      "args": []
-    },
-    "panorama.copyButton.failed": {
-      "kind": "error",
-      "zh": "复制失败",
-      "args": []
-    },
-    "panorama.copyButton.copied": {
-      "kind": "action",
-      "zh": "已复制 ✓",
-      "args": []
-    },
-    "panorama.copyButton.noClipboard": {
-      "kind": "error",
-      "zh": "这里用不了剪贴板。",
-      "args": []
-    },
-    "panorama.copyButton.empty": {
-      "kind": "error",
-      "zh": "图还没画出来。",
-      "args": []
-    },
-    "panorama.copyButton.emptyTitle": {
-      "kind": "error",
-      "zh": "没有可复制的内容",
-      "args": []
-    },
-    "panorama.copyButton.mermaidHint": {
-      "kind": "body",
-      "zh": "复制上游画好的 Mermaid 原文",
-      "args": []
-    },
-    "panorama.copyButton.agentHint": {
-      "kind": "body",
-      "zh": "复制一段能贴进对话的文本。里面有仓、对象、索引时间，以及有多少看不见、分不清。",
-      "args": []
-    },
-    "panorama.copyButton.agent": {
-      "kind": "action",
-      "zh": "复制给 agent",
-      "args": []
-    },
-    "panorama.decide.deleteFailed": {
-      "kind": "error",
-      "zh": "删除失败",
-      "args": []
-    },
-    "panorama.decide.approveFailed": {
-      "kind": "error",
-      "zh": "批准失败",
-      "args": []
-    },
-    "panorama.decide.gone": {
-      "kind": "error",
-      "zh": "这条批注已经不在了，可能在别处删掉了。已重新列出。",
-      "args": []
-    },
-    "panorama.decide.goneTitle": {
-      "kind": "error",
-      "zh": "那条批注已不在",
-      "args": []
-    },
-    "panorama.queue.activeHead": {
-      "kind": "title",
-      "zh": "已生效",
-      "args": []
-    },
-    "panorama.queue.proposedHead": {
-      "kind": "title",
-      "zh": "待审",
-      "args": []
-    },
-    "panorama.queue.deleteHint": {
-      "kind": "body",
-      "zh": "删掉这条批注（落在仓里的文件一起删）",
-      "args": []
-    },
-    "panorama.queue.rejectHint": {
-      "kind": "body",
-      "zh": "驳回 = 删掉这条提议",
-      "args": []
-    },
-    "panorama.queue.delete": {
-      "kind": "action",
-      "zh": "删除",
-      "args": []
-    },
-    "panorama.queue.reject": {
-      "kind": "action",
-      "zh": "驳回",
-      "args": []
-    },
-    "panorama.queue.approveHint": {
-      "kind": "body",
-      "zh": "批准后变为生效，agent 才看得见",
-      "args": []
-    },
-    "panorama.queue.approve": {
-      "kind": "action",
-      "zh": "批准",
-      "args": []
-    },
-    "panorama.queue.fileLevel": {
-      "kind": "body",
-      "zh": "{file}（文件级）",
-      "args": ["file"]
-    },
-    "panorama.queue.noneActive": {
-      "kind": "body",
-      "zh": "还没有",
-      "args": []
-    },
-    "panorama.queue.noneProposed": {
-      "kind": "body",
-      "zh": "没有待审的",
-      "args": []
-    },
-    "panorama.queue.unknown": {
-      "kind": "body",
-      "zh": "另有 {other} 条批注的状态这里认不出来，没有列出。",
-      "args": ["other"]
-    },
-    "panorama.queue.intro": {
-      "kind": "body",
-      "zh": "待审的是 agent 提议的批注，批准前 agent 看不见它。驳回会直接删掉那一条。",
-      "args": []
-    },
-    "panorama.queue.count": {
-      "kind": "title",
-      "zh": "{proposed} 条待审 · {active} 条已生效",
-      "args": ["proposed", "active"]
-    },
-    "panorama.queue.title": {
-      "kind": "title",
-      "zh": "批注审批",
-      "args": []
-    },
-    "panorama.queue.failed": {
-      "kind": "error",
-      "zh": "读取批注失败",
-      "args": []
-    },
-    "panorama.queue.failedInline": {
-      "kind": "error",
-      "zh": "读取批注失败：{e}",
-      "args": ["e"]
-    },
-    "panorama.queue.loading": {
-      "kind": "body",
-      "zh": "读取批注…",
-      "args": []
-    },
-    "panorama.noRepo.short": {
-      "kind": "error",
-      "zh": "当前没有在看的仓库。",
-      "args": []
-    },
-    "panorama.queue.cannotTitle": {
-      "kind": "error",
-      "zh": "无法列批注",
-      "args": []
-    },
-    "panorama.drift.failed": {
-      "kind": "error",
-      "zh": "文档漂移查询失败",
-      "args": []
-    },
-    "panorama.drift.failedInline": {
-      "kind": "error",
-      "zh": "查漂移失败：{e}",
-      "args": ["e"]
-    },
-    "panorama.drift.none": {
-      "kind": "body",
-      "zh": "没有悬空文档链接 ✓",
-      "args": []
-    },
-    "panorama.drift.snapshotNote": {
-      "kind": "body",
-      "zh": "这是上次索引时的样子，改了代码请先「刷新」再查。",
-      "args": []
-    },
-    "panorama.drift.count": {
-      "kind": "title",
-      "zh": "{n} 处悬空链接",
-      "args": ["n"]
-    },
-    "panorama.drift.title": {
-      "kind": "title",
-      "zh": "文档漂移",
-      "args": []
-    },
-    "panorama.drift.checking": {
-      "kind": "body",
-      "zh": "检查文档漂移…",
-      "args": []
-    },
-    "panorama.drift.cannotTitle": {
-      "kind": "error",
-      "zh": "无法查漂移",
-      "args": []
-    },
-    "panorama.fileSymbols.failed": {
-      "kind": "error",
-      "zh": "加载符号失败：{e}",
-      "args": ["e"]
-    },
-    "panorama.fileSymbols.count": {
-      "kind": "body",
-      "zh": "{n} 个符号 · 点击看 callers/callees",
-      "args": ["n"]
-    },
-    "panorama.fileSymbols.none": {
-      "kind": "body",
-      "zh": "这个文件没有已索引的符号。可能是符号太少、解析失败，或者它不是代码文件。",
-      "args": []
-    },
-    "panorama.fileDetail.loading": {
-      "kind": "body",
-      "zh": "加载符号…",
-      "args": []
-    },
-    "panorama.fileDetail.entryYes": {
-      "kind": "body",
-      "zh": "是（entry point）",
-      "args": []
-    },
-    "panorama.fileDetail.entry": {
-      "kind": "title",
-      "zh": "入口点",
-      "args": []
-    },
-    "panorama.fileDetail.subsystem": {
-      "kind": "title",
-      "zh": "子系统",
-      "args": []
-    },
-    "panorama.fileDetail.symbols": {
-      "kind": "title",
-      "zh": "符号数",
-      "args": []
-    },
-    "panorama.fileDetail.file": {
-      "kind": "title",
-      "zh": "文件",
-      "args": []
-    },
-    "panorama.edgeSection.none": {
-      "kind": "body",
-      "zh": "没有，或者没解析出来",
-      "args": []
-    },
-    "panorama.subgraph.impactHint": {
-      "kind": "body",
-      "zh": "改这个符号会波及谁：所有间接调用到它的地方，不只一跳",
-      "args": []
-    },
-    "panorama.subgraph.impact": {
-      "kind": "action",
-      "zh": "影响面",
-      "args": []
-    },
-    "panorama.subgraph.expand": {
-      "kind": "action",
-      "zh": "展开子图",
-      "args": []
-    },
-    "panorama.subgraph.failed": {
-      "kind": "error",
-      "zh": "读不到：{e}",
-      "args": ["e"]
-    },
-    "panorama.subgraph.noCallers": {
-      "kind": "body",
-      "zh": "没有谁会调用到它",
-      "args": []
-    },
-    "panorama.subgraph.emptyNeighbors": {
-      "kind": "body",
-      "zh": "没有相邻的符号",
-      "args": []
-    },
-    "panorama.subgraph.loading": {
-      "kind": "body",
-      "zh": "读取中…",
-      "args": []
-    },
-    "panorama.subgraph.layer": {
-      "kind": "body",
-      "zh": "第 {depth} 跳（{n} 条）",
-      "args": ["depth", "n"]
-    },
-    "panorama.subgraph.layerTruncated": {
-      "kind": "body",
-      "zh": "第 {depth} 跳（{n} 条，还有 {truncated} 条没显示）",
-      "args": ["depth", "n", "truncated"]
-    },
-    "panorama.subgraph.hops": {
-      "kind": "control",
-      "zh": "{d} 跳",
-      "args": ["d"]
-    },
-    "panorama.subgraph.title": {
-      "kind": "title",
-      "zh": "调用子图 / 影响面",
-      "args": []
-    },
-    "panorama.mutateAnnotation.failed": {
-      "kind": "error",
-      "zh": "批注操作失败",
-      "args": []
-    },
-    "panorama.docLink.link": {
-      "kind": "action",
-      "zh": "关联",
-      "args": []
-    },
-    "panorama.docLink.placeholder": {
-      "kind": "control",
-      "zh": "填一个 .md 的仓库相对路径，关联到这个符号…",
-      "args": []
-    },
-    "panorama.docLink.title": {
-      "kind": "title",
-      "zh": "关联文档",
-      "args": []
-    },
-    "panorama.annotation.add": {
-      "kind": "action",
-      "zh": "添加批注",
-      "args": []
-    },
-    "panorama.annotation.placeholder": {
-      "kind": "control",
-      "zh": "给这个符号写条批注，会存进仓库、跟代码一起提交",
-      "args": []
-    },
-    "panorama.annotation.delete": {
-      "kind": "action",
-      "zh": "删除",
-      "args": []
-    },
-    "panorama.annotation.pending": {
-      "kind": "body",
-      "zh": " · 待批准",
-      "args": []
-    },
-    "panorama.annotation.head": {
-      "kind": "title",
-      "zh": "批注（{n}）",
-      "args": ["n"]
-    },
-    "panorama.nodeDetail.docSource": {
-      "kind": "body",
-      "zh": "来源：{source}{symbol}",
-      "args": ["source", "symbol"]
-    },
-    "panorama.nodeDetail.docs": {
-      "kind": "title",
-      "zh": "关联文档（{n}）",
-      "args": ["n"]
-    },
-    "panorama.nodeDetail.callers": {
-      "kind": "title",
-      "zh": "被调用（callers）",
-      "args": []
-    },
-    "panorama.nodeDetail.callees": {
-      "kind": "title",
-      "zh": "调用了（callees）",
-      "args": []
-    },
-    "panorama.nodeDetail.kind": {
-      "kind": "title",
-      "zh": "类型",
-      "args": []
-    },
-    "panorama.nodeDetail.lang": {
-      "kind": "title",
-      "zh": "语言",
-      "args": []
-    },
-    "panorama.nodeDetail.location": {
-      "kind": "title",
-      "zh": "位置",
-      "args": []
-    },
-    "panorama.nodeDetail.qualifiedId": {
-      "kind": "title",
-      "zh": "全限定 id",
-      "args": []
-    },
-    "panorama.nodeDetail.signature": {
-      "kind": "title",
-      "zh": "签名",
-      "args": []
-    },
-    "panorama.nodeDetail.failed": {
-      "kind": "error",
-      "zh": "符号详情加载失败",
-      "args": []
-    },
-    "panorama.nodeDetail.failedInline": {
-      "kind": "error",
-      "zh": "加载失败：{e}",
-      "args": ["e"]
-    },
-    "panorama.nodeDetail.notFound": {
-      "kind": "error",
-      "zh": "未找到符号：{id}",
-      "args": ["id"]
-    },
-    "panorama.nodeDetail.loading": {
-      "kind": "body",
-      "zh": "加载符号详情…",
-      "args": []
-    },
-    "panorama.searchResults.none": {
-      "kind": "body",
-      "zh": "没有匹配的符号。试试函数、方法或类名里的一段。",
-      "args": []
-    },
-    "panorama.searchResults.count": {
-      "kind": "title",
-      "zh": "{n} 个符号",
-      "args": ["n"]
-    },
-    "panorama.searchResults.title": {
-      "kind": "title",
-      "zh": "搜索「{query}」",
-      "args": ["query"]
-    },
-    "panorama.runSearch.failed": {
-      "kind": "error",
-      "zh": "符号搜索失败",
-      "args": []
-    },
-    "panorama.runSearch.failedInline": {
-      "kind": "error",
-      "zh": "搜索失败：{e}",
-      "args": ["e"]
-    },
-    "panorama.runSearch.searching": {
-      "kind": "body",
-      "zh": "搜索中…",
-      "args": []
-    },
-    "panorama.showTooltip.meta": {
-      "kind": "body",
-      "zh": "score {score} · {symbols} 符号 · {subsystem}{entry}",
-      "args": ["score", "symbols", "subsystem", "entry"]
-    },
-    "panorama.showTooltip.entry": {
-      "kind": "body",
-      "zh": " · 入口点",
-      "args": []
-    },
-    "panorama.showLoading.cancelling": {
-      "kind": "body",
-      "zh": "正在取消…",
-      "args": []
-    },
-    "panorama.showLoading.cancel": {
-      "kind": "action",
-      "zh": "取消",
-      "args": []
-    },
-    "panorama.indexProgress.line": {
-      "kind": "body",
-      "zh": "{phase}：{done} / {total}",
-      "args": ["phase", "done", "total"]
-    },
-    "panorama.indexProgress.parse": {
-      "kind": "body",
-      "zh": "解析源文件",
-      "args": []
-    },
-    "panorama.indexProgress.link": {
-      "kind": "body",
-      "zh": "建立调用关系",
-      "args": []
-    },
-    "panorama.indexProgress.relink": {
-      "kind": "body",
-      "zh": "补全调用关系",
-      "args": []
-    },
-    "panorama.indexProgress.docs": {
-      "kind": "body",
-      "zh": "扫描文档",
-      "args": []
-    },
-    "panorama.highlightLegend.text": {
-      "kind": "body",
-      "zh": "本会话改了 {total} 个文件，图上高亮 {shown} 个{rest}",
-      "args": ["total", "shown", "rest"]
-    },
-    "panorama.highlightLegend.rest": {
-      "kind": "body",
-      "zh": "，其余 {extra} 个不是核心文件或不在本仓，没画",
-      "args": ["extra"]
-    },
-    "panorama.build.clearHighlight": {
-      "kind": "action",
-      "zh": "清除高亮",
-      "args": []
-    },
-    "panorama.build.annotationsHint": {
-      "kind": "body",
-      "zh": "列出本仓全部批注：agent 提议、待你批准的在上；批准后 agent 才看得见。",
-      "args": []
-    },
-    "panorama.build.annotations": {
-      "kind": "action",
-      "zh": "批注审批",
-      "args": []
-    },
-    "panorama.build.driftHint": {
-      "kind": "body",
-      "zh": "仓里 .md 指向的目标文件/符号已失效（悬空链接）。反映上次索引快照，改了代码请先刷新。",
-      "args": []
-    },
-    "panorama.build.drift": {
-      "kind": "action",
-      "zh": "文档漂移",
-      "args": []
-    },
-    "panorama.build.refreshHint": {
-      "kind": "body",
-      "zh": "重建索引（改了代码后刷新全景）",
-      "args": []
-    },
-    "panorama.build.refresh": {
-      "kind": "action",
-      "zh": "刷新",
-      "args": []
-    },
-    "panorama.build.fitHint": {
-      "kind": "body",
-      "zh": "重置视图，居中铺满",
-      "args": []
-    },
-    "panorama.build.fit": {
-      "kind": "action",
-      "zh": "适配",
-      "args": []
-    },
-    "panorama.build.search": {
-      "kind": "control",
-      "zh": "搜索符号：函数、方法或类名的一段，回车",
-      "args": []
-    },
-    "panorama.build.followHint": {
-      "kind": "body",
-      "zh": "撤掉手选的仓，回到活跃会话的工作目录",
-      "args": []
-    },
-    "panorama.build.follow": {
-      "kind": "action",
-      "zh": "跟随会话",
-      "args": []
-    },
-    "panorama.build.pickHint": {
-      "kind": "body",
-      "zh": "自己挑一个本机目录看全景，不跟着活跃会话走",
-      "args": []
-    },
-    "panorama.build.pick": {
-      "kind": "action",
-      "zh": "换仓…",
-      "args": []
-    },
-    "panorama.chrome.title": {
-      "kind": "title",
-      "zh": "代码全景",
-      "args": []
-    },
-    "panorama.build.back": {
-      "kind": "action",
-      "zh": "← 返回",
-      "args": []
-    },
-    "panorama.refresh.failed": {
-      "kind": "error",
-      "zh": "重建索引失败",
-      "args": []
-    },
-    "panorama.load.loading": {
-      "kind": "body",
-      "zh": "加载全景…",
-      "args": []
-    },
-    "panorama.refresh.rebuilding": {
-      "kind": "body",
-      "zh": "重建索引中…",
-      "args": []
-    },
-    "panorama.highlightSession.failed": {
-      "kind": "error",
-      "zh": "高亮会话改动失败",
-      "args": []
-    },
-    "panorama.highlightSession.nothing": {
-      "kind": "error",
-      "zh": "该会话没有用编辑类工具改过文件。",
-      "args": []
-    },
-    "panorama.highlightSession.nothingTitle": {
-      "kind": "error",
-      "zh": "无改动可高亮",
-      "args": []
-    },
-    "panorama.highlightSession.noRepo": {
-      "kind": "error",
-      "zh": "当前没有在看的仓库，无法高亮会话改动。",
-      "args": []
-    },
-    "panorama.highlightSession.cannotTitle": {
-      "kind": "error",
-      "zh": "无法高亮",
-      "args": []
-    },
-    "panorama.applyOverview.emptyHint": {
-      "kind": "body",
-      "zh": "这个仓的符号太少，或者大部分文件解析失败。顶部的覆盖情况会说明是哪种；仍可以用上方搜索框查符号。",
-      "args": []
-    },
-    "panorama.applyOverview.emptyTitle": {
-      "kind": "title",
-      "zh": "没有可以画出来的核心文件",
-      "args": []
-    },
-    "panorama.showIndexCancelled.rebuild": {
-      "kind": "action",
-      "zh": "重新建立索引",
-      "args": []
-    },
-    "panorama.showIndexCancelled.hint": {
-      "kind": "body",
-      "zh": "那一趟已经停下，这个仓的索引没有建完。想看全景时再点一次。",
-      "args": []
-    },
-    "panorama.showIndexCancelled.title": {
-      "kind": "title",
-      "zh": "已取消建立索引",
-      "args": []
-    },
-    "panorama.enableAndIndex.failed": {
-      "kind": "error",
-      "zh": "建立索引失败",
-      "args": []
-    },
-    "panorama.enableAndIndex.indexing": {
-      "kind": "body",
-      "zh": "首次建立索引中…（大仓较慢，请稍候）",
-      "args": []
-    },
-    "panorama.load.failedShort": {
-      "kind": "body",
-      "zh": "加载失败",
-      "args": []
-    },
-    "panorama.load.failed": {
-      "kind": "error",
-      "zh": "全景加载失败",
-      "args": []
-    },
-    "panorama.load.stale": {
-      "kind": "body",
-      "zh": "索引过期了，正在重建…",
-      "args": []
-    },
-    "panorama.load.build": {
-      "kind": "action",
-      "zh": "建立索引",
-      "args": []
-    },
-    "panorama.load.noIndexBody": {
-      "kind": "body",
-      "zh": "全景图需先解析本仓代码（tree-sitter，大仓较慢）。索引是纯缓存，存在 cc-monitor 数据目录、不写进你的仓库。点下方按钮启用本仓代码分析。",
-      "args": []
-    },
-    "panorama.load.noIndexTitle": {
-      "kind": "title",
-      "zh": "这个仓还没有代码索引",
-      "args": []
-    },
-    "panorama.load.checking": {
-      "kind": "body",
-      "zh": "检查索引状态…",
-      "args": []
-    },
-    "panorama.pickRepo.failed": {
-      "kind": "error",
-      "zh": "打不开选目录对话框",
-      "args": []
-    },
-    "panorama.pickRepo.dialogTitle": {
-      "kind": "title",
-      "zh": "选一个本机仓看代码全景",
-      "args": []
-    },
-    "panorama.repoChrome.title": {
-      "kind": "title",
-      "zh": "代码全景 · {repo}{where}（{src}）",
-      "args": ["repo", "where", "src"]
-    },
-    "panorama.repoChrome.remote": {
-      "kind": "body",
-      "zh": " · 远端 {machine}",
-      "args": ["machine"]
-    },
-    "panorama.repoChrome.follow": {
-      "kind": "body",
-      "zh": "跟随会话",
-      "args": []
-    },
-    "panorama.repoChrome.manual": {
-      "kind": "body",
-      "zh": "手选",
-      "args": []
-    },
-    "panorama.showSideList.empty": {
-      "kind": "body",
-      "zh": "没有可列的条目",
-      "args": []
-    },
-    "panorama.evaluateRepo.noRepoHint": {
-      "kind": "body",
-      "zh": "当前没有活跃会话，或活跃会话没有已知工作目录。切到一个本地会话再打开全景。",
-      "args": []
-    },
-    "panorama.evaluateRepo.noRepo": {
-      "kind": "title",
-      "zh": "没有可索引的仓库",
-      "args": []
-    },
-    "diagramHonesty.unresolved.na": {
-      "kind": "body",
-      "zh": "看不见：不适用",
-      "args": []
-    },
-    "diagramHonesty.unresolved.some": {
-      "kind": "body",
-      "zh": "看不见 {n} 处调用",
-      "args": ["n"]
-    },
-    "diagramHonesty.ambiguous.na": {
-      "kind": "body",
-      "zh": "分不清：不适用",
-      "args": []
-    },
-    "diagramHonesty.ambiguous.some": {
-      "kind": "body",
-      "zh": "分不清 {n} 处调用",
-      "args": ["n"]
-    },
-    "diagramHonesty.filtered.na": {
-      "kind": "body",
-      "zh": "滤掉：不适用",
-      "args": []
-    },
-    "diagramHonesty.filtered.some": {
-      "kind": "body",
-      "zh": "滤掉 {n} 条全靠名字凑的连接",
-      "args": ["n"]
-    },
-    "diagramHonesty.excluded.na": {
-      "kind": "body",
-      "zh": "排除：不适用",
-      "args": []
-    },
-    "diagramHonesty.excluded.some": {
-      "kind": "body",
-      "zh": "排除 {n} 个测试符号",
-      "args": ["n"]
-    },
-    "diagramHonesty.omitted.na": {
-      "kind": "body",
-      "zh": "省略：不适用",
-      "args": []
-    },
-    "diagramHonesty.omitted.some": {
-      "kind": "body",
-      "zh": "省略 {nodes} 个节点（{symbols} 个符号）、{links} 条连接",
-      "args": ["nodes", "symbols", "links"]
-    },
-    "diagramHonesty.dbErrors.none": {
-      "kind": "body",
-      "zh": "读索引没出错",
-      "args": []
-    },
-    "diagramHonesty.dbErrors.some": {
-      "kind": "body",
-      "zh": "读索引出错 {n} 处，这张图不完整",
-      "args": ["n"]
-    },
-    "diagramHonesty.line.sep": {
-      "kind": "body",
-      "zh": " · ",
-      "args": []
-    },
-    "agentClip.clip.honesty": {
-      "kind": "body",
-      "zh": "完整度：{honesty}",
-      "args": ["honesty"]
-    },
-    "agentClip.clip.diagramObject": {
-      "kind": "body",
-      "zh": "对象：图「{title}」（类型 {id}）{center}",
-      "args": ["title", "id", "center"]
-    },
-    "agentClip.clip.diagramCenter": {
-      "kind": "body",
-      "zh": " · 中心符号 {symbol}",
-      "args": ["symbol"]
-    },
-    "agentClip.clip.repo": {
-      "kind": "body",
-      "zh": "仓：{repo}",
-      "args": ["repo"]
-    },
-    "agentClip.clip.symbols": {
-      "kind": "body",
-      "zh": "符号（{n}）：",
-      "args": ["n"]
-    },
-    "agentClip.unsure.file": {
-      "kind": "body",
-      "zh": "分不清：文件级没有边 —— 边的确定度要点进符号那一级看",
-      "args": []
-    },
-    "agentClip.clip.fileObject": {
-      "kind": "body",
-      "zh": "对象：文件 {file}（子系统「{subsystem}」· {symbols} 个符号{entry}）",
-      "args": ["file", "subsystem", "symbols", "entry"]
-    },
-    "agentClip.clip.fileEntry": {
-      "kind": "body",
-      "zh": " · 含入口点",
-      "args": []
-    },
-    "agentClip.clip.annotations": {
-      "kind": "body",
-      "zh": "生效批注（{n}）：",
-      "args": ["n"]
-    },
-    "agentClip.clip.callers": {
-      "kind": "body",
-      "zh": "被调用（callers，{n}）：",
-      "args": ["n"]
-    },
-    "agentClip.clip.callees": {
-      "kind": "body",
-      "zh": "调用了（callees，{n}）：",
-      "args": ["n"]
-    },
-    "agentClip.clip.signature": {
-      "kind": "body",
-      "zh": "签名：{signature}",
-      "args": ["signature"]
-    },
-    "agentClip.clip.symbolObject": {
-      "kind": "body",
-      "zh": "对象：符号 {id}（{kind} · {lang} · {file}:{startLine}-{endLine}）",
-      "args": ["id", "kind", "lang", "file", "startLine", "endLine"]
-    },
-    "agentClip.unsure.symbol": {
-      "kind": "body",
-      "zh": "分不清：本符号 {allCount} 条直接边里 {unsure} 条按名字凑（启发 {heuristic} · 动态猜测 {dynamicGuess}），动态派发 {dispatch} 条，确定 {exact} 条",
-      "args": ["allCount", "unsure", "heuristic", "dynamicGuess", "dispatch", "exact"],
-      "waive": {
-        "C-L1": "给 agent 的剪贴文本，一行一个读数；拆成两句会把一组读数拆散"
-      }
-    },
-    "agentClip.unseen.counts": {
-      "kind": "body",
-      "zh": "看不见：全仓 {unresolvedCalls} 处调用未解析 · {parseErrors} 个文件解析失败 · 全景图只画了 {drawnFiles}/{totalFiles} 个文件",
-      "args": ["unresolvedCalls", "parseErrors", "drawnFiles", "totalFiles"],
-      "waive": {
-        "C-L1": "给 agent 的剪贴文本，一行一个读数；拆成两句会把一组读数拆散"
-      }
-    },
-    "agentClip.unseen.unknown": {
-      "kind": "body",
-      "zh": "看不见：全景没加载完，不知道漏了多少",
-      "args": []
-    },
-    "agentClip.stamp.line": {
-      "kind": "body",
-      "zh": "索引时间：{iso}（unix {indexedAt}）{stale}",
-      "args": ["iso", "indexedAt", "stale"]
-    },
-    "agentClip.stamp.stale": {
-      "kind": "body",
-      "zh": " · ⚠ 索引已陈旧：源文件在这次索引之后改过",
-      "args": []
-    },
-    "agentClip.stamp.none": {
-      "kind": "body",
-      "zh": "索引时间：本仓没有索引记录，这段内容的时效未知",
-      "args": []
-    },
-    "agentClip.stamp.failed": {
-      "kind": "body",
-      "zh": "索引时间：没取到（查索引状态失败），这段内容的时效未知",
-      "args": []
-    },
-    "agentClip.head.banner": {
-      "kind": "body",
-      "zh": "【代码全景 → agent】下面是某一次索引的快照，不是当前事实；用之前以代码为准。",
-      "args": []
-    },
-    "diagramRender.legend.compose": {
-      "kind": "body",
-      "zh": "实线：组合（字段类型）",
-      "args": []
-    },
-    "diagramRender.legend.implements": {
-      "kind": "body",
-      "zh": "虚线：实现 / 继承",
-      "args": []
-    },
-    "diagramRender.legend.guessSym": {
-      "kind": "body",
-      "zh": "点线加 ?：按名字凑（N 选 1）",
-      "args": []
-    },
-    "diagramRender.legend.dispatch": {
-      "kind": "body",
-      "zh": "虚线：动态派发",
-      "args": []
-    },
-    "diagramRender.legend.certainSym": {
-      "kind": "body",
-      "zh": "粗实线：确定",
-      "args": []
-    },
-    "diagramRender.legend.mixed": {
-      "kind": "body",
-      "zh": "细实线：混着的一捆，标签写出成分",
-      "args": []
-    },
-    "diagramRender.legend.guess": {
-      "kind": "body",
-      "zh": "点线加 ?：按名字凑的候选",
-      "args": []
-    },
-    "diagramRender.legend.certain": {
-      "kind": "body",
-      "zh": "粗实线：全部确定",
-      "args": []
-    },
-    "diagramRender.typeGraph.more": {
-      "kind": "body",
-      "zh": "…还有 {n} 项",
-      "args": ["n"]
-    },
-    "diagramRender.typeGraph.implements": {
-      "kind": "body",
-      "zh": "实现",
-      "args": []
-    },
-    "diagramRender.cluster.size": {
-      "kind": "body",
-      "zh": "{n} 符号 / {files} 文件",
-      "args": ["n", "files"]
-    },
-    "diagramRender.link.guessPart": {
-      "kind": "body",
-      "zh": "{guess} 分不清",
-      "args": ["guess"]
-    },
-    "diagramRender.link.dispatchPart": {
-      "kind": "body",
-      "zh": "{dispatch} 派发",
-      "args": ["dispatch"]
-    },
-    "diagramRender.link.exactPart": {
-      "kind": "body",
-      "zh": "{exact} 确定",
-      "args": ["exact"]
-    },
-    "diagramRender.link.guess": {
-      "kind": "body",
-      "zh": "{total}×分不清?",
-      "args": ["total"]
-    },
-    "diagramRender.link.dispatch": {
-      "kind": "body",
-      "zh": "{total}×派发",
-      "args": ["total"]
-    },
-    "diagramRender.edge.pick": {
-      "kind": "body",
-      "zh": "{base} {candidates} 选 1",
-      "args": ["base", "candidates"]
-    },
-    "diagramRender.edge.guess": {
-      "kind": "body",
-      "zh": "分不清?",
-      "args": []
-    },
-    "diagramRender.edge.dispatch": {
-      "kind": "body",
-      "zh": "派发",
-      "args": []
-    },
-    "diagramView.node.typeMembers": {
-      "kind": "body",
-      "zh": "{fields} 个字段 · {methods} 个方法",
-      "args": ["fields", "methods"]
-    },
-    "diagramView.node.typeSelf": {
-      "kind": "action",
-      "zh": "{name} · 类型本身",
-      "args": ["name"]
-    },
-    "diagramView.node.cluster": {
-      "kind": "body",
-      "zh": "{title} · {files} 个文件 · {n} 个符号",
-      "args": ["title", "files", "n"]
-    },
-    "diagramView.paint.unsupported": {
-      "kind": "body",
-      "zh": "画不出这种图（{shape}）。可以点「复制 Mermaid」拿到上游画好的文本。",
-      "args": ["shape"]
-    },
-    "diagramView.knobs.copyMermaid": {
-      "kind": "action",
-      "zh": "复制 Mermaid",
-      "args": []
-    },
-    "diagramView.knobs.maxNodes": {
-      "kind": "control",
-      "zh": "节点上限 ",
-      "args": []
-    },
-    "diagramView.knobs.maxNodesHint": {
-      "kind": "body",
-      "zh": "最多画几个节点；没画的写在图下面",
-      "args": []
-    },
-    "diagramView.knobs.excludeTestsHint": {
-      "kind": "body",
-      "zh": "架构讲的是产品的结构；排掉多少写在图下面",
-      "args": []
-    },
-    "diagramView.knobs.excludeTests": {
-      "kind": "control",
-      "zh": "排除测试",
-      "args": []
-    },
-    "diagramView.knobs.certainOnlyHint": {
-      "kind": "body",
-      "zh": "全靠名字凑、一条确定的都没有的连接不画；滤掉多少写在图下面",
-      "args": []
-    },
-    "diagramView.knobs.certainOnly": {
-      "kind": "control",
-      "zh": "只看确定的连接",
-      "args": []
-    },
-    "diagramView.picker.blocked": {
-      "kind": "control",
-      "zh": "{title} · 先点一个符号",
-      "args": ["title"]
-    },
-    "diagramView.picker.bubble": {
-      "kind": "control",
-      "zh": "气泡全景",
-      "args": []
-    },
-    "diagramView.redraw.failed": {
-      "kind": "error",
-      "zh": "画不出这张图：{e}",
-      "args": ["e"]
-    },
-    "diagramView.redraw.drawing": {
-      "kind": "body",
-      "zh": "画图中…",
-      "args": []
-    },
-    "diagramView.redraw.needSymbol": {
-      "kind": "body",
-      "zh": "「{title}」要以一个符号为中心：先在搜索或文件详情里点一个符号。",
-      "args": ["title"]
-    },
-    "diagramView.kinds.failed": {
-      "kind": "error",
-      "zh": "读不到图种清单",
-      "args": []
-    },
-    "diagramView.picker.hint": {
-      "kind": "body",
-      "zh": "选一种图；需要符号的图要先点一个符号",
-      "args": []
-    },
-    "layout.coverage.banner": {
-      "kind": "body",
-      "zh": "覆盖不全：{parts}（静态分析已知缺口）",
-      "args": ["parts"]
-    },
-    "layout.coverage.listSep": {
-      "kind": "body",
-      "zh": "、",
-      "args": []
-    },
-    "layout.coverage.parseErrors": {
-      "kind": "body",
-      "zh": "{n} 文件解析失败",
-      "args": ["n"]
-    },
-    "layout.coverage.unresolved": {
-      "kind": "body",
-      "zh": "{n} 处调用未解析",
-      "args": ["n"]
-    },
-    "layout.label.ellipsis": {
-      "kind": "body",
-      "zh": "{text}…",
-      "args": ["text"]
-    },
-    "layout.cluster.uncategorized": {
-      "kind": "body",
-      "zh": "· 未归类",
-      "args": []
-    },
-    "api.repoLabel.remote": {
-      "kind": "body",
-      "zh": "{path}（远端 {machine}）",
-      "args": ["path", "machine"]
-    },
     "cards.truncate.ellipsis": {
       "kind": "body",
       "zh": "{text}…",
@@ -4250,11 +3019,6 @@
     "keybindingActions.app.commandBar": {
       "kind": "action",
       "zh": "打开命令栏",
-      "args": []
-    },
-    "keybindingActions.app.panorama": {
-      "kind": "action",
-      "zh": "打开 / 关闭代码全景",
       "args": []
     },
     "keybindingActions.app.history": {
@@ -4722,16 +3486,6 @@
       "zh": "打开 cc-bus 驾驶舱",
       "args": []
     },
-    "main.cmd.panoramaKeywords": {
-      "kind": "body",
-      "zh": "panorama 全景 code",
-      "args": []
-    },
-    "main.cmd.openPanorama": {
-      "kind": "action",
-      "zh": "打开代码全景",
-      "args": []
-    },
     "main.cmd.historyKeywords": {
       "kind": "body",
       "zh": "history 历史",
@@ -4750,11 +3504,6 @@
     "main.topbar.gridHint": {
       "kind": "body",
       "zh": "多 agent 监控（跨机器只读并排）",
-      "args": []
-    },
-    "main.topbar.panoramaHint": {
-      "kind": "body",
-      "zh": "代码全景 (G)",
       "args": []
     },
     "main.topbar.openHistory": {
@@ -4910,11 +3659,6 @@
     "tabMenu.open.preview": {
       "kind": "action",
       "zh": "预览画面",
-      "args": []
-    },
-    "tabMenu.open.panoramaHighlight": {
-      "kind": "action",
-      "zh": "在全景高亮本会话改动",
       "args": []
     },
     "tabMenu.collection.remove": {
@@ -5670,11 +4414,6 @@
     "remoteHealth.head.notice": {
       "kind": "body",
       "zh": "⚠ 远端提示",
-      "args": []
-    },
-    "remoteHealth.head.panoramaInstalling": {
-      "kind": "body",
-      "zh": "正在装代码全景组件",
       "args": []
     },
     "remoteHealth.head.notDeployed": {
@@ -9790,11 +8529,6 @@
       "zh": "问 {machine} 是什么机器没问成，没有装后端：{e}",
       "args": ["machine", "e"]
     },
-    "beDeploySlot.uname.failed": {
-      "kind": "error",
-      "zh": "问 {machine} 是什么机器没问成，没有放代码全景组件：{e}",
-      "args": ["machine", "e"]
-    },
     "bePlaceVerdict.why.rebuilt": {
       "kind": "body",
       "zh": "同一版，字节不同（重新编过）",
@@ -13007,7 +11741,7 @@
     },
     "rsDataPaths.backend.bin": {
       "kind": "body",
-      "zh": "cc-monitor 放下的程序：后端、代码全景组件等，缺了会重新放",
+      "zh": "cc-monitor 放下的程序（后端等），缺了会重新放",
       "args": []
     },
     "rsDataPaths.backend.staging": {
@@ -13063,11 +11797,6 @@
     "rsDataPaths.backend.logs": {
       "kind": "body",
       "zh": "本机后端的错误输出（每份至多 4 MB，留两份）",
-      "args": []
-    },
-    "rsDataPaths.backend.panorama": {
-      "kind": "body",
-      "zh": "代码全景的索引，删了要重新建立索引",
       "args": []
     },
     "rsDataPaths.monitor.logs": {
@@ -13234,61 +11963,6 @@
       "kind": "error",
       "zh": "拒绝启动：{what}为空",
       "args": ["what"]
-    },
-    "panoramaApi.backend.tooOld": {
-      "kind": "error",
-      "zh": "这台的后端太旧，看不了代码全景（重启 cc-monitor 换上新的后端）。",
-      "args": []
-    },
-    "panoramaApi.reply.noResult": {
-      "kind": "error",
-      "zh": "代码全景的回答里没有结果，多半是后端版本不对",
-      "args": []
-    },
-    "rsPanoramaCall.edit.notRefreshed": {
-      "kind": "error",
-      "zh": "文档关联已经写进去了，但全景里的关联没跟着刷新（{e}）。点「刷新」重建一次就能看到",
-      "args": ["e"]
-    },
-    "rsPanoramaCall.install.remote": {
-      "kind": "body",
-      "zh": "{who} 上还没有这一版的代码全景组件，正在把它装上去。约 20 MB，慢链路上要等一会儿；装好之后会自己接着显示。",
-      "args": ["who"]
-    },
-    "rsPanoramaCall.install.local": {
-      "kind": "body",
-      "zh": "本机还没有这一版的代码全景组件，正在把它放好（一两秒）。放好之后会自己接着显示。",
-      "args": []
-    },
-    "rsPanoramaCall.edit.gaveUp": {
-      "kind": "error",
-      "zh": "{last}\n连着 {attempts} 趟都是算完之后盘上那份又变了，先停下。过一会儿再点一次。",
-      "args": ["last", "attempts"]
-    },
-    "rsPanoramaCall.edit.badPlan": {
-      "kind": "error",
-      "zh": "代码全景组件交回的编辑计划读不懂（{e}），多半是版本不对：{raw}",
-      "args": ["e", "raw"]
-    },
-    "panoramaApi.place.stillSays": {
-      "kind": "error",
-      "zh": "已经把这一版的代码全景组件推过去了，那台机器仍然说：{said}",
-      "args": ["said"]
-    },
-    "panoramaApi.place.failed": {
-      "kind": "error",
-      "zh": "{said}\n—— 试着把代码全景组件推到那台机器上，没成：{e}",
-      "args": ["said", "e"]
-    },
-    "rsPanoramaBytes.local.noHome": {
-      "kind": "error",
-      "zh": "找不到家目录 —— 不知道把代码全景组件放到哪",
-      "args": []
-    },
-    "rsPanoramaBytes.push.taskFailed": {
-      "kind": "error",
-      "zh": "放本机代码全景组件的任务没能跑完：{e}",
-      "args": ["e"]
     },
     "rsByteTable.key.unreadable": {
       "kind": "error",
@@ -13805,21 +12479,6 @@
       "zh": "本机后端：{message}",
       "args": ["message"]
     },
-    "rsPanoramaBytes.slot.unreadable": {
-      "kind": "error",
-      "zh": "本机后端的回答对不上这一版的代码全景组件。多半是后端版本不对。",
-      "args": []
-    },
-    "rsPanoramaBytes.push.noConfig": {
-      "kind": "error",
-      "zh": "找不到 {label} 的远端配置",
-      "args": ["label"]
-    },
-    "rsPanoramaBytes.local.machine": {
-      "kind": "body",
-      "zh": "本机",
-      "args": []
-    },
     "rsCcmInvocation.refusal.idSid": {
       "kind": "error",
       "zh": "会话 ID {value} 不合法（1 到 64 位，只许 A-Z a-z 0-9 与 -，不以 - 开头）",
@@ -14129,46 +12788,6 @@
       "kind": "error",
       "zh": "没保存：{e}",
       "args": ["e"]
-    },
-    "panorama.uninstall.title": {
-      "kind": "title",
-      "zh": "代码全景组件",
-      "args": []
-    },
-    "panorama.uninstall.intro": {
-      "kind": "body",
-      "zh": "这台机器上放着代码全景要用的小程序。卸掉它只删那一个程序文件，索引留着；下次打开这台的代码全景会再放一份。",
-      "args": []
-    },
-    "panorama.uninstall.action": {
-      "kind": "action",
-      "zh": "卸载代码全景组件",
-      "args": []
-    },
-    "panorama.uninstall.confirm": {
-      "kind": "body",
-      "zh": "要卸掉这台机器上的代码全景组件吗？",
-      "args": []
-    },
-    "panorama.uninstall.done": {
-      "kind": "body",
-      "zh": "卸掉了：{path}。索引还在 {index}，要删自己删。",
-      "args": ["path", "index"]
-    },
-    "panorama.uninstall.absent": {
-      "kind": "body",
-      "zh": "这台没装代码全景组件（{path} 不在）。",
-      "args": ["path"]
-    },
-    "panorama.uninstall.unreadable": {
-      "kind": "error",
-      "zh": "那台后端的回应读不懂，不确定卸掉没有。",
-      "args": []
-    },
-    "panorama.uninstall.oldBackend": {
-      "kind": "error",
-      "zh": "那台后端太旧，还不会卸代码全景组件，先更新它。",
-      "args": []
     },
     "localResume.launch.arrived": {
       "kind": "body",
@@ -15183,31 +13802,6 @@
       "zh": "项目 MCP 配置",
       "args": []
     },
-    "rsToolRegistry.tools.panoramaRemoteNote": {
-      "kind": "body",
-      "zh": "只推给开过远端代码全景的机器；经那台的后端写，写完读回来逐字节比对",
-      "args": []
-    },
-    "rsToolRegistry.tools.panoramaRemoteWhat": {
-      "kind": "body",
-      "zh": "推到远端那台机器的那一份代码全景组件。按那台的系统与架构挑，那台后端说没装或太旧时推过去",
-      "args": []
-    },
-    "rsToolRegistry.tools.panoramaLocalNote": {
-      "kind": "body",
-      "zh": "本机后端找它的第二个位置；Windows 上文件名带 .exe。和盘上那份逐字节相同就不重写",
-      "args": []
-    },
-    "rsToolRegistry.tools.panoramaLocalWhat": {
-      "kind": "body",
-      "zh": "放在本机的那一份代码全景组件。本机后端第一次说没装时放下去",
-      "args": []
-    },
-    "rsToolRegistry.tools.panoramaName": {
-      "kind": "title",
-      "zh": "代码全景组件",
-      "args": []
-    },
     "rsToolRegistry.tools.backendRemoteNote": {
       "kind": "body",
       "zh": "固定放在那台的 ~/.cc-monitor/bin/ccm",
@@ -15337,11 +13931,6 @@
       "kind": "error",
       "zh": "内部状态坏了：{e}",
       "args": ["e"]
-    },
-    "rsLocalBackendHost.local.noBuildId": {
-      "kind": "error",
-      "zh": "这一份本机后端说不出自己是哪一版，没有拿它来起",
-      "args": []
     },
     "rsLocalBackendHost.local.machine": {
       "kind": "body",
@@ -15874,11 +14463,6 @@
       "zh": "找不到 {name}：查过 {places}，以及 PATH 上的 {pathDirs} 个目录。{hint}",
       "args": ["name", "places", "pathDirs", "hint"]
     },
-    "beInvoke.runAbortable.waitFailed": {
-      "kind": "error",
-      "zh": "等 {bin} 退出时出错：{e}",
-      "args": ["bin", "e"]
-    },
     "beInvoke.notRun.failed": {
       "kind": "error",
       "zh": "起不来 {bin}：{e}",
@@ -15898,11 +14482,6 @@
       "kind": "error",
       "zh": "{plugin} 这一版不支持「{token}」（版本 {version}），换一份新的就行。",
       "args": ["plugin", "token", "version"]
-    },
-    "beProbe.message.staleShape": {
-      "kind": "error",
-      "zh": "{plugin} 这一份和后端不是同一代（版本 {version}），换一份新的就行。",
-      "args": ["plugin", "version"]
     },
     "beProbe.message.wrongProgram": {
       "kind": "error",
@@ -16404,75 +14983,10 @@
       "zh": "读不了任务目录 {dir}：{e}",
       "args": ["dir", "e"]
     },
-    "bePanorama.classify.failed": {
-      "kind": "error",
-      "zh": "代码全景没做成（{op} · {how}）：{message}",
-      "args": ["op", "how", "message"]
-    },
-    "bePanorama.classify.timedOut": {
-      "kind": "error",
-      "zh": "代码全景超过 {deadline} 秒没做完，已经停掉（{op}）",
-      "args": ["op", "deadline"]
-    },
-    "bePanorama.classify.tooLarge": {
-      "kind": "error",
-      "zh": "代码全景的结果太大，没有返回（{op}：{size} 字节，上限 {cap}）",
-      "args": ["op", "size", "cap"]
-    },
-    "bePanorama.describeExit.signal": {
-      "kind": "body",
-      "zh": "被中途终止",
-      "args": []
-    },
-    "bePanorama.describeExit.code": {
-      "kind": "body",
-      "zh": "异常退出，码 {c}",
-      "args": ["c"]
-    },
-    "bePanorama.notRun.spawnFailed": {
-      "kind": "error",
-      "zh": "代码全景组件没能启动：{m}",
-      "args": ["m"]
-    },
-    "bePanorama.notRun.tooManyFiles": {
-      "kind": "error",
-      "zh": "这次要查的文件太多，一次传不过去，少选几个再试",
-      "args": []
-    },
-    "bePanorama.answerWith.probeFailed": {
-      "kind": "error",
-      "zh": "{bin} 没答上它会做什么（{how}）：{detail}",
-      "args": ["bin", "how", "detail"]
-    },
-    "bePanorama.uninstall.unreadable": {
-      "kind": "error",
-      "zh": "读不了 {path}：{e}",
-      "args": ["path", "e"]
-    },
-    "bePanorama.uninstall.notOurs": {
-      "kind": "error",
-      "zh": "{path} 认不出是 cc-monitor 放的全景小程序，没动它：{why}",
-      "args": ["path", "why"]
-    },
-    "bePanorama.answer.noHome": {
-      "kind": "error",
-      "zh": "这台机器上找不到家目录（HOME 和 USERPROFILE 都没设），不知道把索引放哪",
-      "args": []
-    },
-    "bePanorama.notInstalledHint.say": {
-      "kind": "error",
-      "zh": "这台机器上还没装代码全景组件。",
-      "args": []
-    },
     "beAccountsQuery.listProductAt.noDefault": {
       "kind": "body",
       "zh": "这台机器的账号清单里缺默认账号。在账号页的维护里点「修复」可以补上。",
       "args": []
-    },
-    "bePanorama.classify.badReply": {
-      "kind": "error",
-      "zh": "代码全景说做完了，但交回的结果读不懂（{op}）：{said}",
-      "args": ["op", "said"]
     },
     "beHttp1.readExactBody.shortBody": {
       "kind": "error",
@@ -19417,6 +17931,236 @@
       "kind": "error",
       "zh": "备注最长 {max} 个字，删短一点再存。",
       "args": ["max"]
+    },
+    "beAcctJsonKey.parse.notObject": {
+      "kind": "error",
+      "zh": "这份配置文件不是一个完整的 JSON 对象，这一次不改它。",
+      "args": []
+    },
+    "beAcctJsonKey.parse.duplicate": {
+      "kind": "error",
+      "zh": "要改的那一段出现了不止一次。分不清以哪一个为准，这一次不改它。",
+      "args": []
+    },
+    "beAcctJsonKey.render.failed": {
+      "kind": "error",
+      "zh": "新内容排不出来：{e}",
+      "args": ["e"]
+    },
+    "beAcctJsonKey.verify.failed": {
+      "kind": "error",
+      "zh": "改完之后核对没通过，这一次不写。要改的那一段之外的内容变了，或那一段不是要写的那一版。",
+      "args": []
+    },
+    "beAcctMcpShare.store.badShape": {
+      "kind": "error",
+      "zh": "格式不对",
+      "args": []
+    },
+    "beAcctMcpShare.store.badJson": {
+      "kind": "error",
+      "zh": "第 {line} 行解不开",
+      "args": ["line"]
+    },
+    "beAcctMcpShare.store.unreadable": {
+      "kind": "error",
+      "zh": "读不了各账号共用的 MCP 那份文件 {path}：{e}",
+      "args": ["path", "e"]
+    },
+    "beAcctMcpShare.store.cannotUse": {
+      "kind": "error",
+      "zh": "各账号共用的 MCP 那份文件 {path} 用不了（{e}）。这一次不同步；把它挪走之后会按各账号现在的样子重建。",
+      "args": ["path", "e"]
+    },
+    "beAcctMcpShare.store.writeFailed": {
+      "kind": "error",
+      "zh": "各账号共用的 MCP 那份文件没写进去：{e}",
+      "args": ["e"]
+    },
+    "beAcctMcpShare.read.notText": {
+      "kind": "error",
+      "zh": "不是文本文件",
+      "args": []
+    },
+    "beAcctMcpShare.read.notFile": {
+      "kind": "error",
+      "zh": "不是一份普通文件（是链接、目录或别的）",
+      "args": []
+    },
+    "beAcctMcpShare.read.badJson": {
+      "kind": "error",
+      "zh": "第 {line} 行解不开",
+      "args": ["line"]
+    },
+    "beAcctMcpShare.read.notObject": {
+      "kind": "error",
+      "zh": "不是一个 JSON 对象",
+      "args": []
+    },
+    "beAcctMcpShare.read.serversNotObject": {
+      "kind": "error",
+      "zh": "MCP 那一段不是一个对象",
+      "args": []
+    },
+    "beAcctMcpShare.note.unreadable": {
+      "kind": "body",
+      "zh": "{account} 号的配置 {path} 读不出来（{e}），这一次不同步它。",
+      "args": ["account", "path", "e"]
+    },
+    "beAcctMcpShare.note.backupFailed": {
+      "kind": "error",
+      "zh": "改之前的备份没留下，这一次不改：{e}",
+      "args": ["e"]
+    },
+    "beAcctMcpShare.note.writeFailed": {
+      "kind": "body",
+      "zh": "{account} 号这一次没同步上：{e}",
+      "args": ["account", "e"]
+    },
+    "beAcctMcpShare.note.stale": {
+      "kind": "body",
+      "zh": "{account} 号的配置刚被改过，这一次没写；它一改完会再同步一次。",
+      "args": ["account"]
+    },
+    "beAcctMcpShare.name.unknown": {
+      "kind": "error",
+      "zh": "各账号共用的 MCP 里没有 {name}。",
+      "args": ["name"]
+    },
+    "beAcctMcpShare.pick.noSuch": {
+      "kind": "error",
+      "zh": "{account} 号里现在没有 {name} 这一条，选不了它那一版。刷新之后再选。",
+      "args": ["name", "account"]
+    },
+    "beAcctFace.mcp.synced": {
+      "kind": "body",
+      "zh": "各账号共用的 MCP 已同步到：{accounts}。新开的会话才用上。",
+      "args": ["accounts"]
+    },
+    "beAcctFace.mcp.conflicts": {
+      "kind": "body",
+      "zh": "各账号共用的 MCP 里 {names} 两边都改了，没有自动选；到账号页里挑一版。",
+      "args": ["names"]
+    },
+    "beAcctFace.mcp.failed": {
+      "kind": "body",
+      "zh": "各账号共用的 MCP 这一次没同步：{e}",
+      "args": ["e"]
+    },
+    "rsToolRegistry.tools.accountsMcpStoreNote": {
+      "kind": "body",
+      "zh": "这台各账号共用的用户级 MCP，以及上次同步时每个号的样子。在任一个号里加或改的 MCP 会进这里、再同步到所有号；里面带着 MCP 的密钥，只有你自己读得了。",
+      "args": []
+    },
+    "rsToolRegistry.tools.accountsMcpBackupNote": {
+      "kind": "body",
+      "zh": "同步改写之前的原文放在这里。改写某个号的 .claude.json 之前留一份，每个号一份，下一次改写前换成新的；要找回就从这里拿。",
+      "args": []
+    },
+    "rsDataPaths.backend.accountsMcp": {
+      "kind": "body",
+      "zh": "各账号共用的用户级 MCP",
+      "args": []
+    },
+    "accountsMcp.block.title": {
+      "kind": "title",
+      "zh": "各账号共用的 MCP",
+      "args": []
+    },
+    "accountsMcp.block.shared": {
+      "kind": "body",
+      "zh": "这台的各个号共用一份用户级 MCP。在任一个号里加或改的，会同步到所有号。",
+      "args": []
+    },
+    "accountsMcp.block.deleteHere": {
+      "kind": "body",
+      "zh": "删除只在这里做：在某个号里删掉不算数，会被补回去。",
+      "args": []
+    },
+    "accountsMcp.block.newSessions": {
+      "kind": "body",
+      "zh": "已经在跑的会话不会重读，新开的会话才用上。",
+      "args": []
+    },
+    "accountsMcp.list.empty": {
+      "kind": "body",
+      "zh": "还没有共用的 MCP。",
+      "args": []
+    },
+    "accountsMcp.list.remove": {
+      "kind": "action",
+      "zh": "删除",
+      "args": []
+    },
+    "accountsMcp.remove.confirm": {
+      "kind": "body",
+      "zh": "从这台所有号里删掉 {name}？已经在跑的会话不受影响，新开的会话里就没有它了。",
+      "args": ["name"]
+    },
+    "accountsMcp.remove.done": {
+      "kind": "title",
+      "zh": "已从所有号里删掉 {name}",
+      "args": ["name"]
+    },
+    "accountsMcp.remove.failed": {
+      "kind": "error",
+      "zh": "没删成",
+      "args": []
+    },
+    "accountsMcp.conflict.head": {
+      "kind": "body",
+      "zh": "{name} 两边都改了，没有自动选。用哪一版？",
+      "args": ["name"]
+    },
+    "accountsMcp.conflict.shared": {
+      "kind": "action",
+      "zh": "用共享的那一版",
+      "args": []
+    },
+    "accountsMcp.conflict.gone": {
+      "kind": "action",
+      "zh": "删掉它",
+      "args": []
+    },
+    "accountsMcp.conflict.from": {
+      "kind": "action",
+      "zh": "用 {holders} 号里的那一版",
+      "args": ["holders"]
+    },
+    "accountsMcp.pick.done": {
+      "kind": "title",
+      "zh": "{name} 已统一成你选的那一版",
+      "args": ["name"]
+    },
+    "accountsMcp.pick.failed": {
+      "kind": "error",
+      "zh": "没选成",
+      "args": []
+    },
+    "accountsMcp.read.reading": {
+      "kind": "body",
+      "zh": "正在读各账号共用的 MCP…",
+      "args": []
+    },
+    "accountsMcp.read.failed": {
+      "kind": "body",
+      "zh": "读不出各账号共用的 MCP：{e}",
+      "args": ["e"]
+    },
+    "accountsMcp.change.synced": {
+      "kind": "body",
+      "zh": "改写了：{accounts}",
+      "args": ["accounts"]
+    },
+    "accountsMcp.list.sep": {
+      "kind": "body",
+      "zh": "、",
+      "args": []
+    },
+    "beAcctFace.mcp.listSep": {
+      "kind": "body",
+      "zh": "、",
+      "args": []
     }
   }
 }

@@ -203,6 +203,7 @@ fn backend_rows_point_where_the_backend_itself_writes() {
         row("aliases.ps1", h.join(rr::PS_ALIASES_REL), "file"),
         row("skill-installs.json", h.join(rr::SKILL_LEDGER_REL), "file"),
         row("assets-catalog.json", h.join(rr::ASSET_CATALOG_REL), "file"),
+        row("accounts-mcp.json", h.join(rr::ACCOUNTS_MCP_REL), "file"),
         row(
             "apikey-credentials.json",
             creds_core::store::credentials_path(data.path()),
@@ -216,7 +217,6 @@ fn backend_rows_point_where_the_backend_itself_writes() {
                 .to_path_buf(),
             "dir",
         ),
-        row("panorama/", h.join(rr::PANORAMA_INDEX_REL), "dir"),
         row("backups/", h.join(rr::EXT_BACKUPS_DIR_REL), "dir"),
     ];
     assert_eq!(got, want);

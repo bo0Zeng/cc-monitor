@@ -33,13 +33,13 @@
 # │ ⚠ **自述句只许住在这一段里。** `C5b` 会把这一段之外、头注里任何一句「本脚本跑 N 格 /
 # │   N 道门」判红；历史读数的唯一豁免是**在那一行**逐字带上 `〔量于 …〕`。
 # │
-# │ 〔自述·格数〕55 格
+# │ 〔自述·格数〕53 格
 # │ 〔自述·点名〕worktree-clean · hooks · copy2 · shellcheck · ci-e2e-prereq · release-gate · gate-selfdesc ·
 # │   ccbus-twophase · e2e-smoke ·
 # │   platform · muslbuild ·
 # │   installface ·
 # │   fmt · fmt-backend ·
-# │   winchk · winchk-backend · winlink · cargo · comm-boundary · test-tiers · deadcode · clippy · appbuild · generated · backend · clippy-backend · panorama-engine · code-picture-core · tsc · npm ·
+# │   winchk · winchk-backend · winlink · cargo · comm-boundary · test-tiers · deadcode · clippy · appbuild · generated · backend · clippy-backend · tsc · npm ·
 # │   coverage · audit · weak-net ·
 # │   ccm tests/e2e/ccm-print-parity · ccm tests/e2e/ccm-rbind-title · ccm tests/e2e/ccm-cli ·
 # │   ccm tests/e2e/ccm-contract-parity ·
@@ -656,14 +656,8 @@ run_gate() {
 #      `shared_crate_registry::the_gate_package_count_tracks_the_number_of_shared_crates`
 #      用 `find_pinned` 钉的就是那个前缀、**要求全文唯一**，抄一次它当场判红。现打栽过。）
 #
-# 〔4C 拍板 ③〕这里从前写着「`--exclude code-picture-core` 是承重的，不许删成裸 `--workspace`」——
-#   08-27 现打那时 vendor 是 monitor 的 path 依赖，cargo 把它算成成员（`[workspace] exclude` 对 path 依赖不生效），
-#   裸 `--workspace` 会多拉进 vendor 那 25 条我们无权修的判据（`C7`「vendor 不动」）。
-#   RM1f 起 monitor 不再依赖它（链它的只剩 `src/panorama-engine`）⇒ 它不再是成员，那条 `--exclude` 只剩一条
-#   cargo warning（`excluded package(s) not found`）⇒ 删了；裸 `--workspace` 现打就是 9 个成员（`monitor` ＋ 8 个共享 crate）。
-#   🔴 **谁在守「vendor 别再被拉回来」**（死值验现打：往 monitor 清单加回那条 path 依赖 ⇒ `cargo metadata` 成员 9 → 10）：
-#   一是 `shared_crate_registry::the_windows_cross_target_signal_covers_only_the_backend` ③（monitor 清单零 vendor 依赖，那一刀当场红）；
-#   二是下面这一格的**包数相等**（那个 9：成员 10 ⇒ 合计行包数对不上 ⇒ 红；⚠ 这里刻意不抄那一行的逐字前缀 —— `find_pinned` 要它全文唯一）。
+# 裸 `--workspace` 就是 `monitor` ＋ 共享 crate；有别的包被拉进成员，由下面这一格的**包数相等**接住
+#   （成员多一个 ⇒ 合计行包数对不上 ⇒ 红；⚠ 这里刻意不抄那一行的逐字前缀 —— `find_pinned` 要它全文唯一）。
 #
 # ⚠ **CI 那一侧没跟着改**（`ci.yml` 不在 `K-H2a` 的写区）⇒ 从此**本地门禁比 CI 严**。
 #   别把「本地绿」读成「CI 也会绿」。
@@ -1342,12 +1336,10 @@ run_gate fmt '不是数出来的数：`cargo fmt --all --check` 只有绿/红两
 # 在 `src/backend` 下加 `--all`，rustfmt 实收 **12 个 crate 根**，其中 **11 个不在这棵树里** ——
 # `src/frontend/shell/build.rs` · `src/frontend/shell/src/lib.rs` · `src/frontend/shell/src/main.rs` ·
 # `crates/{acct,branch,codex-token,creds,gate,guard,shell-quote}-core/src/lib.rs`，
-# 以及 🔴 **`src/panorama-engine/vendor/code-picture-core/src/lib.rs`**。
+# 以及当时还在的那份 vendored 第三方引擎的 `lib.rs`（今天整棵删了）。
 #（成因：那棵树的 path 依赖指进 `../../src/frontend/shell`，`cargo fmt --all` 顺着它们走出去；
 #  `cargo metadata --no-deps` 的 `workspace_members` 现打**只有 1 个**，两者不是一回事。）
-# ⇒ 加 `--all` 会把 vendor 那棵**我们无权修**的树拉进出货门禁 —— 与下面 `cargo` 那一格
-#   从前 `--exclude code-picture-core` 要避开的是同一件事（`C7` 逐字「vendor `code-picture-core` **不动**」；那条 exclude 随 vendor 退出 workspace 删了）：
-#   **一道我们满足不了的闸，比没有闸更坏。**
+# ⇒ 加 `--all` 会把别的树拉进这一格（那些树各有自己那一格管排版）。
 # ⚠ 不加 `--all` 时 `cargo metadata` 那 11 个一个都不进来（同一趟 `-v` 现打：rustfmt 只收
 #   `src/backend/main.rs` 一个根），读数 6 处不变 ⇒ **少的只有别人家那棵树。**
 #
@@ -1359,7 +1351,7 @@ run_gate fmt '不是数出来的数：`cargo fmt --all --check` 只有绿/红两
 #     `cargo fmt --check`，`working-directory: src/backend`）⇒ 本行**不是新买一条判据**，
 #     是把「本机门禁不是云端的超集」这个已知缺口在这一维上补平。⚠ 因此 `ci.yml` **不用改**，
 #     上面那条「三处一起改」的纪律与本行无关。
-run_gate fmt-backend '不是数出来的数：`cargo fmt --check` 只有绿/红两态（rc=0 / rc=1），本格的「分母」是 `src/backend` 那个 workspace 的唯一成员 `cc-monitor-backend`；`src/frontend/shell` 与 `vendor/code-picture-core` 由上面 fmt 那一格与它自己的 exclude 管，本行盖不到（刻意不加 --all，理由见上方注释）' \
+run_gate fmt-backend '不是数出来的数：`cargo fmt --check` 只有绿/红两态（rc=0 / rc=1），本格的「分母」是 `src/backend` 那个 workspace 的唯一成员 `cc-monitor-backend`；`src/frontend/shell` 由上面 fmt 那一格管，本行盖不到（刻意不加 --all，理由见上方注释）' \
          bash -c 'cd src/backend && cargo fmt --check 2>&1 && echo "fmt-backend: 1 passed"'
 
 # ── Windows 那半编不编得过 ──────────────────────────────────────────────────
@@ -1478,7 +1470,7 @@ run_gate winchk-backend '不是数出来的数：`cargo check --all-targets --ta
 run_gate winlink '不是数出来的数：`cargo build --bins --target x86_64-pc-windows-gnu`（dev）只有绿/红两态。射程 = `-p monitor` 的两个二进制（`cc-monitor` · `cc-monitor-filewin`）**真链接**一趟；⚠ 只链不跑（起不起得来要真机）· `-gnu` 不是 `-msvc` · release 那一档不链 · test 档不链（那一半归 `winchk` 的 `check`）' \
          bash -c 'cd src/frontend/shell && cargo build --locked -p monitor --bins --target x86_64-pc-windows-gnu 2>&1 && echo "winlink: 1 passed"'
 
-# 13 个包 = `monitor` + 12 个共享 crate（`vendor/code-picture-core` 早已不是成员 —— monitor 不再依赖它 —— 不用再 `--exclude`）。
+# 13 个包 = `monitor` + 12 个共享 crate。
 # 9 → 10：加了 `copy-core`（对外文案表的 Rust 取文口）。
 # 10 → 11：新共享 crate `relay-route-core`（中转门牌：端口 · 钥匙路径 · 路由语法，目标）。
 # 11 → 12：新共享 crate `agent-tools-core`（agent 工具词表：哪些工具名算「展开 = 子会话」，monitor 渲染与后端会话事实共用，J19）。
@@ -1697,6 +1689,7 @@ deadcode_t0=$(date +%s)
 #    推全景小程序字节（`panorama_bytes·rs::push_to`）拿它拼远端落点 `<home>/.cc-monitor/bin/cc-monitor-panorama`，
 #    它有了生产读者 ⇒ 出列。同拍 `panorama_bytes` 那两个 `cfg_attr(not(test), allow(dead_code))` 摘了（有了生产调用方），不进这个数。
 #    ⚠ 现打：本工作树 `cargo check -p monitor --message-format=short | grep -c "never used"` = 34。
+#    代码全景摘掉之后它又没了生产读者 ⇒ 连同那个字段一起删了（不进这个数）。
 # 🔴 **2026-09-25（文案全量抽表）：34 → 23，现打，逐条记**：降的 11 条正是 B2 合并那段点名的那一族 ——
 #    `backend_policy·rs` 的 `EXIT_KILLS` / `EXIT_UNATTENDED` / `EXIT_SELF_DIES` / `EXIT_UNREADABLE` / `EXIT_COPY` /
 #    `HEALTH_UNKNOWN` / `HEALTH_CLEAN` / `HEALTH_CRASHED` / `HEALTH_LAST_MISSING` / `HEALTH_COPY` / `CROSS_LANGUAGE_COPY`。
@@ -1762,15 +1755,6 @@ run_gate backend '单包 src/backend，只有一行 test result ⇒ 最大值 = 
          bash -c 'cd src/backend && cargo test 2>&1'
 run_gate clippy-backend '不是数出来的数：`cargo clippy --all-targets` 只有绿/红两态，射程 = `src/backend` 那一个 crate 的全部 target，与 `ci.yml` 的 `backend` job 那一步同一条命令（不带 `-D warnings` ⇒ 只有 deny 档的 lint 与编译错红）。本格墙钟〔量于 2026-09-30，本工作树〕首趟 32 秒' \
          bash -c 'cd src/backend && out=$(cargo clippy --all-targets 2>&1); rc=$?; if [ "$rc" -ne 0 ]; then printf "%s\n" "$out"; exit "$rc"; fi; printf "%s\n" "$out" | tail -2; echo "clippy-backend: 1 passed"'
-# 全景小程序是独立 crate（自己一份 Cargo.lock，不进任何 workspace）⇒ 上面两格都编不到它；
-#   它自己的 `tests/panorama-engine/cli_tests.rs`（含「引擎零写用户文件」）此前不在任何执行链上。
-run_gate panorama-engine '单包 src/panorama-engine（独立 crate），只有一行 test result ⇒ 最大值 = 合计' \
-         bash -c 'cd src/panorama-engine && cargo test 2>&1'
-# vendor 那份 code-picture-core 自己的判据：上面那格编的是全景小程序，链它但不跑它的测试；`ci.yml` 的 `rust` job
-#   在 vendor 目录里单跑 `cargo test -p code-picture-core`，此前只有 CI 跑。只读地跑（vendor 源码不动；
-#   cargo 在那个目录里落一份 Cargo.lock，已被 gitignore）。
-run_gate code-picture-core '单包 vendor code-picture-core（在 `src/panorama-engine/vendor/code-picture-core` 里跑，与 `ci.yml` 那一步同一条命令），lib 一行 ＋ doctest 一行（0 条）⇒ 最大值 = lib 那一行。本格墙钟〔量于 2026-09-30，本工作树〕首趟 14 秒' \
-         bash -c 'cd src/panorama-engine/vendor/code-picture-core && cargo test -p code-picture-core 2>&1'
 # ── `tsc`：**发版产物编不编得出来**，此前门禁一格都没有（`K-R118` `KR118D1` ②，09-14，第 16 格）──
 #
 # ## 题面：一条缺陷 09-12 进来、09-14 才被发现，而发现它的不是任何判据
@@ -2096,12 +2080,13 @@ run_e2e resume-frames          7
 # ── `ci.yml` 里带 `assert-pass-floor.sh` 地板、此前只在 CI 上跑的七套 ─────────────────────────────
 #   `cc-spawn-uplift` 有一个真回归在 CI 上红了四天，本机门禁一格都看不见。七套全走隔离的 tmux socket
 #   （`-L` 或 tmux shim）或根本不碰 tmux，本机跑得动 ⇒ 接进执行链，判法同上面各套（`exact`：PASS 恒等）。
-#   地板取的是本机实打的 PASS（`inbound-frames` 32 · `graylight-frames` 13 比 `ci.yml` 那两行的 30 · 12 高 ——
+#   地板取的是本机实打的 PASS（`inbound-frames` 31 · `graylight-frames` 13 比 `ci.yml` 那两行的 30 · 12 高 ——
 #   CI 那边是 `at-least`，只挡缩水）。〔量于 2026-09-30，本工作树，本机 tmux 3.6〕各套墙钟：
 #   cc-spawn-uplift 44 秒 · inbound-frames 2 秒 · graylight-frames 3 秒 · backend-fork 不到 1 秒 ·
 #   tmux-target 9–48 秒（两趟）· cc-bus-queue-drain 4 秒 · resume 16 秒。
 run_e2e cc-spawn-uplift       72
-run_e2e inbound-frames        32
+# inbound-frames 32 → 31：hello 命令清单里全景那一格随代码全景删了。
+run_e2e inbound-frames        31
 run_e2e graylight-frames      13
 run_e2e backend-fork          10
 run_e2e tmux-target           26
@@ -2356,8 +2341,9 @@ if [ "${#fails[@]}" -eq 0 ]; then
     # 🔴 （09-24）：**27 → 29**，加的是令牌那两套 e2e（`backend-rbind-token` ·
   #   `rbind-token-endtoend`，见上面 `run_e2e` 那一段）—— 它们此前只被 shellcheck、不被执行。
   # **30 → 31**，加的是 `backend-cc-bus`（见上面 `run_e2e` 那一段）；
-  #   **31 → 32**，加的是 `panorama-engine`（全景小程序自己的测试，见 `backend` 那一格下面）。
-  echo "GATE: OK —— 55 格全绿（worktree-clean · hooks · copy2 · shellcheck · ci-e2e-prereq · release-gate · gate-selfdesc · ccbus-twophase · e2e-smoke · platform · installface · fmt · fmt-backend · winchk · winchk-backend · winlink · muslbuild · cargo · comm-boundary · test-tiers · deadcode · clippy · appbuild · generated · backend · clippy-backend · panorama-engine · code-picture-core · tsc · npm · coverage · audit · ccm-print-parity · ccm-rbind-title · ccm-cli · ccm-contract-parity · backend-rbind-token · rbind-token-endtoend · backend-cc-bus · backend-gate2 · local-backend · restart-frames · restart · backend-tmux-late-server · backend-sessions-rewatch · p3t-local-tmux · resume-frames · cc-spawn-uplift · inbound-frames · graylight-frames · backend-fork · tmux-target · cc-bus-queue-drain · resume · weak-net），可以出货"
+  #   **31 → 32**，加的是全景小程序自己的测试那一格。
+  # **55 → 53**：代码全景整条摘掉，`panorama-engine` 与 `code-picture-core` 两格随被测的那两棵树一起删了。
+  echo "GATE: OK —— 53 格全绿（worktree-clean · hooks · copy2 · shellcheck · ci-e2e-prereq · release-gate · gate-selfdesc · ccbus-twophase · e2e-smoke · platform · installface · fmt · fmt-backend · winchk · winchk-backend · winlink · muslbuild · cargo · comm-boundary · test-tiers · deadcode · clippy · appbuild · generated · backend · clippy-backend · tsc · npm · coverage · audit · ccm-print-parity · ccm-rbind-title · ccm-cli · ccm-contract-parity · backend-rbind-token · rbind-token-endtoend · backend-cc-bus · backend-gate2 · local-backend · restart-frames · restart · backend-tmux-late-server · backend-sessions-rewatch · p3t-local-tmux · resume-frames · cc-spawn-uplift · inbound-frames · graylight-frames · backend-fork · tmux-target · cc-bus-queue-drain · resume · weak-net），可以出货"
   gate_print_blind
   exit 0
 fi

@@ -216,8 +216,6 @@ fn every_registered_command_declares_its_run_kind() {
                 | "hooks-diag"
                 // 手动对齐：等每份 watcher 做完（对表 ＋ 打标起 tmux）。
                 | "resync"
-                // `panorama` 不在这里了：起进程改成异步等（`plugin::invoke::run_abortable`），
-                //   `cancel` 打得断 ⇒ `Run::Async`。〔墓碑 —— RM1c 那一版在这一档：「起一个进程、等它退出」。〕
                 // 上游选择那份凭据文件的两条：同步文件 I/O（读一份小文件 / 原子写一份）。
                 | "apikey-key-set"
                 | "apikey-read"
@@ -244,6 +242,10 @@ fn every_registered_command_declares_its_run_kind() {
                 | "accounts-rollback"
                 | "accounts-verify"
                 | "accounts-login-cmd"
+                // 各账号共用的用户级 MCP：读各号配置文件、只改一个键、写回共享集合（同步文件 I/O，经本进程文件管理面）。
+                | "accounts-mcp-read"
+                | "accounts-mcp-remove"
+                | "accounts-mcp-pick"
                 // 公钥并进这台的 `authorized_keys`：同步文件 I/O（经本进程文件管理面）。
                 | "authorized-keys-add"
                 | "files-link"
@@ -339,16 +341,12 @@ fn every_registered_command_declares_its_run_kind() {
         // 两台之间「装」那一件的枢纽：等远端 capture（真异步，在 await 点可取消），本机那一跳挪到阻塞线程池。
         "ext-hub-preview",
         "ext-hub-apply",
-        "pubkey-push",        // 等远端（问那台后端 / 一次 exec），真异步
-        "panorama-edit",      // 同 `panorama`（起小程序、等它），落盘那一步挪到阻塞线程池
-        "panorama-uninstall", // 同上：起小程序认身份、等它；读与删挪到阻塞线程池
-        "files-grep",         // 可撤：走那一趟在阻塞线程池上、看取消位，future 被丢即收手
+        "pubkey-push", // 等远端（问那台后端 / 一次 exec），真异步
+        "files-grep",  // 可撤：走那一趟在阻塞线程池上、看取消位，future 被丢即收手
         // 部署计划：真异步（拨号 / 等远端 capture · SFTP），在 await 点可取消。
         "deploy-plan",
         // 远端常驻后端 hello 的新旧：纯判定，不碰盘不拨号。
         "resident-verdict",
-        // 那台要哪一格：远端真异步（等 capture），本机纯判定。
-        "deploy-slot",
         // 那台旧入口的去向：真异步（SFTP stat ＋ 读回），在 await 点可取消。
         "deploy-retired",
         // 可达表登记：纯内存，普通 spawn。
@@ -415,7 +413,6 @@ fn every_registered_command_declares_its_run_kind() {
         "tmux-name-mint", //
         "hooks-diag",     //
         "resync",         //
-        "panorama",
         "apikey-key-set",
         "apikey-read",
         "apikey-routing",  //
@@ -466,6 +463,9 @@ fn every_registered_command_declares_its_run_kind() {
         "accounts-rollback",
         "accounts-verify",
         "accounts-login-cmd",
+        "accounts-mcp-read",
+        "accounts-mcp-remove",
+        "accounts-mcp-pick",
         "authorized-keys-add", // 同步文件 I/O（经本进程文件管理面）
         "files-link",
         "cc-bus-install-state",

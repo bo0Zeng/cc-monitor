@@ -159,13 +159,6 @@ const INSERTED_CHILDREN: readonly AppChild[] = [
   },
   {
     file: "src/frontend/ui/main.ts",
-    expr: "panoramaTrigger",
-    selector: ".panorama-trigger",
-    modes: ["default"],
-    why: "同上",
-  },
-  {
-    file: "src/frontend/ui/main.ts",
     expr: "gridTrigger",
     selector: ".grid-monitor-trigger",
     modes: ["default"],
