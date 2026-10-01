@@ -3895,6 +3895,8 @@ stdin **只读到第一个换行**就动手，不等 EOF（上限与超限的拒
 
 **账号库那一族追加九条**：`--accounts-init` · `--accounts-add` · `--accounts-remove` · `--accounts-set-default` · `--accounts-repair` · `--accounts-isolate` · `--accounts-rollback` · `--accounts-login-cmd`（读 stdin；`--accounts-add` 的 key 只走 stdin、不收 argv）· `--accounts-verify`（不读 stdin）—— 见上面各自那一小节。与帧面同一个 `run`。
 
+**各账号共用的 MCP 那三条**：`--accounts-mcp-read`（不读 stdin）· `--accounts-mcp-remove` · `--accounts-mcp-pick`（读 stdin）—— 见上面各自那一小节。与帧面同一个 `run`。
+
 **扩展页追加两条（09-30）**：`--ext-uninstall-preview` · `--ext-uninstall-apply` —— 从这台卸一个扩展（见上面各自那一小节）。与帧面同一个 `run`；**读 stdin**。`ext-list` · `ext-hub-preview` · `ext-hub-apply` 读本进程的可达表，只在帧面上。
 
 **SH1 追加一条（09-26）**：`--tmux-list` —— 这台机器的 tmux 会话（见上面它自己那一小节）。同上，与帧面同一个 `run`；**不读 stdin**。
