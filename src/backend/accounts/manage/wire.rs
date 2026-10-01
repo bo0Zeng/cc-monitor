@@ -8,8 +8,8 @@ use super::scan::{self, is_under, join, KeyRows, Snapshot};
 use crate::assets::door::{self, Door};
 use acct_core::wire::{
     AccountAddArgs, AccountChange, AccountInitArgs, AccountIsolateArgs, AccountKind,
-    AccountLoginCmd, AccountNameArgs, AccountRef, AccountRemoveArgs, AccountRepairArgs,
-    AccountRollbackArgs, VerifyReport,
+    AccountLoginCmd, AccountMcpNameArgs, AccountMcpPickArgs, AccountMcpView, AccountNameArgs,
+    AccountRef, AccountRemoveArgs, AccountRepairArgs, AccountRollbackArgs, VerifyReport,
 };
 use copy_core::copy_text;
 use serde_json::Value;
@@ -60,6 +60,39 @@ pub(crate) fn parse(cmd: &str, args: &Value) -> Result<Request, Refusal> {
         }
         other => return Err(bad(&format!("unknown command {other:?}"))),
     })
+}
+
+/// 各号共用的用户级 MCP 那几条（本体 [`super::mcp_share_exec`]）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum McpRequest {
+    Read,
+    Remove(AccountMcpNameArgs),
+    Pick(AccountMcpPickArgs),
+}
+
+/// 是这几条之一 ⇒ `Some(收好的入参)`；别的命令 ⇒ `None`。
+pub(crate) fn parse_mcp(cmd: &str, args: &Value) -> Option<Result<McpRequest, Refusal>> {
+    Some(match cmd {
+        "accounts-mcp-read" => {
+            if args.is_null() || args.as_object().is_some_and(serde_json::Map::is_empty) {
+                Ok(McpRequest::Read)
+            } else {
+                Err(bad("accounts-mcp-read takes no arguments"))
+            }
+        }
+        "accounts-mcp-remove" => take(args).map(McpRequest::Remove),
+        "accounts-mcp-pick" => take(args).map(McpRequest::Pick),
+        _ => return None,
+    })
+}
+
+/// 跑一条（成品是此刻的样子）。
+pub(crate) fn run_mcp(d: &dyn Door, req: &McpRequest) -> Result<AccountMcpView, Refusal> {
+    match req {
+        McpRequest::Read => super::mcp_share_exec::read(d),
+        McpRequest::Remove(a) => super::mcp_share_exec::remove(d, &a.name),
+        McpRequest::Pick(a) => super::mcp_share_exec::pick(d, &a.name, a.from.as_deref()),
+    }
 }
 
 /// 这台做不做得了多账号（不做 ⇒ `unsupported`）。

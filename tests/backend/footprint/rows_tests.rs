@@ -594,6 +594,9 @@ fn every_host_declaration_is_pinned() {
         ("cc-bus", "~/.cc-bus/", Either),
         // 账号库：哪台机器的后端建它就在哪台（本机远端同一条路）→ 两端皆可。
         ("accounts", "~/.claude-alt/", Either),
+        // 各号共用的用户级 MCP 与改写前的备份：那台后端自己的状态，账号库在哪台就写哪台 ⇒ `Either`。
+        ("accounts", "~/.cc-monitor/accounts-mcp.json", Either),
+        ("accounts", "~/.cc-monitor/backups/accounts-mcp", Either),
         // 🔴 〔`K-R81` 09-12〕`remote-daemon` → `backend`，而它今天有**三行**：
         //    同一份后端的三种载体（`K-R68` 现打）。三行的 `host` 逐条不同源：
         //    ① 安装包旁边那份与 ② 自释放那份都落在 monitor 跑着的**这台**（`Client`）；

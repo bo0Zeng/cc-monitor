@@ -2685,6 +2685,65 @@ V116「要，只删装时写进去的文件」：装的时候记下写了哪几�
 
 界面把它交给开终端那一步（本机 Linux 上不开窗，复制给人自己跑）。**错误码**：`bad_args` · `refused` · `io_failed` · `unsupported`。
 
+#### `accounts-mcp-read`：这台各账号共用的用户级 MCP 此刻的样子（**只读**，**不读 stdin**）
+
+```text
+→ {"id":"m1","cmd":"accounts-mcp-read","args":{}}
+← {"kind":"reply","id":"m1","ok":true,"data":{"enabled":true,"servers":["anysearch","cclsp"],"conflicts":[{"name":"cclsp","choices":[{"from":null,"holders":["q"],"gone":false},{"from":"z","holders":["z"],"gone":false}]}],"changed":[],"notes":[]}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `enabled` | ← | 这台有没有账号库（没有 ⇒ 不做同步，下面几格都是空的；用户级 MCP 就是 agent 自己那一份） |
+| `servers` | ← | 共享集合里的名字（排好序）。**只有名字** —— 定义里可能带密钥，一个值都不上线 |
+| `conflicts` | ← | 两边都改了、等用户挑的那几条：每条 `{name, choices}` |
+| `name` | ← | 那一条的名字 |
+| `choices` | ← | 每一版 `{from, holders, gone}` |
+| `from` | ← | 挑这一版时交回 `accounts-mcp-pick` 的 `from`：`null` = 共享的那一版；号名 = 那个号里的那一版 |
+| `holders` | ← | 此刻是这一版的那几个号 |
+| `gone` | ← | 这一版是「没有这一条」（在 cc-monitor 里删过） |
+| `changed` | ← | 这一趟改写了哪几个号（这一条恒空） |
+| `notes` | ← | 提示：某个号的配置读不出来（这一趟不同步它）· 没写进去 |
+
+共享集合住 `~/.cc-monitor/accounts-mcp.json`（`0600`；服务器表与 Claude 配置里那一段同一个键名，另带「上次同步时各号的样子」作对照底）。
+同步本身不经帧命令触发：常驻后端盯账号库里每个号的 `.claude.json`（文件事件，不轮询），加号 · 建库之后帧面宿主也同步一趟。
+三方对照：号里多了一条（底里没有）⇒ 进共享集合、同步到所有号；一条变了而它等于底 ⇒ 是被旧内容盖回去的 ⇒ 按共享集合写回；
+既不等于底也不等于共享集合 ⇒ 采纳并同步；两边都改了 ⇒ 不自动选，列进 `conflicts`；号里少了一条 ⇒ 当作被盖掉、补回 —— 删除只走 `accounts-mcp-remove`。
+写各号的配置只换顶层那一个键（别的字节一个不动），先把原文放进 `~/.cc-monitor/backups/accounts-mcp/<号>.claude.json`，再经文件管理面 CAS 写。
+**错误码**：`io_failed`（问不出家目录 · 那份共享集合读不了）· `refused`（清单或那份共享集合解不开，不拿来算）。
+
+#### `accounts-mcp-remove`：从各账号共用的用户级 MCP 里删一条（**写用户文件**，阻塞档）
+
+```text
+→ {"id":"m2","cmd":"accounts-mcp-remove","args":{"name":"anysearch"}}
+← {"kind":"reply","id":"m2","ok":true,"data":{"enabled":true,"servers":["cclsp"],"conflicts":[],"changed":["z","b"],"notes":[]}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `name` | → | 要删的那一条（共享集合里与哪个号里都没有 ⇒ `not_found`） |
+| `servers` · `conflicts` · `changed` · `notes` · `enabled` | ← | 同 `accounts-mcp-read`；`changed` = 这一趟撤掉它的那几个号 |
+| `choices` · `from` · `holders` · `gone` | ← | 同 `accounts-mcp-read` |
+
+删除只有这一条路：在某个号里删掉不算数（分不清是删了还是被盖掉了，按被盖掉补回）。已经在跑的会话不重读配置，新开的会话才用上。
+**错误码**：`bad_args` · `not_found` · `io_failed` · `refused`。
+
+#### `accounts-mcp-pick`：两边都改了的那一条用哪一版（**写用户文件**，阻塞档）
+
+```text
+→ {"id":"m3","cmd":"accounts-mcp-pick","args":{"name":"cclsp","from":"z"}}
+← {"kind":"reply","id":"m3","ok":true,"data":{"enabled":true,"servers":["anysearch","cclsp"],"conflicts":[],"changed":["q"],"notes":[]}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `name` | → | 那一条 |
+| `from` | ↔ | → 那个号里此刻的那一版；缺席 / `null` = 共享的那一版（共享集合里已经删了 ⇒ 删）。← 同 `accounts-mcp-read` |
+| `servers` · `conflicts` · `changed` · `notes` · `enabled` · `choices` · `holders` · `gone` | ← | 同 `accounts-mcp-read` |
+
+挑完之后共享集合是那一版，所有号跟上。那个号里现在没有这一条 ⇒ `refused`（刷新之后再挑）。
+**错误码**：`bad_args` · `not_found` · `io_failed` · `refused`。
+
 #### `accounts-sessions`：正在跑的会话各属哪个账号（**不读 stdin**）
 
 ```text
