@@ -186,7 +186,8 @@ describe("C01 边界生成物", () => {
       "DriftFaceReport.ts", //        U-CC1
       "DriftLedgerReport.ts", // 读口回包：按机器分，带回答的是哪台
       "ElemKey.ts", // 按键认数组元素（`ConfigEdit` 的 `setin`）
-      "ExtAction.ts", // 扩展页（后端 `assets/ext.rs`）
+      "ExtBring.ts", // 扩展页（后端 `assets/ext.rs`）：机器那一行的「装到…」
+      "ExtBuiltin.ts", // 扩展页：自带扩展的内置备注
       "ExtCard.ts", // 扩展页（后端 `assets/ext.rs`）
       "ExtCell.ts", // 扩展页（后端 `assets/ext.rs`）
       "ExtDetail.ts", // 扩展页（后端 `assets/ext.rs`）
@@ -195,10 +196,12 @@ describe("C01 边界生成物", () => {
       "ExtList.ts", // 扩展页（后端 `assets/ext.rs`）
       "ExtLoc.ts", // 扩展页（后端 `assets/ext.rs`）
       "ExtMachine.ts", // 扩展页（后端 `assets/ext.rs`）
+      "ExtPlace.ts", // 扩展页：那台上的一处（全局 / 某个项目）
       "ExtRow.ts", // 扩展页（后端 `assets/ext.rs`）
       "ExtScope.ts", // 扩展页（后端 `assets/ext.rs`）
       "ExtSlot.ts", // 扩展页（后端 `assets/ext.rs`）
       "ExtState.ts", // 扩展页（后端 `assets/ext.rs`）
+      "ExtTarget.ts", // 扩展页：「装到哪」的一个选项
       "ExtTokens.ts", // 扩展页（后端 `assets/ext.rs`）
       "ExtUninstallCard.ts", // 扩展页（后端 `assets/ext.rs`）
       // K-R65：环境清单那四档（app 装的 / 该自带而没装口 / 你自己装我提示 / 只查）。

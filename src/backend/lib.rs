@@ -707,7 +707,9 @@ pub const PROTO_VERSION: u32 = 1;
 /// p6i-accounts-mcp：这台各账号共用一份用户级 MCP，三方对照同步，只改各号 .claude.json 的 mcpServers 那一键。
 ///
 /// p6j-no-panorama：cc-monitor 不再带代码全景；code-picture 只作为扩展（skill ＋ MCP）。
-pub const BUILD_ID: &str = "p6j-no-panorama";
+///
+/// p6k-ext-targets：扩展页装到哪由用户选、扩展可带备注、cc-bus 归扩展、有账号库时 MCP 能装到全局；机器页「工具」栏改为「终端」。
+pub const BUILD_ID: &str = "p6k-ext-targets";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src/frontend/shell/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），
@@ -901,6 +903,8 @@ pub const SUBCOMMANDS: &[&str] = &[
     // 扩展页「从这台卸」那两条（`ext-uninstall-preview` / `ext-uninstall-apply`）派生的 CLI 面。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
     "--ext-uninstall-preview",
     "--ext-uninstall-apply",
+    // 扩展页写备注那一条（`ext-note-set`）派生的 CLI 面。
+    "--ext-note-set",
     // 可达表登记（`inbound::REGISTRY` 的 `remote-reach`）派生的 CLI 面，入参从 stdin 读。
     // ⚠ 一次性进程的可达表随进程退出就空 —— 真正的用法是常驻后端的帧面。加这一行会逼出一次 `BUILD_ID` bump，本路**不 bump**。
     "--remote-reach",

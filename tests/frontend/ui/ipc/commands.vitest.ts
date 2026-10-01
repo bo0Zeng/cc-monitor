@@ -4,7 +4,7 @@
  *
  * ## 这条守卫替换的是什么
  *
- * Phase G 时全仓唯一的跨语言契约门禁是 `settings/cc-bus-hooks-section.vitest.ts` 里的一张
+ * Phase G 时全仓唯一的跨语言契约门禁是当时钩子诊断那一块判据里的一张
  * **单文件白名单**，覆盖 **3/121 个命令、1/29 个文件**。（C01 之后已不再「唯一」：
  * C01 钉了 1 个命令名 + 类型、C02 钉了 11 个事件名——Phase D 审计 J1 订正了原来那句话。）
  * 本文件把「命令名」这一维**扩到 121/121**。
@@ -1121,7 +1121,7 @@ const PENDING: Record<string, string> = {
 };
 
 /** 基线之后现打的人群条数（带类型标注、名字带 origin 的声明）。 */
-const POPULATION = 316; // 两边增量相加：代码全景那几份 TS 整删 −19；账号之间共用的 MCP 那几处 +5（`account-ops.ts` 四处 ＋ `settings/accounts-mcp-block.ts::renderSharedMcp` 一处）
+const POPULATION = 310; // 三路增量相加：钩子诊断那一块删 −7 ＋ 读口 +1（`cc-bus-hooks-reads.ts::fetchHooksReport`）；代码全景那几份 TS 整删 −19；账号之间共用的 MCP 那几处 +5（`account-ops.ts` 四处 ＋ `settings/accounts-mcp-block.ts::renderSharedMcp` 一处）
 
 interface Decl {
   /** `文件::宿主.名字`（宿主 = 外层接口 / 类 / 类型别名 / 函数名；顶层是 `<top>`）。 */

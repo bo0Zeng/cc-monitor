@@ -51,28 +51,16 @@
     "problems": [],
     "rows": [
       {
-        "about": "d",
+        "about": null,
+        "builtin": {
+          "hooks": true,
+          "note": "cc-bus 让几个 Claude Code 实例互发消息、接力协作。装上之后，要在那台的 ~/.claude/settings.json 里加两条钩子才能自动收信；cc-monitor 不替你改那份文件。下面每台一行：钩子装了没有，以及要加的内容。"
+        },
         "cells": [
           {
-            "action": {
-              "at": {
-                "level": "user"
-              },
-              "verb": "uninstall"
-            },
-            "dir": "<BASE>/a/.claude/skills/demo",
-            "note": null,
-            "places": [
-              {
-                "level": "user"
-              }
-            ],
-            "state": "same"
-          },
-          {
-            "action": {
+            "bring": {
               "from": null,
-              "fromName": "a",
+              "fromName": "cc-monitor 自带的那一份",
               "scope": {
                 "from": {
                   "level": "user"
@@ -81,11 +69,180 @@
                   "level": "user"
                 }
               },
-              "verb": "install"
+              "targets": [
+                {
+                  "at": {
+                    "level": "user"
+                  },
+                  "note": null,
+                  "ok": true
+                },
+                {
+                  "at": {
+                    "dir": "<BASE>/a/proj",
+                    "level": "project"
+                  },
+                  "note": "cc-bus 只装到全局：钩子要指向这台全局那一份。",
+                  "ok": false
+                }
+              ]
             },
-            "dir": null,
             "note": null,
-            "places": [],
+            "places": [
+              {
+                "at": {
+                  "level": "user"
+                },
+                "dir": null,
+                "note": null,
+                "state": "missing",
+                "uninstall": false
+              }
+            ],
+            "state": "missing"
+          },
+          {
+            "bring": {
+              "from": null,
+              "fromName": "cc-monitor 自带的那一份",
+              "scope": {
+                "from": {
+                  "level": "user"
+                },
+                "to": {
+                  "level": "user"
+                }
+              },
+              "targets": [
+                {
+                  "at": {
+                    "level": "user"
+                  },
+                  "note": null,
+                  "ok": true
+                },
+                {
+                  "at": {
+                    "dir": "<BASE>/b/proj",
+                    "level": "project"
+                  },
+                  "note": "cc-bus 只装到全局：钩子要指向这台全局那一份。",
+                  "ok": false
+                }
+              ]
+            },
+            "note": null,
+            "places": [
+              {
+                "at": {
+                  "level": "user"
+                },
+                "dir": null,
+                "note": null,
+                "state": "missing",
+                "uninstall": false
+              }
+            ],
+            "state": "missing"
+          }
+        ],
+        "detail": [],
+        "kind": "skill",
+        "name": "cc-bus",
+        "new": false,
+        "note": null
+      },
+      {
+        "about": "d",
+        "builtin": null,
+        "cells": [
+          {
+            "bring": {
+              "from": null,
+              "fromName": "本机",
+              "scope": {
+                "from": {
+                  "level": "user"
+                },
+                "to": {
+                  "dir": "<BASE>/a/proj",
+                  "level": "project"
+                }
+              },
+              "targets": [
+                {
+                  "at": {
+                    "level": "user"
+                  },
+                  "note": "来源和目标是同一处，没有可装的。",
+                  "ok": false
+                },
+                {
+                  "at": {
+                    "dir": "<BASE>/a/proj",
+                    "level": "project"
+                  },
+                  "note": null,
+                  "ok": true
+                }
+              ]
+            },
+            "note": null,
+            "places": [
+              {
+                "at": {
+                  "level": "user"
+                },
+                "dir": "<BASE>/a/.claude/skills/demo",
+                "note": null,
+                "state": "same",
+                "uninstall": true
+              }
+            ],
+            "state": "same"
+          },
+          {
+            "bring": {
+              "from": null,
+              "fromName": "本机",
+              "scope": {
+                "from": {
+                  "level": "user"
+                },
+                "to": {
+                  "level": "user"
+                }
+              },
+              "targets": [
+                {
+                  "at": {
+                    "level": "user"
+                  },
+                  "note": null,
+                  "ok": true
+                },
+                {
+                  "at": {
+                    "dir": "<BASE>/b/proj",
+                    "level": "project"
+                  },
+                  "note": null,
+                  "ok": true
+                }
+              ]
+            },
+            "note": null,
+            "places": [
+              {
+                "at": {
+                  "level": "user"
+                },
+                "dir": null,
+                "note": null,
+                "state": "missing",
+                "uninstall": false
+              }
+            ],
             "state": "missing"
           }
         ],
@@ -97,7 +254,8 @@
         ],
         "kind": "skill",
         "name": "demo",
-        "new": false
+        "new": false,
+        "note": null
       }
     ]
   },

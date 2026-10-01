@@ -190,6 +190,10 @@ const CHANNELED: &[(&str, &str)] = &[
 const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     // 设置「扩展」页（`src/frontend/ui/ext-reads.ts`）：表 · 装（本机后端当枢纽）· 卸（问被卸那台），判定全在后端。
     (
+        "ext-note-set",
+        "界面直问本机后端：用户写的备注记进它的资产目录（自己那一格），随目录同步到别的后端",
+    ),
+    (
         "ext-list",
         "界面直问本机后端：各台目录合成「条目 × 机器」，每格的态与唯一那个按钮都是后端判的，线上不带摘要",
     ),
@@ -318,8 +322,8 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     // 钩子诊断：本机远端两条 Tauri 命令合成一条帧命令，界面直接问那台。
     (
         "hooks-diag",
-        "后端出成品 `{diagnosis, snippet_home, snippet_bare, source}`（`observe/cc_bus_hooks.rs`，读那台自己的 `settings.json` ＋ stat）；\
-         前端 `src/frontend/ui/settings/cc-bus-hooks-section.ts::fetchHooksReport` 问、`decodeHooksReport` 按恰好的键集合收，monitor 这一侧零发送点",
+        "后端出成品 `{diagnosis, snippet, source}`（`observe/cc_bus_hooks.rs`，读那台自己的 `settings.json` ＋ stat，只读）；\
+         前端 `src/frontend/ui/cc-bus-hooks-reads.ts::fetchHooksReport` 问（扩展页 cc-bus 那一行每台一问）、`decodeHooksReport` 按恰好的键集合收，monitor 这一侧零发送点",
     ),
     // 〔⑬「monitor 零 SSH」〕公钥推送：本机后端读 `.pub` · 组请求 · 经那台后端写或一次 exec，界面直接问本机。
     (
@@ -519,14 +523,7 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     // `mcp-sync-source` / `-preview` / `-apply` 三条界面不再直问（那是经前端中继）：
     //   界面只问本机那两条枢纽命令，枢纽向来源那台取、向被写那台写（内层三条只经枢纽）。
     // cc-bus 装到本机：monitor 那两条 Tauri 命令（`deploy_local_cc_bus` / `cc_bus_install_state`〔散文墓碑〕）删了。
-    (
-        "cc-bus-install",
-        "新帧命令：本机后端把内嵌的 cc-bus 装进 skills 根（幂等 · 覆盖前整目录备份 · 记进 skill 装记录）",
-    ),
-    (
-        "cc-bus-install-state",
-        "新帧命令：本机后端答装的是哪一版（三态，只读）",
-    ),
+    //   那两条帧命令界面也不再直问：cc-bus 是扩展页里的一行，装它走枢纽（`ext-hub-*`），枢纽交被写那台装（内层两条只经枢纽）。
     // D 组 skill 装 / 卸与资产目录同步：monitor 那四条 Tauri 命令（`skill_install_*` · `skill_uninstall_apply` · `assets_sync`〔散文墓碑〕）删了。
     (
         "assets-sync",

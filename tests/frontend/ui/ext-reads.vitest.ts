@@ -20,6 +20,7 @@ import {
   extHubApply,
   extHubPreview,
   extList,
+  extNoteSet,
   extUninstallApply,
   extUninstallPreview,
 } from "../../../src/frontend/ui/ext-reads";
@@ -45,8 +46,17 @@ describe("金样：后端出的成品，TS 读得懂", () => {
       [null, true],
       ["laptop", false],
     ]);
-    expect(list.rows.map((r) => [r.name, r.cells.map((c) => c.state)])).toEqual([["demo", ["same", "missing"]]]);
-    expect(list.rows[0].cells[1].action?.verb).toBe("install");
+    expect(list.rows.map((r) => [r.name, r.cells.map((c) => c.state)])).toEqual([
+      ["cc-bus", ["missing", "missing"]],
+      ["demo", ["same", "missing"]],
+    ]);
+    expect(list.rows.map((r) => r.builtin?.hooks ?? null)).toEqual([true, null]);
+    const there = list.rows[1].cells[1];
+    expect(there.bring?.targets.map((t) => [t.at.level, t.ok])).toEqual([
+      ["user", true],
+      ["project", true],
+    ]);
+    expect(list.rows[1].cells[0].places.map((p) => [p.at.level, p.state, p.uninstall])).toEqual([["user", "same", true]]);
     expect(decodeExtCard(EXT.card).writes).toEqual(["SKILL.md"]);
     expect(decodeExtDone(EXT.done).changed).toEqual(["SKILL.md"]);
     expect(decodeExtUninstallCard(EXT.uninstallCard).recorded).toBe(true);
@@ -62,6 +72,8 @@ describe("严格收：形状不对 ⇒ 抛「两端版本对不上」", () => {
     ["一行的格数与机器数对不上", () => decodeExtList({ ...list, rows: [{ ...list.rows[0], cells: list.rows[0].cells.slice(1) }] })],
     ["格态不在闭集里", () => decodeExtList({ ...list, rows: [{ ...list.rows[0], cells: [{ ...list.rows[0].cells[0], state: "maybe" }, list.rows[0].cells[1]] }] })],
     ["一格带了摘要", () => decodeExtList({ ...list, rows: [{ ...list.rows[0], cells: [{ ...list.rows[0].cells[0], digest: "d" }, list.rows[0].cells[1]] }] })],
+    ["一行缺备注那一格", () => decodeExtList({ ...list, rows: [(({ note: _n, ...r }) => r)(list.rows[0] as Record<string, unknown>)] })],
+    ["备注不是串", () => decodeExtList({ ...list, rows: [{ ...list.rows[0], note: 1 }] })],
     ["卡缺记号", () => decodeExtCard((({ tokens: _t, ...r }) => r)(card))],
     ["装完类型不对", () => decodeExtDone({ ...(EXT.done as object), changed: "SKILL.md" })],
   ] as const)("%s", (_n, f) => {
@@ -74,9 +86,9 @@ describe("装只问本机（枢纽）；内层命令界面一条都不直问", (
   it("ext-reads.ts：枢纽那两条的第一参恰是 LOCAL_ORIGIN，内层命令零出现", () => {
     const src = readFileSync(resolve(REPO_ROOT, "src/frontend/ui/ext-reads.ts"), "utf8");
     const calls = [...src.matchAll(/chan\.call\(\s*([^,]+),\s*"([^"]+)"/g)].map((m) => [m[1].trim(), m[2]]);
-    expect(calls.map(([, op]) => op).sort()).toEqual(["ext-hub-apply", "ext-hub-preview", "ext-list", "ext-uninstall-apply", "ext-uninstall-preview"]);
-    expect(calls.filter(([, op]) => op.startsWith("ext-hub-") || op === "ext-list").every(([o]) => o === "LOCAL_ORIGIN")).toBe(true);
-    const inner = ["mcp-sync-source", "mcp-sync-preview", "mcp-sync-apply", "skill-read", "skill-install-plan", "skill-install-apply"];
+    expect(calls.map(([, op]) => op).sort()).toEqual(["ext-hub-apply", "ext-hub-preview", "ext-list", "ext-note-set", "ext-uninstall-apply", "ext-uninstall-preview"]);
+    expect(calls.filter(([, op]) => op.startsWith("ext-hub-") || op === "ext-list" || op === "ext-note-set").every(([o]) => o === "LOCAL_ORIGIN")).toBe(true);
+    const inner = ["mcp-sync-source", "mcp-sync-preview", "mcp-sync-apply", "skill-read", "skill-install-plan", "skill-install-apply", "cc-bus-install", "cc-bus-install-state"];
     expect(inner.filter((op) => src.includes(`"${op}"`))).toEqual([]);
   });
 });
@@ -111,6 +123,17 @@ describe("请求：问对那台、说对那条", () => {
       ["<local>", "ext-hub-apply", { ...bring, tokens: card.tokens, fill: { env: { K: "v" } } }],
       ["laptop", "ext-uninstall-preview", { kind: "skill", name: "demo", at: { level: "user" } }],
       ["laptop", "ext-uninstall-apply", { kind: "skill", name: "demo", at: { level: "user" }, token: u.token }],
+    ]);
+  });
+  it("备注：问本机后端，种类 · 名字 · 正文原样交；回现在生效的那一份", async () => {
+    invokeMock.mockResolvedValueOnce(chanReply({ note: "先加钩子" }));
+    expect(await extNoteSet("skill", "cc-bus", "先加钩子")).toBe("先加钩子");
+    invokeMock.mockResolvedValueOnce(chanReply({ note: null }));
+    expect(await extNoteSet("skill", "cc-bus", "")).toBeNull();
+    const calls = invokeMock.mock.calls.map((c) => c[1] as ChanCallArgs);
+    expect(calls.map((a) => [a.origin, a.op, chanArgsJson(a)])).toEqual([
+      ["<local>", "ext-note-set", { kind: "skill", name: "cc-bus", text: "先加钩子" }],
+      ["<local>", "ext-note-set", { kind: "skill", name: "cc-bus", text: "" }],
     ]);
   });
   it("后端答 stale ⇒ 带着码抛（卡上据它给「重看」）", async () => {
