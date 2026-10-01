@@ -248,7 +248,9 @@ fn production_launch_calls() -> usize {
     tracked_under("src/frontend/shell/src", "rs")
         .into_iter()
         // `launch_wire.rs` 的头注里逐字写着那个串（F07 立的例外，沿用）。
-        .filter(|rel| !rel.ends_with("/launch_wire.rs"))
+        .filter(|rel| {
+            std::path::Path::new(rel).file_name() != Some(std::ffi::OsStr::new("launch_wire.rs"))
+        })
         .map(|rel| {
             guard_core::production_code(
                 &std::fs::read_to_string(root.join(&rel)).unwrap_or_default(),
