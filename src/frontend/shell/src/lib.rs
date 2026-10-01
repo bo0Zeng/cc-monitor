@@ -983,7 +983,7 @@ pub fn run() {
             //    要退役，而在这个窗口真能替代它之前删掉旧的等于把功能拿走 ⇒ 这一刀不删。
             filewin::entry::open_file_window,
             // `push_public_key`〔散文墓碑〕退役：界面经通道问本机后端 `pubkey-push`。
-            // `probe_ccm_cli` 退役：渲染进了那台后端，能力问它自己。
+            // 远端 `ccm` 探针那条命令退役：渲染进了那台后端，能力问它自己。
             // 🔴 `K-R69` / `KR69D2`：本机 `ccm` 这一格（我们那一份 · PATH 上那一份 · 判词）。
             ccm_probe::local_ccm_entry_status,
             // skill 接入面三条（收件箱的列 / 读 / 写）退役：界面经通道直问那台后端
@@ -1318,7 +1318,6 @@ impl SkipRuns {
 
 // `apikey_routing_for`〔散文墓碑〕与它的答案结构退役：界面经 `chan.call` 直接问那台机器的后端 `apikey-routing`
 //   （`src/frontend/ui/apikey-reads.ts::fetchApikeyRouting`）—— 「表里有哪几行」与「中转在不在」两样事实都是那台后端的，人群只有一份。
-
 
 // 墓碑：这里从前是 Tauri 命令 `write_apikey_credentials_key`〔散文墓碑〕（`K-H2a` 从界面配一把 key；
 // 按 origin 交那台机器的后端；本机那一臂先核路径）。常驻后端身份带上数据目录之后（`local_backend_host::hello_verdict`

@@ -165,7 +165,7 @@ export function localFollowPlan(sid: string): LocalFollowPlan {
  *
  * 后端那条 ccm 路只会 `--account <名字>`（`shared/ccm:606`）。本函数先前只回
  * `{kind:"named", configDir}` ⇒ Rust 那侧的 `LaunchAccount::Named` 手上**没有名字**
- * ⇒ 本机后端 `local.rs::render_ccm_with` 对它必然 §35 短路 ⇒ **本机具名账号一条都进不了
+ * ⇒ 本机后端那条 ccm 路（当时的渲染函数）对它必然 §35 短路 ⇒ **本机具名账号一条都进不了
  * ccm 容器**。而盘上四个本机拉起入口里有三个只说得出具名账号（`tabs.ts` 一处 +
  * `views/history.ts` 两处，人群由 `ipc/commands.vitest.ts` 那条「恰好 4 处」钉着）
  * ⇒ 那三条**在类型上**就到不了后端那条路，100% 落第二实现。

@@ -639,14 +639,6 @@ mod tests {
              而这一处**没有门**，归 PM（要么进适配层，要么随那一格一起裁）。",
         ),
         (
-            "control/launch_render/local.rs",
-            "find(\"bash\"",
-            "合法线外",
-            "本机起会话前探 `ccm`（`bash -lic` 里问 PATH 上那个）。调用点只在 POSIX 终端那一支走得到 \
-             （`plan` 先按 `Facts.windows` 分，Windows 走 PowerShell 旧路、接回当场拒）；找不到 `bash` ⇒ 按没装办、退旧路，\
-             不是一个会在别的平台上答错的值。",
-        ),
-        (
             "footprint/registry.rs",
             "named: \"bash\"",
             "合法线外",

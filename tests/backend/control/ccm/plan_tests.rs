@@ -492,9 +492,7 @@ fn the_container_path_carries_every_intent_inward() {
 ///
 /// # 这一条是 `K-R48` 第二拍补的，补的是**别人家的判据搬过来时空出来的那一格**
 ///
-/// 从前盯这件事的是 monitor 侧 `backend/control/payload.rs` 的两条：
-/// `the_ccm_container_path_forwards_the_relay_base_url_across_the_tmux_boundary` 与
-/// `…_forwards_the_launch_identity_…`。它们的做法是**把 `shared/ccm` 里那段 bash
+/// 从前盯这件事的是 monitor 侧载荷那一层的两条（中转地址 · 身份 token 各一条）。它们的做法是**把 `shared/ccm` 里那段 bash
 /// 窗口原样交给 `bash` 跑一遍**再读载荷 —— 脚本删了，那两条连被测对象都没有了。
 ///
 /// ⚠ **[`the_container_path_carries_every_intent_inward`] 顶不了这一格**：
@@ -1882,13 +1880,27 @@ fn a_stale_session_mark_alone_does_not_make_a_resume_rejoin() {
     fn live(_: Option<&std::path::Path>) -> Vec<(String, u32)> {
         vec![("s1".into(), 4242)]
     }
-    let a: Vec<String> = ["--resume", "s1", "--", "--base"].iter().map(|s| s.to_string()).collect();
-    let Parsed::Opts(o) = crate::control::ccm::argv::parse(&a).unwrap() else { panic!() };
+    let a: Vec<String> = ["--resume", "s1", "--", "--base"]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+    let Parsed::Opts(o) = crate::control::ccm::argv::parse(&a).unwrap() else {
+        panic!()
+    };
     let mut e = env();
     e.running_sessions = Some(dead);
-    assert!(matches!(build(&o, &e, &AccountTable::default(), Some(&tagged)).unwrap(), Plan::Direct(_)));
+    assert!(matches!(
+        build(&o, &e, &AccountTable::default(), Some(&tagged)).unwrap(),
+        Plan::Direct(_)
+    ));
     e.running_sessions = Some(live);
-    assert!(matches!(build(&o, &e, &AccountTable::default(), Some(&tagged)).unwrap(), Plan::Rejoin { .. }));
+    assert!(matches!(
+        build(&o, &e, &AccountTable::default(), Some(&tagged)).unwrap(),
+        Plan::Rejoin { .. }
+    ));
     e.running_sessions = None;
-    assert!(matches!(build(&o, &e, &AccountTable::default(), Some(&tagged)).unwrap(), Plan::Rejoin { .. }));
+    assert!(matches!(
+        build(&o, &e, &AccountTable::default(), Some(&tagged)).unwrap(),
+        Plan::Rejoin { .. }
+    ));
 }

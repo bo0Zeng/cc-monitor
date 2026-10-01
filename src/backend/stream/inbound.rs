@@ -1544,9 +1544,8 @@ pub const REGISTRY: &[CommandSpec] = &[
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
-    // 起会话的计划与渲染（`control/launch_render/`）。
-    //   `launch-local`：本机起会话整条（阻塞档：探一次 `ccm`、读一次凭据表、探一次中转）；
-    //   两条渲染是纯函数（不碰盘、不起进程）。
+    // 起会话那一行 `ccm …`（`control/launch_render/`）：交给终端的只有这一行，环境与中转地址归那台的 `ccm`。
+    //   `launch-local`：本机那几形（阻塞档：核一次「新起」的目录在不在）；`launch-render-cli`：远端那几形（纯函数）。
     CommandSpec {
         name: "launch-local",
         doc_anchor: Some("#### `launch-local`"),
@@ -1554,10 +1553,9 @@ pub const REGISTRY: &[CommandSpec] = &[
         fields: &[
             "account",
             "action",
-            "agent",
-            "allSessions",
             "cmd",
             "cwd",
+            "defaultLauncher",
             "launchId",
             "launcher",
             "tmuxName",
@@ -1572,7 +1570,7 @@ pub const REGISTRY: &[CommandSpec] = &[
     CommandSpec {
         name: "launch-render-cli",
         doc_anchor: Some("#### `launch-render-cli`"),
-        codes: &["bad_args"],
+        codes: &["bad_args", "refused"],
         fields: &[
             "account",
             "action",
@@ -1581,11 +1579,9 @@ pub const REGISTRY: &[CommandSpec] = &[
             "container",
             "cwd",
             "defaultLauncher",
-            "isSsh",
             "launcher",
             "model",
-            "ok",
-            "reason",
+            "rbindToken",
         ],
         takes_input: true,
         run: Run::Async(|r| {

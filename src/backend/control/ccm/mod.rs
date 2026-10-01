@@ -89,8 +89,8 @@ pub(crate) fn agents() -> Vec<&'static str> {
 /// 在边界上会被整个吃掉（`plan.rs` 那段注释逐字「账号注入 100% 失效，**实测过**」）。
 ///
 /// 🔴 **这件事我们早就做到了，只是一直没说**：`plan.rs` 的容器分支把它显式化进载荷内侧。
-/// 于是本机起会话那边 `local.rs::RELAY_KEEPS_THE_OLD_PATH`（原在 monitor） 按「探不到就不放行」照旧挡着，
-/// **挡的却是一件我们自己已经做到的事** —— 「实现与申报不一致，而守它的东西看不见那个字段」。
+/// 当时本机起会话那边按「探不到就不放行」照旧挡着，**挡的却是一件我们自己已经做到的事** ——
+/// 「实现与申报不一致，而守它的东西看不见那个字段」（那道挡板随起会话只交一行 `ccm …` 删了）。
 /// 本 token 补的就是**申报**那一半；驱动它的判据是
 /// [`tests::the_base_url_token_is_declared_because_the_tmux_path_really_forwards_it`]。
 pub(crate) const CAPABILITIES: &[&str] = &[

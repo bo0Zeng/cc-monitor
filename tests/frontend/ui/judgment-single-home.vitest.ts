@@ -143,8 +143,8 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
   },
   J2: {
     what: "configDir 能不能拼进命令",
-    // 规则整份（POSIX 形 ＋ 任一平台形 ＋ 拒绝集）搬进 `acct-core`：`payload.rs::config_dir_command_safe`
-    //   与后端 `accounts_query.rs::is_safe_config_dir` 成转手的薄壳，后端 `control/ccm` 直接用 `config_dir_ok`。
+    // 规则整份（POSIX 形 ＋ 任一平台形 ＋ 拒绝集）搬进 `acct-core`：后端 `accounts_query.rs::is_safe_config_dir` 成转手的薄壳，
+    //   调用行渲染器与后端 `control/ccm` 直接用 `config_dir_ok`（载荷那一层那一份随它删了）。
     homes: [
       "acct-core::config_dir_posix_ok",
       "acct-core::config_dir_ok",

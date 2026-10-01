@@ -112,7 +112,7 @@ struct Manifest {
 /// 路径是否可安全地交给下游（cc-monitor 会把 configDir 拼进 `export CLAUDE_CONFIG_DIR='…'`）。
 /// ⚠ `N-F1c`（09-05）之后**不再是整套同一**：`\` 从本函数的拒绝集里拿出来了（Windows 的路径
 /// 分隔符就是它），而上面那一侧照旧拒。这不是漂移，是**分层校验** ——
-/// monitor 把 `configDir` 拼进 POSIX 命令之前要过 `config_dir_command_safe`，那个函数明确拒 `\`。
+/// 拼进 POSIX 命令之前要过 `acct-core` 的 `config_dir_posix_ok`，那个函数明确拒 `\`。
 /// 〔旧文逐字，留作来历：「同一套字符集——两端对齐」——「整套同一」今天不成立。〕
 /// ⚠⚠ 上面那个名字**在本文件里只许出现一次** —— `structural_scan::INVENTORY` 按**处数**钉着它
 /// （PM 09-05 改这段注释时多写了一次，当场红：「盘上 2 处，登记表写 1 处」）。
@@ -261,14 +261,11 @@ fn session_process_identity_ok(pid: u32, pidfile: &serde_json::Value) -> bool {
 
 /// cc-monitor 起会话时铸进下一跳进程环境的**身份 token**〔`K-P5b` 写侧，`K-P5f` 读侧〕。
 ///
-/// # 🔴 双写点，且**共享不了常量** —— 界在这里说清楚
+/// # 双写点 —— 界在这里说清楚
 ///
-/// 写侧的家是 `src/backend/control/launch_render/local.rs::LAUNCH_ID_VAR`（原在 monitor），而
-/// `src/backend` 是**另一个 crate、另一份 `Cargo.lock`**（`src/frontend/shell/Cargo.toml`
-/// 的 workspace members 里逐字没有它）⇒ 两侧不可能 `use` 同一个 `const`。
-/// 与 `CREDENTIALS_NAME` 那个双写点（Rust ↔ bash）同形，处置也照它：
-/// **由测试对拍**（[`tests::the_launch_id_env_var_matches_the_monitor_side_home`]， 〔散文墓碑〕
-/// `include_str!` 直接读 monitor 那份源码）。**改这里必须改那边，反之亦然。**
+/// 写侧的家是 `control/ccm/plan.rs::LAUNCH_ID_ENV`（`ccm` 在最终 exec 那一处把 `--ccm-launch-id` 的值放进 agent 进程环境）。
+/// 同一个 crate，但 `control` 与 `observe` 两层互不引用 ⇒ 各留一个常量，由测试对拍
+/// （[`tests::the_launch_id_var_is_one_name_on_both_halves`]）。**改这里必须改那边，反之亦然。**
 ///
 /// # ⚠ 它**不住** `agents/claudecode/paths.rs`，这不是疏忽
 ///
@@ -281,7 +278,7 @@ const LAUNCH_ID_ENV: &str = "CCM_LAUNCH_ID";
 /// 身份 token 的字符集 —— **fail closed**，形状不对就不往下游递。
 ///
 /// 与铸法那一侧同一条：段闸 `relay_route_core::segment_is_safe`（从 monitor `payload.rs` 搬进共享 crate）逐字是
-/// 「只许字母数字与 `-` `_`，1..=128 字节」，而 `route_key_for_session` 铸出来的
+/// 「只许字母数字与 `-` `_`，1..=128 字节」，而本机起会话铸出来的（`control/launch_render/local.rs` 那一份铸法）
 /// 要么是 UUID v4（`[0-9a-f-]`，36 字节）、要么是过了那条白名单的 sid ⇒ 两种都在集内。
 ///
 /// # 为什么读回来还要再核一次（"来源可信"不是放行的理由）

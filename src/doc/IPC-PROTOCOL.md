@@ -1745,7 +1745,7 @@ monitor 进程内也**不再有它的副本**（原来那条「启动时 / 改�
 | `problem` | ← | 读不动 / 解析不了时的一句话。🔴 **解析不了不退化成「没配」** |
 
 **没有错误码**：读不动是一个**状态**（`problem`），照样 `ok:true`。界面经 `chan.call` 直接问它、按形状严格收（金样 `tests/__fixtures__/apikey.golden.json`）。
-先前还回 `rows`（表里有哪几行）：它只给 monitor 起会话那一侧用，而那一侧的判断搬进了下面的 `launch-endpoint` ⇒ 退出线上。
+先前还回 `rows`（表里有哪几行）：它只给 monitor 起会话那一侧用，而那一侧的判断归起 agent 那台的 `ccm` 了 ⇒ 退出线上。
 
 ⚠ **CLI 面也有它们**（`--apikey-key-set` / `--apikey-read`），从 `inbound::REGISTRY` 派生；`--apikey-key-set` 的入参**从 stdin 读**。
 
@@ -1765,71 +1765,40 @@ monitor 进程内也**不再有它的副本**（原来那条「启动时 / 改�
 
 **错误码**：`bad_args`。界面经 `chan.call` 直接问（金样同上）。
 
-#### `launch-endpoint`：这个号这一发走哪、注入什么（US1 · 4D）
+#### `launch-render-cli`：远端起会话那一行 `ccm …`
 
-起会话那一侧（本机与远端同一条）问一次：往 `ANTHROPIC_BASE_URL` 里写哪个中转地址，或者不写。决策表是那一张（上游选择 `accounts/upstream_select/endpoint.rs::decide_launch` 是唯一实现）。
-回的是**成品**：「中转不在时拒还是直连」也在这里判完（原先回四格、由 monitor 再判一遍）。
+monitor 每一条远端起会话路径（直连 resume · 建 tmux 会话 resume〔换号重启 · 分叉〕· 开新会话 · 接回 · 就地 resume）都问那台后端要这一行；
+交给终端的**只是这一行**（就地 resume 回落那一形外层只包一层 `tmux send-keys … ; tmux attach`）。环境、中转地址、身份标记、预信任由**那台的 `ccm`**
+在最终 exec 那一处定。`ccm` 就是这台后端本身 ⇒ 能力问它自己（与 `--ccm-probe` 同一份）。**纯函数**（不起进程、不碰盘）。
+（原 monitor 的 Tauri 命令 `render_ccm_launch`〔散文墓碑〕搬进那台后端；载荷那一条随起会话只交一行 `ccm …` 删了。）
 
 ```text
-→ {"id":"k4","cmd":"launch-endpoint","args":{"agent":"claude-code","account":{"kind":"named","configDir":"/h/.claude-alt/work"},"allSessions":false}}
-← {"kind":"reply","id":"k4","ok":true,"data":{"baseUrl":"http://127.0.0.1:8788/s/claude-code/work"}}
+→ {"id":"c1","cmd":"launch-render-cli","args":{"action":{"kind":"resume","sid":"s1"},"container":{"kind":"tmux","name":"cc-s1","send_into":false},"cwd":"/p","account":{"kind":"account","name":"z","configDir":"/home/u/.claude-alt/z"},"ccmSid":"s1","model":null,"launcher":"claude","defaultLauncher":"claude","rbindToken":"0123456789abcdef0123456789abcdef"}}
+← {"kind":"reply","id":"c1","ok":true,"data":{"cmd":"ccm --resume s1 -- --ccm-tmux=cc-s1 --ccm-sid=s1 --account z --ccm-rbind-token 0123456789abcdef0123456789abcdef --cwd /p"}}
 ```
 
 | 字段 | 向 | 说明 |
 |---|---|---|
-| `agent` | → | 这一家 agent 的路由名（第 1 段）。空串 ⇒ 默认那一家；注册表里没有 ⇒ `bad_args`（不当成「没有表」照直连） |
-| `account` | → | `{"kind":"named","configDir":…}` · `{"kind":"base"}` · 缺席 / `null`（没表态）|
-| `allSessions` | → | 全量注入开关（`/t/` 那几格；monitor 进程环境 `CCM_RELAY_ALL_SESSIONS`，默认开，由调用方带来）|
-| `baseUrl` | ← | 注入的地址（不带钥匙；渲染成 `$(cat ~/.cc-monitor/relay-key)` 那一形是渲染那一侧的事）；`null` = 不注入（含「有它更好而中转没在听 ⇒ 这一发直连」）|
+| `action` | → | `{"kind":"new"}` · `{"kind":"resume","sid":…}` · `{"kind":"attach","name":…}` |
+| `container` | → | `{"kind":"none"}`（直路）· `{"kind":"tmux","name":…,"send_into":bool}`（建会话 / 键进已有 pane）|
+| `cwd` · `ccmSid` · `model` · `launcher` · `defaultLauncher` | → | 这次拉起的修饰（`deny_unknown_fields`：多送一格就拒）|
+| `account` | → | `{"kind":"base"}` · `{"kind":"account","name"?:…,"configDir"?:…}`（说得出名字 ⇒ `--account`；只有目录 ⇒ `--account-dir`）|
+| `rbindToken` | → | 界面铸的启动期令牌（渲成 `--ccm-rbind-token`）；接回那一格 `null` |
+| `cmd` | ← | 那一行 `ccm …` |
 
-**错误码**：`bad_args` · `relay_down`（非它不可 —— API 号代入 `/s/` —— 而这台的中转没在听：拒绝起会话，一句话说清是哪个号）。
-只在要注入时才问中转在不在（读常驻后端进程内的监听状态；中转只住那台的常驻后端里，不另起一个）。
+**错误码**：`bad_args`（入参形状不对）· `refused`（渲不出来：缺能力 · 说不出的修饰 · 坏值，理由原样；调用方**不回落、不拼第二条**）。
+CLI 面（`--launch-render-cli`）从 `inbound::REGISTRY` 派生，入参从 stdin 读。
 
-⚠ **只上帧面**：一次性进程里没有中转，那一格恒答「不在」是假话 ⇒ 不派生 CLI 面（`cli_control::STREAM_ONLY`）。
+#### `launch-local`：本机起会话那一行 `ccm …`
 
-#### `launch-render-cli`：`ccm …` 调用行（MIG-2）
-
-原 monitor 的 Tauri 命令 `render_ccm_launch`〔散文墓碑〕搬进那台后端：渲的是那台要跑的那一行，`ccm` 就是这台后端本身⇒
-能力问它自己（与 `--ccm-probe` 同一份），入参不再带探测结果。**纯函数**（不起进程、不碰盘）。
-
-```text
-→ {"id":"c1","cmd":"launch-render-cli","args":{"isSsh":true,"action":{"kind":"attach","name":"proj-cc"},"container":{"kind":"tmux","name":"proj-cc","send_into":false},"cwd":null,"account":{"kind":"base"},"ccmSid":null,"model":null,"launcher":"claude","defaultLauncher":"claude"}}
-← {"kind":"reply","id":"c1","ok":true,"data":{"ok":true,"cmd":"ccm -- --attach proj-cc","reason":null}}
-```
-
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `isSsh` · `action` · `container` · `cwd` · `account` · `ccmSid` · `model` · `launcher` · `defaultLauncher` | → | 这次拉起的结构化描述（`deny_unknown_fields`：多送一格就拒）|
-| `ok` | ← | 渲不渲得出 |
-| `cmd` | ← | 渲出来的那一行；`ok:false` 时 `null` |
-| `reason` | ← | 渲不出来的理由（**诚实降级**，不是错：调用方换 `launch-render-payload` 那条）；`ok:true` 时 `null` |
-
-**错误码**：`bad_args`（入参形状不对）。CLI 面（`--launch-render-cli`）从 `inbound::REGISTRY` 派生，入参从 stdin 读。
-
-#### `launch-render-payload`：裸载荷 ＋ 外层 tmux 三格（MIG-2）
-
-原 monitor 的 Tauri 命令 `render_launch_payload`〔散文墓碑〕搬进那台后端。`container:"none"` ⇒ `env → cd → argv → wrap`；带 `outer`（`create` / `send-into` / `attach`）⇒ 外层 tmux 命令。**纯函数**。
+本机那几形（新起 · resume · 接回）。回的是要在**本机一个新终端窗口里跑的那一行**；开窗口是 monitor 的事（`open_local_terminal`）。
+（原 monitor `history.rs` 的 `new_local_session` / `resume_history_session` / `render_local_attach`〔散文墓碑〕搬进本机后端。）
+POSIX 上有会话名 ⇒ `--ccm-tmux=`（建进 tmux）；Windows 没有 tmux ⇒ 直路（`ccm` 在那个 PowerShell 窗口里起 agent），接回说不出 ⇒ 拒。
+起 agent 的那几形带 `--ccm-launch-id <token>`（resume 用 sid，新起现铸一个 nonce）：`ccm` 把它放进 agent 进程环境（`CCM_LAUNCH_ID`），调用方拿它回填新会话的 sid。
 
 ```text
-→ {"id":"p1","cmd":"launch-render-payload","args":{"env":[{"kind":"unset-nested-env"}],"cwd":"/w","launcher":"claude","args":[],"nestedEnv":["CLAUDECODE"],"wrap":[]}}
-← {"kind":"reply","id":"p1","ok":true,"data":{"cmd":"unset CLAUDECODE; cd '/w' && claude"}}
-```
-
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `env` · `cwd` · `launcher` · `args` · `nestedEnv` · `wrap` · `outer` · `resumeSid` | → | 载荷与外层（`deny_unknown_fields`；`outer` / `wrap` / `resumeSid` 可缺席）|
-| `cmd` | ← | 渲出来的那一串 |
-
-**错误码**：`bad_args` · `refused`（坏输入：非法 configDir · 会裂的参数 · 令牌 / 中转地址形状不对 · 两层 cwd 同时送 …，理由原样；调用方**不许换条路糊过去**）。CLI 面 `--launch-render-payload`（派生，入参从 stdin 读）。
-
-#### `launch-local`：本机起会话的整条计划（MIG-2）
-
-原 monitor `history.rs` 的 `new_local_session` / `resume_history_session` / `render_local_attach`〔散文墓碑〕里「校验 · 账号前缀 · `ccm` 容器路 / 旧路 · 中转前缀 · 身份 token」那一整条。
-回的是要在**本机一个新终端窗口里跑的那一串**；开窗口是 monitor 的事（`open_local_terminal`）。只对本机有意义（问的是这台的 `ccm` 与中转）。
-
-```text
-→ {"id":"l1","cmd":"launch-local","args":{"action":{"kind":"new"},"cwd":"/w","launcher":null,"account":null,"tmuxName":"w-cc","agent":{"id":"claude-code","defaultLauncher":"claude","launcherAlias":"cc","resumeFlag":"--resume"},"allSessions":true}}
-← {"kind":"reply","id":"l1","ok":true,"data":{"cmd":"…; export CCM_LAUNCH_ID='…'; ccm -- new --ccm-tmux=w-cc","launchId":"…"}}
+→ {"id":"l1","cmd":"launch-local","args":{"action":{"kind":"new"},"cwd":"/w","launcher":null,"account":null,"tmuxName":"w-cc","defaultLauncher":"claude"}}
+← {"kind":"reply","id":"l1","ok":true,"data":{"cmd":"ccm -- new --ccm-tmux=w-cc --ccm-launch-id …","launchId":"…"}}
 ```
 
 | 字段 | 向 | 说明 |
@@ -1838,13 +1807,23 @@ monitor 进程内也**不再有它的副本**（原来那条「启动时 / 改�
 | `cwd` | → | 只用来核「新起」那一格的目录在不在 |
 | `launcher` | → | 自定义启动命令（空 = 没设）|
 | `account` | → | 缺席 / `null`（继承）· `{"kind":"base"}` · `{"kind":"named","configDir":…,"name"?:…}` |
-| `tmuxName` | → | 建进 tmux 时的会话名（界面铸名口铸的，这里不铸）；缺 ⇒ 不走 `ccm` 容器路 |
-| `agent` | → | 当前 agent 的画像：`id` · `defaultLauncher` · `launcherAlias` · `resumeFlag` |
-| `allSessions` | → | 全量注入开关（同 `launch-endpoint`）|
-| `cmd` | ← | 要跑的那一串（中转前缀 ＋ 身份前缀 ＋ 本体）|
-| `launchId` | ← | 铸进进程环境的身份 token（`CCM_LAUNCH_ID`，调用方拿它回填新会话的 sid）；接回那一格 `null` |
+| `tmuxName` | → | 建进 tmux 时的会话名（界面铸名口铸的，这里不铸）；缺 ⇒ 直路 |
+| `defaultLauncher` | → | 这一家 agent 的默认启动器（等于它就不吐 `--launcher`）|
+| `cmd` | ← | 那一行 `ccm …` |
+| `launchId` | ← | 交给 `ccm` 放进 agent 进程环境的身份 token；接回那一格 `null` |
 
-**错误码**：`bad_args` · `refused`（坏输入 · 目录不在 · 中转非它不可却没在听 · Windows 上接回）。阻塞档：探一次 `ccm`（`bash -lic`，期限交给子进程）、读一次凭据表。只上流面（`cli_control::STREAM_ONLY`：要读本进程的中转状态，同 `launch-endpoint`）。
+**错误码**：`bad_args` · `refused`（坏输入 · 目录不在 · Windows 上接回）。只上流面（`cli_control::STREAM_ONLY`：回的 token 要交回界面）。
+
+#### `ccm` 在最终 exec 那一处定的几样
+
+- **中转地址**（`ANTHROPIC_BASE_URL`）：问上游选择（`accounts/upstream_select/endpoint.rs::decide_launch` 是唯一实现）。
+  全量注入开关读 `ccm` 自己的环境 `CCM_RELAY_ALL_SESSIONS`（默认开，`0` 关）；中转口读 `CCM_RELAY_PORT`，缺省是那个固定常量。
+  「这台的中转在不在听」= 钥匙文件读得到 ＋ 回环口连得上（`ccm` 是一次性进程，读不到常驻后端的监听状态 —— 口被别人占着时会被认成在听）。
+  非它不可（API 号代入 `/s/`）而没在听 ⇒ **拒绝起会话**、一句话说清；`/t/` 那一格没在听 ⇒ 这一发直连。
+  钥匙在 `ccm` 进程里拼进 agent 的环境，不进 argv、不进 shell；用户自己设了 `ANTHROPIC_BASE_URL` ⇒ 不注入、说一句。
+- **身份**：`--ccm-launch-id` ⇒ `CCM_LAUNCH_ID`；`--ccm-rbind-token` ⇒ `CCM_RBIND_TOKEN`；`--ccm-sid=` ⇒ tmux 会话上的 `@ccm_sid`。
+- **账号**：`--account <名>` · `--account-dir <目录>`（说不出名字时）· `--base`。
+- 同号会话**有活着的 agent 进程**才回接那个窗口；只剩窗口上的标记（进程已退）⇒ 原地续上。
 
 #### 中转在「这台机器」上的进程（2026-09-24）
 
@@ -3734,7 +3713,7 @@ rc=2
 > monitor 侧的 fan-out 消费者同拍删除。`SUBCOMMANDS` 27 → 25（另一条是 `--oneshot-session`）。〕
 
 - `--list-accounts [--accts-dir <p>]`（A2 多账号，`src/backend/observe/accounts_query.rs`）→ 读账号库清单（`~/.claude-alt/accounts.json`，契约 v1）。**首行** `{"kind":"accounts-meta","enabled":bool,"acctsDir","manifestPath","updatedAt","sharedStore","count","error"}`，其后每账号一行 `{name,email,configDir,isDefault,mode,exists,loggedIn}`。**"未启用多账号"是正常状态**：manifest 缺失/坏/版本不支持 → `enabled:false` + `error` 人话原因 + **exit 0**（不是错误）。`loggedIn` 仅 stat `.credentials.json` 存在性。账号库目录解析：`--accts-dir` > `$HOME/.claude-alt`
-- `--session-accounts [--accts-dir <p>]`（A2；`launchId` 是 `K-P5f`）→ 扫 `<claude_dir>/sessions/<PID>.json` 拿 pid，读 `/proc/<pid>/environ` **只抠三个写死的键**（`CLAUDE_CONFIG_DIR` · `CCM_LAUNCH_ID` ·`ANTHROPIC_BASE_URL`——最后那个的值带中转钥匙，只折成 `viaRelay` 一个布尔、值本身不出参；**键名不是参数**，所以这条查询不是「任意环境变量读」原语，也**绝不回传整个环境快照**），`CLAUDE_CONFIG_DIR` 反查 manifest 得账号名。每条一行 `{pid,sessionId,cwd,configDir,account,bare,alive,launchId,viaRelay}`（`viaRelay` = 这条会话的上游地址是不是本机中转那一形：`true` / `false` / `null` = 不知道（进程已死 / 环境这一刻取不到）；机器页「停」本机后端之前据它数几条会断；老后端不出这个键 ⇒ 读成 `null`）。`account:null` = 查不到（**不猜**）；**`bare:true` = 进程活着、`/proc/<pid>/environ` 这一刻读得到、而没设 `CLAUDE_CONFIG_DIR`（裸起）——这个布尔的语义钉死在那一个变量上，加了第二个键也没有拓宽它**（没设 `CCM_LAUNCH_ID` 由 `launchId:null` 自己表达）。⚠ 「读得到」这个合取项是 `K-R21`（09-03）补的，**语义是收窄不是拓宽**：environ 在 exec 窗口里（60–140 µs）与进程成僵尸之后**读得到却回 0 字节 / 读不到**，从前那一刻会被报成斩钉截铁的 `account:"<账号0>"` + `bare:true`，而 `alive` 仍是 `true`（判活读的是 `/proc/<pid>/stat`，与 `environ` 不是同一次读）⇒ **一条真跑在别的账号下的会话会被报成账号 0 的，且无声无息**。现在那一刻报 `configDir:null` + `account:null` + `bare:false`（=「不知道」，**出参形状没变、没有新字段**）。`launchId` = 起会话方铸进这条会话进程环境的**身份 token**（写侧住 `local.rs::LAUNCH_ID_VAR`），`null` = **不作数**，五种原因合并且**刻意不区分**：没设 / 形状过不了白名单（`[A-Za-z0-9_-]`，1..=128）/ **同一个 token 落在一条以上活会话上** / 进程已死 / **读那一刻环境取不到**。⚠ 第五种是 `K-R21` 现打出来的，**它一直都在、只是从前混在「没设」里数不出来**（读侧那个 `Option` 装着四件事）——这不是新增了一种行为，是把「四种」这句旧话订正成实话；`configDir` 那一半已经把它拆出来了，身份这一半仍按「要区分就得给出参加状态位 = 改上线契约」那条裁定合并着。⚠ **`launchId` 不是硬真相**：它是**继承型**环境变量（claude spawn 的子进程原样继承），后端只能判「同一批里唯一」，判不出「确实是它的」——父会话已退出时那个继承值仍会被报出来。**additive**：老后端不出这个键，下游读成 `null`。⇒ 账号那一半（`configDir`/`account`/`bare`）仍是"某条**正在跑**的会话属于哪个账号"的唯一硬真相（会话 jsonl 里没有任何账号字段）；身份那一半（`launchId`）**不是**，别把上一句读到它头上
+- `--session-accounts [--accts-dir <p>]`（A2；`launchId` 是 `K-P5f`）→ 扫 `<claude_dir>/sessions/<PID>.json` 拿 pid，读 `/proc/<pid>/environ` **只抠三个写死的键**（`CLAUDE_CONFIG_DIR` · `CCM_LAUNCH_ID` ·`ANTHROPIC_BASE_URL`——最后那个的值带中转钥匙，只折成 `viaRelay` 一个布尔、值本身不出参；**键名不是参数**，所以这条查询不是「任意环境变量读」原语，也**绝不回传整个环境快照**），`CLAUDE_CONFIG_DIR` 反查 manifest 得账号名。每条一行 `{pid,sessionId,cwd,configDir,account,bare,alive,launchId,viaRelay}`（`viaRelay` = 这条会话的上游地址是不是本机中转那一形：`true` / `false` / `null` = 不知道（进程已死 / 环境这一刻取不到）；机器页「停」本机后端之前据它数几条会断；老后端不出这个键 ⇒ 读成 `null`）。`account:null` = 查不到（**不猜**）；**`bare:true` = 进程活着、`/proc/<pid>/environ` 这一刻读得到、而没设 `CLAUDE_CONFIG_DIR`（裸起）——这个布尔的语义钉死在那一个变量上，加了第二个键也没有拓宽它**（没设 `CCM_LAUNCH_ID` 由 `launchId:null` 自己表达）。⚠ 「读得到」这个合取项是 `K-R21`（09-03）补的，**语义是收窄不是拓宽**：environ 在 exec 窗口里（60–140 µs）与进程成僵尸之后**读得到却回 0 字节 / 读不到**，从前那一刻会被报成斩钉截铁的 `account:"<账号0>"` + `bare:true`，而 `alive` 仍是 `true`（判活读的是 `/proc/<pid>/stat`，与 `environ` 不是同一次读）⇒ **一条真跑在别的账号下的会话会被报成账号 0 的，且无声无息**。现在那一刻报 `configDir:null` + `account:null` + `bare:false`（=「不知道」，**出参形状没变、没有新字段**）。`launchId` = 起会话方铸进这条会话进程环境的**身份 token**（写侧是 `ccm` 自己：`control/ccm/plan.rs::LAUNCH_ID_ENV`），`null` = **不作数**，五种原因合并且**刻意不区分**：没设 / 形状过不了白名单（`[A-Za-z0-9_-]`，1..=128）/ **同一个 token 落在一条以上活会话上** / 进程已死 / **读那一刻环境取不到**。⚠ 第五种是 `K-R21` 现打出来的，**它一直都在、只是从前混在「没设」里数不出来**（读侧那个 `Option` 装着四件事）——这不是新增了一种行为，是把「四种」这句旧话订正成实话；`configDir` 那一半已经把它拆出来了，身份这一半仍按「要区分就得给出参加状态位 = 改上线契约」那条裁定合并着。⚠ **`launchId` 不是硬真相**：它是**继承型**环境变量（claude spawn 的子进程原样继承），后端只能判「同一批里唯一」，判不出「确实是它的」——父会话已退出时那个继承值仍会被报出来。**additive**：老后端不出这个键，下游读成 `null`。⇒ 账号那一半（`configDir`/`account`/`bare`）仍是"某条**正在跑**的会话属于哪个账号"的唯一硬真相（会话 jsonl 里没有任何账号字段）；身份那一半（`launchId`）**不是**，别把上一句读到它头上
 - `--account-trust <configDir> <cwd> [--accts-dir <p>]`（A2）→ 换号 resume 前的信任预检（首次用某账号进某目录，CC 会弹信任确认、会卡住自动化）。单行 `{"trusted":bool,"known":bool,"error":null}`。**安全**：`configDir` 必须逐字 ∈ manifest 的账号列表，否则 exit 2 + stderr `{"code":"unknown_config_dir",...}`——避免退化成任意文件读原语；**只回三个布尔/字符串字段，绝不回传 `.claude.json` 内容**（内含 `mcpServers` 的环境变量，可能有 API key）
 - `--account-trust-zero <cwd>`（A2）→ **账号 0**（未启用多账号时那个原生身份）的信任预检，返回形状同 `--account-trust`。**为什么单开一个动词而不是给 `--account-trust` 传空 `configDir`**：账号 0 没有 config dir，而空串是被明令禁止的拼法（空值 ≠ 未设）；且它的 `.claude.json` 原生根是 `$HOME`、不在共享账号库里 ⇒ 路径来源本就不同，合并只能靠哨兵值区分，比多一个动词更易错。**不收任何文件/配置目录路径参数**：它收 `cwd`，但那只当 `projects` 里的**查表键**，`.claude.json` 的根写死 `$HOME` ⇒ 连"任意文件读"的面都没有（`account_trust_zero_takes_no_path_argument` 钉住）
 - `--fork-session <args>`（G2 branch-anywhere，`src/backend/control/fork_write.rs`）→ 从指定消息处分叉出一个新会话文件。**后端唯一的写盘入口**——其余一切子命令只读；`readonly_guard` 的写白名单按路径单独盯着 `control/fork_write.rs` 这一个文件（`src/doc/INVARIANTS.md` §41.6）
@@ -3923,14 +3902,12 @@ CLI 面这两条的用处是**量一趟遍历** ／ **在一个常驻后端进�
 - 谁设 `ANTHROPIC_BASE_URL`〔2026-09-24 订正；先前这里是 08-28 的读数「生产代码 0 处、没有入口」，`K-H2b` 之后不成立。
   〔审计 F 🔴-3〕再订正：先前这里写「monitor 起本机会话时判（`payload::relay_endpoint_for`）· 远端机器那一半不注入」，
   US1（4D）之后两句都反了〕：
-  起会话的那一侧（**本机与远端同一条路**，monitor `history::relay_endpoint_on`）先问**那台机器的后端**要成品
-  —— 帧命令 `launch-endpoint`（见上面那一节），决策表的唯一实现是后端上游选择 `accounts/upstream_select/endpoint.rs::decide_launch`，
- monitor 只转交入参、照成品执行：
+  起 agent 的那台机器上的 `ccm`（**本机与远端同一条路**）在最终 exec 那一处问上游选择（见上面「`ccm` 在最终 exec 那一处定的几样」），
+  决策表的唯一实现是后端上游选择 `accounts/upstream_select/endpoint.rs::decide_launch`，monitor 不经手：
   那台的 apikey 表里有 (agent, 账号) 这一行 ⇒ 注入 `/s/`（`whenDown: refuse`：中转不在 ⇒ **拒绝起会话**；
   中转住那台的常驻后端里，本机远端同形，不另起一个）；没有这一行 ⇒ 默认**不注入**。
-  全量注入（订阅号 · 不带账号的本机会话也注 `/t/`）**带开关、默认开**（RL2：V135 真跑过一次）：monitor 进程环境里 `CCM_RELAY_ALL_SESSIONS=0` 才关
-  （随 `allSessions` 交给那台后端）；开了也只给登记了默认上游的 agent 注（codex 不注）；`/t/` 那一格中转不在 ⇒ 照旧直连（`whenDown: direct`，不拒绝）。
-  问不到那台后端 ⇒ **拒绝起会话**并说清（不猜、不退回「自己读凭据文件」）。
+  全量注入（订阅号 · 不带账号的本机会话也注 `/t/`）**带开关、默认开**（RL2：V135 真跑过一次）：起 agent 那台 `ccm` 的环境里 `CCM_RELAY_ALL_SESSIONS=0` 才关；
+  开了也只给登记了默认上游的 agent 注（codex 不注）；`/t/` 那一格中转不在 ⇒ 照旧直连（`whenDown: direct`，不拒绝）。
 - 中转**自己造**的状态码〔（FIX3）：照 HTTP 代理通行做法，每个码只有一处常量〕：
   **我们拒的一律 4xx** —— 门 403 / 421 · 请求读不懂 400 / 411 / 413 · 路由不成立 404（`/s/` 表里无行 · `/t/` 的 agent 没登记默认上游 · 路径根本不是路由形状）；
   在途连接顶满 503；🔴 **上游那侧 5xx** —— 超时（连接超时 · 等响应超时）⇒ 504，其余（连不上 · 发到一半断了 · 没回应就断 · 回的不是 HTTP · 只给 1xx）⇒ 502。

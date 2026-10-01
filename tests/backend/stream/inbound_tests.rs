@@ -564,9 +564,10 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         // 上游选择那份凭据文件的两条：同步文件 I/O（读 / 原子写那一份）。
         "apikey-key-set",
         "apikey-read",
-        // 上游选择出的两份成品：读一份凭据文件 ＋ 装一次表 ＋（要注入时）回环上探一次中转，同步阻塞。
+        // 上游选择出的成品：读一份凭据文件 ＋ 装一次表，同步阻塞（「这一发注入什么」那一条随起会话只交一行 `ccm …` 删了）。
         "apikey-routing",
-        "launch-endpoint",
+        // 本机起会话那一行：核一次「新起」的目录在不在（stat），阻塞档。
+        "launch-local",
         // 中转那两条（`relay-ensure` / `relay-status`）随脱离 `--relay` 一族删了。
         // 足迹那一条：一批 stat / 读几份小文件。
         "footprint-report",
@@ -734,12 +735,10 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "resync",             //
         "apikey-key-set",
         "apikey-read",
-        "apikey-routing",  //
-        "launch-endpoint", //
-        // 起会话的计划与渲染：本机那条探一次 `ccm`（起进程）⇒ 阻塞档；两条渲染是纯函数 ⇒ 普通 spawn。
+        "apikey-routing", //
+        // 起会话那一行：本机那条核一次目录（stat）⇒ 阻塞档；远端那条是纯函数 ⇒ 普通 spawn。
         "launch-local",
         "launch-render-cli",
-        "launch-render-payload",
         "footprint-report",
         // 本机那一份放不放：读一遍落点那个文件 ⇒ 阻塞档。
         "place-verdict",

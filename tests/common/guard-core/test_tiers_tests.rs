@@ -251,6 +251,8 @@ const UNIT: &[&str] = &[
     "tests/backend/control/launch_render/answers_tests.rs",
     // 基数 → 增量 +1：`$PROFILE` 备份那一格问本机后端（假通道）。
     "tests/frontend/ui/settings/profile-backups.vitest.ts",
+    // 从 SCAN 挪来：本机起会话那一行（`control/launch_render/local.rs::plan` 纯函数，喂确定的事实）。
+    "tests/backend/control/launch_render/local_tests.rs",
 ];
 
 /// 源码扫描层：读仓内文本（`include_str!` · `repo_root()` 一族 · `readFileSync` 一族）、不碰 OS。
@@ -527,8 +529,7 @@ const SCAN: &[&str] = &[
     "tests/frontend/shell/cc_bus_tests.rs", // INTEGRATION → SCAN：起进程的那几条（本机 shell 读 · 超时不留孤儿）随驾驶舱 shell 读退役
     // 从 INTEGRATION 挪来（候选那一条不再建临时目录）。
     // `tests/frontend/shell/shell_dialect_tests.rs` 随别名那一族进了那台后端（`tests/backend/assets/aliases/`）。
-    // 基数 → 增量 +1：本机起会话的计划与渲染（`control/launch_render/local.rs`，从 monitor `history.rs` 搬来）。
-    "tests/backend/control/launch_render/local_tests.rs",
+    // `tests/backend/control/launch_render/local_tests.rs` 挪去 UNIT：重写成喂确定事实驱动纯函数 `plan`，不再读源码文本。
     // 基数 → 增量 +1：方言专属语法字面量只住 `platform/shell/`（扫后端生产树的字符串字面量）。
     "tests/backend/platform/shell_home_guard.rs",
 ];
@@ -634,8 +635,6 @@ const INTEGRATION: &[&str] = &[
     "tests/frontend/shell/auto_launch_tests.rs",
     "tests/backend/control/launch_render/launch_wire_k_r95_launch_render_facts.rs",
     "tests/frontend/shell/local_backend_tests.rs",
-    // 〔MG1 合 RK1〕SCAN → INTEGRATION：RK1 加的 `the_rendered_relay_export_carries_no_key_and_a_real_shell_expands_it_from_home`
-    // 铺夹具家目录、起真 `sh` 展开 `$(cat …)` ⇒ 判别器判集成层，照挪。
     // 标识符放行判定的生成物（写 `src/frontend/ui/generated/judgment-rules.ts`）＋ 共用金样 ⇒ 写真文件 ⇒ 集成层。
     "tests/frontend/shell/payload_judgment_rules.rs",
     // `tests/frontend/shell/backend_layering.rs` 删：它判 monitor 侧 `backend/` 里 `observe/` ↔ `control/` 两条线的方向，目录没了。
@@ -742,6 +741,7 @@ const E2E: &[&str] = &[
 const E2E_SUPPORT: &[&str] = &[
     "tests/e2e/assert-pass-floor.sh",
     "tests/e2e/backend-wrapper.sh",
+    "tests/e2e/ccm-shim.sh", // 把编出来的后端二进制以 `ccm` 之名放上 PATH ＋ 沙箱 HOME（真跑那一行 `ccm …` 的几套 source 它）
     "tests/e2e/fake-backend.sh",
     "tests/e2e/fake-claude",
     "tests/e2e/gen-idle-tmux.sh",
@@ -890,9 +890,9 @@ const REAL_MACHINE: &[(&str, &str, Trigger)] = &[
         Trigger::Filter { by: "tests/frontend/filewin/shell_tests.rs", needle: "shell::tests::xvfb_worker_opens_with_no_x_server_at_all" },
     ),
     (
-        // 生产命令 `render_launch_payload` 给 e2e 的数据出口（`resume-suite` · `resume-backend-frames` ·
-        //   `tmux-target-acceptance` 三套经这个驱动取「app 真正会跑的那一串」）。
-        "tests/backend/control/launch_render/launch_tmux_outer_parity_tests.rs",
+        // 生产命令 `launch-render-cli` 给 e2e 的数据出口（`resume-suite` · `resume-backend-frames` ·
+        //   `tmux-target-acceptance` 几套经这个驱动取「app 真正会交给终端的那一行 `ccm …`」）。
+        "tests/backend/control/launch_render/launch_cli_parity_tests.rs",
         "emit_launch_render_for_e2e",
         Trigger::Filter { by: "tests/e2e/launch-render-emit.sh", needle: "emit_launch_render_for_e2e" },
     ),

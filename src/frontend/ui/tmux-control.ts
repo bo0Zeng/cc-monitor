@@ -250,7 +250,7 @@ export type SendIntoOutcome =
  */
 export async function sendInto(origin: Origin, name: string, payload: string): Promise<SendIntoOutcome> {
   // 空名 / 空载荷不在这里判：交给那台后端（`launch` 进门拒 ⇒ refused，带它的原话）；
-  //   回落那一跳渲整串的是 Rust 渲染器（`payload.rs::render_tmux_outer`，目标过后端 `gate_rules` 已有会话那一条）⇒ 坏数据两条路都被同一处拒。
+  //   回落那一跳渲整串的是那台后端的调用行渲染器（`ccm_invocation.rs`，目标过后端 `gate_rules` 已有会话那一条）⇒ 坏数据两条路都被同一处拒。
   try {
     const body = jsonBody({ mode: "send-into", name, payload });
     const budget = budgetWithin(CONTROL_BUDGET_MS);

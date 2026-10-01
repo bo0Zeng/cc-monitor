@@ -747,8 +747,8 @@ fn wait_for(path: &std::path::Path) -> bool {
 /// 本件的中转前缀 —— 照后端生产那一形手写（monitor 这棵树够不着后端渲染器，见下面那条注释）。
 #[cfg(not(windows))]
 fn relay_probe_prefix(url: &str) -> String {
-    // 载荷内核搬进后端，monitor 够不着；这里照它的形状手写一份（钥匙段读 `$HOME` 下那个文件的命令替换，
-    //   `launch_render/payload.rs::relay_env_prefix_posix`）—— 本条验的是开窗那一跳把整串原样交给了进程，不是前缀怎么渲。
+    // 照那一形手写一份（钥匙段读 `$HOME` 下那个文件的命令替换，与 `ccm` 非得经 shell 那一趟同形，
+    //   `control/ccm/plan.rs::relay_export`）—— 本条验的是开窗那一跳把整串原样交给了进程，不是前缀怎么渲。
     let (origin, path) = url.split_at(url.find("/s/").expect("夹具 URL 带 /s/"));
     format!(
         "export ANTHROPIC_BASE_URL={}$(cat ~/{}){}; ",

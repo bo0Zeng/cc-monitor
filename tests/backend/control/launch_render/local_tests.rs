@@ -102,6 +102,34 @@ fn every_local_launch_shape_is_one_ccm_line() {
     assert_eq!(out.launch_id, None);
 }
 
+/// 身份 token 落进 agent 进程环境、并交回调用方：交回去的那一个 == 那一行 `ccm` 自己解析出来的 `--ccm-launch-id`
+/// （`ccm` 在最终 exec 那一处把它放进 `CCM_LAUNCH_ID`，那一半由 `ccm/plan_tests.rs` 钉）。resume 用 sid，新起用现铸的 nonce。
+#[test]
+fn the_identity_token_is_planted_and_handed_back() {
+    let parsed_id = |cmd: &str| -> String {
+        let words: Vec<String> = cmd.split_whitespace().map(str::to_string).collect();
+        assert_eq!(words[0], "ccm", "{cmd}");
+        match crate::control::ccm::argv::parse(&words[1..]) {
+            Ok(crate::control::ccm::argv::Parsed::Opts(o)) => o.launch_id,
+            other => panic!("`ccm` 不认这一行：{cmd}（{:?}）", other.err()),
+        }
+    };
+    let mut r = req(resume());
+    r.tmux_name = Some("p-cc".into());
+    let out = plan(&r, &POSIX).unwrap();
+    assert_eq!(out.launch_id.as_deref(), Some(SID));
+    assert_eq!(parsed_id(&out.cmd), SID);
+    let a = plan(&req(LocalAction::New), &POSIX).unwrap();
+    let b = plan(&req(LocalAction::New), &POSIX).unwrap();
+    let (ta, tb) = (a.launch_id.clone().unwrap(), b.launch_id.clone().unwrap());
+    assert_ne!(ta, tb, "两次新起铸出了同一个 token");
+    assert_eq!(parsed_id(&a.cmd), ta);
+    assert_eq!(
+        parsed_id(&plan(&req(LocalAction::New), &WINDOWS).unwrap().cmd).len(),
+        36
+    );
+}
+
 /// Windows 本机：没有 tmux ⇒ 一律直路（`ccm` 在那个 PowerShell 窗口里起 agent）；接回说不出 ⇒ 拒。
 #[test]
 fn windows_launches_go_the_direct_way_and_attach_is_refused() {

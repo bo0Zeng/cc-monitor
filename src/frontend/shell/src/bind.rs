@@ -718,7 +718,7 @@ impl RemoteHwndCache {
 //
 // 令牌登记的是**拉起那一刻**的那个窗口。那个窗口关掉、用户再用 attach 开一个新的 ——
 // 新窗口不做令牌握手（`attach` 不铸币），但 tmux 容器那一格的外层命令设了
-// `set-titles-string ccm-rbind-#{@ccm_sid}`（`payload.rs::render_tmux_outer`）⇒ 标题路接得住。
+// `set-titles-string ccm-rbind-#{@ccm_sid}`（后端 `control/launch.rs` 建会话那一格，`ccm --ccm-tmux= --ccm-sid=` 真跑走的就是它）⇒ 标题路接得住。
 // 不试的话，这一档从「今天能拉」退成「拉不了」—— 那是回归，不是收敛。
 //
 // ## ⚠ 买不到什么
