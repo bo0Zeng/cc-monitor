@@ -627,6 +627,7 @@ pub(crate) fn stream_record_face() -> Option<RecordFace> {
 pub(crate) const HEAD_CAP: u64 = 1 << 20;
 
 /// 记录开头逐条交给 `pick`，第一个给出值的胜；读满 [`HEAD_CAP`] 字节就停（截在半截的那一行解析不出、不算）。
+/// 读满了还没找到 ⇒ `None`，并在日志里说是哪份文件（调用方退到「没有这一格」）。
 pub(crate) fn first_in_head(
     p: &Path,
     pick: impl Fn(&serde_json::Value) -> Option<String>,
@@ -635,11 +636,20 @@ pub(crate) fn first_in_head(
     let file = std::fs::File::open(p).ok()?;
     let mut r = std::io::BufReader::new(file.take(HEAD_CAP));
     let mut line = Vec::new();
+    let mut read = 0u64;
     loop {
         line.clear();
-        if r.read_until(b'\n', &mut line).ok()? == 0 {
+        let n = r.read_until(b'\n', &mut line).ok()?;
+        if n == 0 {
+            if read >= HEAD_CAP {
+                tracing::warn!(
+                    "{}: nothing found within the head cap; giving up",
+                    p.display()
+                );
+            }
             return None;
         }
+        read += n as u64;
         let one = line.strip_prefix(b"\xef\xbb\xbf").unwrap_or(&line);
         if let Ok(v) = serde_json::from_slice::<serde_json::Value>(one) {
             if let Some(got) = pick(&v) {

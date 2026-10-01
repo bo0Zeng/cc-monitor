@@ -381,7 +381,7 @@ export class TabManager {
    * Batch5-F18：骨架 Tab——活跃清单（本地 IPC / 远端 session_added 事件）一到
    * 即建，不等首条内容行。复用 ensureTab 全部语义：项目目录取后端那一格（给了就对齐）；parentPath 空由
    * 首条行回填；pendingArchive/pendingActivity 落实、batch 模式继承均沿用。
-   * 已存在同 sid Tab 时只对齐项目目录（幂等，重连重发 session_added 无害）。
+   * 已存在同 sid Tab 时不重建（幂等，重连重发 session_added 无害），项目目录按宣告对齐。
    */
   createSkeletonTab(
     sessionId: string,

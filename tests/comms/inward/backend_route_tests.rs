@@ -583,10 +583,7 @@ fn the_layering_table_is_pinned_cell_by_cell() {
             },
             hop("wait", w::Reach::Unknown, w::HopFault::Overrun),
         ),
-        (
-            CallError::Cancelled,
-            w::OursFault::Cancelled.into(),
-        ),
+        (CallError::Cancelled, w::OursFault::Cancelled.into()),
         (
             CallError::Remote {
                 code: "wrong_owner".into(),
@@ -606,7 +603,7 @@ fn the_layering_table_is_pinned_cell_by_cell() {
             w::CallError::Peer {
                 why: w::PeerFault::Refused {
                     body: w::Body(
-                        r#"{"code":"no_tmux","message":"这台机器做不到这件事（no_tmux），没有发出去"}"#
+                        r#"{"code":"no_tmux","message":"这台机器做不到这件事，没有发出去"}"#
                             .as_bytes()
                             .to_vec(),
                     ),
