@@ -298,7 +298,7 @@ fn assistant_rec(uuid: String, ts: Option<String>, role: &str, content: Value) -
         is_api_error_message: false,
         error: None,
         api_error_status: None,
-        // 〔THIN〕Codex 的工具名今天没人考据过（注册表 `RecordFace.tool_card` 那一格是 `None`）⇒ 不带卡型。
+        // 〔THIN〕Codex 的工具名今天没人考据过⇒ 不带卡型。
         tool_cards: Default::default(),
     }
 }

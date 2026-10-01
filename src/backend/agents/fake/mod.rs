@@ -86,6 +86,9 @@ use std::path::{Path, PathBuf};
 ///
 /// ⚠ 它**永远不会**出现在真 `hello.homes` 里 —— 本层不进 `agents::REGISTRY`
 /// （`the_fixture_agent_never_ships` 钉住）。
+// 子运行形状（与 Claude Code 每一格都不同形；通用层的运行判据拿它跑）。
+pub(crate) mod runs;
+
 pub(crate) const AGENT_KIND: &str = "fake";
 
 /// 解析本机 home 的环境变量。⚠ **刻意没有默认值**（Claude 那家恒有值）——
