@@ -67,7 +67,12 @@ pub(super) mod tests {
     const ACCOUNT_DOMAIN_OTHER_FILES: &[&str] = &[
         "manage/aliases.rs",
         "manage/exec.rs",
+        // 各号共用的用户级 MCP：只换一个键 · 三方对照（纯）· 读改写 · 文件事件触发。账号库管理的一部分，与上游选择零引用。
+        "manage/json_key.rs",
         "manage/layout.rs",
+        "manage/mcp_share.rs",
+        "manage/mcp_share_exec.rs",
+        "manage/mcp_share_watch.rs",
         "manage/mod.rs",
         "manage/model.rs",
         "manage/scan.rs",

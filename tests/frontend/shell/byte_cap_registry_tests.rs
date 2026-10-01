@@ -747,6 +747,21 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
         "回滚时读一份备份里的撤销清单（每一行一条路径）",
         "跳过+说清",
     ),
+    // 账号之间同步用户级 MCP 读盘那一步：清单 · 共享集合一个上限，各号配置文件一个上限（同适配层读那份文件的量级）。
+    (
+        "src/backend/accounts/manage/mcp_share_exec.rs",
+        "MAX_SMALL_BYTES",
+        8 * 1024 * 1024,
+        "同步之前读账号清单与各号共用的 MCP 那份文件",
+        "硬报错",
+    ),
+    (
+        "src/backend/accounts/manage/mcp_share_exec.rs",
+        "MAX_CONFIG_BYTES",
+        32 * 1024 * 1024,
+        "同步之前读一个号的配置文件（会被项目历史与 MCP 配置撑大）",
+        "跳过+说清",
+    ),
     // 〔RM1a → MIG-3b 续〕「足迹」由那台后端出成品（`footprint-report`，只读）那两个数（〔主会话 09-28 裁〕两拍之后 monitor 不再 stat，它那两个数与收 `client.stat` 那一个随之删）。
     (
         "src/backend/footprint/mod.rs",

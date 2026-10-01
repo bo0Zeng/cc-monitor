@@ -113,8 +113,8 @@ fn home_of(d: &dyn Door) -> Result<String, Refusal> {
     door::home(d).map_err(|e| ("io_failed", e))
 }
 
-/// 账号库在就拿它那把锁（读 → 改 → 写这一整趟里别的后端进程进不来）；还没建 ⇒ 没东西可锁（写清单那一下的比对兜底）。
-fn lock(home: &str) -> Result<Option<crate::platform::lock::DirLock>, Refusal> {
+/// 账号库在就拿它那把锁（读 → 改 → 写这一整趟里别的后端进程进不来；各号共用的 MCP 同步那一趟也拿这一把）；还没建 ⇒ 没东西可锁（写清单那一下的比对兜底）。
+pub(crate) fn lock(home: &str) -> Result<Option<crate::platform::lock::DirLock>, Refusal> {
     let accts = join(home, acct_core::ACCTS_DIR_NAME);
     if scan::item_at(&accts).exists() {
         crate::platform::lock::hold(std::path::Path::new(&accts))

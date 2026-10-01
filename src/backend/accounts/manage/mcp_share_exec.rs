@@ -154,6 +154,9 @@ fn load(home: &str, list: Vec<(String, String)>) -> Result<Here, Refusal> {
         let (raw, now) = match got {
             Ok((raw, s)) => (raw, Some(s)),
             Err(e) => {
+                tracing::warn!(
+                    "账号之间同步 MCP：{name} 号的配置 {path} 读不出来，这一次跳过它：{e}"
+                );
                 notes.push(copy_text(
                     "beAcctMcpShare.note.unreadable",
                     &[("account", &name), ("path", &path), ("e", &e)],
@@ -204,7 +207,9 @@ fn backup(d: &dyn Door, home: &str, name: &str, raw: &str) -> Result<(), String>
         layout::identity_config_file()
     );
     let abs = door::join_under(home, &rel);
-    let before = read_text(&abs, MAX_CONFIG_BYTES)?;
+    let before = read_text(&abs, MAX_CONFIG_BYTES).inspect_err(|e| {
+        tracing::warn!("账号之间同步 MCP：{name} 号上一份备份 {abs} 读不出来，这一次跳过它：{e}");
+    })?;
     put_private(d, home, &rel, raw, before.as_deref()).map_err(Refused::said)
 }
 
@@ -251,25 +256,13 @@ fn view_of(store: &Store, conflicts: &[mcp_share::Conflict]) -> AccountMcpView {
     }
 }
 
-/// 账号库在就拿它那把锁。
-fn lock(home: &str) -> Result<Option<crate::platform::lock::DirLock>, Refusal> {
-    let accts = join(home, acct_core::ACCTS_DIR_NAME);
-    if item_at(&accts).exists() {
-        crate::platform::lock::hold(Path::new(&accts))
-            .map(Some)
-            .map_err(|e| ("io_failed", e))
-    } else {
-        Ok(None)
-    }
-}
-
 /// 一趟：锁 → 读 → `decide`（cc-monitor 里定的那一下；同步那一趟原样交回）→ 对照 → 落盘 → 写回共享集合。
 fn run(
     d: &dyn Door,
     decide: &dyn Fn(&Store, &[Seen]) -> Result<Store, Refusal>,
 ) -> Result<AccountMcpView, Refusal> {
     let home = door::home(d).map_err(|e| ("io_failed", e))?;
-    let _held = lock(&home)?;
+    let _held = super::wire::lock(&home)?;
     let Some(list) = accounts_in(&home)? else {
         return Ok(AccountMcpView::default());
     };

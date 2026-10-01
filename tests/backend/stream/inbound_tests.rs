@@ -613,6 +613,9 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "accounts-rollback",
         "accounts-verify",
         "accounts-login-cmd",
+        "accounts-mcp-read",
+        "accounts-mcp-remove",
+        "accounts-mcp-pick",
         "authorized-keys-add", // 〔MIG-3b 续〕同步文件 I/O（经本进程文件管理面）
         "files-link",
         "cc-bus-install-state",
@@ -785,6 +788,9 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "accounts-rollback",
         "accounts-verify",
         "accounts-login-cmd",
+        "accounts-mcp-read",
+        "accounts-mcp-remove",
+        "accounts-mcp-pick",
         "authorized-keys-add", // 〔MIG-3b 续〕同步文件 I/O（经本进程文件管理面）
         "files-link",
         "cc-bus-install-state",

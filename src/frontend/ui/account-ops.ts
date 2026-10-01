@@ -205,25 +205,29 @@ export function decodeAccountMcpView(v: unknown): AccountMcpView | null {
   return ok ? (v as unknown as AccountMcpView) : null;
 }
 
-async function mcpCall(origin: Origin, op: string, args: Record<string, unknown>, budgetMs: number): Promise<AccountMcpView> {
-  const body = jsonBody(args);
-  const budget = budgetWithin(budgetMs);
-  const got = decodeAccountMcpView(await settle(origin, op, chan.call(origin, op, body, budget), refusals()));
+function mcpView(origin: Origin, op: string, v: unknown): AccountMcpView {
+  const got = decodeAccountMcpView(v);
   if (!got) throw unreadable(origin, op, "is not a shared MCP view");
   return got;
 }
 
 /** 这台各号共用的用户级 MCP 此刻的样子（只读）。 */
-export function accountsMcpRead(origin: Origin): Promise<AccountMcpView> {
-  return mcpCall(origin, "accounts-mcp-read", {}, READ_BUDGET_MS);
+export async function accountsMcpRead(origin: Origin): Promise<AccountMcpView> {
+  const body = jsonBody({});
+  const budget = budgetWithin(READ_BUDGET_MS);
+  return mcpView(origin, "accounts-mcp-read", await settle(origin, "accounts-mcp-read", chan.call(origin, "accounts-mcp-read", body, budget), refusals()));
 }
 
 /** 从各号共用的用户级 MCP 里删一条（所有号一起撤）。 */
-export function accountsMcpRemove(origin: Origin, name: string): Promise<AccountMcpView> {
-  return mcpCall(origin, "accounts-mcp-remove", { name }, CHANGE_BUDGET_MS);
+export async function accountsMcpRemove(origin: Origin, name: string): Promise<AccountMcpView> {
+  const body = jsonBody({ name });
+  const budget = budgetWithin(CHANGE_BUDGET_MS);
+  return mcpView(origin, "accounts-mcp-remove", await settle(origin, "accounts-mcp-remove", chan.call(origin, "accounts-mcp-remove", body, budget), refusals()));
 }
 
 /** 两边都改了的那一条用哪一版：`from` = 那个号里的；`null` = 共享的那一版。 */
-export function accountsMcpPick(origin: Origin, name: string, from: string | null): Promise<AccountMcpView> {
-  return mcpCall(origin, "accounts-mcp-pick", from === null ? { name } : { name, from }, CHANGE_BUDGET_MS);
+export async function accountsMcpPick(origin: Origin, name: string, from: string | null): Promise<AccountMcpView> {
+  const body = jsonBody(from === null ? { name } : { name, from });
+  const budget = budgetWithin(CHANGE_BUDGET_MS);
+  return mcpView(origin, "accounts-mcp-pick", await settle(origin, "accounts-mcp-pick", chan.call(origin, "accounts-mcp-pick", body, budget), refusals()));
 }
