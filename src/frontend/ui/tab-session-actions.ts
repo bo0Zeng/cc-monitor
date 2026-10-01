@@ -283,7 +283,7 @@ export class TabSessionActions {
       // A4：带账号统一走 withAccount（点击时重解析 configDir + 记 lastAccount 源②，与 history 同口径）。
       // 本地账号切换是 A7，此处忽略（withAccount 只在远端调）。
       const origin = tab.origin;
-      const cwd = tab.cwd ?? "";
+      const cwd = tab.projectDir ?? "";
       await withAccount(
         origin,
         accountName ?? null,
@@ -317,7 +317,7 @@ export class TabSessionActions {
     //   `D1 阻-1` · `D3 阻-2` 四次「这里修了、那里漏了」。账号跟随这条会话上次的号（同远端 `follow`）。
     await resumeLocalSession({
       sid,
-      cwd: tab.cwd ?? "",
+      cwd: tab.projectDir ?? "",
       account: { kind: "follow" },
       launcher: behavior.resumeCommandLocal,
       // 记录还在不在，问的是**这次要用的那个账号根**（账号解析之后、拉起之前；远端那条在 `withAccount` 的 run 里问）。
@@ -358,7 +358,7 @@ export class TabSessionActions {
     if (!tab || isLocalOrigin(tab.origin)) return;
     const behavior = await getBehavior();
     const origin = tab.origin;
-    const cwd = tab.cwd ?? "";
+    const cwd = tab.projectDir ?? "";
     // F74：先查该 origin 的 tmux 列表，据 @ccm_sid 分两路。**attach 决策对新鲜度最敏感**——
     // 8s 缓存里的 @ccm_sid 可能已被 /branch 漂移（快照记 N=A，N 此刻跑 B）→ 据陈旧快照 attach
     // 又会撞进漂移会话，正是本刀要修的 bug。故这里**总是新查、不读缓存**（用户主动 resume，一次
@@ -562,7 +562,7 @@ export class TabSessionActions {
     // 本机会话的 origin 是 `<local>`：下面每一跳（tmux 快照 / send-keys / kill /
     // 账号清单 / 信任预检）都按 origin 分流，本机走得通；resume 那一跳在 `restartWithAccount` 里分。
     const origin = tab.origin;
-    const cwd = tab.cwd ?? "";
+    const cwd = tab.projectDir ?? "";
     const behavior = await getBehavior();
     // 解析该会话当前 tmux 名，一律新查（对齐 resumeTabTmux：attach/重启对新鲜度最敏感，防据陈旧快照误伤）。
     const sessions = (await this.fetchTmuxFresh(origin)) ?? null;
@@ -674,13 +674,13 @@ export class TabSessionActions {
   /** 打开指定 Tab 的 cwd。本地 → 系统文件管理器；远端 → 文件窗口进入该远端目录（F78）。无 cwd 忽略。 */
   async openTabCwd(sid: string): Promise<void> {
     const tab = this.host.tab(sid);
-    if (!tab?.cwd) return;
+    if (!tab?.projectDir) return;
     // F78：远端 Tab 的 cwd 是远端路径，本地 openPath 打不开——改成用该机配置开 SFTP 进入该目录
     // （Batch9-F29 曾从静默 no-op 改成 info 提示；现进一步真能浏览）。找不到该机配置才回退提示。
     if (isRemoteOrigin(tab.origin)) {
       const host = findHostByOrigin((await readRemoteConfig()).hosts, tab.origin);
       if (host && host.host.trim() !== "" && host.user.trim() !== "") {
-        void openFileWindow(host, { dir: tab.cwd });
+        void openFileWindow(host, { dir: tab.projectDir });
         return;
       }
       // 找到但缺 host/user = 配置不完整；没找到 = 未配置——分开措辞（审计建议）。
@@ -689,15 +689,15 @@ export class TabSessionActions {
         : copyText("tabSessionActions.openCwd.noConfig");
       showActionFailureToast(
         copyText("tabSessionActions.openCwd.title"),
-        copyText("tabSessionActions.openCwd.body", { machine: tab.origin, cwd: tab.cwd, why }),
+        copyText("tabSessionActions.openCwd.body", { machine: tab.origin, cwd: tab.projectDir, why }),
         { level: "info" },
       );
       return;
     }
     try {
-      await openPath(tab.cwd);
+      await openPath(tab.projectDir);
     } catch (e) {
-      console.warn(`[tabs] openPath ${tab.cwd} failed:`, e);
+      console.warn(`[tabs] openPath ${tab.projectDir} failed:`, e);
     }
   }
 }

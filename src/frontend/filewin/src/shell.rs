@@ -518,11 +518,8 @@ impl FileWindow {
             _ => return None,
         };
         let offer = self.offer.lock().unwrap();
-        let code = offer.as_ref()?.unavailable(op)?;
-        Some(copy_text(
-            "rsFilewinShell.menu.unavailableHere",
-            &[("code", code)],
-        ))
+        offer.as_ref()?.unavailable(op)?; // 码不上屏：只说做不到
+        Some(copy_text("rsFilewinShell.menu.unavailableHere", &[]))
     }
 
     /// 带着**已经列好的那一屏**建窗 —— [`super::entry::open_file_window`] 走这条。

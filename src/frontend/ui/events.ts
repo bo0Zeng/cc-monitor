@@ -65,7 +65,15 @@ export interface EventHandlers {
    */
   onSessionStarted?: (
     sessionId: string,
-    meta: { cwd: string | null; kind: string | null; name: string | null; rbindToken: string | null },
+    meta: {
+      /** pidfile 记的起会话目录（认「我刚起的那条」用）。 */
+      cwd: string | null;
+      /** 会话的项目目录（后端给的那一格；标题只认它）。 */
+      projectDir: string | null;
+      kind: string | null;
+      name: string | null;
+      rbindToken: string | null;
+    },
   ) => void;
   /** Batch5-F18：远端会话宣告 → 建骨架 Tab（不等首行）。Batch7-F24：附 pidfile
    *  元信息（p1e backend 起有值；旧 backend → null）。 */
@@ -76,7 +84,10 @@ export interface EventHandlers {
       kind: string | null;
       /** E73：`null` = 没说（旧 backend / 存量会话）= 视为可以 attach。 */
       attachable: boolean | null;
+      /** pidfile 记的起会话目录（认「我刚起的那条」用）。 */
       cwd: string | null;
+      /** 会话的项目目录（后端给的那一格；标题只认它）。 */
+      projectDir: string | null;
       name: string | null;
       /** 启动期令牌（那台读回的；缺席 ⇒ `null`）：`launch-arrival.ts` 认「我刚起的那条」。 */
       rbindToken: string | null;
@@ -213,6 +224,7 @@ type QueueItem =
       kind: "started";
       sessionId: string;
       cwd: string | null;
+      projectDir: string | null;
       sessionKind: string | null;
       name: string | null;
       rbindToken: string | null;
@@ -227,6 +239,7 @@ type QueueItem =
       /** E73：attach 进去对人有没有意义。`null` = 没说（旧 backend / 存量会话）= 视为可以。 */
       attachable: boolean | null;
       cwd: string | null;
+      projectDir: string | null;
       name: string | null;
       rbindToken: string | null;
     }
@@ -505,6 +518,7 @@ export async function bindEvents(
       } else if (item.kind === "started") {
         handlers.onSessionStarted?.(item.sessionId, {
           cwd: item.cwd,
+          projectDir: item.projectDir,
           kind: item.sessionKind,
           name: item.name,
           rbindToken: item.rbindToken,
@@ -514,6 +528,7 @@ export async function bindEvents(
           kind: item.sessionKind,
           attachable: item.attachable,
           cwd: item.cwd,
+          projectDir: item.projectDir,
           name: item.name,
           rbindToken: item.rbindToken,
         });
@@ -632,6 +647,7 @@ export async function bindEvents(
               kind: "started",
               sessionId: p.session_id,
               cwd: p.cwd ?? null,
+              projectDir: p.project_dir ?? null,
               sessionKind: p.kind ?? null,
               name: p.name ?? null,
               rbindToken: p.rbind_token ?? null,
@@ -644,6 +660,7 @@ export async function bindEvents(
               sessionKind: p.kind ?? null,
               attachable: p.attachable ?? null,
               cwd: p.cwd ?? null,
+              projectDir: p.project_dir ?? null,
               name: p.name ?? null,
               rbindToken: p.rbind_token ?? null,
             });

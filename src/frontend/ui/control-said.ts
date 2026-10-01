@@ -132,6 +132,7 @@ export function unavailableReason(code: string, machine: string): string {
     case "no_unix_mode":
       return copyText("control.unavailable.noUnixMode", { machine });
     default:
-      return copyText("control.unavailable.other", { machine, code });
+      // 认不出的码：只说做不到（码不上屏）。
+      return copyText("control.unavailable.other", { machine });
   }
 }

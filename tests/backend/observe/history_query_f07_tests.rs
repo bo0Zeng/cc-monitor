@@ -17,10 +17,7 @@ fn reading_a_run_refuses_parents_outside_projects() {
 
 /// ★ **历史查询那几条读路不许整读 jsonl**〔audit-0805 F07 / 报告 I-10 与 B-6 第 5 环〕。
 ///
-/// 两处此前都是 `read_to_string`：
-/// - `extract_cwd_from_head` —— 下一行就 `.take(40)`，却先把 257 MB 整份读进来；
-///   `--list-projects` 对**每个项目**调它一次。
-/// - `analyze_session` —— `--list-sessions` 对该项目**每个** jsonl 调它一次；
+/// `analyze_session` 此前是 `read_to_string`：`--list-sessions` 对该项目**每个** jsonl 调它一次；
 ///   43 个项目 / 2.4 GB 的机器上，一次列表就是把 2.4 GB 读进内存再逐行解析。
 ///
 /// 扫描本身是必须的（要数行、要判 bg），**但不必先整份进内存**。
@@ -30,10 +27,8 @@ fn the_history_readers_stream_instead_of_slurping() {
     let src = guard_core::production_code(include_str!(
         "../../../src/backend/observe/history_query.rs"
     ));
-    for (name, sig) in [
-        ("extract_cwd_from_head", "fn extract_cwd_from_head("),
-        ("analyze_session", "fn analyze_session("),
-    ] {
+    // 项目目录那一格只读记录开头（适配层，`agents::first_in_head`），上界由那边的行为判据钉。
+    for (name, sig) in [("analyze_session", "fn analyze_session(")] {
         let begin = src
             .find(sig)
             .unwrap_or_else(|| panic!("找不到 {name} —— 抽取器坏了，本条会零命中地绿"));

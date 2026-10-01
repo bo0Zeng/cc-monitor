@@ -183,8 +183,8 @@ export class TabManager {
    */
   private readonly prefs = new TabBarPrefs(this.store, {
     refreshTabBar: () => this.refreshTabBar(),
-    createSkeletonTab: (sid, cwd, origin, kind, name) =>
-      this.createSkeletonTab(sid, cwd, origin, kind, name),
+    createSkeletonTab: (sid, projectDir, origin, kind, name) =>
+      this.createSkeletonTab(sid, projectDir, origin, kind, name),
     resumeTab: (sid) => this.actions.resumeTab(sid),
   });
 
@@ -325,7 +325,7 @@ export class TabManager {
       origin: tab.origin,
       newSessionId: res.sessionId,
       sourceSessionId: tab.sessionId,
-      cwd: tab.cwd,
+      cwd: tab.projectDir,
     });
   }
 
@@ -339,13 +339,8 @@ export class TabManager {
    * - 真用户输入走 sink.onRealUserInput → this.userActive
    */
   onLine(payload: JsonlLinePayload): void {
-    const tab = this.ensureTab(
-      payload.session_id,
-      payload.cwd,
-      payload.path,
-      payload.seq,
-      originFromWire(payload.origin),
-    );
+    // 项目目录不从行里取（行上的 cwd 是那一刻的工作目录，会漂进子目录）：只认后端那一格（会话宣告 / 会话事实）。
+    const tab = this.ensureTab(payload.session_id, null, payload.path, originFromWire(payload.origin));
 
     // 按 seq 去重：旁路快照与实时行的重叠区是精确重复的 (sid, seq)（后端 seq = 行号，§25a），
     // 老后端重连还会从 seq 0 重发整段。必须在 renderStreamRecord 之前、且覆盖 skip 记录
@@ -384,14 +379,13 @@ export class TabManager {
 
   /**
    * Batch5-F18：骨架 Tab——活跃清单（本地 IPC / 远端 session_added 事件）一到
-   * 即建，不等首条内容行。复用 ensureTab 全部语义：cwd 以 MAX_SAFE_INTEGER 的
-   * seq 记入 → 任何真实行的 cwd（更小 seq）照常覆盖为项目根；parentPath 空由
+   * 即建，不等首条内容行。复用 ensureTab 全部语义：项目目录取后端那一格（给了就对齐）；parentPath 空由
    * 首条行回填；pendingArchive/pendingActivity 落实、batch 模式继承均沿用。
-   * 已存在同 sid Tab 时为 no-op（幂等，重连重发 session_added 无害）。
+   * 已存在同 sid Tab 时不重建（幂等，重连重发 session_added 无害），项目目录按宣告对齐。
    */
   createSkeletonTab(
     sessionId: string,
-    cwd: string | null,
+    projectDir: string | null,
     origin: Origin,
     kind: string | null = null,
     name: string | null = null,
@@ -400,7 +394,7 @@ export class TabManager {
   ): void {
     if (attachable === false) this.store.notAttachableSids.add(sessionId);
     else this.store.notAttachableSids.delete(sessionId);
-    this.ensureTab(sessionId, cwd, "", Number.MAX_SAFE_INTEGER, origin, kind, name);
+    this.ensureTab(sessionId, projectDir, "", origin, kind, name);
   }
 
   /**
@@ -455,7 +449,7 @@ export class TabManager {
         sessionId: tab.sessionId,
         title: tab.title,
         origin: tab.origin,
-        cwd: tab.cwd,
+        cwd: tab.projectDir,
         state: tab.state, // 两轴原样交出去：cell 与 tab-bar 读同一份、经同一组谓词
         activityStatus: tab.activity?.status ?? null,
         waitingFor: tab.activity?.waitingFor ?? null,
@@ -532,7 +526,7 @@ export class TabManager {
 
   /**
    * 「当前 tab 变了」改订阅 store（原先是 `onActiveUsageChanged` / `onActiveFactsAvailability`
-   * 两个点对点回调）。写它的三处：切 tab（`switchTo`）· 当前 tab 的 usage / 事实可用性变了 · 关掉最后一个 tab。同值不通知。
+   * 两个点对点回调）。写它的几处：切 tab（`switchTo`）· 当前 tab 的 usage / 事实可用性 / 项目目录变了 · 关掉最后一个 tab。同值不通知。
    */
   get active(): Slice<ActiveView> {
     return this.store.active;
@@ -547,14 +541,18 @@ export class TabManager {
       model: t?.latestModel ?? null,
       promptTokens: t?.latestPromptTokens ?? null,
       unavailable: t?.facts.unavailableReason ?? null,
+      projectDir: t?.projectDir ?? null,
     });
   }
 
+  /**
+   * 有就取、没有就建。`projectDir` 只认后端给的那一格（会话宣告 / 固定 tab 存下来的；会话事实那一路在 `onSessionFacts`）；行进来时传 `null` —— 不从行里猜。
+   * 给了、且与 tab 上的不同 ⇒ 改过来、重算标题（后端重宣告时对齐它）。
+   */
   ensureTab(
     sessionId: string,
-    cwd: string | null,
+    projectDir: string | null,
     sourcePath: string,
-    seq: number,
     origin: Origin = LOCAL_ORIGIN,
     kind: string | null = null,
     bgName: string | null = null,
@@ -598,22 +596,18 @@ export class TabManager {
       if (!tab.parentPath && sourcePath) {
         tab.parentPath = sourcePath;
       }
-      // cwd 取**最早（最小 seq）**那条记录的 —— 即项目根 / 启动目录。
-      // 不能用「第一个到达的」：启动重放末块先发，最先到的是最新记录，而会话的 cwd
-      // 可能在过程中漂移（如工作目录切到子目录）→ 会抓到子目录而非项目根。与历史
-      // 浏览器 quick_extract_cwd（读最早 cwd）口径一致。
-      if (cwd && seq < tab.cwdSeq) {
-        tab.cwd = cwd;
-        tab.cwdSeq = seq;
+      if (projectDir && projectDir !== tab.projectDir) {
+        tab.projectDir = projectDir;
         tab.title = this.computeTitle(tab);
         this.refreshTabBar();
+        if (sessionId === this.store.activeId) this.publishActive();
       }
       return tab;
     }
 
     const title = computeTitleFor(
       sessionId,
-      cwd,
+      projectDir,
       null,
       isRemoteOrigin(origin) ? origin : null,
       kind,
@@ -637,9 +631,7 @@ export class TabManager {
       kind,
       bgName,
       title,
-      cwd,
-      // 记下当前 cwd 来源的 seq；后续更早（更小 seq）的记录可覆盖（取项目根）。
-      cwdSeq: cwd ? seq : Number.POSITIVE_INFINITY,
+      projectDir,
       aiTitle: null,
       forkedFromSessionId: null, // issue #63①：后端的会话事实到了才有（`onSessionFacts`）
       origin,
@@ -731,11 +723,11 @@ export class TabManager {
     this.refreshTabBar();
   }
 
-  /** 根据 tab.cwd + tab.aiTitle + sessionId 算出展示标题（远端 Tab 加 `[origin]` 前缀） */
+  /** 根据 tab.projectDir + tab.aiTitle + sessionId 算出展示标题（远端 Tab 加 `[origin]` 前缀） */
   private computeTitle(tab: Tab): string {
     return computeTitleFor(
       tab.sessionId,
-      tab.cwd,
+      tab.projectDir,
       tab.aiTitle,
       isRemoteOrigin(tab.origin) ? tab.origin : null,
       tab.kind,
@@ -1067,11 +1059,11 @@ export class TabManager {
     const tab = this.store.tabs.get(sid);
     if (!tab) return;
     const ch = applyFacts(tab, f);
-    if (ch.forkedFrom) {
+    if (ch.forkedFrom || ch.projectDir) {
       tab.title = this.computeTitle(tab);
       this.refreshTabBar();
     }
-    if (ch.usage && sid === this.store.activeId) this.publishActive();
+    if ((ch.usage || ch.projectDir) && sid === this.store.activeId) this.publishActive();
   }
 
   /** 这个 tab 的会话事实可不可用变了 ⇒ 是 active 就告诉 HUD（要不到 ⇒ 出声，「不可用，不是空表」）。 */

@@ -346,6 +346,8 @@ pub(crate) struct RecordFace {
     pub(crate) child_link: Option<fn(&serde_json::Value) -> Vec<ChildLink>>,
     /// 子运行的记录住哪（由父记录路径推出）。`None` ＝ 这一家没有单独存放的子运行记录。
     pub(crate) children: Option<ChildFace>,
+    /// 会话的项目目录（会话起在哪个目录）：只读记录开头（[`first_in_head`]，有上界）。`None` 这一格 ＝ 这一家的记录里没有这件事。
+    pub(crate) project_dir: Option<fn(&Path) -> Option<String>>,
 }
 
 /// 一条子运行记录说了什么：属于哪个运行 · 是不是它的终局 · 它做的那件事（行上「最近：…」）。
@@ -619,6 +621,49 @@ pub(crate) fn stream_record_face() -> Option<RecordFace> {
         .iter()
         .find(|a| a.history.is_none())
         .and_then(|a| a.records)
+}
+
+/// 找项目目录时记录开头至多读多少字节。带它的那一条实测在前一 KiB 内；上界是给几百 MB 的大会话的：不整读。
+pub(crate) const HEAD_CAP: u64 = 1 << 20;
+
+/// 记录开头逐条交给 `pick`，第一个给出值的胜；读满 [`HEAD_CAP`] 字节就停（截在半截的那一行解析不出、不算）。
+/// 读满了还没找到 ⇒ `None`，并在日志里说是哪份文件（调用方退到「没有这一格」）。
+pub(crate) fn first_in_head(
+    p: &Path,
+    pick: impl Fn(&serde_json::Value) -> Option<String>,
+) -> Option<String> {
+    use std::io::{BufRead, Read};
+    let file = std::fs::File::open(p).ok()?;
+    let mut r = std::io::BufReader::new(file.take(HEAD_CAP));
+    let mut line = Vec::new();
+    let mut read = 0u64;
+    loop {
+        line.clear();
+        let n = r.read_until(b'\n', &mut line).ok()?;
+        if n == 0 {
+            if read >= HEAD_CAP {
+                tracing::warn!(
+                    "{}: nothing found within the head cap; giving up",
+                    p.display()
+                );
+            }
+            return None;
+        }
+        read += n as u64;
+        let one = line.strip_prefix(b"\xef\xbb\xbf").unwrap_or(&line);
+        if let Ok(v) = serde_json::from_slice::<serde_json::Value>(one) {
+            if let Some(got) = pick(&v) {
+                return Some(got);
+            }
+        }
+    }
+}
+
+/// 这份会话记录的项目目录：记录归哪一家就问哪一家（[`RecordFace::project_dir`]）；那一家不声明 / 开头里没有 ⇒ `None`。
+pub(crate) fn project_dir_of(p: &Path) -> Option<String> {
+    record_face_of(p)
+        .and_then(|f| f.project_dir)
+        .and_then(|f| f(p))
 }
 
 /// 注册表里每一家的漂移账（注册序；不记的跳过）—— 帧命令 `drift-report` 的读法入口。

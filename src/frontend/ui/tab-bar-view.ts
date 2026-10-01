@@ -547,7 +547,7 @@ export class TabBarView {
     // 固定：**只多一个 📌 角标，位置一个字不动**（`§B.3b`：没有「固定区」，
     // pin 管的是「别丢」不是「排前面」；位置由 `§C` 的顺序落盘管，两者不抢）。
     const pinned = tab.pinned;
-    const hasCwd = !!tab.cwd;
+    const hasCwd = !!tab.projectDir;
     // FIX 5 / Feature ②（issue #15）：远端 Tab 的 cwd 是 Pi 上的路径，
     // 本地不存在，故 .remote 类只隐藏「打开工作目录」📂（CSS）。「调出终端」↗ 现在保留
     // 给远端 —— 点击走 bringRemoteTerminalToFront（后端按 ccm-rbind 拉本地 ssh 窗口）。

@@ -96,7 +96,8 @@ function listRefusals(id: string): Refusals {
         case "timed_out":
           return copyText("ccBus.online.timedOut", { id, detail });
         default:
-          return copyText("ccBus.online.otherCode", { id, code, detail });
+          // 认不出的码：只说那台的原话（码不上屏，留在诊断里）；原话是空的 ⇒ 说没给原因。
+          return detail.trim() !== "" ? copyText("ccBus.online.otherCode", { id, detail }) : copyText("ccBus.online.noReason", { id });
       }
     },
     noReason: () => copyText("ccBus.online.noReason", { id }),
@@ -138,7 +139,7 @@ function sendRefusals(id: string): Refusals {
         case "too_long":
           return copyText("ccBus.send.tooLong", { id, detail });
         default:
-          return copyText("ccBus.send.otherCode", { id, code, detail });
+          return detail.trim() !== "" ? copyText("ccBus.send.otherCode", { id, detail }) : copyText("ccBus.send.noReason", { id });
       }
     },
     noReason: () => copyText("ccBus.send.noReason", { id }),
@@ -190,7 +191,7 @@ function killRefusals(id: string): Refusals {
         case "timed_out":
           return copyText("ccBus.kill.timedOut", { id, detail });
         default:
-          return copyText("ccBus.kill.otherCode", { id, code, detail });
+          return detail.trim() !== "" ? copyText("ccBus.kill.otherCode", { id, detail }) : copyText("ccBus.kill.noReason", { id });
       }
     },
     noReason: () => copyText("ccBus.kill.noReason", { id }),
@@ -251,7 +252,7 @@ function spawnRefusals(): Refusals {
         case "timed_out":
           return copyText("ccBus.spawn.timedOut", { detail });
         default:
-          return copyText("ccBus.spawn.otherCode", { code, detail });
+          return detail.trim() !== "" ? copyText("ccBus.spawn.otherCode", { detail }) : copyText("ccBus.spawn.noReason");
       }
     },
     noReason: () => copyText("ccBus.spawn.noReason"),
@@ -314,7 +315,7 @@ function broadcastRefusals(): Refusals {
         case "bad_id":
           return copyText("ccBus.broadcast.badId", { detail });
         default:
-          return copyText("ccBus.broadcast.otherCode", { code, detail });
+          return detail.trim() !== "" ? copyText("ccBus.broadcast.otherCode", { detail }) : copyText("ccBus.broadcast.noReason");
       }
     },
     noReason: () => copyText("ccBus.broadcast.noReason"),
@@ -455,7 +456,7 @@ function readRefusals(): Refusals {
         case "bad_id":
           return copyText("ccBus.read.badId", { detail });
         default:
-          return copyText("ccBus.read.otherCode", { code, detail });
+          return detail.trim() !== "" ? copyText("ccBus.read.otherCode", { detail }) : copyText("ccBus.read.noReason");
       }
     },
     noReason: () => copyText("ccBus.read.noReason"),
