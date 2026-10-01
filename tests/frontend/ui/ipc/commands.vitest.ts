@@ -136,6 +136,7 @@ vi.mock("../../../../src/frontend/ui/format", () => ({ formatTimestampSmart: () 
 
 import { REPO_ROOT } from "../../../test-support/repo-root";
 import { stripComments } from "../../../test-support/strip-comments";
+import { SCAN_TIMEOUT_MS } from "../../../test-support/production-sources";
 import { commands } from "../../../../src/frontend/ui/ipc/commands";
 import { invoke } from "@tauri-apps/api/core";
 import { HistoryView } from "../../../../src/frontend/ui/views/history";
@@ -1226,7 +1227,7 @@ function originCorpus(): Decl[] {
   return all;
 }
 
-describe("〔C4a〕TS 侧 origin 去 null（`设计/05 §8` 步 2，全 TS ＋ 生成物）", { timeout: 30_000 }, () => {
+describe("〔C4a〕TS 侧 origin 去 null（`设计/05 §8` 步 2，全 TS ＋ 生成物）", { timeout: SCAN_TIMEOUT_MS }, () => {
   it("★★ 装得下 `null` 的 origin 声明 == 登记的待办（两向；〔C4b〕待办表今天为空）", () => {
     const found = originCorpus()
       .filter((d) => d.nullable)
@@ -1335,7 +1336,7 @@ function filesWithLiteral(want: string): string[] {
   return out.sort();
 }
 
-describe("〔C4b〕本机只有一个表示（`\"__local__\"` 退役）", { timeout: 30_000 }, () => {
+describe("〔C4b〕本机只有一个表示（`\"__local__\"` 退役）", { timeout: SCAN_TIMEOUT_MS }, () => {
   it("★★ `\"__local__\"` 字面量零命中；`\"<local>\"` 字面量恰好住一个家（正控）", () => {
     expect(
       filesWithLiteral("__local__"),
