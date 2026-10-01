@@ -119,7 +119,13 @@ export const ACCOUNT_OPS = [
   "accounts-rollback",
   "accounts-verify",
   "accounts-login-cmd",
+  "accounts-mcp-read",
+  "accounts-mcp-remove",
+  "accounts-mcp-pick",
 ] as const;
+
+/** 各号共用的用户级 MCP 那三条（账号页每次画都会问一次 `accounts-mcp-read`）。 */
+export const ACCOUNT_MCP_OPS: readonly string[] = ["accounts-mcp-read", "accounts-mcp-remove", "accounts-mcp-pick"];
 
 /** 这一发是不是账号库那几条之一。 */
 export function isAccountsOp(cmd: string, args: unknown): args is ChanCallArgs {
@@ -139,6 +145,9 @@ export function accountsFakeInvoke(args: ChanCallArgs, over: Record<string, unkn
     );
   }
   if (args.op === "accounts-login-cmd") return Promise.resolve(chanReply({ cmd: fakeLoginCmd(name) }));
+  if (ACCOUNT_MCP_OPS.includes(args.op)) {
+    return Promise.resolve(chanReply({ enabled: true, servers: [], conflicts: [], changed: [], notes: [], ...over }));
+  }
   const dry = a.dryRun === true;
   const add = args.op === "accounts-add";
   return Promise.resolve(
