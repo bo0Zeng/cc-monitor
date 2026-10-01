@@ -865,6 +865,13 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
         "丢弃+带身份报告",
     ),
     (
+        "src/backend/assets/ext.rs",
+        "NOTE_MAX_CHARS",
+        2000,
+        "扩展页上用户写的一条备注（字数；记进资产目录、随目录同步到别的后端）",
+        "拒收+回错",
+    ),
+    (
         "src/backend/assets/asset_sync.rs",
         "PUSH_MAX_BYTES",
         96 * 1024,

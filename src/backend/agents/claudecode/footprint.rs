@@ -70,7 +70,7 @@ pub(crate) const TOOLS: &[ToolSpec] = &[
         //
         // 🔴 **09-11 `K-R60`：上面那句「翻成 true」到今天才真的落到字段上。**
         // `K-R57` 摸底逮到：字段一直是 `false`，而同一个注释块逐字写着要翻成 `true`，
-        // 实现（`deploy_local_cc_bus`）**一直在**。⇒ 那张表对「cc-bus 装不装得了」的申报
+        // 实现（今天是 `cc_bus_install·rs::install_at`）**一直在**。⇒ 那张表对「cc-bus 装不装得了」的申报
         // 假了一个月，而 `config_surface` 的「能否装/撤」列**正是读这个字段的**。
         // 🔴 **为什么一个月没红**：守这一格的 `cc_bus_says_why_it_is_not_installable_at_the_real_depth`
         // 是**必需词守卫** —— 它数注释里两个词的出现次数，**看不见字段的值**。
@@ -94,7 +94,7 @@ pub(crate) const TOOLS: &[ToolSpec] = &[
                     // 🔴 **这一条是 `K-R60` 补的，而它是被上面那次翻字段逼出来的。**
                     // `installable_tools_declare_where_they_land` 要求「装得了就必须申报装到哪」；
                     // 字段一直是 `false` ⇒ 这条判据一直**跳过** cc-bus ⇒ 部署真正写的那个目录
-                    // （`deploy_local_cc_bus` 往 `<claude_dir>/skills/cc-bus/` 铺 17 个文件）
+                    // （`cc_bus_install·rs::install_at` 往 `<claude_dir>/skills/cc-bus/` 铺内嵌那几个文件）
                     // **在这一页上一行都没有**。翻成 `true` 的当场它就红了。
                     // ⇒ 一处假申报盖住的不止它自己那一格。
                     path: CC_BUS_SKILL_DIR,

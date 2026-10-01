@@ -536,6 +536,14 @@ const QUOTE_SITES: &[QuoteRow] = &[
         "",
         "我们那份别名文件的路径",
     ),
+    // cc-bus 钩子要加的内容：两条钩子指向这台 skills 根下那两个脚本；skills 根不在家目录底下时那条路径整份 quote（是这台后端自己的路径）。
+    (
+        "src/backend/observe/cc_bus_hooks.rs",
+        1,
+        &[],
+        "",
+        "这台后端自己的 skills 根下那两个脚本的路径",
+    ),
     // 〔E2 · V28〕ssh_source.rs 2 → 0 · remote_resident.rs 2 → 0：远端后端落点是固定常量 `BACKEND_CMD`（`backendPath` 那一格删了），
     //   流 / 探针 / 常驻起停四条命令不再 quote 任何外来值 ⇒ 两行出列。
 ];
