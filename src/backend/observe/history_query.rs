@@ -285,149 +285,75 @@ fn fence_under_projects(agent_home: &Path, candidate: &Path) -> Result<std::path
     Fence::at(&projects_root(agent_home))?.admit(candidate)
 }
 
-/// P7c-1：列一个父会话的 **subagent 候选**。
+/// 一个子运行的记录住哪：父记录 ＋（子运行是哪个 ‖ 派出它的那次工具调用）⇒（那份记录, 子运行）。只问适配层给的那几格：
+/// 子运行的记录在哪几份（`ChildFace::sources`）· 一条记录属于哪个子运行（`run_of`）· 派出链接（`child_link`）。
 ///
-/// # ★ 它**完全不做匹配**，这是全部要点
-///
-/// 最容易的写法是把 monitor 的 `load_subagent` 整套搬过来（推目录 → 按 description 精确匹配
-/// → 按时间戳挑最近 → 读）。**那会长出第二套语义** —— 定框 `C1` 逐字排除，
-/// 而本轮已经在那个 `or` 上数出**四份**实现。
-///
-/// ⇒ 这里只做后端独有的那件事：**列候选**。筛选与挑选留在 monitor，
-/// 与本机那条路**共用同一份** `pick_closest`。
-/// 由 `the_backend_never_matches_or_ranks_subagents` 钉住（生产段零 `description ==`、零时间戳比较）。
-///
-/// 围栏**复用既有的** `fence_under_projects` —— subagent 目录本来就在
-/// `<claude_dir>/projects/<slug>/<sid>/subagents/` 里（实测），不用放宽任何东西。
-///
-/// 出：每行一个 `{"path","description","timestamp"}`（description/timestamp 拿不到就给 null，
-/// **不猜**）。错：exit 2 + stderr `{code,message}`，与 `--resolve` 同形。
-pub fn list_subagents(agent_home: &Path, args: &[String]) -> i32 {
-    let Some(parent) = args.get(1) else {
-        eprintln!(
-            "{}",
-            serde_json::json!({"code":"invalid_args","message":"用法: --list-subagents <父会话 jsonl 路径>"})
-        );
-        return 2;
-    };
-    match list_subagents_into(agent_home, parent, &mut std::io::stdout().lock()) {
-        Ok(()) => 0,
-        Err((code, message)) => {
-            eprintln!("{}", serde_json::json!({"code":code,"message":message}));
-            2
-        }
-    }
-}
-
-/// 〔MOD · 原 monitor `subagent·rs` 的 `choose_subagent` · `pick_closest`〔散文墓碑〕〕从 [`list_subagents_into`] 的候选行里挑**一个**：
-/// `description` 精确串等筛，再按首行时间戳与 `tool_use_timestamp` 差距最小挑。**纯函数，不碰文件系统**。
-///
-/// 挑的规则只有这一份（`C1`）：原先它住 monitor、后端只列不挑；「找」与「挑」一起进了后端之后，界面只问一次。
-/// 缺时间戳那一档：拿不到（`None`）或 `tool_use_timestamp` 自己解析不出 ⇒ 排序键取 `i64::MAX`；稳定排序 ⇒
-/// 全缺时保持列出来的次序、取第一条，部分缺时有时间戳的排在前面。**不报错**。
-pub(crate) fn pick_subagent(
-    listing: &[&str],
-    description: &str,
-    tool_use_timestamp: &str,
-) -> Option<std::path::PathBuf> {
-    use crate::observe::search_query::parse_iso8601_ms;
-    let mut metas: Vec<(std::path::PathBuf, Option<String>)> = Vec::new();
-    for line in listing {
-        let Ok(v) = serde_json::from_str::<serde_json::Value>(line.trim()) else {
-            continue;
-        };
-        if v.get("description").and_then(|d| d.as_str()) != Some(description) {
-            continue;
-        }
-        let Some(path) = v.get("path").and_then(|p| p.as_str()) else {
-            continue;
-        };
-        // 时间戳拿不到就是 `None` —— `null` 与**根本没这个键**落到同一档。
-        let ts = v
-            .get("timestamp")
-            .and_then(|t| t.as_str())
-            .map(str::to_string);
-        metas.push((std::path::PathBuf::from(path), ts));
-    }
-    if metas.len() <= 1 {
-        return metas.pop().map(|(p, _)| p);
-    }
-    let target = parse_iso8601_ms(tool_use_timestamp);
-    metas.sort_by_key(
-        |(_, ts)| match (target, ts.as_deref().and_then(parse_iso8601_ms)) {
-            (Some(t), Some(f)) => (f - t).abs(),
-            _ => i64::MAX,
-        },
-    );
-    metas.into_iter().next().map(|(p, _)| p)
-}
-
-/// [`list_subagents`] 的本体，出口是参数（帧面 `history-subagents` 与 CLI 同一个函数）。
-/// 错误是 `(code, message)`，CLI 那层把它原样印成 stderr 那一行 JSON（字节与改前相同）。
-pub(crate) fn list_subagents_into(
+/// 给的是工具调用 id ⇒ 在父记录里找那次调用的派出链接（只解析含这个 id 的行）；还没对上（前台子运行跑完才回结果）⇒ `not_found`。
+pub(crate) fn run_source(
     agent_home: &Path,
     parent: &str,
-    out: &mut dyn Write,
-) -> Result<(), (&'static str, String)> {
-    let parent_path =
-        fence_under_projects(agent_home, Path::new(parent)).map_err(|e| ("path_refused", e))?;
-    // 目录推法与 monitor 侧逐字同形：`<父 jsonl 去后缀>/subagents`。
-    let Some(dir) = parent_path
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .and_then(|stem| parent_path.parent().map(|d| d.join(stem).join("subagents")))
-    else {
-        return Err((
-            "bad_parent",
-            crate::common::contract::malformed(
-                "cannot derive the subagents directory from the parent path",
-            ),
-        ));
+    run: Option<&str>,
+    tool: Option<&str>,
+) -> Result<(std::path::PathBuf, String), (&'static str, String)> {
+    let parent_path = validate_session_path(agent_home, parent).map_err(|e| ("path_refused", e))?;
+    let faces = crate::agents::record_face_of(&parent_path)
+        .map(|f| crate::agents::RunFaces::of(&f))
+        .unwrap_or(crate::agents::RunFaces::NONE);
+    let run = match (run, tool) {
+        (Some(r), _) if !r.is_empty() => r.to_string(),
+        (_, Some(t)) if !t.is_empty() => run_of_tool(&parent_path, &faces, t)
+            .ok_or_else(|| ("not_found", copy_text("rsRun.load.notLinked", &[])))?,
+        _ => {
+            return Err((
+                "bad_args",
+                crate::common::contract::malformed("history-run needs run or tool"),
+            ))
+        }
     };
-    // 目录不在 = 这个会话没有 subagent，**不是错**：回空、exit 0。
-    let Ok(rd) = std::fs::read_dir(&dir) else {
-        return Ok(());
-    };
-    for entry in rd.flatten() {
-        let meta_path = entry.path();
-        let Some(name) = meta_path.file_name().and_then(|s| s.to_str()) else {
-            continue;
-        };
-        let Some(stem) = name.strip_suffix(".meta.json") else {
-            continue;
-        };
-        let jsonl =
-            meta_path.with_file_name(crate::agents::claudecode::records::session_file_name(stem));
-        if !jsonl.is_file() {
+    for c in faces.sources(&parent_path) {
+        if first_run_of(&c, &faces).as_deref() == Some(run.as_str()) {
+            return Ok((c, run));
+        }
+    }
+    Err(("not_found", copy_text("rsRun.load.notFound", &[])))
+}
+
+/// 父记录里「这次工具调用派出的是哪个子运行」（派出链接里带了子运行的那一条）。
+fn run_of_tool(parent: &Path, faces: &crate::agents::RunFaces, tool: &str) -> Option<String> {
+    use std::io::BufRead;
+    let f = std::fs::File::open(parent).ok()?;
+    for line in std::io::BufReader::new(f).lines().map_while(Result::ok) {
+        if !line.contains(tool) {
             continue;
         }
-        let description = std::fs::read_to_string(&meta_path)
-            .ok()
-            .and_then(|raw| serde_json::from_str::<serde_json::Value>(&raw).ok())
-            .and_then(|v| v.get("description")?.as_str().map(str::to_string));
-        // 只读**首行** —— subagent jsonl 可能很大，为一个时间戳整读是白费。
-        let timestamp = std::fs::File::open(&jsonl)
-            .ok()
-            .and_then(|f| {
-                use std::io::BufRead;
-                let mut line = String::new();
-                std::io::BufReader::new(f).read_line(&mut line).ok()?;
-                Some(line)
-            })
-            .and_then(|l| serde_json::from_str::<serde_json::Value>(l.trim()).ok())
-            .and_then(|v| v.get("timestamp")?.as_str().map(str::to_string));
-        writeln!(
-            out,
-            "{}",
-            serde_json::json!({
-                "path": jsonl.to_string_lossy(),
-                "description": description,
-                "timestamp": timestamp,
-            })
-        )
-        .map_err(|e| ("write_failed", format!("write failed: {e}")))?;
+        let Ok(v) = serde_json::from_str::<serde_json::Value>(line.trim_start_matches('\u{feff}').trim())
+        else {
+            continue;
+        };
+        if let Some(r) = faces
+            .child_links(&v)
+            .into_iter()
+            .find(|l| l.tool == tool)
+            .and_then(|l| l.run)
+        {
+            return Some(r);
+        }
     }
-    Ok(())
+    None
+}
+
+/// 一份子运行记录属于哪个子运行：头几条里第一条答得出的（头几条可能是不归任何运行的元数据）。
+fn first_run_of(path: &Path, faces: &crate::agents::RunFaces) -> Option<String> {
+    use std::io::BufRead;
+    const HEAD_LINES: usize = 8;
+    let f = std::fs::File::open(path).ok()?;
+    std::io::BufReader::new(f)
+        .lines()
+        .map_while(Result::ok)
+        .take(HEAD_LINES)
+        .filter_map(|l| serde_json::from_str::<serde_json::Value>(l.trim_start_matches('\u{feff}').trim()).ok())
+        .find_map(|v| faces.run_of(&v))
+        .map(|m| m.run)
 }
 
 /// 按路径读一份会话之前的围栏：Claude 的 `projects/` ∪ 注册表里各家合成历史面给的记录根（〔LOC1b · 4D〕）。
@@ -955,7 +881,7 @@ pub(crate) struct IndexRow {
     /// `uuid`（前端 `uuidToIdx` —— 跳转与对账的锚）。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) u: Option<String>,
-    /// `isSidechain == true`。
+    /// 这条记录属于某个子运行（适配层 `RecordFace::run_of` 答得出）。
     #[serde(skip_serializing_if = "is_false")]
     pub(crate) sc: bool,
     /// `isMeta == true`（skill 注入 / 命令回显 —— 前端不建用户卡）。
@@ -1017,7 +943,7 @@ pub(crate) fn index_row(line: &[u8], offset: u64, len: u64) -> IndexRow {
     };
     row.t = v.get("type").and_then(|t| t.as_str()).map(str::to_string);
     row.u = v.get("uuid").and_then(|u| u.as_str()).map(str::to_string);
-    row.sc = v.get("isSidechain").and_then(|b| b.as_bool()) == Some(true);
+    row.sc = crate::agents::run_of_record(&v).is_some();
     row.mt = v.get("isMeta").and_then(|b| b.as_bool()) == Some(true);
     // 〔SE2〕大纲那一项（判定只住 `user_inputs`；这里只搬字段）
     if let Some(ui) = crate::observe::user_inputs::user_input_of(&v) {

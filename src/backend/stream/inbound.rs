@@ -209,12 +209,12 @@ pub const COMMANDS: &[&str] = &[
     "history-read",
     // 〔U4b · 第四波〕这条会话的记录还在不在（resume 一跳先问，`设计/01 §6.2` 最后一条）。
     "history-record",
+    // 一个子运行的记录（按运行读：父记录 ＋ 子运行 ‖ 派出它的工具调用），通用层不认任何一家的目录与字段。
+    "history-run",
     "history-search",
     // 〔FIX4 · `90 §3` J15〕各台搜索结果合成一份（界面逐台扇出，合并排序在本机后端）。**是新命令** ⇒ `build_id_guard` 红是预期的。
     "history-search-merge",
     "history-sessions",
-    // 〔MOD · `05 §14.3` C 组〕子 agent 那一份出成品（列 ＋ 挑 ＋ 读 ＋ 解析）；替掉只列候选的 `history-subagents`。
-    "history-subagent",
     "history-tail",
     "history-user-inputs",
     // 〔MIG-3b〕cc-bus 钩子诊断成品（本机远端一条；monitor 那两条 Tauri 命令删了）。**是新子命令** ⇒ `build_id_guard` 红是预期的。
@@ -2642,27 +2642,19 @@ pub const REGISTRY: &[CommandSpec] = &[
             })
         }),
     },
-    // 〔MOD〕子 agent 那一份出成品（`read_face.rs` 那一臂 ＋ `history_query::pick_subagent`）。同族同档、同一个只读宿主。
+    // 一个子运行的记录（`read_face.rs` 那一臂 ＋ `history_query::run_source`）：按运行读，通用层不认任何一家的形状。同族同档、同一个只读宿主。
     CommandSpec {
-        name: "history-subagent",
-        doc_anchor: Some("#### `history-subagent`"),
+        name: "history-run",
+        doc_anchor: Some("#### `history-run`"),
         codes: &[
             "bad_args",
-            "bad_parent",
             "failed",
             "not_found",
             "path_refused",
             "refused",
             "too_large",
         ],
-        fields: &[
-            "agent_id",
-            "description",
-            "parent",
-            "path",
-            "records",
-            "timestamp",
-        ],
+        fields: &["end", "from", "more", "parent", "records", "run", "tool"],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::faces::read_face::answer(&r.cmd, &r.args)

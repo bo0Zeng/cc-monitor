@@ -19,7 +19,7 @@
 //! 「一条用户输入」= 同时满足四条的 jsonl 记录：
 //! 1. `type == "user"`；
 //! 2. `isMeta != true` —— Claude Code 注入的 skill/command 展开、system-reminder、caveat 都带 `isMeta`；
-//! 3. `isSidechain != true` —— 子 agent 里的用户消息**不算**（选出来的口径，不是漏的：
+//! 3. 不属于任何子运行（适配层 `RecordFace::run_of` 答不出）—— 子运行里的用户消息**不算**（选出来的口径，不是漏的：
 //!    这份清单回答「**人**在这个会话里说过什么」，子 agent 的 prompt 是主线派下去的活）；
 //! 4. 抽出来的**纯文本** trim 之后非空 —— 工具结果回灌（`content` 全是 `tool_result` 块）靠这条排除。
 //!
@@ -73,7 +73,7 @@ pub(crate) fn user_input_of(v: &Value) -> Option<UserInputRow> {
     if v.get("isMeta").and_then(Value::as_bool) == Some(true) {
         return None;
     }
-    if v.get("isSidechain").and_then(Value::as_bool) == Some(true) {
+    if crate::agents::run_of_record(v).is_some() {
         return None;
     }
     let uuid = v
