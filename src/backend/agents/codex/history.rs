@@ -10,7 +10,7 @@
 //! # 口径
 //!
 //! - 会话 = `<codex home>/sessions/**/rollout-<ts>-<uuid>.jsonl`；sid = 文件名末尾那个 UUID（`parse::codex_sid_from_path`，不像就跳过）。
-//! - cwd = **首行** `session_meta.cwd`（缺 / 坏 ⇒ 空串，归「(codex)」组）；修改时刻 = 文件 mtime（毫秒）。
+//! - cwd = 开头那条 `session_meta.cwd`（[`project_dir`]；缺 / 坏 ⇒ 空串，归「(codex)」组）；修改时刻 = 文件 mtime（毫秒）。
 //! - 首条真用户话 = 前 200 行里第一条 `response_item.message` 且 `role == "user"`，文本拍平后去掉**注入的上下文**
 //!   （`record::is_injected_context`，与渲染那一侧同一份）；取前 200 个字符。
 //!
@@ -26,19 +26,9 @@ use super::parse;
 //   同一个模块里没有理由再留第二份、再靠判据对拍）。
 use super::record::{flatten_text, is_injected_context};
 
-/// 读首行 `session_meta` 的 cwd。缺 / 坏 ⇒ 空串。
-fn first_line_cwd(p: &Path) -> String {
-    let Ok(f) = std::fs::File::open(p) else {
-        return String::new();
-    };
-    let mut line = String::new();
-    if std::io::BufReader::new(f).read_line(&mut line).is_err() {
-        return String::new();
-    }
-    serde_json::from_str::<Value>(line.trim())
-        .ok()
-        .and_then(|v| parse::session_meta_cwd(&v).map(str::to_string))
-        .unwrap_or_default()
+/// 会话的项目目录 ＝ 开头那条 `session_meta` 的 `cwd`（注册表 `RecordFace.project_dir`；只读开头、有上界）。
+pub(crate) fn project_dir(p: &Path) -> Option<String> {
+    crate::agents::first_in_head(p, |v| parse::session_meta_cwd(v).map(str::to_string))
 }
 
 fn mtime_ms(p: &Path) -> i64 {
@@ -84,7 +74,7 @@ pub(crate) fn sessions_under(codex_home: &Path) -> Vec<crate::agents::SynthSessi
         out.push(crate::agents::SynthSession {
             sid,
             path: p.to_path_buf(),
-            cwd: first_line_cwd(p),
+            cwd: project_dir(p).unwrap_or_default(),
             mtime_ms: mtime_ms(p),
         });
     }

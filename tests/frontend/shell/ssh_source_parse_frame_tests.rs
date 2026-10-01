@@ -412,6 +412,7 @@ fn known_kind_with_extra_fields_still_parses() {
             session_kind: None,
             attachable: None,
             cwd: None,
+            project_dir: None,
             name: None,
             path: None,
             lines: None,
@@ -428,7 +429,7 @@ fn known_kind_with_extra_fields_still_parses() {
 /// 旧后端缺字段 → None（上一测试已覆盖）。
 #[test]
 fn session_added_metadata_parses() {
-    let line = r#"{"kind":"session_added","sid":"s-bg","session_kind":"bg","cwd":"/proj/x","name":"评估任务","path":"/home/u/.claude/projects/p/s-bg.jsonl","lines":42}"#;
+    let line = r#"{"kind":"session_added","sid":"s-bg","session_kind":"bg","cwd":"/proj/x","project_dir":"/proj","name":"评估任务","path":"/home/u/.claude/projects/p/s-bg.jsonl","lines":42}"#;
     let frame = parse_frame(line).expect("must parse");
     assert_eq!(
         frame,
@@ -437,6 +438,7 @@ fn session_added_metadata_parses() {
             session_kind: Some("bg".to_string()),
             attachable: None,
             cwd: Some("/proj/x".to_string()),
+            project_dir: Some("/proj".to_string()),
             name: Some("评估任务".to_string()),
             path: Some("/home/u/.claude/projects/p/s-bg.jsonl".to_string()),
             lines: Some(42),

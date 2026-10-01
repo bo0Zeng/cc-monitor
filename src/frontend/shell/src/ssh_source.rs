@@ -1174,7 +1174,10 @@ pub enum InboundFrame {
         /// E73（additive）：attach 进去对人有没有意义。缺席 = true（存量零迁移）。
         /// 语义与来源见 `src/backend/stream/wire.rs` 的同名字段 + `src/doc/IPC-PROTOCOL.md` §9.3。
         attachable: Option<bool>,
+        /// pidfile 记的起会话目录（认「我刚起的那条」用）。
         cwd: Option<String>,
+        /// 会话的项目目录（那台后端读记录开头给的；tab 标题用它）。老后端不带 ⇒ `None`。
+        project_dir: Option<String>,
         name: Option<String>,
         /// Batch8-F25：远端 jsonl 绝对路径（p1f backend 起有值）——旁路快照用。
         path: Option<String>,
@@ -1476,6 +1479,7 @@ pub fn parse_frame(line: &str) -> Option<InboundFrame> {
                 // 宁可少一次门控，也不要把一个拼错的值读成「不可 attach」而把功能吞掉。
                 attachable: obj.get("attachable").and_then(|x| x.as_bool()),
                 cwd: opt("cwd"),
+                project_dir: opt("project_dir"),
                 name: opt("name"),
                 path: opt("path"),
                 lines: obj.get("lines").and_then(|v| v.as_u64()),
@@ -2364,6 +2368,7 @@ pub(crate) fn local_product(
             session_kind,
             attachable,
             cwd,
+            project_dir,
             name,
             status,
             waiting_for,
@@ -2378,6 +2383,7 @@ pub(crate) fn local_product(
                 kind: session_kind.clone(),
                 attachable: *attachable,
                 cwd: cwd.clone(),
+                project_dir: project_dir.clone(),
                 name: name.clone(),
                 status: status.clone(),
                 waiting_for: waiting_for.clone(),
@@ -3004,6 +3010,7 @@ async fn stream_loop(
                 session_kind,
                 attachable,
                 cwd,
+                project_dir,
                 name,
                 path,
                 lines,
@@ -3032,6 +3039,7 @@ async fn stream_loop(
                         kind: session_kind,
                         attachable,
                         cwd,
+                        project_dir,
                         name,
                         status,
                         waiting_for,
