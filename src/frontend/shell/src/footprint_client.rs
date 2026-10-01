@@ -1,8 +1,8 @@
-//! 〔MIG-3b 续 · 主会话 09-28 裁①〕「足迹」里 **monitor 自己那台的那几行**（`HostScope::Client`）要的、**只有 monitor 知道**的事实 —— 只读。
+//! 「足迹」里 **monitor 自己那台的那几行**（`HostScope::Client`）要的、**只有 monitor 知道**的事实 —— 只读。
 //!
 //! 申报表与判定都进了后端（`src/backend/footprint/`）。本机后端与 monitor 同一台、同一用户 ⇒ stat 由本机后端自己做；
-//! monitor 只交它自己进程的那几条（家目录 · agent 家 · `PATH`，`设计/05 §14.3` E 组「足迹里 monitor 自己那几行」），
-//! 界面原样带给本机后端 `footprint-report {client}`，一问出整份报告。〔主会话 09-28 裁：四拍收成两拍〕
+//! monitor 只交它自己进程的那几条（家目录 · agent 家 · `PATH`，「足迹里 monitor 自己那几行」），
+//! 界面原样带给本机后端 `footprint-report {client}`，一问出整份报告。
 
 use serde_json::{json, Value};
 use std::path::PathBuf;

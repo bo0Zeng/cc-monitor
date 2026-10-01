@@ -1,16 +1,16 @@
-//! 〔TAP · V124〕**tee 的消费侧（monitor 这一半）**：本机常驻后端发来的 `tap` 帧，原样交给会话流的句柄
-//! （`event_replay::EventReplay::on_tap`），前端经通道 `subscribe(origin, "session-tap")` 按 credit 收（`设计/05 §15`）。
+//! **tee 的消费侧（monitor 这一半）**：本机常驻后端发来的 `tap` 帧，原样交给会话流的句柄
+//! （`event_replay::EventReplay::on_tap`），前端经通道 `subscribe(origin, "session-tap")` 按 credit 收。
 //!
-//! # 它只做一件事：转交，零解释（设计住仓外 `调研/第四波记录/TAP.md §1.2`；出处 `设计/20 §8`）
+//! # 它只做一件事：转交，零解释（设计住仓外；出处）
 //!
 //! - 读循环（`local_backend::absorb_local_frame`）手里没有 `AppHandle` ⇒ 与 [`crate::session_facts`] 同形：
 //!   出口由 `lib.rs` 的 setup 装一次（[`install_sink`]），交来的每一帧交给出口；装之前来的直接丢（前端那时也还没在听）。
 //! - **不进任何缓冲**：不进 `local_lines`（内容通道）、不进重放缓冲（`EventReplay.history`）、不攒 —— 收一帧，
-//!   交给此刻订了 `session-tap` 的订阅（有 credit 当场交，没 credit 丢、位置照占、原位 `Gap`：`05 §3.3.4` 级 2）。
-//!   ⇒ SSE 那一路断 / 丢 / 挤都碰不到 jsonl 那条对的路（V24：SSE 只保快，落盘保对）。
+//!   交给此刻订了 `session-tap` 的订阅（有 credit 当场交，没 credit 丢、位置照占、原位 `Gap`：级 2）。
+//!   ⇒ SSE 那一路断 / 丢 / 挤都碰不到 jsonl 那条对的路（SSE 只保快，落盘保对）。
 //! - **不认识流协议**：`ev`（后端已按上游协议折好的归一事件）与 `run`（后端归好的位）原样交前端；
-//!   `stream` 原样交（前端拿它对 tab 的 sid）；缺口由前端看 `n` 算（`设计/05 §3.3.4`：检漏纯算术 · 判可恢复归上层）。
-//! - 〔HOST · V139〕本机那条流（中转住本机常驻后端，V107）与远端那条流（远端中转住远端常驻后端）都有它，origin 各是各的。
+//!   `stream` 原样交（前端拿它对 tab 的 sid）；缺口由前端看 `n` 算（检漏纯算术 · 判可恢复归上层）。
+//! - 本机那条流（中转住本机常驻后端）与远端那条流（远端中转住远端常驻后端）都有它，origin 各是各的。
 
 use std::sync::OnceLock;
 

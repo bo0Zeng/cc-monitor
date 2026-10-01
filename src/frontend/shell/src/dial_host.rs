@@ -1,7 +1,7 @@
-//! 〔C2 · `设计/05 §13.2`〕**拨号的宿主**：把一台远端的配置翻成一份拨号请求 · 交给本机后端开一条链路 ·
+//! **拨号的宿主**：把一台远端的配置翻成一份拨号请求 · 交给本机后端开一条链路 ·
 //! 把链路交给通信层成员 [`crate::ssh_link`] 去读应答。
 //!
-//! # 〔SR1a · 2026-09-24〕它不再起任何进程
+//! # 它不再起任何进程
 //!
 //! 用户裁「改成单一常驻后端」：本机只常驻一个后端，**所有 SSH 连接由它持有、按拨号身份复用**。
 //! 这里拿一条到远端的字节流 = 在 monitor 与本机后端之间**那条已有的流**上开一条链路
@@ -12,7 +12,7 @@
 //!
 //! # 它为什么不是通信层成员
 //!
-//! 它做的正是 `05 §2` 的 `C4` 不许成员做的事：读配置、读环境变量（`SSH_AUTH_SOCK`）。
+//! 它做的正是 `C4` 不许成员做的事：读配置、读环境变量（`SSH_AUTH_SOCK`）。
 //! 与 `chan/host.rs`（绑回环造钥匙）、`local_backend_host.rs`（起本机后端）同一类 —— **宿主**。
 //! 住顶层而不住 `backend/control/`：`backend/` 那一半不许认平台（`the_backend_half_stays_platform_agnostic`），
 //! 而 agent 套接字那一格是 Unix 才有的事。
@@ -40,10 +40,10 @@ use crate::ssh_source::{RemoteConfig, RemoteExec};
 /// 到点丢掉链路 = `link-close` = 后端收掉那条链路的拨号任务（连同它手里那些 socket）。
 const ACK_DEADLINE: Duration = Duration::from_secs(45);
 
-/// 〔NT2 · A4〕**一次性那一趟的总时限**：开链路 → 握手（其中握手另受 [`ACK_DEADLINE`]）→ 远端跑 → 读完，
-/// 从开链路那一刻起算**一个绝对时刻**（`设计/05 §3.3.2`：一次调用一个绝对时刻，不是每跳一个 `Duration`）。
+/// **一次性那一趟的总时限**：开链路 → 握手（其中握手另受 [`ACK_DEADLINE`]）→ 远端跑 → 读完，
+/// 从开链路那一刻起算**一个绝对时刻**（一次调用一个绝对时刻，不是每跳一个 `Duration`）。
 ///
-/// 为什么非有不可（`设计/15 §3.2` 第 4 条红线「先装期限再复用」）：连接复用之后，一条卡住的一次性查询占着
+/// 为什么非有不可（红线「先装期限再复用」）：连接复用之后，一条卡住的一次性查询占着
 /// 池里那条共享连接的一格、永不释放 —— 局部卡死升级成全局卡死。后端零定时器（`no_timer_guard`）⇒ 期限只能在
 /// 调用方这一侧执行；到点 ⇒ 读写报 `TimedOut` ⇒ 调用方返回、丢掉链路 ⇒ `link-close` ⇒ 后端收掉那个任务、格还回去。
 ///
@@ -52,7 +52,7 @@ const ACK_DEADLINE: Duration = Duration::from_secs(45);
 /// 那三处由 `dial_host_tests::only_the_three_long_lived_links_drop_the_deadline` 两向钉住。
 ///
 /// 值：今天各调用方外面套的最宽是「握手 45 s ＋ 读 30 s」、当时账号工具的部署整趟 45 s ⇒ 120 s 不收紧任何一条既有的；
-/// 它是**天花板**（调用方外面再套的更短期限照旧先到）。⚠ `05 §3.3.2`「值归后端」这一格没做到（与 [`ACK_DEADLINE`] 同住这里）。
+/// 它是**天花板**（调用方外面再套的更短期限照旧先到）。⚠ 「值归后端」这一格没做到（与 [`ACK_DEADLINE`] 同住这里）。
 pub(crate) const ONE_SHOT_DEADLINE: Duration = Duration::from_secs(120);
 
 /// 链路上每条入方向命令（`link-open` / `link-data` / `link-credit` / `link-close`）等应答的上限。
@@ -77,7 +77,7 @@ async fn local_channel() -> Result<Arc<InboundClient>, String> {
     local_backend_accepting("link-open").await
 }
 
-/// 〔SR1b〕同上，但问的是**哪一条命令**：本机后端那条流在、且认 `cmd` ⇒ 回它的客户端。
+/// 同上，但问的是**哪一条命令**：本机后端那条流在、且认 `cmd` ⇒ 回它的客户端。
 /// 不在 ⇒ 报「本机后端不在」；不认 ⇒ 报「本机后端太旧」。传输台的中继（`sftp_pool.rs`）也从这里拿。
 pub(crate) async fn local_backend_accepting(cmd: &str) -> Result<Arc<InboundClient>, String> {
     let local = inbound_client::LOCAL_ORIGIN;
@@ -113,12 +113,12 @@ fn agent_sock() -> Option<String> {
     }
 }
 
-/// 〔MIG-1 收尾 · 主会话裁「一个判定一个家」〕把一台远端**原样的配置**交给本机常驻后端，拨号请求由它组
+/// 〔「一个判定一个家」〕把一台远端**原样的配置**交给本机常驻后端，拨号请求由它组
 /// （`src/backend/dial/machine.rs::resolve`：地址解析 · 指纹继承 · 跳板查无 / 环都在那里）。**只放路径，不放私钥本体**（`K11`）。
 ///
 /// 这里只交宿主手里的几样事实（`C4`：读配置是宿主的事）：
 /// - `machine`：这一台（`RemoteConfig` 的 camelCase 形状，与界面那一格同形）；
-/// - `saved`：盘上同名的那一份（`ssh_source::run` 手里那份是起来时读的 —— 固化指纹之后，靠它让之后的重连转严格，〔VIS2〕）；
+/// - `saved`：盘上同名的那一份（`ssh_source::run` 手里那份是起来时读的 —— 固化指纹之后，靠它让之后的重连转严格）；
 /// - `jump`：跳板那一台的配置（查不到 ⇒ `null`，后端照 fail-closed 拒）；
 /// - `prefer`：上次赢的那条（结构化，[`crate::ssh_source::last_good_for`]；配置改过就失效）；
 /// - `agent_sock`：界面进程此刻的 ssh-agent（常驻后端活得比界面长）。
@@ -138,7 +138,7 @@ pub(crate) fn request(
     Ok(req)
 }
 
-/// 〔FIX4 · `设计/99 §2.1 ⑬`〕一台远端**原样的配置**那几格：`{machine, saved, jump, prefer}`（[`request`] 头注逐格）。
+/// 一台远端**原样的配置**那几格：`{machine, saved, jump, prefer}`（[`request`] 头注逐格）。
 ///
 /// 拆出来是给「开终端」那一问（本机后端帧命令 `terminal-ssh`）：它要同一份机器事实，但不开链路 ⇒ 不要 `use` / `agent_sock`。
 /// 界面经 Tauri 命令 [`crate::launch::terminal_dial`] 拿，文件窗口在进程内直接拿；组请求与渲染都在本机后端（`dial/machine.rs::resolve`）。
@@ -159,13 +159,13 @@ pub(crate) fn machine_facts(cfg: &RemoteConfig) -> serde_json::Value {
     })
 }
 
-/// 〔SR1b〕传输台那一趟的拨号请求（本机后端开单时读进去、起跑时拿它开 sftp 会话）。
+/// 传输台那一趟的拨号请求（本机后端开单时读进去、起跑时拿它开 sftp 会话）。
 /// 用法写 `files`（SFTP 那一族）；后端的传输台只读身份与鉴权那几项，用法不看。
 pub(crate) fn transfer_dial(cfg: &RemoteConfig) -> Result<serde_json::Value, String> {
     request(cfg, "files", serde_json::json!({}))
 }
 
-/// 〔NT2 · A4〕总时限落在链路读写上的那一层：到点之后每一次读 / 写都报 `TimedOut`，不再碰里面那条链路。
+/// 总时限落在链路读写上的那一层：到点之后每一次读 / 写都报 `TimedOut`，不再碰里面那条链路。
 ///
 /// 它是**一次性的上界**（与 `tokio::time::timeout_at` 同一件事），不是节拍：到点那一刻叫醒一次等着的读写，此后不再醒。
 /// 关写半边（`shutdown` = 关链路）不受它管 —— 到点之后调用方照样要能把链路关掉。
@@ -175,8 +175,8 @@ pub(crate) struct Bounded<S> {
     due: Option<Due>,
 }
 
-/// 〔W5-VIS · `设计/05 §3.3.2`「一个预算、多个归因点」〕期限只有一个，但到点时要说得出**卡在哪一段**：
-/// 同一个数盖着「握手」与「远端跑」两段（`设计/15 §3.6` 小病：弱网上握手慢一点就被判查询超时，而两种成因处置完全不同）。
+/// 〔「一个预算、多个归因点」〕期限只有一个，但到点时要说得出**卡在哪一段**：
+/// 同一个数盖着「握手」与「远端跑」两段（小病：弱网上握手慢一点就被判查询超时，而两种成因处置完全不同）。
 struct Due {
     at: std::pin::Pin<Box<tokio::time::Sleep>>,
     /// 总时限（只用来说话）。
@@ -200,7 +200,7 @@ impl<S> Bounded<S> {
         }
     }
 
-    /// 〔W5-VIS〕握手（开链路 ＋ 拨号 ＋ 鉴权 ＋ ack）做完了：记下这一刻，到点时据此把总时限拆成两段说。
+    /// 握手（开链路 ＋ 拨号 ＋ 鉴权 ＋ ack）做完了：记下这一刻，到点时据此把总时限拆成两段说。
     pub(crate) fn mark_shaken(&mut self) {
         if let Some(d) = self.due.as_mut() {
             d.shaken.get_or_insert_with(tokio::time::Instant::now);
@@ -225,7 +225,7 @@ impl<S> Bounded<S> {
     }
 }
 
-/// 〔W5-VIS · `设计/05 §3.3.2`〕到点那句话：**一个预算、按段归因**。纯函数（判据直接喂时长，不睡墙钟）。
+/// 到点那句话：**一个预算、按段归因**。纯函数（判据直接喂时长，不睡墙钟）。
 /// `shaken` = 起算之后多久握完手（`None` = 到点时还在握手）；`waited` = 起算到此刻。
 pub(crate) fn expiry_note(total: Duration, shaken: Option<Duration>, waited: Duration) -> String {
     let secs = total.as_secs().to_string();
@@ -286,22 +286,22 @@ impl<S: tokio::io::AsyncWrite + Unpin> tokio::io::AsyncWrite for Bounded<S> {
     }
 }
 
-/// 一条**开在本机后端里**的链路（〔SR1a〕C2 那一版是一个 `--dial` 子进程的两根管子）。
+/// 一条**开在本机后端里**的链路（C2 那一版是一个 `--dial` 子进程的两根管子）。
 ///
 /// 丢掉这个结构 = 关链路（`link-close`）= 后端收掉它的拨号 / 服务任务；那条 SSH 连接**不跟着断**
 /// （同一台远端的别的链路可能还在用它）。
 ///
-/// 〔NT2 · A4〕出生就带着 [`ONE_SHOT_DEADLINE`]（[`open`] 起算）；长活那三形调 [`DialStream::lives_long`] 摘掉。
+/// 出生就带着 [`ONE_SHOT_DEADLINE`]（[`open`] 起算）；长活那三形调 [`DialStream::lives_long`] 摘掉。
 pub struct DialStream {
     /// ⚠ **必须是 `BufReader` 本体**：ack 那一行是按行读的，缓冲里很可能已经预读了后面的字节。
-    /// 〔NT2〕期限那一层垫在 `BufReader` 底下 ⇒ 握手那几行、收全那一行、调用方自己的读写全在同一个时限里。
+    /// 期限那一层垫在 `BufReader` 底下 ⇒ 握手那几行、收全那一行、调用方自己的读写全在同一个时限里。
     r: BufReader<Bounded<LinkStream>>,
 }
 
 impl DialStream {
-    /// 〔NT2 · A4〕**摘掉总时限**：只给本来就该长活的那三形（后端长连接流 · 端口转发 · 部署文件面）。
+    /// **摘掉总时限**：只给本来就该长活的那三形（后端长连接流 · 端口转发 · 部署文件面）。
     /// 调用点由 `dial_host_tests::only_the_three_long_lived_links_drop_the_deadline` 两向钉住 ——
-    /// 多一处 = 又有一条一次性的路没有总时限（`15 §3.2` 第 4 条红线）。
+    /// 多一处 = 又有一条一次性的路没有总时限（红线）。
     pub(crate) fn lives_long(mut self) -> Self {
         self.r.get_mut().due = None;
         self
@@ -343,18 +343,18 @@ impl tokio::io::AsyncWrite for DialStream {
 
 /// 开链路、交请求、在 [`ACK_DEADLINE`] 内读完握手。成功 ⇒ 链路 ＋ ack。
 ///
-/// 失败回 `(说法, 开通道被远端回拒的原因码)` —— 〔WF2〕原因码只有 `tunnel` 那一形会有（[`tunnel`] 的调用方据它决定停不停）。
+/// 失败回 `(说法, 开通道被远端回拒的原因码)` —— 原因码只有 `tunnel` 那一形会有（[`tunnel`] 的调用方据它决定停不停）。
 async fn open(
     cfg: &RemoteConfig,
     req: &serde_json::Value,
     want: &str,
     on_stage: &mut (dyn FnMut(ConnectStage) + Send),
 ) -> Result<(DialStream, Ack), (String, Option<String>)> {
-    // 〔NT2 · A4〕这一趟的总时限从这一刻起算（开链路本身也在里面）。
+    // 这一趟的总时限从这一刻起算（开链路本身也在里面）。
     let due = tokio::time::Instant::now() + ONE_SHOT_DEADLINE;
     let client = local_channel().await.map_err(|e| (e, None))?;
     // ★ F05 下半的那条埋点跟着拨号搬到这里：量的是「开链路 ＋（池里没有时）TCP ＋ 握手 ＋ 指纹校验 ＋ 鉴权 ＋ 开通道」。
-    //   〔SR1a〕同一台远端已经有连接时，这个数只剩「开一条 channel」—— 复用的收益就在这一行里看得见。
+    // 同一台远端已经有连接时，这个数只剩「开一条 channel」—— 复用的收益就在这一行里看得见。
     let t_handshake = std::time::Instant::now();
     let link = LinkStream::open(client, req.clone(), LINK_CALL_BUDGET)
         .await
@@ -378,7 +378,7 @@ async fn open(
                         ("secs", &(ACK_DEADLINE.as_secs()).to_string()),
                         (
                             "addr",
-                            // 〔MIG-1 收尾〕原样列出配置里那几行（地址不在这里解析，组法在后端 `dial/machine.rs`）。
+                            // 原样列出配置里那几行（地址不在这里解析，组法在后端 `dial/machine.rs`）。
                             &std::iter::once(format!("{}:{}", cfg.host, cfg.port))
                                 .chain(
                                     cfg.addresses
@@ -395,9 +395,9 @@ async fn open(
             ));
         }
     };
-    // 〔W5-VIS〕握手做完了 ⇒ 记下这一刻：之后若总时限到点，那句话说得出「握手用了多久、远端跑了多久」。
+    // 握手做完了 ⇒ 记下这一刻：之后若总时限到点，那句话说得出「握手用了多久、远端跑了多久」。
     r.get_mut().mark_shaken();
-    // 〔VIS2 · `设计/15 §3.4 ①`〕ack 成功 = 后端那边鉴权已过 ⇒ 判要不要自动固化。
+    // ack 成功 = 后端那边鉴权已过 ⇒ 判要不要自动固化。
     settle_host_key(cfg, req, &ack);
     // 竞速胜者记成 last-good（下次当 `prefer` 交回去排首）—— 后端交的是结构化的 `winner`，这里不解析地址。
     if let Some(won) = &ack.winner {
@@ -414,7 +414,7 @@ async fn open(
     Ok((DialStream { r }, ack))
 }
 
-// ═══ 〔VIS2 · `设计/15 §3.4 ①`「自动固化 ＋ 默认转严格 ＋ 保住多地址那一格」〕host key 自动固化 ═══════════════
+// ═══ 〔「自动固化 ＋ 默认转严格 ＋ 保住多地址那一格」〕host key 自动固化 ═══════════════
 
 /// 一次成功拨号之后，host key 这一格怎么办。
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -431,7 +431,7 @@ pub(crate) enum PinVerdict {
     Differs(std::collections::BTreeMap<String, String>),
 }
 
-/// 🔴 判定只此一处。`strict` = 这一趟是不是已经严格校验（后端在 ack 里说，〔MIG-1 收尾〕）。
+/// 🔴 判定只此一处。`strict` = 这一趟是不是已经严格校验（后端在 ack 里说）。
 pub(crate) fn pin_verdict(
     probe: bool,
     strict: bool,
@@ -466,7 +466,7 @@ pub(crate) enum PinWrite {
 }
 
 /// 往 `config.json` 的 `remote.hosts` 里那一台写指纹：经补丁口（`config::patch_config_at`）交一条**按键认数组元素**的
-/// `SetIn`（〔FIX · `99 §2 ㊶`〕锁内现读现判：认 origin（`label` 非空取它、否则 `host`，同 `lib.rs::parse_host_obj`）与 `host`
+/// `SetIn`（锁内现读现判：认 origin（`label` 非空取它、否则 `host`，同 `lib.rs::parse_host_obj`）与 `host`
 /// 都相等的恰好一台，只改它的 `hostKeyFingerprint`，已有值不动 —— CAS）。别的机器、别的格与设置页同时写的改动都不会被盖掉。
 pub(crate) fn pin_host_key_at(
     path: &std::path::Path,
@@ -498,7 +498,7 @@ pub(crate) fn pin_host_key_at(
     }
 }
 
-// 〔MIG-1 收尾〕「这一趟交给后端的指纹」（`cfg` 里有就用，没有 ⇒ 盘上同一台的）那条继承规则搬进后端 `dial/machine.rs::request`
+// 「这一趟交给后端的指纹」（`cfg` 里有就用，没有 ⇒ 盘上同一台的）那条继承规则搬进后端 `dial/machine.rs::request`
 //   （宿主把盘上那一份当 `saved` 交过去）；这一趟是不是严格校验，由后端在 ack 里说（`strict` / `jump_strict`）。
 
 /// 告知界面的那一件（经 `lib.rs` 装的出口发 `remote-health`，kind 见下面两个常量）。
@@ -542,7 +542,7 @@ fn notice(origin: String, kind: &'static str, message: String) {
     }
 }
 
-/// 成功拨号之后：判 → 固化 / 说出来。目标那一台一格；经跳板时跳板那一台另一格（〔FIX · `99 §2 ㊶` 第二问〕它是另一台机器，
+/// 成功拨号之后：判 → 固化 / 说出来。目标那一台一格；经跳板时跳板那一台另一格（〔第二问〕它是另一台机器，
 /// 按它自己在 `remote.hosts` 里那一条固化 —— 只当跳板用、从不直连的那台也不再一直 TOFU）。两格同一个判定（[`pin_verdict`]）。
 pub(crate) fn settle_host_key(cfg: &RemoteConfig, req: &serde_json::Value, ack: &Ack) {
     let probe = req.get("probe").and_then(serde_json::Value::as_bool) == Some(true);
@@ -624,11 +624,11 @@ fn settle_one(path: &std::path::Path, origin: &str, host: &str, verdict: PinVerd
     }
 }
 
-// 〔MIG-3b 续 · V41〕`open_stream`〔散文墓碑〕（`use:"stream"` 的一条 exec 字节流）删了：唯一的问者 `ssh_source` 那个一次性 exec 原语随公钥推送进本机后端一起走了。
+// `open_stream`〔散文墓碑〕（`use:"stream"` 的一条 exec 字节流）删了：唯一的问者 `ssh_source` 那个一次性 exec 原语随公钥推送进本机后端一起走了。
 
-/// 〔HOST · V139〕**一条到远端常驻后端监听口的隧道**（链路 `use:"tunnel"`：本机常驻后端在池里那条 SSH 连接上开
+/// **一条到远端常驻后端监听口的隧道**（链路 `use:"tunnel"`：本机常驻后端在池里那条 SSH 连接上开
 /// direct-tcpip 到远端 `127.0.0.1:port`）。出生带一次性总时限；接成流之后由调用方摘（`remote_resident::attach`）。
-/// 失败回 `(说法, 开通道被远端回拒的原因码)`（〔WF2〕`remote_resident::retry_tunnel` 据码分停 / 等）。
+/// 失败回 `(说法, 开通道被远端回拒的原因码)`（`remote_resident::retry_tunnel` 据码分停 / 等）。
 pub(crate) async fn tunnel(
     cfg: &RemoteConfig,
     port: u16,
@@ -668,14 +668,14 @@ pub(crate) async fn capture(
     })
 }
 
-// 〔MIG-1 续 · ⑬〕测试连接那一趟（短命探活、阶段行逐条交回）退役：拨号请求改由本机后端按界面交来的配置组（`dial/probe.rs`）。
+// 测试连接那一趟（短命探活、阶段行逐条交回）退役：拨号请求改由本机后端按界面交来的配置组（`dial/probe.rs`）。
 
-// 〔MIG-1 · `99 §2.1 ⑬`〕端口转发那一形（`ForwardLink` · `forward`）退役：转发账连同开链路一起住本机常驻后端
+// 端口转发那一形（`ForwardLink` · `forward`）退役：转发账连同开链路一起住本机常驻后端
 //   （`src/backend/dial/forwards.rs`，查的是后端自己的可达表），界面经 `chan.call(<local>, "forward-*")` 直接问。
 
-// ═══ 〔SR1b · 2026-09-24〕部署那条路：受限的远端文件一问一答（链路 `use:"files"`）═══════════════════
+// ═══ 部署那条路：受限的远端文件一问一答（链路 `use:"files"`）═══════════════════
 //
-// 用户 V89「SFTP 进本机常驻后端，只写暂存区」：界面进程零 SSH / 零 SFTP。自部署（F08 后端二进制 · `.build_id` ·
+// 用户「SFTP 进本机常驻后端，只写暂存区」：界面进程零 SSH / 零 SFTP。自部署（F08 后端二进制 · `.build_id` ·
 // `ccm` 入口）的**业务判定**留在 monitor（`sftp.rs`，一个判定函数都没动），
 // 执行交给本机常驻后端那一份 SFTP（`src/backend/dial/sftp.rs`）—— 它**只许往 `~/.cc-monitor/staging/` 与
 // `~/.cc-monitor/bin/` 写**（越界 ⇒ 应答 `code:"fenced"`，这里原话带回）。线上形状住后端那份头注与协议文档。
@@ -711,7 +711,7 @@ impl RemoteFs {
             .await
             .map_err(|(e, _)| e)?;
         let mut fs = RemoteFs {
-            // 〔NT2〕长活：一次部署问好几次，**每一问**自带期限（[`FILES_ASK_DEADLINE`] / [`FILES_PUT_DEADLINE`]）。
+            // 长活：一次部署问好几次，**每一问**自带期限（[`FILES_ASK_DEADLINE`] / [`FILES_PUT_DEADLINE`]）。
             link: tokio::sync::Mutex::new(link.lives_long()),
             home: String::new(),
         };
@@ -783,10 +783,10 @@ impl RemoteFs {
         Ok(v)
     }
 
-    // 〔MIG-3b〕这里原先是 `stat` 那一问（落点那个文件在不在 / 多大）：落点那一份是谁改由本机常驻后端出计划时自己问（`deploy-plan`），
-    //   monitor 这一侧零调用方 ⇒ 删了；〔MIG-3b 续 · V41〕链路那一侧的 `stat` 一问随之也删了。
+    // 这里原先是 `stat` 那一问（落点那个文件在不在 / 多大）：落点那一份是谁改由本机常驻后端出计划时自己问（`deploy-plan`），
+    //   monitor 这一侧零调用方 ⇒ 删了；链路那一侧的 `stat` 一问随之也删了。
 
-    // 〔MIG-3a · 09-28 预裁〕`read` 那一问（整份读回一个小文件）零调用方了：唯一的读者是按目录取版本标记那条路（已退役）⇒ 删了。
+    // `read` 那一问（整份读回一个小文件）零调用方了：唯一的读者是按目录取版本标记那条路（已退役）⇒ 删了。
     //   链路那一侧的 `read` 一问照旧在（`files` 链路协议没动）。
 
     /// 原子上传（EXCL 临时件 → 旧的改名 `.bak` → 上位 → 删 `.bak`；**绝不 setstat**）。`verify` ⇒ 后端读回比对，回结论。

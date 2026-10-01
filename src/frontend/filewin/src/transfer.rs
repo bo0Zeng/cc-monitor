@@ -1,4 +1,4 @@
-//! `设计/60 §5.4d`：拖入多个文件 —— **先把覆盖确认一次问完，再并行起传输。**
+//! 拖入多个文件 —— **先把覆盖确认一次问完，再并行起传输。**
 //!
 //! # 🔴 这条需求是从旧面板转过来的，转过来的理由在设计里，别当成新功能
 //!
@@ -18,7 +18,7 @@
 //! 2. **问答与传输交错** ⇒ 拖 10 个文件、第 7 个才冲突，用户已经等了 6 趟传输才被弹一次窗；
 //!    而那 6 趟已经在跑，答「取消」也收不回来。
 //!
-//! `设计/60 §5.4d` 逐字裁定**不在旧面板上修**（那块面板按 `§6.6 C` 要退役），
+//! 裁定**不在旧面板上修**（那块面板按 `§6.6 C` 要退役），
 //! 转成原生窗口的一条需求。⇒ 本模块。
 //!
 //! # 🔴 三段的顺序**就是 [`run_drop`] 的结构**，不是一条注释
@@ -38,23 +38,23 @@
 //! # ⚠ 买不到什么（逐条写明，别读宽）
 //!
 //! - **没有一趟真传输的读数。** 本仓红线不许起真连接
-//!   （`tests/frontend/shell/sftp_tests.rs` 逐字「跑不了真路」）。〔F7c 09-24〕[`probe_remote`] / [`upload_remote`]
+//!   （`tests/frontend/shell/sftp_tests.rs` 逐字「跑不了真路」）。[`probe_remote`] / [`upload_remote`]
 //!   今天**经通道**说话（开单 · 订阅进度 · 后端提交），不自己开连接、不碰池子
 //!   （判据 `transfer_tests::the_real_adapters_speak_only_through_the_channel` 判源码，
 //!   `transfer_tests::an_upload_opens_watches_then_commits_with_the_humans_answer` 在真回环 ＋ 合成对端上判三步的顺序与载荷）。
-//!   传输台那一侧的读数：〔SR1b〕传输本体（真 SFTP 会话上）搬进了本机常驻后端，由后端
+//!   传输台那一侧的读数：传输本体（真 SFTP 会话上）搬进了本机常驻后端，由后端
 //!   `tests/backend/control/transfer_tests.rs` 判；monitor 的中继由 `sftp_pool_tests` / `chan::host::transfer_stream_tests` 判。
-//! - **`lanes` 不是真正的闸。** 真正的闸〔SR1b〕在本机常驻后端里、按连接记（传输车道 ＋ 通道闸，
+//! - **`lanes` 不是真正的闸。** 真正的闸在本机常驻后端里、按连接记（传输车道 ＋ 通道闸，
 //!   借不到就 `await`，那个 `await` 就是队列）。
 //!   本层这个数只为「别把一万条订阅一起堆起来」（[`WINDOW_TRANSFER_LANES`]）。
-//!   〔第四波 S4〕池里那道 4 条的车道闸随浏览离开 SFTP 退役了，本层这个数不再是它的副本 ——
+//! 池里那道 4 条的车道闸随浏览离开 SFTP 退役了，本层这个数不再是它的副本 ——
 //!   判据改钉「一个窗口的一趟拖入占不满池子的通道闸」。
 //! - **不做断点续传的判断**：那在传输台那一侧（暂存件的尾块对拍），本模块看不见也不该看见。
-//! - ✅〔F7c · 第三波 09-24〕**「上传按钮」做了**：工具栏「上传」⇒ 问一句本机路径（一行一个）⇒ 交给 [`run_drop`]
+//! - ✅**「上传按钮」做了**：工具栏「上传」⇒ 问一句本机路径（一行一个）⇒ 交给 [`run_drop`]
 //!   （`upload.rs`；下面三件里 ① 拍了、② 仍然没有原生选文件框、③ 挂载只占 `shell.rs` 几行）。下面是当时停下的原话：
-//! - 🔴〔F1 · 波 5 · 2026-09-24〕**「上传按钮」没做，停在这里 —— 做不动，不是漏了。**
+//! - 🔴〔波 5〕**「上传按钮」没做，停在这里 —— 做不动，不是漏了。**
 //!   今天只能把文件**拖**进窗口（[`run_drop`] 那一条）。加一颗按钮卡在三件事上，逐条：
-//!   ① **一道没拍的设计题**：跨机传输走后端帧面还是走 SFTP（`设计/60 §8.4` 与 `§8.5` 要一起裁）
+//!   ① **一道没拍的设计题**：跨机传输走后端帧面还是走 SFTP（与 `§8.5` 要一起裁）
 //!      —— 按钮背后接哪一条，取决于它；本路不替它选。
 //!   ② **原生选文件框**：本包没有它的直接依赖（`rfd` 只作为 `tauri-plugin-dialog` 的传递依赖在锁文件里），
 //!      加依赖要动 `src/frontend/shell/Cargo.toml`；而且「能不能从 egui 那条线程弹出来」本机**验不了**
@@ -63,7 +63,7 @@
 //!   ⇒ 选完文件之后要走的那一段（先问覆盖、一次问完、再并行起传输）**今天就是 [`run_drop`]**，
 //!   按钮只需要把「选出来的那几条本机路径」喂给它 —— 那一跳等上面三件都有了再接。
 //!
-//! # 🔴〔第五刀 2026-09-21〕取消那一条（`设计/99 §4.6.4` 单记的那一格）
+//! # 🔴取消那一条（单记的那一格）
 //!
 //! 那一节逐字：「`sftp_cancel_transfer`〔散文墓碑〕 那一条值得单记：池子里有取消登记，
 //! **窗口上没有取消按钮** ⇒ 一趟传输起来了就只能等它自己完。」
@@ -83,10 +83,10 @@
 //! | 半 | 落点 | 买到 | 买不到 |
 //! |---|---|---|---|
 //! | **还没起的那几件一件都不起** | [`launch_unless_cancelled`] | 行为：`N` 件里按下取消之后，`go` 再也不被调（相等断言 ＋ 阴性对照） | —— |
-//! | **已经在飞的那一趟停下来** | 〔F7c 收尾〕[`CancelDesk::stop_token`] → 停订 → 传输台撤（从前那条 `forward_cancel`〔散文墓碑〕把 id 送进池子的取消命令，随复制走后端一起删了） | 行为：按取消 ⇒ 对端看见流被丢掉、不提交 | 🔴 **一趟真传输在真 sshd 上真的停了** —— 那要一趟真连接（本仓红线不许） |
+//! | **已经在飞的那一趟停下来** | [`CancelDesk::stop_token`] → 停订 → 传输台撤（从前那条 `forward_cancel`〔散文墓碑〕把 id 送进池子的取消命令，随复制走后端一起删了） | 行为：按取消 ⇒ 对端看见流被丢掉、不提交 | 🔴 **一趟真传输在真 sshd 上真的停了** —— 那要一趟真连接（本仓红线不许） |
 
 //!
-//! # 🔴〔F7c · 第三波 · 2026-09-24〕窗口进程**一行 SFTP 都不碰**了（`设计/60 §13`）
+//! # 🔴窗口进程**一行 SFTP 都不碰**了
 //!
 //! 用户逐字「**保留SFTP. 思考怎么干净**」＋「**现在只允许后端的文件管理部分写文件**」。
 //! 上面几节里「调池子那条既有命令」「同一个进程级连接池」的说法**是上一版的**，今天的形状是：
@@ -102,7 +102,7 @@
 //! - 覆盖不覆盖由这一侧**显式**交给后端（[`Pending::overwrite`]：人在那一问里点了「覆盖」的才是 `true`）；
 //!   人没被问过的那几件一律 `false` ⇒ 目标在两问之间冒出来了，后端拒，不静默盖掉。
 //! - 取消：窗口里那颗按钮 ⇒ [`CancelDesk::request`] 拨下这一摞的撤单令牌 ⇒ 每一趟的订阅停掉 ⇒
-//!   传输台那一侧「停订即撤」。〔F7c 收尾〕从前复制那一腿的池子取消（`forward_cancel`〔散文墓碑〕）
+//!   传输台那一侧「停订即撤」。从前复制那一腿的池子取消（`forward_cancel`〔散文墓碑〕）
 //!   随复制走后端（F7a `files-copy`，不可取消）一起删了 ⇒ 窗口进程里一个 `sftp_pool` 符号都不剩。
 
 use copy_core::copy_text;
@@ -112,12 +112,12 @@ use std::sync::{Arc, Mutex};
 
 /// 一趟拖入同时起几件（同时挂着几条进度订阅 / 同时问几件「那儿有没有东西」）。
 ///
-/// 🔴 **这个数不在本层裁定** —— 真正的闸在〔SR1b〕本机常驻后端里、**按连接**记
+/// 🔴 **这个数不在本层裁定** —— 真正的闸在本机常驻后端里、**按连接**记
 /// （`src/backend/dial/pool.rs` 的 `TRANSFER_LANE_CAP` / `SESSION_CHANNEL_CAP`）；这里多挂的那几条订阅只是在那道闸前面排队。
 /// 本层限并发只为「别把一万条订阅一起堆起来」。
 ///
-/// 〔第四波 S4〕它原先是池里那道 4 条车道闸的副本（两份 ＋ 相等断言）；车道闸随浏览离开 SFTP
-/// 退役之后改钉「占不满池子的通道闸」；〔SR1b〕池子搬进后端之后改钉两条关系
+/// 它原先是池里那道 4 条车道闸的副本（两份 ＋ 相等断言）；车道闸随浏览离开 SFTP
+/// 退役之后改钉「占不满池子的通道闸」；池子搬进后端之后改钉两条关系
 /// （`transfer_tests::one_windows_burst_fits_the_transfer_lane_and_never_fills_the_connection`）。
 /// 窗口进程照旧一个 `sftp_pool` 的符号都不碰（`boundary_tests::WINDOW_SIDE` 两向钉着）。
 pub const WINDOW_TRANSFER_LANES: usize = 4;
@@ -134,15 +134,15 @@ pub struct Pending {
     pub remote_path: String,
     /// 显示名（＝ 远端那一侧的 basename）。
     pub name: String,
-    /// 〔F7c〕提交时交给后端的覆盖策略。**只有人在那一问里点了「覆盖」的那几件是 `true`**
+    /// 提交时交给后端的覆盖策略。**只有人在那一问里点了「覆盖」的那几件是 `true`**
     /// （由 [`run_drop`] 在「一次问完」之后标上）；造出来时一律 `false`。
     pub overwrite: bool,
-    /// 〔FILES2 · 非 UTF-8 目录〕目标目录的原始字节（目录名不是合法 UTF-8 时才有）：探在不在与提交都按字节寻址。
+    /// 〔非 UTF-8 目录〕目标目录的原始字节（目录名不是合法 UTF-8 时才有）：探在不在与提交都按字节寻址。
     pub remote_dir_raw: Option<Vec<u8>>,
 }
 
 impl Pending {
-    /// 〔FILES2〕提交的 `root`：目标目录有字节 ⇒ 按字节发；否则照旧切字符串路径。
+    /// 提交的 `root`：目标目录有字节 ⇒ 按字节发；否则照旧切字符串路径。
     pub fn root_wire(&self) -> serde_json::Value {
         match &self.remote_dir_raw {
             Some(b) => super::source::wire_bytes(b),
@@ -150,7 +150,7 @@ impl Pending {
         }
     }
 
-    /// 〔FILES2〕探「在不在」的那条整路径（线上那一形）。
+    /// 探「在不在」的那条整路径（线上那一形）。
     pub fn path_wire(&self) -> serde_json::Value {
         match &self.remote_dir_raw {
             Some(b) => {
@@ -194,7 +194,7 @@ pub struct DropOutcome {
     pub ok: usize,
     /// 传失败的那几件（名字 ＋ 报错原文）。
     pub failed: Vec<(String, String)>,
-    /// 〔FW1 · 第四波 4D〕提交时对不上整份摘要（暂存件中间有坏块）、**从头重传了一次**的那几件（名字）。
+    /// 提交时对不上整份摘要（暂存件中间有坏块）、**从头重传了一次**的那几件（名字）。
     /// 重传成了也算在 `ok` 里，但这一句要画出来（主会话裁 09-25「从 0 重传并出声」）。
     pub redone: Vec<String>,
 }
@@ -246,7 +246,7 @@ where
     };
 
     // 准传的那一摞 = 不冲突的全部 ＋ 人点了「覆盖」的那几件。
-    // 〔F7c〕后者**标上** `overwrite` —— 提交时后端据它决定「目标在就拒」还是「整份换掉」；
+    // 后者**标上** `overwrite` —— 提交时后端据它决定「目标在就拒」还是「整份换掉」；
     //   前者一律不标：人没被问过的，目标若在两问之间冒出来，后端拒，不替人盖。
     let go: Vec<Pending> = items
         .iter()
@@ -297,7 +297,7 @@ where
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// 🔴〔第五刀〕取消：**那个键 ＋ 那道闸**
+// 🔴取消：**那个键 ＋ 那道闸**
 // ═══════════════════════════════════════════════════════════════════════
 
 /// 一件被取消掉之后交回来的那句话。
@@ -324,7 +324,7 @@ pub static CANCEL_LABEL: std::sync::LazyLock<String> =
 /// ⚠ 它**跨线程**（UI 线程按取消，tokio 那条起传输）⇒ `Arc` + `Mutex`，
 /// 与两块看板同形。刻意做成一个独立的 `Clone` 件，好让上传与复制两条路
 /// **共用同一份实现**（两份实现会在「取消之后还起不起」这一档上分岔）。
-/// 〔F7a · 第三波 09-24〕复制那一路换到后端之后取消不掉，已不用它；今天只有上传与往外拖。
+/// 复制那一路换到后端之后取消不掉，已不用它；今天只有上传与往外拖。
 #[derive(Clone, Default)]
 pub struct CancelDesk {
     /// 在飞的那几趟：`(显示名, transfer_id)`。
@@ -333,7 +333,7 @@ pub struct CancelDesk {
     requested: Arc<AtomicBool>,
     /// 一共造过几个键 —— 给判据一个可观测的数（键唯一性靠它对账）。
     minted: Arc<AtomicU64>,
-    /// 〔F7c〕这一摞的**撤单令牌**：经通道起的每一趟（上传 / 下载）都盯着它，
+    /// 这一摞的**撤单令牌**：经通道起的每一趟（上传 / 下载）都盯着它，
     /// 拨下 ⇒ 那一趟的订阅停掉 ⇒ 传输台那一侧「停订即撤」。下一摞换一枚新的（[`CancelDesk::reset`]）。
     stop: Arc<Mutex<chan_core::chan::wire::CancelToken>>,
 }
@@ -342,7 +342,7 @@ impl CancelDesk {
     /// 造一个这一趟的 `transfer_id` 并登记进在飞表。
     ///
     /// ⚠ 每趟现造：它是池子取消登记表的键，两趟用同一个键会互相摘掉对方的登记
-    /// （从前池子那张按 id 的取消登记表的注释逐字记着这一条；〔第四波 S4〕那张表随老 Tauri 传输一路删了，
+    /// （从前池子那张按 id 的取消登记表的注释逐字记着这一条；那张表随老 Tauri 传输一路删了，
     /// 这一趟今天是停订即撤，键仍要唯一 —— 它是本层在飞表的键）。
     pub fn mint(&self, name: &str) -> String {
         let id = format!("filewin-{}", uuid::Uuid::new_v4());
@@ -424,7 +424,7 @@ impl CancelDesk {
 /// - 没取消过 ⇒ 造键、登记、调 `go`、收场时摘掉登记。
 ///
 /// ⚠ 回值对 `T` 泛型：第五刀时复制那一路也走这道闸（`T` 是它那一层的裁决）；
-/// 〔F7a · 第三波 09-24〕复制换到后端、取消不掉之后不再走这里，今天只有 `T = ()` 那一路。
+/// 复制换到后端、取消不掉之后不再走这里，今天只有 `T = ()` 那一路。
 pub async fn launch_unless_cancelled<T, F, Fut>(
     desk: &CancelDesk,
     name: &str,
@@ -447,7 +447,7 @@ where
 // 生产适配器：**一行自己的传输代码都没有**
 // ═══════════════════════════════════════════════════════════════════════
 
-/// 「远端已经有这条路径了吗」—— 〔F2 · 2026-09-24〕经通道问后端 `files-stat`。
+/// 「远端已经有这条路径了吗」—— 经通道问后端 `files-stat`。
 ///
 /// ⚠ `stat` 失败一律按「不存在」读（同旧面板 `uploadDropped` 的口径：
 /// 不可读与不存在在这一步分不开，而按「存在」处理会**无端多问一次**）。
@@ -465,7 +465,7 @@ pub async fn probe_remote(
     .await
 }
 
-/// 〔W5-FILES · 有损名全寻址〕同 [`probe_remote`]（同一个口径：`stat` 失败算「不在」），路径由调用方给线上那一形（字符串或 `{"b16": …}`）。
+/// 〔有损名全寻址〕同 [`probe_remote`]（同一个口径：`stat` 失败算「不在」），路径由调用方给线上那一形（字符串或 `{"b16": …}`）。
 pub async fn probe_remote_at(
     line: &super::source::Line,
     origin: &super::source::Origin,
@@ -482,7 +482,7 @@ pub async fn probe_remote_at(
     .is_ok()
 }
 
-/// 一次「那儿有没有东西」的往返上限（调用方给的期限，`05 §3.3.2`）。
+/// 一次「那儿有没有东西」的往返上限（调用方给的期限）。
 pub const PROBE_BUDGET: std::time::Duration = std::time::Duration::from_secs(10);
 
 /// 开单：上传（传输台那一侧 `sftp_pool::TRANSFER_UPLOAD`，判据钉两份相等）。
@@ -491,7 +491,7 @@ pub const OP_UPLOAD: &str = "transfer-upload";
 pub const KIND_PREFIX: &str = "transfer/";
 /// 提交：后端文件管理那一条（后端 `control/files_commit.rs::COMMIT_COMMANDS`）。
 pub const CMD_COMMIT: &str = "files-commit-upload";
-/// 开单那一趟往返的上限（调用方给的期限，`05 §3.3.2`）。开单只登记、不搬字节。
+/// 开单那一趟往返的上限（调用方给的期限）。开单只登记、不搬字节。
 pub const OPEN_BUDGET: std::time::Duration = std::time::Duration::from_secs(10);
 /// 提交那一趟往返的上限：后端那一侧是围栏的几次 `canonicalize` ＋ 一次同盘改名。
 pub const COMMIT_BUDGET: std::time::Duration = std::time::Duration::from_secs(30);
@@ -509,7 +509,7 @@ pub(crate) fn field(v: &serde_json::Value, _cmd: &str, key: &str) -> Result<Stri
         })
 }
 
-/// 真起一件上传 —— **开单 → 起跑并看 → 提交**，三步全经通道（`设计/60 §13.2`）。
+/// 真起一件上传 —— **开单 → 起跑并看 → 提交**，三步全经通道。
 ///
 /// 🔴 这里一行 SFTP 都没有：字节由 monitor 里的传输台搬进暂存区，
 /// 落进用户目录的那一下是后端文件管理的 `files-commit-upload`（先过围栏）。
@@ -520,14 +520,14 @@ pub async fn upload_remote(
     p: &Pending,
     board: &DropBoard,
 ) -> Result<(), String> {
-    // 〔FILES2 · Q5〕这一窗已经改走后端链路 ⇒ 不再问 SFTP。
+    // 这一窗已经改走后端链路 ⇒ 不再问 SFTP。
     if board.via_backend().is_some() {
         return super::chunk_upload::upload_by_chunks(line, origin, p, board).await;
     }
     let home = board.backend_home(line, origin).await;
     let home = home.as_deref();
     let first = match upload_once(line, origin, p, board, home).await {
-        // 〔FW1 · 第四波 4D · 主会话裁 09-25〕提交时对不上整份摘要 ⇒ 远端已经删掉那份坏暂存件 ⇒ **从头重传一次**并出声。
+        // 提交时对不上整份摘要 ⇒ 远端已经删掉那份坏暂存件 ⇒ **从头重传一次**并出声。
         //   只重一次：第二次还对不上，多半不是一次偶发的洞（盘 / 网络在持续出错），照原话报失败，不原地打转。
         Err(Once::Stale(_)) => {
             board.note_redone(&p.name);
@@ -536,7 +536,7 @@ pub async fn upload_remote(
         other => other,
     };
     match first {
-        // 〔FILES2 · Q5〕连上时比出来 SFTP 起始目录不是后端的 home ⇒ 一个字节没传；这一件起改走后端链路分块写（出声一次）。
+        // 连上时比出来 SFTP 起始目录不是后端的 home ⇒ 一个字节没传；这一件起改走后端链路分块写（出声一次）。
         Err(Once::Mismatch(why)) => {
             board.switch_to_backend(why);
             super::chunk_upload::upload_by_chunks(line, origin, p, board).await
@@ -545,11 +545,11 @@ pub async fn upload_remote(
     }
 }
 
-/// 〔FW1〕一趟上传没成的两形：提交时摘要对不上（`stale`，远端已删掉坏暂存件 ⇒ 值得从头重传）· 别的（原话）。
+/// 一趟上传没成的两形：提交时摘要对不上（`stale`，远端已删掉坏暂存件 ⇒ 值得从头重传）· 别的（原话）。
 enum Once {
     Stale(String),
     Failed(String),
-    /// 〔FILES2 · Q5〕传输台连上之后比出来 SFTP 起始目录不是后端的 home（`sftp_home_mismatch`），一个字节没传。
+    /// 传输台连上之后比出来 SFTP 起始目录不是后端的 home（`sftp_home_mismatch`），一个字节没传。
     Mismatch(String),
 }
 
@@ -561,7 +561,7 @@ impl Once {
     }
 }
 
-/// 〔FILES2 · Q5〕传输台收场码：SFTP 起始目录不是那台后端的 home（后端 `control/transfer.rs::SFTP_HOME_MISMATCH`，判据钉两份相等）。
+/// 传输台收场码：SFTP 起始目录不是那台后端的 home（后端 `control/transfer.rs::SFTP_HOME_MISMATCH`，判据钉两份相等）。
 pub const SFTP_HOME_MISMATCH: &str = "sftp_home_mismatch";
 
 /// 开单 → 起跑并看 → 提交，一趟。提交带传输台交的整份摘要（`expect`），远端后端改名上位之前核它。
@@ -573,7 +573,7 @@ async fn upload_once(
     home: Option<&str>,
 ) -> Result<(), Once> {
     let stop = board.cancels().stop_token();
-    // 〔FILES2 · Q5〕问得到后端的 `$HOME` 就带上：传输台连上之后与 SFTP 起始目录比（不一致 ⇒ 一个字节不写）。
+    // 问得到后端的 `$HOME` 就带上：传输台连上之后与 SFTP 起始目录比（不一致 ⇒ 一个字节不写）。
     let mut args = serde_json::json!({ "local_path": p.local_path });
     if let Some(h) = home {
         args["home"] = serde_json::Value::String(h.to_string());
@@ -583,7 +583,7 @@ async fn upload_once(
         .map_err(Once::Failed)?;
     let id = field(&opened, OP_UPLOAD, "id").map_err(Once::Failed)?;
     let key = field(&opened, OP_UPLOAD, "key").map_err(Once::Failed)?;
-    // 〔FILES2 · Q2〕记下暂存件的键：跨机复制半路失败时，由它去那台机器上把暂存件删掉。
+    // 记下暂存件的键：跨机复制半路失败时，由它去那台机器上把暂存件删掉。
     board.note_staged(&key);
     let name = p.name.clone();
     let sink = board.clone();
@@ -639,7 +639,7 @@ pub struct DropBoard {
     /// 不敲一下，进度条要等到用户下次动鼠标才跳一格（看起来就是「卡住了」）。
     /// ⚠ `Option`：判据里没有窗口，那时它就是 `None`，`progress` 照常记数。
     ctx: Arc<Mutex<Option<egui::Context>>>,
-    /// 🔴〔第五刀〕这一摞的取消台（键 ＋ 旗）。理由住本模块头注那一节。
+    /// 🔴这一摞的取消台（键 ＋ 旗）。理由住本模块头注那一节。
     desk: CancelDesk,
 }
 
@@ -655,13 +655,13 @@ struct Board {
     progress: Vec<(String, u64, u64)>,
     /// 上一趟的结果（画在窗口上，不是 `println!`）。
     last: Option<DropOutcome>,
-    /// 〔FW1〕这一趟里从头重传过的那几件（[`DropBoard::note_redone`] 记、[`DropBoard::finish`] 并进结局）。
+    /// 这一趟里从头重传过的那几件（[`DropBoard::note_redone`] 记、[`DropBoard::finish`] 并进结局）。
     redone: Vec<String>,
-    /// 〔FILES2 · Q5〕那台后端的 `$HOME`（问过一次就记着；开单时交给传输台比 SFTP 起始目录）。
+    /// 那台后端的 `$HOME`（问过一次就记着；开单时交给传输台比 SFTP 起始目录）。
     backend_home: Option<String>,
-    /// 〔FILES2 · Q5〕这一窗的上传改走后端链路分块写了 ⇒ 为什么（传输台原话；出声一次，之后不再问 SFTP）。
+    /// 这一窗的上传改走后端链路分块写了 ⇒ 为什么（传输台原话；出声一次，之后不再问 SFTP）。
     via_backend: Option<String>,
-    /// 〔FILES2 · Q2〕开过单的暂存件键（[`DropBoard::note_staged`]）。
+    /// 开过单的暂存件键（[`DropBoard::note_staged`]）。
     staged: Vec<String>,
 }
 
@@ -730,18 +730,18 @@ impl DropBoard {
         self.rounds.load(Ordering::SeqCst)
     }
 
-    /// 〔FILES2 · Q5〕这一窗的上传是不是已经改走后端链路（`Some(为什么)`）。
+    /// 这一窗的上传是不是已经改走后端链路（`Some(为什么)`）。
     pub fn via_backend(&self) -> Option<String> {
         self.inner.lock().unwrap().via_backend.clone()
     }
 
-    /// 〔FILES2 · Q5〕改走后端链路（记下原因，界面上画一行；只记第一次的原因）。
+    /// 改走后端链路（记下原因，界面上画一行；只记第一次的原因）。
     pub fn switch_to_backend(&self, why: String) {
         self.inner.lock().unwrap().via_backend.get_or_insert(why);
         self.poke();
     }
 
-    /// 〔FILES2 · Q2〕这一件在传的进度（`(已传, 总共)`；不在传 ⇒ `None`）。
+    /// 这一件在传的进度（`(已传, 总共)`；不在传 ⇒ `None`）。
     pub fn seen(&self, name: &str) -> Option<(u64, u64)> {
         self.inner
             .lock()
@@ -752,17 +752,17 @@ impl DropBoard {
             .map(|(_, g, t)| (*g, *t))
     }
 
-    /// 〔FILES2 · Q2〕记一份开过单的暂存件键（SFTP 那条路）。
+    /// 记一份开过单的暂存件键（SFTP 那条路）。
     pub fn note_staged(&self, key: &str) {
         self.inner.lock().unwrap().staged.push(key.to_string());
     }
 
-    /// 〔FILES2 · Q2〕开过单的暂存件键（跨机复制半路失败时逐个删掉）；取走即清。
+    /// 开过单的暂存件键（跨机复制半路失败时逐个删掉）；取走即清。
     pub fn take_staged(&self) -> Vec<String> {
         std::mem::take(&mut self.inner.lock().unwrap().staged)
     }
 
-    /// 〔FILES2 · Q2〕换一台目标机器之前：记着的 home / 改走后端链路那一句 / 暂存件键 / 进度都清掉（它们说的是上一台）。
+    /// 换一台目标机器之前：记着的 home / 改走后端链路那一句 / 暂存件键 / 进度都清掉（它们说的是上一台）。
     pub fn reset_target(&self) {
         let mut b = self.inner.lock().unwrap();
         b.backend_home = None;
@@ -771,7 +771,7 @@ impl DropBoard {
         b.progress.clear();
     }
 
-    /// 〔FILES2 · Q5〕那台后端的 `$HOME`：问过就用记着的；没问过 ⇒ 问一次（问不到 ⇒ `None`，这一趟不比，照旧走 SFTP）。
+    /// 那台后端的 `$HOME`：问过就用记着的；没问过 ⇒ 问一次（问不到 ⇒ `None`，这一趟不比，照旧走 SFTP）。
     pub async fn backend_home(
         &self,
         line: &super::source::Line,
@@ -794,7 +794,7 @@ impl DropBoard {
         Some(h)
     }
 
-    /// 〔FW1〕记一件「提交时对不上整份摘要、已从头重传」（这一趟收场时并进结局，画出来）。
+    /// 记一件「提交时对不上整份摘要、已从头重传」（这一趟收场时并进结局，画出来）。
     pub fn note_redone(&self, name: &str) {
         self.inner.lock().unwrap().redone.push(name.to_string());
     }
@@ -839,7 +839,7 @@ impl DropBoard {
                 b.via_backend.clone(),
             )
         };
-        // 〔FILES2 · Q5〕改走后端链路那一句（一窗一次；之后的上传都走那条，不再逐件说）。
+        // 改走后端链路那一句（一窗一次；之后的上传都走那条，不再逐件说）。
         if let Some(why) = via {
             ui.colored_label(
                 egui::Color32::from_rgb(0xE0, 0x9A, 0x20),
@@ -892,7 +892,7 @@ impl DropBoard {
             };
             ui.add(egui::ProgressBar::new(frac).text(format!("{name} {got}/{total}")));
         }
-        // 🔴〔第五刀〕**那颗取消按钮**（`设计/99 §4.6.4` 单记的那一格）。
+        // 🔴**那颗取消按钮**（单记的那一格）。
         //    有东西在飞才画 —— 一颗常驻的、按下去什么都不取消的按钮比没有更坏。
         if !self.desk.in_flight_ids().is_empty() {
             ui.horizontal(|ui| {
@@ -905,7 +905,7 @@ impl DropBoard {
             });
         }
         if let Some(o) = last {
-            // 〔FW1〕从头重传过的那几件：成没成都要说（一次坏块 = 那一趟的续传本钱白花了，而且可能是网络 / 盘在出错）。
+            // 从头重传过的那几件：成没成都要说（一次坏块 = 那一趟的续传本钱白花了，而且可能是网络 / 盘在出错）。
             if !o.redone.is_empty() {
                 ui.colored_label(
                     egui::Color32::from_rgb(0xD0, 0x8A, 0x20),

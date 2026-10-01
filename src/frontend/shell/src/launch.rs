@@ -1,11 +1,11 @@
-//! Batch14-F41：终端拉起。〔FIX4 · `设计/99 §2.1 ⑬`「待迁」最后一行〕monitor 这里**只开终端**。
+//! Batch14-F41：终端拉起。〔「待迁」最后一行〕monitor 这里**只开终端**。
 //!
 //! 三块：
 //! 1. [`launch_powershell_window`](crate::platform::terminal::launch_powershell_window) —— 通用「新终端窗口跑一条 PowerShell 命令」机械（wt.exe Plan A →
 //!    CREATE_NEW_CONSOLE Plan B，`-NoExit -EncodedCommand`、**不带 `-NoProfile`**）。本地与远端共用此单一入口。
 //! 2. [`open_terminal_window`] —— 开窗那一条 Tauri 命令：**只开窗**。交来的是本机后端的成品 —— 远端那一行
 //!    （`& ssh -t[ -J …] … -- '<bash -lic ''…''>'`）由帧命令 `terminal-ssh` 渲、本机那一串由 `terminal-local` 出；
-//!    〔P5〕令牌握手前奏（窗口要登记进 monitor 自己那张 `bind.rs` 表）也由它们接好（`src/backend/dial/terminal.rs::with_bind_prelude`）。
+//! 令牌握手前奏（窗口要登记进 monitor 自己那张 `bind.rs` 表）也由它们接好（`src/backend/dial/terminal.rs::with_bind_prelude`）。
 //!    原先住这里的 `build_remote_ssh_ps_command`〔散文墓碑〕与它那几道白名单（用户名 · 地址 · 跳板 · 双引号）随之搬走。
 //! 3. [`terminal_dial`] —— 给那一问交机器事实（`{machine, saved, jump, prefer}`：monitor 自己的机器表 ＋ 上次赢的那条，
 //!    `dial_host::machine_facts`）。
@@ -20,15 +20,15 @@ use crate::copy_table::copy_text;
 /// 远端命令长度上限（防 IPC 侧异常输入；正常 resume 命令 <300 字节）。
 const MAX_REMOTE_CMD: usize = 4096;
 
-// 〔FIX4 · `99 §2.1 ⑬`〕这里原来一个 `posix_quote`〔散文墓碑〕（`shell_quote_core::posix_quote` 的纯转发别名）：唯一的用户是远端那条
+// 这里原来一个 `posix_quote`〔散文墓碑〕（`shell_quote_core::posix_quote` 的纯转发别名）：唯一的用户是远端那条
 // ssh 外壳（`bash -lic '<命令>'`），随渲染搬进本机后端（`src/backend/dial/terminal.rs`，直调 `shell_quote_core`）⇒ 别名一起删。
 
-// 〔P5 · V156〕这里原来一个只双写 ASCII `'` 的 PowerShell 引号器（本机数据目录带弯引号时握手前奏会断）：前奏整段搬进本机后端，
+// 这里原来一个只双写 ASCII `'` 的 PowerShell 引号器（本机数据目录带弯引号时握手前奏会断）：前奏整段搬进本机后端，
 // PowerShell 字面量只经后端 `platform/shell/dialect.rs::ps_literal` ⇒ 删了。monitor 生产段零 PowerShell 引号器（`quote_singleton_guard_tests`）。
 
 /// L1（local-as-remote）：**与传输无关**的那层命令校验 —— 三条送法一律适用。
 ///
-/// 〔FIX4〕远端那条送法的同一组判据今天住本机后端（`dial/terminal.rs`，帧命令 `terminal-ssh`）；这里只剩 POSIX 本地那条路
+/// 远端那条送法的同一组判据今天住本机后端（`dial/terminal.rs`，帧命令 `terminal-ssh`）；这里只剩 POSIX 本地那条路
 /// （[`build_local_posix_argv`]）用。
 ///
 /// **刻意不含「拒绝双引号」那条**：它的理由是 PowerShell 5.1 向 native 程序传参对内嵌 `"`
@@ -67,7 +67,7 @@ fn validate_launch_cmd(cmd: &str, what: &str) -> Result<(), String> {
 ///（PATH / 别名 / 函数按「用户粘贴进交互终端」解析），`ccm` 正是靠它才被找到。
 ///
 /// ⇒ 与远端那条送法的关系就是 §2「payload 共享、transport 只管送」：
-/// 同一个 `cmd`，本地是 `bash -lic <cmd>`，远端是把这同一串再包进 ssh（〔FIX4〕那一层今天由本机后端 `terminal-ssh` 渲）。
+/// 同一个 `cmd`，本地是 `bash -lic <cmd>`，远端是把这同一串再包进 ssh（那一层今天由本机后端 `terminal-ssh` 渲）。
 /// 两侧各有测试逐字节钉住（本侧 `local_posix_sends_the_payload_itself_without_an_ssh_wrap`，
 /// 远端那侧在 `tests/backend/dial_terminal_tests.rs`）。
 pub fn build_local_posix_argv(cmd: &str) -> Result<Vec<String>, String> {
@@ -75,13 +75,13 @@ pub fn build_local_posix_argv(cmd: &str) -> Result<Vec<String>, String> {
     Ok(vec!["bash".into(), "-lic".into(), cmd.into()])
 }
 
-// 〔P4 · 阶段 H〕开窗的两个平台臂（POSIX 规范化终端出口 · Windows `wt.exe` / `powershell.exe` · `ssh.exe` 预检）搬进 `platform/terminal.rs`，
+// 开窗的两个平台臂（POSIX 规范化终端出口 · Windows `wt.exe` / `powershell.exe` · `ssh.exe` 预检）搬进 `platform/terminal.rs`，
 //   头注逐字随之；本文件只剩「跑什么」的校验与两条 Tauri 命令。
 
-/// 〔FIX4 · `设计/99 §2.1 ⑬`「待迁」最后一行〕**开一个终端窗口跑 `command`** —— monitor 在「开终端」这件事上只剩这一下。
+/// 〔「待迁」最后一行〕**开一个终端窗口跑 `command`** —— monitor 在「开终端」这件事上只剩这一下。
 ///
 /// `command` 是**成品**：远端那一行由本机后端 `terminal-ssh` 渲好（`ssh -t …` 外壳 ＋ PowerShell 载荷），本机那一串由 `terminal-local`
-/// 交回 —— 这次拉起带启动期令牌时，两条都已在前面接好令牌握手前奏（`设计/80 §8.2` 本地半，〔P5〕后端渲）。这里不判、不拼。
+/// 交回 —— 这次拉起带启动期令牌时，两条都已在前面接好令牌握手前奏（本地半，后端渲）。这里不判、不拼。
 /// `ssh = true` ⇒ Windows 上先查本机有没有 ssh.exe（缺 OpenSSH 客户端时窗口只会报 "not recognized"，而 spawn 本身成功 ⇒ 前端误报成功）。
 ///
 /// ★ POSIX：[`launch_powershell_window`](crate::platform::terminal::launch_powershell_window) 的非 Windows 臂回 [`POSIX_NO_TERMINAL_WINDOW`](crate::platform::terminal::POSIX_NO_TERMINAL_WINDOW)，前端据此把命令交给用户在自己的
@@ -101,7 +101,7 @@ pub async fn open_terminal_window(command: String, ssh: bool) -> Result<(), Stri
     .map_err(|e| copy_text("rsLaunch.remote.taskFailed", &[("e", &e.to_string())]))?
 }
 
-/// 〔FIX4 · `设计/99 §2.1 ⑬`〕开终端那一问（本机后端 `terminal-ssh`）要的**机器事实**：`{machine, saved, jump, prefer}`
+/// 开终端那一问（本机后端 `terminal-ssh`）要的**机器事实**：`{machine, saved, jump, prefer}`
 /// —— monitor 自己的机器表 ＋ 上次赢的那条（[`crate::dial_host::machine_facts`]，与拨号请求同一份）。只读 monitor 自己的状态。
 #[tauri::command]
 pub async fn terminal_dial(origin: String) -> Result<serde_json::Value, String> {
@@ -118,7 +118,7 @@ pub async fn terminal_dial(origin: String) -> Result<serde_json::Value, String> 
     Ok(crate::dial_host::machine_facts(&cfg))
 }
 
-/// 〔MIG-2 · `99 §2.1 ⑬`〕**在本机开一个终端窗口跑 `cmd`**（工作目录 `cwd`，不在就不设）—— monitor 在起会话这件事上只剩这一下。
+/// **在本机开一个终端窗口跑 `cmd`**（工作目录 `cwd`，不在就不设）—— monitor 在起会话这件事上只剩这一下。
 /// 那一串由本机后端出成品（帧命令 `launch-local`：计划 · 账号前缀 · 中转前缀 · 身份 token 全在那里），这里不判、不拼。
 /// POSIX：交用户的终端出口（[`launch_local_posix`](crate::platform::terminal::launch_local_posix)）；Windows：PowerShell 窗口（[`launch_powershell_window`](crate::platform::terminal::launch_powershell_window)）。阻塞那一截不占 IPC 线程。
 #[tauri::command]

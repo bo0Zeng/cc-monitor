@@ -2,10 +2,10 @@
 //!
 //! # 病史
 //!
-//! 收口前全仓有**五份逐字节相同**的实现：`launch.rs` 的 `posix_quote`〔散文墓碑〕（〔FIX4〕那个转发别名也删了）·
-//! `ssh_source.rs` 的 `shell_quote`〔散文墓碑〕（〔THIN〕零生产调用方，那层转调壳删了）· backend `tmux_hook.rs::sq` ·
+//! 收口前全仓有**五份逐字节相同**的实现：`launch.rs` 的 `posix_quote`〔散文墓碑〕（那个转发别名也删了）·
+//! `ssh_source.rs` 的 `shell_quote`〔散文墓碑〕（零生产调用方，那层转调壳删了）· backend `tmux_hook.rs::sq` ·
 //! **`shell-quote-core::posix_quote`（U8c-1 自己新加的第四份；那时 crate 叫 `launch-core`）** ·
-//! **`acct_iso_deploy.rs` 的 `sq`〔散文墓碑〕（〔MIG-3a · 09-28〕已删；第五份 —— 我摸底只数出四份、账本 S5 记的也是四份，
+//! **`acct_iso_deploy.rs` 的 `sq`〔散文墓碑〕（已删；第五份 —— 我摸底只数出四份、账本 S5 记的也是四份，
 //! 是这条守卫第一次跑就当场抓出来的）**。
 //!
 //! 账本 S5 原本记着「`common/` 收不了 quote」，而 U8c-1 造出了共享 crate 这个载体、
@@ -31,13 +31,13 @@
 //! ⚠ **仍查不了**「连字面量都不出现的等价实现」（例如按字节码拼出那个序列）。
 //! 与本仓其它约定型守卫同一档。**比没有强，别读成证明。**
 //! ⚠ 这一族**不查 PowerShell 的 `''` 转义** —— 那是另一门语言的正确写法，不属 POSIX 这条管辖
-//! （摸底时差点把它算进来，见 `ESCAPE_ALT_RAW` 头注记的那次弯路）。〔P5〕PowerShell 那一门另有一条：monitor 生产段
+//! （摸底时差点把它算进来，见 `ESCAPE_ALT_RAW` 头注记的那次弯路）。PowerShell 那一门另有一条：monitor 生产段
 //! 零 PowerShell 引号器（`the_monitor_holds_no_powershell_quoter`；唯一的出口在后端 `platform/shell/dialect.rs::ps_literal`）。
 //!
-//! # ✅ 它服务哪条要求：**`设计/01 §5 D1`**〔`P20` 第二刀 2026-09-22〕
+//! # ✅ 它服务哪条要求：****
 //!
 //! `D1` =「**一个判定只有一个家**」，而上面那段病史就是它的反例目录（收口前**五份**
-//! 逐字节相同，第五份是这条守卫第一次跑就当场抓出来的）。核对过程住 `设计/99 §4.11.5`。
+//! 逐字节相同，第五份是这条守卫第一次跑就当场抓出来的）。核对过程住。
 
 #[cfg(test)]
 #[path = "../../../../tests/frontend/shell/quote_singleton_guard_tests.rs"]

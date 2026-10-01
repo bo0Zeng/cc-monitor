@@ -1,9 +1,9 @@
-//! 〔F7c · 第三波 · 2026-09-24〕**上传那颗按钮** —— 工具栏上一颗「上传」，问一句「本机哪几个文件」，
+//! **上传那颗按钮** —— 工具栏上一颗「上传」，问一句「本机哪几个文件」，
 //! 之后走的就是拖入那一条（[`super::transfer::run_drop`]：先一次问完覆盖，再并行传）。
 //!
 //! # 为什么它现在做得动了（`transfer.rs` 头注那条「做不动」的三件，逐条）
 //!
-//! ① **那道设计题拍了**：用户逐字「**保留SFTP. 思考怎么干净**」⇒ `设计/60 §13`：上传经通道开单、订阅进度，
+//! ① **那道设计题拍了**：用户逐字「**保留SFTP. 思考怎么干净**」⇒：上传经通道开单、订阅进度，
 //!    SFTP 只写暂存区，落进用户目录那一下是后端 `files-commit-upload`。按钮背后接的就是这一条。
 //! ② **原生选文件框仍然没有**，理由不变（`rfd` 不是直接依赖、加依赖动 `src/frontend/shell/Cargo.toml` ——
 //!    那几行归 C2；「能不能从 egui 那条线程弹出来」本机无图形会话验不了）⇒ 走窗口自己那套「问一句」
@@ -36,7 +36,7 @@ pub struct UploadPrompt {
     ask: Option<String>,
     /// 上一次「确定」被拒的那句话（框**留着**，不清空用户敲的东西）。
     refused: Option<String>,
-    /// 〔W5-FILES · `设计/60 §6.2`〕这一帧点了「选择…」（窗口取走它去起原生选择框，[`super::picker`]）。
+    /// 这一帧点了「选择…」（窗口取走它去起原生选择框，[`super::picker`]）。
     browse: bool,
 }
 
@@ -124,12 +124,12 @@ impl UploadPrompt {
         self.browse = false;
     }
 
-    /// 〔W5-FILES〕这一帧点没点「选择…」（取走即清）。
+    /// 这一帧点没点「选择…」（取走即清）。
     pub fn take_browse(&mut self) -> bool {
         std::mem::take(&mut self.browse)
     }
 
-    /// 〔W5-FILES〕原生选择框选到的路径接进框里（一行一个，已有的不动）；没选到 ⇒ 框不动、说一句。
+    /// 原生选择框选到的路径接进框里（一行一个，已有的不动）；没选到 ⇒ 框不动、说一句。
     /// 框已经收掉了（选的时候人点了取消）⇒ 什么都不做。
     pub fn take_picked(&mut self, picked: Option<Vec<std::path::PathBuf>>) {
         let Some(text) = self.ask.as_mut() else {
@@ -176,7 +176,7 @@ impl UploadPrompt {
             if let Some(text) = self.text_mut() {
                 ui.text_edit_multiline(text);
             }
-            // 〔W5-FILES · `设计/60 §6.2`〕原生选择框：选到的路径填进上面那个框，确定照旧走 `judge_upload`。
+            // 原生选择框：选到的路径填进上面那个框，确定照旧走 `judge_upload`。
             if ui
                 .button(&copy_text("rsFilewinPicker.ui.browse", &[]))
                 .clicked()

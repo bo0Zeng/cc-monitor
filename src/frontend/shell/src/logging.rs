@@ -23,7 +23,7 @@
 //! - ErrorEmitter Layer 通过 closure 注入 emit 行为（`install_error_emitter`），
 //!   避免对 `tauri::Runtime` generic 的依赖泄漏。
 //! - DiagnosticsConfig 字段读写 `config.json` 的 `diagnostics` 子对象；写经 `config::patch_config_at`
-//!   （`config.json` 唯一的写函数，〔CFG1〕）。
+//!   （`config.json` 唯一的写函数）。
 //!
 //! ## 启动时序
 //!
@@ -72,13 +72,13 @@ use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::Registry;
 
 const LOG_DIR_NAME: &str = "logs";
-/// 〔DATA-HOME · V160〕monitor 自己的滚动日志住日志目录下这一层，与后端那份 [`BACKEND_STDERR_DIR`] 并排、两边不撞名。
+/// monitor 自己的滚动日志住日志目录下这一层，与后端那份 [`BACKEND_STDERR_DIR`] 并排、两边不撞名。
 const MONITOR_LOG_DIR: &str = "monitor";
 const LOG_FILE_PREFIX: &str = "monitor";
 const LOG_FILE_SUFFIX: &str = "log";
 const ERROR_EVENT: &str = "monitor-error";
 
-/// 〔NT2 · S1 · `设计/15 §4.7 S1`〕本机后端**脱离常驻**时自己的 stderr 诊断文件：住日志目录下这一层子目录
+/// 本机后端**脱离常驻**时自己的 stderr 诊断文件：住日志目录下这一层子目录
 /// （后端那侧 `src/backend/stderr_log.rs` 满了换份，同一目录里多一份旧的）。与 [`MONITOR_LOG_DIR`] 分开放：
 /// 那边的 `.log` 是本进程按天滚动的那一族（「当前文件」按 mtime 取最新 —— 混进去会被认成 monitor 自己的）。
 const BACKEND_STDERR_DIR: &str = "backend";
@@ -500,7 +500,7 @@ fn write_diagnostics_to_config(
     monitor_data_dir: &Path,
     cfg: &DiagnosticsConfig,
 ) -> Result<(), String> {
-    // 〔CFG1 · 4D〕不再自己读-改-写整份：`config.json` 只有一个写函数（`config::patch_config_at`，
+    // 不再自己读-改-写整份：`config.json` 只有一个写函数（`config::patch_config_at`，
     //   进程级锁 ＋ 只动 `diagnostics` 这一个键）。从前这里与前端的 `save_config` 各读各写， 〔散文墓碑〕
     //   设置窗存诊断的同一拍主窗存 tab 栏 ⇒ 后写的整份盖掉先写的键。本文件那份 `atomic_replace` 副本随之删了。
     let value = serde_json::to_value(cfg).map_err(|e| e.to_string())?;
@@ -512,7 +512,7 @@ fn write_diagnostics_to_config(
         .map(|_| ())
         .map_err(|e| {
             match e {
-                // 〔S5 · 第四波 · D4 / D7〕读不懂 ⇒ **不写**，说清为什么。从前这里退成 `{}` 再整份写回 ——
+                // 〔D4 / D7〕读不懂 ⇒ **不写**，说清为什么。从前这里退成 `{}` 再整份写回 ——
                 //   用户手填的那份（哪怕只是少了一个逗号）连同里面别的设置被静默盖成只剩 `diagnostics` 一格。
                 crate::config::ConfigWriteError::Unreadable { path, detail } => copy_text(
                     "rsLogging.diagnostics.badConfig",
@@ -536,7 +536,7 @@ pub struct LogFileInfo {
     #[cfg_attr(test, ts(type = "number"))]
     pub current_size_bytes: u64,
     pub all_files: Vec<LogFileEntry>,
-    /// 〔NT2 · S1〕本机后端（脱离那条载体）的 stderr 诊断文件（当前 ＋ 旧的一份，在的才列；新在前）。
+    /// 本机后端（脱离那条载体）的 stderr 诊断文件（当前 ＋ 旧的一份，在的才列；新在前）。
     pub backend_stderr: Vec<LogFileEntry>,
 }
 
@@ -589,7 +589,7 @@ impl LoggingState {
         let entries = list_log_entries(&self.log_dir, Some(LOG_FILE_SUFFIX));
         let current_file = entries.first().map(|e| e.path.clone());
         let current_size_bytes = entries.first().map(|e| e.size_bytes).unwrap_or(0);
-        // 〔NT2 · S1〕后端那一份：路径与起后端时交出去的是同一个函数算的（它的父目录）。
+        // 后端那一份：路径与起后端时交出去的是同一个函数算的（它的父目录）。
         let backend_dir = backend_stderr_log_path(&self.monitor_data_dir)
             .parent()
             .map(Path::to_path_buf);
