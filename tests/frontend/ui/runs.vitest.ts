@@ -67,7 +67,7 @@ describe("运行表 × 归一流（期望手写）", () => {
     const finished = live.onRuns(SID, [{ ...running("w1", "扫目录", "t1"), state: "done" }, running("w2", "写报告", "t2")]);
     expect(finished.map((r) => r.run)).toEqual(["w1"]);
     expect(live.rowsOf(SID).map((r) => r.run)).toEqual(["w2"]);
-    expect(live.core.cardsOf(SID, "w1")).toEqual([], "收场的子运行，它在攒的那几段一起撤");
+    expect(live.core.cardsOf(SID, "w1"), "收场的子运行，它在攒的那几段一起撤").toEqual([]);
   });
 
   it("没有流的时候「最近」用运行表给的那一件；什么都没有 ⇒ 只有标签与状态；没标签 ⇒ 通用叫法", () => {
@@ -109,7 +109,7 @@ describe("真 TabManager：主 tab 尾巴上每个在跑的子运行一行，跑
         childRuns: { t1: { label: "扫目录", kind: "Explore" } },
       }) as never,
     );
-    const card = streamRootEl.querySelector<HTMLElement>('[data-run-tool="t1"]');
+    const card = streamRootEl.querySelector<HTMLElement>(".block-agent");
     expect(card?.querySelector("summary")?.textContent).toBe(copyText("runCard.summary.text", { kind: "Explore", label: "扫目录" }));
     const rows = (): string[] => [...streamRootEl.querySelectorAll<HTMLElement>("[data-run]")].filter((e) => e.getAttribute("role") === "button").map((e) => e.textContent ?? "");
 
@@ -118,7 +118,7 @@ describe("真 TabManager：主 tab 尾巴上每个在跑的子运行一行，跑
 
     tm.onSessionRuns({ session_id: SID, runs: [{ ...running("w1", "扫目录", "t1"), state: "done" }] });
     expect(rows()).toEqual([]);
-    expect(card?.dataset.run).toBe("w1");
+    expect(card?.dataset.runState).toBe("done");
     expect(card?.querySelector("summary")?.textContent).toBe(
       copyText("runCard.summary.state", {
         title: copyText("runCard.summary.text", { kind: "Explore", label: "扫目录" }),

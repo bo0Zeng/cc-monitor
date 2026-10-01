@@ -136,6 +136,8 @@ export interface Tab {
    * 内部，不再产生独立折叠条。详见 cards/index.ts 的 injectOrBuildToolResult。
    */
   toolUseElements: Map<string, HTMLElement>;
+  /** 派出子运行的那几张卡：父侧工具调用 id → 卡（运行表到了按它给那张卡标上是哪个子运行、什么状态）。 */
+  runCards: Map<string, HTMLElement>;
   /**
    * issue #8: ESC 回退分支折叠管理器。
    * 跟踪本 Tab 内所有有 uuid 的卡片，监听 parentUuid 分叉，把"被回退"的连续段

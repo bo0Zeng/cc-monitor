@@ -19450,7 +19450,7 @@
     },
     "runCard.summary.text": {
       "kind": "body",
-      "zh": "{kind} · {label}",
+      "zh": "{kind}  ·  {label}",
       "args": ["kind", "label"]
     },
     "runCard.summary.bare": {
@@ -19475,7 +19475,7 @@
     },
     "rsRun.load.notLinked": {
       "kind": "error",
-      "zh": "这次调用派出的子 agent 还没对上（前台派出的要等它跑完才写明是哪一个）",
+      "zh": "还不知道这次调用派出的是哪个子 agent。前台派出的要等它跑完才知道",
       "args": []
     }
   }

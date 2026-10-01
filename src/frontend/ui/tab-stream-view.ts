@@ -338,6 +338,7 @@ export class TabStreamView {
     // （Map 本身也会随 Tab 对象一起回收，但显式 clear 让 DOM 引用计数立即归零）
     tab.toolUseNames.clear();
     tab.toolUseElements.clear();
+    tab.runCards.clear();
     tab.pendingToolResults.clear();
     tab.seenSeqs.clear();
     // F40a/b:窗口账本与缓冲持整段历史 payload(大会话数十 MB 级),断引用;摘 fill listener
@@ -467,6 +468,7 @@ export class TabStreamView {
         origin: t.origin,
         toolUseNames: t.toolUseNames,
         toolUseElements: t.toolUseElements,
+        runCards: t.runCards,
         pendingToolResults: t.pendingToolResults,
       };
       // S-6:孤儿卡出 DOM 的同时出账,防悬空 anchor
@@ -592,6 +594,7 @@ export class TabStreamView {
       origin: tab.origin,
       toolUseNames: tab.toolUseNames,
       toolUseElements: tab.toolUseElements,
+      runCards: tab.runCards,
       pendingToolResults: tab.pendingToolResults,
       // P5.5：batch 期间走 lazy hljs（代码块占位 + IntersectionObserver 触发再补跑）
       lazy: this.store.inBatch,
@@ -720,6 +723,7 @@ export class TabStreamView {
       origin: tab.origin,
       toolUseNames: tab.toolUseNames,
       toolUseElements: tab.toolUseElements,
+      runCards: tab.runCards,
       pendingToolResults: tab.pendingToolResults,
       lazy: true,
     };

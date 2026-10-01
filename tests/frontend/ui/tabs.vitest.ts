@@ -2669,8 +2669,6 @@ describe("F91b TabManager.peekSession（监控板内容 peek 纯读派生）", (
     label,
     agentType: null,
     status,
-    timestamp: "2026-07-17T00:00:00Z",
-    desc: label,
   });
 
   it("unknown sid → null", () => {
@@ -5764,8 +5762,6 @@ describe("〔STC〕会话事实：后端给了什么 ⇒ tab 上是什么", () =
     label,
     agentType: null,
     status,
-    timestamp: "t",
-    desc: label,
   });
   const line = (sid: string, seq: number, origin: string | null = null) =>
     ({

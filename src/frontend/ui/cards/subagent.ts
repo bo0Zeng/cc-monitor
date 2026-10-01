@@ -34,9 +34,9 @@ export function buildAgentCard(
 ): HTMLElement {
   const d = document.createElement("details");
   d.className = "block-collapsible block-agent";
-  d.dataset.runTool = toolId;
   const title = titleOf(tag, toolName);
-  d.dataset.runTitle = title;
+  const state: CardState = { title, run: null };
+  cardState.set(d, state);
 
   const s = document.createElement("summary");
   s.className = "block-summary";
@@ -46,7 +46,7 @@ export function buildAgentCard(
   let timeline: RunTimeline | null = null;
   d.addEventListener("toggle", () => {
     if (!d.open || timeline) return;
-    const run = d.dataset.run;
+    const run = state.run;
     const nested: RenderContext = {
       parentPath: ctx.parentPath,
       origin: ctx.origin,
@@ -66,11 +66,19 @@ export function buildAgentCard(
   return d;
 }
 
+/** 卡上记着的两样：标题（收场后在它后面接状态）· 运行表说的是哪个子运行（展开时按它读；还没对上 ⇒ 按工具调用 id 读）。 */
+interface CardState {
+  title: string;
+  run: string | null;
+}
+const cardState = new WeakMap<HTMLElement, CardState>();
+
 /** 子运行的状态收到它那张卡上（运行表给的成品：哪个子运行 · 状态）。 */
 export function markRunCard(card: HTMLElement, run: string, state: RunState): void {
-  card.dataset.run = run;
+  const st = cardState.get(card);
+  if (!st) return;
+  st.run = run;
   card.dataset.runState = state;
   const s = card.querySelector(":scope > summary");
-  const title = card.dataset.runTitle ?? "";
-  if (s) s.textContent = state === "running" ? title : copyText("runCard.summary.state", { title, state: runStateText(state) });
+  if (s) s.textContent = state === "running" ? st.title : copyText("runCard.summary.state", { title: st.title, state: runStateText(state) });
 }

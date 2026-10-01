@@ -101,7 +101,7 @@ const UNIT: &[&str] = &[
     "tests/comms/outward/route_tests.rs", // 〔US1〕跨半边抠 monitor 源码那几条退役 ⇒ 只剩纯解析 ＋ 成品→决策表（SCAN → UNIT）
     "tests/comms/outward/tee_tests.rs",
     "tests/comms/outward/upstream_tests.rs",
-    "tests/backend/stream/tap_tests.rs",  // 〔TAP〕hub
+    "tests/backend/stream/tap_tests.rs",     // 〔TAP〕hub
     "tests/frontend/ui/live-card.vitest.ts", // 〔TAP〕活卡：状态机 · 真 TabManager 三向相等（台架夹具那一条随折法搬进后端）
     "tests/frontend/ui/runs.vitest.ts", // 子运行：主 tab 上每个在跑的子运行一行、主活卡只有主运行那段、收场收到那张卡上
     "tests/backend/writer_task_tests.rs", // 〔TAP〕写者优先序（tap 最低）
