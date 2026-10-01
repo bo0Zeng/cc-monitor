@@ -1678,3 +1678,188 @@ fn fix_a_resume_of_a_session_running_outside_tmux_is_refused_and_says_where() {
         vec![Some("/h/.claude-accts/b".to_string()), None]
     );
 }
+
+// ── 起会话只有 ccm 一处：monitor 交来的三个选项 ＋ 中转地址在最终 exec 那一处定 ──
+
+/// V151 排列直接喂解析器（新选项不走上面那个换排列的夹具）。
+fn plan_v151(args: &[&str], env: &Env) -> Result<Plan, crate::control::ccm::argv::Die> {
+    let a: Vec<String> = args.iter().map(|s| s.to_string()).collect();
+    match crate::control::ccm::argv::parse(&a)? {
+        Parsed::Opts(o) => build(&o, env, &AccountTable::default(), None),
+        other => panic!("{other:?}"),
+    }
+}
+
+const TOKEN: &str = "0123456789abcdef0123456789abcdef";
+
+/// `--account-dir` 就用那个目录（不查账号库）；两个身份 token 在直路上进 agent 进程环境（`--ccm-print` 说出来），
+/// 在容器路上原样交给 pane 里那一趟（tmux 边界吃掉的环境不靠它）。
+#[test]
+fn the_three_options_monitor_hands_over_reach_the_agent_on_both_paths() {
+    let e = env();
+    let Plan::Direct(d) = plan_v151(
+        &[
+            "--resume",
+            "s1",
+            "--",
+            "--account-dir",
+            "/h/.claude-accts/w",
+            "--ccm-rbind-token",
+            TOKEN,
+            "--ccm-launch-id",
+            "s1",
+            "--cwd",
+            "/p",
+        ],
+        &e,
+    )
+    .unwrap() else {
+        panic!("该走直路")
+    };
+    assert_eq!(d.config_dir, "/h/.claude-accts/w");
+    let line = render(&Plan::Direct(d));
+    assert!(
+        line.contains("export CLAUDE_CONFIG_DIR='/h/.claude-accts/w'; "),
+        "{line}"
+    );
+    assert!(
+        line.contains(&format!("export CCM_RBIND_TOKEN='{TOKEN}'; ")),
+        "{line}"
+    );
+    assert!(line.contains("export CCM_LAUNCH_ID='s1'; "), "{line}");
+    assert!(
+        line.ends_with("cd '/p' && exec claude --resume s1"),
+        "{line}"
+    );
+
+    let Plan::Container(c) = plan_v151(
+        &[
+            "--resume",
+            "s1",
+            "--",
+            "--ccm-tmux=p-cc",
+            "--account-dir",
+            "/h/.claude-accts/w",
+            "--ccm-rbind-token",
+            TOKEN,
+            "--ccm-launch-id",
+            "s1",
+            "--cwd",
+            "/p",
+        ],
+        &e,
+    )
+    .unwrap() else {
+        panic!("该走容器路")
+    };
+    for want in [
+        "'--account-dir' '/h/.claude-accts/w'".to_string(),
+        format!("'--ccm-rbind-token' '{TOKEN}'"),
+        "'--ccm-launch-id' 's1'".to_string(),
+    ] {
+        assert!(
+            c.payload.contains(&want),
+            "容器路没把 {want} 交进去：{}",
+            c.payload
+        );
+    }
+}
+
+/// 三个选项的形状闸与互斥：坏值 / 与 `--account` · `--base` 同给 ⇒ 用法错。
+#[test]
+fn the_three_options_are_judged_and_account_dir_excludes_the_other_account_forms() {
+    for bad in [
+        vec!["--", "--ccm-rbind-token", "XYZ"],
+        vec!["--", "--ccm-launch-id", "a/b"],
+        vec!["--", "--account-dir", "rel/x"],
+        vec!["--", "--account-dir", "/h/x", "--account", "w"],
+        vec!["--", "--account-dir", "/h/x", "--base"],
+    ] {
+        let a: Vec<String> = bad.iter().map(|s| s.to_string()).collect();
+        assert!(
+            crate::control::ccm::argv::parse(&a).is_err(),
+            "{bad:?} 该被拒"
+        );
+    }
+}
+
+/// 中转地址只在最终 exec 那一处定：问上游选择那一只手（带上这一发的账号），注入的那一句钥匙段是读钥匙文件的命令替换；
+/// 环境里已经有一个 ⇒ 不问、不动（不是我们注入的那一形 ⇒ 记下要说一句）；拒 ⇒ 用法错带那一句。
+#[test]
+fn the_relay_address_is_decided_at_the_final_exec_and_only_there() {
+    fn inject(
+        agent: &str,
+        a: &crate::accounts::upstream_select::endpoint::LaunchAccount,
+    ) -> Result<Option<String>, String> {
+        assert_eq!(agent, "claude-code", "问的不是这一家的适配器 id");
+        assert_eq!(
+            a,
+            &crate::accounts::upstream_select::endpoint::LaunchAccount::Named {
+                config_dir: "/h/.claude-accts/w".into()
+            },
+            "带过去的不是这一发的账号"
+        );
+        Ok(Some("http://127.0.0.1:8788/t/claude-code/w".into()))
+    }
+    fn never(
+        _: &str,
+        _: &crate::accounts::upstream_select::endpoint::LaunchAccount,
+    ) -> Result<Option<String>, String> {
+        panic!("环境里已经有地址还去问了")
+    }
+    fn refuse(
+        _: &str,
+        _: &crate::accounts::upstream_select::endpoint::LaunchAccount,
+    ) -> Result<Option<String>, String> {
+        Err("中转没在听".into())
+    }
+    let args = [
+        "--resume",
+        "s1",
+        "--",
+        "--account-dir",
+        "/h/.claude-accts/w",
+    ];
+    let mut e = env();
+    e.relay = Some(inject);
+    let Plan::Direct(d) = plan_v151(&args, &e).unwrap() else {
+        panic!()
+    };
+    assert_eq!(
+        d.relay.as_deref(),
+        Some("http://127.0.0.1:8788/t/claude-code/w")
+    );
+    assert!(
+        render(&Plan::Direct(d)).contains(
+            "export ANTHROPIC_BASE_URL='http://127.0.0.1:8788/'$(cat ~/.cc-monitor/relay-key)'/t/claude-code/w'; "
+        ),
+        "注入那一句的形状变了"
+    );
+    e.relay = Some(never);
+    e.anthropic_base_url = Some("https://my.gateway/v1".into());
+    let Plan::Direct(d) = plan_v151(&args, &e).unwrap() else {
+        panic!()
+    };
+    assert_eq!(d.relay, None);
+    assert!(d.keeps_user_base_url, "用户自己的端点没记下要说一句");
+    e.anthropic_base_url = Some(format!(
+        "http://127.0.0.1:8788/{}/t/claude-code/w",
+        "a".repeat(64)
+    ));
+    let Plan::Direct(d) = plan_v151(&args, &e).unwrap() else {
+        panic!()
+    };
+    assert!(
+        !d.keeps_user_base_url,
+        "外层 ccm 带进来的我们那一形被当成了用户的端点"
+    );
+    e.anthropic_base_url = None;
+    e.relay = Some(refuse);
+    assert_eq!(plan_v151(&args, &e).unwrap_err().0, "中转没在听");
+    // 容器路不问（pane 里那一趟走直路时自己问）。
+    e.relay = Some(never);
+    assert!(matches!(
+        plan_v151(&["--resume", "s1", "--", "--ccm-tmux=p-cc"], &e).unwrap(),
+        Plan::Container(_)
+    ));
+}

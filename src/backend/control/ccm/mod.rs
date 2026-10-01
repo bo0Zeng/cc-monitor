@@ -479,7 +479,7 @@ fn needs_account_table(o: &argv::Opts, env: &Env) -> bool {
     if !o.account.is_empty() {
         return true;
     }
-    if o.use_base {
+    if o.use_base || !o.account_dir.is_empty() {
         return false;
     }
     env.inherited_config_dir.is_none()
@@ -712,6 +712,9 @@ fn exec_direct(d: &plan::Direct) -> i32 {
     if let Some(note) = direct_identity_note(d) {
         eprintln!("{note}");
     }
+    if d.keeps_user_base_url {
+        eprintln!("{}", copy_text("beCcm.relay.userBaseUrl", &[]));
+    }
     // 非得要 shell 的那几趟（判定与归因都只住 `needs_shell` 一处）⇒ 整条走 `sh -c`。
     if let Some(why) = needs_shell(d) {
         return exec_shell(&plan::render(&Plan::Direct(d.clone())), why);
@@ -726,6 +729,26 @@ fn exec_direct(d: &plan::Direct) -> i32 {
     if d.unset_config_dir {
         std::env::remove_var(cfg_env);
     }
+    for (var, v) in [
+        (
+            crate::control::identity_tag::rbind_token_env(),
+            &d.rbind_token,
+        ),
+        (plan::LAUNCH_ID_ENV, &d.launch_id),
+    ] {
+        if !v.is_empty() {
+            std::env::set_var(var, v);
+        }
+    }
+    if let Some(url) = &d.relay {
+        // 钥匙从这台的钥匙文件读进 agent 进程环境（不进 argv、不进打印出来的命令）。读不到 ⇒ 不起（注进去每一发都被中转拒）。
+        match relay_key()
+            .and_then(|k| crate::accounts::upstream_select::endpoint::keyed_base_url(url, &k))
+        {
+            Some(keyed) => std::env::set_var(plan::BASE_URL_ENV, keyed),
+            None => return die(&copy_text("beCcm.relay.noKey", &[])),
+        }
+    }
     if !d.cwd.is_empty() && std::env::set_current_dir(&d.cwd).is_err() {
         return die(&copy_text(
             "beCcm.execDirect.noCwd",
@@ -738,6 +761,15 @@ fn exec_direct(d: &plan::Direct) -> i32 {
     let mut cmd = std::process::Command::new(prog);
     cmd.args(rest);
     exec_or_spawn(cmd, &format!("'{prog}'"))
+}
+
+/// 这台机器上中转钥匙文件里那一把（形状不对 / 不在 ⇒ `None`）。家目录与 `plan::Env::from_process` 同一个取法。
+fn relay_key() -> Option<String> {
+    let home = plan::home_of(|k| std::env::var(k).ok());
+    let raw =
+        std::fs::read_to_string(plan::under_home(&home, relay_route_core::KEY_FILE_REL)).ok()?;
+    let k = raw.trim();
+    relay_route_core::key_shape_ok(k).then(|| k.to_string())
 }
 
 /// POSIX 上就地 `exec`（不多一层进程）；其余平台退成「起它 + 等它 + 透传退出码」。

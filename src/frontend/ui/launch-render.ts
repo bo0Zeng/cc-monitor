@@ -1,14 +1,11 @@
 /**
- * **起会话的计划与渲染问那台后端**（本机远端同一条 `chan.call(origin, …)`）：
+ * **起会话那一行问那台后端**（本机远端同一条 `chan.call(origin, …)`）—— 回的永远是一行 `ccm …`：
  *
- * - `launch-render-cli` —— `ccm …` 调用行（渲不出来是诚实降级：`ok:false` ＋ 理由）；
- * - `launch-render-payload` —— 裸载荷 / 外层 tmux 三格（渲不出来是拒：坏输入，调用方不许换条路糊过去）；
- * - `launch-endpoint` —— 这一发往 `ANTHROPIC_BASE_URL` 里写哪个中转地址（`null` = 不注入；非它不可而中转不在 ⇒ 拒）；
- * - `launch-local` —— 本机起会话一整条（回要在新终端里跑的那一串 ＋ 身份 token），开窗口交 monitor（`open_local_terminal`）。
+ * - `launch-render-cli` —— 那台机器要跑的那一行（远端每一条 · 本机就地 resume 键入的那一行）；渲不出来是拒；
+ * - `launch-local` —— 本机起会话那一行 ＋ 身份 token，开窗口交 monitor（`open_local_terminal`）。
  *
- * 本文件只做调用方那一侧：发请求 · 按形状收（多一格缺一格都不收）· 失败说成一句（`control-said.ts::settle`）。
- * 原先这四样是 monitor 的 Tauri 命令（`render_ccm_launch` · `render_launch_payload` · `relay_endpoint_for_launch` ·
- * `new_local_session` / `resume_history_session` / `render_local_attach`），判定在 monitor 进程里。
+ * 环境、中转地址、身份标记由那台机器上的 `ccm` 自己做。本文件只做调用方那一侧：发请求 · 按形状收（多一格缺一格都不收）·
+ * 失败说成一句（`control-said.ts::settle`）。
  */
 import { chan } from "../../comms/inward/chan";
 import { budgetWithin, jsonBody } from "./ipc/chan-caller";
@@ -16,16 +13,14 @@ import { ControlError, exactKeys, isObj, machineName, settle, unreadable, type R
 import type { Origin } from "./ipc/origin";
 import { LOCAL_ORIGIN } from "./backend-policy";
 import { commands } from "./ipc/commands";
-import { AGENT_PROFILE, AGENT_ADAPTER_ID } from "./agent-profile";
-import type { CliRenderRequest, PayloadRenderRequest } from "./launch-cli-wire";
+import { AGENT_PROFILE } from "./agent-profile";
+import type { CliRenderRequest } from "./launch-cli-wire";
 import { copyText } from "./copy-table";
 
-/** 渲染是纯函数；这个期限只挡「那台后端没在答」。 */
+/** 渲染是纯函数（本机那条多问一次目录在不在）；这个期限只挡「那台后端没在答」。 */
 const RENDER_BUDGET_MS = 10_000;
-/** 本机那条要探一次 `ccm`（`bash -lic`，子进程自带 5 s 期限）＋ 读凭据表 ＋ 探中转。 */
-const LOCAL_BUDGET_MS = 20_000;
 
-/** 那台后端拒了（码 `refused` / `relay_down`）：说的就是那一句，前面带上是哪台。 */
+/** 那台后端拒了（码 `refused`）：说的就是那一句，前面带上是哪台。 */
 function refusals(origin: Origin): Refusals {
   return {
     byCode: (_code, detail) => copyText("launchRender.refused.onMachine", { machine: machineName(origin), said: detail }),
@@ -33,51 +28,20 @@ function refusals(origin: Origin): Refusals {
   };
 }
 
-/** 这次失败是那台后端拒了（坏输入 / 中转非它不可却不在）—— 换条路只会被同一道闸再拒一次。 */
+/** 这次失败是那台后端拒了（坏输入）—— 重来只会被同一道闸再拒一次。 */
 export function isRefusal(e: unknown): boolean {
   return e instanceof ControlError && e.error?.layer === "peer" && e.error.why === "refused";
 }
 
-export type CliRendered = { ok: true; cmd: string } | { ok: false; reason: string };
-
-/** `ccm …` 调用行。通道 / 形状上的失败抛（[`ControlError`]）；`ok:false` 是降级，不是错。 */
-export async function renderCli(origin: Origin, req: CliRenderRequest): Promise<CliRendered> {
+/** 那一行 `ccm …`。通道 / 形状上的失败与那台后端的拒都抛（[`ControlError`]；拒 ⇒ [`isRefusal`] 为真）。 */
+export async function renderCli(origin: Origin, req: CliRenderRequest): Promise<string> {
   const body = jsonBody({ ...req });
   const budget = budgetWithin(RENDER_BUDGET_MS);
   const v = await settle(origin, "launch-render-cli", chan.call(origin, "launch-render-cli", body, budget), refusals(origin));
-  if (!isObj(v) || !exactKeys(v, ["ok", "cmd", "reason"]) || typeof v.ok !== "boolean") {
-    throw unreadable(origin, "launch-render-cli", "shape");
-  }
-  if (v.ok && typeof v.cmd === "string" && v.cmd !== "") return { ok: true, cmd: v.cmd };
-  if (!v.ok && typeof v.reason === "string") return { ok: false, reason: v.reason };
-  throw unreadable(origin, "launch-render-cli", "ok/cmd/reason");
-}
-
-/** 裸载荷 / 外层 tmux 三格。拒 ⇒ 抛（[`isRefusal`] 为真）。 */
-export async function renderPayload(origin: Origin, req: PayloadRenderRequest): Promise<string> {
-  const body = jsonBody({ ...req });
-  const budget = budgetWithin(RENDER_BUDGET_MS);
-  const v = await settle(origin, "launch-render-payload", chan.call(origin, "launch-render-payload", body, budget), refusals(origin));
   if (!isObj(v) || !exactKeys(v, ["cmd"]) || typeof v.cmd !== "string" || v.cmd === "") {
-    throw unreadable(origin, "launch-render-payload", "cmd");
+    throw unreadable(origin, "launch-render-cli", "cmd");
   }
   return v.cmd;
-}
-
-/** 全量注入开关是 monitor 进程环境的一格（「随入参交给那台后端」）。 */
-async function allSessions(): Promise<boolean> {
-  return commands.relay_all_sessions_switch();
-}
-
-/** 这一发的中转地址（`null` = 不注入）。拒 ⇒ 抛。`account` 是本机 / 远端载荷里「哪个号」那一格的线上形状。 */
-export async function launchEndpoint(origin: Origin, account: Record<string, unknown>): Promise<string | null> {
-  const body = jsonBody({ agent: AGENT_ADAPTER_ID, account, allSessions: await allSessions() });
-  const budget = budgetWithin(RENDER_BUDGET_MS);
-  const v = await settle(origin, "launch-endpoint", chan.call(origin, "launch-endpoint", body, budget), refusals(origin));
-  if (!isObj(v) || !exactKeys(v, ["baseUrl"]) || !(v.baseUrl === null || (typeof v.baseUrl === "string" && v.baseUrl !== ""))) {
-    throw unreadable(origin, "launch-endpoint", "baseUrl");
-  }
-  return v.baseUrl;
 }
 
 /** 本机起会话那一问的动作。 */
@@ -94,13 +58,13 @@ export interface LocalLaunchRequest {
   tmuxName: string | null;
 }
 
-/** 本机后端出的成品：要在新终端里跑的那一串 ＋ 铸进进程环境的身份 token（接回那一格 `null`）。 */
+/** 本机后端出的成品：要在新终端里跑的那一行 ＋ 交给 `ccm` 放进进程环境的身份 token（接回那一格 `null`）。 */
 export interface LocalLaunchPlan {
   cmd: string;
   launchId: string | null;
 }
 
-/** 问本机后端要这次拉起的那一串（不开窗口）。拒 ⇒ 抛。 */
+/** 问本机后端要这次拉起的那一行（不开窗口）。拒 ⇒ 抛。 */
 export async function planLocalLaunch(req: LocalLaunchRequest): Promise<LocalLaunchPlan> {
   const args = {
     action: req.action,
@@ -108,16 +72,10 @@ export async function planLocalLaunch(req: LocalLaunchRequest): Promise<LocalLau
     launcher: req.launcher,
     ...(req.account === undefined ? {} : { account: req.account }),
     tmuxName: req.tmuxName,
-    agent: {
-      id: AGENT_ADAPTER_ID,
-      defaultLauncher: AGENT_PROFILE.defaultLauncher,
-      launcherAlias: AGENT_PROFILE.launcherAlias,
-      resumeFlag: AGENT_PROFILE.resumeFlag,
-    },
-    allSessions: await allSessions(),
+    defaultLauncher: AGENT_PROFILE.defaultLauncher,
   };
   const body = jsonBody(args);
-  const budget = budgetWithin(LOCAL_BUDGET_MS);
+  const budget = budgetWithin(RENDER_BUDGET_MS);
   const v = await settle(LOCAL_ORIGIN, "launch-local", chan.call(LOCAL_ORIGIN, "launch-local", body, budget), refusals(LOCAL_ORIGIN));
   if (
     !isObj(v) ||
@@ -131,7 +89,7 @@ export async function planLocalLaunch(req: LocalLaunchRequest): Promise<LocalLau
   return { cmd: v.cmd, launchId: v.launchId };
 }
 
-/** 本机起一个会话：问本机后端要那一串，交 monitor 在 `cwd` 开一个终端窗口跑它。回身份 token。失败抛（已说成一句）。
+/** 本机起一个会话：问本机后端要那一行，交 monitor 在 `cwd` 开一个终端窗口跑它。回身份 token。失败抛（已说成一句）。
  *  ⚠ 类型上只收「新起 / resume」：接回（attach）只许经 [`planLocalLaunch`] 产串、交调用方自己那一跳开终端
  *  （`K-R106`：接回不是一次拉起，原先 monitor `launch_local` 入口那道闸今天是这条签名）。 */
 export async function launchLocal(

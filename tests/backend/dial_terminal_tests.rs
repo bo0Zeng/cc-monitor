@@ -188,11 +188,10 @@ fn bad_inputs_are_refused_and_say_which_cell() {
     );
 }
 
-/// 流进 `terminal-ssh` 的远端命令的全部来路（`ccm …` 调用行 · 载荷 / tmux 外层三格，后者带不带中转前缀）×
-/// 入库三份夹具的每条请求 × 典型工作目录 ⇒ `(哪条, 渲出来的命令)`。渲不出来的（降级 / 拒）不在里面。
+/// 流进 `terminal-ssh` 的远端命令的全部来路（起会话只有那一行 `ccm …`，就地 resume 那一格外层包一层 tmux）×
+/// 入库夹具的每条请求 × 典型工作目录 ⇒ `(哪条, 渲出来的命令)`。渲不出来的（拒）不在里面。
 fn every_rendered_remote_command(cwds: &[&str]) -> Vec<(String, String)> {
     use crate::control::launch_render::wire;
-    const RELAY: &str = "http://127.0.0.1:8788/s/claude-code/acct-a";
     let fixture = |s: &str| -> Vec<Value> {
         serde_json::from_str::<Value>(s).unwrap()["cases"]
             .as_array()
@@ -212,49 +211,10 @@ fn every_rendered_remote_command(cwds: &[&str]) -> Vec<(String, String)> {
         for cwd in std::iter::once(c["req"]["cwd"].clone()).chain(cwds.iter().map(|d| json!(d))) {
             let mut req = c["req"].clone();
             req["cwd"] = cwd.clone();
-            let got = wire::render_ccm_launch_with(
-                serde_json::from_value(req).unwrap(),
-                &caps,
-                !c["caps"].is_null(),
-            );
-            if let Some(cmd) = got.cmd {
+            if let Ok(cmd) =
+                wire::render_ccm_launch_with(&serde_json::from_value(req).unwrap(), &caps)
+            {
                 out.push((format!("cli {} · cwd {cwd}", c["name"]), cmd));
-            }
-        }
-    }
-    for c in fixture(include_str!(
-        "../../src/backend/control/launch_render/fixtures/payload-golden.json"
-    ))
-    .into_iter()
-    .chain(fixture(include_str!(
-        "../../src/backend/control/launch_render/fixtures/tmux-outer-golden.json"
-    ))) {
-        let mode = c["req"]["outer"]["mode"].as_str().map(str::to_string);
-        let cwd_at: Option<&[&str]> = match mode.as_deref() {
-            None => Some(&["cwd"]),
-            Some("create") => Some(&["outer", "cwd"]),
-            _ => None,
-        };
-        let mut cwd_vals = vec![None];
-        if cwd_at.is_some() {
-            cwd_vals.extend(cwds.iter().map(|d| Some(*d)));
-        }
-        for cwd in cwd_vals {
-            for relay in [false, mode.as_deref() != Some("attach")] {
-                let mut req = c["req"].clone();
-                if let (Some(at), Some(d)) = (cwd_at, cwd) {
-                    let slot = at.iter().fold(&mut req, |v, k| &mut v[*k]);
-                    *slot = json!(d);
-                }
-                if relay {
-                    req["env"].as_array_mut().unwrap().insert(
-                        0,
-                        json!({ "kind": "export-relay-base-url", "value": RELAY }),
-                    );
-                }
-                if let Ok(cmd) = wire::render_launch_payload(serde_json::from_value(req).unwrap()) {
-                    out.push((format!("{} · cwd {cwd:?} · 中转 {relay}", c["name"]), cmd));
-                }
             }
         }
     }
@@ -263,7 +223,7 @@ fn every_rendered_remote_command(cwds: &[&str]) -> Vec<(String, String)> {
 
 /// ★ 要求：「高危四条（… G Windows 开远端会话被自家守卫拒 …）发版前修」。
 /// 后端自己渲出、会交给 `terminal-ssh` 的每一条远端命令（[`every_rendered_remote_command`]：典型工作目录 ——
-/// 空格 · 中文 · 弯引号 · 单引号）都过这道守卫（零命中）；带中转前缀的那几条真的在人群里。
+/// 空格 · 中文 · 弯引号 · 单引号）都过这道守卫（零命中）；外层包了 tmux 的那一格真的在人群里。
 /// 守卫不放宽（正控）：同一条路上工作目录带 `"` 的照旧拒。
 #[test]
 fn every_remote_command_the_backend_renders_passes_the_terminal_guard() {
@@ -287,14 +247,9 @@ fn every_remote_command_the_backend_renders_passes_the_terminal_guard() {
         "后端自己渲的远端命令被开终端那道守卫拒了（Windows 上这一趟就起不来）：\n{}",
         refused.join("\n")
     );
-    let relayed = all.iter().filter(|(w, _)| w.ends_with("中转 true")).count();
-    assert!(relayed > 0, "带中转前缀的那几条一条都没渲出来 —— 人群塌了");
-    assert_eq!(
-        all.iter()
-            .filter(|(_, c)| c.contains("export ANTHROPIC_BASE_URL="))
-            .count(),
-        relayed,
-        "带中转那几条没真带上前缀"
+    assert!(
+        all.iter().any(|(_, c)| c.starts_with("tmux send-keys")),
+        "就地 resume 那一格（外层包一层 tmux）一条都没渲出来 —— 人群塌了"
     );
     let dq = every_rendered_remote_command(&["/home/u/a\"b"]);
     let with_dq: Vec<&String> = dq

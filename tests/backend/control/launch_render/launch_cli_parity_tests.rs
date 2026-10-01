@@ -1,7 +1,7 @@
 use super::*;
 
 fn fixture() -> Fixture {
-    serde_json::from_str(FIXTURE).expect("夹具不是合法 JSON —— 重跑 npm run gen:payload-golden")
+    serde_json::from_str(FIXTURE).expect("夹具不是合法 JSON —— 重跑 npm run gen:cli-golden")
 }
 
 /// ★★ 🔴 `K-R95`：**夹具的 `defaultLauncher` 那一格此前刻意声明却不读**（头注逐字
@@ -39,11 +39,11 @@ fn the_fixture_covers_both_ok_and_refusal() {
     let refused = f.cases.len() - ok;
     // 改成**相等**（原是 ≥9 / ≥7 的地板）：两类各自的条数是用例表写死的，
     // 地板只挡「少」、挡不住「某条 refusal 悄悄变成 ok」—— 而那一条恰恰让 ok 数变多。
-    // 实数：13 ok（原 9 ＋ print-parity 4）＋ 7 refusal（8 → 7：「没探出来」那一态产不出来了）。
-    assert_eq!(ok, 13, "ok 类条数变了（实数 13）");
+    // 实数：16 ok（9 ＋ 新三形 3 ＋ print-parity 4）＋ 6 refusal。
+    assert_eq!(ok, 16, "ok 类条数变了（实数 16）");
     assert_eq!(
-        refused, 7,
-        "refusal 类条数变了（实数 7）—— §33 要防的正是「该降级却渲染出来了」"
+        refused, 6,
+        "refusal 类条数变了（实数 6）—— 要防的正是「该拒却渲染出来了」"
     );
 }
 
@@ -55,12 +55,10 @@ fn rust_cli_rendering_matches_the_typescript_golden_byte_for_byte() {
     let mut bad = Vec::new();
     for c in f.cases {
         // ★ 跑的是**生产命令本体**（`render_ccm_launch` 的本体 `_with`，能力喂夹具那一份），不是自己重搭一遍 spec。
-        let caps: std::collections::BTreeSet<String> = c.caps.iter().flatten().cloned().collect();
-        let res = super::super::wire::render_ccm_launch_with(c.req, &caps, c.caps.is_some());
-        let (got_ok, got) = match (res.ok, res.cmd, res.reason) {
-            (true, Some(cmd), _) => (true, cmd),
-            (false, _, Some(r)) => (false, r),
-            other => (false, format!("<命令返回了不合法的组合：{other:?}>")),
+        let caps: std::collections::BTreeSet<String> = c.caps.iter().cloned().collect();
+        let (got_ok, got) = match super::super::wire::render_ccm_launch_with(&c.req, &caps) {
+            Ok(cmd) => (true, cmd),
+            Err(r) => (false, r),
         };
         if got_ok != c.ok || got != c.out {
             bad.push(format!(
@@ -87,12 +85,10 @@ fn the_production_cli_render_asks_this_backend_for_its_own_capabilities() {
         .into_iter()
         .find(|c| c.name == "new + base")
         .expect("夹具里没有「new + base」");
-    let res = super::super::wire::render_ccm_launch(c.req);
     assert_eq!(
-        (res.ok, res.cmd.as_deref()),
-        (true, Some(c.out.as_str())),
-        "生产那一格没按这台后端自己的能力渲（理由：{:?}）",
-        res.reason
+        super::super::wire::render_ccm_launch(&c.req).as_deref(),
+        Ok(c.out.as_str()),
+        "生产那一格没按这台后端自己的能力渲"
     );
 }
 
@@ -128,7 +124,11 @@ fn shell_words(line: &str) -> Vec<String> {
 fn every_rendered_ccm_line_is_accepted_by_the_ccm_argv() {
     let f = fixture();
     let mut checked = 0;
-    for c in f.cases.iter().filter(|c| c.ok) {
+    for c in f
+        .cases
+        .iter()
+        .filter(|c| c.ok && !c.out.starts_with("tmux send-keys"))
+    {
         let words = shell_words(&c.out);
         assert_eq!(
             words.first().map(String::as_str),
@@ -148,8 +148,8 @@ fn every_rendered_ccm_line_is_accepted_by_the_ccm_argv() {
         checked += 1;
     }
     assert_eq!(
-        checked, 13,
-        "ok 用例条数不对 —— 上面那条在少数几行上成立不算数"
+        checked, 15,
+        "ok 用例条数不对（16 条 ok 去掉外层包了 tmux 的那一条）—— 上面那条在少数几行上成立不算数"
     );
     assert_eq!(
         shell_words("ccm -- new --cwd '/home/用户/带 空格'"),

@@ -10424,9 +10424,14 @@
       "zh": "请求格式不对：要清掉的环境变量列表是空的",
       "args": []
     },
-    "rsPayload.relay.userBaseUrl": {
+    "beCcm.relay.userBaseUrl": {
       "kind": "body",
       "zh": "cc-monitor：这个会话用你自己设的端点（ANTHROPIC_BASE_URL），不走中转，拿不到流式",
+      "args": []
+    },
+    "beCcm.relay.noKey": {
+      "kind": "error",
+      "zh": "起不来：这台机器上 cc-monitor 的中转在运行，却读不到它的钥匙（家目录下 .cc-monitor/relay-key）。重启这台的后端后再试",
       "args": []
     },
     "rsPayload.relayUrl.bad": {
@@ -12504,6 +12509,21 @@
       "zh": "要接回的会话名 {value} 用不了。里面不能有控制字符或看不见的字符",
       "args": ["value"]
     },
+    "rsCcmInvocation.refusal.idRbindToken": {
+      "kind": "error",
+      "zh": "启动期令牌 {value} 不合法（要 32 位小写十六进制）",
+      "args": ["value"]
+    },
+    "rsCcmInvocation.refusal.idLaunchId": {
+      "kind": "error",
+      "zh": "会话标识 {value} 不合法（1 到 128 位，只许字母数字与 - _）",
+      "args": ["value"]
+    },
+    "rsCcmInvocation.refusal.freeTextAccountDir": {
+      "kind": "error",
+      "zh": "账号目录 {value} 用不了。要绝对路径，不含 .. 段、控制字符与 shell 元字符",
+      "args": ["value"]
+    },
     "rsCcmInvocation.refusal.idAccount": {
       "kind": "error",
       "zh": "账号名 {value} 用不了（字母数字开头，只许字母数字与 _ -，最长 32）",
@@ -12521,7 +12541,7 @@
     },
     "rsCcmInvocation.refusal.dimensionNeedsCap": {
       "kind": "error",
-      "zh": "远端的后端太旧，不认 {dim} 这一项设置（缺 {cap}）",
+      "zh": "这台机器上的 ccm 不认 {dim} 这一项设置（缺 {cap}）",
       "args": ["dim", "cap"]
     },
     "rsCcmInvocation.refusal.cannotSpeak": {
@@ -12534,25 +12554,10 @@
       "zh": "只能接入 tmux 里的会话",
       "args": []
     },
-    "rsCcmInvocation.refusal.sendInto": {
-      "kind": "error",
-      "zh": "ccm 命令没法在已有的 tmux 会话里就地起新会话",
-      "args": []
-    },
     "rsCcmInvocation.refusal.missingCap": {
       "kind": "error",
-      "zh": "远端的后端太旧，不支持这样起会话（缺 {c}）",
+      "zh": "这台机器上的 ccm 做不到这样起会话（缺 {c}）",
       "args": ["c"]
-    },
-    "rsCcmInvocation.refusal.windowsLocal": {
-      "kind": "error",
-      "zh": "Windows 本机不用 ccm 命令起会话",
-      "args": []
-    },
-    "rsCcmInvocation.refusal.notInstalled": {
-      "kind": "error",
-      "zh": "远端还没装后端",
-      "args": []
     },
     "history.entry.deleteHint": {
       "kind": "body",
@@ -14265,6 +14270,26 @@
       "zh": "--account 与 --base 互斥",
       "args": []
     },
+    "beArgv.validate.accountDirAndAccount": {
+      "kind": "error",
+      "zh": "--account-dir 与 --account / --base 互斥",
+      "args": []
+    },
+    "beArgv.validate.badRbindToken": {
+      "kind": "error",
+      "zh": "--ccm-rbind-token 的值 {token} 不合法（要 32 位小写十六进制）",
+      "args": ["token"]
+    },
+    "beArgv.validate.badLaunchId": {
+      "kind": "error",
+      "zh": "--ccm-launch-id 的值 {id} 不合法（1 到 128 位，只许字母数字与 - _）",
+      "args": ["id"]
+    },
+    "beArgv.validate.badAccountDir": {
+      "kind": "error",
+      "zh": "--account-dir 的值 {dir} 用不了（要一个绝对路径，不含 .. 段、控制字符与 shell 元字符）",
+      "args": ["dir"]
+    },
     "beArgv.parse.unknownRight": {
       "kind": "error",
       "zh": "-- 右边只放 ccm 自己的选项，{w} 不是；交给 claude 的参数写在 -- 左边（ccm -- --ccm-help 看选项）",
@@ -14382,7 +14407,7 @@
     },
     "beCcm.usage.body": {
       "kind": "body",
-      "zh": "用法：ccm [交给 claude 的参数…] -- [new] [ccm 自己的选项…]\n\nccm 是 claude 的壳。没有 -- 时整行原样交给 claude（--ccm-agent codex 时交给 codex）；\n有 -- 时按最后一个 -- 切开：左边原样交给 claude，右边只放下面这些 ccm 自己的选项，认不得就报错。\n要给 claude 它自己的 -- 又没有 ccm 选项时，末尾补一个空的 --（如 ccm -p -- -x --）。\n\n选项\n  new                起新会话（缺省就是它；只许是 -- 右边第一个词。ccm new 没有 -- 时交给 claude）\n  --ccm-tmux[=<名>]  在一个 tmux 会话里跑；给名就用那个名\n  --tmux-base <基名> 以这个为底取名，撞了就换一个（与 --ccm-tmux=<名> 互斥）\n  --tmux-size <W>xH  新建 tmux 会话的宽高（要带 --ccm-tmux）\n  --detach           建完就返回，不接进去（要带 --ccm-tmux）\n  --bus-register     把新会话登记上 cc-bus（要带 --detach）\n  --bus-note <备注>  给上面那条登记带一行备注\n  --account <名>     用这个账号起（与 --base 互斥）\n  --base             不用任何账号，按 agent 自己的默认配置起\n  --cwd <目录>       工作目录；不给就是当前目录，相对路径按当前目录补全\n  --ccm-agent <名>   claude | codex\n  --launcher <命令>  换掉默认的启动命令（可带参数，如 'ccr code'；开头的 ~/ 是家目录）\n  --attach <会话名>  不起 agent，直接接回一个 tmux 会话\n  --ccm-sid <会话ID> 给会话标上会话ID，cc-monitor 靠它找到终端窗口\n  --ccm-print        不跑，印出等价的一行 shell 命令\n  --ccm-probe        印出这台机器上 ccm 的身份信息（六行）\n  --ccm-version      印版本号\n  --ccm-help         这一段\n\n左边交给 claude 的参数里，ccm 只看一个（照样交给 claude）\n  --resume <会话ID>  这条会话已经在某个 tmux 会话里跑时，接上它、不另起（-r 同）\n",
+      "zh": "用法：ccm [交给 claude 的参数…] -- [new] [ccm 自己的选项…]\n\nccm 是 claude 的壳。没有 -- 时整行原样交给 claude（--ccm-agent codex 时交给 codex）；\n有 -- 时按最后一个 -- 切开：左边原样交给 claude，右边只放下面这些 ccm 自己的选项，认不得就报错。\n要给 claude 它自己的 -- 又没有 ccm 选项时，末尾补一个空的 --（如 ccm -p -- -x --）。\n\n选项\n  new                起新会话（缺省就是它；只许是 -- 右边第一个词。ccm new 没有 -- 时交给 claude）\n  --ccm-tmux[=<名>]  在一个 tmux 会话里跑；给名就用那个名\n  --tmux-base <基名> 以这个为底取名，撞了就换一个（与 --ccm-tmux=<名> 互斥）\n  --tmux-size <W>xH  新建 tmux 会话的宽高（要带 --ccm-tmux）\n  --detach           建完就返回，不接进去（要带 --ccm-tmux）\n  --bus-register     把新会话登记上 cc-bus（要带 --detach）\n  --bus-note <备注>  给上面那条登记带一行备注\n  --account <名>     用这个账号起（与 --base 互斥）\n  --account-dir <目录> 用这个账号配置目录起（说不出账号名时用；与 --account / --base 互斥）\n  --base             不用任何账号，按 agent 自己的默认配置起\n  --cwd <目录>       工作目录；不给就是当前目录，相对路径按当前目录补全\n  --ccm-agent <名>   claude | codex\n  --launcher <命令>  换掉默认的启动命令（可带参数，如 'ccr code'；开头的 ~/ 是家目录）\n  --attach <会话名>  不起 agent，直接接回一个 tmux 会话\n  --ccm-sid <会话ID> 给会话标上会话ID，cc-monitor 靠它找到终端窗口\n  --ccm-rbind-token <令牌> cc-monitor 起会话时带上，靠它认出这条会话的终端窗口\n  --ccm-launch-id <标识>   cc-monitor 起新会话时带上，靠它认出刚起的是哪条会话\n  --ccm-print        不跑，印出等价的一行 shell 命令\n  --ccm-probe        印出这台机器上 ccm 的身份信息（六行）\n  --ccm-version      印版本号\n  --ccm-help         这一段\n\n左边交给 claude 的参数里，ccm 只看一个（照样交给 claude）\n  --resume <会话ID>  这条会话已经在某个 tmux 会话里跑时，接上它、不另起（-r 同）\n\n中转\n  这台机器上 cc-monitor 的中转在听时，ccm 起 agent 前把 ANTHROPIC_BASE_URL 指向它（你自己设了就不动）；\n  环境变量 CCM_RELAY_ALL_SESSIONS=0 时只有要经中转换 key 的账号才指过去\n",
       "args": [],
       "waive": {
         "C-L3": "--help 正文是逐行的选项表，每行一处括号是那一行的补充",

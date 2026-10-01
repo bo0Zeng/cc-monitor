@@ -3033,13 +3033,9 @@ printf 'POST %s/v1/messages HTTP/1.1\r\nHost: %s\r\nContent-Length: %d\r\nConnec
 head -n 1 <&3
 "#;
 
-/// 一条**不带钥匙**的中转 URL → 生产渲染器 `payload::relay_env_prefix_posix` 渲出的前缀（不再手抄）。
-/// 先摘掉继承来的 `ANTHROPIC_BASE_URL`：那一形在「已设」时不注入，跑测试的环境里可能设着。
+/// 一条**不带钥匙**的中转 URL → `ccm` 直路渲出的那一句 `export`（`--ccm-print` 与经 shell 那一趟同一份，不再手抄）。
 fn rendered_export(url: &str) -> String {
-    format!(
-        "unset ANTHROPIC_BASE_URL; {}",
-        crate::control::launch_render::payload::relay_env_prefix_posix(url)
-    )
+    crate::control::ccm::plan::relay_export(url)
 }
 
 /// ★★★ `KH2B1`。**判定不是「渲染串里含 `ANTHROPIC_BASE_URL`」** ——
@@ -3049,16 +3045,13 @@ fn rendered_export(url: &str) -> String {
 ///
 /// | 段 | 真的假的 |
 /// |---|---|
-/// | 起会话那条命令串 | **真的 shell**（`bash -c '<env 前缀><launcher>'`），前缀是生产 POSIX 渲染器的返回值 |
+/// | 起会话那条命令串 | **真的 shell**（`bash -c '<env 前缀><launcher>'`），前缀是 `ccm` 直路渲染的返回值 |
 /// | env | **真的**（子进程自己从环境里读） |
 /// | 中转 | **真子进程**（`spawn_relay_child_with_creds`：真 `Command::new(exe)` · 端口 0 从 stderr 读回） |
 /// | 上游 | **真的** TCP 假上游，`auth_values` 收的是**整行** `Authorization:` |
 /// | agent | **桩**（红线：绝不起真 claude） |
 ///
-/// 先前登记的那条「没买到的缝」（env 前缀是本判据手抄的）已合上：渲染器与本判据同在后端，
-/// 前缀就是生产 `payload::relay_env_prefix_posix` 的返回值（[`rendered_export`]）。当年
-/// monitor 那一侧自己那半由 `the_relay_prefix_is_really_prepended_to_the_command_that_gets_launched` 〔散文墓碑〕
-/// 与 `only_an_account_that_has_a_row_in_the_apikey_table_gets_the_base_url_prefix` 钉着。
+/// 前缀是 `ccm` 直路那一句（[`rendered_export`]），不是本判据手抄的。
 #[cfg(unix)]
 #[test]
 fn a_launch_command_carrying_the_relay_env_prefix_reaches_upstream_with_that_accounts_key() {
