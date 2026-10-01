@@ -343,7 +343,6 @@ const STILL_SHELL: &[(&str, &str, StillShell, &str)] = &[
      "起 / 找那台的**常驻后端本身**（`--resident-ensure`）—— 接上它之前没有后端可问"),
     ("remote_resident.rs", "stop", StillShell::Bootstrap,
      "停那台的常驻后端（`--resident-stop`）—— 不能请被停的那一位自己经它那条流停自己（流随之断、答不回来）"),
-    // `byte_table.rs` 那一行（推全景小程序之前问那台 `uname -s -m`）摘了：「那台要哪一格」整问进了本机常驻后端（`deploy-slot`）。
     // `sftp.rs` 那一行（部署后端之前扫落点那一份的身份戳）摘了：身份判定进了本机常驻后端（`deploy-plan` 沿池里那条 SSH 自己扫）。
     // 公钥推送那一行摘了：「那台后端还不在」那一形也进了本机后端（`pubkey-push`：可达表里没有那台 ⇒ 一次 exec，只写这一件）。
     // 〔09-28 裁 2〕`acct_iso_deploy.rs` 那一行摘了：部署那两步（跑安装脚本 · 核 PATH）换成那台后端的 `acct-iso-install`

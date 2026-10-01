@@ -208,6 +208,51 @@ fn the_table_judges_every_cell_and_names_its_one_button() {
     assert!(table(&cat, &reach).rows.iter().all(|r| !r.new));
 }
 
+/// 一个扩展常常是「一个 skill ＋ 一个同名 MCP」两样东西（用法说明 ＋ 干活的服务器，code-picture 就是这一形）：
+/// 表按（类，名）分行 ⇒ 两条都列出来、各判各的格，不因为同名并成一行或互相盖掉。
+#[test]
+fn a_skill_and_an_mcp_with_the_same_name_are_listed_as_two_rows() {
+    let mut cat = asset_catalog::fresh("h".into());
+    cat.machines.insert(
+        "h".into(),
+        snap(
+            "me@h",
+            vec![
+                asset(KIND_SKILL, "code-picture", "d1", None),
+                asset(KIND_MCP, "code-picture", "m1", Some("/h/p")),
+            ],
+            &["/h/p"],
+        ),
+    );
+    let list = table(&cat, &[]);
+    let got: Vec<(Value, String, Vec<String>)> = list
+        .rows
+        .iter()
+        .map(|r| {
+            (
+                serde_json::to_value(r.kind).unwrap(),
+                r.name.clone(),
+                r.cells.iter().map(brief).collect(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        got,
+        vec![
+            (
+                json!("mcp"),
+                "code-picture".to_string(),
+                vec!["project:uninstall@/h/p".to_string()]
+            ),
+            (
+                json!("skill"),
+                "code-picture".to_string(),
+                vec!["same:uninstall@user".to_string()]
+            ),
+        ]
+    );
+}
+
 // ───────────────────────── 两台：本机 ＋ 一台假远端 ─────────────────────────
 
 /// 一台机器 = 一个临时家目录（skill 根 · 用户级 MCP · 装记录 · 目录文件 · 一个开过会话的项目）。

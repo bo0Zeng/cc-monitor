@@ -640,8 +640,6 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     // 常驻监听口的门牌（本机宿主与远端 `--resident-ensure` 同一个函数）；TS 侧没有孪生。
     listen_port_for: NONE,
     LISTEN_TOKEN_FILE_REL: NONE,
-    // 后端住在家里的暂存区与全景索引（后端按它落盘、monitor 的数据位置页按它列）；TS 侧没有孪生。
-    PANORAMA_INDEX_REL: NONE,
     parse_target: NONE,
     PORT: NONE,
     prefix: NONE,
@@ -717,9 +715,6 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     say: NONE,
     stamp_scan_cmd: NONE,
     this_machine: NONE,
-    // 产物在线上的那个词（帧命令 `deploy-slot` 的 `product`，两侧对上的契约）；TS 侧不说它 ⇒ NONE。
-    wire: NONE,
-    of_wire: NONE,
   },
 };
 
@@ -728,17 +723,16 @@ const TEST_INFRA_CRATE = "guard-core";
 
 /**
  * 提到 `guard-core` 的那几份 `Cargo.toml` 之外还有哪些（现核「只作 dev 依赖」的人群）：
- * 两份顶层工作区 ＋ 全景引擎 ＋ 每个 `crates/*` 自己那份（按盘上 crate 目录现生成，见下）。
+ * 两份顶层工作区 ＋ 每个 `crates/*` 自己那份（按盘上 crate 目录现生成，见下）。
  */
 // 文件窗口独立成包，它的清单也是顶层清单（它的 guard-core 只在 dev 侧）。
 const CARGO_TOMLS_TOP = [
   "src/frontend/shell/Cargo.toml",
   "src/frontend/filewin/Cargo.toml",
   "src/backend/Cargo.toml",
-  "src/panorama-engine/Cargo.toml",
 ];
-/** 那几份里 `guard-core = …` 依赖行的总数（恒等计数：今天 monitor · 文件窗口 · 后端 · 全景引擎 · creds-core 各一；4 → 5 多的是文件窗口包）。 */
-const GUARD_CORE_DEP_LINES = 5;
+/** 那几份里 `guard-core = …` 依赖行的总数（恒等计数：今天 monitor · 文件窗口 · 后端 · creds-core 各一；4 → 5 多的是文件窗口包；5 → 4 少的是全景小程序那一份，随它整棵删了）。 */
+const GUARD_CORE_DEP_LINES = 4;
 
 const CRATES_ROOT = "src/common";
 

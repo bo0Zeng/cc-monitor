@@ -156,10 +156,8 @@ fn the_crate_scan_actually_finds_crates() {
 /// ⇒ 加/删共享 crate 时，这条判据**自动跟上**；漏改 `gate.sh` 的那个数就当场红，
 ///   而且报文直接说「去改 gate.sh 那个数」，不会像 `gate` 自己那样指错方向。
 ///
-/// 从前这里写「`--exclude` 那几项（当时只有 `code-picture-core`）被人加减，本条认不出」——
-/// 那条 `--exclude` 随 vendor 退出 workspace 删了（monitor 不再依赖它）。⚠ 本条**认不出** vendor 被拉回成员
-/// （它比的是 gate.sh 那个数与共享 crate 数，不数真成员）；认得出的是 `the_windows_cross_target_signal_covers_only_the_backend` ③
-/// （monitor 清单零 vendor 依赖）与门禁 `cargo` 那一格运行时的包数相等（死值验现打：加回依赖 ⇒ 成员 10）。
+/// ⚠ 本条**认不出**有别的包被拉进成员（它比的是 gate.sh 那个数与共享 crate 数，不数真成员）；
+/// 认得出的是门禁 `cargo` 那一格运行时的包数相等。
 #[test]
 fn the_gate_package_count_tracks_the_number_of_shared_crates() {
     let gate = fs::read_to_string(crate::guard_support::repo_root().join("tests/scripts/gate.sh"))
@@ -239,7 +237,7 @@ fn every_shared_crate_is_a_workspace_member() {
         "这些共享 crate 不在 `[workspace] members` 里：{missing:?}\n\
              ⇒ `cargo test --workspace` 覆不到它们，测试会**静默地**从门禁里消失。"
     );
-    // vendor 随唯一消费者搬出本包（`src/panorama-engine/vendor/` · `src/vendor/`），
+    // vendor 随唯一消费者搬出本包（`src/vendor/`），
     //   那条 `exclude` 随之删了：住在 workspace 根外面的 path 依赖按构造成不了成员。
     //   同一个意图（vendor 别掺进 `--workspace` 的读数）改钉位置那一半：本包根下没有 vendor 目录、也不再需要 exclude。
     assert!(
@@ -282,11 +280,9 @@ fn every_path_dependency_is_actually_committed() {
     // 没被 git 跟踪」—— 一条**讲错了成因**的红灯（本仓记过：讲错成因的红比不红更坏）。
     //
     // ⚠ 判准是**形状**不是白名单：依赖声明恒是内联表（`{ path = … }`），
-    // 目标声明恒是表里的一个顶格键。同一条口径 `panorama_seam_registry` 那一族
-    // 早就写死过（逐字「只认依赖段：`[[bin]]` 那条 `path` 指的是入口文件，不是一棵树」）。
+    // 目标声明恒是表里的一个顶格键（只认依赖段：`[[bin]]` 那条 `path` 指的是入口文件，不是一棵树）。
     // 🔴 解析那一段搬进了 `guard_core::inline_table_paths`（同拍，2026-09-23）——
     //    理由与「它买不到什么」住那个原语的头注，不在这里抄第二份。
-    //    顺带兑现 `D1`：这条口径先前在 `panorama_seam_registry` 那一族里已经有一个家。
     let paths: Vec<String> = guard_core::inline_table_paths(&toml);
     // 抽取器自检：至少要抽到那 6 个共享 crate + vendor = 7 条（按实测）。
     assert!(
@@ -328,8 +324,6 @@ fn ci_actually_runs_the_three_converged_commands() {
         "cargo fmt --all --check",
         "cargo clippy --workspace --all-targets",
         "cargo test --workspace",
-        // vendor 仍单独一步（红线：别误伤 vendor，它不进 `--workspace`）。
-        "cargo test -p code-picture-core",
     ] {
         assert!(
             ci.contains(needle),
@@ -534,12 +528,12 @@ const STEPS: &[(&str, Local, &str)] = &[
     // ── job rust（windows-latest）
     ("cargo fmt --check（整个 workspace）", Gate(&["fmt"]), "`cd src/frontend/shell && cargo fmt --all --check`"),
     (
-        "cargo clippy（整个 workspace，vendor 除外）",
+        "cargo clippy（整个 workspace）",
         Gate(&["clippy", "winchk"]),
         "同一条命令在 Linux 上跑一趟（`clippy`）；CI 那一步跑在 Windows 上，「Windows 上编得过」那一维由 `winchk`（`-gnu` 交叉 check）盖",
     ),
     (
-        "cargo test（整个 workspace，vendor 除外）",
+        "cargo test（整个 workspace）",
         Gate(&["cargo"]),
         "`cargo test --workspace --lib`：本地那格带 `--lib`（丢 doctest 与 bin 档），另加包数相等断言",
     ),
@@ -548,10 +542,9 @@ const STEPS: &[(&str, Local, &str)] = &[
         Gate(&["generated"]),
         "`git diff --exit-code -- src/frontend/ui/generated/`，排在 `cargo` 那格之后",
     ),
-    ("cargo test (vendor code-picture-core)", Gate(&["code-picture-core"]), "同一目录同一条命令；只读地跑，vendor 源码零改动"),
     // ── job rust-linux
     (
-        "cargo test（整个 workspace，vendor 除外；Linux 执行面）",
+        "cargo test（整个 workspace；Linux 执行面）",
         Gate(&["cargo"]),
         "与 `rust` job 那一步同一条命令换到 Linux runner；本地那格本来就跑在 Linux 上（带 `--lib`）",
     ),
@@ -655,7 +648,6 @@ const LOCAL_ONLY_CELLS: &[(&str, &str)] = &[
     ("comm-boundary", "通信层那一族的三方对拍（条数同时算在 `cargo` 里）；`ci.yml` 只有 workspace test 的合计"),
     ("test-tiers", "测试层分级那一族的三方对拍；同 comm-boundary"),
     ("deadcode", "monitor 非 test 构建里 `never used` 的恒等棘轮；`ci.yml` 的 clippy 跑 `--all-targets`，量的不是同一个数"),
-    ("panorama-engine", "全景小程序自己的 `cargo test`；`ci.yml` 在那棵树里只跑 vendor 的测试"),
     ("backend-rbind-token", "`ci.yml` 没有它的地板行（`e2e_gate_registry` 的 `EXEMPT` 登记着为什么）"),
     ("rbind-token-endtoend", "同 backend-rbind-token"),
 ];
@@ -1420,11 +1412,7 @@ fn every_ignored_test_still_has_someone_who_triggers_it() {
 /// - **monitor 没有**。它的 Windows 面只由跑在 `windows-latest` 的 `rust` job 编译，
 ///   而〔用 08-05〕停推后 `ci.yml` 至今 72 个提交一次没跑 ⇒ **那 31 处 `cfg(windows)`
 ///   已经很久没有被任何编译器看过**。
-/// - 本机补不上：`cargo check --target x86_64-pc-windows-msvc -p monitor` 挂在
-///   `tree-sitter-*` 的 C build script 上（`cc-rs: failed to find tool "lib.exe"`，12 个 error
-///   全是它，**我们自己的代码零 error**），而那些 crate 来自 vendor `code-picture-core`——
-///   它是 monitor 的**无条件 path 依赖**，且 vendor 是本区红线，不许动。
-///   〔RM1f 09-25：这一条**过去时了** —— monitor 摘掉内嵌引擎，那条依赖删了；本机 msvc check 现打 Finished，见 ③。〕
+/// - 当时本机补不上（一条带 C build script 的第三方依赖挡着）；那条依赖早已不在，本机 msvc check 现打 Finished。
 ///
 /// ⚠ 顺带一条方法论（本轮变异抽样撞出来的）：**`#[cfg(windows)]` 里的变异在 Linux 上
 /// 连编译错误都不报**（实证：往里写一个不存在的标识符，`cargo build` **零 error**）。
@@ -1450,25 +1438,6 @@ fn the_windows_cross_target_signal_covers_only_the_backend() {
         "`rust` job（monitor）现在**有跨 target check 了** —— 好事，但请顺手：\n\
              ① 删掉里「monitor 的 Windows 面没有编译信号」那条诚实边界；\n\
              ② 删掉本条判据（它的全部意义就是钉住这个不对称）。"
-    );
-
-    // ③ 那条「本机补不上」的理由**今天不成立了**〔RM1f 09-25：这一格按设计响了一次，重判结论如下〕。
-    //    当初挡住本机 `cargo check --target x86_64-pc-windows-msvc -p monitor` 的，是 vendor `code-picture-core`
-    //    那条**无条件** path 依赖带进来的 `tree-sitter-*` C build script（`cc-rs: lib.exe`）。本机对称那一拍
-    //    （后半句：monitor 摘掉内嵌引擎）把那条依赖删了 ⇒ 现打（09-25，本工作树，`native-backend/` 挪开后）：
-    //    `cargo check --offline -p monitor --target x86_64-pc-windows-msvc` ⇒ **Finished（零 error）**。
-    //    ⇒ 「monitor 的 Windows 面本机补不上」这条诚实边界的**前提没了**；要不要把它变成一格门禁是门禁那一侧的事
-    //      （已报备，本条不替它加）。本条改钉**反方向**：谁把引擎依赖加回 monitor，这个新读数就当场作废。
-    let cargo = guard_core::strip_hash_comment_lines(
-        &std::fs::read_to_string(root().join("Cargo.toml")).expect("读不到 Cargo.toml"),
-    );
-    assert!(
-        !cargo
-            .lines()
-            .any(|l| l.trim_start().starts_with("code-picture-core") && guard_core::contains_word(l, "path")),
-        "`src/frontend/shell/Cargo.toml` 又依赖上了 vendor `code-picture-core` —— 那会把 `tree-sitter-*` 的 C build script\n\
-             带回 monitor，本机 `cargo check --target x86_64-pc-windows-msvc -p monitor` 会重新挂在 `lib.exe` 上\n\
-             （摘掉它之后现打是 Finished）。先去 `EU5` 把「monitor 摘内嵌引擎」那笔账改了再回来。"
     );
 }
 

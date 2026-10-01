@@ -1558,9 +1558,6 @@ fn fenced_block_implies_uninstallable() {
 struct ImplSite {
     addr: &'static str,
     definition: &'static str,
-    /// 这一处不住 [`Claim::home`] 那份文件时，它自己的家（全景小程序：装口在 monitor 放字节、卸口在那台后端）。
-    /// `None` = 住 `home` 那份（其余各行）。
-    elsewhere: Option<ImplHome>,
 }
 
 /// 一个工具的装 / 卸实现**住在哪份文件**。
@@ -1602,8 +1599,6 @@ fn claims() -> Vec<Claim> {
     const SKILL_INSTALL: &str = include_str!("../../../src/backend/assets/skill_flow.rs");
     // 账号库由那台后端自己建（界面「启用多账号」）：装口住 `src/backend/accounts/manage/wire.rs`（`accounts-init` 走它）。
     const ACCOUNTS_WIRE: &str = include_str!("../../../src/backend/accounts/manage/wire.rs");
-    // 代码全景小程序的家（本机放 · 远端推，同一个入口 `push_to` 按 origin 分）。
-    const PANORAMA_BYTES: &str = include_str!("../../../src/frontend/shell/src/panorama_bytes.rs");
     let sftp = || ImplHome {
         addr: "sftp.rs",
         text: SFTP,
@@ -1620,14 +1615,12 @@ fn claims() -> Vec<Claim> {
         // 签名变了：落盘经「门」（生产 = 本机后端的文件管理那一面），本进程不写。
         // 门就是那台后端本进程的 `files-*`（同步）。
         definition: "pub(crate) fn install_to_profile(\n    d: &dyn Door,\n    path: &Path,\n    command_name: &str,\n    include_cc_function: bool,\n) -> Result<(), String> {",
-        elsewhere: None,
     }
     };
     let profile_uninstall = || {
         ImplSite {
         addr: "block.rs::uninstall_from_profile",
         definition: "pub(crate) fn uninstall_from_profile(d: &dyn Door, path: &Path) -> Result<(), String> {",
-        elsewhere: None,
     }
     };
     vec![
@@ -1648,7 +1641,6 @@ fn claims() -> Vec<Claim> {
             install: Some(ImplSite {
                 addr: "cc_bus_install.rs::answer_install",
                 definition: "pub(crate) fn answer_install(d: &dyn Door, record: Record) -> Answer {",
-                elsewhere: None,
             }),
             uninstall: None,
         },
@@ -1661,7 +1653,6 @@ fn claims() -> Vec<Claim> {
             install: Some(ImplSite {
                 addr: "wire.rs::run_change",
                 definition: "pub(crate) fn run_change(\n    d: &dyn Door,\n    req: &Request,\n    keys: Option<&KeyTable>,\n) -> Result<Done, Refusal> {",
-                elsewhere: None,
             }),
             uninstall: None,
         },
@@ -1671,35 +1662,10 @@ fn claims() -> Vec<Claim> {
             install: Some(ImplSite {
                 addr: "sftp.rs::deploy_remote_backend",
                 definition: "pub async fn deploy_remote_backend(cfg: RemoteConfig) -> Result<String, String> {",
-                elsewhere: None,
             }),
             uninstall: Some(ImplSite {
                 addr: "sftp.rs::uninstall_remote_backend",
                 definition: "pub async fn uninstall_remote_backend(cfg: RemoteConfig) -> Result<String, String> {",
-                elsewhere: None,
-            }),
-        },
-        // 代码全景小程序：装口 `push_to`（本机那一臂落 `place_local`，远端那一臂经那台后端的文件链路推）；
-        // 卸口住那台后端 `control/panorama.rs::answer_uninstall`（`elsewhere`）。
-        Claim {
-            tool: "panorama",
-            home: Some(ImplHome {
-                addr: "panorama_bytes.rs",
-                text: PANORAMA_BYTES,
-            }),
-            install: Some(ImplSite {
-                addr: "panorama_bytes.rs::push_to",
-                definition: "pub(crate) async fn push_to(origin: &crate::origin::Origin) -> Result<(), String> {",
-                elsewhere: None,
-            }),
-            // 卸口在那台后端（`panorama-uninstall`：认身份、只删装时放下的那一份）。
-            uninstall: Some(ImplSite {
-                addr: "panorama.rs::answer_uninstall",
-                definition: "pub(crate) async fn answer_uninstall(",
-                elsewhere: Some(ImplHome {
-                    addr: "panorama.rs",
-                    text: include_str!("../../../src/backend/control/panorama.rs"),
-                }),
             }),
         },
         Claim {
@@ -1712,12 +1678,10 @@ fn claims() -> Vec<Claim> {
                 addr: "assets/mcp_edit.rs::answer_put",
                 // 从 monitor 那条 Tauri 命令搬进那台后端的帧命令 `mcp-server-put`。
                 definition: "pub(crate) fn answer_put(d: &dyn Door, args: &Value) -> Answer {",
-                elsewhere: None,
             }),
             uninstall: Some(ImplSite {
                 addr: "assets/mcp_edit.rs::answer_remove",
                 definition: "pub(crate) fn answer_remove(d: &dyn Door, args: &Value) -> Answer {",
-                elsewhere: None,
             }),
         },
         // 资产目录里「装到这台」的 skill；卸只删装记录里那几个文件。
@@ -1732,12 +1696,10 @@ fn claims() -> Vec<Claim> {
             install: Some(ImplSite {
                 addr: "assets/skill_flow.rs::answer_install",
                 definition: "pub(crate) fn answer_install(\n    d: &dyn Door,\n    facts: &dyn Facts,\n    root: Option<&std::path::Path>,\n    record: Record,\n    args: &Value,\n) -> Answer {",
-                elsewhere: None,
             }),
             uninstall: Some(ImplSite {
                 addr: "assets/skill_flow.rs::answer_uninstall",
                 definition: "pub(crate) fn answer_uninstall(\n    d: &dyn Door,\n    ledger: &std::path::Path,\n    record: Record,\n    args: &Value,\n) -> Answer {",
-                elsewhere: None,
             }),
         },
         Claim {
@@ -1767,8 +1729,7 @@ fn claims() -> Vec<Claim> {
 
 /// 从逐字签名里抠出 `pin_definition` 要的**赋值前缀**（签名到 `fn <名>` 之后第一个 `(` 为止）。
 /// **算出来的，不再写第二份字面量**。
-/// 从前是「到第一个 `(` 为止」—— 可见性带括号（`pub(crate)`）时会抠成 `pub`；`panorama` 那一行
-/// 的装口是 `pub(crate)`，当场逮住（住址 `…::push_to` 对上抠出来的 `…::pub`）。
+/// 从前是「到第一个 `(` 为止」—— 可见性带括号（`pub(crate)`）时会抠成 `pub`。
 fn assign_prefix_of(definition: &str) -> &str {
     let from = definition.find("fn ").unwrap_or(0);
     let end = definition[from..]
@@ -1871,8 +1832,7 @@ fn every_tool_declares_install_and_uninstall_as_the_implementations_really_are()
         ] {
             checked += 1;
             let real = match (c.home.as_ref(), site) {
-                (Some(claim_home), Some(s)) => {
-                    let home = s.elsewhere.as_ref().unwrap_or(claim_home);
+                (Some(home), Some(s)) => {
                     // 住址与签名互相校验：符号名必须逐字相等，文件必须就是那个家。
                     assert_eq!(
                         s.addr,

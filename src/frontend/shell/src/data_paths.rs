@@ -359,11 +359,6 @@ fn backend_entries(
             DataClass::Cache,
         ),
         dir(
-            rr::PANORAMA_INDEX_REL,
-            copy_text("rsDataPaths.backend.panorama", &[]),
-            DataClass::Cache,
-        ),
-        dir(
             rr::EXT_BACKUPS_DIR_REL,
             copy_text("rsDataPaths.backend.extBackups", &[]),
             DataClass::Truth,

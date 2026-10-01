@@ -104,7 +104,7 @@ describe("数据位置：给路径，不给删 / 清空", () => {
     ];
     const webview = item("EBWebView", "/h/AppData/EBWebView");
     // 本机后端住在同一个家里的那几样：同样只给路径
-    const backend = [item("relay-key", "/h/.cc-monitor/relay-key"), item("panorama/", "/h/.cc-monitor/panorama")];
+    const backend = [item("relay-key", "/h/.cc-monitor/relay-key"), item("staging/", "/h/.cc-monitor/staging")];
     paths.value = {
       monitorDataDir: "/h/.cc-monitor",
       entries,

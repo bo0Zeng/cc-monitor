@@ -2034,8 +2034,8 @@ fn put_keeps_explicit_acl_entries_on_windows() {
 
 // ── 带 CAS 的删（`files-delete` 的 `expect`）────────────────────────
 //
-// 要求住址：用户 09-24 **V110**「引擎只算、文件管理来写」——全景删批注侧车是一次读改写的写那一半；
-// 「删批注没有 CAS …… 要闭合得给 `files-delete` 加 `expect`」。
+// 旧版放在远端 `~/.local/bin/ccm` 的那一份「认出是我们放的才删」，删带读到的那一份当期望值
+// （`deploy-retired` 答的 `expect`，monitor 照它经那台后端 `files-delete` 删）。
 
 /// ★ 盘上 == `expect` ⇒ 删；≠ ⇒ `stale`、一个字节不动；已经不在 ⇒ `stale`；
 /// 目录 / 链接 ⇒ `refused`、原样；会话文件 ⇒ 围栏照旧 `refused`。

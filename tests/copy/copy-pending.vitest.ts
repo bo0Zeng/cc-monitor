@@ -92,9 +92,9 @@ describe("CP2b · 还有对外字面量的文件 == 待办表", () => {
         expect(why.startsWith("量具跑不起来")).toBe(true);
         return;
       }
-      // 反空真：普查一个都没数到 ⇒ 尺子坏了，不是抽完了（终态仍有射程外那几行）。
-      expect(report.empty, "普查一个对外字面量都没数到 —— 空转").toBe(false);
-      expect(report.pending, "待办表是空的 —— 下面的相等是空集对空集").toBeGreaterThan(0);
+      // 反空真：终态待办表是空的、对外字面量 0 条 ⇒「表非空」当不了正控（同 CP2c）；
+      //   改靠普查同一趟认出的取文口调用条数 —— 尺子没切到东西时它是 0。
+      expect(report.empty, "出口里的取文口调用一条都没认出 —— 普查空转").toBe(false);
       expect(
         report.unlisted,
         "这些文件不在待办表里，却有对外字面量：抽完的文件又长回来了 / 新文件没登记。" +

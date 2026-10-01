@@ -334,23 +334,6 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
          `decodeFootprint` 按恰好的键集合收（金样 `footprint-report.golden.json`）；monitor 这一侧零发送点（`footprint_remote.rs`〔散文墓碑〕删了），\
          只答它自己那台那几行的事实（`footprint_client_facts`）",
     ),
-    // 代码全景：界面经通道直问那台后端（原 monitor 那一跳 `panorama_call.rs`〔散文墓碑〕删了）。
-    (
-        "panorama",
-        "后端出成品 `{result}`（`control/panorama.rs` 起那台的全景小程序）；前端 `src/frontend/ui/panorama/api.ts::remote` 问，\
-         回「没装 / 太旧」时请 monitor 放字节（`panorama_place`）再问一次；monitor 这一侧零发送点",
-    ),
-    (
-        "panorama-edit",
-        "后端算计划 ＋ 经这台文件管理面落盘（`control/panorama_edit.rs`，`stale` 重算）；前端 `src/frontend/ui/panorama/api.ts::edit` 问，\
-         monitor 这一侧零发送点",
-    ),
-    // 全景小程序卸口。
-    (
-        "panorama-uninstall",
-        "后端认身份 ＋ 经这台文件管理面 CAS 删装时放下的那一份（`control/panorama.rs::answer_uninstall`）；\
-         前端 `src/frontend/ui/settings/panorama-section.ts` 问，monitor 这一侧零发送点",
-    ),
     // 生在帧面上、界面直接问的一条（不是只读宿主那一族，故不进 `BORN_ON_FRAME`）。
     (
         "resync",

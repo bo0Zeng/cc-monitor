@@ -43,7 +43,7 @@
 //! · **exec 模型**：1 exec = 1 请求 1 响应 1 退出，**无 request-id**（`resolve_query` 头注逐字）。
 
 use crate::common::contract;
-use crate::stream::inbound::{CommandSpec, Progress, Run, REGISTRY};
+use crate::stream::inbound::{CommandSpec, Run, REGISTRY};
 use crate::stream::wire::Request;
 use std::io::Read;
 
@@ -162,8 +162,6 @@ pub(crate) const STREAM_ONLY: &[&str] = &[
     "forward-start",
     "forward-stop",
     "forward-list",
-    // 卸全景小程序：界面在机器页点的破坏性动作，不开 CLI 面（第三方 skill 用不着它，一次性进程里跑也无须）。
-    "panorama-uninstall",
     // 起会话要的 tmux 名：界面问；CLI 那一侧 `ccm` 起会话时自己铸（同一份 `plan::mint_tmux_name`）。
     "tmux-name-mint",
     // 开终端那一串：界面 / 文件窗口开 PowerShell 窗口前问；命令行那一侧用不着（它自己就在终端里）。
@@ -278,8 +276,6 @@ pub async fn run(args: &[String]) -> i32 {
     let outcome = match spec.run {
         Run::Blocking(f) => f(req),
         Run::Async(f) => f(req).await,
-        // 一次性进程里没人订进度流 ⇒ 空口。
-        Run::AsyncProgress(f) => f(req, Progress::none()).await,
         Run::Builtin => {
             return emit_err(
                 "not_available_in_cli",

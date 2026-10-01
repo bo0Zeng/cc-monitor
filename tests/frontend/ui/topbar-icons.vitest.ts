@@ -63,11 +63,12 @@ describe("F09 顶栏图标不依赖字体", () => {
     // 🔴 〔删用量 09-18〕地板 6 → **5**：`.usage-trigger` 那个顶栏入口随用量 ② 轴
     // 整轴退役（它点开的 `views/usage-view.ts` 整删）。**这不是抽取器坏了，是顶栏真的少一个按钮**
     // —— 两者在读数上长得一样，所以降地板必须写清少的是哪一个。
+    // 地板 5 → **4**：`.panorama-trigger` 那个顶栏入口随代码全景整条摘掉（它点开的全景页整删）。
     expect(
       classes.length,
       "从 `main.ts` 抽不到任何 `*-trigger` 按钮 —— 命名约定变了？\n" +
         "改了就把本文件的抽取器一起改，别让它零命中地绿。",
-    ).toBeGreaterThanOrEqual(5);
+    ).toBeGreaterThanOrEqual(4);
 
     // 人群 = 每个 trigger 变量名对应的 `.textContent = "…"` 赋值。
     const offenders: string[] = [];

@@ -71,10 +71,6 @@ import type { LocalCcmEntry } from "../generated/LocalCcmEntry";
 import type { ConfigEdit } from "../generated/ConfigEdit";
 import type { DriftLedgerReport } from "../generated/DriftLedgerReport";
 import type { DataPathsResponse } from "../generated/DataPathsResponse";
-// panorama 一族今天走通道（`panorama` / `panorama-edit`），返回 `unknown`，
-// 由 `src/frontend/ui/panorama/api.ts` 按 op 收窄成 `src/frontend/ui/panorama/types.ts` 的手写类型（那 10 个住 vendored
-// `code-picture-core/src/model.rs`，`VENDOR.md` 铁律「副本是上游的镜子」⇒ 不在副本里加 `ts_rs` 派生）。
-// 〔改前这里 import 那十几个类型给进程内那十七条包装用，`PanoramaStatus` 用生成物；三样都随内嵌引擎退役了。〕
 import type { DiagnosticsConfig } from "../generated/DiagnosticsConfig";
 import type { LogFileInfo } from "../generated/LogFileInfo";
 import type { RestartHint } from "../generated/RestartHint";
@@ -180,18 +176,6 @@ export const commands = {
   // 别名六条（`aliases_*`〔散文墓碑〕）退役：规则 · 方言 · 围栏进了那台后端，界面经通道直问（`src/frontend/ui/alias-reads.ts`）。
   /** 这台已跟 monitor 完成拉前握手的终端数（住 monitor 进程里的 `BindRegistry`，从前夹在别名读回口里）。 */
   bound_terminal_count: () => invoke<number>("bound_terminal_count"),
-
-  // 全景三条（问 · 写 · 撤）退役：界面经通道直问那台后端 `panorama` / `panorama-edit`，撤单过通道那一跳。
-  /**
-   * 那台缺小程序 / 装的太旧（后端回 `not_installed` / `unsupported`）⇒ monitor **放字节**：远端推到 `~/.cc-monitor/bin/`、本机放到同一处
-   * （`panorama_bytes.rs::panorama_place`；每台一把锁，排队的那一问等到前一个放完就不再放）。成功 **桶①**。
-   */
-  panorama_place: (args: { origin: Origin }) => invoke<null>("panorama_place", args),
-
-  // 〔V108 后半句〕本机那十七条进程内全景命令的包装随内嵌引擎退役删了（panorama_callees · panorama_callers ·
-  //   panorama_diagram · panorama_diagram_kinds · panorama_docs_for · panorama_drift · panorama_impact · panorama_index ·
-  //   panorama_list_annotations · panorama_node · panorama_overview · panorama_reindex · panorama_search · panorama_status ·
-  //   panorama_subgraph · panorama_symbols_in_file · panorama_touching）：本机远端同一条（今天是通道上的 `panorama`）。
 
   // `sftp_copy`（远端内部复制，步 23b）的包装随那条命令退役删了：窗口的复制走后端 `files-copy`。
 

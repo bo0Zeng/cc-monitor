@@ -303,10 +303,6 @@ mod tests {
         ),
         ("layering_guard", "守卫：observe↔control 的方向与条数"),
         ("no_timer_guard", "守卫：零定时器护栏"),
-        (
-            "panorama_locus_guard",
-            "守卫：全景的解析发生在哪个进程的地址空间",
-        ),
         ("plugin_walk_fixture", "守卫 ＋ 夹具：最小假插件走通全流程"),
         (
             "protocol_doc_guard",
@@ -2918,15 +2914,7 @@ mod spawn_registry {
              `accounts/iso.rs`经这一处口起**本机 `cc-acct-iso shellinit`**（`--acct-iso-shellinit`）。\
              写面：**只读**。今天这个使用者已不在：账号库改由后端自己建，那份外部脚本与 `accounts/iso.rs` 一起删了。\
              ⚠ 同样**加这一条不会红**（键仍是 `<非字面量>`；下面那条「恰好四条」只数 \
-             `control/cc_bus.rs`）—— 是人回来读了这一段才写下的。\
-             ★★ **第四个使用者到了，逐条记在这里** —— 代码全景 \
-             `control/panorama.rs` 经这一处口起**只装引擎的独立小程序 `cc-monitor-panorama`**\
-             （用户 V108 选 B：后端本体零引擎，解析在被起的那个进程里）。每次两趟：`--probe`（只打三行字）\
-             ＋ 一个 op。写面：**只写索引**，落后端交给它的 `--store`（`~/.cc-monitor/panorama/`，\
-             后端自己的数据目录，**不是用户文件**）；被分析的仓**一个字节不写**（小程序自己的判据 \
-             `nothing_lands_inside_the_analysed_repo` 钉着），写用户文件的那六个引擎方法它**零调用**\
-             （`the_program_never_calls_an_engine_method_that_writes_user_files`，零命中 ＋ 正控）。\
-             ⚠ 同样**加这一条不会红** —— 是人回来读了这一段才写下的。",
+             `control/cc_bus.rs`）—— 是人回来读了这一段才写下的。",
             "缩性质",
             "键能分得出「哪个插件、哪条被调命令」的那天（今天是 `<非字面量>`，四条命令共用一个键）。\
              ⚠ 在那之前，本条的覆盖面由 [`super::g6_reach`] 那一格钉着：\
@@ -5279,9 +5267,7 @@ mod g6_dependency_signoff {
     /// 合成的那条刻意就是本件的形状：**引擎作为一条新依赖进来**那天。
     #[test]
     fn an_unsigned_dependency_is_really_reported_so_that_the_zero_is_not_vacuous() {
-        // 引擎那个 crate 名**运行时拼**：monitor 侧有一条判据在数「哪几棵树里出现过它」，
-        // 别让本文件变成那张表里的第二处命中。
-        let engine = format!("code-picture{}core", "-");
+        let engine = "some-engine";
         let fake = format!(
             "[package]\nname = \"某个壳\"\nversion = \"0.0.0\"\n\n\
              {DEPS}\nserde = \"1\"\n{engine} = {{ path = \"vendor/引擎\" }}\n\n\

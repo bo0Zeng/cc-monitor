@@ -98,9 +98,16 @@ fn the_remote_column_really_probes_this_machine_and_drops_the_monitor_rows() {
     let remote = host_label(HostScope::Remote);
     let either = host_label(HostScope::Either);
     assert_eq!(kind_of(&rows, &remote, "~/.cc-monitor/bin/ccm"), "present");
-    // 例子从旧版后端那一格换成全景小程序：前者是旧版遗留（不在 ＝ 该有的样子，`rows::read_absence`），不再是「缺」。
+    // 同一个落点拿走之后再问一次：这台上真不在 ⇒ 缺（不是「本页不连 SSH」）。
+    std::fs::remove_file(h.join(".cc-monitor/bin/ccm")).unwrap();
+    let gone = answer_with(
+        &env_of(vec![("HOME", h.display().to_string())]),
+        &agent,
+        &json!({}),
+    )
+    .unwrap();
     assert_eq!(
-        kind_of(&rows, &remote, "~/.cc-monitor/bin/cc-monitor-panorama"),
+        kind_of(&rows_of(&gone), &remote, "~/.cc-monitor/bin/ccm"),
         "absent",
         "这台上真不在的远端落点 ⇒ 缺（不再是「本页不连 SSH」）"
     );
@@ -135,7 +142,7 @@ fn the_local_column_resolves_the_monitor_rows_under_the_monitor_facts() {
     let agent = h.join(".claude");
     let m = temp_dir("local-monitor");
     std::fs::create_dir_all(m.join(".cc-monitor/bin")).unwrap();
-    std::fs::write(m.join(".cc-monitor/bin/cc-monitor-panorama"), "x").unwrap();
+    std::fs::write(m.join(".cc-monitor/bin/ccm"), "x").unwrap();
     let client = json!({ "home": m.display().to_string(), "agentHome": m.join(".claude").display().to_string(), "path": "/m/bin" });
     let got = answer_with(
         &env_of(vec![("HOME", h.display().to_string())]),
@@ -166,11 +173,7 @@ fn the_local_column_resolves_the_monitor_rows_under_the_monitor_facts() {
         );
     }
     assert_eq!(
-        kind_of(
-            &rows,
-            &client_label,
-            "~/.cc-monitor/bin/cc-monitor-panorama"
-        ),
+        kind_of(&rows, &client_label, "~/.cc-monitor/bin/ccm*"),
         "present",
         "monitor 家目录下那一份没被这台 stat 到"
     );

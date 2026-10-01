@@ -82,21 +82,12 @@
 #   · `--check-dev`：开发构建的判词。与 `--check` 同一套，唯一的差别是
 #     **本机那一份缺席 = 红**（`--check` 里缺席是 `skip` —— 那是给 CI / 没铺字节的树的）。
 #
-# ── 同一条配方也编**全景小程序** ────────────────────────────────
-#
-# 只装代码全景引擎的独立小程序 `cc-monitor-panorama`（`src/panorama-engine`，用户 09-24 V108 选 B）
-# 与后端那两份 musl 字节**同一个落点、同一对 target、同一串旗标**（`release.yml` 的
-# `Cross-compile panorama for both musl targets`，判据 ⑬b 两向对拍）。
-# ⚠ 它**没有身份戳**（不随 `BUILD_ID` 走）⇒ 「这份字节与源码是不是同一代」换一种问法：
-#   能在这台机器上跑的那个 arch **真起一趟 `--probe`**，它报的 `capabilities=` 必须与源码那张
-#   op 表（`src/panorama-engine/main.rs` 的 `OPS`）**两向相等**；跑不了的那个 arch 如实 skip。
-#
 # ── 跑法 ──────────────────────────────────────────────────────────────────────
 #
 #   bash tests/scripts/re-embed.sh             # 重编两份 musl 字节并铺回落点，铺完自检
 #   bash tests/scripts/re-embed.sh --check     # 只问「盘上的字节与源码对不对得上 · 铺了的起不起得来」，不产字节
 #   bash tests/scripts/re-embed.sh --check-dev # 同上，但**本机那一份缺席就是红**：开发构建起得来本机后端吗
-#   bash tests/scripts/re-embed.sh --native    # 本机那几份（裸 exe 自带的后端 · 全景小程序 · 文件窗口程序）重编并重铺，铺完按 --check-dev 自检
+#   bash tests/scripts/re-embed.sh --native    # 本机那几份（裸 exe 自带的后端 · 文件窗口程序）重编并重铺，铺完按 --check-dev 自检
 #   bash tests/scripts/re-embed.sh --clean     # 守卫给的第二条出路：删掉落点（自动部署诚实关闭）
 #
 # 退出码 0 = 过；1 = 有对不上的 / 抠不到身份 / 编不过 / 铺了却起不来 /（`--check-dev`）本机那一份没铺。
@@ -115,8 +106,6 @@ IDENTITY_SRC="$ROOT/src/backend/lib.rs"
 #: 内嵌落点 —— 名字定死在 `build.rs` 的 `EMBEDDED_BACKENDS_DIR` / `NATIVE_BACKEND_DIR`
 #: （判据 ⑬c/⑬d 把这两处与本文件、与 `src/frontend/shell/.gitignore` 三向钉在一起）。
 EMBEDDED_DIR="$ROOT/src/frontend/shell/embedded-backends"
-#: 全景小程序的源码树与它那张 op 表的住址（`--check` 拿它与字节自报的能力对拍）。
-PANORAMA_SRC="$ROOT/src/panorama-engine"
 NATIVE_DIR="$ROOT/src/frontend/shell/native-backend"
 
 pass=0
@@ -160,41 +149,13 @@ do_build() {
     printf '==> cargo zigbuild %s --target %s\n' "${REEMBED_BUILD_FLAGS[*]}" "$t"
     ( cd "$ROOT/src/backend" && cargo zigbuild "${REEMBED_BUILD_FLAGS[@]}" --target "$t" )
   done
-  # 全景小程序：同一对 target、同一串旗标。
-  for t in "${REEMBED_TARGETS[@]}"; do
-    printf '==> cargo zigbuild %s --target %s（src/panorama-engine）\n' "${REEMBED_BUILD_FLAGS[*]}" "$t"
-    ( cd "$PANORAMA_SRC" && cargo zigbuild "${REEMBED_BUILD_FLAGS[@]}" --target "$t" )
-  done
   mkdir -p "$EMBEDDED_DIR"
   for t in "${REEMBED_TARGETS[@]}"; do
     arch="${t%%-*}"
     cp "$ROOT/.build/backend/$t/release/cc-monitor-backend" \
        "$EMBEDDED_DIR/cc-monitor-backend-$arch"
     printf '==> 铺好 src/frontend/shell/embedded-backends/cc-monitor-backend-%s\n' "$arch"
-    cp "$ROOT/.build/panorama/$t/release/cc-monitor-panorama" \
-       "$EMBEDDED_DIR/cc-monitor-panorama-$arch"
-    printf '==> 铺好 src/frontend/shell/embedded-backends/cc-monitor-panorama-%s\n' "$arch"
   done
-}
-
-# 源码那张 op 表（`OPS` 里 `("<op>", Need::…)` 那几行），排序后逗号连起来。
-panorama_src_ops() {
-  [ -f "$PANORAMA_SRC/main.rs" ] || return 0
-  sed -nE 's/^[[:space:]]*\("([a-z_]+)", Need::[A-Za-z]+\),.*/\1/p' "$PANORAMA_SRC/main.rs" | sort | paste -sd, -
-}
-
-# 真起一趟全景小程序的 `--probe`，回它报的能力（排序后逗号连起来；起不来回空串）。
-# 隔离同 `native_starts`：`env -i`、空 HOME —— 它只打三行字，一个文件都不该碰。
-panorama_probe_caps() {
-  local f="$1" sandbox caps
-  sandbox="$(mktemp -d)"
-  cp "$f" "$sandbox/panorama-under-test"
-  chmod +x "$sandbox/panorama-under-test"
-  caps="$(env -i HOME="$sandbox" PATH="/usr/bin:/bin" LANG=C.UTF-8 \
-            timeout 20 "$sandbox/panorama-under-test" --probe </dev/null 2>/dev/null \
-          | sed -n 's/^capabilities=//p' | tr ',' '\n' | sort | paste -sd, - || true)"
-  rm -rf "$sandbox"
-  printf '%s' "$caps"
 }
 
 # 本机那一份（裸 exe 自己带着的后端）。与 `release.yml` 的
@@ -213,14 +174,6 @@ do_native() {
   # （`build.rs::embed_native_backend` 的 ① 号硬校验读它，对不上当场 panic）。
   printf '%s\n' "$triple" > "$NATIVE_DIR/cc-monitor-native.target"
   printf '==> 铺好 src/frontend/shell/native-backend/cc-monitor-native（＋ .target = %s）\n' "$triple"
-  # 本机原生的全景小程序（monitor 摘内嵌引擎之后，本机全景 = 本机后端 → 插件口 → 它）。
-  #   与 `release.yml` 的 `Build local panorama (native)` ＋ `Stage native panorama for self-extract` 同一条配方；
-  #   落点名字定死在 `build.rs::NATIVE_PANORAMA_FILE`（判据对拍）。
-  printf '==> cargo build %s（本机 target %s，src/panorama-engine）\n' "${REEMBED_BUILD_FLAGS[*]}" "$triple"
-  ( cd "$PANORAMA_SRC" && cargo build "${REEMBED_BUILD_FLAGS[@]}" )
-  cp "$ROOT/.build/panorama/release/cc-monitor-panorama$exe" "$NATIVE_DIR/cc-monitor-panorama"
-  printf '%s\n' "$triple" > "$NATIVE_DIR/cc-monitor-panorama.target"
-  printf '==> 铺好 src/frontend/shell/native-backend/cc-monitor-panorama（＋ .target = %s）\n' "$triple"
   # 文件窗口程序（单文件的 monitor 靠它开窗）。它是 monitor 包的另一个 `[[bin]]`，monitor 的 build.rs 在同一趟 cargo 里
   #   吃不到它 ⇒ 先单编、铺好，之后再编 monitor 才嵌得进去。与 `release.yml` 两个 job 的 `Build local filewin (native)` ＋
   #   `Stage native filewin for self-extract` 同一条配方；落点名字定死在 `build.rs::NATIVE_FILEWIN_FILE`（判据对拍）。
@@ -333,38 +286,6 @@ do_check() {
     fi
   done
 
-  # 全景小程序：人群同样从 `REEMBED_TARGETS` 派生（不扫目录）。
-  #   ⚠ 源码那张 op 表**只在真要比的时候才抠**（铺了、而且是这台能跑的 arch）：
-  #     没铺字节的树上没有东西可比，抠它只会让一棵没有全景源码的沙箱树无端红。
-  #     而一旦要比，抠不出来就是红（判不了按红记，不退化成「没得比，于是绿」）。
-  local want_ops host_arch caps
-  host_arch="$(uname -m)"
-  for t in "${REEMBED_TARGETS[@]}"; do
-    arch="${t%%-*}"
-    f="$EMBEDDED_DIR/cc-monitor-panorama-$arch"
-    if [ ! -f "$f" ]; then
-      printf 'skip  内嵌全景小程序 %s :: 没铺（远端全景那一台就没有字节可推）\n' "$arch"
-      continue
-    fi
-    present=$((present + 1))
-    if [ "$arch" != "$host_arch" ]; then
-      printf 'skip  内嵌全景小程序 %s 与源码同一代 :: 它是给 %s 编的、这台是 %s —— 起不了，问不出能力表（如实跳过）\n' "$arch" "$arch" "$host_arch"
-      continue
-    fi
-    want_ops="$(panorama_src_ops)"
-    if [ -z "$want_ops" ]; then
-      bad "全景小程序的 op 表抠得出" "在 src/panorama-engine/main.rs 里抠不出 OPS 那几行 —— 写法变了，与字节的比对判不了，按红记"
-      continue
-    fi
-    caps="$(panorama_probe_caps "$f")"
-    if [ -n "$caps" ] && [ "$caps" = "$want_ops" ]; then
-      ok "内嵌全景小程序 $arch 与源码同一代（真起一趟 --probe）" "字节自报能力 [$caps] == 源码 op 表"
-    else
-      bad "内嵌全景小程序 $arch 与源码同一代（真起一趟 --probe）" \
-          "字节自报能力 [$caps]，源码 op 表 [$want_ops] —— 旧字节（或起不来）：远端那台会拿到一份不认新 op 的小程序"
-    fi
-  done
-
   f="$NATIVE_DIR/cc-monitor-native"
   if [ -f "$f" ]; then
     present=$((present + 1))
@@ -391,28 +312,6 @@ do_check() {
       fi
     else
       printf 'skip  本机内嵌后端起不起得来 :: 它是给 [%s] 编的、这台是 [%s] —— 不在这里起（错 triple 那一形由 build.rs 当场拦）\n' "$staged" "$host"
-    fi
-    # 本机原生全景小程序：铺了、而且是给这台编的 ⇒ 真起一趟 `--probe`，能力表 == 源码 op 表。
-    #   没铺：本机全景在非 Linux 上关着（Linux 本机用 musl 那两份）—— 这里只 skip，不在 --check-dev 里判红
-    #   （它是「看代码全景」的前提，不是「起得来本机后端」的前提）。
-    local pf="$NATIVE_DIR/cc-monitor-panorama" pstaged pcaps
-    if [ -f "$pf" ]; then
-      present=$((present + 1))
-      pstaged="$(tr -d '[:space:]' < "$NATIVE_DIR/cc-monitor-panorama.target" 2>/dev/null || true)"
-      if [ -n "$host" ] && [ "$pstaged" = "$host" ]; then
-        want_ops="$(panorama_src_ops)"
-        pcaps="$(panorama_probe_caps "$pf")"
-        if [ -n "$want_ops" ] && [ "$pcaps" = "$want_ops" ]; then
-          ok "本机内嵌全景小程序与源码同一代（真起一趟 --probe）" "字节自报能力 [$pcaps] == 源码 op 表"
-        else
-          bad "本机内嵌全景小程序与源码同一代（真起一趟 --probe）" \
-              "字节自报能力 [$pcaps]，源码 op 表 [$want_ops] —— 旧字节（或起不来）：本机全景会拿到一份不认新 op 的小程序"
-        fi
-      else
-        printf 'skip  本机内嵌全景小程序与源码同一代 :: 它是给 [%s] 编的、这台是 [%s] —— 不在这里起\n' "$pstaged" "$host"
-      fi
-    else
-      printf 'skip  本机内嵌全景小程序 :: 没铺（非 Linux 本机就没有代码全景；Linux 本机用 musl 那两份）\n'
     fi
   elif [ "$require_native" = "1" ]; then
     bad "开发构建起得来本机后端（本机那一份在盘上）" \

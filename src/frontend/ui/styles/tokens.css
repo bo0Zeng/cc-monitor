@@ -160,7 +160,6 @@
    * `no-duplicate-selectors` 会红，而它是对的：两个 `:root` 迟早分叉。 */
   --icon-settings: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M3 6h5.2a3 3 0 0 1 5.6 0H21v2h-7.2a3 3 0 0 1-5.6 0H3V6zm0 10h11.2a3 3 0 0 1 5.6 0H21v2h-1.2a3 3 0 0 1-5.6 0H3v-2z'/%3E%3C/svg%3E");
   --icon-history: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm0 2a8 8 0 1 1 0 16 8 8 0 0 1 0-16zm-1 3v6l5 3 .9-1.6L13 12V7h-2z'/%3E%3C/svg%3E");
-  --icon-panorama: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M6 4.5 13.6 8l-.5 1.9-7.6-3.5.5-1.9zM7.6 12.6l6-3.3 1 1.8-6 3.3-1-1.8z'/%3E%3Ccircle cx='5' cy='5.5' r='3'/%3E%3Ccircle cx='16' cy='9.5' r='3'/%3E%3Ccircle cx='7' cy='16.5' r='3'/%3E%3Ccircle cx='18' cy='19' r='3'/%3E%3Cpath d='M9.4 15.4l6.6 2.6-.7 1.9-6.6-2.6.7-1.9z'/%3E%3C/svg%3E");
   --icon-grid: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M3 3h8v8H3V3zm10 0h8v8h-8V3zM3 13h8v8H3v-8zm10 0h8v8h-8v-8z'/%3E%3C/svg%3E");
   --icon-folder: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M3 5h6.6l2 2H21a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z'/%3E%3C/svg%3E");
   --icon-keyboard: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M2 6h20a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1zm3 3v2h2V9H5zm4 0v2h2V9H9zm4 0v2h2V9h-2zm4 0v2h2V9h-2zM5 13v2h2v-2H5zm4 0v2h6v-2H9zm8 0v2h2v-2h-2z'/%3E%3C/svg%3E");
@@ -174,7 +173,7 @@
   --state-disabled-opacity: 0.45; /* 今天 0.45/0.5/0.55 散在各处硬写，新写的一律用它 */
 
   /* === 表单控件（族二：新增，今天完全没有）===
-     `.command-bar-input` 抓 `--font-size`、`.panorama-ann-input` 抓 `--bg-1`、
+     `.command-bar-input` 抓 `--font-size`、
      四处抓 `--input-bg` —— 它们都是在找这一族。
    *
    * 🔴 S24 裁定：`--bg-1` 那 6 处**全部落到 `--field-bg`**，不是 `--bg`。
@@ -203,7 +202,7 @@
   --z-sticky: 1; /* 表头、粘性行 */
   --z-chrome: 2; /* 右上角 trigger、卡内按钮 */
   --z-float: 3; /* 贴在内容上的浮层：tooltip、popover、拖拽把手 */
-  --z-view: 100; /* 全屏视图：history / panorama / grid / cc-bus / settings */
+  --z-view: 100; /* 全屏视图：history / grid / cc-bus / settings */
   --z-overlay: 200; /* 视图之上的 overlay：编辑器、预览、选择器、SFTP */
   --z-menu: 300; /* 右键菜单、下拉选择器 */
   --z-modal: 400; /* 模态 + 背板 + 命令面板 */

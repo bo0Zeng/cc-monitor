@@ -1,6 +1,6 @@
-//! # 要求住址：`INVARIANTS §42` → `src/doc/IPC-PROTOCOL.md` 的 `panorama` 节（按序找，找不到说清查过哪儿）
+//! # 要求住址：`INVARIANTS §42` → `src/doc/IPC-PROTOCOL.md` 的 `bus-list` 节（按序找，找不到说清查过哪儿）
 //!
-//! 核原文：`panorama` 节错误码 `not_installed` 逐字「整句说清查过哪儿」。经本模块兑现 —— 本族判候选按序先中、同名目录不算可执行、
+//! 核原文：`bus-list` 节错误码 `not_installed` 逐字「找不到 `cc-list`，消息里带查过哪些位置」。经本模块兑现 —— 本族判候选按序先中、同名目录不算可执行、
 //! 找不到逐条列出查过的位置；「`search_path: false` 真不看 `PATH`」那一条没有逐字原文。〔JA1 点址 2026-09-24〕
 
 use super::*;
@@ -81,11 +81,11 @@ fn opting_out_of_path_really_skips_it() {
 #[test]
 fn on_windows_only_an_exe_counts_as_launchable() {
     use std::path::Path;
-    for yes in ["C:/x/cc-monitor-panorama.exe", "a.EXE", "b.Exe"] {
+    for yes in ["C:/x/tool.exe", "a.EXE", "b.Exe"] {
         assert!(windows_launchable_name(Path::new(yes)), "{yes}");
     }
     for no in [
-        "C:/x/cc-monitor-panorama",
+        "C:/x/tool",
         "run.bat",
         "run.cmd",
         "tool.com",
