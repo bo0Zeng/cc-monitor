@@ -16,7 +16,6 @@
 import { isRemoteOrigin, LOCAL_ORIGIN } from "./ipc/origin";
 import { emit } from "@tauri-apps/api/event";
 import { commands } from "./ipc/commands";
-import { loadRunPage } from "./record-reads";
 import { LS_KEYS, safeGet, safeSet } from "./local-storage";
 import { StartupActive } from "./startup-active";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -30,7 +29,6 @@ import { SETTINGS_APPLIED_EVENT } from "./settings";
 import { RESYNC_DONE_EVENT } from "./settings/events";
 import { listen } from "@tauri-apps/api/event";
 import { HistoryView } from "./views/history";
-import { SessionViewer } from "./views/session-viewer"; // F77：点 agent 看记录复用只读会话查看器
 import { PanoramaView } from "./views/panorama";
 import { CcBusView } from "./views/cc-bus-view";
 import { GridMonitorView } from "./views/grid-monitor";
@@ -183,9 +181,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     agentsPanel,
   );
   // 〔TAP · V124〕活卡的画法（带 `.module.css`）只由主窗口入口装进来 —— 理由见 `live-card-view.ts` 头注。
-  tabs.setLivePainter(
-    livePainter({ timeline: (sid, run) => tabs.runTimeline(sid, run), closed: (sid, run) => tabs.closeRunTimeline(sid, run) }),
-  );
+  tabs.setLivePainter(livePainter);
   // P7a-3（#61）：启动时拉一次标签页集合（住 `config.json`，不是 localStorage —— 见
   // `tab-collections.ts` 头注：集合名是用户手写的真相，必须活过一次清缓存）。
   void tabs.loadCollections();
@@ -298,54 +294,6 @@ window.addEventListener("DOMContentLoaded", async () => {
     usageHud.setActive(a.model, a.promptTokens);
     usageHud.setUnavailable(a.unavailable);
   });
-
-  // F77（#53）：点 agents 面板某行 → 问那台后端那个子 agent 的记录（`history-subagent`）→ SessionViewer 只读展示该
-  // agent 的记录。★ P7c-1（08-12）起**远端会话也支持**（同 subagent 卡片：origin 传下去）。
-  let agentViewer: SessionViewer | null = null;
-  let agentViewerMount: HTMLElement | null = null;
-  const closeAgentViewer = (): void => {
-    if (agentViewer) {
-      agentViewer.dispose();
-      agentViewer = null;
-    }
-    if (agentViewerMount) {
-      agentViewerMount.remove();
-      agentViewerMount = null;
-    }
-  };
-  agentsPanel.onAgentOpen = (entry) => {
-    const actx = tabs.getActiveRunContext();
-    if (!actx) return;
-    void (async () => {
-      try {
-        // 按运行读（通用命令 `history-run`）：派出它的那次工具调用 id ⇒ 那个子运行的记录在哪；查看器整份打开那一份。
-        const result = await loadRunPage(actx.origin, actx.parentPath, { tool: entry.id });
-        closeAgentViewer(); // 关掉上一个（单例语义）
-        agentViewerMount = document.createElement("div");
-        agentViewerMount.className = "agent-records-viewer-mount"; // fixed 全屏 + 高 z-index
-        agentViewerMount.tabIndex = -1; // 可聚焦，让 Esc keydown 有落点（子元素 keydown 也冒泡到这）
-        // Esc 关闭（SessionViewer 无自带 Esc；挂载壳上接一个，同返回按钮）。
-        agentViewerMount.addEventListener("keydown", (e) => {
-          if (e.key === "Escape") closeAgentViewer();
-        });
-        agentViewer = new SessionViewer(() => closeAgentViewer());
-        agentViewerMount.appendChild(agentViewer.element);
-        document.body.appendChild(agentViewerMount);
-        // suppressBranch：子 agent 记录不是可分支会话，关掉「建分支」按钮。
-        void agentViewer.load({
-          jsonlPath: result.path,
-          displayTitle: entry.label,
-          // 〔C4a〕子 agent 的文件在父会话那台机器上。上一版这里**没传** origin，
-          // 而查看器把「没说」当本机 ⇒ 远端子 agent 的记录被拿去本机读（读不到）。
-          origin: actx.origin,
-          suppressBranch: true,
-        });
-        agentViewerMount.focus?.(); // 让 Esc keydown 能落到挂载壳
-      } catch (e) {
-        showActionFailureToast(copyText("main.run.loadFailed"), String(e));
-      }
-    })();
-  };
 
   // v2.4 issue #2：拉一次 behavior toggle 初值喂给 TabManager。
   // 设置面板改了之后会再调 applyBehavior 同步。

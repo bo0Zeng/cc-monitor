@@ -5,7 +5,7 @@
  *
  * | # | 这件事 | 谁在调（生产） | 拆到 |
  * |---|---|---|---|
- * | ① | **会话状态账**：tab 集合 · 顺序 · 当前 tab · 早于 tab 到达的信号暂存（已结束/可重连/红绿灯）· 账号快照 · 任务快照 · 「变了」那一份订阅 | `main.ts` / `entry-viewer.ts` 把 `events.ts` 的事件喂进来（`onLine` · `archiveTab` · `reviveTab` · `markTmuxIdle` · `updateActivity` · `updateTasks` · `createSkeletonTab` · `setSessionAccounts`）；`main.ts` 读投影（`snapshotSessions` · `peekSession` · `hasTab` · `activeRepoInfo` · `touchedFilesFor` · `getActiveRunContext` · `activeSessionId`） | `tab-store.ts`（store）· `tab-model.ts`（`Tab` 形状与标题）· `tab-session-facts.ts`（〔STC〕把后端给的会话事实落到 tab 上；数据源 `views/facts-source.ts`）· `tab-session-state.ts`（〔U4〕会话状态的两个轴：活性 × 可恢复性，转移与谓词） |
+ * | ① | **会话状态账**：tab 集合 · 顺序 · 当前 tab · 早于 tab 到达的信号暂存（已结束/可重连/红绿灯）· 账号快照 · 任务快照 · 「变了」那一份订阅 | `main.ts` / `entry-viewer.ts` 把 `events.ts` 的事件喂进来（`onLine` · `archiveTab` · `reviveTab` · `markTmuxIdle` · `updateActivity` · `updateTasks` · `createSkeletonTab` · `setSessionAccounts`）；`main.ts` 读投影（`snapshotSessions` · `peekSession` · `hasTab` · `activeRepoInfo` · `touchedFilesFor` · `activeSessionId`） | `tab-store.ts`（store）· `tab-model.ts`（`Tab` 形状与标题）· `tab-session-facts.ts`（〔STC〕把后端给的会话事实落到 tab 上；数据源 `views/facts-source.ts`）· `tab-session-state.ts`（〔U4〕会话状态的两个轴：活性 × 可恢复性，转移与谓词） |
  * | ② | **路由**：切到哪个 tab、谁有权切（手动 5s 保护 · 自动跟随）、记住上次的 tab | `main.ts` 快捷键 / 命令面板 / 启动选 active（`switchTo` · `cycleActive` · `jumpToIndex` · `applyBehavior` · `persistLastActive` · `onManualSwitch`）；`onLine` 里真用户输入（`userActive`） | `tab-router.ts` |
  * | ③ | **实时流视图**：每个 tab 的流 DOM、按 seq 门控建卡、尾部窗口 / 骨架 / 上翻补批 / 哨兵 / 大纲、重放批 | `events.ts` → `onBatchStart` · `onLine` · `onBatchEnd`；`main.ts` DEV 探针 `debugSnapshot` | `tab-stream-view.ts` |
  * | ④ | **tab 栏视图**：按钮 · 徽章 · 分组 · 拖动排序与成组 · 固定 · 顺序落盘 | 用户手势；`main.ts` 启动 `loadCollections` · `loadPinned` · `loadOrder` | `tab-bar-view.ts` · `tab-bar-drag.ts` · `tab-drop.ts`（纯落点算术）· `tab-bar-prefs.ts`（集合 / 固定 / 顺序三份落盘） |
@@ -16,6 +16,7 @@
  */
 import { isCompactRecord, renderMessage, type RenderContext } from "./cards";
 import { markRunCard } from "./cards/subagent";
+import { runLabel } from "./runs";
 import { RunTimeline } from "./run-timeline";
 import type { SessionRunsPayload } from "./generated/SessionRunsPayload";
 import { runForkFlow } from "./fork-flow"; // G6：分叉完把新会话起起来（E78 起连反馈也在里面）
@@ -61,7 +62,7 @@ import { TabBarPrefs } from "./tab-bar-prefs";
 import { TabBarDrag } from "./tab-bar-drag";
 import { TabBarView } from "./tab-bar-view";
 import { TabRouter } from "./tab-router";
-import { abortRunningAgents, applyFacts } from "./tab-session-facts";
+import { applyFacts } from "./tab-session-facts";
 import { FactsSource } from "./views/facts-source";
 import type { SessionFacts } from "./session-reads";
 import {
@@ -117,14 +118,22 @@ export class TabManager {
     onTabsChanged?: (summary: TabsSummary) => void,
     /** issue #11: 全局 TasksPanel，切 Tab / 收事件时由 TabManager 喂数据 */
     private tasksPanel?: TasksPanel,
-    /** issue #23: 全局 AgentsPanel（subagent 列表 + 各自状态灯），喂数方式同 tasksPanel */
+    /** issue #23: 全局 AgentsPanel（子运行列表：运行表的成品），喂数方式同 tasksPanel */
     private agentsPanel?: AgentsPanel,
   ) {
-    // 子运行的流有动静 ⇒ 它开着的时间线尾巴上那一截活卡重画。
+    // 子运行的流有动静 ⇒ 它开着的时间线尾巴上那一截活卡重画；面板那一行的「最近：…」跟着变。
     this.live.onRunLive = (sid, run) => {
       const t = this.runTimelines.get(`${sid}\u0000${run}`);
       if (t) this.live.paintCards(t.live, sid, run);
+      if (sid === this.store.activeId) this.agentsPanel?.refresh();
     };
+    if (agentsPanel) {
+      agentsPanel.host = {
+        timeline: (sid, run) => this.runTimeline(sid, run),
+        closed: (sid, run) => this.closeRunTimeline(sid, run),
+        liveOf: (sid, run) => this.live.core.liveBlockOf(sid, run),
+      };
+    }
     if (onTabsChanged) this.store.subscribe(onTabsChanged);
     // 〔GAP1 · `设计/01 §1.5`〕「账号快照变了」改订阅 store：宿主整份换快照，这里同一拍应用（原先宿主直调 `setSessionAccounts`）。
     appStore.sessionAccounts.subscribe((snap) => {
@@ -466,10 +475,7 @@ export class TabManager {
   snapshotSessions(): GridSessionSnapshot[] {
     const out: GridSessionSnapshot[] = [];
     for (const tab of this.store.tabs.values()) {
-      let running = 0;
-      for (const a of tab.agents.values()) {
-        if (a.status === "running") running += 1;
-      }
+      const runs = this.live.board.of(tab.sessionId);
       out.push({
         sessionId: tab.sessionId,
         title: tab.title,
@@ -478,8 +484,8 @@ export class TabManager {
         state: tab.state, // 〔U4〕两轴原样交出去：cell 与 tab-bar 读同一份、经同一组谓词
         activityStatus: tab.activity?.status ?? null,
         waitingFor: tab.activity?.waitingFor ?? null,
-        runningAgents: running,
-        totalAgents: tab.agents.size,
+        runningAgents: runs.filter((r) => r.state === "running").length,
+        totalAgents: runs.length,
         contextPct:
           tab.latestPromptTokens != null
             ? contextPercent(tab.latestModel, tab.latestPromptTokens)
@@ -521,8 +527,9 @@ export class TabManager {
   peekSession(sessionId: string): SessionPeek | null {
     const tab = this.store.tabs.get(sessionId);
     if (!tab) return null;
-    const agents = [...tab.agents.values()]
-      .map((a) => ({ label: a.label, status: a.status }))
+    const agents = this.live.board
+      .of(sessionId)
+      .map((r) => ({ label: runLabel(r), status: r.state }))
       .sort((x, y) => (x.status === "running" ? 0 : 1) - (y.status === "running" ? 0 : 1));
     return {
       model: tab.latestModel,
@@ -692,9 +699,7 @@ export class TabManager {
       inputsEl,
       // issue #23：红绿灯信号若先于建 Tab 到达，从暂存取（否则 null=未知→绿）
       activity: this.store.pendingActivity.get(sessionId) ?? null,
-      // 〔STC〕下面四样只经 `facts` 落下来（后端 `history-facts` 出成品，`onSessionFacts`）。
-      agents: new Map(),
-      agentsAborted: new Set(),
+      // 〔STC〕下面三样只经 `facts` 落下来（后端 `history-facts` 出成品，`onSessionFacts`）。
       touchedFiles: new Set(), // F70：会话改动集
       latestPromptTokens: null, // F88b：HUD context% 数据
       latestModel: null,
@@ -705,7 +710,7 @@ export class TabManager {
           return t && t.parentPath ? { origin: t.origin, jsonlPath: t.parentPath } : null;
         },
         {
-          facts: (f, first) => this.onSessionFacts(sessionId, f, first),
+          facts: (f) => this.onSessionFacts(sessionId, f),
           availability: () => this.onFactsAvailability(sessionId),
         },
       ),
@@ -813,7 +818,6 @@ export class TabManager {
     if (!this.applyState(tab, "ended")) return;
     // issue #23：会话结束 → 灯灭（CSS 上 `.ended` 本就隐藏 .live-dot，这里保持状态干净）
     tab.activity = null;
-    this.sweepRunningAgents(tab); // 会话死了，running agent 必然中止
     // P5.2 B 重构后无 pendingToolGroup —— archive 不需要打断 tool-group 累积
     // （tool-group 合并改后处理，看 timeline 邻居；archive 后无新 record 入 timeline）。
     this.refreshTabBar();
@@ -871,12 +875,12 @@ export class TabManager {
     this.live.onTap(p);
   }
 
-  /** 每个 tab 里开着的子运行时间线（主 tab 那一行点开的）：`sid\0run` ⇒ 它。 */
+  /** agent 面板里点开着的子运行时间线：`sid\0run` ⇒ 它。 */
   private readonly runTimelines = new Map<string, RunTimeline>();
 
   /**
-   * 一个会话的运行表到了（会话流里的 `runs` 格）：主 tab 上的行跟着变；派出它们的那几张工具卡记上是哪个子运行、什么状态；
-   * 开着的时间线续读一次。
+   * 一个会话的运行表到了（会话流里的 `runs` 格）：派出它们的那几张工具卡记上是哪个子运行、什么状态；当前 tab 的就交 agent 面板；
+   * 开着的时间线续读一次。主 tab 的消息流里不画子运行。
    */
   onSessionRuns(p: SessionRunsPayload): void {
     const tab = this.store.tabs.get(p.session_id);
@@ -887,10 +891,11 @@ export class TabManager {
       const card = tab.runCards.get(r.tool);
       if (card) markRunCard(card, r.run, r.state);
     }
+    if (tab.sessionId === this.store.activeId) this.agentsPanel?.setSession(tab.sessionId, p.runs);
     for (const [k, t] of this.runTimelines) if (k.startsWith(`${tab.sessionId}\u0000`)) void t.refresh();
   }
 
-  /** 主 tab 上某一行点开：那个子运行的时间线（第一次建、之后留着续读）。 */
+  /** agent 面板里某一行点开：那个子运行的时间线（第一次建、之后留着续读）。 */
   runTimeline(sid: string, run: string): HTMLElement {
     const k = `${sid}\u0000${run}`;
     let t = this.runTimelines.get(k);
@@ -918,7 +923,7 @@ export class TabManager {
     return t.element;
   }
 
-  /** 那一行收起了 / 那个子运行收场了：它的时间线不再留。 */
+  /** 面板那一行收起了：它的时间线不再留。 */
   closeRunTimeline(sid: string, run: string): void {
     this.runTimelines.delete(`${sid}\u0000${run}`);
   }
@@ -1079,35 +1084,22 @@ export class TabManager {
       return;
     }
     tab.activity = act;
-    // issue #23（第二增量）：turn 结束（idle/shell）→ 没等到 tool_result 的 agent
-    // 必然不会再回来（ESC 打断/异常），标 aborted。waiting 不清——其他 agent 可能
-    // 还在并行跑（waitingFor "worker request" 正是 agent 在要权限）。
-    if (act && (act.status === "idle" || act.status === "shell")) {
-      this.sweepRunningAgents(tab);
-    }
     this.refreshTabBar();
   }
 
   /**
    * 〔STC · `设计/90 §4` 阶段 C〕后端的一份会话事实到了（`views/facts-source.ts`）⇒ 落到 tab 上（`applyFacts`，纯投影），
-   * 只刷变了的那几块：分叉 ⇒ 标题 `↳`（issue #63①）· agent ⇒ 面板（issue #23）· usage ⇒ HUD（F88b，只 active）。
+   * 只刷变了的那几块：分叉 ⇒ 标题 `↳`（issue #63①）· usage ⇒ HUD（F88b，只 active）。
    * 改动文件集没有推的去处（全景高亮 / 右键菜单 / 监控板 peek 都是现取）。
-   *
-   * **第一份到的时候会话已经不忙** ⇒ 当场补判一次中止：「落到不忙」那一刻（`updateActivity` 的 idle / shell、
-   * `archiveTab`）多半发生在事实到之前（F5 之后红绿灯快照先到），那时 `agents` 还是空的、判不到它们。
    */
-  private onSessionFacts(sid: string, f: SessionFacts, first: boolean): void {
+  private onSessionFacts(sid: string, f: SessionFacts): void {
     const tab = this.store.tabs.get(sid);
     if (!tab) return;
     const ch = applyFacts(tab, f);
-    const notBusy =
-      isResumeOnly(tab.state) || tab.activity?.status === "idle" || tab.activity?.status === "shell";
-    const aborted = first && notBusy && abortRunningAgents(tab);
     if (ch.forkedFrom) {
       tab.title = this.computeTitle(tab);
       this.refreshTabBar();
     }
-    if (ch.agents || aborted) this.agentsChanged(tab);
     if (ch.usage && sid === this.store.activeId) this.publishActive();
   }
 
@@ -1116,17 +1108,6 @@ export class TabManager {
     if (sid === this.store.activeId) this.publishActive(); // 原因已落在 tab.facts 上
   }
 
-  /** issue #23：会话不再 busy ⇒ 仍 running 的 agent 标 aborted（`tab-session-facts.ts::abortRunningAgents`）。 */
-  private sweepRunningAgents(tab: Tab): void {
-    if (abortRunningAgents(tab)) this.agentsChanged(tab);
-  }
-
-  /** agents 变化 → 若是 active Tab 同步给全局面板 */
-  private agentsChanged(tab: Tab): void {
-    if (this.store.activeId === tab.sessionId) {
-      this.agentsPanel?.setSession(tab.sessionId, [...tab.agents.values()]);
-    }
-  }
 
   /**
    * 关闭 Tab：销毁 stream DOM、从 Map 中移除、通知后端 forget 历史、必要时切到相邻 Tab。
@@ -1304,14 +1285,6 @@ export class TabManager {
     void this.openTabCwd(this.store.activeId);
   }
 
-  /** F77：活跃 tab 的子运行读取上下文（parentPath + origin）——main.ts 点 agent 行时按它读那个子运行（`history-run`）。
-   *  无活跃 tab / 无 parentPath → null。 */
-  getActiveRunContext(): { parentPath: string; origin: Origin } | null {
-    const tab = this.store.activeId !== null ? this.store.tabs.get(this.store.activeId) : undefined;
-    if (!tab || !tab.parentPath) return null;
-    return { parentPath: tab.parentPath, origin: tab.origin };
-  }
-
   /** issue #10 快捷键 Ctrl+Shift+N：把当前活跃 Tab 在独立只读窗口打开 */
   openActiveInNewWindow(): void {
     if (this.store.activeId) void this.openInNewWindow(this.store.activeId);
@@ -1369,10 +1342,7 @@ export class TabManager {
       // issue #11: 切换 task panel 数据源到新 active Tab 的 sid
       this.tasksPanel?.setSession(sessionId, this.store.tasksBySid.get(sessionId) ?? []);
       // issue #23: agents 面板同步切到新 active Tab
-      this.agentsPanel?.setSession(
-        sessionId,
-        [...(this.store.tabs.get(sessionId)?.agents.values() ?? [])],
-      );
+      this.agentsPanel?.setSession(sessionId, this.live.board.of(sessionId));
       // F88b：HUD context% chip 切到新 active 会话的最新 usage（无带 usage 记录 → null → 隐藏）
       this.publishActive(); // 〔GAP1〕当前 tab 那一格（usage · 〔STC〕要不到的原因）
     });

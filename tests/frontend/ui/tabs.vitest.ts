@@ -2635,41 +2635,7 @@ describe("F79 杀死远端 tmux 会话（二次确认 + kill_remote_tmux）", ()
 // 〔STC〕「F70 会话改动集聚合」那一组搬进文件末尾「〔STC〕会话事实」那组：改动文件集由后端出成品（口径 · 去重 · 近因序
 //   住 `tests/backend/observe/facts_query_tests.rs`），前端这边只剩「成品 ⇒ `touchedFilesFor` 的门控与透传」。
 
-describe("F77 getActiveRunContext", () => {
-  it("活跃本地 tab → { parentPath(=sourcePath), origin: LOCAL_ORIGIN }", () => {
-    const tm = makeTM();
-    tm.ensureTab("s1", "/home/u", "/p/s1.jsonl", 0, LOCAL_ORIGIN);
-    tm.switchTo("s1");
-    expect(tm.getActiveRunContext()).toEqual({
-      parentPath: "/p/s1.jsonl",
-      origin: LOCAL_ORIGIN,
-    });
-  });
-  it("活跃远端 tab → origin 非空（调用方据此提示不支持）", () => {
-    const tm = makeTM();
-    tm.ensureTab("s2", "/home", "/p/s2.jsonl", 0, "pi");
-    tm.switchTo("s2");
-    expect(tm.getActiveRunContext()?.origin).toBe("pi");
-  });
-  it("无活跃 tab → null", () => {
-    const tm = makeTM();
-    expect(tm.getActiveRunContext()).toBeNull();
-  });
-  it("活跃 tab 无 parentPath（骨架未回填）→ null", () => {
-    const tm = makeTM();
-    tm.createSkeletonTab("sk", "/root/proj", LOCAL_ORIGIN); // parentPath 空
-    tm.switchTo("sk");
-    expect(tm.getActiveRunContext()).toBeNull();
-  });
-});
-
 describe("F91b TabManager.peekSession（监控板内容 peek 纯读派生）", () => {
-  const agent = (label: string, status: "running" | "done" | "aborted") => ({
-    id: `id-${label}`,
-    label,
-    agentType: null,
-    status,
-  });
 
   it("unknown sid → null", () => {
     const tm = makeTM();
@@ -2682,19 +2648,24 @@ describe("F91b TabManager.peekSession（监控板内容 peek 纯读派生）", (
     tab.latestModel = "claude-opus-4-8";
     tab.touchedFiles.add("/proj/a.ts");
     tab.touchedFiles.add("/proj/b.ts");
-    // 插入序：done, running, aborted, running —— 期望 running 提前、组内保插入序
-    tab.agents.set("1", agent("done1", "done"));
-    tab.agents.set("2", agent("run1", "running"));
-    tab.agents.set("3", agent("abort1", "aborted"));
-    tab.agents.set("4", agent("run2", "running"));
+    // 运行表（后端的成品）序：done, running, stopped, running —— 期望 running 提前、组内保表序
+    tm.onSessionRuns({
+      session_id: "s1",
+      runs: [
+        { run: "1", label: "done1", state: "done" },
+        { run: "2", label: "run1", state: "running" },
+        { run: "3", label: "stop1", state: "stopped" },
+        { run: "4", label: "run2", state: "running" },
+      ],
+    });
 
     const p = tm.peekSession("s1");
     expect(p).not.toBeNull();
     expect(p!.model).toBe("claude-opus-4-8");
     expect(p!.recentFiles).toEqual(["/proj/a.ts", "/proj/b.ts"]);
     // running 全部提前且组内保序；非 running 组内也保插入序
-    expect(p!.agents.map((a) => a.label)).toEqual(["run1", "run2", "done1", "abort1"]);
-    expect(p!.agents.map((a) => a.status)).toEqual(["running", "running", "done", "aborted"]);
+    expect(p!.agents.map((a) => a.label)).toEqual(["run1", "run2", "done1", "stop1"]);
+    expect(p!.agents.map((a) => a.status)).toEqual(["running", "running", "done", "stopped"]);
   });
 
   it("无 usage / 无 agent / 无改文件 → 字段空但不报错", () => {
@@ -2705,7 +2676,7 @@ describe("F91b TabManager.peekSession（监控板内容 peek 纯读派生）", (
   });
 
   // F91b-fix(batch18)：touchedFiles 近因序（peek `recentFiles` 尾部 = 最近改的）。〔STC〕近因序今天由后端排
-  //   （`facts_query_tests.rs::the_four_facts_follow_the_moved_rules`），前端只保序透传 —— 那一条在文件末尾「〔STC〕会话事实」那组。
+  //   （`facts_query_tests.rs::the_three_facts_follow_the_moved_rules`），前端只保序透传 —— 那一条在文件末尾「〔STC〕会话事实」那组。
 });
 
 describe("A5 compact waiter（awaitCompactFor + onLine 检测）", () => {
@@ -5744,24 +5715,18 @@ describe.each([
 //  〔STC · `设计/90 §4` 阶段 C · `设计/10 §2.2`〕会话事实：**后端给了什么 ⇒ tab 上是什么**
 // ════════════════════════════════════════════════════════════════════════════
 //
-// 分叉血缘 · agent 列表 · 改动文件集 · 最新 usage 由后端出成品（帧命令 `history-facts`，`session-reads.ts` 第五问）。
-// 口径（首条锁定 · 近因序 · 配对 · 上界 · 取文件序最后一条）全在后端判据（`tests/backend/observe/facts_query_tests.rs`）；
-// 这一组只钉前端那一侧：成品原样落到 tab 上、原样当续传令牌交回去、只刷变了的那几块、中止是事件、要不到就出声。
+// 分叉血缘 · 改动文件集 · 最新 usage 由后端出成品（帧命令 `history-facts`，`session-reads.ts` 第五问）。
+// 口径（首条锁定 · 近因序 · 上界 · 取文件序最后一条）全在后端判据（`tests/backend/observe/facts_query_tests.rs`）；
+// 这一组只钉前端那一侧：成品原样落到 tab 上、原样当续传令牌交回去、只刷变了的那几块、要不到就出声。
+// 子 agent 的列表与状态不在会话事实里（运行表，`tests/frontend/ui/runs.vitest.ts`）。
 // 夹具只造结构（sid / 路径 / 占位 id），不采会话正文。
 describe("〔STC〕会话事实：后端给了什么 ⇒ tab 上是什么", () => {
   const facts = (p: Partial<SessionFacts> = {}): SessionFacts => ({
     end: 100,
     forkedFrom: null,
     touchedFiles: [],
-    agents: [],
     usage: null,
     ...p,
-  });
-  const agent = (id: string, status: "running" | "done", label = id) => ({
-    id,
-    label,
-    agentType: null,
-    status,
   });
   const line = (sid: string, seq: number, origin: string | null = null) =>
     ({
@@ -5830,8 +5795,8 @@ describe("〔STC〕会话事实：后端给了什么 ⇒ tab 上是什么", () =
 
   it("续传：第二问把上一份成品**原样**当 prior 交回去；成品整份替换（后端说什么就是什么）", async () => {
     let n = 0;
-    const first = facts({ end: 10, forkedFrom: "p1", touchedFiles: ["/a"], agents: [agent("g1", "running")] });
-    const second = facts({ end: 20, forkedFrom: "p1", touchedFiles: ["/b", "/a"], agents: [agent("g1", "done")] });
+    const first = facts({ end: 10, forkedFrom: "p1", touchedFiles: ["/a"] });
+    const second = facts({ end: 20, forkedFrom: "p1", touchedFiles: ["/b", "/a"] });
     answerFacts(() => (n++ === 0 ? first : second));
     tm.onLine(line("s", 0));
     await settle();
@@ -5840,7 +5805,6 @@ describe("〔STC〕会话事实：后端给了什么 ⇒ tab 上是什么", () =
     expect(asked.map((a) => a.prior)).toEqual([null, first]);
     const tab = home(tm).store.tabs.get("s")!;
     expect([...tab.touchedFiles]).toEqual(["/b", "/a"]);
-    expect([...tab.agents.values()].map((a) => a.status)).toEqual(["done"]);
   });
 
   it("带着 prior 要不到（续点越过文件尾 = 截断 / 重写）⇒ 不带 prior 从 0 重要一趟", async () => {
@@ -5918,36 +5882,6 @@ describe("〔STC〕会话事实：后端给了什么 ⇒ tab 上是什么", () =
     tm.switchTo("v2");
     await vi.waitFor(() => expect(seen.length).toBe(1));
     expect(seen).toEqual([{ sid: "v2", model: null, promptTokens: null, unavailable: null }]);
-  });
-
-  it("#23 agent：成品 ⇒ 面板；会话落到 idle ⇒ running 标中止，之后的成品里仍是 running 也照样中止", async () => {
-    const panel = { setSession: vi.fn() };
-    (tm as unknown as { agentsPanel: unknown }).agentsPanel = panel;
-    answerFacts(() => facts({ agents: [agent("g1", "running"), agent("g2", "done")] }));
-    tm.onLine(line("a", 0));
-    await settle();
-    expect(panel.setSession).toHaveBeenLastCalledWith("a", [
-      expect.objectContaining({ id: "g1", status: "running" }),
-      expect.objectContaining({ id: "g2", status: "done" }),
-    ]);
-    tm.updateActivity("a", "idle", null);
-    expect([...home(tm).store.tabs.get("a")!.agents.values()].map((x) => x.status)).toEqual(["aborted", "done"]);
-    answerFacts(() => facts({ end: 200, agents: [agent("g1", "running"), agent("g2", "done"), agent("g3", "running")] }));
-    tm.onLine(line("a", 1));
-    await settle();
-    expect([...home(tm).store.tabs.get("a")!.agents.values()].map((x) => `${x.id}:${x.status}`)).toEqual([
-      "g1:aborted",
-      "g2:done",
-      "g3:running", // 落到 idle 之后才起的那个不受影响
-    ]);
-  });
-
-  it("#23 agent：**第一份**成品到的时候会话已经不忙（F5 之后红绿灯先到）⇒ 当场补判中止", async () => {
-    tm.updateActivity("late", "idle", null); // tab 还没建 ⇒ 暂存，建 tab 时落实
-    answerFacts(() => facts({ agents: [agent("g1", "running")] }));
-    tm.onLine(line("late", 0));
-    await settle();
-    expect([...home(tm).store.tabs.get("late")!.agents.values()].map((x) => x.status)).toEqual(["aborted"]);
   });
 
   it("要不到（老后端不认这条命令）⇒ active 的 HUD 出声（原因非空）、此后不再问；可用 ⇒ 说 null", async () => {

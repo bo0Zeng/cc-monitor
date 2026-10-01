@@ -104,17 +104,6 @@ export interface SessionIndexResult {
   failure?: OutlineFailure;
 }
 
-/**
- * 〔STC〕一次 agent 调用（后端 `facts_query::AgentFact`，键名一字不差）。`status` 只有 jsonl 看得出来的两态；
- * 「中止」是界面对「会话落到不忙」这个事件的反应，不在成品里（`tab-session-facts.ts`）。
- */
-export interface AgentFact {
-  id: string;
-  label: string;
-  agentType: string | null;
-  status: "running" | "done";
-}
-
 /** 〔STC〕最新 usage（后端 `facts_query::UsageFact`）：context 占用的原料，上限与百分比是排版（`views/context-limit.ts`）。 */
 export interface UsageFact {
   promptTokens: number;
@@ -132,8 +121,6 @@ export interface SessionFacts {
   forkedFrom: string | null;
   /** 写类工具碰过的文件，近因序（最近碰的在末尾）。 */
   touchedFiles: string[];
-  /** 插入序。 */
-  agents: AgentFact[];
   usage: UsageFact | null;
 }
 
@@ -218,27 +205,9 @@ export function decodeFacts(v: unknown): SessionFacts {
   const bad = (): never => {
     throw new ShapeError("history-facts", copyText("sessionReads.missing.facts"));
   };
-  if (!isObj(v) || !exactKeys(v, ["end", "forkedFrom", "touchedFiles", "agents", "usage"])) return bad();
+  if (!isObj(v) || !exactKeys(v, ["end", "forkedFrom", "touchedFiles", "usage"])) return bad();
   if (!isNum(v.end) || !(v.forkedFrom === null || isStr(v.forkedFrom))) return bad();
   if (!Array.isArray(v.touchedFiles) || !v.touchedFiles.every(isStr)) return bad();
-  if (!Array.isArray(v.agents)) return bad();
-  const agents = v.agents.map((a): AgentFact => {
-    if (
-      !isObj(a) ||
-      !exactKeys(a, ["id", "label", "agentType", "status"]) ||
-      ![a.id, a.label].every(isStr) ||
-      !(a.agentType === null || isStr(a.agentType)) ||
-      (a.status !== "running" && a.status !== "done")
-    ) {
-      return bad();
-    }
-    return {
-      id: a.id as string,
-      label: a.label as string,
-      agentType: a.agentType as string | null,
-      status: a.status,
-    };
-  });
   let usage: UsageFact | null = null;
   if (v.usage !== null) {
     const u = v.usage;
@@ -247,7 +216,7 @@ export function decodeFacts(v: unknown): SessionFacts {
     }
     usage = { promptTokens: u.promptTokens, model: u.model as string | null };
   }
-  return { end: v.end, forkedFrom: v.forkedFrom as string | null, touchedFiles: v.touchedFiles as string[], agents, usage };
+  return { end: v.end, forkedFrom: v.forkedFrom as string | null, touchedFiles: v.touchedFiles as string[], usage };
 }
 
 // ─── 失败怎么说（唯一住址）───

@@ -195,24 +195,17 @@ describe("〔STC〕第五问：会话事实", () => {
       end: 729,
       forkedFrom: "src-0",
       touchedFiles: ["/w/a.ts"],
-      agents: [
-        { id: "tu-2", label: "scan", agentType: "Explore", status: "done" },
-        { id: "tu-3", label: "p1", agentType: null, status: "running" },
-      ],
       usage: { promptTokens: 6, model: "m-g" },
     });
   });
 
-  it("★ 形状不对 ⇒ 抛：缺一格 / 多一格 / 类型不对 / agent 的态不在两态里（成品要原样当令牌交回去，不能收一份后端不认的）", () => {
+  it("★ 形状不对 ⇒ 抛：缺一格 / 多一格 / 类型不对（成品要原样当令牌交回去，不能收一份后端不认的）", () => {
     const good = golden["history-facts"] as Record<string, unknown>;
     const without = (k: string) => Object.fromEntries(Object.entries(good).filter(([x]) => x !== k));
     expect(() => decodeFacts(without("usage"))).toThrow(/读不懂/);
     expect(() => decodeFacts({ ...good, extra: 1 })).toThrow(/读不懂/);
     expect(() => decodeFacts({ ...good, end: "729" })).toThrow(/读不懂/);
     expect(() => decodeFacts({ ...good, touchedFiles: [1] })).toThrow(/读不懂/);
-    const agents = good.agents as Record<string, unknown>[];
-    expect(() => decodeFacts({ ...good, agents: [{ ...agents[0], status: "aborted" }] })).toThrow(/读不懂/);
-    expect(() => decodeFacts({ ...good, agents: [{ ...agents[0], more: true }] })).toThrow(/读不懂/);
     expect(() => decodeFacts({ ...good, usage: { promptTokens: 1 } })).toThrow(/读不懂/);
     expect(decodeFacts({ ...good, usage: null, forkedFrom: null }).usage).toBeNull(); // null 是合法的「没有」
   });

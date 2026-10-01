@@ -1,4 +1,5 @@
-//! 要求：子 agent 的流归各自的运行、主 tab 上常驻一行，通用层只认「运行」、不认任何一家的形状 —— 用户原话「如果是其他agent呢, 比如codex / 思考怎么解耦, 不要硬适配claude code」。
+//! 要求：子 agent 的流归各自的运行，通用层只认「运行」、不认任何一家的形状 —— 用户原话「如果是其他agent呢, 比如codex / 思考怎么解耦, 不要硬适配claude code」；
+//! 收场以派出那一方为准、跑完的不许显示成在跑 —— 用户原话「全是agent的 / 我们不是有agent部分吗, 为什么全部放主界面」。
 //!
 //! 两族判据：
 //! 1. **扫描**：通用层（`src/backend/observe/` · `src/backend/stream/` · `src/frontend/ui/`）零出现 Claude Code 子运行形状的那几个字面量；
@@ -7,9 +8,12 @@
 //!    （合成夹具，只采结构）。一个会话 ＋ 两个子运行 ＋ 三段流：子运行的流各归各的运行、主活卡上没有子运行的东西；
 //!    主运行那段两条路各钉一家 —— 声明了自报运行的头的家（Claude Code）子运行在跑时主活卡也当场出；没声明的家（假适配层）
 //!    先挂起、记录对上之后才放出，没自报的子运行段按它的记录归位；子运行写出终局 ⇒ 运行表里它变完成；都收场之后主运行的流直接上。
+//! 3. **收场判定，两套形状各跑一遍**（各家的收场写法走它自己的那几格）：前台跑完 · 后台完成通知 · 后台失败 · 被叫停 ·
+//!    被额度打断（无通知、子记录停写超过 `STALE_AFTER`）· 真在跑；前五个一个都不许是在跑，阈值两侧各钉一格。
+//!    接上会话的两条路（实时逐行 · 只读尾巴时补读已有的那一截）读出同一张表。
 
-use crate::agents::{RunFaces, StreamEv, StreamFamily};
-use crate::observe::runs::{RunBook, RunTrack};
+use crate::agents::{RunEnd, RunFaces, StreamEv, StreamFamily};
+use crate::observe::runs::{RunBook, RunTrack, STALE_AFTER};
 use crate::relay::{TapBody, TapEvent};
 use crate::stream::run_route::RunRouter;
 use crate::stream::wire::{Frame, RunState};
@@ -102,6 +106,10 @@ struct Shape {
     child_tool: fn(&str, &str, &str) -> String,
     /// 子运行的终局记录（子运行, 对账键）。
     child_end: fn(&str, &str) -> String,
+    /// 父记录：前台派出的那次跑完了，结果说出是哪个（工具调用 id, 子运行）。
+    fg_done: fn(&str, &str) -> String,
+    /// 父记录：派出那一方说某个子运行收场了（子运行, 怎么收场的）。
+    notice: fn(&str, RunEnd) -> String,
     /// 一次应答的原始流事件（对账键, 工具名）：开始 ＋ 一块工具 ＋ 收尾。
     sse: fn(&str, Option<&str>) -> Vec<String>,
 }
@@ -145,6 +153,21 @@ fn claude_code() -> Shape {
         child_end: |run, rid| {
             format!(
                 r#"{{"type":"assistant","uuid":"c-{rid}","isSidechain":true,"agentId":"{run}","message":{{"id":"{rid}","role":"assistant","content":[{{"type":"text","text":"x"}}],"stop_reason":"end_turn"}}}}"#
+            )
+        },
+        fg_done: |tool, run| {
+            format!(
+                r#"{{"type":"user","uuid":"r-{tool}","message":{{"role":"user","content":[{{"type":"tool_result","tool_use_id":"{tool}","content":"x"}}]}},"toolUseResult":{{"status":"completed","agentId":"{run}"}}}}"#
+            )
+        },
+        notice: |run, how| {
+            let status = match how {
+                RunEnd::Done => "completed",
+                RunEnd::Failed => "failed",
+                RunEnd::Stopped => "killed",
+            };
+            format!(
+                r#"{{"type":"queue-operation","operation":"enqueue","content":"<task-notification>\n<task-id>{run}</task-id>\n<status>{status}</status>\n<summary>x</summary>\n</task-notification>"}}"#
             )
         },
         sse: |rid, tool| {
@@ -191,6 +214,17 @@ fn fake() -> Shape {
         },
         child_end: |run, rid| {
             format!(r#"{{"kind":"say","lane":"{run}","resp":"{rid}","over":"ok"}}"#)
+        },
+        fg_done: |tool, run| {
+            format!(r#"{{"kind":"spawned","call":"{tool}","lane":"{run}","fin":"ok"}}"#)
+        },
+        notice: |run, how| {
+            let how = match how {
+                RunEnd::Done => "ok",
+                RunEnd::Failed => "bad",
+                RunEnd::Stopped => "halted",
+            };
+            format!(r#"{{"kind":"settled","lane":"{run}","how":"{how}"}}"#)
         },
         sse: |rid, tool| {
             let mut v = vec![format!(r#"{{"ev":"open","rid":"{rid}"}}"#)];
@@ -496,4 +530,109 @@ fn an_adapter_that_declares_no_runs_keeps_everything_on_the_main_run() {
     );
     let f = feed(&mut router, 0, "", (fake().sse)("r1", None));
     assert!(!f.is_empty() && said(&f).iter().all(|(_, run, _)| run.is_none()));
+}
+
+// ── 收场判定 ────────────────────────────────────────────────────────────────────
+
+/// 一个子运行的记录写一条不收尾的工具调用，写入时刻拨到 `ago` 之前（只有停写的那几个才拨）。
+fn child_wrote(shape: &Shape, parent: &Path, run: &str, ago: Option<std::time::Duration>) {
+    let p = (shape.child_of)(parent, run);
+    append(&p, &[(shape.child_tool)(run, &format!("r-{run}"), "Bash")]);
+    if let Some(ago) = ago {
+        let f = std::fs::OpenOptions::new().write(true).open(&p).unwrap();
+        f.set_modified(std::time::SystemTime::now() - ago).unwrap();
+    }
+}
+
+fn completion_scenario(shape: &Shape, via_prime: bool) -> Vec<(String, RunState)> {
+    let dir = scratch(&format!("{}-end-{via_prime}", shape.name));
+    let parent = (shape.parent_of)(&dir, SID);
+    let book = Arc::new(RunBook::default());
+    let mut track = RunTrack::new(shape.faces, book.clone());
+    let minute = std::time::Duration::from_secs(60);
+    // ① 前台跑完 · ②③④ 后台派出、之后收到完成 / 失败 / 叫停的通知 · ⑤ 后台派出、没有通知、子记录停写超过阈值 ·
+    // ⑥ 真在跑 · ⑦ 停写差一点到阈值（阈值另一侧）。每个子运行最后一条记录都是一次不收尾的工具调用。
+    let mut lines = Vec::new();
+    for (i, run) in ["w1", "w2", "w3", "w4", "w5", "w6", "w7"]
+        .iter()
+        .enumerate()
+    {
+        let tool = format!("t{i}");
+        lines.push((shape.spawn)(&tool, run));
+        lines.push(if *run == "w1" {
+            (shape.fg_done)(&tool, run)
+        } else {
+            (shape.spawned)(&tool, run)
+        });
+    }
+    lines.push((shape.notice)("w2", RunEnd::Done));
+    lines.push((shape.notice)("w3", RunEnd::Failed));
+    lines.push((shape.notice)("w4", RunEnd::Stopped));
+    // 同一种通知说一个不是子运行的后台任务 ⇒ 不立新行。
+    lines.push((shape.notice)("not-a-run", RunEnd::Done));
+    append(&parent, &lines);
+    if via_prime {
+        track.prime(SID, &std::fs::read(&parent).unwrap());
+    } else {
+        for l in &lines {
+            track.main_record(SID, l);
+        }
+    }
+    for run in ["w1", "w2", "w3", "w4", "w6"] {
+        child_wrote(shape, &parent, run, None);
+    }
+    child_wrote(shape, &parent, "w5", Some(STALE_AFTER + minute));
+    child_wrote(shape, &parent, "w7", Some(STALE_AFTER - minute));
+    track.adopt(SID, &parent);
+    let runs = book.runs(SID);
+    assert_eq!(
+        runs.iter()
+            .take(2)
+            .map(|r| r.run.as_str())
+            .collect::<Vec<_>>(),
+        vec!["w5", "w7"],
+        "[{}] 运行表按最近一次动静排，最早动过的在前",
+        shape.name
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+    let mut v: Vec<_> = runs.into_iter().map(|r| (r.run, r.state)).collect();
+    v.sort_by(|a, b| a.0.cmp(&b.0));
+    v
+}
+
+fn completion_criteria(shape: &Shape) {
+    let want: Vec<(String, RunState)> = [
+        ("w1", RunState::Done),
+        ("w2", RunState::Done),
+        ("w3", RunState::Failed),
+        ("w4", RunState::Stopped),
+        ("w5", RunState::Unknown),
+        ("w6", RunState::Running),
+        ("w7", RunState::Running),
+    ]
+    .into_iter()
+    .map(|(r, s)| (r.to_string(), s))
+    .collect();
+    assert_eq!(
+        completion_scenario(shape, false),
+        want,
+        "[{}] 实时逐行读父记录：收场看派出那一方，跑完的不许是在跑",
+        shape.name
+    );
+    assert_eq!(
+        completion_scenario(shape, true),
+        want,
+        "[{}] 只读尾巴时补读父记录已有的那一截：同一张表",
+        shape.name
+    );
+}
+
+#[test]
+fn a_fake_adapter_ends_its_runs_by_what_the_dispatcher_says() {
+    completion_criteria(&fake());
+}
+
+#[test]
+fn claude_code_ends_its_runs_by_what_the_dispatcher_says() {
+    completion_criteria(&claude_code());
 }

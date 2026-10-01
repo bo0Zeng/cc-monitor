@@ -12,17 +12,39 @@ use std::collections::{HashMap, VecDeque};
 use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, SystemTime};
 
-/// 每个会话最多记几个运行（超了先丢最老的已收场的，再丢最老的）。
+/// 每个会话最多记几个运行（超了先丢最久没动静的已收场的，再丢最久没动静的）。
 pub(crate) const RUNS_KEEP: usize = 64;
 /// 每个会话记住几个「这次工具调用派出了子运行、标签是什么」（先进先出）。
 pub(crate) const LINKS_KEEP: usize = 256;
 /// 每个会话记住几个对账键的归属（先进先出）。
 pub(crate) const RIDS_KEEP: usize = 512;
+/// 一个子运行没有任何收场信号、它的记录又这么久没再写 ⇒ 「状态不明」，不当它在跑。只在读记录 / 收到文件事件时算，不轮询。
+/// 比一次前台工具调用最长的等待（10 分钟）再宽一截：在等一个长命令的子运行不会被误判。
+pub(crate) const STALE_AFTER: Duration = Duration::from_millis(15 * 60 * 1000);
+
+/// 簿里的一个运行：线上那一格 ＋ 它最近一次动静的时刻（子记录的写入时刻；只有父侧说到过 ⇒ 头一次听说它的时刻）。
+struct Run {
+    info: RunInfo,
+    seen: SystemTime,
+}
+
+fn ended(s: RunState) -> bool {
+    matches!(s, RunState::Done | RunState::Failed | RunState::Stopped)
+}
+
+fn state_of(e: RunEnd) -> RunState {
+    match e {
+        RunEnd::Done => RunState::Done,
+        RunEnd::Failed => RunState::Failed,
+        RunEnd::Stopped => RunState::Stopped,
+    }
+}
 
 #[derive(Default)]
 struct Sess {
-    runs: Vec<RunInfo>,
+    runs: Vec<Run>,
     /// 父侧工具调用 id ⇒（标签, 类别）：调用先到、子运行是哪个后到。
     labels: HashMap<String, (Option<String>, Option<String>)>,
     label_order: VecDeque<String>,
@@ -32,25 +54,36 @@ struct Sess {
 }
 
 impl Sess {
-    fn slot(&mut self, run: &str) -> &mut RunInfo {
-        if let Some(i) = self.runs.iter().position(|r| r.run == run) {
+    fn find(&mut self, run: &str) -> Option<&mut Run> {
+        self.runs.iter_mut().find(|r| r.info.run == run)
+    }
+
+    fn slot(&mut self, run: &str, now: SystemTime) -> &mut Run {
+        if let Some(i) = self.runs.iter().position(|r| r.info.run == run) {
             return &mut self.runs[i];
         }
         if self.runs.len() >= RUNS_KEEP {
-            let victim = self
-                .runs
-                .iter()
-                .position(|r| r.state != RunState::Running)
-                .unwrap_or(0);
+            let oldest = |any: bool| {
+                self.runs
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, r)| any || r.info.state != RunState::Running)
+                    .min_by_key(|(_, r)| r.seen)
+                    .map(|(i, _)| i)
+            };
+            let victim = oldest(false).or_else(|| oldest(true)).unwrap_or(0);
             self.runs.remove(victim);
         }
-        self.runs.push(RunInfo {
-            run: run.to_string(),
-            label: None,
-            kind: None,
-            tool: None,
-            state: RunState::Running,
-            last: None,
+        self.runs.push(Run {
+            info: RunInfo {
+                run: run.to_string(),
+                label: None,
+                kind: None,
+                tool: None,
+                state: RunState::Running,
+                last: None,
+            },
+            seen: now,
         });
         self.runs.last_mut().expect("just pushed")
     }
@@ -66,45 +99,58 @@ impl Sess {
         }
     }
 
-    fn mark(&mut self, m: RunMark) -> bool {
-        let r = self.slot(&m.run);
-        let before = r.clone();
-        r.state = match m.end {
-            Some(RunEnd::Done) => RunState::Done,
-            Some(RunEnd::Failed) => RunState::Failed,
-            None => RunState::Running,
-        };
-        if m.did.is_some() {
-            r.last = m.did;
+    /// 子运行自己的一条记录（`seen` ＝ 那份记录的写入时刻）。收场是粘的：先到的收场信号算数，之后的记录不把它翻回在跑。
+    fn mark(&mut self, m: RunMark, seen: SystemTime) -> bool {
+        let r = self.slot(&m.run, seen);
+        let before = r.info.clone();
+        r.seen = seen;
+        if !ended(r.info.state) {
+            r.info.state = m.end.map_or(RunState::Running, state_of);
         }
-        *r != before
+        if m.did.is_some() {
+            r.info.last = m.did;
+        }
+        r.info != before
     }
 
-    fn link(&mut self, l: ChildLink) -> bool {
-        match l.run {
-            Some(run) => {
-                let known = self.labels.get(&l.tool).cloned();
-                let r = self.slot(&run);
-                let before = r.clone();
-                r.tool = Some(l.tool);
-                if let Some((label, kind)) = known {
-                    r.label = label.or(r.label.take());
-                    r.kind = kind.or(r.kind.take());
-                }
-                match l.end {
-                    Some(RunEnd::Done) => r.state = RunState::Done,
-                    Some(RunEnd::Failed) => r.state = RunState::Failed,
-                    None => {}
-                }
-                *r != before
+    fn end(r: &mut Run, e: Option<RunEnd>) {
+        if let Some(e) = e {
+            if !ended(r.info.state) {
+                r.info.state = state_of(e);
             }
-            None => {
+        }
+    }
+
+    fn link(&mut self, l: ChildLink, now: SystemTime) -> bool {
+        match (l.run, l.tool) {
+            (Some(run), Some(tool)) => {
+                let known = self.labels.get(&tool).cloned();
+                let r = self.slot(&run, now);
+                let before = r.info.clone();
+                r.info.tool = Some(tool);
+                if let Some((label, kind)) = known {
+                    r.info.label = label.or(r.info.label.take());
+                    r.info.kind = kind.or(r.info.kind.take());
+                }
+                Self::end(r, l.end);
+                r.info != before
+            }
+            // 只说收场：认识的运行才算（同一种通知也说别的后台任务，那些不是子运行）。
+            (Some(run), None) => match self.find(&run) {
+                Some(r) => {
+                    let before = r.info.state;
+                    Self::end(r, l.end);
+                    r.info.state != before
+                }
+                None => false,
+            },
+            (None, Some(tool)) => {
                 if self
                     .labels
-                    .insert(l.tool.clone(), (l.label.clone(), l.kind.clone()))
+                    .insert(tool.clone(), (l.label.clone(), l.kind.clone()))
                     .is_none()
                 {
-                    self.label_order.push_back(l.tool.clone());
+                    self.label_order.push_back(tool.clone());
                     while self.label_order.len() > LINKS_KEEP {
                         if let Some(old) = self.label_order.pop_front() {
                             self.labels.remove(&old);
@@ -115,17 +161,31 @@ impl Sess {
                 for r in self
                     .runs
                     .iter_mut()
-                    .filter(|r| r.tool.as_deref() == Some(&l.tool))
+                    .filter(|r| r.info.tool.as_deref() == Some(&tool))
                 {
-                    if r.label != l.label || r.kind != l.kind {
-                        r.label = l.label.clone();
-                        r.kind = l.kind.clone();
+                    if r.info.label != l.label || r.info.kind != l.kind {
+                        r.info.label = l.label.clone();
+                        r.info.kind = l.kind.clone();
                         changed = true;
                     }
                 }
                 changed
             }
+            (None, None) => false,
         }
+    }
+
+    /// 在跑却久未再写的 ⇒ 状态不明（[`STALE_AFTER`]）。
+    fn settle(&mut self, now: SystemTime) -> bool {
+        let mut changed = false;
+        for r in &mut self.runs {
+            let quiet = now.duration_since(r.seen).unwrap_or_default();
+            if r.info.state == RunState::Running && quiet > STALE_AFTER {
+                r.info.state = RunState::Unknown;
+                changed = true;
+            }
+        }
+        changed
     }
 }
 
@@ -142,16 +202,23 @@ impl RunBook {
         f(&mut self.inner.lock().unwrap_or_else(|e| e.into_inner()))
     }
 
-    /// 一条记录（`in_child` ＝ 它来自子运行的记录文件）。回：这个会话的运行表变没变。
-    pub(crate) fn record(&self, faces: &RunFaces, sid: &str, v: &Value, in_child: bool) -> bool {
+    /// 一条记录（`child` 有 ⇒ 它来自子运行的记录文件，值是那份文件的写入时刻）。回：这个会话的运行表变没变。
+    pub(crate) fn record(
+        &self,
+        faces: &RunFaces,
+        sid: &str,
+        v: &Value,
+        child: Option<SystemTime>,
+    ) -> bool {
         let mark = faces.run_of(v);
         let rid = faces.response_id(v);
         let links = faces.child_links(v);
+        let now = SystemTime::now();
         let (changed, learned) = self.with(|m| {
             let s = m.entry(sid.to_string()).or_default();
             let mut learned = false;
             if let Some(rid) = rid {
-                let owner = match (&mark, in_child) {
+                let owner = match (&mark, child.is_some()) {
                     (Some(mk), _) => Some(Some(mk.run.clone())),
                     (None, false) => Some(None),
                     (None, true) => None,
@@ -163,11 +230,12 @@ impl RunBook {
             }
             let mut changed = false;
             if let Some(mk) = mark {
-                changed |= s.mark(mk);
+                changed |= s.mark(mk, child.unwrap_or(now));
             }
             for l in links {
-                changed |= s.link(l);
+                changed |= s.link(l, now);
             }
+            changed |= s.settle(now);
             (changed, learned)
         });
         if learned {
@@ -176,13 +244,30 @@ impl RunBook {
         changed
     }
 
+    /// 父记录里只读派出 / 收场那几格（不学对账键：只读尾巴的流接上会话时补读已有的那一截用）。回：运行表变没变。
+    pub(crate) fn links(&self, faces: &RunFaces, sid: &str, v: &Value) -> bool {
+        let links = faces.child_links(v);
+        if links.is_empty() {
+            return false;
+        }
+        let now = SystemTime::now();
+        self.with(|m| {
+            let s = m.entry(sid.to_string()).or_default();
+            let mut changed = false;
+            for l in links {
+                changed |= s.link(l, now);
+            }
+            changed
+        })
+    }
+
     /// 这个会话此刻有几个在跑的子运行。
     pub(crate) fn running(&self, sid: &str) -> usize {
         self.with(|m| {
             m.get(sid).map_or(0, |s| {
                 s.runs
                     .iter()
-                    .filter(|r| r.state == RunState::Running)
+                    .filter(|r| r.info.state == RunState::Running)
                     .count()
             })
         })
@@ -193,9 +278,30 @@ impl RunBook {
         self.with(|m| m.get(sid).and_then(|s| s.rids.get(rid).cloned()))
     }
 
-    /// 这个会话的运行表（先来的在前）。
+    /// 这个会话的运行表（最早动过的在前）。
     pub(crate) fn runs(&self, sid: &str) -> Vec<RunInfo> {
-        self.with(|m| m.get(sid).map(|s| s.runs.clone()).unwrap_or_default())
+        self.with(|m| {
+            let Some(s) = m.get(sid) else {
+                return Vec::new();
+            };
+            let mut v: Vec<&Run> = s.runs.iter().collect();
+            v.sort_by_key(|r| r.seen);
+            v.into_iter().map(|r| r.info.clone()).collect()
+        })
+    }
+
+    /// 会话退休了（派出它们的那一方没了）：还算在跑的再也等不到收场信号 ⇒ 状态不明。回：运行表变没变。
+    pub(crate) fn orphan(&self, sid: &str) -> bool {
+        self.with(|m| {
+            let mut changed = false;
+            for r in m.get_mut(sid).into_iter().flat_map(|s| s.runs.iter_mut()) {
+                if r.info.state == RunState::Running {
+                    r.info.state = RunState::Unknown;
+                    changed = true;
+                }
+            }
+            changed
+        })
     }
 
     /// 会话走了。
@@ -260,10 +366,35 @@ impl RunTrack {
             return none;
         };
         MainRecord {
-            changed: self.book.record(&self.faces, sid, &v, false),
+            changed: self.book.record(&self.faces, sid, &v, None),
             rid: self.faces.response_id(&v),
             in_run: self.faces.run_of(&v).is_some(),
         }
+    }
+
+    /// 只读尾巴的流接上一个会话：它的主记录已有的那一截（`chunk`，从头起）里说到子运行的几行补进簿里 ——
+    /// 接上之前派出 / 收场的那些，否则只剩子记录自己的那一半（标签没有、收场看不见）。只挑预筛命中的行解析。回：运行表变没变。
+    pub(crate) fn prime(&self, sid: &str, chunk: &[u8]) -> bool {
+        if !self.has_children() {
+            return false;
+        }
+        let Some(last_nl) = chunk.iter().rposition(|&b| b == b'\n') else {
+            return false;
+        };
+        let mut changed = false;
+        for line in chunk[..last_nl].split(|&b| b == b'\n') {
+            let Ok(text) = std::str::from_utf8(line) else {
+                continue;
+            };
+            if !self.faces.hint(text) {
+                continue;
+            }
+            if let Ok(v) = serde_json::from_str::<Value>(text.trim_start_matches('\u{feff}').trim())
+            {
+                changed |= self.book.links(&self.faces, sid, &v);
+            }
+        }
+        changed
     }
 
     /// 一个会话的主记录在这里（宣告 / 每次读到它时都说；只有头一次真去找）：把它此刻已有的子运行记录收进来、从头读一遍。
@@ -334,7 +465,11 @@ impl RunTrack {
         let Ok(mut f) = std::fs::File::open(p) else {
             return false;
         };
-        let len = f.metadata().map(|m| m.len()).unwrap_or(0);
+        let meta = f.metadata().ok();
+        let len = meta.as_ref().map_or(0, |m| m.len());
+        let written = meta
+            .and_then(|m| m.modified().ok())
+            .unwrap_or_else(SystemTime::now);
         if len < cur.consumed {
             cur.consumed = 0;
         }
@@ -358,10 +493,15 @@ impl RunTrack {
                 continue;
             }
             if let Ok(v) = serde_json::from_str::<Value>(t) {
-                changed |= self.book.record(&self.faces, &sid, &v, true);
+                changed |= self.book.record(&self.faces, &sid, &v, Some(written));
             }
         }
         changed
+    }
+
+    /// 会话退休：还算在跑的子运行改成状态不明，表变了就回最后那一帧（交出去之后再 [`Self::forget`]）。
+    pub(crate) fn retire(&self, sid: &str) -> Option<Frame> {
+        self.book.orphan(sid).then(|| self.frame(sid))
     }
 
     /// 会话走了：它的主记录路径、子运行游标、运行簿那一页一起摘。
@@ -369,6 +509,11 @@ impl RunTrack {
         self.parents.remove(sid);
         self.children.retain(|_, c| c.sid != sid);
         self.book.forget(sid);
+    }
+
+    /// 这个会话此刻有没有子运行（宣告那一刻有就发一帧运行表）。
+    pub(crate) fn has_runs(&self, sid: &str) -> bool {
+        !self.book.runs(sid).is_empty()
     }
 
     /// 这个会话此刻的运行表那一帧。

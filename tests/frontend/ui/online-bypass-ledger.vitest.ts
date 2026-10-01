@@ -174,8 +174,6 @@ describe("〔STC〕L1 · onLine 上只剩真事件（`设计/90 §3` 判据 3）
 // ─────────────────────────────── L2 ───────────────────────────────
 
 const FACT_FIELDS = [
-  "agents",
-  "agentsAborted",
   "touchedFiles",
   "latestPromptTokens",
   "latestModel",
@@ -185,9 +183,7 @@ const MUTATORS = new Set(["set", "add", "delete", "clear"]);
 
 /** `(文件, 所在声明)` —— 今天对这几个名字的全部写者，逐条写理由。 */
 const FACT_WRITERS: ReadonlyArray<readonly [string, string, string]> = [
-  ["src/frontend/ui/tab-session-facts.ts", "applyFacts", "后端成品的投影：四样整份替换（唯一的正门）"],
-  ["src/frontend/ui/tab-session-facts.ts", "abortRunningAgents", "中止是事件（会话落到不忙）：记住判过的 id"],
-  ["src/frontend/ui/agents-panel.ts", "AgentsPanel.setSession", "同名不同物：面板自己那份展示副本（`this.agents`），不是 `Tab.agents`"],
+  ["src/frontend/ui/tab-session-facts.ts", "applyFacts", "后端成品的投影：三样整份替换（唯一的正门）"],
   ["src/frontend/ui/views/panorama.ts", "PanoramaView.load", "同名不同物：全景图自己的高亮态（`this.touchedFiles`，null = 不高亮），换仓时清掉"],
   ["src/frontend/ui/views/panorama.ts", "PanoramaView.highlightSession", "同名不同物：同上，按 `touching` 命中的符号派生出来的高亮集（`touchedFiles`）"],
   ["src/frontend/ui/views/panorama.ts", "PanoramaView.clearHighlight", "同名不同物：同上，取消高亮"],

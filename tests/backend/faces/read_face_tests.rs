@@ -494,7 +494,7 @@ fn golden_session(home: &Path) -> String {
 }
 
 /// 〔STC · 第四波〕会话事实那一格的金样夹具：结构占位（id / uuid 按角色命名、正文是无意义占位词），不采任何真会话正文。
-/// 四格各走到一次：分叉（首条 user 记录）· 写类工具 · agent 配对（一个有结果、一个没有）· usage。
+/// 三格各走到一次：分叉（首条 user 记录）· 写类工具 · usage；派出子运行的调用与它的结果也在，会话事实不认它们。
 fn golden_facts_session(home: &Path) -> String {
     let dir = home.join("projects").join("-golden");
     std::fs::create_dir_all(&dir).unwrap();
@@ -551,7 +551,7 @@ fn history_facts_resumes_from_its_own_answer_and_refuses_a_stale_resume_point() 
     let first = ask(serde_json::json!({ "path": path })).unwrap();
     let wire: serde_json::Value =
         serde_json::from_str(&first.to_string()).expect("应答过一遍 JSON 文本");
-    let more = r#"{"type":"user","uuid":"f-5","message":{"content":[{"type":"tool_result","tool_use_id":"tu-3","content":"ok"}]}}"#;
+    let more = r#"{"type":"assistant","uuid":"f-5","message":{"content":[{"type":"tool_use","id":"tu-4","name":"Write","input":{"file_path":"/w/b.ts"}}]}}"#;
     let mut f = std::fs::OpenOptions::new()
         .append(true)
         .open(&path)
@@ -563,9 +563,12 @@ fn history_facts_resumes_from_its_own_answer_and_refuses_a_stale_resume_point() 
     assert_eq!(resumed, whole, "接着问与从 0 问不相等");
     assert_ne!(
         resumed, first,
-        "长了的那一截没进成品（夹具那条结果没把 tu-3 翻成 done）"
+        "长了的那一截没进成品（夹具那条写类调用没进改动文件）"
     );
-    assert_eq!(whole["agents"][1]["status"], "done");
+    assert_eq!(
+        whole["touchedFiles"],
+        serde_json::json!(["/w/a.ts", "/w/b.ts"])
+    );
 
     // 截断：续点越过文件尾。
     std::fs::write(&path, "{}\n").unwrap();
@@ -585,7 +588,7 @@ fn history_facts_resumes_from_its_own_answer_and_refuses_a_stale_resume_point() 
     assert!(ask(serde_json::json!({ "path": path, "prior": wire })).is_ok());
     // 形状不对 / 缺 path。
     let mut bad = wire.clone();
-    bad.as_object_mut().unwrap().remove("agents");
+    bad.as_object_mut().unwrap().remove("usage");
     assert_eq!(
         ask(serde_json::json!({ "path": path, "prior": bad }))
             .unwrap_err()
