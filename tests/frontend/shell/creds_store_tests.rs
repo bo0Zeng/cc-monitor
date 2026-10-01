@@ -1,12 +1,12 @@
 //! # 要求住址：`INVARIANTS §42` → `src/doc/IPC-PROTOCOL.md`「上游选择那份凭据文件在「这台机器」上的读写」节
 //!
 //! 核原文：该节逐字「**每台机器上的程序写者恰好一个**」·「**路径**与那台机器上 `--relay` 进程的上游选择**同一个出处**」。
-//! 〔GP1 · 第四波〕主会话 09-25 裁那一个写者 ＝ **那台的后端**（本机 ＝ 本机常驻后端），monitor 不再写本机那一份
-//! （`调研/第四波记录/GP1.md §3`）。本族今天判 monitor 这一侧剩下的：与后端算同一份文件并显式交出去 ·
-//! 明文只往下传登记过的那几跳 · 写半边零调用 · 账号 id 只有一份规则。〔US1〕读侧（三态 · 权限提醒）与「写下的那一行
+//! 那一个写者 ＝ **那台的后端**（本机 ＝ 本机常驻后端），monitor 不再写本机那一份。
+//! 本族今天判 monitor 这一侧剩下的：与后端算同一份文件并显式交出去 ·
+//! 明文只往下传登记过的那几跳 · 写半边零调用 · 账号 id 只有一份规则。读侧（三态 · 权限提醒）与「写下的那一行
 //! 正是起会话那一侧找的那一行」随读者换成那台后端一起搬去后端那一份判据。写路那几条性质（写的那一刻读盘 · 未知键一个不吃 ·
 //! 出生即只给本人 · Base URL 形状错整次不写）住后端那一份写口的判据（`tests/backend/accounts/upstream_select/file_face_tests.rs`）。
-//! 明文出口跨三棵树逐处计数那几条守 `设计/20 §6` 第 4 行逐字「明文只有一个出口」（原文点一个，判据登记两个 —— 原文比判据窄）。
+//! 明文出口跨三棵树逐处计数那几条守「明文只有一个出口」（原文点一个，判据登记两个 —— 原文比判据窄）。
 //! ⚠ 「key 不进 `config.json`」与 TS 状态类型对拍那几条没有逐字原文。
 //! 与 `crates/creds-core/store_tests.rs` 不重复：那族判纯函数。〔JA1 点址 2026-09-24〕
 
@@ -20,7 +20,7 @@ use super::*;
 fn the_two_sides_resolve_the_same_file() {
     let home = dirs::home_dir().expect("这台机器得有 home");
     let mine = resolve_path().expect("monitor 侧算得出来");
-    // 〔DATA-HOME · V160〕期望手写：数据目录根上那一份（后端默认臂按用户家推同一个）。
+    // 期望手写：数据目录根上那一份（后端默认臂按用户家推同一个）。
     let backends = home.join(".cc-monitor").join("apikey-credentials.json");
     assert_eq!(mine, backends, "两侧算出来的凭据文件路径不一样 —— 契约漂了");
     // 非空对照：这把尺子分得出不同的路径（不是恒相等）。
@@ -28,12 +28,12 @@ fn the_two_sides_resolve_the_same_file() {
 
     // ★★ `K-H2b` `D1 阻-3`：**上面那个根是手写的** ——
     // 钉不住「两侧的**根**会不会算到两个地方去」。阻-3 的病：
-    // backend 侧的根从前走 `resolve_home()`，它**认 `CLAUDE_CONFIG_DIR`**（〔V160〕今天默认臂改按用户家推，不再认它）；
+    // backend 侧的根从前走 `resolve_home()`，它**认 `CLAUDE_CONFIG_DIR`**（今天默认臂改按用户家推，不再认它）；
     // monitor 这一侧**刻意不跟随** ⇒ 中转一旦继承到那个变量，
     // 两侧读写的就是两份文件，而症状是「界面上配好了，上游选择说没配」。
     //
     // ⇒ 今天买断这一格的**不是**路径算法，是**把路径显式传过去**：
-    // 〔RL1〕起本机后端时用 `CCM_APIKEY_CREDENTIALS` 把**本函数算出来的这一个**交给它
+    // 起本机后端时用 `CCM_APIKEY_CREDENTIALS` 把**本函数算出来的这一个**交给它
     // （中转与上游选择住在那个进程里，`local_backend_host::relay_host_envs`）。
     //
     // 🔴 `D6 阻-1` 回修（08-29）：这里先前是两条「`local_backend_host.rs` 的生产段里有没有
@@ -70,7 +70,7 @@ fn the_key_never_lands_in_the_config_file_the_frontend_rewrites_wholesale() {
     // 同一个目录是**可以**的（`§0a` 要的是「不进那份配置」，不是「不同目录」）。
     assert_eq!(cfg.parent(), creds.parent());
     // ★ 机检：`config.rs` 的生产段里不许出现那个字段名 ——
-    //   它一旦出现，就说明有人把 key 塞进 `load_config`/`patch_config` 那条路了（〔CFG1〕写口从整份换成按键补丁）。
+    //   它一旦出现，就说明有人把 key 塞进 `load_config`/`patch_config` 那条路了（写口从整份换成按键补丁）。
     let cfg_src =
         guard_core::production_code(include_str!("../../../src/frontend/shell/src/config.rs"));
     assert!(
@@ -82,21 +82,21 @@ fn the_key_never_lands_in_the_config_file_the_frontend_rewrites_wholesale() {
     assert!(store::template().contains(store::KEY_FIELD));
 }
 
-// 〔HX2 · 第四波 4D〕`brace_block`〔散文墓碑〕随它唯一的调用方（明文逐跳那一条）一起删了。
+// `brace_block`〔散文墓碑〕随它唯一的调用方（明文逐跳那一条）一起删了。
 
-// 〔GP1 · 第四波〕这里原来是两条写路判据（`KS10` 交错写不吃人手编的 · `K-R1` 配 key 不吃同一行的
+// 这里原来是两条写路判据（`KS10` 交错写不吃人手编的 · `K-R1` 配 key 不吃同一行的
 // `auth_style` / `base_url`），打的是 monitor 那侧的写口。写者换成了那台的后端 ⇒ 两条原样搬去后端那一份写口：
 // `file_face_tests::gp1_a_program_write_keeps_everything_the_human_put_there` ·
 // `file_face_tests::gp1_a_saved_key_does_not_swallow_the_hand_written_upstream_or_auth_style`。
 
-// 〔US1 · 第四波 4D〕读侧那两条（`KS11` 权限放宽出声 · 三态「读坏了不许退化成没配」）打的是 monitor 那一份状态读者
+// 读侧那两条（`KS11` 权限放宽出声 · 三态「读坏了不许退化成没配」）打的是 monitor 那一份状态读者
 //   （`creds_store::read_status_at`〔散文墓碑〕）。读者换成那台的后端（`apikey-read`）⇒ 两条原样搬去后端那一份读口：
 //   `file_face_tests::us1_a_widened_file_is_called_out_and_an_owner_only_one_is_not` ·
 //   `file_face_tests::us1_a_broken_file_is_surfaced_instead_of_looking_unconfigured`。
 
 // ============================================================ `K-H2c` `KH2C1` / `KH2C3`
 
-// 〔US1 · 第四波 4D〕「写侧落下的那一行，正是起会话那一侧会去找的那一行」那条跨两半的判据
+// 「写侧落下的那一行，正是起会话那一侧会去找的那一行」那条跨两半的判据
 //   （`what_the_write_side_wrote_is_exactly_the_row_the_launch_side_looks_for`〔散文墓碑〕）挪去后端：起会话那一侧找行的读者
 //   今天是那台后端的 `file_face::rows_at`（`launch-endpoint` · `apikey-routing` 读同一份），与写口同一个模块 ⇒
 //   `file_face_tests::us1_what_the_write_side_wrote_is_exactly_the_row_the_launch_answer_uses`（写口真写 → 成品真答 `/s/`）。
@@ -108,7 +108,7 @@ fn the_key_never_lands_in_the_config_file_the_frontend_rewrites_wholesale() {
 /// ⇒ 这一条钉的是结构：写侧只许**调**那一份唯一的规则，自己不许再取一次末段名。
 #[test]
 fn the_account_id_rule_is_not_reimplemented_on_the_write_side() {
-    // 〔HX2 · 第四波 4D〕写侧推 id 的那一半今天住后端写口 `accounts/upstream_select/file_face.rs`（界面经通道交 `configDir`，
+    // 写侧推 id 的那一半今天住后端写口 `accounts/upstream_select/file_face.rs`（界面经通道交 `configDir`，
     //   那台后端推）。〔GP1 那一版住 monitor `apikey_remote.rs`（`send_key`〔散文墓碑〕）；更早住 `creds_store.rs`。〕
     let src = guard_core::production_code(include_str!(
         "../../../src/backend/accounts/upstream_select/file_face.rs"
@@ -133,7 +133,7 @@ fn the_account_id_rule_is_not_reimplemented_on_the_write_side() {
         );
     }
     // 反空真：这把尺子**认得出**那一族针（不是恒 0）。
-    // 〔C4d · 第四波 4B〕正控从 `history.rs` 挪到 `remote_history.rs`；〔MIG-3b〕那一句（远端删会话取文件名 stem）随删会话进界面删了，
+    // 正控从 `history.rs` 挪到 `remote_history.rs`；那一句（远端删会话取文件名 stem）随删会话进界面删了，
     //   正控再挪到文件窗口的语料那一处（`filewin/corpus.rs` 取文件名那一句，同一族针 `rsplit('/')`，今天真在）。
     let other =
         guard_core::production_code(include_str!("../../../src/frontend/filewin/src/corpus.rs"));
@@ -143,10 +143,10 @@ fn the_account_id_rule_is_not_reimplemented_on_the_write_side() {
     );
 }
 
-// 〔GP1 · 第四波〕`KH2C3` 后半（顶层那一把不再是写入目标：结构 ＋ 行为两维）打的是 monitor 那侧写口；
+// `KH2C3` 后半（顶层那一把不再是写入目标：结构 ＋ 行为两维）打的是 monitor 那侧写口；
 // 写口去了后端 ⇒ 原样搬去 `file_face_tests::gp1_the_write_side_never_targets_the_legacy_top_level_slot`。
 
-// 〔HX2 · 第四波 4D〕「说不出 id 的时候报错、不回落」那一条（`a_config_dir_that_names_no_account_is_refused_instead_of_falling_back`〔散文墓碑〕）
+// 「说不出 id 的时候报错、不回落」那一条（`a_config_dir_that_names_no_account_is_refused_instead_of_falling_back`〔散文墓碑〕）
 //   打的是 monitor 那侧入口 `apikey_remote::write_key_on`〔散文墓碑〕；推 id 搬进后端写口之后，同一组形状（空串 · 全空白 · `/` ·
 //   最后一段是 `..`）由后端那一份判：`file_face_tests::hx2_the_account_id_is_derived_here_from_the_config_dir`。
 
@@ -187,7 +187,7 @@ const PLAINTEXT_SCAN_TREES: &[&str] = &["src/frontend/shell/src", "src/common", 
 /// # 分母（写清它算了什么、没算什么）
 ///
 /// 人群 = [`PLAINTEXT_SCAN_TREES`] 那三棵树下**所有 `.rs` 的生产段**（剥掉 `#[cfg(test)]`），
-/// ⚠ 〔`P4` 2026-09-21〕先前这一行写着「**外加本文件自己**（见下面那段：`scan_tree!`
+/// ⚠ 先前这一行写着「**外加本文件自己**（见下面那段：`scan_tree!`
 /// 按构造摘掉调用者，那正好会把本文件摘出人群）」—— **两处都已经不成立**：
 /// 那一刀在这一处不生效，而下面那句手工补回的 `push` 在搬树那一轮就删掉了
 /// （理由逐字写在下面那段注里）。⇒ 人群**就是那三棵树**，没有「外加」。
@@ -202,7 +202,7 @@ fn the_two_plaintext_exits_are_called_from_exactly_one_place_each_across_all_thr
 
     let mut files: Vec<(String, String)> = Vec::new();
     for sub in PLAINTEXT_SCAN_TREES {
-        // 🔴 〔搬树 2026-09-18 · `设计/99` 条 73〕**明写「一份都不排除」，不靠 `file!()`。**
+        // 🔴 〔搬树 2026-09-18 ·  条 73〕**明写「一份都不排除」，不靠 `file!()`。**
         //
         // 上一版靠 `scan_tree!` 的自摘摘掉调用者（当年 = `creds_store.rs` 自己），
         // 再手工 `push` 一份补回来。剖分之后自摘那一刀落空，`creds_store.rs` 走普通
@@ -285,7 +285,7 @@ fn the_two_plaintext_exits_are_called_from_exactly_one_place_each_across_all_thr
 /// ⚠ 它**不判**分类对不对（那要判语义）—— 它判的是**两张表有没有说同一件事**。
 #[test]
 fn the_definition_table_and_the_call_site_table_name_the_same_exits() {
-    // 🔴 〔搬树 2026-09-18 · `设计/16 §6.2` C 类〕**住址改对：那张表搬家了。**
+    // 🔴 〔搬树 2026-09-18〕**住址改对：那张表搬家了。**
     //
     // `INNER_FIELD_USERS` 是 `creds-core` 的**判据用表**（住在它的 `#[cfg(test)]` 段里），
     // 剖分把它从 `crates/creds-core/src/lib.rs` 搬到了
@@ -305,7 +305,7 @@ fn the_definition_table_and_the_call_site_table_name_the_same_exits() {
     //   按它自己的收尾 `];` 切才是这张表的边界。
     // 🔴 〔搬树 2026-09-18〕收尾针从 `"\n    ];"` 改成 `"\n];"`：搬出 `mod tests {}` 之后
     //   这张表是**文件顶层的** item，缩进整整少了一级。缩进是位置，而按位置认边界的针
-    //   会随搬树静默失配（`设计/16 §5.4b`）—— 下面那条 `table.len() > 200` 是它的反空真。
+    //   会随搬树静默失配—— 下面那条 `table.len() > 200` 是它的反空真。
     let table = core[at..]
         .find("\n];")
         .map(|i| &core[at..at + i])
@@ -345,18 +345,18 @@ fn the_definition_table_and_the_call_site_table_name_the_same_exits() {
     );
 }
 
-// 〔GP1 · 第四波〕这里原来是两条 `KS5` 源码判据（写口里收窄恰好两次 · tmp 出生即窄），切的是 monitor 那侧写口的函数体；
+// 这里原来是两条 `KS5` 源码判据（写口里收窄恰好两次 · tmp 出生即窄），切的是 monitor 那侧写口的函数体；
 // 写口随写者换成那台的后端一起走了。「出生即只给本人」今天由后端那一份的两条兜：写半边只从账号域那一份写口够得着
 // （`readonly_guard::…::the_credentials_write_half_is_reached_only_from_the_account_file_face`）· 写出来的文件是 `0600`
 // 且不留临时文件（`file_face_tests::the_written_file_is_owner_only_and_no_temp_file_is_left`）。
 // monitor 这一侧只剩一条要钉的：**写半边一处都不调**（`gp1_the_monitor_never_reaches_the_credentials_write_half`）。
 
-/// 〔GP1 · 第四波〕**monitor 生产段一处都不够写半边**（`creds_core::perm::create_private` / `make_private`）。
+/// **monitor 生产段一处都不够写半边**（`creds_core::perm::create_private` / `make_private`）。
 ///
 /// monitor 仍开着 `harden`（Windows 上读 DACL 要它），编译器因此兜不住「monitor 写不了这份文件」—— 由本条兜：
 /// 人群 = `src/frontend/shell/src` 下全部 `.rs` 的生产段（剥测试段与注释），针两根，**零命中**。
 /// 正控：同一把针在后端那一份写口（`src/backend/accounts/upstream_select/file_face.rs`）上数得到 —— 针没瞎。
-/// 要求住址：主会话 09-25 裁「每台机器上这份文件的程序写者恰好一个 ＝ 那台的后端」（`GP1.md §3`）。
+/// 要求住址：「每台机器上这份文件的程序写者恰好一个 ＝ 那台的后端」（`GP1.md §3`）。
 #[test]
 fn gp1_the_monitor_never_reaches_the_credentials_write_half() {
     let needles = [
@@ -392,18 +392,18 @@ fn gp1_the_monitor_never_reaches_the_credentials_write_half() {
     );
 }
 
-// 〔US1 · 第四波 4D〕`ApikeyCredentialsStatus` 那两条（TS 手写类型双向对拍 · 类型装不下明文）随结构体一起退役：
+// `ApikeyCredentialsStatus` 那两条（TS 手写类型双向对拍 · 类型装不下明文）随结构体一起退役：
 //   状态由那台后端出成品（`apikey-read`），「装不下明文」由后端应答的形状（`file_face_tests` · 跨语言金样
 //   `tests/__fixtures__/apikey.golden.json` 的零明文断言）与 TS 解码器的严格收（`tests/frontend/ui/apikey-reads.vitest.ts`：多一格就抛）钉着。
 
 // ================================================================ `K-H2` `KH7`
 
-// 〔HX2 · 第四波 4D〕墓碑：这里从前是 `PLAINTEXT_HOPS`〔散文墓碑〕与 `the_plaintext_argument_is_only_ever_handed_one_hop_further`〔散文墓碑〕
+// 墓碑：这里从前是 `PLAINTEXT_HOPS`〔散文墓碑〕与 `the_plaintext_argument_is_only_ever_handed_one_hop_further`〔散文墓碑〕
 //   （`K-H2` `KH7`：明文入参在 monitor 里每一跳只许被往下传登记过的那几次 —— Tauri 命令 `write_apikey_credentials_key`〔散文墓碑〕→
 //   `apikey_remote::write_key_on`〔散文墓碑〕→ `send_key`〔散文墓碑〕装进 `args.key`）。写 key 改走通道之后，明文在 monitor 里
 //   **没有具名绑定**了：它是 `chan_call` 转手的一段不透明字节。下面那一条把「没有」钉成零命中。
 
-/// ★★★ 〔HX2 · 第四波 4D〕**monitor 生产段里没有一处能把明文 key 叫出名字的写口**（零命中，带正控）。
+/// ★★★ **monitor 生产段里没有一处能把明文 key 叫出名字的写口**（零命中，带正控）。
 ///
 /// 要求住址：`K-H2` `KH7`（明文只许被往下传登记过的那几次）—— 今天那几次在 monitor 里是**零**：界面经通道
 /// `chan.call(这台, "apikey-key-set", {configDir, key})` 交那台机器的后端（`src/frontend/ui/apikey-reads.ts::writeApikeyKey`），
@@ -453,8 +453,8 @@ fn hx2_the_monitor_names_no_plaintext_key_on_the_way_to_the_backend() {
     );
 }
 
-// ── 〔第四波 ST2 · `设计/70 §4.4`〕加账号表单 apikey 那一支的 Base URL ─────────────────
-// 〔GP1 · 第四波〕这里原来两条（给了 Base URL 落进那一行、别的不动 · 形状不对整次不写），打的是 monitor 那侧写口；
+// ── 加账号表单 apikey 那一支的 Base URL ─────────────────
+// 这里原来两条（给了 Base URL 落进那一行、别的不动 · 形状不对整次不写），打的是 monitor 那侧写口；
 // 写者换成那台的后端之后，同一组性质由后端那一份判：
 // `file_face_tests::base_url_is_written_with_the_key_and_left_alone_when_only_the_key_changes`
-// （写入读回 · 只配 key 不动端点 × 三种缺席形 · 四种坏形状拒且文件逐字节不动 · 〔DUP3〕与装表同一个谓词 `upstream_url_core::usable`）。
+// （写入读回 · 只配 key 不动端点 × 三种缺席形 · 四种坏形状拒且文件逐字节不动 · 与装表同一个谓词 `upstream_url_core::usable`）。

@@ -1,6 +1,6 @@
 {
   "说明": [
-    "〔MIG-3a〕skill 装 / 卸写那一半的金样：后端对临时目录现算 == reply（界面经 `ext-*` 那几条拿成品，线上形状由 `ext-flow.golden.json` 钉）。",
+    "skill 装 / 卸写那一半的金样：后端对临时目录现算 == reply（界面经 `ext-*` 那几条拿成品，线上形状由 `ext-flow.golden.json` 钉）。",
     "只采结构（占位文件名 / 占位正文）。`<ROOT>` 由测试换成临时 skill 根。"
   ],
   "name": "demo",

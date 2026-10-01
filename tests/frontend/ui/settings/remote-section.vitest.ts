@@ -3,13 +3,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 // F56：写入/读取都走 config.ts；mock 掉以测 jump write→read 往返。
 // S1：写入口从 writeRemoteConfig（整表覆盖，已取消导出）改为 patchRemoteConfig（局部合并）。 〔散文墓碑〕
-// 〔CFG1〕config 写只交补丁；替身把补丁应用到 `loadConfig` 摆的那份上，写完的整份交 `fakeCfg.saved`。
+// config 写只交补丁；替身把补丁应用到 `loadConfig` 摆的那份上，写完的整份交 `fakeCfg.saved`。
 vi.mock("../../../../src/frontend/ui/config", async (orig) => (await import("../config-patch-fake")).mockedConfigModule(orig));
 // S3：把整个 IPC 面 mock 成一个**会记账的 Proxy** —— 用来钉「渲染机器列表时零次
 // 后端调用」。这比源码扫描强：扫描只能证明「没 import」，证明不了「渲染时没调」。
 const { ipcCalls, chanOps, ipcReplies } = vi.hoisted(() => ({
   ipcCalls: [] as string[],
-  /** 〔MIG-2〕经 `commands.chan_call` 发出去的那几问的 op（按发出顺序）。 */
+  /** 经 `commands.chan_call` 发出去的那几问的 op（按发出顺序）。 */
   chanOps: [] as string[],
   /** 按命令名设定返回值；没设的一律 resolve(undefined)。 */
   ipcReplies: new Map<string, unknown>(),
@@ -31,7 +31,7 @@ vi.mock("../../../../src/frontend/ui/ipc/commands", () => ({
         ipcCalls.push(name);
         const op = name === "chan_call" ? String((args[0] as { op?: unknown } | undefined)?.op) : "";
         if (name === "chan_call") chanOps.push(op);
-        // 〔FIX4 · J7〕铸名那一问（`tmux-name-mint`）按帧命令名回：名字 ⇒ 那台后端的成品 `{name}`；别的 ⇒ 原样 reject（通道那一层的错）。
+        // 铸名那一问（`tmux-name-mint`）按帧命令名回：名字 ⇒ 那台后端的成品 `{name}`；别的 ⇒ 原样 reject（通道那一层的错）。
         if (op === "tmux-name-mint") {
           const minted = ipcReplies.get(op);
           if (typeof minted !== "string") return Promise.reject(minted);
@@ -39,13 +39,13 @@ vi.mock("../../../../src/frontend/ui/ipc/commands", () => ({
           return Promise.resolve(u.buffer.slice(u.byteOffset, u.byteOffset + u.byteLength));
         }
         const reply = ipcReplies.get(name);
-        // 〔FE1〕回一个 `Error` ⇒ 这条命令 reject（「没问到」那一形；线上是后端回 `Err`）。
+        // 回一个 `Error` ⇒ 这条命令 reject（「没问到」那一形；线上是后端回 `Err`）。
         return reply instanceof Error ? Promise.reject(reply) : Promise.resolve(reply);
       },
     },
   ),
 }));
-// 〔MIG-1 续 · `99 §2.1 ⑬`〕测试连接改问本机后端（`remote-probe.ts` 经通道）⇒ 替身同一本账：记帧命令名、按名回（缺的格补成结局的空形）。
+// 测试连接改问本机后端（`remote-probe.ts` 经通道）⇒ 替身同一本账：记帧命令名、按名回（缺的格补成结局的空形）。
 //   解码器本身由 `tests/frontend/ui/remote-probe.vitest.ts` 钉。
 vi.mock("../../../../src/frontend/ui/remote-probe", () => ({
   probeMachine: () => {
@@ -55,7 +55,7 @@ vi.mock("../../../../src/frontend/ui/remote-probe", () => ({
     return Promise.resolve({ message: "", stages: [], backendGaps: [], ...(reply as object) });
   },
 }));
-// 〔MIG-1 续 · `99 §2.1 ⑬`〕列 tmux 会话改问那台后端（`tmux-reads.ts` 经通道）⇒ 替身同一本账：记旧名、按旧名回（`Error` ⇒ reject）。
+// 列 tmux 会话改问那台后端（`tmux-reads.ts` 经通道）⇒ 替身同一本账：记旧名、按旧名回（`Error` ⇒ reject）。
 //   解码器本身由 `tests/frontend/ui/tmux-reads.vitest.ts` 对金样钉。
 vi.mock("../../../../src/frontend/ui/tmux-reads", () => ({
   listTmux: (origin: string) => {
@@ -65,7 +65,7 @@ vi.mock("../../../../src/frontend/ui/tmux-reads", () => ({
     return reply instanceof Error ? Promise.reject(reply) : Promise.resolve(reply ?? []);
   },
 }));
-// 〔MIG-1 · `99 §2.1 ⑯`〕「从 ~/.ssh/config 导入」那三问改问本机常驻后端（`ssh-config-reads.ts` 经通道）⇒ 替身同一本账：
+// 「从 ~/.ssh/config 导入」那三问改问本机常驻后端（`ssh-config-reads.ts` 经通道）⇒ 替身同一本账：
 //   记名（帧命令名）、按名回（`Error` ⇒ reject）。解码器本身由 `tests/frontend/ui/ssh-config-reads.vitest.ts` 对金样钉。
 vi.mock("../../../../src/frontend/ui/ssh-config-reads", () => {
   // 没设的回那一问成品的空形（真模块只回解码过的值，不会回 `undefined`）。
@@ -127,7 +127,7 @@ describe("F43 shouldShowResetFingerprint", () => {
 });
 
 // F08 Phase D 审计：别名生成器 UI 当年从这里迁到了 src/frontend/ui/launcher-diagnostics.ts。
-// 〔AL1 · 2026-09-24〕今天它住 src/frontend/ui/settings/machine-aliases.ts（机器页「本机 → 工具 → 别名」），
+// 今天它住 src/frontend/ui/settings/machine-aliases.ts（机器页「本机 → 工具 → 别名」），
 // shell 文本由后端渲染；单测在 tests/frontend/ui/settings/machine-aliases.vitest.ts。
 
 describe("F45 parseAddressLines", () => {
@@ -268,7 +268,7 @@ describe("S4b-3 resumeCommand write→read 往返（D-B1 同源回归：新字�
   });
 });
 
-// 🔴 〔步 8 · 条 80 「不要管旧配置」〕**`KR59D3` 那一组两条整组退役了。**
+// 🔴 〔条 80 「不要管旧配置」〕**`KR59D3` 那一组两条整组退役了。**
 //    ① 「旧 config 里的 `daemonless: true` ⇒ `legacyNoBackend` 点得出那台机器」——
 //       `legacyNoBackend` 这个字段删了，断言没有对象；
 //    ② 「保存一次就把盘上那个旧键写没（迁移本体）」—— 它那条
@@ -423,7 +423,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     expect(got.map((h) => h.label)).toEqual(["a-renamed", "b"]);
   });
 
-  it("★ 〔FIX · `99 §2 ㊶`〕加载之后后端固化了指纹、再在页上改一格 ⇒ 盘上那份指纹不被整台盖掉", async () => {
+  it("★ 〔FIX〕加载之后后端固化了指纹、再在页上改一格 ⇒ 盘上那份指纹不被整台盖掉", async () => {
     const sec = await mount([mkH("a", "1.1.1.1"), mkH("b", "2.2.2.2")]);
     // 加载之后，后端那一侧往盘上写了 a 的指纹（`setin` · ifEmpty）。
     const disk = (await vi.mocked(loadConfig)()) as unknown as { remote: RemoteConfig };
@@ -517,7 +517,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
 
   it("★ 两台机器名相同时删掉一台：不静默无效 —— 按键认不出是哪台 ⇒ 整批拒、说出来，盘上不动", async () => {
     // 删除基准若按**集合**算，这里会得出 remove=[]（另一张卡还占着同一个 key）⇒ 删除静默失效，必须挡住。
-    // 〔FIX2 · ㊶〕增删也按键认元素：同一个 origin 两台 ⇒ `removein` 认出不止一台 ⇒ 整批拒（不猜是哪台），banner 说保存失败。
+    // 增删也按键认元素：同一个 origin 两台 ⇒ `removein` 认出不止一台 ⇒ 整批拒（不猜是哪台），banner 说保存失败。
     const sec = await mount([mkH("dup", "1.1.1.1"), mkH("dup", "2.2.2.2")]);
     vi.mocked(saveConfig).mockClear();
     sec.element
@@ -543,7 +543,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     expect(last.keepMe).toBe(1);
   });
 
-  // 〔W5-UI · 设计/70 §7 #4〕读 `~/.ssh/config` 失败与「真没有别名」原先同形（空下拉 ＋「未找到」）。
+  // 读 `~/.ssh/config` 失败与「真没有别名」原先同形（空下拉 ＋「未找到」）。
   it("导入下拉：读别名清单失败 ⇒ 说读不了（原因原样），不说「未找到」；真没有 ⇒ 说未找到（正控）", async () => {
     // 从 section 自己的 DOM 里取（不是私有字段）：那块提示原先根本没挂进 DOM —— 取字段会假绿。
     const hint = (sec: RemoteSection): string =>
@@ -566,10 +566,10 @@ describe("S1 RemoteSection：保存走局部合并", () => {
   });
 
   it("★ 渲染机器列表：后端调用**不随机器数增长**（状态灯绝不引入轮询）", async () => {
-    // 主计划 §1-2 的红线。「打开设置时顺便把 N 台机器都探一遍」听起来不像轮询，
+    // 红线。「打开设置时顺便把 N 台机器都探一遍」听起来不像轮询，
     // 但它是同一件事的另一种说法：一次 UI 动作扇出 N 次 ssh 往返，用户没要求过。
     //
-    // 判据**不是**「零调用」—— 实测渲染时确实有一次 `ssh-config-aliases`（〔MIG-1〕问本机后端）
+    // 判据**不是**「零调用」—— 实测渲染时确实有一次 `ssh-config-aliases`（问本机后端）
     //（读本机 `~/.ssh/config` 填「导入」下拉），那既不是状态探测、也不走 ssh、
     // 更不随机器数增长。红线禁的是**逐机器探测**，所以判据就写成那样：
     // **同一份调用清单，1 台和 3 台必须逐字相同。**
@@ -619,7 +619,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     expect(ofA.some((f) => f.startsWith("connection:"))).toBe(false);
   });
 
-  // 〔WF1 · `99 §2.2 ㉔`〕「★ S9：本机的 ccm 条目跟着 monitor 的 OS 走」那一条删了：它钉的是 monitor 跑在哪个 OS 传进 `computeGaps` 的接线，
+  // 「★ S9：本机的 ccm 条目跟着 monitor 的 OS 走」那一条删了：它钉的是 monitor 跑在哪个 OS 传进 `computeGaps` 的接线，
   //   那个入参随 Windows 豁免一起删了（`readiness.ts::notApplicable` 头注第 3 条），没有被测对象。
 
   // ───────────────────────────────────────────────────────────────────────────
@@ -666,7 +666,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     // 分母先钉死，别让「一台机器都没有」蒙混过去：
     //   · 远端 **0** 台，而清单的入参是 `[LOCAL_MACHINE_KEY, ...hosts]` ⇒ 机器数 **1**；
     //   · 本机的适用格**恰好**是 `backend` / `ccm` / `accounts` 三格（`connection` 不适用）。
-    //     ⚠ `K-R59`：`backend` 是那一拍新算进来的；〔WF1 · ㉔〕`ccm` 在 Windows 上也算了。
+    //     ⚠ `K-R59`：`backend` 是那一拍新算进来的；`ccm` 在 Windows 上也算了。
     // 下面这一屏是那个分母的**真实渲染**：它必须先真的出现、且逐项等于这两格。
     localStorage.clear();
     __setHostOsForTests("windows");
@@ -711,7 +711,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     ]);
   });
 
-  // 🔴 〔步 8 · 条 80 「不要管旧配置」〕**`KR59D3` 的产品面那条也退役了。**
+  // 🔴 〔条 80 「不要管旧配置」〕**`KR59D3` 的产品面那条也退役了。**
   //    它断的是「喂一份带旧 `daemonless: true` 的 config ⇒ 清单上真有一条带名字的告知」，
   //    而那条告知这一拍整块删了 ⇒ 没有被测对象。⚠ 用例数 −1，逐条点名在本轮报告里。
 
@@ -832,7 +832,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
   });
 
   /**
-   * 设计/99 §2.2 ㉔「本机 ccm 那一格两件都报」· `15 §5.4 D5`「补本机·ccm 那一格的写点」：
+   * 「本机 ccm 那一格两件都报」· 「补本机·ccm 那一格的写点」：
    * `noteLocalCcm` 照 monitor 那一侧的判定记账 —— 两件都成 ⇒ ok；有一件不成 ⇒ fail 且那句话照记；说不清 ⇒ 不写；Windows 本机不问。
    */
   it("FIX3 ㉔：本机 ccm 那一格由 `noteLocalCcm` 写，照 ok / 不写；〔WF1〕Windows 上同样问", async () => {
@@ -857,7 +857,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     __setHostOsForTests("windows");
     ipcReplies.set("local_ccm_entry_status", { ok: true, summary: "x" });
     await mount([], fakePages().host);
-    // 〔WF1 · ㉔〕Windows 本机同样问、同样记（新开的 PowerShell 里敲 `ccm` 走到哪）。
+    // Windows 本机同样问、同样记（新开的 PowerShell 里敲 `ccm` 走到哪）。
     expect(ipcCalls).toContain("local_ccm_entry_status");
     expect(readStatus(LOCAL_MACHINE_KEY).ccm?.kind).toBe("ok");
     ipcReplies.delete("local_ccm_entry_status");
@@ -908,7 +908,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
   });
 
   /**
-   * 🔴 〔MC1 · 2026-09-24〕`设计/71 §13` · `设计/01 §6.7`：**机器卡上只有三个动作**。
+   * 🔴：**机器卡上只有三个动作**。
    *
    * 从前「组件」栏那一行挤着 8 颗按钮。今天两向钉：
    * · 「组件」栏的按钮**恰好**是 ① 部署后端（部署 · 卸载）与 ② 别名（装别名块 · 卸载别名块）那四颗；
@@ -926,8 +926,8 @@ describe("S1 RemoteSection：保存走局部合并", () => {
         .map((b) => b.textContent ?? "");
     // 别名放「终端」栏：远端那一块与本机「终端 → 别名」同一个位置。
     expect(labels(got.components)).toEqual(["部署后端", "卸载后端"]);
-    // 〔AL2 · 第四波 4D〕② 别名是与本机同一个组件（`buildAliasManager`，`data-origin` = 这台）；装 / 卸在组件里，
-    //   卸那一颗按 V134 叫「卸载 ccm」（V80 原裁）。组件是 `<details>`，栏上裸露的按钮一颗都不剩。
+    // ② 别名是与本机同一个组件（`buildAliasManager`，`data-origin` = 这台）；装 / 卸在组件里，
+    //   卸那一颗按 V134 叫「卸载 ccm」（原裁）。组件是 `<details>`，栏上裸露的按钮一颗都不剩。
     expect(labels(got.terminal)).toEqual([]);
     const mgr = got.terminal.querySelector<HTMLElement>(".machine-aliases");
     expect(mgr?.dataset.origin).toBe("a");
@@ -1054,12 +1054,12 @@ describe("S1 RemoteSection：保存走局部合并", () => {
   });
 
   /**
-   * 〔FE1〕`设计/01 §5` D4「一条都不许静默忽略」：「开新 Claude」替用户派生的默认名要过铸名口，
+   * 「一条都不许静默忽略」：「开新 Claude」替用户派生的默认名要过铸名口，
    * **铸不出 ⇒ 不起、出声**。先前这里「列不出来就用空集铸名」—— 同一个 cwd 派生出同一个名字，
-   * 撞上远端 `create-or-attach` 的幂等闸，静默接进第一个会话（#76）。〔FIX4 · J7〕铸名口是那台后端的 `tmux-name-mint`。
+   * 撞上远端 `create-or-attach` 的幂等闸，静默接进第一个会话（#76）。铸名口是那台后端的 `tmux-name-mint`。
    * 正控：那台铸了名字 ⇒ 照常往下走到渲染那一跳。
    */
-  // 〔MIG-2〕起会话那几问（中转地址 `launch-endpoint` → 渲染 `launch-render-*`）改问那台后端（`src/frontend/ui/launch-render.ts`），
+  // 起会话那几问（中转地址 `launch-endpoint` → 渲染 `launch-render-*`）改问那台后端（`src/frontend/ui/launch-render.ts`），
   //   不再是 `commands.*` 包装 ⇒ 看通道：问到了其中第一问就算「往下走到了」（本桩不答，后面几问不会发）。
   const renderAsked = (): boolean => chanOps.some((op) => /^launch-(?:endpoint|render-)/.test(op));
   const openLauncherAndStart = async (minted: unknown): Promise<void> => {
@@ -1098,7 +1098,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     document.body.innerHTML = "";
   });
 
-  // 设计/91 §6 第 9 条 · 99 §2.2 R1 认形状 ＋ 主会话 09-28 裁：机器页「测试连接」那一格不露 `v=… caps=[…]` 日志行；做不到的那几类点开看。
+  // 认形状 ＋ 主会话 09-28 裁：机器页「测试连接」那一格不露 `v=… caps=[…]` 日志行；做不到的那几类点开看。
   it("★〔FIX5 续〕测试连接那一格是人话：不含「=」「[」；这台做不到的那几类在一个点开看的格里", async () => {
     localStorage.clear();
     const noTmux = copyText("machineCard.test.gapRow", { reason: copyText("control.unavailable.noTmux", { machine: "a" }), n: "3" });
@@ -1137,7 +1137,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     const sec = await mount([mkH("a", "1.1.1.1")]);
     const btns = [...sec.element.querySelectorAll<HTMLButtonElement>("button")];
     btns.find((b) => b.textContent?.includes("测试连接"))!.click();
-    for (let i = 0; i < 10; i++) await new Promise((r) => setTimeout(r, 0)); // 〔MIG-1 续〕先读一次已保存的机器、再问本机后端
+    for (let i = 0; i < 10; i++) await new Promise((r) => setTimeout(r, 0)); // 先读一次已保存的机器、再问本机后端
     const st = readStatus("a");
     expect(st.connection?.kind).toBe("ok");
     expect(st.backend?.kind).toBe("ok");
@@ -1146,7 +1146,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ST1「那个勾选框会自己跳」（`设计/70 §1` 截图对比 ＋ `§8` 判据 #2）：
+// ST1「那个勾选框会自己跳」（截图对比 ＋ `§8` 判据 #2）：
 // 「启用远端模式」在配置读回来之前**不可交互**；读失败就一直灰着（那一刻它显示的不是盘上的值）。
 // ─────────────────────────────────────────────────────────────────────────────
 describe("ST1：「启用远端模式」读回来之前不可点", () => {
@@ -1184,7 +1184,7 @@ describe("ST1：「启用远端模式」读回来之前不可点", () => {
   });
 });
 
-// 〔S5 · 第四波〕要求住址：`调研/设计/99 §1` V41「不为旧配置留兼容」；主会话 09-24 裁
+// 要求：「不为旧配置留兼容」；主会话 09-24 裁
 // 「认不出就不显示那台、在机器页顶上一句『远端配置认不出：…』」。
 describe("〔S5 · V41〕remote 段认不出 ⇒ 机器列表顶上说一句、一台都不显示", () => {
   beforeEach(() => vi.resetAllMocks());

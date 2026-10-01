@@ -1,8 +1,8 @@
-//! **SSH 的一切都在这里**（`设计/05 §13`：拨 SSH 归后端）—— 〔SR1a〕而且只在**本机那一个常驻后端**里。
+//! **SSH 的一切都在这里**（拨 SSH 归后端）—— 而且只在**本机那一个常驻后端**里。
 //!
 //! # 它是什么
 //!
-//! 〔SR1a · 2026-09-24，用户裁「改成单一常驻后端」〕本机只常驻一个后端；到各远端的 SSH 连接
+//! 〔2026-09-24，用户裁「改成单一常驻后端」〕本机只常驻一个后端；到各远端的 SSH 连接
 //! **由它持有、按拨号身份复用**（[`pool`]）。monitor（界面进程）要跟某台远端说话时，经它与本机后端之间
 //! **那条已有的流**开一条「链路」（`link-open`，[`link`]），把一份拨号请求（[`DialRequest`]）交过来，
 //! 然后**只在这条链路上收发字节**。与远端跑 SSH 的每一件事都在本目录：多地址竞速（F45）· 跳板（F56）·
@@ -13,11 +13,11 @@
 //!  `CCM_DIAL_REQUEST`，然后只在这个进程的 stdin/stdout 上收发字节」「一条链路一个代理进程」。
 //!  SR1a 之后这两句都不成立：`--dial` 那条分派臂删了，每链路一个进程的形态退场。〕
 //!
-//! 🔴 **界面那一侧的 `russh` 拨号已经删了**（`设计/05 §13.4`，用户「后端是给定的，不要退路」）：
+//! 🔴 **界面那一侧的 `russh` 拨号已经删了**（用户「后端是给定的，不要退路」）：
 //! 没有「拿不到常驻后端就进程内拨」那条回落，也没有「起一个一次性代理进程」那条回落 ——
 //! 常驻后端不在 ⇒ monitor **报**（`dial_host.rs`）。
 //!
-//! 〔SR1b · 2026-09-24，用户 V89「SFTP 进本机常驻后端，只写暂存区」〕**SFTP 也在这里了**（[`sftp`]）：
+//! 〔2026-09-24，用户「SFTP 进本机常驻后端，只写暂存区」〕**SFTP 也在这里了**（[`sftp`]）：
 //! 在池里那条连接上开 sftp 子系统，远端写**只许两处**（`~/.cc-monitor/staging/` 与 `~/.cc-monitor/bin/`）。
 //! 界面拿不到原始 SFTP 字节（`use:"subsystem"` 照旧回 `unsupported_use`，见 [`link`]）—— 它只有两条路：
 //! 部署走链路 `use:"files"`（受限的远端文件一问一答）；传输走入方向命令 `transfer-*`（`control/transfer.rs`）。
@@ -34,7 +34,7 @@
 //!              然后**恰好一行** ack（DialAck，`\n` 结尾）
 //!              其后按用法：stream 原样字节 · capture 一行 Captured 后结束 ·
 //!              forward 每接进一条连接一行 {"accepted":n} ·
-//!              〔SR1b〕files 之后一问一答（上行一行请求、下行一行应答，`sftp.rs` 头注）
+//! files 之后一问一答（上行一行请求、下行一行应答，`sftp.rs` 头注）
 //! ```
 //!
 //! **为什么 ack 要有**：「连不上」与「连上了但远端还没说话」在链路上一模一样，ack 把它们分开。
@@ -55,19 +55,19 @@ use serde::{Deserialize, Serialize};
 use tokio::io::AsyncWriteExt;
 
 mod connect;
-pub(crate) mod forwards; // 〔MIG-1 · `99 §2.1 ⑬`〕端口转发的账（起 · 停 · 列三条帧命令）
+pub(crate) mod forwards; // 端口转发的账（起 · 停 · 列三条帧命令）
 pub mod link;
-pub(crate) mod machine; // 〔MIG-1 续〕一台机器的配置 → 拨号请求（后端持有全部 SSH）
+pub(crate) mod machine; // 一台机器的配置 → 拨号请求（后端持有全部 SSH）
 mod pool;
-pub(crate) mod probe; // 〔MIG-1 续〕测试连接（`remote-probe`）
+pub(crate) mod probe; // 测试连接（`remote-probe`）
 pub(crate) mod sftp;
 pub(crate) mod ssh_config;
-pub(crate) mod terminal; // 〔FIX4 · `99 §2.1 ⑬`〕开终端那一串（`ssh -t …` 外壳 ＋ PowerShell 窗口载荷）在这里渲
+pub(crate) mod terminal; // 开终端那一串（`ssh -t …` 外壳 ＋ PowerShell 窗口载荷）在这里渲
 pub(crate) mod uses;
 
 /// ack 里的协议版本。**v1** = 只有长流、只有一个地址、只会私钥文件（`K-P6b` 那一版）；
 /// **v2** = 本文件（竞速 · 跳板 · agent · 三种用法 · 阶段行）。
-/// 〔SR1b〕多一种用法 `files` **不 bump 它**：老界面不发 `files`，新界面凭 `uses` 认出老后端（`TooOld`），
+/// 多一种用法 `files` **不 bump 它**：老界面不发 `files`，新界面凭 `uses` 认出老后端（`TooOld`），
 /// 版本号只在「同一种用法的字节形状变了」时才动。
 pub const ACK_V: u32 = 2;
 
@@ -105,10 +105,10 @@ pub enum Use {
     Capture,
     /// 本进程绑本机回环口、每接进一条连接开一条 direct-tcpip（F58 端口转发）。
     Forward,
-    /// 〔SR1b〕开 sftp 子系统，之后在链路上一问一答（受限的远端文件操作：写只许两处，[`sftp`]）。
+    /// 开 sftp 子系统，之后在链路上一问一答（受限的远端文件操作：写只许两处，[`sftp`]）。
     Files,
-    /// 〔HOST · V139〕一条 direct-tcpip 到远端回环 `tunnel_port`（那台常驻后端的监听口），原样对拷。
-    /// 不绑本机口（与 `forward` 不同）：monitor 经这条链路直接讲监听协议（`设计/05 §5.2`，不另开公网口）。
+    /// 一条 direct-tcpip 到远端回环 `tunnel_port`（那台常驻后端的监听口），原样对拷。
+    /// 不绑本机口（与 `forward` 不同）：monitor 经这条链路直接讲监听协议（不另开公网口）。
     Tunnel,
 }
 
@@ -120,7 +120,7 @@ pub struct CaptureOpts {
     /// stdout 一出现这个子串就收工（不认参数的老后端会掉进流模式、永不 EOF）。
     #[serde(default)]
     pub abort_marker: Option<String>,
-    /// 〔W5-AUX · `设计/96 §3.6`〕exec 之后原样写进远端进程 stdin 的字节（缺席 = 一个字节不写）。**不关 stdin** ——
+    /// exec 之后原样写进远端进程 stdin 的字节（缺席 = 一个字节不写）。**不关 stdin** ——
     /// 收它的那一侧是后端 CLI 面的「只读一行」入口（`lib.rs::STDIN_LINE_FLAG`），读到换行就动手。
     /// 有了它，载荷不必拼进命令行（那要求远端登录 shell 认 POSIX 引号与管道）。
     #[serde(default)]
@@ -164,7 +164,7 @@ pub struct DialRequest {
     pub capture: Option<CaptureOpts>,
     #[serde(default)]
     pub forward: Option<ForwardSpec>,
-    /// 〔HOST〕`use: tunnel` 的目标口（远端 `127.0.0.1` 上）。
+    /// `use: tunnel` 的目标口（远端 `127.0.0.1` 上）。
     #[serde(default)]
     pub tunnel_port: Option<u16>,
     /// ack 之前逐行报阶段（测试连接那六格）。
@@ -173,7 +173,7 @@ pub struct DialRequest {
     /// 短命探活（inactivity 拆链）而不是长连接（keepalive 保活）。
     #[serde(default)]
     pub probe: bool,
-    /// 〔SR1a〕ssh-agent 套接字的路径（Unix；界面进程**此刻**的 `SSH_AUTH_SOCK`）。
+    /// ssh-agent 套接字的路径（Unix；界面进程**此刻**的 `SSH_AUTH_SOCK`）。
     ///
     /// 为什么要界面交过来而不读本进程的环境：常驻后端**活得比任何一个界面进程都长**（脱离、跨界面重启），
     /// 它身上那份 `SSH_AUTH_SOCK` 是**第一个**起它的界面给的 —— 用户重新登录之后 agent 换了路径，
@@ -205,22 +205,22 @@ pub struct DialAck {
     pub error: Option<String>,
     /// 实际观察到的 host key 指纹 —— 界面侧 TOFU 固化要它（失败时也尽量带上）。
     pub fingerprint: Option<String>,
-    /// 〔VIS2 · `设计/15 §3.4 ①`「保住多地址那一格」〕这一趟报过指纹的每条地址 → 指纹。additive（`ACK_V` 不动）；
+    /// 〔「保住多地址那一格」〕这一趟报过指纹的每条地址 → 指纹。additive（`ACK_V` 不动）；
     /// 界面只在各地址一致时自动固化。失败的 ack 恒空（指纹照旧在 `fingerprint`）。
     pub fingerprints: std::collections::BTreeMap<String, String>,
-    /// 〔FIX · `设计/99 §2 ㊶` 第二问〕经跳板时**跳板那一台**报过的指纹（地址 → 指纹）：它是另一台机器，界面按它自己那一格固化
+    /// 〔第二问〕经跳板时**跳板那一台**报过的指纹（地址 → 指纹）：它是另一台机器，界面按它自己那一格固化
     /// （同 `fingerprints` 的判定）。直连 / 失败 ⇒ 空。additive。
     pub jump_fingerprints: std::collections::BTreeMap<String, String>,
     /// 竞速胜出的地址（`host:port`）—— 测试连接展示「你正连着哪条路」。
     pub endpoint: Option<String>,
-    /// 〔MIG-1 收尾〕同一条胜者，结构化（`{host, port}`）—— 界面记 last-good、下一趟当 `prefer` 交回来、起终端时拼 ssh 命令用它；
+    /// 同一条胜者，结构化（`{host, port}`）—— 界面记 last-good、下一趟当 `prefer` 交回来、起终端时拼 ssh 命令用它；
     /// 界面因此不必再解析 `host:port`（地址解析只在 `machine.rs`）。失败 ⇒ `None`。additive。
     pub winner: Option<Endpoint>,
-    /// 〔MIG-1 收尾〕这一趟请求里目标那台**带了**期望指纹（严格校验）—— 界面判「要不要自动固化」用它，不再自己重推一遍指纹继承规则。
+    /// 这一趟请求里目标那台**带了**期望指纹（严格校验）—— 界面判「要不要自动固化」用它，不再自己重推一遍指纹继承规则。
     pub strict: bool,
-    /// 〔MIG-1 收尾〕同上，跳板那一台（直连 ⇒ `false`）。
+    /// 同上，跳板那一台（直连 ⇒ `false`）。
     pub jump_strict: bool,
-    /// 〔WF2 · WIN3 读数 E〕开通道被远端回拒时，SSH 协议给的原因码（RFC 4254 §5.1：`administratively_prohibited` ·
+    /// 开通道被远端回拒时，SSH 协议给的原因码（RFC 4254 §5.1：`administratively_prohibited` ·
     /// `connect_failed` · `unknown_channel_type` · `resource_shortage` · `unknown`）。只有 `tunnel` 那一形填；其余 ⇒ `None`。additive。
     /// 界面据它分「那台 sshd 不许端口转发」（停、不重试）与「那个口上还没人」（等一会儿再开）。
     pub open_refused: Option<&'static str>,
@@ -248,7 +248,7 @@ impl DialAck {
         }
     }
 
-    /// 〔WF2〕同 [`DialAck::failed`]，带上远端回拒开通道的原因码。
+    /// 同 [`DialAck::failed`]，带上远端回拒开通道的原因码。
     fn open_refused(error: String, fingerprint: Option<String>, why: &'static str) -> Self {
         DialAck {
             open_refused: Some(why),
@@ -257,7 +257,7 @@ impl DialAck {
     }
 }
 
-/// 〔WF2〕russh 的开通道失败 → 线上那个原因码（[`DialAck::open_refused`]）。不是开通道被拒 ⇒ `None`。
+/// russh 的开通道失败 → 线上那个原因码（[`DialAck::open_refused`]）。不是开通道被拒 ⇒ `None`。
 pub(crate) fn open_failure_word(e: &russh::Error) -> Option<&'static str> {
     use russh::ChannelOpenFailure as F;
     match e {
@@ -336,9 +336,9 @@ impl StageSink {
     }
 }
 
-/// 〔SR1a〕解析 `link-open` 的 `dial` 字段（C2 那一版从环境变量读同一份 JSON）。
+/// 解析 `link-open` 的 `dial` 字段（C2 那一版从环境变量读同一份 JSON）。
 /// **抽出来是为了判据够得着它** —— 判据不该去开一条真链路才能验「蛇形键读得动」。
-/// 〔MIG-1 收尾〕线上交来的那份拨号（一台机器原样的配置）⇒ 拨号请求 —— 组法只在 [`machine::resolve`]。
+/// 线上交来的那份拨号（一台机器原样的配置）⇒ 拨号请求 —— 组法只在 [`machine::resolve`]。
 pub(crate) fn parse_request_value(
     v: &serde_json::Value,
 ) -> Result<DialRequest, (&'static str, String)> {

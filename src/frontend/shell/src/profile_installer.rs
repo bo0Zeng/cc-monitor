@@ -1,6 +1,6 @@
-//! 〔`K-R132` · `KR135D1`〕**本机 `~/.cc-monitor/bin` 在不在用户级 PATH 上**：生成 / 探 / 加 / 撤那三条 PowerShell 命令（本机后端的引导那一格）。
+//! **本机 `~/.cc-monitor/bin` 在不在用户级 PATH 上**：生成 / 探 / 加 / 撤那三条 PowerShell 命令（本机后端的引导那一格）。
 //!
-//! 〔MIG-3a · `设计/99 §2.1 ⑬` · 主会话 09-27 裁〕本模块从前还住着**别名块**那一整族（规划 · 围栏 · 装 / 卸 · `$PROFILE` 的块现状）——
+//! 本模块从前还住着**别名块**那一整族（规划 · 围栏 · 装 / 卸 · `$PROFILE` 的块现状）——
 //! 随别名规则与方言一起进了那台机器的后端（`src/backend/assets/aliases/block.rs`，界面经通道 `aliases-block-*` 直问）。
 //! 留在 monitor 的只有这一格：它改的是**本机用户级环境变量**、跑的是**本机**那一个 `powershell.exe`，
 //! 属于 monitor 引导本机后端那一类（⑬ `MONITOR_OWN` 的「起停引导」）。
@@ -45,8 +45,8 @@ use crate::copy_table::copy_text;
 
 /// 本机 `ccm` 入口所在目录的 **Windows 写法**（`%USERPROFILE%` 之下的相对路径）。
 ///
-/// 目录本身取自共享 crate 里后端的落点 `relay_route_core::BACKEND_LANDING_REL`（本机远端同一个，V28；
-/// 〔MIG-3b 续〕足迹申报表进了后端，那一格与它相等由后端判据对拍），这里只做一件事：把 `/` 换成 `\`。**本函数体内没有任何目录字面量。**
+/// 目录本身取自共享 crate 里后端的落点 `relay_route_core::BACKEND_LANDING_REL`（本机远端同一个，；
+/// 足迹申报表进了后端，那一格与它相等由后端判据对拍），这里只做一件事：把 `/` 换成 `\`。**本函数体内没有任何目录字面量。**
 fn ccm_bin_dir_windows() -> Option<String> {
     ccm_bin_dir_rel().map(|d| d.replace('/', "\\"))
 }
@@ -120,7 +120,7 @@ pub fn render_user_path_setup_command() -> Option<String> {
     ))
 }
 
-/// 〔WF1 · K · `第四波记录/WIN3.md §2` K〕加 / 撤两条共用的开头：我们那个目录 ＋ 用户级 `Path` 的**原值与原类型**。
+/// 加 / 撤两条共用的开头：我们那个目录 ＋ 用户级 `Path` 的**原值与原类型**。
 ///
 /// 读的是注册表 `HKCU\Environment` 里**未展开**的原值（`DoNotExpandEnvironmentNames`）与它的类型（`GetValueKind`，
 /// 不在 ⇒ 按 Windows 的缺省 `ExpandString`）；写回按原类型 ⇒ `%USERPROFILE%` 这类写法原样留着、`REG_EXPAND_SZ` 不被改成 `REG_SZ`
@@ -173,7 +173,7 @@ const SETTING_CHANGE_BROADCAST: &str = "    Add-Type -Namespace CcMonitor -Name 
 /// ⚠ 摘完剩下空串是**正常**的：删掉这个值（`DeleteValue`），
 /// 那正是「我们那一格是用户级 PATH 上唯一一格」时该有的结果 —— 不是清空了用户的 PATH
 /// （**机器级那一档一个字节都没碰**，用户下次开终端仍然有完整的系统 PATH）。
-/// 〔WF1 · K〕我们那一格不在 ⇒ 一个字节不写；写回按原类型、别的格逐字（`%VAR%` 不展开）⇒ 加了再撤回到原样。
+/// 我们那一格不在 ⇒ 一个字节不写；写回按原类型、别的格逐字（`%VAR%` 不展开）⇒ 加了再撤回到原样。
 ///
 /// ⚠ **要重开终端才看得到** —— 与加那一侧同理，已经开着的进程拿的是自己启动那一刻的
 /// 环境块副本。这句话不放进可执行文本里（放进去，用户复制一整段就会连注释一起跑）。
@@ -203,7 +203,7 @@ pub fn render_user_path_removal_command() -> Option<String> {
 ///
 /// # 🔴 相等口径与生成的那两条命令**必须是同一种**，否则界面会撒谎
 ///
-/// 加那一条用 `-eq $d`、撤那一条用 `-ne $d`（〔WF1 · K〕都比每格展开 `%VAR%` 之后的样子），两者在 PowerShell 里都是
+/// 加那一条用 `-eq $d`、撤那一条用 `-ne $d`（都比每格展开 `%VAR%` 之后的样子），两者在 PowerShell 里都是
 /// **整格 · 大小写不敏感**。这里逐字照同一种（`user_path_raw` 是探针读回的展开值）：按 `;` 切开比**整格**，
 /// 用 `eq_ignore_ascii_case`。
 ///
@@ -245,7 +245,7 @@ pub fn user_path_has_our_bin(user_path_raw: &str, dir_abs: &str) -> bool {
 /// 于是「撤」那个按钮点下去什么都没发生、而界面还说它撤掉了。
 /// 判据与另外两条走**同一批断言**。
 ///
-/// # 〔P2 · `设计/99 §2.3` WF1 报备〕两行自己编成 UTF-8 字节、直写标准输出流
+/// # 两行自己编成 UTF-8 字节、直写标准输出流
 ///
 /// Windows PowerShell 5.1 往管道写输出用控制台的 OEM 代码页（中文系统是 936），而读回那一侧按 UTF-8 解
 /// ⇒ 用户目录含非 ASCII 时第 1 行解坏、「在不在 PATH 上」判错。直写字节不经控制台编码、也不去改控制台代码页。
@@ -308,7 +308,7 @@ pub struct UserPathStatus {
 ///    「点按钮」与「自己复制去跑」**逐字同一份**，实现真的只有一处（`K33`）。
 /// 2. 广播 `WM_SETTINGCHANGE` 不能忘，忘了的后果是「改了、新开的终端看不到，要重登录」
 ///    —— **那正是本件在杀的那个形状**（`R86` 逐字「看起来装好了、换个终端就没了」）。
-///    〔WF1 · K〕`[Environment]::SetEnvironmentVariable(…,'User')` 自带广播，可它按 `REG_SZ` 写、读回的是展开值
+/// `[Environment]::SetEnvironmentVariable(…,'User')` 自带广播，可它按 `REG_SZ` 写、读回的是展开值
 ///    （`%USERPROFILE%` 被冻成字面、`REG_EXPAND_SZ` 变 `REG_SZ`）⇒ 生成的那段改在 PowerShell 里按原类型写注册表、
 ///    广播自己做（[`SETTING_CHANGE_BROADCAST`]）。仍是这一段生成的字节，不是 Rust 写注册表。
 ///
@@ -322,7 +322,7 @@ pub struct UserPathStatus {
 ///   里面唯一的变量是 `tool_registry` 申报的那个目录。判据在数这件事。
 ///
 /// 非 Windows 上**不起进程**，直接如实回错 —— 那台机器上根本没有「用户级 PATH」这一档。
-/// 〔P4b · 阶段 H〕有没有这一档由 `platform::login_shell` 答（原先是这里两份 cfg 分身）。
+/// 有没有这一档由 `platform::login_shell` 答（原先是这里两份 cfg 分身）。
 fn run_user_path_powershell(script: &str) -> Result<String, String> {
     use crate::spawn_managed::{spawn_managed_cmd, ConsolePolicy, Lifetime, StderrSink};
     if !crate::platform::login_shell::LOGIN_SHELL.has_user_level_path() {
@@ -331,7 +331,7 @@ fn run_user_path_powershell(script: &str) -> Result<String, String> {
     let mut cmd = std::process::Command::new("powershell.exe");
     cmd.args(["-NoProfile", "-NonInteractive", "-Command", script])
         .stdout(std::process::Stdio::piped());
-    // 三条策略（`00 §1.5.2`）：
+    // 三条策略：
     // · `Hidden` —— 🔴 **先前是裸 `.output()`，也就是没人回答过这个问题**：`-NonInteractive`
     //   只保证它不等人回车，**挡不住 Windows 给它新开一个控制台窗口**。用户点一下
     //   「加到 PATH」就闪一个黑框，而这一跳的全部意义是「点一下、悄悄改好」。
@@ -357,7 +357,7 @@ fn run_user_path_powershell(script: &str) -> Result<String, String> {
             "rsProfileInstaller.ps.exitCode",
             &[
                 ("status", &format!("{:?}", out.status.code())),
-                // 〔P2〕stderr 是 PowerShell 按控制台代码页写的（stdout 那一路探针自己写 UTF-8，不走这里）。
+                // stderr 是 PowerShell 按控制台代码页写的（stdout 那一路探针自己写 UTF-8，不走这里）。
                 (
                     "detail",
                     &crate::platform::console_text::console_text(&out.stderr)

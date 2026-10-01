@@ -6,7 +6,7 @@
 //! 与原来相比只有两处不同，都写在 `mod.rs` 头注「边界」一节：竞速同时起拨（不错开）；
 //! ssh-agent 两个平台都有（界面侧原来只有 Windows）。
 //!
-//! 〔NT1 · 2026-09-24〕TCP 改由这里自己拨（不再交给 `client::connect`）：拨通之后问内核这一跳的往返时间
+//! TCP 改由这里自己拨（不再交给 `client::connect`）：拨通之后问内核这一跳的往返时间
 //! （`platform::tcp_rtt`），过**唯一一处**压缩判准 [`compression_for`]，再在这条 socket 上跑 SSH 握手。
 
 use copy_core::copy_text;
@@ -32,20 +32,20 @@ const PROBE_INACTIVITY: Duration = Duration::from_millis(30_000);
 pub(crate) struct Linked {
     pub(crate) session: client::Handle<Checker>,
     pub(crate) fingerprint: Option<String>,
-    /// 〔VIS2 · `设计/15 §3.4 ①`〕建这条连接那一趟里**报过指纹的每条地址** → 它报的指纹（竞速的输家也在；跳板那台不在）。
+    /// 建这条连接那一趟里**报过指纹的每条地址** → 它报的指纹（竞速的输家也在；跳板那台不在）。
     pub(crate) fingerprints: BTreeMap<String, String>,
-    /// 〔FIX · `99 §2 ㊶`〕经跳板时跳板那一趟报过的「地址 → 指纹」（另一格；直连 ⇒ 空）。
+    /// 经跳板时跳板那一趟报过的「地址 → 指纹」（另一格；直连 ⇒ 空）。
     pub(crate) jump_fingerprints: BTreeMap<String, String>,
     pub(crate) endpoint: String,
-    /// 〔MIG-1 收尾〕同一条胜者，结构化（ack 的 `winner`）。
+    /// 同一条胜者，结构化（ack 的 `winner`）。
     pub(crate) winner: Endpoint,
     /// 经跳板时跳板那条连接：**必须与目标连接同生命周期**（drop 它 ⇒ 隧道死 ⇒ 目标断）。
     pub(crate) _jump: Option<client::Handle<Checker>>,
-    /// 〔SR1b〕这条连接上的通道预算（`pool::Budget`）：长流 · 查询 · SFTP 同一条连接，同一道闸。
+    /// 这条连接上的通道预算（`pool::Budget`）：长流 · 查询 · SFTP 同一条连接，同一道闸。
     pub(crate) budget: super::pool::Budget,
-    /// 〔NT1〕这条连接托着的别的连接（主连接托着批量连接：长流在它就在，主连接没了随之释放 —— `pool.rs`）。
+    /// 这条连接托着的别的连接（主连接托着批量连接：长流在它就在，主连接没了随之释放 —— `pool.rs`）。
     pub(crate) held: Mutex<Vec<Arc<Linked>>>,
-    /// 〔NT1〕这条连接上停着的那一条空闲 sftp 会话（一个空位；`sftp.rs::Parked`）。不托本连接。
+    /// 这条连接上停着的那一条空闲 sftp 会话（一个空位；`sftp.rs::Parked`）。不托本连接。
     pub(crate) idle_sftp: Mutex<Option<super::sftp::Parked>>,
 }
 
@@ -54,7 +54,7 @@ pub(crate) struct Linked {
 pub(crate) struct Checker {
     expected: Option<String>,
     observed: Arc<Mutex<Option<String>>>,
-    /// 〔VIS2〕这一趟共用的「地址 → 指纹」格：校验那一刻就记（接受 / 拒绝都记），之后任务被 abort 也不丢。
+    /// 这一趟共用的「地址 → 指纹」格：校验那一刻就记（接受 / 拒绝都记），之后任务被 abort 也不丢。
     reported: Arc<Mutex<BTreeMap<String, String>>>,
     stages: StageSink,
     endpoint: String,
@@ -132,9 +132,9 @@ fn label(ep: &Endpoint) -> String {
     format!("{}:{}", ep.host, ep.port)
 }
 
-// ═══ 〔NT1 · 2026-09-24〕**压缩：开不开，判准只此一处** ═══════════════════════════════════════════
+// ═══ **压缩：开不开，判准只此一处** ═══════════════════════════════════════════
 //
-// 用户 V23（`设计/99 §1`）：「智能多开链接\压缩等等」「这是属于 ssh 优化的部分」。`设计/15 §3.3`：SSH 传输层零压缩，
+// 用户 V23：「智能多开链接\压缩等等」「这是属于 ssh 优化的部分」。：SSH 传输层零压缩，
 // 而会话数据 gzip 3.1–4.1×。`§5.5` 那个「russh 默认压不压 —— 读不到，不猜」今天读到了：0.61.1 的默认偏好序是
 // `[none, zlib, zlib@openssh.com]`，客户端按**自己的**偏好序挑双方都有的第一个 ⇒ **永远 `none`**。
 //
@@ -156,7 +156,7 @@ pub(crate) const COMPRESS_ON: &[russh::compression::Name] = &[
 /// 压缩偏好序：**不压**。
 pub(crate) const COMPRESS_OFF: &[russh::compression::Name] = &[russh::compression::NONE];
 
-/// 🔴 **闸：russh 自己的 zlib 解压对不对**。〔CZ1 · 2026-09-25〕**开了**（用户 V118〔选〕「打补丁版 russh，现在就开」）。
+/// 🔴 **闸：russh 自己的 zlib 解压对不对**。**开了**（用户 V118〔选〕「打补丁版 russh，现在就开」）。
 ///
 /// 来历（NT1 现打）：上游 `russh 0.61.1` / `0.61.2` 的 `Decompress::decompress` 收尾判断用的是**本轮调用之前**的进度
 /// （`n_in_` / `n_out_`）⇒ 解出来的字节比输入多一倍以上时，它在输出缓冲第二次撑满的那一刻提前收工：一包只交出 ≈ 2 × 包长，
@@ -164,7 +164,7 @@ pub(crate) const COMPRESS_OFF: &[russh::compression::Name] = &[russh::compressio
 /// 第一条通道的确认被吃掉、会话卡死。
 ///
 /// 今天链的是仓内补过的那一份（`Cargo.toml` 末尾 `[patch.crates-io]` → `../vendor/russh`，改了哪几行见那里的 `VENDOR.md`）
-/// ⇒ 闸开：判准的答案落到连接上。〔WF2 · CZ2〕压那一半同病（不可压的满长包只交出前一截 ⇒ 对端断链，WIN3 读数 A），同一份副本里补了。
+/// ⇒ 闸开：判准的答案落到连接上。压那一半同病（不可压的满长包只交出前一截 ⇒ 对端断链，WIN3 读数 A），同一份副本里补了。
 /// `dial_compress_tests::the_gate_matches_what_russh_really_does` 两向钉着「闸 == russh 一来一回对不对」：
 /// 谁把补丁撤了（或换回一份还坏着的 russh）而闸还开着 ⇒ 红；russh 对着而闸被关回去 ⇒ 红。
 pub(crate) const RUSSH_ZLIB_SOUND: bool = true;
@@ -222,10 +222,10 @@ async fn tcp_hop(ep: &Endpoint) -> std::io::Result<(tokio::net::TcpStream, bool)
 /// 首个握手成功者胜、其余立即丢弃（drop 关 socket）。鉴权留给调用方只对胜者做一次
 /// （防 agent 并发撞 `MaxAuthTries`）。全失败 ⇒ 聚合各地址的错误；被丢弃的输家不算错误。
 ///
-/// 〔NT1〕TCP 由这里自己拨（不再交给 `client::connect`）：拨通之后问内核这一跳的往返时间、过压缩判准
+/// TCP 由这里自己拨（不再交给 `client::connect`）：拨通之后问内核这一跳的往返时间、过压缩判准
 /// （[`compression_for`]），再在这条 socket 上跑 SSH 握手。`apply = false` ⇒ 判准照问、答案**不用在这一条上**
 /// 而是回给调用方（跳板那一形：跳板自己只运隧道、里面是已加密的字节，压不动；该压的是隧道里的目标那条）。
-/// 回 `(句柄, 指纹格, 胜者, 跨这一跳的字节该不该压)`；〔VIS2〕`reported` 由调用方给，每个地址的校验器都记进它。
+/// 回 `(句柄, 指纹格, 胜者, 跨这一跳的字节该不该压)`；`reported` 由调用方给，每个地址的校验器都记进它。
 async fn race(
     probe: bool,
     apply: bool,
@@ -372,7 +372,7 @@ async fn authenticate(
             Ok(())
         }
         None => {
-            // 〔SR1a〕agent 这一支**在当前线程上就地跑完**（`block_in_place` ＋ `block_on`），不留在外层 future 里。
+            // agent 这一支**在当前线程上就地跑完**（`block_in_place` ＋ `block_on`），不留在外层 future 里。
             //
             // ⚠ 不是口味：拨号从此跑在要 `tokio::spawn` 的链路任务里（`dial/link.rs`），外层 future 必须 `Send`；
             //   而 russh 的 `authenticate_publickey_with(.., &mut agent)` 经 `Signer::auth_sign(&AgentIdentity, ..)`
@@ -433,9 +433,9 @@ pub(crate) async fn establish(
     req: &DialRequest,
     stages: &StageSink,
 ) -> Result<Linked, (String, Option<String>)> {
-    // 〔VIS2〕目标那一趟（直连竞速 / 经跳板那一次握手）报过的逐地址指纹；跳板自己那一趟另开一格、不进来。
+    // 目标那一趟（直连竞速 / 经跳板那一次握手）报过的逐地址指纹；跳板自己那一趟另开一格、不进来。
     let reported: Arc<Mutex<BTreeMap<String, String>>> = Arc::default();
-    // 〔FIX · `99 §2 ㊶` 第二问〕跳板那一趟自己的一格：跳板是另一台机器，界面按它自己那一台固化（不再一直 TOFU）。
+    // 〔第二问〕跳板那一趟自己的一格：跳板是另一台机器，界面按它自己那一台固化（不再一直 TOFU）。
     let jump_reported: Arc<Mutex<BTreeMap<String, String>>> = Arc::default();
     let (mut session, observed, winner, jump) = match &req.jump {
         None => {
@@ -463,7 +463,7 @@ pub(crate) async fn establish(
                 host: hop.host.clone(),
                 port: hop.port,
             };
-            // 〔NT1〕跳板那条不压（`apply = false`），但本机到跳板这一跳的判准答案要拿回来给目标那条用。
+            // 跳板那条不压（`apply = false`），但本机到跳板这一跳的判准答案要拿回来给目标那条用。
             let (mut jump_session, _jo, _jw, compress_inner) = race(
                 req.probe,
                 false,

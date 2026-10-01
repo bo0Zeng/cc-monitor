@@ -13,9 +13,9 @@ import type { SessionUnseenPayload } from "./SessionUnseenPayload";
 import type { SnapshotInflightPayload } from "./SnapshotInflightPayload";
 
 /**
- * 〔CF2 · 第四波 4B〕会话内容流（`subscribe(origin, "session-lines"[/<sid>])`）里**一格的体**。
+ * 会话内容流（`subscribe(origin, "session-lines"[/<sid>])`）里**一格的体**。
  *
- * 通道只搬不透明字节（`设计/05 §3.3.0`）；读它的是两端的业务那一侧（这里造、`src/frontend/ui/events.ts` 读）。
+ * 通道只搬不透明字节；读它的是两端的业务那一侧（这里造、`src/frontend/ui/events.ts` 读）。
  *
  * - `{"line": JsonlLinePayload}`：一行记录（seq = 行号，与实时 / 快照 / 按行号取回同一个空间）。
  * - `{"batch": "start" | "end"}`：一段**成批**的行（F5 重放 · 一次攒出 ≥ 50 行的大增量）的边界。

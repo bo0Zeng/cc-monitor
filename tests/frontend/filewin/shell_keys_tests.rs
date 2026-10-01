@@ -1,4 +1,4 @@
-//! 〔FW1+FW2 · 2026-09-24〕键盘 · 多选 · 右键菜单 **接到窗口上**的判据。
+//! 键盘 · 多选 · 右键菜单 **接到窗口上**的判据。
 //!
 //! 🔴 这一摞**每一条都真跑生产那个 `frame_body`**，喂的是 egui 的合成事件
 //! （按键 / 带修饰键的点击 / 右键）—— 零件（`select.rs`）各自的判据住 `select_tests`；
@@ -406,7 +406,7 @@ fn keys_do_not_leak_past_a_focused_field_a_modal_or_the_hit_list() {
     d.key(&mut w, egui::Key::Delete, NONE);
     assert!(picked(&w).is_empty(), "模态框摆着，↓ 却动了列表");
     w.cancel_write();
-    // ①′〔合并 F7b〕「新建空文件」那个框也是模态的 —— `modal_up()` 里要有它。
+    // ①′「新建空文件」那个框也是模态的 —— `modal_up()` 里要有它。
     assert!(w.begin_new_file());
     d.key(&mut w, egui::Key::ArrowDown, NONE);
     d.key(&mut w, egui::Key::Delete, NONE);
@@ -468,7 +468,7 @@ fn perform_refuses_what_the_table_refuses_and_says_so() {
     let lossy = "\u{FFFD}x";
     // (行, 选中谁, 表里没有的那几件)
     let cases: Vec<(Vec<Row>, Vec<&str>, Vec<Action>)> = vec![
-        // 〔W5-FILES〕目录能复制了（`设计/60 §6.2`）⇒ 「复制」不在拒绝表里。
+        // 目录能复制了⇒ 「复制」不在拒绝表里。
         (vec![dir("sub")], vec!["sub"], vec![Edit, Download]),
         (
             vec![row(lossy, false, 3, true)],
@@ -478,7 +478,7 @@ fn perform_refuses_what_the_table_refuses_and_says_so() {
         (
             vec![file("a.bin"), file("b.bin")],
             vec!["a.bin", "b.bin"],
-            // 〔FW5〕多项的「权限」放开了（批量改权限）⇒ 不在拒绝表里。
+            // 多项的「权限」放开了（批量改权限）⇒ 不在拒绝表里。
             vec![Open, Edit, Copy, Download, Rename],
         ),
         (
@@ -670,7 +670,7 @@ fn the_menu_lists_exactly_what_the_selection_allows() {
             vec![file("a.bin"), file("f.txt")],
             vec![],
             "f.txt",
-            // 〔FILES2〕+「解压到这里」（`设计/60 §6.2` Q3）。
+            // +「解压到这里」。
             vec![
                 "编辑",
                 "复制",
@@ -688,7 +688,7 @@ fn the_menu_lists_exactly_what_the_selection_allows() {
             vec![file("a.bin"), dir("sub")],
             vec![],
             "sub",
-            // 〔W5-FILES〕目录能复制了（`设计/60 §6.2`）。
+            // 目录能复制了。
             vec!["打开", "复制", "算大小", "改名", "权限", "删除"],
         ),
         (
@@ -880,7 +880,7 @@ struct KeyProbeApp {
 impl eframe::App for KeyProbeApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         // 🔴 与 `Workspace` 里每个标签页那一句委派（`t.pane.frame_body(ui)`）同形 —— 被测对象是同一个。
-        //    〔FW34〕从前这里对的是 `FileWindow` 自己的 `eframe::App` 实现；那一层挪到了 `workspace.rs`。
+        // 从前这里对的是 `FileWindow` 自己的 `eframe::App` 实现；那一层挪到了 `workspace.rs`。
         self.w.frame_body(ui);
         let ctx = ui.ctx().clone();
         let mut p = self.shared.lock().unwrap();
@@ -1107,7 +1107,7 @@ fn a_real_x_keyboard_drives_the_list() {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// 〔FW5 · 第四波〕批量改权限 · 删目录连同内容 · 乱码名 —— 接到窗口上的那几跳
+// 批量改权限 · 删目录连同内容 · 乱码名 —— 接到窗口上的那几跳
 // ════════════════════════════════════════════════════════════════════════
 
 /// 🔴 选中三项（普通文件 · 目录 · 带字节的乱码名）→ 菜单那一项「权限」→ 一个框 → 敲 `640` →
@@ -1223,7 +1223,7 @@ async fn batch_chmod_and_a_recursive_delete_reach_the_wire_with_the_right_shapes
     );
 }
 
-/// 〔NET2 · 主会话 09-27 裁 A〕那台握手时说过「改不了权限」（`hello.unavailable` 里的 `files-chmod`）⇒ 「权限」那一件
+/// 那台握手时说过「改不了权限」（`hello.unavailable` 里的 `files-chmod`）⇒ 「权限」那一件
 /// 不做、出声说为什么；那台没说 ⇒ 照常摆出框。两侧异源：左边是真 `perform`，右边是手里那份 `Offer`。
 #[test]
 fn chmod_is_refused_out_loud_where_the_machine_said_it_cannot() {

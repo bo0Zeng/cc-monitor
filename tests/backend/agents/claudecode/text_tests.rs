@@ -1,6 +1,6 @@
-//! 要求住址：`INVARIANTS §20`（CLI 注入的非真用户输入不算用户说的话）· `设计/10 §2.2b ⑤`（注入噪声那条规则只有一份）。
+//! 要求住址：`INVARIANTS §20`（CLI 注入的非真用户输入不算用户说的话）· 注入噪声那条规则只有一份。
 //!
-//! 〔P1〕随 Claude 记录文本那一半从共享 crate `search-core` 搬来（期望一字未改）。
+//! 随 Claude 记录文本那一半从共享 crate `search-core` 搬来（期望一字未改）。
 
 use super::*;
 use crate::agents::claudecode::schema::UserText;

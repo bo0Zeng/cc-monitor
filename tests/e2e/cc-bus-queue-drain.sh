@@ -58,7 +58,7 @@ trap cleanup EXIT
 
 # ===== 起飞前自检：落点绝不能是真实 bus =====
 #
-# ⚠⚠ **这道门是我自己撞出来的**〔08-13〕：本套件第一版把 `export CC_BUS_HOME=…` 写在
+# ⚠⚠ **这道门是我自己撞出来的**：本套件第一版把 `export CC_BUS_HOME=…` 写在
 # `B="$(new_bus 1)"` 的**命令替换**里 —— 那是子 shell，export **出不到父 shell**。
 # 于是 `cc-busd`/`cc-send` 全都落到了**真实 `~/.cc-bus`** 上（实得损伤：多出
 # `cc-busd.lock` 与 `log/busd.log` 两个文件，消息数据没动，已逐个删回原状）。

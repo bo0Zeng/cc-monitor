@@ -1,11 +1,11 @@
-//! 〔F7c · 第三波 · 2026-09-24〕**SFTP 那一族收到只剩传输** —— 命令面与写面的恒等登记（`设计/60 §13.4` · `§13.6` 判据 1）。
+//! **SFTP 那一族收到只剩传输** —— 命令面与写面的恒等登记。
 //!
 //! 用户逐字「**保留SFTP. 思考怎么干净**」⇒ SFTP 只剩两个动作：上传、下载（断点续传 · 撤 · 进度）。
 //!
 //! # 今天的读数，与它为什么还不是「只剩两条」
 //!
 //! - **窗口经通道说得出的传输操作**恰好两条：`transfer-upload` · `transfer-download`（撤 = 停订，不是命令）。
-//! - **写面**：〔SR1b〕传输核心搬进了本机常驻后端 ⇒ 本文件（中继）**零**远端写；「暂存区之外零写」的行为读数
+//! - **写面**：传输核心搬进了本机常驻后端 ⇒ 本文件（中继）**零**远端写；「暂存区之外零写」的行为读数
 //!   跟着搬去后端（`tests/backend/control/transfer_tests.rs`）。
 //! - 池子里那 13 条 `#[tauri::command]` **一条都不属于传输核心**（窗口不走 Tauri IPC、走通道）——
 //!   它们今天全是**待收**：最后一个消费者在别人的写区里（老面板归 F7b 删；复制 / 读文本 / 问 home 归 F7a 换）。
@@ -13,7 +13,7 @@
 //!   每一格写清等哪一路、消费者住哪，**并要求那个消费者此刻真的在盘上**。
 //!   ⇒ 那一路合进来、消费者一走，那一格当场红 ⇒ 删它是一件机械活（名字、住址都在表上）。
 //!   这与 `sftp_pool.rs` 里 `is_protected_claude_data_path` 那行转出住址「递减棘轮 ＋ 最后一个消费者」同形。
-//! - 〔第四波 S4〕**收到底了**：最后一条待收（零流量复制，消费者是门禁 `f3-copy` 那一格）连同那一格退役，
+//! - **收到底了**：最后一条待收（零流量复制，消费者是门禁 `f3-copy` 那一格）连同那一格退役，
 //!   池子**零条** `#[tauri::command]`，暂存区之外**零处**远端写。那行转出住址也同拍删了。
 //!
 //! # 三条判据，都是两向相等
@@ -35,22 +35,22 @@ use std::collections::BTreeSet;
 ///
 /// **这张表只许变短** —— 变长 = SFTP 又长回一条非传输的命令。
 pub(super) const PENDING: &[(&str, &str, &str, &str, &str)] = &[
-    // 〔F7c 收尾 09-24〕F7a ＋ F7b 合进来之后这张表从 13 行收到 1 行 —— 删掉的十二条
+    // F7a ＋ F7b 合进来之后这张表从 13 行收到 1 行 —— 删掉的十二条
     //   〔已删：`sftp_realpath` · `sftp_list_dir` · `sftp_stat` · `sftp_cancel_transfer`〔散文墓碑〕 · `sftp_download` ·
     //   `sftp_upload` · `sftp_read_text_for_edit`〔散文墓碑〕 · `sftp_write_text` · `sftp_mkdir` · `sftp_rename` ·
     //   `sftp_delete` · `sftp_chmod`〕连同它们的 Tauri 注册、`commands.ts` 包装、`parity_ledger` 行一起走了。
-    // 〔第四波 S4〕最后一行（零流量复制那条命令，消费者是门禁 `f3-copy` 那一格）连同那一格一起退役
+    // 最后一行（零流量复制那条命令，消费者是门禁 `f3-copy` 那一格）连同那一格一起退役
     //   （`gate.sh` 29 格 → 28），它挂的那个写函数一起删了 ⇒ **表空：池子零条 Tauri 命令**。
     //   表留着、今天是空的：它只许变短，而它已经短到底了 —— 池子哪天再长出一条命令，下面判据 1 当场红。
 ];
 
 /// 碰远端写原语、而**不在**传输核心里的函数：`(函数, 它挂在哪条待收命令名下)`。
-/// 〔第四波 S4〕唯一那一行（零流量复制的核心）随它挂的那条命令一起删了 ⇒ 空。
+/// 唯一那一行（零流量复制的核心）随它挂的那条命令一起删了 ⇒ 空。
 pub(super) const PENDING_WRITERS: &[(&str, &str)] = &[];
 
 /// 传输核心里碰远端写原语的函数。
 ///
-/// 〔SR1b · 2026-09-24〕**零**：传输核心（连同那两个只写暂存区的函数 —— 建暂存区那一个与
+/// **零**：传输核心（连同那两个只写暂存区的函数 —— 建暂存区那一个与
 /// `upload_to_staging`）整段搬进了本机常驻后端（`control/transfer.rs` ＋ `dial/sftp.rs` 的写原语，
 /// 那一侧的「只许两处」由后端 `readonly_guard::remote_write_layer` 钉）。本文件只剩中继 ⇒ 一处远端写都没有。
 const STAGING_WRITERS: &[&str] = &[];
@@ -133,7 +133,7 @@ fn tauri_commands(prod: &str) -> BTreeSet<String> {
 fn every_pool_tauri_command_is_pending_and_the_transfer_core_has_none() {
     let prod = pool_production();
     let got = tauri_commands(&prod);
-    // 〔F7c 收尾 09-24〕地板 2 → 1。〔第四波 S4〕人群到零了 ⇒ 地板删掉（它会把正确的「零条」判成抽取器坏了）；
+    // 地板 2 → 1。人群到零了 ⇒ 地板删掉（它会把正确的「零条」判成抽取器坏了）；
     //   抽取器靠下面那段合成语料守（正控：认得出两条、认得出不带属性的那一条不是命令）。
     assert_eq!(
         tauri_commands(
@@ -211,7 +211,7 @@ fn the_only_remote_writers_are_the_staging_pair_and_the_pending_ones() {
         .any(|f| top_level_fns(fake)[0].1.contains(f)));
 }
 
-/// 🔴 〔SR1b〕中继**不持 SFTP**：生产段零 SFTP 会话类型 / 零 SFTP crate 路径 / 零「开一条 SFTP」的调用
+/// 🔴 中继**不持 SFTP**：生产段零 SFTP 会话类型 / 零 SFTP crate 路径 / 零「开一条 SFTP」的调用
 /// （零命中，带正控：同一把针在搬家之前那一版的语料上真的认得出来）。
 #[test]
 fn the_relay_holds_no_sftp_at_all() {

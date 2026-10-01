@@ -148,7 +148,7 @@ describe("走 textContent 的文案不许带 markdown 星号", () => {
     // 但守卫报错的位置和它声称守的东西对不上，就是个会被关掉的守卫。
     let checked = 0;
     for (const f of [
-      "src/frontend/ui/settings/machine-aliases.ts", // 〔AL1〕别名那一块从 `launcher-diagnostics.ts` 搬来
+      "src/frontend/ui/settings/machine-aliases.ts", // 别名那一块从 `launcher-diagnostics.ts` 搬来
       "src/frontend/ui/settings/ext-section.ts", // cc-bus 那一行每台要加的钩子
       "src/frontend/ui/settings/remote-section.ts",
     ]) {

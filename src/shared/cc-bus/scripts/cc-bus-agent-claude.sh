@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# cc-bus-agent-claude.sh —— ① agent 适配面的 **claude 词典**(设计 95 §3.2b)。
+# cc-bus-agent-claude.sh —— ① agent 适配面的 **claude 词典**(设计)。
 #
 # ## 为什么是"词典"而不是"trait"
 #
-# 95 §3.2b 逐字:「只有 claude 那一份是已知的 ⇒ **先做词典,别立 trait**」(`D4`:
+# 「只有 claude 那一份是已知的 ⇒ **先做词典,别立 trait**」(`D4`:
 # 接口由现有能力反推)。⇒ 本文件不设计"通用 agent 接口",只**把 claude 这一份说清楚**;
 # 第二个 agent(codex / …)进来时,共性才有资格被抽成 trait。
 #
@@ -23,7 +23,7 @@ agent_caps() { printf 'agent=claude can_block=yes can_nudge=yes can_readback=yes
 
 # 结束钩子的形状:从 `<文件>` 读正文,吐 claude 认的那个 JSON。
 # 🔴 **走 `--rawfile` 不走 argv**:40 条 ×4KB 累计 160KB 时 `--arg` 会撞 `MAX_ARG_STRLEN`
-#   (128 KiB)⇒ 钩子 rc=126、stdout 空。那条实测事故是两阶段读口的立案理由(95 §3ter.0)。
+#   (128 KiB)⇒ 钩子 rc=126、stdout 空。那条实测事故是两阶段读口的立案理由。
 agent_block_reason() { jq -cn --rawfile r "$1" '{decision:"block", reason:$r}'; }
 
 # claude 的输入要**另打一个 Enter** 才算提交(先 send-keys 文本,再 send-keys Enter)。

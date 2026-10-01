@@ -13,7 +13,7 @@ specified」—— **门禁红在「下不到包」这条与代码对不对毫�
 
 # 两个人群（都必须非空 —— 扫到 0 条当成失败，不是「没问题」）
 
-- **P1「今天」**：`src/frontend/shell/Cargo.lock` ＋ `src/backend/Cargo.lock` ＋ `src/panorama-engine/Cargo.lock`（〔RM1c〕）里
+- **P1「今天」**：`src/frontend/shell/Cargo.lock` ＋ `src/backend/Cargo.lock` ＋ `src/panorama-engine/Cargo.lock`里
   **source 指向 crates.io** 的全部 `(name, version)` 去重并集。
   这是**今天**门禁断网构建要的全集。现打 672 条（2026-09-19）。
   ⚠ `path` 依赖（本仓自己那 19 个块）不在人群里 —— 它们不走 registry 缓存。
@@ -27,7 +27,7 @@ specified」—— **门禁红在「下不到包」这条与代码对不对毫�
 - **不证「编得过」**。它只证「解析 + 取包这一步断网过得去」。
 - **不看沙箱那个具名卷**，看的是**宿主的** `~/.cargo/registry`（或 `$CARGO_HOME`）——
   那是卷的**种子**。卷若已存在且比种子旧，本判据看不见那条差。
-  ⇒ 卷是派生物，种子是真相源；要确保两者一致就把卷删掉让它重播种。
+  ⇒ 卷是派生物，种子是源头；要确保两者一致就把卷删掉让它重播种。
 - **index 那一半只在跑真 cargo 时才验**。离线解析除了 `.crate` 还要 registry index
   的本地缓存（`~/.cargo/registry/index/*/.cache/`）。本脚本不解析 index 的二进制缓存格式；
   真正把这一格买下来的是 `S27-prove-offline.py`（`bwrap --unshare-net` 跑真 `cargo fetch`）。
@@ -51,7 +51,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-# 〔RM1c · 第四波〕第三份：只装全景引擎的独立小程序（`src/panorama-engine`）。
+# 第三份：只装全景引擎的独立小程序（`src/panorama-engine`）。
 # 它的 lock 由 monitor 那份播种后剪枝（同一批版本）⇒ 今天不新增任何 `(name, version)`，
 # 但它**是**一份断网构建要解析的 lock，不进人群的话哪天它自己升一个版本就没人点名。
 LOCKS = [

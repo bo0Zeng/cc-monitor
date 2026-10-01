@@ -5,7 +5,7 @@
 // 由 restart-cmd-driver.ts 在动态 import 真源之前 module.register 进来（tsx 转译钩子之上再叠一层）。
 const CORE = new URL("./core.mjs", import.meta.url).href;
 const TOAST = new URL("./error-toast.mjs", import.meta.url).href;
-// 〔FIX4 · ④〕换号重启等「那台报出会话起来了」：事件那一层换成站在主窗口位置的替身（`event.mjs` 头注）。
+// 换号重启等「那台报出会话起来了」：事件那一层换成站在主窗口位置的替身（`event.mjs` 头注）。
 const EVENT = new URL("./event.mjs", import.meta.url).href;
 
 export async function resolve(spec, ctx, next) {
@@ -18,7 +18,7 @@ export async function resolve(spec, ctx, next) {
   return r;
 }
 
-// 〔E2 尾 09-27〕CSS 模块（`import s from "./x.module.css"`）node 自己载不了（`ERR_UNKNOWN_FILE_EXTENSION`），
+// CSS 模块（`import s from "./x.module.css"`）node 自己载不了（`ERR_UNKNOWN_FILE_EXTENSION`），
 // 而真源图里有一个：`account-restart.ts` → `ask-dialog.ts` → `ask-dialog.module.css`（重构时加进来的，
 // 从那天起本驱动器一行都跑不起来，restart / restart-frames 两套在本机与 CI 同红）。
 // ⇒ 载成「类名映射到自身」的替身：命令级驱动器不渲染 DOM，类名是什么都不影响判的东西；

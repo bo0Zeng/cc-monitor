@@ -1,12 +1,12 @@
 // @vitest-environment node
 /**
- * 〔U4 · `设计/01 §6.2` · `设计/30 §3.5.6`〕会话状态的两个轴（`src/frontend/ui/tab-session-state.ts`）的判据。
+ * 会话状态的两个轴（`src/frontend/ui/tab-session-state.ts`）的判据。
  *
- * 设计与判据编号见 `调研/第四波记录/U4.md §2`。本文件管：
+ * 设计与判据编号。本文件管：
  * - S1 转移表：3 态 × 5 事件 = 15 格，逐格相等。**期望手写自设计表**（`U4.md §1.1`），不从实现生成。
- *   〔U4b · 第四波〕扩成 7 态 × 10 事件 = 70 格（`U4b.md §1.3`，T1）；呈现表 7 态（T2）；T4「说不清不许说成已结束」。
- *   〔GP1 · 第四波〕加一行事件 `unseen`（那台机器看不见了）⇒ 7 × 11 = 77 格（`调研/第四波记录/GP1.md §1`）。
- * - S2 呈现表：3 态 → {类开关 · 状态名 · 提示句}。期望串是本文件里的字面量（抄自 `设计/30 §3.5.2` 那张表），
+ * 扩成 7 态 × 10 事件 = 70 格（`U4b.md §1.3`，T1）；呈现表 7 态（T2）；T4「说不清不许说成已结束」。
+ * 加一行事件 `unseen`（那台机器看不见了）⇒ 7 × 11 = 77 格。
+ * - S2 呈现表：3 态 → {类开关 · 状态名 · 提示句}。期望串是本文件里的字面量（抄自那张表），
  *   被测串从文案表 `src/shared/copy/table.json` 取 —— 两份语料。
  * - S4 两轴是唯一读法：tab 层 ＋ 两个快照消费者里，旧的一轴半写法（`tmuxIdle` · `"archived"` 状态字面量 ·
  *   `status === "live"` · `TabStatus`）零处。带同一谓词的正控。
@@ -37,7 +37,7 @@ import {
   type StateEvent,
 } from "../../../src/frontend/ui/tab-session-state";
 
-/** 〔U4b〕七个态（列序 == `U4b.md §1.3` 那张转移表的列序）。 */
+/** 七个态（列序 == `U4b.md §1.3` 那张转移表的列序）。 */
 const FROM: SessionState[] = [LIVE, LIVE_ATTACHABLE, LIVE_RESUMABLE, RECONNECTABLE, ENDED, GONE, UNSEEN];
 const NAME = new Map<SessionState, string>([
   [LIVE, "活"],
@@ -65,7 +65,7 @@ describe("S1 / T1 转移表（〔U4b〕7 态 × 10 事件 ＋〔GP1〕`unseen` �
     "record-gone": ["=", "=", "=", "=", "记录没了", "=", "="],
     "record-present": ["=", "=", "=", "=", "=", "已结束", "="],
     "seen-absent": ["=", "=", "=", "=", "=", "=", "已结束"],
-    // 〔GP1〕那台机器看不见了：还有终端可去的两态（活 · 可重连）⇒ 说不清；死透了的不动（看不见推翻不了它们的死）。
+    // 那台机器看不见了：还有终端可去的两态（活 · 可重连）⇒ 说不清；死透了的不动（看不见推翻不了它们的死）。
     unseen: ["说不清", "说不清", "说不清", "说不清", "=", "=", "="],
   };
 
@@ -123,7 +123,7 @@ describe("S1 / T1 转移表（〔U4b〕7 态 × 10 事件 ＋〔GP1〕`unseen` �
   });
 });
 
-describe("S2 / T2 呈现表（〔U4b〕7 态 → 类 · 状态名 · 提示句 == `U4b.md §1.3` ＋ `设计/30 §3.5.2`）", () => {
+describe("S2 / T2 呈现表（〔U4b〕7 态 → 类 · 状态名 · 提示句 == `U4b.md §1.3` ＋）", () => {
   it("★ 七个态逐格相等（期望串是本文件的字面量，被测串来自文案表）", () => {
     expect(FROM.map(stateView)).toEqual([
       { ended: false, reconnectable: false, name: null, tooltip: null },
@@ -136,7 +136,7 @@ describe("S2 / T2 呈现表（〔U4b〕7 态 → 类 · 状态名 · 提示句 =
     ]);
   });
 
-  it("★ 两个类互斥（`30 §3.5.1`）；「没有终端可去」的外观 == `isResumeOnly`；活着不亮类", () => {
+  it("★ 两个类互斥；「没有终端可去」的外观 == `isResumeOnly`；活着不亮类", () => {
     for (const s of FROM) {
       const v = stateView(s);
       expect(v.ended && v.reconnectable, `${nameOf(s)}：两个类同时亮`).toBe(false);
@@ -195,11 +195,11 @@ describe("S4 两轴是唯一读法（零命中 ＋ 同一谓词的正控）", ()
 describe("S5 说到会话状态的字只在文案表 `sessionState.*`（零命中 ＋ 登记豁免两向 ＋ 正控）", () => {
   /**
    * 状态名出现在源码字面量里的**豁免**（文件 → 处数）。两向：登记的今天必须真命中这么多处，没登记的零处。
-   * 〔CP2b〕原先登记的两处都进了文案表，今天豁免表为空 ⇒ 这一条等于「源码字面量里零处」（正控在上一条）：
+   * 原先登记的两处都进了文案表，今天豁免表为空 ⇒ 这一条等于「源码字面量里零处」（正控在上一条）：
    */
   const EXEMPT: Record<string, number> = {
-    // 〔CP2b〕换号重启回执那一句进了文案表，改说「旧会话已退出」（说的是那一次重启里被杀掉的旧进程，不是 tab 的状态）⇒ 这一条豁免也撤掉。
-    // 〔CP2b〕快捷键名「关闭已结束的 Tab」进了文案表（`sessionState.closeEnded.shortcut`），不再是源码字面量 ⇒ 这一条豁免撤掉。
+    // 换号重启回执那一句进了文案表，改说「旧会话已退出」（说的是那一次重启里被杀掉的旧进程，不是 tab 的状态）⇒ 这一条豁免也撤掉。
+    // 快捷键名「关闭已结束的 Tab」进了文案表（`sessionState.closeEnded.shortcut`），不再是源码字面量 ⇒ 这一条豁免撤掉。
   };
   const NAMES = /已结束|可重连/g;
   const RETIRED = /归档|灰(?![色度阶])/g;
@@ -216,7 +216,7 @@ describe("S5 说到会话状态的字只在文案表 `sessionState.*`（零命�
     expect(hits).toEqual(EXEMPT);
   });
 
-  it("★ 「归档」「灰」：源码字面量里零处（`设计/91 §4` R1：只许说已结束 / 可重连）", () => {
+  it("★ 「归档」「灰」：源码字面量里零处（只许说已结束 / 可重连）", () => {
     const hits = Object.fromEntries(
       PROD.map((p) => [p.file, count(p.code, RETIRED)] as const).filter(([, n]) => n > 0),
     );

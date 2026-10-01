@@ -1,5 +1,5 @@
 /**
- * 〔U2 · 拆 `tabs.ts` ④〕**tab 栏的三份落盘偏好**：集合（分组）· 固定 · 顺序。
+ * 〔拆 `tabs.ts` ④〕**tab 栏的三份落盘偏好**：集合（分组）· 固定 · 顺序。
  *
  * 三份都是「用户手写的真相，不是能重算的缓存」（`tab-collections.ts` 立集合落盘的那条理由），
  * 都写 `config.json` 的 `tabCollections` / `tabBar.*`，都守同一条纪律：**先改内存再落盘，落盘失败只记日志**；
@@ -9,7 +9,7 @@
  * 字段与方法逐字从 `tabs.ts` 搬来，唯一的改写：刷 tab 栏 · 建骨架 tab · resume 三样换成 `this.host.…`。
  * 顺序那份「意图」本身（`savedOrder`）与落位运算住 `TabStore`，这里只管读盘 / 落盘。
  *
- * 〔GRP1 · `设计/99 §1` V140〕分组这一份改了形：组表只存 `{id, name}`，组员关系是 tab 自己的属性（`Tab.group`，
+ * 分组这一份改了形：组表只存 `{id, name}`，组员关系是 tab 自己的属性（`Tab.group`，
  * 落盘 `tabBar.groupOf.<sid>`）。改组员的全部动作（建组 · 进组 · 出组 · × · 解散 · 改名）住这里，
  * 每个动作「先改内存、再把组表与那几个 tab 的组 id 键装进**一次** `patchConfig`」（`writeGroups`）。
  */
@@ -43,7 +43,7 @@ import type { TabStore } from "./tab-store";
 import type { Origin } from "./ipc/origin";
 
 /**
- * 〔TL2 · E13〕集合到上界、这一下没做成 ⇒ 说一句（`设计/01 §5 D4`「一条都不许静默忽略」）。
+ * 集合到上界、这一下没做成 ⇒ 说一句（「一条都不许静默忽略」）。
  * 判定住 `tab-collections.ts::createRefusal`（经 [`TabBarPrefs.foundGroup`] 回给调用方），句子住文案表；
  * 两个入口（右键菜单 · 拖放）都经这一处说。
  */
@@ -70,13 +70,13 @@ export interface TabBarPrefsHost {
 export class TabBarPrefs {
   /**
    * P7a-3（#61）：标签页集合（组表）。**零自动归组**〔用 08-11「纯手动」〕。
-   * 〔GRP1 · V140〕每一项只有 `{id, name}`；谁在组里看 `Tab.group`。
+   * 每一项只有 `{id, name}`；谁在组里看 `Tab.group`。
    */
   collections: TabCollection[] = [];
   /**
-   * 〔GRP1〕盘上 `tabBar.groupOf` 里、**tab 还没到**的那些组 id（sid → 组 id）—— 一份**意图**，形同 `TabStore.savedOrder`。
+   * 盘上 `tabBar.groupOf` 里、**tab 还没到**的那些组 id（sid → 组 id）—— 一份**意图**，形同 `TabStore.savedOrder`。
    *
-   * 为什么不在读的那一拍按存活过滤：`设计/30 §C.3` 同一条理由 —— 读发生在启动那一刻，
+   * 为什么不在读的那一拍按存活过滤：同一条理由 —— 读发生在启动那一刻，
    * 「已经没了的会话」与「还没宣告到的会话」长得一模一样。
    * tab 到达（[`adoptGroup`]）⇒ 它的组 id 从这里**挪到** `Tab.group`（此后真相只在 tab 身上一处）；
    * 组没了（× 掉最后一个 · 解散）⇒ 指向它的条目从这里连同盘上一起摘。
@@ -96,14 +96,14 @@ export class TabBarPrefs {
    */
   collectionsLoaded = false;
   /**
-   * 〔步 17·B〕**这个实例拉过固定表没有** —— 与 `collectionsLoaded` 同一条理由，
+   * **这个实例拉过固定表没有** —— 与 `collectionsLoaded` 同一条理由，
    * 而且这里更要命：`persistPinned` 是**按当前 tab 重算整张表**写回去的，
    * 没拉过就写 ⇒ 用户上次固定的全没了。撕离出来的 viewer 窗口正是这种实例。
    * ⇒ 没拉过就不给入口（右键菜单里那两项不出现），也不落盘。
    */
   pinnedLoaded = false;
   /**
-   * 〔步 17·B〕`loadPinned` 那一趟从盘上读到的记录（sid → 条目）。
+   * `loadPinned` 那一趟从盘上读到的记录（sid → 条目）。
    *
    * 🔴 **它不是「谁被固定了」的真相** —— 那件事的唯一住址是 `Tab.pinned`
    * （一个事实一个住址）。这里存的是**盘上那份记录的内容**，只有两个用途：
@@ -113,10 +113,10 @@ export class TabBarPrefs {
    */
   pinnedRecords = new Map<string, PinnedTab>();
   /**
-   * 〔步 17·B〕复活出来的固定 tab 的**空态提示**（sid → 元素）。
+   * 复活出来的固定 tab 的**空态提示**（sid → 元素）。
    *
    * 🔴 它是「**不许留一个点了没反应的 tab**」这条纪律的落点：复活的 tab 里
-   * 一条内容都没有（`99 §2.5 P3` 裁定「已结束的会话点进去不能看内容，只能 resume」），
+   * 一条内容都没有（裁定「已结束的会话点进去不能看内容，只能 resume」），
    * 不放点东西进去，用户点它就是一片空白 —— 那与坏了没有区别。
    * 复活成 live（真 resume 上了）时摘掉。
    */
@@ -130,7 +130,7 @@ export class TabBarPrefs {
   /**
    * P7a-3：从 `config.json` 拉一次组表与每个 tab 的组 id，并重画。宿主启动时调一次。
    *
-   * 〔GRP1〕`tabBar.groupOf` 里指向**组表里没有的组**的条目丢（认不出就丢）；其余存成意图（`savedGroupOf`），
+   * `tabBar.groupOf` 里指向**组表里没有的组**的条目丢（认不出就丢）；其余存成意图（`savedGroupOf`），
    * 并立刻对**已经在栏里**的 tab 补一次归位 —— 固定复活的骨架（`loadPinned`，与本函数并排跑）可能先到。
    */
   async loadCollections(): Promise<void> {
@@ -144,7 +144,7 @@ export class TabBarPrefs {
   }
 
   /**
-   * 〔GRP1〕一个 tab **到了**（`TabManager.ensureTab` 建出它的那一刻 / `loadCollections` 读完时）：
+   * 一个 tab **到了**（`TabManager.ensureTab` 建出它的那一刻 / `loadCollections` 读完时）：
    * 意图里有它 ⇒ 组 id 从意图**挪到** `tab.group`（挪，不是抄：此后这个事实只住 tab 身上）。
    * 没拉过组表（viewer 窗口）⇒ 意图恒空 ⇒ 什么都不做。
    */
@@ -155,14 +155,14 @@ export class TabBarPrefs {
     if (tab.group === null && this.collections.some((c) => c.id === gid)) tab.group = gid;
   }
 
-  /** 〔GRP1〕`sid` 所在的组（`null` = 散 tab / 没这个 tab）。 */
+  /** `sid` 所在的组（`null` = 散 tab / 没这个 tab）。 */
   groupOf(sid: string): TabCollection | null {
     const gid = this.store.tabs.get(sid)?.group ?? null;
     return gid === null ? null : (this.collections.find((c) => c.id === gid) ?? null);
   }
 
   /**
-   * 〔GRP1〕右键「新建集合…」/ 拖放「压在一个散 tab 上」：建一个组，把 `sids` 这几个 tab 放进去。
+   * 右键「新建集合…」/ 拖放「压在一个散 tab 上」：建一个组，把 `sids` 这几个 tab 放进去。
    * 组数到上界 ⇒ 回拒绝原因、**什么都不做**（调用方出声）；名字空 ⇒ 什么都不做（空名不是一个集合）。
    * 盘：组表 ＋ 每个 tab 的组 id 键，**一次**写。
    */
@@ -186,7 +186,7 @@ export class TabBarPrefs {
     return null;
   }
 
-  /** 〔GRP1〕右键「加入集合 › X」/ 拖放进组：`sid` 进组 `gid`（原来在别的组 ⇒ 就不在了：`group` 是单值）。 */
+  /** 右键「加入集合 › X」/ 拖放进组：`sid` 进组 `gid`（原来在别的组 ⇒ 就不在了：`group` 是单值）。 */
   joinGroup(sid: string, gid: string): Promise<void> {
     const t = this.store.tabs.get(sid);
     if (!t || t.group === gid || !this.collections.some((c) => c.id === gid)) return Promise.resolve();
@@ -195,7 +195,7 @@ export class TabBarPrefs {
     return this.writeGroups([groupOfEdit(sid, gid), ...this.dropIfEmpty(old)]);
   }
 
-  /** 〔GRP1〕右键「移出」/ 拖出组：`sid` 回到散 tab；组里因此一个在栏里的都不剩 ⇒ 组没（主会话裁 Q1，与 × 同一判定）。 */
+  /** 右键「移出」/ 拖出组：`sid` 回到散 tab；组里因此一个在栏里的都不剩 ⇒ 组没（主会话裁 Q1，与 × 同一判定）。 */
   leaveGroup(sid: string): Promise<void> {
     const t = this.store.tabs.get(sid);
     if (!t || t.group === null) return Promise.resolve();
@@ -205,11 +205,11 @@ export class TabBarPrefs {
   }
 
   /**
-   * 🔴 〔GRP1 · V140「x就是没了, 不存在还要移出分组」〕**× 那一刻**：tab 的组关系随 tab 一起没。
+   * 🔴 〔「x就是没了, 不存在还要移出分组」〕**× 那一刻**：tab 的组关系随 tab 一起没。
    *
    * 调用时机：`closeTab` 已把 tab 从 `store.tabs` 摘掉之后（「组里还剩谁」只数真在栏里的）。
    * - 盘：摘它自己那一键 `tabBar.groupOf.<sid>`；
-   * - 它是组里**最后一个在栏里的** tab ⇒ 组也没（V140「组里最后一个 tab 没了组自己消失」）：组表去掉它 ＋ 指向它的意图一并摘；
+   * - 它是组里**最后一个在栏里的** tab ⇒ 组也没（「组里最后一个 tab 没了组自己消失」）：组表去掉它 ＋ 指向它的意图一并摘；
    * - 它本来不在组里 ⇒ **零写**（没分组的 tab 关一下不该顺手改 `config.json`，与 `closeTab` 摘固定同一条理由）。
    */
   forgetTab(tab: Tab): Promise<void> {
@@ -219,7 +219,7 @@ export class TabBarPrefs {
     return this.writeGroups([groupOfEdit(tab.sessionId, null), ...this.dropIfEmpty(gid)]);
   }
 
-  /** 〔GRP1〕组头 ×：解散。**只去掉分组，一个 tab 都不动**（集合是个视图，不是容器）。 */
+  /** 组头 ×：解散。**只去掉分组，一个 tab 都不动**（集合是个视图，不是容器）。 */
   dissolveGroup(gid: string): Promise<void> {
     const edits: ConfigEdit[] = [];
     for (const t of this.store.tabs.values()) {
@@ -231,7 +231,7 @@ export class TabBarPrefs {
     return this.writeGroups(edits);
   }
 
-  /** 〔GRP1〕组头就地改名。空名 / 与现名相同 ⇒ 零写。 */
+  /** 组头就地改名。空名 / 与现名相同 ⇒ 零写。 */
   renameGroup(gid: string, name: string): Promise<void> {
     const next = renameCollection(this.collections, gid, name);
     const before = this.collections.find((c) => c.id === gid)?.name;
@@ -242,7 +242,7 @@ export class TabBarPrefs {
   }
 
   /**
-   * 〔V140「组里最后一个 tab 没了组自己消失」〕组 `gid` 在栏里一个 tab 都不带了 ⇒ 组没（× · 拖出 · 移出 · 挪组共用这一判定）。
+   * 〔「组里最后一个 tab 没了组自己消失」〕组 `gid` 在栏里一个 tab 都不带了 ⇒ 组没（× · 拖出 · 移出 · 挪组共用这一判定）。
    * 回要落盘的补丁（内存已改）；`null` / 还有成员 ⇒ 空。
    */
   private dropIfEmpty(gid: string | null): ConfigEdit[] {
@@ -265,7 +265,7 @@ export class TabBarPrefs {
 
   /**
    * 分组落盘的唯一出口：这一次改动的全部补丁**一次** `patchConfig`（Rust 一把锁里一起落，不会只落一半）。
-   * 〔CFG1 · 4D〕从前落盘失败只记日志（`设计/30 §C.3` 原话）——重启后分组没了、当时一句话都没有（E §3.3）。
+   * 从前落盘失败只记日志（原话）——重启后分组没了、当时一句话都没有（E §3.3）。
    * 主会话 09-25 按 `INVARIANTS §12`（关键失败要出声）认可改成：内存照旧先改 · 落盘失败弹一条 toast · 日志照留。
    */
   private async writeGroups(edits: readonly ConfigEdit[]): Promise<void> {
@@ -278,7 +278,7 @@ export class TabBarPrefs {
     }
   }
 
-  // ===== 〔步 17·B · `设计/30 §B`〕固定（pinned）=====
+  // ===== 固定（pinned）=====
 
   /**
    * 启动时把固定的 tab **复活**出来。宿主在 `loadCollections` 之后调一次。
@@ -296,10 +296,10 @@ export class TabBarPrefs {
    * 读 tabBar.pinned[] → 逐条 createSkeletonTab(sid, cwd, origin, kind, name)
    *   ├ 标 pinned = true
    *   ├ 标 state = UNSEEN（说不清；那台报完清单 ⇒ 已结束 / 活，见 `TabManager.markOriginSeen`）
-   *   │   〔U4b〕那台已经报完了 ⇒ 直接 ENDED（没有活进程；后端 replay 随后宣告它活着 ⇒ 事件流会改回活）
+   *   │ 那台已经报完了 ⇒ 直接 ENDED（没有活进程；后端 replay 随后宣告它活着 ⇒ 事件流会改回活）
    *   └ 标题直接用存下来的那份（不等读文件）
    * ```
-   * 🔴 **不读内容** —— `99 §2.5 P3` 已裁定「已结束的会话点进去不能看内容，只能 resume」。
+   * 🔴 **不读内容** —— 已裁定「已结束的会话点进去不能看内容，只能 resume」。
    *   `replay_session_to_window` 那条路对已结束的会话本来就走不通（它的头注逐字：
    *   「仅活跃 session 的历史在 buffer 里」）。
    *
@@ -316,8 +316,8 @@ export class TabBarPrefs {
         const t = this.store.tabs.get(p.sid);
         if (!t) continue;
         // 没有活进程 ⇒ 灰着。`archiveTab` 那条路要求 tab 已在事件流里，这里是**凭空造**，
-        // 所以直接置位；两者最终形态一致（`.tab.ended` 那条 CSS 本来就有；〔U4〕原名 `.tab.archived`）。
-        // 〔U4b · 说不清〕那台机器还没把活会话清单报完 ⇒ **说不清**，不是已结束（`设计/30 §3.5.7a`：
+        // 所以直接置位；两者最终形态一致（`.tab.ended` 那条 CSS 本来就有；原名 `.tab.archived`）。
+        // 〔说不清〕那台机器还没把活会话清单报完 ⇒ **说不清**，不是已结束（
         //   `Unseen` 不许被显示成已结束）；报完了（`markOriginSeen` 已经来过）⇒ 已结束 —— 它若活着，
         //   清单里就会有它、tab 早被建成活的了（上面那个 `existed` 分支）。
         t.state = this.store.seenOrigins.has(p.origin) ? ENDED : UNSEEN;
@@ -347,8 +347,8 @@ export class TabBarPrefs {
     const box = document.createElement("div");
     box.className = "pin-revived-hint";
     const head = document.createElement("strong");
-    // 〔U4〕说到会话状态的字住文案表 `sessionState.*`（与 tab 的状态名 / 提示句同一处）。
-    //   原句里的「jsonl 路径」「前端」是内部词（`设计/91 §4` R1），一并去掉。
+    // 说到会话状态的字住文案表 `sessionState.*`（与 tab 的状态名 / 提示句同一处）。
+    //   原句里的「jsonl 路径」「前端」是内部词，一并去掉。
     head.textContent = degraded
       ? copyText("sessionState.pinnedEmpty.head")
       : copyText("sessionState.pinned.head");
@@ -396,7 +396,7 @@ export class TabBarPrefs {
         this.store.accountLastByS.get(tab.sessionId) ??
         prev?.account ??
         null,
-      // 〔U4〕按活性一轴判：可重连的 claude 已经没了 ⇒ 不是「此刻还活着」（改两轴之前它借着 `status: live` 被刷成此刻）。
+      // 按活性一轴判：可重连的 claude 已经没了 ⇒ 不是「此刻还活着」（改两轴之前它借着 `status: live` 被刷成此刻）。
       lastActiveAt: isLive(tab.state) ? Date.now() : prev?.lastActiveAt ?? null,
       kind: tab.kind,
       name: tab.bgName,
@@ -407,7 +407,7 @@ export class TabBarPrefs {
   /**
    * 把「现在哪些 tab 被固定了」整张表写回 `config.json` 的 `tabBar.pinned`。
    *
-   * **真相源是 `Tab.pinned`**，这里只是把它压平 ⇒ 不会出现「内存说固定了、盘上没有」。
+   * **源头是 `Tab.pinned`**，这里只是把它压平 ⇒ 不会出现「内存说固定了、盘上没有」。
    *
    * 🔴 **「没 `loadPinned` 过就不写」那道门不在这里，在 `togglePin`** —— 这是死值验逼出来的：
    *   我原本在这里也放了一条 `if (!this.pinnedLoaded) return;`，**刀 9 实测它恒不承重**
@@ -429,7 +429,7 @@ export class TabBarPrefs {
       await setPinned(next);
     } catch (e) {
       console.warn("[tab-bar] 固定落盘失败:", e);
-      showActionFailureToast(copyText("tabBar.persist.pinnedFailed"), String(e)); // 〔CFG1〕同 `persistCollections`
+      showActionFailureToast(copyText("tabBar.persist.pinnedFailed"), String(e)); // 同 `persistCollections`
     }
   }
 
@@ -461,7 +461,7 @@ export class TabBarPrefs {
     return (this.store.tabs.get(sid)?.parentPath ?? "") === "";
   }
 
-  /** 把当前顺序写进 `config.json` 的 `tabBar.order`。失败出声（toast）＋ 记日志，不打断交互（〔CFG1〕）。 */
+  /** 把当前顺序写进 `config.json` 的 `tabBar.order`。失败出声（toast）＋ 记日志，不打断交互。 */
   async persistOrder(): Promise<void> {
     // 🔴 **先把内存里那份意图同步掉，再去写盘** —— 用户刚拖出来的这张就是最新的意图。
     //   不同步的话，`savedOrder` 还是启动时读到的那份**旧**顺序，而它每来一个新 tab
@@ -472,7 +472,7 @@ export class TabBarPrefs {
       await setTabOrder(this.store.orderedIds);
     } catch (e) {
       console.warn("[tab-bar] 顺序落盘失败:", e);
-      showActionFailureToast(copyText("tabBar.persist.orderFailed"), String(e)); // 〔CFG1〕同 `persistCollections`
+      showActionFailureToast(copyText("tabBar.persist.orderFailed"), String(e)); // 同 `persistCollections`
     }
   }
 
@@ -484,7 +484,7 @@ export class TabBarPrefs {
    * ⚠ **盘上没提到的 tab 排在后面**，保持它们此刻的相对次序 ——
    *   否则「启动后新建的 tab」会被一份旧顺序挤到看不见的地方。
    *
-   * # 🔴 2026-09-21：修掉「结构性 no-op」（`99 §4` 步 17 那行的 🟡）
+   * # 🔴 2026-09-21：修掉「结构性 no-op」（那行的 🟡）
    *
    * 在这之前它是这么写的：
    * ```ts

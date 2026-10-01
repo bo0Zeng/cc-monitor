@@ -31,7 +31,7 @@
 //! |---|---|---|
 //! | **存在性断言 / 抽取器自检** | **不危险** | 它只需要「有」。needle 小一点仍然为真 —— 结论不依赖唯一性（`src.len() > 10_000 && src.contains("ccm")`、段界自检 `ws.contains("members")`、逐文件 `prod.contains("route_call_error")` 都是这类） |
 //! | **正向事实钉** | ★ **危险** | 它声称「就是这个」。needle 被撑大时**照样绿** = 假绿 |
-//! | **负向断言**（`!x.contains(…)`） | 另一族 | 撑大导致的是**假红**，不是假绿。本刀不治，登记在 `ROADMAP §5` |
+//! | **负向断言**（`!x.contains(…)`） | 另一族 | 撑大导致的是**假红**，不是假绿。本刀不治，登记在 |
 //!
 //! 逐条过完 34 处的结论：**只有一处是正向事实钉** ——
 //! `profile_installer::install_to_nonexistent_path_creates_file` 的

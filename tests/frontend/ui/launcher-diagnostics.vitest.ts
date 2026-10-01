@@ -1,6 +1,6 @@
 // F08：越层启动器诊断——纯函数单测。只诊断+引导，本文件也锁死"不代改配置"
 // 这条边界（`diagnoseRemoteLauncher` 只返回文案，从不修改输入）。
-// 〔AL1 · 2026-09-24〕别名那几组判据（TS 生成器 · 按账号生成命令 · 装别名块 · 该调哪一份 ccm）
+// 别名那几组判据（TS 生成器 · 按账号生成命令 · 装别名块 · 该调哪一份 ccm）
 // 随那两块一起搬走了：别名的行为归 `tests/frontend/ui/settings/machine-aliases.vitest.ts`，
 // shell 文本归后端 `tests/frontend/shell/account_aliases_tests.rs`（真 bash 执行那一条在那边）。
 import { describe, it, expect } from "vitest";
@@ -38,7 +38,7 @@ describe("diagnoseRemoteLauncher", () => {
     const msg = diagnoseRemoteLauncher("cct");
     expect(msg).toContain("ccm");
     expect(msg).toContain("账号和模型偏好");
-    // 〔AL1〕从前指「下面的生成器」—— 生成器并进了机器页的「别名」，那句话跟着指过去。
+    // 从前指「下面的生成器」—— 生成器并进了机器页的「别名」，那句话跟着指过去。
     expect(msg).toContain("本机 → 终端 → 别名");
   });
 });

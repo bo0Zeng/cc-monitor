@@ -1,7 +1,7 @@
 //! 开出 channel 之后的三种用法（[`super::Use`]）。握手已过：每一支先回 ack（失败就回失败的 ack），
 //! 再干自己那件事。
 //!
-//! 〔SR1a〕I/O 从「本进程的 stdin / stdout」换成调用方给的一对 `AsyncRead` / `AsyncWrite`
+//! I/O 从「本进程的 stdin / stdout」换成调用方给的一对 `AsyncRead` / `AsyncWrite`
 //! （常驻后端里是那条链路的两根内存管子，`link.rs`）；连接从「这一趟自己拨的」换成
 //! 「池里拿的」（[`Lease`]，同身份复用）。三种用法本身一行语义没改。
 
@@ -16,7 +16,7 @@ use super::{
     StageSink, Use, ACK_V, USES,
 };
 
-/// 〔MIG-1 收尾〕这一趟目标那台 / 跳板那台是不是严格校验指纹（请求里带了非空的期望指纹）—— ack 的 `strict` / `jump_strict`。
+/// 这一趟目标那台 / 跳板那台是不是严格校验指纹（请求里带了非空的期望指纹）—— ack 的 `strict` / `jump_strict`。
 pub(crate) fn strictness(req: &DialRequest) -> (bool, bool) {
     let set = |f: &Option<String>| f.as_deref().is_some_and(|s| !s.trim().is_empty());
     (
@@ -57,7 +57,7 @@ fn exec(
     Box::pin(channel.exec(true, cmd))
 }
 
-/// 〔NT2 · A4〕同上，但给**写半边**（capture 那一臂先 `split` 再 exec：读半边交给 [`collect`]，写半边交给 [`CloseOnDrop`]）。
+/// 同上，但给**写半边**（capture 那一臂先 `split` 再 exec：读半边交给 [`collect`]，写半边交给 [`CloseOnDrop`]）。
 fn exec_half(
     w: &russh::ChannelWriteHalf<russh::client::Msg>,
     cmd: Vec<u8>,
@@ -65,7 +65,7 @@ fn exec_half(
     Box::pin(w.exec(true, cmd))
 }
 
-/// 〔NT2 · A4〕能被「关掉」的那一半（生产 = russh 的 `ChannelWriteHalf`；判据用记账替身）。
+/// 能被「关掉」的那一半（生产 = russh 的 `ChannelWriteHalf`；判据用记账替身）。
 pub(crate) trait Closable: Send + 'static {
     fn close_it(self) -> impl std::future::Future<Output = ()> + Send;
 }
@@ -78,12 +78,12 @@ impl Closable for russh::ChannelWriteHalf<russh::client::Msg> {
     }
 }
 
-/// 〔NT2 · A4〕**被丢 ⇒ 向远端发一次关通道**（与 russh 自己给 `into_stream` 那一形的 `ChannelCloseOnDrop` 同形）。
+/// **被丢 ⇒ 向远端发一次关通道**（与 russh 自己给 `into_stream` 那一形的 `ChannelCloseOnDrop` 同形）。
 ///
 /// 为什么要它：russh 0.61 的裸 `Channel` 被丢**不发 `CHANNEL_CLOSE`**（只有 `into_stream` 那一形会发）。
 /// capture 那一臂拿的是裸通道 ⇒ 链路被关（调用方期限到点 / 界面走了）或 `abort_marker` 提前收工（老后端掉进流模式）时，
 /// 本地那一格已经还回预算，远端那条 session 通道与它上面的进程却还开着 ⇒ 下一次开通道被远端回拒、这条连接的上限被**学小**。
-/// 关通道是**尽力**的（`设计/05 §3.3.3`：对端撤活只是尽力）：发出去了，对面怎么收场是它的事。
+/// 关通道是**尽力**的（对端撤活只是尽力）：发出去了，对面怎么收场是它的事。
 pub(crate) struct CloseOnDrop<W: Closable>(Option<W>);
 
 impl<W: Closable> CloseOnDrop<W> {
@@ -108,7 +108,7 @@ impl<W: Closable> Drop for CloseOnDrop<W> {
     }
 }
 
-/// 一条 session 通道（或一条隧道）走哪一道 —— 〔NT1〕住 `pool.rs`（放置要按它判），这里转一手。
+/// 一条 session 通道（或一条隧道）走哪一道 —— 住 `pool.rs`（放置要按它判），这里转一手。
 pub(crate) use super::pool::Lane;
 
 /// 一份拨号请求的用法 ⇒ 它在池里走哪一道。
@@ -210,7 +210,7 @@ impl Lease {
     /// 随返回的 [`pool::Permit`] 走，调用方攥到通道用完为止。
     ///
     /// 开失败分两形：
-    /// - **远端说满了**（`MaxSessions`）⇒ 〔NT1〕这条连接学到上限（`Budget::refused`：空格当场作废）、**不摘它**
+    /// - **远端说满了**（`MaxSessions`）⇒ 这条连接学到上限（`Budget::refused`：空格当场作废）、**不摘它**
     ///   （长流还在它上面），照同一道重新放置 —— 通常落到一条新连接上（`Why::Full`）；学到的上限是 0 ⇒ 报错（远端根本不给开）。
     /// - **连接死了**（其余）⇒ 复用来的才摘掉、重拨一次（同一机制换一条新连接）；新拨的那条再失败就如实报。
     pub(crate) async fn session_channel(
@@ -222,7 +222,7 @@ impl Lease {
             let Some(permit) = self.permit.take() else {
                 return Err(copy_text("beUses.session.noSlot", &[]));
             };
-            // 〔NT1〕等远端回「开好了」这一段被打断（链路被关）⇒ 摘掉这条连接（`pool::Watch`）。
+            // 等远端回「开好了」这一段被打断（链路被关）⇒ 摘掉这条连接（`pool::Watch`）。
             let opened = {
                 let watch = self
                     .key
@@ -377,7 +377,7 @@ async fn serve<R, W>(
                     return;
                 }
             };
-            // 〔NT2 · A4〕读半边收全，写半边被守着：本臂无论怎么收场（收全 · 提前收工 · 链路被关 ⇒ abort），远端那条通道都被关。
+            // 读半边收全，写半边被守着：本臂无论怎么收场（收全 · 提前收工 · 链路被关 ⇒ abort），远端那条通道都被关。
             let (mut rd, wr) = channel.split();
             let wr = CloseOnDrop::new(wr);
             if let Err(e) = exec_half(wr.get(), req.command.as_bytes().to_vec()).await {
@@ -392,7 +392,7 @@ async fn serve<R, W>(
                 .await;
                 return;
             }
-            // 〔W5-AUX · `设计/96 §3.6`〕有载荷就写进远端进程的 stdin（不关 —— 收的一侧只读一行）。
+            // 有载荷就写进远端进程的 stdin（不关 —— 收的一侧只读一行）。
             if let Some(input) = opts.stdin.clone() {
                 if let Err(e) = wr.get().data_bytes(input.into_bytes()).await {
                     let _ = write_stages_then_ack(
@@ -430,7 +430,7 @@ async fn serve<R, W>(
                 .await;
                 return;
             };
-            // 只绑回环（不对外暴露）。绑口是**后端**的事（`设计/01 §2.1 C5`）。
+            // 只绑回环（不对外暴露）。绑口是**后端**的事。
             let listener = match tokio::net::TcpListener::bind(("127.0.0.1", spec.local_port)).await
             {
                 Ok(l) => l,
@@ -488,7 +488,7 @@ async fn serve<R, W>(
                         "beUses.tunnel.unreachable",
                         &[("port", &port.to_string()), ("e", &e.to_string())],
                     );
-                    // 〔WF2 · WIN3 读数 E〕远端回拒开通道 ⇒ 原因码随 ack 交回（`AllowTcpForwarding no` 回的是
+                    // 远端回拒开通道 ⇒ 原因码随 ack 交回（`AllowTcpForwarding no` 回的是
                     //   `administratively_prohibited`，口上没人听回的是 `connect_failed`）；界面据它决定停不停。
                     let ack = match super::open_failure_word(&e) {
                         Some(why) => DialAck::open_refused(said, fp, why),
@@ -516,7 +516,7 @@ async fn serve<R, W>(
             }
         }
         Use::Files => {
-            // 〔SR1b〕sftp 子系统开好了才回 ack：「远端没开 sftp」要落在 ack 那一行里，不是第一条应答里。
+            // sftp 子系统开好了才回 ack：「远端没开 sftp」要落在 ack 那一行里，不是第一条应答里。
             let fp = lease.linked.fingerprint.clone();
             let session = match super::sftp::open(lease, req, stages).await {
                 Ok(s) => s,
@@ -574,7 +574,7 @@ async fn collect(channel: &mut russh::ChannelReadHalf, opts: &CaptureOpts) -> Ca
 /// 端口转发：每接进一条连接开一条 direct-tcpip、双向对拷，并往下行报一行 `{"accepted":n}`。
 /// **界面走了（上行 EOF / 链路被关）就收工**：丢掉 listener（本地口释放）＋ 收掉在飞的隧道。
 ///
-/// 〔SR1a〕连接是池里的、别的链路也在用 ⇒ **不再 `disconnect`**（那会把同一台远端的长流一起掐断）；
+/// 连接是池里的、别的链路也在用 ⇒ **不再 `disconnect`**（那会把同一台远端的长流一起掐断）；
 /// 在飞的隧道改由本函数自己的 `JoinSet` 收掉（它随本函数返回被丢掉 ⇒ 全部 abort）。
 async fn forward<R, W>(
     linked: Arc<Linked>,

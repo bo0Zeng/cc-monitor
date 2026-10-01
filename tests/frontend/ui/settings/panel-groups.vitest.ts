@@ -2,7 +2,7 @@
 // `CollapsibleGroup` 与真 `SettingsRouter`，钉住「哪些块在哪一页」。
 // 构造 SettingsPanel 不调 open()（配置读取在 open 里；本测只验 buildBody 的静态结构）。
 //
-// **本文件此前钉的是 F82b 的「连接/外观/账号/集成」四组**。S2 按主计划 §2.1 的判据
+// **本文件此前钉的是 F82b 的「连接/外观/账号/集成」四组**。S2 按判据
 // （每个顶层 = 一类被设置的对象）重排成 应用/机器/改动足迹 + 临时的 cc-bus，
 // 那四个组名随之消失 —— 所以这里是**跟着功能改**，不是把碍事的断言删掉。
 // 新断言比旧的更强：旧的只点名 4 个组 + 抽查几个子分节；新的是**逐页的完整清单**
@@ -19,8 +19,8 @@ const { remoteRefresh, dataRefresh, dataLoadNow } = vi.hoisted(() => ({
   remoteRefresh: vi.fn().mockResolvedValue(undefined),
   dataRefresh: vi.fn(),
   dataLoadNow: vi.fn(),
-  // 〔AL1c · 4B〕这里原来还有一个 `ccIntegrationBuilds` 计数（S9：数「终端集成」那块**构造**了几次）。
-  // 那块并进了「别名」（`设计/71 §7` W5），「构造即发 Windows 专用 IPC」那条纪律跟着过去、
+  // 这里原来还有一个 `ccIntegrationBuilds` 计数（S9：数「终端集成」那块**构造**了几次）。
+  // 那块并进了「别名」，「构造即发 Windows 专用 IPC」那条纪律跟着过去、
   // 改由 `machine-aliases.vitest.ts` 的「构造零 I/O」两平台各钉一遍 ⇒ 计数与替身一起走了。
 }));
 
@@ -74,7 +74,7 @@ vi.mock("../../../../src/frontend/ui/settings/data-section", () => ({
   DataSection: class {
     element = Object.assign(document.createElement("div"), { id: "stub-data-section" });
     refresh = dataRefresh;
-    // `设计/70 §1.3 B`（步 2）：真 DataSection 的第一发 I/O 由宿主在
+    // （步 2）：真 DataSection 的第一发 I/O 由宿主在
     // 「这一页首次可见」时通过 `loadNow()` 放行 —— stub 必须履行同一份契约，
     // 否则这条护栏守的是一个盘上不存在的接口。
     loadNow = dataLoadNow;
@@ -181,8 +181,8 @@ describe("S2 设置面板分页结构", () => {
     new SettingsPanel({ windowMode: true });
     // S6 已把 cc-bus 驾驶舱移出设置（它是运营视图不是设置，§1-1）。
     // 它现在的入口是命令面板（不加第 7 个顶栏图标，理由见 views/cc-bus-view.ts 头注）。
-    // 🔴 〔ST2 · 用户 09-24 裁「并进机器页，删掉顶层页」〕「改动足迹」顶层页没了 ⇒ 顶层只剩两个。
-    // 〔ST2 · `70 §6` #3 · 步 15〕「应用」下挂三个子页（替掉原来的两个折叠组）。
+    // 🔴 〔用户 09-24 裁「并进机器页，删掉顶层页」〕「改动足迹」顶层页没了 ⇒ 顶层只剩两个。
+    // 「应用」下挂三个子页（替掉原来的两个折叠组）。
     // 跨机器的 skill / MCP 是一类被设置的对象 ⇒ 顶层「扩展」页，不挂在某台机器下面。
     expect(navTitles()).toEqual(["应用", "外观", "日志", "数据位置", "机器", "扩展"]);
   });
@@ -197,11 +197,11 @@ describe("S2 设置面板分页结构", () => {
     document.body.replaceChildren();
     new SettingsPanel({ windowMode: true });
     await tick();
-    // 🔴 〔ST2 · `70 §6` #3 · 步 15〕两个折叠组（外观 · 日志与数据）换成「应用」下的三个子页。
+    // 🔴 两个折叠组（外观 · 日志与数据）换成「应用」下的三个子页。
     //   「日志」「数据位置」那两块各自独占一页 ⇒ 块不再自带标题（页头就是它的名字，§8 #11 不重名）。
     expect(pageTitles("app")).toEqual(["行为", "快捷键"]);
     expect(pageTitles("app-appearance")).toEqual(["字体", "颜色"]);
-    // `70 §10.3`：「诊断」**让名**给 `§5.3` 那个改名（否则面板里会有两个「诊断」）——今天是页名。
+    // 「诊断」**让名**给 `§5.3` 那个改名（否则面板里会有两个「诊断」）——今天是页名。
     expect(pageTitles("app-logs")).toEqual([]);
     expect(pageTitles("app-data")).toEqual(["Claude 数据目录"]);
     // 那两块真的在它们各自那一页上（只是不带块标题）。
@@ -213,28 +213,28 @@ describe("S2 设置面板分页结构", () => {
       expect(page.querySelector(cls), `${id} 页上没有它那一块`).not.toBeNull();
     }
     // ★ S4b-2：那四块**已从列表页搬到机器详情页**。
-    // 🔴 〔第四波 ST2 · `70 §5.3` · 步 14〕「backend 开关」**不再单独占一块**：它并进了机器列表那一行
+    // 🔴 「backend 开关」**不再单独占一块**：它并进了机器列表那一行
     //   （四格挂在「远端连接」那块的列表行上，钉在 `machine-list-backend-cells.vitest.ts`）。
     //   ⇒ 列表页的块只剩一块（列表 ＋ 添加 ＋ 全局开关 ＋ 诊断都在它里面，`§8` #10）。
-    // 〔ST2〕顶层「改动足迹」删掉之后，漂移记账那一块并进**每台机器子页的「足迹」栏**（见下面本机页那张表）。
+    // 顶层「改动足迹」删掉之后，漂移记账那一块并进**每台机器子页的「足迹」栏**（见下面本机页那张表）。
     expect(pageTitles("machines")).toEqual(["远端连接"]);
     // 它们跟着「当前在看哪台机器」走；初始落在本机页上（与 machine-context 的初始值对齐）。
     expect(pageTitles("machine:（本机）")).toEqual([
       "账号",
-      // 〔AL1c · 4B〕「终端集成」并进了下面「别名」那一块（Windows 上它是 PowerShell 那一侧的别名块）。
-      // 〔AL1 · 2026-09-24〕`设计/71 §13` ②：别名并进机器页（`70 §3.3`），从「应用 → 行为」搬来。
+      // 「终端集成」并进了下面「别名」那一块（Windows 上它是 PowerShell 那一侧的别名块）。
+      // 别名并进机器页，从「应用 → 行为」搬来。
       "别名",
       // MCP · 资产目录 · 插件三块搬去了顶层「扩展」页（跨机器的一类对象）。
-      // 〔FIX4 · `97 §8`〕代码全景组件的卸口（本机与远端页都有）。
+      // 代码全景组件的卸口（本机与远端页都有）。
       "代码全景组件",
       // cc-bus 钩子那一块拿掉了：cc-bus 是扩展页里的一行，各台的钩子状态在那一行里。
-      // 🔴 `70 §10.1`（步 14a）：「足迹」从顶层「改动足迹」页搬进来，是**新增的第五块**。
+      // 🔴 （步 14a）：「足迹」从顶层「改动足迹」页搬进来，是**新增的第五块**。
       "足迹",
-      // 〔ST2〕原顶层「改动足迹」页剩下的那一块，同栏。
+      // 原顶层「改动足迹」页剩下的那一块，同栏。
       "未识别的数据",
     ]);
-    // `70 §10.1`（步 14a）：「配置面审计」→ 改名「足迹」并搬进机器子页。
-    // 🔴 〔ST2〕`§10.5` #1 用户裁了：顶层「改动足迹」页**删掉**，剩下那一块并进机器页。
+    // （步 14a）：「配置面审计」→ 改名「足迹」并搬进机器子页。
+    // 🔴 `§10.5` #1 用户裁了：顶层「改动足迹」页**删掉**，剩下那一块并进机器页。
     expect(document.querySelector('.settings-page[data-route-id="footprint"]')).toBeNull();
     // 「扩展」页只有那一块（不带块标题：页头就是它的名字）。
     expect(pageTitles("ext")).toEqual([]);
@@ -246,7 +246,7 @@ describe("S2 设置面板分页结构", () => {
   });
 
   /**
-   * 🔴 〔AL1 · 2026-09-24〕**别名那一块挂在机器页「本机」上，「应用」页上不再有它。**
+   * 🔴 **别名那一块挂在机器页「本机」上，「应用」页上不再有它。**
    *
    * ⚠ 它买的是**接线**，不是那一块的行为（后者归 `machine-aliases.vitest.ts`）——
    * 那一块的单测直接 `buildAliasManager()`，结构上绕过了「它有没有被挂上去」。
@@ -323,14 +323,14 @@ describe("S2 设置面板分页结构", () => {
     const p = new SettingsPanel({ windowMode: true });
     await p.open();
     expect(remoteRefresh).toHaveBeenCalled();
-    // 🔴 步 2（`70 §1.3 B`）：`open()` **不再**无条件 `dataSection.refresh()` ——
+    // 🔴 步 2：`open()` **不再**无条件 `dataSection.refresh()` ——
     // 那一发在落地页是「机器」的时候是白发的（`§8` 判据 #3 今天正是被它这一族打破的）。
     // 字段还在、契约还在，只是放行的时机换成了「这一页首次可见」。
     expect(dataRefresh, "落地页是「机器」⇒ 打开设置不许碰「应用」页的 I/O").not.toHaveBeenCalled();
     expect(dataLoadNow, "还没点进「应用」⇒ 连第一发都不许放").not.toHaveBeenCalled();
     // 点进「数据位置」——这一刻才放行。**相等断言的反向锚**：上面那两条若因为
     // 字段被漏赋值（`this.dataSection` 是 undefined）而绿，这一条会红。
-    // 〔ST2 · 步 15〕它今天是「应用」下的子页（原来在「应用」页的折叠组里）。
+    // 它今天是「应用」下的子页（原来在「应用」页的折叠组里）。
     document.querySelector<HTMLButtonElement>("#settings-tab-app")!.click();
     expect(dataLoadNow, "点「应用」本身不该放数据位置那一发").not.toHaveBeenCalled();
     document.querySelector<HTMLButtonElement>("#settings-tab-app-data")!.click();
@@ -349,7 +349,7 @@ describe("S2 设置面板分页结构", () => {
     const visibleTitles = [...local.querySelectorAll<HTMLElement>(".settings-group")]
       .filter((g) => !g.hidden)
       .map((g) => g.querySelector(".settings-group-title")?.textContent ?? "");
-    // 「别名」（〔AL1c〕含从前的「终端集成」，PowerShell $PROFILE 那一块）只对本机有意义 ⇒ 显示。
+    // 「别名」（含从前的「终端集成」，PowerShell $PROFILE 那一块）只对本机有意义 ⇒ 显示。
     expect(visibleTitles).toContain("别名");
     // 🔴 **`N-F1b`（09-05）改了这一格的事实，PM 落**。
     //
@@ -376,7 +376,7 @@ describe("S2 设置面板分页结构", () => {
     // 🔴 这条**换了判据，不是放宽了判据**。
     //
     // 旧版逐字写着「不等 tick：此刻本机页还没注册，**等价于 RemoteSection 挂掉的处境**」
-    // —— 那句「等价」正是 `设计/70 §1.1` 判掉的那个错：**加载中**与**真失败**在屏幕上
+    // —— 那句「等价」正是判掉的那个错：**加载中**与**真失败**在屏幕上
     // 本来就不该等价。而因为机器列表是异步加载的，那个「RemoteSection 抛异常时的最坏
     // 情况」变成了**每次打开的前 3 秒的默认视图**（用户截图 1 里那一屏就是它）。
     //
@@ -396,8 +396,8 @@ describe("S2 设置面板分页结构", () => {
     expect(pageTitles("machines")).toEqual([
       "远端连接",
       "账号",
-      "别名", // 〔AL1〕本机那一格的 ②，跟着 per-machine 那几块一起留在兜底落点（〔AL1c〕终端集成并进了它）
-      "代码全景组件", // 〔FIX4〕
+      "别名", // 本机那一格的 ②，跟着 per-machine 那几块一起留在兜底落点（终端集成并进了它）
+      "代码全景组件", //
       "足迹",
       "未识别的数据",
     ]);
@@ -503,7 +503,7 @@ describe("S2 设置面板分页结构", () => {
 });
 
 /**
- * S9：本机页上的「终端集成」按 OS 显隐 —— 〔AL1c · 第四波 4B〕那块并进了「别名」（`设计/71 §7` W5），
+ * S9：本机页上的「终端集成」按 OS 显隐 —— 那块并进了「别名」，
  * 门从「建不建那一块」变成「别名那一块用哪个平台」：Windows ⇒ PowerShell（含终端集成）；其余 ⇒ POSIX。
  * 「构造即发 Windows 专用 IPC」那条纪律跟着搬过去了：`machine-aliases.vitest.ts` 两个平台各钉「构造零 I/O」。
  *
@@ -537,7 +537,7 @@ describe("S9 本机 OS 门（〔AL1c〕别名那一块的平台）", () => {
     ["windows", "powershell"],
     ["linux", "posix"],
     ["macos", "posix"],
-    // 〔FIX4 · `71 §8` 第 7 条，主会话 09-28 裁〕认不出 OS ⇒ **不猜方言**：那一格明说、装的入口置灰（先前取 POSIX）。
+    // 认不出 OS ⇒ **不猜方言**：那一格明说、装的入口置灰（先前取 POSIX）。
     ["unknown", "unknown"],
   ] as const) {
     it(`★ ${os} ⇒ 别名那一块是 ${shell}；单独的「终端集成」一块不再有`, async () => {

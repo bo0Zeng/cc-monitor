@@ -43,7 +43,7 @@ impl Tape {
 // 正题一：**一次问完** —— 问一次、拿到全部冲突项、而且排在所有传输之前
 // ════════════════════════════════════════════════════════════════════════
 
-/// 🔴 `设计/60 §5.4d` 的前半句：**先把覆盖确认一次问完。**
+/// 🔴 前半句：**先把覆盖确认一次问完。**
 ///
 /// 三样一起判，少一样就漏一形：
 /// ① `confirm` 被调用**恰好一次**（旧面板那种 `for … confirm … await` 会调 N 次）；
@@ -189,7 +189,7 @@ async fn nothing_clashing_means_nobody_gets_asked() {
 // 正题二：**再并行起传输** —— 而且那道闸是真的
 // ════════════════════════════════════════════════════════════════════════
 
-/// 🔴 `设计/60 §5.4d` 的后半句：**并行起传输。**
+/// 🔴 后半句：**并行起传输。**
 ///
 /// 判法是**结构性**的，不是计时：四件传输各自 `Barrier(4).wait()` ——
 /// 只有四件**真的同时在飞**barrier 才凑得齐。串行实现（旧面板那条 `for … await`）
@@ -231,7 +231,7 @@ async fn four_dropped_files_really_fly_at_the_same_time() {
         .expect(
             "四件传输没能同时在飞（`Barrier(4)` 凑不齐 ⇒ 超时）—— \
              这正是旧面板 `uploadDropped` 那条 `for … await` 的形状，\
-             而 `设计/60 §5.4d` 要的就是把它去掉",
+             而要的就是把它去掉",
         );
     assert_eq!(out.ok, 4);
     assert_eq!(
@@ -464,8 +464,8 @@ fn a_pending_upload_targets_the_current_remote_directory_with_forward_slashes() 
 
 /// ⚠ **判源码是代理，不是标的**（同 `source_tests` 那条的如实标注）。
 ///
-/// 〔F7c · 第三波 09-24〕上一版这里钉的是「上传走 `sftp_pool` 那条既有命令」。**今天反过来**：
-/// 窗口进程一行 SFTP 都不碰（`设计/60 §13`）——上传经通道开单、订阅、再经后端提交。
+/// 上一版这里钉的是「上传走 `sftp_pool` 那条既有命令」。**今天反过来**：
+/// 窗口进程一行 SFTP 都不碰——上传经通道开单、订阅、再经后端提交。
 /// 买的是：这一层**只剩**通道那几个口（开单 · 提交 · 探测各恰好一处），自己开连接 / 分块写 /
 /// 直调池子传输命令的痕迹一个都没有。行为那一半由下面 `an_upload_opens_watches_then_commits…` 那一族判。
 #[test]
@@ -507,11 +507,11 @@ fn the_real_adapters_speak_only_through_the_channel() {
     ] {
         assert!(
             !prod.contains(banned),
-            "生产段里出现了 `{banned}` —— 窗口进程不碰 SFTP（`设计/60 §13.2 ①`），\
+            "生产段里出现了 `{banned}` —— 窗口进程不碰 SFTP，\
              它该做的只有「先问完再并行」＋ 经通道说话"
         );
     }
-    // 〔F7c 收尾 09-24〕池子那一个前缀**一处都不剩**（复制那一腿的取消随复制走后端一起删了）。
+    // 池子那一个前缀**一处都不剩**（复制那一腿的取消随复制走后端一起删了）。
     assert_eq!(
         prod.matches("sftp_pool::").count(),
         0,
@@ -521,8 +521,8 @@ fn the_real_adapters_speak_only_through_the_channel() {
 
 /// 🔴 **一个窗口的一趟拖入：不超过那条连接的传输车道，也要不满整条连接的通道闸。**
 ///
-/// 〔第四波 S4〕这一条原先钉「窗口起几件 == 池里的车道数」（两份副本 ＋ 相等）；车道闸退役之后改钉
-/// 「一个窗口的一趟拖入占不满池子的通道闸」。〔SR1b · 09-24〕池子搬进了本机常驻后端、预算改成**按连接**记
+/// 这一条原先钉「窗口起几件 == 池里的车道数」（两份副本 ＋ 相等）；车道闸退役之后改钉
+/// 「一个窗口的一趟拖入占不满池子的通道闸」。池子搬进了本机常驻后端、预算改成**按连接**记
 /// （`dial/pool.rs`：一条连接上 session 通道 `SESSION_CHANNEL_CAP`，其中传输至多 `TRANSFER_LANE_CAP`）⇒ 关系换成两条：
 /// ① 窗口一趟起的件数 ≤ 传输车道（多起的只会在车道前排队，白挂订阅）；
 /// ② 窗口一趟起的件数 < 整条连接的通道闸（同一台远端的会话长流与查询还要有格子）。
@@ -577,7 +577,7 @@ fn one_windows_burst_fits_the_transfer_lane_and_never_fills_the_connection() {
 /// 漂开的症状是具体的：开单答「不认」、订阅答「没有这条流」、提交答 `unknown_command`。
 #[test]
 fn the_wire_names_the_window_says_are_the_ones_the_other_side_answers() {
-    // 〔P4〕窗口 ⇄ monitor 传输中继那三个名字的相等挪到了 monitor 那一侧（`tests/frontend/shell/filewin/cross_half_tests.rs`）。
+    // 窗口 ⇄ monitor 传输中继那三个名字的相等挪到了 monitor 那一侧（`tests/frontend/shell/filewin/cross_half_tests.rs`）。
     let backend = std::fs::read_to_string(
         crate::guard_support::repo_root().join("src/backend/control/files_commit.rs"),
     )
@@ -625,17 +625,17 @@ async fn only_the_items_a_human_agreed_to_overwrite_go_out_with_overwrite() {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// 〔F7c〕经通道的那三步：开单 → 起跑并看 → 提交（真回环 ＋ 真钥匙 ＋ 合成对端）
+// 经通道的那三步：开单 → 起跑并看 → 提交（真回环 ＋ 真钥匙 ＋ 合成对端）
 // ════════════════════════════════════════════════════════════════════════
 
 /// 合成对端这一趟怎么收场。
 #[derive(Clone, Copy)]
 pub(crate) enum Ends {
     Done,
-    /// 〔FW1〕传完，但提交那一趟前 `n` 次答 `stale`（整份摘要对不上：暂存件中间有坏块）。
+    /// 传完，但提交那一趟前 `n` 次答 `stale`（整份摘要对不上：暂存件中间有坏块）。
     DoneStaleCommits(usize),
     Failed,
-    /// 〔FILES2 · Q5〕传输台以 `sftp_home_mismatch` 收场（SFTP 起始目录不是后端 home，一个字节没传）。
+    /// 传输台以 `sftp_home_mismatch` 收场（SFTP 起始目录不是后端 home，一个字节没传）。
     Mismatch,
     /// 永不收场（只有被停订才结束）——「撤」那一条用。
     Hang,
@@ -645,11 +645,11 @@ pub(crate) enum Ends {
 pub(crate) struct XferHost {
     ends: Ends,
     log: std::sync::Arc<std::sync::Mutex<Vec<(String, serde_json::Value)>>>,
-    /// 〔FW1〕提交来过几趟。
+    /// 提交来过几趟。
     commits: std::sync::atomic::AtomicUsize,
 }
 
-/// 〔FW1〕合成对端 done 帧交的整份摘要（判据核它原样进了提交的 `expect`）。
+/// 合成对端 done 帧交的整份摘要（判据核它原样进了提交的 `expect`）。
 pub(crate) fn xfer_sha() -> String {
     "5a".repeat(32)
 }
@@ -830,7 +830,7 @@ async fn an_upload_opens_watches_then_commits_with_the_humans_answer() {
         .cloned()
         .collect();
     let names: Vec<&str> = got.iter().map(|(s, _)| s.as_str()).collect();
-    // 〔FILES2 · Q5〕开单之前先问一次那台后端的 `$HOME`（开单带上，传输台连上之后比 SFTP 起始目录）。
+    // 开单之前先问一次那台后端的 `$HOME`（开单带上，传输台连上之后比 SFTP 起始目录）。
     assert_eq!(
         &names[..],
         [
@@ -851,13 +851,13 @@ async fn an_upload_opens_watches_then_commits_with_the_humans_answer() {
         got[2].1,
         serde_json::json!({ "key": "k".repeat(32), "root": "/srv", "rel": "a.bin", "overwrite": true,
                             "expect": { "sha256": xfer_sha() } }),
-        "提交没带传输台交的整份摘要（〔FW1〕远端后端改名上位之前要核它）"
+        "提交没带传输台交的整份摘要（远端后端改名上位之前要核它）"
     );
 }
 
-/// 〔FW1 · 第四波 4D〕**提交时整份摘要对不上 ⇒ 从头重传一次、出声**（主会话裁 09-25「不等 ⇒ stale、删坏暂存件、从 0 重传并出声」）。
+/// **提交时整份摘要对不上 ⇒ 从头重传一次、出声**（主会话裁 09-25「不等 ⇒ stale、删坏暂存件、从 0 重传并出声」）。
 ///
-/// 要求住址：同上那条裁决 · `设计/60 §7` 第 8 条。两形：① 第一次提交 stale、第二次成 ⇒ 整条再走一遍
+/// 要求住址：同上那条裁决。两形：① 第一次提交 stale、第二次成 ⇒ 整条再走一遍
 /// （开单 → 看 → 提交，两遍），成、而且这一件记进「从头重传过」；② 一直 stale ⇒ 只重一次、第二次照原话失败（不原地打转）。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_commit_that_finds_a_bad_staging_part_restarts_once_and_says_so() {
@@ -866,7 +866,7 @@ async fn a_commit_that_finds_a_bad_staging_part_restarts_once_and_says_so() {
     upload_remote(&line, &origin, &p("a.bin"), &board)
         .await
         .expect("重传一次该成");
-    // 〔FILES2 · Q5〕开头那一次问 `$HOME`（问过就记着，重传那一遍不再问）。
+    // 开头那一次问 `$HOME`（问过就记着，重传那一遍不再问）。
     let names: Vec<String> = steps(&log)
         .into_iter()
         .filter(|s| s != "dropped" && s != "files-home")
@@ -984,7 +984,7 @@ async fn a_download_opens_and_watches_and_never_talks_to_the_file_backend() {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// 🔴〔第五刀〕取消 —— `设计/99 §4.6.4` 单记的那一格
+// 🔴取消 —— 单记的那一格
 // ════════════════════════════════════════════════════════════════════════
 //
 // # 这一摞分成四条，各钉一件
@@ -994,7 +994,7 @@ async fn a_download_opens_and_watches_and_never_talks_to_the_file_backend() {
 // | `pressing_cancel_stops_every_transfer_that_had_not_started_yet` | **行为**：按下取消之后，还没起的那几件一件都不起 | 「UI 上标成停了」而字节照旧在走 |
 // | `a_run_that_is_never_cancelled_launches_every_single_item` | 🔴 **阴性对照** | 上一条可以靠「一件都不起」全绿 —— 那时这个窗口传不了任何东西 |
 // | `the_transfer_id_the_pool_gets_is_the_one_the_window_can_name` | 那个键**离开了适配器的栈** | 窗口说不出要取消哪一趟，画一颗按钮也没用（这一格正是第五刀之前的实况） |
-// | `cancelling_goes_through_the_stop_token_only` | 〔F7c〕经通道的那几趟**停订即撤**；池子那条取消命令一处都不剩 | 按了取消而订阅照挂着（传输台那一侧永远撤不掉） |
+// | `cancelling_goes_through_the_stop_token_only` | 经通道的那几趟**停订即撤**；池子那条取消命令一处都不剩 | 按了取消而订阅照挂着（传输台那一侧永远撤不掉） |
 
 /// 🔴 **按下取消 ⇒ 还没起的那几件一件都不起**，而且整趟**真的收场**（不挂住）。
 ///
@@ -1121,7 +1121,7 @@ async fn the_transfer_id_the_pool_gets_is_the_one_the_window_can_name() {
     assert_eq!(ids.len(), 3);
     assert_eq!(desk.minted(), 3, "造键的处数与真起过的趟数不等");
     // 🔴 **三个键互不相同** —— 同一个键会让两趟互相摘掉对方在池子里的登记
-    //    （从前池子那张取消登记表的注释逐字记着这一条；〔第四波 S4〕那张表已删，键照旧是本层在飞表的键）。
+    //    （从前池子那张取消登记表的注释逐字记着这一条；那张表已删，键照旧是本层在飞表的键）。
     let uniq: std::collections::BTreeSet<&String> = ids.iter().collect();
     assert_eq!(uniq.len(), 3, "造出了重复的 `transfer_id`：{ids:?}");
     // 收场之后表是空的；而**取消照旧送得出去**（送的是当时在飞的那几个，此刻 0 个）。
@@ -1135,7 +1135,7 @@ async fn the_transfer_id_the_pool_gets_is_the_one_the_window_can_name() {
 
 /// 取消落在哪 —— 源码代理，行为那一半由 `pressing_cancel_stops_the_subscription…` 判。
 ///
-/// 〔F7c 收尾 09-24〕经通道起的那几趟（上传 / 下载）撤法是**停订**（`CancelDesk::stop_token`）；
+/// 经通道起的那几趟（上传 / 下载）撤法是**停订**（`CancelDesk::stop_token`）；
 /// 池子那条取消命令已经一处都不剩（复制那一腿随 F7a 走后端、不可取消）。
 #[test]
 fn cancelling_goes_through_the_stop_token_only() {
@@ -1176,7 +1176,7 @@ fn cancelling_goes_through_the_stop_token_only() {
 }
 
 /// 取消台没有窗口也不 panic；一趟都没起过时按取消，送出去的是空的、旗照样立起来。
-/// 〔F7c 收尾 09-24〕从前这里还验「池子那条取消命令对没注册过的 id 是 no-op」（`forward_cancel`〔散文墓碑〕）——
+/// 从前这里还验「池子那条取消命令对没注册过的 id 是 no-op」（`forward_cancel`〔散文墓碑〕）——
 /// 那条路随复制走后端一起删了。
 #[test]
 fn cancelling_an_idle_desk_is_harmless() {

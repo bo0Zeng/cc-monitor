@@ -53,7 +53,7 @@ const SUMMARY = resolve(REPO, "coverage/coverage-summary.json");
  */
 const PER_FILE_FLOORS = [
   ["src/frontend/ui/tabs.ts", 64, 69.9, 54, 59.7],
-  // 〔U2 · 2026-09-24〕`tabs.ts` 拆成 13 份，它原先那一格地板护着的代码大半搬走了 ⇒ 搬去的四份大的各自接一格
+  // `tabs.ts` 拆成 13 份，它原先那一格地板护着的代码大半搬走了 ⇒ 搬去的四份大的各自接一格
   //   （同一套纪律：当前值下方 ~5 点，实测一起写下）。`tabs.ts` 那一行不动（今天实测 79.0 / 67.4，高于原地板）。
   ["src/frontend/ui/tab-stream-view.ts", 85, 90.8, 78, 83.9],
   ["src/frontend/ui/tab-session-actions.ts", 62, 67.5, 59, 64.7],
@@ -69,11 +69,11 @@ const PER_FILE_FLOORS = [
   ["src/frontend/ui/settings/ext-section.ts", 69, 74.6, 61, 66.4],
   ["src/frontend/ui/settings/cc-bus-section.ts", 90, 95.7, 70, 75.0],
   ["src/frontend/ui/views/grid-monitor.ts", 89, 94.7, 84, 89.3],
-  // 〔墓碑〕`src/frontend/ui/views/usage-view.ts` —— 随用量 ②③ 两轴整轴退役而整删（`设计/50`，2026-09-18）。
+  // 〔墓碑〕`src/frontend/ui/views/usage-view.ts` —— 随用量 ②③ 两轴整轴退役而整删（2026-09-18）。
   // 原地板 81/86.2 · 63/68.4。删这一行的理由是**那个文件不在了**，不是「地板太严」——
   // 往下拧地板的合法理由只有这一个（同 `doc_claim_registry` 那条纪律）。
   ["src/frontend/ui/accounts.ts", 83, 88.9, 83, 88.1],
-  // 〔FE1 · 第四波 4D〕`accounts.ts` 按域拆开（1670 → 663 行，语句 102）：上面那一格的地板**不动**（拆后实测 100 / 96.2，
+  // `accounts.ts` 按域拆开（1670 → 663 行，语句 102）：上面那一格的地板**不动**（拆后实测 100 / 96.2，
   //   高于原地板）。它原先护着的代码大半搬走了 ⇒ 搬去的两份大的各自接一格（同一套纪律：当前值下方 ~5 点，实测一起写下）。
   //   另三份小的（`account-prefs.ts` 39 句 · `local-launch-backfill.ts` 33 句 · `account-restart.ts` 收的那一段）不单列：语句数不够「核心」那一档。
   ["src/frontend/ui/account-reads.ts", 92, 97.3, 89, 94.3],
@@ -164,7 +164,7 @@ if (files.length < 150) {
   console.error(`只解析出 ${files.length} 个文件（08-06 实测 187）—— 抽取器坏了`);
   process.exit(2);
 }
-// 抽取器自检②〔09-09〕：归一化之后必须真的落回 `src/…` 这个形状。
+// 抽取器自检②：归一化之后必须真的落回 `src/…` 这个形状。
 // 上面那段说的病**当时没有任何东西认得出来** —— 它长得跟「12 个文件同时被删了」一模一样。
 // `vitest.config.ts` 的 `coverage.include` 逐字是 `src/**/*.ts` ⇒ 一条都不落在 `src/` 下时，
 // 唯一的解释是归一化的基准错了（键不在 `REPO` 之下）。**这时候要说「量具坏了」，不许往下判。**

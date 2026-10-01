@@ -93,7 +93,7 @@ fn list_accounts_degrades_gracefully() {
 }
 
 // ---- 3. 非法 configDir 被丢弃，其余正常 ----
-/// 〔IV1 · V121〕要求住址：`INVARIANTS §47`（外部值拼进 shell / 交给对端之前本侧先过放行判定）；②形。
+/// 要求住址：`INVARIANTS §47`（外部值拼进 shell / 交给对端之前本侧先过放行判定）；②形。
 #[test]
 fn unsafe_config_dirs_are_dropped() {
     let root = tmpdir("unsafe");
@@ -121,7 +121,7 @@ fn unsafe_config_dirs_are_dropped() {
 /// 手抄两遍必漂，而漂掉的那一格恰恰是本件最怕的那一格 ——
 /// 「为了让 Windows 路径过，顺手把安全那一半也放宽了」。
 ///
-/// ⚠ 如实说清它**不是**真相源：生产那一侧是 `is_safe_config_dir` 里的一个
+/// ⚠ 如实说清它**不是**源头：生产那一侧是 `is_safe_config_dir` 里的一个
 /// `matches!` 臂，没有可 import 的具名常量 ⇒ 这仍是一份**手抄**，
 /// 只是从两份收敛成一份。少了一个字符两边会**一起**变绿（同族假阴），
 /// 接住它的是下面那条「地板」自检与 `NcM3` 那一刀。
@@ -802,7 +802,7 @@ fn an_unreadable_environ_is_never_reported_as_the_zero_account() {
 
     // ── 🔴 反空真自检：三个活体**此刻**真的各在自己那一支上 ──────────────
     // 没有这一段，夹具悄悄退化（比如僵尸被回收了、或空环境没生效）时本条会
-    // 零命中地绿 —— 那正是 `K-G4 §7 裁六` 记的那一形。
+    // 零命中地绿 —— 那正是记的那一形。
     let zombie_state = state_of(zpid);
     let read_a = std::fs::read(format!("/proc/{zpid}/environ"));
     let read_b = std::fs::read(format!("/proc/{epid}/environ"));
@@ -1120,7 +1120,7 @@ fn auth_kind_parity_backend_side() {
 /// `acct_core::auth_kind_from_manifest(`。有人在这儿手写一个
 /// `if kind == "api-key" { true } else { … }`，本条红。
 ///
-/// ⚠ 射程如实写：它**只管本文件**（〔C4d〕另一个生产者 —— monitor 那份本机参照实现 —— 已删，
+/// ⚠ 射程如实写：它**只管本文件**（另一个生产者 —— monitor 那份本机参照实现 —— 已删，
 /// 这一维的生产者今天只剩本文件这一个），
 /// 而且是**字面量扫描** —— 把两个 helper 重新 `use` 成别名就绕得过去。
 /// 真正的地板不是它，是 `acct-core` 里只有一份实现。
@@ -1212,7 +1212,7 @@ fn production_text() -> String {
     prod
 }
 
-// 🪦〔MIG-2〕这里原有 `the_launch_id_env_var_matches_the_monitor_side_home`（读 monitor `history.rs` 的写侧常量）：写侧随本机起会话 〔散文墓碑〕
+// 🪦这里原有 `the_launch_id_env_var_matches_the_monitor_side_home`（读 monitor `history.rs` 的写侧常量）：写侧随本机起会话 〔散文墓碑〕
 //   搬进本 crate（`control/launch_render/local.rs::LAUNCH_ID_VAR`），两侧对拍改住 `local_tests.rs::the_launch_id_var_is_one_name_on_both_halves`。
 
 /// ★★ **本文件读环境这件事的射程不许悄悄变大**〔本文件头注那条「两个写死的键」的判据〕。
@@ -1221,7 +1221,7 @@ fn production_text() -> String {
 /// 本条的分母是 `include_str!("../../../src/backend/observe/accounts_query.rs")` 的生产段 —— **一个文件**，
 /// 与测试名里那个 `this_module` 逐字对齐。
 /// ⚠ backend 里**还有另外两处**在读 `/proc/<pid>/environ`，都住 `control/identity_tag.rs`：
-/// `TMUX_PANE`（身份广播那一面）与 `CCM_RBIND_TOKEN`（启动期令牌，〔`设计/80 §8.7` 步 2，09-22〕）。
+/// `TMUX_PANE`（身份广播那一面）与 `CCM_RBIND_TOKEN`（启动期令牌）。
 /// 〔计数订正：09-03 现打是「第三处」、生产段共 3 个调用方；步 2 加了第四个，**今天是 4**。
 ///  这两个数都不在任何断言里，它们是散文 —— 写在这儿是为了不让下一个人照着一个过期的数去数。〕
 /// 它们**都不在本条视野里**，
@@ -1230,21 +1230,21 @@ fn production_text() -> String {
 /// 为它付一把新尺子的固定成本不划算 —— 同 `K-R19` 裁「闸 G 不装」的口径），
 /// **改的是这句话的主语**。别把这一格读成「全后端只读两个键」。
 ///
-/// 🔴 〔`设计/80 §8.7` 步 2 订正〕**那条 PM 裁定的前提已经变了，尺子装了** ——
+/// 🔴 **那条 PM 裁定的前提已经变了，尺子装了** ——
 /// 变了两处：① `identity_tag.rs` 从读**一个**变量变成读**两个**；
-/// ② 新那个变量的值是**敏感数据**（`设计/80 §8.6 ③`）。
+/// ② 新那个变量的值是**敏感数据**。
 /// ⇒ 它自己那一把住
 /// `control::identity_tag::tests::the_env_keys_this_file_reads_are_exactly_two_named_constants`。
 /// **本条的分母一格没动**：两把尺子各量一个文件，不是同一条铁律的两个住址。
 ///
-/// 守的性质：`/proc/<pid>/environ` 只抠**三个常量键**（〔HX1 · D-f〕第三个 `ANTHROPIC_BASE_URL` 只折成 `viaRelay` 一个布尔），键名**不许成为一维参数**。
+/// 守的性质：`/proc/<pid>/environ` 只抠**三个常量键**（第三个 `ANTHROPIC_BASE_URL` 只折成 `viaRelay` 一个布尔），键名**不许成为一维参数**。
 /// 多一处 `proc_env_var(pid, …)` ⇒ 红，来这里回答「新那个键是什么、为什么它不
 /// 把本查询变成任意环境变量读原语」。
 #[test]
 fn the_only_env_keys_this_module_reads_are_the_two_named_constants() {
     let prod = production_text();
     let total = prod.matches("proc_env_var(pid, ").count();
-    // 〔HX1 · D-f〕2 → 3：`ANTHROPIC_BASE_URL`（只折成 `viaRelay` 一个布尔，值带钥匙、不出参）。
+    // 2 → 3：`ANTHROPIC_BASE_URL`（只折成 `viaRelay` 一个布尔，值带钥匙、不出参）。
     assert_eq!(
         total, 3,
         "\n本文件生产段里 `proc_env_var(pid, …)` 有 {total} 处（登记 3 处）。\n\
@@ -1252,7 +1252,7 @@ fn the_only_env_keys_this_module_reads_are_the_two_named_constants() {
              以及为什么这条查询仍然不是「任意环境变量读」原语。\n\
              **少了** ⇒ 有一条读回路被摘掉了。"
     );
-    // 〔HX1 · D-f〕两个适配层的键（账号 · 上游地址）收成一处向适配层要（`SESSION_ENV_KEYS`），键名仍是常量、不是参数。
+    // 两个适配层的键（账号 · 上游地址）收成一处向适配层要（`SESSION_ENV_KEYS`），键名仍是常量、不是参数。
     assert_eq!(
         prod.matches("let env_keys = crate::agents::claudecode::paths::SESSION_ENV_KEYS;")
             .count(),
@@ -1273,7 +1273,7 @@ fn the_only_env_keys_this_module_reads_are_the_two_named_constants() {
     assert_eq!(
         prod.matches("proc_env_var(pid, env_keys.base_url)").count(),
         1,
-        "抠 `ANTHROPIC_BASE_URL` 那一处不见了 / 变形了（〔HX1 · D-f〕`viaRelay` 的读侧）"
+        "抠 `ANTHROPIC_BASE_URL` 那一处不见了 / 变形了（`viaRelay` 的读侧）"
     );
 }
 
@@ -1286,7 +1286,7 @@ fn the_only_env_keys_this_module_reads_are_the_two_named_constants() {
 /// `serde_json::json!`，不是 `wire.rs` 里的类型；另一条数的是**子命令名**，
 /// 而 `--session-accounts` 早在表里）。⇒ 文档那一行**只靠人记得改**。
 /// 而「没有闸看着的文档事实」正是本工作区反复判过的假绿源
-/// （`K-P5c §7 上报-3`「写着有、其实没有」同族）。**这条就是那道闸。**
+/// （「写着有、其实没有」同族）。**这条就是那道闸。**
 ///
 /// # 三格
 ///
@@ -1337,7 +1337,7 @@ fn the_protocol_doc_row_for_session_accounts_matches_what_we_emit() {
     assert_eq!(
         keys.len(),
         9,
-        "从出参 `json!` 只抠到 {} 个键（09-02 现打 8；〔HX1〕+`viaRelay` ⇒ 9）—— 抽取器坏了，下面那格会零命中地绿：{keys:?}",
+        "从出参 `json!` 只抠到 {} 个键（09-02 现打 8；+`viaRelay` ⇒ 9）—— 抽取器坏了，下面那格会零命中地绿：{keys:?}",
         keys.len()
     );
     let table = format!("{{{}}}", keys.join(","));
@@ -1432,10 +1432,10 @@ fn a_launch_id_that_lands_on_more_than_one_session_counts_for_nobody() {
     assert_eq!(rows[3].launch_id, None);
 }
 
-/// 🔴🔴 **活体夹具**〔`KP5FD5`〕：造一个**真的**「父的值漏进子进程」的活体，
+/// 🔴🔴 **活体夹具**：造一个**真的**「父的值漏进子进程」的活体，
 /// 让**判据本体**（`session_accounts` 自己，不是它的复刻）跑在上面。
 ///
-/// # 为什么非活体不可（`K-G4 §7 裁六` 的实测）
+/// # 为什么非活体不可（实测）
 ///
 /// 那一拍现打过：掏空共用原语时**方向判据全留绿，只有活体夹具红**。
 /// 这里的等价失效是：把 [`suppress_inherited_launch_ids`] 的函数体清空，
@@ -1526,7 +1526,7 @@ fn an_inherited_launch_id_is_never_reported_as_the_childs_own_identity() {
     // 第三个活体：token 的**形状**过不了白名单（空格 + `;`）。它与上面两条不撞 ⇒
     // 它那一格的 `null` **只能**来自形状核 ⇒ 拆掉 `launch_id_is_safe` 那一格它就红。
     // （没有这一段，形状核在活体上一颗牙都没有：`launch_id_is_safe` 的单测是纯函数，
-    //  拆掉调用点它照样全绿 —— 那正是 `K-G4 §7 裁六` 记的那一形。）
+    //  拆掉调用点它照样全绿 —— 那正是记的那一形。）
     let mut evil = std::process::Command::new("sh")
         .arg("-c")
         .arg("exec sleep 60")
@@ -1652,11 +1652,11 @@ fn an_inherited_launch_id_is_never_reported_as_the_childs_own_identity() {
 }
 
 // ============================================================================
-// 〔C4c · 第四波 4B〕帧面出成品：`accounts-list`（并上这台机器自己那份 apikey 表）· `accounts-trust`
+// 帧面出成品：`accounts-list`（并上这台机器自己那份 apikey 表）· `accounts-trust`
 // ============================================================================
 //
-// 要求住址：`设计/05 §8` 步 5「一次性请求那半收口成 `call` —— 按能力分批」· `设计/01 §5` D1「一个判定只有一个家」·
-// 用户裁决 V107「中转 ＋ 上游选择住本机常驻后端进程」—— 主会话据此裁「账号域读自己那台的 apikey 表、
+// 要求：「一次性请求那半收口成 `call` —— 按能力分批」· 「一个判定只有一个家」·
+// 「中转 ＋ 上游选择住本机常驻后端进程」—— 主会话据此裁「账号域读自己那台的 apikey 表、
 // 两条规则搬进 `acct-core`、agent 随请求带」。夹具只造结构（目录名 ＋ 占位 manifest），不采真账号数据。
 
 /// 夹具：账号库（一个账号 0 ＋ 两个隔离号，`acct-a` 有订阅凭据、`acct-b` 没有）。回 `(root, accts)`。
@@ -1854,11 +1854,11 @@ fn the_account_products_match_the_cross_language_golden() {
 }
 
 // ════════════════════════════════════════════════════════════════════════════════════════
-// 〔S5 · 第四波〕同一份账号 manifest，**两个读者**读出同一张表 —— 带不带 UTF-8 BOM 都一样
+// 同一份账号 manifest，**两个读者**读出同一张表 —— 带不带 UTF-8 BOM 都一样
 // ════════════════════════════════════════════════════════════════════════════════════════
 //
-// 要求住址：`调研/第四波记录/WN1.md §1` 件 F，逐字「账号库 manifest 带 UTF-8 BOM ⇒ 整块当空表」
-// （`真相源/106 §3.4` 那次真机读数：PS 5.1 `-Encoding UTF8` 与记事本默认写 BOM）。
+// 件 F，逐字「账号库 manifest 带 UTF-8 BOM ⇒ 整块当空表」
+// （那次真机读数：PS 5.1 `-Encoding UTF8` 与记事本默认写 BOM）。
 //
 // 后端读这份文件的有两处：`control/ccm/plan.rs::AccountTable::load`（`ccm --account` 那一条，09-21 已修）
 // 与本文件的 `load_manifest`（`--list-accounts` ⇒ 账号页）。前者修了、后者没修 ⇒ 同一台 Windows 上
@@ -1912,10 +1912,10 @@ fn both_readers_of_the_manifest_see_the_same_accounts() {
 }
 
 // ════════════════════════════════════════════════════════════════════════════════════════
-// 〔C4d · 第四波 4B〕monitor 那份本机 manifest 参照实现删了 —— 挂在它身上的三个锚点改指这里（现存实现）
+// monitor 那份本机 manifest 参照实现删了 —— 挂在它身上的三个锚点改指这里（现存实现）
 // ════════════════════════════════════════════════════════════════════════════════════════
 //
-// 要求住址：主会话 09-25 裁（`调研/第四波记录/C4d.md`「主会话裁」第 3 条，逐字）「`local_accounts.rs` 的 `list_from_dir`〔散文墓碑〕
+// 要求住址：主会话 09-25 裁（「主会话裁」第 3 条，逐字）「`local_accounts.rs` 的 `list_from_dir`〔散文墓碑〕
 // （零生产调用方的本机参照实现）删，**挂着的判据锚点改指现存实现**」。下面三条的断言逐字搬自 monitor
 // `tests/frontend/shell/local_accounts_tests.rs` 那三条（U7-4 / audit-0805），被测对象从那份参照实现换成后端这份真在答账号清单的。
 
@@ -1952,7 +1952,7 @@ fn read_regular_capped_keeps_its_three_failures_distinguishable() {
 
 /// ★ 欺骗字符**按来源分组**各取一个代表，任何一组从 `acct-core` 的内核里掉出去 ⇒ 红（码位表逐字搬自 monitor 那条）。
 ///
-/// 〔IV1 · V121〕要求住址：`INVARIANTS §47`（外部值拼进 shell / 交给对端之前本侧先过放行判定）；②形（拒绝集那张表）。
+/// 要求住址：`INVARIANTS §47`（外部值拼进 shell / 交给对端之前本侧先过放行判定）；②形（拒绝集那张表）。
 #[test]
 fn every_group_of_deceptive_characters_is_rejected_in_a_config_dir() {
     let groups: &[(char, &str)] = &[
@@ -2006,9 +2006,9 @@ fn the_accounts_library_lives_under_the_contract_directory_name() {
         .unwrap_or_else(|e| panic!("缺省解析不再经契约常量拼家目录下那一层：{e}"));
 }
 
-/// ★〔C4d · 第四波 4B〕**本机判活真相源**（历史跨机 join 用）：pidfile 里的会话 id ＋ 那个进程还在（同 watcher 那一道平台原语）。
+/// ★**本机判活源头**（历史跨机 join 用）：pidfile 里的会话 id ＋ 那个进程还在（同 watcher 那一道平台原语）。
 ///
-/// 要求住址：主会话 09-25 裁（`调研/第四波记录/C4d.md`「主会话裁」第 2 条）「本机后端 … 并上注解、出成品」—— 本机那一支的
+/// 要求住址：主会话 09-25 裁（「主会话裁」第 2 条）「本机后端 … 并上注解、出成品」—— 本机那一支的
 /// 「活没活」从 monitor 的 `SessionMap` 换到这台后端自己答，答错就是历史列表上一个活会话不亮 / 一个死会话亮着。
 /// 夹具：本测试进程自己的 pid（活）· 一个超出 pid 上限的 pid（死）· 没有 `sessionId` 的（不算）· 文件名不是 pid 的（不看）。
 #[cfg(unix)]
@@ -2045,9 +2045,9 @@ fn live_session_ids_are_the_pidfiles_whose_process_is_still_there() {
     let _ = fs::remove_dir_all(&home);
 }
 
-/// 〔HX1 · 主会话裁 HX1 拍板项 3 · D-f〕**`viaRelay` 答的是「这条活会话的进程环境里，上游地址是不是本机中转那一形」**：
+/// 〔主会话裁 HX1 拍板项 3〕**`viaRelay` 答的是「这条活会话的进程环境里，上游地址是不是本机中转那一形」**：
 /// 带钥匙段的回环中转地址 ⇒ `true`；别的地址（直连 / 没带钥匙的旧形状）⇒ `false`；没设 ⇒ `false`；进程已死 ⇒ `null`。
-/// 而且**值本身不出参**（它带着中转钥匙）。守的要求：主会话裁「`session_accounts` 多读 `ANTHROPIC_BASE_URL` ·
+/// 而且**值本身不出参**（它带着中转钥匙）。守的要求：「`session_accounts` 多读 `ANTHROPIC_BASE_URL` ·
 /// `accounts-sessions` 每行加 `viaRelay: true|false|null`」；`INVARIANTS §48.1a`「钥匙 …… `relay-status` 应答里也没有它」同族。
 /// 形状：真子进程（`sleep`，各带一份环境）＋ 真 pidfile（`procStart` 对得上）⇒ 逐条相等；输出全文零命中钥匙（正控：钥匙在子进程环境里）。
 #[test]

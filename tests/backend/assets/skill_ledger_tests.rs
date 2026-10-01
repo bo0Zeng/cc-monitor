@@ -1,12 +1,12 @@
-//! 〔SU1 · 第四波 4C〕`skill_ledger.rs`（skill 装记录，第四层）的判据：记得对、并得对、摘得对、读不懂不覆盖、只有一个家。
+//! `skill_ledger.rs`（skill 装记录，第四层）的判据：记得对、并得对、摘得对、读不懂不覆盖、只有一个家。
 //!
 //! 守的要求（住址）：用户裁决 **V116**「要，只删装时写进去的文件」—— 原文「装的时候记下写了哪些文件，卸只删这些（装完用户自己改过的先问）」；
-//! `调研/第四波记录/SU1.md §1.1`（记什么 · 键是目录 · `created` 取第一次的）· `readonly_guard` 第四层（后端自有状态、全仓一个写口）。
+//! （记什么 · 键是目录 · `created` 取第一次的）· `readonly_guard` 第四层（后端自有状态、全仓一个写口）。
 //!
 //! 买到：临时目录上真读真写 —— add 并进去的逐格相等（新路径加 · 旧路径换摘要 · `created` 取第一次）· drop 逐格相等（剩零整条摘）·
 //! 目录由记录那一侧按 `skills 根 / name` 自己算（调用方给的路径不收）· 坏入参拒且文件逐字节不变 · 读不懂 / 另一版本的不覆盖 ·
 //! 没变不写（逐字节 ＋ inode 不换）· 文件名在全部生产代码里恰好一个家（两向 ＋ 正控）。
-//! 买不到：〔HX2 · 4D 订正〕两个后端进程同时写 —— 今天读—改—写在目录的跨进程锁里（`platform/lock.rs`），
+//! 买不到：两个后端进程同时写 —— 今天读—改—写在目录的跨进程锁里（`platform/lock.rs`），
 //! 本族那一条用两个线程各开一次描述量（与两个进程同一种 `flock` 互斥），没有真起第二个进程 · 真 Windows 上 `rename` 覆盖既有文件。
 
 use super::*;
@@ -266,7 +266,7 @@ fn digest_sees_every_byte_and_nothing_else() {
 fn the_file_name_has_exactly_one_home_in_all_production_code() {
     let src = crate::guard_support::repo_root().join("src");
     let needle = format!("{}-{}.json", "skill", "installs");
-    // 〔P3 · 主会话 09-29 裁〕字面量挪进契约 crate ⇒ 按「字面量或契约常量名」认谁叫得出它。
+    // 字面量挪进契约 crate ⇒ 按「字面量或契约常量名」认谁叫得出它。
     let via_const = format!("{}_{}_REL", "SKILL", "LEDGER");
     let mut scanned = 0usize;
     let mut homes: std::collections::BTreeSet<String> = Default::default();
@@ -287,8 +287,8 @@ fn the_file_name_has_exactly_one_home_in_all_production_code() {
         }
     }
     assert!(scanned > 500, "只扫到 {scanned} 份源码 —— 遍历坏了");
-    // 四个家、各一个身份：定义（契约 crate）· 写者（本模块）· 足迹里的**申报字面量**（`skill-install` 那一格，〔MIG-3b 续〕随 Claude 布局那一半住
-    // `agents/claudecode/footprint.rs`；不读不写 —— V116「足迹里看得见」）· monitor 数据位置页（只 stat）。
+    // 四个家、各一个身份：定义（契约 crate）· 写者（本模块）· 足迹里的**申报字面量**（`skill-install` 那一格，随 Claude 布局那一半住
+    // `agents/claudecode/footprint.rs`；不读不写 ——「足迹里看得见」）· monitor 数据位置页（只 stat）。
     // 第五个家 ⇒ 红（第二个写者或者第二份申报）。
     let want: std::collections::BTreeSet<String> = [
         "common/relay-route-core/src/lib.rs".to_string(),
@@ -326,9 +326,9 @@ fn the_file_name_has_exactly_one_home_in_all_production_code() {
     assert!(planted.contains(needle.as_str()));
 }
 
-/// 🔴 〔HX2 · 第四波 4D〕L4：**别人在锁里记了一条，这一趟记的不会把它盖掉**（审计 `E-compat.md` §E6：丢了补不回来）。
+/// 🔴 L4：**别人在锁里记了一条，这一趟记的不会把它盖掉**（审计 `E-compat.md` §E6：丢了补不回来）。
 ///
-/// 要求住址：题面 HX2 逐字「后端自有状态文件跨进程锁（`flock` 一类，Windows 对应）」；用户裁决 V116「装的时候记下写了哪些文件，卸只删这些」
+/// 要求住址：题面 HX2 逐字「后端自有状态文件跨进程锁（`flock` 一类，Windows 对应）」；「装的时候记下写了哪些文件，卸只删这些」
 /// （记录丢一条 ⇒ 那一趟装的文件卸不掉）。
 /// 做法：本线程拿住那个目录的锁（与 `record_at` 拿的是同一把），另一线程记 `beta` ⇒ 限期内不许记完；本线程在锁里直接落一份
 /// 只含 `alpha` 的记录文件（不经写口：写口自己也要拿锁，同一线程再拿会自锁），放锁 ⇒ 另一线程读到的是这一份 ⇒ 两条都在。
@@ -385,7 +385,7 @@ fn hx2_a_record_written_under_someone_elses_lock_is_not_overwritten() {
     let _ = std::fs::remove_dir_all(&d);
 }
 
-/// 〔MIG-3a · 子步 3 · 主会话 09-28 裁〕装在家目录底下的那一件记进**同一份**账：`at:"home"` ⇒ 键是本记录自己所在的那个家
+/// 装在家目录底下的那一件记进**同一份**账：`at:"home"` ⇒ 键是本记录自己所在的那个家
 /// （`<家>/.cc-monitor/<本文件>` 的上两层），不收调用方给的路径；`at` 认不得的值 ⇒ 拒、文件一个字节不动。
 #[test]
 fn an_install_under_home_is_keyed_by_the_home_the_ledger_lives_in() {

@@ -1,6 +1,6 @@
 // @vitest-environment node
 /**
- * 〔U2 · 第三波〕tab 层的界面文字**按术语表改词**之后，不许再长回来。
+ * tab 层的界面文字**按术语表改词**之后，不许再长回来。
  *
  * 拆 `tabs.ts` 时顺手收的小尾巴（题面逐字）：两处「建议在远端重装 ccm 助手」与两处「拉前失败」toast ⇒
  * 按 `src/shared/copy/terms.json` 改词（CP1 台账同拍）。改成了：
@@ -20,7 +20,7 @@
  *
  * - 「改得好不好」（那是 CP1 台账的人工裁决）；tab 层之外的同类文案（归 CP2 全量抽表那一波）。
  *
- * # 〔S4 · 第四波〕第四个词：术语表的「英文实现词」（invoke / Win32 …）
+ * # 第四个词：术语表的「英文实现词」（invoke / Win32 …）
  *
  * 两处「切到终端窗口失败」toast 的正文原是 `invoke 超时 …ms（后端 Win32 调用可能卡住）` 那句 Error
  * （CP1 裁 `改·§2.1` →「切到终端窗口超时」）。改完之后同一套零命中也管它：扫描器照样**取自术语表**
@@ -66,7 +66,7 @@ export function stringLiterals(src: string): string[] {
 }
 
 /**
- * 〔CP2b · 全量抽表〕tab 层的界面文字搬进了文案表 ⇒ 「这 13 份说的话」= 它们的字面量 ＋ 它们经 `copyText("key")` 取的那些表条目。
+ * 〔全量抽表〕tab 层的界面文字搬进了文案表 ⇒ 「这 13 份说的话」= 它们的字面量 ＋ 它们经 `copyText("key")` 取的那些表条目。
  * 只数字面量的话，抽完之后本判据就对着一个空集零命中（正控那条会先红，提醒这里要跟着改）。
  */
 const TABLE = loadTable();
@@ -108,7 +108,7 @@ describe("〔U2〕tab 层的界面文字：拉前 / @ccm_sid / ccm 助手 /〔S4
     expect(all.length, "一个字面量都没抽到 —— 抽取器坏了").toBeGreaterThan(200);
     expect(all).toContain("切到终端窗口失败");
     expect(all).toContain("认不出这是哪个会话");
-    expect(all.filter((s) => s === "切到终端窗口超时").length, "〔S4〕两处拉前超时的新正文").toBe(2);
+    expect(all.filter((s) => s === "切到终端窗口超时").length, "两处拉前超时的新正文").toBe(2);
     // 模板字面量也要抽得到（杀会话确认框那句就是模板）。
     expect(all.some((s) => s.startsWith("\n\n⚠ 认不出这是哪个会话：「"))).toBe(true);
   });

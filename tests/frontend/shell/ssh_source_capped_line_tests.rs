@@ -40,10 +40,10 @@ fn the_session_added_arm_is_not_silent() {
     );
 }
 
-// 〔MIG-1〕「摘账在 retire 之前」那两条（`remove_tmux_line`〔散文墓碑〕· 摘账紧挨 retire）删了：monitor 不再存 tmux 原文，
+// 「摘账在 retire 之前」那两条（`remove_tmux_line`〔散文墓碑〕· 摘账紧挨 retire）删了：monitor 不再存 tmux 原文，
 //   收割在后端会话账本里（`tests/backend/observe/session_ledger_tests.rs` 的「tmux 会话关了当场已结束」）。
 
-/// ★ 与上一条**成对**：`SessionRemoved` 那一臂也不许静默〔`P0b-Y2` 第十拍 08-13〕。
+/// ★ 与上一条**成对**：`SessionRemoved` 那一臂也不许静默。
 ///
 /// # 为什么成对才有用
 ///
@@ -58,7 +58,7 @@ fn the_session_added_arm_is_not_silent() {
 /// 不是只看「全绿」——本仓「0 passed 不是绿」的同一族。
 #[test]
 fn the_session_removed_arm_is_not_silent() {
-    // 〔MIG-1〕「死亡那跳到没到」今天是两帧：`session_removed`（内容流收口）与紧跟的 `session_state`（后端裁的去向）。
+    // 「死亡那跳到没到」今天是两帧：`session_removed`（内容流收口）与紧跟的 `session_state`（后端裁的去向）。
     //   两行都要留；去向那一行排在转交**之前**（转交卡住时也留下「收到了」）。
     let prod = guard_core::production_code(include_str!(
         "../../../src/frontend/shell/src/ssh_source.rs"
@@ -75,7 +75,7 @@ fn the_session_removed_arm_is_not_silent() {
     );
 }
 
-// 〔MIG-1〕「收帧那条路记观测分类」那条（P8c）随收割搬进后端：日志今天住 `src/backend/observe/session_ledger.rs::SessionLedger::observe`
+// 「收帧那条路记观测分类」那条（P8c）随收割搬进后端：日志今天住 `src/backend/observe/session_ledger.rs::SessionLedger::observe`
 //   （`tmux-observation: … → {kind}`，只记变化）。
 
 use super::{read_capped_line, CappedLine};

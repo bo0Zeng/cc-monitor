@@ -1,4 +1,4 @@
-//! 〔MIG-3a · 子步 3 · 主会话 09-27 裁 ⑯〕**装 cc-bus 之前那一道「本机 `ccm` 够不够新」的预检** —— monitor 探本机 ccm 的那一格。
+//! **装 cc-bus 之前那一道「本机 `ccm` 够不够新」的预检** —— monitor 探本机 ccm 的那一格。
 //!
 //! 装本身（`PS1` 内嵌 → `<claude_dir>/skills/cc-bus/` · 幂等 · 覆盖前整目录备份 · 三态）从前住本模块
 //! （`deploy_local_cc_bus` / `cc_bus_install_state`〔散文墓碑〕两条 Tauri 命令），今天是**后端代管的资产**：
@@ -8,7 +8,7 @@
 
 use crate::copy_table::copy_text;
 
-/// ★★ 装出去的 `cc-spawn` **硬依赖新 `ccm`** —— 装之前先看一眼本机那份够不够新〔08-13〕。
+/// ★★ 装出去的 `cc-spawn` **硬依赖新 `ccm`** —— 装之前先看一眼本机那份够不够新。
 ///
 /// # 为什么这条非有不可
 ///
@@ -26,13 +26,13 @@ use crate::copy_table::copy_text;
 /// ⚠ 放在**命令层**而不是 `deploy_into` 里：后者是纯函数、被一堆单测直接调，
 /// 塞个子进程进去会让那些测试依赖「本机有没有 ccm」——那正是本仓一路在治的环境依赖型假绿。
 ///
-/// # ★★ 它有一个 **Windows 对侧**（紧接在下面）〔win-compile 09-09〕
+/// # ★★ 它有一个 **Windows 对侧**（紧接在下面）
 ///
 /// 探测那一侧（`crate::ccm_probe::probe_local_ccm_uncached`）**整条**都带
 /// `#[cfg(not(windows))]` —— 它跑的是 `bash -lic`，是 POSIX 专有的原语。
 /// 先前本函数**没有对应的门** ⇒ Windows 上 `monitor` 的 lib 直接编不过（E0425）。
 /// ⇒ 两侧各写各的。**本函数的函数体一个字节没动**，非 Windows 上的行为按构造逐字节不变。
-/// 〔P4b · 阶段 H〕两份 cfg 分身合成这一份：本机新开终端是 PowerShell 那一族（`platform::login_shell::LOGIN_SHELL`）⇒ 交
+/// 两份 cfg 分身合成这一份：本机新开终端是 PowerShell 那一族（`platform::login_shell::LOGIN_SHELL`）⇒ 交
 /// [`windows_ccm_too_old_warning`]；否则照下面这段探 PATH 上那个（探测那一侧今天两平台都编，`bash -lic` 那条只在 POSIX 那一族走）。
 fn local_ccm_too_old_warning() -> Option<String> {
     use crate::platform::login_shell::{LoginShell, LOGIN_SHELL};
@@ -63,9 +63,9 @@ fn local_ccm_too_old_warning() -> Option<String> {
     Some(copy_text("rsCcBusDeploy.ccm.tooOld", &[]))
 }
 
-/// 上一条的 **Windows 对侧** —— 它**真探**，而且探的是**哪一份**说得清〔ccbus-win 09-24〕。
+/// 上一条的 **Windows 对侧** —— 它**真探**，而且探的是**哪一份**说得清。
 ///
-/// # 🪦 上一版：「它**不做**这一格预检，而且**把『没做』说出来**」〔win-compile 09-09〕〔散文墓碑〕
+/// # 🪦 上一版：「它**不做**这一格预检，而且**把『没做』说出来**」〔散文墓碑〕
 ///
 /// 那一版回的是一句固定的「这一格没做预检」。它的头注自己写着解锁条件，逐字：
 /// 「今天 monitor 在 Windows 上确实没有任何 ccm 探测形态（`probe_local_ccm` 那一族整族
@@ -104,7 +104,7 @@ fn windows_ccm_too_old_warning() -> Option<String> {
 /// `ours`：`None` = cc-monitor 那份 `ccm` 还没装下来；`Some((住址, 名片))` = 装了并问过一次。
 /// 返回值**总是一句话**（理由见 [`local_ccm_too_old_warning`] 的 Windows 臂）。
 ///
-/// 〔P4b · 阶段 H〕原先的 `any(windows, test)` 门摘了：调用方按 `LOGIN_SHELL` 分派，两平台的构建里都有调用方。
+/// 原先的 `any(windows, test)` 门摘了：调用方按 `LOGIN_SHELL` 分派，两平台的构建里都有调用方。
 pub(crate) fn windows_ccm_precheck(
     ours: Option<(&str, &crate::ccm_probe::CcmProbeResult)>,
     want_build: &str,
@@ -177,7 +177,7 @@ pub(crate) fn windows_ccm_precheck(
 /// 改那边就要改这里（`the_deploy_precheck_lists_what_cc_spawn_negotiates` 钉住两边一致）。
 const CC_SPAWN_NEEDS: &[&str] = &["detach", "tmux-size", "tmux-base", "bus-register"];
 
-/// 〔MIG-3a〕装 cc-bus 之前（界面点「装」的那一下）问一次：本机 `ccm` 够不够新。`None` = 够新（非 Windows：探过 PATH 上那个）。
+/// 装 cc-bus 之前（界面点「装」的那一下）问一次：本机 `ccm` 够不够新。`None` = 够新（非 Windows：探过 PATH 上那个）。
 /// ⚠ **只警告、不拦**：装本身在本机后端做完，这句话接在成功文案后面显示。
 #[tauri::command]
 pub async fn cc_bus_ccm_precheck() -> Result<Option<String>, String> {

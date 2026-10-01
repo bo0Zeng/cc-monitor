@@ -78,7 +78,7 @@ export function applyThemeToken(
   root.style.setProperty(token.cssVar, str);
 }
 
-/** 从一份已读回的配置里取外观那一格（设置窗「读一次配置派生三格」共用这一处，`70 §10` #5）。 */
+/** 从一份已读回的配置里取外观那一格（设置窗「读一次配置派生三格」共用这一处）。 */
 export function themeIn(cfg: Record<string, unknown>): ThemeConfig {
   return (cfg.theme as ThemeConfig | undefined) ?? {};
 }
@@ -95,7 +95,7 @@ export async function loadTheme(): Promise<ThemeConfig> {
   }
 }
 
-/** 保存并应用。整键替换 config 的 `theme`（〔CFG1〕按键补丁），不碰其它键。 */
+/** 保存并应用。整键替换 config 的 `theme`（按键补丁），不碰其它键。 */
 export async function saveTheme(theme: ThemeConfig): Promise<void> {
   await patchConfig([setAt(["theme"], theme)]);
   applyTheme(theme);

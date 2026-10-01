@@ -1,4 +1,4 @@
-//! 〔MIG-3b · `设计/95 §6`「本机远端两条路、两个命令」· `05 §14.3`〕**cc-bus 钩子诊断** —— 帧命令 `hooks-diag` 的本体（只读）。
+//! 〔「本机远端两条路、两个命令」〕**cc-bus 钩子诊断** —— 帧命令 `hooks-diag` 的本体（只读）。
 //!
 //! 这台后端读**它自己那台**的 agent 配置根下的 `settings.json`、就地 stat 钩子点名的程序，出整份成品
 //! （诊断 ＋ 要加的内容 ＋ 读的是哪份文件）。要加的内容只有一形：两条钩子直接指向这台装好的 cc-bus 里的那两个脚本
@@ -234,7 +234,7 @@ pub(crate) fn snippet(skills: &Path, home: Option<&Path>) -> Option<String> {
 
 /// `$HOME/…` · `${HOME}/…` · `~/…` 按这台家目录展开；其余原样（B04-3：花括号那一形也要认）。
 fn expand(s: &str, home: Option<&Path>) -> PathBuf {
-    // 〔OSA · V156〕哪几种写法算「家目录底下」住 `platform::shell::posix`。
+    // 哪几种写法算「家目录底下」住 `platform::shell::posix`。
     match (posix::home_relative(s), home) {
         (Some(r), Some(h)) => h.join(r),
         _ => PathBuf::from(s),

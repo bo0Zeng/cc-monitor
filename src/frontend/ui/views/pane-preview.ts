@@ -1,11 +1,11 @@
 /**
  * F60：远端 tmux 画面预览（只读快照）。轻量 overlay（照 pf 范式，body-level fixed，
  * 点外关 + Esc + ✕，z-index 200）——经 `src/frontend/ui/tmux-control.ts::capturePane` 问那台机器的后端抓 `tmux capture-pane -p`
- * 的屏幕文本，等宽 `<pre>` 展示；失败弹 toast。〔C4e · 第四波 4C〕此前经 monitor 的 `capture_remote_pane`〔散文墓碑〕。**非 attach、不接管终端；只读快照非实时**
+ * 的屏幕文本，等宽 `<pre>` 展示；失败弹 toast。此前经 monitor 的 `capture_remote_pane`〔散文墓碑〕。**非 attach、不接管终端；只读快照非实时**
  * （「重新抓取」按钮手动刷新，要动态看去 attach）。一次只开一个。
  *
- * 〔CP2a〕本文件是抽表的**样板区**：它的对外文案全部住 `src/shared/copy/table.json` 的
- * `panePreview.*`，经 `copyText` 取；这里不再写任何中文字面量（`调研/设计/91 §5.1`）。
+ * 本文件是抽表的**样板区**：它的对外文案全部住 `src/shared/copy/table.json` 的
+ * `panePreview.*`，经 `copyText` 取；这里不再写任何中文字面量。
  */
 import { copyText } from "../copy-table";
 import { showActionFailureToast } from "../error-toast";

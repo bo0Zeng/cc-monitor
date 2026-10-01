@@ -1,5 +1,5 @@
 /**
- * `设计/90 §4 E`：**外层 tmux 命令那三格的入库夹具**（同 `launch-payload-golden.ts`
+ * **外层 tmux 命令那三格的入库夹具**（同 `launch-payload-golden.ts`
  * 的机制，同一套纪律）。
  *
  * ```text
@@ -10,10 +10,10 @@
  *          └────────────── 改用例表不重生成 ⇒ 红                   改 Rust ⇒ 红
  * ```
  *
- * # 〔LR2〕左边从「TS 渲染器 ＋ 座」换成了「手写期望」
+ * # 左边从「TS 渲染器 ＋ 座」换成了「手写期望」
  *
  * 22b·B 起生产那三格走 Rust（`render_launch_payload` 带 `outer`）；TS 那份
- * （`launch-render-fallback.ts` ＋ `session-backend.ts`）零生产调用，照 `设计/00 §2.5 ④` 删了。
+ * （`launch-render-fallback.ts` ＋ `session-backend.ts`）零生产调用，照删了。
  * `cmd` 是**手写的期望**：值是 TS 那份最后一次跑出、与 Rust 逐字节对过的原样。
  * `req` 仍由生产的 `buildTmuxOuterRenderRequest` 现产 ⇒ 这份夹具钉的是
  * 「生产请求构造 → 线 → Rust 反序列化 → 生产命令」这一整条（例如「生产那一格少送 `outer`」
@@ -26,7 +26,7 @@
  * - `send-into`：没有 `new-session`、没有短路（治 #76 的那一格）；
  * - `attach`：不带载荷。
  *
- * 〔LR2〕住址从 `src/` 挪到 `tests/test-support/`，理由同 `launch-payload-golden.ts` 头注末段（`设计/90 §3` 条 1）。
+ * 住址从 `src/` 挪到 `tests/test-support/`，理由同 `launch-payload-golden.ts` 头注末段（条 1）。
  *
  * ⚠ **金标准盖不到的，如实写在这里**：非法输入（空会话名 / 越界 `@ccm_sid` / 空 cwd）
  * Rust 一律 `Err`，那一类进不了这份金标准，由 `payload_tests.rs` 外层那几条管。
@@ -53,7 +53,7 @@ export interface TmuxOuterCase {
 
 const ACCT = "/home/u/.claude-alt/z";
 const SID = "0f1e2d3c";
-/** `设计/80 §8` 步 1：形状合法的启动期令牌（`[0-9a-f]{32}`），夹具里是常量不是现场铸的。 */
+/** 形状合法的启动期令牌（`[0-9a-f]{32}`），夹具里是常量不是现场铸的。 */
 const RBIND = "0f1e2d3c4b5a69788796a5b4c3d2e1f0";
 
 const base = (over: Partial<TmuxOuterCase> = {}): TmuxOuterCase => ({
@@ -120,7 +120,7 @@ export const TMUX_OUTER_CASES: readonly TmuxOuterCase[] = [
     args: [AGENT_PROFILE.resumeFlag, "abc-123"],
   }),
   base({
-    // 🔴 `设计/80 §8.4`：`EnvOp` **容器无关** —— 同一条令牌在 tmux 那一格
+    // 🔴：`EnvOp` **容器无关** —— 同一条令牌在 tmux 那一格
     //    也进**内层载荷**（被 `posixQuote` 一次塞进 `send-keys`），
     //    不需要在外层 tmux 命令上另开一个槽位。这一条与
     //    `payload-golden.json` 里那两条令牌用例合起来，就是「两条起法同一套机制」的

@@ -2,7 +2,7 @@
 // confirm/awaitCompact 注入 → 不弹对话框、不真延时（②b 那一条特意不注入，走真的应用内对话框）。重点锁：kill 失败必须中止不续 resume。
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-// 〔C4e · 第四波 4C〕送键与杀会话从两条 Tauri 命令（`tmux_send_keys` / `kill_remote_tmux`〔散文墓碑〕）改成界面经通道直接说
+// 送键与杀会话从两条 Tauri 命令（`tmux_send_keys` / `kill_remote_tmux`〔散文墓碑〕）改成界面经通道直接说
 //   后端的 `launch` / `kill`（`src/frontend/ui/tmux-control.ts`）。本文件判的是换号重启的**编排**，不是通道那一跳 ⇒ 生产 `invoke` 换成一层
 //   翻译（`chan-fake.ts::tmuxControlShim`）：那两发 `chan_call` 照旧按旧名字交给 `invokeMock`，下面的断言一个字不用改。
 const invokeMock = vi.hoisted(() => vi.fn());
@@ -11,13 +11,13 @@ vi.mock("@tauri-apps/api/core", async () => {
   return { invoke: tmuxControlShim(launchRenderShim(invokeMock), "tmux_send_keys") };
 });
 vi.mock("../../../src/frontend/ui/remote-launch-run", () => ({
-  // 〔FIX4 ④〕换号重启走「等到了没有」那一形（`arrived` / `missed` / `unsent`）。
+  // 换号重启走「等到了没有」那一形（`arrived` / `missed` / `unsent`）。
   runRemoteResumeTmuxAndWait: vi.fn().mockResolvedValue("arrived"),
 }));
 vi.mock("../../../src/frontend/ui/error-toast", () => ({ showActionFailureToast: vi.fn() }));
-// 〔FIX4 ④〕本机那一跳等「看见会话起来」：默认等到了；「没等到」那一格见下面 FIX4 那条。
+// 本机那一跳等「看见会话起来」：默认等到了；「没等到」那一格见下面 FIX4 那条。
 vi.mock("../../../src/frontend/ui/launch-arrival", () => ({ awaitArrival: vi.fn().mockResolvedValue(true), expectArrival: vi.fn(), arrivedBody: () => "" }));
-// 〔FE1〕`accounts.ts` 按域拆开：规则（`accountConfigDir`）留在 `accounts.ts`，读面去了 `account-reads.ts`，
+// `accounts.ts` 按域拆开：规则（`accountConfigDir`）留在 `accounts.ts`，读面去了 `account-reads.ts`，
 //   偏好去了 `account-prefs.ts`，记 pin 去了 `launch-account.ts` —— 各在真住的模块上桩；
 //   本机那一跳（`local-resume.ts`）要的载荷形状（`explicitLocalAccountWire`，键名来自生成物）用真身。
 vi.mock("../../../src/frontend/ui/accounts", async (importOriginal) => ({
@@ -108,7 +108,7 @@ describe("restartWithAccount（A5 换号重启编排 · §5）", () => {
 
   it("happy（不 compact）→ 〔V154〕直接 kill（不发 Esc / /exit、不等它退）→ resume(注入 configDir) → 记 lastAccount", async () => {
     await restartWithAccount(baseOpts());
-    // 〔V154〕编排发出的控制调用恰好只有 kill 一发：再敲回 `Escape` / `/exit`（或任何按键）这里就红。
+    // 编排发出的控制调用恰好只有 kill 一发：再敲回 `Escape` / `/exit`（或任何按键）这里就红。
     const control = invokeMock.mock.calls.filter((c) => c[0] === "tmux_send_keys" || c[0] === "kill_remote_tmux");
     expect(control).toEqual([["kill_remote_tmux", { origin: "devbox", target: "cc-s1abcdef" }]]);
     expect(resumeTmux).toHaveBeenCalledWith("devbox", "s1", "/w", "cct", "cc-s1abcdef", { configDir: "/h/z", accountName: "z", modelOverride: undefined });
@@ -118,7 +118,7 @@ describe("restartWithAccount（A5 换号重启编排 · §5）", () => {
   it("③ compactFirst → 先 send /compact → 等完成 → kill → resume", async () => {
     const awaitCompact = vi.fn().mockResolvedValue(true);
     await restartWithAccount(baseOpts({ compactFirst: true, awaitCompact }));
-    // 〔C4e〕`/compact` 那一发从前省略 `enter`（缺省 = 带回车）；今天它是 mode `send-into`，翻译过来 `enter: true` 写明。
+    // `/compact` 那一发从前省略 `enter`（缺省 = 带回车）；今天它是 mode `send-into`，翻译过来 `enter: true` 写明。
     expect(invokeMock).toHaveBeenCalledWith("tmux_send_keys", {
       origin: "devbox",
       target: "cc-s1abcdef",
@@ -203,7 +203,7 @@ describe("A5/Phase G：resume 真失败时不得上报成功", () => {
   });
 });
 
-// 〔`A3` 第二波〕**本机那一侧**：编排前五步与远端逐字共用（只是 origin 换成 `<local>`），
+// **本机那一侧**：编排前五步与远端逐字共用（只是 origin 换成 `<local>`），
 // 第⑤步换成本机那一跳（`resume_history_session`，账号走载荷上的 `account`）。
 // 死值验对照：把 `account-restart.ts` 第⑤步那个 `isLocal ? … : …` 改回恒走 `runRemoteResumeTmux`，
 // 下面第一条当场红（`resumeTmux` 被调、`resume_history_session` 没被调）。

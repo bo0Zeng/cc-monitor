@@ -1,4 +1,4 @@
-//! 〔FIX5 · `设计/99 §2.2` · `设计/60 §7` 第 7 条〕文件管理写面要的两样平台原语：**不覆盖改名** · **开文件不跟链接的旗**。
+//! 文件管理写面要的两样平台原语：**不覆盖改名** · **开文件不跟链接的旗**。
 //!
 //! 只有原语，不判路径（路径解析住 `control/files_write.rs`）。谁调得到由 `readonly_guard` 第三层钉：
 //! 改名这一件在第三层的改名闭集里（只许那五个模块调），别处一调当场红。
@@ -10,7 +10,7 @@
 //! | Windows | `MoveFileExW(…, 0)`：不带 `MOVEFILE_REPLACE_EXISTING` 就是目标已在即失败 | **没有**：`FILE_FLAG_OPEN_REPARSE_POINT` 开的是链接本身，不是「遇链接就失败」⇒ 不给 |
 //! | 别的 unix | 没有 ⇒ [`noreplace_unsupported`] 那一形 | `O_NOFOLLOW` |
 //!
-//! 〔主会话 09-28 裁〕那块盘不认不覆盖改名时：普通文件走 [`rename_by_link`]（`link` ＋ `unlink`），目录拒（调用方判）；不退回先看后改。
+//! 那块盘不认不覆盖改名时：普通文件走 [`rename_by_link`]（`link` ＋ `unlink`），目录拒（调用方判）；不退回先看后改。
 
 use std::path::Path;
 
@@ -27,7 +27,7 @@ pub(crate) fn noreplace_unsupported(e: &std::io::Error) -> bool {
     imp::unsupported(e)
 }
 
-/// 〔主会话 09-28 裁〕盘不认不覆盖改名时，**普通文件**（含链接本身）的不覆盖改名：`link(from, to)` ＋ `unlink(from)`。
+/// 盘不认不覆盖改名时，**普通文件**（含链接本身）的不覆盖改名：`link(from, to)` ＋ `unlink(from)`。
 /// `link` 在 `to` 已在时原子失败（`EEXIST`，NFS 上也成立）；`unlink` 失败 ⇒ 撤掉刚建的那个名字、回 `unlink` 的错（两个名字不同时留着）。
 /// 目录没有这条路（`link` 不收目录）—— 那一判在调用方。非 unix ⇒ `Unsupported`。
 pub(crate) fn rename_by_link(from: &Path, to: &Path) -> std::io::Result<()> {

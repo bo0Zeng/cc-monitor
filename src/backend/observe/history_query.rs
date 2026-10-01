@@ -69,12 +69,12 @@ pub fn run(agent_home: &Path, args: &[String]) -> i32 {
             },
             Err(e) => Err(e),
         },
-        // 〔`设计/10 §2.2b ⑥` · SE1〕大纲的数据源：「你说过的话」清单（判定住 `observe::user_inputs`）。
+        // 大纲的数据源：「你说过的话」清单（判定住 `observe::user_inputs`）。
         Some("--list-user-inputs") => match parse_user_inputs_args(&args[1..]) {
             Ok((from, p)) => list_user_inputs(agent_home, p, from),
             Err(e) => Err(e),
         },
-        // 〔SE2 · `设计/10 §6 步 6`〕会话内查找（口径与 `--search` 同一份，内核住 `observe::search_query`）。
+        // 会话内查找（口径与 `--search` 同一份，内核住 `observe::search_query`）。
         Some("--find-in-session") => match parse_find_args(&args[1..]) {
             Ok(a) => find_in_session(agent_home, &a),
             Err(e) => Err(e),
@@ -96,7 +96,7 @@ pub fn run(agent_home: &Path, args: &[String]) -> i32 {
 /// # `sessionIds`（`K-R83` 09-12）：这一行**带得出下游要算的那三个数**
 ///
 /// monitor 侧的项目行还要 `starredCount` / `hiddenCount` / `hasLive` 三个数，
-/// 而这三个数的真相源在 monitor 那侧（本机 metadata / `SessionMap`）**全部按会话 sid 索引**
+/// 而这三个数的源头在 monitor 那侧（本机 metadata / `SessionMap`）**全部按会话 sid 索引**
 /// —— 缺的从来不是「谁来数」，是「这个项目下有哪几个 sid」。
 /// ⇒ 本行把那份清单带上，下游一次就算得出，**不用每个项目再来一次 `--list-sessions`**
 /// （那是 N 次进程 spawn，而项目列表是用户常开的界面 —— 失效方向逐字记在
@@ -108,7 +108,7 @@ pub fn run(agent_home: &Path, args: &[String]) -> i32 {
 ///
 /// ⚠ **它与 `sessionCount` 恒等长，这是契约的一部分** —— 下游据此判「空清单」是
 /// 「真的没有会话」还是「这一行坏了」（`sessionCount > 0` 而清单空 ⇒ 后者，不许当成 0）。
-/// 〔WF2〕老 CLI 那一面照旧**出声**（rc=2）：它是远端 / 一次性问者的契约，零行会被读成「这家没有会话」
+/// 老 CLI 那一面照旧**出声**（rc=2）：它是远端 / 一次性问者的契约，零行会被读成「这家没有会话」
 /// （`agents/fake` 那条 S6-Z3 钉着）；但那一形带上结构化的码 [`NO_RECORD_TREE`]（`{code, message}` 信封），
 /// 问的那台后端认码 ⇒ 画「这台还没有会话记录」而不是「没加载上」。其余失败无码（`Err((None, 原因))`）。
 pub(crate) fn list_projects_to(
@@ -127,7 +127,7 @@ pub(crate) fn list_projects_to(
     ))
 }
 
-/// 〔WF2 · WIN3 读数 H〕`--list-projects` 在「记录树根不在」时信封里的码（生产方住这里，认码的是 `history_join` 远端那一支）。
+/// `--list-projects` 在「记录树根不在」时信封里的码（生产方住这里，认码的是 `history_join` 远端那一支）。
 pub(crate) const NO_RECORD_TREE: &str = "no_record_tree";
 
 /// 带码的那一行：CLI 错误信封（`{code, message}`，与 `cli_control::emit_err` 同一对键；那边读信封的是 `remote_ask::settle_pulled`）。
@@ -143,10 +143,10 @@ fn query_failed(e: &str) -> i32 {
     2
 }
 
-/// `--list-projects` 的本体，出口是参数 ——〔`C1` · 2026-09-24〕帧面那条（`history-projects`）
+/// `--list-projects` 的本体，出口是参数 ——帧面那条（`history-projects`）
 /// 与 CLI 这条**跑的是同一个函数**，只是 `out` 一个是 stdout、一个是内存里那份应答。
 ///
-/// 〔WF2 · WIN3 读数 H〕回「记录树根在不在」：不在 ⇒ `Ok(false)`、一行不写（这台还没起过会话 —— 判定只在这一处）；
+/// 回「记录树根在不在」：不在 ⇒ `Ok(false)`、一行不写（这台还没起过会话 —— 判定只在这一处）；
 /// 怎么说由两个宿主各自定：帧面当零个项目（界面照空态「还没有会话记录」画，别的机器照常）· CLI 照旧出声。
 pub(crate) fn list_projects_into(agent_home: &Path, out: &mut dyn Write) -> Result<bool, String> {
     let root = projects_root(agent_home);
@@ -169,7 +169,7 @@ pub(crate) fn list_projects_into(agent_home: &Path, out: &mut dyn Write) -> Resu
     Ok(true)
 }
 
-/// 〔WF2 · WIN3 读数 H〕会话记录目录读不了 ⇒ 给人看的那一句（按错误的**种类**说；系统原话只进日志 —— `设计/91` 不露实现词）。
+/// 会话记录目录读不了 ⇒ 给人看的那一句（按错误的**种类**说；系统原话只进日志 —— 不露实现词）。
 fn unreadable_dir(dir: &Path, e: &std::io::Error) -> String {
     tracing::warn!("history_query: 读不了 {}：{e}", dir.display());
     let path = dir.display().to_string();
@@ -257,7 +257,7 @@ pub(crate) fn list_sessions_into(
     // 与 read_session 对齐（也兑现本文件头部"canonicalize 后前缀校验"的承诺）：名字
     // 合法但 projects/ 下若有指向外部的 symlink 目录，read_dir 会跟随逃逸出 projects/
     // ——canonicalize 解析 symlink 后做前缀校验挡住。
-    // 〔audit-0805 08-06〕**改调共享围栏**（E3）：此前这里是一份内联副本，
+    // **改调共享围栏**（E3）：此前这里是一份内联副本，
     // 注释写着「与 `read_session` 对齐」—— 靠手工对齐的两份迟早会漂。
     let dir = fence_under_projects(agent_home, Path::new(project_dir))?;
     let entries = std::fs::read_dir(&dir).map_err(|e| unreadable_dir(&dir, &e))?;
@@ -272,12 +272,12 @@ pub(crate) fn list_sessions_into(
     Ok(())
 }
 
-// **围栏住 `observe/fence.rs`**〔TL3 · 审计 F 🔴-6 · `设计/15 §4.2` / `§5.3 C5`〕：这里原来是具名围栏
+// **围栏住 `observe/fence.rs`**〔审计 F 🔴-6〕：这里原来是具名围栏
 // `fence_under_projects` 的本体（「全文件唯一的一处 `canonicalize` + 前缀校验」，audit-0805 08-06 定框 E3 从
 // `list_sessions` 的内联副本收成一份）。E3 只收到了**本文件**，`search_query` 里还有一份内联的（头注逐字「复刻 history_query」）
 // ⇒ 判定本体（解开根 · 解开目标 · 前缀比）搬去 observe 内部唯一的家 `observe/fence.rs::Fence`；这里只剩「以 `projects/` 为根」
 //   那一行（根是哪一个属 Claude 的目录布局，留在认得它的这一侧），三条按路径读的路照旧调它，报错原话逐字不变。
-// 〔合并 LOC1b〕LOC1b 在这里把本体提成了「根是参数」的一形（为各家合成历史面给的记录根）—— 那一形就是
+// LOC1b 在这里把本体提成了「根是参数」的一形（为各家合成历史面给的记录根）—— 那一形就是
 // `observe/fence.rs::Fence::at(根)?.admit(候选)`（报错取根目录名，与 LOC1b 那一版逐字同形），下面 [`validate_session_path_among`] 改调它。
 
 /// `<agent_home>/projects/` 这道围栏放行一个候选路径（本体在 [`Fence`]；`candidate` 相对按根拼、绝对直用）。
@@ -359,7 +359,7 @@ fn first_run_of(path: &Path, faces: &crate::agents::RunFaces) -> Option<String> 
         .map(|m| m.run)
 }
 
-/// 按路径读一份会话之前的围栏：Claude 的 `projects/` ∪ 注册表里各家合成历史面给的记录根（〔LOC1b · 4D〕）。
+/// 按路径读一份会话之前的围栏：Claude 的 `projects/` ∪ 注册表里各家合成历史面给的记录根。
 fn validate_session_path(
     agent_home: &Path,
     jsonl_path: &str,
@@ -369,7 +369,7 @@ fn validate_session_path(
 
 /// [`validate_session_path`] 的本体，「另外认哪几个根」是参数（判据喂临时目录，不去动进程环境）。
 ///
-/// 〔LOC1b · 4D〕历史浏览器本机远端都会列出 Codex 会话（C4d 起后端合成），而本机冷读也改走后端之后，
+/// 历史浏览器本机远端都会列出 Codex 会话（C4d 起后端合成），而本机冷读也改走后端之后，
 /// 这道围栏只认 `projects/` ⇒ 列得出、打不开。根由适配层给（`HistoryFace.root`），这里不写死路径。
 /// 另外那几个根**只收绝对路径**（相对路径的意思只在 `projects/` 下有定义）；
 /// 都不在 ⇒ 回 `projects/` 那一句拒绝（它是今天所有调用方认得的那一句）。
@@ -393,7 +393,7 @@ fn validate_session_path_among(
     Ok(target)
 }
 
-/// `--read-session <jsonl_path>`：路径校验后原样透传文件内容（〔TL3〕这两行原先挂在围栏头上，随围栏搬家挪回它说的那个函数）。
+/// `--read-session <jsonl_path>`：路径校验后原样透传文件内容（这两行原先挂在围栏头上，随围栏搬家挪回它说的那个函数）。
 /// 透传而非逐行解析：monitor 侧本就有完整的 parse_line 管线，backend 不重复造。
 fn read_session(agent_home: &Path, jsonl_path: &str) -> Result<(), String> {
     let target = validate_session_path(agent_home, jsonl_path)?;
@@ -412,7 +412,7 @@ fn read_session(agent_home: &Path, jsonl_path: &str) -> Result<(), String> {
 /// 决策 reset（`offsetByPath`），此处 seek 过 EOF → 读空 → 透传空，安全无副作用。
 /// 透传而非逐行：monitor 侧 parse_line 管线已全，backend 不重复造（同 `read_session`）。
 ///
-/// 〔`设计/10` 骨架 · 子步 1〕加了两个**选项**（不是新子命令 —— 见 [`FromOffsetOpts`] 的头注）：
+/// 〔骨架〕加了两个**选项**（不是新子命令 —— 见 [`FromOffsetOpts`] 的头注）：
 /// `--until <end>` 把透传收成半开区间 `[offset, end)`；`--index` 不透传字节，改出
 /// **骨架索引**（[`session_index`]）。两个都不带时字节一个不变（老调用方零回归）。
 fn read_session_from_offset(
@@ -467,7 +467,7 @@ fn stream_from_offset<W: std::io::Write>(
 ///
 /// # 语义上它也**就是**「从偏移读」
 ///
-/// 索引从 `offset` 起算 ⇒ 冷启动传 0 拿全量；续传传上次的 `end` 拿增量（`设计/10 §5 B`：
+/// 索引从 `offset` 起算 ⇒ 冷启动传 0 拿全量；续传传上次的 `end` 拿增量（
 /// 「续传令牌只能用字节偏移」）。与透传字节是同一个读、两种出法。
 ///
 /// ⚠ 未知的 `--选项` 与多余的位置参数都**报错**（不静默忽略）：老 monitor 从不带，新 monitor 只带这两个；
@@ -522,7 +522,7 @@ pub(crate) fn parse_from_offset_args(
 
 /// `--list-user-inputs [--from <offset>] <jsonl_path>` 的 argv：一个位置参数 ＋ 一个可选的 `--from`。
 ///
-/// 选项在位置参数前后都认；客户端写在前面（与骨架索引那一形同一条纪律；〔C4b〕monitor 不再经 argv 发它，
+/// 选项在位置参数前后都认；客户端写在前面（与骨架索引那一形同一条纪律；monitor 不再经 argv 发它，
 /// 界面经帧命令 `history-user-inputs` 问）。未知的 `--选项`、多余的位置参数都**报错**，
 /// 不静默忽略 —— 静默忽略会让调用方拿到一份形状不对的输出还以为成功了。
 pub(crate) fn parse_user_inputs_args(rest: &[String]) -> Result<(u64, &String), String> {
@@ -566,7 +566,7 @@ fn list_user_inputs(agent_home: &Path, jsonl_path: &str, from: u64) -> Result<()
     Ok(())
 }
 
-/// `--list-user-inputs` 的本体，出口是参数 ——〔SR1a · 2026-09-24〕帧面那条（`history-user-inputs`）
+/// `--list-user-inputs` 的本体，出口是参数 ——帧面那条（`history-user-inputs`）
 /// 与 CLI 这条**跑的是同一个函数**，只是 `out` 一个是 stdout、一个是内存里那份应答（同 `list_projects_into`）。
 pub(crate) fn list_user_inputs_into(
     agent_home: &Path,
@@ -583,7 +583,7 @@ pub(crate) fn list_user_inputs_into(
     Ok(())
 }
 
-/// 〔C4b · 第四波 4B〕大纲清单的打开口（围栏 ＋「起点越过文件尾 ⇒ 报错」＋ 定位）—— CLI 臂与帧面臂共用。
+/// 大纲清单的打开口（围栏 ＋「起点越过文件尾 ⇒ 报错」＋ 定位）—— CLI 臂与帧面臂共用。
 pub(crate) fn open_user_inputs_at(
     agent_home: &Path,
     jsonl_path: &str,
@@ -603,10 +603,10 @@ pub(crate) fn open_user_inputs_at(
     Ok(std::io::BufReader::new(f))
 }
 
-/// 〔STC〕`history-facts` 的续点：从 `from` 接着读之前先核两件事，任一不成立 ⇒ 报错（调用方从 0 重要一份）：
+/// `history-facts` 的续点：从 `from` 接着读之前先核两件事，任一不成立 ⇒ 报错（调用方从 0 重要一份）：
 /// ① `from` 不越过文件尾（越过 = 截断 / 重写）；② `from > 0` 时文件第 `from-1` 字节是 `\n`
 /// （续点恒是某个完整行的末字节 —— 不在行边界上 = 被重写过，接着读会从半行起、把后面的事实算歪）。
-/// 挡不住的一形：重写成更长、而旧续点恰好也落在新内容的行边界上（与大纲 `设计/10 §7` 第 4 条同一个口子）。
+/// 挡不住的一形：重写成更长、而旧续点恰好也落在新内容的行边界上（与大纲同一个口子）。
 pub(crate) fn open_facts_at(
     agent_home: &Path,
     jsonl_path: &str,
@@ -638,7 +638,7 @@ pub(crate) fn open_facts_at(
     Ok(std::io::BufReader::new(f))
 }
 
-/// `--find-in-session` 的 argv（〔SE2〕）。
+/// `--find-in-session` 的 argv。
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct FindArgs<'a> {
     pub(crate) path: &'a String,
@@ -651,7 +651,7 @@ pub(crate) struct FindArgs<'a> {
 ///
 /// 🔴 **查询串是 `--query` 的值，不是位置参数**：用户要找的就可能是 `--force` 这种以 `--` 起头的词，
 /// 作为位置参数它会被当成一个写错的选项。选项的值原样取下一个 token，不看它长什么样。
-/// 选项在位置参数前后都认；客户端写在前面（〔C4b〕monitor 不再经 argv 发它，界面经帧命令 `history-find` 问）。
+/// 选项在位置参数前后都认；客户端写在前面（monitor 不再经 argv 发它，界面经帧命令 `history-find` 问）。
 /// 未知的 `--选项`、缺 `--query`、位置参数不是恰好一个 ⇒ **报错**（不静默忽略 —— `--search` 那种
 /// 「未知选项容错忽略」正是本命令不做成它的一个选项的理由之一，见 `IPC-PROTOCOL.md §10.5`）。
 /// `--limit` 超出封顶按封顶算（`FIND_MAX_LIMIT`）；0 ⇒ 只数不列。
@@ -712,7 +712,7 @@ fn find_in_session(agent_home: &Path, a: &FindArgs<'_>) -> Result<(), String> {
     Ok(())
 }
 
-/// 会话内查找的本体，出口是参数 ——〔SR1a × SE2〕帧面那条（`history-find`）与 CLI 这条
+/// 会话内查找的本体，出口是参数 ——帧面那条（`history-find`）与 CLI 这条
 /// （`--find-in-session`）**跑的是同一个函数**（同 `list_projects_into`）。
 pub(crate) fn find_in_session_into(
     agent_home: &Path,
@@ -743,7 +743,7 @@ pub(crate) fn find_in_session_into(
 ///    （torn 残尾不计，F14 口径）＝ 下一次续传该带的 `offset`。**没有尾行 ⇒ 输出被截断了**，
 ///    调用方不许把前面那些行当成全量。
 ///
-/// 不含正文（`设计/10 §5 A` 已定：骨架不带正文）。每行约 100 字节 × 条数。
+/// 不含正文（已定：骨架不带正文）。每行约 100 字节 × 条数。
 fn session_index(
     agent_home: &Path,
     jsonl_path: &str,
@@ -757,7 +757,7 @@ fn session_index(
     Ok(())
 }
 
-/// 骨架索引的本体，出口是参数 ——〔SR1a · 2026-09-24〕帧面那条（`history-index`）
+/// 骨架索引的本体，出口是参数 ——帧面那条（`history-index`）
 /// 与 CLI 这条（`--read-session-from-offset --index`）**跑的是同一个函数**（同 `list_projects_into`）。
 pub(crate) fn session_index_into(
     agent_home: &Path,
@@ -776,7 +776,7 @@ pub(crate) fn session_index_into(
     Ok(())
 }
 
-/// 〔GAP1〕过了围栏的会话文件路径（`history-find` 先拿它问常驻索引）。
+/// 过了围栏的会话文件路径（`history-find` 先拿它问常驻索引）。
 pub(crate) fn session_path_at(
     agent_home: &Path,
     jsonl_path: &str,
@@ -784,7 +784,7 @@ pub(crate) fn session_path_at(
     validate_session_path(agent_home, jsonl_path)
 }
 
-/// 〔C4b · 第四波 4B〕过围栏、打开、定位到 `offset` —— 骨架索引与会话内查找的 CLI 臂和帧面臂共用这一处
+/// 过围栏、打开、定位到 `offset` —— 骨架索引与会话内查找的 CLI 臂和帧面臂共用这一处
 /// （帧面那一臂出成品，不经 `out`，见 `read_face.rs`）。
 pub(crate) fn open_session_at(
     agent_home: &Path,
@@ -824,7 +824,7 @@ pub(crate) fn write_session_index<R: std::io::BufRead, W: std::io::Write>(
     Ok(count)
 }
 
-/// 〔C4b · 第四波 4B〕[`write_session_index`] 的中段：每个可计行一条 [`IndexRow`] 交给 `on_row`，回 `(count, end)`。
+/// [`write_session_index`] 的中段：每个可计行一条 [`IndexRow`] 交给 `on_row`，回 `(count, end)`。
 /// CLI 那一臂（写头尾三段）与帧面那一臂（`read_face.rs` 的 `history-index`，装成成品 `{from, end, rows}`）
 /// 跑的是**同一个**扫描；「这一行占不占 seq」仍只住 [`line_counts`]。
 pub(crate) fn scan_session_index<R: std::io::BufRead>(
@@ -859,7 +859,7 @@ pub(crate) fn scan_session_index<R: std::io::BufRead>(
     Ok((count, end))
 }
 
-/// 骨架索引的一行：**位置 ＋ 身份 ＋ 宽度无关料**（`设计/10 §1` 第一格 · `§2.5b 路 D`）。
+/// 骨架索引的一行：**位置 ＋ 身份 ＋ 宽度无关料**（第一格 · `§2.5b 路 D`）。
 ///
 /// 键名刻意短（每条记录一行，大会话上万行）；**缺省即零 / 假**，零值不序列化。
 ///
@@ -909,7 +909,7 @@ pub(crate) struct IndexRow {
     /// 它们渲染成一行 summary（或并进工具组），与正文长短无关。
     #[serde(skip_serializing_if = "is_zero")]
     pub(crate) fd: u32,
-    /// 〔SE2〕这一行是一条**用户输入**（大纲的一项）⇒ 它的摘要；不是 ⇒ 省略。
+    /// 这一行是一条**用户输入**（大纲的一项）⇒ 它的摘要；不是 ⇒ 省略。
     ///
     /// 判定只住 [`crate::observe::user_inputs::user_input_of`]（与 `--list-user-inputs` **同一个函数**），
     /// 摘要同 `excerpt`、uuid 就是本行的 `u`。有了它，首屏的「索引」与「大纲清单」合成一趟读：
@@ -917,7 +917,7 @@ pub(crate) struct IndexRow {
     /// 一个 `x` 都没有 ⇒ 分不清「老后端」还是「真的零条」⇒ 照旧要一份（形状登记 `IPC-PROTOCOL.md §10.3`）。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) x: Option<String>,
-    /// 〔SE2〕同上那一行的 `timestamp`（空串 ⇒ 省略；清单那边的空串 == 这里缺席）。
+    /// 同上那一行的 `timestamp`（空串 ⇒ 省略；清单那边的空串 == 这里缺席）。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) ts: Option<String>,
 }
@@ -948,7 +948,7 @@ pub(crate) fn index_row(line: &[u8], offset: u64, len: u64) -> IndexRow {
     row.u = v.get("uuid").and_then(|u| u.as_str()).map(str::to_string);
     row.sc = crate::agents::run_of_record(&v).is_some();
     row.mt = v.get("isMeta").and_then(|b| b.as_bool()) == Some(true);
-    // 〔SE2〕大纲那一项（判定只住 `user_inputs`；这里只搬字段）
+    // 大纲那一项（判定只住 `user_inputs`；这里只搬字段）
     if let Some(ui) = crate::observe::user_inputs::user_input_of(&v) {
         row.x = Some(ui.excerpt);
         row.ts = Some(ui.timestamp).filter(|t| !t.is_empty());
@@ -1056,7 +1056,7 @@ fn read_session_tail(agent_home: &Path, jsonl_path: &str, n: usize) -> Result<()
 
 /// `--read-session-tail` 那一趟扫描的结果：可计行总数 · 尾段起点行号 · 两段的字节边界。
 ///
-/// 〔`C1` · 2026-09-24〕抽出来是因为帧面那条（`history-tail`）只要**这张图**，
+/// 抽出来是因为帧面那条（`history-tail`）只要**这张图**，
 /// 正文按字节区间另走 `history-read` 分页拉 —— 一帧应答装不下几十 MB 的会话，
 /// 而 CLI 这条仍然一口气印完。**两条路扫的是同一个函数**，行号口径因此只有一份。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1241,13 +1241,13 @@ pub(crate) struct ReadPage {
     pub eof: bool,
 }
 
-/// 〔CF2 · 第四波 4B〕帧面按**行号**取回一段（`history-lines`）：第 `[from, until)` 个可计行的原文。
+/// 帧面按**行号**取回一段（`history-lines`）：第 `[from, until)` 个可计行的原文。
 ///
-/// # 为什么要有它（`调研/第四波记录/CF2.md §1`）
+/// # 为什么要有它
 ///
 /// 按字节取正文（[`read_page`]）要调用方先知道字节边界 —— 那只有骨架索引给得出。
 /// 没接骨架的会话（后台 tab · 老后端 · seq 对不上的）丢掉的正文就无处可回 ⇒ monitor 的重放缓冲
-/// 不敢设上界（`设计/05 §3.3.4` 级 3）。本函数是**不依赖索引**的那条取回路：调用方只说行号。
+/// 不敢设上界（级 3）。本函数是**不依赖索引**的那条取回路：调用方只说行号。
 ///
 /// # 口径
 ///
@@ -1351,15 +1351,15 @@ pub(crate) struct LinesPage {
     pub eof: bool,
 }
 
-/// 〔U4b · 第四波〕「这条会话的记录还在不在」—— `history-record` 帧命令的本体（`read_face` 是它的宿主）。
+/// 「这条会话的记录还在不在」—— `history-record` 帧命令的本体（`read_face` 是它的宿主）。
 ///
-/// `设计/01 §6.2` 最后一条逐字：「对方那份记录也没了 ⇒ 重开必失败，要诚实报错，不许静默变成『起了个新会话』」。
+/// 最后一条逐字：「对方那份记录也没了 ⇒ 重开必失败，要诚实报错，不许静默变成『起了个新会话』」。
 /// 前端 resume 一跳（`tab-session-actions.ts`）在开终端之前问一次；答「不在」就不开。
 ///
 /// - **只收 sid、不收路径**（`INVARIANTS §41.6` 收窄第 3 条）：找文件那一步是两侧共用的
-///   `agents::find_session_file`（〔THIN〕经注册表那一格，本体住 `agents/claudecode/branch.rs`；与分叉 / 删会话同一份；符号链接不算命中）。
+///   `agents::find_session_file`（经注册表那一格，本体住 `agents/claudecode/branch.rs`；与分叉 / 删会话同一份；符号链接不算命中）。
 /// - sid 形状不合法 ⇒ `Err`，**先于任何 IO**；找不到 ⇒ `Ok(present = false)` —— 这是一个答案，不是错误。
-/// - 回 `root`（查的是哪棵记录树）：报错时要说清查了什么（`设计/01 §6.9`）。
+/// - 回 `root`（查的是哪棵记录树）：报错时要说清查了什么。
 ///
 /// ⚠ **射程如实写**：它查的是**这台后端**的记录树（`agent_home()/projects`）。会话若起在另一个
 /// 账号的配置根下（`CLAUDE_CONFIG_DIR` 指向别处），这里答「不在」而那边其实有 —— 调用方拿到「不在」
@@ -1378,10 +1378,10 @@ pub(crate) fn record_in(agent_home: &Path, sid: &str) -> Result<RecordProbe, Str
     })
 }
 
-/// 〔GP1 · 第四波〕[`record_in`] 按**这次 resume 要用的那个账号配置目录**查（`history-record` 的 `configDir`）。
+/// [`record_in`] 按**这次 resume 要用的那个账号配置目录**查（`history-record` 的 `configDir`）。
 ///
 /// 会话起在另一个账号根下（`CLAUDE_CONFIG_DIR` 指别处）时，只查这台后端自己的家目录会答「不在」、误拦 resume
-/// （`设计/30 §8` 第 4 条；上面那段「射程如实写」）。monitor 把这次 resume 交给起会话那一格的同一个目录带过来，
+/// （上面那段「射程如实写」）。monitor 把这次 resume 交给起会话那一格的同一个目录带过来，
 /// 这里就在那棵树里找。
 /// - `None` ⇒ 这台的家目录（与改之前逐字同一问）；
 /// - `Some(d)` ⇒ 先过账号库那一个形状关（`accounts_query::is_safe_config_dir`：绝对 · 不上跳 · 无 shell 元字符与
@@ -1433,7 +1433,7 @@ pub(crate) fn agent_home() -> std::path::PathBuf {
 /// **只为回答「这行是不是空的」** —— 那是一次**整文件 UTF-8 校验**。
 /// 实测（15.1 MiB 会话，laptop）：`tail` **19.52 → 3.79 ms**、其中「数行」那一趟
 /// **17.89 → 2.98 ms（↓83%）**，**出字节一字节不差**。
-/// 剩下的 ~3 ms/15.1 MiB（≈5 GiB/s ≈ `memchr`）才是 `设计/17 §3.1` 说的
+/// 剩下的 ~3 ms/15.1 MiB（≈5 GiB/s ≈ `memchr`）才是说的
 /// 那个**真·不可避免的 O(文件)**。
 ///
 /// # 短路为什么是对的
@@ -1466,7 +1466,7 @@ pub(crate) fn line_counts(line: &[u8]) -> bool {
 /// 只处理到最后一个 `\n`（torn 残尾不进任何段——F14 口径）。
 /// 生产路径已流式化（read_session_tail，审计 D 内存修订）；本函数保留为
 /// 口径锚点（tail_tests 锚定语义），流式版与它的等价性由本机行为验证对账
-/// （真实 18MB 会话：meta/字节输出逐段一致，见 Batch9 feature 30 §6 留档）。
+/// （真实 18MB 会话：meta/字节输出逐段一致，见 Batch9 feature 留档）。
 /// **仅测**（生产走流式版、不调本函数）→ `#[cfg(test)]` 不进生产二进制。
 #[cfg(test)]
 fn split_tail(bytes: &[u8], n: usize) -> (String, &[u8], &[u8]) {
@@ -1538,10 +1538,10 @@ fn extract_cwd_from_head(p: &Path) -> Option<String> {
 /// - startedAtMs = 首条 user / assistant 记录的 `timestamp`；一条都解析不出 ⇒ 文件建立时刻（拿不到 ⇒ 修改时刻）
 /// - forkedFromSessionId / forkedFromMessageUuid = 首条带 `forkedFrom` 的 user / assistant 记录（`/branch` 分叉来的）
 ///
-/// 〔C4d · 第四波 4B〕**这一行从此是本机与远端共用的唯一口径**：本机的历史会话清单此前由 monitor 进程内自己扫
+/// **这一行从此是本机与远端共用的唯一口径**：本机的历史会话清单此前由 monitor 进程内自己扫
 /// （`history·rs::analyze_jsonl`〔散文墓碑〕，经记录解析器），与这里的「精简版」各算各的 —— 开始时刻 / 摘录 / 标题 / fork 关系
 /// 四格两边不一样。历史跨机 join 进了本机后端之后本机也读这一行 ⇒ 把 monitor 那份有、这里没有的三格（fork 关系 ·
-/// `custom-title` · 首条时间戳）补进来，摘录的清洗与截断改用与全文搜索同一个家那一份（〔P1〕清洗经注册表 `agents::clean_user_text` · 截断 `observe/search_rules.rs`）。条数仍是「非空行数」。
+/// `custom-title` · 首条时间戳）补进来，摘录的清洗与截断改用与全文搜索同一个家那一份（清洗经注册表 `agents::clean_user_text` · 截断 `observe/search_rules.rs`）。条数仍是「非空行数」。
 fn analyze_session(p: &Path) -> serde_json::Value {
     let session_id = p
         .file_stem()
@@ -1642,7 +1642,7 @@ fn analyze_session(p: &Path) -> serde_json::Value {
     })
 }
 
-/// 〔STC · `设计/90 §4` 阶段 C〕**「这条记录说明本会话是从哪个会话分叉来的」的唯一住址**：
+/// **「这条记录说明本会话是从哪个会话分叉来的」的唯一住址**：
 /// `user` / `assistant` 记录上的 `forkedFrom`（两个键都得是串）⇒ (源会话 id, 分叉处的消息 uuid)。
 ///
 /// 两个读者调同一个函数：历史会话行（[`analyze_session`] 的 `forkedFromSessionId`）与活 tab 的会话事实
@@ -1683,7 +1683,7 @@ fn user_text(v: &serde_json::Value) -> Option<String> {
     None
 }
 
-// 〔C4d〕按字符截断的那一份（`truncate_chars`〔散文墓碑〕）没了读者：摘录改用 `search_rules::truncate_excerpt`（同样不劈码点，
+// 按字符截断的那一份（`truncate_chars`〔散文墓碑〕）没了读者：摘录改用 `search_rules::truncate_excerpt`（同样不劈码点，
 //   另把换行折成空格、超了加 `…` —— 与本机那条路从前的口径、与全文搜索的标题摘录同一个家）。
 
 #[cfg(test)]

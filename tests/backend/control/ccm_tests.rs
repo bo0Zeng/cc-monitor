@@ -49,9 +49,9 @@ fn the_name_avoidance_has_exactly_one_source_and_the_plan_settles_it() {
     );
 }
 
-// 〔V151〕`under_the_name_ccm_only_backend_first_words_reach_the_backend`〔散文墓碑〕并进 `claude_flags_tests` 那一条（切法 ＋ 撞名收成一刀）。
+// `under_the_name_ccm_only_backend_first_words_reach_the_backend`〔散文墓碑〕并进 `claude_flags_tests` 那一条（切法 ＋ 撞名收成一刀）。
 
-/// 〔主会话 09-27 裁「路由不看 argv0」〕要求住址：`99 §1` V151「没有 `--` ⇒ 整行原样交 claude」＋ 本路题面「删 route 里 base ≠ ccm 那一支」。
+/// 〔「路由不看 argv0」〕要求：「没有 `--` ⇒ 整行原样交 claude」＋ 本路题面「删 route 里 base ≠ ccm 那一支」。
 /// 分流只看 argv：同一串 argv 不论二进制叫什么都进同一边；零参数是「起一个 claude」；打头的 `--` 紧跟后端词才进后端。
 /// 回环：pane 里把自己再叫一次（[`self_invocation`] ＋ 内层参数）叫得回 ccm、参数一个不多一个不少。
 #[test]
@@ -262,7 +262,7 @@ fn the_base_url_token_is_declared_because_the_tmux_path_really_forwards_it() {
     );
 }
 
-/// 闭集只有一处住址（〔P1〕注册表里带起会话事实的那几家）：它与那几个按 agent 分支的函数必须**逐个对得上**。
+/// 闭集只有一处住址（注册表里带起会话事实的那几家）：它与那几个按 agent 分支的函数必须**逐个对得上**。
 #[test]
 fn the_agent_set_has_one_address_and_every_member_is_wired() {
     assert_eq!(agents(), ["claude", "codex"]);
@@ -404,7 +404,7 @@ fn the_name_taken_message_says_which_name() {
 // ═══════════════════════════════════════════════════════════════════════
 // `P19`（09-22）· codex 那一支不经 shell 的那条路
 // 题面：`--agent codex` 在 Windows 上不再 `program not found`。
-// 真机读数（那一跳到底在哪）住 `真相源/106 §3.3`。
+// 真机读数（那一跳到底在哪）住。
 // ═══════════════════════════════════════════════════════════════════════
 
 /// 造一份**直路计划**，`tmux` 那一格由调用方给 —— 走的是生产那条链
@@ -470,7 +470,7 @@ fn the_bus_id_recipe_is_wholly_guarded_by_tmux_so_skipping_the_shell_is_exact() 
 ///
 /// 🔴 **上一版的条件是 `!ccm_env.is_empty() || bus_id_recipe || resolved.is_some()`**
 /// —— `bus_id_recipe` 单独成闸，而 `needs_bus_id("codex")` 恒真 ⇒ **每一趟**
-/// `--agent codex` 都要一个 `sh`。真机现打（Win11，`真相源/106 §3.3`）：
+/// `--agent codex` 都要一个 `sh`。真机现打（Win11）：
 /// `--agent codex --launcher hostname` → `EXIT=4 program not found`，
 /// 同一个 launcher 在 `--agent claude` 那趟 `EXIT=0`。
 ///
@@ -515,7 +515,7 @@ fn only_two_things_still_need_a_posix_shell_and_the_codex_recipe_is_not_one_of_t
         );
     }
 
-    // ── 另一件**是真的要 shell**，本轮没假装它不要（V138 删了 `resolve` 那一件）──
+    // ── 另一件**是真的要 shell**，本轮没假装它不要（删了 `resolve` 那一件）──
     let mut with_env = direct_of(&["--ccm-agent", "codex", "--cwd", "/p"], None);
     with_env.ccm_env = "export HTTPS_PROXY=http://x:1".into();
     assert_eq!(
@@ -528,7 +528,7 @@ fn only_two_things_still_need_a_posix_shell_and_the_codex_recipe_is_not_one_of_t
 /// ★ **每一条「为什么非得经 shell」都真有人用，而且只有一处用**（`D7` ＋ `D1`）。
 ///
 /// 🔴 这几句话不是装饰：`sh` 不在这台机器上时，它们就是用户唯一看得到的**原因**。
-/// 真机读数（`真相源/106 §3.3`）为此只能靠「同一个 launcher 在 claude 那趟 `EXIT=0`」
+/// 真机读数为此只能靠「同一个 launcher 在 claude 那趟 `EXIT=0`」
 /// 反推出「找不到的是 `sh` 不是 `hostname`」—— **错的归因比失败本身更贵**。
 ///
 /// 人群从源码派生（生产段里每一处 `WHY_SHELL_` 的出现），**相等**断言：
@@ -585,8 +585,8 @@ fn every_reason_for_needing_a_shell_is_declared_once_and_used_once() {
 }
 
 // ════════════════════════════════════════════════════════════════════════════════════════
-// 〔S5 · 第四波〕直路上 `--ccm-sid` 没有载体时**说一句**（不报错、照常起）
-// 要求住址：`调研/设计/99 §4.4` 那一行（「不报错 … 直路语义走已落地的启动期令牌那条路」）·
+// 直路上 `--ccm-sid` 没有载体时**说一句**（不报错、照常起）
+// 那一行（「不报错 … 直路语义走已落地的启动期令牌那条路」）·
 // `lib.rs::TARGET_GAPS` 旧话逐字「被接受、零效果、而且不出声」。
 // ════════════════════════════════════════════════════════════════════════════════════════
 
@@ -623,8 +623,8 @@ fn exec_direct_really_reads_the_identity_cell() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// 〔W5-ALIAS · 第五波先行〕帧命令 `ccm-print`：别名预览（`设计/71 §2.3`）
-// 住址：`设计/71 §2.3`「`ccm --print` 不跑、吐出等价的一行 shell ⇒ 生成器旁边显示**这条别名实际会执行什么**，
+// 帧命令 `ccm-print`：别名预览
+// 要求：「`ccm --print` 不跑、吐出等价的一行 shell ⇒ 生成器旁边显示**这条别名实际会执行什么**，
 // 是真验证，不是前端拼串」。
 // ═══════════════════════════════════════════════════════════════════════
 
@@ -649,7 +649,7 @@ fn the_alias_preview_is_the_same_plan_as_ccm_print() {
     }
     let home = std::env::var("HOME").unwrap_or_default();
     for args in [
-        // 〔V151〕别名的预置参数就是一条 V151 argv（`<交给 claude 的…> -- <ccm 的…>`）。
+        // 别名的预置参数就是一条 V151 argv（`<交给 claude 的…> -- <ccm 的…>`）。
         vec!["--", "--cwd", "/p", "--ccm-agent", "claude"],
         vec!["--", "--ccm-tmux=w5alias-preview-probe", "--cwd", "/p"],
         vec!["--model", "m", "--", "--base", "--cwd", "/q"],
@@ -757,22 +757,22 @@ fn the_alias_preview_refuses_in_the_words_of_ccm() {
         code(serde_json::json!({ "args": ["--", "--cwd", "/p"] })),
         "ok"
     );
-    // 〔V151〕右边认不得 ⇒ ccm 的原话拒（不猜）。
+    // 右边认不得 ⇒ ccm 的原话拒（不猜）。
     assert_eq!(
         code(serde_json::json!({ "args": ["--", "--model", "m"] })),
         "refused"
     );
 }
 
-// ── 〔WIN1 · 第四波 4D · RT1 F7〕`--ccm-probe` 自报的能力 = 这台机器上做得到的那一份 ──────────
+// ── `--ccm-probe` 自报的能力 = 这台机器上做得到的那一份 ──────────
 //
-// 要求住址：`设计/96 §2` 第 2 层「能力清单从实现派生」（`lib.rs` 头注那张表逐字「**能力清单从实现派生，
-// `CAPABILITIES` 由它们汇总而来，不许手写**」）；读数出处 `第四波记录/RT1.md §8` F7 逐字「`ccm.exe --ccm-probe`
+// 第 2 层「能力清单从实现派生」（`lib.rs` 头注那张表逐字「**能力清单从实现派生，
+// `CAPABILITIES` 由它们汇总而来，不许手写**」）；读数要求：「`ccm.exe --ccm-probe`
 // 在 Windows 上自报 `tmux, attach, detach, tmux-size, tmux-base, bus-register` 等能力 —— 这些在 Windows 上都做不到」。
 // 异源：Windows 那一格的期望是**手写的两张名单**（做得到 / 做不到），不从 `CCM_TMUX_CARRIED` 或
 // `ccm_launcher_with` 里抠 —— 否则两侧同源、恒真。
 // ⚠ 买不到：`TMUX_PLATFORM` 在本机是 `AskThePath`，Windows 那一档由入参模拟；真 `ccm.exe` 吐什么要真机
-//    （`第四波记录/WIN1.md` 的虚拟机读数）。
+//    （虚拟机读数）。
 
 fn caps_line(out: &str) -> std::collections::BTreeSet<String> {
     out.lines()
@@ -859,7 +859,7 @@ fn the_real_probe_asks_this_binarys_own_platform() {
     );
 }
 
-/// 〔SH1 · `INVARIANTS §49` · V121〕**codex 的 cc-bus 身份配方读会话名时，那个 tmux 客户端是 UTF-8 客户端。**
+/// 〔`INVARIANTS §49`〕**codex 的 cc-bus 身份配方读会话名时，那个 tmux 客户端是 UTF-8 客户端。**
 ///
 /// 要求住址：`INVARIANTS §49`「本仓每一处按格式串读 tmux 打印通道的调用点，起的 tmux 客户端都必须是 UTF-8 客户端」·
 /// `TL2.md §9.1` 3（`BUS_ID_RECIPE` 读 `#S` 是五处真违反之一）。
@@ -972,8 +972,8 @@ fn the_bus_id_recipe_reads_the_session_name_through_a_utf8_client() {
     );
 }
 
-/// 〔E2〕要求住址：`设计/96 §7.2.2` · W5-ALIAS §3.6「件 E 让 ccm 恒是那台后端本体之后，这一问改问后端自己」。
-/// 〔MIG-3b〕帧 `ccm-probe` 出成品：每一格 == CLI `--ccm-probe` 那张名片的同名行（异源：一边是 JSON，一边切文本行）；
+/// 要求：「件 E 让 ccm 恒是那台后端本体之后，这一问改问后端自己」。
+/// 帧 `ccm-probe` 出成品：每一格 == CLI `--ccm-probe` 那张名片的同名行（异源：一边是 JSON，一边切文本行）；
 /// 键集合 == 金样 `tests/__fixtures__/ccm-probe.golden.json` 的键（界面解码器读同一份金样）。
 #[test]
 fn the_probe_frame_answers_the_same_card_as_the_cli_flag() {
@@ -1019,7 +1019,7 @@ fn the_probe_frame_answers_the_same_card_as_the_cli_flag() {
     );
 }
 
-/// 要求住址：`设计/90 §3` J7「tmux 名派生 ＋ 撞名避让只留后端，前端要名字就问后端」（FIX4 题面）。
+/// 要求：「tmux 名派生 ＋ 撞名避让只留后端，前端要名字就问后端」（FIX4 题面）。
 /// 帧命令 `tmux-name-mint` 两形各一格 == 手写期望；避让问的是**交进来那张快照**（被占 ⇒ 往后排）；没装 tmux ⇒ 基名；入参不恰一格 ⇒ `invalid_args`。
 #[test]
 fn the_mint_frame_derives_here_and_steps_aside_on_this_machines_snapshot() {

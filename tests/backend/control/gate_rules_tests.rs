@@ -23,7 +23,7 @@ fn new_cc_suffix_shape_is_recognised() {
 fn other_peoples_sessions_are_not_ours() {
     assert!(!is_ccm_tmux_name("web")); // 用户自己的会话
     assert!(!is_ccm_tmux_name("mycc-x")); // 非前缀
-    assert!(!is_ccm_tmux_name("foo_cc")); // cc-bus 的 `_cc` 命名空间（ROADMAP §6 待决 #2）
+    assert!(!is_ccm_tmux_name("foo_cc")); // cc-bus 的 `_cc` 命名空间（待决 #2）
 }
 
 #[test]
@@ -70,8 +70,8 @@ fn the_wire_names_are_pinned_not_derived_from_debug() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// 〔DUP2 · 主会话 09-26 裁 J6〕tmux 会话名的两条规则（新建 · 已有会话）—— 全仓唯一一份。
-// 守的要求：`设计/90 §3` 判据 2 · `INVARIANTS §47` ①（新建）/ ②（attach 目标，V131）· F01「不把 glob 建进会话名」。
+// tmux 会话名的两条规则（新建 · 已有会话）—— 全仓唯一一份。
+// 守的要求：`INVARIANTS §47` ①（新建）/ ②（attach 目标）· F01「不把 glob 建进会话名」。
 // 正反各一格（`§47`：「拒过头也算违反」—— 只断坏的被拒，焊成恒拒也能绿）。
 // ═══════════════════════════════════════════════════════════════════════════
 

@@ -6,19 +6,19 @@ use std::path::PathBuf;
 /// 选这几个是因为它们是 monitor 侧那道门的**产物名**（拒绝码 / 拒绝文案）——
 /// backend 复现 Gate 2 最自然的形态就是回一个同族的拒绝码，F03 正是这么做的
 /// （`control/gate.rs::admit` 回 `wrong_owner` + `CCM_GUARD_REJECTED …`）。
-// 〔TAIL · CP2c 续〕拒绝那句话进了文案表（不再逐字带 `CCM_GUARD_REJECTED`）⇒ 标志换成真做判定的那一下 `gate2`。
-// 〔THIN〕`gate-core` 收成后端模块 `control/gate_rules.rs` ⇒ 那一下的写法跟着换。
+// 拒绝那句话进了文案表（不再逐字带 `CCM_GUARD_REJECTED`）⇒ 标志换成真做判定的那一下 `gate2`。
+// `gate-core` 收成后端模块 `control/gate_rules.rs` ⇒ 那一下的写法跟着换。
 const BACKEND_GATE_MARKERS: &[&str] = &["gate_rules::gate2", "wrong_owner"];
 
 /// Gate 3（`windows==1`，只约束破坏性动作）在后端侧的形状。
 /// **F04a 起：必须存在**（此前是「一个都不该有」）。
 const BACKEND_GATE3_MARKERS: &[&str] = &["session_windows", "kill-session"];
 
-// 〔C4e · 第四波 4C〕这里原来还有两张表：`GUARDED_COMMANDS`（要看住的两个命令：`tmux_send_keys` / `kill_remote_tmux`〔散文墓碑〕）
+// 这里原来还有两张表：`GUARDED_COMMANDS`（要看住的两个命令：`tmux_send_keys` / `kill_remote_tmux`〔散文墓碑〕）
 //   与 `BACKEND_CHANNEL_MARKERS`（它们走后端的标志 `backend_route::Routed`）。两条命令迁到界面之后，被看住的不再是
 //   「monitor 里那两个函数体」，而是「monitor 里有没有这两件事的路」＋「界面经谁说」—— 见文末两条。
 
-// 〔THIN〕`MONITOR_TMUX`〔散文墓碑〕（`include_str!` monitor 的 `tmux.rs`）删：那份文件随 monitor 侧的 Gate 残留删了，
+// `MONITOR_TMUX`〔散文墓碑〕（`include_str!` monitor 的 `tmux.rs`）删：那份文件随 monitor 侧的 Gate 残留删了，
 //   下面那条改量整棵 monitor 生产段（`monitor_production_corpus`）。
 
 fn backend_control_dir() -> PathBuf {
@@ -105,12 +105,12 @@ fn enclosing_fn(src: &str, at: usize) -> (String, String) {
     (name, body)
 }
 
-/// ★ **正题（〔audit-0805 08-06〕新增）**：monitor 侧发出的每一条远端 tmux 命令，
+/// ★ **正题（新增）**：monitor 侧发出的每一条远端 tmux 命令，
 /// 要么动词是只读的，要么它所在的函数**走 Gate**。
 ///
 /// # 它补的是哪个洞
 ///
-/// 本模块原来只看住**两个写死的签名**（`GUARDED_COMMANDS`，〔C4e〕随那两条命令迁到界面一起删了）。
+/// 本模块原来只看住**两个写死的签名**（`GUARDED_COMMANDS`，随那两条命令迁到界面一起删了）。
 /// 实测：往 `tmux.rs` 追加一条
 /// `pub async fn tmux_respawn_pane(..)`，里面直接 `format!("tmux respawn-pane -k -t {..}")`
 /// 再 `connect_and_exec_cmd` —— **`respawn-pane -k` 会杀掉 pane 里正在跑的进程**，
@@ -122,7 +122,7 @@ fn enclosing_fn(src: &str, at: usize) -> (String, String) {
 ///
 /// # 人群与判准（先量后定，量到的都写在这）
 ///
-/// 人群 = monitor 生产段里每一处 `tmux <动词>` 字符串（〔THIN〕从前只量 `tmux.rs` 一份，那份文件删了）。
+/// 人群 = monitor 生产段里每一处 `tmux <动词>` 字符串（从前只量 `tmux.rs` 一份，那份文件删了）。
 ///
 /// # ★★ `K-R72`（09-12）：判准**收紧了一格**，而且是**变强**不是变弱
 ///
@@ -141,7 +141,7 @@ fn enclosing_fn(src: &str, at: usize) -> (String, String) {
 /// 哪天又长出来，正确处置是把那句消息改得不含裸动词，**不是**把动词塞进只读表。
 /// `tmux ` 之后的动词：先跳过插值占位（`{UTF8_CLIENT_FLAG}`）与 `-x` 形状的全局旗标。
 ///
-/// 〔CP2b 09-25〕原来只看紧跟 `tmux ` 的小写字母 ⇒ 真正发出去的那条
+/// 原来只看紧跟 `tmux ` 的小写字母 ⇒ 真正发出去的那条
 /// `tmux {UTF8_CLIENT_FLAG} ls -F …` 一直读成空动词、**被跳过**；本条的地板 1 其实是一句报错消息
 /// （`CCM_TMUX_UNPARSABLE … tmux ls …`）撑着的。那句消息抽进文案表以后人群归零、地板红了，
 /// 才看见这个洞：`tmux {旗标} respawn-pane` 这种形状同样会被跳过。⇒ 改成跳过占位与旗标再读动词，
@@ -176,7 +176,7 @@ fn verb_after_tmux_skips_placeholders_and_global_flags() {
 
 #[test]
 fn every_remote_tmux_verb_is_either_read_only_or_routed_through_the_gate() {
-    // 〔THIN〕人群从 `tmux.rs` 一份扩到整棵 monitor 生产段（那份文件删了；比原来大，不是小）。
+    // 人群从 `tmux.rs` 一份扩到整棵 monitor 生产段（那份文件删了；比原来大，不是小）。
     let (_, prod) = monitor_production_corpus();
     // ★ `K-R72`：受托者不许再出现。这一句就是「那个空的或分支」的回潮闸 ——
     //   有人重新拼一个 `build_guarded_tmux_cmd` 出来，本条当场红。
@@ -187,7 +187,7 @@ fn every_remote_tmux_verb_is_either_read_only_or_routed_through_the_gate() {
              （kill / send-keys 的一次性 SSH 回落）一起删了。要恢复它先回 `K-R54` 重新裁定。"
     );
     let (seen_read_only, bad) = scan_verbs(&prod);
-    // 〔SH1〕人群归零：`list_remote_tmux` 改问那台后端的 `tmux-list`，monitor 侧**零处**远端 tmux 命令串。
+    // 人群归零：`list_remote_tmux` 改问那台后端的 `tmux-list`，monitor 侧**零处**远端 tmux 命令串。
     //   照 `K-R112` 那段留下的话办：不把地板改成 0 了事，而是**人群恒等 0 ＋ 一份合成坏语料承重**（正控，扫描器认得出违规）。
     assert_eq!(
         seen_read_only, 0,
@@ -211,7 +211,7 @@ fn every_remote_tmux_verb_is_either_read_only_or_routed_through_the_gate() {
     );
 }
 
-/// 〔SH1〕把「数远端 tmux 动词」那一段抽成函数：真生产段与合成正控语料共用同一把尺子。
+/// 把「数远端 tmux 动词」那一段抽成函数：真生产段与合成正控语料共用同一把尺子。
 fn scan_verbs(prod: &str) -> (usize, Vec<String>) {
     let mut seen_read_only = 0usize;
     let mut bad: Vec<String> = Vec::new();
@@ -390,7 +390,7 @@ fn the_backend_now_has_gate3() {
     );
 }
 
-// 〔C4e · 第四波 4C〕这里原来住着四条：「`kill` 必须走后端通道」（`kill_now_routes_through_the_backend`〔散文墓碑〕）·
+// 这里原来住着四条：「`kill` 必须走后端通道」（`kill_now_routes_through_the_backend`〔散文墓碑〕）·
 //   「过门被拒绝绝不回落」（`a_gate_rejection_is_never_laundered_into_the_ssh_fallback`〔散文墓碑〕）·
 //   「`send-keys` 也必须走后端通道」（`send_keys_now_routes_through_the_backend`〔散文墓碑〕）·「两条命令走同一个分流器」
 //   （`both_commands_branch_on_the_same_three_way_verdict`〔散文墓碑〕），外加抽取器自检 A。它们钉的都是 monitor 里
@@ -399,7 +399,7 @@ fn the_backend_now_has_gate3() {
 //   · 主路走后端 ＋ 回潮闸 ⇒ 下面第一条：monitor 生产段里**一处**杀会话的 shell 串都没有（界面那一侧结构上没有 SSH）；
 //   · 界面只经一处说这几条 ⇒ 下面第二条；
 //   · 三态不许压成两态（「门拒绝」与「通道不在」两句话不同）⇒ `tests/frontend/ui/tmux-control.vitest.ts`（身份门那一句 ≠ 通道不在那一句）；
-//   · 〔RST 续 · V41〕`enter` 那一格随裸键 mode `send-keys-raw` 删了（V154 之后无调用者；送键只剩 `send-into`）。
+//   · `enter` 那一格随裸键 mode `send-keys-raw` 删了（之后无调用者；送键只剩 `send-into`）。
 //   后端那两道门（身份 · 窗口）还在路上 —— 上面两条反向锚点不动，界面从此**只**靠它们。
 
 /// monitor 生产段（剥 `#[cfg(test)]` 与注释行）里的全部 `.rs`，拼成一份语料。
@@ -417,7 +417,7 @@ fn monitor_production_corpus() -> (usize, String) {
     (files, corpus)
 }
 
-/// ★★〔C4e · 第四波 4C〕**monitor 里没有杀会话的第二条路**（零命中 ＋ 正控）。
+/// ★★**monitor 里没有杀会话的第二条路**（零命中 ＋ 正控）。
 ///
 /// 守的要求：`INVARIANTS §34`（破坏性动作过三道门，门只住后端 `control/gate.rs`）与定框 `C5`
 /// 「任何改状态的 tmux 命令一律归 `control/`」—— 杀会话今天只剩一条路：界面经通道说后端的 `kill`，
@@ -445,10 +445,10 @@ fn the_monitor_has_no_second_path_that_kills_a_session() {
     );
 }
 
-/// ★★〔C4e · 第四波 4C〕**界面说这几条控制类帧命令只经一处**：`capture-pane` / `kill` / `launch` 的 `chan.call`
+/// ★★**界面说这几条控制类帧命令只经一处**：`capture-pane` / `kill` / `launch` 的 `chan.call`
 /// 只住 `src/frontend/ui/tmux-control.ts`。
 ///
-/// 守的要求：`设计/05 §14.3`「迁到通道之后，业务解释是不是**只有一个家**」—— 空目标先拒（Gate 1 本地那一格）、
+/// 守的要求：「迁到通道之后，业务解释是不是**只有一个家**」—— 空目标先拒（Gate 1 本地那一格）、
 /// 按形状收、`killed` / `typed` 不为真不当成功、就地 resume 能不能回落（F14），这几件只写在那一份里；
 /// 别处直接 `chan.call(…, "kill", …)` 就是绕过它们的第二条路。
 /// 两向相等：出现这几个字面量的文件集合 == `{src/tmux-control.ts}`；正控：那一份里各自恰好几处。
@@ -489,7 +489,7 @@ fn the_front_end_speaks_the_tmux_control_ops_only_through_one_module() {
             "`{n}` 出现在 `src/frontend/ui/tmux-control.ts` 之外（或那一份里没有了）—— 界面说这条控制类帧命令的家不止一个"
         );
     }
-    // 正控 ＋ 恒等：抓屏 1 · 结束 1 · 送键与就地 resume 各 1 ⇒ launch 2（〔RST 续〕「打断」那个 mode 名 1 → 删）。
+    // 正控 ＋ 恒等：抓屏 1 · 结束 1 · 送键与就地 resume 各 1 ⇒ launch 2（「打断」那个 mode 名 1 → 删）。
     assert_eq!(
         counts.into_iter().collect::<Vec<_>>(),
         vec![
@@ -502,15 +502,15 @@ fn the_front_end_speaks_the_tmux_control_ops_only_through_one_module() {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// 〔THIN〕从 `tests/frontend/shell/tmux_tests.rs`〔散文墓碑〕挪来的三条：那份测试的挂载点 `tmux.rs`
+// 从 `tests/frontend/shell/tmux_tests.rs`〔散文墓碑〕挪来的三条：那份测试的挂载点 `tmux.rs`
 // 随 monitor 侧的 Gate 残留删了；三条守的都是「monitor 里没有某一种 tmux 的路」，人群从一份文件扩到整棵 monitor 生产段。
 // ════════════════════════════════════════════════════════════════════════
 
-/// ★★〔C4e · 第四波 4C〕**monitor 里抓屏一条路都不剩**（零命中 ＋ 正控）。
+/// ★★**monitor 里抓屏一条路都不剩**（零命中 ＋ 正控）。
 ///
-/// 守的要求：`设计/05 §14.3` 逐字「迁到通道之后，业务解释是不是**只有一个家**」——
+/// 守的要求：「迁到通道之后，业务解释是不是**只有一个家**」——
 /// 抓屏的解释今天只住 `src/frontend/ui/tmux-control.ts`；monitor 里再长出一条拼 shell 串抓屏的路，就是同一件事的第二份实现。
-/// 正控：同一份语料里认得出 monitor 那个唯一的起子进程口（〔THIN〕原来认的是 `tmux.rs` 的转调壳，那份文件删了）。
+/// 正控：同一份语料里认得出 monitor 那个唯一的起子进程口（原来认的是 `tmux.rs` 的转调壳，那份文件删了）。
 #[test]
 fn the_monitor_has_no_capture_path_any_more() {
     let (files, corpus) = monitor_production_corpus();
@@ -537,7 +537,7 @@ fn the_monitor_has_no_capture_path_any_more() {
 /// ★ **monitor 里没有一处把目标插进 tmux 命令串**（`-t {…}`，零命中 ＋ 合成语料两向承重）。
 ///
 /// 裸 `-t <名>` 是「精确 → 名字开头 → glob」三级解析（F01，tmux 3.6 实测：只有 `sib-2` 时 `kill-session -t sib` 杀掉 `sib-2`）。
-/// 精确匹配形 `=名:` 只住后端 `control/launch.rs::exact_target`；monitor 这一侧〔THIN〕连那份跨轨锚点也删了 ⇒ 人群恒等 0，
+/// 精确匹配形 `=名:` 只住后端 `control/launch.rs::exact_target`；monitor 这一侧连那份跨轨锚点也删了 ⇒ 人群恒等 0，
 /// 牙压在两份合成语料上（同一把尺子在坏语料上红、在调了 `exact_target` 的语料上不红）。
 #[test]
 fn every_target_placeholder_comes_from_exact_target() {
@@ -593,9 +593,9 @@ fn every_target_placeholder_comes_from_exact_target() {
 }
 
 /// ★★ K-R12（09-04）「同一个口径只有一个家」—— tmux 打印通道的 UTF-8 口径（`INVARIANTS §49`）只住后端
-/// `src/backend/common/tmux_utf8.rs`，monitor 这一侧零份（〔SH1〕monitor 零处跨 SSH 的 tmux 读）。
+/// `src/backend/common/tmux_utf8.rs`，monitor 这一侧零份（monitor 零处跨 SSH 的 tmux 读）。
 ///
-/// 〔IV1 · V121〕要求住址：`INVARIANTS §49`（tmux 打印通道必须是 UTF-8，段数下溢出声）。
+/// 要求住址：`INVARIANTS §49`（tmux 打印通道必须是 UTF-8，段数下溢出声）。
 /// 三件：① 家在、有内容 · ② 家里有下溢谓词、monitor 生产段没有第二份 · ③ 家里两种表示（argv 旗 · env）都在、monitor 不许长出 env 形。
 #[test]
 fn utf8_client_kou_jing_has_one_home_and_this_side_has_none() {

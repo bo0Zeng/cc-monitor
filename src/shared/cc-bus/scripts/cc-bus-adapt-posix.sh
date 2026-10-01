@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# cc-bus-adapt-posix.sh —— ② OS 适配 ＋ ③ 存储适配的 **POSIX 实现**(设计 95 §3.2)。
+# cc-bus-adapt-posix.sh —— ② OS 适配 ＋ ③ 存储适配的 **POSIX 实现**(设计)。
 #
 # 它是今天唯一**真跑在生产上**的那一侧:投递通道 = tmux send-keys,锁 = flock(1)。
 # 只提供函数、不自执行;由 `cc-bus-adapt.sh` 的 `ccbus_adapt_load` source 进来。
@@ -9,7 +9,7 @@
 
 # ── ③ 存储 ─────────────────────────────────────────────────────────────────
 # 能力自陈。`shared_lock=yes` 是 POSIX 这一侧**独有**的那一位 —— Windows 那一侧买不到它,
-# 两边的差就写在这一行上(95 §3ter.7 登记的那条"判不了"在这儿变成一个现打得出来的值)。
+# 两边的差就写在这一行上(登记的那条"判不了"在这儿变成一个现打得出来的值)。
 store_caps() { printf 'os=posix lock=flock shared_lock=yes atomic_append=append-under-flock timestamp=date-iso path=readlink-f\n'; }
 
 # 共享读锁。⚠ 全仓此前 13 处真调用**全是排他**,这是第一处 `-s`:

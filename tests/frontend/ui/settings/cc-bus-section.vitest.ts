@@ -5,7 +5,7 @@
 //   ③ 脏数据的 skipped 计数如实显示，不假装干净。
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { componentSources } from "../../../test-support/component-sources";
-// 〔C4e · 第四波 4C〕查在线 / 发消息 / 收掉 / 派生 / 广播从五条 Tauri 命令改成界面经通道直接说后端的 `bus-*`
+// 查在线 / 发消息 / 收掉 / 派生 / 广播从五条 Tauri 命令改成界面经通道直接说后端的 `bus-*`
 //   （`src/frontend/ui/cc-bus-control.ts`）。本文件判的是驾驶舱的 **DOM 行为**（两步确认 · 登记 ≠ 在线 · 如实呈现），不是通道那一跳 ⇒
 //   生产 `invoke` 换成一层翻译（`chan-fake.ts::ccBusControlShim`）：那几发 `chan_call` 照旧按旧名字交给 `mockInvoke`，
 //   「一条都不发」那几条断言因此仍然数得到真发出去的那一发（通道那一跳的判据在 `tests/frontend/ui/cc-bus-control.vitest.ts`）。
@@ -23,7 +23,7 @@ vi.mock("@tauri-apps/api/core", async () => {
 // 它是 `accounts.ts::isSelectable` 的**第二份实现**，只是住在测试侧 ——
 // 而 `KAY4` 那条零命中守卫的扫描面**按构造**排掉 `.vitest.` 文件（那一行正是「让判据
 // 读不到自己」的机制）⇒ 结构上看不见它。K-A1 把真身的第二项从 `a.loggedIn` 换成
-// `authReady(a)`（〔DUP1〕今天直接读后端算好的 `a.authReady`）之后，这份副本**已经与真身语义相反**：一个 api-key 号
+// `authReady(a)`（今天直接读后端算好的 `a.authReady`）之后，这份副本**已经与真身语义相反**：一个 api-key 号
 // （`loggedIn:false` / `authReady:true`）在真身里可选、在这份替身里不可选
 // ⇒ 本节的 DOM 判据从那天起是照着**过期的规则**断的（D 阶段审计 `R4` 实测）。
 // ⇒ 改成 `vi.importActual` 把**真身整个铺进来**，只覆盖 `fetchAccounts` 一个导出。
@@ -32,7 +32,7 @@ vi.mock("@tauri-apps/api/core", async () => {
 // 那是把本节从「DOM 行为」测成「accounts 的缓存」）；② 没有给它补一条判据钉住
 // 「测试侧不许再手抄纯函数」—— 那要一条新的扫描面（人群是 `.vitest.` 文件本身），
 // 不在本轮写区，`account-availability-guard.vitest.ts` 头注第 5 条已把这条边界写明。
-// 〔FE1〕`fetchAccounts` 拆去了 `account-reads.ts`（规则仍在 `accounts.ts`，用真身）。
+// `fetchAccounts` 拆去了 `account-reads.ts`（规则仍在 `accounts.ts`，用真身）。
 vi.mock("../../../../src/frontend/ui/account-reads", async () => ({
   ...(await vi.importActual<typeof import("../../../../src/frontend/ui/account-reads")>("../../../../src/frontend/ui/account-reads")),
   fetchAccounts: vi.fn(),
@@ -55,7 +55,7 @@ const STATE = {
   skipped: 8, // 任意非零值，只为验证"如实显示"；真实盘面是 5（15 行里 5 畸形 + 3 空行）
 };
 
-/** 等微任务队列排空（section 内部是 async invoke 链）。〔SH1〕读面改经通道（settle ＋ 解码）之后链更长，8 → 24。 */
+/** 等微任务队列排空（section 内部是 async invoke 链）。读面改经通道（settle ＋ 解码）之后链更长，8 → 24。 */
 const flush = async () => {
   for (let i = 0; i < 24; i++) await Promise.resolve();
 };
@@ -135,7 +135,7 @@ describe("B03 登记 ≠ 在线", () => {
 
   it("点某一行的「检查」只查那一行", async () => {
     const s = await setup();
-    // 〔C4e〕查在线问的是整份名单（`bus-list` 请求体里没有 id，挑人在界面）⇒ 替身按人答 `live`；
+    // 查在线问的是整份名单（`bus-list` 请求体里没有 id，挑人在界面）⇒ 替身按人答 `live`；
     //   两人答得不一样，挑错了人那一行就会显示「不在线」—— 「只查那一行」的 id 那一格由此判。
     mockInvoke.mockImplementation(async (cmd: string) => {
       if (cmd === "check_cc_bus_agent_online") return { proj_cc: false, KVM_cc: true };
@@ -163,7 +163,7 @@ describe("B03 登记 ≠ 在线", () => {
     const el = row.querySelector(".cc-bus-online")!;
     expect(el.textContent).toContain("查不到");
     expect(el.textContent).not.toBe("不在线");
-    expect((el as HTMLElement).dataset.state).toBe("error"); // 〔AR1〕状态从类名改成 data-state
+    expect((el as HTMLElement).dataset.state).toBe("error"); // 状态从类名改成 data-state
   });
 });
 
@@ -227,7 +227,7 @@ describe("B03 脏数据如实呈现", () => {
     // 唯一的可选项就是本机。
     const sel = s.element.querySelector(".cc-bus-origin") as HTMLSelectElement;
     expect([...sel.options].map((o) => o.value)).toEqual(["<local>"]);
-    // 〔BS1b 09-24〕派生今天走后端原语 `bus-spawn`，本机与远端同一条路 ⇒ **本机不再禁用**，
+    // 派生今天走后端原语 `bus-spawn`，本机与远端同一条路 ⇒ **本机不再禁用**，
     //   也不再挂那句「本机还不能派生」（原先这一格钉的是「禁用且说明原因」）。
     const spawn = s.element.querySelector(".cc-bus-spawn-go") as HTMLButtonElement;
     expect(spawn.disabled).toBe(false);
@@ -246,7 +246,7 @@ describe("B03 脏数据如实呈现", () => {
     (s.element.querySelector(".cc-bus-read") as HTMLButtonElement).click();
     await flush();
     const metas = [...s.element.querySelectorAll(".cc-bus-meta")].map((e) => e.textContent ?? "");
-    // 〔CP2b〕「cc-spawn 派生」改说「派生」（spawn 是术语表禁档的英文实现词）⇒ 区分改成两向：一边有、一边没有。
+    // 「cc-spawn 派生」改说「派生」（spawn 是术语表禁档的英文实现词）⇒ 区分改成两向：一边有、一边没有。
     expect(metas[0]).toContain("派生");
     expect(metas[1]).not.toContain("派生");
     expect(metas[0]).toContain("/home/user/proj");
@@ -712,10 +712,10 @@ describe("L2：spawn 必须表态用哪个账号（B03 审计重要-5）", () =>
     expect(mockInvoke.mock.calls.filter((c) => c[0] === "cc_bus_spawn")).toHaveLength(0);
   });
 
-  // ── 〔第三波 S3〕本机派生也要能选账号（BS1b 留下的：本机那一格不拉账号列表 ⇒ 只能「不指定」）──
+  // ── 本机派生也要能选账号（BS1b 留下的：本机那一格不拉账号列表 ⇒ 只能「不指定」）──
   const LOCAL = {
     ...ACCTS,
-    origin: LOCAL_ORIGIN, // 〔C4b〕账号面的本机就是 `LOCAL_ORIGIN`（`"__local__"` 已退役）
+    origin: LOCAL_ORIGIN, // 账号面的本机就是 `LOCAL_ORIGIN`（`"__local__"` 已退役）
     accounts: [
       { name: "w", email: "w@x", configDir: "/l/w", isDefault: true, mode: "isolated", exists: true, loggedIn: true, authKind: "subscription", authReady: true },
       { name: "off", email: "", configDir: "/l/o", isDefault: false, mode: "isolated", exists: true, loggedIn: false, authKind: "subscription", authReady: false },
@@ -801,7 +801,7 @@ describe("P4c 广播与收掉", () => {
   const flush = () => new Promise((r) => setTimeout(r, 0));
   const STATE2 = {
     agents: [
-      // 〔SH1〕夹具按 monitor 旧命令的形状写（`chan-fake.ts::ccBusControlShim` 把它翻成后端 `bus-state` 的成品形）。
+      // 夹具按 monitor 旧命令的形状写（`chan-fake.ts::ccBusControlShim` 把它翻成后端 `bus-state` 的成品形）。
       { id: "a_cc", pane: "a_cc:0.0", registered_at: "2026-08-01T00:00:00Z" },
       { id: "b_cc", pane: "b_cc:0.0", registered_at: "2026-08-01T00:00:00Z" },
     ],

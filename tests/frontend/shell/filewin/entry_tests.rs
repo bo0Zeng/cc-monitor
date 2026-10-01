@@ -1,7 +1,7 @@
-//! # 要求住址：`设计/60 §2.3`（开窗前那一屏：列不出来就报错、不开窗）＋ `设计/60 §2.5`（入口与三种落点）
+//! # （开窗前那一屏：列不出来就报错、不开窗）＋（入口与三种落点）
 //!
-//! 核原文：`设计/60 §2.3` 逐字「开窗前那一屏：monitor 侧经宿主注入的同一个句柄问 `files-home`（不给落点时）与 `files-ls`；
-//! 列不出来就带原文报错」（〔MIG-3a · 主会话 09-28 裁 3〕「谁去问」改成窗口进程自己，`60 §2.3` 那句待设计侧改写）；`设计/60 §2.5` 逐字「三种落点与 `filewin/entry.rs::plan_target` 三支一一对应」·
+//! 核原文：「开窗前那一屏：monitor 侧经宿主注入的同一个句柄问 `files-home`（不给落点时）与 `files-ls`；
+//! 列不出来就带原文报错」（〔主会话 09-28 裁 3〕「谁去问」改成窗口进程自己，那句待设计侧改写）；「三种落点与 `filewin/entry.rs::plan_target` 三支一一对应」·
 //! 「判据：入口人群两向相等、`open_file_window` 在包装层外恰好一处」—— 本族判的正是先问后开、三支落点、命令真接到前端。
 
 use super::*;
@@ -19,7 +19,7 @@ fn synth_cfg() -> RemoteConfig {
     }
 }
 
-// 〔MIG-3a · 主会话 09-28 裁 3〕上一版这里两条行为判据判的是 monitor 这一侧先问 home / 先列一屏：
+// 〔主会话 09-28 裁 3〕上一版这里两条行为判据判的是 monitor 这一侧先问 home / 先列一屏：
 //   `an_empty_path_asks_the_remote_for_home_and_opens_nothing_when_it_cannot`〔散文墓碑〕
 //   `a_directory_we_cannot_list_is_an_error_not_a_blank_window`〔散文墓碑〕
 //   那两问进了窗口进程，性质（没给目录才问 home · 列不出来带原话、不开窗）搬到
@@ -60,7 +60,7 @@ async fn without_a_channel_no_window_process_is_started() {
     );
 }
 
-/// 🔴〔MIG-3a · 09-28 裁 3〕**窗口进程列不出来的那句原话原样到 webview**；进程层的错才套「文件窗口没起来」。
+/// 🔴〔09-28 裁 3〕**窗口进程列不出来的那句原话原样到 webview**；进程层的错才套「文件窗口没起来」。
 #[test]
 fn the_window_process_words_reach_the_webview_verbatim() {
     let said = "那台说：没有这个目录 /srv/不在";
@@ -136,7 +136,7 @@ fn this_command_is_wired_all_the_way_to_the_frontend_wrapper() {
 
 /// 🔴 **界面上点得到它。** 这一条是「用户第一次真能打开那个窗口」的**落点判据**。
 ///
-/// 上一刀（`设计/60 §5.4c` 的 `sftp_chmod`）留下的欠账逐字是「**前端没有入口**」——
+/// 上一刀（`sftp_chmod`）留下的欠账逐字是「**前端没有入口**」——
 /// 命令到包装层为止，没有任何界面调它。⇒ 这一条就是不让同一件事再发生一次：
 /// 包装层**之外**必须有至少一处**调用形状**（`.open_file_window(`）。
 ///
@@ -170,17 +170,17 @@ fn some_ui_file_other_than_the_wrapper_actually_calls_it() {
     assert!(
         !sites.is_empty(),
         "整个 `src/` 里没有一处**调用** `open_file_window` —— \
-         那就又是一条「命令有了、前端没有入口」的欠账（`设计/60 §5.4c` 补记那一形）"
+         那就又是一条「命令有了、前端没有入口」的欠账（补记那一形）"
     );
 }
 
 /// 🔴 **空路径那一支真的去问 home，而且排在列目录前面；monitor 这一侧一问都不问。**
 ///
-/// 〔MIG-3a · 主会话 09-28 裁 3〕射程从 `entry.rs` 换到 `proc.rs::first_screen`：那两问进了窗口进程。
-/// 〔P4〕窗口独立成包：`first_screen` 随窗口进程那一半住窗口包的 `proc.rs`；monitor 那一侧的 `proc.rs`（起进程）同 `entry.rs` 一起判零 SFTP。
+/// 〔主会话 09-28 裁 3〕射程从 `entry.rs` 换到 `proc.rs::first_screen`：那两问进了窗口进程。
+/// 窗口独立成包：`first_screen` 随窗口进程那一半住窗口包的 `proc.rs`；monitor 那一侧的 `proc.rs`（起进程）同 `entry.rs` 一起判零 SFTP。
 /// 行为那一半（没给目录才问 · 问的顺序）住 `proc_tests::the_first_screen_asks_home_only_when_told_nothing`；
 /// 本条钉结构：① `first_screen` 里 home 那一问排在列目录前面、用的是 `files-home` 那个常量；
-/// ② `entry.rs` 生产段里**没有**问后端的写法（宿主句柄 · 两问的命令常量）—— 那正是 `99 §2.1 ⑬` 待迁那一行删掉的理由。
+/// ② `entry.rs` 生产段里**没有**问后端的写法（宿主句柄 · 两问的命令常量）—— 那正是待迁那一行删掉的理由。
 ///
 /// ⚠ **它买不到那一跳是对的**，只买到它在、在前面、monitor 这一侧不在。别读宽。
 #[test]
@@ -223,7 +223,7 @@ fn the_empty_path_branch_goes_through_the_one_home_resolver_before_listing() {
             "`entry.rs` 生产段里又出现了 `{needle}` —— monitor 这一侧又替窗口问后端了"
         );
     }
-    // 〔F7a · 第三波 09-24〕一处 SFTP 都不许有。针拼出来，免得命中本文件。
+    // 一处 SFTP 都不许有。针拼出来，免得命中本文件。
     let pool = format!("sftp_{}::", "pool");
     assert!(
         !entry.contains(pool.as_str())
@@ -234,7 +234,7 @@ fn the_empty_path_branch_goes_through_the_one_home_resolver_before_listing() {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// 🔴〔第十刀 2026-09-22〕三者优先级 —— `P3` 的最后一格功能前置
+// 🔴三者优先级 —— `P3` 的最后一格功能前置
 // ════════════════════════════════════════════════════════════════════════
 //
 // 老面板 `open()` 有三种入口模式，窗口此前只覆盖两种。差的那一格是 **F54**：
@@ -310,7 +310,7 @@ fn a_reveal_request_we_cannot_split_is_an_error_not_a_silent_home() {
     assert!(plan_target("", Some("/a/b.txt")).is_ok());
 }
 
-/// 〔P4〕开窗种子里那台的名字 ＝ `RemoteConfig::origin_label`（`label` 为空时回退到 `host`）——
+/// 开窗种子里那台的名字 ＝ `RemoteConfig::origin_label`（`label` 为空时回退到 `host`）——
 /// 原住 `shell_tests::every_source_has_a_non_empty_label` 的后一半：窗口只拿名字之后，「名字怎么从配置来」是开窗入口这一侧的事。
 #[test]
 fn the_seed_names_the_machine_by_its_origin_label() {

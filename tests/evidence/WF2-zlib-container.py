@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""WF2 · 要求住址：`设计/15 §3.3`「SSH 那一跳：按判准压」· `第四波记录/WIN3.md §2` 读数 A（压缩链路上 > 32000 字节不可压数据写失败）。
+"""要求：「SSH 那一跳：按判准压」（压缩链路上 > 32000 字节不可压数据写失败）。
 
 一次性容器 sshd（alpine 3.20 · OpenSSH · `Compression yes`，**只绑 127.0.0.1**、随机口）上跑 `dial_compress_tests` 里的两条
 `#[ignore]` 读数（过滤串 `zr_real_sshd`）：ZR（可压载荷，强制压 vs 不压）· ZR2（经 `sftp::put_atomic` 放 33000 字节与 1 MiB 不可压字节）。

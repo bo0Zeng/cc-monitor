@@ -17,7 +17,7 @@
 //! ⚠ 条 43 是 2026-09-22 才有的（`P20` 现打之后用户拍板升格）：
 //! 在那之前本表**一直在管、却点不到任何要求**，而那天它**还在长**
 //!（当天加了那个 10ms 轮询，今住 `filewin/proc.rs::early_failure`）⇒ 活着的缺口，不是历史遗留。
-//! 逐条依据住 `设计/99 §4.10.2`。
+//! 逐条依据住。
 //!
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -35,7 +35,7 @@ const REGISTERED: &[(&str, &str, usize, &str)] = &[
              `loop { sleep(10s); cleanup_dead() }` —— 无限、周期、无上限。\
              它清的是「死 pid 的 HWND 绑定」。**事件源存在但没用**：pid 死亡本可由内核事件\
              （Windows job object / backend 侧那套 pidfd）推回来，今天是靠 10s 扫一遍。\
-             〔第二波 T4 09-24〕**它从此也是 ↗ 令牌路的「死绑定周期清」**（`设计/80 §0.1` ④、LF1）：\
+**它从此也是 ↗ 令牌路的「死绑定周期清」**（LF1）：\
              `bind.rs::resolve_remote_front` 按令牌查的就是这张表，PS 死了 ⇒ 10s 内被这里清掉 ⇒ \
              按令牌查不到 ⇒ 走标题退路、归因照「有令牌」那一句说。**节拍归 `bind.rs::BindRegistry`**\
              （`spawn_heartbeat` 起，与 monitor 进程同寿）；↗ 那一侧**没有另起第二个节拍器** —— \
@@ -66,16 +66,16 @@ const REGISTERED: &[(&str, &str, usize, &str)] = &[
         "src/remote_resident.rs",
         "wait-for-condition",
         1,
-        "〔HOST · V139〕`tunnel_when_bound`（〔WF2〕编排住 `retry_tunnel`）的 30×200ms（≤6 s）：远端 `--resident-ensure` 起了一个脱离的常驻后端、\
+        "`tunnel_when_bound`（编排住 `retry_tunnel`）的 30×200ms（≤6 s）：远端 `--resident-ensure` 起了一个脱离的常驻后端、\
              后端**不等它 bind**（后端零定时器）⇒ 这里等**那台回环口上有人在听**这个一次性条件（开隧道成功即止），\
-             有次数上限，等不到就如实报「连不上」、交重连那一层；〔WF2〕远端回拒码是「不许端口转发」⇒ 当场停、不等。\
+             有次数上限，等不到就如实报「连不上」、交重连那一层；远端回拒码是「不许端口转发」⇒ 当场停、不等。\
              不是节拍器：只在接那台常驻后端的那一趟跑。",
     ),
     (
         "src/dial_host.rs",
         "wait-for-condition",
         1,
-        "〔SR1a 09-24〕`local_channel` 的 60×50ms（≤3 s）：等**本机常驻后端那条流的 hello 到了**\
+        "`local_channel` 的 60×50ms（≤3 s）：等**本机常驻后端那条流的 hello 到了**\
              （`<local>` 那条入方向客户端登记上）—— monitor 刚起、本机后端刚接上的那个窗口里，\
              远端链路要经它开。**一次性条件、有次数上限**，等到就走、等不到就如实报「本机后端不在」\
              （`D11`：不起代理进程、不进程内拨）。不是节拍器：没有链路要开时它根本不跑。",
@@ -106,11 +106,11 @@ const REGISTERED: &[(&str, &str, usize, &str)] = &[
              （而它也顺手把 `EADDRINUSE` 挪到宿主手里）。",
     ),
     (
-        // 〔P4〕`early_failure` 随「起进程那一侧」留在 monitor（从前住窗口的 `shell.rs`）。
+        // `early_failure` 随「起进程那一侧」留在 monitor（从前住窗口的 `shell.rs`）。
         "src/filewin/proc.rs",
         "wait-for-condition",
         1,
-        "🔴〔第十一刀 2026-09-22〕`early_failure` 里那一跳 10ms 轮询：\
+        "🔴`early_failure` 里那一跳 10ms 轮询：\
              等「开窗那条线程是不是当场就死了」，**最多 300ms**（`EARLY_FAILURE_BUDGET`）。\
              它补的是一个**静默成功** —— 入口那条命令此前把开窗句柄 `let _ = …` 丢掉，\
              而同一进程里第二次开窗**必然失败**（winit 的进程级事件循环标志）\
@@ -119,14 +119,14 @@ const REGISTERED: &[(&str, &str, usize, &str)] = &[
              ⚠ 为什么不用条件变量／`JoinHandle` 的阻塞等：阻塞等会把这条命令\
              挂在**窗口的整个寿命**上（`run_native` 要占着那条线程直到窗口关闭）——\
              那正是 `entry.rs` 头注②那条注释禁的事。⇒ 只能是「等一个短预算」。\
-             退役归：哪天窗口改成**常驻一个事件循环**（`设计/60 §4.8` 那个进程形态\
-             要重定，见 `99 §4.9` 那条待裁），第二次开窗不再是失败 ⇒ 这一跳就没用了。",
+             退役归：哪天窗口改成**常驻一个事件循环**（那个进程形态\
+             要重定，那条待裁），第二次开窗不再是失败 ⇒ 这一跳就没用了。",
     ),
-    // 〔STOP〕`src/stop_grace.rs` 那一行（wait-for-condition 1 处：「停」之后每 100ms 看一眼它退了没有）随文件删了 ——
+    // `src/stop_grace.rs` 那一行（wait-for-condition 1 处：「停」之后每 100ms 看一眼它退了没有）随文件删了 ——
     //   「请它收尾 → 等 → 强杀」搬进那台机器上的一次性子命令 `--resident-stop`（等在 pidfd 上，不轮询），monitor 只拿回结局。
-    // 〔LOC1b · 第四波 4D〕`src/search.rs` 那一行（`startup-delay` 1 处：`build_blocking` 起头让路 1.5 s）随本机内存索引删了 ——
+    // `src/search.rs` 那一行（`startup-delay` 1 处：`build_blocking` 起头让路 1.5 s）随本机内存索引删了 ——
     //   本机全文搜索改问本机后端（`history-search`），monitor 不再建索引。
-    // 〔C2 09-24〕`src/port_forward.rs` 那一行（accept 瞬时错误 100ms 退避）**删了**：accept 循环整个搬进了
+    // `src/port_forward.rs` 那一行（accept 瞬时错误 100ms 退避）**删了**：accept 循环整个搬进了
     //   后端的拨号代理（`src/backend/dial/uses.rs::forward`），而后端不许睡 ⇒ 那一侧改成「accept 失败就收工并出声」。
     // ★★ 🔴 `K-R59`（09-11）：**这里原来是本表抓到的第二个真节拍器，那一条今天退役了。**
     //    它是 `src/ssh_source.rs` 的 `BACKENDLESS_POLL_INTERVAL = 2s`（`loop { …; sleep(2s) }`），
@@ -137,7 +137,7 @@ const REGISTERED: &[(&str, &str, usize, &str)] = &[
     //      而且不是走「自动部署可靠了」那条路，是直接取消那一档。**
     //    ★ 这一条与 `watcher.rs` 那条（F11）同形：**退役的验收证据就是本表先红在
     //      「少一处 = 退役了」上，删掉登记才绿。** 不是靠人说「我改好了」。
-    // 〔SR1b · 2026-09-24〕`src/inproc_dial.rs` 那一行（`RACE_STAGGER * i`：进程内多端点竞速的错开起拨，C2 从 `ssh_source.rs`
+    // `src/inproc_dial.rs` 那一行（`RACE_STAGGER * i`：进程内多端点竞速的错开起拨，C2 从 `ssh_source.rs`
     //   原样搬去的那一份）摘了 —— 那份文件整份删了（界面进程零 SSH）。竞速今天住本机后端 `dial/connect.rs`（同时起拨：后端零定时器）。
     (
         "src/ssh_source.rs",
@@ -149,20 +149,20 @@ const REGISTERED: &[(&str, &str, usize, &str)] = &[
              连上之后由 `stream_loop` 阻塞驱动；断线才回到这里。上限 30s 是明写的常量。",
     ),
     (
-        // 〔P4 · 阶段 H〕2 → 1：① 那处（resize 稳定检测，WebView2 错位修复的去抖）随 Windows 那段搬进 `platform/window.rs`（下一行）。
+        // 2 → 1：① 那处（resize 稳定检测，WebView2 错位修复的去抖）随 Windows 那段搬进 `platform/window.rs`（下一行）。
         "src/lib.rs",
         "wait-for-condition",
         1,
         "有终止条件：`remote-bind-scan` 的 `for _ in 0..15`（每 ~0.6s、最多 ~9s，命中即停；\
-             〔U2〕带启动令牌的会话不起这条线程，见 `lib.rs::wants_title_prescan`）。**不是节拍器。**\
-             〔CF1 · 第四波 09-24〕**3 → 2**：原来的第三处「frontend-ready 之后 10ms 一拍等本机 watcher 首扫完成（10s 上限）」\
+带启动令牌的会话不起这条线程，见 `lib.rs::wants_title_prescan`）。**不是节拍器。**\
+**3 → 2**：原来的第三处「frontend-ready 之后 10ms 一拍等本机 watcher 首扫完成（10s 上限）」\
              随本机 watcher 删了 —— 本机会话内容改走本机后端的 `line` 帧之后与远端同形，replay 不等。",
     ),
     (
         "src/platform/window.rs",
         "wait-for-condition",
         1,
-        "〔P4 · 阶段 H〕原 `lib.rs` 那两处的 ①：resize 稳定检测 `loop { sleep(60ms); if now == last { break } }`\
+        "原 `lib.rs` 那两处的 ①：resize 稳定检测 `loop { sleep(60ms); if now == last { break } }`\
              （WebView2 最大化 / 全屏后内容错位修复的去抖，Windows 那段随平台臂搬来）。有终止条件，**不是节拍器**。",
     ),
     (
@@ -172,7 +172,7 @@ const REGISTERED: &[(&str, &str, usize, &str)] = &[
         "两处 `CHUNK_PAUSE_MS`：分块 emit 之间让 UI 喘一口。\
              **上界是 `chunk_total`**（`if idx + 1 < chunk_total` 才 sleep），最后一块不停。",
     ),
-    // 〔LOC1b · 第四波 4D〕`src/session_map.rs` 那条 `ticker`（`recv_timeout(2s)` 心跳，对每个本机会话跑 `is_process_alive`〔散文墓碑〕）
+    // `src/session_map.rs` 那条 `ticker`（`recv_timeout(2s)` 心跳，对每个本机会话跑 `is_process_alive`〔散文墓碑〕）
     //   **真退役**，按它自己写的出路：「事件源存在但住在别的 crate」—— 本机判活改由本机后端的帧来（后端 pidfd 看守
     //   ＋ Windows 的死亡事件，RT1 F9 真机读数：后端 1 ms 就醒），monitor 那份判活连同这条心跳一起删了。
 ];
@@ -190,7 +190,7 @@ fn production(raw: &str) -> String {
 fn rust_files() -> Vec<(String, String)> {
     let src = root().join("src");
     let mut out = Vec::new();
-    // 〔P4〕人群 ＝ 本 crate 的 `src/` ＋ manifest 明写的兄弟包（窗口包 · 通道 · 宿主原语 · 开窗契约，
+    // 人群 ＝ 本 crate 的 `src/` ＋ manifest 明写的兄弟包（窗口包 · 通道 · 宿主原语 · 开窗契约，
     //   `guard_core::population_trees`）—— monitor 的代码搬进去了，人群不变；兄弟包的键带包名。
     let trees =
         std::iter::once(("src".to_string(), src.clone())).chain(guard_core::population_trees(&src));
@@ -240,7 +240,7 @@ fn is_call_of(line: &str, name: &str) -> bool {
 
 /// 一处「周期唤醒」的源码形态 —— 按**调用**取样，不按路径拼法取样。
 ///
-/// # 〔audit-0805 08-06〕原来锚的是路径，于是锚点其实落在 `use` 那一行
+/// # 原来锚的是路径，于是锚点其实落在 `use` 那一行
 ///
 /// 旧口径是三个带路径的串（`thread::sleep` / `time::sleep` / `time::interval`）。
 /// 那意味着：只要**导入形态**变一下，整处唤醒就隐形。实测：
@@ -282,7 +282,7 @@ fn wake_hits(prod: &str) -> usize {
 /// ★ 抽取器自检：扫不到文件 / 剥太狠时，下面几条会零命中地绿。
 #[test]
 fn the_scan_actually_reads_the_monitor_rust_tree() {
-    // 匹配器自检（〔audit-0805 08-06〕两个方向都钉）：
+    // 匹配器自检（两个方向都钉）：
     for s in [
         "        sleep(Duration::from_secs(5)).await;",
         "    let mut t = interval(Duration::from_secs(1));",
@@ -397,7 +397,7 @@ fn every_ticker_names_its_event_source_and_owner() {
     assert_eq!(
         tickers, 1,
         "登记表里的 ticker 条数变了（实测 1 条：`bind.rs::run_heartbeat` 10s；\
-             〔LOC1b · 4D〕`session_map.rs` 的 2s 心跳**真退役** —— 本机判活改由本机后端的帧来，2 → 1）。\n\
+`session_map.rs` 的 2s 心跳**真退役** —— 本机判活改由本机后端的帧来，2 → 1）。\n\
              多一条 ⇒ 新增了真节拍器，必须单独论证；少一条 ⇒ 退役了，把账拧下来。\n\
              ⚠ **这个数最近走过 2 → 4 → 3 → 2，四次都不是回归**，值得一并读懂：\n\
              · 2 → 4（08-10 devbench **F07**）：把 `recv_timeout` 收进针时 `watcher.rs` 的 100ms \
@@ -413,7 +413,7 @@ fn every_ticker_names_its_event_source_and_owner() {
              实际走的是另一条路 —— **那一档整个取消**。\n\
              · 剩下的 `session_map.rs` 那条退役归 **F12**，被 `unified-backend` 的 **U4b** 挡着\
              （backend 侧 Windows 判活是诚实空壳，而本条治的 bug 恰恰是 Windows 场景）。\
-             〔WN1 · 09-24：那个空壳的 Windows 格已由 `pidwatch/win32.rs` 接走 ⇒ F12 可以开工〕。"
+             〔09-24：那个空壳的 Windows 格已由 `pidwatch/win32.rs` 接走 ⇒ F12 可以开工〕。"
     );
 }
 
@@ -454,7 +454,7 @@ fn every_ticker_names_its_event_source_and_owner() {
 /// （比如新开 `windows.rs` + 改 `mod.rs` 的 `cfg`），本条**看不见** ——
 /// 那时 `mod.rs` 的 `cfg` 会变，而本条不读它。⇒ 它是个闹钟，不是围栏。
 ///
-/// # 🔴 〔WN1 · 09-24〕**闹钟响过了，而且正是上面那句预言的形状**
+/// # 🔴 **闹钟响过了，而且正是上面那句预言的形状**
 ///
 /// U4b 落在一份新文件里（`pidwatch/win32.rs` ＋ `mod.rs` 的 `cfg` 改成 Windows 走它），
 /// `fallback.rs` 一个字的行为都没变 ⇒ 旧版本条会**继续绿**、一声不响 —— 头注自己写的那个盲区。
@@ -539,7 +539,7 @@ fn the_one_real_ticker_still_looks_like_a_ticker() {
 ///
 /// # 它补的是哪个洞（F12 的 `/full-audit` 逮到的）
 ///
-/// 〔`设计/50`：下面这段讲的 `account_usage.rs` 已整删，留着是因为它解释的是
+/// 〔：下面这段讲的 `account_usage.rs` 已整删，留着是因为它解释的是
 /// **本表为什么要另开一张**，不是在描述今天的盘面。〕
 /// `account_usage.rs` 在 Rust 里**拼出**一条 shell 轮询循环
 /// （`while [ $i -lt N ]; do sleep 0.5; tmux capture-pane …`），而：
@@ -569,7 +569,7 @@ const SHELL_WAKES: &[(&str, &str, &str, usize, &str)] = &[
     //    `tokio::time::sleep`（**归 `REGISTERED`**，不再是 shell 形态），
     //    看门狗那一半整个搬进后端（`control/oneshot_session.rs` 的外部进程）。
     //    **认领人来了。**
-    // 〔`设计/50`〕上面整段是**考古**：用量 ③ 轴（探针）整轴退役 ⇒ 那两处唤醒
+    // 上面整段是**考古**：用量 ③ 轴（探针）整轴退役 ⇒ 那两处唤醒
     //    连同它们的新住址一起没了（`REGISTERED` 里那条 `account_usage.rs` 已删、
     //    backend 的 `control/oneshot_session.rs` 也已删）。本表**仍然是空的**，
     //    而空的理由从「搬走了」变成「那件事不做了」。零命中守卫照旧管这一族。
@@ -614,12 +614,12 @@ fn the_shell_wake_scan_is_neither_too_narrow_nor_too_wide() {
     // ★ **画大了会怎样**：摸底时 `for i in` 误命中了 `find_ci` 里那个 Rust `for i in 0..n`。
     //   这条把那次教训钉住 —— 模式面不许收到 Rust 的循环写法。
     //
-    // ⚠ **标的搬家了，本条跟着搬**〔`K-R100` 09-13〕：那个循环原先住 `src/search.rs`，
+    // ⚠ **标的搬家了，本条跟着搬**：那个循环原先住 `src/search.rs`，
     //   收口后随 `find_ci` 搬进共享 crate `src/common/search-core/src/lib.rs`
     //   （`rust_files()` 只走 `src/`，够不着）。⇒ 直接按住址读，别让本条以
     //   「`search.rs` 里那个循环不见了」的形态红 —— **报的方向是错的**，
     //   它不见了不是因为有人删了它，是因为它搬走了。
-    // 〔P1〕又搬一次：`search-core` 拆进后端，`find_ci` 随通用口径住 `src/backend/observe/search_rules.rs`。
+    // 又搬一次：`search-core` 拆进后端，`find_ci` 随通用口径住 `src/backend/observe/search_rules.rs`。
     let anchor = crate::guard_support::repo_src_root().join("backend/observe/search_rules.rs");
     let search = production(&fs::read_to_string(&anchor).unwrap_or_default());
     assert!(

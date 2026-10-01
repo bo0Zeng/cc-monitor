@@ -1,14 +1,14 @@
-//! 〔HX1 · 4D · 主会话裁 HX1 拍板项 4〕**后端建自家目录的那一个函数** —— 判据。
+//! 〔主会话裁 HX1 拍板项 4〕**后端建自家目录的那一个函数** —— 判据。
 //!
-//! 守的要求（住址）：主会话裁「建自家目录收成一个小函数，五处（`exit_policy` · `asset_catalog` · `relay/door` · 远端 SFTP 部署建目录 ·
+//! 守的要求（住址）：「建自家目录收成一个小函数，五处（`exit_policy` · `asset_catalog` · `relay/door` · 远端 SFTP 部署建目录 ·
 //! `local_backend.rs` 释放目录）都走它（0700、已存在不动），判据：生产段建 `~/.cc-monitor` 的调用点 == 那个函数一处（两向，带正控）」；
-//! RK1 报备 §5.4（首建按 umask）。设计与读数住 `调研/第四波记录/HX1.md` §6。
+//! RK1 报备 §5.4（首建按 umask）。设计与读数住 §6。
 //!
 //! | # | 判据 | 形状 |
 //! |---|---|---|
 //! | O1 | 新建 ⇒ 0700；已在的 0755 ⇒ 仍 0755；父目录不在 ⇒ 照实报错 | 真目录，两向 |
 //! | O2 | 后端生产段**每一处建目录**（`fs::create_dir` · `create_dir_all` · `DirBuilder` · SFTP `.create_dir(`）的所在 (文件, 函数) 集合 == 登记表；登记表里建「后端自家目录」的那一格 == {`own_dir.rs::ensure_private_dir` · 远端 `dial/sftp.rs::make_dir`} | 两向相等 ＋ 正控（合成语料里多一处 `create_dir` 必被认出） |
-//! | O3 | 七个调用方（六份第四层 ＋ 暂存区；〔V160〕凭据与历史注解那一层就是数据目录 `~/.cc-monitor`）各经它恰好一处；远端那一处用的是同一个权限位常量 | 文本 |
+//! | O3 | 七个调用方（六份第四层 ＋ 暂存区；凭据与历史注解那一层就是数据目录 `~/.cc-monitor`）各经它恰好一处；远端那一处用的是同一个权限位常量 | 文本 |
 
 #[cfg(unix)]
 use super::*;
@@ -87,14 +87,14 @@ const DIR_CREATORS: &[(&str, &str, &str)] = &[
         "make_parents",
         "用户的目录（`files-put` 显式要了父目录）",
     ),
-    // 〔W5-FILES 与 HX1 合并〕复制目录的执行趟逐条建目录（`files-copy` 的 `recursive: true`，`设计/60 §7 #6`）。
+    // 〔W5-FILES 与 HX1 合并〕复制目录的执行趟逐条建目录（`files-copy` 的 `recursive: true`）。
     //   HX1 立本表时它还在另一棵树上 ⇒ 两边各自绿、合起来才红，按实数 +1。
     (
         "control/files_write.rs",
         "copy_planned",
         "用户的目录（`files-copy` 复制目录，逐条建）",
     ),
-    // 〔FILES2 · 第四波 09-27〕解压（`设计/60 §6.2` Q3）两处，按实数 +2：都是用户的目录，不是 `~/.cc-monitor` 一族。
+    // 解压两处，按实数 +2：都是用户的目录，不是 `~/.cc-monitor` 一族。
     (
         "control/files_extract.rs",
         "extract_with",
@@ -105,9 +105,9 @@ const DIR_CREATORS: &[(&str, &str, &str)] = &[
         "land_dir",
         "用户的目录（`files-extract` 包里的目录，逐条建）",
     ),
-    // 〔DATA-HOME · V160〕`history/history_annotations.rs::lock_for_write` 那一行（数据目录那一层）也摘了 −1：
+    // `history/history_annotations.rs::lock_for_write` 那一行（数据目录那一层）也摘了 −1：
     //   数据目录默认就是 `~/.cc-monitor` ⇒ 改走 `own_dir::ensure_private_dir`（进 O3 的调用方表）。
-    // 〔DATA-HOME · V160〕`accounts/upstream_select/file_face.rs::write_at` 那一行（凭据文件那一层）摘了 −1：
+    // `accounts/upstream_select/file_face.rs::write_at` 那一行（凭据文件那一层）摘了 −1：
     //   凭据文件住数据目录根上 ＝ `~/.cc-monitor` 本身 ⇒ 改走 `own_dir::ensure_private_dir`（进 O3 的调用方表）。
 ];
 
@@ -169,7 +169,7 @@ fn o3_the_five_callers_go_through_it_and_the_remote_one_shares_the_mode() {
         "relay/door.rs",
         "assets/skill_ledger.rs",
         "control/files_commit.rs",
-        // 〔DATA-HOME · V160〕+2：凭据文件与历史注解那一层都是数据目录（默认 `~/.cc-monitor`）。
+        // +2：凭据文件与历史注解那一层都是数据目录（默认 `~/.cc-monitor`）。
         "accounts/upstream_select/file_face.rs",
         "history/history_annotations.rs",
     ] {

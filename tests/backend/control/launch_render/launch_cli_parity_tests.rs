@@ -19,7 +19,7 @@ fn the_fixture_default_launcher_is_the_one_the_backend_says() {
     );
 }
 
-// 〔LR1 · U8c-3〕这里原来有三条：两条拿后端现场产出去逐字节钉 TS 渲染器源码里还留着的
+// 这里原来有三条：两条拿后端现场产出去逐字节钉 TS 渲染器源码里还留着的
 // 能力清单与两句「维度 …」降级理由（TS 渲染器已删，被钉的那一侧没了 ⇒ 整条退役；
 // 清单今天只有 `ccm_invocation.rs` 一份，`tests/e2e/ccm-contract-parity.sh` 改抽它），
 // 一条钉「`accounts.ts` 用计算键读 wire 键名」—— 那条与渲染器无关，搬去了它的生成器旁边
@@ -37,9 +37,9 @@ fn the_fixture_covers_both_ok_and_refusal() {
     );
     let ok = f.cases.iter().filter(|c| c.ok).count();
     let refused = f.cases.len() - ok;
-    // 〔LR1〕改成**相等**（原是 ≥9 / ≥7 的地板）：两类各自的条数是用例表写死的，
+    // 改成**相等**（原是 ≥9 / ≥7 的地板）：两类各自的条数是用例表写死的，
     // 地板只挡「少」、挡不住「某条 refusal 悄悄变成 ok」—— 而那一条恰恰让 ok 数变多。
-    // 实数：13 ok（原 9 ＋ print-parity 4）＋ 7 refusal（〔MIG-2〕8 → 7：「没探出来」那一态产不出来了）。
+    // 实数：13 ok（原 9 ＋ print-parity 4）＋ 7 refusal（8 → 7：「没探出来」那一态产不出来了）。
     assert_eq!(ok, 13, "ok 类条数变了（实数 13）");
     assert_eq!(
         refused, 7,
@@ -77,7 +77,7 @@ fn rust_cli_rendering_matches_the_typescript_golden_byte_for_byte() {
     );
 }
 
-/// 〔MIG-2 · `99 §2.1 ⑬`〕生产那一格的能力问的是这台后端自己（`ccm_launcher_with(TMUX_PLATFORM)`，与 `--ccm-probe` 同一份），
+/// 生产那一格的能力问的是这台后端自己（`ccm_launcher_with(TMUX_PLATFORM)`，与 `--ccm-probe` 同一份），
 /// 不是一份写死的表：能力齐全的那条用例在生产命令上照样渲得出、与夹具期望逐字节同。
 #[test]
 fn the_production_cli_render_asks_this_backend_for_its_own_capabilities() {
@@ -121,7 +121,7 @@ fn shell_words(line: &str) -> Vec<String> {
     out
 }
 
-/// 设计/01 §6.7b（「`ccm` 就是后端本身」）：〔MIG-2〕渲染器搬进后端之后，与 `ccm` 那套 argv 的**唯一解析口**同在一个 crate ——
+/// （「`ccm` 就是后端本身」）：渲染器搬进后端之后，与 `ccm` 那套 argv 的**唯一解析口**同在一个 crate ——
 /// 渲出来的每一行 `ccm …`（夹具里全部 ok 用例）都得被 `control::ccm::argv::parse` 收下（异源：渲染一侧 vs 解析一侧）。
 /// 它是 `protocol_doc_guard::TERMINAL_SURFACE_FILES` 里 `ccm_invocation.rs` 那一格的接盘判据（那份文件的 `--旗标` 是终端面，不是 wire 面）。
 #[test]

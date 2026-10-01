@@ -1,5 +1,5 @@
 /**
- * `设计/30` 的落盘契约（`§4` 那个 `tabBar` 段）的判据 ——
+ * 落盘契约（`tabBar` 段）的判据 ——
  * `§C`（顺序）与 `§B`（固定）两个键住同一个文件，所以判据也住同一份。
  *
  * # 它买什么
@@ -23,7 +23,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-// 〔CFG1〕config 写只交补丁；替身把补丁应用到 `loadConfig` 摆的那份上，写完的整份交 `fakeCfg.saved`
+// config 写只交补丁；替身把补丁应用到 `loadConfig` 摆的那份上，写完的整份交 `fakeCfg.saved`
 // （补丁语义与 Rust 写口同一份金样，见 `tests/frontend/ui/config-patch-fake.ts`）。
 vi.mock("../../../src/frontend/ui/config", async (orig) => (await import("./config-patch-fake")).mockedConfigModule(orig));
 
@@ -179,7 +179,7 @@ describe("③ 量具自检：`sanitizePinned` 真的在清（不过这格，下�
       name: null,
       title: "a",
     });
-    // 〔C4a · `设计/05 §8` 步 2〕origin 不是非空字符串 ⇒ **整条丢**：本机也有名字（`"<local>"`），
+    // origin 不是非空字符串 ⇒ **整条丢**：本机也有名字（`"<local>"`），
     //   盘上的旧 `null` / 空串 / 缺键都复活不出「哪台机器」，猜成本机正是步 2 治的那件事。
     expect(
       sanitizePinned([
@@ -310,7 +310,7 @@ describe("⑦ 🔴 两条路交替写一份**真的在内存里**的 config —�
   let disk: Record<string, unknown>;
   beforeEach(() => {
     vi.clearAllMocks();
-    // 〔GRP1 · V140〕组表只有 `{id, name}`；组员关系住同段的 `tabBar.groupOf.<sid>` —— 顺序 / 固定两条路也不许碰它。
+    // 组表只有 `{id, name}`；组员关系住同段的 `tabBar.groupOf.<sid>` —— 顺序 / 固定两条路也不许碰它。
     disk = { tabCollections: [{ id: "c1", name: "保留我" }], tabBar: { groupOf: { z: "c1" } } };
     mockLoad.mockImplementation(async () => JSON.parse(JSON.stringify(disk)) as never);
     mockSave.mockImplementation(async (v: unknown) => {
@@ -327,7 +327,7 @@ describe("⑦ 🔴 两条路交替写一份**真的在内存里**的 config —�
     expect(seg.order, "最后一趟的顺序没落上").toEqual(["b", "a"]);
     expect(seg.pinned, "🔴 第三趟（写 order）把 `pinned` 冲掉了").toEqual([pin({ sid: "b" })]);
     expect(disk.tabCollections, "两条路谁把集合动了").toEqual([{ id: "c1", name: "保留我" }]);
-    expect(seg.groupOf, "〔GRP1〕两条路谁把 tab 的组 id 动了").toEqual({ z: "c1" });
+    expect(seg.groupOf, "两条路谁把 tab 的组 id 动了").toEqual({ z: "c1" });
   });
 
   it("反向也走一遍：pinned → order → pinned", async () => {

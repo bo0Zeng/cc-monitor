@@ -1,7 +1,7 @@
 /**
- * 〔DUP3 · 主会话 09-26 裁 J9〕上游 base URL 能不能用：界面读的生成物（`baseUrlIssue`）与共用金样逐条对。
+ * 上游 base URL 能不能用：界面读的生成物（`baseUrlIssue`）与共用金样逐条对。
  *
- * 住址：`设计/90 §3` 判据 2「凡是有对应 `*-core` crate 的判定，TS 侧零实现」—— 规则住 `upstream_url_core::usable`，
+ * 要求：「凡是有对应 `*-core` crate 的判定，TS 侧零实现」—— 规则住 `upstream_url_core::usable`，
  * monitor 现生成式子进 `src/frontend/ui/generated/judgment-rules.ts`；Rust 那一侧 `payload_judgment_rules.rs::the_upstream_url_golden_agrees_with_the_one_rule`
  * 读同一份金样 ⇒ 两侧各对金样，不是彼此对拍。
  */

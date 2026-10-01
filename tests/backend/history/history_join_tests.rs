@@ -1,8 +1,8 @@
-//! 〔C4d · 第四波 4B〕历史跨机 join（本机常驻后端出成品）的判据。
+//! 历史跨机 join（本机常驻后端出成品）的判据。
 //!
 //! # 守的要求（住址）
 //!
-//! 主会话 09-25 裁（`调研/第四波记录/C4d.md`「主会话裁」第 2 条，逐字）：「本机后端经 `remote_ask` 问远端那台的项目 / 会话清单、
+//! 主会话 09-25 裁（「主会话裁」第 2 条，逐字）：「本机后端经 `remote_ask` 问远端那台的项目 / 会话清单、
 //! 并上注解、出成品；前端经 `chan.call`。codex 合成的项目与会话一起进后端（join 只一个家）」。
 //! `K-R83` / `K-R92`（从 monitor `remote_history_kr83_tests.rs` 搬来的那几条性质）：「不知道」不许与「真的是 0」长成一个样。
 //!
@@ -11,7 +11,7 @@
 //! 1. **并上的是那一份注解**：项目的星标数 / 隐藏数 == 按注解夹具逐 sid 数出来的（异源：期望由测试从夹具自己数）；
 //!    注解读不到 ⇒ 两个数「不知道」（`null`）＋ `notice` 说为什么，**不是 0**。
 //! 2. **「不知道」三形**（`K-R83`）：那一行没带 sid 清单 · 清单与条数对不上 ⇒ 三个数全 `null`；远端 / 合成历史判活 ⇒ `hasLive: null`。
-//! 3. **本机判活有真值**：真相源说活 ⇒ `true`、说没活 ⇒ `false`（不是 `null`）。
+//! 3. **本机判活有真值**：源头说活 ⇒ `true`、说没活 ⇒ `false`（不是 `null`）。
 //! 4. **一台只问一次**（`KR83D3` 的形状）：远端项目清单 N 个项目 ⇒ 对面恰被问 1 次、问的是 `--list-projects`；会话清单问的是 `--list-sessions <dir>`。
 //! 5. **够不到就说**：可达表里没有那一台 ⇒ `unreachable`，对面一次都没被问；远端的项目目录名同样过形状闸。
 //! 6. **合成历史**：`<kind>:<cwd>` 分组、名字、会话行逐格；**跨语言金样** `tests/__fixtures__/history-products.golden.json`
@@ -188,9 +188,9 @@ fn local_liveness_answers_true_and_false_and_unknown_is_its_own_bucket() {
 #[derive(Default)]
 struct Far {
     seen: Mutex<Vec<String>>,
-    /// 〔GAP1〕`--session-accounts` 答什么；`None` ⇒ 那一问失败。
+    /// `--session-accounts` 答什么；`None` ⇒ 那一问失败。
     live: Option<String>,
-    /// 〔WF2〕那台没起过会话：`--list-projects` 回 CLI 信封里的 `no_record_tree`。
+    /// 那台没起过会话：`--list-projects` 回 CLI 信封里的 `no_record_tree`。
     no_tree: bool,
 }
 
@@ -201,7 +201,7 @@ impl Remote for Far {
         command: String,
         stdin: Option<String>,
     ) -> Pin<Box<dyn Future<Output = Result<String, String>> + Send + 'a>> {
-        // 〔FIX · `设计/96 §3.6`〕子命令之后的自由文本走 stdin 一行 ⇒ 记成「命令行 <stdin 那一行>」。
+        // 子命令之后的自由文本走 stdin 一行 ⇒ 记成「命令行 <stdin 那一行>」。
         self.seen.lock().unwrap().push(match &stdin {
             Some(line) => format!("{command} <stdin {}>", line.trim_end()),
             None => command.clone(),
@@ -246,7 +246,7 @@ impl Remote for Far {
     }
 }
 
-/// 〔WF2〕要求住址：`第四波记录/WIN3.md §2` 读数 H · 主会话 09-29 拍板 ④(a)「远端没起过会话 ⇒ 那台落『这台还没有会话记录』空态，不并进『部分远端没加载上』」。
+/// 要求住址：主会话 09-29 拍板 ④(a)「远端没起过会话 ⇒ 那台落『这台还没有会话记录』空态，不并进『部分远端没加载上』」。
 /// 那台 CLI 回 `no_record_tree` ⇒ 零个项目、`Ok`；别的码 / 无码的失败照旧是 `unreachable`（正控：同一台、码换掉就红回去）。
 #[tokio::test]
 async fn a_remote_without_a_record_tree_is_zero_projects_not_a_failure() {
@@ -285,7 +285,7 @@ fn reach(table: &ReachTable) {
     .unwrap();
 }
 
-/// ★ 判据 4：一台只问一次，问的是 CLI 老子命令（远端不必升级）；会话那一问的项目目录名走 stdin 一行（〔FIX〕命令行里不拼自由文本）。
+/// ★ 判据 4：一台只问一次，问的是 CLI 老子命令（远端不必升级）；会话那一问的项目目录名走 stdin 一行（命令行里不拼自由文本）。
 #[tokio::test]
 async fn one_remote_is_asked_exactly_once_with_the_old_subcommands() {
     let table = ReachTable::default();
@@ -521,7 +521,7 @@ fn projects_sort_unknown_between_known_true_and_known_false() {
     );
 }
 
-/// ★ 〔GAP1 · `设计/05 §14.5`「远端判活『不知道』（留口）」〕远端判活由那台后端答（`--session-accounts` 的 `alive`）：
+/// ★ 〔「远端判活『不知道』（留口）」〕远端判活由那台后端答（`--session-accounts` 的 `alive`）：
 /// 期望手写 —— S1 活、S4 死（`alive:false`）、别的 sid 不在 ⇒ 死；那一问失败 ⇒ 仍 `null`（不当成全死）。
 #[tokio::test]
 async fn remote_liveness_comes_from_that_machines_session_accounts() {

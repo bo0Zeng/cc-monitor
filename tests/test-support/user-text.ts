@@ -1,5 +1,5 @@
 /**
- * 〔RENDER2 · J10〕测试夹具里的 user 记录补上 monitor 解析时填的那一格成品（`userText`）。
+ * 测试夹具里的 user 记录补上 monitor 解析时填的那一格成品（`userText`）。
  *
  * 生产里这一格只由 monitor 按 `agents/claudecode/text.rs::user_text` 填；前端零实现。夹具**不含 CLI 注入噪声**，
  * 那时规则的输出就是「正文抽出来 trim」—— 本助手只做这一步（抽法同 `agents/claudecode/text.rs::extract_text_blocks`：text 块以 `\n` 拼）。

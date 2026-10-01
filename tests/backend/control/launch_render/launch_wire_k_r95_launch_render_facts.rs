@@ -13,7 +13,7 @@
 //! |---|---|---|
 //! | 本机拉起载荷「哪个号」那一格的 wire 键名 | `accounts.ts` 里 `{ kind: "named", configDir, name }` | [`crate::control::launch_render::local::LaunchAccount`] 的 serde 契约 |
 //!
-//! 〔LR1 · U8c-3〕原来还有两格 —— `ccm …` 调用行每次都要的能力集、八句降级理由的措辞 ——
+//! 原来还有两格 —— `ccm …` 调用行每次都要的能力集、八句降级理由的措辞 ——
 //! 唯一的消费者是 TS 那份 `ccm …` 渲染器；它删了（生产从 U8c-2c-2 起只走 Rust），
 //! 两格与它们的生成段、`KR95D3` 那句「没探出来 ≠ 没装」一起退役。
 //! ⚠ 那一句**生产上本来就说不出来**：线上 `CliRenderRequest.caps` 只有两态（见
@@ -25,9 +25,9 @@
 //! 反序列化器验一次**（还配了阴性对照：换一个名字必须被拒）。
 //! ⇒ `history.rs` 那边改名 ⇒ `npm run gen:types` 当场 panic，而不是悄悄生成一份旧的。
 
-/// 🔴 `K-R95`：本机拉起载荷里「哪个号」那一格的**取值口**（〔LR1〕随下面那条判据从
+/// 🔴 `K-R95`：本机拉起载荷里「哪个号」那一格的**取值口**（随下面那条判据从
 /// `launch_cli_parity.rs` 搬来 —— 它与 `ccm …` 渲染器无关）。
-/// 〔FE1 · 第四波 4D〕住址从 `src/frontend/ui/accounts.ts` 换到 `src/frontend/ui/launch-account.ts`：`accounts.ts` 按域拆开，
+/// 住址从 `src/frontend/ui/accounts.ts` 换到 `src/frontend/ui/launch-account.ts`：`accounts.ts` 按域拆开，
 /// 「起会话挑哪个号 ＋ 载荷上那一格的形状」归起停域那一份。
 const TS_ACCOUNTS: &str = include_str!("../../../../src/frontend/ui/launch-account.ts");
 
@@ -161,7 +161,7 @@ fn the_facts_the_frontend_holds_are_recomputed_from_the_backend_every_time() {
         !body.contains("\"没有人说过这句话\""),
         "生成物里出现了后端说不出的值 —— 上面那几条此刻恒真"
     );
-    // 〔LR1〕退役的两格不许回来（它们没有消费者了）。
+    // 退役的两格不许回来（它们没有消费者了）。
     for gone in ["CLI_REQUIRED_CAPS", "CLI_REFUSAL_REASON"] {
         assert!(
             !body.contains(gone),
@@ -171,7 +171,7 @@ fn the_facts_the_frontend_holds_are_recomputed_from_the_backend_every_time() {
 }
 
 /// ★★ 🔴 `K-R95` `KR95D1` **刀③**（「前端退回自己拼 ⇒ 必须红」）：
-/// `launch-account.ts`（〔FE1〕原 `accounts.ts`）真的用**计算键**读生成物那张表，而不是把三个键名再写一遍。
+/// `launch-account.ts`（原 `accounts.ts`）真的用**计算键**读生成物那张表，而不是把三个键名再写一遍。
 ///
 /// # ⚠ 本条是**判写法**，登记在案 —— 别把它当成 `KR95D1` 的主判据
 ///

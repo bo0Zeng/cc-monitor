@@ -1,6 +1,6 @@
 use super::*;
 
-/// 用 path 字段携带 idx 给测试用（〔MOD〕记录体对 monitor 是不透明的成品，这里给一个结构占位）。
+/// 用 path 字段携带 idx 给测试用（记录体对 monitor 是不透明的成品，这里给一个结构占位）。
 /// P5.1：seq 也用 idx，方便排序断言。
 fn payload(sid: &str, idx: usize) -> JsonlLinePayload {
     JsonlLinePayload {
@@ -21,7 +21,7 @@ fn idx_of(p: &JsonlLinePayload) -> usize {
     last.trim_end_matches(".jsonl").parse().unwrap()
 }
 
-// 〔MIG-1〕`buffered_local_session_ids` / `buffered_remote_sessions`〔散文墓碑〕那两条随函数删了（F5 对账改在各条订阅自己的重放里）。
+// `buffered_local_session_ids` / `buffered_remote_sessions`〔散文墓碑〕那两条随函数删了（F5 对账改在各条订阅自己的重放里）。
 
 // === Batch5-F19：build_priority_chunks ===
 
@@ -135,9 +135,9 @@ fn build_chunks_preserves_input_order_within_chunks() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// 〔CF2 · 第四波 4B〕一档容量：**每个**会话只留尾巴（原〔U3b〕两档：接上骨架的留尾巴、其余不设上限）。
+// 一档容量：**每个**会话只留尾巴（原两档：接上骨架的留尾巴、其余不设上限）。
 //
-// 要求住址：`设计/05 §3.3.4`「⇒ **级 3 是判据**：任何一个订阅侧缓冲都要有上界，满了必须落级 1 或级 2，
+// 要求：「⇒ **级 3 是判据**：任何一个订阅侧缓冲都要有上界，满了必须落级 1 或级 2，
 // **不许静默堆**」。丢掉的正文前端按字节（骨架）或按行号（`read_session_lines`）要得回来 ⇒ 这一档是级 2。
 // ═══════════════════════════════════════════════════════════════════════
 
@@ -299,15 +299,15 @@ fn the_two_tier_registration_leaves_no_trace_in_production() {
     assert!(scanned > 200, "只扫到 {scanned} 份 —— 扫描面坏了");
     assert!(
         offenders.is_empty(),
-        "重放缓冲的「两档」又长回来了（`设计/05 §3.3.4`：每个订阅侧缓冲都要有上界，不许按「有没有登记」分档）：\n{}",
+        "重放缓冲的「两档」又长回来了（每个订阅侧缓冲都要有上界，不许按「有没有登记」分档）：\n{}",
         offenders.join("\n")
     );
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// 〔CF2 · 第四波 4B〕会话内容流的句柄（`subscribe` · credit · `Gap` · `Unseen`/`Seen` · 就绪点）
+// 会话内容流的句柄（`subscribe` · credit · `Gap` · `Unseen`/`Seen` · 就绪点）
 //
-// 要求住址：`设计/05 §3.3.4`「**回推优先 · 推不动才丢 · 丢必须说**」「`Gap` 必须在流里的原位」·
+// 要求：「**回推优先 · 推不动才丢 · 丢必须说**」「`Gap` 必须在流里的原位」·
 // `§3.3.5`「`call` 会失败、`subscribe` 不会」· `§8` 步 6「流那半收口成 `subscribe`」。
 // 期望一律手写（位置、条数、格的种类），不从被测的计划函数派生。
 // ═══════════════════════════════════════════════════════════════════════
@@ -351,7 +351,7 @@ fn what(i: &WItem) -> (&'static str, u64, u64) {
                     _ => ("end", *seq, 0),
                 }
             } else {
-                // 〔MIG-1〕起停那几格：按键名认。
+                // 起停那几格：按键名认。
                 let k = [
                     "live",
                     "activity",
@@ -380,7 +380,7 @@ fn hub() -> (Arc<EventReplay>, Arc<Rec>) {
     (r.0, r.1)
 }
 
-/// 〔MIG-1〕带一本自己的成品缓存（不与并行的判据串味）。
+/// 带一本自己的成品缓存（不与并行的判据串味）。
 fn hub_with_book() -> (
     (Arc<EventReplay>, Arc<Rec>),
     &'static parking_lot::RwLock<crate::session_book::Book>,
@@ -501,7 +501,7 @@ async fn the_ready_point_replays_retained_lines_by_credit_and_waits_for_want() {
             ("line", 4, 3),
             ("line", 5, 4),
             ("end", 6, 0),
-            // 〔MIG-1〕有行、成品缓存里没说过、那台没报完清单 ⇒ 终局是「说不清」（不吃 credit，排在行后）。
+            // 有行、成品缓存里没说过、那台没报完清单 ⇒ 终局是「说不清」（不吃 credit，排在行后）。
             ("unseen", 7, 0)
         ]
     );
@@ -555,7 +555,7 @@ async fn a_session_scoped_subscription_only_gets_its_own_session() {
             ("line", 1, 0),
             ("line", 2, 1),
             ("end", 3, 0),
-            ("unseen", 4, 0) // 〔MIG-1〕只它那一个会话的终局
+            ("unseen", 4, 0) // 只它那一个会话的终局
         ]
     );
     rec.clear();
@@ -565,7 +565,7 @@ async fn a_session_scoped_subscription_only_gets_its_own_session() {
     r.on_line_batch_awaited(mix).await;
     assert_eq!(
         rec.all().iter().map(what).collect::<Vec<_>>(),
-        vec![("line", 5, 2)] // 〔MIG-1〕位置 4 是上面那格终局
+        vec![("line", 5, 2)] // 位置 4 是上面那格终局
     );
 }
 
@@ -669,10 +669,10 @@ async fn stop_and_resubscribe_leave_no_orphans() {
     assert_eq!(r.inner.lock().subs.len(), 1, "旧的那条还挂着");
 }
 
-/// ★〔DL1 · K1〕**`accounts-changed` 那条流**（替掉裸事件 `remote-backend-ready`）只收三样：那台看不看得见（`Unseen` / `Seen`，
+/// ★**`accounts-changed` 那条流**（替掉裸事件 `remote-backend-ready`）只收三样：那台看不看得见（`Unseen` / `Seen`，
 /// 与同台 `session-lines` **同一个来源** `origin_seen`）· 那台账号清单变了（恰好一格 `Frame`，体是约定那一串）· 丢过几格（`Gap`）。
 ///
-/// 守的要求：`设计/01 §2.2`「前端只有两个动作」· `设计/05 §3.3.5`（看不见 ⇒ 第一格 `Unseen`，订阅照样成立）·
+/// 守的要求：「前端只有两个动作」· 看不见 ⇒ 第一格 `Unseen`，订阅照样成立 ·
 /// `§3.3.4`（丢必须说，`Gap` 在原位）· `§15.3`（kind 由宿主注入的那一侧认）。
 /// 两向隔离：会话行**不进** `accounts-changed`；账号那一格**不进** `session-lines`；别台的都不收。
 /// 期望手写（位置、格的种类、体的原文），不从被测的计划函数派生。
@@ -759,8 +759,8 @@ async fn the_accounts_changed_stream_carries_only_reachability_and_account_notic
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// 〔TAP · V124〕会话流 `session-tap`：同一张订阅表、同一套 credit 与 `Gap`（`设计/05 §15` · `§3.3.4` 级 2），
-// 不进留存（`history`）、不混进会话行那条流。设计住仓外 `调研/第四波记录/TAP.md §1.2 · §2`。期望手写。
+// 会话流 `session-tap`：同一张订阅表、同一套 credit 与 `Gap`（级 2），
+// 不进留存（`history`）、不混进会话行那条流。设计住仓外。期望手写。
 // ═══════════════════════════════════════════════════════════════════════
 
 fn tap(origin: &str, n: u64) -> crate::ui_contract::SessionTapPayload {
@@ -843,7 +843,7 @@ async fn tap_and_lines_never_cross_into_each_others_subscriptions() {
     assert_eq!(to(2), vec![("tap", 0, 0)]);
 }
 
-/// 〔FW1 · 第四波 4D · D-d〕记录文件的出声交给**订了那台 / 那一个会话**的实时订阅，占 credit、原位 `Gap` 与行同一套；
+/// 记录文件的出声交给**订了那台 / 那一个会话**的实时订阅，占 credit、原位 `Gap` 与行同一套；
 /// 别的机器 / 别的会话的订阅收不到；不进留存（就绪点之后才订的那条，拿不到之前那一句）。
 #[tokio::test]
 async fn a_session_file_notice_goes_to_the_subscribers_of_that_session_only() {
@@ -880,7 +880,7 @@ async fn a_session_file_notice_goes_to_the_subscribers_of_that_session_only() {
     }
 }
 
-/// 〔RENDER2 · `设计/10 §3.2` / `§7` 第 12 条〕「已从头重读」（截短 / 改写）⇒ 后端行号从 0 重数 ⇒ 留存里这个会话旧的一代
+/// 「已从头重读」（截短 / 改写）⇒ 后端行号从 0 重数 ⇒ 留存里这个会话旧的一代
 /// 同一拍丢（别的会话不动）；「不见了」不丢（没重读、号没换代）。
 #[tokio::test]
 async fn a_reread_notice_drops_the_old_generation_of_that_session_only() {
@@ -909,7 +909,7 @@ async fn a_reread_notice_drops_the_old_generation_of_that_session_only() {
     }
 }
 
-/// 〔RENDER2 · `99 §2.1` ㉓①〕逐字「超长行在流里**原位**给 `Gap`，加『知道丢了、不知道丢到哪』一形（`to_seq` 缺省）」：
+/// 逐字「超长行在流里**原位**给 `Gap`，加『知道丢了、不知道丢到哪』一形（`to_seq` 缺省）」：
 /// 丢在第 2、3 行之间 ⇒ 这台的订阅在那两格之间恰好收一格 `Gap{from=2, to 缺}`，不占位置（下一行仍是位置 2）、不占 credit；
 /// 别的机器的订阅一格不收。
 #[tokio::test]
@@ -941,7 +941,7 @@ async fn a_line_lost_somewhere_is_said_in_place_as_an_open_gap() {
     );
 }
 
-/// ★ 设计/99 §2.1 ⑬「起停帧不吃 credit、不许丢（登记一条例外）」：一格 credit 都没有时，行照丢（原位 `Gap`），
+/// ★ 「起停帧不吃 credit、不许丢（登记一条例外）」：一格 credit 都没有时，行照丢（原位 `Gap`），
 /// 起停那几格照交、照占位置；就绪点把起停按成品缓存原位重放 —— 骨架在留存行之前、终局在之后。
 #[tokio::test]
 async fn mig1_lifecycle_frames_take_no_credit_and_the_ready_point_puts_them_around_the_lines() {
@@ -992,7 +992,7 @@ async fn mig1_lifecycle_frames_take_no_credit_and_the_ready_point_puts_them_arou
     );
 }
 
-/// ★ 设计/99 §2.1 ⑬「起停帧不吃 credit、不许丢（登记一条例外）」—— 例外表就是 `SessionStreamFrame::takes_credit`：
+/// ★ 「起停帧不吃 credit、不许丢（登记一条例外）」—— 例外表就是 `SessionStreamFrame::takes_credit`：
 /// 每一种格造一个、读它上线的键名，按吃不吃 credit 分两摞 == 金样（TS 那一侧 `CREDIT_EXEMPT_FRAMES` 读同一份，异源）。
 #[test]
 fn mig1_the_credit_exemption_is_exactly_the_registered_lifecycle_frames() {
@@ -1057,7 +1057,7 @@ fn mig1_the_credit_exemption_is_exactly_the_registered_lifecycle_frames() {
     );
 }
 
-/// 〔MIG-1 续〕只跟一个会话的订阅（`session-lines/<sid>`）收**机器级**「说不清」（它跟的那一条所在的那台看不见了），
+/// 只跟一个会话的订阅（`session-lines/<sid>`）收**机器级**「说不清」（它跟的那一条所在的那台看不见了），
 /// 不收「清单报完了」这种整台的簿记；说别的会话的格照旧不收。
 #[test]
 fn a_single_session_subscription_hears_the_machine_level_unseen_only() {
@@ -1076,7 +1076,7 @@ fn a_single_session_subscription_hears_the_machine_level_unseen_only() {
     assert!(!other.reaches(Some("mine")) && other.reaches(Some("other")));
 }
 
-/// 〔MIG-3b · 要求住址 `设计/99 §2.1 ㉓②`「`session.tasks` 推送改 `chan.subscribe(origin, …)`」〕`session-tasks` 流：
+/// 〔要求住址 「`session.tasks` 推送改 `chan.subscribe(origin, …)`」〕`session-tasks` 流：
 /// 这台某个会话的任务变了 ⇒ 只有订了这台 `session-tasks` 的收一格、体恰是 `{"sid": …}`；别台的 · 同台 `accounts-changed` 的都不收。期望手写。
 #[tokio::test]
 async fn the_session_tasks_stream_carries_the_sid_that_changed_and_nothing_else() {
@@ -1103,9 +1103,9 @@ async fn the_session_tasks_stream_carries_the_sid_that_changed_and_nothing_else(
     assert_eq!(got, vec![(1, serde_json::json!({"sid": "s1"}))]);
 }
 
-/// 要求住址：`97 §8`「要上游给的」④「插件口转订阅流」· `99 §1` V158「长活要有进度」。
+/// 要求：「要上游给的」④「插件口转订阅流」· 「长活要有进度」。
 ///
-/// 〔P7〕`progress/<票>` 流：**那台**机器的后端推来一格 ⇒ 只有订了那台、那张票的收，体原样（monitor 不解释）；
+/// `progress/<票>` 流：**那台**机器的后端推来一格 ⇒ 只有订了那台、那张票的收，体原样（monitor 不解释）；
 /// 别台同票 · 同台别票都不收；本机远端同一个口（这里拿远端那台演）。空票那一形订不上。期望手写。
 #[tokio::test]
 async fn the_progress_stream_carries_the_cell_to_that_machines_ticket_only() {
@@ -1149,7 +1149,7 @@ async fn the_progress_stream_carries_the_cell_to_that_machines_ticket_only() {
     );
 }
 
-/// 〔MIG-1 收尾 · 主会话裁「测试连接的进度不许倒退」〕`probe-progress/<票>` 流：本机后端推来一格 ⇒ 只有订了**那张票**的收、
+/// 〔「测试连接的进度不许倒退」〕`probe-progress/<票>` 流：本机后端推来一格 ⇒ 只有订了**那张票**的收、
 /// 体原样（monitor 不解释）；别的票 · 别台同名 · 空票都不收（空票那一形订不上：`no-such-stream`）。期望手写。
 #[tokio::test]
 async fn the_probe_progress_stream_carries_the_cell_to_the_one_ticket_only() {

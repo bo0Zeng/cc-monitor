@@ -1,4 +1,4 @@
-//! 设计/99 §2.1 ⑬「`list_local_tmux` / `list_remote_tmux`：`tmux-list` 出成品、`parse_tmux_ls`〔散文墓碑〕 进后端」—— `observe/tmux_list.rs` 的解析判据
+//! 「`list_local_tmux` / `list_remote_tmux`：`tmux-list` 出成品、`parse_tmux_ls`〔散文墓碑〕 进后端」—— `observe/tmux_list.rs` 的解析判据
 //! （从 monitor `tmux_tests.rs` 那四条原样搬来：多会话 · 残行 / 边角 · windows 回退 · `@ccm_sid` 字符集）＋ 成品形状（跨语言金样）。
 use super::*;
 
@@ -75,7 +75,7 @@ fn the_product_matches_the_cross_language_golden() {
 /// ★★ **K-R12 `J1` 死值（从 monitor 那一侧搬来）：段数下溢的行不许当好数据**；过溢那格照旧整行丢（`§5.4` 点名的误伤，刻意没改）。
 /// 死值取自 `tests/evidence/K-R12-deathvalue.md` ①/S5：真 tmux 3.4 ＋ POSIX 客户端，六列塌成 1 段。
 ///
-/// 〔IV1 · V121〕要求住址：`INVARIANTS §49`（tmux 打印通道必须是 UTF-8，段数下溢出声）。
+/// 要求住址：`INVARIANTS §49`（tmux 打印通道必须是 UTF-8，段数下溢出声）。
 #[test]
 fn a_dirty_line_underflows_and_an_overflowing_line_is_still_dropped_today() {
     const DIRTY: &str = "kr12_/tmp/kr12dv/____/proj_bash_0_1_cc-deadval1";
@@ -90,6 +90,6 @@ fn a_dirty_line_underflows_and_an_overflowing_line_is_still_dropped_today() {
     );
     assert!(
         rows(OVERFLOW).is_empty(),
-        "⚠ 现状：过溢的行今天照样被整行丢掉 —— K-R12 §5.4 点名的误伤；修它的那一拍会让本条红，那是对的"
+        "⚠ 现状：过溢的行今天照样被整行丢掉 —— 点名的误伤；修它的那一拍会让本条红，那是对的"
     );
 }

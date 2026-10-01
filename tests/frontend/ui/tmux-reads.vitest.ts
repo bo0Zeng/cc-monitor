@@ -1,5 +1,5 @@
 /**
- * 设计/99 §2.1 ⑬「`list_local_tmux` / `list_remote_tmux`：`tmux-list` 出成品、`parse_tmux_ls`〔散文墓碑〕 进后端」—— 界面那一侧的读口。
+ * 「`list_local_tmux` / `list_remote_tmux`：`tmux-list` 出成品、`parse_tmux_ls`〔散文墓碑〕 进后端」—— 界面那一侧的读口。
  *
  * | 性质 | 判据 |
  * |---|---|
@@ -33,7 +33,7 @@ describe("金样：后端出的成品，TS 这一侧读得懂", () => {
     expect(decodeTmuxList(golden.installed)).toEqual([
       { name: "proj-cc", path: "/home/u/proj", command: "claude", attached: true, windows: 2, sid: "sid-1", agent: true },
       { name: "web", path: "/srv", command: "zsh", attached: false, windows: 1, sid: null, agent: false },
-      // 〔THIN〕`agent` 是那台后端判的（Claude 是 `claude` / `node`）；界面原样收、不按命令名自己判。
+      // `agent` 是那台后端判的（Claude 是 `claude` / `node`）；界面原样收、不按命令名自己判。
       { name: "n", path: "/n", command: "node", attached: false, windows: 1, sid: null, agent: true },
     ]);
     expect(decodeTmuxList(golden.notInstalled)).toBeNull();

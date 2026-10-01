@@ -1,4 +1,4 @@
-//! 〔SR1b · 2026-09-24〕传输台**中继**（`sftp_pool.rs`）的判据：开单 / 起跑 / 停订 / 流断了 都原样转给本机常驻后端，
+//! 传输台**中继**（`sftp_pool.rs`）的判据：开单 / 起跑 / 停订 / 流断了 都原样转给本机常驻后端，
 //! 后端推上来的 `transfer` 帧翻成窗口认的那几格。
 //!
 //! 台架：一条内存管道两头 —— monitor 这头是**真的** `InboundClient` ＋ **真的**本机吸收点
@@ -155,7 +155,7 @@ async fn an_upload_is_relayed_to_the_local_backend_and_its_frames_come_back_as_s
     let v = transfer_call(
         cfg("中继·上传"),
         TRANSFER_UPLOAD,
-        // 〔FILES2 · Q5〕`home` 原样转给传输台（它连上之后比 SFTP 起始目录）。
+        // `home` 原样转给传输台（它连上之后比 SFTP 起始目录）。
         &serde_json::json!({ "local_path": "/tmp/x.bin", "home": "/home/u" }),
     )
     .await
@@ -195,7 +195,7 @@ async fn an_upload_is_relayed_to_the_local_backend_and_its_frames_come_back_as_s
         Some(&Snap {
             got: 30,
             total: 30,
-            // 〔FW1〕上传那一路的整份摘要原样带着（形状由远端后端提交那一关判，中继不判）。
+            // 上传那一路的整份摘要原样带着（形状由远端后端提交那一关判，中继不判）。
             end: Some(End::Done {
                 bytes: 30,
                 sha256: Some("ab".into())
@@ -298,7 +298,7 @@ async fn an_old_local_backend_is_named_too_old_and_nothing_is_sent() {
     .await
     .expect_err("老后端不该开得了单");
     assert_eq!(code, "backend_unavailable");
-    // 〔CP2b〕内部命令名（transfer-upload）不再上屏；「太旧」与出路（重开 monitor）留着。
+    // 内部命令名（transfer-upload）不再上屏；「太旧」与出路（重开 monitor）留着。
     assert!(e.contains("太旧"), "{e}");
     assert!(rig.seen.try_recv().is_err(), "对老后端发了请求");
 }
@@ -319,7 +319,7 @@ async fn without_a_local_backend_the_transfer_is_refused_out_loud() {
     assert!(e.contains("本机后端不在"), "{e}");
 }
 
-/// 🔴〔FN1 · V119 翻面〕本机落点是一份会话记录的形状 ⇒ **照样转给本机后端开单**，落点原样带过去。
+/// 🔴〔V119 翻面〕本机落点是一份会话记录的形状 ⇒ **照样转给本机后端开单**，落点原样带过去。
 ///
 /// 从前这一条是「踩线的本机落点 ⇒ 回围栏那句话，而且在转给后端之前（一条请求都不发）」。
 /// 用户「文件管理器全部都可以改. 不需要任何围栏」⇒ monitor 这一侧开单时那一判删了。
@@ -328,7 +328,7 @@ async fn a_download_onto_a_session_file_is_forwarded_like_any_other() {
     let _g = crate::inbound_client::local_origin_test_lock();
     let mut rig = rig(&ALL);
     let session = "/home/u/.claude/projects/dash-proj/abc-123.jsonl";
-    // 〔MIG-3a〕夹具那条路径是会话记录的形状（`projects/<proj>/<sid>.jsonl`）：那道判定今天只住后端
+    // 夹具那条路径是会话记录的形状（`projects/<proj>/<sid>.jsonl`）：那道判定今天只住后端
     //   （`agents/claudecode/paths.rs::is_session_record_file`），这里按形状现核，不借 monitor 的第二份。
     let tail: Vec<&str> = session
         .rsplit_once("/projects/")
@@ -369,7 +369,7 @@ fn transfer_frames_parse_exactly_as_the_backend_writes_them() {
             r#"{"kind":"transfer","id":"xfer-7","got":262144,"total":1000000,"end":{"state":"failed","why":"写暂存件失败"}}"#,
             Some(End::Failed("写暂存件失败".into())),
         ),
-        // 〔FILES2 · Q5〕带码的那一形（后端 `wire_tests` 同一行逐字节）⇒ 单列一形，码原样带着。
+        // 带码的那一形（后端 `wire_tests` 同一行逐字节）⇒ 单列一形，码原样带着。
         (
             r#"{"kind":"transfer","id":"xfer-7","got":262144,"total":1000000,"end":{"state":"failed","why":"w","code":"sftp_home_mismatch"}}"#,
             Some(End::FailedCoded {

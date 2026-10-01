@@ -87,7 +87,7 @@ has_live: counts.has_live.known(),  →  has_live: Some(counts.has_live.known().
 ### 刀 ① 恢复写死 ⇒ **必须红** —— 实测**红（两条判据一起红）**
 
 变异（`M5`）：`remote_history::remote_session_entry` 里 `is_live: live,` → `is_live: Some(false),`
-（＝`〔R83c〕` 那处 `is_live: false` 的今天形态）。
+（＝`` 那处 `is_live: false` 的今天形态）。
 
 读数：`GATE: FAIL —— cargo（退出码 101）`，`failures:` 两条：
 - **`the_streamed_remote_entry_does_not_hardcode_its_liveness`**（行为侧，`:1451`）

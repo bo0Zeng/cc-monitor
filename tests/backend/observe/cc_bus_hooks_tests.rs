@@ -1,6 +1,6 @@
-//! # 要求住址：`设计/95 §6` 逐字「本机的钩子诊断仍是 monitor 自己读 `settings.json` …… 本机远端两条路、两个命令，与「一个能力一条命令、带 origin」（`01 §6.8`）不齐」
+//! # 要求：「本机的钩子诊断仍是 monitor 自己读 `settings.json` …… 本机远端两条路、两个命令，与「一个能力一条命令、带 origin」不齐」
 //!
-//! 〔MIG-3b〕判定本体从 monitor `hooks_diag.rs` 原样搬来（B04 那几条形态判据随之搬家、断言不变）；
+//! 判定本体从 monitor `hooks_diag.rs` 原样搬来（B04 那几条形态判据随之搬家、断言不变）；
 //! 新的一条是成品的跨语言金样（后端产出 == `tests/__fixtures__/hooks-diag.golden.json`，界面解码器读同一份）。
 //! 夹具只造结构（假 `settings.json` ＋ 空文件当程序），不采真盘内容。
 

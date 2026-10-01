@@ -54,7 +54,7 @@ describe("F69 PanoramaView.load —— D20 默认关的真接线守卫", () => {
     expect(api.index).not.toHaveBeenCalled();
     msgBtn(view)!.click();
     await flush();
-    // 〔RM1f〕第二个参数是撤单信号（这台撤不撤得掉由 `api.cancellable` 定），这里只钉「问的是哪个仓」。
+    // 第二个参数是撤单信号（这台撤不撤得掉由 `api.cancellable` 定），这里只钉「问的是哪个仓」。
     expect(vi.mocked(api.index).mock.calls.map((c) => c[0])).toEqual([{ origin: LOCAL_ORIGIN, path: "/repo" }]);
   });
 
@@ -76,7 +76,7 @@ describe("F69 PanoramaView.load —— D20 默认关的真接线守卫", () => {
     expect(vi.mocked(api.index).mock.calls.map((c) => c[0])).toEqual([{ origin: LOCAL_ORIGIN, path: "/repo" }]);
   });
 
-  // 要求住址：`97 §8`「要上游给的」④ · `99 §1` V158「长活要有进度」· `97 §6.6`「建索引可取消」（撤单那一格照旧在）。
+  // 要求：「要上游给的」④ · 「长活要有进度」· 「建索引可取消」（撤单那一格照旧在）。
   it("〔P7〕建索引时转圈下面那一行跟着那台报的进度走（阶段 · 做完几份 / 共几份）；取消按钮照旧在", async () => {
     vi.mocked(api.status).mockResolvedValue({ symbols: 0, stale: true, indexedAt: null });
     let report: ((p: { phase: "Parse" | "Link" | "Relink" | "Docs"; done: number; total: number }) => void) | undefined;

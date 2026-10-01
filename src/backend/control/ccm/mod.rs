@@ -12,7 +12,7 @@
 //!
 //! # 怎么进到这里
 //!
-//! **只经 [`route`] 这一处**，而且〔主会话 09-27 裁〕**只看 argv、不看 `argv[0]`**：
+//! **只经 [`route`] 这一处**，而且**只看 argv、不看 `argv[0]`**：
 //! 打头是 `--` 且紧跟一个后端词 ⇒ 后端（流 / 子命令）；其余一律是 ccm 这一趟
 //! （没有 `--` ⇒ 整行交给 claude）。落点叫 `ccm` 还是开发树里的 `cc-monitor-backend`
 //! 走的是同一条规则。旧的「basename 是 `ccm`」与「`<bin> ccm …` 子命令词」两条入口〔散文墓碑〕。
@@ -43,11 +43,11 @@ use plan::{AccountTable, Env, Plan};
 /// 这套 CLI 的版本号。**行为变了就要动它** —— 消费者（`ccm_probe.rs`）靠
 /// `version=` 这一行分辨对面是哪一版。
 ///
-/// `4` 是最后一版 bash 实现；`5` 起是**后端的原生命令**（本模块）；`6` 起是 claude 的壳（V138：
+/// `4` 是最后一版 bash 实现；`5` 起是**后端的原生命令**（本模块）；`6` 起是 claude 的壳（
 /// 位置动作取消、不认的词原样交 agent、诊断口改 `--ccm-*`）。
 pub(crate) const CCM_VERSION: &str = "6";
 
-/// 认得的 agent。**闭集只有一处住址**（`brief` 13b）：〔P1 · 第 4 件〕注册表里带起会话事实的那几家
+/// 认得的 agent。**闭集只有一处住址**（`brief` 13b）：注册表里带起会话事实的那几家
 /// （`agents::launchable_kinds`）。从前这里是一份手写的闭集常量，与注册表那一格是同一件事的两处。
 pub(crate) fn agents() -> Vec<&'static str> {
     crate::agents::launchable_kinds()
@@ -82,14 +82,14 @@ pub(crate) fn agents() -> Vec<&'static str> {
 /// ⇒ 归一句：**「数个数」的两处必须跟着改（前两行）· 「子集检查」的两处加 token 安全，
 /// 删 / 改名才危险 · `build.rs` 那一处与本常量无关。**
 ///
-/// # `base-url-across-tmux` 是怎么来的〔`K-R61` 09-11〕
+/// # `base-url-across-tmux` 是怎么来的
 ///
 /// 它声明的是「**我会把 `ANTHROPIC_BASE_URL` 带过 tmux 的进程边界**」——
 /// tmux server 的 `update-environment` 默认列表不含它，外层那句 `export`
 /// 在边界上会被整个吃掉（`plan.rs` 那段注释逐字「账号注入 100% 失效，**实测过**」）。
 ///
 /// 🔴 **这件事我们早就做到了，只是一直没说**：`plan.rs` 的容器分支把它显式化进载荷内侧。
-/// 于是本机起会话那边 `local.rs::RELAY_KEEPS_THE_OLD_PATH`（〔MIG-2〕原在 monitor） 按「探不到就不放行」照旧挡着，
+/// 于是本机起会话那边 `local.rs::RELAY_KEEPS_THE_OLD_PATH`（原在 monitor） 按「探不到就不放行」照旧挡着，
 /// **挡的却是一件我们自己已经做到的事** —— 「实现与申报不一致，而守它的东西看不见那个字段」。
 /// 本 token 补的就是**申报**那一半；驱动它的判据是
 /// [`tests::the_base_url_token_is_declared_because_the_tmux_path_really_forwards_it`]。
@@ -119,7 +119,7 @@ pub(crate) const CAPABILITIES: &[&str] = &[
 /// ⚠ 这是一条关于**机制**的声明（「它靠什么活着」），不是差异登记：差异 = 本表 × 平台那一维，
 /// 由汇总层 `lib.rs::capabilities_on` 现推；理由与档住 `lib.rs::TARGET_GAPS`。两张表回答的不是同一个问题。
 ///
-/// 〔第三波 S3 · 2026-09-24〕它从汇总层（`lib.rs`，PR1 落地时的临时住址）搬回这里 ——
+/// 它从汇总层（`lib.rs`，PR1 落地时的临时住址）搬回这里 ——
 /// 一条能力一个住址：往 [`CAPABILITIES`] 加一条靠 tmux 活着的能力的人，就在这张表的正上方。
 /// 「每一条都真在 `CAPABILITIES` 里」由 `target_parity_guard.rs` 的
 /// `every_tmux_carried_ccm_capability_really_exists` 钉着（不许有幽灵）；
@@ -140,11 +140,11 @@ pub(crate) const CCM_TMUX_CARRIED: &[&str] = &[
 /// 要被原样拼进 `--ccm-print` 吐的那条 shell 里（`printf '<本串>' '<名字>'`），
 /// 由**那个 shell 里的 printf** 去解释它。写成真换行的话，`--ccm-print` 吐出来的命令会断成两行。
 /// 自己要打这句话时（`execute` 的撞名出口）记得把它译回真换行。
-/// 〔CP2c〕句子住文案表（`beCcm.nameTaken.say`，占位符 `{name}` 在这里填成 printf 的 `%s`）。
+/// 句子住文案表（`beCcm.nameTaken.say`，占位符 `{name}` 在这里填成 printf 的 `%s`）。
 pub(crate) static NAME_TAKEN_FMT: std::sync::LazyLock<String> =
     std::sync::LazyLock::new(|| copy_text("beCcm.nameTaken.say", &[("name", "%s")]) + "\\n");
 
-/// 〔CC1〕容器里那条内层命令**自检没过**时的那句话。形状与理由同 [`NAME_TAKEN_FMT`]
+/// 容器里那条内层命令**自检没过**时的那句话。形状与理由同 [`NAME_TAKEN_FMT`]
 /// （`printf` 格式串，结尾是反斜杠 + n）。退出码 `4`（起不来）；它前面一行是自检那一趟**自己的原话**。
 ///
 /// 会话**留着不收**：pane 里有同一句原话，是用户看得见的唯一现场；收会话是破坏性动作，
@@ -156,12 +156,12 @@ pub(crate) static SELF_CHECK_FAILED_FMT: std::sync::LazyLock<String> =
 ///
 /// monitor 靠扫窗口标题里的 `ccm-rbind-<sid>` 绑定终端窗口（`bind.rs`）。
 ///
-/// 🔴 〔步 8 · `设计/90 §1.2`〕**`rbind` ＝ remote bind（远端终端窗口绑定）**。
+/// 🔴 **`rbind` ＝ remote bind（远端终端窗口绑定）**。
 /// 这个缩写不自明，`§1.2` 给了两条出路：「改成 `terminal_bind`」或「保留但每处加一句展开」。
 /// ⇒ **这一拍走第二条，而且是被迫的**：`ccm-rbind-<sid>`（窗口标题 marker）与
 /// `__ccm_rbind`（用户 shell profile 里那个注册原语）**都在 `ccm` 的对外面上** ——
 /// 前者是 monitor↔远端 wrapper 之间已经在线的约定，后者已经装在用户机器上。
-/// `设计/90 §1.1` 逐字：`ccm` 是「用户在终端里敲的命令名，属于产品对外接口」，**不许改**。
+/// `ccm` 是「用户在终端里敲的命令名，属于产品对外接口」，**不许改**。
 /// ⇒ 改的只有**内部标识符**（本常量 `RBIND_TITLE_FORMAT` → `TERMINAL_BIND_TITLE_FORMAT`）；
 /// 线上那两个拼写一个字节没动。
 /// 从前这里是 `#T`（窗口标题 = pane 标题），而 **claude 也在往 pane 标题写自己的状态**
@@ -171,10 +171,10 @@ pub(crate) const TERMINAL_BIND_TITLE_FORMAT: &str = "#{?@ccm_sid,ccm-rbind-#{@cc
 
 /// codex 的 cc-bus 身份配方。**输出的是配方不是值** —— 这样 `--ccm-print` 仍然不查实时 tmux 状态。
 ///
-/// 〔SH1 · `INVARIANTS §49` · V121〕`#S` 是**会话名**，用户起的会话名可以是中文 ⇒ 读它的那个 tmux 客户端必须是
+/// 〔`INVARIANTS §49`〕`#S` 是**会话名**，用户起的会话名可以是中文 ⇒ 读它的那个 tmux 客户端必须是
 /// UTF-8 客户端（非 UTF-8 客户端下非 ASCII 被改写成 `_`，codex 的 cc-bus 身份就错了，且退出码仍是 0）。
 /// 这是拼进 pane 里跑的命令串 ⇒ 按 `common/tmux_utf8.rs` 那张表用**旗**（`-u`，排在子命令之前）。
-/// 〔OSA · V156〕`export` / `unset` 的写法住 `platform::shell::posix`（原是一条 `const`，产出逐字节不变）。
+/// `export` / `unset` 的写法住 `platform::shell::posix`（原是一条 `const`，产出逐字节不变）。
 pub(crate) static BUS_ID_RECIPE: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
     format!(
         "if [ -n \"${{TMUX:-}}\" ]; then _ccm_bus=\"$(tmux -u display-message -p \"#S\" 2>/dev/null)\"; [ -n \"$_ccm_bus\" ] && {}{}fi;",
@@ -185,17 +185,17 @@ pub(crate) static BUS_ID_RECIPE: std::sync::LazyLock<String> = std::sync::LazyLo
 
 /// `--help` 的正文。**每个认得的旗标都要在这里有一行** ——
 /// 由 `protocol_doc_guard` 那条受管例外的配套判据机检。
-/// 〔CP2c〕正文住文案表（`beCcm.usage.body`）。
+/// 正文住文案表（`beCcm.usage.body`）。
 pub(crate) static USAGE: std::sync::LazyLock<String> =
     std::sync::LazyLock::new(|| copy_text("beCcm.usage.body", &[]));
 
-/// 这个 agent 的默认启动器。〔P1 · 第 4 件〕事实只住适配层（`agents::LaunchFace`，注册表那一格）；
+/// 这个 agent 的默认启动器。事实只住适配层（`agents::LaunchFace`，注册表那一格）；
 /// `agent` 已由 argv 按 [`agents`] 闭集收过（同一张注册表）⇒ 认不出只剩直接调用的路；空串（exec 当场说起不来，不猜成 claude）。
 pub(crate) fn default_launcher(agent: &str) -> &'static str {
     crate::agents::launch_face_of(agent).map_or("", |f| f.default_launcher)
 }
 
-/// 起这个 agent 之前要清掉的嵌套标记（〔P1〕同上，住适配层；认不出 ⇒ 不清）。
+/// 起这个 agent 之前要清掉的嵌套标记（同上，住适配层；认不出 ⇒ 不清）。
 pub(crate) fn nested_env(agent: &str) -> Vec<String> {
     crate::agents::launch_face_of(agent)
         .map(|f| f.nested_env.iter().map(|s| s.to_string()).collect())
@@ -204,7 +204,7 @@ pub(crate) fn nested_env(agent: &str) -> Vec<String> {
 
 /// 这个 agent 够不着 tmux socket、要把会话名经 env 透进去吗。
 ///
-/// # ⚠ 〔`P19` 09-22〕它答的是「**要不要**」，不是「**能不能**」—— 两者别混
+/// # ⚠ 它答的是「**要不要**」，不是「**能不能**」—— 两者别混
 ///
 /// 这一格为真只说明「codex 要一个 `CC_BUS_ID`」。**值从哪来**是另一件事：
 /// 来源恒是 tmux 的会话名（[`BUS_ID_RECIPE`] 里那句 `tmux -u display-message -p "#S"`）
@@ -213,13 +213,13 @@ pub(crate) fn nested_env(agent: &str) -> Vec<String> {
 ///
 /// 🔴 这两件事混在一起过一次，代价是一年的账：从前 `exec_direct` 拿本函数当
 /// 「要不要请一个 `sh` 进来」的闸 ⇒ `--agent codex` **每一趟**都要 `sh`，
-/// Windows 上因此 `EXIT=4 program not found`（真机现打住 `真相源/106 §3.3`）。
+/// Windows 上因此 `EXIT=4 program not found`（真机现打住）。
 /// 今天那个闸在 [`needs_shell`]，而且它多问一句「配方**真有事可做**吗」。
 pub(crate) fn needs_bus_id(agent: &str) -> bool {
     agent == "codex"
 }
 
-/// 〔FIX · V138 订正〕入口注入的「此刻在跑的会话」扫描：入参 = 账号配置目录（`None` = agent 默认家目录），出 `(sid, pid)`。
+/// 入口注入的「此刻在跑的会话」扫描：入参 = 账号配置目录（`None` = agent 默认家目录），出 `(sid, pid)`。
 pub type RunningScan = fn(Option<&std::path::Path>) -> Vec<(String, u32)>;
 
 /// 这个 agent 的会话有 pidfile 可判活吗（注入的那份扫描只认这一家的布局）。
@@ -243,10 +243,10 @@ pub(crate) fn own_source() -> &'static str {
 }
 
 /// 这个二进制在终端里的名字（`~/.cc-monitor/bin/ccm`）。预览语境里「叫的是 `ccm`」就是它（`plan::Env::for_preview`）。
-/// 〔主会话 09-27 裁〕分流**不看**名字：它只剩「名字」这一个意思，不再是入口②（`cc-monitor-backend ccm …`〔散文墓碑〕）的子命令词。
+/// 分流**不看**名字：它只剩「名字」这一个意思，不再是入口②（`cc-monitor-backend ccm …`〔散文墓碑〕）的子命令词。
 pub(crate) const SUBCOMMAND_WORD: &str = "ccm";
 
-/// 〔V151〕这一趟交给谁：ccm（壳）还是后端 —— **唯一的分流口**（`main.rs` 只认它）。
+/// 这一趟交给谁：ccm（壳）还是后端 —— **唯一的分流口**（`main.rs` 只认它）。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Entry {
     /// 当 `ccm` 用：交给 [`run`] 的那串 argv（`[交给 claude 的…] -- [ccm 自己的…]`）。
@@ -255,12 +255,12 @@ pub enum Entry {
     Backend(Vec<String>),
 }
 
-/// 〔V151〕后端认得的第一个词：一次性子命令 ∪ 流模式旗标。只许紧跟**打头的** `--` 出现（`ccm -- --stream …`）。
+/// 后端认得的第一个词：一次性子命令 ∪ 流模式旗标。只许紧跟**打头的** `--` 出现（`ccm -- --stream …`）。
 pub(crate) fn is_backend_word(w: &str) -> bool {
     crate::SUBCOMMANDS.contains(&w) || crate::STREAM_FLAGS.contains(&w)
 }
 
-/// 〔V151 · 主会话 09-27 裁「路由不看 argv0」〕分流**只看 argv**，与二进制叫什么名字无关（`~/.cc-monitor/bin/ccm` 与开发树的
+/// 〔「路由不看 argv0」〕分流**只看 argv**，与二进制叫什么名字无关（`~/.cc-monitor/bin/ccm` 与开发树的
 /// `cc-monitor-backend` 同一条规则）：打头的 `--` 紧跟后端词（一次性子命令 / 流模式旗标）⇒ 后端（argv = `--` 之后那一串；
 /// 第一个 `--` 就是分隔，后端子命令自己的参数里再出现 `--` 也不会被误切）；其余一律当 ccm（`argv::parse` 切两半，没有 `--` 整行交 claude）。
 /// ⇒ 叫后端的每一处都带打头的 `--`；零参数是「起一个 claude」，不再是流模式。
@@ -287,7 +287,7 @@ pub fn intercept(args: &[String]) -> Option<Vec<String>> {
 }
 
 /// 「我是被怎么叫进 `ccm` 模式的」—— 容器路要在 pane 里**把自己再叫一次**，叫法就是这一段 ＋ 内层参数（`plan::build` 那条 `inner`）。
-/// 〔主会话 09-27 裁〕只剩一个入口（分流不看名字）⇒ 恒是 `[argv0]`。
+/// 只剩一个入口（分流不看名字）⇒ 恒是 `[argv0]`。
 /// 〔墓碑 —— CC1 那一版要从 argv 里取「入口吃掉的那一段」，因为入口②（`<bin> ccm …`）多一个子命令词。〕
 pub(crate) fn self_invocation(argv: &[String]) -> Vec<String> {
     argv.first().cloned().into_iter().collect()
@@ -297,7 +297,7 @@ pub(crate) fn self_invocation(argv: &[String]) -> Vec<String> {
 ///
 /// 退出码的四档（与旧实现逐字同义，消费者按码分支）：
 /// `0` 正常 · `2` 用法错（`die`）· `3` 会话名被占 · `4` 起不来。
-/// 〔MOD · `99 §2.1 ⑮`〕`process_argv` ＝ 这个进程的整条 argv，由调用方（`main.rs`，argv 只在那里取一次）交；
+/// `process_argv` ＝ 这个进程的整条 argv，由调用方（`main.rs`，argv 只在那里取一次）交；
 /// 本模块不自己读 `std::env::args`。
 pub fn run(args: &[String], process_argv: &[String], running: RunningScan) -> i32 {
     let parsed = match argv::parse(args) {
@@ -381,10 +381,10 @@ fn plan_of(o: &argv::Opts, mut env: Env, inherit_account: bool) -> Result<Plan, 
 const PRINT_MAX_WORDS: usize = 64;
 const PRINT_MAX_WORD_BYTES: usize = 4096;
 
-/// 〔E2 · `96 §7.2.2` · W5-ALIAS §3.6〕帧命令 `ccm-probe`：**这台的 `ccm` 会哪些** —— 与 `ccm --ccm-probe` 同一张名片（同一组常量）。
-/// 为什么问后端而不是进交互 shell 查 `PATH`：`ccm` 就是这台后端本身、恒在 `~/.cc-monitor/bin/ccm`（`设计/01 §6.7b`），
+/// 帧命令 `ccm-probe`：**这台的 `ccm` 会哪些** —— 与 `ccm --ccm-probe` 同一张名片（同一组常量）。
+/// 为什么问后端而不是进交互 shell 查 `PATH`：`ccm` 就是这台后端本身、恒在 `~/.cc-monitor/bin/ccm`，
 /// 「它会哪些」这一问退化成问它自己。
-/// 〔MIG-3b · `99 §2.1 ⑬`〕应答是**成品** `{version, capabilities, agents, build}`（此前是那几行原文、由 monitor 解析）：
+/// 应答是**成品** `{version, capabilities, agents, build}`（此前是那几行原文、由 monitor 解析）：
 /// 界面经通道直问、按形状收（`src/ccm-probe.ts`，金样 `tests/__fixtures__/ccm-probe.golden.json`），monitor 那一跳删了。
 /// 纯函数：不起进程、不碰盘。
 pub(crate) fn answer_probe() -> serde_json::Value {
@@ -401,7 +401,7 @@ pub(crate) fn answer_probe_for(platform: crate::TmuxPlatform) -> serde_json::Val
     })
 }
 
-/// 〔W5-ALIAS · 第五波先行〕帧命令 `ccm-print`：**一条别名实际会执行什么**（`设计/71 §2.3`：
+/// 帧命令 `ccm-print`：**一条别名实际会执行什么**（
 /// 「`ccm --ccm-print` 不跑、吐出等价的一行 shell ⇒ 生成器旁边显示这条别名实际会执行什么，是真验证，不是前端拼串」）。
 ///
 /// 入：`{ "args": [..] }`（一条别名的预置参数，原样 ccm argv）。出：`{ "line": "<--ccm-print 那一行>" }`。
@@ -467,7 +467,7 @@ pub(crate) fn answer_print(
     Ok(serde_json::json!({ "line": plan::render(&plan) }))
 }
 
-/// 〔FIX4 · `设计/90 §3` J7〕帧命令 `tmux-name-mint`：**起会话要一个 tmux 名 —— 问这台**。
+/// 帧命令 `tmux-name-mint`：**起会话要一个 tmux 名 —— 问这台**。
 ///
 /// 入：`{"cwd": "<目录>"}`（起新会话 / 全新 resume：基名 `<项目名>-cc`）或 `{"forkOf": "<源会话的 tmux 名，或它的 cwd>"}`
 /// （分叉：基名 `<…>-fork-cc`），二者恰给一个。出：`{"name": "<最终名>"}`。
@@ -535,13 +535,13 @@ fn needs_account_table(o: &argv::Opts, env: &Env) -> bool {
 /// 〔另一半给「跑不了它的人」——交叉编译出来的 musl 二进制在 Windows 上没法执行 ——
 ///  那一半是 `crate::CC_MONITOR_BUILD_STAMP`（扫字节）。两半同源于 `crate::BUILD_ID`。〕
 ///
-/// # 〔WIN1 · RT1 F7〕`capabilities=` 答的是「**在这台机器上**做得到哪几条」
+/// # `capabilities=` 答的是「**在这台机器上**做得到哪几条」
 ///
 /// 从前这一行是整张 [`CAPABILITIES`] 原样吐 —— 真 Win11 上 `ccm.exe --ccm-probe` 自报 `tmux` / `attach` /
 /// `detach` / `tmux-size` / `tmux-base` / `bus-register` …（`RT1.md §8` F7），而那几条在 Windows 上
 /// 一条都做不到（`TARGET_GAPS`）。⇒ 改吐本二进制那一档平台上的那一份：
 /// [`crate::ccm_launcher_with`]`(`[`crate::TMUX_PLATFORM`]`)` —— 与能力账按 target 问的是**同一个函数**
-/// （`96 §2`「能力清单从实现派生」），不在这里另写名单。Linux 上逐字不变。
+/// （「能力清单从实现派生」），不在这里另写名单。Linux 上逐字不变。
 pub(crate) fn probe_output(self_path: &str) -> String {
     probe_output_for(self_path, crate::TMUX_PLATFORM)
 }
@@ -576,7 +576,7 @@ fn execute(plan: Plan) -> i32 {
             exec_shell(&plan::render(&plan), &WHY_SHELL_ATTACH)
         }
         Plan::Container(c) => {
-            // 🔴 〔`K-R96` 09-12〕**这里从前有一段退让** —— 它只发生在真跑这条路上，
+            // 🔴 **这里从前有一段退让** —— 它只发生在真跑这条路上，
             //    于是 `--ccm-print` 吐的名字与真跑起出来的名字**可以不一样**。
             //    用户 `R52` 裁定二之后退让搬进了 `plan::build`（问同一张快照），
             //    计划里的 `name` 就是最终名 ⇒ **这里一个字都不许再改它**。
@@ -662,7 +662,7 @@ fn launch_args(c: &plan::Container) -> serde_json::Value {
 ///
 /// 🔴 它们的用处不是好看：`sh` 不在这台机器上时，这句话就是用户唯一看得到的**原因**
 ///（`D7`：失败要显式、归因要准确）。从前那条路只吐 `ccm: 起不来 —— program not found`，
-/// 于是真机读数（`真相源/106 §3.3`）**只能靠对比 `claude` 那趟 `EXIT=0` 反推**
+/// 于是真机读数**只能靠对比 `claude` 那趟 `EXIT=0` 反推**
 /// 「找不到的不是 `hostname`，是 `sh`」—— 错的归因比失败本身更贵。
 pub(crate) static WHY_SHELL_CCM_ENV: std::sync::LazyLock<String> =
     std::sync::LazyLock::new(|| copy_text("beCcm.whyShell.ccmEnv", &[]));
@@ -685,7 +685,7 @@ pub(crate) static WHY_SHELL_CONTAINER_TAIL: std::sync::LazyLock<String> =
 /// 上一版的条件逐字是 `!d.ccm_env.is_empty() || d.bus_id_recipe || resolved.is_some()`
 /// —— **`bus_id_recipe` 单独就把整条改走 `sh -c`**。而 `needs_bus_id("codex")` 恒真
 /// ⇒ 每一趟 `--agent codex` 都要一个 `sh`，Windows 上没有 ⇒ `EXIT=4 program not found`
-///（真机现打住 `真相源/106 §3.3` 的 `agent` 那一行）。
+///（真机现打过 `agent` 那一行）。
 ///
 /// 🔴 **收窄靠的是一条等价，不是一条近似**（`INVARIANTS §33` 那条「不得近似」）：
 /// [`BUS_ID_RECIPE`] **整段**裹在 `if [ -n "${TMUX:-}" ]; then … fi;` 里，
@@ -736,7 +736,7 @@ pub(crate) const NO_SHELL: &str = "no_shell";
 ///
 /// 🔴 这几步必须发生在**调用者那个进程**里：env 要落在最终 `exec` 的那个 shell 上，
 /// 否则穿不过 tmux 的进程边界（旧 `cct` 正是死在这一步）。
-/// 〔S5〕直路上给了 `--ccm-sid` 却没有令牌时那一句（stderr，**不报错、照常起**）。
+/// 直路上给了 `--ccm-sid` 却没有令牌时那一句（stderr，**不报错、照常起**）。
 pub(crate) static DIRECT_SID_NO_CARRIER: std::sync::LazyLock<String> =
     std::sync::LazyLock::new(|| copy_text("beCcm.directSidNoCarrier.say", &[]));
 
@@ -784,7 +784,7 @@ fn exec_direct(d: &plan::Direct) -> i32 {
 ///
 /// `subject` = **起不来的是什么**。🔴 它不是装饰（`D7`）：从前这里只吐
 /// `ccm: 起不来 —— {e}`，而 `{e}` 在 Windows 上逐字是 `program not found`
-/// ⇒ 那句话**指不出是哪个 program**。真机读数（`真相源/106 §3.3`）为此只能靠
+/// ⇒ 那句话**指不出是哪个 program**。真机读数为此只能靠
 /// 「同一个 launcher 在 `claude` 那趟 `EXIT=0`」反推出「找不到的是 `sh`」。
 /// ⇒ 现在两处调用点各自把主语带进来（`sh -c` 那条还带上「为什么非得经它」）。
 fn exec_or_spawn(mut cmd: std::process::Command, subject: &str) -> i32 {

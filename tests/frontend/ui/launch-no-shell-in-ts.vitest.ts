@@ -1,21 +1,21 @@
 // @vitest-environment node
 /**
- * `设计/90 §3` 条 1：**前端不许出现 shell 串拼接** —— 原文逐字：
+ * 条 1：**前端不许出现 shell 串拼接** —— 原文逐字：
  *
  * > 1. 前端不许出现 shell 串拼接 —— `src/**\/*.ts` 里零 `tmux ` / `&&` 命令串字面量；
  *
- * 住址：`设计/90 §3`（三条可机械执行的判据的第一条）· `设计/00 §2.5 ④`「同一条命令串只留 Rust 那两份
- * （CLI ＋ 载荷）」。〔LR2〕接替 `tests/session-backend-gate.vitest.ts`（`INVARIANTS §31` 最终形态第①条的
+ * （三条可机械执行的判据的第一条）· 「同一条命令串只留 Rust 那两份
+ * （CLI ＋ 载荷）」。接替 `tests/session-backend-gate.vitest.ts`（`INVARIANTS §31` 最终形态第①条的
  * 机检）：那一条整份豁免了 `session-backend.ts`（「它就是那一层」），而那一层今天在 Rust 里 ——
  * TS 兜底一族（`launch-render-fallback.ts` · `session-backend.ts` · `remote-launch.ts` 五个 builder）
- * 零生产调用、LR2 按 `00 §2.5 ④` 删了 ⇒ 豁免没了，射程从「只认 `tmux <动词> -`」补上 `&&`。
+ * 零生产调用、LR2 按删了 ⇒ 豁免没了，射程从「只认 `tmux <动词> -`」补上 `&&`。
  *
  * # 人群：`src/**\/*.ts` 全集，不开例外
  *
- * 照 `90 §3` 原文的射程：`src/` 下每一份生产 `.ts`（排掉 `*.test.ts` / `*.vitest.ts` —— 判据住那里，
+ * 照原文的射程：`src/` 下每一份生产 `.ts`（排掉 `*.test.ts` / `*.vitest.ts` —— 判据住那里，
  * 读到自己会恒绿；排掉 `src/frontend/ui/generated/` —— ts-rs 生成的线上类型，不是人写的，它们只有类型没有字面量）。
  * 共享遍历 `test-support/production-sources.ts` 按构造做这两件事。
- * 〔LR2〕两份夹具用例表（`launch-payload-golden.ts` · `launch-tmux-outer-golden.ts`）的手写期望逐字就是整条命令，
+ * 两份夹具用例表（`launch-payload-golden.ts` · `launch-tmux-outer-golden.ts`）的手写期望逐字就是整条命令，
  * 原来住 `src/`；它们不是前端，挪进了 `tests/test-support/`（主会话 09-25 裁：射程取全集、不开例外表）。
 
  * # 命中的口径
@@ -32,7 +32,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-import { productionTsFiles } from "../../test-support/production-sources";
+import { productionTsFiles, SCAN_TIMEOUT_MS } from "../../test-support/production-sources";
 import { REPO_ROOT } from "../../test-support/repo-root";
 import { stripComments } from "../../test-support/strip-comments";
 
@@ -150,7 +150,7 @@ function hitsIn(text: string): string[] {
   return stringLiterals(stripComments(text, "ts")).flatMap(shellHits);
 }
 
-describe("设计/90 §3 条 1：前端零 shell 串", () => {
+describe(" 条 1：前端零 shell 串", () => {
   const all = new Map(productionTsFiles("src").map((s) => [s.file, s.text] as const));
 
   it("量具自检：抽字面量 ＋ 口径在一段已知语料上恰好命中该命中的（正控），代码里的 && 与注释不算", () => {
@@ -183,11 +183,11 @@ describe("设计/90 §3 条 1：前端零 shell 串", () => {
     }
     expect(
       hits,
-      "前端拼了 shell 串 —— `设计/90 §3` 条 1 逐字禁这件事（`00 §2.5 ④`：命令串只留 Rust 那两份）。\n" +
+      "前端拼了 shell 串 —— 条 1 逐字禁这件事（命令串只留 Rust 那两份）。\n" +
         "改成交结构化请求给后端渲染（`render_launch_payload` / `render_ccm_launch`）；\n" +
         "若它是规格 / 夹具（不是前端），它就不该住 `src/`。\n",
     ).toEqual([]);
-  });
+  }, SCAN_TIMEOUT_MS);
 
   it("★ 正控：挪出去的那两份夹具用例表确实满是命令串 —— 同一把尺子量得到它们（否则上一条的零是尺子瞎了）", () => {
     for (const f of ["tests/test-support/launch-payload-golden.ts", "tests/test-support/launch-tmux-outer-golden.ts"]) {
@@ -222,5 +222,5 @@ describe("设计/90 §3 条 1：前端零 shell 串", () => {
     const probe = stripComments("export function renderFallback() {}\nconst x = posixQuote(y);", "ts");
     expect(names.filter((nm) => new RegExp(`\\b${nm}\\b`).test(probe))).toEqual(["renderFallback", "posixQuote"]);
     expect(found).toEqual([]);
-  });
+  }, SCAN_TIMEOUT_MS);
 });

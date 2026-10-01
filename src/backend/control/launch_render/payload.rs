@@ -1,4 +1,4 @@
-//! **「起一个会话」的载荷编译器** —— `env 前缀 → cd → argv → wrap` 那一段串的唯一 Rust 真相源。
+//! **「起一个会话」的载荷编译器** —— `env 前缀 → cd → argv → wrap` 那一段串的唯一 Rust 源头。
 //!
 //! # 它是哪一层
 //!
@@ -11,7 +11,7 @@
 //!
 //! 本模块只管**内层**。⚠ **不是因为外层「已经没了」** —— U8c-1 第一版这么写，被审计证伪：
 //! backend 的 `launch`（U8a-2b）**零生产调用方**、它**结构上也不 attach**（平面 ③）。
-//! 🔴 **`设计/50`（删用量）订正上一句的举例**：原话举的例子是 `account_usage.rs` 那个
+//! 🔴 **（删用量）订正上一句的举例**：原话举的例子是 `account_usage.rs` 那个
 //! 用量探针构造器 —— 用量 ②③ 两轴整轴退役之后**那个例子本身没了**，
 //! 而**本模块的结论一个字没变**：`launch` 那条仍然不 attach，外层没有整个退役。
 //! 逐格实况与量法见 `src/doc/INVARIANTS.md` §33b。
@@ -29,11 +29,11 @@
 //!
 //! - 生产消费方今天有两个：`history.rs` 的 POSIX 分支（只用 [`config_dir_prefix_posix`]）、
 //!   以及 `backend/control/launch_wire.rs` 的 `render_launch_payload`（`container:"none"` 那格）。
-//!   〔`设计/50`：原先的第三个是 `account_usage.rs` 的用量探针（`usage_probe_payload`），  〔散文墓碑〕
+//!   〔：原先的第三个是 `account_usage.rs` 的用量探针（`usage_probe_payload`），  〔散文墓碑〕
 //!   随用量 ③ 轴整轴退役。〕
 //! - **Windows 分支不在这里** —— `$env:CLAUDE_CONFIG_DIR=$null; ` 与它自己那套
 //!   「什么算绝对路径」（盘符 / UNC / `\` 分隔）是刻意的平台特化。
-//! - 〔LR2〕TS 侧那个产出点（`launch-render-fallback.ts`）U8c-3 已删 —— 本文件是载荷与外层三格唯一的家。
+//! - TS 侧那个产出点（`launch-render-fallback.ts`）U8c-3 已删 —— 本文件是载荷与外层三格唯一的家。
 //!   `fixtures/payload-golden.json` / `tmux-outer-golden.json` 仍入库，左边是用例表里的手写期望
 //!   （`tests/test-support/launch-*-golden.ts`），Rust 读同一份自己渲染再逐字节比。
 
@@ -71,11 +71,11 @@ use copy_core::copy_text;
 /// （那边的路径里不该有反斜杠），而 Windows 侧的账号目录长成 `C:\Users\z\.claude-alt\z`，
 /// 把 `\` 一律禁掉等于禁掉整个平台。它在两种 shell 的**单引号**里都是字面量
 /// （POSIX `'…'` 无转义；PowerShell `'…'` 无插值），真正要挡的是能提前闭合引号或另起命令的那几个。
-/// 〔audit-0805 08-06〕提为 `pub(crate)`：它是**权威源**，
+/// 提为 `pub(crate)`：它是**权威源**，
 /// `history.rs` 那份逐字副本已删（E3），判据也要遍历这一份而不是再抄一遍。
-/// 〔DUP1〕字面量本身搬进 `acct_core::CONFIG_DIR_SHELL_META`（后端那份全表 `is_safe_config_dir` 原来也各抄一遍，
+/// 字面量本身搬进 `acct_core::CONFIG_DIR_SHELL_META`（后端那份全表 `is_safe_config_dir` 原来也各抄一遍，
 /// 两份收成那一份）；这里留的是 monitor 这一侧唯一的那个名字，值取自它 —— 定义处仍恰好一处（`the_shell_metachar_blacklist_has_exactly_one_home`）。
-/// 〔DUP1〕生产段里已经没人读它了（判定整份在 `acct_core::config_dir_char_unsafe`），只剩判据在遍历 ⇒ 只在 `test` 下编（不留死代码）。
+/// 生产段里已经没人读它了（判定整份在 `acct_core::config_dir_char_unsafe`），只剩判据在遍历 ⇒ 只在 `test` 下编（不留死代码）。
 #[cfg(test)]
 pub(crate) const SHELL_META_COMMON: &str = acct_core::CONFIG_DIR_SHELL_META;
 
@@ -93,8 +93,8 @@ pub(crate) const SHELL_META_COMMON: &str = acct_core::CONFIG_DIR_SHELL_META;
 /// （本机 / 远端 manifest）都已经用并集把过一道。但「权威也保留本地校验」是这个仓自己
 /// 写在 `resolve_query.rs` 头注里的纪律（B2），少一层就是少一层。
 ///
-/// 〔DUP1〕判定本身搬进 `acct_core::config_dir_char_unsafe`（全仓唯一一份；C1 那一段 `is_control()` 本来就含），这里转手；
-/// 〔MIG-2〕Windows 那条路（`local.rs::validate_config_dir_ps`）在用。
+/// 判定本身搬进 `acct_core::config_dir_char_unsafe`（全仓唯一一份；C1 那一段 `is_control()` 本来就含），这里转手；
+/// Windows 那条路（`local.rs::validate_config_dir_ps`）在用。
 pub fn is_command_unsafe_char(c: char) -> bool {
     acct_core::config_dir_char_unsafe(c)
 }
@@ -104,7 +104,7 @@ pub fn is_command_unsafe_char(c: char) -> bool {
 ///
 /// fail-closed：稍有可疑即判非法，**绝不拼进命令**。
 ///
-/// 〔DUP1 · `设计/90 §3` 判据 2〕规则住 `acct_core::config_dir_posix_ok`（全仓唯一一份，后端 ccm 那一侧也用得着），
+/// 规则住 `acct_core::config_dir_posix_ok`（全仓唯一一份，后端 ccm 那一侧也用得着），
 /// 名字留在这里给既有调用方（本机拉起 · 后端落点 · 两条渲染路）转手。
 pub fn config_dir_command_safe(dir: &str) -> bool {
     acct_core::config_dir_posix_ok(dir)
@@ -152,21 +152,21 @@ pub fn config_dir_prefix_posix(account: Option<&Account>) -> Result<String, Stri
 /// 「**显式不注入** `CLAUDE_CONFIG_DIR`」这条前缀 —— 也就是账号 0 的起法。
 ///
 /// 逐字节形态被 e2e 探针用 `grep -q "unset CLAUDE_CONFIG_DIR;"` 断言，且与 TS
-/// 〔LR2〕TS 那份同名常量随兜底渲染器删了；逐字节由 `payload-golden.json`「账号 0」那条夹具钉着。
+/// TS 那份同名常量随兜底渲染器删了；逐字节由 `payload-golden.json`「账号 0」那条夹具钉着。
 pub fn unset_config_dir_prefix() -> String {
     posix::unset(&[account_env()])
 }
 
-/// 〔MIG-2〕账号维度的载体（环境变量名）从适配层取（`agents::account_env_of`，通用层拿这个名字的唯一入口）。
+/// 账号维度的载体（环境变量名）从适配层取（`agents::account_env_of`，通用层拿这个名字的唯一入口）。
 /// 这个载荷内核今天只起 claude 那一家（`nestedEnv` 等画像同样是那一家的）；认不出 ⇒ 是程序错，当场炸。
 pub(crate) fn account_env() -> &'static str {
     crate::agents::account_env_of(LAUNCH_AGENT_KIND).expect("适配层里没有这一家的账号载体")
 }
 
-/// 〔MIG-2〕这个载荷内核起的是哪一家 agent（适配层的 `kind`）。
+/// 这个载荷内核起的是哪一家 agent（适配层的 `kind`）。
 pub(crate) const LAUNCH_AGENT_KIND: &str = "claude";
 
-/// 启动期令牌的形状判定 —— 〔DUP3 · 主会话 09-26 裁 · `设计/01 §5` D1〕**全仓唯一的一份住共享 crate**
+/// 启动期令牌的形状判定 —— **全仓唯一的一份住共享 crate**
 /// （`shell_quote_core::rbind_token_ok`，长度与字母表两个常量同住；后端 `identity_tag.rs` 里的 `token_is_safe` 读的是同一个令牌
 /// `CCM_RBIND_TOKEN`，先前两半各写一份、规则逐字同）。这里是再导出：`rbind_token_shape_ok` 这个名字留着
 /// （本文件渲染前那道闸 · `bind.rs` · 判据的调用点一个不动）。
@@ -189,7 +189,7 @@ pub enum EnvOp<'a> {
     ExportModel {
         value: &'a str,
     },
-    /// `设计/80 §8` 步 1：启动期令牌 `CCM_RBIND_TOKEN`（`[0-9a-f]{32}`）。
+    /// 启动期令牌 `CCM_RBIND_TOKEN`（`[0-9a-f]{32}`）。
     ///
     /// 「买到什么 / **买不到什么**」逐字住 TS `launch-types.ts::EnvOp` 那一段。
     /// 本侧只重复一句要害：**它只是一个不可猜的关联 id，不许承载任何权限语义** ——
@@ -202,10 +202,10 @@ pub enum EnvOp<'a> {
     ExportRbindToken {
         value: &'a str,
     },
-    /// 〔RL1 · 第四波〕中转地址 `ANTHROPIC_BASE_URL`：远端（与本机「就地 resume」那一格）拉起时，
+    /// 中转地址 `ANTHROPIC_BASE_URL`：远端（与本机「就地 resume」那一格）拉起时，
     /// 值由那台机器的后端出成品（帧命令 `launch-endpoint`，决策表 `accounts/upstream_select/endpoint.rs::decide_launch`），
     /// 经 `history::relay_endpoint_on` → tauri `relay_endpoint_for_launch` 交给前端、再原样放进载荷。
-    /// 〔TL3 · 审计 F 🔴-3〕先前这里链到 monitor 的 `relay_endpoint_for`〔散文墓碑〕—— US1 把那张表整块搬进了后端。
+    /// 〔审计 F 🔴-3〕先前这里链到 monitor 的 `relay_endpoint_for`〔散文墓碑〕—— US1 把那张表整块搬进了后端。
     ///
     /// ⚠ 形状校验在 [`render_env_ops`] 里、**fail-closed**（[`relay_base_url_shape_ok`]）：只收
     /// 构造口（`relay_route_core::base_url`，后端上游选择调它）产得出的那一形。渲错了的症状是「claude 每一发都连不上」，与网络故障同形 ——
@@ -294,9 +294,9 @@ fn render_env_ops(ops: &[EnvOp]) -> Result<String, String> {
                 ));
             }
             EnvOp::ExportModel { value } => {
-                // 〔DUP1 · `INVARIANTS §47` ①〕模型名是标识符：共享那一份判（`shell_quote_core::model_name_ok`，
+                // 〔`INVARIANTS §47` ①〕模型名是标识符：共享那一份判（`shell_quote_core::model_name_ok`，
                 // 真实模型名全过 —— `sonnet[1m]` · Bedrock `…-v1:0` · Vertex `…@2025…` · 网关 `anthropic/…`）。
-                // 这里原来「刻意宽容渲染」、只靠 quote；前端那份 `isValidModelName`〔散文墓碑〕删了（`设计/90 §3` 判据 2）。
+                // 这里原来「刻意宽容渲染」、只靠 quote；前端那份 `isValidModelName`〔散文墓碑〕删了。
                 if !shell_quote_core::model_name_ok(value) {
                     return Err(refuse(copy_text(
                         "rsPayload.model.bad",
@@ -401,7 +401,7 @@ pub fn render_payload(spec: &PayloadSpec) -> Result<String, String> {
             )));
         }
     }
-    // ★ **launcher 也要过一道**〔audit-0805 08-08〕：本函数对 `args` 逐个过白名单，
+    // ★ **launcher 也要过一道**：本函数对 `args` 逐个过白名单，
     // 而 `launcher` 此前**一个检查都没有** —— 它被直接拼进 `argv` 再 `join(" ")`。
     // 这条路的上游是 tauri 命令 `render_launch_payload`：`launcher` 来自 webview。
     //
@@ -413,10 +413,10 @@ pub fn render_payload(spec: &PayloadSpec) -> Result<String, String> {
     // 不是攻击者）；② 与同函数 `args` 那道白名单**姿态一致**（不对称本身会误导下一个人）。
     // 真正的边界在别处：backend 的 `admit`（会话身份）+ 前端执行面（CSP / 能力表）。
     //
-    // 字符集当年镜像 TS 的 `sanitizeRemoteLauncher`〔散文墓碑〕（〔DUP1〕那份按 `设计/90 §3` 判据 2 删了：同一字符集、
+    // 字符集当年镜像 TS 的 `sanitizeRemoteLauncher`〔散文墓碑〕（那份按删了：同一字符集、
     // 处置却是静默换成默认 launcher），按本函数的既有惯例**返回 `Err` 而不是静默回落**：拒绝要让调用方看得见。
-    // 〔DUP3 · 主会话 09-26 裁 · `INVARIANTS §47` ③〕这里先前是一张**拒绝集**（`; | & $ \` < > 换行`），本机那条是另一张白名单（不许 `/`）——
-    // 今天两条与后端 ccm 那一格都调全仓那一张命令片段白名单 `shell_quote_core::launcher_refused_char`（本机远端同一条，`设计/01 §6.8`）：
+    // 〔`INVARIANTS §47` ③〕这里先前是一张**拒绝集**（`; | & $ \` < > 换行`），本机那条是另一张白名单（不许 `/`）——
+    // 今天两条与后端 ccm 那一格都调全仓那一张命令片段白名单 `shell_quote_core::launcher_refused_char`（本机远端同一条）：
     // 路径（`/usr/local/bin/claude`）与带参数的片段照放，拒绝集漏掉的 `( ) { } ' " * ? #` 与非 ASCII 从此也拒。
     if let Some(c) = shell_quote_core::launcher_refused_char(spec.launcher) {
         return Err(refuse(copy_text(
@@ -432,7 +432,7 @@ pub fn render_payload(spec: &PayloadSpec) -> Result<String, String> {
     let inner = argv.join(" ");
     let cd = match spec.cwd {
         Some("") => return Err(refuse(&copy_text("rsPayload.cwd.empty", &[]))),
-        // 〔TL3 · §47 ②〕工作目录是从本进程外面来的自由文本路径 ⇒ 先过形式 ＋ 拒绝集，再走唯一的 quote。
+        // 〔§47 ②〕工作目录是从本进程外面来的自由文本路径 ⇒ 先过形式 ＋ 拒绝集，再走唯一的 quote。
         Some(c) if !shell_quote_core::posix_free_path_ok(c) => {
             return Err(refuse(copy_text(
                 "rsPayload.cwd.bad",
@@ -451,7 +451,7 @@ pub fn render_payload(spec: &PayloadSpec) -> Result<String, String> {
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// `设计/90 §4 E`：**外层 tmux 命令那三格** —— 后端把它们产出来
+// **外层 tmux 命令那三格** —— 后端把它们产出来
 // ═════════════════════════════════════════════════════════════════════════════
 //
 // # 它补的是本模块头注那张图的**左半边**
@@ -459,7 +459,7 @@ pub fn render_payload(spec: &PayloadSpec) -> Result<String, String> {
 // ```text
 // tmux new-session -d -s '=name:' … ; send-keys -t … '<载荷>' Enter ; tmux attach …
 // └────────────────────── 外层：容器 ──────────────────────┘ └─ 内层：载荷 ─┘
-//                        ↑ 本节（`设计/90 §4 E`）                ↑ 上面那半（U8c-1）
+//                        ↑ 本节                ↑ 上面那半（U8c-1）
 // ```
 //
 // 三格逐条：`container:tmux` 的 `create` / `send-into`，加上 `action:attach`。
@@ -468,7 +468,7 @@ pub fn render_payload(spec: &PayloadSpec) -> Result<String, String> {
 //
 // # ⚠ 它**不**住新模块，这是本件的要点之一
 //
-// `设计/00 §2.5 ④` 的目标是「**5 个渲染实现 → 2 个（Rust CLI + Rust 载荷）**」——
+// 目标是「**5 个渲染实现 → 2 个（Rust CLI + Rust 载荷）**」——
 // 整件事的要点是**消灭副本**。给外层单开一个模块会让盘上的渲染实现
 // 从 5 变 6，方向是反的。⇒ 外层并进**「Rust 载荷」那一份**（就是本模块），
 // 与内层共用同一份 quote 原语、同一套 fail-closed 姿态。
@@ -528,8 +528,8 @@ impl<'a> TmuxTarget<'a> {
         }
     }
 
-    /// 〔DUP2 · 主会话 09-26 裁 J6〕名字的**规则**只有一份（`control/gate_rules.rs`）：`creating` ⇒ 新建那一条（非空 · 不以 `-` 开头 ·
-    /// 无 `*?.:=` · 无控制符与欺骗字符 · ≤128），否则（attach / 送进已在的会话）⇒ 已有会话那一条（V131 ②：拒绝集 ＋ 非空）。
+    /// 名字的**规则**只有一份（`control/gate_rules.rs`）：`creating` ⇒ 新建那一条（非空 · 不以 `-` 开头 ·
+    /// 无 `*?.:=` · 无控制符与欺骗字符 · ≤128），否则（attach / 送进已在的会话）⇒ 已有会话那一条（②：拒绝集 ＋ 非空）。
     /// 这里原来自己写了一份（`Raw` 放过前导 `-`；F01「不把 glob 建进名字」在这条路上只靠界面那一道 —— 界面那份删了，这里接上）。
     /// 之后 `Raw` 那一支另有一道**渲染前提**：它是裸拼的（不加引号），只放行 tmux 名字那一族字符 —— 那不是名字的规则，是「能不能不加引号」。
     fn check(&self, creating: bool) -> Result<(), String> {
@@ -607,7 +607,7 @@ pub enum TmuxOuter<'a> {
     Attach { target: TmuxTarget<'a> },
 }
 
-// 〔DUP1 · `INVARIANTS §47` ①〕`@ccm_sid` 是裸拼进命令的 ⇒ 过 sid 那一条放行判定（`shell_quote_core::session_id_ok`，
+// 〔`INVARIANTS §47` ①〕`@ccm_sid` 是裸拼进命令的 ⇒ 过 sid 那一条放行判定（`shell_quote_core::session_id_ok`，
 // 全仓唯一一份）。这里原来有一份自己的白名单（`[A-Za-z0-9_-]`、无上界、不管前导 `-`），与 TS 座当年声称的那条同口径 ——
 // **本侧不信那句声称**的理由照旧（上游是 webview），换的只是「信谁」：信共享那一份，不再各写各的。
 
@@ -641,7 +641,7 @@ pub fn render_tmux_outer(outer: &TmuxOuter, payload: Option<&str>) -> Result<Str
             };
             let cflag = match cwd {
                 Some("") => return Err(refuse(&copy_text("rsPayload.cwd.empty", &[]))),
-                // 〔TL3 · §47 ②〕同 `render_payload` 那一格。
+                // 〔§47 ②〕同 `render_payload` 那一格。
                 Some(c) if !shell_quote_core::posix_free_path_ok(c) => {
                     return Err(refuse(copy_text(
                         "rsPayload.cwd.bad",
@@ -723,14 +723,14 @@ pub fn render_tmux_outer(outer: &TmuxOuter, payload: Option<&str>) -> Result<Str
 // 的属性**（`K20`：判据/说法按形状认，不按主题名）。本模块正是那一层在 Rust 侧的家
 // —— `config_dir_prefix_posix` 与 `render_env_ops` 都住这儿。
 //
-// # 〔US1 · 第四波 4D〕「注入什么」那一半**搬走了**，这里只剩「怎么渲」
+// # 「注入什么」那一半**搬走了**，这里只剩「怎么渲」
 //
-// 先前这一段还住着 `设计/20 §3.2` 那张决策表（`relay_endpoint_for` / `apikey_endpoint_for` / `RelayAsk`〔散文墓碑〕）、
+// 先前这一段还住着那张决策表（`relay_endpoint_for` / `apikey_endpoint_for` / `RelayAsk`〔散文墓碑〕）、
 // 凭据文件那一家（`APIKEY_TABLE_AGENT`〔散文墓碑〕）、登记了默认上游的 agent（`AGENTS_WITH_DEFAULT_UPSTREAM`〔散文墓碑〕）、
-// 路由语法（两个前缀 · 段闸 · 拼串 · 两份跨半边样例）—— 每一样都是后端那一份的第二份（B-decouple §2.1 必须拆 1）。
+// 路由语法（两个前缀 · 段闸 · 拼串 · 两份跨半边样例）—— 每一样都是后端那一份的第二份（必须拆 1）。
 // 今天：决策表住后端上游选择 `accounts/upstream_select/endpoint.rs`（帧命令 `launch-endpoint` 出成品，起会话那一侧只转交、执行：
-// `history::relay_endpoint_on`）；端口 · 钥匙路径 · 路由语法住共享 crate `relay_route_core`（`设计/20 §5` 目标），两侧 `use` 同一份。
-// 渲染 shell 串属于开终端那一侧（`20 §3.3`），留在这里。
+// `history::relay_endpoint_on`）；端口 · 钥匙路径 · 路由语法住共享 crate `relay_route_core`（目标），两侧 `use` 同一份。
+// 渲染 shell 串属于开终端那一侧，留在这里。
 //
 // # ⚠ 两条**没买到**的（铁律 14）
 //
@@ -739,20 +739,20 @@ pub fn render_tmux_outer(outer: &TmuxOuter, payload: Option<&str>) -> Result<Str
 
 /// 本机中转的端口。**值只住共享 crate**（`relay_route_core::PORT`）：起本机后端时以 `CCM_RELAY_PORT`
 /// 交给它（`local_backend_host::relay_host_envs`），远端 `--resident-ensure` 起常驻后端时交的也是它；
-/// 〔US1〕先前两处各写一个 8788、零对拍。
+/// 先前两处各写一个 8788、零对拍。
 pub const RELAY_PORT: u16 = relay_route_core::PORT;
 
-/// 〔RL1〕载荷里那条中转地址（`EnvOp::ExportRelayBaseUrl`）的 fail-closed 校验：必须是构造口产得出的形状
-/// （`http://127.0.0.1:<1–65535>` ＋ `/s/` 或 `/t/` ＋ 恰好两段、每段过闸；〔V141〕没有会话段）。
-/// 〔US1〕构造口搬去后端上游选择之后，这个「逆」与构造口同住共享 crate（`relay_route_core::base_url_shape_ok`），本侧不另写一份。
+/// 载荷里那条中转地址（`EnvOp::ExportRelayBaseUrl`）的 fail-closed 校验：必须是构造口产得出的形状
+/// （`http://127.0.0.1:<1–65535>` ＋ `/s/` 或 `/t/` ＋ 恰好两段、每段过闸；没有会话段）。
+/// 构造口搬去后端上游选择之后，这个「逆」与构造口同住共享 crate（`relay_route_core::base_url_shape_ok`），本侧不另写一份。
 pub use relay_route_core::base_url_shape_ok as relay_base_url_shape_ok;
 
-/// 起会话身份 token（`CCM_LAUNCH_ID`）的**唯一铸造口**〔`KH2B6`〕：resume ⇒ 那条会话的 sid；新开 ⇒ 启动时现铸的 nonce。
+/// 起会话身份 token（`CCM_LAUNCH_ID`）的**唯一铸造口**：resume ⇒ 那条会话的 sid；新开 ⇒ 启动时现铸的 nonce。
 ///
-/// 〔V141〕它**不再**是中转路由的第 3 段（那一段退役：中转从 claude 自己的请求头认会话）。
+/// 它**不再**是中转路由的第 3 段（那一段退役：中转从 claude 自己的请求头认会话）。
 /// ⚠ 身份 token 本身也是「启动器铸、进 env 的会话身份」—— 与 V141 字面冲突，消费者（判活 / 回填）不在中转写区，报备主会话。
 fn mint_route_key() -> Result<String, String> {
-    // 〔MIG-2〕UUID v4 的连字符形态（过得了段闸 `[0-9a-f-]`，36 字节）；随机数取 OS 那一份（经 `rustls` 带进来的 `ring`，不新增依赖）。
+    // UUID v4 的连字符形态（过得了段闸 `[0-9a-f-]`，36 字节）；随机数取 OS 那一份（经 `rustls` 带进来的 `ring`，不新增依赖）。
     let mut b = [0u8; 16];
     if rustls::crypto::ring::default_provider()
         .secure_random
@@ -790,16 +790,16 @@ pub fn route_key_for_session(sid: Option<&str>) -> Result<String, String> {
 /// `only_one_place_in_this_file_exports_the_relay_base_url` 数着〕。
 ///
 /// ⚠ **那条判据的人群只有本文件**（它 `include_str!("payload.rs")`）—— 别把它读成「全仓唯一一处」。
-/// 〔US1〕后端 `control/ccm/plan.rs::base_url_word` 是另一处（`ccm` 把继承来的地址转进新 pane），同形、各自一个 crate。
+/// 后端 `control/ccm/plan.rs::base_url_word` 是另一处（`ccm` 把继承来的地址转进新 pane），同形、各自一个 crate。
 ///
-/// 〔E2 · V146〕**pane 里先看 `ANTHROPIC_BASE_URL` 有没有值**（用户在 rc 里自己设了端点）：有 ⇒ 不注入、打一行话
+/// **pane 里先看 `ANTHROPIC_BASE_URL` 有没有值**（用户在 rc 里自己设了端点）：有 ⇒ 不注入、打一行话
 /// （[`user_base_url_say`]），不抢用户的端点、也不把给用户端点的鉴权头送去官方；没有 ⇒ 照旧 export 中转地址。
-/// 判在 pane 那个 shell 里做（值只在那里），不由 monitor 猜。本机与远端同一个渲染器（〔MIG-2〕本机那一支在 `local.rs::relay_prefix`）。
+/// 判在 pane 那个 shell 里做（值只在那里），不由 monitor 猜。本机与远端同一个渲染器（本机那一支在 `local.rs::relay_prefix`）。
 pub fn relay_env_prefix_posix(base_url: &str) -> String {
-    // 〔RK1〕钥匙那一段是**读钥匙文件的命令替换**（见 [`RELAY_KEY_FILE_REL`]）：两段常量各自单引号，
+    // 钥匙那一段是**读钥匙文件的命令替换**（见 [`RELAY_KEY_FILE_REL`]）：两段常量各自单引号，
     //   中间只有那一个固定的 `$(cat …)` 会被 shell 展开 ⇒ URL 里别的字节一个都不会被解释。
-    //   〔E2〕写成 `判 && 说 || 注入` 一段（不拆成 if/then/else 几段）：载荷按 `; ` 分段的读者照旧认得出「中转前缀是第一段」。
-    // 〔OSA · V156〕写法住 `platform::shell::posix`（`判 && 说 || export` · 钥匙段读家目录那份文件）。
+    // 写成 `判 && 说 || 注入` 一段（不拆成 if/then/else 几段）：载荷按 `; ` 分段的读者照旧认得出「中转前缀是第一段」。
+    // 写法住 `platform::shell::posix`（`判 && 说 || export` · 钥匙段读家目录那份文件）。
     let (origin, path) = relay_url_halves(base_url);
     posix::export_unless_set(
         "ANTHROPIC_BASE_URL",
@@ -812,12 +812,12 @@ pub fn relay_env_prefix_posix(base_url: &str) -> String {
     )
 }
 
-/// 〔E2 · V146〕用户自己设了 `ANTHROPIC_BASE_URL` 时 pane 里说的那一行（两种 shell 同一句，住文案表）。
+/// 用户自己设了 `ANTHROPIC_BASE_URL` 时 pane 里说的那一行（两种 shell 同一句，住文案表）。
 fn user_base_url_say() -> String {
     copy_text("rsPayload.relay.userBaseUrl", &[])
 }
 
-/// 〔RK1 · `INVARIANTS §48.1`〕**中转钥匙文件**相对家目录的路径 —— 中转口进门要出示的那一把就住这里
+/// 〔`INVARIANTS §48.1`〕**中转钥匙文件**相对家目录的路径 —— 中转口进门要出示的那一把就住这里
 /// （**中转所在那台机器**上，`0600`，中转绑上口之后自己读回或铸：`src/backend/relay/door.rs::ensure_key`）。
 ///
 /// # 为什么 URL 里不放钥匙本身，而放「去读这个文件」
@@ -828,7 +828,7 @@ fn user_base_url_say() -> String {
 /// 渲染器把钥匙段写成 `$(cat ~/<本常量>)`，在**那台机器的 pane shell 里**展开 ——
 /// 钥匙只从 `0600` 文件进 agent 进程自己的 env。`$HOME` 在哪台上展开就读哪台的钥匙（与「回环地址是自指的」同一个道理）。
 ///
-/// 〔US1〕值只住共享 crate（`relay_route_core::KEY_FILE_REL`），后端 `door.rs::KEY_FILE_REL` 是同一个 const。
+/// 值只住共享 crate（`relay_route_core::KEY_FILE_REL`），后端 `door.rs::KEY_FILE_REL` 是同一个 const。
 pub const RELAY_KEY_FILE_REL: &str = relay_route_core::KEY_FILE_REL;
 
 /// 中转 URL 拆成「`http://主机:口/`」与「`/s/…` 那一截」两半，钥匙段插在中间。
@@ -857,10 +857,10 @@ fn relay_url_halves(base_url: &str) -> (&str, &str) {
 /// Windows 那一侧，所以要说清它没被放宽：本函数**不**给本地渲染器补一段读 `plan.env`
 /// 的代码，它只把一个调用方已经算好的串拼上去。
 pub fn relay_env_prefix_ps(base_url: &str) -> String {
-    // 〔RK1〕与 POSIX 那一形同构：钥匙段现读 `$HOME` 底下那一份（PowerShell 的 `$HOME` 即 `USERPROFILE`，
+    // 与 POSIX 那一形同构：钥匙段现读 `$HOME` 底下那一份（PowerShell 的 `$HOME` 即 `USERPROFILE`，
     //   与后端 `door::key_path` 的退路同一个）。仍只到「编得过」。
-    //   〔E2 · V146〕同 POSIX 那一形：pane 里先看 `$env:ANTHROPIC_BASE_URL` 有没有值，有 ⇒ 不注入、说一行（单引号里 `'` 写成 `''`）。
-    //   〔OSA · V156〕写法住 `platform::shell::powershell`。
+    // 同 POSIX 那一形：pane 里先看 `$env:ANTHROPIC_BASE_URL` 有没有值，有 ⇒ 不注入、说一行（单引号里 `'` 写成 `''`）。
+    // 写法住 `platform::shell::powershell`。
     let (origin, path) = relay_url_halves(base_url);
     powershell::set_unless_set(
         "ANTHROPIC_BASE_URL",
@@ -873,5 +873,5 @@ pub fn relay_env_prefix_ps(base_url: &str) -> String {
 #[path = "../../../../tests/backend/control/launch_render/payload_tests.rs"]
 mod tests;
 
-// 〔MIG-2〕标识符放行判定的生成物（`judgment-rules.ts`）那一段没跟着搬：它只读共享 crate 的常量，与载荷无关，留在 monitor
-//   （〔THIN〕今天挂在 monitor 壳根 `lib.rs` 的测试段）。
+// 标识符放行判定的生成物（`judgment-rules.ts`）那一段没跟着搬：它只读共享 crate 的常量，与载荷无关，留在 monitor
+//   （今天挂在 monitor 壳根 `lib.rs` 的测试段）。

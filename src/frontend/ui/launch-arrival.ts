@@ -1,5 +1,5 @@
 /**
- * 设计/99 §2.2 ②「起会话的真成功正信号：只有看见那台后端报出这个会话才说起来了；预算内没见到 ⇒ 说命令发出去了，
+ * 「起会话的真成功正信号：只有看见那台后端报出这个会话才说起来了；预算内没见到 ⇒ 说命令发出去了，
  * 但没看到会话起来，并给出启动器那一行的退出原话，不报成功」。
  *
  * 起会话的各条路（`remote-launch-run.ts` 的执行器 · `local-resume.ts` · 历史页起新会话 · cc-bus 派生）把命令发出去之后
@@ -8,7 +8,7 @@
  * [`bindLaunchArrivals`] 里收下、在 [`noteLive`] 里对那台报上来的活会话（`live` 格）。预算到了还没见到 ⇒ 说没见到：
  * 起在 tmux 里的顺手抓那一屏当原话（`tmux-control.ts::capturePane`），直接开窗的说原话在那个窗口里。
  *
- * 认「是不是它」只看那台报上来的事实：resume 按 sid；新开的远端会话按启动期令牌（`设计/80 §8.2`，那台从进程环境读回）；
+ * 认「是不是它」只看那台报上来的事实：resume 按 sid；新开的远端会话按启动期令牌（那台从进程环境读回）；
  * 本机起新会话与 cc-bus 派生按「预期之后第一次出现、工作目录相同的新 sid」（身份 token 在 Windows 上读不回来）。
  */
 import { emit, listen } from "@tauri-apps/api/event";
@@ -24,12 +24,12 @@ export const ARRIVAL_BUDGET_MS = 45_000;
 const WORDS_LINES = 6;
 /** 发起方窗口 → 主窗口：交一件「等它」（载荷 [`ArrivalSpec`]）。 */
 export const LAUNCH_EXPECT_EVENT = "launch-arrival-expect";
-/** 〔FIX4 ④〕主窗口 → 发起方：带票的那一件等到了没有（载荷 `{ ticket, arrived }`）。 */
+/** 主窗口 → 发起方：带票的那一件等到了没有（载荷 `{ ticket, arrived }`）。 */
 export const LAUNCH_DONE_EVENT = "launch-arrival-done";
-/** 〔FIX4 ④〕发起方自己的上界：主窗口没回话（不存在的形态）也不许一直挂着 —— 比预算多留 15 秒给抓屏与回话。 */
+/** 发起方自己的上界：主窗口没回话（不存在的形态）也不许一直挂着 —— 比预算多留 15 秒给抓屏与回话。 */
 const AWAIT_CAP_MS = ARRIVAL_BUDGET_MS + 15_000;
 
-/** 〔FIX4 ④〕执行器交回的「等到了没有」：`unsent` = 命令没真发出去（复制回退 / 拉不起窗口，那一路自己说过了）。 */
+/** 执行器交回的「等到了没有」：`unsent` = 命令没真发出去（复制回退 / 拉不起窗口，那一路自己说过了）。 */
 export type LaunchWait = "arrived" | "missed" | "unsent";
 
 /** 认它用的那一格。 */
@@ -42,7 +42,7 @@ export interface ArrivalSpec {
   tmuxName: string | null;
   /** 见到了说的那一句；`null` = 调用方等到了自己说（换号重启 · 分叉），这里不说。 */
   arrived: { title: string; body: string } | null;
-  /** 〔FIX4 ④〕带票 ⇒ 主窗口等到 / 等不到时回一声（[`awaitArrival`]）。 */
+  /** 带票 ⇒ 主窗口等到 / 等不到时回一声（[`awaitArrival`]）。 */
   ticket?: string;
 }
 
@@ -82,7 +82,7 @@ export function lastWords(screen: string): string {
     .join("\n");
 }
 
-// 〔P3〕「{machine}上…」那一族的中西文空格（「lx 上」·「本机上」）由取文口按值补（`rules.json` C-L5，`copy-table.ts::joinSeams`），
+// 「{machine}上…」那一族的中西文空格（「lx 上」·「本机上」）由取文口按值补（`rules.json` C-L5，`copy-table.ts::joinSeams`），
 //   这里不再另判一次。
 
 /** 见到了那一句的正文（标题由各条路自己给）。 */
@@ -137,7 +137,7 @@ function answer(p: ArrivalSpec, arrived: boolean): void {
 }
 
 /**
- * 〔FIX4 · 主会话裁 ④〕发起方（任何窗口）：交一件「等它」并**等主窗口回话** ⇒ 见到了 `true`、预算内没见到 `false`
+ * 发起方（任何窗口）：交一件「等它」并**等主窗口回话** ⇒ 见到了 `true`、预算内没见到 `false`
  * （没见到那一句由主窗口照常说）。换号重启与分叉据它才说「已用新账号重启 / 已分叉」、才记账。
  */
 export async function awaitArrival(spec: ArrivalSpec): Promise<boolean> {

@@ -19,7 +19,7 @@
 //!
 //! **那个论证到今天没人做过** —— 于是前端与 `shared/ccm` 这半**一条机检都没有**，
 //! 而两个文件的头注里写着「本文件里不得出现 setInterval / setTimeout 轮询」这类**散文纪律**
-//! （`settings/cc-bus-section.ts`；`设计/50` 之前还有一份 `account-usage.ts`）。散文纪律 = 没有纪律，
+//! （`settings/cc-bus-section.ts`；之前还有一份 `account-usage.ts`）。散文纪律 = 没有纪律，
 //! 这正是本工作区一直在治的病。
 //!
 //! # 论证：这一半为什么是**登记表**而不是禁令
@@ -51,7 +51,7 @@
 //!    `requestAnimationFrame` / `requestIdleCallback` 调用点，要求每一处**被分类过**。
 //!    钉的是「**有没有认漏**」。
 //!
-//! ⚠ 第 2 层是〔audit-0805 F14 第二刀〕补的，补之前第 1 层有一个**实测过的洞**：
+//! ⚠ 第 2 层是补的，补之前第 1 层有一个**实测过的洞**：
 //! 「没按 `poll` 命名的递归 `setTimeout`」在语法上与一次性延时无法区分 ⇒
 //! `views/history.ts` 那条「索引构建中 → 1 秒后自动重试」的每台一条 SSH **零命中**，
 //! `tabs.ts` 的 rIC 物化队列、`session-viewer.ts` 的 rAF 补料链等**五处自链全部逃逸**。

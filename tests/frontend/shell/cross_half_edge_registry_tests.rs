@@ -10,12 +10,12 @@ fn repo_root() -> PathBuf {
 fn both_halves() -> Vec<String> {
     let root = repo_root();
     let mut out = Vec::new();
-    // 🔴 〔搬树 2026-09-18 · `设计/16 §5.4b` 纪律 3〕**每半边各两棵树。**
+    // 🔴 〔搬树 2026-09-18 ·  纪律 3〕**每半边各两棵树。**
     //
     // 跨半边的编译期边**无一例外都长在判据里**（本模块头注逐字），而判据剖分之后
     // 整个住进了 `tests/`。只扫 `src/` 那两棵的话，16 条边里有 12 条整批掉出扫描面
     // ⇒ 「实得 4 / 登记 16」。⚠ 四棵树**互不包含**（`§5.4b` 纪律 1 要的那一问）。
-    // 🔴 〔步 7c 2026-09-19〕**手写递归遍历迁到共享原语。**
+    // 🔴 **手写递归遍历迁到共享原语。**
     //
     // `scanning_guard_registry::PENDING` 那张存量清单里真的迁掉了一条。
     // 起因：`watcher` 那一条这一轮**一条变两条**（生产段与测试段各命中一次），
@@ -24,17 +24,17 @@ fn both_halves() -> Vec<String> {
     // 抬上去「提交了也不会绿」。⇒ 正确出路只有一条：**真迁一个**。
     // 这一处语义与 `guard_core::scan_tree_excluding` 逐字相同（递归收 `.rs`、
     // 返回相对路径），是纯死重。
-    // ⚠ 名单明写为空（`设计/16 §5.4b` 纪律 4）：本文件的自摘走的是
+    // ⚠ 名单明写为空（纪律 4）：本文件的自摘走的是
     //   下面 `every_non_literal_include_is_registered_with_a_reason` 里那条
     //   `SELF_EXCLUDED`（带「摘不到就红」的自检），不在这一层做。
     for sub in [
         "src/frontend/shell/src",
         "src/backend",
         "tests/frontend/shell",
-        // 〔P4〕文件窗口独立成包，它的判据搬到这里（归 monitor 那一半，见 `half_of`）。
+        // 文件窗口独立成包，它的判据搬到这里（归 monitor 那一半，见 `half_of`）。
         "tests/frontend/filewin",
         "tests/backend",
-        // 〔RE〕通信层成员的单测镜像（两半各一棵：`inward` 归 monitor、`outward` 归后端，见 `half_of`）。
+        // 通信层成员的单测镜像（两半各一棵：`inward` 归 monitor、`outward` 归后端，见 `half_of`）。
         "tests/comms",
     ] {
         for (p, _) in guard_core::scan_tree_excluding(&root.join(sub), &["rs"], &[]) {
@@ -63,8 +63,8 @@ fn half_of(rel: &str) -> &'static str {
     //   「读 `doc/` `shared/` `tests/e2e/` 与前端 `src/*.ts` 的边另有 13 处，
     //   它们不是这件的标的」。所以这里按 `tests/frontend/shell/` · `tests/backend/`
     //   **逐个前缀**认，不写成「凡是 `tests/` 都算」。
-    // 〔RE〕通信层成员住 `src/comms/`，但编进哪个 crate 就是哪一半：`inward` 由壳编、`outward` 由后端编。
-    // 〔P4〕monitor 源码树的人群声明（`guard_core::population_trees`：通道 · 宿主原语 · 开窗契约 · 文件窗口那几包）也归这一半，
+    // 通信层成员住 `src/comms/`，但编进哪个 crate 就是哪一半：`inward` 由壳编、`outward` 由后端编。
+    // monitor 源码树的人群声明（`guard_core::population_trees`：通道 · 宿主原语 · 开窗契约 · 文件窗口那几包）也归这一半，
     //   文件窗口的判据住 `tests/frontend/filewin/`。
     static POPULATION: std::sync::LazyLock<Vec<String>> = std::sync::LazyLock::new(|| {
         let root = repo_root();
@@ -110,7 +110,7 @@ fn includes_in_text(text: &str) -> Vec<(String, String)> {
 
 /// 编译期把别的文件**拉进本 crate** 的三个宏。运行时拼，免得命中本文件自己的说明。
 ///
-/// ⚠ 〔audit-0805 08-06〕**`include!` 是补上的** —— 它与另外两个同族
+/// ⚠ **`include!` 是补上的** —— 它与另外两个同族
 /// （都是编译期边，都会让「一半的源码布局变了另一半编不过」），
 /// 而原来的动词表只有两个。今天全仓零命中，所以补它是**堵明天**，不是修今天。
 fn verbs() -> Vec<String> {
@@ -184,7 +184,7 @@ fn includes_of(rel: &str, raw: &str) -> Vec<(String, String)> {
                 s += 1;
             }
             if s >= b.len() || b[s] != b'"' {
-                // 〔audit-0805 08-06〕**参数是同文件里的单臂宏时，把它展开**。
+                // **参数是同文件里的单臂宏时，把它展开**。
                 //
                 // `tmux.rs` 有两处 `include_str!(backend_watcher_src!())`，
                 // 而那个宏展开成 `"../../backend/observe/watcher.rs"` ——
@@ -284,7 +284,7 @@ fn the_edge_scan_sees_both_trees_and_actually_parses() {
 }
 
 /// ★★ 遍历发现的边 == 登记表，**两个方向都查**。
-/// ★〔audit-0805 08-06〕**解析不出路径的 `include_*!` 必须登记**（默认拒绝）。
+/// ★**解析不出路径的 `include_*!` 必须登记**（默认拒绝）。
 ///
 /// # 它补的洞
 ///
@@ -306,7 +306,7 @@ fn every_non_literal_include_is_registered_with_a_reason() {
     const NON_LITERAL_INCLUDES: &[(&str, usize, &str)] = &[(
         "src/frontend/shell/src/byte_table.rs",
         4,
-        "〔DP1 · 第四波〕`include_bytes!(concat!(env!(\"OUT_DIR\"), \"/backend-<arch>\" | \"/panorama-<arch>\"))` —— \
+        "`include_bytes!(concat!(env!(\"OUT_DIR\"), \"/backend-<arch>\" | \"/panorama-<arch>\"))` —— \
              读的是 build script 放进 `OUT_DIR` 的**产物**（远端那两份 musl 后端 · 全景小程序两份 musl），\
              不是对面那一半的**源码** ⇒ 不属两半编译期互咬。\
              ⚠ 但它确实是一条编译期边：`OUT_DIR` 里没有那个文件就编不过 —— \
@@ -315,7 +315,7 @@ fn every_non_literal_include_is_registered_with_a_reason() {
     )];
     let mut found: Vec<(String, usize)> = Vec::new();
     let mut total_invocations = 0usize;
-    // 🔴 〔步 7c 剖分 2026-09-19 · `设计/16 §5.4b` 纪律 4〕
+    // 🔴 〔步 7c 剖分 2026-09-19 ·  纪律 4〕
     //    **排除的住址跟着本文件搬，而且加上「摘不到就红」那一格。**
     //
     // 原来写的是 `cross_half_edge_registry.rs`（本条剖分前住的那份）。
@@ -431,7 +431,7 @@ fn no_cross_half_edge_lives_in_production_code() {
             "读 {reader} 只拿到 {} 字节 —— 读不到的文件只会静默返回空串",
             raw.len()
         );
-        // 🔴 〔搬树 2026-09-18 · `设计/16 §5.4b`〕**住 `tests/` 的读者按构造不是生产段。**
+        // 🔴 〔搬树 2026-09-18〕**住 `tests/` 的读者按构造不是生产段。**
         //
         // 剖分之前这些判据住在生产文件的 `#[cfg(test)]` 段里，所以「这条边在不在生产段」
         // 要靠 `production_code` 剥一遍才答得出来。今天它们整份住 `tests/` ——

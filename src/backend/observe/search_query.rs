@@ -6,18 +6,18 @@
 //! 形状严格一致，可直接反序列化）：
 //! `{sessionId,projectPath,projectName,jsonlPath,title,updatedAt,hitCount,hits:[{uuid,tsMs,kind,before,matched,after}]}`
 //!
-//! 🔴 语义与本地 `../../bridge/src/search.rs` **不是「对齐」，是同一份**〔`K-R100` 09-13〕：
-//! 抽取 / 匹配 / snippet 的 12 个助手、4 个口径常量、snippet 预算与预算顺序只有一个家 ——〔P1〕通用那一半住
+//! 🔴 语义与本地 `../../bridge/src/search.rs` **不是「对齐」，是同一份**：
+//! 抽取 / 匹配 / snippet 的 12 个助手、4 个口径常量、snippet 预算与预算顺序只有一个家 ——通用那一半住
 //! [`super::search_rules`]，Claude 记录文本那一半（正文 / 工具内容怎么抽 · 注入怎么剥）住适配层 `agents/claudecode/text.rs`（经注册表够）。
 //! 收口前本文件各写了一遍那 12 个（`K-R85` 实测逐字相同），而 monitor 的
 //! `cross_half_edge_registry::CROSS_EDGES` 17 条跨轨边里 **search 零命中** ⇒
 //! **没有任何判据在拦着它们漂开**。判据现在有了，住
-//! `tests/backend/observe/search_rules_tests.rs::the_search_kou_jing_has_exactly_one_home`（〔P1〕随家从 monitor 那份守卫搬来）。
+//! `tests/backend/observe/search_rules_tests.rs::the_search_kou_jing_has_exactly_one_home`（随家从 monitor 那份守卫搬来）。
 //! backend 无 `parse_line`，故仍直接在 `serde_json::Value` 上抽取 —— 那是**取数**的差别，
 //! 不是**口径**的差别。
 //!
-//! 安全：路径严格限 `<claude_dir>/projects/`（〔TL3 · 审计 F 🔴-6〕经 observe 唯一那道围栏 `observe/fence.rs::Fence`；
-//! 先前这里内联复刻了一份 history_query 的，`设计/15 §4.2` 点名的第二个家）；
+//! 安全：路径严格限 `<claude_dir>/projects/`（〔审计 F 🔴-6〕经 observe 唯一那道围栏 `observe/fence.rs::Fence`；
+//! 先前这里内联复刻了一份 history_query 的，点名的第二个家）；
 //! 只读铁律（cc-monitor 不写远端）成立——本模块只 read_dir / read。
 
 // U2/U3：这两个原来在本文件里各有一份逐字相同的副本。去向**不同**：
@@ -35,7 +35,7 @@ use walkdir::WalkDir;
 
 // 🔴 口径常量**一个都不在这里**（`K-R100`）——它们就是口径本身，本文件再写一个同样的
 // 字面量 = 又开了第二份。`MAIN_CAP` / `TOOL_CAP` / `SNIPPET_CTX` / `PER_SESSION_CAP` /
-// `DEFAULT_LIMIT` 住 `search_rules`（〔P1〕原共享 crate `search-core`）。
+// `DEFAULT_LIMIT` 住 `search_rules`（原共享 crate `search-core`）。
 
 /// 解析后的查询选项。
 struct SearchOpts {
@@ -141,7 +141,7 @@ fn search(
     Ok(())
 }
 
-/// 〔W5-VIS · E 吞错普查点名〕扫完一趟，有几个会话文件**读不动**（权限 / IO 错 / 不是合法 UTF-8）、因此没搜到。
+/// 〔E 吞错普查点名〕扫完一趟，有几个会话文件**读不动**（权限 / IO 错 / 不是合法 UTF-8）、因此没搜到。
 /// 原先读不动的那一份 `.ok()?` 折成「无命中」—— 从结果里**静默消失、不计数**。
 /// 结果的行形状不动（界面那一半要改前端与协议，登记为买不到）；逐份在读的那一刻 `warn`，扫完再出一行总数。
 pub(crate) fn unreadable_note(n: usize) -> Option<String> {
@@ -150,7 +150,7 @@ pub(crate) fn unreadable_note(n: usize) -> Option<String> {
 }
 
 /// [`search`] 的本体：回「读不动、没搜到」的会话数（判据直接看这个数，不看日志）。
-/// 〔SX1〕走进程级常驻索引（本机常驻后端 / 远端流后端同一条路）；只在内存、随进程死 —— 理由住 `调研/第四波记录/SX1.md §2.1`。
+/// 走进程级常驻索引（本机常驻后端 / 远端流后端同一条路）；只在内存、随进程死 ——。
 pub(crate) fn search_counting(
     agent_home: &Path,
     query: &str,
@@ -178,7 +178,7 @@ pub(crate) fn search_counting(
     Ok(unreadable)
 }
 
-/// 〔GAP1 · `设计/10 §7` 第 10 条〕会话内查找走同一份常驻索引：这一份 (mtime, 长度) 没变不读、变长只读尾巴。
+/// 会话内查找走同一份常驻索引：这一份 (mtime, 长度) 没变不读、变长只读尾巴。
 /// 回 `None` = 这一份不归索引管（不在 projects 下 / 读不动）⇒ 调用方退回现扫（[`scan_session_find`]，口径同一套）。
 pub(crate) fn find_indexed(
     agent_home: &Path,
@@ -199,12 +199,12 @@ pub(crate) fn find_indexed(
     index.find(&path, &q, include_tools, limit, on_hit)
 }
 
-/// 〔SX1〕进程级常驻索引：规范化的 projects 根 → 那一棵的索引。后端一起来就由 [`warm_in_background`] 后台建（〔FIX · `99 §2 ㊵`〕）；
+/// 进程级常驻索引：规范化的 projects 根 → 那一棵的索引。后端一起来就由 [`warm_in_background`] 后台建；
 /// 第一问赶在它前面到了也不白等：谁先拿到锁谁读那一份，另一方见它没变就不再读。
 static RESIDENT: std::sync::Mutex<BTreeMap<PathBuf, SearchIndex>> =
     std::sync::Mutex::new(BTreeMap::new());
 
-/// 〔FIX · `99 §2 ㊵` 第二问〕常驻索引最多留这么多字节的可搜文本（[`FileEntry::weight`] 的和）。按最近优先留；
+/// 〔第二问〕常驻索引最多留这么多字节的可搜文本（[`FileEntry::weight`] 的和）。按最近优先留；
 /// 留不下的那几份照样读、照样搜，只是不留（下一问再读）⇒ 答案与不设上界逐字相等，变的只是那几份的读盘。
 /// 本机正文约 11 MB、勾过「含工具」约 40 MB（`SX1.md §4`）⇒ 本机整份都留得下；历史大一个数量级的远端封在这里。
 pub(crate) const RESIDENT_MAX_BYTES: usize = 64 << 20;
@@ -219,7 +219,7 @@ fn resident() -> std::sync::MutexGuard<'static, BTreeMap<PathBuf, SearchIndex>> 
     })
 }
 
-/// 〔FIX · `99 §2 ㊵` 第一问〕后端一起来就后台建索引（一条一次性线程，不是定时器；建完就退）。
+/// 〔第一问〕后端一起来就后台建索引（一条一次性线程，不是定时器；建完就退）。
 /// 只在内存（理由同 `SX1.md §1`，不落盘）；远端流后端与本机常驻后端同一个调用点（`main.rs`）。
 pub fn warm_in_background(agent_home: PathBuf) {
     let spawned = std::thread::Builder::new()
@@ -285,10 +285,10 @@ fn session_files(fence: &Fence) -> Vec<(PathBuf, i64)> {
     files
 }
 
-/// 〔SX1〕追加读之前核的那一段：`consumed` 之前最多这么多字节；对不上 ⇒ 被改写过、整份重读。
+/// 追加读之前核的那一段：`consumed` 之前最多这么多字节；对不上 ⇒ 被改写过、整份重读。
 const WITNESS_BYTES: usize = 256;
 
-/// 〔SX1〕一棵 projects 的索引：每份会话文件一格，按 (mtime, 长度) 增量读。
+/// 一棵 projects 的索引：每份会话文件一格，按 (mtime, 长度) 增量读。
 pub(crate) struct SearchIndex {
     files: BTreeMap<PathBuf, FileEntry>,
     /// 上一问读盘的账（判据 J3 看它）。
@@ -550,7 +550,7 @@ impl SearchIndex {
         Ok(e)
     }
 
-    /// 〔GAP1〕一份会话里按文件序出命中：只看完整行（`done`，与 [`scan_session_find`] 同）、跳过没 uuid 的。`q` 已小写、已 trim。
+    /// 一份会话里按文件序出命中：只看完整行（`done`，与 [`scan_session_find`] 同）、跳过没 uuid 的。`q` 已小写、已 trim。
     fn find(
         &mut self,
         path: &Path,
@@ -611,7 +611,7 @@ impl SearchIndex {
             if fence.admit(&path).is_err() {
                 continue;
             }
-            // 〔W5-VIS〕读不动 ⇒ 说出来、记一笔（原先 `.ok()?` 折成「无命中」静默消失）。
+            // 读不动 ⇒ 说出来、记一笔（原先 `.ok()?` 折成「无命中」静默消失）。
             // 打不开 / 读不了 ⇒ 这一格丢掉；不是合法 UTF-8 ⇒ 这一格留着（没变就不再读），照样说、照样数。
             let (entry, bad) = match self.bring_up(&path, prev.remove(&path), opts.include_tools) {
                 Ok(e) => {
@@ -735,7 +735,7 @@ fn session_hits_in(
     }))
 }
 
-/// 一条 user / assistant 记录拿去搜的两段文本（〔SE2〕从 `session_hits_in` 里拆出来）。
+/// 一条 user / assistant 记录拿去搜的两段文本（从 `session_hits_in` 里拆出来）。
 pub(crate) struct RecordText {
     pub(crate) is_assistant: bool,
     /// 正文：文本块；user 那侧先剥 CLI 注入的包装（`clean_user_text`），再按 `MAIN_CAP` 截断。
@@ -747,7 +747,7 @@ pub(crate) struct RecordText {
 /// 一条已解析的记录 → 拿去搜的文本；不是 user / assistant ⇒ `None`。
 ///
 /// 🔴 **全局搜索（`--search`）与会话内查找（`--find-in-session`）的口径只有这一个住址**；
-/// 抽取 / 剥注入住适配层（经注册表 `agents::main_text` · `tool_text` · `clean_user_text`），截断住 `search_rules`（〔P1〕原 `search-core`）。
+/// 抽取 / 剥注入住适配层（经注册表 `agents::main_text` · `tool_text` · `clean_user_text`），截断住 `search_rules`（原 `search-core`）。
 pub(crate) fn record_text(v: &Value, include_tools: bool) -> Option<RecordText> {
     let is_assistant = match v.get("type").and_then(Value::as_str) {
         Some("assistant") => true,
@@ -779,7 +779,7 @@ pub(crate) fn record_text(v: &Value, include_tools: bool) -> Option<RecordText> 
 
 /// 命中判定：先看正文、再看工具内容（大小写不敏感子串）。命中 ⇒ `(种类, 命中的那段文本)`，
 /// 种类是 `"user"` / `"assistant"` / `"tool"`（与 `Hit.kind` 同一套词）。`q_lc` 已小写、已 trim。
-/// 〔SX1〕工具内容只在 `include_tools` 时看（索引里的那一格可能抽过工具文本，不看时当它是空串）。
+/// 工具内容只在 `include_tools` 时看（索引里的那一格可能抽过工具文本，不看时当它是空串）。
 pub(crate) fn record_hit<'a>(
     rt: &'a RecordText,
     q_lc: &str,
@@ -799,7 +799,7 @@ pub(crate) const FIND_DEFAULT_LIMIT: usize = 500;
 /// 会话内查找的上限封顶（调用方要得再多也只列这么多）。
 pub(crate) const FIND_MAX_LIMIT: usize = 2000;
 
-/// 〔SE2 · `设计/10 §6 步 6`〕**会话内查找**的内核：读 `r`（一份会话，从头）逐行找 `query`，
+/// **会话内查找**的内核：读 `r`（一份会话，从头）逐行找 `query`，
 /// 出三段（形状登记 `IPC-PROTOCOL.md §10.5`）：
 /// 1. 头 `{"kind":"session_find","v":1}`；
 /// 2. 每条命中一行 `{"uuid","kind","before","matched","after"}`，**按文件序**（= 对话序），最多 `limit` 条；
@@ -827,7 +827,7 @@ pub(crate) fn write_session_find<R: std::io::BufRead, W: std::io::Write>(
     Ok((count, total))
 }
 
-/// 〔C4b · 第四波 4B〕[`write_session_find`] 的中段：**逐条命中交给 `on_hit`**（按文件序、最多 `limit` 条），
+/// [`write_session_find`] 的中段：**逐条命中交给 `on_hit`**（按文件序、最多 `limit` 条），
 /// 回 `(count, total)`。判定一行都不在这一层之外 —— CLI 那一臂（上面，写头尾三段：stdout 要分帧）与帧面那一臂
 /// （`read_face.rs` 的 `history-find`，把同一串命中装成成品 `{total, hits}`）跑的是**同一个**扫描。
 /// `on_hit` 回错 ⇒ 扫描当场停、错原样上抛（帧面那一臂靠它在整份超上限时停下）。
@@ -887,12 +887,12 @@ pub(crate) fn scan_session_find<R: std::io::BufRead>(
 // 🔴 那 12 个助手（`extract_text_blocks` · `extract_tool_text` · `stringify_json` ·
 // `clean_user_text` · `make_snippet` · `find_ci` · `tail_chars` · `head_chars` ·
 // `collapse_ws` · `collapse_ws_keep_ellipsis` · `truncate_plain` · `truncate_excerpt`）
-// 与它们的单元测试只有一个家：〔P1〕通用的住 `search_rules.rs`，Claude 记录文本那三个住 `agents/claudecode/text.rs`
+// 与它们的单元测试只有一个家：通用的住 `search_rules.rs`，Claude 记录文本那三个住 `agents/claudecode/text.rs`
 // —— **同一份**。别在这里「顺手再写一个小的」：那就是收口前的形状（两份、逐字同、零判据）。
 
 /// 解析 Claude 的 ISO8601 时间戳 `YYYY-MM-DDTHH:MM:SS(.fff)?Z` → epoch ms。
 /// 自带 civil-days 算法（Howard Hinnant），无需 chrono。
-/// 〔C4d〕开成 `pub(crate)`：历史会话清单那一行的开始时刻（`history_query::analyze_session`）用同一份。
+/// 开成 `pub(crate)`：历史会话清单那一行的开始时刻（`history_query::analyze_session`）用同一份。
 pub(crate) fn parse_iso8601_ms(s: &str) -> Option<i64> {
     if s.len() < 19 {
         return None;
@@ -932,7 +932,7 @@ fn days_from_civil(y: i64, m: i64, d: i64) -> i64 {
     era * 146_097 + doe - 719_468
 }
 
-/// 〔FIX4 · `设计/90 §3` J15 · 主会话 09-28 裁 B〕帧命令 `history-search-merge`：**把各台 `history-search` 的会话行合成一份**。
+/// 帧命令 `history-search-merge`：**把各台 `history-search` 的会话行合成一份**。
 ///
 /// 界面照旧逐台经通道问那台常驻后端的 `history-search`（各台内存索引保热），拿回来的会话行（界面已补 `origin`）原样交到这里：
 /// `{sessions: [<会话行>…]}` ⇒ `{totalHits, sessionCount, truncated, sessions}`。
@@ -984,17 +984,17 @@ mod tests;
 #[path = "../../../tests/backend/observe/search_query_find_tests.rs"]
 mod find_tests;
 
-// 〔SX1〕J1：应答 == 起步树现扫实现冻结下来的金样（逐问逐行逐字节）。
+// J1：应答 == 起步树现扫实现冻结下来的金样（逐问逐行逐字节）。
 #[cfg(test)]
 #[path = "../../../tests/backend/observe/search_query_golden_tests.rs"]
 mod golden_tests;
 
-// 〔SX1〕J2 增量 == 整份重读 · J3 帧面那一臂只读变了的字节。
+// J2 增量 == 整份重读 · J3 帧面那一臂只读变了的字节。
 #[cfg(test)]
 #[path = "../../../tests/backend/observe/search_query_index_tests.rs"]
 mod index_tests;
 
-// 〔SX1〕秤：真规模本机历史上的冷首趟 / 热态（`#[ignore]` 读数，不是判据）。
+// 秤：真规模本机历史上的冷首趟 / 热态（`#[ignore]` 读数，不是判据）。
 #[cfg(test)]
 #[path = "../../../tests/backend/observe/search_query_reading.rs"]
 mod reading;

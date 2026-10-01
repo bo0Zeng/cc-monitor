@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # `BUILD_ID` bump 的**同拍步骤**：re-embed —— 把内嵌的那几份后端字节重编并铺回落点。
 #
-# ── 它治的病（`设计/99 §4` 步 `19c`）────────────────────────────────────────────
+# ── 它治的病（步 `19c`）────────────────────────────────────────────
 #
 # 协议面一变就要 bump `src/backend/lib.rs` 的 `const BUILD_ID`（那份谱系里每一条都写着
 # 「不 bump 就不判 stale、不重装，整条能力在已部署的远端休眠」）。而 bump 的那一刻，
@@ -12,7 +12,7 @@
 #     当场 `panic!`，**整棵树编不过**。2026-09-18 实地踩过一次：删用量 ⇒ bump `p2j`→`p2k`
 #     ⇒ **四路 agent 同时编不过**。
 #   · 没人在盯 ⇒ 装出去的是一份自报旧 id 的字节，已部署的远端**不判 stale、不重装**，
-#     整轮改动在那边休眠（`设计/16 §5.4a` 那次事故的孪生形）。
+#     整轮改动在那边休眠（那次事故的孪生形）。
 #
 # ⇒ 单子的裁定逐字：「**把 re-embed 写成 bump 的同拍步骤**，别让它变成一次事故。」
 #   本文件就是那个步骤，**全仓唯一的本机产字节入口**。
@@ -64,7 +64,7 @@
 #    「⚠ 买不到：**防篡改**。谁都能往一段字节里塞一个假戳。它防的是漂移与手滑……
 #      不防恶意 —— 那要签名，不是戳。」
 #
-# ── 🔴〔2026-09-24 · B1〕**开发构建也要起得来本机后端** ─────────────────────────────
+# ── 🔴**开发构建也要起得来本机后端** ─────────────────────────────
 #
 # 横切纪律 `D11`（用户逐字「不要退路 / 所有东西都不要假设后端没起来」）。在这之前，
 # 开发构建里「本机后端起不来」**只有一句 cargo 警告**，而那句警告自己写着
@@ -82,7 +82,7 @@
 #   · `--check-dev`：开发构建的判词。与 `--check` 同一套，唯一的差别是
 #     **本机那一份缺席 = 红**（`--check` 里缺席是 `skip` —— 那是给 CI / 没铺字节的树的）。
 #
-# ── 〔RM1c · 第四波〕同一条配方也编**全景小程序** ────────────────────────────────
+# ── 同一条配方也编**全景小程序** ────────────────────────────────
 #
 # 只装代码全景引擎的独立小程序 `cc-monitor-panorama`（`src/panorama-engine`，用户 09-24 V108 选 B）
 # 与后端那两份 musl 字节**同一个落点、同一对 target、同一串旗标**（`release.yml` 的
@@ -115,7 +115,7 @@ IDENTITY_SRC="$ROOT/src/backend/lib.rs"
 #: 内嵌落点 —— 名字定死在 `build.rs` 的 `EMBEDDED_BACKENDS_DIR` / `NATIVE_BACKEND_DIR`
 #: （判据 ⑬c/⑬d 把这两处与本文件、与 `src/frontend/shell/.gitignore` 三向钉在一起）。
 EMBEDDED_DIR="$ROOT/src/frontend/shell/embedded-backends"
-#: 〔RM1c〕全景小程序的源码树与它那张 op 表的住址（`--check` 拿它与字节自报的能力对拍）。
+#: 全景小程序的源码树与它那张 op 表的住址（`--check` 拿它与字节自报的能力对拍）。
 PANORAMA_SRC="$ROOT/src/panorama-engine"
 NATIVE_DIR="$ROOT/src/frontend/shell/native-backend"
 
@@ -127,7 +127,7 @@ bad() { printf 'FAIL  %s :: %s\n' "$1" "$2"; fail=$((fail + 1)); }
 
 # 从身份那份源码里抠一个 `const <名>: &str = "…";`，**恰好一行**才算数。
 # 抠不到给空串，调用方按红记 —— **不许兜底成一个会参与比较的字符串**
-# （`设计/96 §7.2.5` 逐字：「`"unknown"` 这个值必须从类型上消失」，事故住 `设计/16 §5.4a`）。
+# （「`"unknown"` 这个值必须从类型上消失」，事故住）。
 src_const() {
   local name="$1" hits
   hits="$(grep -cE "^[[:space:]]*(pub )?const ${name}: &str = \"[^\"]+\";" "$IDENTITY_SRC" || true)"
@@ -160,7 +160,7 @@ do_build() {
     printf '==> cargo zigbuild %s --target %s\n' "${REEMBED_BUILD_FLAGS[*]}" "$t"
     ( cd "$ROOT/src/backend" && cargo zigbuild "${REEMBED_BUILD_FLAGS[@]}" --target "$t" )
   done
-  # 〔RM1c〕全景小程序：同一对 target、同一串旗标。
+  # 全景小程序：同一对 target、同一串旗标。
   for t in "${REEMBED_TARGETS[@]}"; do
     printf '==> cargo zigbuild %s --target %s（src/panorama-engine）\n' "${REEMBED_BUILD_FLAGS[*]}" "$t"
     ( cd "$PANORAMA_SRC" && cargo zigbuild "${REEMBED_BUILD_FLAGS[@]}" --target "$t" )
@@ -177,13 +177,13 @@ do_build() {
   done
 }
 
-# 〔RM1c〕源码那张 op 表（`OPS` 里 `("<op>", Need::…)` 那几行），排序后逗号连起来。
+# 源码那张 op 表（`OPS` 里 `("<op>", Need::…)` 那几行），排序后逗号连起来。
 panorama_src_ops() {
   [ -f "$PANORAMA_SRC/main.rs" ] || return 0
   sed -nE 's/^[[:space:]]*\("([a-z_]+)", Need::[A-Za-z]+\),.*/\1/p' "$PANORAMA_SRC/main.rs" | sort | paste -sd, -
 }
 
-# 〔RM1c〕真起一趟全景小程序的 `--probe`，回它报的能力（排序后逗号连起来；起不来回空串）。
+# 真起一趟全景小程序的 `--probe`，回它报的能力（排序后逗号连起来；起不来回空串）。
 # 隔离同 `native_starts`：`env -i`、空 HOME —— 它只打三行字，一个文件都不该碰。
 panorama_probe_caps() {
   local f="$1" sandbox caps
@@ -213,7 +213,7 @@ do_native() {
   # （`build.rs::embed_native_backend` 的 ① 号硬校验读它，对不上当场 panic）。
   printf '%s\n' "$triple" > "$NATIVE_DIR/cc-monitor-native.target"
   printf '==> 铺好 src/frontend/shell/native-backend/cc-monitor-native（＋ .target = %s）\n' "$triple"
-  # 〔RM1f〕本机原生的全景小程序（monitor 摘内嵌引擎之后，本机全景 = 本机后端 → 插件口 → 它）。
+  # 本机原生的全景小程序（monitor 摘内嵌引擎之后，本机全景 = 本机后端 → 插件口 → 它）。
   #   与 `release.yml` 的 `Build local panorama (native)` ＋ `Stage native panorama for self-extract` 同一条配方；
   #   落点名字定死在 `build.rs::NATIVE_PANORAMA_FILE`（判据对拍）。
   printf '==> cargo build %s（本机 target %s，src/panorama-engine）\n' "${REEMBED_BUILD_FLAGS[*]}" "$triple"
@@ -245,7 +245,7 @@ filewin_starts() {
   printf '%s %s' "$rc" "$line"
 }
 
-# 🔴〔B1〕**真起一趟**本机那一份，回它 stdout 的第一行（起不来就回空串）。
+# 🔴**真起一趟**本机那一份，回它 stdout 的第一行（起不来就回空串）。
 #
 # 为什么是「hello 帧」而不是 `--version` 之类：后端的流模式**第一件事**就是写一帧 hello
 # （`build_hello`，带 `build_id`），而 monitor 起本机后端走的正是这条路 ⇒ 问 hello
@@ -284,7 +284,7 @@ do_clean() {
 }
 
 do_check() {
-  # 〔B1〕1 = 开发构建的判词（`--check-dev`）：本机那一份缺席就是红。
+  # 1 = 开发构建的判词（`--check-dev`）：本机那一份缺席就是红。
   local require_native="${1:-0}"
   local id open close arch t f got present=0
 
@@ -333,7 +333,7 @@ do_check() {
     fi
   done
 
-  # 〔RM1c〕全景小程序：人群同样从 `REEMBED_TARGETS` 派生（不扫目录）。
+  # 全景小程序：人群同样从 `REEMBED_TARGETS` 派生（不扫目录）。
   #   ⚠ 源码那张 op 表**只在真要比的时候才抠**（铺了、而且是这台能跑的 arch）：
   #     没铺字节的树上没有东西可比，抠它只会让一棵没有全景源码的沙箱树无端红。
   #     而一旦要比，抠不出来就是红（判不了按红记，不退化成「没得比，于是绿」）。
@@ -375,7 +375,7 @@ do_check() {
       bad "本机内嵌后端与源码同一版" \
           "字节自报 [$got]，源码是 [$id] —— **半 bump**：它会以 cc-monitor-backend-[$got] 之名落到用户盘上"
     fi
-    # 🔴〔B1〕**起不起得来**。只对「给这台机器编的」那一份问 —— 给别的 triple 编的那份
+    # 🔴**起不起得来**。只对「给这台机器编的」那一份问 —— 给别的 triple 编的那份
     #   在这里本来就起不来，而那一格 `build.rs` 的 ① 号硬校验已经会当场 panic。
     local staged host hello hid
     staged="$(tr -d '[:space:]' < "$NATIVE_DIR/cc-monitor-native.target" 2>/dev/null || true)"
@@ -392,7 +392,7 @@ do_check() {
     else
       printf 'skip  本机内嵌后端起不起得来 :: 它是给 [%s] 编的、这台是 [%s] —— 不在这里起（错 triple 那一形由 build.rs 当场拦）\n' "$staged" "$host"
     fi
-    # 〔RM1f〕本机原生全景小程序：铺了、而且是给这台编的 ⇒ 真起一趟 `--probe`，能力表 == 源码 op 表。
+    # 本机原生全景小程序：铺了、而且是给这台编的 ⇒ 真起一趟 `--probe`，能力表 == 源码 op 表。
     #   没铺：本机全景在非 Linux 上关着（Linux 本机用 musl 那两份）—— 这里只 skip，不在 --check-dev 里判红
     #   （它是「看代码全景」的前提，不是「起得来本机后端」的前提）。
     local pf="$NATIVE_DIR/cc-monitor-panorama" pstaged pcaps

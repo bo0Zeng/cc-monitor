@@ -68,7 +68,7 @@ type FileRef = {
 /** main.ts 注入的活跃仓信息取值器（读活跃 tab 的 cwd/origin）。 */
 type RepoInfoGetter = () => { cwd: string; origin: Origin } | null;
 
-/** 〔P7〕建索引那一阶段的人话（`switch` 穷尽 `IndexPhase`：上游生成物多一个阶段 ⇒ tsc 当场红）。 */
+/** 建索引那一阶段的人话（`switch` 穷尽 `IndexPhase`：上游生成物多一个阶段 ⇒ tsc 当场红）。 */
 function phaseLabel(p: IndexPhase): string {
   switch (p) {
     case "Parse":
@@ -93,7 +93,7 @@ export class PanoramaView implements OverlayHandle {
   private canvasWrap!: HTMLElement;
   private tooltipEl!: HTMLElement;
   private loadingEl!: HTMLElement;
-  /** 〔P7〕转圈下面那一行进度（建索引时由那台小程序报的格填；别的时候空着）。 */
+  /** 转圈下面那一行进度（建索引时由那台小程序报的格填；别的时候空着）。 */
   private progressEl: HTMLElement | null = null;
   private messageEl!: HTMLElement;
   private searchInput!: HTMLInputElement;
@@ -112,12 +112,12 @@ export class PanoramaView implements OverlayHandle {
   private viewport: Viewport = { x: 0, y: 0, scale: 1 };
   /** 已成功加载/索引的仓（活跃仓不变则重开复用，不再重索引）。 */
   private loadedRepo: string | null = null;
-  /** 〔RM1c〕上面那个仓在哪台机器上（同一个路径在两台机器上是两个仓）。 */
+  /** 上面那个仓在哪台机器上（同一个路径在两台机器上是两个仓）。 */
   private loadedOrigin: Origin = LOCAL_ORIGIN;
   /** 当前视图针对的仓（**那台机器上**的路径；无仓时为 null）。搜索/刷新/详情都用它。 */
   private repo: string | null = null;
   /**
-   * 〔RM1c · 第四波〕当前仓在哪台机器上：问那台机器的后端（`panorama/api.ts`；〔RM1f〕本机也是，
+   * 当前仓在哪台机器上：问那台机器的后端（`panorama/api.ts`；本机也是，
    * 改前本机走进程内那几条命令）。与 `repo` 一起换（`switchRepo`）。
    */
   private origin: Origin = LOCAL_ORIGIN;
@@ -147,7 +147,7 @@ export class PanoramaView implements OverlayHandle {
   private panOrigin = { x: 0, y: 0 };
   private movedDuringPress = false;
 
-  // PN1b 选图（`设计/97 §7`）：「图」那一整块住 `panorama/diagram-view.ts`，这里只当宿主。
+  // PN1b 选图：「图」那一整块住 `panorama/diagram-view.ts`，这里只当宿主。
   private diagram: DiagramPane;
   /** 选中的符号 / 文件 —— 切图时跟着走（调用子图以符号为中心；团/模块图聚焦含该文件的节点）。 */
   private selSymbol: string | null = null;
@@ -180,7 +180,7 @@ export class PanoramaView implements OverlayHandle {
     const kinds = this.diagram.ensureKinds();
     await this.evaluateRepo();
     await kinds;
-    // 〔RM1c〕上面那一趟按打开那一刻的机器取；定下仓之后若换了机器，这一趟按新机器补取（同机器是空操作）。
+    // 上面那一趟按打开那一刻的机器取；定下仓之后若换了机器，这一趟按新机器补取（同机器是空操作）。
     await this.diagram.ensureKinds();
   }
 
@@ -226,8 +226,8 @@ export class PanoramaView implements OverlayHandle {
       );
       return;
     }
-    // 〔RM1c · 第四波〕远端会话不再挡在门外：索引与图在那台机器上算（那台的后端起全景小程序），
-    // 线上只回结构化结果。〔RM1d〕批注 / 文档关联的写本机远端同一条（那台算、那台后端的文件管理写）。
+    // 远端会话不再挡在门外：索引与图在那台机器上算（那台的后端起全景小程序），
+    // 线上只回结构化结果。批注 / 文档关联的写本机远端同一条（那台算、那台后端的文件管理写）。
     await this.showRepo(info.cwd, info.origin);
   }
 
@@ -250,14 +250,14 @@ export class PanoramaView implements OverlayHandle {
     this.origin = origin;
     this.selSymbol = null;
     this.selFile = null;
-    // 〔RM1c〕同一个路径可能换了一台机器 ⇒ 飞在路上的搜索 / 详情 / 高亮一律作废
+    // 同一个路径可能换了一台机器 ⇒ 飞在路上的搜索 / 详情 / 高亮一律作废
     //（它们的「仓没变」校验只比路径）。
     this.searchSeq++;
     this.highlightSeq++;
     this.diagram.repoChanged();
   }
 
-  /** 〔RM1c〕这个路径在当前那台机器上（`panorama/api.ts` 的入口都吃它）。 */
+  /** 这个路径在当前那台机器上（`panorama/api.ts` 的入口都吃它）。 */
   private at(path: string): RepoAt {
     return { origin: this.origin, path };
   }
@@ -316,7 +316,7 @@ export class PanoramaView implements OverlayHandle {
   /** 标题写清当前看的是哪个仓、从哪来的；「跟随会话」只在手选时出现。 */
   private updateRepoChrome(): void {
     const src = this.repoOverride !== null ? copyText("panorama.repoChrome.manual") : copyText("panorama.repoChrome.follow");
-    // 〔RM1c〕远端仓在标题上带机器名（同一个路径在两台机器上是两个仓）。
+    // 远端仓在标题上带机器名（同一个路径在两台机器上是两个仓）。
     const where = isRemoteOrigin(this.origin) ? copyText("panorama.repoChrome.remote", { machine: this.origin }) : "";
     this.titleEl.textContent = this.repo ? copyText("panorama.repoChrome.title", { repo: basename(this.repo), where, src }) : copyText("panorama.chrome.title");
     this.titleEl.title = this.repo ? api.repoLabel(this.at(this.repo)) : "";
@@ -430,7 +430,7 @@ export class PanoramaView implements OverlayHandle {
   }
 
   /**
-   * 〔RM1f〕一个撤单手柄：`abort` 给转圈旁那个「取消」按钮，`signal` 给那一问。
+   * 一个撤单手柄：`abort` 给转圈旁那个「取消」按钮，`signal` 给那一问。
    * 本机远端都经那台后端 → 小程序，都撤得掉（后端 `panorama` 是可取消档）。
    */
   private cancelHandle(): { abort: () => void; signal: AbortSignal } {
@@ -438,7 +438,7 @@ export class PanoramaView implements OverlayHandle {
     return { abort: () => ctrl.abort(), signal: ctrl.signal };
   }
 
-  /** 〔P7〕这一趟加载的进度去处：那台小程序报一格就写进转圈下面那一行；换仓 / 重载了（`seq` 过期）⇒ 不写。 */
+  /** 这一趟加载的进度去处：那台小程序报一格就写进转圈下面那一行；换仓 / 重载了（`seq` 过期）⇒ 不写。 */
   private progressFor(seq: number): (p: IndexProgress) => void {
     return (p) => {
       if (seq !== this.loadSeq || !this.progressEl) return;
@@ -450,7 +450,7 @@ export class PanoramaView implements OverlayHandle {
     };
   }
 
-  /** 〔RM1f〕建索引被人撤了：那一趟在后端已经停下；给一个重新开始的按钮。 */
+  /** 建索引被人撤了：那一趟在后端已经停下；给一个重新开始的按钮。 */
   private showIndexCancelled(repo: string): void {
     this.showMessage(
       copyText("panorama.showIndexCancelled.title"),
@@ -762,7 +762,7 @@ export class PanoramaView implements OverlayHandle {
     this.highlightBarEl.style.display = "";
   }
 
-  /** 〔RM1f〕`onCancel` 给了 ⇒ 转圈下面多一个「取消」按钮（点一下就撤、按钮随即变灰）。 */
+  /** `onCancel` 给了 ⇒ 转圈下面多一个「取消」按钮（点一下就撤、按钮随即变灰）。 */
   private showLoading(text: string, onCancel?: () => void): void {
     this.loadingEl.replaceChildren();
     const spin = document.createElement("div");
@@ -772,7 +772,7 @@ export class PanoramaView implements OverlayHandle {
     label.className = "panorama-loading-text";
     label.textContent = text;
     this.loadingEl.appendChild(label);
-    // 〔P7〕进度那一行：建索引时那台小程序报的格往这里写（`progressFor`）；别的转圈它空着。
+    // 进度那一行：建索引时那台小程序报的格往这里写（`progressFor`）；别的转圈它空着。
     const progress = document.createElement("div");
     progress.className = "panorama-loading-text";
     progress.dataset.pano = "index-progress";
@@ -1294,7 +1294,7 @@ export class PanoramaView implements OverlayHandle {
       row.appendChild(foot);
       sec.appendChild(row);
     }
-    // 添加表单（人写 = Active）。〔P7〕交整个 `s.id`：截 `@行号`、取文件段归上游（`SymbolRef::of`），前端不拆。
+    // 添加表单（人写 = Active）。交整个 `s.id`：截 `@行号`、取文件段归上游（`SymbolRef::of`），前端不拆。
     const form = document.createElement("div");
     form.className = "panorama-ann-form";
     const ta = document.createElement("textarea");
@@ -1429,7 +1429,7 @@ export class PanoramaView implements OverlayHandle {
       try {
         if (what === "subgraph") {
           const depth = clampDepth(Number(depthSel.value));
-          // 〔PANO · CP1〕跳数是那台给的（`neighborhood`），这里只分组。
+          // 跳数是那台给的（`neighborhood`），这里只分组。
           const nb = await api.neighborhood(this.at(repo), symbol, depth);
           if (mine !== gen) return; // 期间点了别的，这次的结果作废
           render(layerByDepth(nb.root, nb.reached), copyText("panorama.subgraph.emptyNeighbors"));
@@ -1491,7 +1491,7 @@ export class PanoramaView implements OverlayHandle {
       const badges = document.createElement("span");
       badges.className = "panorama-edge-badges";
       const conf = document.createElement("span");
-      // 〔W5-AUX · `设计/41 §7`〕置信度是有限枚举 ⇒ 走 `data-conf`（与图里的线型同一个载体），不再拼成 `conf-<值>` 类名族。
+      // 置信度是有限枚举 ⇒ 走 `data-conf`（与图里的线型同一个载体），不再拼成 `conf-<值>` 类名族。
       conf.className = "panorama-conf";
       conf.dataset.conf = e.confidence.toLowerCase();
       conf.textContent = confidenceLabel(e.confidence);
@@ -1630,7 +1630,7 @@ export class PanoramaView implements OverlayHandle {
   }
 
   /**
-   * 批注审批队列。**只取、只画、只收**（`设计/97` CP1）：状态是 core 给的数据
+   * 批注审批队列。**只取、只画、只收**：状态是 core 给的数据
    * （`Annotation.status`），这里不判、不改写，只把人的「批准 / 驳回」回写。
    *
    * - 批准 → `approveAnnotation`（Proposed → Active）；返回 false = 那条已不在了，如实说。

@@ -14,7 +14,7 @@
 #    抓不到只有两种可能：套件被改得不打印了，或它压根没跑到收尾 —— 两种都该红。
 # 3. `n < 地板` ⇒ 失败，诊断里同时给出实得与地板
 #
-# ## ★★ 第三个参数：`at-least`（默认，旧行为）/ `exact`（恒等）〔`K-G8` 09-03〕
+# ## ★★ 第三个参数：`at-least`（默认，旧行为）/ `exact`（恒等）
 #
 # 上面第 3 条只挡**缩水**。**它不挡「涨了而地板没跟」**，而那一侧是**静默**的 ——
 # 09-03 的活体逐字记在 `.github/workflows/ci.yml` 那段散文里：`K-P2` `D1` 交回时
@@ -53,7 +53,7 @@
 #  这里没有那个约束，所以按「改动可见性」选调用处。）
 #
 # 用法：bash tests/e2e/assert-pass-floor.sh <npm-script-后缀> <地板> [at-least|exact|exact-with-skip]
-# 〔E2 尾 09-27〕`exact-with-skip`：判的数是同一行「合计」里的 **PASS + SKIP**（恒等）。给那种**按环境显式分支**的套件用
+# `exact-with-skip`：判的数是同一行「合计」里的 **PASS + SKIP**（恒等）。给那种**按环境显式分支**的套件用
 #   （`backend-gate2`：tmux 版本不够的那一格记 SKIP 并说原因）—— PASS 数随机器变，而「总格数」不许变。
 #   套件自己负责「SKIP 只在环境真不够时出现」；那一行没有 `SKIP=<n>` ⇒ 判失败（不当 0）。
 #   例：bash tests/e2e/assert-pass-floor.sh tmux-target 26           → 跑 `npm run test:tmux-target`
@@ -110,7 +110,7 @@ fi
 
 # ★★ `exact` 那一侧（`K-G8` 09-03）。**上面那条 `-lt` 一个字没动** ——
 #    这里是**加了一条**，不是**换掉一条**：两侧红的是两件不同的事，诊断也必须是两段不同的话。
-#    （`K-G8 §4` 死值验第 2 条逐字要求「确认原来那条还在」。）
+#    （死值验第 2 条逐字要求「确认原来那条还在」。）
 if [ "$MODE" != at-least ] && [ "$n" -gt "$FLOOR" ]; then
   echo "::error::$SUITE 断言数涨了而地板没跟：实得 $n > 地板 $FLOOR（本套按 exact 判，实得 ≠ 地板就红）。"
   echo "::error::⇒ 两条出路，按优先级："

@@ -1,4 +1,4 @@
-//! 要求住址：`设计/90 §0.5.3` ⑰「文件窗口成独立包 `src/frontend/filewin/`」＋ 主会话 09-29 拍板（`调研/第四波记录/P4.md` 一）：
+//! 要求：「文件窗口成独立包 `src/frontend/filewin/`」＋ 主会话 09-29 拍板（一）：
 //! 「`atomic_write_json` 与 `WorkArea` / `fit_into_work_area`（纯函数）收进 `src/common/host-core`（前端宿主原语新类，只许 monitor 与 filewin 链、后端不许）」。
 //!
 //! 两个前端进程（monitor 主界面 ＋ 文件窗口）都要、而只许有一份的宿主那几件：

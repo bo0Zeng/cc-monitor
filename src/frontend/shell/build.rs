@@ -16,17 +16,17 @@ fn main() {
 /// （build_id · 身份戳界标 · capabilities · mtime · 内嵌校验）。
 /// 抽出来的理由与 `local_ccm_entry_name` 同族：五份手抄的路径迟早有一份被漏改。
 ///
-/// 🔴 〔步 9 · 09-19〕**从 `main.rs` 改成 `lib.rs`。** `BUILD_ID` / `BUILD_STAMP_*` /
-/// `CAPABILITIES` 这一族已按 `设计/00 §1.5.4` 前置 2 搬进后端的库面 —— 理由是
+/// 🔴 **从 `main.rs` 改成 `lib.rs`。** `BUILD_ID` / `BUILD_STAMP_*` /
+/// `CAPABILITIES` 这一族已按前置 2 搬进后端的库面 —— 理由是
 /// in-process 那条路**没有那个 `main.rs`**，身份会跟着它一起消失。
 /// ⚠ 本函数**没有回退到 `main.rs` 的分支**，这是刻意的：读一份旧住址会悄悄给出一个
 /// 过期的身份，而**抠不到必须是一条响亮的失败**（住址见 [`backend_source_build_id`]）。
 /// 〔墓碑，本行原话逐字：「抠不到时上面那几个消费者各自落到「`unknown` / 空界标」那一支
 ///  并把失败逐字印出来」。**那半句在 `19b` 之前是真的，而它正是病灶** ——「落到 `unknown`」
 ///  只在**恰好铺了字节**的构建里才有人 panic，平常每一次 `cargo build` 都静静地把
-///  `BACKEND_BUILD_ID="unknown"` 烤进 exe（射程外的账住 `设计/96 §7.2.5` 那张表）。〕
+///  `BACKEND_BUILD_ID="unknown"` 烤进 exe（射程外的账住那张表）。〕
 fn backend_lib_rs() -> PathBuf {
-    // build.rs 的 cwd 是本包根（`src/frontend/shell/`）⇒ `../..` 是 `src/`（〔RE〕包根下沉一级，`..` → `../..`）。
+    // build.rs 的 cwd 是本包根（`src/frontend/shell/`）⇒ `../..` 是 `src/`（包根下沉一级，`..` → `../..`）。
     // 2026-09-18：仓库重组把后端树从 `remote-daemon-proto/src/` 搬到 `src/backend/`，
     // 这一处漏改了（原为 `../src/backend/src/main.rs`，解出 `src/src/backend/src/main.rs`）。
     // 它没有当场现形，唯一的原因是**本包在本机从未编过** —— 装齐 Tauri 栈后头一次 check 就炸了。
@@ -38,14 +38,14 @@ fn backend_main_rs() -> PathBuf {
     Path::new("../..").join("backend").join("main.rs")
 }
 
-/// 🔴 **`BUILD_ID` bump 的同拍步骤只有这一个住址**〔步 `19c` · 09-19〕。
+/// 🔴 **`BUILD_ID` bump 的同拍步骤只有这一个住址**〔步 `19c`〕。
 ///
 /// # 它治的是一件真发生过的事，而且是一件本文件自己造成的事
 ///
 /// 协议面一变就要 bump `lib.rs` 的 `const BUILD_ID`，而 bump 的那一刻
 /// `embedded-backends/` 里那两份 musl 字节立刻变旧 ⇒ 下面那条**半 bump 守卫**当场
 /// `panic!`，**整棵树编不过**。2026-09-18 实地踩过一次：删用量 ⇒ bump `p2j`→`p2k`
-/// ⇒ **四路 agent 同时编不过**。`设计/99 §4` 步 `19c` 的裁定逐字：
+/// ⇒ **四路 agent 同时编不过**。步 `19c` 的裁定逐字：
 /// 「**把 re-embed 写成 bump 的同拍步骤**，别让它变成一次事故。」
 ///
 /// # 🔴 为什么是一条命令，而不是像以前那样在 panic 文案里手抄一段配方
@@ -75,17 +75,17 @@ const REEMBED_CMD: &str = "bash tests/scripts/re-embed.sh";
 /// 🔴 立这个常量的直接起因：步 8 全仓改名（`daemon` → `backend`）之后，
 /// `.gitignore` 里还写着 `/embedded-daemons/` 与 `/native-daemon/` ——
 /// **两个落点从那天起就没被挡住**（09-19 现打 `git check-ignore` 两条都不命中），
-/// 而 `设计/96 §7.1.2` 与 `release.yml` 文件头都还把「三个落点全部 gitignore」
+/// 而与 `release.yml` 文件头都还把「三个落点全部 gitignore」
 /// 当成硬事实在用。目录名从字面量变成常量，那条对拍才有东西可读。
 const EMBEDDED_BACKENDS_DIR: &str = "embedded-backends";
 
 /// backend 源码里那个 `const BUILD_ID`。**这是本机与远端两条内嵌路共用的期望值。**
 ///
-/// # 🔴 `19b`（09-19）：**抠不到 ＝ 构建当场失败，没有兜底值**（`设计/96 §7.2.5`）
+/// # 🔴 `19b`（09-19）：**抠不到 ＝ 构建当场失败，没有兜底值**
 ///
 /// 规格逐字：「事故的形状不是『读失败』，是**读失败被换成了一个会参与比较的字符串**——
 /// `"unknown"` 必然不等于任何真 `BUILD_ID` ⇒ 必然判 StaleBuild ⇒ 必然重装 ⇒ 装完还是不等。」
-/// 事故本体住 `设计/16 §5.4a`：抠不到就 `unwrap_or_else(|| "unknown")`，
+/// 事故本体住：抠不到就 `unwrap_or_else(|| "unknown")`，
 /// 装出去**每台远端无限重装**。
 ///
 /// **为什么住在这里（一个住址），而不是三个消费者各写一次**：本函数在 `19b` 之前返回
@@ -93,7 +93,7 @@ const EMBEDDED_BACKENDS_DIR: &str = "embedded-backends";
 /// 而那两条 panic **都在 `src.exists()` 的里面** —— 平常每一次 `cargo build`（没铺字节）
 /// 走的是上面那条 `cargo:warning` 分支，**panic 一次都不触发**，`BACKEND_BUILD_ID`
 /// 就这么带着 `"unknown"` 被烤进 exe。⇒ 把「响」挪到**取值这一跳**，
-/// 它在**所有**构建形态下都响（`设计/16 §5.4a` 的元教训逐字：
+/// 它在**所有**构建形态下都响（元教训逐字：
 /// 「『有一条能跑的检查』和『那条检查的人群是全的』是两件事」）。
 ///
 /// ⚠ **`Option` 没有消失，消失的是兜底字符串**：抽取那一层仍是
@@ -111,7 +111,7 @@ fn backend_source_build_id() -> String {
                  🔴 **这一步刻意没有兜底值**：给它一个 `\"unknown\"` 之类的字符串，\
                  它会照样参与 `reported_build_id != EXPECTED_BACKEND_BUILD_ID` 那个比较，\
                  于是装出去的每一台远端都被判 StaleBuild 并**无限重装**\
-                 （真事故，账住 `设计/16 §5.4a`）。\n\
+                 （真事故，账住）。\n\
                  出路：把身份搬回 `src/backend/lib.rs` 的 `pub const BUILD_ID: &str = \"…\";`，\
                  或同拍改本文件的 `backend_lib_rs()`（那是全仓唯一的住址）。",
                 p.display()
@@ -124,7 +124,7 @@ fn backend_source_build_id() -> String {
 /// 发**可见的 `cargo:warning`**。**上游仓缺席（CI/Windows）→ 静默 no-op，绝不拖垮构建**
 /// （同 `embed_backends` 二进制缺席 no-op）。软警告非硬失败——开发期上游领先副本是常态。
 fn check_vendor_freshness() {
-    // 〔RE〕vendor 随唯一消费者搬进 `src/panorama-engine/vendor/`（`99 §2.1 ⑰`）；本检查原地留在这里、只改住址。
+    // vendor 随唯一消费者搬进 `src/panorama-engine/vendor/`；本检查原地留在这里、只改住址。
     let vendor_md = Path::new("../../panorama-engine/vendor/code-picture-core/VENDOR.md");
     println!("cargo:rerun-if-changed={}", vendor_md.display());
     let Ok(text) = std::fs::read_to_string(vendor_md) else {
@@ -186,7 +186,7 @@ fn extract_backtick_after(text: &str, label: &str) -> Option<String> {
 /// [`backend_source_build_id`]（一句话：那条退化只在恰好铺了字节的构建里才有人拦）。
 fn emit_backend_build_id() {
     println!("cargo:rerun-if-changed={}", backend_lib_rs().display());
-    // 🔴 〔步 9 · 09-19〕分派那一半也要登记 —— 否则改 `main.rs` 不触发重跑本 build 脚本，
+    // 🔴 分派那一半也要登记 —— 否则改 `main.rs` 不触发重跑本 build 脚本，
     //    上面那条 mtime 安全网拿到的是**缓存过的旧值**，它就不响了。
     println!("cargo:rerun-if-changed={}", backend_main_rs().display());
     let build_id = backend_source_build_id();
@@ -376,9 +376,9 @@ fn extract_capabilities(src: &str) -> Option<String> {
 
 /// 把交叉编译好的 musl backend 二进制
 /// （`src/frontend/shell/embedded-backends/cc-monitor-backend-<arch>`）复制进 OUT_DIR 并置
-/// `embedded_backends` cfg；任一缺失则不置 cfg（〔DP1〕`byte_table::pick` 对 Linux 两格返回 None → 部署那一步说「这一版没带」）。
+/// `embedded_backends` cfg；任一缺失则不置 cfg（`byte_table::pick` 对 Linux 两格返回 None → 部署那一步说「这一版没带」）。
 ///
-/// 🔴 〔步 `19c` · 09-19〕**这两份字节从哪来，只有两个地方**：发版那趟是 `release.yml` 的
+/// 🔴 〔步 `19c`〕**这两份字节从哪来，只有两个地方**：发版那趟是 `release.yml` 的
 /// `Cross-compile backend for both musl targets`，本机那趟是 [`REEMBED_CMD`]，
 /// 两者**逐字同一条配方**（`K-R124` ⑬b 两向对拍）。
 /// 〔墓碑，本段原话逐字：「二进制由 `cargo zigbuild --target *-unknown-linux-musl` 产出后
@@ -395,9 +395,9 @@ fn embed_backends() {
     let dir = Path::new(EMBEDDED_BACKENDS_DIR);
     // staleness 安全网（审计 SUGGESTION-1）：backend 源码 mtime，用于提示「bump BUILD_ID 后
     // 忘了 re-zigbuild」——否则内嵌旧二进制 build_id 与源码不符 → 永不收敛的重复部署。
-    // 🔴 〔步 9 · 09-19〕**两份都看，取较新的那个。** 身份搬去了 `lib.rs`，而分派仍在
+    // 🔴 **两份都看，取较新的那个。** 身份搬去了 `lib.rs`，而分派仍在
     //    `main.rs` —— 只看一份，改另一份时这张安全网当场变瞎。
-    // 🔴 〔步 19c · 09-19〕**它是安全网，不是机制** —— 原话里「唯一拦截点」那半句已经不成立了：
+    // 🔴 **它是安全网，不是机制** —— 原话里「唯一拦截点」那半句已经不成立了：
     //    ① 它只在**已经出事之后**说话；② 它说「旧了」却不说怎么办；③ 它是一条 `cargo:warning`，
     //    在几百行输出里滚过去。机制那一半住 [`REEMBED_CMD`]：一条真跑得起来的命令，
     //    外加 `--check` —— 「盘上的字节与源码对不对得上」当场用相等断言回答，
@@ -482,7 +482,7 @@ fn embed_backends() {
                     src.display()
                 );
             }
-            // 🔴 〔步 `19c` · 09-19〕**这里原来手抄着第二条产字节的配方，已经撤掉。**
+            // 🔴 〔步 `19c`〕**这里原来手抄着第二条产字节的配方，已经撤掉。**
             //
             // 〔墓碑，原话的骨架逐字：「① 重编。两步都在 `src/backend/` 目录下跑：
             //  `cargo build --release --target {arch}-unknown-linux-musl --config
@@ -536,9 +536,9 @@ fn embed_backends() {
     }
 }
 
-/// 〔RM1c · 第四波〕把交叉编译好的**全景小程序**（`src/panorama-engine`，只装代码全景引擎的
+/// 把交叉编译好的**全景小程序**（`src/panorama-engine`，只装代码全景引擎的
 /// 独立二进制，用户 09-24 V108 选 B）两个 musl arch 复制进 OUT_DIR，置 `embedded_panoramas` cfg；
-/// 任一缺失 ⇒ 不置 cfg ＋ **可见的** warning（`byte_table::choose` 那一格答「这一版没带」〔TL1：原先点的是 `panorama_bytes` 里一个按两个词取字节的函数，删了〕，
+/// 任一缺失 ⇒ 不置 cfg ＋ **可见的** warning（`byte_table::choose` 那一格答「这一版没带」〔原先点的是 `panorama_bytes` 里一个按两个词取字节的函数，删了〕，
 /// 远端全景那一台就只能报「这台机器上还没装」）。
 ///
 /// # 与 [`embed_backends`] 同一个落点、同一条配方，**不同的一件事**
@@ -590,7 +590,7 @@ fn target_exe_suffix(target: &str) -> &'static str {
 }
 
 /// 本机内嵌后端的落点 —— `release.yml` 那一步按同一条路径铺，
-/// `byte_table.rs`（〔DP1〕全仓唯一的取字节口）用**同一条路径的字面量** `include_bytes!` 它。
+/// `byte_table.rs`（全仓唯一的取字节口）用**同一条路径的字面量** `include_bytes!` 它。
 ///
 /// # 🔴 为什么是**定死的名字**，而不是像 `embedded-backends/` 那样把 triple 编进文件名
 ///
@@ -633,13 +633,13 @@ const NATIVE_BACKEND_FILE: &str = "cc-monitor-native";
 /// 「往 Windows 上释放一个 Linux ELF、然后报告『已起』」——
 /// 那道闸**是对的**，它挡住的是**没有 Windows 版可嵌**这件事，不是「自释放这条路不该走」。
 /// ⇒ 本函数补的就是那个缺口：**给 Windows 一份能跑的字节**。
-/// 缺口本身一年前就登记在 `devbench/ROADMAP.md` 的 `5f⁗` 上（逐字：「要 release 流程产
+/// 缺口本身一年前就登记过（逐字：「要 release 流程产
 /// Windows backend 并内嵌」）—— 今天才第一次有人在真机上撞到它。
 ///
 /// # 为什么这里 panic 而不是 warning（与 `embed_backends` 同一条理由，射程不同）
 ///
 /// 远端那条怕的是「装上去永远判 stale ⇒ 无限重装」。本机这条**不会**无限重装
-/// （〔E2〕换版照 HX2 D-b「盘上的比我旧才换」，见 `local_backend::extract_embedded_to`），但它会
+/// （换版照 HX2 D-b「盘上的比我旧才换」，见 `local_backend::extract_embedded_to`），但它会
 /// **把一份贴错标签的二进制留在用户机器上**：清单说它是 X，字节其实是 Y ⇒
 /// `BACKEND_CAPABILITIES` 那套乐观路径按 X 谈能力、跑起来的是 Y。
 /// ⇒ 半 bump 一样比不 bump 更糟，一样当场拦下。
@@ -647,7 +647,7 @@ const NATIVE_BACKEND_FILE: &str = "cc-monitor-native";
 /// # 缺席 = 不置 cfg + **可见的** warning
 ///
 /// 沿用 `embed_backends` 的 U-1 那条账：**静默不置 cfg 正是 v2.19–v2.22 那批安装包的事故形状**。
-/// 缺席时 `byte_table::pick` 在这一格给不出本机原生那份（〔DP1〕Linux 构建上还有 musl 那份可给），自释放那条路说「这一版没带」。
+/// 缺席时 `byte_table::pick` 在这一格给不出本机原生那份（Linux 构建上还有 musl 那份可给），自释放那条路说「这一版没带」。
 fn embed_native_backend() {
     // 允许自定义 cfg（Rust 1.80+ unexpected_cfgs 检查）。
     println!("cargo:rustc-check-cfg=cfg(embedded_native_backend)");
@@ -674,7 +674,7 @@ fn embed_native_backend() {
     // ⚠ **无条件 emit**（同上那条理由）。
     println!("cargo:rustc-env=BACKEND_NATIVE_ID={embedded_id}");
 
-    // 🔴〔2026-09-24 · B1〕**缺席不再被说成「开发构建里的正常情况」。**
+    // 🔴**缺席不再被说成「开发构建里的正常情况」。**
     //
     // 〔墓碑，本条 warning 原话逐字：「没有本机内嵌后端 ——**裸可执行文件起不了本机后端**，
     //  只有安装包那份带本机后端的能起。开发构建里这是正常的；……」。**后半句违反 `D11`**
@@ -758,12 +758,12 @@ fn embed_native_backend() {
     println!("cargo:rustc-cfg=embedded_native_backend");
 }
 
-/// 〔RM1f〕本机原生全景小程序的文件名（落点目录同 [`NATIVE_BACKEND_DIR`]，旁挂 `.target` 清单同那一对）。
-/// `byte_table.rs`（〔DP1〕全仓唯一的取字节口）用**同一条路径的字面量** `include_bytes!` 它
+/// 本机原生全景小程序的文件名（落点目录同 [`NATIVE_BACKEND_DIR`]，旁挂 `.target` 清单同那一对）。
+/// `byte_table.rs`（全仓唯一的取字节口）用**同一条路径的字面量** `include_bytes!` 它
 /// （四处同一个串：本常量 · 那个字面量 · `re-embed.sh --native` · `release.yml` 的 Windows 那一格 —— 判据对拍）。
 const NATIVE_PANORAMA_FILE: &str = "cc-monitor-panorama";
 
-/// 〔RM1f · V108 后半句「之后本机也走这条路、monitor 摘内嵌引擎」〕**把本机原生的全景小程序也内嵌进 exe**。
+/// 〔V108 后半句「之后本机也走这条路、monitor 摘内嵌引擎」〕**把本机原生的全景小程序也内嵌进 exe**。
 ///
 /// # 为什么要它
 ///

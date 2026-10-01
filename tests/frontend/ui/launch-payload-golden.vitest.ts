@@ -51,7 +51,7 @@ describe("载荷黄金串夹具（U8c-1 跨语言对拍的 TS 半边）", () => 
       [
         "export-config-dir",
         "export-model",
-        "export-rbind-token", // 设计/80 §8 步 1
+        "export-rbind-token", //
         "unset-config-dir",
         "unset-nested-env",
       ].sort(),
@@ -59,7 +59,7 @@ describe("载荷黄金串夹具（U8c-1 跨语言对拍的 TS 半边）", () => 
   });
 });
 
-// 〔LR1 · U8c-3〕TS 那份 `ccm …` 渲染器删了：这份夹具的 `out` 从此是用例表里的**手写期望**，
+// TS 那份 `ccm …` 渲染器删了：这份夹具的 `out` 从此是用例表里的**手写期望**，
 // `req` 仍由生产的 `buildCliRenderRequest` 现产（为什么夹具不跟着删，见 `src/frontend/ui/launch-cli-golden.ts` 头注）。
 describe("ccm 调用行黄金串夹具（生产请求 ＋ 手写期望；Rust 那半是 launch_cli_parity.rs）", () => {
   test("入库的夹具与现场落盘逐字节相同（改了用例表或请求构造就得重生成）", () => {

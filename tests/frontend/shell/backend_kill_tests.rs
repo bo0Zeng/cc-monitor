@@ -1,4 +1,4 @@
-//! 〔C4e · 第四波 4C〕**「谁在建 tmux 会话 ↔ 后端 kill 的形状门」那一族判据**。
+//! **「谁在建 tmux 会话 ↔ 后端 kill 的形状门」那一族判据**。
 //!
 //! 守的要求：`INVARIANTS §34`（三道门：名字形状 · 身份 · 窗口）在创建那一侧的反面 ——
 //! 「建得出来、主路杀不掉」的名字不许被铸出来（F04b / F15 立的那一条，`INVARIANTS §33b` 三问里的创建路径）。
@@ -28,7 +28,7 @@
 /// 每个都必须在下表里表态：要么**自己校验**禁字集，要么**名字来自已校验的上游**并说清是谁。
 #[cfg(test)]
 const CREATION_PATHS: &[(&str, CreationVerdict, &str)] = &[
-    // 🔴 〔`K-R48` 第二拍 09-11〕原来这里第一条是 `shared/ccm`（bash 的 `case` 校验，
+    // 🔴 原来这里第一条是 `shared/ccm`（bash 的 `case` 校验，
     //    `F15` 给它加的 `=`）。〔用@09-11 `K33`〕那个脚本删了 ⇒ **这条路没有第二个实现了**，
     //    它的原生副本就是下面那条 `control/ccm/plan.rs`。表从 5 条回到 4 条。
     (
@@ -37,16 +37,16 @@ const CREATION_PATHS: &[(&str, CreationVerdict, &str)] = &[
         "名字来自入方向 `parse_request`，它自己就拒 `:`/`=`（那正是本判据的字符集来源）",
     ),
     (
-        // 〔`K-R48` 09-11〕**`ccm` 那条创建路径今天唯一的实现**：`ccm` 变成后端二进制
+        // **`ccm` 那条创建路径今天唯一的实现**：`ccm` 变成后端二进制
         // 自己的命令之后，`--print` 吐的那条 tmux 编排与真跑读的是同一个 `Plan`。
         //（第一拍它与 `shared/ccm` 并存、表是 5 条；第二拍脚本删了，回到 4 条。）
         "src/backend/control/ccm/plan.rs",
-        // 〔DUP2 · J6〕规则收成一份（〔THIN〕今天住后端 `control/gate_rules.rs`）之后，这一条的禁字集字面量不住本文件了 ⇒ 从「自己校验」改记「过上游那一份」，
+        // 规则收成一份（今天住后端 `control/gate_rules.rs`）之后，这一条的禁字集字面量不住本文件了 ⇒ 从「自己校验」改记「过上游那一份」，
         //   上游 = 下面理由里点名的 `src/backend/control/gate_rules.rs`（③b 靠这个点名把那条校验器接回人群）。
         CreationVerdict::UpstreamValidated,
         "显式 `--tmux=<名>` / `--tmux-base=<基名>` 两条都先过 `validate_tmux_name`，它调唯一那一份 \
              `src/backend/control/gate_rules.rs` 的 `new_tmux_name_issue`（禁字集 `NEW_TMUX_NAME_REFUSED` 逐字拒 `* ? . : =`，\
-             另拒前导 `-` · 控制符 · 视觉欺骗字符 · 超过 128；〔DUP2〕规则全仓只剩这一份）；\
+             另拒前导 `-` · 控制符 · 视觉欺骗字符 · 超过 128；规则全仓只剩这一份）；\
              派生名那条走 `derive_tmux_name`，它的字符集只放行 `[A-Za-z0-9_-]`，\
              **构造上产不出禁字**。三条入口都由 `control::ccm::plan::tests::a_session_name_that_would_confuse_tmux_is_refused` 钉住",
     ),
@@ -56,20 +56,20 @@ const CREATION_PATHS: &[(&str, CreationVerdict, &str)] = &[
     //    （会话由 `oneshot-session` 原语铸并建，收尾发帧面的 `kill`）。
     //    ⇒ 它不再是一个「创建路径」⇒ 留着就是幽灵条目，而本表的遍历会当场逮住。
     //    ★ 同 `K-R72` 那次逐字：这一改是**结构性强制的随动**，不是顺手删记录。
-    // 🔴 〔LR2 2026-09-25〕**`src/session-backend.ts` 这一行删了** —— `设计/00 §2.5 ④` 收官那天删的
+    // 🔴 **`src/session-backend.ts` 这一行删了** —— 收官那天删的
     //    就是它（下面那条 Rust 对侧的注释原来逐字预告了这一行）。它原来的理由是「只是渲染器：名字由上游
     //    `mintTmuxName` 产、由 `src/frontend/ui/shell-quote.ts::isValidNewTmuxName` 校验」；那条上游关系今天挂在
     //    下面那条 Rust 创建路径的理由里（③b 要求每条校验器都有创建路径点它的名）。
     (
-        // 〔`设计/90 §4 E` 2026-09-19 建 · 步 22b·B 接上生产 · LR2 起是外层三格唯一的家〕
-        // 〔MIG-2〕载荷内核搬进后端（`99 §2.1 ⑬`），住址跟着换；把禁字喂进它那一段也跟着搬进后端测试段（见下 ③c）。
+        // 〔2026-09-19 建·B 接上生产 · LR2 起是外层三格唯一的家〕
+        // 载荷内核搬进后端，住址跟着换；把禁字喂进它那一段也跟着搬进后端测试段（见下 ③c）。
         "src/backend/control/launch_render/payload.rs",
         CreationVerdict::ValidatesItselfByAllowlist,
-        "〔DUP2 · J6〕界面那一道（TS 的两个会话名谓词）删了，名字的规则只有一份：`TmuxTarget::check` 对**新建**那一格\
+        "界面那一道（TS 的两个会话名谓词）删了，名字的规则只有一份：`TmuxTarget::check` 对**新建**那一格\
              调 `src/backend/control/gate_rules.rs` 的 `new_tmux_name_issue`（拒 `* ? . : =` · 前导 `-` · 控制符 · 视觉欺骗字符 · 超过 128），\
              对 attach / 送进已有会话调 `existing_tmux_name_issue`（拒绝集 ＋ 非空，V131 ②）；另对 `Raw` 那一支只放行 `[A-Za-z0-9_-]`\
              （裸拼的渲染前提，构造上产不出 `:` `=` `*` `?` `.` 与控制字符）；\
-             `@ccm_sid` 另过 `shell_quote_core::session_id_ok`（它是**裸拼**的；〔DUP1〕原先那份 `ccm_sid_safe`〔散文墓碑〕收进共享那一条）。三条都由 \
+             `@ccm_sid` 另过 `shell_quote_core::session_id_ok`（它是**裸拼**的；原先那份 `ccm_sid_safe`〔散文墓碑〕收进共享那一条）。三条都由 \
              `launch_render::tmux_outer_parity::tests::the_rust_side_refuses_what_the_typescript_seat_would_have_concatenated` 钉住",
     ),
 ];
@@ -100,8 +100,8 @@ const CREATION_PATHS: &[(&str, CreationVerdict, &str)] = &[
 /// 两个方向都活：拿掉 `=` ⇒ 字面量不再出现 ⇒ 红；backend 新增禁字 ⇒ 字面量缺它 ⇒ 红。
 #[cfg(test)]
 const VALIDATORS: &[(&str, &str, &str)] = &[
-    // 〔DUP2 · 主会话 09-26 裁 J6〕原来这里两行：`src/frontend/ui/shell-quote.ts`（`[*?=]`，TS 的新建谓词）与 `src/backend/control/ccm/plan.rs`
-    //    （`"*?.:="`，后端 `validate_tmux_name` 自己那一份）。规则收成一份（〔THIN〕今天住后端 `control/gate_rules.rs`）之后只剩下面这一行 ——
+    // 原来这里两行：`src/frontend/ui/shell-quote.ts`（`[*?=]`，TS 的新建谓词）与 `src/backend/control/ccm/plan.rs`
+    //    （`"*?.:="`，后端 `validate_tmux_name` 自己那一份）。规则收成一份（今天住后端 `control/gate_rules.rs`）之后只剩下面这一行 ——
     //    禁字集字面量住它，`plan.rs` 与 `payload.rs` 两条创建路径的理由各点它的名（③b 那条边）。
     (
         "src/backend/control/gate_rules.rs",
@@ -118,7 +118,7 @@ enum CreationVerdict {
     /// 这条路径**自己**校验禁字集。⇒ 必须在 [`VALIDATORS`] 里，且那张表的第二列
     /// （禁字集表达式的字面量）要逐字出现在它的源码里。
     ValidatesItself,
-    /// 🔴 〔`设计/90 §4 E` 09-19〕**它自己校验，但用的是放行集、不是禁字集。**
+    /// 🔴 **它自己校验，但用的是放行集、不是禁字集。**
     ///
     /// 放行集比禁字集**严格更强**（`[A-Za-z0-9_-]` 在构造上就产不出那几个禁字，
     /// 连控制符和视觉欺骗字符一起挡了），**但它在盘上没有一个禁字集字面量可钉**
@@ -140,7 +140,7 @@ fn no_creation_path_can_mint_a_name_the_main_path_cannot_kill() {
     // ── ① 反向锚点：backend 那条形状门还在（它没了本判据就在空转）──────────
     let kill_prod =
         guard_core::production_code(include_str!("../../../src/backend/control/kill.rs"));
-    // 〔TAIL · DUP3 §5 ③〕`=` 不再拒（`=a=b:` 精确命中名叫 `a=b` 的会话）⇒ 字符集只剩 `:`。
+    // 〔DUP3 §5 ③〕`=` 不再拒（`=a=b:` 精确命中名叫 `a=b` 的会话）⇒ 字符集只剩 `:`。
     let forbidden: Vec<char> = [':']
         .into_iter()
         .filter(|c| kill_prod.contains(&format!("name.contains('{c}')")))
@@ -163,7 +163,7 @@ fn no_creation_path_can_mint_a_name_the_main_path_cannot_kill() {
         // 〔搬树 2026-09-17〕**这里没有 `"src/backend"`，不是漏了**：后端树搬到
         // `<repo>/src/backend` 之后它已经是 `"src"` 的**子目录**，两个都列会把
         // 后端的每个文件数两遍（搬家前 `src/backend` 与 `src` 是互斥的）。
-        // 〔搬 src-tauri 2026-09-17〕**这里没有 `"src/frontend/shell/src"`，不是漏了**：
+        // **这里没有 `"src/frontend/shell/src"`，不是漏了**：
         // 它已经是 `"src"` 的子目录，两个都列会把每个文件数两遍。
         ["src", "shared"]
             .iter()
@@ -222,7 +222,7 @@ fn no_creation_path_can_mint_a_name_the_main_path_cannot_kill() {
         .map(|(f, _, _)| (*f).to_string())
         .collect();
     registered.sort();
-    // ★★ **「少一处」有两种成因，而它们的处置相反** 〔audit-0805 08-07〕。
+    // ★★ **「少一处」有两种成因，而它们的处置相反**。
     //
     // 发现口径是 `"new-session", "-d"` 这个 argv 形态 —— 它把 `-d` 这个**可选旗标**
     // 当成了识别特征。08-07 实测：把 `launch.rs` 的 `-d` 去掉，本条当场红，
@@ -279,7 +279,7 @@ fn no_creation_path_can_mint_a_name_the_main_path_cannot_kill() {
         }
     }
 
-    // ── ③c 🔴 **放行集那一族：把禁字真的喂进去** 〔`设计/90 §4 E` 09-19〕───────
+    // ── ③c 🔴 **放行集那一族：把禁字真的喂进去** ───────
     //
     // 上面 ③ 要求「自己校验」的必须在 `VALIDATORS` 里，而那张表钉的是**禁字集字面量**。
     // 放行集写法在盘上根本没有那样一个字面量（它说的是「只放行这些」，不是「拒这些」），
@@ -297,7 +297,7 @@ fn no_creation_path_can_mint_a_name_the_main_path_cannot_kill() {
         vec!["src/backend/control/launch_render/payload.rs"],
         "\n放行集那一族的成员变了。本段是**按人群逐个手接**的（喂字符要拿到那个入口函数），\n         多一个成员就得在这里给它接上一段 —— 否则它会**静默地一条都不被喂**。"
     );
-    // 〔MIG-2〕那条放行集的入口（`render_tmux_outer`）搬进了后端 crate，monitor 够不着 ⇒ 「逐个禁字喂进去必须拒 ＋ 合法名字必须过」
+    // 那条放行集的入口（`render_tmux_outer`）搬进了后端 crate，monitor 够不着 ⇒ 「逐个禁字喂进去必须拒 ＋ 合法名字必须过」
     //   那一段搬到它旁边：`tests/backend/control/launch_render/payload_tests.rs::the_tmux_outer_refuses_every_name_the_kill_gate_refuses`
     //   （字符集同样从后端 `kill.rs` 的形状门现抠）。这里核它还在。
     // 运行时读（不是编译期嵌入）：只核那段在不在，不值得一条跨半边的编译期边。
@@ -320,7 +320,7 @@ fn no_creation_path_can_mint_a_name_the_main_path_cannot_kill() {
     // 少一条不红、**多一条也不红**。
     //
     // ⇒ 活体形状（当年就摆在盘上）：`src/frontend/ui/shell-quote.ts` 这一行当时靠
-    // TS 座那条创建路径的理由把它引进来。〔LR2 2026-09-25〕那一天到了：座删了，本条当场按设计要求
+    // TS 座那条创建路径的理由把它引进来。那一天到了：座删了，本条当场按设计要求
     // 「同一拍把这条校验器一起处置」—— 它**还有人在用**（生产 TS 的 `planLauncher` 过它），
     // 于是把 `payload.rs` 那条创建路径的理由写全、点了它的名。原先的推演留档如下：`CREATION_PATHS` 少一行、
     // 遍历那条断言照样绿，而 `VALIDATORS` 里 `shell-quote.ts` 这一行
@@ -428,7 +428,7 @@ fn no_creation_path_can_mint_a_name_the_main_path_cannot_kill() {
 /// - **它不判那三份副本说得对不对** —— 只判「那句话在不在」与「代码里那条路在不在」一致。
 #[test]
 fn the_doc_sentence_about_the_transitional_fallback_cannot_outlive_the_code() {
-    // 〔C4e · 第四波 4C〕「那条过渡期回落还在不在」原来读的是 `tmux.rs` 里杀会话那条 Tauri 命令的函数体
+    // 「那条过渡期回落还在不在」原来读的是 `tmux.rs` 里杀会话那条 Tauri 命令的函数体
     //   （体里有没有 `connect_and_exec_cmd`）。那条命令整个迁到界面删了 ⇒ 问题换成**整棵 monitor 生产段**里
     //   还有没有一处自己拼杀会话的 shell 串（`kill-session`）—— 界面那一侧结构上没有 SSH，回落只可能长回 monitor。
     //   正控：同一识别器在后端 `control/kill.rs` 的生产段上认得出那个动词（那是真杀会话的那一处）。
@@ -506,13 +506,13 @@ fn the_doc_sentence_about_the_transitional_fallback_cannot_outlive_the_code() {
              ⚠ 如果是**删掉了那条路**：那句话要一起改，否则下一个读者会以为\n\
              「没有后端的远端」还有一条路可走 —— 而那正是 C7 说的过渡期已经结束。\n\
              ⚠ 如果是**改了措辞**：本条判据跟着改（它钉的是两者一致，不是某个字面量）。\n\
-             ⚠ 〔`K-R106` 09-13〕人群是**整棵 `doc/`**，不再只有 `IPC-PROTOCOL.md` ——\n\
+             ⚠ 人群是**整棵 `doc/`**，不再只有 `IPC-PROTOCOL.md` ——\n\
              在**任何一份**耐久文档里把那句话写回来，本条都会红。",
         scanned.len()
     );
 }
 
-// 〔C4e · 第四波 4C〕这里原来住着「两条后端命令的拒绝文案说同一件事」（`the_refusal_wording_matches_the_sibling_command`〔散文墓碑〕，
+// 这里原来住着「两条后端命令的拒绝文案说同一件事」（`the_refusal_wording_matches_the_sibling_command`〔散文墓碑〕，
 //   对照 monitor 里杀会话与送键两个发送端各自那份 `refusal_text`）。两个发送端都迁到界面删了，
 //   拒绝码 → 一句话从此只有 `src/frontend/ui/tmux-control.ts` 一份（按动作分表：结束会话 · 发按键），
 //   「逐码一句、两两不同、带会话名与后端原话」由 `tests/frontend/ui/tmux-control.vitest.ts` 钉着。

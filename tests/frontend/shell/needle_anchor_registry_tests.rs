@@ -12,13 +12,13 @@ fn repo_root() -> PathBuf {
 /// （`guard-core` 与 `profile_installer` 的单测就是），把它们当种子会把纯夹具断言也算进来。
 /// 摸底实测（收窄到 34 个扫描型判据文件时）：含它们 73 处，只留磁盘种子 59 处。
 ///
-/// # 🔴 〔`P28` 2026-09-22〕这张表**漏掉了剖分之后本仓钦定的那个遍历原语**
+/// # 🔴 这张表**漏掉了剖分之后本仓钦定的那个遍历原语**
 ///
 /// 原文逐字只有 `["read_to_string(", "scan_tree!"]`。而 `scan_tree!` 只是一个宏，
 /// 它展开成 `scan_tree_excluding_self(` —— 那个函数**号称**按 `file!()` 摘掉调用者自己，
 /// 而那一刀在本仓的判据上**一处都不生效**（判据一律由 `#[path]` 挂载 ⇒ `file!()` 给的是
 /// 带 `..` 的折返路径 ⇒ 后缀比**恒不命中**；逐字读数住 `scanning_guard_registry` 头注）。
-/// **`设计/99` 条 73 因此把「摘掉自己」换成了明写名单**，于是新写的遍历一律是
+/// ** 条 73 因此把「摘掉自己」换成了明写名单**，于是新写的遍历一律是
 /// `guard_core::scan_tree_excluding(`（现打：`tests/frontend/shell` 29 处 · `tests/backend` 12 处 ·
 /// `src/common` 1 处），而那个字面量**这张表一个都不含** ——
 /// `scan_tree_excluding(` 里没有 `scan_tree!`，也没有 `read_to_string(`。
@@ -45,7 +45,7 @@ const CORPUS_SEEDS: &[&str] = &[
 
 /// ★ **递减棘轮的上限**（`P28` 2026-09-22 全树重测 **96** 处；旧值 33 / 旧实测 29）。
 ///
-/// # 🔴 这个数从 33 变成 96 —— **人群变了，标准一格没松**〔`P28` 2026-09-22〕
+/// # 🔴 这个数从 33 变成 96 —— **人群变了，标准一格没松**
 ///
 /// 上一段（63 → 35）记的是「**量准了**所以降」。这一拍是同一件事的**反方向**：
 /// [`CORPUS_SEEDS`] 漏了 `scan_tree_excluding(`、[`corpus_vars`] 不认 `for` 模式绑定
@@ -83,7 +83,7 @@ const CORPUS_SEEDS: &[&str] = &[
 /// ⇒ 已按交付纪律**停下来报备**，处置另开一件。
 ///
 /// ⚠ 尤其要点名一处**被这一拍软化了的承诺**：`.ends_with(` 的上限是
-/// 〔步 7c 2026-09-19〕刻意从 2 拧到 0 的，那一段逐字写着「任何**非**扩展名的裸
+/// 刻意从 2 拧到 0 的，那一段逐字写着「任何**非**扩展名的裸
 /// `ends_with` 从此当场红」。人群补全之后它实测 **6** 处 ——
 /// 逐处的住址刻意**用那一行的代码本身**报，不用行号（行号每一轮都变，
 /// 写下去下一轮自动变成假话；`structural_scan` 那条行号判据逐字禁这件事）：
@@ -102,33 +102,33 @@ const CORPUS_SEEDS: &[&str] = &[
 /// ⚠ 这个数里**有假阳性**：语料变量的传递闭包只看 `let` 那一行的右侧，
 /// 于是「先从磁盘读了点什么、后面又 `let` 了个提到它的变量」会被一并算进来
 /// （`pubkey.rs` 那处就是）。假阳性抬高了上限、削弱了它的锐度，但**不影响方向**：
-/// 新增一处仍然会越界。逐条判真伪归下一轮，见 `ROADMAP §5` 诚实边界。
+/// 新增一处仍然会越界。逐条判真伪归下一轮，诚实边界。
 ///
 /// 只许降。修一处就把这个数调下来，**不许调上去让今天好过**。
 const BARE_CONTAINS_CEILING: usize = 96;
 
 /// 「匹配单位比事实小」这一族的**全部**原语，各带各的递减棘轮上限。
 ///
-/// 〔audit-0805 08-06〕原来只有 `contains` 一条。本表把族圈全 ——
+/// 原来只有 `contains` 一条。本表把族圈全 ——
 /// 判据的人群应当是**这个族**，不是族里最好数的那一种（本轮逮到的洞用的是 `matches`）。
 /// 数字是 **08-06 全树实测值**，不是估的（先置 0 跑一次，从诊断里读出来再钉）。
 /// ⚠ 这 24 处**没有**像 `contains` 那 34 处一样被逐条判过真伪 —— 那要另开一件。
 /// 棘轮的意义在此刻就是「别再长」；分类是后补的活，不是立棘轮的前提。
 const MATCHER_CEILINGS: &[(&str, usize)] = &[
     (".contains(", BARE_CONTAINS_CEILING),
-    // 🔴 〔`P28` 2026-09-22〕**下面这七个数全部重测过**，理由与新旧对照表
+    // 🔴 **下面这七个数全部重测过**，理由与新旧对照表
     // 逐字住 [`BARE_CONTAINS_CEILING`] 的头注 —— **别在这里再写第二份**（本区 E12：
     // 一个数字出现在两个地方就会漂）。一句话：人群补全了，**上限一格富余都没留**。
     (".matches(", 7),
     (".find(", 16),
     (".rfind(", 2),
     (".starts_with(", 30),
-    // 🔴 〔步 7c 2026-09-19〕**2 → 0（往下拧）。** 原来那 2 处是
+    // 🔴 **2 → 0（往下拧）。** 原来那 2 处是
     //    `path.ends_with(".rs")` / `.ends_with(".ts")` 这一形 —— 已登记豁免
     //    （[`needle_is_a_file_extension`]：后缀 + 扩展名撑不大，没有更严的写法可换）。
     //    摘掉那一形之后全仓真欠账是 0 ⇒ 上限就写 0：从此任何**非**扩展名的
     //    裸 `ends_with` 当场红。
-    // 🔴 〔`P28` 2026-09-22〕**0 → 6，而上面那句「从此当场红」因此只剩半真** ——
+    // 🔴 **0 → 6，而上面那句「从此当场红」因此只剩半真** ——
     //    人群补全之后露出 6 处非扩展名形，其中 5 处在 `P28` 禁区里动不了。
     //    逐处住址与判词在 [`BARE_CONTAINS_CEILING`] 头注最后一段，**这是账不是分类**。
     (".ends_with(", 6),
@@ -181,7 +181,7 @@ const DERIVE_DEPTH: usize = 2;
 
 /// 一个 `for` 头部的**模式绑定名**与被迭代的表达式（右侧只取本行）。
 ///
-/// # 🔴 〔`P28` 2026-09-22〕[`let_binding`] 只认 `let`，而本仓取语料的主流写法不是 `let`
+/// # 🔴 [`let_binding`] 只认 `let`，而本仓取语料的主流写法不是 `let`
 ///
 /// 逐字：`let_binding` 第一句是 `strip_prefix("let ")` ⇒ 一条
 /// `for (path, src) in guard_core::scan_tree_excluding(…)` 里的 `src`
@@ -296,7 +296,7 @@ fn receiver_before(hay: &str, dot_at: usize) -> String {
 
 /// 一份测试段里，「语料变量上的裸 `<原语>(\"…\")`」有几处。
 ///
-/// # 〔audit-0805 08-06〕原来这里把 `.contains(` 写死了
+/// # 原来这里把 `.contains(` 写死了
 ///
 /// 本模块治的族叫「**匹配单位比事实小**」，而 `contains` 只是这个族的**一个成员**：
 /// `matches` / `find` / `starts_with` / `ends_with` / `split` / `strip_prefix` 拿字符串字面量
@@ -366,7 +366,7 @@ fn bare_matcher_on_corpus(test_src: &str, mark: &str) -> usize {
 #[test]
 fn bare_contains_on_disk_corpora_only_goes_down() {
     let root = repo_root();
-    // 🔴 〔步 7c 剖分 2026-09-19 · `设计/16 §6.2` B 类〕**补上两棵测试树。**
+    // 🔴 〔步 7c 剖分 2026-09-19〕**补上两棵测试树。**
     //
     // 本条数的是**测试段**里的裸匹配，而测试段剖分之后整批住进了 `<repo>/tests/`。
     // 上一版三棵根全在 `src/` 下 ⇒ 下面那个 `all_contains` 从 500+ 掉到 240，
@@ -384,9 +384,9 @@ fn bare_contains_on_disk_corpora_only_goes_down() {
         ("src/backend", &[]),
         ("src/common", &[]),
         ("tests/frontend/shell", &["needle_anchor_registry_tests.rs"]),
-        ("tests/frontend/filewin", &[]), // 〔P4〕文件窗口独立成包，它的判据搬到这里
+        ("tests/frontend/filewin", &[]), // 文件窗口独立成包，它的判据搬到这里
         ("tests/backend", &[]),
-        ("tests/comms", &[]), // 〔RE〕通信层成员的单测镜像
+        ("tests/comms", &[]), // 通信层成员的单测镜像
     ] {
         let whole = sub.starts_with("tests/");
         files.extend(
@@ -467,7 +467,7 @@ fn bare_contains_on_disk_corpora_only_goes_down() {
             .join("\n")
     );
 
-    // ★〔audit-0805 08-06〕**族里其余原语各自一条棘轮**。
+    // ★**族里其余原语各自一条棘轮**。
     //
     // 它们没有像 `contains` 那 34 处那样被逐条判过真伪 —— 那要另开一件。
     // 但**棘轮不需要分类，只需要一个今天的数**：先把「只许降」立起来，
@@ -481,7 +481,7 @@ fn bare_contains_on_disk_corpora_only_goes_down() {
             (n > *ceiling).then(|| format!("  {mark}\"…\")  {n} 处 > 上限 {ceiling}"))
         })
         .collect();
-    // 🔴 〔步 7c〕诊断里**逐处点名**。原来只打「N 处 > 上限 M」——
+    // 🔴 诊断里**逐处点名**。原来只打「N 处 > 上限 M」——
     // 那句话读完之后不知道该去改哪一行，而这一族的默认结局就是「把上限调上去」。
     // `by_file` 本来就带着 `路径 + 原语`，只是没打出来。
     let where_of = |mark: &str| -> String {

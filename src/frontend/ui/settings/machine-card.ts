@@ -17,14 +17,14 @@ import { commands } from "../ipc/commands";
 import { open } from "@tauri-apps/plugin-dialog";
 import { homeDir, join } from "@tauri-apps/api/path";
 import { openFileWindow } from "../file-window";
-import { buildAliasManager } from "./machine-aliases"; // 〔AL2〕② 别名：远端卡与本机同一个组件（`origin` = 这台）
+import { buildAliasManager } from "./machine-aliases"; // ② 别名：远端卡与本机同一个组件（`origin` = 这台）
 import { recordFacet, type MachineFacet } from "./machine-status";
 import { hostKey, readRemoteConfig, resolveRemoteConfigByOrigin, type RemoteHostConfig } from "../remote-config";
 import { parseAddressLines } from "../remote-config";
 // E80：`ConnectStage` 直连生成物，不再绕道 `remote-section`（那条绕道是 import 环的一半）。
 import type { ConnectStage } from "../generated/ConnectStage";
 import { AGENT_PROFILE } from "../agent-profile";
-// 〔FE1〕铸名口（列名单 ＋ 避让 ＋ 「列不出 ⇒ 不起」）本机远端同一个家。
+// 铸名口（列名单 ＋ 避让 ＋ 「列不出 ⇒ 不起」）本机远端同一个家。
 import { mintFreshTmuxName, refuseUnmintable } from "../tmux-name-mint";
 import { isSelectable, currentWorkingAccount } from "../accounts";
 import { fetchAccounts } from "../account-reads";
@@ -118,7 +118,7 @@ function parsePort(raw: string): number {
  * 而**手写类型时 Rust 新增一个 variant 并不会让它红** —— 那条 `never` 会一直在守一个
  * TS 侧自己造的联合，不是 Rust 的真实形状。换成生成物它才真正对 Rust 的改动有牙。
  */
-/** 〔MIG-1 收尾〕测试连接到点没等到结局时「停在哪一段」的那句话（最后收到的那一格；握手中那一段带上最后一行阶段）。 */
+/** 测试连接到点没等到结局时「停在哪一段」的那句话（最后收到的那一格；握手中那一段带上最后一行阶段）。 */
 export function describeStop(stop: ProbeStop): string {
   switch (stop.at) {
     case "start":
@@ -170,7 +170,7 @@ export interface MachineCardHooks {
   /** S4b：这张卡的状态/名字变了，宿主该刷新列表那一行。 */
   onStatusChanged?: (card: MachineCard) => void;
 }
-// 〔E2 · V28 · `设计/01 §6.7b`〕「后端路径」那一格删了：落点恒是那台的 `~/.cc-monitor/bin/ccm`（它就是后端本身），
+// 「后端路径」那一格删了：落点恒是那台的 `~/.cc-monitor/bin/ccm`（它就是后端本身），
 //   从前按用户名预填的 `defaultBackendPathFor`〔散文墓碑〕随之删。
 /**
  * F43：是否显示「重置为 TOFU」按钮——当且仅当当前已固化了非空指纹。
@@ -190,7 +190,7 @@ export interface MachineCardParts {
 /** 按钮结果写在哪一栏。 */
 type ResultArea = "conn" | "comp";
 
-/** 〔VIS2 · `设计/15 §3.4 ①`〕后端那边自动固化 / 各地址指纹不一 ⇒ 既有的 `remote-health` 上这两个 kind（`dial_host.rs`）。 */
+/** 后端那边自动固化 / 各地址指纹不一 ⇒ 既有的 `remote-health` 上这两个 kind（`dial_host.rs`）。 */
 export const HOST_KEY_NOTICE_KINDS: readonly string[] = ["host_key_pinned", "host_key_differs"];
 export interface HostKeyNotice {
   origin: string;
@@ -227,7 +227,7 @@ export class MachineCard {
   private backendInstallButton!: HTMLButtonElement;
   private backendUninstallButton!: HTMLButtonElement;
   private testResult!: HTMLElement;
-  /** 〔MC1〕「组件」栏那几个动作的结果区（「连接」栏的结果仍在 `testResult`）。 */
+  /** 「组件」栏那几个动作的结果区（「连接」栏的结果仍在 `testResult`）。 */
   private actionResult!: HTMLElement;
   /** 折叠时隐藏的字段 + 测试/安装区（legend 始终可见）。 */
   private body!: HTMLElement;
@@ -269,7 +269,7 @@ export class MachineCard {
   }
 
   /**
-   * 〔VIS2〕只认自己那台：固化了 ⇒ 从盘上把指纹同步进输入框（机器页保存是整台 upsert，不同步会用空值盖回去）；
+   * 只认自己那台：固化了 ⇒ 从盘上把指纹同步进输入框（机器页保存是整台 upsert，不同步会用空值盖回去）；
    * 各地址不一 ⇒ 把那句话（带逐地址指纹）说在结果区，让人在指纹那一栏选一个填上。
    */
   async onHostKeyNotice(n: HostKeyNotice): Promise<void> {
@@ -359,10 +359,10 @@ export class MachineCard {
     this.body.className = "remote-machine-body";
     card.appendChild(this.body);
 
-    // ★ S4b-3b-2：body 内部再分成**两块**，供机器详情页拆成「连接 / 组件」两栏
-    //（主计划 §2.3 / §2.4）。分界就在 resume 命令那一行：
+    // ★ S4b-3b-2：body 内部再分成**两块**，供机器详情页拆成「连接 / 组件」两栏。
+    // 分界就在 resume 命令那一行：
     //   连接 = 怎么连上这台机（host/port/user/密钥/指纹/地址/跳板…）
-    //   组件 = 这台机上装了什么、怎么起（resume 命令 + ① 部署后端 + ② 别名；〔MC1〕测试连接回了连接栏）
+    //   组件 = 这台机上装了什么、怎么起（resume 命令 + ① 部署后端 + ② 别名；测试连接回了连接栏）
     //
     // **顺带把 S4b-3a 摆错的位置纠正了**：那轮我把 resume 命令插在那个降级开关之后，
     // commit 里却说它「放在装/卸 ccm 按钮紧邻处」—— 实际隔着那段安装位置说明等约 120 行。
@@ -471,13 +471,13 @@ export class MachineCard {
     //    用户盘上那份旧 `true` 由 `remote-config.ts` 的 `LEGACY_NO_BACKEND_KEY` 认出来，
     //    在「还差什么」清单上指名告知（`NO_BACKEND_GAP_CODE`），不静默吞掉。
 
-    // 〔MC1 · 2026-09-24〕`设计/71 §13` · `设计/01 §6.7`：**机器卡上只有三个动作** ——
+    // **机器卡上只有三个动作** ——
     //   ① 部署后端 · ② 别名 · ③ 后端代管的资产。从前这里是**一行 8 颗按钮**全挤在「组件」栏：
     //   测试连接 · 文件 · 推送公钥 · 开新 Claude · 安装 backend · 卸载 backend · 装 ccm 启动器 · 卸载 ccm。
     //   ⇒ 按「它动的是什么」分回去：
     //   · 前四颗动的是**这条连接**（验它 · 免密 · 用它看文件 / 起会话）⇒ 回「连接」栏，挨着它们用的那几格；
     //   · 后四颗是两件事的四个开关（装后端 · 「ccm 助手」），而「ccm 助手」自己又是两件事
-    //     （`71 §13.1`：① 推入口 ② 写别名块）⇒ 推入口并进 ①（**一颗按钮**），写别名块归 ②；
+    //     （① 推入口 ② 写别名块）⇒ 推入口并进 ①（**一颗按钮**），写别名块归 ②；
     //   · ③ 不是按钮：账号在这一页的「账号」栏，skill / MCP 在顶层「扩展」页。
     //   「ccm 助手 / ccm 启动器」这个词整个删掉（用户 2026-09-17 逐字「装/卸 ccm 助手是假的」）。
     const mkBtn = (
@@ -488,7 +488,7 @@ export class MachineCard {
     ): HTMLButtonElement => {
       const b = document.createElement("button");
       b.type = "button";
-      // 〔W5-AUX · AR1 拍板 3〕`variant` 空串 = 默认那一种（原先的 `settings-btn-secondary` 从没有过规则，已摘）。
+      // 〔AR1 拍板 3〕`variant` 空串 = 默认那一种（原先的 `settings-btn-secondary` 从没有过规则，已摘）。
       b.className = variant ? `settings-btn ${variant}` : "settings-btn";
       b.textContent = label;
       b.title = title;
@@ -514,7 +514,7 @@ export class MachineCard {
       () => void this.onPushPubkey(pushKeyBtn),
     );
     connRow.appendChild(pushKeyBtn);
-    // F48：在原生文件窗口里打开这一台（〔F7b〕老 SFTP 面板退役，终点换成 `file-window.ts`）。
+    // F48：在原生文件窗口里打开这一台（老 SFTP 面板退役，终点换成 `file-window.ts`）。
     connRow.appendChild(
       mkBtn(
         copyText("machineCard.build.files"),
@@ -548,7 +548,7 @@ export class MachineCard {
     // ↓↓ 从这里起归「组件」栏 ↓↓
     body = this.componentsPart;
 
-    // ★ S4b-3（主计划 §5-1）：**这台机器**的 resume 启动命令。
+    // ★ S4b-3：**这台机器**的 resume 启动命令。
     // 刻意挨着下面的动作：此前 resume 命令是全局单值、住在「外观 → 行为」里，而装东西是
     // 每台机器一个按钮 —— 两处隔着两个顶层组，「装完却忘了改 resume 命令」是个结构性陷阱。
     // 空 = 沿用全局默认，所以没填过的机器行为一字不变。
@@ -574,7 +574,7 @@ export class MachineCard {
     this.backendInstallButton = mkBtn(
       copyText("machineCard.deploy.install"),
       "settings-btn-primary",
-      // K-W4 §0c：跳过的条件是两条（版本已是最新、且落点那个文件在），两个事实各自说话。
+      // 跳过的条件是两条（版本已是最新、且落点那个文件在），两个事实各自说话。
       copyText("machineCard.deploy.installHint"),
       () => void this.onDeployBackend(),
     );
@@ -596,7 +596,7 @@ export class MachineCard {
     // ↓↓ 从这里起归「终端」栏 ↓↓
     body = this.terminalPart;
 
-    // ── ② 别名 ──〔AL2 · 第四波 4D〕与本机同一个组件（`设计/71 §5`）：清单在这台读、在这台写，别名块装 / 卸 / 预览都在里面。
+    // ── ② 别名 ──与本机同一个组件：清单在这台读、在这台写，别名块装 / 卸 / 预览都在里面。
     const aliasTitle = document.createElement("div");
     aliasTitle.className = "settings-label";
     aliasTitle.textContent = copyText("machineCard.aliases.title");
@@ -604,10 +604,10 @@ export class MachineCard {
     const origin = (): string => this.persistedKey ?? hostKey(this.collect());
     body.appendChild(
       buildAliasManager({
-        // 远端恒 POSIX：`设计/01 §6.7b` 表 B 只承诺远端 Linux（`第四波记录/W5-ALIAS.md §2.2`）。
+        // 远端恒 POSIX：只承诺远端 Linux。
         platform: "posix",
         origin,
-        // 机器列表那一格（`ccm`）照旧记装 / 卸的结论。〔MIG-2〕原先装完还清一次界面的 ccm 探针缓存：渲染进了那台后端、
+        // 机器列表那一格（`ccm`）照旧记装 / 卸的结论。原先装完还清一次界面的 ccm 探针缓存：渲染进了那台后端、
         //   能力问它自己，界面不再缓存那一份（探针与缓存一起删了）。
         onBlockDone: (verb, error) => {
           if (verb === "install") {
@@ -723,7 +723,7 @@ export class MachineCard {
       ?.remove();
   }
 
-  /** 点「测试连接」：组本卡片 → 本机后端 `remote-probe`（〔MIG-1 续〕原 Tauri 命令 `test_remote_connection`）→ 渲染结果。 */
+  /** 点「测试连接」：组本卡片 → 本机后端 `remote-probe`（原 Tauri 命令 `test_remote_connection`）→ 渲染结果。 */
   private async onTestConnection(): Promise<void> {
     const cfg = this.collect();
     if (!cfg.host || !cfg.user) {
@@ -733,14 +733,14 @@ export class MachineCard {
     this.testButton.disabled = true;
     const prevLabel = this.testButton.textContent;
     this.testButton.textContent = copyText("machineCard.test.running");
-    // F46：连接分阶段事件泳道——测试开始即清空日志区。〔MIG-1 收尾〕本机后端边拨边推（进度流 `probe-progress/<票>`），收一行画一行。
+    // F46：连接分阶段事件泳道——测试开始即清空日志区。本机后端边拨边推（进度流 `probe-progress/<票>`），收一行画一行。
     this.testResult.innerHTML = "";
     this.testResult.style.display = "block";
     const stageLog = document.createElement("div");
     stageLog.className = "remote-stage-log";
     this.testResult.appendChild(stageLog);
     try {
-      // 〔MIG-1 续 · ⑬〕表单里这一台（可能没保存）＋ 已保存的那几台（同名那一份的指纹 · 跳板）交给本机后端，它组请求、拨一次。
+      // 表单里这一台（可能没保存）＋ 已保存的那几台（同名那一份的指纹 · 跳板）交给本机后端，它组请求、拨一次。
       const res = await probeMachine(cfg, (await readRemoteConfig()).hosts, (st) => this.appendStageLine(stageLog, st));
       this.renderTestResult(res, null, stageLog);
       // S3：记进账本 —— 列表行上那个「✓ 3 分钟前」就是这一次的结论。
@@ -756,7 +756,7 @@ export class MachineCard {
       }
     } catch (e) {
       console.warn("remote-probe failed:", e);
-      // 〔MIG-1 收尾〕到点没等到结局 ⇒ 说出停在哪一段（最后收到的那一格）。
+      // 到点没等到结局 ⇒ 说出停在哪一段（最后收到的那一格）。
       const said =
         e instanceof ProbeStalled
           ? copyText("machineCard.test.stalled", { said: e.message, where: describeStop(e.stop) })
@@ -807,7 +807,7 @@ export class MachineCard {
       pubKeyPath = picked;
     }
     await this.runRemoteAction(btn, copyText("machineCard.pushKey.pushing"), async () => {
-      // 〔MIG-3b 续 · ⑬〕表单里这一台 ＋ 已保存的那几台交给本机后端：它读 `.pub`、组请求、经那台后端写或一次 exec。
+      // 表单里这一台 ＋ 已保存的那几台交给本机后端：它读 `.pub`、组请求、经那台后端写或一次 exec。
       const r = await pushPublicKey(cfg, (await readRemoteConfig()).hosts, pubKeyPath);
       return r.outcome === "added"
         ? copyText("machineCard.pushKey.added", { path: r.pubPath })
@@ -855,7 +855,7 @@ export class MachineCard {
       box.appendChild(row);
       return input;
     };
-    // 〔WF2 · WIN3 §2〕占位只放一句短的（长的那句在 460 px 的框里被截掉），例子挪到悬停说明。
+    // 〔WIN3 §2〕占位只放一句短的（长的那句在 460 px 的框里被截掉），例子挪到悬停说明。
     const cwdInput = mkField(
       copyText("machineCard.launch.cwd"),
       copyText("machineCard.launch.cwdHint"),
@@ -866,7 +866,7 @@ export class MachineCard {
       copyText("machineCard.launch.command"),
       copyText("machineCard.launch.commandHint"),
     );
-    // 工作目录填定 → 预览留空时将用的名字(placeholder)。〔FIX4 · J7〕名字问那台后端铸（与点「开始」时同一问）；
+    // 工作目录填定 → 预览留空时将用的名字(placeholder)。名字问那台后端铸（与点「开始」时同一问）；
     //   问不到 / 目录又改了 ⇒ 退回「自动生成」那一句。按 `change`（填完离开）问、不按每个键问。
     cwdInput.addEventListener("change", () => {
       const cwd = cwdInput.value.trim();
@@ -951,7 +951,7 @@ export class MachineCard {
       //
       // 用户显式填的名字**不动**（那是他的意思，撞了也是他要的复用）；
       // 只有**我们替他派生**的那个默认名才过铸名口。
-      // 〔FE1〕铸名收进 `tmux-name-mint.ts`（与 `remote-launch-run.ts::runNewSessionRemote` 先前是逐字副本）；
+      // 铸名收进 `tmux-name-mint.ts`（与 `remote-launch-run.ts::runNewSessionRemote` 先前是逐字副本）；
       // 先前「列不出名单 ⇒ 空集铸名、不避让」正是 #76 的形状 ⇒ 列不出就不起、说清。
       const typed = nameInput.value.trim();
       let name = typed;
@@ -966,7 +966,7 @@ export class MachineCard {
       const command = cmdInput.value.trim() || AGENT_PROFILE.defaultLauncher;
       const accName = acctSelect.value; // "" = 不指定
       back.remove();
-      // A4：新会话无 sid → 不记 lastAccount；withAccount 统一解析注入（〔FE1 · D-h〕选的号不可选 ⇒ 不起、说清、给显式选择）。
+      // A4：新会话无 sid → 不记 lastAccount；withAccount 统一解析注入（选的号不可选 ⇒ 不起、说清、给显式选择）。
       await withAccount(origin, accName || null, (mods) =>
         runRemoteLauncher(origin, cwd, name, command, mods),
       );
@@ -1008,7 +1008,7 @@ export class MachineCard {
      * 停在旧结论上，而 UI 上看不出来。
      */
     ledger?: { facet: MachineFacet; ok: string; fail: string },
-    /** 〔MC1〕结果写到哪一栏：「连接」栏的动作写 `testResult`，「组件」栏的写 `actionResult`（「终端」栏的别名那一块自带结果区）。 */
+    /** 结果写到哪一栏：「连接」栏的动作写 `testResult`，「组件」栏的写 `actionResult`（「终端」栏的别名那一块自带结果区）。 */
     where: ResultArea = "conn",
   ): Promise<void> {
     const out = this.resultArea(where);
@@ -1040,7 +1040,7 @@ export class MachineCard {
     this.renderStatusStrip();
   }
 
-  /** ①「部署后端」—— 后端本体 ＋ `ccm` 入口，一颗按钮、一次调用（〔MC1〕从前是两颗）。 */
+  /** ①「部署后端」—— 后端本体 ＋ `ccm` 入口，一颗按钮、一次调用（从前是两颗）。 */
   private async onDeployBackend(): Promise<void> {
     const cfg = this.collect();
     if (!cfg.host || !cfg.user) {
@@ -1054,10 +1054,10 @@ export class MachineCard {
       { facet: "backend", ok: copyText("machineCard.status.installed"), fail: copyText("machineCard.status.installFailed") },
       "comp",
     );
-    // 〔MIG-2〕原先这里清界面的 ccm 探针缓存；渲染进了那台后端、能力问它自己，那份缓存删了。
+    // 原先这里清界面的 ccm 探针缓存；渲染进了那台后端、能力问它自己，那份缓存删了。
   }
 
-  /** F08c：点「卸载后端」——删远端后端二进制（二次确认；〔DP1〕旁挂的版本标记退役了，不再删它）。 */
+  /** F08c：点「卸载后端」——删远端后端二进制（二次确认；旁挂的版本标记退役了，不再删它）。 */
   private async onUninstallBackend(): Promise<void> {
     const cfg = this.collect();
     if (!cfg.host || !cfg.user) {
@@ -1159,7 +1159,7 @@ export class MachineCard {
       ? copyText("machineCard.test.backendOk", { hello: res.backendHello ? `（${res.backendHello}）` : "" })
       : copyText("machineCard.test.backendDown");
     this.testResult.appendChild(makeStatusLine(res.backendOk, backendText));
-    // 〔FIX5 续 · 主会话 09-28 裁〕这台说做不到的那几类：点开看全表（一类一句；码的人话与置灰那一句同一个家）。
+    // 这台说做不到的那几类：点开看全表（一类一句；码的人话与置灰那一句同一个家）。
     if (res.backendGaps.length > 0) {
       const machine = this.labelInput.value.trim() || this.hostInput.value.trim();
       const gaps = document.createElement("details");

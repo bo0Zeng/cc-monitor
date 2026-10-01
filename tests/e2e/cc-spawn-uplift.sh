@@ -167,7 +167,7 @@ chk "agents.tsv 已登记" "$(cut -f1 "$CC_BUS_HOME/agents.tsv" 2>/dev/null | gr
 # ★★ 〔`P4b` 08-12 改了语义，本段 08-13 跟改〕**默认不再复用**。
 # 用户逐字（`C14`）：「所有起会话就是起会话……**spawn 就是起, 就是 creat**」。
 # `P4b` 把 `cc-spawn` 里那段「到就用、没有才建」删掉了 —— 而本段一直在测**被删掉的那个行为**，
-# 于是每跑必败 2 条。⚠ **没人发现，是因为这套 e2e 从来没被跑过**（`ROADMAP §5 3x` 那一族）。
+# 于是每跑必败 2 条。⚠ **没人发现，是因为这套 e2e 从来没被跑过**。
 # ⇒ 本段改成钉新语义：同目录再 spawn **必须新建并避让到 `-2`**。
 echo "[5] 默认新建（C14）：同目录再 spawn 建出 proj_cc-2，命名避让生效"
 CCM_NO_PRETRUST=1 timeout 30 "$CCSPAWN" "$WORK/proj" "第二个任务" > "$WORK/out2.txt" 2>&1
@@ -201,7 +201,7 @@ chmod +x "$BIN8/tmux"
 mkdir -p "$WORK/inh"
 (
   export PATH="$BIN8:$PATH"
-  # ⚠ 〔`K-P2` `F` 拍 09-04〕**假后端那个 socket 也要跟着换**：它自带 `-L`（fail-closed，
+  # ⚠ **假后端那个 socket 也要跟着换**：它自带 `-L`（fail-closed，
   #   见 `tests/e2e/fake-backend.sh` 头注），而 shim 插的 `-L` 在它**前面** ⇒ tmux 取最后一个
   #   ⇒ 不换的话会话会落回 `$SOCK`，本格那个「现起一个 server」的前提当场不成立
   #   （现打逮到过：本格两条一起红，而红的原因与它要测的东西无关）。
@@ -238,7 +238,7 @@ chk "任务仍原样送达" "$(sed -n 's/^args=//p' "$WORK/rec-wrap_cc.txt" 2>/d
 echo "[11] 【审计重要-7】ccm 版本太旧要报得准（不能说成"建会话失败"）"
 cat > "$SANDBOX/oldccm" << 'EOF'
 #!/bin/bash
-# 〔V151〕cc-spawn 问的是 `ccm -- --ccm-probe`（ccm 的诊断口写在 `--` 右边）。
+# cc-spawn 问的是 `ccm -- --ccm-probe`（ccm 的诊断口写在 `--` 右边）。
 [ "$1" = "--" ] && [ "$2" = "--ccm-probe" ] && { printf 'capabilities=new,resume,attach,tmux,account,model,cwd,agent,launcher,ccm-sid,print\n'; exit 0; }
 echo "ccm: 未知选项: --detach" >&2; exit 2
 EOF
@@ -378,8 +378,8 @@ echo "[18] 【08-13】边界：cc-bus 脚本**不可执行** · 初始任务**�
 TB="$(mktemp -d)"
 cp "$REPO/src/shared/cc-bus/scripts/cc-register" "$REPO/src/shared/cc-bus/scripts/cc-spawned-record" "$TB/"
 chmod -x "$TB/cc-spawned-record"
-# 〔AL3 · V138〕位置动作 `new` 取消、预览改 `--ccm-print`（`new` 留着会被当成交给 claude 的位置参数）。
-# 〔COPY-R〕那一句按文案键取（`设计/91 §6`：判据按键、不钉原文），整行比。
+# 位置动作 `new` 取消、预览改 `--ccm-print`（`new` 留着会被当成交给 claude 的位置参数）。
+# 那一句按文案键取（判据按键、不钉原文），整行比。
 NO_RECORD_SAY="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["entries"]["bePlan.bus.noSpawnRecord"]["zh"].replace("{path}", sys.argv[2]))' \
   "$REPO/src/shared/copy/table.json" "$TB/cc-spawned-record")"
 chk "台账脚本不可执行 ⇒ 明说那一句（bePlan.bus.noSpawnRecord）" \

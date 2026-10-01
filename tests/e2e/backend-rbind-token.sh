@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# `设计/80 §8.7` 步 2：**启动期令牌真的坐上了那一帧** —— 真起后端，看帧里有没有 token。
+# **启动期令牌真的坐上了那一帧** —— 真起后端，看帧里有没有 token。
 #
 # ## 为什么这条必须是真跑（**这一段是死值验量出来的，不是推的**）
 #
@@ -54,7 +54,7 @@
 set -o pipefail
 
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
-# 〔第二波 T4 接进执行链〕与 `ccm-*` 那四套同一条取法：`$CARGO_TARGET_DIR` 优先，
+# 〔接进执行链〕与 `ccm-*` 那四套同一条取法：`$CARGO_TARGET_DIR` 优先，
 #   缺省落仓根 `.build/backend`（`src/backend/.cargo/config.toml` 的 `target-dir`）。
 #   此前只认后一半 ⇒ 门禁若在设了 `CARGO_TARGET_DIR` 的沙箱里跑，本套件会找不到它刚 build 的那一份。
 D="${CCM_E2E_BACKEND_BIN:-${CARGO_TARGET_DIR:-$REPO/.build/backend}/debug/cc-monitor-backend}"
@@ -150,7 +150,7 @@ chk "asked 的令牌也没有漏进后端日志" \
 
 echo
 echo "backend-rbind-token: $pass passed, $fail failed"
-# 〔第二波 T4〕`tests/scripts/gate.sh` 经 `tests/e2e/assert-pass-floor.sh` 按 exact 判本套件，
+# `tests/scripts/gate.sh` 经 `tests/e2e/assert-pass-floor.sh` 按 exact 判本套件，
 #   那把尺子只认这一行的格式（`合计 PASS=<n>`）。上面那句人读的留着，这一行给尺子。
 echo "===== 合计 PASS=$pass FAIL=$fail ====="
 [ "$fail" -eq 0 ] || exit 1

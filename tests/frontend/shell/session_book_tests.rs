@@ -1,4 +1,4 @@
-//! 设计/99 §2.1 ⑬「monitor 只收成品帧」· `设计/30 §3.5.7a`「`Unseen` 不许被显示成已结束」—— `session_book` 只记账、不裁决。
+//! 「monitor 只收成品帧」· 「`Unseen` 不许被显示成已结束」—— `session_book` 只记账、不裁决。
 //!
 //! 钉两件：① 交进来的成品原样交出去（顺序不变），monitor 自己只说「连接断了 ⇒ 当时活的 / 可重连的说不清」；
 //! ② F5 重放计划：骨架在前、终局在后，有行却没成品的按「那台报完清单没有」分已结束 / 说不清。
@@ -119,7 +119,7 @@ fn the_f5_plan_puts_skeletons_first_and_judges_bufferless_nothing() {
     assert_eq!(
         said(&r.after),
         vec![
-            // 〔MIG-1 续〕有行、这条连接上没说过、那台没报完（`mu`）/ 根本没连上（`zz`）⇒ **机器级**说不清，排在终局最前；
+            // 有行、这条连接上没说过、那台没报完（`mu`）/ 根本没连上（`zz`）⇒ **机器级**说不清，排在终局最前；
             //   紧跟着那台说过的活会话再宣告一次（前端按机器落说不清会把它一并落下，这一格翻回来）。
             r#"unseen mu ["n"]"#,
             "live mu/m",
@@ -133,7 +133,7 @@ fn the_f5_plan_puts_skeletons_first_and_judges_bufferless_nothing() {
     );
 }
 
-/// 〔MIG-1 续 · 主会话裁：「说不清」是**那台**的〕线上一格机器级 `unseen {origin}`（不再逐会话一格）；旁路快照被撤时
+/// 〔「说不清」是**那台**的〕线上一格机器级 `unseen {origin}`（不再逐会话一格）；旁路快照被撤时
 /// 没说过的那一条：那台报完了清单 ⇒ 已结束，没报完 ⇒ 机器级说不清 ＋ 那台说过的活 / 可重连的再说一次（前端按机器落，紧跟着翻回来）。
 #[test]
 fn unseen_is_one_machine_level_cell_and_settle_again_follows_the_list() {
@@ -169,7 +169,7 @@ fn unseen_is_one_machine_level_cell_and_settle_again_follows_the_list() {
     assert!(b.settle_again("pi", "a").is_empty(), "活着的不说");
 }
 
-/// 设计/99 §2.2 ②「只有看见那台后端报出这个会话才说起来了」：新开的会话起会话方只有启动期令牌 ⇒ 活会话那一格要把令牌原样带给前端；
+/// 「只有看见那台后端报出这个会话才说起来了」：新开的会话起会话方只有启动期令牌 ⇒ 活会话那一格要把令牌原样带给前端；
 /// 那台读不回（缺席）⇒ 线上不出这个键（与加它之前逐字节相同）。期望值手写。
 #[test]
 fn the_live_cell_carries_the_launch_token_or_leaves_the_key_out() {

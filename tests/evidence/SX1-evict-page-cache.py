@@ -10,7 +10,7 @@
 
 **只读**：逐份 `O_RDONLY` 打开、`posix_fadvise(fd, 0, 0, POSIX_FADV_DONTNEED)` —— 只让内核丢掉这份文件的
 干净缓存页，一个字节都不写、不改 mtime、不要 root。`drop_caches` 要 root 且全机生效，本秤不用它。
-⚠ 丢不掉的：目录项与 inode 缓存（`fadvise` 碰不到，`设计/17 §6.9` F2 同一格）—— 43 份文件的元数据不是冷读的大头。
+⚠ 丢不掉的：目录项与 inode 缓存（`fadvise` 碰不到，同一格）—— 43 份文件的元数据不是冷读的大头。
 
 **只出数**：文件数 · 总字节 · 丢之前 / 之后仍在页缓存里的字节（`fincore`，没有就报 n/a）。一个字正文都不读。
 被 `tests/backend/observe/search_query_reading.rs` 的读数（`SX1_EVICT` 指过来）在相位之间调起；也可以单跑。

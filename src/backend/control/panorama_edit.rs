@@ -1,16 +1,16 @@
 //! 要求住址：主会话 09-28 裁 MIG-3b 报备 3 ——「全景三条：`panorama-edit` 进后端 · 界面直问 `panorama` · 回「没装 / 太旧」时 monitor 放字节再问一次」。
 //!
-//! # 帧命令 `panorama-edit {repo, op, args, shape}`（〔RM1d〕V110「引擎只算、文件管理来写」，本机远端同一条）
+//! # 帧命令 `panorama-edit {repo, op, args, shape}`（「引擎只算、文件管理来写」，本机远端同一条）
 //!
 //! ① 问**这台**的全景小程序要一份计划（`op` 是它自报的写表 `plans=` 里的「算」op，经 [`super::panorama::answer_plan`]：
 //!    小程序读盘上现状、算出 `{value, edit: {rel, before, after, parents}}`，一个字节不写；不在写表里 ⇒ `bad_args`）→
 //! ② `edit = null` ⇒ 盘上已经是想要的样子，原样回 `value` →
 //! ③ `after` 是全文 ⇒ 这台文件管理面的 `files-put`（`root` = 仓、`expect = before`、`parents`）；
-//!    `after = null` ⇒ `files-delete`（〔RM1e〕带 `expect = before`：盘上不是那一份就不删）→
+//!    `after = null` ⇒ `files-delete`（带 `expect = before`：盘上不是那一份就不删）→
 //! ④ `stale`（盘上那份在算与写之间被别人改了）⇒ 回 ① 重算，最多 `assets::door::EDIT_ATTEMPTS` 趟 →
 //! ⑤ 写成之后，小程序在写表里说了还要跑哪一个（今天是文档关联那两种 → `refresh_doc_links`，只写索引）就跑它。
 //!
-//! 〔PANO · `99 §1` V158「后端不带引擎知识」〕「写哪几种 · 各自的算 op · 写完要不要刷」原住本文件一张六行表，
+//! 〔「后端不带引擎知识」〕「写哪几种 · 各自的算 op · 写完要不要刷」原住本文件一张六行表，
 //! 今天只住小程序（`src/panorama-engine/main.rs` 里那张写表，经 `--probe` 的 `plans=` 自报）；本文件只照它走。
 //!
 //! 原住 monitor `panorama_call.rs`（问 · 交那一环 ＋ 那张六行表 ＋ 计划的线上形状，逐字搬来）：「算」与「写」本来就都在这台，
@@ -89,7 +89,7 @@ where
         .ok_or_else(|| bad("missing `repo` (a string)"))?
         .to_string();
     let op_args = args.get("args").cloned().unwrap_or(Value::Null);
-    // 〔PANO〕要的那一代由发起方带来，每次问小程序都原样转交（后端不存形状代号）。
+    // 要的那一代由发起方带来，每次问小程序都原样转交（后端不存形状代号）。
     let shape = args.get("shape").cloned().unwrap_or(Value::Null);
     let mut last = String::new();
     let mut written = None;
@@ -129,7 +129,7 @@ where
                 edit.parents,
             )
             .map(|_| ()),
-            // 〔RM1e〕删也带 CAS；`after = None` 而 `before = None` 上面已按「没事可做」回了 ⇒ 这里 `before` 恒在。
+            // 删也带 CAS；`after = None` 而 `before = None` 上面已按「没事可做」回了 ⇒ 这里 `before` 恒在。
             None => match edit.before.as_deref() {
                 Some(expect) => door::delete(&d, &root, &edit.rel, expect),
                 None => Ok(()),

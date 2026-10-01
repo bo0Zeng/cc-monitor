@@ -43,7 +43,7 @@ export async function getKeybindings(): Promise<Record<string, string | null>> {
   }
 }
 
-/** 全量保存覆盖 `keybindings` 这一个键（`null` = 解绑，原样存），不碰其他键（〔CFG1〕按键补丁）。 */
+/** 全量保存覆盖 `keybindings` 这一个键（`null` = 解绑，原样存），不碰其他键（按键补丁）。 */
 export async function setKeybindings(value: Record<string, string | null>): Promise<void> {
   await patchConfig([setAt([KEY], value)]);
 }

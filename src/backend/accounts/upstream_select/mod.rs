@@ -1,7 +1,7 @@
-//! **上游选择**（apikey 端点改写那一块）：`resolve` 那张决策表的**唯一住址**（`设计/20 §3.1`）。
-//! 〔V114 · 2026-09-25〕原叫「层 2 / 账号层」、模块名 `apikey`，改名上游选择 / `upstream`；纯命名，行为不变。〔散文墓碑〕
+//! **上游选择**（apikey 端点改写那一块）：`resolve` 那张决策表的**唯一住址**。
+//! 原叫「层 2 / 账号层」、模块名 `apikey`，改名上游选择 / `upstream`；纯命名，行为不变。〔散文墓碑〕
 //!
-//! 〔`A3` 第二波 · 2026-09-24〕从 `accounts/` 挪进子目录 `accounts/upstream_select/`：`accounts/` 是账号**域**，
+//! 从 `accounts/` 挪进子目录 `accounts/upstream_select/`：`accounts/` 是账号**域**，
 //! 它下面「挂在中转上当上游选择的这一块」与「账号隔离工具的查询」（`accounts/iso.rs`）是两件事，
 //! 不共用一张登记表（用户「账号就账号, 中转就中转」）。两块互不引用，由
 //! `upstream_selection_guard::the_two_halves_of_the_account_domain_do_not_reference_each_other` 钉着。
@@ -11,11 +11,11 @@
 //! | | |
 //! |---|---|
 //! | **知道** | 账号模型 · `apikey-credentials.json` · 上游 · `auth_style` · 热重载 · 哪个账号走哪个模式 |
-//! | **也管** | 〔RM1a〕这台机器上那份凭据文件的写与文件级读（[`file_face`]，帧面两条命令）—— 上游选择自己的状态 |
+//! | **也管** | 这台机器上那份凭据文件的写与文件级读（[`file_face`]，帧面两条命令）—— 上游选择自己的状态 |
 //! | **不知道** | HTTP 怎么发、字节怎么泵 —— 那是中转（`server.rs` / `listen.rs` / `http1.rs`） |
 //!
 //! ⇒ **「agent」与「账号」这两个业务词只在这一层出现。** 中转手里只有
-//! `RouteKey{ seg1, seg2 }` 两个不透明段（条 48 · `01 §2.1 C1`）——
+//! `RouteKey{ seg1, seg2 }` 两个不透明段（条 48）——
 //! 把它们读成 agent 与账号是**本模块**的事，就在下面 [`Accounts::resolve`] 里。
 //!
 //! # 🔴 表的键是 agent ＋ 账号，默认上游每 agent 一行，未登记直接拒〔条 49 / 条 59 / 条 60〕
@@ -28,8 +28,8 @@
 //! | 改什么 | 今天是 | 住址 |
 //! |---|---|---|
 //! | 表的键 | `(seg1, seg2)` 两段都是键，一段都不省 | `table::RoutingTable::lookup` |
-//! | 默认上游 | **每 agent 一行**：`agent → (环境旋钮, 内置默认)`；进程级的那个常量**整删**；〔NT2 · V25〕那一格住适配层 | `agents::Adapter::upstream`（经 `agents::default_upstreams` 读） |
-//! | 未登记的 agent | `/t/` 无行 ⇒ **404**（〔FIX3 · `99 §2.2 ⑫`〕先前 502：我们拒的一律 4xx）；`/s/` 无行 ⇒ 404。两格原因头不同。**不回落到任何一家** | [`decide`] 最后那一支 |
+//! | 默认上游 | **每 agent 一行**：`agent → (环境旋钮, 内置默认)`；进程级的那个常量**整删**；那一格住适配层 | `agents::Adapter::upstream`（经 `agents::default_upstreams` 读） |
+//! | 未登记的 agent | `/t/` 无行 ⇒ **404**（先前 502：我们拒的一律 4xx）；`/s/` 无行 ⇒ 404。两格原因头不同。**不回落到任何一家** | [`decide`] 最后那一支 |
 //!
 //! ⚠ **「未登记 ⇒ 拒」不是没做完，是照 `§3.1` 第 4 行那条 🔴「不许回落到某一个写死的常量」
 //! 做的 fail-closed** —— 先前它对**每一个** `seg1` 都成立（那张表还不存在），今天只对
@@ -40,7 +40,7 @@
 //! 而把一个猜的值写进这张表，就是把「未登记直接拒」换成「静默发去一个猜的地方」。
 //! 登记它的那一天，改的只是注册表里 codex 那一行的 `upstream` 那一格，**形状不用改**。
 //!
-//! # ⚠ `设计/20 §7` 步 3 的「怎么验」那一栏与 `§3.1` 第 4 行 —— 今天**不再互斥**
+//! # ⚠ 「怎么验」那一栏与「不许回落到写死的常量」—— 今天**不再互斥**
 //!
 //! `§7` 步 3 的验收逐字是「`/t/` ＋ 表里无行 ⇒ **真的发到默认上游**且 auth 头逐字节原样」，
 //! 而 `§3.1` 第 4 行（拍板 (b) 甲，比 `§7` 新）逐字加了「**不许回落到某一个写死的常量**」。
@@ -51,14 +51,14 @@
 //! 仍钉着「拒」那一半。
 
 pub(crate) mod creds; // `K-H2a`：从哪儿拿 key（**只读**）+ 读之前查一次权限（上游选择搬家带过来的）
-                      // 〔RM1a · 第四波〕这台机器上那份凭据文件的**帧面读写口**（`apikey-key-set` / `apikey-read`）。
+                      // 这台机器上那份凭据文件的**帧面读写口**（`apikey-key-set` / `apikey-read`）。
                       // 上游选择自己的状态文件，不是用户文件 ⇒ `readonly_guard` 第四层登记它，只从 `inbound.rs` 进来。
                       // ⚠ 它**不在**中转那条启动路径上：中转里的上游选择仍然只读（`creds`），写只在流模式的帧面上发生。
 pub(crate) mod file_face;
-// 〔US1 · 4D〕起会话那一发走哪、注入什么（帧面 `launch-endpoint`）· 界面「这几个号在表里有没有行」（`apikey-routing`）——
-// `设计/20 §3.2` 那张表的唯一住址（先前住 monitor `payload::relay_endpoint_for`〔散文墓碑〕）。
+// 起会话那一发走哪、注入什么（帧面 `launch-endpoint`）· 界面「这几个号在表里有没有行」（`apikey-routing`）——
+// 那张表的唯一住址（先前住 monitor `payload::relay_endpoint_for`〔散文墓碑〕）。
 pub(crate) mod endpoint;
-mod policy; // 热重载（`20 §4`：`accounts/policy.rs`；今天住 `accounts/upstream_select/policy.rs`）
+mod policy; // 热重载（`accounts/policy.rs`；今天住 `accounts/upstream_select/policy.rs`）
 pub(crate) mod table; // `K-H2`：路由表 —— 账号段 → **上游与 key 焊死的一个值**
 
 pub(crate) use policy::Reload;
@@ -76,14 +76,14 @@ use table::{RoutingTable, Row};
 /// 而 `creds-core` 那份文件格式**今天没有 agent 这一维**（只有账号 id）。
 /// 那份文件是界面上给 **claude-code 的账号**配第三方 key 时写出来的 ⇒ 它的每一行今天都是这一家的。
 ///
-/// 〔US1 · 4D〕它**只有这一份**：先前 monitor 那一侧决定「这次拉起要不要注入」时另写一份（`payload::APIKEY_TABLE_AGENT`〔散文墓碑〕），
+/// 它**只有这一份**：先前 monitor 那一侧决定「这次拉起要不要注入」时另写一份（`payload::APIKEY_TABLE_AGENT`〔散文墓碑〕），
 /// 由一条跨半边判据现抠字面量对拍；那张决策表搬进本层（[`endpoint`]）之后，读它的只剩本层自己。
 /// ⚠ 买不到：「那份文件**将来**会不会装进别家的行」—— 那要文件格式多一维（`creds-core`，
 /// 不在本层），那一天本常量整删、换成逐行读出来的 agent。
 pub(crate) const CREDENTIALS_FILE_AGENT: &str = "claude-code";
 
-// 〔NT2 · V25〕这里原先是 `AgentUpstream` 与每 agent 一行的默认上游表 `AGENT_UPSTREAMS`〔散文墓碑〕。
-// 用户 V25「写死, 跟着适配层」⇒ 那一格搬回 `agents::Adapter::upstream`（claude-code 那一行住 `agents/claudecode`），
+// 这里原先是 `AgentUpstream` 与每 agent 一行的默认上游表 `AGENT_UPSTREAMS`〔散文墓碑〕。
+// 用户「写死, 跟着适配层」⇒ 那一格搬回 `agents::Adapter::upstream`（claude-code 那一行住 `agents/claudecode`），
 // 本层只经 `agents::default_upstreams` 读 —— 形状（每家一行 · 每家一个旋钮 · 未登记即拒）一格不变，只换了住址。
 
 /// 适配层那一格（`agents::Adapter::upstream`）解析之后的样子：`路由名 → Base`。**一个进程一份**，首次装表与每次重载共用。
@@ -101,7 +101,7 @@ impl Upstreams {
     ///   变成「那一家的每一发都被拒」，而进程照常跑着、启动日志里只有一行 —— 那是静默降级。
     pub(crate) fn from_env(get: &dyn Fn(&str) -> Option<String>) -> Option<Self> {
         let mut by_agent = std::collections::BTreeMap::new();
-        // 〔NT2 · V25〕默认上游只查适配层（`agents::Adapter::upstream`）。
+        // 默认上游只查适配层（`agents::Adapter::upstream`）。
         for a in crate::agents::default_upstreams() {
             let raw = get(a.env);
             let base = Base::parse(raw.as_deref().unwrap_or(a.fallback)).ok()?;
@@ -125,7 +125,7 @@ impl Upstreams {
     }
 }
 
-/// 〔RL1 · V107〕**常驻后端里的中转装配口**：中转的 `host` ＋ 上游选择那只手。`main.rs` 流模式那一处调它。
+/// **常驻后端里的中转装配口**：中转的 `host` ＋ 上游选择那只手。`main.rs` 流模式那一处调它。
 ///
 /// # 它为什么住上游选择（而不是中转）
 ///
@@ -136,9 +136,9 @@ impl Upstreams {
 ///
 /// 交没交端口、起没起来由中转答（`relay::Hosted`）；本函数一行逻辑都没有，只做接线 ——
 /// 取值器是**真环境**。回一句给宿主日志看的话。
-/// 〔DEL〕先前还有一条 `--relay`（独立中转进程）的装配口，随那一形删了；中转只剩这一个宿主。
-/// 〔TAP · V124〕tee 的落点是进程级那一个 tap 口（`crate::stream::tap::port`）—— 本函数只递，上游选择不碰它交出去的任何一件事
-/// （`设计/20 §11` I2：② 不碰响应体）。
+/// 先前还有一条 `--relay`（独立中转进程）的装配口，随那一形删了；中转只剩这一个宿主。
+/// tee 的落点是进程级那一个 tap 口（`crate::stream::tap::port`）—— 本函数只递，上游选择不碰它交出去的任何一件事
+/// （② 不碰响应体）。
 pub fn host_relay() -> String {
     crate::relay::host(
         &|k| std::env::var(k).ok(),
@@ -172,7 +172,7 @@ impl Ready for Upstreams {
         let (table, source) = load_credentials(get, &self, out);
         // `D1 阻-2`：把重载源接上 —— 没有这一行，那张表就是一张**启动快照**，
         // 用户在界面上配完 key 必须重启中转才生效（而不重启的症状是一个静默的 404）。
-        // 〔DATA-HOME〕推不出那份文件在哪 ⇒ 空表、无重载源（那句话装表时已经说了）。
+        // 推不出那份文件在哪 ⇒ 空表、无重载源（那句话装表时已经说了）。
         let accounts = Accounts::new(table, *self);
         std::sync::Arc::new(match source {
             Some((path, stamp)) => accounts.reloading_from(Reload::new(path, stamp)),
@@ -184,7 +184,7 @@ impl Ready for Upstreams {
 /// 上游选择的实现：一张**可重载**的路由表。
 ///
 /// ⚠ 这两个字段先前住 `struct Relay`（中转）。搬过来之后中转那个结构体里
-/// 只剩下一个 `dest: Arc<dyn Destinations>` —— 上游选择整块藏在它后面（`20 §4`）。
+/// 只剩下一个 `dest: Arc<dyn Destinations>` —— 上游选择整块藏在它后面。
 pub(crate) struct Accounts {
     /// `(agent, 账号)` → 上游 + key。**决定这条请求发到哪儿、用哪把 key 的唯一住址。**
     ///
@@ -278,7 +278,7 @@ impl Accounts {
 }
 
 impl Destinations for Accounts {
-    /// ★★★ **`20 §3.1` 那张决策表的唯一实现。** 中转不许在别处再判一次。
+    /// ★★★ ** 那张决策表的唯一实现。** 中转不许在别处再判一次。
     ///
     /// # 这里把两个不透明段读成业务名 —— 就这一处
     ///
@@ -299,7 +299,7 @@ impl Destinations for Accounts {
         decide(&table, &self.upstreams, mode, key, act);
     }
 
-    /// 〔V141〕名单只从适配层来（`agents::session_headers`，与默认上游同一张注册表）。
+    /// 名单只从适配层来（`agents::session_headers`，与默认上游同一张注册表）。
     fn stream_label_headers(&self) -> Vec<&'static str> {
         crate::agents::session_headers()
     }
@@ -309,9 +309,9 @@ impl Destinations for Accounts {
     }
 }
 
-/// 上游选择 `Refuse` 的码 —— **只有这一处**〔`设计/20 §3.1a` ②〕。
+/// 上游选择 `Refuse` 的码 —— **只有这一处**。
 ///
-/// 〔FIX3 · `99 §2.2 ⑫`〕照 HTTP 代理通行做法：路由不成立是**我们拒的**，一律 4xx（找不到路由 ⇒ 404，Envoy 的 `NR` 同形）；
+/// 照 HTTP 代理通行做法：路由不成立是**我们拒的**，一律 4xx（找不到路由 ⇒ 404，Envoy 的 `NR` 同形）；
 /// 5xx 只留给上游那侧（中转的传输失败 502 / 504，住 `relay` 那一侧）。两格同码，靠原因头（`reason`）分开。
 /// 钉「4xx 与 5xx 两组不相交、每个码一处常量」的判据住中转那边
 /// （`server_tests::every_status_we_make_has_one_home_and_the_three_groups_are_disjoint`，它扫整个 crate 的生产段）。
@@ -319,7 +319,7 @@ impl Destinations for Accounts {
 /// `/s/` 表里没这一行（`§3.1` 第 2 行）· `/t/` 表里没这一行、而这个 agent 没登记默认上游（`§3.1` 第 4 行，先前是 502）。
 const NO_ROUTE: &str = "404 Not Found";
 
-/// `20 §3.1` 那张决策表**本身**，从「谁持锁、什么时候重载」里剥出来。
+/// 那张决策表**本身**，从「谁持锁、什么时候重载」里剥出来。
 ///
 /// ★ 剥出来只为一件事：判据要能**拿生产段这一份**去问，而不是自己再写一份同构的
 /// 「这一行该不该换头」。[`Accounts::resolve`] 自己也只是「重载 → 取读锁 → 调它」
@@ -377,7 +377,7 @@ pub(crate) fn decide(
             //   （`/t/` 从来不代入）。⚠ 取的是 `upstreams.of(agent)`，**不是**某一个进程级的值 ——
             //   那个进程级常量今天整删了。
             Some(base) => act(Destination::Passthrough { upstream: base }),
-            // ② 未登记 ⇒ 拒（`§3.1` 原写 502；`99 §2.2 ⑫` 改成我们拒的 4xx）。★ 这不是没做完，是照那条 🔴 做的 fail-closed：
+            // ② 未登记 ⇒ 拒（`§3.1` 原写 502；改成我们拒的 4xx）。★ 这不是没做完，是照那条 🔴 做的 fail-closed：
             //   能选的只有「回落到某一家」（那条 🔴 明禁，后果逐字是「把 codex 的请求发给
             //   Anthropic」）与「拒」。选拒。
             None => act(Destination::Refuse {
@@ -393,7 +393,7 @@ pub(crate) fn decide(
 ///
 /// # 三种鉴权处置，以及为什么 `Substitute` 的 key 是 `Option`
 ///
-/// 🔴 **这是与 `20 §2` 那段伪码的第二处形状差异，理由要认下来**：规格那个枚举有
+/// 🔴 **这是与那段伪码的第二处形状差异，理由要认下来**：规格那个枚举有
 /// **两**种鉴权处置（原样转发 / 代入一把），而**今天盘上有三种**：
 ///
 /// | 这一行 | 今天发给上游的字节 | 落到哪个变体 |
@@ -420,7 +420,7 @@ fn dispatch_auth(row: &Row, act: &mut dyn FnMut(Destination<'_>)) {
         (Some(k), Some((name, prefix))) => {
             // ★★ **这是整个后端生产段里唯一一处把明文取出来的地方**（`KS2`）。
             //    它就在「拼这一行要写的那个鉴权头值」这一句上。
-            //    ⚠⚠ 〔`P16` 2026-09-22〕它**从中转搬到了这里**，而搬的是**住址不是处数**：
+            //    ⚠⚠ 它**从中转搬到了这里**，而搬的是**住址不是处数**：
             //      `creds_guard::the_plaintext_leaves_the_type_at_exactly_one_place_in_this_crate`
             //      那条「恰好 1 处」的相等断言**一个字节都没动**（它扫整个 crate，不写死文件名），
             //      `creds_store_tests::PLAINTEXT_EXIT_SITES` 那一行只改了住址栏。

@@ -1,5 +1,5 @@
 /**
- * 〔UP1 · `设计/30 §3` 性能八条〕tab 栏的**操作次数**判据 —— 量 DOM 写 / 读 / 监听器个数，不量墙钟。
+ * 〔性能八条〕tab 栏的**操作次数**判据 —— 量 DOM 写 / 读 / 监听器个数，不量墙钟。
  *
  * # 量具
  *
@@ -11,7 +11,7 @@
  *
  * # 判据全是相等（`w4-common` 第 4 条：不用地板）
  *
- * 设计与读数住 `调研/第四波记录/UP1.md`（本文件不抄数）。
+ * 设计与读数住（本文件不抄数）。
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -37,7 +37,7 @@ function fakeTab(sid: string, over: Partial<Tab> = {}): Tab {
     title: `标题-${sid}`,
     state: LIVE,
     pinned: false,
-    group: null, // 〔GRP1 · V140〕组员关系是 tab 自己的属性
+    group: null, // 组员关系是 tab 自己的属性
     cwd: "/w",
     origin: LOCAL_ORIGIN,
     kind: null,
@@ -74,7 +74,7 @@ function rig(n: number, grouped = 0): Rig {
     if (remote) store.accountLastByS.set(sid, i % 4 === 1 ? "alice" : "bob");
   }
   store.activeId = "s0";
-  // 〔GRP1 · V140〕组表只有 `{id, name}`；前 `grouped` 个 tab 自己带组 id。
+  // 组表只有 `{id, name}`；前 `grouped` 个 tab 自己带组 id。
   for (const sid of store.orderedIds.slice(0, grouped)) store.tabs.get(sid)!.group = "c1";
   const prefs = {
     collections: grouped > 0 ? [{ id: "c1", name: "组一" }] : [],
@@ -168,7 +168,7 @@ describe("P2 ＋ P7 ＋ P1：整刷改成差量刷", () => {
       r.view.refresh();
       expect(spy).toHaveBeenCalledTimes(0);
       // 正控：一颗按钮真变了 ⇒ 那一颗的 9 个开关各调一次（别的按钮仍然 0）。
-      // 〔BG1 · V125「删掉树」〕10 → 9：少了 `.tab-bg` 那一个开关（bg tab 不再有自己的样式）。
+      // 〔「删掉树」〕10 → 9：少了 `.tab-bg` 那一个开关（bg tab 不再有自己的样式）。
       (r.store.tabs.get("s5") as { pinned: boolean }).pinned = true;
       r.view.refresh();
       expect(spy).toHaveBeenCalledTimes(9);
@@ -251,7 +251,7 @@ describe("P6：整刷不把 `barEl.children` 物化成数组", () => {
     r.store.tabs.get("s2")!.group = "c2";
     r.view.refresh();
     const kids = [...r.bar.children];
-    // 〔REREAD · V155〕栏顶那颗「重新读取」恒在第一个（R）。
+    // 栏顶那颗「重新读取」恒在第一个（R）。
     const kind = (e: Element): string => (e.classList.contains("tab-bar-reread") ? "R" : e.classList.contains("tab-group") ? "G" : "t");
     expect(kids.map(kind).join("")).toBe("RGGttt");
   });
@@ -494,7 +494,7 @@ describe("P8：事件委托 —— 每个 tab 零监听器，整条栏恒 3 个"
 describe("P5：切 tab 只写 4 次 class，与 tab 数无关（代码不改，钉住现状）", () => {
   /**
    * `tab-stream-view.ts::showOnly` 遍历全部 tab 各 `toggle` 两次 —— 但 DOM 规范上 `force` 与现状一致的
-   * `toggle` 不写 ⇒ 真写的只有旧 active 与新 active 的 streamEl ＋ inputsEl。`设计/30` P5 要的「只动两个元素」
+   * `toggle` 不写 ⇒ 真写的只有旧 active 与新 active 的 streamEl ＋ inputsEl。要的「只动两个元素」
    * 在 DOM 写这一层今天就成立；剩下的 O(N) 只是 JS 循环。这一格把它钉住，免得哪天有人把 toggle 换成无条件写。
    */
   const switchWrites = (n: number): number[] => {

@@ -1,7 +1,7 @@
-//! 〔步 23b · 2026-09-19〕**文件管理面的落盘原语** —— `设计/60 §6.5.2 A` 拍板的那个
+//! **文件管理面的落盘原语** —— 拍板的那个
 //! 「**带围栏的**白名单模块」，`readonly_guard` 写盘白名单上的第二个洞口。
 //!
-//! # 🔴〔FN1 · 第四波 4C · 2026-09-25 · 用户 V119〕**文件管理面不再有任何数据围栏**
+//! # 🔴〔用户〕**文件管理面不再有任何数据围栏**
 //!
 //! 用户原话：「**文件管理器全部都可以改. 不需要任何围栏**」。⇒ 会话文件（`projects/<proj>/<sid>.jsonl` ·
 //! `sessions/<x>.json`）、项目目录、subagent 记录、tasks 都能新建 · 改名 · 删 · 改权限 · 覆盖 · 复制 · 读改写，
@@ -15,18 +15,18 @@
 //! 「删会话」，它问的是「要删的必须**是**一份会话」，方向与从前那道围栏相反，本刀一个字节没动它。
 //! 下面凡说到「围栏拦会话文件」的段落都是**历史**，读现状看这一节。
 //!
-//! # 🔴〔波 5 ㈡ · 2026-09-23〕本模块从白名单层**搬到了第三层**，下面「它刻意不是什么」那一节是**历史**
+//! # 🔴〔波 5 ㈡〕本模块从白名单层**搬到了第三层**，下面「它刻意不是什么」那一节是**历史**
 //!
 //! 用户逐字：「**现在只允许后端的文件管理部分写文件**」（收窄的是**主语**，不是动作）。
-//! ⇒ `设计/60 §8.6` 第 3 步：新建目录 · 改名 · 删除 · 改权限 · 覆盖写 —— 它们要
+//! ⇒：新建目录 · 改名 · 删除 · 改权限 · 覆盖写 —— 它们要
 //! **改动既有数据**，正是白名单层的判准（「不改既有数据」）所禁的。
 //! ⇒ `readonly_guard` 长出**第三层**，判准换成「**改，但每一处都先过路径解析、
-//! 且只从声明过的那一面来**」（〔FN1〕原话是「先过围栏」），本模块是那一层登记的模块之一。
+//! 且只从声明过的那一面来**」（原话是「先过围栏」），本模块是那一层登记的模块之一。
 //!
 //! | 那一层钉的 | 怎么钉 |
 //! |---|---|
-//! | 能用哪几个改动动词 | **闭集**登记（`readonly_guard` 那张表）；表外的改动动词在本模块里照旧红 —— 包括那个「一条路径进、整棵树出」的一步递归删（它的遍历不经过围栏；〔FW5 · 第四波〕递归删由既有动词**逐条拼出**，见 [`delete_tree`]） |
-//! | 〔FW5〕列举之后的改动**在列举之后再过一次路径解析** | 出现目录列举的函数恒等于登记的那几个；其中每一处改动之前、列举之后必须有一次路径解析调用（顶上判一次、底下整摞删 ⇒ 红） |
+//! | 能用哪几个改动动词 | **闭集**登记（`readonly_guard` 那张表）；表外的改动动词在本模块里照旧红 —— 包括那个「一条路径进、整棵树出」的一步递归删（它的遍历不经过围栏；递归删由既有动词**逐条拼出**，见 [`delete_tree`]） |
+//! | 列举之后的改动**在列举之后再过一次路径解析** | 出现目录列举的函数恒等于登记的那几个；其中每一处改动之前、列举之后必须有一次路径解析调用（顶上判一次、底下整摞删 ⇒ 红） |
 //! | 每一处改动都先过路径解析 | 本模块每个含改动动词的函数里，路径解析调用必须出现在**第一个改动动词之前** |
 //! | 只从文件管理那一面来 | 后端生产树里引用得到本模块的文件，集合**恒等于**登记的那一扇门（`inbound.rs`）；其余任何一面伸手 ⇒ 红 |
 //! | `O_EXCL` 那一处没变质 | 开句柄的调用与 `O_EXCL` 仍然逐一配对（新建那条路一个字节没松） |
@@ -37,7 +37,7 @@
 //!
 //! # 它是什么，以及它**刻意不是**什么
 //!
-//! `设计/60 §6.5.1` 逐字裁过一次：同一轮对话里先说的「把不能写文件的规矩去掉」，
+//! 裁过一次：同一轮对话里先说的「把不能写文件的规矩去掉」，
 //! 被后说的、更具体的「ABC 都按建议」**覆盖**了；而 A 的建议原文是
 //! 「**能**，但新模块必须带上 Claude 数据源围栏 ＋ 判据」。
 //! ⇒ **规矩留着，加一个模块。** 本模块就是那个模块，而 `readonly_guard`
@@ -54,21 +54,21 @@
 //! （`control/fork_write.rs` 头注记着本仓为这件事栽过四次）。
 //! **要改就改措辞，别去放宽护栏。**
 //!
-//! # 路径解析：两道，各治一种逃逸（〔FN1〕原标题「围栏」）
+//! # 路径解析：两道，各治一种逃逸（原标题「围栏」）
 //!
-//! `设计/60 §6.5.2 A` 逐字：「写点只许落在**用户指定的文件管理目标**下，
+//! 「写点只许落在**用户指定的文件管理目标**下，
 //! **不许**落进 Claude 那几棵树」。这一句拆成两道能分别单测的关：
 //!
 //! | 道 | 住址 | 它拦的是 | 它**拦不住**的是 |
 //! |---|---|---|---|
-//! | ① 词法 | [`lexical_in_root`] | 上跳段 · 绝对路径 · 盘符 · 空段（〔FN1〕「写点本身就是一份会话文件」那一格删了） | 盘上真实的 symlink —— 它根本不碰盘 |
+//! | ① 词法 | [`lexical_in_root`] | 上跳段 · 绝对路径 · 盘符 · 空段（「写点本身就是一份会话文件」那一格删了） | 盘上真实的 symlink —— 它根本不碰盘 |
 //! | ② 现打 | [`resolve_parent_in_root`] | 目标根里藏一条指向别处的 symlink（**解完再判一次**） | 判定与落盘之间的时间窗（TOCTOU，见下） |
 //!
-//! 🔴 **〔波 5 ㈢ · 2026-09-23〕上面那句「不许落进 Claude 那几棵树」的射程被用户改窄了**
-//! （〔FN1 · 09-25〕又被 V119 整个拿掉：下面那张表「今天」那一栏已经是历史，会话文件那一行今天也**放行**）。
+//! 🔴 **〔波 5 ㈢〕上面那句「不许落进 Claude 那几棵树」的射程被用户改窄了**
+//! （又被 V119 整个拿掉：下面那张表「今天」那一栏已经是历史，会话文件那一行今天也**放行**）。
 //!
 //! 用户 09-23 逐字：「文件管理器该不该能改 `~/.claude` 里的东西. **可以.**」
-//! ⇒ `设计/60 §8.7` 那道「两道栅栏宽窄不同」的产品题按**丙**（统一成同一个判定）裁，
+//! ⇒ 那道「两道栅栏宽窄不同」的产品题按**丙**（统一成同一个判定）裁，
 //! 统一到**窄的那一档**：只拦那几份具体的会话文件（`projects/<proj>/<sid>.jsonl` 恰 2 段 ·
 //! `sessions/<x>.json` 恰 1 段），于是 skills · 配置 · 账号库**改得动**。
 //!
@@ -85,7 +85,7 @@
 //!
 //! ⚠ **「哪几份文件算 Claude 的会话数据」这条知识不在本模块**：`control/` 是通用层，
 //! 它不该知道那个目录叫什么（`agent_locality_guard` 的针就钉在这上面）。
-//! 判定的住址是适配层里的 `is_session_record_path`；〔MOD〕本模块连它的名字都不引，由门经 [`SessionPort`] 递进来 ——〔FN1〕今天只剩删会话那一处要它。
+//! 判定的住址是适配层里的 `is_session_record_path`；本模块连它的名字都不引，由门经 [`SessionPort`] 递进来 ——今天只剩删会话那一处要它。
 //!
 //! # 🔴 诚实边界 —— 本模块买到的与**买不到**的
 //!
@@ -94,9 +94,9 @@
 //!    **兜底的是 `O_EXCL` 本身** —— 最后那一段若已存在（含它是一条 symlink），
 //!    开文件这一步直接失败，不会跟随过去写。⇒ 窗里能被利用的只剩「父目录整个被换掉」
 //!    这一形，而那需要对目标根有写权限的本地攻击者。**如实登记为未闭合。**
-//!    〔FIX5 · `设计/99 §2.2`〕能用原子原语闭合的已闭合：改名不覆盖（[`rename_no_clobber`]；盘不认那个旗 ⇒ 普通文件 `link ＋ unlink`、目录拒）· 复制与读改写新建先写旁名再不覆盖上位 ·
+//! 能用原子原语闭合的已闭合：改名不覆盖（[`rename_no_clobber`]；盘不认那个旗 ⇒ 普通文件 `link ＋ unlink`、目录拒）· 复制与读改写新建先写旁名再不覆盖上位 ·
 //!    开文件全程不跟链接（[`opener`]）。仍开着：父目录被整个换掉（要逐段 `openat` 一族）· 递归删 / 复制逐条的窗 · CAS 与换名之间 · 改权限跟链接。
-//! 2. ✅〔波 5 ㈢ · 2026-09-23 · **本条已假，留原话当墓碑**〕
+//! 2. ✅〔波 5 ㈢ · **本条已假，留原话当墓碑**〕
 //!    原话是「**只认得当前这一个配置根**：账号隔离（cc-acct-iso）靠切那个环境变量，
 //!    盘上可以同时有好几个账号目录，而配置根解析只答得出**此刻这一个**。
 //!    另外那几个靠「路径里有一段以那个名字开头」这条形状兜，**换个目录名就兜不住**」。
@@ -107,8 +107,8 @@
 //! 3. **没有真远端**：本模块整个是本机文件系统上的路径算术 ＋ 一次落盘，
 //!    判据也全在临时目录上跑。「在一台真远端机器上跑过」这件事**本轮买不到**，
 //!    判据头注里逐条写着哪几格是判不了的。
-//! 4. **它今天没有调用方**：本轮只落「模块 ＋ 围栏 ＋ 判据」这三样（`99 §4` 步 23b 的射程）。
-//!    把它接到命令面上要加子命令 ⇒ 要 bump `BUILD_ID` ⇒ 要同拍 re-embed（`99 §4` 条 19c），
+//! 4. **它今天没有调用方**：本轮只落「模块 ＋ 围栏 ＋ 判据」这三样（射程）。
+//!    把它接到命令面上要加子命令 ⇒ 要 bump `BUILD_ID` ⇒ 要同拍 re-embed（条 19c），
 //!    那几处全在本轮写区之外。**「能力在、还没接线」这件事不许被读成「已经能用了」。**
 
 use copy_core::copy_text;
@@ -124,11 +124,11 @@ use std::path::{Component, Path, PathBuf};
 ///   但留着它就等于承认「这里做路径规范化」，而规范化与安全判定混在一起正是
 ///   本仓反复踩的那种坑 ⇒ **一律拒，让调用方送干净的段进来。**
 ///
-/// 🔴 〔FN1 · V119〕这里原来还有一关「写点自己是不是一份会话文件」（再早是「目标根在不在
+/// 🔴 这里原来还有一关「写点自己是不是一份会话文件」（再早是「目标根在不在
 /// `~/.claude*` 那几棵树里」）。用户原话「**文件管理器全部都可以改. 不需要任何围栏**」⇒ 那一关删了：
 /// 本函数只答「这一段拼到根上之后还在不在根底下」，**不问落点是谁的数据**。
 ///
-/// 〔FW5 · 第四波〕入参从 `&str` 换成了 `impl AsRef<Path>`：段判定走的是 `Path::components`，
+/// 入参从 `&str` 换成了 `impl AsRef<Path>`：段判定走的是 `Path::components`，
 /// 它本来就**不看编码** ⇒ 非 UTF-8 的名字（乱码文件名）照样逐段判；递归删的子项名字
 /// 也不一定是 UTF-8，逐条目过路径解析要的正是这一格。判定一个字没变。
 pub fn lexical_in_root(root: &Path, rel: impl AsRef<Path>) -> Result<PathBuf, String> {
@@ -184,7 +184,7 @@ pub fn lexical_in_root(root: &Path, rel: impl AsRef<Path>) -> Result<PathBuf, St
 /// 然后在真路径上判一次「还在不在目标根底下」。
 /// `root` 自己也解一次：两边都解完再比，才比得对。
 ///
-/// 🔴 〔FN1 · V119〕这里原来在真路径上还判一次「是不是那几份会话文件」，删了（理由同 [`lexical_in_root`]）。
+/// 🔴 这里原来在真路径上还判一次「是不是那几份会话文件」，删了（理由同 [`lexical_in_root`]）。
 /// 留下的这一判**不是**「不许改什么」，是「这一次到底改的是哪一份」的正确性：`root ＋ rel` 说的是根底下那一格，
 /// 一条藏在半路的链接不许把它换成根外面的另一格。
 ///
@@ -241,7 +241,7 @@ pub fn resolve_parent_in_root(root: &Path, target: &Path) -> Result<PathBuf, Str
 /// 抽成单独一个函数，是为了让「两道真的被串起来了」这件事有一个可直接喂参数的入口
 /// —— 判据不必为了验它而每次都真写一份文件。
 ///
-/// 〔FN1 · V119〕旧名 `fenced_target`：它今天**不拦任何数据**（用户「不需要任何围栏」），
+/// 旧名 `fenced_target`：它今天**不拦任何数据**（用户「不需要任何围栏」），
 /// 只做词法不越根 ＋ 父目录解链接后仍在根下 ⇒ 改成说它真在做的那件事。
 pub fn resolve_in_root(root: &Path, rel: impl AsRef<Path>) -> Result<PathBuf, String> {
     let lexical = lexical_in_root(root, rel)?;
@@ -262,26 +262,26 @@ pub fn resolve_in_root(root: &Path, rel: impl AsRef<Path>) -> Result<PathBuf, St
 pub enum WriteRefusal {
     /// 这一次的参数本身不成立（路径解析拒：越根 · 上跳 · 父目录不在 · 解完链接跑出根；
     /// 或者形状不对：不是普通文件 · 权限位越界）。线上码 `refused`。
-    /// 〔FN1〕旧名 `Fenced`：它今天不代表任何数据围栏，名字跟着线上码走。
+    /// 旧名 `Fenced`：它今天不代表任何数据围栏，名字跟着线上码走。
     Refused(String),
     /// 参数成立，盘上这一步没成（目标已存在 · 父目录不可写 · 盘满 …）。
     Io(String),
-    /// 〔FW5 · 第四波〕**这个平台上没有这件事**（非 unix 上改 unix 权限位）。
+    /// **这个平台上没有这件事**（非 unix 上改 unix 权限位）。
     ///
     /// 与 [`WriteRefusal::Io`] 分开是因为调用方的下一步不同：`io_failed` 说「重试才有意义」，
     /// 而这一档**重试一万次也一样** —— 压成 `io_failed` 就是在说假话。
     /// 线上码 [`NO_UNIX_MODE`] 同时是 `files-chmod` 声明过的命令级码，`lib.rs` 那条
-    /// target 轴的现推读的就是它（`设计/96 §8.5` 待拍 3）。
+    /// target 轴的现推读的就是它（待拍 3）。
     Unsupported(String),
-    /// 〔RW1 · 第四波〕读改写的**写那一半**发现：盘上那份已经不是调用方读到的那一份了
+    /// 读改写的**写那一半**发现：盘上那份已经不是调用方读到的那一份了
     /// （`files-put` 的 `expect` 对不上）⇒ 一个字节没写。调用方该**重读重算**，不是重试同一份。
     Stale(String),
 }
 
-/// 〔FW5〕命令级码：**这个平台没有 unix 权限位**。只有 `files-chmod` 声明它。
+/// 命令级码：**这个平台没有 unix 权限位**。只有 `files-chmod` 声明它。
 ///
 /// ⚠ 这是这个字面量在后端的**第二份**（另一份是 `lib.rs::NO_UNIX_MODE`，target 轴现推用），
-/// 但它**不是第二个真相源** —— 真相是 `inbound::REGISTRY` 里 `files-chmod` 自己登记的 `codes`。
+/// 但它**不是第二个源头** —— 真相是 `inbound::REGISTRY` 里 `files-chmod` 自己登记的 `codes`。
 /// 刻意不去借 `lib.rs` 那一份：文件管理后端往外够的边是登记过的闭集（`files/module_boundary_guard`，
 /// 「只许依赖 platform / common / 围栏」），为一个码多长一条边不值。
 /// 两份逐字相等由 `target_parity_guard::the_unix_mode_axis_agrees_with_what_this_binary_was_compiled_with` 钉着。
@@ -289,8 +289,8 @@ pub const NO_UNIX_MODE: &str = "no_unix_mode";
 
 impl WriteRefusal {
     /// 线上错误码。**闭集四个**，与 [`MANAGE_COMMANDS`] 那一栏逐字对得上
-    /// （〔FW5〕第三个只有 `files-chmod` 会回，也只有它声明；〔RW1〕第四个 `stale` 只有 `files-put` 会回
-    /// ——〔RM1e〕`files-delete` 带 `expect` 那一形也回它，也声明了）。
+    /// （第三个只有 `files-chmod` 会回，也只有它声明；第四个 `stale` 只有 `files-put` 会回
+    /// ——`files-delete` 带 `expect` 那一形也回它，也声明了）。
     pub fn code(&self) -> &'static str {
         match self {
             WriteRefusal::Refused(_) => "refused",
@@ -352,7 +352,7 @@ pub fn create_new_file(
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-//  改动既有数据的那五件 ——〔波 5 ㈡ · 2026-09-23〕`设计/60 §8.6` **第 3 步**
+//  改动既有数据的那五件 ——〔波 5 ㈡〕 **第 3 步**
 // ══════════════════════════════════════════════════════════════════════════
 //
 // 🔴 **这一节才花掉用户那句话**：「现在只允许后端的文件管理部分写文件」。
@@ -375,7 +375,7 @@ pub fn create_new_file(
 ///
 /// 先走 [`resolve_in_root`]（词法 ＋ 父目录解开），再把**完整路径**解成真路径：
 /// 解出来跑出了目标根 ⇒ 拒。返回解到底的那一个 —— 动手就动它，不再经过任何一条链接。
-/// 〔FN1 · V119〕旧名 `fenced_existing`；「解出来是一份会话文件 ⇒ 拒」那一判删了。
+/// 旧名 `fenced_existing`；「解出来是一份会话文件 ⇒ 拒」那一判删了。
 pub fn resolve_existing_in_root(root: &Path, rel: impl AsRef<Path>) -> Result<PathBuf, String> {
     let at = resolve_in_root(root, rel)?;
     let real = std::fs::canonicalize(&at).map_err(|e| {
@@ -402,7 +402,7 @@ pub fn resolve_existing_in_root(root: &Path, rel: impl AsRef<Path>) -> Result<Pa
     Ok(real)
 }
 
-/// 〔FIX5 · `设计/60 §7` 第 7 条「全程 `O_NOFOLLOW`」〕第三层开文件**只有这一个出处**：unix 上带 `O_NOFOLLOW` ——
+/// 〔「全程 `O_NOFOLLOW`」〕第三层开文件**只有这一个出处**：unix 上带 `O_NOFOLLOW` ——
 /// 最后一段是链接 ⇒ 开就失败，解析过的路径在开之前被换成一条链接也跟不过去。Windows 没有等价的开法（`platform::fs` 头注），照旧。
 /// `readonly_guard` 第三层钉着：五个模块里 `OpenOptions::new()` 只在这里出现，每一次开都挂在它后面。
 pub(crate) fn opener() -> std::fs::OpenOptions {
@@ -416,7 +416,7 @@ pub(crate) fn opener() -> std::fs::OpenOptions {
     o
 }
 
-/// 〔FIX5〕读一整份，不跟最后那一段的链接（[`opener`]）。
+/// 读一整份，不跟最后那一段的链接（[`opener`]）。
 pub(crate) fn read_nofollow(p: &Path) -> std::io::Result<Vec<u8>> {
     use std::io::Read as _;
     let mut buf = Vec::new();
@@ -424,11 +424,11 @@ pub(crate) fn read_nofollow(p: &Path) -> std::io::Result<Vec<u8>> {
     Ok(buf)
 }
 
-/// 〔FIX5 · `设计/60 §7` 第 7 条〕**不覆盖地改名** `root ＋ from` → `root ＋ to`：两条各过路径解析，然后一次
+/// **不覆盖地改名** `root ＋ from` → `root ＋ to`：两条各过路径解析，然后一次
 /// `platform::fs::rename_noreplace` —— 目标已在（含一条链接）⇒ `AlreadyExists`、一个字节不动，没有先看后改的窗。
 /// 回 `(源, 目标, 那一下的结局)`；路径解析拒 ⇒ `Err`。
 ///
-/// 那块盘不认这个旗（NFS · 部分 FUSE · 老内核 · 别的 unix）⇒ 〔主会话 09-28 裁〕不退回先看后改：
+/// 那块盘不认这个旗（NFS · 部分 FUSE · 老内核 · 别的 unix）⇒ 不退回先看后改：
 /// 普通文件（含链接本身）走 `platform::fs::rename_by_link`（`link` 在目标已在时原子失败，NFS 上也成立）；
 /// 目录没有这条路 ⇒ 拒、出声（`Err`，说「这个盘不支持不覆盖改名目录」）。
 /// `between` 是判据插竞争用的口（解析之后、动手之前；生产传空）；`force_link` 让判据走那块盘的那一支（生产传 `false`）。
@@ -482,10 +482,10 @@ pub fn make_dir(root: &Path, rel: impl AsRef<Path>) -> Result<PathBuf, WriteRefu
 /// 改名 / 同根内移动。
 ///
 /// 🔴 **两个参数各过一遍路径解析** —— 只解 `from` 的话，`to` 那一侧半路一条链接就能把东西搬到根外面去。
-/// 〔FN1 · V119〕从前这一句的理由是「能把任意文件改名成一份会话文件的名字」—— 那一道拦截用户拿掉了。
+/// 从前这一句的理由是「能把任意文件改名成一份会话文件的名字」—— 那一道拦截用户拿掉了。
 ///
 /// 🔴 **目标已经在了就拒**：unix 上系统那一步**会静默顶掉**已有的目标文件 —— 那就是一次
-/// 没人问过的覆盖。〔FIX5〕从「先看一眼、在就拒」换成一次原子的不覆盖改名（[`rename_no_clobber`]）：看与改之间那个窗没了。
+/// 没人问过的覆盖。从「先看一眼、在就拒」换成一次原子的不覆盖改名（[`rename_no_clobber`]）：看与改之间那个窗没了。
 pub fn rename_entry(
     root: &Path,
     from: impl AsRef<Path>,
@@ -526,8 +526,8 @@ fn rename_entry_racing(
 ///
 /// 🔴 **本函数不递归，刻意的**：路径解析的射程是**一条路径**，而递归删动的是一整棵子树 ——
 /// 顶上那一条解得干净，底下一条链接或一个挂载点照样会被一起动到。非空目录 ⇒ 系统报错、原样带回。
-/// 〔FN1〕从前这里的例子是「底下藏着一份会话文件」，那一道拦截 V119 拿掉了；「每一条自己解一次」这条理由没变。
-/// 〔FW5 · 第四波〕递归删是**另一个函数**（[`delete_tree`]），逐条目过路径解析；
+/// 从前这里的例子是「底下藏着一份会话文件」，那一道拦截 V119 拿掉了；「每一条自己解一次」这条理由没变。
+/// 递归删是**另一个函数**（[`delete_tree`]），逐条目过路径解析；
 /// 线上要显式带 `recursive: true` 才走它 —— 不带，本函数的射程一个字节不变。
 pub fn delete_entry(root: &Path, rel: impl AsRef<Path>) -> Result<PathBuf, WriteRefusal> {
     let target = resolve_in_root(root, rel).map_err(WriteRefusal::Refused)?;
@@ -559,7 +559,7 @@ pub fn delete_entry(root: &Path, rel: impl AsRef<Path>) -> Result<PathBuf, Write
     Ok(target)
 }
 
-/// 〔RM1e · 第四波〕**带 CAS 的删一份文件**：盘上那份逐字节 == `expect` 才删，否则一个字节不动。
+/// **带 CAS 的删一份文件**：盘上那份逐字节 == `expect` 才删，否则一个字节不动。
 ///
 /// 读改写那一族（`files-put` 的 `expect`）缺的最后一格：调用方「读到的是这一份 ⇒ 删它」，
 /// 从前只能先 `files-peek` 核、再 `files-delete` 删，核与删之间整整一趟往返的窗。
@@ -632,7 +632,7 @@ pub fn delete_file_expecting(
     Ok(target)
 }
 
-/// 〔FW1 · 第四波 4D · SU1 问 2〕**只删一个空目录**（`files-delete` 带 `expect: {"empty_dir": true}`）：
+/// 〔SU1 问 2〕**只删一个空目录**（`files-delete` 带 `expect: {"empty_dir": true}`）：
 /// 「我看到的是一个空目录，删它」—— 与带逐字节 `expect` 删文件那一形对称的 CAS。
 ///
 /// - 目标（不跟链接地看）必须是一个**真目录**：是文件 / 链接 / 别的 ⇒ `Refused`（这一形只对目录）。
@@ -683,7 +683,7 @@ pub fn delete_empty_dir(root: &Path, rel: impl AsRef<Path>) -> Result<PathBuf, W
     }
 }
 
-/// `files-delete` 的 `expect` 那一格（给了的话）：逐字节那一形 · 〔FW1〕「只删空目录」那一形。
+/// `files-delete` 的 `expect` 那一格（给了的话）：逐字节那一形 · 「只删空目录」那一形。
 enum DeleteExpect {
     Bytes(Vec<u8>),
     EmptyDir,
@@ -713,7 +713,7 @@ pub fn change_mode(root: &Path, rel: impl AsRef<Path>, mode: u32) -> Result<Path
     }
     #[cfg(not(unix))]
     {
-        // 〔FW5〕回 `no_unix_mode`，不回 `io_failed`（理由住 [`WriteRefusal::Unsupported`]）。
+        // 回 `no_unix_mode`，不回 `io_failed`（理由住 [`WriteRefusal::Unsupported`]）。
         Err(WriteRefusal::Unsupported(copy_text(
             "beFilesWrite.chmod.unsupported",
             &[("path", &real.display().to_string())],
@@ -726,15 +726,15 @@ pub fn change_mode(root: &Path, rel: impl AsRef<Path>, mode: u32) -> Result<Path
 /// ⚠ 只覆盖**普通文件**：目标是目录或不存在 ⇒ 拒。新建一份请走 [`create_new_file`]
 /// （那条是 `O_EXCL`，两条路刻意分开 —— 「新建」与「改既有」是两件风险不同的事）。
 ///
-/// 🔴〔HX1 · 4D〕**原子地换**：走 [`swap_in`]（同目录 `O_EXCL` 暂存旁名 → 写满 → 沿用原权限位 → 换名上位；
+/// 🔴**原子地换**：走 [`swap_in`]（同目录 `O_EXCL` 暂存旁名 → 写满 → 沿用原权限位 → 换名上位；
 /// 最后一段是链接 ⇒ 解到底、改真文件）。主会话 D-a 裁「覆盖写一律『临时件 ＋ rename』原子化」，出处 E §E2：
 /// 此前是就地先截断再写 —— 写到一半失败、或后端在写的中途被收掉，目标剩半份或 0 字节。
 /// 今天那两形下目标原封不动（旁边可能剩一份 `.<名>.ccm-put-<pid>-<序>.part`，它不是用户数据）。
-/// ⚠ 认下的代价（D-a 的代价，`调研/第四波记录/HX1.md` §2.1，`设计/60 §5.5`「刻意不换语义」那句要随 D0 并入改）：
+/// ⚠ 认下的代价（D-a 的代价， §2.1，「刻意不换语义」那句要随 D0 并入改）：
 ///   换名之后 inode 换了 ⇒ **硬链接**的另一个名字仍指旧内容 · 目标若属**别的用户**、只是给了我们写权限，换完属主变成我们 ·
 ///   Linux 上的 **xattr / ACL** 不跟过来。权限位沿用；跨盘不会（旁名与目标同目录）。
-///   Windows 臂照旧就地写（`swap_in` 自己那一支，保 ACE —— `设计/60 §3.3` 认过）。
-/// 🔴〔HX1 · 主会话裁拍板项 2〕上面前两格代价**不认**：目标 `nlink > 1`（有硬链接）或属主不是后端这个用户 ⇒
+///   Windows 臂照旧就地写（`swap_in` 自己那一支，保 ACE —— 认过）。
+/// 🔴〔主会话裁拍板项 2〕上面前两格代价**不认**：目标 `nlink > 1`（有硬链接）或属主不是后端这个用户 ⇒
 ///   **退回就地写**（保住硬链接与属主），并记一行「这一次不是原子写，因为 …」（[`in_place_reason`]）。
 ///   xattr / ACL 不跟过来那一格仍是已知代价（记录 `HX1.md` §6）。
 pub fn overwrite_text(
@@ -765,7 +765,7 @@ pub fn overwrite_text(
             "覆盖写 {}：这一次不是原子写，因为{why}（原子换会把它拆开）—— 改成就地写",
             real.display()
         );
-        // 〔FIX5〕不跟链接地开（[`opener`]）、不顺手新建：解析完之后它被换成链接 / 被删了 ⇒ 开就失败，不写到别处去。
+        // 不跟链接地开（[`opener`]）、不顺手新建：解析完之后它被换成链接 / 被删了 ⇒ 开就失败，不写到别处去。
         use std::io::Write as _;
         let wrote = opener()
             .write(true)
@@ -783,7 +783,7 @@ pub fn overwrite_text(
     swap_in(root, rel, bytes, Some(md.permissions()), false, &mut || {})
 }
 
-/// 〔HX1〕一份文件的 `(硬链接数, 属主 uid)`（跟链接地看）。**非 unix 上没有这两个概念 ⇒ `None`**（那边照原子换 / Windows 臂办）。
+/// 一份文件的 `(硬链接数, 属主 uid)`（跟链接地看）。**非 unix 上没有这两个概念 ⇒ `None`**（那边照原子换 / Windows 臂办）。
 /// 住本模块而不住 `platform/`：读元数据扩展（`MetadataExt`）在只读护栏上是第三层独有的词（同 `kind_and_device`）。
 #[cfg(unix)]
 fn links_and_owner(p: &Path) -> Option<(u64, u32)> {
@@ -796,7 +796,7 @@ fn links_and_owner(_p: &Path) -> Option<(u64, u32)> {
     None
 }
 
-/// 〔HX1 · 主会话裁拍板项 2〕这一份目标**不该原子换**的原因（`None` = 该原子换）：换名上位会让 inode 换掉 ⇒
+/// 〔主会话裁拍板项 2〕这一份目标**不该原子换**的原因（`None` = 该原子换）：换名上位会让 inode 换掉 ⇒
 /// 有硬链接（`links > 1`）的另一个名字仍指旧内容；属主不是后端这个用户（只是给了写权限）⇒ 换完属主变成后端用户。
 pub(crate) fn in_place_reason(links: u64, owner: u32, me: u32) -> Option<String> {
     let mut parts: Vec<String> = Vec::new();
@@ -812,12 +812,12 @@ pub(crate) fn in_place_reason(links: u64, owner: u32, me: u32) -> Option<String>
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-//  〔FW1 · 第四波 4D · 2026-09-25〕CAS 的**摘要形**：`expect: {"sha256": "<64 位小写十六进制>"}`
+// CAS 的**摘要形**：`expect: {"sha256": "<64 位小写十六进制>"}`
 // ══════════════════════════════════════════════════════════════════════════
 //
 // 主会话裁 D-c「编辑器存盘带 CAS（`expect`）」＋ 09-25 认可摘要形：它**仍是 CAS**（比的是「我看的时候那一份」），
 // 只是换了表示 —— 逐字节形（`files-put` / `files-delete`）留给小写。为什么编辑器要摘要形：存盘分块那一支本来就是
-// 因为**一行装不下**（`设计/60 §5.1`，一行 1 MiB、编辑上限 8 MiB），逐字节的 `expect` 要么让装得进一行的门槛减半，
+// 因为**一行装不下**（一行 1 MiB、编辑上限 8 MiB），逐字节的 `expect` 要么让装得进一行的门槛减半，
 // 要么让原文再分块送一遍（大文件存盘流量翻倍）。摘要定长，两支同形。
 //
 // 🔴 摘要**只在后端算**（读的那一趟 `files-read-text` 交出 `sha256`、写成之后应答里交新的）——窗口当不透明令牌存着再交回来，
@@ -860,7 +860,7 @@ pub fn sha256_expect_of(args: &serde_json::Value) -> Result<String, (&'static st
     Ok(hex.to_string())
 }
 
-/// 〔FW1〕**带 CAS 的覆盖写**：盘上那份的摘要 == `expect_sha256` 才交给 [`overwrite_text`]，否则一个字节不写。
+/// **带 CAS 的覆盖写**：盘上那份的摘要 == `expect_sha256` 才交给 [`overwrite_text`]，否则一个字节不写。
 ///
 /// - 目标不在 ⇒ `Stale`（看的时候还在）；不是普通文件 ⇒ `Refused`（同 [`overwrite_text`]）；
 ///   「盘上有字节、读出来却是空的」⇒ `Io`（同读改写那一句，继续走就是拿新内容盖掉一份没读到的原文）。
@@ -925,10 +925,10 @@ pub fn overwrite_text_expecting(
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-//  〔FW5 · 第四波 · 2026-09-24〕**递归删：逐条目过路径解析**（〔FN1〕原标题「逐条目过围栏」）
+// **递归删：逐条目过路径解析**（原标题「逐条目过围栏」）
 // ══════════════════════════════════════════════════════════════════════════
 //
-// 设计全文住 `调研/第四波记录/FW5.md` 第一节。三件承重的事：
+// 设计全文住第一节。三件承重的事：
 //
 // 1. **不用那个一步递归删的库函数**（它在第三层禁词表上，留在那儿）：它的遍历不经过我们的路径解析，
 //    删的是「那一刻盘上的东西」而不是「判过的东西」。
@@ -1130,7 +1130,7 @@ pub fn delete_tree(root: &Path, rel: impl AsRef<Path>) -> Result<(PathBuf, usize
 /// 复制时暂存旁名的序号（同一进程里两趟复制不撞名）。
 static COPY_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
-/// 〔F7a · 第三波 · 2026-09-24〕**同根内复制一份普通文件**。回 `(落点, 字节数)`。
+/// **同根内复制一份普通文件**。回 `(落点, 字节数)`。
 ///
 /// # 🔴 它不给第三层添一个动词 —— 由已有的三个拼出来，理由是承重的
 ///
@@ -1144,21 +1144,21 @@ static COPY_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::ne
 ///
 /// | 覆盖策略 | 怎么上位 | 目标已在 |
 /// |---|---|---|
-/// | `overwrite = false`（缺省） | 〔FIX5〕不覆盖改名（[`rename_no_clobber`]） | 上位那一下原子地失败（含它只是一条链接、含写的中途才冒出来的），**一个字节不动**，旁名删掉 |
+/// | `overwrite = false`（缺省） | 不覆盖改名（[`rename_no_clobber`]） | 上位那一下原子地失败（含它只是一条链接、含写的中途才冒出来的），**一个字节不动**，旁名删掉 |
 /// | `overwrite = true`（**显式**） | 换名上位 | 换名那一下**原子地**顶掉（顶掉的是链接本身，不跟过去） |
 ///
-/// 〔FIX5〕不覆盖那一支从前是 `O_EXCL` 直接开目标：写到一半时目标那一格已经露出半份。今天目标那一格只会整份出现。
+/// 不覆盖那一支从前是 `O_EXCL` 直接开目标：写到一半时目标那一格已经露出半份。今天目标那一格只会整份出现。
 /// 写失败 ⇒ 删掉**我们自己刚建的那一份**（暂存旁名），原样带回原因。
 ///
 /// # 路径解析：三条路径各过一次
 ///
 /// - `from` 走 [`resolve_existing_in_root`]（**解到底**）：复制是一次跟链接的读，
 ///   根里一条指向根外的链接不许借它把根外那一份复制进来。
-///   〔FN1 · V119〕从前这里还拦「把正被 Claude 打开的 `jsonl` 复制走」，那一道用户拿掉了。
+/// 从前这里还拦「把正被 Claude 打开的 `jsonl` 复制走」，那一道用户拿掉了。
 /// - `to` 与暂存旁名走 [`resolve_in_root`]（只解父目录）：它们都是**作用在链接本身**上的。
 ///
 /// ⚠ 只收**普通文件**：目录递归复制没做（与删除不递归同一条理由：路径解析的射程是一条路径）。
-/// 〔W5-FILES〕新文件的权限位**从源抄**（[`land_copy`]；此前是进程缺省、受 umask）；覆盖时目标换成源的权限位。
+/// 新文件的权限位**从源抄**（[`land_copy`]；此前是进程缺省、受 umask）；覆盖时目标换成源的权限位。
 /// ⚠ TOCTOU 照旧在（同本模块头注诚实边界第 1 条）。
 pub fn copy_entry(
     root: &Path,
@@ -1200,14 +1200,14 @@ fn copy_entry_racing(
     land_copy(root, to, &src, src_md.permissions(), overwrite, between)
 }
 
-/// 〔W5-FILES · 抽出〕把 `src`（已经过了路径解析的真路径）的字节落进 `root ＋ dst_rel` 那一格：
-/// 同目录暂存旁名 `O_EXCL` 新建 → 写满 → 抄源的权限位 → 上位（`overwrite` 换名顶掉；否则〔FIX5〕不覆盖改名）。
+/// 〔抽出〕把 `src`（已经过了路径解析的真路径）的字节落进 `root ＋ dst_rel` 那一格：
+/// 同目录暂存旁名 `O_EXCL` 新建 → 写满 → 抄源的权限位 → 上位（`overwrite` 换名顶掉；否则不覆盖改名）。
 /// 任一步失败 ⇒ 删掉**我们自己刚建的那一份**（旁名），原样带回原因。回 `(落点, 字节数)`。
 ///
-/// 🔴 〔W5-FILES · `设计/60 §7 #11`〕**权限位从源抄**（此前是进程缺省、受 umask —— 那条被登记为开着的缺陷）。
-/// 用的是闭集里已有的「改权限」，〔FIX5〕落在我们自己刚建的那一份的**句柄**上（没有路径可被换成链接）；`Permissions` 原样搬
+/// 🔴 **权限位从源抄**（此前是进程缺省、受 umask —— 那条被登记为开着的缺陷）。
+/// 用的是闭集里已有的「改权限」，落在我们自己刚建的那一份的**句柄**上（没有路径可被换成链接）；`Permissions` 原样搬
 /// （unix 是 mode 低 12 位，别处是只读位）⇒ 不需要平台分支。单文件复制（[`copy_entry`]）与复制目录共用这一段。
-/// 〔FIX5〕源与旁名都经 [`opener`] 开（不跟链接）：源在解析之后被换成一条链接 ⇒ 开就失败，不把链接那头的东西抄进来。
+/// 源与旁名都经 [`opener`] 开（不跟链接）：源在解析之后被换成一条链接 ⇒ 开就失败，不把链接那头的东西抄进来。
 /// `between`：旁名写满之后、上位之前（判据插竞争用；生产传空）。
 fn land_copy(
     root: &Path,
@@ -1224,7 +1224,7 @@ fn land_copy(
         ))
     })?;
     let seq = COPY_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    // 〔FW5〕旁名按**原始字节**拼（名字可以不是 UTF-8）：`.` ＋ 原名 ＋ 固定后缀。
+    // 旁名按**原始字节**拼（名字可以不是 UTF-8）：`.` ＋ 原名 ＋ 固定后缀。
     let mut side_name = std::ffi::OsString::from(".");
     side_name.push(name);
     side_name.push(format!(".ccm-copy-{}-{seq}.part", std::process::id()));
@@ -1293,10 +1293,10 @@ fn land_copy(
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-//  〔W5-FILES · 第五波〕**复制目录：逐条目过路径解析**（照递归删的形状，`设计/60 §7 #6`）
+// **复制目录：逐条目过路径解析**（照递归删的形状）
 // ══════════════════════════════════════════════════════════════════════════
 //
-// 设计住 `调研/第四波记录/W5-FILES.md` §2.2。与递归删（[`delete_tree`]）同一个形状：
+// 设计住 §2.2。与递归删（[`delete_tree`]）同一个形状：
 //
 // 1. **计划趟只读**（[`plan_copy_within`]）：源解到底一次，然后不跟链接地走整棵，每一条目过一次 [`resolve_in_root`]；
 //    链接 / 设备 / 管道 / 套接字 ⇒ 整趟拒（闭集里没有「建链接」这个动词，`readonly_guard` 第三层 ②）；
@@ -1310,7 +1310,7 @@ fn land_copy(
 // ⚠ TOCTOU 照旧在（同本模块头注诚实边界第 1 条）；源在计划与执行之间被换了种类 ⇒ 停、回滚。
 
 /// 复制计划里的一条：相对**源顶**的那一段（空 ＝ 源顶自己）＋ 计划那一刻它是不是目录（否则是普通文件）。
-/// 〔FILES2 · Q1〕`link_to` 有值 ＝ 它是一条符号链接、目标文本就是这个（复制链接本身，`cp -R` 缺省的 `-P`）。
+/// `link_to` 有值 ＝ 它是一条符号链接、目标文本就是这个（复制链接本身，`cp -R` 缺省的 `-P`）。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CopyPlanned {
     pub tail: PathBuf,
@@ -1358,7 +1358,7 @@ pub fn plan_copy(root: &Path, from: impl AsRef<Path>) -> Result<CopyPlan, WriteR
     plan_copy_within(root, from.as_ref(), TREE_ENTRY_CAP)
 }
 
-/// 〔W5-FILES〕[`copy_kind`] 那两档「复制不了的种类」说给人听的那几个字（文案表）。
+/// [`copy_kind`] 那两档「复制不了的种类」说给人听的那几个字（文案表）。
 fn kind_words(what: &str) -> String {
     match what {
         "link" => copy_text("beFilesWrite.copyTree.kindLink", &[]),
@@ -1366,7 +1366,7 @@ fn kind_words(what: &str) -> String {
     }
 }
 
-/// 〔W5-FILES〕复制目录那几句话里「这一条」的路径。
+/// 复制目录那几句话里「这一条」的路径。
 fn shown(p: &Path) -> String {
     p.display().to_string()
 }
@@ -1442,7 +1442,7 @@ pub fn plan_copy_within(root: &Path, from: &Path, cap: usize) -> Result<CopyPlan
                     &[("path", &shown(&at)), ("e", &e.to_string())],
                 ))
             })?;
-            // 〔FILES2 · Q1〕链接 ⇒ 记下它的目标文本（原样，不跟进去）；平台建不了链接时照旧整趟拒。
+            // 链接 ⇒ 记下它的目标文本（原样，不跟进去）；平台建不了链接时照旧整趟拒。
             let link_to = match kind {
                 Err("link") if super::files_extract::LINKS_SUPPORTED => {
                     Some(std::fs::read_link(&at).map_err(|e| {
@@ -1505,7 +1505,7 @@ pub fn copy_planned(plan: &CopyPlan, p: &CopyPlanned, dst_rel: &Path) -> Result<
         ))
     };
     let (kind, _) = copy_kind(&src).map_err(unreadable)?;
-    // 〔FILES2 · Q1〕链接：当场再核「仍是链接、目标文本没变」，再建一条同文本的链接（住 `files_extract::land_link`）。
+    // 链接：当场再核「仍是链接、目标文本没变」，再建一条同文本的链接（住 `files_extract::land_link`）。
     if let Some(to) = &p.link_to {
         let now = std::fs::read_link(&src).map_err(unreadable)?;
         if kind != Err("link") || &now != to {
@@ -1586,7 +1586,7 @@ pub struct TreeCopied {
     pub bytes: u64,
     pub files: usize,
     pub dirs: usize,
-    /// 〔FILES2 · Q1〕照原样复制的链接条数（不算进 `files`）。
+    /// 照原样复制的链接条数（不算进 `files`）。
     pub links: usize,
 }
 
@@ -1689,7 +1689,7 @@ pub fn copy_tree_with(
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-//  〔RW1 · 第四波 · 2026-09-24〕用户文件的读改写 ＋ 删历史会话
+// 用户文件的读改写 ＋ 删历史会话
 // ══════════════════════════════════════════════════════════════════════════
 //
 // 🔴 用户裁「只允许后端的文件管理部分写文件」**只管用户的文件、本机也管**：
@@ -1709,7 +1709,7 @@ pub fn copy_tree_with(
 // 🔴 **删会话**（[`delete_session`]）：它**只收 sid**，落点由适配层按 sid 找
 //   （门经 [`SessionPort`] 递进来的那一个窄口），不收路径 ⇒ 调用方表达不出「另一份文件」。
 //   `readonly_guard` 第三层的针因此多一根 `fenced_session_file(`，判据钉它在生产树里恰好被调用一处。
-//   〔FN1 · V119〕它从前的说法是「会话文件围栏唯一的例外」—— 文件管理面的会话文件围栏拿掉之后没有「例外」可言了；
+// 它从前的说法是「会话文件围栏唯一的例外」—— 文件管理面的会话文件围栏拿掉之后没有「例外」可言了；
 //   它自己那道（「删的必须**是**一份会话、名字恰是 `<sid>.jsonl`」）一个字节没动。
 
 /// 读改写里**读那一半**交回去的东西。
@@ -1816,7 +1816,7 @@ pub fn peek_text(root: &Path, rel: impl AsRef<Path>) -> Result<Peeked, (&'static
 /// 「盘上有字节、读出来却是空的」那一句（v1.7.9 那次事故：OneDrive 占位 / 杀毒软件锁着）。
 ///
 /// 🔴 继续走的后果是拿「空 ＋ 新内容」整份盖掉原文 —— 读改写的读那一半与写那一半都在这里停。
-/// 从前住 monitor 的 `fenced_block::LocalFile::read`〔散文墓碑〕，〔RW1〕随写规则一起搬到后端。
+/// 从前住 monitor 的 `fenced_block::LocalFile::read`〔散文墓碑〕，随写规则一起搬到后端。
 fn hollow_read(p: &Path, on_disk: u64) -> String {
     copy_text(
         "beFilesWrite.put.hollow",
@@ -1957,7 +1957,7 @@ fn put_text_racing(
         }
         _ => None,
     };
-    // 〔FIX5〕原来不在（`expect: null`）⇒ 换名上位不许顶掉任何东西：CAS 判完「不在」之后冒出来的那一份照样不盖，回 `stale`。
+    // 原来不在（`expect: null`）⇒ 换名上位不许顶掉任何东西：CAS 判完「不在」之后冒出来的那一份照样不盖，回 `stale`。
     match swap_in(root, rel, bytes, perms.clone(), current.is_none(), between) {
         Err(WriteRefusal::Stale(_)) => {
             return Err(WriteRefusal::Stale(copy_text(
@@ -2055,7 +2055,7 @@ fn make_parents(root: &Path, rel: &Path) -> Result<(), WriteRefusal> {
 
 /// 把 `bytes` **原子地**换上 `rel` 那一格：同目录 `O_EXCL` 暂存旁名 → 写满 → （沿用原权限位，按句柄）→ 换名上位。
 /// 最后一段在盘上就解到底（改真文件，不换掉链接）；失败删掉自己的暂存旁名。
-/// 〔FIX5〕`create`（调用方判过「原来不在」）⇒ 上位走不覆盖改名（[`rename_no_clobber`]）：那一格此刻已有东西 ⇒ `Stale`、旁名删掉。
+/// `create`（调用方判过「原来不在」）⇒ 上位走不覆盖改名（[`rename_no_clobber`]）：那一格此刻已有东西 ⇒ `Stale`、旁名删掉。
 /// `between`：旁名写满之后、上位之前（判据插竞争用；生产传空）。
 fn swap_in(
     root: &Path,
@@ -2205,7 +2205,7 @@ fn land_backup(
         )));
     }
     if let Some(p) = perms {
-        // 〔FIX5〕按句柄改（没有路径可被换成链接）；删那一下仍按路径（删的是链接本身，不跟）。
+        // 按句柄改（没有路径可被换成链接）；删那一下仍按路径（删的是链接本身，不跟）。
         keep_mode(
             &bak,
             p,
@@ -2217,7 +2217,7 @@ fn land_backup(
     Ok(bak)
 }
 
-/// 〔W5-VIS · E 吞错普查点名〕备份**沿用原文件的权限位**；沿用不上 ⇒ 删掉这份备份、整趟拒（此刻原文件还没动）。
+/// 〔E 吞错普查点名〕备份**沿用原文件的权限位**；沿用不上 ⇒ 删掉这份备份、整趟拒（此刻原文件还没动）。
 ///
 /// 原先一个 `.ok()` 吞掉：一份 0600 的原文件（钥匙、令牌一类）可能留下一份按 umask 建出来的 0644 备份，
 /// 而一句话都没有。两个动作都由调用方交进来（生产 = `set_permissions` / `remove_file`，写在 `land_backup` 里 ——
@@ -2260,13 +2260,13 @@ fn remove_created(root: &Path, rel: &Path) -> Result<(), WriteRefusal> {
 ///
 /// 落点由适配层按 sid 在本机记录树里找（门递进来的 [`SessionPort::locate`]：找 → 解到底 → 恰是
 /// `<项目>/<sid>.jsonl` → 必须是会话文件的形状）。这一条是「用户在历史浏览器里明确点了删」那一件事。
-/// 〔FN1 · V119〕从前这里写「别的写一律不许碰会话文件，这一条是唯一的例外」—— 文件管理面今天什么都能改，
+/// 从前这里写「别的写一律不许碰会话文件，这一条是唯一的例外」—— 文件管理面今天什么都能改，
 /// 这一条的独特之处只剩「只收 sid、只删恰是那一形的那一份」。
 pub fn delete_session(sid: &str, sessions: &SessionPort) -> Result<PathBuf, WriteRefusal> {
     delete_session_with(sid, sessions.locate, sessions.is_record)
 }
 
-/// 〔MOD · 子步 4 · 主会话裁〕删会话那一条要问的两件事（落点 · 形状）是 agent 记录布局的知识，
+/// 删会话那一条要问的两件事（落点 · 形状）是 agent 记录布局的知识，
 /// 本模块一家都不认 ⇒ 由门（命令注册那一处）从原生那一侧的窄口（`agents::locate_session_for_delete` ·
 /// `agents::is_session_record`）取来递进 [`answer_wire`]。
 #[derive(Clone, Copy)]
@@ -2325,7 +2325,7 @@ fn fenced_session_file(
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-//  命令面 ——〔波 5 ㈠ · 2026-09-23〕`设计/60 §8.6` **第 2 步**
+//  命令面 ——〔波 5 ㈠〕 **第 2 步**
 // ══════════════════════════════════════════════════════════════════════════
 //
 // 🔴 **这一步不花用户那句「允许」**，`§8.6` 第 2 步逐字：
@@ -2341,7 +2341,7 @@ fn fenced_session_file(
 //   一条命令进了 `inbound::REGISTRY` 且不是那个硬臂，CLI 面就**自动**认得它
 //  （现打：加完之后 `every_cli_exposed_command_is_in_the_query_mode_gate` 当场红，
 //   逐字点名 `["--files-create"]`）。⇒ 两个宿主共用同一个 `run`，
-//   那正是 `设计/60 §8.1` 说的「一份代码两种宿主」。
+//   那正是说的「一份代码两种宿主」。
 //   ⇒ **窄在别的地方**：`readonly_guard` 第三层判的是「**谁引用得到这个模块**」
 //   （= 只有这一面的登记入口），不是「谁发得出命令」。别把两者混起来读。
 //
@@ -2359,7 +2359,7 @@ pub type Answer = Result<serde_json::Value, (&'static str, String)>;
 ///
 /// # ⚠ 它**刻意不叫** `Capability`，也刻意不进 `lib.rs::CAPABILITY_FACES`
 ///
-/// `设计/96 §2` 那份汇总清单是**产品面**的登记（`CapabilityKind` 两类、
+/// 那份汇总清单是**产品面**的登记（`CapabilityKind` 两类、
 /// 逐 target 的对等断言），加一个面要动 `lib.rs::CAPABILITY_FACES` ——
 /// 那处**在本刀写区之外**，已如实报备。
 /// ⇒ 本表今天只当「线上契约的数据形态」用（判据按它对拍 `inbound::REGISTRY`
@@ -2389,7 +2389,7 @@ pub const MANAGE_COMMANDS: &[ManageCommand] = &[
         fields: &["bytes", "path"],
         codes: &["bad_args", "bad_path", "io_failed", "refused"],
     },
-    // ── 〔波 5 ㈡ 09-23〕`设计/60 §8.6` 第 3 步：**改动既有数据**的那五件 ──────────
+    // ── 〔波 5 ㈡ 09-23〕：**改动既有数据**的那五件 ──────────
     ManageCommand {
         name: "files-mkdir",
         purpose: "新建一个目录（只建最后那一段；父目录不在就失败，不顺手补）",
@@ -2407,9 +2407,9 @@ pub const MANAGE_COMMANDS: &[ManageCommand] = &[
     ManageCommand {
         name: "files-delete",
         purpose:
-            "删一个文件或一个**空**目录（删的是链接本身，不跟过去）；〔FW5〕显式 `recursive: true` \
-               才删整棵树 —— 逐条目过路径解析，任一条被拒整趟不动（`delete_tree`）；〔RM1e〕给了 `expect` \
-               ⇒ 只删一份普通文件、且盘上逐字节等于它才删（否则 `stale`，一个字节不动）；〔FW1〕`expect: {\"empty_dir\": true}` \
+            "删一个文件或一个**空**目录（删的是链接本身，不跟过去）；显式 `recursive: true` \
+               才删整棵树 —— 逐条目过路径解析，任一条被拒整趟不动（`delete_tree`）；给了 `expect` \
+               ⇒ 只删一份普通文件、且盘上逐字节等于它才删（否则 `stale`，一个字节不动）；`expect: {\"empty_dir\": true}` \
                ⇒ 只删一个空目录（不空 / 不在 ⇒ `stale`；不是目录 ⇒ `refused`）",
         args: &["expect", "recursive", "rel", "root"],
         fields: &["path", "removed"],
@@ -2418,18 +2418,18 @@ pub const MANAGE_COMMANDS: &[ManageCommand] = &[
     ManageCommand {
         name: "files-chmod",
         purpose: "改 unix 权限位（低 12 位）；**跟链接**，所以落点解到底再判一次；\
-               〔FW5〕没有 unix 权限位的平台上回 `no_unix_mode`",
+没有 unix 权限位的平台上回 `no_unix_mode`",
         args: &["mode", "rel", "root"],
         fields: &["mode", "path"],
         codes: &["bad_args", "bad_path", "io_failed", NO_UNIX_MODE, "refused"],
     },
-    // ── 〔F7a · 第三波 09-24〕`设计/60 §13`：窗口的「复制」换走通道 ──────────────────
+    // ──：窗口的「复制」换走通道 ──────────────────
     ManageCommand {
         name: "files-copy",
         purpose: "同根内复制一份普通文件；**三条路径各过一遍路径解析**；缺省不覆盖（`O_EXCL`），\
-               显式 `overwrite` 才经暂存旁名原子顶掉；权限位从源抄；〔W5-FILES〕显式 `recursive: true` \
+               显式 `overwrite` 才经暂存旁名原子顶掉；权限位从源抄；显式 `recursive: true` \
                才复制目录 —— 逐条目过路径解析，跨挂载点 / 超上限整趟拒，中途失败回滚自己建的（`copy_tree`）；\
-               〔FILES2〕树里的链接复制**链接本身**（目标文本原样，`links` 计数）",
+树里的链接复制**链接本身**（目标文本原样，`links` 计数）",
         args: &["from", "overwrite", "recursive", "root", "to"],
         fields: &["bytes", "dirs", "files", "links", "path"],
         codes: &["bad_args", "bad_path", "io_failed", "refused"],
@@ -2437,12 +2437,12 @@ pub const MANAGE_COMMANDS: &[ManageCommand] = &[
     ManageCommand {
         name: "files-write-text",
         purpose: "覆盖写一份**已经在**的普通文件；**跟链接**，所以落点解到底再判一次；\
-               〔FW1〕`expect: {sha256}` **必给**：盘上那份的摘要对得上才写（否则 `stale`，一个字节不动），应答交新摘要",
+`expect: {sha256}` **必给**：盘上那份的摘要对得上才写（否则 `stale`，一个字节不动），应答交新摘要",
         args: &["content", "expect", "rel", "root"],
         fields: &["bytes", "path", "sha256"],
         codes: &["bad_args", "bad_path", "io_failed", "refused", "stale"],
     },
-    // ── 〔RW1 · 第四波 09-24〕用户文件的读改写 ＋ 删历史会话（用户裁「只管用户的文件、本机也管」）──
+    // ── 用户文件的读改写 ＋ 删历史会话（用户裁「只管用户的文件、本机也管」）──
     ManageCommand {
         name: "files-peek",
         purpose: "读改写的**读那一半**：与写同一道路径解析；不在 ⇒ `exists: false`（与「读不出来」分得开）",
@@ -2500,7 +2500,7 @@ fn path_of(
 
 /// `files-create` —— 把两道路径解析与那一处 `O_EXCL` 落盘接到线上。
 ///
-/// 〔散文墓碑〕〔FW5 · 第四波〕这里原来写着「`rel` **只收 UTF-8 字符串**」—— 那时 [`lexical_in_root`]
+/// 〔散文墓碑〕这里原来写着「`rel` **只收 UTF-8 字符串**」—— 那时 [`lexical_in_root`]
 /// 的入参是 `&str`。路径解析换成按 `Path` 逐段判之后，相对段与 `root` 同形（字符串或 `{"b16": …}`），
 /// 取法住 [`rel_of`]。
 fn answer_create(args: &serde_json::Value) -> Answer {
@@ -2528,7 +2528,7 @@ fn answer_create(args: &serde_json::Value) -> Answer {
 
 /// 取一个**相对段**参数：字符串 或 `{"b16": …}`（与 `root` 同一口径）。
 ///
-/// 〔FW5 · 第四波〕此前只收 UTF-8 字符串 —— 非 UTF-8 的名字（乱码文件名）在写面上**一件都做不了**。
+/// 此前只收 UTF-8 字符串 —— 非 UTF-8 的名字（乱码文件名）在写面上**一件都做不了**。
 /// 路径解析按 `Path` 逐段判之后这条限制没有理由了。⚠ **空串不在这里拒**：交给路径解析①
 /// （它拒空段、码是 `refused`），与此前的行为逐字相同。
 /// 码：缺了 / 形状不对 ⇒ `bad_args`（相对段这一格历来是这个码，与 `root` 的 `bad_path` 刻意不同）。
@@ -2576,7 +2576,7 @@ fn answer_rename(args: &serde_json::Value) -> Answer {
 fn answer_delete(args: &serde_json::Value) -> Answer {
     let root = path_of(args, "root")?;
     let rel = rel_of(args, "rel")?;
-    // 〔FW5〕递归**显式**：不给 ⇒ 不递归（射程与此前一个字节不差）；给了就必须是布尔，不猜。
+    // 递归**显式**：不给 ⇒ 不递归（射程与此前一个字节不差）；给了就必须是布尔，不猜。
     let recursive = match args.get("recursive") {
         None => false,
         Some(v) => v.as_bool().ok_or((
@@ -2584,7 +2584,7 @@ fn answer_delete(args: &serde_json::Value) -> Answer {
             crate::common::contract::malformed("`recursive` must be a boolean"),
         ))?,
     };
-    // 〔RM1e〕CAS **显式**：不给 ⇒ 射程与此前一个字节不差。给了 ⇒ 只删一份普通文件、盘上逐字节等于它才删。
+    // CAS **显式**：不给 ⇒ 射程与此前一个字节不差。给了 ⇒ 只删一份普通文件、盘上逐字节等于它才删。
     //   `null` 拒（删的前提就是它在 —— 「我读的时候它不在」没有可删的东西）；与 `recursive` 同给拒（CAS 只对一份文件）。
     let expect = match args.get("expect") {
         None => None,
@@ -2594,7 +2594,7 @@ fn answer_delete(args: &serde_json::Value) -> Answer {
                 crate::common::contract::malformed("`expect` must not be null here"),
             ))
         }
-        // 〔FW1 · SU1 问 2〕恰好 `{"empty_dir": true}` ⇒ 只删空目录；别的对象形照旧按逐字节那一形取（`{"b16": …}`，认不出 ⇒ `bad_args`）。
+        // 〔SU1 问 2〕恰好 `{"empty_dir": true}` ⇒ 只删空目录；别的对象形照旧按逐字节那一形取（`{"b16": …}`，认不出 ⇒ `bad_args`）。
         Some(serde_json::Value::Object(o))
             if o.len() == 1 && o.get("empty_dir") == Some(&serde_json::Value::Bool(true)) =>
         {
@@ -2651,7 +2651,7 @@ fn answer_copy(args: &serde_json::Value) -> Answer {
             crate::common::contract::malformed("`overwrite` must be a boolean"),
         ))?,
     };
-    // 〔W5-FILES〕复制目录**显式**：不给 ⇒ 射程与此前一个字节不差；与 `overwrite: true` 同给 ⇒ 拒（目录复制不合并、不覆盖）。
+    // 复制目录**显式**：不给 ⇒ 射程与此前一个字节不差；与 `overwrite: true` 同给 ⇒ 拒（目录复制不合并、不覆盖）。
     if flag_of(args, "recursive")? {
         if overwrite {
             return Err((
@@ -2669,7 +2669,7 @@ fn answer_copy(args: &serde_json::Value) -> Answer {
         }));
     }
     let (done, n) = copy_entry(&root, &from, &to, overwrite).map_err(refusal)?;
-    // 〔W5-FILES〕两形同一张应答表（`files` / `dirs` 恒在）：调用方不必按问法猜回来的键。
+    // 两形同一张应答表（`files` / `dirs` 恒在）：调用方不必按问法猜回来的键。
     Ok(
         serde_json::json!({ "path": path_json(&done), "bytes": n, "files": 1, "dirs": 0, "links": 0 }),
     )
@@ -2687,7 +2687,7 @@ fn answer_write_text(args: &serde_json::Value) -> Answer {
         "bad_args",
         crate::common::contract::malformed("`content` must be a string or {\"b16\": \"<hex>\"}"),
     ))?;
-    // 〔FW1〕CAS **必给**：没有「不问就盖」这一形（同 `files-put`）。形状先判、再碰盘。
+    // CAS **必给**：没有「不问就盖」这一形（同 `files-put`）。形状先判、再碰盘。
     let expect = sha256_expect_of(args)?;
     let done = overwrite_text_expecting(&root, &rel, &bytes, &expect).map_err(refusal)?;
     Ok(serde_json::json!({
@@ -2812,12 +2812,12 @@ pub fn answer_wire(wire_name: &str, args: &serde_json::Value, sessions: &Session
 #[path = "../../../tests/backend/control/files_write_tests.rs"]
 mod tests;
 
-// 〔HX1〕覆盖写原子化的判据（写到一半被收掉 · 权限位 / 链接 / 旁名 · 生产段 `fs::write(` 只剩 Windows 臂）。
+// 覆盖写原子化的判据（写到一半被收掉 · 权限位 / 链接 / 旁名 · 生产段 `fs::write(` 只剩 Windows 臂）。
 #[cfg(test)]
 #[path = "../../../tests/backend/control/overwrite_atomic_tests.rs"]
 mod overwrite_atomic_tests;
 
-// 〔FIX5〕TOCTOU 那几条闭合的竞争判据（`设计/99 §2.2` · `60 §7` 第 7 条）。
+// TOCTOU 那几条闭合的竞争判据。
 #[cfg(test)]
 #[path = "../../../tests/backend/control/files_toctou_tests.rs"]
 mod toctou_tests;

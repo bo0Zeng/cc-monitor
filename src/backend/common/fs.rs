@@ -27,7 +27,7 @@ pub(crate) fn read_regular_capped(path: &Path, cap: u64) -> Result<Vec<u8>, Stri
     if !meta.is_file() {
         return Err(copy_text("beFs.readRegularCapped.notRegular", &[]).into());
     }
-    // ★〔audit-0805 F06〕**先看长度再决定读不读**。
+    // ★**先看长度再决定读不读**。
     //
     // 这里本来就已经 `metadata()` 了（上面判 `is_file`），却没用 `meta.len()` ——
     // 于是拒绝一个 5 GB 文件之前要先把 `cap + 1`（256 MiB）读进内存，
@@ -37,7 +37,7 @@ pub(crate) fn read_regular_capped(path: &Path, cap: u64) -> Result<Vec<u8>, Stri
     //   （TOCTOU），长过头时仍要靠 `take` 兜住。两道一起才完整。
     // ★ 顺带把一个**测不出来的问题整个绕开**了：报告怀疑「拒绝路径上 `Vec` 倍增会瞬时
     //   同时持有 1×+2×」，V1 在 glibc 上实测不成立，但后端是 **musl** 交叉编译的、
-    //   musl 的 realloc 行为没测出来（`ROADMAP §5-4`）。走这条早退就根本不分配。
+    //   musl 的 realloc 行为没测出来。走这条早退就根本不分配。
     if meta.len() > cap {
         return Err(copy_text(
             "beFs.readRegularCapped.tooBigSized",

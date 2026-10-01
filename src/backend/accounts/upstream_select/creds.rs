@@ -48,7 +48,7 @@ pub(crate) struct Loaded {
     pub(crate) problem: Option<String>,
 }
 
-/// 算出那份文件在哪。`env` 覆盖优先，其次这台 monitor 数据目录（默认 `~/.cc-monitor`，V160）根上那一份。
+/// 算出那份文件在哪。`env` 覆盖优先，其次这台 monitor 数据目录（默认 `~/.cc-monitor`）根上那一份。
 ///
 /// 数据目录与 monitor 那一侧**同一条规矩**：`store::monitor_data_dir(CCM_DATA_DIR, HOME)`（家目录取法同中转钥匙
 /// `relay::door::key_path`），不按 agent 家（`CLAUDE_CONFIG_DIR` 换号不许把凭据换到另一份）。
@@ -77,7 +77,7 @@ pub(crate) fn announce_unresolved(p: &str, out: &mut dyn std::io::Write) {
     let _ = writeln!(out, "[apikey] credentials problem: {p}");
 }
 
-/// 读一次。**只读** —— 本模块一个文件系统变更调用都没有（`K-H2a` 裁四；〔RM1a〕裁四今天收窄成
+/// 读一次。**只读** —— 本模块一个文件系统变更调用都没有（`K-H2a` 裁四；裁四今天收窄成
 /// 「写只在 `file_face` 那一份、只从帧面进来」，本模块照旧一个写都没有；
 /// backend 的 `readonly_guard` 扫的就是这件事）。
 pub(crate) fn load(path: &Path) -> Loaded {
@@ -153,7 +153,7 @@ pub(crate) fn announce(
     out: &mut dyn std::io::Write,
 ) -> usize {
     let mut n = 0usize;
-    // ⚠ 〔`设计/90 §1.2` · `设计/20 §6` 命名推论〕本层每一行日志的前缀是 `[apikey]`，**不是** `[relay]`：
+    // ⚠ 〔命名推论〕本层每一行日志的前缀是 `[apikey]`，**不是** `[relay]`：
     //   常驻后端这一个进程同时承载两层，而先前两层的日志共用一个 `[relay]` —— 读日志的人
     //   分不出「中转（搬字节）出事了」还是「apikey 那张表出事了」，影响面就判不出来。
     //   `[relay]` 只留给中转自己那几行（监听 · 连上游 · 在途上界）。
@@ -193,7 +193,7 @@ pub(crate) fn announce(
         n += 1;
     }
 
-    // ③b ⚠ **`auth_style` 认不出的时候，把认得的那几个现算着印出来**〔`K-R1`〕。
+    // ③b ⚠ **`auth_style` 认不出的时候，把认得的那几个现算着印出来**。
     //
     //    ★ 为什么是**现算**而不是一句写死的清单（`brief` 13b）：那个闭集只有一个住址
     //      （`creds_core::store::AuthStyle::ALL`）。在这里再抄一份，加第四个成员的那天
@@ -215,7 +215,7 @@ pub(crate) fn announce(
         n += 1;
     }
 
-    // ③c ⚠ **进了表、但行为与默认不同的那些行**〔`K-R1`〕。
+    // ③c ⚠ **进了表、但行为与默认不同的那些行**。
     //    印的与 ③ 同形：账号 id（`{:?}` 转义控制字符）+ 一句**固定文案**。
     //    ⚠ 刻意**不印**那个前缀本身 / 那个认不出的词：那是文件内容，而
     //      `creds_guard` 那张白名单买的正是「进日志的东西不含文件内容」这条性质，

@@ -20,8 +20,8 @@
  *    （针只有一根，多了会把大量正常代码判红）。
  * 4. **它不判 `authReady` 那一格算得对不对。** 阳性对照钉的是「`isSelectable` 的**函数体内**
  *    真的读了 `a.authReady`」；规则本身住 `acct_core::auth_ready`（后端算好放进这一格），由 Rust 侧那三条
- *    （`acct-core` 的金样互钉 + 两条生产者对拍）守。〔DUP1〕TS 这边原来还有一个带「旧后端回落 loggedIn」的
- *    包装（`accounts.ts::authReady`〔散文墓碑〕）—— 那是规则订阅分支在 TS 里的第二份，删了（`设计/90 §3` 判据 2）。
+ *    （`acct-core` 的金样互钉 + 两条生产者对拍）守。TS 这边原来还有一个带「旧后端回落 loggedIn」的
+ *    包装（`accounts.ts::authReady`〔散文墓碑〕）—— 那是规则订阅分支在 TS 里的第二份，删了。
  * 5. **它扫不到测试侧的第二份实现。** 扫描面（`productionTsFiles`）**按构造**排掉
  *    `.vitest.` / `.test.` —— 那一行正是「让判据读不到自己」的机制，代价是一份**手抄进
  *    测试文件里的** `isSelectable` 结构上看不见（K-A1 第四轮 `R4` 就是这一形：
@@ -95,12 +95,12 @@ const ALLOWED: Record<string, Record<string, number>> = {
   // `authReady` 5 处（函数名 1 + 那句回落里的 `a.authReady` 1 + 三个消费点
   // `accountStatusBadge` / `accountLoginActionLabel` / `isSelectable` 各 1）·
   // `authKind` 2 处（`accountStatusBadge` 与 `accountLoginActionLabel` 各按 kind 分流一次）。
-  // 〔C4d · 第四波 4B〕三格各 +1：账号的形状从生成物（`src/frontend/ui/generated/RemoteAccount.ts`，生成物目录不在本条人群里）
+  // 三格各 +1：账号的形状从生成物（`src/frontend/ui/generated/RemoteAccount.ts`，生成物目录不在本条人群里）
   //   改回手写在本文件（`interface Account` 的三个字段**声明**）—— 声明不是读，但本条按名字数，如实登记。
-  // 〔DUP1〕那个带回落的包装删了（`a.authReady ?? a.loggedIn`）：`loggedIn` 2 → 1（只剩声明，前端零处读它）·
+  // 那个带回落的包装删了（`a.authReady ?? a.loggedIn`）：`loggedIn` 2 → 1（只剩声明，前端零处读它）·
   //   `authReady` 6 → 4（少了函数名与回落里那一处；三个消费点改成直接读 `a.authReady`，次数不变）· `authKind` 不变。
   "src/frontend/ui/accounts.ts": { loggedIn: 1, authReady: 4, authKind: 3 },
-  // 〔C4c · 第四波 4B〕后端 `accounts-list` 成品的**收**口（`decodeAccountsList`）：每个字段各 4 处 ——
+  // 后端 `accounts-list` 成品的**收**口（`decodeAccountsList`）：每个字段各 4 处 ——
   //   键集合清单里的名字 1 · 类型核验 1 · 装回对象时键名 1 · 取值 1。它是**收**（逐格核类型，核不了不许读），
   //   不是**判**：可用性仍只由 `accounts.ts::isSelectable` 答，按 kind 分流的规则仍住 `acct_core::auth_ready`。
   //   单独一个文件、单独一行，两件事分得开（`src/frontend/ui/accounts-decode.ts` 头注）。
@@ -197,7 +197,7 @@ describe("KAY4 账号可用性只有一个出口", () => {
       "export function",
     );
     // `\b` 不能省：`toContain("a.authReady")` 会被 `a.authReadyX` 这种改名蒙过去。
-    // 〔DUP1〕原来钉的是「调了 `authReady(a)`」（一个带旧后端回落的包装）；包装删了，改钉直接读后端算好的那一格。
+    // 原来钉的是「调了 `authReady(a)`」（一个带旧后端回落的包装）；包装删了，改钉直接读后端算好的那一格。
     expect(
       /\ba\.authReady\b/.test(body),
       "`isSelectable` 的函数体里没有 `a.authReady` —— 鉴权判据被挪到别处去了（哪怕挪进一个语义等价的包装也不行：那就是第二条路）",

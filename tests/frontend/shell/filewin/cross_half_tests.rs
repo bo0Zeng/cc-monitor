@@ -1,8 +1,8 @@
-//! 〔P4〕文件窗口独立成包之后**跨两半**的几条判据 —— 一侧是窗口包（`cc_monitor_filewin`），异源那一侧是 monitor 的东西，
+//! 文件窗口独立成包之后**跨两半**的几条判据 —— 一侧是窗口包（`cc_monitor_filewin`），异源那一侧是 monitor 的东西，
 //! 只有 monitor 的测试档两边都够得着（monitor 链窗口包只为那个 `[[bin]]`，生产段零引用；测试档引它不进产物）。
 //! 原住窗口那几份判据文件（`editor_tests` · `source_tests` · `transfer_tests`），期望一个字没改。
 //!
-//! 要求住址：`设计/60 §5.1`「装不进一行的走分块」（量的那一行 == 真发出去的那一行）· `§2.3`（窗口只说 `call`，开单与订阅的线上名字两侧对上）。
+//! 要求：「装不进一行的走分块」（量的那一行 == 真发出去的那一行）· `§2.3`（窗口只说 `call`，开单与订阅的线上名字两侧对上）。
 
 use cc_monitor_filewin::editor::{
     chunk_budget, commit_args, plan_chunks, request_line_len, save_args, stage_args,

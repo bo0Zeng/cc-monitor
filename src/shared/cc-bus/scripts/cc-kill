@@ -47,7 +47,7 @@ if [ "$_identity_ok" = 1 ] && tmux has-session -t "=$id" 2>/dev/null; then
   # ⚠ **把要销毁的东西说出来**：身份已经核准（是这个 agent 没错），但用户可能在这个会话里
   #   开过自己的窗口。backend 的 `kill` 原语在证据较弱时用「只杀单窗口」当第三道门；
   #   这里证据更强（登记的 pane 根进程 pid 对上了）⇒ **照杀，但把窗口数摆出来**。
-  #   要不要在多窗口时干脆拦下，是产品判断 ⇒ 记在 ROADMAP `U18`，不在这儿替用户定。
+  #   要不要在多窗口时干脆拦下，是产品判断 ⇒ 记在 `U18`，不在这儿替用户定。
   _wins=$(tmux display-message -p -t "=$id:" '#{session_windows}' 2>/dev/null || true)
   case "${_wins:-1}" in ''|1) : ;; *) echo "cc-kill: 注意，$id 有 $_wins 个窗口，一起收掉" >&2 ;; esac
   tmux kill-session -t "=$id" 2>/dev/null && echo "已杀会话 $id" || echo "杀会话 $id 失败" >&2

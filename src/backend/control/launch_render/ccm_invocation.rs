@@ -1,4 +1,4 @@
-//! U8c-2c-1：**`ccm …` 调用行的渲染器** —— 全仓唯一一份（〔LR1 · U8c-3〕TS 那份对侧已删）。
+//! U8c-2c-1：**`ccm …` 调用行的渲染器** —— 全仓唯一一份（TS 那份对侧已删）。
 //!
 //! ⚠ **P4b 搬家**：它原来是共享 crate（当时叫 `launch-core`）的 `cli` 模块 —— 而 **backend 对它零引用**。
 //! 架构审计点破「这就是决策内核，放在共享 crate 里的真实原因是 monitor 没处放」。
@@ -23,7 +23,7 @@
 //!
 //! # 「该渲成什么」的独立说法住哪
 //!
-//! 〔LR1 · U8c-3〕TS 那份渲染器删了之后，不再有「另一种语言的实现」可对拍。独立说法是两份
+//! TS 那份渲染器删了之后，不再有「另一种语言的实现」可对拍。独立说法是两份
 //! **手写**的期望：本文件的自测（P1 那批，判据自带清单、不遍历被测常量，见文件尾）与入库夹具
 //! `fixtures/cli-golden.json`（`src/frontend/ui/launch-cli-golden.ts` 用例表手写 `out`，`req` 由生产的
 //! TS 请求构造现产 ⇒ 顺带钉住线与映射，`launch_cli_parity.rs`）。
@@ -37,7 +37,7 @@ use std::collections::BTreeSet;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Refusal {
     NotInstalled,
-    // 〔MIG-2〕原先这里有 `ProbeUnknown`（界面带来的「没探出来」那一态）：渲染进了那台后端、能力问它自己，那一态产不出来了，删。
+    // 原先这里有 `ProbeUnknown`（界面带来的「没探出来」那一态）：渲染进了那台后端、能力问它自己，那一态产不出来了，删。
     NotSsh,
     MissingCap(String),
     /// #76 防线：`send-into`（idle-tmux 就地复用）**没有 CLI 等价语法**。
@@ -53,13 +53,13 @@ pub enum Refusal {
         dim: String,
         cap: String,
     },
-    /// 〔TL3 · `INVARIANTS §47` ②〕一个自由文本值过不了拼进命令之前的放行判定
+    /// 〔`INVARIANTS §47` ②〕一个自由文本值过不了拼进命令之前的放行判定
     /// （工作目录：POSIX 绝对 · 无 `..` 段 · 不含 NUL / CR / LF；透传参数：不含 NUL / CR / LF）。`value` = 原值（`{:?}` 形）。
     FreeTextRefused {
         slot: FreeTextSlot,
         value: String,
     },
-    /// 〔DUP1 · `INVARIANTS §47` ①〕一个**标识符**值过不了拼进命令之前的放行判定（闭集白名单 ＋ 不许 `-` 开头 ＋ 钉上界，
+    /// 〔`INVARIANTS §47` ①〕一个**标识符**值过不了拼进命令之前的放行判定（闭集白名单 ＋ 不许 `-` 开头 ＋ 钉上界，
     /// 判定住 `shell-quote-core`，全仓唯一一份）。`value` = 原值（`{:?}` 形）。
     IdentifierRefused {
         slot: IdentifierSlot,
@@ -78,7 +78,7 @@ pub enum IdentifierSlot {
     Model,
     /// `--account <名>`（`shell_quote_core::account_name_ok`）。
     Account,
-    /// 〔DUP2 · J6〕`--tmux=<名>`：本工具要**新建**的会话名（`crate::control::gate_rules::new_tmux_name_issue`）。
+    /// `--tmux=<名>`：本工具要**新建**的会话名（`crate::control::gate_rules::new_tmux_name_issue`）。
     TmuxName,
 }
 
@@ -87,7 +87,7 @@ pub enum IdentifierSlot {
 pub enum FreeTextSlot {
     Cwd,
     AgentArg,
-    /// 〔DUP2 · J6〕`attach <名>`：一个**已有**会话的名字（V131 ②：`crate::control::gate_rules::existing_tmux_name_issue`，拒绝集 ＋ 非空）。
+    /// `attach <名>`：一个**已有**会话的名字（②：`crate::control::gate_rules::existing_tmux_name_issue`，拒绝集 ＋ 非空）。
     AttachTarget,
 }
 
@@ -100,9 +100,9 @@ impl Refusal {
             // Rust 侧现在只在 `!is_ssh && !local_posix` 时回它，也就是**Windows 本机**。
             // 它今天**产不出来**：两个活着的 Rust 调用方一个恒 `is_ssh: true`
             // （`launch_wire`，前端只在 ssh 时才调），一个恒 `local_posix: true`
-            // （〔MIG-2〕今天是 `local.rs::render_ccm`，只在非 Windows 那一支走到）。
-            // 〔LR1 · U8c-3〕原先挡着改字的那条（与 TS 渲染器逐字节对拍）随 TS 那份删了；
-            // 〔CP2b〕进文案表那一拍按 CP1 裁词（改·§2.1）改成说「Windows 本机」，
+            // （今天是 `local.rs::render_ccm`，只在非 Windows 那一支走到）。
+            // 原先挡着改字的那条（与 TS 渲染器逐字节对拍）随 TS 那份删了；
+            // 进文案表那一拍按 CP1 裁词（改·§2.1）改成说「Windows 本机」，
             // `src/frontend/ui/launch-cli-golden.ts` 里「本地 transport」那条用例的期望同拍改。
             Refusal::NotSsh => copy_text("rsCcmInvocation.refusal.windowsLocal", &[]),
             Refusal::MissingCap(c) => copy_text(
@@ -170,7 +170,7 @@ impl Refusal {
 
 /// CLI 语法覆盖面 —— **每次调用都无条件要求**的能力。
 ///
-/// 全仓唯一一份（〔LR1〕TS 那份随 TS 渲染器删了；`tests/e2e/ccm-contract-parity.sh` 从本文件
+/// 全仓唯一一份（TS 那份随 TS 渲染器删了；`tests/e2e/ccm-contract-parity.sh` 从本文件
 /// 抽它去比真 `ccm --ccm-probe` 的 `capabilities=`）。只放「与具体维度无关的
 /// 动作/容器语法」；`account`/`model` 由各自维度用 `required_caps` 声明（§37）。
 pub const CLI_REQUIRED_CAPS: &[&str] = &[
@@ -220,7 +220,7 @@ pub enum CliAccount<'a> {
     ///
     /// # ⚠ 它今天只有**本机**那条路在用，远端不许照抄
     ///
-    /// 唯一构造点是 `local.rs::render_ccm_with`（〔MIG-2〕只在非 Windows 那一支走到）。
+    /// 唯一构造点是 `local.rs::render_ccm_with`（只在非 Windows 那一支走到）。
     /// [`super::launch_wire::WireAccount`] **刻意没有对应变体** —— 远端是 ssh 过去，
     /// **那台机器上的继承态不是 monitor 的环境**（`R28` 裁定四逐字）⇒
     /// 「远端的继承怎么表达」是 `K-R90`，不是本变体。
@@ -250,7 +250,7 @@ pub struct CliSpec<'a> {
     pub ccm_path: &'a str,
 }
 
-/// argv token 的 quote：只在含 ccm 允许字符集之外的东西时才包单引号（〔LR1〕TS 那份同规则的 `argv()` 随 TS 渲染器删了）。
+/// argv token 的 quote：只在含 ccm 允许字符集之外的东西时才包单引号（TS 那份同规则的 `argv()` 随 TS 渲染器删了）。
 fn argv(token: &str) -> String {
     let safe = !token.is_empty()
         && token.chars().all(|c| {
@@ -303,7 +303,7 @@ fn dimension_flags(
 
 /// 一个维度在 CLI 侧的三个钩子。TS `LaunchDimension` 今天只剩 `applies` / `apply` 两格
 /// （`apply` 产 `EnvOp`，渲染那一半 U8c-1 已经搬进 `render_payload`）；
-/// 〔LR1 · U8c-3〕TS 维度上的 `cliFlags` / `requiredCaps` 随 TS 渲染器删了，本表是它们唯一的家。
+/// TS 维度上的 `cliFlags` / `requiredCaps` 随 TS 渲染器删了，本表是它们唯一的家。
 struct Dim {
     id: &'static str,
     applies: fn(&CliSpec) -> bool,
@@ -452,7 +452,7 @@ pub fn render_ccm_invocation(
         return Err(Refusal::SendIntoHasNoCliForm);
     }
 
-    // 〔V151 · 用户 09-27〕`ccm [交给 claude 的…] -- [ccm 自己的…]`：两半分开收，最后按 [`join_v151`] 拼。
+    // 〔用户 09-27〕`ccm [交给 claude 的…] -- [ccm 自己的…]`：两半分开收，最后按 [`join_v151`] 拼。
     let mut tokens: Vec<String> = vec![spec.ccm_path.to_string()];
     let mut ours: Vec<String> = Vec::new();
 
@@ -463,7 +463,7 @@ pub fn render_ccm_invocation(
             return Err(Refusal::AttachNeedsTmux);
         };
         let _ = name;
-        // 〔DUP2 · J6 · `INVARIANTS §47` ②〕一个已有会话的名字：拒绝集（控制符 · 欺骗字符）＋ 非空，规则住 `control/gate_rules.rs`（全仓唯一一份）。
+        // 〔`INVARIANTS §47` ②〕一个已有会话的名字：拒绝集（控制符 · 欺骗字符）＋ 非空，规则住 `control/gate_rules.rs`（全仓唯一一份）。
         //   ccm 那头按 `=<名>:` 精确寻址（`plan.rs` 的 attach 那一行），`*` `?` 不被当通配。界面那份删了之后这条路自己判。
         if crate::control::gate_rules::existing_tmux_name_issue(cname).is_some() {
             return Err(Refusal::FreeTextRefused {
@@ -479,7 +479,7 @@ pub fn render_ccm_invocation(
 
     match spec.action {
         Action::Resume { sid } => {
-            // 〔DUP1 · §47 ①〕resume 的 sid 是标识符：共享那一份判（前端那份删了，`设计/90 §3` 判据 2）。
+            // 〔§47 ①〕resume 的 sid 是标识符：共享那一份判（前端那份删了）。
             if !shell_quote_core::session_id_ok(sid) {
                 return Err(Refusal::IdentifierRefused {
                     slot: IdentifierSlot::Sid,
@@ -490,18 +490,18 @@ pub fn render_ccm_invocation(
             tokens.push("--resume".into());
             tokens.push(sid.to_string());
         }
-        // 〔V153 · 用户 09-27〕起新会话是 ccm 自己的位置词 `new`，写在 `--` 右边第一个（`ccm -- new …`）。
+        // 〔用户 09-27〕起新会话是 ccm 自己的位置词 `new`，写在 `--` 右边第一个（`ccm -- new …`）。
         Action::New => ours.push("new".into()),
         _ => {}
     }
-    // 〔DUP1 · §47 ①〕身份标记同一条 sid 规则（`--ccm-sid=` 由下面的 identity 维度吐）。
+    // 〔§47 ①〕身份标记同一条 sid 规则（`--ccm-sid=` 由下面的 identity 维度吐）。
     if let Some(s) = spec.ccm_sid.filter(|s| !shell_quote_core::session_id_ok(s)) {
         return Err(Refusal::IdentifierRefused {
             slot: IdentifierSlot::CcmSid,
             value: format!("{s:?}"),
         });
     }
-    // 〔DUP1 · §47 ①〕账号名（`--account <名>` 由下面的 account 维度吐）：与建账号的那个工具逐字同的那一份判。
+    // 〔§47 ①〕账号名（`--account <名>` 由下面的 account 维度吐）：与建账号的那个工具逐字同的那一份判。
     if let CliAccount::Named { name: Some(n) } = spec.account {
         if !shell_quote_core::account_name_ok(n) {
             return Err(Refusal::IdentifierRefused {
@@ -510,7 +510,7 @@ pub fn render_ccm_invocation(
             });
         }
     }
-    // 〔DUP1 · §47 ①〕模型名（`--model <名>` 由下面的 model 维度吐）：共享那一份判，前端那份删了。
+    // 〔§47 ①〕模型名（`--model <名>` 由下面的 model 维度吐）：共享那一份判，前端那份删了。
     if let Some(m) = spec.model.filter(|m| !shell_quote_core::model_name_ok(m)) {
         return Err(Refusal::IdentifierRefused {
             slot: IdentifierSlot::Model,
@@ -518,7 +518,7 @@ pub fn render_ccm_invocation(
         });
     }
     if let Container::Tmux { name, .. } = spec.container {
-        // 〔DUP2 · J6 · `INVARIANTS §47` ①〕`--tmux=<名>` 是要**新建**的会话名：新建那一条（`gate_rules`，全仓唯一一份）。
+        // 〔`INVARIANTS §47` ①〕`--tmux=<名>` 是要**新建**的会话名：新建那一条（`gate_rules`，全仓唯一一份）。
         //   今天之前这条路零判定、只靠界面那道 TS 谓词 —— 那份删了，这里接上（「对端会校验」不是理由）。
         if crate::control::gate_rules::new_tmux_name_issue(name).is_some() {
             return Err(Refusal::IdentifierRefused {
@@ -529,7 +529,7 @@ pub fn render_ccm_invocation(
         ours.push(format!("--ccm-tmux={name}")); // 用户 09-26：ccm 的 tmux 旗标改名（claude 自己有 `--tmux`）
     }
 
-    // 〔V151〕维度吐的旗标分两半：`--model` 是 claude 的（V138），其余（身份 · 账号）是 ccm 的。
+    // 维度吐的旗标分两半：`--model` 是 claude 的，其余（身份 · 账号）是 ccm 的。
     for (dim, flags) in dimension_flags(spec, caps)? {
         if dim == "model" {
             tokens.extend(flags);
@@ -539,7 +539,7 @@ pub fn render_ccm_invocation(
     }
 
     if let Some(cwd) = spec.cwd {
-        // 〔TL3 · §47 ②〕工作目录是自由文本路径：形式 ＋ 拒绝集（与载荷那条路同一个判定 `shell_quote_core::posix_free_path_ok`）。
+        // 〔§47 ②〕工作目录是自由文本路径：形式 ＋ 拒绝集（与载荷那条路同一个判定 `shell_quote_core::posix_free_path_ok`）。
         if !shell_quote_core::posix_free_path_ok(cwd) {
             return Err(Refusal::FreeTextRefused {
                 slot: FreeTextSlot::Cwd,
@@ -553,7 +553,7 @@ pub fn render_ccm_invocation(
         ours.push("--launcher".into());
         ours.push(spec.launcher.to_string());
     }
-    // 〔TL3 · §47 ②〕透传给 agent 的参数是自由文本：拒绝集只收 NUL / CR / LF（元字符交给 `argv` 里那一处 quote）。
+    // 〔§47 ②〕透传给 agent 的参数是自由文本：拒绝集只收 NUL / CR / LF（元字符交给 `argv` 里那一处 quote）。
     if let Some(a) = spec
         .args
         .iter()
@@ -568,7 +568,7 @@ pub fn render_ccm_invocation(
     Ok(join_v151(tokens, ours))
 }
 
-/// 〔V151〕`<ccm> <交给 claude 的…> -- <ccm 自己的…>`：ccm 那一半空、而 claude 那一半里没有 `--` ⇒ 不写 `--`；
+/// `<ccm> <交给 claude 的…> -- <ccm 自己的…>`：ccm 那一半空、而 claude 那一半里没有 `--` ⇒ 不写 `--`；
 /// claude 那一半里有它自己的 `--` ⇒ 末尾照样补一个（按最后一个 `--` 切，空的 ccm 部分也得标出来）。
 fn join_v151(mut claude: Vec<String>, ours: Vec<String>) -> String {
     if !ours.is_empty() || claude.iter().skip(1).any(|a| a == "--") {
@@ -582,7 +582,7 @@ fn join_v151(mut claude: Vec<String>, ours: Vec<String>) -> String {
 // P1（2026-08-03 三视角复盘）：**本文件此前一条自测都没有。**
 //
 // 为什么必须补，而不是靠跨语言夹具：当时挡「两侧一起错」的是 TS 那份渲染器的自测，
-// 而它**排期在 U8c-3 被删**（〔LR1〕已删）。那天一到，跨语言对拍就不再有另一种语言 ——
+// 而它**排期在 U8c-3 被删**（已删）。那天一到，跨语言对拍就不再有另一种语言 ——
 // 「渲染器该做什么」这件事的独立说法只剩这里这批手写期望（＋ 夹具里手写的 `out`）。
 //
 // 补之前先量：对本文件逐条造变异、只跑现有门禁（当时那个 crate 15 条 + monitor 侧

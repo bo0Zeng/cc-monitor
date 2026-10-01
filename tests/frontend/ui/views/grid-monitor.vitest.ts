@@ -103,7 +103,7 @@ describe("F91 summarizeSessions", () => {
       snap({ origin: LOCAL_ORIGIN, state: ENDED, runningAgents: 0 }),
       snap({ origin: "h1", state: LIVE, runningAgents: 1 }),
       snap({ origin: "h1", state: LIVE, runningAgents: 0 }),
-      // 〔U4〕可重连：claude 已经没了 ⇒ 按活性不算活（改两轴之前它借着 status: live 被算进来）
+      // 可重连：claude 已经没了 ⇒ 按活性不算活（改两轴之前它借着 status: live 被算进来）
       snap({ origin: "h1", state: RECONNECTABLE, runningAgents: 0 }),
     ]);
     expect(r).toEqual({ machines: 2, liveSessions: 3, runningAgents: 3 });
@@ -437,9 +437,9 @@ describe("F91 GridMonitorView interval 生命周期", () => {
   });
 });
 
-// ═══ 〔UP1 · `设计/10 §3.4` C2〕机器总览按行更新：1Hz 那一拍只写真变了的格子 ═══════════════════
+// ═══ 机器总览按行更新：1Hz 那一拍只写真变了的格子 ═══════════════════
 // 量具：`MutationObserver`（subtree ＋ attributes ＋ childList ＋ characterData）收到的记录条数，
-// `takeRecords()` 同步取。判据全是相等（设计与读数住 `调研/第四波记录/UP1.md §2`）。
+// `takeRecords()` 同步取。判据全是相等（设计与读数住）。
 describe("UP1 机器总览按行更新", () => {
   /** 三台机器、七个会话；`snapshotSessions` 每拍都返回**新对象**（与 `TabManager.snapshotSessions` 同形）。 */
   const base = (): GridSessionSnapshot[] => [

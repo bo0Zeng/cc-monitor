@@ -8,7 +8,7 @@ use crate::copy::{is_copyable, COPY_LABEL};
 use crate::corpus;
 use crate::source::Row;
 
-/// 1280×800，与 `真相源/99` 那趟原型同一个视口。
+/// 1280×800，与那趟原型同一个视口。
 fn screen() -> egui::Vec2 {
     egui::vec2(1280.0, 800.0)
 }
@@ -54,7 +54,7 @@ fn the_row_count_we_materialize_does_not_depend_on_how_many_rows_there_are() {
     assert_eq!(big.total_rows, 640_413);
 }
 
-/// 🔴〔第四刀〕**命中那一摞也得是虚拟的。**
+/// 🔴**命中那一摞也得是虚拟的。**
 ///
 /// 形状照上面那条办（**恒等**断言，不是地板）：50 条与 20 000 条，
 /// 物化行数必须一模一样。
@@ -62,12 +62,12 @@ fn the_row_count_we_materialize_does_not_depend_on_how_many_rows_there_are() {
 /// ⚠ 为什么不能靠「`limit` 默认 1000 所以条数有界」偷懒用 `show`：
 /// 那个上界住 `src/doc/IPC-PROTOCOL.md §10`（**后端那一侧的默认值**），
 /// 不是这一侧给的 —— 哪天调用方开始发一个大 `limit`，这一格就当场变成
-/// `真相源/99 §2.3` 那张表里 100 000 行 / 83.6 ms 那一格。
+/// 那张表里 100 000 行 / 83.6 ms 那一格。
 #[test]
 fn the_hit_list_materializes_the_same_few_rows_no_matter_how_many_hits() {
     let ctx = egui::Context::default();
     let hits = |n: usize| -> Vec<String> { corpus::synth_paths(n, 0x24F4).into_iter().collect() };
-    // 🔴〔第五刀〕收数口是 `HitTally`，**不是** `RenderTally` —— 那个类型里
+    // 🔴收数口是 `HitTally`，**不是** `RenderTally` —— 那个类型里
     //    连一个「谁被点了」的字段都没有，理由逐条住它的头注（命中行上那个
     //    下标索引的是另一摞东西，而第五刀把代价从「复制错地方」升级成「删错东西」）。
     let run = |hs: &[String]| -> HitTally {
@@ -109,7 +109,7 @@ fn a_non_virtual_scroll_area_materializes_every_single_row() {
     let ctx = egui::Context::default();
     let _ = render_headless(&ctx, &rows(64), screen(), 0.0);
 
-    // 10 万行走不虚拟的那条路，`真相源/99` 量到 83.6 ms/帧 —— 这里只数行数，不计时。
+    // 10 万行走不虚拟的那条路，量到 83.6 ms/帧 —— 这里只数行数，不计时。
     let n = 100_000;
     let ctrl = render_headless_nonvirtual(&ctx, &rows(n), screen());
     assert_eq!(
@@ -272,7 +272,7 @@ fn only_the_copyable_rows_get_a_copy_button_painted() {
     );
 
     let want = rows.iter().filter(|r| is_copyable(r)).count();
-    // 〔W5-FILES〕目录能复制了（`设计/60 §6.2`）⇒ 2 → 3（目录那一行多一颗）。
+    // 目录能复制了⇒ 2 → 3（目录那一行多一颗）。
     assert_eq!(want, 3, "语料自己变了：能复制的行数应当是 3");
     let got = rects_of(&painted, COPY_LABEL.as_str());
     assert_eq!(
@@ -307,7 +307,7 @@ fn clicking_the_copy_button_comes_back_as_that_rows_index() {
     let buttons = rects_of(&painted, COPY_LABEL.as_str());
     assert_eq!(buttons.len(), 3, "没找到那三颗按钮，下面按坐标点没意义");
 
-    // 第三颗 = 第 2 行（`two.bin`；第 0 行是目录、第 1 行是 `one.bin` —— 〔W5-FILES〕目录那一行也有一颗了）。
+    // 第三颗 = 第 2 行（`two.bin`；第 0 行是目录、第 1 行是 `one.bin` —— 目录那一行也有一颗了）。
     let pos = buttons[2].center();
     let _ = render_headless_with_events(
         &ctx,
@@ -373,14 +373,14 @@ fn human_size_is_short_enough_for_a_column() {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// 🔴〔第四刀 2026-09-20〕**真事件**：真 X 事件走完整条路，点得动那颗按钮
+// 🔴**真事件**：真 X 事件走完整条路，点得动那颗按钮
 // ════════════════════════════════════════════════════════════════════════
 //
 // # 为什么这一格最要紧
 //
 // 今天这一面**所有**交互判据喂的都是**合成的 egui 事件**
 // （`render_headless_with_events` 那条路装一份 `RawInput` 直接塞进去）。
-// 而 `真相源/99` 里第二刀与第三刀各逮到一次「控件画得出、`clicked()` 恒 false」：
+// 而里第二刀与第三刀各逮到一次「控件画得出、`clicked()` 恒 false」：
 //
 // - `§9.1`：`ui.horizontal(…)` 那个布局作用域响应上再 `interact` 出来的一份，
 //   三个数全 false；
@@ -395,7 +395,7 @@ fn human_size_is_short_enough_for_a_column() {
 // ⇒ 本段把它跑一趟：**真 Xvfb ＋ 真 XTEST 注入的鼠标事件 ＋ 真 winit ＋
 // 生产那个 `show_file_rows`**，从生产那个 `RenderTally` 里读回「认出来的是哪一个控件」。
 //
-// # 🔴 被测对象仍然**只有一份**（这一条是承重的，同 `真相源/99 §8.5` 那条教训）
+// # 🔴 被测对象仍然**只有一份**（这一条是承重的，同那条教训）
 //
 // 本段那个 `eframe::App` **只做两件事**：调生产那个 `show_file_rows`（参数逐字同
 // `render_headless_with_events_and_text` 里那一行）· 把生产那个 `RenderTally` 抄到
@@ -414,7 +414,7 @@ fn human_size_is_short_enough_for_a_column() {
 // - **真 GPU / 字体回落 / DPI / 合成器四样一个都买不到**（逐格住台架头注）。
 //   本段还**额外**要求缩放因子恰好是 1 —— 不是 1 就报「这一格判不了」，
 //   因为按钮的坐标是拿另一把尺子（合成台架）量的，两把尺子必须同轴。
-// - **它不量帧时也不量内存**：`真相源/99` 那些数是另一个分母。
+// - **它不量帧时也不量内存**：那些数是另一个分母。
 // - **真物理鼠标买不到**：XTEST 注进去的是真 X 事件，但按下那一刻的
 //   抖动、加速曲线、触控板的手势合成，这里一样都没有。
 // - **Windows 一趟没跑过**（本族整条 `cfg(not(windows))`）。
@@ -442,7 +442,7 @@ struct RealEventProbe {
     /// 🔴 它存在的理由是**归因**：上面那两个数是「控件收到了吗」，
     /// 这两个是「事件到没到 egui」。一条真事件路上失效点有两处
     /// （X → winit → egui 那一段 · egui 的命中测试那一段），
-    /// 只量后一个的话红了说不出是哪一段坏了 —— `真相源/99 §9.1`
+    /// 只量后一个的话红了说不出是哪一段坏了 ——
     /// 那趟逐帧现打就是这么把病根从「headless 收不到事件」改判成
     /// 「那个 id 没进到能被命中的那一档」的。
     input_clicks: u32,
@@ -501,7 +501,7 @@ impl eframe::App for RowProbeApp {
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
         }
         // 🔴 **连续画**：驱动线程点完之后要能立刻读到那一帧的读数。
-        //    egui 默认只在有事发生时画下一帧（`真相源/99 §9.6` 那条教训同族），
+        //    egui 默认只在有事发生时画下一帧（那条教训同族），
         //    而这里读数是隔着线程取的 ⇒ 台架自己负责把帧推起来。
         //    ⚠ 这是**台架**的选择，不是生产的行为，别读成「生产在连续画」。
         ctx.request_repaint();
@@ -554,7 +554,7 @@ fn xvfb_worker_real_pointer_events_on_a_row() {
         "合成台架上没量到那三颗按钮 —— 落点算不出来，这一格判不了"
     );
     assert_eq!(names.len(), 1, "合成台架上没量到那一行的名字 —— 同上");
-    // `mixed_rows` 里能复制的是第 0、1、2 行（〔W5-FILES〕目录也能复制）⇒ 第三颗按钮是第 2 行的。
+    // `mixed_rows` 里能复制的是第 0、1、2 行（目录也能复制）⇒ 第三颗按钮是第 2 行的。
     let copy_at = buttons[2].center();
     let name_at = names[0].center();
     xvfb::emit("b.copy_at", format!("{:.1},{:.1}", copy_at.x, copy_at.y));
@@ -759,7 +759,7 @@ fn scenario_b() -> &'static super::testing::xvfb::ChildRun {
 /// 而实景那一趟点的是**根坐标**。中间那两步换算只有在
 /// 「真窗口的 `viewport_rect` == 量按钮时那张屏」且「缩放恰好 1」时才成立。
 ///
-/// ⚠ 不成立就报「这一格判不了」，**不报「过了」** —— 同 `真相源/99 §9.6`
+/// ⚠ 不成立就报「这一格判不了」，**不报「过了」** —— 同
 /// 那条口径（那把尺子在这台机器上量不了，就说出来）。
 #[cfg(not(windows))]
 #[test]
@@ -806,7 +806,7 @@ fn the_real_window_and_the_synthetic_ruler_share_one_coordinate_system() {
 /// 🔴 **一次真 X 鼠标点击打在那颗「复制」上，回来的是那一行的下标。**
 ///
 /// 这是第三刀那条真缺陷（整行那块命中矩形把按钮吃掉）的**实景**钉子：
-/// 此前它只被合成事件钉着，`真相源/99 §10.1` 逐字写着
+/// 此前它只被合成事件钉着，写着
 /// 「真机上鼠标点那颗『复制』会不会触发 —— **判不了**」。
 /// ⇒ 这一格从此有数：真 X 事件 → winit → egui → 生产那个行画函数。
 ///
@@ -844,7 +844,7 @@ fn a_real_pointer_click_on_the_copy_button_comes_back_as_that_row() {
 ///
 /// # 这一条刻意拆成「买到的」与「判不了的」两半，不合成一个绿
 ///
-/// `真相源/99 §10.4` 刀 1 的读数逐字记着「**它只钉红了一侧**，那正是要的证据」：
+/// 刀 1 的读数逐字记着「**它只钉红了一侧**，那正是要的证据」：
 /// 整行那块矩形拉满 ⇒ 只有按钮那条红；整行那块干脆取消 ⇒ 只有这条红。
 /// ⇒ 这一侧本来该由「真双击回那一行」来钉。**今天钉不上**，理由在下面。
 ///
@@ -1001,7 +1001,7 @@ fn the_rig_leaves_no_lock_behind_when_it_is_dropped() {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// 🔴〔第五刀 2026-09-21〕行上那三颗**写**按钮
+// 🔴行上那三颗**写**按钮
 // ════════════════════════════════════════════════════════════════════════
 
 /// 🔴 **相等断言**：三颗写按钮各自的处数 == `is_writable` 说的行数。
@@ -1041,7 +1041,7 @@ fn only_the_writable_rows_get_the_three_write_buttons_painted() {
         assert!(got[0].center().y < got[1].center().y);
         assert!(got[1].center().y < got[2].center().y);
     }
-    // 〔W5-FILES〕目录那一行：三颗写按钮**有**，「复制」**也有**了（后端 `recursive: true`，`设计/60 §6.2`）。
+    // 目录那一行：三颗写按钮**有**，「复制」**也有**了（后端 `recursive: true`）。
     //   在这份语料上两个判准重合（有损名那一行没带字节，两边都不给）；分得开的那一格住 `writeops_tests`（带字节的有损名能写、不能复制）。
     let copies = rects_of(&painted, COPY_LABEL.as_str());
     assert_eq!(copies.len(), 3, "能复制的行数应当是 3");
@@ -1171,7 +1171,7 @@ fn making_way_for_four_buttons_does_not_kill_the_rest_of_the_row() {
     assert_eq!(second.chmod_clicked, None, "点名字竟然算成点了「权限」");
 }
 
-/// 🔴〔`P25` 2026-09-22〕**号被别人抢走时，台架不许拿着别人的屏回来。**
+/// 🔴**号被别人抢走时，台架不许拿着别人的屏回来。**
 ///
 /// # 这一条钉的是残余那条 flake 的病根
 ///

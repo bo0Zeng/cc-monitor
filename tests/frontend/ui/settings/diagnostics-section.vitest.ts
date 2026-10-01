@@ -13,7 +13,7 @@ const { setDiag, restartHint, getDiag, logInfo, opened } = vi.hoisted(() => ({
   setDiag: vi.fn(),
   restartHint: { value: "none" as "none" | "needs_restart" },
   getDiag: { fail: null as Error | null },
-  // 〔NT2 · S1〕`get_log_file_info` 的应答（生成物 `LogFileInfo` 的形状）。
+  // `get_log_file_info` 的应答（生成物 `LogFileInfo` 的形状）。
   logInfo: {
     value: {
       dir: "/d/logs",
@@ -79,7 +79,7 @@ describe("诊断分节 → 「需重启」常驻条", () => {
     restartHint.value = "needs_restart";
     await toggleLogEnabled();
     expect(setDiag, "先确认 save 真的发出去了（否则下面断言是空转）").toHaveBeenCalled();
-    // `70 §10.3` 改名：块叫「日志」、那一项叫「日志文件」⇒ 条子上的理由跟着改。
+    // 改名：块叫「日志」、那一项叫「日志文件」⇒ 条子上的理由跟着改。
     expect(restartReasons()).toContain("日志文件开关");
   });
 
@@ -91,7 +91,7 @@ describe("诊断分节 → 「需重启」常驻条", () => {
   });
 });
 
-// `70 §11.4` 那处真缺陷 ＋ `§8` 判据 #2：读不到当前设置时，三个控件**不许**顶着构造期默认值给人点。
+// 那处真缺陷 ＋ `§8` 判据 #2：读不到当前设置时，三个控件**不许**顶着构造期默认值给人点。
 describe("日志分节：读不到当前设置 ⇒ 说出来，并且三个控件读回来之前不可交互", () => {
   beforeEach(() => {
     getDiag.fail = null;
@@ -136,7 +136,7 @@ describe("日志分节：读不到当前设置 ⇒ 说出来，并且三个控�
   });
 });
 
-// 〔NT2 · S1〕守的要求（住址，纪律 19）：`设计/15 §4.7 S1`「本机 · 脱离常驻载体 | null | **仍开**」·
+// 守的要求（住址，纪律 19）：「本机 · 脱离常驻载体 | null | **仍开**」·
 //   主会话 4C 第二批裁（逐字）「脱离载体的常驻后端 stderr 落本机日志文件（有上限、滚动），设置页『日志』里看得到」。
 describe("日志分节：本机后端的输出（NT2 · S1）", () => {
   beforeEach(() => {

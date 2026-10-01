@@ -43,7 +43,7 @@
 //!
 //! `S6#§0` 与 PM 交底都写「去重之后只是 **9 种能力**」。**实测那 9 种只覆盖 27 处里的 21 处**：
 //! 它们漏掉的正是 `control/resolve_query.rs` 的 6 处 —— 也就是 PM 那个 21/27 计数错误的**残留**
-//! （`PR-S5 §3.5` 已经点名要求补，件文件的能力清单没跟着补）。resume 那 3 件事
+//! （已经点名要求补，件文件的能力清单没跟着补）。resume 那 3 件事
 //! （默认命令 · 命令形 · 会话名前缀）**各是一种能力**，与 `会话文件命名` 同一个粒度。
 //! ⇒ 反推出来的接口面是 **12 种能力 / 27 处**，逐条对账住
 //! `agent_locality_guard::tests::NEW_AGENT_BLOCKERS`。
@@ -148,7 +148,7 @@ pub(crate) fn cmdline_may_be_agent(lower: &str) -> bool {
     lower.trim().is_empty() || lower.contains("fakeagent")
 }
 
-// 〔`设计/50` 删用量〕**原「能力 9：用量聚合」整条去掉了。**
+// 〔删用量〕**原「能力 9：用量聚合」整条去掉了。**
 // 它模拟的是「通用层有没有地方收这个能力」，而通用层那一处（`observe/usage_query.rs`）
 // 随用量 ② 轴整轴退役 ⇒ **这一格没有对面了**：留着它会让 `agent_locality_guard` 的
 // 「能力数 == 卡点数」两个方向漂开（那条判据逐字：「少一种 = 要么那种能力真的收进接口了…」）。
@@ -310,7 +310,7 @@ pub(crate) enum Stop {
 /// 因此本函数走得通，**只证明这 12 种能力凑得出一条完整的路**（`D4`：接口面够不够用），
 /// **不证明**通用层能用它们。后者今天不成立，差距逐条登记在
 /// `agent_locality_guard::tests::NEW_AGENT_BLOCKERS`（27 处）。
-/// 〔SH1 · V137〕假 agent 的 MCP 读面（夹具家那一份布局）：只认 `<项目>/.fake-mcp.json` 的 `servers` 表，一律记成 project 段。
+/// 假 agent 的 MCP 读面（夹具家那一份布局）：只认 `<项目>/.fake-mcp.json` 的 `servers` 表，一律记成 project 段。
 /// 它要证的是「通用层经注册表那一格读 MCP、不认识任何一家的文件名」—— 判据 `fake_tests.rs::the_fake_agents_mcp_face_is_read_through_the_generic_layer`。
 pub(crate) const MCP: crate::agents::McpFace = crate::agents::McpFace { read: read_mcp };
 
@@ -357,12 +357,12 @@ pub(crate) fn walk(caps: &FakeCaps, fixture_home: &Path) -> Result<Vec<&'static 
         kind: AGENT_KIND,
         // 最小假 agent 没有账号维度 —— 它要证的是「通用层零改动」，不是账号。
         account_env: None,
-        // 〔AS2〕最小假 agent 没有资产面（它要证的是「通用层零改动」，不是资产）。
+        // 最小假 agent 没有资产面（它要证的是「通用层零改动」，不是资产）。
         assets: None,
         history: None,
-        // 〔NT2 · V25〕最小假 agent 没有默认上游（未登记 ⇒ 上游选择拒）。
+        // 最小假 agent 没有默认上游（未登记 ⇒ 上游选择拒）。
         upstream: None,
-        // 〔SH1 · V137〕MCP 读面同拍长一格：假 agent 的布局是 `<项目>/.fake-mcp.json` 的 `servers` 表（见 [`MCP`]）。
+        // MCP 读面同拍长一格：假 agent 的布局是 `<项目>/.fake-mcp.json` 的 `servers` 表（见 [`MCP`]）。
         mcp: Some(MCP),
         home: home_fn,
         footprint: None,

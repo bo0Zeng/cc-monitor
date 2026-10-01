@@ -16,7 +16,7 @@
 # kind	拦停	敲门	阀门	注入模板(T1)	敲门模板(T2)
 urgent	yes	yes	acl,rate,loop	🔴 紧急:{from} 要你先看这条,先处理它再结束本轮:\n{body}	🔴 cc-bus 紧急: {from} 有消息给你,运行 cc-recv 立刻读
 msg	yes	yes	acl,rate,dedup,loop	你收到新的 cc-bus 消息,请先处理完再结束本轮:\n{body}	🔔 cc-bus: 你有来自 {from} 的新消息,运行 cc-recv 读取并按内容处理
-# 保活(设计 95 §3bis):拦停**留**(目的就是别让它结束本轮)· 敲门**关**(不往屏幕打字)·
+# 保活:拦停**留**(目的就是别让它结束本轮)· 敲门**关**(不往屏幕打字)·
 # 去重**关**(保活文本按定义重复,开着第二次就被静默 COALESCE 掉)。调用方见 examples/cc-keepalive。
 keepalive	yes	no	acl,rate,loop	(cc-bus 保活 · 来自 {from})手上的活还没收尾就接着做,别结束本轮;真做完了就简短说一句做完了什么。\n{body}	-
 fyi	no	no	acl,rate,dedup,loop	-	-

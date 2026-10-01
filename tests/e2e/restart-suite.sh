@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# auto-e2e F-E3(命令级整合):换号重启编排（#68/#69）——`compact → kill → resume(新账号)` 序列（〔V154〕不再键入 /exit）+
+# auto-e2e F-E3(命令级整合):换号重启编排（#68/#69）——`compact → kill → resume(新账号)` 序列（不再键入 /exit）+
 # resume 落**新账号的 CLAUDE_CONFIG_DIR** + §5.2 失败语义。驱动**真源** src/frontend/ui/account-restart.ts
 # `restartWithAccount`（经 restart-cmd-driver.ts + restart-shims/ 把 Tauri IPC 边界重定向到真 tmux +
 # fake-claude,见那两个文件头注),逐边界断言编排真正发出的命令序列 / resume argv / 账号解析 / 失败语义。
@@ -96,7 +96,7 @@ make_live() {  # <sid> <dir>
 }
 
 # SEQ 里只保留主序列步（compact/escape/exit/kill/resume），空格连成一行。pipefail 安全。
-# 〔V154〕escape / exit 仍收进来：换号重启直接 kill，它俩再出现在序列里 ⇒ 下面的相等判据当场红。
+# escape / exit 仍收进来：换号重启直接 kill，它俩再出现在序列里 ⇒ 下面的相等判据当场红。
 seq_core() { { grep -E '^(compact|escape|exit|kill|resume|record account=.*)$' "$1" 2>/dev/null || true; } | paste -sd' ' -; }
 # 等某账号目录 argv.log 出现该 sid 的 --resume 行,回显之。超时非零。
 wait_argv() {  # <dir> <sid> <timeout-s>
@@ -114,7 +114,7 @@ session_alive() { tmux has-session -t "=$1:" 2>/dev/null && echo 1 || echo 0; }
 drive_restart() {
   local sid="$1" sess="$2" acct="$3" cf="$4" cfm="$5" seqf="$6" toastf="$7"; shift 7
   : >"$seqf"; : >"$toastf"
-  # 〔FIX4 · ④〕`CCM_ARRIVAL_ARGV_DIR`：事件替身（`restart-shims/event.mjs`）站在主窗口位置认「会话起来了」时看的那份 argv.log（新账号目录）。
+  # `CCM_ARRIVAL_ARGV_DIR`：事件替身（`restart-shims/event.mjs`）站在主窗口位置认「会话起来了」时看的那份 argv.log（新账号目录）。
   env "$@" CCM_SEQ_LOG="$seqf" CCM_TOAST_LOG="$toastf" CCM_ARRIVAL_ARGV_DIR="$NEW" \
     npx tsx "$DRV" restart devbox "$sid" "$CWD_DIR" "$sess" "$acct" "$FAKE" "$cf" "$cfm" 1
 }
@@ -146,7 +146,7 @@ make_live "$SID2" "$OLD" >/dev/null
 OUT2="$(drive_restart "$SID2" "$S2" znew 0 1 "$WORK/b2.seq" "$WORK/b2.toast")"
 CORE2="$(seq_core "$WORK/b2.seq")"
 echo "   seq(core): [$CORE2]"
-[ "$CORE2" = "kill resume record account=znew" ] && ok "B2 序列 = kill→resume→记账 znew（〔V154〕直接杀，不发 Esc / /exit）" || bad "B2 序列=[$CORE2]（期望 kill resume record account=znew）"
+[ "$CORE2" = "kill resume record account=znew" ] && ok "B2 序列 = kill→resume→记账 znew（直接杀，不发 Esc / /exit）" || bad "B2 序列=[$CORE2]（期望 kill resume record account=znew）"
 { grep -qx "compact" "$WORK/b2.seq" 2>/dev/null && bad "B2 不该发 /compact 却发了"; } || ok "B2 全程未发 /compact（未勾选 compact）"
 echo "$OUT2" | grep -q "^RESULT true$" && ok "B2 返回 true" || bad "B2 RESULT≠true"
 wait_argv "$NEW" "$SID2" 12 >/dev/null && ok "B2 resume argv 落新账号目录" || bad "B2 无 resume argv"
@@ -197,7 +197,7 @@ grep -qx "kill" "$WORK/b6.seq" && ok "B6 旧会话已真 kill（resume 前的破
 grep -qx "resume-fail" "$WORK/b6.seq" && ok "B6 resume 拉起失败（resume-fail 帧）" || bad "B6 未见 resume-fail"
 { grep -q "^record " "$WORK/b6.seq" && bad "B6 resume 没起来却**记账**（回归:钉错账号归属）"; } || ok "B6 未记账（没起来就不钉账号归属）"
 echo "$OUT6" | grep -q "^RESULT false$" && ok "B6 返回 false（不报成功）" || bad "B6 RESULT≠false"
-# 〔E2 尾 09-27〕标题从文案表取（`accountRestart.relaunch.failedTitle`）：这里原来逐字写着一句旧文案，
+# 标题从文案表取（`accountRestart.relaunch.failedTitle`）：这里原来逐字写着一句旧文案，
 #   文案改写（09-25 B3a）之后本格恒红、而编排本身是对的 —— 判的是「那一句 toast 出来了」，不是某一版措辞。
 T6="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["entries"]["accountRestart.relaunch.failedTitle"]["zh"])' "$REPO/src/shared/copy/table.json")"
 [ -n "$T6" ] && grep -qxF "TOAST $T6" "$WORK/b6.toast" && ok "B6 toast「$T6」（resume 没起来如实说）" || bad "B6 无 resume 失败 toast（期望标题「$T6」）"

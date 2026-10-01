@@ -1,4 +1,4 @@
-//! 住址：`设计/99 §2.3` WF2 报备「Windows 读往返时间（`platform/tcp_rtt.rs` 补 `SIO_TCP_INFO`）…发版后另排」· `设计/15 §3.3`「读得到这条 TCP 真实的握手往返 … ⇒ ≥ `COMPRESS_RTT_FLOOR_US`（5 ms）才压；读不到 ⇒ 压」。
+//! 报备「Windows 读往返时间（`platform/tcp_rtt.rs` 补 `SIO_TCP_INFO`）…发版后另排」· 「读得到这条 TCP 真实的握手往返 … ⇒ ≥ `COMPRESS_RTT_FLOOR_US`（5 ms）才压；读不到 ⇒ 压」。
 //!
 //! Windows 臂在本机只编不跑 ⇒ 它交给内核的那块内存必须与 SDK 逐字节同形：错一个偏移，`RttUs` 读到的是别的字段，
 //! 判准会被一个假往返时间带偏（不是「读不到」那种安全的错）。期望值取自 SDK 头文件（`mstcpip.h` · `ws2def.h`），不取自被测定义。

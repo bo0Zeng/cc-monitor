@@ -405,7 +405,7 @@ test("Phase G 反向：非白名单类型逐个被拒", () => {
   }
 });
 
-// 〔RENDER2 · J10〕「是不是 ESC 中断标记」只读 monitor 填的成品（`userText.interrupt`，规则住后端 `agents/claudecode/text.rs`），不看正文前缀：
+// 「是不是 ESC 中断标记」只读 monitor 填的成品（`userText.interrupt`，规则住后端 `agents/claudecode/text.rs`），不看正文前缀：
 // 正文是标记而成品说不是 ⇒ 不算；成品说是 ⇒ 算。
 test("J10 extractBranchRecord 的 isInterrupt 只读 userText.interrupt", () => {
   const mk = (text: string, interrupt: boolean) =>

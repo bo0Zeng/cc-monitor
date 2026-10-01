@@ -1,4 +1,4 @@
-//! 〔RM1c · 第四波〕`cc-monitor-panorama` 自己的判据。
+//! `cc-monitor-panorama` 自己的判据。
 //!
 //! 夹具仓是**合成的**两个小源文件（只有结构：两个函数、一次调用），不含任何会话正文。
 //! 引擎是真的（vendored `code-picture-core`，真解析、真 SQLite），一个 mock 都没有。
@@ -206,7 +206,7 @@ fn every_op_runs_on_a_real_engine_over_a_synthetic_repo() {
         assert!(got.is_ok(), "op `{op}` 在真引擎上失败：{got:?}");
         ran.push(op);
     }
-    // 〔RM1d〕只算不写的那几个：跑得通、回的是一份计划（落盘不归本程序）。
+    // 只算不写的那几个：跑得通、回的是一份计划（落盘不归本程序）。
     for (op, args) in [
         (
             "plan_add_annotation",
@@ -258,7 +258,7 @@ fn every_op_runs_on_a_real_engine_over_a_synthetic_repo() {
     assert_eq!(ran, table, "有 op 没在真引擎上跑过");
 }
 
-/// 要求住址：`设计/97 §1` 判据 CP1「人那一侧**不许出现任何图分析**……只许三件事：取 · 画 · 收」· `99 §1` V158「前端不算图（CP1）」。
+/// 判据 CP1「人那一侧**不许出现任何图分析**……只许三件事：取 · 画 · 收」· 「前端不算图（CP1）」。
 ///
 /// ★ 「距根几跳」由本程序给（前端只按它分组）：链 `a → b → c` 上，`a` 两跳内 = `b`@1 · `c`@2；
 /// `c` 一跳内只有调它的 `b`（调用方那一侧也算邻域）；根不进结果。真引擎、合成夹具。
@@ -283,7 +283,7 @@ fn the_neighborhood_says_how_many_hops_each_symbol_is() {
             json!({"symbol": id(sym), "depth": depth}),
         )
         .unwrap();
-        // 〔P7〕上游直出之后线上形状不变（`{root, reached: [{id, depth}]}`，前端按它分组）。
+        // 上游直出之后线上形状不变（`{root, reached: [{id, depth}]}`，前端按它分组）。
         let mut keys: Vec<String> = v.as_object().unwrap().keys().cloned().collect();
         keys.sort();
         assert_eq!(keys, ["reached", "root"], "{v}");
@@ -306,7 +306,7 @@ fn the_neighborhood_says_how_many_hops_each_symbol_is() {
 }
 
 /// 生成物 `types.ts` 的全文：① 上游线上类型（vendored `src/wire.ts` 原样）② 本程序自己的应答（ts-rs）。
-/// 〔P3 · 主会话 09-29 裁〕原先的 ③「本仓界面里的叫法」（给上游类型另起的旧名）删了：界面直接用上游的名字。
+/// 原先的 ③「本仓界面里的叫法」（给上游类型另起的旧名）删了：界面直接用上游的名字。
 fn types_ts() -> String {
     use ts_rs::TS;
     let cfg = ts_rs::Config::new().with_large_int("number");
@@ -315,7 +315,7 @@ fn types_ts() -> String {
     };
     let mut out = String::from(
         "// 生成物 —— 不许手改。由 `tests/panorama-engine/cli_tests.rs::the_frontend_types_are_generated_from_upstream_and_this_program` 写出。\n\
-         // 要求住址：`99 §1` V158「线上契约由上游给、本仓不手抄」。\n\
+         // 要求：「线上契约由上游给、本仓不手抄」。\n\
          // ① 上游 code-picture-core 的线上类型（vendored `src/wire.ts` 原样；ts-rs 从上游的 serde 属性写出，可选性随之过来）\n\
          // ② 全景小程序自己的应答（`src/panorama-engine/main.rs` 的 DTO，ts-rs）\n\n\
          // ── ① 上游（vendored code-picture-core `src/wire.ts`）──\n\n",
@@ -329,7 +329,7 @@ fn types_ts() -> String {
     out
 }
 
-/// 要求住址：`99 §1 V158`「本仓只管两件：**解耦**（线上契约由上游给、本仓不手抄 …）」· `97 §8`「要上游给的」②。
+/// 要求：「本仓只管两件：**解耦**（线上契约由上游给、本仓不手抄 …）」· 「要上游给的」②。
 ///
 /// ★ 前端 `src/frontend/ui/panorama/types.ts` == 上游导出的 schema ＋ 本程序自己应答的 ts-rs 声明 ＋ 别名（逐字节）。
 /// 漂了 ⇒ 当场重写并红一次（重跑即绿，把它一起提交）。手抄镜像与逐键对拍（`diagram-guards` G3 / G4）随之退役：
@@ -343,7 +343,7 @@ fn the_frontend_types_are_generated_from_upstream_and_this_program() {
         std::fs::write(&p, &want).unwrap();
         panic!("生成物 {p:?} 与上游 schema / 本程序的应答对不上，已重写 —— 重跑即绿，把它一起提交");
     }
-    // 正控：两段都真的有东西（上游 · 自己的各一个锚）；〔P3〕给上游类型另起的旧名一个都不许有。
+    // 正控：两段都真的有东西（上游 · 自己的各一个锚）；给上游类型另起的旧名一个都不许有。
     for anchor in [
         "export type Neighborhood = ",
         "export type PanoramaStatus = ",
@@ -368,7 +368,7 @@ fn the_frontend_types_are_generated_from_upstream_and_this_program() {
     );
 }
 
-/// 要求住址：`97 §8`「要上游给的」④「建索引进度回调（小程序写成进度行 → 插件口转订阅流）」· `99 §1` V158「长活要有进度」。
+/// 要求：「要上游给的」④「建索引进度回调（小程序写成进度行 → 插件口转订阅流）」· 「长活要有进度」。
 ///
 /// ★ 建索引边走边在 stderr 出进度行（`progress=<上游 IndexProgress>`），stdout 照旧恰一行答案。节流恒等：
 /// 150 个源文件 ⇒ 三个按文件走的阶段各恰 101 行（整百分比 0..=100 各一行，首行 `0/150`、末行 `150/150`），
@@ -423,7 +423,7 @@ fn building_the_index_reports_throttled_progress_lines_on_the_side() {
 
 /// ★ 写用户文件的那几样，本程序生产段**零调用**（只算不写，理由见头注）。
 ///
-/// 针 =（a）`Engine` 那六个写方法的**方法调用形**（`.add_annotation(` …）——〔RM1d〕只认方法形，
+/// 针 =（a）`Engine` 那六个写方法的**方法调用形**（`.add_annotation(` …）——只认方法形，
 /// 因为「算」那一层的名字 `edits::plan_add_annotation(` 里含着裸名；（b）上游**写盘那一层**的
 /// 模块路径（`annotations::apply` · `annotations::write` · `annotations::remove` · `docs::apply` ·
 /// `docs::write_doc_link` · `docs::remove_doc_link`，不带括号 ⇒ `use` 进来改名也逮得住）。
@@ -488,7 +488,7 @@ fn the_program_never_calls_an_engine_method_that_writes_user_files() {
     }
 }
 
-/// ★〔RM1d〕「算」那几个 op 对被分析的仓**一个字节都不写**，而且交回的 `before` 就是盘上原样
+/// ★「算」那几个 op 对被分析的仓**一个字节都不写**，而且交回的 `before` 就是盘上原样
 /// （起它的那一侧拿它当 `files-put` 的 CAS 期望 —— 不是原样，写口就会恒 `stale`）。
 ///
 /// ⚠ 不裸遍历目录（`scanning_guard_registry` 那条元判据）：比的是两份具体的文件 ＋ 批注目录在不在。
@@ -723,7 +723,7 @@ fn the_probe_speaks_the_plugin_dialect() {
         .collect();
     built.sort();
     assert_eq!(long, built, "长活档 == 独占写（建索引）那几个");
-    // 〔PANO〕写表：`plans=` == [`PLANS`]；键 == 「算」那几个（`Need::Repo`，两向）；之后要跑的 op 都在 op 表里。
+    // 写表：`plans=` == [`PLANS`]；键 == 「算」那几个（`Need::Repo`，两向）；之后要跑的 op 都在 op 表里。
     let plans = lines
         .iter()
         .find_map(|l| l.strip_prefix("plans="))
@@ -778,9 +778,9 @@ fn contract_json() -> String {
     format!("{}\n", serde_json::to_string_pretty(&v).unwrap())
 }
 
-/// 要求住址：`99 §1 V158`「本仓只管两件：**解耦**（线上契约由上游给、本仓不手抄 · 前端不算图（CP1）· 后端不带引擎知识）」。
+/// 要求：「本仓只管两件：**解耦**（线上契约由上游给、本仓不手抄 · 前端不算图（CP1）· 后端不带引擎知识）」。
 ///
-/// ★ 前端与判据读的那份生成物 == 本程序的 op 表（名 ＋ 档）＋ 真算出来的形状代号（`97 §6.5` FIX2 那一代）。
+/// ★ 前端与判据读的那份生成物 == 本程序的 op 表（名 ＋ 档）＋ 真算出来的形状代号（那一代）。
 /// 前端每问把 `shape` 带上、按档给期限；后端只拿它与 `--probe` 报的比，自己不存（`control/panorama.rs` 头注）。
 /// 漂了 ⇒ 当场按本程序重写并红一次（重跑即绿，把它一起提交）—— 同 ts-rs 生成物「改源不重生成就红」那条纪律。
 #[test]
@@ -795,7 +795,7 @@ fn the_frontend_contract_is_generated_from_this_program() {
     }
     assert_eq!(shape_code().len(), 16);
     assert!(vendor_pin().len() >= 7, "pin 没读到：{:?}", vendor_pin());
-    // 〔PANO〕形状代号摘进了自己的应答形状：本文件每个 `Serialize` 结构体都在 `own_dtos` 的样本里
+    // 形状代号摘进了自己的应答形状：本文件每个 `Serialize` 结构体都在 `own_dtos` 的样本里
     // （今后自己加的 DTO 漏登记 ⇒ 红）；分派里不许手搓 `json!({…})` 对象（那样的形状摘不进来）。
     let src = prod();
     let mut dtos: Vec<String> = Vec::new();
@@ -816,7 +816,7 @@ fn the_frontend_contract_is_generated_from_this_program() {
             derive_ser = false;
         }
     }
-    // 正控（恒等，不是地板）：〔P7〕`neighborhood` 的应答改由上游直出（`Neighborhood` / `Reached` 两个 DTO 删了）⇒ 4 → 2。
+    // 正控（恒等，不是地板）：`neighborhood` 的应答改由上游直出（`Neighborhood` / `Reached` 两个 DTO 删了）⇒ 4 → 2。
     assert_eq!(
         dtos,
         ["StatusReply", "DiagramReply"],
@@ -882,9 +882,9 @@ fn building_holds_the_store_exclusively_and_reads_share_it() {
     drop(w);
 }
 
-/// 〔W5-AUX · 97 #5〕**判据 CP5**：批注的状态是数据 —— **提议的批注 agent 看不见，批准之后才看得见**。
+/// 〔97 #5〕**判据 CP5**：批注的状态是数据 —— **提议的批注 agent 看不见，批准之后才看得见**。
 ///
-/// 要求住址：`设计/97 §2.3` 逐字「**判据 CP5**：批注的**状态**（谁写的 · 审没审 · agent 看不看得见）**必须是数据，不是文案**。
+/// 要求：「**判据 CP5**：批注的**状态**（谁写的 · 审没审 · agent 看不看得见）**必须是数据，不是文案**。
 /// 状态机住上游 `engine`（`propose_annotation` 写 `Proposed`、`approve_annotation` 改 `Active`、`annotations_for` 只回 `Active`）」；
 /// `§8` 逐字「CP5 在仓内没有执行链上的判据 —— 原先那条……真引擎判据住 monitor 的 `panorama_tests.rs`，随 monitor 摘引擎一起删了；……
 /// 要在小程序那一侧补一条（例如经 `list_annotations` / `node` 读回），还是认上游那条，没定」。本条就是「小程序那一侧补一条」
@@ -892,7 +892,7 @@ fn building_holds_the_store_exclusively_and_reads_share_it() {
 ///
 /// 读回走的是**小程序自己的 op**（真引擎、真侧车文件，零 mock）：人那一侧 = `list_annotations`（审批队列读它，含 `Proposed`）；
 /// agent 那一侧 = `node` 的 `annotations`（上游 `Engine::node` 里就是 `annotations_for`，只回 `Active`）。
-/// 写由测试照计划原样落盘 —— 同生产里「引擎只算、文件管理来写」（V110）那一步，小程序自己一个字节不写。
+/// 写由测试照计划原样落盘 —— 同生产里「引擎只算、文件管理来写」那一步，小程序自己一个字节不写。
 ///
 /// 反空真：同一个 `node` 查询在批准之后**必须看得见**它 —— 否则「看不见」可能只是那一格恒空；
 /// 另加一条人写的（`plan_add_annotation`，直接 `Active`）当场就要看得见。
@@ -943,7 +943,7 @@ fn a_proposed_annotation_stays_invisible_to_the_agent_until_it_is_approved() {
     };
 
     // ① agent 提议 ⇒ 人那一侧的队列里有它（Proposed），agent 那一侧看不见。
-    // 〔P7〕交的是**整个**符号 id，带同名消歧的 `@行号` 也照交 —— 截它归上游 `SymbolRef::of`（批注按段挂，`node` 查得回来才算数）。
+    // 交的是**整个**符号 id，带同名消歧的 `@行号` 也照交 —— 截它归上游 `SymbolRef::of`（批注按段挂，`node` 查得回来才算数）。
     let prop = call(
         "plan_propose_annotation",
         r,

@@ -1,5 +1,5 @@
 /**
- * 〔第四波 ST2 · `设计/70 §5.3` · 第四刀 步 14〕**机器页去停车场化：DAEMON 开关并进列表行。**
+ * **机器页去停车场化：DAEMON 开关并进列表行。**
  *
  * # 钉什么
  *
@@ -14,7 +14,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-vi.mock("../../../../src/frontend/ui/config", () => ({ loadConfig: vi.fn(), patchConfig: vi.fn(), patchConfigFrom: vi.fn() })); // 〔CFG1〕写口换成按键补丁
+vi.mock("../../../../src/frontend/ui/config", () => ({ loadConfig: vi.fn(), patchConfig: vi.fn(), patchConfigFrom: vi.fn() })); // 写口换成按键补丁
 vi.mock("@tauri-apps/api/core", () => ({
   Channel: class {
     onmessage: ((v: unknown) => void) | null = null;
@@ -38,9 +38,9 @@ vi.mock("../../../../src/frontend/ui/ipc/commands", () => ({
             return Promise.resolve([...ipc.registered]);
           case "backend_status":
             return Promise.resolve({ channel: true, pid: 7 });
-          // 〔C4c · 第四波 4B〕「退出行为」那一问改走通道：一发 `chan_call`（op = `exit-policy-read`），回后端那份字节。
+          // 「退出行为」那一问改走通道：一发 `chan_call`（op = `exit-policy-read`），回后端那份字节。
           case "chan_call": {
-            // 〔MIG-1〕「导入」下拉那一问（`ssh-config-aliases`）也经这一跳：回空清单。
+            // 「导入」下拉那一问（`ssh-config-aliases`）也经这一跳：回空清单。
             const op = (args as { op?: string } | undefined)?.op;
             const body =
               op === "ssh-config-aliases"
@@ -138,7 +138,7 @@ describe("〔ST2 · 步 14〕DAEMON 开关并进机器列表行", () => {
     const { sec } = await mount([mkH("甲机", "1.1.1.1")]);
     for (const cells of sec.element.querySelectorAll<HTMLElement>(".remote-machine-row [data-backend-cells]")) {
       expect(cells.querySelector(".backend-row-state")?.textContent).toBe("已连上（pid 7）");
-      expect([...cells.querySelectorAll('[data-col="ops"] button')].map((b) => b.textContent)).toEqual(["起", "停", "日志", "重新对齐"]); // 〔GAP1〕〔RESYNC〕
+      expect([...cells.querySelectorAll('[data-col="ops"] button')].map((b) => b.textContent)).toEqual(["起", "停", "日志", "重新对齐"]); //
       expect(cells.querySelector<HTMLInputElement>(".backend-row-kill input")!.disabled).toBe(false);
     }
     const asked = ipc.calls

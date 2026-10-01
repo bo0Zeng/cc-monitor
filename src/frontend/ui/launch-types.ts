@@ -1,7 +1,7 @@
 /**
  * F03（unify-launch）：LaunchPlan IR 的**类型**（纯类型叶子模块，零 import）。
  *
- * 〔LR2〕从 `launch-plan.ts` 拆出来：原先类型与 `buildLaunchPlan` 住一份，而 `launch-plan.ts` 值 import
+ * 从 `launch-plan.ts` 拆出来：原先类型与 `buildLaunchPlan` 住一份，而 `launch-plan.ts` 值 import
  * `launch-dimensions.ts`（维度注册表），`launch-dimensions.ts` 又回头 `import type { LaunchDimension }`
  * ⇒ 全图（含类型边）里一个环（FE1 立的 `tests/frontend/ui/import-cycle-guard.vitest.ts::TYPE_CYCLE_EXEMPT` 登记了它，归本路拆）。
  * 拆法照那一行写的：类型挪进叶子 —— 两边都只依赖这里，环断。IR 的设计说明仍住 `launch-plan.ts` 头注。
@@ -22,8 +22,8 @@ export type LaunchAction =
   | { kind: "attach"; name: string };
 
 /** F05：账号名已线通——`kind==="account"` 带 `configDir`（供载荷渲染器 `export
- *  CLAUDE_CONFIG_DIR=<dir>`，这个字段自 F03 起就有；〔LR2〕今天那一份在 Rust `payload.rs`）与**可选**的 `name`（供
- *  CLI 渲染器吐 `--account <名>`；〔LR1〕今天那一份在 Rust `ccm_invocation.rs`，经
+ *  CLAUDE_CONFIG_DIR=<dir>`，这个字段自 F03 起就有；今天那一份在 Rust `payload.rs`）与**可选**的 `name`（供
+ *  CLI 渲染器吐 `--account <名>`；今天那一份在 Rust `ccm_invocation.rs`，经
  *  `buildCliRenderRequest` 的 `account.name` 过线）。`name` 可选而非必需——
  *  只有 `configDir` 没有名字的调用方（`launch-requests.ts::plan*` 只收 `configDir` 的那些）
  *  必须继续能触发账号注入，不能因为"不知道名字"就整个降级成
@@ -57,13 +57,13 @@ export type LaunchAccount =
  * 渲染器按 kind 查表。于是"往 unset 里塞任意变量名"在类型层就不可表达。
  */
 /**
- * 🔴 **`export-rbind-token`（`设计/80 §8` 步 1，2026-09-23）：启动期令牌 `CCM_RBIND_TOKEN`。**
+ * 🔴 **`export-rbind-token`（2026-09-23）：启动期令牌 `CCM_RBIND_TOKEN`。**
  *
  * # 这一格买到什么
  *
  * `↗`（拉前那个动作）要的全部东西是一个映射 `sid → 本地 HWND`。今天这个映射靠
  * **tmux 会话级 option `@ccm_sid` ＋ `set-titles-string` 让 tmux 现算标题**送到本地
- * （`设计/80 §3` 的「五跳无回执」）—— 也就是说 tmux 在链条上**不是在"发现身份"，
+ * （「五跳无回执」）—— 也就是说 tmux 在链条上**不是在"发现身份"，
  * 是在"把身份广播到本地"**。`§8` 的裁决：广播这件事本仓另有一条有分帧、双向的通道
  * （后端 wire），缺的只是一个**本地已知的、可以 join 的键**。⇒ 这个变体就是那个键的载荷侧：
  * monitor 生成 32 hex → 随 `export CCM_RBIND_TOKEN=…` 进启动命令 → 被 agent 进程继承 →
@@ -79,9 +79,9 @@ export type LaunchAccount =
  * **它天然统一两条起法**：`EnvOp` 作用在**载荷**上、**容器无关** ⇒
  * `container:"tmux"` 与 `container:"none"`（`planResumeDirect`，直连登录 shell，
  * **今天 ↗ 做不到的那一档**）走的是同一组 `EnvOp`，两支都带上它。
- * 这不是额外要做的事，是这个设计的自动结果（`设计/80 §8.4` 那张表）。
+ * 这不是额外要做的事，是这个设计的自动结果。
  *
- * # 🔴 这一格**买不到**什么（`设计/80 §8.6 ③`：令牌必须当敏感数据对待）
+ * # 🔴 这一格**买不到**什么（令牌必须当敏感数据对待）
  *
  * 令牌会出现在远端的 `/proc/<pid>/environ`、可能出现在 `/proc/<pid>/cmdline`
  * （`export … ; claude …` 这种前缀形正是本仓的载荷形态）以及 shell 历史里。
@@ -91,7 +91,7 @@ export type LaunchAccount =
  * 那要求的是一条完全不同的通道（不经 environ、不经 cmdline、不经 shell 历史）。
  *
  * ⚠ 它也**买不到**「用户自己开终端裸 `ssh` 进去敲 `claude`」那一档的 `↗`
- * （没人给它注令牌）。那不是回归：`设计/80 §8.6 ①` 现打的结论是那一档本来就没 marker，
+ * （没人给它注令牌）。那不是回归：现打的结论是那一档本来就没 marker，
  * 令牌只把它从「失败且归因错」变成「失败且说得准」。
  *
  * # 为什么是窄变体，而不是顺手放宽成通用 export
@@ -99,14 +99,14 @@ export type LaunchAccount =
  * 同本文件头注第 3 条与上面 R04③ 的**同一条理由**：通用 `{op:"export";key;value}`
  * 等于给任何维度开一个「绕开校验往命令里塞任意变量名」的口子。
  * ⇒ 变体名把变量名钉死，`value` 侧再过 `[0-9a-f]{32}` 形状校验
- * （〔DUP2〕只有 Rust 一份：〔DUP3〕`shell_quote_core::rbind_token_ok`，渲染前那道闸 `payload.rs` 调它；前端铸币口按生成物造，
+ * （只有 Rust 一份：`shell_quote_core::rbind_token_ok`，渲染前那道闸 `payload.rs` 调它；前端铸币口按生成物造，
  * 「铸出来的都在形状里」由 `tests/frontend/ui/rbind-token-shape-parity.vitest.ts` 对 Rust 源码钉）。**先例是 `export-model`。**
  */
 export type EnvOp =
   | { kind: "export-config-dir"; value: string }
   | { kind: "export-model"; value: string } // F07：每账号默认模型（ANTHROPIC_MODEL）
-  | { kind: "export-rbind-token"; value: string } // 设计/80 §8：启动期令牌（CCM_RBIND_TOKEN）
-  | { kind: "export-relay-base-url"; value: string } // 〔RL1〕中转地址（ANTHROPIC_BASE_URL）：值只由后端 `relay_endpoint_for_launch` 答，前端原样放进来
+  | { kind: "export-rbind-token"; value: string } //：启动期令牌（CCM_RBIND_TOKEN）
+  | { kind: "export-relay-base-url"; value: string } // 中转地址（ANTHROPIC_BASE_URL）：值只由后端 `relay_endpoint_for_launch` 答，前端原样放进来
   | { kind: "unset-config-dir" } // 账号维度的"显式基座"：清 CLAUDE_CONFIG_DIR
   | { kind: "unset-nested-env" }; // 嵌套会话标记全套（键表由 AGENT_PROFILE.nestedEnvVars 定）
 
@@ -139,7 +139,7 @@ export interface LaunchPlan {
   container: LaunchContainer;
   cwd: string | null;
   env: EnvOp[];
-  /** 用户可配的原始启动器串 —— IR 只存意图。〔DUP1〕「能不能裸拼进载荷」只在 Rust 渲染侧判（`payload.rs::render_payload`
+  /** 用户可配的原始启动器串 —— IR 只存意图。「能不能裸拼进载荷」只在 Rust 渲染侧判（`payload.rs::render_payload`
    *  那道闸，判不过拒）；前端只把空白读成默认启动器（`remote-launch-run.ts::launcherOrDefault`），不再判字符集。 */
   launcher: string;
   args: string[];
@@ -153,7 +153,7 @@ export interface LaunchPlan {
  * 这三个字段是同一族东西——都是"修饰"（account 维度 + model 维度），此前却被摊成三个平级
  * 位置参数、在 4 个 `planXxx` + 5 个 `runXxx` 的**尾部逐字重复**。三个后果：
  *
- * 1. **MASTERPLAN §0.1 成功标准② 的"零改调用点"这一半**。那条标准要求"加一个新维度 =
+ * 1. ** 成功标准② 的"零改调用点"这一半**。那条标准要求"加一个新维度 =
  *    注册 dimension + CLI 加 flag + UI 加修饰项，零改 builder/renderer/调用点"。F07 做架构
  *    验收时渲染器主体确实零改，但 `modelOverride` 要从 UI 一路手动透传下来，于是 9 处签名
  *    同时改动（F07 的 commit message 自己记了这件事）。收进 bag 后，**其余 8 个函数签名与
@@ -164,7 +164,7 @@ export interface LaunchPlan {
  *    **但"零改 builder"那一半没达成，别把这里读成"只需三处"**（R03 Phase D 对抗审计指出，
  *    此前本注释确实这么写过）：`launch-requests.ts` 的 4 个 `planXxx` 仍要各改 2 行
  *    （解构 + ctx 字面量），`LaunchContext` 也要同步加字段；若新维度需要新的 `EnvOp` 种类，
- *    Rust `payload.rs` 的渲染还要加一个分支（〔LR2〕TS 那份兜底渲染器已删）。真要闭合这一半，得让 `LaunchContext`
+ *    Rust `payload.rs` 的渲染还要加一个分支（TS 那份兜底渲染器已删）。真要闭合这一半，得让 `LaunchContext`
  *    持有一个**纯透传子集**（只搬不需要解析的字段——绝不能把 `configDir`/`accountName` 也搬进去，
  *    那会让"未解析的原始字段"与"已解析的 `account` 判别联合"并存，未来某个维度读了原始字段
  *    就绕过 `accountOf` 的解析，正是 R11 那一族病）。未做，登记在案。
@@ -191,9 +191,9 @@ export interface LaunchModifiers {
   accountName?: string;
   /** F07：该账号配置的默认模型偏好（本机 `config.json`）。 */
   modelOverride?: string;
-  /** `设计/80 §8` 步 1：启动期令牌（`[0-9a-f]{32}`）。
+  /** 启动期令牌（`[0-9a-f]{32}`）。
    *
-   *  ✅ 〔`§8.7` 步 3 · 2026-09-23〕**墓碑** —— 这里原话是「**今天零生产产出者**……
+   *  ✅ 〔`§8.7` 步 3〕**墓碑** —— 这里原话是「**今天零生产产出者**……
    *  铸币口归 `§8.7` 步 3」。那句今天假了：铸币口落成了，唯一住址是
    *  `remote-launch-run.ts::mintRbindToken`（128 位 CSPRNG，拿不到就 throw、不回落）。
    *  **不传 = 诚实的没有**：五个「起 agent 进程」的执行器会在那里补一个，
@@ -215,7 +215,7 @@ export interface LaunchContext {
    *  `features/F07-per-account-model.md` §2 第1条：这个维度的默认态（不触发）就是用户的期望
    *  （该账号自身已配置好的默认模型），不是 F05 修的那种"沉默=意外身份切换"。 */
   modelOverride?: string;
-  /** `设计/80 §8` 步 1：这次拉起的启动期令牌（`[0-9a-f]{32}`）。`undefined` = 这次不带令牌
+  /** 这次拉起的启动期令牌（`[0-9a-f]{32}`）。`undefined` = 这次不带令牌
    *  （`RBIND_TOKEN_DIMENSION.applies` 据此判断）—— 而「不带」是**诚实的没有**，
    *  不是「有但说不出」：没令牌的会话 `↗` 就是不可用，`§8.5 ②` 要的正是这句准确的话。 */
   rbindToken?: string;
@@ -225,7 +225,7 @@ export interface LaunchContext {
  * 维度注册表的唯一契约。`apply` 就地改 `plan`（`env`/`args`/`identity` 等派生字段），
  * 绝不拼字符串——字符串化是渲染器的事（今天两份渲染器都在 Rust）。
  *
- * 〔LR1 · U8c-3〕这里原来还有两个可选成员 `cliFlags`（「这个维度在 `ccm …` 调用行里怎么说，
+ * 这里原来还有两个可选成员 `cliFlags`（「这个维度在 `ccm …` 调用行里怎么说，
  * `null` = 说不出 ⇒ 整条降级」）与 `requiredCaps`（R04②：能力要求下放到维度）。
  * 两者唯一的读者是 TS 那份 `ccm …` 渲染器，随它删了；同一件事今天只有一份：
  * `src/backend/control/launch_render/ccm_invocation.rs` 的维度表（`cli_flags` / `caps`，

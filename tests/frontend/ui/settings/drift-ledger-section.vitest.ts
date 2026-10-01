@@ -10,7 +10,7 @@ import { countUnit, faceTitle, formatEntry, formatReport } from "../../../../src
 import type { DriftFace, DriftFaceReport, ShownFace } from "../../../../src/frontend/ui/settings/drift-ledger-section";
 import { LOCAL_ORIGIN } from "../../../../src/frontend/ui/ipc/origin";
 
-/** 四个面：记录那两面由那台后端答（〔MOD〕`drift-report`），monitor 天生观测的两面是 `src/frontend/ui/generated/DriftFace.ts`。 */
+/** 四个面：记录那两面由那台后端答（`drift-report`），monitor 天生观测的两面是 `src/frontend/ui/generated/DriftFace.ts`。 */
 const FACES: Array<DriftFace | string> = [
   "unknown_record_type",
   "known_type_parse_failed",
@@ -108,13 +108,13 @@ describe("DriftLedgerSection（DOM）", () => {
     vi.doMock("../../../../src/frontend/ui/record-reads", () => ({ readRecordDrift: () => Promise.resolve([]) }));
     const { DriftLedgerSection } = await import("../../../../src/frontend/ui/settings/drift-ledger-section");
     const s = new DriftLedgerSection();
-    // `设计/70 §1.3 B`（步 2）：构造期**不再**发 I/O —— 这一块住「改动足迹」页，
+    // （步 2）：构造期**不再**发 I/O —— 这一块住「改动足迹」页，
     // 而落地页是「机器」。第一发由宿主在「这一页首次可见」时放行 ⇒ 这里显式叫一声。
     s.loadNow();
     document.body.appendChild(s.element);
     await new Promise((r) => setTimeout(r, 0));
     const text = s.element.textContent ?? "";
-    // 〔CP2b · CP1 裁〕「漂移账本」是自造概念名，对外叫「格式兼容记录」。〔FIX2 · 99 §2.1 ㉛②〕按文案键断言：
+    // 「漂移账本」是自造概念名，对外叫「格式兼容记录」。按文案键断言：
     //   取的是 `driftLedger.refresh.failed` 那一条（原因那一格是录音机的原话，这里只认它两边的固定部分）。
     const [head, tail] = copyText("driftLedger.refresh.failed", { e: "\u0000" }).split("\u0000");
     expect(head.length + tail.length).toBeGreaterThan(0);
@@ -124,7 +124,7 @@ describe("DriftLedgerSection（DOM）", () => {
   });
 
   it("有漂移时把键、计数、后果都渲染出来", async () => {
-    // 〔MOD〕记录那一面由那台后端答（`record-reads.ts::readRecordDrift`），monitor 那一本这里是空的。
+    // 记录那一面由那台后端答（`record-reads.ts::readRecordDrift`），monitor 那一本这里是空的。
     vi.doMock("../../../../src/frontend/ui/ipc/commands", () => ({
       commands: {
         drift_ledger_report: ({ origin }: { origin: string }) => Promise.resolve({ origin, faces: [] }),
@@ -143,7 +143,7 @@ describe("DriftLedgerSection（DOM）", () => {
     }));
     const { DriftLedgerSection } = await import("../../../../src/frontend/ui/settings/drift-ledger-section");
     const s = new DriftLedgerSection();
-    // `设计/70 §1.3 B`（步 2）：构造期**不再**发 I/O —— 这一块住「改动足迹」页，
+    // （步 2）：构造期**不再**发 I/O —— 这一块住「改动足迹」页，
     // 而落地页是「机器」。第一发由宿主在「这一页首次可见」时放行 ⇒ 这里显式叫一声。
     s.loadNow();
     document.body.appendChild(s.element);

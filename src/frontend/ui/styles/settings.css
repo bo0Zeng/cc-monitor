@@ -4,8 +4,8 @@
  * 加载它的窗口：**只有设置窗**（住址：各窗口 html 的 `<link rel="stylesheet">` 列表 ——
  * `index.html` / `settings.html` / `viewer.html`，那就是每个窗口的 CSS 清单，没有第二份）。
  *
- * 〔三入口拆分 · `设计/41 §9`〕本文件由基线 `src/frontend/ui/styles.css` 按「哪几个窗口的模块图里有它的建元素处」
- * 逐块切出来，**块内容逐字搬、块间保持原序**。切法与判据见 `设计/41` 末尾追加的那一节。
+ * 〔三入口拆分〕本文件由基线 `src/frontend/ui/styles.css` 按「哪几个窗口的模块图里有它的建元素处」
+ * 逐块切出来，**块内容逐字搬、块间保持原序**。
  */
 
 @layer components {
@@ -363,7 +363,7 @@ body.settings-window-mode .settings-panel {
 }
 
 /* S3（settings-ia）：机器列表行上的状态格子。
-   「上次动作的结论 + 它有多旧」——绝不伪装成实时（主计划 §1-2）。 */
+   「上次动作的结论 + 它有多旧」——绝不伪装成实时。 */
 .remote-machine-status {
   display: inline-flex;
   flex-wrap: wrap;
@@ -492,7 +492,7 @@ body.settings-window-mode .settings-panel {
   text-decoration: underline;
 }
 
-/* 〔SHOTS 09-29 · `设计/70 §2.3` 每台机器一行四格〕后端那四格：状态 / 操作 / 退出行为 / 健康。
+/* 〔每台机器一行四格〕后端那四格：状态 / 操作 / 退出行为 / 健康。
    表头（`[data-backend-columns]`）与每一行的格子（`[data-backend-cells]`）共用这一张列模板 ⇒ 分列对齐；
    分栏只认 `data-*`（`backend-section.ts::buildRow` 头注：不为分栏新造类）。列宽可压到 0、内容自己折行 ⇒ 窄窗不撑破。
    一律挂在 `.remote-machines`（机器列表，只在设置窗）底下：光秃秃的 `[data-*]` 会被当成别的窗口也挂得上（`entry-graphs` 完整性）。 */
@@ -1109,7 +1109,7 @@ body.settings-window-mode .settings-panel {
 .remote-machine-remove {
   font-size: var(--font-size-small);
   padding: 1px 8px;
-  /* 〔WF2 · WIN3 §2〕窄窗里 legend 挤它 ⇒「删除」竖排成两行：不换行、不被压缩。 */
+  /* 〔WIN3 §2〕窄窗里 legend 挤它 ⇒「删除」竖排成两行：不换行、不被压缩。 */
   white-space: nowrap;
   flex-shrink: 0;
 }
@@ -1679,7 +1679,7 @@ body.settings-window-mode .settings-panel {
   /* 邮箱权重 > 路径：isolated 账号的 configDir 就是 <acctsDir>/<name>，行与行之间往往只差最后
      一个字符，前几十字符逐行重复；而邮箱才是分辨"学校号/私人号"的字段。路径要全文有 title，
      也有「复制路径」按钮兜着。
-     🔴 〔`设计/50` 09-18〕**8 轨道 → 7**：F10 那条用量列（原第 6 条 `minmax(0, 1fr)`）随用量
+     🔴 **8 轨道 → 7**：F10 那条用量列（原第 6 条 `minmax(0, 1fr)`）随用量
      ③ 轴整轴退役 —— 行里的用量单元格已经不渲染了，留着它就是最后一条轨道空着、整表右偏。
      条数契约由 `tests/frontend/ui/settings/accounts-section.vitest.ts`「每行子元素数 == grid 列数(7)」守。 */
   grid-template-columns:
@@ -1999,7 +1999,7 @@ body.settings-window-mode .settings-panel {
   margin-top: 6px;
 }
 
-/* A2（`设计/70 §4.4`）：新建账号 —— 一张常驻表单，岔口（订阅 / 第三方 apikey）在表单里。
+/* A2：新建账号 —— 一张常驻表单，岔口（订阅 / 第三方 apikey）在表单里。
    外框与向导同一套（边框 + 淡底），不另造一种框。按钮走 settings-btn，「创建」是 primary 不是红色。 */
 .accounts-new {
   display: flex;

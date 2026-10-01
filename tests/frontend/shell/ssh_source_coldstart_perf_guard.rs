@@ -3,7 +3,7 @@
 //! 实测（08-06）：`[perf]` 在前端 13 处、monitor Rust 14 处，而**本文件 0 处** ——
 //! 偏偏它是「点开应用 → 看见远端会话」之间唯一的那条链。
 //! 后果不是「不知道快慢」：报告 §4.3 里那些 50-200ms 的数字**是外部常识值不是本仓证据**，
-//! `ROADMAP §5-6` 那条诚实边界就挂在这上面。
+//! 那条诚实边界就挂在这上面。
 //!
 //! ⚠ 本条**只钉「埋点在不在、在不在对的函数里」**，钉不了「量出来的数对不对」——
 //! 那要真 SSH（红线禁）。**别把它读成性能判据。**
@@ -29,9 +29,9 @@ const PHASES: &[(&str, &str, &str)] = &[
         "async fn stream_loop",
         "[perf] ssh_source [{host_label}] 首个 hello T+{}ms（",
     ),
-    // 〔C2 09-24〕握手那一段搬进了拨号代理，量它的埋点跟着搬到宿主 `dial_host.rs::open`
-    //   （原住 `ssh_source.rs` 里的 `connect_session`；〔SR1b〕SFTP 那一份也随 `inproc_dial.rs` 整份删了，握手今天只在本机后端 `dial/connect.rs`）。
-    //   ⚠ 量的东西多了一次**起代理进程** —— 那是 `设计/05 §13.4` 认下来的代价，埋点让它看得见。
+    // 握手那一段搬进了拨号代理，量它的埋点跟着搬到宿主 `dial_host.rs::open`
+    //   （原住 `ssh_source.rs` 里的 `connect_session`；SFTP 那一份也随 `inproc_dial.rs` 整份删了，握手今天只在本机后端 `dial/connect.rs`）。
+    //   ⚠ 量的东西多了一次**起代理进程** —— 那是认下来的代价，埋点让它看得见。
     (
         "SSH 握手+鉴权",
         "async fn open",
@@ -39,7 +39,7 @@ const PHASES: &[(&str, &str, &str)] = &[
     ),
 ];
 
-/// 〔C2〕埋点住两份文件：流循环在 `ssh_source.rs`，握手在拨号代理的宿主 `dial_host.rs`。
+/// 埋点住两份文件：流循环在 `ssh_source.rs`，握手在拨号代理的宿主 `dial_host.rs`。
 /// 阶段表每一行按「它在哪个函数里」去对应的那一份里找。
 fn source_of(sig: &str) -> &'static str {
     if sig == "async fn open" {
@@ -84,13 +84,13 @@ fn the_three_most_expensive_cold_start_phases_each_emit_a_perf_line() {
                  ★ 报告 §4.3 说的就是这件事：**最贵的三段恰好一个埋点都没有**，\n\
                  而前端与 Rust 别处都有完整分段埋点（08-06 实测 13 + 14 处）。\n\
                  没有它，「冷启动三连接合并省了多少」这句话永远只能靠推 ——\n\
-                 `ROADMAP §5-6` 那条诚实边界（那些 50-200ms 是外部常识值）就挂在这上面。"
+那条诚实边界（那些 50-200ms 是外部常识值）就挂在这上面。"
         );
     }
 }
 
 /// 本文件的 `[perf]` 条数不许降（**递减棘轮**：埋点只许多不许少）。
-/// 〔C2〕「本文件」= `ssh_source.rs` ＋ 握手那一段搬去的 `dial_host.rs`（两份合起来数）。
+/// 「本文件」= `ssh_source.rs` ＋ 握手那一段搬去的 `dial_host.rs`（两份合起来数）。
 #[test]
 fn the_perf_probes_in_this_file_only_grow() {
     let src = [
