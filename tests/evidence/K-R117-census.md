@@ -47,17 +47,17 @@ PM 现打的 `grep -c "installable: true" src-tauri/src/tool_registry.rs` = **19
 **两把独立的尺子对拍**（尺子 R2）：按文本行数出的「真·字段声明」= **7**；
 解 `TOOLS` 声明表数出 `installable == true` = **7**。两边相等 ⇒ 这个 7 不是一把尺子的自证。
 
-**⇒ 本件此后一律用 7。`K-R107 §F2` 那个 7 站得住，不作废。**
+**⇒ 本件此后一律用 7。那个 7 站得住，不作废。**
 
 ---
 
 ## §C 安装面人群 —— 现打 **22 条命令 ＋ 8 处内部动作 = 30 项**
 
-### §C1 · 与 `K-R107 §F2`「21 ＋ 3 / 9 个能力 id / 6 个文件」逐项对账
+### §C1 · 与「21 ＋ 3 / 9 个能力 id / 6 个文件」逐项对账
 
 | 项 | `K-R107`（09-13） | 现打（09-14） | 差在哪 |
 |---|---|---|---|
-| Tauri 命令 | **21** | **22** | ＋`write_skill_file`。`K-R107 §F2` 的 21 条里**没有** `skill.inbox`，而同一份 `§F3`／件文件 `§0b` 的目标形状里 ③ 明写含「`skill.inbox` **写侧**」⇒ **同一个目标形状下人群就是 22**。差的就是这一条 |
+| Tauri 命令 | **21** | **22** | ＋`write_skill_file`。21 条里**没有** `skill.inbox`，而同一份 `§F3`／件文件 `§0b` 的目标形状里 ③ 明写含「`skill.inbox` **写侧**」⇒ **同一个目标形状下人群就是 22**。差的就是这一条 |
 | 能力 id | **9** | **14**（不含 `skill.inbox` 则 13） | 🔴 **9 数的是 `§F2` 那张表的表行数，不是能力 id 数**。那张表有两行各装了两个 id（`cc-bus.deploy`＋`cc-bus.install-state` 一行、`mcp.write`＋`mcp.remove` 一行）、一行装了三个（`acct-iso.*`）⇒ 9 行 = 13 个 id |
 | 后端文件 | **6** | **7**（不含 `skill.inbox` 则 6） | 6 站得住；＋`skill_host.rs` |
 | 内部动作 | **3** | **8** | 见 C3 |
@@ -95,7 +95,7 @@ PM 现打的 `grep -c "installable: true" src-tauri/src/tool_registry.rs` = **19
 
 ### §C3 · 内部动作（非 Tauri 命令）—— 现打 **8 处**，不是 3 处
 
-`K-R107 §F2` 的括注逐字是「`write_site_registry::WRITE_SITES` 里**带 tool id 的那几行**」。
+括注是「`write_site_registry::WRITE_SITES` 里**带 tool id 的那几行**」。
 **那个判别式现打给 7 行，而 `K-R107` 只点了 2 行**；第 3 行（`build.rs::embed_daemons`）
 的 tool id 恰恰是 **`None`** ⇒ **判别式与点名互相矛盾**（这不是「少数了几行」，是那句括注不成立）。
 

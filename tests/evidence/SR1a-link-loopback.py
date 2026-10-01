@@ -23,7 +23,7 @@
   ⑦ agent_sock：后端自己的环境里没有 SSH_AUTH_SOCK，界面交过去的那个套接字照样鉴权得过
   ⑧ forward：本地口经隧道到一台回环 HTTP；每接一条报一行 {"accepted":n}；link-close ⇒ 本地口释放
   ⑨ 子系统留口不开：use=subsystem ⇒ unsupported_use
-  ⑪ 账号清单变了（`设计/05 §13.6 ③`）：改写 manifest ⇒ 恰好一帧 accounts_changed；同目录别的文件 ⇒ 零帧
+  ⑪ 账号清单变了：改写 manifest ⇒ 恰好一帧 accounts_changed；同目录别的文件 ⇒ 零帧
 
 退出码：0 = 全过 · 1 = 有一条不对 · 3 = 起不来 sshd / 找不到二进制（环境不满足，不是被测对象坏了）
 """
@@ -198,7 +198,7 @@ def main():
         ls = be.lines("c1")
         ok = len(ls) == 2
         ack, res = (json.loads(ls[0]), json.loads(ls[1])) if ok else ({}, {})
-        # 〔SR1b · 2026-09-24〕uses 多了 files（部署那几问的链路，写只许 ~/.cc-monitor/{staging,bin}）。
+        # uses 多了 files（部署那几问的链路，写只许 ~/.cc-monitor/{staging,bin}）。
         check("链路上恰好两行：ack（v=2 · uses）＋ 结果", ok and ack.get("ok") and ack.get("v") == 2 and ack.get("uses") == ["stream", "capture", "forward", "files"], ls)
         check("stdout/stderr/退出码", (res.get("stdout"), res.get("stderr"), res.get("exit_status")) == ("out\n", "err\n", 7), res)
         check("收尾：link_end 无 error", be.ends.get("c1", "missing") is None, be.ends.get("c1"))

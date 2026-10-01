@@ -1,15 +1,15 @@
-//! 要求住址：`调研/第四波记录/_施工/4d-lanes.md ## 发版后四路 ### P1` 第 1 件 ——「`deploy-core` 拆开：契约（键 · 戳格式 · 答话形状 · 路径常量）成 `deploy-contract`（契约类，monitor 可链）；判定部分进后端」·
-//! `设计/00 §1.2`「共享 crate 只放两边必须对上的契约，不放判定；判定只在后端」。
+//! ——「`deploy-core` 拆开：契约（键 · 戳格式 · 答话形状 · 路径常量）成 `deploy-contract`（契约类，monitor 可链）；判定部分进后端」·
+//! 「共享 crate 只放两边必须对上的契约，不放判定；判定只在后端」。
 //!
 //! # 本 crate 是部署那一族的**契约**（两侧对上的形状），不含一条判定
 //!
 //! | 契约 | 规矩出处 | 这里的口 |
 //! |---|---|---|
-//! | 表 A 的键与行（(OS, arch) · 有产线的格） | `设计/96 §7.1` | [`Key`] · [`LINES`] · [`key_of`] · [`key_from_uname`] |
-//! | 拒绝的形状与对人说的话 | `96 §7.1.4b` | [`Refusal`] · [`Refusal::say`] |
-//! | 身份戳的格式（读它字节里那段，不跑它） | `96 §7.2` | [`Marks`] · [`RemoteIdentity`] · [`identity_of_bytes`] · [`stamp_scan_cmd`] · [`interpret_stamp_scan`] · [`build_order`] |
+//! | 表 A 的键与行（(OS, arch) · 有产线的格） | | [`Key`] · [`LINES`] · [`key_of`] · [`key_from_uname`] |
+//! | 拒绝的形状与对人说的话 | | [`Refusal`] · [`Refusal::say`] |
+//! | 身份戳的格式（读它字节里那段，不跑它） | | [`Marks`] · [`RemoteIdentity`] · [`identity_of_bytes`] · [`stamp_scan_cmd`] · [`interpret_stamp_scan`] · [`build_order`] |
 //! | 计划答话的形状 | `IPC-PROTOCOL.md` 的 `deploy-plan` | [`DeployAction`] · [`LegacyVerdict`] |
-//! | 落点路径 · 旧入口两形的记号 | `设计/01 §6.7b` | [`LEGACY_ENTRY_REL`] · [`LEGACY_BACKEND_REL`] · [`SHIM_MARK`] · [`LAUNCHER_MARK`] |
+//! | 落点路径 · 旧入口两形的记号 | | [`LEGACY_ENTRY_REL`] · [`LEGACY_BACKEND_REL`] · [`SHIM_MARK`] · [`LAUNCHER_MARK`] |
 //!
 //! 判定（那台要哪一格 · 表 B 承诺 · 换不换 · 落点那一份认不认 · 旧落点删不删）住后端 `control/deploy_plan.rs` 一家；
 //! monitor 自举那一刻（本机后端还没起）问的是手上那份字节自己（帧命令 `place-verdict`，CLI 面自动派生）。
@@ -56,7 +56,7 @@ pub enum Product {
 }
 
 impl Product {
-    /// 〔THIN〕线上那个词（帧命令 `deploy-slot` 的 `product`）—— 两侧对上的契约，只此一份。
+    /// 线上那个词（帧命令 `deploy-slot` 的 `product`）—— 两侧对上的契约，只此一份。
     pub fn wire(self) -> &'static str {
         match self {
             Product::Backend => "backend",
@@ -79,7 +79,7 @@ pub enum Route {
     Remote,
 }
 
-/// 为什么不给字节 —— **拒绝点在写第一个字节之前**（`96 §7.1.4b`）。五形互不合并：下一步各不相同。
+/// 为什么不给字节 —— **拒绝点在写第一个字节之前**。五形互不合并：下一步各不相同。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Refusal {
     /// 答得出是什么机器，但表 A 里那一格没有产线（或根本不在 6 行里）。
@@ -88,7 +88,7 @@ pub enum Refusal {
     OsUnknown { why: String },
     /// 问不出 arch。
     ArchUnknown { why: String },
-    /// 那一格有产线，但这个 origin 今天不承诺那种机器（表 B；例：远端 Windows · 〔V132〕本机 (Linux, aarch64)）。
+    /// 那一格有产线，但这个 origin 今天不承诺那种机器（表 B；例：远端 Windows · 本机 (Linux, aarch64)）。
     /// 带着 `route`：同一形对「推到远端」与「本机自己」要说两句话（远端那句「只在本机用得上」对本机是假话，`D7`）。
     NotPromisedHere {
         os: String,
@@ -96,7 +96,7 @@ pub enum Refusal {
         route: Route,
     },
     /// 那一格有产线、也承诺，但**这一版产物没带**那份字节（开发构建 / 没铺字节）。
-    /// `96 §7.1.4b` 的四个 key 里没有它 —— 并进前四个就把「换一版产物」说成了「不支持这台机器」（`D7`）。
+    /// 前四个 key 里没有它 —— 并进前四个就把「换一版产物」说成了「不支持这台机器」（`D7`）。
     /// 只有放字节的一侧（monitor）判得出这一形；本 crate 只提供它的名字与那句话。
     NotCarried { os: String, arch: String },
 }
@@ -105,7 +105,7 @@ impl Refusal {
     /// 对用户说的那一句（`machine` = 机器名，本机说「本机」）。**Rust 侧唯一的出口**；
     /// 每一形的 key 都是字面量（`copy-table.vitest.ts` 按调用形状读它们，与文案表两向相等）。
     ///
-    /// 〔TL1 · 4C〕多收一个 `product`：同一种拒绝对两件产物要说两句话
+    /// 多收一个 `product`：同一种拒绝对两件产物要说两句话
     /// （后端那几句里「它的会话不会自动接上」之类的后果，换成全景就是假话）⇒ 各一组 key（`deploy.refused.*` · `panorama.refused.*`）。
     pub fn say(&self, product: Product, machine: &str) -> String {
         match (product, self) {
@@ -240,7 +240,7 @@ fn arch_of(s: &str) -> Option<Arch> {
 /// 两个答话 → 表 A 的键。**纯函数**。
 ///
 /// 空 ⇒ 问不出（`os_unknown` / `arch_unknown`）；答得出但不是 3 × 2 里的值 ⇒ `unsupported_machine`
-/// （原样带出它答的那两个词）。**问不出 OS 不许当成 Linux**（`96 §7.1.4` 第 4 条）。
+/// （原样带出它答的那两个词）。**问不出 OS 不许当成 Linux**。
 pub fn key_of(os: &str, arch: &str) -> Result<Key, Refusal> {
     let (os, arch) = (os.trim(), arch.trim());
     if os.is_empty() {
@@ -357,14 +357,14 @@ pub fn key_from_uname(exit: Option<u32>, stdout: &str, stderr: &str) -> Result<K
     }
 }
 
-/// 〔WIN1 · RT1 F4〕那台机器的回话**不是 UTF-8** ⇒ 说 `rsByteTable.key.notUtf8` 那半句（接在「查了什么：问过它，」后面），
+/// 那台机器的回话**不是 UTF-8** ⇒ 说 `rsByteTable.key.notUtf8` 那半句（接在「查了什么：问过它，」后面），
 /// 不照抄原文。
 ///
-/// 真 Win11 现打（`第四波记录/RT1.md §1.2` 第 3 跳）：Windows 默认 shell 是 PowerShell，它按控制台代码页
+/// 真 Win11 现打（第 3 跳）：Windows 默认 shell 是 PowerShell，它按控制台代码页
 /// （中文系统是 GBK）报「无法将 uname 项识别为 cmdlet…」；回话在后端那一跳按 UTF-8 **有损**解
 /// （`dial/uses.rs`，认不出的字节成了 U+FFFD）⇒ 原样照抄进界面就是一串乱码。
 /// ⇒ 不照抄、也不猜代码页（GBK / Shift-JIS / 1252 都有可能，猜错了一样是乱码），只说「不是 UTF-8」
-/// 与它多半是什么。拒绝本身不变（`96 §7.1.4` 第 4 条：问不出 OS ＝ 拒绝）。
+/// 与它多半是什么。拒绝本身不变（问不出 OS ＝ 拒绝）。
 /// 回话里有 U+FFFD ⇒ 那几个字节在后端按 UTF-8 解时就没解出来（有损解留下的记号）。
 fn not_utf8(s: &str) -> bool {
     s.contains('\u{FFFD}')
@@ -380,9 +380,9 @@ pub struct Marks<'a> {
     pub close: &'a str,
 }
 
-/// 〔DP1 · 第四波〕**那台机器上落点那一份后端是谁** —— `设计/96 §7.2.4` 那张四态表 ＋ 0 字节那一格。
+/// **那台机器上落点那一份后端是谁** —— 那张四态表 ＋ 0 字节那一格。
 ///
-/// 〔墓碑 —— 从前这一问读的是同目录一份旁挂的版本标记文件，标记是**标签不是指纹**（`96 §7.2.1`：「读它字节里那段身份戳，不跑它」）。〕
+/// 〔墓碑 —— 从前这一问读的是同目录一份旁挂的版本标记文件，标记是**标签不是指纹**（「读它字节里那段身份戳，不跑它」）。〕
 /// 四态**不许合并**：没装 ⇒ 装；问不出 / 问出多个 / 读不到 ⇒ **显式失败、不覆盖**（「判不了」要作为结论说出来）。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RemoteIdentity {
@@ -411,7 +411,7 @@ fn settle(mut ids: Vec<String>) -> RemoteIdentity {
     }
 }
 
-/// 〔E2 · `96 §7.2.2`〕**手上一份字节自报的身份**（本机那一跳：不经 shell、不跑它，直接扫字节）。
+/// **手上一份字节自报的身份**（本机那一跳：不经 shell、不跑它，直接扫字节）。
 /// 与远端那条扫描（[`stamp_scan_cmd`] ＋ [`interpret_stamp_scan`]）同一条规矩：界标之间 `[[:alnum:]_.-]+`，恰好一个才是身份。**纯函数**。
 pub fn identity_of_bytes(bytes: &[u8], marks: Marks<'_>) -> RemoteIdentity {
     if bytes.is_empty() {
@@ -432,11 +432,11 @@ pub fn identity_of_bytes(bytes: &[u8], marks: Marks<'_>) -> RemoteIdentity {
     settle(ids)
 }
 
-/// 在目标机器上扫身份戳的那一条命令（`96 §7.2.1` 档 A：目标机器**自己的**只读工具，一次 exec，常数字节回传）。
+/// 在目标机器上扫身份戳的那一条命令（档 A：目标机器**自己的**只读工具，一次 exec，常数字节回传）。
 ///
 /// 正则与 `tests/scripts/re-embed.sh::bytes_id` 同一条（界标之间是 `[[:alnum:]_.-]`，这里要**至少一个字符** ——
 /// 两个界标在 `.rodata` 里挨着就是空串那一形，`build.rs::bytes_build_id` 也不收它）。**纯函数**。
-/// 〔E2〕`word` 是那个文件在远端 shell 里的**写法**（固定落点常量，自带 `"$HOME"`），不是一条要 quote 的外来路径。
+/// `word` 是那个文件在远端 shell 里的**写法**（固定落点常量，自带 `"$HOME"`），不是一条要 quote 的外来路径。
 pub fn stamp_scan_cmd(word: &str, marks: Marks<'_>) -> String {
     let ere = |s: &str| -> String {
         s.chars()
@@ -492,13 +492,13 @@ pub enum DeployAction {
     Skip,
     /// 需要部署，附人读原因。
     Deploy(String),
-    /// 〔HX2 · 主会话 D-b〕那台上是**另一版、但不比这一版旧**（更新 · 同序不同名 · 序解不出）⇒ **不动它**，
+    /// 那台上是**另一版、但不比这一版旧**（更新 · 同序不同名 · 序解不出）⇒ **不动它**，
     /// 照旧连上那一份。`theirs` = 那台上那一份自报的身份；`why` = 人读原因（点名两边各是哪一版）。
     /// 只有后端 `control/deploy_plan.rs::identity_decision` 产这一格。
     Keep { theirs: String, why: String },
 }
 
-/// 〔HX2 · 主会话 D-b「部署只在『我的比盘上的新』时才换（BUILD_ID 可比序）」〕**`BUILD_ID` 的序键** —— 唯一实现。
+/// 〔主会话 D-b「部署只在『我的比盘上的新』时才换（BUILD_ID 可比序）」〕**`BUILD_ID` 的序键** —— 唯一实现。
 ///
 /// 形状 `p<代号>` ＋ `<一个小写字母>` ＋ `-<名>`（`p1a-history` … `p3m-ssh-zlib`）⇒ 序键 `(代号, 字母)`。
 /// 解不出 ⇒ `None`（**不可比**，不是「最旧」也不是「最新」）。下一次 bump 写出解不出的形状由
@@ -524,24 +524,24 @@ pub fn build_order(id: &str) -> Option<(u32, u8)> {
 /// 旧入口两形的文件格式；认不认得出是后端判（`control/deploy_plan.rs::is_ours`）。
 pub const LAUNCHER_MARK: &str = "# ccm — cc-monitor 统一启动器";
 
-/// 三行 shim（09-11 起历代）第二行的原文。〔E2〕它的生成器随「`ccm` 就是后端本体」删了（那一形只剩在已部署的机器上），
+/// 三行 shim（09-11 起历代）第二行的原文。它的生成器随「`ccm` 就是后端本体」删了（那一形只剩在已部署的机器上），
 /// 记号从此只能是字面量（出处：`git show ef7baa63:src/frontend/shell/src/local_backend.rs` 的 `ccm_entry_shim`〔散文墓碑〕）。
 pub const SHIM_MARK: &str = "# cc-monitor: ccm = 后端本体的一次性模式（K33：所有命令只许有一处）";
 
-/// 〔GP1 · THIN〕旧版放在远端的 `ccm` 入口（三行 shim / 更早的 bash 启动器）：家目录相对。
+/// 旧版放在远端的 `ccm` 入口（三行 shim / 更早的 bash 启动器）：家目录相对。
 /// 后端判它的去向（`control/deploy_plan.rs::retired_verdict`）· monitor 照删 · 足迹那一行，同一个常量。
 pub const LEGACY_ENTRY_REL: &str = ".local/bin/ccm";
 
-/// 〔E2 · E-c〕旧默认 `backendPath` 落下的那份后端字节（`backendPath` 那一格删了之后没人再用它）：SFTP 那一侧（家目录相对）。
+/// 旧默认 `backendPath` 落下的那份后端字节（`backendPath` 那一格删了之后没人再用它）：SFTP 那一侧（家目录相对）。
 /// 后端问它是谁、monitor 删它，同一个常量。
-/// 〔P1 · 主会话 09-29 裁〕不进 `relay_route_core` 的「家」那一族：那一族是后端**住**在 `~/.cc-monitor` 里的东西（数据位置页逐行列出，判据两向）；
+/// 不进 `relay_route_core` 的「家」那一族：那一族是后端**住**在 `~/.cc-monitor` 里的东西（数据位置页逐行列出，判据两向）；
 /// 这一个是退役落点，只认出来删、不住人 ⇒ 留在部署这一族，全仓一份。
 pub const LEGACY_BACKEND_REL: &str = ".cc-monitor/bin/cc-monitor-backend";
 
 /// 同一个文件在远端 shell 里的写法（扫身份戳那一条命令用）。
 pub const LEGACY_BACKEND_WORD: &str = "\"$HOME\"/.cc-monitor/bin/cc-monitor-backend";
 
-/// 〔E2 · E-c〕旧落点那份后端字节怎么办（部署时与每次连上各判一次）。
+/// 旧落点那份后端字节怎么办（部署时与每次连上各判一次）。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LegacyVerdict {
     /// 不在 ⇒ 不说话。

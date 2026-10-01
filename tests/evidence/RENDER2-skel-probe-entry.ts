@@ -1,5 +1,5 @@
 /**
- * 〔RENDER2 · `设计/10 §7` 第 1 条「第一级的外框常数（`height-estimate.ts` 的 `SKEL_*`）是估的、没有秤对拍」〕
+ * 〔「第一级的外框常数（`height-estimate.ts` 的 `SKEL_*`）是估的、没有秤对拍」〕
  * **骨架外框秤的真浏览器探针**（只这一把，题面点名的那一把）。
  *
  * 与秤 2 同一份语料、同一套生产样式、同一个 `.stream > .stream-content`，关掉 `content-visibility` 让每张卡真排版；

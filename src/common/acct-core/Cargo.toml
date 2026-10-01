@@ -15,7 +15,7 @@ serde = { version = "1", features = ["derive"] }
 ts-rs = "12.0.1"
 serde_json = "1"
 
-# 〔THIN〕跨生产者对拍夹具（`AUTH_KIND_PARITY_CASES` · `auth_kind_parity_manifest`）只在测试构建里：本 crate 自己的测试照带（`cfg(test)`），
+# 跨生产者对拍夹具（`AUTH_KIND_PARITY_CASES` · `auth_kind_parity_manifest`）只在测试构建里：本 crate 自己的测试照带（`cfg(test)`），
 #   别的 crate 的测试要它就在 `[dev-dependencies]` 里开这个 feature（后端 `accounts_query_tests.rs` 用）。契约 crate 不带夹具进发布二进制。
 [features]
 fixtures = []

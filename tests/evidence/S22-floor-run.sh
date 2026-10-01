@@ -2,7 +2,7 @@
 # S22 · `applyIntrinsicSize` 的 `Math.max(24, …)` 地板读数 —— **一键复算**。
 # 打包探针 → 两个真引擎各跑一遍 → 出表。**只读仓，不改 src/，不刷秤 2 的金标准。**
 #
-# 引擎起法照抄 `tests/evidence/U-scale2-run.sh`（它又照抄 `真相源/90 §3.1/§3.7`）：
+# 引擎起法照抄 `tests/evidence/U-scale2-run.sh`（它又照抄）：
 #   · Chromium 153      —— Playwright headless shell（生产 WebView2 同引擎家族）
 #   · WebKitGTK 2.52.6  —— PyGObject + WebKit2-4.1，必须 xvfb + 关合成
 # 两个 runner 复用 `/tmp/cv-reparent-probe/` 下 G 路留下的那两个脚本。

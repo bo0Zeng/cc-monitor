@@ -1,6 +1,6 @@
-//! **POSIX 单引号 quote** —— Rust 侧唯一的一份实现；〔TL3〕外加它的伴生件：自由文本值在 quote 之前的拒绝集；
-//! 〔DUP1〕以及标识符类（sid · 模型名 · 账号名）的放行判定（`INVARIANTS §47` 的 ① ② 两层都住这里）；
-//! 〔DUP3〕外加启动期令牌的形状（① 那一层）与命令片段类（启动器，§47 ③）那一张白名单。
+//! **POSIX 单引号 quote** —— Rust 侧唯一的一份实现；外加它的伴生件：自由文本值在 quote 之前的拒绝集；
+//! 以及标识符类（sid · 模型名 · 账号名）的放行判定（`INVARIANTS §47` 的 ① ② 两层都住这里）；
+//! 外加启动期令牌的形状（① 那一层）与命令片段类（启动器，§47 ③）那一张白名单。
 //!
 //! # 它为什么只剩一件事（P4b，§1.4b）
 //!
@@ -34,7 +34,7 @@
 //! `shared/ccm::sq` 同族，**一眼看出这三份是同一件事**（跨语言那两份由黄金串夹具对拍）。
 //! ⚠ 计划文档（`.claude/planned-build/`）里的 `launch-core` 是当时的实况，刻意没改。
 
-/// 〔TL3 · `INVARIANTS §47` ② · 主会话 09-26 按 V131 裁〕**自由文本**值（cwd · 目录 · 远端子命令的 argv · 别名词 …）
+/// 〔`INVARIANTS §47` ②〕**自由文本**值（cwd · 目录 · 远端子命令的 argv · 别名词 …）
 /// 在唯一的 quote 之前的**拒绝集**：只收 NUL / CR / LF。
 ///
 /// 为什么只收这三个、**不拒 shell 元字符**：`Bob's notes` · `照片 (2019)` 这类真实名字里 `'` `(` `)` `&` 都合法，
@@ -50,7 +50,7 @@ pub fn free_text_ok(s: &str) -> bool {
     !s.contains(FREE_TEXT_REFUSED)
 }
 
-/// 〔`INVARIANTS §47` ② · V138「位置参数原样交给 claude」〕**交给 agent 的参数 · 登记备注**这一种自由文本可以跨行：
+/// 〔`INVARIANTS §47` ②〕**交给 agent 的参数 · 登记备注**这一种自由文本可以跨行：
 /// 多行初始任务是真实能力（`cc-spawn <目录> "$(cat 任务.md)"`；后端 `control/launch.rs::check_typed_payload` 为它放行 `\n`）。
 /// LF 在单引号里 quote 挡得住 —— 键进交互 shell 是续行、值原样，`sh -c` 里本来就原样；拒它就是「拒过头」。
 /// 只拒 NUL（截断参数）与 CR（键进终端就是回车键，值里变成 LF，原样不了）。
@@ -70,11 +70,11 @@ pub fn posix_free_path_ok(p: &str) -> bool {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// 〔DUP1 · `INVARIANTS §47` ①〕**标识符类**的放行判定：闭集白名单 ＋ 不许 `-` 开头 ＋ 钉上界。
+// 〔`INVARIANTS §47` ①〕**标识符类**的放行判定：闭集白名单 ＋ 不许 `-` 开头 ＋ 钉上界。
 //
 // 与上面 ② 自由文本那一层、下面唯一的 quote 同住（TL3 的先例：判定与 quote 同住）。
-// 每一条都是**全仓唯一的一份**（`设计/01 §5` D1；登记表 `tests/frontend/ui/judgment-single-home.vitest.ts`）：
-// 前端不判（线上校验交后端判，`设计/90 §3` 判据 2），monitor 渲染 · 后端 ccm 都调这里。
+// 每一条都是**全仓唯一的一份**（登记表 `tests/frontend/ui/judgment-single-home.vitest.ts`）：
+// 前端不判（线上校验交后端判），monitor 渲染 · 后端 ccm 都调这里。
 // 首字符一律要 ASCII 字母数字：`-` 开头会被下游当选项解析（`--model -x` · `resume --x`），quote 挡不住。
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -114,7 +114,7 @@ pub fn model_name_ok(s: &str) -> bool {
 /// 账号名的上界（与建账号的那个工具逐字同，见 [`account_name_ok`]）。
 pub const ACCOUNT_NAME_MAX: usize = 32;
 
-/// 账号名在字母数字之外还放行的字符（首字符除外）。〔DUP2〕单独提成常量：新建账号表单要在写入点先说一句，
+/// 账号名在字母数字之外还放行的字符（首字符除外）。单独提成常量：新建账号表单要在写入点先说一句，
 /// 规则从这里现生成到 `src/frontend/ui/generated/judgment-rules.ts`（不手抄）。
 pub const ACCOUNT_NAME_EXTRA: &str = "_-";
 
@@ -132,9 +132,9 @@ pub fn account_name_ok(s: &str) -> bool {
 /// **cc-bus agent id**（发消息的收件人 · 收掉的那个 · 派生时的账号名 · 读收件箱时的文件名）：非空 · 不以 `-` 开头 ·
 /// 只含 `[A-Za-z0-9_-]`。**没有上界**（今天就没有；照原样搬，不顺手加）。
 ///
-/// 〔DUP2 · 主会话 09-26 裁 J12 · `INVARIANTS §47` ①〕从 monitor `backend/control/cc_bus.rs` 里的 `is_valid_bus_id` 搬来（规则逐字不变；那个名字今天是本函数的再导出），
+/// 〔`INVARIANTS §47` ①〕从 monitor `backend/control/cc_bus.rs` 里的 `is_valid_bus_id` 搬来（规则逐字不变；那个名字今天是本函数的再导出），
 /// 住这里是因为两半都要它：monitor 读收件箱 · 后端 `bus-send` / `bus-kill` / `bus-spawn` 在把 id 交给 `cc-send` / `cc-kill` /
-/// `cc-spawn` **之前**先判（界面那一份删了，`设计/90 §3` 判据 2）。关键的一条是拒前导 `-`：`--help` 在盘上真出现过
+/// `cc-spawn` **之前**先判（界面那一份删了）。关键的一条是拒前导 `-`：`--help` 在盘上真出现过
 /// （`~/.cc-bus/inbox/--help.jsonl`），拼进 `cc-send` 就被当成一个 flag。
 pub fn bus_id_ok(s: &str) -> bool {
     !s.is_empty()
@@ -145,7 +145,7 @@ pub fn bus_id_ok(s: &str) -> bool {
 
 /// **启动期令牌**（`CCM_RBIND_TOKEN`）的长度 —— 32 个字符。
 ///
-/// 〔DUP3 · 主会话 09-26 裁 · `设计/01 §5` D1〕令牌形状全仓只有这一份（先前两半各一份、规则逐字同：
+/// 令牌形状全仓只有这一份（先前两半各一份、规则逐字同：
 /// monitor `backend/control/payload.rs` 的 `rbind_token_shape_ok` · 后端 `control/identity_tag.rs` 的 `token_is_safe`，两个名字今天都是本组的再导出）。
 /// 核过是**同一个令牌**：写侧 monitor 渲 `export CCM_RBIND_TOKEN=<令牌>`（`payload.rs`）、拉起时按它登记窗口（`launch.rs` 握手前奏）；
 /// 读侧后端从 `/proc/<pid>/environ` 读**同一个变量**（`identity_tag.rs::rbind_token_of`）。两半都要 ⇒ 共享 crate；
@@ -160,7 +160,7 @@ pub const RBIND_TOKEN_ALPHABET: &str = "0123456789abcdef";
 ///
 /// **fail closed 到这个地步**（不 trim、不认大写、不认长度相近）：令牌的下游用途是**跨机器的 join 键** ——
 /// 本地那张 `token → 窗口` 表与从 `environ` 读回来的串直接相等比较，中间不留归一化步骤（归一化是「两侧各写一遍、
-/// 各写错一遍」的经典落点）；一个「差不多对」的串查不到，与查错一样糟、还更难归因（`设计/80 §8.5 ②`）。
+/// 各写错一遍」的经典落点）；一个「差不多对」的串查不到，与查错一样糟、还更难归因。
 ///
 /// ⚠ 这条**不是转义**：写侧渲染时照样过 [`posix_quote`]。「值的形状」与「拼进 shell 安不安全」是两道闸。
 pub fn rbind_token_ok(token: &str) -> bool {
@@ -170,7 +170,7 @@ pub fn rbind_token_ok(token: &str) -> bool {
             .all(|b| RBIND_TOKEN_ALPHABET.as_bytes().contains(&b))
 }
 
-/// 〔P5 · `设计/80 §8.2`「marker = token」〕令牌握手里那个 marker 的前缀：`ccm-rbind-token-<32hex>`。
+/// 〔「marker = token」〕令牌握手里那个 marker 的前缀：`ccm-rbind-token-<32hex>`。
 /// 写侧是后端渲的开终端前奏（`platform/shell/powershell.rs::rbind_bind_prelude`），读侧是 monitor `bind.rs` 那张表 ⇒ 契约住这里。
 /// 与 Era 2 的 `ccm-bind-<PID>-<8hex>`、标题路的 `ccm-rbind-<sid>` 互不误命中：解码要求前缀后**恰好**一个合格令牌。
 pub const RBIND_TOKEN_MARKER_PREFIX: &str = "ccm-rbind-token-";
@@ -190,7 +190,7 @@ pub fn rbind_token_from_marker(marker: &str) -> Option<&str> {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// 〔DUP3 · 主会话 09-26 裁（乙；主会话代用户裁，用户可推翻）· `INVARIANTS §47` ③〕**命令片段类**：启动器。
+// 〔主会话 09-26 裁（乙；主会话代用户裁，用户可推翻）· `INVARIANTS §47` ③〕**命令片段类**：启动器。
 //
 // 启动器**不是一个词**：`ccr code`（带参数）· `claude --dangerously-skip-permissions` · `cct`（alias）· `/usr/local/bin/claude`（带路径）·
 // `~/bin/claude`（家目录下）都是真实用法 —— 它要被 shell **拆成词、按 alias / PATH 解析**，所以**不 quote**（quote 起来
@@ -200,7 +200,7 @@ pub fn rbind_token_from_marker(marker: &str) -> Option<&str> {
 // `~` 只许打头、紧跟 `/`：POSIX 展开成家目录，PowerShell 的文件系统路径也认它；别处的 `~` 两种 shell 语义不同，拒。
 //
 // 先前三处三条规则（本机 `history.rs` 白名单不许 `/` · 远端载荷 `payload.rs` 拒绝集 · 后端 ccm `free_text_gate` 只拒 NUL / CR / LF），
-// 今天三处都调这一个（`设计/01 §6.8`：本机远端同一条）。空串不在这里判：各调用处「空 ⇒ 默认启动器」是 D3 缺省，不是判定。
+// 今天三处都调这一个（本机远端同一条）。空串不在这里判：各调用处「空 ⇒ 默认启动器」是 D3 缺省，不是判定。
 // ═══════════════════════════════════════════════════════════════════════════
 
 /// 启动器在 ASCII 字母数字之外还放行的字符（空格是词界）。
@@ -234,7 +234,7 @@ pub fn posix_quote(s: &str) -> String {
     out
 }
 
-/// 〔FILES2 · `INVARIANTS §47` ②〕[`posix_free_path_ok`] 的**字节形**：路径不是合法 UTF-8（远端的乱码目录名）时用它判，
+/// 〔`INVARIANTS §47` ②〕[`posix_free_path_ok`] 的**字节形**：路径不是合法 UTF-8（远端的乱码目录名）时用它判，
 /// 规则逐条相同（绝对 · 没有 `..` 段 · 不含 NUL / CR / LF）。合法 UTF-8 的字节与字符串形答得一样。
 pub fn posix_free_path_bytes_ok(p: &[u8]) -> bool {
     p.first() == Some(&b'/')
@@ -242,7 +242,7 @@ pub fn posix_free_path_bytes_ok(p: &[u8]) -> bool {
         && !p.iter().any(|b| matches!(b, b'\0' | b'\r' | b'\n'))
 }
 
-/// 〔FILES2 · 唯一的 quote 的字节形〕POSIX 的 ANSI-C 引号 `$'…'`：可打印 ASCII 原样（`\` 与 `'` 前面加 `\`），
+/// 〔唯一的 quote 的字节形〕POSIX 的 ANSI-C 引号 `$'…'`：可打印 ASCII 原样（`\` 与 `'` 前面加 `\`），
 /// 其余每个字节写 `\xNN` —— 名字不是合法 UTF-8 时单引号那一形写不出来（Rust 的串装不下那几个字节）。
 /// ⚠ `$'…'` 是 bash / zsh / ksh 的形，POSIX 2024 才收进标准；老 dash 不认（`cd` 失败、出声，不猜）。
 pub fn posix_quote_bytes(b: &[u8]) -> String {

@@ -3,8 +3,7 @@
 """条 68·A1：**对外文案全集普查** —— 把「连有哪些文案都列不出来」变成「列得出来」。
 
 住址：`<仓根>/tests/evidence/K-T68-A1-outward-copy-census.py`
-服务的设计篇：`调研/设计/91-文案与报错-去AI味重写.md`（`§5` 第 1 步 · `§5.2` 的全集对账 · `§6` 那笔「比例没量过」的债）
-读数落点：`调研/真相源/52-对外文案全集普查.md`
+要求：对外文案的全集对账（「比例没量过」的那笔债）。
 
 跑法（仓根下）：
     python3 tests/evidence/K-T68-A1-outward-copy-census.py
@@ -37,7 +36,7 @@
   (D) **含自然语言** —— 判据是「至少一个汉字」。
 
 **本量具的单位有两个，别混**：
-  · **条目**（`entry`）＝ 一个对外字面量。**这是 `91 §5.2` 全集对账的左边** ——
+  · **条目**（`entry`）＝ 一个对外字面量。**这是全集对账的左边** ——
     将来「表里条数」要与它**相等**，不是大于等于。
   · **调用点**（`site`）＝ 一处出口调用/赋值。一处 toast 调用带标题 ＋ 正文 ⇒ 1 个调用点、2 条条目。
 
@@ -47,20 +46,20 @@
 
   1. **纯英文文案**（不含汉字的字面量）。理由：今天这个产品是中文界面，判据取「含汉字」
      才能与「是不是自然语言」重合。⇒ 面⑦ 会把**纯英文候选**单独数出来当**已登记缺口**
-     （`91 §6` 已承认「英文文案本篇没看」）。
+     （已承认「英文文案本篇没看」）。
   2. **`console.log/warn/error`**。理由：Tauri 发布构建里用户打不开 devtools ⇒ 不是对外面。
   3. **`tracing::info!/warn!/debug!`**。理由：内部日志。
-     ⚠ **`tracing::error!` 是例外**：`91 §2.5` 逐字记了「`设计/00 §1.5.6` 第 3 级一落地它就变成对外的」
+     ⚠ **`tracing::error!` 是例外**：记了「第 3 级一落地它就变成对外的」
      ⇒ 它**不进主集**（今天不对外），但**单列成预备队**（面②的 `log-error` 轨），带住址。
   4. **`panic!` / `expect(` / `assert!`**。理由：崩溃信息不是界面文案，且绝大多数住在测块。
   5. **注释、文档注释、`src/doc/*.md`、`README*`**。理由：`91` 管的是"对外说的话"，不是文档。
   6. **`src/frontend/ui/generated/`**（ts-rs 生成物）、`src/frontend/shell/vendor/`（第三方）、`src/frontend/shell/gen/`、
      `tests/`、`*.vitest.ts`。理由：不是人写的对外文案，改它们要改生成器/上游。
-  7. **cc-bus 注入给另一个 agent 的文本**。理由：`91 §3.2` 逐字划出去了 ——
+  7. **cc-bus 注入给另一个 agent 的文本**。理由：划出去了 ——
      「它不是给人看的话，是对方那一轮的输入，改它等于改对方的 prompt」。
      ⇒ `EXCLUDED_FILE_RE` 里点名了 cc-bus 的注入文本住址，面⑦ 会报它被排除了几条。
-  8. 〔FIX5 · `91 §6` 第 5 条〕**已补**：`src/**/*.css` 的 `content:` 字面量（解 CSS 转义）与仓根三份入口 HTML
-     （`index.html` · `settings.html` · `viewer.html`，`41 §9` 三入口）的静态文本（文本节点 ＋ `title` / `aria-label` /
+  8. **已补**：`src/**/*.css` 的 `content:` 字面量（解 CSS 转义）与仓根三份入口 HTML
+     （`index.html` · `settings.html` · `viewer.html`，三入口）的静态文本（文本节点 ＋ `title` / `aria-label` /
      `placeholder` / `alt` 属性）进主集，出口 `css.content` / `html.text` / `html.attr`（`scan_static_faces`）。
 
 **包含但有保留的两条（说清楚，别读成确定）**：
@@ -73,7 +72,7 @@
  三、尺子的射程（说清楚，别读成证明）
 ═══════════════════════════════════════════════════════════════════════════════
   · 它数的是**源码文本**：遮注释 + 括号配平 + 逐字子串。**不编译、不跑、不看运行时可达性。**
-  · `kind` 取 `91 §4` **订正后的五档**：`title` / `control` / `action` / `body` / `error`。
+  · `kind` 取 **订正后的五档**：`title` / `control` / `action` / `body` / `error`。
     TS 这半是**回溯 `document.createElement("tag")` 推出来的**；推不出来的一律记
     `unresolved`，**不猜**。面③ 会把 `unresolved` 的量印出来 ——
     那就是「R5 今天能不能只扫 `title` 档」这个问题的真答案。
@@ -102,15 +101,15 @@ SRC_ROOT = REPO / "src"
 
 EXCLUDED_DIRS = (
     "src/frontend/ui/generated",            # ts-rs 生成物
-    "src/vendor",               # 第三方（〔RE〕原住 bridge 包的 `vendor/`：russh 补丁副本）
-    "src/panorama-engine/vendor",  # 第三方（〔RE〕code-picture-core 跟唯一消费者走）
+    "src/vendor",               # 第三方（原住 bridge 包的 `vendor/`：russh 补丁副本）
+    "src/panorama-engine/vendor",  # 第三方（code-picture-core 跟唯一消费者走）
     "src/frontend/shell/gen",           # 生成物
     "src/frontend/shell/embedded-daemons",
     "src/frontend/shell/scripts",
     "src/frontend/shell/icons",
     "src/frontend/shell/capabilities",
     "src/doc",                  # 文档
-    # 〔CP2c · 第四波 4C〕判据支撑库：只进 monitor / 后端的 `[dev-dependencies]`（与下面 `guard_support.rs`
+    # 判据支撑库：只进 monitor / 后端的 `[dev-dependencies]`（与下面 `guard_support.rs`
     # 被排除同一条理由 —— 判据支撑，不是生产面）。它的 `Err(…)` 是判据红时印给开发者看的，不是对外文案。
     "src/common/guard-core",
 )
@@ -122,7 +121,7 @@ EXCLUDED_FILE_RE = re.compile(
     r"|/tests?/"
     r"|/fixtures?/"
 )
-# 91 §3.2：cc-bus 注入给另一个 agent 的文本，两套规矩，别混。
+# cc-bus 注入给另一个 agent 的文本，两套规矩，别混。
 CC_BUS_INJECT_FILES = (
     "src/shared/cc-bus",
     "src/frontend/shell/src/cc_bus.rs",
@@ -138,10 +137,10 @@ RS_CHAR_LIT = re.compile(r"'(?:[^'\\\n]|\\(?:x[0-9a-fA-F]{2}|u\{[0-9a-fA-F]{1,6}
 
 CJK = re.compile(r"[㐀-䶿一-鿿豈-﫿]")
 
-# 〔CP2b · 第四波 4C · 用户 09-24 裁「符号也进表」（99 §1 V99）〕**纯符号串**也是文案：
+# 〔用户 09-24 裁「符号也进表」（）〕**纯符号串**也是文案：
 # 剥掉空白后非空、无插值、每个字符都是「非 ASCII · 非汉字 · 非字母（Unicode L*）」的字面量
 # （「✕」「↗」「▶」「✓」「—」「×」「、」「…」）。只有标点与插值的模板（`{…}：{…}`）**不算** ——
-# 那是排版不是一句话，换语言时才要进表，而多语言 V98 裁了先不做（登记的缺口，写在 CP2b 记录 §1）。
+# 那是排版不是一句话，换语言时才要进表，而多语言先不做（登记的缺口）。
 def is_symbol_text(text: str) -> bool:
     s = re.sub(r"\s", "", text)
     if not s or "{" in text:
@@ -153,11 +152,11 @@ def is_symbol_text(text: str) -> bool:
 
 
 def is_copy_text(text: str) -> bool:
-    """定义 (D) 的判准：含汉字，或是纯符号串（V99）。"""
+    """定义 (D) 的判准：含汉字，或是纯符号串。"""
     return bool(CJK.search(text)) or is_symbol_text(text)
 
 
-# 〔CP2b〕**普查读表**（`91 §5.6`：「全量抽表那一波要同拍把左边改成『普查主集 ＋ 表条数』」）：
+# **普查读表**（「全量抽表那一波要同拍把左边改成『普查主集 ＋ 表条数』」）：
 # 出口里的 `copyText("key"…)`（TS）/ `copy_text("key"…)`（monitor Rust）也是一条对外文案 ——
 # 记成主集条目，`via="table"`，文本与 kind 取表里那一条。字面量那些记 `via="literal"`。
 # ⇒ 抽表不会把全集抽空：各桶的反空真地板照旧有意义。
@@ -185,7 +184,7 @@ FLOORS = {
     "kind_resolved": 50,        # 至少这么多条 kind 是靠 tag 回溯定下来的
     "kind_title": 5,            # `title` 档（R5 的射程）不能是空的
     "bucket_copy_field": 30,    # 第 2 层出口（文案字段）不能空转
-    # 〔CP2b〕普查读表的反空真：表里有条目、出口里有取文口调用，却一条 via=table 都没认出来 ⇒ 读表那一格瞎了。
+    # 普查读表的反空真：表里有条目、出口里有取文口调用，却一条 via=table 都没认出来 ⇒ 读表那一格瞎了。
     "via_table": 50,
 }
 
@@ -207,14 +206,14 @@ SINKS = [
          re=re.compile(r"\bshowErrorToast\s*\("), argkind={}, default_kind="body"),
 
     # ── 模态确认 / 浏览器原生对话框 ──────────────────────────────────────
-    # 〔W5-UI〕应用内对话框 `src/frontend/ui/ask-dialog.ts` 接替了原生 `confirm` / `prompt`（真 app 里原生 `confirm` 是插件注入的
+    # 应用内对话框 `src/frontend/ui/ask-dialog.ts` 接替了原生 `confirm` / `prompt`（真 app 里原生 `confirm` 是插件注入的
     #   async 替身，恒真值）⇒ 出口换了住址，锚跟着认新名；原生那两形留着（生产里已零处，`tests/frontend/ui/ask-dialog.vitest.ts` D1 钉）。
     dict(id="dialog.confirm", lang="ts", bucket="confirm", mode="call", kind="body",
          re=re.compile(r"(?<![\w.])(?:window\.)?confirm\s*\(|\baskConfirm\s*\(")),
     dict(id="dialog.alert", lang="ts", bucket="confirm", mode="call", kind="body",
          re=re.compile(r"(?<![\w.])(?:window\.)?alert\s*\(")),
 
-    # 〔FIX5〕CSS 伪元素里的符号经文案表来：起步时设成自定义属性（`src/frontend/ui/css-marks.ts`），CSS 写 `content: var(--mark-…)`。
+    # CSS 伪元素里的符号经文案表来：起步时设成自定义属性（`src/frontend/ui/css-marks.ts`），CSS 写 `content: var(--mark-…)`。
     dict(id="css.var", lang="ts", bucket="css-content", mode="call", kind="body",
          re=re.compile(r"\.style\.setProperty\s*\(")),
 
@@ -267,7 +266,7 @@ SINKS = [
          re=re.compile(r"\.map_err\s*\(")),
     dict(id="rs.okor", lang="rs", bucket="rust-err", mode="call", kind="error",
          re=re.compile(r"\.ok_or(?:_else)?\s*\(")),
-    # 〔TAIL · 设计/91 §6 第 12 条〕`ccm` 是一次性命令行，它的 stderr / stdout **就是用户的终端** ⇒
+    # `ccm` 是一次性命令行，它的 stderr / stdout **就是用户的终端** ⇒
     #   只在 `ccm` 那几份里，`eprintln!` / `println!` 按对外算（别处仍按调试输出排除，见 `DECLINED_CTX`）。
     dict(id="rs.ccm.print", lang="rs", bucket="rust-err", mode="call", kind="error",
          only="src/backend/control/ccm/",
@@ -296,7 +295,7 @@ SINKS = [
     dict(id="show.prompt", lang="ts", bucket="confirm", mode="call", kind="body",
          re=re.compile(r"(?<![\w.])(?:window\.)?prompt\s*\(|\baskText\s*\(")),
     dict(id="show.status", lang="ts", bucket="dom-text", mode="call", kind="body",
-         # 〔CP2b〕`console.info(…)` 不是展示助手（定义 §二 第 2 条明写排除 console）—— 旧正则把它一起吃进了主集。
+         # `console.info(…)` 不是展示助手（定义 §二 第 2 条明写排除 console）—— 旧正则把它一起吃进了主集。
          re=re.compile(r"(?<!console)\.(?:showBanner|showLoading|showMessage|showResultText|"
                        r"renderSidebarStatus|info|note|showToast)\s*\(")),
     dict(id="show.section", lang="ts", bucket="dom-text", mode="call", kind="title",
@@ -309,7 +308,7 @@ SINKS = [
     dict(id="show.textnode", lang="ts", bucket="dom-text", mode="call", kind="body",
          re=re.compile(r"document\.createTextNode\s*\(")),
 
-    # ── 预备队：今天不对外，`00 §1.5.6` 第 3 级一落地就对外（91 §2.5） ─────
+    # ── 预备队：今天不对外，第 3 级一落地就对外 ─────
     dict(id="rs.tracing.error", lang="rs", bucket="log-error", mode="call", kind="log",
          re=re.compile(r"\btracing::error!\s*\(|(?<![\w:])error!\s*\(")),
 ]
@@ -317,7 +316,7 @@ SINKS = [
 RESERVE_BUCKETS = {"log-error"}
 
 # ── kind：DOM 文本靠回溯 `createElement("tag")` 推 ──────────────────────────
-# `91 §4` 订正后的五档：title / control / action / body / error
+# 订正后的五档：title / control / action / body / error
 TAG_KIND = {
     "button": "action", "a": "action",
     "h1": "title", "h2": "title", "h3": "title", "h4": "title", "h5": "title", "h6": "title",
@@ -332,7 +331,7 @@ NAME_ACTION_RE = re.compile(r"(btn|button)$", re.I)
 NAME_TITLE_RE = re.compile(r"(title|heading|header|caption|legend)$", re.I)
 
 # ═══════════════════════════════════════════════════════════════════════════
-#  R1 禁词表（`91 §4` 逐字抄的那张） —— 顺序 = 匹配优先级（长的先吃）
+#  R1 禁词表（抄的那张） —— 顺序 = 匹配优先级（长的先吃）
 # ═══════════════════════════════════════════════════════════════════════════
 R1_WORDS = [
     ("@ccm_sid", re.compile(r"@ccm_sid")),
@@ -359,7 +358,7 @@ R1_WORDS = [
     ("铸名", re.compile(r"铸名")),
     ("灰", re.compile(r"灰")),
 ]
-# `灰` 的纯颜色义（灰色/灰度/灰阶）不是 `设计/30 §3.5.2` 说的那个状态词。
+# `灰` 的纯颜色义（灰色/灰度/灰阶）不是说的那个状态词。
 # ⚠ **`变灰` / `置灰` 不在这里** —— 「tab 稍后自动变灰」正是 §3.5.2 点名的那个用法
 #   （指代不明：到底是「已结束」还是「可重连」）。第一版把它一起吞了，读数因此是 0。
 HUI_COLOR_RE = re.compile(r"灰色|灰度|灰阶")
@@ -379,7 +378,7 @@ R1_CANDIDATES = [
 ]
 
 # ═══════════════════════════════════════════════════════════════════════════
-#  R5 词表（`91 §4` 逐字）—— **只扫 label**（`§4` 那条 ⚠ 的硬要求）
+#  R5 词表—— **只扫 label**（`§4` 那条 ⚠ 的硬要求）
 # ═══════════════════════════════════════════════════════════════════════════
 R5_COLLOQUIAL = [
     ("还差", re.compile(r"还差")),
@@ -390,7 +389,7 @@ R5_COLLOQUIAL = [
     ("行不行", re.compile(r"行不行")),
 ]
 R5_QUESTION = re.compile(r"[？?]")
-# `91 §4` 订正后新增的第 ③ 检：**以祈使动词开头**（只在 `title` 档里判红）
+# 订正后新增的第 ③ 检：**以祈使动词开头**（只在 `title` 档里判红）
 R5_IMPERATIVE = re.compile(r"^\s*(启用|停用|显示|隐藏|打开|关闭|设置|选择|输入|点击|查看|管理)")
 # 插值点里的 `?` 不是问句：Rust 的 `{:?}` / `{name:?}` 会假命中 R5 的第 ① 检。
 INTERP_RE = re.compile(r"\{[^{}]*\}")
@@ -401,7 +400,7 @@ def speech(text: str) -> str:
     return INTERP_RE.sub("", text)
 
 # ═══════════════════════════════════════════════════════════════════════════
-#  六类病的机检代理（`91 §2`）
+#  六类病的机检代理
 # ═══════════════════════════════════════════════════════════════════════════
 # 病① 内部标识符外泄：R1 里的**技术名**子集
 D1_WORDS = {"@ccm_sid", "ccm wrapper", "hwnd cache", "daemon", "pidfile", "jsonl",
@@ -415,7 +414,7 @@ D3_RE = re.compile(r"建议|请先|请改|请重|请手动|请检查|请用|请�
 # 病④ AI 味形状（**代理判据**：三个信号各自数，再数同时命中）
 D4_DASH_RE = re.compile(r"——|--(?!>)|—")
 D4_PAREN_RE = re.compile(r"（[^）]{2,}）|\([^)]{4,}\)")
-# 首句汉字数上限。`91 §5.2⑤` 今天**还没定数** ⇒ 这里给一个明写的、有分布支撑的阈值：
+# 首句汉字数上限。今天**还没定数** ⇒ 这里给一个明写的、有分布支撑的阈值：
 # 现打分布（见面⑥）首句汉字数 p95≈24 · p99≈31 · max=39 ⇒ 取 30 ≈ 最长的 1%。
 # ⚠ **阈值一改，病④ 的数就变** —— 所以它印在读数里，不藏在代码里。
 D4_LONG_CHARS = 30
@@ -705,7 +704,7 @@ def cfg_test_module_files(root: Path) -> set:
 def iter_strings(src: str, lang: str, lo: int, hi: int):
     """在 [lo,hi) 里列出字符串字面量：(start, end, 归一化文本)。
 
-    模板串 / `format!` 的插值点归一成 `{…}` —— 这一格服务 `91 §5.1-3`（参数化要留在表里）。
+    模板串 / `format!` 的插值点归一成 `{…}` —— 这一格服务（参数化要留在表里）。
     """
     i = lo
     n = min(hi, len(src))
@@ -966,7 +965,7 @@ def line_of(src: str, off: int) -> int:
     return src.count("\n", 0, off) + 1
 
 
-# 〔FIX5 · `91 §6` 第 5 条〕两面静态文本：CSS 的 `content:` · 入口 HTML。它们不是 TS / Rust 源码，另走一条短路。
+# 两面静态文本：CSS 的 `content:` · 入口 HTML。它们不是 TS / Rust 源码，另走一条短路。
 ENTRY_HTML = ("index.html", "settings.html", "viewer.html")
 CSS_COMMENT = re.compile(r"/\*.*?\*/", re.S)
 CSS_CONTENT = re.compile(r"(?<![-\w])content\s*:([^;{}]*)")
@@ -1050,7 +1049,7 @@ def scan(root: Path):
         tagmap = build_tag_map(masked) if lang == "ts" else {}
 
         consumed = set()   # 已被某个出口吃掉的字面量起点
-        consumed_refs = set()  # 〔CP2b〕已被某个出口吃掉的 copyText / copy_text 调用起点
+        consumed_refs = set()  # 已被某个出口吃掉的 copyText / copy_text 调用起点
         for sink in SINKS:
             if sink["lang"] not in (lang, "both"):
                 continue
@@ -1065,7 +1064,7 @@ def scan(root: Path):
                     lo, hi = col + 1, end
                     op = None
                 elif sink["mode"] == "call":
-                    # 〔FIX2〕从匹配起点找第一个 `(`：`setAttribute("aria-label"` 这类锚串越过了实参开头，
+                    # 从匹配起点找第一个 `(`：`setAttribute("aria-label"` 这类锚串越过了实参开头，
                     #   从匹配末尾找会落到下一个 `copyText(` 里，经表取文的那几处整批漏掉。
                     op = masked.find("(", m.start())
                     if op < 0:
@@ -1115,7 +1114,7 @@ def scan(root: Path):
                         params=text.count("{…}") + len(re.findall(r"\{[a-zA-Z_][\w.]*\}", text)),
                         site=(rel, line_of(masked, m.start()), sink["id"]), via="literal",
                     ))
-                # 〔CP2b〕普查读表：出口里的取文口调用
+                # 普查读表：出口里的取文口调用
                 for rm in COPY_REF.finditer(masked, lo, hi):
                     if rm.start() in consumed_refs:
                         continue
@@ -1145,7 +1144,7 @@ def scan(root: Path):
             residual.append(dict(file=rel, line=line_of(masked, s), ctx=ctx, text=text[:80],
                                  encl=encl_of.get(s, "")))
 
-    # 〔FIX5〕CSS `content:` 与入口 HTML 的静态文本：直接进主集（它们一定上界面，没有「存疑」这一说）。
+    # CSS `content:` 与入口 HTML 的静态文本：直接进主集（它们一定上界面，没有「存疑」这一说）。
     _static_files, static_entries = scan_static_faces(root)
     entries.extend(static_entries)
     return files, scanned_lines, entries, residual, english, ccbus_excluded
@@ -1249,9 +1248,9 @@ def main_report(args) -> int:
     P(f"    · .rs                                             : {sum(1 for _, r in files if r.endswith('.rs'))}")
     P(f"  遮注释 + 剥 #[cfg(test)] 之后的行数                  : {lines}")
     P(f"  明写排除：{', '.join(EXCLUDED_DIRS)}")
-    P(f"  cc-bus 注入文本（91 §3.2 划出去的）被排除条数         : {ccbus}")
+    P(f"  cc-bus 注入文本（划出去的）被排除条数         : {ccbus}")
     static_files, _static = scan_static_faces(SRC_ROOT)
-    P(f"  〔FIX5〕CSS（content:）与入口 HTML（静态文本）                  : {len(static_files)}")
+    P(f" CSS（content:）与入口 HTML（静态文本）                  : {len(static_files)}")
     P("  ⚠ 未扫面（已登记，不假装扫过）：README*.md · 英文文案")
     raw_anchor, masked_anchor = mask_sanity(files)
     P(f"  遮罩自检：`.textContent =` 原文 {raw_anchor} 处 / 遮注释后 {masked_anchor} 处 "
@@ -1267,19 +1266,19 @@ def main_report(args) -> int:
     lit = [e for e in main if e.get("via") == "literal"]
     via_tab = [e for e in main if e.get("via") == "table"]
     table = load_copy_table()
-    P(f"     · 〔CP2b〕仍是源码字面量（via=literal，抽表的靶子）         : {len(lit)}")
-    P(f"       其中纯符号串（V99「符号也进表」）                      : {sum(1 for e in lit if is_symbol_text(e['text']))}")
-    P(f"     · 〔CP2b〕出口里经文案表取文（via=table）                  : {len(via_tab)}")
+    P(f"     · 仍是源码字面量（via=literal，抽表的靶子）         : {len(lit)}")
+    P(f"       其中纯符号串（「符号也进表」）                      : {sum(1 for e in lit if is_symbol_text(e['text']))}")
+    P(f"     · 出口里经文案表取文（via=table）                  : {len(via_tab)}")
     P(f"     文案表条数（src/shared/copy/table.json）                  : {len(table)}")
     P(f"       其中 key 在某个出口里被直接引用的                       : {len({e.get('key') for e in via_tab})}")
     P(f"     · 第 1 层 直接渲染面（toast / DOM / 属性 / Err …）        : {len(t1)}")
     P(f"     · 第 2 层 文案字段（装进结构体再由渲染层取出来贴）        : {len(t2)}")
     P(f"     对外文案**调用点**（一处调用可带多条条目）                : {len(sites)}")
     P(f"     条目分布的文件数                                          : {len(efiles)}")
-    P(f"     带插值的条目（91 §5.1-3：插值点必须留在表里）             : "
+    P(f"     带插值的条目（插值点必须留在表里）             : "
       f"{sum(1 for e in main if e['params'])}  ({pct(sum(1 for e in main if e['params']), len(main))})")
     P(f"     去重后的**不同文本**条数                                  : {len({e['text'] for e in main})}")
-    P(f"  ▫ 预备队（tracing::error!，今天不对外，00 §1.5.6 第 3 级后对外）: {len(reserve)}")
+    P(f"  ▫ 预备队（tracing::error!，今天不对外，第 3 级后对外）: {len(reserve)}")
 
     # ── 面②：按面/按轨分桶 ──────────────────────────────────────────────
     P("\n【面②】按面分桶 ＋ 按轨分桶")
@@ -1298,7 +1297,7 @@ def main_report(args) -> int:
         P(f"    {c:>5}  {f}")
 
     # ── 面③：kind ────────────────────────────────────────────────────
-    P("\n【面③】kind 五档（`91 §4` 订正后）—— R5 能不能只扫 `title` 档，答案在这一格")
+    P("\n【面③】kind 五档（订正后）—— R5 能不能只扫 `title` 档，答案在这一格")
     kc = Counter(e["kind"] for e in main)
     for k, c in kc.most_common():
         P(f"    {k:<12} {c:>6}   {pct(c, len(main))}")
@@ -1313,13 +1312,13 @@ def main_report(args) -> int:
     unres = kc.get("unresolved", 0)
     P(f"  🔴 **分不开的那部分**：{unres} 条（{pct(unres, len(main))}）住在 div/span 之类的中性件上，"
       f"既可能是区块名也可能是正文。")
-    P(f"     ⇒ 逐字答 `91 §4` 那条 ⚠（「分不清 `title` 与 `control`，R5 只能 grep 猜」）：")
+    P(f"     ⇒ 逐字答那条 ⚠（「分不清 `title` 与 `control`，R5 只能 grep 猜」）：")
     P(f"       今天 `title` 档只认得出 {kc.get('title', 0)} 条，`control` 档 {kc.get('control', 0)} 条，"
       f"而 {unres} 条**分不开**。")
     P("       ⇒ **这就是「R5 的前置是抽表」那句话的量** —— 抽表之前 R5 的射程是猜出来的。")
 
     # ── 面④：R1 ─────────────────────────────────────────────────────
-    P("\n【面④】R1 禁词表 —— 逐词现打命中（`91 §4` 那张表逐字）")
+    P("\n【面④】R1 禁词表 —— 逐词现打命中")
     r1 = word_hits(main, R1_WORDS, skip_hui_color=True)
     r1_all = {id(e) for lst in r1.values() for e in lst}
     P(f"  扫过的条目（分母）: {len(main)}")
@@ -1333,7 +1332,7 @@ def main_report(args) -> int:
     hui_all = [e for e in main if "灰" in e["text"]]
     P(f"  ⚠ `灰` 两种读法：含「灰」的条目共 {len(hui_all)} 条，剔掉**纯颜色义**（灰色/灰度/灰阶）后 "
       f"{len(r1.get('灰', []))} 条。")
-    P("     「变灰」「置灰」**故意不剔** —— `设计/30 §3.5.2` 点的正是这个用法（到底是「已结束」还是「可重连」）。")
+    P("     「变灰」「置灰」**故意不剔** —— 点的正是这个用法（到底是「已结束」还是「可重连」）。")
     for e in hui_all[:4]:
         P(f"        🔴 {e['file']}:{e['line']}  「{e['text'][:52]}」")
     P("  ▫ 预备队（tracing::error!）里的 R1 命中：", end="")
@@ -1347,7 +1346,7 @@ def main_report(args) -> int:
         P(f"    {name:<14}{len(lst):>6}   {addr}")
 
     # ── 面⑤：R5 ─────────────────────────────────────────────────────
-    P("\n【面⑤】R5（`91 §4` 订正后）—— **射程只到 `title` 档**")
+    P("\n【面⑤】R5（订正后）—— **射程只到 `title` 档**")
     titles = [e for e in main if e["kind"] == "title"]
     titles_measured = [e for e in titles if e["kind_src"] in ("tag", "sink")]
     P(f"  `title` 档条目（页面名 / 导航项 / 区块标题）: {len(titles)}"
@@ -1392,12 +1391,12 @@ def main_report(args) -> int:
                  and (R5_QUESTION.search(speech(e["text"])) or R5_IMPERATIVE.search(e["text"]))]
     P(f"  🔴 **分不开的那部分**：kind=unresolved 里命中 R5 形状的有 {len(unres_hit)} 条 —— "
       f"今天判不了它们是 `title` 还是 `control`/`body`。")
-    P("     ⇒ 这 %d 条逐字就是 `91 §4`「没有抽表，R5 根本落不了地」那句话的**量**。" % len(unres_hit))
+    P("     ⇒ 这 %d 条逐字就是「没有抽表，R5 根本落不了地」那句话的**量**。" % len(unres_hit))
     for e in unres_hit[:6]:
         P(f"        ? {e['file']}:{e['line']}  「{e['text'][:50]}」")
 
     # ── 面⑥：六类病比例 ────────────────────────────────────────────────
-    P("\n【面⑥】六类病 —— **比例**（`91 §6` 那笔「比例完全没量过」的债还在这一格）")
+    P("\n【面⑥】六类病 —— **比例**（那笔「比例完全没量过」的债还在这一格）")
     st = disease_stats(main)
     P(f"  分母 = 对外文案条目全集 {len(main)} 条（**不是抽样**）")
     P(f"  {'病':<44}{'条目':>6}   {'占比':>7}   判据强度")
@@ -1418,14 +1417,14 @@ def main_report(args) -> int:
     P(f"     首句 ≥{D4_LONG_CHARS} 个汉字                     : {len(st['longs']):>5}   {pct(len(st['longs']), len(main))}")
     d = st["dist"] or [0]
     qs = {q: d[min(int(len(d) * q / 100), len(d) - 1)] for q in (50, 75, 90, 95, 99)}
-    P(f"     ▫ 首句汉字数分布（给 `91 §5.2⑤` 定数用）: p50={qs[50]} p75={qs[75]} "
+    P(f"     ▫ 首句汉字数分布（给定数用）: p50={qs[50]} p75={qs[75]} "
       f"p90={qs[90]} p95={qs[95]} p99={qs[99]} max={d[-1]}")
     sick = st["d1"] | st["d2"] | st["d5"] | {id(e) for e in st["d3"]} | {id(e) for e in st["d4_all"]} | r5_title
     P(f"  🔴 **至少中一类的条目**                  : {len(sick):>5}   {pct(len(sick), len(main))}")
     P(f"     ⇒ 反过来：{pct(len(main) - len(sick), len(main))} 的条目**一类都没中** —— "
-      f"与 `真相源/50 §1`「现有文案大部分不 AI」那条抽样结论同向，现在它有全集读数了。")
+      f"与「现有文案大部分不 AI」那条抽样结论同向，现在它有全集读数了。")
     P("  ⚠ 病③ 病④ 是**代理判据**：病③ 只认词面（「建议」两字），说得委婉的漏掉 ⇒ **读成下界**；")
-    P("     病④ 的三个信号里「长句」阈值是本量具自己定的（`91 §5.2⑤` 今天还没定数）⇒ 阈值一改，数就变。")
+    P("     病④ 的三个信号里「长句」阈值是本量具自己定的（今天还没定数）⇒ 阈值一改，数就变。")
 
     # ── 面⑦：残差 ────────────────────────────────────────────────────
     P("\n【面⑦】残差 —— 定义之外还剩多少含汉字的字面量（上界在这里）")
@@ -1468,12 +1467,12 @@ def main_report(args) -> int:
             shown += 1
             if shown >= 10:
                 break
-    P(f"  纯英文候选（**已登记缺口**，`91 §6` 承认过没看）: {len(english)}")
+    P(f"  纯英文候选（**已登记缺口**，承认过没看）: {len(english)}")
     for e in english[:8]:
         P(f"    {e['file']}:{e['line']}  「{e['text'][:50]}」")
 
     # ── 面⑧：抽表对账的左边 ──────────────────────────────────────────
-    P("\n【面⑧】抽表对账（`91 §5.2` 逐字要的「相等断言，不是下界」）")
+    P("\n【面⑧】抽表对账（要的「相等断言，不是下界」）")
     P(f"  盘上对外文案条目数 = **{len(main)}**")
     P(f"  ⇒ 将来那条对拍判据写成： assert_eq!(表里条数, {len(main)})，")
     P("     并且这个数每次改文案都必须回来改 —— 地板会被静默绕过，相等不会。")

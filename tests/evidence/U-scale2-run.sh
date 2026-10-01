@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# 秤 2（`设计/17 §6` 表第 2 行）的**一键复算**：打包探针 → 两个真引擎各跑一遍 →
+# 秤 2（表第 2 行）的**一键复算**：打包探针 → 两个真引擎各跑一遍 →
 # 出误差表 → 刷新门禁用的金标准。
 #
-# 真浏览器怎么起的（照抄 `真相源/90 §3.1/§3.7`，没有重新发明）：
+# 真浏览器怎么起的（照抄，没有重新发明）：
 #   · WebKitGTK 2.52.6  ——  PyGObject + gi WebKit2-4.1，必须 xvfb + 关合成，
 #                            否则 web process 起不来。这是 Linux 侧 Tauri/wry 的同一引擎。
 #   · Chromium 153      ——  Playwright 的 headless shell，生产 WebView2 的同引擎家族。
@@ -85,5 +85,5 @@ cat <<'NOTE'
               && npm i playwright && npx playwright install chromium
               （装到 ~/.cache/ms-playwright/，约 658MB；回收 rm -rf 该目录）
   WebKitGTK： 本机已有 libwebkit2gtk-4.1 + gi typelib WebKit2-4.1 + pygobject，
-              零新增依赖；runner 就是 ~60 行 GTK3 + WebKit2，原文见 `真相源/90 §3.7` 的产物清单。
+              零新增依赖；runner 就是 ~60 行 GTK3 + WebKit2。
 NOTE

@@ -45,7 +45,7 @@ monitor 侧字段名收进**一个常量**、生产与夹具都从那里取。�
 | ③b 只把 `has_live` 那一格退化 | `has_live: Counted::Unknown(NoRemoteLivenessOracle)` → `Counted::Known(false)` | 红 | 🔴 monitor **10 passed / 1 failed**（`liveness_has_no_oracle_here_so_it_says_so_instead_of_saying_false`） |
 
 ⚠ **③b 是自己加的一刀**：件文件的 ③ 说的是「daemon 版本旧、字段没有」那一档，
-而本件落地后 `has_live` 是**第二个**算不出的档（本机没有远端判活的真相源）。
+而本件落地后 `has_live` 是**第二个**算不出的档（本机没有远端判活的源头）。
 两档各挨一刀，免得「有一档有牙、另一档没有」。
 
 ## `KR83D3` —— 不许用「每个项目再来一次 `--list-sessions`」换到它

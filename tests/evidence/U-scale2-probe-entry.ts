@@ -1,10 +1,10 @@
 /**
- * 秤 2（`设计/17 §6` 表第 2 行）的**真浏览器探针**。
+ * 秤 2（表第 2 行）的**真浏览器探针**。
  *
- * `设计/17 §6` 对秤 2 逐字要求「**必须真浏览器**（jsdom 无布局引擎）」。
+ * 对秤 2 逐字要求「**必须真浏览器**（jsdom 无布局引擎）」。
  * 本文件被 vite 打成一个 IIFE，由 `U-scale2-run.sh` 塞进
  * WebKitGTK（PyGObject + WebKit2-4.1）与 Chromium（Playwright）两个引擎跑，
- * 起法照抄 `真相源/90 §3.1/§3.7` 那条已经被证明可行的路子，没有重新发明。
+ * 起法照抄那条已经被证明可行的路子，没有重新发明。
  *
  * # 它打三段读数
  *
@@ -13,7 +13,7 @@
  *   让每张卡都真排版，逐卡读 `getBoundingClientRect().height`（border-box）
  *   ＋ 扣掉 padding/border 得到 **content-box**。
  *   关 c-v 的理由：c-v:auto 的卡在视口外会被 skip，那时读到的是**估值本身**，
- *   拿它当真值就是自己跟自己比（`设计/17 §5.3` 点名的那个病）。
+ *   拿它当真值就是自己跟自己比（点名的那个病）。
  *
  * - **B 段 · `contain-intrinsic-size` 到底是 content-box 还是 border-box**：
  *   这一段专门回答 `height-estimate.ts` 自陈的那句「不加 padding/border：
@@ -30,7 +30,7 @@
  *   **这一段必须留**：真高是"这台机器上这套字体"的真高，不是生产 Windows WebView2 的真高。
  *
  * 结果写 `window.__RESULT`（JSON 文本）＋ `window.__DONE = true`，与
- * `真相源/90` 的两个 runner 的取值约定一致。
+ * 两个 runner 的取值约定一致。
  */
 // 〔三入口拆分 · 住址搬家〕原先这一行 `import "../../src/frontend/ui/styles.css"` 就带着令牌与重置
 // （它 `@import` 了 tokens.css、自带 `@layer reset`）；拆开之后它们各住一份。照 `viewer.html` 的

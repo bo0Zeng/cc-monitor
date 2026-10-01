@@ -5,7 +5,7 @@
 
 它不选方案，只把**候选摆法各自要动的那几处**量出来，逐处给分母与住址：
 
-  面①  `inbound::REGISTRY`（单一真相源）+ `CommandSpec` 的字段
+  面①  `inbound::REGISTRY`（单一源头）+ `CommandSpec` 的字段
   面②  `inbound::COMMANDS`（`hello.commands` 的来源，**跨轨对拍锚**）
   面③  `main::SUBCOMMANDS`（CLI 面那道闸门，第三份手写镜子）
   面④  `hello` 帧的三条能力面（`capabilities` / `emits` / `commands`）与它们的 serde 形态
