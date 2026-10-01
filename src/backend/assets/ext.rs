@@ -492,8 +492,12 @@ pub(crate) fn mcp_dir(at: &ExtLoc) -> Result<&str, (&'static str, String)> {
 }
 
 /// cc-monitor 自带的扩展：（种类, 名字, 内置备注, 要不要列各台的钩子状态）。
-const BUILTIN: &[(ExtKind, &str, fn() -> String, bool)] =
-    &[(ExtKind::Skill, super::cc_bus_install::NAME, cc_bus_note, true)];
+const BUILTIN: &[(ExtKind, &str, fn() -> String, bool)] = &[(
+    ExtKind::Skill,
+    super::cc_bus_install::NAME,
+    cc_bus_note,
+    true,
+)];
 
 fn cc_bus_note() -> String {
     copy_text("beExt.builtin.ccBus", &[])
@@ -563,9 +567,7 @@ fn row(cat: &Catalog, cols: &[Column], kind_s: &str, name: &str, per: &[Vec<&Ass
     } else {
         ExtKind::Skill
     };
-    let builtin = BUILTIN
-        .iter()
-        .find(|(k, n, _, _)| *k == kind && *n == name);
+    let builtin = BUILTIN.iter().find(|(k, n, _, _)| *k == kind && *n == name);
     let user: Vec<Option<&Asset>> = per
         .iter()
         .map(|v| v.iter().copied().find(|a| a.project.is_none()))
@@ -692,13 +694,7 @@ fn cell(
 }
 
 /// 一处：有它 ⇒ 能写的那一级给「卸载」（那台连着才给），不能写的说为什么；没有 ⇒ 只给态。
-fn place(
-    kind: ExtKind,
-    at: ExtLoc,
-    held: Option<&Asset>,
-    state: ExtState,
-    live: bool,
-) -> ExtPlace {
+fn place(kind: ExtKind, at: ExtLoc, held: Option<&Asset>, state: ExtState, live: bool) -> ExtPlace {
     let dir = match kind {
         ExtKind::Mcp => None,
         ExtKind::Skill => held.and_then(|a| a.dir.clone()),
@@ -738,12 +734,15 @@ fn bring_for(
     };
     let from_machine = matches!(src, Source::Machine(..));
     let targets: Vec<ExtTarget> = std::iter::once(ExtLoc::User)
-        .chain(c.m.projects.iter().map(|d| ExtLoc::Project { dir: d.clone() }))
+        .chain(
+            c.m.projects
+                .iter()
+                .map(|d| ExtLoc::Project { dir: d.clone() }),
+        )
         .map(|at| {
             let why = target_refused(kind, name, &at).or_else(|| {
-                (from_machine
-                    && same_place(from.as_deref(), &from_loc, c.m.key.as_deref(), &at))
-                .then(|| copy_text("beExt.card.sameMachine", &[]))
+                (from_machine && same_place(from.as_deref(), &from_loc, c.m.key.as_deref(), &at))
+                    .then(|| copy_text("beExt.card.sameMachine", &[]))
             });
             ExtTarget {
                 ok: why.is_none(),

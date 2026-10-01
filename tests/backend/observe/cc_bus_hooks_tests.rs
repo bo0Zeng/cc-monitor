@@ -174,7 +174,9 @@ fn the_snippet_points_at_the_installed_scripts_and_reads_back_as_installed() {
     let v: serde_json::Value = serde_json::from_str(&text).expect("要加的内容必须是合法 JSON");
     assert_eq!(
         v["hooks"]["SessionStart"][0]["hooks"][0]["command"],
-        serde_json::json!("\"$HOME/.claude/skills/cc-bus/scripts/cc-register\" >/dev/null 2>&1 || true")
+        serde_json::json!(
+            "\"$HOME/.claude/skills/cc-bus/scripts/cc-register\" >/dev/null 2>&1 || true"
+        )
     );
     assert_eq!(
         v["hooks"]["Stop"][0]["hooks"][0]["command"],
@@ -187,7 +189,11 @@ fn the_snippet_points_at_the_installed_scripts_and_reads_back_as_installed() {
         "{:?}",
         d.session_start
     );
-    assert!(matches!(d.stop, HookState::InstalledAtPath { .. }), "{:?}", d.stop);
+    assert!(
+        matches!(d.stop, HookState::InstalledAtPath { .. }),
+        "{:?}",
+        d.stop
+    );
     // skills 根不在家目录底下 ⇒ 绝对路径（POSIX 单引号）。
     let other = scratch("snippet-elsewhere");
     let text = snippet(&skills, Some(&other)).unwrap();

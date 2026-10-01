@@ -944,7 +944,14 @@ pub(crate) fn answer_current(
 pub(crate) fn answer_note(key: &str, text: &str) -> Result<Catalog, (&'static str, String)> {
     let path =
         catalog_path().ok_or(("io_failed", copy_text("beAssetCatalog.write.noHome", &[])))?;
-    update_noting(&path, scan_here(), &machine_label(), (key, text), now_secs()).map(|(c, _)| c)
+    update_noting(
+        &path,
+        scan_here(),
+        &machine_label(),
+        (key, text),
+        now_secs(),
+    )
+    .map(|(c, _)| c)
 }
 
 /// `assets-catalog`：这台现扫一次、记下（变了才写），回整份目录 ＋「这台缺什么」。
