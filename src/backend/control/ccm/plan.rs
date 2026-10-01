@@ -92,7 +92,7 @@ impl Env {
     pub(crate) fn from_process(process_argv: &[String]) -> Self {
         use super::argv::Defaults;
         // 〔WIN1〕家目录：`HOME`，没有再退 `USERPROFILE` —— 与本 crate 其余各处同一个口径
-        //   （`exit_policy::policy_path` · `asset_catalog` · `panorama`）。从前只认 `HOME`：Windows 上
+        //   （`exit_policy::policy_path` · `asset_catalog`）。从前只认 `HOME`：Windows 上
         //   默认没有它 ⇒ 账号库落成 `/.claude-alt/accounts.json`（当前盘的根），找不到号还说「不在那个文件里」。
         let home = home_of(|k| std::env::var(k).ok());
         let get = |k: &str| std::env::var(k).ok().filter(|v| !v.is_empty());

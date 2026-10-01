@@ -216,8 +216,6 @@ fn every_registered_command_declares_its_run_kind() {
                 | "hooks-diag"
                 // 〔RESYNC〕手动对齐：等每份 watcher 做完（对表 ＋ 打标起 tmux）。
                 | "resync"
-                // 〔RM1f〕`panorama` 不在这里了：起进程改成异步等（`plugin::invoke::run_abortable`），
-                //   `cancel` 打得断 ⇒ `Run::Async`。〔墓碑 —— RM1c 那一版在这一档：「起一个进程、等它退出」。〕
                 // 〔RM1a · 第四波〕上游选择那份凭据文件的两条：同步文件 I/O（读一份小文件 / 原子写一份）。
                 | "apikey-key-set"
                 | "apikey-read"
@@ -338,15 +336,11 @@ fn every_registered_command_declares_its_run_kind() {
         "ext-hub-preview",
         "ext-hub-apply",
         "pubkey-push",        // 〔MIG-3b 续〕等远端（问那台后端 / 一次 exec），真异步
-        "panorama-edit", // 〔MIG-3b 续〕同 `panorama`（起小程序、等它），落盘那一步挪到阻塞线程池
-        "panorama-uninstall", // 〔FIX4〕同上：起小程序认身份、等它；读与删挪到阻塞线程池
         "files-grep",    // 〔FILES3〕可撤：走那一趟在阻塞线程池上、看取消位，future 被丢即收手
         // 〔MIG-3b〕部署计划：真异步（拨号 / 等远端 capture · SFTP），在 await 点可取消。
         "deploy-plan",
         // 〔THIN〕远端常驻后端 hello 的新旧：纯判定，不碰盘不拨号。
         "resident-verdict",
-        // 〔THIN〕那台要哪一格：远端真异步（等 capture），本机纯判定。
-        "deploy-slot",
         // 〔THIN〕那台旧入口的去向：真异步（SFTP stat ＋ 读回），在 await 点可取消。
         "deploy-retired",
         // 〔C4d · 第四波 4B〕可达表登记：纯内存，普通 spawn。
@@ -413,7 +407,6 @@ fn every_registered_command_declares_its_run_kind() {
         "tmux-name-mint", // 〔FIX4 · J7〕
         "hooks-diag",     // 〔MIG-3b〕
         "resync",         // 〔RESYNC〕
-        "panorama",
         "apikey-key-set",
         "apikey-read",
         "apikey-routing",  // 〔US1〕

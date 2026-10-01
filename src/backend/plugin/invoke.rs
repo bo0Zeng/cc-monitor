@@ -35,12 +35,6 @@ use copy_core::copy_text;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
-/// 〔P7〕插件往 **stderr** 写的一行以它开头 ⇒ 那是**一格进度**（前缀后面那段原样交调用方的回调），不进诊断。
-///
-/// 通用方言（同 `--probe` 那套 `key=value`），不认识任何具体插件：格里是什么由调用方解释。
-/// 只有调用方给了回调（[`run_abortable_reporting`]）才分拣；没给 ⇒ 这种行照旧当普通 stderr 留着。
-pub(crate) const PROGRESS_PREFIX: &str = "progress=";
-
 /// `timeout` 那条命令超时时的退出码（GNU coreutils）。
 ///
 /// ⚠ 引用它的文案里**别把它写成命令名紧跟左括号**的形状 —— 零定时器护栏按调用形态扫，
@@ -184,9 +178,7 @@ fn deadline_bin() -> Option<PathBuf> {
     super::discover::on_path("timeout")
 }
 
-/// ★ **本层唯一一处起进程**（已登记进 `readonly_guard::spawn_registry::ALLOWED`）——
-/// 〔RM1f〕两种等法（[`run`] 同步等 · [`run_abortable`] 异步等、可被打断）**共用这一处构造**，
-/// 程序 · argv · 环境 · `stdin` 一个字都不分叉。
+/// ★ **本层唯一一处起进程**（已登记进 `readonly_guard::spawn_registry::ALLOWED`）的构造：程序 · argv · 环境 · `stdin`。
 ///
 /// 入参：`bin` 是已经找到的那个可执行文件（[`super::discover::find`] 的产出）；
 /// `args` **直传，不过 shell** ⇒ 参数里的元字符不构成注入面；
@@ -217,7 +209,7 @@ fn command_for(bin: &Path, args: &[&str], deadline_secs: u64, env: &[(&str, &str
     cmd
 }
 
-/// 起不来的那一刻 → [`NotRun`]（两种等法共用）。
+/// 起不来的那一刻 → [`NotRun`]。
 fn not_run(bin: &Path, e: std::io::Error) -> NotRun {
     // ★ 参数太长要单独说：实测 200KB 必炸、120KB 能过 —— 内核的单参数上限是 128 KiB。
     #[cfg(unix)]
@@ -244,163 +236,6 @@ pub(crate) fn run(
             stderr: out.stderr,
         }),
         Err(e) => Err(not_run(bin, e)),
-    }
-}
-
-/// 〔RM1f〕起它、**异步**等它退出 —— **这个 future 被丢掉 = 子进程被杀**（可取消档的调用方用）。
-///
-/// # 为什么要有它（`RM1b.md §3.3` ③「长期限 ＋ 可取消」的后一半）
-///
-/// [`run`] 是同步 `output()`：调用方只能把它放进 `spawn_blocking`，而那一档 `abort()` 是空操作
-/// （后端据此对它回 `not_cancellable`，不撒谎）。建索引一趟可到分钟级，点下去就只能等。
-/// ⇒ 这一形把「等」换成异步：调用方的 future 在任何 `.await` 点被丢（`cancel` 命中
-/// ⇒ `AbortHandle::abort()`），子进程**连同它起的孙进程**一起没了。
-///
-/// # 杀谁：**整组**，不只是直接子进程
-///
-/// 有 `timeout(1)` 前缀时，直接子进程是那条期限命令，真正干活的是它起的**孙进程**；
-/// 只杀直接子进程（`kill_on_drop`）会让孙进程成孤儿、照跑到期限为止 —— 那等于没取消。
-/// ⇒ 起的时候让子进程**自成一组**（[`crate::platform::detach::detach`]，与起脱离的中转同一格原语；
-/// `timeout` 不带 `--foreground` 时自己也会 `setpgid(0,0)`，同一组），被丢时对**整组**发终止信号
-/// （[`crate::platform::signal::kill_group`]）。
-/// ★ 组号就是子进程的 pid，而**被丢的那一刻它还没被收尸**（异步等没完成）⇒ pid 不会被复用，
-/// 这一枪打不到无关进程。守卫**声明在子进程之后** ⇒ 丢弃时先于子进程句柄析构（逆序），
-/// 那一刻收尸更不可能已经发生。
-/// ⚠ 非 unix：没有「一组」这一格（`detach` 那一臂诚实地说 `Err`）⇒ 只靠 `kill_on_drop`
-/// 杀直接子进程 —— Windows 上找不到 `timeout(1)`，直接子进程就是插件本身。
-///
-/// ★ 零定时器不破：等的是子进程退出与两条流读到头，不是时钟。
-///
-/// # 每条流最多留 `keep ＋ 1` 字节
-///
-/// 对端是一个**别人的程序**：它坏了、或者压根不是我们要的那个，整读它的输出就是无界堆分配
-/// （`byte_cap_registry` 那条判据的病）。⇒ 每条流只留 `keep ＋ 1` 字节，多出来的**照读照丢**
-/// （不读的话子进程写满管道就卡住，要等到期限才退）。调用方看 `len() > keep` 就知道超了 ——
-/// 「超了怎么说」是它自己的话（上限本身也是调用方给的：多大算太大是那个插件的事）。
-pub(crate) async fn run_abortable(
-    bin: &Path,
-    args: &[&str],
-    deadline_secs: u64,
-    env: &[(&str, &str)],
-    keep: u64,
-) -> Result<Done, NotRun> {
-    abortable(bin, args, deadline_secs, env, keep, None).await
-}
-
-/// 〔P7〕同 [`run_abortable`]，另把 stderr 上的**进度行**（[`PROGRESS_PREFIX`] 开头、整行）边读边交 `on_progress`
-/// （前缀后面那段，去掉行尾）；进度行不进 [`Done::stderr`]（诊断照旧是那条失败的话）。一行也最多读 `keep ＋ 1` 字节：
-/// 超长的那一截不算进度、照普通 stderr 留（上限同一个）。
-pub(crate) async fn run_abortable_reporting(
-    bin: &Path,
-    args: &[&str],
-    deadline_secs: u64,
-    env: &[(&str, &str)],
-    keep: u64,
-    on_progress: &mut (dyn FnMut(&str) + Send),
-) -> Result<Done, NotRun> {
-    abortable(bin, args, deadline_secs, env, keep, Some(on_progress)).await
-}
-
-/// 两种可打断的等法共用的本体（给没给进度回调只差 stderr 那条流怎么读）。
-async fn abortable(
-    bin: &Path,
-    args: &[&str],
-    deadline_secs: u64,
-    env: &[(&str, &str)],
-    keep: u64,
-    on_progress: Option<&mut (dyn FnMut(&str) + Send)>,
-) -> Result<Done, NotRun> {
-    let mut std_cmd = command_for(bin, args, deadline_secs, env);
-    std_cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
-    let grouped = crate::platform::detach::detach(&mut std_cmd).is_ok();
-    let mut cmd = tokio::process::Command::from(std_cmd);
-    cmd.kill_on_drop(true);
-    let mut child = cmd.spawn().map_err(|e| not_run(bin, e))?;
-    let mut guard = KillGroupOnDrop {
-        group: if grouped { child.id() } else { None },
-    };
-    let (mut so, mut se) = (child.stdout.take(), child.stderr.take());
-    let (mut stdout, mut stderr) = (Vec::new(), Vec::new());
-    let (status, (), ()) = tokio::join!(
-        child.wait(),
-        keep_then_drain(so.as_mut(), keep, &mut stdout),
-        stderr_side(se.as_mut(), keep, on_progress, &mut stderr)
-    );
-    // 收过尸了 ⇒ 组号可能被复用，从这一刻起守卫不许再开枪。
-    guard.group = None;
-    let status = status.map_err(|e| {
-        NotRun::Failed(copy_text(
-            "beInvoke.runAbortable.waitFailed",
-            &[("bin", &(bin.display()).to_string()), ("e", &e.to_string())],
-        ))
-    })?;
-    Ok(Done {
-        code: status.code(),
-        stdout,
-        stderr,
-    })
-}
-
-/// 〔RM1f〕读一条子进程的流：留前 `keep ＋ 1` 字节，其余照读照丢（见 [`run_abortable`]「每条流」一段）。
-async fn keep_then_drain<R: tokio::io::AsyncRead + Unpin>(
-    r: Option<&mut R>,
-    keep: u64,
-    out: &mut Vec<u8>,
-) {
-    use tokio::io::AsyncReadExt;
-    let Some(r) = r else { return };
-    let _ = (&mut *r)
-        .take(keep.saturating_add(1))
-        .read_to_end(out)
-        .await;
-    let _ = tokio::io::copy(r, &mut tokio::io::sink()).await;
-}
-
-/// 〔P7〕stderr 那条流：没给回调 ⇒ 同 [`keep_then_drain`]；给了 ⇒ 逐行读，整行的进度行交回调，其余留前 `keep ＋ 1` 字节。
-async fn stderr_side<R: tokio::io::AsyncRead + Unpin>(
-    r: Option<&mut R>,
-    keep: u64,
-    on_progress: Option<&mut (dyn FnMut(&str) + Send)>,
-    out: &mut Vec<u8>,
-) {
-    use tokio::io::{AsyncBufReadExt, AsyncReadExt};
-    let Some(on) = on_progress else {
-        return keep_then_drain(r, keep, out).await;
-    };
-    let Some(r) = r else { return };
-    let cap = keep.saturating_add(1);
-    let mut rd = tokio::io::BufReader::new(r);
-    let mut line = Vec::new();
-    loop {
-        line.clear();
-        // 对端是别人的程序：一行无界就是无界堆分配 ⇒ 一趟最多读 `keep ＋ 1` 字节。
-        match (&mut rd).take(cap).read_until(b'\n', &mut line).await {
-            Ok(0) | Err(_) => return,
-            Ok(_) => {}
-        }
-        match line.strip_prefix(PROGRESS_PREFIX.as_bytes()) {
-            Some(cell) if line.ends_with(b"\n") => {
-                on(String::from_utf8_lossy(cell).trim_end_matches(['\n', '\r']))
-            }
-            _ => {
-                let room = usize::try_from(cap.saturating_sub(out.len() as u64)).unwrap_or(0);
-                out.extend_from_slice(&line[..line.len().min(room)]);
-            }
-        }
-    }
-}
-
-/// 〔RM1f〕[`run_abortable`] 被丢时对子进程那一组开一枪（见那里「杀谁」一段）。
-struct KillGroupOnDrop {
-    /// `Some(组号)` ⇒ 还没收尸、被丢就杀这一组；`None` ⇒ 不开枪（没分组 / 已收尸）。
-    group: Option<u32>,
-}
-
-impl Drop for KillGroupOnDrop {
-    fn drop(&mut self) {
-        if let Some(g) = self.group.take() {
-            let _ = crate::platform::signal::kill_group(g);
-        }
     }
 }
 

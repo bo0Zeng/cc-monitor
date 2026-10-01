@@ -160,12 +160,6 @@ const DISPATCH_FILES: &[(&str, &str)] = &[
         "control/tmux_hook.rs",
         include_str!("../../src/backend/control/tmux_hook.rs"),
     ),
-    // 〔RM1c · 第四波〕代码全景的适配层：它持有发给独立小程序的旗标字面量（`--probe` / `--store` …）
-    // ⇒ 派生的文件集把它扫了进来。那几个都是**子进程旗标**，登记在 [`CHILD_PROCESS_FLAGS`]。
-    (
-        "control/panorama.rs",
-        include_str!("../../src/backend/control/panorama.rs"),
-    ),
     // 〔P1 · 第 4 件〕claude 那一家的起会话事实（`RESUME_TOKEN = "--resume"`）：发给 claude 这个子进程的旗标，
     //   派生的文件集把它扫了进来 ⇒ 登记在 [`CHILD_PROCESS_FLAGS`]（子进程在仓外，② 那一侧读金样）。
     (
@@ -254,15 +248,6 @@ pub(crate) const CHILD_PROCESS_FLAGS: &[(&str, &str, &[&str], &str)] = &[
         &["--tsv"],
         "`bus-state` 转调 `cc-agents --tsv`（机器可读的派生台账）。是 cc-agents 的命令面，不是后端的子命令。",
     ),
-    // 〔RM1c · 第四波〕子进程是一个 **Rust 程序**（不是 shell 脚本）⇒ ② 那一侧改读它生产段里的
-    // `"--x"` 字面量（同一把 [`dashdash_literals`]），见接盘判据里按扩展名分的那一支。
-    (
-        "control/panorama.rs",
-        "src/panorama-engine/main.rs",
-        &["--args", "--probe", "--repo", "--store"],
-        "`panorama` 起只装引擎的独立小程序时的旗标（`control/panorama.rs::answer_with`）。\
-         它们是那个小程序的命令面：后端 argv 从不认它们，线上契约里 op 与参数走 `args` 载荷。",
-    ),
     // 〔P1 · 第 4 件〕子进程是仓外的 `claude` ⇒ ② 那一侧读金样 `agent-profile-golden.tsv` 里 flag 形的 `resume_token`
     //   （那张表记的就是各家 agent 的命令形，见接盘判据里按扩展名分的那一支）。
     (
@@ -343,182 +328,6 @@ mod tests {
     };
 
     const DOC: &str = include_str!("../../src/doc/IPC-PROTOCOL.md");
-
-    /// 〔RM1c〕签过字的**查询语义**白名单（全景 op 词表的另一侧，手写 —— 加一个就是签一次字）。
-    const QUERY_SEMANTICS: &[&str] = &[
-        "status",
-        "index",
-        "reindex",
-        "overview",
-        "node",
-        // 〔PANO · 主会话 09-29 签〕`subgraph` 零消费者 ⇒ 去；换成带「距根几跳」的邻域（CP1：前端不算图）。
-        "neighborhood",
-        "callers",
-        "callees",
-        "impact",
-        "search",
-        "docs_for",
-        "touching",
-        "symbols_in_file",
-        "drift",
-        "list_annotations",
-        "diagram_kinds",
-        "diagram",
-        // 〔RM1d · V110〕「算」：给定盘上现状，算出批注 / 文档关联的新内容（不写，落盘归文件管理）。
-        "plan_add_annotation",
-        "plan_propose_annotation",
-        "plan_approve_annotation",
-        "plan_remove_annotation",
-        "plan_write_doc_link",
-        "plan_remove_doc_link",
-        // 〔RM1d〕外面写了 `.md` 之后让文档关联的查询跟上（建索引一族，不暴露存储）。
-        "refresh_doc_links",
-    ];
-
-    /// 生产段里含「全景」那个词的字符串字面量（去重）。
-    fn panorama_literals(prod: &str) -> Vec<String> {
-        let mut out: Vec<String> = Vec::new();
-        let mut rest = prod;
-        while let Some(i) = rest.find('"') {
-            let after = &rest[i + 1..];
-            let Some(j) = after.find('"') else { break };
-            let lit = &after[..j];
-            if lit.contains("panorama") && !out.iter().any(|o| o == lit) {
-                out.push(lit.to_string());
-            }
-            rest = &after[j + 1..];
-        }
-        out
-    }
-
-    /// 〔PANO〕小程序自报的 op 词表：生成物 `src/frontend/ui/panorama/engine-contract.json` 的 `ops` 键
-    /// （它 == 小程序 `OPS` == `--probe` 的能力行，由小程序自己的判据钉；后端不再存 op 表）。
-    /// 运行时读（同 `panorama_locus_guard` 的取舍：编译期读会添一条跨半边）。
-    fn program_ops() -> Vec<String> {
-        let p =
-            crate::guard_support::repo_root().join("src/frontend/ui/panorama/engine-contract.json");
-        let raw = std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("读不到 {p:?}：{e}"));
-        let v: serde_json::Value = serde_json::from_str(&raw).expect("生成物不是 JSON");
-        v["ops"]
-            .as_object()
-            .expect("生成物没有 `ops` —— 形状改了，本条跟着改")
-            .keys()
-            .cloned()
-            .collect()
-    }
-
-    /// 抽取尺子的正控（合成夹具必须抽得出来，否则 ① 的相等断言会被一把瞎尺子喂成空）。
-    #[test]
-    fn the_panorama_literal_ruler_sees_synthetic_samples() {
-        assert_eq!(
-            panorama_literals(
-                "x(\"panorama\"); y(\"panorama-extra\"); z(\"other\"); w(\"panorama\")"
-            ),
-            vec!["panorama".to_string(), "panorama-extra".to_string()]
-        );
-    }
-
-    /// ★★ `P7c-2`〔用@08-13 的解耦约束〕：**全景协议只许暴露查询语义。**
-    ///
-    /// # ① 〔RM1c · 第四波〕前提触发器**已经响过、翻面了**：「零全景」→「只许查询语义」
-    ///
-    /// 翻面之前本条断言的是「协议面零 `panorama` / 零 `code_picture`」—— 一个等人来读这段话的
-    /// 前提触发器。09-24 用户选 B（`99 §1` V108）：后端经插件口起只装引擎的独立小程序，
-    /// 协议上多了一条 `panorama` 命令。触发器按设计响了，照它的要求读完了下面那段话，然后翻面：
-    /// · 引擎名 `code_picture` 在协议面**仍零命中**（后端不认识引擎；插件是谁不上线）；
-    /// · 全景在协议面**只以一条命令名**出现（`inbound.rs` 里含这个词的字符串字面量 == 命令名 ＋ 它的文档小节标题，
-    ///   `wire.rs` 仍零命中 —— 出方向没有全景专用的帧）；
-    /// · 它的 op 词表（〔PANO〕改指向：小程序自报的那张，读生成物 `engine-contract.json`；后端不再存 op 表）== 下面手写的
-    ///   **查询语义白名单**（两向相等）。加一个 op = 回来在这张白名单上签一次字。
-    /// ② 禁词表**一字不动**，射程从「协议面两个文件」扩到**适配层**（op 词表与它拼的 argv 都住那里）。
-    ///
-    /// # 那段话（用户 08-13 逐字给的约束，量完之后收窄成一句可验的）
-    ///
-    /// 原话是「以后要改**索引方式**以及**解析方式**或者**添加新语言**才方便」。
-    /// 三轴量完（`P7c-2 §1b`）：
-    /// · **索引方式** 在我们这层（monitor 的 22 个命令已是纯查询语义）⇒ 管得了；
-    /// · **解析方式** / **加新语言** 住在 `vendor/code-picture-core`（`Lang::` 散在 6 个文件 73 处），
-    ///   而 `C7` 逐字「vendor 不动」、`VENDOR.md` 更硬（「副本是上游的镜子，不是分身，
-    ///   要改行为**先改上游再 re-vendor**」）⇒ **backend 的接口形状决定不了那两件**。
-    ///
-    /// ⇒ backend 侧唯一能保证、也唯一该保证的是：**不给那条路添新障碍** ——
-    /// 协议里**不复制** grammar 清单、不暴露存储、不暴露解析开关。
-    /// 复制了才真的锁死（那时改一门语言要同时动上游、vendor、和后端协议三处）。
-    ///
-    /// ⚠ 这条比用户原话**窄**。窄的那部分不是被砍掉的，是它本来就不在这一层。
-    #[test]
-    fn the_panorama_protocol_would_only_expose_query_semantics() {
-        let inbound = include_str!("../../src/backend/stream/inbound.rs");
-        let wire = include_str!("../../src/backend/stream/wire.rs");
-        // ⚠ 剥注释用**共享原语**（`guard_core::production_code`，backend 侧经 `guard_support` 再导出）。
-        //   本会话已经栽过一次：自己内联一份 `#` 剥法，被 `structural_scan` 的
-        //   「剥注释实现只许一份」当场逮住，而答案是「共享原语早就有了，我只是没找」。
-        let prod = format!(
-            "{}{}",
-            guard_core::production_code(inbound),
-            guard_core::production_code(wire)
-        );
-        // ①〔RM1c 翻面〕引擎名不上线；全景只以一条命令名出现；op 词表 == 查询语义白名单。
-        assert!(
-            !prod.contains("code_picture"),
-            "backend 的协议面出现了引擎名 —— 后端不认识引擎，插件是谁不上线（`C21` / V108）。"
-        );
-        let mut lits = panorama_literals(&guard_core::production_code(inbound));
-        lits.sort();
-        assert_eq!(
-            lits,
-            // 命令名本身 ＋ 它在协议文档里那一小节的标题（`doc_anchor`，给人查的住址，不是第二条命令）。
-            // 〔MIG-3b 续 · 主会话 09-28 裁「`panorama-edit` 进后端」〕多一条写命令 `panorama-edit`（算与写都在这台，op 同样走载荷）；
-            //   查询面仍只有 `panorama` 一条。
-            vec![
-                "#### `panorama-edit`".to_string(),
-                // 〔FIX4 · `97 §8` · 主会话 09-28 裁「受管工具都应可卸」〕多一条卸口 `panorama-uninstall`（不带 op、不碰引擎，只删装时放下的那一份）。
-                "#### `panorama-uninstall`".to_string(),
-                "#### `panorama`".to_string(),
-                "panorama".to_string(),
-                "panorama-edit".to_string(),
-                "panorama-uninstall".to_string(),
-            ],
-            "`inbound.rs` 里含「全景」那个词的字符串字面量不再恰好是那两条命令名（查询 `panorama` · 写 `panorama-edit`）—— \
-             全景在协议面只许以这两条命令出现，op 走载荷（请先读本判据的头注）。"
-        );
-        assert!(
-            !guard_core::production_code(wire).contains("panorama"),
-            "`wire.rs` 出现了全景 —— 出方向没有全景专用的帧（查询一问一答，走 `reply`）。"
-        );
-        let adapter =
-            guard_core::production_code(include_str!("../../src/backend/control/panorama.rs"));
-        let mut ops = program_ops();
-        ops.sort();
-        assert!(ops.len() >= 10, "只读到 {} 个 op —— 读坏了", ops.len());
-        let mut signed: Vec<String> = QUERY_SEMANTICS.iter().map(|s| s.to_string()).collect();
-        signed.sort();
-        assert_eq!(
-            ops, signed,
-            "全景 op 词表与这里签过字的查询语义白名单对不上。\n\
-             ⇒ 加一个 op 之前先回答：它是**查询语义**（overview/node/callers/…），\
-             还是存储 / grammar / 解析开关？后者不许上线（`P7c-2`）。"
-        );
-        // ② 无论今天还是以后：**存储与 grammar 细节一个都不许上线**。
-        //    今天这条是真的在跑（它扫的是现有协议面），不是等以后才生效。
-        //    〔RM1c〕射程扩到适配层：op 词表与它拼给小程序的 argv 都住那里。
-        let prod = format!("{prod}{adapter}");
-        for leaked in [
-            "sqlite",
-            "rusqlite",
-            "tree_sitter",
-            "grammar",
-            "index.db",
-            "CREATE TABLE",
-        ] {
-            assert!(
-                !prod.to_lowercase().contains(&leaked.to_lowercase()),
-                "backend 的协议面泄漏了实现细节 {leaked:?}。\n             \
-                 协议只许说**查询语义**（overview/node/callers/callees/impact/search…）——\n             \
-                 说了存储或 grammar，换索引实现就得改协议，而改一门语言要动三处。"
-            );
-        }
-    }
 
     /// `wire.rs` 生产段里所有**会上线**的字段名。
     ///
@@ -904,10 +713,7 @@ mod tests {
             // ② 子进程旗标循环里认的 == 登记的 ∪ 刻意不发的（两向）
             let script = std::fs::read_to_string(repo.join(child))
                 .unwrap_or_else(|e| panic!("读不到子进程脚本 {child}：{e} —— 判不了，不许当成绿"));
-            // 〔RM1c〕子进程是 Rust 程序 ⇒ 它认的旗标 = 它生产段里的 `"--x"` 字面量（同一把尺子）。
-            let mut accepts: Vec<String> = if child.ends_with(".rs") {
-                dashdash_literals(&script)
-            } else if child.ends_with(".tsv") {
+            let mut accepts: Vec<String> = if child.ends_with(".tsv") {
                 // 〔P1〕子进程在仓外（`claude`）⇒ 它认的旗标取金样里 flag 形（`--` 开头）的 `resume_token`。
                 script
                     .lines()
