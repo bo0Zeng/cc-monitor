@@ -634,7 +634,7 @@ pub(crate) struct DefaultUpstream {
     /// 这一家的上游说哪种流协议（归一流的折法）。`None` ＝ 它的流不折（活卡认不得）。
     pub(crate) stream: Option<StreamFace>,
     /// 请求本身就说出「我是哪个子运行」的那个头（值 ＝ 子运行的标识，与 [`RecordFace::run_of`] 同一个值域）。
-    /// `None` ＝ 请求认不出运行 ⇒ 通用层按记录对账归位。
+    /// 声明了 ⇒ 带头的请求归那个子运行、不带头的就是主运行（当场定）；`None` ＝ 请求认不出运行 ⇒ 通用层按记录对账归位。
     pub(crate) owner_header: Option<&'static str>,
 }
 
@@ -671,11 +671,25 @@ pub(crate) fn owner_headers() -> Vec<&'static str> {
     v
 }
 
+/// 一家上游在流归位那里的样子：它的流协议面 ＋ 它的请求是否自报运行（声明了 [`DefaultUpstream::owner_header`]）。
+#[derive(Clone, Copy)]
+pub(crate) struct StreamFamily {
+    pub(crate) face: StreamFace,
+    /// 声明了自报运行的头 ⇒ 带头的归那个子运行、不带头的就是主运行（当场定，不挂起）。
+    pub(crate) owns: bool,
+}
+
 /// 各家上游的流协议面（注册序）。一条应答用哪一个，由通用层按头一件事认（认得出「开始」的那一个）。
-pub(crate) fn stream_faces() -> Vec<StreamFace> {
+pub(crate) fn stream_families() -> Vec<StreamFamily> {
     REGISTRY
         .iter()
-        .filter_map(|a| a.upstream.as_ref()?.stream)
+        .filter_map(|a| {
+            let u = a.upstream.as_ref()?;
+            Some(StreamFamily {
+                face: u.stream?,
+                owns: u.owner_header.is_some(),
+            })
+        })
         .collect()
 }
 

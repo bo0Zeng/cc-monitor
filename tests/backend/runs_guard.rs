@@ -4,11 +4,11 @@
 //! 1. **扫描**：通用层（`src/backend/observe/` · `src/backend/stream/` · `src/frontend/ui/`）零出现 Claude Code 子运行形状的那几个字面量；
 //!    正控：同一把扫描在适配层（`src/backend/agents/`）里把它们一个不少地找到（两向集合相等）。
 //! 2. **同一批通用判据，两套形状各跑一遍**：假适配层（`agents/fake/runs.rs`，每一格都故意不同形）与 Claude Code 的真形状
-//!    （合成夹具，只采结构）。一个会话 ＋ 两个子运行 ＋ 三段流：子运行的流各归各的运行；主运行那段在有子运行在跑、又没自报时
-//!    先挂起，记录对上之后才放出、只带主运行自己的东西；没自报的子运行段按它的记录归位；子运行写出终局 ⇒ 运行表里它变完成；
-//!    子运行都收场之后，主运行的流不再挂起。
+//!    （合成夹具，只采结构）。一个会话 ＋ 两个子运行 ＋ 三段流：子运行的流各归各的运行、主活卡上没有子运行的东西；
+//!    主运行那段两条路各钉一家 —— 声明了自报运行的头的家（Claude Code）子运行在跑时主活卡也当场出；没声明的家（假适配层）
+//!    先挂起、记录对上之后才放出，没自报的子运行段按它的记录归位；子运行写出终局 ⇒ 运行表里它变完成；都收场之后主运行的流直接上。
 
-use crate::agents::{RunFaces, StreamEv, StreamFace};
+use crate::agents::{RunFaces, StreamEv, StreamFamily};
 use crate::observe::runs::{RunBook, RunTrack};
 use crate::relay::{TapBody, TapEvent};
 use crate::stream::run_route::RunRouter;
@@ -88,7 +88,8 @@ fn the_general_layers_never_name_a_single_agents_run_shape() {
 struct Shape {
     name: &'static str,
     faces: RunFaces,
-    stream: StreamFace,
+    /// 上游协议面 ＋ 这一家声明没声明自报运行的头。
+    stream: StreamFamily,
     parent_of: fn(&Path, &str) -> PathBuf,
     child_of: fn(&Path, &str) -> PathBuf,
     /// 主运行一次应答写出的那条记录。
@@ -109,7 +110,10 @@ fn claude_code() -> Shape {
     Shape {
         name: "claude-code",
         faces: RunFaces::of(&crate::agents::claudecode::RECORDS),
-        stream: crate::agents::sse_anthropic::FACE,
+        stream: StreamFamily {
+            face: crate::agents::sse_anthropic::FACE,
+            owns: crate::agents::claudecode::UPSTREAM.owner_header.is_some(),
+        },
         parent_of: |d, sid| d.join(format!("{sid}.jsonl")),
         child_of: |parent, run| {
             let stem = parent.file_stem().unwrap().to_string_lossy().into_owned();
@@ -166,7 +170,10 @@ fn fake() -> Shape {
     Shape {
         name: "fake",
         faces: crate::agents::fake::runs::FACES,
-        stream: crate::agents::fake::runs::STREAM,
+        stream: StreamFamily {
+            face: crate::agents::fake::runs::STREAM,
+            owns: false,
+        },
         parent_of: |d, sid| d.join(format!("sess-{sid}.ndjson")),
         child_of: |parent, run| {
             let stem = parent.file_stem().unwrap().to_string_lossy().into_owned();
@@ -291,6 +298,13 @@ fn run_the_scenario(shape: &Shape) {
     let book = Arc::new(RunBook::default());
     let mut track = RunTrack::new(shape.faces, book.clone());
     let mut router = RunRouter::new(book.clone(), vec![shape.stream]);
+    // 正控：两套形状正好各走一条路（Claude Code 声明了自报的头、假适配层没声明）。
+    assert_eq!(
+        shape.stream.owns,
+        shape.name == "claude-code",
+        "[{}] 自报头的声明与预期不符",
+        shape.name
+    );
     let main_line = |track: &RunTrack, line: String| {
         append(&parent, std::slice::from_ref(&line));
         track.main_record(SID, &line);
@@ -342,12 +356,28 @@ fn run_the_scenario(shape: &Shape) {
         "[{}] 主活卡上出现了子运行的「准备调用 Bash」：{on_main:?}",
         shape.name
     );
-    assert!(
-        main.is_empty(),
-        "[{}] 有子运行在跑、主运行那段又没自报 ⇒ 对账前不许上主活卡：{:?}",
-        shape.name,
-        said(&main)
-    );
+    let main_said = vec![
+        (0, None, "start r-main".into()),
+        (0, None, "block".into()),
+        (0, None, "text hi".into()),
+        (0, None, "stop true".into()),
+        (0, None, "end Done".into()),
+    ];
+    if shape.stream.owns {
+        assert_eq!(
+            said(&main),
+            main_said,
+            "[{}] 声明了自报运行的头 ⇒ 没带头的就是主运行：子运行在跑时主活卡也当场出",
+            shape.name
+        );
+    } else {
+        assert!(
+            main.is_empty(),
+            "[{}] 没声明自报的头、有子运行在跑 ⇒ 主运行那段对账前不许上主活卡：{:?}",
+            shape.name,
+            said(&main)
+        );
+    }
     assert_eq!(
         said(&s1),
         vec![
@@ -368,43 +398,47 @@ fn run_the_scenario(shape: &Shape) {
         said(&s2)
     );
 
-    // 主运行那一次的记录落盘 ⇒ 挂起的那段按它的归属放出：只有主运行自己的东西。
+    // 主运行那一次的记录落盘：挂起的那段（只有没声明头的家才挂起）按它的归属放出，只有主运行自己的东西。
     main_line(&track, (shape.main_say)("r-main"));
     let released = router.on_learned();
-    assert_eq!(
-        said(&released),
-        vec![
-            (0, None, "start r-main".into()),
-            (0, None, "block".into()),
-            (0, None, "text hi".into()),
-            (0, None, "stop true".into()),
-            (0, None, "end Done".into()),
-        ],
-        "[{}] 主活卡只有主运行那段（记录对上之后放出，归主运行）",
-        shape.name
-    );
+    if shape.stream.owns {
+        assert!(
+            released.is_empty(),
+            "[{}] 当场定了的那段不该再放一次",
+            shape.name
+        );
+    } else {
+        assert_eq!(
+            said(&released),
+            main_said,
+            "[{}] 主活卡只有主运行那段（记录对上之后放出，归主运行）",
+            shape.name
+        );
+    }
 
-    // 没自报的子运行段：挂起，等它自己的记录对上对账键 ⇒ 归它。
-    let quiet = feed(&mut router, 3, "", (shape.sse)("r-w1c", Some("Read")));
-    assert!(
-        quiet.is_empty(),
-        "[{}] 没自报的那段在对上之前不许放出",
-        shape.name
-    );
     let w1 = (shape.child_of)(&parent, "w1");
-    append(&w1, &[(shape.child_tool)("w1", "r-w1c", "Read")]);
-    assert!(
-        track.on_path(&w1).is_some(),
-        "[{}] 子运行记录的文件事件没被认出",
-        shape.name
-    );
-    assert!(
-        said(&router.on_learned())
-            .iter()
-            .all(|(r, run, _)| *r == 3 && *run == w("w1")),
-        "[{}] 没自报的子运行段按它记录的对账键归到 w1",
-        shape.name
-    );
+    if !shape.stream.owns {
+        // 没声明头的家：没自报的子运行段挂起，等它自己的记录对上对账键 ⇒ 归它。
+        let quiet = feed(&mut router, 3, "", (shape.sse)("r-w1c", Some("Read")));
+        assert!(
+            quiet.is_empty(),
+            "[{}] 没自报的那段在对上之前不许放出",
+            shape.name
+        );
+        append(&w1, &[(shape.child_tool)("w1", "r-w1c", "Read")]);
+        assert!(
+            track.on_path(&w1).is_some(),
+            "[{}] 子运行记录的文件事件没被认出",
+            shape.name
+        );
+        assert!(
+            said(&router.on_learned())
+                .iter()
+                .all(|(r, run, _)| *r == 3 && *run == w("w1")),
+            "[{}] 没自报的子运行段按它记录的对账键归到 w1",
+            shape.name
+        );
+    }
 
     // 子运行写出终局 ⇒ 运行表里它变完成；两个都收场之后，主运行的流不再挂起。
     append(&w1, &[(shape.child_end)("w1", "r-w1d")]);
@@ -453,7 +487,13 @@ fn an_adapter_that_declares_no_runs_keeps_everything_on_the_main_run() {
     let rec = track.main_record(SID, r#"{"lane":"w1","resp":"r1"}"#);
     assert!(!rec.in_run && rec.rid.is_none() && !rec.changed);
     assert!(book.runs(SID).is_empty());
-    let mut router = RunRouter::new(book, vec![crate::agents::fake::runs::STREAM]);
+    let mut router = RunRouter::new(
+        book,
+        vec![StreamFamily {
+            face: crate::agents::fake::runs::STREAM,
+            owns: false,
+        }],
+    );
     let f = feed(&mut router, 0, "", (fake().sse)("r1", None));
     assert!(!f.is_empty() && said(&f).iter().all(|(_, run, _)| run.is_none()));
 }

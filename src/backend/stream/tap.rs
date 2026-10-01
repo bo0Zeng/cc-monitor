@@ -132,7 +132,7 @@ pub(crate) fn attach_rx(
 ) -> TapRx {
     TapRx {
         rx,
-        router: super::run_route::RunRouter::new(book.clone(), crate::agents::stream_faces()),
+        router: super::run_route::RunRouter::new(book.clone(), crate::agents::stream_families()),
         book,
         out: std::collections::VecDeque::new(),
     }

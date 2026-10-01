@@ -2,11 +2,12 @@
 //!
 //! 只用适配层给的那几格（协议面 `StreamFace` · 请求自报的运行 · 运行簿里学到的对账键），不认任何一家的形状：
 //! 1. 用哪个协议面：头一件事折得出「开始」的那一个（各家上游的协议面挨个问）；都折不出 ⇒ 这段不收。
-//! 2. 归哪个运行：请求自报了（中转从登记的头里取到值）⇒ 就是它；没自报 ⇒ 这个会话此刻**没有在跑的子运行** ⇒ 归主运行；
-//!    **有** ⇒ 先挂起，等哪条记录（主或子）的对账键对上，按它的归属放出来。挂起的那段在对上之前不上任何活卡。
+//! 2. 归哪个运行：请求自报了（中转从登记的头里取到值）⇒ 就是它；没自报而这一家声明了自报的头 ⇒ 就是主运行（当场定）；
+//!    这一家没声明那个头 ⇒ 这个会话此刻**没有在跑的子运行**就归主运行，**有**就先挂起，等哪条记录（主或子）的对账键对上，
+//!    按它的归属放出来。挂起的那段在对上之前不上任何活卡。
 //! 3. 号：放出去的帧按段重新从 0 连续编号（界面靠它看缺口）；上游那一侧缺了号（tap 通道满）⇒ 这一段收尾成 `broken`、不再收。
 
-use crate::agents::{StreamEv, StreamFace};
+use crate::agents::{StreamEv, StreamFace, StreamFamily};
 use crate::observe::runs::RunBook;
 use crate::relay::{TapBody, TapEvent};
 use crate::stream::wire::{Frame, TapEnd};
@@ -40,7 +41,7 @@ struct Resp {
 /// 一条流连接的流归位（`tap::TapRx` 持有）。
 pub(crate) struct RunRouter {
     book: Arc<RunBook>,
-    faces: Vec<StreamFace>,
+    families: Vec<StreamFamily>,
     resps: HashMap<u64, Resp>,
     order: VecDeque<u64>,
     dead: HashSet<u64>,
@@ -48,10 +49,10 @@ pub(crate) struct RunRouter {
 }
 
 impl RunRouter {
-    pub(crate) fn new(book: Arc<RunBook>, faces: Vec<StreamFace>) -> Self {
+    pub(crate) fn new(book: Arc<RunBook>, families: Vec<StreamFamily>) -> Self {
         Self {
             book,
-            faces,
+            families,
             resps: HashMap::new(),
             order: VecDeque::new(),
             dead: HashSet::new(),
@@ -88,17 +89,18 @@ impl RunRouter {
                 self.bury(resp);
                 return Vec::new();
             }
-            let Some(face) = self.faces.iter().copied().find(|f| {
-                (f.fold)(d)
+            let Some(family) = self.families.iter().copied().find(|f| {
+                (f.face.fold)(d)
                     .iter()
                     .any(|e| matches!(e, StreamEv::Start { .. }))
             }) else {
                 self.bury(resp);
                 return Vec::new();
             };
+            let face = family.face;
             let route = if !ev.owner.is_empty() {
                 Route::Run(Some(ev.owner.clone()))
-            } else if self.book.running(&ev.stream) == 0 {
+            } else if family.owns || self.book.running(&ev.stream) == 0 {
                 Route::Run(None)
             } else {
                 Route::Pending(Vec::new())
