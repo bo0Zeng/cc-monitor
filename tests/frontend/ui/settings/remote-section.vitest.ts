@@ -916,7 +916,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
    *   ——（外加指纹那一格原有的「重置为 TOFU」）；
    * · 「ccm 助手 / ccm 启动器」这个词在两栏里一个字都不许有（用户逐字「装/卸 ccm 助手是假的」）。
    */
-  it("★ MC1：组件栏只剩 ① 部署后端，〔ST2〕② 别名搬到「工具」栏，连接栏是动这条连接的那几颗，「ccm 助手」一个字都不剩", async () => {
+  it("★ MC1：组件栏只剩 ① 部署后端，② 别名在「终端」栏，连接栏是动这条连接的那几颗，「ccm 助手」一个字都不剩", async () => {
     const p = fakePages();
     await mount([mkH("a", "1.1.1.1")], p.host);
     const got = p.addedParts[1]!;

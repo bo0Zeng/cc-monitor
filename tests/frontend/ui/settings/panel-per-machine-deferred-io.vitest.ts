@@ -2,7 +2,7 @@
  * ST1「延后加载」（`设计/70 §5.3` 判据 2：**子页内容只在该子页可见时才发 I/O**）。
  *
  * `panel-deferred-io.vitest.ts` 头注〔射程〕② 登记过一笔债：per-machine 那几块
- * （账号 / 终端集成（〔AL1c〕已并进「别名」）/ cc-bus 钩子）在那边被 stub 掉了，而它们**构造期也发 I/O**
+ * （账号 / 终端集成（〔AL1c〕已并进「别名」）/ 当时的 cc-bus 钩子）在那边被 stub 掉了，而它们**构造期也发 I/O**
  * —— 落地页是「机器」列表，这几块住在机器子页上，打开设置时那几发是白发的。
  * 本文件**不 stub 它们**，用真分节 ＋ 两层录音机（`commands` 包装层 ＋ 直呼的 `invoke`）量：
  *
@@ -88,14 +88,13 @@ const LOCAL_PAGE_IPC = [
   // 〔AL1c · 4B〕这里原来还有终端集成那两发（终端集成的状态那一发〔AL1d：今天并进 `aliases_read`〕/ `cc_get_auto_launch`）：那块并进了「别名」
   // （一个 `<details>`，**第一次展开**才建它、才发那两发）⇒ 子页可见时不再发，往后又延了一层。
   // MCP · 资产目录 · 插件三块搬去了顶层「扩展」页（它自己那一页可见时才问），不在这一批里。
-  "list_remote_mcp_origins", // cc-bus 钩子：认得哪些远端
-  "chan_call", // 〔MIG-3b〕cc-bus 钩子本机诊断改走通道（`hooks-diag` 发给 `<local>`，包装层那一条 `chan_call`；账号本机那一问同名，按集合比不另起一行）
+  "chan_call", // 账号本机那一支（`accounts-list` 发给 `<local>`）
+  // cc-bus 钩子那一块拿掉了（钩子状态在扩展页 cc-bus 那一行，抽屉打开才问），它那两发随之没了。
 ] as const;
 
 /**
  * 已经放过一次之后切到 devbox：只有**跟着机器走、切换即重读**的那几块（足迹 · 未识别的数据）重读。
  * 账号那块也订阅了机器，但它只认「已加载的远端清单里有的那台」—— 录音机下清单是空的 ⇒ 不读；
- * cc-bus 钩子切机器**刻意不发**（它的既有语义：远端诊断只在点「检查远端」时发）。
  * 〔ST2 · 用户 09-24 裁「远端也有真栏」〕足迹在远端页上**也去问**（按 devbox 那台，回声不对就说答不了）——
  *   它并进了 per-machine 那一批单例，切机器由它自己的订阅重读，恰好一发。
  */
@@ -117,8 +116,6 @@ const FIRST_VISIT_AYA_IPC: readonly string[] = [
   "chan_call", // 〔MOD〕未识别的数据里记录那两面：经通道问 devbox 那台后端 `drift-report`
   "load_config", // 账号：读远端清单
   "chan_call", // 账号：devbox 那一台（〔C4c〕经通道说 `accounts-list`）
-  "list_remote_mcp_origins",
-  "chan_call", // 〔MIG-3b〕cc-bus 钩子：本机诊断（经通道说 `hooks-diag`）
 ];
 
 const tick = () => new Promise((r) => setTimeout(r, 0));
