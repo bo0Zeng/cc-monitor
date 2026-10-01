@@ -128,7 +128,7 @@ fn the_attach_option_never_swallows_the_next_flag_as_its_value() {
     assert_eq!(ok(&["--attach", "cc-foo"]).attach_name, "cc-foo");
 }
 
-/// 〔搬自 `ccm-cli`「未知 agent 报错」「--account 与 --base 互斥」〕
+/// 〔搬自 `ccm-cli`「不认识的 agent 报错」「--account 与 --base 互斥」〕
 #[test]
 fn the_combination_rules_all_fail_loudly() {
     assert_eq!(
