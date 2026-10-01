@@ -87,6 +87,7 @@ import {
   type AgentProfileRow,
 } from "../../../src/frontend/ui/generated/agent-profile-table";
 import { stripComments } from "../../test-support/strip-comments";
+import { productionTsFiles, SCAN_TIMEOUT_MS } from "../../test-support/production-sources";
 
 const REPO = resolve(__dirname, "../../..");
 const GOLDEN = "tests/__fixtures__/agent-profile-golden.tsv";
@@ -373,4 +374,40 @@ describe("K-R93 前端那份 agent 画像：值来自后端", () => {
 
   // 「`null` 那一格是『没人考据过』」那一条退役：会是 `null` 的那五格（codex 的工具 / 判活进程词表）随判定进了后端
   //   （后端 `RecordFace.tool_card` · `Adapter.processes` 两格 codex 是 `None` ⇒ 界面画普通卡、tmux 那一格为假），这张表里没有可空的列表格了。
+});
+
+// ── 让用户选 agent 的地方只给注册表里的那几家 ──────────────────────────────
+
+/** 写死了 agent 名字也算对的那几份（`文件` → 为什么）。 */
+const NAMES_ALLOWED_IN: Record<string, string> = {
+  "src/frontend/ui/launch-cli-golden.ts": "对拍夹具：`launcherOverride` 那一格是启动器命令（恰好与 agent 同名），不是在挑哪一家",
+};
+
+describe("界面上的 agent 名单只从后端注册表来", () => {
+  it(
+    "★ 界面生产段（剥注释、扣掉生成物）里一个 agent 名字的串字面量都没有；名单与「不指定时是谁」都取生成物",
+    () => {
+      const names = AGENT_PROFILE_TABLE.flatMap((r) => [r.agent, r.adapterId]);
+      const quoted = (n: string) => new RegExp(`["'\`]${n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}["'\`]`);
+      // 正控：从前派生那一栏的写法必须被认出；问生成物的写法不许被认出。
+      const bad = `for (const v of ["${AGENT_PROFILE_TABLE[0]!.agent}", "x"]) {}`;
+      expect(names.some((n) => quoted(n).test(bad)), "针认不出写死的名单").toBe(true);
+      expect(names.some((n) => quoted(n).test("for (const v of listAgents()) {}"))).toBe(false);
+      const files = productionTsFiles("src/frontend/ui");
+      expect(files.length, "扫描面塌了").toBeGreaterThan(100);
+      const hits: string[] = [];
+      for (const { file, text } of files) {
+        if (file in NAMES_ALLOWED_IN) continue;
+        const code = stripComments(text, "ts");
+        for (const n of names) if (quoted(n).test(code)) hits.push(`${file}: ${n}`);
+      }
+      expect(hits, "界面又写死了 agent 名字 —— 名单取 `listAgents()`，不指定时那一家取 `DEFAULT_AGENT`").toEqual([]);
+      // 豁免表不长草：登记的那一份今天确实还写着某个名字。
+      for (const f of Object.keys(NAMES_ALLOWED_IN)) {
+        const code = stripComments(read(f), "ts");
+        expect(names.some((n) => quoted(n).test(code)), `${f} 已经不写名字了，摘掉它`).toBe(true);
+      }
+    },
+    SCAN_TIMEOUT_MS,
+  );
 });

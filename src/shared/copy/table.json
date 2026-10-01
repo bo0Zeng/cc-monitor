@@ -5166,6 +5166,11 @@
       "zh": "更多参数",
       "args": []
     },
+    "machineAliases.form.agentUnknown": {
+      "kind": "control",
+      "zh": "不认识的 agent：{agent}",
+      "args": ["agent"]
+    },
     "machineAliases.form.agentNone": {
       "kind": "control",
       "zh": "agent：不指定，默认 {agent}",
