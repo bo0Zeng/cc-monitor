@@ -83,7 +83,7 @@ describe("各账号共用的 MCP", () => {
   it("挑一版：共享那一版不带 from，某个号那一版带它的名字", async () => {
     const el = renderSharedMcp("aya");
     await settle();
-    const fromZ = buttons(el).find((b) => b.textContent === copyText("accountsMcp.conflict.from", { holders: "z、b" }));
+    const fromZ = buttons(el).find((b) => b.textContent === copyText("accountsMcp.conflict.from", { holders: ["z", "b"].join(copyText("accountsMcp.list.sep")) }));
     const shared = buttons(el).find((b) => b.textContent === copyText("accountsMcp.conflict.shared"));
     fromZ!.click();
     await settle();

@@ -56,7 +56,7 @@ export function renderSharedMcp(origin: Origin): HTMLElement {
         const label =
           ch.from === null
             ? copyText(ch.gone ? "accountsMcp.conflict.gone" : "accountsMcp.conflict.shared")
-            : copyText("accountsMcp.conflict.from", { holders: ch.holders.join("、") });
+            : copyText("accountsMcp.conflict.from", { holders: ch.holders.join(copyText("accountsMcp.list.sep")) });
         const b = button(label);
         b.addEventListener("click", () => void pick(c.name, ch.from, b));
         row.appendChild(b);
@@ -67,7 +67,7 @@ export function renderSharedMcp(origin: Origin): HTMLElement {
   };
 
   const done = (title: string, v: AccountMcpView): void => {
-    const lines = v.changed.length > 0 ? [copyText("accountsMcp.change.synced", { accounts: v.changed.join("、") })] : [];
+    const lines = v.changed.length > 0 ? [copyText("accountsMcp.change.synced", { accounts: v.changed.join(copyText("accountsMcp.list.sep")) })] : [];
     showActionFailureToast(title, [...lines, ...v.notes].join("\n") || copyText("accountsMcp.block.newSessions"), {
       level: "info",
       durationMs: 6000,
