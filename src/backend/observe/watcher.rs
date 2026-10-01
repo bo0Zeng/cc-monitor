@@ -2082,7 +2082,7 @@ fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameS
     for p in &jsonls {
         runs_changed |= state.runs.adopt(&sid, p);
     }
-    if runs_changed {
+    if runs_changed || state.runs.has_runs(&sid) {
         sink.send(state.runs.frame(&sid));
     }
     wrote
@@ -2228,6 +2228,9 @@ fn retire_sid_if_unreferenced(
     }
     catch_up_session(sid, true, state, sink); // 〔RENDER2 · A6〕写端已死：补读 ＋ 收尾残行（D 块）
     state.active_sids.remove(sid);
+    if let Some(f) = state.runs.retire(sid) {
+        sink.send(f);
+    }
     state.runs.forget(sid);
     sink.send(Frame::SessionRemoved {
         sid: sid.to_string(),
@@ -2307,6 +2310,8 @@ fn prime_file_cursor(path: &Path, state: &mut ReaderState) -> u64 {
         .tails
         .insert(key.clone(), tail_of(&chunk, chunk_start, cursor.consumed));
     state.offsets.insert(key, cursor);
+    // 跳过的这一截里派出 / 收场过的子运行补进运行簿（宣告之后那一帧运行表带出去）。
+    state.runs.prime(&session_id, &chunk);
     tracing::debug!(
         "primed {key_str}: cursor→{} (+{} lines suppressed, tail seq starts here)",
         cursor.consumed,

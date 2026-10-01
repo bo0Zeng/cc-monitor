@@ -5317,25 +5317,30 @@
       "zh": "一个都没有",
       "args": []
     },
-    "agentsPanel.status.aborted": {
-      "kind": "body",
-      "zh": "✗ 中止",
-      "args": []
-    },
-    "agentsPanel.status.done": {
-      "kind": "body",
-      "zh": "✓",
-      "args": []
-    },
-    "agentsPanel.status.running": {
-      "kind": "body",
-      "zh": "运行中",
-      "args": []
-    },
     "agentsPanel.render.summary": {
       "kind": "body",
-      "zh": "{n} agents ({running} 运行中)",
+      "zh": "{n} agents ({running} 在跑)",
       "args": ["n", "running"]
+    },
+    "agentsPanel.group.running": {
+      "kind": "title",
+      "zh": "在跑",
+      "args": []
+    },
+    "agentsPanel.group.recent": {
+      "kind": "title",
+      "zh": "最近结束",
+      "args": []
+    },
+    "agentsPanel.group.older": {
+      "kind": "action",
+      "zh": "更早的（{n}）",
+      "args": ["n"]
+    },
+    "agentsPanel.row.last": {
+      "kind": "body",
+      "zh": "最近：{last}",
+      "args": ["last"]
     },
     "agentsPanel.arrow.expanded": {
       "kind": "body",
@@ -19408,6 +19413,41 @@
       "zh": "失败",
       "args": []
     },
+    "runs.state.stopped": {
+      "kind": "body",
+      "zh": "已停止",
+      "args": []
+    },
+    "runs.state.unknown": {
+      "kind": "body",
+      "zh": "状态不明",
+      "args": []
+    },
+    "runs.icon.running": {
+      "kind": "body",
+      "zh": "●",
+      "args": []
+    },
+    "runs.icon.done": {
+      "kind": "body",
+      "zh": "✓",
+      "args": []
+    },
+    "runs.icon.failed": {
+      "kind": "body",
+      "zh": "✗",
+      "args": []
+    },
+    "runs.icon.stopped": {
+      "kind": "body",
+      "zh": "■",
+      "args": []
+    },
+    "runs.icon.unknown": {
+      "kind": "body",
+      "zh": "?",
+      "args": []
+    },
     "runs.label.unnamed": {
       "kind": "body",
       "zh": "子 agent",
@@ -19427,16 +19467,6 @@
       "kind": "body",
       "zh": "调用了 {tool}",
       "args": ["tool"]
-    },
-    "runs.row.text": {
-      "kind": "body",
-      "zh": "{label} · {state} · 最近：{last}",
-      "args": ["label", "state", "last"]
-    },
-    "runs.row.bare": {
-      "kind": "body",
-      "zh": "{label} · {state}",
-      "args": ["label", "state"]
     },
     "runs.timeline.loading": {
       "kind": "body",
@@ -19462,11 +19492,6 @@
       "kind": "body",
       "zh": "{title} · {state}",
       "args": ["title", "state"]
-    },
-    "main.run.loadFailed": {
-      "kind": "error",
-      "zh": "读不到这个子 agent 的记录",
-      "args": []
     },
     "rsRun.load.notFound": {
       "kind": "error",

@@ -252,7 +252,7 @@ pub(crate) struct RecordFace {
     pub(crate) response_id: Option<fn(&serde_json::Value) -> Option<String>>,
     /// 这条记录属于哪个子运行（主运行的记录 ⇒ `None`）。`None` 这一格 ＝ 这一家没有子运行。
     pub(crate) run_of: Option<fn(&serde_json::Value) -> Option<RunMark>>,
-    /// 父记录里「派出了一个子运行」的那几条（给出父侧工具调用 id、标签，知道时也给出子运行是哪个）。
+    /// 父记录里说到子运行的那几条：派出（父侧工具调用 id、标签，知道时也给出子运行是哪个）· 收场（派出那一方说它完了 / 败了 / 被叫停）。
     pub(crate) child_link: Option<fn(&serde_json::Value) -> Vec<ChildLink>>,
     /// 子运行的记录住哪（由父记录路径推出）。`None` ＝ 这一家没有单独存放的子运行记录。
     pub(crate) children: Option<ChildFace>,
@@ -271,6 +271,8 @@ pub(crate) struct RunMark {
 pub(crate) enum RunEnd {
     Done,
     Failed,
+    /// 被叫停（用户 / 派出它的那一方让它停的）。
+    Stopped,
 }
 
 /// 一个运行最近做的那件事（通用的值域；某一家的哪种记录算哪一件由那一家判）。
@@ -287,14 +289,17 @@ pub enum RunDid {
     Tool { name: String },
 }
 
-/// 父记录里的一条「派出子运行」：父侧工具调用 id 必有；标签 · 类别 · 子运行是哪个 · 收没收场，记录里有才有。
+/// 父记录里说到子运行的一条。三形：
+/// - 派出：`tool` 有、`run` 无 ⇒ 这次工具调用派出了一个子运行（标签 · 类别）；
+/// - 对上：`tool` 与 `run` 都有 ⇒ 这次调用派出的就是这个子运行（可带收场：前台跑完的那次结果）；
+/// - 收场：只有 `run` 与 `end` ⇒ 派出那一方说这个子运行完了 / 败了 / 被叫停（不认识的运行不立新行）。
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub(crate) struct ChildLink {
-    pub(crate) tool: String,
+    pub(crate) tool: Option<String>,
     pub(crate) label: Option<String>,
     pub(crate) kind: Option<String>,
     pub(crate) run: Option<String>,
-    /// 父侧说这个子运行已经收场了（前台跑完的那次结果 · 报错）；没说 ⇒ `None`。
+    /// 派出那一方说这个子运行已经收场了；没说 ⇒ `None`。
     pub(crate) end: Option<RunEnd>,
 }
 
@@ -313,6 +318,9 @@ pub struct ChildRunTag {
 #[derive(Clone, Copy)]
 pub(crate) struct ChildFace {
     pub(crate) sources: fn(&Path) -> Vec<PathBuf>,
+    /// 父记录的一行原文可能说到子运行（[`RecordFace::child_link`] 会答出东西）—— 便宜的预筛：漏判不许，多判无妨。
+    /// 只读尾巴的那条流接上会话时，靠它从父记录已有的那一截里只挑这几行解析。
+    pub(crate) hint: fn(&str) -> bool,
 }
 
 /// 一个上游协议的流面：把一个原始流事件（SSE `data:` 后面那段原文）折成归一事件。认不出 ⇒ 空。
@@ -406,6 +414,10 @@ impl RunFaces {
             .map(|c| (c.sources)(parent))
             .unwrap_or_default()
     }
+
+    pub(crate) fn hint(&self, line: &str) -> bool {
+        self.children.is_some_and(|c| (c.hint)(line))
+    }
 }
 
 /// 流式 watcher 跟的那一家的运行面（没有 ⇒ [`RunFaces::NONE`]）。
@@ -416,11 +428,6 @@ pub(crate) fn stream_run_faces() -> RunFaces {
 /// 一条已解析的记录在会话里属于哪个运行（主运行 ⇒ `None`）—— 通用层（大纲 · 骨架索引）判「这条是不是子运行的」的唯一入口。
 pub(crate) fn run_of_record(v: &serde_json::Value) -> Option<RunMark> {
     stream_run_faces().run_of(v)
-}
-
-/// 一条已解析的记录里派出子运行的那几条 —— 通用层（会话事实）认「派出了子运行」的唯一入口。
-pub(crate) fn child_links_of(v: &serde_json::Value) -> Vec<ChildLink> {
-    stream_run_faces().child_links(v)
 }
 
 /// 〔P1〕一家的记录文本面（原共享 crate `search-core` 里 Claude 记录文本那一半）：函数指针（同 [`Adapter::home`]，不立 trait）。
