@@ -305,15 +305,14 @@ fails=()
 #   · tmux 窗格：`TMUX` `TMUX_PANE`
 #   · Claude Code 会话：`CLAUDECODE` `CLAUDE_CONFIG_DIR`，以及 `CLAUDE_CODE_` 打头的整族（按前缀现取）
 #   · 上游与中转：`ANTHROPIC_BASE_URL` `ANTHROPIC_MODEL` `ANTHROPIC_API_KEY` `ANTHROPIC_AUTH_TOKEN`
-#   · cc-monitor 起会话时注入的：`CCM_RBIND_TOKEN` `CCM_LAUNCH_ID` `CCM_CLAUDEJSON` `CCM_CODEXTOML`，
-#     与指向本机账号清单的 `CCM_ACCTS_MANIFEST`
+#   · cc-monitor 起会话时注入的：`CCM_RBIND_TOKEN` `CCM_LAUNCH_ID` `CCM_CLAUDEJSON` `CCM_CODEXTOML`
 #   · cc-bus 身份：`CC_BUS_ID` `CC_BUS_HOME`
 # ⚠ 要这些变量的测试一律自己设（e2e 各自的 `base_env`、Rust 判据里的 `Command::env`），不靠继承；
 #   `CCM_PWSH` 这类「开发者显式打开一组测试」的开关不在名单里，刻意不摘。只印名字，不印值（里面有令牌）。
 gate_scrubbed=()
 for gate_v in TMUX TMUX_PANE CLAUDECODE CLAUDE_CONFIG_DIR \
               ANTHROPIC_BASE_URL ANTHROPIC_MODEL ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN \
-              CCM_RBIND_TOKEN CCM_LAUNCH_ID CCM_CLAUDEJSON CCM_CODEXTOML CCM_ACCTS_MANIFEST \
+              CCM_RBIND_TOKEN CCM_LAUNCH_ID CCM_CLAUDEJSON CCM_CODEXTOML \
               CC_BUS_ID CC_BUS_HOME $(compgen -e | grep -E '^CLAUDE_CODE_' || true); do
   if [ -n "${!gate_v+x}" ]; then
     gate_scrubbed+=("$gate_v")

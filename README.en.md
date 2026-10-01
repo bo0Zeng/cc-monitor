@@ -177,9 +177,8 @@ Single keys, all changeable in Settings → Shortcuts.
 
 | Location | What |
 |---|---|
-| `~/.cc-monitor/` | Everything cc-monitor owns: settings, backend, logs, alias files, API keys (readable only by you) |
+| `~/.cc-monitor/` | Everything cc-monitor owns: settings, backend, logs, alias files, API keys (readable only by you), and the multi-account store `accounts/` (built and maintained by the backend: the account list, plus one set of login credentials per account) |
 | `~/.claude/` | Claude Code's own directory. cc-monitor only reads session records and only writes the skills / MCP servers you choose to install |
-| `~/.claude-accts/` | The multi-account store (built and maintained by the backend), one set of login credentials per account |
 
 The "Data locations" page in Settings shows the full path of every file.
 

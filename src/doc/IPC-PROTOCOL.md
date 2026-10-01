@@ -1562,8 +1562,8 @@ SFTP 缩成只做传输之后，上传**只写** `~/.cc-monitor/staging/<key>.pa
 账号库管理（`accounts-init` / `accounts-add` / `accounts-repair`）在进程内经它建各号链回共享库的那几条链接。
 
 ```
-→ {"id":"l1","cmd":"files-link","args":{"root":"/home/u","rel":".claude-accts/z/skills","target":"/home/u/.claude/skills"}}
-← {"id":"l1","ok":true,"data":{"path":"/home/u/.claude-accts/z/skills"}}
+→ {"id":"l1","cmd":"files-link","args":{"root":"/home/u","rel":".cc-monitor/accounts/z/skills","target":"/home/u/.claude/skills"}}
+← {"id":"l1","ok":true,"data":{"path":"/home/u/.cc-monitor/accounts/z/skills"}}
 ```
 
 | 字段 | 方向 | 说明 |
@@ -1714,7 +1714,7 @@ monitor 进程内也**不再有它的副本**（原来那条「启动时 / 改�
 #### `apikey-key-set`：给一个账号写 key，写完读回
 
 ```text
-→ {"id":"k1","cmd":"apikey-key-set","args":{"configDir":"/home/u/.claude-accts/work","key":"<明文>","baseUrl":"https://api.example.com"}}
+→ {"id":"k1","cmd":"apikey-key-set","args":{"configDir":"/home/u/.cc-monitor/accounts/work","key":"<明文>","baseUrl":"https://api.example.com"}}
 ← {"kind":"reply","id":"k1","ok":true,"data":{"account":"work","path":"/home/u/.cc-monitor/apikey-credentials.json","masked":"sk-a****wxyz","baseUrl":"https://api.example.com"}}
 ```
 
@@ -1752,8 +1752,8 @@ monitor 进程内也**不再有它的副本**（原来那条「启动时 / 改�
 #### `apikey-routing`：这几个号在这台的表里有没有行 · 这台的中转在不在（US1 · 4D）
 
 ```text
-→ {"id":"k3","cmd":"apikey-routing","args":{"agent":"claude-code","configDirs":["/h/.claude-accts/work","/h/.claude-accts/me"]}}
-← {"kind":"reply","id":"k3","ok":true,"data":{"routed":["/h/.claude-accts/work"],"running":true}}
+→ {"id":"k3","cmd":"apikey-routing","args":{"agent":"claude-code","configDirs":["/h/.cc-monitor/accounts/work","/h/.cc-monitor/accounts/me"]}}
+← {"kind":"reply","id":"k3","ok":true,"data":{"routed":["/h/.cc-monitor/accounts/work"],"running":true}}
 ```
 
 | 字段 | 向 | 说明 |
@@ -1793,7 +1793,7 @@ monitor 进程内也**不再有它的副本**（原来那条「启动时 / 改�
 回的是**成品**：「中转不在时拒还是直连」也在这里判完（原先回四格、由 monitor 再判一遍）。
 
 ```text
-→ {"id":"k4","cmd":"launch-endpoint","args":{"agent":"claude-code","account":{"kind":"named","configDir":"/h/.claude-accts/work"},"allSessions":false}}
+→ {"id":"k4","cmd":"launch-endpoint","args":{"agent":"claude-code","account":{"kind":"named","configDir":"/h/.cc-monitor/accounts/work"},"allSessions":false}}
 ← {"kind":"reply","id":"k4","ok":true,"data":{"baseUrl":"http://127.0.0.1:8788/s/claude-code/work"}}
 ```
 
@@ -2492,7 +2492,7 @@ monitor（宿主，只交事实）在**每台**远端流握手成功那一刻交
 | 字段 | 向 | 说明 |
 |---|---|---|
 | `agent` | → | 必填：这次起会话的是哪一家（适配器 id；空串 ⇒ 默认那一家，注册表里没有 ⇒ `bad_args`）。只有它是这台机器 apikey 表的那一家时，表里的行才算数（条 49） |
-| `meta` | ← | `{enabled, acctsDir, manifestPath, updatedAt, sharedStore, count, error}`（同 `--list-accounts` 首行去掉分帧用的 `kind` / `accountZeroAware`）。账号库目录走默认解析，**帧面不收 `--accts-dir`** |
+| `meta` | ← | `{enabled, acctsDir, manifestPath, updatedAt, sharedStore, count, error}`（同 `--list-accounts` 首行去掉分帧用的 `kind` / `accountZeroAware`）。账号库目录跟着家走（`~/.cc-monitor/accounts`），没有另指位置的入参 |
 | `accounts` | ← | 每账号一个对象，字段同 `--list-accounts` 的账号行；**并上了这台机器自己那份 apikey 表**：表里有行的号 `authKind` 是 `api-key`、`authReady` 按 `acct_core::auth_ready`（规则住 `acct-core`，CLI 那一臂不并表） |
 | `notice` | ← | 「能用但有缺」：启用了却一个账号 0 都没有（写清单的那一侧旧到不认账号 0）时的一句话；否则 `null` |
 
@@ -2502,7 +2502,7 @@ monitor（宿主，只交事实）在**每台**远端流握手成功那一刻交
 #### `accounts-trust`：换号前的信任预检（替掉逐次拨号的 `--account-trust` / `--account-trust-zero`）
 
 ```text
-→ {"id":"q7","cmd":"accounts-trust","args":{"configDir":"/home/u/.claude-accts/a","cwd":"/home/u/proj"}}
+→ {"id":"q7","cmd":"accounts-trust","args":{"configDir":"/home/u/.cc-monitor/accounts/a","cwd":"/home/u/proj"}}
 ← {"kind":"reply","id":"q7","ok":true,"data":{"trusted":true,"known":true}}
 ```
 
@@ -2519,12 +2519,12 @@ monitor（宿主，只交事实）在**每台**远端流握手成功那一刻交
 #### `accounts-init`：建账号库（**写用户文件**，同步文件 I/O，阻塞档）
 
 这台机器现在登录的那个身份收成名叫 `name` 的默认号：Claude 的身份文件（凭据 · `.claude.json` · 几份本机状态）搬进
-`~/.claude-accts/<name>/`（`0700`，凭据 `0600`），共享库 `~/.claude` 顶层其余每一项在号的目录里链回共享库；写清单
-`~/.claude-accts/accounts.json`（schema v1，账号 0 合成在数组末尾、没有 `configDir` 键）；然后把每个号一条 `<名>cc` 并进别名文件。
+`~/.cc-monitor/accounts/<name>/`（`0700`，凭据 `0600`），共享库 `~/.claude` 顶层其余每一项在号的目录里链回共享库；写清单
+`~/.cc-monitor/accounts/accounts.json`（schema v1，账号 0 合成在数组末尾、没有 `configDir` 键）；然后把每个号一条 `<名>cc` 并进别名文件。
 
 ```text
 → {"id":"a1","cmd":"accounts-init","args":{"name":"z","dryRun":true}}
-← {"kind":"reply","id":"a1","ok":true,"data":{"applied":false,"steps":["建目录 /home/u/.claude-accts", …],"notes":[],"backup":null,"account":null,"loginCmd":null,"alias":"zcc","keyMasked":null,"keyProblem":null,"aliases":null}}
+← {"kind":"reply","id":"a1","ok":true,"data":{"applied":false,"steps":["建目录 /home/u/.cc-monitor/accounts", …],"notes":[],"backup":null,"account":null,"loginCmd":null,"alias":"zcc","keyMasked":null,"keyProblem":null,"aliases":null}}
 ```
 
 | 字段 | 向 | 说明 |
@@ -2534,7 +2534,7 @@ monitor（宿主，只交事实）在**每台**远端流握手成功那一刻交
 | `applied` | ← | 这一趟真改了盘没有 |
 | `steps` | ← | 做了（预演时：将要做）的每一步，一句一行 |
 | `notes` | ← | 提示（不挡这一趟），比如共享库里还没有可共享的项 |
-| `backup` | ← | 这一趟留的备份（`~/.claude-accts/.backup-<这一段>`，回滚用它）；没改动 ⇒ `null` |
+| `backup` | ← | 这一趟留的备份（`~/.cc-monitor/accounts/.backup-<这一段>`，回滚用它）；没改动 ⇒ `null` |
 | `alias` | ← | 这个号拿到的别名名字 |
 | `aliases` | ← | 别名文件那一步：`{path, changed, names, note}`（`note` = 没能自动改它时那一句，比如文件里有认不出的行） |
 
@@ -2550,7 +2550,7 @@ monitor（宿主，只交事实）在**每台**远端流握手成功那一刻交
 
 ```text
 → {"id":"a2","cmd":"accounts-add","args":{"name":"b","kind":"subscription","credFile":"~/snap/b.json"}}
-← {"kind":"reply","id":"a2","ok":true,"data":{"applied":true,"steps":[…],"notes":[],"backup":"20260930-120000","account":{"name":"b","configDir":"/home/u/.claude-accts/b"},"loginCmd":null,"alias":"bcc","keyMasked":null,"keyProblem":null,"aliases":{"path":"/home/u/.cc-monitor/aliases.sh","changed":true,"names":["zcc","bcc"],"note":null}}}
+← {"kind":"reply","id":"a2","ok":true,"data":{"applied":true,"steps":[…],"notes":[],"backup":"20260930-120000","account":{"name":"b","configDir":"/home/u/.cc-monitor/accounts/b"},"loginCmd":null,"alias":"bcc","keyMasked":null,"keyProblem":null,"aliases":{"path":"/home/u/.cc-monitor/aliases.sh","changed":true,"names":["zcc","bcc"],"note":null}}}
 ```
 
 | 字段 | 向 | 说明 |
@@ -2573,7 +2573,7 @@ monitor（宿主，只交事实）在**每台**远端流握手成功那一刻交
 
 ```text
 → {"id":"a3","cmd":"accounts-remove","args":{"name":"b"}}
-← {"kind":"reply","id":"a3","ok":true,"data":{"applied":true,"steps":["删除 /home/u/.claude-accts/b","写账号清单 …"],"notes":[…],"backup":"…",…}}
+← {"kind":"reply","id":"a3","ok":true,"data":{"applied":true,"steps":["删除 /home/u/.cc-monitor/accounts/b","写账号清单 …"],"notes":[…],"backup":"…",…}}
 ```
 
 | 字段 | 向 | 说明 |
@@ -2636,7 +2636,7 @@ monitor（宿主，只交事实）在**每台**远端流握手成功那一刻交
 
 ```text
 → {"id":"a7","cmd":"accounts-rollback","args":{"dryRun":true}}
-← {"kind":"reply","id":"a7","ok":true,"data":{"applied":false,"steps":["还原 /home/u/.claude-accts/b/skills","删掉 …（这一趟新建的）"],"notes":[],"backup":"20260930-120000",…}}
+← {"kind":"reply","id":"a7","ok":true,"data":{"applied":false,"steps":["还原 /home/u/.cc-monitor/accounts/b/skills","删掉 …（这一趟新建的）"],"notes":[],"backup":"20260930-120000",…}}
 ```
 
 | 字段 | 向 | 说明 |
@@ -3722,7 +3722,7 @@ monitor 的做法：链路的读者每读走半个窗口就还一次（`link_mux
 |---|---|---|
 | **流模式 flag** | `--stream` · `--with-bg` · `--tail-only` · `--with-rbind-token` | 出现即剥离并置位，**不影响模式判定** |
 | **一次性查询子命令** | 上面那张查询表的全部 | **只有 `args[0]` 是其中之一才进查询模式** |
-| **子命令选项** | `--accts-dir` · `--after-ms` · `--include-tools` · `--limit` · `--scope` | 只在某条子命令之后才有意义，后端顶层不解释 |
+| **子命令选项** | `--after-ms` · `--include-tools` · `--limit` · `--scope` | 只在某条子命令之后才有意义，后端顶层不解释 |
 
 **在此之前是二分**（剥掉流 flag、剩下非空就当查询），实测后果：
 
@@ -3756,9 +3756,9 @@ rc=2
 > 用量的**聚合轴**整轴退役 ⇒ 子命令与它的实现（那份 `usage_query.rs`，**已删**）一起删了，
 > monitor 侧的 fan-out 消费者同拍删除。`SUBCOMMANDS` 27 → 25（另一条是 `--oneshot-session`）。〕
 
-- `--list-accounts [--accts-dir <p>]`（A2 多账号，`src/backend/observe/accounts_query.rs`）→ 读账号库清单（`~/.claude-accts/accounts.json`，契约 v1）。**首行** `{"kind":"accounts-meta","enabled":bool,"acctsDir","manifestPath","updatedAt","sharedStore","count","error"}`，其后每账号一行 `{name,email,configDir,isDefault,mode,exists,loggedIn}`。**"未启用多账号"是正常状态**：manifest 缺失/坏/版本不支持 → `enabled:false` + `error` 人话原因 + **exit 0**（不是错误）。`loggedIn` 仅 stat `.credentials.json` 存在性。账号库目录解析：`--accts-dir` > `$HOME/.claude-accts`
-- `--session-accounts [--accts-dir <p>]`（A2；`launchId` 是 `K-P5f`）→ 扫 `<claude_dir>/sessions/<PID>.json` 拿 pid，读 `/proc/<pid>/environ` **只抠三个写死的键**（`CLAUDE_CONFIG_DIR` · `CCM_LAUNCH_ID` ·`ANTHROPIC_BASE_URL`——最后那个的值带中转钥匙，只折成 `viaRelay` 一个布尔、值本身不出参；**键名不是参数**，所以这条查询不是「任意环境变量读」原语，也**绝不回传整个环境快照**），`CLAUDE_CONFIG_DIR` 反查 manifest 得账号名。每条一行 `{pid,sessionId,cwd,configDir,account,bare,alive,launchId,viaRelay}`（`viaRelay` = 这条会话的上游地址是不是本机中转那一形：`true` / `false` / `null` = 不知道（进程已死 / 环境这一刻取不到）；机器页「停」本机后端之前据它数几条会断；老后端不出这个键 ⇒ 读成 `null`）。`account:null` = 查不到（**不猜**）；**`bare:true` = 进程活着、`/proc/<pid>/environ` 这一刻读得到、而没设 `CLAUDE_CONFIG_DIR`（裸起）——这个布尔的语义钉死在那一个变量上，加了第二个键也没有拓宽它**（没设 `CCM_LAUNCH_ID` 由 `launchId:null` 自己表达）。⚠ 「读得到」这个合取项是 `K-R21`（09-03）补的，**语义是收窄不是拓宽**：environ 在 exec 窗口里（60–140 µs）与进程成僵尸之后**读得到却回 0 字节 / 读不到**，从前那一刻会被报成斩钉截铁的 `account:"<账号0>"` + `bare:true`，而 `alive` 仍是 `true`（判活读的是 `/proc/<pid>/stat`，与 `environ` 不是同一次读）⇒ **一条真跑在别的账号下的会话会被报成账号 0 的，且无声无息**。现在那一刻报 `configDir:null` + `account:null` + `bare:false`（=「不知道」，**出参形状没变、没有新字段**）。`launchId` = 起会话方铸进这条会话进程环境的**身份 token**（写侧住 `local.rs::LAUNCH_ID_VAR`），`null` = **不作数**，五种原因合并且**刻意不区分**：没设 / 形状过不了白名单（`[A-Za-z0-9_-]`，1..=128）/ **同一个 token 落在一条以上活会话上** / 进程已死 / **读那一刻环境取不到**。⚠ 第五种是 `K-R21` 现打出来的，**它一直都在、只是从前混在「没设」里数不出来**（读侧那个 `Option` 装着四件事）——这不是新增了一种行为，是把「四种」这句旧话订正成实话；`configDir` 那一半已经把它拆出来了，身份这一半仍按「要区分就得给出参加状态位 = 改上线契约」那条裁定合并着。⚠ **`launchId` 不是硬真相**：它是**继承型**环境变量（claude spawn 的子进程原样继承），后端只能判「同一批里唯一」，判不出「确实是它的」——父会话已退出时那个继承值仍会被报出来。**additive**：老后端不出这个键，下游读成 `null`。⇒ 账号那一半（`configDir`/`account`/`bare`）仍是"某条**正在跑**的会话属于哪个账号"的唯一硬真相（会话 jsonl 里没有任何账号字段）；身份那一半（`launchId`）**不是**，别把上一句读到它头上
-- `--account-trust <configDir> <cwd> [--accts-dir <p>]`（A2）→ 换号 resume 前的信任预检（首次用某账号进某目录，CC 会弹信任确认、会卡住自动化）。单行 `{"trusted":bool,"known":bool,"error":null}`。**安全**：`configDir` 必须逐字 ∈ manifest 的账号列表，否则 exit 2 + stderr `{"code":"unknown_config_dir",...}`——避免退化成任意文件读原语；**只回三个布尔/字符串字段，绝不回传 `.claude.json` 内容**（内含 `mcpServers` 的环境变量，可能有 API key）
+- `--list-accounts`（A2 多账号，`src/backend/observe/accounts_query.rs`）→ 读账号库清单（`~/.cc-monitor/accounts/accounts.json`，契约 v1）。**首行** `{"kind":"accounts-meta","enabled":bool,"acctsDir","manifestPath","updatedAt","sharedStore","count","error"}`，其后每账号一行 `{name,email,configDir,isDefault,mode,exists,loggedIn}`。**"未启用多账号"是正常状态**：manifest 缺失/坏/版本不支持 → `enabled:false` + `error` 人话原因 + **exit 0**（不是错误）。`loggedIn` 仅 stat `.credentials.json` 存在性。账号库目录只跟着家走：`$HOME/.cc-monitor/accounts`（没有另指位置的参数或环境变量）
+- `--session-accounts`（A2；`launchId` 是 `K-P5f`）→ 扫 `<claude_dir>/sessions/<PID>.json` 拿 pid，读 `/proc/<pid>/environ` **只抠三个写死的键**（`CLAUDE_CONFIG_DIR` · `CCM_LAUNCH_ID` ·`ANTHROPIC_BASE_URL`——最后那个的值带中转钥匙，只折成 `viaRelay` 一个布尔、值本身不出参；**键名不是参数**，所以这条查询不是「任意环境变量读」原语，也**绝不回传整个环境快照**），`CLAUDE_CONFIG_DIR` 反查 manifest 得账号名。每条一行 `{pid,sessionId,cwd,configDir,account,bare,alive,launchId,viaRelay}`（`viaRelay` = 这条会话的上游地址是不是本机中转那一形：`true` / `false` / `null` = 不知道（进程已死 / 环境这一刻取不到）；机器页「停」本机后端之前据它数几条会断；老后端不出这个键 ⇒ 读成 `null`）。`account:null` = 查不到（**不猜**）；**`bare:true` = 进程活着、`/proc/<pid>/environ` 这一刻读得到、而没设 `CLAUDE_CONFIG_DIR`（裸起）——这个布尔的语义钉死在那一个变量上，加了第二个键也没有拓宽它**（没设 `CCM_LAUNCH_ID` 由 `launchId:null` 自己表达）。⚠ 「读得到」这个合取项是 `K-R21`（09-03）补的，**语义是收窄不是拓宽**：environ 在 exec 窗口里（60–140 µs）与进程成僵尸之后**读得到却回 0 字节 / 读不到**，从前那一刻会被报成斩钉截铁的 `account:"<账号0>"` + `bare:true`，而 `alive` 仍是 `true`（判活读的是 `/proc/<pid>/stat`，与 `environ` 不是同一次读）⇒ **一条真跑在别的账号下的会话会被报成账号 0 的，且无声无息**。现在那一刻报 `configDir:null` + `account:null` + `bare:false`（=「不知道」，**出参形状没变、没有新字段**）。`launchId` = 起会话方铸进这条会话进程环境的**身份 token**（写侧住 `local.rs::LAUNCH_ID_VAR`），`null` = **不作数**，五种原因合并且**刻意不区分**：没设 / 形状过不了白名单（`[A-Za-z0-9_-]`，1..=128）/ **同一个 token 落在一条以上活会话上** / 进程已死 / **读那一刻环境取不到**。⚠ 第五种是 `K-R21` 现打出来的，**它一直都在、只是从前混在「没设」里数不出来**（读侧那个 `Option` 装着四件事）——这不是新增了一种行为，是把「四种」这句旧话订正成实话；`configDir` 那一半已经把它拆出来了，身份这一半仍按「要区分就得给出参加状态位 = 改上线契约」那条裁定合并着。⚠ **`launchId` 不是硬真相**：它是**继承型**环境变量（claude spawn 的子进程原样继承），后端只能判「同一批里唯一」，判不出「确实是它的」——父会话已退出时那个继承值仍会被报出来。**additive**：老后端不出这个键，下游读成 `null`。⇒ 账号那一半（`configDir`/`account`/`bare`）仍是"某条**正在跑**的会话属于哪个账号"的唯一硬真相（会话 jsonl 里没有任何账号字段）；身份那一半（`launchId`）**不是**，别把上一句读到它头上
+- `--account-trust <configDir> <cwd>`（A2）→ 换号 resume 前的信任预检（首次用某账号进某目录，CC 会弹信任确认、会卡住自动化）。单行 `{"trusted":bool,"known":bool,"error":null}`。**安全**：`configDir` 必须逐字 ∈ manifest 的账号列表，否则 exit 2 + stderr `{"code":"unknown_config_dir",...}`——避免退化成任意文件读原语；**只回三个布尔/字符串字段，绝不回传 `.claude.json` 内容**（内含 `mcpServers` 的环境变量，可能有 API key）
 - `--account-trust-zero <cwd>`（A2）→ **账号 0**（未启用多账号时那个原生身份）的信任预检，返回形状同 `--account-trust`。**为什么单开一个动词而不是给 `--account-trust` 传空 `configDir`**：账号 0 没有 config dir，而空串是被明令禁止的拼法（空值 ≠ 未设）；且它的 `.claude.json` 原生根是 `$HOME`、不在共享账号库里 ⇒ 路径来源本就不同，合并只能靠哨兵值区分，比多一个动词更易错。**不收任何文件/配置目录路径参数**：它收 `cwd`，但那只当 `projects` 里的**查表键**，`.claude.json` 的根写死 `$HOME` ⇒ 连"任意文件读"的面都没有（`account_trust_zero_takes_no_path_argument` 钉住）
 - `--fork-session <args>`（G2 branch-anywhere，`src/backend/control/fork_write.rs`）→ 从指定消息处分叉出一个新会话文件。**后端唯一的写盘入口**——其余一切子命令只读；`readonly_guard` 的写白名单按路径单独盯着 `control/fork_write.rs` 这一个文件（`src/doc/INVARIANTS.md` §41.6）
 - `--tmux-notify <backend_pid> <backend_starttime>`（P4b zero-poll-liveness）→ **不是查询**，是 tmux hook 子进程走的通路：校验身份后给正在跑的后端发一个信号叫它立刻重扫 tmux，**完全不碰文件系统**。两个参数缺一或非整数 ⇒ exit 2。**必须同时比对 starttime 而不只看 pid 存在**：后端退出后那个 pid 可能已被别的进程占用，误发信号轻则无效、重则打断无关进程（很多程序把该信号当自定义控制信号，默认处置直接终止）。身份对不上 ⇒ **静默 exit 0，不做事**
@@ -3798,7 +3798,7 @@ stdin **只读到第一个换行**就动手，不等 EOF（上限与超限的拒
 今天的发送方：资产目录推那一趟（`'<远端后端>' --assets-catalog-merge --stdin-line`）· 历史跨机那一问（`'<远端后端>' --list-sessions --stdin-line`，项目目录名走那一行；`remote_ask::ask_with`）。旧后端不认这个修饰词（它会照旧读到 EOF、一直等）⇒
 随 `BUILD_ID` 换代，远端按身份重部署之后才发。
 
-错误写 stderr + 退出码 2（`--account-trust` 用 `--resolve` 那套结构化 `{code,message}` JSON）。**读会话那一族**（`--read-session` / `--read-session-tail` / `--read-session-from-offset` / `--fork-session`）的路径参数严格限制在 `<claude_dir>/projects/` 内（canonicalize 后前缀校验，拒穿越 / symlink 逃逸 / 非 jsonl）。**账号一族不走这条**，各有各的判据：`--accts-dir <p>` 缺省是 `$HOME/.claude-accts`；`--account-trust <configDir>` 靠「逐字 ∈ manifest」而非 projects 前缀；`--tmux-notify` 根本不碰文件系统。**旧后端兼容**：不认参数的旧版会照常发 `hello` 进流模式——monitor 以"首行是 hello 帧"识别旧版并提示升级（优雅降级，无版本协商）。
+错误写 stderr + 退出码 2（`--account-trust` 用 `--resolve` 那套结构化 `{code,message}` JSON）。**读会话那一族**（`--read-session` / `--read-session-tail` / `--read-session-from-offset` / `--fork-session`）的路径参数严格限制在 `<claude_dir>/projects/` 内（canonicalize 后前缀校验，拒穿越 / symlink 逃逸 / 非 jsonl）。**账号一族不走这条**，各有各的判据：账号库只在 `$HOME/.cc-monitor/accounts`（不收另指位置的参数）；`--account-trust <configDir>` 靠「逐字 ∈ manifest」而非 projects 前缀；`--tmux-notify` 根本不碰文件系统。**旧后端兼容**：不认参数的旧版会照常发 `hello` 进流模式——monitor 以"首行是 hello 帧"识别旧版并提示升级（优雅降级，无版本协商）。
 
 **`K-R86` 追加一条（09-13）**：`--capture-pane <会话名>` —— **只读**地抓一次某个 tmux 会话
 **此刻**那一屏的文本。它是上面读面那一族的邻居，但读的不是文件而是屏幕，所以单列在这里。

@@ -1996,6 +1996,78 @@ fn the_accounts_library_lives_under_the_contract_directory_name() {
         .unwrap_or_else(|e| panic!("缺省解析不再经契约常量拼家目录下那一层：{e}"));
 }
 
+/// 守的要求：用户「即后端去.cc-monitor读数据」——账号库的位置只跟着家走，旧位置不认、另指位置的环境变量删掉。
+/// ① 产品（`src/` 全树的文本文件 ＋ 两份 README）里旧账号库目录名与那个环境变量名**零处**；
+/// ② 那个变量名在测试脚本、门禁、CI 里也零处（全仓只剩 CHANGELOG 旧版本段与 `tests/evidence/` 的冻结读数）。
+/// 正控：同一个扫描器在产品里找新位置那一段的唯一住址（宏名），命中的文件集合恰好是契约 crate 与足迹两份；
+/// 脚本那一族的人群里真有门禁与 ccm 那套 e2e；合成串里两个针都认得出。
+#[test]
+fn nothing_in_the_product_still_points_at_the_old_account_library() {
+    let root = crate::guard_support::repo_root();
+    // 针运行时拼：本文件自己不进人群也不含针。
+    let old_dir = format!(".claude-{}", "accts");
+    let old_env = format!("CCM_ACCTS_{}", "MANIFEST");
+    fn walk(dir: &Path, skip: &[&str], out: &mut Vec<(PathBuf, String)>) {
+        let Ok(rd) = fs::read_dir(dir) else { return };
+        for e in rd.flatten() {
+            let p = e.path();
+            let name = e.file_name().to_string_lossy().into_owned();
+            let Ok(ft) = e.file_type() else { continue };
+            if ft.is_dir() {
+                if !name.starts_with('.')
+                    && !["node_modules", "target", "vendor"].contains(&name.as_str())
+                    && !skip.iter().any(|s| p.ends_with(s))
+                {
+                    walk(&p, skip, out);
+                }
+            } else if ft.is_file() {
+                if let Ok(t) = fs::read_to_string(&p) {
+                    out.push((p, t));
+                }
+            }
+        }
+    }
+    let rel = |p: &Path| p.strip_prefix(&root).unwrap().to_string_lossy().replace('\\', "/");
+    let hits = |pop: &[(PathBuf, String)], needle: &str| -> std::collections::BTreeSet<String> {
+        pop.iter().filter(|(_, t)| t.contains(needle)).map(|(p, _)| rel(p)).collect()
+    };
+    let mut product = Vec::new();
+    walk(&root.join("src"), &[], &mut product);
+    for f in ["README.md", "README.en.md"] {
+        product.push((root.join(f), fs::read_to_string(root.join(f)).unwrap()));
+    }
+    let mut scripts = Vec::new();
+    walk(&root.join("tests"), &["tests/evidence"], &mut scripts);
+    walk(&root.join(".github"), &[], &mut scripts);
+    scripts.push((root.join("package.json"), fs::read_to_string(root.join("package.json")).unwrap()));
+
+    // 正控
+    assert_eq!(
+        hits(&product, "accounts_dir_rel!"),
+        [
+            "src/backend/agents/claudecode/footprint.rs",
+            "src/common/relay-route-core/src/lib.rs"
+        ]
+        .map(String::from)
+        .into(),
+        "新位置那一段的住址不是恰好这两份 —— 扫描器没读到产品树，或住址多了一处"
+    );
+    for must in ["tests/scripts/gate.sh", "tests/e2e/ccm-cli.test.sh"] {
+        assert!(
+            scripts.iter().any(|(p, _)| rel(p) == must),
+            "脚本那一族的人群里没有 {must} —— 扫描器没读到"
+        );
+    }
+    let fake = vec![(root.join("x"), format!("a {old_dir}/b {old_env}=c"))];
+    assert_eq!(hits(&fake, &old_dir).len() + hits(&fake, &old_env).len(), 2, "合成串里的针没认出来");
+
+    // 正题
+    let empty = std::collections::BTreeSet::<String>::new();
+    assert_eq!(hits(&product, &old_dir), empty, "产品里还有旧账号库目录名");
+    assert_eq!(hits(&product, &old_env), empty, "产品里还有另指账号库位置的环境变量");
+    assert_eq!(hits(&scripts, &old_env), empty, "测试脚本 / 门禁里还有另指账号库位置的环境变量");
+}
+
 /// ★**本机判活源头**（历史跨机 join 用）：pidfile 里的会话 id ＋ 那个进程还在（同 watcher 那一道平台原语）。
 ///
 /// 要求住址：主会话 09-25 裁（「主会话裁」第 2 条）「本机后端 … 并上注解、出成品」—— 本机那一支的
