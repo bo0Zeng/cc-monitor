@@ -1943,7 +1943,6 @@ pub fn cli_flag(name: &str) -> String {
 
 /// ③ 子命令自己的选项：只在某条 [`SUBCOMMANDS`] 之后才有意义，backend 顶层不解释它们。
 pub const SUBCOMMAND_OPTIONS: &[&str] = &[
-    "--accts-dir",
     "--after-ms",
     // `--list-user-inputs` 的增量起点（字节偏移，传上次尾行的 `end`）。
     "--from",

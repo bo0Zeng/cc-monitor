@@ -92,7 +92,7 @@
         "env": [
           {
             "kind": "export-config-dir",
-            "value": "/home/u/.claude-accts/z"
+            "value": "/home/u/.cc-monitor/accounts/z"
           },
           {
             "kind": "unset-nested-env"
@@ -117,7 +117,7 @@
           "ccmSid": "0f1e2d3c"
         }
       },
-      "cmd": "tmux new-session -d -s cc-0f1e2d3c -c '/w' && (tmux set-option -t =cc-0f1e2d3c: @ccm_sid 0f1e2d3c 2>/dev/null || true) && (tmux set-option -t =cc-0f1e2d3c: set-titles on 2>/dev/null || true) && (tmux set-option -t =cc-0f1e2d3c: set-titles-string ccm-rbind-#{@ccm_sid} 2>/dev/null || true) && tmux send-keys -t =cc-0f1e2d3c: 'export CLAUDE_CONFIG_DIR='\\''/home/u/.claude-accts/z'\\''; unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_SESSION_ID CLAUDE_CODE_CHILD_SESSION; claude' Enter && tmux attach -t =cc-0f1e2d3c:"
+      "cmd": "tmux new-session -d -s cc-0f1e2d3c -c '/w' && (tmux set-option -t =cc-0f1e2d3c: @ccm_sid 0f1e2d3c 2>/dev/null || true) && (tmux set-option -t =cc-0f1e2d3c: set-titles on 2>/dev/null || true) && (tmux set-option -t =cc-0f1e2d3c: set-titles-string ccm-rbind-#{@ccm_sid} 2>/dev/null || true) && tmux send-keys -t =cc-0f1e2d3c: 'export CLAUDE_CONFIG_DIR='\\''/home/u/.cc-monitor/accounts/z'\\''; unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_SESSION_ID CLAUDE_CODE_CHILD_SESSION; claude' Enter && tmux attach -t =cc-0f1e2d3c:"
     },
     {
       "name": "create：账号 0（显式 unset）+ 模型偏好",

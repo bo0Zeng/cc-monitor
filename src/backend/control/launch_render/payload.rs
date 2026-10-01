@@ -68,7 +68,7 @@ use copy_core::copy_text;
 /// 两种 shell 共用的元字符黑名单。
 ///
 /// **`\` 不在里面** —— 见 [`config_dir_command_safe`]：POSIX 侧由调用点额外拒掉它
-/// （那边的路径里不该有反斜杠），而 Windows 侧的账号目录长成 `C:\Users\z\.claude-accts\z`，
+/// （那边的路径里不该有反斜杠），而 Windows 侧的账号目录长成 `C:\Users\z\.cc-monitor\accounts\z`，
 /// 把 `\` 一律禁掉等于禁掉整个平台。它在两种 shell 的**单引号**里都是字面量
 /// （POSIX `'…'` 无转义；PowerShell `'…'` 无插值），真正要挡的是能提前闭合引号或另起命令的那几个。
 /// 提为 `pub(crate)`：它是**权威源**，

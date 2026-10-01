@@ -1263,12 +1263,12 @@ fn the_home_is_home_then_userprofile_and_paths_under_it_are_joined_per_segment()
     assert_eq!(home_of(env_of(&[])), "", "两个都没有 ⇒ 空串（照旧）");
 
     // 本机（Linux）上逐段 join 与从前的 `format!("{home}/{rel}")` 逐字相等 —— 这一格不许变。
-    for rel in [".claude-accts/accounts.json", ".config/ccm/config"] {
+    for rel in [".cc-monitor/accounts/accounts.json", ".config/ccm/config"] {
         assert_eq!(under_home("/home/pi", rel), format!("/home/pi/{rel}"));
     }
     assert_eq!(
-        under_home("", ".claude-accts/accounts.json"),
-        "/.claude-accts/accounts.json",
+        under_home("", ".cc-monitor/accounts/accounts.json"),
+        "/.cc-monitor/accounts/accounts.json",
         "空家目录照旧"
     );
 
@@ -1287,9 +1287,16 @@ fn the_home_is_home_then_userprofile_and_paths_under_it_are_joined_per_segment()
         "家目录要经 `home_of` 取"
     );
     assert_eq!(
-        from_process.matches("under_home(&home,").count(),
-        2,
-        "配置文件与账号库两处都要经 `under_home` 拼"
+        (
+            from_process.matches("under_home(&home,").count(),
+            from_process.matches("accts_manifest_under(&home)").count(),
+        ),
+        (1, 1),
+        "配置文件经 `under_home` 拼、账号库清单经 `accts_manifest_under`（它也走 `under_home`）"
+    );
+    assert_eq!(
+        accts_manifest_under("/home/pi"),
+        "/home/pi/.cc-monitor/accounts/accounts.json"
     );
     assert_eq!(
         from_process.matches("format!(\"{home}/").count(),

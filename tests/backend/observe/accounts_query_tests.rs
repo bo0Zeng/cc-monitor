@@ -341,16 +341,6 @@ fn account_trust_paths() {
     let _ = fs::remove_dir_all(&root);
 }
 
-#[test]
-fn accts_dir_cli_override_wins() {
-    let args = vec![
-        "--list-accounts".to_string(),
-        "--accts-dir".to_string(),
-        "/custom/accts".to_string(),
-    ];
-    assert_eq!(resolve_accts_dir(&args), PathBuf::from("/custom/accts"));
-}
-
 // ---- 6. --session-accounts（procStart 身份对拍是核心）----
 #[test]
 fn session_accounts_marks_dead_and_bare() {
@@ -1985,24 +1975,24 @@ fn every_group_of_deceptive_characters_is_rejected_in_a_config_dir() {
     );
 }
 
-/// ★ 账号库目录名是 **写账号库那一侧 / 读清单那一侧 / 起会话那一侧共用的契约名**，写死成字面量核对；
-/// 而后端缺省解析（没有 `--accts-dir` 时）恰经这一个常量拼出来。
+/// ★ 账号库住后端的家里（`<家目录>/.cc-monitor/accounts/accounts.json`）：写账号库 / 读清单 / 起会话三侧共用契约 crate 那两格，
+/// 写死成字面量核对；而这里的解析**只跟着家走**（不收参数、不读环境变量）、恰经那一个常量拼出来。
 #[test]
 fn the_accounts_library_lives_under_the_contract_directory_name() {
     assert_eq!(
-        acct_core::ACCTS_DIR_NAME,
-        ".claude-accts",
-        "账号库目录名变了 —— 改了它后端就去别处找账号库，界面上只表现为「一个账号都没有」"
+        (relay_route_core::ACCOUNTS_DIR_REL, relay_route_core::ACCOUNTS_MANIFEST_NAME),
+        (".cc-monitor/accounts", "accounts.json"),
+        "账号库位置变了 —— 改了它后端就去别处找账号库，界面上只表现为「一个账号都没有」"
     );
     let prod = crate::guard_support::production_code(include_str!(
         "../../../src/backend/observe/accounts_query.rs"
     ));
-    let at = guard_core::find_pinned(&prod, "fn resolve_accts_dir(")
-        .unwrap_or_else(|e| panic!("缺省解析那一处找不到（恰好一处）：{e}"));
+    let at = guard_core::find_pinned(&prod, "fn resolve_accts_dir() -> PathBuf {")
+        .unwrap_or_else(|e| panic!("缺省解析那一处找不到（恰好一处、不收参数）：{e}"));
     let body_end = prod[at + 1..]
         .find("\nfn ")
         .map_or(prod.len(), |k| at + 1 + k);
-    guard_core::find_pinned(&prod[at..body_end], "h.join(ACCTS_DIR_NAME)")
+    guard_core::find_pinned(&prod[at..body_end], "h.join(ACCOUNTS_DIR_REL)")
         .unwrap_or_else(|e| panic!("缺省解析不再经契约常量拼家目录下那一层：{e}"));
 }
 

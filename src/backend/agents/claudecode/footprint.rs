@@ -32,9 +32,9 @@ pub(crate) const CC_BUS_SKILL_DIR_REL: &str = ".claude/skills/cc-bus";
 pub(crate) const CC_BUS_SKILL_DIR: &str = "~/.claude/skills/cc-bus";
 /// 用户级 settings（cc-bus 钩子那一段住这里）。
 pub(crate) const USER_SETTINGS: &str = "~/.claude/settings.json";
-/// 多账号那一族的账号库根。
-pub(crate) const ACCOUNTS_ROOT: &str = "~/.claude-accts/";
-pub(crate) const ACCOUNTS_ROOT_REL: &str = ".claude-accts/";
+/// 多账号那一族的账号库根：住后端的家里（那一段字面量只在契约 crate，这里拼出申报表要的两形）。
+pub(crate) const ACCOUNTS_ROOT: &str = concat!("~/", relay_route_core::accounts_dir_rel!(), "/");
+pub(crate) const ACCOUNTS_ROOT_REL: &str = concat!(relay_route_core::accounts_dir_rel!(), "/");
 /// skill 装到的那一层（家目录相对）。
 pub(crate) const SKILLS_DIR_REL: &str = ".claude/skills";
 /// 同上，申报路径那一格。
