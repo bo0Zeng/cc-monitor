@@ -122,7 +122,8 @@ jobs:
           }
 
       # F09：vendor code-picture-core 是 path 依赖、**非** workspace 成员 → `--all` 测不到它。
-      # 显式 `-p` 把它的 25 个测试跑起来（tree-sitter 符号索引 + git 锚点 + SQLite 内核）。
+      # 显式 `-p` 把它的测试跑起来（tree-sitter 符号索引 + git 锚点 + SQLite 内核）。
+      # 本地门禁 `tests/scripts/gate.sh` 的 `code-picture-core` 那一格在同一目录跑同一条命令。
       # 不动 vendor crate 源码/Cargo.toml（红线：别误伤 vendor）。
       # 〔RM1f · V108 后半句〕monitor 不再依赖它（摘掉了内嵌引擎）⇒ 在 `src/frontend/shell` 里 `-p` 选不到它了；
       #   今天链它的只剩全景小程序 ⇒ 这一步换到那棵树里跑（同一个包、同一份 vendor 源码，`-p` 照旧选中依赖图里的它）。
@@ -866,8 +867,8 @@ jobs:
           #    gate2-golden.tsv）。⚠ 地板值刻意不在这里重抄，理由见上面那段警告。
           for pair in "tmux-target 26" "ccm-cli 48" "ccm-print-parity 12" \
                       "cc-spawn-uplift 72" \
-                      "restart 24" "resume 17" "graylight-frames 12" "restart-frames 5" "resume-frames 7" \
-                      "ccm-rbind-title 8" "backend-fork 10" "inbound-frames 30" \
+                      "restart 24" "resume 17" "graylight-frames 13" "restart-frames 5" "resume-frames 7" \
+                      "ccm-rbind-title 8" "backend-fork 10" "inbound-frames 32" \
                       "ccm-contract-parity 45" "backend-gate2 33" "local-backend 14" \
                       "backend-sessions-rewatch 5" "backend-tmux-late-server 2" \
                       "cc-bus-queue-drain 43" "backend-cc-bus 50" "p3t-local-tmux 10"; do
@@ -975,9 +976,9 @@ jobs:
       # 而那条拆法正是为了同一族缺陷立的。⇒ **搬步骤，不搬工具链。**
       #
       # ⚠ **也不是「删掉」** —— 删之前现打问过「题面是不是已经被别的门覆盖了」，答案是**没有**：
-      #   · `tests/scripts/gate.sh` 那四行 `run_e2e` 跑的是 `ccm-print-parity` / `ccm-rbind-title` /
-      #     `ccm-cli` / `ccm-contract-parity`，**不含 `cc-spawn-uplift`**；而且那是**本地出货门禁**，
-      #     不是 CI —— `K-R119` 那一趟的读数逐字就是「本地 16 格全绿 ≠ CI 会绿」。
+      #   · 本地出货门禁 `tests/scripts/gate.sh` 今天对本文件里每一套带 `assert-pass-floor.sh` 地板的 e2e 都有一行
+      #     `run_e2e`（四套全在，含 `cc-spawn-uplift`；两向由 `shared_crate_registry` 那条映射判据钉着）——
+      #     但那是本机门禁，不是 CI：本地全绿 ≠ CI 会绿。
       #   · 现打整份 `ci.yml`：这四个套件名各自**只**出现在搬走的那一步上，别的 job 一条都没有。
       #   ⇒ 删掉 = 把四套真机覆盖从云端交出去。**搬家是唯一不丢覆盖的处置。**
       #
@@ -1088,9 +1089,8 @@ jobs:
       # 而用量整条产品面（含那份套件文件）本拍删干净 ⇒ 步骤留着就会红在「文件不存在」上。
       # 同拍摘掉的还有：上面 `for pair` 那张地板清单里的那一条（20 → 19）。
       # ⚠ `shared_crate_registry.rs` 的 `STEPS` 里**没有**它的登记，删它也不必动那张表 ——
-      #   本 job（`e2e-tmux-rust`）整个吃 `BLANKET` 豁免（红线：真 tmux server），
-      #   BLANKET 里的 job 的步骤按设计就不逐条登记 ⇒ 这一步从来没进过 `STEPS`，
-      #   `stale` 那半也就无从变红。（现打验过：删前删后那条判据都是绿的。）
+      #   `assert-pass-floor.sh <套件>` 那批步骤不在 `STEPS` 里逐条登记（按套件名与 `gate.sh` 的 `run_e2e` 对拍）
+      #   ⇒ 删这一步不必动 `STEPS`。
       # 它原先带的那段 `K-R122` 步骤次序散文（「必须排在 `build debug backend` 之后」）随步走 ——
       # 同一条次序约束今天由下面四步顶上那段继续管着。
 
@@ -1148,7 +1148,7 @@ jobs:
       #      写的那个失效模式：**不是变红，是静默缩水**。**先跑再棘**的「跑」这一次由 PM 在沙箱里做。
       - name: 入方向后端帧（U8a-2a）
         # 〔RST 续 · V41〕33 → 30：裸键 mode `send-keys-raw` 删了，「被接受 · 没附回车 · 补 Enter 才执行」三格随之删。
-        run: bash tests/e2e/assert-pass-floor.sh inbound-frames 30
+        run: bash tests/e2e/assert-pass-floor.sh inbound-frames 32
 
       # F03：§34 Gate 2 在后端侧的真机验收。用例逐行来自那张唯一的判定表
       # `tests/__fixtures__/gate2-golden.tsv`（〔THIN〕后端与本套两条轨道同一份）。
@@ -1204,7 +1204,7 @@ jobs:
         run: bash tests/e2e/assert-pass-floor.sh local-backend 14
 
       - name: 灰灯后端帧（F-E1）
-        run: bash tests/e2e/assert-pass-floor.sh graylight-frames 12
+        run: bash tests/e2e/assert-pass-floor.sh graylight-frames 13
 
       - name: 换号后端帧（F-E3）
         run: bash tests/e2e/assert-pass-floor.sh restart-frames 5
@@ -1340,7 +1340,7 @@ jobs:
       #    不是「少跑一格」（`gate_check_only`）。而这一行整体与 `INVOCATION` 里标着
       #    「进云端子集」的那几格由 `C8d` 两向对拍 —— 这一行是那张登记的**唯一**第二住址，
       #    而它被钉住了。
-      # ⚠ 跳过的那 18 格 `gate.sh` 会逐字印出来，且裁决行会是 `GATE: PARTIAL` 而**不是**
+      # ⚠ 跳过的那几格 `gate.sh` 会逐字印出来，且裁决行会是 `GATE: PARTIAL` 而**不是**
       #    `GATE: OK` —— `GATE: OK` 那四个字只许有一个意思：盘上每一格都跑过了。
       - name: 跑本地门禁的云端子集（GATE_ONLY，裁决行只会是 PARTIAL）
         env:

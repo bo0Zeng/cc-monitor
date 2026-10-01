@@ -41,6 +41,7 @@ import { describe, it, expect } from "vitest";
 import { buildLedger, type Ledger } from "../../evidence/S25-class-ledger.ts";
 import { toPosix } from "../../test-support/posix-path.ts";
 import { REPO_ROOT } from "../../test-support/repo-root.ts";
+import { SCAN_TIMEOUT_MS } from "../../test-support/production-sources.ts";
 
 /**
  * ★ **全局样式文件登记表**（M①）。今天 10 份，全是三入口拆分那一拍按「哪几个窗口要它」切出来的（`设计/41 §9`）。
@@ -222,7 +223,7 @@ describe("〔UC2〕M③ ④ 只经默认导入用；每个类都有人取（CSS 
     expect(drift, "module 的类名两个方向没对上").toEqual([]);
     expect(judged, "一个 module 类都没判到 —— 零命中地绿").toBeGreaterThan(0);
     console.log(`  ok   UC2-M③④  ${mods.length} 份 module · ${judged} 个类，两向对上、只经默认导入`);
-  });
+  }, SCAN_TIMEOUT_MS);
 
   it("死值验：导入形与取用形的量具认得出坏形状", () => {
     expect(moduleImportsOf("src/a.ts", 'import s from "./a.module.css";').bad).toEqual([]);

@@ -27,6 +27,12 @@ import { REPO_ROOT } from "./repo-root.ts";
 /** 不进遍历的目录：构建产物、依赖、生成物。 */
 const SKIP_DIRS = new Set(["node_modules", "dist", "coverage", "generated", ".vite"]);
 
+/**
+ * 「把全部生产源码逐份过一遍 TS AST」那一族判据的单条期限。它们读 `src` 下每一份 `.ts` 并逐份建语法树，
+ * 在满核带插桩的覆盖率跑里（每核一个插桩 worker）会超过 vitest 默认的 5 秒。只给这一族，全局期限不动。
+ */
+export const SCAN_TIMEOUT_MS = 30_000;
+
 export interface ProductionSource {
   /** 相对仓根的路径（正斜杠）。 */
   file: string;
