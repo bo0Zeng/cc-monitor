@@ -381,29 +381,6 @@ fn a_probe_frame_carries_its_ticket_and_the_cell_verbatim() {
     );
 }
 
-/// 〔P7〕长活的进度帧：与 `probe` 同一种收法（票 ＋ 那一格原样；那一格不是对象 / 缺票 ⇒ 坏帧）。
-#[test]
-fn a_progress_frame_carries_its_ticket_and_the_cell_verbatim() {
-    // 原样 = 同一个 JSON 值（重新成文时的键序随 serde_json 的特性开关变 ⇒ 比值，不比字面串）。
-    match parse_frame(
-        r#"{"kind":"progress","ticket":"t-1","cell":{"phase":"Parse","done":1,"total":2}}"#,
-    ) {
-        Some(InboundFrame::Progress { ticket, cell }) => {
-            assert_eq!(ticket, "t-1");
-            assert_eq!(
-                serde_json::from_str::<serde_json::Value>(&cell).unwrap(),
-                serde_json::json!({"phase": "Parse", "done": 1, "total": 2})
-            );
-        }
-        other => panic!("认不出 progress 帧：{other:?}"),
-    }
-    assert_eq!(
-        parse_frame(r#"{"kind":"progress","ticket":"t-1","cell":[1]}"#),
-        None
-    );
-    assert_eq!(parse_frame(r#"{"kind":"progress","cell":{}}"#), None);
-}
-
 /// 未知 kind（协议向前演进新增的帧类型）→ None，调用方 warn+skip，绝不 panic。
 #[test]
 fn unknown_kind_returns_none() {

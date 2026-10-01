@@ -4,8 +4,6 @@ name: Release
 #  0. ci-gate：**同一个 commit 上的 CI 必须绿过**，否则后面一步都不起（R1，2026-09-09 加）。
 #  1. build-backends (ubuntu)：用 cargo-zigbuild 交叉编译 aarch64 / x86_64 musl 远端后端，
 #     作为 artifact 传给 Windows 作业 —— 让发布安装包内嵌后端、自动部署 (#29) 可用。
-#     〔RM1c · 第四波〕同一个 job、同一条配方再编一件：只装代码全景引擎的独立小程序
-#     （`src/panorama-engine`，V108 选 B），同进 `embedded-backends` 那个 artifact。
 #  2. build-windows：下载后端放进 src/frontend/shell/embedded-backends/ → cargo tauri build →
 #     把 NSIS / MSI bundle 作为 GitHub Release 附件上传。
 #  3. build-linux：同一批 backend artifact → tauri build --bundles deb → 追加进同一个 Release。
@@ -238,17 +236,6 @@ jobs:
           cargo zigbuild --release --locked --target x86_64-unknown-linux-musl
           cargo zigbuild --release --locked --target aarch64-unknown-linux-musl
 
-      # 〔RM1c · 第四波〕只装代码全景引擎的**独立小程序**（用户 09-24 V108 选 B）：
-      # 后端经插件通用调用口按需起它，后端本体仍零 code-picture。同一条配方、同两个 target
-      # （`tests/scripts/re-embed.sh` 逐字同源，`tests/evidence/K-R124-ruler.py` ⑬b 两向对拍）。
-      # 字节进同一个 artifact，落 `src/frontend/shell/embedded-backends/cc-monitor-panorama-<arch>`，
-      # 由 `src/frontend/shell/build.rs::embed_panoramas` 内嵌。⚠ 它**没有**身份戳（不随 `BUILD_ID` 走）。
-      - name: Cross-compile panorama for both musl targets
-        working-directory: src/panorama-engine
-        run: |
-          cargo zigbuild --release --locked --target x86_64-unknown-linux-musl
-          cargo zigbuild --release --locked --target aarch64-unknown-linux-musl
-
       # 命名成 src/frontend/shell/build.rs embed_backends 期望的 cc-monitor-backend-<arch>。
       #
       # 🔴 **K-R70（09-12）：不再旁挂 `.build_id` 清单 —— 身份跟着字节走。**
@@ -264,9 +251,6 @@ jobs:
           mkdir -p staged
           cp .build/backend/x86_64-unknown-linux-musl/release/cc-monitor-backend staged/cc-monitor-backend-x86_64
           cp .build/backend/aarch64-unknown-linux-musl/release/cc-monitor-backend staged/cc-monitor-backend-aarch64
-          # 〔RM1c〕全景小程序（`.build/panorama` 是 `src/panorama-engine/.cargo/config.toml` 声明的 target-dir）。
-          cp .build/panorama/x86_64-unknown-linux-musl/release/cc-monitor-panorama staged/cc-monitor-panorama-x86_64
-          cp .build/panorama/aarch64-unknown-linux-musl/release/cc-monitor-panorama staged/cc-monitor-panorama-aarch64
           file staged/* || true
 
       - uses: actions/upload-artifact@v4
@@ -274,7 +258,6 @@ jobs:
           name: embedded-backends
           path: |
             staged/cc-monitor-backend-*
-            staged/cc-monitor-panorama-*
           if-no-files-found: error
 
   build-windows:
@@ -327,11 +310,6 @@ jobs:
             if (-not $f) { Write-Error "backend artifact cc-monitor-backend-$a 缺失——内嵌失败，自动部署会被禁用"; exit 1 }
             Copy-Item $f.FullName "src/frontend/shell/embedded-backends/cc-monitor-backend-$a" -Force
             Write-Host ("embedded {0} ({1} bytes)" -f $a, $f.Length)
-            # 〔RM1c〕全景小程序同一批 artifact。缺了就是这一版远端全景没有字节可推 ⇒ 当场失败，不静默关掉。
-            $p = Get-ChildItem -Recurse backend-artifacts -Filter "cc-monitor-panorama-$a" | Select-Object -First 1
-            if (-not $p) { Write-Error "panorama artifact cc-monitor-panorama-$a 缺失——远端代码全景没有字节可推"; exit 1 }
-            Copy-Item $p.FullName "src/frontend/shell/embedded-backends/cc-monitor-panorama-$a" -Force
-            Write-Host ("embedded panorama {0} ({1} bytes)" -f $a, $p.Length)
           }
           # 🔴 〔步 9 · 09-19〕从 main.rs 改成 lib.rs —— BUILD_ID 与身份戳界标已按
           #    `设计/00 §1.5.4` 前置 2 搬进后端库面（in-process 那条路没有那个 main.rs）。
@@ -496,29 +474,6 @@ jobs:
             if (-not (Test-Path $f)) { Write-Error "本机内嵌后端没铺全（缺 $f）——裸 exe 会回到「0 个本机后端进程」那个读数"; exit 1 }
           }
           Write-Host ("native backend staged: {0} ({1} bytes, target={2})" -f $dst, (Get-Item $dst).Length, $triple)
-
-      # ── 〔RM1f · V108 后半句〕**本机原生的全景小程序** —— monitor 摘掉内嵌引擎之后，本机全景 = 本机后端 → 插件口 → 它 ──
-      #
-      # 远端那两份是 musl Linux（上面 build-backends 那一步产的），Windows 本机跑不了 ⇒ 这一格原生编一份，
-      # 铺进同一个 `native-backend/` 落点（名字定死在 `build.rs::NATIVE_PANORAMA_FILE`，旁挂 `.target` 清单同本机后端那一对；
-      # `build.rs::embed_native_panorama` 内嵌进 exe，monitor 在本机后端答「没装」时把它放到 `~/.cc-monitor/bin/`）。
-      # `--locked` 同 build-backends 那一步的理由（`src/panorama-engine/Cargo.lock` 是它自己的第三份 lock）。
-      # ⚠ Linux 发版**不多编**：本机 Linux 直接用远端那两份 musl 静态字节（`panorama_bytes::local_panorama_binary` 第二个来源）。
-      # ⚠ **诚实边界**：本步买到「编得出 · 铺了 · target 对得上」；买不到「在真 Windows 上被本机后端起起来」—— 那要真机跑一趟。
-      - name: Build local panorama (native)
-        working-directory: src/panorama-engine
-        run: cargo build --release --locked
-      - name: Stage native panorama for self-extract
-        shell: pwsh
-        run: |
-          $triple = (rustc -vV | Select-String '^host:').Line.Split(' ')[1]
-          $dst = "src/frontend/shell/native-backend/cc-monitor-panorama"
-          Copy-Item .build/panorama/release/cc-monitor-panorama.exe $dst -Force
-          Set-Content -Path "$dst.target" -Value $triple
-          foreach ($f in $dst, "$dst.target") {
-            if (-not (Test-Path $f)) { Write-Error "本机全景小程序没铺全（缺 $f）——Windows 本机的代码全景会说「这台机器上还没装代码全景组件」"; exit 1 }
-          }
-          Write-Host ("native panorama staged: {0} ({1} bytes, target={2})" -f $dst, (Get-Item $dst).Length, $triple)
 
       # ── **文件窗口程序也内嵌进 exe** —— 单文件的 `cc-monitor.exe` 旁边没有它时，开窗那一刻放到 `~/.cc-monitor/bin/` 再起 ──
       #
@@ -689,11 +644,6 @@ jobs:
             [ -n "$bin" ] || { echo "backend artifact 缺失（$a）"; exit 1; }
             cp "$bin" "src/frontend/shell/embedded-backends/cc-monitor-backend-$a"
             echo "embedded $a placed"
-            # 〔RM1c〕全景小程序同一批 artifact（缺了 ⇒ `cp` 失败 ⇒ 本步失败，同上一行的口径）。
-            pano=$(find backend-artifacts -name "cc-monitor-panorama-$a" -type f | head -1)
-            [ -n "$pano" ] || { echo "panorama artifact 缺失（$a）"; exit 1; }
-            cp "$pano" "src/frontend/shell/embedded-backends/cc-monitor-panorama-$a"
-            echo "embedded panorama $a placed"
           done
 
       - name: npm ci
@@ -716,7 +666,7 @@ jobs:
           ls -l src/frontend/shell/binaries
 
       # 文件窗口程序也内嵌进裸 `cc-monitor`（理由与次序同 build-windows 那两步，见那里的头注）：先单编、铺进 `native-backend/`，
-      # 再由下面 `tauri build` 编 monitor 时内嵌。Linux 这一格的后端与全景小程序用 musl 那两份，文件窗口要原生的一份（它链 GTK）。
+      # 再由下面 `tauri build` 编 monitor 时内嵌。Linux 这一格的后端用 musl 那两份，文件窗口要原生的一份（它链 GTK）。
       - name: Build local filewin (native)
         working-directory: src/frontend/shell
         run: cargo build --release --locked --bin cc-monitor-filewin

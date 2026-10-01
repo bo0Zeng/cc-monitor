@@ -207,9 +207,7 @@ CAP_ARCHIVE: "OrderedDict[str, tuple]" = OrderedDict([
     # 理由同下面 `usage.*` 那条墓碑（归档表留一个不存在的 id 会让 `R3b` 恒红）。
     ("mcp.list-origins", (NA, "—", "列 MCP 的 origin —— 读")),
     # 〔MIG-3a〕`mcp.list-project-dirs` / `mcp.read` 两项摘了（同上：读面进了那台后端的 `mcp-read`）。
-    ("panorama.code-graph", (NA, "—", "代码全景（sidecar 的**用**，不是装它）")),
-    # 〔墓碑 · MIG-3b 续〕`panorama.annotate` 随它唯一那条命令（`panorama_edit`）进了那台后端（`panorama-edit`，界面经通道直问）而退役：
-    #   能力 id 已不在 `LEDGER` 里（理由同上面几条墓碑）。
+    # 〔墓碑 · 10-01〕`panorama.code-graph` 随代码全景整条摘掉而退役：能力 id 已不在 `LEDGER` 里（理由同上面几条墓碑）。
     # 〔墓碑 · 第四波 C4b〕`plugins.marketplaces` 随 `list_plugin_marketplaces` 改走通道（前端 `chan.call` 直接问后端 `plugins-marketplaces`）
     #   ⇒ 这条能力已不在 Tauri 命令账本 `LEDGER` 里，按 `usage.*` 那条同一个理由摘掉。
     # 〔墓碑 · MIG-1〕`port-forward` 随端口转发三条进本机常驻后端（帧命令 `forward-*`，界面经通道直说）退役：Tauri 命令删了 ⇒ 能力 id 已不在 `LEDGER` 里；理由同上面几条墓碑（留着会让 `R3b` 恒红）。
@@ -573,7 +571,6 @@ CLAIMS_NON_COMMAND_SYMBOLS = {
         "—— `posix-rc-aliases` / `powershell-profile` 两个工具共用它",
     "block.rs::uninstall_from_profile":
         "同上，摘那一侧（`aliases-block-remove`）",
-    # 〔TL1 · 4C〕全景小程序进 `tool_registry::TOOLS`（`id: "panorama"`）时它的装口登记进对拍表。
     # 〔MIG-3a · `99 §2.1 ⑬`〕`project-mcp` 的装 / 卸口进了那台后端：帧命令 `mcp-server-put` / `-remove` 的本体。
     "assets/mcp_edit.rs::answer_put":
         "那台后端的帧命令本体（D 组「monitor 算好、后端写」收进后端，界面经通道直问），本来就不是 Tauri 命令",
@@ -589,14 +586,6 @@ CLAIMS_NON_COMMAND_SYMBOLS = {
         "〔MIG-3a〕`skill-install` 的装口：那台后端的帧命令 `skill-install-apply` 本体，本来就不是 Tauri 命令",
     "assets/skill_flow.rs::answer_uninstall":
         "同上，卸那一侧（`skill-uninstall-apply`）",
-    # 〔FIX4 · `97 §8`〕全景小程序的卸口：那台后端帧命令 `panorama-uninstall` 的本体。
-    "panorama.rs::answer_uninstall":
-        "〔FIX4〕代码全景小程序的**卸口**：那台后端的帧命令 `panorama-uninstall` 本体（认身份、经那台文件管理面 CAS 删装时放下的那一份），"
-        "界面在机器页「代码全景组件」那一格经通道直问，本来就不是 Tauri 命令",
-    "panorama_bytes.rs::push_to":
-        "代码全景小程序的**装口**（本机那一臂放到 `~/.cc-monitor/bin/`、远端那一臂经那台后端的文件链路推），"
-        "它自己不是 Tauri 命令：没有用户按钮，〔MIG-3b 续〕界面（`src/frontend/ui/panorama/api.ts::askOrPlace`）听到那台后端答「没装 / 太旧」时"
-        "请 monitor 的 `panorama_place` 放字节，那一条调它（V108「只传给开过远端全景的机器」）",
 }
 
 # `src/frontend/ui/ipc/commands.ts` 包装层的**形状地板**：整份文件里「键: (」这一形现打有多少条。
