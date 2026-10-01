@@ -229,11 +229,7 @@ const ALLOWED: &[(&str, &str, usize, Why, &str)] = &[
 const KEY_CHARS: usize = 120;
 
 /// 人群的四棵根（仓根相对）。
-const ROOTS: &[&str] = &[
-    "src/backend",
-    "src/frontend/shell/src",
-    "src/common",
-];
+const ROOTS: &[&str] = &["src/backend", "src/frontend/shell/src", "src/common"];
 
 fn is_ident(b: u8) -> bool {
     b.is_ascii_alphanumeric() || b == b'_'

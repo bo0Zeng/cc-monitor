@@ -155,12 +155,10 @@ fn the_generic_port_names_no_concrete_plugin() {
 fn the_port_guard_actually_bites() {
     assert!(!concrete_plugin_words().is_empty(), "词表空了 ⇒ 正题恒绿");
     // 一族一个样本：总线那族。**新加一族词就在这里加一行样本。**
-    for (synthetic, whose) in [
-        (
-            format!("    let bin = find(\"cc-{}\")?;", "list"),
-            "总线那一族",
-        ),
-    ] {
+    for (synthetic, whose) in [(
+        format!("    let bin = find(\"cc-{}\")?;", "list"),
+        "总线那一族",
+    )] {
         let caught = concrete_plugin_words()
             .iter()
             .any(|(w, _)| synthetic.contains(w));

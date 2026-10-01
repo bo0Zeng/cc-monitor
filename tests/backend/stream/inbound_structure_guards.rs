@@ -335,8 +335,8 @@ fn every_registered_command_declares_its_run_kind() {
         // 两台之间「装」那一件的枢纽：等远端 capture（真异步，在 await 点可取消），本机那一跳挪到阻塞线程池。
         "ext-hub-preview",
         "ext-hub-apply",
-        "pubkey-push",        // 等远端（问那台后端 / 一次 exec），真异步
-        "files-grep",         // 可撤：走那一趟在阻塞线程池上、看取消位，future 被丢即收手
+        "pubkey-push", // 等远端（问那台后端 / 一次 exec），真异步
+        "files-grep",  // 可撤：走那一趟在阻塞线程池上、看取消位，future 被丢即收手
         // 部署计划：真异步（拨号 / 等远端 capture · SFTP），在 await 点可取消。
         "deploy-plan",
         // 远端常驻后端 hello 的新旧：纯判定，不碰盘不拨号。

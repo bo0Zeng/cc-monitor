@@ -436,11 +436,11 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         // 两台之间「装」那一件的枢纽：等远端 capture（真异步），本机那一跳自己挪到阻塞线程池。
         "ext-hub-preview",
         "ext-hub-apply",
-        "pubkey-push",        // 等远端（问那台后端 / 一次 exec），真异步
-        "files-grep",         // 可撤：走那一趟在阻塞线程池上、看取消位，future 被丢即收手
-        "deploy-plan",        // 真异步（拨号 / 等远端 capture · SFTP），在 await 点可取消
-        "resident-verdict",   // 纯判定，普通 spawn
-        "deploy-retired",     // 真异步（沿池里那条 SSH 开 SFTP），在 await 点可取消
+        "pubkey-push",      // 等远端（问那台后端 / 一次 exec），真异步
+        "files-grep",       // 可撤：走那一趟在阻塞线程池上、看取消位，future 被丢即收手
+        "deploy-plan",      // 真异步（拨号 / 等远端 capture · SFTP），在 await 点可取消
+        "resident-verdict", // 纯判定，普通 spawn
+        "deploy-retired",   // 真异步（沿池里那条 SSH 开 SFTP），在 await 点可取消
         "remote-reach",
         "history-projects",
         "history-sessions",
@@ -645,8 +645,8 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "assets-sync",
         "ext-hub-preview",
         "ext-hub-apply",
-        "pubkey-push",        // 等远端（问那台后端 / 一次 exec），真异步
-        "files-grep",         // 可撤：走那一趟在阻塞线程池上、看取消位，future 被丢即收手
+        "pubkey-push", // 等远端（问那台后端 / 一次 exec），真异步
+        "files-grep",  // 可撤：走那一趟在阻塞线程池上、看取消位，future 被丢即收手
         // 部署计划：真异步（拨号 / 等远端），普通 spawn。
         "deploy-plan",
         // 远端常驻后端 hello 的新旧：纯判定，普通 spawn。
@@ -1069,4 +1069,3 @@ async fn cancelling_an_unknown_id_is_idempotent_not_an_error() {
         "{out:?}"
     );
 }
-
