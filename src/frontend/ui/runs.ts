@@ -8,7 +8,13 @@
 import { copyText } from "./copy-table";
 import type { RunInfo } from "./generated/RunInfo";
 import type { RunState } from "./generated/RunState";
-import type { LiveBlock } from "./live-card";
+import type { BlockKind } from "./generated/BlockKind";
+
+/** 一个子运行此刻在生成的那一块（活卡状态机给的，只取「最近：…」要用的两格）。 */
+export interface LiveBlockView {
+  kind: BlockKind;
+  tool?: string;
+}
 
 /** 主 tab 上的一行。 */
 export interface RunRow {
@@ -56,7 +62,7 @@ export function runLabel(r: RunInfo): string {
 }
 
 /** 「最近：…」那一截：在生成的那一块优先，其次记录给的最近一件事；都没有 ⇒ `null`。 */
-export function runLastText(r: RunInfo, live: LiveBlock | null): string | null {
+export function runLastText(r: RunInfo, live: LiveBlockView | null): string | null {
   if (live) {
     if (live.kind === "tool") return copyText("liveCard.block.toolUse", { tool: live.tool ?? "?" });
     if (live.kind === "thinking") return copyText("runs.last.think");
@@ -70,7 +76,7 @@ export function runLastText(r: RunInfo, live: LiveBlock | null): string | null {
 }
 
 /** 主 tab 上那一行的字。 */
-export function runRowText(r: RunInfo, live: LiveBlock | null): string {
+export function runRowText(r: RunInfo, live: LiveBlockView | null): string {
   const label = runLabel(r);
   const state = runStateText(r.state);
   const last = runLastText(r, live);

@@ -127,6 +127,8 @@ export interface RenderContext {
    * 看到参数 + 输出"的合并 UX。
    */
   toolUseElements: Map<string, HTMLElement>;
+  /** 派出子运行的那几张卡（父侧工具调用 id → 卡）；不需要按运行表标卡的调用方不给。 */
+  runCards?: Map<string, HTMLElement>;
   /**
    * v2.3.1 (issue #1)：切块场景下 tool_result 可能在 tool_use 之前到达
    * （head 块含 result，older 块才有 tool_use）。此时 injectOrBuildToolResult
@@ -447,7 +449,9 @@ function renderBlock(
 
       // 〔THIN〕卡型是那台后端判的（`toolCards`）；派出子运行的那次调用 → 折叠卡，展开是那个子运行的时间线（按运行读）
       if (card === "agent") {
-        return buildAgentCard(block.id, block.name, runs[block.id], ctx, renderMessage);
+        const runCard = buildAgentCard(block.id, block.name, runs[block.id], ctx, renderMessage);
+        ctx.runCards?.set(block.id, runCard);
+        return runCard;
       }
       // issue #21：交互等待工具 → 默认展开的提问卡 / plan 卡（用户在被等着，
       // 折叠会误以为 LLM 还在输出）。畸形 input throw → 回退通用折叠卡。

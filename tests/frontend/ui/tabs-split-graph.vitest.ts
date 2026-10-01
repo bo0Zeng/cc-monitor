@@ -92,12 +92,14 @@ const DEPS: Record<string, readonly string[]> = {
   "src/frontend/ui/tabs.ts": [
     "src/frontend/ui/accounts.ts", // debugSessionsSnapshot 的「账号不一致」派生（detectAccountMismatch）
     "src/frontend/ui/app-store.ts", // 〔GAP1 · `设计/01 §1.5`〕「账号快照变了」改订阅 store（`appStore.sessionAccounts`）
-    "src/frontend/ui/cards/index.ts", // onLine：这一行是不是 compact 摘要（换号重启的等待者）
+    "src/frontend/ui/cards/index.ts", // onLine：这一行是不是 compact 摘要（换号重启的等待者）；子运行时间线用同一套渲染器
+    "src/frontend/ui/cards/subagent.ts", // 运行表到了：派出子运行的那张卡标上是哪个、什么状态
     "src/frontend/ui/error-toast.ts", // bringActiveTerminalToFront：非 Windows 说一句实话
     "src/frontend/ui/fork-flow.ts", // startForkedSession（E78：fork-flow.vitest 钉「tabs.ts 调 runForkFlow」）
     "src/frontend/ui/ipc/origin.ts", // 〔C4a〕本机 / 远端只经这一处判（线上缺省 = 本机的那一下表示法转换也在这里）
-    "src/frontend/ui/live-card.ts", // 〔TAP · V124〕中转抄出的流式活卡：tap 格进状态机、同 message.id 的 jsonl 落盘即撤卡
+    "src/frontend/ui/live-card.ts", // 〔TAP · V124〕中转抄出的流式活卡：tap 格进状态机、同对账键的记录落盘即撤卡；子运行那几行
     "src/frontend/ui/live-window.ts", // ensureTab：新 tab 的尾部窗口
+    "src/frontend/ui/run-timeline.ts", // 主 tab 上那一行点开：那个子运行的实时时间线（按运行续读）
     "src/frontend/ui/tab-bar-drag.ts",
     "src/frontend/ui/tab-bar-prefs.ts",
     "src/frontend/ui/tab-bar-view.ts",

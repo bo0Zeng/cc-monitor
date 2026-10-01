@@ -678,6 +678,7 @@ export class TabManager {
       timeline,
       toolUseNames: new Map(),
       toolUseElements: new Map(),
+      runCards: new Map(),
       branchFolder,
       pendingToolResults: new Map(),
       seenSeqs: new SeqSet(),
@@ -883,7 +884,7 @@ export class TabManager {
     this.live.onRuns(tab.sessionId, p.runs);
     for (const r of p.runs) {
       if (r.tool === undefined) continue;
-      const card = tab.stream.contentElement.querySelector<HTMLElement>(`[data-run-tool="${CSS.escape(r.tool)}"]`);
+      const card = tab.runCards.get(r.tool);
       if (card) markRunCard(card, r.run, r.state);
     }
     for (const [k, t] of this.runTimelines) if (k.startsWith(`${tab.sessionId}\u0000`)) void t.refresh();
