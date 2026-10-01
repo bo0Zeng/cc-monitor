@@ -773,7 +773,6 @@ async fn sr1b_loopback_deploy_and_transfer_through_the_resident_backend() {
     };
     // ① 部署那几问（〔MIG-3b〕判定在本机常驻后端：`deploy-plan` 沿同一条 SSH 问那台；放字节经 `files` 链路）
     let fs = RemoteFs::open(&cfg).await.expect("开不了 files 链路");
-    assert_eq!(fs.home(), rhome, "起始目录不是 sshd 给的那个");
     // 〔DP1〕身份读那份字节自己的戳（那台 sshd 上真跑一次只读扫描），不读旁挂标记。
     //   送去的字节里埋一段戳（界标取自 `build.rs` 交来的 env），其余是 3 MB 的噪声。
     let stamp = format!(

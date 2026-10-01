@@ -93,27 +93,23 @@ GATE = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else ROOT / "tests" / "s
 #     ⚠ 前者比上一版**严**：上一版只对拍顶层目录名，一份文件归没归进某棵树它不看。
 #
 #   两处刻意与目录结构不一样，各有理由：
-#   · `src/frontend/shell/vendor/` 从 `src/frontend/shell/` 里**单拆出来** —— `C7` 逐字「vendor
-#     `code-picture-core` **不动**」，它被 `cargo` 那一格显式 `--exclude`，与 `src/frontend/shell/`
-#     其余部分**受不同的门管**，混成一棵就点不出这一格盲区。
-#     ⚠ 今天 vendor 下是**两棵**（`code-picture-core` 25 份 · `cc-acct-iso` 8 份），
-#       上一版的 `VENDOR` 只指 `code-picture-core` ⇒ `cc-acct-iso` 当时落在 `src-tauri/` 里。
+#   · vendor 那棵（今天是 `src/vendor/`，russh 补丁副本）**单拆出来** —— 它与我们自己的代码
+#     **受不同的门管**（补丁副本不进我们的判据人群），混成一棵就点不出这一格盲区。
 #   · `<仓根文件>` 是一格，装 `package.json` / `vite.config.ts` / `README.md` 那些
 #     不属于任何目录的文件（`git ls-files` 里不含 `/` 的那些）。
 #
 # 〔现打 09-19〕15 棵合计 **1343** 份 == `git ls-files` 现打 1343（分区，不重不漏）。
-# 〔RE · 收尾重排〕vendor 跟唯一消费者走（`99 §2.1 ⑰`）：russh → `src/vendor/`，code-picture-core → `src/panorama-engine/vendor/`
-#   ⇒ 原来一棵 `VENDOR` 拆成两棵；共享 crate 搬出 `src/frontend/shell/` 住 `src/common/` ⇒ 单立一棵。
+# 〔RE · 收尾重排〕vendor 跟唯一消费者走（`99 §2.1 ⑰`）：russh → `src/vendor/`；
+#   共享 crate 搬出 `src/frontend/shell/` 住 `src/common/` ⇒ 单立一棵。
+#   〔10-01〕代码全景摘掉：vendored 引擎那一棵（连同用它的小程序）整棵删了 ⇒ 树少一棵。
 #   新树**没单独裁的格沿用它来的那棵的裁词**（`DERIVED`，见 `cell()`）—— 搬家不改哪一格盖到它。
 VENDOR = "src/vendor/"
-VENDOR_PANO = "src/panorama-engine/vendor/"
 ROOTFILES = "<仓根文件>"
 # 🔴 **顺序是承重的**：`tree_of()` 首匹配即归属 ⇒ 长前缀必须排在它的 catch-all 之前。
 #    把 `src/` 挪到 `src/backend/` 前面，后端那 69 份会被前端那棵吞掉，而**一条判据都不红**。
 TREES = [
     "src/backend/",          # 69   后端 Rust（重构前的 `remote-daemon-proto/`）
     VENDOR,                  # russh 补丁副本（〔RE〕原住 bridge 包的 `vendor/russh`）
-    VENDOR_PANO,             # code-picture-core（〔RE〕原住 bridge 包的 `vendor/code-picture-core`）
     "src/common/",           # 共享 crate（〔RE〕原住 bridge 包的 `crates/`）
     "src/comms/",            # 通信层成员（〔RE〕面 A 由壳编、面 B 由后端编，另有 1 份 TS）
     "src/frontend/shell/",           # 157  Tauri 侧 Rust（重构前的 `src-tauri/`），不含 vendor
@@ -164,7 +160,7 @@ REGISTRY = {}
 
 
 # 〔RE〕搬家分出来的树 → 它来的那棵：没单独裁的格沿用来处的裁词（纯搬家不改覆盖）。
-DERIVED = {VENDOR_PANO: VENDOR, "src/common/": "src/frontend/shell/"}
+DERIVED = {"src/common/": "src/frontend/shell/"}
 
 
 def cell(name, anchor, cwd, cmd, **verdicts):
@@ -531,7 +527,7 @@ cell(
         "src/frontend/shell/": (FULL, "13 个成员的 `--lib` 判据，合计求和 + 包数相等断言（CP2c 加 `copy-core` 后 9 → 10 · US1 加 `relay-route-core` 后 10 → 11 · DUP2 加 `agent-tools-core` 后 11 → 12 · DUP3 加 `upstream-url-core` 后 12 → 13 · MIG-3b 加 `deploy-core` 后 13 → 14 · RE 把 `codex-token-core` 搬进后端后 14 → 13）"
                              "〔09-14 现打：`gate.sh` 那行是 `run_gate_sum cargo 9`；"
                              "上一版这里与锚点都写着 8〕"),
-        VENDOR: blind("显式 `--exclude code-picture-core`（`C7`：vendor 不动）"),
+        VENDOR: blind("monitor 那个 workspace 不依赖 vendor 那棵（russh 补丁副本只给后端用）"),
         "src/backend/": (PART, "**经扫描型守卫读进去**：现打 18 个读点"
                                        "（尺子见本文件 `cross_tree_reads()`）"),
         "tests/scripts/": (PART, "同上，现打 6 个读点（`shared_crate_registry` 读 `gate.sh` 那条最有名）"),
@@ -644,20 +640,6 @@ cell(
         ".github/": (PART, "现打 1 个读点"),
         "tests/e2e/": (PART, "现打 2 个读点"),
         "src/doc/": (PART, "现打 5 个读点（协议文档对拍）"),
-    },
-)
-
-# ── 〔TAIL 09-26〕第 32 格 `panorama-engine`：全景小程序是独立 crate（自己一份 lock），别的格编不到它 ──
-cell(
-    "panorama-engine",
-    anchor="run_gate panorama-engine '单包 src/panorama-engine",
-    cwd="src/panorama-engine/",
-    cmd="cargo test",
-    **{
-        "src/": (PART, "只有 `src/panorama-engine/`（单包全量 `cargo test`）＋ `cli_tests` 跨树读写两份生成物 `src/frontend/ui/panorama/types.ts`（〔P7〕上游 schema ＋ 自己的应答）· `src/frontend/ui/panorama/engine-contract.json`（〔PANO〕）（漂了当场重写并红）"),
-        "tests/": (PART, "只有 `tests/panorama-engine/cli_tests.rs`（由 `main.rs` 的 `#[path]` 挂进来）"),
-        VENDOR: (PART, "编 `code-picture-core`（path 依赖）但不跑它的测试（那归 `code-picture-core` 那一格）"),
-        "src/frontend/shell/": (PART, "编 `guard-core`（dev 依赖）但不跑它的测试"),
     },
 )
 
@@ -798,15 +780,6 @@ cell(
     },
 )
 cell(
-    "code-picture-core",
-    anchor="run_gate code-picture-core '单包 vendor code-picture-core",
-    cwd="src/panorama-engine/vendor/code-picture-core/",
-    cmd="cargo test -p code-picture-core",
-    **{
-        VENDOR_PANO: (FULL, "vendor 那份 crate 自己的全部判据（lib ＋ doctest），与 `ci.yml` 同一条命令；只读地跑，源码不动"),
-    },
-)
-cell(
     "coverage",
     anchor="run_gate coverage '这一趟 vitest（带 v8 覆盖率）",
     cwd="仓根",
@@ -889,8 +862,7 @@ cell(
         "src/backend/": (FULL, "〔现打 09-19〕本格把这个 crate 在**两个 musl arch** 上各编一趟 "
                                "⇒ 整棵生产树都过编译器。⚠ 只编 bin ＋ lib，**不带 `--all-targets`** "
                                "⇒ test 档那一半在 musl 上没人编（那是另一回事：测试要跑，不是要编）"),
-        VENDOR: (NONE, "本 crate 不依赖 vendor 那两棵（`code-picture-core` 被 `cargo` 那格显式 "
-                       "`--exclude`，`cc-acct-iso` 是 bridge 侧的）"),
+        VENDOR: (NONE, "本格只编后端二进制；vendor 那棵是补丁副本，不在本格的判据人群里"),
         "src/frontend/shell/": (NONE, "🔴 **本格只编后端那一个 crate** —— 前端那棵树在 musl 上"
                               "**没有任何门禁**，而它也不需要：远端只装后端字节，前端不过去"),
     },
@@ -1513,9 +1485,6 @@ invoke("test-tiers", ELSEWHERE,
 invoke("backend", ELSEWHERE,
        "`backend` 那个 job 在 `src/backend` 上跑单包 `cargo test`",
        anchor="name: Remote backend (Linux) lint + test")
-invoke("panorama-engine", NOWHERE,
-       "`ci.yml` 在这棵树里只跑 `cargo test -p code-picture-core`（vendor 自己的测试），"
-       "不跑本程序的 `cli_tests` ⇒ 这一维云端零覆盖，只有本机这一格")
 invoke("tsc", ELSEWHERE,
        "`frontend` 那个 job 跑 `npm run build`，而 `tsc --noEmit` 是它的第一步。"
        "⚠ 云端买的是「build 过得去」，**没有**本格那条「真读进 tsc 的份数 == 盘上现打份数」的恒等对账"
@@ -1560,8 +1529,6 @@ invoke("appbuild", ELSEWHERE, "`linux-app-build` 那个 job 跑同一条命令�
        anchor="name: cargo build (full app binary, not --lib)")
 invoke("clippy-backend", ELSEWHERE, "`backend` 那个 job（ubuntu-latest）在 `src/backend` 上跑同一条命令",
        anchor="run: cargo clippy --all-targets")
-invoke("code-picture-core", ELSEWHERE, "`rust` 那个 job 在 vendor 目录里跑同一条命令",
-       anchor="cargo test -p code-picture-core")
 invoke("coverage", ELSEWHERE, "`frontend` 那个 job 跑同样两步（本格就是从那儿原样取的命令）",
        anchor="run: npm run coverage")
 invoke("audit", ELSEWHERE, "`frontend` 那个 job 跑同一步（本格就是从那儿原样取的命令）",
@@ -2056,7 +2023,7 @@ def main():
                          "gate-selfdesc", "platform",
                          "installface", "fmt", "fmt-backend", "winchk", "winchk-backend", "winlink",
                          "muslbuild", "cargo", "comm-boundary", "test-tiers", "deadcode", "generated", "backend",
-                         "panorama-engine", "tsc", "npm")
+                         "tsc", "npm")
              if c in REGISTRY] + sorted(c for c in REGISTRY if c.startswith("ccm tests/e2e/"))
     missing = sorted(set(REGISTRY) - set(order))
     if missing:
