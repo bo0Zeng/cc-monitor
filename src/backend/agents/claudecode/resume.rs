@@ -30,6 +30,9 @@ pub(crate) const NESTED_ENV: &[&str] = &[
     "CLAUDE_CODE_CHILD_SESSION",
 ];
 
+/// 首次进一个目录时它弹的信任框里认得出的那句话（容器路收尾轮询它、按 Enter 接受）。
+pub(crate) const TRUST_PROMPT: &str = "Yes, I trust this folder";
+
 /// resume 会话名前缀（Codex 是 `cx`）。
 pub(crate) const SESSION_NAME_PREFIX: &str = "cc";
 
