@@ -13,19 +13,40 @@ fn the_four_known_events_fold_and_everything_else_is_silent() {
         vec![StreamEv::Start { rid: "m1".into() }]
     );
     assert_eq!(
-        fold(r#"{"type":"content_block_start","index":2,"content_block":{"type":"tool_use","name":"Bash"}}"#),
-        vec![StreamEv::Block { i: 2, kind: BlockKind::Tool, tool: Some("Bash".into()) }]
+        fold(
+            r#"{"type":"content_block_start","index":2,"content_block":{"type":"tool_use","name":"Bash"}}"#
+        ),
+        vec![StreamEv::Block {
+            i: 2,
+            kind: BlockKind::Tool,
+            tool: Some("Bash".into())
+        }]
     );
     assert_eq!(
         fold(r#"{"type":"content_block_start","index":0,"content_block":{"type":"thinking"}}"#),
-        vec![StreamEv::Block { i: 0, kind: BlockKind::Thinking, tool: None }]
+        vec![StreamEv::Block {
+            i: 0,
+            kind: BlockKind::Thinking,
+            tool: None
+        }]
     );
     assert_eq!(
-        fold(r#"{"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"hi"}}"#),
-        vec![StreamEv::Text { i: 1, s: "hi".into() }]
+        fold(
+            r#"{"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"hi"}}"#
+        ),
+        vec![StreamEv::Text {
+            i: 1,
+            s: "hi".into()
+        }]
     );
-    assert_eq!(fold(r#"{"type":"message_stop"}"#), vec![StreamEv::Stop { ok: true }]);
-    assert_eq!(fold(r#"{"type":"error","error":{}}"#), vec![StreamEv::Stop { ok: false }]);
+    assert_eq!(
+        fold(r#"{"type":"message_stop"}"#),
+        vec![StreamEv::Stop { ok: true }]
+    );
+    assert_eq!(
+        fold(r#"{"type":"error","error":{}}"#),
+        vec![StreamEv::Stop { ok: false }]
+    );
     for quiet in [
         r#"{"type":"ping"}"#,
         r#"{"type":"message_delta","delta":{}}"#,
@@ -40,7 +61,8 @@ fn the_four_known_events_fold_and_everything_else_is_silent() {
 
 #[test]
 fn the_bench_round_folds_into_the_same_text_its_records_carry() {
-    let fx: serde_json::Value = serde_json::from_str(include_str!("../../__fixtures__/tap-bench.json")).unwrap();
+    let fx: serde_json::Value =
+        serde_json::from_str(include_str!("../../__fixtures__/tap-bench.json")).unwrap();
     let mut by_rid: std::collections::BTreeMap<String, String> = Default::default();
     let mut cur: Option<String> = None;
     for t in fx["taps"].as_array().unwrap() {
@@ -50,7 +72,9 @@ fn the_bench_round_folds_into_the_same_text_its_records_carry() {
         for ev in fold(d) {
             match ev {
                 StreamEv::Start { rid } => cur = Some(rid),
-                StreamEv::Text { s, .. } => by_rid.entry(cur.clone().unwrap()).or_default().push_str(&s),
+                StreamEv::Text { s, .. } => {
+                    by_rid.entry(cur.clone().unwrap()).or_default().push_str(&s)
+                }
                 _ => {}
             }
         }
@@ -74,6 +98,9 @@ fn the_bench_round_folds_into_the_same_text_its_records_carry() {
     for (rid, _, text) in recs {
         from_records.entry(rid).or_default().push_str(&text);
     }
-    assert!(!from_records.is_empty(), "夹具里一条带对账键的记录都没有 —— 本条空转");
+    assert!(
+        !from_records.is_empty(),
+        "夹具里一条带对账键的记录都没有 —— 本条空转"
+    );
     assert_eq!(by_rid, from_records, "流折出来的正文与记录对不上");
 }

@@ -291,7 +291,11 @@ fn a_prior_of_the_wrong_shape_is_refused() {
 #[test]
 fn the_two_lookups_answer_from_their_tables() {
     let links = |name: &str| {
-        crate::agents::child_links_of(&assistant(vec![tool_use("x", name, json!({"description": "d"}))]))
+        crate::agents::child_links_of(&assistant(vec![tool_use(
+            "x",
+            name,
+            json!({"description": "d"}),
+        )]))
     };
     for t in ["Agent", "Task"] {
         assert_eq!(links(t).len(), 1, "{t}");

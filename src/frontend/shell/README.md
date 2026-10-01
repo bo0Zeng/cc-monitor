@@ -43,7 +43,6 @@ src/frontend/shell/
     ├── bind.rs        # cc 集成绑定：ps-await/ps-registry 文件 IPC + EnumWindows 找 marker + SidHwndCache + bring_terminal_to_front
     ├── profile_installer.rs # PowerShell profile 块插入/卸载 + 命令冲突扫描
     ├── auto_launch.rs # auto-launch monitor 开关持久化（~/.cc-monitor/auto-launch.json）
-    ├── subagent.rs    # load_subagent IPC + description 关联
     ├── event_replay.rs # F5 重放（v2.6 起出锁 emit、顺序靠前端按 seq 排；非旧「持锁严格按序」）
     ├── history.rs     # 历史浏览器：两级懒加载 + 元数据 + 删除 + resume
     ├── launch.rs      # B14-F41 终端拉起单一入口（wt.exe→PowerShell）+ 远端 ssh 拉起（本地 resume 与 F41/F51/F52/F53 共用）
@@ -78,7 +77,6 @@ src/frontend/shell/
 | **bind.rs** | cc 集成的核心：监听 `ps-await/`、PS 改窗口标题、EnumWindows 找 marker、写 `ps-registry/`、`SidHwndCache` 持久化 sid↔hwnd、`bring_terminal_to_front` | `BindRegistry::spawn() / SidHwndCache::load() / bring_terminal_to_front` |
 | **profile_installer.rs** | 别名块（POSIX `cc` / `cct` · PowerShell `__ccm_bind` ＋ 可选 `cc`）的渲染 / 插入 / 卸载 / 现状 / 冲突检测；〔AL1d〕`$PROFILE` 在哪不归它（只有 `shell_dialect.rs` 答） | `block_state / render_block / install_to_profile / uninstall_from_profile / render_cc_code` |
 | **auto_launch.rs** | "用 cc 启动 claude 时自动开 monitor" 开关持久化（模块级函数，非 impl 方法） | `auto_launch::{load, save, get_config, set_enabled, update_monitor_path_on_startup}` |
-| **subagent.rs** | 父 session 的 Agent tool_use 关联 `<parent>/subagents/agent-*.jsonl` | IPC `load_subagent` |
 | ~~adapter.rs~~ (F-MA) | 〔P1〕**已删**：起会话事实（默认启动器 · wrapper · resume 字面量 · 嵌套标记）只住后端适配层 `src/backend/agents/<名>/resume.rs`（注册表 `Adapter.launch`）；monitor 起前清洗读生成物 `src/frontend/ui/generated/agent-profile-table.ts`（`lib.rs::nested_env_markers`） | — |
 | **event_replay.rs**（〔CF2 · 第四波 4B〕会话流的句柄 ＋ 重放缓冲） | 内存 buffer（**每个会话只留 seq 最高的 600 条**，摊还余量 150；丢掉的前端按字节 / 按行号取回）＋ 会话流订阅表：`on_line_batch_awaited`（〔CF1〕唯一入口）进缓冲并**当场**交进各条已过就绪点的订阅（< 50 行逐行一格；≥ 50 行切块、带 `batch` 边界、块间 tokio sleep，交完才返回 —— 行先于随后的归档）；有 credit 才交，没有就丢、原位报 `Gap`；`ready_point(priority_sid)`（frontend-ready 那个任务里）按 credit 交留存（不丢，等 `want`），优先会话的块先发 | `EventReplay::on_line_batch_awaited() / ready_point(priority_sid)（async）/ subscribe() / want() / stop() / origin_seen() / forget() / buffered_{local,remote}_session_ids()（#19/#20 重放后对账）` |
 | **history.rs** | 历史会话的 monitor 这一侧：读一整份会话（Channel 分块）+ resume 的命令渲染（〔MIG-3b〕删会话与分叉界面经通道直说那台后端，`src/frontend/ui/session-writes.ts`）。〔C4d · 第四波 4B〕项目 / 会话清单与注解（星标 / 改名 / 隐藏 / 上次账号）搬进本机常驻后端（`history-projects` / `history-sessions` / `history-annotate` / `history-last-accounts`，界面经 `src/frontend/ui/history-reads.ts` 问），注解那份文件原地不动、路径仍由本文件 `metadata_path` 算 | IPC `stream_read_session_jsonl / resume` |
@@ -112,7 +110,6 @@ src/frontend/shell/
 | `list_remote_mcp_origins` (F87b) | `{}` | `String[]` | 远端机器选择器 |
 <!-- 〔MIG-3a · 09-27〕MCP 读写六条与推 / 拉两条退役：界面经通道直问那台后端（`mcp-read` · `mcp-server-put` / `-remove` · `mcp-sync-source` / `-preview` / `-apply`，`src/frontend/ui/mcp-reads.ts` · `src/frontend/ui/mcp-sync-reads.ts`）。`list_remote_mcp_origins` 读的是 monitor 自己的配置，挪进 `config.rs`。 -->
 | `list_remote_accounts / check_account_trust` (A2 #68/#69) | `{ origin }` / `{ origin, dir }` | `AccountsResult / bool` | 多账号**只读**查询（各账号名/邮箱/登录态 · 目录是否可信）——账号=一个 `CLAUDE_CONFIG_DIR`，经后端纯只读（`accounts.rs`，全 stateless）。〔C4a〕「某会话属哪个账号」那一条退役：前端经通道 `chan_call` 直接说帧命令 `accounts-sessions`（本机与远端同一条路） |
-| `load_subagent` | `{ parentJsonlPath, description, toolUseTimestamp }` | `SubagentLoadResult` | 用户展开 Task 折叠卡 |
 | `forget_session` | `{ sessionId }` | `()` | 用户关闭 archived Tab |
 | `open_session_in_new_window` (issue #10) | `{ sessionId, title }` | `()` | Tab 右键「在新窗口打开」/ Ctrl+Shift+N，建 `viewer-<sid>` 独立只读窗口 |
 | `chan_subscribe` / `chan_want` / `chan_stop`（〔CF2〕） | `{ origin, kind, from, want, id }` / `{ id, more }` / `{ id }`（webview 注入） | `()` | 通道 `subscribe` 在 Tauri IPC 那一跳：会话内容流（`session-lines` / `session-lines/<sid>`），交格走事件 `chan-items`；经 `src/comms/inward/chan.ts` 用 |

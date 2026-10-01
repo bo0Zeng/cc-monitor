@@ -3535,3 +3535,31 @@ fn the_notify_arm_reports_task_changes_before_the_per_event_loop() {
         "问与发要排在逐条处理之前（逐条那一段里有 continue）"
     );
 }
+
+/// 子运行那一条（适配层 `run_of` 答得出）一轮收尾 ≠ 主运行一轮结束：主运行那条发 `TurnEnd`，子运行那条不发；
+/// 两条的 `line` 都带上对账键（`RecordFace::response_id`）。守的要求：子 agent 的事归它自己的运行，不进主运行。
+#[test]
+fn a_sub_runs_turn_end_is_not_the_main_runs() {
+    let (tx, mut rx) = mpsc::channel::<Frame>(16);
+    let mut sink = FrameSink::new(tx);
+    let state = ReaderState::new(PathBuf::from("/nonexistent-projects"), false, false);
+    let main = r#"{"type":"assistant","uuid":"u-main","message":{"id":"m1","role":"assistant","stop_reason":"end_turn","content":[{"type":"text","text":"x"}]}}"#;
+    let sub = r#"{"type":"assistant","uuid":"u-sub","isSidechain":true,"agentId":"a1","message":{"id":"m2","role":"assistant","stop_reason":"end_turn","content":[{"type":"text","text":"x"}]}}"#;
+    for (i, raw) in [main, sub].into_iter().enumerate() {
+        let line = ReadLine {
+            seq: i as u64,
+            raw: raw.to_string(),
+            byte_offset: 0,
+        };
+        send_line("s", "/p/s.jsonl", line, &state.runs, &mut sink);
+    }
+    let mut got = Vec::new();
+    while let Ok(f) = rx.try_recv() {
+        got.push(match f {
+            Frame::Line { rid, .. } => format!("line {}", rid.unwrap_or_default()),
+            Frame::TurnEnd { uuid, .. } => format!("turn_end {uuid}"),
+            other => format!("{other:?}"),
+        });
+    }
+    assert_eq!(got, vec!["line m1", "turn_end u-main", "line m2"]);
+}

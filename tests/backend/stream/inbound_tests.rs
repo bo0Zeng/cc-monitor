@@ -548,8 +548,8 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "history-lines",  // 〔CF2〕
         "history-record", // 〔U4b〕
         "history-search",
-        "history-subagent", // 〔MOD〕
-        "history-page",     // 〔MOD〕
+        "history-run",
+        "history-page", // 〔MOD〕
         "history-tail",
         "accounts-list",
         "accounts-sessions",
@@ -722,8 +722,8 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "history-record", // 〔U4b〕
         "history-search",
         "history-sessions",
-        "history-subagent", // 〔MOD〕
-        "history-page",     // 〔MOD〕
+        "history-run",
+        "history-page", // 〔MOD〕
         "history-tail",
         "accounts-list",
         "accounts-sessions",

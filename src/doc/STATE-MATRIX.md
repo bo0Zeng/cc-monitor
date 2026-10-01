@@ -57,7 +57,6 @@
 ### 无 State 依赖（自包含 / 用 path 解析）
 - `config::load_config / patch_config`（用 `paths::resolve_config_path`；写经进程级锁，见 `config.rs::patch_config_at`）
 - `launch::open_terminal_window` · `launch::terminal_dial`（B14-F41 · 〔FIX4 · ⑬〕；后者用 `lib::load_remote_config_by_label` 读配置文件，ssh 那一行由本机后端 `terminal-ssh` 渲）
-- `subagent::load_subagent`
 - `aliases_block_render / aliases_block_install / aliases_block_remove`（〔AL2〕`origin` ＋ `rc_path`；装 / 卸经那台后端写）
 - `cc_get_auto_launch / cc_set_auto_launch`（用 `paths::resolve_monitor_data_dir`）
 - `history::stream_read_session_jsonl / update_history_metadata / resume_history_session`（v2.6 删了非流式 `read_session_jsonl`；〔MIG-3b〕删会话 · F62 分叉两条改由界面经通道直说那台后端，monitor 这一侧已无命令）

@@ -43,10 +43,8 @@ fn guard_conditions_each_exclude() {
     assert!(!is_turn_end(&json!({
         "type":"assistant","isApiErrorMessage":true,"message":{"stop_reason":"end_turn"}
     })));
-    // isSidechain=true → 排除（子代理轮不通知主链）
-    assert!(!is_turn_end(&json!({
-        "type":"assistant","isSidechain":true,"message":{"stop_reason":"end_turn"}
-    })));
+    // 子运行那一轮的收尾不在本判词里排除：归属由 `runs::run_of` 答、通用 watcher 发 `TurnEnd` 之前排除
+    //（判据住 `tests/backend/observe/watcher_tests.rs::a_sub_runs_turn_end_is_not_the_main_runs`）。
 }
 
 /// 字段坑：stop_reason 必须从 **message** 下取，top-level 的同名字段不算。

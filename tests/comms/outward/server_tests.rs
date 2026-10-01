@@ -1344,7 +1344,7 @@ const CHILD_TEST_NAME: &str = "relay::server::tests::relay_child_process_entry_p
 /// 〔DEL〕独立的 `--relay` 进程删了，中转只住常驻后端里 ⇒ 这里调 `main.rs` 流模式**真调的那一个**
 /// （`accounts::upstream_select::host_relay`：真环境 · 真上游选择 · tee 落进程级 tap 口）。
 /// tee 的采集面：照两条载体的写者那样从进程级 hub 接一条（`crate::stream::tap::hub().attach()`），
-/// 每件逐字写成 tee 交出的那一行（`tap::tee_line`：中转那一侧原样交了什么）落 stdout。
+/// 每件逐字写成 tee 交出的那一行（本文件的 `tee_line`：中转那一侧原样交了什么）落 stdout。
 #[test]
 #[ignore = "子进程入口：只在被父判据用 CCM_RELAY_TEST_CHILD 拉起时才当中转跑"]
 fn relay_child_process_entry_point() {
@@ -1355,7 +1355,7 @@ fn relay_child_process_entry_point() {
     std::thread::spawn(move || {
         use std::io::Write;
         while let Some(ev) = rx.blocking_recv() {
-            let line = crate::stream::tap::tee_line(&ev);
+            let line = tee_line(&ev);
             let mut o = std::io::stdout().lock();
             let _ = writeln!(o, "{line}");
             let _ = o.flush();
@@ -1370,7 +1370,7 @@ fn relay_child_process_entry_point() {
     }
 }
 
-/// 子进程 stdout 上一件**带事件原文**的 tee 行（`{"kind":"tap",…,"data":…}`，见 `tap::tee_line`）的标记。
+/// 子进程 stdout 上一件**带事件原文**的 tee 行（`{"kind":"tap",…,"data":…}`，见本文件的 `tee_line`）的标记。
 const TAP_DATA: &str = "\"data\":";
 
 /// 一个跑在**真子进程**里的中转，连同它 stdout / stderr 的全量收集面。
@@ -4160,4 +4160,38 @@ fn rk1_the_minted_key_never_shows_up_in_logs_tee_argv_env_or_upstream() {
         );
     }
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// tee 交出的一件，写成一行 JSON（判据用：中转那一侧原样交了什么）。⚠ **不是线上帧** —— 线上的 `tap` 帧由流归位折过、归过位
+/// （`stream::run_route`）；这一行只说中转抄出来的那一件本身（会话标签 · 自报的运行 · 第几段 · 第几件 · 原文 / 收尾）。
+fn tee_line(ev: &crate::relay::TapEvent) -> String {
+    #[derive(serde::Serialize)]
+    struct TeeLine<'a> {
+        kind: &'static str,
+        stream: &'a str,
+        #[serde(skip_serializing_if = "str::is_empty")]
+        owner: &'a str,
+        resp: u64,
+        n: u64,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        data: Option<&'a str>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        end: Option<&'static str>,
+    }
+    let (data, end) = match &ev.body {
+        crate::relay::TapBody::Data(d) => (Some(d.as_str()), None),
+        crate::relay::TapBody::End { broken } => {
+            (None, Some(if *broken { "broken" } else { "done" }))
+        }
+    };
+    serde_json::to_string(&TeeLine {
+        kind: "tap",
+        stream: &ev.stream,
+        owner: &ev.owner,
+        resp: ev.resp,
+        n: ev.n,
+        data,
+        end,
+    })
+    .expect("tee 那一件写不成 JSON")
 }

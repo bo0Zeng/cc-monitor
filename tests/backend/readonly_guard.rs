@@ -314,6 +314,10 @@ mod tests {
         ),
         ("ratchet_guard", "守卫：那几张登记表的断言行逐字没动"),
         (
+            "runs_guard",
+            "守卫：通用层只认「运行」（扫描 ＋ 两套子运行形状跑同一批判据；临时目录里造夹具，不碰仓与家目录）",
+        ),
+        (
             "readonly_guard",
             "守卫：**本护栏自己**（它也在人群里，见 scan() 里那条跳过）",
         ),
@@ -4291,22 +4295,6 @@ mod error_envelope_registry {
             "同 `accounts_query` 那一行的理由：它落在 observe 层，`control/` 的 `emit_err` 按 `layering_guard` 的边引不到\
              （引了还会把 `cli_control` 可达的 tmux 带进三十来条帧命令的 `no_tmux` 判定）；只这一处、只这一个码，\
              认码的是问它的那台后端（`remote_ask::settle_pulled` ⇒ `history_join` 远端那一支）。",
-        ),
-        (
-            "observe/history_query.rs",
-            "\"invalid_args\"",
-            "`--list-subagents` 的用法错",
-            "同样**没有函数包着**。这一族三处（用法错 / 路径被拒 / 推不出目录）各写一份 `json!`，\
-             共同点只有键集 —— 而那正是本模块钉住的东西。",
-        ),
-        (
-            "observe/history_query.rs",
-            "\"code\":code",
-            "`--list-subagents` 的路径被拒 / 父路径推不出目录（〔`C1` · 09-24〕两处收成一处）",
-            "〔`C1` · 09-24〕上一版这里是两行（`path_refused` · `bad_parent`），各是一份独立的 `json!` 字面量。\
-             本体搬进 `list_subagents_into`（帧面 `history-subagents` 与 CLI 共用，错误回 `(code, message)`）之后，\
-             CLI 那层壳只剩**一处**信封，把那对值原样印出 —— 两个 code 的字面量从此住在本体里、不在信封里。\
-             ⚠ 字节与改前相同（`json!` 的键序由 `serde_json` 定，与写法无关）。",
         ),
     ];
 

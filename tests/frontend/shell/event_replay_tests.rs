@@ -770,7 +770,9 @@ fn tap(origin: &str, n: u64) -> crate::ui_contract::SessionTapPayload {
         run: None,
         resp: 0,
         n,
-        ev: crate::ui_contract::RecordBody::from_json(format!("{{\"t\":\"text\",\"i\":{n},\"s\":\"x\"}}")),
+        ev: crate::ui_contract::RecordBody::from_json(format!(
+            "{{\"t\":\"text\",\"i\":{n},\"s\":\"x\"}}"
+        )),
         end: None,
     }
 }

@@ -2654,7 +2654,9 @@ pub const REGISTRY: &[CommandSpec] = &[
             "refused",
             "too_large",
         ],
-        fields: &["end", "from", "more", "parent", "path", "rows", "run", "tool"],
+        fields: &[
+            "end", "from", "more", "parent", "path", "rows", "run", "tool",
+        ],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::faces::read_face::answer(&r.cmd, &r.args)

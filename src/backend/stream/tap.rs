@@ -74,39 +74,6 @@ pub(crate) fn hub() -> std::sync::Arc<TapHub> {
     std::sync::Arc::clone(HUB.get_or_init(Default::default))
 }
 
-/// tee 交出的一件，写成一行 JSON（判据用：中转那一侧原样交了什么）。⚠ **不是线上帧** —— 线上的 `tap` 帧由流归位折过、归过位
-/// （[`super::run_route`]）；这一行只说中转抄出来的那一件本身（会话标签 · 自报的运行 · 第几段 · 第几件 · 原文 / 收尾）。
-#[cfg(test)]
-pub(crate) fn tee_line(ev: &TapEvent) -> String {
-    #[derive(serde::Serialize)]
-    struct TeeLine<'a> {
-        kind: &'static str,
-        stream: &'a str,
-        #[serde(skip_serializing_if = "str::is_empty")]
-        owner: &'a str,
-        resp: u64,
-        n: u64,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        data: Option<&'a str>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        end: Option<&'static str>,
-    }
-    let (data, end) = match &ev.body {
-        crate::relay::TapBody::Data(d) => (Some(d.as_str()), None),
-        crate::relay::TapBody::End { broken } => (None, Some(if *broken { "broken" } else { "done" })),
-    };
-    serde_json::to_string(&TeeLine {
-        kind: "tap",
-        stream: &ev.stream,
-        owner: &ev.owner,
-        resp: ev.resp,
-        n: ev.n,
-        data,
-        end,
-    })
-    .expect("tee 那一件写不成 JSON")
-}
-
 /// 中转（`relay::host`）要的那个 tap 口：就是进程级那一个 hub。
 pub(crate) fn port() -> std::sync::Arc<dyn TapPort> {
     hub()

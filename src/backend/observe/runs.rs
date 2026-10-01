@@ -112,7 +112,11 @@ impl Sess {
                     }
                 }
                 let mut changed = false;
-                for r in self.runs.iter_mut().filter(|r| r.tool.as_deref() == Some(&l.tool)) {
+                for r in self
+                    .runs
+                    .iter_mut()
+                    .filter(|r| r.tool.as_deref() == Some(&l.tool))
+                {
                     if r.label != l.label || r.kind != l.kind {
                         r.label = l.label.clone();
                         r.kind = l.kind.clone();
@@ -252,8 +256,7 @@ impl RunTrack {
         {
             return none;
         }
-        let Ok(v) = serde_json::from_str::<Value>(raw.trim_start_matches('\u{feff}').trim())
-        else {
+        let Ok(v) = serde_json::from_str::<Value>(raw.trim_start_matches('\u{feff}').trim()) else {
             return none;
         };
         MainRecord {

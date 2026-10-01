@@ -714,9 +714,7 @@ pub fn spawn(
             watch_loop(
                 agent_home,
                 tx,
-                with_bg,
-                tail_only,
-                with_rbind_token,
+                (with_bg, tail_only, with_rbind_token),
                 book,
                 events_tx,
                 events_rx,
@@ -826,9 +824,8 @@ fn arm_ears(
 fn watch_loop(
     agent_home: PathBuf,
     tx: mpsc::Sender<Frame>,
-    with_bg: bool,
-    tail_only: bool,
-    with_rbind_token: bool,
+    // （带 bg 会话, 只跟尾巴, 索要启动期令牌）—— 三个开关收成一格，与 `spawn` 收到的同一组。
+    (with_bg, tail_only, with_rbind_token): (bool, bool, bool),
     book: std::sync::Arc<crate::observe::runs::RunBook>,
     events_tx: std::sync::mpsc::Sender<WatchEvent>,
     events_rx: std::sync::mpsc::Receiver<WatchEvent>,
@@ -2249,10 +2246,7 @@ fn find_sid_jsonls(projects: &Path, sid: &str) -> Vec<std::path::PathBuf> {
         .into_iter()
         .filter_map(Result::ok)
         .map(|e| e.into_path())
-        .filter(|p| {
-            is_jsonl(p)
-                && p.file_stem().and_then(|s| s.to_str()) == Some(sid)
-        })
+        .filter(|p| is_jsonl(p) && p.file_stem().and_then(|s| s.to_str()) == Some(sid))
         .collect();
     // Batch8 审计（缝合-R4）：同 sid 多 jsonl（项目目录改名后 resume）时
     // WalkDir 顺序未定义——按 mtime 降序让 first = 当前活跃文件（帧的 path/

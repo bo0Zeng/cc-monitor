@@ -341,7 +341,9 @@ PS 模板 `src/shared/cc.ps1.tpl` 用 `UTF8Encoding($false)` 写无 BOM；Rust �
 ## 6. 刻意不做的
 
 - **按系统前台窗口切 tab**：Windows Terminal 一个进程多个窗口、多个 tab，前台窗口只拿得到 WT 主进程的把手，分不出是哪个 tab。改为看 jsonl：用户在 claude 里敲回车，claude 写一行 `type=user`，monitor 切到那个 tab（INVARIANTS §20）。
-- **subagent 实时流**：子 agent 的 jsonl 数量大、展开率低，全量推会把重放缓冲撑大数倍；只在用户展开 Task 折叠卡时按需向那台后端要（帧命令 `history-subagent`）。
+- **子运行的记录走主会话的行**：子运行（子 agent）的记录数量大，全量推会把重放缓冲撑大数倍、还会混进主时间线。那台后端照样盯着它们
+  （与主记录同一条文件事件管线），只出成品：运行表帧 `session_runs`（主 tab 上每个在跑的子运行一行）；点开那一行 / 展开派出它的那张卡时
+  才按运行读它的记录（帧命令 `history-run`）。流那一侧由后端归位（`tap` 帧带 `run`），子运行的流不上主 tab 的活卡。
 - **按进程祖先链猜终端窗口**：explorer 起 PowerShell ＋ WT 接管控制台的常见架构下，claude 的祖先链与 WT 窗口完全脱节，启发式在主流环境下都不可靠。改为终端主动告诉 monitor 它是哪个窗口（`cc` 集成的 marker 握手 · 启动期令牌）。
 - **换掉 webview**：这个 app 的核心是渲染会话记录（Markdown · 代码高亮 · LaTeX · 可折叠工具卡 · 流式追加 · 上万条记录的虚拟化），正是 HTML 最擅长、原生 GUI 工具箱最不擅长的那一类。文件管理器窗口不渲染会话记录，所以它是原生（egui）的。
 
