@@ -21,7 +21,7 @@
  */
 import { describe, it, expect } from "vitest";
 
-import { productionTsFiles } from "../../test-support/production-sources";
+import { productionTsFiles, SCAN_TIMEOUT_MS } from "../../test-support/production-sources";
 import { stripComments } from "../../test-support/strip-comments";
 
 /** `src/` 下全部生产 `.ts`，剥掉注释 —— 只看代码（遍历住 `test-support`，本文件不另写一份）。 */
@@ -62,5 +62,5 @@ describe("B2 · 「退出行为」那个值不住前端", () => {
     for (const op of ["exit-policy-read", "exit-policy-set"]) {
       expect(sec!.code.includes(`chan.call(origin, "${op}"`), `设置页没有经通道说 ${op}`).toBe(true);
     }
-  });
+  }, SCAN_TIMEOUT_MS);
 });

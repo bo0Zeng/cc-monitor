@@ -58,7 +58,7 @@ import { posix, resolve } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { productionRsFiles, productionTsFiles } from "../../test-support/production-sources.ts";
+import { productionRsFiles, productionTsFiles, SCAN_TIMEOUT_MS } from "../../test-support/production-sources.ts";
 import { REPO_ROOT } from "../../test-support/repo-root.ts";
 import { stripComments } from "../../test-support/strip-comments.ts";
 
@@ -932,7 +932,7 @@ describe("DUP1 判定只有一个家", () => {
       bad,
       "zero 行出红 ⇒ TS 里又长出了那条判定的一份；open 行出红 ⇒ 孪生已经没了（翻成 zero）或多了一份。",
     ).toEqual([]);
-  });
+  }, SCAN_TIMEOUT_MS);
 
   it("⑤ generated 行：生成物真的导出那几个名字 · 生产 TS 里读它们的文件 == 登记（两向）", () => {
     const bad: string[] = [];

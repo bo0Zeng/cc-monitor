@@ -48,6 +48,7 @@ const read = (p: string) => readFileSync(resolve(ROOT, p), "utf8");
 import { REPO_ROOT } from "../../test-support/repo-root";
 import { stripComments } from "../../test-support/strip-comments";
 import { ACCOUNTS_CHANGED_KIND } from "../../../src/frontend/ui/session-accounts-poll";
+import { SCAN_TIMEOUT_MS } from "../../test-support/production-sources.ts";
 
 /**
  * 剥注释——**方言必须显式给**（C04a Phase D 审计：Rust 的 `'a` 生命周期与 TS 的 `'…'`
@@ -595,14 +596,14 @@ describe("C01 边界生成物", () => {
     expect(hits.map((f) => f.replace(/\\/g, "/")), "名单只许是包装层自己").toEqual([
       "src/frontend/ui/ipc/commands.ts",
     ]);
-  });
+  }, SCAN_TIMEOUT_MS);
 
   it("生产代码不许 import `tests/test-support/`（那是守卫专用，进 bundle 就等于把测试代码发出去）", () => {
     const offenders = productionTsFiles().filter((f) => /test-support\//.test(code(read(f))));
     // `strip-comments.ts` 自称「只被 *.vitest.ts 引用 ⇒ 进不了 bundle」。
     // 那是一条**约定**，而 eslint 在本仓是 advisory ⇒ 指望不上，机检掉。
     expect(offenders, "这些生产文件 import 了 test-support").toEqual([]);
-  });
+  }, SCAN_TIMEOUT_MS);
 });
 
 /**

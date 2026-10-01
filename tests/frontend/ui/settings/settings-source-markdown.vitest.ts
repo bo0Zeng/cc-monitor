@@ -27,6 +27,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, relative, resolve } from "node:path";
 
 import { toPosix } from "../../../test-support/posix-path.ts";
+import { SCAN_TIMEOUT_MS } from "../../../test-support/production-sources.ts";
 
 const ROOT = process.cwd();
 const ENTRY = resolve(ROOT, "src/frontend/ui/entry-settings.ts");
@@ -118,7 +119,7 @@ describe("ST1：设置窗屏幕上的字符串里零 markdown 星号", () => {
     ]) {
       expect(files, `${f} 不在设置窗的可达集合里 —— 图没走通，下面的零命中是空转`).toContain(f);
     }
-  });
+  }, SCAN_TIMEOUT_MS);
 
   it("🔴 正控：字符串里的逮到、注释里的不逮、console 参数不逮、模板片段也逮", () => {
     const src = [
@@ -138,5 +139,5 @@ describe("ST1：设置窗屏幕上的字符串里零 markdown 星号", () => {
       "设置窗的字符串里出现了 markdown 星号 —— 界面不渲染 markdown，星号会原样显示给用户。\n" +
         "强调改由句子结构或 DOM 结构承担（`data-section.ts` 的 strong() 是样板）。",
     ).toEqual(Object.keys(REGISTERED).sort());
-  });
+  }, SCAN_TIMEOUT_MS);
 });

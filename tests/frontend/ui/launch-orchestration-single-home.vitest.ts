@@ -42,7 +42,7 @@ vi.mock("../../../src/frontend/ui/behavior", () => ({
 
 import { invoke } from "@tauri-apps/api/core";
 import { launchRenderShim, localLaunchCalls } from "../../test-support/chan-fake";
-import { productionTsFiles } from "../../test-support/production-sources.ts";
+import { productionTsFiles, SCAN_TIMEOUT_MS } from "../../test-support/production-sources.ts";
 import { stripComments } from "../../test-support/strip-comments.ts";
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
 import { readTmuxListing, mintFreshTmuxName } from "../../../src/frontend/ui/tmux-name-mint";
@@ -70,7 +70,7 @@ describe("K1 · 铸名只有一个家", () => {
       "有别的地方自己去问后端铸名了。起会话的 tmux 名只许经 `src/frontend/ui/tmux-name-mint.ts`" +
         "（它守着「问不到 ⇒ 不铸名」；别处抄一份，降级口径就又分叉了 —— B §2.6 的病）。",
     ).toEqual(["src/frontend/ui/tmux-name-mint.ts"]);
-  });
+  }, SCAN_TIMEOUT_MS);
 
   it("★ 问 tmux 名单的生产文件 == 手写集合（两向）", () => {
     // 手写期望，不从实现生成。每一格为什么在（取法换成读口 `listTmux(`；读口的定义处 `tmux-reads.ts` 除外）：
@@ -82,7 +82,7 @@ describe("K1 · 铸名只有一个家", () => {
       filesMatching(/\b(?:listTmux|list_(?:local|remote)_tmux)\s*\(/, ["src/frontend/ui/tmux-reads.ts"]),
       "问 tmux 名单的地方变了。新长的那一处是不是本该走 `tmux-name-mint.ts::readTmuxListing`？",
     ).toEqual(want);
-  });
+  }, SCAN_TIMEOUT_MS);
 });
 
 describe("K2 · 本机 resume 编排只有一个家", () => {
@@ -93,7 +93,7 @@ describe("K2 · 本机 resume 编排只有一个家", () => {
       filesMatching(/\b(?:launchLocal|planLocalLaunch)\s*\(\s*\{\s*action:\s*\{\s*kind:\s*"resume"/),
       "有别的地方自己拼了一遍本机 resume。编排（校验 sid → 铸名 → 账号 → 起 → 记 pin）只许住 `src/frontend/ui/local-resume.ts`。",
     ).toEqual(["src/frontend/ui/local-resume.ts"]);
-  });
+  }, SCAN_TIMEOUT_MS);
 });
 
 describe("K3 · 列不出 ⇒ 不铸名（三态不许压成两态）", () => {

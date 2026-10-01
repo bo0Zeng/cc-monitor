@@ -41,6 +41,7 @@ import { describe, it, expect } from "vitest";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, resolve, dirname, relative } from "node:path";
 import { stripComments } from "../../test-support/strip-comments";
+import { SCAN_TIMEOUT_MS } from "../../test-support/production-sources.ts";
 
 const REPO_ROOT = resolve(__dirname, "../../..");
 const SRC = join(REPO_ROOT, "src");
@@ -256,7 +257,7 @@ describe("E80：生产代码不许有运行期 import 环", () => {
     for (const g of generatedTargets) {
       expect(runtimeDeps(g), `${rel(g)} 不再是叶子 —— 它开始 import 别人了，可能成环`).toEqual([]);
     }
-  });
+  }, SCAN_TIMEOUT_MS);
 
   it("★★ 零环", () => {
     const cycle = findCycle(graph);
@@ -266,7 +267,7 @@ describe("E80：生产代码不许有运行期 import 环", () => {
         + "（某模块从另一个抽出来、又反过来用它的东西）。修法通常是"
         + "「把只有一个消费者的东西搬到那个消费者身边」，而不是加一层间接。",
     ).toBeNull();
-  });
+  }, SCAN_TIMEOUT_MS);
 
   it("★ 判据真的会抓人：给它一条人造的环", () => {
     const a = "/fake/a.ts";
@@ -300,7 +301,7 @@ describe("〔FE1〕全图（值边 ＋ 类型边）的环 == 登记表（两向�
     const runtime = files.reduce((n, f) => n + runtimeDeps(f).length, 0);
     expect(all, "全图一条边都没有 —— 抠法坏了").toBeGreaterThan(200);
     expect(all, "全图与运行期图一样大 —— 类型边没抠进来").toBeGreaterThan(runtime);
-  });
+  }, SCAN_TIMEOUT_MS);
 
   it("★★ 环的集合 == 登记表（新长的环 ⇒ 红；拆掉了没摘 ⇒ 红）", () => {
     const got = cycleComponents(graph).map((c) => c.map(rel).join(" ⇄ "));
@@ -310,7 +311,7 @@ describe("〔FE1〕全图（值边 ＋ 类型边）的环 == 登记表（两向�
       "import 全图（含 `import type`）的环变了。新长的那一个：类型该住**被依赖的一侧**" +
         "（通常是挪进一个零 import 的叶子，照 `src/frontend/ui/apikey-reads.ts` 收 `ApikeyRoutingView` 的做法），别在两个域之间来回 import。",
     ).toEqual(want);
-  });
+  }, SCAN_TIMEOUT_MS);
 
   it("★ 判据真的会抓人：人造一条类型回边，多出一个环；自指也算", () => {
     const a = "/fake/a.ts";

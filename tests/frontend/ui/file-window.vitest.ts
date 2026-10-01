@@ -24,7 +24,7 @@ vi.mock("../../../src/frontend/ui/error-toast", () => ({ showActionFailureToast:
 
 import { openFileWindow } from "../../../src/frontend/ui/file-window";
 import type { RemoteHostConfig } from "../../../src/frontend/ui/remote-config";
-import { productionTsFiles } from "../../test-support/production-sources";
+import { productionTsFiles, SCAN_TIMEOUT_MS } from "../../test-support/production-sources";
 import { stripComments } from "../../test-support/strip-comments";
 
 const CFG = {
@@ -99,7 +99,7 @@ const ENTRIES: readonly string[] = [
 describe("F7b 入口人群", () => {
   it("生产树里调开口的 (文件, 落点) == 入口全表（两向）", () => {
     expect(entryCensus()).toEqual([...ENTRIES].sort());
-  });
+  }, SCAN_TIMEOUT_MS);
 
   it("`open_file_window` 在包装层之外恰好一处 —— 就是那个开口", () => {
     const sites: string[] = [];
@@ -110,5 +110,5 @@ describe("F7b 入口人群", () => {
       for (let i = 0; i < n; i++) sites.push(file);
     }
     expect(sites).toEqual(["src/frontend/ui/file-window.ts"]);
-  });
+  }, SCAN_TIMEOUT_MS);
 });

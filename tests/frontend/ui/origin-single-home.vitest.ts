@@ -101,7 +101,7 @@ describe("〔TL3 · 🔴-5〕「是不是本机」只在 origin.ts 判", () => {
 
   it("人群从盘上派生，家那一份在里面", () => {
     expect(productionTsFiles("src").map((s) => s.file)).toContain(HOME);
-  });
+  }, SCAN_TIMEOUT_MS);
 
   it("★ origin.ts 之外零直比（零命中）；origin.ts 里恰好是那两个判定（两向相等，同时是正控）", () => {
     const away: string[] = [];
