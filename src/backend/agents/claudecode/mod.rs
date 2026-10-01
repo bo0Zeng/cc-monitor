@@ -78,6 +78,8 @@ pub(crate) const UPSTREAM: super::DefaultUpstream = super::DefaultUpstream {
     session_header: Some("x-claude-code-session-id"),
     stream: Some(super::sse_anthropic::FACE),
     owner_header: Some(runs::OWNER_HEADER),
+    // 界面给这一家的账号配第三方 key 时写那份凭据文件 ⇒ 文件里的行都是这一家的。
+    owns_credentials_file: true,
 };
 
 /// 本家的**起会话事实**（注册表 `Adapter.launch` 那一格）：`ccm` 按它起、界面按生成物 `agent-profile-table.ts` 读，同一份。
@@ -87,6 +89,14 @@ pub(crate) const LAUNCH: super::LaunchFace = super::LaunchFace {
     launcher_alias: Some(resume::LAUNCHER_ALIAS),
     resume_token: resume::RESUME_TOKEN,
     nested_env: resume::NESTED_ENV,
+    is_default: true,
+    resume_command: resume::resume_command,
+    session_name_prefix: resume::SESSION_NAME_PREFIX,
+    // 不经 env 交 cc-bus 身份：它自己读得到 tmux，交了反而盖掉 `@cc_id` 的细分。
+    needs_bus_id: false,
+    has_identity: true,
+    has_pidfiles: true,
+    trust_prompt: Some(resume::TRUST_PROMPT),
 };
 
 /// 本 agent 在这台机器上的 home 目录 —— **只答"它该在哪"，不答"在不在"**。

@@ -12,10 +12,10 @@
 //!
 //! ⚠ **本文件的三条今天没有被 [`crate::agent_locality_guard`] 的格式针钉住** ——
 //! 那六根针认的是"会话文件长什么样"，而这里是"命令长什么样"。
-//! 钉住它的是另一半：通用层的 kind 派发点**逐个登记**（今天恰好 1 处），
-//! 谁想在别处再开一个 Codex 分支，会先撞上那个计数。
-//! 如实说：**这是间接的** —— 有人在那唯一的派发点里直接写 `format!("{base} resume …")`
-//! 仍然不会红。真正堵死它要等 `S3` 把 Claude 那半也搬进来、两个实现凑齐后立接口（`D4`）。
+//! 钉住它的是另一半：resume 规格只按注册表里那一家的起会话事实（`agents::LaunchFace`）拼，
+//! 而通用层里一个 agent 名字面量都不许有（`agent_locality_guard` 判据②）——
+//! 谁想在别处再开一个 Codex 分支，得先写出 `"codex"`，当场红。
+//! 如实说：有人在通用层直接写 `format!("{base} resume …")`（不提名字）仍然不会红。
 
 /// 无 `launchCandidate` 时的默认命令基底。
 pub(crate) const DEFAULT_COMMAND: &str = "codex";

@@ -202,8 +202,8 @@ fn the_launch_faces_agree_with_the_golden_table() {
     );
     let mut bad = Vec::new();
     for (agent, key, want) in &rows {
-        let f =
-            launch_face_of(agent).unwrap_or_else(|| panic!("注册表里没有 `{agent}` 的起会话事实"));
+        let f = launch_face_among(REGISTRY, agent)
+            .unwrap_or_else(|| panic!("注册表里没有 `{agent}` 的起会话事实"));
         let got = match key.as_str() {
             "default_launcher" => f.default_launcher.to_string(),
             "resume_token" => f.resume_token.to_string(),
@@ -219,6 +219,32 @@ fn the_launch_faces_agree_with_the_golden_table() {
         bad.is_empty(),
         "起会话事实与金样不一致：\n{}",
         bad.join("\n")
+    );
+}
+
+/// ★ 「不说是哪一家时起谁」与「凭据文件的行挂在谁名下」各由注册表里**恰一家**声明（两家都声明 ⇒ 谁先谁赢，那是静默）。
+#[test]
+fn exactly_one_family_is_the_default_and_exactly_one_owns_the_credentials_file() {
+    let defaults: Vec<&str> = REGISTRY
+        .iter()
+        .filter(|a| a.launch.is_some_and(|f| f.is_default))
+        .map(|a| a.kind)
+        .collect();
+    assert_eq!(
+        defaults,
+        [crate::agents::default_kind()],
+        "声明默认的不是恰一家：{defaults:?}"
+    );
+    let owners: Vec<&str> = REGISTRY
+        .iter()
+        .filter_map(|a| a.upstream.as_ref())
+        .filter(|u| u.owns_credentials_file)
+        .map(|u| u.route_id)
+        .collect();
+    assert_eq!(
+        owners,
+        [crate::agents::credentials_file_agent()],
+        "声明拥有凭据文件的不是恰一家：{owners:?}"
     );
 }
 

@@ -90,44 +90,59 @@ fn the_embedded_file_list_matches_the_repo() {
     );
 }
 
-/// `PS2`：**三态互相分得开**（这正是本件的正题）。
+/// 内容会变的那几个（缺的 ＋ 不一样的），按内嵌清单的顺序。
+fn writes(skills: &Path) -> Vec<String> {
+    state_at(skills)["writes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v.as_str().unwrap().to_string())
+        .collect()
+}
+fn all_files() -> Vec<String> {
+    FILES.iter().map(|(r, _)| r.to_string()).collect()
+}
+
+/// 确认卡要的那一份：没装 ⇒ 全部要写 · 装好了 ⇒ 一个不写 · 改了 / 少了 ⇒ 正好是那几个；目录在不在另报（在 ⇒ 装时整个改名留作备份）。
 #[test]
-fn the_three_install_states_are_distinguishable() {
+fn the_state_names_exactly_the_files_that_would_change() {
     let t = tmpdir("state");
-    // ① 没装
-    assert_eq!(
-        state_at(&t.0.join("skills")),
-        json!({ "state": "not_installed" })
-    );
-    // ② 装了、且是这一版
+    let skills = t.0.join("skills");
+    assert_eq!(writes(&skills), all_files());
+    assert_eq!(state_at(&skills)["existing"], json!(false));
     install(&t.0).expect("部署");
+    assert_eq!(writes(&skills), Vec::<String>::new());
+    assert_eq!(state_at(&skills)["existing"], json!(true));
     assert_eq!(
-        state_at(&t.0.join("skills")),
-        json!({ "state": "up_to_date" })
+        state_at(&skills)["dest"],
+        json!(skills.join("cc-bus").display().to_string())
     );
-    // ③ 装了、但不是这一版 —— **带着差了几个**，不是一句「不一致」
     let dest = t.0.join("skills/cc-bus");
     std::fs::write(dest.join("SKILL.md"), b"old").unwrap();
     std::fs::remove_file(dest.join("scripts/cc-send")).unwrap();
-    assert_eq!(
-        state_at(&t.0.join("skills")),
-        json!({ "state": "drifted", "differing": 1, "missing": 1 }),
-        "「装了旧版」必须带上差异规模 —— 只说「不一致」用户不知道该不该在意"
-    );
+    assert_eq!(writes(&skills), vec!["SKILL.md", "scripts/cc-send"]);
 }
 
-/// `PS2`：目录在、但一个内嵌文件都没有 ⇒ 那是**没装**，不是「装了个旧版」。
-///
-/// ⚠ 这一格是分界：把它判成 `Drifted` 会让界面说「有更新」，
-/// 而用户点下去发现是第一次装 —— 两件事的心理预期完全不同。
+/// 目录在、但一个内嵌文件都没有 ⇒ 全部要写，且目录在（装时先改名留作备份）。
 #[test]
-fn an_empty_dir_counts_as_not_installed() {
+fn an_empty_dir_needs_every_file() {
     let t = tmpdir("empty");
     std::fs::create_dir_all(t.0.join("skills/cc-bus")).unwrap();
-    assert_eq!(
-        state_at(&t.0.join("skills")),
-        json!({ "state": "not_installed" })
-    );
+    assert_eq!(writes(&t.0.join("skills")), all_files());
+    assert_eq!(state_at(&t.0.join("skills"))["existing"], json!(true));
+}
+
+/// 扩展页拿内嵌那一份的摘要当 cc-bus 的「这一版」：装好之后，资产目录对那个目录算出来的摘要与它相同；改一个字节就不同。
+#[test]
+fn the_embedded_digest_is_what_the_catalog_sees_after_an_install() {
+    let t = tmpdir("digest");
+    install(&t.0).expect("部署");
+    let dir = t.0.join("skills/cc-bus");
+    let seen = crate::assets::asset_catalog::skill_asset(None, NAME, &dir, None).digest;
+    assert_eq!(seen, embedded_digest());
+    std::fs::write(dir.join("SKILL.md"), b"old").unwrap();
+    let seen = crate::assets::asset_catalog::skill_asset(None, NAME, &dir, None).digest;
+    assert_ne!(seen, embedded_digest(), "正控：改了一个字节摘要没变");
 }
 
 /// ★ 幂等：装两次，第二次**一个字节都不写**、也不留备份。
@@ -181,13 +196,11 @@ fn every_script_in_the_repo_is_embedded_for_deployment() {
 fn deploying_twice_writes_nothing_the_second_time() {
     let t = tmpdir("idem");
     let first = install(&t.0).expect("首次部署");
-    assert_eq!(first["written"], json!(FILES.len()));
-    assert_eq!(first["unchanged"], json!(0));
+    assert_eq!(first["written"], json!(all_files()));
     assert!(first["backup"].is_null(), "之前没装过，不该有备份");
 
     let second = install(&t.0).expect("再次部署");
-    assert_eq!(second["written"], json!(0), "幂等：内容一致就不该再写");
-    assert_eq!(second["unchanged"], json!(FILES.len()));
+    assert_eq!(second["written"], json!([]), "幂等：内容一致就不该再写");
     assert!(
         second["backup"].is_null(),
         "一致时**不许**备份 —— 每点一次多一份垃圾备份，那是把「可撤销」变成「攒垃圾」"
@@ -204,7 +217,7 @@ fn an_overwrite_leaves_a_restorable_backup() {
     std::fs::write(dest.join("SKILL.md"), b"old version").unwrap();
 
     let r = install(&t.0).expect("覆盖");
-    assert!(r["written"].as_u64() > Some(0));
+    assert_eq!(r["written"], json!(all_files()), "改名留作备份之后整份重写");
     let bak = r["backup"].as_str().expect("覆盖必须留备份").to_string();
     let bak = Path::new(&bak);
     assert!(bak.is_dir(), "备份目录不在：{}", bak.display());
@@ -230,63 +243,23 @@ fn a_symlinked_skills_dir_is_refused() {
     );
 }
 
-/// ★ 三态的**计数**要精确，且「清单外的文件」**故意不算**〔08-13 复核〕。
-///
-/// # 四态逐个钉
-///
-/// | 盘上的样子 | 该说 |
-/// |---|---|
-/// | 刚装完 | `UpToDate` |
-/// | 改了 2 个文件 | `Drifted{differing:2, missing:0}` |
-/// | **多一个清单外的文件** | `UpToDate` —— 见下方「为什么故意不算」 |
-/// | 删了 1 个 | `Drifted{differing:0, missing:1}` |
-///
-/// ⚠ 钉的是**数字**不是「是不是 Drifted」：按钮上写的是「更新（差 N 个文件）」，
-/// N 错了跟状态错了一样骗人。
-///
-/// # 为什么「多出来的文件」故意不算
-///
-/// **我们自己的备份就是清单外的文件**（`cc-bus.bak-<ts>` / 08-13 实测用户那份里还有
-/// 四份 07-18 留下的 `scripts.bak-*`）。把它们算成漂移 ⇒ 那颗按钮**永远**写着「更新」，
-/// 而点了也不会变 —— 比不报还坏。
-///
-/// ⚠ **代价如实写**：哪天有脚本从清单里**删掉**，盘上那份会一直留着而状态仍说
-/// `UpToDate`。这属于 `P2t` 记过的「旧文件永不回收」那一族，它的处置逐字是
-/// 「**真但未发生**」——今天清单只增不减，零实例 ⇒ 不为它造回收机制
-/// （造了也验不出修对没修对）。**这条注释就是那个前提的住址**：清单第一次删东西时，
-/// 来这儿把它改掉。
+/// ★ 要写的那几个要精确，且「清单外的文件」**故意不算**：我们自己的备份（`cc-bus.bak-<秒>`）就是清单外的，
+/// 算了它们那一格就永远说「要写」。代价：清单哪天删掉一个脚本，盘上那份会一直留着而这里说「不用写」（今天清单只增不减）。
 #[test]
-fn the_three_states_count_precisely_and_ignore_extra_files() {
+fn the_writes_are_precise_and_ignore_extra_files() {
     let d = tmpdir("ps2-counts");
+    let skills = d.0.join("skills");
     install(&d.0).unwrap();
     let dest = d.0.join("skills/cc-bus");
-    assert_eq!(
-        state_at(&d.0.join("skills")),
-        json!({ "state": "up_to_date" })
-    );
-
+    assert_eq!(writes(&skills), Vec::<String>::new());
     std::fs::write(dest.join("SKILL.md"), b"tampered").unwrap();
     std::fs::write(dest.join("scripts/cc-spawn"), b"tampered").unwrap();
-    assert_eq!(
-        state_at(&d.0.join("skills")),
-        json!({ "state": "drifted", "differing": 2, "missing": 0 }),
-        "改了两个文件就该报 2 —— 按钮上写的是「更新（差 N 个）」，N 错了跟状态错了一样骗人"
-    );
-
+    assert_eq!(writes(&skills), vec!["SKILL.md", "scripts/cc-spawn"]);
     install(&d.0).unwrap();
     std::fs::write(dest.join("scripts/cc-legacy-thing"), b"old script").unwrap();
-    assert_eq!(
-        state_at(&d.0.join("skills")),
-        json!({ "state": "up_to_date" }),
-        "清单外的文件**故意不算** —— 我们自己的 .bak 就是清单外的，算了那颗按钮就永远写着「更新」"
-    );
-
+    assert_eq!(writes(&skills), Vec::<String>::new(), "清单外的文件不算");
     std::fs::remove_file(dest.join("scripts/cc-kill")).unwrap();
-    assert_eq!(
-        state_at(&d.0.join("skills")),
-        json!({ "state": "drifted", "differing": 0, "missing": 1 }),
-        "少一个就该报 missing:1，且不该把它算进 differing"
-    );
+    assert_eq!(writes(&skills), vec!["scripts/cc-kill"]);
 }
 
 /// ★ 落点被一个**普通文件**占着（用户手滑 / 旧版留下的残骸）〔08-13 复核〕。
@@ -301,12 +274,17 @@ fn a_regular_file_at_the_destination_is_not_installed_and_gets_backed_up() {
     std::fs::create_dir_all(d.0.join("skills")).unwrap();
     std::fs::write(d.0.join("skills/cc-bus"), b"i am a file, not a dir").unwrap();
     assert_eq!(
-        state_at(&d.0.join("skills")),
-        json!({ "state": "not_installed" }),
-        "落点是**文件**时说成「已装/最新」就是骗人 —— 那颗按钮会写着已是最新，而盘上没有 cc-bus"
+        writes(&d.0.join("skills")),
+        all_files(),
+        "落点是文件 ⇒ 全部要写"
+    );
+    assert_eq!(
+        state_at(&d.0.join("skills"))["existing"],
+        json!(true),
+        "那个文件会先改名留作备份，卡上要说"
     );
     let r = install(&d.0).expect("装");
-    assert!(r["written"].as_u64() > Some(0), "该装的一个都没装");
+    assert_eq!(r["written"], json!(all_files()), "该装的一个都没装");
     let bak = r["backup"]
         .as_str()
         .expect("覆盖用户那个文件之前**必须**留备份（不可逆动作的底线）")

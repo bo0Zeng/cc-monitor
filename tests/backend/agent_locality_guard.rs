@@ -28,12 +28,12 @@
 //!
 //! ★ 一般化的教训：**判据答不了的问题，先看能不能换一个更弱、但够用的问题**。
 //!
-//! ## ② 通用层的 kind 派发点**逐条登记**
+//! ## ② 通用层里**一个 agent 名字面量都没有**
 //!
-//! 形态照 [`crate::layering_guard`]：那条判据不禁止 `observe → control`，它**数**跨层的边
-//! （今天恰好 1 条），逼下一个人把理由也写出来。这里同理 —— `D3` 逐字允许
-//! 「agent 维度出现在**值**里」，所以 `agent_kind == "codex"` 是合法的；
-//! **不合法的是它出现在第二个地方**（那意味着又一处需要跟着改而没人知道）。
+//! 用户逐字：「思考怎么解耦, 不要硬适配claude code」「如果是其他agent呢, 比如codex」。
+//! 从前这里是「拿 kind **值**做判别的地方逐条登记」（`resolve_query` 与 `ccm` 各一处）；
+//! 那两处问的能力（默认那一家 · resume 命令形 · 会话名前缀 · cc-bus 身份 · 身份面 · pidfile · 信任框）
+//! 收进了适配层起会话事实的各格，通用层只问那一格 ⇒ 登记表收成零，判据改成**零命中**。
 //!
 //! ## ③通用层的**标识符**里不许出现 `<agent 名>_dir`
 //!
@@ -132,32 +132,6 @@ mod tests {
     /// 而**判据会因此静默放行那一整家的知识** —— 那是最坏的一种绿。
     const HOMES_FLOOR: usize = 2;
 
-    /// **通用层里允许出现 `"codex"` 这个值的地方**，逐条登记 —— 形态照
-    /// `layering_guard::ALLOWED_OBSERVE_TO_CONTROL`。
-    ///
-    /// **加一条之前先回答**：这个 kind 派发非得在这里做吗？能不能让调用方把已经解析好的
-    /// agent 送进来？（`resolve_query` 的答案：wire 上收到的就是一个字符串 `agentKind`，
-    /// 派发必须发生在最接近入口的地方，而 `CommandPlan` 的骨架两个 agent 共用 ——
-    /// 派发点在这里，两条分支各自去自己的适配层取知识。）
-    ///
-    /// ⚠ 这不是白名单：**表里有几条，就意味着"加一个 agent 要动几处"**。
-    /// 它长了就是设计在退化，短不了才说明适配层真的兜住了。
-    const KIND_DISPATCH_SITES: &[(&str, &str)] = &[
-        (
-            "control/resolve_query.rs",
-            "wire 上的 `agentKind` 是个字符串，派发必须在最接近入口处做；两条分支之后共用 CommandPlan 骨架",
-        ),
-        (
-            "control/ccm/mod.rs",
-            "`K-R48`：`--agent <名>` 是**用户在终端里敲进来的一个字符串**，\
-             派发同样必须在最接近入口处做（五个问题一次问完：默认启动器 / resume 旗标 / \
-             要清的嵌套标记 / 要不要 cc-bus 身份 / 有没有身份面），派完两条分支共用整条计划面。\
-             ⚠ 它是从 `shared/ccm` 那五个 `case \"$1\" in claude|codex)` 搬过来的 —— \
-             **搬家没有让它变多，是让它从一个没人数得着的地方变成这张表里的一行**。\
-             ⇒ 接第三个 agent 时这一处必须跟着改，而这张表就是那份清单。",
-        ),
-    ];
-
     /// 针：**agent 的目录布局与文件格式**，运行时拼（本文件的散文里就有这些词）。
     ///
     /// 前六根是 `S2` 立的（Codex 专有），后五根是 `S3` 加的 ——
@@ -225,14 +199,28 @@ mod tests {
         ),
     ];
 
-    /// kind 值判别的形状：带引号的 `"codex"`。
+    /// ② 的针：每一家 agent 的**名字**（wire kind · 适配器 id · 中转路由名），外加夹具家的 kind，**带引号的整串**。
+    /// 从注册表派生，不另写一份 —— 加一家，针跟着长。
     ///
-    /// ⚠ **必须带引号**——照 monitor 侧那条「用量口径只有一个家」的判据头注记下的
-    /// 那次教训（已随用量 ② 轴把它删掉）：
-    /// 第一版只比裸名字，`let is_codex = …` 这种**局部变量名**当场把判据打红。
-    /// 判据要认的是「谁在拿这个**值**做判别」，不是「谁提到过这个词」。
-    fn kind_literal() -> String {
-        format!("\"cod{}\"", "ex")
+    /// ⚠ 带引号是刻意的：`== "claude"` · `match … "codex" =>` · `const X: &str = "claude-code"` 都是这一形，
+    /// 而 `".claude-accts/…"` 这类住址、`is_codex` 这类标识符不是（前者归判据①的格式针，后者不是值）。
+    fn agent_name_literals() -> Vec<String> {
+        let mut names: Vec<&str> = Vec::new();
+        for a in crate::agents::REGISTRY {
+            names.push(a.kind);
+            if let Some(f) = a.launch {
+                names.push(f.adapter_id);
+            }
+            if let Some(u) = &a.upstream {
+                names.push(u.route_id);
+            }
+        }
+        for (fixture, _) in FIXTURE_HOMES {
+            names.push(fixture);
+        }
+        names.sort_unstable();
+        names.dedup();
+        names.into_iter().map(|n| format!("\"{n}\"")).collect()
     }
 
     /// **冻结的 wire 字段名**（`文件`, `片段`, 为什么改不动, **解锁条件**）——
@@ -291,9 +279,8 @@ mod tests {
     ///
     /// ⇒ 本表**就是那份清单**。它长了是设计在退化；`S6` 立起接口之后它应该整体缩短。
     ///
-    /// ⚠ 与 [`KIND_DISPATCH_SITES`] 分工：那张数的是「拿 kind **值**做判别」（`D3` 允许的形状，
-    /// 今天 1 处）；本张数的是「**不判别、直接写死一个 agent**」（`D3` 管不着，因为它不在协议里）。
-    /// 两者加起来才是「接第三个 agent 的改动面」。
+    /// ⚠ 与判据②分工：那条管「拿 agent 的**名字**做判别」（通用层零处）；本张数的是「**不判别、直接写死一个 agent**」
+    /// （名字不出现，调用路径里出现）。两者加起来才是「接第三个 agent 的改动面」。
     /// ⚠**注册表那类不在本表里** —— 见 [`AGENT_REGISTRY_SITES`]。
     /// 本表只装「**该被压到零**」的那一类，`S6` 的靶子就是它的总数。
     const ADAPTER_CALL_SITES: &[(&str, usize, &str)] = &[
@@ -304,11 +291,6 @@ mod tests {
             "会话记录根 + 会话文件命名。**3 → 2**：\
              「按 sid 找那份文件」整段进了共享 crate（两侧同一份），\
              找那一步的命名不再由本 crate 问适配层，只剩落盘那一处",
-        ),
-        (
-            "control/resolve_query.rs",
-            6,
-            "resume 的默认命令与会话名前缀（**两家各三处** —— 它同时也是唯一登记的 kind 派发点）",
         ),
         (
             "main.rs",
@@ -402,9 +384,6 @@ mod tests {
         ("判活 cmdline", "observe/watcher.rs", 1, "cmdline 兜底词表是 `claude`/`node` ⇒ 这家的进程被判成冒名"),
         ("解析本机 home", "observe/history_query.rs", 1, "帧面那八条（`read_face`）的根从这里问 ⇒ 与 `main.rs` 那一句同形：**只有一个根**，第三家连被问到的机会都没有"),
         ("解析本机 home", "main.rs", 1, "`resolve_agent_home()` 写死问 claudecode ⇒ 所有一次性子命令与流模式**只有一个根**，第三家连被问到的机会都没有"),
-        ("resume 默认命令", "control/resolve_query.rs", 2, "`agent_kind` 不等于 `\"codex\"` 一律落 Claude 路 ⇒ 未知 kind **静默**拿到 `claude`"),
-        ("resume 命令形", "control/resolve_query.rs", 2, "同上：`--resolve` 对 `agentKind:\"fake\"` 返回 `claude --resume <sid>`，**rc=0**。⚠ 这是最坏的一种：不是「没有会话」，是**跑错命令**"),
-        ("resume 会话名前缀", "control/resolve_query.rs", 2, "同上：会话名前缀**静默**给成 `cc-`"),
     ];
 
     /// `S6` 立表那天的读数。**只许降** —— 它就是 `G1` 成功标准②「还差多少」的头条数字。
@@ -420,7 +399,16 @@ mod tests {
     ///
     /// **25 → 24**：`observe/history_query.rs` 那一处「会话文件命名」（按目录列子 agent、按 `<stem>.jsonl` 找旁文件）随按运行读删了 ——
     /// 子运行的记录住哪、哪条记录属于谁，改问注册表（`RecordFace.children` · `run_of`）。
-    const NEW_AGENT_GAP_BASELINE: usize = 24;
+    ///
+    /// **24 → 18**：`control/resolve_query.rs` 那 6 处（resume 的默认命令 · 命令形 · 会话名前缀，两家各三处）收进了
+    /// 起会话事实那一格（[`THROUGH_THE_GENERIC_LAYER`]），resume 规格按注册表里那一家拼。
+    const NEW_AGENT_GAP_BASELINE: usize = 18;
+
+    /// 假 agent 的能力里**已经经通用层走通**的那几种：通用层按注册表里那一家的那一格做，不再直呼某一家。
+    /// 与 [`NEW_AGENT_BLOCKERS`] 里登记的卡点**不相交、合起来正好是**假 agent 的全部能力（判据⑧ ⑤ 钉着）。
+    /// 证据：假 agent 走全流程的 `resume` 那一段真的过 `resolve_query::resolve_json_among`（`fake_tests.rs` 正题）。
+    const THROUGH_THE_GENERIC_LAYER: &[&str] =
+        &["resume 默认命令", "resume 命令形", "resume 会话名前缀"];
 
     /// 判据③的针：`<agent 名>_dir` 这一形的**标识符**。**运行时拼**（本文件散文里就有这些词）。
     ///
@@ -553,38 +541,62 @@ mod tests {
         }
     }
 
-    /// ② 通用层里的 kind 派发点，登记表与实得**逐条对齐**（多一处红、少一处也红）。
+    /// ② 通用层（`src/backend/` 的 `.rs` 生产段，扣掉 [`HOMES`]）里**零个** agent 名字面量。
+    ///
+    /// 人群之外、可以写名字的地方：各家适配层与注册表（`agents/`）· 夹具（`.json` / `.tsv`）·
+    /// 给用户看的文案（文案表 `.json`）· 注释与测试段（`production_code` 剥掉）。
+    /// 正控两道：每根针在适配层的家里**真有命中**（针对准了真写法）；合成的三种分叉形都被认出、住址不被认出。
     #[test]
-    fn kind_dispatch_sites_are_enumerated_one_by_one() {
+    fn the_general_layer_names_no_agent() {
         let files = sources();
-        let lit = kind_literal();
+        let needles = agent_name_literals();
         let mut hits: Vec<String> = Vec::new();
+        let mut aimed: Vec<&String> = Vec::new();
         for (rel, prod) in &files {
-            if HOMES.iter().any(|h| rel.starts_with(h)) {
-                continue;
-            }
-            if prod.contains(&lit) {
-                hits.push(rel.clone());
+            let home = HOMES.iter().any(|h| rel.starts_with(h));
+            for (i, line) in prod.lines().enumerate() {
+                for n in needles.iter().filter(|n| line.contains(n.as_str())) {
+                    if home {
+                        aimed.push(n);
+                    } else {
+                        hits.push(format!("{rel}:{}  {}", i + 1, line.trim()));
+                    }
+                }
             }
         }
-        hits.sort();
-        let mut registered: Vec<String> = KIND_DISPATCH_SITES
-            .iter()
-            .map(|(f, _)| f.to_string())
-            .collect();
-        registered.sort();
+        aimed.sort();
+        aimed.dedup();
         assert_eq!(
-            hits, registered,
-            "\n通用层里拿 agent kind **值**做判别的地方与登记表对不上。\n\
-             实得：{hits:?}\n登记：{registered:?}\n\
-             ⚠ 多出来的那处 = **又一个「加 agent 时要跟着改」的地方**，先把理由写进 \
-             `KIND_DISPATCH_SITES` 再说；\n\
-             少掉的那处 = 派发搬走了而登记没跟，摘掉它（这张表短了是好事，长了是坏事）。"
+            aimed,
+            needles.iter().collect::<Vec<_>>(),
+            "有几根名字针在适配层自己的家里一处都没命中 —— 针拼错了，下面的零命中是空转"
         );
-        assert!(
-            !KIND_DISPATCH_SITES.is_empty(),
-            "登记表空了 —— 要么派发真没了（那 `S3`/`S6` 该更新本条），要么抽取坏了"
+        assert_eq!(
+            hits,
+            Vec::<String>::new(),
+            "\n通用层又按 agent 的名字认人了。\n\
+             ⇒ 这一处问的是哪一种能力？把它做成适配层上的一格（`agents::LaunchFace` 或合适的那一面；\
+             没声明 = 不支持），这里改成问那一格。默认那一家由注册表里声明 `is_default` 的那一家给出。"
         );
+        for bad in [
+            format!("if agent == \"clau{}\" {{}}", "de"),
+            format!("match kind {{ \"cod{}\" => 1, _ => 0 }}", "ex"),
+            format!("const A: &str = \"claude-{}\";", "code"),
+        ] {
+            assert!(
+                needles.iter().any(|n| bad.contains(n.as_str())),
+                "合成的按名分叉没被认出：{bad}"
+            );
+        }
+        for good in [
+            "let m = under_home(&home, \".claude-accts/accounts.json\");",
+            "if face.is_some_and(|f| f.needs_bus_id) {}",
+        ] {
+            assert!(
+                !needles.iter().any(|n| good.contains(n.as_str())),
+                "住址 / 问能力的写法被当成了按名分叉：{good}"
+            );
+        }
     }
 
     /// ③ 反向夹具：喂合成样本，正题的判定必须**认得出违规**、且**认不出合法值判别**。
@@ -626,10 +638,12 @@ mod tests {
              ⚠ `D3` 逐字：agent 维度**只许出现在值里** —— 把它判成违规就是假阳，\n\
              而假阳会训练人绕过判据，比没有判据更坏。"
         );
-        // 值判别归第二条判据管，那条**应该**认得它。
+        // 值判别归第二条判据管（通用层里一处都不许有），那条**应该**认得它。
         assert!(
-            legal.contains(&kind_literal()),
-            "kind 值判别的形状变了，第二条判据的抽取要跟着改"
+            agent_name_literals()
+                .iter()
+                .any(|n| legal.contains(n.as_str())),
+            "kind 值判别的形状变了，第二条判据的针要跟着改"
         );
     }
 
@@ -737,7 +751,7 @@ mod tests {
 
     /// ④通用层直呼适配层的地方，登记表与实得**逐条对齐**（多一处红、少一处也红）。
     ///
-    /// 形态照 [`kind_dispatch_sites_are_enumerated_one_by_one`]：这张表**短了是好事、长了是坏事**。
+    /// 这张表**短了是好事、长了是坏事**。
     ///
     /// ⚠人群里**扣掉注册表文件**（[`AGENT_REGISTRY_SITES`]）——
     /// 那类是「加一个 agent 本来就该改的一行」，性质与本表相反，混进来 `S6` 就没法拿
@@ -968,16 +982,21 @@ mod tests {
             );
         }
 
-        // ── ⑤ 12 种能力**每一种都还卡着**（今天的实情）；一种通了就该红一次 ────
+        // ── ⑤ 每一种能力要么还卡着、要么已经走通，两张表不相交、合起来正好是全部 ────
+        let through: std::collections::BTreeSet<&str> =
+            THROUGH_THE_GENERIC_LAYER.iter().copied().collect();
+        let blocked: std::collections::BTreeSet<&str> = by_cap.keys().copied().collect();
+        assert!(
+            blocked.is_disjoint(&through),
+            "既登记成卡点又登记成走通了：{:?}",
+            blocked.intersection(&through).collect::<Vec<_>>()
+        );
+        let all: std::collections::BTreeSet<&str> = blocked.union(&through).copied().collect();
         assert_eq!(
-            by_cap.len(),
-            known.len(),
-            "\n12 种反推出来的能力里，只有 {} 种登记着卡点。\n实得：{:?}\n\
-             ⚠ 少一种 = 要么那种能力真的收进接口了（恭喜，同轮把它从本表摘掉、\n\
-             并在 `PR` 里把新读数写出来），要么有人漏登记了。\n\
-             ⚠ 多一种 = 能力清单与卡点表漂开了。",
-            by_cap.len(),
-            by_cap.keys().collect::<Vec<_>>()
+            all,
+            known.iter().copied().collect::<std::collections::BTreeSet<&str>>(),
+            "\n卡点（`NEW_AGENT_BLOCKERS`）∪ 走通（`THROUGH_THE_GENERIC_LAYER`）≠ 假 agent 的全部能力。\n\
+             ⚠ 少一种 = 那种能力真的收进接口了（同轮把它挪进走通那张表）或者漏登记了；多一种 = 能力清单与卡点表漂开了。"
         );
     }
 

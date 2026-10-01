@@ -11,28 +11,66 @@ fn repo_root() -> PathBuf {
     crate::guard_support::repo_root()
 }
 
-/// `doc/` 下**递归**收 `.md`。
+/// 本族判据的人群：仓里**跟踪着**的文件（`git ls-files` 口径，仓根相对、正斜杠）。
 ///
-/// 原来用非递归 `read_dir` —— 今天 `doc/` 恰好是平的（11 份、零子目录），
-/// 所以那不是活缺陷；但**新建一个 `doc/design/` 就整目录隐形**，而且不会有任何信号。
+/// 走文件系统的话，工作树里没入库的东西也会被算进来 —— 各路施工在仓根 `.scratch/` 下放的临时脚本与读数、
+/// 没提交的草稿 README；它们里的地址或数字一错，判据就替一份不在仓里的文件红（或替它绿）。
+/// 工作树里删了而索引里还在的那几份也不算（没有正文可读）。
+fn tracked_files() -> Vec<String> {
+    let out = std::process::Command::new("git")
+        .args(["ls-files", "-z"])
+        .current_dir(repo_root())
+        .output()
+        .expect("跑不动 `git ls-files` —— 本族判据的人群口径就是它");
+    assert!(
+        out.status.success(),
+        "`git ls-files` 非零退出：{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let root = repo_root();
+    let v: Vec<String> = String::from_utf8_lossy(&out.stdout)
+        .split('\0')
+        .filter(|rel| !rel.is_empty() && root.join(rel).is_file())
+        .map(str::to_string)
+        .collect();
+    // ★ 自检：清单太短 ⇒ 口径坏了，下面整族会零命中地绿。
+    assert!(
+        v.len() > 300,
+        "`git ls-files` 只列出 {} 个文件 —— 口径坏了（本仓实测上千个）",
+        v.len()
+    );
+    v
+}
+
+/// 跟踪着的、住在 `dir` 下（含子目录；按路径段比，不按字符串前缀）且后缀是 `ext` 的文件。
+fn tracked_under(dir: &str, ext: &str) -> Vec<String> {
+    tracked_files()
+        .into_iter()
+        .filter(|rel| {
+            let p = std::path::Path::new(rel);
+            p.starts_with(dir) && p.extension().is_some_and(|e| e == ext)
+        })
+        .collect()
+}
+
+/// `doc/` 下（含子目录）跟踪着的 `.md`。
 fn doc_files() -> Vec<PathBuf> {
-    let mut v: Vec<PathBuf> = Vec::new();
-    let mut stack = vec![repo_root().join("src/doc")];
-    while let Some(d) = stack.pop() {
-        let Ok(rd) = std::fs::read_dir(&d) else {
-            continue;
-        };
-        for e in rd.flatten() {
-            let p = e.path();
-            if p.is_dir() {
-                stack.push(p);
-            } else if p.extension().is_some_and(|x| x == "md") {
-                v.push(p);
-            }
-        }
-    }
+    let root = repo_root();
+    let mut v: Vec<PathBuf> = tracked_under("src/doc", "md")
+        .into_iter()
+        .map(|rel| root.join(rel))
+        .collect();
     v.sort();
     v
+}
+
+/// 入口 README 的形状：文件名 `README*.md`，且不在依赖 / 构建产物 / 第三方源码目录下。
+fn is_entry_readme(rel: &str) -> bool {
+    const SKIP: &[&str] = &["node_modules", "target", "dist", "vendor", ".git"];
+    let name = rel.rsplit('/').next().unwrap_or(rel);
+    name.starts_with("README")
+        && name.ends_with(".md")
+        && !rel.split('/').any(|seg| SKIP.contains(&seg))
 }
 
 /// 全仓的入口 `README*.md`（**派生，不是手写清单**）。
@@ -45,29 +83,55 @@ fn doc_files() -> Vec<PathBuf> {
 /// 而那张表的锚点全是中文措辞，英文散文一条都对不上）。
 ///
 /// ⇒ 病根与本会话反复量到的同一条：**手写清单描述人群**。
-/// 改成扫出来：仓根往下找 `README*.md`，摘掉 vendor / 依赖 / 构建产物。
+/// 改成从跟踪着的文件里挑出来（[`tracked_files`] · [`is_entry_readme`]）。
 fn entry_readmes() -> Vec<PathBuf> {
-    const SKIP: &[&str] = &["node_modules", "target", "dist", "vendor", ".git"];
-    let mut v: Vec<PathBuf> = Vec::new();
-    let mut stack = vec![repo_root()];
-    while let Some(d) = stack.pop() {
-        let Ok(rd) = std::fs::read_dir(&d) else {
-            continue;
-        };
-        for e in rd.flatten() {
-            let p = e.path();
-            let name = p.file_name().and_then(|s| s.to_str()).unwrap_or("");
-            if p.is_dir() {
-                if !SKIP.contains(&name) {
-                    stack.push(p);
-                }
-            } else if name.starts_with("README") && name.ends_with(".md") {
-                v.push(p);
-            }
-        }
-    }
+    let root = repo_root();
+    let mut v: Vec<PathBuf> = tracked_files()
+        .into_iter()
+        .filter(|rel| is_entry_readme(rel))
+        .map(|rel| root.join(rel))
+        .collect();
     v.sort();
     v
+}
+
+/// 正控：仓根 `.scratch/` 里放一份**会命中**的 README（形状对、里面指着一个不存在的符号与路径），
+/// 本族的人群照旧不含它 —— 判据不受工作树里没入库的东西影响。
+#[test]
+fn an_untracked_scratch_file_never_enters_the_population() {
+    struct Cleanup(PathBuf);
+    impl Drop for Cleanup {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+    let dir = repo_root().join(format!(".scratch/doc-claim-probe-{}", std::process::id()));
+    let _cleanup = Cleanup(dir.clone());
+    std::fs::create_dir_all(&dir).expect("建探针目录");
+    let probe = dir.join("README.md");
+    // 地址运行时拼：写成字面量的话，源码这一侧的地址判据会把本文件当成指错了的那一份。
+    std::fs::write(
+        &probe,
+        format!(
+            "见 `nowhere_probe.{0}::no_such_symbol_probe` 与 `src/no/such/probe.{0}`。\n",
+            "rs"
+        ),
+    )
+    .expect("写探针");
+    let rel = probe
+        .strip_prefix(repo_root())
+        .expect("探针在仓里")
+        .to_string_lossy()
+        .replace('\\', "/");
+    assert!(
+        probe.is_file() && is_entry_readme(&rel),
+        "探针没放成一份入口 README 的形状 —— 下面的「不在人群里」是空转"
+    );
+    assert!(!tracked_files().contains(&rel), "探针被当成了跟踪着的文件");
+    assert!(
+        !entry_readmes().contains(&probe),
+        "仓根 `.scratch/` 里没入库的 README 进了入口 README 的人群"
+    );
 }
 
 /// 一张「表头含状态」的表：`(文件名, 表头行号, 各行 = (件名, 首格原文, 状态格原文))`。
@@ -176,34 +240,23 @@ fn every_status_cell_is_registered() {
     );
 }
 
-/// 生产段里 `.call("launch")` 的处数（**不数测试段、不数本仓的说明文字**）。
+/// 生产段里 `.call("launch")` 的处数（**不数测试段、不数本仓的说明文字**）；人群是壳 `src/` 下跟踪着的 `.rs`。
 fn production_launch_calls() -> usize {
-    let mut n = 0usize;
-    let mut stack = vec![PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src")];
+    let root = repo_root();
     // 运行时拼，免得命中本文件自己。
     let verb = format!(".call(\"{}\"", "launch");
-    while let Some(d) = stack.pop() {
-        let Ok(rd) = std::fs::read_dir(&d) else {
-            continue;
-        };
-        for e in rd.flatten() {
-            let p = e.path();
-            if p.is_dir() {
-                stack.push(p);
-                continue;
-            }
-            if p.extension().and_then(|x| x.to_str()) != Some("rs") {
-                continue;
-            }
-            // `launch_wire.rs` 的头注里逐字写着那个串（F07 立的例外，沿用）。
-            if p.file_name().is_some_and(|s| s == "launch_wire.rs") {
-                continue;
-            }
-            let src = guard_core::production_code(&std::fs::read_to_string(&p).unwrap_or_default());
-            n += src.matches(verb.as_str()).count();
-        }
-    }
-    n
+    tracked_under("src/frontend/shell/src", "rs")
+        .into_iter()
+        // `launch_wire.rs` 的头注里逐字写着那个串（F07 立的例外，沿用）。
+        .filter(|rel| !rel.ends_with("/launch_wire.rs"))
+        .map(|rel| {
+            guard_core::production_code(
+                &std::fs::read_to_string(root.join(&rel)).unwrap_or_default(),
+            )
+            .matches(verb.as_str())
+            .count()
+        })
+        .sum()
 }
 
 /// ★★ **核心手法：判据从文档里读那个数，不自己写一份。**
@@ -1063,24 +1116,8 @@ fn every_repo_path_named_in_the_docs_still_resolves() {
     ];
     const EXTS: &[&str] = &["rs", "ts", "sh", "mjs", "json", "yml", "toml", "md", "py"];
 
-    let tracked: Vec<String> = {
-        let out = std::process::Command::new("git")
-            .args(["ls-files"])
-            .current_dir(repo_root())
-            .output()
-            .expect("跑不动 `git ls-files` —— 本判据的解析口径就是它");
-        assert!(out.status.success(), "`git ls-files` 非零退出");
-        String::from_utf8_lossy(&out.stdout)
-            .lines()
-            .map(|s| s.to_string())
-            .collect()
-    };
-    // ★ 自检 1：文件清单太短 ⇒ 口径坏了，下面会把一切都判成「指不到」。
-    assert!(
-        tracked.len() > 300,
-        "`git ls-files` 只列出 {} 个文件 —— 口径坏了（本仓实测上千个）",
-        tracked.len()
-    );
+    // 解析口径：跟踪着的文件（自检在 [`tracked_files`] 里：清单太短 ⇒ 口径坏了）。
+    let tracked: Vec<String> = tracked_files();
 
     // ── 抽 `doc/` 里反引号包着、**带目录**的路径
     let mut refs: Vec<(String, usize, String)> = Vec::new();
@@ -1943,11 +1980,11 @@ fn every_script_in_the_directory_is_listed_in_its_readme() {
     let dir = repo_root().join("tests/scripts");
     let readme =
         std::fs::read_to_string(dir.join("README.md")).expect("读不到 tests/scripts/README.md");
-    let mut files: Vec<String> = std::fs::read_dir(&dir)
-        .expect("读不到 scripts/")
-        .flatten()
-        .map(|e| e.file_name().to_string_lossy().to_string())
-        .filter(|n| n != "README.md")
+    // 人群：那个目录下跟踪着的文件（直接住在里面的那一层）。
+    let mut files: Vec<String> = tracked_files()
+        .into_iter()
+        .filter_map(|rel| rel.strip_prefix("tests/scripts/").map(str::to_string))
+        .filter(|n| !n.contains('/') && n != "README.md")
         .collect();
     files.sort();
     // ★ 抽取器自检：目录空了或读法坏了 ⇒ 下面会零命中地绿。
@@ -2099,22 +2136,8 @@ fn env_key_claim_lines() -> Vec<(String, usize, String)> {
     const EXTS: &[&str] = &[
         "rs", "ts", "tsx", "sh", "mjs", "json", "yml", "toml", "md", "py",
     ];
-    let out = std::process::Command::new("git")
-        .args(["ls-files"])
-        .current_dir(repo_root())
-        .output()
-        .expect("跑不动 `git ls-files` —— 本组判据的人群口径就是它");
-    assert!(out.status.success(), "`git ls-files` 非零退出");
-    let files: Vec<String> = String::from_utf8_lossy(&out.stdout)
-        .lines()
-        .map(|s| s.to_string())
-        .collect();
-    // ★ 自检：清单太短 ⇒ 口径坏了，下面整组会零命中地绿。
-    assert!(
-        files.len() > 300,
-        "`git ls-files` 只列出 {} 个文件 —— 口径坏了（本仓实测七百多）",
-        files.len()
-    );
+    // 人群：跟踪着的文件（自检在 [`tracked_files`] 里：清单太短 ⇒ 整组会零命中地绿）。
+    let files: Vec<String> = tracked_files();
     let mut hits: Vec<(String, usize, String)> = Vec::new();
     for rel in files {
         let Some(ext) = rel.rsplit('.').next() else {
