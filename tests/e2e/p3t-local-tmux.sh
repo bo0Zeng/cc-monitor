@@ -20,7 +20,9 @@
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(cd "$HERE/../.." && pwd)"
-SOCK=p3tY5
+# shellcheck source=tests/e2e/tmux-shim.sh
+. "$HERE/tmux-shim.sh" --names-only
+SOCK="$(e2e_run_name p3tY5)" || exit 2
 SID=p3te2e01
 TMUXNAME=p3te2e01-cc
 # ★★ launcher 名字**独一无二**，PATH 上不可能有第二个。见下面 ② 的事故记录。
