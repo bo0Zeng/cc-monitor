@@ -21,8 +21,7 @@
  *   各类恰好这些行（`渲染管线` 只有 `this.view.ingest` 一行 —— 管线内部的 sink 不在 `10 §2.2` 那张表的射程里，见「买不到」）。
  * - 正控：同一个抽取器对一段内嵌样本抽得出 `noteAgents(tab, payload.message)` 与经别名的 `f(m)`，抽不出 `g(tab)`。
  *
- * **L2 · 五个事实字段只有登记的写者**（`agents` · `agentsAborted` · `touchedFiles` · `latestPromptTokens` · `latestModel` ·
- * `forkedFromSessionId`）
+ * **L2 · 四个事实字段只有登记的写者**（`touchedFiles` · `latestPromptTokens` · `latestModel` · `forkedFromSessionId`）
  * - 人群：`src/**\/*.ts` 生产段里对这几个名字的**写**（`x.<名> = …` 的左边 · `x.<名>.set / add / delete / clear(…)`），
  *   按 `(文件, 所在声明)` 归并 == 登记表（两向）。L1 只看 `onLine` 自己的方法体；L2 管的是「记账员换个地方长回来」
  *   （例如塞进渲染管线的某个回调里）—— 那样它必然要写这几个字段，就会在这里多出一行。
