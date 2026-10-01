@@ -57,6 +57,18 @@ e2e_run_name() {
   printf '%s%s' "$fam" "$$"
 }
 
+# 本趟那台私有 tmux server 的 socket 文件（tmux 停了 server 不删它；名字一趟一个，不删就一趟留一个）。
+e2e_tmux_socket_file() { # $1 = 本趟的私有名
+  printf '%s/tmux-%s/%s' "${TMUX_TMPDIR:-/tmp}" "$(id -u)" "$1"
+}
+
+# 收掉本趟那台私有 tmux server，连同它的 socket 文件（只按自己的名字）。给自带 shim 的套件用。
+e2e_tmux_reap() { # $1 = 真 tmux  $2 = 本趟的私有名
+  [ -n "${1:-}" ] && [ -n "${2:-}" ] || return 0
+  "$1" -L "$2" kill-server 2>/dev/null
+  rm -f -- "$(e2e_tmux_socket_file "$2")"
+}
+
 # 从 stdin 读一列名字，印出**本棵树**、给定前缀下、主人那条进程已经不在的那些（崩掉的上一趟留下的）。
 # 活着的那趟（同树并发）与别棵树的一概不印 —— 给台架的 `--clean` 用。
 e2e_dead_runs() {
@@ -134,5 +146,6 @@ fi
 tmux_shim_cleanup() {
   set +e
   [ -n "${TMUX_SHIM_REAL:-}" ] && "$TMUX_SHIM_REAL" -L "$TMUX_SHIM_SOCK" kill-server 2>/dev/null
+  [ -n "${TMUX_SHIM_SOCK:-}" ] && rm -f -- "$(e2e_tmux_socket_file "$TMUX_SHIM_SOCK")"
   [ -n "${TMUX_SHIM_BIN:-}" ] && rm -rf -- "$TMUX_SHIM_BIN"
 }

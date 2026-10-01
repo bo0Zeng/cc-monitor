@@ -67,7 +67,7 @@ fi
 # 收尾：只收自己那台（`-L` 选择器在，绝不裸 `kill-server`）。
 _gc_sock_cleanup() {
   set +e
-  [ -n "${_GC_REAL_TMUX:-}" ] && "$_GC_REAL_TMUX" -L "$_GC_SOCK" kill-server 2>/dev/null
+  [ -n "${_GC_REAL_TMUX:-}" ] && e2e_tmux_reap "$_GC_REAL_TMUX" "$_GC_SOCK"
   [ -n "${_GC_BIN:-}" ] && rm -rf -- "$_GC_BIN"
 }
 # ─────────────────────────────────────────────────────────────────────────────

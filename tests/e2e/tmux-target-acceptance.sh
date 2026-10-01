@@ -25,7 +25,7 @@ printf '#!/bin/sh\nexec %s -L %s "$@"\n' "$TMUX_BIN" "$SOCK" > "$SHIM/tmux"
 chmod +x "$SHIM/tmux"
 export PATH="$SHIM:$PATH"
 # 收尾只收自己这一趟那台（中途退出也收，别留一台孤儿 server）。
-trap '"$TMUX_BIN" -L "$SOCK" kill-server 2>/dev/null; rm -rf "$SP"' EXIT
+trap 'e2e_tmux_reap "$TMUX_BIN" "$SOCK"; rm -rf "$SP"' EXIT
 
 CMD() { grep -P "^$1\t" "$SP/f01-cmds.tsv" | cut -f2-; }
 T() { "$TMUX_BIN" -L "$SOCK" "$@"; }
