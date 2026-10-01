@@ -8,3 +8,7 @@ description = "源码扫描型守卫共用的「只留生产段」剥法——mo
 # **零依赖**。同 branch-core / usage-core / acct-core 的约束：backend 是 Linux-only 的静态
 # musl 二进制、且刻意不在 monitor 的 workspace 里；一旦引入平台相关的东西，共享就破了。
 [dependencies]
+
+# 只在测试期链接（不进任何发布二进制）：「仓里不引用仓外的开发文档」那张检测网用它。
+[dev-dependencies]
+regex = "1"

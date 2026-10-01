@@ -6,7 +6,7 @@
 //! ① `pidfd_open` + 身份复核 + `poll(2)` + 起线程（**平台**）；
 //! ② 醒了往哪个 channel 发哪一种 `WatchEvent`（**observe 的域知识**）。
 //!
-//! 主计划把回边判成了 `session_alive`（「`spawn_pid_watcher:228` 调它」），
+//! 把回边判成了 `session_alive`（「`spawn_pid_watcher:228` 调它」），
 //! **那条判断偏了一个函数** —— `session_alive` = `pid_alive` + `proc_starttime` +
 //! `is_same_live_process`，三者分别是平台原语、平台原语、纯函数，整条都在 platform 域内。
 //! 真正的回边是 `spawn_pid_watcher` 自己依赖 `PidWatchTarget` / `WatchEvent` 这两个
@@ -62,13 +62,13 @@
 
 //! ---
 //!
-//! # 〔WN1 · 09-24〕第三份文件：`win32`（U4b 后半）
+//! # 第三份文件：`win32`（U4b 后半）
 //!
 //! Windows 那一格从 `fallback` 里拿出来了：`win32.rs` 是真实现（开带 `SYNCHRONIZE` 的进程句柄 ＋
 //! 不带超时地等），Win32 读法本身住 `platform/win_proc.rs`。它与 `linux` 逐形对拍（三条判死 ＋
 //! 一条不判死 ＋ Windows 独有的「拒绝访问 ⇒ 不判死」），对拍判据住
 //! `tests/backend/platform/pidwatch_windows_shape_tests.rs`。`fallback` 今天只剩**没有承诺的平台**
-//! （macOS 等，`01 §7` 表 B），仍是那个诚实的空壳。
+//! （macOS 等），仍是那个诚实的空壳。
 //! 🚫 Windows 那一份**只买到编得过 ＋ 源码对拍**；真机零读数（本路不碰 Win11 虚拟机）。
 
 use copy_core::copy_text;
@@ -82,7 +82,7 @@ mod win32;
 
 #[cfg(target_os = "linux")]
 pub(crate) use linux::watch_pid_until_exit;
-// `pidfd_open`：`watcher.rs` 的测试段 ＋〔STOP〕`platform/signal.rs::stoppable`（一次性子命令 `--resident-stop` 的进程把手）。
+// `pidfd_open`：`watcher.rs` 的测试段 ＋`platform/signal.rs::stoppable`（一次性子命令 `--resident-stop` 的进程把手）。
 #[cfg(not(any(target_os = "linux", windows)))]
 pub(crate) use fallback::watch_pid_until_exit;
 #[cfg(target_os = "linux")]
@@ -130,7 +130,7 @@ pub(crate) const fn death_events_available() -> bool {
     true
 }
 
-/// Windows〔WN1 · U4b 后半〕：**有**那条腿 —— 进程句柄 ＋ 不带超时的等待（`win32.rs`）。
+/// Windows：**有**那条腿 —— 进程句柄 ＋ 不带超时的等待（`win32.rs`）。
 ///
 /// ⚠ 值**不在这里写字面量**，读的是 `win32.rs` 紧挨着那份实现的声明：
 /// `fallback_guard` 把「非主分支的块里出现裸 `true`」一律判成伪造成功 —— 这条纪律是对的，
@@ -174,7 +174,7 @@ pub(crate) fn self_healing_caveat() -> Option<&'static str> {
     }
 }
 
-/// ★ 一条**只在「没有那条腿」的平台上编译时存在**的编译期断言〔WN1：从「非 Linux」收窄 —— Windows 有腿了〕。
+/// ★ 一条**只在「没有那条腿」的平台上编译时存在**的编译期断言〔从「非 Linux」收窄 —— Windows 有腿了〕。
 ///
 /// 🔴 **它在本仓门禁上给不出任何读数** —— 本机是 Linux，这个 item 在这儿编译期就不存在。
 /// 它开口的时刻是任何一次非 Linux 编译（backend「必须在 Windows 上编得过」那条纪律见
@@ -189,8 +189,8 @@ const _: () = assert!(
      而下游会拿它当「这台机上崩了会有人管」。"
 );
 
-/// 〔audit-0805 08-06〕**非 Linux 那份空壳的两条承诺，只能靠源码级守卫钉。**
-/// 〔WN1 · 09-24〕那份空壳今天只管「既不是 Linux 也不是 Windows」的平台；两条承诺不变。
+/// **非 Linux 那份空壳的两条承诺，只能靠源码级守卫钉。**
+/// 那份空壳今天只管「既不是 Linux 也不是 Windows」的平台；两条承诺不变。
 ///
 /// `fallback.rs` 是 `#[cfg(not(any(target_os = "linux", windows)))]` ⇒ **本机（Linux）根本不编译**，
 /// 往里写一个不存在的标识符都不会报错（本区诚实边界 3y 记的就是这一族）。
@@ -216,7 +216,7 @@ const _: () = assert!(
 #[path = "../../../../tests/backend/platform/pidwatch_fallback_shape_tests.rs"]
 mod fallback_shape_tests;
 
-/// 〔`K-P3` `KP3D`〕**「这个平台上有没有自愈」这件事说得出口。**
+/// **「这个平台上有没有自愈」这件事说得出口。**
 ///
 /// # 三条各证一半，缺一条都不成立
 ///
@@ -230,12 +230,12 @@ mod fallback_shape_tests;
 /// 「**那一支写在源码里**」，**证不了** Windows 上编出来的二进制真走了那一支。
 /// 后者的落点是同文件那条 `#[cfg(not(any(target_os = "linux", windows)))] const _`，
 /// 它**在本仓门禁上给不出任何读数**，开口的时刻是任何一次既非 Linux 也非 Windows 的编译
-/// 〔WN1：从「非 Linux」收窄 —— Windows 那一格今天是「有」，由 `winchk-backend` 编那一臂〕。
+/// 〔从「非 Linux」收窄 —— Windows 那一格今天是「有」，由 `winchk-backend` 编那一臂〕。
 #[cfg(test)]
 #[path = "../../../../tests/backend/platform/pidwatch_death_event_leg_tests.rs"]
 mod death_event_leg_tests;
 
-/// 〔WN1 · U4b 后半〕**Windows 那一份与 Linux 那一份逐形对拍**（把源码当数据读 —— 本机编不到它）。
+/// **Windows 那一份与 Linux 那一份逐形对拍**（把源码当数据读 —— 本机编不到它）。
 #[cfg(test)]
 #[path = "../../../../tests/backend/platform/pidwatch_windows_shape_tests.rs"]
 mod windows_shape_tests;

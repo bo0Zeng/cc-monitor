@@ -4,7 +4,7 @@
 // 重写一份(那样测的是复制品、不是被测代码)。#75(CLAUDE_CONFIG_DIR 注入) / #76(复用 cc-<sid8>
 // 名不产 -N 孤儿) 的修复都活在生产那条链上,套件据本驱动器的 stdout 断言并真跑到 tmux。
 //
-// 〔LR2〕命令串的三个 mode 改走**生产那条链**（`launch-render-driver.ts`：生产 `plan*` →
+// 命令串的三个 mode 改走**生产那条链**（`launch-render-driver.ts`：生产 `plan*` →
 // 生产 `buildLaunchRenderRequest` → 生产 Rust `render_launch_payload`）。此前 import 的是
 // `remote-launch.ts` 那五个 builder —— 步 22b·B 之后它们零生产调用，本驱动器从那天起验的是副本。
 //
@@ -12,7 +12,7 @@
 //   into-existing <sid> <name> <launcher> [configDir]   -> planResumeIntoExistingTmux → 生产渲染
 //   tmux-new      <sid> <cwd> <launcher> <name> [configDir] -> planResumeTmux → 生产渲染
 //   direct        <sid> <cwd> <launcher> [configDir]      -> planResumeDirect → 生产渲染
-//   （〔FIX4 · J7〕`mint-name` 那个 mode 删了：tmux 名的派生 ＋ 避让只在后端 `tmux-name-mint`，前端那份铸名口没了）
+//   （`mint-name` 那个 mode 删了：tmux 名的派生 ＋ 避让只在后端 `tmux-name-mint`，前端那份铸名口没了）
 //   follow        <lastAccount|-> <current|-> <stateJson> -> resolveFollowAccount(名或 "<base>")
 //   acct-dir      <name> <stateJson>                      -> accountConfigDir(路径或 "<none>")
 //

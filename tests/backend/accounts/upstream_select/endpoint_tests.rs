@@ -1,13 +1,13 @@
-//! 〔US1 · 第四波 4D〕`accounts/upstream_select/endpoint.rs` 的判据 —— 「这个号这一发走哪、注入什么」的成品。
+//! `accounts/upstream_select/endpoint.rs` 的判据 —— 「这个号这一发走哪、注入什么」的成品。
 //!
-//! 守的要求：`设计/20 §3.2`「monitor 侧：注入什么」那张表（本路按 `设计/05 §14.3` B 组与题面搬进后端，一行不改）·
+//! 守的要求：「monitor 侧：注入什么」那张表（本路按与题面搬进后端，一行不改）·
 //! 主会话 4D 裁 RT1 F5「不带账号的本机会话在全量注入下 ⇒ 走 `/t/<agent>/…` 直通」。
 //!
 //! # 买到的
 //!
 //! - E1 决策表：每一格 × 账号三态 × 开关 × 登记与否 == 手写期望（期望不由 `decide_launch` 现算）。
 //! - E11 F5：没表态 ⇒ `/t/…/_/…`；与 `_` 同名的行 ⇒ 不注入。
-//! - 线上形状：两条应答的键集恒定（注入与不注入同一组键）；入参闸（缺字段 · 坏 `account`）。〔V141〕入参没有 `key`。
+//! - 线上形状：两条应答的键集恒定（注入与不注入同一组键）；入参闸（缺字段 · 坏 `account`）。入参没有 `key`。
 //! - `listening` 只在要注入时才探（不注入就一次都不连）。
 //!
 //! # 买不到的
@@ -149,7 +149,7 @@ fn us1_the_launch_table_matches_the_hand_written_one() {
     );
 }
 
-/// 〔MIG-2 · `99 §2.1 ⑬`〕成品：不注入 ⇒ `{baseUrl:null}`；注入且在听 ⇒ 那个地址；注入而没在听 ⇒ 按「非它不可 / 有它更好」
+/// 成品：不注入 ⇒ `{baseUrl:null}`；注入且在听 ⇒ 那个地址；注入而没在听 ⇒ 按「非它不可 / 有它更好」
 /// 拒（`relay_down`）或直连（`null`）。只在要注入时才探中转。原先四格（`listening` / `whenDown` / `account`）交 monitor 再判，那一判收进这里。
 #[test]
 fn us1_the_launch_answer_is_the_product_and_probes_only_when_injecting() {
@@ -263,7 +263,7 @@ fn us1_the_routing_answer_is_the_routed_dirs_and_the_probe() {
 /// ★★ 跨语言金样：三条成品（`apikey-read` · `apikey-routing` · `launch-endpoint`）对同一份夹具 ==
 /// `tests/__fixtures__/apikey.golden.json`（夹具根替换成 `<root>`）。另一个读者是 TS 解码器（`tests/frontend/ui/apikey-reads.vitest.ts`）
 /// ⇒ 两侧异源：后端改一个键名本条红，TS 解码器改一个键名那边红。金样手写落盘（本条红时印出现打的成品，人读过再改）。
-/// 守的要求：`设计/05 §14.3`「线上形状由一份跨语言金样钉住（后端测试产出 == 金样 · TS 解码器读同一份）」。
+/// 守的要求：「线上形状由一份跨语言金样钉住（后端测试产出 == 金样 · TS 解码器读同一份）」。
 #[test]
 fn us1_the_apikey_products_match_the_cross_language_golden() {
     let root = std::env::temp_dir().join(format!("ccm-us1-golden-{}", std::process::id()));

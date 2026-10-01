@@ -61,7 +61,7 @@ vi.mock("../../../../src/frontend/ui/settings/diagnostics-section", () => ({
     element = document.createElement("div");
   },
 }));
-// 〔AL1c · 4B〕`cc_integration.ts` 并进了 `machine-aliases.ts`（终端集成成了「别名」那一块 PowerShell 那一侧），它的替身随之删掉。
+// `cc_integration.ts` 并进了 `machine-aliases.ts`（终端集成成了「别名」那一块 PowerShell 那一侧），它的替身随之删掉。
 vi.mock("../../../../src/frontend/ui/settings/ext-section", () => ({
   ExtSection: class {
     element = document.createElement("div");
@@ -143,7 +143,7 @@ import { copyText } from "../../../../src/frontend/ui/copy-table";
 import { beforeEach, afterEach } from "vitest";
 
 // S9：jsdom 的 UA 含 `linux`。从前非 Windows 上「终端集成」那块**根本不构造**，钉成 windows 为的是守完整那组；
-// 〔AL1c〕那块并进了「别名」、两个平台都构造 ⇒ 这一钉只是沿用本文件一直以来的 Windows 形态。
+// 那块并进了「别名」、两个平台都构造 ⇒ 这一钉只是沿用本文件一直以来的 Windows 形态。
 beforeEach(() => __setHostOsForTests("windows"));
 afterEach(() => __setHostOsForTests(null));
 
@@ -185,7 +185,7 @@ describe("T07 分区块隔离（真行为）", () => {
     // S2 后判据从「四个折叠组」换成「四页都在」：折叠组只剩两个（外观 / 日志与数据），
     // 而「一块坏不影响其余」这条性质现在体现在**页面结构完整**上。
     const pages = [...document.querySelectorAll(".settings-page")];
-    // S6 后顶层是 3 页（cc-bus 已移出设置）；〔ST2〕「改动足迹」并进机器页、「应用」下挂三个子页
+    // S6 后顶层是 3 页（cc-bus 已移出设置）；「改动足迹」并进机器页、「应用」下挂三个子页
     // ⇒ 应用 ＋ 外观 / 日志 / 数据位置 ＋ 机器 = 5 页；顶层多一页「扩展」⇒ 6 页。
     expect(pages.length, "六页都该在").toBe(6);
     expect(
@@ -195,7 +195,7 @@ describe("T07 分区块隔离（真行为）", () => {
   });
 
   it("🔴 步 3：RemoteSection 真挂了 ⇒ 兜底态**亮出来**，那几块都还能用", async () => {
-    // `设计/70 §1.3 C`：兜底态只在**真失败**时出现。这条钉的是「真失败」那一半 ——
+    // 兜底态只在**真失败**时出现。这条钉的是「真失败」那一半 ——
     // 加载中那一半（不许提前露脸）由 `panel-groups.vitest.ts` 两条钉。
     // 两条合起来才是一个判别式；只有其中一条时，「永远藏着」和「永远露着」各能蒙混一条。
     boom.remote = true;
@@ -213,7 +213,7 @@ describe("T07 分区块隔离（真行为）", () => {
     expect(hint!.textContent).toBe(copyText("settingsPanel.fallback.body", { why: copyText("settingsPanel.machines.buildFailed") }));
     // 「都还能用」——账号那块的真身还在 DOM 里，不是被兜底提示替掉了。
     expect(document.querySelector(".accounts-section-stub")).not.toBeNull();
-    // 〔ST2 · 步 14〕后端那几行本该挂在机器列表的行上 —— 列表没建起来 ⇒ 它们也退回列表页，不许无处安放。
+    // 后端那几行本该挂在机器列表的行上 —— 列表没建起来 ⇒ 它们也退回列表页，不许无处安放。
     for (let i = 0; i < 3; i++) await new Promise((r) => setTimeout(r, 0));
     const backendRows = page.querySelector<HTMLElement>(".backend-section");
     expect(backendRows, "机器列表挂了，后端那几行跟着从界面上消失了").not.toBeNull();

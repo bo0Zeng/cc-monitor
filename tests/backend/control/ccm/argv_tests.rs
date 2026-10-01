@@ -1,18 +1,18 @@
-//! # 要求住址：`设计/71 §2.2`（ccm argv 的组合规则一条都不许静默忽略）＋ `设计/01 §5 D1` / `D2`
+//! # （ccm argv 的组合规则一条都不许静默忽略）＋ / `D2`
 //!
-//! 核原文：`设计/71 §2.2` 逐字「后端的纪律是「一条都不许静默忽略」（`control/ccm/argv.rs`）」，同节 V1–V3 三种互斥 / 依赖组合
+//! 核原文：「后端的纪律是「一条都不许静默忽略」（`control/ccm/argv.rs`）」，同节 V1–V3 三种互斥 / 依赖组合
 //! 就是 `the_combination_rules_all_fail_loudly` 逐条断言的那几种。`the_ccm_argv_is_parsed_in_exactly_one_place` 对 `D1`「一个判定只有一个家」；
 //! `every_default_lives_only_in_the_defaults_block` 对 `D2`「一个数只有一个住址」。〔JA1 点址 2026-09-24〕
 
 use super::*;
 
-/// 〔V151〕本文件的夹具沿用 V138 写法（ccm 选项在前）⇒ 喂解析器之前换成 V151 排列（意图逐词不变）；
+/// 本文件的夹具沿用 V138 写法（ccm 选项在前）⇒ 喂解析器之前换成 V151 排列（意图逐词不变）；
 /// V151 自己的切法由 `v151_*` 那几条直接喂原文判。
 fn parse(a: &[String]) -> Result<Parsed, Die> {
     super::parse(&v138_to_v151(a))
 }
 
-/// 〔V151 · 只给测试〕把 V138 那一形（ccm 选项与交给 agent 的词混写、`--` 之后全交 agent）改写成 V151 那一形
+/// 〔只给测试〕把 V138 那一形（ccm 选项与交给 agent 的词混写、`--` 之后全交 agent）改写成 V151 那一形
 /// （`<交给 agent 的…> -- <ccm 的…>`）。给沿用旧写法写夹具的那几份单测用 —— 意图逐词不变，只换排列。
 pub(crate) fn v138_to_v151(old: &[String]) -> Vec<String> {
     const WITH_VALUE: [&str; 10] = [
@@ -86,7 +86,7 @@ fn err(a: &[&str]) -> String {
     }
 }
 
-/// 〔V138〕ccm 只看不吃 `--resume` / `--continue`：几种写法都原样进透传、顺序不变（从前三种写法落成 ccm 的 resume 动作）。
+/// ccm 只看不吃 `--resume` / `--continue`：几种写法都原样进透传、顺序不变（从前三种写法落成 ccm 的 resume 动作）。
 #[test]
 fn the_ways_to_say_resume_all_reach_claude_untouched() {
     for a in [
@@ -120,7 +120,7 @@ fn the_ways_to_say_resume_all_reach_claude_untouched() {
     );
 }
 
-/// 〔V138〕`--attach <名>` 取值时不许把下一个旗标吞成名字（从前位置动作 `attach <名>` 那一条的同形）。
+/// `--attach <名>` 取值时不许把下一个旗标吞成名字（从前位置动作 `attach <名>` 那一条的同形）。
 #[test]
 fn the_attach_option_never_swallows_the_next_flag_as_its_value() {
     assert!(err(&["--attach", "--ccm-tmux"]).contains("--attach"));
@@ -154,7 +154,7 @@ fn the_combination_rules_all_fail_loudly() {
         ok(&["--tmux", "--agent", "x"]).passthru,
         v(&["--tmux", "--agent", "x"])
     );
-    // 〔V151〕首词 `new` 不再是 ccm 的位置动作：没有 `--` 的词一律原样交 claude。
+    // 首词 `new` 不再是 ccm 的位置动作：没有 `--` 的词一律原样交 claude。
     assert_eq!(ok(&["new", "--ccm-tmux"]).passthru, v(&["new"]));
     assert_eq!(ok(&["-p", "new"]).passthru, v(&["-p", "new"]));
     assert_eq!(ok(&["attach", "abc"]).passthru, v(&["attach", "abc"]));
@@ -235,15 +235,15 @@ fn the_ccm_argv_is_parsed_in_exactly_one_place() {
     );
 }
 
-/// 〔DUP1 · `INVARIANTS §47` ①〕`--ccm-sid` 是标识符：进容器路那条 shell 串之前先过
-/// `shell_quote_core::session_id_ok`（全仓唯一一份，`设计/01 §5` D1）——**正反各一格**（§47「拒过头也算违反」）。
+/// 〔`INVARIANTS §47` ①〕`--ccm-sid` 是标识符：进容器路那条 shell 串之前先过
+/// `shell_quote_core::session_id_ok`（全仓唯一一份）——**正反各一格**（§47「拒过头也算违反」）。
 /// 要求住址：`INVARIANTS §47` ①「字符集白名单（闭集，默认拒）＋ 不许 `-` 开头（选项注入）＋ 有长度上界的就钉上界」。
-/// 〔V138〕`--resume <sid>` / `--model` 不再是 ccm 的，它们的值交给 claude 自己判（直路不过 shell，容器路走唯一的 quote）。
+/// `--resume <sid>` / `--model` 不再是 ccm 的，它们的值交给 claude 自己判（直路不过 shell，容器路走唯一的 quote）。
 #[test]
 fn a_session_id_is_judged_before_it_goes_anywhere() {
     let uuid = "0473c3a0-1111-2222-3333-444455556666";
     assert_eq!(ok(&["--ccm-sid", uuid]).ccm_sid, uuid);
-    // 〔COPY-R〕拒的那一句按文案键断言（`设计/91 §6`），不钉原文。
+    // 拒的那一句按文案键断言，不钉原文。
     let refused = |sid: &str| {
         copy_text(
             "beArgv.validate.badCcmSid",
@@ -258,7 +258,7 @@ fn a_session_id_is_judged_before_it_goes_anywhere() {
     assert_eq!(err(&["--ccm-sid", &long]), refused(&long));
 }
 
-/// 〔DUP1 · `INVARIANTS §47` ①〕`--account`：与建账号的那个工具逐字同的那一份判（`shell_quote_core::account_name_ok`），**正反各一格**。
+/// 〔`INVARIANTS §47` ①〕`--account`：与建账号的那个工具逐字同的那一份判（`shell_quote_core::account_name_ok`），**正反各一格**。
 #[test]
 fn an_account_name_is_judged_before_it_goes_anywhere() {
     assert_eq!(ok(&["--account", "work"]).account, "work");
@@ -268,7 +268,7 @@ fn an_account_name_is_judged_before_it_goes_anywhere() {
     }
 }
 
-/// 〔V153 · 用户 09-27〕要求住址：`99 §1` V153「`new` 是 ccm 自己的词，写在 `--` 右边 —— `ccm [claude 的] -- new [ccm 选项]`；
+/// 〔用户 09-27〕要求：「`new` 是 ccm 自己的词，写在 `--` 右边 —— `ccm [claude 的] -- new [ccm 选项]`；
 /// `ccm new` 照 V151 整行交 claude，不开例外」。直接喂 V151 原文（不经本文件的换排列）。
 #[test]
 fn new_is_ccms_word_only_as_the_first_word_right_of_the_end() {

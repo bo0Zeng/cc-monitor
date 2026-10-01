@@ -69,11 +69,11 @@ cc-monitor 是 Claude Code 会话的**观察者和启动器**：`claude` 跑在�
 - **冷读也问那台后端**：历史清单、整页正文、按偏移读、按行号读、子 agent、全文搜索都是帧命令（`history-*`）。记录解释（一行 jsonl → 渲染模型）只在后端 `agents/claudecode/`，界面按形状收成品；多台的搜索结果由本机后端合并排序。
 - **Task 面板**：那台后端盯 `<agent 家>/tasks/`，一批事件按 sid 去重发 `tasks_changed`，界面订 `session-tasks`，收到就重问 `tasks-list`。
 
-### 1.3 每条线的真相源
+### 1.3 每条线的源头
 
-按「真相源是谁」切，是不会切错的那种切法：
+按「源头是谁」切，是不会切错的那种切法：
 
-| 线 | 真相源 |
+| 线 | 源头 |
 |---|---|
 | 会话内容 · 历史 | `<claude_dir>/projects/**/*.jsonl`（冷读与实时读同一份） |
 | 判活 | `<claude_dir>/sessions/<PID>.json` ＋ tmux 会话上的 `@ccm_sid` |

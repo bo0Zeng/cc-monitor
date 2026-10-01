@@ -14,7 +14,7 @@
 //! 错误归因一定会漂）与「没人认领的子进程」。
 //!
 //! ⚠ 条 44 是 2026-09-22 才有的（`P20` 现打之后用户拍板升格）；
-//! 在那之前本表点不到任何要求。逐条依据住 `设计/99 §4.10.3`。
+//! 在那之前本表点不到任何要求。逐条依据住。
 //!
 use std::path::{Path, PathBuf};
 
@@ -34,14 +34,14 @@ enum Origin {
 /// `(文件, 函数, 来历, 说法)`。**默认拒绝**：人群从源码派生，没登记的当场红。
 const EXEC_SITES: &[(&str, &str, Origin, &str)] = &[
     // ── 整条命令是常量/无插值字面量
-    // 〔SH1 · V136〕`cc_bus.rs / fetch_remote_cc_bus`（`CC_BUS_CAT_CMD`）出去了：驾驶舱读名册改走后端 `bus-state`。
-    // 〔SH1〕`hooks_diag.rs / diagnose_remote_cc_bus_hooks` 出去了：事实改问那台后端（`footprint-probe` ＋ `files-peek`）。
-    // 〔SH1 · V137〕`mcp.rs / fetch_remote_claude_json` 出去了：MCP 列表改问那台后端 `mcp-read`。
-    // 〔E2〕`ccm_probe.rs / probe_ccm_cli` 出去了：远端 `ccm` 会哪些改问那台后端 `ccm-probe`（`CCM_PROBE_CMD` 只剩本机那一跳）。〔散文墓碑〕
-    // 〔DP1 · 第四波〕`sftp.rs` 里只问 `uname -m` 的那一处走了：部署前问机器改问 `uname -s -m`（`byte_table::probe_key`），
+    // `cc_bus.rs / fetch_remote_cc_bus`（`CC_BUS_CAT_CMD`）出去了：驾驶舱读名册改走后端 `bus-state`。
+    // `hooks_diag.rs / diagnose_remote_cc_bus_hooks` 出去了：事实改问那台后端（`footprint-probe` ＋ `files-peek`）。
+    // `mcp.rs / fetch_remote_claude_json` 出去了：MCP 列表改问那台后端 `mcp-read`。
+    // `ccm_probe.rs / probe_ccm_cli` 出去了：远端 `ccm` 会哪些改问那台后端 `ccm-probe`（`CCM_PROBE_CMD` 只剩本机那一跳）。〔散文墓碑〕
+    // `sftp.rs` 里只问 `uname -m` 的那一处走了：部署前问机器改问 `uname -s -m`（`byte_table::probe_key`），
     //   走的是 `connect_and_exec_capture`（收全、有上限、带退出码）⇒ 不在本表人群（本表只数 `connect_and_exec_cmd(`）。
     // ── 受控构造器（构造器自己带校验/引用，各有行为判据）
-    // 〔MIG-3b 续 · ⑬〕公钥推送那一行出去了：读 `.pub` · 组请求 · 一次 exec 都进了本机后端（`pubkey-push`，`src/backend/assets/pubkey.rs`）。
+    // 公钥推送那一行出去了：读 `.pub` · 组请求 · 一次 exec 都进了本机后端（`pubkey-push`，`src/backend/assets/pubkey.rs`）。
     // 🔴 **`K-R112`（09-13）：这里原来有两行，两行都出去了** ——
     //    `cc_bus.rs / check_cc_bus_agent_online`（`Builder("build_online_cmd")`）与
     //    `tmux.rs / capture_remote_pane`（`Builder("build_capture_pane_cmd")`）。
@@ -50,7 +50,7 @@ const EXEC_SITES: &[(&str, &str, Origin, &str)] = &[
     //    ⇒ 它们不再是「远端执行点」，两个构造器也随之整块删。
     //    留着它们，上面那条反向锚点（「申报了一处已经不存在的执行点」）会当场逮住 ——
     //    而且这一次连 `Builder` 那一支的机检也会红（构造器函数不存在了）。
-    //    ⚠ **`Builder` 这一类〔MIG-3b 续〕今天零个样本**（最后那个公钥推送进了本机后端）：下面那条常驻自检
+    //    ⚠ **`Builder` 这一类今天零个样本**（最后那个公钥推送进了本机后端）：下面那条常驻自检
     //    只查 `PassThrough` 那一支还有活样本；`Builder` 收敛到 0 那天自检已一起改（归零一类 ⇒ 断言它恒零）。
     // ⚠ `K-R72`（09-12）：`kill_remote_tmux` / `tmux_send_keys` **从本表出去了** ——
     //    它们那两条一次性 SSH 回落删了，今天只走后端通道 ⇒ 不再是「远端执行点」。
@@ -61,21 +61,21 @@ const EXEC_SITES: &[(&str, &str, Origin, &str)] = &[
     //    整条没了（编排改走后端帧面）⇒ 它不再是一个「远端执行点」。
     //    留着它，上面那条反向锚点（「申报了一处已经不存在的执行点」）会当场逮住。
     // ── 本函数里拼，但自由文本过了 shell_quote
-    // 🔴 〔`C1` · 2026-09-24〕**这里原来还有两行，两行都出去了**：
+    // 🔴 **这里原来还有两行，两行都出去了**：
     //    `remote_history.rs / stream_read_remote_session`（`--read-session`）与
     //    `ssh_source.rs / fetch_snapshot`（`--read-session-tail`）。形状与理由同上面
     //    `K-R72` / `K-R104` / `K-R112` 那几笔：那两处的一次性 SSH exec 整条没了
     //    （改走长连接的 `history-read` / `history-tail`，`frame_query`）
     //    ⇒ 它们不再是「远端执行点」。
-    // 🔴 〔C4d · 第四波 4B〕**逐次拨号那一行也出去了**（`remote_history.rs` 的 `run_list_query`〔散文墓碑〕）：
+    // 🔴 **逐次拨号那一行也出去了**（`remote_history.rs` 的 `run_list_query`〔散文墓碑〕）：
     //    它的放行表 C4c 起是空的，主会话 09-25 裁删 —— 同上面几笔的形状（那条一次性 SSH exec 整条没了）。
-    // 〔DEL〕`ssh_source.rs` 起远端流模式那一处出去了：那一形删了（远端只剩常驻，`remote_resident::attach`）。
-    // 〔SH1〕`tmux.rs / list_remote_tmux` 出去了：列会话改问那台后端 `tmux-list`。
+    // `ssh_source.rs` 起远端流模式那一处出去了：那一形删了（远端只剩常驻，`remote_resident::attach`）。
+    // `tmux.rs / list_remote_tmux` 出去了：列会话改问那台后端 `tmux-list`。
     // ── 只转发，不构造（命令来自调用方）
-    // 〔MIG-3b 续 · V41〕`ssh_source.rs` 那一行（原语自己的定义）出去了：最后一个调用方（公钥推送）进了本机后端，原语随之删了
+    // `ssh_source.rs` 那一行（原语自己的定义）出去了：最后一个调用方（公钥推送）进了本机后端，原语随之删了
     //   ⇒ 本表空了，下面那条判据改成「零处」（带正控）。
-    // 〔SH1 · V136〕`cc_bus.rs / exec_read` 出去了：读收件箱改走后端 `bus-inbox`。
-    // 〔MIG-3a · 09-28 裁 2〕`acct_iso_deploy.rs / exec_collect` 出去了：跑安装脚本 · 核 PATH 两步换成那台后端的 `acct-iso-install`。
+    // `cc_bus.rs / exec_read` 出去了：读收件箱改走后端 `bus-inbox`。
+    // 〔09-28 裁 2〕`acct_iso_deploy.rs / exec_collect` 出去了：跑安装脚本 · 核 PATH 两步换成那台后端的 `acct-iso-install`。
 ];
 
 fn src_root() -> PathBuf {
@@ -186,14 +186,14 @@ fn every_remote_exec_declares_where_its_command_came_from() {
         }
     }
     assert!(
-        // 〔C4d · 第四波 4B〕逐次拨号那条路（`remote_history.rs` 那一处）删了 ⇒ −1；〔合并 C4d × 主线 303fed89〕主线 11（DP1 −1）＋ 本路 −1 ⇒ 10。
-        // 〔SH1〕驾驶舱两条 shell 读删了 ⇒ 10 → 8；钩子诊断远端那条改问后端 ⇒ 7；MCP 远端读改问后端 ⇒ 6；列 tmux ⇒ 5。
-        // 〔E2〕5 → 4：远端 `ccm` 探针改问那台后端 `ccm-probe`（`probe_ccm_cli` 那一处 `connect_and_exec_cmd` 不在了）。〔散文墓碑〕
-        // 〔DEL〕4 → 3：远端流模式那一处（起随 SSH 生死的流模式后端）随那一形删了。
-        // 〔MIG-3a · 09-28 裁 2〕3 → 2：部署 cc-acct-iso 那两步（跑安装脚本 · 核 PATH）换成那台后端的 `acct-iso-install`（`exec_collect` 那一处不在了）。
-        // 〔MIG-3b 续〕2 → 0：公钥推送进了本机后端（`pubkey-push`），原语随之删了（V41）⇒ **零处**：monitor 不再开一次性 exec 字节流。
+        // 逐次拨号那条路（`remote_history.rs` 那一处）删了 ⇒ −1；主线 11（DP1 −1）＋ 本路 −1 ⇒ 10。
+        // 驾驶舱两条 shell 读删了 ⇒ 10 → 8；钩子诊断远端那条改问后端 ⇒ 7；MCP 远端读改问后端 ⇒ 6；列 tmux ⇒ 5。
+        // 5 → 4：远端 `ccm` 探针改问那台后端 `ccm-probe`（`probe_ccm_cli` 那一处 `connect_and_exec_cmd` 不在了）。〔散文墓碑〕
+        // 4 → 3：远端流模式那一处（起随 SSH 生死的流模式后端）随那一形删了。
+        // 〔09-28 裁 2〕3 → 2：部署 cc-acct-iso 那两步（跑安装脚本 · 核 PATH）换成那台后端的 `acct-iso-install`（`exec_collect` 那一处不在了）。
+        // 2 → 0：公钥推送进了本机后端（`pubkey-push`），原语随之删了⇒ **零处**：monitor 不再开一次性 exec 字节流。
         found.is_empty(),
-        "〔MIG-3b 续〕该是零处，却找到 {} 处 `connect_and_exec_cmd(`（原语已删；08-07 实测 16；\
+        "该是零处，却找到 {} 处 `connect_and_exec_cmd(`（原语已删；08-07 实测 16；\
              **`K-R112` 09-13 现打 14** —— 查在线与抓屏那两处改走后端帧面之后各少一处；\
              **`C1` 09-24 现打 12** —— 读会话与快照那两处改走长连接之后各少一处；\
              **`DP1` 09-25 现打 11** —— 部署前问机器那一处改走 `connect_and_exec_capture`；\
@@ -292,9 +292,9 @@ fn every_remote_exec_declares_where_its_command_came_from() {
     }
     // 常驻自检：某一类归零时上面那一支就没人行使，而它看起来照样绿。
     // ⚠ 本仓已连着六次栽在「新分支平时没人走」上，所以四类各要一个活样本。
-    // 〔E2〕`Const` 那一类收敛到零（最后一条 `probe_ccm_cli`〔散文墓碑〕 改问那台后端 `ccm-probe`）⇒ 那一支没有人群、自检只对余下三类。
-    // 〔DEL〕`Quoted` 那一类也收敛到零（最后一条 `ssh_source.rs` 起远端流模式那一处随那一形删了）⇒ 同上。
-    // 〔MIG-3b 续〕`Builder` 那一类也收敛到零（最后一条 `pubkey.rs` 的公钥推送进了本机后端 `pubkey-push`）⇒ 同上。
+    // `Const` 那一类收敛到零（最后一条 `probe_ccm_cli`〔散文墓碑〕 改问那台后端 `ccm-probe`）⇒ 那一支没有人群、自检只对余下三类。
+    // `Quoted` 那一类也收敛到零（最后一条 `ssh_source.rs` 起远端流模式那一处随那一形删了）⇒ 同上。
+    // `Builder` 那一类也收敛到零（最后一条 `pubkey.rs` 的公钥推送进了本机后端 `pubkey-push`）⇒ 同上。
     assert_eq!(
         per_class,
         [0, 0, 0, 0],
@@ -304,7 +304,7 @@ fn every_remote_exec_declares_where_its_command_came_from() {
         .iter()
         .enumerate()
         .filter(|_| false)
-    // 〔MIG-3b 续〕四类都收敛到零（原语删了）⇒ 没有哪一类还该有活样本
+    // 四类都收敛到零（原语删了）⇒ 没有哪一类还该有活样本
     {
         assert!(
             per_class[i] >= 1,
@@ -316,10 +316,10 @@ fn every_remote_exec_declares_where_its_command_came_from() {
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// 〔LOC1a · 第四波 4D〕**为什么还是一条拨号 shell**：逐处写理由，两向相等
+// **为什么还是一条拨号 shell**：逐处写理由，两向相等
 // ═════════════════════════════════════════════════════════════════════════════
 //
-// 要求住址：`设计/00 §1`「所有 SSH 由本机常驻后端持有」· `设计/15 §2.2`「其余一次性 exec 点……**逐处仍要核**」·
+// 要求：「所有 SSH 由本机常驻后端持有」· 「其余一次性 exec 点……**逐处仍要核**」·
 // 题面（4D LOC1a）「9 处 shell 能换后端具名命令的逐处换，换不了的写理由并登记」。
 //
 // 上面那张 `EXEC_SITES` 管「命令串从哪来」（注入面）；本表管另一件事：**这一处为什么还没换成那台后端的具名命令**。
@@ -328,7 +328,7 @@ fn every_remote_exec_declares_where_its_command_came_from() {
 // 少一处 = 那一处换掉了（好事，删行）。
 //
 // 类别：`Bootstrap` —— 这一跳发生在那台的后端**还不存在 / 正在被装**的时候，问不了它；
-//       `Deploy` —— 装的是后端之外的工具（`05 §14.3` D 组「部署 …… 不迁」）；
+//       `Deploy` —— 装的是后端之外的工具（「部署 …… 不迁」）；
 //       `Pending(归谁)` —— **能换**，本路没换，写清卡在哪、归谁（列给主会话）。
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -340,19 +340,19 @@ enum StillShell {
 
 const STILL_SHELL: &[(&str, &str, StillShell, &str)] = &[
     ("remote_resident.rs", "ensure", StillShell::Bootstrap,
-     "〔HOST · V139〕起 / 找那台的**常驻后端本身**（`--resident-ensure`）—— 接上它之前没有后端可问"),
+     "起 / 找那台的**常驻后端本身**（`--resident-ensure`）—— 接上它之前没有后端可问"),
     ("remote_resident.rs", "stop", StillShell::Bootstrap,
-     "〔HOST〕停那台的常驻后端（`--resident-stop`）—— 不能请被停的那一位自己经它那条流停自己（流随之断、答不回来）"),
-    // 〔MIG-3b〕`sftp.rs` 那一行（部署后端之前扫落点那一份的身份戳）摘了：身份判定进了本机常驻后端（`deploy-plan` 沿池里那条 SSH 自己扫）。
-    // 〔MIG-3b 续〕公钥推送那一行摘了：「那台后端还不在」那一形也进了本机后端（`pubkey-push`：可达表里没有那台 ⇒ 一次 exec，只写这一件）。
-    // 〔MIG-3a · 09-28 裁 2〕`acct_iso_deploy.rs` 那一行摘了：部署那两步（跑安装脚本 · 核 PATH）换成那台后端的 `acct-iso-install`
+     "停那台的常驻后端（`--resident-stop`）—— 不能请被停的那一位自己经它那条流停自己（流随之断、答不回来）"),
+    // `sftp.rs` 那一行（部署后端之前扫落点那一份的身份戳）摘了：身份判定进了本机常驻后端（`deploy-plan` 沿池里那条 SSH 自己扫）。
+    // 公钥推送那一行摘了：「那台后端还不在」那一形也进了本机后端（`pubkey-push`：可达表里没有那台 ⇒ 一次 exec，只写这一件）。
+    // 〔09-28 裁 2〕`acct_iso_deploy.rs` 那一行摘了：部署那两步（跑安装脚本 · 核 PATH）换成那台后端的 `acct-iso-install`
     //   （链接走写面 `files-link`，装卸账记 skill 装记录）；字节照走部署那一条（SFTP 经本机后端）。
-    // 〔SH1 · V137〕`mcp.rs` 那一行摘了：`agents::Adapter` 长了一格 MCP 读，后端 `mcp-read` 出成品（V137 选的那一条）。
-    // 〔SH1〕`hooks_diag.rs` 那一行摘了：换成那台后端的 `files-peek` ＋ `footprint-probe`（解锁条件兑现）。
-    // 〔E2 · `96 §7.2.2`〕`probe_ccm_cli`〔散文墓碑〕 那一行摘了：`ccm` 就是那台后端本身（V28），「会哪些」改问那台后端 `ccm-probe`
-    //   （与 `ccm --ccm-probe` 同一份），不再进交互 shell 查 `PATH`（W5-ALIAS §3.6 写好的解锁条件兑现）。
-    // 〔SH1〕`tmux.rs` 那一行摘了：后端新帧命令 `tmux-list`（同 watcher 那一趟 `tmux ls`），monitor 改问它。
-    // 〔SH1 · V136〕`cc_bus.rs` 那两行（读名册 · 读收件箱）摘了：cc-bus 加了机器可读的读命令，后端 `bus-state` / `bus-inbox` 转调，界面经通道问。
+    // `mcp.rs` 那一行摘了：`agents::Adapter` 长了一格 MCP 读，后端 `mcp-read` 出成品（选的那一条）。
+    // `hooks_diag.rs` 那一行摘了：换成那台后端的 `files-peek` ＋ `footprint-probe`（解锁条件兑现）。
+    // `probe_ccm_cli`〔散文墓碑〕 那一行摘了：`ccm` 就是那台后端本身，「会哪些」改问那台后端 `ccm-probe`
+    //   （与 `ccm --ccm-probe` 同一份），不再进交互 shell 查 `PATH`（写好的解锁条件兑现）。
+    // `tmux.rs` 那一行摘了：后端新帧命令 `tmux-list`（同 watcher 那一趟 `tmux ls`），monitor 改问它。
+    // `cc_bus.rs` 那两行（读名册 · 读收件箱）摘了：cc-bus 加了机器可读的读命令，后端 `bus-state` / `bus-inbox` 转调，界面经通道问。
 ];
 
 fn still_shell_population() -> std::collections::BTreeSet<(String, String)> {
@@ -385,7 +385,7 @@ fn still_shell_population() -> std::collections::BTreeSet<(String, String)> {
 fn every_remaining_dial_shell_says_why_it_is_not_a_backend_command() {
     let found = still_shell_population();
     // 正控：人群里真有东西（起那台常驻后端那一问必在）—— 抽取器坏了会拿空集比。
-    // 〔THIN〕原来认 `byte_table.rs` 那一处（问 `uname`），那一问进了后端 ⇒ 换认 `remote_resident.rs::ensure`。
+    // 原来认 `byte_table.rs` 那一处（问 `uname`），那一问进了后端 ⇒ 换认 `remote_resident.rs::ensure`。
     assert!(
         found.contains(&("remote_resident.rs".to_string(), "ensure".to_string())),
         "抽取器没认出 `remote_resident.rs::ensure` —— 本条此刻在空转：{found:?}"
@@ -397,7 +397,7 @@ fn every_remaining_dial_shell_says_why_it_is_not_a_backend_command() {
     assert_eq!(
         found, want,
         "monitor 里「经拨号链路跑 shell」的点与理由表对不上。\n\
-         多出来的 ⇒ 先回答它为什么不能是那台后端的一条具名命令（`设计/00 §1` · `15 §2.2`）；\n\
+         多出来的 ⇒ 先回答它为什么不能是那台后端的一条具名命令；\n\
          少了的 ⇒ 换掉了，删那一行。"
     );
     for (f, n, kind, why) in STILL_SHELL {

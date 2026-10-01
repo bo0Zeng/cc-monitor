@@ -36,7 +36,7 @@ function ok(cond: boolean, msg?: string): void {
 
 console.log("format.test.ts");
 
-// === basename（〔F7b〕随老 SFTP 面板退役从 sftp/paths.ts 搬来，原判据四格原样搬）===
+// === basename（随老 SFTP 面板退役从 sftp/paths.ts 搬来，原判据四格原样搬）===
 test("basename: 取最后一段（兼容反斜杠 / 尾斜杠）", () => {
   eq(basename("/home/pi/a.txt"), "a.txt");
   eq(basename("C:\\Users\\me\\b.rs"), "b.rs");

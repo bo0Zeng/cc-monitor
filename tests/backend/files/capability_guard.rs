@@ -1,4 +1,4 @@
-//! 〔步 24f〕**`files-read` 能力声明的护栏** —— `设计/96 §2.9` 三条硬边界的机器形态。
+//! **`files-read` 能力声明的护栏** —— 三条硬边界的机器形态。
 //!
 //! # `K-G6` `KG62`：性质与人群，两行逐字（各自只许有一句）
 //!
@@ -7,7 +7,7 @@
 //!
 //! # 🔴 为什么是这一份，而不是靠 `readonly_guard` 兜底
 //!
-//! `设计/96 §2.9` 边界① 逐字：
+//! 边界① 逐字：
 //!
 //! > 这一条要进 `CAPABILITIES` 的语义，**不是注释**：将来谁往这一族里加一个写操作，
 //! > **能力声明这一侧就该先红**，而不是靠 `readonly_guard` 兜底 ——
@@ -22,7 +22,7 @@
 //! | 红的时候在说 | 「你违反了那条铁律」 | 「你的**声明是假的**」 |
 //! | 加一条写操作时 | 红（默认层当场） | 红（本份的相等断言），**而且它指的是声明那一侧** |
 //!
-//! 两道都会红，这是刻意的（`设计/96 §2.9` 逐字「两道都要」）。
+//! 两道都会红，这是刻意的（「两道都要」）。
 //!
 //! # ⚠ 它**买不到**什么（逐条，别读宽）
 //!
@@ -40,34 +40,34 @@ use super::*;
 
 use crate::files::index::tests::resident_lock;
 
-/// `设计/96 §2.9`「这一族有哪些」那张表里的名字，**逐字抄**。
+/// 「这一族有哪些」那张表里的名字，**逐字抄**。
 ///
 /// 🔴 抄一份在这里是刻意的：它与 [`CAPABILITIES`] 构成**两向**对拍 ——
 /// 一向治「设计里有而实现没声明」（能力漏了），一向治「实现声明了而设计里没有」
 /// （偷偷长出一条没人裁过的能力）。只判一向，另一向那种失效永远逃得掉。
 ///
-/// 🔴 **这张表跟着设计走，不是反过来**〔`24f` 第三刀 09-21〕：`设计/96 §2.9` 那一节
+/// 🔴 **这张表跟着设计走，不是反过来**：那一节
 /// 裁出第五、第六条（`files.index.rebuild` / `files.browse`）之后，本表**先改**、
-/// 本条判据跟着绿 —— 那一节就是本条的真相源。
+/// 本条判据跟着绿 —— 那一节就是本条的源头。
 /// ⚠ **不许**为了让某一侧变绿而从这张表里摘一个名字：摘掉就等于宣布
 /// 「设计里从来没有那条能力」，而那正是本条两向对拍要挡的另一向。
 ///
-/// ⚠〔F7a · 第三波 09-24〕末尾两条（`files.home` · `files.read.text`）的出处是 `设计/60 §13`
-/// （窗口换走通道的那两问），**`设计/96 §2.9` 那张表还没跟上** —— 那一篇不在 F7a 的写区，
-/// 已报备主会话同拍补表。在补上之前，这两条的「设计那一侧」住 `60 §13`。
+/// ⚠末尾两条（`files.home` · `files.read.text`）的出处是
+/// （窗口换走通道的那两问），** 那张表还没跟上** —— 那一篇不在 F7a 的写区，
+/// 已报备主会话同拍补表。在补上之前，这两条的「设计那一侧」住。
 const REGISTERED: &[&str] = &[
     "files.browse",
     "files.find",
-    // 〔FILES3〕出处 `设计/99 §2.2 ㉜`「文件管理器做按内容搜」；`设计/96 §2.9` 那张表同样还没跟上（本路不写设计篇，报备主会话补一行）。
+    // 要求：「文件管理器做按内容搜」；那张表同样还没跟上。
     "files.grep",
     "files.home",
     "files.index.rebuild",
     "files.index.status",
     "files.ls",
-    // 〔FILES2 · V152〕出处用户 09-27 V152「经那台后端链路按字节寻址分块读回」（`设计/60 §7` 第 9 条 Q4）。
+    // 出处用户 09-27「经那台后端链路按字节寻址分块读回」。
     "files.read.chunk",
     "files.read.text",
-    // 〔W5-FILES · 第五波〕出处 `设计/60 §6.2`「算目录大小」；`设计/96 §2.9` 那张表同样还没跟上（本路不写设计篇，报备主会话补一行）。
+    // 要求：「算目录大小」；那张表同样还没跟上。
     "files.size",
     "files.stat",
 ];
@@ -125,7 +125,7 @@ fn derive_effect(src: &str) -> Effect {
 ///
 /// 走 `guard_core::scan_tree!`。
 ///
-/// ⚠ 〔`P4` 2026-09-21〕先前这里写着「两重保险」，而**第一重今天不生效**：
+/// ⚠ 先前这里写着「两重保险」，而**第一重今天不生效**：
 /// 宏自称按 `file!()` 摘除调用者自己那一份，判据由 `#[path]` 挂载之后 `file!()`
 /// 是折返路径 ⇒ 后缀比不命中。承重的只剩第二重：本文件住 `tests/backend/files/`、
 /// **根本不在被扫的那棵树里**。
@@ -164,7 +164,7 @@ fn family_sources() -> Vec<(String, String)> {
 
 /// 🔴🔴 **正题**：声明的副作用档 == 从实现派生出来的副作用档。
 ///
-/// 这就是 `设计/96 §2.9` 边界① 要的那条「声明那一侧先红」。
+/// 这就是边界① 要的那条「声明那一侧先红」。
 #[test]
 fn the_declared_effect_equals_the_effect_derived_from_the_implementation() {
     let sources = family_sources();
@@ -203,12 +203,12 @@ fn the_declared_effect_equals_the_effect_derived_from_the_implementation() {
         "🔴 **声明与实现对不上。**\n\
          左边是从 `src/backend/files/` 的源码里**派生**出来的副作用档，\n\
          右边是 `files::CAPABILITIES` 里**声明**的那一栏。\n\n\
-         `设计/96 §2.9` 边界① 逐字：「整族一个字节都不写……\n\
+边界① 逐字：「整族一个字节都不写……\n\
          将来谁往这一族里加一个写操作，**能力声明这一侧就该先红**，\n\
          而不是靠 `readonly_guard` 兜底 —— 两道都要，但声明那道更早。」\n\n\
          ⇒ 两条出路，**没有第三条**：\n\
          ① 把那处写操作去掉（这一族的存在理由是搜索，而搜索纯读）；\n\
-         ② 真要给这一族写能力 ⇒ 回 `设计/60 §3.2` / `§6.6` 重裁，\n\
+         ② 真要给这一族写能力 ⇒ 回重裁，\n\
             并且同轮去 `readonly_guard::WRITE_WHITELIST_MODULES` 上签字。\n\
          🚫 **不许**把这里的 `effect` 改成 `TouchesDisk` 来对付这条红 ——\n\
             那是在把一条「实现越界了」的红改写成「我本来就打算越界」，\n\
@@ -371,8 +371,8 @@ fn not_one_capability_in_this_family_declares_a_write() {
     let all_read: Vec<Effect> = CAPABILITIES.iter().map(|_| Effect::ReadsOnly).collect();
     assert_eq!(
         effects, all_read,
-        "有能力声明了写副作用。这一族的存在理由是**搜索**（`设计/60 §2 档①` 只有那一行），\n\
-         写面住后端文件管理的另一个模块（`control/files_write.rs`，`设计/60 §3.3`），\n\
+        "有能力声明了写副作用。这一族的存在理由是**搜索**（只有那一行），\n\
+         写面住后端文件管理的另一个模块（`control/files_write.rs`），\n\
          不在这一族 —— 这一族纯读。"
     );
 }
@@ -385,7 +385,7 @@ fn the_capability_names_match_the_design_registry_in_both_directions() {
     let designed: std::collections::BTreeSet<&str> = REGISTERED.iter().copied().collect();
     assert_eq!(
         declared, designed,
-        "能力名与 `设计/96 §2.9` 那张表对不上。\n\
+        "能力名与那张表对不上。\n\
          设计有而实现没声明 ⇒ 能力漏了；实现声明了而设计没有 ⇒ 长出了一条没人裁过的能力。"
     );
 }
@@ -508,7 +508,7 @@ fn the_find_fields_match_what_the_call_really_returns() {
     );
 }
 
-/// 〔`24f` 第三刀〕`files.index.rebuild` 的出方向字段与**真的回出去的那个 JSON** 对拍，
+/// `files.index.rebuild` 的出方向字段与**真的回出去的那个 JSON** 对拍，
 /// 而且顺手把「条目数」钉成一条**相等**断言（夹具按构造知道自己有多少条）。
 ///
 /// ⚠ 同族那两条（`status` / `find`）为什么也是这么写的：用一个手写清单去证明另一个
@@ -554,7 +554,7 @@ fn the_index_rebuild_fields_match_what_the_call_really_returns() {
     );
 }
 
-/// 🔴🔴 〔`24f` 第三刀〕**根读不进去 ⇒ 拒，而且常驻那一份一个字节不动。**
+/// 🔴🔴 **根读不进去 ⇒ 拒，而且常驻那一份一个字节不动。**
 ///
 /// # 它治的那一形（现打逼出来的，不是假想）
 ///
@@ -594,7 +594,7 @@ fn a_rebuild_on_an_unreadable_root_is_refused_without_touching_the_resident_inde
     );
 }
 
-/// 〔`24f` 第三刀〕`files.browse` 的出方向字段与真的回出去的那个 JSON 对拍。
+/// `files.browse` 的出方向字段与真的回出去的那个 JSON 对拍。
 ///
 /// ⚠ 顺手钉住**空数组是合法的**那一格：它的语义是「现在什么都没在看」⇒ 全卸。
 /// 「少了 `dirs`」是另一件事（`bad_args`），由下面那条错误码判据行使。
@@ -654,7 +654,7 @@ fn the_browse_fields_match_what_the_call_really_returns() {
     );
 }
 
-/// 〔`24f` 第三刀〕新那两条自己声明的错误码，**都得真的出得来**（幽灵码检查）。
+/// 新那两条自己声明的错误码，**都得真的出得来**（幽灵码检查）。
 ///
 /// ⚠ `unreadable` 那一档由上面那条
 /// [`a_rebuild_on_an_unreadable_root_is_refused_without_touching_the_resident_index`]
@@ -707,14 +707,14 @@ fn the_new_two_capabilities_declared_codes_are_not_ghosts() {
     }
 }
 
-/// 🔴🔴 **`args` 那一侧终于也去对真解析器了**〔`24f` 第三刀补，`设计/96 §2.9` 登记的那条欠账〕。
+/// 🔴🔴 **`args` 那一侧终于也去对真解析器了**〔`24f` 第三刀补， 登记的那条欠账〕。
 ///
 /// # 它补的是哪一格
 ///
 /// 出方向那一侧早就有实打对拍（[`the_status_fields_match_what_the_call_really_returns`]
 /// 那几条 —— **真调一次**，拿回来的键与声明的 `fields` 判相等）。
 /// 而**入方向的 `args` 从来没有任何东西拿它去对真解析器** ——
-/// `设计/96 §2.9` 逐字登记过这条欠账，而且它已经出过一次事：
+/// 登记过这条欠账，而且它已经出过一次事：
 /// `files.ls` 的 `args` 里写着 `ignore_ascii_case`，**而 `answer_ls` 一次都没读它**
 ///（从 `files.find` 抄过来的鬼影，`24f` 第二刀现打逮到、已摘）。
 ///
@@ -748,7 +748,7 @@ fn the_new_two_capabilities_declared_codes_are_not_ghosts() {
 fn every_declared_arg_is_really_read_by_the_parser() {
     let _lock = resident_lock();
 
-    // 语料：一棵合成树 ＋ 它的一个子目录（`设计/17 §6` 的数据源纪律 —— 全合成，不碰真目录）。
+    // 语料：一棵合成树 ＋ 它的一个子目录（数据源纪律 —— 全合成，不碰真目录）。
     let fx = crate::files::index::tests::make_tree("args-probe", 3, 4, 0);
     let sub = fx.root.join("d0000");
     let p = |x: &std::path::Path| {
@@ -760,7 +760,7 @@ fn every_declared_arg_is_really_read_by_the_parser() {
     let _serial = crate::files::index::testing::serial();
     crate::files::index::rebuild_once(&fx.root).expect("本格独占跑，抢不到就是并发保护写错了");
 
-    // 〔F7a〕`files.read.text` 的两份夹具 —— 放在那棵树**之外**（免得动了树的形状）。
+    // `files.read.text` 的两份夹具 —— 放在那棵树**之外**（免得动了树的形状）。
     let text_dir = std::env::temp_dir().join(format!("ccm-f7a-args-{}", std::process::id()));
     std::fs::create_dir_all(&text_dir).expect("建夹具目录");
     let text_a = text_dir.join("a.txt");
@@ -772,7 +772,7 @@ fn every_declared_arg_is_really_read_by_the_parser() {
     //   ⚠ 顺序承重：`files.browse` 会往 overlay 里加东西、`files.index.rebuild` 会把
     //   常驻那一份整份换掉 ⇒ 两者都排在 `files.find` 之后，免得前一条把后一条的地基抽了。
     let probes: Vec<(&str, &str, serde_json::Value, serde_json::Value)> = vec![
-        // 〔W5-FILES〕`files.size` 的 `path`：整棵 vs 其中一个子目录，数必然不同。
+        // `files.size` 的 `path`：整棵 vs 其中一个子目录，数必然不同。
         (
             "files.size",
             "path",
@@ -828,7 +828,7 @@ fn every_declared_arg_is_really_read_by_the_parser() {
             serde_json::json!({ "path": p(&fx.root) }),
             serde_json::json!({ "path": p(&sub) }),
         ),
-        // 〔F7a〕同族第七条：两份不同内容的文本 · 同一份在两个上限下（一个放得下、一个放不下）。
+        // 同族第七条：两份不同内容的文本 · 同一份在两个上限下（一个放得下、一个放不下）。
         (
             "files.read.text",
             "path",
@@ -841,7 +841,7 @@ fn every_declared_arg_is_really_read_by_the_parser() {
             serde_json::json!({ "path": p(&text_a), "max_bytes": 1000 }),
             serde_json::json!({ "path": p(&text_a), "max_bytes": 1 }),
         ),
-        // 〔FILES2 · V152〕`files.read.chunk` 的三个参数：各差一个键，读回的字节必然不同。
+        // `files.read.chunk` 的三个参数：各差一个键，读回的字节必然不同。
         (
             "files.read.chunk",
             "path",
@@ -860,7 +860,7 @@ fn every_declared_arg_is_really_read_by_the_parser() {
             serde_json::json!({ "path": p(&text_a), "offset": 0, "len": 4 }),
             serde_json::json!({ "path": p(&text_a), "offset": 0, "len": 2 }),
         ),
-        // 〔FILES3 · ㉜〕`files.grep` 的四个参数：那两份文本（`alpha` / `beta`）所在的目录上各差一个键，命中必然不同。
+        // `files.grep` 的四个参数：那两份文本（`alpha` / `beta`）所在的目录上各差一个键，命中必然不同。
         (
             "files.grep",
             "path",
@@ -934,10 +934,10 @@ fn every_declared_arg_is_really_read_by_the_parser() {
         );
         checked += 1;
     }
-    // 〔F7a〕探针对数恒等：8 → 10（`files.read.text` 的 `path` · `max_bytes` 两对）。
-    // 〔W5-FILES〕10 → 11（`files.size` 的 `path` 一对）。
-    // 〔FILES2〕11 → 14（`files.read.chunk` 的 `path` · `offset` · `len` 三对）。
-    // 〔FILES3〕14 → 18（`files.grep` 的 `path` · `needle` · `ignore_ascii_case` · `limit` 四对）。
+    // 探针对数恒等：8 → 10（`files.read.text` 的 `path` · `max_bytes` 两对）。
+    // 10 → 11（`files.size` 的 `path` 一对）。
+    // 11 → 14（`files.read.chunk` 的 `path` · `offset` · `len` 三对）。
+    // 14 → 18（`files.grep` 的 `path` · `needle` · `ignore_ascii_case` · `limit` 四对）。
     assert_eq!(
         checked, 18,
         "行使的探针对数变了 —— 本条的射程跟着变了，先查探针表"
@@ -967,9 +967,9 @@ fn every_declared_arg_is_really_read_by_the_parser() {
     );
 }
 
-// ── 〔W5-AUX · 96 #13〕`args` 的另一个方向：**解析器读的键，都在声明里** ──────────────────
+// ── 〔96 #13〕`args` 的另一个方向：**解析器读的键，都在声明里** ──────────────────
 //
-// 要求住址：`设计/96 §2.9`「仍开着」逐字「能力声明里的 `args` 没有东西拿它去对真解析器（`fields` 那一侧有）」。
+// 要求：「仍开着」逐字「能力声明里的 `args` 没有东西拿它去对真解析器（`fields` 那一侧有）」。
 // 上面那条差分买的是「**声明了的都真被读**」（鬼影那一向）；本条补「**真被读的都声明了**」（漏登那一向）——
 // 解析器偷偷多认一个键而声明与 `IPC-PROTOCOL.md §10` 都没有它，调用方就永远不知道那个开关存在。
 // 两条合起来才是「`args` == 解析器真读的键」的两向相等。
@@ -1230,7 +1230,7 @@ pub fn answer(name: &str, args: &serde_json::Value) -> u32 {
 
 // ══════════════════════ 边界② 跨 target ══════════════════════
 
-/// 🔴 **判的是「能力在不在」，不是「新鲜度一样」**（`设计/96 §2.9` 边界② 逐字）。
+/// 🔴 **判的是「能力在不在」，不是「新鲜度一样」**（边界② 逐字）。
 #[test]
 fn the_capability_set_is_equal_across_every_target() {
     assert!(
@@ -1249,7 +1249,7 @@ fn the_capability_set_is_equal_across_every_target() {
             here, all,
             "`{t:?}` 上的能力集与全体不相等。\n\
              🔴 这一格判的是**能力在不在** —— 那件事在三个平台上必须是同一个答案。\n\
-             真有一条只能在某个平台上有 ⇒ 那是 `设计/96 §2` 那条「豁免必须存在但要贵」，\n\
+             真有一条只能在某个平台上有 ⇒ 那是那条「豁免必须存在但要贵」，\n\
              要回那一篇立一张豁免表并逐条写明为什么不可能对等，**不是在这里放宽**。"
         );
     }
@@ -1258,7 +1258,7 @@ fn the_capability_set_is_equal_across_every_target() {
 /// 🔴🔴 **边界② 最容易出错的那一格**：保鲜机制**刻意不判相等**，
 /// 而且**不许三行抄成一样**。
 ///
-/// `设计/96 §2.9` 逐字：「把它们判成相等会**逼人写假声明**。
+/// 「把它们判成相等会**逼人写假声明**。
 /// 这一格是本族最容易出错的地方。」
 #[test]
 fn freshness_is_declared_per_target_and_is_deliberately_not_judged_equal() {
@@ -1293,12 +1293,12 @@ fn freshness_is_declared_per_target_and_is_deliberately_not_judged_equal() {
 
     // ③ 🔴 **反向那半**：不许三行填成同一个机制串。
     //    那就是「为了让某条对拍变绿，把几行抄成一样」的长相，
-    //    也就是 `设计/96 §2.9` 说的那句「假声明」。
+    //    也就是说的那句「假声明」。
     let mechanisms: std::collections::BTreeSet<&str> = FRESHNESS.iter().map(|f| f.how).collect();
     assert!(
         mechanisms.len() >= 3,
         "{} 个 target 只给出了 {} 种保鲜机制的说法。\n\
-         🔴 `设计/96 §2.9` 边界② 逐字：保鲜机制**逐平台不同**，\n\
+         🔴 边界② 逐字：保鲜机制**逐平台不同**，\n\
          把它们说成一件事**就是那句「假声明」**。\n\
          （Linux 的 `inotify` · Windows 的 `ReadDirectoryChangesW` · macOS 的 `FSEvents`\n\
           在合并语义、延迟、丢事件的条件上都不是同一件事。）",
@@ -1331,7 +1331,7 @@ fn freshness_is_declared_per_target_and_is_deliberately_not_judged_equal() {
 
 // ══════════════════════ 边界③ 周期可查询 ══════════════════════
 
-/// 🔴 `设计/96 §2.9` 边界③：「『定期重走』的周期……**必须可查询**，不许只活在代码里」。
+/// 🔴 边界③：「『定期重走』的周期……**必须可查询**，不许只活在代码里」。
 #[test]
 fn the_rewalk_interval_is_part_of_the_declared_surface_and_is_really_queryable() {
     let _lock = resident_lock();
@@ -1352,7 +1352,7 @@ fn the_rewalk_interval_is_part_of_the_declared_surface_and_is_really_queryable()
         "线上回的那个周期与声明的常量不是同一个数"
     );
     // ③ 界面要显示的那个「多久前更新的」也必须在同一个答案里
-    //    （`设计/60 §3.5.3`：不许让用户猜为什么搜不到）。
+    //    （不许让用户猜为什么搜不到）。
     assert!(
         status_cap.fields.contains(&"age_secs"),
         "新鲜度那个数不在字段表里"
@@ -1365,7 +1365,7 @@ fn the_rewalk_interval_is_part_of_the_declared_surface_and_is_really_queryable()
     );
 }
 
-/// 〔第四波 S4 · `设计/99 §2 Q5`〕**冷启动首建那个数**与重走周期**分开钉**，而且同样可查询。
+/// **冷启动首建那个数**与重走周期**分开钉**，而且同样可查询。
 ///
 /// 用户裁「单列一个数并在搜索界面显示」⇒ 它必须在 `files.index.status` 的**声明**字段表里、
 /// 真的回出去、等于那个常量；而且它不能被周期那一格顶替（两个数各是各的）。
@@ -1425,7 +1425,7 @@ fn lossy_hits(label: &str, src: &str) -> Vec<String> {
     out
 }
 
-/// 🔴 本族**一处有损解码都没有**（`设计/60 §2 档②`）。
+/// 🔴 本族**一处有损解码都没有**。
 #[test]
 fn no_lossy_decode_anywhere_in_the_family() {
     let mut bad: Vec<String> = Vec::new();
@@ -1436,7 +1436,7 @@ fn no_lossy_decode_anywhere_in_the_family() {
         bad,
         Vec::<String>::new(),
         "本族里出现了有损解码：\n{}\n\n\
-         🔴 `设计/60 §2 档②` 逐字：非 UTF-8 文件名「库层有损解码，**寻址不到**」。\n\
+         🔴：非 UTF-8 文件名「库层有损解码，**寻址不到**」。\n\
          「寻址不到」不是显示难看 —— 解过一次之后，回程拿着那串替换字符去找的\n\
          是一个**不存在的名字**。\n\
          ⇒ 要把路径变成人话，那件事归**界面**；后端这一侧一路走字节\n\
@@ -1572,9 +1572,9 @@ fn the_declared_error_codes_are_not_ghosts() {
     }
 }
 
-// ══════════════════════ 〔F7a · 第三波 09-24〕第七、第八条 ══════════════════════
+// ══════════════════════ 第七、第八条 ══════════════════════
 //
-// `设计/60 §13`：窗口换走通道的那两问。每条都**正控 ＋ 阴性对照同拍**：只验「该拒的拒了」，
+// 窗口换走通道的那两问。每条都**正控 ＋ 阴性对照同拍**：只验「该拒的拒了」，
 // 一个恒 `Err` 的实现也全绿；只验「该成的成了」，一个不设上限的实现也全绿。
 
 /// 一个本格独占的临时目录（`tag` 区分用例，`pid` 区分并发跑的进程）。
@@ -1775,10 +1775,10 @@ fn home_is_given_when_the_environment_has_one_and_refused_otherwise() {
     }
 }
 
-// ══════════════════════ 〔GP1 · 第四波〕`files.stat` 送权限位 ══════════════════════
+// ══════════════════════ `files.stat` 送权限位 ══════════════════════
 //
-// 要求住址：`设计/60 §7`（文件窗口改权限时显示现值）· `调研/第四波记录/FW5.md §四`（窗口做不到、缺后端读口）·
-// `调研/第四波记录/GP1.md §5`（P1）。
+// 要求：文件窗口改权限时显示现值（窗口做不到、缺后端读口）·
+// （P1）。
 
 /// P1：`files.stat` 真回的键集 == 声明的 `fields`（两向，真调一次）；`mode` 就是那个文件此刻的低 12 位。
 /// 异源：期望值由测试自己用 `set_permissions` 设下去（`0o640` / `0o4755` 两个真能设的值，第二个带 setuid 位 ——
@@ -1815,8 +1815,8 @@ fn gp1_stat_reports_the_declared_fields_and_the_real_mode_bits() {
     std::fs::remove_dir_all(&d).ok();
 }
 
-/// 〔FILES2 · V152〕`files.read.chunk`：非 UTF-8 名按字节寻址、逐块读回拼起来 == 盘上那份；越过末尾 ⇒ 空块 `eof`；`len` 越界 ⇒ `bad_args`；目录 ⇒ `not_text`。
-/// 要求住址：用户 09-27 V152「经那台后端链路按字节寻址（b16 路径）分块读回」· `设计/60 §4.4` 下载对远端只读（这一条纯读）。
+/// `files.read.chunk`：非 UTF-8 名按字节寻址、逐块读回拼起来 == 盘上那份；越过末尾 ⇒ 空块 `eof`；`len` 越界 ⇒ `bad_args`；目录 ⇒ `not_text`。
+/// 要求住址：用户 09-27「经那台后端链路按字节寻址（b16 路径）分块读回」· 下载对远端只读（这一条纯读）。
 #[test]
 #[cfg(unix)]
 fn a_non_utf8_file_is_read_back_chunk_by_chunk_byte_for_byte() {

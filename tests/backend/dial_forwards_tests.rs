@@ -1,4 +1,4 @@
-//! 设计/99 §2.1 ⑬「端口转发 3 条进本机后端」—— `dial/forwards.rs` 的判据：围栏在查表之前 · 查不到那台不拨 ·
+//! 「端口转发 3 条进本机后端」—— `dial/forwards.rs` 的判据：围栏在查表之前 · 查不到那台不拨 ·
 //! ack 不成不进账 · 停 = 链路那一侧被收 · 列照抄计数与状态。链路那一侧用替身（不起真 SSH）。
 use super::*;
 use std::sync::atomic::AtomicUsize;
@@ -26,7 +26,7 @@ impl Drop for DropMark {
     }
 }
 
-/// 〔IV1 · V121〕要求住址：`INVARIANTS §47`（外部值交给对端之前本侧先过放行判定）；①形。
+/// 要求住址：`INVARIANTS §47`（外部值交给对端之前本侧先过放行判定）；①形。
 /// 原 monitor `port_forward_tests.rs` 那两条（规格三句 · 「围栏在任何 I/O 之前」）合成一条搬来：
 /// 非法规格 ⇒ `bad_spec`，**替身一次都没被叫到**（连可达表里有没有那台都不问 —— 用一张空表，围栏没了就会报 `unreachable`）。
 #[tokio::test]
@@ -211,7 +211,7 @@ async fn a_link_that_ends_on_its_own_reads_as_error() {
     assert_eq!(list_with(&ledger)["forwards"][0]["state"], json!("error"));
 }
 
-/// 〔MIG-1 续 · 主会话裁：流没起的远端不许拒〕可达表里没有那台、界面一并交来了它的配置 ⇒ 按配置自己组请求去拨（`dial/machine.rs`），
+/// 〔主会话裁：流没起的远端不许拒〕可达表里没有那台、界面一并交来了它的配置 ⇒ 按配置自己组请求去拨（`dial/machine.rs`），
 /// 交给链路那一侧的是 `use: forward` ＋ 这条规格 ＋ 配置里的那台；配置也没交 ⇒ 才是 `unreachable`。
 #[tokio::test]
 async fn a_machine_that_never_streamed_is_dialled_from_its_config() {

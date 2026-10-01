@@ -1,4 +1,4 @@
-//! `observe/tmux_observe.rs` 的测试（〔RE · C4〕随 A 块从 `watcher_tests.rs` 逐字搬来）。
+//! `observe/tmux_observe.rs` 的测试（随 A 块从 `watcher_tests.rs` 逐字搬来）。
 
 use super::*;
 
@@ -384,7 +384,7 @@ fn a_dirty_tmux_channel_is_unobservable_never_sessions() {
 ///
 /// 与上一条分开写，是因为上一条量的是「处置对不对」，这一条量的是「那条不等号的方向」。
 ///
-/// 〔IV1 · V121〕要求住址：`INVARIANTS §49`（tmux 打印通道必须是 UTF-8，段数下溢出声）。
+/// 要求住址：`INVARIANTS §49`（tmux 打印通道必须是 UTF-8，段数下溢出声）。
 #[test]
 fn the_underflow_predicate_only_fires_downward() {
     assert!(
@@ -444,10 +444,10 @@ fn the_underflow_predicate_only_fires_downward() {
 /// 行为那一半的死值在 `tests/evidence/K-R12-deathvalue.md`：同样这两条脚本对真 tmux 3.4
 /// 私有 socket 打过，改前段数 1、改后各回各的 N。
 ///
-/// 〔IV1 · V121〕要求住址：`INVARIANTS §49`（tmux 打印通道必须是 UTF-8，段数下溢出声）。
+/// 要求住址：`INVARIANTS §49`（tmux 打印通道必须是 UTF-8，段数下溢出声）。
 #[test]
 fn every_sh_call_site_in_this_module_carries_the_utf8_env() {
-    // 〔RE · C4〕A 块搬出之后，「本模块」仍是原 `watcher.rs` 那一份 = 两份生产段拼起来（人群不缩，
+    // A 块搬出之后，「本模块」仍是原 `watcher.rs` 那一份 = 两份生产段拼起来（人群不缩，
     // 下面的登记值与地板一个不动）；起 `sh` 的两处今天都住 `tmux_observe.rs`。
     let prod = crate::guard_support::production_code(include_str!(
         "../../../src/backend/observe/watcher.rs"
@@ -504,7 +504,7 @@ fn every_sh_call_site_in_this_module_carries_the_utf8_env() {
     );
 }
 
-/// 四态观测 → 会话账本读的那两格（〔MIG-1 续〕原 `tmux_sessions` 帧载荷，那一帧不再上线）：有会话 ⇒ 原文、不带取值；
+/// 四态观测 → 会话账本读的那两格（原 `tmux_sessions` 帧载荷，那一帧不再上线）：有会话 ⇒ 原文、不带取值；
 /// P3 那两个细分（`ServerEmpty` / `NoServer`）**必须落同一个取值**（对收割完全等价）；没装 tmux / 观测无效各有自己的取值，
 /// 账本据此「不知道」绝不当成「都没了」。
 #[test]
@@ -640,7 +640,7 @@ fn tmux_socket_dir_follows_tmux_tmpdir() {
     );
 }
 
-/// ★★ **超时必须落成「观测无效」，绝不能落成「零会话」**〔audit-0805 F09〕。
+/// ★★ **超时必须落成「观测无效」，绝不能落成「零会话」**。
 ///
 /// 这是本件最要命的一格：`ServerEmpty`（rc=0 且 stdout 空）会让上层认为
 /// **那台机器上一个会话都没有** ⇒ 活着的会话被 retire。
@@ -689,7 +689,7 @@ fn the_tmux_probe_is_bounded_and_degrades_honestly() {
     );
 }
 
-/// 〔SH1〕`tmux-list` 的四态折叠：没装 ≠ 零会话 ≠ 看不清（`list_remote_tmux` 头注那三档，搬到这一侧）。
+/// `tmux-list` 的四态折叠：没装 ≠ 零会话 ≠ 看不清（`list_remote_tmux` 头注那三档，搬到这一侧）。
 /// 要求住址：`INVARIANTS §49`「下溢必须出声 ＋ 这一行不许当好数据」· 题面「`list_remote_tmux` 改后端新帧命令 `tmux-list`」。
 #[test]
 fn the_tmux_list_query_keeps_not_installed_empty_and_unobservable_apart() {

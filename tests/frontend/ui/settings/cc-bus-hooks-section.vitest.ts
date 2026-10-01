@@ -2,7 +2,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { componentSources } from "../../../test-support/component-sources";
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
-// 〔MIG-3b〕诊断改走通道（`chan.call(origin, "hooks-diag")`，那台后端出成品）。替身把那一发交给同一个 `invoke` 替身
+// 诊断改走通道（`chan.call(origin, "hooks-diag")`，那台后端出成品）。替身把那一发交给同一个 `invoke` 替身
 //   （本机记成 `hooks-diag@local`、远端记成 `hooks-diag@remote` 带 `{origin}`），答的对象原样编成应答体 ——
 //   下面各条因此数得到**真发出去**的那一发；期限必给（没给就抛）。
 vi.mock("../../../../src/comms/inward/chan", async (importOriginal) => {
@@ -353,7 +353,7 @@ describe("B04 审计修复：第五态、兜底、以及守卫本身", () => {
     // 反向自检：**真扫到了东西**。空集必须是失败而不是「通过」——
     // 迁移把调用形态换掉时，这一格正是会静默变空的地方。
     expect(found.size, "一条命令都没扫到——扫描器与当前调用形态脱节了").toBeGreaterThan(0);
-    // 〔MIG-3b〕诊断两条退役：只剩列远端那一条只读命令；诊断经通道问，操作名恰是 `hooks-diag`（只读帧命令）。
+    // 诊断两条退役：只剩列远端那一条只读命令；诊断经通道问，操作名恰是 `hooks-diag`（只读帧命令）。
     expect(found).toEqual(new Set(["list_remote_mcp_origins"]));
     const ops = [...code.matchAll(/chan\.call\([^,]+,\s*"([a-z-]+)"/g)].map((m) => m[1]);
     expect(new Set(ops)).toEqual(new Set(["hooks-diag"]));
@@ -536,7 +536,7 @@ function loaded<T extends { loadNow(): void }>(s: T): T {
   return s;
 }
 
-// 〔MIG-3b〕成品两侧对拍：后端产出 == 金样（`tests/backend/observe/cc_bus_hooks_tests.rs`），本解码器读同一份。
+// 成品两侧对拍：后端产出 == 金样（`tests/backend/observe/cc_bus_hooks_tests.rs`），本解码器读同一份。
 import { decodeHooksReport } from "../../../../src/frontend/ui/settings/cc-bus-hooks-section";
 import golden from "../../../__fixtures__/hooks-diag.golden.json";
 

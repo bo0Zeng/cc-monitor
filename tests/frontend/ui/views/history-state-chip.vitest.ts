@@ -1,9 +1,9 @@
 /**
- * 〔AR1〕历史浏览器里说会话状态的那几个字，只从文案表 `sessionState.*` 取，而且「说不清」不许说成「已结束」。
+ * 历史浏览器里说会话状态的那几个字，只从文案表 `sessionState.*` 取，而且「说不清」不许说成「已结束」。
  *
  * 守的要求（逐字）：
- * - `设计/30 §3.5.2`：「说到会话状态的字**只从两轴派生、只住 `sessionState.*`**」；「『归档』同样退役」。
- * - `设计/30 §3.5.7a`：「**`Unseen` 不许被显示成『已结束』**」；「说不清就说『说不清』」。
+ * -：「说到会话状态的字**只从两轴派生、只住 `sessionState.*`**」；「『归档』同样退役」。
+ * -：「**`Unseen` 不许被显示成『已结束』**」；「说不清就说『说不清』」。
  *
  * 病史：条目那颗 chip 此前直接显示英文 `live` / `archived`，而且把 `isLive === null`（这条路答不出）
  * 也显示成 `archived`（`D-bolted-on.md` §1.3 末）。`tab-session-state.vitest.ts` 的 S4 人群只到 tab 层，
@@ -80,7 +80,7 @@ function stateChip(row: HTMLElement): string {
 /** 退役的英文状态词（整词）。 */
 const RETIRED = /\b(?:archived|live)\b/g;
 
-describe("〔AR1〕历史浏览器的状态词只住 sessionState.*（设计/30 §3.5.2 · §3.5.7a）", () => {
+describe("〔AR1〕历史浏览器的状态词只住 sessionState.*", () => {
   beforeEach(() => {
     localStorage.clear();
     document.body.replaceChildren();

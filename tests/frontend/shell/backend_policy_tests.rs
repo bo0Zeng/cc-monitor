@@ -1,6 +1,6 @@
 use super::*;
 
-/// 〔B2 · 条 66〕那个值**不在 monitor 进程里**：本模块生产段里唯一的 `static` 是死亡账那一张
+/// 〔条 66〕那个值**不在 monitor 进程里**：本模块生产段里唯一的 `static` 是死亡账那一张
 /// （`ledger()`），原来那张「推进来的生效值表」连同推它的命令一起没了。
 ///
 /// ⚠ 这是 `E2` 的 monitor 那一半：退出臂那一问（`kill_on_exit_now` → `exit_policy_call`）的路径上
@@ -20,7 +20,7 @@ fn the_monitor_keeps_no_copy_of_the_exit_value() {
         statics.len(),
         1,
         "`backend_policy.rs` 生产段的 `static` 不是恰好一个（死亡账那张）：{statics:?}\n\
-         多出来的多半是那个值的副本回来了 —— `设计/01 §3.3b ④`：不缓存、不在启动时读一次存内存。"
+         多出来的多半是那个值的副本回来了 ——：不缓存、不在启动时读一次存内存。"
     );
     assert!(
         statics[0].contains("Health"),
@@ -69,11 +69,11 @@ fn the_exit_answer_is_read_from_the_backend_shape_and_nothing_else() {
     }
 }
 
-// 〔C4c · 第四波 4B〕「空 origin 必须拒」那一条（驱动 Tauri 命令 `set_backend_exit_policy`〔散文墓碑〕里的 `origin.route`）随命令退役：
+// 「空 origin 必须拒」那一条（驱动 Tauri 命令 `set_backend_exit_policy`〔散文墓碑〕里的 `origin.route`）随命令退役：
 //   设置页经通道问；空白名那一档由通道那一跳 `chan/webview.rs::chan_call` 的 `Origin::route` 当场按「用法错」拒（判据在 `webview_tests`）。
 
 /// 没有通道的那台机器：退出臂那一问**明说**问不到，按缺省（不结束）办，不编一个值。
-/// 〔C4c〕界面那两问（问 / 写）改走通道之后，这里只剩退出臂那一问（monitor 自己的事）。
+/// 界面那两问（问 / 写）改走通道之后，这里只剩退出臂那一问（monitor 自己的事）。
 #[test]
 fn without_a_channel_nothing_is_made_up() {
     let o = Origin("这台机从来没连上过-b2".into());
@@ -87,9 +87,9 @@ fn without_a_channel_nothing_is_made_up() {
     assert!(!kill_on_exit_now(&o), "问不到必须按缺省（不结束）办");
 }
 
-// 〔CP2b · 第四波〕这里原来有三条跨语言逐字对拍（退出行为那张表 · 按清单派生的「每张表都对拍」·
+// 这里原来有三条跨语言逐字对拍（退出行为那张表 · 按清单派生的「每张表都对拍」·
 //   读数那几句「只有一个家」的旧版）。文案表立起来之后两侧读**同一条表项**，Rust 副本删了，对拍随之删。
-// 〔PB1 · `设计/90 §4` 阶段 B〕随后留下的那条「两侧说读数时用的是不是同一批 key」也退役了：
+// 随后留下的那条「两侧说读数时用的是不是同一批 key」也退役了：
 //   读数的三档判定只剩 [`health_face`] 一份（TS 那份删了，`judgment-single-home` 的 J21 钉它零实现），
 //   只剩一侧再比就是恒真。接班的是下面那几条行为判据（三档逐格 · 金样 · 真命令接线）。
 
@@ -127,7 +127,7 @@ fn the_backend_policy_copy_has_exactly_one_home() {
         ),
     ];
     for (name, src) in &homes {
-        // 〔MIG-2 · ㊴〕`backend-policy.ts` 的退出行为取文口搬走后只剩 `LOCAL_ORIGIN`（剥完 ~430 字节）⇒ 地板 500 → 300。
+        // `backend-policy.ts` 的退出行为取文口搬走后只剩 `LOCAL_ORIGIN`（剥完 ~430 字节）⇒ 地板 500 → 300。
         assert!(
             src.len() > 300,
             "{name} 只读到 {} 字节 —— 人群坏了",
@@ -140,7 +140,7 @@ fn the_backend_policy_copy_has_exactly_one_home() {
         .as_object()
         .expect("文案表没有 entries")
         .iter()
-        // 〔PB1〕健康那六句的 key 随判定归了本文件的面（`rsBackendPolicy.health.*`，`设计/91 §5.5`），原文一字没改。
+        // 健康那六句的 key 随判定归了本文件的面（`rsBackendPolicy.health.*`），原文一字没改。
         .filter(|(k, _)| {
             k.starts_with("backendPolicy.") || k.starts_with("rsBackendPolicy.health.")
         })
@@ -251,7 +251,7 @@ fn the_four_deaths_are_told_apart_by_evidence_not_by_name() {
             );
         }
     }
-    // 〔PB1〕每一条只摆证据（逐字相等，不是「≥ 30 字」那道地板 —— 那道地板要的正是处方）。
+    // 每一条只摆证据（逐字相等，不是「≥ 30 字」那道地板 —— 那道地板要的正是处方）。
     assert_eq!(
         copies,
         vec![
@@ -576,7 +576,7 @@ fn the_production_sink_really_hands_the_line_to_the_log() {
     });
 }
 
-// 〔PB1〕这里原来有一条逐行钉 TS 三档的源码判据；三档搬进 [`health_face`]、TS 那份删了，它随之退役。
+// 这里原来有一条逐行钉 TS 三档的源码判据；三档搬进 [`health_face`]、TS 那份删了，它随之退役。
 //   接班：下面两条（判准逐格 · 成品金样）＋ `judgment-single-home` 的 J21（TS 零实现）。
 
 /// 造一份读数（只有四个计数与短摘要要紧；账行那一格给个占位，界面从来不读它）。
@@ -597,12 +597,12 @@ fn reading(
     }
 }
 
-/// ★★ 〔PB1 · P2〕**那条区分的判准**逐格钉死：全零 ⇒ 无记录；四个计数**任一**非零 ⇒ 不是无记录；
+/// ★★ **那条区分的判准**逐格钉死：全零 ⇒ 无记录；四个计数**任一**非零 ⇒ 不是无记录；
 /// 只有 `crashed` 非零才是崩过。
 ///
 /// 五格缺一不可：只钉全零那一格的话，把判准写成 `crashed == 0` 照样绿 ——
 /// 而那会把一台记到过 2 次读坏了的机器说成「答不出来」（可它明明有账）；
-/// 四个计数各自 = 1 那四格就是这条判准的全部内容（`设计/70 §2.2`：「判准是『账上一条记录都没有』，不是 `crashed === 0`」）。
+/// 四个计数各自 = 1 那四格就是这条判准的全部内容（「判准是『账上一条记录都没有』，不是 `crashed === 0`」）。
 #[test]
 fn the_health_face_is_judged_by_the_whole_ledger_not_by_crashes_alone() {
     let cells: [(&str, Health, HealthState); 5] = [
@@ -684,7 +684,7 @@ fn health_golden() -> Vec<(String, Health, Value)> {
         .collect()
 }
 
-/// ★★ 〔PB1 · P3〕成品的线上形状两侧同一份：生产的 [`health_face`] 序列化 == 金样（逐格，键集恰好四个）。
+/// ★★ 成品的线上形状两侧同一份：生产的 [`health_face`] 序列化 == 金样（逐格，键集恰好四个）。
 ///
 /// 反空真：金样四形、三档都在（少一档，下面那条相等只在剩下的几档上成立）。
 #[test]
@@ -826,7 +826,7 @@ fn body_after(prod: &str, head: &str) -> String {
 ///    只数总数的话，「某一处塌了、另一处多记了一次」会互相抵消
 ///    （`backend_control.rs` 那条「逐口切体，不数全局」为同一形栽过一次）。
 ///
-/// ⚠ 〔`P4` 2026-09-21〕**这两行先前是纯旧话，而且与它下面 20 几行的注释互相矛盾**：
+/// ⚠ **这两行先前是纯旧话，而且与它下面 20 几行的注释互相矛盾**：
 /// 原文是「人群里**没有本文件自己**：`scan_tree!` 按 `file!()` 摘掉调用者那一份，
 /// 而 [`record_death`] 的定义与它自己的单测都住这儿 —— 不摘就恒有命中」。
 /// 那一刀**在这一处不生效**（判据由 `#[path]` 挂载 ⇒ `file!()` 是带 `..` 的折返路径
@@ -857,7 +857,7 @@ fn the_death_ledger_is_wired_at_exactly_these_sites() {
     );
     let mut scanned = 0usize;
     let mut hits: Vec<(String, usize)> = Vec::new();
-    // 🔴 〔搬树 2026-09-18 · `设计/99` 条 73〕**只数调用点，不数定义。**
+    // 🔴 〔搬树 2026-09-18 ·  条 73〕**只数调用点，不数定义。**
     //
     // 上一版靠 `scan_tree!` 的 `file!()` 自摘把 `backend_policy.rs` 摘出人群 ——
     // 当年本条就住在它的 `#[cfg(test)]` 段里，而那份文件恰好是 `record_death` 的**定义家**。
@@ -963,7 +963,7 @@ fn the_supervisor_itself_never_records_a_death() {
              ★ 它同时监护后端与中转 ⇒ 中转的死会被记进「这台机的后端」那本账。\n\
              ⇒ 记账落在客户那一侧的 `on_event`（`local_backend_host::backend_supervise_events`）。"
     );
-    // 整组「调后端的客户端 ＋ 监护」（从前的 `backend/` 目录，〔THIN〕今天逐个点名：`backend_client_guard_tests.rs::GUARDED`）也是 0 ——
+    // 整组「调后端的客户端 ＋ 监护」（从前的 `backend/` 目录，今天逐个点名：`backend_client_guard_tests.rs::GUARDED`）也是 0 ——
     //   判与记都不在那一半（`B1` 那次误诊正是判断落在 backend 层的产物）。
     let files: Vec<(std::path::PathBuf, String)> = crate::backend_client_guard::guarded_sources();
     assert!(
@@ -1025,7 +1025,7 @@ fn a_reader_that_never_existed_is_neither_a_clean_eof_nor_a_misread() {
     );
 }
 
-// ── 〔步 12 · 2026-09-19〕两个同名 `LOCAL_ORIGIN` 的钉子 ⇒ 〔C4b · 第四波 4B〕合了 ──────
+// ── 两个同名 `LOCAL_ORIGIN` 的钉子 ⇒ 合了 ──────
 //
 // ⚠ **这一段原本是两条，删掉了一条 —— 那条是我重复造的。**
 //   跨语言那条（Rust `inbound_client::LOCAL_ORIGIN` ↔ TS `backend-policy.ts`）
@@ -1034,10 +1034,10 @@ fn a_reader_that_never_existed_is_neither_a_clean_eof_nor_a_misread() {
 //   我一度判它「不存在」，依据是一条 `grep … | head -4` 的输出 ——
 //   🔴 **拿一个截断过的人群下「不存在」的判，正是本仓反复治的那个病。**
 //
-// 〔C4b〕剩下那一条原名 `the_two_same_named_local_origin_constants_stay_deliberately_different`〔散文墓碑〕，
+// 剩下那一条原名 `the_two_same_named_local_origin_constants_stay_deliberately_different`〔散文墓碑〕，
 // 钉的是「两者**刻意不同**：`backend-policy.ts` 的是 backend origin，`accounts.ts` 的 `"__local__"` 是账号面自己的标记
-// ——合并是一次设计变更，回去看 `设计/00 §2.5 ①`」。它守的是「合并之前别顺手改」，不是「永远不合」。
-// C4b 读了 `00 §2.5 ①`（一个 Origin 类型、账号面本机与远端同一条路）裁「合」：`"__local__"` 装的就是
+// ——合并是一次设计变更，回去看」。它守的是「合并之前别顺手改」，不是「永远不合」。
+// C4b 读了（一个 Origin 类型、账号面本机与远端同一条路）裁「合」：`"__local__"` 装的就是
 // 「哪台机器」本身（它只是本机那条命令结果的缓存键），账号面没有第二个概念 ⇒ 这一次就是它等的那次设计变更。
 // ⇒ 本条改成钉**合了之后**的形状；TS 那一侧按语法树的零命中住 `tests/frontend/ui/ipc/commands.vitest.ts`（「本机只有一个表示」）。
 
@@ -1083,9 +1083,9 @@ fn the_account_face_has_no_local_origin_of_its_own() {
     );
 }
 
-// ── 〔第四波 ST2 · `设计/70 §7` 第二刀 步 7〕后端停止产 markdown 与设计论证 ─────────
+// ── 后端停止产 markdown 与设计论证 ─────────
 
-/// `70 §2.4` 那五种形状里，**后端这一侧**能产出来的四种（markdown · 源码住址 · 日志行格式 · 设计论证）。
+/// 那五种形状里，**后端这一侧**能产出来的四种（markdown · 源码住址 · 日志行格式 · 设计论证）。
 /// 与 `tests/frontend/ui/settings/ui-copy-discipline.vitest.ts::SHAPES` 同义；这里只认字面，不做语义判断。
 fn ui_copy_violations(s: &str) -> Vec<&'static str> {
     let mut out = Vec::new();
@@ -1110,7 +1110,7 @@ fn ui_copy_violations(s: &str) -> Vec<&'static str> {
     out
 }
 
-/// ★★ **进界面的那一格**（〔PB1〕`backend_status` 的 `health` 成品：`summary` · `why` · `detail` 三句，
+/// ★★ **进界面的那一格**（`backend_status` 的 `health` 成品：`summary` · `why` · `detail` 三句，
 /// 「崩过」那一句接的是 `Health::last_brief`）全干净，
 /// 而**进日志的那一行**（`ledger_line`）照旧带着日志行格式 —— 两边的分工是这条判据的全部内容。
 ///
@@ -1139,14 +1139,14 @@ fn what_reaches_the_settings_panel_carries_no_markdown_no_argument_no_log_format
         assert_eq!(
             ui_copy_violations(&brief),
             Vec::<&str>::new(),
-            "「{what}」进界面的那一格犯了 `70 §2.4`：{brief}"
+            "「{what}」进界面的那一格犯了：{brief}"
         );
         // 判定词与退出状态都在（界面上要读得出「怎么死的、退出码多少」）。
         assert!(
             brief.contains(&death_kind(&d)) && brief.contains(&exit_status(&d)),
             "「{what}」的短摘要丢了判定或退出状态：{brief}"
         );
-        // 进日志的那四条话也不许再带 markdown / 论证（它们不进界面，但 `70 §7` 步 7 逐字要后端「停止产」）。
+        // 进日志的那四条话也不许再带 markdown / 论证（它们不进界面，但要后端「停止产」）。
         let copy = death_detail(&d);
         assert!(
             !copy.contains("**") && !copy.contains("放大器") && !copy.contains(".rs"),
@@ -1158,7 +1158,7 @@ fn what_reaches_the_settings_panel_carries_no_markdown_no_argument_no_log_format
             "账行不再是日志行格式了 —— 尺子或账行其一坏了"
         );
     }
-    // 〔PB1〕成品里每一句都进界面：金样四形（三档）逐句扫。
+    // 成品里每一句都进界面：金样四形（三档）逐句扫。
     let golden = health_golden();
     assert_eq!(golden.len(), 4, "金样少了一形");
     for (name, h, _) in &golden {
@@ -1170,7 +1170,7 @@ fn what_reaches_the_settings_panel_carries_no_markdown_no_argument_no_log_format
             assert_eq!(
                 ui_copy_violations(s),
                 Vec::<&str>::new(),
-                "「{name}」那一格的成品犯了 `70 §2.4`：{s}"
+                "「{name}」那一格的成品犯了：{s}"
             );
         }
     }
@@ -1181,7 +1181,7 @@ fn what_reaches_the_settings_panel_carries_no_markdown_no_argument_no_log_format
 #[test]
 fn the_crash_reading_quotes_the_brief_not_the_ledger_line() {
     let origin = "st2-读数接短摘要-甲";
-    // 〔S5〕这里原来用 `-1073741510` 当「任意崩溃码」—— 那个码今天有自己的人话（见下一族判据），
+    // 这里原来用 `-1073741510` 当「任意崩溃码」—— 那个码今天有自己的人话（见下一族判据），
     //   换一个没有人话的码（Windows 访问越界 `0xC0000005`），本条要的仍是「裸码照实报」。
     let ev = DeathEvidence {
         outcome: Outcome::Exited(-1073741819),
@@ -1211,10 +1211,10 @@ fn the_crash_reading_quotes_the_brief_not_the_ledger_line() {
     );
 }
 
-/// ★★ 〔PB1 · P4〕接线那一半：**真命令** `backend_status` 回的 `health` 就是 [`health_face`] 的成品，
+/// ★★ 接线那一半：**真命令** `backend_status` 回的 `health` 就是 [`health_face`] 的成品，
 /// 原料（四个计数 · 短摘要 · 账行）一格都不上线。
 ///
-/// 〔PB1〕原来这里是一条钉拼 JSON 那一行的源码判据；远端 origin 那一支不碰通道也不碰进程，
+/// 原来这里是一条钉拼 JSON 那一行的源码判据；远端 origin 那一支不碰通道也不碰进程，
 /// 真命令在测试里跑得动 ⇒ 换成行为判据。
 #[test]
 fn the_status_command_hands_the_panel_the_finished_face() {
@@ -1254,12 +1254,12 @@ fn the_status_command_hands_the_panel_the_finished_face() {
     assert_eq!(quiet["health"]["state"], "unknown");
 }
 
-// ── 〔S5 · 第四波 · `设计/00 §1.5.3`〕死亡账说人话：`0xC000013A` ─────────────────────────
+// ── 死亡账说人话：`0xC000013A` ─────────────────────────
 
 /// 被控制台事件杀死的那一种，那一格说**人话**，不说裸码。
 ///
 /// ⚠ 两侧异源：码写成**字面量** `-1073741510`（`ExitStatus::code()` 在 Windows 上真给的那个 `i32`），
-/// 不从 [`STATUS_CONTROL_C_EXIT`] 推；那句话逐字抄 `00 §1.5.3`，不引用常量。
+/// 不从 [`STATUS_CONTROL_C_EXIT`] 推；那句话逐字抄，不引用常量。
 /// 常量写错一位（或按数值换算成了别的数）⇒ 这里当场红。
 #[test]
 fn a_console_ctrl_kill_is_said_in_words_not_as_a_bare_code() {

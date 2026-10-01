@@ -1,7 +1,7 @@
 /**
- * 〔W5-RENDER R2〕工具卡预览的两处「整条切 / 整条序列化只为取 ≤60 字」收成有界的两个函数。
+ * 工具卡预览的两处「整条切 / 整条序列化只为取 ≤60 字」收成有界的两个函数。
  *
- * 守的要求（`设计/17 §2.5`，逐字）：「三处『整条切 / 整条序列化只为取 ≤60 字』：`cards/index.ts::firstLinePreview`
+ * 守的要求：「三处『整条切 / 整条序列化只为取 ≤60 字』：`cards/index.ts::firstLinePreview`
  * · `summarizeInput` · `trackAgents` 取首行」—— 修法「`indexOf("\n")` ＋ `slice`；只序列化头几个 key；
  * 顺手抽一个 `firstLineOf(s, max)` 消掉三个住址」。第三处（`trackAgents`）住 STC 的写区，本文件不管。
  *

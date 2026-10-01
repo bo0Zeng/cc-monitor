@@ -1,4 +1,4 @@
-// 〔`C1` · 09-24〕`parse_snapshot_meta` 的两条判据随那个函数一起删了：快照不再读 〔散文墓碑〕
+// `parse_snapshot_meta` 的两条判据随那个函数一起删了：快照不再读 〔散文墓碑〕
 // `--read-session-tail` 的首行 meta，那张图改由帧面 `history-tail` 给（校验住 `frame_query::tail`）。
 
 /// 两段编号映射（真函数）：到达序 → 行号（尾段先到）。

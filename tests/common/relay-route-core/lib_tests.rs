@@ -1,5 +1,5 @@
-//! 〔US1〕中转门牌（`relay-route-core`）的判据：拼与拆互逆 · 段闸 · 两个前缀闭集。
-//! 守的要求：`设计/20 §5`「端口 · 路由渲染 · 段的字符闸收进共享 crate，一份实现两侧 use」·
+//! 中转门牌（`relay-route-core`）的判据：拼与拆互逆 · 段闸 · 两个前缀闭集。
+//! 守的要求：「端口 · 路由渲染 · 段的字符闸收进共享 crate，一份实现两侧 use」·
 //! `§3.3`「值 fail-closed 校验：必须是构造口产得出的形状」。
 
 use super::*;
@@ -28,8 +28,8 @@ fn what_base_url_builds_the_inverse_accepts_and_parse_restores() {
     }
 }
 
-/// 〔V141 · R2〕注入的地址**不随会话变**：恰好两段，退役的第 3 段（先前装 sid / 启动器铸的 nonce）那一形逆一侧拒。
-/// 守的要求：用户裁决 V141「启动器不造会话 id、不往环境变量 / 中转地址里塞任何会话身份」。
+/// 注入的地址**不随会话变**：恰好两段，退役的第 3 段（先前装 sid / 启动器铸的 nonce）那一形逆一侧拒。
+/// 守的要求：「启动器不造会话 id、不往环境变量 / 中转地址里塞任何会话身份」。
 #[test]
 fn the_injected_address_carries_no_session_segment() {
     let two = base_url(PORT, RouteMode::Passthrough, "claude-code", "_").unwrap();
@@ -105,7 +105,7 @@ fn a_keyed_url_splits_only_when_the_key_and_the_route_both_have_our_shape() {
         format!("{head}{}/{tail}", &key[..63]),         // 短一个字符
         format!("{head}{}/{tail}", key.to_uppercase()), // 大写
         format!("{head}{key}/x/a/b"),                   // 前缀不认得
-        format!("{head}{key}/{tail}/k1"),               // 退役的会话段（V141）
+        format!("{head}{key}/{tail}/k1"),               // 退役的会话段
         format!("http://localhost:8788/{key}/{tail}"),  // 非字面回环
         format!("https://127.0.0.1:8788/{key}/{tail}"),
         "https://api.example.com/v1".to_string(), // 用户自己的端点

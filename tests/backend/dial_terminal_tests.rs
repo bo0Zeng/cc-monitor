@@ -1,4 +1,4 @@
-//! 要求住址：`设计/99 §2.1 ⑬`「待迁」最后一行 ——「远端拉起那串的 ssh 外壳（`ssh -t -J … host '<串>'` · PowerShell 窗口载荷）
+//! 要求：「待迁」最后一行 ——「远端拉起那串的 ssh 外壳（`ssh -t -J … host '<串>'` · PowerShell 窗口载荷）
 //! 由本机后端渲，monitor 只开终端」（FIX4 题面第 1 条）。
 //!
 //! 期望原样搬自 monitor `tests/frontend/shell/launch_tests.rs` 钉 ssh 外壳的那六条（基本形态 · 钥匙与口 · IPv6 · 跳板参数 · 坏输入 ·
@@ -261,7 +261,7 @@ fn every_rendered_remote_command(cwds: &[&str]) -> Vec<(String, String)> {
     out
 }
 
-/// ★ 住址：`设计/99 §2.3`「高危四条（… G Windows 开远端会话被自家守卫拒 …）发版前修」· `第四波记录/WIN3.md §2` G。
+/// ★ 要求：「高危四条（… G Windows 开远端会话被自家守卫拒 …）发版前修」。
 /// 后端自己渲出、会交给 `terminal-ssh` 的每一条远端命令（[`every_rendered_remote_command`]：典型工作目录 ——
 /// 空格 · 中文 · 弯引号 · 单引号）都过这道守卫（零命中）；带中转前缀的那几条真的在人群里。
 /// 守卫不放宽（正控）：同一条路上工作目录带 `"` 的照旧拒。
@@ -312,12 +312,12 @@ fn every_remote_command_the_backend_renders_passes_the_terminal_guard() {
     }
 }
 
-// ── 〔P4〕「在此打开终端」的那一串：原住文件窗口 `tests/frontend/filewin/shell_tests.rs`，随拼法搬来（期望串一个字没改） ──
+// ── 「在此打开终端」的那一串：原住文件窗口 `tests/frontend/filewin/shell_tests.rs`，随拼法搬来（期望串一个字没改） ──
 
 /// 🔴 **「在此打开终端」拼出来的那一串 —— 三种形状，期望串手写。**
 ///
-/// 〔LR2〕这里原来是一条跨语言对拍：期望串现读旧面板那条判据的三行（TS `buildOpenTerminalCmd` 的黄金样例）；
-/// 那份 TS 实现删了之后那三行的字节原样搬进来当期望（行为零变化）。〔P4〕拼法从文件窗口搬进本机后端，期望照旧。
+/// 这里原来是一条跨语言对拍：期望串现读旧面板那条判据的三行（TS `buildOpenTerminalCmd` 的黄金样例）；
+/// 那份 TS 实现删了之后那三行的字节原样搬进来当期望（行为零变化）。拼法从文件窗口搬进本机后端，期望照旧。
 #[test]
 fn the_open_terminal_command_keeps_its_three_shapes() {
     const GOLDEN: &[(&str, &str)] = &[
@@ -336,7 +336,7 @@ fn the_open_terminal_command_keeps_its_three_shapes() {
     assert!(!command_for_cwd(&json!("")).unwrap().contains('"'));
 }
 
-/// 〔TL3 · `INVARIANTS §47` ②〕「在此打开终端」的当前目录：自由文本路径，形式 ＋ 拒绝集（只收 NUL / CR / LF），**正反各一格**。
+/// 〔`INVARIANTS §47` ②〕「在此打开终端」的当前目录：自由文本路径，形式 ＋ 拒绝集（只收 NUL / CR / LF），**正反各一格**。
 /// 要求住址：`INVARIANTS §47` ②；主会话 09-26 按 V131 裁「自由文本路径……拒绝集只收控制字符（NUL / CR / LF）……不拒 shell 元字符」。
 #[test]
 fn the_open_terminal_cwd_passes_real_names_and_refuses_what_quote_cannot_hold() {
@@ -360,7 +360,7 @@ fn the_open_terminal_cwd_passes_real_names_and_refuses_what_quote_cannot_hold() 
             "那句话没说清是哪个目录：{e:?}"
         );
     }
-    // 〔FILES2 · 非 UTF-8 目录〕有损目录：`cd` 走唯一的 quote 的字节形（原住 `shell_tests` 有损目录那一条里的「开终端」一格）。
+    // 〔非 UTF-8 目录〕有损目录：`cd` 走唯一的 quote 的字节形（原住 `shell_tests` 有损目录那一条里的「开终端」一格）。
     assert_eq!(
         command_for_cwd(&json!({ "b16": "2f7372762f64ff" }))
             .map_err(|e| e.1)
@@ -369,7 +369,7 @@ fn the_open_terminal_cwd_passes_real_names_and_refuses_what_quote_cannot_hold() 
     );
 }
 
-/// 〔P4 · 主会话 09-29 拍板 Q2〕`terminal-ssh` 收意图 `cwd`：渲出来的那一行与「先拼好命令再交 `command`」**逐字相同**
+/// 〔主会话 09-29 拍板 Q2〕`terminal-ssh` 收意图 `cwd`：渲出来的那一行与「先拼好命令再交 `command`」**逐字相同**
 /// （文件窗口与主界面开终端同一条路、同一处渲）；`command` 与 `cwd` 恰好给一个，两个都给 / 都不给 ⇒ `invalid_args`。
 #[test]
 fn a_cwd_intent_renders_exactly_like_the_command_it_stands_for() {
@@ -394,7 +394,7 @@ fn a_cwd_intent_renders_exactly_like_the_command_it_stands_for() {
     }
 }
 
-// ═══════ 〔P5 · `设计/80 §8.2` 本地半 · 主会话裁「整段前奏由后端渲」〕令牌握手前奏：原 monitor `launch_tests.rs` 那一组搬来 ═══════
+// ═══════ 〔本地半 · 「整段前奏由后端渲」〕令牌握手前奏：原 monitor `launch_tests.rs` 那一组搬来 ═══════
 // 期望原样：被测对象从 monitor `launch.rs` 搬进 `with_bind_prelude` / `powershell::rbind_bind_prelude`，解码侧换成两半共用的契约
 // （`shell_quote_core::rbind_token_from_marker`，monitor `bind.rs` 收 await 文件时就是它）。await 文件三键 == `AwaitRequest` 留在读侧
 // （`tests/frontend/shell/bind_tests.rs` 读本仓模板）。⚠ 买不到：这段 PowerShell 在真 Windows 上真跑通（本机没有 Windows）。
@@ -558,7 +558,7 @@ fn both_terminal_frames_hand_the_token_to_the_prelude() {
     );
 }
 
-/// 🔴 令牌不进日志（`设计/80 §8.6 ③`）：`dial/terminal.rs` 生产段的日志宏一句都不碰令牌、marker 或装着它们的那串。
+/// 🔴 令牌不进日志：`dial/terminal.rs` 生产段的日志宏一句都不碰令牌、marker 或装着它们的那串。
 #[test]
 fn the_terminal_token_never_reaches_a_log_macro() {
     let prod = guard_core::production_code(include_str!("../../src/backend/dial/terminal.rs"));

@@ -1,5 +1,5 @@
 /**
- * 🔴 `设计/70 §1.3` **D ＋ E**（第一刀 · 步 4）：
+ * 🔴 **D ＋ E**（第一刀 · 步 4）：
  * **异步失败落在那一块上**（D）· **点击侧给 pending**（E）。
  *
  * # D 要防的
@@ -46,7 +46,7 @@ import { withPending } from "../../../../src/frontend/ui/settings/pending";
 
 const tick = () => new Promise((r) => setTimeout(r, 0));
 
-describe("`70 §1.3 E`（步 4）：点击侧 pending —— 按住期间不许发第二趟", () => {
+describe("（步 4）：点击侧 pending —— 按住期间不许发第二趟", () => {
   beforeEach(() => {
     ipc.calls = [];
     ipc.gate = null;
@@ -83,7 +83,7 @@ describe("`70 §1.3 E`（步 4）：点击侧 pending —— 按住期间不许�
     )!;
     rescan.click();
     await tick();
-    // 〔MIG-3b 续〕本机那一栏两拍（monitor 事实 → 本机后端），两拍各放开一次。
+    // 本机那一栏两拍（monitor 事实 → 本机后端），两拍各放开一次。
     ipc.gate?.();
     await tick();
     ipc.gate?.();
@@ -109,7 +109,7 @@ describe("`70 §1.3 E`（步 4）：点击侧 pending —— 按住期间不许�
   });
 });
 
-describe("`70 §1.3 D`（步 4）：异步失败落在那一块上，不再只打到状态栏", () => {
+describe("（步 4）：异步失败落在那一块上，不再只打到状态栏", () => {
   beforeEach(() => {
     document.body.replaceChildren();
     __resetMachineContextForTests();

@@ -44,7 +44,7 @@ workspace，本行盖不到」——**一格「我盖不到那儿」的诚实注
   · `C6c` **不判「归得对不对」**，只判「有没有归」：把 `index.html` 归进「文档」那一档
     它照样绿。⇒ 它买的是**枚举盖住了那棵树**，不是**分档分对了**。
   · `C5b` **骗得过的那一形写死**：一句标着 `〔量于` 而内容其实是今天的自述 —— 那要读语义。
-  · 它**不补任何盲区**（`K-R80 §0d` 逐字：数出来归数出来，补是另一件）。
+  · 它**不补任何盲区**（数出来归数出来，补是另一件）。
     ⚠ `K-R82`（09-12）**补了其中一棵**：`hooks/` 从 0 格变成 1 格（`gate.sh` 里新的 `hooks` 格）。
     但那是**在 `gate.sh` 里加了一道真门**，本文件仍然只登记、只对拍 —— 这条边界一个字没变。
 
@@ -67,7 +67,7 @@ from pathlib import Path
 # `K_R80_ROOT` 只为**死值验**存在：把本文件拷进 scratchpad 变异之后，仓根仍要指回真工作树。
 # ⚠ 它不是配置项，日常跑一律不带。
 ROOT = Path(os.environ.get("K_R80_ROOT") or Path(__file__).resolve().parents[2])
-# 🔴 〔订正 09-19〕默认住址原先写着 `ROOT / "scripts" / "gate.sh"` —— 那是**重构前**的住址。
+# 🔴 默认住址原先写着 `ROOT / "scripts" / "gate.sh"` —— 那是**重构前**的住址。
 # 重构后 `gate.sh` 搬进 `tests/scripts/`，于是不带参数跑本文件**当场 `FileNotFoundError`**。
 # ⚠ **它崩得响，却没人听见** —— 本文件那时不在门禁的执行链上（只被 `gate.sh` 头注引为
 #   「可复跑」）。两头坏叠在一起的后果实测：`pb check` 那一格 09-18 已整格删除，而裁决行
@@ -99,9 +99,9 @@ GATE = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else ROOT / "tests" / "s
 #     不属于任何目录的文件（`git ls-files` 里不含 `/` 的那些）。
 #
 # 〔现打 09-19〕15 棵合计 **1343** 份 == `git ls-files` 现打 1343（分区，不重不漏）。
-# 〔RE · 收尾重排〕vendor 跟唯一消费者走（`99 §2.1 ⑰`）：russh → `src/vendor/`；
+# 〔收尾重排〕vendor 跟唯一消费者走：russh → `src/vendor/`；
 #   共享 crate 搬出 `src/frontend/shell/` 住 `src/common/` ⇒ 单立一棵。
-#   〔10-01〕代码全景摘掉：vendored 引擎那一棵（连同用它的小程序）整棵删了 ⇒ 树少一棵。
+#   代码全景摘掉：vendored 引擎那一棵（连同用它的小程序）整棵删了 ⇒ 树少一棵。
 #   新树**没单独裁的格沿用它来的那棵的裁词**（`DERIVED`，见 `cell()`）—— 搬家不改哪一格盖到它。
 VENDOR = "src/vendor/"
 ROOTFILES = "<仓根文件>"
@@ -109,9 +109,9 @@ ROOTFILES = "<仓根文件>"
 #    把 `src/` 挪到 `src/backend/` 前面，后端那 69 份会被前端那棵吞掉，而**一条判据都不红**。
 TREES = [
     "src/backend/",          # 69   后端 Rust（重构前的 `remote-daemon-proto/`）
-    VENDOR,                  # russh 补丁副本（〔RE〕原住 bridge 包的 `vendor/russh`）
-    "src/common/",           # 共享 crate（〔RE〕原住 bridge 包的 `crates/`）
-    "src/comms/",            # 通信层成员（〔RE〕面 A 由壳编、面 B 由后端编，另有 1 份 TS）
+    VENDOR,                  # russh 补丁副本（原住 bridge 包的 `vendor/russh`）
+    "src/common/",           # 共享 crate（原住 bridge 包的 `crates/`）
+    "src/comms/",            # 通信层成员（面 A 由壳编、面 B 由后端编，另有 1 份 TS）
     "src/frontend/shell/",           # 157  Tauri 侧 Rust（重构前的 `src-tauri/`），不含 vendor
     "src/frontend/ui/generated/",        # 82   `ts_rs` 生成物（重构前不单列）
     "src/shared/",           # 19   重构前的 `shared/`
@@ -124,7 +124,7 @@ TREES = [
     "tests/",                # 384  判据本体（frontend/shell/ backend/ common/ views/ settings/ + vitest）
     ".github/",              # 3
     ".cargo/",               # 1
-    "docs/",                 # 5    〔SHOTS 09-29〕README 的产品截图（`tests/evidence/README-shots.ts` 拍）
+    "docs/",                 # 5 README 的产品截图（`tests/evidence/README-shots.ts` 拍）
     ROOTFILES,               # 14
 ]
 
@@ -159,7 +159,7 @@ def all_blind(reason=OUT_OF_TREE):
 REGISTRY = {}
 
 
-# 〔RE〕搬家分出来的树 → 它来的那棵：没单独裁的格沿用来处的裁词（纯搬家不改覆盖）。
+# 搬家分出来的树 → 它来的那棵：没单独裁的格沿用来处的裁词（纯搬家不改覆盖）。
 DERIVED = {"src/common/": "src/frontend/shell/"}
 
 
@@ -169,7 +169,7 @@ def cell(name, anchor, cwd, cmd, **verdicts):
     for new, src in DERIVED.items():
         if new not in verdicts and src in verdicts:
             c[new] = verdicts[src]
-    # 〔RE〕`src/comms/` 的住户来自三棵树（面 A 的 `.rs` 由壳编 · 面 B 的 `.rs` 由后端编 · 1 份 TS 原住 `src/` 兜底那棵）：
+    # `src/comms/` 的住户来自三棵树（面 A 的 `.rs` 由壳编 · 面 B 的 `.rs` 由后端编 · 1 份 TS 原住 `src/` 兜底那棵）：
     #   没单独裁的格，取那三棵里第一个不是「无」的裁词（盖到哪一份，就说哪一份的话）。
     if "src/comms/" not in verdicts:
         for src in ("src/frontend/shell/", "src/backend/", "src/"):
@@ -211,7 +211,7 @@ cell(
 #   一格读数都不动。**但那条登记的字面不再成立**，所以删它、不是改它。
 cell(
     "copy2",
-    # 〔`K-R122` 09-14〕锚点跟着 `gate.sh` 那一行改了：原先是
+    # 锚点跟着 `gate.sh` 那一行改了：原先是
     #   `run_gate copy2 '`evidence/*.py` 现打` —— 那个「现打」后面跟的是一个**手抄的份数**，
     #   本件把它摘了（份数以判据本体自己印的那一行为准）⇒ 锚点收到「不含那个数」的那一段。
     anchor="run_gate copy2 '`evidence/*.py` 里，`shutil` 保元数据复制族",
@@ -358,7 +358,7 @@ cell(
     },
 )
 
-# ── WIN1（第四波 4D）：第 30 格 `winlink` ───────────────────────────────────
+# ── WIN1：第 30 格 `winlink` ───────────────────────────────────
 # 守的要求：用户裁决 V115 那一趟 RT1 的 F1（`RT1.md §8`）—— `winchk` 只 `check`、不链接，
 # 而 `-gnu` 交叉链接 `monitor_lib.dll` 当场 `export ordinal too large`。本格真链两个二进制。
 cell(
@@ -415,11 +415,11 @@ cell(
     cwd="remote-daemon-proto/",
     cmd="cargo check --all-targets --target x86_64-pc-windows-gnu",
     **{
-        "tests/evidence/": blind("〔TQ1 09-24〕这棵树里原有的那一条活 `[[bench]]`（秤 7）搬去了 `tests/benches/`（bench 源码的唯一住址）"
+        "tests/evidence/": blind("这棵树里原有的那一条活 `[[bench]]`（秤 7）搬去了 `tests/benches/`（bench 源码的唯一住址）"
                                  "⇒ 这棵树今天没有一份被本格编译；它的读数 `.md` ／ 一次性量具 `.py` 本格一份不碰。"
                                  "（09-19 的现物照记：步 8 改名漏了那份 bench 里的 `CARGO_BIN_EXE_cc-monitor-remote`，宿主 `cargo test` 全绿，**只有本格红**）"),
         "tests/": ("部", "〔现打 09-19〕本格带 `--all-targets` ⇒ test target 也编 ⇒ 盖 `tests/backend/` 那 75 份；"
-                         "〔TQ1 09-24〕bench target 也编 ⇒ 盖 `tests/benches/` 下 `[[bench]]` 指着的那份（秤 7）。"
+                         "bench target 也编 ⇒ 盖 `tests/benches/` 下 `[[bench]]` 指着的那份（秤 7）。"
                          "★ 这条有现物：步 8 改名漏了秤 7 里的 `CARGO_BIN_EXE_cc-monitor-remote`，宿主 `cargo test` 全绿，**只有本格红**"),
         "src/backend/": (PART, "唯一成员 `cc-monitor-remote` 的**生产段 ＋ test 档**"
                                        "（`--all-targets` 是承重的：云端那 10 个错一个都不在生产段）"
@@ -501,23 +501,23 @@ cell(
 
 cell(
     "cargo",
-    # 🔴 〔`K-R115` 09-14〕**这条锚点在本件之前就已经指空了**：它写着 `cargo 8`，
+    # 🔴 **这条锚点在本件之前就已经指空了**：它写着 `cargo 8`，
     #   而 `gate.sh` 现打是 `run_gate_sum cargo 9`（workspace 长到 9 个成员那天没人回来改）。
     #   ⇒ 本尺子在**本件动它之前**就红着一条 `C2`（现打读数住
     #   `evidence/K-R115-deathvalue.md#§E`）。这不是本件弄红的，是本件顺手量到的。
-    # 〔CP2c 09-25〕新共享 crate `copy-core` 进 workspace ⇒ 成员 9 → 10，`gate.sh` 那行同拍改成 `cargo 10`；
+    # 新共享 crate `copy-core` 进 workspace ⇒ 成员 9 → 10，`gate.sh` 那行同拍改成 `cargo 10`；
     #   本锚点当时没人跟 ⇒ 合并列车那次门禁 `gate-selfdesc` C2 红，主会话在这里跟上。
-    # 〔US1 · 4D〕新共享 crate `relay-route-core` ⇒ 成员 10 → 11，`gate.sh` 同拍改 `cargo 11`，本锚点同拍跟上。
-    # 〔DUP2 · 4D〕新共享 crate `agent-tools-core`（J19）⇒ 成员 11 → 12，`gate.sh` 同拍改 `cargo 12`，本锚点同拍跟上。
-    # 〔DUP3 · 4D〕新共享 crate `upstream-url-core`（J9）⇒ 成员 12 → 13（本路增量 ＋1），`gate.sh` 同拍改 `cargo 13`，本锚点同拍跟上。
-    # 〔MIG-3b · 4D〕新共享 crate `deploy-core` ⇒ 成员 13 → 14（本路增量 ＋1），`gate.sh` 同拍改 `cargo 14`，本锚点同拍跟上。
-    # 〔RE〕`codex-token-core` 搬进后端 ⇒ 成员 14 → 13，`gate.sh` 同拍改 `cargo 13`，本锚点同拍跟上。
-    # 〔THIN〕`gate-core` 收成后端模块 ⇒ 成员 13 → 12，`gate.sh` 同拍改 `cargo 12`，本锚点同拍跟上。
-    # 〔THIN〕`agent-tools-core` 收进后端适配层 ⇒ 成员 12 → 11，同拍。
-    # 〔THIN〕`branch-core` 收进后端适配层 ⇒ 成员 11 → 10，同拍。
-    # 〔P1〕`search-core` 拆进后端 ⇒ 成员 10 → 9，同拍（`deploy-core` → `deploy-contract` 只改名）。
-    # 〔P4〕〔合并 P4 × 主线 211bb498〕新共享 crate `host-core` · `chan-core` · `filewin-contract` ⇒ 成员 9 → 12，同拍。
-    # 〔P4〕文件窗口独立成包 `src/frontend/filewin/`（`cc-monitor-filewin`）⇒ 成员 12 → 13，同拍。
+    # 新共享 crate `relay-route-core` ⇒ 成员 10 → 11，`gate.sh` 同拍改 `cargo 11`，本锚点同拍跟上。
+    # 新共享 crate `agent-tools-core`（J19）⇒ 成员 11 → 12，`gate.sh` 同拍改 `cargo 12`，本锚点同拍跟上。
+    # 新共享 crate `upstream-url-core`（J9）⇒ 成员 12 → 13（本路增量 ＋1），`gate.sh` 同拍改 `cargo 13`，本锚点同拍跟上。
+    # 新共享 crate `deploy-core` ⇒ 成员 13 → 14（本路增量 ＋1），`gate.sh` 同拍改 `cargo 14`，本锚点同拍跟上。
+    # `codex-token-core` 搬进后端 ⇒ 成员 14 → 13，`gate.sh` 同拍改 `cargo 13`，本锚点同拍跟上。
+    # `gate-core` 收成后端模块 ⇒ 成员 13 → 12，`gate.sh` 同拍改 `cargo 12`，本锚点同拍跟上。
+    # `agent-tools-core` 收进后端适配层 ⇒ 成员 12 → 11，同拍。
+    # `branch-core` 收进后端适配层 ⇒ 成员 11 → 10，同拍。
+    # `search-core` 拆进后端 ⇒ 成员 10 → 9，同拍（`deploy-core` → `deploy-contract` 只改名）。
+    # 新共享 crate `host-core` · `chan-core` · `filewin-contract` ⇒ 成员 9 → 12，同拍。
+    # 文件窗口独立成包 `src/frontend/filewin/`（`cc-monitor-filewin`）⇒ 成员 12 → 13，同拍。
     anchor="run_gate_sum cargo 13 bash -c",
     cwd="src-tauri/",
     cmd="cargo test --workspace --lib",
@@ -539,7 +539,7 @@ cell(
     },
 )
 
-# ── 〔第四波 S4〕第 26 格 `f3-copy`（秤 F3 两向）退役：它量的零流量复制随浏览 / 复制离开 SFTP 一起删了，
+# ── 第 26 格 `f3-copy`（秤 F3 两向）退役：它量的零流量复制随浏览 / 复制离开 SFTP 一起删了，
 #   判据本体那份台架文件一起删了 ⇒ 登记与云端对照那两处一起摘（`gate.sh` 29 格 → 28 格）。
 
 
@@ -657,7 +657,7 @@ cell(
     cmd="node_modules/.bin/tsc --noEmit --listFiles（＋ 程序面份数对账）",
     **{
         "src/frontend/ui/generated/": ("全", "〔现打 09-19〕`include` 的第一项是 `src` ⇒ 这 82 份 `ts_rs` 生成物全部过 `tsc --noEmit`，且它们在 `/src/` 下 ⇒ **也在本格那条恒等对账的两侧**"),
-        "tests/": ("部", "〔现打 09-19〕`tsconfig.json` 的 `include` 是 `['src', 'tests']` ⇒ 这棵树的 155 份 `.ts` **确实被 tsc 读进程序、真判了类型**。⚠ 〔订正 09-19〕上一版这条裁词写的是「本格那条恒等对账盖不到它们」——**当时是真的**：`want` 数 `find src tests/e2e`、`got` 的正则是 `/(src|e2e)/`，两侧同时把 `tests/` 的其余 162 份剔掉，等式照样成立。死值验坐实过：把 `include` 收窄成 `['src', 'tests/e2e']`，**旧公式 210 == 210 全绿**，而那 162 份当场不再被检。⇒ 本拍把两侧都改成按 `include` 的真值数（**372 == 372**），同一刀下新公式 372 != 210 **红**。所以这棵树的 `.ts` 今天**既被判了类型、也进了那条恒等对账**"),
+        "tests/": ("部", "〔现打 09-19〕`tsconfig.json` 的 `include` 是 `['src', 'tests']` ⇒ 这棵树的 155 份 `.ts` **确实被 tsc 读进程序、真判了类型**。⚠ 上一版这条裁词写的是「本格那条恒等对账盖不到它们」——**当时是真的**：`want` 数 `find src tests/e2e`、`got` 的正则是 `/(src|e2e)/`，两侧同时把 `tests/` 的其余 162 份剔掉，等式照样成立。死值验坐实过：把 `include` 收窄成 `['src', 'tests/e2e']`，**旧公式 210 == 210 全绿**，而那 162 份当场不再被检。⇒ 本拍把两侧都改成按 `include` 的真值数（**372 == 372**），同一刀下新公式 372 != 210 **红**。所以这棵树的 `.ts` 今天**既被判了类型、也进了那条恒等对账**"),
         "src/": (FULL, "`tsconfig.json` 的 `include` 第一项就是这棵树 ⇒ 下面每一份 "
                        "`.ts`/`.tsx`/`.mts` 都进程序，**而且本格自己现打对账**"
                        "（真读进程序的份数 == 盘上现打的份数，两个数同一趟算，一个都不写死）。"
@@ -698,13 +698,13 @@ for suite, anchor in [
     ("ccm tests/e2e/ccm-rbind-title", "run_e2e ccm-rbind-title  8"),
     ("ccm tests/e2e/ccm-cli", "run_e2e ccm-cli               58"),
     ("ccm tests/e2e/ccm-contract-parity", "run_e2e ccm-contract-parity   45"),
-    # 〔第二波 T4 09-24〕令牌那两套（`设计/80 §8.7` 步 2 / 步 3）—— 此前只被 shellcheck、不被执行。
+    # 令牌那两套—— 此前只被 shellcheck、不被执行。
     #   被测对象同是那个后端二进制（`ccm` 即 `cc-monitor-backend`），读法与上面四格一字不差。
     ("ccm tests/e2e/backend-rbind-token", "run_e2e backend-rbind-token   11"),
     ("ccm tests/e2e/rbind-token-endtoend", "run_e2e rbind-token-endtoend   9"),
-    # 〔TAIL 09-26〕后端的 cc-bus 基础命令（真跑 cc-bus 脚本 ＋ 隔离 tmux socket）—— 此前只挂在不通电的 `ci.yml` 上。
+    # 后端的 cc-bus 基础命令（真跑 cc-bus 脚本 ＋ 隔离 tmux socket）—— 此前只挂在不通电的 `ci.yml` 上。
     ("ccm tests/e2e/backend-cc-bus", "run_e2e backend-cc-bus        97"),
-    # 〔E2 尾 09-27〕同样只挂在不通电的 `ci.yml` 上、各红了几天没人看见的那四套（gate2 · 本机后端监护 · 换号两套）。
+    # 同样只挂在不通电的 `ci.yml` 上、各红了几天没人看见的那四套（gate2 · 本机后端监护 · 换号两套）。
     ("ccm tests/e2e/backend-gate2", "run_e2e backend-gate2         34 exact-with-skip"),
     ("ccm tests/e2e/local-backend", "run_e2e local-backend         24 exact-with-skip"),
     ("ccm tests/e2e/restart-frames", "run_e2e restart-frames         6"),
@@ -714,7 +714,7 @@ for suite, anchor in [
     ("ccm tests/e2e/backend-sessions-rewatch", "run_e2e backend-sessions-rewatch 5"),
     # 〔MIG-1 续五〕本机拉起真建出 tmux 会话（`P3t-Y5`），同样只挂在不通电的 `ci.yml` 上。
     ("ccm tests/e2e/p3t-local-tmux", "run_e2e p3t-local-tmux        11"),
-    # 〔FIX3〕就地 resume 复活清灰（后端帧级），同样只挂在不通电的 `ci.yml` 上。
+    # 就地 resume 复活清灰（后端帧级），同样只挂在不通电的 `ci.yml` 上。
     ("ccm tests/e2e/resume-frames", "run_e2e resume-frames          7"),
     # `ci.yml` 有地板行、此前只在 CI 上跑的七套。
     ("ccm tests/e2e/cc-spawn-uplift", "run_e2e cc-spawn-uplift       72"),
@@ -850,7 +850,7 @@ cell(
 
 
 # ── 第 23、24 格 `muslbuild` / `platform`（`G4`，09-19）──────────────────────
-# `设计/01 §7.3` 要的「每一个我们发布的平台都编得过」＋「两个壳都要编得过」。
+# 要的「每一个我们发布的平台都编得过」＋「两个壳都要编得过」。
 # 行数由条 63 定：承诺三格（本机 Windows x86_64 · 远端 Linux · 本机 Linux），
 # (Windows, aarch64) 显式拒绝。
 cell(
@@ -876,7 +876,7 @@ cell(
     **{
         "tests/scripts/": (PART, "`P1`/`P2` 读 `gate.sh` **这一份**的文本（格名 ＋ 逐字锚点）；"
                                  "这棵树里另外 6 份 `.sh` 本格一个字不看"),
-        # 〔S5 · 第四波 · V105 清账〕这里原来判「部」：`P4`（「壳-折」那一维有对象）读这棵树的三样现物。
+        # 〔V105 清账〕这里原来判「部」：`P4`（「壳-折」那一维有对象）读这棵树的三样现物。
         #   那一档放弃、`P4` 删了之后本格一个字都不读这棵树 ⇒ 缺省的「无」（`all_blind`）就是实情。
         "tests/evidence/": (NONE, "🔴 判据本体住这棵树，但本格不读这棵树的任何文件 —— "
                                   "**判据自己住哪不算覆盖**（同 `gate-selfdesc` 那一条）"),
@@ -938,11 +938,11 @@ cell(
 #   **不查「理由的枚举盖没盖全那棵树」**。⇒ `C6c` 补的正是这一维。
 #
 # 🔴 **判词是两个，不是一个**：`不需要门` 与 `未裁` 在上一版的输出里长得一模一样
-#   （都印成「0 覆盖 + 一句理由」）。`K-R91 §0b` 逐字禁本件给那几份加门 ⇒ 那几份的诚实判词
+#   （都印成「0 覆盖 + 一句理由」）。禁本件给那几份加门 ⇒ 那几份的诚实判词
 #   就是**未裁**：**「已被逐份数到」不等于「不需要门」**，这张表不许把后者写成前者。
 NEED_NONE, UNJUDGED = "不需要门", "未裁"
 
-# 🔴 〔`K-R115` 09-14〕**`evidence/` 那一条整段删了，而这是一次「登记的字面不再成立」，
+# 🔴 **`evidence/` 那一条整段删了，而这是一次「登记的字面不再成立」，
 #   不是一次整理**：本件给门禁加了第 14 格 `copy2`（判据本体 `evidence/K-R115-ruler.py`），
 #   它是**第一格盖到这棵树**的门 ⇒ 「0 格覆盖」这个前提当场不成立，`C6b` 会说「这条说明陈了」。
 #   上一版那段话逐字写着「`0 格覆盖`**正是它的用途**」——`[J3 陈账]` 死锁的泄压口。
@@ -971,7 +971,7 @@ NO_GATE_NEEDED = {
                     "该不该给它加门未裁。"},
         ],
     },
-    # 〔SHOTS 09-29 · 用户 09-29「readme全面搞一下 … 看看有没有什么截图」〕新出现的一棵树：README 配图。
+    # 〔用户 09-29「readme全面搞一下 … 看看有没有什么截图」〕新出现的一棵树：README 配图。
     "docs/": {
         "why": "这棵树今天只有 README 的产品截图（`docs/screenshots/*.png`），由 `tests/evidence/README-shots.ts` "
                "从合成数据重拍（真前端 ＋ 页里的替身后端 ＋ 无头 Chromium）。它们不进构建、不进运行时、"
@@ -1002,7 +1002,7 @@ NO_GATE_NEEDED = {
                "① `npm` 那一格的命令本体住在 `package.json` 的 `scripts.test` 里、"
                "`vitest.config.ts` 给它 `include` —— 这两份坏了那一格根本起不来 ⇒ 它们是那格的"
                "**依赖**，不是那格的**分母**；登记只记分母，所以这两份在本树上判 0，不是漏登。"
-               "⚠ 〔订正 09-19〕上一句原先写的是「**这里仍判 0**」——那是说**整棵树** 0 格覆盖，"
+               "⚠ 上一句原先写的是「**这里仍判 0**」——那是说**整棵树** 0 格覆盖，"
                "今天不成立了：`release-gate` 读 `package.json` 的 `version`，本树现打 **1 格**。"
                "改的是那句话的射程（从整棵树收到这两份），**不是把普查关掉**。"
                "② 文档与仓库元数据那两档，改坏它们不改变任何产品行为，**不值一道出货闸**。"
@@ -1032,7 +1032,7 @@ NO_GATE_NEEDED = {
                     "`index.html` 是应用入口 · `vite.config.ts` 决定构建产物 · "
                     "`tsconfig.json` / `eslint.config.js` / `.stylelintrc.json` 决定类型与 lint 的口径。"
                     "⇒ 本条**不声称它们不需要门**，只声称**它们已被逐份数到**。"
-                    "〔U1 09-24〕三入口拆分后多了 `settings.html` / `viewer.html`；三份 html 与 vite input、"
+                    "三入口拆分后多了 `settings.html` / `viewer.html`；三份 html 与 vite input、"
                     "`lib.rs` 开窗 url 的三处对账住 `tests/frontend/ui/entry-graphs.vitest.ts`（经 `npm` 那一格跑到），"
                     "但那是**依赖面的对账**，不是这一档的分母 ⇒ 判档不改"},
             {"档": "依赖锁", "判": UNJUDGED, "成员": ["package-lock.json"],
@@ -1042,7 +1042,7 @@ NO_GATE_NEEDED = {
              "why": "它们只对 git 自己说话（哪些文件不跟踪 / 换行与 diff 怎么处理），"
                     "不进构建、不进运行时、不被产品代码读"},
             {"档": "文档", "判": NEED_NONE,
-             # 🔴 〔订正 09-19〕摘掉 `PHASE-G-REPORT.md` 与 `项目审阅报告-*.md` ——
+             # 🔴 摘掉 `PHASE-G-REPORT.md` 与 `项目审阅报告-*.md` ——
              #   两份**今天一份都匹配不到**（`C6c` 每趟现数，所以它红得出来）。
              #   ⚠ 摘的是**档标**不是判词：剩下四份仍归「文档」，那句「改坏它们不改变
              #   任何产品行为」对它们一个字没变。
@@ -1114,7 +1114,7 @@ def cross_tree_reads():
     ⇒ 它给的是**量级**，不是精确数。上面登记里那些「现打 N 个读点」就是这把尺子的读数。
     """
     read_call = re.compile(r"read_to_string|include_str!|readFileSync|read_dir|readdirSync")
-    # 🔴 〔订正 09-19〕上一版这里**另写了一份归属表**（`markers` 八条 ＋ 下面那串 if/elif），
+    # 🔴 上一版这里**另写了一份归属表**（`markers` 八条 ＋ 下面那串 if/elif），
     #    与文件头的 `TREES` 是两份账，重构一来两份同时腐、而且互相看不见。
     #    ⚠ 本拍那道「树键位改写」的正则还**误伤过它一次** —— 它的键是「源码行里要找的字串」、
     #      值才是树名，两者同形 ⇒ 正则把键当树名改了一半。**这正是第二份账的典型死法。**
@@ -1231,7 +1231,7 @@ def header_paragraphs(hdr):
 
 
 def suite_on_disk(tok):
-    # 🔴 〔订正 09-19〕住址原先是 `e2e/{tok}` —— 重构后套件搬进 `tests/e2e/`，
+    # 🔴 住址原先是 `e2e/{tok}` —— 重构后套件搬进 `tests/e2e/`，
     #    于是**四套都查无此文件**，C5b 一口气吐三条假红（三段头注被判成「点了不存在的套件」）。
     #    ⚠ 这一形值得记：**尺子指错地方时，它的红与真红长得一模一样。**
     return any((ROOT / f"tests/e2e/{tok}{ext}").exists() for ext in (".sh", ".test.sh", ""))
@@ -1399,7 +1399,7 @@ def check_verdict_rollcall(text, cells):
 
 # ── `C8`（`G4` 空洞③，09-20）：**这道门到底被谁调用** ────────────────────────────
 #
-# 🔴 题面（`真相源/92 §2.1.2` ①，本拍非截断复打）：
+# 🔴 题面（本拍非截断复打）：
 #   `grep -c 'bash tests/scripts/gate.sh' .github/workflows/*.yml` ⇒ 落地前**两份都是 0**；
 #   `.git/hooks/` 下零个非 sample 钩子；`tests/hooks/` 下只有一份 `pre-commit`，而它
 #   **默认是死的**（要人手 `git config core.hooksPath` 才活）。
@@ -1443,7 +1443,7 @@ _CLOUD_WHY = "只要 `actions/checkout` ＋ runner 自带的 git/bash/python3/no
 invoke("worktree-clean", NOWHERE,
        "🔴 **它在云端构造上红不了** —— 云端那一趟是 `actions/checkout` 出来的**全新单份副本**，"
        "「仓里有没有第二份工作副本」这个条件在那儿恒成立。把一格恒绿的东西放进云端子集，买到的是**一分虚的绿**，"
-       "而虚的绿与真的绿在流水线的勾上一模一样 ⇒ 明着不放。它治的是本机并发 worktree 那一族（`真相源` 记过 09-19 一天绊三次），那是本机的活")
+       "而虚的绿与真的绿在流水线的勾上一模一样 ⇒ 明着不放。它治的是本机并发 worktree 那一族（记过 09-19 一天绊三次），那是本机的活")
 invoke("hooks", CLOUD, _CLOUD_WHY + "。它判 `tests/hooks/` 下每一份的可执行位 · index mode · 语法 —— 其中 **index mode 那一条只有云端这种全新 checkout 才最有意义**（本机那一份 `chmod` 过的看不出来）")
 invoke("copy2", CLOUD, _CLOUD_WHY)
 invoke("shellcheck", CLOUD, _CLOUD_WHY + "。⚠ 云端另有 `E2E scripts health` 那个 job 跑同一档，本格与它**同一份人群**（都从 `ci.yml` 现读）⇒ 这里是第二道，不是唯一一道")
@@ -1499,7 +1499,7 @@ invoke("winchk", ELSEWHERE,
        "⚠ **ABI 不同**：本格是 `-gnu` 交叉，云端是 `-msvc` 原生 ⇒ 两边各盖一半，不是同一格",
        anchor="cargo clippy --workspace --all-targets")
 invoke("winchk-backend", ELSEWHERE,
-       "`backend` 那个 job 有一条 `-msvc` 跨 target check（`真相源/92 §2.1.1` 的 `C3`）。"
+       "`backend` 那个 job 有一条 `-msvc` 跨 target check（`C3`）。"
        "⚠ 同上：本格 `-gnu`、云端 `-msvc`",
        anchor="cargo check --all-targets --target x86_64-pc-windows-msvc")
 invoke("winlink", NOWHERE,
@@ -1508,7 +1508,7 @@ invoke("winlink", NOWHERE,
        "「`-gnu` 上两个二进制链得起来」这一维云端零覆盖，只有本机这一格")
 for _s in ("backend-rbind-token", "rbind-token-endtoend"):
     invoke("ccm tests/e2e/" + _s, NOWHERE,
-           "〔第二波 T4 09-24〕`ci.yml` 里这一套**只在 shellcheck 人群里**，没有 `assert-pass-floor.sh` 调用行 —— "
+           "`ci.yml` 里这一套**只在 shellcheck 人群里**，没有 `assert-pass-floor.sh` 调用行 —— "
            "`ci.yml` 步 2 / 步 3 那两段注释逐字「也没有加 `assert-pass-floor` 那一行 …… 待拍板」。"
            "⇒ 云端这一格零覆盖。本格只把它接进**本机**执行链，不替那件待拍板的事拍板")
 for _s in ("ccm-print-parity", "ccm-rbind-title", "ccm-cli", "ccm-contract-parity", "backend-cc-bus",
@@ -1539,12 +1539,12 @@ invoke("weak-net", ELSEWHERE, "`weak-net` 那个 job 跑同样两步；⚠ 云�
 # ── 云端零覆盖的那几格：明写缺什么，**不许给锚点** ──────────────────────────────
 invoke("muslbuild", NOWHERE,
        "🔴 现打（非截断）：`ci.yml` 里 `musl` 与 `zigbuild` **各命中 1 处，两处都在注释里**，"
-       "没有任何一步真编 musl ⇒ **云端这一维零覆盖**，与 `真相源/92 §2.1.4` 那条读数一致。"
+       "没有任何一步真编 musl ⇒ **云端这一维零覆盖**，与那条读数一致。"
        "缺的是：zig 0.14.0 ＋ cargo-zigbuild 0.23.0 ＋ 两个 musl target —— 装得上，但那是一笔"
        "**本拍量不了**的账（沙箱断网，`gh run view` 做不到）⇒ 不猜，明着登记欠着")
 invoke("deadcode", NOWHERE,
        "本格是 `cargo check -p monitor` **非 test 构建**里 `never used` 的**恒等棘轮**（钉的数只住 `gate.sh` 那一行 `pin=`；"
-       "〔第二波 T4 订正〕这里原先抄着一个 36，而那时 `pin` 早已是 35 —— 散文副本必腐，删了数不删话）。"
+       "这里原先抄着一个 36，而那时 `pin` 早已是 35 —— 散文副本必腐，删了数不删话）。"
        "云端那几趟 clippy 跑的是 `--all-targets`（含 test 档，那些函数有调用方）⇒ **量的不是同一个数**，"
        "也没有任何一处棘轮。⇒ 这一维云端零覆盖")
 invoke("ccbus-twophase", NOWHERE,
@@ -1793,7 +1793,7 @@ def check_no_gate_needed(orphans):
     """
     out = []
     rootfiles = {p for p in ls_files() if "/" not in p}
-    # 🔴 〔订正 09-19〕`C6b` 的人群从「孤儿树」扩成「孤儿树 ∪ 明标 `partial` 的树」。
+    # 🔴 `C6b` 的人群从「孤儿树」扩成「孤儿树 ∪ 明标 `partial` 的树」。
     #   题面：`<仓根文件>` 今天被 `release-gate` 盖到 **1 格**（它读 `package.json` 的 `version`）
     #   ⇒ 按上一版那条两向对拍，它**不再是孤儿**，于是「登记说它不需要门」当场红，
     #   而正确的动作不是删掉那条说明 —— 14 份仓根文件里真正进了那一格的**只有 1 份**，
@@ -1864,7 +1864,7 @@ def check_no_gate_needed(orphans):
 #   `C6b` 查「这句话还站不站得住」，`C6c` 查「这句话的枚举盖没盖全那棵树」。
 def tree_members(tree, files):
     """那棵树**现打**的成员。
-    🔴 〔订正 09-19〕走 `tree_of()` 的**首匹配**，不再用裸 `startswith` ——
+    🔴 走 `tree_of()` 的**首匹配**，不再用裸 `startswith` ——
     重构后树之间**有前缀包含关系**（`src/` ⊃ `src/frontend/shell/`），裸 `startswith` 会让
     catch-all 那棵把所有子树的成员**再数一遍**，分母当场虚高、而且没有任何判据会红。"""
     return sorted(p for p in files if tree_of(p) == tree)

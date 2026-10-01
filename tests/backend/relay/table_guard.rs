@@ -2,13 +2,13 @@
 //!
 //! # 为什么单住一个文件
 //!
-//! 与隔壁 `creds_guard.rs` / `bind_guard.rs`（以及〔AR1〕已退役的 `nodelay_guard.rs`）同一个理由，
+//! 与隔壁 `creds_guard.rs` / `bind_guard.rs`（以及已退役的 `nodelay_guard.rs`）同一个理由，
 //! 它们的头注逐字写着：扫描型判据要走 `guard_core::scan_tree!`
 //! ⇒ **判据与被扫的代码必须不在同一个文件**，否则「摘掉自己」正好把靶子摘了
 //!（⚠ 那一刀经 `#[path]` 挂载时**不生效**，也就是本仓今天的全部判据 —— 详见下一段）。
 //! 本模块扫的是 `table.rs`，所以它不能住 `table.rs`。
 //!
-//! ⚠ 〔`P4` 2026-09-21〕那三份头注里「那个宏**按构造摘掉调用者自己那一份**」这句
+//! ⚠ 那三份头注里「那个宏**按构造摘掉调用者自己那一份**」这句
 //! **在这一处不生效**（判据由 `#[path]` 挂载 ⇒ `file!()` 是折返路径 ⇒ 后缀比不命中），
 //! 三处都已订正。上面那条结论今天只对「判据写在被扫文件自己的 `#[cfg(test)]` 段里」
 //! 那一形成立；本模块不在人群里靠的是住址（它住 `tests/backend/relay/`）。
@@ -134,7 +134,7 @@ mod tests {
     /// 与 [`sites`] 同族，但**先把排版抹掉再找针**：把每份生产段的空白（含换行）
     /// 全部删掉，针也写成无空白形。返回**文件名**（一处一条）。
     ///
-    /// # 为什么要有它〔09-09〕
+    /// # 为什么要有它
     ///
     /// [`sites`] 是**逐行** `contains`：针一旦跨行就零命中。09-09 那趟 `cargo fmt --all`
     /// 把 `table.rs` 里唯一那处焊接从一行拆成了五行 ⇒ ㈠ 那条当场数出 **0 处**，
@@ -194,7 +194,7 @@ mod tests {
     /// ★★★ **㈠ 焊接那一步只有一处**：把「一个上游」与「一把 key」焊成同一个值，
     /// 整个后端生产段里**恰好 1 处**，而且在**上游选择**（`accounts/table.rs`）里。
     ///
-    /// ⚠ 〔`设计/20 §7` 步 2〕先前这句话的后半截是「在 `table.rs` 的 `mod sealed` 里」。
+    /// ⚠ 先前这句话的后半截是「在 `table.rs` 的 `mod sealed` 里」。
     /// `mod sealed` 那一格拆掉了（`§7` 步 2 逐字要求），换来的是**访问器收成
     /// `pub(super)`** —— 中转连 `Row` 这个类型都点不到，**那是编译器买的**。
     /// 本条的判定因此从「在 `sealed` 里面」改成「在 `accounts/` 里面」；
@@ -280,7 +280,7 @@ mod tests {
             welds[0]
         );
 
-        // ★ 它必须落在**上游选择里面**。`mod sealed` 那一格 `设计/20 §7` 步 2 拆掉了
+        // ★ 它必须落在**上游选择里面**。`mod sealed` 那一格拆掉了
         //   （理由整段住 `accounts/table.rs` 里那条 `★★ 🔴` 注释），换来的是
         //   **访问器收成 `pub(super)`** —— 那是编译器买的，不是本条买的。
         //   本条今天断的是「焊接点没有溜出上游选择」。
@@ -299,10 +299,10 @@ mod tests {
 
     /// ★★★ **㈡ 开上游连接的地方只有一处**，而且它在**交换面**上（`server.rs::send_upstream`）。
     ///
-    /// # ⚠⚠ 🔴 〔`设计/20 §7` 步 1〕**靶子搬了一次家，经过写在这里**
+    /// # ⚠⚠ 🔴 **靶子搬了一次家，经过写在这里**
     ///
     /// 先前那唯一一处是 `table::Row::connect`（上游选择），本条的名字与判定都点着 `table.rs`。
-    /// 两层解耦之后「连上游」**归中转**（`20 §4`：`exchange` 那一行逐字是
+    /// 两层解耦之后「连上游」**归中转**（`exchange` 那一行逐字是
     /// 「resolve → **连上游** → pump → tee」），中转手里拿到的是 `Destination`
     /// 里那个 `&Base` ⇒ 调用点必然在 `server.rs`。
     ///
@@ -376,7 +376,7 @@ mod tests {
         );
     }
 
-    /// ★★★ **中转里没有任何可以回落的默认上游**（`设计/20 §4`「常量跟着职责走」）。
+    /// ★★★ **中转里没有任何可以回落的默认上游**（「常量跟着职责走」）。
     ///
     /// # 它买的是什么 —— 与它买不到什么
     ///
@@ -400,14 +400,14 @@ mod tests {
     fn the_relay_has_no_default_upstream_to_fall_back_to() {
         let files = crate_production();
         // 上游选择的人群：`accounts/upstream_select/` 底下那几份。中转 = `relay/` 里**除它之外**的。
-        // 〔NT2 · V25〕适配层（`agents/`）是默认上游那一格今天的住址（用户 V25「写死, 跟着适配层」）。
-        // 〔RELAY〕按 crate 根之后的相对路径判：工作树目录名里可能正好带 `relay`（`w4-relay/` 让下面每份文件都「在中转里」）。
+        // 适配层（`agents/`）是默认上游那一格今天的住址（用户「写死, 跟着适配层」）。
+        // 按 crate 根之后的相对路径判：工作树目录名里可能正好带 `relay`（`w4-relay/` 让下面每份文件都「在中转里」）。
         let rel = |p: &str| {
             let q = p.replace('\\', "/");
             q.rsplit_once("src/backend/")
                 .map_or(q.clone(), |(_, r)| r.to_string())
         };
-        let is_upstream_selection = |p: &str| rel(p).starts_with("accounts/upstream_select/"); // 〔`A3` 第二波〕上游选择收窄到 `accounts/upstream_select/`（`accounts/iso.rs` 不是上游选择）
+        let is_upstream_selection = |p: &str| rel(p).starts_with("accounts/upstream_select/"); // 上游选择收窄到 `accounts/upstream_select/`（`accounts/iso.rs` 不是上游选择）
         let in_adapter = |p: &str| rel(p).starts_with("agents/");
         let in_relay = |p: &str| rel(p).starts_with("relay/");
 
@@ -419,18 +419,18 @@ mod tests {
                 "default_upstreams(",
                 1,
                 1,
-                "〔NT2 · V25〕上游选择里 `Upstreams::from_env` 那一次遍历 · 适配层里它的定义",
+                "上游选择里 `Upstreams::from_env` 那一次遍历 · 适配层里它的定义",
             ),
             (
                 "https://api.anthropic.com",
                 0,
                 1,
-                "〔NT2 · V25〕那条 URL 字面量只出现在适配层 claude-code 那一格（`agents/claudecode` 的 `UPSTREAM`）",
+                "那条 URL 字面量只出现在适配层 claude-code 那一格（`agents/claudecode` 的 `UPSTREAM`）",
             ),
         ];
         // 〔条 59〕先前那个**进程级**常量（`DEFAULT_UPSTREAM`）整删了 —— 它对每一个 `seg1`
         // 都成立，于是「codex 的请求发给 Anthropic」在上游选择里也写得出来。
-        // 〔NT2 · V25〕上游选择自己那张每 agent 一行的表（`AGENT_UPSTREAMS`）也整删了（搬回适配层）——
+        // 上游选择自己那张每 agent 一行的表（`AGENT_UPSTREAMS`）也整删了（搬回适配层）——
         // 两个名字在**整个 crate** 的代码里零处（注释里的墓碑不算：剥掉注释再数）。
         // ⇒ 反空真由上面那张表的第一行担：同一把尺子数得到继任者，它才不是瞎的。
         let code: Vec<(String, String)> = files
@@ -467,7 +467,7 @@ mod tests {
                 relay_side.is_empty(),
                 "中转（`relay/` 里 `accounts/` 之外）出现了 `{needle}`：{relay_side:?}\n\
                  ⚠ 有那个值，「查不到就回落到它」就又写得出来了，而最坏的失效形态是\n\
-                 **codex 的请求被发给 Anthropic**（`设计/20 §3.1` 拍板 (b) 甲逐字点名）。",
+                 **codex 的请求被发给 Anthropic**（拍板 (b) 甲逐字点名）。",
             );
         }
     }
@@ -490,7 +490,7 @@ mod tests {
     /// 照绿了**（那个 `};` 在提出去之后仍在）。函数体当场就换成了钉**绑定的形状**，
     /// 而这段头注没跟着改 ⇒ 「改了事实没改说它的那句话」，这一次长在**判据自己身上**。
     ///
-    /// # 🔴 〔`设计/20 §7` 步 1〕**第三版：锁换了持有者，判法也跟着换**
+    /// # 🔴 **第三版：锁换了持有者，判法也跟着换**
     ///
     /// 第二版钉的是一串含缩进的源码字面
     /// （`let mut up = {\n        let table = relay.table.read()`），

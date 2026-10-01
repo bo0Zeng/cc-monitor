@@ -1,11 +1,11 @@
 /**
- * 〔C4d · 第四波 4B〕**历史浏览器的清单与注解，经通道问本机常驻后端**（历史跨机 join 的唯一的家）。
+ * **历史浏览器的清单与注解，经通道问本机常驻后端**（历史跨机 join 的唯一的家）。
  *
  * # 它顶掉了什么
  *
  * 此前这一族是 monitor 的五条 Tauri 命令：本机项目清单（exec 一次性本机后端 `--list-projects`、monitor 并注解 ＋ `SessionMap` 判活）·
  * 远端项目清单（monitor 逐台 fan-out、按行拿回再并注解）· 展开一个项目（本机 monitor 自己扫目录、远端按行拿回 —— 两套口径）·
- * 改注解（monitor 读改写 `history-metadata.json`）· 上次账号表。主会话 09-25 裁（`调研/第四波记录/C4d.md`「主会话裁」第 2 条）：
+ * 改注解（monitor 读改写 `history-metadata.json`）· 上次账号表。主会话 09-25 裁（「主会话裁」第 2 条）：
  * 注解的**读写者**换成本机常驻后端（文件原地不动），它经 `remote_ask` 问远端那台、并上注解、**出成品**；前端经 `chan.call`。
  * ⇒ 五条命令与 monitor 那一份 join / 注解读写一起删了；这里经通道问 `<local>` 那一台，按形状收。
  *
@@ -79,7 +79,7 @@ export interface EntryMetadata {
   lastAccount: string | null;
 }
 
-/** 远端那一批：项目 ＋ 失败的那几台 ＋〔WF2〕答了、但一个项目都没有的那几台（界面给它们画「这台还没有会话记录」）。 */
+/** 远端那一批：项目 ＋ 失败的那几台 ＋答了、但一个项目都没有的那几台（界面给它们画「这台还没有会话记录」）。 */
 export interface RemoteProjectsResult {
   projects: HistoryProject[];
   failedHosts: string[];
@@ -103,7 +103,7 @@ const orNull =
   (v: unknown): v is T | null =>
     v === null || p(v);
 
-/** 形状不对。给人看的那句不带内部名；哪一格不对只进 `detail`（日志 —— 〔CP2b〕只进日志的细目用英文写，不进文案表）。 */
+/** 形状不对。给人看的那句不带内部名；哪一格不对只进 `detail`（日志 —— 只进日志的细目用英文写，不进文案表）。 */
 export class HistoryShapeError extends Error {
   readonly detail: string;
   constructor(what: string) {

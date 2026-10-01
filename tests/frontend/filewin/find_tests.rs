@@ -1,6 +1,6 @@
 //! [`super`] 的判据 —— **搜索真的接到窗口上了吗**。
 //!
-//! 设计住 `调研/设计/60 §3.5` / `§3.5.2a` / `§3.5.3` 与 `调研/设计/96 §2.9`。
+//! 设计住。
 //!
 //! # 🔴 这一摞里哪几条是**反空真**的锚
 //!
@@ -265,7 +265,7 @@ async fn a_find_against_a_backend_that_never_built_an_index_comes_back_empty_and
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// 🔴 `设计/60 §3.5.2a` 那条节奏缺口：调用方**真的会发**那条重走命令
+// 🔴 那条节奏缺口：调用方**真的会发**那条重走命令
 // ═══════════════════════════════════════════════════════════════════
 
 /// 🔴🔴 **`§3.5.2a` 欠的那条判据就是这一条。**
@@ -477,9 +477,9 @@ async fn many_keystrokes_in_flight_still_only_trigger_one_rebuild() {
 // 🔴 新鲜度那几个数真的走到了界面上
 // ═══════════════════════════════════════════════════════════════════
 
-/// 🔴🔴 **`设计/60 §3.5.3` 那条 ⬜ 的兑现判据。**
+/// 🔴🔴 ** 那条 ⬜ 的兑现判据。**
 ///
-/// 它要的逐字是「那个数**显示在界面上**」。而 `真相源/99 §9.1` 记着同族的教训：
+/// 它要的逐字是「那个数**显示在界面上**」。而记着同族的教训：
 /// **源码扫描买不到「显示出来了」**（「调了那个看起来对的 API 只证明盘上有」）。
 /// ⇒ 这一条真跑一帧生产那个 `frame_body`，从 galley 里把数字读回来。
 ///
@@ -493,7 +493,7 @@ async fn the_freshness_numbers_the_backend_reports_really_reach_the_frame() {
     //    —— 第一版的跨组缺席断言就是这么假红的（`13247 字节` 里有 `13`）。
     //    ⇒ 裸数字不是一把尺子；带着它所在那一格的措辞才是。
     let mut lines: Vec<(Vec<String>, String)> = Vec::new();
-    // 〔W5-FILES · `设计/60 §3.7`〕多一个数：后端没走进去的挂载点（两组各不相同，跨组缺席断言照样罩着它）。
+    // 多一个数：后端没走进去的挂载点（两组各不相同，跨组缺席断言照样罩着它）。
     for (tag, interval, age, unreadable, mounts, entries_hint) in [
         ("b1-fresh-a", 4242u64, 1234u64, 41u64, 3u64, 'a'),
         ("b1-fresh-b", 8765u64, 5678u64, 13u64, 29u64, 'b'),
@@ -524,7 +524,7 @@ async fn the_freshness_numbers_the_backend_reports_really_reach_the_frame() {
         let painted = testing::frame_text(&ctx, &mut w, Vec::new());
         let line = painted
             .iter()
-            // 〔CP2b〕禁档词换掉（重走周期 → 扫描间隔，terms.json「重走」那一条）⇒ 按「扫描间隔」认那一行。
+            // 禁档词换掉（重走周期 → 扫描间隔，terms.json「重走」那一条）⇒ 按「扫描间隔」认那一行。
             .find(|t| t.starts_with("索引 ") && t.contains("扫描间隔"))
             .unwrap_or_else(|| {
                 panic!("这一帧上没有新鲜度那一行 —— `§3.5.3` 那条 ⬜ 还是 ⬜。\n这一帧画的是：{painted:?}")
@@ -540,7 +540,7 @@ async fn the_freshness_numbers_the_backend_reports_really_reach_the_frame() {
         // 🔴 而后端报的那几个数**逐个**在那一行上，而且是**带着措辞**找的
         //    （光找一个数字容易撞上同一行里别的数）。
         let frags = vec![
-            // 〔CP2b〕禁档词换掉（重走周期 → 扫描间隔 · 走完 → 扫完），数一个不少。
+            // 禁档词换掉（重走周期 → 扫描间隔 · 走完 → 扫完），数一个不少。
             format!("扫描间隔 {interval} 秒"),
             format!("{age} 秒前扫完"),
             format!("有 {unreadable} 个目录读不进去"),
@@ -593,7 +593,7 @@ async fn until_first_build_shows(board: &SearchBoard, who: &str) -> u64 {
     panic!("{who}：等了 3 秒板子上还没挂「首建正在走」—— 首建那一趟没挂上它");
 }
 
-/// 〔第四波 S4 · `设计/99 §2 Q5`〕**冷启动首建那一趟正在走时，帧上恰有「正在建索引（首次约 N 秒）」，
+/// **冷启动首建那一趟正在走时，帧上恰有「正在建索引（首次约 N 秒）」，
 /// 走完就没了；N 是后端报的那个数。**
 ///
 /// 用户裁「单列一个数并在搜索界面显示」。三向钉：
@@ -683,7 +683,7 @@ async fn the_cold_first_build_line_is_on_the_frame_while_it_runs_and_gone_after(
 /// 🔴 **阴性对照**：不是首建（索引在、只是 `stale`）的那一趟重走，帧上**没有**「正在建索引」。
 ///
 /// 没有这一条，上面那条可以靠「**每一趟**重走都挂」全绿 —— 而周期性重走是热的，
-/// 冷启动那个数套在它头上就是在说假话（`设计/99 §2 Q5`：两个数分开钉）。
+/// 冷启动那个数套在它头上就是在说假话（两个数分开钉）。
 #[tokio::test]
 async fn a_warm_rewalk_never_claims_to_be_the_cold_first_build() {
     let tree = testing::plant("warm", 30, TREE_SEED).expect("造不出那棵树");
@@ -732,13 +732,13 @@ async fn a_warm_rewalk_never_claims_to_be_the_cold_first_build() {
 /// 🔴 **零命中型 ＋ 唯一住址**：重走周期那个数在客户端这一侧**一处都没有**，
 /// 而它在后端**恰好一处**。
 ///
-/// # 🔴〔第十三刀 2026-09-23〕用户拍板了，而这一条要买的东西**没变**
+/// # 🔴用户拍板了，而这一条要买的东西**没变**
 ///
-/// 上一版这段头注逐字写着「`设计/99 §2 Q4` 逐字：周期该定多少**还没拍板**」。
+/// 上一版这段头注逐字写着「：周期该定多少**还没拍板**」。
 /// **那句话今天过期了**：用户 2026-09-22 同一轮裁「按推荐来」，而推荐原文逐字是
 /// 「先按现值 **300 秒**发，界面上把它**显示出来**」⇒ 那个数**定了**。
 ///
-/// 而「定了」并**不**削弱本条 —— 恰恰相反：`设计/01 §5 D2` 逐字不许前后端各写一份，
+/// 而「定了」并**不**削弱本条 —— 恰恰相反：不许前后端各写一份，
 /// 一个**已经定下来的**数比一个待定的数更容易被人顺手抄到界面这一侧
 /// （「反正就是 300」）。⇒ 本条这一刀**加宽**了，见下面 §射程。
 ///
@@ -747,7 +747,7 @@ async fn a_warm_rewalk_never_claims_to_be_the_cold_first_build() {
 /// 上一版只扫 `filewin/find.rs`。那是个洞：把 `300` 写进 `shell.rs` / `source.rs`
 /// 的任何一处，上一版**看不见**。今天扫的是 `filewin/` 整棵树的生产段。
 ///
-/// 〔P4〕窗口独立成包之后「`filewin/` 整棵树」是两棵：窗口包 `src/frontend/filewin/src/` ＋ monitor 那一侧 `src/frontend/shell/src/filewin/`
+/// 窗口独立成包之后「`filewin/` 整棵树」是两棵：窗口包 `src/frontend/filewin/src/` ＋ monitor 那一侧 `src/frontend/shell/src/filewin/`
 /// （开窗入口 · 起进程），人群与搬家前逐份相同；键写相对 `src/frontend/` 的路径（两棵里都有 `proc.rs`）。
 ///
 /// 加宽之后撞到一个**真的、合法的** `300`，逐条登记在 [`MILLIS_NOT_SECONDS`] 里：
@@ -878,7 +878,7 @@ fn no_rewalk_period_literal_lives_on_this_side() {
         "重走周期那个数的住址现打是 {homes:?}，而它只许有一个（`files/index.rs`）。\n\
          多一处 = `D2` 破了；少一处 = 它改名/搬家了，而这一侧那条零命中随之变成空转。"
     );
-    // 〔第四波 S4 · Q5〕冷启动首建那个数同形：后端恰好一个住址（它与周期**分开**住，各是各的常量）。
+    // 冷启动首建那个数同形：后端恰好一个住址（它与周期**分开**住，各是各的常量）。
     //   ⚠ 客户端侧那个值（今天 10）**不做**零命中扫描 —— `10` 这种裸数字满树都是、扫它是一把假尺子；
     //   「界面上画的是后端报的那个数」由 `the_cold_first_build_line_is_on_the_frame_while_it_runs_and_gone_after`
     //   喂两组数、跨组缺席买。
@@ -906,7 +906,7 @@ fn no_rewalk_period_literal_lives_on_this_side() {
 
 /// 🔴 **线上名里一个 `.` 都不许有。**
 ///
-/// `设计/96 §2.9` 逐字：本仓三个取词器的字符集都是「字母数字 / `_` / `-`」，
+/// 本仓三个取词器的字符集都是「字母数字 / `_` / `-`」，
 /// 带 `.` 的字面量会被它们**静默丢弃** —— 那等于把一条命令从判据底下抽走，
 /// 而判据照常报绿。⇒ 这一侧只许持有连字符那一套。
 #[test]
@@ -920,7 +920,7 @@ fn the_wire_names_never_carry_a_dot() {
         assert!(
             !c.contains('.'),
             "`{c}` 里有一个点 —— 那是**能力名**的写法。\n\
-             线上与 CLI 一律连字符（`设计/96 §2.9`），理由是取词器的字符集。"
+             线上与 CLI 一律连字符，理由是取词器的字符集。"
         );
         assert!(
             c.starts_with("files-"),
@@ -1030,7 +1030,7 @@ fn a_missing_field_is_a_loud_failure_not_a_silent_zero() {
 
 /// 非 UTF-8 路径走 `{"b16": …}` 那一形，**双向无损**。
 ///
-/// `设计/60 §2 档②` 逐字：文件名被有损解码过之后，拿着那串替换字符回去找，
+/// 文件名被有损解码过之后，拿着那串替换字符回去找，
 /// **找的是一个不存在的名字**。⇒ 这一侧把字节留着，只在画的时候才有损。
 #[test]
 fn a_non_utf8_hit_keeps_its_bytes_and_says_it_is_lossy() {
@@ -1101,7 +1101,7 @@ fn the_arg_builders_use_the_documented_keys() {
         serde_json::json!({ "dirs": ["/a", "/b"] })
     );
     // 🔴 `limit` / `ignore_ascii_case` **刻意不发** —— 默认值住后端那一侧
-    //    （`设计/01 §5 D3`：诚实的默认 ＝ 沿用调用者已有状态）。
+    //    （诚实的默认 ＝ 沿用调用者已有状态）。
     let a = find_args("x");
     assert!(
         a.get("limit").is_none() && a.get("ignore_ascii_case").is_none(),
@@ -1115,7 +1115,7 @@ fn the_arg_builders_use_the_documented_keys() {
 // 只读铁律
 // ═══════════════════════════════════════════════════════════════════
 
-/// 🔴 **零命中型**：这一族纯读（`设计/96 §2.9` 边界①）⇒ 这一侧一个写动词都没有。
+/// 🔴 **零命中型**：这一族纯读（边界①）⇒ 这一侧一个写动词都没有。
 ///
 /// `tests/backend/readonly_guard.rs` 那 4200 多行因此一行都不用改，
 /// 而**这一侧不许把它变成假的**：客户端偷偷写一笔，那条铁律看不见
@@ -1140,7 +1140,7 @@ fn this_module_never_touches_the_disk() {
         assert!(
             !prod.contains(v.as_str()),
             "`find.rs` 的生产段里出现了 `{v}` —— 这一族逐字是**纯读**。\n\
-             要动盘上的东西，先去 `设计/96 §2.9` 边界① 把那条改掉（那是放宽一条红线）。"
+             要动盘上的东西，先去边界① 把那条改掉（那是放宽一条红线）。"
         );
     }
 }

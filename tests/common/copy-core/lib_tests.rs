@@ -1,11 +1,11 @@
-//! 〔CP2c〕`copy-core`（对外文案表的 Rust 取文口）的判据。
+//! `copy-core`（对外文案表的 Rust 取文口）的判据。
 //!
-//! 要求住址：`设计/01 §6.9` 逐字「**所有对外文案与报错都从一张表来**」；`设计/91 §5.1` 决定 2
+//! 要求：「**所有对外文案与报错都从一张表来**」；决定 2
 //! 「一份文件，两侧各读，零转换」。「表 ↔ 引用」两向相等住 `tests/copy/copy-table.vitest.ts`。
 
 use super::*;
 
-/// 内嵌的就是盘上那一份（同一个文件，不是副本），而且解析得出条目（反空真：0 条时每一句都成了 `〔key〕`）。
+/// 内嵌的就是盘上那一份（同一个文件，不是副本），而且解析得出条目（反空真：0 条时每一句都成了 ``）。
 #[test]
 fn it_embeds_the_one_table_on_disk() {
     let raw = std::fs::read_to_string(
@@ -23,7 +23,7 @@ fn it_embeds_the_one_table_on_disk() {
     );
 }
 
-/// 表里没有 ⇒ `〔key〕`（不 panic）；没给的占位符原样留着。
+/// 表里没有 ⇒ ``（不 panic）；没给的占位符原样留着。
 #[test]
 fn a_missing_key_says_its_name_instead_of_panicking() {
     assert_eq!(copy_text("no.such.key", &[]), "〔no.such.key〕");
@@ -46,11 +46,11 @@ fn the_static_form_is_the_same_text_and_lives_forever() {
     );
 }
 
-/// 〔DUP2 · `设计/01 §6.9`「前端读口 `copy-table.ts::copyText`；Rust 读口只有一份实现 `copy-core::copy_text`」〕
+/// 〔「前端读口 `copy-table.ts::copyText`；Rust 读口只有一份实现 `copy-core::copy_text`」〕
 /// **两个读口的插值对拍**：共用金样 `tests/__fixtures__/copy-interpolation.golden.json` 逐条喂给本读口，
 /// 期望是金样里**手写**的（TS 那一侧 `tests/copy/copy-table.vitest.ts` 读同一份跑 `copyText`）⇒ 两侧各对金样，不是彼此对拍。
 /// 只收合法插值；两侧有意不同的那几形（缺键 · 参数对不上）登记在金样 `_differences`，不在这里。
-/// 〔DUP3〕「值里含别的占位符」那一形原先也登记在那里（本读口逐个 `replace` 会把值再换一遍）；改成单趟之后两侧一致，挪进 `cases`。
+/// 「值里含别的占位符」那一形原先也登记在那里（本读口逐个 `replace` 会把值再换一遍）；改成单趟之后两侧一致，挪进 `cases`。
 #[test]
 fn the_shared_interpolation_golden_agrees_with_this_reader() {
     let raw = include_str!("../../__fixtures__/copy-interpolation.golden.json");
@@ -85,7 +85,7 @@ fn the_shared_interpolation_golden_agrees_with_this_reader() {
     assert_eq!(wrong, Vec::<String>::new(), "Rust 读口与插值金样对不上");
 }
 
-/// 〔DUP3 · 主会话 09-26 裁：插值不该重新解释值〕**单趟**：值里带的 `{名}` 不再被扫；没给的占位符原样留；
+/// 〔主会话 09-26 裁：插值不该重新解释值〕**单趟**：值里带的 `{名}` 不再被扫；没给的占位符原样留；
 /// 一个不成对 / 不是给了值的 `{` 原样留着、后面的占位符照认。正反各一格（只断「不重扫」的话，把插值焊成「一个都不换」也能绿）。
 #[test]
 fn the_interpolation_is_one_pass_and_never_rescans_a_value() {

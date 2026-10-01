@@ -1,8 +1,8 @@
-//! 〔C4d · 第四波 4B〕**历史注解**（星标 / 改名 / 隐藏 / 上次用哪个号起）—— 读写者是本机常驻后端。
+//! **历史注解**（星标 / 改名 / 隐藏 / 上次用哪个号起）—— 读写者是本机常驻后端。
 //!
 //! # 裁决与出处
 //!
-//! 主会话 09-25 裁（`调研/第四波记录/C4d.md`「主会话裁」第 2 条，逐字）：「本机注解（`history-metadata.json`：星标 / 改名 / 隐藏）
+//! 主会话 09-25 裁（「主会话裁」第 2 条，逐字）：「本机注解（`history-metadata.json`：星标 / 改名 / 隐藏）
 //! 的**读写者**换成本机常驻后端 —— **文件留在原处、同一路径，不迁移、一条不丢**」。
 //! C4c 的设计（`C4c.md §3.2`）：注解是 monitor 自有状态搬去后端自有状态（`readonly_guard` 第四层），不是用户文件；
 //! `D1`：join 只有一个家 —— 历史清单并注解这件事从此住本机后端（`history_join.rs`）。
@@ -151,7 +151,7 @@ pub fn load() -> Loaded {
     }
 }
 
-/// 〔HX2〕读—改—写的锁：先建那一层目录，再拿它的**跨进程**锁（`platform/lock.rs`）。
+/// 读—改—写的锁：先建那一层目录，再拿它的**跨进程**锁（`platform/lock.rs`）。
 /// 〔墓碑 —— 从前是一把进程内 `Mutex`：只挡同一进程，两个后端进程（常驻 ＋ 一次性 CLI）同时改注解，后写的整份盖掉先写的。〕
 fn lock_for_write(path: &Path) -> Result<crate::platform::lock::DirLock, (&'static str, String)> {
     let dir = path.parent().ok_or_else(|| {
@@ -163,7 +163,7 @@ fn lock_for_write(path: &Path) -> Result<crate::platform::lock::DirLock, (&'stat
             ),
         )
     })?;
-    // 〔DATA-HOME · V160〕这一层是数据目录，默认就是 `~/.cc-monitor`（后端的家）⇒ 建的那一下只给本人。
+    // 这一层是数据目录，默认就是 `~/.cc-monitor`（后端的家）⇒ 建的那一下只给本人。
     if let Err(e) = crate::common::own_dir::ensure_private_dir(dir) {
         return Err((
             "io_failed",

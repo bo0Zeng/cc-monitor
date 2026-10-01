@@ -1,4 +1,4 @@
-//! 〔MIG-1 续 · `设计/99 §2.1 ⑬` · 主会话裁「后端持有全部 SSH」〕**测试连接**：界面把设置页表单里那台（可能还没保存的）配置交过来，
+//! 〔「后端持有全部 SSH」〕**测试连接**：界面把设置页表单里那台（可能还没保存的）配置交过来，
 //! 本机常驻后端组拨号请求（[`super::machine`]）、拨一次（短命探活，不进连接池）、回结局 —— monitor 那条 Tauri 命令
 //! `test_remote_connection` 与它手里那份探针退役（原住 `ssh_source.rs`）。
 //!
@@ -8,7 +8,7 @@
 //! 2. 读那台后端的首行：是 `hello` ⇒ `backendOk: true` ＋ 人读摘要；超时 / 关了 / 不是 hello ⇒ 「SSH 通了、后端没响应」；
 //! 3. 那台声明认 `ping` ⇒ 同一条流上发一次、等应答（控制通道往返）；不认 ⇒ 「后端太旧」；不回 ⇒ 「后端连上了、不能起会话」。
 //!
-//! 〔MIG-1 收尾 · 主会话裁「进度不许倒退」〕**边拨边推**：每走一段往本连接的应答通道推一帧 `probe {ticket, cell}`
+//! 〔「进度不许倒退」〕**边拨边推**：每走一段往本连接的应答通道推一帧 `probe {ticket, cell}`
 //! （`stage` 握手那几行 → `reached: ssh` → `reached: hello` → `reached: control`），结局是最后一格（`end`）；
 //! monitor 把它们交进界面订的 `probe-progress/<ticket>`。界面到点没等到结局时，最后收到的那一格就说得出停在哪一段。
 //! ⚠ **期限归发起方**（主会话裁 · DL1「值归发起方」）：本 crate 零定时器（`no_timer_guard` 按调用形态禁 `timeout(`），原先 monitor 那两段
@@ -50,7 +50,7 @@ fn outcome(
     })
 }
 
-/// 〔主会话 09-28 裁〕测试连接那一行给人看的三格要的事实：后端版本（BUILD_ID）· 能用几项 / 这台说做不到几项；
+/// 测试连接那一行给人看的三格要的事实：后端版本（BUILD_ID）· 能用几项 / 这台说做不到几项；
 /// 做不到的按码分类、每类几项交出去（那句人话归 monitor：`control-said.ts::unavailableReason`，与置灰那一句同一个家 ——
 /// `wire::Unavailable` 头注「那句人话今天归 monitor」）。键值对那一形（`wire::hello_summary`）只进日志。
 struct HelloFacts {

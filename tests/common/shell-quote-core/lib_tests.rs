@@ -7,7 +7,7 @@ fn posix_quote_breaks_single_quotes_the_posix_way() {
     assert_eq!(posix_quote(""), "''");
 }
 
-/// 〔TL3 · `INVARIANTS §47` ②〕自由文本的拒绝集：恰好 NUL / CR / LF（正反各一格 —— §47「拒过头也算违反」）。
+/// 〔`INVARIANTS §47` ②〕自由文本的拒绝集：恰好 NUL / CR / LF（正反各一格 —— §47「拒过头也算违反」）。
 /// 要求住址：`INVARIANTS §47` ②「走唯一的 quote ＋ 形式判定 ＋ 拒绝集」；主会话 09-26 按 V131 裁「自由文本路径的拒绝集只收控制字符（NUL / CR / LF）……不拒 shell 元字符」。
 #[test]
 fn free_text_refuses_exactly_nul_cr_lf_and_lets_real_names_through() {
@@ -26,7 +26,7 @@ fn free_text_refuses_exactly_nul_cr_lf_and_lets_real_names_through() {
     assert_eq!(FREE_TEXT_REFUSED, ['\0', '\r', '\n']);
 }
 
-/// 〔`INVARIANTS §47` ② · V138「位置参数原样交给 claude」〕交给 agent 的参数 / 登记备注的拒绝集：恰好 NUL / CR ——
+/// 〔`INVARIANTS §47` ②〕交给 agent 的参数 / 登记备注的拒绝集：恰好 NUL / CR ——
 /// 多行初始任务正着放（拒 LF 就是 §47「拒过头也算违反」），元字符交给 quote（正反各一格）。
 #[test]
 fn an_agent_argument_may_span_lines_but_never_carries_nul_or_cr() {
@@ -45,7 +45,7 @@ fn an_agent_argument_may_span_lines_but_never_carries_nul_or_cr() {
     assert_eq!(ARG_TEXT_REFUSED, ['\0', '\r']);
 }
 
-/// 〔TL3 · `INVARIANTS §47` ②〕POSIX 自由文本路径：形式（绝对 · 无 `..` 段）＋ 拒绝集，**正反各一格**。
+/// 〔`INVARIANTS §47` ②〕POSIX 自由文本路径：形式（绝对 · 无 `..` 段）＋ 拒绝集，**正反各一格**。
 #[test]
 fn a_posix_free_path_is_absolute_without_parent_segments_and_nothing_quote_cannot_hold() {
     for good in [
@@ -64,8 +64,8 @@ fn a_posix_free_path_is_absolute_without_parent_segments_and_nothing_quote_canno
     }
 }
 
-/// 〔DUP1 · `INVARIANTS §47` ①〕sid：今天各处规则的交集，**正反各一格**（§47「拒过头也算违反」）。
-/// 要求住址：`设计/90 §3` 判据 2「凡是有对应 `*-core` crate 的判定，TS 侧零实现」· `INVARIANTS §47` ①「字符集白名单（闭集，默认拒）＋ 不许 `-` 开头（选项注入）＋ 有长度上界的就钉上界」。
+/// 〔`INVARIANTS §47` ①〕sid：今天各处规则的交集，**正反各一格**（§47「拒过头也算违反」）。
+/// 要求：「凡是有对应 `*-core` crate 的判定，TS 侧零实现」· `INVARIANTS §47` ①「字符集白名单（闭集，默认拒）＋ 不许 `-` 开头（选项注入）＋ 有长度上界的就钉上界」。
 #[test]
 fn a_session_id_is_a_short_plain_token_that_never_starts_with_a_dash() {
     for good in [
@@ -93,7 +93,7 @@ fn a_session_id_is_a_short_plain_token_that_never_starts_with_a_dash() {
     }
 }
 
-/// 〔DUP1 · `INVARIANTS §47` ①〕模型名：真实模型名全过（主会话 09-26「真实模型名都放行」），**正反各一格**。
+/// 〔`INVARIANTS §47` ①〕模型名：真实模型名全过（主会话 09-26「真实模型名都放行」），**正反各一格**。
 #[test]
 fn real_model_names_pass_and_option_or_shell_shapes_do_not() {
     for good in [
@@ -127,7 +127,7 @@ fn real_model_names_pass_and_option_or_shell_shapes_do_not() {
     assert!(model_name_ok(&"a".repeat(MODEL_NAME_MAX)));
 }
 
-/// 〔DUP1 · `INVARIANTS §47` ①〕账号名：与建账号库的后端（`accounts/manage/model.rs::name_ok`）同一份判，**正反各一格**。
+/// 〔`INVARIANTS §47` ①〕账号名：与建账号库的后端（`accounts/manage/model.rs::name_ok`）同一份判，**正反各一格**。
 #[test]
 fn an_account_name_is_what_the_account_tool_would_have_created() {
     for good in [
@@ -154,7 +154,7 @@ fn an_account_name_is_what_the_account_tool_would_have_created() {
     }
 }
 
-/// 〔DUP3 · J8〕启动期令牌：恰好 32 个**小写**十六进制，fail closed（不 trim · 不认大写 · 不认长度相近）。
+/// 启动期令牌：恰好 32 个**小写**十六进制，fail closed（不 trim · 不认大写 · 不认长度相近）。
 /// 正反各一格（`INVARIANTS §47`「拒过头也算违反」—— 只断坏的被拒，把它焊成恒拒也能绿）。
 #[test]
 fn a_launch_token_is_exactly_thirty_two_lowercase_hex() {
@@ -180,7 +180,7 @@ fn a_launch_token_is_exactly_thirty_two_lowercase_hex() {
     }
 }
 
-/// 〔DUP3 · `INVARIANTS §47` ③〕启动器（命令片段）：真实用法全过（带参数 · alias · 路径 · 家目录下），
+/// 〔`INVARIANTS §47` ③〕启动器（命令片段）：真实用法全过（带参数 · alias · 路径 · 家目录下），
 /// POSIX 与 PowerShell 两边的元字符一个都不进，`~` 只许打头紧跟 `/`；拒的时候回**那一个字符**。正反各一格。
 #[test]
 fn a_launcher_is_a_command_fragment_from_one_whitelist() {
@@ -231,7 +231,7 @@ fn a_launcher_is_a_command_fragment_from_one_whitelist() {
     }
 }
 
-/// 〔FILES2 · `INVARIANTS §47` ②〕唯一的 quote 的**字节形**（要求住址：`_施工/4d-lanes.md` `### FILES2`
+/// 〔`INVARIANTS §47` ②〕唯一的 quote 的**字节形**（`### FILES2`
 /// 「开终端的 `cd` 用 POSIX `$'\xNN'` 转义（唯一 quote 那一处加这一形）」）。
 /// 异源：期望是**真 bash** 把那一串解回来的字节（`printf %s` 原样吐），不是本函数自己的逆运算；1..=255 每个字节各一格。
 #[test]

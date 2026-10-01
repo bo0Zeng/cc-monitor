@@ -1,6 +1,6 @@
-# F06：**agent 适配表的唯一真相源**（起会话那几格事实：默认启动器 · resume 形态与字面量 · 嵌套标记）。
+# F06：**agent 适配表的唯一源头**（起会话那几格事实：默认启动器 · resume 形态与字面量 · 嵌套标记）。
 #
-# 〔P1 · 第 4 件〕值今天只有**一个家**：后端适配层 `src/backend/agents/<名>/resume.rs`（注册表 `Adapter.launch`）；
+# 值今天只有**一个家**：后端适配层 `src/backend/agents/<名>/resume.rs`（注册表 `Adapter.launch`）；
 #   `ccm` 按注册表读，界面与 monitor 读它生成的 `src/frontend/ui/generated/agent-profile-table.ts`。
 #   从前是三份副本（monitor 那份适配表 · ccm 的 per-agent 分支 · 前端手写常量），本表当时为「搬之前先证明一致」而立。
 #

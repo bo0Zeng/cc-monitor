@@ -13,11 +13,11 @@ fn probe_cfg() -> crate::ssh_source::RemoteConfig {
     }
 }
 
-// 〔RW1 · 第四波 09-24〕这里原来是「删远端文件的入口真的过了围栏吗」（喂 `/etc/passwd` 给 SFTP 直删、
+// 这里原来是「删远端文件的入口真的过了围栏吗」（喂 `/etc/passwd` 给 SFTP 直删、
 //   要求零网络就被结构守卫拒）。F11 改经远端后端删（`files-delete-session`，只收 sid）之后，
 //   那条 SFTP 直删与它的守卫一起走了；「只收 sid · 落点由后端按 sid 找」的判据住后端。
 
-// 〔E2 · V28〕卸载路那道围栏 `is_safe_remote_backend_path`〔散文墓碑〕删了：卸的是固定落点 `~/.cc-monitor/bin/ccm`（常量），
+// 卸载路那道围栏 `is_safe_remote_backend_path`〔散文墓碑〕删了：卸的是固定落点 `~/.cc-monitor/bin/ccm`（常量），
 //   没有外来路径要守；本条（`both_remote_path_sinks_still_ask_their_fence`〔散文墓碑〕）随之删。
 
 /// 单一来源漂移守卫②：部署为远端 `~/.local/bin/ccm` 的 **CLI 本体**。
@@ -61,7 +61,7 @@ fn ccm_cli_has_required_elements() {
     // `ccm_cli_strength_is_at_or_above_baseline` 〔散文墓碑〕。
     use crate::ccm_cli_contract as contract;
 
-    // 🔴 〔`K-R48` 第二拍 09-11〕**这里原来还有五段断言，全部打在 `CCM_CLI_SCRIPT` 上，
+    // 🔴 **这里原来还有五段断言，全部打在 `CCM_CLI_SCRIPT` 上，
     //    随 `shared/ccm` 一起删了**：住址账本两条循环（`ledger.needles` / `ledger.channel_a`）·
     //    `pin_t_def` 〔散文墓碑〕（`$t` 只许被赋值一次）· `scan_t_targets(...).require(floor, …)`
     //    （tmux 目标必须是 `=名:` 形态，`INVARIANTS §31a`）。
@@ -76,12 +76,12 @@ fn ccm_cli_has_required_elements() {
     //      仍**只**住 e2e（`ccm-cli.test.sh` 5 条 · `ccm-contract-parity.sh` 5 条），别当 Rust 判据能顶。
 }
 
-// 〔E2 · V28〕`the_remote_ccm_entry_is_an_entry_not_an_implementation`〔散文墓碑〕 删了：远端 `ccm` 不再是三行入口，就是后端本身
+// `the_remote_ccm_entry_is_an_entry_not_an_implementation`〔散文墓碑〕 删了：远端 `ccm` 不再是三行入口，就是后端本身
 //   （`K33`「所有命令只许有一处」从此由「那个文件就是后端」结构上成立）。已部署的旧入口怎么认住 `ccm_legacy_tests.rs`。
 
 /// F08b：仅当交叉编译产物已放进 embedded-backends/（build.rs 置了 `embedded_backends` cfg）
 /// 才编译/运行——证实内嵌真生效：Linux 两格取到 ELF 二进制 + build_id 非空。CI 无二进制时
-/// 本测试被 cfg 掉，不误报。〔DP1〕取字节口是 `byte_table::pick`（按 (OS, arch)）。
+/// 本测试被 cfg 掉，不误报。取字节口是 `byte_table::pick`（按 (OS, arch)）。
 #[cfg(embedded_backends)]
 #[test]
 fn embedded_backend_binaries_present_and_valid() {
@@ -153,14 +153,14 @@ fn the_build_stamp_witness_actually_bites() {
 /// 3. 界标那两个字面量**不许**在本文件里出现第二份（闭集唯一住址在后端源码）。
 ///
 /// 顺带钉住 arch 那条跨文件契约的**另一半**：`build.rs` 期待的每个 arch，
-/// 〔DP1〕`byte_table.rs` 里都必须真有一槽（漏一个 ⇒ 取字节口对它返回 `None`，
+/// `byte_table.rs` 里都必须真有一槽（漏一个 ⇒ 取字节口对它返回 `None`，
 /// 远端自动部署对那个 arch **悄悄关闭** —— 与上一条判据守的是同一个事故形状的两端）。
 #[test]
 fn the_embedded_identity_comes_from_the_bytes_not_from_a_label() {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
     let src = std::fs::read_to_string(root.join("src/sftp.rs")).expect("读不到 sftp.rs");
     let prod = guard_core::production_code(&src);
-    // 〔DP1 · 第四波〕两份 musl 的槽与它们的身份取值口搬进了 `byte_table.rs`（全仓唯一的取字节口）；
+    // 两份 musl 的槽与它们的身份取值口搬进了 `byte_table.rs`（全仓唯一的取字节口）；
     //   「出门前那道见证」仍在本文件（部署路）。①④ 读那一份，② 读这一份，③ 两份都读。
     let table_src =
         std::fs::read_to_string(root.join("src/byte_table.rs")).expect("读不到 byte_table.rs");
@@ -263,7 +263,7 @@ fn the_embedded_identity_comes_from_the_bytes_not_from_a_label() {
     }
 }
 
-/// ★★ **发版流水线必须为 `build.rs` 期待的每一个 arch 都备好料**〔audit-0805 08-08〕。
+/// ★★ **发版流水线必须为 `build.rs` 期待的每一个 arch 都备好料**。
 ///
 /// # 缺一个 arch 的后果是**静默的**，而且已经出货过
 ///
@@ -340,7 +340,7 @@ fn the_release_pipeline_stages_every_arch_that_build_rs_embeds() {
                 format!("staged/cc-monitor-backend-{arch}"),
                 "编了但没按 `build.rs` 期待的名字放进 staged/",
             ),
-            // 🔴 〔`K-R70` 09-12〕这里原来还有第三条：`staged/cc-monitor-backend-<arch>.build_id`，
+            // 🔴 这里原来还有第三条：`staged/cc-monitor-backend-<arch>.build_id`，
             //    理由逐字「少了旁挂的 .build_id 清单（没有它，运行时只能回退到会误拒正品的启发式）」。
             //    **那条清单没有了**（它是从源码常量抠出来的标签，不是指纹 ——
             //    `K-R68` · `DECISIONS.md#R26` 裁定零），身份改从字节里扫。
@@ -364,7 +364,7 @@ fn the_release_pipeline_stages_every_arch_that_build_rs_embeds() {
         }
     }
 
-    // ── 🔴 〔`K-R70` 09-12〕**流水线真的去问过那份字节** ─────────────────────
+    // ── 🔴 **流水线真的去问过那份字节** ─────────────────────
     //
     // 上面那条按 arch 的清单只买到「它在校验的名单里」；这两条买的是**校验本身还在**。
     // 两个锚各自不可替代：
@@ -400,13 +400,13 @@ fn the_release_pipeline_stages_every_arch_that_build_rs_embeds() {
     );
 }
 
-// 〔MIG-3a · 09-28 预裁〕`deploy_decision_truth_table`〔散文墓碑〕随 `deploy_decision` 删了（旁挂标记那条路整条退役）。
+// `deploy_decision_truth_table`〔散文墓碑〕随 `deploy_decision` 删了（旁挂标记那条路整条退役）。
 
-// ═══ 〔MIG-3b · 4d-lanes 子步 1〕部署决策进本机常驻后端，本模块只放字节 ═══════════════════════
+// ═══ 部署决策进本机常驻后端，本模块只放字节 ═══════════════════════
 //
-// 要求住址：`4d-lanes.md` MIG-3b 第 1 条「`sftp.rs` 部署决策（该不该换 · 换成什么 · 身份判定）进后端；monitor 只放字节」。
+// 要求：「`sftp.rs` 部署决策（该不该换 · 换成什么 · 身份判定）进后端；monitor 只放字节」。
 // 〔墓碑 —— 这里原来是两条部署路「读字节自报的身份、不读旁挂标记」与取样壳「真走纯解释函数」两格源码判据，
-//  以及身份判定那几格纯函数判据：判定整个搬去了共享 crate（〔P1〕今天判定住后端 `control/deploy_plan.rs`、形状住 `deploy-contract`；纯判据跟着搬，期望一字未改）。〕
+//  以及身份判定那几格纯函数判据：判定整个搬去了共享 crate（今天判定住后端 `control/deploy_plan.rs`、形状住 `deploy-contract`；纯判据跟着搬，期望一字未改）。〕
 
 /// 🔴 两条部署路（自动 · 按钮）各**恰好一次**问本机常驻后端要计划、照计划取字节；本文件生产段里**零处**再做判定
 /// （问那台 `uname` · 查表 A/B · 扫身份戳 · 判新旧 · 判落点 · 认旧入口），也零处碰旁挂标记。带正控。
@@ -522,7 +522,7 @@ fn the_plan_decoder_reads_the_golden() {
     );
 }
 
-/// 〔WF2〕要求住址：`第四波记录/WIN3.md §2` 读数 B「部署失败留下半截 …tmp，之后连上也不清」· 题面 WF2 第 2 条「下次连上清旧的」。
+/// 要求：「部署失败留下半截 …tmp，之后连上也不清」· 题面 WF2 第 2 条「下次连上清旧的」。
 /// 计划里的残件（后端判的）在**每次连上**的那条路上照删：自动部署与手动部署两个入口各恰好一处（在执行链上，不只是解码得出来）。
 #[test]
 fn the_planned_leftovers_are_swept_on_every_connect() {
@@ -540,7 +540,7 @@ fn the_planned_leftovers_are_swept_on_every_connect() {
     }
 }
 
-/// 🔴〔MIG-3b 续 · VIS2〕`deploy-plan` 那一跳在本机后端里拨号 ⇒ 它的逐地址指纹随计划交回、由 monitor 按**同一个**判定固化
+/// 🔴`deploy-plan` 那一跳在本机后端里拨号 ⇒ 它的逐地址指纹随计划交回、由 monitor 按**同一个**判定固化
 /// （`dial_host::settle_host_key`，monitor 自己开链路那几条也走它），不另写一份。两向：解码器把金样里的 `ack` 原样收进来；
 /// 问计划那一口恰好一处把它交给 `settle_host_key`。
 #[test]
@@ -563,7 +563,7 @@ fn the_plan_ack_is_pinned_by_the_same_judgement_as_every_other_dial() {
     .unwrap_or_else(|e| panic!("问计划那一口没把 ack 交给固化判定（{e}）：\n{body}"));
 }
 
-// 〔RW1 · 第四波 09-24〕这里原来是远端删会话那道结构守卫的单元判据；守卫随 SFTP 直删一起走了，
+// 这里原来是远端删会话那道结构守卫的单元判据；守卫随 SFTP 直删一起走了，
 //   「哪几份才许删」那一问的判据住后端（`session_file_for_delete` 的删会话那一族）。
 
 #[test]
@@ -575,14 +575,14 @@ fn remote_parent_and_marker() {
     assert_eq!(remote_parent("/x"), "/");
     assert_eq!(remote_parent("rel/path"), "rel");
     assert_eq!(remote_parent("noslash"), ".");
-    // 〔DP1〕旁挂标记的路径拼法随标记一起退役（后端那条路读字节自己的身份戳）。
+    // 旁挂标记的路径拼法随标记一起退役（后端那条路读字节自己的身份戳）。
 }
 
-// 〔MIG-3a · 09-28 预裁〕`safe_managed_path_requires_a_marker`〔散文墓碑〕随谓词删了（第 2 个消费者 `acct_iso_deploy` 退役，只剩零个）。
+// `safe_managed_path_requires_a_marker`〔散文墓碑〕随谓词删了（第 2 个消费者 `acct_iso_deploy` 退役，只剩零个）。
 
 // ===== T04 审计① 上传读回判据（此前这条路完全没有读回）=====
 
-// 〔SR1b · 2026-09-24〕读回那一趟住本机后端（它交回**比对的事实**：读回长度 · 首个差异，读不回 ⇒ `None`；
+// 读回那一趟住本机后端（它交回**比对的事实**：读回长度 · 首个差异，读不回 ⇒ `None`；
 //   那一侧怎么算由后端 `dial_sftp_tests` 的部署那一趟判）。这里判的是**判定与话**：拿事实喂 `verify_readback`。
 
 #[test]
@@ -601,7 +601,7 @@ fn upload_verify_catches_same_length_corruption() {
         e.contains(&format!("首个差异在第 {k} 字节")),
         "要指出位置：{e}"
     );
-    // 〔DP1〕「下次会重来」那半句挪到了 `upload_verified`（它当场删掉传坏的那一份），这里只说坏在哪。
+    // 「下次会重来」那半句挪到了 `upload_verified`（它当场删掉传坏的那一份），这里只说坏在哪。
     assert!(e.contains("/r/x"), "{e}");
 }
 
@@ -625,19 +625,19 @@ fn upload_verify_passes_on_exact_bytes() {
     assert!(verify_readback("/r/d", 7, Some((7, Some(0)))).is_err());
 }
 
-// 〔W5-ALIAS · 第五波先行〕这里原来是远端 profile 读取那一族的四条判据（读不出不当空文件 · 非 UTF-8 拒 ·
+// 这里原来是远端 profile 读取那一族的四条判据（读不出不当空文件 · 非 UTF-8 拒 ·
 //   有字节读到空拒 · `RemoteFile::read` 走 fail-safe 读取器）。被测对象 `interpret_profile_read`〔散文墓碑〕/
 //   `read_profile_text`〔散文墓碑〕/ `RemoteFile`〔散文墓碑〕随 `fenced_block::apply`〔散文墓碑〕一起删了：它们只剩
 //   远端 `ccm` 入口一个用户，而那一处改走 `upload_verified`（部署物按字节比，不按文本读）。用户文件（rc）的读
 //   经那台后端的 `files-peek`，「不存在 / 读不出 / 有字节读到空」那三分由后端答（`user_files::Peeked`）。
 
-// 〔AL1 · 2026-09-24〕`rollback_note_matches_what_actually_happened` 搬走了〔散文墓碑〕
+// `rollback_note_matches_what_actually_happened` 搬走了〔散文墓碑〕
 // —— 措辞的住址从远端独有的那一份换成了本机远端共用的 `fenced_block::undo_note`〔散文墓碑〕，
-// 判据跟着住到 `fenced_block_tests.rs` 那条「撤的措辞只说真发生的事」；〔W5-ALIAS〕那一族后来随序列一起删了。
+// 判据跟着住到 `fenced_block_tests.rs` 那条「撤的措辞只说真发生的事」；那一族后来随序列一起删了。
 
 /// **结构性守卫**：两条 deploy 路径的**内容**上传必须走 verified。
 ///
-/// 范围只覆盖 `deploy_remote_backend` 函数体（〔MIG-3a · 09-28 预裁〕另一个 `deploy_remote_acct_iso`〔散文墓碑〕 退役了）
+/// 范围只覆盖 `deploy_remote_backend` 函数体（另一个 `deploy_remote_acct_iso`〔散文墓碑〕 退役了）
 /// ——**第一版写成"全文件不许有裸 upload_atomic"，当场被自己抓**：
 /// ccm helper 那条路（`&profile, stripped/merged`）**故意**用裸上传，
 /// 因为它下游紧接着自己的读回 + 回滚（`sftp.rs` 那三处 `verify_readback`）。
@@ -661,7 +661,7 @@ fn deploy_paths_use_verified_upload_for_content() {
             ),
             "deploy_remote_backend",
         ),
-        // 〔MIG-3a · 09-28 预裁〕`deploy_remote_acct_iso`〔散文墓碑〕 那一格随命令删了：cc-acct-iso 的字节随后端二进制走（后端 `files-put` 逐份 CAS 写）。
+        // `deploy_remote_acct_iso`〔散文墓碑〕 那一格随命令删了：cc-acct-iso 的字节随后端二进制走（后端 `files-put` 逐份 CAS 写）。
     ];
     let mut verified_total = 0usize;
     for (b, what) in checks {
@@ -670,7 +670,7 @@ fn deploy_paths_use_verified_upload_for_content() {
             .filter(|l| !l.trim_start().starts_with("//"))
             .collect::<Vec<_>>()
             .join("\n");
-        // 反向自检：真取到函数体了。〔SR1b〕上传经本机后端（`upload_verified` 读回比对 · `put_marker` 只写标记）。
+        // 反向自检：真取到函数体了。上传经本机后端（`upload_verified` 读回比对 · `put_marker` 只写标记）。
         assert!(
             code.contains("upload_verified("),
             "{what}: 取到的体里没有上传，守卫在空转"
@@ -687,18 +687,18 @@ fn deploy_paths_use_verified_upload_for_content() {
             );
         }
     }
-    // 计数自检：按钮那条路体内 1 处后端二进制（〔MIG-3a · 09-28 预裁〕acct-iso 那 6 份随命令退役：7 → 1）。
+    // 计数自检：按钮那条路体内 1 处后端二进制（acct-iso 那 6 份随命令退役：7 → 1）。
     assert_eq!(
         verified_total, 1,
         "期望 1(backend 体内)，实得 {verified_total}"
     );
 }
 
-// 〔SR1b · 2026-09-24〕`the_sftp_dependency_is_really_on_russh_sftp_three` 搬去了后端（`tests/backend/dial_sftp_tests.rs`）：
+// `the_sftp_dependency_is_really_on_russh_sftp_three` 搬去了后端（`tests/backend/dial_sftp_tests.rs`）：
 //   `russh-sftp` 出了界面清单（界面进程零 SFTP），今天只在 `src/backend/Cargo.toml` 里 —— 判据跟着依赖走，读后端那份清单与 lock。
 
-/// 〔E2 · V28〕要求住址：`设计/01 §6.7b`「PATH 上放什么：后端二进制本身，名字叫 `ccm`；落点 `~/.cc-monitor/bin/ccm` —— 本机与远端同一个；
-/// 不要的三样：① 转发 shim · ② 软链 · ③ 与后端重复的第二份字节」· `71 §5`「一个二进制，落 ~/.cc-monitor/bin/ccm（它自己就是 ccm，没有 shim）」。
+/// 要求：「PATH 上放什么：后端二进制本身，名字叫 `ccm`；落点 `~/.cc-monitor/bin/ccm` —— 本机与远端同一个；
+/// 不要的三样：① 转发 shim · ② 软链 · ③ 与后端重复的第二份字节」· 「一个二进制，落 ~/.cc-monitor/bin/ccm（它自己就是 ccm，没有 shim）」。
 ///
 /// 两向：部署两条路（自动 · 按钮）往落点写的恰是后端字节（`upload_verified(&fs, LANDING_REL, bin.bytes` 各恰一处），
 /// 生产段里**零处**再造入口（shim 的记号只许作为「认旧的」出现在 `ccm_legacy.rs`）；落点常量与后端那一侧同源（`relay_route_core`）。
@@ -725,13 +725,13 @@ fn the_landing_holds_the_backend_bytes_and_nothing_else_is_put_there() {
     assert_eq!(LANDING_REL, ".cc-monitor/bin/ccm");
 }
 
-/// 〔SR1b · 2026-09-24〕**界面那一侧对着真后端 ＋ 真 sshd**：部署那几问经 `RemoteFs`（`files` 链路）、
+/// **界面那一侧对着真后端 ＋ 真 sshd**：部署那几问经 `RemoteFs`（`files` 链路）、
 /// 传输经中继（`sftp_pool::transfer_call` / `watch_ticket`），全程界面进程零 SSH。
 ///
 /// 只由 `tests/evidence/SR1b-sftp-loopback.py --monitor` 带 `SR1B_LOOPBACK`
 /// （`{host,port,user,key_path,backend,home,rhome,up,dl_remote,dl_local}`）来跑；那台 sshd 的 sftp 起始目录是临时的 `rhome`，
 /// 写不到真 home。买到：部署判定四形（缺 ⇒ 部署 · 装完 ⇒ 那台 sshd 上真扫出戳、跳过 · 截成 0 字节 ⇒ 重部署 ·
-/// 〔DP1〕无戳的文件 ⇒ 显式失败不覆盖）·〔E2〕旧三行入口 ⇒ 认出来、换成后端本体 ·
+/// 无戳的文件 ⇒ 显式失败不覆盖）·旧三行入口 ⇒ 认出来、换成后端本体 ·
 /// 卸载按钮删后端那一份 · 两个写根之外 ⇒ 后端围栏拒、原话带回 · 上传 / 下载经中继走完、帧翻成 `Snap` 终局。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "要真 sshd ＋ 真后端二进制：由 tests/evidence/SR1b-sftp-loopback.py --monitor 带环境变量来跑"]
@@ -755,7 +755,7 @@ async fn sr1b_loopback_deploy_and_transfer_through_the_resident_backend() {
         .expect("起不了后端");
     let (stdin, stdout) = (child.stdin.take().unwrap(), child.stdout.take().unwrap());
     std::thread::spawn(move || crate::local_backend::local_stdio_consumer(stdin, stdout));
-    // 〔E2〕落点是固定的 `~/.cc-monitor/bin/ccm`（SFTP 那一侧家目录相对；台架的 sshd 要把 shell 的 `HOME` 也设成 `rhome`，
+    // 落点是固定的 `~/.cc-monitor/bin/ccm`（SFTP 那一侧家目录相对；台架的 sshd 要把 shell 的 `HOME` 也设成 `rhome`，
     //   身份扫描那一发走 shell、读的是 `"$HOME"/.cc-monitor/bin/ccm`）。
     let backend_path = format!("{rhome}/{LANDING_REL}");
     let cfg = crate::ssh_source::RemoteConfig {
@@ -768,9 +768,9 @@ async fn sr1b_loopback_deploy_and_transfer_through_the_resident_backend() {
         addresses: vec![],
         jump: None,
     };
-    // ① 部署那几问（〔MIG-3b〕判定在本机常驻后端：`deploy-plan` 沿同一条 SSH 问那台；放字节经 `files` 链路）
+    // ① 部署那几问（判定在本机常驻后端：`deploy-plan` 沿同一条 SSH 问那台；放字节经 `files` 链路）
     let fs = RemoteFs::open(&cfg).await.expect("开不了 files 链路");
-    // 〔DP1〕身份读那份字节自己的戳（那台 sshd 上真跑一次只读扫描），不读旁挂标记。
+    // 身份读那份字节自己的戳（那台 sshd 上真跑一次只读扫描），不读旁挂标记。
     //   送去的字节里埋一段戳（界标取自 `build.rs` 交来的 env），其余是 3 MB 的噪声。
     let stamp = format!(
         "{}sr1b-id{}",
@@ -779,13 +779,13 @@ async fn sr1b_loopback_deploy_and_transfer_through_the_resident_backend() {
     );
     let mut bytes: Vec<u8> = (0..3_000_000u32).map(|i| (i * 7 % 251) as u8).collect();
     bytes.splice(1_000_000..1_000_000, stamp.bytes());
-    // 〔MIG-3b〕这一版「带着」的那一格就是台架那台（本机 sshd）的键，自报 `sr1b-id`（与送去的字节同一个戳）。
+    // 这一版「带着」的那一格就是台架那台（本机 sshd）的键，自报 `sr1b-id`（与送去的字节同一个戳）。
     let mine = [(
         deploy_contract::Key::this_machine().expect("台架那台的键认不出"),
         "sr1b-id",
     )];
     let decide = || async { ask_plan_for(&cfg, &mine).await.map(|p| p.action) };
-    // 〔DP1〕读数脚本 ② 在这个落点上留下了一份 3 MB 的随机字节（没有身份戳）⇒ 那台 sshd 上真扫一次：
+    // 读数脚本 ② 在这个落点上留下了一份 3 MB 的随机字节（没有身份戳）⇒ 那台 sshd 上真扫一次：
     //   显式失败、一个字节都不写（盘上那份原样）；出路是机器页「卸载后端」—— 这里就用那颗按钮的真命令删掉它。
     let leftover = std::fs::read(&backend_path).expect("读数脚本 ② 留下的那份不在 —— 台架变了");
     let d_pre = decide().await;
@@ -834,7 +834,7 @@ async fn sr1b_loopback_deploy_and_transfer_through_the_resident_backend() {
         matches!(&d3, Err(e) if e.contains("不说自己是哪一版")),
         "无戳的文件 ⇒ 该显式失败：{d3:?}"
     );
-    // ② 〔E2〕落点上是旧版放的三行入口 ⇒ 认得出、判「换成后端本体」。
+    // ② 落点上是旧版放的三行入口 ⇒ 认得出、判「换成后端本体」。
     std::fs::write(
         &backend_path,
         "#!/bin/sh\n# cc-monitor: ccm = 后端本体的一次性模式（K33：所有命令只许有一处）\nexec '/x/cc-monitor-backend' ccm \"$@\"\n",
@@ -859,7 +859,7 @@ async fn sr1b_loopback_deploy_and_transfer_through_the_resident_backend() {
     );
     assert!(!std::path::Path::new(&outside).exists());
     drop(fs);
-    // ④ 卸载按钮（真命令）：〔DP1〕只删后端那一份（旁挂标记退役）
+    // ④ 卸载按钮（真命令）：只删后端那一份（旁挂标记退役）
     let msg = uninstall_remote_backend(cfg.clone()).await.expect("卸载");
     assert!(msg.starts_with("已删除 ~/.cc-monitor/bin/ccm"), "{msg}");
     assert!(!std::path::Path::new(&backend_path).exists());
@@ -881,7 +881,7 @@ async fn sr1b_loopback_deploy_and_transfer_through_the_resident_backend() {
         .pop()
         .unwrap();
     let want = std::fs::read(&up).unwrap();
-    // 〔FW1〕上传那一路的传完带整份摘要（64 位十六进制；算法对不对由后端那一侧对拍 `sha2`）。
+    // 上传那一路的传完带整份摘要（64 位十六进制；算法对不对由后端那一侧对拍 `sha2`）。
     assert!(
         matches!(&last.end, Some(crate::sftp_pool::End::Done { bytes, sha256: Some(h) })
             if *bytes == want.len() as u64 && h.len() == 64),
@@ -918,9 +918,9 @@ async fn sr1b_loopback_deploy_and_transfer_through_the_resident_backend() {
     println!("SR1B-LOOPBACK-MONITOR ok");
 }
 
-// ═══ 〔DP1 · 第四波〕自动部署不再静默 ═══════════════════════════════════════════════════
+// ═══ 自动部署不再静默 ═══════════════════════════════════════════════════
 //
-// 要求住址：`设计/96 §7.1.4`，逐字：「拒绝是一个会到达用户的结论，不是一行 `debug` 日志」·
+// 要求：「拒绝是一个会到达用户的结论，不是一行 `debug` 日志」·
 // 「**返回类型上不许有『成功』这一支**：拒绝要与『部署成功』在类型上分得开，界面才显示得出来」。
 
 /// 切出生产段里一个函数的体（到列 0 的 `}` 为止）。
@@ -993,9 +993,9 @@ fn a_failed_auto_deploy_reaches_the_screen_through_remote_health() {
     );
 }
 
-/// 〔DP1 · 第四波〕读回比对不对 ⇒ **当场删掉传坏的那一份**（旁挂标记退役后，断链那一环就是这一删）。
+/// 读回比对不对 ⇒ **当场删掉传坏的那一份**（旁挂标记退役后，断链那一环就是这一删）。
 ///
-/// 要求住址：`设计/96 §7.2.3` 部署决策的对照物是那份字节自报的身份 ⇒ 一份传坏却恰好还带着对的戳的字节，
+/// 部署决策的对照物是那份字节自报的身份 ⇒ 一份传坏却恰好还带着对的戳的字节，
 /// 下次会被判「已是这一版」—— 删掉它，下次就是「落点没有 ⇒ 装」。
 /// 形态判据（`upload_verified` 要经真 `RemoteFs`，单测起不了那条链路；行为那一半在回环 sshd 读数里没有现成的坏读回可造）：
 /// 读回判定的 `Err` 那一支里恰好一次 `fs.remove(remote_path)`，且排在 `fs.put(` 之后。
@@ -1011,8 +1011,8 @@ fn a_bad_readback_removes_the_upload_it_just_made() {
     assert!(put < bad && bad < rm, "次序不是「传 → 判 → 删」：\n{body}");
 }
 
-/// 🔴 〔W5-ALIAS · 第五波先行〕**A1：别名块的真相不住 `sftp.rs`**（`audit/B-decouple.md` §2 第 12 条：
-/// 「别名块真相从 `sftp.rs` 搬到别名域；`sftp.rs` 已不做 SFTP」；`设计/71 §3`「渲染 · 读回 · 启动文件归方言，
+/// 🔴 **A1：别名块的真相不住 `sftp.rs`**（`audit/B-decouple.md` §2 第 12 条：
+/// 「别名块真相从 `sftp.rs` 搬到别名域；`sftp.rs` 已不做 SFTP」；「渲染 · 读回 · 启动文件归方言，
 /// 写入 … 那台机器后端的文件管理那一面」—— 部署那一族管不着别名块）。
 ///
 /// 两向：那 6 个符号的**定义**与两条别名块命令在 `sftp.rs` 生产段里**零命中**；正控：同一把尺子
@@ -1022,7 +1022,7 @@ fn a_bad_readback_removes_the_upload_it_just_made() {
 #[test]
 fn the_alias_block_truth_no_longer_lives_in_sftp() {
     let sftp = guard_core::production_code(include_str!("../../../src/frontend/shell/src/sftp.rs"));
-    // 〔MIG-3a · 主会话 09-27 裁〕别名块的真相再搬一次：进了那台后端（`src/backend/assets/aliases/block.rs`）。
+    // 别名块的真相再搬一次：进了那台后端（`src/backend/assets/aliases/block.rs`）。
     let alias_home =
         guard_core::production_code(include_str!("../../../src/backend/assets/aliases/block.rs"));
     let defs = [
@@ -1032,7 +1032,7 @@ fn the_alias_block_truth_no_longer_lives_in_sftp() {
         "pub(crate) fn builtin_alias_names(",
         "pub(crate) fn merge_profile_block(",
         "pub(crate) fn strip_profile_block(",
-        // 〔AL2 · 第四波 4D〕远端装 / 卸那两条命令删了（并进 `aliases_block_*`），名单 8 → 6。
+        // 远端装 / 卸那两条命令删了（并进 `aliases_block_*`），名单 8 → 6。
     ];
     let stayed: Vec<&str> = defs.iter().copied().filter(|d| sftp.contains(d)).collect();
     assert!(
@@ -1046,10 +1046,10 @@ fn the_alias_block_truth_no_longer_lives_in_sftp() {
     }
 }
 
-// ═══ 〔HX2 · 主会话 D-b〕部署只升不降：`BUILD_ID` 可比序 ═══════════════════════════════════
+// ═══ 部署只升不降：`BUILD_ID` 可比序 ═══════════════════════════════════
 //
 // 要求住址：主会话 4D 裁 D-b 逐字「多个 monitor 连同一远端：部署只在「我的比盘上的新」时才换（BUILD_ID 可比序）」；
-// 它改写 `设计/01 §6.7a` 规矩 2「对就复用，不对就换」与 `96 §7.2.4`「恰一个戳 ≠ ⇒ 换」那一格（设计篇由主会话收口时改）。
+// 它改写规矩 2「对就复用，不对就换」与「恰一个戳 ≠ ⇒ 换」那一格。
 // 审计 `E-compat.md` §E3（两个不同版本的 monitor 连同一台远端，互相重部署）。
 
 /// 🔴 B2b：自动部署那条路遇到「不动」⇒ 回**那台上的**身份（源码切臂：`Keep` 臂交出 `Some(theirs)`，末尾只在没有时才回这一版 id）。
@@ -1063,7 +1063,7 @@ fn hx2_keeping_a_newer_backend_reports_its_identity_not_ours() {
         .expect("自动部署那条路没有 Keep 臂");
     let arm_end = arm + body[arm..].find("\n        }").expect("Keep 臂没收尾");
     let arm_body = &body[arm..arm_end];
-    // 〔E2〕Keep 臂之后还要扫一次旧落点 ⇒ 臂里交出那台上的身份、函数末尾回它（不再在臂里直接 return）。
+    // Keep 臂之后还要扫一次旧落点 ⇒ 臂里交出那台上的身份、函数末尾回它（不再在臂里直接 return）。
     assert_eq!(
         arm_body.matches("Some(theirs)").count(),
         1,

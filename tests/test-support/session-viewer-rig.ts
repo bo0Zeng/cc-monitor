@@ -44,11 +44,11 @@ import { expect, vi } from "vitest";
 import { withSessionReads } from "./chan-fake";
 
 /** 灌给 `invoke` 的那一整块 chunk。每个用例在 `mount()` 里塞，`installViewerRig()` 清空。 */
-/** `find` = 〔㊱③〕后端 `history-find` 这一刻回什么（旧回包形状 `{available, total, hits}`；没塞 ⇒ 要不到）。 */
+/** `find` = 后端 `history-find` 这一刻回什么（旧回包形状 `{available, total, hits}`；没塞 ⇒ 要不到）。 */
 export const viewerRig: { chunk: unknown[]; index?: unknown; find?: unknown } = { chunk: [] };
 
 /**
- * 〔SE1〕**后端那份「你说过的话」清单的替身**（`list_user_inputs`）。
+ * **后端那份「你说过的话」清单的替身**（`list_user_inputs`）。
  *
  * 判定只住后端（Rust 那侧有自己的判据）⇒ 这里**不判**：`entries` 由用例**逐条写明**
  * 「后端这一刻说文件里有哪几条、按什么顺序」。它只模仿后端的**增量语义**：
@@ -112,7 +112,7 @@ export function tauriCoreMock(): Record<string, unknown> {
     Channel: class {
       onmessage: ((v: unknown) => void) | null = null;
     },
-    // 〔C4b〕会话读面三问改走通道：`withSessionReads` 把 `chan_call` 译回「哪一问 ＋ 旧形参」、回包译成后端成品字节。
+    // 会话读面三问改走通道：`withSessionReads` 把 `chan_call` 译回「哪一问 ＋ 旧形参」、回包译成后端成品字节。
     invoke: vi.fn(withSessionReads(async (cmd: string, args: Record<string, unknown>) => {
       if (cmd === "list_user_inputs") return answerListUserInputs(args as { fromOffset: number });
       if (cmd === "stream_read_session_jsonl") {
@@ -120,7 +120,7 @@ export function tauriCoreMock(): Record<string, unknown> {
         ch.onmessage?.(viewerRig.chunk);
         return viewerRig.chunk.length;
       }
-      // 〔U3b〕骨架索引：没塞就回 undefined（== 今天所有既有用例的形状：查看器不接骨架）
+      // 骨架索引：没塞就回 undefined（== 今天所有既有用例的形状：查看器不接骨架）
       if (cmd === "read_session_index") return viewerRig.index;
       if (cmd === "find_in_session") return viewerRig.find;
       return undefined;
@@ -139,7 +139,7 @@ export interface RigPayload {
 
 /** 裸一行：`message` 由调用方整块给（要造 assistant / 畸形记录时用）。 */
 export function line(seq: number, message: Record<string, unknown>): RigPayload {
-  // 〔RENDER2 · J10〕user 记录带上 monitor 填的那一格成品（夹具不含注入噪声，见 `user-text.ts`）
+  // user 记录带上 monitor 填的那一格成品（夹具不含注入噪声，见 `user-text.ts`）
   return { session_id: "s1", cwd: null, path: "/p/s1.jsonl", seq, message: withUserText(message) };
 }
 

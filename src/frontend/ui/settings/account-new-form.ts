@@ -1,5 +1,5 @@
 /**
- * `设计/70 §4.4`（A2）：**新建账号 —— 一个表单问清楚，岔口在表单里。**
+ * （A2）：**新建账号 —— 一个表单问清楚，岔口在表单里。**
  *
  * 表单只交意图：账号名 · 订阅还是第三方 API key · 订阅号要不要从一份旧凭据导入 · API 号的地址与 key · 是否设为默认。
  * 建目录、搭共享链接、写清单、放凭据或 key、补这个号的别名，全由那台机器的后端做（帧命令 `accounts-add`，
@@ -24,8 +24,8 @@ export type AccountAccess = "subscription" | "apikey";
 export type NewAccountRequest = AccountAddArgs;
 
 /**
- * 〔第四波 ST2 · `70 §4.4` 线框里那一格〕Base URL 的**表单侧**那一句：留空合法（= 默认上游，D3 缺省）；
- * 「能不能用」〔DUP3 · J9〕读生成物 `baseUrlIssue`（规则住 `upstream_url_core::usable`，与后端写口 · 上游选择装表同一条），
+ * 〔线框里那一格〕Base URL 的**表单侧**那一句：留空合法（= 默认上游，D3 缺省）；
+ * 「能不能用」读生成物 `baseUrlIssue`（规则住 `upstream_url_core::usable`，与后端写口 · 上游选择装表同一条），
  * 这里只按理由挑一句话 —— 让「创建」在填错时是灰的，不让用户建完号才发现端点没配上。
  */
 export function checkBaseUrl(raw: string): { ok: true; value: string | undefined } | { ok: false; reason: string } {
@@ -49,7 +49,7 @@ function baseUrlSaid(issue: BaseUrlIssue): string {
 }
 
 /** 表单上给用户看的字。集中在一处，判据按这张表逐条对（不在断言里手抄第二份）。 */
-// 〔CP2b〕取值器（getter）：用到时才取文 —— 模块顶层不留取文口调用（顶层有调用会让 Rollup 把这份挪进主窗也加载的共享 chunk）。
+// 取值器（getter）：用到时才取文 —— 模块顶层不留取文口调用（顶层有调用会让 Rollup 把这份挪进主窗也加载的共享 chunk）。
 export const NEW_ACCOUNT_COPY = {
   get title() {
     return copyText("accountNewForm.form.title");
@@ -116,7 +116,7 @@ export function renderNewAccountForm(
   origin: Origin,
   onCreate: (req: NewAccountRequest) => void | Promise<void>,
   /**
-   * 〔第三波 S3〕两支岔口下面那一行提示的**替换**。缺席 = 远端那一页的原话。
+   * 两支岔口下面那一行提示的**替换**。缺席 = 远端那一页的原话。
    * 本机那一页要换：本机在 Linux 上**不开终端窗口**（登录那一行复制给人自己跑），只换这两句。
    */
   hints?: { subscription: string; apikey: string },
@@ -176,7 +176,7 @@ export function renderNewAccountForm(
   // ---- apikey 那一支（选了才显示）----
   const keyBox = document.createElement("div");
   keyBox.className = "accounts-new-key";
-  // 〔ST2 · `70 §4.4`〕线框里 apikey 那一支是两格：Base URL ＋ API key。
+  // 线框里 apikey 那一支是两格：Base URL ＋ API key。
   const baseIn = document.createElement("input");
   baseIn.type = "text";
   baseIn.className = "accounts-maint-cred";

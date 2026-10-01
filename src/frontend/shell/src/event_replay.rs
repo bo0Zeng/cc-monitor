@@ -1,4 +1,4 @@
-//! 事件持久化重播：解决前端 F5 刷新后状态丢失的问题。〔CF2〕也是会话内容流的「句柄」那一侧：
+//! 事件持久化重播：解决前端 F5 刷新后状态丢失的问题。也是会话内容流的「句柄」那一侧：
 //! 主界面经通道 `subscribe` 订的那条流，由本文件按 credit 交格（见下「订阅」）。
 //!
 //! ## 顺序保证（P5.4 B 重构后）
@@ -15,7 +15,7 @@
 //!
 //! ## 容量
 //!
-//! 〔CF2 · 第四波 4B〕**一档**：每个会话只留 seq 最高的 [`REPLAY_TAIL_KEEP`] 条（修剪有 [`TRIM_SLACK`] 的
+//! **一档**：每个会话只留 seq 最高的 [`REPLAY_TAIL_KEEP`] 条（修剪有 [`TRIM_SLACK`] 的
 //! 摊还余量 ⇒ 单会话上界 `KEEP + SLACK`）。丢掉的正文前端要得回来，两条路：
 //!
 //! | tab | 丢掉的正文从哪回来 |
@@ -23,15 +23,14 @@
 //! | 接上了骨架 | 骨架滚到那里时按**字节**取（`read_session_range`，边界取自索引） |
 //! | 没接骨架（后台 tab · 老后端 · seq 对不上的） | 往上翻过了账本最老那一条时按**行号**取（`read_session_lines`，后端 `history-lines`） |
 //!
-//! 原来这里是**两档**（〔U3b〕只有前端调过 `keep_tail_only`〔散文墓碑〕的会话才修剪，其余「无处可回 ⇒ 不许丢」，
-//! 第二档不设上限 —— `设计/05 §3.3.4` 的级 3）。按行号取回之后「无处可回」不存在了，分档随之取消
-//! （`调研/第四波记录/CF2.md §2`）。
+//! 原来这里是**两档**（只有前端调过 `keep_tail_only`〔散文墓碑〕的会话才修剪，其余「无处可回 ⇒ 不许丢」，
+//! 第二档不设上限 —— 级 3）。按行号取回之后「无处可回」不存在了，分档随之取消
 //!
 //! ⚠ **仍然没有上界的那一维是会话数**（`CF2.md §2.2`）：单会话 ≤ `KEEP + SLACK` 条，缓冲里有几个会话
 //! 由「宣告过多少个 × 前端关没关（[`EventReplay::forget`]）× monitor 重启」决定。
 //! 读数（长度 / 会话数 / 修剪次数）见 [`EventReplay::stats`] 与每次修剪的 `[replay]` 日志行。
 //!
-//! ## 订阅（〔CF2 · 第四波 4B〕`设计/05 §8` 步 6「流那半收口成 `subscribe`」）
+//! ## 订阅（「流那半收口成 `subscribe`」）
 //!
 //! 会话内容到前端**不再是两个 Tauri 广播事件**（`jsonl-line` / `jsonl-batch`，已退役）：前端经通道说
 //! `chan.subscribe(origin, kind, from, want)`（`src/comms/inward/chan.ts` → `chan/webview.rs::chan_subscribe`），
@@ -41,20 +40,20 @@
 //! |---|---|---|
 //! | `session-lines` | `origin` 那台机器的全部会话 | **就绪点**（主界面的 `frontend-ready`）：宣告重发之后、对账之前 —— 顺序与原来 `replay_and_mark_ready`〔散文墓碑〕一致 |
 //! | `session-lines/<sid>` | 只那一个会话（独立窗口） | 订阅当场 |
-//! | `session-tap` | 〔TAP〕那台机器上中转抄出来的 SSE 事件（见 [`SESSION_TAP_KIND`]） | 没有留存（不重放）；订阅当场就收实时的 |
-//! | `accounts-changed` | 〔DL1〕那台机器上「账号清单可能变了」：`Seen`（长连接又通了、能问了）· `Frame`（那台后端说账号清单变了）· `Unseen` · `Gap` | 没有留存（不重放）；订阅当场就收实时的 |
+//! | `session-tap` | 那台机器上中转抄出来的 SSE 事件（见 [`SESSION_TAP_KIND`]） | 没有留存（不重放）；订阅当场就收实时的 |
+//! | `accounts-changed` | 那台机器上「账号清单可能变了」：`Seen`（长连接又通了、能问了）· `Frame`（那台后端说账号清单变了）· `Unseen` · `Gap` | 没有留存（不重放）；订阅当场就收实时的 |
 //!
-//! 〔DL1 · `设计/01 §2.2`「前端只有两个动作」〕`accounts-changed` 顶掉的是最后一个裸 Tauri 事件 `remote-backend-ready`
+//! 〔「前端只有两个动作」〕`accounts-changed` 顶掉的是最后一个裸 Tauri 事件 `remote-backend-ready`
 //! （原常量 `REMOTE_BACKEND_READY`〔散文墓碑〕，住 `ui_contract.rs` 的 `events`）。它与 `session-lines` 住同一张订阅表，因为「那台看不看得见」
 //! 只有一个家（下面的 `seen`）—— 另起一个句柄就得再养一份同样的表、在 `ssh_source` 同样的几处再喂一遍。
 //!
 //! 一格 = 一行（[`crate::ui_contract::SessionStreamFrame`]：`{"line": …}` 或成批那一段的边界 `{"batch": …}`）；
 //! `Item::Frame.seq` 是这条订阅里的**位置**（0, 1, 2 …，连续），不是行号。
 //!
-//! 🔴 **credit 与「不许晚到」**（`调研/第四波记录/CF2.md §3.3`）：
+//! 🔴 **credit 与「不许晚到」**：
 //! - **实时那一份**（[`EventReplay::on_line_batch_awaited`]）：有 credit **当场**交（与原来同一个时刻 emit ⇒
 //!   与其后的 `ended` 格 等起停事件的先后不变，issue #20）；没 credit 就**丢**、位置照占，
-//!   下一次交出去之前原位先给 `Item::Gap`（`05 §3.3.4` 级 2）。**绝不攒着等 credit** —— 攒着的行会晚于
+//!   下一次交出去之前原位先给 `Item::Gap`（级 2）。**绝不攒着等 credit** —— 攒着的行会晚于
 //!   其间发出的 `ended` 格（僵尸 tab）；也**绝不让管线等** —— 一个不给 credit 的窗口会卡住那台机器的整条流。
 //! - **重放那一份**（就绪点 / 独立窗口开窗）按 credit **等**：它不在起停事件的顺序里（对账由同一个任务在它交完之后发）。
 //! - `Gap` / `Unseen` / `Seen` 不占 credit；`Frame`（含两种边界）每格占一个。
@@ -68,7 +67,7 @@ use parking_lot::Mutex;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Arc;
 
-/// 〔CF2〕订阅流的出口：把一串格交给某个 webview 上的某条订阅。
+/// 订阅流的出口：把一串格交给某个 webview 上的某条订阅。
 ///
 /// 生产那一份是 `chan/webview.rs::WebviewSink`（`emit_to` 那个 webview 的 Tauri 事件 —— 与起停事件同一条
 /// 投递队列，先后不乱，理由见 `CF2.md §3.2`）；判据用一个记录器替它。**调用时本文件不持锁。**
@@ -76,39 +75,39 @@ pub trait ItemSink: Send + Sync {
     fn deliver(&self, label: &str, sub: u64, items: Vec<Item>);
 }
 
-/// 〔CF2〕本文件认的流标签：一台机器的全部会话 / （带 `/<sid>`）只一个会话。
+/// 本文件认的流标签：一台机器的全部会话 / （带 `/<sid>`）只一个会话。
 pub const SESSION_LINES_KIND: &str = "session-lines";
 
-/// 〔TAP · V124〕本文件认的第二种流：一台机器上中转抄出来的 SSE 事件（体是 [`crate::ui_contract::SessionTapPayload`]）。
+/// 本文件认的第二种流：一台机器上中转抄出来的 SSE 事件（体是 [`crate::ui_contract::SessionTapPayload`]）。
 ///
-/// 与 `session-lines` 同一张订阅表、同一套 credit 与 `Gap`（`设计/05 §15`：一条帧路 ＋ `subscribe`），差别只有三处：
+/// 与 `session-lines` 同一张订阅表、同一套 credit 与 `Gap`（一条帧路 ＋ `subscribe`），差别只有三处：
 /// ① **没有留存**：tap 不进 `history`，订阅当场就是实时的（没有就绪点、没有重放）；
 /// ② 只有整台机器那一形（前端按 `stream` 自己对 tab）；
-/// ③ 实时那一份照「有 credit 当场交、没 credit 丢、位置照占、原位 `Gap`」（级 2）—— tap 本来就可丢（V24：SSE 只保快）。
+/// ③ 实时那一份照「有 credit 当场交、没 credit 丢、位置照占、原位 `Gap`」（级 2）—— tap 本来就可丢（SSE 只保快）。
 pub const SESSION_TAP_KIND: &str = "session-tap";
 
-/// 〔DL1〕本文件认的另一个流标签：那台机器上「账号清单可能变了」（见头注那张表）。
+/// 本文件认的另一个流标签：那台机器上「账号清单可能变了」（见头注那张表）。
 /// TS 那一侧的同一个串住 `src/frontend/ui/session-accounts-poll.ts::ACCOUNTS_CHANGED_KIND`（两侧对拍在 `session-accounts-poll.vitest.ts`）。
 pub const ACCOUNTS_CHANGED_KIND: &str = "accounts-changed";
 
-/// 〔MIG-3b · `99 §2.1 ㉓②`〕本文件认的又一种流：那台机器上「某个会话的任务清单变了」（格体 `{"sid": …}`，没有留存）。
+/// 本文件认的又一种流：那台机器上「某个会话的任务清单变了」（格体 `{"sid": …}`，没有留存）。
 /// TS 那一侧的同一个串住 `src/frontend/ui/tasks-stream.ts::SESSION_TASKS_KIND`（两侧对拍在 `tests/frontend/ui/events-tap.vitest.ts`）。
 pub const SESSION_TASKS_KIND: &str = "session-tasks";
 
-/// 〔MIG-1 收尾 · 主会话裁「测试连接的进度不许倒退」〕又一种流：本机后端里那一趟测试连接的进度（`probe-progress/<票>`，
+/// 〔「测试连接的进度不许倒退」〕又一种流：本机后端里那一趟测试连接的进度（`probe-progress/<票>`，
 /// 格体是后端原样那一格 `{stage}` / `{reached}` / `{end}`，没有留存；只在 `<local>` 上有）。
 /// TS 那一侧的同一个串住 `src/frontend/ui/remote-probe.ts::PROBE_PROGRESS_KIND`（两侧对拍在 `tests/frontend/ui/remote-probe.vitest.ts`）。
 /// 流名刻意不叫命令名（命令是那台后端的 `remote-probe`，monitor 生产段不许有它的字面量 —— 发送点只在界面）。
 pub const PROBE_PROGRESS_KIND: &str = "probe-progress";
 
-/// 〔DL1〕`accounts-changed` 流里那一格 `Frame` 的体（不透明于通道；前端只认「来了一格」，体给日志看）。
+/// `accounts-changed` 流里那一格 `Frame` 的体（不透明于通道；前端只认「来了一格」，体给日志看）。
 const ACCOUNTS_CHANGED_BODY: &[u8] = br#"{"accounts_changed":true}"#;
 
 pub struct EventReplay {
     inner: Mutex<Inner>,
-    /// 〔MIG-1〕会话成品缓存（生产 = 进程里那一本 `session_book::book()`；判据各给一本自己的，不与并行的判据串味）。
+    /// 会话成品缓存（生产 = 进程里那一本 `session_book::book()`；判据各给一本自己的，不与并行的判据串味）。
     book: &'static parking_lot::RwLock<crate::session_book::Book>,
-    /// 〔CF2〕有订阅拿到了 credit（或被撤了）—— 等 credit 的重放在这上面醒。
+    /// 有订阅拿到了 credit（或被撤了）—— 等 credit 的重放在这上面醒。
     credit_changed: tokio::sync::Notify,
 }
 
@@ -117,31 +116,31 @@ struct Inner {
     /// Batch8-F26：frontend-ready 携带的"用户上次所在 tab"（F19 语义）。存下来
     /// 供远端快照拉取排队（当前 tab 的会话先拉）；None = 无记忆/未就绪。
     priority_sid: Option<String>,
-    /// 〔CF2〕每个会话此刻在 `history` 里有几条 ＋ 它最低留存的 seq（修剪过之后才有；
+    /// 每个会话此刻在 `history` 里有几条 ＋ 它最低留存的 seq（修剪过之后才有；
     /// 之后到达、seq 低于它的行不进缓冲 —— 见 [`push_and_trim`]）。
     sessions: HashMap<String, Held>,
-    /// 〔U3b〕累计修剪掉的条数（读数口，[`EventReplay::stats`]）。
+    /// 累计修剪掉的条数（读数口，[`EventReplay::stats`]）。
     trimmed_total: u64,
-    /// 〔CF2〕订阅（按 `(webview, 编号)` 认）。
+    /// 订阅（按 `(webview, 编号)` 认）。
     subs: Vec<Sub>,
-    /// 〔CF2〕订阅的代号：同一个 `(webview, 编号)` 被重订（页面重载）时新旧两份分得开。
+    /// 订阅的代号：同一个 `(webview, 编号)` 被重订（页面重载）时新旧两份分得开。
     generation: u64,
-    /// 〔CF2〕哪些 webview 已经过了就绪点（之后它再订整台机器，当场交留存）。
+    /// 哪些 webview 已经过了就绪点（之后它再订整台机器，当场交留存）。
     ready_labels: HashSet<String>,
-    /// 〔CF2〕每台机器的内容流此刻接没接着（`Unseen` / `Seen` 的来源）。没有的 = 没接着。
+    /// 每台机器的内容流此刻接没接着（`Unseen` / `Seen` 的来源）。没有的 = 没接着。
     seen: HashMap<String, bool>,
-    /// 〔CF2〕出口（`lib.rs` 起步时装；没装之前一格都不交）。
+    /// 出口（`lib.rs` 起步时装；没装之前一格都不交）。
     sink: Option<Arc<dyn ItemSink>>,
 }
 
-/// 〔CF2〕一条订阅。
+/// 一条订阅。
 struct Sub {
     label: String,
     id: u64,
     generation: u64,
     /// 订的是哪台机器（线上串：本机 `<local>`）。
     origin: String,
-    /// 订的是哪一种流（〔TAP〕与〔DL1〕各加了一种；只有 `Lines` 收会话行、有留存）。
+    /// 订的是哪一种流（与各加了一种；只有 `Lines` 收会话行、有留存）。
     kind: SubKind,
     /// `session-lines/<sid>` 那一形：只要这一个会话。
     only: Option<String>,
@@ -157,18 +156,18 @@ struct Sub {
     told_seen: bool,
 }
 
-/// 〔合并 DL1 × TAP〕一条订阅订的是哪一种流 —— 两路各加了一个布尔（`tap` / `lines`），合并时收成这一个枚举。
+/// 一条订阅订的是哪一种流 —— 两路各加了一个布尔（`tap` / `lines`），合并时收成这一个枚举。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum SubKind {
     /// `session-lines` 一族：收会话行、有留存（就绪点重放）。
     Lines,
-    /// 〔TAP · V124〕`session-tap`：中转抄出来的 SSE 事件，没有留存。
+    /// `session-tap`：中转抄出来的 SSE 事件，没有留存。
     Tap,
-    /// 〔DL1〕`accounts-changed`：只收看得见 / 看不见与「那台账号清单变了」那一格，没有留存。
+    /// `accounts-changed`：只收看得见 / 看不见与「那台账号清单变了」那一格，没有留存。
     AccountsChanged,
-    /// 〔MIG-3b · ㉓②〕`session-tasks`：只收看得见 / 看不见与「那台某个会话的任务清单变了」那几格，没有留存。
+    /// `session-tasks`：只收看得见 / 看不见与「那台某个会话的任务清单变了」那几格，没有留存。
     Tasks,
-    /// 〔MIG-1 收尾〕`probe-progress/<票>`：一趟测试连接的进度格（`only` = 那张票），没有留存。
+    /// `probe-progress/<票>`：一趟测试连接的进度格（`only` = 那张票），没有留存。
     Probe,
 }
 
@@ -181,7 +180,7 @@ impl Sub {
     }
 }
 
-/// 〔CF2〕一个会话在缓冲里的账：几条 ＋ 修剪过的话最低留存的 seq。
+/// 一个会话在缓冲里的账：几条 ＋ 修剪过的话最低留存的 seq。
 #[derive(Debug, Default, Clone, Copy)]
 struct Held {
     count: usize,
@@ -189,7 +188,7 @@ struct Held {
     floor: Option<u64>,
 }
 
-/// 〔U3b · `设计/10` 步 8〕→〔CF2〕**每个会话在 history 里只留尾巴这么多条可显示记录。**
+/// →**每个会话在 history 里只留尾巴这么多条可显示记录。**
 ///
 /// # 依据（量出来的，不是拍的）
 ///
@@ -204,7 +203,7 @@ struct Held {
 ///    单会话留下的字节 p50 1.50 MB、最大 2.45 MB（全留时最大的那份 95 MB）。
 ///
 /// ⚠ 这些数是**记录行的字节**，不是 `JsonlLinePayload` 在堆上的真大小（解析后的结构体
-///    另有开销，未量）；量具与读数在 `设计/10 §10`。
+///    另有开销，未量）；量具与读数在。
 pub const REPLAY_TAIL_KEEP: usize = 600;
 
 /// 修剪的摊还余量：一个会话超过 `KEEP + SLACK` 才修剪回 `KEEP`。
@@ -212,17 +211,17 @@ pub const REPLAY_TAIL_KEEP: usize = 600;
 /// 攒 `KEEP/4` 条修一次，摊到每行是 O(history)/150。**代价**：单会话上界是 750 条不是 600。
 pub const TRIM_SLACK: usize = REPLAY_TAIL_KEEP / 4;
 
-/// 〔U3b〕读数：`history` 总长 · 缓冲里的会话数 · 累计修剪条数。
+/// 读数：`history` 总长 · 缓冲里的会话数 · 累计修剪条数。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ReplayStats {
     pub history_len: usize,
-    /// 〔CF2〕缓冲里有几个会话（原 `tail_only_sessions`〔散文墓碑〕：只数接了骨架的那些；分档取消之后数全部）。
+    /// 缓冲里有几个会话（原 `tail_only_sessions`〔散文墓碑〕：只数接了骨架的那些；分档取消之后数全部）。
     pub sessions: usize,
     pub trimmed_total: u64,
 }
 
 /// 切块（v2.3.1 issue #1 启动加速 + P5.4 B 重构简化）：成批的那一段按 CHUNK_SIZE 行一块交，**末块先发**
-/// （最新一段）；块与块之间停 CHUNK_PAUSE_MS。〔CF2〕一块 = 一次投递（一个 Tauri 事件里一串格）。
+/// （最新一段）；块与块之间停 CHUNK_PAUSE_MS。一块 = 一次投递（一个 Tauri 事件里一串格）。
 ///
 /// P5.4：不再区分 head / mid —— 前端 RecordTimeline 按 seq 自动排到正确位置，
 /// 块内顺序对 DOM 无影响。chunks[0] = 最新一段，chunks[N-1] = 最老一段。
@@ -237,12 +236,12 @@ const CHUNK_PAUSE_MS: u64 = 10;
 /// 几条到十几条）；/resume 历史灌入轻松几百几千行。50 是清晰的分水岭。
 const INCREMENTAL_BATCH_THRESHOLD: usize = 50;
 
-/// 〔CF2〕一格的体（序列化失败 ⇒ 空体：两端契约的另一侧会按「解不出」处置，不猜）。
+/// 一格的体（序列化失败 ⇒ 空体：两端契约的另一侧会按「解不出」处置，不猜）。
 fn body_of(f: &SessionStreamFrame) -> Body {
     Body(serde_json::to_vec(f).unwrap_or_default())
 }
 
-/// 〔CF2〕成批那一段的若干块（末块先发），每块首尾加边界：第一块以 `start` 开头，每块以 `end` 收尾
+/// 成批那一段的若干块（末块先发），每块首尾加边界：第一块以 `start` 开头，每块以 `end` 收尾
 /// （与原来「第 0 块触发进批、每块末尾排一次出批」同一个节奏）。
 fn batch_chunks(chunks: Vec<Vec<JsonlLinePayload>>) -> Vec<Vec<Body>> {
     let start = body_of(&SessionStreamFrame::Batch(BatchEdge::Start));
@@ -262,7 +261,7 @@ fn batch_chunks(chunks: Vec<Vec<JsonlLinePayload>>) -> Vec<Vec<Body>> {
         .collect()
 }
 
-/// 〔CF2〕**实时那一份**交给一条订阅的计划（纯函数）：有多少 credit 交多少，其余丢掉、位置照占；
+/// **实时那一份**交给一条订阅的计划（纯函数）：有多少 credit 交多少，其余丢掉、位置照占；
 /// 这一次交出去的第一格之前，若有没说的丢失 ⇒ 原位先给 `Gap`。返回要交的格（可能为空）。
 fn plan_live(sub: &mut Sub, frames: Vec<Body>) -> Vec<Item> {
     let n = frames.len() as u64;
@@ -291,7 +290,7 @@ fn plan_live(sub: &mut Sub, frames: Vec<Body>) -> Vec<Item> {
     out
 }
 
-/// 〔CF2〕**重放那一份**的一步（纯函数）：只交手里 credit 够的那几格、**不丢**；返回 `(要交的格, 用掉了几格)`。
+/// **重放那一份**的一步（纯函数）：只交手里 credit 够的那几格、**不丢**；返回 `(要交的格, 用掉了几格)`。
 /// credit 为零 ⇒ `(空, 0)`，调用方去等。
 fn plan_replay(sub: &mut Sub, rest: &[Body]) -> (Vec<Item>, usize) {
     let take = (sub.credit.min(rest.len() as u64)) as usize;
@@ -316,7 +315,7 @@ fn plan_replay(sub: &mut Sub, rest: &[Body]) -> (Vec<Item>, usize) {
     (out, take)
 }
 
-/// 〔MIG-1 · `99 §2.1 ⑬` 登记的例外〕**起停那几格**交给一条订阅的计划（纯函数）：不看 credit、**不丢**、照占位置；
+/// 〔登记的例外〕**起停那几格**交给一条订阅的计划（纯函数）：不看 credit、**不丢**、照占位置；
 /// 手里有没说的丢失 ⇒ 原位先给 `Gap`（位置号照样连得上）。只许交 [`SessionStreamFrame::takes_credit`] 为假的那几种。
 fn plan_lifecycle(sub: &mut Sub, frames: &[Body]) -> Vec<Item> {
     let mut out = Vec::with_capacity(frames.len() + 1);
@@ -339,7 +338,7 @@ fn plan_lifecycle(sub: &mut Sub, frames: &[Body]) -> Vec<Item> {
     out
 }
 
-/// 〔MIG-1〕一条订阅（整台 / 一个会话）的起停重放：骨架在行前（`before`）、终局在行后（`after`）—— 计划住 `session_book::Book::replay`，
+/// 一条订阅（整台 / 一个会话）的起停重放：骨架在行前（`before`）、终局在行后（`after`）—— 计划住 `session_book::Book::replay`，
 /// 这里只按订阅的那台 / 那一个会话挑、换成格。`history` = 留存里这条订阅要的那些行。
 fn lifecycle_replay(
     book: &parking_lot::RwLock<crate::session_book::Book>,
@@ -375,7 +374,7 @@ fn lifecycle_replay(
     (before, pick(plan.after))
 }
 
-/// 〔CF2〕「那台机器看得见 / 看不见」换成流里的一格（不占 credit）。
+/// 「那台机器看得见 / 看不见」换成流里的一格（不占 credit）。
 fn seen_item(seen: bool, opening: bool) -> Item {
     if seen {
         Item::Seen { from: None }
@@ -394,7 +393,7 @@ fn seen_item(seen: bool, opening: bool) -> Item {
     }
 }
 
-/// 〔CF2〕对端（本文件这个句柄）原位说「不行」：`Closed{Peer({"code","message"})}` —— 与后端命令的拒绝同一个信封。
+/// 对端（本文件这个句柄）原位说「不行」：`Closed{Peer({"code","message"})}` —— 与后端命令的拒绝同一个信封。
 fn refused(code: &str, message: String) -> Item {
     let body = serde_json::to_vec(&serde_json::json!({ "code": code, "message": message }))
         .unwrap_or_default();
@@ -403,22 +402,22 @@ fn refused(code: &str, message: String) -> Item {
     }
 }
 
-/// 〔CF2〕一个流标签说的是哪一种流。
+/// 一个流标签说的是哪一种流。
 #[derive(Debug, PartialEq, Eq)]
 enum Stream {
     /// `session-lines`：`None` = 整台机器 / `Some(sid)` = 一个会话。
     Lines(Option<String>),
-    /// 〔TAP〕`session-tap`。
+    /// `session-tap`。
     Tap,
-    /// 〔DL1〕`accounts-changed`。
+    /// `accounts-changed`。
     AccountsChanged,
-    /// 〔MIG-3b〕`session-tasks`。
+    /// `session-tasks`。
     Tasks,
-    /// 〔MIG-1 收尾〕`probe-progress/<票>`。
+    /// `probe-progress/<票>`。
     Probe(String),
 }
 
-/// 〔CF2〕`kind` ⇒ 哪一种流（〔TAP〕`session-tap` ⇒ [`Stream::Tap`]；〔DL1〕`accounts-changed` ⇒ [`Stream::AccountsChanged`]）。认不出 ⇒ `Err`。
+/// `kind` ⇒ 哪一种流（`session-tap` ⇒ [`Stream::Tap`]；`accounts-changed` ⇒ [`Stream::AccountsChanged`]）。认不出 ⇒ `Err`。
 fn parse_kind(kind: &str) -> Result<Stream, ()> {
     if kind == SESSION_LINES_KIND {
         return Ok(Stream::Lines(None));
@@ -467,7 +466,7 @@ impl EventReplay {
         }
     }
 
-    /// 〔CF2〕装出口（`lib.rs` 起步时一次）。
+    /// 装出口（`lib.rs` 起步时一次）。
     pub fn attach_sink(&self, sink: Arc<dyn ItemSink>) {
         self.inner.lock().sink = Some(sink);
     }
@@ -478,16 +477,16 @@ impl EventReplay {
     /// 用它，保证行先于随后的 SessionRemoved/断连归档交出去（issue #20 / FIX 2 的顺序契约），
     /// 同时对后端帧流形成天然背压（交的期间不再收帧）。
     ///
-    /// 〔CF2〕没 credit 的订阅：丢、位置照占、下一次交之前原位给 `Gap`（头注「订阅」）。**不等 credit。**
+    /// 没 credit 的订阅：丢、位置照占、下一次交之前原位给 `Gap`（头注「订阅」）。**不等 credit。**
     ///
-    /// 〔CF1 · 2026-09-24〕原来还有一份不 await、把块序列 spawn 出去的孪生（只供本机 watcher 那条
-    /// std 线程用，`真相源/10 §7.2`「五段逻辑字面重复」）。本机内容改走后端的帧之后它零调用方，删了；
+    /// 原来还有一份不 await、把块序列 spawn 出去的孪生（只供本机 watcher 那条
+    /// std 线程用，「五段逻辑字面重复」）。本机内容改走后端的帧之后它零调用方，删了；
     /// 名字里的 `_awaited` 留着是为了不在十几路同时改的时候改一个到处被点名的符号。
-    /// 〔FW1 · 第四波 4D · D-d〕一个会话的记录文件不见了 / 被改过已从头重读：交给订了那台（或那一个会话）的实时订阅一格。
+    /// 一个会话的记录文件不见了 / 被改过已从头重读：交给订了那台（或那一个会话）的实时订阅一格。
     ///
     /// 与行同一套记账（占 credit、占位置、没 credit 就原位记 `Gap`）；**不进留存**（F5 不重放这句话，主会话 09-25 认的已知缺口）。
     ///
-    /// 〔RENDER2 · `设计/10 §3.2`〕「已从头重读」（截短 / 改写）⇒ 后端的行号从 0 重数：留存里这个会话旧的一代同一拍丢
+    /// 「已从头重读」（截短 / 改写）⇒ 后端的行号从 0 重数：留存里这个会话旧的一代同一拍丢
     /// （F5 之后只重放新的一代，与前端收到这一格时整份重来对得上）。
     pub async fn on_session_notice(&self, notice: crate::ui_contract::SessionFileNoticePayload) {
         let body = body_of(&SessionStreamFrame::FileNotice(notice.clone()));
@@ -518,7 +517,7 @@ impl EventReplay {
         }
     }
 
-    /// 〔RENDER2 · `99 §2.1` ㉓①〕这台机器的内容流上丢了一行、说不出丢在哪个会话（超长整行丢弃）：
+    /// 这台机器的内容流上丢了一行、说不出丢在哪个会话（超长整行丢弃）：
     /// 订了这台 `session-lines` 的每条实时订阅原位收一格 `Gap { to_seq: None }`（不占位置、不占 credit）。
     pub fn on_lost_somewhere(&self, origin: &str) {
         let (sink, plans) = {
@@ -595,7 +594,7 @@ impl EventReplay {
         }
     }
 
-    /// 〔CF2〕**就绪点**（主界面的 `frontend-ready` 那个任务里调，替掉原来的 `replay_and_mark_ready`〔散文墓碑〕）：
+    /// **就绪点**（主界面的 `frontend-ready` 那个任务里调，替掉原来的 `replay_and_mark_ready`〔散文墓碑〕）：
     /// 把登记了、还没过就绪点的订阅逐条按 credit 交它那台机器的留存，交完才返回。
     ///
     /// **顺序**（与原来同形）：调用方先重发宣告与容器（骨架 tab 先建）、再调本函数、再对账补发 `session-ended`
@@ -623,7 +622,7 @@ impl EventReplay {
                 ready_labels.insert(sub.label.clone());
                 let mine: Vec<JsonlLinePayload> =
                     history.iter().filter(|p| sub.wants(p)).cloned().collect();
-                // 〔MIG-1〕会话行那一族才有起停（tap / 账号那两种没有）。
+                // 会话行那一族才有起停（tap / 账号那两种没有）。
                 let (before, after) = if sub.kind == SubKind::Lines {
                     lifecycle_replay(self.book, &sub.origin, sub.only.as_deref(), &mine)
                 } else {
@@ -650,7 +649,7 @@ impl EventReplay {
         );
     }
 
-    /// 〔CF2〕把一份留存按 credit 交给一条订阅（不丢；credit 用完就等 `want`；订阅被撤 / 被重订就停）。
+    /// 把一份留存按 credit 交给一条订阅（不丢；credit 用完就等 `want`；订阅被撤 / 被重订就停）。
     async fn replay_into(&self, sink: &dyn ItemSink, job: ReplayJob, priority_sid: Option<&str>) {
         let ReplayJob {
             label,
@@ -661,7 +660,7 @@ impl EventReplay {
             after,
         } = job;
         let label = label.as_str();
-        // 〔MIG-1〕骨架（活会话 ＋ 灯 ＋ 容器）先于行，不吃 credit。
+        // 骨架（活会话 ＋ 灯 ＋ 容器）先于行，不吃 credit。
         if !self.deliver_lifecycle(sink, label, id, generation, &before) {
             return;
         }
@@ -669,11 +668,11 @@ impl EventReplay {
             self.replay_lines(sink, label, id, generation, payloads, priority_sid)
                 .await;
         }
-        // 〔MIG-1〕终局（可重连 · 已结束 · 说不清 · 清单报完了）晚于行 —— 否则远端行把刚落定的 tab 翻活（issue #19 / #20）。
+        // 终局（可重连 · 已结束 · 说不清 · 清单报完了）晚于行 —— 否则远端行把刚落定的 tab 翻活（issue #19 / #20）。
         self.deliver_lifecycle(sink, label, id, generation, &after);
     }
 
-    /// 〔MIG-1〕按计划交一串起停格给一条订阅（不吃 credit、不丢）；订阅没了 ⇒ `false`。
+    /// 按计划交一串起停格给一条订阅（不吃 credit、不丢）；订阅没了 ⇒ `false`。
     fn deliver_lifecycle(
         &self,
         sink: &dyn ItemSink,
@@ -740,7 +739,7 @@ impl EventReplay {
         }
     }
 
-    /// 〔CF2〕登记一条订阅（`chan/webview.rs::chan_subscribe` 调）。**不返回 `Result`**（`05 §3.3.5`）：
+    /// 登记一条订阅（`chan/webview.rs::chan_subscribe` 调）。**不返回 `Result`**：
     /// 说不了的在流里原位说（`Closed{Peer}`）；那台机器此刻看不见 ⇒ 第一格 `Unseen`，订阅照样成立。
     ///
     /// - 同一个 `(webview, 编号)` 再订一次 ⇒ 旧的那条作废（页面重载后编号从头来；旧页面的订阅不留成孤儿）。
@@ -794,7 +793,7 @@ impl EventReplay {
             inner.generation += 1;
             let generation = inner.generation;
             let seen = inner.seen.get(origin).copied().unwrap_or(false);
-            // 〔TAP〕tap 没有留存 ⇒ 订阅当场就是实时的（没有就绪点要等）；〔DL1〕`accounts-changed` 同理。
+            // tap 没有留存 ⇒ 订阅当场就是实时的（没有就绪点要等）；`accounts-changed` 同理。
             let immediate =
                 kind != SubKind::Lines || only.is_some() || inner.ready_labels.contains(label);
             let sub = Sub {
@@ -849,7 +848,7 @@ impl EventReplay {
         }
     }
 
-    /// 〔MIG-1 · `99 §2.1 ⑬`〕那台机器的会话起停成品（`session_book` 的出口线程调）：交给订了那台 `session-lines` 的每条实时订阅
+    /// 那台机器的会话起停成品（`session_book` 的出口线程调）：交给订了那台 `session-lines` 的每条实时订阅
     /// （`session-lines/<sid>` 那一形只交它那一个会话的）—— **不吃 credit、不丢**、照占位置（登记的例外，[`plan_lifecycle`]）。
     /// 不进留存：F5 / 开窗的重放从成品缓存重算（[`lifecycle_replay`]）。
     pub fn on_lifecycle(&self, origin: &str, frames: Vec<SessionStreamFrame>) {
@@ -892,7 +891,7 @@ impl EventReplay {
         }
     }
 
-    /// 〔MIG-1〕旁路快照在途份数变了（全局电平）：交给每条实时的整台会话流订阅（不吃 credit、不丢）。
+    /// 旁路快照在途份数变了（全局电平）：交给每条实时的整台会话流订阅（不吃 credit、不丢）。
     pub fn on_snapshot_inflight(&self, count: u32) {
         let body = body_of(&SessionStreamFrame::SnapshotInflight(
             crate::ui_contract::SnapshotInflightPayload { count },
@@ -921,9 +920,9 @@ impl EventReplay {
         }
     }
 
-    /// 〔TAP · V124〕中转抄出来的一个 SSE 事件（`session_tap::deliver` 经 `lib.rs` 装的出口调）：**不进 `history`**，
+    /// 中转抄出来的一个 SSE 事件（`session_tap::deliver` 经 `lib.rs` 装的出口调）：**不进 `history`**，
     /// 交给订了那台机器 `session-tap` 的每一条订阅 —— 有 credit 当场交；没有 ⇒ 丢、位置照占、下一次交之前原位 `Gap`
-    /// （与会话行实时那一份同一个 [`plan_live`]）。**不等 credit、不攒**：tap 可丢（V24），攒着只会让活卡更晚。
+    /// （与会话行实时那一份同一个 [`plan_live`]）。**不等 credit、不攒**：tap 可丢，攒着只会让活卡更晚。
     pub fn on_tap(&self, payload: crate::ui_contract::SessionTapPayload) {
         let origin = payload.origin.as_wire_str().to_string();
         let (sink, plans) = {
@@ -950,7 +949,7 @@ impl EventReplay {
         }
     }
 
-    /// 〔CF2〕订阅方报「我还能吃多少」（累加）。手里有没说的丢失、而此刻有 credit 了 ⇒ 当场原位给 `Gap`。
+    /// 订阅方报「我还能吃多少」（累加）。手里有没说的丢失、而此刻有 credit 了 ⇒ 当场原位给 `Gap`。
     pub fn want(&self, label: &str, id: u64, more: u32) {
         let (sink, gap) = {
             let mut inner = self.inner.lock();
@@ -978,7 +977,7 @@ impl EventReplay {
         }
     }
 
-    /// 〔CF2〕撤订阅（本地撤单，`05 §3.3.3`）：之后一格都不再交；在等 credit 的重放随之停。
+    /// 撤订阅（本地撤单）：之后一格都不再交；在等 credit 的重放随之停。
     pub fn stop(&self, label: &str, id: u64) {
         self.inner
             .lock()
@@ -987,7 +986,7 @@ impl EventReplay {
         self.credit_changed.notify_waiters();
     }
 
-    /// 〔CF2〕那台机器的内容流接上了 / 断了（`ssh_source` 的连接与本机那条流的起落调它）⇒ 订了它的每条订阅
+    /// 那台机器的内容流接上了 / 断了（`ssh_source` 的连接与本机那条流的起落调它）⇒ 订了它的每条订阅
     /// 原位收一格 `Seen` / `Unseen`（状态没变就不重复说）。
     pub fn origin_seen(&self, origin: &crate::origin::Origin, seen: bool) {
         let origin = origin.as_wire_str();
@@ -1013,7 +1012,7 @@ impl EventReplay {
         }
     }
 
-    /// 〔DL1〕那台机器的后端说「账号清单变了」（`accounts_changed` 帧，`设计/05 §13.6 ③`）⇒ 订了那台 `accounts-changed` 的
+    /// 那台机器的后端说「账号清单变了」（`accounts_changed` 帧）⇒ 订了那台 `accounts-changed` 的
     /// 每条订阅收一格 `Frame`（有 credit 当场交；没有 ⇒ 丢、位置照占、下一次交之前原位 `Gap` —— 与实时行同一套）。
     pub fn accounts_changed(&self, origin: &crate::origin::Origin) {
         let origin = origin.as_wire_str();
@@ -1039,7 +1038,7 @@ impl EventReplay {
         }
     }
 
-    /// 〔MIG-3b · `99 §2.1 ㉓②`〕那台机器的后端说「这个会话的任务清单变了」（`tasks_changed` 帧；本机那条流同一个口）⇒
+    /// 那台机器的后端说「这个会话的任务清单变了」（`tasks_changed` 帧；本机那条流同一个口）⇒
     /// 订了那台 `session-tasks` 的每条订阅收一格 `{"sid": …}`（credit 与 `Gap` 与 `accounts-changed` 同一套）。界面收到就重问 `tasks-list`。
     pub fn tasks_changed(&self, origin: &crate::origin::Origin, sid: &str) {
         let origin = origin.as_wire_str();
@@ -1066,7 +1065,7 @@ impl EventReplay {
         }
     }
 
-    /// 〔MIG-1 收尾〕本机后端里那一趟测试连接推来一格（`probe_relay::deliver` 经 `lib.rs` 装的出口调）：**不进 `history`**，
+    /// 本机后端里那一趟测试连接推来一格（`probe_relay::deliver` 经 `lib.rs` 装的出口调）：**不进 `history`**，
     /// 交给订了 `<local>` 上 `probe-progress/<那张票>` 的订阅（credit 与 `Gap` 与 `accounts-changed` 同一套；界面给的窗口远大于一趟的格数）。
     pub fn on_probe(&self, ticket: &str, cell: String) {
         let body = Body(cell.into_bytes());
@@ -1102,7 +1101,7 @@ impl EventReplay {
         drop_session(&mut self.inner.lock(), session_id);
     }
 
-    /// 〔U3b〕读数口（日志与判据用）。
+    /// 读数口（日志与判据用）。
     pub fn stats(&self) -> ReplayStats {
         let inner = self.inner.lock();
         ReplayStats {
@@ -1117,11 +1116,11 @@ impl EventReplay {
         self.inner.lock().priority_sid.clone()
     }
 
-    // 〔MIG-1〕`buffered_local_session_ids`〔散文墓碑〕· `buffered_remote_sessions`〔散文墓碑〕（F5 对账拿留存里的 sid）删了：
+    // `buffered_local_session_ids`〔散文墓碑〕· `buffered_remote_sessions`〔散文墓碑〕（F5 对账拿留存里的 sid）删了：
     //   对账从成品缓存重算，就在各条订阅自己的重放里（[`lifecycle_replay`]）。
 }
 
-/// 〔MIG-1〕一条订阅的重放：起停骨架（行前）· 留存行（按 credit）· 起停终局（行后）。
+/// 一条订阅的重放：起停骨架（行前）· 留存行（按 credit）· 起停终局（行后）。
 struct ReplayJob {
     label: String,
     id: u64,
@@ -1137,9 +1136,9 @@ impl Default for EventReplay {
     }
 }
 
-/// 〔U3b〕→〔CF2〕进账：push 进 history、给**每个**会话计数，超过 `KEEP + SLACK` 就修回 `KEEP`。
+/// →进账：push 进 history、给**每个**会话计数，超过 `KEEP + SLACK` 就修回 `KEEP`。
 ///
-/// 一个会话的留存整份丢（关掉已结束的 tab · 〔RENDER2〕记录文件从头重读、旧的一代作废）。
+/// 一个会话的留存整份丢（关掉已结束的 tab · 记录文件从头重读、旧的一代作废）。
 fn drop_session(inner: &mut Inner, session_id: &str) {
     inner.sessions.remove(session_id);
     let before = inner.history.len();
@@ -1171,7 +1170,7 @@ fn push_and_trim(inner: &mut Inner, payloads: &[JsonlLinePayload]) {
     }
 }
 
-/// 〔U3b〕把一个会话修回尾巴 `KEEP` 条 —— **按 seq 取最大的那些，不按到达序**：
+/// 把一个会话修回尾巴 `KEEP` 条 —— **按 seq 取最大的那些，不按到达序**：
 /// 远端快照走 `--read-session-tail`（尾部优先），到达序是「尾块在前、头块在后」，按到达序丢会把尾巴丢掉。
 /// 返回丢掉的条数。
 fn trim_to_tail(inner: &mut Inner, sid: &str) -> usize {

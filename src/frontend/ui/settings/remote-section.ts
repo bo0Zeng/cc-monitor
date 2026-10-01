@@ -2,19 +2,19 @@
  * 设置面板「远端 (SSH)」区（SSH-remote issue #15 / 多机 #30）。
  *
  * 让用户配置 + 启用「远端模式」：monitor 通过 SSH 连到 **0..N 台** 远端主机，由各台的
- * backend 作为额外数据源（与本机后端那一路聚合 ——〔TL1 · 4C〕本机会话内容 CF1 起也走本机后端，不再是 monitor 自己读）。配置写入 config.json 的 `remote`
+ * backend 作为额外数据源（与本机后端那一路聚合 ——本机会话内容 CF1 起也走本机后端，不再是 monitor 自己读）。配置写入 config.json 的 `remote`
  * 子对象（`{ enabled, hosts: [...] }`），由 Rust 侧 `lib.rs::load_remote_configs` 启动时读。
  *
  * **camelCase key 必须与 Rust reader 严格一致**（否则后端读不到）：
  *   enabled (bool) / hosts[] 内每台：label (string, 可选默认 host) / host / port (默认 22) /
- *   user / keyPath (可选) / hostKeyFingerprint (可选)（〔E2〕`backendPath` 删了：落点恒是那台的 `~/.cc-monitor/bin/ccm`）
+ *   user / keyPath (可选) / hostKeyFingerprint (可选)（`backendPath` 删了：落点恒是那台的 `~/.cc-monitor/bin/ccm`）
  *
- * 〔S5 · V41〕旧的单对象 `remote: { enabled, host, ... }`（无 `hosts` 键）**不再认**：一台都不显示，
+ * 旧的单对象 `remote: { enabled, host, ... }`（无 `hosts` 键）**不再认**：一台都不显示，
  * 机器列表顶上说「远端配置认不出：…」（`remote-config.ts::REMOTE_CONFIG_UNRECOGNIZED`）。
  *
  * 设计（对齐 behavior.ts / diagnostics-section.ts 范式）：
  * - 读走 config.ts 的 loadConfig；写经 `remote-config.ts::patchRemoteConfig`（schema-agnostic 透传）。
- * - **只动 `remote` 这一个键**：〔CFG1〕写口是按键补丁（`config.ts::patchConfigFrom` 现读 → 只交 `set ["remote"]`），
+ * - **只动 `remote` 这一个键**：写口是按键补丁（`config.ts::patchConfigFrom` 现读 → 只交 `set ["remote"]`），
  *   盘上别的键不经这里。
  * - 改动后需**重启 monitor 才生效**（数据源在 setup() 启动时定型），保存后 banner 提示。
  * - 每次输入 change 立即保存（无"未保存"中间态）→ refresh() 可安全从 config 重建卡片。
@@ -58,7 +58,7 @@ import { computeGaps, summarizeGaps, describeGap } from "./readiness";
 // K-P1/P2s：本机后端那条把手的 origin。**与 `LOCAL_MACHINE_KEY` 不是同一个串** ——
 // 前者是后端注册表里的键（`inbound_client::LOCAL_ORIGIN`），后者是这本 UI 账本的键。
 import { LOCAL_ORIGIN } from "../backend-policy";
-import { noteLocalCcm } from "./machine-aliases"; // 〔FIX4〕本机 ccm 那一格的唯一写点
+import { noteLocalCcm } from "./machine-aliases"; // 本机 ccm 那一格的唯一写点
 // 旧调用点从本模块 import 这两个（测试也是）——搬家后原样再导出，不制造无谓的改动面。
 export { shouldShowResetFingerprint };
 import { makeInfoIcon } from "./info-icon";
@@ -80,7 +80,7 @@ import { importSshHosts, listSshHostAliases, resolveSshHost, type ImportGroup, t
 
 
 
-// 〔CP2b〕做成函数、用到时才取文（模块顶层不留取文口调用 —— 顶层调用会让 Rollup 把设置面板挪进主窗共享 chunk）。
+// 做成函数、用到时才取文（模块顶层不留取文口调用 —— 顶层调用会让 Rollup 把设置面板挪进主窗共享 chunk）。
 const REMOTE_INFO_TEXT = (): string =>
   copyText("remote.info.remote");
 
@@ -127,7 +127,7 @@ export interface MachinePagesHost {
   removeMachinePage(id: string): void;
   navigateToMachinePage(id: string): void;
   /**
-   * 🔴 步 3（`设计/70 §1.3 C`）：**这一趟「同步机器页」收尾了**（成或败都叫一次）。
+   * 🔴 步 3：**这一趟「同步机器页」收尾了**（成或败都叫一次）。
    *
    * 宿主要它是为了分开两件在屏幕上长得一样的事：
    * 「还在加载」与「一个机器页都注册不出来」。没有这个回调，宿主只能靠定时器猜 ——
@@ -139,7 +139,7 @@ export interface MachinePagesHost {
 }
 
 /**
- * 〔第四波 ST2 · `设计/70 §5.3` · 第四刀 步 14〕机器列表那一行上**别人挂进来的格子**。
+ * 机器列表那一行上**别人挂进来的格子**。
  *
  * 用途只有一个：DAEMON 开关（后端的 状态 / 操作 / 退出行为 / 健康 四格）**并进列表行**，
  * 不再在列表页上单独占一块。本分节不认识那四格长什么样 —— 只管「每一行给它留个位置」。
@@ -156,7 +156,7 @@ export interface MachineRowExtras {
 export interface RemoteSectionOptions {
   /** 被 CollapsibleGroup 包起来时传 headless: true，不渲染自己的小标题。 */
   headless?: boolean;
-  /** 〔步 14〕见 `MachineRowExtras`。不传就是老形态（行上只有名字 ＋ 状态条）。 */
+  /** 见 `MachineRowExtras`。不传就是老形态（行上只有名字 ＋ 状态条）。 */
   rowExtras?: MachineRowExtras;
   /**
    * S4b：有它就把每台机器的编辑表单搬到**它自己那一页**，列表里只留一行
@@ -174,8 +174,8 @@ export const LOCAL_MACHINE_PAGE_ID = `${MACHINE_PAGE_PREFIX}${LOCAL_MACHINE_KEY}
 // === 共享 DOM 小工具 ===
 
 /**
- * S3/S4b：把一台机器的状态格子渲染进容器。**纯读账本，绝不发起探测**
- *（主计划 §1-2）。列表行与本机行共用同一份渲染，免得两处慢慢长歪。
+ * S3/S4b：把一台机器的状态格子渲染进容器。**纯读账本，绝不发起探测**。
+ * 列表行与本机行共用同一份渲染，免得两处慢慢长歪。
  */
 export function renderStatusCells(
   strip: HTMLElement,
@@ -243,16 +243,16 @@ export class RemoteSection {
   private machinesContainer!: HTMLElement;
   private emptyHint!: HTMLElement;
   private banner!: HTMLElement;
-  /** 〔S5 · V41〕`remote` 段认不出时那一句（常驻，不像 banner 会被下一次动作冲掉）。 */
+  /** `remote` 段认不出时那一句（常驻，不像 banner 会被下一次动作冲掉）。 */
   private unrecognizedNote!: HTMLElement;
   private importSelect!: HTMLSelectElement;
   private importHint!: HTMLElement;
 
   private cards: MachineCard[] = [];
 
-  /** 〔步 14〕见 `MachineRowExtras`。 */
+  /** 见 `MachineRowExtras`。 */
   private rowExtras?: MachineRowExtras;
-  /** 〔步 14〕列表尾巴（`rowExtras.tail()`）。新加的行插在它前面，它永远在最后。 */
+  /** 列表尾巴（`rowExtras.tail()`）。新加的行插在它前面，它永远在最后。 */
   private rowsTail: HTMLElement | null = null;
 
   constructor(opts: RemoteSectionOptions = {}) {
@@ -276,7 +276,7 @@ export class RemoteSection {
     // `readRemoteConfig()` reject 时这个方法是 `void this.refresh()` 掉的一个
     // 未捕获 rejection ⇒ 一个机器页都不会注册，而宿主那边只看得到「什么都没来」。
     // `finally` 让两条路都经过这里。
-    // 🔴 `70 §1` 那个「自己从 ☐ 跳到 ☑」的复选框（`§8` 判据 #2）：读回来之前**不可交互**。
+    // 🔴 那个「自己从 ☐ 跳到 ☑」的复选框（`§8` 判据 #2）：读回来之前**不可交互**。
     //    否则用户在它变之前以为它是关的、点一下，结果是把它关掉（而他以为自己在打开）。
     //    读失败就一直灰着 —— 那一刻它显示的值不是盘上的值，点它就是写一个假状态回去。
     this.enabledCheckbox.disabled = true;
@@ -294,12 +294,12 @@ export class RemoteSection {
       this.hideBanner();
       void this.populateAliases();
     } catch (e) {
-      // 🔴 步 4（`设计/70 §1.3 D`）：**异步失败落在这一块上**，不再只打到状态栏。
+      // 🔴 步 4：**异步失败落在这一块上**，不再只打到状态栏。
       //
       // 这个方法的两个调用点都是 `void this.refresh()`（本类构造器 ＋ `panel.open()`），
       // 而 `void` 掉的 Promise 其 reject 是**未捕获 rejection** ⇒ 今天它一路走到
       // `main.ts` 那条全局兜底，变成状态栏上一行 `REJ: …`
-      //（`70 §1.3 D` 逐字：截图里那句 `REJ: Command plugin:dialog|confirm not allowed
+      //（截图里那句 `REJ: Command plugin:dialog|confirm not allowed
       //   by ACL` 就是这条路出来的）。状态栏离出事的那一块十万八千里，用户看不出
       //   「机器列表为什么是空的」。
       // ⇒ 就地说一句，并把异常继续往外抛（调用方要判成不成功，本行只负责说出口）。
@@ -345,12 +345,12 @@ export class RemoteSection {
     legend.appendChild(strip);
     // 🔴 `K-R59`（09-11）：**这里原来写死了一格 `na`** ——
     //    「backend 那格对本机是不适用，不是「缺组件」：`watcher.rs` 直读 jsonl，
-    //      本机压根不需要后端（主计划 §2.4 那张表逐字写着「不需要」）」。
+    //      本机压根不需要后端（那张表逐字写着「不需要」）」。
     //    那句话在 `C7`〔用 08-03〕之后就不成立了（`local_backend.rs` 就是它的产物），
     //    而它**一个 `daemonless` 字样都不含** —— 与 `readiness.notApplicable` 那一支同一档。
     //    ⇒ 撤掉写死值，照实画账本。
     renderStatusCells(strip, readStatus(LOCAL_MACHINE_KEY));
-    // 〔步 14〕后端那四格。本机在后端那套名字里叫 `LOCAL_ORIGIN`（不是本分节的 `LOCAL_MACHINE_KEY`）。
+    // 后端那四格。本机在后端那套名字里叫 `LOCAL_ORIGIN`（不是本分节的 `LOCAL_MACHINE_KEY`）。
     this.appendRowExtras(legend, LOCAL_ORIGIN);
     void this.noteLocalBackend();
     void this.noteLocalCcm();
@@ -393,10 +393,10 @@ export class RemoteSection {
   }
 
   /**
-   * 〔FIX3 · `设计/99 §2.2 ㉔` · `15 §5.4 D5`〕**本机 `ccm` 那一格的写点**：两件都报 ——「我们那份装下来了」＋「登录 shell 里敲
+   * **本机 `ccm` 那一格的写点**：两件都报 ——「我们那份装下来了」＋「登录 shell 里敲
    * `ccm` 走到的是不是它」。判定与那句话都在 monitor 的 Rust 一侧（`ccm_probe::local_ccm_cell`），这里只照记；
    * 说不清（`ok === null`）⇒ 不写。与 `noteLocalBackend` 同一种时机（打开设置面板重建列表时一次，只问本机）。
-   * 〔WF1 · ㉔〕Windows 本机同样问（新开的 PowerShell 里敲 `ccm` 走到哪）。
+   * Windows 本机同样问（新开的 PowerShell 里敲 `ccm` 走到哪）。
    */
   private async noteLocalCcm(): Promise<void> {
     try {
@@ -474,8 +474,8 @@ export class RemoteSection {
       return;
     }
     this.gapsBox.style.display = "";
-    // 🔴 `设计/70 §5.3`〔2026-09-18〕：「还差什么（诊断汇总）」→「**诊断**」—— 用户逐字「这种说法太口语了」
-    //    （`91 §2.6` 第六类病：标签写成问句 · 口语语域 · 括号里才是真名）。
+    // 🔴：「还差什么（诊断汇总）」→「**诊断**」—— 用户逐字「这种说法太口语了」
+    //    （第六类病：标签写成问句 · 口语语域 · 括号里才是真名）。
     //    ⚠ 与 `§10.3` 那次改名同拍：「应用」页那块原叫「诊断」的已先让名成「日志」
     //    （`diagnostics-section.ts`），所以这一刻起面板上只有一个「诊断」（`§8` 判据 #11）。
     //    名字进块标题（与别的块同一个 `.settings-group-title`），摘要另起一行。
@@ -491,7 +491,7 @@ export class RemoteSection {
     list.className = "remote-gaps-list";
     for (const g of gaps) {
       const li = document.createElement("li");
-      // 〔W5-AUX · `设计/41 §7`〕「缺 / 不知道」只由下面那一格 `data-kind` 承载 —— 原先同一个值还拼进了类名 `remote-gap-<kind>`（同一个状态写了两遍）。
+      // 「缺 / 不知道」只由下面那一格 `data-kind` 承载 —— 原先同一个值还拼进了类名 `remote-gap-<kind>`（同一个状态写了两遍）。
       li.className = `remote-gap remote-gap-${g.severity}`;
       li.dataset.origin = g.origin;
       li.dataset.facet = g.facet;
@@ -535,7 +535,7 @@ export class RemoteSection {
     return card;
   }
 
-  /** 〔步 14〕往一行上挂宿主给的格子。宿主那一侧抛了**不许把机器列表带走**（同 `safeBlock` 的隔离）。 */
+  /** 往一行上挂宿主给的格子。宿主那一侧抛了**不许把机器列表带走**（同 `safeBlock` 的隔离）。 */
   private appendRowExtras(legend: HTMLElement, origin: string): void {
     if (!this.rowExtras) return;
     legend.appendChild(this.guardedExtra(() => this.rowExtras!.cells(origin)));
@@ -576,7 +576,7 @@ export class RemoteSection {
     strip.className = "remote-machine-status";
     legend.appendChild(strip);
     renderStatusCells(strip, readStatus(card.persistedKey ?? hostKey(card.collect())));
-    // 〔步 14〕后端那四格。还没填地址的空白卡没有 origin ⇒ 不挂（没有后端可言）。
+    // 后端那四格。还没填地址的空白卡没有 origin ⇒ 不挂（没有后端可言）。
     const origin = card.persistedKey ?? hostKey(card.collect());
     if (origin) this.appendRowExtras(legend, origin);
 
@@ -695,11 +695,11 @@ export class RemoteSection {
     let aliases: string[] = [];
     let unreadable: string | null = null;
     try {
-      // 〔MIG-1 · `99 §2.1 ⑯`〕问本机常驻后端（`ssh-config-aliases`，按形状严格收）。
+      // 问本机常驻后端（`ssh-config-aliases`，按形状严格收）。
       aliases = await listSshHostAliases();
     } catch (e) {
       console.warn("ssh-config-aliases failed:", e);
-      // 〔W5-UI · 设计/70 §7 #4〕读失败与「真没有别名」原先同形（都是空下拉 ＋ 「未找到」）⇒ 分开说。
+      // 读失败与「真没有别名」原先同形（都是空下拉 ＋ 「未找到」）⇒ 分开说。
       unreadable = String(e);
     }
 
@@ -748,13 +748,13 @@ export class RemoteSection {
     this.banner.className = "settings-banner";
     group.appendChild(this.banner);
 
-    // 〔S5 · V41〕紧跟在 banner 后面、仍在工具条与列表之上。⚠ 排在 banner **之后**：
+    // 紧跟在 banner 后面、仍在工具条与列表之上。⚠ 排在 banner **之后**：
     //   `pending-and-block-errors.vitest.ts` 按「这一块第一个 `.settings-banner`」找动作结果那一条。
     this.unrecognizedNote = document.createElement("div");
     this.unrecognizedNote.className = "settings-banner remote-config-unrecognized";
     group.appendChild(this.unrecognizedNote);
 
-    // ★ S4b-3b：**一条工具条**（主计划 §2.3 那张图逐字给的顺序）：
+    // ★ S4b-3b：**一条工具条**（那张图逐字给的顺序）：
     //   + 添加 · 从 ssh config 导入 · 批量导入 · 端口转发 · [x] 启用远端模式
     //
     // 此前这几个控件散在列表**上下两侧**（导入在最上、端口转发和启用 toggle 在中间、
@@ -879,7 +879,7 @@ export class RemoteSection {
     this.importHint = document.createElement("div");
     this.importHint.className = "settings-hint";
     this.importHint.style.display = "none";
-    // 〔W5-UI〕挂载挪到 `toolbar` 进了 `group` 之后（`buildBody` 那一句）：这里调用时 `toolbar` 还没有父节点，
+    // 挂载挪到 `toolbar` 进了 `group` 之后（`buildBody` 那一句）：这里调用时 `toolbar` 还没有父节点，
     //   `insertAdjacentElement("afterend")` 是空操作 ⇒ 这块提示从来没进过 DOM（「未找到」「读不了」都没人看得见）。
   }
 
@@ -1196,7 +1196,7 @@ export class RemoteSection {
         return m;
       };
       const liveCount = countBy(this.cards.map((c) => c.persistedKey));
-      // 〔FIX · ㊶〕每张已在盘上的卡带上加载时那份（origin 在加载时恰好一台的才带）⇒ 数据层按格改、只交动过的格。
+      // 每张已在盘上的卡带上加载时那份（origin 在加载时恰好一台的才带）⇒ 数据层按格改、只交动过的格。
       const loadedCount = countBy(this.loadedKeys);
       const wasOf = (k: string | null): RemoteHostConfig | undefined =>
         k !== null && loadedCount.get(k) === 1 ? findHostByOrigin(this.original.hosts, k) ?? undefined : undefined;
@@ -1254,7 +1254,7 @@ export class RemoteSection {
 /** 把一个任意 JSON 对象规整成 RemoteHostConfig（缺失/类型不对走默认）。 */
 // F12：`coerceAddresses` / `coerceHost` / `readRemoteConfig` / `findHostByOrigin` /
 // `resolveRemoteConfigByOrigin` / 写入口已移入 `src/frontend/ui/remote-config.ts`（数据层）。
-// S1：写入口 = `patchRemoteConfig`（局部合并）；整表覆盖的 `writeRemoteConfig` 已收回该文件内部、不再导出（〔CFG1〕今天连函数都没了；〔FIX2 续〕增删改全按键认元素）。 〔散文墓碑〕
+// S1：写入口 = `patchRemoteConfig`（局部合并）；整表覆盖的 `writeRemoteConfig` 已收回该文件内部、不再导出（今天连函数都没了；增删改全按键认元素）。 〔散文墓碑〕
 // `sameHost` / `sameRemote`（下方）是 UI dirty-check，留本文件。
 
 function sameHost(a: RemoteHostConfig, b: RemoteHostConfig): boolean {

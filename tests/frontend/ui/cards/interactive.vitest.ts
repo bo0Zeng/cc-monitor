@@ -1,4 +1,4 @@
-// 〔audit-0805 08-06〕**「Claude 在等你决定」这两张卡不许被折叠 —— 这条承诺此前零覆盖。**
+// **「Claude 在等你决定」这两张卡不许被折叠 —— 这条承诺此前零覆盖。**
 //
 // # 怎么发现的
 //
@@ -17,7 +17,7 @@
 // 「在等用户决定」，那不是可调的，是这条功能存在的理由。
 // ⇒ 判据里写 `AskUserQuestion` / `ExitPlanMode` **就是需求的落点**。
 //
-// 〔THIN · `设计/00 §1.2` 判定只在后端〕「哪个工具算交互工具」今天住那台后端的适配层（`agents/claudecode/cards.rs`，
+// 〔判定只在后端〕「哪个工具算交互工具」今天住那台后端的适配层（`agents/claudecode/cards.rs`，
 // 判据 `tests/backend/agents/claudecode/cards_tests.rs` 逐名钉着这两个），随 assistant 记录的 `toolCards` 带来；
 // 界面这一半只剩「**照卡型办**」：卡型是 `interactive` ⇒ 整条消息走 `kind: "card"`（不进工具组折叠），没有卡型 ⇒ 工具组。
 import { describe, it, expect } from "vitest";

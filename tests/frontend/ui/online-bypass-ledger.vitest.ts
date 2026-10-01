@@ -1,13 +1,13 @@
 /**
- * 〔STC · 第四波 4D〕**`onLine` 上不许有旁路记账员** —— `设计/90 §3` 判据 3 的机检。
+ * **`onLine` 上不许有旁路记账员** 的机检。
  *
  * ## 守的要求（住址，逐字）
  *
- * - `设计/90 §3`：「3. 前端不许从流上攒全会话事实 —— `onLine` 上的旁路记账员只剩『真事件』那两个。」
- * - `设计/10 §2.2`：「**『这个会话到目前为止是什么样』＝ 全会话事实 ＝ 读 json** / **『刚刚发生了什么』＝ 事件 ＝ 留在流上**」；
+ * -：「3. 前端不许从流上攒全会话事实 —— `onLine` 上的旁路记账员只剩『真事件』那两个。」
+ * -：「**『这个会话到目前为止是什么样』＝ 全会话事实 ＝ 读 json** / **『刚刚发生了什么』＝ 事件 ＝ 留在流上**」；
  *   那张表里标「**事件，留在流上**」的恰好两行：`turnEndNotifier.observe`（轮次结束 → 系统通知）·
  *   `compactWaiters`（compact 完成 → 唤醒换号重启编排）。标「读 json」的四行（`trackUsage` · `trackAgents` ·
- *   `noteTouchedFiles` · `applyForkedFrom`）由 STC 改成问后端（`history-facts`，`设计/90 §4` 阶段 C）。
+ *   `noteTouchedFiles` · `applyForkedFrom`）由 STC 改成问后端（`history-facts`，阶段 C）。
  *
  * ## 两条判据
  *
@@ -16,9 +16,9 @@
  *   注释天然不在）。「提到记录」= 出现形参 `payload`，或出现由它**只经取属性 / 断言 / 括号**得来的局部常量
  *   （如 `const uuid = (payload.message as …).uuid`；函数调用的返回值不算 —— `ensureTab(…)` 返回的是 tab，不是记录）。
  * - 登记表每行写类：`入口`（建 tab · 两道去重 · 线上表示法换算）· `真事件` · `活卡定稿`（TAP 那一格：jsonl 那一轮到了 ⇒
- *   撤掉同 `message.id` 的活卡，`设计/10 §2.3` · `设计/20 §8`）· `渲染管线`。**没有「记账员」这一类。**
- * - 另两条：登记表里 `真事件` 类的事件名集合 == `{轮次结束, compact 完成}`（异源：上面 `10 §2.2` 原文那两行）；
- *   各类恰好这些行（`渲染管线` 只有 `this.view.ingest` 一行 —— 管线内部的 sink 不在 `10 §2.2` 那张表的射程里，见「买不到」）。
+ *   撤掉同 `message.id` 的活卡，）· `渲染管线`。**没有「记账员」这一类。**
+ * - 另两条：登记表里 `真事件` 类的事件名集合 == `{轮次结束, compact 完成}`（异源：上面原文那两行）；
+ *   各类恰好这些行（`渲染管线` 只有 `this.view.ingest` 一行 —— 管线内部的 sink 不在那张表的射程里，见「买不到」）。
  * - 正控：同一个抽取器对一段内嵌样本抽得出 `noteAgents(tab, payload.message)` 与经别名的 `f(m)`，抽不出 `g(tab)`。
  *
  * **L2 · 四个事实字段只有登记的写者**（`touchedFiles` · `latestPromptTokens` · `latestModel` · `forkedFromSessionId`）
@@ -31,7 +31,7 @@
  * ## 同波别路 / 买不到
  *
  * - 渲染管线内部（`view.ingest` → `renderContentRecord` 的 sink：标题 · 分支 · 队列 · 真用户输入）不在 L1 的人群里：
- *   `10 §2.2` 那张表列的是「挂在 `onLine` 上的旁路」，管线本体不在表里。它若长出记账员，L2 兜「写事实字段」那一形。
+ * 那张表列的是「挂在 `onLine` 上的旁路」，管线本体不在表里。它若长出记账员，L2 兜「写事实字段」那一形。
  * - 别名只认一层取属性链；把记录塞进数组再取出来、或经函数返回，L1 看不见（L2 仍在）。
  */
 import ts from "typescript";
@@ -49,23 +49,23 @@ type OnLineClass = "入口" | "真事件" | "活卡定稿" | "渲染管线";
 /** `(被调者, 类, 真事件的事件名 | null, 理由)` —— `onLine` 上今天每一个吃记录的调用。 */
 const ONLINE_CALLS: ReadonlyArray<readonly [string, OnLineClass, string | null, string]> = [
   ["this.ensureTab", "入口", null, "按 sid 找 / 建 tab（远端「收到行 ⇒ 复活」也在这里）"],
-  ["originFromWire", "入口", null, "线上 origin 的唯一一处表示法换算（`设计/05 §14.1`）"],
+  ["originFromWire", "入口", null, "线上 origin 的唯一一处表示法换算"],
   ["tab.seenSeqs.has", "入口", null, "按 (sid, seq) 去重（快照与实时的重叠区，`INVARIANTS §25a`）"],
   ["tab.seenSeqs.add", "入口", null, "同上"],
-  ["tab.seenSeqs.addRange", "入口", null, "〔RENDER2〕monitor 连着见过、都不可显示的那一段一起记（`skipped_from`，`设计/10 §3.2`）"],
-  ["this.actions.settleCompact", "真事件", "compact 完成", "`10 §2.2`「compactWaiters：compact 完成 → 唤醒换号重启编排」"],
+  ["tab.seenSeqs.addRange", "入口", null, "monitor 连着见过、都不可显示的那一段一起记（`skipped_from`）"],
+  ["this.actions.settleCompact", "真事件", "compact 完成", "「compactWaiters：compact 完成 → 唤醒换号重启编排」"],
   ["isCompactRecord", "真事件", "compact 完成", "同一个事件：「这一行是不是 compact 摘要」的判法（交给 settleCompact 的闭包里）"],
-  ["turnEndNotifier.observe", "真事件", "轮次结束", "`10 §2.2`「turnEndNotifier.observe：轮次结束 → 系统通知」"],
+  ["turnEndNotifier.observe", "真事件", "轮次结束", "「turnEndNotifier.observe：轮次结束 → 系统通知」"],
   [
     "this.live.onRecord",
     "活卡定稿",
     null,
-    "〔TAP〕jsonl 那一轮到了 ⇒ 同 `message.id` 的活卡整轮撤掉（`10 §2.3`「jsonl 到了就整轮覆盖」· `20 §8`）；不攒任何全会话事实",
+    "jsonl 那一轮到了 ⇒ 同 `message.id` 的活卡整轮撤掉（「jsonl 到了就整轮覆盖」）；不攒任何全会话事实",
   ],
   ["this.view.ingest", "渲染管线", null, "渲染管线本体（按 seq 门控建卡 / 收纳）"],
 ];
 
-/** `10 §2.2` 表里标「事件，留在流上」的恰好这两行（异源：设计原文，不是上面那张表）。 */
+/** 表里标「事件，留在流上」的恰好这两行（异源：设计原文，不是上面那张表）。 */
 const DESIGN_TRUE_EVENTS = ["compact 完成", "轮次结束"];
 
 /** 一个表达式（去括号 / `as` / 非空断言）是不是以 `roots` 里某个名字为根、只经取属性 / 取下标得来。 */
@@ -132,7 +132,7 @@ export function recordConsumers(source: string, cls: string, method: string): st
   return [...out].sort();
 }
 
-describe("〔STC〕L1 · onLine 上只剩真事件（`设计/90 §3` 判据 3）", () => {
+describe("〔STC〕L1 · onLine 上只剩真事件", () => {
   const tabsSrc = readFileSync(resolve(REPO_ROOT, "src/frontend/ui/tabs.ts"), "utf8");
 
   it("★ 正控：抽取器认得出直呼的记账员、经别名的记账员，不认只拿 tab 的调用", () => {
@@ -158,7 +158,7 @@ describe("〔STC〕L1 · onLine 上只剩真事件（`设计/90 §3` 判据 3）
     );
   });
 
-  it("★ 真事件恰好是 `10 §2.2` 那两个；渲染管线 / 活卡定稿各只有登记那一行", () => {
+  it("★ 真事件恰好是那两个；渲染管线 / 活卡定稿各只有登记那一行", () => {
     const events = [...new Set(ONLINE_CALLS.filter(([, k]) => k === "真事件").map(([, , e]) => e))].sort();
     expect(events).toEqual([...DESIGN_TRUE_EVENTS].sort());
     for (const [c, k, e, why] of ONLINE_CALLS) {
@@ -249,7 +249,7 @@ describe("〔STC〕L2 · 会话事实字段只有登记的写者（记账员换�
     expect(files.length, "一个 TS 生产文件都没扫到").toBeGreaterThan(0);
     const got: string[] = [];
     for (const { file, text } of files) for (const o of factWriters(text)) got.push(`${file} :: ${o}`);
-    expect(got.sort(), "事实字段多了 / 少了写者 —— 从流上攒全会话事实回来了？（`设计/90 §3` 判据 3）").toEqual(
+    expect(got.sort(), "事实字段多了 / 少了写者 —— 从流上攒全会话事实回来了？").toEqual(
       FACT_WRITERS.map(([f, o]) => `${f} :: ${o}`).sort(),
     );
     for (const [f, o, why] of FACT_WRITERS) expect(why.trim().length, `${f} :: ${o} 没写理由`).toBeGreaterThan(0);

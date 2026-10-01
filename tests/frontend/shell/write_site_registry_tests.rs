@@ -19,7 +19,7 @@ const WRITE_CALLS: &[&str] = &[
     // 代价是这个 needle 稍宽（会命中 `fs::rename_xxx` 之类），今天全树无此形态。
     "fs::rename",
     "File::create(",
-    // 〔RW1 · 第四波 09-24〕**补一根针**：`OpenOptions` 开写（`O_EXCL` 新建 / 追加）。
+    // **补一根针**：`OpenOptions` 开写（`O_EXCL` 新建 / 追加）。
     //   现打时这张表漏了它 —— 本机分叉那一处（`history.rs` 在 `~/.claude/projects/` 下 `O_EXCL` 写新会话）
     //   就是经它落盘的，**两张写点登记表都没看见**。那一处已经交给后端（`--fork-session`），这根针防它换个名字回来。
     "fs::OpenOptions::new(",
@@ -37,7 +37,7 @@ const WRITE_CALLS: &[&str] = &[
 pub(crate) const WRITE_SITES: &[(&str, &str, Option<&str>, &str)] = &[
     // ── P2z：单 exe 自释放内嵌后端。**不是安装动作** —— 它写的是 monitor 自己的缓存。
     ("local_backend.rs", "extract_embedded_to", None,
-     "〔E2〕把后端字节放到 `~/.cc-monitor/bin/ccm`（它就是后端本身，本机常驻后端跑的与终端里敲的是同一个文件）。\
+     "把后端字节放到 `~/.cc-monitor/bin/ccm`（它就是后端本身，本机常驻后端跑的与终端里敲的是同一个文件）。\
           写的是 monitor 自己的目录，不碰用户既有环境、不注册到任何用户配置里；换版照 HX2 D-b「盘上的比我旧才换」。\
           ⚠ **唯一调用点是 `local_backend::resolve_or_extract`**〔`K-R43` 改：本行原先写\
           「供 `start_or_extract` …」，那时它是唯一调用点；今天 `start_or_extract` 与\
@@ -53,16 +53,16 @@ pub(crate) const WRITE_SITES: &[(&str, &str, Option<&str>, &str)] = &[
           ③ 删不掉就算了，**清扫失败绝不挡住释放**。\
           ★ 为什么会有残骸：临时名从固定名改成**带 pid**（防两个 monitor 写同一个 `.partial`）之后，\
           崩掉的那些不会再被下一次覆盖 ⇒ 得自己收。"),
-    // ── 〔P1〕`extract_embedded_to` 自己那一份暂存件的收尾（问完 / 失败 / 不放，任何结局都删）。**不是安装动作** —— 它只**删**自己刚写的那一份。
+    // ── `extract_embedded_to` 自己那一份暂存件的收尾（问完 / 失败 / 不放，任何结局都删）。**不是安装动作** —— 它只**删**自己刚写的那一份。
     ("local_backend.rs", "drop_partial", None,
      "删 `extract_embedded_to` 这一趟刚写的 `~/.cc-monitor/bin/.<ccm 名>.<pid>.partial`（问手上那份字节放不放用的暂存件）：\
           放了（换名上位后它已不在）· 不放 · 它说「不」· 问不成，四种结局都走这里；清不掉出声，一天后由 `sweep_stale_partials` 收。"),
-    // ── 〔E2 · V28〕本机那条 `ccm` 入口（逐字节副本 `install_local_ccm_entry`〔散文墓碑〕）删了：落点就是后端本身（`extract_embedded_to`）。
+    // ── 本机那条 `ccm` 入口（逐字节副本 `install_local_ccm_entry`〔散文墓碑〕）删了：落点就是后端本身（`extract_embedded_to`）。
     ("local_backend.rs", "sweep_moved_aside", None,
-     "〔E2 · E-b〕删 `~/.cc-monitor/bin/.<ccm 名>.<pid>.old` —— Windows 上换版时正在跑的那份旧 `ccm` 只能改名挪开，下一次放置时收；\
+     "删 `~/.cc-monitor/bin/.<ccm 名>.<pid>.old` —— Windows 上换版时正在跑的那份旧 `ccm` 只能改名挪开，下一次放置时收；\
           只认自己那套命名，删不掉就下次再说。"),
     ("local_backend.rs", "sweep_legacy_extracts", None,
-     "〔E2 · E-c〕删旧版本机释放的 `~/.cc-monitor/bin/cc-monitor-backend-<build_id>` —— 身份戳恰一个（是我们编的）才删，\
+     "删旧版本机释放的 `~/.cc-monitor/bin/cc-monitor-backend-<build_id>` —— 身份戳恰一个（是我们编的）才删，\
           认不出的不动、删不掉（正在跑）不管。"),
     // ── **本机那一份文件窗口程序**。不是安装动作 —— 我们自己的部署物，放在我们自己的目录里。
     ("local_backend.rs", "place_local_program", None,
@@ -75,7 +75,7 @@ pub(crate) const WRITE_SITES: &[(&str, &str, Option<&str>, &str)] = &[
     ("local_backend.rs", "rename_into_place", None,
      "`~/.cc-monitor/bin/.<名>.<pid>.partial` → `<名>`；Windows 上旧的那份正在跑换不掉 ⇒ 先把它改名成 `.<名>.<pid>.old` 再上位\
           （挪开的那份由 `sweep_moved_aside` 下次收）。写的只是我们自己刚放的那一份与我们自己的旧版。"),
-    // ── 〔RW1 · 第四波 · 2026-09-24〕这里原来有 `cc_bus_deploy.rs` 的三行（`deploy_into` 装 17 个文件 ·
+    // ── 这里原来有 `cc_bus_deploy.rs` 的三行（`deploy_into` 装 17 个文件 ·
     //    `fenced_dest` 先 `mkdir -p skills` · `backup_existing` 整目录改名成 `.bak-<ts>`，`U10b` 第 7 条例外那四个配套的落点）。
     //    用户裁「只允许后端的文件管理部分写文件」也管本机 ⇒ 三件都改经本机后端（`files-put` 带 `parents` /
     //    `files-rename` / `files-chmod`），本进程一个字节不落 ⇒ 三行摘掉。四个配套一条没省：
@@ -90,17 +90,17 @@ pub(crate) const WRITE_SITES: &[(&str, &str, Option<&str>, &str)] = &[
           ⚠ 〔`K-R70` 09-12 订正本行后半句〕它**不再读旁边那份 `.build_id` 清单** —— \
           身份改从二进制字节里扫（`CC_MONITOR_BUILD_STAMP`），\
           由 `sftp_tests.rs::the_embedded_identity_comes_from_the_bytes_not_from_a_label` 守着"),
-    // ── 〔RW1 · 第四波 · 2026-09-24〕这里原来有收件箱写（`write_skill_file`〔散文墓碑〕）一行（项目里的
+    // ── 这里原来有收件箱写（`write_skill_file`〔散文墓碑〕）一行（项目里的
     //    `.claude/planned-build/INBOX.txt`，本进程 `fs::write` ＋ `verified_write` 回读回滚）。用户裁「远端（和本机，
     //    同一条路）的 `INBOX.txt` 能编辑、经那台机器后端的文件管理那一面写」⇒ 读写都改经后端（`files-peek` /
-    //    `files-put`，带 CAS 期望），本进程一个字节不落 ⇒ 摘行。〔MIG-3a〕三道围栏也进了那台后端；〔09-30〕收件箱编辑面整块删了，那三道随之没了。
-    // ── 🔴 〔RW1 · 第四波 · 2026-09-24〕这里原来有三行 `fenced_block.rs` 的本机原语
+    //    `files-put`，带 CAS 期望），本进程一个字节不落 ⇒ 摘行。三道围栏也进了那台后端；收件箱编辑面整块删了，那三道随之没了。
+    // ── 🔴 这里原来有三行 `fenced_block.rs` 的本机原语
     //    （`put_atomic` / `save_backup` / `delete_created`，那时是本机 rc · `$PROFILE` · 别名文件 · rc 里那一行
     //    source 的唯一落盘漏斗）。用户裁「只允许后端的文件管理部分写文件」**也管本机** ⇒ 那几件改经本机后端
     //    （`user_files::edit` → `files-peek` / `files-put`），本进程**一个字节都不落** ⇒ 三行随原语一起走了。
     //    写的规则（备份 · 原子替换 · 回读 · 回滚）从此只住后端 `control/files_write.rs::put_text`。
-    // ── 〔RW1 · 第四波 · 2026-09-24〕这里原来还有三行：`profile_installer.rs` 的 `atomic_write_string`〔散文墓碑〕 /
-    //    `atomic_replace_path`（本机用户文件的原子写原语，申报成 `ccm` 的安装动作）与 `mcp.rs`（〔MIG-3a〕整份删了）的
+    // ── 这里原来还有三行：`profile_installer.rs` 的 `atomic_write_string`〔散文墓碑〕 /
+    //    `atomic_replace_path`（本机用户文件的原子写原语，申报成 `ccm` 的安装动作）与 `mcp.rs`（整份删了）的
     //    本机原子写（`project-mcp` 那条的真落点）。`$PROFILE` / rc / 项目 `.mcp.json` 全改经后端写
     //    （`user_files` → `files-put`），三件零调用方、删了 ⇒ 三行随之走。那两个工具的装 / 卸动作今天在后端落盘，
     //    本表（monitor 进程的写盘人群）里**不再有它们** —— 那正是用户那一裁要的形状。
@@ -108,23 +108,23 @@ pub(crate) const WRITE_SITES: &[(&str, &str, Option<&str>, &str)] = &[
     ("bind.rs", "spawn", None, "monitor 自己的运行时目录/落地文件"),
     ("bind.rs", "process_await_file", None, "monitor 自己的等待文件"),
     ("bind.rs", "cleanup_dead", None, "清理 monitor 自己留下的死文件"),
-    ("config.rs", "patch_config_at", None, "monitor 自己的配置文件（〔CFG1〕唯一写口：进程级锁内现读 ＋ 按键补丁；整份替换的 `save_config` 删了）"), // 〔散文墓碑〕
-    // ── 〔GP1 · 第四波〕这里原来有一行 `creds_store.rs` 的凭据写口（K-H2a：账号的第三方 API key 那份文件）。
-    //    主会话 09-25 裁「每台机器上这份文件的程序写者恰好一个 ＝ 那台的后端」⇒ 本机那一份也交本机常驻后端写
+    ("config.rs", "patch_config_at", None, "monitor 自己的配置文件（唯一写口：进程级锁内现读 ＋ 按键补丁；整份替换的 `save_config` 删了）"), // 〔散文墓碑〕
+    // ── 这里原来有一行 `creds_store.rs` 的凭据写口（K-H2a：账号的第三方 API key 那份文件）。
+    //    「每台机器上这份文件的程序写者恰好一个 ＝ 那台的后端」⇒ 本机那一份也交本机常驻后端写
     //    （`apikey-key-set` → `src/backend/accounts/upstream_select/file_face.rs`，第四层后端自有状态），本进程一个字节不落 ⇒ 摘行。
-    ("fs.rs", "atomic_replace", None, "原子替换原语的本地副本（同上，归 `atomic_replace_registry` 判；〔P4 · 阶段 H〕原住 `config.rs`，住壳的平台层）"),
+    ("fs.rs", "atomic_replace", None, "原子替换原语的本地副本（同上，归 `atomic_replace_registry` 判；原住 `config.rs`，住壳的平台层）"),
     ("lib.rs", "open_log_dir", None, "打开日志目录前确保它存在"),
     ("logging.rs", "build_rolling_appender", None, "monitor 自己的滚动日志"),
-    // 〔CFG1 · 4D〕`logging.rs` 那两行（`write_diagnostics_to_config` · `atomic_replace` 副本）摘了：诊断写口改经
+    // `logging.rs` 那两行（`write_diagnostics_to_config` · `atomic_replace` 副本）摘了：诊断写口改经
     //   `config::patch_config_at`，本文件零写盘。
-    // 〔LOC1b · 第四波 4D〕`session_map.rs` 那条 watcher 线程那一行摘了：monitor 自己那份判活（连同它写的会话映射状态）删了。
-    // 〔SR1b · 2026-09-24〕「下载落到用户选的本机路径」那一行摘了（连同它上面那段 09-21 的订正：「本地缓存」那句是假的、
+    // `session_map.rs` 那条 watcher 线程那一行摘了：monitor 自己那份判活（连同它写的会话映射状态）删了。
+    // 「下载落到用户选的本机路径」那一行摘了（连同它上面那段 09-21 的订正：「本地缓存」那句是假的、
     //    围栏补在开单那一刻）—— 落地那一下随传输台搬进了本机常驻后端（第三层文件管理写面 `control/transfer.rs`），
-    //    monitor 这一侧零写盘。〔AR1 · V119〕上一版还说「开单时那道本机落点围栏照旧在中继里先判一次
+    //    monitor 这一侧零写盘。上一版还说「开单时那道本机落点围栏照旧在中继里先判一次
     //    （`sftp_pool.rs::transfer_call`）」—— FN1 把那一判删了（后端那道也没了，本地那道是它的出声早副本）。
-    // 〔P4〕原 `utils.rs`：随两个前端共用搬进 `host-core`（`src/common/host-core/src/atomic.rs`）。
+    // 原 `utils.rs`：随两个前端共用搬进 `host-core`（`src/common/host-core/src/atomic.rs`）。
     ("atomic.rs", "atomic_write_json", None, "通用原子写原语，调用方各自申报"),
-    // 〔FW34 · 第四波 09-24〕文件窗口的书签：锁旁件（空文件，只拿来上锁）＋ 它所在的目录。
+    // 文件窗口的书签：锁旁件（空文件，只拿来上锁）＋ 它所在的目录。
     //   书签文件本身走上面那条原子写原语（`filewin/bookmarks.rs::mutate`）。
     ("bookmarks.rs", "lock_store", None,
      "monitor 自己的状态：文件窗口书签的锁旁件（`<数据目录>/filewin-bookmarks.json.lock`，空文件）"),
@@ -138,17 +138,17 @@ pub(crate) const WRITE_SITES: &[(&str, &str, Option<&str>, &str)] = &[
           幂等：已存在就读回（重写会让上一个宿主留下的那个后端当场变成接不上的孤儿）"),
     ("local_backend_host.rs", "write_listen_pid", None,
      "写 `~/.cc-monitor/listen-<port>.pid` —— 「谁在听那个口」。\
-          它**不是**真相源（真相源永远是「那个口连不连得上」），只在**停**那一步用，\
+          它**不是**源头（源头永远是「那个口连不连得上」），只在**停**那一步用，\
           且用之前还要过一道 `/proc/<pid>/exe` 的身份核对。\
           没有它，接管来的那个实例按不动「停」——那时按钮就成了一句骗人的话"),
-    // ── 〔NT2 · S1〕起脱离那条载体之前建好后端 stderr 诊断文件那一层目录。**不是安装动作**。
+    // ── 起脱离那条载体之前建好后端 stderr 诊断文件那一层目录。**不是安装动作**。
     ("local_backend_host.rs", "spawn_detached", None,
      "建 `<monitor 数据目录>/logs/backend/`（`create_dir_all`，只建目录）—— 脱离常驻的本机后端把自己的 stderr 落在\
           这一层里（后端只 `O_EXCL` 新建文件、不建目录，`src/backend/stderr_log.rs`）。写的是 monitor 自己的日志目录"),
-    // ── 〔RW1 · 第四波 · 2026-09-24〕这里原来有 `history.rs` 的 `delete_history_session` 一行（**删用户数据**：〔散文墓碑〕
+    // ── 这里原来有 `history.rs` 的 `delete_history_session` 一行（**删用户数据**：〔散文墓碑〕
     //    本进程 `fs::remove_file` 删 `~/.claude/projects/**` 下的会话文件）。用户裁「只允许后端的文件管理部分写文件」
     //    也管本机 ⇒ 删历史会话改成后端一条只收 sid 的命令（`files-delete-session`；当时说「会话文件围栏唯一的例外」，
-    //    〔AR1 · V119〕FN1 之后写面已无那道围栏），
+    // FN1 之后写面已无那道围栏），
     //    本进程一个字节不删 ⇒ 摘行。那条「入口真的过了围栏」的端到端判据随之换成后端那一族与本侧的一致性闸判据。
 ];
 
@@ -157,7 +157,7 @@ pub(crate) const WRITE_SITES: &[(&str, &str, Option<&str>, &str)] = &[
 /// # 为什么要有这道
 ///
 /// 本模块的人群靠 **`fs::` 这个前缀**认写盘调用（`WRITE_CALLS` 每一条都带它），
-/// `hooks_diag::this_module_never_writes` 的白名单也是扫 `fs::`（〔MIG-3b〕那个模块进了后端，本条照旧守 `config_surface`）〔散文墓碑〕。
+/// `hooks_diag::this_module_never_writes` 的白名单也是扫 `fs::`（那个模块进了后端，本条照旧守 `config_surface`）〔散文墓碑〕。
 /// 两条判据因此**共享同一个前提**：`std::fs` 只能以带前缀的形态出现。
 ///
 /// 08-07 实测这个前提没人守：往 `hooks_diag.rs` 里加
@@ -191,7 +191,7 @@ fn fs_import_verdict(line: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// ★★ **没有一种导入形态能让写盘调用丢掉 `fs::` 前缀**〔audit-0805 08-07〕。
+/// ★★ **没有一种导入形态能让写盘调用丢掉 `fs::` 前缀**。
 ///
 /// 这是上面那条人群、以及只读模块白名单（当年是 `hooks_diag::this_module_never_writes`〔散文墓碑〕）的**共同前提**。
 /// 前提没人守的时候，两条判据会**同时**瞎掉且都保持绿色 —— 08-07 实测过（见
@@ -263,7 +263,7 @@ fn src_root() -> PathBuf {
     crate::guard_support::crate_src_root()
 }
 
-/// 语料 = `src/` 整棵树 **+ `build.rs`**〔audit-0805 08-08〕。
+/// 语料 = `src/` 整棵树 **+ `build.rs`**。
 ///
 /// ★ 为什么非把 `build.rs` 并进来：本表问的是「**谁能碰这台机器**」，
 /// 而构建脚本每次 `cargo build`／`cargo check` 都在开发者机器上真跑
@@ -272,7 +272,7 @@ fn src_root() -> PathBuf {
 /// · `src/common` · `src` · `doc` —— **`src/frontend/shell/build.rs` 一张表都没扫到**，
 /// 它是这些扫描面共同的盲点（与 F65「三张表共享同一个没写下来的前提」同族）。
 fn corpus() -> Vec<(PathBuf, String)> {
-    // 〔P4〕人群含本包 manifest 明写的兄弟源码树（`host-core` · 文件窗口 …，`guard_core::population_trees`）：它们也跑在这台机器的前端进程里。
+    // 人群含本包 manifest 明写的兄弟源码树（`host-core` · 文件窗口 …，`guard_core::population_trees`）：它们也跑在这台机器的前端进程里。
     let mut files = guard_core::scan_tree!(&src_root(), &["rs"]);
     let bs = Path::new(env!("CARGO_MANIFEST_DIR")).join("build.rs");
     let src = std::fs::read_to_string(&bs).expect("读不到 build.rs —— 它是本表的一部分");
@@ -339,7 +339,7 @@ fn every_write_site_is_declared_and_installers_name_a_real_tool() {
     assert!(
         missing.is_empty(),
         "这些地方**会往盘上写东西，但没人申报它是不是安装动作**：\n{}\n\n\
-             ⚠ `ROADMAP §5 4b` 记的正是这个缺口：`tool_registry` 只守声明表自洽，\n\
+             ⚠ 记的正是这个缺口：`tool_registry` 只守声明表自洽，\n\
              人群是「声明了的工具」而不是「真实发生的安装动作」——\n\
              于是新增一个写点，声明表可以一直不知道。\n\
              登记进 `WRITE_SITES`：是某个工具的安装动作就点名它的 `id`（要在 `TOOLS` 里真实存在），\n\
@@ -361,7 +361,7 @@ fn every_write_site_is_declared_and_installers_name_a_real_tool() {
     );
 
     // ★★ 4b 要的那条连线：安装动作必须点名 `TOOLS` 里真实存在的 id。
-    // 〔MIG-3b 续〕申报表进了后端：本表 ＋ 落在 Claude 布局里的那一半（适配层）。
+    // 申报表进了后端：本表 ＋ 落在 Claude 布局里的那一半（适配层）。
     const HOME: &str = include_str!("../../../src/backend/footprint/registry.rs");
     const AGENT: &str = include_str!("../../../src/backend/agents/claudecode/footprint.rs");
     let table = guard_core::production_code(HOME) + &guard_core::production_code(AGENT);
@@ -376,10 +376,10 @@ fn every_write_site_is_declared_and_installers_name_a_real_tool() {
         );
     }
     // 常驻自检：一条安装动作都没有时，上面那个循环空转，而它看起来照样绿。
-    // 〔RW1 · 第四波 09-24〕5 → 1（地板改成相等）：`ccm` 的三行（远端入口那一份落点原语与
-    //   `profile_installer.rs` 两个原语）· `project-mcp` 的一行 · `cc-bus` 的一行（`deploy_into`〔散文墓碑〕，〔MIG-3a〕装 cc-bus 今天在本机后端）
+    // 5 → 1（地板改成相等）：`ccm` 的三行（远端入口那一份落点原语与
+    //   `profile_installer.rs` 两个原语）· `project-mcp` 的一行 · `cc-bus` 的一行（`deploy_into`〔散文墓碑〕，装 cc-bus 今天在本机后端）
     //   随「用户文件改经后端写」走了，剩本机那条 `ccm` 入口（写的是我们自己的目录）。
-    // 〔E2 · V28〕1 → 0：本机 `ccm` 不再是「装的一份副本」，就是后端本身（`extract_embedded_to`，`None` 那一档：monitor 自己的部署物）。
+    // 1 → 0：本机 `ccm` 不再是「装的一份副本」，就是后端本身（`extract_embedded_to`，`None` 那一档：monitor 自己的部署物）。
     //   ⇒ 这张表今天没有安装动作；循环空转由上面「每条都在 `SITE_CLASS` 里」那两向相等兜着。
     assert_eq!(
         checked, 0,
@@ -389,7 +389,7 @@ fn every_write_site_is_declared_and_installers_name_a_real_tool() {
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-// 🔴 〔RW1 · 第四波 · 2026-09-24〕**monitor 进程不直接写用户文件** —— 零命中，带正控
+// 🔴 **monitor 进程不直接写用户文件** —— 零命中，带正控
 // ══════════════════════════════════════════════════════════════════════════
 //
 // 用户逐字：「现在只允许后端的文件管理部分写文件」；追问后裁「**只管用户的文件**」「**也管本机**」。
@@ -413,7 +413,7 @@ enum Lands {
     /// cargo 的构建目录。
     BuildOutput,
     /// **是**用户文件，但有主、在别的路收：`(谁来收, 为什么不在本路)`。
-    /// 〔SR1b · 2026-09-24〕今天**零成员**（唯一那一格 —— 下载落到用户选的本机路径 —— 被 SR1b 收了，落地搬进后端 `control/transfer.rs`）；
+    /// 今天**零成员**（唯一那一格 —— 下载落到用户选的本机路径 —— 被 SR1b 收了，落地搬进后端 `control/transfer.rs`）；
     /// 这一档留着：它是「一时搬不走、指名谁来收」这个形态本身，下一格要落时有地方落（同 `backend_route` 那条
     /// 「别因暂时没人用删判据形态」）。
     #[allow(dead_code)]
@@ -459,14 +459,14 @@ const SITE_CLASS: &[(&str, &str, Lands)] = &[
     ("bind.rs", "process_await_file", Lands::OwnState),
     ("bind.rs", "cleanup_dead", Lands::OwnState),
     ("config.rs", "patch_config_at", Lands::OwnState),
-    // 〔GP1 · 第四波〕`creds_store.rs` 的凭据写口那一行摘了（理由同上一张表）。
-    ("fs.rs", "atomic_replace", Lands::OwnState), // 〔P4 · 阶段 H〕原住 `config.rs`
+    // `creds_store.rs` 的凭据写口那一行摘了（理由同上一张表）。
+    ("fs.rs", "atomic_replace", Lands::OwnState), // 原住 `config.rs`
     ("lib.rs", "open_log_dir", Lands::OwnState),
     ("logging.rs", "build_rolling_appender", Lands::OwnState),
-    // 〔CFG1〕`logging.rs` 两行随写盘一起摘（见 `WRITE_SITES` 同处）。
-    // 〔LOC1b · 第四波 4D〕`session_map.rs` 那条 watcher 线程那一行摘了：monitor 自己那份判活（连同它写的会话映射状态）删了。
-    // 〔SR1b · 2026-09-24〕「下载落到用户选的本机路径」那一行（指名 SR1b 的待收例外）**收了**：
-    //    下载的落地随传输台搬进本机常驻后端（`control/transfer.rs`，第三层文件管理写面；〔AR1 · V119〕当时写「先过会话文件围栏」，
+    // `logging.rs` 两行随写盘一起摘（见 `WRITE_SITES` 同处）。
+    // `session_map.rs` 那条 watcher 线程那一行摘了：monitor 自己那份判活（连同它写的会话映射状态）删了。
+    // 「下载落到用户选的本机路径」那一行（指名 SR1b 的待收例外）**收了**：
+    //    下载的落地随传输台搬进本机常驻后端（`control/transfer.rs`，第三层文件管理写面；当时写「先过会话文件围栏」，
     //    FN1 之后只过路径解析）。
     // 通用原语：它自己不定落点，调用方各自申报（今天的调用方全是 monitor 自己的状态文件，
     // 下面第 ② 道把「搬走写盘的那几份文件」里调它也算成一处写）。
@@ -478,9 +478,9 @@ const SITE_CLASS: &[(&str, &str, Lands)] = &[
         Lands::OwnState,
     ),
     ("local_backend_host.rs", "write_listen_pid", Lands::OwnState),
-    // 〔NT2 · S1〕monitor 自己的日志目录下那一层（后端 stderr 诊断文件住那里）。
+    // monitor 自己的日志目录下那一层（后端 stderr 诊断文件住那里）。
     ("local_backend_host.rs", "spawn_detached", Lands::OwnState),
-    // 〔合并 FW34〕文件窗口书签的锁旁件（`<monitor 数据目录>/filewin-bookmarks.json.lock`）——
+    // 文件窗口书签的锁旁件（`<monitor 数据目录>/filewin-bookmarks.json.lock`）——
     //   书签是 monitor 自己的状态（FW34 头注逐字「不是用户文件 ⇒ 不走后端写面」）。
     ("bookmarks.rs", "lock_store", Lands::OwnState),
 ];
@@ -527,7 +527,7 @@ fn every_monitor_write_site_lands_outside_the_users_files() {
     }
     // 正控：多一处没分类的落点 ⇒ 这把尺子真的数得出来。
     let mut poisoned = sites.clone();
-    // 〔MIG-3a〕靶子换成后端那一份（别名文件那一写随别名进了那台后端）——只拿它当「一处没分类的落点」的样本。
+    // 靶子换成后端那一份（别名文件那一写随别名进了那台后端）——只拿它当「一处没分类的落点」的样本。
     poisoned.push(("mod.rs", "write_alias_file"));
     let (u, _) = class_mismatch(&poisoned, SITE_CLASS);
     assert_eq!(
@@ -539,14 +539,14 @@ fn every_monitor_write_site_lands_outside_the_users_files() {
 
 /// ② 的人群：用户文件的写从这些文件里搬走了（`RW1` 的七个子步逐份交给后端）。
 const MOVED_OUT: &[&str] = &[
-    // 〔MIG-3a · 主会话 09-27 裁〕`account_aliases.rs` · `fenced_block.rs` 整份搬进了那台后端（`assets/aliases/`）⇒ 出名单；
+    // `account_aliases.rs` · `fenced_block.rs` 整份搬进了那台后端（`assets/aliases/`）⇒ 出名单；
     //   `profile_installer.rs` 只剩用户级 PATH 那一格，留在名单里。
     "profile_installer.rs",
-    // 〔MIG-3a〕`mcp.rs` 整份删了（MCP 读写进了那台后端）⇒ 出名单。
-    // 〔MIG-3a〕`skill_host.rs` 整份删了（收件箱那一面进了后端）⇒ 出名单。
+    // `mcp.rs` 整份删了（MCP 读写进了那台后端）⇒ 出名单。
+    // `skill_host.rs` 整份删了（收件箱那一面进了后端）⇒ 出名单。
     "cc_bus_deploy.rs",
     "history.rs",
-    // 〔MOD〕`remote_history.rs` 整份删了（最后一个函数随子 agent 那条命令退役）⇒ 出名单。
+    // `remote_history.rs` 整份删了（最后一个函数随子 agent 那条命令退役）⇒ 出名单。
     "user_files.rs",
 ];
 
@@ -571,7 +571,7 @@ fn moved_out_needles() -> Vec<String> {
 
 /// ② 里**逐行登记的例外**：搬走写盘的那几份文件里，还在写 **monitor 自己的**状态文件的那几行。
 /// `(文件, 那一行逐字, 写的是什么)`。整行相等，不是子串；每一行必须恰好出现一次（幽灵检查）。
-/// 〔C4d · 第四波 4B〕**今天是空表**：唯一那一行（`history.rs` 写 `history-metadata.json` —— 标星 / 改名 / 隐藏这些注解）摘了：
+/// **今天是空表**：唯一那一行（`history.rs` 写 `history-metadata.json` —— 标星 / 改名 / 隐藏这些注解）摘了：
 /// 主会话 09-25 裁注解的读写者换成本机常驻后端（`src/backend/history/history_annotations.rs`，第四层；文件原地不动）⇒
 /// 搬走写盘的这几份文件里，连 monitor 自己的状态也一行都不写了。表留着：新长一处「写自己的状态」时第一个要表态的地方。
 const OWN_STATE_LINES: &[(&str, &str, &str)] = &[];

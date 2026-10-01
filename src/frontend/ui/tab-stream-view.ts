@@ -1,5 +1,5 @@
 /**
- * 〔U2 · 拆 `tabs.ts` ③〕**实时流视图** —— 每个 tab 的那条流怎么建、怎么按 seq 门控建卡、
+ * 〔拆 `tabs.ts` ③〕**实时流视图** —— 每个 tab 的那条流怎么建、怎么按 seq 门控建卡、
  * 尾部窗口 / 骨架 / 上翻补批 / 哨兵 / 大纲、重放批的开与收。
  *
  * 读写的会话状态全在 `TabStore`（同一个实例）；要别处做的事只有六样（`TabStreamHost`）：
@@ -9,7 +9,7 @@
  * 方法体逐字从 `tabs.ts` 搬来（原是 `TabManager` 的私有方法，或 `ensureTab` / `closeTab` /
  * `switchTo` / `onBatchEnd` / `onLine` 里的整段），唯一的改写：上面六样换成 `this.host.…`，
  * 三个静态常量的类名换成本类。`replay-tail-keep.vitest.ts` 按原文抽 `MATERIALIZE_TAIL_K` 与
- * `MATERIALIZE_ROUNDS_PER_CALL`（〔W5-RENDER R7〕原先是 `materializeUntilFilled` 循环里的字面量 `4`）对拍 Rust 侧的 `REPLAY_TAIL_KEEP`。
+ * `MATERIALIZE_ROUNDS_PER_CALL`（原先是 `materializeUntilFilled` 循环里的字面量 `4`）对拍 Rust 侧的 `REPLAY_TAIL_KEEP`。
  */
 import { MessageStream } from "./stream";
 import { reconcilePendingToolResults, type RenderContext } from "./cards";
@@ -20,11 +20,11 @@ import type { JsonlLinePayload } from "./events";
 import { RecordTimeline } from "./record-timeline";
 import { SeqSet, TailWindow, type SkeletonLedger, type TakeBudget } from "./live-window";
 import { HeightRefiner, workerMeasure } from "./height-refiner";
-// 〔`设计/10` 骨架 · 子步 4〕骨架层（占位 ＋ 只物化可见区）。接入点全部带「骨架」字样，搜得到。
+// 〔骨架〕骨架层（占位 ＋ 只物化可见区）。接入点全部带「骨架」字样，搜得到。
 import { SkeletonView, ledgerFromIndex } from "./skeleton-view";
 import { eagerBodyChars, skeletonKind } from "./height-estimate";
-// K-R45 乙（`KR45D2`）：「大纲」。界面 / 跳 与历史查看器共用同一份；〔SE1〕清单问后端要（`OutlineSource`）。
-// 〔SE2〕大纲并进会话内查找面板（`SessionFindPanel`：搜索 / 大纲两个模式，跳只有一个住址）。
+// K-R45 乙（`KR45D2`）：「大纲」。界面 / 跳 与历史查看器共用同一份；清单问后端要（`OutlineSource`）。
+// 大纲并进会话内查找面板（`SessionFindPanel`：搜索 / 大纲两个模式，跳只有一个住址）。
 import type { UserInputPanel, JumpResult } from "./views/user-input-panel";
 import { OutlineSource, outlineSeedFromIndex } from "./views/outline-source";
 import { SessionFindPanel } from "./views/session-find";
@@ -32,7 +32,7 @@ import { SessionFindPanel } from "./views/session-find";
 // 共用的只有 `revealCard`（找卡→展开→滚，两条路的卡由同一份渲染器建）。把它搬进中立文件
 // 要同时改 `src/frontend/shell/src/polling_registry.rs` 的调度点分类账（rAF/setTimeout 按文件精确对账），
 // 而 `src/frontend/shell/` 不在本轮写区 —— 实测搬了就红。理由与读数在 `revealCard` 的头注 + 件 `§5.6`。
-// 〔U2〕这条原住 `tabs.ts`，随 `revealCard` 的唯一用处（大纲的「跳」）一起搬来。
+// 这条原住 `tabs.ts`，随 `revealCard` 的唯一用处（大纲的「跳」）一起搬来。
 import { revealCard } from "./views/session-viewer";
 import {
   renderContentRecord,
@@ -51,7 +51,7 @@ import { isResumeOnly } from "./tab-session-state";
 import type { TabStore } from "./tab-store";
 import { copyText } from "./copy-table";
 
-/** 〔U3b〕只问「这条是不是 meta」、不喂任何账的空 sink（骨架按偏移取回**见过**的行时用）。 */
+/** 只问「这条是不是 meta」、不喂任何账的空 sink（骨架按偏移取回**见过**的行时用）。 */
 const NOOP_META: MetaSink = { onBranchRecord: () => {}, onQueueOperation: () => {} };
 
 /** 流视图要宿主做的六件事（全是回调；状态本身在 `TabStore`）。 */
@@ -81,7 +81,7 @@ export interface TabStreamDom {
 }
 
 /**
- * 秤 6(`设计/17 §6` 表第 6 行):读 `BranchFolder.records` 的**条数**,给 `debugSnapshot`。
+ * 秤 6(表第 6 行):读 `BranchFolder.records` 的**条数**,给 `debugSnapshot`。
  *
  * # 为什么是按结构读,不是加一个 getter
  *
@@ -110,12 +110,12 @@ function branchRecordCount(folder: BranchFolder): number {
 export class TabStreamView {
   /** Batch13-F40a:物化/后台 tab 尾段条数(与 F39 viewer TAIL_INITIAL 同语义) */
   private static readonly MATERIALIZE_TAIL_K = 150;
-  /** 〔W5-RENDER R7〕`materializeUntilFilled` **一次同步调用**最多跑几轮（原 `round < 4` 的那个 4；它不再是「到此为止」，没满就下一帧接着补）。 */
+  /** `materializeUntilFilled` **一次同步调用**最多跑几轮（原 `round < 4` 的那个 4；它不再是「到此为止」，没满就下一帧接着补）。 */
   private static readonly MATERIALIZE_ROUNDS_PER_CALL = 4;
   /** F40b:上翻补批批量/触发距离(沿用 F39 实测值) */
   private static readonly FILL_BATCH = 200;
   /**
-   * 〔RENDER2 · `设计/17 §1.1`〕一批（物化尾段 / 上翻补批）的第二道闸：急路要当场物化的正文字符（`eagerBodyChars`）。
+   * 一批（物化尾段 / 上翻补批）的第二道闸：急路要当场物化的正文字符（`eagerBodyChars`）。
    * 64 Ki 字符：W5-RENDER 普查按文件序连续 150 条窗口的正文字符 p50 6.5 K、p99 136 K ⇒ 常态批碰不到它，只截那几份长尾批
    * （一条 617 KB 正文的 assistant 就是一整批）。截下来的下一帧接着补（`materializeUntilFilled` / `fillAbove` 的 rAF 自链）。
    */
@@ -126,22 +126,22 @@ export class TabStreamView {
   };
   private static readonly TOP_TRIGGER_PX = 800;
   /**
-   * 〔DL1 · `设计/05 §3.3.2`〕往上翻那一问的期限：60 秒 —— 与它上一个住址（monitor `frame_query::PAGE_BUDGET`，
+   * 往上翻那一问的期限：60 秒 —— 与它上一个住址（monitor `frame_query::PAGE_BUDGET`，
    * 一次 `read_session_lines` 各拿一份）同值。一件一问。
    */
   private static readonly BELOW_BUDGET_MS = 60_000;
   /**
-   * 〔DL1〕会话流丢格之后「往后补到末尾」那一**件**的总期限：120 秒（= 一次性远端那一趟的天花板
+   * 会话流丢格之后「往后补到末尾」那一**件**的总期限：120 秒（= 一次性远端那一趟的天花板
    * `dial_host::ONE_SHOT_DEADLINE`，monitor 那一侧读整段 `frame_query::READ_LINES_BUDGET` 同值）。
    * 开头造一次，之后每一问交剩下的（`remaining`）—— 不再每页各拿一整份（那一形遇上一页一页慢慢吐的对端停不下来）。
    */
   private static readonly GAP_FILL_BUDGET_MS = 120_000;
   /** F40b:补批防重入(补偿测量期间嵌套触发会算错差值) */
   private renderingFill = false;
-  /** 〔SE2〕每个 tab 的查找面板（关 tab 时摘掉）。`Tab` 上挂的是它的两半：`inputsEl`（整块）与 `inputsPanel`（大纲）。 */
+  /** 每个 tab 的查找面板（关 tab 时摘掉）。`Tab` 上挂的是它的两半：`inputsEl`（整块）与 `inputsPanel`（大纲）。 */
   private readonly finds = new Map<string, SessionFindPanel>();
   /**
-   * 〔SE2〕每个 tab 在途的「按偏移取正文」（`fetchMissingRows` 发的那几趟）。
+   * 每个 tab 在途的「按偏移取正文」（`fetchMissingRows` 发的那几趟）。
    * 「跳」要等它们落完再找卡 —— 骨架接上之后，没物化的那段正文多半不在前端账本里（U3b `keepHighest`），
    * `ensure` 只是把取正文的请求发出去，同步那一下去找卡必然落空。
    */
@@ -151,20 +151,20 @@ export class TabStreamView {
     private readonly store: TabStore,
     private readonly streamRootEl: HTMLElement,
     private readonly host: TabStreamHost,
-    /** 〔RENDER2 · `设计/10 §2.5b`〕第二级估高（Worker 精算）；环境里没有 Worker 时它自己不开。 */
+    /** 第二级估高（Worker 精算）；环境里没有 Worker 时它自己不开。 */
     private readonly refiner: HeightRefiner = new HeightRefiner(workerMeasure()),
   ) {}
 
-  /** 〔RENDER2〕视口上下几屏之内的占位行交第二级（`设计/10 §2.5b`「窗口附近上下各 N 屏优先精算」）。 */
+  /** 视口上下几屏之内的占位行交第二级（「窗口附近上下各 N 屏优先精算」）。 */
   private static readonly REFINE_SCREENS = 2;
-  /** 〔RENDER2〕一趟最多精算几行（视口里估高荒谬地偏小时，一屏装下几千行也只交这么多）。 */
+  /** 一趟最多精算几行（视口里估高荒谬地偏小时，一屏装下几千行也只交这么多）。 */
   private static readonly REFINE_MAX_ROWS = 200;
-  /** 〔RENDER2〕每个骨架问过第二级的行（问过就不再问：排不出 / 不值得精算的也不重问）与在途标记。 */
+  /** 每个骨架问过第二级的行（问过就不再问：排不出 / 不值得精算的也不重问）与在途标记。 */
   private readonly refineAsked = new WeakMap<SkeletonView, Set<number>>();
   private readonly refining = new WeakSet<SkeletonView>();
 
   /**
-   * 〔P3 · `设计/10 §2.5b`「列宽变化只重算已精算过的」〕「列宽变了」：消息流尺寸变了（`MessageStream.onViewportResize`）时
+   * 〔「列宽变化只重算已精算过的」〕「列宽变了」：消息流尺寸变了（`MessageStream.onViewportResize`）时
    * 现量这一列（`.stream-content`）有多宽，与骨架账本当前那一列差出 1px ⇒ 账本按新列宽重估、占位改高（`SkeletonView.relayout`），
    * 作废的精算行重交第二级。量不到宽（tab 还没布局）⇒ 不动。
    */
@@ -176,7 +176,7 @@ export class TabStreamView {
   }
 
   /**
-   * 〔RENDER2 · `设计/10 §2.5b` 第二级「按需 ＋ 后台」〕视口上下 `REFINE_SCREENS` 屏之内还在占位里、没精算过的行：
+   * 〔第二级「按需 ＋ 后台」〕视口上下 `REFINE_SCREENS` 屏之内还在占位里、没精算过的行：
    * 正文先从账本借（不出账），没有的按索引字节边界取一次（与 `fetchMissingRows` 同一条命令，回来的只交 Worker、不建卡），
    * 交 `HeightRefiner`，回来换进账本、占位改高（视口钉住）。一个骨架同时只一趟。
    */
@@ -185,7 +185,7 @@ export class TabStreamView {
     if (!sk || !this.refiner.enabled || this.refining.has(sk) || !tab.parentPath) return;
     let asked = this.refineAsked.get(sk);
     if (!asked) this.refineAsked.set(sk, (asked = new Set()));
-    // 〔P3〕列宽变了作废的精算行排在前面（不论离视口多远）；一趟交不完的留在骨架里等下一趟
+    // 列宽变了作废的精算行排在前面（不论离视口多远）；一趟交不完的留在骨架里等下一趟
     const stale = sk.takeStale(TabStreamView.REFINE_MAX_ROWS);
     const mine = new Set(stale);
     const fresh = sk.nearbyUnrefined(TabStreamView.REFINE_SCREENS).filter((s) => !asked!.has(s) && !mine.has(s));
@@ -217,14 +217,14 @@ export class TabStreamView {
         if (this.store.tabs.get(tab.sessionId) !== tab || tab.skeleton !== sk) return;
         const rows = [...known, ...pages.flat()].map((p) => ({ seq: p.seq, rec: p.message }));
         return this.refiner.refine(sk, rows).then((applied) => {
-          // 〔P3〕算的途中列宽变了 ⇒ 这一批作废，放回待重交
+          // 算的途中列宽变了 ⇒ 这一批作废，放回待重交
           if (!applied) sk.returnStale(taken);
         });
       })
       .catch((e: unknown) => console.warn(`[tabs] 第二级估高失败（${tab.sessionId.slice(0, 8)}）：`, e))
       .finally(() => {
         this.refining.delete(sk);
-        // 〔P3〕还有待重交的（在途时列宽又变了 / 一趟没交完）⇒ 接着交
+        // 还有待重交的（在途时列宽又变了 / 一趟没交完）⇒ 接着交
         if (sk.staleCount > 0 && this.store.tabs.get(tab.sessionId) === tab && tab.skeleton === sk) this.refineNearby(tab);
       });
   }
@@ -242,9 +242,9 @@ export class TabStreamView {
     const branchFolder = new BranchFolder(stream.contentElement);
     const timeline = new RecordTimeline(stream);
 
-    // 〔SE2 · `设计/10 §2.2b ④`〕本 tab 的查找面板：搜索 ／ 大纲两个模式，**跳只有一个住址**（`jumpInTab`）。
+    // 本 tab 的查找面板：搜索 ／ 大纲两个模式，**跳只有一个住址**（`jumpInTab`）。
     // 原先的独立悬浮层 `.live-user-inputs`（K-R45 乙 · 步 2 止血形）整块由它取代。宿主自己的三件事：
-    // ① 怎么查 —— 问后端（〔C4b〕经通道直接说帧命令 `history-find`，`session-reads.ts`），问的是这个 tab 的那份会话；
+    // ① 怎么查 —— 问后端（经通道直接说帧命令 `history-find`，`session-reads.ts`），问的是这个 tab 的那份会话；
     // ② 怎么跳 —— 见 `jumpInTab`；
     // ③ 跳空了怎么解释 —— 实时这一侧的成因与查看器**不是同一件事**：那边是「渲染时被剥成空卡」
     //    （永久），这边是「还收纳在 `TailWindow` 里没建卡」（**上翻补一批就好了**）。
@@ -263,7 +263,7 @@ export class TabStreamView {
     const inputsEl = find.el;
     const inputsPanel = find.outline;
     this.streamRootEl.appendChild(inputsEl);
-    // 〔SE1〕大纲的数据源：路径可能要等首条行回填（骨架 tab），所以每次要的时候现取
+    // 大纲的数据源：路径可能要等首条行回填（骨架 tab），所以每次要的时候现取
     const outline = new OutlineSource(inputsPanel, () => {
       const t = this.store.tabs.get(sessionId);
       return t?.parentPath ? { origin: t.origin, jsonlPath: t.parentPath } : null;
@@ -286,11 +286,11 @@ export class TabStreamView {
     const fillHandler = (): void => {
       if (this.store.activeId !== sessionId) return;
       const t = this.store.tabs.get(sessionId);
-      // 〔`设计/10` 骨架〕接上了 ⇒ 占位可能在任何位置（拖滚动条到中部），**每次滚动**都看一眼
+      // 〔骨架〕接上了 ⇒ 占位可能在任何位置（拖滚动条到中部），**每次滚动**都看一眼
       // 视口里有没有占位 —— 不能沿用「离顶 800px 内才补」那道门（那是尾部窗口单洞后缀的假设）
       if (t?.skeleton) {
         t.skeleton.fillVisible();
-        this.refineNearby(t); // 〔RENDER2〕第二级：视口附近的占位行交 Worker 精算
+        this.refineNearby(t); // 第二级：视口附近的占位行交 Worker 精算
         return;
       }
       if (t && t.streamEl.scrollTop <= TabStreamView.TOP_TRIGGER_PX) this.fillAbove(t);
@@ -305,13 +305,13 @@ export class TabStreamView {
     // ⚠ 三道门都不可少：① 只给 active tab 补（后台 tab 0×0 → 真实尺寸那一跳不是
     // 「用户拉窗口」）；② 账本空了不补；③ 已经满屏了不补（否则每次 RO 都白干一轮）。
     stream.onViewportResize = (): void => {
-      // 〔P3 · `设计/10 §2.5b`〕列宽可能变了：骨架账本按新列宽重估（后台 tab 同样有布局宽，一并跟上）
+      // 列宽可能变了：骨架账本按新列宽重估（后台 tab 同样有布局宽，一并跟上）
       const cur = this.store.tabs.get(sessionId);
       if (cur) this.relayoutOnColumnChange(cur);
       if (this.store.activeId !== sessionId) return;
       const t = this.store.tabs.get(sessionId);
       if (!t || t.window.pendingCount === 0) return;
-      // 〔`设计/10` 骨架〕接上了 ⇒ 视口变大露出的是占位，只物化露出来的那段
+      // 〔骨架〕接上了 ⇒ 视口变大露出的是占位，只物化露出来的那段
       if (t.skeleton) {
         t.skeleton.fillVisible();
         return;
@@ -324,14 +324,14 @@ export class TabStreamView {
 
   /** 关 tab 时拆它的流 DOM、断大对象引用、摘监听（原是 `closeTab` 里的一段，逐字）。 */
   disposeTab(tab: Tab): void {
-    releaseEnhanceRoot(tab.streamEl); // 〔W5-RENDER R5〕本 tab 那一个 IO 断开
+    releaseEnhanceRoot(tab.streamEl); // 本 tab 那一个 IO 断开
     tab.stream.dispose();
     tab.streamEl.remove();
-    // K-R45 乙：大纲跟着走（〔SE1〕`reset` 也让在途那趟回来后不许回写）。
+    // K-R45 乙：大纲跟着走（`reset` 也让在途那趟回来后不许回写）。
     // 查找面板是 `streamRootEl` 的直接子节点，不随 `streamEl.remove()` 一起走。
     tab.outline.reset();
-    tab.facts.reset(); // 〔STC〕会话事实同理：在途那趟回来后不许回写
-    this.finds.get(tab.sessionId)?.reset(); // 〔SE2〕在途的查找作废、出弹层栈
+    tab.facts.reset(); // 会话事实同理：在途那趟回来后不许回写
+    this.finds.get(tab.sessionId)?.reset(); // 在途的查找作废、出弹层栈
     this.finds.delete(tab.sessionId);
     tab.inputsEl.remove();
     // 显式清 Map：释放对已卸载 DOM 节点的强引用，让 GC 可早回收
@@ -343,7 +343,7 @@ export class TabStreamView {
     tab.seenSeqs.clear();
     // F40a/b:窗口账本与缓冲持整段历史 payload(大会话数十 MB 级),断引用;摘 fill listener
     tab.window.dispose();
-    tab.skeleton?.dispose(); // 〔`设计/10` 骨架〕
+    tab.skeleton?.dispose(); // 〔骨架〕
     tab.skeleton = null;
     tab.midBatchBuffer = [];
     if (tab.fillHandler) tab.streamEl.removeEventListener("scroll", tab.fillHandler);
@@ -352,7 +352,7 @@ export class TabStreamView {
   }
 
   /**
-   * 〔RENDER2 · `设计/10 §3.2`〕记录文件从头重读了（后端行号从 0 重数）⇒ 这个 tab 的内容整份重来：拆掉流 DOM 与全部账本
+   * 记录文件从头重读了（后端行号从 0 重数）⇒ 这个 tab 的内容整份重来：拆掉流 DOM 与全部账本
    * （时间线 · 去重集 · 尾部窗口 · 骨架 · 大纲 · 查找面板 · 会话事实），按新建的样子再装一份；身份 / 标题 / 状态 / 固定照留。
    * **换一个新的 `Tab` 对象进表**：在途那几趟（骨架索引 · 按偏移取正文 · 往下 / 往后补）回来时认的是「表里还是不是它」，
    * 认不出就自己作废 —— 旧的一代的行不会落进新的一代。
@@ -386,13 +386,13 @@ export class TabStreamView {
       // K-R45 乙：面板与它那条流**同进同出**。漏掉这一句 = 所有 tab 的面板
       // 一起挂在屏幕上，而且点下去找的是别人的流（`revealCard` 只在自己的 streamEl 里找）。
       t.inputsEl.classList.toggle("active", sid === sessionId);
-      // 〔SE2〕切走的 tab 收起面板（出弹层栈）—— 不然 Esc 去关的是一块看不见的面板。
+      // 切走的 tab 收起面板（出弹层栈）—— 不然 Esc 去关的是一块看不见的面板。
       if (sid !== sessionId) this.finds.get(sid)?.close();
     }
   }
 
   /**
-   * 〔SE2 · `设计/10 §6 步 6`〕Ctrl+F（动作 `session.find`）：当前 tab 的查找面板打开到「搜索」、焦点进输入框。
+   * Ctrl+F（动作 `session.find`）：当前 tab 的查找面板打开到「搜索」、焦点进输入框。
    * 没有 active tab ⇒ 什么都不做。
    */
   openFind(): void {
@@ -402,7 +402,7 @@ export class TabStreamView {
   }
 
   /**
-   * 〔SE2〕**跳（大纲行与查找命中行共用这一个住址）**：
+   * **跳（大纲行与查找命中行共用这一个住址）**：
    * - 骨架没接上 / 这条已经物化 ⇒ 直接找卡（`revealCard`）；
    * - 还在占位里 ⇒ `ensure` 物化它附近那一段；账本里有的当场建卡，没有的按偏移取回（`fetchMissingRows`）——
    *   **等这个 tab 在途的取正文全部落完**再找卡。同步那一下去找必然落空（U3b 之后前端账本只留尾巴 200 条）。
@@ -423,7 +423,7 @@ export class TabStreamView {
 
   /** 切进来的 tab：物化 / 哨兵 / 骨架索引 / 大纲 / 不可滚时踢一次补批（原是 `switchTo` 中段，逐字）。 */
   activate(next: Tab): void {
-    // 〔CF2〕上次按行号往下问失败了的，切进来时允许再问一次（失败不自动重问，见 `BelowState` 头注）。
+    // 上次按行号往下问失败了的，切进来时允许再问一次（失败不自动重问，见 `BelowState` 头注）。
     if (next) next.window.retryBelow();
     // Batch13-F40a:命中 virgin tab(启动重放全收纳,还没建过卡)→ 同步物化尾段,
     // 避免切过去一片空白(R-3:有界循环补到可滚,防工具密集会话一轮近空屏)。
@@ -432,17 +432,17 @@ export class TabStreamView {
     if (virginFill) this.materializeUntilFilled(next);
     // F40b:切入即刷新哨兵(非 virgin 但账本非空的 tab 也要见到「还有 N 条」)
     if (next) this.updateSentinel(next);
-    // 〔`设计/10` 骨架〕切进来的 tab 要索引（上面刚物化过尾段 ⇒ floor 已钉）
+    // 〔骨架〕切进来的 tab 要索引（上面刚物化过尾段 ⇒ floor 已钉）
     if (next) this.requestSkeleton(next);
-    if (next?.outline.needsFetch) this.refreshOutline(next); // 〔SE1〕大纲：有新行才要
+    if (next?.outline.needsFetch) this.refreshOutline(next); // 大纲：有新行才要
     // D 审计 R-2:非 virgin + 不可滚 + 账本有余的 tab 没有 fill 入口(不可滚元素
     // 不产生 scroll 事件,哨兵可见却"上翻物理不可达")——切入时踢一次,rAF 自链
     // 接管直到可滚或账尽。
-    // 〔CF2〕账本空了但下面可能还有（`wantsBelow`）同样没有 scroll 入口 ⇒ 同一脚。
-    // 〔W5-RENDER R9 · `设计/10 §3.3` B5〕这一脚原来只按 `scrollHeight` 判「不可滚」：没渲染过的卡贡献的是估值，
+    // 账本空了但下面可能还有（`wantsBelow`）同样没有 scroll 入口 ⇒ 同一脚。
+    // 这一脚原来只按 `scrollHeight` 判「不可滚」：没渲染过的卡贡献的是估值，
     // 估值把 `scrollHeight` 撑成「滚得动」时它就不踢 ⇒ 钉过水位、真实只有半屏的 tab 停在半屏，只剩用户往上翻一条路。
     // ⇒ 再问一句真实布局（`contentReachesBottom`）：没满一屏也踢。
-    // 〔W5-RENDER R7〕上面刚为 virgin tab 跑过 `materializeUntilFilled`、账本还有余的不再踢：它补不满时自己排了
+    // 上面刚为 virgin tab 跑过 `materializeUntilFilled`、账本还有余的不再踢：它补不满时自己排了
     // 下一帧的接续，这里再同步补一批就把「一次同步调用有界」破了。账本已空（只剩「下面可能还有」）的照旧踢。
     const continuing = virginFill && next.window.pendingCount > 0;
     if (next && !continuing && (next.window.pendingCount > 0 || next.window.wantsBelow)) {
@@ -487,7 +487,7 @@ export class TabStreamView {
     }
     // D 审计 S-5:已结束的死会话不进后台物化队列(纯浪费;switchTo 命中 virgin
     // 已有同步物化兜底)。
-    // 〔W5-RENDER R9 · `设计/10 §3.3` B5〕原来只收 `floorSeq === null`（virgin）；钉过水位、账本还压着历史、
+    // 原来只收 `floorSeq === null`（virgin）；钉过水位、账本还压着历史、
     // **真实布局**没满一屏的后台 tab 同样进队（后台 tab 是 `visibility:hidden`，几何照在）。
     this.materializeQueue = [...this.store.tabs.entries()]
       .filter(
@@ -501,10 +501,10 @@ export class TabStreamView {
     this.scheduleIdleMaterialize();
     // F40b:active tab 未走物化分支(尾块已可滚)时也要挂哨兵
     if (active) this.updateSentinel(active);
-    // 〔`设计/10` 骨架〕active tab 此刻一定有渲染后缀了 ⇒ 要索引（在途/要过就不重复）
+    // 〔骨架〕active tab 此刻一定有渲染后缀了 ⇒ 要索引（在途/要过就不重复）
     if (active) this.requestSkeleton(active);
-    if (active?.outline.needsFetch) this.refreshOutline(active); // 〔SE1〕大纲
-    // 〔STC〕会话事实：凡是「没要过或又长了」的 tab 都要一次（F5 之后每个 tab 首次整份扫，之后只读新写的一截）。
+    if (active?.outline.needsFetch) this.refreshOutline(active); // 大纲
+    // 会话事实：凡是「没要过或又长了」的 tab 都要一次（F5 之后每个 tab 首次整份扫，之后只读新写的一截）。
     for (const t of this.store.tabs.values()) {
       if (t.facts.needsFetch) void t.facts.refresh();
     }
@@ -524,13 +524,13 @@ export class TabStreamView {
       onTitleUpdate: (title: string) => this.host.applyAiTitle(tab, title),
       onRealUserInput: (sid: string) => {
         this.host.userActive(sid);
-        this.refreshOutline(tab); // 〔SE1〕真用户输入上屏 ⇒ 大纲要新的一截
+        this.refreshOutline(tab); // 真用户输入上屏 ⇒ 大纲要新的一截
       },
-      enhanceRoot: this.store.inBatch ? tab.streamEl : null, // 〔W5-RENDER R5〕批期 lazy ⇒ 交本 tab 的滚动容器
+      enhanceRoot: this.store.inBatch ? tab.streamEl : null, // 批期 lazy ⇒ 交本 tab 的滚动容器
       // G4（branch-anywhere）：实时会话也挂「从这一轮分叉」按钮。
       // 钩子本来就在共享的 `render-stream-record.ts` 里，此前**只有历史查看器传了它**
       // ⇒ 实时 tab 上没有入口。按钮本体是共享组件（off-main 的呈现区分也在那里）。
-      // **G6 起远端也挂**；〔`K-R88` 09-13〕本机那条也收 sid 之后，
+      // **G6 起远端也挂**；本机那条也收 sid 之后，
       // 「本机拿不到 jsonl 路径」这道门对两条路都不再是门槛。
       onCardRendered: (el, msg) => {
         if (msg.type !== "user" && msg.type !== "assistant") return;
@@ -568,7 +568,7 @@ export class TabStreamView {
       if (render) tab.window.pinFloor(payload.seq);
     } else {
       render = tab.window.admit(payload.seq);
-      // 〔`设计/10` 骨架〕floor 之下、但已被物化过的那段（岛）里迟到的行 ⇒ 就地建卡，不收纳
+      // 〔骨架〕floor 之下、但已被物化过的那段（岛）里迟到的行 ⇒ 就地建卡，不收纳
       if (!render && tab.skeleton && !tab.skeleton.isPending(payload.seq)) render = true;
     }
     // F40b R-1:批期落在渲染窗口内的**中部**插入(seq≥floor 且 <已渲染最高 seq
@@ -609,10 +609,10 @@ export class TabStreamView {
       // ★ F15：**帧末合批**，不是逐行整刷。
       // 这里是 live 路上每来一行都会走到的地方，而 `refreshTabBar` 是整条 bar 的重刷；
       // 徽标上的数字攒到帧末一次性更新，用户看到的结果一模一样。
-      // ⚠ 只合批**这一处**。〔UP1 订正〕这里原先的理由是「其余十几个 `refreshTabBar()` 调用点都是用户动作」——
+      // ⚠ 只合批**这一处**。这里原先的理由是「其余十几个 `refreshTabBar()` 调用点都是用户动作」——
       // **事实不对**：UP1 现数 25 处同步整刷，其中 12 处是事件驱动的（状态帧 / 会话增删 / 账号变更…），不是用户点的。
       // 结论不变（其余照旧同步整刷、不合批），理由换成现在这条：UP1 之后整刷对**没变的 tab 零 DOM 写**
-      // （`tab-bar-view.ts` 先算出要画成什么样、与上次画出去的一样就不写，`设计/30 §3` P2 / P7），
+      // （`tab-bar-view.ts` 先算出要画成什么样、与上次画出去的一样就不写， / P7），
       // ⇒ 一次整刷的代价只剩「变了的那几颗按钮」，不合批也不贵；合批反而会把「点完立刻看到」变成「下一帧才看到」。
       // 这一处还合批，是因为它**每来一行 live 记录就走一次**（频率是逐行的，不是逐事件的）。
       this.host.scheduleTabBarRefresh();
@@ -620,9 +620,9 @@ export class TabStreamView {
   }
 
   /**
-   * 〔SE1 · STC〕一条新记录到了 —— 大纲与会话事实各记一笔「又长了」（O(1)，**不读记录**：判不判、算什么都在后端）。
+   * 一条新记录到了 —— 大纲与会话事实各记一笔「又长了」（O(1)，**不读记录**：判不判、算什么都在后端）。
    * - 大纲：本 tab 是 active、非批期、而且**还一次都没要过**（首个 tab 建出来时路径可能还没到）⇒ 要一次；
-   * - 会话事实（`设计/10 §2.2`）：非批期 ⇒ 要（不只 active：分叉 `↳` 在 tab 栏上、监控板每格都显示 context% 与 agent 数）；
+   * - 会话事实：非批期 ⇒ 要（不只 active：分叉 `↳` 在 tab 栏上、监控板每格都显示 context% 与 agent 数）；
    *   在途时再叫只并成一趟（`FactsSource.refresh`），带着上一份成品只读新写的那一截。批期不要 —— 批结束统一要（`batchEnd`）。
    */
   noteGrew(tab: Tab): void {
@@ -635,7 +635,7 @@ export class TabStreamView {
   }
 
   /**
-   * 〔SE1〕大纲：向后端要新的一截（从上次的 `end` 接着要；在途就合并成一趟）。
+   * 大纲：向后端要新的一截（从上次的 `end` 接着要；在途就合并成一趟）。
    * 批期不要 —— 批结束时 active tab 统一要一次，后台 tab 切进来再要（`needsFetch`）。
    */
   private refreshOutline(tab: Tab): void {
@@ -644,7 +644,7 @@ export class TabStreamView {
   }
 
   /**
-   * ★ 步 3（`设计/10 §6`）：**「够不够一屏」改读真实布局。**
+   * ★ 步 3：**「够不够一屏」改读真实布局。**
    *
    * # 旧判据错在哪
    *
@@ -683,9 +683,9 @@ export class TabStreamView {
    * D 审计 R-3:一次 150 条 payload 可能只产出几张卡(tool-group 合并成单卡 34px、
    * skip 记录占配额不产卡)——工具密集会话一轮物化后屏幕仍近空,而 F40a 没有上翻
    * 补批兜底。补到**一屏填满**或账本弹尽。
-   * 〔步 3〕停手条件从「滚得动」换成 `contentReachesBottom`——理由见它的头注。
+   * 停手条件从「滚得动」换成 `contentReachesBottom`——理由见它的头注。
    *
-   * 〔W5-RENDER R7 · `设计/17 §2.3` · `设计/10 §3.3` B2〕**轮数封顶不再是停手条件**。原来 `round < 4` 一到就收手：
+   * **轮数封顶不再是停手条件**。原来 `round < 4` 一到就收手：
    * 秤 3 量过最稀疏那一档（每 150 条只出 5 张细条卡）4 轮只补得出 20 张 ⇒ 半屏，而且批结束 / 视口变大这两条入口
    * 之后**没有任何东西**再补（不可滚的元素不产生 scroll 事件）。现在：一次同步调用仍只跑
    * {@link MATERIALIZE_ROUNDS_PER_CALL} 轮（每一下的量有界，不把主线程占住），没满、账本还有 ⇒
@@ -693,7 +693,7 @@ export class TabStreamView {
    */
   private materializeUntilFilled(tab: Tab): void {
     if (tab.skeleton) {
-      tab.skeleton.fillVisible(); // 〔`设计/10` 骨架〕同上
+      tab.skeleton.fillVisible(); // 〔骨架〕同上
       return;
     }
     for (let round = 0; round < TabStreamView.MATERIALIZE_ROUNDS_PER_CALL; round++) {
@@ -731,8 +731,8 @@ export class TabStreamView {
       timeline: tab.timeline,
       onBranchRecord: () => {},
       onQueueOperation: () => {},
-      enhanceRoot: tab.streamEl, // 〔W5-RENDER R5〕IO 的 root = 本 tab 的滚动容器
-      // G6：**远端也挂**。〔`K-R88` 09-13〕本机那条命令也收 sid 了 ⇒
+      enhanceRoot: tab.streamEl, // IO 的 root = 本 tab 的滚动容器
+      // G6：**远端也挂**。本机那条命令也收 sid 了 ⇒
       // **两条路都只要 sid**，「本机拿不到 jsonl 路径就不能分叉」这道门跟着没了
       // （原先那个随迭代更新的路径游标也一并去掉：没人再要那个值）。
       onCardRendered: (el, msg) => {
@@ -772,10 +772,10 @@ export class TabStreamView {
   }
 
   /**
-   * 〔`设计/10` 骨架 · 子步 4〕向后端要这个会话的**骨架索引**，到了就接骨架。
+   * 〔骨架〕向后端要这个会话的**骨架索引**，到了就接骨架。
    *
    * 只对**已经有渲染后缀**的 tab 要（`floor !== null`：骨架顶的是 `[0, floor)`）；
-   * 每个 tab 只要一次（`skeletonFetch`）；〔GAP1 · `设计/10 §7` 第 5 条〕瞬时失败 ⇒ 下一次触发点再问**一次**（有界、零定时器）。
+   * 每个 tab 只要一次（`skeletonFetch`）；瞬时失败 ⇒ 下一次触发点再问**一次**（有界、零定时器）。
    * 调用点只有两处：批结束时的 active tab、`switchTo` 切进来的那个 tab ⇒ 后台 tab 不花这一次。
    */
   private requestSkeleton(tab: Tab): void {
@@ -790,7 +790,7 @@ export class TabStreamView {
     const jsonlPath = tab.parentPath;
     const origin = tab.origin;
     const first = readSessionIndex(origin, jsonlPath, 0);
-    // 〔SE2 · `设计/10 §9.5` 欠账〕大纲**等这一趟**：索引顺带出清单（后端 `IndexRow::x`）⇒ 首屏同一份文件
+    // 〔欠账〕大纲**等这一趟**：索引顺带出清单（后端 `IndexRow::x`）⇒ 首屏同一份文件
     // 只读一遍；带不回（老后端 / 零条 / 失败）⇒ 它自己照旧从 0 要一份清单。
     tab.outline.awaitSeed(first.then(outlineSeedFromIndex));
     void first
@@ -859,22 +859,22 @@ export class TabStreamView {
     this.updateSentinel(tab);
     if (this.store.activeId === tab.sessionId) {
       view.fillVisible();
-      this.refineNearby(tab); // 〔RENDER2〕第二级
+      this.refineNearby(tab); // 第二级
     }
-    // 〔U3b · `设计/10` 步 8〕骨架接上 ⇒ 正文不必再驻留：丢掉的那些滚到时按偏移要回来。
+    // 骨架接上 ⇒ 正文不必再驻留：丢掉的那些滚到时按偏移要回来。
     // 前端账本只留离已渲染尾巴最近的一批（第一次上翻不用等 IPC）。
-    // 〔CF2〕monitor 的重放缓冲那一半不用再登记了：它对**每个**会话都只留尾巴（`event_replay·rs` 头注「容量」）。
+    // monitor 的重放缓冲那一半不用再登记了：它对**每个**会话都只留尾巴（`event_replay·rs` 头注「容量」）。
     tab.window.keepHighest(TabStreamView.FILL_BATCH);
   }
 
   /**
-   * 〔`设计/10` 骨架 · 子步 5〕**按偏移取正文**：物化 `[lo, hi)` 时，账本里没有、也还没到过的那些
+   * 〔骨架〕**按偏移取正文**：物化 `[lo, hi)` 时，账本里没有、也还没到过的那些
    * 会建卡的行（`seenSeqs` 里没有、索引说它不是「不建卡」的那种）⇒ 按索引里的字节边界向后端要
-   * （〔MOD〕`record-reads.ts::readRange` = 那台后端 `history-page` 带 `until`），回来的行**走 `onLine` 全套**
+   * （`record-reads.ts::readRange` = 那台后端 `history-page` 带 `until`），回来的行**走 `onLine` 全套**
    * （去重、旁路记账、门控 —— 这段已经不在占位里了，门控会就地建卡），与重放来的行一视同仁。
    *
    * 今天它补的是「重放还没推到」的那一截（远端尾部优先快照的回填期、大会话启动重放的在途期）；
-   * 它也是「骨架不带正文」那条路的另一半 —— 等 `EventReplay.history` 加上界（`设计/10 步 8`），
+   * 它也是「骨架不带正文」那条路的另一半 —— 等 `EventReplay.history` 加上界，
    * 没推过来的历史就全靠它取。连续缺的行并成一段、一段一次 IPC；同一段不会被要两次
    * （骨架把它标成已物化之后就不会再交给宿主）。
    */
@@ -889,7 +889,7 @@ export class TabStreamView {
     const runs: Array<[number, number]> = [];
     for (let s = lo; s < hi; s++) {
       const f = ledger.factsOf(s);
-      // 〔U3b〕「缺」= 会建卡、而这一次没从账本里取到 —— 两种来历：重放没推过来（没见过），
+      // 「缺」= 会建卡、而这一次没从账本里取到 —— 两种来历：重放没推过来（没见过），
       // 或见过、但骨架接上之后被丢出账本（`keepHighest`）。两种回来之后喂法不同，见下。
       const missing = f !== undefined && skeletonKind(f) !== "none" && !taken.has(s);
       if (!missing) continue;
@@ -916,11 +916,11 @@ export class TabStreamView {
             (p) => tab.seenSeqs.has(p.seq) && routeMetaAndBranch(p, NOOP_META) === "content",
           );
           this.feedHistoryRows(tab, fresh);
-          tab.seenSeqs.addRange(a, b); // 〔RENDER2〕这一段整段到过（不可显示的也算）
+          tab.seenSeqs.addRange(a, b); // 这一段整段到过（不可显示的也算）
           if (again.length > 0) this.renderPayloadsBatch(tab, again);
         })
         .catch((e: unknown) => console.warn(`[tabs] 按偏移取正文失败 [${a},${b})：`, e));
-      // 〔SE2〕记进在途集合（「跳」等它落完），落完自己出列
+      // 记进在途集合（「跳」等它落完），落完自己出列
       const set = inflight!;
       set.add(fetched);
       void fetched.finally(() => set.delete(fetched));
@@ -939,7 +939,7 @@ export class TabStreamView {
     if (payloads.length === 0) return;
     const wasBatch = this.store.inBatch;
     this.store.inBatch = true;
-    // 〔CF2〕取回来的是历史：远端 tab「见行就翻活」那一格不认它（`TabStore.historyFeed` 头注）。
+    // 取回来的是历史：远端 tab「见行就翻活」那一格不认它（`TabStore.historyFeed` 头注）。
     this.store.historyFeed = true;
     tab.branchFolder.setBatchMode(true);
     try {
@@ -956,8 +956,8 @@ export class TabStreamView {
   }
 
   /**
-   * 〔CF2 · 第四波 4B〕**按行号往下取一批**（`调研/第四波记录/CF2.md §1.4`）：账本空了、渲染窗口最老那一条
-   * 不是第 0 行 ⇒ 问 `[floor − FILL_BATCH, floor)`（〔MOD〕`record-reads.ts::readLines`，后端 `history-lines`）。
+   * **按行号往下取一批**：账本空了、渲染窗口最老那一条
+   * 不是第 0 行 ⇒ 问 `[floor − FILL_BATCH, floor)`（`record-reads.ts::readLines`，后端 `history-lines`）。
    *
    * 这是**没接骨架**的 tab 的取回路（接了骨架的按字节取，`fetchMissingRows`）。monitor 的重放缓冲从此每个会话
    * 只留尾巴（`event_replay·rs::REPLAY_TAIL_KEEP`），F5 之后更早的就从这里要回来；没被修剪过的会话问一次就到顶。
@@ -981,7 +981,7 @@ export class TabStreamView {
           }
         }
         this.feedHistoryRows(tab, fresh);
-        tab.seenSeqs.addRange(page.from, page.next); // 〔RENDER2〕同上
+        tab.seenSeqs.addRange(page.from, page.next); // 同上
         tab.window.markFetchedBelow(range.from);
         this.updateSentinel(tab);
         if (this.store.activeId === tab.sessionId && tab.streamEl.scrollTop <= TabStreamView.TOP_TRIGGER_PX) {
@@ -996,11 +996,11 @@ export class TabStreamView {
       });
   }
 
-  /** 〔CF2〕每个 tab 在途的「往后补」（`recoverFromGap`）—— 同一个 tab 同时只补一趟。 */
+  /** 每个 tab 在途的「往后补」（`recoverFromGap`）—— 同一个 tab 同时只补一趟。 */
   private readonly forwardFills = new WeakSet<Tab>();
 
   /**
-   * 〔CF2 · 第四波 4B〕**会话流丢过格之后补这一个 tab**（`TabManager.onStreamGap`，`调研/第四波记录/CF2.md §3.5`）：
+   * **会话流丢过格之后补这一个 tab**（`TabManager.onStreamGap`）：
    *
    * ① 账本（还没上屏的）整份出账（`dropPending`）—— 之后往上翻按行号取回（`fetchBelow`）；
    * ② 从「见过的最大行号 + 1」起按行号往后取到末尾（`readLines` 不给 `until`，一段 ≤ 1 MiB，取到 `eof`）——
@@ -1008,7 +1008,7 @@ export class TabStreamView {
    * 取回来的走 `feedHistoryRows`（批语义、不复活远端 tab）。一行都没见过的 tab 不往后取（那会把整份会话拉一遍；
    * 它的内容等下一次宣告 / 下一行，或往上翻按行号取 —— 如实登记）。
    *
-   * 〔DL1〕往后补是**一件事**：开头造一次期限（{@link TabStreamView.GAP_FILL_BUDGET_MS}），每一问交剩下的；
+   * 往后补是**一件事**：开头造一次期限（{@link TabStreamView.GAP_FILL_BUDGET_MS}），每一问交剩下的；
    * 到点了还没到末尾 ⇒ 停、记一行（这个 tab 缺的那一截等下一次宣告 / 往上翻再要）。
    */
   recoverFromGap(tab: Tab): void {
@@ -1035,7 +1035,7 @@ export class TabStreamView {
             tab,
             page.payloads.filter((p) => !tab.seenSeqs.has(p.seq)),
           );
-          tab.seenSeqs.addRange(page.from, page.next); // 〔RENDER2〕同上
+          tab.seenSeqs.addRange(page.from, page.next); // 同上
           if (page.eof || page.next <= from) return this.forwardFills.delete(tab);
           step(page.next);
           return true;
@@ -1072,14 +1072,14 @@ export class TabStreamView {
    * (F39-R1 场景),补完复检直到离开触发区或账尽。
    */
   private fillAbove(tab: Tab): void {
-    // 〔`设计/10` 骨架〕接上了 ⇒ 不再「从尾巴往上一批批补」，只物化与视口相交的那段占位
+    // 〔骨架〕接上了 ⇒ 不再「从尾巴往上一批批补」，只物化与视口相交的那段占位
     if (tab.skeleton) {
       tab.skeleton.fillVisible();
       return;
     }
     if (this.renderingFill) return;
     if (tab.window.pendingCount === 0) {
-      // 〔CF2〕账本空了、渲染窗口最老那一条不是第 0 行 ⇒ 按行号往下问一批（`fetchBelow`）。
+      // 账本空了、渲染窗口最老那一条不是第 0 行 ⇒ 按行号往下问一批（`fetchBelow`）。
       if (tab.window.wantsBelow) this.fetchBelow(tab);
       return;
     }
@@ -1108,7 +1108,7 @@ export class TabStreamView {
   /**
    * 上翻补批 / 补满一屏的**下一帧复检**（rAF 自链的那一跳）：补完一批下一帧再看一眼，仍在触发区 / 仍不可滚 /
    * 仍没满一屏且账本有余就再补一批（`fillAbove`）；切走了（`activeId` 守卫）或账尽即停。
-   * 〔W5-RENDER R7〕从 `fillAbove` 末尾抽出来，`materializeUntilFilled` 一次调用补不满时也从这里接着补；
+   * 从 `fillAbove` 末尾抽出来，`materializeUntilFilled` 一次调用补不满时也从这里接着补；
    * 「仍没满一屏」那一问用真实布局（`contentReachesBottom`），不只看滚不滚得动。
    */
   private scheduleFillContinuation(tab: Tab): void {
@@ -1131,7 +1131,7 @@ export class TabStreamView {
    * F40c DEV 探针用:active tab 状态一行 JSON——无 devtools 环境下 E2E 断言的
    * 唯一出口(经 e2e-probe 热键 → fe_perf 日志)。生产不接线,方法本身无副作用。
    *
-   * 🔴 秤 6(`设计/17 §6` 表第 6 行)在这里加了**三个账本的条数**:
+   * 🔴 秤 6(表第 6 行)在这里加了**三个账本的条数**:
    * `branchRecords` / `userInputs` / `pending`。口径与「量不到什么」写在
    * `branchRecordCount` 的头注与 `tests/evidence/S6-memory-ledger.md` 里。
    */
@@ -1151,10 +1151,10 @@ export class TabStreamView {
       pending: tab.window.pendingCount,
       // ② `BranchFolder.records` —— 每条一个 {uuid,parentUuid,timestamp} 三元组,不含正文
       branchRecords: branchRecordCount(tab.branchFolder),
-      // ③ 大纲的条数 —— 〔SE1〕清单问后端要，前端只留面板上那几行（每行一份 80 字摘要）
+      // ③ 大纲的条数 —— 清单问后端要，前端只留面板上那几行（每行一份 80 字摘要）
       userInputs: tab.outline.count,
       midBuffer: tab.midBatchBuffer.length,
-      // 〔`设计/10` 骨架〕接上没有 · 索引总条数 · 还在占位里的行数 · 占位块数（`timeline` 里含占位条目）
+      // 〔骨架〕接上没有 · 索引总条数 · 还在占位里的行数 · 占位块数（`timeline` 里含占位条目）
       skeleton: tab.skeleton
         ? {
             rows: tab.skeleton.ledger.count,
@@ -1180,7 +1180,7 @@ export class TabStreamView {
     const content = tab.stream.contentElement;
     let el = content.querySelector(":scope > .stream-more-above") as HTMLElement | null;
     const n = tab.window.pendingCount;
-    // 〔CF2〕账本空了：下面还可能有（按行号取）⇒ 哨兵说的是「取」那一格的状态。
+    // 账本空了：下面还可能有（按行号取）⇒ 哨兵说的是「取」那一格的状态。
     const below = tab.window.belowState;
     const floor = tab.window.floorSeq;
     const belowText =
@@ -1193,7 +1193,7 @@ export class TabStreamView {
             : below.kind === "failed"
               ? copyText("tabStreamView.sentinel.failed", { reason: below.reason })
               : null;
-    // 〔`设计/10` 骨架〕接上了 ⇒ 占位本身就是「上面还有」，哨兵退场
+    // 〔骨架〕接上了 ⇒ 占位本身就是「上面还有」，哨兵退场
     if ((n === 0 && belowText === null) || tab.skeleton) {
       el?.remove();
       return;
@@ -1220,7 +1220,7 @@ export class TabStreamView {
       const tab = this.store.tabs.get(sid);
       // virgin 的物化尾段(switchTo 可能已同步物化过);二次 batch 开始则原样跳过,
       // 账本继续收纳,批结束会重新排队。
-      // 〔W5-RENDER R9〕钉过水位、账本有余、真实布局没满一屏的 ⇒ 补一批（`fillAbove`：带选区守卫与滚动补偿，
+      // 钉过水位、账本有余、真实布局没满一屏的 ⇒ 补一批（`fillAbove`：带选区守卫与滚动补偿，
       // 后台 tab 不自链 —— 它的 rAF 复检有 `activeId` 守卫；切进来时 `activate` 那一脚接着补）。
       if (tab && !this.store.inBatch && tab.window.pendingCount > 0) {
         if (tab.window.floorSeq === null) this.materializeTail(tab);

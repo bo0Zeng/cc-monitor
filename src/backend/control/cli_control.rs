@@ -18,7 +18,7 @@
 //! · `launch.rs` 头注那条「argv 直传，不过 shell」的性质原样继承 ——
 //!   CLI 面收 **stdin JSON** 而不是把参数摊进 argv，正是为了不引入一层 shell 解析把它丢掉。
 //!
-//! # §安全边界：这条入口的理由与帧入口**不是同一条**〔P4d-Y4〕
+//! # §安全边界：这条入口的理由与帧入口**不是同一条**
 //!
 //! `control/launch.rs` 那句「这里的校验是形状校验，不是安全边界」，它的依据是
 //! **帧入口的对端身份**。本入口的调用方是**本机任意进程**，那条依据在这里不成立，
@@ -37,7 +37,7 @@
 //!
 //! · **入**：stdin 一段 JSON = 那条命令的 `args`（空 stdin = `{}`，`ping` 那类无载荷的用得上）。
 //!   默认读到 EOF；子命令后面跟 [`STDIN_LINE_FLAG`] ⇒ **只读一行**（读到第一个换行就停，不等 EOF）——
-//!   给「stdin 关不掉」的调用方用（`设计/96 §3.6`：远端命令经 capture 那一跳交载荷，capture 不关远端 stdin）。
+//!   给「stdin 关不掉」的调用方用（远端命令经 capture 那一跳交载荷，capture 不关远端 stdin）。
 //! · **出**：stdout 一行紧凑 JSON（命令没有返回值时是 `{}`），exit 0。
 //! · **错**：exit 2 + stderr 一行 `{"code","message"}`。
 //! · **exec 模型**：1 exec = 1 请求 1 响应 1 退出，**无 request-id**（`resolve_query` 头注逐字）。
@@ -56,7 +56,7 @@ use std::io::Read;
 /// ⇒ 多读一个字节，超了就说超了。
 pub(crate) const MAX_CLI_STDIN: u64 = 1024 * 1024;
 
-/// 能力探测口〔P4d-Y2〕。
+/// 能力探测口。
 ///
 /// # ⚠ 「范式抄 `ccm --ccm-probe`」抄的是**理念**，不是**线格式**〔E 阶段订正 08-12〕
 ///
@@ -74,7 +74,7 @@ pub(crate) const MAX_CLI_STDIN: u64 = 1024 * 1024;
 /// ⇒ 真正抄过来的是那条**理念**：集成方按**能力**兼容，不按版本号。
 pub(crate) const PROBE_FLAG: &str = "--backend-probe";
 
-/// 〔W5-AUX〕「只读一行 stdin」那个修饰词住 [`crate::STDIN_LINE_FLAG`]（argv 三分表那一家；理由见那里的头注）。
+/// 「只读一行 stdin」那个修饰词住 [`crate::STDIN_LINE_FLAG`]（argv 三分表那一家；理由见那里的头注）。
 pub(crate) use crate::STDIN_LINE_FLAG;
 
 /// 读入参那一段（可喂任意读端 —— 生产交进程的 stdin）。`one_line` ⇒ 读到第一个换行就停，**不再多要一个字节**
@@ -106,7 +106,7 @@ pub(crate) fn read_input<R: std::io::BufRead>(
     String::from_utf8(buf).map_err(|e| ("stdin_read_failed", format!("read stdin failed: {e}")))
 }
 
-/// 〔FIX · `设计/96 §3.6`〕**argv 一族也走「只读一行」**：`<后端> --<老子命令> --stdin-line`（恰好这两个词、且不是帧命令）⇒
+/// **argv 一族也走「只读一行」**：`<后端> --<老子命令> --stdin-line`（恰好这两个词、且不是帧命令）⇒
 /// stdin 读一行（同 [`read_input`] 的一行形与上限），那一行是**其余 argv 的 JSON 字符串数组**，拼回去照常分派。
 /// 于是自由文本（项目目录名 …）不进远端命令行 —— 远端登录 shell 是 fish 之类也同读。别的形状原样返回、一个字节不读。
 pub fn expand_stdin_argv<R: std::io::BufRead>(
@@ -140,20 +140,20 @@ const CLI_REQUEST_ID: &str = "cli";
 /// 判据是 `Run::Builtin`：那种命令的实现住在 `inbound::dispatch` 的硬臂里，
 /// 要 `replies` 通道与在飞表才能跑，而**一次性 exec 里两样都不存在**。
 ///
-/// 〔E2 · V138〕另一条：派生出来的名字是 ccm 自己的诊断口（`--ccm-print` 这类）⇒ 不上。二进制叫 `ccm` 时
+/// 另一条：派生出来的名字是 ccm 自己的诊断口（`--ccm-print` 这类）⇒ 不上。二进制叫 `ccm` 时
 /// 按 `SUBCOMMANDS` 分流（`control::ccm::intercept`），占了 ccm 的词就把 `ccm --ccm-print` 抢进后端。
-/// 〔RESYNC〕第三条：[`STREAM_ONLY`] 那几条能跑，但在一次性进程里答的是假话 ⇒ 不上。
+/// 第三条：[`STREAM_ONLY`] 那几条能跑，但在一次性进程里答的是假话 ⇒ 不上。
 pub(crate) fn cli_exposed(spec: &CommandSpec) -> bool {
     !matches!(spec.run, Run::Builtin)
         && !crate::control::ccm::argv::is_ccm_word(&flag_of(spec.name))
         && !STREAM_ONLY.contains(&spec.name)
 }
 
-/// 〔RESYNC · 主会话 09-27 裁〕**只在流面上有意义**的命令。
+/// **只在流面上有意义**的命令。
 /// `resync` 对齐的是本进程里在跑的 watcher；一次性 exec 里一份都没有 ⇒ 只能答 `watchers: 0`，那是假话。
-/// 〔DEL 续〕`launch-endpoint` / `apikey-routing` 同理：「中转在不在」读的是本进程的监听状态，一次性进程里没有中转 ⇒ 恒答「不在」。
-/// 〔MIG-2〕`launch-local` 同理：它经 `launch_relay` 读本进程的中转状态，一次性进程里会把「非它不可」的号误拒。
-/// 〔MIG-1〕`forward-*` 同理：转发账住本进程（常驻那一个）；一次性进程开出来的转发随进程退出就没了、列出来恒空。
+/// `launch-endpoint` / `apikey-routing` 同理：「中转在不在」读的是本进程的监听状态，一次性进程里没有中转 ⇒ 恒答「不在」。
+/// `launch-local` 同理：它经 `launch_relay` 读本进程的中转状态，一次性进程里会把「非它不可」的号误拒。
+/// `forward-*` 同理：转发账住本进程（常驻那一个）；一次性进程开出来的转发随进程退出就没了、列出来恒空。
 pub(crate) const STREAM_ONLY: &[&str] = &[
     "resync",
     "launch-endpoint",
@@ -162,13 +162,13 @@ pub(crate) const STREAM_ONLY: &[&str] = &[
     "forward-start",
     "forward-stop",
     "forward-list",
-    // 〔FIX4 · `90 §3` J7〕起会话要的 tmux 名：界面问；CLI 那一侧 `ccm` 起会话时自己铸（同一份 `plan::mint_tmux_name`）。
+    // 起会话要的 tmux 名：界面问；CLI 那一侧 `ccm` 起会话时自己铸（同一份 `plan::mint_tmux_name`）。
     "tmux-name-mint",
-    // 〔FIX4 · `99 §2.1 ⑬`〕开终端那一串：界面 / 文件窗口开 PowerShell 窗口前问；命令行那一侧用不着（它自己就在终端里）。
+    // 开终端那一串：界面 / 文件窗口开 PowerShell 窗口前问；命令行那一侧用不着（它自己就在终端里）。
     "terminal-ssh",
-    // 〔P5〕本机开终端那一串（接令牌握手前奏）：同上，只有界面开窗前问。
+    // 本机开终端那一串（接令牌握手前奏）：同上，只有界面开窗前问。
     "terminal-local",
-    // 〔FIX4 · `90 §3` J15〕各台搜索结果合成一份：界面逐台问完才有得合；命令行那一侧 `--search` 只问这一台，用不着合。
+    // 各台搜索结果合成一份：界面逐台问完才有得合；命令行那一侧 `--search` 只问这一台，用不着合。
     "history-search-merge",
     // 扩展页那张表与「装」的枢纽：读本进程的可达表（远端那几台叫什么、怎么够得着）；一次性进程里那张表是空的 ⇒ 只剩本机、答的是假话。
     "ext-list",
@@ -196,7 +196,7 @@ pub(crate) fn spec_for(flag: &str) -> Option<&'static CommandSpec> {
 /// `cc-monitor-backend --ping` 时的形状）：**`--ping` 永远不返回**。
 /// 而这是所有失败里最坏的一种 —— 问「你活着吗」的那条命令，答案是挂住。
 ///
-/// ⚠⚠ **第二版**〔P4f 08-13〕：原来这里写的是 `!spec.fields.is_empty()` —— 那是个**代用品**，
+/// ⚠⚠ **第二版**：原来这里写的是 `!spec.fields.is_empty()` —— 那是个**代用品**，
 /// 在当时的命令集上恰好全对，而 `bus-list`（**无输入、有输出字段**）一来就错，
 /// **它挂住等一个永远不来的输入**（实测 `--ping` 120ms 回、`--bus-list` 被掐死才停）。
 /// ⇒ 改读 `spec.takes_input`（每条命令自己说）。理由全文在 `CommandSpec::takes_input` 头注。
@@ -210,7 +210,7 @@ pub fn handles(flag: &str) -> bool {
     flag == PROBE_FLAG || spec_for(flag).is_some()
 }
 
-/// 〔HOST〕`control/resident.rs` 那两条子命令也走这一份（不另立第 N 份信封，`readonly_guard::error_envelope_registry`）。
+/// `control/resident.rs` 那两条子命令也走这一份（不另立第 N 份信封，`readonly_guard::error_envelope_registry`）。
 pub fn emit_err(code: &str, message: impl Into<String>) -> i32 {
     let body = serde_json::json!({ "code": code, "message": message.into() });
     eprintln!("{body}");

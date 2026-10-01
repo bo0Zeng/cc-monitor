@@ -1,5 +1,5 @@
 /**
- * `S25` —— **CSS 与代码之间那本账的量具**（`设计/40 §7` 步 9 ② · `设计/41 §12` 件 8）。
+ * `S25` —— **CSS 与代码之间那本账的量具**（件 8）。
  *
  * 🔴 **这份文件只是量具，不是判据。** 判据（含"哪些前缀准用、凭什么准用"那张登记表）
  * 住 `tests/frontend/ui/css-ledger.vitest.ts`。把量具与判据分开是**刻意的**，两条理由：
@@ -16,7 +16,7 @@
  * ## 这本账要回答的两个方向
  *
  * - **① CSS → 代码**：`styles.css` 里写着的类名，有没有人真的往 DOM 上挂它。
- *   没人挂 ＝ 死规则（`真相源/51 §2` 那 13 个就是这么查出来的）。
+ *   没人挂 ＝ 死规则（那 13 个就是这么查出来的）。
  * - **② 代码 → CSS**：代码往 DOM 上挂的类名，CSS 里有没有对应规则。
  *   没有 ＝ 挂了个不存在的钩子（多半是改名只改了一边）。
  *
@@ -66,7 +66,7 @@
  *   `.settings-group-empty` 那个例子要的：测试里有一条"它不该存在"的正面断言，
  *   把 `tests/` 收进语料就会让它自己把自己救活。
  * - 不认 CSS-in-JS。
- * - 〔UC2 · `设计/41` 件 10〕**CSS Modules（`*.module.css`）不进本账的全局命名空间**：它们的类名构建时哈希，
+ * - **CSS Modules（`*.module.css`）不进本账的全局命名空间**：它们的类名构建时哈希，
  *   代码经 `import s from "./x.module.css"` 取 `s.xxx`，一个字面量都不写 ⇒ 按本账「字面量出现过才算活」
  *   的判准会全部被判死。所以 `cssClasses` 只收全局样式文件的类名，module 的类名另收进 `moduleClasses`，
  *   它们的两个方向由 `tests/frontend/ui/css-modules.vitest.ts` 判（TS → CSS 由 `tsc` 吃逐文件类型，CSS → TS 由那份判据现扫）。
@@ -509,9 +509,9 @@ export interface Ledger {
   vendorSpecs: string[];
   /** **全局**样式文件（非 `.module.css`）选择器里的类名 → 住址。 */
   cssClasses: SiteMap;
-  /** 〔UC2〕`*.module.css` → 它的类名 → 住址（构建时哈希、只经 TS 导入对象用，不进全局命名空间）。 */
+  /** `*.module.css` → 它的类名 → 住址（构建时哈希、只经 TS 导入对象用，不进全局命名空间）。 */
   moduleClasses: Map<string, SiteMap>;
-  /** 〔UC2〕`src/**\/*.d.<扩展名>.ts`（`allowArbitraryExtensions` 形的声明文件；今天只有 CSS Modules 的 `.d.css.ts`）。 */
+  /** `src/**\/*.d.<扩展名>.ts`（`allowArbitraryExtensions` 形的声明文件；今天只有 CSS Modules 的 `.d.css.ts`）。 */
   arbitraryDecls: string[];
   /** 第三方 CSS 自己产出的类名 → 是哪份第三方 CSS。 */
   vendorClasses: Map<string, string>;

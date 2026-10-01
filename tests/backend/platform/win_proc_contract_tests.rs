@@ -1,4 +1,4 @@
-//! 〔WN1 · U4b〕**Windows 判活那一臂：本机（Linux）够得着的那几半。**
+//! **Windows 判活那一臂：本机（Linux）够得着的那几半。**
 //!
 //! Windows 臂的函数体在本机被 `cfg` 掉，`cargo test` 执行不到它 ⇒ 能进执行链的只有三样：
 //!
@@ -11,7 +11,7 @@
 //!    == {`platform/win_proc.rs`}（两向相等）。
 //!
 //! 🚫 买不到：Win32 调用在真 Windows 上的行为（错误码、句柄语义、`WaitForSingleObject` 何时醒）。
-//! 那要真机；本路不碰 Win11 虚拟机（`99 §2 ⑤` 未拍）。编得过由门禁 `winchk-backend` 那一格买。
+//! 那要真机；本路不碰 Win11 虚拟机（未拍）。编得过由门禁 `winchk-backend` 那一格买。
 
 use super::proc::{
     unix_secs_from_filetime, FILETIME_TICKS_BEFORE_UNIX_EPOCH, FILETIME_TICKS_PER_SEC,
@@ -139,7 +139,7 @@ fn each_liveness_fact_has_exactly_one_windows_arm_that_delegates() {
 fn the_win32_process_reads_live_in_exactly_one_file() {
     let root = crate::guard_support::src_root();
     let names = ["OpenProcess", "GetExitCodeProcess", "GetProcessTimes"];
-    // 〔HX2 · 4D〕`WaitForSingleObject` 从这张名单里拆出去单列：它是 Win32 的**通用等待**，不只等进程 ——
+    // `WaitForSingleObject` 从这张名单里拆出去单列：它是 Win32 的**通用等待**，不只等进程 ——
     //   `platform/lock.rs` 用它等第四层那把跨进程锁（命名互斥量）。那一格不是「又一份判活读法」，
     //   所以它的人群单独两向相等（下面 `waiters`），而进程读法这三个名字的人群照旧只有 `win_proc.rs`。
     let mut seen: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
@@ -148,7 +148,7 @@ fn the_win32_process_reads_live_in_exactly_one_file() {
     for (path, raw) in guard_core::scan_tree_excluding(&root, &["rs"], &[]) {
         scanned += 1;
         let prod = guard_core::production_code(&raw);
-        // 〔RE〕顺着 `#[path]` 收进来的按模块住址认。
+        // 顺着 `#[path]` 收进来的按模块住址认。
         let rel = guard_core::module_address(&root, &path);
         if names.iter().any(|n| guard_core::contains_word(&prod, n)) {
             seen.insert(rel.clone());
@@ -176,7 +176,7 @@ fn the_win32_process_reads_live_in_exactly_one_file() {
     assert_eq!(
         seen, want,
         "后端生产段里提到 `OpenProcess` 一族的文件集合变了。\n\
-         Windows 上「进程在不在 / 何时起 / 等它死」的读法只许住 `platform/win_proc.rs`（`01 §3.1`：\n\
+         Windows 上「进程在不在 / 何时起 / 等它死」的读法只许住 `platform/win_proc.rs`（\n\
          platform 是唯一的翻译官）。"
     );
 }

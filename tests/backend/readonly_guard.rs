@@ -1,8 +1,8 @@
-//! F08a：backend 只读机器护栏（主计划红线 I7 的机器化守护）。
+//! F08a：backend 只读机器护栏（红线 I7 的机器化守护）。
 //!
 //! # `K-G6` `KG62`：性质与人群，两行逐字（**这两行各自只许有一句**，`g6_scope_pins` 钉着）
 //!
-//! - **它守的性质是**：backend **进程自身**不许改动用户既有数据 —— 例外只有两档、都逐文件登记：新增文件须 `O_EXCL` 且只许在白名单模块里（白名单层，`D1` 08-01）；改动既有数据只许在**文件管理那一面**、每一处先过路径解析（不越根 ＋ 父目录解链接；〔FN1 · V119〕从前是「先过 Claude 会话数据围栏」，用户「文件管理器全部都可以改. 不需要任何围栏」之后那道拿掉了）、且只从登记的那一扇门进来（第三层，波 5 · 用户 09-23 逐字「现在只允许后端的文件管理部分写文件」）。〔B2 · 条 66〕另有一层**不是例外**、是把人群收回性质上：后端写**它自己的**状态文件（`~/.cc-monitor/backend.json` · 〔RM1a〕上游选择那份凭据文件，都不是用户数据）只许在逐文件登记的那几份模块里、动词闭集、只从一扇门进来（第四层）。⚠ `src/doc/INVARIANTS.md` §41.6 的「现措辞」今天**没有**第三层那一档 —— 改那条是产品裁决、不在本护栏写区，已报备。
+//! - **它守的性质是**：backend **进程自身**不许改动用户既有数据 —— 例外只有两档、都逐文件登记：新增文件须 `O_EXCL` 且只许在白名单模块里（白名单层，`D1` 08-01）；改动既有数据只许在**文件管理那一面**、每一处先过路径解析（不越根 ＋ 父目录解链接；从前是「先过 Claude 会话数据围栏」，用户「文件管理器全部都可以改. 不需要任何围栏」之后那道拿掉了）、且只从登记的那一扇门进来（第三层，波 5 · 用户 09-23 逐字「现在只允许后端的文件管理部分写文件」）。〔条 66〕另有一层**不是例外**、是把人群收回性质上：后端写**它自己的**状态文件（`~/.cc-monitor/backend.json` · 上游选择那份凭据文件，都不是用户数据）只许在逐文件登记的那几份模块里、动词闭集、只从一扇门进来（第四层）。⚠ `src/doc/INVARIANTS.md` §41.6 的「现措辞」今天**没有**第三层那一档 —— 改那条是产品裁决、不在本护栏写区，已报备。
 //! - **它扫的人群是**：本 crate `src/` 递归全部 `.rs` 的生产段**源码文本**里 `fs::` / `File::` / `OpenOptions` 命名空间的调用（默认层 + 只读白名单 + 逃生口），外加另一张表：`Command::new` 的起进程点。
 //!
 //! ⚠ **这两行今天不是同一件事，而「它们是同一件事」这一格钉不住 —— 靠纪律**（`KG62` 如实登记）：
@@ -11,9 +11,9 @@
 //! 同时又比性质**大**（backend 写一个与用户无关的自己的文件也会红）。
 //! ⇒ **它今天真能拦住的形状全表在 [`g6_reach`]，一个今天在盘上、形状相同却通过了的反例也在那里。**
 //!
-//! # 🔴 〔波 5 ㈡ · 2026-09-23〕**第三层** —— 判准从「不改既有数据」换成「改，但每一处都先过路径解析、且只从声明过的那一面来」
+//! # 🔴 〔波 5 ㈡〕**第三层** —— 判准从「不改既有数据」换成「改，但每一处都先过路径解析、且只从声明过的那一面来」
 //!
-//! 〔FN1 · 第四波 4C · 2026-09-25 · 用户 V119〕原话是「先过**围栏**」。用户「文件管理器全部都可以改. 不需要任何围栏」⇒
+//! 〔用户〕原话是「先过**围栏**」。用户「文件管理器全部都可以改. 不需要任何围栏」⇒
 //! 会话数据围栏拿掉了，③ 那一针换成**路径解析**（`files_write::resolve_in_root` / `resolve_existing_in_root`：
 //! 词法不越根 ＋ 父目录解链接后判落点 —— 那不限制改什么，只保证改的就是 `root ＋ rel` 那一格）。
 //! 判的形状一个字没变（逐顶格函数切块、剥注释、比位置）；新立一条
@@ -21,16 +21,16 @@
 //!
 //! 用户逐字：「**现在只允许后端的文件管理部分写文件**」。这句话收窄的是**主语**（谁能写），
 //! 不是动作（能写什么）⇒ 动作是宽的（建目录 · 改名 · 删除 · 改权限 · 覆盖写），
-//! 入口是窄的（只有文件管理那一面）。`设计/60 §8.6` 第 3 步逐字要这一层，
+//! 入口是窄的（只有文件管理那一面）。要这一层，
 //! `§8.3 甲` 逐字要求「降级后的强度要**机检**」⇒ 它不是一句散文，是 `tests` 模块里
 //! 四条会红的判据（形状与逐条的漏判面住 `MUTATING_FACE_MODULES` 的头注）。
 //!
 //! ⚠ 按 [`g6_doctrine`] 那张四格表，这一刀落在**「缩性质」**那一格，不是「加白名单」：
 //! 性质从「不改既有数据」缩成「不改既有数据，文件管理面除外」，
-//! **缩掉的那一半归谁**写在登记表上 —— 归本层四条判据（〔FN1 · V119〕从前还有「那道 Claude 会话数据围栏」，用户拿掉了）。
+//! **缩掉的那一半归谁**写在登记表上 —— 归本层四条判据（从前还有「那道 Claude 会话数据围栏」，用户拿掉了）。
 //! 「只缩不写归属 = 把那一半丢了」（那一格的 why 逐字）。
 //!
-//! # 〔`K-R79` 09-12〕上面那三条「小」里的第三条：**远端那一半今天有一层了**
+//! # 上面那三条「小」里的第三条：**远端那一半今天有一层了**
 //!
 //! 「不含非 `fs::` 命名空间的写路径」这句话此前把两件事装在一起：
 //! **本机换个命名空间的写**（`os::unix::fs::symlink` 一族）与**根本不在本机的写**（SFTP 那一套）。
@@ -38,9 +38,9 @@
 //! ⇒ 远端那一半立在 [`remote_write_layer`]，两行性质 / 人群与盲区读数都在那里；
 //! **本机换命名空间那一半仍然没有守卫，那句话对它照旧成立。**
 //!
-//! # 〔`K-R2` 09-04〕人群那三条「小」里的第一条：**依赖 crate 的写面，今天有人签字了**
+//! # 人群那三条「小」里的第一条：**依赖 crate 的写面，今天有人签字了**
 //!
-//! 上面那一行逐字承认人群「不含依赖 crate 的写」。本轮**不补人群**（归 PM，按 `MASTERPLAN §2b` 逐条过），
+//! 上面那一行逐字承认人群「不含依赖 crate 的写」。本轮**不补人群**（归 PM，按逐条过），
 //! 而是把这一条从「判据看不见」变成「有人签过字」：清单上每一条依赖都要有一行登记
 //! （有没有写面 · 依据是什么 · 判档），**新加一条而没签字 ⇒ 当场红**。
 //! 表与判据住 [`g6_dependency_signoff`]。
@@ -49,7 +49,7 @@
 //! 而它们今天进不了发布二进制靠的是**一个 feature 没开**。
 //! 在本轮之前，盘上没有任何东西钉着那件事。
 //!
-//! # 〔`K-G6` 订正〕收窄前那句绝对话今天是假的，本轮**两处一次改完**
+//! # 收窄前那句绝对话今天是假的，本轮**两处一次改完**
 //!
 //! `D1` 之后 `src/doc/INVARIANTS.md` §41.6 已经把铁律改成上面那句，并把收窄前那句绝对话
 //! 逐字标成**原措辞**（要看原文去那里 —— 本文件刻意**不再抄一遍**：抄一遍就等于把那句假话
@@ -74,7 +74,7 @@
 
 #[cfg(test)]
 mod tests {
-    /// 🔴 〔`99 §2.5 P9` 2026-09-18〕〔散文墓碑〕**这里原来住着 `strip_cfg_test` —— 一份便宜近似，已退役。**
+    /// 🔴 〔散文墓碑〕**这里原来住着 `strip_cfg_test` —— 一份便宜近似，已退役。**
     ///
     /// 它做的事（「剥掉测试段，只留生产段」）在本仓**早就有唯一住址**：
     /// [`guard_core::production_source`]（`src/common/guard-core`），
@@ -84,14 +84,14 @@ mod tests {
     /// 〔散文墓碑〕`strip_cfg_test` 就是那一族里**最后一份没收进来的**：它自己的头注承认是启发式
     /// （括号配平不认字符串/注释里的大括号），并且已经造成过 ≥4 次事故。
     ///
-    /// 🔴 **退役的理由不是「它变成恒等函数了」** —— `设计/16 §4.1` 当初那条预言
-    /// **今天还不成立**，现打读数进了 `16 §4.1`：`src/backend` 上它剥掉 1 081 538 字节
+    /// 🔴 **退役的理由不是「它变成恒等函数了」** —— 当初那条预言
+    /// **今天还不成立**，现打读数进了：`src/backend` 上它剥掉 1 081 538 字节
     /// （64 份里 51 份被它动过），`src/frontend/shell/src` 上 1 429 612 字节。
     /// 实测把它改成恒等函数，后端当场红 3 条，`no_test_code_leaks_into_any_production_section`
-    /// 逐字报「49 份文件、533 个残留测试属性」。⇒ 退役的理由是 `16 §5.1`
+    /// 逐字报「49 份文件、533 个残留测试属性」。⇒ 退役的理由是
     /// **一条形状只许有一个住址**，不是「它没用了」。
     ///
-    /// 两者的差别现打过（`16 §4.1` 表）：换成 `production_source` 之后，
+    /// 两者的差别现打过（表）：换成 `production_source` 之后，
     /// `src/frontend/shell/src` 上的残留测试属性从 **42 → 4**（它认得原始字符串与可见性修饰，
     /// 朴素括号配平认不得），`src/backend` 上两者同为 **0**；
     /// 两个 workspace 的用例数与红绿**一格没动**。
@@ -144,9 +144,9 @@ mod tests {
     ///
     /// ⚠ **它仍然不检查那行 `why` 说得对不对** —— 同 [`spawn_registry`] 那条登记过的边界：
     /// 它钉的是「说得出来」，不是「真的想过」。
-    /// 🔴 〔步 10 · 2026-09-19〕**`backend-core` 的模块登记 —— 本护栏人群的唯一住址。**
+    /// 🔴 **`backend-core` 的模块登记 —— 本护栏人群的唯一住址。**
     ///
-    /// # 它换的是什么（`99 §2.5 P2` 逐字：「不是收窄射程，是把判据的锚从二进制换成模块」）
+    /// # 它换的是什么（「不是收窄射程，是把判据的锚从二进制换成模块」）
     ///
     /// 在这之前，人群是 `guard_support::src_root()` **递归走出来的所有 `.rs`** ——
     /// 锚是「**后端这个二进制**」。`4b`（monitor 进程内 link 后端库面）一落地，
@@ -170,7 +170,7 @@ mod tests {
         (
             "accounts",
             "上游选择（apikey 端点改写）：那张 `(agent, 账号)` 表 · 每 agent 一行的默认上游 · \
-             中转进程里**只读**那份凭据文件 · 热重载。〔RM1a〕另有 `upstream/file_face.rs` 那一份\
+             中转进程里**只读**那份凭据文件 · 热重载。另有 `upstream/file_face.rs` 那一份\
              在帧面上写**这台机器上**的那份凭据文件（上游选择自己的状态，第四层登记）。\
              2026-09-24 从 `relay/` 底下搬出来（「中转层不要有账号」），在那之前它就在本护栏的人群里",
         ),
@@ -185,8 +185,8 @@ mod tests {
         (
             "common",
             "两边都要、又不含平台原语的纯工具。\
-             〔MOD · 子步 4 · 主会话裁〕`own_dir` 从 crate 根挪进这里（原生 × 文件管理两块共用、零互相依赖），它的理由原样： \
-             〔HX1 · 4D · 主会话裁〕后端建**自家目录**（`~/.cc-monitor` 与它底下后端自己的几层）的那一个函数：建的那一下就是 0700、\
+`own_dir` 从 crate 根挪进这里（原生 × 文件管理两块共用、零互相依赖），它的理由原样： \
+后端建**自家目录**（`~/.cc-monitor` 与它底下后端自己的几层）的那一个函数：建的那一下就是 0700、\
              已在的不动。它归 backend-core 是因为第四层那几份（退出行为 · 资产目录 · 中转钥匙 · skill 装记录）与暂存区都要建那一层；\
              写的只有目录本身（后端**自己的**状态，第四层登记，见 `OWN_STATE_MODULES`）—— 一个用户文件都不写",
         ),
@@ -194,7 +194,7 @@ mod tests {
         ("dial", "`--dial` 代理进程：那条长连接流的 SSH 握手只此一处"),
         (
             "files",
-            "〔步 24f〕`files-read` 这一族：常驻文件名索引 ＋ 一族**只读**能力 —— \
+            "`files-read` 这一族：常驻文件名索引 ＋ 一族**只读**能力 —— \
              它归 backend-core 是因为索引**必须住在被搜的那台机器上**，而后端是唯一住在那里的东西。\
              ⚠ 这里**刻意不写「几条」** —— 原文写的是「四条」，而 09-21 补了 \
              `files.index.rebuild` / `files.browse` 之后它变成了六条、这句话当场变假，\
@@ -204,76 +204,76 @@ mod tests {
         ),
         (
             "stderr_log",
-            "〔NT2 · 第四波 4C · S1〕脱离常驻那条载体的后端：stderr 落进一份有上限、滚动的文件（`设计/15 §4.7 S1`）。\
+            "脱离常驻那条载体的后端：stderr 落进一份有上限、滚动的文件。\
              它归 backend-core 是因为那些诊断（host key 警告 · 中转起不来的原因 · watch 失败）**只在这个进程里**说得出来。\
              写的只有那两份诊断文件（当前 ＋ 旧的一份；路径由宿主交 `CCM_BACKEND_STDERR_LOG`，后端**自己的**状态，第四层登记，\
              见 `OWN_STATE_MODULES`）—— 一个用户文件都不写",
         ),
         (
             "footprint",
-            "〔RM1a · 第四波〕「足迹」的这台机器那一半：帧面 `footprint-probe` —— 这台机器的环境 · 一批路径的 stat · \
+            "「足迹」的这台机器那一半：帧面 `footprint-probe` —— 这台机器的环境 · 一批路径的 stat · \
              一批文件里有没有某几个字样。它归 backend-core 是因为那些事实**只在那台机器上**；判定仍只住 monitor。**零写盘**",
         ),
         ("guard_support", "各条源码扫描型守卫共用的剥法与住址"),
         (
             "assets",
-            "〔MIG-3a · `99 §2.1 ⑬`〕后端代管的用户资产（别名 · MCP · skill）：D 组的计算与判定。\
+            "后端代管的用户资产（别名 · MCP · skill）：D 组的计算与判定。\
              它归 backend-core 是因为算的与写的是同一台后端；**零写盘**：写一律经 `inbound.rs::LocalFiles` 递进来的\
              本进程文件管理面（`files-*` 帧命令本身），本模块不直呼 `files_write`。 \
-             〔MOD〕从 crate 根归进来五件（纯搬家；上面「零写盘」说的是 MIG-3a 那几份，`asset_catalog` / `skill_ledger` 写的是后端**自己的**文件），各自理由原样： \
-             `asset_catalog` —— 〔AS2 · 第四波 4B · V113〕资产目录：帧面 `assets-catalog` / `assets-catalog-merge`。它归 backend-core 是因为\
+从 crate 根归进来五件（纯搬家；上面「零写盘」说的是 MIG-3a 那几份，`asset_catalog` / `skill_ledger` 写的是后端**自己的**文件），各自理由原样： \
+             `asset_catalog` —— 资产目录：帧面 `assets-catalog` / `assets-catalog-merge`。它归 backend-core 是因为\
              「这台机器上有哪些 skill / 项目级 MCP」是**那台机器上**的事实；写的只有后端**自己的**目录文件 \
              `~/.cc-monitor/assets-catalog.json`（第四层登记，见 `OWN_STATE_MODULES`）—— 一个用户文件都不写 · \
-             `asset_sync` —— 〔AS2 · 第四波 4B · V113〕资产目录的自动同步：帧面 `assets-sync` —— 本机常驻后端沿池里那条 SSH \
+             `asset_sync` —— 资产目录的自动同步：帧面 `assets-sync` —— 本机常驻后端沿池里那条 SSH \
              在远端跑两条一次性子命令（拉 `--assets-catalog` · 推 `--assets-catalog-merge`）。它归 backend-core 是因为\
              SSH 连接只住本机常驻后端（`dial/`）。**零写盘**：本机目录的写口（`asset_catalog::answer_merge`）由 \
-             `inbound.rs` 递进来，本模块不直呼它（第四层 ④）。〔C4d〕跑远端那一跳与可达表搬去了 `remote_ask` · \
-             `mcp_sync` —— 〔AS1 · 第四波 4B〕MCP 资产同步的判定：帧面 `mcp-sync-plan` —— 两份原文进、差异 ＋ 可疑项 ＋ 写哪几条出。\
+             `inbound.rs` 递进来，本模块不直呼它（第四层 ④）。跑远端那一跳与可达表搬去了 `remote_ask` · \
+             `mcp_sync` —— MCP 资产同步的判定：帧面 `mcp-sync-plan` —— 两份原文进、差异 ＋ 可疑项 ＋ 写哪几条出。\
              它归 backend-core 是因为可疑项里「有没有这个路径 / 这个命令」是**要被写的那台机器上**的事实。\
              **零写盘、零读文件内容**（原文由 `files-peek` 读来，写经 `files-put`；本模块只 stat） · \
-             `skill_install` —— 〔AS2 · 第四波 4B · V113〕skill「装到这台」：帧面 `skill-read`（来源那台读 skill 的文件原文）· `skill-install-plan`\
+             `skill_install` —— skill「装到这台」：帧面 `skill-read`（来源那台读 skill 的文件原文）· `skill-install-plan`\
              （要被写的那一台判：差异与闸原样用 `mcp_sync`，可疑项带那台的事实）。它归 backend-core 是因为文件与事实都在那台机器上。\
-             **零写盘**：写经 monitor → 那台后端 `files-put`（CAS）。〔SU1 · 第四波 4C · V116〕又多两条只读帧命令：\
+             **零写盘**：写经 monitor → 那台后端 `files-put`（CAS）。又多两条只读帧命令：\
              `skill-installs`（这台记着哪几个从别处装来的）· `skill-uninstall-plan`（被卸那台逐文件比摘要、判删哪几个）；\
              删经 monitor → 那台后端 `files-delete`（CAS），本模块仍零写盘 · \
-             `skill_ledger` —— 〔SU1 · 第四波 4C · V116〕skill 装记录：帧面 `skill-install-record`（装完记下写了哪几个文件 · 卸掉的摘掉）。\
+             `skill_ledger` —— skill 装记录：帧面 `skill-install-record`（装完记下写了哪几个文件 · 卸掉的摘掉）。\
              它归 backend-core 是因为「这台上哪几个文件是装写进去的」是**那台机器上**的事实；写的只有后端**自己的**记录文件 \
              `~/.cc-monitor/skill-installs.json`（第四层登记，见 `OWN_STATE_MODULES`）—— 一个用户文件都不写",
         ),
         (
             "faces",
-            "〔MOD〕帧面宿主（从 crate 根归进来，纯搬家），各自归 backend-core 的理由原样： \
-             `read_face` —— 〔`C1` · 09-24〕只读查询的帧面宿主：八条一次性查询的帧面那一层壳 —— \
+            "帧面宿主（从 crate 根归进来，纯搬家），各自归 backend-core 的理由原样： \
+             `read_face` —— 只读查询的帧面宿主：八条一次性查询的帧面那一层壳 —— \
              本体在 `observe/`（CLI 那一臂同一个函数），它只解 `args`、装应答。**零写盘** · \
-             `feature_face` —— 〔RM1b · 第四波〕功能侧只读查询的帧面宿主（任务列表 …）—— 与 `read_face` 同形的一层壳：\
+             `feature_face` —— 功能侧只读查询的帧面宿主（任务列表 …）—— 与 `read_face` 同形的一层壳：\
              本体在 `observe/`，它只解 `args`、装应答。**零写盘** · \
-             `fork_face` —— 〔LOC1a · 第四波 4D〕帧面 `session-fork` 的宿主壳：找家目录（与 `read_face` 同一句）、交 `control/fork_write` 本体。\
+             `fork_face` —— 帧面 `session-fork` 的宿主壳：找家目录（与 `read_face` 同一句）、交 `control/fork_write` 本体。\
              它归 backend-core 是因为本体在 `control/` 而家目录的出处在 `observe/`（`control → observe` 反向不许）。\
              **零写盘**：写的是本体（白名单层那一处 `O_EXCL` 新建），本文件只转交 · \
-             `resync_face` —— 〔RESYNC · V149〕帧面 `resync`（手动对齐）的宿主壳：解 `args`、交 `observe/watcher.rs::resync`、装应答。**零写盘**\
+             `resync_face` —— 帧面 `resync`（手动对齐）的宿主壳：解 `args`、交 `observe/watcher.rs::resync`、装应答。**零写盘**\
              （打标改的是 tmux server 的运行期状态，住 `control/identity_tag.rs`）",
         ),
         (
             "history",
-            "〔MOD〕从 crate 根归进来的两件（纯搬家），各自归 backend-core 的理由原样： \
-             `history_join` —— 〔C4d · 第四波 4B〕历史跨机 join 的唯一的家：帧面 `history-projects` / `history-sessions` 出成品（记录树 ＋ 合成历史 ＋ \
-             pidfile 判活 ＋ 远端经 `remote_ask`，并上注解）。它归 backend-core 是因为主会话 09-25 裁「join 只一个家，在本机常驻后端」。\
+            "从 crate 根归进来的两件（纯搬家），各自归 backend-core 的理由原样： \
+             `history_join` —— 历史跨机 join 的唯一的家：帧面 `history-projects` / `history-sessions` 出成品（记录树 ＋ 合成历史 ＋ \
+             pidfile 判活 ＋ 远端经 `remote_ask`，并上注解）。它归 backend-core 是因为「join 只一个家，在本机常驻后端」。\
              **零写盘**：注解只读（`history_annotations::load`） · \
-             `history_annotations` —— 〔C4d · 第四波 4B〕历史注解（星标 / 改名 / 隐藏 / 上次账号）：帧面 `history-annotate` / `history-forget` / \
-             `history-last-accounts`。它归 backend-core 是因为主会话 09-25 裁「读写者换成本机常驻后端」；写的只有那一份 \
+             `history_annotations` —— 历史注解（星标 / 改名 / 隐藏 / 上次账号）：帧面 `history-annotate` / `history-forget` / \
+             `history-last-accounts`。它归 backend-core 是因为「读写者换成本机常驻后端」；写的只有那一份 \
              注解文件（monitor 从前那一份，路径由它交；后端**自己的**状态，第四层登记，见 `OWN_STATE_MODULES`）—— 一个用户文件都不写",
         ),
         (
             "stream",
-            "〔MOD〕进后端的口 ① 帧面 ＋ 跨机问答原语（从 crate 根归进来，纯搬家），各自的理由原样： \
+            "进后端的口 ① 帧面 ＋ 跨机问答原语（从 crate 根归进来，纯搬家），各自的理由原样： \
              `wire` —— 线上协议的帧定义与编解码 · \
              `inbound` —— 流连接上的入方向（信封 / 分派 / 取消） · \
              `listen` —— 常驻监听口的纯判定（接受循环在 main.rs） · \
-             `remote_ask` —— 〔C4d · 第四波 4B〕本机后端问远端后端的那一跳（池里那条 SSH 上 capture 一次性子命令）＋ 内存可达表，\
+             `remote_ask` —— 本机后端问远端后端的那一跳（池里那条 SSH 上 capture 一次性子命令）＋ 内存可达表，\
              帧面 `remote-reach`（跨机问答原语，主会话裁归这里）。它归 backend-core 是因为 SSH 连接只住本机常驻后端（`dial/`）。**零写盘**：\
              可达表只在本进程内存里 · \
-             `tap` —— 〔TAP · V124〕tee 的消费侧（后端这一半）：进程级 tap 口 ＋ 每条流连接一条有界通道 ＋ 事件 → `tap` 帧。\
-             它归 backend-core 是因为中转住本机常驻后端这个进程（V107），帧从这个进程的 wire 出去。\
+             `tap` —— tee 的消费侧（后端这一半）：进程级 tap 口 ＋ 每条流连接一条有界通道 ＋ 事件 → `tap` 帧。\
+             它归 backend-core 是因为中转住本机常驻后端这个进程，帧从这个进程的 wire 出去。\
              **零写盘**：只在内存里递事件",
         ),
         ("observe", "观测面 —— 读，不改变世界"),
@@ -295,7 +295,7 @@ mod tests {
         ("build_id_guard", "守卫：加了子命令必须 bump BUILD_ID"),
         (
             "capability_ledger_guard",
-            "守卫：`设计/96 §2` 第 2 层那份汇总清单与各能力面的声明对得上",
+            "守卫：第 2 层那份汇总清单与各能力面的声明对得上",
         ),
         (
             "cc_bus_boundary_guard",
@@ -362,14 +362,14 @@ mod tests {
             "G2 / `--fork-session`：用 `O_EXCL` 在 projects 目录里新建一份**此前不存在**的 \
              jsonl，不改、不覆盖、不删任何既有文件 —— 这正是 `D1` 收窄后那条铁律的误差项",
         ),
-        // 🔴 **〔波 5 ㈡ · 2026-09-23〕`control/files_write.rs` 这一条搬到了第三层**
+        // 🔴 **〔波 5 ㈡〕`control/files_write.rs` 这一条搬到了第三层**
         // （[`MUTATING_FACE_MODULES`]），不是删了。它 09-19 登记在这里时的射程逐字是
         // 「用 `O_EXCL` 新建一份此前不存在的文件，不改、不覆盖、不删、不建目录」；
         // 用户 09-23「现在只允许后端的文件管理部分写文件」之后它要改动既有数据，
         // 而那正是**本层的判准所禁的** ⇒ 它不能留在本层（留着就是把本层的判准改松），
         // 只能去一个判准**不同**、而且**更窄地只收它一个**的层。
         // ⚠ 它那一处 `O_EXCL` 新建**仍然**被逐一配对钉着（第三层照搬了那条配对）。
-        // 🔴 **〔条 67 · 2026-09-18〕`platform/landing.rs` 这一条摘掉了，连同它那份文件。**
+        // 🔴 **〔条 67〕`platform/landing.rs` 这一条摘掉了，连同它那份文件。**
         // 它是 `K-W2D` 给「按需拉一个外部二进制」那条路写的落盘原语，
         // `K-R55` 把它从 `sidecars/codepicture/acquire.rs` 下沉到 `platform/`。
         // 用户逐字「**不在现在设计里的全部删掉**」⇒ `sidecars/` 整棵树（2 008 行）删了
@@ -394,7 +394,7 @@ mod tests {
             .join(" / ")
     }
 
-    // ═══════════════════════ 第三层：文件管理面〔波 5 ㈡ · 2026-09-23〕═══════════════════════
+    // ═══════════════════════ 第三层：文件管理面〔波 5 ㈡〕═══════════════════════
 
     /// ★ **第三层登记的模块** —— 能改动既有数据的，**只有这一面**。
     ///
@@ -414,42 +414,42 @@ mod tests {
     /// 本层只钉「裁出来的那个射程没被悄悄放大」。
     pub(super) const MUTATING_FACE_MODULES: &[(&str, &str)] = &[(
         "control/files_write.rs",
-        "文件管理面的写原语（`设计/60 §8.6` 第 2、3 步）：`O_EXCL` 新建 · 建目录 · 改名 · \
-         删文件或空目录 · 改权限 · 覆盖写 · 〔F7a 09-24〕同根内复制（由 `O_EXCL` 新建 ＋ 换名 ＋ \
-         删自己刚建的那一份拼成，**不添动词**）· 〔FW5 09-24〕递归删（计划趟逐条目过路径解析、\
+        "文件管理面的写原语（第 2、3 步）：`O_EXCL` 新建 · 建目录 · 改名 · \
+         删文件或空目录 · 改权限 · 覆盖写 · 同根内复制（由 `O_EXCL` 新建 ＋ 换名 ＋ \
+         删自己刚建的那一份拼成，**不添动词**）· 递归删（计划趟逐条目过路径解析、\
          执行趟只删计划里的且每条当场再判，由删文件 ＋ 删空目录拼成，**不添动词**）。每一件都先过路径解析 \
-         （词法不越根 ＋ 解 symlink 再判落点；〔FN1 · V119〕会话数据围栏拿掉了）；\
+         （词法不越根 ＋ 解 symlink 再判落点；会话数据围栏拿掉了）；\
          会跟链接的几件（改权限 · 覆盖写 · 复制的源 · 读改写）连最后一段也解到底。\
          线上入口只有 `inbound.rs` 那几条 `files-*` 写命令（`MANAGE_COMMANDS` 逐条登记）",
     ), (
-        // 〔F7c · 第三波 · 2026-09-24〕`设计/60 §13`：SFTP 缩成只做传输之后，上传只写暂存区，
+        // SFTP 缩成只做传输之后，上传只写暂存区，
         //   把暂存件挪进用户目标的**那一下**住这里 —— 同一句用户裁决（「只允许后端的文件管理部分写文件」）。
         "control/files_commit.rs",
-        "上传的提交（`设计/60 §13`）：把 `~/.cc-monitor/staging/<key>.part` 改名上位到用户指定的目标。\
+        "上传的提交：把 `~/.cc-monitor/staging/<key>.part` 改名上位到用户指定的目标。\
          先过写面那道路径解析（`files_write::resolve_in_root`，借用、不抄）；不覆盖那一支先 `O_EXCL` 占位再改名上位\
          （改名失败撤掉自己那个 0 字节占位）。暂存件路径由本模块自己拼、`key` 只收 32 位十六进制 ⇒ \
-         调用方指不到暂存区之外的源。〔F9c · 第四波〕存盘装不进一行时的块：`O_EXCL` 新建 \
+         调用方指不到暂存区之外的源。存盘装不进一行时的块：`O_EXCL` 新建 \
          `<key>.<seq>.chunk`（暂存区不在就先过路径解析再建目录）· 读回拼起来交写面 `overwrite_text` 原地覆盖（不添动词）· \
          删这一键的块（先过以暂存区为根的路径解析）。线上入口只有 `inbound.rs` 那三条 \
          `files-commit-upload` / `files-stage-chunk` / `files-commit-text`（`COMMIT_COMMANDS`）",
     ), (
-        // 〔SR1b · 第四波 · 2026-09-24〕用户 V89「SFTP 进本机常驻后端」：传输台搬进本机后端，下载的**本机落点**
+        // 用户「SFTP 进本机常驻后端」：传输台搬进本机后端，下载的**本机落点**
         //   （用户选的路径）那一下写从 monitor 搬到这里 —— 同一句用户裁决（「只允许后端的文件管理部分写文件」）。
         "control/transfer.rs",
-        "传输台（`设计/60 §4.2`）：下载的本机落点 —— `O_EXCL` 新建 `<落点>.part`（旧的尾块对不上先删）· \
+        "传输台：下载的本机落点 —— `O_EXCL` 新建 `<落点>.part`（旧的尾块对不上先删）· \
          续传时接着写那一份（不截断、不新建）· 传完改名上位 · 失败删 `.part`。每一处先过写面那道路径解析 \
          （`files_write::resolve_in_root`，根 = 落点的父目录，借用、不抄）。远端暂存区那一半一行都不在这里 \
          （经 `dial/sftp.rs` 的写原语，只许两处）。线上入口只有 `inbound.rs` 那四条 `transfer-*` 硬臂 \
          （`transfer_command_names`）",
     ), (
-        // 〔FILES2 · 第四波 · 2026-09-27〕主会话按通行做法裁 Q1「复制链接本身」· Q3「解压」（`设计/60 §6.2` · `§7` 第 9 条）。3 → 4。
+        // 主会话按通行做法裁 Q1「复制链接本身」· Q3「解压」。3 → 4。
         "control/files_extract.rs",
         "解压（`files-extract`：zip · tar · tar.gz · tgz 解到一个新目录）＋ 建符号链接（复制目录遇链接复制链接本身，= `cp -R` 缺省的 `-P`）。\
          解压两趟：计划趟只读、逐条目判（`..` / 绝对路径 / 链接出落点 / 设备 ⇒ 整趟拒）；执行趟每一条先过 \
          `files_write::resolve_in_root`（借用、不抄）再 `O_EXCL` 新建 · 写 · 改权限 · 建目录 · 建链接，中途失败逐条先判后删自己建的。\
          链接的目标文本原样写（不解、不判，同 `cp -P`）。线上入口只有 `inbound.rs` 的 `files-extract`（`EXTRACT_COMMANDS`）",
     ), (
-        // 〔FILES2 · 第四波 · 2026-09-27〕Q5「SFTP 起始目录不是后端 home ⇒ 上传改走后端链路分块写」（`设计/60 §7` 第 3 / 9 条）。4 → 5。
+        // Q5「SFTP 起始目录不是后端 home ⇒ 上传改走后端链路分块写」。4 → 5。
         "control/files_upload_chunks.rs",
         "上传的块形：把 `files-stage-chunk` 送进暂存区的 `<key>.<seq>.chunk` 依次拼成 `<key>.part`（`O_EXCL` 新建 · 写；\
          每一块先过以暂存区为根的 `files_write::resolve_in_root`、不跟链接地核是普通文件），失败删自己刚建的那一份；\
@@ -466,15 +466,15 @@ mod tests {
         "remove_file",
         "rename",
         "set_permissions",
-        // 〔FILES2 · 第四波 · 6 → 7〕建链接（`std::os::unix::fs::symlink`）：主会话 09-27 裁 Q1「目录复制遇链接 ⇒ 复制链接本身」
-        //   （`设计/60 §6.2` · `§7` 第 9 条；= GNU `cp -R` 缺省的 `-P`）。
+        // 〔6 → 7〕建链接（`std::os::unix::fs::symlink`）：主会话 09-27 裁 Q1「目录复制遇链接 ⇒ 复制链接本身」
+        //   （= GNU `cp -R` 缺省的 `-P`）。
         //   只在 `control/files_extract.rs::land_link` 一处调用；从 [`MUTATING_FACE_STILL_FORBIDDEN`] 挪过来（那边摘掉 `fs::symlink(`，`soft_link` 那个旧名照旧禁）。
         "symlink",
-        // 〔FIX5 · 7 → 8〕不覆盖改名（`crate::platform::fs::rename_noreplace`，`设计/99 §2.2` · `60 §7` 第 7 条）：
+        // 〔7 → 8〕不覆盖改名（`crate::platform::fs::rename_noreplace`，）：
         //   不是新动词，是「改名」的另一种写法（原子的不许顶掉）；住 `platform/fs.rs`（那份文件没有 `fs::` 前缀的调用，默认层扫不到它的系统调用 ——
         //   谁调得到它由这一格钉：只在第三层放行，别处写 `fs::rename_noreplace(` 当场红）。
         "rename_noreplace",
-        // 〔主会话 09-28 裁 · 8 → 9〕盘不认不覆盖改名时普通文件的那一形（`crate::platform::fs::rename_by_link` = `link` ＋ `unlink`）：
+        // 〔8 → 9〕盘不认不覆盖改名时普通文件的那一形（`crate::platform::fs::rename_by_link` = `link` ＋ `unlink`）：
         //   仍是「改名」，住 `platform/fs.rs`；目录不走它（调用方拒）。一步建硬链接那个动词（`fs::hard_link`）照旧在禁表上。
         "rename_by_link",
         "write",
@@ -486,17 +486,17 @@ mod tests {
     ///   删除「是文件还是目录」都靠它。进全局只读表就是给全后端多一个读动词，
     ///   而 `files::answer_stat` 头注逐字把那件事叫做「放宽一条红线」—— 本刀不替它做那个决定。
     /// - `Permissions` —— 一个类型，只在「改权限」那一处被构造。
-    /// - 〔FW5 · 第四波 · **2 → 3**〕`MetadataExt` —— unix 那个读元数据扩展（取设备号）。
+    /// - 〔**2 → 3**〕`MetadataExt` —— unix 那个读元数据扩展（取设备号）。
     ///   递归删的计划趟靠它判「这棵树有没有跨挂载点」（跨了 ⇒ 整趟拒，不走进另一个文件系统去删）。
     ///   它是**读**；刻意不进全局只读表，理由同 `symlink_metadata`（不替全后端放一个读动词）。
     ///   ⚠ **改动动词闭集（[`MUTATING_FACE_VERBS`]）一个没加**：递归删由「删文件」「删空目录」
     ///   两个既有动词逐条拼出，那个一步递归删的库函数照旧在 [`MUTATING_FACE_STILL_FORBIDDEN`] 上。
-    ///   〔SR1b · 第四波 · **3 → 4**〕`File::from_std` —— 把**已经过了路径解析、已经开好**的那个 std 句柄换成异步句柄
+    ///   〔**3 → 4**〕`File::from_std` —— 把**已经过了路径解析、已经开好**的那个 std 句柄换成异步句柄
     ///   （传输台的下载落点：开那一下在同步函数里过路径解析，写那一路是异步的）。它不开任何东西、不改任何东西；
     ///   刻意不进全局只读表，理由同上（不替全后端放一个词）。
-    ///   〔W5-FILES · 第五波 · **4 → 3**〕`MetadataExt` 摘走：设计让设备号的读走 `platform/`（`设计/60 §3.7`），
+    ///   〔**4 → 3**〕`MetadataExt` 摘走：设计让设备号的读走 `platform/`，
     ///   它进了默认层的只读表（`every_fs_call_in_backend_production_is_read_only` 那张），不再是本层专属。
-    ///   〔FIX5 · **3 → 5**〕`noreplace_unsupported`（问「这块盘认不认不覆盖改名」，读）· `NO_FOLLOW`（开文件不跟链接的旗，一个常量）：
+    ///   〔**3 → 5**〕`noreplace_unsupported`（问「这块盘认不认不覆盖改名」，读）· `NO_FOLLOW`（开文件不跟链接的旗，一个常量）：
     ///   都住 `platform/fs.rs`，只有第三层用。
     const MUTATING_FACE_AUX: &[&str] = &[
         "File::from_std",
@@ -510,14 +510,14 @@ mod tests {
     ///
     /// 🔴 **一步递归删**在这里：路径解析的射程是**一条路径**，它动的是一整棵子树 ——
     /// 它的遍历不经过我们的路径解析，删的是「那一刻盘上的东西」不是「判过的东西」
-    /// （〔FN1〕从前这里的例子是「底下藏着的一份会话文件照样被一起删掉」，那一道拦截 V119 拿掉了；
+    /// （从前这里的例子是「底下藏着的一份会话文件照样被一起删掉」，那一道拦截 V119 拿掉了；
     /// 「只删计划里的、每条当场再判」这条理由没变：两趟之间换进来的链接照样拦得住）。
-    /// 〔FW5 · 第四波〕递归删**做了，但不靠它**：`control/files_write.rs::delete_tree` 两趟、
-    /// 逐条目过路径解析、只用两个既有动词（设计住 `调研/第四波记录/FW5.md` 第一节）；
+    /// 递归删**做了，但不靠它**：`control/files_write.rs::delete_tree` 两趟、
+    /// 逐条目过路径解析、只用两个既有动词（设计住第一节）；
     /// 「列举之后的改动在列举之后再过一次路径解析」由 [`MUTATING_FACE_LISTERS`] 那条判据钉。
     /// ⚠ `fs::symlink(` 带左括号：不带的话它是 `symlink_metadata` 的前缀，会自伤。
     ///
-    /// 🔴〔F7a · 第三波 09-24〕本层**有了复制**（`files-copy`），而一步复制那个动词**照旧在这张表上**：
+    /// 🔴本层**有了复制**（`files-copy`），而一步复制那个动词**照旧在这张表上**：
     /// 它目标是链接时跟过去写（路径解析判的是链接本身那条路径 ⇒ 一条指向根外的链接就能借它
     /// 盖掉根外那一份），目标已在时就地截断重写（半途失败留半份）。复制由 `O_EXCL` 新建 ＋ 换名 ＋
     /// 删自己刚建的那一份**拼出来**（`control/files_write.rs::copy_entry` 头注逐条），
@@ -527,16 +527,16 @@ mod tests {
         "fs::copy",
         "fs::hard_link",
         "fs::soft_link",
-        // 〔FILES2〕`fs::symlink(` 挪进闭集（[`MUTATING_FACE_VERBS`] 的 `symlink`）。
+        // `fs::symlink(` 挪进闭集（[`MUTATING_FACE_VERBS`] 的 `symlink`）。
         "File::create",
-        // 〔FIX5〕`truncate(true)` 挪走：就地覆盖写（硬链接 / 别人的文件那一支）从 `fs::write` 换成不跟链接的截断开
+        // `truncate(true)` 挪走：就地覆盖写（硬链接 / 别人的文件那一支）从 `fs::write` 换成不跟链接的截断开
         //   （[`open_chain_shape`] 的 `InPlace` 那一形）；它只许住 `overwrite_text` 一处，由 `overwrite_atomic_tests::w4_…` 钉。
         "append(true)",
         "set_len",
         "create(true)",
     ];
 
-    /// 〔FIX5 · `设计/99 §2.2` · `60 §7` 第 7 条〕第三层一次开文件的那条链是哪一形：
+    /// 第三层一次开文件的那条链是哪一形：
     /// 从 `.open(` 往回找最近的 `opener()` / `OpenOptions::new()`（中间不许隔一个 `;` —— 链必须是一个表达式），按链上的旗分。
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub(super) enum OpenShape {
@@ -594,7 +594,7 @@ mod tests {
         (shape, from_opener)
     }
 
-    /// 〔FIX5〕第三层一份生产段（剥注释）里**不合形**的开：链不是那三形之一，或链头不是 `opener()`（没带 `O_NOFOLLOW`）。
+    /// 第三层一份生产段（剥注释）里**不合形**的开：链不是那三形之一，或链头不是 `opener()`（没带 `O_NOFOLLOW`）。
     /// 取代白名单层那条「`.open(` 与 `.create_new(true)` 逐一配对」在第三层的用法：第三层今天有只读的开与就地覆盖写，配对数不成立了，
     /// 而它守的那件事（写句柄只有 `O_EXCL` 新建一种）换成「写句柄只有 `O_EXCL` 新建与就地覆盖写两形、后者只许一处」。
     pub(super) fn face_open_problems(code: &str) -> Vec<String> {
@@ -617,7 +617,7 @@ mod tests {
             .collect()
     }
 
-    /// 〔FIX5〕一段代码里第一个**改动**：`fs::<闭集动词>(` · 不是只读那一形的 `.open(`（只读的开不改世界，不要求先过路径解析）。
+    /// 一段代码里第一个**改动**：`fs::<闭集动词>(` · 不是只读那一形的 `.open(`（只读的开不改世界，不要求先过路径解析）。
     fn first_mutation(chunk: &str) -> Option<(usize, String)> {
         let verbs = mutation_calls()
             .into_iter()
@@ -631,9 +631,9 @@ mod tests {
     }
 
     /// 路径解析调用的针。**本层模块的路径解析入口只有这两个**（其余两道被它们串着）——
-    /// 〔FN1 · V119〕旧名 `FENCE_CALLS`，针旧名 `fenced_target(` / `fenced_existing(`：会话数据围栏拿掉之后
+    /// 旧名 `FENCE_CALLS`，针旧名 `fenced_target(` / `fenced_existing(`：会话数据围栏拿掉之后
     /// 它们只做路径解析，名字跟着改。
-    /// 〔RW1 · 第四波 09-24〕外加**删历史会话那一条自己的那一道** `fenced_session_file(`
+    /// 外加**删历史会话那一条自己的那一道** `fenced_session_file(`
     /// （只收 sid、落点由适配层按 sid 找、必须**是**一份会话记录 —— 它是真围栏，限制的是删会话那一条自己）：
     /// 所以它**只许出现一处调用**（[`the_session_file_exception_lives_in_exactly_one_place`]）——
     /// 拿它去给别的改动「过关」、借给第二个函数，那一条当场红。
@@ -646,7 +646,7 @@ mod tests {
     /// 目录列举的针。
     const LISTING_CALL: &str = "read_dir(";
 
-    /// ★ 〔FW5 · 第四波 · 2026-09-24〕第三层模块里**列目录**的函数，逐条登记 `(模块, 函数名, why)`。
+    /// ★ 第三层模块里**列目录**的函数，逐条登记 `(模块, 函数名, why)`。
     ///
     /// # 它补的是判据 ③ 看不见的那一形
     ///
@@ -659,7 +659,7 @@ mod tests {
     ///    新长出一个列目录的函数而没登记 ⇒ 红（它得先说清它列完之后做什么）。
     /// 2. **列举之后的改动，在列举之后必须再过一次路径解析**（[`mutations_after_listing_unresolved`]）：
     ///    函数里第一次列举之后的第一个改动，与那次列举之间要有一次路径解析调用。
-    ///    本表今天四条：两条**只列不改**（递归删的计划趟 · 〔W5-FILES〕复制目录的计划趟），两条**逐条目先判后删**（暂存区孤儿扫 · 存盘分块收尾）。
+    ///    本表今天四条：两条**只列不改**（递归删的计划趟 · 复制目录的计划趟），两条**逐条目先判后删**（暂存区孤儿扫 · 存盘分块收尾）。
     ///
     /// ⚠ 漏判面同 ③：它判顺序，判不了「删的就是判过的那一个」（数据流）——
     ///   那一半靠 `files_write_tests` 里递归删的行为判据（会话文件在树里 ⇒ 整趟拒、盘上一个字节没动）。
@@ -669,7 +669,7 @@ mod tests {
             "sweep_stale",
             "暂存区孤儿扫：列暂存区，每一条先 `resolve_in_root`（以暂存区为根）再删 —— 逐条目先判后删",
         ),
-        // 〔F9c 与 FW5 合并 · 第四波〕FW5 立本表时 F9c 的 `drop_chunks` 还在另一棵树上 ⇒ 两边各自绿、合起来才红。
+        // 〔F9c 与 FW5 合并〕FW5 立本表时 F9c 的 `drop_chunks` 还在另一棵树上 ⇒ 两边各自绿、合起来才红。
         (
             "control/files_commit.rs",
             "drop_chunks",
@@ -681,7 +681,7 @@ mod tests {
             "plan_tree_within",
             "递归删的计划趟：只列、逐条目过路径解析、**一个改动都没有**；删那一下住 `remove_planned`（先过它自己那一条的路径解析）",
         ),
-        // 〔W5-FILES · 第五波〕复制目录的计划趟（照递归删的形状，`设计/60 §7 #6`）。3 → 4。
+        // 复制目录的计划趟（照递归删的形状）。3 → 4。
         (
             "control/files_write.rs",
             "plan_copy_within",
@@ -791,14 +791,14 @@ mod tests {
         MUTATING_FACE_MODULES.iter().any(|(p, _)| *p == rel)
     }
 
-    // ═══════════════ 第四层：后端**自有**状态文件〔B2 · 条 66 · 2026-09-24〕═══════════════
+    // ═══════════════ 第四层：后端**自有**状态文件〔条 66〕═══════════════
 
     /// ★ **第四层登记的模块** —— 写**后端自己的**状态文件，不碰用户数据。
     ///
     /// # 它为什么不是「又开了一个口子」（按 [`g6_doctrine`] 那张四格表，这一刀落在「收窄人群」）
     ///
     /// 本护栏头注逐字承认人群比性质**大**：「backend 写一个与用户无关的自己的文件也会红」。
-    /// `设计/01 §3.3b`（条 66，2026-09-18 拍板）要的正是那一形 —— 「退出行为」那个值住后端所在那台机器的
+    /// （条 66，2026-09-18 拍板）要的正是那一形 —— 「退出行为」那个值住后端所在那台机器的
     /// `~/.cc-monitor/backend.json`、**只有后端写**。那份文件是**我们的**（与 `bin/ccm`、`listen-token` 同一个家），
     /// 不是用户数据 ⇒ 性质「不许改动用户既有数据」**一个字没松**，松的只是人群里那一块误差。
     ///
@@ -809,7 +809,7 @@ mod tests {
     /// | ① | **按文件**登记（不按目录，同第三层那块墓碑的理由） | 相等断言（扫到的第四层模块数 == 本表条数） |
     /// | ② | 动词**闭集**：建那一层目录 · 原子挪 · 失败时删自己的临时文件 | [`OWN_STATE_VERBS`] ＋ `every_fs_call_in_backend_production_is_read_only` |
     /// | ③ | 表外写法照旧禁（覆盖写 / 截断 / 追加 / 复制 / 链接 / 改权限 / 删目录） | [`OWN_STATE_STILL_FORBIDDEN`] ＋ `.open(` 与 `O_EXCL` 配对 |
-    /// | ④ | **只从一扇门进来**：每一份的写口（[`OWN_STATE_WRITERS`]）只被**它自己那扇门**引用（门逐写口登记，今天三扇：`inbound.rs` 命令注册 ·〔RK1〕`relay/listen.rs` 中转起监听 ·〔NT2〕`main.rs` stderr 诊断文件） | `the_own_state_writer_is_reached_through_exactly_one_door` |
+    /// | ④ | **只从一扇门进来**：每一份的写口（[`OWN_STATE_WRITERS`]）只被**它自己那扇门**引用（门逐写口登记，今天三扇：`inbound.rs` 命令注册 ·`relay/listen.rs` 中转起监听 ·`main.rs` stderr 诊断文件） | `the_own_state_writer_is_reached_through_exactly_one_door` |
     /// | ⑤ | **只写那一份文件**：文件名在全部生产代码里只有这一个家 | `control::exit_policy::tests::the_file_name_has_exactly_one_home_in_all_production_code` |
     ///
     /// ⚠ 漏判面：它判不了「挪进去的那一下落在的就是那个名字」（数据流）——
@@ -817,22 +817,22 @@ mod tests {
     pub(super) const OWN_STATE_MODULES: &[(&str, &str)] = &[
         (
         "control/exit_policy.rs",
-        "「退出行为」那个值（`设计/01 §3.3b` 条 66）：后端**自己的**状态文件 \
+        "「退出行为」那个值（条 66）：后端**自己的**状态文件 \
          `~/.cc-monitor/backend.json`，一格布尔。`O_EXCL` 建临时文件 → 写满 → 原子挪过去；\
          目录不在就建那一层（父目录是家目录）；失败删掉自己的临时文件。\
          线上入口只有 `inbound.rs` 的 `exit-policy-set`（＋ 派生的 CLI 面）",
         ),
         (
             "accounts/upstream_select/file_face.rs",
-            "〔RM1a · 第四波〕上游选择那份凭据文件 `apikey-credentials.json` 在**这台机器上**的写口：\
+            "上游选择那份凭据文件 `apikey-credentials.json` 在**这台机器上**的写口：\
              文件名 / 格式 / 落点都是本仓定的、只有中转进程里的上游选择读它 ⇒ 上游选择**自己的**状态，\
-             不是用户数据（判清全文 `调研/第四波记录/RM1a.md §1`）。写的那一刻读盘 → 只改一条账号那一格 → \
+             不是用户数据（判清全文）。写的那一刻读盘 → 只改一条账号那一格 → \
              临时文件出生即只给本人（`creds_core::perm::create_private`，O_EXCL）→ 写满 → 原子挪过去；\
              只建数据目录那一层（`~/.cc-monitor`，经 `own_dir::ensure_private_dir` 只给本人）；失败删自己的临时文件。线上入口只有 `inbound.rs` 的 `apikey-key-set`",
         ),
         (
             "assets/asset_catalog.rs",
-            "〔AS2 · 第四波 4B · V113〕**资产目录** `~/.cc-monitor/assets-catalog.json`：这台看到的 skill / 项目级 MCP \
+            "**资产目录** `~/.cc-monitor/assets-catalog.json`：这台看到的 skill / 项目级 MCP \
              ＋ 别的后端同步来的各台快照。文件名 / 格式 / 落点都是本仓定的、只有后端读它 ⇒ 后端**自己的**状态，不是用户数据\
              （用户的 skill 与 `.mcp.json` 本模块一个字节都不写）。`O_EXCL` 建临时文件 → 写满 → 原子挪过去；只建 \
              `~/.cc-monitor` 那一层；失败删自己的临时文件；读不懂的那份不覆盖。线上入口只有 `inbound.rs` 的 \
@@ -840,7 +840,7 @@ mod tests {
         ),
         (
             "history/history_annotations.rs",
-            "〔C4d · 第四波 4B〕**历史注解**那一份文件（星标 / 改名 / 隐藏 / 上次账号；就是 monitor 从前读写的 \
+            "**历史注解**那一份文件（星标 / 改名 / 隐藏 / 上次账号；就是 monitor 从前读写的 \
              `<monitor 数据目录>/history-metadata.json`，路径由 monitor 起本机后端时交 `CCM_HISTORY_METADATA`）。主会话 09-25 裁 \
              「读写者换成本机常驻后端、文件留在原处」：它是界面的注解、只有我们读写 ⇒ 后端**自己的**状态，不是用户数据\
              （会话记录本身一个字节不碰）。读不懂就拒写 → 只改那一条 → `O_EXCL` 临时文件 → 写满 → 原子挪过去；只建那一层目录；\
@@ -848,21 +848,21 @@ mod tests {
         ),
         (
             "relay/door.rs",
-            "〔RK1 · `INVARIANTS §48.1`〕**中转钥匙** `~/.cc-monitor/relay-key`：中转口进门要出示的那一把。文件名 / 格式 / 落点 \
+            "〔`INVARIANTS §48.1`〕**中转钥匙** `~/.cc-monitor/relay-key`：中转口进门要出示的那一把。文件名 / 格式 / 落点 \
              都是本仓定的、只有中转与起会话那一侧的 shell 读它 ⇒ 中转**自己的**状态，不是用户数据。读回；读不出或形状不对才铸 → \
              临时文件出生即只给本人（`creds_core::perm::create_private`，O_EXCL）→ 写满 → 原子挪过去；只建 `~/.cc-monitor` 那一层；\
              失败删自己的临时文件。入口只有中转**绑上口之后**那一处（`relay/listen.rs::prepare`）—— 不是帧面命令",
         ),
         (
             "stderr_log.rs",
-            "〔NT2 · 第四波 4C · S1〕脱离常驻那条载体的后端自己的 **stderr 诊断文件**（当前 `stderr.log` ＋ 旧的一份 \
+            "脱离常驻那条载体的后端自己的 **stderr 诊断文件**（当前 `stderr.log` ＋ 旧的一份 \
              `stderr.old.log`；路径由 monitor 起脱离那条载体时交 `CCM_BACKEND_STDERR_LOG`，目录由它建好）。只有后端写、\
              是后端自己说的话 ⇒ 后端**自己的**状态，不是用户数据。动词：`O_EXCL` 新建当前那份 · 原子挪成旧的（盖掉上一份旧的）；\
-             不建目录、不截断、不追加。对外口（装它的 `install_from_env` · 交给 `tracing` 的 `stderr_writer`）只从 `main.rs` 进（与〔RK1〕`relay/listen.rs` 一样，是不走 `inbound.rs` 的门）",
+             不建目录、不截断、不追加。对外口（装它的 `install_from_env` · 交给 `tracing` 的 `stderr_writer`）只从 `main.rs` 进（与`relay/listen.rs` 一样，是不走 `inbound.rs` 的门）",
         ),
         (
             "control/resident.rs",
-            "〔HOST · V139〕**常驻监听口的钥匙** `~/.cc-monitor/listen-token`（与本机宿主同一份）＋ 远端常驻后端自己记的 \
+            "**常驻监听口的钥匙** `~/.cc-monitor/listen-token`（与本机宿主同一份）＋ 远端常驻后端自己记的 \
              `~/.cc-monitor/listen-<口>.pid`。文件名 / 格式 / 落点都是本仓定的、只有常驻后端与起它的一方读 ⇒ 后端**自己的**状态，\
              不是用户数据。钥匙：读回；没有才在目录锁里铸 → 临时文件出生即只给本人（`creds_core::perm::create_private`，O_EXCL）→ \
              写满 → 原子挪过去；pid 文件同一条写法（只有绑上了口的那一个写）；只建 `~/.cc-monitor` 那一层；失败删自己的临时文件。\
@@ -870,13 +870,13 @@ mod tests {
         ),
         (
             "common/own_dir.rs",
-            "〔HX1 · 4D · 主会话裁 HX1 拍板项 4〕**后端建自家目录的那一个函数**（`~/.cc-monitor` 与它底下后端自己的几层）：\
+            "〔主会话裁 HX1 拍板项 4〕**后端建自家目录的那一个函数**（`~/.cc-monitor` 与它底下后端自己的几层）：\
              建的那一下就是 0700（`DirBuilder` 带权限位一次建成，只许住本模块）、已在的不动、只建一层。它建的是后端**自己的**目录，\
              不是用户数据。第四层别的几份调它不算越门；第四层之外只有 `control/files_commit.rs` 建暂存区那一处（门）",
         ),
         (
             "assets/skill_ledger.rs",
-            "〔SU1 · 第四波 4C · V116〕**skill 装记录** `~/.cc-monitor/skill-installs.json`：从别的机器装到这台的 skill，装时写进了哪几个文件 \
+            "**skill 装记录** `~/.cc-monitor/skill-installs.json`：从别的机器装到这台的 skill，装时写进了哪几个文件 \
              （各自的摘要 ＋ 装之前在不在）。用户裁「要，只删装时写进去的文件」—— 卸只删这里记着的。文件名 / 格式 / 落点都是本仓定的、\
              只有后端读它 ⇒ 后端**自己的**状态，不是用户数据（skill 目录里的文件本模块一个字节都不写不删）。`O_EXCL` 建临时文件 → \
              写满 → 原子挪过去；只建 `~/.cc-monitor` 那一层；失败删自己的临时文件；读不懂的那份不覆盖。线上入口只有 `inbound.rs` 的 \
@@ -906,38 +906,38 @@ mod tests {
 
     /// 第四层的门：后端生产树里被允许引用写口的文件。**每个写口恰好一扇**（[`OWN_STATE_WRITERS`] 第三列），
     /// 本表是门的全集（用到的门 == 本表，两向）。
-    /// 〔NT2 · S1〕先前只有 `inbound.rs` 一扇、所有写口共用（〔RK1〕同波另加了 `relay/listen.rs`，两路合并时并成这一张）；stderr 诊断文件的写口在进程起来那一刻装、此后跟着 `tracing` 滚（没有命令可走）⇒
+    /// 先前只有 `inbound.rs` 一扇、所有写口共用（同波另加了 `relay/listen.rs`，两路合并时并成这一张）；stderr 诊断文件的写口在进程起来那一刻装、此后跟着 `tracing` 滚（没有命令可走）⇒
     /// 门改成「每个写口自己的那一扇」，`inbound.rs` 那几个写口照旧只许 `inbound.rs` 碰（一格没松）。
     const OWN_STATE_DOORS: &[(&str, &str)] = &[
         (
             "stream/inbound.rs",
-            "命令注册那一处 —— `exit-policy-set` 与〔RM1a〕`apikey-key-set` 各一条（帧面与派生的 CLI 面共用）；\
-             〔AS2〕资产目录那两条（`assets-catalog` / `assets-catalog-merge`）；〔C4d〕历史注解那两条（`history-annotate` / `history-forget`）；\
-             〔SU1〕skill 装记录那一条（`skill-install-record`）。\
+            "命令注册那一处 —— `exit-policy-set` 与`apikey-key-set` 各一条（帧面与派生的 CLI 面共用）；\
+资产目录那两条（`assets-catalog` / `assets-catalog-merge`）；历史注解那两条（`history-annotate` / `history-forget`）；\
+skill 装记录那一条（`skill-install-record`）。\
              前端改那两份只有这一条路（`§3.3b ③`：前端要改它，走一条后端命令）",
         ),
         (
             "relay/listen.rs",
-            "〔RK1〕中转起监听那一处（`prepare`，常驻后端进程内起中转；〔DEL〕`--relay` 那一形删了）：**绑上口之后、说「在听」之前** \
+            "中转起监听那一处（`prepare`，常驻后端进程内起中转；`--relay` 那一形删了）：**绑上口之后、说「在听」之前** \
              拿钥匙。它不是帧面命令 —— 钥匙是中转进门的前提，不是前端要改的值；只有绑上了口的那一个会写 ⇒ 不会两个中转抢着铸",
         ),
         (
             "control/files_commit.rs",
-            "〔HX1〕暂存区 `~/.cc-monitor/staging` 那两层（上传件与存盘块的落点）要建 —— 它是第三层（文件管理写面）的成员、\
+            "暂存区 `~/.cc-monitor/staging` 那两层（上传件与存盘块的落点）要建 —— 它是第三层（文件管理写面）的成员、\
              不是第四层，所以它是 `own_dir` 在第四层之外**唯一**的一扇门；只调建目录那一个函数，不碰第四层别的写口",
         ),
         (
             "main.rs",
-            "〔NT2 · S1〕流模式起来那一刻（一次性子命令全部 `exit` 之后、选载体之前）装 stderr 诊断文件 —— \
+            "流模式起来那一刻（一次性子命令全部 `exit` 之后、选载体之前）装 stderr 诊断文件 —— \
              那一格没有命令可走（要接的正是这个进程此后说的每一句话），宿主交了路径才装；\
-             〔HOST〕远端常驻后端的钥匙与 pid 文件（`--resident-ensure` 子命令 · 常驻载体绑上口之后），也没有帧命令可走",
+远端常驻后端的钥匙与 pid 文件（`--resident-ensure` 子命令 · 常驻载体绑上口之后），也没有帧命令可走",
         ),
     ];
 
-    /// 〔RM1a〕第四层每一份模块的**写口**（`模块路径`, `写口的限定名尾巴`）。**与 [`OWN_STATE_MODULES`] 一一对应**
+    /// 第四层每一份模块的**写口**（`模块路径`, `写口的限定名尾巴`）。**与 [`OWN_STATE_MODULES`] 一一对应**
     /// （两向相等，由 `the_own_state_writer_is_reached_through_exactly_one_door` 钉）。
     /// 读口不在这里 —— 读不改世界，别处引用它合法。
-    /// 〔NT2〕第三列 = 这个写口**唯一**的那扇门（[`OWN_STATE_DOORS`] 里的一行）。
+    /// 第三列 = 这个写口**唯一**的那扇门（[`OWN_STATE_DOORS`] 里的一行）。
     const OWN_STATE_WRITERS: &[(&str, &str, &str)] = &[
         (
             "control/exit_policy.rs",
@@ -951,33 +951,33 @@ mod tests {
             "file_face::answer_",
             "stream/inbound.rs",
         ),
-        // 〔AS2〕三条写口同一个前缀（`answer_catalog` 现扫即记 · `answer_merge` 并进来再记，都会写）⇒ 针取前缀：
+        // 三条写口同一个前缀（`answer_catalog` 现扫即记 · `answer_merge` 并进来再记，都会写）⇒ 针取前缀：
         // 本模块生产段里凡是 `answer_` 开头的公开入口都是写口，只许 `inbound.rs` 碰。
         (
             "assets/asset_catalog.rs",
             "asset_catalog::answer_",
             "stream/inbound.rs",
         ),
-        // 〔C4d〕两条写口同一个前缀（`answer_annotate` · `answer_forget`）⇒ 针取前缀；读口 `last_accounts` / `load` 不在针上。
+        // 两条写口同一个前缀（`answer_annotate` · `answer_forget`）⇒ 针取前缀；读口 `last_accounts` / `load` 不在针上。
         (
             "history/history_annotations.rs",
             "history_annotations::answer_",
             "stream/inbound.rs",
         ),
-        // 〔RK1〕中转钥匙：门是中转起监听那一处，不是命令注册。
+        // 中转钥匙：门是中转起监听那一处，不是命令注册。
         ("relay/door.rs", "door::ensure_key", "relay/listen.rs"),
-        // 〔NT2 · S1〕stderr 诊断文件：写口是装它的那一个函数，门是 `main.rs`。
+        // stderr 诊断文件：写口是装它的那一个函数，门是 `main.rs`。
         // 针取模块前缀：装它（`install_from_env`）与滚它（`stderr_writer`，交给 `tracing`）都会写，都只许 `main.rs` 碰。
         ("stderr_log.rs", "stderr_log::", "main.rs"),
-        // 〔SU1〕一条写口 `answer_record` ⇒ 针取前缀同上两条；读口 `load_at` / `read_at` / `ledger_path` / `digest_of` 不在针上（`skill_install.rs` 读它合法）。
+        // 一条写口 `answer_record` ⇒ 针取前缀同上两条；读口 `load_at` / `read_at` / `ledger_path` / `digest_of` 不在针上（`skill_install.rs` 读它合法）。
         (
             "assets/skill_ledger.rs",
             "skill_ledger::answer_",
             "stream/inbound.rs",
         ),
-        // 〔HOST〕针取模块前缀：`run_ensure`（铸钥匙）与 `record_owner`（记 pid）都会写，都只许 `main.rs` 碰。
+        // 针取模块前缀：`run_ensure`（铸钥匙）与 `record_owner`（记 pid）都会写，都只许 `main.rs` 碰。
         ("control/resident.rs", "resident::", "main.rs"),
-        // 〔HX1〕后端建自家目录的那一个函数：第四层别的几份调它不算（门检查本来就跳过第四层成员）；之外只有暂存区那一处。
+        // 后端建自家目录的那一个函数：第四层别的几份调它不算（门检查本来就跳过第四层成员）；之外只有暂存区那一处。
         (
             "common/own_dir.rs",
             "common::own_dir::ensure_private_dir",
@@ -985,7 +985,7 @@ mod tests {
         ),
     ];
 
-    /// 〔HX1〕只许住 `own_dir.rs` 的两个词：带权限位建目录（`DirBuilder` ＋ unix 的 `DirBuilderExt`）。
+    /// 只许住 `own_dir.rs` 的两个词：带权限位建目录（`DirBuilder` ＋ unix 的 `DirBuilderExt`）。
     /// 刻意不进 [`OWN_STATE_VERBS`]（不替第四层每一份都多放一个建目录的写法）。
     const OWN_DIR_AUX: &[&str] = &["DirBuilder", "DirBuilderExt"];
 
@@ -1007,7 +1007,7 @@ mod tests {
     /// 外层那一块 —— 那只会让判定**更严**，不会更松）。块里第一个改动调用之前，
     /// 必须已经出现一次 [`RESOLVE_CALLS`] 里的调用。第一个 `fn` 之前的改动一律算没过路径解析。
     pub(super) fn unresolved_mutations(prod: &str) -> Vec<String> {
-        // 〔FW5〕切块抽成了 [`fn_chunks`]（列举那条判据共用同一份切法，一条形状一个住址）。
+        // 切块抽成了 [`fn_chunks`]（列举那条判据共用同一份切法，一条形状一个住址）。
         // ⚠ 那份切法里的循环变量刻意**不叫 `line`**：`needle_anchor_registry` 的语料变量识别是**按名字、
         //   整份文件**算的，本文件别处有一句 `let t = line.trim()`（与这里无关的另一个作用域）——
         //   那里要是也叫 `line`，那一句会被连带认成语料派生，两处**旧的** `t.strip_prefix("…")`
@@ -1061,7 +1061,7 @@ mod tests {
 
     /// `fs::` / `File::` 那套白名单里，**只准出现在登记过的白名单模块里**的那几个动词。
     ///
-    /// # 为什么这里是个表，而不是一个 `OpenOptions`〔`K-W2D` 09-10〕
+    /// # 为什么这里是个表，而不是一个 `OpenOptions`
     ///
     /// `OpenOptionsExt` 是「**新建那一刻就把权限给对**」的唯一入口（`.mode(…)`）。
     /// 它**不能**进 `READ_ONLY`（那是只读动词表，它是货真价实的写能力），
@@ -1121,7 +1121,7 @@ mod tests {
         // 所以尚未失效，但「写盘能力不可能悄悄扩散到第二个模块」这句承诺对
         // `src/<subdir>/x.rs` 是不成立的：那种文件既不进默认层也不进白名单层，
         // 而 `default_scanned >= 5` 与 `whitelisted == 1` 照样满足 ⇒ 护栏静默失效。
-        // 🔴 〔步 10 · 2026-09-19〕**人群从「递归走这个目录」换成「由登记派生」。**
+        // 🔴 **人群从「递归走这个目录」换成「由登记派生」。**
         //    上一版在这里自己走一遍 `src_dir` —— 锚是「后端这个二进制的源码目录」。
         //    一个模块搬出去，它**安静地离开人群**，而下面那条断言当时是地板（`>= 5`），
         //    **地板在「变少」这个方向上是瞎的**。换锚的理由整段住 `BACKEND_CORE_MODULES` 头注。
@@ -1146,13 +1146,13 @@ mod tests {
             // 🔴 〔波 5 ㈡〕第三层：改动既有数据，只许在这里，而且每一处先过路径解析。
             if is_mutating_face(&rel) {
                 face += 1;
-                // 〔FIX5〕第三层的开按链形判（[`face_open_problems`]），不再按「`.open(` 与 `.create_new(true)` 逐一配对」。
+                // 第三层的开按链形判（[`face_open_problems`]），不再按「`.open(` 与 `.create_new(true)` 逐一配对」。
                 let odd = face_open_problems(&guard_core::production_code(&src));
                 if !odd.is_empty() {
                     panic!(
                         "第三层模块 {} 里有不合形的开文件：\n  {}\n\n\
                          第三层的开只许三形 —— `O_EXCL` 新建 · 只读 · 就地覆盖写（只许 `overwrite_text` 一处）—— \
-                         而且链头必须是 `files_write::opener()`（全程 `O_NOFOLLOW`，`设计/60 §7` 第 7 条）。",
+                         而且链头必须是 `files_write::opener()`（全程 `O_NOFOLLOW`）。",
                         path.display(),
                         odd.join("\n  ")
                     );
@@ -1161,7 +1161,7 @@ mod tests {
                     panic!(
                         "第三层模块 {} 含 `{pat}`。\n\
                          这一层放行的改动动词是一个**闭集**（`MUTATING_FACE_VERBS`），\n\
-                         `{pat}` 不在里面 —— 要加，先论证它为什么过得了「一条路径一道路径解析」（〔FN1〕原话「一条路径一道围栏」）。",
+                         `{pat}` 不在里面 —— 要加，先论证它为什么过得了「一条路径一道路径解析」（原话「一条路径一道围栏」）。",
                         path.display()
                     );
                 }
@@ -1180,7 +1180,7 @@ mod tests {
                         bad.join("\n  ")
                     );
                 }
-                // 〔FW5〕列举之后的改动，在列举之后必须再过一次路径解析（[`MUTATING_FACE_LISTERS`] 头注）。
+                // 列举之后的改动，在列举之后必须再过一次路径解析（[`MUTATING_FACE_LISTERS`] 头注）。
                 let bad = mutations_after_listing_unresolved(&guard_core::production_code(&src));
                 if !bad.is_empty() {
                     panic!(
@@ -1194,7 +1194,7 @@ mod tests {
                 continue;
             }
 
-            // 〔B2〕第四层：后端自有状态文件。
+            // 第四层：后端自有状态文件。
             if is_own_state(&rel) {
                 own += 1;
                 if let Err(why) = open_calls_are_all_exclusive(&prod) {
@@ -1268,10 +1268,10 @@ mod tests {
     /// ⚠ **名字里那个「一个」是 `K-W2D` 09-10 改掉的**：接线那一拍来了，
     /// 白名单从一个模块变成一张表（理由整段住 [`WRITE_WHITELIST_MODULES`] 头注）。
     /// 承重的性质**一个字没松** —— 它仍然是相等断言，只是分母改成现算的表长。
-    /// 🔴 〔步 10 · 2026-09-19〕**换锚那一拍的反空真自检 —— 三向。**
+    /// 🔴 **换锚那一拍的反空真自检 —— 三向。**
     ///
-    /// `99 §2.5 P2` 逐字要求：「换锚时必须同拍补一条**反空真自检**（人群非空 · 模块列表…）」，
-    /// 理由引的是 `16 §5.2`：「扫描型测试拿不到人群时会扫空集 ⇒ 恒绿，
+    /// 要求：「换锚时必须同拍补一条**反空真自检**（人群非空 · 模块列表…）」，
+    /// 理由引的是：「扫描型测试拿不到人群时会扫空集 ⇒ 恒绿，
     /// **而恒绿看起来和真绿一模一样**」。
     ///
     /// # 三向各治一种失效，缺一不可
@@ -1337,7 +1337,7 @@ mod tests {
         );
 
         // ── B：分区恒等 ──────────────────────────────────────────────────
-        // `main.rs` = 分派那一半（规格 `00 §1.5.4` 逐字留在 bin）；
+        // `main.rs` = 分派那一半（规格留在 bin）；
         // `lib.rs`  = 模块声明与身份，它自己不属于任何模块。两份逐字排除。
         const NOT_IN_ANY_MODULE: &[&str] = &["main.rs", "lib.rs"];
         let mut on_tree: Vec<std::path::PathBuf> = Vec::new();
@@ -1387,10 +1387,10 @@ mod tests {
     fn backend_write_capability_is_confined_to_the_registered_modules() {
         let src_dir = crate::guard_support::src_root();
         let (default_scanned, whitelisted, face, own) = scan(&src_dir);
-        // 🔴 〔步 10 · 2026-09-19〕**地板换成恒等。**
+        // 🔴 **地板换成恒等。**
         //    上一版逐字是 `default_scanned >= 5` —— 它在「变多」那个方向上有意义，
         //    在「**变少**」这个方向上完全是瞎的：人群从 64 掉到 6，它照样绿。
-        //    而「人群悄悄少一块」正是 `4b` 这类搬家最可能的失效形状（`16 §5.2`）。
+        //    而「人群悄悄少一块」正是 `4b` 这类搬家最可能的失效形状。
         //    ⇒ 改成与现打人群对账：扫到的默认层 ＋ 白名单层 ＋ 跳过的本文件 == 登记派生的份数。
         let skipped_self = core_files()
             .iter()
@@ -1430,7 +1430,7 @@ mod tests {
              多一个不可能从这里来（没登记的模块走默认层，那一层会先红）。",
             MUTATING_FACE_MODULES.len()
         );
-        // 〔B2〕第四层同形：相等，不是地板。
+        // 第四层同形：相等，不是地板。
         assert_eq!(
             own,
             OWN_STATE_MODULES.len(),
@@ -1440,11 +1440,11 @@ mod tests {
         );
     }
 
-    /// 🔴 〔B2〕**第四层判据 ④：写口只从一扇门进来 —— 零命中守卫。**
+    /// 🔴 **第四层判据 ④：写口只从一扇门进来 —— 零命中守卫。**
     ///
     /// 针是写口的**限定名**（[`OWN_STATE_WRITERS`] 那张表，逐份一根）。读口（`exit_policy::last_client_left` /
     /// `answer_read` · `file_face::answer_read`）不在针里 —— 读不改世界，`main.rs` 流结束那一臂正是读口的合法调用点。
-    /// 〔RM1a〕第四层从一份变成两份：每一根针各自的引用处都必须**恰好**是那扇门（逐根两向相等），
+    /// 第四层从一份变成两份：每一根针各自的引用处都必须**恰好**是那扇门（逐根两向相等），
     /// 而写口表与模块表两向相等（多登一份模块而没说写口是谁 ⇒ 红）。
     #[test]
     fn the_own_state_writer_is_reached_through_exactly_one_door() {
@@ -1460,7 +1460,7 @@ mod tests {
         for (_, needle, door) in OWN_STATE_WRITERS {
             own_state_door_matches(&root, needle, door);
         }
-        // 〔RK1〕门表与写口表里出现的门两向相等：登记了一扇没人走的门 / 写口指着一扇没登记的门 ⇒ 红。
+        // 门表与写口表里出现的门两向相等：登记了一扇没人走的门 / 写口指着一扇没登记的门 ⇒ 红。
         let doors_used: std::collections::BTreeSet<&str> =
             OWN_STATE_WRITERS.iter().map(|(_, _, d)| *d).collect();
         let doors_registered: std::collections::BTreeSet<&str> =
@@ -1474,16 +1474,16 @@ mod tests {
         }
     }
 
-    /// 〔HX2〕第四层里**不做读—改—写、所以不拿跨进程锁**的那几份（`(模块, 为什么)`）。每一条都要答「两个进程同时写它会不会丢东西」。
+    /// 第四层里**不做读—改—写、所以不拿跨进程锁**的那几份（`(模块, 为什么)`）。每一条都要答「两个进程同时写它会不会丢东西」。
     const OWN_STATE_LOCK_EXEMPT: &[(&str, &str)] = &[(
         "stderr_log.rs",
-        "〔NT2 · S1〕这是后端自己的 stderr **日志落点**，不是一份被读—改—写的状态：写它的只有 fd 2 指着它的那一个进程\
+        "这是后端自己的 stderr **日志落点**，不是一份被读—改—写的状态：写它的只有 fd 2 指着它的那一个进程\
          （路径由 monitor 起脱离那条载体时交，一台一个常驻后端 ⇒ 一份一个写者），`O_EXCL` 新建 ＋ 滚动时原子挪；\
          没有「读出来、改一格、整份写回」那一步 ⇒ 没有「后写的盖掉先写的」可丢。在每一行 `tracing` 写之前拿目录锁只会白加一次系统调用",
     ),
     (
         "common/own_dir.rs",
-        "〔HX1 · 4D〕后端建自家目录的那一个函数（`ensure_private_dir`）：只有「建一层目录、已在不动」这一个动词，没有一份文件被读—改—写；\
+        "后端建自家目录的那一个函数（`ensure_private_dir`）：只有「建一层目录、已在不动」这一个动词，没有一份文件被读—改—写；\
          而且它正是拿锁之前那一步（锁的就是它建出来的目录）—— 它自己再拿锁是先有鸡还是先有蛋",
     )];
 
@@ -1495,7 +1495,7 @@ mod tests {
          后写的会把先写的那个号从清单里抹掉。锁的是账号库目录本身",
     )];
 
-    /// 🔴 〔HX2 · 第四波 4D〕**第四层判据 ⑥：每一份都在跨进程锁里写 —— 人群两向相等。**
+    /// 🔴 **第四层判据 ⑥：每一份都在跨进程锁里写 —— 人群两向相等。**
     ///
     /// 要求住址：题面 HX2 逐字「后端自有状态文件跨进程锁（`flock` 一类，Windows 对应）」；审计 `E-compat.md` §E6 · E14 · §3.1
     /// （第四层读—改—写只有进程内锁 ⇒ 两个后端进程同时写，后写的整份盖掉先写的；资产目录首建生出幽灵机器；skill 装记录丢了补不回来）。
@@ -1637,7 +1637,7 @@ mod tests {
         }
     }
 
-    // ═══════════════════ 第三层的判据〔波 5 ㈡ · 2026-09-23〕═══════════════════
+    // ═══════════════════ 第三层的判据〔波 5 ㈡〕═══════════════════
 
     /// 后端生产树里**引用得到第三层模块**的文件（仓库相对路径，不含那个模块自己）。
     ///
@@ -1789,7 +1789,7 @@ mod tests {
             std::fs::read_to_string(crate::guard_support::src_root().join("stream/inbound.rs"))
                 .expect("读 inbound.rs");
         let prod = guard_core::production_code(&src);
-        // 〔F7c · 第三波 09-24〕第三层从此两个模块 ⇒ 针按登记表**派生**（每个模块一根），不手写第二份。
+        // 第三层从此两个模块 ⇒ 针按登记表**派生**（每个模块一根），不手写第二份。
         let needles: Vec<String> = MUTATING_FACE_MODULES
             .iter()
             .map(|(p, _)| {
@@ -1817,7 +1817,7 @@ mod tests {
             chunks >= 15,
             "只切出 {chunks} 块 `CommandSpec` —— 切法坏了，本条在空转"
         );
-        // 〔SR1b · 第四波〕**硬臂那一半**：`Run::Builtin` 的命令不在 `CommandSpec` 块里带处理器，
+        // **硬臂那一半**：`Run::Builtin` 的命令不在 `CommandSpec` 块里带处理器，
         //   它们的处理住 `dispatch` 的分派臂 ⇒ 按「一条臂 = 从 `"名字" … =>` 那一行起、到下一条臂之前」切块，
         //   臂里引用了写面的，取它模式里的**全部**名字（或模式 `"a" | "b" =>` 一臂多名）。
         //   不补这一半，传输台那四条硬臂够得到写面而本条看不见 —— 与上面那半同一个问题，换了一种写法。
@@ -1851,11 +1851,11 @@ mod tests {
         );
     }
 
-    /// 🔴🔴 **〔RW1 · 第四波 09-24〕删历史会话那一条自己的那一道 —— 它恰好住一处。**
+    /// 🔴🔴 **删历史会话那一条自己的那一道 —— 它恰好住一处。**
     ///
     /// 用户裁「只允许后端的文件管理部分写文件」「也管本机」之后，删历史会话（本机此前是 monitor
     /// 进程直删、远端此前是 SFTP 直删）改成后端**一条明确的命令** `files-delete-session`，**只收 sid**。
-    /// 〔FN1 · V119〕从前这里写「写面其余每一条都被会话文件围栏挡在那几份文件外面，只有这一条能删会话文件」——
+    /// 从前这里写「写面其余每一条都被会话文件围栏挡在那几份文件外面，只有这一条能删会话文件」——
     /// 用户「文件管理器全部都可以改. 不需要任何围栏」之后，文件管理写面也删得掉会话文件；
     /// 本条钉的仍是删会话**那一条**的形状（只收 sid、自己那一道恰好一处），它一个字节没动。
     ///
@@ -1863,7 +1863,7 @@ mod tests {
     ///
     /// 1. 例外那根围栏针 `fenced_session_file(` 在后端生产树里**恰好一处调用**（不算它自己的定义），
     ///    而且那一处住在 `delete_session_with` 的函数体里；
-    /// 2. 适配层那个「按 sid 找要删的那一份」的入口，后端生产树里**只有**适配层自家注册表引用它，注册表的窄口只有门引用（〔MOD〕改经门）；
+    /// 2. 适配层那个「按 sid 找要删的那一份」的入口，后端生产树里**只有**适配层自家注册表引用它，注册表的窄口只有门引用（改经门）；
     /// 3. 写面登记里那条命令的 `args` **恰好是** `["sid"]`；
     /// 4. 真跑：多给一个 `path` ⇒ `bad_args`（「只收 sid」是行为，不只是登记）。
     #[test]
@@ -1923,7 +1923,7 @@ mod tests {
             "\n删会话那一道（`{call}`）必须**恰好一处调用**、住 `delete_session_with`。\n\
              多出来的每一处都是把「能删会话文件」借给了第二个函数。"
         );
-        // 〔MOD · 子步 4〕落点那一问改经门：适配层那个入口只有它自家注册表那一行引用，
+        // 落点那一问改经门：适配层那个入口只有它自家注册表那一行引用，
         //   注册表的窄口（`agents::locate_session_for_delete`）只有门（命令注册那一处）引用、递给写面。
         assert_eq!(
             locators.into_iter().collect::<Vec<_>>(),
@@ -1959,16 +1959,16 @@ mod tests {
     }
 
     /// ★ 第三层登记的每一条都**真的在盘上、真的在改**（幽灵检查，照白名单那条同形）。
-    /// 🔴🔴 **〔FN1 · 第四波 4C · 2026-09-25〕文件管理写面不再问「这是不是一份会话记录」。**
+    /// 🔴🔴 **文件管理写面不再问「这是不是一份会话记录」。**
     ///
-    /// 住址：用户裁决 **V119**（`设计/99 §1`）原话「**文件管理器全部都可以改. 不需要任何围栏**」；
+    /// 住址：用户裁决 **V119**原话「**文件管理器全部都可以改. 不需要任何围栏**」；
     /// 本层判准 ③ 因此从「先过围栏」换成「先过路径解析」（本文件头注第三层那一节）。
     ///
     /// # 两向相等，人群按事实取样
     ///
     /// 人群：后端生产树里**调**会话形状判定（`is_session_record_path(` / `is_session_record_file(`，
     /// 不算定义行）的 `(文件, 所在函数)`，逐行现打。
-    /// 期望：删历史会话那一条要的三处 —— 写面 `fenced_session_file`（「要删的必须**是**会话」；〔MOD〕经门递进来的 `SessionPort.is_record` 问）·
+    /// 期望：删历史会话那一条要的三处 —— 写面 `fenced_session_file`（「要删的必须**是**会话」；经门递进来的 `SessionPort.is_record` 问）·
     /// 适配层 `session_file_for_delete_in`（按 sid 找到之后再判一次形状）· 适配层 `is_session_record_path`
     /// （`&Path` 门面，调字符串那一份）。期望取自 `files-delete-session` 那条既有裁决（RW1「只收 sid」），
     /// 不从判定本家现推（异源）。
@@ -1979,7 +1979,7 @@ mod tests {
     #[test]
     fn the_file_manager_face_never_asks_the_session_shape() {
         fn session_shape_calls(rel: &str, prod: &str) -> Vec<(String, String)> {
-            // 〔MOD · 子步 4〕写面今天经门递进来的窄口问（`SessionPort.is_record`），不再直呼适配层那个名字 ⇒ 第三根针。
+            // 写面今天经门递进来的窄口问（`SessionPort.is_record`），不再直呼适配层那个名字 ⇒ 第三根针。
             let needles = [
                 format!("is_session_record_{}(", "path"),
                 format!("is_session_record_{}(", "file"),
@@ -2086,7 +2086,7 @@ mod tests {
         }
     }
 
-    /// 🔴〔FW5 · 第四波〕**第三层里列目录的函数，集合恒等于登记表（两向）。**
+    /// 🔴**第三层里列目录的函数，集合恒等于登记表（两向）。**
     ///
     /// 两侧异源：一侧是两份模块的**源码文本**（剥注释后按函数切块、找 [`LISTING_CALL`]），
     /// 一侧是 [`MUTATING_FACE_LISTERS`] 这张手写登记表。
@@ -2123,7 +2123,7 @@ mod tests {
         }
     }
 
-    /// 〔FIX5〕第三层里**跟链接**的开法（没经 `files_write::opener()`、不带 `O_NOFOLLOW`）—— 逐条登记 `(模块, 针, 处数, why)`。
+    /// 第三层里**跟链接**的开法（没经 `files_write::opener()`、不带 `O_NOFOLLOW`）—— 逐条登记 `(模块, 针, 处数, why)`。
     const FACE_FOLLOWING_OPENS: &[(&str, &str, usize, &str)] = &[
         (
             "control/transfer.rs",
@@ -2145,7 +2145,7 @@ mod tests {
         "fs::write(",
     ];
 
-    /// 设计/99 §2.2 · 设计/60 §7 第 7 条：「全程 `O_NOFOLLOW`」—— 第三层开文件只有一个出处。
+    /// 「全程 `O_NOFOLLOW`」—— 第三层开文件只有一个出处。
     ///
     /// ① 五个模块生产段（剥注释）里 `OpenOptions::new()` 恰一处、住 `files_write::opener`，且那一处带 `NO_FOLLOW`；
     /// ② 每一次 `.open(` 的链头都是 `opener()`（由 `scan` 里的 [`face_open_problems`] 判，这里只判它今天零条）；
@@ -2262,7 +2262,7 @@ mod tests {
             1,
             "一个函数里的路径解析替另一个函数作了保 —— 切块失效"
         );
-        // 〔FW5〕⑤ 列举之后没再过路径解析 —— 阳性：顶上判一次、列出来整摞删（③ 对这一形是绿的）。
+        // ⑤ 列举之后没再过路径解析 —— 阳性：顶上判一次、列出来整摞删（③ 对这一形是绿的）。
         let top_only = "pub fn f(r: &Path) {\n    let t = resolve_in_root(r, \"a\")?;\n    for e in std::fs::read_dir(&t)? {\n        std::fs::remove_file(e?.path()).ok();\n    }\n}\n";
         assert!(
             unresolved_mutations(top_only).is_empty(),
@@ -2320,7 +2320,7 @@ mod tests {
                 "默认层认不出 `fs::{v}` —— 那别的面写它就不会红"
             );
         }
-        // 〔FIX5〕开文件的链形：三形各认得出、别的一律 Other；链头不是 opener() 的报出来；只读的开不算改动。
+        // 开文件的链形：三形各认得出、别的一律 Other；链头不是 opener() 的报出来；只读的开不算改动。
         let shape = |c: &str| open_chain_shape(c, c.find(".open(").expect("样本里要有 .open(")).0;
         assert_eq!(
             shape("let f = opener().write(true).create_new(true).open(&p)?;"),
@@ -2375,7 +2375,7 @@ mod tests {
     /// 处置遵循 §41.4 第 1 条纪律：**撞了改注释措辞，别改护栏**（本次就是把注释里的
     /// 孤立大括号改成中文名词）。
     ///
-    /// ⚠ 〔`99 §2.5 P9` 2026-09-18〕剥法本体已收进 [`guard_core::production_source`]
+    /// ⚠ 剥法本体已收进 [`guard_core::production_source`]
     /// （本文件那份便宜近似退役了，理由住本模块头注）。**本条一个字都没放宽** ——
     /// 它量的仍然是「剥完的生产段里不许残留测试属性」，只是尺子换成了那个唯一住址。
     #[test]
@@ -2468,7 +2468,7 @@ mod tests {
             "真调用必须满足必需项"
         );
     }
-    /// ★★ 〔audit-0805 08-06〕**把只读红线从「列坏 API」翻成「列好 API」。**
+    /// ★★ **把只读红线从「列坏 API」翻成「列好 API」。**
     ///
     /// # 原来那条漏了什么（实测，不是设想）
     ///
@@ -2503,24 +2503,24 @@ mod tests {
             // P4f：`PermissionsExt` 只用来**读** `mode()`（判可执行位，找 cc-bus 命令用）。
             // ⚠ 与它同族的 `set_permissions` **不在**表里，那条仍然是写、仍然会红。
             "PermissionsExt",
-            // 〔W5-FILES · 第五波〕`MetadataExt`：unix 那个读元数据扩展，只用来**读**设备号（`dev()`）。
-            //   `设计/60 §3.7` 逐字「设备号要走 `platform/`」⇒ 读它的口住 `platform::paths::device_of`（默认层），
+            // `MetadataExt`：unix 那个读元数据扩展，只用来**读**设备号（`dev()`）。
+            // 「设备号要走 `platform/`」⇒ 读它的口住 `platform::paths::device_of`（默认层），
             //   算目录大小 / 建索引「不进别的文件系统」靠它。它此前只在第三层专属表（`MUTATING_FACE_AUX`）里 ——
             //   FW5 那时「不替全后端放一个读动词」；设计要它进 `platform/` ⇒ 挪到这里，第三层那张表随之摘掉它（4 → 3）。
             //   ⚠ 它同族的写（`set_permissions` 等）不在本表，照旧红。
             "MetadataExt",
-            // 〔步 23b · 09-19〕`canonicalize`：**解路径，纯读**（`control/files_write.rs`
-            // 的路径解析② 靠它把父目录解成真路径，再判一次「有没有跑出目标根」；〔FN1〕「落进那几棵树」那一判 V119 拿掉了）。
+            // `canonicalize`：**解路径，纯读**（`control/files_write.rs`
+            // 的路径解析② 靠它把父目录解成真路径，再判一次「有没有跑出目标根」；「落进那几棵树」那一判 V119 拿掉了）。
             // ⚠ 加这一条**不是**为了让写变容易 —— 恰恰相反，它买的是**多一道拒绝**。
             // ⚠ 刻意走 `fs::` 这个前缀而不是同义的方法写法：后者**这条判据看不见**，
             //    靠换调用形状绕过白名单正是本护栏 08-06 逮到过的那种逃生口。
             "canonicalize",
-            // 〔HOST〕`read_link`：读 `/proc/<pid>/exe`（停远端常驻后端之前核身份，`platform::proc::exe_of`）—— 纯读。
+            // `read_link`：读 `/proc/<pid>/exe`（停远端常驻后端之前核身份，`platform::proc::exe_of`）—— 纯读。
             "read_link",
         ];
         let root = crate::guard_support::src_root();
         let mut bad: Vec<String> = Vec::new();
-        // ★〔audit-0805 08-06〕**先堵逃生口**：把 `std::fs` 的条目导入进作用域，
+        // ★**先堵逃生口**：把 `std::fs` 的条目导入进作用域，
         // 调用点就不再带 `fs::` 前缀，下面那套按 `fs::` / `File::` 锚定的白名单**整条看不见**。
         //
         // 实测：往 `inbound.rs` 写
@@ -2636,11 +2636,11 @@ mod tests {
                         {
                             continue;
                         }
-                        // 〔B2〕第四层那个闭集：只在第四层模块里放行。
+                        // 第四层那个闭集：只在第四层模块里放行。
                         if OWN_STATE_VERBS.contains(&full.as_str()) && is_own_state(&rel) {
                             continue;
                         }
-                        // 〔HX1〕带权限位建目录：只在建自家目录的那一个模块里放行。
+                        // 带权限位建目录：只在建自家目录的那一个模块里放行。
                         if OWN_DIR_AUX.contains(&full.as_str()) && rel == "common/own_dir.rs" {
                             continue;
                         }
@@ -2668,7 +2668,7 @@ mod tests {
         assert!(
             bad.is_empty(),
             "backend 生产段出现了**不在只读白名单里**的文件系统调用：\n{}\n\n\
-             ⚠ 红线（主计划 I7，`D1` 收窄后）：backend **进程自身**不许改动用户既有数据；\n\
+             ⚠ 红线（`D1` 收窄后）：backend **进程自身**不许改动用户既有数据；\n\
              新增文件须 `O_EXCL` 且只许在白名单模块里。\n\
              ★ 本条是白名单 —— 它挡的不只是已知的写 API，也挡**没人想到过**的那些：\n\
              08-06 实测，上面那条黑名单放过了 `os::unix::fs::symlink` 与 `fs::set_permissions`\n\
@@ -2690,7 +2690,7 @@ mod tests {
 /// （`§0.2` 早就登记了这件事：「『backend 只读』这个词今天已经在骗人」）。
 /// 于是「起一个会写用户数据的进程」这条路，**机器护栏永远不会红**。
 ///
-/// D1 的裁决（主计划 §5）选了①：**铁律收窄为「backend 进程自身不许写用户既有数据」**，
+/// D1 的裁决选了①：**铁律收窄为「backend 进程自身不许写用户既有数据」**，
 /// 间接写不算 —— 但推荐里带一个**强制条件**：
 ///
 /// > 必须同时：在 §41.6 写下「间接写的责任在被起的那个程序，backend 的责任是不越权
@@ -2709,7 +2709,7 @@ mod tests {
 mod spawn_registry {
     /// 生产段允许起的进程，**逐条登记**。
     ///
-    /// # 〔`K-G6` `KG64`〕三元组扩成**五元组**：多出来的两栏是「走的是哪一格」与「解锁条件」
+    /// # 三元组扩成**五元组**：多出来的两栏是「走的是哪一格」与「解锁条件」
     ///
     /// `(文件, 起什么, why——做什么、为什么不算违反收窄后的铁律, 格——`§0a` 四情形表里的哪一格, unlock——什么条件满足之后这一条就能删)`
     ///
@@ -2727,7 +2727,7 @@ mod spawn_registry {
         (
             "dial/ssh_config.rs",
             "ssh",
-            "〔MIG-1 · `设计/99 §2.1 ⑯`〕`ssh -G <别名>`：OpenSSH 客户端**只解析** `~/.ssh/config` 打出有效参数、不建连接、不写任何文件。\
+            "`ssh -G <别名>`：OpenSSH 客户端**只解析** `~/.ssh/config` 打出有效参数、不建连接、不写任何文件。\
              别名先过 allowlist、`-` 开头另挡，argv 直传不过 shell。从 monitor 搬来（解读与拨号同一个家）。",
             "缩性质",
             "自己解析 ssh_config（Include / Match / 通配 / 默认值）的那天 —— 今天交给 `ssh -G` 是因为它最准。",
@@ -2780,7 +2780,7 @@ mod spawn_registry {
             "tmux",
             "F04a：`kill-session`（argv 直传）。**破坏性**，但改的是 **tmux server 的运行期状态**，\
              不是后端自己写用户既有数据；且必须先过 §34 三道门（Gate 3 = 单窗口）。\
-             〔SH1 · D-g〕同一份文件另有一处**只读**的 `list-panes -F '#{pane_pid}'`（过门之后、杀之前读这个会话的 pane 根进程 pid，\
+同一份文件另有一处**只读**的 `list-panes -F '#{pane_pid}'`（过门之后、杀之前读这个会话的 pane 根进程 pid，\
              杀成之后按它从 cc-bus 名册认人 ⇒ `cc-kill` 经 `plugin/invoke.rs` 那条转调，写面记在那一条里）",
             "缩性质",
             "§34 那三道门有任何一道被拆掉、或「杀会话」不再由后端发起的那天，\
@@ -2844,7 +2844,7 @@ mod spawn_registry {
              这一处的立身之本就是「列全部会话只有一处」，加一个子命令就要回来重判。",
         ),
         (
-            // 〔RESYNC · 09-27〕搬家不是新增：`Command::new("tmux")` 从 `identity_tag.rs` 挪进它的 `door`
+            // 搬家不是新增：`Command::new("tmux")` 从 `identity_tag.rs` 挪进它的 `door`
             //   （测试构建整个换成假 tmux，`INVARIANTS §48.3`）；`set-option` 那条 argv 仍在 `identity_tag.rs::set_sid`。
             "control/identity_tag/door.rs",
             "tmux",
@@ -2903,7 +2903,7 @@ mod spawn_registry {
              ⚠⚠ 而这正是这条键的病在**第二个使用者**身上复发：\
              键仍是 `<非字面量>`、仍分不出是哪个插件 ⇒ **加这一条不会红**，\
              是人回来读了这一段才写下的。下一个使用者同理。\
-             ★★ **〔`A3` 第二波 09-24〕第三个使用者到了，逐条记在这里** —— 上游选择 \
+             ★★ **第三个使用者到了，逐条记在这里** —— 上游选择 \
              `accounts/iso.rs`经这一处口起**本机 `cc-acct-iso shellinit`**（`--acct-iso-shellinit`）。\
              写面：**只读**。今天这个使用者已不在：账号库改由后端自己建，那份外部脚本与 `accounts/iso.rs` 一起删了。\
              ⚠ 同样**加这一条不会红**（键仍是 `<非字面量>`；下面那条「恰好四条」只数 \
@@ -2914,7 +2914,7 @@ mod spawn_registry {
              `control/cc_bus.rs` 今天经它转调**恰好四条**，加第五条会红。",
         ),
         (
-            "platform/shell/mod.rs", // 〔OSA · V156〕`platform/shell.rs` 成了目录模块
+            "platform/shell/mod.rs", // `platform/shell.rs` 成了目录模块
             "sh",
             "`K-R55`（09-11）：**全 crate 唯一一处把命令串交给 POSIX shell 的适配层口**。\
              今天经它送出去的是 `observe/watcher.rs` 那两跳（`command -v tmux && tmux ls` \
@@ -2935,16 +2935,16 @@ mod spawn_registry {
              要加就先回来把这一栏的「恰好两处」重新数一遍。",
         ),
         (
-            "platform/shell/mod.rs", // 〔OSA · V156〕`platform/shell.rs` 成了目录模块
+            "platform/shell/mod.rs", // `platform/shell.rs` 成了目录模块
             "powershell.exe",
-            "〔MIG-3a · `设计/99 §2.1 ⑬`〕别名方言问 PowerShell **内建别名**（`Get-Alias`，固定脚本、不吃用户输入、`-NoProfile` \
-             `-NonInteractive`、不弹窗）—— 撞了的名字定义了也敲不到（`71 §8` 第 8 条）。从 monitor `shell_dialect.rs` 搬来：\
+            "别名方言问 PowerShell **内建别名**（`Get-Alias`，固定脚本、不吃用户输入、`-NoProfile` \
+             `-NonInteractive`、不弹窗）—— 撞了的名字定义了也敲不到。从 monitor `shell_dialect.rs` 搬来：\
              规则进了那台后端，问的是**那台自己**的 PowerShell。**只读**，只在说 PowerShell 的那台（Windows）上起，\
-             进程内缓存一次。调用方 `platform/shell/dialect.rs::ask_get_alias`（〔OSA〕方言住适配层）。\
-             〔WF1 · L · `设计/99 §2.3`〕同一处口（`platform/shell/mod.rs::powershell_command`）又多两种**固定脚本**的用途：\
+             进程内缓存一次。调用方 `platform/shell/dialect.rs::ask_get_alias`（方言住适配层）。\
+同一处口（`platform/shell/mod.rs::powershell_command`）又多两种**固定脚本**的用途：\
              ① 现问执行策略（`Get-ExecutionPolicy` 三行，只读；`aliases-read` 每份 5.1 的 `$PROFILE` 候选）；\
              ② **写一格用户设置**：`Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned`（HKCU 那一档，值写死），\
-             只由 `powershell-policy-set` 跑 —— 界面在用户点了、确认了之后才发（主会话 09-29 裁「只在用户点击并确认后执行，不代改」）。",
+             只由 `powershell-policy-set` 跑 —— 界面在用户点了、确认了之后才发（「只在用户点击并确认后执行，不代改」）。",
             "缩性质",
             "有别的办法读到那台 PowerShell 的内建别名表与执行策略（不起进程）的那天摘掉只读那两种。\
              ⚠ 写的那一种只许是上面那一句固定脚本，不许收界面给的策略值。",
@@ -2952,17 +2952,17 @@ mod spawn_registry {
         (
             "platform/shell/mod.rs",
             "pwsh.exe",
-            "〔WF1 · L · `设计/99 §2.3`〕PowerShell 7 那一代（它的 `$PROFILE` 在 `Documents/PowerShell/`，执行策略与 5.1 分开存）：\
+            "PowerShell 7 那一代（它的 `$PROFILE` 在 `Documents/PowerShell/`，执行策略与 5.1 分开存）：\
              同上一条的 ① ② 两种固定脚本（现问执行策略 · 用户确认后设当前用户 `RemoteSigned`），只在 7 的 profile 目录在时问。",
             "缩性质",
             "有别的办法不起进程就读到 PowerShell 7 的执行策略的那天摘掉只读那一种；\
              ⚠ 写的那一种只许是上一条那一句固定脚本，不许收界面给的策略值。",
         ),
-        // 〔DEL〕`relay/machine.rs` 那一行（远端起一个脱离的 `--relay`）摘了：中转只住常驻后端进程里（V139），那一处起法随之删。
+        // `relay/machine.rs` 那一行（远端起一个脱离的 `--relay`）摘了：中转只住常驻后端进程里，那一处起法随之删。
         (
             "control/resident.rs",
             "<非字面量>",
-            "〔HOST · V139〕远端那台的常驻后端由那台的 `--resident-ensure` 起：**本后端这个二进制自己**（`current_exe`）\
+            "远端那台的常驻后端由那台的 `--resident-ensure` 起：**本后端这个二进制自己**（`current_exe`）\
              以常驻载体起（stdio 全空、自成进程组、钥匙经文件交）。被起的就是流模式那一臂，它自己的写面由本护栏照样管；\
              **不是**后端进程自身写用户既有数据。只从 CLI 子命令 `--resident-ensure` 一条进来（monitor 经链路 capture 跑）。",
             "缩性质",
@@ -3016,7 +3016,7 @@ mod spawn_registry {
             while let Some(rel) = prod[from..].find("Command::new(") {
                 let at = from + rel + "Command::new(".len();
                 let tail = &prod[at..];
-                // ★★〔P4f 08-13〕**非字面量也要记**。
+                // ★★**非字面量也要记**。
                 //
                 // 原来这里是「往后找第一个引号」——`Command::new(&bin)` 这种写法下，
                 // 那个引号可能在**几十行之外**的某个无关字符串上，于是：
@@ -3035,7 +3035,7 @@ mod spawn_registry {
                 from = at;
             }
         }
-        // ★ **相等，不是地板**〔audit-0805 F18 下半〕。
+        // ★ **相等，不是地板**。
         //
         // 原来这里是 `found.len() >= 4`。V6 逐行核出：**地板式判据在「数字变大」这个方向上
         // 不会红**，而这里恰恰是变大 —— 真值早已是 6，而它旁边那两段散文
@@ -3072,22 +3072,22 @@ mod spawn_registry {
         //    那是按「新增一处起进程点」估的，而本件真实新增的是**两处**：看门狗是另一个程序，
         //    抽取器按 `Command::new(` 的**出现次数**数，不是按 `(文件, 程序)` 去重后的键数。
         //    ⇒ 这里记 13，并把差额登记在件文件 `§8`。
-        // 🔴 〔`设计/50` 删用量〕**13 → 11**：`control/oneshot_session.rs` 整份文件随用量 ③ 轴
+        // 🔴 〔删用量〕**13 → 11**：`control/oneshot_session.rs` 整份文件随用量 ③ 轴
         //    （探针会话）退役 ⇒ 它那两处起进程点（`Command::new("tmux")` ＋ 看门狗那个
         //    `Command::new(<非字面量>)`）一起没了，`ALLOWED` 里那两条同拍摘掉。
         //    ⚠ **变少这一次是真的少了，不是抽取坏了**：`control/capture_pane.rs` 那一处还在
         //    （拉屏预览在用），下面 `found` 的实测清单里看得见。
-        // 〔RM1a · 第四波〕**11 → 12**：`relay/machine.rs` 那一处（远端那台上起一个脱离的 `--relay`）。
+        // **11 → 12**：`relay/machine.rs` 那一处（远端那台上起一个脱离的 `--relay`）。
         //    ⚠ 真的新面，不是搬家：远端起中转这件事此前后端侧一处都没有（`ALLOWED` 里那条新登记写了它起什么）。
-        // 〔SH1 · D-g〕**12 → 13**：`control/kill.rs` 多一处只读的 `tmux list-panes`（杀之前记下 pane 根进程 pid，杀成之后按它认 cc-bus 名册）。
+        // **12 → 13**：`control/kill.rs` 多一处只读的 `tmux list-panes`（杀之前记下 pane 根进程 pid，杀成之后按它认 cc-bus 名册）。
         //    键 `(control/kill.rs, tmux)` 不变，那条 `ALLOWED` 的理由同拍补了这一处。
-        // 〔HOST · V139〕**13 → 14**：`control/resident.rs` 那一处（远端那台上起一个脱离的常驻后端，`--resident-ensure`）。
-        // 〔DEL〕**14 → 13**：`relay/machine.rs` 那一处（起脱离的 `--relay`）随那一族删了。
-        // 〔MIG-3a〕**13 → 14**：`platform/shell.rs` 多一处 `powershell.exe`（别名方言问内建别名，从 monitor 搬来，真的新面）。
-        // 〔MIG-1 · `99 §2.1 ⑯`〕＋1：`dial/ssh_config.rs` 那一处（`ssh -G` 解析 ssh config，从 monitor 搬来 —— monitor 那一处同拍删了）。
-        // 〔合并 MIG-1 × 主线 b9818369〕基数 14 − DEL 1 ＋ MIG-1 1 ⇒ 14。
-        // 〔合并 MIG-1 × 主线 8c6cdc0e〕主线 14（含 MIG-3a 的 `powershell.exe`）＋ MIG-1 1（`dial/ssh_config.rs`）⇒ 15（现打核过）。
-        // 〔WF1 · L〕**15 → 16**：`platform/shell/mod.rs` 按代起 PowerShell，程序名写成两个字面量（`powershell.exe` · `pwsh.exe`，后者是新面）。
+        // **13 → 14**：`control/resident.rs` 那一处（远端那台上起一个脱离的常驻后端，`--resident-ensure`）。
+        // **14 → 13**：`relay/machine.rs` 那一处（起脱离的 `--relay`）随那一族删了。
+        // **13 → 14**：`platform/shell.rs` 多一处 `powershell.exe`（别名方言问内建别名，从 monitor 搬来，真的新面）。
+        // ＋1：`dial/ssh_config.rs` 那一处（`ssh -G` 解析 ssh config，从 monitor 搬来 —— monitor 那一处同拍删了）。
+        // 基数 14 − DEL 1 ＋ MIG-1 1 ⇒ 14。
+        // 主线 14（含 MIG-3a 的 `powershell.exe`）＋ MIG-1 1（`dial/ssh_config.rs`）⇒ 15（现打核过）。
+        // **15 → 16**：`platform/shell/mod.rs` 按代起 PowerShell，程序名写成两个字面量（`powershell.exe` · `pwsh.exe`，后者是新面）。
         const SPAWN_SITES_TODAY: usize = 16;
         assert_eq!(
             found.len(),
@@ -3122,7 +3122,7 @@ mod spawn_registry {
                 !why.is_empty(),
                 "{f} 起 {p} 没写理由 —— 「逐条列举」列的是写面与理由，不是文件名清单"
             );
-            // 〔`K-G6` `KG64`〕**枚举比对**（判据规范规则 3：闭集比对，不是子串）。
+            // **枚举比对**（判据规范规则 3：闭集比对，不是子串）。
             assert!(
                 super::g6_doctrine::is_cell(cell),
                 "{f} 起 {p} 的第四栏是 `{cell}` —— 它不在 `§0a` 四情形表的闭集里。\n\
@@ -3159,7 +3159,7 @@ mod spawn_registry {
         );
     }
 
-    /// ★★ `KY1′-b`〔`K-W1A` 08-26〕：**全表反向核** —— `ALLOWED` 的每一条都得对得上一处真的起进程。
+    /// ★★ `KY1′-b`：**全表反向核** —— `ALLOWED` 的每一条都得对得上一处真的起进程。
     ///
     /// # 它补的是上面那条的哪一个洞（实测出来的，不是设想）
     ///
@@ -3359,7 +3359,7 @@ mod capture_is_read_only {
 
     /// ★★ 正题①（**值级**）：这一处发出去的 argv 逐元素就是那条只读形。
     ///
-    /// 〔IV1 · V121〕`INVARIANTS §49`（tmux 打印通道必须是 UTF-8）的邻居：`capture-pane` 实测不在那一条的人群里，这里钉着的第一个元素（那个旗）是额外的；本条的主住址仍是只读铁律。
+    /// `INVARIANTS §49`（tmux 打印通道必须是 UTF-8）的邻居：`capture-pane` 实测不在那一条的人群里，这里钉着的第一个元素（那个旗）是额外的；本条的主住址仍是只读铁律。
     #[test]
     fn the_argv_this_site_emits_is_read_only_element_by_element() {
         let argv = crate::control::capture_pane::capture_argv("=某会话:");
@@ -3453,7 +3453,7 @@ mod capture_is_read_only {
     }
 }
 
-// 〔`K-R76` 09-12〕**这段话原先给的那个理由，今天已经不成立了**。原文逐字留档
+// **这段话原先给的那个理由，今天已经不成立了**。原文逐字留档
 // （它下过一次结论、被引过，所以留着）：
 //   「这条再导出**不是为了好看**：`g6_doctrine` 的声明行必须逐字是 `mod g6_doctrine {`，
 //    不许写成 `pub(crate) mod` —— `guard_core::test_module_ranges` 认「测试模块」的判据是
@@ -3477,7 +3477,7 @@ mod capture_is_read_only {
 //   `structural_scan_tests.rs::the_cfg_test_reexport_detour_stays_extinct` 是一条**恒零棘轮**，
 //   语料面含本文件所在的这棵树，写回一行当场红并点名这份文件。
 
-/// 〔`K-G6` `KG64`〕**`§0a` 四情形表的代码形态** —— 一条护栏的人群与性质对不上时该怎么处置。
+/// **`§0a` 四情形表的代码形态** —— 一条护栏的人群与性质对不上时该怎么处置。
 ///
 /// # 承重的那句话：**放宽 ≠ 加白名单**
 ///
@@ -3616,7 +3616,7 @@ pub(crate) mod g6_doctrine {
     }
 }
 
-/// 〔`K-G6` `KG61`〕**本护栏今天真能拦住的形状全表 + 一个今天就通过了的反例。**
+/// **本护栏今天真能拦住的形状全表 + 一个今天就通过了的反例。**
 ///
 /// # 为什么先列全表，再谈放宽（`§0c 裁五`）
 ///
@@ -3693,7 +3693,7 @@ mod g6_reach {
         }
     }
 
-    /// 〔`KG61` ②〕**今天在盘上、形状与本护栏声称要拦的相同、而它放过了的那一处。**
+    /// **今天在盘上、形状与本护栏声称要拦的相同、而它放过了的那一处。**
     ///
     /// `(住址, 生产段里的片段, why——形状为什么对得上、而它为什么看不见, unlock)`
     const KNOWN_PASSING_COUNTEREXAMPLES: &[(&str, &str, &str, &str)] = &[(
@@ -3771,7 +3771,7 @@ mod g6_reach {
     fn the_non_literal_spawn_key_still_covers_exactly_three_commands() {
         let prod = crate::guard_support::production_source(source_of("control/cc_bus.rs"));
         let mut cmds: Vec<&str> = Vec::new();
-        // 〔SH1〕只读三条经 `read_via("…"` 转调（同一个起进程口）。
+        // 只读三条经 `read_via("…"` 转调（同一个起进程口）。
         for opener in ["run(\"", "run_as(\"", "read_via(\""] {
             let mut from = 0usize;
             while let Some(k) = prod[from..].find(opener) {
@@ -3812,7 +3812,7 @@ mod g6_reach {
     }
 }
 
-/// 〔`K-G6` `KG63`〕**「这个能力今天在生产里零使用，而『零』本身要被钉住、接线那天要故意变红」这一族的指路判据。**
+/// **「这个能力今天在生产里零使用，而『零』本身要被钉住、接线那天要故意变红」这一族的指路判据。**
 ///
 /// # 族名是重新起的（`§0c 裁二`）
 ///
@@ -3836,7 +3836,7 @@ mod g6_staged_zero {
     /// `(住址, 符号或判据名, 被钉的那个「零」逐字是什么, 今天钉它的判据（`—` = 今天没有）, 本 crate 够不够得着)`
     const STAGED_ZERO: &[(&str, &str, &str, &str, &str)] = &[
         (
-            // 〔LR2〕判据改名（原名说的「U8c-3 删不得」那半随 TS 兜底一族删了，只剩 `create-or-attach` 这一半）、
+            // 判据改名（原名说的「U8c-3 删不得」那半随 TS 兜底一族删了，只剩 `create-or-attach` 这一半）、
             //   住址跟着判据走（剖分之后它就住 `tests/` 这份，旧住址是它当年的生产段宿主）。
             "tests/frontend/shell/launch_wire_f07_main_path_tests.rs",
             "the_create_or_attach_mode_is_sent_only_by_the_ccm_container_path",
@@ -3878,13 +3878,13 @@ mod g6_staged_zero {
             "—",
             "本 crate",
         ),
-        // 〔RM1c · 第四波〕`plugin/probe.rs::negotiate` 那一行**摘了**：接线那天到了 ——
+        // `plugin/probe.rs::negotiate` 那一行**摘了**：接线那天到了 ——
         //   `control/panorama.rs`（代码全景小程序的能力协商）是它第一个跨文件生产消费者，
         //   下面那条判据当场红，正是这张表承诺的「接线那天该红」。条数 7 → 6。
-        // 🔴 〔波 5 ㈢ · 2026-09-23〕**这一条是刚刚变成零的，不是一直是零。**
+        // 🔴 〔波 5 ㈢〕**这一条是刚刚变成零的，不是一直是零。**
         //
         // 用户 09-23 逐字裁「文件管理器该不该能改 `~/.claude` 里的东西. **可以.**」
-        // ⇒ `设计/60 §8.7` 那道「两道栅栏宽窄不同」按丙（统一）裁，统一到**窄的那一档**
+        // ⇒ 那道「两道栅栏宽窄不同」按丙（统一）裁，统一到**窄的那一档**
         // ⇒ `control/files_write.rs` 的两道围栏从 `is_inside_tree`（拒**整棵 `~/.claude*` 树**）
         //   换成 `is_session_record_path`（只拒那几份具体的会话文件），
         //   而 `is_inside_tree` 的**唯一生产消费者**就是那两处。
@@ -3908,7 +3908,7 @@ mod g6_staged_zero {
 
     /// `(相对路径, 原文, 生产段)`。
     ///
-    /// 🔴 〔步 7c 剖分 2026-09-19 · `设计/16 §5.4b` 纪律 3、4〕**两件一起改。**
+    /// 🔴 〔步 7c 剖分 2026-09-19 ·  纪律 3、4〕**两件一起改。**
     ///
     /// · **射程**：人群从「只有 `src/backend`」扩到**两棵树**。理由：`STAGED_ZERO` 那张表
     ///   第二栏登记的是**判据的名字**，而判据这一轮整批搬进了 `<repo>/tests/backend/`
@@ -3925,7 +3925,7 @@ mod g6_staged_zero {
     fn backend_files() -> Vec<(String, String, String)> {
         let src_root = crate::guard_support::src_root();
         let tests_root = crate::guard_support::tests_root();
-        // 〔RE〕面 B 成员的单测镜像住 `tests/comms/outward/`（生产那一半由 `guard_core` 顺着 `#[path]` 收进 `src_root`）。
+        // 面 B 成员的单测镜像住 `tests/comms/outward/`（生产那一半由 `guard_core` 顺着 `#[path]` 收进 `src_root`）。
         let comms_tests = crate::guard_support::comms_tests_root();
         let mut out = Vec::new();
         for (root, excluded, prefix) in [
@@ -3954,7 +3954,7 @@ mod g6_staged_zero {
     /// ★ 正题一：表里每条的住址今天真的在，且那个名字真的还在那份文件里（**幽灵检查**）。
     #[test]
     fn the_staged_zero_registry_has_no_ghost_entries() {
-        // 〔RM1c · 第四波〕7 → 6：`negotiate` 接上了生产（见表里那段摘除说明）。
+        // 7 → 6：`negotiate` 接上了生产（见表里那段摘除说明）。
         assert_eq!(
             STAGED_ZERO.len(),
             6,
@@ -4026,7 +4026,7 @@ mod g6_staged_zero {
         assert_eq!(
             checked, 3,
             "只核了 {checked} 条「今天没有判据」的欠账（登记时是 3 条，\
-             波 5 ㈢ 09-23 加了 `is_inside_tree` 之后是 4 条，〔RM1c〕`negotiate` 接上生产摘掉之后回到 3 条）—— \
+             波 5 ㈢ 09-23 加了 `is_inside_tree` 之后是 4 条，`negotiate` 接上生产摘掉之后回到 3 条）—— \
              筛选条件与登记表脱节了，本条在空转"
         );
         assert!(
@@ -4040,7 +4040,7 @@ mod g6_staged_zero {
     }
 }
 
-/// 〔`K-G6` `KG62`〕**钉住另外两道护栏的「性质行 / 人群行」各自只有一句。**
+/// **钉住另外两道护栏的「性质行 / 人群行」各自只有一句。**
 ///
 /// # 为什么钉在这里，而不是各自的文件里
 ///
@@ -4146,7 +4146,7 @@ mod g6_scope_pins {
     }
 }
 
-/// 〔`K-R103` 09-13〕**CLI 错误信封：那几份实现是有意共存的，而它们的形状从今天起有人钉着。**
+/// **CLI 错误信封：那几份实现是有意共存的，而它们的形状从今天起有人钉着。**
 ///
 /// # 它从哪来：`K-R87` 交回时问的是「本 crate 第 4 份同形 `emit_err` 要不要收成一份」
 ///
@@ -4238,7 +4238,7 @@ mod error_envelope_registry {
             "control/capture_pane.rs",
             "let line = serde_json::json!",
             "`--capture-pane` 的 `emit_err`",
-            "〔`设计/50`：原话说它与 `control/oneshot_session.rs` 那份**逐字同形** —— \
+            "〔：原话说它与 `control/oneshot_session.rs` 那份**逐字同形** —— \
              那份随用量 ③ 轴整轴退役了，「第 4 份同形」今天是第 3 份。〕\
              它只有三行、只被自己那个入口用；`K-R103` 现打：引入至今零改动、零不同步事故\
              ⇒ 收它买不到「一处改、全体跟」（真正的分母是 12 处，不是几份）。",
@@ -4266,12 +4266,12 @@ mod error_envelope_registry {
             "同上一行，另一档：参数不齐那一支。它与 `message` 分在两行上\
              ⇒ 键集那条判据的窗口必须够得着下一行（见 `every_envelope_carries_both_keys`）。",
         ),
-        // 〔LOC1a · 第四波 4D〕`accounts/iso.rs` 那一行（本机 `cc-acct-iso` 两问的 argv 形失败信封）删了：
+        // `accounts/iso.rs` 那一行（本机 `cc-acct-iso` 两问的 argv 形失败信封）删了：
         //   两问上了帧面，失败走帧面的 `(code, message)` 应答，iso.rs 里不再自己拼信封。
         (
             "dial/sftp.rs",
             "serde_json::json!({ \"code\": code, \"message\": message })",
-            "〔SR1b〕部署链路（`use:\"files\"`）一问一答的失败应答",
+            "部署链路（`use:\"files\"`）一问一答的失败应答",
             "它**不是 CLI 出口**，是一条链路上的一行应答（monitor 那侧 `dial_host::RemoteFs` 读它）；\
              与 CLI 信封同一对键是刻意的（读的人少记一种形状），但它住 `dial/`、成功那一形是别的键 \
              ⇒ 收进 `control/` 那几份出口要先让 `dial/` 反向引 `control/`，不划算。",
@@ -4279,7 +4279,7 @@ mod error_envelope_registry {
         (
             "observe/history_query.rs",
             "serde_json::json!({ \"code\": code, \"message\": said })",
-            "〔WF2〕`--list-projects` 在「记录树根不在」时的带码信封（`no_record_tree`）",
+            "`--list-projects` 在「记录树根不在」时的带码信封（`no_record_tree`）",
             "同 `accounts_query` 那一行的理由：它落在 observe 层，`control/` 的 `emit_err` 按 `layering_guard` 的边引不到\
              （引了还会把 `cli_control` 可达的 tmux 带进三十来条帧命令的 `no_tmux` 判定）；只这一处、只这一个码，\
              认码的是问它的那台后端（`remote_ask::settle_pulled` ⇒ `history_join` 远端那一支）。",
@@ -4470,7 +4470,7 @@ mod error_envelope_registry {
 /// 它们今天进不了本 crate 的依赖树，靠的是**那个 feature 没开** ——
 /// 而在本模块之前，盘上没有任何东西钉着「那个 feature 不许开」。
 ///
-/// # 本模块**不补人群**（归 PM，按 `MASTERPLAN §2b` 逐条过），它买的是另一格
+/// # 本模块**不补人群**（归 PM，按逐条过），它买的是另一格
 ///
 /// 补人群 = 去扫依赖 crate 的源码树，那是另一件事的规模。本模块只做一件机器判得了的事：
 /// **清单上每一条依赖都得有一行签字**，新加一条而没签字 ⇒ 当场红。
@@ -4594,13 +4594,13 @@ mod g6_dependency_signoff {
             "账号记录变换（纯数据），与 monitor 共用同一份；仓内 crate，现打 0 处写面",
         ),
         (
-            // 〔THIN〕同一个依赖在测试构建里多开 `fixtures`（跨生产者对拍夹具，`accounts_query_tests.rs` 用）。
+            // 同一个依赖在测试构建里多开 `fixtures`（跨生产者对拍夹具，`accounts_query_tests.rs` 用）。
             "acct-core",
             DEV_DEPS,
             MEASURED_CLEAN,
             "同上一行那个仓内 crate，测试构建多开 `fixtures` feature（多出来的只是一张静态夹具表 ＋ 渲染它的纯函数），0 处写面",
         ),
-        // 〔THIN〕`branch-core` 那一行摘了：它收进本 crate 的适配层（`agents/claudecode/branch.rs`；IO 只有一处只读的目录枚举，0 处写面）。
+        // `branch-core` 那一行摘了：它收进本 crate 的适配层（`agents/claudecode/branch.rs`；IO 只有一处只读的目录枚举，0 处写面）。
         (
             GATED_CRATE,
             DEPS,
@@ -4608,7 +4608,7 @@ mod g6_dependency_signoff {
             "第三方 API key 的唯一住址（装它的类型 / 落盘格式 / 权限判断）。\
              ★ **它自己有两处写面**：`perm.rs` 的 `make_private`（收窄既有文件的权限）与 \
              `create_private`（建一个只给本人的新文件），都在那个 feature 后面。\
-             〔RM1a · 第四波〕本清单**开了**它：远端那台机器上的 key 只能由那台的后端写\
+本清单**开了**它：远端那台机器上的 key 只能由那台的后端写\
              （上游选择自己的状态文件，第四层登记的 `accounts/upstream_select/file_face.rs`），\
              「出生即只给本人」只有 `create_private` 这一份实现 ⇒ 就是要它写。\
              先前「编译器保证写不了」那一格换成下面这条判据：写半边在本 crate 生产段的引用处 == 那一份。\
@@ -4618,10 +4618,10 @@ mod g6_dependency_signoff {
             "copy-core",
             DEPS,
             MEASURED_CLEAN,
-            "〔CP2c〕对外文案表的 Rust 取文口（编译期内嵌 `src/shared/copy/table.json` ＋ 具名占位符替换，纯字符串变换）；\
+            "对外文案表的 Rust 取文口（编译期内嵌 `src/shared/copy/table.json` ＋ 具名占位符替换，纯字符串变换）；\
              与 monitor、creds-core 共用同一份；仓内 crate，现打 0 处写面",
         ),
-        // 〔THIN〕`gate-core` 那一行摘了：它收成本 crate 的模块 `control/gate_rules.rs`（默认层那条判据数它的写面）。
+        // `gate-core` 那一行摘了：它收成本 crate 的模块 `control/gate_rules.rs`（默认层那条判据数它的写面）。
         (
             "guard-core",
             DEV_DEPS,
@@ -4652,7 +4652,7 @@ mod g6_dependency_signoff {
             "flate2",
             DEPS,
             UNMEASURED,
-            "〔FILES2 · 第四波〕解压 tar.gz / tgz 与 zip 的 deflate 那一支（`control/files_extract.rs`）：纯内存解码器（`rust_backend` ＝ `miniz_oxide`）。\
+            "解压 tar.gz / tgz 与 zip 的 deflate 那一支（`control/files_extract.rs`）：纯内存解码器（`rust_backend` ＝ `miniz_oxide`）。\
              它本来就在发布二进制里（`russh` 的 `flate2` feature 那一棵），这一行只是把间接依赖提成直接依赖、零新包。\
              写不写盘：本 crate 对它的用法只有 `read::GzDecoder` 包一个读句柄（用法签字，没扫它的源码）",
         ),
@@ -4660,7 +4660,7 @@ mod g6_dependency_signoff {
             "tar",
             DEPS,
             UNMEASURED,
-            "〔FILES2 · 第四波〕解压 tar / tar.gz（`control/files_extract.rs`，主会话 09-27 裁「用 Rust 库、不调外部命令」）：缺省 feature 关了（不带 `xattr`）。\
+            "解压 tar / tar.gz（`control/files_extract.rs`，「用 Rust 库、不调外部命令」）：缺省 feature 关了（不带 `xattr`）。\
              ⚠ 它**有**一步解到盘上的 API（`unpack` 一族，会自己建文件、设权限与时间）—— 本 crate **不调它**：只用 `Archive::entries` 逐条读头与正文，\
              落盘由 `files_extract` 自己逐条过路径解析再写。本档是用法签字（没扫它的源码）",
         ),
@@ -4668,7 +4668,7 @@ mod g6_dependency_signoff {
             "zip",
             DEPS,
             UNMEASURED,
-            "〔FILES2 · 第四波〕解压 zip（`control/files_extract.rs`）：缺省 feature 全关（aes / bzip2 / lzma / xz / zstd / zopfli 不进来），只开读 deflate 那一支。\
+            "解压 zip（`control/files_extract.rs`）：缺省 feature 全关（aes / bzip2 / lzma / xz / zstd / zopfli 不进来），只开读 deflate 那一支。\
              ⚠ 它**有**一步解到盘上的 API（`ZipArchive::extract`）—— 本 crate **不调它**：只用 `by_index` 逐条读名字、种类、权限位与正文，\
              落盘由 `files_extract` 自己逐条过路径解析再写。本档是用法签字（没扫它的源码）",
         ),
@@ -4676,7 +4676,7 @@ mod g6_dependency_signoff {
             "ring",
             DEPS,
             UNMEASURED,
-            "〔FW1 · 第四波 4D〕只用 `ring::digest::SHA256`：CAS 摘要形的唯一算法住址 \
+            "只用 `ring::digest::SHA256`：CAS 摘要形的唯一算法住址 \
              `files/mod.rs::content_sha256`（纯内存算摘要）。它本来就在发布二进制里 \
              （上面 `rustls` 的 provider · 下面 `russh` 同一棵），这一行只是把间接依赖提成直接依赖、零新包。\
              写不写盘：本 crate 对它的用法一条写路径都不经它（用法签字，没扫它的源码）",
@@ -4701,21 +4701,21 @@ mod g6_dependency_signoff {
              host key 校验由 `dial::DialHandler` 自己在内存里比指纹，\
              但那是**用法**上的签字，不是对它源码的读数。\
              ⇒ 要升到 `已量·未见写面` 得真去扫它那棵树，本轮没做。\
-             〔CZ1 · 2026-09-25〕今天链的是仓内补过的副本（`[patch.crates-io]` → `src/vendor/russh`，只改了 \
+今天链的是仓内补过的副本（`[patch.crates-io]` → `src/vendor/russh`，只改了 \
              `compression.rs` 解压收尾那一段、没碰任何 IO）⇒ 源码进了树、**可以**量了，但本档仍是「未量」：本轮没扫它的写面",
         ),
         (
             "russh-sftp",
             DEPS,
             MEASURED_WRITES_ON_PURPOSE,
-            "〔SR1b · 2026-09-24〕SFTP 客户端：用户 V89「SFTP 进本机常驻后端，只写暂存区」（＋ F08 自部署目录）。\
+            "SFTP 客户端：用户「SFTP 进本机常驻后端，只写暂存区」（＋ F08 自部署目录）。\
              **本机**写面现打 0 处（3.0.0 源码里 `std::fs` 只出现在 `protocol/open.rs` 一个 `From<OpenFlags> for \
              fs::OpenOptions` 的转换里 —— 造选项、不开文件；它的 `tokio` 没开 `fs` / `net`）；\
              **远端**写面就是它的本职（`SSH_FXP_OPEN` 带写标志 · `REMOVE` · `RENAME` · `MKDIR` …）⇒ 就是要它写。\
              谁划边界：只许 `dial/sftp.rs` 一份文件持有它的会话、写根 == 暂存区与部署目录、每处先过 `fenced_remote`。\
              边界判据：`the_remote_write_lives_in_exactly_one_file_and_its_roots_are_exactly_staging_and_bin`",
         ),
-        // 〔P1〕`search-core` 那一行出列：crate 删了（通用口径收成 `observe/search_rules.rs`，记录文本进 `agents/claudecode/text.rs`）。
+        // `search-core` 那一行出列：crate 删了（通用口径收成 `observe/search_rules.rs`，记录文本进 `agents/claudecode/text.rs`）。
         (
             "serde",
             DEPS,
@@ -4732,7 +4732,7 @@ mod g6_dependency_signoff {
             "sha2",
             DEV_DEPS,
             UNMEASURED,
-            "〔CZ1 · 2026-09-25〕只给 vendored russh 副本算指纹（`dial_compress_tests` 的 V1：盘上每一份 == `VENDOR.md` 登记的 sha256）。\
+            "只给 vendored russh 副本算指纹（`dial_compress_tests` 的 V1：盘上每一份 == `VENDOR.md` 登记的 sha256）。\
              **只在测试期链接**，不进发布二进制；版本是 russh 那棵树早已锁着的 `0.11.0`（不新增包）。纯内存摘要 —— 它不开文件，\
              读副本的是判据自己（经 `guard_core::scan_tree_excluding`）",
         ),
@@ -4740,7 +4740,7 @@ mod g6_dependency_signoff {
             "ts-rs",
             DEV_DEPS,
             UNMEASURED,
-            "〔MOD · 2026-09-28〕记录的线上形状（`agents/claudecode/schema.rs`）导出 TS 类型用（`#[cfg_attr(test, derive(ts_rs::TS))]`）。\
+            "记录的线上形状（`agents/claudecode/schema.rs`）导出 TS 类型用（`#[cfg_attr(test, derive(ts_rs::TS))]`）。\
              **只在测试期链接**，不进发布二进制；写面只有 `cargo test` 里 `export_bindings_*` 往 `src/frontend/ui/generated/` 写生成物 —— \
              与 monitor 那一侧同一个用法（C01），版本是 monitor 那份 lock 早已解析的 `12.0.1`",
         ),
@@ -4754,7 +4754,7 @@ mod g6_dependency_signoff {
             "relay-route-core",
             DEPS,
             MEASURED_CLEAN,
-            "〔US1〕中转门牌：端口 · 钥匙文件相对路径两个 const ＋ 路由语法（拼 / 拆 / 段闸，纯字符串）；仓内 crate、零依赖，现打 0 处写面、0 处 I/O",
+            "中转门牌：端口 · 钥匙文件相对路径两个 const ＋ 路由语法（拼 / 拆 / 段闸，纯字符串）；仓内 crate、零依赖，现打 0 处写面、0 处 I/O",
         ),
         (
             "tokio",
@@ -4777,9 +4777,9 @@ mod g6_dependency_signoff {
             "只开 `env-filter`。日志去向由本 crate 自己给的 writer 定（今天是标准错误）——\
              落盘那一形要另一条 crate，而本清单上没有",
         ),
-        // 〔RE〕`codex-token-core` 那一行删了：它搬进本 crate（`agents/codex/token.rs`），不再是依赖 ——
+        // `codex-token-core` 那一行删了：它搬进本 crate（`agents/codex/token.rs`），不再是依赖 ——
         //   它那几行从此是本 crate 的生产段，由上面的写面分层照常扫（纯数据映射，0 处写面）。
-        // 〔THIN〕`agent-tools-core` 那一行摘了：它收进本 crate 的适配层（`agents/claudecode/cards.rs`，纯数据映射，0 处写面）。
+        // `agent-tools-core` 那一行摘了：它收进本 crate 的适配层（`agents/claudecode/cards.rs`，纯数据映射，0 处写面）。
         (
             "walkdir",
             DEPS,
@@ -4793,14 +4793,14 @@ mod g6_dependency_signoff {
             "根证书**数据**（一张常量表）—— 它没有 IO 那条代码路径要谈",
         ),
         (
-            // 〔DUP3 · J9〕上游 base URL 能不能用的唯一一份（中转解析 · 上游选择装表 · 写口）。
+            // 上游 base URL 能不能用的唯一一份（中转解析 · 上游选择装表 · 写口）。
             "upstream-url-core",
             DEPS,
             MEASURED_CLEAN,
             "上游 base URL 的形状 ＋ 明文只许回环（纯字符串判定）；仓内 crate、零依赖，现打 0 处写面、0 处 I/O",
         ),
         (
-            // 〔MIG-3b · P1〕部署那一族的契约（表 A 的键与行 · 戳格式 · 答话形状 · 路径）；判定那一半住 `control/deploy_plan.rs`。
+            // 部署那一族的契约（表 A 的键与行 · 戳格式 · 答话形状 · 路径）；判定那一半住 `control/deploy_plan.rs`。
             "deploy-contract",
             DEPS,
             MEASURED_CLEAN,
@@ -4917,7 +4917,7 @@ mod g6_dependency_signoff {
     /// [`super::spawn_registry`] 那条判据靠**按文件名跳过本文件**才不自匹配，
     /// 而跨文件数它的那些判据不一定跳。
     ///
-    /// 〔`K-R79` 09-12〕并进了 [`super::remote_write_layer`] 那两张网。**理由是「同职」**：
+    /// 并进了 [`super::remote_write_layer`] 那两张网。**理由是「同职」**：
     /// 这把尺子替 `已量·未见写面` 那一档回答「这几棵仓内 crate 今天干不干净」，
     /// 而「干净」如果只算本机写面，那么哪天 `acct-core` 里长出一处远端写，
     /// 这一档照样绿 —— 那正是本件在后端本体上治的同一个洞，换一棵树再挖一遍。
@@ -5119,7 +5119,7 @@ mod g6_dependency_signoff {
     /// ★★ 那条**有写面**的签字，它的前提是「那个 feature 本清单开着、而且就是要它写」—— 把前提钉住。
     ///
     /// 这一条是本模块里唯一**不只钉「说得出来」**的判据：它钉的是那句话赖以成立的那个事实。
-    /// 〔RM1a · 第四波〕前提翻了一次：先前是「那个 feature 本清单没开 ⇒ 今天编不进来」
+    /// 前提翻了一次：先前是「那个 feature 本清单没开 ⇒ 今天编不进来」
     /// （`已量·有写面`），今天是「开了、写面就是账号域那一份要用的」（`已量·有写面·就是要它写`）。
     /// ⇒ 两个方向都钉：feature 被关掉了而签字还说「就是要它写」⇒ 红；
     ///   `已量·有写面`（「凭什么进不来」那一档）今天**零成员** —— 有人把它签回那一档而 feature 还开着 ⇒ 红。
@@ -5143,7 +5143,7 @@ mod g6_dependency_signoff {
             .filter(|(_, _, v, _)| *v == MEASURED_WRITES_ON_PURPOSE)
             .map(|(n, ..)| *n)
             .collect();
-        // 〔SR1b · 2026-09-24〕+`russh-sftp`（V89：SFTP 进本机常驻后端）。它的前提不是一个 feature，
+        // +`russh-sftp`（SFTP 进本机常驻后端）。它的前提不是一个 feature，
         //   是「只许一份文件持有它的会话、写根 == 两处」—— 那一条由它签字里点名的边界判据钉（远端写那一层），
         //   本条只钉 `creds-core` 那一条的前提（feature 开着）。
         assert_eq!(
@@ -5186,7 +5186,7 @@ mod g6_dependency_signoff {
         );
     }
 
-    /// 🔴 〔RM1a · 第四波〕**`creds-core` 那条「就是要它写」的边界判据**：它的写半边
+    /// 🔴 **`creds-core` 那条「就是要它写」的边界判据**：它的写半边
     /// （`perm::create_private` · `perm::make_private`）在本 crate 生产段里的引用处，
     /// **恰好**是第四层登记的那一份 `accounts/upstream_select/file_face.rs`（两向集合相等）。
     ///
@@ -5233,10 +5233,10 @@ mod g6_dependency_signoff {
             }
         }
         assert!(scanned >= 60, "只扫到 {scanned} 份后端源文件 —— 遍历坏了");
-        // 〔RK1〕第二份：中转钥匙那一份（`relay/door.rs`，第四层登记）—— 钥匙文件出生即只给本人，同一份实现。
+        // 第二份：中转钥匙那一份（`relay/door.rs`，第四层登记）—— 钥匙文件出生即只给本人，同一份实现。
         let want: std::collections::BTreeSet<String> = [
             "accounts/upstream_select/file_face.rs".to_string(),
-            // 〔HOST〕第三份：常驻监听口的钥匙 ＋ 远端常驻后端的 pid 文件（`control/resident.rs`，第四层登记）。
+            // 第三份：常驻监听口的钥匙 ＋ 远端常驻后端的 pid 文件（`control/resident.rs`，第四层登记）。
             "control/resident.rs".to_string(),
             "relay/door.rs".to_string(),
         ]
@@ -5361,7 +5361,7 @@ mod g6_dependency_signoff {
     /// 上面那条断言的是「命中 0」，而**零命中既可能是干净、也可能是尺子瞎了** ——
     /// 两者在终端上一模一样。本条把它们分开：同一把尺子扫**有写面**的那两档
     /// （`{MEASURED_WRITES}` ∪ `{MEASURED_WRITES_ON_PURPOSE}`；今天唯一成员 [`GATED_CRATE`]，
-    /// 它的签字里点名了 `perm.rs` 那两处写面 —— 〔RM1a〕它换了档、写面一处没少），必须 > 0。
+    /// 它的签字里点名了 `perm.rs` 那两处写面 —— 它换了档、写面一处没少），必须 > 0。
     ///
     /// ⚠ 哪天那一条也变干净了，本条会红 —— **那是对的**：回来重挑一个非空对照，
     /// 不许把本条删掉了事（删掉之后上面那条就退回成一句空真）。
@@ -5375,7 +5375,7 @@ mod g6_dependency_signoff {
             "`{MEASURED_WRITES}` / `{MEASURED_WRITES_ON_PURPOSE}` 这两档今天一条成员都没有 —— 上面那条零命中断言从此没有对照，\
              它是「真干净」还是「尺子瞎了」分不出来了。回来重挑对照。"
         );
-        // 〔SR1b · 2026-09-24〕对照只取**仓内**那几条：`russh-sftp`（第四档，外部 crate）的源码不在树里，
+        // 对照只取**仓内**那几条：`russh-sftp`（第四档，外部 crate）的源码不在树里，
         //   本尺子够不着 —— 它的写面由签字里点名的边界判据在**用法**一侧钉（只许 `dial/sftp.rs` 一份持有）。
         //   够不着的只许是这一形：第四档、名字落在远端写协议词表上；别的形照旧红。
         let (scannable, out_of_reach) = split_by_reachability(&with_surface);
@@ -5656,7 +5656,7 @@ mod g6_dependency_signoff {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// 〔`K-R79` 09-12〕**远端写那一半**
+// **远端写那一半**
 // ══════════════════════════════════════════════════════════════════════════════
 #[cfg(test)]
 mod remote_write_layer {
@@ -5665,7 +5665,7 @@ mod remote_write_layer {
     //!
     //! # 它守的性质 · 它扫的人群（两行，各只许有一句 —— 同本文件顶上 `KG62` 那对）
     //!
-    //! - **它守的性质是**：backend **进程自身**不许改动**别人机器上**的用户既有数据 —— 〔SR1b · V89〕远端写只许住 `dial/sftp.rs` 一份、只许落在 `~/.cc-monitor/staging/` 与 `~/.cc-monitor/bin/`（我们自己的目录）、每一处先过 `fenced_remote`。
+    //! - **它守的性质是**：backend **进程自身**不许改动**别人机器上**的用户既有数据 —— 远端写只许住 `dial/sftp.rs` 一份、只许落在 `~/.cc-monitor/staging/` 与 `~/.cc-monitor/bin/`（我们自己的目录）、每一处先过 `fenced_remote`。
     //!   （本机那一半由默认层与只读白名单守；本层守的是**远端**那一半。）
     //! - **它扫的人群是**：本 crate `src/` 递归全部 `.rs` 的生产段源码文本里，
     //!   **把一条远端通道变成文件系统的那一步**（[`REMOTE_CAPABILITY_ANCHORS`]）
@@ -5719,7 +5719,7 @@ mod remote_write_layer {
             FAMILY_SUBSYSTEM,
             "在 SSH 连接上开一个**子系统** —— `ssh-connection` 协议里这是**唯一**一个动作，\
              而 SFTP 就是一个子系统名。换一份 crate、换一套方法名，这一步躲不掉；\
-             〔SR1b · V89〕backend 今天**只在一处**开子系统（`dial/sftp.rs`，SFTP 住本机常驻后端）\
+backend 今天**只在一处**开子系统（`dial/sftp.rs`，SFTP 住本机常驻后端）\
              ⇒ 这一条在那一份之外恒零，出现在第二份即越线（`REMOTE_WRITE_MODULE`）。",
         ),
         (
@@ -5858,7 +5858,7 @@ mod remote_write_layer {
 
     /// 本 crate `src/` 递归全部 `.rs` 的**生产段**：`(相对 src 的路径, 正文)`。
     ///
-    /// ⚠ 〔`P4` 2026-09-21〕先前这里写着「**`scan_tree!` 按构造摘掉调用者自己那一份**
+    /// ⚠ 先前这里写着「**`scan_tree!` 按构造摘掉调用者自己那一份**
     /// （就是本护栏文件）—— 这里刻意不补回来」。**那一刀在这一处不生效**
     /// （判据由 `#[path]` 挂载 ⇒ `file!()` 是折返路径 ⇒ 后缀比不命中），
     /// 而且本护栏文件住 `tests/backend/`、本来就不在这里扫的 `src/backend` 那棵树里。
@@ -6121,9 +6121,9 @@ mod remote_write_layer {
         }
     }
 
-    // ═══ 〔SR1b · 2026-09-24〕V89 之后的正题：**远端写只住一份文件、只许落两处** ═══════════════
+    // ═══ V89 之后的正题：**远端写只住一份文件、只许落两处** ═══════════════
     //
-    // 用户 V89（`99 §1`）逐字「SFTP 怎么进单一常驻后端」一题选「**进本机常驻后端，只写暂存区**」；
+    // 用户 V89逐字「SFTP 怎么进单一常驻后端」一题选「**进本机常驻后端，只写暂存区**」；
     // F08（自部署）按构造只能在本机后端做 ⇒ 第二处是部署目录。`INVARIANTS §41.6` 的 V89 订正写的就是这三条：
     // 〔墓碑 —— 此前这里是 `the_backend_tree_has_no_remote_write_today_and_the_scan_face_is_not_empty`〔散文墓碑〕：
     //  「整棵后端树的生产段，今天一处远端写都没有」，报错里写着「先把 `KU31` 裁掉，裁『许』之后要的是
@@ -6133,7 +6133,7 @@ mod remote_write_layer {
     /// ★ **远端写的唯一住址**：`(仓库相对路径, why —— 它写什么、路径由谁定、哪一道围栏拦着)`。
     const REMOTE_WRITE_MODULE: (&str, &str) = (
         "dial/sftp.rs",
-        "SFTP 住本机常驻后端（V89）：暂存区的上传件（`control/transfer.rs` 经它写）· \
+        "SFTP 住本机常驻后端：暂存区的上传件（`control/transfer.rs` 经它写）· \
          自部署的后端二进制 / `.build_id` / `ccm` 入口（部署链路 `use:\"files\"` 经它写）。\
          路径由 monitor 给、由本文件的 `fenced_remote` 判：词法（只许两个根）＋ 父目录解链接仍在根下 ＋ \
          开写前 `lstat` 拒链接",
@@ -6366,7 +6366,7 @@ mod remote_write_layer {
     /// 是因为两者说的不是同一件事：合起来那个结论里，动词网那一半有可能靠
     /// 「本机恰好没有同名方法」撑着，而那是**今天的巧合**，不是本层的性质。
     /// ⇒ 哪天它红了，先读这条的报错：**它多半不是一次越线，是一次同名误伤**。
-    /// 〔SR1b〕登记的那一份（`dial/sftp.rs`）里的动词是真的远端写，不算误伤 ⇒ 不在本条人群里。
+    /// 登记的那一份（`dial/sftp.rs`）里的动词是真的远端写，不算误伤 ⇒ 不在本条人群里。
     #[test]
     fn the_verb_net_has_no_false_positive_on_this_tree_today() {
         let tree = production_tree();
@@ -6411,7 +6411,7 @@ mod remote_write_layer {
             .filter(|(_, c)| c.contains(needle.as_str()))
             .map(|(rel, _)| rel.as_str())
             .collect();
-        // 〔C2 09-24〕住址 `dial/mod.rs` → `dial/uses.rs`：拨号代理拆成三份，开 channel 之后那一段
+        // 住址 `dial/mod.rs` → `dial/uses.rs`：拨号代理拆成三份，开 channel 之后那一段
         //   住 `uses.rs`。处数仍是**一份文件**；它里面多了 `capture` 那一臂（同一条 exec，收全输出）——
         //   那一臂此前在界面进程里（`ssh_source::connect_and_exec_capture`），是搬家，不是新长的能力。
         assert_eq!(

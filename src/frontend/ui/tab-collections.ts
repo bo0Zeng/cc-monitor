@@ -11,7 +11,7 @@
  * 集合名是**用户手写的真相**，不是能重算的缓存 ⇒ 它必须活过一次清缓存。
  * ⚠ localStorage 恰恰是**最顺手的错路**：tab 的那些偏好（`lastActiveSid` 等）全在那儿。
  *
- * # 🔴 〔GRP1 · `设计/99 §1` V140〕组只存 `{id, 名字}`，组员关系是 tab 自己的属性
+ * # 🔴 组只存 `{id, 名字}`，组员关系是 tab 自己的属性
  *
  * 用户原话：「分组不应该单独存会话记录. x就是没了, 不存在还要移出分组」。
  * 从前这里每个组带一张 `members: string[]`（会话 id 名单）⇒ 关掉的 tab 的 sid 永远占着成员位、
@@ -41,7 +41,7 @@ export const COLLECTION_CAP = 32;
 /** 名字长度上界（超了截断 —— 名字是展示用的，截断不丢别的东西）。 */
 export const NAME_MAX = 40;
 
-/** 〔GRP1 · V140〕一个组**只有**这两格 —— 没有成员名单（组员是「`Tab.group` 等于 `id` 的那些 tab」）。 */
+/** 一个组**只有**这两格 —— 没有成员名单（组员是「`Tab.group` 等于 `id` 的那些 tab」）。 */
 export interface TabCollection {
   id: string;
   name: string;
@@ -56,7 +56,7 @@ export function newCollectionId(): string {
  * 盘上读回来的集合 —— **盘上可能是任何东西**（用户手改 / 旧版本 / 半截写入）。
  *
  * 逐项筛，照 `behavior.ts` 那套宽容读法：认不出就丢，不抛。
- * 〔GRP1〕只取 `id` / `name` 两格；别的字段（旧形状的 `members`）不带出去 —— 于是也写不回盘。
+ * 只取 `id` / `name` 两格；别的字段（旧形状的 `members`）不带出去 —— 于是也写不回盘。
  */
 export function sanitizeCollections(raw: unknown): TabCollection[] {
   if (!Array.isArray(raw)) return [];
@@ -90,7 +90,7 @@ export async function getCollections(): Promise<TabCollection[]> {
 }
 
 /**
- * 〔CFG1 · GRP1〕组表那一条补丁（整张组表换成 `list`，落盘前过一遍清洗）。
+ * 组表那一条补丁（整张组表换成 `list`，落盘前过一遍清洗）。
  *
  * 不自己 `patchConfig`：组的一次改动常常要与几个 tab 的组 id 键**同一批**落盘
  * （建组 ＝ 组表 ＋ 两个 `tabBar.groupOf.<sid>`），由 `tab-bar-prefs.ts` 把它们装进一次写。
@@ -134,12 +134,12 @@ export function deleteCollection(list: readonly TabCollection[], id: string): Ta
 }
 
 /**
- * 〔TL2 · E13〕组数到上界时**为什么没做** —— 纯判定，给调用方出声用。
+ * 组数到上界时**为什么没做** —— 纯判定，给调用方出声用。
  *
  * `createCollection` 到上界照旧**原样返回**（数据层的性质不变，判据钉在上界常量上）；
- * 从前两个调用方（右键菜单 · 拖放）拿到原样返回就一句话都不说 —— 撞 `设计/01 §5 D4`「一条都不许静默忽略」。
+ * 从前两个调用方（右键菜单 · 拖放）拿到原样返回就一句话都不说 —— 撞「一条都不许静默忽略」。
  * ⇒ 判定住这里（一个家），说那一句的是调用方（[`collectionRefusalText`] 出句子）。
- * 〔GRP1 · V140〕原先还有一种「组员满了」（成员上界）—— 成员上界随成员名单一起作废，那一种也没了。
+ * 原先还有一种「组员满了」（成员上界）—— 成员上界随成员名单一起作废，那一种也没了。
  */
 export type CollectionRefusal = { kind: "collections-full" };
 

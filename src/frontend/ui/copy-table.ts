@@ -1,14 +1,14 @@
 /**
- * 对外文案的**唯一取文口**（`调研/设计/91 §5.1`：「要引入一层文案表。把文本都抽出来解耦」）。
+ * 对外文案的**唯一取文口**（「要引入一层文案表。把文本都抽出来解耦」）。
  *
  * **单一来源**：`src/shared/copy/table.json`。前端经这里 `import`；Rust 侧 `include_str!`
- * 同一份文件（`91 §5.1.1` 决定 2：一份文件两侧各读，不是两份表加一条对拍）——〔DP1 · 第四波〕Rust 读口
+ * 同一份文件（决定 2：一份文件两侧各读，不是两份表加一条对拍）——Rust 读口
  * `src/frontend/shell/src/copy_table.rs::copy_text` 已落地（第一批调用点是部署后端的几句拒绝），全量抽表仍在最后一波。
  *
  * 用法：`copyText("panePreview.head.title", { origin, target })`。
  * - key 必须是**字面量**：`tests/copy/copy-table.vitest.ts` 靠静态读调用点来做「表 ↔ 引用」两向相等，
  *   算出来的 key 它看不见 ⇒ 那条判据会直接报红，不会放过。
- * - 参数只递**命名**参数，与表里 `args` 相等；不在调用方拼接任何文字（`91 §5.1.1` 决定 3）。
+ * - 参数只递**命名**参数，与表里 `args` 相等；不在调用方拼接任何文字（决定 3）。
  */
 import TABLE from "../../shared/copy/table.json";
 
@@ -29,7 +29,7 @@ const ENTRIES: Record<string, Entry> = TABLE.entries;
  * 两条抛错是**程序员错误**（与 Rust 的 `panic!` 同类，`copy-table.vitest.ts` 的静态对拍保证它们
  * 在生产里走不到），刻意写成英文：它们不是对外文案，不该进普查的对外全集。
  *
- * 〔P3 · `rules.json` C-L5〕值与相邻汉字之间的空格**随值定**（[`joinSeams`]）：模板里「{machine}上」与「{machine} 上」
+ * 〔`rules.json` C-L5〕值与相邻汉字之间的空格**随值定**（[`joinSeams`]）：模板里「{machine}上」与「{machine} 上」
  * 同一个意思，值是 `lx` 印「lx 上」、是「本机」印「本机上」。与 Rust `copy_core::copy_text` 同一套（金样 `copy-interpolation.golden.json`）。
  */
 export function copyText(key: CopyKey, args: CopyArgs = {}): string {
@@ -60,7 +60,7 @@ function seamWants(a: string, b: string): "space" | "none" | null {
 }
 
 /**
- * 〔P3 · C-L5〕拼回一句：`parts` 是「字面 · 值 · 字面 · 值 … 字面」交替（字面可为空）。每个非空的值与它两边的**模板字**之间
+ * 拼回一句：`parts` 是「字面 · 值 · 字面 · 值 … 字面」交替（字面可为空）。每个非空的值与它两边的**模板字**之间
  * 按 [`seamWants`] 补上或拿掉**一个**空格；模板在接缝上写了两个以上空格是排版，照留；两个值之间只隔空格的那一段不动。
  * Rust 那一份 `copy_core::join_seams` 同形（两侧各对插值金样）。
  */

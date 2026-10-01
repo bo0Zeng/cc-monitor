@@ -35,7 +35,7 @@
 //! 所以这里只回答一个问题：**这组参数能不能构成一次有意义的 tmux 调用**。
 //! 不能就回一条结构化错误（可诊断、fail-fast），而不是把畸形串塞给 tmux 让它以奇怪的方式失败。
 //!
-//! ⚠ **明确不抄的一条**：开终端那一行（〔FIX4〕今天住本机后端 `dial/terminal.rs::render`，原在 monitor）里的「禁双引号」
+//! ⚠ **明确不抄的一条**：开终端那一行（今天住本机后端 `dial/terminal.rs::render`，原在 monitor）里的「禁双引号」
 //! 是 PowerShell 5.1 向 native 程序传参的历史畸变（`wt.exe` 那条路）。**与本模块无关**，
 //! 这条路根本不过 shell —— 抄它等于把一个 Windows 怪癖套到 tmux argv 上。
 //!
@@ -132,7 +132,7 @@ type CmdErr = (&'static str, String);
 /// 而 `=` 前缀只在 target-**session** 解析路径上被识别；`send-keys` 收的是 target-**pane**，
 /// `=name` 会直接 `can't find pane`。尾冒号把串强制成 `session:` 形态，`=` 才落对位置。
 ///
-/// argv 直传，**不引号化**（引号化了就成了名字的一部分）。〔THIN〕monitor 侧那一份（`tmux::exact_target`〔散文墓碑〕，
+/// argv 直传，**不引号化**（引号化了就成了名字的一部分）。monitor 侧那一份（`tmux::exact_target`〔散文墓碑〕，
 /// 只剩跨轨对拍锚点在用）删了 ⇒ 精确匹配形只住这里（判据 `exact_target_is_the_exact_match_shape`）。
 pub(crate) fn exact_target(name: &str) -> String {
     format!("={name}:")
@@ -164,7 +164,7 @@ pub(crate) fn parse_request(args: &serde_json::Value) -> Result<LaunchRequest, C
             crate::common::contract::malformed("missing `name`"),
         ))?
         .to_string();
-    // 〔TAIL · DUP3 §5 ⑦〕Gate 1 与结束 · 抓屏同一份（`kill::admit_existing_name` → `gate_rules`）；长度照旧。
+    // 〔DUP3 §5 ⑦〕Gate 1 与结束 · 抓屏同一份（`kill::admit_existing_name` → `gate_rules`）；长度照旧。
     super::kill::admit_existing_name(&name)?;
     check_len("name", &name)?;
 
@@ -174,7 +174,7 @@ pub(crate) fn parse_request(args: &serde_json::Value) -> Result<LaunchRequest, C
             crate::common::contract::malformed("missing `payload`"),
         ))?
         .to_string();
-    // ★★ 🔴 〔`K-P2` `F` 拍 09-04〕**`create-or-attach` 的 `payload` 放行 `\n` / `\t`，
+    // ★★ 🔴 **`create-or-attach` 的 `payload` 放行 `\n` / `\t`，
     //    别的模式一个字节不动。** 这是 `§19 裁六` 登记的那条「真搬那拍的硬前置」。
     //
     // # 为什么必须现在解
@@ -194,7 +194,7 @@ pub(crate) fn parse_request(args: &serde_json::Value) -> Result<LaunchRequest, C
     // · 别的控制字符（`ESC` / `CR` / `NUL` …）不是「键」，是**会改掉终端状态**的东西
     //   ⇒ 照旧拒收。⚠ 这一格**比本机那条旧路更严**：旧路经 `sq` + `bash` 什么都放过去。
     // · `send-into` **一个字节不动**：`§19 裁六` 逐字「放宽它会同时改掉已有生产调用方的行为」
-    //   —— 那条路的 `payload` 语义不同，不该被这一格牵连。〔V41 · RST 续〕裸键那个 mode 已删（无生产调用者）。
+    //   —— 那条路的 `payload` 语义不同，不该被这一格牵连。裸键那个 mode 已删（无生产调用者）。
     // ⚠ **这里刻意写 `if matches!(…)` 而不是 `match mode { Mode::CreateOrAttach => … }`**
     //   〔本轮现打，判据当场逮住的〕：`create_or_attach_never_types_into_a_session_it_did_not_just_create`
     //   用 `arm_of(&src, "Mode::CreateOrAttach =>")` 取那个分支的源码段，而它取的是**第一处**
@@ -232,7 +232,7 @@ pub(crate) fn parse_request(args: &serde_json::Value) -> Result<LaunchRequest, C
         }
     }
 
-    // 〔`K-P2` `D3`〕`@ccm_agent` 标记的值。收窄到 `[A-Za-z0-9_-]`：它进的是 tmux 的
+    // `@ccm_agent` 标记的值。收窄到 `[A-Za-z0-9_-]`：它进的是 tmux 的
     // option 值，且下游（monitor / `ccm attach`）按字面比对 agent 名。
     let agent = get_str("agent").map(str::to_string);
     if let Some(a) = &agent {
@@ -250,7 +250,7 @@ pub(crate) fn parse_request(args: &serde_json::Value) -> Result<LaunchRequest, C
         }
     }
 
-    // 〔`K-P2` `D3`〕新建会话的尺寸。**两个一起给或都不给**，见字段头注。
+    // 新建会话的尺寸。**两个一起给或都不给**，见字段头注。
     let width = get_str("width").map(str::to_string);
     let height = get_str("height").map(str::to_string);
     match (&width, &height) {
@@ -328,7 +328,7 @@ fn check_len(what: &str, v: &str) -> Result<(), CmdErr> {
     Ok(())
 }
 
-/// `create-or-attach` 的 `payload` 专用检查〔`K-P2` `F` 拍 09-04〕。
+/// `create-or-attach` 的 `payload` 专用检查。
 ///
 /// 与 [`check_field`] **只差一条**：放行 `\n` 与 `\t`。理由与射程写在
 /// `parse_request` 里调用它的那一处（那里离决策更近）。
@@ -371,7 +371,7 @@ fn check_typed_payload(v: &str) -> Result<(), CmdErr> {
 
 /// 一次 tmux 子命令的结局：成没成 ＋ **tmux 自己说的那句话**（stderr）。
 ///
-/// 〔W5-VIS · `设计/15 §4.7 S4`〕原先只回一个 bool、stderr 丢进 `Stdio::null()` ⇒ 建会话失败时只能猜
+/// 原先只回一个 bool、stderr 丢进 `Stdio::null()` ⇒ 建会话失败时只能猜
 /// （「cwd 不可用？名字非法？」）；隔壁 `kill.rs` 用 `output()` 把 tmux 的原话放进错误 —— 正确形状就在那儿，照它办。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Ran {
@@ -380,7 +380,7 @@ pub(crate) struct Ran {
     pub(crate) said: String,
 }
 
-/// tmux 自己说的那句话（stderr）〔W5-VIS〕：去首尾空白、截到 [`SAID_CAP`] 字节（截在字符边界上，截了标 `…`）；
+/// tmux 自己说的那句话（stderr）：去首尾空白、截到 [`SAID_CAP`] 字节（截在字符边界上，截了标 `…`）；
 /// 一个字都没说 ⇒ 「（tmux 没说原因）」。
 pub(crate) fn said_of(stderr: &[u8]) -> String {
     let text = String::from_utf8_lossy(stderr);
@@ -427,7 +427,7 @@ fn ran(mut cmd: Command, args: &[&str]) -> Result<Ran, CmdErr> {
     }
 }
 
-/// 〔W5-VIS · `设计/15 §4.7 S5`〕建会话之后那几步**次要动作**（失败不阻断键入载荷）。
+/// 建会话之后那几步**次要动作**（失败不阻断键入载荷）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Secondary {
     /// agent 标（`@ccm_agent`）。
@@ -463,9 +463,9 @@ impl Secondary {
     }
 }
 
-/// 〔W5-VIS · `设计/15 §4.7 S5`〕次要动作的结局 → **一句给日志的话**；做成了 ⇒ `None`。
+/// 次要动作的结局 → **一句给日志的话**；做成了 ⇒ `None`。
 ///
-/// 「身份标记与标题是次要动作：失败绝不阻断主要动作」那条决定不动（`15 §4.7 S5`：「处置不是别吞，
+/// 「身份标记与标题是次要动作：失败绝不阻断主要动作」那条决定不动（「处置不是别吞，
 /// 是吞了要留一行日志」）—— 本函数只管「说什么」，抽成纯的才判得到；打日志的是 [`secondary`]。
 pub(crate) fn secondary_note(
     session: &str,
@@ -551,7 +551,7 @@ fn run_with(
             })
         }
         Mode::CreateOrAttach => {
-            // 〔FIX · `设计/99 §2 ㊹` · DUP3 §5 ⑤〕要**新建**的名字过 J6 新建那一条（`gate_rules`，与 `ccm` 铸名同一条）：
+            // 〔DUP3 §5 ⑤〕要**新建**的名字过 J6 新建那一条（`gate_rules`，与 `ccm` 铸名同一条）：
             //   过不了、而那个会话已经在 ⇒ 照旧幂等接回（已有会话走的是已有那一条，进门时判过）；不在 ⇒ 拒并说清。
             if let Some(said) = new_tmux_name_said(&req.name) {
                 if tmux(&["has-session", "-t", &t])?.ok {
@@ -567,7 +567,7 @@ fn run_with(
                 new_args.push("-c");
                 new_args.push(cwd);
             }
-            // 〔`K-P2` `D3`〕`--tmux-size`：detached 会话默认 80x24，太窄会把 agent 输出折行。
+            // `--tmux-size`：detached 会话默认 80x24，太窄会把 agent 输出折行。
             // **只对新建生效** —— 幂等短路那一支根本走不到这里，与 `shared/ccm` 那条注释
             // 逐字同义（「已有会话的尺寸归它自己，可能有人正 attach 着」）。
             if let (Some(w), Some(h)) = (&req.width, &req.height) {
@@ -588,7 +588,7 @@ fn run_with(
                         typed: false,
                     });
                 }
-                // 〔W5-VIS · S4〕带上 tmux 自己说的原因（cwd 不在 / 名字不合法 / server 起不来 …），不再让人猜。
+                // 带上 tmux 自己说的原因（cwd 不在 / 名字不合法 / server 起不来 …），不再让人猜。
                 return Err((
                     "create_failed",
                     copy_text(
@@ -599,7 +599,7 @@ fn run_with(
             }
             // 身份标记与标题是**次要**动作：失败绝不阻断主要动作（键入载荷）。
             // 与 monitor 侧 `payload.rs::render_tmux_outer` 里 `(… 2>/dev/null || true) &&` 同一条纪律
-            // （〔LR2〕原来点的是 TS 座 `session-backend.ts`，那一份删了）。
+            // （原来点的是 TS 座 `session-backend.ts`，那一份删了）。
             //
             // ★★ **建会话这一刻写的是「意图」，不是「事实」**〔`K-P2` C 第五拍，09-03；
             //    PM `§13 裁三` 裁「候选丙」〕。
@@ -635,10 +635,10 @@ fn run_with(
             //   `#{?@ccm_sid,…,#T}`（那份文件逐字：「sid 还没回填时回退 `#T`，
             //   不产出一个空的 `ccm-rbind-`」）—— 两侧同一条性质，不留两种写法。
             //   ⇒ 提升一发生，tmux 自己就把新标题推给 client（`identity_tag` 头注实测过）。
-            // 〔`K-P2` `D3`〕`@ccm_agent`：与 `shared/ccm` 那条本地编排**同一个顺序**
+            // `@ccm_agent`：与 `shared/ccm` 那条本地编排**同一个顺序**
             // （`new-session` → `@ccm_agent` → `@ccm_sid_expect` → `send-keys`）。
             // 同样是**次要动作**：失败不阻断键入载荷（`shared/ccm` 那边写的是 `|| true`）。
-            // 〔W5-VIS · `15 §4.7 S5`〕四步都是次要动作：没做成 ⇒ [`secondary`] 留一行日志（哪一步 · tmux 说的 · 后果），不阻断。
+            // 四步都是次要动作：没做成 ⇒ [`secondary`] 留一行日志（哪一步 · tmux 说的 · 后果），不阻断。
             if let Some(agent) = &req.agent {
                 secondary(
                     tmux,
@@ -660,7 +660,7 @@ fn run_with(
                     Secondary::TitlesOn,
                     &["set-option", "-t", &t, "set-titles", "on"],
                 );
-                // ⚠ 〔`K-R48` 09-11〕**这一行刻意保持字面量，别「顺手收口」成
+                // ⚠ **这一行刻意保持字面量，别「顺手收口」成
                 // `super::ccm::TERMINAL_BIND_TITLE_FORMAT`。** 试过一次，代价是 monitor 侧
                 // `ccm_cli_contract::the_intent_tag_and_the_fact_tag_are_not_merged_by_the_move`
                 // 当场红：那条判据数的是**本文件生产段里「事实标记读点」的处数**（登记 2 处，
@@ -722,7 +722,7 @@ pub(crate) fn launch_for_inbound(
     Ok(reply(&session, out.created, out.typed))
 }
 
-/// 〔C4e · 第四波 4C〕帧面成品 `{session, created, typed}` 的构造器 —— 从 [`launch_for_inbound`] 里原样抽出来（逻辑不动），
+/// 帧面成品 `{session, created, typed}` 的构造器 —— 从 [`launch_for_inbound`] 里原样抽出来（逻辑不动），
 /// 只为让跨语言金样 `tests/__fixtures__/tmux-control.golden.json` 拿**同一个**构造器对拍：
 /// 界面（`src/frontend/ui/tmux-control.ts::sendKeys` / `sendInto`）从此直接收这份成品，monitor 那一跳只搬字节。
 /// ⚠ 它是本文件生产段里**第一个** `json!` 块 —— `inbound_structure_guards::launch_fields_match_its_parser_and_output`

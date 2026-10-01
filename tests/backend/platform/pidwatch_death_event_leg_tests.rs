@@ -32,7 +32,7 @@ fn the_non_linux_arm_is_wired_into_the_source() {
         "生产段只剩 {} 行 —— 剥法坏了或文件被掏空，本条此刻是空转的",
         lines.len()
     );
-    // 反空真②：**恰好三条臂**〔WN1：Windows 有了自己的那条腿，是第三个真实的平台答案〕。
+    // 反空真②：**恰好三条臂**〔Windows 有了自己的那条腿，是第三个真实的平台答案〕。
     //           多一条 = 多了一个平台答案（第二份真相）；
     //           少一条 = 有人把平台这一维塞回了一行 `cfg!()`，护栏的人群就够不着它了。
     assert_eq!(
@@ -99,7 +99,7 @@ fn the_non_linux_arm_is_wired_into_the_source() {
         "win32::WAKES_ON_EXIT",
         "Windows 那条臂不再读 `win32.rs` 紧挨着实现的那个声明 —— 写成字面量会被 \
          `fallback_guard` 判成伪造成功（它说得对：Windows 块里的「有」要有东西背书），\
-         写成别的就是第二份真相〔WN1：那条腿只到编得过 ＋ 源码对拍〕"
+         写成别的就是第二份真相〔那条腿只到编得过 ＋ 源码对拍〕"
     );
     // ★ 编译期那一半也要真的写在那儿：本机编不到它，只能读源码文本。
     //   （`#[cfg(not(any(target_os = "linux", windows)))]` 在本文件里出现四处 —— `mod fallback;` ·
@@ -118,8 +118,8 @@ fn the_non_linux_arm_is_wired_into_the_source() {
 /// ★ 那句话必须真的**说出「没有」**，不是一句读不出结论的散文。
 #[test]
 fn the_caveat_says_out_loud_that_there_is_no_self_healing() {
-    // 〔CP2c〕句子进了文案表、照 CP1 裁词去掉内部推理（「这条腿」「pidfd」「如实降级」—— `91 §2.2`）。
-    // 〔FIX2 · 99 §2.1 ㉛②〕按文案键断言、不钉原文：说的是「没人发现 · 不会自动重启」那一条，说法由文案表管。
+    // 句子进了文案表、照 CP1 裁词去掉内部推理（「这条腿」「pidfd」「如实降级」）。
+    // 按文案键断言、不钉原文：说的是「没人发现 · 不会自动重启」那一条，说法由文案表管。
     assert_eq!(
         NO_DEATH_EVENTS_HERE.as_str(),
         copy_core::copy_text("bePidwatch.noDeathEventsHere.say", &[]),

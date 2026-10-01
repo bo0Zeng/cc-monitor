@@ -1,4 +1,4 @@
-//! 〔FILES2 · 第四波 · 2026-09-27〕**复制到另一台机器** —— `设计/60 §6.2`「跨机复制」· `§7` 第 9 条 Q2。
+//! **复制到另一台机器** —— 「跨机复制」· `§7` 第 9 条 Q2。
 //!
 //! 主会话按通行做法裁：「保留『一窗一机』；在两个窗口之间拖 / 复制到另一台 ⇒ 一个任务『从 A 下到本机暂存 → 传到 B 的暂存 →
 //! B 那台提交』（WinSCP / FileZilla 远端到远端的通行做法：经本机中转），一条进度、可撤、半路失败清暂存」。
@@ -27,7 +27,7 @@ pub static CROSS_LABEL: std::sync::LazyLock<String> =
 /// 判据 `cross_copy_tests::the_local_origin_is_the_app_one` 读两侧源码钉相等）。
 pub const LOCAL_ORIGIN: &str = "<local>";
 
-/// 暂存区（相对 home）。〔P4〕引契约那一份（`relay_route_core::STAGING_DIR_REL`，后端 `control/files_commit.rs::STAGING_DIR`
+/// 暂存区（相对 home）。引契约那一份（`relay_route_core::STAGING_DIR_REL`，后端 `control/files_commit.rs::STAGING_DIR`
 /// 与数据位置页引的同一个）；判据 `cross_copy_tests::the_staging_dir_is_the_backend_one` 钉两侧都引它。
 pub const STAGING_DIR: &str = relay_route_core::STAGING_DIR_REL;
 
@@ -331,7 +331,7 @@ where
         }
         overwrite = true;
     }
-    // 〔FILES2 · V152〕目标就是本机 ⇒ 没有第二腿：直接下到落点（有损名走按字节读回那一条）。
+    // 目标就是本机 ⇒ 没有第二腿：直接下到落点（有损名走按字节读回那一条）。
     if to.0 == LOCAL_ORIGIN {
         let got = if src.is_lossy() {
             super::lossy_pull::pull_by_bytes(

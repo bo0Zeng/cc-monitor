@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 
 /// 被禁的**当下时态**说法。判据字符串运行时拼，避免命中本文件自己。
 ///
-/// # 〔audit-0805 08-06〕从 4 条手写字面量改成**派生**的笛卡尔积
+/// # 从 4 条手写字面量改成**派生**的笛卡尔积
 ///
 /// 原来这里手写四条。实测那是 F24 那一族（**匹配单位比事实小**）在本护栏上的形状：
 /// 把同一句话写成 **「backend 每 8 秒推一帧」** 塞进后端生产段（`observe/watcher.rs`），
@@ -71,7 +71,7 @@ fn scanned_sources(root: &Path) -> Vec<PathBuf> {
     // 而 F01 建它时的普查**只看了 Rust**。⇒ 「同一句假话住四处」那次普查本身
     // 就漏了一整个目录，而**耐久文档恰恰是那句话最有害的住处**（它是权威）。
     // ★ 「扫描面画小了」在本仓第四次；这一次漏的不是一个文件，是一个**目录族**。
-    // 〔P4〕monitor 那棵根换成它的全部人群根（`guard_support::crate_population_roots`：壳 `src/` ＋ manifest 明写的兄弟包，
+    // monitor 那棵根换成它的全部人群根（`guard_support::crate_population_roots`：壳 `src/` ＋ manifest 明写的兄弟包，
     //   窗口包也在内）；兄弟包有几个住 `src/common/`，下面去重。
     for base in crate::guard_support::crate_population_roots()
         .into_iter()
@@ -118,7 +118,7 @@ fn the_scan_actually_reads_both_crates() {
 /// ★ 反向锚点：**真机制必须还写在某处** —— 否则本条退化成「谁都没提过 8s」的空守卫。
 ///
 /// 锚点选 `initial_tmux_probe` 的头注：它是 P5 留下的那一拍，
-/// 头注里逐字解释了「节拍没了，但首轮这一拍要留」。那段没了 = 真相源没了。
+/// 头注里逐字解释了「节拍没了，但首轮这一拍要留」。那段没了 = 源头没了。
 #[test]
 fn the_real_cadence_is_still_documented_somewhere() {
     let w = fs::read_to_string(repo_root().join("src/backend/observe/watcher.rs"))

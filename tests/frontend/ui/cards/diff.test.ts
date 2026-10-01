@@ -213,7 +213,7 @@ test("diffSegments dispatch + NotebookEdit/unknown/anomaly → null", () => {
   eq(diffSegments("Edit", { file_path: "x" }), null, "Edit anomaly");
 });
 
-// 〔THIN〕「哪些工具走 diff 渲染」那一条（Edit / Write / MultiEdit，NotebookEdit 不在内）随判定进了后端适配层：
+// 「哪些工具走 diff 渲染」那一条（Edit / Write / MultiEdit，NotebookEdit 不在内）随判定进了后端适配层：
 //   `tests/backend/agents/claudecode/cards_tests.rs::each_tool_name_maps_to_exactly_its_card`。
 
 // "显示完整 diff" 契约：maxLines 控制截断；解除上限后全量、不截断

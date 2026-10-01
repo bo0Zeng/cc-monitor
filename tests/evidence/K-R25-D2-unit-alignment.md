@@ -360,29 +360,29 @@ thread 'local_daemon::tests::no_monitor_file_falls_back_to_leaving_block_comment
 
 ## §D 上报口（写区外，一个字没动，逐条给住址 + 逐字 + 为什么）
 
-- 〔R-K-R25-1〕**本条不挂 dod** —— `src-tauri/src/backend/control/local_backend.rs:2315`-`2379`：
+- **本条不挂 dod** —— `src-tauri/src/backend/control/local_backend.rs:2315`-`2379`：
   `every_real_daemon_e2e_demands_a_private_tmux_dir` **与本拍改掉的那条完全同形**（先按 `#[test]`
   切原文、再逐块 `guard_core::strip_comment_lines(c)`）。逐字：
   `let src = include_str!("local_backend.rs");` …（按行切块）… `let code = guard_core::strip_comment_lines(c);`
   ⇒ 它今天仍然「先切块再剥」。**本拍装上的乙（块级看门）会看见它掉进兜底**，
   但它自己的判决仍然会被注释里的文本喂饱。**该同拍治的是同职的两处 —— 我只够得着一处。**
   处置建议：照本拍的甲改（`guard_core::test_attr_chunks` 已经是共享原语，两行的事）。
-- 〔R-K-R25-2〕**本条不挂 dod** —— `src-tauri/src/tmux_daemon_gate_guard.rs:442 / :477 / :512 / :552`：
+- **本条不挂 dod** —— `src-tauri/src/tmux_daemon_gate_guard.rs:442 / :477 / :512 / :552`：
   四处 `guard_core::production_code(&body_of(MONITOR_TMUX, <签名>))`，`MONITOR_TMUX = include_str!("tmux.rs")`。
   `body_of` 从签名切到第一个 `\n}\n` ⇒ **函数体窗口**这个单位，两条看门判据都看不见。
   ⚠ 该窗口里出现一个不收口的 `/*` 就掉兜底。今天没有（`tmux.rs` 生产段 0 处块注释），**是运气不是设计**。
-- 〔R-K-R25-3〕**本条不挂 dod** —— `src-tauri/src/parity_ledger.rs:468`
+- **本条不挂 dod** —— `src-tauri/src/parity_ledger.rs:468`
   `guard_core::strip_comment_lines(&src[open + 1..end])`：`generate_handler![…]` 方括号内容的切片。
-- 〔R-K-R25-4〕**本条不挂 dod** —— `src-tauri/src/structural_scan.rs:746`
+- **本条不挂 dod** —— `src-tauri/src/structural_scan.rs:746`
   `guard_core::strip_comment_lines(&body)`，`body` = `raw[body_at..]` 起 3000 字符、按大括号配平，
   **配不平就退回定长 700 字符** ⇒ 那一支**很容易切在字符串中间**、当场掉兜底。这一处的风险比另外几处高。
-- 〔R-K-R25-5〕**本条不挂 dod** —— `src-tauri/src/tool_registry.rs:577` 有一份**私有的**
+- **本条不挂 dod** —— `src-tauri/src/tool_registry.rs:577` 有一份**私有的**
   `fn production_code(src: &str) -> String`：它按 `l.find("//")` 截行、再
   `.split(concat!("\n#[cfg","(test)]")).next()` 切测试段。**两点**：① 它**一个块注释都不剥**；
   ② 「第一个 `#[cfg(test)]` 之后全砍」正是 `guard-core` 头注逐字骂过的坑 2。
   ⚠ 我**没有**核它有没有登记进 `structural_scan.rs` 那张「剥注释只许有一个权威实现」的表 ——
   **那是我没查，不是查过没有。**
-- 〔R-K-R25-6〕**本条不挂 dod** —— `evidence/K-R25-D4-nine-uncovered-files.md` 里那条建议：
+- **本条不挂 dod** —— `evidence/K-R25-D4-nine-uncovered-files.md` 里那条建议：
   给 `crates` 与 `build.rs` 补第三条看门判据。**`KR25D4` 写死了「只答不改」，所以我没动手。**
 
 ---

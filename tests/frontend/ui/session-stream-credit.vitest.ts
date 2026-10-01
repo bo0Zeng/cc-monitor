@@ -1,5 +1,5 @@
 /**
- * 设计/99 §2.1 ⑬「起停帧不吃 credit、不许丢（登记一条例外）」—— TS 那一侧：例外表 == 金样（Rust `SessionStreamFrame::takes_credit` 写它，异源）；
+ * 「起停帧不吃 credit、不许丢（登记一条例外）」—— TS 那一侧：例外表 == 金样（Rust `SessionStreamFrame::takes_credit` 写它，异源）；
  * 起停那几格处理掉之后**不还** credit（monitor 交它们时本来没扣），行照旧还。
  */
 import { describe, expect, it, vi } from "vitest";

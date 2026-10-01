@@ -20,7 +20,7 @@ export type CcmProbeResult = { installed: boolean, version: string | null, capab
  */
 build?: string, 
 /**
- * 〔FIX3 · `99 §2.2 ㉔`〕登录 shell 里 `command -v ccm` 答的那一句（一般是一个路径；函数 / 别名时是它们自己的写法）。
+ * 登录 shell 里 `command -v ccm` 答的那一句（一般是一个路径；函数 / 别名时是它们自己的写法）。
  * 只有「问 PATH 上那个」那一条探针带它；它不参与「答没答出名片」（`installed`）—— 答不出名片的旧入口照样有住址。
  */
 at?: string, };

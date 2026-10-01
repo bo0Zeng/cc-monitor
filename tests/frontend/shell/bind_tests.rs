@@ -139,7 +139,7 @@ fn a_local_session_that_is_gone_gets_forgotten_in_memory_and_on_disk() {
 /// `apply_local_removal` 里加一个 `match cause`，这一条就红。
 ///
 /// ⚠ 它**不**覆盖上游那一步（「同 pid + 同 procStart 换 sid 该判 `Superseded`」）——
-/// 那一格由本机后端说（`session_removed.cause` ⇒ 〔MIG-1〕后端会话账本裁成 `session_state`），是另一条边。
+/// 那一格由本机后端说（`session_removed.cause` ⇒ 后端会话账本裁成 `session_state`），是另一条边。
 #[test]
 fn a_local_session_that_was_superseded_gets_forgotten_too() {
     let sid = "s-beta";
@@ -153,7 +153,7 @@ fn a_local_session_that_was_superseded_gets_forgotten_too() {
         "入场自检：绑定本来就不在盘上 —— 落盘那一半此刻是空转"
     );
 
-    // 〔MIG-1〕去向由后端裁好（`session_state`），本机这一格不看去向：同一个入口、同一个结果。
+    // 去向由后端裁好（`session_state`），本机这一格不看去向：同一个入口、同一个结果。
     cache.apply_local_removal(sid);
 
     assert!(
@@ -230,7 +230,7 @@ fn a_remote_session_that_only_went_idle_keeps_its_binding() {
 ///
 /// # 它钉的是一句**负向**的话，为什么值得钉
 ///
-/// `verify_binding` 只看三样：窗口还在（`IsWindow`，〔P4b〕读法住 `platform::hwnd::exists`）· 属主 PID · 属主 procStart。
+/// `verify_binding` 只看三样：窗口还在（`IsWindow`，读法住 `platform::hwnd::exists`）· 属主 PID · 属主 procStart。
 /// 窗口还在、属主进程没换 ⇒ **恒绿**，哪怕那个终端里现在跑的是另一个会话。
 /// 链上唯一能分辨这件事的证据是 `title_at_bind` —— 它**写四处、读作判据零处**
 /// （唯一的非写读点是一句 `tracing::info!`）。
@@ -248,7 +248,7 @@ fn a_remote_session_that_only_went_idle_keeps_its_binding() {
 /// - 买不到「加了标题比对就对了」——标题会被 claude 自己改写，
 ///   正向判据必须在真窗口上验（先例：`remote_bind_finds_real_ccm_rbind_window`
 ///   要在 session 1 跑）。
-/// - 它按**源文本**判，不按行为判 ⇒ 只对 `verify_binding` 这一个函数体的**写法**说话（〔P4b〕cfg 分身已合成一份）；
+/// - 它按**源文本**判，不按行为判 ⇒ 只对 `verify_binding` 这一个函数体的**写法**说话（cfg 分身已合成一份）；
 ///   哪天有人把标题比对写进一个被调用的 helper 里，本条**看不见**。
 #[test]
 fn verify_binding_cannot_tell_that_the_window_changed_hands() {
@@ -367,7 +367,7 @@ fn remote_bind_finds_real_ccm_rbind_window() {
     }
 }
 
-// ══════════ `设计/80 §8.7` 步 3：本地半 —— `令牌 → 窗口句柄` ══════════
+// ══════════：本地半 —— `令牌 → 窗口句柄` ══════════
 //
 // 这一组守的是**方案 E 的本地那一半**：`↗ 拉前终端` 需要的全部东西是一个映射
 // `(sid) → (本地 HWND)`，而方案 E 把那个映射的键从「跨五跳广播过来的 sid」
@@ -441,7 +441,7 @@ fn a_malformed_launch_token_marker_is_treated_as_no_token_at_all() {
     );
 }
 
-/// ★ 写侧（〔P5〕本机后端的开终端前奏模板）写进 await 文件的 JSON 键 == [`AwaitRequest`] 认的那三个键。
+/// ★ 写侧（本机后端的开终端前奏模板）写进 await 文件的 JSON 键 == [`AwaitRequest`] 认的那三个键。
 ///
 /// 读侧在这里、写侧在后端：模板是那份契约的文字，本条读它（渲染只填 marker 与目录两格，键名就在模板里）。
 /// 两半：① 从模板的 hashtable 里抠出键名，**集合等于手写的** `{ps_pid, marker, proc_start}`；
@@ -596,7 +596,7 @@ fn the_token_survives_a_monitor_restart_and_old_files_still_load() {
 
 /// ★ 心跳清理那一维也是白拿的：PS 进程死了 ⇒ 条目走 ⇒ 令牌跟着查不到。
 ///
-/// ⚠ **诚实边界**：〔P4b〕`platform::pid::is_alive` 在非 Windows 上是恒 `false` 的桩
+/// ⚠ **诚实边界**：`platform::pid::is_alive` 在非 Windows 上是恒 `false` 的桩
 /// ⇒ 本机上「谁该被清掉」这一问它答不了，本条真正在买的是
 /// **「清掉之后令牌确实查不到了」**（= 没有第二张表漏清）。
 /// 清掉之前那一半（`lookup_hwnd_for_token` 命中）才是本条的正控。
@@ -618,7 +618,7 @@ fn a_dead_shell_takes_its_token_out_of_the_table_too() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// 🔴 ★ **令牌一个字节都不许进日志**（`设计/80 §8.6 ③`）。
+/// 🔴 ★ **令牌一个字节都不许进日志**。
 ///
 /// 后端读侧有一条同名同形的判据（`identity_tag::tests::
 /// the_token_value_never_reaches_a_log_macro`），**本地这一侧此前没有** ——
@@ -697,7 +697,7 @@ fn the_launch_token_value_never_reaches_a_log_macro() {
     );
 }
 
-// ═══════ `设计/80 §8.7` 步 4 / 步 5（第二波 T4）：↗ 远端那一格的分派 ═══════════════════
+// ═══════ ↗ 远端那一格的分派 ═══════════════════
 //
 // 🔴 **下面每一条都是平台无关的那一段**：`verify` 与 `rescan` 注入成假的，判的是分派本身
 //    （哪条路先、什么时候退、失败说哪句话）。「窗口真的到了前台」本机一格都买不到。

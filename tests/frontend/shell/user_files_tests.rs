@@ -1,4 +1,4 @@
-//! 〔RW1 · 第四波 · 2026-09-24〕`user_files` 的判据 ＋ monitor 这一侧判据共用的**替身门**。
+//! `user_files` 的判据 ＋ monitor 这一侧判据共用的**替身门**。
 //!
 //! ⚠ 替身门 [`DiskDoor`] 在临时目录上做「读 · CAS · 写」，**只为让 monitor 这一侧的规划能被真跑一遍**
 //! （算出来写了什么、交给后端的期望是哪一份、`stale` 之后有没有重读重算）。
@@ -9,13 +9,13 @@ use super::*;
 use std::cell::RefCell;
 use std::path::{Path, PathBuf};
 
-// 〔MIG-3b 续〕门的 `put` 删了（最后一个用户进了那台后端）⇒ 替身记账那一格（`PutCall` / 插外部改动）随之删。
+// 门的 `put` 删了（最后一个用户进了那台后端）⇒ 替身记账那一格（`PutCall` / 插外部改动）随之删。
 
 /// 一扇**只在判据里**用的门：落在本机临时目录上。
 pub(crate) struct DiskDoor {
     pub home: PathBuf,
     /// 删会话那一条收到的 sid。
-    /// 〔RM1d〕`delete`（`files-delete`）收到的相对段 ＋〔RM1e〕交过去的 `expect`。
+    /// `delete`（`files-delete`）收到的相对段 ＋交过去的 `expect`。
     pub deleted: RefCell<Vec<(String, String)>>,
 }
 
@@ -46,7 +46,7 @@ impl Door for DiskDoor {
         self.deleted
             .borrow_mut()
             .push((rel.to_string(), expect.to_string()));
-        // 〔RM1e〕CAS 同后端 `files-delete` 的 `expect`：盘上 ≠ 读到的那一份 ⇒ stale，一个字节不动。
+        // CAS 同后端 `files-delete` 的 `expect`：盘上 ≠ 读到的那一份 ⇒ stale，一个字节不动。
         if std::fs::read_to_string(&p).ok().as_deref() != Some(expect) {
             return Err(Refused::Stale(format!(
                 "替身：{} 在读过之后变了",
@@ -66,10 +66,10 @@ pub(crate) fn temp_home(tag: &str) -> PathBuf {
     p
 }
 
-// 〔MIG-3b 续〕读 → 算 → 交那一环的四条判据（交出去的期望是读到的那一份 · 不存在交 `None` · `stale` 重读重算到上限 · 没事可做不写）
+// 读 → 算 → 交那一环的四条判据（交出去的期望是读到的那一份 · 不存在交 `None` · `stale` 重读重算到上限 · 没事可做不写）
 //   随 monitor 那一环删了：同一环在后端那一份（`src/backend/assets/door.rs` 的 `edit`）由后端资产那几族的判据驱动。
 
-// 〔MIG-3a〕`rel_under` 那条判据随函数搬进了后端（`tests/backend/assets/aliases/aliases_tests.rs`）。
+// `rel_under` 那条判据随函数搬进了后端（`tests/backend/assets/aliases/aliases_tests.rs`）。
 
 // ── J2：门发出去的命令 == 后端登记的写面 ∪ 读面里真用到的那几条（两侧异源：一侧 monitor 源码，一侧后端源码）──
 
@@ -119,8 +119,8 @@ fn every_command_the_door_sends_is_registered_on_the_backend_and_the_new_trio_ha
     let sent = door_commands();
     let (write_face, read_family) = backend_declared();
     assert!(
-        // 〔MIG-3b 续〕门 5 → 4：`files-chmod` 随公钥推送进本机后端出列；4 → 3：`files-put` 随它最后那个用户进了那台后端出列；
-        // 〔THIN〕3 → 2：`files-peek` 随「认旧入口」进本机常驻后端出列。
+        // 门 5 → 4：`files-chmod` 随公钥推送进本机后端出列；4 → 3：`files-put` 随它最后那个用户进了那台后端出列；
+        // 3 → 2：`files-peek` 随「认旧入口」进本机常驻后端出列。
         sent.len() >= 2 && write_face.len() >= 8 && read_family.len() >= 5,
         "人群塌了（门 {} 条 · 写面 {} 条 · 读族 {} 条）—— 抽取器坏了，本条空转",
         sent.len(),
@@ -136,9 +136,9 @@ fn every_command_the_door_sends_is_registered_on_the_backend_and_the_new_trio_ha
         "门发出去的这几条后端根本没登记：{unknown:?} —— 发过去只会拿到 unknown_command"
     );
     // 反向：`RW1` 在后端写面加的三条，每一条在 monitor 这一侧都有消费者（不许登记了没人用）。
-    // 〔MIG-3b〕`files-delete-session` 出了这一组：删会话由界面经通道直说那台后端，门不再发它（消费者在 `src/frontend/ui/session-writes.ts`）。
-    // 〔MIG-3b 续〕`files-put` 出了这一组：最后经门写的那个用户进了那台后端。
-    // 〔THIN〕`files-peek` 也出了这一组：门上最后一个读的用户（`ccm_legacy` 认旧入口）进了本机常驻后端（`deploy-retired`）；
+    // `files-delete-session` 出了这一组：删会话由界面经通道直说那台后端，门不再发它（消费者在 `src/frontend/ui/session-writes.ts`）。
+    // `files-put` 出了这一组：最后经门写的那个用户进了那台后端。
+    // `files-peek` 也出了这一组：门上最后一个读的用户（`ccm_legacy` 认旧入口）进了本机常驻后端（`deploy-retired`）；
     //   它在后端照旧是写面「读改写」的读那一半（别的面在后端里直接调）。反向那一格随之无对象。
     // 写面里门会发的那几条，恰好是这一集合（多发一条写面命令 ⇒ 先回答它为什么经门）。
     // `files-delete`：`ccm_legacy` 删旧入口（带读到的那一份当期望值）。
@@ -150,11 +150,11 @@ fn every_command_the_door_sends_is_registered_on_the_backend_and_the_new_trio_ha
     assert_eq!(
         sent_writes,
         [
-            // 〔MIG-3b 续〕`files-chmod` 出列：唯一用它的公钥推送进了本机后端。
+            // `files-chmod` 出列：唯一用它的公钥推送进了本机后端。
             "files-delete",
-            // 〔THIN〕`files-peek` 出列：见上。
-            // 〔MIG-3b 续〕`files-put` 出列：唯一用它的那个用户写进了那台后端。
-            // 〔MIG-3a · 子步 3〕`files-rename` 出列：唯一用它的 cc-bus 装前整目录备份进了本机后端。
+            // `files-peek` 出列：见上。
+            // `files-put` 出列：唯一用它的那个用户写进了那台后端。
+            // `files-rename` 出列：唯一用它的 cc-bus 装前整目录备份进了本机后端。
         ]
         .into_iter()
         .collect(),
@@ -162,4 +162,4 @@ fn every_command_the_door_sends_is_registered_on_the_backend_and_the_new_trio_ha
     );
 }
 
-// 〔MIG-3a〕「门发的只删空目录那一形的键 == 后端认的那一个」那一条随门上那一形删了（收空目录进了后端 `skill_flow.rs`，同一进程里直接调写面）。
+// 「门发的只删空目录那一形的键 == 后端认的那一个」那一条随门上那一形删了（收空目录进了后端 `skill_flow.rs`，同一进程里直接调写面）。

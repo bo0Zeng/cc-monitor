@@ -37,8 +37,8 @@ SID="9d66c46d-bf88-4f99-877e-455555555555"
 
 # ★ `K-R48` 第二拍（09-11）：取值点从 `shared/ccm` 换到 `ccm::TERMINAL_BIND_TITLE_FORMAT`。
 # 那个 bash 脚本删了（`K33` 逐字「不要有什么 bash 脚本」），而这一行的**性质一个字没变** ——
-# 它要的一直是「那个格式串的**唯一真相源**长什么样」，刻意不在本文件里重抄一份。
-# 今天唯一真相源是 `src/backend/control/ccm/mod.rs` 里那个 `const`
+# 它要的一直是「那个格式串的**唯一源头**长什么样」，刻意不在本文件里重抄一份。
+# 今天唯一源头是 `src/backend/control/ccm/mod.rs` 里那个 `const`
 # （`launch.rs` 生产段里那份由后端侧判据
 #  `control::ccm::tests::the_window_title_format_has_the_same_text_on_both_sides` 钉着逐字相同）。
 echo "== 取 ccm::TERMINAL_BIND_TITLE_FORMAT 的真实值（不重抄一份，避免双写点） =="

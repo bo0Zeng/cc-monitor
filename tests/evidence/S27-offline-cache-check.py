@@ -27,7 +27,7 @@ specified」—— **门禁红在「下不到包」这条与代码对不对毫�
 - **不证「编得过」**。它只证「解析 + 取包这一步断网过得去」。
 - **不看沙箱那个具名卷**，看的是**宿主的** `~/.cargo/registry`（或 `$CARGO_HOME`）——
   那是卷的**种子**。卷若已存在且比种子旧，本判据看不见那条差。
-  ⇒ 卷是派生物，种子是真相源；要确保两者一致就把卷删掉让它重播种。
+  ⇒ 卷是派生物，种子是源头；要确保两者一致就把卷删掉让它重播种。
 - **index 那一半只在跑真 cargo 时才验**。离线解析除了 `.crate` 还要 registry index
   的本地缓存（`~/.cargo/registry/index/*/.cache/`）。本脚本不解析 index 的二进制缓存格式；
   真正把这一格买下来的是 `S27-prove-offline.py`（`bwrap --unshare-net` 跑真 `cargo fetch`）。
@@ -51,7 +51,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-# 〔10-01〕全景小程序那第三份 lock 随它整棵删了。
+# 全景小程序那第三份 lock 随它整棵删了。
 LOCKS = [
     ROOT / "src" / "frontend" / "shell" / "Cargo.lock",
     ROOT / "src" / "backend" / "Cargo.lock",

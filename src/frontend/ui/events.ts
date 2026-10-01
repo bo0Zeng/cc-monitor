@@ -78,12 +78,12 @@ export interface EventHandlers {
       attachable: boolean | null;
       cwd: string | null;
       name: string | null;
-      /** 〔FIX3 · `99 §2.2 ②`〕启动期令牌（那台读回的；缺席 ⇒ `null`）：`launch-arrival.ts` 认「我刚起的那条」。 */
+      /** 启动期令牌（那台读回的；缺席 ⇒ `null`）：`launch-arrival.ts` 认「我刚起的那条」。 */
       rbindToken: string | null;
     },
   ) => void;
   /**
-   * 〔U4b · 第四波〕活会话住在什么容器里（`container` 格，本机与远端同一个事件）。
+   * 活会话住在什么容器里（`container` 格，本机与远端同一个事件）。
    * 进 queue：与 `remote-added` / 行保序（先建 tab、再落容器；早到的由 TabManager 暂存）。
    */
   onSessionContainer?: (sessionId: string, container: string) => void;
@@ -93,33 +93,33 @@ export interface EventHandlers {
    */
   onSessionRuns?: (p: SessionRunsPayload) => void;
   /**
-   * 〔U4b · 第四波〕某台机器的活会话清单报完了（`listed` 格）。进 queue：排在那台的
-   * `remote-added` 之后 ⇒ 处理它时，那台此刻全部的活会话都已宣告过（`设计/30 §3.5.7a`）。
+   * 某台机器的活会话清单报完了（`listed` 格）。进 queue：排在那台的
+   * `remote-added` 之后 ⇒ 处理它时，那台此刻全部的活会话都已宣告过。
    */
   onOriginSessionsListed?: (origin: string) => void;
   /**
-   * 〔TAP · V124 · `设计/20 §8`〕中转抄出来的一个 SSE 事件：会话流 `session-tap`（通道 `subscribe`，`设计/05 §15`）里的一格。
+   * 中转抄出来的一个 SSE 事件：会话流 `session-tap`（通道 `subscribe`）里的一格。
    * **不进 queue**：活卡是临时态，与行 / 起停事件之间不需要顺序（jsonl 那一轮到了整轮覆盖、墓碑挡迟到的 tap）；
    * 进 queue 反倒会让 token 级的洪峰排在行前面。credit 在本格处理完当场还。
    */
   onSessionTap?: (e: SessionTapPayload) => void;
   /**
-   * 〔TAP〕那台机器的 tap 流看不见了（订阅里的 `Unseen`：本机后端那条流断了）⇒ 那台上还开着的响应不会再有下文，活卡全撤。
+   * 那台机器的 tap 流看不见了（订阅里的 `Unseen`：本机后端那条流断了）⇒ 那台上还开着的响应不会再有下文，活卡全撤。
    */
   onSessionTapLost?: (origin: Origin) => void;
   /**
-   * 〔DL1 · `设计/01 §2.2`〕某台机器的账号清单**可能**变了（`accounts-changed` 流里的 `seen` / `frame` / `gap`，
+   * 某台机器的账号清单**可能**变了（`accounts-changed` 流里的 `seen` / `frame` / `gap`，
    * 一批只叫一次）⇒ 强制刷账号清单与 chip。替掉裸 Tauri 事件 `remote-backend-ready`。
    */
   onAccountsChanged?: () => void;
   /**
-   * 〔FW1 · 第四波 4D · D-d〕活会话的记录文件不见了（`change` = `"gone"`）/ 被改过已从头重读（`"truncated"` / `"rewritten"`）。
+   * 活会话的记录文件不见了（`change` = `"gone"`）/ 被改过已从头重读（`"truncated"` / `"rewritten"`）。
    * 会话流里的一格（`{"file_notice": …}`），与行同序：重读出来的行排在它后面。
    */
   onSessionFileNotice?: (sessionId: string, change: string) => void;
   /**
-   * 〔GP1 · 第四波〕那台机器看不见了（会话流 `unseen` 格：连接断了 / F5 时那台还没报完清单）⇒ 那台上活的 · 可重连的落说不清。
-   * 〔MIG-1 续 · 主会话裁〕**机器级**：一格说一台（原先逐会话一格）。后端紧跟着把那台还活着的再宣告一次 ⇒ 真活着的翻回活。
+   * 那台机器看不见了（会话流 `unseen` 格：连接断了 / F5 时那台还没报完清单）⇒ 那台上活的 · 可重连的落说不清。
+   * **机器级**：一格说一台（原先逐会话一格）。后端紧跟着把那台还活着的再宣告一次 ⇒ 真活着的翻回活。
    * 进 queue：与行 / `live` / `listed` 保序（断连那一刻之前的行先落，重连之后的重宣告与清单后到）。
    */
   onOriginUnseen?: (origin: string) => void;
@@ -139,7 +139,7 @@ export interface EventHandlers {
    */
   onBatchEnd?: () => void;
   /**
-   * 〔MIG-3b · `设计/99 §2.1 ㉓②`〕那台机器上这几个会话的任务清单变了（`sids`），或者期间可能漏了（`all`：那台又接上 / 丢了几格）⇒
+   * 那台机器上这几个会话的任务清单变了（`sids`），或者期间可能漏了（`all`：那台又接上 / 丢了几格）⇒
    * 调用方重问 `tasks-list`。来自通道 `subscribe(origin, "session-tasks")`（`tasks-panel.ts::tasksChangedItems` 读格）。
    */
   onTasksChanged?: (origin: Origin, sids: readonly string[], all: boolean) => void;
@@ -150,7 +150,7 @@ export interface EventHandlers {
    */
   onSessionActivity?: (payload: SessionActivityPayload) => void;
   /**
-   * 〔CF2 · 第四波 4B〕那台机器的会话流里**丢了几格**（没 credit 时句柄丢了、原位报的 `gap`，`设计/05 §3.3.4`）。
+   * 那台机器的会话流里**丢了几格**（没 credit 时句柄丢了、原位报的 `gap`）。
    * 丢的是哪几个会话的哪几行，流里说不出来（一条订阅里混着多个会话）⇒ 宿主对那台机器的每个 tab 按行号补
    * （`TabManager.onStreamGap`）。进 queue：与行保序（丢在哪两格之间，补就从那里起）。
    */
@@ -158,9 +158,9 @@ export interface EventHandlers {
 }
 
 /**
- * 〔CF2 · 第四波 4B〕**会话流一开始给多少 credit**（格数；一格 = 一行或一个批边界）。
+ * **会话流一开始给多少 credit**（格数；一格 = 一行或一个批边界）。
  *
- * 它就是这一侧队列的上界（`设计/05 §3.3.4` 级 1 在 webview 这一跳第一次成立）：句柄交出去的格
+ * 它就是这一侧队列的上界（级 1 在 webview 这一跳第一次成立）：句柄交出去的格
  * 不会多于我们给的 credit，而每处理掉一格还一格（`want`，按 drain 一片批量还）。
  * 取 20 000：与原来一次 F5 重放的量级相当（每个会话 ≤ 750 条 × 十几二十个会话）——
  * 小了，F5 重放会一次次停下来等 credit（慢，但不丢）；大了，前端落后时的队列跟着长。
@@ -169,7 +169,7 @@ export interface EventHandlers {
 export const STREAM_WINDOW = 20_000;
 
 /**
- * 〔MIG-1 · `设计/99 §2.1 ⑬` 登记的例外〕会话流里**不吃 credit、不丢**的那几种格（会话起停 / 状态的成品）。
+ * 〔登记的例外〕会话流里**不吃 credit、不丢**的那几种格（会话起停 / 状态的成品）。
  * 收到它们不还 credit（monitor 那一侧交它们时本来就没扣）。Rust 那一侧同一张表是 `ui_contract.rs::SessionStreamFrame::takes_credit`，
  * 两侧对金样 `tests/__fixtures__/session-stream-credit.golden.json`。
  */
@@ -186,13 +186,13 @@ export const CREDIT_EXEMPT_FRAMES = [
 ] as const;
 
 /**
- * 〔TAP · V124〕`session-tap` 订阅的 credit 窗口（格）：webview 这一跳在途的 tap 最多这么多格，超了 monitor 那一侧丢、
- * 位置照占、原位 `Gap`（`05 §3.3.4` 级 2）。每格处理完当场还 ⇒ 正常节奏下窗口永远不会见底；只有 webview 卡住（最小化、
+ * `session-tap` 订阅的 credit 窗口（格）：webview 这一跳在途的 tap 最多这么多格，超了 monitor 那一侧丢、
+ * 位置照占、原位 `Gap`（级 2）。每格处理完当场还 ⇒ 正常节奏下窗口永远不会见底；只有 webview 卡住（最小化、
  * 长任务）时才丢 —— 丢了由活卡的位置号 `n` 看出缺口、撤卡，jsonl 定稿。值与后端 tap 通道同一个量级（256）。
  */
 export const TAP_WINDOW = 256;
 
-/** 〔CF2〕一条会话流订阅在本文件里的账：还没还的 credit。`sub` 在登记那一跳回来之前是 `null`。 */
+/** 一条会话流订阅在本文件里的账：还没还的 credit。`sub` 在登记那一跳回来之前是 `null`。 */
 interface StreamHold {
   sub: Sub | null;
   owed: number;
@@ -200,11 +200,11 @@ interface StreamHold {
 
 /** queue 中的不同事件类型，drain 按 kind 派发 */
 type QueueItem =
-  // 〔CF2〕流里来的三种带 `grant`：处理掉它就还那条订阅一格 credit。
+  // 流里来的三种带 `grant`：处理掉它就还那条订阅一格 credit。
   | { kind: "payload"; payload: JsonlLinePayload; grant?: StreamHold }
   | { kind: "batch-start"; grant?: StreamHold }
   | { kind: "batch-end"; grant?: StreamHold }
-  // 〔CF2〕那台机器的流里丢了几格（`gap`）。
+  // 那台机器的流里丢了几格（`gap`）。
   | { kind: "gap"; origin: Origin }
   | { kind: "ended"; sessionId: string }
   // audit-fixes F03.2：灰灯（idle-tmux）——与 ended 同 queue 保序，见 onSessionIdle。
@@ -230,22 +230,22 @@ type QueueItem =
       name: string | null;
       rbindToken: string | null;
     }
-  // 〔U4b · 第四波〕容器事实 / 某台清单报完了 —— 同一 queue 保序（见 EventHandlers 里两条的注释）。
+  // 容器事实 / 某台清单报完了 —— 同一 queue 保序（见 EventHandlers 里两条的注释）。
   | { kind: "container"; sessionId: string; container: string }
   | { kind: "runs"; payload: SessionRunsPayload }
   | { kind: "listed"; origin: string }
-  // 〔GP1 · 第四波〕那台机器看不见了 —— 同一 queue 保序（见 EventHandlers.onOriginUnseen）。
+  // 那台机器看不见了 —— 同一 queue 保序（见 EventHandlers.onOriginUnseen）。
   | { kind: "unseen"; origin: string }
-  // 〔FW1 · 第四波 4D · D-d〕记录文件不见了 / 被改过已从头重读 —— 流里的一格，与行同序（见 EventHandlers.onSessionFileNotice）。
+  // 记录文件不见了 / 被改过已从头重读 —— 流里的一格，与行同序（见 EventHandlers.onSessionFileNotice）。
   | { kind: "file-notice"; sessionId: string; change: string; grant?: StreamHold };
 
 /**
- * 〔W5-RENDER R1 · `设计/17 §2.10`〕drain 用的 FIFO：**数组 ＋ 头下标**，出队 O(1)。
+ * drain 用的 FIFO：**数组 ＋ 头下标**，出队 O(1)。
  *
  * 原来是 `Array.prototype.shift()`。V8 的 left-trim 快路不是无条件生效的：秤 5 的 B 段量到
  * 数组长过 ~15 000 之后每次 `shift` 退化成搬整份（n=20 000 排空 14 ms vs 头指针 0.14 ms），
  * 而这条队列在生产上就能长到一个 credit 窗口（`STREAM_WINDOW` = 20 000）。
- * 读数（经生产 `bindEvents` 灌一块 n 条、空壳 `onLine`、排空墙钟）住 `调研/第四波记录/W5-RENDER.md §6`。
+ * 读数（经生产 `bindEvents` 灌一块 n 条、空壳 `onLine`、排空墙钟）住。
  *
  * - 出队把那一格置空（不留对已派发条目的引用）；排空时整份复位；头下标过 {@link COMPACT_AT} 且过半时
  *   压缩一次（摊还 O(1)，队列不会只增不减）。
@@ -300,7 +300,7 @@ const BATCH_SIZE = 40;
 const BATCH_MS = 8;
 const BATCH_MS_MAX = 50;
 
-// ★ 步 4（`设计/10 §2.4`）让开的方式：`makeYieldToMain`（〔RENDER2〕搬进 `yield-to-main.ts`，与长回复分片渲染共用）。
+// ★ 步 4让开的方式：`makeYieldToMain`（搬进 `yield-to-main.ts`，与长回复分片渲染共用）。
 
 /**
  * ★ 步 4：**「干多久」从猜改成问。**
@@ -345,26 +345,26 @@ const BATCH_END_GRACE_MS = 300;
 
 /** bindEvents 选项。 */
 export interface BindEventsOptions {
-  // 〔MIG-1 收尾 · V41〕`windowScoped`（issue #10：viewer 按窗口作用域 `listen`）删了：本函数里已没有 Tauri 监听，
+  // `windowScoped`（issue #10：viewer 按窗口作用域 `listen`）删了：本函数里已没有 Tauri 监听，
   //   定向投递今天只剩会话流的交格，由 `src/comms/inward/chan.ts` 那一处按窗口作用域听（条 22.2）。
   /**
-   * 〔CF2 · 第四波 4B〕要订的会话流：`(origin, kind)`（`kind` = `session-lines` 整台机器 · `session-lines/<sid>` 一个会话）。
+   * 要订的会话流：`(origin, kind)`（`kind` = `session-lines` 整台机器 · `session-lines/<sid>` 一个会话）。
    * 会话内容**只**从这里来（原来的 `jsonl-line` / `jsonl-batch` 两个事件已退役）。在其余监听都注册完之后订，
    * `bindEvents` 返回时 monitor 那一侧已经登记好（主界面接着发 `frontend-ready` 就是它们的就绪点）。
    */
   streams?: ReadonlyArray<{ origin: Origin; kind: string }>;
   /**
-   * 〔TAP · V124〕要订 `session-tap` 的机器（〔HOST · V139〕每台的中转住那台的常驻后端 ⇒ 每台都订）。
-   * 与会话行同一条帧路、同一套 credit（`设计/05 §15`）；窗口是 {@link TAP_WINDOW}。
+   * 要订 `session-tap` 的机器（每台的中转住那台的常驻后端 ⇒ 每台都订）。
+   * 与会话行同一条帧路、同一套 credit；窗口是 {@link TAP_WINDOW}。
    */
   taps?: ReadonlyArray<Origin>;
   /**
-   * 〔DL1〕要订 `accounts-changed` 的机器（那台的长连接又通了 / 那台后端说账号清单变了 ⇒ {@link EventHandlers.onAccountsChanged}）。
+   * 要订 `accounts-changed` 的机器（那台的长连接又通了 / 那台后端说账号清单变了 ⇒ {@link EventHandlers.onAccountsChanged}）。
    * 与会话行 · tap 同一条帧路、同一处 `chan.subscribe`；窗口是 `ACCOUNTS_CHANGED_WINDOW`。
    */
   accounts?: ReadonlyArray<Origin>;
   /**
-   * 〔MIG-3b · ㉓②〕要订 `session-tasks` 的机器（那台后端说某个会话的任务清单变了 ⇒ {@link EventHandlers.onTasksChanged}）。
+   * 要订 `session-tasks` 的机器（那台后端说某个会话的任务清单变了 ⇒ {@link EventHandlers.onTasksChanged}）。
    * 与会话行 · tap · 账号同一处 `chan.subscribe`；窗口是 `SESSION_TASKS_WINDOW`。
    */
   tasks?: ReadonlyArray<Origin>;
@@ -383,7 +383,7 @@ export async function bindEvents(
   handlers: EventHandlers,
   opts: BindEventsOptions = {},
 ): Promise<void> {
-  // 〔合并 MIG-1 × 主线 8c6cdc0e〕本函数里最后几条 Tauri 监听两边各自退役（MIG-1：会话起停 / 状态并进会话流；MIG-3b：`task-update`
+  // 本函数里最后几条 Tauri 监听两边各自退役（MIG-1：会话起停 / 状态并进会话流；MIG-3b：`task-update`
   //   改走 `session-tasks`）⇒ 按窗口作用域监听的那个包装（`sub`）与「等监听注册完」那一格一起没了。
 
   const queue = new DrainQueue<QueueItem>();
@@ -463,7 +463,7 @@ export async function bindEvents(
     }
   };
 
-  // 〔CF2〕处理掉的流格攒着还 credit（每片 drain 末尾还一次，不是逐格一次 IPC）。
+  // 处理掉的流格攒着还 credit（每片 drain 末尾还一次，不是逐格一次 IPC）。
   const owedHolds = new Set<StreamHold>();
   const flushGrants = (): void => {
     for (const h of owedHolds) {
@@ -595,7 +595,7 @@ export async function bindEvents(
 
 
 
-  // 〔CF2 · 第四波 4B〕会话内容**不再是** `jsonl-line` / `jsonl-batch` 两个事件：走通道的 `subscribe`
+  // 会话内容**不再是** `jsonl-line` / `jsonl-batch` 两个事件：走通道的 `subscribe`
   //   （本函数末尾按 `opts.streams` 订）。一格 = 一行（`{"line": …}`）或成批那一段的边界（`{"batch": …}`）。
   //   进 queue 的样子与原来逐字相同：行 ⇒ payload；批边界 ⇒ batch-start / batch-end 哨兵。
   const onStreamItems = (origin: Origin, hold: StreamHold, items: Item[]): void => {
@@ -625,7 +625,7 @@ export async function bindEvents(
             grant: hold,
           });
         } else if (f !== null && typeof f === "object" && "live" in f) {
-          // 〔MIG-1 · ⑬〕会话起停 / 状态的成品：与行同一条流、同序；不吃 credit（不带 grant）。本机远端同一形，只差建 tab 那一跳。
+          // 会话起停 / 状态的成品：与行同一条流、同序；不吃 credit（不带 grant）。本机远端同一形，只差建 tab 那一跳。
           const p = f.live;
           if (isLocalOrigin(p.origin)) {
             queue.push({
@@ -696,7 +696,7 @@ export async function bindEvents(
         console.info(`[events] 会话流 [${origin}]：又看得见了`);
       } else {
         console.warn(`[events] 会话流 [${origin}] 关了：`, it.by);
-        // 〔W5-UI · E §3.3〕这条流是这台机器会话更新的唯一来源；关了之后什么都不会再来 ⇒ 必须让人知道
+        // 〔E §3.3〕这条流是这台机器会话更新的唯一来源；关了之后什么都不会再来 ⇒ 必须让人知道
         //   （原先只打 console：界面照旧，看起来只是「没动静」）。句柄只在拒绝 / 出错时关，正常收尾不走这里。
         showActionFailureToast(
           copyText("events.stream.closedTitle"),
@@ -709,15 +709,15 @@ export async function bindEvents(
     ensureScheduled();
   };
 
-  // 〔MIG-1 · `设计/99 §2.1 ⑬`〕会话起停 / 状态那 8 个 Tauri 事件（`session-ended` / `-idle` / `-started` / `-container` / `-unseen` /
+  // 会话起停 / 状态那 8 个 Tauri 事件（`session-ended` / `-idle` / `-started` / `-container` / `-unseen` /
   //   `-activity` · `remote-session-added` · `origin-sessions-listed`，加上 `snapshot-inflight`）并进了会话流：上面 `onStreamItems` 里那几种格。
   //   与行同一条流 ⇒ issue #20 那条「ended 必须与行同序」由构造保证，不再靠两条通道在 queue 里对齐。
 
-  // 〔MIG-3b · ㉓②〕`task-update` 事件退役：任务变更经通道 `session-tasks`（见下面 `plan` 里那一种流）。
+  // `task-update` 事件退役：任务变更经通道 `session-tasks`（见下面 `plan` 里那一种流）。
 
 
 
-  // 〔TAP · V124〕`session-tap`：一格 = 一个 tap 事件（`SessionTapPayload`），当场交活卡、当场还 credit；
+  // `session-tap`：一格 = 一个 tap 事件（`SessionTapPayload`），当场交活卡、当场还 credit；
   //   `Gap` 不补（位置号 `n` 在活卡那一侧看得出缺口）；`Unseen` / `Closed` ⇒ 那台的活卡全撤（开着的响应不会再有下文）。
   const onTapItems = (origin: Origin, hold: StreamHold, items: Item[]): void => {
     let used = 0;
@@ -747,7 +747,7 @@ export async function bindEvents(
     if (used > 0) hold.sub?.want(used);
   };
 
-  // 〔DL1〕`accounts-changed`：一批格 ⇒ 要不要刷（`accountsChangedItems` 答）；`frame` 占的 credit 当场还
+  // `accounts-changed`：一批格 ⇒ 要不要刷（`accountsChangedItems` 答）；`frame` 占的 credit 当场还
   //   （格可能先于 `subscribe` 的返回到达 ⇒ 那时欠着，下一批一起还）。
   const onAccountsItems = (_origin: Origin, hold: StreamHold, items: Item[]): void => {
     const { changed, frames } = accountsChangedItems(items);
@@ -762,7 +762,7 @@ export async function bindEvents(
     if (changed) handlers.onAccountsChanged?.();
   };
 
-  // 〔MIG-3b · ㉓②〕`session-tasks`：一批格 ⇒ 哪几个会话要重问（`tasksChangedItems` 答）；`frame` 占的 credit 当场还（订阅返回之前到的欠着）。
+  // `session-tasks`：一批格 ⇒ 哪几个会话要重问（`tasksChangedItems` 答）；`frame` 占的 credit 当场还（订阅返回之前到的欠着）。
   const onTasksItems = (origin: Origin, hold: StreamHold, items: Item[]): void => {
     const { sids, all, frames } = tasksChangedItems(items);
     if (frames > 0) {
@@ -776,9 +776,9 @@ export async function bindEvents(
     if (all || sids.length > 0) handlers.onTasksChanged?.(origin, sids, all);
   };
 
-  // 〔CF2 · 第四波 4B〕会话流：起停那几个事件的监听都在了之后再订（订阅一登记，句柄就可能开始交格）。
+  // 会话流：起停那几个事件的监听都在了之后再订（订阅一登记，句柄就可能开始交格）。
   //   返回时 monitor 那一侧已经登记好 ⇒ 主界面接着发 `frontend-ready`（就绪点）不会落空。
-  // 〔TAP〕`session-tap` 与会话行走**同一处** `chan.subscribe`（前端对通信层入口的调用点各恰好一处，`X6`）：
+  // `session-tap` 与会话行走**同一处** `chan.subscribe`（前端对通信层入口的调用点各恰好一处，`X6`）：
   //   两种流只差窗口与这一格怎么交。
   const plan: { origin: Origin; kind: string; window: number; feed: typeof onStreamItems }[] = [
     ...(opts.streams ?? []).map(({ origin, kind }) => ({ origin, kind, window: STREAM_WINDOW, feed: onStreamItems })),
@@ -847,7 +847,7 @@ function emitPerfSummary(
   console.info(lines.join("\n"));
   // Batch13-F40:无 devtools 环境的唯一取证通道——经后端写进 monitor 日志(grep fe_perf)
   //
-  // 🔴 **这一行曾把一条没人建立、也没人检查的前提当成事实**〔K-W1C 09-04〕：
+  // 🔴 **这一行曾把一条没人建立、也没人检查的前提当成事实**：
   // 它直接对返回值调 `.catch`，而那句话只在「返回的东西有 `.catch`」时成立。
   // 前提破了的时候（桩返回 `undefined`）抛的是
   // `TypeError: Cannot read properties of undefined (reading 'catch')`，

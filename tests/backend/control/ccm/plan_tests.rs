@@ -2,14 +2,14 @@
 //!
 //! 核原文：`INVARIANTS §33a` 铁律 1 逐字「凡是真 exec 路会设置的、**ccm 自己决定的环境变量**，`--print` **必须**说出来，且**顺序对齐**」，
 //! 铁律 2 逐字「**`--print` 仍然必须是纯的**」—— 段序 · 机器级 env 在前 · print 与真跑读同一个计划 · 在不在 tmux 不进 print 那一侧，判的正是这两条。
-//! 次住址（逐字核过）：会话名那几条对 `设计/80 §9.3`「给会话起一个**你认得出来**的名字」；attach 目标对 `INVARIANTS §31a` 的精确形态；
-//! 默认 cwd 是恒等对 `设计/01 §5 D3`；登记不成要出声对 `D4`；账号库解析不动不说成没有对 `D7`；
-//! 容器收尾先自检对 `设计/95 §4.1`「确认放在 ccm 收尾最前面」。账号四条路 / quote / `set -f` / BOM 那几条是普通单测，没有逐字原文。〔JA1 点址 2026-09-24〕
+//! 次住址（逐字核过）：会话名那几条对「给会话起一个**你认得出来**的名字」；attach 目标对 `INVARIANTS §31a` 的精确形态；
+//! 默认 cwd 是恒等对；登记不成要出声对 `D4`；账号库解析不动不说成没有对 `D7`；
+//! 容器收尾先自检对「确认放在 ccm 收尾最前面」。账号四条路 / quote / `set -f` / BOM 那几条是普通单测，没有逐字原文。〔JA1 点址 2026-09-24〕
 
 use super::*;
 use crate::control::ccm::argv::Parsed;
 
-/// 〔V151〕本文件的夹具沿用 V138 写法（ccm 选项在前）⇒ 喂解析器之前换成 V151 排列（意图逐词不变）。
+/// 本文件的夹具沿用 V138 写法（ccm 选项在前）⇒ 喂解析器之前换成 V151 排列（意图逐词不变）。
 fn parse(a: &[String]) -> Result<Parsed, crate::control::ccm::argv::Die> {
     crate::control::ccm::argv::parse(&crate::control::ccm::argv::tests::v138_to_v151(a))
 }
@@ -64,7 +64,7 @@ fn printed(args: &[&str]) -> String {
 ///
 /// 这一条钉的是**一条起会话命令长什么样**：段的顺序就是契约
 /// （CCM_ENV → CC_BUS_ID → 账号目录 → 清嵌套 → cd → exec）。
-/// 〔V138〕`--resume` / `--model` 不再是 ccm 的：原样接在启动器后面（从前 resume 由 ccm 拼、`--model` 变成 export `ANTHROPIC_MODEL`）。
+/// `--resume` / `--model` 不再是 ccm 的：原样接在启动器后面（从前 resume 由 ccm 拼、`--model` 变成 export `ANTHROPIC_MODEL`）。
 #[test]
 fn the_shape_of_one_launch_command_line() {
     let nested =
@@ -186,7 +186,7 @@ fn the_session_name_derivation_rule() {
     );
 }
 
-/// 要求住址：`设计/90 §3` J7「tmux 名派生 ＋ 撞名避让只留后端」—— 分叉那条的基名随派生一起搬来（原 `fork-launch.vitest.ts::forkTmuxName` 那一族）。
+/// 要求：「tmux 名派生 ＋ 撞名避让只留后端」—— 分叉那条的基名随派生一起搬来（原 `fork-launch.vitest.ts::forkTmuxName` 那一族）。
 /// 基名必须与源名不同（同名 ⇒ `ccm` 把新会话接进原窗口）；拿 cwd 当源也必须是一个**建得出来**的新会话名（真正的消费者 [`validate_tmux_name`] 收得下）。
 #[test]
 fn the_fork_base_differs_from_its_source_and_is_always_a_legal_new_name() {
@@ -360,9 +360,9 @@ fn the_session_name_reads_like_a_project_and_the_sid_rides_the_tmux_option() {
 
 /// 〔搬自 `ccm-cli` 名字校验那一族〕—— 会话名会被拼进 tmux 目标语法，是一条注入面。
 ///
-/// 〔IV1 · V121〕要求住址：`INVARIANTS §47`（外部值拼进 shell / 交给对端之前本侧先过放行判定）；①形。
+/// 要求住址：`INVARIANTS §47`（外部值拼进 shell / 交给对端之前本侧先过放行判定）；①形。
 ///
-/// 〔DUP2 · J6〕规则今天住 `control/gate_rules.rs`（全仓唯一一份）；本函数只剩「说哪一句」。多出来两格（欺骗字符 · 超过 128）各一条，
+/// 规则今天住 `control/gate_rules.rs`（全仓唯一一份）；本函数只剩「说哪一句」。多出来两格（欺骗字符 · 超过 128）各一条，
 /// 正控加两个真实会走的名字（带空格 · 中文），免得三句话焊成恒拒。
 #[test]
 fn a_session_name_that_would_confuse_tmux_is_refused() {
@@ -419,7 +419,7 @@ fn the_container_path_carries_every_intent_inward() {
     // 内层载荷：按 argv 元素逐个 quote 过一层，所以判的是 payload 本身
     // V138：`--resume` 是透传，内层放在 `--` 后面原样交出去。
     assert!(
-        // 〔V151〕内层 `self <交给 claude 的…> -- <ccm 的…>`：`--resume` 在 `--` 左边。
+        // 内层 `self <交给 claude 的…> -- <ccm 的…>`：`--resume` 在 `--` 左边。
         c.payload.contains("/ccm' '--resume' 'p1' '--' '--cwd'"),
         "resume 没进内层：{}",
         c.payload
@@ -453,7 +453,7 @@ fn the_container_path_carries_every_intent_inward() {
         c4.payload
     );
     assert!(
-        c4.payload.contains("/ccm' '--model' 'opus' '--' '--cwd'"), // 〔V151〕`--model` 在 `--` 左边
+        c4.payload.contains("/ccm' '--model' 'opus' '--' '--cwd'"), // `--model` 在 `--` 左边
         "{}",
         c4.payload
     );
@@ -627,11 +627,11 @@ fn asking_for_bus_registration_and_not_getting_it_is_never_silent() {
     }
 
     // ③ 两句诊断在生产段里（**这一格只钉形状，行为归 e2e**，见头注）。
-    // 〔TAIL · CP2c 续〕两句进了文案表：生产段认 key，表里那句认话。
+    // 两句进了文案表：生产段认 key，表里那句认话。
     let table: serde_json::Value =
         serde_json::from_str(include_str!("../../../../src/shared/copy/table.json")).expect("表");
-    // 〔COPY-R · 09-29〕「派生台账」换成人话之后，`noSpawnRecord` 那句不再按原文认；它说没说出来由 e2e
-    //   `cc-spawn-uplift.sh` [18] 按文案键整行比（`设计/91 §6`）。这里只钉它在表里、带 `{path}`。
+    // 「派生台账」换成人话之后，`noSpawnRecord` 那句不再按原文认；它说没说出来由 e2e
+    //   `cc-spawn-uplift.sh` [18] 按文案键整行比。这里只钉它在表里、带 `{path}`。
     assert_eq!(
         table["entries"]["bePlan.bus.noSpawnRecord"]["args"],
         serde_json::json!(["path"]),
@@ -755,7 +755,7 @@ fn the_machine_level_env_comes_first_and_the_session_level_one_wins() {
 ///
 /// 从前那两组要**真跑一趟**再与 `--print` 差分，因为两条路是两份代码。
 /// 今天它们读的是**同一个 [`Plan`]** ⇒ 这条判据钉的是那个结构事实：
-/// 渲染函数的全部输入只有 `Plan`，没有第二个来源（V138 删了进程内 `resolve` 那一问）。
+/// 渲染函数的全部输入只有 `Plan`，没有第二个来源（删了进程内 `resolve` 那一问）。
 #[test]
 fn print_and_exec_cannot_drift_because_they_read_the_same_plan() {
     let p = plan_of(
@@ -772,7 +772,7 @@ fn print_and_exec_cannot_drift_because_they_read_the_same_plan() {
     assert_eq!(d.argv, vec!["claude", "--model", "opus"]);
 }
 
-/// ★★ 〔`P19` 09-22〕**`inside_tmux` 是真跑那一侧独用的一格，[`render`] 一个字不看。**
+/// ★★ **`inside_tmux` 是真跑那一侧独用的一格，[`render`] 一个字不看。**
 ///
 /// `INVARIANTS §33a` 铁律 2 逐字：`--print` 必须是**纯的** —— 不查实时 tmux 状态、
 /// 输出对宿主环境**逐字节稳定**；值不知道就**打印配方**。
@@ -995,7 +995,7 @@ fn the_message_the_user_actually_sees_carries_the_reason() {
     assert!(msg.contains("读不懂"), "用户看到的那句话里没有原因：{msg}");
 }
 
-/// ★ 〔CC1〕自检那一趟与 pane 里那一趟**是同一条命令**：同一段 `export` 前缀、同一个入口、
+/// ★ 自检那一趟与 pane 里那一趟**是同一条命令**：同一段 `export` 前缀、同一个入口、
 /// 同一串参数，只在 `--` 之前多一个 `--print`（放到 `--` 后面就成了透传给 agent 的参数，
 /// 那一趟会**真起一个会话**而不是自检 —— 本件现打时就这么踩过一次）。
 ///
@@ -1020,7 +1020,7 @@ fn the_self_check_is_the_payload_itself_plus_print_and_it_runs_before_registerin
         let Plan::Container(c) = &p else {
             panic!("该是容器路：{p:?}")
         };
-        // 〔V151〕ccm 那一半在 `--` 右边、恒在末尾 ⇒ 自检那一趟就是载荷末尾多一个 `--ccm-print`（有没有透传都一样）。
+        // ccm 那一半在 `--` 右边、恒在末尾 ⇒ 自检那一趟就是载荷末尾多一个 `--ccm-print`（有没有透传都一样）。
         let _ = has_passthru;
         let want = format!("{} '--ccm-print'", c.payload);
         assert_eq!(c.self_check, want, "自检与载荷不是同一条命令");
@@ -1048,10 +1048,10 @@ fn the_self_check_is_the_payload_itself_plus_print_and_it_runs_before_registerin
 }
 
 // ════════════════════════════════════════════════════════════════════════════════════════
-// 〔S5 · 第四波〕直路上的 `--ccm-sid` —— 交给启动期令牌那条路
+// 直路上的 `--ccm-sid` —— 交给启动期令牌那条路
 // ════════════════════════════════════════════════════════════════════════════════════════
 //
-// 要求住址：`调研/设计/99 §4.4` 那一行，逐字「主会话判：**不报错**（报错 ＝ 让它依赖 tmux，撞 V63
+// 那一行，逐字「主会话判：**不报错**（报错 ＝ 让它依赖 tmux，撞
 // 「`--ccm-sid` 不要依赖 tmux」），直路语义走已落地的启动期令牌那条路」· `WN1.md §3`。
 // 原病（`lib.rs::TARGET_GAPS` 那一行逐字）：「被接受、零效果、而且不出声」——
 // `Plan::Direct` 里根本没有这一格。
@@ -1115,16 +1115,16 @@ fn the_direct_print_does_not_change_with_ccm_sid_or_the_token() {
     }
 }
 
-// ── 〔WIN1 · 第四波 4D〕Windows 本机那一格：`is_exec` · 家目录 · 路径分隔符 ──────────────
+// ── Windows 本机那一格：`is_exec` · 家目录 · 路径分隔符 ──────────────
 //
-// 要求住址：`设计/01 §6.7a` 表 B 逐字「**本机 Windows**（x86_64） | ✅ **承诺**」；`设计/01 §3.1` 逐字
+// 要求：「**本机 Windows**（x86_64） | ✅ **承诺**」；
 // 「「怎么读到这个事实」   → platform      （各平台读法不同）」—— 「这个文件跑得起来吗」在 Windows 上的读法是 `PATHEXT`；
-// 读数出处 `真相源/106 §3.4` 逐字「`plan.rs::is_exec` 的 `#[cfg(not(unix))]` 分支是 `p.is_file()` ⇒ 在 Windows 上
+// 读数要求：「`plan.rs::is_exec` 的 `#[cfg(not(unix))]` 分支是 `p.is_file()` ⇒ 在 Windows 上
 // **「可执行」退化成「存在」**」与「那句错误话术里的路径是 `C:\…\fakehome/.claude-accts/accounts.json` ——
 // **反斜杠与正斜杠混着**」（WN1 件 G）。
 // 异源：期望是手写的判定表（Windows `cmd.exe` 的 `PATHEXT` 语义），不从被测函数里抠。
 // ⚠ 买不到：`#[cfg(not(unix))]` 那一臂在本机不编译 —— 它「真的调了判定函数」由下面源码锚点钉，
-//    「在 Windows 上真这么判」要真机（`第四波记录/WIN1.md` 的虚拟机读数）。
+//    「在 Windows 上真这么判」要真机（虚拟机读数）。
 
 #[test]
 fn on_windows_runnable_means_a_file_whose_extension_is_in_pathext() {
@@ -1303,9 +1303,9 @@ fn the_home_is_home_then_userprofile_and_paths_under_it_are_joined_per_segment()
     );
 }
 
-/// 〔US1 · RK1 报 2〕E10：继承来的中转地址（钥匙已展开）不许原样进载荷 —— 渲回 `$(cat ~/…)` 形，
+/// 〔RK1 报 2〕E10：继承来的中转地址（钥匙已展开）不许原样进载荷 —— 渲回 `$(cat ~/…)` 形，
 /// 真 `sh` 在夹具家目录下展开后 == 原地址；认不出的（用户自己的端点 · 形状不对的）原样。
-/// 守的要求：`INVARIANTS §48.1a`（中转钥匙不进 argv）· RK1 记录 §5.7 第 3 条（主会话交本路）。
+/// 守的要求：`INVARIANTS §48.1a`（中转钥匙不进 argv）。
 #[test]
 fn us1_an_inherited_keyed_relay_url_goes_inward_as_a_file_read_not_as_the_key() {
     let key = "0123456789abcdef".repeat(4);
@@ -1365,12 +1365,12 @@ fn us1_an_inherited_keyed_relay_url_goes_inward_as_a_file_read_not_as_the_key() 
     }
 }
 
-/// 〔TL3 · `INVARIANTS §47` ②〕自由文本那几格拼进 shell 之前的放行判定 —— **正反各一格**（§47「拒过头也算违反」）。
+/// 〔`INVARIANTS §47` ②〕自由文本那几格拼进 shell 之前的放行判定 —— **正反各一格**（§47「拒过头也算违反」）。
 ///
 /// 要求住址：`INVARIANTS §47` ②「走唯一的 quote ＋ 这一种值的形式判定 ＋ 拒绝集」；主会话 09-26 按 V131 裁
 /// 「自由文本路径的拒绝集只收控制字符（NUL / CR / LF）、形式判定按各自语境（cwd / 目录要绝对路径等）、然后唯一一处 quote ——
 /// 不拒 shell 元字符」。模型名与 `--ccm-sid` 不在本条（交 DUP1）。
-/// 交给 agent 的参数与登记备注可以跨行（`shell_quote_core::arg_text_ok`，V138「位置参数原样交给 claude」）：
+/// 交给 agent 的参数与登记备注可以跨行（`shell_quote_core::arg_text_ok`，「位置参数原样交给 claude」）：
 /// 多行初始任务那一格正着放、原样进载荷；CR / NUL 照拒。
 #[test]
 fn free_text_values_pass_real_names_and_refuse_what_the_quote_cannot_hold() {
@@ -1482,7 +1482,7 @@ fn free_text_values_pass_real_names_and_refuse_what_the_quote_cannot_hold() {
     assert!(e.0.contains("ANTHROPIC_BASE_URL"), "{}", e.0);
 }
 
-/// 〔DUP1 · `INVARIANTS §47` ②〕manifest 里来的账号配置目录是本仓自管的路径 ⇒ 拼进容器路 / 直路那条 shell 串之前走**全表**
+/// 〔`INVARIANTS §47` ②〕manifest 里来的账号配置目录是本仓自管的路径 ⇒ 拼进容器路 / 直路那条 shell 串之前走**全表**
 /// （`acct_core::config_dir_ok`：形式 ＋ 控制符 · 元字符 · 欺骗字符），不是自由文本那一层 —— **正反各一格**。
 /// 要求住址：`INVARIANTS §47` ②「本仓自管的值（配置目录 · 后端落点）不走这一条，走全表」；TL3 交接：
 /// 「账号配置目录全表住 `observe/accounts_query`，而 `control → observe` 是禁止方向」—— 全表搬进共享 crate，这里直接用。
@@ -1514,7 +1514,7 @@ fn a_config_dir_from_the_manifest_goes_through_the_full_table() {
     assert!(e.0.contains("a$b"), "拒了，但没说清是哪个目录：{}", e.0);
 }
 
-/// 〔DUP3 · 主会话 09-26 裁 · `INVARIANTS §47` ③〕`--launcher` 是**命令片段**，过全仓那一张白名单
+/// 〔`INVARIANTS §47` ③〕`--launcher` 是**命令片段**，过全仓那一张白名单
 /// （`shell_quote_core::launcher_refused_char`，与 monitor 本机 · 远端载荷同一条）—— 先前这一格只拒 NUL / CR / LF。
 /// 正反各一格：真实启动器（带参数 · 路径 · 家目录下）建得出计划；白名单外的字符拒，那一句点出是哪一格、哪一个字符。
 #[test]
@@ -1556,8 +1556,8 @@ fn a_launcher_is_one_command_fragment_from_the_shared_whitelist() {
     }
 }
 
-// ───────── 〔FIX · V138「ccm 只看不吃 `--resume` 以复用 tmux 名」· `设计/71 §8` 第 12 条〕resume 先查是否已在跑 ─────────
-// 守的要求（V138 逐字）：「ccm 只「看」不「吃」`--resume` / `--continue` 以复用 tmux 名」；主会话裁：在跑 ⇒ 接上它，不另起。
+// ───────── 〔「ccm 只看不吃 `--resume` 以复用 tmux 名」〕resume 先查是否已在跑 ─────────
+// 守的要求：「ccm 只「看」不「吃」`--resume` / `--continue` 以复用 tmux 名」；主会话裁：在跑 ⇒ 接上它，不另起。
 
 fn snapshot_rows(rows: &[(&str, &str)]) -> TakenNames {
     let rows: Vec<crate::common::session_snapshot::SessionRow> = rows
@@ -1622,7 +1622,7 @@ fn fix_a_resume_of_a_session_already_running_in_tmux_rejoins_it() {
     assert_eq!(render(&rejoin(true)), "echo 'ccm-session=work'");
 }
 
-// 〔FIX · V138 订正〕在跑但不在 ccm 认得的 tmux 会话里 ⇒ 不另起，明说。
+// 在跑但不在 ccm 认得的 tmux 会话里 ⇒ 不另起，明说。
 thread_local! {
     static SCANNED: std::cell::RefCell<Vec<Option<String>>> = const { std::cell::RefCell::new(Vec::new()) };
 }

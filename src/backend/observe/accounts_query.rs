@@ -34,7 +34,7 @@
 //! - 真要处理，得给帧加一个「configDir 不可信」的状态位 ——
 //!   那是**改上线契约**（D6：暴露给第三方 = 契约冻结成本），不属本区范围（只修缺陷，不加能力）。
 //!
-//! ⇒ 结论：**归属安全、展示未净化**。登记在 `ROADMAP §5`，
+//! ⇒ 结论：**归属安全、展示未净化**。登记在，
 //! 解锁条件 = 帧契约允许新增状态位时，把「不可信的 configDir」表达成一个显式状态，
 //! 而不是让它退化成 `bare`。
 
@@ -52,7 +52,7 @@
 //! - `.credentials.json` **只 stat 存在性，绝不读内容**。
 //! - `.claude.json` 只取 `projects[<cwd>].hasTrustDialogAccepted` 一个布尔；
 //!   **绝不回传文件内容**——那里面有 `mcpServers` 的环境变量（可能含 API key）。
-//! - `/proc/<pid>/environ` 只抠**三个写死的键**（`CLAUDE_CONFIG_DIR` · `CCM_LAUNCH_ID` ·〔HX1 · D-f〕`ANTHROPIC_BASE_URL`），
+//! - `/proc/<pid>/environ` 只抠**三个写死的键**（`CLAUDE_CONFIG_DIR` · `CCM_LAUNCH_ID` ·`ANTHROPIC_BASE_URL`），
 //!   **不回传整个环境快照**。`ANTHROPIC_BASE_URL` 的值带中转钥匙 ⇒ **只折成一个布尔**（`viaRelay`：是不是本机中转那一形地址），
 //!   值本身不出参、不进日志。
 //!   ⚠ `K-P5f` 加第二个键那一拍要求把「两个键」与「整个快照」的界说清楚，界在这里：
@@ -119,7 +119,7 @@ struct Manifest {
 /// 允许普通空格与常规非 ASCII（如中文；单引号内无害且常见），拒绝引号/命令替换/
 /// 重定向/通配/控制字符 + 视觉欺骗类 Unicode。
 pub(crate) fn is_safe_config_dir(p: &str) -> bool {
-    // 〔DUP1 · `设计/90 §3` 判据 2 · `01 §5` D1〕规则整份搬进 `acct_core::config_dir_ok`（全仓唯一一份）：
+    // 规则整份搬进 `acct_core::config_dir_ok`（全仓唯一一份）：
     // 后端 `control/ccm` 起会话也要这张全表，而 `control → observe` 是禁止方向 —— 住共享 crate 两边都够得着。
     // 原先这里的拆法（`N-F1c`：「平台无关的安全性质（拒绝集）＋ 平台相关的形式」，以及为什么要认 Windows 形 ——
     // monitor 的本机账号清单也来问这个二进制，Windows 的账号目录是 `C:\Users\…`）随规则一起搬过去了，理由原样写在那边。
@@ -159,8 +159,8 @@ fn manifest_path(accts_dir: &Path) -> PathBuf {
     accts_dir.join(MANIFEST_NAME)
 }
 
-/// 〔SR1a · 2026-09-24〕**这台机器上**那份账号 manifest 在哪（没有 `--accts-dir` 时的那条解析，
-/// 与 `--list-accounts` 读的是同一份）。watcher 盯着它、变了发 `accounts_changed`（`设计/05 §13.6 ③`）。
+/// **这台机器上**那份账号 manifest 在哪（没有 `--accts-dir` 时的那条解析，
+/// 与 `--list-accounts` 读的是同一份）。watcher 盯着它、变了发 `accounts_changed`。
 pub(crate) fn default_manifest_path() -> PathBuf {
     manifest_path(&resolve_accts_dir(&[]))
 }
@@ -178,7 +178,7 @@ fn load_manifest(accts_dir: &Path) -> Result<Manifest, String> {
             &[("path", &(p.display()).to_string()), ("e", &e.to_string())],
         )
     })?;
-    // 〔S5 · 第四波〕UTF-8 BOM 剥掉再解析：PowerShell 5.1 `-Encoding UTF8` 与记事本默认写 BOM，
+    // UTF-8 BOM 剥掉再解析：PowerShell 5.1 `-Encoding UTF8` 与记事本默认写 BOM，
     //   `serde_json` 不吃它 ⇒ 不剥就是整份「不是合法 JSON」、账号页整块空（`control/ccm/plan.rs::AccountTable::load`
     //   09-21 修过同一份文件的另一个读者；两个读者读出同一张表由 `tests::both_readers_of_the_manifest_see_the_same_accounts` 钉）。
     let body = bytes.strip_prefix(b"\xEF\xBB\xBF").unwrap_or(&bytes);
@@ -263,7 +263,7 @@ fn session_process_identity_ok(pid: u32, pidfile: &serde_json::Value) -> bool {
 ///
 /// # 🔴 双写点，且**共享不了常量** —— 界在这里说清楚
 ///
-/// 写侧的家是 `src/backend/control/launch_render/local.rs::LAUNCH_ID_VAR`（〔MIG-2〕原在 monitor），而
+/// 写侧的家是 `src/backend/control/launch_render/local.rs::LAUNCH_ID_VAR`（原在 monitor），而
 /// `src/backend` 是**另一个 crate、另一份 `Cargo.lock`**（`src/frontend/shell/Cargo.toml`
 /// 的 workspace members 里逐字没有它）⇒ 两侧不可能 `use` 同一个 `const`。
 /// 与 `CREDENTIALS_NAME` 那个双写点（Rust ↔ bash）同形，处置也照它：
@@ -280,7 +280,7 @@ const LAUNCH_ID_ENV: &str = "CCM_LAUNCH_ID";
 
 /// 身份 token 的字符集 —— **fail closed**，形状不对就不往下游递。
 ///
-/// 与铸法那一侧同一条：段闸 `relay_route_core::segment_is_safe`（〔US1〕从 monitor `payload.rs` 搬进共享 crate）逐字是
+/// 与铸法那一侧同一条：段闸 `relay_route_core::segment_is_safe`（从 monitor `payload.rs` 搬进共享 crate）逐字是
 /// 「只许字母数字与 `-` `_`，1..=128 字节」，而 `route_key_for_session` 铸出来的
 /// 要么是 UUID v4（`[0-9a-f-]`，36 字节）、要么是过了那条白名单的 sid ⇒ 两种都在集内。
 ///
@@ -321,13 +321,13 @@ struct SessionRow {
     /// 从 `/proc/<pid>/environ` 抠到、且过了 [`launch_id_is_safe`] 的原值。
     /// 还没过防冒名那一格 —— **别直接往出参里填这一格**。
     launch_id: Option<String>,
-    /// 〔HX1 · D-f〕这条会话的 `ANTHROPIC_BASE_URL` 是不是**本机中转那一形**（回环 ＋ 钥匙段 ＋ 路由，
+    /// 这条会话的 `ANTHROPIC_BASE_URL` 是不是**本机中转那一形**（回环 ＋ 钥匙段 ＋ 路由，
     /// `relay_route_core::split_keyed_base_url` 认得出）。`None` = 不知道（进程已死 / 环境这一刻取不到）。
     /// 用途：机器页「停」本机后端之前数一数有几条会话会断（主会话 D-f）。
     via_relay: Option<bool>,
 }
 
-/// 🔴🔴 **防冒名：不唯一的身份 token 一律不作数**〔`KP5FD5`〕。
+/// 🔴🔴 **防冒名：不唯一的身份 token 一律不作数**。
 ///
 /// # 它防的是什么（与本文件里另一道身份检查**不是同一件事**）
 ///
@@ -397,7 +397,7 @@ fn suppress_inherited_launch_ids(rows: &mut [SessionRow]) {
 
 /// `--list-accounts`：meta 行 + 每账号一行。永远 exit 0（"未启用"是正常状态，不是错误）。
 ///
-/// 〔C4c · 第四波 4B〕扫描本体挪进 [`scan_accounts`]（帧面 `accounts-list` 出成品那一臂共用同一个扫描）；
+/// 扫描本体挪进 [`scan_accounts`]（帧面 `accounts-list` 出成品那一臂共用同一个扫描）；
 /// 本函数只把它摊成 CLI 那几行（meta 行多两格分帧用的 `kind` 与 `accountZeroAware`，逐字节同旧形状）。
 /// CLI 这一臂**不并 apikey 表**（`in_table` 恒假 ⇒ 分类逐格是 manifest 那一份）。
 fn list_accounts(accts_dir: &Path) -> Vec<String> {
@@ -417,7 +417,7 @@ fn list_accounts(accts_dir: &Path) -> Vec<String> {
     out
 }
 
-/// 〔C4c · 第四波 4B〕清单的**扫描本体**：`(meta, 账号们)`。CLI 那一臂（[`list_accounts`]）与帧面成品
+/// 清单的**扫描本体**：`(meta, 账号们)`。CLI 那一臂（[`list_accounts`]）与帧面成品
 /// （[`list_product_at`]）两个出口共用它 —— 「一份扫描、两个出口」，读 manifest / 判安全 / 判鉴权方式一行不重写。
 ///
 /// `in_table(configDir)`：这个号在**这台机器**的 apikey 表里有没有行（帧面那一臂由调用方按
@@ -489,7 +489,7 @@ fn scan_accounts(
                 // K-A1：鉴权方式这一维。分类与就绪**各只有一处实现**，都住 `acct-core`
                 // ——本文件与 `local_accounts.rs` 都调它，所以「两个生产者各填一个不同的
                 // 默认值」在结构上不可表示（`KAY1` 那条 acceptor 的失效模式就是这个）。
-                // 〔C4c〕第二个输入：这台机器的 apikey 表里有没有它（帧面那一臂才问；CLI 那一臂恒没有）。
+                // 第二个输入：这台机器的 apikey 表里有没有它（帧面那一臂才问；CLI 那一臂恒没有）。
                 let in_apikey_table = cfg_out.as_str().is_some_and(in_table);
                 let auth_kind = auth_kind_with_apikey_table(
                     auth_kind_from_manifest(a.auth_kind.as_deref()),
@@ -531,7 +531,7 @@ fn scan_accounts(
     }
 }
 
-/// 〔C4c · 第四波 4B〕帧面 `accounts-list` 的**成品**（主会话裁：账号域读自己那台的 apikey 表，agent 随请求带）。
+/// 帧面 `accounts-list` 的**成品**（主会话裁：账号域读自己那台的 apikey 表，agent 随请求带）。
 ///
 /// `{meta, accounts, notice}`：清单同 CLI 那一臂同一个扫描（[`scan_accounts`]），并上**这台机器自己**那份 apikey 表
 /// （`rows`：表里有哪几条账号 id，调用方从 `accounts::upstream_select::file_face` 读来 —— 与中转里的上游选择同一个出处）；
@@ -562,7 +562,7 @@ pub(crate) fn list_product_at(
 }
 
 /// pidfile 目录里每一份**读得出来**的 `(pid, 内容)` —— 上限、跳过要说清，逐字搬自 [`session_accounts`] 那一段循环头
-/// （〔C4d · 第四波 4B〕抽出来是为了让「这台机器上哪几个会话活着」（[`live_session_ids`]）与账号归属读**同一批** pidfile，
+/// （抽出来是为了让「这台机器上哪几个会话活着」（[`live_session_ids`]）与账号归属读**同一批** pidfile，
 /// 而 pidfile 目录这件 agent 知识的调用点仍然只有这一处 —— `agent_locality_guard` 的 `ADAPTER_CALL_SITES` 不涨）。
 fn pidfiles(agent_home: &Path) -> Vec<(u32, serde_json::Value)> {
     let mut out = Vec::new();
@@ -618,7 +618,7 @@ fn pidfiles(agent_home: &Path) -> Vec<(u32, serde_json::Value)> {
     out
 }
 
-/// 〔C4d · 第四波 4B〕**这台机器上此刻活着的会话**（sid 集合）—— 历史跨机 join 的本机判活真相源。
+/// **这台机器上此刻活着的会话**（sid 集合）—— 历史跨机 join 的本机判活源头。
 ///
 /// 从前本机历史清单的「活没活」由 monitor 的 `SessionMap` 答（它由本后端 watcher 的起停帧喂）；join 进了本机后端之后
 /// 由这台后端自己答：pidfile 里的会话 id ＋ 进程还是不是**同一个**（`platform::proc::session_alive`：存在性 ＋ 有 `procStart`
@@ -638,7 +638,7 @@ pub(crate) fn live_session_ids(agent_home: &Path) -> std::collections::BTreeSet<
 
 /// `--session-accounts`：扫 `<claude_dir>/sessions/<PID>.json`，每条一行。
 fn session_accounts(agent_home: &Path, accts_dir: &Path) -> Vec<String> {
-    // 〔HX1 · D-f〕向适配层要「会话进程环境里该读哪两个键」只问这一次（账号 · 上游地址）。
+    // 向适配层要「会话进程环境里该读哪两个键」只问这一次（账号 · 上游地址）。
     let env_keys = crate::agents::claudecode::paths::SESSION_ENV_KEYS;
     // Z01：`None` 这个 key 是账号 0（configDir 缺席）。裸起会话过去归属不到任何账号
     // （`account: null` + `bare: true`），现在它有名字了。
@@ -706,10 +706,10 @@ fn session_accounts(agent_home: &Path, accts_dir: &Path) -> Vec<String> {
         } else {
             None
         };
-        // 〔HX1 · D-f〕第三个键：只折成「走不走本机中转」一个布尔；值带钥匙，这一行之后就丢掉。
+        // 第三个键：只折成「走不走本机中转」一个布尔；值带钥匙，这一行之后就丢掉。
         let via_relay = if alive {
             match proc_env_var(pid, env_keys.base_url) {
-                // 〔E2 · V146〕环境里是中转地址 ≠ 真走中转：agent 自己的设置文件可能压过它（`settings_may_set_base_url`）⇒ 那时说不清。
+                // 环境里是中转地址 ≠ 真走中转：agent 自己的设置文件可能压过它（`settings_may_set_base_url`）⇒ 那时说不清。
                 EnvRead::Value(v) if relay_route_core::split_keyed_base_url(&v).is_some() => {
                     let settings_win = (env_keys.settings_may_set_base_url)(
                         cfg.as_deref().map(Path::new),
@@ -785,7 +785,7 @@ fn session_accounts(agent_home: &Path, accts_dir: &Path) -> Vec<String> {
                 // 「四种」的旧话订正成实话。
                 // ⚠ 老后端不出这个键，下游读成 `None`（additive）。
                 "launchId": json_str(r.launch_id.as_deref()),
-                // 〔HX1 · D-f〕走不走本机中转：`true` / `false` / `null`（不知道：进程已死或环境这一刻取不到）。
+                // 走不走本机中转：`true` / `false` / `null`（不知道：进程已死或环境这一刻取不到）。
                 // ⚠ 老后端不出这个键，下游读成 `null`（additive）。
                 "viaRelay": r.via_relay,
             })
@@ -838,7 +838,7 @@ fn account_trust_zero(cwd: &str) -> Result<String, (String, String)> {
     cc_accounts::trust_of_config(&cc_accounts::config_path_in(&home), cwd)
 }
 
-/// 帧面那两条（`accounts-list` / `accounts-sessions`）的入口〔`C1` · 2026-09-24〕。
+/// 帧面那两条（`accounts-list` / `accounts-sessions`）的入口。
 ///
 /// 跑的是 CLI 那两臂**同一个函数**（[`list_accounts`] / [`session_accounts`]），账号库目录
 /// 走同一个解析（帧面不收 `--accts-dir` 覆盖 —— monitor 从不发它，那是给人手调的旋钮）。
@@ -850,7 +850,7 @@ pub(crate) fn lines_for_frame(agent_home: &Path, which: FrameAccounts) -> Vec<St
     }
 }
 
-/// 〔C4c · 第四波 4B〕帧面 `accounts-trust`：换号前的信任预检 —— 替掉仍在逐次拨号的
+/// 帧面 `accounts-trust`：换号前的信任预检 —— 替掉仍在逐次拨号的
 /// `--account-trust` / `--account-trust-zero`（此前远端每问一次经本机后端开一条链路、在那台 exec 一次本二进制）。
 ///
 /// `config_dir == None` ⇒ 账号 0（同 `--account-trust-zero`：路径写死在 `$HOME`，不收路径参数）；

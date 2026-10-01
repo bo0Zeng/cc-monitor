@@ -1,4 +1,4 @@
-//! 〔AL1c · 第四波 4B〕`shell_dialect.rs`（〔MIG-3a〕后端 `assets/aliases/dialect.rs`；〔OSA · V156〕今天是 `platform/shell/dialect.rs`）的判据：`设计/71 §4.4` 那组接口在两种方言上逐项的**读法**。
+//! `shell_dialect.rs`（后端 `assets/aliases/dialect.rs`；今天是 `platform/shell/dialect.rs`）的判据：那组接口在两种方言上逐项的**读法**。
 //!
 //! 规则（合不合格）不在这里判 —— 那一份住 `account_aliases`，判据在 `account_aliases_tests.rs`。
 //! 🔴 PowerShell 那一臂**一次都没被 PowerShell 解析过**（本机无 `pwsh`，Win11 虚拟机不许碰）：
@@ -6,10 +6,10 @@
 
 use super::*;
 
-/// 〔OSA〕通用层交给方言的那条调用形状（`ccm` · `--`）。
+/// 通用层交给方言的那条调用形状（`ccm` · `--`）。
 const C: Call = crate::assets::aliases::CALL;
 
-/// 〔OSA〕通用层交给方言的「我们自己那块别名块」正文。
+/// 通用层交给方言的「我们自己那块别名块」正文。
 fn own(sh: Shell) -> String {
     crate::assets::aliases::block::own_block(sh)
 }
@@ -88,7 +88,7 @@ fn powershell_golden() {
                 " '--ccm-tmux=w.1' '--account' 'z' '--cwd' '/home/u/文档/c c'",
                 "convz"
             ),
-            // 〔V151〕`$RemainingArgs`（敲别名时跟的）交 claude，别名的 ccm 选项在单引号的 `'--'` 右边。
+            // `$RemainingArgs`（敲别名时跟的）交 claude，别名的 ccm 选项在单引号的 `'--'` 右边。
             got[2].clone(),
             body(" '--model' 'a\u{2019}\u{2019}b'", "curly"),
             body("", "bare"),
@@ -227,7 +227,7 @@ fn a_startup_file_that_already_sources_us_is_recognized() {
 
 /// 启动文件候选：POSIX 只列在的；PowerShell 的 5.1 两份恒列（不在也列），7 的两份只在它的目录在时列。
 ///
-/// 〔AL2 · 第四波 4D〕方言**只给路径与列法**、一个字节的盘都不读（在不在由那台后端答 —— 那一半的判据是
+/// 方言**只给路径与列法**、一个字节的盘都不读（在不在由那台后端答 —— 那一半的判据是
 /// `aliases_tests.rs::the_candidates_are_listed_by_each_dialects_rule_through_the_door`）。
 /// ⇒ 这里拿一个**盘上不存在的 home 字符串**也判得完：读了盘就量不出这张表。
 #[test]
@@ -291,14 +291,14 @@ fn powershell_knows_the_names_its_own_block_defines() {
     assert!(PowerShell
         .name_taken("zzz_no_such_command_anywhere", &own(Shell::PowerShell))
         .is_none());
-    // 〔AL2〕不查 `PATH`（远端）时，模板里的名字照样认得出 —— 那一格不是本机才答得了的事实。
+    // 不查 `PATH`（远端）时，模板里的名字照样认得出 —— 那一格不是本机才答得了的事实。
     assert!(PowerShell
         .name_taken("__ccm_bind", &own(Shell::PowerShell))
         .is_some());
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// 〔AL1d · 第四波 4B〕P1：`$PROFILE` 在哪，全仓只有一个住址（`调研/第四波记录/AL1d.md §2.3`）
+// P1：`$PROFILE` 在哪，全仓只有一个住址
 // ═══════════════════════════════════════════════════════════════════════════
 
 /// 「`$PROFILE` 在哪」的三个记号。**运行时拼**：本文件自己不许被自己数到（本文件不在 `src/` 下，这是第二道保险）。
@@ -357,7 +357,7 @@ fn the_profile_location_has_exactly_one_home() {
         ("src/backend/platform/shell/dialect.rs", 0, 1),
         ("src/backend/platform/shell/dialect.rs", 1, 1),
         ("src/backend/platform/shell/dialect.rs", 2, 1),
-        // 〔OSA · 主会话 09-28 裁〕monitor「数据」区探 `$PROFILE` 备份那第二个读者删了：界面经通道问本机后端。
+        // monitor「数据」区探 `$PROFILE` 备份那第二个读者删了：界面经通道问本机后端。
     ];
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let root = root.canonicalize().expect("仓根");
@@ -434,9 +434,9 @@ fn the_profile_location_census_sees_the_old_shapes() {
     assert_eq!(got, want);
 }
 
-/// ★ 〔FIX · `设计/71 §8` 第 8 条（逐字「PowerShell **内建别名**优先级高于函数（`ls` / `cd` 这类名字撞上了，定义了也敲不到）」）· WIN2 #4 读数〕
+/// ★ 〔（逐字「PowerShell **内建别名**优先级高于函数（`ls` / `cd` 这类名字撞上了，定义了也敲不到）」）· WIN2 #4 读数〕
 /// `Get-Alias` 那一段的输出读成表（名字不分大小写）；撞上 ⇒ 那句话带它指向谁；没撞 ⇒ 不说；问不到 ⇒ 说问不到（不当成没撞）。
-/// ⚠ 买不到：真 PowerShell 那一跳（本机 Linux；读数见 `第四波记录/WIN2.md` #4）。
+/// ⚠ 买不到：真 PowerShell 那一跳（本机 Linux；读数见）。
 #[test]
 fn a_powershell_builtin_alias_is_named_and_an_unknown_listing_is_said() {
     let listing = "ls\tGet-ChildItem\r\ncd\tSet-Location\r\n%\tForEach-Object\r\n\r\n";
@@ -486,7 +486,7 @@ fn model_read_ps_literal(lit: &str) -> Option<String> {
     it.next().is_none().then_some(out)
 }
 
-/// ★ 住址：`设计/99 §2.3`「高危四条（M/N PowerShell 引号注入 …）发版前修」· `第四波记录/WIN3.md §2` M/N。
+/// ★ 要求：「高危四条（M/N PowerShell 引号注入 …）发版前修」· /N。
 /// 唯一出口 [`ps_literal`] 渲出的串按模型读回 == 原串（值里的引号字符在哪、几个、混不混排都不许把串提前收尾）；
 /// 模型认的引号集 == `PS_QUOTES`（两向）。输入：{字母 · 五个引号 · `$` · 反引号 · `"` · 空格} 上长度 ≤ 4 的全部串。
 #[test]
@@ -525,7 +525,7 @@ fn every_powershell_literal_reads_back_as_exactly_its_value() {
     assert_eq!(model_read_ps_literal(&old), None);
 }
 
-/// ★ 住址：`4d-lanes` P5（主会话裁：整段前奏由后端渲，PowerShell 字面量只走 `ps_literal`）· `第四波记录/WF1.md` 报备 ①（本机数据目录带弯引号时握手前奏会断）。
+/// ★ 要求：整段前奏由后端渲，PowerShell 字面量只走 `ps_literal`（本机数据目录带弯引号时握手前奏会断）。
 /// 开终端前奏（生产那一条 `dial/terminal.rs::with_bind_prelude`）里数据目录那一格按上面同一个模型读回 == `<数据目录>/ps-await`、
 /// marker 那一格读回 == `ccm-rbind-token-<令牌>`：数据目录取 {字母 · 五个引号 · 空格 · `$`} 上长度 ≤ 3 的全部串（引号单个 · 连写 · 混排 · 打头）。
 #[test]

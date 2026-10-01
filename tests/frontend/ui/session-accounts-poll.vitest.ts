@@ -259,13 +259,13 @@ describe("createEventRefresher（C1：替掉 10 秒轮询）", () => {
 });
 
 /**
- * 〔DL1〕**账号那一格经通道订**（`accounts-changed`）—— 替掉裸事件 `remote-backend-ready`。
+ * **账号那一格经通道订**（`accounts-changed`）—— 替掉裸事件 `remote-backend-ready`。
  * 订阅本身与会话行 · tap 同一处（`events.ts::bindEvents`，那一半的判据在 `events-tap.vitest.ts` 的 DL1 那组）；
  * 这里判「一批格是什么意思」（`accountsChangedItems`，纯函数）。读源码的两条（kind 串两侧对拍 · main.ts 零裸事件）
  * 住 `generated-boundary-guard.vitest.ts` 的 DL1 那组（扫描层，`test_tiers` 分区：本文件留在单元层）。
  *
- * 守的要求：`设计/01 §2.2`「前端只有两个动作：`call` · `subscribe`」；`设计/05 §3.3.5`（订阅不失败，看不见 ⇒ `unseen`）·
- * `§3.3.4`（丢必须说：`gap`）。设计与读数：`调研/第四波记录/DL1.md §3`。期望手写。
+ * 守的要求：「前端只有两个动作：`call` · `subscribe`」；（订阅不失败，看不见 ⇒ `unseen`）·
+ * `§3.3.4`（丢必须说：`gap`）。期望手写。
  */
 describe("accountsChangedItems（DL1：remote-backend-ready 迁 subscribe）", () => {
   const frame: Item = { t: "frame", seq: 0, body: '{"accounts_changed":true}' };

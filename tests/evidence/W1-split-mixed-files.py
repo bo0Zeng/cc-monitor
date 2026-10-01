@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""设计/99 §4 步 7b —— 仓库重组第 3 批：src/frontend/shell/ 混合文件剖分。
+""" —— 仓库重组第 3 批：src/frontend/shell/ 混合文件剖分。
 
 把 `src/frontend/shell/` 里 `#[cfg(test)] mod X { … }` 这种**内联测试模块块**整块搬到
-`<repo>/tests/frontend/shell/…` 下，原地只留 `设计/16 §3.1` 那三行：
+`<repo>/tests/frontend/shell/…` 下，原地只留那三行：
 
     #[cfg(test)]
     #[path = "../../../tests/frontend/shell/<…>.rs"]
     mod X;
 
-🔴 `设计/16 §6.1` 那条纪律在这里是**硬的**：对每个文件，剖分后 src 段 + test 段
+🔴 那条纪律在这里是**硬的**：对每个文件，剖分后 src 段 + test 段
 **拼回去必须与原文件逐字节相同**，不满足就跳过该文件并记账。理由（§4.1）：
 括号配平在字符串字面量上会偏，而这次偏的后果不是假阳性，是**丢代码**。
 
@@ -156,7 +156,7 @@ def find_blocks(text: str):
 
 
 # ───────────────── `include_str!` 一族：路径跟着**声明它的文件**走 ─────────────────
-# `设计/16 §5.4a` 那三条人群规则：`include_str!` 与 `include_bytes!` 是同一个人群
+# 那三条人群规则：`include_str!` 与 `include_bytes!` 是同一个人群
 # （按语义划，不按宏名）；路径也住在 `#[path]` 里。测试体一搬家，这些**相对**字面量
 # 全部指空 —— 而它们不是静默失效，是编不过（`§5.4a` 表里第 2 行同一形）。
 PATHLIT = re.compile(r'((?:include_str|include_bytes)!\s*\(\s*|#\[path = )"([^"\\\n]*)"')
@@ -188,7 +188,7 @@ def dedent(body_lines):
     """去掉一层（4 空格）缩进。
 
     🔴 **行首在多行字面量里的行一个字节都不动** —— 那几个空格是字符串的值，不是缩进
-    （`设计/16 §4.1` 说的就是这一类：括号配平/文本处理在字符串字面量上会偏）。
+    （说的就是这一类：括号配平/文本处理在字符串字面量上会偏）。
     其余非空行必须是 4 空格起头，否则返回 (False, …) ⇒ 调用方跳过该文件。
     """
     lit = literal_line_starts("\n".join(body_lines))
@@ -215,7 +215,7 @@ def rel_up(from_file: str, to_file: str) -> str:
     return os.path.relpath(os.path.join(REPO, to_file), os.path.dirname(os.path.join(REPO, from_file)))
 
 
-# 两棵生产树 → 两棵测试树。`src/backend` 这一格是步 7c 加的（`设计/16 §6` 第 2 批
+# 两棵生产树 → 两棵测试树。`src/backend` 这一格是步 7c 加的（第 2 批
 # 只搬了目录与 19 份纯测试文件，**剖分从来没排进那三批**）。
 TREES = {"src/frontend/shell": "tests/frontend/shell", "src/backend": "tests/backend"}
 
@@ -337,7 +337,7 @@ def verify(src_rel: str, new_src: str, moved) -> str:
     return f"回拼长度不同：{len(rebuilt)} != {len(orig)}"
 
 
-# ───────────────────────── 人群：`真相源/00`「混合文件（唯一住址）」的口径 ─────────────────────────
+# ───────────────────────── 人群：「混合文件（唯一住址）」的口径 ─────────────────────────
 PROD = re.compile(r"^\s*(pub\s+(fn|struct|enum|trait|const|static)\s|fn\s|struct\s|enum\s|impl\b|trait\s|const\s|static\s)")
 TESTMARK = re.compile(r"#!?\s*\[\s*cfg\s*\(\s*test\s*\)\s*\]|#\s*\[\s*test\s*\]")
 DECL_FORM = re.compile(r"^\s*(pub(\([^)]*\))?\s+)?(mod|use)\s+[A-Za-z_][A-Za-z0-9_]*\s*;")
@@ -346,7 +346,7 @@ DECL_FORM = re.compile(r"^\s*(pub(\([^)]*\))?\s+)?(mod|use)\s+[A-Za-z_][A-Za-z0-
 def is_mixed(text: str) -> bool:
     """混合文件 ＝ src/ 下的 .rs，同一文件里既有生产项又有测试段。
 
-    ⚠ `#[cfg(test)] … mod x;` 这个**分号形式**不算测试段（`设计/16 §4.1`：剖分之后
+    ⚠ `#[cfg(test)] … mod x;` 这个**分号形式**不算测试段（剖分之后
     src/ 里的 cfg(test) 只剩这一形）。在 2026-09-18 那份基线上，算不算它，
     194/106 这两个数**一模一样** —— 所以这不是重新定义口径，是把口径写到能量出变化。
     """
@@ -463,7 +463,7 @@ def selfcheck(files):
     print(f"自检：{len(files)} 个样本，真验到 {exercised} 个，{bad} 个没能让对账变红")
     if exercised == 0:
         print("  🔴 **反空真触发**：一个样本都没真被验到 ⇒ 上面那句「0 个没能让对账变红」"
-              "不携带信息（`设计/16 §5.2`）。给 --only 指几份**还有内联块**的文件。")
+              "不携带信息。给 --only 指几份**还有内联块**的文件。")
         return max(bad, 1)
     return bad
 
@@ -539,7 +539,7 @@ def main():
     )
 
     # 🔴 步 7c：**选片不再走 `is_mixed()`。**
-    # `is_mixed()` 是 `真相源/00`「混合文件（唯一住址）」那个**报数**口径，
+    # `is_mixed()` 是「混合文件（唯一住址）」那个**报数**口径，
     # 它答的是「这份文件里生产项与测试段同住吗」；而 `--apply` 要答的是
     # 「这份文件里有没有剖得开的顶层 `#[cfg(test)] mod X { … }`」——**两个不同的问题**。
     # 步 7b 拿前者当后者用，于是**漏掉 42 份 bridge ＋ 18 份 backend**：

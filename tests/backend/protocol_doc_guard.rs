@@ -10,7 +10,7 @@
 //! **工单号与条不是一回事**：工单是「我们那次做了这件事」，
 //! 条是「这件事必须一直成立」—— 只有工单号的性质，工单关掉之后就没人替它说话。
 //!
-//! ⇒ 升格的逐条依据住 `设计/99 §4.10.1`。
+//! ⇒ 升格的逐条依据住。
 //!
 //! U6a（2026-08-02）：**`src/doc/IPC-PROTOCOL.md` 与真实协议面的对拍。**
 //!
@@ -52,7 +52,7 @@
 //!
 //! # 它挡不住什么（如实登记 —— 本仓在「宣称强度前先验证」上栽过）
 //!
-//! # ⚠ 它的抽取边界（〔audit-0805 08-06〕抽样实测，如实写下）
+//! # ⚠ 它的抽取边界（抽样实测，如实写下）
 //!
 //! [`dispatched_subcommands`] 认的是 **`"--xxx"` 字符串字面量**，
 //! 而 [`dispatch_registry_is_complete`] 把「哪些文件参与分派」**派生**出来
@@ -90,7 +90,7 @@
 /// 所以下面 `dispatch_registry_is_complete` 会**反向核对**这份名单没漏文件。
 const DISPATCH_FILES: &[(&str, &str)] = &[
     ("main.rs", include_str!("../../src/backend/main.rs")),
-    // 🔴 〔步 9 · 09-19〕`lib.rs`：`SUBCOMMANDS` 那张表按 `设计/00 §1.5.4` 前置 1
+    // 🔴 `lib.rs`：`SUBCOMMANDS` 那张表按前置 1
     //    搬进了库面 ⇒ 按本名单的口径（「生产段里出现 `"--`」）它现在就是一份。
     //    ⚠ **不是我判断它该进来，是下面 `dispatch_registry_is_complete` 自己算出来的** ——
     //      搬家当天它逐字报「左边多了 `lib.rs`」。本条登记的就是它算出的那个答案。
@@ -112,19 +112,19 @@ const DISPATCH_FILES: &[(&str, &str)] = &[
         "control/cli_control.rs",
         include_str!("../../src/backend/control/cli_control.rs"),
     ),
-    // 〔HOST · V139〕`control/resident.rs`：`--replace` 这个选项字面量（`--resident-ensure` 的「先停再起」）让派生的文件集把它扫了进来。
+    // `control/resident.rs`：`--replace` 这个选项字面量（`--resident-ensure` 的「先停再起」）让派生的文件集把它扫了进来。
     (
         "control/resident.rs",
         include_str!("../../src/backend/control/resident.rs"),
     ),
-    // 〔AS2 · 第四波 4B〕本机常驻后端经 capture 在远端跑 `--assets-catalog` / `--assets-catalog-merge`
+    // 本机常驻后端经 capture 在远端跑 `--assets-catalog` / `--assets-catalog-merge`
     // （`asset_sync::PULL_FLAG` / `PUSH_FLAG`）—— 它不分派，是**发**这两个子命令的一方；
     // 派生的文件集按「生产段里出现 `"--`」把它扫了进来。登记，那两个字面量随之受对拍约束。
     (
         "assets/asset_sync.rs",
         include_str!("../../src/backend/assets/asset_sync.rs"),
     ),
-    // 〔C4d · 第四波 4B〕历史跨机 join：本机后端在远端跑 `--list-projects` / `--list-sessions`（那台的 CLI 老子命令）——
+    // 历史跨机 join：本机后端在远端跑 `--list-projects` / `--list-sessions`（那台的 CLI 老子命令）——
     //   同 `asset_sync.rs`：它不分派，是**发**这两个子命令的一方；登记之后那两个字面量受对拍约束。
     (
         "history/history_join.rs",
@@ -134,7 +134,7 @@ const DISPATCH_FILES: &[(&str, &str)] = &[
         "observe/history_query.rs",
         include_str!("../../src/backend/observe/history_query.rs"),
     ),
-    // 〔LOC1a · 第四波 4D〕`accounts/iso.rs` 那一行摘了：`--acct-iso-status` / `--acct-iso-shellinit` 的 argv 形分派退役，
+    // `accounts/iso.rs` 那一行摘了：`--acct-iso-status` / `--acct-iso-shellinit` 的 argv 形分派退役，
     //   两问上了帧面（CLI 面由 `cli_control` 从 `REGISTRY` 派生，那一份早在本表里）。
     (
         "observe/accounts_query.rs",
@@ -144,7 +144,7 @@ const DISPATCH_FILES: &[(&str, &str)] = &[
         "observe/search_query.rs",
         include_str!("../../src/backend/observe/search_query.rs"),
     ),
-    // 〔`C1` · 09-24〕只读查询的帧面宿主。它不做 match 分派，但把 `history-search` 的
+    // 只读查询的帧面宿主。它不做 match 分派，但把 `history-search` 的
     // JSON 选项摊回 `--include-tools` / `--scope` / `--after-ms` / `--limit` 那几个 token
     // （解析走 CLI 那一臂同一个 `parse_opts`）⇒ 派生的文件集把它扫了进来。登记，不改判据：
     // 那几个 token 本来就在 IPC-PROTOCOL.md 里，它们从此也在这里受对拍。
@@ -152,7 +152,7 @@ const DISPATCH_FILES: &[(&str, &str)] = &[
         "faces/read_face.rs",
         include_str!("../../src/backend/faces/read_face.rs"),
     ),
-    // 〔DEL〕`relay/machine.rs` 那一行摘了：它不再起 `--relay`（argv 字面量随脱离中转一族删了），派生的文件集不再扫到它。
+    // `relay/machine.rs` 那一行摘了：它不再起 `--relay`（argv 字面量随脱离中转一族删了），派生的文件集不再扫到它。
     // 它不做 match 分派，只在用法串里提自己的名字 —— 但 D 审计正是把一个
     // `pub const CTRL_FLAG: &str = "--ccm-hidden-ctrl";` 藏在这里绕过了护栏。
     // 放宽后的探测把它揪了出来。
@@ -160,7 +160,7 @@ const DISPATCH_FILES: &[(&str, &str)] = &[
         "control/tmux_hook.rs",
         include_str!("../../src/backend/control/tmux_hook.rs"),
     ),
-    // 〔P1 · 第 4 件〕claude 那一家的起会话事实（`RESUME_TOKEN = "--resume"`）：发给 claude 这个子进程的旗标，
+    // claude 那一家的起会话事实（`RESUME_TOKEN = "--resume"`）：发给 claude 这个子进程的旗标，
     //   派生的文件集把它扫了进来 ⇒ 登记在 [`CHILD_PROCESS_FLAGS`]（子进程在仓外，② 那一侧读金样）。
     (
         "agents/claudecode/resume.rs",
@@ -196,7 +196,7 @@ const TERMINAL_SURFACE_FILES: &[(&str, &str)] = &[
          （由 `control::ccm::argv::tests::the_ccm_argv_is_parsed_in_exactly_one_place` 钉），\
          它们是终端命令面、不是 wire 协议面。",
     ),
-    // 〔MIG-2〕`ccm …` 调用行的渲染器（从 monitor 搬进后端）：它**写**那套终端旗标给用户的 shell 跑，不是后端分派的 argv。
+    // `ccm …` 调用行的渲染器（从 monitor 搬进后端）：它**写**那套终端旗标给用户的 shell 跑，不是后端分派的 argv。
     (
         "control/launch_render/ccm_invocation.rs",
         "`ccm …` 调用行的渲染器：它写的是用户终端里那一行 `ccm` 的旗标（终端命令面），不是后端自己分派的 wire 子命令；\
@@ -204,7 +204,7 @@ const TERMINAL_SURFACE_FILES: &[(&str, &str)] = &[
     ),
 ];
 
-/// 🔴 **子进程旗标** —— 后端**发给它转调的那个子进程**的 `--旗标`，不是后端自己分派的 argv。〔BS1b 09-24〕
+/// 🔴 **子进程旗标** —— 后端**发给它转调的那个子进程**的 `--旗标`，不是后端自己分派的 argv。
 ///
 /// # 为什么要有这一类
 ///
@@ -235,7 +235,7 @@ pub(crate) const CHILD_PROCESS_FLAGS: &[(&str, &str, &[&str], &str)] = &[
         "`bus-spawn` 转调 `cc-spawn` 时的旗标（`control/cc_bus.rs::spawn_argv`）。\
          它们是 cc-spawn 的命令面：后端 argv 从不认它们，线上契约里也没有它们的位置。",
     ),
-    // 〔SH1 · V136〕同一份文件发给另两个子进程的旗标（一份文件可以登记几行，① 按文件取并集）。
+    // 同一份文件发给另两个子进程的旗标（一份文件可以登记几行，① 按文件取并集）。
     (
         "control/cc_bus.rs",
         "src/shared/cc-bus/scripts/cc-list",
@@ -248,7 +248,7 @@ pub(crate) const CHILD_PROCESS_FLAGS: &[(&str, &str, &[&str], &str)] = &[
         &["--tsv"],
         "`bus-state` 转调 `cc-agents --tsv`（机器可读的派生台账）。是 cc-agents 的命令面，不是后端的子命令。",
     ),
-    // 〔P1 · 第 4 件〕子进程是仓外的 `claude` ⇒ ② 那一侧读金样 `agent-profile-golden.tsv` 里 flag 形的 `resume_token`
+    // 子进程是仓外的 `claude` ⇒ ② 那一侧读金样 `agent-profile-golden.tsv` 里 flag 形的 `resume_token`
     //   （那张表记的就是各家 agent 的命令形，见接盘判据里按扩展名分的那一支）。
     (
         "agents/claudecode/resume.rs",
@@ -300,7 +300,7 @@ pub(crate) fn dashdash_literals(raw: &str) -> Vec<String> {
 
 /// 分派里出现的所有 `--子命令` / `--选项`（跨 [`DISPATCH_FILES`] 全部文件）。
 ///
-/// ⚠ 〔BS1b〕[`CHILD_PROCESS_FLAGS`] 里登记的那几个**按文件**摘掉 —— 同一个 token 出现在
+/// ⚠ [`CHILD_PROCESS_FLAGS`] 里登记的那几个**按文件**摘掉 —— 同一个 token 出现在
 /// 别的分派文件里照样算（摘的是「这份文件发给子进程的那几个」，不是这个字串）。
 pub(crate) fn dispatched_subcommands() -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
@@ -666,7 +666,7 @@ mod tests {
         );
     }
 
-    /// 🔴 [`CHILD_PROCESS_FLAGS`] 的接盘判据：**①② 两向相等**（登记表头注写着为什么）。〔BS1b 09-24〕
+    /// 🔴 [`CHILD_PROCESS_FLAGS`] 的接盘判据：**①② 两向相等**（登记表头注写着为什么）。
     ///
     /// ⚠ 买不到：「旗标的**值**对不对」（`--tool` 后面跟的是什么）—— 那一格由 cc-spawn 自己 rc=2 判，
     /// 行为判据住 `control::cc_bus::tests`（argv 形状）与 `tests/e2e/backend-cc-bus.sh`（真跑）。
@@ -694,7 +694,7 @@ mod tests {
                 .1;
             let mut sent = dashdash_literals(raw);
             sent.sort();
-            // 〔SH1〕一份文件可以对几个子进程各登记一行 ⇒ ① 比的是这份文件所有行的并集。
+            // 一份文件可以对几个子进程各登记一行 ⇒ ① 比的是这份文件所有行的并集。
             let mut all: Vec<String> = CHILD_PROCESS_FLAGS
                 .iter()
                 .filter(|(f, ..)| f == file)
@@ -714,7 +714,7 @@ mod tests {
             let script = std::fs::read_to_string(repo.join(child))
                 .unwrap_or_else(|e| panic!("读不到子进程脚本 {child}：{e} —— 判不了，不许当成绿"));
             let mut accepts: Vec<String> = if child.ends_with(".tsv") {
-                // 〔P1〕子进程在仓外（`claude`）⇒ 它认的旗标取金样里 flag 形（`--` 开头）的 `resume_token`。
+                // 子进程在仓外（`claude`）⇒ 它认的旗标取金样里 flag 形（`--` 开头）的 `resume_token`。
                 script
                     .lines()
                     .filter(|l| !l.trim_start().starts_with('#'))
@@ -786,7 +786,7 @@ mod tests {
         accepts
     }
 
-    /// 〔SH1〕没有旗标循环的 shell 子进程：它只认第一个参数那一形 `[ "${1:-}" = --x ]`（`cc-list` / `cc-agents` 的 `--tsv`）。
+    /// 没有旗标循环的 shell 子进程：它只认第一个参数那一形 `[ "${1:-}" = --x ]`（`cc-list` / `cc-agents` 的 `--tsv`）。
     fn shell_first_arg_flags(script: &str) -> Vec<String> {
         let pat = "[ \"${1:-}\" = --";
         script
@@ -829,7 +829,7 @@ mod tests {
         // ⚠ 针**运行时拼**：写成字面量的话本文件就多出一处「解析不出路径的 `include_*!`」，
         //   而 `cross_half_edge_registry` 的抽取器按文本数调用数 —— 那是一次现打逮到的假阳。
         //
-        // 🔴 〔步 7c 剖分 2026-09-19 · `设计/16 §5.4b` 第二条元教训〕
+        // 🔴 〔步 7c 剖分 2026-09-19 ·  第二条元教训〕
         //    **原来的针是 `include_str!("argv.rs")` —— 针里嵌着那条相对路径的全文。**
         //    剖分把那条判据搬去了 `tests/backend/control/ccm_tests.rs`，剖分器**按原语义
         //    重定向**了它的 `include_str!`，于是那一行今天逐字是
@@ -862,7 +862,7 @@ mod tests {
              （本条只认 include 路径的**收尾文件名**，所以搬树改相对前缀不会让它假红；\n\
              它真红就是那条 include 没了或读了别的文件。）"
         );
-        // 〔MIG-2〕渲染器那一格的接盘判据：渲出的每一行都过 `argv::parse`。
+        // 渲染器那一格的接盘判据：渲出的每一行都过 `argv::parse`。
         let render_side = include_str!("control/launch_render/launch_cli_parity_tests.rs");
         assert!(
             render_side.contains("fn every_rendered_ccm_line_is_accepted_by_the_ccm_argv")
@@ -893,7 +893,7 @@ mod tests {
             if i % 2 == 0 {
                 continue;
             }
-            // ★★〔P4f 08-13〕**连字符要连着一起收一份**。
+            // ★★**连字符要连着一起收一份**。
             //
             // 原来只按「字母数字下划线」切词 ⇒ `bus-list` 被切成 `bus` 与 `list`，
             // 于是一条叫 `bus-list` 的命令**无论文档写得多全都过不了**
@@ -1078,7 +1078,7 @@ mod tests {
                 include_str!("../../src/backend/observe/watcher.rs"),
             ),
             (
-                "observe/tmux_observe.rs", // 〔RE · C4〕原 `watcher.rs` A 块（人群不缩）
+                "observe/tmux_observe.rs", // 原 `watcher.rs` A 块（人群不缩）
                 include_str!("../../src/backend/observe/tmux_observe.rs"),
             ),
             (
@@ -1183,7 +1183,7 @@ mod tests {
             "duplicate_id",
             "handler_panicked",
             "not_cancellable",
-            // 〔HX1 · 4D〕后端在收场（排空停不下来的那一档）时新来的阻塞命令：与命令无关、只有 `inbound.rs` 判得了。
+            // 后端在收场（排空停不下来的那一档）时新来的阻塞命令：与命令无关、只有 `inbound.rs` 判得了。
             "shutting_down",
         ];
         // 逐个文件扫 `control/`（`observe/` 不产 code，不在本条范围）。
@@ -1387,7 +1387,7 @@ mod tests {
         );
 
         // 从 main.rs 生产段抠 `const EMITS: &[&str] = &[ "a", "b", … ];`
-        // 〔步 9 · 09-19〕`EMITS` 已搬进 `lib.rs` ⇒ 扫描面取**两份的全集**
+        // `EMITS` 已搬进 `lib.rs` ⇒ 扫描面取**两份的全集**
         //（住址只有一处：`guard_support::backend_root_source`，理由见那函数头注）。
         let prod = guard_core::production_code(&crate::guard_support::backend_root_source());
         let start = prod

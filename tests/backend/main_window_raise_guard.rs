@@ -82,7 +82,7 @@ fn window_raising_lives_in_one_file_and_only_behind_cfg_windows() {
     let root = crate::guard_support::src_root();
     // ⚠ 走共享原语而不是自己 `read_dir`：`scanning_guard_registry` 那条棘轮要求如此。
     //
-    // 🔴 〔步 7c 剖分 2026-09-19 · `设计/16 §6.2` A 类〕
+    // 🔴 〔步 7c 剖分 2026-09-19〕
     //    **从 `scan_tree!` 换成 `scan_tree_excluding(.., &[])`，并删掉「把 `main.rs` 补回来」那两段。**
     //    上一版靠 `scan_tree!` 的 `file!()` 自摘掉 `main.rs`（本判据当年住在 `main.rs` 里），
     //    再手工补回来。剖分之后本判据住 `tests/backend/main_window_raise_guard.rs`

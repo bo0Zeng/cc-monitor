@@ -1,11 +1,11 @@
-//! 〔FILES2 · 第四波 · 2026-09-27〕**解压**（`files-extract`）＋ 第三层「建链接」那一个动词的住址。
+//! **解压**（`files-extract`）＋ 第三层「建链接」那一个动词的住址。
 //!
-//! 要求住址：`设计/60 §6.2`（跨机复制 · 解压 · 目录复制遇链接）· `§7` 第 9 条 Q1 / Q3；主会话 09-27 按通行做法裁（`_施工/4d-lanes.md` `### FILES2`）：
+//! （跨机复制 · 解压 · 目录复制遇链接）· `§7` 第 9 条 Q1 / Q3；主会话 09-27 按通行做法裁（`### FILES2`）：
 //! - Q1「复制**链接本身**（不跟进去，目标文本原样；= GNU `cp -R` 缺省的 `-P`）」⇒ [`land_link`]（复制目录与解压共用）。
 //! - Q3「右键『解压到这里』，由那台后端用 Rust 库（`tar` · `flate2` · `zip`，不调外部命令）解到同目录下以包名命名的新目录；
 //!   每一条先过路径解析（挡 zip-slip：`..` / 绝对路径 / 链接出根），撞名就问；支持 zip · tar · tar.gz · tgz，其余格式说『不认这种包』」。
 //!
-//! # 形状（设计住 `调研/第四波记录/FILES2.md` 第一节）
+//! # 形状（设计住第一节）
 //!
 //! 两趟，照复制目录（`files_write::copy_tree`）：
 //! 1. **计划**（只读，[`plan`]）：逐条目判路径 —— 只许普通段（`..` / 绝对 / 盘符 ⇒ 整趟拒；`.` 与空段剥掉）；链接的目标必须相对、
@@ -442,7 +442,7 @@ fn land_file(root: &Path, rel: &Path, body: &mut dyn Read, mode: Option<u32>) ->
         .open(&at)
         .map_err(fail)?;
     // 写一半 / 设权限没成 ⇒ 删掉**我们自己刚建的那一份**（`O_EXCL` 保证它此前不存在），它还没进回滚那张表。
-    // 〔FIX5〕权限位按句柄改（没有路径可被换成链接）。
+    // 权限位按句柄改（没有路径可被换成链接）。
     let done = std::io::copy(body, &mut out).and_then(|n| {
         #[cfg(unix)]
         if let Some(m) = mode {
@@ -651,7 +651,7 @@ pub const EXTRACT_COMMANDS: &[ManageCommand] = &[
         fields: &["bytes", "dirs", "files", "links", "path"],
         codes: &["bad_args", "bad_path", "exists", "io_failed", "refused", "unsupported"],
     },
-    // 〔MIG-3a · 子步 3 · 主会话 09-28 裁〕[`land_link`] 的帧面入口（写一条符号链接，目标文本原样）。
+    // [`land_link`] 的帧面入口（写一条符号链接，目标文本原样）。
     ManageCommand {
         name: "files-link",
         purpose: "create one symbolic link at root/rel whose target text is `target` verbatim (like `cp -P`); \

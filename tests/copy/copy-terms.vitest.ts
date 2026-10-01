@@ -1,9 +1,9 @@
 /**
- * CP2a · 术语对照表（`调研/设计/91 §5.2④`）的判据。表住 `src/shared/copy/terms.json`。
+ * CP2a · 术语对照表的判据。表住 `src/shared/copy/terms.json`。
  *
  * # 它治的病
  *
- * `91 §5.2④` 逐字：R1 禁词表说**不许出现什么**，术语表说**该说什么**；「今天只有前者 ⇒
+ * R1 禁词表说**不许出现什么**，术语表说**该说什么**；「今天只有前者 ⇒
  * 判据红了之后人只能自己编一个词」。这张表要是只靠人记着维护，会和散文一起腐 ——
  * 所以它的人群**不是本文件自己定的**，而是从两份别人写的东西里借来、两向对拍：
  *
@@ -12,7 +12,7 @@
  * | 表里 `census` 的集合 == 普查量具的 `R1_WORDS ∪ R1_CANDIDATES` | `tests/evidence/K-T68-A1-outward-copy-census.py` | 普查加了一个禁词 / 候选词，术语表没给换法 |
  * | 表里 `ledger` 的并集 == CP1 台账依据列里的全部 `新词:` 标记 | `tests/evidence/CP1-copy-verdicts.tsv` | 裁文案的人标出一个新内部词，术语表没收 |
  *
- * 两侧是**异源**的：普查那张表是照 `91 §4` 抄的，台账标记是 6 路裁文案时逐条手标的，
+ * 两侧是**异源**的：普查那张表是照抄的，台账标记是 6 路裁文案时逐条手标的，
  * 都不是从本表生成的 ⇒ 相等不是恒真。
  *
  * # 它**不**判什么（诚实段）
@@ -62,7 +62,7 @@ export function shapeProblems(terms: Term[]): string[] {
     if (!t.source) p.push(`${at} 没写出处`);
     if (t.tier === "正名" && !t.meaning) p.push(`${at} 是正名却没写 meaning`);
     if (t.tier === "限用" && !t.context) p.push(`${at} 是限用词却没写许说的语境（R1b 第 1 条）`);
-    // 〔CP2b〕限用词计数棘轮：每条限用词都要有计数正则与表里的条数；别的档不许带（棘轮只管限用）。
+    // 限用词计数棘轮：每条限用词都要有计数正则与表里的条数；别的档不许带（棘轮只管限用）。
     if (t.tier === "限用" && (!t.tally || typeof t.inTable !== "number"))
       p.push(`${at} 是限用词却没写 tally / inTable（R1b 第 3 条：计数只许变少）`);
     if (t.tier !== "限用" && (t.tally !== undefined || t.inTable !== undefined)) p.push(`${at} 不是限用词却带了 tally / inTable`);
@@ -127,9 +127,9 @@ describe("CP2a · 术语对照表", () => {
   it("★ 表里 ledger 的并集 == CP1 台账的全部「新词:」标记（两向）", () => {
     const marks = ledgerMarkers(tsv);
     // 正控：锚两个裁文案时一定标过的词。
-    // 〔第二波 T4 09-24〕第二个锚从「拉前」换成「围栏」：标「新词:拉前」的那四行随原文（E73 那段）一起删了，
+    // 第二个锚从「拉前」换成「围栏」：标「新词:拉前」的那四行随原文（E73 那段）一起删了，
     //   台账里已经没有它 —— 锚一个真没了的词，这条正控会把「删对了」读成「抽取器坏了」。
-    // 〔CP2b · 全量抽表〕对外的行随字面量进表一行行走掉（它们的 新词: 由文案表的 C-T1 接着管），锚改成
+    // 〔全量抽表〕对外的行随字面量进表一行行走掉（它们的 新词: 由文案表的 C-T1 接着管），锚改成
     //   两个 [不对外] 行上的标记 —— 那些行留在台账里、不随抽表走（backend_control.rs 那几句只进 console.info）。
     expect(marks.has("C8①") && marks.has("流"), "台账标记一个都没抽到 —— 抽取器坏了").toBe(true);
     const ours = terms.flatMap((t) => t.ledger ?? []);
@@ -145,15 +145,15 @@ describe("CP2a · 术语对照表", () => {
     expect(ccm?.tier).toBe("限用");
     expect(inPlace?.tier).toBe("限用");
     expect(ccm?.context && inPlace?.context).toBeTruthy();
-    // 〔CP2b · 用户 09-24「继续叫卸载ccm」（99 §1 V80）〕那条 ask 结案了，不许再挂着。
-    expect(ccm?.ask, "ccm 条的 ask 已结案（V80），删掉").toBeUndefined();
+    // 〔用户 09-24「继续叫卸载ccm」（）〕那条 ask 结案了，不许再挂着。
+    expect(ccm?.ask, "ccm 条的 ask 已结案，删掉").toBeUndefined();
   });
 
   /**
-   * 〔CP2b〕**限用词计数棘轮**（`91 §4` R1b 第 3 条「计数只许变少，限用不是放行」· `§5.7` 第 4 步）。
-   * 要求住址逐字：`设计/91 §4` R1b「能机检的只有『总数只许变少』」。
+   * **限用词计数棘轮**（「计数只许变少，限用不是放行」· `§5.7` 第 4 步）。
+   * 要求住址逐字：「能机检的只有『总数只许变少』」。
    * 相等、不是地板：表里每多一条带 tmux 的句子，就得回来把 `inTable` 加一 —— 改的时候人会看见它
-   * （`91 §5.6` 引 `launch_payload_parity.rs` 的原话：地板会被静默绕过，相等不会）。
+   * （引 `launch_payload_parity.rs` 的原话：地板会被静默绕过，相等不会）。
    */
   it("★ 限用词计数棘轮：每条限用词在文案表里的命中条数 == inTable", () => {
     const table = loadTable();

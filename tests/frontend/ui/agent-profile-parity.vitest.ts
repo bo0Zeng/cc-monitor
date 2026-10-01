@@ -7,7 +7,7 @@
  *
  * | 住址 | 形态 |
  * |---|---|
- * | `src/frontend/shell/…/fixtures/agent-profile-golden.tsv` | 自称「agent 适配表的**唯一真相源**」，8 行 / 4 个 key |
+ * | `src/frontend/shell/…/fixtures/agent-profile-golden.tsv` | 自称「agent 适配表的**唯一源头**」，8 行 / 4 个 key |
  * | `shared/ccm` 的 `agent_*` 五函数 | POSIX shell |
  * | `src/backend/agents/{claudecode,codex}/resume.rs` | Rust |
  *
@@ -15,7 +15,7 @@
  *
  * ⚠ **这不是理论风险，是刚发生过的事**：`backend-split` 的 `S2`/`S3`（08-14）建
  * `agents/<名>/resume.rs` 时，把副本**从两份变成了三份**，全程零告警 ——
- * 而那两件的作者（本仓 PM）当时正拿着「铁律 15：报新发现前先检索真相源」这条在做事。
+ * 而那两件的作者（本仓 PM）当时正拿着「铁律 15：报新发现前先检索源头」这条在做事。
  * **不是没人守规矩，是没有东西会红。**
  *
  * # 为什么是「对拍」而不是「收成一份」
@@ -24,14 +24,14 @@
  * 零 C 依赖、~3.5 MB**，且它跑在**远端**，读一个 monitor 仓里的 fixture 没有意义。
  * ⇒ 三处各自持有是必然的，能钉的是「**它们必须一致**」。
  *
- * 形态照仓里当时的 `liveness-process-names-parity.vitest.ts`（〔THIN〕已删：两份词表并成后端一份）—— 那条 08-14 `S3` 搬迁时
+ * 形态照仓里当时的 `liveness-process-names-parity.vitest.ts`（已删：两份词表并成后端一份）—— 那条 08-14 `S3` 搬迁时
  * **当场把作者红了**（词表搬家 ⇒ 抽取器零命中），证明这种判据真在守东西。
  *
  * # ⚠ 诚实边界（三条）
  *
  * 1. 本条只对拍 **golden 有 key 的那两项**（`default_launcher` / `resume_kind`+`resume_token`）。
  *    ccm 的 `has_identity` · `needs_bus_id`（`control/ccm/mod.rs`）· backend 的 `SESSION_NAME_PREFIX`（`cc-`/`cx-`）
- *    **今天在 golden 里没有 key** ⇒ 它们**没有真相源、也没被本条守住**。
+ *    **今天在 golden 里没有 key** ⇒ 它们**没有源头、也没被本条守住**。
  *    那是 `EL6` 的欠账，不是本条能顺手解决的（加 key 要动 golden 的契约面）。
  *    下面 `the_gaps_are_named_not_forgotten` 把这三项**逐个点名钉住**：
  *    哪天有人给 golden 加了 key，那一格会红，提醒把它接进对拍。
@@ -54,7 +54,7 @@
  * —— 而它只认 claude（`K-R54` 表第 11 行）。本件把它的**取值来源**改成后端：
  *
  * ```text
- * src/backend/agents/<名>/resume.rs（注册表 `Adapter.launch`）〔P1：从前是 monitor 那份适配表的取数口〕
+ * src/backend/agents/<名>/resume.rs（注册表 `Adapter.launch`）〔从前是 monitor 那份适配表的取数口〕
  *   └─（cargo test --lib export_bindings ＝ npm run gen:types）→
  *      src/frontend/ui/generated/agent-profile-table.ts  →  src/frontend/ui/agent-profile.ts
  * ```
@@ -66,7 +66,7 @@
  * ⚠ **两道门各盖一半，别只报一边**（同 `C05` 那个拆法）：
  * · 「已提交的生成物 == Rust 源」由**门禁第六格 `generated`** 盖
  *   （`git diff --exit-code -- src/frontend/ui/generated/`，跑在 `cargo test --lib` 之后）；
- * · 「TS 消费方 == 已提交的生成物」＋「生成物 == 金表」由**本文件**盖（〔P1〕值的家进了后端之后，「后端那一份 == 金表」由后端 `agents_tests.rs` 盖），
+ * · 「TS 消费方 == 已提交的生成物」＋「生成物 == 金表」由**本文件**盖（值的家进了后端之后，「后端那一份 == 金表」由后端 `agents_tests.rs` 盖），
  *   它在**没有 Rust 的那一侧**（CI 的 frontend job）也成立。
  * 🔴 在**整趟门禁**里跑时，`cargo` 那一格会先把生成物重写一遍 ⇒ 本文件那条对拍
  *   看到的已经是修好的文件。**那一格的牙在 `generated`，不在这里** —— 别把本条读成
@@ -90,7 +90,7 @@ import { stripComments } from "../../test-support/strip-comments";
 
 const REPO = resolve(__dirname, "../../..");
 const GOLDEN = "tests/__fixtures__/agent-profile-golden.tsv";
-// 🔴 〔`K-R48` 第二拍 2026-09-11〕`shared/ccm` 那个 bash 脚本删了
+// 🔴 `shared/ccm` 那个 bash 脚本删了
 // （〔用@09-11 `K33`〕「后端只有一个…**不要有什么 bash 脚本**」），
 // per-agent 适配表搬进了后端本体。**三写点还是三个，第二份换了语言与住址。**
 const CCM = "src/backend/control/ccm/mod.rs";
@@ -114,7 +114,7 @@ function golden(): Record<string, Record<string, string>> {
   return out;
 }
 
-// 〔P1 · 第 4 件〕`ccmTable`（从 `control/ccm/mod.rs` 的 `match agent` 里抠 per-agent 取值）退役：那两张表按注册表读了，没有臂可抠。
+// `ccmTable`（从 `control/ccm/mod.rs` 的 `match agent` 里抠 per-agent 取值）退役：那两张表按注册表读了，没有臂可抠。
 
 /**
  * 只留 Rust 的**生产段**：剥掉 `//` / `///` / `//!` 开头的整行。
@@ -151,7 +151,7 @@ function backendResumeTemplate(agent: string): string {
 }
 
 describe("agent 适配表的三写点对拍（plugin-split E4c / EL6）", () => {
-  // 〔P1 · 第 4 件〕三写点收成一个家：值只住后端适配层 `agents/<名>/resume.rs`（注册表 `Adapter.launch`），`ccm` 按注册表读。
+  // 三写点收成一个家：值只住后端适配层 `agents/<名>/resume.rs`（注册表 `Adapter.launch`），`ccm` 按注册表读。
   //   ⇒ 这里对的是「金表 ↔ 那一个家」，外加「ccm 那两张 per-agent 表确实没了（按注册表读）」。
   it("★ 抽取器自检：两边都真的抠出了东西（否则下面是零命中地绿）", () => {
     const g = golden();
@@ -172,7 +172,7 @@ describe("agent 适配表的三写点对拍（plugin-split E4c / EL6）", () => 
         g[a]?.default_launcher,
       );
     }
-    // 〔P1〕ccm 的 `default_launcher` / `nested_env` 按注册表读：函数体里不许再有 per-agent 的臂。
+    // ccm 的 `default_launcher` / `nested_env` 按注册表读：函数体里不许再有 per-agent 的臂。
     const src = productionRust(read(CCM));
     for (const fn of ["default_launcher", "nested_env"]) {
       const at = src.indexOf(`fn ${fn}(`);
@@ -185,7 +185,7 @@ describe("agent 适配表的三写点对拍（plugin-split E4c / EL6）", () => 
 
   it("★ resume 的形状（flag 还是子命令）：golden ↔ backend 一致，命令模板用的就是那个字面量", () => {
     const g = golden();
-    // 〔AL3 · V138〕ccm 成了 claude 的壳、只看不吃 `--resume` ⇒ 它那张 `resume_flag` 表删了。
+    // ccm 成了 claude 的壳、只看不吃 `--resume` ⇒ 它那张 `resume_flag` 表删了。
     expect(/^\s*pub\(crate\) fn resume_flag\(/m.test(read(CCM)), `${CCM} 又长出了 resume 表 —— V138 之后 ccm 不做 resume 决定`).toBe(false);
     for (const a of AGENTS) {
       const token = backendResumeToken(a) ?? "";
@@ -200,7 +200,7 @@ describe("agent 适配表的三写点对拍（plugin-split E4c / EL6）", () => 
   });
 
   it("★ 缺口是被点名的，不是被忘掉的", () => {
-    // 这三项今天**没有** golden key ⇒ 没有真相源。哪天有人加了 key，这一格红，
+    // 这三项今天**没有** golden key ⇒ 没有源头。哪天有人加了 key，这一格红，
     // 提醒把它接进上面的对拍 —— 而不是让它悄悄多出第四份副本。
     const g = golden();
     const gaps = ["has_identity", "needs_bus_id", "session_name_prefix"] as const;
@@ -214,7 +214,7 @@ describe("agent 适配表的三写点对拍（plugin-split E4c / EL6）", () => 
     }
     // 反向：这三项**确实**在别处有实现，不是我记错了。仍用带锚的声明形状，不用子串。
     const ccm = read(CCM);
-    // 〔`K-R48` 第二拍〕名字搬进 Rust 之后掉了 `agent_` 前缀，声明形状也换了。
+    // 名字搬进 Rust 之后掉了 `agent_` 前缀，声明形状也换了。
     expect(
       /^pub\(crate\) fn has_identity\(agent: &str\)/m.test(ccm),
       "ccm 里没有 has_identity 的定义",
@@ -235,7 +235,7 @@ describe("agent 适配表的三写点对拍（plugin-split E4c / EL6）", () => 
 const TABLE_TS = "src/frontend/ui/generated/agent-profile-table.ts";
 const PROFILE_TS = "src/frontend/ui/agent-profile.ts";
 
-// 〔THIN · `设计/00 §1.2` 判定只在后端〕从前这里有 `rustStaticList` 与 `CLAUDE_TABLES`：claude 那五张工具 / 判活进程词表
+// 〔判定只在后端〕从前这里有 `rustStaticList` 与 `CLAUDE_TABLES`：claude 那五张工具 / 判活进程词表
 //   在 `adapter.rs` 里的住址，拿来对拍生成物。那五张表连同判定进了后端适配层（`src/backend/agents/claudecode/cards.rs`，
 //   判据 `tests/backend/agents/claudecode/cards_tests.rs`），生成物与画像里都没有那五格了 ⇒ 对拍随之退役。
 
@@ -299,7 +299,7 @@ describe("K-R93 前端那份 agent 画像：值来自后端", () => {
     expect(src, "生成物头上缺「不许手改」那句").toMatch(/Do not edit this file manually/);
   });
 
-  // 〔THIN〕「claude 那五张表 —— 生成物 == `adapter.rs` 源」那一条退役：五张表进了后端适配层，生成物里不再有那五格。
+  // 「claude 那五张表 —— 生成物 == `adapter.rs` 源」那一条退役：五张表进了后端适配层，生成物里不再有那五格。
 
   it("★ `KR93D1`：生成物与金表 `agent-profile-golden.tsv` 对得上（4 个 key × 2 个 agent）", () => {
     for (const a of AGENTS) {
@@ -370,6 +370,6 @@ describe("K-R93 前端那份 agent 画像：值来自后端", () => {
     expect(() => fullAgentProfile(ACTIVE_AGENT, [])).toThrow(/查不到/);
   });
 
-  // 〔THIN〕「`null` 那一格是『没人考据过』」那一条退役：会是 `null` 的那五格（codex 的工具 / 判活进程词表）随判定进了后端
+  // 「`null` 那一格是『没人考据过』」那一条退役：会是 `null` 的那五格（codex 的工具 / 判活进程词表）随判定进了后端
   //   （后端 `RecordFace.tool_card` · `Adapter.processes` 两格 codex 是 `None` ⇒ 界面画普通卡、tmux 那一格为假），这张表里没有可空的列表格了。
 });

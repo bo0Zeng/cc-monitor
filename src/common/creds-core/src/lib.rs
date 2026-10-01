@@ -1,7 +1,7 @@
 //! **第三方 API key 的唯一住址** —— 装它的类型（本文件）· 它落盘的格式（[`store`]）·
 //! 它的权限够不够窄（[`perm`]）。monitor 与远端后端共用同一份。
 //!
-//! # 这一档保什么、不保什么（`K-H2a §0a`〔用 08-26〕选的第三档，逐字抬进来）
+//! # 这一档保什么、不保什么（〔用 08-26〕选的第三档，逐字抬进来）
 //!
 //! 三档里选的是「**单独一个文件 · 只给本人 · 不进前端那份配置**」。另两档为什么没选：
 //! 系统钥匙串**撞用户逐字「不强依赖本机环境」**（每平台一套 API，目标机还要有对应服务在跑）；
@@ -22,7 +22,7 @@
 //!
 //! ## ⚠ 远端那一侧：**不许从 SFTP 的 mode 参数拿机密性**〔实@08-27〕
 //!
-//! 远端原子上传收一个 mode 参数（〔SR1b〕今天住 `src/backend/dial/sftp.rs::put_atomic`；从前是 monitor 的
+//! 远端原子上传收一个 mode 参数（今天住 `src/backend/dial/sftp.rs::put_atomic`；从前是 monitor 的
 //! `upload_atomic`〔散文墓碑〕），看起来像是「推上去就是 0600」。
 //! 对面是 Windows 时**那不是「不生效」，是「静默地不生效」**，三条读数（分母都在，量于 08-27）：
 //! 1. 那个 mode 只以 SFTP v3 的 `SSH_FILEXFER_ATTR_PERMISSIONS` 属性搭在 `SSH_FXP_OPEN` 上
@@ -30,7 +30,7 @@
 //! 2. **没有第二次机会**：那一段的头注逐字禁掉了兜底 `set_metadata`
 //!    （理由是 OpenSSH sftp-server 上 setstat 会把文件截成 0 字节 —— 而那条理由是在一台
 //!    **POSIX** 服务端上量的）；
-//! 3. **本仓没有任何一处回读权限**：部署的读回比对（〔SR1b〕后端算事实、monitor 的 `sftp.rs::verify_readback` 判）
+//! 3. **本仓没有任何一处回读权限**：部署的读回比对（后端算事实、monitor 的 `sftp.rs::verify_readback` 判）
 //!    三条分支逐字只比**字节与长度**（从前那一份叫 `verify_uploaded_bytes`〔散文墓碑〕）。
 //!    再加一条：全仓唯一那条 OS 判定 `src/frontend/ui/settings/host-os.ts` 头注逐字说它量的是
 //!    **monitor 自己**跑在哪个 OS 上，**不是远端** ⇒ 代码里根本没有「对面是什么 OS」这个量。
@@ -43,7 +43,7 @@
 //! # 分工（别把两件事混成一件）
 //!
 //! - **写**这份文件：每台机器上恰好一个程序写者。monitor 所在那台是 monitor（`creds_store`）；
-//!   〔RM1a · 第四波〕其余每台是那台的后端 —— 只有账号域那一份 `accounts/upstream_select/file_face.rs`，
+//! 其余每台是那台的后端 —— 只有账号域那一份 `accounts/upstream_select/file_face.rs`，
 //!   只从帧面 `apikey-key-set` 进来（`readonly_guard` 第四层登记）。两侧都开本 crate 的 `harden`。
 //! - **读**这份文件：两侧都读。`K-H2a` 裁四原话「backend 只许读」**收窄**成上面那一格：
 //!   后端里除了那一份，照旧一个写都没有 —— 先前由「feature 不开」这件事让编译器兜着，

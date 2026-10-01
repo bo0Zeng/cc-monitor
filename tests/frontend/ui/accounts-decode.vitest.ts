@@ -1,8 +1,8 @@
 /**
- * 〔C4c · 第四波 4B〕账号那两问（清单 `accounts-list` · 信任预检 `accounts-trust`）改走通道之后的判据。
+ * 账号那两问（清单 `accounts-list` · 信任预检 `accounts-trust`）改走通道之后的判据。
  *
- * 要求住址：`设计/05 §8` 步 5「一次性请求那半收口成 `call` —— 按能力分批」· `设计/01 §5` D1「一个判定只有一个家」·
- * 用户裁决 V107「中转 ＋ 上游选择住本机常驻后端进程」（主会话据此裁：账号域读自己那台的 apikey 表、后端出成品）。
+ * 要求：「一次性请求那半收口成 `call` —— 按能力分批」· 「一个判定只有一个家」·
+ * 「中转 ＋ 上游选择住本机常驻后端进程」（主会话据此裁：账号域读自己那台的 apikey 表、后端出成品）。
  *
  * | 性质 | 判据 |
  * |---|---|
@@ -19,7 +19,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
-vi.mock("../../../src/frontend/ui/config", () => ({ loadConfig: vi.fn().mockResolvedValue({}), patchConfig: vi.fn() })); // 〔CFG1〕写口换成按键补丁
+vi.mock("../../../src/frontend/ui/config", () => ({ loadConfig: vi.fn().mockResolvedValue({}), patchConfig: vi.fn() })); // 写口换成按键补丁
 
 import { invoke } from "@tauri-apps/api/core";
 import { decodeAccountsList, decodeTrust } from "../../../src/frontend/ui/accounts-decode";
@@ -129,7 +129,7 @@ describe("失败：折成 available:false ＋ 一句人话，不抛", () => {
     expect(st.available).toBe(false);
     expect(st.accounts).toEqual([]);
     expect(st.error).toMatch(/够不着/);
-    // 〔WF2 · WIN3 读数 C〕够不着 ≠ 要更新。
+    // 够不着 ≠ 要更新。
     expect([st.oldBackend, deriveUi(st).kind]).toEqual([false, "query-failed"]);
   });
   it("后端不认（老后端）⇒ 说「版本过旧」（`deriveUi` 据此落「需更新」）", async () => {

@@ -1,5 +1,5 @@
 /**
- * 〔MIG-1 续 · `设计/99 §2.1 ⑬`〕「那台机器此刻有哪些 tmux 会话」**走通道，那台后端出成品**：`chan.call(origin, "tmux-list")`
+ * 「那台机器此刻有哪些 tmux 会话」**走通道，那台后端出成品**：`chan.call(origin, "tmux-list")`
  * ⇒ `{installed, sessions}`（后端 `observe/tmux_list.rs`，解析从 monitor 的 `parse_tmux_ls`〔散文墓碑〕 搬过去）。本机远端同一形、同一问
  * （monitor 那两条 Tauri 命令 `list_local_tmux` / `list_remote_tmux` 退役）。
  *
@@ -29,7 +29,7 @@ export interface TmuxSession {
    * 用它精确认「哪个 tmux 跑目标 sid」，取代按目录 / 名字取第一个（同目录多 claude 会撞错会话，`INVARIANTS §30`）。
    */
   sid: string | null;
-  /** 〔THIN〕前台命令是某一家 agent 的进程（那台后端按它的适配层判：Claude 是 `claude` / `node`）。 */
+  /** 前台命令是某一家 agent 的进程（那台后端按它的适配层判：Claude 是 `claude` / `node`）。 */
   agent: boolean;
 }
 

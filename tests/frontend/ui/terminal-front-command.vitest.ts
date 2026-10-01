@@ -1,5 +1,5 @@
 /**
- * 〔U2 · 第三波〕命令面板的 ↗ 那一项在非 Windows 上收起（`src/frontend/ui/terminal-front-command.ts`）。
+ * 命令面板的 ↗ 那一项在非 Windows 上收起（`src/frontend/ui/terminal-front-command.ts`）。
  *
  * 两格：
  * 1. **行为**：门本身 —— 四种 OS 各一格，与 tab 上那颗 ↗ 按钮同一道门（`terminalFrontAvailable`）：
@@ -50,9 +50,9 @@ describe("〔U2〕命令面板的 ↗：非 Windows 不列", () => {
 });
 
 /**
- * 〔S4 · 第四波〕独立只读窗（`entry-viewer.ts`）顶栏那颗「↗ 终端」也过同一道门。
+ * 独立只读窗（`entry-viewer.ts`）顶栏那颗「↗ 终端」也过同一道门。
  *
- * 第三波 U2 只给 tab 上那颗和命令面板那一项加了门，viewer 顶栏那颗在非 Windows 上照样渲（每点必败）。
+ * 只给 tab 上那颗和命令面板那一项加了门，viewer 顶栏那颗在非 Windows 上照样渲（每点必败）。
  * ⚠ **文本**判据，理由同上一格：`entry-viewer.ts` 是入口模块，一 import 就挂 DOMContentLoaded、
  * 装全局错误捕获，顶栏在 `bootstrapViewer` 闭包里建 —— 行为判据够不着。
  * 它只买「那颗按钮挂进顶栏的那一处恰好一处、而且就在门后面」，买不到「真窗口里少了一颗按钮」。

@@ -1,7 +1,7 @@
-//! 〔MIG-3a · 子步 3 · `设计/01 §6.7a` 规矩 1 · 主会话 09-27 裁 ⑯〕**把这台二进制带着的 cc-bus 装到这台的 `<skills 根>/cc-bus/`**。
+//! 〔规矩 1〕**把这台二进制带着的 cc-bus 装到这台的 `<skills 根>/cc-bus/`**。
 //!
 //! 从前是 monitor 的 `cc_bus_deploy.rs`（`deploy_local_cc_bus` / `cc_bus_install_state` 两条 Tauri 命令）：monitor 读盘判三态、
-//! 算好经本机后端写。「资产的装不算部署」—— 往那台放 cc-bus 归**后端代管的资产**（`01 §3.4`）：判 · 写 · 记都在那台后端，
+//! 算好经本机后端写。「资产的装不算部署」—— 往那台放 cc-bus 归**后端代管的资产**：判 · 写 · 记都在那台后端，
 //! 写经它自己的文件管理面（[`crate::assets::door`]），装卸账**复用 skill 装记录那一份**（`skill_ledger`，同形：`name = "cc-bus"`，
 //! 目录由记录模块按 skills 根算，不另立第二份账）。
 //!
@@ -36,7 +36,7 @@ const FILES: &[(&str, &[u8])] = &[
         "examples/cc-busd.service",
         include_bytes!("../../shared/cc-bus/examples/cc-busd.service"),
     ),
-    // 〔保活 09-24〕设计 95 §3bis：保活是 cc-bus 的**调用方**，所以它住 `examples/`，
+    // 〔保活 09-24〕设计：保活是 cc-bus 的**调用方**，所以它住 `examples/`，
     // 不进 `scripts/`（那里的命令面条数有判据钉着，而「保活不是 cc-bus 的功能」本来就该在结构上看得见）。
     (
         "examples/cc-keepalive",
@@ -46,7 +46,7 @@ const FILES: &[(&str, &[u8])] = &[
         "examples/config",
         include_bytes!("../../shared/cc-bus/examples/config"),
     ),
-    // 〔kinds 09-24〕设计 95 §2.2「部署要跟上」：**带注释的默认 kinds 表**随包落盘。
+    // 设计「部署要跟上」：**带注释的默认 kinds 表**随包落盘。
     // ⚠ 它落在 `<claude_dir>/skills/cc-bus/examples/`，**不是** `~/.cc-bus/kinds.tsv` ——
     //   只读铁律第 7 条例外只放行 `skills/cc-bus` 这一个落点（`fenced_dest`）。
     //   脚本按「`~/.cc-bus/kinds.tsv` → 随包这一份 → 内置 msg」的顺序找，所以随包这份**就是生效的默认**，
@@ -115,7 +115,7 @@ const FILES: &[(&str, &[u8])] = &[
         "scripts/cc-list",
         include_bytes!("../../shared/cc-bus/scripts/cc-list"),
     ),
-    // 〔SH1 · V136〕只读看收件箱尾巴（后端 `bus-inbox` 转调它）。
+    // 只读看收件箱尾巴（后端 `bus-inbox` 转调它）。
     (
         "scripts/cc-log",
         include_bytes!("../../shared/cc-bus/scripts/cc-log"),

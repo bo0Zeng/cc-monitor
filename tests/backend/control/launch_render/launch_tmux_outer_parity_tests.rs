@@ -134,7 +134,7 @@ fn every_fixture_case_really_rendered_a_tmux_command() {
 
 /// ★ Rust 侧**拒**掉 TS 座会照拼的那几类坏输入。
 ///
-/// 〔LR2〕那个 TS 座（`session-backend.ts`）已删；本条留着，因为它钉的是 **Rust 这一侧自己把门**，
+/// 那个 TS 座（`session-backend.ts`）已删；本条留着，因为它钉的是 **Rust 这一侧自己把门**，
 /// 与 TS 在不在无关（函数名里的「TS 座」是立它时的对照物，不改名 —— 别处散文按名点它）。
 /// 座当年的头注逐字「座只在这些**已安全**的片段外拼后端语法，不做校验/转义」——
 /// 它收的是调用方 quote 好的片段，安全靠一句调用约定。本侧收生料 ⇒ 自己把门。
@@ -347,7 +347,7 @@ fn a_request_without_outer_still_renders_the_plain_payload() {
     );
 }
 
-/// ★★ 〔LR2〕**把生产命令 `render_launch_payload` 的真输出交给 e2e**（数据出口，不是判据）。
+/// ★★ **把生产命令 `render_launch_payload` 的真输出交给 e2e**（数据出口，不是判据）。
 ///
 /// `resume-suite` · `resume-backend-frames` · `tmux-target-acceptance` 三套 e2e 要证的是
 /// 「app 真正会跑的那一串在真 tmux 上干了什么」。步 22b·B 之后那一串由 Rust 渲染，

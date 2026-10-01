@@ -1,5 +1,5 @@
 /**
- * 〔RENDER2〕骨架外框秤的一键复算：打包探针 → Chromium（Playwright 的 headless shell）跑一遍 → 写金样。
+ * 骨架外框秤的一键复算：打包探针 → Chromium（Playwright 的 headless shell）跑一遍 → 写金样。
  * 不进门禁（门禁读金样，`tests/frontend/ui/scale2-height-truth.vitest.ts` 末尾「骨架外框」那一组）。
  *
  * 用法（仓根）：`npx tsx tests/evidence/RENDER2-skel-run.ts`

@@ -6,37 +6,37 @@ src/backend/control/capture_pane.rs:132	同上，只是解析走到了 target-se
 src/backend/control/capture_pane.rs:136	另一种措辞，一并收 —— 多认一种不会把别的失败误判成它（默认档是 `capture_failed`）	保留	[不对外] NO_*_NEEDLES 针表的理由列，classify() 只拿第 0 列（针）去匹配 stderr，理由列生产段无读者
 src/backend/control/cc_bus.rs:622	已杀会话	保留	[不对外] 在 cc-kill 的 stdout/stderr 里找它自己说的话，匹配串，只决定 killed/stale_only 两个布尔
 src/backend/control/cc_bus.rs:623	已摘掉	保留	[不对外] 在 cc-kill 的 stdout/stderr 里找它自己说的话，匹配串，只决定 killed/stale_only 两个布尔
-src/backend/control/identity_tag.rs:420	起不来 tmux：{e}	保留	[不对外] Outcome::Failed 的载荷；〔W5-VIS〕经 Outcome::failure_note 只进后端 tracing 日志（设计/15 §4.7 S2）
-src/backend/control/identity_tag.rs:142	打标的结局要经 `failure_note` 说出来（打不上 ⇒ 之后 kill / 送键被身份门拒，设计/15 §4.7 S2）	保留	[不对外] 〔W5-VIS〕#[must_use] 的编译器提示，只给写代码的人看
-src/backend/control/identity_tag.rs:184	sid 的形状不对（只认字母、数字、`-`、`_`，长度 1–128），不往 tmux 里写	保留	[不对外] 〔W5-VIS〕Outcome::failure_note 的原因半句，只进后端 tracing 日志
-src/backend/control/identity_tag.rs:192	会话身份标没打上（pid {pid} · sid {sid}）：{why} —— 之后对这个会话的 kill / 送键会被身份门拒（wrong_owner）	保留	[不对外] 〔W5-VIS〕S2：watcher 里 tracing::warn! 打出去的那一行，只进后端日志
-src/backend/control/identity_tag.rs:416	tmux set-option 退出码 {}：{}	保留	[不对外] 〔W5-VIS〕Outcome::Failed 的载荷（带 tmux 原话），经 failure_note 只进后端 tracing 日志
-src/backend/control/launch.rs:432	agent 标没打上，这个会话在列表里认不出是哪个 agent	保留	[不对外] 〔W5-VIS〕S5：次要动作没做成时那一行 tracing::warn! 的后果半句，只进后端日志
-src/backend/control/launch.rs:434	身份意图没写上：之后对这个会话的 kill / 送键可能被身份门拒（wrong_owner）	保留	[不对外] 〔W5-VIS〕同上，只进后端日志
-src/backend/control/launch.rs:437	窗口标题没设上：拉前终端按标题找窗口的那条退路失效（启动期令牌那条主路不受影响）	保留	[不对外] 〔W5-VIS〕同上，只进后端日志
-src/backend/control/launch.rs:443	打 agent 标	保留	[不对外] 〔W5-VIS〕同上（哪一步），只进后端日志
-src/backend/control/launch.rs:444	写身份意图	保留	[不对外] 〔W5-VIS〕同上（哪一步），只进后端日志
-src/backend/control/launch.rs:445	打开窗口标题	保留	[不对外] 〔W5-VIS〕同上（哪一步），只进后端日志
-src/backend/control/launch.rs:446	设窗口标题格式	保留	[不对外] 〔W5-VIS〕同上（哪一步），只进后端日志
-src/backend/control/launch.rs:466	会话 {session:?} 建好了，但{}没做成：{why} —— {}	保留	[不对外] 〔W5-VIS〕S5：secondary_note 拼出的那一行，只经 tracing::warn! 进后端日志
+src/backend/control/identity_tag.rs:420	起不来 tmux：{e}	保留	[不对外] Outcome::Failed 的载荷；经 Outcome::failure_note 只进后端 tracing 日志
+src/backend/control/identity_tag.rs:142	打标的结局要经 `failure_note` 说出来（打不上 ⇒ 之后 kill / 送键被身份门拒）	保留	[不对外] #[must_use] 的编译器提示，只给写代码的人看
+src/backend/control/identity_tag.rs:184	sid 的形状不对（只认字母、数字、`-`、`_`，长度 1–128），不往 tmux 里写	保留	[不对外] Outcome::failure_note 的原因半句，只进后端 tracing 日志
+src/backend/control/identity_tag.rs:192	会话身份标没打上（pid {pid} · sid {sid}）：{why} —— 之后对这个会话的 kill / 送键会被身份门拒（wrong_owner）	保留	[不对外] S2：watcher 里 tracing::warn! 打出去的那一行，只进后端日志
+src/backend/control/identity_tag.rs:416	tmux set-option 退出码 {}：{}	保留	[不对外] Outcome::Failed 的载荷（带 tmux 原话），经 failure_note 只进后端 tracing 日志
+src/backend/control/launch.rs:432	agent 标没打上，这个会话在列表里认不出是哪个 agent	保留	[不对外] S5：次要动作没做成时那一行 tracing::warn! 的后果半句，只进后端日志
+src/backend/control/launch.rs:434	身份意图没写上：之后对这个会话的 kill / 送键可能被身份门拒（wrong_owner）	保留	[不对外] 同上，只进后端日志
+src/backend/control/launch.rs:437	窗口标题没设上：拉前终端按标题找窗口的那条退路失效（启动期令牌那条主路不受影响）	保留	[不对外] 同上，只进后端日志
+src/backend/control/launch.rs:443	打 agent 标	保留	[不对外] 同上（哪一步），只进后端日志
+src/backend/control/launch.rs:444	写身份意图	保留	[不对外] 同上（哪一步），只进后端日志
+src/backend/control/launch.rs:445	打开窗口标题	保留	[不对外] 同上（哪一步），只进后端日志
+src/backend/control/launch.rs:446	设窗口标题格式	保留	[不对外] 同上（哪一步），只进后端日志
+src/backend/control/launch.rs:466	会话 {session:?} 建好了，但{}没做成：{why} —— {}	保留	[不对外] S5：secondary_note 拼出的那一行，只经 tracing::warn! 进后端日志
 src/backend/files/mod.rs:344	定期重走（周期由调用方出节拍）＋ 浏览目录挂 inotify，一个 watch 一个目录	保留	[不对外] FRESHNESS 登记表的 how/gap 字段，生产段无读者（全仓只在声明处出现），是给判据与文档看的论证；若将来要上界面须整段重写（满纸 §2.2 与 markdown）
-src/backend/files/mod.rs:347	**不是实时**。要全文件系统监听就得 root：`man 2 fanotify_init` 一手逐字 —— \n              非特权不许 `FAN_MARK_MOUNT` / `FAN_MARK_FILESYSTEM`。\n              而 watch 上限本机现打 262144、home 下 640413 条目（`真相源/98 §3.2`）⇒ 全挂挂不住。\n              另：**冷缓存下走一遍要多久没量过**（`drop_caches` 要 root）。	保留	[不对外] FRESHNESS 登记表的 how/gap 字段，生产段无读者（全仓只在声明处出现），是给判据与文档看的论证；若将来要上界面须整段重写（满纸 §2.2 与 markdown）
-src/backend/files/mod.rs:381	在一个目录底下按内容搜 —— 不跟链接、不进别的文件系统，有字节与命中数上界，每份回第一处命中那一行	保留	[不对外] 〔COPY〕命令 / 能力登记表的 purpose 字段（原名 what，改名免撞普查字段出口）：只给判据读，生产段不上界面
+src/backend/files/mod.rs:347	**不是实时**。要全文件系统监听就得 root：`man 2 fanotify_init` 一手逐字 —— \n              非特权不许 `FAN_MARK_MOUNT` / `FAN_MARK_FILESYSTEM`。\n              而 watch 上限本机现打 262144、home 下 640413 条目⇒ 全挂挂不住。\n              另：**冷缓存下走一遍要多久没量过**（`drop_caches` 要 root）。	保留	[不对外] FRESHNESS 登记表的 how/gap 字段，生产段无读者（全仓只在声明处出现），是给判据与文档看的论证；若将来要上界面须整段重写（满纸 §2.2 与 markdown）
+src/backend/files/mod.rs:381	在一个目录底下按内容搜 —— 不跟链接、不进别的文件系统，有字节与命中数上界，每份回第一处命中那一行	保留	[不对外] 命令 / 能力登记表的 purpose 字段（原名 what，改名免撞普查字段出口）：只给判据读，生产段不上界面
 src/backend/files/mod.rs:354	同 gnu 那一格（同一份源码、同一个内核接口），差别只在链接方式	保留	[不对外] FRESHNESS 登记表的 how/gap 字段，生产段无读者（全仓只在声明处出现），是给判据与文档看的论证；若将来要上界面须整段重写（满纸 §2.2 与 markdown）
 src/backend/files/mod.rs:357	🔴 **这一格是「没验」，不是「验过没事」。** 门禁的 `muslbuild` 那格买的是\n              「**编得出静态字节**」，**不买**「在真远端上跑得起来」（无真机、不运行）。\n              ⇒ 静态 musl 下 `inotify` 的行为**本件没有任何读数**。	保留	[不对外] FRESHNESS 登记表的 how/gap 字段，生产段无读者（全仓只在声明处出现），是给判据与文档看的论证；若将来要上界面须整段重写（满纸 §2.2 与 markdown）
 src/backend/files/mod.rs:363	定期重走 ＋ 浏览目录走 ReadDirectoryChangesW（notify 在这个平台上的后端）	保留	[不对外] FRESHNESS 登记表的 how/gap 字段，生产段无读者（全仓只在声明处出现），是给判据与文档看的论证；若将来要上界面须整段重写（满纸 §2.2 与 markdown）
 src/backend/files/mod.rs:366	**没实测**（本仓的 Windows 虚拟机上没跑过本族）。\n              ⚠ Everything 那套（读 MFT ＋ 订阅 USN Journal）**两段都要管理员**\n              （voidtools FAQ 逐字），而我们的后端不是 ⇒ 那条路对我们关着，\n              这一格拿不到 Everything 那种「整盘一秒」。	保留	[不对外] FRESHNESS 登记表的 how/gap 字段，生产段无读者（全仓只在声明处出现），是给判据与文档看的论证；若将来要上界面须整段重写（满纸 §2.2 与 markdown）
 src/backend/files/mod.rs:373	定期重走 ＋ 浏览目录走 FSEvents（notify 在这个平台上的后端）	保留	[不对外] FRESHNESS 登记表的 how/gap 字段，生产段无读者（全仓只在声明处出现），是给判据与文档看的论证；若将来要上界面须整段重写（满纸 §2.2 与 markdown）
-src/backend/files/mod.rs:376	🟡 **文献读数，没实测**（`设计/96 §2.9` 那张表里这一格逐字就是这么标的）。\n              FSEvents 能无特权递归监听一棵树、Spotlight 的索引普通用户可查（`mdfind`）——\n              两条都**没碰过**。⇒ 这个平台上「保鲜要不要换成另一套机制」判不了。	保留	[不对外] FRESHNESS 登记表的 how/gap 字段，生产段无读者（全仓只在声明处出现），是给判据与文档看的论证；若将来要上界面须整段重写（满纸 §2.2 与 markdown）
-src/backend/history/history_join.rs:69	那台的后端没带会话 id 清单（版本旧）	保留	[不对外] 〔C4d〕WhyUnknown::reason 只进 tracing::info!（log_unknowns 按理由汇总一条）；搬自 monitor remote_history.rs 那一份，措辞去掉了 sid / sessionCount
-src/backend/history/history_join.rs:70	那一行的会话 id 清单与会话数对不上（行坏了）	保留	[不对外] 〔C4d〕同上只进日志
-src/backend/history/history_join.rs:71	这条路上答不了会话此刻活没活	保留	[不对外] 〔C4d〕同上只进日志（远端 / 合成历史判活「不知道」的理由）
-src/backend/history/history_join.rs:72	星标 / 隐藏的记录读不到	保留	[不对外] 〔C4d〕同上只进日志；给界面的那一句是 notice（annotations() 那两句），不是这一句
-src/backend/history/history_join.rs:448	本机项目清单	保留	[不对外] 〔C4d〕log_unknowns 的日志标签
-src/backend/history/history_join.rs:465	远端项目清单	保留	[不对外] 〔C4d〕log_unknowns 的日志标签（搬自 monitor 那一份「远端项目列表」）
+src/backend/files/mod.rs:376	🟡 **文献读数，没实测**（那张表里这一格逐字就是这么标的）。\n              FSEvents 能无特权递归监听一棵树、Spotlight 的索引普通用户可查（`mdfind`）——\n              两条都**没碰过**。⇒ 这个平台上「保鲜要不要换成另一套机制」判不了。	保留	[不对外] FRESHNESS 登记表的 how/gap 字段，生产段无读者（全仓只在声明处出现），是给判据与文档看的论证；若将来要上界面须整段重写（满纸 §2.2 与 markdown）
+src/backend/history/history_join.rs:69	那台的后端没带会话 id 清单（版本旧）	保留	[不对外] WhyUnknown::reason 只进 tracing::info!（log_unknowns 按理由汇总一条）；搬自 monitor remote_history.rs 那一份，措辞去掉了 sid / sessionCount
+src/backend/history/history_join.rs:70	那一行的会话 id 清单与会话数对不上（行坏了）	保留	[不对外] 同上只进日志
+src/backend/history/history_join.rs:71	这条路上答不了会话此刻活没活	保留	[不对外] 同上只进日志（远端 / 合成历史判活「不知道」的理由）
+src/backend/history/history_join.rs:72	星标 / 隐藏的记录读不到	保留	[不对外] 同上只进日志；给界面的那一句是 notice（annotations() 那两句），不是这一句
+src/backend/history/history_join.rs:448	本机项目清单	保留	[不对外] log_unknowns 的日志标签
+src/backend/history/history_join.rs:465	远端项目清单	保留	[不对外] log_unknowns 的日志标签（搬自 monitor 那一份「远端项目列表」）
 src/backend/lib.rs:695	本族目录下**零**平台 `cfg`（本轮现打：`src/backend/files/` 递归 \n                       `grep cfg(target_os|windows|unix|target_family` 零命中）\n                       ⇒ 四个 target 同一份源码。另有本族自己那条更强的：每条能力的 \n                       `Capability::targets` 与 `TARGETS` 做**集合相等**（边界②）。	保留	[不对外] CAPABILITY_FACES 的 target_basis 字段，capability_ledger() 只读 family 与 declares，本字段生产段无读者，是判据/文档用的论证
 src/backend/lib.rs:706	`split_stream_flags` 是对 argv 的**纯函数**（`retain` + 两次 \n                       `iter().any`），整份实现零平台 `cfg` ⇒ 四个 target 上逐字同一份。	保留	[不对外] CAPABILITY_FACES 的 target_basis 字段，capability_ledger() 只读 family 与 declares，本字段生产段无读者，是判据/文档用的论证
-src/backend/lib.rs:715	四个 target 上**这一面都做得到**（起会话 · 认账号 · 选模型 · 传 cwd \n                       那几条在直路上是**原生动作**：`set_var` / `set_current_dir` / \n                       `Command::new` ＋ `#[cfg(not(unix))]` 那条「起它 · 等它 · 透传退出码」\n                       的回退，一步都不经 shell）。⚠ **但不是每一条都做得到** —— \n                       tmux 那一族 6 条在 Windows 上做不到，逐条登记在 `TARGET_GAPS`。\n                       〔2026-09-21 改判：上一版这一栏写的是「四个 target 都编得过」，\n                        而用户把本轴从「编得过」改成了「做得到」⇒ 那句依据不再回答本轴的问题。\n                        「编得过」仍然是真的（两处平台分叉各带 `#[cfg(not(unix))]` 回退分支），\n                        但它归第 1 层那个跨 target 编译门禁。〕\n                       🔴 **〔`P19` 09-22 订正一句账〕** \n                       上一版括号里那句「**不依赖任何 Unix 专有设施**」，\n                        在写下的那一刻对 `codex` 那一支就是假的。\n                        〔⚠ 这句被订正的原话**刻意在源码里连着写**：本轮差点栽在自己的 grep 上 —— \n                         初稿把它断在了 Unix 与「专有设施」之间（Rust 的续行反斜杠），\n                         于是拿「Unix 空格 专有」当针去 grep 全仓**零命中**，\n                         而零命中看起来和「这句话仓里没有」一模一样。\n                         下一个人要找这笔账，靠的就是它在源码里连着。〕\n                        `control/ccm/mod.rs::exec_direct` 从前只要 `needs_bus_id(agent)` 为真\n                        就把**整条**改走 `sh -c`，而它对 codex 恒真 ⇒ 真机现打 \n                        `--agent codex --launcher hostname` → `EXIT=4 program not found`\n                        （`真相源/106 §3.3`；同一个 launcher 在 `--agent claude` 那趟 `EXIT=0`）。\n                        `P19` 把那道闸收窄成「那段配方**真有事可做**时」—— 配方整段裹在 \n                        `if [ -n "${TMUX:-}" ]` 里，`$TMUX` 空则它一个字不做 ⇒ \n                        Windows 上（`$TMUX` 恒空）直路不再请 shell 进来，**那句话才开始成立**。\n                        ⚠ **今天仍然非得要 POSIX shell 的两条，它们不在上面那四条里，逐条写明**：\n                        ① `CCM_ENV` 非空（那是一段任意 shell，只有 shell 解释得了）；\n                        ② `resume` 且后端答出一整条命令串（要 shell 拆词：`set -f; exec $cmd`）。\n                        两条都**不假装做得到** —— 只是从今天起说得出口（`no_shell:` ＋ 逐条归因，\n                        `D7`）。\n                        🚫 **这一栏买不到的那一维（别读成已验证）**：\n                        `cargo check --all-targets --target x86_64-pc-windows-gnu` ＋ \n                        `needs_shell` 那张判定表买到的是「**源码里没有那条 Unix 依赖了**」；\n                        「在真 Win11 上 `--agent codex` 真的 `EXIT=0`」**没买到** —— \n                        那要那台独占的 Win11 虚拟机，`P19` 一个字节都没去动它。\n                        能接上的只有一条推理（写出来，别当读数）：claude 那一支的 `EXIT=0` 是 \n                        09-21 真机现打的，而 codex 今天走的是**同一段原生代码、动作还更少**\n                        （`nested_env("codex")` 是空的）。	保留	[不对外] CAPABILITY_FACES 的 target_basis 字段，capability_ledger() 只读 family 与 declares，本字段生产段无读者，是判据/文档用的论证
+src/backend/lib.rs:715	四个 target 上**这一面都做得到**（起会话 · 认账号 · 选模型 · 传 cwd \n                       那几条在直路上是**原生动作**：`set_var` / `set_current_dir` / \n                       `Command::new` ＋ `#[cfg(not(unix))]` 那条「起它 · 等它 · 透传退出码」\n                       的回退，一步都不经 shell）。⚠ **但不是每一条都做得到** —— \n                       tmux 那一族 6 条在 Windows 上做不到，逐条登记在 `TARGET_GAPS`。\n                       〔2026-09-21 改判：上一版这一栏写的是「四个 target 都编得过」，\n                        而用户把本轴从「编得过」改成了「做得到」⇒ 那句依据不再回答本轴的问题。\n                        「编得过」仍然是真的（两处平台分叉各带 `#[cfg(not(unix))]` 回退分支），\n                        但它归第 1 层那个跨 target 编译门禁。〕\n                       🔴 **〔`P19` 09-22 订正一句账〕** \n                       上一版括号里那句「**不依赖任何 Unix 专有设施**」，\n                        在写下的那一刻对 `codex` 那一支就是假的。\n                        〔⚠ 这句被订正的原话**刻意在源码里连着写**：本轮差点栽在自己的 grep 上 —— \n                         初稿把它断在了 Unix 与「专有设施」之间（Rust 的续行反斜杠），\n                         于是拿「Unix 空格 专有」当针去 grep 全仓**零命中**，\n                         而零命中看起来和「这句话仓里没有」一模一样。\n                         下一个人要找这笔账，靠的就是它在源码里连着。〕\n                        `control/ccm/mod.rs::exec_direct` 从前只要 `needs_bus_id(agent)` 为真\n                        就把**整条**改走 `sh -c`，而它对 codex 恒真 ⇒ 真机现打 \n                        `--agent codex --launcher hostname` → `EXIT=4 program not found`\n                        （同一个 launcher 在 `--agent claude` 那趟 `EXIT=0`）。\n                        `P19` 把那道闸收窄成「那段配方**真有事可做**时」—— 配方整段裹在 \n                        `if [ -n "${TMUX:-}" ]` 里，`$TMUX` 空则它一个字不做 ⇒ \n                        Windows 上（`$TMUX` 恒空）直路不再请 shell 进来，**那句话才开始成立**。\n                        ⚠ **今天仍然非得要 POSIX shell 的两条，它们不在上面那四条里，逐条写明**：\n                        ① `CCM_ENV` 非空（那是一段任意 shell，只有 shell 解释得了）；\n                        ② `resume` 且后端答出一整条命令串（要 shell 拆词：`set -f; exec $cmd`）。\n                        两条都**不假装做得到** —— 只是从今天起说得出口（`no_shell:` ＋ 逐条归因，\n                        `D7`）。\n                        🚫 **这一栏买不到的那一维（别读成已验证）**：\n                        `cargo check --all-targets --target x86_64-pc-windows-gnu` ＋ \n                        `needs_shell` 那张判定表买到的是「**源码里没有那条 Unix 依赖了**」；\n                        「在真 Win11 上 `--agent codex` 真的 `EXIT=0`」**没买到** —— \n                        那要那台独占的 Win11 虚拟机，`P19` 一个字节都没去动它。\n                        能接上的只有一条推理（写出来，别当读数）：claude 那一支的 `EXIT=0` 是 \n                        09-21 真机现打的，而 codex 今天走的是**同一段原生代码、动作还更少**\n                        （`nested_env("codex")` 是空的）。	保留	[不对外] CAPABILITY_FACES 的 target_basis 字段，capability_ledger() 只读 family 与 declares，本字段生产段无读者，是判据/文档用的论证
 src/backend/lib.rs:1157	帧面每一条命令四个 target 上**都编得进去**（`inbound::REGISTRY` 零平台 `cfg`）；\n                       做不做得到按它**自己声明的码**分：`codes` 里有 `no_tmux` 的，在平台确证没有 tmux 的 \n                       target 上做不到 —— 与生产里填 `hello.unavailable` 的是同一个函数（`unavailable_from`）。	保留	[不对外] COMMAND_FACES 的 target_basis 字段（PR1），同 CAPABILITY_FACES 那几条：生产段无读者，是判据/文档用的论证
 src/backend/lib.rs:1167	`SUBCOMMANDS` 四个 target 上逐字同一张表；经 `cli_control::spec_for` 派生到 \n                       `REGISTRY` 的那几条，做不做得到跟着帧面那一条走。CLI 独有的那几条**没有任何逐 target \n                       声明**（例：`--tmux-notify` 在 Windows 上没人会调它，但声明里说不出来）⇒ 判成处处都在。	保留	[不对外] COMMAND_FACES 的 target_basis 字段（PR1），同 CAPABILITY_FACES 那几条：生产段无读者，是判据/文档用的论证
 src/backend/plugin/invoke.rs:96	被起的那个东西还要去找别的命令；本层找插件本体也走它	保留	[不对外] INHERITED_ENV_KEYS 的理由列，invoke.rs:203 以 `_why` 丢弃，只读第 0 列（环境变量名）
@@ -53,8 +53,8 @@ src/frontend/shell/src/backend_control.rs:184	{origin} 的流已经在跑（C8�
 src/frontend/shell/src/backend_control.rs:187	{origin} 的流已重起	保留	[不对外] backend_start/backend_stop 的 Ok 串，前端 backend-section.ts:270 只进 console.info（发布构建无 devtools）；「流」是内部词，将来若上界面要换 新词:流
 src/frontend/shell/src/inbound_client.rs:439	（错误应答 code={} message={}）	保留	[不对外] 只拼进 tracing::warn!（本文件 :444），日志
 src/frontend/shell/src/local_backend.rs:600	 …〔这一行超过单行上界，在此切开，下一条接着它〕	保留	[不对外] STDERR_CUT_MARK 只贴进 monitor 自己的滚动日志（logging.rs）
-src/common/deploy-contract/src/lib.rs:663	# cc-monitor: ccm = 后端本体的一次性模式（K33：所有命令只许有一处）	保留	[不对外] 〔E2〕匹配用的记号：认旧版三行 ccm 入口（生成器随「ccm 就是后端本体」删了）的第二行，只拿来比对、不渲染（〔MIG-3b〕随 is_ours 搬进 deploy-core）
-src/frontend/shell/src/local_backend.rs:1783	本机后端（stdio 载体）	保留	[不对外] 〔W5-VIS〕FrameTally 的流名，只出现在丢帧账那几行日志里
+src/common/deploy-contract/src/lib.rs:663	# cc-monitor: ccm = 后端本体的一次性模式（K33：所有命令只许有一处）	保留	[不对外] 匹配用的记号：认旧版三行 ccm 入口（生成器随「ccm 就是后端本体」删了）的第二行，只拿来比对、不渲染（随 is_ours 搬进 deploy-core）
+src/frontend/shell/src/local_backend.rs:1783	本机后端（stdio 载体）	保留	[不对外] FrameTally 的流名，只出现在丢帧账那几行日志里
 src/frontend/shell/src/backend_policy.rs:400	[死亡账] origin={origin} 判定={} 退出状态={} —— {}	保留	[不对外] 〔CP2b 复核〕ST2 步 7 起界面只取 last_brief（判定＋退出状态），ledger_line 只经 DeathSink 落 monitor 日志；原裁「界面只取判定＋退出状态两格，日志行留在日志」已兑现 ⇒ 这一行今天不对外，不进文案表（原裁：改·§2.1 [可达存疑]）
 src/frontend/shell/src/backend_policy.rs:504	脱离路：`attach_stream` 的流断了 ⇒ `reap_detached` 那条收尸线程 `wait()` 回来那一拍	保留	[不对外] DEATH_RECORD_SITES：判据用的登记表（记录点住址＋说明），生产代码不读
 src/frontend/shell/src/backend_policy.rs:509	监护路：backend 那个 `on_event` **闭包**收到 `Exited` 那一拍。\n         它抽成一个返回闭包的函数，只为让 `KP3W3` 那三只假后端能跑**同一个闭包**\n         —— 内联的闭包测试够不着，那条行为判据就只能退回读源码	保留	[不对外] DEATH_RECORD_SITES 登记表说明
@@ -62,12 +62,12 @@ src/frontend/shell/src/backend_policy.rs:516	起不来：`start_local_backend` �
 src/frontend/filewin/src/fonts.rs:257	共向式幕横模滚长	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案
 src/frontend/filewin/src/fonts.rs:258	事任何头选项	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案
 src/frontend/filewin/src/fonts.rs:293	变收	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（〔F9c 与 FW34 合并〕F9c 删掉的 9 个字里仍被 preview / workspace 用着的两个）
-src/frontend/filewin/src/fonts.rs:277	×★☆书加懂找移签	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（〔FW34〕书签栏那几个字）
-src/frontend/filewin/src/fonts.rs:326	处	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（〔FW34〕搬家那一跳两句的字；〔TAIL〕那两句随书签旧键退役删了，只剩别处还用的 `处`）
-src/frontend/filewin/src/fonts.rs:291	显示预	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（〔FW34〕预览那几个字）
+src/frontend/filewin/src/fonts.rs:277	×★☆书加懂找移签	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（书签栏那几个字）
+src/frontend/filewin/src/fonts.rs:326	处	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（搬家那一跳两句的字；那两句随书签旧键退役删了，只剩别处还用的 `处`）
+src/frontend/filewin/src/fonts.rs:291	显示预	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（预览那几个字）
 src/frontend/filewin/src/scale.rs:134	行 {:>7} | 首屏 {:>7.2} ms | 帧时中位 {:>6.3} ms | p99 {:>6.3} ms | 物化 {:>3} 行 | RSS {:>7} KiB	保留	[不对外] 性能秤 F1 的 Display（cargo test 判据输出），不上界面
-src/frontend/shell/src/lib.rs:1578	认不出：没有 hosts 数组（旧的单台写法不再认），远端一台都不连；在设置里重新添加这台机器	保留	[不对外] 〔S5 · V41〕REMOTE_HOSTS_UNRECOGNIZED 只进 monitor 日志（load_remote_configs 的 error! 那一行，前面带配置文件路径）；界面那一侧读同一份 config 的是 TS remote-config.ts，不经这句
-src/backend/footprint/registry.rs:1225	**它在 cc-monitor 里零实现，是一个扩展**（一个 skill ＋ 一个 MCP server）—— 它确实「装到别处」，\n         但装它走扩展页已有的资产机制（skill 照 skill 装、MCP 那一项只往目标机写一个 server 条目，\n         程序本身由用户放到那台机器上），是**用法**不是新工具；monitor 与后端都不带它的任何字节。\n\n         ⚠ `K-R65` 当初补的那句道理**仍然成立**：一个名字可以同时是好几样东西，写「表上没有它」的同一拍要把那张表改对（纪律 ⑲）。	保留	[不对外] NOT_MANAGED：只被判据读的「刻意不收」登记表理由（生产代码无读者） 〔10-01：改写 —— 代码全景整条摘掉，code-picture 只作为扩展（skill ＋ MCP）；裁词不变〕
+src/frontend/shell/src/lib.rs:1578	认不出：没有 hosts 数组（旧的单台写法不再认），远端一台都不连；在设置里重新添加这台机器	保留	[不对外] REMOTE_HOSTS_UNRECOGNIZED 只进 monitor 日志（load_remote_configs 的 error! 那一行，前面带配置文件路径）；界面那一侧读同一份 config 的是 TS remote-config.ts，不经这句
+src/backend/footprint/registry.rs:1225	**它在 cc-monitor 里零实现，是一个扩展**（一个 skill ＋ 一个 MCP server）—— 它确实「装到别处」，\n         但装它走扩展页已有的资产机制（skill 照 skill 装、MCP 那一项只往目标机写一个 server 条目，\n         程序本身由用户放到那台机器上），是**用法**不是新工具；monitor 与后端都不带它的任何字节。\n\n         ⚠ `K-R65` 当初补的那句道理**仍然成立**：一个名字可以同时是好几样东西，写「表上没有它」的同一拍要把那张表改对（纪律 ⑲）。	保留	[不对外] NOT_MANAGED：只被判据读的「刻意不收」登记表理由（生产代码无读者） 〔改写 —— 代码全景整条摘掉，code-picture 只作为扩展（skill ＋ MCP）；裁词不变〕
 src/backend/footprint/registry.rs:1324	**不由 cc-monitor 安装** —— 它是用户自己装在 `<agent 家>/skills/planned-build/` 的 \n         skill，cc-monitor 只**读它的产物**（计划文件）。\n\n         ⇒ 它**不在**本表里（受管工具）。	保留	[不对外] NOT_MANAGED 登记表理由
 src/frontend/ui/events.ts:585	[perf] === 启动管线 timeline (前端 performance.now ms · window={…}) ===	保留	[不对外] 启动管线 perf timeline 行，经 console.info / frontend_perf_log 进开发者日志
 src/frontend/ui/events.ts:589	[perf]   first jsonl-batch in   T+{…} (+{…}) ← 后端 replay 完成	保留	[不对外] perf timeline 开发者日志行
@@ -75,11 +75,11 @@ src/frontend/ui/events.ts:591	[perf]   batch payloads drained T+{…} (+{…}) �
 src/frontend/ui/events.ts:592	[perf]   onBatchEnd fired       T+{…} (+{…}) ← 300ms grace 后真正切 live	保留	[不对外] perf timeline 开发者日志行
 src/frontend/ui/events.ts:595	[perf]   建卡 rendered={…} · 收纳 deferred={…} · drained={…}(累计)	保留	[不对外] perf timeline 开发者日志行
 src/frontend/ui/events.ts:596	[perf]   ── 总耗时（DOM → 加载完成）：{…}ms ──	保留	[不对外] perf timeline 开发者日志行
-src/comms/inward/chan.ts:66	通道：{…}	保留	[不对外] 〔C4a〕`ChanError.message`：通道失败只进 console.warn（调用方按层说自己的话，界面那句不从这里取）
-src/comms/inward/chan.ts:75	第 {…} 跳卡在 {…}：{…}（发出去了没有：{…}）	保留	[不对外] 〔C4a〕`describeCallError` 给日志看的那一句，与 `chan/wire.rs` 的 `CallError` 的 Display 同形
-src/comms/inward/chan.ts:77	对端不认这个操作	保留	[不对外] 〔C4a〕同上（`peer/unsupported` 那一档的日志句）
-src/comms/inward/chan.ts:77	对端答「不行」	保留	[不对外] 〔C4a〕同上（`peer/refused` 那一档的日志句）
-src/comms/inward/chan.ts:79	本侧：{…}	保留	[不对外] 〔C4a〕同上（`ours` 那一档的日志句）
+src/comms/inward/chan.ts:66	通道：{…}	保留	[不对外] `ChanError.message`：通道失败只进 console.warn（调用方按层说自己的话，界面那句不从这里取）
+src/comms/inward/chan.ts:75	第 {…} 跳卡在 {…}：{…}（发出去了没有：{…}）	保留	[不对外] `describeCallError` 给日志看的那一句，与 `chan/wire.rs` 的 `CallError` 的 Display 同形
+src/comms/inward/chan.ts:77	对端不认这个操作	保留	[不对外] 同上（`peer/unsupported` 那一档的日志句）
+src/comms/inward/chan.ts:77	对端答「不行」	保留	[不对外] 同上（`peer/refused` 那一档的日志句）
+src/comms/inward/chan.ts:79	本侧：{…}	保留	[不对外] 同上（`ours` 那一档的日志句）
 src/frontend/ui/remote-launch-run.ts:338	刻意不替你挑终端模拟器	保留	[不对外] 对后端错误串做 includes 的匹配锚点（那句话本身由后端产、另行裁）
 src/frontend/ui/settings/machine-status.ts:33	（本机）	保留	[不对外] LOCAL_MACHINE_KEY 是本机那一行的存储键（头注：刻意取一个用户填不出的名字防撞车），显示时 describeGap 等处换成「本机」
 src/frontend/shell/src/bind.rs:300	{RBIND_TOKEN_MARKER_PREFIX}<32hex 已隐去>	保留	[不对外] 日志里 marker 的脱敏形
@@ -90,95 +90,95 @@ src/comms/inward/chan/router.rs:182	编号 {id} 还在飞，又来了一次	保�
 src/comms/inward/chan/router.rs:203	编号 {id} 还在飞，又来了一次	保留	[不对外] 只进日志（host.rs 的 tracing::warn），客户端违约
 src/comms/inward/chan/router.rs:232	客户端发来了一帧只该由路由器发的头	保留	[不对外] 只进日志（host.rs 的 tracing::warn），客户端违约
 src/comms/inward/chan/wire.rs:306	Key(<不打印>)	保留	[不对外] Key 的 Debug，刻意不打印内容
-src/frontend/ui/session-reads.ts:251	这台机器上的后端版本旧，还给不出骨架索引（重装后端之后就有）	保留	[不对外] 〔C4b〕只进 console.info（骨架未接的原因），界面行为是退回尾部窗口；替掉 monitor 那一句「对面后端不认 --index」
+src/frontend/ui/session-reads.ts:251	这台机器上的后端版本旧，还给不出骨架索引（重装后端之后就有）	保留	[不对外] 只进 console.info（骨架未接的原因），界面行为是退回尾部窗口；替掉 monitor 那一句「对面后端不认 --index」
 src/backend/control/cc_bus.rs:782	已 spawn:	保留	[不对外] 在 cc-spawn 回显里认新会话名字的匹配串（spawned_id_of），只决定回值里的 id，不是展示文本
-src/backend/control/exit_policy.rs:105	读 {} 失败：{e}	保留	[不对外] 〔B2〕「读不出来」的原因：只进线上 `reason` 一格与后端日志，界面只说 EXIT_UNREADABLE 那一句、不显示它
+src/backend/control/exit_policy.rs:105	读 {} 失败：{e}	保留	[不对外] 「读不出来」的原因：只进线上 `reason` 一格与后端日志，界面只说 EXIT_UNREADABLE 那一句、不显示它
 src/backend/control/exit_policy.rs:109	{} 不是 JSON：{e}	保留	[不对外] 同上：`reason` 一格与日志，界面不显示
 src/backend/control/exit_policy.rs:114	{} 里 `{KEY_KILL_ON_EXIT}` 不是布尔（实得 {other}）	保留	[不对外] 同上：`reason` 一格与日志，界面不显示
 src/backend/control/exit_policy.rs:118	{} 里没有 `{KEY_KILL_ON_EXIT}` 这一格	保留	[不对外] 同上：`reason` 一格与日志，界面不显示
 src/backend/control/exit_policy.rs:128	家目录解析不出来（HOME / USERPROFILE 都没有）	保留	[不对外] 同上：`reason` 一格与日志，界面不显示；环境变量名是排障要的原样
-src/backend/dial/sftp.rs:622	请求行不是 JSON：{e}	保留	[不对外] 〔SR1b〕部署链路（`use:"files"`）上一行坏请求的应答：读它的是 monitor 的 `dial_host::RemoteFs`（请求也是它自己造的），坏了只会是 bug；不到用户眼前
-src/backend/dial/link.rs:301	缺 `bytes`（非负整数）	保留	[不对外] 〔SR1a〕`link-credit` 的协议级回错：monitor 还信用失败只记一条 debug 日志，不说到用户眼前
-src/backend/dial/link.rs:313	还了 {bytes} 字节信用，累计会超过上限 {MAX_WINDOW}（手里已有 {have}）	保留	[不对外] 〔SR1a〕`link-credit` 超上限（对端不守约）的回错；monitor 只记 debug 日志
-src/backend/relay/listen.rs:315	[relay] 没被交中转端口 ⇒ 本进程不开中转	保留	[不对外] 〔RL1〕常驻后端进程内中转的日志 / `Hosted` 的说法，只进后端 stderr（stdio 载体上转进 monitor 滚动日志），不上界面
-src/backend/relay/listen.rs:316	[relay] 中转住本进程，听 {a}	保留	[不对外] 〔RL1〕常驻后端进程内中转的日志 / `Hosted` 的说法，只进后端 stderr（stdio 载体上转进 monitor 滚动日志），不上界面
-src/backend/relay/listen.rs:319	[relay] 被交了中转端口却起不来（后端照常服务）：{reason}	保留	[不对外] 〔RL1〕常驻后端进程内中转的日志 / `Hosted` 的说法，只进后端 stderr（stdio 载体上转进 monitor 滚动日志），不上界面
-src/backend/relay/listen.rs:352	{ENV_PORT}={raw:?} 不是端口号（{e}）	保留	[不对外] 〔RL1〕常驻后端进程内中转的日志 / `Hosted` 的说法，只进后端 stderr（stdio 载体上转进 monitor 滚动日志），不上界面
-src/backend/relay/listen.rs:361	读不出绑到的地址：{e}	保留	[不对外] 〔RL1〕常驻后端进程内中转的日志 / `Hosted` 的说法，只进后端 stderr（stdio 载体上转进 monitor 滚动日志），不上界面
-src/backend/relay/listen.rs:372	起不来接受线程：{e}	保留	[不对外] 〔RL1〕常驻后端进程内中转的日志 / `Hosted` 的说法，只进后端 stderr（stdio 载体上转进 monitor 滚动日志），不上界面
-src/frontend/shell/src/event_replay.rs:512	没有叫 `{kind}` 的流	保留	[不对外] 〔CF2〕会话流句柄对认不出的流标签原位回的 Closed{Peer} 体（`{code,message}` 信封）；前端只记进控制台（events.ts 的 closed 那一支），不上界面
-src/frontend/shell/src/event_replay.rs:520	会话内容流不支持从某一格续看（页面重载就是一条新的订阅）	保留	[不对外] 〔CF2〕同上：给了 from 游标时原位回的 Closed{Peer(bad_args)} 体；生产调用方恒给 null，只进控制台
-src/backend/assets/skill_install.rs:363	来源那台读不出原文	保留	[不对外] 〔AS2〕skill-install-plan 内部比较用的占位值（进 JSON 值相等比较，不上线也不给人看）
-src/common/deploy-contract/src/lib.rs:659	# ccm — cc-monitor 统一启动器	保留	[不对外] 〔GP1 · MIG-3b 随 is_ours 搬进 deploy-core〕匹配用的记号：认旧版 bash 启动器（09-11 前推到远端 ~/.local/bin/ccm 的那一份）第二行
-src/backend/stderr_log.rs:51	[stderr-log] 上一份挪成 {}（每份上限 {CAP_BYTES} 字节）；再早的那一份丢了\n	保留	[不对外] 〔NT2 · S1〕后端 stderr 诊断文件滚动时写进新那份第一行的日志行（丢了哪一份要带身份）；只进日志文件
-src/backend/stderr_log.rs:163	[stderr] 没被交日志路径 ⇒ stderr 原样	保留	[不对外] 〔NT2 · S1〕后端流模式起来时的一行 tracing 日志（没被交路径 ⇒ stderr 不动）
-src/backend/stderr_log.rs:165	[stderr] 本进程的输出落在 {}（每份上限 {} 字节，留一份旧的）	保留	[不对外] 〔NT2 · S1〕后端流模式起来时的一行 tracing 日志：诊断落在哪份文件
-src/backend/stderr_log.rs:169	[stderr] 被交了日志路径但接不上：{why}	保留	[不对外] 〔NT2 · S1〕后端流模式起来时的一行 tracing 日志：接不上的原因
-src/frontend/filewin/src/fonts.rs:305	启持支格求码误象返	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（〔CP2b〕全量抽表那一拍 ＋9 −3 之后的现文）
-src/frontend/filewin/src/fonts.rs:308	·—…→⚠⬆、。「」一上下不与东丢两个中串为主了些交亮代以件份会传位作你侧保做儿先全八关内再写几出列刚删别到制刷前剩动勾化原去参发取口只叫可台合同名后吗含命和哪器回围在坏型备复外多	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（〔CP2b〕全量抽表之后的现文）〔MG1 合并 FN1 × CP2b：探针再 −9 `住 历 史 场 弄 挡 浏 管 跑`〕
-src/frontend/filewin/src/fonts.rs:309	大太失如字存它完定容对小少尔就尾屏已布带帧并序建开引当录往径必态成或截打扫把拒拖拼拿按换据掉排接搜撤操改数敲整文断新旧时是更最有本机权条来样根框次正此段比没法洞消点版物状现	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（〔CP2b〕全量抽表之后的现文）〔MG1 合并 FN1 × CP2b：探针再 −9 `住 历 史 场 弄 挡 浏 管 跑`〕
-src/frontend/filewin/src/fonts.rs:310	用的盖目相看着确秒称程空窗端符第答类索约级组终经结给绝编者能节范行表被西要覆见览认许话请读负败走起超趟路跳身载辑输过还这进远连送那部都里重销错闭问限除非面须首高（），：；？📁📄🔗	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（〔CP2b〕全量抽表之后的现文）〔MG1 合并 FN1 × CP2b：探针再 −9 `住 历 史 场 弄 挡 浏 管 跑`〕
-src/frontend/filewin/src/fonts.rs:314	值准择描置边间隔需	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（〔CP2b〕全量抽表之后的现文）
-src/backend/lib.rs:1152	Windows 上没有 tmux（也不打算装）。「会话活在前端之外」在 Windows 上用哪种机制，\n              用户 09-24 裁「先不做 Windows 这一族」、机制未定（V109）⇒ **暂时不做**；\n              将来选定机制的那一拍一并给出等价物。	保留	[不对外] 〔CP2c〕设计登记表 TARGET_GAPS 的理由散文（字段已由 why 改名 rationale）：只给判据读，不上界面（CP2c 记录 §3 第 5 类）
-src/backend/lib.rs:1161	「接回一个还活着的会话」今天的实现是 `tmux attach`。Windows 上那条路不存在 \n              ⇒ 等 V109 那一族选定机制（未定）时一并给出等价物，**暂时不做**。	保留	[不对外] 〔CP2c〕设计登记表 TARGET_GAPS 的理由散文（字段已由 why 改名 rationale）：只给判据读，不上界面（CP2c 记录 §3 第 5 类）
-src/backend/lib.rs:1169	「把会话留在后台」今天是 `tmux detach`。同 `attach`，等 V109 那一族选定机制，**暂时不做**。	保留	[不对外] 〔CP2c〕设计登记表 TARGET_GAPS 的理由散文（字段已由 why 改名 rationale）：只给判据读，不上界面（CP2c 记录 §3 第 5 类）
-src/backend/lib.rs:1176	给 tmux 那个窗格定尺寸。没有 tmux 就没有这一格；V109 那一族将来不论选哪种机制，\n              「会话的终端多大」都是另一种形状，**不照搬这一条** ⇒ 这一条本身不跨过去；\n              那边的尺寸若要有，是**另一条**能力、另立一行〔PR1 分档：结构〕。	保留	[不对外] 〔CP2c〕设计登记表 TARGET_GAPS 的理由散文（字段已由 why 改名 rationale）：只给判据读，不上界面（CP2c 记录 §3 第 5 类）
-src/backend/lib.rs:1185	tmux 的窗格编号基数（`base-index`）。它是 tmux 自己的配置面，\n              Windows 上连对应概念都没有 ⇒ **不是推后，是这一条本身不该跨过去**（V109 那一族选哪种机制都一样）。	保留	[不对外] 〔CP2c〕设计登记表 TARGET_GAPS 的理由散文（字段已由 why 改名 rationale）：只给判据读，不上界面（CP2c 记录 §3 第 5 类）
-src/backend/lib.rs:1203	**硬链在 tmux 上，不是自己做不到**：`argv.rs` 两道闸串着 —— \n              `--bus-register` 要 `--detach`，而 `--detach` 要 `--tmux`。\n              真机现打（Win11）把两个 bus 脚本都种齐、排掉「脚本缺失」这个变量之后，\n              仍然 `EXIT=4 no_tmux` ⇒ **唯一闸门就是 tmux**。\n              ⇒ 等 V109 那一族选定机制（未定）时，「把会话登记到总线上」要重新回答一次，\n              **暂时不做**。	保留	[不对外] 〔CP2c〕设计登记表 TARGET_GAPS 的理由散文（字段已由 why 改名 rationale）：只给判据读，不上界面（CP2c 记录 §3 第 5 类）
-src/backend/lib.rs:1215	〔S5 · 第四波 09-24〕**直路语义已定，Windows 上仍欠在读侧。** \n              从前：`--ccm-sid` 只在容器（tmux）那条路上被消费（`Container.ccm_sid` → \n              `tmux set-option @ccm_sid_expect`），直路上被接受、零效果、不出声。\n              主会话裁：**不报错**（报错 ＝ 让它依赖 tmux，撞 V63），直路语义走启动期令牌 \n              （`control/ccm/plan.rs::DirectIdentity`：有合格的 `CCM_RBIND_TOKEN` ⇒ 由它承载；\n              没有 ⇒ 说一句、照常起）。\n              🔴 **而令牌那条路的读侧在 Windows 上不通**：后端从 agent 进程的环境里读令牌 \n              （`identity_tag::rbind_token_of` → `platform::proc::proc_env_var`），非 Linux 恒 `Unreadable` \n              （`WN1.md §1` 件 E：要读对方 PEB，未做）⇒ 令牌注进去了也读不回来 ⇒ 这一格在 Windows 上仍是欠账。\n              **将来**：件 E（Windows 上读别的进程的环境）落地那一拍，这一行跟着删；件 E 随 V109 \n              「先不做 Windows 这一族」挂着，在那之前暂时不做。	保留	[不对外] 〔CP2c〕设计登记表 TARGET_GAPS 的理由散文（字段已由 why 改名 rationale）：只给判据读，不上界面（CP2c 记录 §3 第 5 类）
-src/backend/lib.rs:1263	把中转地址跨 tmux 会话传下去。载体没了这一条就没了；\n              将来 V109 那一族选定机制时要自己回答「地址怎么传给它起的会话」，**暂时不做**。	保留	[不对外] 〔CP2c〕设计登记表 TARGET_GAPS 的理由散文（字段已由 why 改名 rationale）：只给判据读，不上界面（CP2c 记录 §3 第 5 类）
-src/backend/lib.rs:1279	抓一屏今天就是起一次 `tmux capture-pane`（命令自己声明了 `no_tmux` 码）。\n              Windows 上没有 tmux ⇒ 平台默认做不到。将来 V109 那一族选定机制（未定）时给出\n              「看一眼会话画面」的等价物，**暂时不做**。	保留	[不对外] 〔CP2c〕设计登记表 TARGET_GAPS 的理由散文（字段已由 why 改名 rationale）：只给判据读，不上界面（CP2c 记录 §3 第 5 类）
-src/backend/lib.rs:1288	结束会话今天是起一次 `tmux kill-session`（命令自己声明了 `no_tmux` 码）。\n              Windows 上没有 tmux ⇒ 平台默认做不到。将来 V109 那一族选定机制（未定）时\n              一并管会话的生死，**暂时不做**。	保留	[不对外] 〔CP2c〕设计登记表 TARGET_GAPS 的理由散文（字段已由 why 改名 rationale）：只给判据读，不上界面（CP2c 记录 §3 第 5 类）
-src/backend/lib.rs:1297	起会话今天是在 tmux 里开一个新会话（命令自己声明了 `no_tmux` 码）。\n              Windows 上没有 tmux ⇒ 平台默认做不到。「会话活在前端之外」在 Windows 上的机制\n              未定（V109），**暂时不做**。	保留	[不对外] 〔CP2c〕设计登记表 TARGET_GAPS 的理由散文（字段已由 why 改名 rationale）：只给判据读，不上界面（CP2c 记录 §3 第 5 类）
-src/backend/lib.rs:1306	与帧面 `capture-pane` 那一行是**同一条实现**（CLI 面经 `cli_control::spec_for` \n              派生到同一条登记）⇒ 同一个理由（V109），将来与帧面那一行同拍还，**暂时不做**。	保留	[不对外] 〔CP2c〕设计登记表 TARGET_GAPS 的理由散文（字段已由 why 改名 rationale）：只给判据读，不上界面（CP2c 记录 §3 第 5 类）
-src/backend/lib.rs:1314	与帧面 `kill` 那一行是**同一条实现**（CLI 面经 `cli_control::spec_for` \n              派生到同一条登记）⇒ 同一个理由（V109），将来与帧面那一行同拍还，**暂时不做**。	保留	[不对外] 〔CP2c〕设计登记表 TARGET_GAPS 的理由散文（字段已由 why 改名 rationale）：只给判据读，不上界面（CP2c 记录 §3 第 5 类）
-src/backend/lib.rs:1322	与帧面 `launch` 那一行是**同一条实现**（CLI 面经 `cli_control::spec_for` \n              派生到同一条登记）⇒ 同一个理由（V109），将来与帧面那一行同拍还，**暂时不做**。	保留	[不对外] 〔CP2c〕设计登记表 TARGET_GAPS 的理由散文（字段已由 why 改名 rationale）：只给判据读，不上界面（CP2c 记录 §3 第 5 类）
-src/backend/lib.rs:1242	改的是 **unix 权限位**（低 12 位），命令自己声明了 `no_unix_mode` 码。Windows 上没有这套位\n              （那边是 ACL ＋ 只读属性），`change_mode` 在那里回 `no_unix_mode`、一个字节不动。\n              ⇒ 这一条本身**不该跨过去**；Windows 那边若要「改访问权限」，是另一条能力、另立一行〔FW5 分档：结构〕。	保留	[不对外] 〔CP2c〕设计登记表 TARGET_GAPS 的理由散文（字段已由 why 改名 rationale）：只给判据读，不上界面（CP2c 记录 §3 第 5 类）
-src/backend/lib.rs:1251	与帧面 `files-chmod` 那一行是**同一条实现**（CLI 面经 `cli_control::spec_for` \n              派生到同一条登记）⇒ 同一个理由：unix 权限位这一条**不该跨过去**。	保留	[不对外] 〔CP2c〕设计登记表 TARGET_GAPS 的理由散文（字段已由 why 改名 rationale）：只给判据读，不上界面（CP2c 记录 §3 第 5 类）
-src/backend/observe/search_query.rs:146	全文搜索：{n} 个会话文件读不动，这一趟没搜到它们（逐份原因见上面几行）	保留	[不对外] 〔W5-VIS〕search_counting 扫完那一行总账，只经 tracing::warn! 进后端日志
-src/frontend/shell/src/frame_tally.rs:47	[{}] 跳过一帧认不出的（未知 kind / 坏帧），这条流上累计 {} 帧；这一帧开头：{}	保留	[不对外] 〔W5-VIS〕丢帧账：只经 tracing::warn! 进 monitor 日志
-src/frontend/shell/src/frame_tally.rs:60	[{}] 一行含非 UTF-8 字节（这条流上累计 {} 行）；这一行开头：{}	保留	[不对外] 〔W5-VIS〕同上
-src/frontend/shell/src/frame_tally.rs:72	[{}] 这条流结束：跳过了 {} 帧认不出的，{} 行含非 UTF-8 字节	保留	[不对外] 〔W5-VIS〕同上（流结束那一行总账）
-src/frontend/shell/src/local_backend_host.rs:986	本机常驻后端（脱离载体）	保留	[不对外] 〔W5-VIS〕FrameTally 的流名，只出现在丢帧账那几行日志里
-src/frontend/filewin/src/fonts.rs:318	●＋双另右好己底忙标栏自页	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（〔FW34〕标签页 ＋ 双栏那几个字；〔W5-FILES〕−1 字 `恰`）
-src/backend/control/files_write.rs:552	`expect` 只收 `{{"sha256": "<{SHA256_HEX_LEN} 位小写十六进制>"}}`（给的是 {v}）	保留	[不对外] 〔FW1 · D-c〕files-write-text / files-commit-text 的 bad_args：调用方（文件窗口）交错了 CAS 摘要的形状，是两段程序之间的契约错，用户按任何键都走不到；说的是线上字段本身
-src/frontend/filewin/src/fonts.rs:324	仍然盘	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（〔FW1 · D-c〕＋4 字，编辑器存盘 CAS 那几句）
-src/backend/main.rs:245	常驻后端收到停机信号	保留	[不对外] 〔HX1〕exit_after_drain 的 why，只进后端 tracing 日志
-src/backend/main.rs:361	hello 写不出去	保留	[不对外] 〔HX1〕同上，只进后端日志
-src/backend/main.rs:424	收到停机信号	保留	[不对外] 〔HX1〕同上，只进后端日志
-src/backend/main.rs:429	对端走了（写不出去）	保留	[不对外] 〔HX1〕同上，只进后端日志
-src/backend/main.rs:751	流结束 ⇒ 这台机器的退出策略是「结束」	保留	[不对外] 〔HX1〕同上，只进后端日志
-src/frontend/filewin/src/fonts.rs:329	算链	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（〔W5-FILES〕算大小那几句的字）
-src/frontend/filewin/src/fonts.rs:331	查替	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（〔W5-FILES〕编辑面查找替换那几句的字）
-src/frontend/shell/src/backend_policy.rs:384	{reason}；找过 {} 处：{}	保留	[不对外] 〔PB1〕death_detail：账行破折号后那截只摆证据，只随 ledger_line 落 monitor 日志（界面接 health_face 成品）；原 death_copy 的处方与论证已删
-src/frontend/shell/src/backend_policy.rs:392	它一个字节都没说就退出了	保留	[不对外] 〔PB1〕death_detail：账行破折号后那截只摆证据，只随 ledger_line 落 monitor 日志（界面接 health_face 成品）；原 death_copy 的处方与论证已删
-src/frontend/shell/src/backend_policy.rs:393	说过话之后异常终止	保留	[不对外] 〔PB1〕death_detail：账行破折号后那截只摆证据，只随 ledger_line 落 monitor 日志（界面接 health_face 成品）；原 death_copy 的处方与论证已删
-src/frontend/shell/src/backend_policy.rs:394	monitor 这一侧读出错：{detail}	保留	[不对外] 〔PB1〕death_detail：账行破折号后那截只摆证据，只随 ledger_line 落 monitor 日志（界面接 health_face 成品）；原 death_copy 的处方与论证已删
-src/frontend/filewin/src/fonts.rs:335	解压	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（〔FILES2〕解压到这里那几句的字）
-src/frontend/filewin/src/fonts.rs:339	之半执批果校缺验所	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（〔COPY-R〕filewin 那几句去行话之后新进的字）
-src/backend/control/files_commit.rs:112	把暂存区里一份传完的上传件挪进用户指定的目标（先过路径解析；〔FW1〕先核整份摘要 `expect: {sha256}`，\n             不等 ⇒ 删掉坏暂存件、`stale`；不覆盖时 `O_EXCL` 占位再改名上位）	保留	[不对外] 〔COPY〕命令 / 能力登记表的 purpose 字段（原名 what，改名免撞普查字段出口）：只给判据读，生产段不上界面
-src/backend/control/files_commit.rs:121	把存盘的一块写进暂存区 `<key>.<seq>.chunk`（`O_EXCL` 新建：同一块写第二次就拒；暂存区不在就建）	保留	[不对外] 〔COPY〕命令 / 能力登记表的 purpose 字段（原名 what，改名免撞普查字段出口）：只给判据读，生产段不上界面
-src/backend/control/files_commit.rs:128	按块号读回 `0..chunks` 块、拼起来、总长必须等于 `bytes`，再覆盖写目标（原子换，与 \n               `files-write-text` 同一个原语：跟链接、只收已在的普通文件）；〔FW1〕`expect: {sha256}` 必给，\n               盘上那份对不上 ⇒ `stale`、一个字节不写；不论成败都删掉这些块	保留	[不对外] 〔COPY〕命令 / 能力登记表的 purpose 字段（原名 what，改名免撞普查字段出口）：只给判据读，生产段不上界面
-src/backend/control/files_write.rs:1936	在用户指定的文件管理目标根底下，新建一份**此前不存在**的文件（`O_EXCL`）	保留	[不对外] 〔COPY〕命令 / 能力登记表的 purpose 字段（原名 what，改名免撞普查字段出口）：只给判据读，生产段不上界面
-src/backend/control/files_write.rs:1944	新建一个目录（只建最后那一段；父目录不在就失败，不顺手补）	保留	[不对外] 〔COPY〕命令 / 能力登记表的 purpose 字段（原名 what，改名免撞普查字段出口）：只给判据读，生产段不上界面
-src/backend/control/files_write.rs:1951	改名 / 同根内移动；**两个参数各过一遍路径解析**，目标已存在就拒（不覆盖）	保留	[不对外] 〔COPY〕命令 / 能力登记表的 purpose 字段（原名 what，改名免撞普查字段出口）：只给判据读，生产段不上界面
-src/backend/control/files_write.rs:1959	删一个文件或一个**空**目录（删的是链接本身，不跟过去）；〔FW5〕显式 `recursive: true` \n               才删整棵树 —— 逐条目过路径解析，任一条被拒整趟不动（`delete_tree`）；〔RM1e〕给了 `expect` \n               ⇒ 只删一份普通文件、且盘上逐字节等于它才删（否则 `stale`，一个字节不动）；〔FW1〕`expect: {"empty_dir": true}` \n               ⇒ 只删一个空目录（不空 / 不在 ⇒ `stale`；不是目录 ⇒ `refused`）	保留	[不对外] 〔COPY〕命令 / 能力登记表的 purpose 字段（原名 what，改名免撞普查字段出口）：只给判据读，生产段不上界面
-src/backend/control/files_write.rs:1969	改 unix 权限位（低 12 位）；**跟链接**，所以落点解到底再判一次；\n               〔FW5〕没有 unix 权限位的平台上回 `no_unix_mode`	保留	[不对外] 〔COPY〕命令 / 能力登记表的 purpose 字段（原名 what，改名免撞普查字段出口）：只给判据读，生产段不上界面
-src/backend/control/files_write.rs:2254	同根内复制一份普通文件；**三条路径各过一遍路径解析**；缺省不覆盖（`O_EXCL`），\n               显式 `overwrite` 才经暂存旁名原子顶掉；权限位从源抄；〔W5-FILES〕显式 `recursive: true` \n               才复制目录 —— 逐条目过路径解析，跨挂载点 / 超上限整趟拒，中途失败回滚自己建的（`copy_tree`）；\n               〔FILES2〕树里的链接复制**链接本身**（目标文本原样，`links` 计数）	保留	[不对外] 〔COPY〕命令 / 能力登记表的 purpose 字段（原名 what，改名免撞普查字段出口）：只给判据读，生产段不上界面
-src/backend/control/files_write.rs:1987	覆盖写一份**已经在**的普通文件；**跟链接**，所以落点解到底再判一次；\n               〔FW1〕`expect: {sha256}` **必给**：盘上那份的摘要对得上才写（否则 `stale`，一个字节不动），应答交新摘要	保留	[不对外] 〔COPY〕命令 / 能力登记表的 purpose 字段（原名 what，改名免撞普查字段出口）：只给判据读，生产段不上界面
-src/backend/control/files_write.rs:1996	读改写的**读那一半**：与写同一道路径解析；不在 ⇒ `exists: false`（与「读不出来」分得开）	保留	[不对外] 〔COPY〕命令 / 能力登记表的 purpose 字段（原名 what，改名免撞普查字段出口）：只给判据读，生产段不上界面
-src/backend/control/files_write.rs:2003	整份替换一份文本文件：**CAS（`expect` 必给）→ 相同不写 → 备份 → 暂存旁名换名上位 → \n               回读比对 → 不符回滚** —— 用户文件的写规则只有这一份	保留	[不对外] 〔COPY〕命令 / 能力登记表的 purpose 字段（原名 what，改名免撞普查字段出口）：只给判据读，生产段不上界面
-src/backend/control/files_write.rs:2011	删一份历史会话 —— **只收 sid**，落点由后端按 sid 在记录树里找（历史浏览器的删会话，不是文件管理器）	保留	[不对外] 〔COPY〕命令 / 能力登记表的 purpose 字段（原名 what，改名免撞普查字段出口）：只给判据读，生产段不上界面
-src/backend/files/mod.rs:213	列一个目录的直接子项（名字走原始字节）	保留	[不对外] 〔COPY〕命令 / 能力登记表的 purpose 字段（原名 what，改名免撞普查字段出口）：只给判据读，生产段不上界面
-src/backend/files/mod.rs:229	一个路径的元数据	保留	[不对外] 〔COPY〕命令 / 能力登记表的 purpose 字段（原名 what，改名免撞普查字段出口）：只给判据读，生产段不上界面
-src/backend/files/mod.rs:240	🔴 **在常驻索引里查** —— SFTP 给不了的那一条，整族的存在理由	保留	[不对外] 〔COPY〕命令 / 能力登记表的 purpose 字段（原名 what，改名免撞普查字段出口）：只给判据读，生产段不上界面
-src/backend/files/mod.rs:257	索引的新鲜度 ／ 条目数 ／ 常驻字节，**以及后端声明的重走周期**（边界③）	保留	[不对外] 〔COPY〕命令 / 能力登记表的 purpose 字段（原名 what，改名免撞普查字段出口）：只给判据读，生产段不上界面
-src/backend/files/mod.rs:289	🔴 **走一遍，就一遍，做完返回** —— `index::rebuild_once` 的线上面（只有机制，没有节拍）	保留	[不对外] 〔COPY〕命令 / 能力登记表的 purpose 字段（原名 what，改名免撞普查字段出口）：只给判据读，生产段不上界面
-src/backend/files/mod.rs:309	告诉后端「用户现在在看哪几个目录」—— `browse_watch::set_browsing` 的线上面（保鲜的另一半）	保留	[不对外] 〔COPY〕命令 / 能力登记表的 purpose 字段（原名 what，改名免撞普查字段出口）：只给判据读，生产段不上界面
-src/backend/files/mod.rs:335	读一份文本进编辑器 —— **超上限整趟拒、不截断**；含 NUL / 不是 UTF-8 也拒	保留	[不对外] 〔COPY〕命令 / 能力登记表的 purpose 字段（原名 what，改名免撞普查字段出口）：只给判据读，生产段不上界面
-src/backend/files/mod.rs:347	算一个目录（或文件）有多大 —— 不跟链接、不进别的文件系统，只回几个数	保留	[不对外] 〔COPY〕命令 / 能力登记表的 purpose 字段（原名 what，改名免撞普查字段出口）：只给判据读，生产段不上界面
-src/backend/files/mod.rs:366	后端这个进程的用户 home（绝对路径）—— 窗口开窗时「开在哪儿」那一问	保留	[不对外] 〔COPY〕命令 / 能力登记表的 purpose 字段（原名 what，改名免撞普查字段出口）：只给判据读，生产段不上界面
-src/backend/control/files_write.rs:621	它有 {links} 个硬链接	保留	[不对外] 〔COPY〕in_place_reason 拼的原因只进 tracing::warn 那一行日志（覆盖写退回就地写时），不上界面
-src/backend/control/files_write.rs:625	它的属主（uid {owner}）不是后端这个用户（uid {me}）	保留	[不对外] 〔COPY〕in_place_reason 拼的原因只进 tracing::warn 那一行日志（覆盖写退回就地写时），不上界面
-src/backend/control/files_write.rs:628	、	保留	[不对外] 〔COPY〕in_place_reason 拼的原因只进 tracing::warn 那一行日志（覆盖写退回就地写时），不上界面
-src/backend/files/mod.rs:368	从一份普通文件的 `offset` 起读至多 `len` 字节（原始字节，b16 送回）—— 下载非 UTF-8 名那条路的一块	保留	[不对外] 〔COPY〕命令 / 能力登记表的 purpose 字段（原名 what，改名免撞普查字段出口）：只给判据读，生产段不上界面
+src/backend/dial/sftp.rs:622	请求行不是 JSON：{e}	保留	[不对外] 部署链路（`use:"files"`）上一行坏请求的应答：读它的是 monitor 的 `dial_host::RemoteFs`（请求也是它自己造的），坏了只会是 bug；不到用户眼前
+src/backend/dial/link.rs:301	缺 `bytes`（非负整数）	保留	[不对外] `link-credit` 的协议级回错：monitor 还信用失败只记一条 debug 日志，不说到用户眼前
+src/backend/dial/link.rs:313	还了 {bytes} 字节信用，累计会超过上限 {MAX_WINDOW}（手里已有 {have}）	保留	[不对外] `link-credit` 超上限（对端不守约）的回错；monitor 只记 debug 日志
+src/backend/relay/listen.rs:315	[relay] 没被交中转端口 ⇒ 本进程不开中转	保留	[不对外] 常驻后端进程内中转的日志 / `Hosted` 的说法，只进后端 stderr（stdio 载体上转进 monitor 滚动日志），不上界面
+src/backend/relay/listen.rs:316	[relay] 中转住本进程，听 {a}	保留	[不对外] 常驻后端进程内中转的日志 / `Hosted` 的说法，只进后端 stderr（stdio 载体上转进 monitor 滚动日志），不上界面
+src/backend/relay/listen.rs:319	[relay] 被交了中转端口却起不来（后端照常服务）：{reason}	保留	[不对外] 常驻后端进程内中转的日志 / `Hosted` 的说法，只进后端 stderr（stdio 载体上转进 monitor 滚动日志），不上界面
+src/backend/relay/listen.rs:352	{ENV_PORT}={raw:?} 不是端口号（{e}）	保留	[不对外] 常驻后端进程内中转的日志 / `Hosted` 的说法，只进后端 stderr（stdio 载体上转进 monitor 滚动日志），不上界面
+src/backend/relay/listen.rs:361	读不出绑到的地址：{e}	保留	[不对外] 常驻后端进程内中转的日志 / `Hosted` 的说法，只进后端 stderr（stdio 载体上转进 monitor 滚动日志），不上界面
+src/backend/relay/listen.rs:372	起不来接受线程：{e}	保留	[不对外] 常驻后端进程内中转的日志 / `Hosted` 的说法，只进后端 stderr（stdio 载体上转进 monitor 滚动日志），不上界面
+src/frontend/shell/src/event_replay.rs:512	没有叫 `{kind}` 的流	保留	[不对外] 会话流句柄对认不出的流标签原位回的 Closed{Peer} 体（`{code,message}` 信封）；前端只记进控制台（events.ts 的 closed 那一支），不上界面
+src/frontend/shell/src/event_replay.rs:520	会话内容流不支持从某一格续看（页面重载就是一条新的订阅）	保留	[不对外] 同上：给了 from 游标时原位回的 Closed{Peer(bad_args)} 体；生产调用方恒给 null，只进控制台
+src/backend/assets/skill_install.rs:363	来源那台读不出原文	保留	[不对外] skill-install-plan 内部比较用的占位值（进 JSON 值相等比较，不上线也不给人看）
+src/common/deploy-contract/src/lib.rs:659	# ccm — cc-monitor 统一启动器	保留	[不对外] 〔MIG-3b 随 is_ours 搬进 deploy-core〕匹配用的记号：认旧版 bash 启动器（09-11 前推到远端 ~/.local/bin/ccm 的那一份）第二行
+src/backend/stderr_log.rs:51	[stderr-log] 上一份挪成 {}（每份上限 {CAP_BYTES} 字节）；再早的那一份丢了\n	保留	[不对外] 后端 stderr 诊断文件滚动时写进新那份第一行的日志行（丢了哪一份要带身份）；只进日志文件
+src/backend/stderr_log.rs:163	[stderr] 没被交日志路径 ⇒ stderr 原样	保留	[不对外] 后端流模式起来时的一行 tracing 日志（没被交路径 ⇒ stderr 不动）
+src/backend/stderr_log.rs:165	[stderr] 本进程的输出落在 {}（每份上限 {} 字节，留一份旧的）	保留	[不对外] 后端流模式起来时的一行 tracing 日志：诊断落在哪份文件
+src/backend/stderr_log.rs:169	[stderr] 被交了日志路径但接不上：{why}	保留	[不对外] 后端流模式起来时的一行 tracing 日志：接不上的原因
+src/frontend/filewin/src/fonts.rs:305	启持支格求码误象返	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（全量抽表那一拍 ＋9 −3 之后的现文）
+src/frontend/filewin/src/fonts.rs:308	·—…→⚠⬆、。「」一上下不与东丢两个中串为主了些交亮代以件份会传位作你侧保做儿先全八关内再写几出列刚删别到制刷前剩动勾化原去参发取口只叫可台合同名后吗含命和哪器回围在坏型备复外多	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（全量抽表之后的现文）〔MG1 合并 FN1 × CP2b：探针再 −9 `住 历 史 场 弄 挡 浏 管 跑`〕
+src/frontend/filewin/src/fonts.rs:309	大太失如字存它完定容对小少尔就尾屏已布带帧并序建开引当录往径必态成或截打扫把拒拖拼拿按换据掉排接搜撤操改数敲整文断新旧时是更最有本机权条来样根框次正此段比没法洞消点版物状现	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（全量抽表之后的现文）〔MG1 合并 FN1 × CP2b：探针再 −9 `住 历 史 场 弄 挡 浏 管 跑`〕
+src/frontend/filewin/src/fonts.rs:310	用的盖目相看着确秒称程空窗端符第答类索约级组终经结给绝编者能节范行表被西要覆见览认许话请读负败走起超趟路跳身载辑输过还这进远连送那部都里重销错闭问限除非面须首高（），：；？📁📄🔗	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（全量抽表之后的现文）〔MG1 合并 FN1 × CP2b：探针再 −9 `住 历 史 场 弄 挡 浏 管 跑`〕
+src/frontend/filewin/src/fonts.rs:314	值准择描置边间隔需	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（全量抽表之后的现文）
+src/backend/lib.rs:1152	Windows 上没有 tmux（也不打算装）。「会话活在前端之外」在 Windows 上用哪种机制，\n              用户 09-24 裁「先不做 Windows 这一族」、机制未定（V109）⇒ **暂时不做**；\n              将来选定机制的那一拍一并给出等价物。	保留	[不对外] 设计登记表 TARGET_GAPS 的理由散文（字段已由 why 改名 rationale）：只给判据读，不上界面
+src/backend/lib.rs:1161	「接回一个还活着的会话」今天的实现是 `tmux attach`。Windows 上那条路不存在 \n              ⇒ 等 V109 那一族选定机制（未定）时一并给出等价物，**暂时不做**。	保留	[不对外] 设计登记表 TARGET_GAPS 的理由散文（字段已由 why 改名 rationale）：只给判据读，不上界面
+src/backend/lib.rs:1169	「把会话留在后台」今天是 `tmux detach`。同 `attach`，等 V109 那一族选定机制，**暂时不做**。	保留	[不对外] 设计登记表 TARGET_GAPS 的理由散文（字段已由 why 改名 rationale）：只给判据读，不上界面
+src/backend/lib.rs:1176	给 tmux 那个窗格定尺寸。没有 tmux 就没有这一格；V109 那一族将来不论选哪种机制，\n              「会话的终端多大」都是另一种形状，**不照搬这一条** ⇒ 这一条本身不跨过去；\n              那边的尺寸若要有，是**另一条**能力、另立一行〔PR1 分档：结构〕。	保留	[不对外] 设计登记表 TARGET_GAPS 的理由散文（字段已由 why 改名 rationale）：只给判据读，不上界面
+src/backend/lib.rs:1418	tmux 的窗格编号基数（`base-index`）。它是 tmux 自己的配置面，\n              Windows 上连对应概念都没有 ⇒ **不是推后，是这一条本身不该跨过去**（V109 那一族选哪种机制都一样）。	保留	[不对外] 设计登记表 TARGET_GAPS 的理由散文（字段已由 why 改名 rationale）：只给判据读，不上界面
+src/backend/lib.rs:1203	**硬链在 tmux 上，不是自己做不到**：`argv.rs` 两道闸串着 —— \n              `--bus-register` 要 `--detach`，而 `--detach` 要 `--tmux`。\n              真机现打（Win11）把两个 bus 脚本都种齐、排掉「脚本缺失」这个变量之后，\n              仍然 `EXIT=4 no_tmux` ⇒ **唯一闸门就是 tmux**。\n              ⇒ 等 V109 那一族选定机制（未定）时，「把会话登记到总线上」要重新回答一次，\n              **暂时不做**。	保留	[不对外] 设计登记表 TARGET_GAPS 的理由散文（字段已由 why 改名 rationale）：只给判据读，不上界面
+src/backend/lib.rs:1215	**直路语义已定，Windows 上仍欠在读侧。** \n              从前：`--ccm-sid` 只在容器（tmux）那条路上被消费（`Container.ccm_sid` → \n              `tmux set-option @ccm_sid_expect`），直路上被接受、零效果、不出声。\n              主会话裁：**不报错**（报错 ＝ 让它依赖 tmux，撞），直路语义走启动期令牌 \n              （`control/ccm/plan.rs::DirectIdentity`：有合格的 `CCM_RBIND_TOKEN` ⇒ 由它承载；\n              没有 ⇒ 说一句、照常起）。\n              🔴 **而令牌那条路的读侧在 Windows 上不通**：后端从 agent 进程的环境里读令牌 \n              （`identity_tag::rbind_token_of` → `platform::proc::proc_env_var`），非 Linux 恒 `Unreadable` \n              （`WN1.md §1` 件 E：要读对方 PEB，未做）⇒ 令牌注进去了也读不回来 ⇒ 这一格在 Windows 上仍是欠账。\n              **将来**：件 E（Windows 上读别的进程的环境）落地那一拍，这一行跟着删；件 E 随 V109 \n              「先不做 Windows 这一族」挂着，在那之前暂时不做。	保留	[不对外] 设计登记表 TARGET_GAPS 的理由散文（字段已由 why 改名 rationale）：只给判据读，不上界面
+src/backend/lib.rs:1263	把中转地址跨 tmux 会话传下去。载体没了这一条就没了；\n              将来 V109 那一族选定机制时要自己回答「地址怎么传给它起的会话」，**暂时不做**。	保留	[不对外] 设计登记表 TARGET_GAPS 的理由散文（字段已由 why 改名 rationale）：只给判据读，不上界面
+src/backend/lib.rs:1279	抓一屏今天就是起一次 `tmux capture-pane`（命令自己声明了 `no_tmux` 码）。\n              Windows 上没有 tmux ⇒ 平台默认做不到。将来 V109 那一族选定机制（未定）时给出\n              「看一眼会话画面」的等价物，**暂时不做**。	保留	[不对外] 设计登记表 TARGET_GAPS 的理由散文（字段已由 why 改名 rationale）：只给判据读，不上界面
+src/backend/lib.rs:1288	结束会话今天是起一次 `tmux kill-session`（命令自己声明了 `no_tmux` 码）。\n              Windows 上没有 tmux ⇒ 平台默认做不到。将来 V109 那一族选定机制（未定）时\n              一并管会话的生死，**暂时不做**。	保留	[不对外] 设计登记表 TARGET_GAPS 的理由散文（字段已由 why 改名 rationale）：只给判据读，不上界面
+src/backend/lib.rs:1297	起会话今天是在 tmux 里开一个新会话（命令自己声明了 `no_tmux` 码）。\n              Windows 上没有 tmux ⇒ 平台默认做不到。「会话活在前端之外」在 Windows 上的机制\n              未定（V109），**暂时不做**。	保留	[不对外] 设计登记表 TARGET_GAPS 的理由散文（字段已由 why 改名 rationale）：只给判据读，不上界面
+src/backend/lib.rs:1306	与帧面 `capture-pane` 那一行是**同一条实现**（CLI 面经 `cli_control::spec_for` \n              派生到同一条登记）⇒ 同一个理由（V109），将来与帧面那一行同拍还，**暂时不做**。	保留	[不对外] 设计登记表 TARGET_GAPS 的理由散文（字段已由 why 改名 rationale）：只给判据读，不上界面
+src/backend/lib.rs:1314	与帧面 `kill` 那一行是**同一条实现**（CLI 面经 `cli_control::spec_for` \n              派生到同一条登记）⇒ 同一个理由（V109），将来与帧面那一行同拍还，**暂时不做**。	保留	[不对外] 设计登记表 TARGET_GAPS 的理由散文（字段已由 why 改名 rationale）：只给判据读，不上界面
+src/backend/lib.rs:1322	与帧面 `launch` 那一行是**同一条实现**（CLI 面经 `cli_control::spec_for` \n              派生到同一条登记）⇒ 同一个理由（V109），将来与帧面那一行同拍还，**暂时不做**。	保留	[不对外] 设计登记表 TARGET_GAPS 的理由散文（字段已由 why 改名 rationale）：只给判据读，不上界面
+src/backend/lib.rs:1242	改的是 **unix 权限位**（低 12 位），命令自己声明了 `no_unix_mode` 码。Windows 上没有这套位\n              （那边是 ACL ＋ 只读属性），`change_mode` 在那里回 `no_unix_mode`、一个字节不动。\n              ⇒ 这一条本身**不该跨过去**；Windows 那边若要「改访问权限」，是另一条能力、另立一行〔FW5 分档：结构〕。	保留	[不对外] 设计登记表 TARGET_GAPS 的理由散文（字段已由 why 改名 rationale）：只给判据读，不上界面
+src/backend/lib.rs:1251	与帧面 `files-chmod` 那一行是**同一条实现**（CLI 面经 `cli_control::spec_for` \n              派生到同一条登记）⇒ 同一个理由：unix 权限位这一条**不该跨过去**。	保留	[不对外] 设计登记表 TARGET_GAPS 的理由散文（字段已由 why 改名 rationale）：只给判据读，不上界面
+src/backend/observe/search_query.rs:146	全文搜索：{n} 个会话文件读不动，这一趟没搜到它们（逐份原因见上面几行）	保留	[不对外] search_counting 扫完那一行总账，只经 tracing::warn! 进后端日志
+src/frontend/shell/src/frame_tally.rs:47	[{}] 跳过一帧认不出的（未知 kind / 坏帧），这条流上累计 {} 帧；这一帧开头：{}	保留	[不对外] 丢帧账：只经 tracing::warn! 进 monitor 日志
+src/frontend/shell/src/frame_tally.rs:60	[{}] 一行含非 UTF-8 字节（这条流上累计 {} 行）；这一行开头：{}	保留	[不对外] 同上
+src/frontend/shell/src/frame_tally.rs:72	[{}] 这条流结束：跳过了 {} 帧认不出的，{} 行含非 UTF-8 字节	保留	[不对外] 同上（流结束那一行总账）
+src/frontend/shell/src/local_backend_host.rs:986	本机常驻后端（脱离载体）	保留	[不对外] FrameTally 的流名，只出现在丢帧账那几行日志里
+src/frontend/filewin/src/fonts.rs:318	●＋双另右好己底忙标栏自页	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（标签页 ＋ 双栏那几个字；−1 字 `恰`）
+src/backend/control/files_write.rs:552	`expect` 只收 `{{"sha256": "<{SHA256_HEX_LEN} 位小写十六进制>"}}`（给的是 {v}）	保留	[不对外] files-write-text / files-commit-text 的 bad_args：调用方（文件窗口）交错了 CAS 摘要的形状，是两段程序之间的契约错，用户按任何键都走不到；说的是线上字段本身
+src/frontend/filewin/src/fonts.rs:324	仍然盘	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（＋4 字，编辑器存盘 CAS 那几句）
+src/backend/main.rs:245	常驻后端收到停机信号	保留	[不对外] exit_after_drain 的 why，只进后端 tracing 日志
+src/backend/main.rs:361	hello 写不出去	保留	[不对外] 同上，只进后端日志
+src/backend/main.rs:424	收到停机信号	保留	[不对外] 同上，只进后端日志
+src/backend/main.rs:429	对端走了（写不出去）	保留	[不对外] 同上，只进后端日志
+src/backend/main.rs:751	流结束 ⇒ 这台机器的退出策略是「结束」	保留	[不对外] 同上，只进后端日志
+src/frontend/filewin/src/fonts.rs:329	算链	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（算大小那几句的字）
+src/frontend/filewin/src/fonts.rs:331	查替	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（编辑面查找替换那几句的字）
+src/frontend/shell/src/backend_policy.rs:384	{reason}；找过 {} 处：{}	保留	[不对外] death_detail：账行破折号后那截只摆证据，只随 ledger_line 落 monitor 日志（界面接 health_face 成品）；原 death_copy 的处方与论证已删
+src/frontend/shell/src/backend_policy.rs:392	它一个字节都没说就退出了	保留	[不对外] death_detail：账行破折号后那截只摆证据，只随 ledger_line 落 monitor 日志（界面接 health_face 成品）；原 death_copy 的处方与论证已删
+src/frontend/shell/src/backend_policy.rs:393	说过话之后异常终止	保留	[不对外] death_detail：账行破折号后那截只摆证据，只随 ledger_line 落 monitor 日志（界面接 health_face 成品）；原 death_copy 的处方与论证已删
+src/frontend/shell/src/backend_policy.rs:394	monitor 这一侧读出错：{detail}	保留	[不对外] death_detail：账行破折号后那截只摆证据，只随 ledger_line 落 monitor 日志（界面接 health_face 成品）；原 death_copy 的处方与论证已删
+src/frontend/filewin/src/fonts.rs:335	解压	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（解压到这里那几句的字）
+src/frontend/filewin/src/fonts.rs:339	之半执批果校缺验所	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（filewin 那几句去行话之后新进的字）
+src/backend/control/files_commit.rs:112	把暂存区里一份传完的上传件挪进用户指定的目标（先过路径解析；先核整份摘要 `expect: {sha256}`，\n             不等 ⇒ 删掉坏暂存件、`stale`；不覆盖时 `O_EXCL` 占位再改名上位）	保留	[不对外] 命令 / 能力登记表的 purpose 字段（原名 what，改名免撞普查字段出口）：只给判据读，生产段不上界面
+src/backend/control/files_commit.rs:121	把存盘的一块写进暂存区 `<key>.<seq>.chunk`（`O_EXCL` 新建：同一块写第二次就拒；暂存区不在就建）	保留	[不对外] 命令 / 能力登记表的 purpose 字段（原名 what，改名免撞普查字段出口）：只给判据读，生产段不上界面
+src/backend/control/files_commit.rs:128	按块号读回 `0..chunks` 块、拼起来、总长必须等于 `bytes`，再覆盖写目标（原子换，与 \n               `files-write-text` 同一个原语：跟链接、只收已在的普通文件）；`expect: {sha256}` 必给，\n               盘上那份对不上 ⇒ `stale`、一个字节不写；不论成败都删掉这些块	保留	[不对外] 命令 / 能力登记表的 purpose 字段（原名 what，改名免撞普查字段出口）：只给判据读，生产段不上界面
+src/backend/control/files_write.rs:1936	在用户指定的文件管理目标根底下，新建一份**此前不存在**的文件（`O_EXCL`）	保留	[不对外] 命令 / 能力登记表的 purpose 字段（原名 what，改名免撞普查字段出口）：只给判据读，生产段不上界面
+src/backend/control/files_write.rs:1944	新建一个目录（只建最后那一段；父目录不在就失败，不顺手补）	保留	[不对外] 命令 / 能力登记表的 purpose 字段（原名 what，改名免撞普查字段出口）：只给判据读，生产段不上界面
+src/backend/control/files_write.rs:1951	改名 / 同根内移动；**两个参数各过一遍路径解析**，目标已存在就拒（不覆盖）	保留	[不对外] 命令 / 能力登记表的 purpose 字段（原名 what，改名免撞普查字段出口）：只给判据读，生产段不上界面
+src/backend/control/files_write.rs:1959	删一个文件或一个**空**目录（删的是链接本身，不跟过去）；显式 `recursive: true` \n               才删整棵树 —— 逐条目过路径解析，任一条被拒整趟不动（`delete_tree`）；给了 `expect` \n               ⇒ 只删一份普通文件、且盘上逐字节等于它才删（否则 `stale`，一个字节不动）；`expect: {"empty_dir": true}` \n               ⇒ 只删一个空目录（不空 / 不在 ⇒ `stale`；不是目录 ⇒ `refused`）	保留	[不对外] 命令 / 能力登记表的 purpose 字段（原名 what，改名免撞普查字段出口）：只给判据读，生产段不上界面
+src/backend/control/files_write.rs:2420	改 unix 权限位（低 12 位）；**跟链接**，所以落点解到底再判一次；\n没有 unix 权限位的平台上回 `no_unix_mode`	保留	[不对外] 命令 / 能力登记表的 purpose 字段（原名 what，改名免撞普查字段出口）：只给判据读，生产段不上界面
+src/backend/control/files_write.rs:2429	同根内复制一份普通文件；**三条路径各过一遍路径解析**；缺省不覆盖（`O_EXCL`），\n               显式 `overwrite` 才经暂存旁名原子顶掉；权限位从源抄；显式 `recursive: true` \n               才复制目录 —— 逐条目过路径解析，跨挂载点 / 超上限整趟拒，中途失败回滚自己建的（`copy_tree`）；\n树里的链接复制**链接本身**（目标文本原样，`links` 计数）	保留	[不对外] 命令 / 能力登记表的 purpose 字段（原名 what，改名免撞普查字段出口）：只给判据读，生产段不上界面
+src/backend/control/files_write.rs:2439	覆盖写一份**已经在**的普通文件；**跟链接**，所以落点解到底再判一次；\n`expect: {sha256}` **必给**：盘上那份的摘要对得上才写（否则 `stale`，一个字节不动），应答交新摘要	保留	[不对外] 命令 / 能力登记表的 purpose 字段（原名 what，改名免撞普查字段出口）：只给判据读，生产段不上界面
+src/backend/control/files_write.rs:1996	读改写的**读那一半**：与写同一道路径解析；不在 ⇒ `exists: false`（与「读不出来」分得开）	保留	[不对外] 命令 / 能力登记表的 purpose 字段（原名 what，改名免撞普查字段出口）：只给判据读，生产段不上界面
+src/backend/control/files_write.rs:2003	整份替换一份文本文件：**CAS（`expect` 必给）→ 相同不写 → 备份 → 暂存旁名换名上位 → \n               回读比对 → 不符回滚** —— 用户文件的写规则只有这一份	保留	[不对外] 命令 / 能力登记表的 purpose 字段（原名 what，改名免撞普查字段出口）：只给判据读，生产段不上界面
+src/backend/control/files_write.rs:2011	删一份历史会话 —— **只收 sid**，落点由后端按 sid 在记录树里找（历史浏览器的删会话，不是文件管理器）	保留	[不对外] 命令 / 能力登记表的 purpose 字段（原名 what，改名免撞普查字段出口）：只给判据读，生产段不上界面
+src/backend/files/mod.rs:213	列一个目录的直接子项（名字走原始字节）	保留	[不对外] 命令 / 能力登记表的 purpose 字段（原名 what，改名免撞普查字段出口）：只给判据读，生产段不上界面
+src/backend/files/mod.rs:229	一个路径的元数据	保留	[不对外] 命令 / 能力登记表的 purpose 字段（原名 what，改名免撞普查字段出口）：只给判据读，生产段不上界面
+src/backend/files/mod.rs:240	🔴 **在常驻索引里查** —— SFTP 给不了的那一条，整族的存在理由	保留	[不对外] 命令 / 能力登记表的 purpose 字段（原名 what，改名免撞普查字段出口）：只给判据读，生产段不上界面
+src/backend/files/mod.rs:257	索引的新鲜度 ／ 条目数 ／ 常驻字节，**以及后端声明的重走周期**（边界③）	保留	[不对外] 命令 / 能力登记表的 purpose 字段（原名 what，改名免撞普查字段出口）：只给判据读，生产段不上界面
+src/backend/files/mod.rs:289	🔴 **走一遍，就一遍，做完返回** —— `index::rebuild_once` 的线上面（只有机制，没有节拍）	保留	[不对外] 命令 / 能力登记表的 purpose 字段（原名 what，改名免撞普查字段出口）：只给判据读，生产段不上界面
+src/backend/files/mod.rs:309	告诉后端「用户现在在看哪几个目录」—— `browse_watch::set_browsing` 的线上面（保鲜的另一半）	保留	[不对外] 命令 / 能力登记表的 purpose 字段（原名 what，改名免撞普查字段出口）：只给判据读，生产段不上界面
+src/backend/files/mod.rs:335	读一份文本进编辑器 —— **超上限整趟拒、不截断**；含 NUL / 不是 UTF-8 也拒	保留	[不对外] 命令 / 能力登记表的 purpose 字段（原名 what，改名免撞普查字段出口）：只给判据读，生产段不上界面
+src/backend/files/mod.rs:347	算一个目录（或文件）有多大 —— 不跟链接、不进别的文件系统，只回几个数	保留	[不对外] 命令 / 能力登记表的 purpose 字段（原名 what，改名免撞普查字段出口）：只给判据读，生产段不上界面
+src/backend/files/mod.rs:366	后端这个进程的用户 home（绝对路径）—— 窗口开窗时「开在哪儿」那一问	保留	[不对外] 命令 / 能力登记表的 purpose 字段（原名 what，改名免撞普查字段出口）：只给判据读，生产段不上界面
+src/backend/control/files_write.rs:621	它有 {links} 个硬链接	保留	[不对外] in_place_reason 拼的原因只进 tracing::warn 那一行日志（覆盖写退回就地写时），不上界面
+src/backend/control/files_write.rs:625	它的属主（uid {owner}）不是后端这个用户（uid {me}）	保留	[不对外] in_place_reason 拼的原因只进 tracing::warn 那一行日志（覆盖写退回就地写时），不上界面
+src/backend/control/files_write.rs:628	、	保留	[不对外] in_place_reason 拼的原因只进 tracing::warn 那一行日志（覆盖写退回就地写时），不上界面
+src/backend/files/mod.rs:368	从一份普通文件的 `offset` 起读至多 `len` 字节（原始字节，b16 送回）—— 下载非 UTF-8 名那条路的一块	保留	[不对外] 命令 / 能力登记表的 purpose 字段（原名 what，改名免撞普查字段出口）：只给判据读，生产段不上界面

@@ -1,7 +1,7 @@
 // @vitest-environment node
 /**
- * 〔GAP1 · `设计/01 §1.5`「一个 store，一个 router」〕overlay 视图（历史 / 网格 / 收件箱 / 驾驶舱）的路由。
- * 守的要求（`设计/01 §1.5` 原文）：「overlay 视图的路由（历史 / 全景 / 网格 / 收件箱）还在 `main.ts`」⇒ 收进 router。
+ * 〔「一个 store，一个 router」〕overlay 视图（历史 / 网格 / 收件箱 / 驾驶舱）的路由。
+ * 守的要求：「overlay 视图的路由（历史 / 全景 / 网格 / 收件箱）还在 `main.ts`」⇒ 收进 router。
  *
  * ① 两个动作的语义（期望手写）：toggle 开着关 / 关着开 · open 只开不关；
  * ② `main.ts` 生产段零处自己判 `isVisible(`（带正控），登记的名字 == 那三个（两向）。

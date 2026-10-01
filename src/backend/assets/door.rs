@@ -1,4 +1,4 @@
-//! 〔MIG-3a · `设计/99 §2.1 ⑬` · `01 §3.6`〕资产域够用户文件的那一扇门：**这台后端自己的文件管理面**。
+//! 资产域够用户文件的那一扇门：**这台后端自己的文件管理面**。
 //!
 //! 从前这一层住 monitor（`user_files.rs`：读 → 算 → 经那台后端 `files-peek` / `files-put` 交写）。
 //! D 组的计算进了后端之后，算的与写的是同一台后端 ⇒ 门就是本进程里那几条 `files-*` 帧命令本身
@@ -242,7 +242,7 @@ pub(crate) fn edit(
     for _ in 0..EDIT_ATTEMPTS {
         let got = match peek(d, root, rel) {
             Ok(p) => p,
-            // 〔MIG-3a〕`files-peek` 先解父目录：父目录还不在时它报错 —— 而那一形就是「这份文件不在」。
+            // `files-peek` 先解父目录：父目录还不在时它报错 —— 而那一形就是「这份文件不在」。
             //   要逐级补目录（`parents`）的那一种写，这时按「不存在」算（`$PROFILE` 所在目录常常要装的时候才建）；
             //   父目录在、却读不了 ⇒ 原话交出去。
             Err(_) if parents && parent_absent(d, root, rel)? => Peeked {
@@ -292,5 +292,5 @@ pub(crate) fn rel_under(home: &str, abs: &str) -> Result<String, String> {
         .ok_or_else(|| copy_text("beAssets.door.outsideHome", &[("abs", abs), ("home", home)]))
 }
 
-/// [`rel_under`] 的反方向。〔OSA〕住址下沉到 `platform::paths`（别名方言列 rc 候选也要它，适配层不往上依赖）。
+/// [`rel_under`] 的反方向。住址下沉到 `platform::paths`（别名方言列 rc 候选也要它，适配层不往上依赖）。
 pub(crate) use crate::platform::paths::join_under;

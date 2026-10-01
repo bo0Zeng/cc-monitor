@@ -1,15 +1,15 @@
-//! `24e` 第三刀：**把复制接到原生窗口上**（`设计/60 §5` 第二段 ＋ `§5` 第三段第 7 步）。
+//! `24e` 第三刀：**把复制接到原生窗口上**（第二段 ＋ `§5` 第三段第 7 步）。
 //!
-//! # 🔴〔F7a · 第三波 2026-09-24〕复制换走通道：**在那台机器上复制，字节不过网**
+//! # 🔴复制换走通道：**在那台机器上复制，字节不过网**
 //!
 //! 第三刀那一版走的是 SFTP 池子那条零流量复制命令（`copy-data` 扩展，协商不到就退回经本机转发、
 //! 字节经过用户这台机器一去一回）。窗口成了只经通道说话的独立前端之后，那一条是
-//! 「后端缺命令」那一类欠账（`设计/60 §12.3`）。现在后端有了 `files-copy`
-//! （写面第七条：三条路径各过路径解析〔FN1：会话数据围栏 V119 拿掉了〕、缺省 `O_EXCL` 不覆盖、显式 `overwrite` 才经暂存旁名原子顶掉）
+//! 「后端缺命令」那一类欠账。现在后端有了 `files-copy`
+//! （写面第七条：三条路径各过路径解析〔会话数据围栏 V119 拿掉了〕、缺省 `O_EXCL` 不覆盖、显式 `overwrite` 才经暂存旁名原子顶掉）
 //! ⇒ 本层只剩三件：**问一次 · 起一趟 · 把结局摆出来**，一行复制逻辑都没有。
 //!
 //! 🔴 **「退路必须在界面上出声」那一格因此不在了 —— 不是被删了，是那一形不存在了。**
-//! 第三刀那条硬要求（`设计/60 §5` 第二段逐字「不许静默退化成 2× 流量」）防的是
+//! 第三刀那条硬要求（第二段逐字「不许静默退化成 2× 流量」）防的是
 //! 「协商不到零流量、悄悄改走经本机转发」。后端在那台机器上本地复制，**没有第二条路**可退：
 //! 字节从来不过网 ⇒ 没有「慢路」可喊。那一行警告色字随它的起因一起走了。
 //!
@@ -35,8 +35,8 @@
 //!   ⇒ 窗口上**不画**取消那颗按钮（画了就是一颗按了没用的按钮）。大文件复制因此停不下来 —— 如实登记。
 //! - **进度没有了。** 后端一趟做完才回话 ⇒ 窗口上只有「正在复制 …」一行，没有进度条。
 //! - **真机上鼠标点那颗「复制」会不会触发买不到**（本机没有图形会话）。判据喂的是合成事件。
-//! - 〔W5-FILES〕**目录复制**（后端 `recursive: true`）与**一摞复制到另一栏**（[`run_copy_batch`]）做了；
-//!   「复制为」那个框仍只改名字、仍单选（`设计/60 §6.3`：它要一个名字），名字里不许带 `/`。
+//! - **目录复制**（后端 `recursive: true`）与**一摞复制到另一栏**（[`run_copy_batch`]）做了；
+//!   「复制为」那个框仍只改名字、仍单选（它要一个名字），名字里不许带 `/`。
 
 use copy_core::copy_text;
 use std::future::Future;
@@ -53,8 +53,8 @@ pub static COPY_LABEL: std::sync::LazyLock<String> =
 /// 这一行能不能复制。**唯一住址** —— 列表画不画那颗按钮（[`super::rows`]）
 /// 与状态机接不接那一跳（[`super::shell::FileWindow::begin_copy`]），问的都是这一个函数。
 ///
-/// 〔W5-FILES〕**目录能复制了**：后端 `files-copy` 带 `recursive: true` 复制整棵（逐条目过路径解析，
-/// `设计/60 §7 #6`；设计住 `调研/第四波记录/W5-FILES.md` §2.2）。今天不能的只剩一档：
+/// **目录能复制了**：后端 `files-copy` 带 `recursive: true` 复制整棵（逐条目过路径解析）。
+/// 今天不能的只剩一档：
 ///
 /// - **有损名** —— 非 UTF-8 文件名经库有损解码之后**寻址不到真字节**，
 ///   一切写操作灰置（同旧面板 `panel.ts::mkRowBtn` 的 `disabled = e.lossyName`）。
@@ -62,7 +62,7 @@ pub fn is_copyable(r: &Row) -> bool {
     !r.lossy_name
 }
 
-/// 〔W5-FILES · `设计/60 §6.2`「有损名的…复制」〕**窗口里一行**能不能复制：名字寻址得到，或者有损但带着原始字节
+/// 〔「有损名的…复制」〕**窗口里一行**能不能复制：名字寻址得到，或者有损但带着原始字节
 /// （后端 `files-ls` 送的，`Listed::raw_name`）—— 线上那一形走字节（[`super::source::RemotePath`]）。
 /// 行上那颗按钮、右键菜单、「复制到另一栏」问的都是它；[`is_copyable`] 留着给只有那五格的地方。
 pub fn copyable(l: &super::source::Listed) -> bool {
@@ -76,9 +76,9 @@ pub struct CopyJob {
     pub to: String,
     /// 显示名（＝ 目标那一侧的 basename）。
     pub name: String,
-    /// 〔W5-FILES〕源是目录 ⇒ 线上带 `recursive: true`（复制整棵）；目录不问覆盖（不合并）。
+    /// 源是目录 ⇒ 线上带 `recursive: true`（复制整棵）；目录不问覆盖（不合并）。
     pub is_dir: bool,
-    /// 〔W5-FILES · 有损名全寻址〕`from` / `to` 不是合法 UTF-8 时的**整条路径**原始字节（`None` ⇒ 那个串就是真字节）。
+    /// 〔有损名全寻址〕`from` / `to` 不是合法 UTF-8 时的**整条路径**原始字节（`None` ⇒ 那个串就是真字节）。
     pub from_raw: Option<Vec<u8>>,
     pub to_raw: Option<Vec<u8>>,
 }
@@ -115,17 +115,17 @@ impl CopyJob {
         })
     }
 
-    /// 〔W5-FILES〕源的整条路径（显示串 ＋ 可能有的字节）。
+    /// 源的整条路径（显示串 ＋ 可能有的字节）。
     pub fn from_path(&self) -> super::source::RemotePath {
         super::source::RemotePath::of(&self.from, self.from_raw.as_deref())
     }
 
-    /// 〔W5-FILES〕目标的整条路径。
+    /// 目标的整条路径。
     pub fn to_path(&self) -> super::source::RemotePath {
         super::source::RemotePath::of(&self.to, self.to_raw.as_deref())
     }
 
-    /// 〔W5-FILES〕同一件，标上「源是目录」。
+    /// 同一件，标上「源是目录」。
     pub fn dir(mut self, is_dir: bool) -> Self {
         self.is_dir = is_dir;
         self
@@ -145,7 +145,7 @@ impl CopyJob {
 
 /// 一趟复制跑完之后的读数。
 ///
-/// 〔F7a · 第三波 2026-09-24〕`Done` 那一支此前背着 SFTP 那一层的裁决（走没走上零流量、
+/// `Done` 那一支此前背着 SFTP 那一层的裁决（走没走上零流量、
 /// 退路过了多少字节）；复制换到后端之后那一问不存在了（见模块头注），背的换成**复制了几个字节**。
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum CopyOutcome {
@@ -160,13 +160,13 @@ pub enum CopyOutcome {
     },
     /// 起不来 / 半途失败，带原文。
     Failed(String),
-    /// 〔W5-FILES〕一摞（复制到另一栏）跑完的逐件读数。
+    /// 一摞（复制到另一栏）跑完的逐件读数。
     Batch(BatchReport),
-    /// 〔W5-FILES〕一摞里有**目录**撞了名 ⇒ 整摞一件都没做（目录不覆盖、不合并）。带点了名的那句话。
+    /// 一摞里有**目录**撞了名 ⇒ 整摞一件都没做（目录不覆盖、不合并）。带点了名的那句话。
     Refused(String),
 }
 
-/// 〔W5-FILES〕一件复制成了：几个文件 · 几个目录 · 几个字节。
+/// 一件复制成了：几个文件 · 几个目录 · 几个字节。
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Copied {
     pub name: String,
@@ -175,7 +175,7 @@ pub struct Copied {
     pub dirs: u64,
 }
 
-/// 〔W5-FILES〕一摞复制的逐件结局。**失败不中断后面的件**（同写操作那一摞「一次问完、逐件做」）。
+/// 一摞复制的逐件结局。**失败不中断后面的件**（同写操作那一摞「一次问完、逐件做」）。
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct BatchReport {
     pub done: Vec<Copied>,
@@ -226,7 +226,7 @@ where
     }
 }
 
-/// 〔W5-FILES〕**一摞复制**（复制到另一栏的多选 / 目录）。三段同 [`run_copy`]，只是「问」是**一次**问完整摞：
+/// **一摞复制**（复制到另一栏的多选 / 目录）。三段同 [`run_copy`]，只是「问」是**一次**问完整摞：
 ///
 /// ```text
 /// ① probe    每一件的目标在不在（逐件问）
@@ -301,7 +301,7 @@ pub struct Notice {
 /// 而这一条**是**能按相等断言判的 —— 而且 [`CopyBoard::ui`] 真的走它
 /// （判据一头喂这个函数、一头去 egui 这一帧画出来的文字里找同一句话）。
 ///
-/// 〔F7a〕成功那一句说出**复制了几个字节**、**在哪儿复制的**（那台机器上，字节不过网）——
+/// 成功那一句说出**复制了几个字节**、**在哪儿复制的**（那台机器上，字节不过网）——
 /// 此前那一句是「服务端自己搬的字节，零流量」，意思一样，只是那时还有一条会过网的退路要分开说。
 pub fn outcome_notice(o: &CopyOutcome) -> Notice {
     match o {
@@ -379,14 +379,14 @@ pub async fn probe_target(
     origin: &super::source::Origin,
     job: &CopyJob,
 ) -> bool {
-    // 〔W5-FILES〕目标有损 ⇒ 按字节问（`to_path().wire()`；合法 UTF-8 时就是 `overwrite_target()` 那个串）。
+    // 目标有损 ⇒ 按字节问（`to_path().wire()`；合法 UTF-8 时就是 `overwrite_target()` 那个串）。
     super::transfer::probe_remote_at(line, origin, job.to_path().wire()).await
 }
 
 /// 复制那条线上命令的名字（后端写面第七条）。
 pub const CMD_COPY: &str = "files-copy";
 
-/// 一趟复制的往返上限（调用方给的期限，`05 §3.3.2`）。
+/// 一趟复制的往返上限（调用方给的期限）。
 ///
 /// ⚠ 比写面其余几条（[`super::writeops::WRITE_BUDGET`]）宽：复制一份大文件在那台机器上
 /// 要搬满它的字节，而这一趟**取消不掉**（后端阻塞档）——期限就是它唯一的上界。
@@ -401,7 +401,7 @@ pub const COPY_BUDGET: std::time::Duration = std::time::Duration::from_secs(600)
 /// 这一道防的是「当前目录」与「那一行的路径」写法不一致（尾斜杠之类）时，
 /// 拼出一条落到别处的路径 —— 那是把文件放到了他没在看的目录里。
 pub fn copy_args(job: &CopyJob, overwrite: bool) -> Result<serde_json::Value, String> {
-    // 〔W5-FILES · 有损名全寻址〕按**字节**切（合法 UTF-8 时与按串切逐字节同）。
+    // 〔有损名全寻址〕按**字节**切（合法 UTF-8 时与按串切逐字节同）。
     let (from, to) = (job.from_path(), job.to_path());
     let root = from.parent();
     if to.parent() != root {
@@ -420,7 +420,7 @@ pub fn copy_args(job: &CopyJob, overwrite: bool) -> Result<serde_json::Value, St
     Ok(v)
 }
 
-/// 〔W5-FILES〕源是目录 ⇒ 参数里加 `recursive: true`（后端复制整棵；与 `overwrite: true` 同给会被拒 ——
+/// 源是目录 ⇒ 参数里加 `recursive: true`（后端复制整棵；与 `overwrite: true` 同给会被拒 ——
 /// 目录那一件从来不问覆盖，所以这里的 `overwrite` 恒是 `false`）。文件那一形一个键都不多。
 pub fn mark_recursive(v: &mut serde_json::Value, job: &CopyJob) {
     if job.is_dir {
@@ -428,7 +428,7 @@ pub fn mark_recursive(v: &mut serde_json::Value, job: &CopyJob) {
     }
 }
 
-/// 〔W5-FILES〕`files-copy` 的应答 → [`Copied`]。`bytes` 必须在；`files` / `dirs` 是这一波新加的键 ——
+/// `files-copy` 的应答 → [`Copied`]。`bytes` 必须在；`files` / `dirs` 是这一波新加的键 ——
 /// 文件那一件在旧后端上没有它们 ⇒ 按「一个文件」记（旧后端只会复制文件）；目录那一件必须有（旧后端根本不会复制目录）。
 pub fn copied_from_reply(job: &CopyJob, d: &serde_json::Value) -> Result<Copied, String> {
     let bytes = d
@@ -450,9 +450,9 @@ pub fn copied_from_reply(job: &CopyJob, d: &serde_json::Value) -> Result<Copied,
     })
 }
 
-/// 真起一趟复制 —— 〔F7a · 第三波 2026-09-24〕经通道问后端 `files-copy`。
+/// 真起一趟复制 —— 经通道问后端 `files-copy`。
 ///
-/// 回复制了几个字节。**路径解析在后端**（三条路径各过一次；〔FN1〕会话数据围栏 V119 拿掉了），本层不自己判一遍
+/// 回复制了几个字节。**路径解析在后端**（三条路径各过一次；会话数据围栏 V119 拿掉了），本层不自己判一遍
 /// （判定只有一个家）；踩线时那句拒绝原样变成 [`CopyOutcome::Failed`]。
 ///
 /// ⚠ 上一版这里调的是 SFTP 池子那条零流量复制命令（同进程直调一个 Tauri 命令，
@@ -489,9 +489,9 @@ pub struct CopyPrompt {
     pub dir: String,
     /// 正在编辑的新名字。
     pub new_name: String,
-    /// 〔W5-FILES〕源是目录（复制整棵）。
+    /// 源是目录（复制整棵）。
     pub is_dir: bool,
-    /// 〔W5-FILES · 有损名全寻址〕源 / 当前目录不是合法 UTF-8 时的原始字节（窗口按行与当前目录填）。
+    /// 〔有损名全寻址〕源 / 当前目录不是合法 UTF-8 时的原始字节（窗口按行与当前目录填）。
     pub from_raw: Option<Vec<u8>>,
     pub dir_raw: Option<Vec<u8>>,
 }
@@ -518,7 +518,7 @@ impl CopyPrompt {
     /// 框里那个名字变成一趟真复制。名字不合法 ⇒ `None`（调用方据此**出声**）。
     pub fn to_job(&self) -> Option<CopyJob> {
         let mut job = CopyJob::beside(&self.from, &self.dir, &self.new_name)?.dir(self.is_dir);
-        // 〔W5-FILES〕有损那一侧：源的字节原样带上；目标 ＝ 当前目录的字节 ＋ `/` ＋ 新名字（新名字恒是框里敲的 UTF-8）。
+        // 有损那一侧：源的字节原样带上；目标 ＝ 当前目录的字节 ＋ `/` ＋ 新名字（新名字恒是框里敲的 UTF-8）。
         job.from_raw = self.from_raw.clone();
         if let Some(d) = &self.dir_raw {
             let mut t = d.clone();
@@ -536,24 +536,24 @@ impl CopyPrompt {
 ///
 /// 形状照 [`super::transfer::DropBoard`] 办，含那只「敲窗口的手」——
 /// egui 只在有事发生时才画下一帧，不敲一下进度条要等用户动鼠标才跳一格
-/// （`真相源/99 §9.6`：「卡住了」与「真的没在跑」在屏幕上分不开）。
+/// （「卡住了」与「真的没在跑」在屏幕上分不开）。
 #[derive(Clone, Default)]
 pub struct CopyBoard {
     inner: Arc<Mutex<Board>>,
     /// 已经跑完的趟数 —— 给判据与「跑完要重列目录」一个可观测的数。
     rounds: Arc<AtomicU64>,
     ctx: Arc<Mutex<Option<egui::Context>>>,
-    // 〔F7a · 第三波 2026-09-24〕这里原来还有一张取消台（第五刀）：复制换到后端之后那一趟
+    // 这里原来还有一张取消台（第五刀）：复制换到后端之后那一趟
     //   **取消不掉**（阻塞档），留着它就是一颗按了没用的按钮 ⇒ 随 SFTP 那条路一起摘了。
 }
 
 #[derive(Default)]
 struct Board {
-    /// 正摆在人面前等答复的那几件（空 = 没在问）。〔W5-FILES〕一摞复制一次问完，逐件列出。
+    /// 正摆在人面前等答复的那几件（空 = 没在问）。一摞复制一次问完，逐件列出。
     asking: Vec<CopyJob>,
     /// 答复往哪儿送。
     answer: Option<tokio::sync::oneshot::Sender<bool>>,
-    /// 在跑的那一件（名字）。〔F7a〕后端一趟做完才回话 ⇒ 没有进度，只有「在跑」。
+    /// 在跑的那一件（名字）。后端一趟做完才回话 ⇒ 没有进度，只有「在跑」。
     running: Option<String>,
     /// 上一趟的裁决（**画在窗口上**，不是 `println!`）。
     last: Option<CopyOutcome>,
@@ -565,7 +565,7 @@ impl CopyBoard {
         self.ask_many(vec![job])
     }
 
-    /// 〔W5-FILES〕一次摆出「这几件要覆盖吗」。
+    /// 一次摆出「这几件要覆盖吗」。
     pub fn ask_many(&self, jobs: Vec<CopyJob>) -> tokio::sync::oneshot::Receiver<bool> {
         let (tx, rx) = tokio::sync::oneshot::channel();
         {

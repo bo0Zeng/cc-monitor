@@ -67,7 +67,7 @@ function readPresets(raw: unknown): string[] {
 
 const KEY_NOTIFY_TURN_END = "notifyTurnEnd";
 
-// 〔LR2 2026-09-25〕这里原来有落盘键 `forceLaunchPayloadRenderer`（`设计/99 §2.5 P12` 由 `forceLegacyLaunchRenderer` 改名而来）：
+// 这里原来有落盘键 `forceLaunchPayloadRenderer`（由 `forceLegacyLaunchRenderer` 改名而来）：
 //   「强制远端启动走载荷渲染器、绕开 `ccm …` 调用行」的手动逃生口，无界面入口、只能手改 config.json，
 //   而设置面板为了不把它冲掉专门缓存一份原样带回（`D-bolted-on §D4`：通用代码为某功能开的特判）。
 //   两条渲染路今天都在 Rust、同一排闸，降级本来就是自动的 ⇒ 删（设计 `30`–`99` 零提及；盘上 config.json 现打不存在该键）。
@@ -83,7 +83,7 @@ export interface BehaviorConfig {
    */
   bringMonitorToFrontOnUserActive: boolean;
   /**
-   * Batch7-F24：显示 bg 后台任务会话（⚙ 标识；〔BG1 · V125〕平铺为普通 tab，不再挂宿主排成树）。默认 true。
+   * Batch7-F24：显示 bg 后台任务会话（⚙ 标识；平铺为普通 tab，不再挂宿主排成树）。默认 true。
    * **重启生效**（后端启动时读一次：本地扫描过滤 + 远端 backend --with-bg）。
    */
   showBgSessions: boolean;
@@ -131,7 +131,7 @@ export async function getBehavior(): Promise<BehaviorConfig> {
   }
 }
 
-/** 从一份已读回的配置里派生行为那一格；缺失 / 类型不对走默认值（设置窗「读一次配置派生三格」共用这一处，`70 §10` #5）。 */
+/** 从一份已读回的配置里派生行为那一格；缺失 / 类型不对走默认值（设置窗「读一次配置派生三格」共用这一处）。 */
 export function behaviorIn(cfg: Record<string, unknown>): BehaviorConfig {
   return {
     autoFollowUserActive:
@@ -163,7 +163,7 @@ export function behaviorIn(cfg: Record<string, unknown>): BehaviorConfig {
   };
 }
 
-/** 保存行为字段。只交这 9 个顶层键（〔CFG1〕按键补丁），不动 theme / diagnostics 等。 */
+/** 保存行为字段。只交这 9 个顶层键（按键补丁），不动 theme / diagnostics 等。 */
 export async function setBehavior(next: BehaviorConfig): Promise<void> {
   await patchConfig([
     setAt([KEY_AUTO_FOLLOW], next.autoFollowUserActive),

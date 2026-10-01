@@ -3,7 +3,7 @@
 // tabs.vitest 只测了 resumeTab 的委派分流,这里补 runner 本体。
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-// 〔C4e · 第四波 4C〕就地 resume 那一次键入从 Tauri 命令 `backend_send_into`〔散文墓碑〕改成界面经通道直接说后端的
+// 就地 resume 那一次键入从 Tauri 命令 `backend_send_into`〔散文墓碑〕改成界面经通道直接说后端的
 //   `launch{mode:"send-into"}`（`src/frontend/ui/tmux-control.ts::sendInto`）。本文件判的是起会话那几条路的**编排**与 F14 的三态处置 ⇒
 //   生产 `invoke` 换成一层翻译（`chan-fake.ts::tmuxControlShim`）：那一发 `chan_call` 照旧按旧名字 `backend_send_into`
 //   交给 `invokeMock`，旧回包（`{typed, mayFallBack, reason}`）译成通道那一跳的结局。
@@ -13,9 +13,9 @@ vi.mock("@tauri-apps/api/core", async () => {
   return { invoke: tmuxControlShim(launchRenderShim(invokeMock), "backend_send_into") };
 });
 vi.mock("../../../src/frontend/ui/error-toast", () => ({ showActionFailureToast: vi.fn() }));
-// 〔FIX3 · `设计/99 §2.2 ②`〕起了 agent 进程的那几条：窗口开了不当场说「起来了」，交 `launch-arrival.ts` 等那台报出它。
+// 起了 agent 进程的那几条：窗口开了不当场说「起来了」，交 `launch-arrival.ts` 等那台报出它。
 vi.mock("../../../src/frontend/ui/launch-arrival", () => ({ expectArrival: vi.fn(), arrivedBody: (o: string) => `报出了@${o}` }));
-// 〔LR2〕原来这里 mock 了 `../src/behavior`（只为那个已删的逃生口 `forceLaunchPayloadRenderer`）；`remote-launch-run.ts` 不再读行为配置。
+// 原来这里 mock 了 `../src/behavior`（只为那个已删的逃生口 `forceLaunchPayloadRenderer`）；`remote-launch-run.ts` 不再读行为配置。
 
 import { showActionFailureToast } from "../../../src/frontend/ui/error-toast";
 import { expectArrival } from "../../../src/frontend/ui/launch-arrival";
@@ -27,9 +27,9 @@ import {
   runRemoteResumeIntoExistingTmux,
   runRemoteLauncher,
   runRemoteAttach, POSIX_NO_WINDOW_MARKER,
-  // 〔RL1〕拉起之前问中转地址的那一口（attach 那一道闸直接量它）。
+  // 拉起之前问中转地址的那一口（attach 那一道闸直接量它）。
   withRelayEndpoint,
-  // 🔴 `设计/80 §8.7` 步 3：全仓唯一的启动期令牌铸币口。
+  // 🔴：全仓唯一的启动期令牌铸币口。
   mintRbindToken } from "../../../src/frontend/ui/remote-launch-run";
 import { planAttach } from "../../../src/frontend/ui/launch-requests";
 import { renderLaunchPayloadStub, STUB_REFUSE_TAG } from "../../test-support/launch-render-ipc-stub.ts";
@@ -57,7 +57,7 @@ function stubClipboard(writeText: (t: string) => Promise<void>): void {
 const LOCAL_ATTACH_FROM_BACKEND = "<backend-rendered-attach-line>";
 
 /**
- * 🔴 〔步 22b·B 2026-09-20〕**外层 tmux 那三格**由后端交出来的那一串的替身。
+ * 🔴 **外层 tmux 那三格**由后端交出来的那一串的替身。
  * 同上一条的理由：本文件判的是「前端有没有把后端交的那一串原样交出去」，
  * 不是「后端渲得对不对」（那是 `fixtures/tmux-outer-golden.json` 那条逐字节对拍的活）。
  * 刻意**不**长得像 `tmux new-session …` —— 长得像的话，前端偷偷自己拼一条也照样过。
@@ -73,13 +73,13 @@ const OUTER_FROM_BACKEND = "<backend-rendered-outer-line>";
  */
 function mockInvoke(launchTerminal: () => Promise<unknown>): void {
   invokeMock.mockImplementation((cmd: string, args?: unknown) => {
-    if (cmd === "relay_endpoint_for_launch") return Promise.resolve(null); // 〔RL1〕缺省不注入
+    if (cmd === "relay_endpoint_for_launch") return Promise.resolve(null); // 缺省不注入
     if (cmd === "probe_ccm_cli") {
       return Promise.resolve({ installed: false, version: null, capabilities: [] });
     }
     // U8a-2c-pre：兜底那支的 `container:"none"` 载荷由 **Rust** 渲染
     //（`backend::control::payload::render_payload`）；🔴 **步 22b·B 起外层 tmux 那三格
-    // 也走同一条命令**（`设计/90 §4 E` 收官）。本文件的题目是 toast/剪贴板分支，不是渲染 ——
+    // 也走同一条命令**（收官）。本文件的题目是 toast/剪贴板分支，不是渲染 ——
     // 但下面几条断言要看命令内容，所以桩要吐出形状对的串。
     // ⚠ 它**不是**第三份渲染实现：字节的正确性由 `payload-golden.json` 与
     //   `tmux-outer-golden.json` 两份入库夹具的跨语言逐字节对拍钉着。
@@ -108,7 +108,7 @@ describe("F41 runRemoteResume", () => {
     expect(invokeMock).toHaveBeenCalledWith("launch_remote_terminal", {
       origin: "aya",
       remoteCmd: expect.stringContaining("claude --resume sid-1"),
-      // 〔第二波 T4〕本地半的令牌握手：resume 起 agent 进程 ⇒ 带着这次铸的令牌。
+      // 本地半的令牌握手：resume 起 agent 进程 ⇒ 带着这次铸的令牌。
       rbindToken: expect.stringMatching(/^[0-9a-f]{32}$/),
     });
     expect(writeText).not.toHaveBeenCalled();
@@ -141,7 +141,7 @@ describe("F41 runRemoteResume", () => {
   // 变成 fail-open（后端拒的正是非法 configDir / 会裂的 arg 那一类）。
   it("★ 后端拒绝渲染载荷 → 报错，绝不静默回退到 TS 渲染器", async () => {
     invokeMock.mockImplementation((cmd: string) => {
-      if (cmd === "relay_endpoint_for_launch") return Promise.resolve(null); // 〔RL1〕缺省不注入
+      if (cmd === "relay_endpoint_for_launch") return Promise.resolve(null); // 缺省不注入
       if (cmd === "probe_ccm_cli")
         return Promise.resolve({ installed: false, version: null, capabilities: [] });
       if (cmd === "render_launch_payload") return Promise.reject("拒绝拼入命令：非法 CLAUDE_CONFIG_DIR");
@@ -163,7 +163,7 @@ describe("F41 runRemoteResume", () => {
   // 被那个 catch 变成 fail-open。分法 = Rust 侧 `payload::refuse()` 打的 `REFUSE:` 标。
   it("★ P1：载荷渲染被拒（带 REFUSE 标）→ refused，不回落到兜底渲染器", async () => {
     invokeMock.mockImplementation((cmd: string) => {
-      if (cmd === "relay_endpoint_for_launch") return Promise.resolve(null); // 〔RL1〕缺省不注入
+      if (cmd === "relay_endpoint_for_launch") return Promise.resolve(null); // 缺省不注入
       if (cmd === "probe_ccm_cli")
         return Promise.resolve({ installed: false, version: null, capabilities: [] });
       // Rust 侧 `refuse()` 的产物形态：`REFUSE: <人读原因>`
@@ -176,7 +176,7 @@ describe("F41 runRemoteResume", () => {
     expect(ok).toBe(false);
     // 用户必须看见（这次就地 resume 没做成），且 toast 带得上原因
     expect(toastMock.mock.calls[0][0]).toBe("就地 resume 未执行");
-    // 〔MIG-2〕载荷改问那台后端（`launch-render-payload`）：拒 = 对端回码 `refused`、原话原样（`REFUSE:` 标是旧 IPC 那一跳的分法，摘了）。
+    // 载荷改问那台后端（`launch-render-payload`）：拒 = 对端回码 `refused`、原话原样（`REFUSE:` 标是旧 IPC 那一跳的分法，摘了）。
     expect(String(toastMock.mock.calls[0][1])).toContain("拒绝拼入命令");
     // ★ 最要紧的一格：**没有**发起拉起 —— 也就是没有回落到兜底渲染器那条整串
     expect(invokeMock.mock.calls.map((c) => c[0])).not.toContain("launch_remote_terminal");
@@ -187,7 +187,7 @@ describe("F41 runRemoteResume", () => {
   //（`C1` 逐字排除「给本地单写一套控制逻辑」）。
   it("P3 刀3 本机：backend 回报可回落 → 仍然诚实失败，绝不另找一条路重做", async () => {
     invokeMock.mockImplementation((cmd: string) => {
-      if (cmd === "relay_endpoint_for_launch") return Promise.resolve(null); // 〔RL1〕缺省不注入
+      if (cmd === "relay_endpoint_for_launch") return Promise.resolve(null); // 缺省不注入
       if (cmd === "render_launch_payload") return Promise.resolve("payload");
       // `mayFallBack: true` = 证明没发出去。远端据此回落；**本机不许**。
       if (cmd === "backend_send_into")
@@ -198,7 +198,7 @@ describe("F41 runRemoteResume", () => {
     const ok = await runLocalResumeIntoExistingTmux("sid-l1", "l1-cc", "");
     expect(ok).toBe(false);
     expect(toastMock.mock.calls[0][0]).toBe("就地 resume 未执行");
-    // 〔C4e〕那句话今天出自文案表（`tmuxControl.channel.localDown`），不再是 monitor 那句「本机后端通道不在」。
+    // 那句话今天出自文案表（`tmuxControl.channel.localDown`），不再是 monitor 那句「本机后端通道不在」。
     expect(String(toastMock.mock.calls[0][1])).toContain("本机后端没有运行");
     // ★ 最要紧的一格：**一次拉起都没发起**。发起了就说明它去走了第二条路，
     //   而那条路会把可能已经键入过的载荷再提交给正在跑的 claude 一次（F14）。
@@ -210,7 +210,7 @@ describe("F41 runRemoteResume", () => {
   //   两侧分档由后端那句 `POSIX_NO_TERMINAL_WINDOW` 决定，前端不自己再写一份。
   it("P3 刀3 本机 typed + Linux（后端不开窗口）→ 仍算成功，命令交给用户在自己 bash 里跑", async () => {
     invokeMock.mockImplementation((cmd: string) => {
-      if (cmd === "relay_endpoint_for_launch") return Promise.resolve(null); // 〔RL1〕缺省不注入
+      if (cmd === "relay_endpoint_for_launch") return Promise.resolve(null); // 缺省不注入
       if (cmd === "render_launch_payload") return Promise.resolve("payload");
       if (cmd === "backend_send_into") return Promise.resolve({ typed: true, reason: null, mayFallBack: false });
       // 🔴 `K-R109`：attach 那一句**归本机后端产**（`R61` 裁定三）⇒ 这里是它的替身。
@@ -241,7 +241,7 @@ describe("F41 runRemoteResume", () => {
 
   it("P3 刀3 本机 typed + Windows（wt + PowerShell 起来了）→ 不复制、不弹既定设计文案", async () => {
     invokeMock.mockImplementation((cmd: string) => {
-      if (cmd === "relay_endpoint_for_launch") return Promise.resolve(null); // 〔RL1〕缺省不注入
+      if (cmd === "relay_endpoint_for_launch") return Promise.resolve(null); // 缺省不注入
       if (cmd === "render_launch_payload") return Promise.resolve("payload");
       if (cmd === "backend_send_into") return Promise.resolve({ typed: true, reason: null, mayFallBack: false });
       if (cmd === "render_local_attach") return Promise.resolve(LOCAL_ATTACH_FROM_BACKEND);
@@ -261,19 +261,19 @@ describe("F41 runRemoteResume", () => {
   });
 
   // ★★ 08-12：「在该目录起新会话」的默认名必须过铸名口（同一个 cwd 点两次会派生同名 ⇒ 撞 create-or-attach 的幂等闸
-  //   ⇒ 静默接进第一个会话，issue #76 那一族）。〔FIX4 · `设计/90 §3` J7〕铸名口今天是那台后端的 `tmux-name-mint`
+  //   ⇒ 静默接进第一个会话，issue #76 那一族）。铸名口今天是那台后端的 `tmux-name-mint`
   //   （派生 ＋ 避让逐格归 `tests/backend/control/ccm/plan_tests.rs`）⇒ 这里钉前端那一半：问的是那台、交的是 cwd、
   //   用的就是它铸回来的那个（替身写死它避让到了 `-2`）；问不到 ⇒ 不起、出声（不自己拼一个不避让的名字）。
   const newSessionRig = (mint: () => Promise<unknown>): { remoteCmds: string[]; mintArgs: unknown[] } => {
     const remoteCmds: string[] = [];
     const mintArgs: unknown[] = [];
     invokeMock.mockImplementation((cmd: string, args?: unknown) => {
-      if (cmd === "relay_endpoint_for_launch") return Promise.resolve(null); // 〔RL1〕缺省不注入
+      if (cmd === "relay_endpoint_for_launch") return Promise.resolve(null); // 缺省不注入
       if (cmd === "tmux_name_mint") {
         mintArgs.push(args);
         return mint();
       }
-      // 🔴 〔步 22b·B〕铸出来的名字今天落在**后端渲的外层 tmux 命令**里
+      // 🔴 铸出来的名字今天落在**后端渲的外层 tmux 命令**里
       //（`create` 那一格 ⇒ `new-session -d -s <名>`），所以这条桩非配不可。
       if (cmd === "render_launch_payload")
         return Promise.resolve(renderLaunchPayloadStub((args as { req: PayloadRenderRequest }).req));
@@ -297,8 +297,8 @@ describe("F41 runRemoteResume", () => {
     expect(sent).not.toMatch(/[^-]proj-cc[^-0-9]/);
   });
 
-  // 〔FE1〕先前钉过的**缺陷**：「列不出会话 ⇒ 诚实降级用基名」—— 空集铸名 = 不避让 = #76 的形状。
-  //   住址 `设计/01 §5` D4「一条都不许静默忽略」。⇒ 问不到 ⇒ 不起、出声。
+  // 先前钉过的**缺陷**：「列不出会话 ⇒ 诚实降级用基名」—— 空集铸名 = 不避让 = #76 的形状。
+  //   要求：「一条都不许静默忽略」。⇒ 问不到 ⇒ 不起、出声。
   it("★ 〔FE1〕铸不出名字（那台后端拒 / 不可达）→ 不起、出声，不自己拼一个", async () => {
     const { remoteCmds } = newSessionRig(() => Promise.reject("ssh 抖动"));
     await runNewSessionRemote("aya", "/home/u/proj", "");
@@ -316,15 +316,15 @@ describe("F41 runRemoteResume", () => {
     expect(remoteCmds.join("\n")).toContain("proj-cc");
   });
 
-  // 〔C4e · 第四波 4C〕对照那一格换了造法：原来让 `backend_send_into`〔散文墓碑〕的 IPC 抛一个不带标的错（那时它等于
+  // 对照那一格换了造法：原来让 `backend_send_into`〔散文墓碑〕的 IPC 抛一个不带标的错（那时它等于
   //   「monitor 那条命令根本没跑」）。键入改走通道之后，**能证明没发出去**的那一档是「那台没有控制通道」
   //   （`hop/NotSent`）；IPC 自己坏了那一种今天拿不准、不回落（`send-into-backend.vitest.ts` ② 那一条）。
   it("★ P1 对照：通道问题（能证明没发出去）→ 仍然回落，行为逐字不变", async () => {
     invokeMock.mockImplementation((cmd: string) => {
-      if (cmd === "relay_endpoint_for_launch") return Promise.resolve(null); // 〔RL1〕缺省不注入
+      if (cmd === "relay_endpoint_for_launch") return Promise.resolve(null); // 缺省不注入
       if (cmd === "probe_ccm_cli")
         return Promise.resolve({ installed: false, version: null, capabilities: [] });
-      // 〔MIG-2〕载荷问那台后端：给一串（缺席 = 对端回了读不懂的东西，那是另一种失败，不是本条要量的「通道问题」）。
+      // 载荷问那台后端：给一串（缺席 = 对端回了读不懂的东西，那是另一种失败，不是本条要量的「通道问题」）。
       if (cmd === "render_launch_payload") return Promise.resolve("payload");
       // 通道问题，与载荷本身无关 ⇒ 重做是安全的、且兜底那条路能成
       if (cmd === "backend_send_into") return Promise.resolve({ typed: false, mayFallBack: true, reason: "无通道" });
@@ -387,7 +387,7 @@ describe("F41 runRemoteResume", () => {
     expect(toastMock.mock.calls[0][0]).toBe("拉起失败，已复制 resume 命令");
   });
 
-  // 〔DUP1 · `设计/90 §3` 判据 2〕这条原来断「非法 sid ⇒ 前端构造那一步就拒、一次 invoke 都不发」（TS 那份
+  // 这条原来断「非法 sid ⇒ 前端构造那一步就拒、一次 invoke 都不发」（TS 那份
   // `isValidSessionId`〔散文墓碑〕判的）。今天前端不判 sid：请求照发给渲染侧、sid 在 `resumeSid` 单报一次，
   // 渲染侧（`launch_wire.rs`）过 `shell_quote_core::session_id_ok` 拒并打 `REFUSE:` 标 ⇒ 构造报错 toast、终端不起。
   // 桩不模拟校验闸（见 `launch-render-ipc-stub.ts` 顶注）⇒ 这里直接 mock 一次带标的拒。
@@ -436,7 +436,7 @@ describe("F52/F03/F53/F51 其余 4 个 executor：toast 文案 smoke test", () =
   });
 
   it("runRemoteResumeIntoExistingTmux 成功 → 等「已在原来的 tmux 里就地 resume」（按 sid，抓 cc-sid1 那一屏）+ 返回 true", async () => {
-    // 〔C4e〕键入那一跳答「没有控制通道」（能证明没发出去）⇒ 回落到整串、终端拉起成功。原来这一格靠 `backend_send_into`
+    // 键入那一跳答「没有控制通道」（能证明没发出去）⇒ 回落到整串、终端拉起成功。原来这一格靠 `backend_send_into`
     //   〔散文墓碑〕回 `undefined` 时读 `.typed` 抛出来的那个 TypeError 碰巧走到回落 —— 那是一次意外，不是它要测的东西。
     mockInvoke(() => Promise.resolve(undefined));
     const base = invokeMock.getMockImplementation()!;
@@ -452,7 +452,7 @@ describe("F52/F03/F53/F51 其余 4 个 executor：toast 文案 smoke test", () =
   });
   it("runRemoteResumeIntoExistingTmux 失败 → toast「拉起失败，已复制就地 resume 命令」+ 返回 false", async () => {
     mockInvoke(() => Promise.reject("boom"));
-    // 〔C4e〕同上一条：键入那一跳答「没有控制通道」⇒ 回落到整串，终端那一下才失败（本条要测的是那一下）。
+    // 同上一条：键入那一跳答「没有控制通道」⇒ 回落到整串，终端那一下才失败（本条要测的是那一下）。
     const base = invokeMock.getMockImplementation()!;
     invokeMock.mockImplementation((cmd: string, args?: unknown) =>
       cmd === "backend_send_into" ? Promise.resolve({ typed: false, mayFallBack: true, reason: "无通道" }) : base(cmd, args),
@@ -508,7 +508,7 @@ describe("K-R109 本机 attach 那一句问后端要", () => {
 
   it("KR109D2 ★ 就地 resume 之后，attach 那一句是**问后端要**的，参数是那个会话名", async () => {
     invokeMock.mockImplementation((cmd: string) => {
-      if (cmd === "relay_endpoint_for_launch") return Promise.resolve(null); // 〔RL1〕缺省不注入
+      if (cmd === "relay_endpoint_for_launch") return Promise.resolve(null); // 缺省不注入
       if (cmd === "render_launch_payload") return Promise.resolve("payload");
       if (cmd === "backend_send_into")
         return Promise.resolve({ typed: true, reason: null, mayFallBack: false });
@@ -530,7 +530,7 @@ describe("K-R109 本机 attach 那一句问后端要", () => {
 
   it("KR109D2 ★ 后端渲不出来 ⇒ **诚实失败**，不许回落到前端自己拼一条 tmux attach", async () => {
     invokeMock.mockImplementation((cmd: string) => {
-      if (cmd === "relay_endpoint_for_launch") return Promise.resolve(null); // 〔RL1〕缺省不注入
+      if (cmd === "relay_endpoint_for_launch") return Promise.resolve(null); // 缺省不注入
       if (cmd === "render_launch_payload") return Promise.resolve("payload");
       if (cmd === "backend_send_into")
         return Promise.resolve({ typed: true, reason: null, mayFallBack: false });
@@ -574,9 +574,9 @@ describe("K-R109 本机 attach 那一句问后端要", () => {
 //
 // ⇒ `KR109D3` 判 **A**：座留着，**这一条路写成判据钉住**。
 //
-// # 🔴🔴 〔步 22b·B 2026-09-20〕**这一组重裁了一半：那条路还在，落点换人了。**
+// # 🔴🔴 **这一组重裁了一半：那条路还在，落点换人了。**
 //
-// `设计/90 §4 E` 收官 ⇒ `renderLaunchCommand` 最后那一格（`container:tmux` 的
+// 收官 ⇒ `renderLaunchCommand` 最后那一格（`container:tmux` 的
 // `create` / `send-into` ＋ `action:attach`）改问 `commands.render_launch_payload` 要，
 // 请求里带 `outer`，由 `backend::control::payload::render_tmux_outer` 渲。
 // ⇒ **上面那句「后端拒 ⇒ 落到座」今天只对前半句**：
@@ -586,8 +586,8 @@ describe("K-R109 本机 attach 那一句问后端要", () => {
 //
 // 🔴 **判 A 的结论没变（座留着），而理由换人了 ——** 座今天靠的不是「这条路走得到」，
 // 是「它是逐字节金标准（`tmux-outer-golden.json` / `payload-golden.json`）的**左边**」，
-// 也就是那份「另一种语言的独立说法」。〔LR2 2026-09-25〕那条理由也到期了：座连同兜底渲染器按
-// `设计/00 §2.5 ④` 删了，两份夹具的左边换成手写期望；当年量它的两张消费者表随之删。
+// 也就是那份「另一种语言的独立说法」。那条理由也到期了：座连同兜底渲染器按
+// 删了，两份夹具的左边换成手写期望；当年量它的两张消费者表随之删。
 // 本组钉的「那一态走到生产入口、落到后端渲的那一串」一个字没动。
 //
 // 〔墓碑〕第二环原名逐字：「★★ 第二环：那一态走到生产入口上 ⇒ 真的落到座产的那一串（tmux …）」
@@ -605,7 +605,7 @@ describe("KR109D3 探不到那一态今天真走得到 —— 判 A 的机检形
     vi.clearAllMocks();
   });
 
-  // 〔MIG-2〕「★ 第一环：探测**没探出来**（不是「没装」）⇒ wire 上是它自己那一态」删了（原名逐字，`K-R109-deathvalue.md` 按它记着，留档不动）：
+  // 「★ 第一环：探测**没探出来**（不是「没装」）⇒ wire 上是它自己那一态」删了（原名逐字，`K-R109-deathvalue.md` 按它记着，留档不动）：
   //   渲染住进那台后端之后，「那台装没装 ccm」是后端在自己机器上现查的事实（`launch_render/wire.rs::render_ccm_launch`：`ccm` 就是那台后端本身，能力是它自己的），
   //   请求体里不再有前端转述的探测三态（`CliRenderRequest.ccm` 摘了，`deny_unknown_fields` 拒多送）⇒ 「探不到」那一态
   //   不再过线。判 A 那条「后端拒不只一种来历」的前提随之由后端自己说（`launch_cli_parity_tests.rs`
@@ -614,7 +614,7 @@ describe("KR109D3 探不到那一态今天真走得到 —— 判 A 的机检形
     const rendered: string[] = [];
     const reqs: PayloadRenderRequest[] = [];
     invokeMock.mockImplementation((cmd: string, args?: unknown) => {
-      if (cmd === "relay_endpoint_for_launch") return Promise.resolve(null); // 〔RL1〕缺省不注入
+      if (cmd === "relay_endpoint_for_launch") return Promise.resolve(null); // 缺省不注入
       // 探测**出错** ⇒ `ccm-probe.ts` 回 `{state:"unknown"}`（它不进缓存，下次会重探）。
       if (cmd === "probe_ccm_cli") return Promise.reject("ssh 抖了一下");
       // 后端照 wire 上那两态办事：拿不到能力集 ⇒ 诚实降级（**不是错误**）。
@@ -652,7 +652,7 @@ describe("KR109D3 探不到那一态今天真走得到 —— 判 A 的机检形
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// `W22B`：**`设计/90 §4 E` 生产切换那道闸** —— 它必须有一条会红的判据
+// `W22B`：** 生产切换那道闸** —— 它必须有一条会红的判据
 // ─────────────────────────────────────────────────────────────────────────────
 //
 // # 它是哪道闸，以及为什么它此前**没有**判据
@@ -701,7 +701,7 @@ describe("W22B 外层 tmux 三格的生产切换 —— 那道闸的判据", () 
     const reqs: PayloadRenderRequest[] = [];
     const launched: string[] = [];
     invokeMock.mockImplementation((cmd: string, args?: unknown) => {
-      if (cmd === "relay_endpoint_for_launch") return Promise.resolve(null); // 〔RL1〕缺省不注入
+      if (cmd === "relay_endpoint_for_launch") return Promise.resolve(null); // 缺省不注入
       if (cmd === "probe_ccm_cli")
         return Promise.resolve({ installed: false, version: null, capabilities: [] });
       if (cmd === "render_ccm_launch")
@@ -795,11 +795,11 @@ describe("W22B 外层 tmux 三格的生产切换 —— 那道闸的判据", () 
   });
 });
 
-// ═══ `设计/80 §8` 步 1：**带启动期令牌的 plan 不许去试 `ccm …` 调用行那条路** ═══════
+// ═══：**带启动期令牌的 plan 不许去试 `ccm …` 调用行那条路** ═══════
 //
 // 🔴 这一组是本件在**生产路上**的唯一一道闸，而它必须存在的理由是一条不对称：
 //
-//   · 〔LR1〕TS 那份渲染器（它会因令牌维度说不出 CLI 而放弃）已删 —— 它本来就不在生产路上，
+//   · TS 那份渲染器（它会因令牌维度说不出 CLI 而放弃）已删 —— 它本来就不在生产路上，
 //     生产的 CLI 渲染在 Rust 的 `ccm_invocation`；
 //   · Rust 那侧的 `CliSpec` **没有** `rbind-token` 这个维度（本件没动它，见交回报告）
 //     ⇒ 把一个带令牌的请求送过去，它会**照常渲成功**，只是渲出来的 `ccm …` 里没有令牌。
@@ -809,7 +809,7 @@ describe("W22B 外层 tmux 三格的生产切换 —— 那道闸的判据", () 
 //
 // ⚠ 判据读的是**载荷里有没有那条 `EnvOp`**（不是「ctx 里有没有 rbindToken」）：
 //   判据必须读渲染器真吃的那个对象，否则「维度没把它推进 plan」这一类回归在这里是隐形的。
-describe("设计/80 §8 步 1：带启动期令牌 ⇒ 生产不走 ccm 调用行", () => {
+describe("：带启动期令牌 ⇒ 生产不走 ccm 调用行", () => {
   const TOK = "0f1e2d3c4b5a69788796a5b4c3d2e1f0";
 
   beforeEach(() => {
@@ -821,7 +821,7 @@ describe("设计/80 §8 步 1：带启动期令牌 ⇒ 生产不走 ccm 调用�
     const cmds: string[] = [];
     const launched: string[] = [];
     invokeMock.mockImplementation((cmd: string, args?: unknown) => {
-      if (cmd === "relay_endpoint_for_launch") return Promise.resolve(null); // 〔RL1〕缺省不注入
+      if (cmd === "relay_endpoint_for_launch") return Promise.resolve(null); // 缺省不注入
       cmds.push(cmd);
       if (cmd === "probe_ccm_cli")
         return Promise.resolve({
@@ -847,7 +847,7 @@ describe("设计/80 §8 步 1：带启动期令牌 ⇒ 生产不走 ccm 调用�
     return { cmds, launched };
   }
 
-  // 🔴 〔步 3 · 2026-09-23 改写〕**墓碑** —— 这一条原本是
+  // 🔴 〔2026-09-23 改写〕**墓碑** —— 这一条原本是
   //    `await runRemoteResume("aya","sid-t0","/w","claude")`（不传 `mods`），
   //    断言它真的走了 `render_ccm_launch`。**步 3 之后那句话不成立了**：
   //    `runRemoteResume` 现在自己铸一个令牌（`withMintedRbindToken`）⇒ 恒走载荷渲染。
@@ -873,7 +873,7 @@ describe("设计/80 §8 步 1：带启动期令牌 ⇒ 生产不走 ccm 调用�
     expect(launched).toHaveLength(1);
     expect(
       launched[0],
-      "往 attach 里注了一个没人会读的令牌 —— 那只是白白多一处敏感值的落点（设计/80 §8.6 ③）",
+      "往 attach 里注了一个没人会读的令牌 —— 那只是白白多一处敏感值的落点",
     ).not.toContain("CCM_RBIND_TOKEN");
   });
 
@@ -908,7 +908,7 @@ describe("设计/80 §8 步 1：带启动期令牌 ⇒ 生产不走 ccm 调用�
   });
 });
 
-// ═══════ 🔴 `设计/80 §8.7` 步 3：**铸币口** —— 生产真的在产令牌了 ═══════════════
+// ═══════ 🔴：**铸币口** —— 生产真的在产令牌了 ═══════════════
 //
 // 步 1 落地时**零生产铸币口**（那一刀的收尾话逐字如此）：载荷侧的槽位铺到底了，
 // 但没有任何生产代码给它赋值 ⇒ `RBIND_TOKEN_DIMENSION.applies` 恒假 ⇒ 载荷逐字节等于从前。
@@ -916,7 +916,7 @@ describe("设计/80 §8 步 1：带启动期令牌 ⇒ 生产不走 ccm 调用�
 //
 // ⚠ 本组**买不到**：「↗ 真的用这个令牌拉起了那个窗口」。那要图形会话 + Windows，
 //   而且还要 `§8.7` 的步 4（`↗` 改走 join）—— 那一步逐字被警告「不要先做」。
-describe("设计/80 §8.7 步 3：启动期令牌的铸币口", () => {
+describe("：启动期令牌的铸币口", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -925,13 +925,13 @@ describe("设计/80 §8.7 步 3：启动期令牌的铸币口", () => {
   function routeLaunch(): { launched: string[] } {
     const launched: string[] = [];
     invokeMock.mockImplementation((cmd: string, args?: unknown) => {
-      if (cmd === "relay_endpoint_for_launch") return Promise.resolve(null); // 〔RL1〕缺省不注入
+      if (cmd === "relay_endpoint_for_launch") return Promise.resolve(null); // 缺省不注入
       if (cmd === "probe_ccm_cli") return Promise.resolve({ installed: false, version: null, capabilities: [] });
       if (cmd === "render_launch_payload")
         return Promise.resolve(renderLaunchPayloadStub((args as { req: PayloadRenderRequest }).req));
       if (cmd === "backend_send_into") return Promise.resolve({ typed: false, mayFallBack: true, reason: "无通道" });
       if (cmd === "list_remote_tmux") return Promise.resolve([]);
-      if (cmd === "tmux_name_mint") return Promise.resolve("w-cc"); // 〔FIX4 · J7〕名字问那台后端铸
+      if (cmd === "tmux_name_mint") return Promise.resolve("w-cc"); // 名字问那台后端铸
       if (cmd === "launch_remote_terminal") {
         launched.push((args as { remoteCmd: string }).remoteCmd);
         return Promise.resolve(undefined);
@@ -949,7 +949,7 @@ describe("设计/80 §8.7 步 3：启动期令牌的铸币口", () => {
 
   // ─── ① 形状与熵 ───────────────────────────────────────────────────────────
   //
-  // ⚠ 断言里那条正则是**手写字面量**，不共用生产的任何东西（〔DUP2〕铸币口今天按生成物造；TS 那份形状副本已删）——
+  // ⚠ 断言里那条正则是**手写字面量**，不共用生产的任何东西（铸币口今天按生成物造；TS 那份形状副本已删）——
   //   用生产那一份的话，两侧同源：把它放宽成 `/^[0-9a-f]*$/` 判据跟着放宽，恒真。
   it("★ 铸出来的令牌是 32 个小写十六进制字符（判据里的形状是手写字面量，不共用生产校验器）", () => {
     for (let i = 0; i < 64; i += 1) {
@@ -961,7 +961,7 @@ describe("设计/80 §8.7 步 3：启动期令牌的铸币口", () => {
     const real = globalThis.crypto.getRandomValues.bind(globalThis.crypto);
     try {
       // 桩成「全填 0xAB」⇒ 产物必须恰好是 "b" × 32。
-      // 〔DUP2 · J8〕铸币口改成按生成物造（每一位一个字节、按字母表拒绝采样：0xAB % 16 = 11 ⇒ "b"），
+      // 铸币口改成按生成物造（每一位一个字节、按字母表拒绝采样：0xAB % 16 = 11 ⇒ "b"），
       //   原来是「16 字节渲成 hex」（⇒ "ab" × 16）。两条期望都是手写的，要的只是「产物随熵源变」。
       // 这一条逮的是**最致命的那个变异**：把熵源换成 `Math.random()` / 换成常量 /
       // 换成时间戳 —— 那些改动全都**照样产出 32 个小写十六进制字符**，
@@ -1039,7 +1039,7 @@ describe("设计/80 §8.7 步 3：启动期令牌的铸币口", () => {
     expect(new Set(vals).size, `五次拉起里有令牌重复：${JSON.stringify(got)}`).toBe(vals.length);
   });
 
-  // ─── ③ 〔第二波 T4〕本地半的生产写入方：交给窗口去登记的令牌 == 注进远端环境的令牌 ─────
+  // ─── ③ 本地半的生产写入方：交给窗口去登记的令牌 == 注进远端环境的令牌 ─────
   //
   // 两侧异源：左 = `render_launch_payload` 收到的**渲染请求**里那条 `export-rbind-token`（远端进程
   // 环境里将会是它）；右 = `launch_remote_terminal` 收到的 `rbindToken`（本地窗口将以它为 marker 登记）。
@@ -1048,7 +1048,7 @@ describe("设计/80 §8.7 步 3：启动期令牌的铸币口", () => {
     const rendered: (string | null)[] = [];
     const handed: (string | null | undefined)[] = [];
     invokeMock.mockImplementation((cmd: string, args?: unknown) => {
-      if (cmd === "relay_endpoint_for_launch") return Promise.resolve(null); // 〔RL1〕缺省不注入
+      if (cmd === "relay_endpoint_for_launch") return Promise.resolve(null); // 缺省不注入
       if (cmd === "probe_ccm_cli") return Promise.resolve({ installed: false, version: null, capabilities: [] });
       if (cmd === "render_launch_payload") {
         const req = (args as { req: PayloadRenderRequest }).req;
@@ -1060,7 +1060,7 @@ describe("设计/80 §8.7 步 3：启动期令牌的铸币口", () => {
         return Promise.resolve(opts.typed ? { typed: true, mayFallBack: false, reason: null } : { typed: false, mayFallBack: true, reason: "无通道" });
       if (cmd === "render_ccm_launch") return Promise.resolve({ ok: true, cmd: "<ccm-attach-line>", reason: null });
       if (cmd === "list_remote_tmux") return Promise.resolve([]);
-      if (cmd === "tmux_name_mint") return Promise.resolve("w-cc"); // 〔FIX4 · J7〕名字问那台后端铸
+      if (cmd === "tmux_name_mint") return Promise.resolve("w-cc"); // 名字问那台后端铸
       if (cmd === "launch_remote_terminal") {
         handed.push((args as { rbindToken?: string | null }).rbindToken);
         return Promise.resolve(undefined);
@@ -1120,7 +1120,7 @@ describe("设计/80 §8.7 步 3：启动期令牌的铸币口", () => {
   });
 
   it("★★ **空令牌 ≠ 没有令牌**：显式传 `\"\"` 不许被悄悄补一个，必须诚实失败", async () => {
-    // 〔DUP2 · J8〕形状只剩 Rust 一份（`payload.rs::rbind_token_shape_ok`，渲染前那道闸）：TS 维度原样推、不再自己 throw。
+    // 形状只剩 Rust 一份（`payload.rs::rbind_token_shape_ok`，渲染前那道闸）：TS 维度原样推、不再自己 throw。
     //   ⇒ 这里照桩的口径（`launch-render-ipc-stub.ts` 头注：「要验拒绝就直接 mock 一次 reject」）让渲染那一跳按 Rust 的闸拒，
     //   并核**交到渲染那一跳的正是那个 `""`**（没被悄悄补成新铸的）。
     const { launched } = routeLaunch();
@@ -1146,7 +1146,7 @@ describe("设计/80 §8.7 步 3：启动期令牌的铸币口", () => {
 });
 
 // ═════════════════════════════════════════════════════════════════════════════
-// 〔RL1 · 第四波〕R3：拉起之前问一次中转地址，拿到就进载荷；`null` 逐字节不变；attach 不问；拒了就不拉起
+// R3：拉起之前问一次中转地址，拿到就进载荷；`null` 逐字节不变；attach 不问；拒了就不拉起
 // ═════════════════════════════════════════════════════════════════════════════
 //
 // 异源在哪：地址是桩（「后端」）给的，断言它**原样**出现在交给 `render_launch_payload` 的请求里、
@@ -1213,7 +1213,7 @@ describe("RL1 中转地址进远端载荷", () => {
       }
       // tmux 那几格整条载荷被再 quote 一层塞进外层命令 ⇒ 只认「那个变量名 ＋ 那一串地址」都在。
       expect(launched.join("\n"), what).toContain("export ANTHROPIC_BASE_URL=");
-      // 〔RK1〕地址在渲染串里拆成两半，中间是现读钥匙文件的命令替换（`payload.rs::relay_env_prefix_posix`）。
+      // 地址在渲染串里拆成两半，中间是现读钥匙文件的命令替换（`payload.rs::relay_env_prefix_posix`）。
       const origin = URL_FROM_BACKEND.slice(0, "http://127.0.0.1:8788/".length);
       const routePart = URL_FROM_BACKEND.slice("http://127.0.0.1:8788".length);
       expect(launched.join("\n"), what).toContain(origin);

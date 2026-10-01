@@ -2,10 +2,10 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
-// 〔CFG1〕config 写只交补丁；替身把补丁应用到 `loadConfig` 摆的那份上，写完的整份交 `fakeCfg.saved`。
+// config 写只交补丁；替身把补丁应用到 `loadConfig` 摆的那份上，写完的整份交 `fakeCfg.saved`。
 vi.mock("../../../src/frontend/ui/config", async (orig) => (await import("./config-patch-fake")).mockedConfigModule(orig));
-// 〔W5-UI〕记账失败要出声：只换 toast 这一个出口，判据读它收到了什么。
-// 〔FE1 · D-h〕账号选不了的那句提示由 `withAccount` 自己出（先前是调用方各带一个「账号不可用」回调）。
+// 记账失败要出声：只换 toast 这一个出口，判据读它收到了什么。
+// 账号选不了的那句提示由 `withAccount` 自己出（先前是调用方各带一个「账号不可用」回调）。
 vi.mock("../../../src/frontend/ui/error-toast", () => ({ showActionFailureToast: vi.fn() }));
 
 import { invoke } from "@tauri-apps/api/core";
@@ -83,7 +83,7 @@ describe("deriveUi 降级矩阵（DESIGN §7）", () => {
   // 🔴 `K-R59`：这里此前有一条「daemonless → hidden」。定框 `K35` 之后
   //    `accounts.rs::cfg_for` 不再产出那条错误串 ⇒ `AccountsUi` 的 `hidden` 那一档
   //    **再也到不了**，连档带测一起下岗。
-  // 〔WF2〕要求住址：`第四波记录/WIN3.md §2` 读数 C「后端需更新在任何查询失败时都显示」· 题面 WF2 第 5 条「只在真的版本不够时显示；查询失败按码说查询失败」。
+  // 要求：「后端需更新在任何查询失败时都显示」· 题面 WF2 第 5 条「只在真的版本不够时显示；查询失败按码说查询失败」。
   it("🔴 K-R59 · WF2：`available:false` 按失败种类分 —— 对端不认 ⇒ needs-update；其余 ⇒ query-failed（原因原样）；不再有「安静隐藏」那一档", () => {
     const failed = deriveUi(state({ available: false, error: "现在够不着那台机器的后端，连接不在或断了" }));
     expect(failed).toEqual({ kind: "query-failed", reason: "现在够不着那台机器的后端，连接不在或断了" });
@@ -149,7 +149,7 @@ describe("currentAccountForBadge（account-ux U6：current 不可选就不能拿
     const s = state({ accounts: [acct({ name: "z" }), acct({ name: "b" })], defaultName: "b" });
     expect(currentAccountForBadge(s)?.name).toBe("b");
   });
-  // 下面三条 = MASTERPLAN U6 DoD 明列的「current 不可选不对齐」。不过滤的话：账号徽章
+  // 下面三条 = DoD 明列的「current 不可选不对齐」。不过滤的话：账号徽章
   // （F09 后唯一消费者）会指着一个系统自己永远不会 follow 过去的账号说"你不一致"。
   it("当前账号未登录 → null（对齐必失败，不能拿它判「不一致」）", () => {
     const s = state({ accounts: [acct({ name: "b", loggedIn: false, authReady: false })], defaultName: "b" });
@@ -396,7 +396,7 @@ describe("modelByAccount config 读写（F07）", () => {
     await expect(setModelForAccount("z", "Claude Opus 4.5")).rejects.toThrow(/模型名不合法/); // 空格非法
     expect(saveCfg).not.toHaveBeenCalled();
   });
-  // 〔DUP1〕规则换成共享那一份（生成物）之后，真实模型名都放行（主会话 09-26「真实模型名都放行」）：
+  // 规则换成共享那一份（生成物）之后，真实模型名都放行（主会话 09-26「真实模型名都放行」）：
   // 原先 TS 那份会拒这几条。正例的全集在共用金样 `identifier-rules.golden.json`（`identifier-rules-parity.vitest.ts`）。
   it("真实模型名（`sonnet[1m]` · Bedrock · Vertex）写得进去", async () => {
     loadCfg.mockResolvedValue({ accounts: {} });
@@ -411,8 +411,8 @@ describe("modelByAccount config 读写（F07）", () => {
 });
 
 describe("fetchAccounts TTL 缓存", () => {
-  // 〔`A3` 第二波〕backend 的本机 origin（`<local>`）⇒ 问本机后端，不拿它去问远端。
-  // 〔C4c · 第四波 4B〕本机与远端同一条路：经通道问 `<local>` 那条长连接的 `accounts-list`（后端出成品）。
+  // backend 的本机 origin（`<local>`）⇒ 问本机后端，不拿它去问远端。
+  // 本机与远端同一条路：经通道问 `<local>` 那条长连接的 `accounts-list`（后端出成品）。
   it("A3 / C4c：`<local>` 经通道问本机后端（`accounts-list` 发给 `<local>`），不是拿 `<local>` 去问远端配置", async () => {
     __resetAccountsCacheForTest();
     loadCfg.mockResolvedValue({});
@@ -464,7 +464,7 @@ describe("fetchAccounts TTL 缓存", () => {
   });
 });
 
-// 〔C4a · 第四波〕这一组原先驱动两条 Tauri 命令的 `available` 形状；它们退役了，
+// 这一组原先驱动两条 Tauri 命令的 `available` 形状；它们退役了，
 //   「会话 ↔ 账号」经通道问后端 `accounts-sessions`（本机与远端同一条路）。量的是那一跳的真实形状。
 describe("fetchSessionAccounts（经通道 `accounts-sessions`）", () => {
   it("那台没有控制通道 → 空数组（不猜）", async () => {
@@ -536,7 +536,7 @@ describe("fetchSessionAccountsOrNull（停后端前那一问）", () => {
   });
 });
 
-// 〔C4a〕逐行解释从 Rust（`accounts.rs::SessionAccount` 的 serde）搬到 `parseSessionAccountLines`，
+// 逐行解释从 Rust（`accounts.rs::SessionAccount` 的 serde）搬到 `parseSessionAccountLines`，
 //   Rust 那侧两条金样（`accounts_tests.rs` 原来那两条）逐字节搬到这里。
 describe("parseSessionAccountLines（`--session-accounts` 的逐行）", () => {
   it("★ additive（`K-P5f` `KP5FD4`）：老后端的行**逐字节没有 `launchId` 键** ⇒ 读成 null，不是坏行", () => {
@@ -577,7 +577,7 @@ describe("parseSessionAccountLines（`--session-accounts` 的逐行）", () => {
       bare: false,
       alive: false,
       launchId: null,
-      // 〔HX1 · D-f〕老后端没有这个键 ⇒ null（不知道），不是坏行。
+      // 老后端没有这个键 ⇒ null（不知道），不是坏行。
       viaRelay: null,
     });
   });
@@ -683,8 +683,8 @@ describe("resolveAccount（F05：判别联合形态的账号解析，AccountReso
       configDir: "/h/z",
     });
   });
-  // 〔FE1 · D-h〕先前这两条钉的是「pin 选不了 ⇒ 静默下沉到当前号 / 基座」（E7）。
-  //   `设计/01 §6.2`「「哪个账号」非有不可 —— 缺了 resume 会静默落到默认号，撞 `D4`」⇒ 改成 `unavailable`（pinned）。
+  // 先前这两条钉的是「pin 选不了 ⇒ 静默下沉到当前号 / 基座」（E7）。
+  // 「「哪个账号」非有不可 —— 缺了 resume 会静默落到默认号，撞 `D4`」⇒ 改成 `unavailable`（pinned）。
   it("★ 〔FE1 · D-h〕跟随解析：lastAccount 不可选 → unavailable（pinned），**不下沉** current", () => {
     const s = state({
       accounts: [acct({ name: "z", loggedIn: false, authReady: false }), acct({ name: "b", configDir: "/h/b" })],
@@ -779,7 +779,7 @@ describe("withAccount（A4 统一编排 resolve+record，三站点共用）", ()
       patch: { lastAccount: "z" },
     });
   });
-  // 〔GAP1 · `设计/30 §8` 第 4 条〕「resume 被记录探针拦下时，`withAccount` 照样记一次『上次用的账号』」⇒ run 回 false 就不记。
+  // 「resume 被记录探针拦下时，`withAccount` 照样记一次『上次用的账号』」⇒ run 回 false 就不记。
   it("★ 〔GAP1〕run 回 false（被记录探针拦下）⇒ 不记 lastAccount；回 undefined ⇒ 记一次（正控）", async () => {
     loadCfg.mockResolvedValue({});
     invokeMock.mockImplementation(withHistoryReads(withAccountReads(() => (okRaw([acct({ name: "z", configDir: "/h/z" })])))));
@@ -798,7 +798,7 @@ describe("withAccount（A4 统一编排 resolve+record，三站点共用）", ()
     expect(run).toHaveBeenCalledWith({ configDir: "/h/z", accountName: "z", modelOverride: undefined });
     expect(historyCalls(invokeMock.mock.calls, "update_history_metadata")).toHaveLength(0);
   });
-  // 〔FE1 · D-h〕先前：显式点号不可选 ⇒ 调用方 toast 后**按基座起**（toast 还说「改用上次的账号 / 当前账号」，与做的不一致）。
+  // 先前：显式点号不可选 ⇒ 调用方 toast 后**按基座起**（toast 还说「改用上次的账号 / 当前账号」，与做的不一致）。
   //   今天：**不起**；提示可点，点了以显式选号用当前账号再起一次（A4 语义记 pin）。
   const toastMock = (): ReturnType<typeof vi.fn> => vi.mocked(showActionFailureToast) as unknown as ReturnType<typeof vi.fn>;
   it("★ 〔FE1 · D-h〕不可选账号 → **不起**、一条提示；点提示 ⇒ 改用当前账号起、记 pin", async () => {
@@ -836,7 +836,7 @@ describe("withAccount（A4 统一编排 resolve+record，三站点共用）", ()
     expect(run).not.toHaveBeenCalled();
     expect(toastMock()).toHaveBeenCalledTimes(1);
     const [, body, opts] = toastMock().mock.calls[0] as [string, string, { onClick?: () => void }];
-    expect(body).toContain("读不到 aya 的账号清单"); // 〔P3〕中西文之间的空格由取文口按值补（rules.json C-L5）
+    expect(body).toContain("读不到 aya 的账号清单"); // 中西文之间的空格由取文口按值补（rules.json C-L5）
     opts.onClick!();
     await vi.waitFor(() =>
       expect(run).toHaveBeenCalledWith({ configDir: undefined, accountName: undefined, modelOverride: undefined }),
@@ -857,7 +857,7 @@ describe("withAccount（A4 统一编排 resolve+record，三站点共用）", ()
       patch: { lastAccount: "z" },
     });
   });
-  // 〔FE1 · D-h〕这一条先前钉的是 E7 本身：「既有 pin 不可选 → 下沉 current 起会话」（只防了「不 clobber pin」那一半）。
+  // 这一条先前钉的是 E7 本身：「既有 pin 不可选 → 下沉 current 起会话」（只防了「不 clobber pin」那一半）。
   it("★ 〔FE1 · D-h〕follow：既有 pin 不可选 → **不起**、不记账；提示可点，点了才用当前号起", async () => {
     toastMock().mockReset();
     loadCfg.mockResolvedValue({ accounts: { defaultName: "b" } });
@@ -1090,7 +1090,7 @@ describe("K-A1 鉴权方式：api-key 号不再因为缺凭据文件而不可用
 
   it("★〔DUP1〕只读后端算好的 authReady，不看 loggedIn（两个方向各一格）", () => {
     // 规则的唯一住址是 `acct_core::auth_ready`；这两格原来是可缺的，缺了由一个 TS 包装回落到 loggedIn ——
-    // 那是订阅分支在 TS 里的第二份（`设计/90 §3` 判据 2，登记表 `tests/frontend/ui/judgment-single-home.vitest.ts` J1）。
+    // 那是订阅分支在 TS 里的第二份（登记表 `tests/frontend/ui/judgment-single-home.vitest.ts` J1）。
     // 解码器早已逐键要求这两格，回落不可达，包装删了 ⇒ 两格与 loggedIn 反着给，结论跟 authReady 走。
     expect(isSelectable(acct({ name: "o", loggedIn: true, authReady: false }))).toBe(false);
     expect(isSelectable(acct({ name: "o", loggedIn: false, authKind: "api-key", authReady: true }))).toBe(true);
@@ -1146,7 +1146,7 @@ describe("K-H2b KH2B7：api-key 号那一格的三态，与「实现的三态」
 
   // ★★ 本 describe 存在的理由，逐字：**本件落地那一刻，那句 hover 就对一部分号成了假话**
   //（本机、apikey 表里有它那一行、中转在跑的那些号，cc-monitor **真的**会替它配 base URL）。
-  // 而「改了事实没改说它的那句话」是本区花过六轮的那一族（ROADMAP 风险 6v / 裁定 K20）。
+  // 而「改了事实没改说它的那句话」是本区花过六轮的那一族（风险 6v / 裁定 K20）。
   // ⇒ 这里把**实现的三态**与**徽章的三态**钉成一一对应：少一格、串一格，都红。
 
   it("★ 本机 · 表里有这一行 · 中转在跑 ⇒ 「经本机中转」，且不再是警示态", () => {
@@ -1154,7 +1154,7 @@ describe("K-H2b KH2B7：api-key 号那一格的三态，与「实现的三态」
     expect(b.text).toBe("API key（经本机中转）");
     expect(b.warn).toBe(false);
     // 它保证的是哪一截，必须写在 hover 里 —— 不许暗示「这个 key 一定能用」。
-    // 〔FIX2 · 99 §2.1 ㉛②〕按文案键断言，不按原文：原先钉着「ANTHROPIC_BASE_URL」，那是配置键名直出（R1），与 CP1 裁词相冲。
+    // 按文案键断言，不按原文：原先钉着「ANTHROPIC_BASE_URL」，那是配置键名直出（R1），与 CP1 裁词相冲。
     expect(b.title).toBe(copyText("accounts.badge.apikeyRelayedHint"));
   });
 
@@ -1163,7 +1163,7 @@ describe("K-H2b KH2B7：api-key 号那一格的三态，与「实现的三态」
     expect(b.text).toBe("API key（中转未运行）");
     expect(b.warn).toBe(true);
     // `KH2B2`②：这一条**不许**被说成静默失败 —— 起会话那一侧会当场拒。
-    // 〔FIX2 · 99 §2.1 ㉛②〕按文案键断言，不按原文（原先钉着「当场拒」三个字，改说法就红）。
+    // 按文案键断言，不按原文（原先钉着「当场拒」三个字，改说法就红）。
     expect(b.title).toBe(copyText("accounts.badge.apikeyRelayDownHint"));
   });
 
@@ -1332,7 +1332,7 @@ describe("K-H2b：本机起会话取账号那一口（行为）", () => {
     });
   });
 
-  it("★ 〔FIX · `设计/99 §2 ㊸` · `01 §1.5`「账号快照……收进一处，订阅制。只有一份 pub-sub」〕起会话选号读的就是 `appStore.accounts` 本机那一格", async () => {
+  it("★ 〔FIX · 「账号快照……收进一处，订阅制。只有一份 pub-sub」〕起会话选号读的就是 `appStore.accounts` 本机那一格", async () => {
     const { appStore, putAccounts } = await import("../../../src/frontend/ui/app-store");
     __setLocalLaunchSnapshotForTests(st([A, B], "acct-a"), {});
     expect(localLaunchAccountNameSync(null)).toBe("acct-a");
@@ -1379,7 +1379,7 @@ describe("K-H2b：本机起会话取账号那一口（行为）", () => {
   it("★★ `K-R53` `KR53D1`：取值口必须**把名字也说出来** —— 不然那三条主路到不了后端那条路", () => {
     // # 分母与病灶（现打，住址带逐字校验位）
     //
-    // 后端那条 ccm 路渲染得出来的条件住〔MIG-2〕本机后端 `src/backend/control/launch_render/local.rs::render_ccm_with`：
+    // 后端那条 ccm 路渲染得出来的条件住本机后端 `src/backend/control/launch_render/local.rs::render_ccm_with`：
     // 它把 `LaunchAccount` 映成 `ci::CliAccount`，而 CLI 只会 `--account <名字>`。
     // 本取值口先前只回 `{kind:"named", configDir}` —— **一个字段都没有名字**
     // ⇒ 后端只能 `CliAccount::Named{name:None}` ⇒ §35 短路 ⇒ 那三条主路
@@ -1417,7 +1417,7 @@ describe("K-H2b：本机起会话取账号那一口（行为）", () => {
 //
 // ★★ 本组的全部意义在于**分得开两件事**：
 //   ㈠「有人**读到**它」—— `K-P5f` 已经买到了（`launchId` 一路解析到前端类型上，
-//      本文件「parseSessionAccountLines」那一组钉着 —— 〔C4a〕逐行解释从 Rust 搬到了前端）。**本组不重复买它。**
+//      本文件「parseSessionAccountLines」那一组钉着 —— 逐行解释从 Rust 搬到了前端）。**本组不重复买它。**
 //   ㈡「有人**拿它做决定**」—— 输出因这一格而**不同**，而输出里**一个字节都没有它**。
 //      ⇒ 「把读到的值显示出来」这种形态**喂不饱**下面那条 `★★`：token 不在输出里、
 //      输出却因它而变，那就只能是有人拿它分了一次岔。
@@ -1468,7 +1468,7 @@ describe("K-P5g：换号重启定位不到 tmux 时，用身份 token 决定说�
     expect(without.body).not.toContain(TOKEN);
   });
 
-  // 〔`A3` 第二波〕本机会话也会走到这句话 —— 最后那句补救**只对远端成立**。
+  // 本机会话也会走到这句话 —— 最后那句补救**只对远端成立**。
   it("A3：本机那一支不指「把此会话切到账号 X」（本机归档 Resume 不带账号选择），成因判定两支照旧", () => {
     for (const r of [row({ launchId: null }), row({ launchId: TOKEN })]) {
       const remote = restartLocateFailureMessage(r);
@@ -1589,7 +1589,7 @@ describe("K-P5h：新会话的账号 pin 靠 token 回填（等多久 / 问几�
   });
   /**
    * 让本机后端的 `accounts-sessions`（经通道）答这批行；`available = false` ⇒ 那一跳答不出（没有控制通道）。
-   * 别的命令一律记账后回 undefined。〔C4a〕原先答的是 E79 那条已退役的本机 Tauri 命令。
+   * 别的命令一律记账后回 undefined。原先答的是 E79 那条已退役的本机 Tauri 命令。
    */
   const answerRows = (rows: SessionAccount[], available = true): void => {
     invokeMock.mockImplementation(withHistoryReads((cmd: string, args: unknown) => {
@@ -1612,7 +1612,7 @@ describe("K-P5h：新会话的账号 pin 靠 token 回填（等多久 / 问几�
   });
 
   it("★★ 正题：起会话时没有 sid，会话跑起来之后 pin 被补写到**那一条**上", async () => {
-    // 这一刻起会话方手上只有 token（`K-P5 §3 三`：起新会话时没有一处知道 sid）。
+    // 这一刻起会话方手上只有 token（起新会话时没有一处知道 sid）。
     rememberLocalLaunch(T1, "acct-a");
     // 会话真的跑起来了 —— `--session-accounts` 里出现两条，只有一条带我们的 token。
     answerRows([row("sid-other", T2), row("sid-mine", T1)]);

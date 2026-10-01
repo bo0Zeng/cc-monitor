@@ -10,7 +10,7 @@ fn me() -> String {
 /// ★★ **三个策略一个都不许有 `Default`。**
 ///
 /// 这是整件事的**承重墙**：有 `Default` 的那一刻，「每个落点被迫回答三个问题」
-/// 就退化成「不写就按某个人当年的顺手值来」—— 而 `真相源/70` 那条 BUG
+/// 就退化成「不写就按某个人当年的顺手值来」—— 而那条 BUG
 /// 正是「某个人当年的顺手值」。
 ///
 /// ⚠ 它认的是源码形态（`derive(... Default ...)` 与 `impl Default for`），
@@ -72,7 +72,7 @@ fn the_no_default_guard_is_actually_looking_at_the_enums() {
 ///
 /// # ⚠ `build.rs` 刻意不在人群里
 ///
-/// 它跑在**构建期**、在开发者机器上，`00 §1.5.2` 那三个问题
+/// 它跑在**构建期**、在开发者机器上，那三个问题
 /// （窗口 / 随谁死 / 错误往哪去）对它一个都不成立：没有 GUI 宿主可弹窗，
 /// 没有 monitor 进程可随，错误就该打到 `cargo` 的 stderr 上。
 /// ⇒ 它在 `SPAWNS` 里申报、但**不进这个出口**。这一格是刻意的，不是漏了。
@@ -95,7 +95,7 @@ fn the_spawn_verbs_and_platform_primitives_live_only_here() {
     /// **代价也写下来**：一个既造 `Command`、又在别处对别的类型调 `.output()` 的文件
     /// 会被误判 —— 那时该做的是把那一处改名/拆文件，不是把这两个词删掉。
     const VERBS_IF_BUILDS_A_COMMAND: &[&str] = &[".output()", ".status()"];
-    // 🔴 〔搬树 2026-09-18 · `设计/99` 条 73〕**排掉的是谁、为什么 —— 明写。**
+    // 🔴 〔搬树 2026-09-18 ·  条 73〕**排掉的是谁、为什么 —— 明写。**
     //
     // 排掉 `src/frontend/shell/src/spawn_managed.rs`：它**就是**那个唯一出口，
     // 那四个动词（`.spawn()` / `.creation_flags(` / `.process_group(` / `.kill_on_drop(`）
@@ -109,7 +109,7 @@ fn the_spawn_verbs_and_platform_primitives_live_only_here() {
     let files = guard_core::scan_tree_excluding(
         &crate::guard_support::crate_src_root(),
         &["rs"],
-        // 〔P4b · 阶段 H〕出口的平台那一半（`.creation_flags(` · `.process_group(`）住 `platform/spawn.rs`：同一个出口的下半截，一起排掉。
+        // 出口的平台那一半（`.creation_flags(` · `.process_group(`）住 `platform/spawn.rs`：同一个出口的下半截，一起排掉。
         &[
             "src/frontend/shell/src/spawn_managed.rs",
             "src/frontend/shell/src/platform/spawn.rs",
@@ -150,7 +150,7 @@ fn the_spawn_verbs_and_platform_primitives_live_only_here() {
     assert!(
         offenders.is_empty(),
         "这些地方绕开了 `spawn_managed` 这个唯一出口：\n{}\n\n\
-             ★ `15 §5.1 A3` / `00 §1.5.2`：起子进程的三个问题（要不要窗口 · 要不要随我死 · \
+             ★：起子进程的三个问题（要不要窗口 · 要不要随我死 · \
              错误往哪去）**必须在编译期各自回答一遍**。\n\
              ⇒ 把 `cmd.spawn()` 换成 `crate::spawn_managed::spawn_managed_cmd(&mut cmd, …)`，\
              三个策略照实写；`backend/` 那一半收注入参数（`ManagedSpawn`），不许自己认平台。\n\
@@ -166,7 +166,7 @@ fn the_spawn_verbs_and_platform_primitives_live_only_here() {
 /// 会让主判据**零命中地绿**，而「唯一出口」这件事悄悄一个人都不数了。
 #[test]
 fn the_exit_itself_still_contains_every_verb_it_forbids_elsewhere() {
-    // 〔P4b · 阶段 H〕出口 = 本模块 ＋ 它的平台那一半（`platform/spawn.rs`）；两份合起来必须四个词全在。
+    // 出口 = 本模块 ＋ 它的平台那一半（`platform/spawn.rs`）；两份合起来必须四个词全在。
     let src = me()
         + &guard_core::production_code(include_str!(
             "../../../src/frontend/shell/src/platform/spawn.rs"

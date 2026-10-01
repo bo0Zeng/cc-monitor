@@ -1,16 +1,16 @@
 //! 中转 · **监听面**：绑回环 · accept · 在途上界 · 起监听之前那点接线。
 //!
-//! # 它从哪儿来（`设计/20 §4`：`server.rs` 4506 行按职责拆）
+//! # 它从哪儿来（`server.rs` 4506 行按职责拆）
 //!
 //! 规格那张表把 `server.rs` 拆成三份，本文件是其中一份，逐字：
 //! 「`relay/listen.rs`  🔴 **要劈两半**：listen / accept / `INFLIGHT_CONNECTIONS` → 后端侧
 //! （`01 C5`）；serve / `apply_downstream_deadline` → 中转」。
-//! 〔NET2〕在途上界 `INFLIGHT_CONNECTIONS` 与在途计数今天住本文件（`设计/20 §10` 第 7 条）。
+//! 在途上界 `INFLIGHT_CONNECTIONS` 与在途计数今天住本文件。
 //!
 //! ⚠⚠ **那「两半」本拍只劈了一半，另一半劈不动，理由现打**：
 //! 把 bind/accept 挪到**后端侧**要在 `relay/` 之外新开一个模块，而本拍的写区
 //! 逐字是「`src/backend/relay/` 及它下面新建的目录」。⇒ 本文件今天**两半都在**，
-//! 边界用注释标着；真正的搬家归 `99 §4` 的步 **13c**（「后端 `bind`/`listen`，
+//! 边界用注释标着；真正的搬家归步 **13c**（「后端 `bind`/`listen`，
 //! 把 `accept` 到的连接交给面 B」）—— 那一步自己就写着「它不挡 14」。
 //!
 //! # ⚠ 有两样东西**职责在这里、代码还在 `server.rs`** —— 逐条给现打的理由
@@ -20,7 +20,7 @@
 //!
 //! | 留在 `server.rs` 的 | 钉住它的登记（都在写区外） |
 //! |---|---|
-//! | `DOWNSTREAM_DEADLINE` ＋ `apply_downstream_deadline` | 〔`P16` 订正〕那个**值**今天住本文件，`REGISTERED_DURATION_USES` 那两行的住址栏逐字 `"listen.rs"`；装它的那一手仍在 `server.rs`（改成收入参） |
+//! | `DOWNSTREAM_DEADLINE` ＋ `apply_downstream_deadline` | 那个**值**今天住本文件，`REGISTERED_DURATION_USES` 那两行的住址栏逐字 `"listen.rs"`；装它的那一手仍在 `server.rs`（改成收入参） |
 //! | `LOOPBACK` | 同上，钉它的是 **`src/backend/stream/listen.rs`**（K-P1 那个常驻监听口，与本文件同名但是另一棵）那句「理由与 `…/relay/server.rs::LOOPBACK` 逐字同源」 |
 //!
 //! ⇒ 本文件 `use` 它们，注释里点符号（不点文件）。真要把它们挪过来，得与
@@ -35,7 +35,7 @@ use std::sync::Arc;
 
 /// 同时在途的下游连接数上限〔回修轮之五 08-25，D3 `阻-3(D3)` 的**做得到的那一半**；NET2 从 `server.rs` 挪来〕。
 ///
-/// 住宿主不住中转：上界与绑口同是策略值（`设计/01 §2.1 C5` · `20 §4`）；中转只剩 `handle`。
+/// 住宿主不住中转：上界与绑口同是策略值；中转只剩 `handle`。
 /// ⚠ **是条数不是体量**，名字里刻意不带 `MAX`/`CAP`/`LIMIT`/`BYTES`（`byte_cap_registry` 的钩子）。
 /// 超了 **回 `503` 并关连接**，不是静默 FIN。
 pub(super) const INFLIGHT_CONNECTIONS: usize = 256;
@@ -43,12 +43,12 @@ pub(super) const INFLIGHT_CONNECTIONS: usize = 256;
 pub(crate) const ENV_PORT: &str = "CCM_RELAY_PORT";
 
 // ══════════════════════════════════════════════════════════════════════════
-//  期限的**值**住这一层〔`设计/99 §4 P16`，2026-09-22〕
+//  期限的**值**住这一层
 // ══════════════════════════════════════════════════════════════════════════
 //
-// `设计/01 §2.1` 的 `C4` 逐字：「凭据、配置、路由表、**期限值**全部由后端**交给它**
+// `C4`：「凭据、配置、路由表、**期限值**全部由后端**交给它**
 // ⇒ 期限（超时）与端口号同是**策略值**……通信层自己**没有任何期限常量**」。
-// `设计/05 §3.3.2` 把分工写成三段：**值归后端 · 执行归通信层 · 说法归调用方**。
+// 把分工写成三段：**值归后端 · 执行归通信层 · 说法归调用方**。
 //
 // 🔴 **这两个值先前住中转**（`server.rs` 与 `upstream.rs`）—— 那正是 `P16` 完成判据里
 // 点名的「两个期限常量（`X2`）」。搬来这里的理由不是品味：本文件自己就是**监听面**，
@@ -79,7 +79,7 @@ pub(crate) const ENV_PORT: &str = "CCM_RELAY_PORT";
 ///
 /// # 它不是定时器 —— 这句话就是 `no_timer_guard::REGISTERED_DURATION_USES` 里登记的那一行
 ///
-/// ⚠ 〔`P16` 2026-09-22〕那张表里这一行的住址栏从 `"server.rs"` 改成了 `"listen.rs"` ——
+/// ⚠ 那张表里这一行的住址栏从 `"server.rs"` 改成了 `"listen.rs"` ——
 /// **值搬了、性质没变**。装它的那一手仍在 `server::apply_downstream_deadline`。
 ///
 /// `SO_RCVTIMEO` / `SO_SNDTIMEO` 说的是「**这一次**阻塞的读/写最多等多久」：
@@ -113,7 +113,7 @@ pub(super) const DOWNSTREAM_DEADLINE: std::time::Duration =
 ///
 /// # 它不是定时器（这句话就是 `no_timer_guard` 那张表里登记的那一行）
 ///
-/// ⚠ 〔`P16` 2026-09-22〕那张表里这一行的住址栏从 `"upstream.rs"` 改成了 `"listen.rs"`。
+/// ⚠ 那张表里这一行的住址栏从 `"upstream.rs"` 改成了 `"listen.rs"`。
 /// 装它的那一手仍在 `upstream::connect`（收入参）。
 ///
 /// `SO_RCVTIMEO` / `SO_SNDTIMEO` 说的是「**这一次**阻塞的读/写最多等多久」：
@@ -227,7 +227,7 @@ pub(crate) fn serve(listener: TcpListener, relay: Arc<Relay>, inflight: Arc<Atom
 }
 
 /// 起中转那一段：上游选择认启动配置 → 绑回环 → 报地址 → 装表 → 造 `Relay`。失败时**该说的那一句已经说了**。
-/// 〔DEL〕先前与独立 `--relay` 那一形共用；那一形删了，只剩 [`host`] 一个调用方。
+/// 先前与独立 `--relay` 那一形共用；那一形删了，只剩 [`host`] 一个调用方。
 fn prepare(
     port: u16,
     get: &dyn Fn(&str) -> Option<String>,
@@ -252,7 +252,7 @@ fn prepare(
             ));
         }
     };
-    // 〔RK1 · `INVARIANTS §48.1a`〕**绑上口之后、说「在听」之前**拿钥匙（读回，或铸一把落盘）：
+    // 〔`INVARIANTS §48.1a`〕**绑上口之后、说「在听」之前**拿钥匙（读回，或铸一把落盘）：
     //   ① 只有绑上了口的那一个会写 ⇒ 两个中转抢着铸构造上不存在；
     //   ② 「在听」那句话说出去的时候钥匙文件已经在盘上 ⇒ 看着那句话去读钥匙的人（判据 · 那台机器的 shell）读得到。
     //   拿不到 ⇒ **不起**（有口没钥匙 = 不设防的口；`listener` 在这里 drop，口当场放掉）。
@@ -281,7 +281,7 @@ fn prepare(
     Ok((listener, Arc::new(relay)))
 }
 
-/// 〔RL1 · V107〕常驻后端里**进程内**起中转的结局。
+/// 常驻后端里**进程内**起中转的结局。
 ///
 /// 中转只是常驻后端的一个面 ⇒ 起不来**出声、不拖垮后端**（持有全部 SSH 的那个进程
 /// 不许因为「端口被占」或「上游配置认不出」而倒下）。
@@ -308,7 +308,7 @@ impl std::fmt::Display for Hosted {
     }
 }
 
-/// 〔DEL 续 · 主会话裁〕本进程里**绑上了、接受线程也起来了**的中转口。唯一写者是 [`host`]（生产里一个进程至多一个；
+/// 本进程里**绑上了、接受线程也起来了**的中转口。唯一写者是 [`host`]（生产里一个进程至多一个；
 /// 判据在同一个测试进程里各起各的口 ⇒ 按口记，互不干扰）。接受线程随进程生死、不中途退 ⇒ 记下就不摘。
 static HOSTED_PORTS: std::sync::Mutex<std::collections::BTreeSet<u16>> =
     std::sync::Mutex::new(std::collections::BTreeSet::new());
@@ -320,8 +320,8 @@ fn note_listening(port: u16) {
         .insert(port);
 }
 
-/// 〔DEL 续 · 主会话裁〕**这个进程里我们的中转在不在听这个口** —— 读宿主自己那份监听状态，不从外面探自己
-/// （中转就住在这个进程里，V107 · V139；一个事实一个家）。读者：上游选择出的两份成品
+/// **这个进程里我们的中转在不在听这个口** —— 读宿主自己那份监听状态，不从外面探自己
+/// （中转就住在这个进程里，；一个事实一个家）。读者：上游选择出的两份成品
 /// （`launch-endpoint` 的 `listening` · `apikey-routing` 的 `running`）。没起中转的进程（一次性 exec · 测试连接探针）恒答 `false`。
 pub(crate) fn our_relay_listening(port: u16) -> bool {
     HOSTED_PORTS
@@ -330,7 +330,7 @@ pub(crate) fn our_relay_listening(port: u16) -> bool {
         .contains(&port)
 }
 
-/// 〔RL1 · V107 · V139〕**在本进程里起中转**：交了端口（[`ENV_PORT`]）才起，接受循环跑在一条专属线程上。
+/// **在本进程里起中转**：交了端口（[`ENV_PORT`]）才起，接受循环跑在一条专属线程上。
 ///
 /// # 为什么是「交了端口才起」而不是「流模式一律起」
 ///
@@ -341,7 +341,7 @@ pub(crate) fn our_relay_listening(port: u16) -> bool {
 ///
 /// ① 端口**没有缺省值**（交了一个认不出的串 ⇒ `Failed`，不悄悄退回一个默认值 ——
 /// 注入侧拼的是它交出来的那个数，两边对不上就是一个查不出来的连接失败）；
-/// ② tee 落宿主交下来的 tap 口（[`TeeSink::to_port`]，〔TAP · V124〕）：本进程的 stdout 在 stdio 载体上**就是 wire**
+/// ② tee 落宿主交下来的 tap 口（[`TeeSink::to_port`]）：本进程的 stdout 在 stdio 载体上**就是 wire**
 /// （一行一帧），在脱离载体上是 null；宿主把事件转成 `tap` 帧走它自己的有界通道；
 /// ③ 起不来不退出（见 [`Hosted`]）。
 pub(crate) fn host(
@@ -368,7 +368,7 @@ pub(crate) fn host(
         Err(e) => return Hosted::Failed(format!("读不出绑到的地址：{e}")),
     };
     // 接受循环**阻塞在 `accept()` 上**（内核事件，不是定时器）；线程随进程生、随进程死 ——
-    // 常驻后端按「退出行为」退的那一刻，中转一起走（`设计/01 §3.3b`，V107）。
+    // 常驻后端按「退出行为」退的那一刻，中转一起走。
     match std::thread::Builder::new()
         .name("ccm-relay-accept".to_string())
         .spawn(move || serve(listener, relay, Arc::default()))
@@ -386,4 +386,4 @@ pub(crate) fn host(
 
 #[cfg(test)]
 #[path = "../../../tests/backend/relay/host_tests.rs"]
-mod host_tests; // 〔RL1〕进程内中转：`host` 的四种结局 ＋ 生产接线在真子进程里 stdout 零 tee
+mod host_tests; // 进程内中转：`host` 的四种结局 ＋ 生产接线在真子进程里 stdout 零 tee

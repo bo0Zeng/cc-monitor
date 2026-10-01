@@ -1,8 +1,8 @@
-//! 〔`C1` · 2026-09-24〕**只读查询走已有的长连接** —— `设计/15 §3.2` 层 1 在 monitor 侧的那一半。
+//! **只读查询走已有的长连接** —— 层 1 在 monitor 侧的那一半。
 //!
 //! # 它换掉的是什么
 //!
-//! `设计/99 §4.19.2 ⑥` 逐字：「帧面 16 条，账号与 8 条只读查询都不在 ⇒ 每点一下拨一次 SSH、
+//! 「帧面 16 条，账号与 8 条只读查询都不在 ⇒ 每点一下拨一次 SSH、
 //! 每 10 秒对每台机器握一次手」。那八条（`--list-projects` / `--list-sessions` /
 //! `--read-session` / `--read-session-tail` / `--session-accounts` / `--list-accounts` /
 //! `--search` 等）此前每问一次就新拨一条 TCP+SSH+鉴权，exec 一次后端、
@@ -17,21 +17,21 @@
 //! 长连接不在时这里**明说**「没有控制通道」，不悄悄再拨一次 SSH。
 //! 代价如实写：历史浏览从此依赖那台的流连接活着（此前它是独立拨号，流断了也能翻历史）。
 //!
-//! # 逐次拨号那条路没有了〔C4d · 第四波 4B〕
+//! # 逐次拨号那条路没有了
 //!
 //! 不在帧面上的一次性查询从前落到 `remote_history.rs` 的逐次拨号那条路（`run_list_query`〔散文墓碑〕），
 //! 而那条路只放行一张「仍拨号」的表 —— C4c 起那张表就是空的（最后两条随账号域上了帧面）。
 //! 主会话 09-25 裁删：那条路、那张表与那道闸门一起没了。认不出帧命令的查询**当场说**（`subagent·rs::Backend::query`），
 //! 不拨号、不回落；「新长一条逐次拨号的查询」从此在代码里无处可落（判据在 `frame_query_tests.rs`）。
 //!
-//! # 期限：一件事一个绝对时刻〔DL1 · `设计/05 §3.3.2`〕
+//! # 期限：一件事一个绝对时刻
 //!
 //! 本模块的每一个出口都收一个 [`Deadline`]，**只用、不造**：发起这件事的那一手（`tasks` · `subagent` · 快照 ·
 //! 历史浏览器读整份 · 按行号取一段）在事情开始时造一次（[`Deadline::within`]），之后这件事里的每一问、每一页
 //! 都拿**同一个**时刻去等（`InboundClient::call_until`）—— 越往后剩得越少，没有一页会重新拿一整份。
 //! 〔墓碑 —— DL1 之前每一问各自 `now + LINES_BUDGET / PAGE_BUDGET`：分页读（`read_lines` · 快照 · 读整份）每页重新计时、
-//!  没有总时限，`设计/15 §3.6` 病 2「每 59 s 吐一个字节的对端能拖到无限」。〕
-//! 期限的**值**暂住下面那几个常量：`99 §2 ⑭`「期限的值归谁」待主会话定稿（`调研/第四波记录/DL1.md §1`），定了按定稿搬。
+//!  没有总时限，病 2「每 59 s 吐一个字节的对端能拖到无限」。〕
+//! 期限的**值**暂住下面那几个常量：「期限的值归谁」待主会话定稿，定了按定稿搬。
 
 use crate::backend_route::{no_channel, route_call_error, Routed};
 use crate::copy_table::copy_text;
@@ -40,7 +40,7 @@ use crate::origin::Origin;
 use serde_json::{json, Value};
 use std::time::Duration;
 
-/// 题面那八条 ＋〔SR1a〕两条：CLI 子命令 → 帧命令。**判据的一侧**（另一侧从后端源码数，见测试）。
+/// 题面那八条 ＋两条：CLI 子命令 → 帧命令。**判据的一侧**（另一侧从后端源码数，见测试）。
 /// 生产段不读它 —— 它是判据的一侧（与 `inbound::CommandSpec` 那几栏同理），故精确 allow。
 #[cfg_attr(not(test), allow(dead_code))]
 pub(crate) const MOVED: &[(&str, &str)] = &[
@@ -51,56 +51,56 @@ pub(crate) const MOVED: &[(&str, &str)] = &[
     ("--search", "history-search"),
     ("--list-accounts", "accounts-list"),
     ("--session-accounts", "accounts-sessions"),
-    // 〔SR1a · 09-24〕骨架索引与大纲清单：每开一个大会话就要一次（不是「点一次才发一次」）。
+    // 骨架索引与大纲清单：每开一个大会话就要一次（不是「点一次才发一次」）。
     //   `--read-session-from-offset` 的另一形（`--until`，按区间取正文）早就走 `history-read` ——
     //   两形都上了帧面，这个子命令从此一条拨号都不剩。
     ("--read-session-from-offset", "history-index"),
     ("--list-user-inputs", "history-user-inputs"),
-    // 〔SR1a × SE2〕会话内查找（Ctrl+F）：同一个处境（新子命令、此前在远端逐次拨号），一起上帧面。
+    // 会话内查找（Ctrl+F）：同一个处境（新子命令、此前在远端逐次拨号），一起上帧面。
     ("--find-in-session", "history-find"),
-    // 〔C4c · 第四波 4B〕换号前的信任预检（主会话裁：随账号域一起上帧面）。两形合进**一条**帧命令
+    // 换号前的信任预检（主会话裁：随账号域一起上帧面）。两形合进**一条**帧命令
     //   （`configDir` 缺席 / null = 账号 0）⇒ 右列 `accounts-trust` 出现两次，判据按集合比。
     ("--account-trust", "accounts-trust"),
     ("--account-trust-zero", "accounts-trust"),
 ];
 
-/// 〔U4b · 第四波〕**生在帧面上**的只读查询：交给后端只读宿主（`read_face::answer`），但**没有**
+/// **生在帧面上**的只读查询：交给后端只读宿主（`read_face::answer`），但**没有**
 /// 一个被它替掉的逐次拨号子命令（与 [`MOVED`] 那几条的来历不同）。判据的一侧：
 /// `MOVED` 右列 ∪ 本表 == 后端真登记给只读宿主的那几条。
 #[cfg_attr(not(test), allow(dead_code))]
 pub(crate) const BORN_ON_FRAME: &[&str] = &[
-    // resume 之前问「这条会话的记录还在不在」（〔C4c〕monitor 这一侧不再发它：界面经通道直接问）。
+    // resume 之前问「这条会话的记录还在不在」（monitor 这一侧不再发它：界面经通道直接问）。
     "history-record",
-    // 〔CF2 · 第四波 4B〕按行号取回一段（没接骨架的会话丢掉的正文从这里要回来）。
+    // 按行号取回一段（没接骨架的会话丢掉的正文从这里要回来）。
     "history-lines",
-    // 〔STC · `设计/90 §4` 阶段 C〕会话事实出成品（分叉血缘 · 改动文件集 · agent 列表 · 最新 usage）。
+    // 会话事实出成品（分叉血缘 · 改动文件集 · agent 列表 · 最新 usage）。
     //   此前是前端 `onLine` 旁路自己攒的，没有被替掉的拨号子命令；monitor 这一侧从不发它（界面经通道直接问）。
     "history-facts",
-    // 〔GAP1 · `设计/15 §4.7 S1`〕那台后端自己的 stderr 诊断文件尾部（设置页「日志」经通道直接问；monitor 这一侧从不发它）。
+    // 那台后端自己的 stderr 诊断文件尾部（设置页「日志」经通道直接问；monitor 这一侧从不发它）。
     "backend-log",
-    // 〔MOD · `设计/90 §3` 判据 3〕记录解释进后端之后生在帧面上的两条（界面经通道直接问；monitor 这一侧从不发它们）。
+    // 记录解释进后端之后生在帧面上的两条（界面经通道直接问；monitor 这一侧从不发它们）。
     "history-page",
     "drift-report",
-    // 〔FIX4 · `设计/90 §3` J15〕各台搜索结果合一份（合并排序进本机后端；界面经通道直接问，monitor 这一侧从不发它）。
+    // 各台搜索结果合一份（合并排序进本机后端；界面经通道直接问，monitor 这一侧从不发它）。
     "history-search-merge",
     // 按运行读一个子运行的记录（替掉按目录 ＋ 描述 ＋ 时间戳挑的那一条与它的列候选子命令；界面经通道直接问）。
     "history-run",
 ];
 
-// 〔MOD〕按行一问的期限 `LINES_BUDGET`〔散文墓碑〕删：「按行那几条」最后的发送端（子 agent 列候选）随命令退役。
+// 按行一问的期限 `LINES_BUDGET`〔散文墓碑〕删：「按行那几条」最后的发送端（子 agent 列候选）随命令退役。
 /// 一问一页的期限（一次 `history-tail` · 一段 `history-lines`）：与旧逐行读的单次超时同值（60s）。
 pub(crate) const PAGE_BUDGET: Duration = Duration::from_secs(60);
-/// 〔DL1〕分页读一大份时假定的**最低**速率（字节 / 秒）：「最大那一份在不低于它时读得完」。
-/// ⚠ 暂定、没有读数（`设计/05 §9` 第 1 条「每条路该给多少秒没有证据」照旧开着）。
+/// 分页读一大份时假定的**最低**速率（字节 / 秒）：「最大那一份在不低于它时读得完」。
+/// ⚠ 暂定、没有读数（「每条路该给多少秒没有证据」照旧开着）。
 pub(crate) const READ_FLOOR_BPS: u64 = 512 * 1024;
 
-/// 〔DL1〕分页读 `bytes` 字节那一件的总时限：一页的期限 ＋ 按 [`READ_FLOOR_BPS`] 读完要的秒数（向上取整）。
+/// 分页读 `bytes` 字节那一件的总时限：一页的期限 ＋ 按 [`READ_FLOOR_BPS`] 读完要的秒数（向上取整）。
 /// 历史浏览器读整份（事先不知道多大）按它的字节上限给；快照读正文按问图之后已知的字节数给。
 pub(crate) fn read_budget(bytes: u64) -> Duration {
     PAGE_BUDGET + Duration::from_secs(bytes.div_ceil(READ_FLOOR_BPS))
 }
 
-/// 〔DL1 · `设计/05 §3.3.2`〕**一件事的总期限**：一个绝对时刻 ＋ 当初给了多少（后者只为说人话）。
+/// **一件事的总期限**：一个绝对时刻 ＋ 当初给了多少（后者只为说人话）。
 ///
 /// 造它的只有 [`Deadline::within`]，调它的是**发起这件事的那一手**（判据：`frame_query_tests` 的造期限点登记表，两向）；
 /// 本模块与 `InboundClient` 只拿它去等，零处重新计时。
@@ -141,8 +141,8 @@ impl Deadline {
 ///
 /// 今天的调用方都在本文件里。
 ///
-/// 〔DL1〕期限是调用方给的**那一件事**的 [`Deadline`]：已经到点 ⇒ **一个字节都不发**（同 `src/comms/inward/chan.ts`
-/// 「已经过了 ⇒ 一个字节都不发」）；发出去之后到点 ⇒ `InboundClient` 补发 `cancel`（`05 §3.3.3`），这里说「没在 N 秒内答完」。
+/// 期限是调用方给的**那一件事**的 [`Deadline`]：已经到点 ⇒ **一个字节都不发**（同 `src/comms/inward/chan.ts`
+/// 「已经过了 ⇒ 一个字节都不发」）；发出去之后到点 ⇒ `InboundClient` 补发 `cancel`，这里说「没在 N 秒内答完」。
 pub(crate) async fn call(
     origin: &Origin,
     cmd: &str,
@@ -152,7 +152,7 @@ pub(crate) async fn call(
     let who = who(origin);
     let origin = origin.as_wire_str();
     let Some(client) = inbound_client::client_for(origin) else {
-        // 〔LOC1a〕说「谁」用同一个 [`who`]：本机那几问改走 `<local>` 之后，不许把 `<local>` 这个键原样说给人看。
+        // 说「谁」用同一个 [`who`]：本机那几问改走 `<local>` 之后，不许把 `<local>` 这个键原样说给人看。
         return Err(said(no_channel(&who)));
     };
     // 能力协商放在发之前（同 `tmux::capture_via_backend`）：「这台的后端太旧」是问得出答案的，
@@ -192,7 +192,7 @@ fn said(r: Routed) -> String {
     }
 }
 
-/// 报错里的「谁」：本机说「本机」，远端说「远端 [x]」〔LOC1a〕。
+/// 报错里的「谁」：本机说「本机」，远端说「远端 [x]」。
 ///
 /// 本机那几问从 exec 一次性后端改走 `<local>` 长连接之后，同一句话本机远端共用 ——
 /// 不许把本机说成「远端 [<local>]」。
@@ -207,7 +207,7 @@ pub(crate) fn who(origin: &Origin) -> String {
     }
 }
 
-// 〔MOD〕按行那几条的出口 `lines`〔散文墓碑〕删：最后的调用方（子 agent 列候选 · 按 argv 分流）随命令退役。
+// 按行那几条的出口 `lines`〔散文墓碑〕删：最后的调用方（子 agent 列候选 · 按 argv 分流）随命令退役。
 
 /// `history-tail` 那张图（字段同后端 `history_query::TailPlan`）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -253,11 +253,11 @@ pub(crate) async fn tail(
     Ok(plan)
 }
 
-// 〔C4c · 第四波 4B〕`history-record` 那一问的发送端（`record` / `parse_record` / `RecordProbe`〔散文墓碑〕）删了：
+// `history-record` 那一问的发送端（`record` / `parse_record` / `RecordProbe`〔散文墓碑〕）删了：
 //   唯一调用方（Tauri 命令 `probe_session_record`）退役，界面经通道直接问后端（`src/frontend/ui/session-reads.ts::probeSessionRecord`，
 //   「缺一格不许读成『不在』」那条口径随之搬到 TS 的 `decodeRecord`）。
 
-/// `history-read` 那一页里的一个可计行（〔MOD〕后端出的成品：monitor 不解析记录，只搬）。
+/// `history-read` 那一页里的一个可计行（后端出的成品：monitor 不解析记录，只搬）。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Row {
     /// 这一行（含 `\n`）之后那个字节的偏移（后端按原始字节算，说得准）；残尾 ⇒ `None`。
@@ -306,7 +306,7 @@ pub(crate) fn row_of(v: &Value) -> Option<Row> {
 /// 读 `[offset, until)` 的**一页**。
 ///
 /// ⚠ 续点必须**前进**：后端回一页零字节却说没到头 ⇒ 当场报错，调用方的循环不会空转。
-/// 〔DL1〕`deadline` 是**整件事**的（调用方在读第一页之前造一次，之后每一页传同一个）—— 本函数不重新计时。
+/// `deadline` 是**整件事**的（调用方在读第一页之前造一次，之后每一页传同一个）—— 本函数不重新计时。
 pub(crate) async fn read_page(
     origin: &Origin,
     path: &str,
@@ -338,7 +338,7 @@ pub(crate) async fn read_page(
     Ok(Page { rows, next, eof })
 }
 
-// 〔MOD · `05 §14.3` C 组〕按行号取一段（`session_lines` / `parse_session_lines`）· 读整段逐行（`read_lines`）·〔散文墓碑〕
+// 按行号取一段（`session_lines` / `parse_session_lines`）· 读整段逐行（`read_lines`）·〔散文墓碑〕
 //   一次性查询按 argv 分流（`ArgvRoute` / `route_argv` / `refuses` / `run_routed`）〔散文墓碑〕删了：它们的调用方
 //   （按行号取回 · 子 agent · 按偏移取一段三条 Tauri 命令）退役，界面经通道直问那台后端的成品（`src/frontend/ui/record-reads.ts`）。
 

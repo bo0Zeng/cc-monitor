@@ -3,7 +3,7 @@ import type { DriftFaceReport } from "./DriftFaceReport";
 import type { Origin } from "./Origin";
 
 /**
- * 〔ST3〕读口的回包：**带回它答的是哪台**（界面按回声判，同足迹那一格）。
+ * 读口的回包：**带回它答的是哪台**（界面按回声判，同足迹那一格）。
  */
 export type DriftLedgerReport = { 
 /**

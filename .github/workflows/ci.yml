@@ -116,9 +116,9 @@ jobs:
             exit 1
           }
 
-  # ── `15 §5.2 B4`：**monitor 这棵树在 Linux 上的行为，云端一次都没有被执行过** ──────
+  # ──：**monitor 这棵树在 Linux 上的行为，云端一次都没有被执行过** ──────
   #
-  # ## 题面（`设计/15 §2.6` 漏洞 3 逐字）
+  # ## 题面（漏洞 3 逐字）
   #
   # 上面 `rust` job 是**唯一**跑 `cargo test --workspace` 的地方，而它 `runs-on: windows-latest`；
   # Linux 侧对 `src/frontend/shell` 今天只有 `linux-app-build` 那一条 `cargo build` ——
@@ -127,7 +127,7 @@ jobs:
   #
   # ## 它是谁的安全网（为什么它排在这一波第一个）
   #
-  # `15 §5.1 A1`（526 个 `#[cfg(test)]` 块搬兄弟文件）· `§5.2 B2`（clippy 换掉 ~3500 行文本扫描）·
+  # （526 个 `#[cfg(test)]` 块搬兄弟文件）· `§5.2 B2`（clippy 换掉 ~3500 行文本扫描）·
   # `§5.2 B3`（退役两个守卫）三件都是**拿行为测试去换文本判据**。
   # 换之前必须先有人**真跑过**那些行为测试 —— 否则裁掉的是尺子，换来的是一句没人验过的话。
   #
@@ -139,7 +139,7 @@ jobs:
   #   · 买不到 Windows 那一面（那是 `rust` job），也买不到 `src/backend`（那是 `backend` job）。
   #   · 买不到「本地门禁与云端同一把尺子」：本地 `gate.sh` 那格带 `--lib`（丢 doctest 与 bin 档），
   #     这里**刻意不带** —— 与 `rust` job 逐字同一条命令。同一个性质两把长度不同的尺子
-  #     是本区最贵那族病（`15 §2.6` 漏洞 2 就是它），所以跨平台这两格用同一把。
+  #     是本区最贵那族病（漏洞 2 就是它），所以跨平台这两格用同一把。
   #
   # ⚠ `fetch-depth: 0` 与 `rust` job **同一条理由**，不是抄习惯：
   #   `scanning_guard_registry::the_pending_ratchet_never_turns_backwards` 与 `dial_home_registry`
@@ -213,7 +213,7 @@ jobs:
 
       - run: npx tsc --noEmit
 
-      # F08b：ESLint（flat config + typescript-eslint）。〔P3 · 主会话 09-29 裁〕基线清到 0 之后**改成会拦**：
+      # F08b：ESLint（flat config + typescript-eslint）。基线清到 0 之后**改成会拦**：
       # 去掉原来的 `|| true`，有一条错就红（`tests/frontend/ui/eslint-baseline.vitest.ts` ③ 钉着这一步的写法）。
       # 此前它是顾问式（既有告警作基线、`|| true` 不红 CI），沿革见下。
       #
@@ -221,18 +221,18 @@ jobs:
       # 的 `ignores` 一直是**仓级**写法（逐条列 dist / node_modules / src/frontend/shell / …），
       # 而脚本只跑 `src` ⇒ 那份意图从没兑现，`tests/e2e/**/*.mjs` 里 39 个 `no-undef` 永远没人看得到，
       # 且它们一个真问题都不是（纯缺一段 node/browser globals）。补完 globals 后
-      # **全仓实测当时仍是 7 项**，基线数字不变、覆盖面变大。〔AL1d · 第四波 4B · 09-24〕那天剩三项：
+      # **全仓实测当时仍是 7 项**，基线数字不变、覆盖面变大。那天剩三项：
       # `src/frontend/ui/settings/machine-aliases.ts` 那四处空 catch 随原「终端集成」记住上次选择的那段代码删了。
-      # 〔DUP1 · 第四波 4D〕那天剩两项：`src/frontend/ui/shell-quote.ts` 那处 `no-control-regex` 随 `isValidConfigDir` 删了。
-      # 〔STC · 第四波 4D〕那天剩一项：写类工具口径的前端那份测试随被测对象（搬进后端）整份删了。
-      # 〔P3 · 发版后〕今天全仓 0 项：`render.ts` 那处 `no-control-regex` 随代码 stub 的哨兵换成非字符 `\uFDD0` 没了。
+      # 那天剩两项：`src/frontend/ui/shell-quote.ts` 那处 `no-control-regex` 随 `isValidConfigDir` 删了。
+      # 那天剩一项：写类工具口径的前端那份测试随被测对象（搬进后端）整份删了。
+      # 〔发版后〕今天全仓 0 项：`render.ts` 那处 `no-control-regex` 随代码 stub 的哨兵换成非字符 `\uFDD0` 没了。
       - name: eslint (blocking, baseline 0)
         run: npm run lint
 
       # F08b：Stylelint（`src/**/*.css`）。**这一步本身仍是顾问式**（`|| true`，结构上不会红），
       # 不 --fix 避免全量 churn。
       #
-      # 〔S25 · 2026-09-18 · 设计/40 步 9 ⑤〕**真正会红的不再是这一步**：
+      # **真正会红的不再是这一步**：
       # `tests/frontend/ui/css-ledger.vitest.ts` 把「报错总数」做成了**递减棘轮**，而它跟着
       # 下面那步 `unit tests`（`npm test` → `npm run test:dom` → `vitest run`，**无 `|| true`**）
       # 一起跑 ⇒ **阻断，且不需要动这一步的门禁形态**。
@@ -244,7 +244,7 @@ jobs:
       # 现打是 **47**，而那句散文从写下之后再没人核过。这正是它现在必须被机检的理由。
       # 〔2026-09-24 U1 合并那一拍棘 47 → 39〕CSS 按窗口拆 ＋ 层包进去之后现打 39（10 份文件合计）。
       # 〔F7b 09-24 棘 39 → 36〕老 SFTP 面板那整段 CSS 退役，带走 shared.css 里 3 条 rgba → rgb（现打 36）。
-      # 〔UC2 · 第四波〕`no-descending-specificity` 打开之后，这个上限的口径是「**除它以外**的报错总数」；它自己的命中由
+      # `no-descending-specificity` 打开之后，这个上限的口径是「**除它以外**的报错总数」；它自己的命中由
       #   `tests/frontend/ui/css-ledger.vitest.ts` ④b 按例外表两向相等管（`npm run lint:css` 的裸总数因此比这个数大，别拿来对）。
       # 〔W5-AUX 09-25 棘 36 → 35〕`.status-tasks` 那条被 `font` 简写盖掉的死声明删了（现打 35）。
       # S25-STYLELINT-CEILING: 35
@@ -353,7 +353,7 @@ jobs:
         #     `'string.h' file not found`）。`cargo check` **不链接** ⇒ 那份 `.lib` 从头到尾没人用，
         #     它存在只是为了让 build script 走完、好让检查继续走到我们的代码。
         #   · 「`ring` 在真 Windows 上编得过」这一格由上游与真机负责：08-25 在一台真 Windows 上跑
-        #     同一份代码 `cargo check --all-targets` ⇒ EXIT=0 / 0 error（读数住 `ROADMAP` `KU10`）。
+        #     同一份代码 `cargo check --all-targets` ⇒ EXIT=0 / 0 error（读数住 `KU10`）。
         #   · ⇒ 这一步**没有**因此变弱：它守的一直是「我们的代码在 Windows 上编得过」，那一半一个字没动。
         env:
           CC_x86_64_pc_windows_msvc: zig cc
@@ -490,7 +490,7 @@ jobs:
           # ⇒ 这条地板此后由 `shell_lint_registry` 钉成**等号**（不是「≥」）：
           #   「≥」正是它落后三次的成因 —— 加脚本时它不响，于是没人回来棘。
           # ⚠ 两个 `.ps1` 仍**零 lint**（全仓无 PowerShell linter）：`tests/scripts/run.ps1` 与
-          #    `tests/e2e/tier2/run-in-session1.ps1` ⇒ 记为诚实边界（`audit-0805/ROADMAP §5`）。
+          #    `tests/e2e/tier2/run-in-session1.ps1` ⇒ 记为诚实边界。
           #    〔09-25 MG1 合 RT1〕长到**四个**：`tests/evidence/RT1-lib.ps1` · `RT1-winwatch.ps1`（Win11 虚拟机真机台架，
           #    只在台架里跑、不进产品）同样零 lint；「要不要引 PSScriptAnalyzer」交主会话重问（`shell_lint_registry` 那张表同拍）。
           # **2026-08-11 P3t-Y5 棘到 46**：新增 `tests/e2e/p3t-local-tmux.sh`（本机拉起真的建出 tmux 会话）。
@@ -641,7 +641,7 @@ jobs:
           # 今天实测构成（逐组现打，不倒推）：
           # **76 = tests/e2e/*.sh 30 + cc-bus/scripts/* 20 + weak-net 4 + local-backend-container 3
           #        + tests/evidence/*.sh 9 + tests/scripts/*.sh 4 + vendored 4 + fake-claude 1 + pre-commit 1**。
-          # **2026-09-23 `设计/80 §8.7` 步 2 棘到 78** —— 新增 `tests/e2e/backend-rbind-token.sh`：
+          # **2026-09-23 棘到 78** —— 新增 `tests/e2e/backend-rbind-token.sh`：
           # 真起后端看 `session_added` 帧里有没有启动期令牌（`CCM_RBIND_TOKEN`）。
           # ★ 与前几次同形：**不是地板落后**，是同一拍加文件、同一拍棘 ——
           #   `shell_lint_registry` 那条**恒等**判据当场红并直接给出「该写几」。
@@ -650,7 +650,7 @@ jobs:
           # 今天实测构成（逐组现打，不倒推）：
           # **78 = tests/e2e/*.sh 31 + cc-bus/scripts/* 20 + weak-net 4 + local-backend-container 3
           #        + tests/evidence/*.sh 9 + tests/scripts/*.sh 4 + vendored 4 + fake-claude 1 + tests/hooks/* 2**。
-          # **2026-09-24 `设计/80 §8.7` 步 3 棘到 79** —— 新增 `tests/e2e/rbind-token-endtoend.sh`：
+          # **2026-09-24 棘到 79** —— 新增 `tests/e2e/rbind-token-endtoend.sh`：
           # 生产载荷字节（取自 `payload-golden.json`）在真 bash 里跑 → 真后端从进程环境读回令牌 → wire。
           # ★ 同步 2 那一拍同形：**不是地板落后**，是同一拍加文件、同一拍棘，`shell_lint_registry`
           #   那条**恒等**判据当场红并直接给出「该写几」。
@@ -683,16 +683,16 @@ jobs:
       # 在本地**永远看不出来**（本地跑的是盘上那份），只有干净 checkout 才炸。已踩过两次：
       # R00 的 `shared/ccm`（CI 上 Permission denied，e2e 连红三轮）与 B01 的 13 个 cc-bus 脚本。
       # 直接 bash 调用：本 job 没有 setup-node 步骤，不该为一条纯 shell 检查引入 npm 依赖。
-      # 🔴 〔`K-R48` 第二拍 09-11〕**23 → 21**：本轮删了 `ccm-acceptance` 与 `ccm-pretrust`
+      # 🔴 **23 → 21**：本轮删了 `ccm-acceptance` 与 `ccm-pretrust`
       #    两套（它们只测 `shared/ccm` 那个 bash 脚本的真机行为，而那个脚本按 `K33` 删了）。
       #    这个数在本文件里存着**四份**，四处一起改（本行 · 下面那条 `-ge` · 它的报错文案 ·
       #    `pair` 清单那行 `echo`）—— 那张登记表逐字说这四份漂过一次。
-      # 🔴 〔`K-R72` 09-12〕**21 → 20**：删了 `tmux-guarded` 那一套。它的输入源是 `tmux.rs`
+      # 🔴 **21 → 20**：删了 `tmux-guarded` 那一套。它的输入源是 `tmux.rs`
       #    两条桌面侧 SSH 回落的 builder，回落删净 ⇒ 它连命令串都取不到、跑不起来。
       #    ★ 四处这次是 `e2e_gate_registry::the_suite_count_is_the_same_number_in_all_four_places`
       #    当场逮出来的（我先只改了 `echo` 那一处）—— **那条判据买的正是这一刻。**
       # G-A **覆盖面地板**：20 套真机套件必须**每一套**都经 `assert-pass-floor.sh` 跑。
-      #      〔TL1 · 4C〕19 → 20：`p3t-local-tmux` 接回执行链（四处一起改）。
+      # 19 → 20：`p3t-local-tmux` 接回执行链（四处一起改）。
       #      〔用量下线 09-18〕20 → 19：删了 `usage-probe`。⚠ 这是那个数的**第四份** ——
       #      判据自己警告过「同一个数在 `ci.yml` 里存了四份，别只改报错的那一处」，本次就是漏跟这一份。
       # （U0 2026-08-01 订正：本行与下面 `:313` 原写「8」，是 E82 订正下方散文时漏跟的两处，
@@ -804,7 +804,7 @@ jobs:
           #
           # 🔴🔴 **读这张清单之前先读这四行 —— 这里是本仓「同一个量不许两处各写一份」
           #      那条病的活体，而且它长在守卫自己身上。**
-          #   · 这张清单**不是**地板的真相源。真相源只有一个：下面那些
+          #   · 这张清单**不是**地板的源头。源头只有一个：下面那些
           #     `bash tests/e2e/assert-pass-floor.sh <套件> <地板>` 的调用行
           #     （`e2e-tmux` 里 `:646` 起 · `e2e-tmux-rust` 里 `:753` 起）。
           #     这张清单是它们的**副本**，作用是「地板被人偷偷抹成 0 / 套件被删」时有人喊。
@@ -831,7 +831,7 @@ jobs:
           #     （08-06）起就没成立过**的地板（`meta_colon` 必然走登记豁免，可达上限一直是 35；
           #     `meta_dollar` 09-09 查穿根因后成为第二条登记豁免 ⇒ 34），新口径是
           #     「总槽位 − 已登记豁免数」，由 `src/backend/control/gate.rs` 两侧夹住。
-          #   两条的完整理由都写在**各自的调用行上方**，这里不重抄 —— 这张清单是副本，不是真相源。
+          #   两条的完整理由都写在**各自的调用行上方**，这里不重抄 —— 这张清单是副本，不是源头。
           #   ⚠⚠ **这几行注释刻意不把那句报错原样抄全**：下面那个 `grep -q` 搜的是**整份
           #   `ci.yml`、不剔注释** ⇒ 注释里只要出现一次逐字的
           #   「脚本名 + 空格 + 套件名 + 空格 + 数字」，那一对以后就**永远命中**，
@@ -967,7 +967,7 @@ jobs:
       # 本 job 留下的五步（`tmux-target` · `cc-bus-queue-drain` · `restart` · `resume` ·
       # `ccm-rbind-title`）现打**一条都不碰** `target/debug` ⇒「no Rust」这个名字今天仍然属实。
 
-      # 🔴 〔`K-R48` 第二拍 09-11〕原来这里有 `ccm-acceptance 31` 与 `ccm-pretrust 15` 两步，
+      # 🔴 原来这里有 `ccm-acceptance 31` 与 `ccm-pretrust 15` 两步，
       #    两套 e2e 本拍删了（它们只测那个 bash 脚本的真机行为，理由逐条写在
       #    `src/frontend/shell/src/shared_crate_registry.rs` 那张棘轮表被摘掉的那两行旁边）。
 
@@ -1050,14 +1050,14 @@ jobs:
             curl wget file libxdo-dev libssl-dev librsvg2-dev \
             libayatana-appindicator3-dev
 
-      # 〔`K-R72` 09-12〕原先这里有一步跑 `tmux-guarded` 那一套（F04 三道门的 monitor 侧真机
+      # 原先这里有一步跑 `tmux-guarded` 那一套（F04 三道门的 monitor 侧真机
       # 验收）。它的输入源是 `tmux.rs` 那两条桌面侧 SSH 回落的 builder，回落删了 ⇒ 整套跟着删。
       # 三道门的真机覆盖今天在下面 G-C 那一批里的 `backend-gate2` 那一套。
       # ⚠ 上面那句刻意不把原调用行（脚本名 + 套件名 + 地板值）原样抄回来 —— 抄了会让
       #   `:660` 那道反向自检在这一套上永远命中，见它头上那段警告。
 
       # G-C：这三套要一个**真后端二进制**（backend-wrapper.sh 默认取
-      # `.build/backend/debug/cc-monitor-backend`）。主计划把「怎么把后端产物
+      # `.build/backend/debug/cc-monitor-backend`）。把「怎么把后端产物
       # 从 `backend` job 传过来」记成 G-C 唯一的技术不确定性——**直接在本 job 里编就绕开了**：
       # 本 job 已有 Rust 工具链，而 backend crate 比它已经在编的 src/frontend/shell 轻得多。
       # cwd 必须是 `src/backend`：cargo 按**发起命令的 cwd** 找 `.cargo/config.toml`。
@@ -1082,7 +1082,7 @@ jobs:
       # 之后那一段），这里不抄第二份。一句话：它们要 Rust 工具链的产物（后端二进制），
       # 而上面那一步刚把它编出来。
       # ⚠ **必须排在 `build debug backend` 之后** —— 四套顶上各有一道 fail-closed 的 `[ -x ]`。
-      # 🔴 〔`K-R48` 第二拍 09-11〕264 → 46：`shared/ccm` 删了，本套件的被测对象换成后端二进制。
+      # 🔴 264 → 46：`shared/ccm` 删了，本套件的被测对象换成后端二进制。
       #    逐条判词住 `tests/evidence/K-R48-356-verdicts.tsv`；构成与理由写在 `tests/scripts/gate.sh`
       #    那两行 `run_e2e` 上方（那是「三处一起改」里说理最全的一处，别在这儿再抄一份）。
       # ⚠ **跑之前要先 build 后端二进制**（`cargo build --bin cc-monitor-backend`）——
@@ -1096,12 +1096,12 @@ jobs:
       # U9a：`--print` 说的 == 真跑做的（S10「保住清单」差分对拍）。
       # 与上面两套的分工：`ccm-cli` 只跑 `--print`（全 `env -u TMUX`）、`ccm-print-parity`
       # 验渲染器意图能被接住 —— **都不比对真 exec 路**，而那正是 U9b 搬决策时会漏的地方。
-      # 🔴 〔`K-R48` 第二拍 09-11〕72 → 39，同上。
+      # 🔴 72 → 39，同上。
       - name: ccm 契约差分对拍（U9a · S10 保住清单）
-        # 🔴 〔`K-R61` 09-11〕39 → 42：C 组加了三格 —— `capabilities=` 里声明
+        # 🔴 39 → 42：C 组加了三格 —— `capabilities=` 里声明
         #    `base-url-across-tmux`（monitor 侧那条降级理由的退役条件点名的 token）·
         #    容器载荷内侧真带 `export ANTHROPIC_BASE_URL=`（申报与兑现一起量）· 一格反空真。
-                # 🔴 〔`K-R70` 09-12〕42 → 45：`--ccm-probe` 多吐一行 `build=<BUILD_ID>` ⇒ C 组加三格 ——
+                # 🔴 42 → 45：`--ccm-probe` 多吐一行 `build=<BUILD_ID>` ⇒ C 组加三格 ——
         #    `build=` 行逐字 == backend 源码里的 `BUILD_ID` · `build=` 与 `version=` 不是同一个值 ·
         #    抽取器自检。⚠ **本行与 `tests/scripts/gate.sh:951` 的 `run_e2e` 行、以及上面那份清单副本
         #    共三处，「一起改」是纪律不是判据 —— 今天没有任何东西会在三处分叉时报红。**
@@ -1129,11 +1129,11 @@ jobs:
       #    ⚠ 不棘的话，新加的那两格明天能被删掉而 CI 照样绿 —— `assert-pass-floor.sh` 头注
       #      写的那个失效模式：**不是变红，是静默缩水**。**先跑再棘**的「跑」这一次由 PM 在沙箱里做。
       - name: 入方向后端帧（U8a-2a）
-        # 〔RST 续 · V41〕33 → 30：裸键 mode `send-keys-raw` 删了，「被接受 · 没附回车 · 补 Enter 才执行」三格随之删。
+        # 33 → 30：裸键 mode `send-keys-raw` 删了，「被接受 · 没附回车 · 补 Enter 才执行」三格随之删。
         run: bash tests/e2e/assert-pass-floor.sh inbound-frames 32
 
       # F03：§34 Gate 2 在后端侧的真机验收。用例逐行来自那张唯一的判定表
-      # `tests/__fixtures__/gate2-golden.tsv`（〔THIN〕后端与本套两条轨道同一份）。
+      # `tests/__fixtures__/gate2-golden.tsv`（后端与本套两条轨道同一份）。
       # ★★ **2026-09-09 `CI-J3`：地板 `36` → `35`，而且这个数从此不再由人手写。**
       #
       #    这条地板**从 `58b1312`（F20，08-06）起就没有一次成立过**，而云端 08-05 之后
@@ -1168,10 +1168,10 @@ jobs:
       #      🔴 这条豁免**是环境相关的**：runner 升到 ≥3.5 之后它会真的过（PASS 35 / WAIVED 1），
       #      而 `at-least` 不会因此红 —— 那一格如实登记在 `tests/e2e/backend-gate2-acceptance.sh`
       #      的 `waiver_reason` 头注里（含为什么不装成红、以及解锁条件）。**没治，但写清楚了。**
-      #    〔E2 尾 09-27〕`meta_dollar` 不再是登记豁免，换成套件里的**版本门**（`min_tmux_for`）：tmux <3.5 记 SKIP 并说原因、
+      # `meta_dollar` 不再是登记豁免，换成套件里的**版本门**（`min_tmux_for`）：tmux <3.5 记 SKIP 并说原因、
       #      建得出来就 FAIL「版本门过时」。本行仍按 PASS 的 at-least 判 ⇒ 按最坏的机器（3.4：34 PASS + 1 SKIP）算 34；
       #      本机门禁按 PASS+SKIP 恒等判 35（`exact-with-skip`）。两个数都由 `the_gate2_floor_still_makes_a_skip_hurt` 现算。
-      #    〔RST 续 · V41〕34 / 35 → 33 / 34：裸键 mode `send-keys-raw` 删了，「它也过同一道 Gate 2」那一格随之删。
+      # 34 / 35 → 33 / 34：裸键 mode `send-keys-raw` 删了，「它也过同一道 Gate 2」那一格随之删。
       - name: Gate 2 backend 真机验收（F03）
         run: bash tests/e2e/assert-pass-floor.sh backend-gate2 33
 
@@ -1199,7 +1199,7 @@ jobs:
       - name: backend 分叉（G2 `--fork-session`）
         run: bash tests/e2e/assert-pass-floor.sh backend-fork 10
 
-      # 〔TL1 · 4C · 2026-09-25〕本机拉起真的建出 tmux 会话（`P3t-Y5`）：这套从前**只有脚本、没有任何执行链引用**
+      # 本机拉起真的建出 tmux 会话（`P3t-Y5`）：这套从前**只有脚本、没有任何执行链引用**
       #    （不在 `package.json` ⇒ 这张地板表与 `e2e_gate_registry` 都看不见它；TQ1 现打逮到）。4C 现打 10 过 / 0 败 ⇒ 接回。
       #    它要上面那步编好的 debug backend（软链成 `ccm`）＋ 本 job 装的 tmux；命令串取自 monitor 那条
       #    `#[ignore]` 渲染出口（`history_tests.rs` 那一条，要 `src/frontend/shell` 的测试编译 —— 本 job 本来就编）。
@@ -1260,7 +1260,7 @@ jobs:
   #    落地读数全部量于开发机（09-05：`PASS=26 FAIL=0`，连跑两趟同值）。
   # ── `local-gate`：**本地那道门在云端零调用**这件事，到此为止（`G4` 空洞③，09-20）──
   #
-  # ## 题面（`真相源/92 §2.1.2` ①，本拍非截断复打）
+  # ## 题面（本拍非截断复打）
   #
   #     grep -c 'bash tests/scripts/'"gate.sh" .github/workflows/*.yml   →  两份都是 0
   #     （⚠ 上面那条命令**刻意把串拆开写**：原样抄一遍，`C8d` 那条 count()==1 就会把这行

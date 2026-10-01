@@ -8,7 +8,7 @@
 //! | 认证不过的被拒 | [`a_wrong_key_is_refused_and_nothing_reaches_the_backend`] ＋ [`a_frame_before_hello_or_silence_is_refused_too`] |
 //! | `call` 走得通 | 同第一条（载荷逐字节、含非 UTF-8 字节；`origin`/`op` 原样到句柄） |
 //! | `subscribe` 收得到帧 | [`subscribe_receives_frames_in_order_and_from_passes_through`] ＋ [`credit_is_backpressure_not_loss`] |
-//! | 期限到了按 `05 §3.3` 的形状报错 | [`a_passed_deadline_answers_hop_overrun_in_the_05_shape`] |
+//! | 期限到了按约定的形状报错 | [`a_passed_deadline_answers_hop_overrun_in_the_05_shape`] |
 //!
 //! # 买不到什么
 //!
@@ -131,7 +131,7 @@ impl Backends for Fake {
         }
     }
 
-    /// 〔NET2〕合成那台的能力事实：`hang` 撤不动，`stall` 撤得动。
+    /// 合成那台的能力事实：`hang` 撤不动，`stall` 撤得动。
     fn offer(&self, _origin: &Origin) -> Option<Offer> {
         Some(Offer::new(
             vec!["cancel".into(), "hang".into(), "stall".into()],
@@ -161,7 +161,7 @@ async fn a_synthetic_frontend_connects_over_loopback_and_calls_through() {
     let (fake, h) = rig(Duration::from_secs(5)).await;
     assert!(
         h.addr.ip().is_loopback(),
-        "通道口绑在了 {} —— 它只许绑回环（`01 §4`：一个对外端口必须仍然成立）",
+        "通道口绑在了 {} —— 它只许绑回环（一个对外端口必须仍然成立）",
         h.addr
     );
     let c = dial(&h, budget(5_000)).await.expect("连得上并过认证");
@@ -333,7 +333,7 @@ async fn subscribe_receives_frames_in_order_and_from_passes_through() {
     assert_eq!(got, want, "订阅流与句柄给的不一致（顺序 / 内容 / 游标）");
 }
 
-/// ★ credit 就是回推：给多少取多少，**不多取、不丢**（`05 §3.3.4` 级 1）。
+/// ★ credit 就是回推：给多少取多少，**不多取、不丢**（级 1）。
 #[tokio::test]
 async fn credit_is_backpressure_not_loss() {
     let (fake, h) = rig(Duration::from_secs(5)).await;
@@ -378,7 +378,7 @@ async fn credit_is_backpressure_not_loss() {
 //  四、期限 · 撤单 · 断线
 // ════════════════════════════════════════════════════════════════════════════
 
-/// ★ 期限到了 ⇒ `Hop{at: 第 0 跳 wait, reach: Sent, why: Overrun}`（`05 §3.3.2`：
+/// ★ 期限到了 ⇒ `Hop{at: 第 0 跳 wait, reach: Sent, why: Overrun}`（
 /// 一个预算、说得出卡在哪一跳）；按时回来；并且**尽力**补发的撤单真的到了句柄那一侧。
 #[tokio::test]
 async fn a_passed_deadline_answers_hop_overrun_in_the_05_shape() {
@@ -404,7 +404,7 @@ async fn a_passed_deadline_answers_hop_overrun_in_the_05_shape() {
             reach: Reach::Sent,
             why: HopFault::Overrun,
         }),
-        "期限到了，错误的形状不是 `05 §3.3` 那一格"
+        "期限到了，错误的形状不是那一格"
     );
     assert!(
         took >= Duration::from_millis(250) && took < Duration::from_secs(3),
@@ -486,7 +486,7 @@ async fn a_local_cancel_is_immediate_and_says_cancelled() {
 }
 
 /// 连接断了：在飞的 `call` ⇒ `Hop{第 0 跳 read, Unknown, Dropped}`；
-/// 订阅流里原位出 `Unseen`，而且**之后不出 `Closed`**（`05 §4.5.2`）。
+/// 订阅流里原位出 `Unseen`，而且**之后不出 `Closed`**。
 #[tokio::test]
 async fn losing_the_connection_turns_calls_into_dropped_and_subs_into_unseen_not_closed() {
     let (a, b) = tokio::io::duplex(1 << 16);
@@ -631,7 +631,7 @@ fn key_matching_is_whole_string_equality() {
 
 /// 绑口只在宿主那一份里、只绑回环、全模块恰好一处（`C5` 的分界在盘上看得见）。
 ///
-/// 〔P4〕通道分住两处：壳里 `chan/`（monitor 自己的宿主那两份）＋ 共享 crate `chan-core` 的 `chan/`（成员三份经 `#[path]` ＋ 拨号 · 交接件）。
+/// 通道分住两处：壳里 `chan/`（monitor 自己的宿主那两份）＋ 共享 crate `chan-core` 的 `chan/`（成员三份经 `#[path]` ＋ 拨号 · 交接件）。
 /// 绑口那一处随交接件搬进了 `chan-core` 的 `handoff.rs`（`start_with`），两棵合起来仍恰好一处。
 #[test]
 fn only_the_host_binds_and_only_to_loopback() {
@@ -662,7 +662,7 @@ fn only_the_host_binds_and_only_to_loopback() {
             "壳:webview.rs",
         ],
         "通道目录的份数变了 —— 回来重读本条与 `chan/mod.rs` 那张表\n\
-         （〔C4a〕`webview.rs` 是主界面那一跳的宿主：不绑口，下面那条「绑口恰好一处」照样量它）"
+         （`webview.rs` 是主界面那一跳的宿主：不绑口，下面那条「绑口恰好一处」照样量它）"
     );
     let bind = format!("TcpListener::{}(", "bind");
     for (name, text) in &files {
@@ -709,7 +709,7 @@ fn every_error_and_item_shape_round_trips() {
     for why in [OursFault::Cancelled, OursFault::Misuse, OursFault::Broken] {
         errs.push(why.into());
     }
-    // 〔NET2 · additive〕撤了、那台可能还在跑。
+    // 撤了、那台可能还在跑。
     errs.push(CallError::Ours {
         why: OursFault::Cancelled,
         runs_on: true,
@@ -729,7 +729,7 @@ fn every_error_and_item_shape_round_trips() {
             from_seq: 3,
             to_seq: Some(7),
         },
-        // 〔RENDER2 · `99 §2.1` ㉓①〕知道丢了、不知道丢到哪 —— 线上省掉 `to_seq`，读回来仍是 `None`
+        // 知道丢了、不知道丢到哪 —— 线上省掉 `to_seq`，读回来仍是 `None`
         Item::Gap {
             from_seq: 8,
             to_seq: None,
@@ -778,7 +778,7 @@ fn every_error_and_item_shape_round_trips() {
     );
 }
 
-/// 签名对 `05 §3.3.0`：客户端实现的就是那个 `Comms`（编译期），订阅就是那个 `Sub`。
+/// 签名对：客户端实现的就是那个 `Comms`（编译期），订阅就是那个 `Sub`。
 #[test]
 fn the_client_implements_the_05_signature() {
     fn is_comms<C: Comms>() {}
@@ -787,7 +787,7 @@ fn the_client_implements_the_05_signature() {
     is_sub::<super::client::Subscription>();
 }
 
-/// 〔NET2 · 主会话 09-27 裁 C · `设计/05 §3.3.3`〕回环客户端拿到那台的 `Offer`（经真路由器）之后，本地撤单的结果说清
+/// 回环客户端拿到那台的 `Offer`（经真路由器）之后，本地撤单的结果说清
 /// 「那台可能还在跑」：撤不动的 `hang` ⇒ `runs_on: true`；撤得动的 `stall` ⇒ `false`。两侧异源：左边是真撤一次的结果，
 /// 右边是合成句柄交出的那份 `Offer` 里的名单。
 #[tokio::test]

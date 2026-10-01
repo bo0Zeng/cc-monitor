@@ -1,6 +1,6 @@
-//! [`crate::control::identity_tag`] 起 tmux 的那个口的**测试构建那一份**（`设计/16 §3.1`：体住 `tests/`，生产树里只留桩）。
+//! [`crate::control::identity_tag`] 起 tmux 的那个口的**测试构建那一份**（体住 `tests/`，生产树里只留桩）。
 //!
-//! 〔RESYNC · `INVARIANTS §48.3`〕进程内会走到 `identity_tag::tag` 的测试：假 tmux 只从这里注入。
+//! 〔`INVARIANTS §48.3`〕进程内会走到 `identity_tag::tag` 的测试：假 tmux 只从这里注入。
 //! 注入是**线程级**的（每条测试一条线程），出作用域自动摘掉；本线程没注入 ⇒ [`tmux`] 炸。
 
 thread_local! {

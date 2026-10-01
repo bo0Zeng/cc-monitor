@@ -76,13 +76,13 @@ const REGISTERED: &[Candidate] = &[
     },
     Candidate {
         id: "ccm",
-        // 🔴 〔`K-R48` 第二拍 09-11〕住址从那份已删的 bash `ccm` 换到这里：脚本删了，
+        // 🔴 住址从那份已删的 bash `ccm` 换到这里：脚本删了，
         //    `ccm` 今天是后端二进制的一次性模式（`K33`：「不要有什么单独的 ccm」）。
         home: "src/backend/control/ccm",
         semantics: Semantics::BuiltIn,
         shape: Shape::ManagedTool,
         today: "一套通用骨架 + 一张 per-agent 适配表（`E4b`），能力靠 `--ccm-probe` 报。\
-                    〔`K-R48` 09-11〕它**就是后端本体**的一种跑法，不再是一个独立脚本",
+它**就是后端本体**的一种跑法，不再是一个独立脚本",
         gap: "无差 —— 本区只借它的协商形状（`E7`），不改它。\
                   ⚠ 但轴二那一格**落不进 `C21` 的三档**：它是受管工具，这件事本身就是读数",
     },
@@ -159,7 +159,7 @@ fn backend_command_names() -> Vec<String> {
     out
 }
 
-/// 🔴 〔`K-R48` 第二拍 09-11〕**这里原来有三个从那份已删的 bash `ccm` 里抠的取法**
+/// 🔴 **这里原来有三个从那份已删的 bash `ccm` 里抠的取法**
 /// （`ccm_agent_arms` 〔散文墓碑〕 逐个切 `agent_*` 函数的 `case` 臂 · `case_arm` · `ccm_probe_values` 〔散文墓碑〕）。
 /// 〔用@09-11 `K33`〕那个脚本删了，per-agent 适配表与 probe 那一行搬进了
 /// `src/backend/control/ccm/`（Rust）⇒ 取法整块换成读那份源码的 `const`。
@@ -327,7 +327,7 @@ fn cc_bus_is_reached_only_through_its_command_surface_today() {
     //    ⚠ 按本条自己的要求登记:这一笔**不是「改数字了事」** —— 命令面确实变了。
     //    而 `EU3`(插件的粒度是命令还是包)**仍未决**:本轮没有替它做决定,只把「命令面变了」这件事
     //    如实记在这里,交回 PM 裁。
-    // 〔SH1 · V136〕20 → 21：加了 `cc-log`（只读看收件箱尾巴，后端 `bus-inbox` 转调）—— 命令面确实变了（多一个只读动词）；`EU3` 照旧未决。
+    // 20 → 21：加了 `cc-log`（只读看收件箱尾巴，后端 `bus-inbox` 转调）—— 命令面确实变了（多一个只读动词）；`EU3` 照旧未决。
     assert_eq!(
         scripts.len(),
         21,
@@ -345,13 +345,13 @@ fn cc_bus_is_reached_only_through_its_command_surface_today() {
         names.len()
     );
     let bus: Vec<&String> = names.iter().filter(|n| n.starts_with("bus-")).collect();
-    // 〔BS1b 09-24〕4 → 5：多了 `bus-spawn`（派生协作 agent，转调 `cc-spawn`）。
+    // 4 → 5：多了 `bus-spawn`（派生协作 agent，转调 `cc-spawn`）。
     //   按本条自己的要求先回本表 `cc-bus` 那一行看了：「今天什么样 / 差在哪」仍成立
     //   （仍只经命令面够到，多的这条也是转调），所以只改数，不改那一行。
-    // 〔C4e · 第四波 4C〕5 → 6：多了 `bus-broadcast`（广播：原是 monitor 里的组合 —— 列名单 ＋ 逐个 `bus-send` ——
+    // 5 → 6：多了 `bus-broadcast`（广播：原是 monitor 里的组合 —— 列名单 ＋ 逐个 `bus-send` ——
     //   界面改经通道直接说后端之后收进后端）。按本条的要求回本表 `cc-bus` 那一行看了：「今天什么样 / 差在哪」仍成立
     //   （仍只经命令面够到：广播复用 `cc-list` / `cc-send` 那两处转调，没有新的起进程口），所以只改数，不改那一行。
-    // 〔SH1 · V136〕6 → 7：多了 `bus-inbox`（驾驶舱读收件箱尾巴，转调新加的只读 `cc-log`）。回本表 `cc-bus` 那一行看了：
+    // 6 → 7：多了 `bus-inbox`（驾驶舱读收件箱尾巴，转调新加的只读 `cc-log`）。回本表 `cc-bus` 那一行看了：
     //   仍只经命令面够到（转调，不读文件），所以只改数。
     assert_eq!(
         bus.len(),
@@ -463,7 +463,7 @@ fn cc_spawn_is_a_frontend_of_ccm_and_touches_no_bus_data() {
 /// 而它在轴二上**落不进三档**（受管工具）。
 #[test]
 fn ccm_is_one_skeleton_with_a_per_agent_table() {
-    // 🔴 〔`K-R48` 第二拍 09-11〕**取法换了一次，口径两条都保住，第三条如实降级。**
+    // 🔴 **取法换了一次，口径两条都保住，第三条如实降级。**
     //
     // 从前这三格读的是那份已删的 bash `ccm` 脚本：5 个 `agent_*` 函数、
     // 每个函数 `claude)` / `codex)` 两臂的**取值**、`--ccm-probe` 那一行的 token 列表。
@@ -477,8 +477,8 @@ fn ccm_is_one_skeleton_with_a_per_agent_table() {
     //   那条「codex 与 claude 到底哪几项不同」今天由后端侧
     //   `control::ccm::tests::the_agent_set_has_one_address_and_every_member_is_wired` 逐项钉。
     let fns = ccm_per_agent_fns();
-    // 〔AL3 · V138〕5 → 4：`resume_flag` 删了（ccm 只看不吃 `--resume`，不再替 agent 拼 resume）。
-    // 〔FIX · V138 订正〕4 → 5：`has_pidfiles` —— resume 判「在别处跑着」要问观测层那份 pidfile 扫描，只有 claude 有 pidfile。
+    // 5 → 4：`resume_flag` 删了（ccm 只看不吃 `--resume`，不再替 agent 拼 resume）。
+    // 4 → 5：`has_pidfiles` —— resume 判「在别处跑着」要问观测层那份 pidfile 扫描，只有 claude 有 pidfile。
     assert_eq!(
         fns.len(),
         5,
@@ -507,11 +507,11 @@ fn ccm_is_one_skeleton_with_a_per_agent_table() {
              那个 `extract_capabilities` 抠的是后端流模式那个同名常量，盖不到这里。〕",
         caps.len()
     );
-    // 〔P1 · 第 4 件〕`--ccm-probe` 报的 agent 集合不再是 `mod.rs` 里一份手写常量：由后端注册表派生（带起会话事实的那几家，
+    // `--ccm-probe` 报的 agent 集合不再是 `mod.rs` 里一份手写常量：由后端注册表派生（带起会话事实的那几家，
     //   `agents::launchable_kinds`），值由后端 `control::ccm::tests::the_agent_set_has_one_address_and_every_member_is_wired` 钉。
 
     // 轴二那一格：它是**受管工具**，不是三档中的任何一档。
-    // 〔MIG-3b 续〕受管工具表随「一处后端」进了后端（`src/backend/footprint/registry.rs`）。
+    // 受管工具表随「一处后端」进了后端（`src/backend/footprint/registry.rs`）。
     let tools = rust_production("src/backend/footprint/registry.rs", 10_000);
     let key = format!("id{} \"ccm\"", ':');
     guard_core::find_pinned(&tools, &key).unwrap_or_else(|e| {
@@ -536,11 +536,11 @@ fn the_classification_is_guard_corpus_only_and_no_production_code_consumes_it() 
     //
     // 🔴 〔步 7c 剖分 2026-09-19〕**原来断的是「生产段为空」，今天为空是不可能的。**
     //
-    // 剖分之后 `src/` 那份文件里按 `设计/16 §3.1` 必须留下三行：
+    // 剖分之后 `src/` 那份文件里按必须留下三行：
     //     #[cfg(test)]
     //     #[path = "../../../tests/bridge/plugin_class_registry_tests.rs"]
     //     mod tests;
-    // 而 `guard_core::production_code` **不剥分号声明形**（`真相源/00` 口径第 3 条逐字：
+    // 而 `guard_core::production_code` **不剥分号声明形**（口径第 3 条逐字：
     //「剖分之后 `src/` 里的 `cfg(test)` 只剩这一形」）⇒ 生产段恒有 88 字节，
     // 「为空」那句话恒假（现打红过）。
     //
@@ -625,14 +625,14 @@ fn the_classification_is_guard_corpus_only_and_no_production_code_consumes_it() 
 ///
 /// 没有这条，上面那几个数只是「今天碰巧数出来的数」—— 取法坏掉时它照样可能落在同一个数上。
 ///
-/// 🔴 〔`K-R48` 第二拍 09-11〕**语料从 bash `case` 换成 Rust `const`**：
+/// 🔴 **语料从 bash `case` 换成 Rust `const`**：
 /// 被测对象从那份已删的 bash `ccm` 换成了 `src/backend/control/ccm/mod.rs`，自检跟着换语言。
 /// 从前那三格（一臂不许吃到下一臂 / 缺臂落通配 / 段界）随 `case_arm` 一起没了 ——
 /// **不是丢了，是那个形状不存在了**（Rust 的 `match` 没有 `;;` 这个坑）。
 #[test]
 fn the_const_list_extractor_takes_one_list_not_the_whole_file() {
     // 正向：真去抠一次，成员必须是**这一个**常量的（不是把下一个常量也吃进来）。
-    // 〔P1 · 第 4 件〕agent 闭集改由注册表派生、不再是常量 ⇒ 段界自检换成相邻的两张：`CAPABILITIES` 之后紧跟
+    // agent 闭集改由注册表派生、不再是常量 ⇒ 段界自检换成相邻的两张：`CAPABILITIES` 之后紧跟
     //   `CCM_TMUX_CARRIED`（后者成员全在前者里）⇒ 吃过头时前者会出现重复成员（「18 个 token」那一格会静默地变成另一个数）。
     let caps = ccm_const_list("CAPABILITIES");
     let carried = ccm_const_list("CCM_TMUX_CARRIED");

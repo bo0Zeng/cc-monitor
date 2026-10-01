@@ -18,7 +18,7 @@ export class UnrenderedRanges {
     return this.ranges.length === 0;
   }
 
-  /** 〔U3b〕洞的只读快照（半开、有序、不相交）—— 查看器接骨架时把它们翻成 seq 区间的占位 */
+  /** 洞的只读快照（半开、有序、不相交）—— 查看器接骨架时把它们翻成 seq 区间的占位 */
   get holes(): ReadonlyArray<readonly [number, number]> {
     return this.ranges.map(([a, b]) => [a, b] as const);
   }
