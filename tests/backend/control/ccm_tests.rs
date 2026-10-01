@@ -267,7 +267,10 @@ fn the_base_url_token_is_declared_because_the_tmux_path_really_forwards_it() {
 #[test]
 fn the_agent_set_has_one_address_and_every_member_is_wired() {
     assert_eq!(agents(), ["claude", "codex"]);
-    let face = |a: &str| crate::agents::launch_face_of(a).expect("注册表里有这一家的起会话事实");
+    let face = |a: &str| {
+        crate::agents::launch_face_among(crate::agents::REGISTRY, a)
+            .expect("注册表里有这一家的起会话事实")
+    };
     for a in agents() {
         assert!(!face(a).default_launcher.is_empty(), "{a} 没有默认启动器");
     }

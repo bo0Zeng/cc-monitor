@@ -202,8 +202,8 @@ fn the_launch_faces_agree_with_the_golden_table() {
     );
     let mut bad = Vec::new();
     for (agent, key, want) in &rows {
-        let f =
-            launch_face_of(agent).unwrap_or_else(|| panic!("注册表里没有 `{agent}` 的起会话事实"));
+        let f = launch_face_among(REGISTRY, agent)
+            .unwrap_or_else(|| panic!("注册表里没有 `{agent}` 的起会话事实"));
         let got = match key.as_str() {
             "default_launcher" => f.default_launcher.to_string(),
             "resume_token" => f.resume_token.to_string(),

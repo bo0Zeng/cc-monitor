@@ -42,12 +42,22 @@ fn tracked_files() -> Vec<String> {
     v
 }
 
+/// 跟踪着的、住在 `dir` 下（含子目录；按路径段比，不按字符串前缀）且后缀是 `ext` 的文件。
+fn tracked_under(dir: &str, ext: &str) -> Vec<String> {
+    tracked_files()
+        .into_iter()
+        .filter(|rel| {
+            let p = std::path::Path::new(rel);
+            p.starts_with(dir) && p.extension().is_some_and(|e| e == ext)
+        })
+        .collect()
+}
+
 /// `doc/` 下（含子目录）跟踪着的 `.md`。
 fn doc_files() -> Vec<PathBuf> {
     let root = repo_root();
-    let mut v: Vec<PathBuf> = tracked_files()
+    let mut v: Vec<PathBuf> = tracked_under("src/doc", "md")
         .into_iter()
-        .filter(|rel| rel.starts_with("src/doc/") && rel.ends_with(".md"))
         .map(|rel| root.join(rel))
         .collect();
     v.sort();
@@ -99,9 +109,13 @@ fn an_untracked_scratch_file_never_enters_the_population() {
     let _cleanup = Cleanup(dir.clone());
     std::fs::create_dir_all(&dir).expect("建探针目录");
     let probe = dir.join("README.md");
+    // 地址运行时拼：写成字面量的话，源码这一侧的地址判据会把本文件当成指错了的那一份。
     std::fs::write(
         &probe,
-        "见 `nowhere_probe.rs::no_such_symbol_probe` 与 `src/no/such/probe.rs`。\n",
+        format!(
+            "见 `nowhere_probe.{0}::no_such_symbol_probe` 与 `src/no/such/probe.{0}`。\n",
+            "rs"
+        ),
     )
     .expect("写探针");
     let rel = probe
@@ -231,9 +245,8 @@ fn production_launch_calls() -> usize {
     let root = repo_root();
     // 运行时拼，免得命中本文件自己。
     let verb = format!(".call(\"{}\"", "launch");
-    tracked_files()
+    tracked_under("src/frontend/shell/src", "rs")
         .into_iter()
-        .filter(|rel| rel.starts_with("src/frontend/shell/src/") && rel.ends_with(".rs"))
         // `launch_wire.rs` 的头注里逐字写着那个串（F07 立的例外，沿用）。
         .filter(|rel| !rel.ends_with("/launch_wire.rs"))
         .map(|rel| {

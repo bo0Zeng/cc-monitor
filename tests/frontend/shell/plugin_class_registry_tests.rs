@@ -93,7 +93,7 @@ const REGISTERED: &[Candidate] = &[
         home: "src/backend/control/ccm",
         semantics: Semantics::BuiltIn,
         shape: Shape::ManagedTool,
-        today: "一套通用骨架 + 一张 per-agent 适配表（`E4b`），能力靠 `--ccm-probe` 报。\
+        today: "一套通用骨架 + 一张 per-agent 适配表（`E4b`；表住适配层的起会话事实，ccm 只问那一格），能力靠 `--ccm-probe` 报。\
 它**就是后端本体**的一种跑法，不再是一个独立脚本",
         gap: "无差 —— 本区只借它的协商形状（`E7`），不改它。\
                   ⚠ 但轴二那一格**落不进 `C21` 的三档**：它是受管工具，这件事本身就是读数",
@@ -212,21 +212,19 @@ fn ccm_const_list(name: &str) -> Vec<String> {
     out
 }
 
-/// per-agent 适配函数的名字：`control/ccm/mod.rs` 里**按 agent 分支**的那几个。
+/// `control/ccm/mod.rs` 里**吃一个 agent 名、回那一家那一份**的函数（行首 `pub(crate) fn <名>(agent: &str)`）。
 ///
-/// 取法：行首 `pub(crate) fn <名>(agent: &str)` —— 它们的共同形状是
-/// 「吃一个 agent 名，回这个 agent 的那一份」。⚠ 抠不到就 panic（免得零命中地绿）。
-///
-/// 🔴 **人群只到 `control/ccm/mod.rs` 为止，`agents/mod.rs::account_env_of` 刻意不算**：
-/// 后者是 backend **早就有**的东西（「切账号靠改哪个环境变量」），`ccm` 只是**问它要**
-/// （`mod.rs` 头注逐字「本文件不认识任何 agent 的名字」）。把它数进来，
-/// 这个数就从「`ccm` 的 per-agent 表有多大」变成「全仓有几个吃 agent 名的函数」——
-/// **那是另一个量**，而 `E4b` 裁的是前者。〔本拍现打时它真的混进来过一次，读数 6 vs 5。〕
+/// 今天应当一个都没有：per-agent 那张表收进了适配层的起会话事实（[`launch_face_fields`]），ccm 按注册表那一格问。
+/// 🔴 人群只到 `control/ccm/mod.rs` 为止，`agents/mod.rs::account_env_of` 刻意不算 —— 那是 ccm **问**适配层的口，不是 ccm 自己的表。
 fn ccm_per_agent_fns() -> Vec<String> {
+    let src = guard_core::production_code(&ccm_module_source("mod.rs"));
+    assert!(
+        src.lines().any(|l| l.trim().starts_with("pub(crate) fn ")),
+        "`control/ccm/mod.rs` 生产段里一个 `pub(crate) fn` 都抠不到 —— 抠法坏了，下面的零个是空转"
+    );
     let mut out: Vec<String> = Vec::new();
-    for line in guard_core::production_code(&ccm_module_source("mod.rs")).lines() {
-        let l = line.trim();
-        let Some(rest) = l.strip_prefix("pub(crate) fn ") else {
+    for line in src.lines() {
+        let Some(rest) = line.trim().strip_prefix("pub(crate) fn ") else {
             continue;
         };
         let Some((name, args)) = rest.split_once('(') else {
@@ -236,9 +234,30 @@ fn ccm_per_agent_fns() -> Vec<String> {
             out.push(format!("mod.rs::{name}"));
         }
     }
+    out
+}
+
+/// per-agent 那张表的**宽度**：适配层起会话事实（`agents/mod.rs` 的 `LaunchFace`）有几格。
+/// 抠不到那个结构 / 一格都没抠到 ⇒ panic。
+fn launch_face_fields() -> Vec<String> {
+    let src = std::fs::read_to_string(repo_root().join("src/backend/agents/mod.rs"))
+        .expect("读不到 src/backend/agents/mod.rs");
+    let src = guard_core::production_code(&src);
+    let head = "pub(crate) struct LaunchFace {";
+    guard_core::find_pinned(&src, head)
+        .unwrap_or_else(|e| panic!("`LaunchFace` 的声明不是恰好一处 —— 抠法坏了：{e}"));
+    // 结构体从声明那一行到列 0 的那个 `}` 为止（整行相等，不按子串找）。
+    let out: Vec<String> = src
+        .lines()
+        .skip_while(|l| l.trim() != head)
+        .skip(1)
+        .take_while(|l| *l != "}")
+        .filter_map(|l| l.trim().strip_prefix("pub(crate) "))
+        .filter_map(|l| l.split_once(':').map(|(n, _)| n.to_string()))
+        .collect();
     assert!(
         !out.is_empty(),
-        "一个 per-agent 适配函数都抠不到 —— 抠法坏了"
+        "`LaunchFace` 一格都没抠到 —— 本条此刻是空转的"
     );
     out
 }
@@ -617,17 +636,24 @@ fn ccm_is_one_skeleton_with_a_per_agent_table() {
     //   「通用骨架不动，加一张表的一行」靠的正是它），另两格**如实作废，不假装还在**。
     //   那条「codex 与 claude 到底哪几项不同」今天由后端侧
     //   `control::ccm::tests::the_agent_set_has_one_address_and_every_member_is_wired` 逐项钉。
+    // ccm 自己一个按 agent 分支的函数都没有了：那张表收进适配层的起会话事实（`LaunchFace`），ccm 按注册表那一格问。
     let fns = ccm_per_agent_fns();
-    // 5 → 4：`resume_flag` 删了（ccm 只看不吃 `--resume`，不再替 agent 拼 resume）。
-    // 4 → 5：`has_pidfiles` —— resume 判「在别处跑着」要问观测层那份 pidfile 扫描，只有 claude 有 pidfile。
     assert_eq!(
-        fns.len(),
-        5,
-        "per-agent 适配函数从 4 个变成 {} 个：{fns:?}\n\
-             ⇒ `E4b` 裁的是「通用骨架不动，加一张表的一行」。多一个函数 = 分叉面变大，\
-             那正是该有人过一眼的时刻；少一个 = 要么收敛了（好事，改这个数），\
-             要么抽取器坏了（`pub(crate) fn <名>(agent: &str)`，只扫 `control/ccm/mod.rs`）。",
-        fns.len()
+        fns,
+        Vec::<String>::new(),
+        "`control/ccm/mod.rs` 又长出了吃 agent 名的函数：{fns:?}\n\
+             ⇒ 按哪一家起会有什么不同，做成适配层起会话事实上的一格（没声明 = 不支持），ccm 问那一格。"
+    );
+    // 表的宽度（`E4b`「通用骨架不动，加一张表的一行」）：起会话事实有几格。
+    // 12 = 适配器 id · 默认启动器 · shell wrapper · resume 字面量 · 嵌套标记 · 是不是默认那一家 ·
+    //      resume 命令形 · 会话名前缀 · cc-bus 身份 · 身份面 · pidfile · 信任框。
+    let cells = launch_face_fields();
+    assert_eq!(
+        cells.len(),
+        12,
+        "起会话事实从 12 格变成 {} 格：{cells:?}\n\
+             ⇒ 多一格 = 分叉面变大，那正是该有人过一眼的时刻；少一格 = 收敛了（改这个数并写清少了哪一格）。",
+        cells.len()
     );
 
     // 能力协商面（`E7`/`EL3`）：token 是**集合**，判「会不会做某件事」问集合，不比版本号。
@@ -789,15 +815,10 @@ fn the_const_list_extractor_takes_one_list_not_the_whole_file() {
         carried.iter().all(|c| caps.contains(c)) && caps.len() > carried.len(),
         "两张表抠成了同一份 —— 锚点没起作用"
     );
-    // per-agent 函数那一格：抠出来的每一项都要带住址前缀（免得两份同名函数被数成一个）。
-    let fns = ccm_per_agent_fns();
-    for f in &fns {
-        assert!(f.starts_with("mod.rs::"), "per-agent 函数名没带住址：{f}");
-    }
-    // 段界自检：人群刻意**只到 `control/ccm/mod.rs`** —— `agents/mod.rs::account_env_of`
-    // 是后端早有的东西，混进来这个数就变成另一个量（见 `ccm_per_agent_fns` 头注）。
+    // 起会话事实那一格：抠的是**一个**结构的字段，不是把下一个结构也吃进来（它后面紧跟着两个按注册表查的函数）。
+    let cells = launch_face_fields();
     assert!(
-        !fns.iter().any(|f| f.contains("account_env_of")),
-        "人群扩到 `agents/mod.rs` 了：{fns:?} —— 那个数不再是「`ccm` 的 per-agent 表有多大」"
+        cells.contains(&"trust_prompt".to_string()) && !cells.iter().any(|c| c.contains("fn ")),
+        "`LaunchFace` 抠错了：{cells:?}"
     );
 }
