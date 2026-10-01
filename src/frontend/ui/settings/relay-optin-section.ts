@@ -28,7 +28,7 @@ const TONE_CLASS = { ok: "relay-optin-state is-ok", bad: "relay-optin-state is-b
 /** 一格：类名只用样式表里有的那几个；哪一格是什么由 `data-part` 说（判据按它找，不按类名）。 */
 function div(cls: string, part: string, text = ""): HTMLDivElement {
   const d = document.createElement("div");
-  d.className = cls;
+  if (cls) d.className = cls;
   d.dataset.part = part;
   d.textContent = text;
   return d;
