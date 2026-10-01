@@ -91,10 +91,53 @@ fn trim(x: &str) -> &str {
 
 /// 父记录里派出子 agent 的那几条：Agent 工具的调用（标签 ＋ 类别）· 它的结果（子 agent 是哪个）。
 pub(crate) fn child_link(v: &Value) -> Vec<super::super::ChildLink> {
-    use super::super::{ChildLink, RunEnd, ToolCard};
+    use super::super::{ChildLink, RunEnd};
     match s(v, "type") {
-        Some("assistant") => content(v)
-            .filter(|b| s(b, "type") == Some("tool_use"))
+        Some("assistant") => v
+            .get("message")
+            .and_then(|m| m.get("content"))
+            .map(links_in_content)
+            .unwrap_or_default(),
+        Some("user") => {
+            let result = v.get("toolUseResult");
+            let Some(run) = result
+                .and_then(|r| s(r, "agentId"))
+                .filter(|a| !a.is_empty())
+            else {
+                return Vec::new();
+            };
+            // 前台派出的那次，结果就是它跑完的时候；后台派出的结果当场回（还在跑）。
+            let done = result.and_then(|r| s(r, "status")) == Some("completed");
+            content(v)
+                .filter(|b| s(b, "type") == Some("tool_result"))
+                .filter_map(|b| {
+                    let failed = b.get("is_error").and_then(Value::as_bool) == Some(true);
+                    Some(ChildLink {
+                        tool: s(b, "tool_use_id")?.to_string(),
+                        run: Some(run.to_string()),
+                        end: if failed {
+                            Some(RunEnd::Failed)
+                        } else {
+                            done.then_some(RunEnd::Done)
+                        },
+                        ..ChildLink::default()
+                    })
+                })
+                .take(1)
+                .collect()
+        }
+        _ => Vec::new(),
+    }
+}
+
+/// 一条 assistant 记录的 `message.content` 里派出子 agent 的那几次调用（记录成品的 `childRuns` 与派出链接共用这一份）。
+pub(crate) fn links_in_content(content: &Value) -> Vec<super::super::ChildLink> {
+    use super::super::{ChildLink, ToolCard};
+    content
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|b| s(b, "type") == Some("tool_use"))
             .filter_map(|b| {
                 let name = s(b, "name")?;
                 if super::cards::tool_card(name) != Some(ToolCard::Agent) {
@@ -126,37 +169,7 @@ pub(crate) fn child_link(v: &Value) -> Vec<super::super::ChildLink> {
                     end: None,
                 })
             })
-            .collect(),
-        Some("user") => {
-            let result = v.get("toolUseResult");
-            let Some(run) = result
-                .and_then(|r| s(r, "agentId"))
-                .filter(|a| !a.is_empty())
-            else {
-                return Vec::new();
-            };
-            // 前台派出的那次，结果就是它跑完的时候；后台派出的结果当场回（还在跑）。
-            let done = result.and_then(|r| s(r, "status")) == Some("completed");
-            content(v)
-                .filter(|b| s(b, "type") == Some("tool_result"))
-                .filter_map(|b| {
-                    let failed = b.get("is_error").and_then(Value::as_bool) == Some(true);
-                    Some(ChildLink {
-                        tool: s(b, "tool_use_id")?.to_string(),
-                        run: Some(run.to_string()),
-                        end: if failed {
-                            Some(RunEnd::Failed)
-                        } else {
-                            done.then_some(RunEnd::Done)
-                        },
-                        ..ChildLink::default()
-                    })
-                })
-                .take(1)
-                .collect()
-        }
-        _ => Vec::new(),
-    }
+            .collect()
 }
 
 /// 父记录 ⇒ 此刻在盘上的子 agent 记录（按路径排好序）。

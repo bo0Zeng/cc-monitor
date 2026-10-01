@@ -17,20 +17,13 @@ import { LS_KEYS, safeGet, safeSet } from "./local-storage";
 import { copyText } from "./copy-table";
 
 export interface AgentEntry {
-  /** tool_use id（配对 tool_result 用） */
+  /** 派出它的那次工具调用 id（点进去按它读那个子运行，`history-run`） */
   id: string;
-  /** Task 的 description（缺省回退 prompt 首行 / 工具名） */
+  /** 后端给的标签 */
   label: string;
-  /** subagent_type（"Explore" / "general-purpose"…），无则 null */
+  /** 后端给的类别，无则 null */
   agentType: string | null;
   status: "running" | "done" | "aborted";
-  /** F77：产出该 agent 的 tool_use 那条 assistant 记录的 timestamp——`load_subagent` 按
-   *  (parentPath, description, timestamp) 定位子 agent jsonl 需要它（点进看记录用）。缺省空串。 */
-  timestamp: string;
-  /** F77：原始 description（**trim 后**，镜像 subagent 卡片 `input.description?.trim()`）——
-   *  `load_subagent` 按 description **精确串等**匹配，故必须用它而非展示用的 `label`（label 在
-   *  desc 为空时会回退成 prompt 首行/工具名，拿去匹配必失败）。 */
-  desc: string;
 }
 
 function loadCollapsed(): boolean {
@@ -138,7 +131,7 @@ export class AgentsPanel {
     for (const a of this.agents) {
       const row = document.createElement("li");
       row.className = `tasks-popover-item agent-row agent-${a.status} agent-row-clickable`;
-      // F77：点整行 → 看该 agent 的记录（load_subagent→SessionViewer，main.ts 注入）。键盘可达：
+      // F77：点整行 → 看该 agent 的记录（按运行读 → SessionViewer，main.ts 注入）。键盘可达：
       // role=button + tabindex + Enter/Space（DoD 要求）。
       row.setAttribute("role", "button");
       row.tabIndex = 0;

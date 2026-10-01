@@ -4,7 +4,7 @@ import type { Origin } from "./Origin";
 /**
  * 〔TAP · V124〕会话流 `session-tap`（通道 `subscribe`，`设计/05 §15`）里一格的体：后端 `tap` 帧的字段原样 ＋ 哪台机器。
  *
- * `stream` = claude 请求头里自带的会话标识（〔V141〕== 它的 sid；前端拿它对 tab 的 sid，对不上 / 空 ⇒ 匿名流、不显示）；`resp` · `n` 见后端 `wire::Frame::Tap`；
- * `data`（SSE 事件原文，一个 JSON 串）与 `end`（`"done"` / `"broken"`）恰有一个。
+ * `stream` = 请求自带的会话标识（== 它的 sid；前端拿它对 tab 的 sid，对不上 / 空 ⇒ 匿名流、不显示）；`run` = 归哪个子运行（缺 ＝ 主运行）；
+ * `resp` · `n` 见后端 `wire::Frame::Tap`；`ev`（归一事件，后端按上游协议折好的）与 `end`（`"done"` / `"broken"`）恰有一个。
  */
-export type SessionTapPayload = { origin: Origin, stream: string, resp: number, n: number, data?: string, end?: string, };
+export type SessionTapPayload = { origin: Origin, stream: string, run?: string, resp: number, n: number, ev?: import("./StreamEv").StreamEv, end?: string, };

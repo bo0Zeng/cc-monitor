@@ -4117,26 +4117,6 @@
       "zh": "❯",
       "args": []
     },
-    "subagent.renderSubagentBody.header": {
-      "kind": "body",
-      "zh": "agent-{agentId}  ·  {n} 条记录",
-      "args": ["agentId", "n"]
-    },
-    "subagent.loadAndRender.retry": {
-      "kind": "action",
-      "zh": "重试",
-      "args": []
-    },
-    "subagent.loadAndRender.failed": {
-      "kind": "error",
-      "zh": "加载失败：{e}",
-      "args": ["e"]
-    },
-    "subagent.loadAndRender.loading": {
-      "kind": "body",
-      "zh": "加载 subagent…",
-      "args": []
-    },
     "interactive.plan.title": {
       "kind": "title",
       "zh": "📋 计划待批准",
@@ -4805,11 +4785,6 @@
     "main.tabBar.resizeHint": {
       "kind": "body",
       "zh": "拖拽调整 tab 栏宽度",
-      "args": []
-    },
-    "main.subagent.loadFailed": {
-      "kind": "error",
-      "zh": "加载 subagent 记录失败",
       "args": []
     },
     "main.status.waiting": {
@@ -7195,8 +7170,6 @@
       "zh": "私钥路径（可选）",
       "args": []
     },
-
-
     "machineCard.field.userHint": {
       "kind": "control",
       "zh": "如 ubuntu / pi / root",
@@ -11962,8 +11935,6 @@
       "zh": "改名到 {dest} 失败：{e}",
       "args": ["dest", "e"]
     },
-
-
     "rsLocalBackend.place.unasked": {
       "kind": "error",
       "zh": "本机后端没有放上去：要放的这一份答不出该不该放（{why}）。盘上原来那一份没动。",
@@ -13619,7 +13590,6 @@
       "zh": "还没装下来",
       "args": []
     },
-
     "rsLib.log.none": {
       "kind": "error",
       "zh": "没有 log 文件（log 文件未启用或还没产生）",
@@ -14983,11 +14953,6 @@
       "zh": "{who}的后端太旧，重装那台机器的后端之后再试",
       "args": ["who"]
     },
-    "rsSubagent.load.notFound": {
-      "kind": "error",
-      "zh": "这台机器上没有描述为 {description} 的 subagent",
-      "args": ["description"]
-    },
     "accounts.oldBackend.trust": {
       "kind": "error",
       "zh": "那台机器的后端版本过旧，做不了信任检查。重装那台机器的后端之后再试",
@@ -15458,8 +15423,6 @@
       "zh": "推到远端那台机器上跑的后端",
       "args": []
     },
-
-
     "rsToolRegistry.tools.backendBesideNote": {
       "kind": "body",
       "zh": "本机，随安装包落盘；文件名带目标平台，Windows 上再带 .exe",
@@ -19428,6 +19391,91 @@
     "extPage.table.empty": {
       "kind": "body",
       "zh": "这几台机器上还没有 skill 或 MCP。",
+      "args": []
+    },
+    "runs.state.running": {
+      "kind": "body",
+      "zh": "在跑",
+      "args": []
+    },
+    "runs.state.done": {
+      "kind": "body",
+      "zh": "完成",
+      "args": []
+    },
+    "runs.state.failed": {
+      "kind": "body",
+      "zh": "失败",
+      "args": []
+    },
+    "runs.label.unnamed": {
+      "kind": "body",
+      "zh": "子 agent",
+      "args": []
+    },
+    "runs.last.say": {
+      "kind": "body",
+      "zh": "在写回复",
+      "args": []
+    },
+    "runs.last.think": {
+      "kind": "body",
+      "zh": "在想",
+      "args": []
+    },
+    "runs.last.tool": {
+      "kind": "body",
+      "zh": "调用了 {tool}",
+      "args": ["tool"]
+    },
+    "runs.row.text": {
+      "kind": "body",
+      "zh": "{label} · {state} · 最近：{last}",
+      "args": ["label", "state", "last"]
+    },
+    "runs.row.bare": {
+      "kind": "body",
+      "zh": "{label} · {state}",
+      "args": ["label", "state"]
+    },
+    "runs.timeline.loading": {
+      "kind": "body",
+      "zh": "正在读这个子 agent 的记录…",
+      "args": []
+    },
+    "runs.timeline.failed": {
+      "kind": "error",
+      "zh": "读不到这个子 agent 的记录：{e}",
+      "args": ["e"]
+    },
+    "runCard.summary.text": {
+      "kind": "body",
+      "zh": "{kind} · {label}",
+      "args": ["kind", "label"]
+    },
+    "runCard.summary.bare": {
+      "kind": "body",
+      "zh": "{label}",
+      "args": ["label"]
+    },
+    "runCard.summary.state": {
+      "kind": "body",
+      "zh": "{title} · {state}",
+      "args": ["title", "state"]
+    },
+    "main.run.loadFailed": {
+      "kind": "error",
+      "zh": "读不到这个子 agent 的记录",
+      "args": []
+    },
+    "rsRun.load.notFound": {
+      "kind": "error",
+      "zh": "这台机器上找不到这个子 agent 的记录",
+      "args": []
+    },
+    "rsRun.load.notLinked": {
+      "kind": "error",
+      "zh": "这次调用派出的子 agent 还没对上（前台派出的要等它跑完才写明是哪一个）",
       "args": []
     }
   }

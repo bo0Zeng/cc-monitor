@@ -5,7 +5,7 @@
 //! `设计/99 §4.19.2 ⑥` 逐字：「帧面 16 条，账号与 8 条只读查询都不在 ⇒ 每点一下拨一次 SSH、
 //! 每 10 秒对每台机器握一次手」。那八条（`--list-projects` / `--list-sessions` /
 //! `--read-session` / `--read-session-tail` / `--session-accounts` / `--list-accounts` /
-//! `--search` / `--list-subagents`）此前每问一次就新拨一条 TCP+SSH+鉴权，exec 一次后端、
+//! `--search` 等）此前每问一次就新拨一条 TCP+SSH+鉴权，exec 一次后端、
 //! 读完 stdout 就断 —— 而同一台机器上**早就有一条**长连接（流模式那条），
 //! 入方向一问一答也早就通了（`inbound_client`）。后端那边这一拍把八条登记上了帧面
 //! （`history-*` / `accounts-*`，`src/backend/faces/read_face.rs`），本模块是 monitor 这一侧的发送端。
@@ -49,8 +49,6 @@ pub(crate) const MOVED: &[(&str, &str)] = &[
     ("--read-session", "history-read"),
     ("--read-session-tail", "history-tail"),
     ("--search", "history-search"),
-    // 〔MOD〕右列从只列候选的 `history-subagents` 换成出成品的 `history-subagent`（列 ＋ 挑 ＋ 读 ＋ 解析）。
-    ("--list-subagents", "history-subagent"),
     ("--list-accounts", "accounts-list"),
     ("--session-accounts", "accounts-sessions"),
     // 〔SR1a · 09-24〕骨架索引与大纲清单：每开一个大会话就要一次（不是「点一次才发一次」）。
@@ -85,6 +83,8 @@ pub(crate) const BORN_ON_FRAME: &[&str] = &[
     "drift-report",
     // 〔FIX4 · `设计/90 §3` J15〕各台搜索结果合一份（合并排序进本机后端；界面经通道直接问，monitor 这一侧从不发它）。
     "history-search-merge",
+    // 按运行读一个子运行的记录（替掉按目录 ＋ 描述 ＋ 时间戳挑的那一条与它的列候选子命令；界面经通道直接问）。
+    "history-run",
 ];
 
 // 〔MOD〕按行一问的期限 `LINES_BUDGET`〔散文墓碑〕删：「按行那几条」最后的发送端（子 agent 列候选）随命令退役。

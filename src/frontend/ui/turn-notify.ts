@@ -28,16 +28,13 @@ import { copyText } from "./copy-table";
  *
  * **为什么不直接用生成的 `JsonlLinePayload`**：本接口是**刻意的最小契约**
  * ——这个模块只关心「够不够判一轮结束」这四个字段，依赖注入全量替换才可测。
- * 收窄成最小形状是有意的解耦，不是手抄镜像；而 `isSidechain` 这个字段
- * C04c 之前 TS 侧的 `JsonlRecord` **根本没有**（正是它逼出了这个本地接口）。
- * 现在生成物有了它，但最小契约仍然值得保留。
+ * 收窄成最小形状是有意的解耦，不是手抄镜像。子运行的记录不走主会话的行（它们进运行表），
+ * 这里见到的全是主运行的记录。
  */
 export interface TurnNotifyPayload {
   message?: {
     type?: string;
     timestamp?: string | null;
-    /** 旧版 CC 会把 subagent 行写进主文件——子 agent 完成≠主轮结束，须跳过。 */
-    isSidechain?: boolean;
     /**
      * ★ API 错误消息〔audit-0805 F12 / 报告 §4.1〕。
      *
@@ -96,7 +93,6 @@ export class TurnEndNotifier {
     if (this.disabled || inBatch) return;
     const rec = payload?.message;
     if (!rec || rec.type !== "assistant") return;
-    if (rec.isSidechain) return; // 旧版 CC 的 subagent 行：子 agent 完成≠主轮结束
     // F12 补上的：API 错误带 end_turn 时**不是**一轮真的结束。backend 侧 `turn_detect.rs`
     // 一直有这条、TS 这份**曾经少了** ⇒ 那就是报告 §4.1「turn-end 判定两份」那一行。
     // 现在两份的合取项由 `turn-notify.vitest.ts` 的跨语言对拍逐条钉住（人群从后端派生）。

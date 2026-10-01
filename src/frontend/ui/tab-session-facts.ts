@@ -27,9 +27,7 @@ const sameAgent = (a: AgentEntry, b: AgentEntry): boolean =>
   a.id === b.id &&
   a.label === b.label &&
   a.agentType === b.agentType &&
-  a.status === b.status &&
-  a.timestamp === b.timestamp &&
-  a.desc === b.desc;
+  a.status === b.status;
 
 /** 后端的一份成品 ⇒ tab 上的四样（整份替换，不合并）。 */
 export function applyFacts(tab: Tab, f: SessionFacts): FactsChange {
@@ -43,8 +41,6 @@ export function applyFacts(tab: Tab, f: SessionFacts): FactsChange {
       label: a.label,
       agentType: a.agentType,
       status: a.status === "running" && tab.agentsAborted.has(a.id) ? "aborted" : a.status,
-      timestamp: a.timestamp,
-      desc: a.desc,
     });
   }
   const before = [...tab.agents.values()];

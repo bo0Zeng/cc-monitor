@@ -58,6 +58,7 @@ fn products_pass_through_in_order_and_only_a_lost_link_is_the_monitors_own_word(
             Out::Left { sid, fate, .. } => format!("left {sid} {fate:?}"),
             Out::Listed { origin } => format!("listed {origin}"),
             Out::Unseen { origin, sids } => format!("unseen {origin} {sids:?}"),
+            Out::Runs { sid, .. } => format!("runs {sid}"),
         })
         .collect();
     assert_eq!(
@@ -110,6 +111,7 @@ fn the_f5_plan_puts_skeletons_first_and_judges_bufferless_nothing() {
                 Out::Listed { origin } => format!("listed {origin}"),
                 Out::Unseen { origin, sids } => format!("unseen {origin} {sids:?}"),
                 Out::Status { sid, .. } => format!("status {sid}"),
+                Out::Runs { origin, sid, .. } => format!("runs {origin}/{sid}"),
             })
             .collect()
     };

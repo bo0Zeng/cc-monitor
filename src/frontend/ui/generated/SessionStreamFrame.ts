@@ -8,6 +8,7 @@ import type { SessionEndedPayload } from "./SessionEndedPayload";
 import type { SessionFileNoticePayload } from "./SessionFileNoticePayload";
 import type { SessionIdlePayload } from "./SessionIdlePayload";
 import type { SessionLivePayload } from "./SessionLivePayload";
+import type { SessionRunsPayload } from "./SessionRunsPayload";
 import type { SessionUnseenPayload } from "./SessionUnseenPayload";
 import type { SnapshotInflightPayload } from "./SnapshotInflightPayload";
 
@@ -21,4 +22,4 @@ import type { SnapshotInflightPayload } from "./SnapshotInflightPayload";
  *   前端据此进 / 出批模式（原来由 `jsonl-batch` 事件本身表达；那个事件退役之后，边界就是流里的一格）。
  *   ⚠ 它们也占 credit、占位置：没 credit 时同样可能被丢（前端有「队列清空就补排结束」的兜底）。
  */
-export type SessionStreamFrame = { "line": JsonlLinePayload } | { "batch": BatchEdge } | { "file_notice": SessionFileNoticePayload } | { "live": SessionLivePayload } | { "activity": SessionActivityPayload } | { "container": SessionContainerPayload } | { "idle": SessionIdlePayload } | { "ended": SessionEndedPayload } | { "unseen": SessionUnseenPayload } | { "listed": OriginSessionsListedPayload } | { "snapshot_inflight": SnapshotInflightPayload };
+export type SessionStreamFrame = { "line": JsonlLinePayload } | { "batch": BatchEdge } | { "file_notice": SessionFileNoticePayload } | { "live": SessionLivePayload } | { "activity": SessionActivityPayload } | { "container": SessionContainerPayload } | { "idle": SessionIdlePayload } | { "ended": SessionEndedPayload } | { "unseen": SessionUnseenPayload } | { "listed": OriginSessionsListedPayload } | { "snapshot_inflight": SnapshotInflightPayload } | { "runs": SessionRunsPayload };

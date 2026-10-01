@@ -2635,12 +2635,12 @@ describe("F79 杀死远端 tmux 会话（二次确认 + kill_remote_tmux）", ()
 // 〔STC〕「F70 会话改动集聚合」那一组搬进文件末尾「〔STC〕会话事实」那组：改动文件集由后端出成品（口径 · 去重 · 近因序
 //   住 `tests/backend/observe/facts_query_tests.rs`），前端这边只剩「成品 ⇒ `touchedFilesFor` 的门控与透传」。
 
-describe("F77 getActiveSubagentContext", () => {
+describe("F77 getActiveRunContext", () => {
   it("活跃本地 tab → { parentPath(=sourcePath), origin: LOCAL_ORIGIN }", () => {
     const tm = makeTM();
     tm.ensureTab("s1", "/home/u", "/p/s1.jsonl", 0, LOCAL_ORIGIN);
     tm.switchTo("s1");
-    expect(tm.getActiveSubagentContext()).toEqual({
+    expect(tm.getActiveRunContext()).toEqual({
       parentPath: "/p/s1.jsonl",
       origin: LOCAL_ORIGIN,
     });
@@ -2649,17 +2649,17 @@ describe("F77 getActiveSubagentContext", () => {
     const tm = makeTM();
     tm.ensureTab("s2", "/home", "/p/s2.jsonl", 0, "pi");
     tm.switchTo("s2");
-    expect(tm.getActiveSubagentContext()?.origin).toBe("pi");
+    expect(tm.getActiveRunContext()?.origin).toBe("pi");
   });
   it("无活跃 tab → null", () => {
     const tm = makeTM();
-    expect(tm.getActiveSubagentContext()).toBeNull();
+    expect(tm.getActiveRunContext()).toBeNull();
   });
   it("活跃 tab 无 parentPath（骨架未回填）→ null", () => {
     const tm = makeTM();
     tm.createSkeletonTab("sk", "/root/proj", LOCAL_ORIGIN); // parentPath 空
     tm.switchTo("sk");
-    expect(tm.getActiveSubagentContext()).toBeNull();
+    expect(tm.getActiveRunContext()).toBeNull();
   });
 });
 

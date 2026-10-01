@@ -9,7 +9,6 @@
           "cwd": "/w",
           "forkedFrom": null,
           "isMeta": false,
-          "isSidechain": false,
           "message": {
             "content": "q",
             "model": null,
@@ -37,7 +36,6 @@
           "error": null,
           "forkedFrom": null,
           "isApiErrorMessage": false,
-          "isSidechain": false,
           "message": {
             "content": [
               {
@@ -72,7 +70,6 @@
           "cwd": "/w",
           "forkedFrom": null,
           "isMeta": false,
-          "isSidechain": false,
           "message": {
             "content": "q",
             "model": null,
@@ -100,7 +97,6 @@
           "error": null,
           "forkedFrom": null,
           "isApiErrorMessage": false,
-          "isSidechain": false,
           "message": {
             "content": [
               {
@@ -143,7 +139,6 @@
           "cwd": "/w",
           "forkedFrom": null,
           "isMeta": false,
-          "isSidechain": false,
           "message": {
             "content": "q",
             "model": null,
@@ -169,7 +164,6 @@
           "error": null,
           "forkedFrom": null,
           "isApiErrorMessage": false,
-          "isSidechain": false,
           "message": {
             "content": [
               {
@@ -191,31 +185,60 @@
       }
     ]
   },
-  "history-subagent": {
-    "agent_id": "a1",
+  "history-run": {
+    "end": 289,
+    "more": false,
     "path": "<home>/projects/-golden/r/subagents/agent-a1.jsonl",
-    "records": [
+    "rows": [
       {
-        "cwd": null,
-        "forkedFrom": null,
-        "isMeta": false,
-        "isSidechain": false,
         "message": {
-          "content": "go",
-          "model": null,
-          "role": "user",
-          "usage": null
+          "cwd": null,
+          "forkedFrom": null,
+          "isMeta": false,
+          "message": {
+            "content": "go",
+            "model": null,
+            "role": "user",
+            "usage": null
+          },
+          "parentUuid": null,
+          "sessionId": null,
+          "timestamp": "t3",
+          "type": "user",
+          "userText": {
+            "clean": "go",
+            "interrupt": false
+          },
+          "uuid": "s-1"
+        }
+      },
+      {
+        "message": {
+          "apiErrorStatus": null,
+          "error": null,
+          "forkedFrom": null,
+          "isApiErrorMessage": false,
+          "message": {
+            "content": [
+              {
+                "text": "ok",
+                "type": "text"
+              }
+            ],
+            "model": null,
+            "role": "assistant",
+            "usage": null
+          },
+          "parentUuid": null,
+          "requestId": null,
+          "sessionId": null,
+          "timestamp": "t4",
+          "type": "assistant",
+          "uuid": "s-2"
         },
-        "parentUuid": null,
-        "sessionId": null,
-        "timestamp": "t3",
-        "type": "user",
-        "userText": {
-          "clean": "go",
-          "interrupt": false
-        },
-        "uuid": "s-1"
+        "rid": "m-s2"
       }
-    ]
+    ],
+    "run": "a1"
   }
 }

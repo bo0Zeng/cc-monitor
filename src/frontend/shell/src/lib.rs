@@ -236,7 +236,7 @@ mod shared_crate_registry; // U8c-1：新增共享 crate 时 CI 三样都要补 
 mod shell_lint_registry; // audit-0805 08-08：每个 shell 脚本要么进 shellcheck 要么登记豁免
 #[cfg(test)]
 mod structural_scan;
-// 〔MOD〕`mod subagent;`〔散文墓碑〕删：子 agent 那一份（列 ＋ 挑 ＋ 读 ＋ 解析）由那台后端 `history-subagent` 出成品，界面经通道直问。
+// 〔MOD〕`mod subagent;`〔散文墓碑〕删：子 agent 那一份（列 ＋ 挑 ＋ 读 ＋ 解析）由那台后端按运行读（`history-run`）出成品，界面经通道直问。
 // 〔W5-VIS〕业务路径零裸吞：每一处 `let _ =` / 语句级 `.ok();` 登记为什么可以丢（整体 #[cfg(test)]）。
 #[cfg(test)]
 mod swallow_registry;
@@ -401,7 +401,7 @@ fn session_side_effects(
                 local_cache.apply_local_removal(sid);
             }
         }
-        Out::Unseen { .. } | Out::Status { .. } | Out::Listed { .. } => {}
+        Out::Unseen { .. } | Out::Status { .. } | Out::Listed { .. } | Out::Runs { .. } => {}
     }
 }
 
@@ -1278,6 +1278,7 @@ pub(crate) fn batch_to_payloads(
                     origin: label.clone(),
                     message,
                     skipped_from: skipped,
+                    rid: line.rid,
                 });
             }
             None => {

@@ -130,10 +130,11 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answ
                 READ_PAGE_BYTES,
                 LINE_CAP_BYTES,
             )?;
-            let records = crate::observe::record_page::all_records(&face, &page.bytes);
+            let rows = crate::observe::record_page::run_rows(&face, &page.bytes);
             capped(json!({
                 "run": run,
-                "records": records,
+                "path": source_str,
+                "rows": rows,
                 "end": page.next,
                 "more": !page.eof,
             }))

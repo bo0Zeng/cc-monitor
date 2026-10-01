@@ -1,9 +1,10 @@
 //! turn-end 判词（backend 侧 · phase② TurnEnd 帧的检测核）。
 //!
 //! **契约 = aterm `TurnDetector.kt:29` 逐字对拍**（golden-parity，同 `usage_query` 套路）：
-//! turn-end ⟺ `type=="assistant" && message.stop_reason=="end_turn" && !isApiError && !isSidechain`。
-//! 字段坑（master plan §0）：`isApiErrorMessage`→isApiError、`stop_reason` 嵌在 **message** 下、
-//! `isSidechain` 是 **top-level**。
+//! turn-end ⟺ `type=="assistant" && message.stop_reason=="end_turn" && !isApiError`，且这条记录属于主运行。
+//! 字段坑（master plan §0）：`isApiErrorMessage`→isApiError、`stop_reason` 嵌在 **message** 下。
+//! 「属于主运行」不在本判词里：子运行的记录归属由本家 `runs::run_of` 答、由通用 watcher 在发 `TurnEnd` 之前排除
+//! （子运行的轮次收尾 ≠ 主运行一轮结束），线上 `TurnEnd` 帧的人群与从前同一个。
 //!
 //! **已接线**（backend-09）：`process_jsonl` 每见一条 turn-end 记录发 `Frame::TurnEnd{sid,uuid}`
 //! （raw-per-record、backend 不 dedup）；dedup 视界在 aterm 侧 rolling-latest + debounce(1200ms)
@@ -41,8 +42,6 @@ pub struct Probe {
     /// 非 bool ⇒ 当缺（安全默认：不排除），与原先 `as_bool().unwrap_or(false)` 同口径。
     #[serde(rename = "isApiErrorMessage", default)]
     is_api_error: Option<LooseBool>,
-    #[serde(rename = "isSidechain", default)]
-    is_sidechain: Option<LooseBool>,
 }
 
 /// `message` 里只要 `stop_reason`（嵌在 message 下 —— 字段坑）。
@@ -72,10 +71,10 @@ enum LooseStr {
 const END_TURN_NEEDLE: &str = "\"end_turn\"";
 
 /// 一条记录是否为 turn-end 边沿。**逐字对拍 aterm `TurnDetector`**：
-/// `assistant` && `message.stop_reason=="end_turn"` && !`isApiErrorMessage` && !`isSidechain`。
-/// 缺字段一律安全默认（stop_reason 缺→非 end_turn→false；error/sidechain 缺→false→不排除）。
+/// `assistant` && `message.stop_reason=="end_turn"` && !`isApiErrorMessage`（子运行的那几条由通用 watcher 先排除，见头注）。
+/// 缺字段一律安全默认（stop_reason 缺→非 end_turn→false；error 缺→false→不排除）。
 pub fn is_turn_end(p: &Probe) -> bool {
-    is_assistant(p) && stop_reason(p) == Some("end_turn") && !is_api_error(p) && !is_sidechain(p)
+    is_assistant(p) && stop_reason(p) == Some("end_turn") && !is_api_error(p)
 }
 
 /// turn-end 边沿的 uuid（= 完成 assistant 记录 uuid），供 TurnEnd 帧 + 客户端幂等去重。
@@ -113,11 +112,6 @@ fn stop_reason(p: &Probe) -> Option<&str> {
 /// `isApiErrorMessage`（→ isApiError；缺/非 bool → false）。
 fn is_api_error(p: &Probe) -> bool {
     matches!(p.is_api_error, Some(LooseBool::Bool(true)))
-}
-
-/// top-level `isSidechain`（缺/非 bool → false）。
-fn is_sidechain(p: &Probe) -> bool {
-    matches!(p.is_sidechain, Some(LooseBool::Bool(true)))
 }
 
 #[cfg(test)]

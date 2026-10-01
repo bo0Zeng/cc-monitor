@@ -293,6 +293,7 @@ fn the_local_dispatch_core_matches_the_hand_written_table() {
         message: crate::ui_contract::RecordBody::from_json(r#"{"x":1}"#.into()),
         cwd: None,
         end: None,
+        rid: None,
     };
     let line_b = LocalStep::Line {
         session_id: "b".into(),
@@ -301,6 +302,7 @@ fn the_local_dispatch_core_matches_the_hand_written_table() {
         message: None,
         cwd: None,
         end: None,
+        rid: None,
     };
 
     // ① 显示 bg：一切照转。

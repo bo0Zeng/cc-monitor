@@ -205,6 +205,15 @@ impl RunBook {
     }
 }
 
+/// [`RunTrack::main_record`] 的答。
+#[derive(Debug, Default)]
+pub(crate) struct MainRecord {
+    pub(crate) rid: Option<String>,
+    /// 这条记录属于某个子运行（不是主运行一轮的收尾，也不该算主运行的事）。
+    pub(crate) in_run: bool,
+    pub(crate) changed: bool,
+}
+
 /// 一份子运行记录读到哪了。
 struct ChildCursor {
     sid: String,
@@ -234,17 +243,24 @@ impl RunTrack {
         self.faces.children.is_some()
     }
 
-    /// 一行主记录交出去之前：归属与派出链接记进簿里。回：（对账键, 运行表变没变）。
-    pub(crate) fn main_record(&self, sid: &str, raw: &str) -> (Option<String>, bool) {
-        if self.faces.response_id.is_none() && self.faces.child_link.is_none() {
-            return (None, false);
+    /// 一行主记录交出去之前：归属与派出链接记进簿里。回：（对账键, 它其实属于某个子运行, 运行表变没变）。
+    pub(crate) fn main_record(&self, sid: &str, raw: &str) -> MainRecord {
+        let none = MainRecord::default();
+        if self.faces.response_id.is_none()
+            && self.faces.child_link.is_none()
+            && self.faces.run_of.is_none()
+        {
+            return none;
         }
         let Ok(v) = serde_json::from_str::<Value>(raw.trim_start_matches('\u{feff}').trim())
         else {
-            return (None, false);
+            return none;
         };
-        let changed = self.book.record(&self.faces, sid, &v, false);
-        (self.faces.response_id(&v), changed)
+        MainRecord {
+            changed: self.book.record(&self.faces, sid, &v, false),
+            rid: self.faces.response_id(&v),
+            in_run: self.faces.run_of(&v).is_some(),
+        }
     }
 
     /// 一个会话的主记录在这里（宣告 / 每次读到它时都说；只有头一次真去找）：把它此刻已有的子运行记录收进来、从头读一遍。

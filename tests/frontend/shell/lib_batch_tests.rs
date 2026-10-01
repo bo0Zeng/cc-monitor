@@ -23,6 +23,7 @@ fn jline(
         }),
         cwd: cwd.map(str::to_string),
         end: None,
+        rid: None,
     }
 }
 

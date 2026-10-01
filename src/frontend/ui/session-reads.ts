@@ -113,8 +113,6 @@ export interface AgentFact {
   label: string;
   agentType: string | null;
   status: "running" | "done";
-  timestamp: string;
-  desc: string;
 }
 
 /** 〔STC〕最新 usage（后端 `facts_query::UsageFact`）：context 占用的原料，上限与百分比是排版（`views/context-limit.ts`）。 */
@@ -227,8 +225,8 @@ export function decodeFacts(v: unknown): SessionFacts {
   const agents = v.agents.map((a): AgentFact => {
     if (
       !isObj(a) ||
-      !exactKeys(a, ["id", "label", "agentType", "status", "timestamp", "desc"]) ||
-      ![a.id, a.label, a.timestamp, a.desc].every(isStr) ||
+      !exactKeys(a, ["id", "label", "agentType", "status"]) ||
+      ![a.id, a.label].every(isStr) ||
       !(a.agentType === null || isStr(a.agentType)) ||
       (a.status !== "running" && a.status !== "done")
     ) {
@@ -239,8 +237,6 @@ export function decodeFacts(v: unknown): SessionFacts {
       label: a.label as string,
       agentType: a.agentType as string | null,
       status: a.status,
-      timestamp: a.timestamp as string,
-      desc: a.desc as string,
     };
   });
   let usage: UsageFact | null = null;

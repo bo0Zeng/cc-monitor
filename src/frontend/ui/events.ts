@@ -31,6 +31,7 @@ import type { SessionEndedPayload } from "./generated/SessionEndedPayload";
 import type { SessionIdlePayload } from "./generated/SessionIdlePayload";
 import type { SessionActivityPayload } from "./generated/SessionActivityPayload";
 import type { SessionTapPayload } from "./generated/SessionTapPayload";
+import type { SessionRunsPayload } from "./generated/SessionRunsPayload";
 // 本文件内部也用这些名字（8 处），所以 import + re-export 都要有：
 // 只写 `export type { … } from` 不会把名字带进本地作用域。
 export type {
@@ -86,6 +87,11 @@ export interface EventHandlers {
    * 进 queue：与 `remote-added` / 行保序（先建 tab、再落容器；早到的由 TabManager 暂存）。
    */
   onSessionContainer?: (sessionId: string, container: string) => void;
+  /**
+   * 一个会话的运行表（会话流里的 `runs` 格，那台后端的成品）：主 tab 上每个在跑的子运行一行、跑完收进派出它的那张工具卡。
+   * 进 queue：排在那个会话的宣告之后（处理它时 tab 已在）。
+   */
+  onSessionRuns?: (p: SessionRunsPayload) => void;
   /**
    * 〔U4b · 第四波〕某台机器的活会话清单报完了（`listed` 格）。进 queue：排在那台的
    * `remote-added` 之后 ⇒ 处理它时，那台此刻全部的活会话都已宣告过（`设计/30 §3.5.7a`）。
@@ -176,6 +182,7 @@ export const CREDIT_EXEMPT_FRAMES = [
   "unseen",
   "listed",
   "snapshot_inflight",
+  "runs",
 ] as const;
 
 /**
@@ -225,6 +232,7 @@ type QueueItem =
     }
   // 〔U4b · 第四波〕容器事实 / 某台清单报完了 —— 同一 queue 保序（见 EventHandlers 里两条的注释）。
   | { kind: "container"; sessionId: string; container: string }
+  | { kind: "runs"; payload: SessionRunsPayload }
   | { kind: "listed"; origin: string }
   // 〔GP1 · 第四波〕那台机器看不见了 —— 同一 queue 保序（见 EventHandlers.onOriginUnseen）。
   | { kind: "unseen"; origin: string }
@@ -511,6 +519,8 @@ export async function bindEvents(
         });
       } else if (item.kind === "container") {
         handlers.onSessionContainer?.(item.sessionId, item.container);
+      } else if (item.kind === "runs") {
+        handlers.onSessionRuns?.(item.payload);
       } else if (item.kind === "listed") {
         handlers.onOriginSessionsListed?.(item.origin);
       } else if (item.kind === "unseen") {
@@ -643,6 +653,8 @@ export async function bindEvents(
           handlers.onSessionActivity?.(f.activity);
         } else if (f !== null && typeof f === "object" && "container" in f) {
           queue.push({ kind: "container", sessionId: f.container.session_id, container: f.container.container });
+        } else if (f !== null && typeof f === "object" && "runs" in f) {
+          queue.push({ kind: "runs", payload: f.runs });
         } else if (f !== null && typeof f === "object" && "idle" in f) {
           queue.push({ kind: "idle", sessionId: f.idle.session_id });
         } else if (f !== null && typeof f === "object" && "ended" in f) {
