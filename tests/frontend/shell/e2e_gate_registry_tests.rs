@@ -530,13 +530,25 @@ fn every_private_e2e_name_comes_from_the_one_primitive() {
         ("t4.sh", "_GC_SOCK=\"e2eGray\"\n"),
         ("t5.sh", "SOCK=(-L e2e-rbind)\n"),
         ("t6.sh", ": \"${CCM_E2E_TMUX_SOCK:=e2eGray}\"\n"),
-        ("t7.sh", "TMUX_SHIM_SOCK=e2eGate2\n. \"$HERE/tmux-shim.sh\"\n"),
-        ("t8.sh", "NET=\"ccmon-weaknet-net\"\ndocker network create \"$NET\"\n"),
+        (
+            "t7.sh",
+            "TMUX_SHIM_SOCK=e2eGate2\n. \"$HERE/tmux-shim.sh\"\n",
+        ),
+        (
+            "t8.sh",
+            "NET=\"ccmon-weaknet-net\"\ndocker network create \"$NET\"\n",
+        ),
         ("t9.sh", "docker run -d --name ccmon-x img sleep 1\n"),
         ("t10.sh", "docker network create --internal ccmon-n\n"),
-        ("t11.mjs", "spawnSync(\"tmux\", [\"-L\", \"e2eX\", \"ls\"]);\n"),
+        (
+            "t11.mjs",
+            "spawnSync(\"tmux\", [\"-L\", \"e2eX\", \"ls\"]);\n",
+        ),
         ("t12.sh", "S=\"sockX\"\n\"$TMUX_BIN\" -L \"$S\" ls\n"),
-        ("t13.sh", "NET=\"${WEAKNET_NET:-ccmon-weaknet-net}\"\ndocker run --network \"$NET\" img\n"),
+        (
+            "t13.sh",
+            "NET=\"${WEAKNET_NET:-ccmon-weaknet-net}\"\ndocker run --network \"$NET\" img\n",
+        ),
         ("t14.sh", "local F=\"$W\" sock=lateSrv\n"),
         ("t15.sh", "SOCK=\"$(e2e_run_name p3t)\"\n"),
     ];
@@ -547,10 +559,7 @@ fn every_private_e2e_name_comes_from_the_one_primitive() {
             (name.to_string(), src.to_string()),
             ("tmux-shim.sh".to_string(), shim_def.to_string()),
         ]);
-        assert!(
-            !hits.is_empty(),
-            "判定漏了一形（合成语料 {name}）：\n{src}"
-        );
+        assert!(!hits.is_empty(), "判定漏了一形（合成语料 {name}）：\n{src}");
     }
     let good = "\
 # tmux -L e2eGray 这是注释\n\
@@ -580,11 +589,10 @@ tmux select-pane -L -t x; tmux capture-pane -p -S -50\n";
     assert!(hits.is_empty(), "好语料被误点名：\n{}", hits.join("\n"));
 
     let dir = crate::guard_support::repo_root().join("tests").join("e2e");
-    let files: Vec<(String, String)> =
-        guard_core::scan_tree!(&dir, &["sh", "mjs", "mts", "ts"])
-            .into_iter()
-            .map(|(p, s)| (p.to_string_lossy().replace('\\', "/"), s))
-            .collect();
+    let files: Vec<(String, String)> = guard_core::scan_tree!(&dir, &["sh", "mjs", "mts", "ts"])
+        .into_iter()
+        .map(|(p, s)| (p.to_string_lossy().replace('\\', "/"), s))
+        .collect();
     assert!(
         files.iter().filter(|(p, _)| p.ends_with(".sh")).count() >= 30,
         "只扫到 {} 份 `tests/e2e/**/*.sh` —— 扫描坏了（建判据当天 44 份）",
@@ -682,7 +690,10 @@ fn name_arg_slots(line: &str) -> Vec<(String, String)> {
                     .split_whitespace()
                     .find(|t| !t.starts_with('-'))
                     .unwrap_or("");
-                let name = name.split(|c: char| c == ')' || c == ';').next().unwrap_or("");
+                let name = name
+                    .split(|c: char| c == ')' || c == ';')
+                    .next()
+                    .unwrap_or("");
                 out.push((format!("docker {sub}"), name.to_string()));
             }
         }
@@ -699,7 +710,9 @@ fn leading_assignments(line: &str) -> Vec<(String, String)> {
         if let Some(r) = s.strip_prefix(kw) {
             s = r.trim_start();
             while let Some(r) = s.strip_prefix('-') {
-                s = r.trim_start_matches(|c: char| c.is_ascii_alphabetic()).trim_start();
+                s = r
+                    .trim_start_matches(|c: char| c.is_ascii_alphabetic())
+                    .trim_start();
             }
             break;
         }
@@ -819,18 +832,28 @@ fn hardcoded_private_names(files: &[(String, String)]) -> Vec<String> {
                         name_vars.insert(v);
                     }
                 } else {
-                    hits.push(format!("{path}: {slot} 后面是字面量 `{arg}`：{}", line.trim()));
+                    hits.push(format!(
+                        "{path}: {slot} 后面是字面量 `{arg}`：{}",
+                        line.trim()
+                    ));
                 }
             }
         }
         let watched = |v: &str| name_vars.contains(v) || v.to_ascii_lowercase().contains("sock");
-        if lines.iter().any(|l| l.trim_start().starts_with("e2e_run_name()")) {
+        if lines
+            .iter()
+            .any(|l| l.trim_start().starts_with("e2e_run_name()"))
+        {
             defined_in.push(path);
         }
-        let calls = lines.iter().any(|l| l.contains("e2e_run_name ") && !l.contains("e2e_run_name()"));
+        let calls = lines
+            .iter()
+            .any(|l| l.contains("e2e_run_name ") && !l.contains("e2e_run_name()"));
         let sources = lines.iter().any(|l| l.contains("tmux-shim.sh"));
         if calls && !sources && !path.ends_with("tmux-shim.sh") {
-            hits.push(format!("{path}: 调了 e2e_run_name 却没 `.` 共享原语 tmux-shim.sh"));
+            hits.push(format!(
+                "{path}: 调了 e2e_run_name 却没 `.` 共享原语 tmux-shim.sh"
+            ));
         }
         for line in &lines {
             for (var, value) in leading_assignments(line) {
@@ -840,12 +863,18 @@ fn hardcoded_private_names(files: &[(String, String)]) -> Vec<String> {
                 let path_like = !name_vars.contains(&var)
                     && value.trim_start_matches(['"', '\'']).starts_with('/');
                 if !assigned_from_ref(&value) && !path_like {
-                    hits.push(format!("{path}: 名字变量 {var} 赋成了字面量：{}", line.trim()));
+                    hits.push(format!(
+                        "{path}: 名字变量 {var} 赋成了字面量：{}",
+                        line.trim()
+                    ));
                 }
             }
             for (var, dflt) in parameter_defaults(line) {
                 if watched(&var) && !(dflt.starts_with('$') || dflt.starts_with('}')) {
-                    hits.push(format!("{path}: 名字变量 {var} 带字面量缺省值：{}", line.trim()));
+                    hits.push(format!(
+                        "{path}: 名字变量 {var} 带字面量缺省值：{}",
+                        line.trim()
+                    ));
                 }
             }
         }
