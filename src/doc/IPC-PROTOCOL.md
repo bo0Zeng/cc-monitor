@@ -684,7 +684,7 @@ pane 根进程 pid）+ 登记的完整地址。08-13 实测过不核的后果：
 ← {"kind":"reply","id":"B5","ok":true,"data":{"spawned":true,"id":"proj_cc-2","said":"已 spawn: proj_cc-2   (目录: /home/zbl/proj  初始任务: 跑门禁)\n…"}}
 ```
 
-入参：`tool`（起哪种 agent，**后端只判非空**，认不认归 `cc-spawn` 自己）· `dir`（工作目录，非空）·
+入参：`tool`（起哪一家 agent：缺 / 空 ⇒ 注册表里声明默认的那一家；注册表里没有的名字 ⇒ `invalid_args`，那句话列出认得的几家）· `dir`（工作目录，非空）·
 `task`（初始任务，可空）· **`account` 与 `base:true` 恰好给一个** —— 两样都不给 ⇒ `invalid_args`。
 ⚠ 为什么逼调用方表态：不传的话 `ccm` 落 manifest 的默认号，等于**替用户选了一个他没选过的号**去起一个真
 agent、烧真额度。
@@ -701,7 +701,7 @@ shell 串走 SSH、本机拒绝」的分叉。命名避让 / 登记进总线 / s
 
 | 码 | 什么情况 |
 |---|---|
-| `invalid_args` | 缺 `tool`/`dir`、账号没表态或两样都给；或 `cc-spawn` 自己 rc=2（目录不存在 · 不认的 tool · ccm 太旧） |
+| `invalid_args` | `tool` 不是注册表里的一家 · 缺 `dir`、账号没表态或两样都给；或 `cc-spawn` 自己 rc=2（目录不存在 · ccm 太旧） |
 | `bad_id` | 给的 `account` 形状过不了 `shell_quote_core::bus_id_ok` —— **交给 `cc-spawn` 之前**就拒（`INVARIANTS §47` ①） |
 | `not_installed` | 找不到 `cc-spawn` |
 | `timed_out` | 子进程跑过期限被结束。🔴 **会话可能已经起来了**（`cc-spawn` 是建完会话才回显的）⇒ 先 `bus-state` 看一眼，**别直接重试**：重试会再起一个真 agent |
@@ -775,7 +775,7 @@ F04b 先把它从**主路**降为一次性回落，本件把它整块拿掉 ⇒ 
      "payload":"cd '/x' && claude --resume …",
      "cwd":"/x",             // 可选，仅 create-or-attach
      "ccm_sid":"<完整 sid>",  // 可选，仅 create-or-attach；[A-Za-z0-9_-]
-     "agent":"claude",       // 可选，仅 create-or-attach；[A-Za-z0-9_-]
+     "agent":"claude",       // 可选，仅 create-or-attach；给了就得是注册表里的一家（空 ⇒ 默认那一家，认不出 ⇒ invalid_args）
      "width":"220",          // 可选，仅 create-or-attach；与 height **同时给或都不给**
      "height":"50"           // 可选；1–4 位十进制**字符串**
    }}
@@ -1758,7 +1758,7 @@ monitor 进程内也**不再有它的副本**（原来那条「启动时 / 改�
 
 | 字段 | 向 | 说明 |
 |---|---|---|
-| `agent` | → | 这一家 agent 的路由名（凭据文件的行只属于 `claude-code`；别家 ⇒ `routed` 恒空）|
+| `agent` | → | 这一家 agent 的路由名（凭据文件的行只属于 `claude-code`；别家 ⇒ `routed` 恒空）。空串 ⇒ 默认那一家；注册表里没有 ⇒ `bad_args`，那句话列出认得的几家 |
 | `configDirs` | → | 要问的那几个号的配置目录（id 由后端按 `acct-core` 那一份规则推，前端一个字都不推）|
 | `routed` | ← | 传进来的里面、**表里有对应行**的那几个（原样回）。「表里有行」= 上游选择装表真收进表的那几行（`base_url` 坏的那一行不算）|
 | `running` | ← | 这台机器上**我们的**中转在不在听（读常驻后端进程内的监听状态；中转住这里）|
@@ -1777,7 +1777,7 @@ monitor 进程内也**不再有它的副本**（原来那条「启动时 / 改�
 
 | 字段 | 向 | 说明 |
 |---|---|---|
-| `agent` | → | 这一家 agent 的路由名（第 1 段）|
+| `agent` | → | 这一家 agent 的路由名（第 1 段）。空串 ⇒ 默认那一家；注册表里没有 ⇒ `bad_args`（不当成「没有表」照直连） |
 | `account` | → | `{"kind":"named","configDir":…}` · `{"kind":"base"}` · 缺席 / `null`（没表态）|
 | `allSessions` | → | 全量注入开关（`/t/` 那几格；monitor 进程环境 `CCM_RELAY_ALL_SESSIONS`，默认开，由调用方带来）|
 | `baseUrl` | ← | 注入的地址（不带钥匙；渲染成 `$(cat ~/.cc-monitor/relay-key)` 那一形是渲染那一侧的事）；`null` = 不注入（含「有它更好而中转没在听 ⇒ 这一发直连」）|
@@ -2469,7 +2469,7 @@ monitor（宿主，只交事实）在**每台**远端流握手成功那一刻交
 
 | 字段 | 向 | 说明 |
 |---|---|---|
-| `agent` | → | 必填：这次起会话的是哪一家（适配器 id）。只有它是这台机器 apikey 表的那一家时，表里的行才算数（条 49） |
+| `agent` | → | 必填：这次起会话的是哪一家（适配器 id；空串 ⇒ 默认那一家，注册表里没有 ⇒ `bad_args`）。只有它是这台机器 apikey 表的那一家时，表里的行才算数（条 49） |
 | `meta` | ← | `{enabled, acctsDir, manifestPath, updatedAt, sharedStore, count, error}`（同 `--list-accounts` 首行去掉分帧用的 `kind` / `accountZeroAware`）。账号库目录走默认解析，**帧面不收 `--accts-dir`** |
 | `accounts` | ← | 每账号一个对象，字段同 `--list-accounts` 的账号行；**并上了这台机器自己那份 apikey 表**：表里有行的号 `authKind` 是 `api-key`、`authReady` 按 `acct_core::auth_ready`（规则住 `acct-core`，CLI 那一臂不并表） |
 | `notice` | ← | 「能用但有缺」：启用了却一个账号 0 都没有（写清单的那一侧旧到不认账号 0）时的一句话；否则 `null` |
@@ -3551,7 +3551,8 @@ CLI 面随之自动多一条 `--history-find`。
 **hello 那一帧对 aterm 只做 additive**：`unavailable` · `uncancellable` 两格都是空表省略、有值落在既有字段之后；aterm 的 `parseHello` 按通用 map 解、只取它认得的键、未知字段忽略（只读核过）⇒ 不算本节意义上的契约变更（仍 bump `BUILD_ID`，已部署的后端得换成会发它们的那一版）。
 
 - **入参**（stdin / `args`，camelCase）：`sessionId` · `launchCandidates` · `claudeDir` · `fallbackCwd` · `alreadyInTmux` · `agentKind`
-  （`sessionId` 必填；其余缺省。`claudeDir` · `fallbackCwd` · `alreadyInTmux` 今天读进来不用 —— 字段照样冻结，不许改名）
+  （`sessionId` 必填；其余缺省。`claudeDir` · `fallbackCwd` · `alreadyInTmux` 今天读进来不用 —— 字段照样冻结，不许改名。
+  `agentKind` 缺 / 空 ⇒ 注册表里声明默认的那一家；注册表里没有的名字 ⇒ `bad_request`，那句话列出认得的几家，不落默认）
 - **出参**（stdout 一行紧凑 JSON / `data`）：`command` · `mode` · `capabilities` · `sessionName` · `launchLabel` · `substitutedFrom`
   （后三个缺席即省略；`mode` 今天恒 `PtyInject`，另一个保留值 `ExecOnce`；可信度见 `§10.1`）
 - **`capabilities` 四名**（逐字复用 aterm `SessionCapabilities`）：`supportsSendKeys` · `supportsCapture` · `supportsMultiClient` · `supportsMultiWindow`

@@ -40,7 +40,7 @@ import { budgetWithin, jsonBody, readJson, saidOf } from "../ipc/chan-caller";
 import { isLocalOrigin } from "../ipc/origin";
 import { showActionFailureToast } from "../error-toast"; // `K-R135`：用户级 PATH 那一格的失败要出声
 import { buildPasteBlock } from "../paste-block";
-import { ACTIVE_AGENT, listAgents } from "../agent-profile";
+import { DEFAULT_AGENT, listAgents } from "../agent-profile";
 // 别名六问走通道、那台后端出成品（`../alias-reads`）；类型随成品住那边（从前是 monitor 生成的类型）。
 import type { Alias, AliasRender, ExecPolicy, PsHost, StartupFile, Shell } from "../alias-reads";
 import { askConfirm, type ConfirmFn } from "../ask-dialog";
@@ -398,7 +398,7 @@ export function buildAliasManager(opts: {
   ]);
   const tmuxNameIn = text(copyText("machineAliases.form.tmuxName"));
   const agentSel = select([
-    ["", copyText("machineAliases.form.agentNone", { agent: ACTIVE_AGENT })],
+    ["", copyText("machineAliases.form.agentNone", { agent: DEFAULT_AGENT })],
     ...listAgents().map((a): [string, string] => [a, `agent：${a}`]),
   ]);
   grid.append(nameIn, cwdIn, acctSel, tmuxSel, tmuxNameIn, agentSel);
@@ -603,6 +603,20 @@ export function buildAliasManager(opts: {
     acctSel.appendChild(o);
   };
 
+  // 别名里写的 agent 不是注册表里的一家（手编的 / 拼错的）：**不许**让下拉框悄悄变成「不指定 = 默认那一家」——
+  //   照原样摆一项（不可选，只能改选表里的那几家），存的时候后端会拒、说出认得的几家。
+  const showAgent = (agent: string): void => {
+    for (const o of [...agentSel.options]) if (o.dataset.role === "agent-unknown") o.remove();
+    if (agent && !listAgents().includes(agent)) {
+      const o = el("option", "", copyText("machineAliases.form.agentUnknown", { agent }));
+      o.value = agent;
+      o.disabled = true;
+      o.dataset.role = "agent-unknown";
+      agentSel.appendChild(o);
+    }
+    agentSel.value = agent;
+  };
+
   const fillForm = (f: AliasForm, index: number): void => {
     editing = index;
     ensureAccountOption(f.account);
@@ -611,7 +625,7 @@ export function buildAliasManager(opts: {
     acctSel.value = f.account;
     tmuxSel.value = f.tmux;
     tmuxNameIn.value = f.tmuxName;
-    agentSel.value = f.agent;
+    showAgent(f.agent);
     modelIn.value = f.model;
     launcherIn.value = f.launcher;
     sizeIn.value = f.tmuxSize;

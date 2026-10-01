@@ -118,8 +118,8 @@ ck "--launcher 'ccr code' 拆成词（用户 09-26）" \
 ck "--account 与 --base 互斥" \
    "ccm: --account 与 --base 互斥" \
    "$(ccm -- --cwd /p --account z --base --ccm-print)"
-ck "未知 agent 报错" \
-   "ccm: 未知 agent: gpt（支持 claude|codex）" \
+ck "不认识的 agent 报错并说出认得的几家" \
+   "ccm: 不认识这个 agent：gpt（认得的：claude / codex）" \
    "$(ccm -- --ccm-agent gpt --cwd /p --ccm-print)"
 ck "未知选项原样交给 claude（从前报「未知选项」）" \
    "$UNSET; cd '/p' && exec claude --nope" \

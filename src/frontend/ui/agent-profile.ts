@@ -41,11 +41,12 @@
 import {
   ACTIVE_AGENT,
   AGENT_PROFILE_TABLE,
+  DEFAULT_AGENT,
   type AgentProfileRow,
 } from "./generated/agent-profile-table";
 import { copyText } from "./copy-table";
 
-export { ACTIVE_AGENT };
+export { ACTIVE_AGENT, DEFAULT_AGENT };
 export type { AgentProfileRow };
 
 /** 查画像的结果。**没有第三态**：要么查得到，要么说得出为什么查不到。 */
