@@ -371,6 +371,27 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）：两跳
     expect(lastRendered()).toEqual(["alphacc", "betacc"]);
   });
 
+  it("agent 那一栏只列后端注册表里的几家；改一条写了不认识的 agent 的别名 ⇒ 照原样摆出来（不可选），不悄悄变成「不指定」", async () => {
+    const { listAgents } = await import("../../../../src/frontend/ui/agent-profile");
+    disk = [{ name: "gcc", args: ["--", "--ccm-agent", "gemini"] }];
+    const el = await mount();
+    await open(el);
+    const agentSel = [...el.querySelectorAll<HTMLSelectElement>("select")].find((s) =>
+      [...s.options].some((o) => o.value === listAgents()[0]),
+    )!;
+    expect([...agentSel.options].map((o) => o.value)).toEqual(["", ...listAgents()]);
+    const row = el.querySelector<HTMLElement>(".machine-aliases-row")!;
+    clickText(row, "改");
+    await flush();
+    expect(agentSel.value, "不认识的 agent 被换成了「不指定」（= 默认那一家）").toBe("gemini");
+    const unknown = [...agentSel.options].filter((o) => o.dataset.role === "agent-unknown");
+    expect(unknown.map((o) => [o.value, o.disabled, o.textContent])).toEqual([["gemini", true, "不认识的 agent：gemini"]]);
+    // 换一条认得的 ⇒ 那一项收掉，名单回到注册表那几家。
+    clickText(el, "清空表单");
+    await flush();
+    expect([...agentSel.options].map((o) => o.value)).toEqual(["", ...listAgents()]);
+  });
+
   it("表单「加进清单」⇒ 问后端要一次代码（第①跳），清单里多一条", async () => {
     const el = await mount();
     await open(el);

@@ -218,6 +218,9 @@ fn us1_bad_launch_args_are_refused_before_anything_is_probed() {
         json!({"agent":"claude-code","allSessions":true,"account":{"kind":"named"}}),
         json!({"agent":"claude-code","allSessions":true,"account":{"kind":"other"}}),
         json!({"agent":"claude-code","allSessions":true,"account":"base"}),
+        // 注册表里没有的适配器 id（wire kind 不是适配器 id）⇒ 拒，不当成「这一家没有表」往下走。
+        json!({"agent":"claude","allSessions":true}),
+        json!({"agent":"claud-code","allSessions":true}),
     ] {
         let got = launch_relay_with(&bad, &[], &probe);
         assert!(matches!(got, Err(("bad_args", _))), "{bad} ⇒ {got:?}");

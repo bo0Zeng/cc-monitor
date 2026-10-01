@@ -36,6 +36,7 @@ import { LOCAL_ORIGIN } from "../backend-policy";
 // 读面经通道直接问后端（`bus-state` / `bus-inbox`），形状由 `cc-bus-control.ts` 的解码器严格收。
 import { askConfirm } from "../ask-dialog";
 import { copyText } from "../copy-table";
+import { DEFAULT_AGENT, listAgents } from "../agent-profile";
 
 export class CcBusSection {
   readonly element: HTMLElement;
@@ -159,12 +160,14 @@ export class CcBusSection {
 
     this.spawnTool = document.createElement("select");
     this.spawnTool.className = "settings-input cc-bus-spawn-tool";
-    for (const v of ["claude", "codex"]) {
+    // 只给后端注册表里有的那几家（生成物 `AGENT_PROFILE_TABLE`），起手选默认那一家。
+    for (const v of listAgents()) {
       const o = document.createElement("option");
       o.value = v;
       o.textContent = v;
       this.spawnTool.appendChild(o);
     }
+    this.spawnTool.value = DEFAULT_AGENT;
     box.appendChild(this.spawnTool);
 
     // L2（B03 审计重要-5）：**必须让用户表态用哪个账号**。原实现没有这个控件，于是

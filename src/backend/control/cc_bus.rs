@@ -1164,7 +1164,7 @@ pub(crate) struct SpawnArgs {
 ///
 /// ⚠ 与 [`parse_send`] 同一条纪律：argv 直传不过 shell。
 /// 它判的是「这组参数能不能构成一次**有意义且表过态**的调用」：
-/// `tool` 非空（**是哪几种 agent 不在这里判** —— 见下）· `dir` 非空 ·
+/// `tool` 是注册表里由我们起的一家（缺 / 空 ⇒ 默认那一家；认法住 `agents::pick_kind`）· `dir` 非空 ·
 /// `account` 与 `base:true` **恰好给一个**（都不给 ⇒ 拒：那是替用户选了默认号）·
 /// 给了 `account` 就先过形状判定（[`refuse_bad_bus_id`]，`§47` ①）。
 pub(crate) fn parse_spawn(args: &serde_json::Value) -> Result<SpawnArgs, CmdErr> {
@@ -1173,18 +1173,9 @@ pub(crate) fn parse_spawn(args: &serde_json::Value) -> Result<SpawnArgs, CmdErr>
         crate::common::contract::malformed("args must be an object"),
     ))?;
     let s = |k: &str| obj.get(k).and_then(|v| v.as_str()).unwrap_or("").trim();
-    // ⚠ **不在后端白名单 agent 种类**：初版这里是 `matches!(tool, <两个字面量>)`，
-    //   `agent_locality_guard::the_general_layer_names_no_agent` 当场红 ——
-    //   通用层里又多一处「加 agent 要跟着改」的地方。合法性归 cc-spawn 自己
-    //   （它的 `case "$tool"` 不认就 rc=2 ⇒ 这里的 `invalid_args`），与 `P4f-Y5`
-    //   「收件人合法性归 cc-bus，后端不写第二份白名单」同一条。
-    let tool = s("tool");
-    if tool.is_empty() {
-        return Err((
-            "invalid_args",
-            crate::common::contract::malformed("missing `tool`"),
-        ));
-    }
+    // 哪一家问注册表（不写名字白名单）：认不出 ⇒ `invalid_args`，那句话列出认得的几家；交给 cc-spawn 的是解析好的 kind。
+    let (tool, _) =
+        crate::agents::pick_kind(Some(s("tool"))).map_err(|say| ("invalid_args", say))?;
     let dir = s("dir");
     if dir.is_empty() {
         return Err((

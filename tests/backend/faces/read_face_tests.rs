@@ -912,6 +912,7 @@ fn the_account_pair_refuses_missing_or_mistyped_arguments() {
     for (cmd, args) in [
         ("accounts-list", serde_json::json!({})),
         ("accounts-list", serde_json::json!({"agent": 7})),
+        ("accounts-list", serde_json::json!({"agent": "claud-code"})),
         ("accounts-trust", serde_json::json!({"configDir": null})),
         (
             "accounts-trust",

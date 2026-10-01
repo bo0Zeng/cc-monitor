@@ -54,7 +54,7 @@ struct ResumeSpec {
     #[serde(default)]
     already_in_tmux: bool,
     /// DG3（#2D，additive）：会话属哪 agent kind → DG6 据此构 `codex resume <uuid>` vs `claude --resume`。
-    /// camelCase（rename_all）→ wire `agentKind`。注册表里的一家 = 那一家；缺/`""`/认不出 = 默认那一家。
+    /// camelCase（rename_all）→ wire `agentKind`。注册表里的一家 = 那一家；缺/`""` = 默认那一家；别的名字 ⇒ `bad_request`。
     #[serde(default)]
     agent_kind: String,
 }
@@ -201,19 +201,10 @@ fn resolve(
             ),
         ));
     }
-    // 哪一家：`agentKind` 是注册表里的一家就按它；缺 / `""` / 认不出 ⇒ 注册表里声明默认的那一家（线上契约：缺省即默认那家）。
-    // **大小写敏感**：wire 值契约定死小写；`.trim()` 仅容空白、不容大小写。
-    let kind = spec.agent_kind.trim();
-    let Some(face) = crate::agents::launch_face_among(registry, kind)
-        .or_else(|| crate::agents::default_launch_among(registry).map(|(_, f)| f))
-    else {
-        return Err((
-            "bad_request",
-            crate::common::contract::malformed(&format!(
-                "agentKind {kind:?} names no agent this backend can resume, and none is the default"
-            )),
-        ));
-    };
+    // 哪一家：缺 / `""` ⇒ 注册表里声明默认的那一家；注册表里没有的名字 ⇒ `bad_request`，那句话列出认得的几家（不落默认）。
+    // **大小写敏感**：`.trim()` 仅容空白、不容大小写。
+    let (_, face) = crate::agents::pick_kind_among(registry, Some(&spec.agent_kind))
+        .map_err(|say| ("bad_request", say))?;
     // 首个非空 launchCandidate → command 基底；无 → 这一家的默认启动器。
     let candidate = spec
         .launch_candidates

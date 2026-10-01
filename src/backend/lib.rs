@@ -709,7 +709,9 @@ pub const PROTO_VERSION: u32 = 1;
 /// p6j-no-panorama：cc-monitor 不再带代码全景；code-picture 只作为扩展（skill ＋ MCP）。
 ///
 /// p6k-ext-targets：扩展页装到哪由用户选、扩展可带备注、cc-bus 归扩展、有账号库时 MCP 能装到全局；机器页「工具」栏改为「终端」。
-pub const BUILD_ID: &str = "p6k-ext-targets";
+///
+/// p6l-agent-strict：没写或写空用默认那一家，写错直接报错并列出认得的几家；cc-spawn 不再按启动器名猜。
+pub const BUILD_ID: &str = "p6l-agent-strict";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src/frontend/shell/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），

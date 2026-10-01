@@ -90,6 +90,9 @@ fn the_create_only_fields_have_their_own_shapes() {
     })))
     .expect("三个都合法时应当通过");
     assert_eq!(r.agent.as_deref(), Some("claude"));
+    // 写空 ⇒ 标上默认那一家（认法同 `ccm --ccm-agent`）。
+    let blank = parse_request(&ok(serde_json::json!({"agent":""}))).expect("写空该通过");
+    assert_eq!(blank.agent.as_deref(), Some("claude"));
     assert_eq!(
         (r.width.as_deref(), r.height.as_deref()),
         (Some("220"), Some("50"))
@@ -103,8 +106,11 @@ fn the_create_only_fields_have_their_own_shapes() {
             serde_json::json!({"agent":"a b"}),
             "agent 含空格（它进 tmux option 值）",
         ),
-        (serde_json::json!({"agent":""}), "agent 为空"),
         (serde_json::json!({"agent":"a\nb"}), "agent 含控制字符"),
+        (
+            serde_json::json!({"agent":"gemini"}),
+            "agent 不是注册表里的一家",
+        ),
         (
             serde_json::json!({"width":"220"}),
             "★只给 width 不给 height",

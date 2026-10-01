@@ -352,6 +352,11 @@ pub(crate) fn check_alias(a: &Alias, shell: Shell) -> Result<(), String> {
         };
         if *takes {
             match it.next() {
+                // 哪一家：写空 ⇒ 默认那一家；注册表里没有 ⇒ 拒、说出认得的几家（与 ccm 运行时同一种认法）。
+                Some(v) if *known == flag::AGENT && !v.chars().any(char::is_control) => {
+                    d.arg_is_passable(v)?;
+                    crate::agents::pick_kind(Some(v))?;
+                }
                 Some(v) if !v.is_empty() && !v.chars().any(char::is_control) => {
                     d.arg_is_passable(v)?;
                     // 相对 / 带 `..` 的 `--cwd` ccm 运行时会拒（`INVARIANTS §47`）⇒ 生成前就拦。

@@ -90,11 +90,11 @@ fn resolve_codex_builds_resume_subcommand_and_cx_name() {
     assert_eq!(v2["command"], format!("mycodex resume {uuid}"));
 }
 
-/// DG6 审计补：非规范 agent_kind（大小写/其它值）→ **落 Claude 路**（`--resume`/`cc-`），
-/// 防 Codex 分支误吞。契约：wire 值定死小写 `"codex"`（大小写敏感）。
+/// `agentKind` 缺 / 空 ⇒ 默认那一家（`--resume` / `cc-`）；注册表里没有的名字（大小写不对、拼错、别家）⇒ `bad_request`，
+/// 那句话说出名字与认得的几家 —— **不落默认**（从前这里落 Claude 路，拼错就跑成另一家）。
 #[test]
-fn resolve_non_codex_agent_kind_falls_back_to_claude() {
-    for ak in ["", "claude", "Codex", "CODEX", "foo"] {
+fn resolve_takes_the_default_when_agent_kind_is_left_out_and_refuses_a_misspelled_one() {
+    for ak in ["", "  ", "claude"] {
         let s = ResumeSpec {
             agent_kind: ak.to_string(),
             ..spec("sid_x", vec![Some("claude")])
@@ -103,11 +103,21 @@ fn resolve_non_codex_agent_kind_falls_back_to_claude() {
             &serde_json::to_string(&resolve(crate::agents::REGISTRY, &s).expect("valid")).unwrap(),
         )
         .unwrap();
-        assert_eq!(
-            v["command"], "claude --resume sid_x",
-            "agent_kind={ak:?} 应落 Claude"
-        );
+        assert_eq!(v["command"], "claude --resume sid_x", "agent_kind={ak:?}");
         assert_eq!(v["sessionName"], "cc-sid_x");
+    }
+    for ak in ["Codex", "CODEX", "foo"] {
+        let s = ResumeSpec {
+            agent_kind: ak.to_string(),
+            ..spec("sid_x", vec![Some("claude")])
+        };
+        let (code, said) =
+            resolve(crate::agents::REGISTRY, &s).expect_err(&format!("{ak:?} 被认成了某一家"));
+        assert_eq!(code, "bad_request");
+        assert_eq!(
+            said,
+            format!("不认识这个 agent：{ak}（认得的：claude / codex）")
+        );
     }
 }
 

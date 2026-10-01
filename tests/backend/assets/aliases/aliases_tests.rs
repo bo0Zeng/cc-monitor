@@ -630,10 +630,16 @@ fn every_combination_rule_stops_a_bad_alias_and_nothing_is_written() {
         al("k", &["--cwd", "/a/../b"]),
         al("h", &["--account"]),
         al("i", &["--cwd", "a\nb"]),
+        al("l", &["--ccm-agent", "gemini"]),
     ];
     for a in &bad {
         assert!(check_alias(a, P).is_err(), "该拦没拦：{a:?}");
     }
+    // 写错的 agent 说的是 ccm 运行时同一句（列出认得的几家），不是一句笼统的「参数不对」。
+    assert_eq!(
+        check_alias(&al("l", &["--ccm-agent", "gemini"]), P),
+        Err("不认识这个 agent：gemini（认得的：claude / codex）".to_string())
+    );
     let good = [
         al(
             "ok1",
@@ -650,6 +656,8 @@ fn every_combination_rule_stops_a_bad_alias_and_nothing_is_written() {
         // V138：交给 claude 的词原样放行；绝对 `--cwd` 放行（正控）。
         al("ok4", &["--model", "opus", "--continue"]),
         al("ok5", &["--cwd", "/srv/my proj"]),
+        // 写空的 agent ⇒ 默认那一家（与 ccm 运行时同一条）。
+        al("ok6", &["--ccm-agent", ""]),
     ];
     for a in &good {
         assert_eq!(check_alias(a, P), Ok(()), "{a:?}");
