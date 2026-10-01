@@ -356,7 +356,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   historyTrigger.addEventListener("click", () => overlays.toggle("history"));
   document.getElementById("app")?.appendChild(historyTrigger);
 
-  // F91（#27）：多 agent 并排监控入口 —— 顶栏右侧一排（🗂 左边，right:168px）。跨机器只读
+  // F91（#27）：多 agent 并排监控入口 —— 顶栏右侧一排（SFTP 入口左边，right:104px）。跨机器只读
   // mission-control 状态板（一屏看所有会话实时状态，点卡片跳会话；只读——不派发/不驱动 agent）。
   const gridMonitorView = new GridMonitorView(tabs);
   overlays.register("grid", gridMonitorView);

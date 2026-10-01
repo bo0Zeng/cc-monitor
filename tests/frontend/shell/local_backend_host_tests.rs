@@ -692,8 +692,8 @@ fn the_local_backend_only_takes_a_binary_this_platform_can_run() {
     assert!(key < take, "键在取字节之后才定 —— 取用点的形状变了");
     let tail = &body[take..];
     assert!(
-        tail.contains("Product::Backend") && !tail.contains("Route::"),
-        "本机那条取用点不是「这台 · 后端」那一格（〔P1〕表 B 不在 monitor 判，取用点不该再带 origin）：\n{tail}"
+        tail.contains("choose(this_machine)") && !tail.contains("Route::"),
+        "本机那条取用点不是「这台」那一格（〔P1〕表 B 不在 monitor 判，取用点不该再带 origin）：\n{tail}"
     );
 }
 

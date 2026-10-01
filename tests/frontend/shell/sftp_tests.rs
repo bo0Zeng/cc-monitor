@@ -85,15 +85,12 @@ fn ccm_cli_has_required_elements() {
 #[cfg(embedded_backends)]
 #[test]
 fn embedded_backend_binaries_present_and_valid() {
-    use crate::byte_table::{pick, Product};
+    use crate::byte_table::pick;
     use deploy_contract::key_of;
     for arch in ["x86_64", "aarch64"] {
         let key = key_of("Linux", arch).expect("表 A 认得这一格");
-        let bin = pick(Product::Backend, key).expect("内嵌二进制应存在");
-        assert!(
-            !bin.build_id.unwrap_or_default().is_empty(),
-            "build_id 非空"
-        );
+        let bin = pick(key).expect("内嵌二进制应存在");
+        assert!(!bin.build_id.is_empty(), "build_id 非空");
         assert_eq!(&bin.bytes[..4], b"\x7fELF", "{arch} 应是 ELF");
         assert!(bin.bytes.len() > 100_000, "{arch} 体积应非平凡");
     }
