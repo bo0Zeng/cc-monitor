@@ -248,6 +248,62 @@ fn exactly_one_family_is_the_default_and_exactly_one_owns_the_credentials_file()
     );
 }
 
+/// ★★ 收 agent 名字的入口只有一种认法（`pick_among`）：没写 / 写空 ⇒ 默认那一家；拼错 ⇒ 报错、列出认得的几家，**不落默认**。
+/// 喂一张含夹具家的注册表，期望的名单逐字手写（不从被测的注册表现推）。
+#[test]
+fn an_agent_name_left_out_is_the_default_and_a_misspelled_one_is_refused() {
+    let row = |kind, home, launch| Adapter {
+        kind,
+        home,
+        account_env: None,
+        assets: None,
+        history: None,
+        upstream: None,
+        mcp: None,
+        footprint: None,
+        accounts: None,
+        records: None,
+        processes: None,
+        launch,
+    };
+    let mut reg: Vec<Adapter> = REGISTRY
+        .iter()
+        .map(|a| row(a.kind, a.home, a.launch))
+        .collect();
+    reg.push(row(fake::AGENT_KIND, synth_home_absent, Some(fake::LAUNCH)));
+    let kind = |n: Option<&str>| pick_kind_among(&reg, n).map(|(k, _)| k);
+    // 没写 / 写空 / 只有空白 ⇒ 默认那一家。
+    for n in [None, Some(""), Some("  ")] {
+        assert_eq!(kind(n), Ok("claude"), "{n:?} 没落到默认那一家");
+    }
+    // 写了注册表里的一家 ⇒ 就是它（两侧空白不算字）。
+    assert_eq!(kind(Some("codex")), Ok("codex"));
+    assert_eq!(kind(Some(" fake ")), Ok("fake"));
+    // 拼错 / 大小写不对 / 别家的名字 ⇒ 报错，说出那个名字与认得的几家。
+    for bad in ["claud", "Codex", "gemini", "claude-code"] {
+        let said = kind(Some(bad)).expect_err(&format!("{bad:?} 被认成了某一家"));
+        assert_eq!(
+            said,
+            format!("不认识这个 agent：{bad}（认得的：claude / codex / fake）")
+        );
+    }
+    // 适配器 id 那一个值域同一条规则（名单换成适配器 id）。
+    let adapter = |n: Option<&str>| pick_adapter_among(&reg, n).map(|(_, f)| f.adapter_id);
+    assert_eq!(adapter(Some("")), Ok("claude-code"));
+    assert_eq!(adapter(Some("codex")), Ok("codex"));
+    assert_eq!(
+        adapter(Some("claude")),
+        Err("不认识这个 agent：claude（认得的：claude-code / codex / fake）".to_string()),
+        "适配器 id 那一问把 wire kind 也认了"
+    );
+    // 生产那张：入口共用的两个口与默认那一家对得上。
+    assert_eq!(pick_kind(None).map(|(k, _)| k), Ok(default_kind()));
+    assert_eq!(
+        pick_adapter(Some("")).ok(),
+        default_launch_among(REGISTRY).map(|(_, f)| f.adapter_id)
+    );
+}
+
 /// ★ `resume_kind` 那一列不是凭空写的：夹具说 flag 的必须以 `--` 开头，说 subcommand 的必须不以 `--` 开头（从 monitor 搬来）。
 #[test]
 fn the_resume_kind_column_matches_reality() {
@@ -388,6 +444,11 @@ const ACTIVE_HEADER: &str = r#"
 /** 后端流式 watcher 跟的那一家（记录树那一家）—— `AGENT_PROFILE` 就是它那一份。 */
 "#;
 
+/// `DEFAULT_AGENT` 那一格的头注。
+const DEFAULT_HEADER: &str = r#"
+/** 不说是哪一家时起的那一家（注册表里声明默认的那一家）：不给 agent 名字 ⇒ 就是它；给了表里没有的名字 ⇒ 拒。 */
+"#;
+
 /// 一个 TS 串字面量。**这个生成器不做转义** —— 真出现要转义的字符就当场炸，不产坏 TS。
 fn ts_str(s: &str) -> String {
     assert!(
@@ -439,6 +500,11 @@ fn render_agent_profile_table() -> String {
     s.push_str(&format!(
         "export const ACTIVE_AGENT: string = {};\n",
         ts_str(active)
+    ));
+    s.push_str(DEFAULT_HEADER);
+    s.push_str(&format!(
+        "export const DEFAULT_AGENT: string = {};\n",
+        ts_str(crate::agents::default_kind())
     ));
     s
 }

@@ -345,11 +345,11 @@ fn removing_any_one_capability_stops_the_flow_somewhere_that_can_name_it() {
 /// | `history_query --list-projects` | rc=2 + 报错，但措辞是 **Claude 的布局**（`<home>/projects`） |
 /// | `search_query --search` | **rc=0、零输出** ⇒ 静默 |
 /// | `accounts_query --session-accounts` | **rc=0、零行** ⇒ 静默 |
-/// | `resolve_query`（`agentKind:"fake"`，生产注册表里没有这一家） | **rc=0，返回默认那一家的 `claude --resume <sid>`** |
+/// | `resolve_query`（`agentKind:"fake"`，生产注册表里没有这一家） | **`bad_request`：不认识这个 agent，说出认得的几家** |
 ///
-/// 最后一条：resume 已经按注册表里那一家的那一格拼了（注册了的家走它自己的命令形，见
-/// `the_ccm_plan_and_resume_read_only_the_launch_face_for_every_family`）；**没注册**的 kind 照线上契约落默认那一家
-///（缺 / 空 / 认不出 = 默认那家）。对一个没进注册表的第三家，那仍是误路由 —— 要改得改契约，不在这里。
+/// 最后一条：resume 按注册表里那一家的那一格拼（注册了的家走它自己的命令形，见
+/// `the_ccm_plan_and_resume_read_only_the_launch_face_for_every_family`）；**没注册**的 kind 报错、不落默认那一家
+///（缺 / 空才是默认那家）—— 从前这里落默认，对一个没进注册表的第三家就是误路由。
 ///
 /// ⚠ 本格**不是**在说这些入口有 bug —— 它们今天的契约就是「只服务一种 agent」。
 /// 它记的是：`G1` 成功标准②今天差的那 27 处，**每一处的失败长什么样**。
@@ -398,20 +398,15 @@ fn the_general_layer_answers_a_non_claude_agent_silently_or_with_claudes_words()
     );
     assert_eq!(rc, 0, "`--session-accounts` 的反应变了");
 
-    // ④ resume：生产注册表里没有这一家 ⇒ 照线上契约落默认那一家。
+    // ④ resume：生产注册表里没有这一家 ⇒ 报错，不落默认那一家。
     let spec = format!("{{\"agentKind\":\"{AGENT_KIND}\",\"sessionId\":\"{FIXTURE_SESSION_ID}\"}}");
-    let plan = crate::control::resolve_query::resolve_json_for_inbound(&spec)
-        .expect("`--resolve` 对注册表里没有的 agentKind 不报错（落默认那一家）");
+    let (code, said) = crate::control::resolve_query::resolve_json_for_inbound(&spec)
+        .expect_err("`--resolve` 对注册表里没有的 agentKind 落了默认那一家");
+    assert_eq!(code, "bad_request");
     assert_eq!(
-        plan["command"],
-        serde_json::json!(format!("claude --resume {FIXTURE_SESSION_ID}")),
-        "\n`--resolve` 对注册表里没有的 `agentKind:\"{AGENT_KIND}\"` 的返回变了。\n\
-             本格记的事实是：**它不报错，落默认那一家**（注册表里声明 `is_default` 的那一家）。实得：{plan:?}"
-    );
-    assert_eq!(
-        plan["sessionName"],
-        serde_json::json!(format!("cc-{}", &FIXTURE_SESSION_ID[..8])),
-        "会话名前缀也被**静默**给成了 Claude 的 `cc-`（这家自己的是 `{SESSION_NAME_PREFIX}-`）"
+        said,
+        format!("不认识这个 agent：{AGENT_KIND}（认得的：claude / codex）"),
+        "没说出不认识的那个名字与认得的几家"
     );
 
     let _ = std::fs::remove_dir_all(&root);

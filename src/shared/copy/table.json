@@ -2252,11 +2252,6 @@
       "zh": "{id} 没有被收掉：会话没结束，登记也没摘。多半这个名字不在总线上。",
       "args": ["id"]
     },
-    "ccBus.spawn.noTool": {
-      "kind": "error",
-      "zh": "没选派生哪种 agent。",
-      "args": []
-    },
     "ccBus.spawn.noDir": {
       "kind": "error",
       "zh": "工作目录是空的，没有派生。",
@@ -14280,9 +14275,9 @@
       "zh": "{w} 是后端的子命令，只能紧跟打头的 --（ccm -- {w} …），前面不许有交给 claude 的参数",
       "args": ["w"]
     },
-    "beArgv.validate.unknownAgent": {
+    "beAgents.pick.unknown": {
       "kind": "error",
-      "zh": "未知 agent: {agent}（支持 {known}）",
+      "zh": "不认识这个 agent：{agent}（认得的：{known}）",
       "args": ["agent", "known"]
     },
     "beArgv.needVal.looksMissing": {

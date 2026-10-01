@@ -159,7 +159,7 @@ pub(crate) fn launch_relay_with(
     routed: &[String],
     listening: &dyn Fn(u16) -> bool,
 ) -> Result<Option<String>, (&'static str, String)> {
-    let agent = str_arg(args, "agent")?;
+    let agent = agent_arg(args)?;
     let all_sessions = args.get("allSessions").and_then(Value::as_bool).ok_or((
         "bad_args",
         copy_text(
@@ -223,7 +223,7 @@ pub(crate) fn answer_routing_with(
     routed: &[String],
     listening: &dyn Fn(u16) -> bool,
 ) -> EndpointAnswer {
-    let agent = str_arg(args, "agent")?;
+    let agent = agent_arg(args)?;
     let dirs: Vec<String> = args
         .get("configDirs")
         .and_then(Value::as_array)
@@ -245,11 +245,15 @@ pub(crate) fn answer_routing_with(
     }))
 }
 
-fn str_arg<'a>(args: &'a Value, k: &str) -> Result<&'a str, (&'static str, String)> {
-    args.get(k).and_then(Value::as_str).ok_or((
+/// 线上 `agent`（适配器 id）→ 那一家。缺席 / 不是串 ⇒ `bad_args`（入参形状，调用方没表态是哪一家就不猜）；
+/// 空串 ⇒ 默认那一家；注册表里没有 ⇒ `bad_args`，那句话列出认得的几家（不当成「这一家没有表」静默往下走）。
+/// 认法住 `agents::pick_adapter`。
+pub(crate) fn agent_arg(args: &Value) -> Result<&'static str, (&'static str, String)> {
+    let name = args.get("agent").and_then(Value::as_str).ok_or((
         "bad_args",
-        copy_text("beUpstreamEndpoint.args.missingString", &[("k", k)]),
-    ))
+        copy_text("beUpstreamEndpoint.args.missingString", &[("k", "agent")]),
+    ))?;
+    crate::agents::pick_adapter(Some(name)).map_err(|say| ("bad_args", say))
 }
 
 /// 线上 `account` → [`LaunchAccount`]。认不出的形 ⇒ `bad_args`（不猜成「没表态」）。

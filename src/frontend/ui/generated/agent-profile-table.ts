@@ -43,3 +43,6 @@ export const AGENT_PROFILE_TABLE: readonly AgentProfileRow[] = [
 
 /** 后端流式 watcher 跟的那一家（记录树那一家）—— `AGENT_PROFILE` 就是它那一份。 */
 export const ACTIVE_AGENT: string = "claude";
+
+/** 不说是哪一家时起的那一家（注册表里声明默认的那一家）：不给 agent 名字 ⇒ 就是它；给了表里没有的名字 ⇒ 拒。 */
+export const DEFAULT_AGENT: string = "claude";
