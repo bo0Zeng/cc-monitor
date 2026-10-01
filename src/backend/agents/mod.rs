@@ -783,6 +783,42 @@ pub(crate) struct DefaultUpstream {
     /// API key 凭据文件（界面给账号配第三方 key 时写的那一份）里的行挂在这一家名下。
     /// 那份文件没有 agent 这一维 ⇒ 至多一家为真；没有一家为真 ⇒ 上游选择起不来（fail-closed）。
     pub(crate) owns_credentials_file: bool,
+    /// 直接敲的这一家也走中转（可选，用户自己贴、后端只读）：它的用户级设置文件里写进程环境的那一块。
+    /// `None` ＝ 这一家没有这一形，只能经起会话注入。
+    pub(crate) settings_env: Option<SettingsEnvFace>,
+}
+
+/// 一家的用户级设置文件里「上游地址」那一格：住哪 · 怎么读出来 · 要贴的那一段长什么样（格式知识与那一次只读都在这一家）。
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct SettingsEnvFace {
+    /// 家目录（`$HOME`）→ 那份文件（各号共用的那一份）＋ 里面写的上游地址（**只读**）。
+    pub(crate) read: fn(&Path) -> (PathBuf, SettingsBaseUrl),
+    /// 地址 → 要合并进那份文件的那一段。
+    pub(crate) snippet: fn(&str) -> String,
+}
+
+/// 设置文件里上游地址那一格读出来的样子。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum SettingsBaseUrl {
+    /// 文件不在，或没写（或写了空串）。
+    Unset,
+    /// 写了这个地址。
+    Set(String),
+    /// 读不了 / 读不懂 ⇒ 装没装说不清。
+    Unreadable(SettingsUnreadable),
+}
+
+/// 为什么读不了。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum SettingsUnreadable {
+    /// 读的时候出错（权限 · I/O），带系统的原话。
+    Io(String),
+    /// 那不是一个普通文件。
+    NotFile,
+    /// 超过这个字节数。
+    TooLarge(u64),
+    /// 读得到但读不懂（坏 JSON · 顶层或那一块不是对象 · 值不是串）。
+    BadShape,
 }
 
 /// 声明拥有 API key 凭据文件（[`DefaultUpstream::owns_credentials_file`]）的第一家的路由名；没有一家 ⇒ 空串（上游选择据此起不来）。
@@ -802,6 +838,14 @@ pub(crate) const fn credentials_file_agent() -> &'static str {
 /// 登记了默认上游的每一家：`(路由名, 那一格)`。**上游选择读默认上游的唯一入口**。
 pub(crate) fn default_upstreams() -> impl Iterator<Item = &'static DefaultUpstream> {
     REGISTRY.iter().filter_map(|a| a.upstream.as_ref())
+}
+
+/// 注册表里第一家声明了「直接敲的也走中转」那一格的：`(路由名, 那一格)`。没有 ⇒ `None`。
+pub(crate) fn settings_env_face() -> Option<(&'static str, SettingsEnvFace)> {
+    REGISTRY
+        .iter()
+        .filter_map(|a| a.upstream.as_ref())
+        .find_map(|u| u.settings_env.map(|f| (u.route_id, f)))
 }
 
 /// 各家登记的会话标识头（注册序、去重）：中转经上游选择拿到这份名单，按它从请求里认会话 —— 会话 id 归 agent 自己。

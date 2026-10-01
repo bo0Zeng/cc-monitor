@@ -138,6 +138,19 @@ pub fn split_keyed_base_url(url: &str) -> Option<(&str, &str)> {
         .then_some((head, tail))
 }
 
+/// [`split_keyed_base_url`] 的逆：把一把钥匙插进一条构造口产物（[`base_url`]）的口之后 ⇒
+/// `http://127.0.0.1:<口>/<钥匙>/<前缀>/<seg1>/<seg2>`。地址过不了 [`base_url_shape_ok`]、或钥匙过不了 [`key_shape_ok`] ⇒ `None`。
+/// 读者：给用户自己贴进 agent 设置文件的那一段（那里不能写 `$(cat …)`，只能写展开后的这一形）。
+pub fn keyed_base_url(url: &str, key: &str) -> Option<String> {
+    if !(base_url_shape_ok(url) && key_shape_ok(key)) {
+        return None;
+    }
+    let after_scheme = url.strip_prefix("http://127.0.0.1:")?;
+    let head_len = "http://127.0.0.1:".len() + after_scheme.find('/')? + 1;
+    let (head, tail) = url.split_at(head_len);
+    Some(format!("{head}{key}/{tail}"))
+}
+
 /// 路由路径第一段的两个前缀 = 两种模式（「为什么用两个前缀而不是一个哨兵段」）。
 ///
 /// `/s/` 代入：上游选择的表里必须有这一行，没有 ⇒ 404；`/t/` 直通：中转**永不**代入凭据，第 2 段只当标签。
