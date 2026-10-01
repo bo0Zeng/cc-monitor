@@ -60,18 +60,9 @@ const CREATION_PATHS: &[(&str, CreationVerdict, &str)] = &[
     //    就是它（下面那条 Rust 对侧的注释原来逐字预告了这一行）。它原来的理由是「只是渲染器：名字由上游
     //    `mintTmuxName` 产、由 `src/frontend/ui/shell-quote.ts::isValidNewTmuxName` 校验」；那条上游关系今天挂在
     //    下面那条 Rust 创建路径的理由里（③b 要求每条校验器都有创建路径点它的名）。
-    (
-        // 〔2026-09-19 建·B 接上生产 · LR2 起是外层三格唯一的家〕
-        // 载荷内核搬进后端，住址跟着换；把禁字喂进它那一段也跟着搬进后端测试段（见下 ③c）。
-        "src/backend/control/launch_render/payload.rs",
-        CreationVerdict::ValidatesItselfByAllowlist,
-        "界面那一道（TS 的两个会话名谓词）删了，名字的规则只有一份：`TmuxTarget::check` 对**新建**那一格\
-             调 `src/backend/control/gate_rules.rs` 的 `new_tmux_name_issue`（拒 `* ? . : =` · 前导 `-` · 控制符 · 视觉欺骗字符 · 超过 128），\
-             对 attach / 送进已有会话调 `existing_tmux_name_issue`（拒绝集 ＋ 非空，V131 ②）；另对 `Raw` 那一支只放行 `[A-Za-z0-9_-]`\
-             （裸拼的渲染前提，构造上产不出 `:` `=` `*` `?` `.` 与控制字符）；\
-             `@ccm_sid` 另过 `shell_quote_core::session_id_ok`（它是**裸拼**的；原先那份 `ccm_sid_safe`〔散文墓碑〕收进共享那一条）。三条都由 \
-             `launch_render::tmux_outer_parity::tests::the_rust_side_refuses_what_the_typescript_seat_would_have_concatenated` 钉住",
-    ),
+    // `src/backend/control/launch_render/payload.rs` 这一行删了：起会话只交一行 `ccm …`，外层三格那一层整层删了 ——
+    //   今天建会话的只剩上面两条（`ccm` 的 `--ccm-tmux=` 走 `plan.rs`；控制面走 `launch.rs`）。
+    //   它带来的「放行集」那一族（把禁字逐个喂进去的那一段）随它没了成员，一起删了。
 ];
 
 /// **校验器**登记表：`(路径, 它是谁)`。
@@ -102,7 +93,7 @@ const CREATION_PATHS: &[(&str, CreationVerdict, &str)] = &[
 const VALIDATORS: &[(&str, &str, &str)] = &[
     // 原来这里两行：`src/frontend/ui/shell-quote.ts`（`[*?=]`，TS 的新建谓词）与 `src/backend/control/ccm/plan.rs`
     //    （`"*?.:="`，后端 `validate_tmux_name` 自己那一份）。规则收成一份（今天住后端 `control/gate_rules.rs`）之后只剩下面这一行 ——
-    //    禁字集字面量住它，`plan.rs` 与 `payload.rs` 两条创建路径的理由各点它的名（③b 那条边）。
+    //    禁字集字面量住它，`plan.rs` 那条创建路径的理由点它的名（③b 那条边）。
     (
         "src/backend/control/gate_rules.rs",
         "\"*?.:=\"",
@@ -118,16 +109,6 @@ enum CreationVerdict {
     /// 这条路径**自己**校验禁字集。⇒ 必须在 [`VALIDATORS`] 里，且那张表的第二列
     /// （禁字集表达式的字面量）要逐字出现在它的源码里。
     ValidatesItself,
-    /// 🔴 **它自己校验，但用的是放行集、不是禁字集。**
-    ///
-    /// 放行集比禁字集**严格更强**（`[A-Za-z0-9_-]` 在构造上就产不出那几个禁字，
-    /// 连控制符和视觉欺骗字符一起挡了），**但它在盘上没有一个禁字集字面量可钉**
-    /// ⇒ [`VALIDATORS`] 那张表的第二列对它是空的，硬塞进去只能写一个假字面量。
-    ///
-    /// ⇒ 换一种钉法：**把那几个禁字真的喂进去，看它拒不拒**（行为对拍，比文本对拍更硬 ——
-    /// 文本那条挡的是「表达式被改了」，这条挡的是「它真的放过了某个字符」）。
-    /// 落点在本判据 ③c 那一段，带正控。
-    ValidatesItselfByAllowlist,
     /// 名字来自已校验的上游 ⇒ 本路径不必再校验，但**必须说清上游是谁**。
     UpstreamValidated,
 }
@@ -278,38 +259,6 @@ fn no_creation_path_can_mint_a_name_the_main_path_cannot_kill() {
             );
         }
     }
-
-    // ── ③c 🔴 **放行集那一族：把禁字真的喂进去** ───────
-    //
-    // 上面 ③ 要求「自己校验」的必须在 `VALIDATORS` 里，而那张表钉的是**禁字集字面量**。
-    // 放行集写法在盘上根本没有那样一个字面量（它说的是「只放行这些」，不是「拒这些」），
-    // 硬塞一行进去只能编一个假字面量 —— 那是**为了让尺子读得到而改被测物**，方向反了。
-    //
-    // ⇒ 这一族改成**行为对拍**：逐个禁字喂进去，必须拒；再喂一个合法名字，必须过。
-    // 正控是必需的 —— 只测「该拒的拒了」，渲染器整个坏掉（永远 `Err`）时它也全绿。
-    let allowlist_rows: Vec<&str> = CREATION_PATHS
-        .iter()
-        .filter(|(_, v, _)| *v == CreationVerdict::ValidatesItselfByAllowlist)
-        .map(|(f, ..)| *f)
-        .collect();
-    assert_eq!(
-        allowlist_rows,
-        vec!["src/backend/control/launch_render/payload.rs"],
-        "\n放行集那一族的成员变了。本段是**按人群逐个手接**的（喂字符要拿到那个入口函数），\n         多一个成员就得在这里给它接上一段 —— 否则它会**静默地一条都不被喂**。"
-    );
-    // 那条放行集的入口（`render_tmux_outer`）搬进了后端 crate，monitor 够不着 ⇒ 「逐个禁字喂进去必须拒 ＋ 合法名字必须过」
-    //   那一段搬到它旁边：`tests/backend/control/launch_render/payload_tests.rs::the_tmux_outer_refuses_every_name_the_kill_gate_refuses`
-    //   （字符集同样从后端 `kill.rs` 的形状门现抠）。这里核它还在。
-    // 运行时读（不是编译期嵌入）：只核那段在不在，不值得一条跨半边的编译期边。
-    let backend_side = std::fs::read_to_string(
-        crate::guard_support::repo_root()
-            .join("tests/backend/control/launch_render/payload_tests.rs"),
-    )
-    .expect("读不到后端那份 payload_tests.rs");
-    assert!(
-        backend_side.contains("fn the_tmux_outer_refuses_every_name_the_kill_gate_refuses"),
-        "喂禁字那一段在后端测试段里不见了 —— 放行集那条创建路径从此没人喂"
-    );
 
     // ── ③b 🔴 **反方向**：每条校验器都得有一条创建路径指着它 ────────────
     //
