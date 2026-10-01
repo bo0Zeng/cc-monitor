@@ -70,7 +70,7 @@ const cmd = (id: string, title: string, keywords?: string): Command => ({
 describe("F84 filterCommands", () => {
   const cmds = [
     cmd("a", "打开历史浏览器", "history 历史"),
-    cmd("b", "打开代码全景", "panorama 全景"),
+    cmd("b", "打开多 agent 监控", "grid 网格"),
     cmd("c", "切到下一个 Tab", "next tab"),
     cmd("d", "最小化窗口", "minimize"),
   ];
@@ -105,7 +105,7 @@ describe("F84 CommandBarView", () => {
   it("open：挂 DOM + pushOverlay + 聚焦输入 + 渲染全表", () => {
     document.body.replaceChildren();
     pushOverlay.mockClear();
-    const view = mkView([cmd("a", "打开历史"), cmd("b", "打开全景")]);
+    const view = mkView([cmd("a", "打开历史"), cmd("b", "打开监控")]);
     view.open();
     expect(view.isVisible()).toBe(true);
     expect(pushOverlay).toHaveBeenCalledWith(view);
@@ -198,7 +198,7 @@ describe("F84 CommandBarView", () => {
   it("过滤缩表后 selected 重置（不越界、不跑 stale 命令）", () => {
     document.body.replaceChildren();
     const a = cmd("a", "打开历史", "history");
-    const b = cmd("b", "打开全景", "panorama");
+    const b = cmd("b", "打开监控", "grid");
     const c = cmd("c", "打开用量", "usage");
     const view = mkView([a, b, c]);
     view.open();

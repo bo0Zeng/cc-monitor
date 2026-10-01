@@ -225,8 +225,6 @@ describe("S2 设置面板分页结构", () => {
       // 〔AL1 · 2026-09-24〕`设计/71 §13` ②：别名并进机器页（`70 §3.3`），从「应用 → 行为」搬来。
       "别名",
       // MCP · 资产目录 · 插件三块搬去了顶层「扩展」页（跨机器的一类对象）。
-      // 〔FIX4 · `97 §8`〕代码全景组件的卸口（本机与远端页都有）。
-      "代码全景组件",
       "cc-bus 钩子",
       // 🔴 `70 §10.1`（步 14a）：「足迹」从顶层「改动足迹」页搬进来，是**新增的第五块**。
       "足迹",
@@ -398,7 +396,6 @@ describe("S2 设置面板分页结构", () => {
       "远端连接",
       "账号",
       "别名", // 〔AL1〕本机那一格的 ②，跟着 per-machine 那几块一起留在兜底落点（〔AL1c〕终端集成并进了它）
-      "代码全景组件", // 〔FIX4〕
       "cc-bus 钩子",
       "足迹",
       "未识别的数据",
@@ -468,7 +465,6 @@ describe("S2 设置面板分页结构", () => {
     const toolTitles = [...tabPage("tools").querySelectorAll(".settings-group-title")].map(
       (e) => e.textContent,
     );
-    expect(toolTitles).toContain("代码全景组件");
     expect(toolTitles).toContain("cc-bus 钩子");
     // 反向：账号**不该**也出现在工具栏里（搬 DOM 一处一份，不能有两份）
     expect(toolTitles).not.toContain("账号");
@@ -556,7 +552,7 @@ describe("S9 本机 OS 门（〔AL1c〕别名那一块的平台）", () => {
     });
   }
 
-  it("门只管这一块 —— 同栏的代码全景组件 / cc-bus 钩子在 Linux 上照常在", async () => {
+  it("门只管这一块 —— 同栏的 cc-bus 钩子在 Linux 上照常在", async () => {
     __setHostOsForTests("linux");
     document.body.replaceChildren();
     new SettingsPanel({ windowMode: true });
@@ -568,7 +564,6 @@ describe("S9 本机 OS 门（〔AL1c〕别名那一块的平台）", () => {
         )!
         .querySelectorAll(".settings-group-title"),
     ].map((e) => e.textContent);
-    expect(titles).toContain("代码全景组件");
     expect(titles).toContain("cc-bus 钩子");
   });
 });
