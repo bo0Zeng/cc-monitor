@@ -1,7 +1,7 @@
 /**
  * 用户 09-29「readme全面搞一下 … 看看有没有什么截图 … 突出这个app是干嘛的」—— README 截图（`README-shots.ts`）用的**合成**数据。
  *
- * 全部是编的：机器 · 仓 · 对话 · 账号 · 历史 · 全景图都不来自任何真会话（纪律：测试夹具采结构不采内容）。
+ * 全部是编的：机器 · 仓 · 对话 · 账号 · 历史都不来自任何真会话（纪律：测试夹具采结构不采内容）。
  * 形状照后端成品（`generated/*.ts` 的线型 ＋ 各读面解码器收的键），内容照一次普通的开发对话写。
  */
 import type { JsonlRecord } from "../../src/frontend/ui/generated/JsonlRecord";
@@ -384,63 +384,6 @@ export const HISTORY: ShotProject[] = [
     ],
   },
 ];
-
-// ─── 代码全景：api-server 这个小仓（六个目录）＋ 以刚改过的路由为中心的调用子图（几条确定的边，一条派发） ───
-
-export interface ShotModule {
-  dir: string;
-  files: { name: string; symbols: number }[];
-}
-export const PANO_MODULES: ShotModule[] = [
-  { dir: "src/routes", files: [{ name: "index.ts", symbols: 3 }, { name: "orders.ts", symbols: 9 }, { name: "products.ts", symbols: 11 }, { name: "users.ts", symbols: 8 }] },
-  { dir: "src/services", files: [{ name: "orderService.ts", symbols: 14 }, { name: "orderDto.ts", symbols: 4 }, { name: "productCache.ts", symbols: 9 }, { name: "billing.ts", symbols: 12 }] },
-  { dir: "src/repo", files: [{ name: "client.ts", symbols: 5 }, { name: "orderRepo.ts", symbols: 7 }, { name: "productRepo.ts", symbols: 6 }] },
-  { dir: "src/middleware", files: [{ name: "auth.ts", symbols: 6 }, { name: "session.ts", symbols: 5 }, { name: "rateLimit.ts", symbols: 4 }] },
-  { dir: "src/lib", files: [{ name: "http.ts", symbols: 6 }, { name: "paging.ts", symbols: 3 }, { name: "logger.ts", symbols: 5 }, { name: "config.ts", symbols: 4 }] },
-  { dir: "src/jobs", files: [{ name: "dailyReport.ts", symbols: 6 }, { name: "retryQueue.ts", symbols: 8 }] },
-];
-/** 索引读数（全景打开时的覆盖信号）：这个小仓没有解析不了的调用 ⇒ 顶上不挂「覆盖不全」。 */
-export const PANO_UNRESOLVED = 0;
-
-/** 调用子图：以刚改过的那个路由处理函数为中心（`[id, 行号]`；id ＝ `文件#名字`）。 */
-export const PANO_CENTER = "src/routes/orders.ts#getOrders";
-export const PANO_SYMBOLS: [string, number][] = [
-  ["src/routes/index.ts#mountRoutes", 8],
-  [PANO_CENTER, 7],
-  ["src/middleware/auth.ts#requireUser", 11],
-  ["src/lib/paging.ts#parsePage", 4],
-  ["src/services/orderService.ts#listOrders", 21],
-  ["src/lib/http.ts#sendJson", 9],
-  ["src/middleware/session.ts#loadSession", 17],
-  ["src/lib/paging.ts#clampInt", 15],
-  ["src/repo/orderRepo.ts#countOrders", 6],
-  ["src/repo/orderRepo.ts#findOrders", 14],
-  ["src/services/orderDto.ts#toOrderDto", 3],
-  ["src/lib/http.ts#logResponse", 22],
-];
-/** `[调用方, 被调方, 可信度]`。 */
-export const PANO_CALLS: [string, string, "Exact" | "Dispatch"][] = [
-  ["src/routes/index.ts#mountRoutes", PANO_CENTER, "Exact"],
-  [PANO_CENTER, "src/middleware/auth.ts#requireUser", "Exact"],
-  [PANO_CENTER, "src/lib/paging.ts#parsePage", "Exact"],
-  [PANO_CENTER, "src/services/orderService.ts#listOrders", "Exact"],
-  [PANO_CENTER, "src/lib/http.ts#sendJson", "Exact"],
-  ["src/middleware/auth.ts#requireUser", "src/middleware/session.ts#loadSession", "Exact"],
-  ["src/lib/paging.ts#parsePage", "src/lib/paging.ts#clampInt", "Exact"],
-  ["src/services/orderService.ts#listOrders", "src/repo/orderRepo.ts#countOrders", "Exact"],
-  ["src/services/orderService.ts#listOrders", "src/repo/orderRepo.ts#findOrders", "Exact"],
-  ["src/services/orderService.ts#listOrders", "src/services/orderDto.ts#toOrderDto", "Dispatch"],
-  ["src/lib/http.ts#sendJson", "src/lib/http.ts#logResponse", "Exact"],
-];
-/** 调用子图下面那行完整度读数（这种图不认「排除测试」⇒ 那一格是「不适用」）。 */
-export const PANO_CALLS_HONESTY = {
-  unresolved_calls: 0,
-  ambiguous_calls: 0,
-  filtered_guess_links: 0,
-  excluded_test_symbols: null,
-  omitted: null,
-  db_errors: [] as string[],
-};
 
 // ─── 账号与机器健康 ───
 

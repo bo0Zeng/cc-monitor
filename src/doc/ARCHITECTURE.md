@@ -20,10 +20,9 @@ cc-monitor 是 Claude Code 会话的**观察者和启动器**：`claude` 跑在�
 
 | 可执行文件 | 是什么 | 谁起它 |
 |---|---|---|
-| `monitor` | 界面进程：webview 窗口 ＋ 通信层面 A 的客户端。零 SSH，不写用户文件，不链代码全景引擎 | 用户 |
+| `monitor` | 界面进程：webview 窗口 ＋ 通信层面 A 的客户端。零 SSH，不写用户文件 | 用户 |
 | `ccm`（开发树里叫 `cc-monitor-backend`） | 唯一的后端。每台机器上 `~/.cc-monitor/bin/ccm` 就是那台的后端，也是用户敲的 `claude` 的壳（argv 打头是 `--` 加后端词才进后端，其余交给 `claude`） | 本机：monitor 连上来时起；远端：monitor 接那台时经一次 exec `--resident-ensure` 起（已在跑就用那一个） |
 | `cc-monitor-filewin` | 文件管理器窗口，独立前端，一个窗口一个进程 | monitor（交给它一条回环通道和一把钥匙） |
-| `cc-monitor-panorama` | 全景小程序：只装代码全景引擎的一问一答 CLI | 那台机器的后端，按需起 |
 
 `claude` 不是我们起的进程：后端渲好一条命令串，monitor 交给用户自己的终端去 exec。
 
@@ -35,8 +34,8 @@ cc-monitor 是 Claude Code 会话的**观察者和启动器**：`claude` 跑在�
        │ 管道                                 └─────────────┘
 ┌──────▼──────────────────────────┐  SSH（隧道 · exec · SFTP）  ┌ 常驻后端（与本机同形）┐
 │ 本机常驻后端                      │ ──────────────────────────▶│ ＋ 中转（进程内）      │
-│ 持有到各远端的全部 SSH（含 SFTP） │                            │ ＋ 全景小程序（按需）  │
-│ 中转 ＋ 上游选择 · 全景小程序（按需）│ ◀── agent 经中转口连进来     └───────────────────────┘
+│ 持有到各远端的全部 SSH（含 SFTP） │                            └───────────────────────┘
+│ 中转 ＋ 上游选择                  │ ◀── agent 经中转口连进来
 └─────────────────────────────────┘
 ```
 
@@ -115,11 +114,11 @@ subscribe(origin, kind)    → 流
 
 - `platform/`：平台原语与平台 cfg 的唯一住处（路径 · 进程 · 判活的读法 · 信号 · 文件原语 · 脱离）；`platform/shell/` 是 shell 方言知识的唯一住处（引号 · 定义函数 · 导出环境 · rc / `$PROFILE` 在哪）。
 - `observe/`：产出观测帧的读（会话文件 watcher · 会话账本 · tmux 观测 · 历史 / 搜索 / 任务 / 账号查询）。
-- `control/`：改状态的动作，以及只喂控制决策的只读查询（起会话与命令渲染 · kill · 送键 · 抓屏 · 分叉落盘 · 常驻与退出行为 · 部署计划 · 写用户文件的那一族 · 传输台 · 全景的查询与批注）。
+- `control/`：改状态的动作，以及只喂控制决策的只读查询（起会话与命令渲染 · kill · 送键 · 抓屏 · 分叉落盘 · 常驻与退出行为 · 部署计划 · 写用户文件的那一族 · 传输台）。
 - `files/`：文件管理后端的读面（常驻文件名索引 · 按内容搜）。
 - `accounts/`：账号域。账号 ＝ 订阅号 ＋ API 号；上游选择（这一发走哪个上游、注入什么凭据）住这里。
 - `agents/`：用户的 AI CLI 的适配面（claudecode · codex），一家一行注册表，含记录解释。
-- `plugin/`：调外部程序的口（找 · 问 · 起 · 收），全景小程序经它起。
+- `plugin/`：调外部程序的口（找 · 问 · 起 · 收），cc-bus 那一族命令经它起。
 - `relay/`：中转的宿主（门 · 监听）；中转本体是通信层面 B。
 - `dial/`：SSH（连接池 · 链路 · SFTP · `~/.ssh/config` 解读 · 端口转发 · 开终端那一行）。
 - `assets/`：skill / MCP / 别名的计算、判定与写，资产目录与同步，两台之间的装由本机后端当枢纽。
@@ -181,16 +180,15 @@ monitor 里仍直读本机 agent 目录的地方逐处登记，条数以 `local_
 
 `src/common/` 住 monitor 与后端共同 link 的共享 crate。它们只放两边必须对上的**契约**（路径 · 端口 · 文件格式 · 文案表 · 令牌形状 · 字节表键），不放**判定**；判定只在后端。monitor 生产段只许依赖契约类 crate，由 `tests/frontend/shell/contract_crate_guard_tests.rs` 两向钉住。共享常量让两侧「想不一致」得先把 import 删掉，漂移变成不可表示。
 
-后端 crate 刻意不是 workspace 成员：它要能在目标机上原生构建（发版交叉编成 musl 静态二进制）。全景小程序 `src/panorama-engine` 也自成一份，带着 vendored 的引擎。壳的 workspace 成员是 `monitor` ＋ 共享 crate，个数以 `src/frontend/shell/Cargo.toml` 现量为准。
+后端 crate 刻意不是 workspace 成员：它要能在目标机上原生构建（发版交叉编成 musl 静态二进制）。壳的 workspace 成员是 `monitor` ＋ 共享 crate，个数以 `src/frontend/shell/Cargo.toml` 现量为准。
 
-代价：在 `src/frontend/shell` 里跑 `cargo test --workspace` / `cargo fmt --all` 覆不到后端与全景小程序 ⇒ 测试、格式、clippy 要三处分别跑（壳的 workspace · `src/backend` · `src/panorama-engine`），门禁的 `cargo` · `backend` · `panorama-engine` 三格就是这三处。
+代价：在 `src/frontend/shell` 里跑 `cargo test --workspace` / `cargo fmt --all` 覆不到后端 ⇒ 测试、格式、clippy 要两处分别跑（壳的 workspace · `src/backend`），门禁的 `cargo` · `backend` 两格就是这两处。
 
 ### 2.8 其余几块
 
 - **中转**（通信层面 B）：本机远端同形，是那台常驻后端进程里的一条线程，对外端口由它绑，进门要钥匙。凡经我们的启动器起的会话都注入中转地址；用户自己设了 `ANTHROPIC_BASE_URL` 时不注入并说一句。中转只切流，这一发走哪个上游、注入什么凭据由账号域的上游选择出成品（帧命令 `launch-endpoint`），monitor 对凭据文件零读零写。
 - **文件管理**：`cc-monitor-filewin` 是独立前端，经回环通道 ＋ 钥匙只说 `call` / `subscribe`。写用户的文件只经那台后端的文件管理面（`files-peek` · `files-put` 带期望值 · `files-delete` …），本机远端同一条路；monitor 碰用户文件只有一个开口，只差 `origin`。
-- **代码全景**：在仓所在的那台机器上由全景小程序现场解析，后端只说查询语义、经插件口起它，线上只传结果；monitor 与后端本体零引擎。界面经通道直问那台（`src/frontend/ui/panorama/api.ts`）。
-- **部署**：后端与全景小程序的字节随 monitor 内嵌，全仓只有壳的字节表一个取字节口，按目标机器的 (OS, arch) 选，没覆盖的格子写第一个字节前拒绝。「换不换、换成什么」由后端帧命令 `deploy-plan` 出计划（只升不降，身份读字节里的戳、不跑它），monitor 只按计划放字节。
+- **部署**：后端的字节随 monitor 内嵌，全仓只有壳的字节表一个取字节口，按目标机器的 (OS, arch) 选，没覆盖的格子写第一个字节前拒绝。「换不换、换成什么」由后端帧命令 `deploy-plan` 出计划（只升不降，身份读字节里的戳、不跑它），monitor 只按计划放字节。
 - **资产**：每台后端一份资产目录，本机后端按事件在各后端之间拉 / 合 / 推；装到别的机器要用户点，先看差异。
 - **退出行为**：住那台机器自己的 `~/.cc-monitor/backend.json`，只有那台后端读写（`control/exit_policy`），决定那一刻现读。
 

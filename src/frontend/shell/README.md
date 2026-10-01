@@ -48,7 +48,6 @@ src/frontend/shell/
     ├── launch.rs      # B14-F41 终端拉起单一入口（wt.exe→PowerShell）+ 远端 ssh 拉起（本地 resume 与 F41/F51/F52/F53 共用）
     ├── （search.rs 〔LOC1b〕已删：本机全文搜索也问本机后端 `history-search`）
     ├── mcp.rs         # F87 MCP 管理：跨 scope 宽容读 / 只写项目 .mcp.json（SS-14 读写分界）
-    ├── panorama_bytes.rs # 〔RM1c · MIG-3b 续〕全景小程序的字节：那台后端回「没装 / 太旧」时推到远端 / 放到本机（问 · 写 · 撤界面经通道直问那台后端）
     ├── ssh_source.rs  # russh 远端数据源：连接/鉴权/指纹校验 + 后端流帧解析 + 版本协商 + ssh-config 导入 + 测试连接 + B14-F59 daemonless 降级读取(纯 tail 轮询)
     ├── remote_history.rs # 远端历史浏览 + 远端全文搜索查询（一次性 exec 后端子命令，多机 fan-out）
     ├── sftp.rs        # SS-D 统一 SFTP 写层：后端自动部署 (#29) + 远端历史删除 (F11) + ccm 安装 (F10)
@@ -123,8 +122,6 @@ src/frontend/shell/
 | 〔F7c 收尾 09-24〕池子那十二条（`sftp_realpath` · `sftp_list_dir` · `sftp_stat` · `sftp_download` · `sftp_upload` · `sftp_cancel_transfer`〔散文墓碑〕 · `sftp_mkdir` · `sftp_rename` · `sftp_delete` · `sftp_read_text_for_edit`〔散文墓碑〕 · `sftp_write_text` · `sftp_chmod`）已删 | — | — | 老面板删了；文件窗口的浏览 / 写 / 读文本走后端 `files-*`，上传 / 下载经通道开单（`transfer-upload` / `transfer-download`）、订阅 `transfer/<id>` 进度（`设计/60 §13b`）。池子的 Tauri 命令只剩 `sftp_copy`；〔第四波 S4〕它也随门禁 `f3-copy` 那一格退役删了 ⇒ 零条 |
 | 〔MIG-1 续〕列 tmux 会话两条命令（远端 · 本机）删了 | — | — | 界面经通道问那台后端 `tmux-list`（成品 `{installed, sessions}`，本机远端同一形） |
 | ~~`capture_remote_pane`~~ (B14-F60) | — | — | 〔C4e · 第四波 4C〕退役：预览窗经 `src/frontend/ui/tmux-control.ts::capturePane` 直接问那台机器的后端（`capture-pane`，成品 `{name, screen}`），monitor 那一跳只搬字节 |
-| 〔MIG-3b 续〕全景问 · 写 · 撤那三条命令删了 | — | — | 界面经通道直问那台后端 `panorama` / `panorama-edit`（`IPC-PROTOCOL.md` 那两节），撤单过通道那一跳（`chan_cancel`） |
-| `panorama_place` (MIG-3b 续) | `{ origin }` | `()` | 那台后端回 `not_installed` / `unsupported` 时界面请 monitor 放全景小程序的字节：远端推一份、本机放一份（每台一把锁，排队那一问等前一个放完就不再放） |
 | `chan_cancel` (MIG-3b 续) | `{ id }` | `boolean`（那一问此刻在不在飞） | 撤掉 webview 那一跳上带编号的一问：路由器丢掉调用 ⇒ 补发 `cancel` 给后端（撤单先到也撤得到） |
 | 〔MIG-1 · ⑬〕端口转发那三条命令（起 · 停 · 列）删了 | — | — | 界面经通道问本机常驻后端 `forward-*`（`IPC-PROTOCOL.md` 那三节） |
 | 〔LOC1b · 第四波 4D〕历史全文搜索那三条命令（搜索 · 查索引状态 · 重建索引，issue #6）删了 | — | — | 本机搜索也经通道问本机后端 `history-search`（与远端同一条路，界面 `src/frontend/ui/views/history-search.ts`）；monitor 进程内那份索引一起没了 |

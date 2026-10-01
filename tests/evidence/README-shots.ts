@@ -5,7 +5,7 @@
  * 数据全是 `README-shots-fixture.ts` 里合成的）＋ Chromium（Playwright 的 headless shell）⇒ `docs/screenshots/*.png`。
  * 不起后端、不碰 `~/.claude` / `~/.cc-monitor` / tmux；1280×800、界面默认主题、钟停在夹具那一刻（时间戳每次拍都一样）。
  *
- * 用法（仓根）：`npx tsx tests/evidence/README-shots.ts [main history machines panorama footprint]`（不给 = 全拍）。
+ * 用法（仓根）：`npx tsx tests/evidence/README-shots.ts [main history machines footprint]`（不给 = 全拍）。
  * 要一份 playwright：与 RENDER2 同住 `.scratch/pw`（本机 npx 缓存里已有的那份软链进 `.scratch/pw/node_modules/` 也行，不必再装）。
  * 构建产物落 `.scratch/readme-shots/`（不进仓）。页里抛错 / 状态栏报错 / 超过 300 KB ⇒ 这一张作废、非零退出。
  */
@@ -16,7 +16,7 @@ import { existsSync, mkdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, extname, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { copyText } from "../../src/frontend/ui/copy-table";
-import { ACTIVE_SID, MACHINES, NOW_ISO, PANO_CENTER, REMOTE, SEARCH_WORD, SESSIONS } from "./README-shots-fixture";
+import { ACTIVE_SID, MACHINES, NOW_ISO, REMOTE, SEARCH_WORD, SESSIONS } from "./README-shots-fixture";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, "../..");
@@ -101,24 +101,6 @@ const SCENES: Record<string, Scene> = {
     html: "settings.html",
     async drive(page) {
       await page.waitForFunction((n) => document.querySelectorAll('.backend-row-state[data-on="true"]').length === n, MACHINES.length);
-    },
-  },
-  /** 代码全景：搜到刚改过的那个路由处理函数，画它的调用子图，收起详情让图按视口铺满（图下是完整度读数）。 */
-  panorama: {
-    html: "index.html",
-    async drive(page) {
-      await sessionShown(page);
-      await page.click(".panorama-trigger");
-      await page.waitForSelector('.panorama-diagram-select option[value="calls"]', { state: "attached" }); // <option> 从不「可见」
-      await page.fill(".panorama-search", PANO_CENTER.split("#")[1]);
-      await page.press(".panorama-search", "Enter");
-      await page.waitForSelector(".panorama-sym-row");
-      await page.click(".panorama-sym-row");
-      await page.waitForSelector('.panorama-diagram-select option[value="calls"]:not([disabled])', { state: "attached" });
-      await page.selectOption(".panorama-diagram-select", "calls");
-      await page.waitForSelector(".panorama-diagram-canvas svg");
-      // 收起符号详情 ⇒ 画布变宽，图按视口重新适配、铺满（`diagram-view.ts::fit`）
-      await page.click(".panorama-sidebar-close");
     },
   },
   /** 设置 → devbox → 足迹：cc-monitor 在那台机器上放了什么、现在在不在。 */
