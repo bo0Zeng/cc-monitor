@@ -26,7 +26,7 @@
  */
 import ts from "typescript";
 import { describe, it, expect } from "vitest";
-import { productionTsFiles } from "../../test-support/production-sources.ts";
+import { productionTsFiles, SCAN_TIMEOUT_MS } from "../../test-support/production-sources.ts";
 
 const HOME = "src/frontend/ui/ipc/origin.ts";
 
@@ -120,5 +120,5 @@ describe("〔TL3 · 🔴-5〕「是不是本机」只在 origin.ts 判", () => {
       "isLocalOrigin",
       "isRemoteOrigin",
     ]);
-  });
+  }, SCAN_TIMEOUT_MS);
 });

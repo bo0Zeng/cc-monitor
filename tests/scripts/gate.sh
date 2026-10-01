@@ -33,26 +33,33 @@
 # │ ⚠ **自述句只许住在这一段里。** `C5b` 会把这一段之外、头注里任何一句「本脚本跑 N 格 /
 # │   N 道门」判红；历史读数的唯一豁免是**在那一行**逐字带上 `〔量于 …〕`。
 # │
-# │ 〔自述·格数〕40 格
+# │ 〔自述·格数〕55 格
 # │ 〔自述·点名〕worktree-clean · hooks · copy2 · shellcheck · ci-e2e-prereq · release-gate · gate-selfdesc ·
-# │   ccbus-twophase ·
+# │   ccbus-twophase · e2e-smoke ·
 # │   platform · muslbuild ·
 # │   installface ·
 # │   fmt · fmt-backend ·
-# │   winchk · winchk-backend · winlink · cargo · comm-boundary · test-tiers · deadcode · generated · backend · panorama-engine · tsc · npm ·
+# │   winchk · winchk-backend · winlink · cargo · comm-boundary · test-tiers · deadcode · clippy · appbuild · generated · backend · clippy-backend · panorama-engine · code-picture-core · tsc · npm ·
+# │   coverage · audit · weak-net ·
 # │   ccm tests/e2e/ccm-print-parity · ccm tests/e2e/ccm-rbind-title · ccm tests/e2e/ccm-cli ·
 # │   ccm tests/e2e/ccm-contract-parity ·
 # │   ccm tests/e2e/backend-rbind-token · ccm tests/e2e/rbind-token-endtoend · ccm tests/e2e/backend-cc-bus ·
 # │   ccm tests/e2e/backend-gate2 · ccm tests/e2e/local-backend · ccm tests/e2e/restart-frames · ccm tests/e2e/restart ·
 # │   ccm tests/e2e/backend-tmux-late-server · ccm tests/e2e/backend-sessions-rewatch · ccm tests/e2e/p3t-local-tmux ·
-# │   ccm tests/e2e/resume-frames
-# │ 〔自述·现物〕十五套 e2e 的被测文件：`tests/e2e/ccm-print-parity.sh` · `tests/e2e/ccm-rbind-title.sh` ·
+# │   ccm tests/e2e/resume-frames · ccm tests/e2e/cc-spawn-uplift · ccm tests/e2e/inbound-frames ·
+# │   ccm tests/e2e/graylight-frames · ccm tests/e2e/backend-fork · ccm tests/e2e/tmux-target ·
+# │   ccm tests/e2e/cc-bus-queue-drain · ccm tests/e2e/resume
+# │ 〔自述·现物〕二十二套 e2e 的被测文件：`tests/e2e/ccm-print-parity.sh` · `tests/e2e/ccm-rbind-title.sh` ·
 # │   `tests/e2e/ccm-cli.test.sh` · `tests/e2e/ccm-contract-parity.sh` ·
 # │   `tests/e2e/backend-rbind-token.sh` · `tests/e2e/rbind-token-endtoend.sh` · `tests/e2e/backend-cc-bus.sh` ·
 # │   `tests/e2e/backend-gate2-acceptance.sh` · `tests/e2e/local-backend-supervise.sh` ·
 # │   `tests/e2e/restart-backend-frames.sh` · `tests/e2e/restart-suite.sh` ·
 # │   `tests/e2e/backend-tmux-late-server.sh` · `tests/e2e/backend-sessions-rewatch.sh` · `tests/e2e/p3t-local-tmux.sh` ·
-# │   `tests/e2e/resume-backend-frames.sh`；判法一律走 `tests/e2e/assert-pass-floor.sh`。
+# │   `tests/e2e/resume-backend-frames.sh` · `tests/e2e/cc-spawn-uplift.sh` · `tests/e2e/inbound-backend-frames.sh` ·
+# │   `tests/e2e/graylight-backend-frames.sh` · `tests/e2e/backend-fork-session.sh` · `tests/e2e/tmux-target-acceptance.sh` ·
+# │   `tests/e2e/cc-bus-queue-drain.sh` · `tests/e2e/resume-suite.sh`；判法一律走 `tests/e2e/assert-pass-floor.sh`。
+# │ 〔自述·现物〕`e2e-smoke` · `coverage` · `audit` · `weak-net` 四格没有独立的判据文件 —— 它们按步骤名从
+# │   `.github/workflows/ci.yml` 现取那几步的 `run:` 原样跑（`gate_ci_steps`）；`weak-net` 另判台架 PASS 与那一步的地板恒等。
 # │ 〔自述·现物〕`copy2` 那一格的判据本体：`tests/evidence/K-R115-ruler.py`（`K-R115` 09-14 第 14 格）。
 # │ 〔自述·现物〕`shellcheck` 那一格没有独立的判据文件 —— 它的**人群与地板都从
 # │   `.github/workflows/ci.yml` 现读**（那一段 `FILES=` ＋ 它下面那条覆盖面地板行），
@@ -288,6 +295,33 @@ set -uo pipefail
 # 那一笔里修过了，**唯独漏了门禁自己** —— 一个「检查别人的东西」自己没被检查。
 cd "$(dirname "$0")/../.." || exit 2
 fails=()
+
+# ── 起跑先摘掉开发机会话带进来的环境变量 ────────────────────────────────────────
+# 门禁常在 tmux 窗格里、在 Claude Code / cc-monitor 起的会话里跑：下面这几族是**那个会话**的状态
+# （所在窗格、账号目录、中转地址、令牌、总线身份），不是这棵树的。测试进程一继承，读数就跟着开发机走 ——
+# 经中转起的会话里 `ANTHROPIC_BASE_URL` 是真值，顶掉过 `ccm-contract-parity`「不设中转地址」那一格（假红）；
+# `TMUX`/`TMUX_PANE` 会让走身份打标的测试去给真机默认 tmux 打标。CI runner 上它们本来就不存在，
+# 摘掉 = 本机与 CI 同一个起点。摘的是：
+#   · tmux 窗格：`TMUX` `TMUX_PANE`
+#   · Claude Code 会话：`CLAUDECODE` `CLAUDE_CONFIG_DIR`，以及 `CLAUDE_CODE_` 打头的整族（按前缀现取）
+#   · 上游与中转：`ANTHROPIC_BASE_URL` `ANTHROPIC_MODEL` `ANTHROPIC_API_KEY` `ANTHROPIC_AUTH_TOKEN`
+#   · cc-monitor 起会话时注入的：`CCM_RBIND_TOKEN` `CCM_LAUNCH_ID` `CCM_CLAUDEJSON` `CCM_CODEXTOML`，
+#     与指向本机账号清单的 `CCM_ACCTS_MANIFEST`
+#   · cc-bus 身份：`CC_BUS_ID` `CC_BUS_HOME`
+# ⚠ 要这些变量的测试一律自己设（e2e 各自的 `base_env`、Rust 判据里的 `Command::env`），不靠继承；
+#   `CCM_PWSH` 这类「开发者显式打开一组测试」的开关不在名单里，刻意不摘。只印名字，不印值（里面有令牌）。
+gate_scrubbed=()
+for gate_v in TMUX TMUX_PANE CLAUDECODE CLAUDE_CONFIG_DIR \
+              ANTHROPIC_BASE_URL ANTHROPIC_MODEL ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN \
+              CCM_RBIND_TOKEN CCM_LAUNCH_ID CCM_CLAUDEJSON CCM_CODEXTOML CCM_ACCTS_MANIFEST \
+              CC_BUS_ID CC_BUS_HOME $(compgen -e | grep -E '^CLAUDE_CODE_' || true); do
+  if [ -n "${!gate_v+x}" ]; then
+    gate_scrubbed+=("$gate_v")
+    unset "$gate_v"
+  fi
+done
+unset gate_v
+printf '  ·    %-14s %s\n' "环境" "摘掉了 ${#gate_scrubbed[@]} 个从开发机会话继承来的变量：${gate_scrubbed[*]:-（一个都没有）}"
 
 # ── 〔被谁调用〕`GATE_ONLY` 子集 ＋ 一张**跑过的收据**（`G4` 空洞③，09-20）──────────
 #
@@ -1023,6 +1057,66 @@ gate_shellcheck() {
 run_gate shellcheck '不是「几条断言过了」：这个数是**从 `.github/workflows/ci.yml` 现读的那张人群**展开出来的 shell 文件份数（与云端 `E2E scripts health` 那个 job 同一份人群、同一档 `--severity=error`）。⚠ 只判 error 这一档；warning/info/style 本行一概不看。⚠ 沙箱与 CI 是两份 shellcheck 二进制，版本可能不同 ⇒ 本格买的是「本地先看见」，不是「与 CI 逐字等价」。⚠ 人群之外的 shell（`.ps1` 全仓零 lint · 没进那张人群的任何脚本）本行盖不到' \
          gate_shellcheck
 
+# ── 照 `ci.yml` 原样跑某几步 ────────────────────────────────────────────────────
+# 按步骤名（前缀）从 `.github/workflows/ci.yml` 取出那一步的 `run:`（单行，或 `|` 块整块），
+# 用 CI 那一档 shell（`bash -eo pipefail`）在仓根跑。命令只住 `ci.yml` 一处，本文件不抄第二份 ——
+# CI 那边改了命令或地板，这里跑的跟着变。
+# ⚠ 只认在仓根跑的步骤：名字与 `run:` 之间出现 `working-directory:` ⇒ 印 `WORKDIR` 记号，下面按红记
+#   （取不准该在哪跑）；名字一个都对不上 ⇒ 取出来是空串，同样按红记。
+gate_ci_step_body() {
+  awk -v want="- name: $1" '
+    { s = $0; sub(/^[ \t]+/, "", s) }
+    st == 0 { if (index(s, want) == 1) st = 1; next }
+    st == 1 {
+      if (s ~ /^#/) next
+      if (s ~ /^working-directory:/) { print "\001WORKDIR"; exit }
+      if (s ~ /^run:[ \t]*[|>]-?[ \t]*$/) { match($0, /^ */); key = RLENGTH; st = 2; next }
+      if (s ~ /^run:/) { sub(/^run:[ \t]*/, "", s); print s; exit }
+      if (s ~ /^- / || s == "") exit
+      next
+    }
+    st == 2 {
+      if (s == "") { print ""; next }
+      match($0, /^ */)
+      if (RLENGTH <= key) exit
+      if (ind == 0) ind = RLENGTH
+      print substr($0, ind + 1)
+    }
+  ' .github/workflows/ci.yml
+}
+gate_ci_steps() {
+  local label="$1"; shift
+  local name body ran=0 rc
+  for name in "$@"; do
+    body="$(gate_ci_step_body "$name")"
+    case "$body" in
+      '')
+        printf '%s: ci.yml 里找不到名字以「%s」打头、带 run: 的那一步 —— 判不了，按红记\n' "$label" "$name"
+        return 2 ;;
+      $'\001WORKDIR'*)
+        printf '%s: ci.yml 里「%s」那一步带 working-directory，本函数只在仓根跑 —— 判不了，按红记\n' "$label" "$name"
+        return 2 ;;
+    esac
+    printf '%s: ── 照 ci.yml 跑「%s」\n' "$label" "$name"
+    bash -eo pipefail -c "$body" 2>&1
+    rc=$?
+    if [ "$rc" -ne 0 ]; then
+      printf '%s: 「%s」退出码 %s —— CI 上同一步会红\n' "$label" "$name" "$rc"
+      return "$rc"
+    fi
+    ran=$((ran + 1))
+  done
+  printf '%s: %s passed（ci.yml 里 %s 步原样跑过）\n' "$label" "$ran" "$ran"
+}
+
+# ── `e2e-smoke`：`ci.yml` 同名 job 里另三步（shellcheck 与发版守卫各有自己的格）────────────
+# 三步都只读盘上文本：`tests/e2e/*.py` 过 `py_compile` · 那张「每套 e2e 都带断言数地板」的自检
+# （它数的就是 `ci.yml` 自己）· `src/shared/` 下带 shebang 的文件在 git 里是 100755。
+# 此前三步只在 CI 上跑：改了一套 e2e 的地板而那张自检清单没跟，本机一格都不红。
+# 〔量于 2026-09-30，本工作树〕本格墙钟不到 1 秒。
+run_gate e2e-smoke '步数：`ci.yml` 的 `e2e-smoke` job 里 `python syntax compile` · `G-A/G-C 覆盖面地板` · `exec-bit guard` 三步，按步骤名从 `ci.yml` 现取 `run:` 原样跑（本文件不抄命令）。⚠ 判的是那三步自己的判定：py 只判语法、地板自检只判 `ci.yml` 文本、exec-bit 只判 `src/shared/` 下带 shebang 的那批；本格墙钟不到 1 秒' \
+         gate_ci_steps e2e-smoke "python syntax compile" "G-A/G-C 覆盖面地板" "exec-bit guard"
+
 # ── `ci-e2e-prereq`：**CI 里那些 e2e 的前置跟没跟上**（`K-R122` `KR122D1` ③④，09-14，第 18 格）──
 #
 # ## 题面：`K-R119` 那趟五条红里有**两条**是这一形，而它在本地一个字都看不见
@@ -1653,12 +1747,30 @@ case " ${GATE_SKIPPED[*]-} " in
   *) printf '  分母 %-14s %s\n' "deadcode" "本格墙钟 $(( $(date +%s) - deadcode_t0 )) 秒（现打，与门禁基线相减就是加这一格的代价）" ;;
 esac
 
+# ── `clippy` / `appbuild`：`ci.yml` 那两步此前只在 CI 上跑 ─────────────────────────────
+# `rust` job 的 `cargo clippy --workspace --all-targets`（不带 `-D warnings`，但 clippy 默认 deny 的那几类
+# lint 与编译错照样红）· `linux-app-build` job 的 `cargo build`（真编 bin 并链接；上面 `cargo` 那格带 `--lib`、
+# `deadcode` 那格只 check，两格都不链 Linux 上的那两个二进制）。
+# ⚠ 三格成功时只印输出尾部两行：警告片段会原样带出源码里的散文（如某句注释里的「1277 passed」），
+#   而 `run_gate` 取输出里最大的那个数 ⇒ 不滤就会把散文读成读数。红的时候整份输出照印。
+run_gate clippy '不是数出来的数：`cargo clippy --workspace --all-targets` 只有绿/红两态，分母是 `src/frontend/shell` 那个 workspace 的全部成员与全部 target（含 test 档）。⚠ 与 CI 那一步同一条命令、不加 `-D warnings` ⇒ 警告不红，只有 deny 档的 lint 与编译错红；CI 那一步跑在 windows-latest 上，本格跑在 Linux 上（Windows 那一维由 `winchk` 盖）。本格墙钟〔量于 2026-09-30，本工作树〕首趟 73 秒、源码没变时 4 秒' \
+         bash -c 'cd src/frontend/shell && out=$(cargo clippy --workspace --all-targets 2>&1); rc=$?; if [ "$rc" -ne 0 ]; then printf "%s\n" "$out"; exit "$rc"; fi; printf "%s\n" "$out" | tail -2; echo "clippy: 1 passed"'
+run_gate appbuild '不是数出来的数：`cargo build`（dev）只有绿/红两态，射程 = `src/frontend/shell` 根包 `monitor` 的 lib 与两个二进制（`cc-monitor` · `cc-monitor-filewin`）在 Linux 上**真编真链**一趟，与 `ci.yml` 的 `linux-app-build` 那一步同一条命令。⚠ 只链不跑；release 档不编；前端产物（`dist/`）由 `npm` 那格里的真 vite 构建与 `tsc` 那格盖。本格墙钟〔量于 2026-09-30，本工作树〕首趟（依赖全量编译）106 秒' \
+         bash -c 'cd src/frontend/shell && out=$(cargo build 2>&1); rc=$?; if [ "$rc" -ne 0 ]; then printf "%s\n" "$out"; exit "$rc"; fi; printf "%s\n" "$out" | tail -2; echo "appbuild: 1 passed"'
+
 run_gate backend '单包 src/backend，只有一行 test result ⇒ 最大值 = 合计' \
          bash -c 'cd src/backend && cargo test 2>&1'
+run_gate clippy-backend '不是数出来的数：`cargo clippy --all-targets` 只有绿/红两态，射程 = `src/backend` 那一个 crate 的全部 target，与 `ci.yml` 的 `backend` job 那一步同一条命令（不带 `-D warnings` ⇒ 只有 deny 档的 lint 与编译错红）。本格墙钟〔量于 2026-09-30，本工作树〕首趟 32 秒' \
+         bash -c 'cd src/backend && out=$(cargo clippy --all-targets 2>&1); rc=$?; if [ "$rc" -ne 0 ]; then printf "%s\n" "$out"; exit "$rc"; fi; printf "%s\n" "$out" | tail -2; echo "clippy-backend: 1 passed"'
 # 〔TAIL · 09-26〕全景小程序是独立 crate（自己一份 Cargo.lock，不进任何 workspace）⇒ 上面两格都编不到它；
 #   它自己的 `tests/panorama-engine/cli_tests.rs`（含「引擎零写用户文件」）此前不在任何执行链上。
 run_gate panorama-engine '单包 src/panorama-engine（独立 crate），只有一行 test result ⇒ 最大值 = 合计' \
          bash -c 'cd src/panorama-engine && cargo test 2>&1'
+# vendor 那份 code-picture-core 自己的判据：上面那格编的是全景小程序，链它但不跑它的测试；`ci.yml` 的 `rust` job
+#   在 vendor 目录里单跑 `cargo test -p code-picture-core`，此前只有 CI 跑。只读地跑（vendor 源码不动；
+#   cargo 在那个目录里落一份 Cargo.lock，已被 gitignore）。
+run_gate code-picture-core '单包 vendor code-picture-core（在 `src/panorama-engine/vendor/code-picture-core` 里跑，与 `ci.yml` 那一步同一条命令），lib 一行 ＋ doctest 一行（0 条）⇒ 最大值 = lib 那一行。本格墙钟〔量于 2026-09-30，本工作树〕首趟 14 秒' \
+         bash -c 'cd src/panorama-engine/vendor/code-picture-core && cargo test -p code-picture-core 2>&1'
 # ── `tsc`：**发版产物编不编得出来**，此前门禁一格都没有（`K-R118` `KR118D1` ②，09-14，第 16 格）──
 #
 # ## 题面：一条缺陷 09-12 进来、09-14 才被发现，而发现它的不是任何判据
@@ -1700,6 +1812,16 @@ printf "tsc: %s passed（仓内 %s 份 .ts 全部过 tsc --noEmit；两个数同
 
 run_gate npm '17 个套件（16 tsx + 1 vitest）里只有 2 个打得出数字（test:dom 1480 · test:diff 17），而取最大值 ⇒ 这个数恒是 test:dom 的；另 15 个 tsx 套件只打「all X tests passed」，它们「跑了 0 个」这一格守不住（失败仍由 && 链的退出码守）' \
          npm test
+
+# ── `coverage` / `audit`：`ci.yml` 的 `frontend` job 里此前只在 CI 上跑的三步 ─────────────────────
+# 覆盖率逐文件地板（`tests/scripts/assert-coverage-floors.mjs`）点名的是具体文件：那个文件被删或改名、
+# 清单还点着它 ⇒ 只有 CI 红。两步都按步骤名从 `ci.yml` 现取原样跑，地板与清单只住它们自己的文件。
+run_gate coverage '这一趟 vitest（带 v8 覆盖率）真跑过的条数：`ci.yml` 的 `coverage floor (vitest jsdom)`（`npm run coverage`，`vitest.config.ts` 里的全局阈值）＋ `coverage per-file floors + zero-coverage ratchet`（逐文件地板与零覆盖棘轮）两步原样跑。⚠ 与 `npm` 那格是同一批 vitest 文件再跑一遍（这一趟带插桩，慢一截）；覆盖率只量 `src/**/*.ts`，tsx 套件与 Rust 一概不进分母。本格墙钟〔量于 2026-09-30，本工作树〕约 40 秒' \
+         gate_ci_steps coverage "coverage floor (vitest jsdom)" "coverage per-file floors + zero-coverage ratchet"
+# ⚠ 要联网：它问的是 npm registry **当下**的漏洞库 —— 断网时退出码非零、本格红（不静默跳过）；
+#   同一棵树也可能因为库里新登了一条 high 而隔夜变红，那与 CI 上同一步的行为一致。
+run_gate audit '步数：`ci.yml` 的 `npm audit (production deps, high)` 一步原样跑（`--omit=dev --audit-level=high`），只有绿/红两态。⚠ 要联网、判的是 registry 当下的漏洞库；dev 依赖与 high 以下的档本行不看。本格墙钟〔量于 2026-09-30，本工作树〕约 1 秒' \
+         gate_ci_steps audit "npm audit (production deps, high)"
 
 # ── 门⑥ `ccm` e2e（`K-G3` 09-01，治 `丙1-f1`）────────────────────────────────
 #
@@ -1813,7 +1935,7 @@ gate_selftest_e2e
 gate_e2e_wanted() {
   if [ -z "$GATE_ONLY" ]; then return 0; fi
   local suite
-  for suite in ccm-print-parity ccm-rbind-title ccm-cli ccm-contract-parity backend-rbind-token rbind-token-endtoend backend-cc-bus backend-gate2 local-backend restart-frames restart backend-tmux-late-server backend-sessions-rewatch p3t-local-tmux resume-frames; do
+  for suite in ccm-print-parity ccm-rbind-title ccm-cli ccm-contract-parity backend-rbind-token rbind-token-endtoend backend-cc-bus backend-gate2 local-backend restart-frames restart backend-tmux-late-server backend-sessions-rewatch p3t-local-tmux resume-frames cc-spawn-uplift inbound-frames graylight-frames backend-fork tmux-target cc-bus-queue-drain resume; do
     case " $GATE_ONLY " in *" $suite "*) return 0 ;; esac
   done
   return 1
@@ -1971,6 +2093,41 @@ run_e2e p3t-local-tmux        11
 #   已经落在记号之前（与仓路径是不是 ASCII 无关；后端会话账本那一族没毛病）。记号挪到 kill 之前。
 #   〔量于 2026-09-28，ASCII 工作树连打三趟 ＋ 主树同形的非 ASCII 路径工作树，本机 tmux 3.6〕7 PASS / 0 FAIL。
 run_e2e resume-frames          7
+# ── `ci.yml` 里带 `assert-pass-floor.sh` 地板、此前只在 CI 上跑的七套 ─────────────────────────────
+#   `cc-spawn-uplift` 有一个真回归在 CI 上红了四天，本机门禁一格都看不见。七套全走隔离的 tmux socket
+#   （`-L` 或 tmux shim）或根本不碰 tmux，本机跑得动 ⇒ 接进执行链，判法同上面各套（`exact`：PASS 恒等）。
+#   地板取的是本机实打的 PASS（`inbound-frames` 32 · `graylight-frames` 13 比 `ci.yml` 那两行的 30 · 12 高 ——
+#   CI 那边是 `at-least`，只挡缩水）。〔量于 2026-09-30，本工作树，本机 tmux 3.6〕各套墙钟：
+#   cc-spawn-uplift 44 秒 · inbound-frames 2 秒 · graylight-frames 3 秒 · backend-fork 不到 1 秒 ·
+#   tmux-target 9–48 秒（两趟）· cc-bus-queue-drain 4 秒 · resume 16 秒。
+run_e2e cc-spawn-uplift       72
+run_e2e inbound-frames        32
+run_e2e graylight-frames      13
+run_e2e backend-fork          10
+run_e2e tmux-target           26
+run_e2e cc-bus-queue-drain    43
+run_e2e resume                17
+
+# ── `weak-net`：`ci.yml` 同名 job 的两步（建台架镜像 · 跑台架带地板）──────────────────────────
+# 台架全程在 docker 里自建网络造网况（宿主网卡不动）；要本机有 docker 与 `NET_ADMIN`。两步按步骤名从 `ci.yml`
+# 现取原样跑；地板也从那一步现读，台架实打的 PASS 必须**恒等**于它（同 `run_e2e` 的 `exact`；CI 那一步只挡缩水）。
+gate_weaknet() {
+  local out rc floor n
+  out="$(gate_ci_steps weak-net "建弱网台架镜像" "弱网台架四维" 2>&1)"
+  rc=$?
+  printf '%s\n' "$out"
+  [ "$rc" -eq 0 ] || return "$rc"
+  floor="$(gate_ci_step_body "弱网台架四维" | grep -oE 'assert-floor\.sh [0-9]+' | grep -oE '[0-9]+$')"
+  n="$(printf '%s\n' "$out" | grep -oE '合计 PASS=[0-9]+' | grep -oE '[0-9]+' | tail -1)"
+  if [ -z "$floor" ] || [ -z "$n" ] || [ "$n" -ne "$floor" ]; then
+    printf 'weak-net: 台架 PASS=%s，ci.yml 那一步的地板 %s —— 本格按恒等判，多了少了都红（涨了就去 ci.yml 把地板棘上去）\n' \
+           "${n:-<抓不到>}" "${floor:-<抓不到>}"
+    return 1
+  fi
+  printf 'weak-net: %s passed（台架 PASS 与 ci.yml 那一步的地板恒等）\n' "$n"
+}
+run_gate weak-net '台架实打的 PASS 条数（四维网况 ＋ SSH，改前/改后两个读数），与 `ci.yml` `weak-net` job 那一步的地板**恒等**。⚠ 要 docker；镜像已在就跳过建镜像（建一次约 13 秒，要能装包）；只量容器里自建网络上的网况，真远端、真 Windows 一概不在。本格墙钟〔量于 2026-09-30，本工作树，镜像已在〕约 36 秒' \
+         gate_weaknet
 
 # ── 〔第四波 S4〕这里原先是第 26 格 `f3-copy`（秤 F3 两向：零流量复制的包计数对拍，三方对拍 ＋ 两向锚点）。
 #   它量的那条池子命令与核心随浏览 / 复制离开 SFTP 一起退役（窗口的复制走后端 `files-copy`），
@@ -2200,7 +2357,7 @@ if [ "${#fails[@]}" -eq 0 ]; then
   #   `rbind-token-endtoend`，见上面 `run_e2e` 那一段）—— 它们此前只被 shellcheck、不被执行。
   # 〔TAIL · 09-26〕**30 → 31**，加的是 `backend-cc-bus`（见上面 `run_e2e` 那一段）；
   #   **31 → 32**，加的是 `panorama-engine`（全景小程序自己的测试，见 `backend` 那一格下面）。
-  echo "GATE: OK —— 40 格全绿（worktree-clean · hooks · copy2 · shellcheck · ci-e2e-prereq · release-gate · gate-selfdesc · ccbus-twophase · platform · installface · fmt · fmt-backend · winchk · winchk-backend · winlink · muslbuild · cargo · comm-boundary · test-tiers · deadcode · generated · backend · panorama-engine · tsc · npm · ccm-print-parity · ccm-rbind-title · ccm-cli · ccm-contract-parity · backend-rbind-token · rbind-token-endtoend · backend-cc-bus · backend-gate2 · local-backend · restart-frames · restart · backend-tmux-late-server · backend-sessions-rewatch · p3t-local-tmux · resume-frames），可以出货"
+  echo "GATE: OK —— 55 格全绿（worktree-clean · hooks · copy2 · shellcheck · ci-e2e-prereq · release-gate · gate-selfdesc · ccbus-twophase · e2e-smoke · platform · installface · fmt · fmt-backend · winchk · winchk-backend · winlink · muslbuild · cargo · comm-boundary · test-tiers · deadcode · clippy · appbuild · generated · backend · clippy-backend · panorama-engine · code-picture-core · tsc · npm · coverage · audit · ccm-print-parity · ccm-rbind-title · ccm-cli · ccm-contract-parity · backend-rbind-token · rbind-token-endtoend · backend-cc-bus · backend-gate2 · local-backend · restart-frames · restart · backend-tmux-late-server · backend-sessions-rewatch · p3t-local-tmux · resume-frames · cc-spawn-uplift · inbound-frames · graylight-frames · backend-fork · tmux-target · cc-bus-queue-drain · resume · weak-net），可以出货"
   gate_print_blind
   exit 0
 fi
