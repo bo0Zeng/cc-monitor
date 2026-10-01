@@ -17,7 +17,7 @@ You run `claude` in a terminal — often several at once: one or two on your lap
 - **One tab per session, live.** Messages, code and tool calls (reading files, editing files, running commands) appear as they happen, for local and remote sessions alike.
 - **Back to the terminal in one click.** Press ↗ on a tab to bring the terminal running that session to the front and keep typing.
 - **Full history.** Search past sessions across machines, fork a new session from any turn, or resume where you left off.
-- **Many machines, one place.** Add a machine over SSH and its sessions show up automatically; start new sessions there, manage files, and explore the code without logging in.
+- **Many machines, one place.** Add a machine over SSH and its sessions show up automatically; start new sessions there and manage files without logging in.
 - **Several accounts at once.** Subscription accounts and API-key accounts in one list; two accounts can run side by side without logging each other out.
 
 cc-monitor only observes and launches: `claude` still runs in your own terminal, and cc-monitor reads the session records it writes. It never takes over.
@@ -56,13 +56,6 @@ cc-monitor only observes and launches: `claude` still runs in your own terminal,
 - Sort, create, rename, delete, copy, change permissions, upload and download, bookmarks, search by content
 - On remote machines it can do everything SSH can do to files
 
-### Code panorama
-- Code is parsed on the machine where the repository lives and only results travel; local and remote repositories both work
-- Module, subsystem, call and type diagrams, always with a line saying how much is hidden or ambiguous
-- Annotate the diagram and copy a selection to an agent
-
-![Code panorama](docs/screenshots/panorama.png)
-
 ### Accounts and relay
 - Subscription accounts (official Claude login) and API accounts (your own URL and key) in one place
 - Two accounts can run at the same time: separate login credentials, shared skills, memory and settings
@@ -85,26 +78,21 @@ flowchart LR
     UI["monitor UI<br/>display only"]
     FW["File window"]
     LB["Local backend ccm<br/>all SSH · relay · every decision"]
-    PL["Panorama engine<br/>on demand"]
     T1["Your terminal<br/>claude"]
   end
   subgraph remote["Each remote machine"]
     RB["Backend ccm<br/>same code as local"]
-    PR["Panorama engine<br/>on demand"]
     T2["Terminal / tmux<br/>claude"]
   end
   UI <--> LB
   FW <--> LB
   LB <-- SSH --> RB
-  LB --> PL
-  RB --> PR
   T1 -. session records · API requests .-> LB
   T2 -. session records · API requests .-> RB
 ```
 
 - **One backend, two hosts.** Your computer and every remote machine each run one long-lived backend, built from the same code. It reads session records, owns the SSH connections, makes every decision and does all the writing.
 - **The UI only displays.** It talks to backends with just two verbs — call and subscribe — and never touches SSH itself.
-- **Code panorama runs where the code is.** Parsing happens on the machine that holds the repository; only results cross the wire, source code never leaves.
 - **One home per machine.** Everything cc-monitor owns lives in `~/.cc-monitor/`. In Claude Code's `~/.claude` it only reads session records and only writes the assets you ask it to install.
 
 More detail in [`src/doc/ARCHITECTURE.md`](src/doc/ARCHITECTURE.md).
@@ -175,7 +163,6 @@ Single keys, all changeable in Settings → Shortcuts.
 | `1`–`9` | Jump to tab N |
 | `` ` `` | Bring the session's terminal to the front |
 | `H` | Toggle history |
-| `G` | Toggle code panorama |
 | `T` | Task panel |
 | `E` | Open the tab's working directory |
 | `W` | Close ended tabs |
