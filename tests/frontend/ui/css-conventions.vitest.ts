@@ -340,7 +340,7 @@ const HIDDEN_UNRESOLVED: Readonly<Record<string, string>> = {
   //    `perMachineFallbackHint`，语义一字未动。
   // `792 → 793` / `1288 → 1297` / `1301 → 1310`：`panel.ts` 多了资产目录那一行 import 与那一块登记，三处语义一字未动。
   // 〔W5-UI ＋ CFG1 合并〕W5-UI 那三处 +4 与 CFG1 +3 叠加（`panel.ts` 785 → 792 · 1289 → 1296 · 1302 → 1309；`history.ts` 1612 → 1616），语义一字未动。原注：`785 → 789` / `1289 → 1293` / `1302 → 1306`：`panel.ts` 多一行 import（应用内对话框）＋ 选目录失败那处 catch 多三行出声，三处语义一字未动。
-  "src/frontend/ui/settings/panel.ts:822": // 行号 −1：代码全景卸口那一块的 import 删了 // 〔合并扩展页 × 账号库〕按合并后的文件现打（扩展页 +2）· 账号库收进后端：−1（本机账号读口那一行 import 随「为每个账号加一条」删了）· 同上 · −7：逃生口 forceLaunchPayloadRenderer 那段缓存字段删了 · +35：openInner 拆出两个私有方法 · +2：多两行 import
+  "src/frontend/ui/settings/panel.ts:821": // 行号 −1：钩子那一块的 import 删了 // 行号 −1：代码全景卸口那一块的 import 删了 // 〔合并扩展页 × 账号库〕按合并后的文件现打（扩展页 +2）· 账号库收进后端：−1（本机账号读口那一行 import 随「为每个账号加一条」删了）· 同上 · −7：逃生口 forceLaunchPayloadRenderer 那段缓存字段删了 · +35：openInner 拆出两个私有方法 · +2：多两行 import
     "`b.el` —— `b` 来自 `this.perMachineBlocks` 数组，元素由各 section 自己建，跨文件",
   // 🔴 兜底态那块提示的显隐。它的类名是
   //    `skeleton.ts::makeSkeleton` 挂上去的（`settings-hint`），**跨文件** ——
@@ -348,9 +348,9 @@ const HIDDEN_UNRESOLVED: Readonly<Record<string, string>> = {
   //    ⚠ 顺带说清它安不安全：`settings-hint` 在 `src/frontend/ui/styles.css` 里**没有 display 规则**
   //      ⇒ UA 的 `[hidden] { display: none }` 不会被压过，那两句不是空写。
   //      这一条是**人工核过的**，不是这把尺子判的 —— 所以它在登记表里，不在绿里。
-  "src/frontend/ui/settings/panel.ts:1331": // 行号 −7：import 一行 ＋ 全景卸口那一格六行删了 // 〔合并扩展页 × 账号库〕按合并后的文件现打（扩展页 −1）· 账号库收进后端：−2 · 行号 −6：字面量进表后几段多行拼接收成一行 · 再 −7（同上） · +1（别名管理器多传一行 origin） · +35 · +16：外观「高级」那一折 ＋ 全景卸口那一格 ＋ 认不出 OS 那一分支
+  "src/frontend/ui/settings/panel.ts:1323": // 行号 −8：cc-bus 钩子那一块删了 // 行号 −7：import 一行 ＋ 全景卸口那一格六行删了 // 〔合并扩展页 × 账号库〕按合并后的文件现打（扩展页 −1）· 账号库收进后端：−2 · 行号 −6：字面量进表后几段多行拼接收成一行 · 再 −7（同上） · +1（别名管理器多传一行 origin） · +35 · +16：外观「高级」那一折 ＋ 全景卸口那一格 ＋ 认不出 OS 那一分支
     "`this.perMachineFallbackHint` —— 类名由 `skeleton.ts::makeSkeleton` 挂，跨文件",
-  "src/frontend/ui/settings/panel.ts:1344": // 行号 −7（同上） // 〔合并扩展页 × 账号库〕按合并后的文件现打（扩展页 −1）· 账号库收进后端：−2 · 同上 · −7 · +1 · +35 · +16
+  "src/frontend/ui/settings/panel.ts:1336": // 行号 −8（同上） // 行号 −7（同上） // 〔合并扩展页 × 账号库〕按合并后的文件现打（扩展页 −1）· 账号库收进后端：−2 · 同上 · −7 · +1 · +35 · +16
     "`this.perMachineFallbackHint` —— 同上（兜底态亮出来那一支）",
   // 🔴 「足迹」那一块里，本机那一整套的显隐包装。
   //    它**刻意不挂任何类**：只负责显隐、不要样式。挂了类就得在 CSS 里给它写规则
