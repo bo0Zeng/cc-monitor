@@ -594,7 +594,7 @@ fn every_status_cell_measure_is_in_the_census() {
         .collect::<Vec<_>>();
     assert!(
         falls_short.len() <= FALLS_SHORT_CEILING,
-        "「量法与它声称的性质对不上」涨到 {} 条了 > 棘轮上限 {FALLS_SHORT_CEILING}（09-12 现打 5）。\n\
+        "「量法与它声称的性质对不上」涨到 {} 条了 > 棘轮上限 {FALLS_SHORT_CEILING}（09-12 现打 5，载荷那一格改反向量法后 4）。\n\
              逐条：{falls_short:?}\n\
              ⚠ **不许把上限调上去让今天好过** —— 这是递减棘轮。",
         falls_short.len()
@@ -627,10 +627,10 @@ fn each_registered_status_still_matches_reality() {
         .collect();
     for (item, how) in STATUS_CELLS {
         let (delivered, why) = match *how {
-            "payload-kernel-exists" => (
-                // 内核搬进后端，量法跟着换住址。
-                prod("src/backend/control/launch_render/payload.rs").contains("fn render_payload"),
-                "载荷内核在后端 `control/launch_render/payload.rs`",
+            // 反向：载荷那一层整层删了（起会话只交一行 `ccm …`）⇒ 那份源码不在才对得上「交付过、后来删了」。
+            "payload-layer-gone" => (
+                !root.join("src/backend/control/launch_render/payload.rs").is_file(),
+                "载荷那一层整层删了（起会话只交一行 `ccm …`）",
             ),
             // ⚠ **F12 订正**：第一版左支读的是 `src/frontend/shell/src/shell_quote.rs` —— **那个文件不存在**
             // ⇒ 左支恒 false，整条判据只靠右支撑着（`/full-audit` 逮到的）。
@@ -656,14 +656,11 @@ fn each_registered_status_still_matches_reality() {
                 "ccm 调用行内核在后端 `control/launch_render/ccm_invocation.rs`",
             ),
             "production-ts-calls-the-rust-renderers" => (
-                // 两条渲染今天是那台后端的帧命令，主路经 `src/frontend/ui/launch-render.ts` 问。
+                // 渲染今天只剩那台后端的一条帧命令（那一行 `ccm …`），主路经 `src/frontend/ui/launch-render.ts` 问。
                 read("src/frontend/ui/launch-render.ts")
                     .contains("chan.call(origin, \"launch-render-cli\"")
-                    && read("src/frontend/ui/launch-render.ts")
-                        .contains("chan.call(origin, \"launch-render-payload\"")
-                    && read("src/frontend/ui/remote-launch-run.ts").contains("renderCli(")
-                    && read("src/frontend/ui/remote-launch-run.ts").contains("renderPayload("),
-                "生产 TS 主路在问那台后端的两条渲染帧命令",
+                    && read("src/frontend/ui/remote-launch-run.ts").contains("renderCli("),
+                "生产 TS 主路在问那台后端的渲染帧命令（那一行 `ccm …`）",
             ),
             // 「待做」那一格：**反向**量法 —— TS 渲染器还在，就说明确实还没删。
             "ts-renderer-still-there" => (

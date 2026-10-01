@@ -355,7 +355,7 @@ fn every_citation_of_invariant_36_says_which_platform_it_binds() {
         &["rs"],
         &[],
     ));
-    // `ccm …` 调用行渲染器搬进后端：它那几处 §36 引用跟着搬，人群补上它的新家（只这一个目录，不是扩面）。
+    // 本机起会话那一行住后端 `control/launch_render/`（Windows 那一格在 `local.rs` 里判）：人群补上这一个目录，不是扩面。
     let render_dir = repo.join("src/backend/control/launch_render");
     files_src.extend(guard_core::scan_tree_excluding(&render_dir, &["rs"], &[]));
     let mut blocks: Vec<(String, String)> = Vec::new(); // (文件, 块)
@@ -409,7 +409,7 @@ fn every_citation_of_invariant_36_says_which_platform_it_binds() {
     // 那张平价账本（上面头注逐字说它「整个住在测试段里」）这一轮搬进了 `tests/frontend/shell/`。
     for expect in [
         "parity_ledger_tests.rs",
-        "src/backend/control/launch_render/ccm_invocation.rs",
+        "src/backend/control/launch_render/local.rs",
     ] {
         assert!(
             files.contains(expect),

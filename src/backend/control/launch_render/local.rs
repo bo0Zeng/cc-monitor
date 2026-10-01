@@ -109,6 +109,7 @@ pub(crate) fn plan(req: &LocalLaunchRequest, facts: &Facts) -> Result<Planned, S
     };
     let token = identity_token(sid)?;
     // Windows 上没有 tmux ⇒ 直路（ccm 在那个 PowerShell 窗口里起 agent、等它退）。
+    // §36（只绑 Windows）：Windows 这一行里不渲清嵌套会话变量的那一段 —— 清它们是 `ccm` 在最终 exec 那一处做的。
     let container = if facts.windows { None } else { name };
     let cmd = render(req, action, container, Some(&token))?;
     Ok(Planned {
