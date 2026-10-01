@@ -271,7 +271,11 @@ fn the_agent_set_has_one_address_and_every_member_is_wired() {
     for a in agents() {
         assert!(!face(a).default_launcher.is_empty(), "{a} 没有默认启动器");
     }
-    assert_eq!(argv::Defaults::agent(), "claude", "不给 `--agent` 起的那一家变了");
+    assert_eq!(
+        argv::Defaults::agent(),
+        "claude",
+        "不给 `--agent` 起的那一家变了"
+    );
     assert_eq!(face("claude").nested_env.len(), 4);
     assert!(
         face("codex").nested_env.is_empty(),
@@ -280,7 +284,10 @@ fn the_agent_set_has_one_address_and_every_member_is_wired() {
     assert!(face("codex").needs_bus_id && !face("claude").needs_bus_id);
     assert!(face("claude").has_identity && !face("codex").has_identity);
     assert!(face("claude").has_pidfiles && !face("codex").has_pidfiles);
-    assert_eq!(face("claude").trust_prompt, Some("Yes, I trust this folder"));
+    assert_eq!(
+        face("claude").trust_prompt,
+        Some("Yes, I trust this folder")
+    );
     assert_eq!(face("codex").trust_prompt, None);
 }
 

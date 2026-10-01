@@ -21,7 +21,7 @@ pub mod accounts; // 账号域：上游选择（`resolve` 那张决策表 ＋ �
 mod agent_boundary_guard; // S1：通用层不许知道任何 agent 的名字与文件格式（整体 #[cfg(test)]）
 #[cfg(test)]
 #[path = "../../tests/backend/agent_locality_guard.rs"]
-mod agent_locality_guard; // S2：codex 的格式知识只许住 agents/codex/ + kind 派发点逐条登记（整体 #[cfg(test)]）
+mod agent_locality_guard; // S2：agent 的格式知识只许住 agents/<名>/ + 通用层零个 agent 名字面量（整体 #[cfg(test)]）
 pub mod agents; // S2/S3：agent 适配层——每个 agent 一份，装它专属的知识（codex + claudecode）
 #[cfg(test)]
 mod alloc_probe; // U-2：线程级内存量具（F22：`VmHWM` 是进程级的，会把邻居测试算进来）
@@ -1489,7 +1489,7 @@ pub const TARGET_GAPS: &[TargetGap] = &[
     // ⚠ **一件真的残留，它不归本条**：Windows 上没有 tmux ⇒ codex 永远拿不到
     //   `CC_BUS_ID`。那不是 `agent` 这条能力做不到，是**载体没了**（与
     //   `base-url-across-tmux` 同一形），已由 tmux 那一族 6 条豁免覆盖；
-    //   判准住 `control/ccm/mod.rs::needs_bus_id` 的头注。
+    //   判准住 `agents/mod.rs::LaunchFace` 的 `needs_bus_id` 那一格的头注。
     TargetGap {
         family: "ccm-launcher",
         capability: "base-url-across-tmux",
