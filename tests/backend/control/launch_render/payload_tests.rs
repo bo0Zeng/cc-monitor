@@ -1,4 +1,4 @@
-// 🪦〔MIG-2〕这里原有 `the_refuse_tag_is_the_same_string_on_both_sides`（前端按 `REFUSE:` 串标分流，两侧逐字对拍）： 〔散文墓碑〕
+// 🪦这里原有 `the_refuse_tag_is_the_same_string_on_both_sides`（前端按 `REFUSE:` 串标分流，两侧逐字对拍）： 〔散文墓碑〕
 //   渲染搬进后端帧命令之后，拒绝走码 `refused`（`launch_render/mod.rs::refused` 摘标转码），前端那一份串标删了，
 //   「拒 ⇒ 码 `refused`」由 `launch_render/answers_tests.rs::a_refusal_leaves_the_backend_as_the_refused_code` 钉。
 
@@ -105,7 +105,7 @@ fn every_business_rejection_is_tagged() {
 /// 的 `payload` 同样来自 webview 且只受「非空/长度/无控制字符」约束，
 /// 前端本来就能绕过本函数直接送任意载荷。本条挡的是**缺陷**（走文档化那条路时
 /// 把注入串拼进载荷）与**姿态不一致**（同函数 `args` 有闸而 `launcher` 没有）。
-/// 真边界在后端的 `admit` 与前端执行面 —— 见 `ROADMAP §5` 那条登记。
+/// 真边界在后端的 `admit` 与前端执行面 —— 那条登记。
 ///
 /// 该字段的头注写着「已 sanitize 过的 launcher …… 本 crate 收的是**结果**」——
 /// 那是**调用约定**，不是这一侧的保证：wire 那条路（`launch_wire.rs`）把
@@ -113,9 +113,9 @@ fn every_business_rejection_is_tagged() {
 ///
 /// # 为什么先前用「拒绝这几个字符」、今天换成白名单
 ///
-/// 先前仓里两份 launcher 策略，**各自服务不同的合法形状**：TS 那份拒绝集（`sanitizeRemoteLauncher`〔散文墓碑〕，〔DUP1〕删了）·
+/// 先前仓里两份 launcher 策略，**各自服务不同的合法形状**：TS 那份拒绝集（`sanitizeRemoteLauncher`〔散文墓碑〕，删了）·
 /// 本机那份白名单（字母数字 `- _ .` 空格 —— **排掉了 `/`**，而远端 launcher 合法地可以是 `/usr/local/bin/claude`）。
-/// 〔DUP3 · 主会话 09-26 裁 · `INVARIANTS §47` ③〕收成**一张**对 POSIX 与 PowerShell 都安全的命令片段白名单
+/// 〔`INVARIANTS §47` ③〕收成**一张**对 POSIX 与 PowerShell 都安全的命令片段白名单
 /// `shell_quote_core::launcher_refused_char`（放行路径与前导 `~/`），本机 · 远端 · 后端 ccm 同一条。
 /// 处置照旧**返回 `Err` 而不是静默回落** —— 与 `args` 那一支一致：拒绝要让调用方看得见，静默替换会让人以为自己填的生效了。
 #[test]
@@ -127,7 +127,7 @@ fn the_launcher_is_refused_when_it_carries_injection_chars() {
         "claude $(id)",
         "claude\nrm -rf /",
         "claude > /etc/passwd",
-        // 〔DUP3〕拒绝集漏掉、白名单拒下的几形（PowerShell 那一边的元字符 · 引号 · glob · 非 ASCII · 不在打头的 `~`）。
+        // 拒绝集漏掉、白名单拒下的几形（PowerShell 那一边的元字符 · 引号 · glob · 非 ASCII · 不在打头的 `~`）。
         "claude (x)",
         "claude {x}",
         "cla'ude",
@@ -175,7 +175,7 @@ fn the_launcher_is_refused_when_it_carries_injection_chars() {
 /// ★★ **载荷的拼装只许有一份 Rust 实现**〔audit-0805 08-08，Phase G 第 62 件，E3〕。
 ///
 /// 本模块头注第一行逐字写着「`env 前缀 → cd → argv → wrap` 那一段串的
-/// **唯一 Rust 真相源**」。那句话撑着一条真实性质：载荷会被 `send-keys` 原样
+/// **唯一 Rust 源头**」。那句话撑着一条真实性质：载荷会被 `send-keys` 原样
 /// 键进会话，拼装一旦有第二份，两份的**引用规则与拼接顺序**就会各自演化 ——
 /// 而那正是本工作区反复在治的「同一职责多处落地」（E3）。
 ///
@@ -193,10 +193,10 @@ fn the_launcher_is_refused_when_it_carries_injection_chars() {
 fn the_payload_cd_prefix_is_assembled_in_exactly_one_place() {
     // 运行时拼：写成字面量的话，本条自己的诊断文案也会被数进去（F58 记过两次）。
     let frag = format!("cd {}{} && ", "{}", "");
-    // 〔MIG-2〕人群 = 两棵 Rust 生产树（monitor ＋ 后端）：载荷内核搬进了后端，「在此打开终端」那一处留在 monitor。
+    // 人群 = 两棵 Rust 生产树（monitor ＋ 后端）：载荷内核搬进了后端，「在此打开终端」那一处留在 monitor。
     let root = crate::guard_support::repo_root();
     let mut sites: Vec<String> = Vec::new();
-    // 🔴 〔搬树 2026-09-18 · `设计/99` 条 73〕**这里不再有任何自摘，也不需要补回**。
+    // 🔴 〔搬树 2026-09-18 ·  条 73〕**这里不再有任何自摘，也不需要补回**。
     //
     // 上一版：`scan_tree!` 靠 `file!()` 摘掉调用者（那一刀今天**不生效**，见下面第三段），
     // 而当年调用者**就是** `payload.rs`
@@ -228,15 +228,15 @@ fn the_payload_cd_prefix_is_assembled_in_exactly_one_place() {
             }
         }
     }
-    // 〔F5 · 2026-09-24 · 主会话已裁：登记成已知的第二处，不搬进 `launch.rs`〕
-    //   文件窗口「在此打开终端」那一串（〔P4〕今天在本机后端 `dial/terminal.rs::command_for_cwd` 拼）也拼 `cd <目录> && `。
+    // 〔主会话已裁：登记成已知的第二处，不搬进 `launch.rs`〕
+    //   文件窗口「在此打开终端」那一串（今天在本机后端 `dial/terminal.rs::command_for_cwd` 拼）也拼 `cd <目录> && `。
     //   ① 它**不是会话载荷**：不经 `send-keys` 键进任何一场会话，而是整串交给
     //      `launch::launch_remote_terminal` 在一个**新终端**里跑（`ssh -t … '<这一串>'`）；
     //      引号那一格走的是 Rust 侧唯一那份 `shell_quote_core::posix_quote`，与本模块同一个引用规则。
     //   ② 它**进不了 `render_payload`**：那个函数对每个 arg 过 `arg_is_join_safe` 白名单，
     //      而这一串的尾巴 `exec ${SHELL:-bash} -l` 里 `$` `{` `}` 都不在放行集 ⇒ 当场 `Err`；
     //      为它放宽白名单等于给真正的载荷开同一扇门。
-    //   ③ 〔LR2〕旧面板 TS 那一份删了，它是唯一一份；三种形状由手写期望逐字节钉着（〔P4〕今天住
+    //   ③ 旧面板 TS 那一份删了，它是唯一一份；三种形状由手写期望逐字节钉着（今天住
     //      `dial_terminal_tests.rs`：拼法随「窗口只交意图」搬进本机后端，那句写法住 V156 的方言层 `platform/shell/posix.rs`）。
     //   ⇒ 那一处单独登记、**条数恒等 1**；载荷这一族照旧恰好一处。
     let terminal: Vec<&String> = sites
@@ -248,7 +248,7 @@ fn the_payload_cd_prefix_is_assembled_in_exactly_one_place() {
         1,
         "「在此打开终端」那一处不再恰好一处：{sites:?}"
     );
-    // 〔MIG-2〕两棵树并成一个人群之后，后端 `ccm` 容器路自己拼载荷那一处（`control/ccm/plan.rs`）第一次被数到 ——
+    // 两棵树并成一个人群之后，后端 `ccm` 容器路自己拼载荷那一处（`control/ccm/plan.rs`）第一次被数到 ——
     //   一直都在、原先不在本条人群里；与载荷内核是同一件事的两个家，如实登记成已知的第二处（报备，收它要改 `ccm` 容器路）。
     let ccm: Vec<&String> = sites
         .iter()
@@ -264,7 +264,7 @@ fn the_payload_cd_prefix_is_assembled_in_exactly_one_place() {
         sites.len(),
         1,
         "载荷的 `cd <目录> && ` 片段在 monitor 生产段里出现了 {} 处（应恰好 1）：\n  {}\n\n\
-             ⚠ 头注第一行写着本模块是「那一段串的**唯一 Rust 真相源**」。\n\
+             ⚠ 头注第一行写着本模块是「那一段串的**唯一 Rust 源头**」。\n\
              第二份拼装会与这一份各自演化引用规则与拼接顺序，而载荷是**原样键进会话**的 —— \n\
              漂开的后果不是「样式不一致」，是**一边转义、一边不转义**。\n\
              真要复用，调 `render_payload`。",
@@ -558,9 +558,9 @@ fn model_export_is_quoted() {
     );
 }
 
-/// 〔RL1 · 第四波〕R2：`EnvOp::ExportRelayBaseUrl` **只经那一个出口渲**、**形状不对就拒**。
+/// R2：`EnvOp::ExportRelayBaseUrl` **只经那一个出口渲**、**形状不对就拒**。
 ///
-/// 异源在哪：合法的那一侧**不手写**，由构造口（〔US1〕共享 crate `relay_route_core::base_url`，后端上游选择拼的就是它）现产；
+/// 异源在哪：合法的那一侧**不手写**，由构造口（共享 crate `relay_route_core::base_url`，后端上游选择拼的就是它）现产；
 /// 校验口 `relay_base_url_shape_ok` 必须**全收**，渲出来的字节必须**逐字节等于** `relay_env_prefix_posix(那一串)` ＋ launcher。
 /// 坏形逐格拒（带 `REFUSE:` 标）—— 渲错了的症状是「claude 每一发都连不上」，与网络故障同形。
 #[test]
@@ -601,7 +601,7 @@ fn the_relay_url_env_op_renders_through_the_one_exporter_and_refuses_every_other
         "http://127.0.0.1:+88/s/claude-code/acct-a",  // 端口带符号
         "http://127.0.0.1:8788/x/claude-code/acct-a", // 别的前缀
         "http://127.0.0.1:8788/s/claude-code",        // 少一段
-        "http://127.0.0.1:8788/s/claude-code/acct-a/k", // 多一段（〔V141〕退役的会话段）
+        "http://127.0.0.1:8788/s/claude-code/acct-a/k", // 多一段（退役的会话段）
         "http://127.0.0.1:8788/s/claude-code/acct-a/", // 尾斜杠
         "http://127.0.0.1:8788/s/claude-code/acct-a?x=1", // 查询串
         "http://127.0.0.1:8788/s/claude-code/acct'a", // 引号
@@ -624,11 +624,11 @@ fn the_relay_url_env_op_renders_through_the_one_exporter_and_refuses_every_other
     }
 }
 
-/// ★★ `设计/80 §8` 步 1：启动期令牌那一格 —— **形状闸是 fail-closed 的 `Err`，不是宽容渲染**。
+/// ★★：启动期令牌那一格 —— **形状闸是 fail-closed 的 `Err`，不是宽容渲染**。
 ///
 /// 为什么这一格要比 [`model_export_is_quoted`] 严：模型名渲错了，远端 `claude`
 /// 自己会报错（用户当场看得到）；**令牌渲错了是静默的** —— 会话照起、命令照跑，
-/// 只有 `↗` 从此拉不到窗口，而归因指向别处（`设计/80 §8.5 ②` 要治的正是这个）。
+/// 只有 `↗` 从此拉不到窗口，而归因指向别处（要治的正是这个）。
 /// ⇒ 形状不对不许渲染成「这次不带令牌」，也不许照拼。
 #[test]
 fn the_rbind_token_shape_gate_is_fail_closed_and_lowercase_only() {
@@ -688,7 +688,7 @@ fn the_rbind_token_shape_gate_is_fail_closed_and_lowercase_only() {
 // `K-H2b`：接上注入点
 // ═════════════════════════════════════════════════════════════════════
 
-// 〔US1 · 第四波 4D〕这里原先是路由构造口与上游选择判断口的七条判据（样例对拍 · 段闸拒 · 有行没行 · 别家同 id ·
+// 这里原先是路由构造口与上游选择判断口的七条判据（样例对拍 · 段闸拒 · 有行没行 · 别家同 id ·
 //   凭据文件那一家 · 中转没跑就拒）：构造口与段闸进了共享 crate `relay_route_core`（它自己的判据）、判断口搬进后端
 //   `accounts/upstream_select/endpoint.rs`（`endpoint_tests` 逐格手写期望），起会话那一侧的执行由 `history_tests` 那几条量。
 
@@ -714,7 +714,7 @@ fn only_one_place_in_this_file_exports_the_relay_base_url() {
         !prod.contains("这把尺子是瞎的"),
         "测试段没剥干净 —— 下面的计数会把判据自己的字面量数进去"
     );
-    // 〔OSA · V156〕`export` 的写法搬进 `platform::shell::posix`：数的是本文件里交给它的那几处的变量名。
+    // `export` 的写法搬进 `platform::shell::posix`：数的是本文件里交给它的那几处的变量名。
     assert_eq!(
         posix_export_args(&prod)
             .iter()
@@ -727,7 +727,7 @@ fn only_one_place_in_this_file_exports_the_relay_base_url() {
     );
 }
 
-// 〔MIG-2〕`us1_the_monitor_holds_no_upstream_selection_and_no_route_grammar`（monitor 生产树零上游选择）守的是 monitor 那棵树，
+// `us1_the_monitor_holds_no_upstream_selection_and_no_route_grammar`（monitor 生产树零上游选择）守的是 monitor 那棵树，
 //   没跟着载荷内核搬：留在 monitor 测试段（`tests/frontend/shell/payload_judgment_rules.rs`）。
 
 /// ★ `KH2B6`：`<key>` 段那条**写下来的规则**只有一份实现。
@@ -752,7 +752,7 @@ fn the_key_segment_is_the_sid_when_resuming_and_a_nonce_when_starting_fresh() {
     assert_ne!(c, "has/slash");
 }
 
-// 🔴 〔`K-R48` 第二拍 09-11〕**这里原来是那条中转转发的判据**
+// 🔴 **这里原来是那条中转转发的判据**
 //   （`the_ccm_container_path_forwards_the_relay_base_url_across_the_tmux_boundary`），
 //   做法是把 `shared/ccm` 那段 bash 窗口交给 `bash` 跑一遍。脚本删了 ⇒ 连同它上面那整段
 //   诚实边界一起摘掉。新家：`src/backend/control/ccm/plan.rs` 的
@@ -772,7 +772,7 @@ fn the_key_segment_is_the_sid_when_resuming_and_a_nonce_when_starting_fresh() {
 // [`the_outside_export_gate_really_reddens_on_a_live_breach`] **共用**它们，
 // 夹具跑的不是它们的复刻。
 //
-// 🔴 **09-02 现打的两刀读数**（`K-G4 §7 裁六` 那一刀的形状，逐字记在这里）：
+// 🔴 **09-02 现打的两刀读数**（那一刀的形状，逐字记在这里）：
 //   · 掏空 `not_forwarded` ⇒ **真判据留绿、只有活体夹具红** —— 与 `K-G4` 实测同形，
 //     ⇒ **本族的牙长在活体夹具那一格上，它是承重件**，别当它是「一条多余的复刻」。
 //   · 掏空 `exported_var_names` ⇒ **两条都红**（真判据被「左集恰好 2 个」那一格接住）。
@@ -816,7 +816,7 @@ fn fn_body(prod: &str, sig: &str) -> String {
     panic!("`{sig}` 的体花括号没配平 —— 抽取器坏了，别当它切出来了");
 }
 
-/// 〔OSA · V156〕一段源码里每一处交给 `posix::export(` / `posix::export_unless_set(` 的**第一个实参**（空白去掉）。
+/// 一段源码里每一处交给 `posix::export(` / `posix::export_unless_set(` 的**第一个实参**（空白去掉）。
 /// `export` 的写法住 `platform::shell::posix` 之后，「谁 export 了哪个变量」在源码里就是这个实参。
 fn posix_export_args(code: &str) -> Vec<String> {
     let flat: String = code.chars().filter(|c| !c.is_whitespace()).collect();
@@ -889,7 +889,7 @@ fn exported_var_names(chunks: &[String]) -> Vec<String> {
 
 /// 容器路那份**源码**的住址：`src/backend/control/ccm/plan.rs`。
 ///
-/// 🔴 〔`K-R48` 第二拍 09-11〕从前这里是 `include_str!("../../../../src/shared/ccm")`。
+/// 🔴 从前这里是 `include_str!("../../../../src/shared/ccm")`。
 /// 那个 bash 脚本删了（`K33`：「不要有什么 bash 脚本」），容器路整条搬进了后端那个 crate。
 /// ⇒ 改成**运行期读**那份 Rust 源码：`include_str!` 会在 monitor 与后端之间
 /// 造一条**编译期**跨 crate 边（`cross_half_edge_registry` 那族要单独登记），
@@ -929,7 +929,7 @@ fn forwarded_by_container_path(plan_rs: &str) -> Vec<String> {
     );
     let (s, e) = (plan_rs.find(START).unwrap(), plan_rs.find(END).unwrap());
     assert!(s < e, "两个锚点的先后反了 —— 窗口取错了");
-    // 〔OSA · V156〕`export` 的写法搬进 `platform::shell::posix`，形状换成
+    // `export` 的写法搬进 `platform::shell::posix`，形状换成
     //   `payload = format!("{}{payload}", posix::export("<VAR>", &sq(v)));`（rustfmt 可能折行 ⇒ 剥注释、去空白再认）。
     //   先剥整份（`guard_core::strip_comment_lines`，逐行对应），再按原文锚点的行号切窗口（终点锚点本身是注释）。
     let stripped = guard_core::strip_comment_lines(plan_rs);
@@ -962,7 +962,7 @@ fn forwarded_by_container_path(plan_rs: &str) -> Vec<String> {
         let Some(name) = name.strip_prefix('"').and_then(|n| n.strip_suffix('"')) else {
             continue;
         };
-        // 〔US1 · RK1 报 2〕中转地址那一条的值经 `base_url_word`：认出是我们注入的（钥匙已展开）就渲回
+        // 〔RK1 报 2〕中转地址那一条的值经 `base_url_word`：认出是我们注入的（钥匙已展开）就渲回
         //   `sq(钥匙之前)"$(cat …)"sq(钥匙之后)`，认不出就是 `sq(v)` —— 两段常量仍都经 `sq`（`plan_tests::
         //   us1_an_inherited_keyed_relay_url_goes_inward_as_a_file_read_not_as_the_key` 用真 shell 钉住）。别的变量照旧只许 `sq(v)`。
         let want_tail = if name == "ANTHROPIC_BASE_URL" {
@@ -994,7 +994,7 @@ fn not_forwarded(left: &[String], right: &[String]) -> Vec<String> {
 
 /// ★★★ `KP5ED1`：**拼在 `ccm` 外面 `export` 的变量 ⊆ 容器路转发的变量。**
 ///
-/// # 🔴 标签是被收窄过的，别读宽（`K-R18` 的口径，`K-P5e §1` 逐字）
+/// # 🔴 标签是被收窄过的，别读宽（`K-R18` 的口径）
 ///
 /// 原来那个标签「起会话方 `export` 的变量」念起来盖**三个人群**而尺子只数得了**一个**，
 /// **而漏的那一次恰是第一次**（`R08` 的 `CLAUDE_CONFIG_DIR` 是**继承**来的、不是 `export` 的）。
@@ -1009,7 +1009,7 @@ fn not_forwarded(left: &[String], right: &[String]) -> Vec<String> {
 ///
 /// **左集 = 拼在 `ccm` 外面 `export` 的变量**，09-02 现打 **2 个**
 /// （`ANTHROPIC_BASE_URL` · `CCM_LAUNCH_ID`）。枚举法**按函数体切，不按文件切**：
-/// 1. 〔MIG-2〕`launch_render/local.rs`（原 monitor `history.rs`）生产段里那一句 `let cmd = relay + …;`（`find_pinned` ⇒ 恰好一处）
+/// 1. `launch_render/local.rs`（原 monitor `history.rs`）生产段里那一句 `let cmd = relay + …;`（`find_pinned` ⇒ 恰好一处）
 ///    拆成的段，今天**恰好 3 段**：前两段是前缀、末段 `&base` 是命令体；
 /// 2. 两段前缀各自的**渲染器函数体**（`relay_env_prefix_posix` · `identity_prefix`），
 ///    体里 `export ` 各**恰好 1 处**；
@@ -1037,7 +1037,7 @@ fn not_forwarded(left: &[String], right: &[String]) -> Vec<String> {
 /// ③ 忘了在 `shared/ccm` 里加对应转发时 ⊆ 那一格红。
 /// ⚠ 而「今天零违规的判据可能连自己的地基被抽掉都不会响」这件事，由
 /// [`the_outside_export_gate_really_reddens_on_a_live_breach`] 那一格顶着（`KP5ED2`）——
-/// **牙全长在那一格上，它是承重件**（`K-G4 §7 裁六` 的实测结论）。
+/// **牙全长在那一格上，它是承重件**（实测结论）。
 ///
 /// # ⚠ 它还买不到什么（如实写）
 ///
@@ -1049,7 +1049,7 @@ fn not_forwarded(left: &[String], right: &[String]) -> Vec<String> {
 /// - **「变量真的穿过了一次真 tmux 边界」没量** —— 那要真 tmux，归真机 e2e。
 /// - 有人在**别的文件**里另起一条拼装路，本条一个字节都不会动
 ///   （它只从那一句 `let cmd = relay + …;` 出发）。⇒ 这是**诚实边界**，不是「今天恰好没有」。
-// 🔴 〔`K-R48` 第二拍 09-11〕**这里原来有两条判据，随 `shared/ccm` 一起删了**：
+// 🔴 **这里原来有两条判据，随 `shared/ccm` 一起删了**：
 //   `the_ccm_container_path_forwards_the_relay_base_url_across_the_tmux_boundary` ·
 //   `…_forwards_the_launch_identity_…`。它们的做法是把 `shared/ccm` 里那段 bash
 //   窗口**原样交给 `bash` 跑一遍**再读载荷 —— 那个脚本删了，连被测对象都没有了。
@@ -1077,9 +1077,9 @@ fn every_variable_exported_outside_ccm_is_forwarded_by_the_container_path() {
     // 抽取器自检：剥完还得看得见东西（否则下面整条是空真）。
     // 门槛现打（09-02，剥完的字节数）：`history.rs` ≈ 48.7k（原文 213k）· `payload.rs` ≈ 8.2k（原文 88k）
     // —— 门槛按现打值往下留一档，不贴着写。
-    // 〔C4d · 第四波 4B〕`history.rs` 那一格 30k → 20k：历史清单与注解那一族搬进本机常驻后端，剥完现打 29,494 字节
+    // `history.rs` 那一格 30k → 20k：历史清单与注解那一族搬进本机常驻后端，剥完现打 29,494 字节
     //   （起会话那几段一字未动 —— 本条要读的 export 都在那几段里）；按现打值往下留一档。
-    // 〔MIG-2〕本机起会话那一整条搬进后端 `launch_render/local.rs`（左集那一句拼装跟着搬），门槛按它现打往下留一档。
+    // 本机起会话那一整条搬进后端 `launch_render/local.rs`（左集那一句拼装跟着搬），门槛按它现打往下留一档。
     assert!(
         hist.len() > 5_000 && pay.len() > 5_000,
         "剥完只剩 history={} payload={} 字节 —— 剥法坏了，本条会零命中地绿",
@@ -1104,7 +1104,7 @@ fn every_variable_exported_outside_ccm_is_forwarded_by_the_container_path() {
     );
     // 那两段前缀各自是谁渲的 —— 整条链**逐环钉住**（改名当场红）。
     for anchor in [
-        // 〔MIG-2〕链跟着搬进 `launch_render/local.rs::plan`。
+        // 链跟着搬进 `launch_render/local.rs::plan`。
         "let relay = relay_prefix(req, facts)?;",
         "let prefix = identity_prefix(&token, facts.windows);",
         "payload::relay_env_prefix_posix(&u)",
@@ -1117,7 +1117,7 @@ fn every_variable_exported_outside_ccm_is_forwarded_by_the_container_path() {
     // ── ② 左集：**按函数体切**，变量名从生产代码现取 ─────────────────────────
     let body_relay = fn_body(&pay, "pub fn relay_env_prefix_posix(");
     let body_id = fn_body(&hist, "fn identity_prefix(");
-    // 〔OSA · V156〕`export` / `$env:` 的写法搬进 `platform::shell::{posix, powershell}`：体里数的是交给它们的那几处。
+    // `export` / `$env:` 的写法搬进 `platform::shell::{posix, powershell}`：体里数的是交给它们的那几处。
     assert_eq!(
         posix_export_args(&body_relay).len(),
         1,
@@ -1166,7 +1166,7 @@ fn every_variable_exported_outside_ccm_is_forwarded_by_the_container_path() {
 
     // ── ③ 右集：容器路那个窗口里逐条枚举 ────────────────────────────────────
     let right = forwarded_by_container_path(&ccm);
-    // 🔴 〔`K-R48` 第二拍 09-11〕**分母从 3 改成 2，改的是尺子的射程，不是转发面缩了。**
+    // 🔴 **分母从 3 改成 2，改的是尺子的射程，不是转发面缩了。**
     //    容器路今天仍然转发**三个**（`CLAUDE_CONFIG_DIR` · `ANTHROPIC_BASE_URL` · `CCM_LAUNCH_ID`），
     //    backend 侧 `the_container_path_forwards_every_inherited_variable_inward` 逐条钉着。
     //    这里只数得到 2：账号那条在 Rust 里写成 `format!("export {{}}={{}}; …", env.account_env, …)`
@@ -1205,7 +1205,7 @@ fn every_variable_exported_outside_ccm_is_forwarded_by_the_container_path() {
 
 /// ★★★ `KP5ED2` **活体夹具**：今天零违规 ⇒ 上面那条是空真 ⇒ 牙必须长在这一格上。
 ///
-/// # 为什么非有它不可（`K-G4 §7 裁六` 的实测结论，逐字带过来）
+/// # 为什么非有它不可（实测结论，逐字带过来）
 ///
 /// `K-G4` 那一拍 PM 打过这一刀：**掏空判据共用的那个原语时，三条方向判据全留绿，
 /// 只有活体夹具红。** ⇒ 一条「今天零违规」的判据，连自己的地基被抽掉都不会响。
@@ -1249,12 +1249,12 @@ fn the_outside_export_gate_really_reddens_on_a_live_breach() {
     );
 
     // ── 活体甲：容器路那一条转发被抽掉 ──────────────────────────────────────
-    // 🔴 〔`K-R48` 第二拍 09-11〕**活体的形状跟着实现换了一次，买的东西一个字没变。**
+    // 🔴 **活体的形状跟着实现换了一次，买的东西一个字没变。**
     //    从前抠的是 bash 那行 `payload="export CCM_LAUNCH_ID=$(sq "$CCM_LAUNCH_ID"); $payload"`；
     //    今天抠的是 Rust 那行 `payload = format!("export CCM_LAUNCH_ID={}; {payload}", sq(v));`。
     //    造的仍是**同一个坑的复发形**（`R08` · `K-H2b` · `K-P5c` 三次同坑）。
     let var = crate::control::launch_render::local::LAUNCH_ID_VAR;
-    // 〔OSA · V156〕形状跟着 `export` 搬进 `platform::shell::posix` 换了一次，造的坑一个字没变。
+    // 形状跟着 `export` 搬进 `platform::shell::posix` 换了一次，造的坑一个字没变。
     let line = format!("payload = format!(\"{{}}{{payload}}\", posix::export(\"{var}\", &sq(v)));");
     assert_eq!(
         ccm.matches(line.as_str()).count(),
@@ -1304,7 +1304,7 @@ fn the_outside_export_gate_really_reddens_on_a_live_breach() {
 /// | A | 本文件 `relay_env_prefix_posix` | **接上**（`history.rs` 的 POSIX 分支用它） |
 /// | B | `history.rs` 的 `$env:` 分支 | **接上**（`relay_env_prefix_ps`），⚠ 只到「编得过」 |
 /// | C | `shared/ccm` | **没接** —— 见下面 `NOT_WIRED` 里的理由 |
-/// | ~~D~~ | ~~TS 兜底渲染器那一处~~ | 〔LR2 2026-09-25〕那一族连同它的发射点删了（`设计/00 §2.5 ④`）⇒ 人群 5 → 4 |
+/// | ~~D~~ | ~~TS 兜底渲染器那一处~~ | 那一族连同它的发射点删了⇒ 人群 5 → 4 |
 /// | E | `src/frontend/shell/src/launch.rs` 的 `.env(k, v)`（开窗那一跳，进程级） | **没接** |
 ///
 /// ⚠ **本条钉的是「决定点的个数」，不是「每一处都接上了」** ——
@@ -1312,7 +1312,7 @@ fn the_outside_export_gate_really_reddens_on_a_live_breach() {
 ///
 /// # 🔴 它抓得到什么、抓不到什么（`D5 阻-3`，这一句被点了三次名才改）
 ///
-/// 本条是一张**闭表**（`sites` 的格数 + `sites.len()` 那个常量；〔LR2〕今天 4 格）。
+/// 本条是一张**闭表**（`sites` 的格数 + `sites.len()` 那个常量；今天 4 格）。
 /// - **抓得到**：这五个文件里某一处的发射点消失 / 多出一处（`n != want` ⇒ 红）；
 ///   有人把 `sites` 改成 4 格或 6 格（`sites.len()` ⇒ 红）。
 /// - 🔴 **抓不到**：**一个新文件**里出现第 6 个 env 前缀渲染器 —— 本条一个字节都不会动
@@ -1351,21 +1351,21 @@ fn the_population_that_renders_env_prefixes_for_the_agent_process_is_enumerated(
         Site {
             what: "A · payload.rs（POSIX 串级）",
             src: include_str!("../../../../src/backend/control/launch_render/payload.rs"),
-            // 〔OSA · V156〕`export` 的写法搬进 `platform::shell::posix`：决定点是交给它的那一处。
+            // `export` 的写法搬进 `platform::shell::posix`：决定点是交给它的那一处。
             needle: "posix::export_unless_set(",
             want: 1,
             wired: None,
         },
         Site {
-            // 〔MIG-2〕本机起会话搬进后端 `launch_render/local.rs`；账号载体名改从适配层取（`payload::account_env`），针跟着换。
+            // 本机起会话搬进后端 `launch_render/local.rs`；账号载体名改从适配层取（`payload::account_env`），针跟着换。
             what: "B · launch_render/local.rs（Windows 串级）",
             src: include_str!("../../../../src/backend/control/launch_render/local.rs"),
-            // 〔OSA · V156〕`$env:` 的写法搬进 `platform::shell::powershell`：决定点是账号载体交给它的那两处。
+            // `$env:` 的写法搬进 `platform::shell::powershell`：决定点是账号载体交给它的那两处。
             needle: "_env(payload::account_env()",
             want: 2,
             wired: None,
         },
-        // 🔴 〔`K-R48` 第二拍 09-11〕原来这一格是 `C · shared/ccm`（`include_str!` 那个 bash 脚本，
+        // 🔴 原来这一格是 `C · shared/ccm`（`include_str!` 那个 bash 脚本，
         //    针 `export CLAUDE_CONFIG_DIR=`、该有 3 处）。脚本删了，容器路整条搬进了后端那个 crate
         //    ⇒ 换住址、换针形（Rust 那侧账号那条写的是 `export {}=`，变量名运行期才定），
         //    **该有几处、接没接上、理由，三样一个字没改**。
@@ -1374,16 +1374,16 @@ fn the_population_that_renders_env_prefixes_for_the_agent_process_is_enumerated(
             src: &plan_rs,
             // 3 处：`--print`/真跑共用的那条渲染（`render_direct` 的账号段）· 容器路把继承值
             // 写进载荷内侧 · `--base` 那条 `unset` 的对侧。
-            // 〔OSA · V156〕`export` 的写法搬进 `platform::shell::posix`。
+            // `export` 的写法搬进 `platform::shell::posix`。
             needle: "posix::export(cfg_env,",
             want: 1,
             wired: Some(NOT_WIRED_CCM),
         },
-        // 〔LR2 2026-09-25〕这里原来有 `D · src/frontend/ui/shell-quote.ts` 一格（TS 兜底渲染器的真发射点，
+        // 这里原来有 `D · src/frontend/ui/shell-quote.ts` 一格（TS 兜底渲染器的真发射点，
         //   针 `export CLAUDE_CONFIG_DIR=${posixQuote(`，登记为「没接」）。那一族零生产调用、按
-        //   `设计/00 §2.5 ④` 删了，发射点随之没了 ⇒ 人群 5 → 4（决定点少了一个，方向是对的）。
+        // 删了，发射点随之没了 ⇒ 人群 5 → 4（决定点少了一个，方向是对的）。
         Site {
-            // 〔P4 · 阶段 H〕开窗的两个平台臂从 `launch.rs` 搬进 `platform/terminal.rs`（壳的平台层），这一格随之换住址，处数不变。
+            // 开窗的两个平台臂从 `launch.rs` 搬进 `platform/terminal.rs`（壳的平台层），这一格随之换住址，处数不变。
             what: "E · platform/terminal.rs（进程级，开窗那一跳）",
             src: include_str!("../../../../src/frontend/shell/src/platform/terminal.rs"),
             // 3 处：POSIX 开窗 1 + Windows 两个 spawn 点各 1（`launch.rs` 自己那条
@@ -1395,7 +1395,7 @@ fn the_population_that_renders_env_prefixes_for_the_agent_process_is_enumerated(
     ];
     assert_eq!(
         sites.len(),
-        4, // 〔LR2〕5 → 4：TS 那一处（D）随兜底渲染器删了
+        4, // 5 → 4：TS 那一处（D）随兜底渲染器删了
         "人群从 4 处变了 —— 先回来读本条头注那张表，再决定新那一处要不要接中转。\n\
              ⚠ 这是一张**闭表**：它数的是这几个文件，**新文件里的下一个渲染器它看不见**\n\
              （头注「抓不到什么」那一节记着这条诚实边界与它的解锁条件）。"
@@ -1422,7 +1422,7 @@ fn the_population_that_renders_env_prefixes_for_the_agent_process_is_enumerated(
         }
     }
     // ★ 反面：本文件的 POSIX 那一处**必须真的接上了**（不然上面整张表可以全是「没接」）。
-    // 〔RK1〕钥匙段是读钥匙文件的命令替换（形状理由在 `RELAY_KEY_FILE_REL` 头注）。
+    // 钥匙段是读钥匙文件的命令替换（形状理由在 `RELAY_KEY_FILE_REL` 头注）。
     assert_eq!(
         relay_env_prefix_posix("http://127.0.0.1:8788/s/a/b"),
         "[ ${ANTHROPIC_BASE_URL:+x} ] && printf '%s\\n' 'cc-monitor：这个会话用你自己设的端点（ANTHROPIC_BASE_URL），不走中转，拿不到流式' || export ANTHROPIC_BASE_URL='http://127.0.0.1:8788/'$(cat ~/.cc-monitor/relay-key)'/s/a/b'; "
@@ -1433,7 +1433,7 @@ fn the_population_that_renders_env_prefixes_for_the_agent_process_is_enumerated(
     );
 }
 
-/// 〔RK1 · `INVARIANTS §48.1`〕⑥ 渲染出来的 `export` **一个钥匙字节都不含**，而**真 shell** 展开之后
+/// 〔`INVARIANTS §48.1`〕⑥ 渲染出来的 `export` **一个钥匙字节都不含**，而**真 shell** 展开之后
 /// `ANTHROPIC_BASE_URL` 逐字节 == `http://127.0.0.1:8788/<钥匙>/s/…`（钥匙从 `$HOME` 底下那一份现读）。
 /// 钥匙文件不在 ⇒ 展开成空段 `…8788//s/…` —— 中转会以 403 拒（出声），**不会**变成一条不过中转的直连。
 ///
@@ -1514,15 +1514,15 @@ fn the_rendered_relay_export_carries_no_key_and_a_real_shell_expands_it_from_hom
     let _ = std::fs::remove_dir_all(&home);
 }
 
-// 🪦〔MIG-2〕这里原有 `D6 阻-4` 那道人群闸（谁绕开 monitor `history.rs` 的取值口缝直接调 ⇒ 红）：那两条缝随本机起会话一起搬进后端，
+// 🪦这里原有 `D6 阻-4` 那道人群闸（谁绕开 monitor `history.rs` 的取值口缝直接调 ⇒ 红）：那两条缝随本机起会话一起搬进后端，
 //   换成纯函数 ＋ 事实表（`launch_render/local.rs::Facts`），同一道闸住 `local_tests.rs::nobody_reads_the_launch_facts_around_the_facts_table`。
 
-// 🪦〔MIG-2〕这里原有 `the_shared_stripper_keeps_the_relay_seam_this_guard_must_scan`（P28 负对照：monitor `history.rs` 中段有 〔散文墓碑〕
+// 🪦这里原有 `the_shared_stripper_keeps_the_relay_seam_this_guard_must_scan`（P28 负对照：monitor `history.rs` 中段有 〔散文墓碑〕
 //   `#[cfg(all(test, …))]`，便宜近似会把要扫的那一段砍掉）。被扫的那一段搬进后端 `launch_render/local.rs`，那份文件的测试段只在文件尾 ⇒
 //   便宜近似与共享剥法在它上面同答，这条对照失去意义，删了（共享剥法本身的判据在 `guard-core`）。
 
 // ══════════════════════════════════════════════════════════════════════════════
-// 🔴 `设计/80 §8.7` 步 3：**启动期令牌那个变量名的双写点** —— 写侧 × 读侧焊死
+// 🔴：**启动期令牌那个变量名的双写点** —— 写侧 × 读侧焊死
 // ══════════════════════════════════════════════════════════════════════════════
 //
 // # 步 2 那一路点名留下的那条判据，就是这一条
@@ -1627,11 +1627,11 @@ fn the_launch_token_env_var_has_the_same_name_on_both_halves() {
     );
 }
 
-// 〔US1 · 第四波 4D〕`设计/20 §7` 步 4（全量注入带开关、codex 不注、撞名不注、两种降级分开）那一组判据随决策表搬进后端：
+// （全量注入带开关、codex 不注、撞名不注、两种降级分开）那一组判据随决策表搬进后端：
 //   `tests/backend/accounts/upstream_select/endpoint_tests.rs::us1_the_launch_table_matches_the_hand_written_one`（逐格手写期望）；
-//   「登记了默认上游的 agent」只在适配层那一格（NT2 · V25），monitor 这一侧的那份登记表整删。
+//   「登记了默认上游的 agent」只在适配层那一格（NT2），monitor 这一侧的那份登记表整删。
 
-/// 〔TL3 · `INVARIANTS §47` ②〕工作目录是自由文本路径：载荷的 `cd` 与外层 `new-session -c` 两处、以及 ccm 那条路的 `--cwd`，
+/// 〔`INVARIANTS §47` ②〕工作目录是自由文本路径：载荷的 `cd` 与外层 `new-session -c` 两处、以及 ccm 那条路的 `--cwd`，
 /// 都过 `posix_free_path_ok`（POSIX 绝对 · 无 `..` 段 · 不含 NUL / CR / LF）—— **不拒 shell 元字符**，**正反各一格**。
 /// 要求住址：`INVARIANTS §47` ②；主会话 09-26 按 V131 裁「自由文本路径的拒绝集只收控制字符（NUL / CR / LF）、
 /// 形式判定按各自语境（cwd / 目录要绝对路径等）、然后唯一一处 quote」。
@@ -1679,8 +1679,8 @@ fn a_free_text_cwd_passes_real_names_and_refuses_what_quote_cannot_hold() {
     }
 }
 
-/// 〔DUP1 · `INVARIANTS §47` ①〕载荷那条线上 resume 的 sid（`resumeSid` 单报的那一个）与外层 `@ccm_sid`：
-/// 拼进载荷之前过 `shell_quote_core::session_id_ok`（全仓唯一一份；前端那份 `isValidSessionId` 按 `设计/90 §3` 判据 2 删了），
+/// 〔`INVARIANTS §47` ①〕载荷那条线上 resume 的 sid（`resumeSid` 单报的那一个）与外层 `@ccm_sid`：
+/// 拼进载荷之前过 `shell_quote_core::session_id_ok`（全仓唯一一份；前端那份 `isValidSessionId` 按删了），
 /// 报的 sid 还得就是 `args` 第二格 —— **正反各一格**，拒的都带「拒」标（前端按标说出来、不回落）。
 /// 要求住址：`INVARIANTS §47` ①「字符集白名单（闭集，默认拒）＋ 不许 `-` 开头（选项注入）＋ 有长度上界的就钉上界」。
 #[test]
@@ -1715,7 +1715,7 @@ fn a_resume_sid_and_a_session_mark_are_judged_before_they_enter_the_payload() {
     assert!(e.starts_with(REFUSE_TAG), "坏 @ccm_sid 该拒：{e}");
 }
 
-/// 〔DUP1 · `INVARIANTS §47` ①〕载荷的 `export ANTHROPIC_MODEL=`：共享那一份判（`shell_quote_core::model_name_ok`），
+/// 〔`INVARIANTS §47` ①〕载荷的 `export ANTHROPIC_MODEL=`：共享那一份判（`shell_quote_core::model_name_ok`），
 /// 真实模型名全过、坏的带「拒」标 —— **正反各一格**。这一格原来「刻意宽容渲染」、只靠 quote（QUOTE_SITES 第四列那一条）。
 #[test]
 fn the_model_export_passes_real_names_and_refuses_the_rest() {
@@ -1743,9 +1743,9 @@ fn the_model_export_passes_real_names_and_refuses_the_rest() {
     }
 }
 
-/// 〔DUP2 · 主会话 09-26 裁 J6〕外层三格的会话名：**新建**那一格走 `gate_rules` 新建那一条（`§47` ①：非空 · 不以 `-` 开头 ·
+/// 外层三格的会话名：**新建**那一格走 `gate_rules` 新建那一条（`§47` ①：非空 · 不以 `-` 开头 ·
 /// 无 `*?.:=` · 无控制符与欺骗字符 · ≤128，F01「不把 glob 建进名字」），attach / 送进已有会话走已有会话那一条
-/// （V131 ②：拒绝集 ＋ 非空，寻址恒 `'=<名>:'`）。**正反各一格**，拒的都带「拒」标。
+/// （②：拒绝集 ＋ 非空，寻址恒 `'=<名>:'`）。**正反各一格**，拒的都带「拒」标。
 /// 这里原来：`Raw` 只核字符集、放过前导 `-`（`new-session -d -s -x` 会被当选项）；F01 在这条路上只靠界面那一道 —— 那份删了。
 #[test]
 fn a_tmux_name_follows_the_create_or_existing_rule_from_gate_core() {
@@ -1800,7 +1800,7 @@ fn a_tmux_name_follows_the_create_or_existing_rule_from_gate_core() {
     }
 }
 
-/// 〔E2 · V146〕要求住址：`99 §1` V146「起会话的载荷里先看 `ANTHROPIC_BASE_URL` 有没有值：有 ⇒ 不注入中转地址（不抢用户的端点）、
+/// 要求：「起会话的载荷里先看 `ANTHROPIC_BASE_URL` 有没有值：有 ⇒ 不注入中转地址（不抢用户的端点）、
 /// pane 里说一行「这个会话用你自己设的端点，拿不到流式」」。
 ///
 /// 真 `sh` 跑渲染出来的前缀（判在 pane 的 shell 里，不由 monitor 猜）：用户设了 ⇒ 值原样、说了那一行、钥匙没被读进去；
@@ -1852,7 +1852,7 @@ fn a_base_url_the_user_already_set_is_left_alone_and_said_out_loud() {
     );
 }
 
-/// 设计/01 §6.2（杀会话走后端同一道形状门）：〔MIG-2〕原 monitor `backend_kill_tests.rs` ③c —— 外层 tmux 三格这条**创建路径**
+/// （杀会话走后端同一道形状门）：原 monitor `backend_kill_tests.rs` ③c —— 外层 tmux 三格这条**创建路径**
 /// 的放行集，逐个喂后端 kill 形状门拒的字符必须拒、合法名字必须过（建得出来就得杀得掉）。字符集从 `control/kill.rs` 现抠。
 #[test]
 fn the_tmux_outer_refuses_every_name_the_kill_gate_refuses() {

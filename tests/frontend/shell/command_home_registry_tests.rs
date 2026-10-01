@@ -1,7 +1,7 @@
-//! 设计/99 §2.1 ⑬：「Tauri 命令分两张封闭表「monitor 自己的事」（逐行理由）与「待迁」（逐行卡在哪），命令实现经 `inbound_client` / `BackendDoor` 碰到后端的必须在「待迁」」。
+//! 「Tauri 命令分两张封闭表「monitor 自己的事」（逐行理由）与「待迁」（逐行卡在哪），命令实现经 `inbound_client` / `BackendDoor` 碰到后端的必须在「待迁」」。
 //!
 //! 分母只数「前端对后端」的 IPC（产物来自某台后端的）；窗口 · 本机 monitor 配置 · 日志 · 拉前 · 本机后端的起停与引导
-//! 是 monitor 自己的事（`99 §2.1 ⑬`），外加通信层面 A 客户端本身与「放字节」（`4d-lanes` C 段共同目标）。
+//! 是 monitor 自己的事，外加通信层面 A 客户端本身与「放字节」。
 //!
 //! 三条判据：
 //! 1. 两表不相交、并集 == `lib.rs` 的 `generate_handler!`（两向）。
@@ -30,11 +30,11 @@ enum Own {
     Replay,
     /// 本机后端的起停与引导（含「这台后端通道在不在」）。
     Lifecycle,
-    /// 通信层面 A 客户端本身（`05 §14.2`）。
+    /// 通信层面 A 客户端本身。
     Channel,
-    /// 放字节：照那台后端判好的计划往那台放 / 删 monitor 带着的字节（`4d-lanes` C 段共同目标「monitor 只放字节」）。
+    /// 放字节：照那台后端判好的计划往那台放 / 删 monitor 带着的字节（「monitor 只放字节」）。
     Place,
-    /// 〔MIG-3b 续〕足迹里 monitor 自己那台那几行的**事实**（`05 §14.3` E 组；判定在后端）。
+    /// 足迹里 monitor 自己那台那几行的**事实**（判定在后端）。
     Footprint,
 }
 
@@ -44,7 +44,7 @@ impl Own {
     }
 }
 
-// 〔FIX4 · `设计/99 §2.1 ⑬`〕「哪一路负责迁走它」那个闭集（`Lane`）收了：「待迁」最后一行 `launch_remote_terminal`〔散文墓碑〕随 ssh 外壳
+// 「哪一路负责迁走它」那个闭集（`Lane`）收了：「待迁」最后一行 `launch_remote_terminal`〔散文墓碑〕随 ssh 外壳
 //   进本机后端（帧命令 `terminal-ssh`）清掉，再没有没迁完的行 ⇒ 变体一个不剩、枚举本身删掉。「待迁」表留着（今天为空，
 //   判据 1 仍两向：新长一条碰后端的 Tauri 命令 ⇒ 要么进「monitor 自己的事」写理由、要么进「待迁」写卡在哪）。
 
@@ -70,7 +70,7 @@ const MONITOR_OWN: &[(&str, Own, &str)] = &[
         Own::Lifecycle,
         "停后端（SIGTERM → 等 → 超时才 SIGKILL）",
     ),
-    // 〔FIX4 · `99 §2.1 ⑬`〕开终端：monitor 只开窗（接令牌握手前奏 → PowerShell 窗口），交来的是成品（远端那一行由本机后端 `terminal-ssh` 渲）。
+    // 开终端：monitor 只开窗（接令牌握手前奏 → PowerShell 窗口），交来的是成品（远端那一行由本机后端 `terminal-ssh` 渲）。
     (
         "open_terminal_window",
         Own::Window,
@@ -98,14 +98,14 @@ const MONITOR_OWN: &[(&str, Own, &str)] = &[
     (
         "open_file_window",
         Own::Window,
-        "〔MIG-3a · 09-28 裁 3〕起文件窗口进程、读它那一行就绪 / 原话（第一屏由窗口进程经通道自己列；本侧只拿交接件）",
+        "〔09-28 裁 3〕起文件窗口进程、读它那一行就绪 / 原话（第一屏由窗口进程经通道自己列；本侧只拿交接件）",
     ),
     ("bring_monitor_to_front", Own::Window, "拉前 monitor 自己"),
     ("bring_terminal_to_front", Own::Front, "拉前本机终端窗口"),
     (
         "bound_terminal_count",
         Own::Front,
-        "〔MIG-3a〕已跟 monitor 完成拉前握手的终端数（本进程 `BindRegistry`；从前夹在别名读回口里）",
+        "已跟 monitor 完成拉前握手的终端数（本进程 `BindRegistry`；从前夹在别名读回口里）",
     ),
     (
         "bring_remote_terminal_to_front",
@@ -126,7 +126,7 @@ const MONITOR_OWN: &[(&str, Own, &str)] = &[
     (
         "drift_ledger_report",
         Own::Log,
-        "〔MOD〕漂移账里 monitor 天生观测的两面（未登记的会话 kind · 后端 hello 里不认识的能力 token）—— 诊断；\
+        "漂移账里 monitor 天生观测的两面（未登记的会话 kind · 后端 hello 里不认识的能力 token）—— 诊断；\
          记录那两面随解析进了那台后端（`drift-report`，界面经通道问）",
     ),
     (
@@ -153,7 +153,7 @@ const MONITOR_OWN: &[(&str, Own, &str)] = &[
     (
         "cc_bus_ccm_precheck",
         Own::Lifecycle,
-        "〔MIG-3a〕装 cc-bus 之前问一次本机 `ccm` 够不够新（本机后端的引导那一族：探本机 ccm 入口）",
+        "装 cc-bus 之前问一次本机 `ccm` 够不够新（本机后端的引导那一族：探本机 ccm 入口）",
     ),
     ("ccm_user_path_remove", Own::Lifecycle, "同上：撤"),
     (
@@ -168,9 +168,9 @@ const MONITOR_OWN: &[(&str, Own, &str)] = &[
     (
         "chan_cancel",
         Own::Channel,
-        "〔MIG-3b 续〕通信层面 A：撤掉 webview 那一跳上带编号的一问（撤单过这一跳，`05 §3.3.3`）",
+        "通信层面 A：撤掉 webview 那一跳上带编号的一问（撤单过这一跳）",
     ),
-    // 〔MIG-2〕起会话的计划与渲染进了后端之后，monitor 在这件事上只剩下面两格。
+    // 起会话的计划与渲染进了后端之后，monitor 在这件事上只剩下面两格。
     (
         "open_local_terminal",
         Own::Window,
@@ -181,7 +181,7 @@ const MONITOR_OWN: &[(&str, Own, &str)] = &[
         Own::Config,
         "全量注入开关 = monitor 进程环境 `CCM_RELAY_ALL_SESSIONS`（monitor 自己的配置，界面带给那台后端）",
     ),
-    // 〔MIG-3b · 4d-lanes 子步 1〕放字节：判定（该不该换 · 换成哪一格 · 落点那一份是谁）住本机常驻后端 `deploy-plan`。
+    // 放字节：判定（该不该换 · 换成哪一格 · 落点那一份是谁）住本机常驻后端 `deploy-plan`。
     (
         "deploy_remote_backend",
         Own::Place,
@@ -195,9 +195,9 @@ const MONITOR_OWN: &[(&str, Own, &str)] = &[
     (
         "footprint_client_facts",
         Own::Footprint,
-        "〔MIG-3b 续〕足迹里 monitor 自己那台那几行（`HostScope::Client`）只有 monitor 知道的事实：它自己进程的家目录 · agent 家 · PATH（stat 与判定在本机后端 `footprint-report`）",
+        "足迹里 monitor 自己那台那几行（`HostScope::Client`）只有 monitor 知道的事实：它自己进程的家目录 · agent 家 · PATH（stat 与判定在本机后端 `footprint-report`）",
     ),
-    // 〔MIG-3b 续 · 主会话 09-28 裁〕那台后端回「没装 / 太旧」时界面请 monitor 放全景小程序的字节（判定「缺不缺」是那台后端答的码）。
+    // 那台后端回「没装 / 太旧」时界面请 monitor 放全景小程序的字节（判定「缺不缺」是那台后端答的码）。
     (
         "panorama_place",
         Own::Place,
@@ -205,53 +205,53 @@ const MONITOR_OWN: &[(&str, Own, &str)] = &[
     ),
 ];
 
-/// 「待迁」：命令 · 卡在哪。〔FIX4〕今天为空（「哪一路」那一格随 `Lane` 一起收了）。
+/// 「待迁」：命令 · 卡在哪。今天为空（「哪一路」那一格随 `Lane` 一起收了）。
 const PENDING: &[(&str, &str)] = &[
     // MIG-1：会话 / tmux 账本 ＋ ssh 配置解读进后端。
-    // 〔MIG-1〕`~/.ssh/config` 导入那三条（别名 · `ssh -G` · 批量）迁走了：本机常驻后端帧命令 `ssh-config-*`（⑯）。
-    // 〔MIG-1 续〕测试连接迁走了：界面把表单那一台交给本机后端（`remote-probe`），后端组请求、拨一次、回结局（主会话裁）。
-    // 〔MIG-1〕本机活会话表那两条（红绿灯快照 · 骨架清单）迁走了：会话账本进后端，骨架与灯是会话流里的 `live` / `activity` 成品（⑬）。
-    // 〔MIG-1 续〕列 tmux 会话两条（本机 · 远端）迁走了：那台后端的 `tmux-list` 出成品，界面经通道直问（`src/frontend/ui/tmux-reads.ts`）。
-    // MIG-2：本机起会话 ＋ 载荷渲染 ＋ 历史查看器。〔MIG-2〕迁走七条：`new_local_session` · `resume_history_session` ·
+    // `~/.ssh/config` 导入那三条（别名 · `ssh -G` · 批量）迁走了：本机常驻后端帧命令 `ssh-config-*`（⑯）。
+    // 测试连接迁走了：界面把表单那一台交给本机后端（`remote-probe`），后端组请求、拨一次、回结局。
+    // 本机活会话表那两条（红绿灯快照 · 骨架清单）迁走了：会话账本进后端，骨架与灯是会话流里的 `live` / `activity` 成品（⑬）。
+    // 列 tmux 会话两条（本机 · 远端）迁走了：那台后端的 `tmux-list` 出成品，界面经通道直问（`src/frontend/ui/tmux-reads.ts`）。
+    // MIG-2：本机起会话 ＋ 载荷渲染 ＋ 历史查看器。迁走七条：`new_local_session` · `resume_history_session` ·
     //   `render_local_attach` · `render_ccm_launch` · `render_launch_payload` · `relay_endpoint_for_launch` · `probe_ccm_cli`。
-    // 〔FIX4 · `99 §2.1 ⑬`〕`launch_remote_terminal`〔散文墓碑〕迁走了：远端那一行（`ssh -t -J … host '<串>'` · PowerShell 窗口载荷）由本机后端
+    // `launch_remote_terminal`〔散文墓碑〕迁走了：远端那一行（`ssh -t -J … host '<串>'` · PowerShell 窗口载荷）由本机后端
     //   `terminal-ssh` 渲（组请求走 `dial/machine.rs::resolve`），monitor 剩开窗 `open_terminal_window` 与交机器事实 `terminal_dial`
     //   两条，进「monitor 自己的事」。「待迁」从此为空。
     // MIG-3a：资产与 D 组。
-    // 〔MIG-3a〕别名六条（`aliases_*`）已迁：规则 · 方言 · 围栏进了那台后端（`aliases-*`），从本表删。
-    // 〔MIG-3a · 主会话 09-28 预裁〕`deploy_remote_acct_iso`〔散文墓碑〕 已迁：字节随后端二进制走（部署载荷只一种走法），装 · 链接 · 配置 · 记账
+    // 别名六条（`aliases_*`）已迁：规则 · 方言 · 围栏进了那台后端（`aliases-*`），从本表删。
+    // `deploy_remote_acct_iso`〔散文墓碑〕 已迁：字节随后端二进制走（部署载荷只一种走法），装 · 链接 · 配置 · 记账
     //   全在那台后端（`acct-iso-install`），界面只问它一次 ⇒ 从本表删（命令本身也删了）。
-    // 〔MIG-3a · 子步 3〕`deploy_local_cc_bus` / `cc_bus_install_state` 已迁：cc-bus 装 · 三态 · 记账进了本机后端（`cc-bus-install` / `-state`）。
-    // MIG-3b：部署决策 · 诊断 · 足迹 · 删会话 / 分叉。〔MIG-3b〕钩子诊断两条 · 删会话 · 分叉已迁（界面经通道直说那台后端），行删了；
+    // `deploy_local_cc_bus` / `cc_bus_install_state` 已迁：cc-bus 装 · 三态 · 记账进了本机后端（`cc-bus-install` / `-state`）。
+    // MIG-3b：部署决策 · 诊断 · 足迹 · 删会话 / 分叉。钩子诊断两条 · 删会话 · 分叉已迁（界面经通道直说那台后端），行删了；
     //   部署后端 · 卸载后端两条挪进「monitor 自己的事」（放字节：判定进了本机常驻后端 `deploy-plan`）。
-    // 〔MIG-3b 续 · 主会话 09-28 裁①〕`config_surface_report`〔散文墓碑〕已迁：申报表 ＋ 判定进了后端（`footprint-report`，界面经通道直问），
+    // `config_surface_report`〔散文墓碑〕已迁：申报表 ＋ 判定进了后端（`footprint-report`，界面经通道直问），
     //   monitor 只答它自己那台那几行的事实（`footprint_client_facts`，进「monitor 自己的事」）。
-    // 〔MOD〕漂移账那一条迁了：两路进料（未知记录类型 · 已知类型解析失败）随记录解释进了那台后端（`drift-report`）；
+    // 漂移账那一条迁了：两路进料（未知记录类型 · 已知类型解析失败）随记录解释进了那台后端（`drift-report`）；
     //   monitor 天生观测的两面（`UnknownBackendToken` · `UnknownSessionKind`）留在 `drift_ledger_report`，进「monitor 自己的事」（日志）。
-    // 〔MOD · `设计/90 §3` 判据 3〕会话正文四条（`stream_read_session_jsonl` · `load_subagent` · `read_session_range` ·
+    // 会话正文四条（`stream_read_session_jsonl` · `load_subagent` · `read_session_range` ·
     //   `read_session_lines`〔散文墓碑〕）迁了：记录解释进了后端，界面经通道直问那台后端（`history-page` · `history-subagent` ·
     //   `history-lines`，`src/frontend/ui/record-reads.ts`）。
-    // 〔主会话 09-27 裁〕原先 C 段没人点名的那几行已指派（MIG-1 端口转发 · MIG-2 会话读面 · MIG-3b 探针 / 公钥 / 全景 · MIG-3a 开文件窗）。
-    // 〔MIG-3b 续〕公钥推送那一条已迁（界面经通道问本机后端 `pubkey-push`），行删了。
-    // 〔MIG-1〕端口转发三条（起 · 停 · 列）迁走：账住本机常驻后端（`dial/forwards.rs`），界面经通道问 `forward-*`。
-    // 〔MIG-3b 续 · 主会话 09-28 裁〕全景问 · 写 · 撤三条已迁（界面经通道直问那台后端 `panorama` / `panorama-edit`，撤单过通道那一跳），
+    // 原先 C 段没人点名的那几行已指派（MIG-1 端口转发 · MIG-2 会话读面 · MIG-3b 探针 / 公钥 / 全景 · MIG-3a 开文件窗）。
+    // 公钥推送那一条已迁（界面经通道问本机后端 `pubkey-push`），行删了。
+    // 端口转发三条（起 · 停 · 列）迁走：账住本机常驻后端（`dial/forwards.rs`），界面经通道问 `forward-*`。
+    // 全景问 · 写 · 撤三条已迁（界面经通道直问那台后端 `panorama` / `panorama-edit`，撤单过通道那一跳），
     //   行删了；放字节那一条（`panorama_place`）进「monitor 自己的事」`Place`，撤单那一条（`chan_cancel`）进 `Channel`。
-    // 〔MIG-3a · 主会话 09-28 裁 3〕`open_file_window` 已迁：开窗前那一屏（`files-home` / `files-ls`）进了窗口进程自己问，
+    // 〔主会话 09-28 裁 3〕`open_file_window` 已迁：开窗前那一屏（`files-home` / `files-ls`）进了窗口进程自己问，
     //   monitor 只起进程、读它那一行（`filewin/proc.rs::first_screen` · `Ready`）⇒ 从本表删，进 `MONITOR_OWN`（开窗）。
 ];
 
-/// 〔P4 · 主会话 09-29 拍板 Q2 A〕通道上**由 monitor 自己接**、不按 `origin` 转给那台后端的 op（`chan/host.rs::HOST_OPS`）：
+/// 〔主会话 09-29 拍板 Q2 A〕通道上**由 monitor 自己接**、不按 `origin` 转给那台后端的 op（`chan/host.rs::HOST_OPS`）：
 /// op · 哪一类 · 理由。它们不是 Tauri 命令，却是同一个问题（「monitor 自己的事」还是「待迁」），照 `MONITOR_OWN` 的写法两向登记。
 const CHANNEL_OWN: &[(&str, Own, &str)] = &[
     (
         "transfer-upload",
         Own::Channel,
-        "〔F7c〕传输台开单：转给本机常驻后端的传输台（经中继 `sftp_pool.rs`），不按寻址去那台",
+        "传输台开单：转给本机常驻后端的传输台（经中继 `sftp_pool.rs`），不按寻址去那台",
     ),
     (
         "transfer-download",
         Own::Channel,
-        "〔F7c〕同上（下载那一形）",
+        "同上（下载那一形）",
     ),
     (
         "terminal-open",
@@ -260,7 +260,7 @@ const CHANNEL_OWN: &[(&str, Own, &str)] = &[
     ),
 ];
 
-/// 〔P4〕`HOST_OPS`（代码那一侧）== [`CHANNEL_OWN`]（登记那一侧），两向；每一行都写了理由。
+/// `HOST_OPS`（代码那一侧）== [`CHANNEL_OWN`]（登记那一侧），两向；每一行都写了理由。
 #[test]
 fn every_op_the_monitor_takes_off_the_channel_is_registered() {
     let code: BTreeSet<&str> = crate::chan::host::HOST_OPS.iter().copied().collect();
@@ -766,7 +766,7 @@ fn monitor_tree() -> BTreeMap<String, String> {
     guard_core::scan_tree_excluding(&root, &["rs"], &[])
         .into_iter()
         .map(|(p, s)| {
-            // 〔RE〕按模块住址认：通信层成员住 `src/comms/inward/`、经 `#[path]` 挂进本 crate（`guard_core` 顺着收）。
+            // 按模块住址认：通信层成员住 `src/comms/inward/`、经 `#[path]` 挂进本 crate（`guard_core` 顺着收）。
             let rel = guard_core::module_address(&root, &p);
             (rel, s)
         })
@@ -791,7 +791,7 @@ fn the_two_tables_are_disjoint_and_cover_every_tauri_command() {
     assert!(
         missing.is_empty() && stale.is_empty(),
         "`generate_handler!` 与两表不等：注册了没登记 {missing:?} · 登记了已不在 {stale:?}\n\
-         迁走一条 ⇒ 从「待迁」删；新加一条 ⇒ 写进其中一张并写理由（`99 §2.1 ⑬`）"
+         迁走一条 ⇒ 从「待迁」删；新加一条 ⇒ 写进其中一张并写理由"
     );
     let reasons = MONITOR_OWN
         .iter()

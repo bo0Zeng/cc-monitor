@@ -132,7 +132,7 @@ export class KeybindingsEditor implements OverlayHandle {
     win.appendChild(body);
 
     const groups = groupByCategory();
-    const ordered = CATEGORY_ORDER; // 单一真相源在 actions.ts（漏加会让整组静默消失，那里有测锁）
+    const ordered = CATEGORY_ORDER; // 单一源头在 actions.ts（漏加会让整组静默消失，那里有测锁）
     for (const cat of ordered) {
       const list = groups.get(cat);
       if (!list || list.length === 0) continue;
@@ -184,7 +184,7 @@ export class KeybindingsEditor implements OverlayHandle {
     const nameCell = document.createElement("td");
     nameCell.className = "kb-editor-name";
     nameCell.textContent = action.label;
-    // 〔第四波 S4〕「未上线（…）」那枚标签随唯一一条预留位（`app.search-history`〔散文墓碑〕）一起删了。
+    // 「未上线（…）」那枚标签随唯一一条预留位（`app.search-history`〔散文墓碑〕）一起删了。
     tr.appendChild(nameCell);
 
     // chord 显示单元
@@ -352,7 +352,7 @@ export class KeybindingsEditor implements OverlayHandle {
       void emit(SETTINGS_APPLIED_EVENT);
     } catch (e) {
       console.warn("[keybindings] persist failed:", e);
-      // 〔CFG1 · 4D〕从前只记日志：这次改的键位眼下生效、重启就回去，界面一句不说（E §3.3）。
+      // 从前只记日志：这次改的键位眼下生效、重启就回去，界面一句不说（E §3.3）。
       showActionFailureToast(copyText("keybindings.persist.failed"), String(e));
     }
   }

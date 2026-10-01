@@ -35,7 +35,7 @@ vi.mock("../../../../src/frontend/ui/behavior", () => ({ getBehavior: () => ({})
 vi.mock("../../../../src/frontend/ui/format", () => ({ formatTimestampSmart: () => "时间" }));
 
 import { invoke } from "@tauri-apps/api/core";
-// 〔C4d〕历史清单改走通道（问本机常驻后端）：旧命令名照旧当「哪一问」的名字，译法住 chan-fake。
+// 历史清单改走通道（问本机常驻后端）：旧命令名照旧当「哪一问」的名字，译法住 chan-fake。
 import { historyCalls, withHistoryReads, type HistoryRead } from "../../../test-support/chan-fake";
 import { HistoryView } from "../../../../src/frontend/ui/views/history";
 import { LS_KEYS } from "../../../../src/frontend/ui/local-storage";
@@ -45,7 +45,7 @@ import { copyText } from "../../../../src/frontend/ui/copy-table";
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
 
 function countCalls(cmd: HistoryRead): number {
-  // 〔C4d〕一次远端 fan-out 按那一发 `list_remote_mcp_origins` 算（逐台 N 发不重复计）；本机那一问 = 不带 origin 的 `history-projects`。
+  // 一次远端 fan-out 按那一发 `list_remote_mcp_origins` 算（逐台 N 发不重复计）；本机那一问 = 不带 origin 的 `history-projects`。
   return historyCalls(invokeMock.mock.calls, cmd).length;
 }
 
@@ -255,7 +255,7 @@ describe("HistoryView 来源列表 TTL 缓存 (F76 #46)", () => {
     expect(localStorage.getItem(LS_KEYS.historyRemoteSources)).not.toBeNull(); // Err 分支不清持久
   });
 
-  // ★★〔K-R97 09-12〕本机项目列表改走后端之后，`projectDir` 从**绝对路径**变成后端给的
+  // ★★本机项目列表改走后端之后，`projectDir` 从**绝对路径**变成后端给的
   // **编码目录名**（与远端那条路同形）。前端在这条链上的角色是**纯搬运** ——
   // 它既不解析这个值、也不拼路径，原样传回后端。
   //
@@ -285,7 +285,7 @@ describe("HistoryView 来源列表 TTL 缓存 (F76 #46)", () => {
     await (view as unknown as { loadProjectSessions(p: unknown): Promise<void> })
       .loadProjectSessions(localProj);
 
-    // 〔C4d〕展开一个项目 = 一发 `history-sessions`（问本机常驻后端）；本地项目不带 origin。
+    // 展开一个项目 = 一发 `history-sessions`（问本机常驻后端）；本地项目不带 origin。
     const calls = historyCalls(invokeMock.mock.calls, "stream_history_sessions_in_project");
     expect(calls.length, "本地项目该问本机后端那一问").toBe(1);
     expect(
@@ -296,7 +296,7 @@ describe("HistoryView 来源列表 TTL 缓存 (F76 #46)", () => {
     expect(calls[0].origin).toBe("<local>");
   });
 
-  // 〔WF2〕要求住址：`第四波记录/WIN3.md §2` 读数 H「历史页整页『加载失败』，lx 的历史也不显示」· 题面 WF2 第 4 条「不整页失败、不拖别的机器」。
+  // 要求：「历史页整页『加载失败』，lx 的历史也不显示」· 题面 WF2 第 4 条「不整页失败、不拖别的机器」。
   it("本机那一问失败：出声一次，远端项目照常进列表（不整页失败）", async () => {
     invokeMock.mockReset();
     invokeMock.mockImplementation(withHistoryReads((cmd: string) => {
@@ -313,7 +313,7 @@ describe("HistoryView 来源列表 TTL 缓存 (F76 #46)", () => {
     expect(toast.mock.calls.map((c) => c[0])).toEqual([copyText("history.refresh.localFailed")]);
   });
 
-  // 〔WF2〕要求住址：`第四波记录/WIN3.md §2` 读数 H · 主会话 09-29 拍板 ④(b)「历史页按机器分组时，某台零项目画一行『这台还没有会话记录』（不是整页空态）」。
+  // 要求住址：主会话 09-29 拍板 ④(b)「历史页按机器分组时，某台零项目画一行『这台还没有会话记录』（不是整页空态）」。
   it("按机器分组时，零项目的那几台（本机 · 远端）各画一行「这台还没有会话记录」，有项目的那台照常", async () => {
     invokeMock.mockReset();
     invokeMock.mockImplementation(withHistoryReads((cmd: string) => {

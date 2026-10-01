@@ -5,7 +5,7 @@
  *
  * 2026-09-21 现打逮到：`tests/e2e/tier2/test/shell-smoke.spec.mjs` 的 `TOPBAR` 数组
  * 仍列着 `.usage-trigger` 并断言它 `isClickable`，而那个入口在
- * `设计/50 删用量`（2026-09-18）里随整轴退役 ⇒ 生产里 **0 处**。
+ * （2026-09-18）里随整轴退役 ⇒ 生产里 **0 处**。
  * 那是一条**必然失败**的断言。
  *
  * **它为什么能静默活三天**：tier-2 这一档要**真 Windows ＋ WebView2 ＋ session-1 hop**

@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 /// Case-fold the path on Windows so notify's NTFS case variance does not double
 /// emit; on other platforms keep the path verbatim.
 ///
-/// 〔TL1 · 4C〕从前这里写「与 monitor 侧那份 jsonl 读者的同名两分支同规则」—— 那份读者 CF1 删了，
+/// 从前这里写「与 monitor 侧那份 jsonl 读者的同名两分支同规则」—— 那份读者 CF1 删了，
 /// 今天这两个分支只有这一份（调用方是本 crate 的 `observe/watcher.rs`）。
 #[cfg(windows)]
 pub(crate) fn path_key(p: &Path) -> PathBuf {
@@ -69,7 +69,7 @@ pub(crate) fn current_uid() -> u32 {
     0
 }
 
-/// 〔W5-FILES · 第五波 · `设计/60 §3.7`「不跨文件系统边界那一档没做（设备号要走 `platform/`）」〕
+/// 〔「不跨文件系统边界那一档没做（设备号要走 `platform/`）」〕
 /// 一个路径（**跟链接**）所在文件系统的设备号 —— 走一棵树时「这一层是不是挂着另一个文件系统」那一判用它
 /// （`files::index::build` · `files::size`）。调用方只把它用在「不跟链接地看过、确是目录」的条目上，跟不跟链接在那里没有差别。
 ///
@@ -85,7 +85,7 @@ pub(crate) fn device_of(_p: &Path) -> Option<u64> {
     None
 }
 
-/// 〔MIG-3a · `设计/99 §2.1 ⑬`〕这台机器的**「文档」目录**（Windows 上 OneDrive 会把它挪走 ⇒ 问系统 `SHGetKnownFolderPath`）。
+/// 这台机器的**「文档」目录**（Windows 上 OneDrive 会把它挪走 ⇒ 问系统 `SHGetKnownFolderPath`）。
 /// 从前是 monitor 进程问（`dirs::document_dir`）；别名方言进了后端之后，`$PROFILE` 在哪由**那台后端**问它自己的系统。
 /// 非 Windows ⇒ `None`（那里没有 `$PROFILE` 要找，调用方退回 `home/Documents`，不编一个答案）。
 #[cfg(windows)]
@@ -141,12 +141,12 @@ pub(crate) fn documents_dir() -> Option<PathBuf> {
     None
 }
 
-/// 〔MIG-3a〕这台的文件系统**有没有可执行位**（unix 有；Windows 没有 —— 那边写口的改权限如实回失败，调用方据此不发）。
+/// 这台的文件系统**有没有可执行位**（unix 有；Windows 没有 —— 那边写口的改权限如实回失败，调用方据此不发）。
 pub(crate) fn has_exec_bits() -> bool {
     cfg!(unix)
 }
 
-/// 〔OSA · 原 `assets/door.rs`〕`rel`（`/` 或 `\` 分隔）接在 `home` 底下：分隔符跟 `home` 自己的写法走
+/// 〔原 `assets/door.rs`〕`rel`（`/` 或 `\` 分隔）接在 `home` 底下：分隔符跟 `home` 自己的写法走
 /// （`home` 里只有 `\` ⇒ `\`，否则 `/`）—— 那台机器的 home 是什么写法由它自己的后端答，这里只照着拼。
 pub(crate) fn join_under(home: &str, rel: &str) -> String {
     let sep = if home.contains('\\') && !home.contains('/') {
@@ -162,7 +162,7 @@ pub(crate) fn join_under(home: &str, rel: &str) -> String {
     out
 }
 
-/// 〔WF1 · F〕**这台后端的家目录只在这里答** ——〔P5 · 主会话 09-29 裁〕规矩（哪个环境变量算家、按平台的先后）是两侧的契约，
+/// **这台后端的家目录只在这里答** ——规矩（哪个环境变量算家、按平台的先后）是两侧的契约，
 /// 住 `creds_core::store::home_dir_from`（monitor 同调它）；都没有 ⇒ `None`（调用方明说）。判据 `shell_home_guard.rs::the_home_directory_is_read_in_one_place`。
 pub(crate) fn home_dir() -> Option<PathBuf> {
     creds_core::store::home_dir()

@@ -31,7 +31,7 @@
 export class MessageStream {
   private scrollEl: HTMLElement;
   private contentEl: HTMLElement;
-  /** 〔TAP〕流尾巴上的那一块（活卡住这里）；第一次要的时候才建（见 `trailerElement`）。 */
+  /** 流尾巴上的那一块（活卡住这里）；第一次要的时候才建（见 `trailerElement`）。 */
   private trailerEl: HTMLElement | null = null;
   /** 是否粘底（用户向上滚动后变 false） */
   private stickToBottom = true;
@@ -59,7 +59,7 @@ export class MessageStream {
 
     this.resizeObserver = new ResizeObserver((entries) => {
       if (this.stickToBottom) this.snap();
-      // ★ 步 3（`设计/10 §6`）：**视口自己变大也要有人管。**
+      // ★ 步 3：**视口自己变大也要有人管。**
       //
       // 原来只观察 `contentEl` —— 那根轴只答「内容长高了吗」。
       // 把窗口拉高、收起侧栏、拖宽 tab 栏时变的是 **`scrollEl` 自己**，内容一个字没动
@@ -104,7 +104,7 @@ export class MessageStream {
    */
   insertNode(node: HTMLElement, anchor: HTMLElement | null): void {
     // F40a D 审计 R-2:anchor 可能已被折进 .branch-fold-wrap(增量渲染的洞场景 /F40b 补批)。
-    // 〔W5-RENDER R6 · `设计/10 §3.5` D4〕原来爬到 contentEl 直接子层、插在**整段之前** —— 新卡若该落在
+    // 原来爬到 contentEl 直接子层、插在**整段之前** —— 新卡若该落在
     // 段中间就错序,而 rebuild 只解开 / 重包、不重排卡,错序不会自愈。现在**就插在 anchor 前**(它在哪层就在哪层):
     // 顺序逐卡正确;若它其实是主线卡,它进来时 `recordAdded` 排的那次帧末重算会让主线集合变、触发 rebuild 把它摘出段。
     // anchor 不在本流里(RecordTimeline 已把离场的出账,理论上走不到)⇒ 末尾追加并出声。
@@ -151,7 +151,7 @@ export class MessageStream {
   }
 
   /**
-   * 〔TAP · V124〕**流尾巴上的一块**：挂在 `.stream-content` 之后（全部卡之后），不进时间线 —— 活卡（`live-card.ts`）住这里。
+   * **流尾巴上的一块**：挂在 `.stream-content` 之后（全部卡之后），不进时间线 —— 活卡（`live-card.ts`）住这里。
    * 第一次要的时候才建；建出来就交给同一个 `ResizeObserver` 观察 ⇒ 它长高时照「粘底才贴底」那条规矩走，不另起一套。
    */
   get trailerElement(): HTMLElement {

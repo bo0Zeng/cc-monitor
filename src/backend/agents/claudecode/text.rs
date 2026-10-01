@@ -1,7 +1,7 @@
-//! 要求住址：`4d-lanes.md ## 发版后四路 ### P1` 第 2 件「Claude 记录文本知识 → `agents/claudecode/text.rs`（通用层经 `RecordFace` 够）」·
-//! `INVARIANTS §20`（CLI 注入的非真用户输入不算用户说的话）· `设计/10 §2.2b ⑤`（注入噪声那条规则只有一份）。
+//! 要求：「Claude 记录文本知识 → `agents/claudecode/text.rs`（通用层经 `RecordFace` 够）」·
+//! `INVARIANTS §20`（CLI 注入的非真用户输入不算用户说的话）· 注入噪声那条规则只有一份。
 //!
-//! 〔P1〕原共享 crate `search-core` 的**Claude 记录文本那一半**：`message.content` 里正文块 / 工具内容怎么抽 ·
+//! 原共享 crate `search-core` 的**Claude 记录文本那一半**：`message.content` 里正文块 / 工具内容怎么抽 ·
 //! user 正文里 CLI 注入的五种包装与两句样板怎么剥、整条是不是 ESC 中断标记。渲染（[`super::schema::UserText::of`]）·
 //! 全局搜索 · 会话内查找 · 历史摘录 · 用户输入列表共用这一份；通用层（`observe/`）经注册表 `agents::TextFace` 够它，不按名字够。
 
@@ -112,10 +112,10 @@ const INJECTED_WRAPPERS: [&str; 5] = [
     "local-command-stderr",
 ];
 
-/// 〔RENDER2 · J10〕整行就是它、不分大小写（句号可省）⇒ CLI 续跑样板，整行剥。
+/// 整行就是它、不分大小写（句号可省）⇒ CLI 续跑样板，整行剥。
 const BOILERPLATE_LINES: [&str; 2] = ["continue from where you left off", "no response requested"];
 
-/// 判一条 user 正文（`设计/10 §2.2b ⑤` 那条不等价的根：规则从此只有这一份）：
+/// 判一条 user 正文（那条不等价的根：规则从此只有这一份）：
 /// 五种包装全剥 · 两句样板整行剥 · 剩下的**整条**恰是中断标记才归零（标记后面跟着真话就留着） · trim。
 pub(crate) fn user_text(s: &str) -> super::schema::UserText {
     let mut out = s.to_string();

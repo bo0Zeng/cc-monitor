@@ -1,4 +1,4 @@
-//! 〔MIG-3b · `设计/95 §6`「本机远端两条路、两个命令」· `05 §14.3`〕**cc-bus 钩子诊断** —— 帧命令 `hooks-diag` 的本体（只读）。
+//! 〔「本机远端两条路、两个命令」〕**cc-bus 钩子诊断** —— 帧命令 `hooks-diag` 的本体（只读）。
 //!
 //! 这台后端读**它自己那台**的 agent 配置根下的 `settings.json`、就地 stat 钩子点名的程序，出整份成品
 //! （诊断 ＋ 两种待贴片段 ＋ 读的是哪份文件）。本机远端同一条命令（`chan.call(origin, "hooks-diag")`）；
@@ -222,7 +222,7 @@ pub(crate) fn diagnose(raw: Option<&str>, exists: &dyn Fn(&str) -> bool) -> Hook
 /// 待贴 JSON 片段（`home` = `$HOME/.local/bin/…` 显式路径形态；否则裸命令）；形态与实况**确定**冲突才带警示。
 pub(crate) fn snippet(home: bool, probe: &SnippetProbe) -> Snippet {
     let (reg, stop) = if home {
-        // 〔OSA · V156〕`"$HOME/…"` 那个词的写法住 `platform::shell::posix`。
+        // `"$HOME/…"` 那个词的写法住 `platform::shell::posix`。
         (
             format!(
                 "{} >/dev/null 2>&1 || true",
@@ -271,7 +271,7 @@ pub(crate) fn resolves_on_path(
 
 /// `$HOME/…` · `${HOME}/…` · `~/…` 按这台家目录展开；其余原样（B04-3：花括号那一形也要认）。
 fn expand(s: &str, home: Option<&Path>) -> PathBuf {
-    // 〔OSA · V156〕哪几种写法算「家目录底下」住 `platform::shell::posix`。
+    // 哪几种写法算「家目录底下」住 `platform::shell::posix`。
     match (posix::home_relative(s), home) {
         (Some(r), Some(h)) => h.join(r),
         _ => PathBuf::from(s),

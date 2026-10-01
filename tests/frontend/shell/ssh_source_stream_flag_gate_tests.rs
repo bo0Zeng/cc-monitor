@@ -28,7 +28,7 @@ fn known_capability_tokens_match_decide_stream_flags() {
             "`{junk}` 不在名单里却影响了 flag —— 名单漏登记了一个真能力"
         );
     }
-    // 🔴 〔`设计/80 §8.7` 步 3〕地板从 2 抬到 3。步 2 那一路的交接逐字：后端已经在
+    // 🔴 地板从 2 抬到 3。步 2 那一路的交接逐字：后端已经在
     // hello 里声明 `rbind-token`，而本名单当时还是两个 ⇒ 每次握手都往 drift_ledger
     // 记一条 `UnknownBackendToken`。抬这个数是为了**下一次漏登记时本条会响**。
     assert!(
@@ -45,7 +45,7 @@ fn known_capability_tokens_match_decide_stream_flags() {
     );
 }
 
-/// 🔴 ★ 〔`设计/80 §8.7` 步 3〕**跨进程双写点：monitor 发的每一条流模式 flag，
+/// 🔴 ★ **跨进程双写点：monitor 发的每一条流模式 flag，
 /// 后端都必须认得并剥离。**
 ///
 /// 失效方向是本仓栽过的那一条（§26）：老后端把**不认识**的 `--flag` 当成一次性查询
@@ -63,7 +63,7 @@ fn the_stream_flags_monitor_sends_are_all_strippable() {
         backend_lib.contains("pub const STREAM_FLAGS: &[&str]"),
         "后端侧 STREAM_FLAGS 不在预期文件里，双写点锚点已失效"
     );
-    // 〔E2〕那张表 fmt 之后折成多行、第一项是引用 `STREAM_FLAG_EXPLICIT` ⇒ 取到 `];` 为止，再把那个常量的字面量补进来。
+    // 那张表 fmt 之后折成多行、第一项是引用 `STREAM_FLAG_EXPLICIT` ⇒ 取到 `];` 为止，再把那个常量的字面量补进来。
     let at = backend_lib
         .find("pub const STREAM_FLAGS: &[&str]")
         .expect("抠不到 STREAM_FLAGS");
@@ -75,7 +75,7 @@ fn the_stream_flags_monitor_sends_are_all_strippable() {
     let line = format!("{table} {explicit}");
 
     // monitor 侧：从**生产函数体**里抠它真的 `push` 了哪几个串，不手抄一份清单 —— 手抄的那种漏一条不会红。
-    // 〔DEL〕远端只剩常驻一形 ⇒ 旗标只经 attach 行（`remote_resident::attach_line`）交给那台，
+    // 远端只剩常驻一形 ⇒ 旗标只经 attach 行（`remote_resident::attach_line`）交给那台，
     //   远端 `listen::attach_flags` 遇到不在 STREAM_FLAGS 里的词整条拒（不是静默忽略）。
     let rr = guard_core::production_code(include_str!(
         "../../../src/frontend/shell/src/remote_resident.rs"
@@ -98,8 +98,8 @@ fn the_stream_flags_monitor_sends_are_all_strippable() {
              后端那一行现打：{line}"
         );
     }
-    // 〔E2 · V28〕流模式显式词：后端表里有它（名字是 `ccm` 时零参数是起会话）。
-    // 〔MIG-1 续〕「测试连接探针那一发带它」那一格随探针搬进本机后端：那一发今天住后端 `dial/probe.rs`，
+    // 流模式显式词：后端表里有它（名字是 `ccm` 时零参数是起会话）。
+    // 「测试连接探针那一发带它」那一格随探针搬进本机后端：那一发今天住后端 `dial/probe.rs`，
     //   由它自己拼（`crate::STREAM_FLAG_EXPLICIT`，与本表同一个常量），不再经 monitor。
     let word = crate::local_backend::STREAM_WORD;
     assert!(
@@ -144,7 +144,7 @@ fn capability_gate_matrix() {
         (true, false, false),
         "backend 没声明 tail-only → 不发 --tail-only（历史走全量推流）"
     );
-    // 🔴 〔步 3〕只有 rbind-token：**这一位与另两位正交**，而且
+    // 🔴 只有 rbind-token：**这一位与另两位正交**，而且
     //    **没有用户开关**（它不是偏好，是「这台后端报不报得出令牌」）。
     assert_eq!(
         decide_stream_flags(&caps(&["rbind-token"]), true),
@@ -170,7 +170,7 @@ use super::should_upgrade_reconnect as up;
 /// flag」时才 true——保证收敛。这条测试是收 hello 自愈升级那段的回归护栏
 /// （审计阻塞：那段防死循环逻辑此前零测试；抽成纯函数后在此穷举）。
 ///
-/// 🔴 〔`设计/80 §8.7` 步 3〕元组 2 → 3 位。收敛上界随之 2 → 3 轮。
+/// 🔴 元组 2 → 3 位。收敛上界随之 2 → 3 轮。
 /// **本条改成真穷举**（2³ × 2³ = 64 格全跑）：三位之后手挑边角会漏，
 /// 而漏掉的那一格的症状是**无限重连**（本仓 v2.22.1 栽过一次）。
 #[test]
@@ -210,7 +210,7 @@ fn upgrade_reconnect_converges() {
 /// token）——否则乐观路径静默退化成「第一轮降级 + hello 自愈」（仍正确，只慢一轮）。
 /// 用 `contains` 而非精确相等：backend 将来加 token 时本测试仍过，不误红。
 ///
-/// 〔`K-R19` 订正 09-03〕这一句原先点的是 `EMBEDDED_BACKEND_CAPABILITIES`，**全仓零定义**
+/// 这一句原先点的是 `EMBEDDED_BACKEND_CAPABILITIES`，**全仓零定义**
 /// ——管道上三个真名依次是：`build.rs::emit_backend_capabilities` → 编译期 env
 /// `BACKEND_CAPABILITIES` → `ssh_source.rs::embedded_backend_capabilities`。
 #[test]
@@ -232,7 +232,7 @@ fn embedded_capabilities_single_source_wired() {
 ///  → 无限重装。」**那段描述在 `19b`（09-19）之前逐字为真。**〕
 ///
 /// 🔴 **今天那条兜底没了**：`build.rs::backend_source_build_id()` 抠不到就**当场 panic**
-/// （`设计/96 §7.2.5`）⇒ 这一形在**所有**构建形态下都编不过，轮不到测试来发现。
+///⇒ 这一形在**所有**构建形态下都编不过，轮不到测试来发现。
 /// ⇒ 本条断言的**人群因此变小了**：它今天只逮得住「有人在 `lib.rs` 里把 `BUILD_ID`
 /// 真的写成 `"unknown"`」这一种（那是一次故意的手滑，不是路径漂）。
 /// ⚠ **留着它不是留一条恒真断言** —— 下面那两条形状检查（非空 / ≤64 / 字符集）
@@ -265,7 +265,7 @@ fn embedded_build_id_single_source_wired() {
     );
 }
 
-/// 🔴 ★ 〔`设计/80 §8.7` 步 3〕**升级判定不许再被 `if !tail_only` 包住。**
+/// 🔴 ★ **升级判定不许再被 `if !tail_only` 包住。**
 ///
 /// 两位的世界里那道外层 guard 等价于「本轮跑在降级模式」；三位之后它当场为假 ——
 /// `tail_only` 已开、`rbind-token` 这一位没开是真实可达的状态。那时 guard 会把升级整个
@@ -312,7 +312,7 @@ fn the_upgrade_check_is_not_hidden_behind_the_tail_only_guard() {
     );
 }
 
-/// 〔ST3〕★ 接缝：hello 里不认识的能力 token 记在**那台远端**名下；认识的一个都不记。
+/// ★ 接缝：hello 里不认识的能力 token 记在**那台远端**名下；认识的一个都不记。
 #[test]
 fn unknown_capabilities_are_booked_under_that_remote() {
     use crate::drift_ledger::{snapshot, DriftFace};
@@ -336,7 +336,7 @@ fn unknown_capabilities_are_booked_under_that_remote() {
     );
 }
 
-// ─── 〔CF1 · 第四波 09-24〕F5：本机后端的起参也是「monitor 发、后端剥」的那一族 ─────────────────
+// ─── F5：本机后端的起参也是「monitor 发、后端剥」的那一族 ─────────────────
 // 与上面那条（远端 attach 行的旗标）同一族「monitor 发、后端认」；本机起参那一形后端不认的 `--flag` 会被当成一次性查询、
 // 跑完就退（§26）。本机那两条载体的起参是 `local_backend::LOCAL_STREAM_ARGS` 一份常量；住这里是因为
 // 「读后端 `lib.rs` 的源码」这条跨半边已经为本文件登记过了（`cross_half_edge_registry`），不另开一条。
@@ -356,7 +356,7 @@ fn backend_stream_flags_cf1() -> std::collections::BTreeSet<String> {
         .step_by(2)
         .map(str::to_string)
         .collect();
-    // 〔E2〕表里第一项引用 `STREAM_FLAG_EXPLICIT` ⇒ 从后端源码补它的字面量。
+    // 表里第一项引用 `STREAM_FLAG_EXPLICIT` ⇒ 从后端源码补它的字面量。
     if body.contains("STREAM_FLAG_EXPLICIT") {
         let l = src
             .lines()
@@ -380,7 +380,7 @@ fn both_carriers_start_the_backend_with_the_same_stream_flags_the_backend_strips
         backend.len() >= 2,
         "后端 STREAM_FLAGS 只摘到 {backend:?} —— 抽取坏了"
     );
-    // 〔V151〕打头的 `--` 是分隔（让 `ccm` 当后端用），不是流模式旗标。
+    // 打头的 `--` 是分隔（让 `ccm` 当后端用），不是流模式旗标。
     assert_eq!(
         LOCAL_STREAM_ARGS.first(),
         Some(&"--"),
@@ -428,7 +428,7 @@ fn both_carriers_start_the_backend_with_the_same_stream_flags_the_backend_strips
     );
 }
 
-/// 〔LOC1b · 第四波 4D〕本机起参要带 `--with-rbind-token`：`session_added.pid` 跟令牌同一道闸
+/// 本机起参要带 `--with-rbind-token`：`session_added.pid` 跟令牌同一道闸
 /// （后端 `wire::Frame::SessionAdded::pid`），本机 ↗ 绑窗口只能从那一格拿 pid（monitor 不再自己读 pidfile）。
 /// 异源：旗标字面量从后端 `STREAM_FLAGS` 源码里摘，确认后端真剥它。
 #[test]

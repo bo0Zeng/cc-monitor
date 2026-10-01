@@ -7,12 +7,12 @@ import type { UserText } from "./UserText";
 
 export type JsonlRecord = { "type": "user", uuid: string, timestamp: string, message: ApiMessage, cwd: string | null, sessionId: string | null, isMeta: boolean, parentUuid: string | null, forkedFrom: ForkedFrom | null, 
 /**
- * 〔RENDER2 · J10〕剥完 CLI 注入噪声的正文与「是不是 ESC 中断标记」—— 规则只在 `agents/claudecode/text.rs::user_text`，
+ * 剥完 CLI 注入噪声的正文与「是不是 ESC 中断标记」—— 规则只在 `agents/claudecode/text.rs::user_text`，
  * 前端渲染 / 分叉折叠只读这个成品（不自己再判）。原文里没有这一格：解析完由 [`UserText::of`] 填（`parse::parse_line` · `agents/codex/record.rs`）。
  */
 userText: UserText, } | { "type": "assistant", uuid: string, timestamp: string, message: ApiMessage, sessionId: string | null, requestId: string | null, parentUuid: string | null, forkedFrom: ForkedFrom | null, isApiErrorMessage: boolean, error: unknown, apiErrorStatus: number | null, 
 /**
- * 〔THIN · `设计/00 §1.2` 判定只在后端〕这条消息里每个 `tool_use` 的卡型：`tool_use.id` → [`ToolCard`]（普通工具卡不列）。
+ * 〔判定只在后端〕这条消息里每个 `tool_use` 的卡型：`tool_use.id` → [`ToolCard`]（普通工具卡不列）。
  * 原文里没有这一格：解析完由 [`JsonlRecord::with_tool_cards`] 按本家工具词表（`cards::tool_card`）填；界面只按它画、不认工具名。
  */
 toolCards?: { [key in string]: ToolCard }, 

@@ -10,7 +10,7 @@ const OUT = new URL("../../src/backend/control/launch_render/fixtures/payload-go
 writeFileSync(OUT, renderGoldenFixture());
 const OUT_CLI = new URL("../../src/backend/control/launch_render/fixtures/cli-golden.json", import.meta.url);
 writeFileSync(OUT_CLI, renderCliGoldenFixture());
-// `设计/90 §4 E`：外层 tmux 那三格的金标准，与上面两份同一条生成链、同一个 npm 脚本。
+// 外层 tmux 那三格的金标准，与上面两份同一条生成链、同一个 npm 脚本。
 const OUT_OUTER = new URL("../../src/backend/control/launch_render/fixtures/tmux-outer-golden.json", import.meta.url);
 writeFileSync(OUT_OUTER, renderTmuxOuterFixture());
 console.log(`写入 ${fileURLToPath(OUT_OUTER)}`);

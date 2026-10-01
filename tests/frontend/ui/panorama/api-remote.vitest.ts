@@ -1,12 +1,12 @@
-// 〔RM1c · 第四波〕全景的通道封装（`src/frontend/ui/panorama/api.ts`）。〔MIG-3b 续 · 主会话 09-28 裁〕界面直问那台后端。
+// 全景的通道封装（`src/frontend/ui/panorama/api.ts`）。界面直问那台后端。
 //
 // 🔴 **被判的那块没被 mock**：只 mock 了 IPC 出口（`invoke`），`api.ts` 与 `ipc/chan.ts` 本体都是真的。
 // 判法：
 //  ① 每个**读**入口经通道恰发一次 `panorama`（发给那台机器），用到的 op 集合 ＋ 写那一侧的「算」op ＋ 刷文档关联 ==
-//     小程序自报的 op 表（〔PANO〕后端不再存；读生成物 `engine-contract.json`，它 == 小程序 `OPS` 由小程序判据钉。
+//     小程序自报的 op 表（后端不再存；读生成物 `engine-contract.json`，它 == 小程序 `OPS` 由小程序判据钉。
 //     两向相等，**异源**：一侧真调一遍录下来，一侧读生成物）；每问都带上生成物里的 `shape`；
-//  ② 〔RM1d · V110〕六个**写**入口本机远端同一条：经通道恰发一次 `panorama-edit`，origin / 仓原样，
-//     op 集合 == 小程序自报的写表（〔PANO〕生成物 `plans` 的键；后端不再存那张表。两向，异源）；
+//  ② 六个**写**入口本机远端同一条：经通道恰发一次 `panorama-edit`，origin / 仓原样，
+//     op 集合 == 小程序自报的写表（生成物 `plans` 的键；后端不再存那张表。两向，异源）；
 //  ③ 本机仓的**读**与远端同一条（origin 是 `<local>`，op 逐个相同）；
 //  ④ 〔RM1e → MIG-3b 续〕没装 / 太旧 ⇒ **恰放一次字节、恰再问一次**；其余失败零放；放了仍说 ⇒ 如实报、不循环（原 monitor 那一跳的「问 · 放 · 再问」）；
 //  ⑤ 期限归发起方：每个 op 按生成物里的档，长于后端给那一档的期限（加那一次探测）；
@@ -17,7 +17,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
-// 〔P7〕进度流经 `chan.subscribe`（真的那一份）：它在 webview 上听 `chan-items` —— 只替身「听」这一下，好把格灌进去。
+// 进度流经 `chan.subscribe`（真的那一份）：它在 webview 上听 `chan-items` —— 只替身「听」这一下，好把格灌进去。
 type ItemsCb = (e: { payload: unknown }) => void;
 const heard: { cb: ItemsCb | null } = { cb: null };
 vi.mock("@tauri-apps/api/webviewWindow", () => ({
@@ -149,12 +149,12 @@ describe("全景经通道直问那台后端（RM1c · MIG-3b 续）", () => {
       expect(ops.sort()).toEqual(Object.keys(programOps().plans).sort());
     }
     vi.mocked(invoke).mockClear();
-    // 〔P7〕交整个符号 id（带 `@行号` 也原样交；截它归上游 `SymbolRef::of`）。
+    // 交整个符号 id（带 `@行号` 也原样交；截它归上游 `SymbolRef::of`）。
     await api.addAnnotation(REMOTE, "a.rs#f@42", "x", "me");
     expect(sent("panorama-edit")[0].body.args).toEqual({ target: "a.rs#f@42", body: "x", author: "me" });
   });
 
-  // 要求住址：`97 §8`「要上游给的」④「插件口转订阅流」· `99 §1` V158「长活要有进度」。
+  // 要求：「要上游给的」④「插件口转订阅流」· 「长活要有进度」。
   it("〔P7〕建索引给了 onProgress ⇒ 先订那台的 progress/<票>、问的时候带同一张票；收到的格严格收（坏格不交）、每格还 credit；问完撤订", async () => {
     const order: string[] = [];
     let subId = -1;

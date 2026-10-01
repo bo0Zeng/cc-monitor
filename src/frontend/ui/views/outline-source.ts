@@ -1,5 +1,5 @@
 /**
- * 〔SE1 · `设计/10 §2.2b ⑥`〕**大纲的数据源：问后端要，不在前端攒。**
+ * **大纲的数据源：问后端要，不在前端攒。**
  *
  * # 它顶掉了什么
  *
@@ -7,7 +7,7 @@
  * 喂它的是 `toUserInputEntry`）—— **到达序不是对话序**（重放是尾块先到），monitor 起得晚
  * 清单就不全，每个 tab 各攒一份。历史查看器那边再拿同一份 TS 判定扫全量 payloads。
  * 两样都删了：「什么算一条用户输入」只住后端（`observe/user_inputs.rs`），
- * 两个宿主都经同一处来要（〔C4b〕`session-reads.ts::listUserInputs` 经通道直接说帧命令 `history-user-inputs`，`IPC-PROTOCOL.md §10.4`）。
+ * 两个宿主都经同一处来要（`session-reads.ts::listUserInputs` 经通道直接说帧命令 `history-user-inputs`，`IPC-PROTOCOL.md §10.4`）。
  *
  * # 形状
  *
@@ -27,7 +27,7 @@
  * # 什么时候要（由宿主决定，本类不自己起定时器）
  *
  * 实时 tab：批结束时的 active tab · 切进来的 tab（有新行才要）· 真用户输入上屏那一刻
- * （渲染那边已有的 `onRealUserInput` 事件 —— 「刚刚发生了什么」留在流上，`设计/10 §2.2`）。
+ * （渲染那边已有的 `onRealUserInput` 事件 —— 「刚刚发生了什么」留在流上）。
  * 查看器：加载完要一次。
  */
 import type { Origin } from "../generated/Origin";
@@ -58,7 +58,7 @@ export interface OutlineSeed {
 }
 
 /**
- * 〔SE2 · `设计/10 §9.5` 那条欠账〕**首屏的「索引」与「大纲清单」合成一趟读**：从一次**从 0 起**的骨架索引里
+ * 〔那条欠账〕**首屏的「索引」与「大纲清单」合成一趟读**：从一次**从 0 起**的骨架索引里
  * 把大纲搬出来。
  *
  * 推断是**单向可靠**的（理由逐字在后端 `IndexRow::x` 的头注）：
@@ -160,7 +160,7 @@ export class OutlineSource {
   }
 
   /**
-   * 〔SE2〕**骨架索引在途：清单先不单独要，等它带回来。**
+   * **骨架索引在途：清单先不单独要，等它带回来。**
    *
    * 宿主发「从 0 起的骨架索引」的同一刻调它（`tab-stream-view.ts::requestSkeleton`）。`seed` 兑现成：
    * - 一份清单 ⇒ 整表建好、续点接上它的 `end`（**这一趟不再单独要清单**）；

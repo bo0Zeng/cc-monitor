@@ -1,6 +1,6 @@
-//! 〔W5-VIS〕丢帧账（`src/frontend/shell/src/frame_tally.rs`）的判据。
+//! 丢帧账（`src/frontend/shell/src/frame_tally.rs`）的判据。
 //!
-//! 要求住址：`设计/15 §3.4 ②`（逐字）「两个真实的静默口：`from_utf8_lossy` 在读路径上（非 UTF-8 字节静默变 U+FFFD）·
+//! （逐字）「两个真实的静默口：`from_utf8_lossy` 在读路径上（非 UTF-8 字节静默变 U+FFFD）·
 //! 坏帧/未知 kind → warn ＋ 跳过、永不中断流（设计如此，但「今天丢了多少帧」没有计数器；W5-VIS）」。
 //!
 //! 三件：① 账本本身（计数 · 2 的幂次才说 · 总账两向）② 三条读帧循环都接上了（按文件的调用处数 == 手写表，两向）

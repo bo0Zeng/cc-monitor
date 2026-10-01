@@ -1,16 +1,16 @@
-//! # 要求住址：`设计/70 §6.1`（足迹：查不了就说「未确定 ＋ 为什么」，而且只读）
+//! # （足迹：查不了就说「未确定 ＋ 为什么」，而且只读）
 //!
-//! 核原文：`设计/70 §6.1` 红线格逐字「① 只读、按需读一次、不轮询」·「② 查不了的显示成「未确定 ＋ 为什么」，
+//! 核原文：红线格逐字「① 只读、按需读一次、不轮询」·「② 查不了的显示成「未确定 ＋ 为什么」，
 //! 绝不显示成「缺失」」；同节「数据从哪来」格：表的人群是 `tool_registry.rs` 的环境清单闭集。
 //! 本族大头判 ②（Either 形态 · 列不出的目录 · 读不了的 settings · 分派不许有兜底臂 —— 一律 `Undetermined` 带理由），
 //! `this_module_only_reads` 判 ①，`the_view_population_is_exactly_the_closed_set` 判闭集。
-//! 生成待贴文本那一档的措辞另住 `设计/01 §3.6`（「措辞定在后端，界面不各写一遍」）。
+//! 生成待贴文本那一档的措辞另住（「措辞定在后端，界面不各写一遍」）。
 //! ⚠ host / destination 那几条钉的是 `tool_registry` 今天的申报自洽，挂在本节「位置徽章要真实」底下，偏弱。〔JA1 点址 2026-09-24〕
 
 use super::*;
 use guard_core::ScanReport;
 
-/// 〔MIG-3b 续〕受管工具 / 手写环境项的**全集**（本表 ＋ 注册表里各家足迹面带来的那一半）—— 判据按全集判，与搬家前同一个人群。
+/// 受管工具 / 手写环境项的**全集**（本表 ＋ 注册表里各家足迹面带来的那一半）—— 判据按全集判，与搬家前同一个人群。
 static TOOLS: std::sync::LazyLock<Vec<crate::footprint::registry::ToolSpec>> =
     std::sync::LazyLock::new(|| {
         crate::footprint::registry::tools()
@@ -70,7 +70,7 @@ fn resolves_local_home_paths() {
 
 /// `~/.claude/…` 以调用方交来的 agent 家为基准（那条 `CLAUDE_CONFIG_DIR` 规则只在算 agent 家那一处解释一次，
 /// `agents/claudecode/paths.rs`）；别的 `~/…` 照旧以家目录为基准。
-/// 〔MIG-3b 续〕monitor 旧规则「`CLAUDE_CONFIG_DIR` 不是目录就退 `~/.claude`」那一半随判定进后端没了（同 `hooks-diag` 那一次）。
+/// monitor 旧规则「`CLAUDE_CONFIG_DIR` 不是目录就退 `~/.claude`」那一半随判定进后端没了（同 `hooks-diag` 那一次）。
 #[test]
 fn claude_paths_are_based_on_the_agent_home() {
     let acct = PathBuf::from("/h/.claude-accts/z");
@@ -536,17 +536,17 @@ fn remote_host_never_resolves_to_a_local_path() {
     // 计数自检：一条 Remote 都没扫到 = 守卫空转
     // **等号而不是 `>=`**（T04 审计重要 5）：真实是 5 条，写 `>= 4` 恰好容忍一次
     // 静默降级——审计实测单独改一条 host 就是全绿。改 TOOLS 时要来改这个数。
-    // 〔TL1 · 4C〕4 → 5：`panorama` 推给远端那台的那一份（`~/.cc-monitor/bin/cc-monitor-panorama`，`Remote`）。
-    // 〔E2 · V28〕6 → 7：`ccm` 多一行旧落点 `~/.cc-monitor/bin/cc-monitor-backend`（旧默认 `backendPath`，认出是我们编的就删，`RetiredLegacy`）；
+    // 4 → 5：`panorama` 推给远端那台的那一份（`~/.cc-monitor/bin/cc-monitor-panorama`，`Remote`）。
+    // 6 → 7：`ccm` 多一行旧落点 `~/.cc-monitor/bin/cc-monitor-backend`（旧默认 `backendPath`，认出是我们编的就删，`RetiredLegacy`）；
     //   `backend` 推给远端那一格从 `$BACKEND_PATH` 换成固定落点 `~/.cc-monitor/bin/ccm`（条数不变）。
     // 7 → 6：旧工具推给远端那一格（`$ACCT_ISO_DEST`）随它删了（账号库改由那台后端自己建，`Either`）。
     assert_eq!(
         checked, 6,
         "Remote 条目数变了（真实应为 6）——改 TOOLS 就要来确认这个数。\
              ★ P4c（08-12）5→4：`~/.cc-bus/` 转 Either（`P4a` 把读面做成本机可用）；\
-             〔TL1〕4→5：代码全景组件推给远端那一份；\
-             〔GP1 · 第四波〕5→6：`ccm` 多一行旧版入口 `~/.local/bin/ccm`（认出是我们放的就删；合并时按两边增量相加）；\
-             〔E2〕6→7：`ccm` 多一行旧落点 `~/.cc-monitor/bin/cc-monitor-backend`"
+4→5：代码全景组件推给远端那一份；\
+5→6：`ccm` 多一行旧版入口 `~/.local/bin/ccm`（认出是我们放的就删；合并时按两边增量相加）；\
+6→7：`ccm` 多一行旧落点 `~/.cc-monitor/bin/cc-monitor-backend`"
     );
 }
 
@@ -568,19 +568,19 @@ fn remote_host_never_resolves_to_a_local_path() {
 fn every_host_declaration_is_pinned() {
     use HostScope::*;
     let want: &[(&str, &str, HostScope)] = &[
-        // 〔SR1b〕远端入口 `~/.local/bin/ccm` → `~/.cc-monitor/bin/ccm`（远端写只许两处；`01 §6.7b` 的落点）。
+        // 远端入口 `~/.local/bin/ccm` → `~/.cc-monitor/bin/ccm`（远端写只许两处）。
         ("ccm", "~/.cc-monitor/bin/ccm", Remote),
-        // 🔴 〔`K-R69` 09-12〕**本机那条** —— `Client` 是刻意的、也是本件的正题：
+        // 🔴 **本机那条** —— `Client` 是刻意的、也是本件的正题：
         //    在它之前，闭集里落点是 `…/ccm` 的只有上面那一条（远端）⇒ 本机 0 条，
         //    而用户 `K34` 逐字要的「旧的干净退役」就此没有承接方。
         //    ⚠ 标 `Either` 会**说假话**：这一份是 monitor 自己在**它跑着的那台**上
         //    放下去的（`local_backend::install_local_ccm_entry`），远端那台上没有它。
         ("ccm", "~/.cc-monitor/bin/ccm*", Client),
         ("ccm", "~/.cc-monitor/bin/cc-monitor-backend-*", Client),
-        // 〔E2 · E-c〕旧默认 `backendPath` 落下的那份后端字节（`RetiredLegacy`，认出是我们编的就删）。
+        // 旧默认 `backendPath` 落下的那份后端字节（`RetiredLegacy`，认出是我们编的就删）。
         ("ccm", "~/.cc-monitor/bin/cc-monitor-backend", Remote),
         ("ccm", "~/.bashrc", Remote),
-        // 〔`K-R60` 09-11〕cc-bus 的 `installable` 翻成 true 之后，
+        // cc-bus 的 `installable` 翻成 true 之后，
         // 「装得了就必须申报装到哪」当场要它 —— 部署真正写的就是这个目录。
         // `Either`：装的口只有本机一个，但 cc-bus 本身跟着 Claude Code 走
         // （与下面三条同一条理由，别只因为「装口在本机」就标 Client）。
@@ -597,44 +597,44 @@ fn every_host_declaration_is_pinned() {
         // 各号共用的用户级 MCP 与改写前的备份：那台后端自己的状态，账号库在哪台就写哪台 ⇒ `Either`。
         ("accounts", "~/.cc-monitor/accounts-mcp.json", Either),
         ("accounts", "~/.cc-monitor/backups/accounts-mcp", Either),
-        // 🔴 〔`K-R81` 09-12〕`remote-daemon` → `backend`，而它今天有**三行**：
+        // 🔴 `remote-daemon` → `backend`，而它今天有**三行**：
         //    同一份后端的三种载体（`K-R68` 现打）。三行的 `host` 逐条不同源：
         //    ① 安装包旁边那份与 ② 自释放那份都落在 monitor 跑着的**这台**（`Client`）；
         //    ③ 推给远端那台的那份是 `Remote` —— 而「远端」说的是「相对这台 monitor」，
         //    **不是它的身份**：在那台机器上它就是那台机器的本地后端（`K36`）。
         //    ⚠ 标 `Either` 会说假话：①② 那两份远端那台上没有。
         ("backend", "$APP_DIR", Client),
-        // 〔E2 · V28〕自释放那一份的本机落点并进 `ccm` 那一条（`~/.cc-monitor/bin/ccm*`）；旧释放名挂成那一条的 `RetiredLegacy`。
-        // 〔E2 · V28〕`$BACKEND_PATH` → 固定落点（它就是远端的 `ccm`，与下面 `ccm` 那一行是同一个文件的两种说法）。
+        // 自释放那一份的本机落点并进 `ccm` 那一条（`~/.cc-monitor/bin/ccm*`）；旧释放名挂成那一条的 `RetiredLegacy`。
+        // `$BACKEND_PATH` → 固定落点（它就是远端的 `ccm`，与下面 `ccm` 那一行是同一个文件的两种说法）。
         ("backend", "~/.cc-monitor/bin/ccm", Remote),
-        // 〔TL1 · 4C〕代码全景小程序（RM1f 起有落点的部署物）：两个载体、同一个相对落点、两台机器 ——
+        // 代码全景小程序（RM1f 起有落点的部署物）：两个载体、同一个相对落点、两台机器 ——
         //    本机那份是 monitor 跑着的这台放的（`place_local`，`Client`）；远端那份推给那台（`push_to`，`Remote`）。
         //    ⚠ 标 `Either` 会说假话：两份的来源与放法不同（本机原生 / 远端 musl），一台上有不等于另一台上有。
         ("panorama", "~/.cc-monitor/bin/cc-monitor-panorama", Client),
         ("panorama", "~/.cc-monitor/bin/cc-monitor-panorama", Remote),
         ("project-mcp", ".mcp.json", ProjectDir),
-        // 〔AS1 · 第四波 4B〕同一份文件的第二个写入来源（推 / 拉：条目原样从另一台机器拷来）。
+        // 同一份文件的第二个写入来源（推 / 拉：条目原样从另一台机器拷来）。
         //    `ProjectDir` 与上一行同一条理由：写在你选定的那个项目目录里，那个目录在哪台机器上就算哪台的。
         ("project-mcp", ".mcp.json", ProjectDir),
-        // 〔AS2 · 第四波 4B〕资产目录里「装到这台」的 skill：装到哪台就写哪台（本机页与远端页都能装）⇒ `Either`。
+        // 资产目录里「装到这台」的 skill：装到哪台就写哪台（本机页与远端页都能装）⇒ `Either`。
         ("skill-install", "~/.claude/skills", Either),
         // 装到某个项目里的那一份：写在你在确认卡上选的那个项目目录里 ⇒ 同 `.mcp.json` 那两行，`ProjectDir`。
         ("skill-install", ".claude/skills", ProjectDir),
-        // 〔SU1 · 第四波 4C〕同一格的第二个文件：那台后端自己的装记录（装到哪台就记在哪台）⇒ `Either`。
+        // 同一格的第二个文件：那台后端自己的装记录（装到哪台就记在哪台）⇒ `Either`。
         ("skill-install", "~/.cc-monitor/skill-installs.json", Either),
         // 卸掉不是 cc-monitor 装的之前放一份的地方：在被卸的那台 ⇒ `Either`。
         ("skill-install", "~/.cc-monitor/backups", Either),
         ("powershell-profile", "$PROFILE", Client),
-        // 〔`K-R62` 09-11〕本机 POSIX 那一格补上之后升进 `TOOLS` 的那一条。
+        // 本机 POSIX 那一格补上之后升进 `TOOLS` 的那一条。
         // `Client`：它写的是 **cc-monitor 跑着的这台**的 rc（远端那份 rc 归 `ccm` 那两行）。
         // 路径是占位符而不是 `~/.bashrc`：那份 rc 由界面上的人从盘上真实存在的几份里选，
         // 申报一个我们其实没在用的常量，这一页会拿它去查一个没人写的路径再报「缺失」。
         ("posix-rc-aliases", "$POSIX_RC", Client),
-        // 〔`K-R60` 09-11〕装不了、只读的那一档。`Either` 的理由与 cc-bus 那几条同源：
+        // 装不了、只读的那一档。`Either` 的理由与 cc-bus 那几条同源：
         // Claude Code 跑在哪台，这份记录就在哪台（`remote_history.rs` 真的从远端读它），
         // 标 `Client` 会让远端会话的用户在这一页上看到一句假话。
         ("claude-code", "~/.claude/projects/", Either),
-        // 〔GP1 · 第四波〕`设计/01 §6.7b` 迁移 ② ③：旧版放在远端 `~/.local/bin/ccm` 的那一份，认出是我们放的就删。
+        // 迁移 ② ③：旧版放在远端 `~/.local/bin/ccm` 的那一份，认出是我们放的就删。
         //   `Remote`：我们只往远端那一格推过它（本机那条入口从来在 `~/.cc-monitor/bin`）。
         ("ccm", "~/.local/bin/ccm", Remote),
     ];
@@ -669,7 +669,7 @@ fn host_is_not_a_function_of_destination() {
     use std::collections::HashMap;
     let mut by_dest: HashMap<String, std::collections::HashSet<HostScope>> = HashMap::new();
     for t in TOOLS.iter() {
-        // 🔴 〔`K-R81`〕`destination` 现在住在**载体**上 ⇒ 这条性质也按载体走。
+        // 🔴 `destination` 现在住在**载体**上 ⇒ 这条性质也按载体走。
         //    那不是顺手改写：它买到的东西比先前**多一格** —— 先前一个工具只有一个
         //    destination，`ccm` 那两条落点被同一个 key 盖住；今天两个载体各自入表。
         for c in t.carriers {
@@ -861,7 +861,7 @@ fn declared_destinations_are_pinned_to_the_real_writers() {
 
     // ① ccm：`sftp.rs` 里那个常量就是真落点
     let sftp = include_str!("../../../src/frontend/shell/src/sftp.rs");
-    // 〔E2 · V28〕落点就是后端本身：`sftp.rs` 的落点常量取自 `relay_route_core`（两半同一份），那一份逐字是 `.cc-monitor/bin/ccm`。
+    // 落点就是后端本身：`sftp.rs` 的落点常量取自 `relay_route_core`（两半同一份），那一份逐字是 `.cc-monitor/bin/ccm`。
     pin_definition(
         sftp,
         "pub(crate) const LANDING_REL: &str = relay_route_core::BACKEND_LANDING_REL;",
@@ -877,13 +877,13 @@ fn declared_destinations_are_pinned_to_the_real_writers() {
     )
     .unwrap();
     let ccm = TOOLS.iter().find(|t| t.id == "ccm").unwrap();
-    // 🔴 〔`K-R69` 09-12〕`ccm` 现在**两台机器上各一个落点** ⇒ 这一格从
+    // 🔴 `ccm` 现在**两台机器上各一个落点** ⇒ 这一格从
     //    「与 `CCM_CLI_REMOTE_PATH` 相等」变成「**远端那一半**与它相等」。
     //    本机那一半钉在别处（`tool_registry` 的
     //    `the_declared_local_ccm_path_really_matches_the_name_we_install`：
     //    申报的那个串要盖得住 `local_backend::local_ccm_entry_name()` 真放下去的名字）——
     //    两处钉的是两个真落点，别在这里再抄一份本机那个名字（`13b`：闭集只许一个住址）。
-    // 🔴 〔`K-R81` 09-12〕`ccm` 现在是**两个载体**（远端 shim / 本机那份改名副本）
+    // 🔴 `ccm` 现在是**两个载体**（远端 shim / 本机那份改名副本）
     //    ⇒ 这一格从「那个双值变体逐字相等」改成「**远端那个载体**的落点相等」。
     //    本机那一半仍钉在别处（`tool_registry` 的
     //    `the_declared_local_ccm_path_really_matches_the_name_we_install`）——
@@ -900,7 +900,7 @@ fn declared_destinations_are_pinned_to_the_real_writers() {
         "注册表声明的 ccm 远端落点与 sftp.rs 的 LANDING_REL 不一致"
     );
 
-    // ② 项目 MCP：〔MIG-3a〕写进了那台后端（`assets/mcp_edit.rs`），落点常量就是这个文件名
+    // ② 项目 MCP：写进了那台后端（`assets/mcp_edit.rs`），落点常量就是这个文件名
     let mcp = include_str!("../../../src/backend/assets/mcp_edit.rs");
     assert_eq!(
         mcp.matches(r#"pub(crate) const MCP_JSON: &str = ".mcp.json";"#)
@@ -914,7 +914,7 @@ fn declared_destinations_are_pinned_to_the_real_writers() {
             .iter()
             .map(|c| &c.destination)
             .collect::<Vec<_>>(),
-        // 〔AS1 · 第四波 4B〕两个载体（单条写 · 推 / 拉）落同一个文件。〔MIG-3a〕两者都进了那台后端，落点常量只有
+        // 两个载体（单条写 · 推 / 拉）落同一个文件。两者都进了那台后端，落点常量只有
         //    `mcp_edit.rs::MCP_JSON` 一处（推 / 拉那一趟 `mcp_sync_flow.rs` 引它）。
         vec![
             &ToolDestination::ProjectRelative(".mcp.json"),
@@ -935,7 +935,7 @@ fn declared_destinations_are_pinned_to_the_real_writers() {
 fn user_configured_destinations_declare_a_placeholder_not_a_guess() {
     let mut n = 0;
     for t in TOOLS.iter() {
-        // 🔴 〔`K-R81`〕按**载体**判：占位符要出现在**它自己那个载体**的 touches 里，
+        // 🔴 按**载体**判：占位符要出现在**它自己那个载体**的 touches 里，
         //    不是「这个工具的某一条 touch 里」—— 后者在多载体下会**静默配错对**。
         for c in t.carriers {
             if let ToolDestination::UserConfiguredPath { token, what } = &c.destination {
@@ -998,7 +998,7 @@ fn the_view_population_is_exactly_the_closed_set() {
 /// 家目录下只放着 `home_files` 里那几条绝对路径。
 ///
 /// ⚠ 名字刻意取**中性**的（`present` / `home_files`），不含被断言的任何子串
-/// 〔`6g`：断言用的子串别取自夹具的名字〕。
+/// 〔断言用的子串别取自夹具的名字〕。
 fn machine_with<'a>(
     present: &'a [&'a str],
     home_files: &'a [&'a str],
@@ -1102,7 +1102,7 @@ fn the_prompt_tier_really_looks_before_it_speaks() {
 /// 三种 [`EnvProbe`] 各喂一次，三格互不相同。
 ///
 /// ⚠ 断言用的是 `SurfaceState` 的**变体**，不是措辞里的子串
-/// 〔`6g`：断言用的子串别取自夹具的名字，也别靠一句话恒真〕。
+/// 〔断言用的子串别取自夹具的名字，也别靠一句话恒真〕。
 #[test]
 fn the_same_name_under_three_probes_gives_three_different_cells() {
     let h = home();
@@ -1169,7 +1169,7 @@ fn every_row_carries_its_tier_and_the_owed_one_never_reads_as_not_ours() {
         EnvTier::ALL.len()
     );
 
-    // ③ 欠装口那一档：〔V161〕用户 09-29「所有文案…不能把开发过程混进去」⇒ 说现状（这里装不了、要你自己装），
+    // ③ 欠装口那一档：用户 09-29「所有文案…不能把开发过程混进去」⇒ 说现状（这里装不了、要你自己装），
     //   不再留「应随 cc-monitor 一起安装，暂未提供」「安装入口还没写」那层「还欠着」的意思；按文案键断言。
     //   仍**不许**说成「不由 cc-monitor 提供」（`KR65D2`：不会被读成「不该我们装」）。
     //   闭集里今天没有这一档的成员 ⇒ 造一项喂同一个出行函数（`unmanaged_row`），判它的措辞。
@@ -1228,8 +1228,8 @@ fn rows_cover_every_touched_file_and_use_all_spec_fields() {
     let f = empty_probe();
     let h = home();
     let rows = build_rows(&env_with(&h, &f, Some("/usr/bin")), None);
-    // 〔`K-R60`〕人群换成闭集之后，行数 = 有 ToolSpec 那一半的 touches 数
-    //   + 手写那一半每项一行。**两半都现算**，不写死一个数〔`13b`〕。
+    // 人群换成闭集之后，行数 = 有 ToolSpec 那一半的 touches 数
+    //   + 手写那一半每项一行。**两半都现算**，不写死一个数。
     let expected: usize =
         TOOLS.iter().map(|t| t.touches().count()).sum::<usize>() + UNMANAGED_ENV.len();
     assert_eq!(
@@ -1244,7 +1244,7 @@ fn rows_cover_every_touched_file_and_use_all_spec_fields() {
         assert!(!r.path_declared.is_empty()); // touches[].path
     }
     // destination：远端那条必须解析不出本机路径
-    // 🔴 〔`K-R81`〕`remote-daemon` → `backend`，而它今天有三行 ⇒ 点名远端那一行。
+    // 🔴 `remote-daemon` → `backend`，而它今天有三行 ⇒ 点名远端那一行。
     let backend = rows
         .iter()
         .find(|r| r.tool_id == "backend" && r.host_label == host_label(HostScope::Remote))
@@ -1326,7 +1326,7 @@ fn settings_scopes_include_local_and_admit_project_is_unchecked() {
             Some("{}".to_string())
         }
     };
-    // 〔RM1a〕第四个参数是「有没有钩子字样」（〔C5〕生产两臂都交后端判；这里按同一张字样表现判）。
+    // 第四个参数是「有没有钩子字样」（生产两臂都交后端判；这里按同一张字样表现判）。
     let has = |p: &Path| read(p).map(|s| HOOK_PROGRAMS.iter().any(|n| s.contains(n)));
     let s = build_settings_scopes(&home().join(".claude"), &has, &f);
     assert_eq!(s.len(), 3);
@@ -1364,7 +1364,7 @@ fn unreadable_settings_does_not_claim_absence_of_hooks() {
 /// **本模块只准读，不准写**（红线）。守法是**白名单**而不是"不许出现哪些写法"
 /// ——本会话的教训：黑名单版本被审计用五种我没想到的写法绕过，
 /// 而白名单枚举每一处 `fs::` 用法并要求它们**都**在允许集合里，新写法自动被拦。
-/// ★ **`PathResolution` 的分派不许有兜底臂**〔audit-0805 08-06〕。
+/// ★ **`PathResolution` 的分派不许有兜底臂**。
 ///
 /// # 它钉的是「谁是被偶然守住的」那一类
 ///
@@ -1430,7 +1430,7 @@ fn the_path_resolution_dispatch_has_no_catch_all_arm() {
     );
 }
 
-/// 〔MIG-3b 续〕搬进后端之后：判定（`rows.rs`）**零** `fs::`；这台自己 stat 的那几下住 face（`footprint/mod.rs`），恰好是只读那几样。
+/// 搬进后端之后：判定（`rows.rs`）**零** `fs::`；这台自己 stat 的那几下住 face（`footprint/mod.rs`），恰好是只读那几样。
 /// 「把写交给别人」那一半（原先问 monitor 的 `write_site_registry`）由后端全树的 `readonly_guard` 接住（人群是本 crate 全部 `.rs`）。
 #[test]
 fn this_module_only_reads() {
@@ -1500,7 +1500,7 @@ fn this_module_only_reads() {
     }
 }
 
-/// 〔WF2〕要求住址：`第四波记录/WIN3.md §2`「足迹页仍有『C:\Users\zbl\.cc-monitor/bin/ccm*』混拼」。
+/// 要求：「足迹页仍有『C:\Users\zbl\.cc-monitor/bin/ccm*』混拼」。
 /// Windows 那一臂（喂 `\`，本机是 Linux）：申报里 `/` 写的相对段换成这台的分隔符；通配那一格与目录之间也用它 —— 整串不含 `/`。
 /// Linux 那一臂（`/`）原样（异源 = 手写期望）。
 #[test]
@@ -1530,9 +1530,9 @@ fn a_local_footprint_path_uses_one_separator_throughout() {
     );
 }
 
-// ===== 〔SHOTS 09-29〕旧版遗留那一档：不在 ＝ 该有的样子 =====
+// ===== 旧版遗留那一档：不在 ＝ 该有的样子 =====
 
-/// 要求住址：`设计/70 §6.1`「旧版放的入口 … 效果档 `RetiredLegacy`（旧版放的入口：认出是我们放的就删）」＋ 主会话 09-29 裁
+/// 要求：「旧版放的入口 … 效果档 `RetiredLegacy`（旧版放的入口：认出是我们放的就删）」＋ 主会话 09-29 裁
 /// 「这里不存在算不算正常是判断，按一处后端由后端给结论」。
 ///
 /// 空盘（什么都不在）上从远端那台看：读成「该不在、确实不在」的行 == 申报表里效果档是 `RetiredLegacy` 的那几条（两向相等）；

@@ -1,12 +1,12 @@
 //! F04c：**「这条命令能不能回落」的唯一判定**（monitor 侧走后端的所有控制命令共用）。
 //!
-//! # 🔴 通信层成员 `COMM-LAYER-MEMBER`〔`设计/05 §8` 步 3，2026-09-20〕
+//! # 🔴 通信层成员 `COMM-LAYER-MEMBER`
 //!
 //! 这一枚标记是**盘上那一侧**的凭据（登记那一侧在
 //! `tests/frontend/shell/comm_boundary_registry_tests.rs::REGISTERED`，两向集合相等）。
 //! 盖上它 = **上锁**，不是放行：本文件从此被 `C1`–`C5` ＋ `X1`–`X6` 十一条一起管着。
 //!
-//! **凭什么它属于通信层**：`设计/05 §4.5.2` 是面 A 的「连不上时怎么办」，
+//! **凭什么它属于通信层**：是面 A 的「连不上时怎么办」，
 //! 而本文件就是那一格在盘上的现物 —— 它把 `CallError` 翻成三态，判准逐字是
 //! 「**能不能证明这条命令根本没发出去**」。那正是 `§3.3.1` 的 `reach`
 //! （`NotSent` / 已发出）在今天这棵树上的样子，也是 `X1` 点名的三个线上类型之一
@@ -20,7 +20,7 @@
 //! 同目录下 `inbound_client.rs`（`CallError` 的**定义**所在）今天**圈不进来** ——
 //! C1 在它身上咬到 `agent`（三处，cc-bus 的 `extras.agent`）、X4 咬到一处 `try_send`。
 //! ⇒ **类型的家还在外面，而用它做分流的这一份先进来了。**
-//! 那不是矛盾，那是 C1 指出来的**下一刀该切哪儿**（逐份读数在 `真相源/`）。
+//! 那不是矛盾，那是 C1 指出来的**下一刀该切哪儿**（逐份读数在）。
 //!
 //! # 为什么它必须只有一份
 //!
@@ -71,18 +71,18 @@ pub(crate) enum Routed {
 }
 
 /// ★★ **分层判定的唯一一份**〔面 A 通道那一拍，2026-09-24〕：`inbound_client::CallError`
-/// ⇒ `设计/05 §3.3.1` 的三层（传输错 · 对端错 · 我们自己错）＋ `reach` 三档 ＋ `why`。
+/// ⇒ 三层（传输错 · 对端错 · 我们自己错）＋ `reach` 三档 ＋ `why`。
 ///
 /// 🔴 **它是全仓唯一 `match` `inbound_client::CallError` 的地方。** 旧的三态
 /// （[`route_call_error`]）从它收拢出来，通道的生产句柄（`chan/host.rs`）直接用它 ——
 /// 「能不能证明没发出去」从此只有一个答案，不再是两份实现靠对拍保平安。
 ///
-/// `hop` 是调用方那一侧给这一跳的编号（`05 §3.3.0` 的 `HopId.idx`，位置由调用方定）。
+/// `hop` 是调用方那一侧给这一跳的编号（`HopId.idx`，位置由调用方定）。
 ///
 /// | 进来的 | 分层结果 | 理由（与模块头注那张表逐档对应） |
 /// |---|---|---|
 /// | `Unsupported` | `Peer{Unsupported}` | 对端**事前**就说不认（`hello.commands`），一个字节没发 |
-/// | `Unavailable{code}` | `Peer{Refused{body}}`，body = `{"code","message"}` | 〔NET2〕对端握手时说过这台做不到（`hello.unavailable`），本侧没发；同对端事后回那个码 |
+/// | `Unavailable{code}` | `Peer{Refused{body}}`，body = `{"code","message"}` | 对端握手时说过这台做不到（`hello.unavailable`），本侧没发；同对端事后回那个码 |
 /// | `TooManyPending` | `Hop{write, NotSent, Overrun}` | 本侧在飞上限顶满，早于入队 |
 /// | `Disconnected` | `Hop{read, Unknown, Dropped}` | 两个产地分不开 ⇒ 拿不准一律 `Unknown` |
 /// | `Timeout` | `Hop{wait, Unknown, Overrun}` | 同上 |
@@ -101,7 +101,7 @@ pub(crate) fn layer_call_error(e: &CallError, hop: u8) -> Layered {
             },
             detail: text(copy_text("rsBackendRoute.layer.unsupported", &[])),
         },
-        // 〔NET2〕那台握手时说过做不到、本侧没发：对端的话（只是来得早）⇒ 与它事后回同一个码时同形，
+        // 那台握手时说过做不到、本侧没发：对端的话（只是来得早）⇒ 与它事后回同一个码时同形，
         //   调用方按码说人话；不回落（换条路也做不到）。
         CallError::Unavailable { code, .. } => Layered {
             error: w::CallError::Peer {
@@ -169,7 +169,7 @@ pub(crate) fn layer_call_error(e: &CallError, hop: u8) -> Layered {
 /// [`layer_call_error`] 的产出：`05` 的分层错误 ＋ 给人看的那句话的原料。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Layered {
-    /// `05 §3.3.1` 的三层。**分流只看它。**
+    /// 三层。**分流只看它。**
     pub error: w::CallError,
     /// 那句话的原料 —— 不参与分流。
     pub detail: Detail,

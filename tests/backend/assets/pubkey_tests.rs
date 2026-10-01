@@ -1,5 +1,5 @@
 //! 要求住址：主会话 09-28 裁 MIG-3b 报备 2 —— 公钥推送进本机后端（`pubkey-push`），写 `authorized_keys` 经那台（后端不在就一次 exec、只写这一件）。
-//! 〔MIG-3b 续〕校验 · 规划 · 解记号 · 那一串 shell 的判据原住 `tests/frontend/shell/pubkey_tests.rs`，随实现搬来、期望一字未改。
+//! 校验 · 规划 · 解记号 · 那一串 shell 的判据原住 `tests/frontend/shell/pubkey_tests.rs`，随实现搬来、期望一字未改。
 use super::*;
 use crate::assets::aliases::tests::HomeDoor;
 use std::sync::Mutex;
@@ -280,7 +280,7 @@ fn append_respects_newline_boundary_and_idempotent() {
     std::fs::remove_dir_all(&dir).ok();
 }
 
-/// 〔SH1〕并进 `authorized_keys` 的纯规划：整行相等才算已有（`grep -qxF` 同义）· 末行无换行先补一个 · 空文件 / 不在直接一行。
+/// 并进 `authorized_keys` 的纯规划：整行相等才算已有（`grep -qxF` 同义）· 末行无换行先补一个 · 空文件 / 不在直接一行。
 #[test]
 fn authorized_keys_plan_matches_the_shell_line() {
     let k = "ssh-ed25519 AAAAC3Nza me@x";

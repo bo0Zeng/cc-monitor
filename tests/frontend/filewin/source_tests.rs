@@ -36,7 +36,7 @@ fn listing_a_local_dir_yields_dirs_first_then_case_insensitive_name() {
 
 /// 🔴 上面头注那个「两份实现」的缝 —— 这条把**两条路的真实输出**对拍成相等。
 ///
-/// 远端那一侧的序**曾经**由池子里那个私有排序函数产生（〔F7c 收尾 09-24〕`sort_entries`〔散文墓碑〕已随列目录命令删了，
+/// 远端那一侧的序**曾经**由池子里那个私有排序函数产生（`sort_entries`〔散文墓碑〕已随列目录命令删了，
 /// 这条对拍今天钉的是「生产契约的定义」与 [`sort_rows`] 相等）；
 /// 这里够不着它，但够得着**它排过的结果**在类型上等价的那个形状 ——
 /// 于是拿同一组合成名字，一边喂 [`sort_rows`]，一边按生产契约的定义重算，
@@ -66,7 +66,7 @@ fn the_two_orderings_agree_on_a_synthetic_set() {
     // ⚠ 缺省那一档 —— 它就是本刀之前那个写死的函数（逐字节相同那一条住下面）。
     sort_rows(&mut mine, SortBy::default());
 
-    // 生产契约逐字（原住池子那个私有排序函数，〔F7c 收尾〕已删）：目录在前，再名称小写升序。
+    // 生产契约逐字（原住池子那个私有排序函数，已删）：目录在前，再名称小写升序。
     let mut theirs: Vec<(String, bool)> =
         names.iter().map(|(n, d)| ((*n).to_string(), *d)).collect();
     theirs.sort_by(|a, b| {
@@ -83,16 +83,16 @@ fn the_two_orderings_agree_on_a_synthetic_set() {
     );
 }
 
-// 〔F2 · 2026-09-24〕这里原先有一条「`SftpEntry` → 行的映射六格一格不许掉」的判据。
+// 这里原先有一条「`SftpEntry` → 行的映射六格一格不许掉」的判据。
 // 窗口进程不再经 SFTP 列目录（没有退路，`D11`）⇒ 那个映射函数连同这条判据一起走了；
 // 「后端送的每一格落到行上哪一格」由下面那张逐格表（`files.ls` 的声明现读）接着管。
 
 /// 🔴 **整棵 `filewin/` 上「列一个远端目录」恰好一处，是问后端 `files-ls`；池子那条列目录命令零处。**
 ///
-/// 〔MIG-3a · 主会话 09-28 裁 3〕两处 → 一处：`entry.rs` 那一处（monitor 开窗前替窗口列第一屏）退役，
+/// 〔主会话 09-28 裁 3〕两处 → 一处：`entry.rs` 那一处（monitor 开窗前替窗口列第一屏）退役，
 /// 第一屏由窗口进程自己列（`proc::first_screen` → `source::list_dir`，落在 `source.rs` 那一处上）。下面「恰好两处」那段是历史。
 ///
-/// 〔F2 · 2026-09-24〕上一版这里是两条：「`list_remote` 调的是共用池」＋「池子那条列目录命令
+/// 上一版这里是两条：「`list_remote` 调的是共用池」＋「池子那条列目录命令
 /// 整棵树恰好一处（`source.rs`）」。窗口改成只经通道说 `call` 之后，那条路整条摘了 ⇒ 判据翻面：
 ///
 /// - 问后端 `files-ls` 的地方（`CMD_LS` 这个名字被用到的地方）恰好两处：
@@ -105,7 +105,7 @@ fn the_two_orderings_agree_on_a_synthetic_set() {
 /// [`listing_has_no_second_road_when_the_backend_refuses`] 那条行为判据买。
 #[test]
 fn the_whole_filewin_tree_lists_a_remote_directory_only_by_asking_the_backend() {
-    // 〔P4〕「整棵 `filewin/`」今天是两棵：本包 ＋ monitor 那一侧 `src/frontend/shell/src/filewin/`（开窗入口 · 起进程），人群与搬家前逐份相同。
+    // 「整棵 `filewin/`」今天是两棵：本包 ＋ monitor 那一侧 `src/frontend/shell/src/filewin/`（开窗入口 · 起进程），人群与搬家前逐份相同。
     let root = crate::guard_support::crate_src_root();
     let monitor_side = crate::guard_support::repo_root().join("src/frontend/shell/src/filewin");
     let files: Vec<std::path::PathBuf> = guard_core::files_by_extension(&root, "rs")
@@ -163,7 +163,7 @@ fn the_whole_filewin_tree_lists_a_remote_directory_only_by_asking_the_backend() 
     asking.sort();
     assert_eq!(
         asking,
-        // 〔MIG-3a · 主会话 09-28 裁 3〕`entry.rs` 那一处（monitor 开窗前替窗口列第一屏）退役：第一屏由窗口进程经 `source::list_dir` 列。
+        // 〔主会话 09-28 裁 3〕`entry.rs` 那一处（monitor 开窗前替窗口列第一屏）退役：第一屏由窗口进程经 `source::list_dir` 列。
         vec![("source.rs".to_string(), true)],
         "问后端列目录的地方不再是「`source.rs` 一处」"
     );
@@ -210,7 +210,7 @@ fn walking_up_uses_slashes_only_and_never_the_platform_separator() {
         "末段里的反斜杠被当成分隔符了"
     );
     // 🔴 **阴性对照**：「`\` 也当分隔符」那一形（`std::path` 在 Windows 上就是它）在这一格上答得不同
-    //    ⇒ 上面那一比不是恒真的。〔CIFIX-FW〕上一版只在 Windows 上比、且比的是上面那格（两种切法同答）⇒ Windows runner 上红、Linux 上从没跑过。
+    //    ⇒ 上面那一比不是恒真的。上一版只在 Windows 上比、且比的是上面那格（两种切法同答）⇒ Windows runner 上红、Linux 上从没跑过。
     let also_backslash = |p: &str| -> String {
         let t = p.trim_end_matches(['/', '\\']);
         match t.rfind(['/', '\\']) {
@@ -242,7 +242,7 @@ fn a_missing_dir_is_an_error_not_an_empty_list() {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// 🔴〔第七刀 2026-09-21〕远端 home 那一跳 ——〔F7a · 第三波 09-24〕问的是后端 `files-home`
+// 🔴远端 home 那一跳 ——问的是后端 `files-home`
 // ════════════════════════════════════════════════════════════════════════
 //
 // 问 home 那一趟要一个起着的后端（〔09-28 裁 3〕窗口进程的 `proc::first_screen`）⇒ 有逻辑的两段抽成了
@@ -250,7 +250,7 @@ fn a_missing_dir_is_an_error_not_an_empty_list() {
 // 失败路径那一半（问不到就别开窗、带原话）住 `proc_tests::the_first_screen_asks_home_only_when_told_nothing`。
 // ⚠ 第七刀那一版问的是 SFTP 的 `realpath(".")`；「服务端」「对面」这些字眼说的都是那台机器。
 
-/// 〔F7a〕后端那条应答 → 起点：字符串 · `b16`（合法 UTF-8 的）两形都收；
+/// 后端那条应答 → 起点：字符串 · `b16`（合法 UTF-8 的）两形都收；
 /// 不是合法 UTF-8 / 缺 `path` / 形状不对 ⇒ **报错**，不有损解码去开一个别处的窗。
 #[test]
 fn the_home_reply_is_decoded_as_bytes_and_refused_when_it_cannot_address_a_directory() {
@@ -342,7 +342,7 @@ fn an_answer_we_cannot_use_as_a_start_is_an_error_not_a_blank_window() {
     }
 }
 
-/// 🔴〔第十刀〕远端 basename —— **只按 `/` 切**。
+/// 🔴远端 basename —— **只按 `/` 切**。
 ///
 /// 盘上此前已有**三处** `rsplit('/')` 各写一份，这一条钉的是第四处不要再长出来
 /// （逐条理由住 `remote_basename` 头注）。
@@ -363,7 +363,7 @@ fn a_remote_basename_only_ever_splits_on_slashes() {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// 🔴〔第十二刀 2026-09-22〕后端做，前端拿结果 —— 只读那一侧
+// 🔴后端做，前端拿结果 —— 只读那一侧
 // ════════════════════════════════════════════════════════════════════════
 
 /// 一条正常的 `files-ls` entry → 一行。
@@ -534,7 +534,7 @@ fn truncation_is_carried_back_not_dropped() {
     );
 }
 
-/// 🔴〔F2 · 2026-09-24〕**后端说不行 ⇒ 列目录就是失败，没有第二条路**（`D11`）。
+/// 🔴**后端说不行 ⇒ 列目录就是失败，没有第二条路**（`D11`）。
 ///
 /// 上一版这里是反面：「退路在、排在问后端之后、只有一支」（源码代理，钉三行的行序）。
 /// 退路拿掉之后它换成**行为**判据 —— 挂一台合成后端（真回环、真钥匙、真 `dial`）：
@@ -580,7 +580,7 @@ async fn listing_has_no_second_road_when_the_backend_refuses() {
     std::fs::remove_dir_all(&root).ok();
 }
 
-/// 要求住址 `设计/60 §2.4`「只有远端，没有本机」（远端路径恒用 `/`）—— 〔CIFIX-FW〕Windows runner 上那一形**在这台 Linux 上也跑一遍**。
+/// 要求：「只有远端，没有本机」（远端路径恒用 `/`）—— Windows runner 上那一形**在这台 Linux 上也跑一遍**。
 ///
 /// 合成后端拿本机临时目录演远端，Windows 上那条目录是 `C:\…`。注入 `\` 当本机分隔符：
 /// ① 原样交给窗口（上一版夹具就这样）⇒ 一行的名字是整条路径、面包屑里冒出整条根 —— 正是
@@ -790,7 +790,7 @@ fn breadcrumbs_are_every_prefix_with_the_root_first() {
     assert_eq!(breadcrumbs("/a\\b").len(), 2);
 }
 
-// 〔P4〕「逆向日历算法与正向那一份互为逆」要 monitor `utils::days_from_civil` 当异源正向 ⇒ 挪到 `tests/frontend/shell/filewin/cross_half_tests.rs`。
+// 「逆向日历算法与正向那一份互为逆」要 monitor `utils::days_from_civil` 当异源正向 ⇒ 挪到 `tests/frontend/shell/filewin/cross_half_tests.rs`。
 
 /// 修改时间那一列写什么：UTC，尾巴上一个 `Z`。
 #[test]
@@ -887,7 +887,7 @@ fn the_field_by_field_table_between_backend_and_window_is_a_judge() {
 ///
 /// # 人群与口径
 ///
-/// - 人群：`filewin/` 生产段（`guard_core::production_code` 剥过测试与注释）。〔P4〕窗口独立成包之后那是三棵：
+/// - 人群：`filewin/` 生产段（`guard_core::production_code` 剥过测试与注释）。窗口独立成包之后那是三棵：
 ///   窗口包本身 · monitor 那一侧 `shell/src/filewin/`（开窗入口也切「跳到这个文件」）· 契约 crate `filewin-contract`
 ///   （`parent_dir` / `remote_basename` 搬去那里、两边共用一份）；后两棵的键带前缀。
 /// - 算一处「切」：一行里出现 `.split('/')` · `.rsplit('/')` · `.rfind('/')` ·
@@ -988,7 +988,7 @@ fn fn_name_on(line: &str, fn_word: &str) -> Option<String> {
     (!name.is_empty()).then_some(name)
 }
 
-/// 🔴〔F2〕**通道那三层失败，每一层说的话都不一样** —— 而「发没发出去」那一格一定说出来。
+/// 🔴**通道那三层失败，每一层说的话都不一样** —— 而「发没发出去」那一格一定说出来。
 ///
 /// 写面那几条据此决定要不要再点一次：`NotSent` ＝ 这一下没生效；`Sent` / `Unknown` ＝ 对面可能已经做了。
 /// 压成同一句的话，用户在「删除」上再点一次就可能删两遍。
@@ -1027,7 +1027,7 @@ fn each_layer_of_a_channel_failure_says_something_different() {
         "{refused}"
     );
     // 不认这条命令 ⇒ 说「版本旧了、不支持」那一条。
-    // 〔FIX2 · 99 §2.1 ㉛②〕按文案键断言，不按原文（CP1 裁掉了命令名，「是哪条命令」那一维不在句子里）。
+    // 按文案键断言，不按原文（CP1 裁掉了命令名，「是哪条命令」那一维不在句子里）。
     assert_eq!(
         said(
             "files-chmod",

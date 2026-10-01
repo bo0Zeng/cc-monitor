@@ -10,9 +10,9 @@
 //!   后端各写者引它们落盘；monitor 的数据位置页（`data_paths.rs::backend_entries`）按它们列出，判据两向对着这一族。
 //! - crate 名还是「relay-route」—— 它最早只装中转门牌；改名发版后另议。
 //!
-//! # 它为什么是一个共享 crate（`设计/20 §5` 目标 · `§10` 第 5 条）
+//! # 它为什么是一个共享 crate（目标 · `§10` 第 5 条）
 //!
-//! 〔US1 · 第四波 4D〕先前这几样在两个半边**各写一份**：
+//! 先前这几样在两个半边**各写一份**：
 //!
 //! | 件 | monitor 那一份 | 后端那一份 | 先前靠什么对上 |
 //! |---|---|---|---|
@@ -26,7 +26,7 @@
 //! # 它**不是**业务 crate
 //!
 //! 这里一个账号 / 凭据 / 上游的名字都没有：两个段是**位置**（第 1/2 段），谁是 agent、谁是账号只在后端上游选择那一层
-//! 才有名字（`设计/20 §0` 条 48）。⇒ 通信层成员 `relay/route.rs` 可以 `use` 它（`设计/05 §2` `C2` 禁的是业务 crate）。
+//! 才有名字（条 48）。⇒ 通信层成员 `relay/route.rs` 可以 `use` 它（`C2` 禁的是业务 crate）。
 //!
 //! # 谁用哪几样
 //!
@@ -39,9 +39,9 @@
 //! - 后端按家那一族落盘：`control/exit_policy` · `control/files_commit` · `control/panorama` · `control/resident` ·
 //!   `assets/skill_ledger` · `assets/asset_catalog` · `platform/shell/dialect`（两份别名文件）。
 
-/// 〔HOST · `设计/05 §5.2` 两个端口〕**常驻监听口**的门牌也住这里（它与中转口是这台机器上后端的两个门）：
+/// 〔两个端口〕**常驻监听口**的门牌也住这里（它与中转口是这台机器上后端的两个门）：
 /// 这台机器 ＋ 这个 agent 家目录 ⇒ 那一个口。本机宿主（monitor `local_backend_host`）与远端 `--resident-ensure` 同一个函数
-/// ⇒ 一台机器一个常驻后端，本机 / 远端视角收敛（`01 §3.3a`）。FNV-1a 写死（`DefaultHasher` 跨 Rust 版本不稳定，升级后要算出同一个口）。
+/// ⇒ 一台机器一个常驻后端，本机 / 远端视角收敛。FNV-1a 写死（`DefaultHasher` 跨 Rust 版本不稳定，升级后要算出同一个口）。
 pub fn listen_port_for(home: &str) -> u16 {
     const PORT_BASE: u16 = 49152;
     const PORT_SPAN: u32 = 16384;
@@ -53,14 +53,14 @@ pub fn listen_port_for(home: &str) -> u16 {
     PORT_BASE + ((h % u64::from(PORT_SPAN)) as u16)
 }
 
-/// 〔E2 · V28 · `设计/01 §6.7b`〕**后端的落点**（相对家目录）：那个文件就是后端二进制本身，名字叫 `ccm`；本机与远端同一个。
+/// **后端的落点**（相对家目录）：那个文件就是后端二进制本身，名字叫 `ccm`；本机与远端同一个。
 /// 远端的 `backendPath`（可填的格）删了，monitor 与后端往那台拼命令、推字节都只认这一处。
 pub const BACKEND_LANDING_REL: &str = ".cc-monitor/bin/ccm";
 
-/// 同一个落点在远端 POSIX shell 里的写法（远端今天只承诺 POSIX，`01 §6.7b` 表 B）：`$HOME` 在那台上展开，其余字节都是安全字符。
+/// 同一个落点在远端 POSIX shell 里的写法（远端今天只承诺 POSIX）：`$HOME` 在那台上展开，其余字节都是安全字符。
 pub const BACKEND_LANDING_SHELL: &str = "\"$HOME\"/.cc-monitor/bin/ccm";
 
-/// 〔HOST〕常驻监听口的钥匙文件（相对家目录；0600，本机宿主与远端 `--resident-ensure` 同一份）。
+/// 常驻监听口的钥匙文件（相对家目录；0600，本机宿主与远端 `--resident-ensure` 同一份）。
 pub const LISTEN_TOKEN_FILE_REL: &str = ".cc-monitor/listen-token";
 
 /// 中转在回环上听的那个口。**本机**：monitor 起常驻后端时以 `CCM_RELAY_PORT` 交给它（它在进程里起中转）；
@@ -71,27 +71,27 @@ pub const PORT: u16 = 8788;
 /// 注入的 URL 不带钥匙本身，渲染成 `$(cat ~/<本常量>)` 在那台机器的 pane shell 里展开（RK1）。
 pub const KEY_FILE_REL: &str = ".cc-monitor/relay-key";
 
-/// 〔P3 · `设计/70 §6.2` · V160「一台机器一个家」〕后端的**上传暂存区**（相对家目录）：SFTP 传输台只往这里写 `<key>.part`，
+/// 〔「一台机器一个家」〕后端的**上传暂存区**（相对家目录）：SFTP 传输台只往这里写 `<key>.part`，
 /// 传完由那台后端提交、挪进目标。后端按它落盘（`control/files_commit.rs::STAGING_DIR`），monitor 的数据位置页按它列出。
 pub const STAGING_DIR_REL: &str = ".cc-monitor/staging";
 
-/// 〔P3 · 同上〕代码全景的**索引根**（相对家目录）：那台后端起全景小程序时交的 `--store`（`control/panorama.rs::store_dir`），
+/// 〔同上〕代码全景的**索引根**（相对家目录）：那台后端起全景小程序时交的 `--store`（`control/panorama.rs::store_dir`），
 /// 被分析的仓零字节；monitor 的数据位置页按它列出。
 pub const PANORAMA_INDEX_REL: &str = ".cc-monitor/panorama";
 
-/// 〔P3 · 主会话 09-29 裁「家里的都进唯一枚举」〕这台机器上后端的**退出行为设置**（只有后端写，`control/exit_policy.rs`）。
+/// 〔「家里的都进唯一枚举」〕这台机器上后端的**退出行为设置**（只有后端写，`control/exit_policy.rs`）。
 pub const BACKEND_POLICY_REL: &str = ".cc-monitor/backend.json";
 
-/// 〔P3 · 同上〕别名块文件：POSIX shell 读的那一份（后端 `platform/shell/dialect.rs` 写，rc 里那一行 source 它）。
+/// 〔同上〕别名块文件：POSIX shell 读的那一份（后端 `platform/shell/dialect.rs` 写，rc 里那一行 source 它）。
 pub const POSIX_ALIASES_REL: &str = ".cc-monitor/aliases.sh";
 
-/// 〔P3 · 同上〕别名块文件：PowerShell 读的那一份。
+/// 〔同上〕别名块文件：PowerShell 读的那一份。
 pub const PS_ALIASES_REL: &str = ".cc-monitor/aliases.ps1";
 
-/// 〔P3 · 同上〕skill 装记录（后端 `assets/skill_ledger.rs` 写；卸的时候按它删）。
+/// 〔同上〕skill 装记录（后端 `assets/skill_ledger.rs` 写；卸的时候按它删）。
 pub const SKILL_LEDGER_REL: &str = ".cc-monitor/skill-installs.json";
 
-/// 〔P3 · 同上〕资产目录（后端 `assets/asset_catalog.rs` 写；各台机器之间自动对上）。
+/// 〔同上〕资产目录（后端 `assets/asset_catalog.rs` 写；各台机器之间自动对上）。
 pub const ASSET_CATALOG_REL: &str = ".cc-monitor/assets-catalog.json";
 
 /// 从一台卸掉不是 cc-monitor 装的扩展之前，先挪（skill 目录）/ 抄（MCP 配置）到这里（后端 `assets/ext.rs` 经文件管理面写）。
@@ -100,7 +100,7 @@ pub const EXT_BACKUPS_DIR_REL: &str = ".cc-monitor/backups";
 /// 这台账号库里各号共用的用户级 MCP（共享集合 ＋ 上次同步时各号的样子；后端 `accounts/manage/mcp_share_exec.rs` 写，0600）。
 pub const ACCOUNTS_MCP_REL: &str = ".cc-monitor/accounts-mcp.json";
 
-/// 〔P3 · 同上〕常驻监听口的进程记录的文件名（与 [`LISTEN_TOKEN_FILE_REL`] 同一个目录）：本机宿主与远端
+/// 〔同上〕常驻监听口的进程记录的文件名（与 [`LISTEN_TOKEN_FILE_REL`] 同一个目录）：本机宿主与远端
 /// `--resident-ensure` 按同一个口（[`listen_port_for`]）找同一份。
 pub fn listen_pid_file_name(port: u16) -> String {
     format!("listen-{port}.pid")
@@ -142,7 +142,7 @@ pub fn split_keyed_base_url(url: &str) -> Option<(&str, &str)> {
         .then_some((head, tail))
 }
 
-/// 路由路径第一段的两个前缀 = 两种模式（`设计/20 §2`「为什么用两个前缀而不是一个哨兵段」）。
+/// 路由路径第一段的两个前缀 = 两种模式（「为什么用两个前缀而不是一个哨兵段」）。
 ///
 /// `/s/` 代入：上游选择的表里必须有这一行，没有 ⇒ 404；`/t/` 直通：中转**永不**代入凭据，第 2 段只当标签。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -169,7 +169,7 @@ impl RouteMode {
 /// 一段路由里允许的字符 —— 白名单：ASCII 字母数字与 `-` `_`，1..=128 字节。
 ///
 /// `.` 与 `/` 不在里面 ⇒ `..` 构造不出来；路由段要进 tee 行与日志，放开任意字节等于给换行 / 控制字符开一条路。
-/// ⚠ 起会话身份 token（`CCM_LAUNCH_ID`）也用这一条字符集；中转给流打标签的请求头值也过它（〔V141〕流标签不再是路由段）。
+/// ⚠ 起会话身份 token（`CCM_LAUNCH_ID`）也用这一条字符集；中转给流打标签的请求头值也过它（流标签不再是路由段）。
 pub fn segment_is_safe(seg: &str) -> bool {
     !seg.is_empty()
         && seg.len() <= 128
@@ -181,7 +181,7 @@ pub fn segment_is_safe(seg: &str) -> bool {
 /// 拼 `/<前缀>/<seg1>/<seg2>`。**任一段过不了 [`segment_is_safe`] ⇒ `None`**（fail-closed：
 /// 拼错一段的症状是中转回一个查不出来的 404，所以宁可当场拒）。
 ///
-/// 〔V141〕没有第 3 段：会话 id 归 agent 自己，启动器不往地址里塞会话身份 ⇒ 这条地址**不随会话变**，
+/// 没有第 3 段：会话 id 归 agent 自己，启动器不往地址里塞会话身份 ⇒ 这条地址**不随会话变**，
 /// 中转从 agent 请求里自带的头认会话。
 pub fn route_path(mode: RouteMode, seg1: &str, seg2: &str) -> Option<String> {
     (segment_is_safe(seg1) && segment_is_safe(seg2))

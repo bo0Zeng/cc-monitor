@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# cc-keepalive <to> [附言...]  —— 保活的**调用方**(设计 95 §3bis),不是 cc-bus 的功能。
+# cc-keepalive <to> [附言...]  —— 保活的**调用方**(设计),不是 cc-bus 的功能。
 #
 # ## 它是什么
 #

@@ -1,9 +1,9 @@
 /**
- * 〔CFG1 · 4D〕**配置落盘失败要出声**（E §3.3 吞错普查：分组 / 固定 / 顺序 / 行为设置 / 快捷键 落盘失败只打 console）。
+ * **配置落盘失败要出声**（E §3.3 吞错普查：分组 / 固定 / 顺序 / 行为设置 / 快捷键 落盘失败只打 console）。
  *
  * 守的要求（住址）：`INVARIANTS §12`「**关键失败必须** …… 状态栏 toast 红色 3-5s 提示」。
- * ⚠ 与 `设计/30 §C.3`「先改内存再落盘，落盘失败只记日志」相反 —— 主会话 09-25 按 §12 认可改成出声
- *（后果是「重启后分组 / 固定 / 顺序没了」，正是用户看不见的那一类损失）；30 §C.3 那句由 DD2 改写。
+ * ⚠ 与「先改内存再落盘，落盘失败只记日志」相反 —— 主会话 09-25 按 §12 认可改成出声
+ *（后果是「重启后分组 / 固定 / 顺序没了」，正是用户看不见的那一类损失）；那句由 DD2 改写。
  *
  * 形状：每一处写者注入一次失败 ⇒ toast **恰好一条**、标题 == 文案表里那句（期望从表里取 —— 表是对外文案的唯一来源，
  * 这里要钉的是「出了、出的是这一句」，不是那句话本身怎么写）。反面对照：写成功 ⇒ 零条。
@@ -19,7 +19,7 @@ const boom = async (): Promise<void> => {
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn(), Channel: class {} }));
 vi.mock("@tauri-apps/api/event", () => ({ emit: vi.fn(), listen: vi.fn(async () => () => {}) }));
 vi.mock("../../../src/frontend/ui/error-toast", () => ({ showActionFailureToast: vi.fn() }));
-// 〔GRP1 · V140〕分组的每一个动作把组表与几个 tab 的组 id 键装进一次 `patchConfig`（`TabBarPrefs.writeGroups`）⇒ 失败注入在写口这一层。
+// 分组的每一个动作把组表与几个 tab 的组 id 键装进一次 `patchConfig`（`TabBarPrefs.writeGroups`）⇒ 失败注入在写口这一层。
 //   别的几个写者在下面各自被替掉，不经这里。
 vi.mock("../../../src/frontend/ui/config", async (orig) => ({
   ...(await orig<Record<string, unknown>>()),
@@ -74,7 +74,7 @@ function prefs(): TabBarPrefs {
   return new TabBarPrefs(store as never, host as never);
 }
 
-/** 〔GRP1〕栏里一个 tab 在组 `g` 里 —— 解散它就是一次分组写。 */
+/** 栏里一个 tab 在组 `g` 里 —— 解散它就是一次分组写。 */
 function groupedPrefs(): TabBarPrefs {
   const store = { orderedIds: ["s"], tabs: new Map([["s", { sessionId: "s", group: "g" }]]), savedOrder: [] };
   const p = new TabBarPrefs(store as never, { refreshTabBar: () => {} } as never);

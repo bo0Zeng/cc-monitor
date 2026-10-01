@@ -2,14 +2,14 @@
 //!
 //! # 它与 monitor 侧那条路的关系
 //!
-//! monitor 的 `kill_remote_tmux`（〔C4e〕已迁到界面 `src/frontend/ui/tmux-control.ts::killSession`，经通道直接说本命令）当年拼一条穿过 ssh + shell 的原子命令，
+//! monitor 的 `kill_remote_tmux`（已迁到界面 `src/frontend/ui/tmux-control.ts::killSession`，经通道直接说本命令）当年拼一条穿过 ssh + shell 的原子命令，
 //! 带 §34 的 **Gate 1/2/3**。本模块是它在后端侧的对应物：
 //! **argv 直传、不过 shell**，三道门由 [`super::gate::admit_destructive`] 复现。
 //!
 //! ⚠ **本模块落地不等于 monitor 那条路已经切过来了。** 定框 C6 逐字写着
 //! 「**先搬 Gate 2，再切 kill / send-keys —— 顺序不可反**」；F03 搬了 Gate 2，
 //! F04a（本件）搬 Gate 3 + 这条 kill，**切路由是 F04b**。
-//! 那件的验证面里有「真远端那一跳」，本机结构性验不了（ROADMAP §5）⇒ 单独一件。
+//! 那件的验证面里有「真远端那一跳」，本机结构性验不了⇒ 单独一件。
 //!
 //! # ★ 为什么杀的是句柄不是名字
 //!
@@ -17,10 +17,10 @@
 //! 之后 `kill-session -t '$3'`：名字在窗口期内被重新绑定到别的会话也**杀不到别人**。
 //! 这与 `super::gate` 头注那段 TOCTOU 分析是同一条纪律 —— **破坏性动作尤其不能对名字下手。**
 //!
-//! # 〔SH1 · D-g〕杀成之后顺手从 cc-bus 收掉登记在这个会话上的 id
+//! # 杀成之后顺手从 cc-bus 收掉登记在这个会话上的 id
 //!
 //! 杀之前读下全部 pane 的根进程 pid，杀成之后按 `agents.tsv` 第 4 列那个 pid 认人、逐个 `cc-kill`（`cc_bus::unregister_panes`）；
-//! 那一步失败不改杀会话的结局；〔FIX4 · `95 §6`〕注销的结局进成品的 `bus` 那一格（注销了谁 · 谁没注销成 · 名册读不到），界面说一句。
+//! 那一步失败不改杀会话的结局；注销的结局进成品的 `bus` 那一格（注销了谁 · 谁没注销成 · 名册读不到），界面说一句。
 //!
 //! # 错误码
 //!
@@ -52,7 +52,7 @@ pub(crate) fn parse_name(args: &serde_json::Value) -> Result<String, CmdErr> {
     Ok(name.to_string())
 }
 
-/// 〔TAIL · DUP3 §5 ③ ⑦〕**已有会话名**的 Gate 1（结束 · 抓屏 · 送键共用）：规则只有一份
+/// 〔DUP3 §5 ③ ⑦〕**已有会话名**的 Gate 1（结束 · 抓屏 · 送键共用）：规则只有一份
 /// `crate::control::gate_rules::existing_tmux_name_issue`（空 · 控制符 · 视觉欺骗字符），外加 `:`（tmux 目标语法的分隔符，真会话名里不会有）。
 /// `=` 不拒：`=a=b:` 精确命中名叫 `a=b` 的会话，attach 那一条早就放行它。
 pub(crate) fn admit_existing_name(name: &str) -> Result<(), CmdErr> {
@@ -86,7 +86,7 @@ pub(crate) fn run(name: &str) -> Result<super::cc_bus::BusCleanup, CmdErr> {
     //   ⇒ 通过后拿到句柄。**顺序不可反**：门在 kill 之前，由
     //   `the_kill_path_admits_before_it_kills` 钉住。
     let handle = super::gate::admit_destructive(name, &target)?;
-    // 〔SH1 · D-g〕杀之前记下这个会话全部 pane 的根进程 pid：杀完按它认 cc-bus 名册里登记在这里的 id（不按会话名猜）。
+    // 杀之前记下这个会话全部 pane 的根进程 pid：杀完按它认 cc-bus 名册里登记在这里的 id（不按会话名猜）。
     let panes = pane_pids(&handle);
     let out = Command::new("tmux")
         .args(["kill-session", "-t", &handle])
@@ -113,7 +113,7 @@ pub(crate) fn run(name: &str) -> Result<super::cc_bus::BusCleanup, CmdErr> {
     ))
 }
 
-/// 〔SH1 · D-g〕这个会话（句柄）全部 pane 的根进程 pid。只读 tmux；问不到 ⇒ 空（顺手注销那一步随之不做，不影响杀）。
+/// 这个会话（句柄）全部 pane 的根进程 pid。只读 tmux；问不到 ⇒ 空（顺手注销那一步随之不做，不影响杀）。
 /// `INVARIANTS §49`：argv 直传 ⇒ UTF-8 旗排在子命令前（读的虽是数字，照表带）。
 fn pane_pids(handle: &str) -> Vec<u32> {
     Command::new("tmux")
@@ -147,7 +147,7 @@ pub(crate) fn kill_for_inbound(
     Ok(reply(&name, &bus))
 }
 
-/// 〔C4e · 第四波 4C〕帧面成品 `{session, killed}` 的构造器 —— 从 [`kill_for_inbound`] 里原样抽出来（逻辑不动），
+/// 帧面成品 `{session, killed}` 的构造器 —— 从 [`kill_for_inbound`] 里原样抽出来（逻辑不动），
 /// 只为让跨语言金样 `tests/__fixtures__/tmux-control.golden.json` 拿**同一个**构造器对拍：
 /// 界面（`src/frontend/ui/tmux-control.ts::killSession`）从此直接收这份成品，monitor 那一跳只搬字节。
 pub(crate) fn reply(name: &str, bus: &super::cc_bus::BusCleanup) -> serde_json::Value {

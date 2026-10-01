@@ -3,13 +3,13 @@
 //! `K8`/`D4` 那条「优先手写最小 HTTP，别引框架」的白名单在 `裁-1` 里**一个字没松**：
 //! 这里没有任何 HTTP 库，只有请求行 + 头 + `Content-Length` + chunked 拆帧。
 //!
-//! # 🔴 通信层成员 `COMM-LAYER-MEMBER`〔`设计/05 §8` 步 4，2026-09-21〕
+//! # 🔴 通信层成员 `COMM-LAYER-MEMBER`
 //!
 //! 这一枚标记是**盘上那一侧**的凭据（登记那一侧在
 //! `tests/frontend/shell/comm_boundary_registry_tests.rs::REGISTERED`，两向集合相等）。
 //! 盖上它 = **上锁**，不是放行：本文件从此被 `C1`–`C5` ＋ `X1`–`X6` 十一条一起管着。
 //!
-//! **凭什么它属于通信层**：`设计/05 §4.2` 那张「四样不共享」表里，面 B 的**协议**一栏
+//! **凭什么它属于通信层**：那张「四样不共享」表里，面 B 的**协议**一栏
 //! 逐字就是「手写 HTTP/1.1 ＋ SSE」⇒ 本文件是面 B 的**协议编解码**本身。
 //! 它只认「中转必须懂的那几样」（请求行 · 头 · `Content-Length` · chunked），
 //! 别的一律当**不透明字节** —— 那正是 `§2` 四样里的「载荷（不透明字节）」。
@@ -193,8 +193,8 @@ impl BodyView {
 
 /// 增量 chunked 拆帧。**只拆不攒**：喂进来多少就尽量吐多少。
 ///
-/// 攒字节、找块长度行交给 [`super::framer::LineFramer`]（`relay/` 里唯一的增量分帧器，
-/// `设计/17 §3.7`）—— 这里只剩 chunked 自己的那一层：块长度、块尾 CRLF、终止块、上限。
+/// 攒字节、找块长度行交给 [`super::framer::LineFramer`]（`relay/` 里唯一的增量分帧器）
+/// —— 这里只剩 chunked 自己的那一层：块长度、块尾 CRLF、终止块、上限。
 pub(crate) struct ChunkedView {
     pub(super) framer: super::framer::LineFramer,
     /// 当前块还剩多少字节（含结尾的 `\r\n` 由 `crlf_left` 单管）。

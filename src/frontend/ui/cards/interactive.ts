@@ -14,7 +14,7 @@
 import { renderMarkdown } from "../render";
 import { copyText } from "../copy-table";
 
-// 〔THIN〕`isInteractiveTool`〔散文墓碑〕删：哪个 tool_use 在等用户决定由那台后端判（卡型 `interactive`，随记录成品带来）。
+// `isInteractiveTool`〔散文墓碑〕删：哪个 tool_use 在等用户决定由那台后端判（卡型 `interactive`，随记录成品带来）。
 
 /** AskUserQuestion 的 input.questions[]（Claude Code 端 schema，实测 2026-06）。 */
 interface AskOption {

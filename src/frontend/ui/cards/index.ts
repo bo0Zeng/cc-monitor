@@ -10,7 +10,7 @@
  * - 按 record.type + content 形态分发：user 气泡 / assistant 卡 / 纯工具 → tool-group /
  *   tool_result 注入到对应 tool_use 折叠条；slash / compact / agent / diff / interactive /
  *   api-error 子卡委派给 cards/ 同级模块。
- * - CLI 注入的非真用户输入（含 ESC 中断标记，INVARIANT § 20）：〔RENDER2 · J10〕规则只在 `agents/claudecode/text.rs::user_text`，
+ * - CLI 注入的非真用户输入（含 ESC 中断标记，INVARIANT § 20）：规则只在 `agents/claudecode/text.rs::user_text`，
  *   monitor 解析时填进记录（`userText.clean`），这里只读成品。
  * - `pendingToolResults`：tool_result 先于 tool_use 到达时先 fallback 渲染，batch 末
  *   `reconcilePendingToolResults` 重新匹配注入。
@@ -39,7 +39,7 @@ import { showActionFailureToast } from "../error-toast";
 import { isRemoteOrigin, type Origin } from "../ipc/origin";
 
 /**
- * 〔THIN · `设计/00 §1.2` 判定只在后端〕记过的一次 tool_use：工具名（标注用、存偏好用）＋ 后端给的卡型（没有 ＝ 普通工具卡）。
+ * 〔判定只在后端〕记过的一次 tool_use：工具名（标注用、存偏好用）＋ 后端给的卡型（没有 ＝ 普通工具卡）。
  * 界面**不认工具名**：哪个工具画成哪种卡由那台后端的适配层判（`agents/<名>/cards.rs`），随 assistant 记录的 `toolCards` 带来。
  */
 export interface ToolUseSeen {
@@ -110,7 +110,7 @@ export interface RenderContext {
   parentPath: string;
   /**
    * Batch9-F29：会话来源（本机 = `LOCAL_ORIGIN`；其余 = 远端机器 label）。
-   * 〔C4a · `设计/05 §8` 步 2〕上一版是「`null`/缺省 = 本地」—— 两种「没说」都被当成本机；
+   * 上一版是「`null`/缺省 = 本地」—— 两种「没说」都被当成本机；
    * 现在**必填**：每个造渲染上下文的地方都得说出是哪台机器。
    */
   origin: Origin;
@@ -118,7 +118,7 @@ export interface RenderContext {
    * tool_use_id → 那一次 tool_use 的工具名与卡型。tool_use 出现在 assistant 消息，tool_result
    * 出现在下一条 user 消息，跨消息不能就地反查；TabManager（或 subagent 嵌套
    * 渲染）持有这张 Map 跨 renderMessage 调用累积。renderBlock 在 tool_use
-   * 时写入，在 tool_result 时读取来标注工具名、挑结果默认怎么画（〔THIN〕卡型是后端随记录成品带出的 `toolCards`）。
+   * 时写入，在 tool_result 时读取来标注工具名、挑结果默认怎么画（卡型是后端随记录成品带出的 `toolCards`）。
    */
   toolUseNames: Map<string, ToolUseSeen>;
   /**
@@ -435,7 +435,7 @@ function renderBlock(
         () => {
           const body = document.createElement("div");
           body.className = "block-body block-body-md";
-          // 〔W5-RENDER R4〕展开那一刻才建（用户点开 = 它就在眼前）⇒ 一律急路。原来沿用建卡时的 `ctx.lazy`：
+          // 展开那一刻才建（用户点开 = 它就在眼前）⇒ 一律急路。原来沿用建卡时的 `ctx.lazy`：
           // 批期建的卡早被 `enhanceCard` 标过 `enhanced`，之后才长出来的这块 body 里的占位（代码块 / 公式）永远没人补。
           body.innerHTML = renderMarkdown(block.thinking);
           return body;
@@ -447,7 +447,7 @@ function renderBlock(
       const card = cards[block.id];
       ctx.toolUseNames.set(block.id, { name: block.name, card });
 
-      // 〔THIN〕卡型是那台后端判的（`toolCards`）；派出子运行的那次调用 → 折叠卡，展开是那个子运行的时间线（按运行读）
+      // 卡型是那台后端判的（`toolCards`）；派出子运行的那次调用 → 折叠卡，展开是那个子运行的时间线（按运行读）
       if (card === "agent") {
         const runCard = buildAgentCard(block.id, block.name, runs[block.id], ctx, renderMessage);
         ctx.runCards?.set(block.id, runCard);
@@ -518,7 +518,7 @@ function buildToolUseCard(
     let bodyEl: HTMLElement | null = null;
     // issue #14：Edit/Write/MultiEdit → 行级 diff 卡；任何异常 / 畸形 / 未知工具
     // 回退现有 prettyJson <pre>（双重 try/catch：这里 + buildDiffBody 内部）。
-    // 〔THIN〕写类工具（后端判的卡型 `diff`）→ 行级 diff 卡。
+    // 写类工具（后端判的卡型 `diff`）→ 行级 diff 卡。
     if (asDiff) {
       try {
         bodyEl = buildDiffBody(block.name, block.input);
@@ -561,7 +561,7 @@ export function fileInputPath(input: unknown): string | null {
   return null;
 }
 
-/** F54:远端文件路径可点元素——点击 → 反查主机 cfg → 在文件窗口里定位该文件(〔F7b〕原先是老 SFTP 面板)。 */
+/** F54:远端文件路径可点元素——点击 → 反查主机 cfg → 在文件窗口里定位该文件(原先是老 SFTP 面板)。 */
 function buildRemoteFileLink(origin: string, filePath: string): HTMLElement {
   const el = document.createElement("button");
   el.type = "button";
@@ -582,9 +582,9 @@ async function openRemoteFileInSftp(origin: string, filePath: string): Promise<v
 }
 
 /**
- * 秤 6（`设计/17 §6` 表第 6 行，验 `§2.8` 与 `§5.5`）的**计数器**。
+ * 秤 6（表第 6 行，验 `§2.8` 与 `§5.5`）的**计数器**。
  *
- * `设计/17 §5.5` 逐字：「`buildResultBody` 闭包持有的文本总量 —— §2.8 的 7 MB 是按均值
+ * 「`buildResultBody` 闭包持有的文本总量 —— §2.8 的 7 MB 是按均值
  * 推的，不是实测。**怎么知道**：heap snapshot 按 retainer 找；或在 `cards/index.ts:570`
  * 累加 `text.length`」。这里就是那个「累加 `text.length`」。
  *
@@ -608,7 +608,7 @@ async function openRemoteFileInSftp(origin: string, filePath: string): Promise<v
  *   ⇒ `captured` 此刻不涨，但文本**已经被留住了**。
  * ⇒ 只看 `captured` 会低估留存，只看 `produced` 会高估。两个都记，判词才站得住。
  *
- * 纯计数，零 DOM 副作用（`设计/17 §6` 秤 6 的硬约束）。生产里也一直在加，成本是
+ * 纯计数，零 DOM 副作用（硬约束）。生产里也一直在加，成本是
  * 每条 tool_result 两次整数加法。
  */
 export interface ResultTextLedger {
@@ -654,7 +654,7 @@ function injectOrBuildToolResult(
   ctx: RenderContext,
 ): HTMLElement | null {
   const text = renderResultContent(block.content);
-  // 秤 6：`设计/17 §5.5` 点名的那一处累加。纯计数。
+  // 秤 6：点名的那一处累加。纯计数。
   resultTextLedger.produced += 1;
   resultTextLedger.producedUnits += text.length;
   if (text.length > resultTextLedger.maxUnits) {
@@ -664,7 +664,7 @@ function injectOrBuildToolResult(
   const preview = firstLinePreview(text, 60);
   const seen = ctx.toolUseNames.get(block.tool_use_id);
   const toolName = seen?.name ?? "tool";
-  // 〔THIN〕结果默认怎么画按后端给的卡型（`md`），不按工具名自己判。
+  // 结果默认怎么画按后端给的卡型（`md`），不按工具名自己判。
   const mdByDefault = seen?.card === "md";
   const errTag = block.is_error
     ? exitCode !== null
@@ -700,7 +700,7 @@ function injectOrBuildToolResult(
         : "Output";
       const summary = document.createElement("summary");
       summary.className = "block-summary";
-      // `设计/17 §2.4`:approximateSize 对 617 KB 的 content 整份 JSON.stringify
+      // approximateSize 对 617 KB 的 content 整份 JSON.stringify
       //（O(len) 时间 + 一份等长字符串分配），而 preview 非空时这个结果 100% 用不上。
       // 挪进三元的 else 分支 ⇒ 惰性求值。显示结果一字不变。
       // ⚠ 同节还提了「数组 content 改成累加 text.length」——那个会改动显示出来的数字
@@ -786,7 +786,7 @@ export function reconcilePendingToolResults(ctx: RenderContext): HTMLElement[] {
     // 已有 host → 重新调注入（injectOrBuildToolResult 走"已 host"分支，返 null）
     const reInjected = injectOrBuildToolResult(block, ctx);
     if (reInjected === null) {
-      // 〔W5-RENDER R11〕fallback 身上的落点标记（`render-stream-record.ts::markMemberUuids` 记的）跟着搬到注入出来的结果区块上
+      // fallback 身上的落点标记（`render-stream-record.ts::markMemberUuids` 记的）跟着搬到注入出来的结果区块上
       const member = element.dataset.memberUuid;
       if (member) {
         const inline = ctx.toolUseElements.get(toolUseId)?.querySelector<HTMLElement>(".block-tool-result-inline");
@@ -826,7 +826,7 @@ function buildResultBody(
   toolName: string,
   mdByDefault: boolean,
 ): void {
-  // 秤 6（`设计/17 §6` 表第 6 行）：本函数下面建的每个闭包（`renderMode` /
+  // 秤 6（表第 6 行）：本函数下面建的每个闭包（`renderMode` /
   // 两个 click 监听 / `onToggle`）都捕获 `text`，而它们经 DOM 监听器被卡片长期持有。
   // 纯计数，口径见 `resultTextLedger` 的头注。
   resultTextLedger.captured += 1;
@@ -904,8 +904,8 @@ function buildResultBody(
 const LARGE_TEXT_BYTES = 200_000;
 
 /**
- * 〔RENDER2 · `17 §0` 文本布局补审查出的性能缺陷〕回复正文超过它 ⇒ 建卡时只渲染前一截、下面一颗「显示全部」。
- * marked 同步排整段正文，617 KB 一条 ≈ 8 s 卡住主线程（`调研/第四波记录/W5-RENDER.md` R8 读数）；
+ * 〔文本布局补审查出的性能缺陷〕回复正文超过它 ⇒ 建卡时只渲染前一截、下面一颗「显示全部」。
+ * marked 同步排整段正文，617 KB 一条 ≈ 8 s 卡住主线程（读数）；
  * 20 000 字 ≈ 真机正文窗口 p99 的十几倍（p99 1 594 字），常态回复碰不到它。点了之后余下的按同样大小分片、一片一跳地渲染。
  */
 export const LONG_REPLY_HEAD_CHARS = 20_000;
@@ -1116,7 +1116,7 @@ function stripLineNumberPrefix(text: string): string {
     .join("\n");
 }
 
-// 〔THIN〕`defaultModeForTool`〔散文墓碑〕删：哪些工具的结果默认按 Markdown 画由那台后端判（卡型 `md`，随记录成品带来）。
+// `defaultModeForTool`〔散文墓碑〕删：哪些工具的结果默认按 Markdown 画由那台后端判（卡型 `md`，随记录成品带来）。
 
 function loadRenderModePreference(toolName: string): "text" | "md" | null {
   const v = safeGet(LS_KEYS.toolRender(toolName));
@@ -1189,7 +1189,7 @@ function renderResultContent(content: unknown): string {
   return prettyJson(content);
 }
 
-/** 第一行非空预览，截到 max 字符（〔W5-RENDER R2 · `设计/17 §2.5`〕不再整条 `split`，见 `format.ts::firstLineOf`） */
+/** 第一行非空预览，截到 max 字符（不再整条 `split`，见 `format.ts::firstLineOf`） */
 function firstLinePreview(text: string, max: number): string {
   const { line, more } = firstLineOf(text, max);
   if (!more) return line;
@@ -1280,7 +1280,7 @@ function summarizeInput(input: unknown): string {
   if (input === null || input === undefined) return "";
   if (typeof input === "string") return truncate(input, 60);
   try {
-    // 〔W5-RENDER R2 · `设计/17 §2.5`〕只序列化到够 61 个字为止（`format.ts::jsonPrefix`），
+    // 只序列化到够 61 个字为止（`format.ts::jsonPrefix`），
     // 结果逐字等于原来的 `truncate(JSON.stringify(input), 60)`；Write 一类 617 KB 的输入不再整份序列化。
     return truncate(jsonPrefix(input, 60) as string, 60);
   } catch {

@@ -16,15 +16,15 @@ import { setDefaultName, getModelForAccount, setModelForAccount } from "../accou
 import { accountAvatarEl } from "../account-color";
 import { readRemoteConfig, type RemoteHostConfig } from "../remote-config";
 import { showActionFailureToast } from "../error-toast";
-// 〔第三波 S3〕本机那一支新长的字全走文案表（`设计/91 §5.1`）：一处取文，判据按表逐条量。
+// 本机那一支新长的字全走文案表：一处取文，判据按表逐条量。
 import { copyText } from "../copy-table";
 // 本机那个串（后端那个本机表示），以及「本机刻意不开终端窗口」那句话的跨语言标记（唯一住址在 `remote-launch-run.ts`）。
 import { LOCAL_ORIGIN as BACKEND_LOCAL_ORIGIN } from "../backend-policy";
 import { isLocalOrigin, isRemoteOrigin, type Origin } from "../ipc/origin";
 import { POSIX_NO_WINDOW_MARKER } from "../remote-launch-run";
-// 〔AL1 · 2026-09-24〕别名那一块与用户级 PATH 那一格都搬去了机器页「本机 → 工具 → 别名」
-// （`设计/70 §3.3` · `设计/71`）—— 两者是同一个问题（「这台机器的终端怎么找到 ccm」）的两条路。
-// A2（`设计/70 §4.4`）：新建账号那张表单。
+// 别名那一块与用户级 PATH 那一格都搬去了机器页「本机 → 工具 → 别名」
+//—— 两者是同一个问题（「这台机器的终端怎么找到 ccm」）的两条路。
+// A2：新建账号那张表单。
 import { renderNewAccountForm, type NewAccountRequest } from "./account-new-form";
 import { renderSharedMcp } from "./accounts-mcp-block";
 import { SETTINGS_APPLIED_EVENT } from "./events";
@@ -56,7 +56,7 @@ import { machineName, saidOfControl } from "../control-said";
  * 漂开的那天症状是「设置里说这个号用 apikey 表里那一行、起会话时没用上」，而两边看起来都没错。
  * 由那条机检钉着。
  *
- * ⚠ 〔`K-R20` 订正 09-03〕上面两处原先都点着
+ * ⚠ 上面两处原先都点着
  * `the_ui_never_derives_the_account_id_itself`〔散文墓碑〕—— **那个名字全仓零定义**。
  * 真正钉这件事的是一条**中文标题**的 `it`，它本来就没有 snake_case 名字，
  * 而这两处一直**当现状在说**。
@@ -74,7 +74,7 @@ export interface ApikeyEditorAccount {
  * `K-H2a` `KS6` 前端那一半：**第三方 API key 那份文件**的一块（apikey 表，不是中转的东西 ——
  * 用户 09 月裁「中转层不要有账号，账号就账号、中转就中转」）。
  *
- * 🔴 `设计/70 §4.3` ③ / `§4.4` 关键二：**这一块里不再有账号下拉。**
+ * 🔴 关键二：**这一块里不再有账号下拉。**
  * 它原先自带一个 `<select>` 选「配给哪个账号」—— 于是「哪个账号」在界面上被问两次
  * （账号表一次、这里一次），那正是「apikey 端点表与账号 manifest 在后端是两份，界面照着抄成
  * 两个控件」。⇒ 配 key 变成**账号那一行自己的一格**（[`renderApikeyEditor`]），
@@ -127,7 +127,7 @@ export function renderApikeyFileBlock(status: ApikeyCredentialsStatus): HTMLElem
 }
 
 /**
- * `设计/70 §4.4` 关键二：**某一个账号**的第三方 API key —— 账号那一行展开出来的一格。
+ * 关键二：**某一个账号**的第三方 API key —— 账号那一行展开出来的一格。
  *
  * 「哪个账号」由它挂在哪一行回答，**不再有下拉**。
  *
@@ -217,7 +217,7 @@ export class AccountsSection {
     refresh.className = "accounts-refresh";
     refresh.textContent = copyText("accounts.ctor.refresh");
     refresh.addEventListener("click", () => {
-      // 〔RESYNC · 主会话 09-27 裁〕本机远端都清（与账号 chip 同一条：缓存的键就是 origin，本机也一样）。
+      // 本机远端都清（与账号 chip 同一条：缓存的键就是 origin，本机也一样）。
       invalidateAccountsCache(this.origin);
       void this.reload(true);
     });
@@ -237,7 +237,7 @@ export class AccountsSection {
      * 用户在一处切了机器，另外三处还停在上一台 —— 而它们讲的是同一台机器。
      *
      * **收到 `null`（本机）**：原先这里写的是「本分节的下拉只列远端，收到 `null` 就原地不动」。
-     * 下拉早删了（E59），本机那一支也早有了（`N-F1b`）⇒ 〔第三波 S3〕`null` 就切到本机那一支
+     * 下拉早删了（E59），本机那一支也早有了（`N-F1b`）⇒ `null` 就切到本机那一支
      * （见 [`followMachine`]）。
      */
     subscribeMachine((origin) => this.followMachine(origin));
@@ -245,7 +245,7 @@ export class AccountsSection {
   }
 
   /**
-   * ST1「延后加载」（`设计/70 §5.3` 判据 2：**子页内容只在该子页可见时才发 I/O**）：
+   * ST1「延后加载」（**子页内容只在该子页可见时才发 I/O**）：
    * 构造期不再发 I/O；宿主（`panel.ts`）在**某台机器的子页第一次可见**时调它。
    * 重开设置后宿主会再调一次（重开要看新读数）。
    */
@@ -260,7 +260,7 @@ export class AccountsSection {
     } catch {
       this.hosts = [];
     }
-    // 🔴 〔第三波 S3 · 09-24〕**初值只认共用 store**：`null` 就是本机（`machine-context.ts` 头注）。
+    // 🔴 **初值只认共用 store**：`null` 就是本机（`machine-context.ts` 头注）。
     //    这里原先是 `getCurrentMachine() ?? pickPrimaryOrigin(...) ?? hosts[0]` —— E59 留的
     //    「兜底落点」。而 store 的初值恰好是 `null`（本机页一出现 per-machine 那几块就落在它上面，
     //    `panel.ts` 的 S4b-2 那句注释逐字说两者对齐）⇒ 配了远端的机器上，**本机页这一节显的是
@@ -280,7 +280,7 @@ export class AccountsSection {
   /**
    * S4a：跟随共用 store 切机器。见构造里那段注释。
    *
-   * 〔第三波 S3〕`null`（本机）原先在这里**原地不动**（「本分节表示不了」）—— 那句话自 `N-F1b`
+   * `null`（本机）原先在这里**原地不动**（「本分节表示不了」）—— 那句话自 `N-F1b`
    * 起就不成立了（`origin` 为空时走本机那一支），留着它的后果是：从 aya 那一页切回本机页，
    * 这一节还停在 aya 的账号上。⇒ 本机也跟。
    */
@@ -301,7 +301,7 @@ export class AccountsSection {
     recordFacet(isLocalOrigin(this.origin) ? LOCAL_MACHINE_KEY : this.origin, facet, state);
   }
 
-  /** 〔VIS2 · `设计/15 §4.5` 缺口二〕空态里 `accounts` 那一格：没启用 ⇒ 缺；启用着（零个号）⇒ 读到了。 */
+  /** 〔缺口二〕空态里 `accounts` 那一格：没启用 ⇒ 缺；启用着（零个号）⇒ 读到了。 */
   private enabledFacet(enabled: boolean): { kind: "ok" | "fail"; detail: string } {
     return enabled
       ? { kind: "ok", detail: copyText("accounts.status.read") }
@@ -310,7 +310,7 @@ export class AccountsSection {
 
   private async reload(force: boolean): Promise<void> {
     this.body.innerHTML = "";
-    // 🔴 ST1「切机器 pending」（`设计/70 §6` #5）：一次切机器 = 这一块重读一趟（远端是一次 SSH 往返）。
+    // 🔴 ST1「切机器 pending」：一次切机器 = 这一块重读一趟（远端是一次 SSH 往返）。
     //    原先这段时间这一块是**空的** —— 与「这台机器没有账号」在屏幕上分不开。
     //    ⇒ 先挂一行「正在读」，读回来（成或败）那一刻撤掉。
     const pending = document.createElement("div");
@@ -352,13 +352,13 @@ export class AccountsSection {
         this.note("accounts", { kind: "fail", detail: copyText("accounts.status.backendOld") });
         this.info(copyText("accounts.status.backendOldBody", { reason: ui.reason }));
         return;
-      // 〔WF2 · WIN3 读数 C〕没问出来 ≠ 要更新：照实说查询失败与原因。
+      // 没问出来 ≠ 要更新：照实说查询失败与原因。
       case "query-failed":
         this.note("accounts", { kind: "fail", detail: copyText("accounts.status.queryFailed") });
         this.info(copyText("accounts.status.queryFailedBody", { reason: ui.reason }));
         return;
       case "not-enabled":
-        // 〔VIS2 · `设计/15 §4.5` 缺口二〕启用没启用记在 accounts（启用着只是零个号 ⇒ 读到了）。
+        // 〔缺口二〕启用没启用记在 accounts（启用着只是零个号 ⇒ 读到了）。
         this.note("accounts", this.enabledFacet(state.meta?.enabled === true));
         this.renderInitWizard(this.body, ui.manifestPath, ui.reason, "remote");
         return;
@@ -404,7 +404,7 @@ export class AccountsSection {
       return;
     }
     if (!state.meta?.enabled || state.accounts.length === 0) {
-      // 档一的空态：没启用 ⇒ accounts 缺（〔VIS2〕启用没启用住这一格）；启用着只是零个号 ⇒ 读到了。
+      // 档一的空态：没启用 ⇒ accounts 缺（启用没启用住这一格）；启用着只是零个号 ⇒ 读到了。
       this.note("accounts", this.enabledFacet(state.meta?.enabled === true));
       AccountsSection.line(box, "accounts-info accounts-local-empty-title", LOCAL_ACCOUNTS_COPY.emptyTitle);
       if (!state.meta?.enabled) {
@@ -429,7 +429,7 @@ export class AccountsSection {
     const cur = currentWorkingAccount(state);
     const table = document.createElement("div");
     table.className = "accounts-local-table";
-    // 〔第三波 S3〕本机这一半的两格事实（apikey 表里有没有它那一行 · 本机中转在不在跑）问后端要。
+    // 本机这一半的两格事实（apikey 表里有没有它那一行 · 本机中转在不在跑）问后端要。
     const routing = await this.readLocalRouting(state.accounts);
     for (const a of state.accounts) {
       table.appendChild(
@@ -477,7 +477,7 @@ export class AccountsSection {
   }
 
   /**
-   * 〔第三波 S3〕本机那两格事实：问本机后端（〔US1〕经通道 `apikey-routing`）。
+   * 本机那两格事实：问本机后端（经通道 `apikey-routing`）。
    *
    * ⚠ **问不到就是 `null`，不是「表里没有」**：`null` 让徽章走「没被告知 ⇒ 不替它下判断」那一支；
    * 当成空表的话，一个其实配好了的号会被说成「apikey 凭据文件里没有这个账号的一行」。
@@ -497,9 +497,9 @@ export class AccountsSection {
   /**
    * 本机清单里的一行。**只读** —— 这一件不做切号，也不做加号。
    *
-   * 〔第三波 S3〕徽章的 `endpoint` 从这一拍起**传本机那一半**（`{ scope: "local", … }`，
+   * 徽章的 `endpoint` 从这一拍起**传本机那一半**（`{ scope: "local", … }`，
    * 由 `localApikeyEndpointStateFor` 从后端答的两格事实摊出来）。原先这里不传，理由是「那要多一条 IPC，属下一件」
-   * —— 那一问早在盘上了，只是这一支没去问（〔US1〕今天经通道问 `apikey-routing`）。
+   * —— 那一问早在盘上了，只是这一支没去问（今天经通道问 `apikey-routing`）。
    * 问不到 / 账号 0（没有 configDir）⇒ 仍然不传，徽章照旧「不替它下判断」。
    * 🔴 **千万别顺手传 `{ scope: "remote" }`** —— 那会让一台本机的号被解释成远端那一半，
    * 文案里当场出现「远端」两个字；`NF1bD2` 那条判据正是钉这个的。
@@ -771,7 +771,7 @@ export class AccountsSection {
       info.textContent = copyText("accounts.table.summary", { n: accounts.length, path: meta.manifestPath, updated: meta.updatedAt ? copyText("accounts.table.updatedAt", { updatedAt: meta.updatedAt }) : "" });
       this.body.appendChild(info);
     }
-    // 🔴 `设计/70 §4.4` 关键二：apikey 是**账号那一行自己的一格** ⇒ 画表之前先问清
+    // 🔴 关键二：apikey 是**账号那一行自己的一格** ⇒ 画表之前先问清
     //    「哪几个号在 apikey 表里有一行」（`K-H2c` 口径①：问后端要，前端不推 id）。
     const apikey = await this.readApikeyState(accounts);
     const table = document.createElement("div");
@@ -825,7 +825,7 @@ export class AccountsSection {
     // 挂在账号这一组里 —— 它是「用哪个身份打上游」这件事的一部分。配 key 本身在每一行上。
     this.body.appendChild(apikey.fileBlock);
 
-    // 🔴 `设计/70 §4.4`（A2）：**新建账号是一张常驻的表单**，不再藏在「维护」折叠组里、
+    // 🔴 （A2）：**新建账号是一张常驻的表单**，不再藏在「维护」折叠组里、
     //    也不再是红色按钮。岔口（订阅 / 第三方 apikey）在表单里问。
     this.body.appendChild(renderNewAccountForm(this.origin, (req) => this.createAccount(req)));
 
@@ -856,7 +856,7 @@ export class AccountsSection {
 
   /**
    * 这一页此刻显的是哪台机器 —— apikey 那几条命令按它定目标（本机逐字送 `"<local>"`）。
-   * 〔RM1a〕先前那三条命令不收 origin，远端页配的 key 落在本机。
+   * 先前那三条命令不收 origin，远端页配的 key 落在本机。
    */
   private machineOrigin(): Origin {
     return this.origin ?? BACKEND_LOCAL_ORIGIN;
@@ -867,11 +867,11 @@ export class AccountsSection {
     key: string,
     configDir: string,
     name: string,
-    // 〔ST2〕只有表单「建好后写」那一路带它；行上的「保存」只配 key（后端那一格不碰）。
+    // 只有表单「建好后写」那一路带它；行上的「保存」只配 key（后端那一格不碰）。
     baseUrl?: string,
   ): Promise<void> {
     try {
-      // 〔HX2 · 4D〕经通道交那台机器的后端（`apikey-key-set`，账号 id 由后端推）；先前是 Tauri 命令 `write_apikey_credentials_key`〔散文墓碑〕。
+      // 经通道交那台机器的后端（`apikey-key-set`，账号 id 由后端推）；先前是 Tauri 命令 `write_apikey_credentials_key`〔散文墓碑〕。
       await writeApikeyKey(this.machineOrigin(), configDir, key, baseUrl);
       showActionFailureToast(copyText("accounts.writeApikey.done"), copyText("accounts.writeApikey.doneBody", { name }), {
         level: "info",
@@ -896,10 +896,10 @@ export class AccountsSection {
    *    那只影响状态那一行的措辞，而配 key 本身是这一格存在的理由。
    * ② **没有 `configDir` 的账号（账号 0）不给这一格**：起会话那一侧对它逐字回 `None`
    *    （`apikey_account_id` 头注：「说不出 id 就不注入」）⇒ 给它配一把 key 是配了也不生效。 〔散文墓碑〕
-   * ③ 〔RM1a · 第四波〕这一页显的是 `this.origin` 那台机器的账号，读写那份文件的两条命令
-   *    （〔US1〕读：经通道 `apikey-read`；〔HX2〕写：经通道 `apikey-key-set`）**按同一台机器**去
+   * ③ 这一页显的是 `this.origin` 那台机器的账号，读写那份文件的两条命令
+   *    （读：经通道 `apikey-read`；写：经通道 `apikey-key-set`）**按同一台机器**去
    *    （[`machineOrigin`]）—— 远端页读写的是那台机器上那一份，不再是本机的。
-   *    「有没有行」（〔US1〕经通道 `apikey-routing`）同样问这一页那台机器。
+   *    「有没有行」（经通道 `apikey-routing`）同样问这一页那台机器。
    */
   private async readApikeyState(
     accounts: Account[],
@@ -907,7 +907,7 @@ export class AccountsSection {
     const dirs = accounts.map((a) => a.configDir).filter((d): d is string => !!d);
     let routed: string[] = [];
     try {
-      // 〔RM1a〕问**这一页那台机器**（远端由那台的后端答），不再问本机。
+      // 问**这一页那台机器**（远端由那台的后端答），不再问本机。
       routed = dirs.length ? (await fetchMachineApikeyRouting(this.machineOrigin(), dirs)).routed : [];
     } catch {
       // 口径①：这一格失败只让状态那一行说「还没有它那一行」，不挡配 key。
@@ -1189,7 +1189,7 @@ export class AccountsSection {
       del.addEventListener("click", () => void this.removeAccount(a));
       actions.appendChild(del);
     }
-    // 🔴 `设计/70 §4.4` 关键二：**「哪个账号」只问一次** —— 配 apikey 是这一行自己的一格。
+    // 🔴 关键二：**「哪个账号」只问一次** —— 配 apikey 是这一行自己的一格。
     let editor: HTMLElement | null = null;
     if (apikey) {
       const ed = renderApikeyEditor(apikey, (key, configDir) =>

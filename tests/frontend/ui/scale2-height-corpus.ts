@@ -1,5 +1,5 @@
 /**
- * 秤 2（`设计/17 §6` 表第 2 行）的**语料构造器** —— 真浏览器那一侧与 jsdom 门禁那一侧
+ * 秤 2（表第 2 行）的**语料构造器** —— 真浏览器那一侧与 jsdom 门禁那一侧
  * **共用同一份**，否则"估值"与"真值"就不是同一张卡的两个读数，整杆秤失去意义。
  *
  * 它做的事只有一件：`JSONL 记录 → 真实卡片 DOM`，走的是生产的总分发器
@@ -14,10 +14,10 @@
  *   块的种类与数量 / CJK:ASCII 比例**逐位相同**，而字母、数字、汉字全部换成
  *   只跟位置有关的填充字符。⇒ 排版量到的是真机的形状，仓里存的不是用户的对话。
  *   〔2026-09-18 改判，用户逐字「**这是测试啊 / 不应该进**」；
- *     `设计/17 §6` 的数据源纪律已同步改成「**结构照真的，内容一律合成**」。
+ *     数据源纪律已同步改成「**结构照真的，内容一律合成**」。
  *     上一版逐字照旧纪律做，把 74 条真实会话记录（57 544 字符正文 + 本机绝对路径 +
  *     会话 id）写进了仓，且那 74 条全来自当时正在进行的那次会话。〕
- *   分桶仍逐字对齐 `设计/17 §6` 秤 1（`<2K/2-8K/8-32K/32-128K/>128K`），
+ *   分桶仍逐字对齐（`<2K/2-8K/8-32K/32-128K/>128K`），
  *   覆盖 `card-user` / `card-assistant` / `card-tool-group`。
  *   ⚠ **`>128K` 那一桶是空的，而且它本来就不该有人**：实测全量 8 148 条候选记录里，
  *   去掉 image 块的 base64 之后最大的一条只有 **41 KB**（p99 13.0 KB / p90 3.9 KB）。
@@ -26,8 +26,8 @@
  *   那颗 blob 对高度的贡献是 **0**。⇒ 旧报告的长尾覆盖是**虚的**，这一版把它改实了。
  * - **手工构造**：`card-api-retry` / `card-api-error` / `card-bash-input` /
  *   `card-bash-output` / `card-slash` / `card-compact`。
- *   ⚠ **不是偷懒，是没有真样本**：`设计/17 §6` 数据源纪律逐字「已查证：`evidence/` 里
- *   没有现成样本」，`真相源/90 §5.3` 又加强过一次；本轮采样器顺带复核：全部 8 个项目
+ *   ⚠ **不是偷懒，是没有真样本**：数据源纪律逐字「已查证：`evidence/` 里
+ *   没有现成样本」，又加强过一次；本轮采样器顺带复核：全部 8 个项目
  *   32 674 条记录里 `system.subtype == "api_error"` **0 条**、bash 模式 `<bash-input>`
  *   **0 条**、`<command-name>`（slash）只有 **2 条**。
  *   ⇒ 这几个卡型的读数**带着"构造体长得像不像真的"这个前提**，写报告时不许省略这句。
@@ -67,7 +67,7 @@ export interface CorpusItem {
   source: "shaped" | "synthetic";
   /** 该条记录序列化后的字节数（真形语料才有意义） */
   bytes: number;
-  /** `设计/17 §6` 秤 1 的字节桶 */
+  /** 秤 1 的字节桶 */
   bucket: string;
   element: HTMLElement;
 }
@@ -173,7 +173,7 @@ const SYNTHETIC: { rec: JsonlRecord; note: string }[] = [
     rec: apiRetry(9, "API Error: " + "x".repeat(400)),
     note: "retry/超长文案（nowrap 下仍应一行）",
   },
-  // ── card-api-error：有 body、会多行的胖卡（`设计/17 §2.2` 点名说它"给了 40 ⇒ 对多行错误反而低估"）──
+  // ── card-api-error：有 body、会多行的胖卡（点名说它"给了 40 ⇒ 对多行错误反而低估"）──
   { rec: apiError(0, "API Error: 529 Overloaded"), note: "api-error/单行" },
   {
     rec: apiError(
@@ -296,7 +296,7 @@ export function buildCorpus(fixtureJsonl: string): CorpusItem[] {
     if (!line.trim()) continue;
     let rec: JsonlRecord;
     try {
-      rec = withUserText(JSON.parse(line) as JsonlRecord); // 〔RENDER2 · J10〕monitor 那一格成品
+      rec = withUserText(JSON.parse(line) as JsonlRecord); // monitor 那一格成品
     } catch {
       continue;
     }

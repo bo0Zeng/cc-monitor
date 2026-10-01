@@ -1,4 +1,4 @@
-//! 〔MIG-2 · `99 §2.1 ⑬`〕**本机起会话**（新起 / resume / 接回）的计划与渲染 —— 原 monitor `history.rs` 那一整条，
+//! **本机起会话**（新起 / resume / 接回）的计划与渲染 —— 原 monitor `history.rs` 那一整条，
 //! 搬进本机后端出成品；monitor 只剩「开一个终端窗口跑这串」（`open_local_terminal`）。
 //!
 //! 一条命令串 = 中转前缀（这一发要不要经中转，[`crate::accounts::upstream_select::endpoint::launch_relay`]）
@@ -34,7 +34,7 @@ pub(crate) struct LocalLaunchRequest {
     #[serde(default)]
     pub(crate) tmux_name: Option<String>,
     pub(crate) agent: AgentFacts,
-    /// 全量注入开关（monitor 进程环境 `CCM_RELAY_ALL_SESSIONS`，`20 §3.2`「随入参交给那台后端」）。
+    /// 全量注入开关（monitor 进程环境 `CCM_RELAY_ALL_SESSIONS`，「随入参交给那台后端」）。
     pub(crate) all_sessions: bool,
 }
 
@@ -245,7 +245,7 @@ fn choice(req: &LocalLaunchRequest) -> Result<Choice, String> {
         }
     };
     if let LocalAction::Resume { sid } = &req.action {
-        // 〔DUP1 · `INVARIANTS §47` ①〕sid 规则只有一份。
+        // 〔`INVARIANTS §47` ①〕sid 规则只有一份。
         if !shell_quote_core::session_id_ok(sid) {
             return Err(format!("refuse resume: invalid session_id {sid:?}"));
         }

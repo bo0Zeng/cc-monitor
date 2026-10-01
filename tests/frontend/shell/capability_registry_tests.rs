@@ -18,7 +18,7 @@ const ALLOWED: &[(&str, &str)] = &[
     ("core:window:allow-close", "关窗"),
     (
         "core:window:allow-hide",
-        "ST1「关窗改隐藏」（`设计/01 §1.3` · `70 §1.3 F`）：设置窗接管了 close-requested，\
+        "ST1「关窗改隐藏」：设置窗接管了 close-requested，\
              放行动作是 `hide()`（不销毁、下次 show 出来复用）。⚠ 这份 capability 同时发给 \
              `main` / `viewer-*` / `settings` 三类窗口 —— 另开一份只给 settings 的 capability 文件能收窄，\
              但本条判据只读 `default.json`，另开文件等于绕过它，所以不收窄、如实登记。\
@@ -455,7 +455,7 @@ fn keys_in(text: &str, keys: &[&'static str]) -> Vec<&'static str> {
 /// **装配层**：把 `root` 下那几格 cargo 配置逐格读出来，每格给一条 offender 理由
 /// （这一格没问题就 `None`）。
 ///
-/// ★★ **它为什么是一个具名函数**〔`K-R5` 09-02〕。
+/// ★★ **它为什么是一个具名函数**。
 ///
 /// 这一段原本是主判据体里的一个**匿名 `filter_map` 闭包**。而生产那一遍
 /// **6 格全缺席** ⇒ 下面 `!p.is_file()` 那道守卫一律提前 `return None`，
@@ -563,7 +563,7 @@ fn probe_slot_verdict(tag: &str, body: &[u8]) -> Option<String> {
 /// 「今天没有」不是判据 —— 没人钉的话，加进来的那天没有任何信号（本会话反复量到的
 /// 「没人守着」与「碰巧没坏」是两回事）。
 ///
-/// # ③ 那一格 08-28 被改过：**判内容，不判文件在不在**〔`K-G2`〕
+/// # ③ 那一格 08-28 被改过：**判内容，不判文件在不在**
 ///
 /// 原来那一格手抄了 **5** 条路径、断言这 5 条一个都不存在。**它的人群与它自己声称的性质对不上，
 /// 两个方向都不对**：
@@ -626,7 +626,7 @@ fn probe_slot_verdict(tag: &str, body: &[u8]) -> Option<String> {
 /// | 发起面 | 谁从这里发起 cargo（认**这条命令**，不认行号） |
 /// |---|---|
 /// | 仓根 `.` | `tests/scripts/run.ps1` 的 `"check"` 分支（`cargo check --manifest-path src/frontend/shell\Cargo.toml`）。它同时是下面两个的**祖先** —— 往上找一定路过 |
-/// | `src/frontend/shell/` | `tests/scripts/gate.sh` 的 `run_gate_sum cargo 8 …`（`cd src/frontend/shell && cargo test --workspace --lib`）· `package.json` 的 `gen:types` · `ci.yml` 里**三处** `working-directory: src/frontend/shell`（`rust` job · `rust-linux` job · `linux-app-build` job；🔴 〔09-18〕原文写「两处（`rust` / `linux-app-build`）」—— `15 §5.2 B4` 新加的 `rust-linux` job 是第三处，**加发起面没回来补这张表**，现打 `grep -c` = 3）· `tests/e2e/` **两个脚本共 3 处**（`local-backend-supervise.sh` 的 `local_backend` 与 `local_backend_host` 两条 `cargo test --lib -- --ignored` · `p3t-local-tmux.sh` 的 `P3T_E2E_SID=…` 那一条）。⚠ **这个数只降不升过两次，两次都是随被测面退役**：`K-R72` 09-12 前是**四个脚本 6 处**（`tmux-guarded-acceptance.sh` 那一处随它的输入源 —— `tmux.rs` 两条桌面侧 SSH 回落的 builder —— 一起删了）；`K-R104` 09-13 从 5 降到 4（`usage-probe-acceptance.sh` 整条重写成帧面验收，输入源从「那条 shell 串」换成「那几行帧」，而它原先另有一处本机执行面的 `--ignored` 调用，那个执行面随编排搬上后端而不存在了）；🔴 **`设计/50` 09-18 从 4 降到 3，脚本数从三个降到两个**：用量 ②③ 两轴整轴退役 ⇒ `usage-probe-acceptance.sh` **整份删除**（被测对象没了，不是断言变少了），它那一处发起面（帧面夹具产出者 `emit_usage_probe_frames_for_e2e`）随 `account_usage.rs` 一起没了  〔散文墓碑〕|
+/// | `src/frontend/shell/` | `tests/scripts/gate.sh` 的 `run_gate_sum cargo 8 …`（`cd src/frontend/shell && cargo test --workspace --lib`）· `package.json` 的 `gen:types` · `ci.yml` 里**三处** `working-directory: src/frontend/shell`（`rust` job · `rust-linux` job · `linux-app-build` job；🔴 原文写「两处（`rust` / `linux-app-build`）」—— 新加的 `rust-linux` job 是第三处，**加发起面没回来补这张表**，现打 `grep -c` = 3）· `tests/e2e/` **两个脚本共 3 处**（`local-backend-supervise.sh` 的 `local_backend` 与 `local_backend_host` 两条 `cargo test --lib -- --ignored` · `p3t-local-tmux.sh` 的 `P3T_E2E_SID=…` 那一条）。⚠ **这个数只降不升过两次，两次都是随被测面退役**：`K-R72` 09-12 前是**四个脚本 6 处**（`tmux-guarded-acceptance.sh` 那一处随它的输入源 —— `tmux.rs` 两条桌面侧 SSH 回落的 builder —— 一起删了）；`K-R104` 09-13 从 5 降到 4（`usage-probe-acceptance.sh` 整条重写成帧面验收，输入源从「那条 shell 串」换成「那几行帧」，而它原先另有一处本机执行面的 `--ignored` 调用，那个执行面随编排搬上后端而不存在了）；🔴 ** 09-18 从 4 降到 3，脚本数从三个降到两个**：用量 ②③ 两轴整轴退役 ⇒ `usage-probe-acceptance.sh` **整份删除**（被测对象没了，不是断言变少了），它那一处发起面（帧面夹具产出者 `emit_usage_probe_frames_for_e2e`）随 `account_usage.rs` 一起没了  〔散文墓碑〕|
 /// | `src/backend/` | `tests/scripts/gate.sh` 的 `run_gate backend …`（`cd src/backend && cargo test`）· `ci.yml` 的 `backend` job（`working-directory: src/backend`）与 `e2e-tmux-rust` job 的 `build debug backend` 那一步（同一句 `working-directory`）· `release.yml` 里**三处** `working-directory: src/backend`（`build-backends` · `build-windows` · `build-linux` 三个 job）· `tests/e2e/backend-fork-session.sh` 的 `cd "$ROOT/src/backend" && cargo build` |
 ///
 /// ⚠ **为什么这里只能用锚点、不能用「函数名 + 行号」两样都给**〔`K-R5` `§4` 那一问的答〕：
@@ -1338,7 +1338,7 @@ fn the_build_time_execution_surface_stays_registered() {
     );
 
     // ══════════════════════════════════════════════════════════════════════
-    // ⑯–㉑ 原语那几支里**买下来的**〔`K-R5` 09-02〕
+    // ⑯–㉑ 原语那几支里**买下来的**
     //
     // 🔴 **买的判准**（逐支过一遍铁律 18「宁可宽松，别用严格的错误引入噪声」）：
     //   这一支拆掉会产生**已量到的实害形状**（漏红：真 `runner` 不再被点名；
@@ -1363,7 +1363,7 @@ fn the_build_time_execution_surface_stays_registered() {
              ⇒ 那是一次**静默漏红**，与 `D2` 逮到的那个洞同一维。"
     );
 
-    // ⑰ 剥注释契约的另一半：**字面串 `'…'` 里没有转义**〔`B6`〕。
+    // ⑰ 剥注释契约的另一半：**字面串 `'…'` 里没有转义**。
     //    ⚠ 方向是**误红**：这一支一旦恒真，一条以反斜杠结尾的 Windows 路径
     //      （`'C:\tools\'` —— TOML 字面串最教科书的写法）会被读成「引号没闭合」
     //      ⇒ fail-closed 判红 ⇒ 用户的仓库恒红。08-27 真发生过一次同族的事。
@@ -1376,7 +1376,7 @@ fn the_build_time_execution_surface_stays_registered() {
              是把判据放宽，那条路本工作区走过太多次了。"
     );
 
-    // ⑱ 剥注释契约的第三条：**字面串里的 `#` 不算注释**〔`B9`〕。
+    // ⑱ 剥注释契约的第三条：**字面串里的 `#` 不算注释**。
     //    ⚠ 拆掉这一支，`'` 不再开串 ⇒ 串里那个 `#` 把整行切掉，而引号态是闭合的
     //      ⇒ **一声不吭地漏红**。⚠ 这条也会被 `B7` 拆掉时打红（`B7` 今天有牙）。
     let sample_hash_in_literal = "target = { x = 'a#b', runner = \"sh\" }\n";
@@ -1387,7 +1387,7 @@ fn the_build_time_execution_surface_stays_registered() {
              这一支恒假 ⇒ 整行从 `#` 处被切掉，而「看不懂」一个字都不报。"
     );
 
-    // ⑲ 转义面的第三种：`\UXXXXXXXX`〔`C2`〕。
+    // ⑲ 转义面的第三种：`\UXXXXXXXX`。
     //    [`decode_toml_escapes`] 认三种（`\u` · `\U` · `\x`），而 08-29 之前
     //    **只有 `\u`（③）与 `\x`（④）有探针**。三种 cargo 都认（头注那段实测）。
     let probe_upper_escape = "[target.x]\n\"\\U00000072unner\" = 1\n";
@@ -1399,7 +1399,7 @@ fn the_build_time_execution_surface_stays_registered() {
              而这一臂一旦答通配臂那个 0，`\"\\U00000072unner\"` 就再也解不成 `runner`。"
     );
 
-    // ⑳ 整词边界的**前**半〔`D4`〕与词字符那两类〔`D1` 字母数字 · `D2` 下划线〕。
+    // ⑳ 整词边界的**前**半与词字符那两类〔`D1` 字母数字 · `D2` 下划线〕。
     //    ⚠ 探针⑧ 买的是**后**半（`linker-utils`），前半今天没人盯着。
     //    ⚠ **分不开的一格如实记**：`D4` 是「前面那一侧」的总闸 ⇒ 任何前半样本都同时
     //      挡住 `D4` 与它用到的那一类词字符；没有任何样本能「只」挡住 `D4`。
@@ -1421,7 +1421,7 @@ fn the_build_time_execution_surface_stays_registered() {
         );
     }
 
-    // ㉑ [`keys_in`] 扫**原文**那一遍〔`G1`〕—— 本文件头注 08-29 就记着这条欠账。
+    // ㉑ [`keys_in`] 扫**原文**那一遍—— 本文件头注 08-29 就记着这条欠账。
     //    ⚠ 解码那一遍由探针③ 挡着；原文那一遍在本条之前**零常驻覆盖**。
     //    机制：解码把 `\`（非词字符）换成词字符 ⇒ **两个方向都会动整词边界**。
     //    这个样本走的是「解码之后整词反而不成立」那个方向。

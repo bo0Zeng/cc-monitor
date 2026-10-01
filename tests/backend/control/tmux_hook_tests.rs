@@ -98,7 +98,7 @@ fn never_uses_ccm_sid_format_in_hooks() {
 /// `readonly_guard` 已经全局扫一遍，这里再钉一次是因为**本文件是最可能复发的地方**。
 #[test]
 fn no_filesystem_writes_in_this_module() {
-    // ★ **前提触发器**〔audit-0805 08-07〕：下面那张表是**黑名单**（列出已知的写 API），
+    // ★ **前提触发器**：下面那张表是**黑名单**（列出已知的写 API），
     // 它天然漏掉没列的那些 —— 实测把 `std::fs::remove_file` 放进本模块生产段，
     // 本条**不红**（删除/改名/复制都不在表里）。
     //
@@ -164,7 +164,7 @@ fn notify_rejects_bad_args() {
     assert_eq!(notify(&["--tmux-notify".into(), "x".into(), "1".into()]), 2);
 }
 
-// ═══ 〔HX2 · 主会话 D-b〕hook 槽位按实例一格、起时清死槽 ═══════════════════════════════════
+// ═══ hook 槽位按实例一格、起时清死槽 ═══════════════════════════════════
 //
 // 要求住址：主会话 4D 裁 D-b 逐字「tmux hook 槽位按实例区分、起时清死 pid 的槽」；`INVARIANTS §41.1`（hook → `--tmux-notify` → SIGUSR1）
 // 与 `§41.2`（starttime 不符即静默 no-op —— 本族「死槽」的判准是同一条身份校验）。审计 `E-compat.md` §E5。
@@ -325,7 +325,7 @@ fn hx2_the_slot_plan_matches_the_hand_written_cases() {
 /// 🔴 H3：真装一趟（内存 tmux × **真 `/proc` 身份**）：预置一个死槽（本进程 pid ＋ 错的 starttime）、一个活的别人
 /// （本进程 pid ＋ 真 starttime）、一条用户 hook、一条段外的 ccm 死条目 ⇒ 死槽没了、活的别人 / 用户 hook / 段外那条逐字不动、
 /// 自己三条在同一格。
-#[cfg(target_os = "linux")] // 〔HX2〕读真 `/proc` 的 starttime（非 Linux 上 `proc_starttime` 恒 `None`）
+#[cfg(target_os = "linux")] // 读真 `/proc` 的 starttime（非 Linux 上 `proc_starttime` 恒 `None`）
 #[test]
 fn hx2_install_clears_dead_slots_and_takes_one_slot_without_touching_the_living() {
     let pid = std::process::id();
@@ -424,7 +424,7 @@ fn hx2_a_slot_lost_to_a_concurrent_backend_is_retried_in_the_next_one() {
 /// 读数（`#[ignore]`，手动跑）：**真 tmux**、私有 socket（`-L`，不碰用户那台 server，`C7i`）上走一趟：
 /// 预置一个死槽（本进程 pid ＋ 错的 starttime，放在首选格）与一条用户 hook ⇒ 装完死槽换成自己、用户 hook 原样、
 /// `show-hooks` 回话里自己恰好三条同一格。跑法：`cargo test --lib hx2_real_tmux -- --ignored`。
-#[cfg(target_os = "linux")] // 〔HX2〕读真 `/proc` 的 starttime（非 Linux 上 `proc_starttime` 恒 `None`）
+#[cfg(target_os = "linux")] // 读真 `/proc` 的 starttime（非 Linux 上 `proc_starttime` 恒 `None`）
 #[test]
 #[ignore]
 fn hx2_real_tmux_reading_on_a_private_socket() {

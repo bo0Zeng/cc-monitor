@@ -1,4 +1,4 @@
-//! `24e` 数据面：**列一个目录**。只有一侧 —— 远端；〔F2 · 2026-09-24〕经通道问那台机器上的后端。
+//! `24e` 数据面：**列一个目录**。只有一侧 —— 远端；经通道问那台机器上的后端。
 //!
 //! # 🪦 本机侧退役（2026-09-23）：「本机」那一侧存在过，现在不在了
 //!
@@ -40,7 +40,7 @@
 //!   用户裁的是「本地不需要文件管理器」，不是「窗口不许碰本机盘」。
 //! - `src/sftp/` 那块**旧面板**一个字节没动（它的退役是另一刀，排在补齐 7 项功能之后）。
 //!
-//! # 🔴〔F2 · 2026-09-24〕列目录**只经通道问后端**（逐条理由住下面「窗口进程只说 `call`」那一节）
+//! # 🔴列目录**只经通道问后端**（逐条理由住下面「窗口进程只说 `call`」那一节）
 //!
 //! 上一版这里写的是「远端这一侧直接 `await` 池子那条列目录命令（同进程、同一个连接池）」。
 //! 窗口改成独立进程之后那句话早就只对一半（换进程就换一份池），F2 这一拍把那条路整条摘了。
@@ -48,7 +48,7 @@
 //! # ⚠ 排序：一个契约，盘上有两份实现 —— 而**显示序**这一半只有一个家
 //!
 //! 「目录在前，再按名称小写排」这条契约，生产侧的落点**曾经**是池子里那个私有排序函数
-//! （〔F7c 收尾 09-24〕`sort_entries`〔散文墓碑〕随池子那条列目录命令一起删了）⇒ 今天只剩 [`sort_rows`] 一份。
+//! （`sort_entries`〔散文墓碑〕随池子那条列目录命令一起删了）⇒ 今天只剩 [`sort_rows`] 一份。
 //!
 //! 🔴 **如实登记这个缝**：后端不排（它答的是目录项，不是一屏）⇒ 窗口这一侧的显示序
 //! 只经 [`sort_rows`]；池子那一份今天只服务旧面板。
@@ -75,7 +75,7 @@ use std::path::Path;
 
 /// 文件列表里的一行。**故意比 `SftpEntry` 窄** —— 列表只画得下这些。
 ///
-/// 🔴〔第十三刀 2026-09-23〕**它现在要过一次进程边界**，所以多了 serde 那一对。
+/// 🔴**它现在要过一次进程边界**，所以多了 serde 那一对。
 /// 开窗改成起一个独立进程之后，入口那条命令先列好的那一屏得**交给另一个进程**
 /// （逐条理由住 [`super::proc`]）。⚠ 这一对 derive **不是** rust↔TS 那条边界上的
 /// （没有 `#[ts(export)]`，前端一个字段都不消费它）—— 它只走
@@ -109,7 +109,7 @@ pub struct Row {
 ///
 /// 上一版这里登记着一条代价：交给窗口进程的**第一屏**走 `Vec<Row>`，于是那一屏
 /// 没有链接与时间两格。那份文件（`proc.rs`）后来进了写区 ⇒ 种子里那一屏
-/// 换成了 `Vec<Listed>`，那条代价没了。〔MIG-3a · 09-28 裁 3〕那一屏今天不过进程边界了（窗口进程自己列，`proc::first_screen`），
+/// 换成了 `Vec<Listed>`，那条代价没了。〔09-28 裁 3〕那一屏今天不过进程边界了（窗口进程自己列，`proc::first_screen`），
 /// 链接与时间两格直接从 [`row_from_ls_entry`] 来。
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Listed {
@@ -124,7 +124,7 @@ pub struct Listed {
     /// 两者刻意不混：SFTP 那条退路交不出它（`SftpEntry` 里没有这一格），
     /// 而「后端送了一个 0」是 1970 年，那是一个真时间。
     pub mtime_secs: Option<u64>,
-    /// 〔FW5 · 第四波〕**有损名的原始字节**（名字那一段，不是整条路径）；名字是合法 UTF-8 ⇒ `None`。
+    /// **有损名的原始字节**（名字那一段，不是整条路径）；名字是合法 UTF-8 ⇒ `None`。
     ///
     /// 窗口的路径是字符串，非 UTF-8 的名字经有损解码之后**寻址不到**（U+FFFD 不是那个字节）。
     /// 后端 `files-ls` 送的本来就是字节（`{"b16": …}`），此前在 [`row_from_ls_entry`] 里被丢掉了 ——
@@ -177,7 +177,7 @@ impl std::ops::Deref for Listed {
 /// 形状上的先例逐字住 `src/frontend/shell/Cargo.toml`（`creds-core` 那条 `harden` feature）：
 /// 「『backend 写不了这份文件』是**编译器**兜的，不是一条判据兜的」。
 ///
-/// 〔P4〕它装的是那台机器**寻址用的名字**（`RemoteConfig::origin_label` 的口径，monitor 开窗时算好随种子交来）。
+/// 它装的是那台机器**寻址用的名字**（`RemoteConfig::origin_label` 的口径，monitor 开窗时算好随种子交来）。
 /// 从前装的是整份 `RemoteConfig`：窗口只拿它取名字、再给「在此打开终端」算机器事实 —— 开终端改由 monitor 接之后只剩名字，
 /// 窗口进程从此不认识 monitor 的配置类型（`filewin` 边界判据那一格「开窗配置的类型」清零）。
 #[derive(Clone, Debug)]
@@ -203,7 +203,7 @@ impl Source {
     /// ⇒ **仍然不合并**：它们回的是同一个串是**今天的实况**，不是契约。
     ///
     /// ⚠ **刻意不回 `String`**：`origin_tests::no_new_raw_string_origin_parameters`
-    /// 是一条递减棘轮 —— `设计/00 §2.5 ①` 逐字「origin 归一 —— 这是地基」，
+    /// 是一条递减棘轮 —— 「origin 归一 —— 这是地基」，
     /// 新代码一律用这个类型，不许再给这个概念造一种表达。
     /// ⚠ 那个名字由 monitor 开窗时用 `origin_label()` 算（`filewin/entry.rs`），与 `ssh_source` 的 `stream_loop` 登记时
     /// 用的是**同一个函数** —— 两处漂开的症状是「命令发给了一个谁都没登记过的
@@ -213,7 +213,7 @@ impl Source {
     }
 }
 
-// 〔P4〕远端路径的「上一级」与「最后一段」（`parent_dir` · `remote_basename`）逐字搬进了契约 crate `filewin-contract`：
+// 远端路径的「上一级」与「最后一段」（`parent_dir` · `remote_basename`）逐字搬进了契约 crate `filewin-contract`：
 //   monitor 开窗入口（`filewin/entry.rs::plan_target`：「跳到这个文件」切成目录 ＋ 名字）与窗口两边都切，切法只许一份。
 pub use filewin_contract::{parent_dir, remote_basename};
 
@@ -243,7 +243,7 @@ impl SortBy {
     pub const ALL: [SortBy; 3] = [SortBy::Name, SortBy::Size, SortBy::Type];
 
     /// 下拉里那一格写什么。
-    /// 〔CP2b〕字从文案表取 ⇒ 回 `String`（原先是 `&'static str` 的字面量）。
+    /// 字从文案表取 ⇒ 回 `String`（原先是 `&'static str` 的字面量）。
     pub fn label(self) -> String {
         match self {
             SortBy::Name => copy_text("rsFilewinSource.sort.name", &[]),
@@ -272,7 +272,7 @@ fn ext_of(name: &str) -> String {
 ///
 /// 🔴 **这是「屏幕上那一屏是什么序」的唯一住址。** `Name` 那一支逐字节等于
 /// 本刀之前那个写死的版本（那时契约逐字是「目录在前，再按名称小写排，
-/// 与池子那一份同」，那一份〔F7c 收尾〕已删）——多出来的只是一个在那一档返回 `Equal`
+/// 与池子那一份同」，那一份已删）——多出来的只是一个在那一档返回 `Equal`
 /// 的 `then_with`，它对结果零影响。
 pub fn sort_rows(v: &mut [Listed], by: SortBy) {
     v.sort_by(|a, b| {
@@ -318,7 +318,7 @@ pub fn breadcrumbs(path: &str) -> Vec<(String, String)> {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// 〔W5-FILES · 第五波〕**有损名全寻址**：一条远端路径的原始字节（`设计/60 §6.2`「整条寻址链要换成字节」）
+// **有损名全寻址**：一条远端路径的原始字节（「整条寻址链要换成字节」）
 // ═══════════════════════════════════════════════════════════════════════
 //
 // 窗口里显示用的一律是有损串；**发出去的**（列目录 · 读 / 存文本 · 复制 · 算大小 · 写面的根）经 [`RemotePath::wire`]：
@@ -558,7 +558,7 @@ pub fn list_local(dir: &Path) -> Result<Vec<Listed>, String> {
 /// 问 home 那一趟（〔09-28 裁 3〕窗口进程的 `proc::first_screen`）要一个起着的后端才跑得起来
 /// ⇒ 那条路上**有逻辑的一段**就是这里（连同 [`home_from_reply`] 的解字节），抽出来它就有判据了。
 ///
-/// 〔F7a · 第三波 2026-09-24〕改过名（旧名带着 SFTP 那一问的字眼）：第七刀那一版问的是
+/// 改过名（旧名带着 SFTP 那一问的字眼）：第七刀那一版问的是
 /// SFTP 的 `realpath(".")`；现在问的是后端 `files-home`，判的这一道一个字没变。
 ///
 /// # 为什么要判一道，而不是把回值直接拿去开窗
@@ -597,10 +597,10 @@ pub const CMD_HOME: &str = "files-home";
 
 /// 一趟 `files-home` 的 `data` → 开窗的起点。
 ///
-/// 🔴〔F7a · 第三波 2026-09-24〕**这一问从 SFTP 换到了后端。** 上一版这里是一个
+/// 🔴**这一问从 SFTP 换到了后端。** 上一版这里是一个
 /// async 函数（monitor 为「`.` 是哪儿」单拨一条 SFTP，走池子那条 `realpath` 命令），
 /// 它是 monitor 那一侧**最后一处**碰 SFTP 的地方；
-/// 现在问的是后端 `files-home`（〔MIG-3a · 09-28 裁 3〕窗口进程经通道问，`proc::first_screen`）。
+/// 现在问的是后端 `files-home`（〔09-28 裁 3〕窗口进程经通道问，`proc::first_screen`）。
 ///
 /// 两道：① `path` 解成字节 —— **不是合法 UTF-8 就拒**（窗口的路径是字符串，有损解码之后
 /// 寻址不到那个目录，开出来的是别处）；② 能不能当起点，交 [`start_dir_from_home`]。
@@ -615,7 +615,7 @@ pub fn home_from_reply(d: &serde_json::Value) -> Result<String, String> {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// 🔴〔F2 · 波二 · 2026-09-24〕**窗口进程只说 `call`** —— 经 F3 那条通道
+// 🔴〔波二〕**窗口进程只说 `call`** —— 经 F3 那条通道
 // ═══════════════════════════════════════════════════════════════════════
 //
 // 用户逐字：「甲, 窗口变成独立前端. 我说了后端要模块化, 即原生后端+文件管理后端.
@@ -640,19 +640,19 @@ pub fn home_from_reply(d: &serde_json::Value) -> Result<String, String> {
 //
 // # ⚠ 这一步**没有**做到什么（别读宽）
 //
-// - ✅〔TL3 · 审计 F 🔴-3 订正〕**跨机传输**：这里原先写「仍走 SFTP（上传 · 往外拖 · 取消），`设计/60 §8.4` 未拍」。
+// - ✅〔审计 F 🔴-3 订正〕**跨机传输**：这里原先写「仍走 SFTP（上传 · 往外拖 · 取消），未拍」。
 //   今天上传 / 下载是窗口说 `transfer-upload` / `transfer-download` ＋ 订阅 `transfer/<id>`（取消 = 停订），
-//   monitor 只中继，SFTP 住本机常驻后端（`设计/60 §4.2` · `§4.6`）；往 OS 拖出去不做（V122）。窗口进程零 SFTP。
-//   ✅〔F7a · 第三波 2026-09-24〕「读一份文本进编辑器」那一条已换成后端 `files-read-text`。
-// - ✅〔F7a · 第三波 2026-09-24〕**同机复制**此前仍走 SFTP（后端没有 `files-copy`，
+//   monitor 只中继，SFTP 住本机常驻后端；往 OS 拖出去不做。窗口进程零 SFTP。
+//   ✅「读一份文本进编辑器」那一条已换成后端 `files-read-text`。
+// - ✅**同机复制**此前仍走 SFTP（后端没有 `files-copy`，
 //   登记在 `boundary_tests` 那一类「后端缺命令」里）—— 现在问后端 `files-copy`，那一类清零删了。
-// - ✅〔F7a · 第三波 2026-09-24〕**开窗时解 home** 此前仍走 SFTP（住 monitor 那一侧，
+// - ✅**开窗时解 home** 此前仍走 SFTP（住 monitor 那一侧，
 //   后端没有这一问）—— 现在问后端 `files-home`（[`home_from_reply`]），monitor 那一侧
 //   开窗一个 SFTP 都不拨了。
-// - **`Row` 仍然持字符串不持字节** —— 〔W5-FILES · 第五波〕那「单独一刀」没去改 `Row`，改的是**发出去的那一跳**：
+// - **`Row` 仍然持字符串不持字节** —— 那「单独一刀」没去改 `Row`，改的是**发出去的那一跳**：
 //   窗口记住当前目录的字节（`FileWindow::cwd_raw`）与行上名字的字节（`Listed::raw_name`），发路径一律经 [`RemotePath`]
 //   （进目录 · 列目录 · 上一级 · 读 / 存文本 · 复制 · 算大小 · 新建 · 写面的根）；显示照旧用有损串。
-//   仍然做不了、会出声的：有损目录里上传 / 搜索 / 开终端 / 书签；有损名下载（`设计/60 §4.1`：SFTP 库寻址不到）。
+//   仍然做不了、会出声的：有损目录里上传 / 搜索 / 开终端 / 书签；有损名下载（SFTP 库寻址不到）。
 
 /// 那条线上命令的名字。⚠ 能力名是 `files.ls`，线上名是 `files-ls`
 /// （两者刻意不同形，同 `find.rs` 头注那条）。
@@ -696,7 +696,7 @@ pub fn row_from_ls_entry(v: &serde_json::Value) -> Result<Listed, String> {
     let lossy_name = std::str::from_utf8(&bytes).is_err();
     let path = String::from_utf8_lossy(&bytes).to_string();
     let name = remote_basename(&path).to_string();
-    // 〔FW5〕有损名留住**名字那一段**的原始字节（最后一个 `/` 之后；远端路径恒用 `/`）。
+    // 有损名留住**名字那一段**的原始字节（最后一个 `/` 之后；远端路径恒用 `/`）。
     let raw_name = lossy_name.then(|| {
         let cut = bytes.iter().rposition(|b| *b == b'/').map_or(0, |k| k + 1);
         bytes[cut..].to_vec()
@@ -748,7 +748,7 @@ pub async fn list_via_backend(
     .await
 }
 
-/// 〔W5-FILES · 有损名全寻址〕同 [`list_via_backend`]，目录由调用方给线上那一形（字符串或 `{"b16": …}`，[`RemotePath::wire`]）。
+/// 〔有损名全寻址〕同 [`list_via_backend`]，目录由调用方给线上那一形（字符串或 `{"b16": …}`，[`RemotePath::wire`]）。
 pub async fn list_via_backend_at(
     line: &Line,
     origin: &Origin,
@@ -806,7 +806,7 @@ pub fn rows_from_ls_data(d: &serde_json::Value, by: SortBy) -> Result<(Vec<Liste
 /// 一屏最多要多少行。
 ///
 /// ⚠ 后端那侧有自己的默认值（`files/mod.rs::DEFAULT_LIMIT`）；这里**显式给**，
-/// 因为「一屏多少」是调用方的事（同 `设计/60 §3.5.2a` 那条「机制在后端 ·
+/// 因为「一屏多少」是调用方的事（同那条「机制在后端 ·
 /// 节拍归调用方」的形）。取这个数是因为窗口是**虚拟滚动**的
 /// （`ScrollArea::show_rows`），一次拿多少不影响帧时，只影响一次往返的大小。
 pub const LS_LIMIT: usize = 50_000;
@@ -824,7 +824,7 @@ pub async fn list_dir(
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// 🔴〔F2〕窗口进程够后端的**唯一一处** `call`
+// 🔴窗口进程够后端的**唯一一处** `call`
 // ═══════════════════════════════════════════════════════════════════════
 
 /// 寻址键：`chan::wire` 再导出的全仓那一个「哪台机器」类型。
@@ -836,7 +836,7 @@ pub type Line = chan_core::chan::client::Client;
 /// 发一条命令、拿它的 `data`（JSON）。
 ///
 /// 🔴 **窗口进程里说 `call` 的只有这一处**（`X6` 的 Rust 那一侧人群就是它）：
-/// 期限由调用方给（`t`），这里只把它换成**绝对时刻**的 `Budget`（`05 §3.3.2`）——
+/// 期限由调用方给（`t`），这里只把它换成**绝对时刻**的 `Budget`——
 /// 一个期限常量都不住在这儿。
 ///
 /// ⚠ 载荷在这里才被当成 JSON：通道对它不透明（`C1`），宿主那一侧把它原样交给
@@ -856,7 +856,7 @@ pub async fn ask(
 
 /// 一趟 [`ask_coded`] 没成：**对端说的码**（只有「对端拒了」那一形有）＋ 那句人话。
 ///
-/// 🔴〔F7a · 第三波 2026-09-24〕为什么要把码留下来：编辑器读文本那一问，后端的
+/// 🔴为什么要把码留下来：编辑器读文本那一问，后端的
 /// `too_large` / `not_text` 与「连不上」是**两件事**（前者说「这份不是一份能编辑的文本」，
 /// 后者说「这一趟没走通」），而 [`said`] 翻完之后只剩一句话 —— 分它们就只能猜字符串前缀。
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -895,8 +895,8 @@ pub async fn ask_coded(
     .await
 }
 
-/// 〔FILES3 · `设计/99 §2.2 ㉜`「可撤」〕同 [`ask_coded`]，撤单手柄由调用方握着（按内容搜那颗「停」拨它）：
-/// 拨下去 ⇒ 这一问当场回收（`Ours{Cancelled}`），通道把撤单转给那台后端（对端停不停是尽力，`05 §3.3.3`）。
+/// 〔「可撤」〕同 [`ask_coded`]，撤单手柄由调用方握着（按内容搜那颗「停」拨它）：
+/// 拨下去 ⇒ 这一问当场回收（`Ours{Cancelled}`），通道把撤单转给那台后端（对端停不停是尽力）。
 /// 🔴 窗口进程里说 `call` 的仍然只有一处 —— 就在本函数里（[`ask_coded`] 是它的薄壳）。
 pub async fn ask_coded_cancellable(
     line: &Line,
@@ -938,7 +938,7 @@ pub async fn ask_coded_cancellable(
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// 🔴〔F7c · 第三波 · 2026-09-24〕窗口进程里说 `subscribe` 的**唯一一处**：看一趟传输
+// 🔴窗口进程里说 `subscribe` 的**唯一一处**：看一趟传输
 // ═══════════════════════════════════════════════════════════════════════
 
 /// 进度流一开始给的 credit（格数）。之后每吃一格还一格。
@@ -953,7 +953,7 @@ pub const WATCH_CREDIT: u32 = 8;
 /// - 每一格进度交给 `on(已传, 总共)`。
 ///
 /// 🔴 **窗口进程里说 `subscribe` 的只有这一处**（`X6` 的 Rust 那一侧人群里 `subscribe` 那一格）。
-/// ⚠ `subscribe` 没有期限参数（`05 §3.3.0`：订阅是长期意向）—— 这一趟多久算完由传输台说了算，
+/// ⚠ `subscribe` 没有期限参数（订阅是长期意向）—— 这一趟多久算完由传输台说了算，
 /// 窗口能做的是撤。
 pub async fn watch(
     line: &Line,
@@ -967,7 +967,7 @@ pub async fn watch(
         .map_err(|(_, said)| said)
 }
 
-/// 〔FILES2 · Q5〕同 [`watch`]，失败时把传输台说的码一起交回（`(码, 原话)`；没码 ⇒ `None`）—— 上传据 `sftp_home_mismatch` 换路。
+/// 同 [`watch`]，失败时把传输台说的码一起交回（`(码, 原话)`；没码 ⇒ `None`）—— 上传据 `sftp_home_mismatch` 换路。
 pub async fn watch_coded(
     line: &Line,
     origin: &Origin,
@@ -1041,7 +1041,7 @@ pub async fn watch_coded(
     }
 }
 
-/// 一趟传输看完了（[`watch`] 的成功那一形）：字节数 ＋〔FW1〕上传那一路的整份摘要（提交时的 `expect`）。
+/// 一趟传输看完了（[`watch`] 的成功那一形）：字节数 ＋上传那一路的整份摘要（提交时的 `expect`）。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Watched {
     pub bytes: u64,
@@ -1063,7 +1063,7 @@ pub fn refused_code(e: &chan_core::chan::wire::CallError) -> Option<String> {
     }
 }
 
-/// 通道那三层失败（`05 §3.3.1`）→ 窗口上那一句话。**穷尽 `match`，不许 `_ =>`。**
+/// 通道那三层失败→ 窗口上那一句话。**穷尽 `match`，不许 `_ =>`。**
 ///
 /// 🔴 对端说了话（`Peer{Refused}`）时 body 是宿主那一侧拼的 `{"code","message"}`
 /// （`backend_route::layer_call_error` 逐字），翻成人话走 [`super::find::refusal`] ——
@@ -1119,7 +1119,7 @@ pub fn said(cmd: &str, e: &chan_core::chan::wire::CallError) -> String {
             )
         }
         CallError::Ours { why, runs_on } => match why {
-            // 〔NET2〕那台对这一条不认撤 ⇒ 说它可能还在跑（`05 §3.3.3`）。
+            // 那台对这一条不认撤 ⇒ 说它可能还在跑。
             OursFault::Cancelled if *runs_on => copy_text("rsChanWire.ours.cancelledRunsOn", &[]),
             OursFault::Cancelled => copy_text("rsFilewinSource.said.cancelled", &[]),
             OursFault::Misuse => copy_text("rsFilewinSource.said.internal", &[]),

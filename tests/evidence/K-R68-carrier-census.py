@@ -298,7 +298,7 @@ def sect_7_closedset():
         r"pub enum ToolDestination \{(.*?)\n\}", txt, re.S).group(1), re.M) if re.search(
         r"pub enum ToolDestination \{(.*?)\n\}", txt, re.S) else []
     print(f"\n  ToolDestination 变体 {len(variants)} 个：{variants}")
-    print("  ⚠ 现算，不写死〔13b〕。")
+    print("  ⚠ 现算，不写死。")
 
 
 def sect_8_ci():

@@ -1,6 +1,6 @@
-//! 跨模块工具：日期 / 时间换算 + procStart newtype。〔P4〕原子 JSON 写入搬去了 `host_core::atomic_write_json`（两个前端共用的那一份）。
+//! 跨模块工具：日期 / 时间换算 + procStart newtype。原子 JSON 写入搬去了 `host_core::atomic_write_json`（两个前端共用的那一份）。
 //!
-//! `days_from_civil`：〔MOD〕按时间戳挑子 agent 那一份进了后端之后，生产段零读者，只剩文件窗口那份日期换算的异源对拍在用。
+//! `days_from_civil`：按时间戳挑子 agent 那一份进了后端之后，生产段零读者，只剩文件窗口那份日期换算的异源对拍在用。
 //!
 //! ## procStart newtype（P1.1）
 //!
@@ -23,7 +23,7 @@
 ///
 /// 参考：http://howardhinnant.github.io/date_algorithms.html
 ///
-/// 〔MOD〕生产段今天零读者（按时间戳挑子 agent 那一份进了后端）；留着给文件窗口那份日期换算当**异源**正向
+/// 生产段今天零读者（按时间戳挑子 agent 那一份进了后端）；留着给文件窗口那份日期换算当**异源**正向
 /// （`filewin/source_tests.rs`，它是 `filewin/source.rs` 那份逆运算的对拍）。
 #[cfg_attr(not(test), allow(dead_code))]
 pub fn days_from_civil(y: i64, m: i64, d: i64) -> i64 {
@@ -47,7 +47,7 @@ pub struct FileTime(pub u64);
 pub struct NetTicks(pub u64);
 
 impl FileTime {
-    // 〔P4 · 阶段 H〕Win32 那两件（`from_win32` · `to_net_local_ticks`，都是 `cfg(windows)`）搬进 `platform/filetime.rs`（同一个类型的第二个 impl 块）。
+    // Win32 那两件（`from_win32` · `to_net_local_ticks`，都是 `cfg(windows)`）搬进 `platform/filetime.rs`（同一个类型的第二个 impl 块）。
     /// 从字符串解析（PS 端 ToFileTime() 输出形式）。失败返 None。
     /// 保留未用：将来若给 `verify_binding` 加 ps_proc_start 校验 / 合并
     /// `HwndEntry` 跟 `SidHwndBinding` 时即用。
@@ -87,7 +87,7 @@ pub fn now_ms() -> i64 {
     systime_to_ms(std::time::SystemTime::now())
 }
 
-// 〔MOD〕`parse_iso8601_ms`〔散文墓碑〕删：唯一调用方（按时间戳挑子 agent 那一份）随「找 ＋ 挑」进了后端
+// `parse_iso8601_ms`〔散文墓碑〕删：唯一调用方（按时间戳挑子 agent 那一份）随「找 ＋ 挑」进了后端
 //   （后端 `observe/search_query.rs::parse_iso8601_ms`）。
 
 // === P3：目录扫 + JSON parse → HashMap 通用 helper ===
@@ -95,7 +95,7 @@ pub fn now_ms() -> i64 {
 /// 扫 `dir` 下所有 `*.json` 文件，反序列化为 `T`，按 `key_fn` 提取 key 入 HashMap。
 /// 解析失败 / 读失败的文件静默跳过。`dir` 不存在返空 map。
 ///
-/// 替代了当年 `session_map.rs` 扫 pidfile 目录那一处（〔LOC1b〕那份判活已删）+ bind.rs::scan_registry_dir 两处独立实现。
+/// 替代了当年 `session_map.rs` 扫 pidfile 目录那一处（那份判活已删）+ bind.rs::scan_registry_dir 两处独立实现。
 pub fn scan_dir_jsons<T, K, F>(dir: &std::path::Path, key_fn: F) -> std::collections::HashMap<K, T>
 where
     T: serde::de::DeserializeOwned,

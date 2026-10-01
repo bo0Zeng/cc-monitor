@@ -1,4 +1,4 @@
-//! 〔TAP · V124〕`tap.rs` 的 hub（帧怎么折、归哪个运行住 `run_route_tests.rs`；设计住仓外 `调研/第四波记录/TAP.md §1.1 · §3`；出处 `设计/20 §8`）。
+//! `tap.rs` 的 hub（帧怎么折、归哪个运行住 `run_route_tests.rs`；设计住仓外；出处）。
 //!
 //! 经真中转走一遍的那几条（T1 / T2）住 `relay/host_tests.rs`（它们要中转的门与夹具）；本文件只管 hub 自己。
 
@@ -25,7 +25,7 @@ fn offer_refuses_when_nobody_is_attached_and_accepts_once_someone_is() {
     assert_eq!(rx.try_recv().ok(), Some(ev(1)));
 }
 
-/// 〔HOST · H3 · `设计/01 §3.3b ⑥`〕多客户：每条连着的流各收一份；走了的那条摘掉，剩下的照收。
+/// 多客户：每条连着的流各收一份；走了的那条摘掉，剩下的照收。
 #[test]
 fn every_attached_stream_gets_its_own_copy_and_a_gone_one_is_dropped() {
     let hub = TapHub::default();

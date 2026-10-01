@@ -2,7 +2,7 @@
  * R3 · **账号 / 中转命名全量清账**的判据（用户裁「要, 所有东西都要准确, 清晰, 解耦清楚.
  * 不要把账号和中转混为一谈」；更早「中转层不要有账号, 账号就账号中转就中转」）。
  *
- * # 口径（唯一口径住 `调研/设计/20` 的「术语归属」表，本文件不另立）
+ * # 口径（本文件不另立）
  *
  * | 词 | 指什么 |
  * |---|---|
@@ -51,7 +51,7 @@
  * # 不判什么（诚实段）
  *
  * - 判不了**新写的**一句散文把中转说成了账号的事：词组那几行只是这次现打里出现过的形状。
- * - 判不了设计文档（仓外，`调研/设计/`）：那里的旧名是「旧名 → 新名」对照表的左列，本来就该留着。
+ * - 判不了设计文档（仓外）：那里的旧名是「旧名 → 新名」对照表的左列，本来就该留着。
  */
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
@@ -112,7 +112,7 @@ export const ACCOUNT_NAMES: AccountName[] = [
     fresh: "CCM_AGENT_UPSTREAM_CLAUDE_CODE",
     freshRe: ident("CCM_AGENT_UPSTREAM_CLAUDE_CODE"),
     kind: "环境变量",
-    why: "每 agent 默认上游（`agents::Adapter::upstream`，〔NT2 · V25〕跟着适配层）里 claude-code 那一格的旋钮；中转没有默认上游",
+    why: "每 agent 默认上游（`agents::Adapter::upstream`，跟着适配层）里 claude-code 那一格的旋钮；中转没有默认上游",
     state: "done",
   },
   // ── 命令面（前端 ↔ monitor；不上后端的线）─────────────────────────────────────
@@ -322,7 +322,7 @@ export const ACCOUNT_NAMES: AccountName[] = [
 
 /** 同一次现打里确认是**中转**的名字 —— 刻意不改。 */
 export const RELAY_NAMES: { name: string; re: RegExp; why: string }[] = [
-  // 〔DEL〕`--relay`（独立中转进程的子命令）与它的装配口 `run_relay` 两行摘了：那一形删了，中转只住常驻后端进程里。
+  // `--relay`（独立中转进程的子命令）与它的装配口 `run_relay` 两行摘了：那一形删了，中转只住常驻后端进程里。
   { name: "CCM_RELAY_PORT", re: ident("CCM_RELAY_PORT"), why: "中转监听的端口" },
   { name: "CCM_RELAY_ALL_SESSIONS", re: ident("CCM_RELAY_ALL_SESSIONS"), why: "全量注入开关：让订阅号的会话也过中转（`/t/`）" },
   { name: "RELAY_PORT", re: ident("RELAY_PORT"), why: "monitor 侧拼注入地址用的端口" },
@@ -332,21 +332,21 @@ export const RELAY_NAMES: { name: string; re: RegExp; why: string }[] = [
   { name: "relay_env_prefix_posix", re: ident("relay_env_prefix_posix"), why: "把中转地址拼成命令前缀" },
   { name: "relay_prefix_for_launch", re: ident("relay_prefix_for_launch"), why: "起会话那一刻挑中转前缀的接线口" },
   { name: "relay_running", re: ident("relay_running"), why: "本机中转进程在不在跑" },
-  // 〔RL1 · V107〕`start_local_relay` / `LOCAL_RELAY` 两条随「monitor 另起中转」那一族删掉，换成接替它们的两个中转名字。〔散文墓碑〕
+  // `start_local_relay` / `LOCAL_RELAY` 两条随「monitor 另起中转」那一族删掉，换成接替它们的两个中转名字。〔散文墓碑〕
   { name: "relay_host_envs", re: ident("relay_host_envs"), why: "起本机后端时交给它的中转端口（与凭据路径 —— 那是上游选择要读的，但交接这一步是为中转在那个进程里起来）" },
   { name: "host_relay", re: ident("host_relay"), why: "常驻后端进程内起中转的装配口（中转的 host ＋ 上游选择那只手）" },
   { name: "RelayAsk", re: ident("RelayAsk"), why: "`relay_endpoint_for` 的入参" },
-  // 〔DUP1 · 4D〕「中转路由段字符闸」那一行（登记的是它 US1 之前的旧名）删了：那道闸今天叫 `relay_route_core::segment_is_safe`，
+  // 「中转路由段字符闸」那一行（登记的是它 US1 之前的旧名）删了：那道闸今天叫 `relay_route_core::segment_is_safe`，
   //   旧名只剩 `history_tests.rs` ④ 那段注释还在点；那一格按 sid 规则收紧改写之后旧名全仓零处 ⇒ 本表那一行随之退役（不是改名漏网）。
   { name: "RELAY_KEEPS_THE_OLD_PATH", re: ident("RELAY_KEEPS_THE_OLD_PATH"), why: "中转前缀在场时本机拉起走旧路的理由句" },
   { name: "src/backend/relay/", re: lit("src/backend/relay/"), why: "中转的目录" },
-  // 〔DEL〕`"source":"relay"`（NDJSON tee 行的线上字段值）那一行摘了：那个落点随独立 `--relay` 删了。
+  // `"source":"relay"`（NDJSON tee 行的线上字段值）那一行摘了：那个落点随独立 `--relay` 删了。
 ];
 
 /**
- * 〔RN1 · 第四波 4C〕**V114 · 「上游选择」改名**的判据。
+ * **V114 · 「上游选择」改名**的判据。
  *
- * 要求住址：用户裁决 **V114**（`设计/99 §1`）。用户原话逐字：「中转（面 B）＋ 账号层是什么东西 / 怎么还有账号层? /
+ * 要求住址：用户裁决 **V114**。用户原话逐字：「中转（面 B）＋ 账号层是什么东西 / 怎么还有账号层? /
  * 账号应该包括订阅+api(即自选url和api)」＋〔选〕「上游选择」。裁决逐字：「原『层 2（账号）/ 账号层』改名『上游选择』
  * —— 账号域里按号决定这一发的上游与凭据的那个口」「纯命名清理，行为不变」。
  *
@@ -357,7 +357,7 @@ export const RELAY_NAMES: { name: string; re: RegExp; why: string }[] = [
  *
  * 人群：同波别的路新写一句「账号层」/「层 2」/`accounts::apikey`/`account_layer…` ⇒ 本表当场红（合并时对上）。
  *
- * ⚠ 「层 1」**不整词禁**：它在别处另有其义（`设计/15 §3.2` 的层 1 · 只读护栏的层）。只禁中转义的那三种写法。
+ * ⚠ 「层 1」**不整词禁**：它在别处另有其义（层 1 · 只读护栏的层）。只禁中转义的那三种写法。
  * ⚠ 「层 2」按「前面不是 顶 / 卫」禁：「守卫层 2」「顶层 2 处」是别义，不许认。
  */
 export const UPSTREAM_SELECTION_NAMES: AccountName[] = [
@@ -467,7 +467,7 @@ export function notScanned(path: string): boolean {
 const ANCHORS = [
   "src/comms/outward/mod.rs",
   "src/backend/accounts/upstream_select/mod.rs",
-  "src/backend/control/launch_render/payload.rs", // 〔MIG-2〕随载荷渲染搬进后端
+  "src/backend/control/launch_render/payload.rs", // 随载荷渲染搬进后端
   "src/frontend/ui/accounts.ts",
   "src/doc/IPC-PROTOCOL.md",
   "tests/evidence/K-R117-ruler.py",
@@ -516,7 +516,7 @@ export function hitsIn(texts: Map<string, string>, re: RegExp): string[] {
   return out;
 }
 
-describe("R3 · 账号 / 中转命名清账（`设计/20` 术语归属）", () => {
+describe("R3 · 账号 / 中转命名清账（术语归属）", () => {
   const corpus = loadCorpus();
 
   it("正控 ①：扫描面含锚文件（自定位）", () => {
@@ -579,7 +579,7 @@ describe("V114 · 「上游选择」改名（RN1）", () => {
       ["层 2", "守卫层 2:计划执行器"],
       ["层 2", "顶层 2 处"],
       ["层 2", "层 23 格"],
-      ["中转（层 1）/ 层 1（中转）/ 中转层 1", "`设计/15 §3.2` 层 1 那一搬"],
+      ["中转（层 1）/ 层 1（中转）/ 中转层 1", " 层 1 那一搬"],
       ["accounts::apikey / accounts/apikey", "accounts::apikey_routed_subset"],
     ];
     for (const [old, sample] of notMine) {

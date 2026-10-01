@@ -1,5 +1,5 @@
 /**
- * 秤 4「每帧账本」（`调研/设计/17-算法与复杂度.md` §6 表第 **4** 行）。
+ * 秤 4「每帧账本」（§6 表第 **4** 行）。
  *
  * # 它量什么
  *
@@ -30,7 +30,7 @@
  * 🔴 **所以命中率这一档是构造的，带着「构造体像不像真的」这个前提。**
  * 它像不像真的，取决于**一件事**：真机上 ESC 回退的分布是不是「一条主链 + 均匀撒的分叉点」。
  * 本文件把分叉密度做成旋钮扫了一遍，正是因为那个密度是外来假设而不是读数
- * （`设计/17 §6` 数据源纪律 2026-09-18 改判：**不许再去读 `~/.claude/projects`**）。
+ * （数据源纪律 2026-09-18 改判：**不许再去读 `~/.claude/projects`**）。
  *
  * # 判据钉什么
  *
@@ -455,7 +455,7 @@ describe("秤 4 每帧账本", () => {
       const expFrames = Math.ceil(n / k);
       const unskippable = unskippableFrames(n, k, forks);
       expect(led.frames, `k=${k}：帧数`).toBe(expFrames);
-      // 〔RENDER2 · `设计/17 §2.7` 档 1 落地〕全命中的帧不再真算（`computesSkipped`）⇒ 真算的只剩跳不掉的那些帧，一帧至多一次。
+      // 〔档 1 落地〕全命中的帧不再真算（`computesSkipped`）⇒ 真算的只剩跳不掉的那些帧，一帧至多一次。
       expect(led.computes, `k=${k}：只有跳不掉的帧真算`).toBe(unskippable);
       expect(led.computesSkipped, `k=${k}：全命中的帧由档 1 跳掉`).toBe(expFrames - unskippable);
       expect(led.computeSamples.length).toBe(unskippable);
@@ -469,7 +469,7 @@ describe("秤 4 每帧账本", () => {
       expect(led.computesUnskippable, `k=${k}`).toBe(unskippable);
       expect(led.computesSkippable, `k=${k}：非 verify 档下全命中的帧根本不真算`).toBe(0);
       expect(led.computesNoArrivals).toBe(0);
-      // 〔RENDER2〕档 1 走过的帧，最后的主线与整份重算逐元素相等（异源：另一条路从零算）。
+      // 档 1 走过的帧，最后的主线与整份重算逐元素相等（异源：另一条路从零算）。
       const got = (folder as unknown as { lastMainBranch: Set<string> }).lastMainBranch;
       expect([...got].sort(), `k=${k}：快路攒出来的主线与整份重算不等`).toEqual([...computeMainBranch(recs)].sort());
       // 反空真：每一档都必须两条路都有
@@ -560,7 +560,7 @@ describe("秤 4 每帧账本", () => {
     expect(led.rebuilds, "每条都改了主线 ⇒ 每条都重折一次").toBe(N);
     expect(led.rebuildSamples.length).toBe(N);
     const last = led.rebuildSamples[led.rebuildSamples.length - 1];
-    // 〔W5-RENDER R13 · `设计/10 §3.4` C1〕重折改成按段差量：末次那一条只是主线在尾巴上长了一条，折叠归属一张卡都没变
+    // 重折改成按段差量：末次那一条只是主线在尾巴上长了一条，折叠归属一张卡都没变
     //   ⇒ 读 69 张卡（含折叠里的 12 张）、一个节点都不搬。改之前这一格是「解开 3 个 wrap 的 12 张卡、再折回 12 张」。
     expect(
       { ...last, frame: 0 },

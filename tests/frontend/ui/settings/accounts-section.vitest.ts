@@ -22,7 +22,7 @@ const fetchLocalAccountsMock = vi.fn();
 const invokeMock = vi.fn();
 
 vi.mock("@tauri-apps/api/event", () => ({ emit: vi.fn() }));
-// 〔FIX4 · ⑬〕开终端那三步（`terminal_dial` → `terminal-ssh` → `open_terminal_window`）经 `terminalShim` 译回旧的 `launch_remote_terminal`。
+// 开终端那三步（`terminal_dial` → `terminal-ssh` → `open_terminal_window`）经 `terminalShim` 译回旧的 `launch_remote_terminal`。
 vi.mock("@tauri-apps/api/core", async () => {
   const { isTerminalStep, terminalShim } = await import("../../../test-support/chan-fake");
   const term = terminalShim((...a: unknown[]) => invokeMock(...a));
@@ -41,7 +41,7 @@ vi.mock("../../../../src/frontend/ui/error-toast", () => ({ showActionFailureToa
 vi.mock("../../../../src/frontend/ui/remote-config", () => ({ readRemoteConfig: () => readRemoteConfigMock() }));
 
 import { readFileSync } from "node:fs";
-// 〔US1〕API key 那两问改走通道（`chan_call`，op = `apikey-read` / `apikey-routing`）：判据按 op 分派、回成品字节。
+// API key 那两问改走通道（`chan_call`，op = `apikey-read` / `apikey-routing`）：判据按 op 分派、回成品字节。
 // 账号库那几条（`accounts-*`）由那台后端做：判据用罐头答（`accountsFakeInvoke`），只看界面问了哪台、交了什么意图。
 import { ACCOUNT_MCP_OPS, accountsFakeInvoke, chanArgsJson, chanReply, fakeLoginCmd, isAccountsOp, isChanCall, type ChanCallArgs } from "../../../test-support/chan-fake";
 
@@ -52,7 +52,7 @@ function accountOps(calls: Array<[string, unknown]>): Array<[string, string, Rec
     .map(([, a]) => [(a as ChanCallArgs).op, (a as ChanCallArgs).origin, chanArgsJson(a as ChanCallArgs) as Record<string, unknown>]);
 }
 
-// 〔HX2 · 第四波 4D〕写 key 改走通道（`chan_call`，op = `apikey-key-set`）：判据把那一发译回「交给哪台 ＋ 交了什么」
+// 写 key 改走通道（`chan_call`，op = `apikey-key-set`）：判据把那一发译回「交给哪台 ＋ 交了什么」
 //   （`{origin, configDir, key, baseUrl?}`），断言照旧是那个形状；先前是 Tauri 命令 `write_apikey_credentials_key`〔散文墓碑〕的实参。
 const isKeySet = (c: unknown, a: unknown): boolean => isChanCall(c as string, a, "apikey-key-set");
 import {
@@ -72,7 +72,7 @@ import { computeGaps, summarizeGaps } from "../../../../src/frontend/ui/settings
 import type { ApikeyCredentialsStatus } from "../../../../src/frontend/ui/apikey-reads";
 import { showActionFailureToast } from "../../../../src/frontend/ui/error-toast";
 import * as accounts from "../../../../src/frontend/ui/accounts";
-// 〔FE1〕读面从 `accounts.ts` 拆去了 `account-reads.ts`，桩打在它真住的模块上。
+// 读面从 `accounts.ts` 拆去了 `account-reads.ts`，桩打在它真住的模块上。
 import * as accountReads from "../../../../src/frontend/ui/account-reads";
 import type { AccountsState, Account } from "../../../../src/frontend/ui/accounts";
 import { setCurrentMachine, __resetMachineContextForTests } from "../../../../src/frontend/ui/settings/machine-context";
@@ -82,7 +82,7 @@ import { LOCAL_ORIGIN } from "../../../../src/frontend/ui/backend-policy";
 import { POSIX_NO_WINDOW_MARKER } from "../../../../src/frontend/ui/remote-launch-run";
 import COPY_TABLE from "../../../../src/shared/copy/table.json";
 
-/** 〔第三波 S3〕文案表里本机那一支的条目（key 以 `accountsLocal.` 打头）—— 现算，不写死条数。 */
+/** 文案表里本机那一支的条目（key 以 `accountsLocal.` 打头）—— 现算，不写死条数。 */
 function localCopyEntries(): Array<[string, string]> {
   const out = Object.entries(COPY_TABLE.entries as Record<string, { zh: string }>)
     .filter(([k]) => k.startsWith("accountsLocal."))
@@ -135,7 +135,7 @@ function state(p: Partial<AccountsState>): AccountsState {
  * 形状与远端那份逐字段相同（`fetchLocalAccounts` 头注：两条路填的是同一个 Rust 结构体）。
  */
 function localState(p: Partial<AccountsState> = {}): AccountsState {
-  return state({ origin: LOCAL_ORIGIN, ...p }); // 〔C4b〕账号面的本机就是 `LOCAL_ORIGIN`（`"__local__"` 已退役）
+  return state({ origin: LOCAL_ORIGIN, ...p }); // 账号面的本机就是 `LOCAL_ORIGIN`（`"__local__"` 已退役）
 }
 const host = (p: Record<string, unknown> = {}) => ({
   label: "aya",
@@ -162,13 +162,13 @@ async function mount(): Promise<HTMLElement> {
 beforeEach(() => {
   vi.restoreAllMocks();
   __resetMachineContextForTests();
-  // 〔第三波 S3〕共用 store 的 `null` 就是本机（`machine-context.ts` 头注）；本分节从此**只认 store**，
+  // 共用 store 的 `null` 就是本机（`machine-context.ts` 头注）；本分节从此**只认 store**，
   // 不再在 `null` 上兜底去读主远端。本文件大半条目量的是远端那一支 ⇒ 默认站在 aya 那一页上；
   // 量本机那一支的条目显式 `setCurrentMachine(null)`（各处的 `noRemotes()` 顺手做了 ——
   // 一台远端都没配的机器只有本机那一页）。
   setCurrentMachine("aya");
   readRemoteConfigMock.mockReset().mockResolvedValue({ enabled: true, hosts: [host()] });
-  // 〔AL1 · 2026-09-24〕从前本机那一支挂着一块「按账号生成命令」（挂上去就先预览一次），
+  // 从前本机那一支挂着一块「按账号生成命令」（挂上去就先预览一次），
   // 这里要给那条命令一个形状对的最小答案。那一块搬去了机器页 ⇒ 所有命令照旧回 `undefined`。
   invokeMock.mockReset().mockImplementation((cmd: unknown, args: unknown) =>
     isAccountsOp(cmd as string, args) ? accountsFakeInvoke(args) : Promise.resolve(undefined),
@@ -209,7 +209,7 @@ describe("account-ux U7 设置账号组：降级分支不被 IA 重排改掉", (
    */
   it("没有已配置的远端 → 远端那三件套一件不出、远端读口一次不调（本机那一支归 NF1bD1）", async () => {
     readRemoteConfigMock.mockResolvedValue({ enabled: false, hosts: [] });
-    setCurrentMachine(LOCAL_ORIGIN); // 〔第三波 S3〕一台远端都没配 ⇒ 只有本机那一页
+    setCurrentMachine(LOCAL_ORIGIN); // 一台远端都没配 ⇒ 只有本机那一页
     const el = await mount();
     expectNoReadyChrome(el);
     expect(
@@ -346,7 +346,7 @@ describe("account-ux U7 已启用态：横幅 / 表格 / 维护区", () => {
   // 布局契约：styles.css 的 .accounts-table 定了列轨道，行用 subgrid 继承。
   // 往 accountRow 里多 append 一个元素而不改 CSS，列就整体错位——jsdom 测不了布局，
   // 但能测这个数。
-  // 🔴 〔`设计/50` 09-18〕**8 → 7**：F10 加的那条用量列随用量 ③ 轴整轴退役。
+  // 🔴 **8 → 7**：F10 加的那条用量列随用量 ③ 轴整轴退役。
   // ⚠ **CSS 那一半不在本轮写区里**（`styles.css` 归另一路）：`.accounts-table` 的
   //    `grid-template-columns` 今天仍是 8 条轨道 ⇒ **最后一条轨道会空着**。
   //    已随本件上报，改 CSS 的那一拍要把这两处一起看。
@@ -461,7 +461,7 @@ describe("account-ux U7 已启用态：横幅 / 表格 / 维护区", () => {
     expect(wrap.querySelector(".accounts-maint-ops")).not.toBeNull();
   });
 
-  it("🔴 A2（`70 §4.3` ①②）：新建账号**不在维护折叠里**、**不是红色** —— 只有 1 个号时也一样", async () => {
+  it("🔴 A2：新建账号**不在维护折叠里**、**不是红色** —— 只有 1 个号时也一样", async () => {
     fetchAccountsMock.mockResolvedValue(
       state({ accounts: [acct({ name: A })], defaultName: A }),
     );
@@ -494,11 +494,11 @@ describe("account-ux U7 已启用态：横幅 / 表格 / 维护区", () => {
   });
 });
 
-// 〔`设计/50` 删用量〕原先这里是「F10/K-R101：账号行用量单元格（懒加载 + 两种状态）」整组
+// 〔删用量〕原先这里是「F10/K-R101：账号行用量单元格（懒加载 + 两种状态）」整组
 // （「查看用量」按钮 · 查询中占位 · 那一屏原文逐字渲染 · 空屏 · 探测失败 · 刷新）。
 // 用量 ③ 轴（探针）整轴退役 ⇒ **被测对象没了**，不是断言变少了。
 // 换成一条**翻面**判据：账号表里不许再长出那个单元格，也不许再发那条命令。
-describe("设计/50：账号表上的用量单元格已退役（翻面判据）", () => {
+describe("：账号表上的用量单元格已退役（翻面判据）", () => {
   it("挂载后没有用量单元格 / 「查看用量」按钮，也没发任何 invoke", async () => {
     fetchAccountsMock.mockResolvedValue(state({ accounts: [acct({ name: "z" })], defaultName: "z" }));
     const el = await mount();
@@ -522,7 +522,7 @@ describe("Z01 账号 0 在设置账号表里的呈现", () => {
     expect(dirs[1]).not.toBe("");
   });
 
-  // 〔`设计/50` 删用量〕原先这里还有一条「账号 0 的用量会真的去探，且送的是账号 0 的
+  // 〔删用量〕原先这里还有一条「账号 0 的用量会真的去探，且送的是账号 0 的
   // 显式表态（configDir === null）」—— 它钉的是 `Z03` 做通的那件事。
   // 用量 ③ 轴整轴退役 ⇒ 那条路没了。⚠ **「空值 ≠ 未设」这条纪律没丢**：
   // 它在起会话那条路上由 `backend::control::payload` 的两态断言继续钉着。
@@ -759,7 +759,7 @@ describe("K-H2a：第三方 API key 的前端一半", () => {
   });
 
   // ───────────────────────────────────────────────────────────────────────────
-  // `K-H2c` `KH2C1` ＋ `设计/70 §4.4` 关键二：**「哪个账号」只问一次** ——
+  // `K-H2c` `KH2C1` ＋关键二：**「哪个账号」只问一次** ——
   // 配 key 是账号那一行自己的一格；整块里**没有账号下拉**。
   // ───────────────────────────────────────────────────────────────────────────
 
@@ -794,7 +794,7 @@ describe("K-H2a：第三方 API key 的前端一半", () => {
     expect(renderApikeyEditor(ACCTS[1], () => {}).editor.textContent).not.toContain("sk-a");
   });
 
-  it("🔴 `70 §4.3` ③：整个账号分节里**没有账号下拉** —— 「哪个账号」由那一行回答", async () => {
+  it("🔴：整个账号分节里**没有账号下拉** —— 「哪个账号」由那一行回答", async () => {
     fetchAccountsMock.mockResolvedValue(
       state({
         accounts: [
@@ -852,25 +852,25 @@ describe("K-H2a：第三方 API key 的前端一半", () => {
     );
     // ★ 正题的另一半：那条命令**确实**收到了 configDir（不是「什么都没传所以没推 id」）。
     expect(
-      // 〔ST2〕参数里可以多一格 baseUrl（表单那一路）；〔RM1a〕打头的是 origin（按这一页那台机器），
+      // 参数里可以多一格 baseUrl（表单那一路）；打头的是 origin（按这一页那台机器），
       // 接着照旧是 key 与它自己的 configDir。
-      // 〔HX2 · 4D〕今天那一处是经通道的发送口：`writeApikeyKey(这台, configDir, key, baseUrl)`。
+      // 今天那一处是经通道的发送口：`writeApikeyKey(这台, configDir, key, baseUrl)`。
       /writeApikeyKey\(this\.machineOrigin\(\),\s*configDir,\s*key\b/.test(code),
       "那条写命令没把 configDir 一起交出去 —— 后端就只能落到顶层那一格",
     ).toBe(true);
   });
 
-  // 〔CFG1〕配置写口从 `save_config`（整份）换成 `patch_config`（按键补丁）〔散文墓碑〕—— 名字跟着换，否则这一格对一个已不存在的命令名恒绿。
+  // 配置写口从 `save_config`（整份）换成 `patch_config`（按键补丁）〔散文墓碑〕—— 名字跟着换，否则这一格对一个已不存在的命令名恒绿。
   it("KS7 机检：那把 key 在前端**只流向一条命令**，绝不进配置写口 `patch_config`", () => {
     const code = src();
     // ① 前端拿到的明文只出现在一处出口。
     const calls = [...code.matchAll(/commands\.(\w+)\(/g)].map((m) => m[1]);
-    // 〔FIX4 · ⑬〕开终端那两处改走 `terminal-open.ts::openTerminal` 之后，本文件零条 `commands.*`（Tauri 命令）⇒
+    // 开终端那两处改走 `terminal-open.ts::openTerminal` 之后，本文件零条 `commands.*`（Tauri 命令）⇒
     //   「抽取器坏了」那一格换成两向：零条 ⇔ 本文件不 import `commands`（import 了却一条没扫到 = 抽取器瞄偏了）。
     expect(calls.length > 0, "扫到的 `commands.*` 条数与本文件 import 不 import `commands` 对不上 —— 抽取器坏了").toBe(
       code.includes('from "../ipc/commands"'),
     );
-    // 〔HX2 · 4D〕那一处出口今天是经通道的发送口（`writeApikeyKey`），恰好一处；Tauri 那条写命令不在了。
+    // 那一处出口今天是经通道的发送口（`writeApikeyKey`），恰好一处；Tauri 那条写命令不在了。
     expect([...code.matchAll(/\bwriteApikeyKey\(/g)].length, "key 的出口不是恰好一处").toBe(1);
     expect(calls, "Tauri 那条写 key 的命令回来了").not.toContain("write_apikey_" + "credentials_key");
     expect(
@@ -963,12 +963,12 @@ describe("N-F1b 没有远端时：设置面板列得出这台机器的账号", (
     );
   });
 
-  // ---- 〔AL1 · 2026-09-24〕`K-R49` 那一块搬走了：这一节里**一块别名都不许有** ----
+  // ---- `K-R49` 那一块搬走了：这一节里**一块别名都不许有** ----
 
   /**
    * 🔴 从前这里钉的是反方向（「本机有账号时这一节长出『按账号生成命令』那一块」）。
-   * `设计/70 §3.3` · `设计/71 §13`：别名是每台机器一份的东西，并进机器页「本机 → 工具 → 别名」；
-   * 清单归用户，不再是账号表的投影（`71 §8`）⇒ 账号这一节不再摆它，也不再有那句把人指去
+   * 别名是每台机器一份的东西，并进机器页「本机 → 工具 → 别名」；
+   * 清单归用户，不再是账号表的投影⇒ 账号这一节不再摆它，也不再有那句把人指去
    * 「设置 → 行为」的散文（`70` 第三刀步 12）。接线的正面（本机页上**有**那一块）归 `panel-groups.vitest.ts`。
    */
   it("★ AL1：本机有账号时，这一节里既没有别名那一块，也没有指去别处的那句散文", async () => {
@@ -1060,7 +1060,7 @@ describe("N-F1b 没有远端时：设置面板列得出这台机器的账号", (
     expect(harvested.filter((s) => s.includes("该远端尚未启用多账号"))).toEqual([]);
     // 阴性对照：同一把尺子在**远端**那一支上**认得出**「远端」——它不是恒空。
     readRemoteConfigMock.mockResolvedValue({ enabled: true, hosts: [host()] });
-    setCurrentMachine("aya"); // 〔第三波 S3〕站到 aya 那一页上（上面的 `noRemotes()` 把 store 置回了本机）
+    setCurrentMachine("aya"); // 站到 aya 那一页上（上面的 `noRemotes()` 把 store 置回了本机）
     fetchAccountsMock.mockResolvedValue(state({ available: false, oldBackend: true, error: "backend 过旧" }));
     const remoteEl = await mount();
     expect(
@@ -1070,7 +1070,7 @@ describe("N-F1b 没有远端时：设置面板列得出这台机器的账号", (
   });
 
   it("★ NF1bD2：本机文案表里逐条不含「远端」（分母 = 表的条目数，现算）", () => {
-    // 〔第三波 S3〕人群加上文案表里本机那一支的条目（`accountsLocal.*`）—— 两个家都是本机的家。
+    // 人群加上文案表里本机那一支的条目（`accountsLocal.*`）—— 两个家都是本机的家。
     const table = [...Object.entries(accounts.LOCAL_ACCOUNTS_COPY), ...localCopyEntries()];
     // 分母现算（`brief` 13b：报一个基数也是复述 ⇒ 不写死条数）。
     expect(table.length, "文案表是空的 —— 下面那条是空真").toBeGreaterThan(0);
@@ -1118,9 +1118,9 @@ describe("N-F1b 没有远端时：设置面板列得出这台机器的账号", (
     const allowed = [
       // ① 本机文案表（现算，不写死条数）
       ...Object.values(accounts.LOCAL_ACCOUNTS_COPY),
-      // ①b 〔第三波 S3〕文案表里本机那一支的条目（`accountsLocal.*`）：带占位符的按占位符切成段
+      // ①b 文案表里本机那一支的条目（`accountsLocal.*`）：带占位符的按占位符切成段
       ...localCopyFragments(),
-      // ①c 〔第三波 S3〕本机也挂了新建账号那张表单 —— 它的字住它自己那张表（`NEW_ACCOUNT_COPY`），
+      // ①c 本机也挂了新建账号那张表单 —— 它的字住它自己那张表（`NEW_ACCOUNT_COPY`），
       //     那也是**一个家**（远端那一页用的是同一张）。两句「弹出终端」的提示本机换掉了（见 ①b）。
       ...Object.values(NEW_ACCOUNT_COPY),
       // ② 徽章那一族：家在 accounts.ts，逐个账号现算
@@ -1174,7 +1174,7 @@ describe("N-F1b 没有远端时：设置面板列得出这台机器的账号", (
   // ---- `NF1bD3`：远端那条路一个字节没动 ----
 
   it("★ NF1bD3：站在 aya 那一页上照旧走远端那条读口，本机那一支一格不长", async () => {
-    // 〔第三波 S3〕题面原为「配了远端时照旧走远端那条读口」—— 那是「store 为空就兜底读主远端」
+    // 题面原为「配了远端时照旧走远端那条读口」—— 那是「store 为空就兜底读主远端」
     // 那一形的口径；兜底删了之后，「走不走远端」由**你站在哪一页**决定，不由「配没配远端」决定。
     // 反方向（本机页 + 配了远端 ⇒ 本机那一支）见下一条。
     readRemoteConfigMock.mockResolvedValue({ enabled: true, hosts: [host()] });
@@ -1192,7 +1192,7 @@ describe("N-F1b 没有远端时：设置面板列得出这台机器的账号", (
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 〔第三波 S3〕**本机页就是本机** —— 配了远端的机器上，本机那一页这一节原先显的是主远端的账号。
+// **本机页就是本机** —— 配了远端的机器上，本机那一页这一节原先显的是主远端的账号。
 //
 // 病：`init` 在 store 为 `null` 时兜底取主远端（E59 的「兜底落点」），`followMachine(null)` 原地不动。
 // 而 store 的初值恰好是 `null`、本机页一出现 per-machine 那几块就落在它上面 ⇒ 配了远端的机器上，
@@ -1227,7 +1227,7 @@ describe("S3：本机页就是本机（配了远端也一样）", () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 〔第三波 S3〕本机那一支的空态：没启用 ⇒ 就地启用（问本机后端 `accounts-init`）；启用着但零个号 ⇒ 新建表单。
+// 本机那一支的空态：没启用 ⇒ 就地启用（问本机后端 `accounts-init`）；启用着但零个号 ⇒ 新建表单。
 // 一件要装的东西都没有、一条要人手敲的维护命令都没有。
 // ─────────────────────────────────────────────────────────────────────────────
 describe("S3：本机那一支的空态就地可用", () => {
@@ -1299,7 +1299,7 @@ describe("S3：本机那一支的空态就地可用", () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 〔第三波 S3〕本机清单上的徽章接上本机那一半的两格事实（〔US1〕经通道 `apikey-routing`）。
+// 本机清单上的徽章接上本机那一半的两格事实（经通道 `apikey-routing`）。
 // `accountStatusBadge` 的 `{ scope: "local" }` 三档自 `K-H2b` 起「有实现、没接线」。
 // ─────────────────────────────────────────────────────────────────────────────
 describe("S3：本机清单的徽章说本机那一半的真话", () => {
@@ -1437,7 +1437,7 @@ describe("N-F2 本机那两格真的被写进账本", () => {
   it("★ NF2D2 地板：本机那条路**跑之前**，账本里本机那一栏是空的（这一族不是空真）", () => {
     // 这条是分母自检。没有它，下面每一条「写进去了」都可能是在断一本本来就有内容的账。
     expect(readStatus(LOCAL_MACHINE_KEY)).toEqual({});
-    // 那两格是**适用**的：`notApplicable` 今天只排掉本机的 connection（〔WF1 · ㉔〕Windows 上的 ccm 豁免撤了）。
+    // 那两格是**适用**的：`notApplicable` 今天只排掉本机的 connection（Windows 上的 ccm 豁免撤了）。
     // ⚠ `K-R59`（09-11）**多出第三格 `backend`**：那条「本机不需要后端」的豁免撤了
     //（`C7` 之后本机也有后端进程）。它**不归本分节写** —— 写点住
     // `remote-section.ts::noteLocalBackend`，由 `remote-section.vitest.ts` 那一族接。
@@ -1475,7 +1475,7 @@ describe("N-F2 本机那两格真的被写进账本", () => {
     expect(shape(led)).toEqual({ accounts: { kind: "fail", detail: "读不动" } });
   });
 
-  /** 〔VIS2 · `设计/15 §4.5` 缺口二〕「启用没启用」记在 `accounts`（没启用 ⇒ fail「多账号没启用」）。远端本机逐行，期望逐行手写。 */
+  /** 〔缺口二〕「启用没启用」记在 `accounts`（没启用 ⇒ fail「多账号没启用」）。远端本机逐行，期望逐行手写。 */
   it("★ VIS2 缺口二：启用没启用记在 accounts —— 远端本机逐行", async () => {
     const off = (p: Partial<AccountsState> = {}) => ({
       ...p,
@@ -1567,7 +1567,7 @@ describe("N-F2 本机那两格真的被写进账本", () => {
   // ---- 远端那条路一个字节不变 ----
 
   it("★ NF2D2 远端侧：远端那五支写进账本的东西逐格不变，且本机那一栏一格不长", async () => {
-    // 分母 = 远端那条路今天**全部**六支（`reload` 里 catch + `deriveUi` 的各个 kind；〔WF2〕多了 query-failed 一支），
+    // 分母 = 远端那条路今天**全部**六支（`reload` 里 catch + `deriveUi` 的各个 kind；多了 query-failed 一支），
     // 逐支各跑一次真面板。少一支，那一支上顺手改坏一行不会红。
     const H = host().label;
     const remote = async (
@@ -1597,7 +1597,7 @@ describe("N-F2 本机那两格真的被写进账本", () => {
       "老后端那一支",
     ).toEqual({ accounts: { kind: "fail", detail: "后端需更新" } });
 
-    // 〔WF2 · WIN3 读数 C〕第六支：没问出来 ⇒ 说查询失败，不说需更新。
+    // 第六支：没问出来 ⇒ 说查询失败，不说需更新。
     expect(
       await remote(() =>
         fetchAccountsMock.mockResolvedValue(
@@ -1638,7 +1638,7 @@ describe("N-F2 本机那两格真的被写进账本", () => {
     //   面板运行钉着。这里手工补上它，**只是为了让「整块该不该出现」这一跳还量得动** ——
     //   如实说明：这一格是摆出来的，不是本族跑出来的。
     recordFacet(LOCAL_MACHINE_KEY, "backend", { kind: "ok", detail: "已连上" });
-    // 〔WF1 · ㉔〕`ccm` 那一格同理（写点 `machine-aliases.ts::noteLocalCcm`，由 `remote-section.vitest.ts` 钉），摆出来的。
+    // `ccm` 那一格同理（写点 `machine-aliases.ts::noteLocalCcm`，由 `remote-section.vitest.ts` 钉），摆出来的。
     recordFacet(LOCAL_MACHINE_KEY, "ccm", { kind: "ok", detail: "是它" });
     const origins = [LOCAL_MACHINE_KEY];
     expect(origins.length, "分母是空的 —— 下面那条 null 是空真").toBe(1);
@@ -1667,7 +1667,7 @@ describe("N-F2 本机那两格真的被写进账本", () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// A2（`设计/70 §8` 判据 #9）：**账号一步建成** —— 填名字 + 选「第三方 apikey」+ 填 key → 点创建
+// A2（判据 #9）：**账号一步建成** —— 填名字 + 选「第三方 apikey」+ 填 key → 点创建
 // ⇒ 那台后端一趟做完（建目录 · 链接 · 清单 · key 进 apikey 表 · 别名）。**中途不需要去第二个控件选账号，也不开终端。**
 // ─────────────────────────────────────────────────────────────────────────────
 describe("A2：新建账号一张表单 ⇒ 那台后端一趟建好", () => {
@@ -1807,7 +1807,7 @@ describe("A2：新建账号一张表单 ⇒ 那台后端一趟建好", () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 〔第三波 S3〕本机页也能新建账号：同一张表单、同一条 `accounts-add`，问的是**本机**后端。
+// 本机页也能新建账号：同一张表单、同一条 `accounts-add`，问的是**本机**后端。
 // 订阅号要登录时，本机 Linux 刻意不开终端窗口（后端回一句带标记的话）⇒ 登录那一行复制给用户在自己的终端里跑。
 // ─────────────────────────────────────────────────────────────────────────────
 describe("S3：本机页新建账号", () => {
@@ -1885,7 +1885,7 @@ describe("S3：本机页新建账号", () => {
     await submit(el, "b");
     expect(new Set(accountOps(calls).map(([, o]) => o))).toEqual(new Set([LOCAL_ORIGIN]));
     const launches = calls.filter(([c]) => c === "launch_remote_terminal");
-    // 〔FIX4 · ⑬〕开终端那一口（`openTerminal`）恒交 `rbindToken`（登录那一行不需要 ⇒ `null`）。
+    // 开终端那一口（`openTerminal`）恒交 `rbindToken`（登录那一行不需要 ⇒ `null`）。
     expect(launches.map(([, a]) => a)).toEqual([{ origin: LOCAL_ORIGIN, remoteCmd: fakeLoginCmd("b"), rbindToken: null }]);
   });
 
@@ -1924,7 +1924,7 @@ describe("S3：本机页新建账号", () => {
   });
 });
 
-// ST1「切机器 pending」（`设计/70 §6` #5）：切到另一台 = 这一块重读一趟（远端是一次 SSH 往返），
+// ST1「切机器 pending」：切到另一台 = 这一块重读一趟（远端是一次 SSH 往返），
 // 这段时间这一块原先是**空的** —— 与「这台没有账号」分不开。
 describe("ST1 切机器 pending：账号那一块", () => {
   it("切到 aya、读还在路上：挂一行 aria-busy 的「正在读 aya 的账号」；回来就撤", async () => {
@@ -1955,7 +1955,7 @@ function loaded<T extends { loadNow(): void }>(s: T): T {
   return s;
 }
 
-// 〔RESYNC · 主会话 09-27 裁「本机点刷新不清账号缓存：缺陷」〕刷新清的是**这一页那台**的缓存，本机远端同一条（与账号 chip 同）。
+// 〔「本机点刷新不清账号缓存：缺陷」〕刷新清的是**这一页那台**的缓存，本机远端同一条（与账号 chip 同）。
 describe("〔RESYNC〕[刷新] 清这一页那台的账号缓存", () => {
   it("本机页、远端页各点一次 ⇒ 各清各的那台", async () => {
     const inval = vi.spyOn(accountReads, "invalidateAccountsCache").mockImplementation(() => {});

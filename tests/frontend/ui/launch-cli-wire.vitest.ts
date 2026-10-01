@@ -9,7 +9,7 @@
 import { describe, expect, test } from "vitest";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { productionTsFiles } from "../../test-support/production-sources.ts";
+import { productionTsFiles, SCAN_TIMEOUT_MS } from "../../test-support/production-sources.ts";
 import { stripComments } from "../../test-support/strip-comments.ts";
 
 const read = (p: string) => readFileSync(resolve(__dirname, "../../..", p), "utf8");
@@ -64,12 +64,12 @@ describe("ccm 调用行的 wire 形状（U8c-2c-2）", () => {
     "PayloadRenderRequest",
     "WireWrap",
     "WireEnvOp",
-    // `设计/90 §4 E`：外层容器那一层。**这条清单就是那句「将来加第八个类型时这条红」
+    // 外层容器那一层。**这条清单就是那句「将来加第八个类型时这条红」
     // 兑现的地方** —— 加 `WireTmuxOuter` 那一拍它当场红，回来把它登记进来。
     // ⚠ `WireQuoting` **不在这里**，那不是漏：它是个无字段的单元枚举，
     // 没有「未知字段」这回事，挂 `deny_unknown_fields` 对它是句空话。
     "WireTmuxOuter",
-    // 〔MIG-2〕`WireCcmProbe`（`CliRenderRequest.ccm`，前端交来的探测三态）摘了：渲染住进那台后端，
+    // `WireCcmProbe`（`CliRenderRequest.ccm`，前端交来的探测三态）摘了：渲染住进那台后端，
     //   「那台装没装 ccm」是后端自己的事实（`launch_render/wire.rs::render_ccm_launch`：`ccm` 就是那台后端本身，能力是它自己的），不再由前端转述 ⇒ 八个。
   ];
 
@@ -77,7 +77,7 @@ describe("ccm 调用行的 wire 形状（U8c-2c-2）", () => {
     // 数量自检：将来加第九个类型时这条红，提醒把它加进上面的清单 ——
     // 只看**属性里**的，因为这些类型的文档注释里就写着这个词（M3 抓到过）。
     //
-    // 🔴 **量法换过一次**〔`设计/90 §4 E`〕：原来数的是「以 `#[` 开头且含那个词的**行**」，
+    // 🔴 **量法换过一次**：原来数的是「以 `#[` 开头且含那个词的**行**」，
     // 而 rustfmt 会把长属性拆成多行 —— `WireTmuxOuter` 的属性有四项（`tag` /
     // `rename_all` / `rename_all_fields` / `deny_unknown_fields`），拆开之后
     // **含那个词的那一行不以 `#[` 开头**，于是一个真带属性的新类型在这把尺子上是隐形的。
@@ -109,7 +109,7 @@ describe("ccm 调用行的 wire 形状（U8c-2c-2）", () => {
       // 而这些类型的**文档注释里就写着** `deny_unknown_fields` 这个词 ⇒ 摘掉真属性照样绿
       // （自己的变异检查 M3 抓到的）。散文不是属性。
       //
-      // 🔴 **同一拍补了多行属性**〔`设计/90 §4 E`〕：rustfmt 会把长属性拆成
+      // 🔴 **同一拍补了多行属性**：rustfmt 会把长属性拆成
       //    `#[serde(` / `    tag = …,` / … / `)]` 好几行，而原来的往上扫只认
       //    「整行以 `#[` 开头」⇒ 撞到收尾那行 `)]` 当场 break，attrLines 空 ——
       //    一个**真带属性**的类型在这把尺子上是隐形的。
@@ -145,19 +145,19 @@ describe("ccm 调用行的 wire 形状（U8c-2c-2）", () => {
   // ★ 接缝判据：**生产真的切过去了**。没有它，「把 renderCliViaBackend 换回 tryRenderCli」
   // 会让所有夹具/单测照常全绿 —— 那正是这一轮唯一实质的改动，也是最容易被悄悄回退的一处。
   test("生产渲染路径调的是后端，不是 TS 的 tryRenderCli", () => {
-    // 〔MIG-2〕渲染问那台后端（`launch-render.ts::renderCli` → 通道 `launch-render-cli`），探测结果不再由前端转交。
+    // 渲染问那台后端（`launch-render.ts::renderCli` → 通道 `launch-render-cli`），探测结果不再由前端转交。
     expect(RUN).toContain("await renderCliViaBackend(origin, ctx, plan)");
     expect(RUN).toContain("return await renderCli(origin, req)");
-    // 〔LR1 · U8c-3〕TS 的 `tryRenderCli` 已删；这一格留着挡「在本文件里再手写一个」。
+    // TS 的 `tryRenderCli` 已删；这一格留着挡「在本文件里再手写一个」。
     // 全仓那一格见下面那组。
     expect(/[^a-zA-Z]tryRenderCli\s*\(/.test(RUN)).toBe(false);
   });
 });
 
 /**
- * 〔LR1 · U8c-3〕**`ccm …` 调用行在前端没有第二个家。**
+ * **`ccm …` 调用行在前端没有第二个家。**
  *
- * 守的要求：`设计/00 §2.5 ④`「起会话收成一处 —— 同一条命令串只留 Rust 那两份（CLI ＋ 载荷）；
+ * 守的要求：「起会话收成一处 —— 同一条命令串只留 Rust 那两份（CLI ＋ 载荷）；
  * TS 的只供对拍、排期删」。TS 那份 `ccm …` 渲染器（`launch-render-cli.ts::tryRenderCli`）
  * 删在本件；本组挡它以任何名字之外的最常见形状回来：原文件复活 · 生产段再 import 它 ·
  * 生产段再出现那个入口名。
@@ -167,7 +167,7 @@ describe("ccm 调用行的 wire 形状（U8c-2c-2）", () => {
  * 那张表是人写的，多一份不登记它也看不见 —— 两条都只是「照抄回来」会有东西说话）。
  */
 describe("〔LR1〕TS 那份 `ccm …` 调用行渲染器不许回来", () => {
-  // 〔MIG-2〕路径形要求 `./` 前缀：通道那一问的 op 名也叫 `launch-render-cli`（`src/frontend/ui/launch-render.ts`），它不是那份文件。
+  // 路径形要求 `./` 前缀：通道那一问的 op 名也叫 `launch-render-cli`（`src/frontend/ui/launch-render.ts`），它不是那份文件。
   const NAME = /\btryRenderCli\b|["']\.{1,2}\/(?:[\w.-]+\/)*launch-render-cli(?:\.ts)?["']/;
   const hits = (files: { file: string; text: string }[]) =>
     files.filter((f) => NAME.test(stripComments(f.text, "ts"))).map((f) => f.file);
@@ -188,5 +188,5 @@ describe("〔LR1〕TS 那份 `ccm …` 调用行渲染器不许回来", () => {
     const files = productionTsFiles();
     expect(files.length, "生产 TS 一份都没收到 —— 遍历坏了，下面的零命中不携带信息").toBeGreaterThan(100);
     expect(hits(files)).toEqual([]);
-  });
+  }, SCAN_TIMEOUT_MS);
 });

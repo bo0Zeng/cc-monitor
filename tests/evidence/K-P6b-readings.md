@@ -6,7 +6,7 @@
 
 ---
 
-## ① `§0c` 那两把尺子 —— **`K-P6 §0-订正` 那一组对，`§0c` 那一组错**
+## ① `§0c` 那两把尺子 —— ** 那一组对，`§0c` 那一组错**
 
 ### 先排掉两个「不是原因」的原因
 
@@ -34,10 +34,10 @@ python3 evidence/K-P6b-ruler-diff.py --rev 55c7fde151b54e1c59b23fc478f9b493c94f6
 
 ```
 【认尺子】
-  『K-P6 §0-订正』 生产三格全对的组合 2 个：
+  『订正』 生产三格全对的组合 2 个：
         none/strip/call
         guard/strip/call
-  『K-P6b §0c 生产』 生产三格全对的组合 2 个：
+  『生产』 生产三格全对的组合 2 个：
         cheap/keep/call+def
         cheap/keep/paren  ＋测试格也全对
 ```
@@ -106,7 +106,7 @@ python3 evidence/K-P6b-ruler-diff.py --rev 55c7fde151b54e1c59b23fc478f9b493c94f6
 
 ### ⇒ 哪把尺子对（答死）
 
-**`K-P6 §0-订正` 那一组对**：`connect_session` **7 处 / 3 份** · `connect_and_exec_cmd` **18 处 / 11 份** ·
+** 那一组对**：`connect_session` **7 处 / 3 份** · `connect_and_exec_cmd` **18 处 / 11 份** ·
 `connect_sftp` **14 处 / 4 份**（单位：**调用点**，不含定义行与 `use` 提及）。
 
 而且这一组**同时也是生产段的数** —— 这不是我替它辩护，是量出来的：

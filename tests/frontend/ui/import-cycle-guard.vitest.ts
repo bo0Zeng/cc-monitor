@@ -27,24 +27,25 @@
  * - `export … from "../src/x"` 是**运行期**再导出，算边。
  * - 不解析动态 `import()`（本仓生产侧没有）。
  *
- * # 〔FE1 · 第四波 4D〕第二条：**连类型边一起算**的全图，强连通分量 == 豁免表（两向）
+ * # 第二条：**连类型边一起算**的全图，强连通分量 == 豁免表（两向）
  *
  * 上面那条「`import type` 不算边」的理由对**运行期**成立；但审计 B §4 现打出一个 7 模块的类型环
  * （`accounts · accounts-decode · config · history-reads · ipc/chan · ipc/chan-caller · ipc/commands`），
  * 只靠 `ipc/commands.ts` 为一个返回类型回头 `import type` 账号域闭合 —— **通信层在类型上依赖账号域**，
  * 那是分层反了，不是「不存在的依赖」。FE1 的题面要「import 图无环（现打全图）」、「类型住被依赖的一侧」。
  * ⇒ 第二条判据量全图（值边 ＋ 类型边），强连通分量集合 == [`TYPE_CYCLE_EXEMPT`]（两向：新长一个环 ⇒ 红；
- * 豁免的那个环被拆了而表没摘 ⇒ 红）。守的要求：`设计/01 §5` D1「一个判定只有一个家」（类型住被依赖的一侧，
+ * 豁免的那个环被拆了而表没摘 ⇒ 红）。守的要求：「一个判定只有一个家」（类型住被依赖的一侧，
  * 一个形状不在两个域各有一份说法）。
  */
 import { describe, it, expect } from "vitest";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, resolve, dirname, relative } from "node:path";
 import { stripComments } from "../../test-support/strip-comments";
+import { SCAN_TIMEOUT_MS } from "../../test-support/production-sources.ts";
 
 const REPO_ROOT = resolve(__dirname, "../../..");
 const SRC = join(REPO_ROOT, "src");
-// 〔RE〕前端 TS 住 `src/frontend/ui/`；人群仍扫整棵 `src/`（通信层那份 `chan.ts` 住 `src/comms/inward/`）。
+// 前端 TS 住 `src/frontend/ui/`；人群仍扫整棵 `src/`（通信层那份 `chan.ts` 住 `src/comms/inward/`）。
 const UI = join(SRC, "frontend", "ui");
 
 /**
@@ -52,7 +53,7 @@ const UI = join(SRC, "frontend", "ui");
  *
  * 🔴 `K-R93`（09-12）：原句写的是「生成物是叶子**类型**」—— 那半句今天过期了。
  * `src/frontend/ui/generated/agent-profile-table.ts` 是一份**值**表（agent 画像，源在
- * 后端注册表 `src/backend/agents/mod.rs`，〔P1〕从前是 monitor `adapter.rs`），于是生成物第一次成为**运行期** import 的目标。
+ * 后端注册表 `src/backend/agents/mod.rs`，从前是 monitor `adapter.rs`），于是生成物第一次成为**运行期** import 的目标。
  * `K-R95`（09-12）又加了一份（`launch-render-facts.ts`，源在
  * `src/frontend/shell/src/launch_wire.rs`）——下面那条自检的数因此是 2 不是 1。
  * 「不会成环」那一半**仍然成立且现在被机检**：见下面自检里那条「生成物真的是叶子」。
@@ -113,7 +114,7 @@ function runtimeDeps(file: string): string[] {
 }
 
 /**
- * 〔FE1〕抠出一个文件的**全部**相对 import 目标（值边 ＋ 类型边 ＋ `export … from`）。
+ * 抠出一个文件的**全部**相对 import 目标（值边 ＋ 类型边 ＋ `export … from`）。
  * 与 [`runtimeDeps`] 同一套抠法，只是不跳过 type-only。
  */
 function allDeps(file: string): string[] {
@@ -137,7 +138,7 @@ function allDeps(file: string): string[] {
   return [...out];
 }
 
-/** 〔FE1〕强连通分量（Tarjan）：只回「真成环」的那些（≥2 个成员，或自指）。每个分量内部按路径排序。 */
+/** 强连通分量（Tarjan）：只回「真成环」的那些（≥2 个成员，或自指）。每个分量内部按路径排序。 */
 function cycleComponents(graph: Map<string, string[]>): string[][] {
   let index = 0;
   const idx = new Map<string, number>();
@@ -176,18 +177,18 @@ function cycleComponents(graph: Map<string, string[]>): string[][] {
 }
 
 /**
- * 〔FE1〕全图（含类型边）里**今天还在**的环 —— 逐条写清为什么还在、归谁拆。不是豁免清单：两向相等，
+ * 全图（含类型边）里**今天还在**的环 —— 逐条写清为什么还在、归谁拆。不是豁免清单：两向相等，
  * 拆掉了不摘 ⇒ 红；新长一个 ⇒ 红。
  */
 const TYPE_CYCLE_EXEMPT: ReadonlyArray<readonly [members: readonly string[], why: string]> = [
-  // 〔FE1 子步 5〕`accounts-decode ⇄ accounts` 那一行摘了：`accounts.ts` 拆成模型（纯）＋ 读面（`account-reads.ts`）之后，
+  // `accounts-decode ⇄ accounts` 那一行摘了：`accounts.ts` 拆成模型（纯）＋ 读面（`account-reads.ts`）之后，
   //   值 import 解码器的是读面，解码器 `import type` 的是模型 ⇒ 环断（子步 4 登记时写明归本路摘）。
   [
     ["src/frontend/ui/cards/index.ts", "src/frontend/ui/cards/subagent.ts"],
     "纯类型边闭合（`cards/subagent.ts` 回头 `import type { JsonlRecord, RenderContext, RenderResult } from \"./index\"`）；" +
       "上面那条运行期判据的头注点过名。不在 FE1 写区：拆法是把那三个类型挪进卡片系的一个叶子，归卡片那一片的主人。",
   ],
-  // 〔LR2〕`launch-dimensions ⇄ launch-plan` 那一行摘了：IR 的类型拆进纯类型叶子 `src/frontend/ui/launch-types.ts`，
+  // `launch-dimensions ⇄ launch-plan` 那一行摘了：IR 的类型拆进纯类型叶子 `src/frontend/ui/launch-types.ts`，
   //   `launch-dimensions.ts` 改 `import type { LaunchDimension } from "./launch-types.ts"` ⇒ 环断（本行登记时写明归 LR2 摘）。
 ];
 
@@ -250,13 +251,13 @@ describe("E80：生产代码不许有运行期 import 环", () => {
     expect(
       generatedTargets.length,
       "今天有 3 份生成物被**运行期** import（`agent-profile-table`，K-R93；" +
-        "`launch-render-facts`，K-R95；`judgment-rules`，〔DUP1〕模型名的放行式子，零 import 的叶子）—— " +
+        "`launch-render-facts`，K-R95；`judgment-rules`，模型名的放行式子，零 import 的叶子）—— " +
         "这个数变了就在这里红一次，好让新的那一份也过一遍「它是不是叶子」",
     ).toBe(3);
     for (const g of generatedTargets) {
       expect(runtimeDeps(g), `${rel(g)} 不再是叶子 —— 它开始 import 别人了，可能成环`).toEqual([]);
     }
-  });
+  }, SCAN_TIMEOUT_MS);
 
   it("★★ 零环", () => {
     const cycle = findCycle(graph);
@@ -266,7 +267,7 @@ describe("E80：生产代码不许有运行期 import 环", () => {
         + "（某模块从另一个抽出来、又反过来用它的东西）。修法通常是"
         + "「把只有一个消费者的东西搬到那个消费者身边」，而不是加一层间接。",
     ).toBeNull();
-  });
+  }, SCAN_TIMEOUT_MS);
 
   it("★ 判据真的会抓人：给它一条人造的环", () => {
     const a = "/fake/a.ts";
@@ -300,7 +301,7 @@ describe("〔FE1〕全图（值边 ＋ 类型边）的环 == 登记表（两向�
     const runtime = files.reduce((n, f) => n + runtimeDeps(f).length, 0);
     expect(all, "全图一条边都没有 —— 抠法坏了").toBeGreaterThan(200);
     expect(all, "全图与运行期图一样大 —— 类型边没抠进来").toBeGreaterThan(runtime);
-  });
+  }, SCAN_TIMEOUT_MS);
 
   it("★★ 环的集合 == 登记表（新长的环 ⇒ 红；拆掉了没摘 ⇒ 红）", () => {
     const got = cycleComponents(graph).map((c) => c.map(rel).join(" ⇄ "));
@@ -310,7 +311,7 @@ describe("〔FE1〕全图（值边 ＋ 类型边）的环 == 登记表（两向�
       "import 全图（含 `import type`）的环变了。新长的那一个：类型该住**被依赖的一侧**" +
         "（通常是挪进一个零 import 的叶子，照 `src/frontend/ui/apikey-reads.ts` 收 `ApikeyRoutingView` 的做法），别在两个域之间来回 import。",
     ).toEqual(want);
-  });
+  }, SCAN_TIMEOUT_MS);
 
   it("★ 判据真的会抓人：人造一条类型回边，多出一个环；自指也算", () => {
     const a = "/fake/a.ts";

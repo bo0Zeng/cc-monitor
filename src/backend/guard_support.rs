@@ -12,9 +12,9 @@
 //! 调用点一行不用改：下面三条 `pub(crate) use` 让 `crate::guard_support::production_code`
 //! 等路径原样可用。
 //!
-//! # ⚠ 它服务哪条要求：**没有，它是量具不是判据**〔`P20` 第二刀 2026-09-22〕
+//! # ⚠ 它服务哪条要求：**没有，它是量具不是判据**
 //!
-//! 同 `guard_core` 那份头注的同名一节 —— 不在这里抄第二份。依据住 `设计/99 §4.11.4`。
+//! 同 `guard_core` 那份头注的同名一节 —— 不在这里抄第二份。依据住。
 
 pub(crate) use guard_core::{assert_no_test_code, production_code, production_source};
 
@@ -85,7 +85,7 @@ pub(crate) fn tests_root() -> std::path::PathBuf {
 /// 「全空了」这一形由各判据自己的**真代码总量下限**接着。
 ///
 /// ⚠ 判定按 [`tests_root`] 的**规范化绝对路径**前缀比，不按文件名后缀 ——
-/// 名字里带 `_tests` 是约定，住址才是事实（`设计/16 §5.4b` 纪律 2：
+/// 名字里带 `_tests` 是约定，住址才是事实（纪律 2：
 /// 靠位置的判断要明写成一条读得出来的规则，别靠命名巧合）。
 pub(crate) fn production_side_of(path: &std::path::Path, src: &str) -> String {
     let at = lexically_normalized(path);
@@ -126,14 +126,14 @@ pub(crate) fn code_roots() -> [std::path::PathBuf; 3] {
     [src_root(), tests_root(), comms_tests_root()]
 }
 
-/// 〔RE · 收尾重排〕本 crate 挂着的第二棵测试树：面 B 成员（`src/comms/outward/`，本 crate 经 `#[path]` 编它们）
+/// 〔收尾重排〕本 crate 挂着的第二棵测试树：面 B 成员（`src/comms/outward/`，本 crate 经 `#[path]` 编它们）
 /// 的单测镜像住 `tests/comms/outward/`。生产那一半由 `guard_core` 顺着 `#[path]` 收进 [`src_root`] 的人群；
 /// 测试这一半不顺（测试挂载不跟）⇒ 这里明写成一棵根。
 pub(crate) fn comms_tests_root() -> std::path::PathBuf {
     std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/comms/outward")
 }
 
-/// 〔RE〕`relay` 模块的根（它的 `mod.rs` 所在）：面 B 成员住 `src/comms/outward/`，非成员 `door` / `listen` 住
+/// `relay` 模块的根（它的 `mod.rs` 所在）：面 B 成员住 `src/comms/outward/`，非成员 `door` / `listen` 住
 /// `src/backend/relay/`，由 `mod.rs` 经 `#[path]` 挂回（`guard_core` 顺着挂载一起收）。
 /// 扫「中转那一层」用它，别用 `src_root().join("relay")`（那里今天只剩两份非成员）。
 pub(crate) fn relay_root() -> std::path::PathBuf {
@@ -159,9 +159,9 @@ pub(crate) fn repo_root() -> std::path::PathBuf {
         .to_path_buf()
 }
 
-/// 🔴 〔步 9 · 09-19〕后端 crate 的**根源码面** —— 它从一份变成了两份。
+/// 🔴 后端 crate 的**根源码面** —— 它从一份变成了两份。
 ///
-/// `设计/00 §1.5.4` 前置 1 把模块声明、身份（`BUILD_ID` ＋ 戳）、`SUBCOMMANDS` /
+/// 前置 1 把模块声明、身份（`BUILD_ID` ＋ 戳）、`SUBCOMMANDS` /
 /// `CAPABILITIES` / `EMITS` 这一族搬进了 `lib.rs`，**分派留在 `main.rs`**。
 ///
 /// ⚠ **这个函数存在的理由是「别有第二份手抄」**：搬家当天有 **8** 条源码扫描型守卫

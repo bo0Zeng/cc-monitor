@@ -1,5 +1,5 @@
 /**
- * `P0b`（`#60` 灰灯不出现）**最后一跳里唯一便宜可测的那一段**〔第十二拍 08-13〕。
+ * `P0b`（`#60` 灰灯不出现）**最后一跳里唯一便宜可测的那一段**。
  *
  * # 为什么是这一段
  *
@@ -49,7 +49,7 @@ vi.mock("@tauri-apps/api/webviewWindow", () => ({
 vi.mock("../src/commands", () => ({
   commands: { frontend_perf_log: vi.fn(() => Promise.resolve()) },
 }));
-// 〔MIG-1 · ⑬〕可重连 / 已结束并进了会话流（`{"idle": …}` / `{"ended": …}` 那两格）：换成会话流的桩往里灌。
+// 可重连 / 已结束并进了会话流（`{"idle": …}` / `{"ended": …}` 那两格）：换成会话流的桩往里灌。
 vi.mock("../../../src/comms/inward/chan", async () => (await import("../../test-support/chan-stream-fake.ts")).chanStreamModule);
 
 import { bindEvents } from "../../../src/frontend/ui/events";

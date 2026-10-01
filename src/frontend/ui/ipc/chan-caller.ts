@@ -1,7 +1,7 @@
 /**
- * 〔C4a · 第四波〕**通道的调用方那一侧** —— 调用方与通道之间那一薄层：期限怎么造 ＋ 后端的帧命令说 JSON。
+ * **通道的调用方那一侧** —— 调用方与通道之间那一薄层：期限怎么造 ＋ 后端的帧命令说 JSON。
  *
- * - **期限**（[`budgetWithin`]）：`设计/05 §3.3.2`「值归调用方 · 执行归通信层」—— 绝对时刻由调用方造，
+ * - **期限**（[`budgetWithin`]）：「值归调用方 · 执行归通信层」—— 绝对时刻由调用方造，
  *   通信层（`src/comms/inward/chan.ts`）只执行、从不「重新 `now() + …`」（`X5`）。⇒ 造的那一手住这里，不住成员里。
  * - **JSON**：通道只搬不透明字节，**不知道**载荷长什么样（`§2`：载荷是不透明字节）。
  *   而后端帧面上的每一条命令（`src/backend/stream/inbound.rs` / `read_face.rs`）收一个 JSON 对象、回一个 JSON 值 ——
@@ -64,7 +64,7 @@ export function refusalOf(body: Uint8Array): { code: string; message: string } |
 }
 
 /**
- * 〔C4b · 第四波 4B〕一次经通道的查询失败了 ⇒ 给人看的那句话（`设计/05 §3.3.2`「说法归调用方」）。
+ * 一次经通道的查询失败了 ⇒ 给人看的那句话（「说法归调用方」）。
  *
  * 各调用方共用这一份「按层说」，只各自给出「那台后端比这条查询老」时那句话（它们说的功能不同）。
  * 不是 `ChanError` 的（调用方自己抛的，如应答形状不对）原样用它的 `message`。
@@ -85,13 +85,13 @@ export function saidOf(e: unknown, oldBackendSays: string): string {
         : copyText("chanCaller.said.unreachable");
     case "ours":
       if (err.why !== "Cancelled") return copyText("chanCaller.said.internal");
-      // 〔NET2 · `05 §3.3.3`〕那台对这一条不认撤 ⇒ 说它可能还在跑。
+      // 那台对这一条不认撤 ⇒ 说它可能还在跑。
       return err.runsOn === true ? copyText("chanCaller.said.withdrawnRunsOn") : copyText("chanCaller.said.withdrawn");
   }
 }
 
 /**
- * 〔WF2 · WIN3 读数 C〕这一次失败是不是「那台后端比这条查询老」（对端**事前**就说不认这条命令）。按层判、不看文字；
+ * 这一次失败是不是「那台后端比这条查询老」（对端**事前**就说不认这条命令）。按层判、不看文字；
  * 「需要更新」只许从这里来 —— 够不着 / 期限到 / 对端说不行都不是它（那几形照 [`saidOf`] 说查询失败的原因）。
  */
 export function isOldBackend(e: unknown): boolean {
@@ -104,7 +104,7 @@ function unsupported(err: CallError): err is Extract<CallError, { why: "unsuppor
 }
 
 /**
- * 〔C4e · 第四波 4C〕这一次失败能不能**证明一个字节都没到对端**（F14 那条安全判定：只有这时才许换一条路重做）。
+ * 这一次失败能不能**证明一个字节都没到对端**（F14 那条安全判定：只有这时才许换一条路重做）。
  *
  * 判准与 Rust `backend_route::route_call_error` 那一收拢**同一条**（跨语言金样 `tests/__fixtures__/reach-collapse.golden.json`
  * 钉着两份：Rust 侧把 inbound 的每一种失败分层上线、连同它判出的「可回落」写成金样，本函数读同一份逐行判）：

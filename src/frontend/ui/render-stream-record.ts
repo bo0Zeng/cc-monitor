@@ -66,7 +66,7 @@ export interface StreamSink {
   onRealUserInput?: (sessionId: string) => void;
   /**
    * lazy 渲染出来的卡交给哪个滚动容器的 IntersectionObserver 补高亮 / 公式（`render.ts::observeForEnhance`）。
-   * 〔W5-RENDER R5 · `设计/10 §3.5` D2〕原来是布尔 `observeForLazyEnhance` ＋ 一个没有 root 的全局 IO；
+   * 原来是布尔 `observeForLazyEnhance` ＋ 一个没有 root 的全局 IO；
    * 现在交的是 root 本身（实时 tab = 它的 `.stream`，查看器 = 它自己的滚动容器）。
    * `null` / 缺省 = 不 observe（急路渲染的卡没有占位要补）。
    */
@@ -219,7 +219,7 @@ export function renderStreamRecord(
 }
 
 // ───────────────────────────────────────────────────────────────────────────
-// 秤 1（`设计/17 §6` 表第 1 行）：**单条渲染成本直方图**的采集端。
+// 秤 1（表第 1 行）：**单条渲染成本直方图**的采集端。
 //
 // 设计逐字要的是：「`renderContentRecord` wall time，**按记录字节分桶**，拆 4 个子段」
 // ＋「入口出口夹 `performance.now()`，push 进环形缓冲（cap 5000）」。
@@ -247,9 +247,9 @@ export function renderStreamRecord(
 // ⇒ 探针默认 `null`，热路径上塌成一次布尔判断；开了之后，字节数在
 // **总时刻取完之后**才算，不污染任何一段读数（但确实会抬高整体 wall time —— 见判据的射程段）。
 //
-// # 〔SC1 · 第四波〕成本轴是**卡型**，不是字节 ⇒ 样本上多两格
+// # 成本轴是**卡型**，不是字节 ⇒ 样本上多两格
 //
-// 秤 1 自己的读数推翻了「字节即成本」（`设计/17 §6`「装秤之后改过的三条判断」第 1 条：
+// 秤 1 自己的读数推翻了「字节即成本」（「装秤之后改过的三条判断」第 1 条：
 // 字节不是成本轴，卡型才是），而样本上一直**没有卡型** —— 只有四条分支，分支比卡型粗一层
 // （`card` 分支里混着一种便宜的卡 `card-compact`：23 KB 的记录只物化 27 个字）。
 // - `card`：这条记录落进了哪种卡（第一个 `card-*` 类名，与 `height-estimate.ts::warnUnknownCard`、
@@ -323,7 +323,7 @@ function pushCostSample(ring: RenderCostSample[], s: RenderCostSample): void {
 }
 
 /**
- * 记录字节数（口径 = 原始 jsonl 行：monitor 解析时多填的 `userText` 成品不算，〔RENDER2 · J10〕）。
+ * 记录字节数（口径 = 原始 jsonl 行：monitor 解析时多填的 `userText` 成品不算）。
  * ⚠ 调用点必须在**总时刻取完之后**，否则它自己的 O(len) 会进读数。
  */
 function recordBytes(message: JsonlRecord): number {
@@ -372,7 +372,7 @@ export function renderContentRecord(
   if (window.__ccmPerf) window.__ccmPerf.recordsRendered = (window.__ccmPerf.recordsRendered ?? 0) + 1;
   const result = renderMessage(message, ctx);
   const tRender = probe ? performance.now() : 0;
-  markMemberUuids(message, ctx, result); // 〔W5-RENDER R11〕在秤 1 的 render 段之外（那一段只夹 renderMessage）
+  markMemberUuids(message, ctx, result); // 在秤 1 的 render 段之外（那一段只夹 renderMessage）
 
   switch (result.kind) {
     case "skip":
@@ -499,7 +499,7 @@ export function renderContentRecord(
 }
 
 /**
- * 〔W5-RENDER R11 · `设计/10 §7` 第 10 条〕**落点标记**：一条记录若没有自己的卡（工具单元并进左邻居的工具组 ·
+ * **落点标记**：一条记录若没有自己的卡（工具单元并进左邻居的工具组 ·
  * tool_result 被注入进它那个 tool_use 的单元里），就在它真正落下的那一块上记 `data-member-uuid`，
  * 会话内查找 / 大纲命中它时 `revealCard` 找得到（原来找不到 `[data-uuid]` ⇒ 标「跳不过去」）。
  * - 工具组的单元（新建组与并入左邻居两支都记；新建组的外壳另有 `data-uuid`）；

@@ -23,7 +23,7 @@ id=$("$SELFDIR/cc-whoami" 2>/dev/null || true)
 #    头注当年那句「第二道管的是**所有**失败模式」买到的其实是「所有失败模式都会触发这条退回」,
 #    **不是**「这条退回在所有并发形态下都正确」—— 两件事当年写成了同一句。
 #
-# ⇒ 本版换成两阶段:**没确认就不推进**(设计 95 §3ter)。
+# ⇒ 本版换成两阶段:**没确认就不推进**(设计)。
 #    ① cc-peek  纯读,拿正文 ＋ 一个自包含令牌(**不动 .pos**)
 #    ② 喂回成功之后才 cc-commit,由它在锁内 CAS 推进
 #    ⇒ **那条退回整条消失**(没 commit 就没推进,无可退),不是"改成加锁"。
@@ -38,7 +38,7 @@ rf=""; bf=""
 peekargs=()
 [ -n "${CCBUS_PEEK_MAX_LINES:-}" ] && peekargs=(--max-lines "$CCBUS_PEEK_MAX_LINES")
 msgs=$("$SELFDIR/cc-peek" "$id" --token-file "$tf" --kinds-file "$kf" "${peekargs[@]+"${peekargs[@]}"}" 2>/dev/null || true)
-# ★ **按 kind 决定拦不拦**(设计 95 §2):这一批里没有一条的 kind 要拦停(比如全是 fyi)⇒
+# ★ **按 kind 决定拦不拦**(设计):这一批里没有一条的 kind 要拦停(比如全是 fyi)⇒
 #   **放行、不推进** —— 消息留在收件箱里(cc-list 的待读数照算,cc-recv / 面板照样读得到),
 #   等下一条要拦停的消息来时一起喂。不 commit 是刻意的:「不喂回」不等于「读过了」。
 # ⚠ 买不到:那一批被 `CCBUS_PEEK_MAX_LINES` 截在前 N 条、而要拦停的那条排在 N 之后 ⇒ 这一轮不拦。

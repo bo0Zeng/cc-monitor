@@ -7,7 +7,7 @@ const TREES: &[(&str, &str, usize, &str)] = &[
         "src/frontend/shell/src",
         80,
         "承载界面那一侧，今天唯一的取用口就在这棵树里。\
-             ⚠ 〔`P4` 2026-09-21〕先前这里写着「两个数别混：09-04 盘上 105 份 `.rs`，\
+             ⚠ 先前这里写着「两个数别混：09-04 盘上 105 份 `.rs`，\
              而判据的语料是 104 份 —— `scan_tree!` 按构造摘掉调用者自己那一份」——\
              那一刀在这一处不生效，而且本文件住 `tests/frontend/shell/`、不在这棵树里\
              ⇒ **盘上几份，语料就是几份**。地板取 80",
@@ -16,7 +16,7 @@ const TREES: &[(&str, &str, usize, &str)] = &[
         "文件窗口",
         "src/frontend/filewin",
         25,
-        "〔P4〕又一个前端，独立成包（monitor 包里那个 `[[bin]]` 转调它）：它只经通道说 `call` / `subscribe`，\
+        "又一个前端，独立成包（monitor 包里那个 `[[bin]]` 转调它）：它只经通道说 `call` / `subscribe`，\
              依赖只许契约类（`contract_crate_guard` ②）。monitor 那一行的人群声明也把它带进来 —— 这一行管的是\
              「清单依赖面盖得住」（09-30 现打 29 份 `.rs`，地板取 25）",
     ),
@@ -28,12 +28,12 @@ const TREES: &[(&str, &str, usize, &str)] = &[
              （09-04 现打 73 份 `.rs`，地板取 55）。今天它这一格是 0，\
              而**「0」只有在尺子接上了的时候才算数**，那一格由本模块第二条判据买",
     ),
-    // 〔RM1f · V108 后半句〕**取用口今天住这棵树**：monitor 摘掉内嵌引擎之后，全体只剩全景小程序这一处。
+    // 〔V108 后半句〕**取用口今天住这棵树**：monitor 摘掉内嵌引擎之后，全体只剩全景小程序这一处。
     (
         "全景小程序",
         "src/panorama-engine",
         1,
-        "只装代码全景引擎的独立小程序（V108 选 B）—— 本机与远端的全景都经后端插件口起它，\
+        "只装代码全景引擎的独立小程序（选 B）—— 本机与远端的全景都经后端插件口起它，\
              引擎取用口 `Engine::open` 与引擎类型的导入今天**只**在这里（09-25 现打 1 份 `.rs`：`main.rs`，地板取 1）",
     ),
     (
@@ -54,7 +54,7 @@ const EXCLUDED_TREES: &[(&str, &str)] = &[(
     "引擎本体自己的家：取用口那个符号是在这里**定义**的，把它算进人群等于要求\
          「定义处也只许有一处取用」——那是另一件事。且 `C7` 逐字「vendor 不动」，\
          它进人群只会造出一条谁也不许修的红。monitor 清单的 `[workspace] exclude` \
-         也逐字排除着它，两处口径一致。〔RM1f〕今天依赖它的只剩全景小程序那份清单（monitor 那一行删了）。",
+         也逐字排除着它，两处口径一致。今天依赖它的只剩全景小程序那份清单（monitor 那一行删了）。",
 )];
 
 fn repo_root() -> std::path::PathBuf {
@@ -106,7 +106,7 @@ fn corpus_of(label: &str, rel: &str, floor: usize) -> Result<Vec<(String, String
 
 /// 两根针，**运行时拼** —— 本文件的头注里逐字写着它们，写字面量会读到判据自己。
 ///
-/// ⚠ 〔`P4` 2026-09-21〕先前这里写着「`scan_tree!` 已经按构造摘掉本文件，这是第二道」——
+/// ⚠ 先前这里写着「`scan_tree!` 已经按构造摘掉本文件，这是第二道」——
 /// **那一道不生效**（自摘在这一处恒空转）。今天承重的是**运行时拼针** ＋ **住址**
 /// （本文件住 `tests/frontend/shell/`，而两棵语料树是 `src/frontend/shell/src` 与 `src/backend`）。
 /// 本仓这一族栽过五次，别把拼针改回字面量。
@@ -134,7 +134,7 @@ fn ports_in(corpus: &[(String, String)], needle: &str) -> Vec<String> {
 
 /// ★ 正题：**每一棵我们编的树合起来，取用口的住址表只有那一处。**
 ///
-/// 〔TL1 · 4C · 2026-09-25〕**取用面今天只有这一份真相**：后端那侧 `panorama_locus_guard` 原先的正题②（后端树零处）
+/// **取用面今天只有这一份真相**：后端那侧 `panorama_locus_guard` 原先的正题②（后端树零处）
 /// 与正题③（小程序树恰一处 ＋ monitor 树零处）并进来了 —— 六刀现量，凡红它们的，本条或
 /// `tests::the_engine_is_opened_in_exactly_one_place`（`main.rs` 里恰一次）都红，它们没有独占格（`TL1.md` 件 2）。
 /// 那边只留链接面（lock 登记 · 共享 crate 零依赖声明）。⚠ 本条的「非空」（住址表 == 小程序 `main.rs`）
@@ -155,7 +155,7 @@ fn the_engine_port_is_pinned_across_every_tree_we_compile() {
     }
     for (needle, what) in port_needles() {
         let found = ports_in(&corpus, &needle);
-        // 〔RM1f〕住址从 `monitor:panorama.rs`（已删）搬到全景小程序（上面 ② 那一种：换侧，同轮改期望）。
+        // 住址从 `monitor:panorama.rs`（已删）搬到全景小程序（上面 ② 那一种：换侧，同轮改期望）。
         assert_eq!(
             found,
             vec!["全景小程序:main.rs".to_string()],
@@ -249,7 +249,7 @@ fn the_set_of_trees_this_scope_covers_is_itself_pinned() {
     for (manifest_rel, home) in [
         ("src/frontend/shell/Cargo.toml", "src/frontend/shell"),
         ("src/backend/Cargo.toml", "src/backend"),
-        // 〔RM1f〕第三份清单：全景小程序（今天唯一链 vendored 引擎的那一棵）。
+        // 第三份清单：全景小程序（今天唯一链 vendored 引擎的那一棵）。
         ("src/panorama-engine/Cargo.toml", "src/panorama-engine"),
     ] {
         let manifest = std::fs::read_to_string(root.join(manifest_rel))

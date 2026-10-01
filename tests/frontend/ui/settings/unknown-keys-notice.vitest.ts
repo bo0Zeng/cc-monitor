@@ -1,5 +1,5 @@
 /**
- * 🔴 〔`设计/99 §2.5 P12` 2026-09-21〕**「未知键出声」的那一半必须出在用户眼前。**
+ * 🔴 **「未知键出声」的那一半必须出在用户眼前。**
  *
  * # 为什么这条与 `tests/frontend/ui/config-unknown-keys.vitest.ts` 不能合成一条
  *
@@ -39,7 +39,7 @@ vi.mock("../../../../src/frontend/ui/ipc/commands", () => ({
               ? Promise.reject(new Error("读不到 config.json"))
               : Promise.resolve(store.cfg);
         }
-        if (name === "patch_config") return () => Promise.resolve(); // 〔CFG1〕写口换成按键补丁
+        if (name === "patch_config") return () => Promise.resolve(); // 写口换成按键补丁
         return () => Promise.reject(new Error(`[录音机] ${name} 没有真后端`));
       },
     },
@@ -65,7 +65,7 @@ vi.mock("../../../../src/frontend/ui/settings/plugins-section", () => ({
 vi.mock("../../../../src/frontend/ui/settings/cc-bus-hooks-section", () => ({
   CcBusHooksSection: class { element = document.createElement("div"); },
 }));
-// 〔AL1c · 4B〕`cc_integration.ts` 并进了 `machine-aliases.ts`（终端集成成了「别名」那一块 PowerShell 那一侧），它的替身随之删掉。
+// `cc_integration.ts` 并进了 `machine-aliases.ts`（终端集成成了「别名」那一块 PowerShell 那一侧），它的替身随之删掉。
 vi.mock("../../../../src/frontend/ui/keybindings/editor", () => ({
   KeybindingsEditor: class { element = document.createElement("div"); },
 }));
@@ -140,7 +140,7 @@ describe("P12：那条常驻条（`createUnknownKeysBar`）", () => {
   });
 
   it("★ 反空真：配置干净 ⇒ 条是藏着的、正文是空的（不是「永远亮着」）", async () => {
-    store.cfg = { theme: {}, notifyTurnEnd: true, autoFollowUserActive: false }; // 〔LR2〕原来第三个键是已退役的 forceLaunchPayloadRenderer
+    store.cfg = { theme: {}, notifyTurnEnd: true, autoFollowUserActive: false }; // 原来第三个键是已退役的 forceLaunchPayloadRenderer
     const bar = createUnknownKeysBar();
     await tick();
     expect(

@@ -88,7 +88,7 @@ MARK_DECL = 'const BREAKING_MARK: &str = "'
 # `BLOCK2_HEAD .. BLOCK_TAIL` 只框**收窗口补的那第二块**（`d10` 用它）。
 BLOCK_HEAD = "\n    /// 读仓根的一份文本。"
 BLOCK2_HEAD = "\n    /// 〔`K-R120` 收窗口补，09-14〕"
-BLOCK_TAIL = "\n    /// 〔audit-0805 08-06〕**文档里写成 `CONST = 数` 的"
+BLOCK_TAIL = "\n    /// **文档里写成 `CONST = 数` 的"
 # 第二块那条判据的名字 —— `d10` 摘完自证「摘干净了」用。
 GATE2_FN = "the_docs_self_reported_release_is_the_version_we_ship"
 # 两份 README 里「这份文档此刻自称的版本」那一处的逐字锚点（与判据里那张 `places` 同源）。

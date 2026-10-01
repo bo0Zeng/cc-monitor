@@ -51,7 +51,7 @@ CHANGELOG = "CHANGELOG.md"
 
 # 与 `doc_claim_registry` 那条新判据里的 `BREAKING_MARK` 是**同一个词**。
 # ⚠ 这里是第二份字面量，写下来是因为量具与判据是两棵树上的东西（py / rs）——
-#    真相源是判据那一份；本量具**从判据里读它**，下面那行只是读不到时的兜底并会出声。
+#    源头是判据那一份；本量具**从判据里读它**，下面那行只是读不到时的兜底并会出声。
 BREAKING_MARK_FALLBACK = "会改变已有行为"
 REGISTRY = "src-tauri/src/doc_claim_registry.rs"
 
@@ -62,7 +62,7 @@ def breaking_mark() -> "tuple[str, str]":
     m = re.search(r'const BREAKING_MARK: &str = "([^"]+)";', text)
     if m:
         return m.group(1), f"从 `{REGISTRY}::BREAKING_MARK` 读到"
-    return BREAKING_MARK_FALLBACK, "🔴 判据里那个常量抠不到，退回本量具的兜底值（真相源变了，先修这里）"
+    return BREAKING_MARK_FALLBACK, "🔴 判据里那个常量抠不到，退回本量具的兜底值（源头变了，先修这里）"
 
 
 def lock_version() -> "tuple[str | None, int]":

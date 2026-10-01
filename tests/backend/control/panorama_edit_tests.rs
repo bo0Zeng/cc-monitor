@@ -1,5 +1,5 @@
-//! 要求住址：主会话 09-28 裁 MIG-3b 报备 3 —— `panorama-edit` 进后端（〔RM1d〕V110「引擎只算、文件管理来写」）。
-//! 〔MIG-3b 续〕问 · 交那一环的判据原住 `tests/frontend/shell/panorama_call_tests.rs`（monitor 那一跳），随实现搬来、期望一字未改；
+//! 要求住址：主会话 09-28 裁 MIG-3b 报备 3 —— `panorama-edit` 进后端（「引擎只算、文件管理来写」）。
+//! 问 · 交那一环的判据原住 `tests/frontend/shell/panorama_call_tests.rs`（monitor 那一跳），随实现搬来、期望一字未改；
 //! 门换成这台真的文件管理面（`inbound::LocalFiles`，落在临时目录当仓），「算」用替身按顺序交计划、数被问了几次。
 use super::*;
 use crate::assets::door::Door;
@@ -121,7 +121,7 @@ fn args(d: &RepoDoor, op: &str) -> Value {
 }
 
 /// ★ 计划原样交给写口：`after` 是全文、`expect` 是计划里的 `before`、`parents` 原样、不要备份；落下的就是计划里的全文。
-/// 「算」问的是那一种写对应的 `plan_*`、带着仓与原样的 `args`，〔PANO〕以及发起方带来的 `shape`（后端不存形状代号）。
+/// 「算」问的是那一种写对应的 `plan_*`、带着仓与原样的 `args`，以及发起方带来的 `shape`（后端不存形状代号）。
 #[tokio::test]
 async fn the_plan_is_handed_to_the_door_verbatim() {
     let d = RepoDoor::new("put");
@@ -176,7 +176,7 @@ async fn nothing_to_write_sends_nothing() {
 }
 
 /// ★ `stale`（算完之后盘上那份被别人改了）⇒ **重新要一份计划**，不拿旧计划硬写；趟数有上限（码 `stale`）。
-/// 〔PANO〕写成之后跑哪一个，照小程序写表里说的 `then`（后端不认识它是什么，也不存那张表）。
+/// 写成之后跑哪一个，照小程序写表里说的 `then`（后端不认识它是什么，也不存那张表）。
 #[tokio::test]
 async fn stale_means_plan_again_not_write_anyway() {
     let d = RepoDoor::new("stale");
@@ -255,7 +255,7 @@ async fn delete_hands_the_planned_bytes_to_the_door_as_expect() {
     assert!(!d.root.join("a.json").exists());
 }
 
-/// 计划形状不对（两端版本对不上）⇒ 说清楚，不猜。〔PANO〕写表之外的 op ⇒ `bad_args` 那一格随写表搬去小程序自报，
+/// 计划形状不对（两端版本对不上）⇒ 说清楚，不猜。写表之外的 op ⇒ `bad_args` 那一格随写表搬去小程序自报，
 /// 判据住 `control/panorama.rs` 的 `a_plan_op_must_be_in_the_table_the_program_reports`。
 #[tokio::test]
 async fn a_plan_of_the_wrong_shape_is_refused() {
@@ -265,7 +265,7 @@ async fn a_plan_of_the_wrong_shape_is_refused() {
         .await
         .unwrap_err();
     assert_eq!(code, "failed");
-    // 〔COPY-R〕按文案键断言（`设计/91 §6`）：那句话的每一截字面都在，不钉原文。
+    // 按文案键断言：那句话的每一截字面都在，不钉原文。
     let template = copy_text(
         "rsPanoramaCall.edit.badPlan",
         &[("e", "\u{0}"), ("raw", "\u{0}")],

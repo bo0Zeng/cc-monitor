@@ -70,7 +70,7 @@ fn missing_error_and_sidechain_default_to_not_excluded() {
     assert_eq!(turn_end_uuid(&not), None);
 }
 
-/// 〔MOD · `99 §2.1 ㉗`〕子串闸只挡「不可能是 turn-end」的行，探针与原先整份 `Value` 同一判：
+/// 子串闸只挡「不可能是 turn-end」的行，探针与原先整份 `Value` 同一判：
 /// 闸放行的写法（冒号两侧有空白）照样判出；形状不对的旁格当缺、不把整行判畸形；原文里没有那个字面量 ⇒ 不解析、`None`。
 #[test]
 fn the_substring_gate_hides_no_turn_end_and_odd_shapes_count_as_missing() {

@@ -1,5 +1,5 @@
 /**
- * 〔U2 · 拆 `tabs.ts` ① · `设计/01 §1.5`「一个 store，一个 router」〕**会话状态账**。
+ * 〔拆 `tabs.ts` ① · 「一个 store，一个 router」〕**会话状态账**。
  *
  * tab 集合 · 顺序（连同盘上那份顺序意图）· 当前 tab · 是否在重放批里 · 早于 tab 到达的信号暂存
  * （已结束 / 可重连 / 红绿灯）· 不可 attach 的 sid · 账号快照 · 任务快照 —— **收进一处**；
@@ -15,7 +15,7 @@ import type { Tab, TabsSummary } from "./tab-model";
 import { isLive } from "./tab-session-state";
 import { Slice } from "./app-store";
 
-/** 〔GAP1 · `设计/01 §1.5`〕当前 tab 那一格对外的样子：HUD 要的 usage 与「会话事实要不到」的原因。 */
+/** 当前 tab 那一格对外的样子：HUD 要的 usage 与「会话事实要不到」的原因。 */
 export interface ActiveView {
   sid: string | null;
   model: string | null;
@@ -35,7 +35,7 @@ export class TabStore {
   /** 按插入顺序的 sessionId 数组，与 this.tabs.keys() 顺序一致但避免每次 Array.from */
   orderedIds: string[] = [];
   /**
-   * 〔步 17·C · 2026-09-21〕**盘上那份顺序（`tabBar.order`），启动读一次之后留着。**
+   * **盘上那份顺序（`tabBar.order`），启动读一次之后留着。**
    *
    * 🔴 **它是「一份意图」，不是一次性的动作** —— 这就是那个 no-op 的修法所在
    *   （成因与现打见 `loadOrder` 头注）。tab 是**陆续**到的，所以这份顺序必须活过
@@ -81,7 +81,7 @@ export class TabStore {
    */
   inBatch = false;
   /**
-   * 〔CF2 · 第四波 4B〕此刻喂进 `onLine` 的是**取回来的历史**（按偏移 / 按行号，`TabStreamView.feedHistoryRows`），
+   * 此刻喂进 `onLine` 的是**取回来的历史**（按偏移 / 按行号，`TabStreamView.feedHistoryRows`），
    * 不是实时行。远端 tab「见行就从死翻回活」（`tabs.ts::ensureTab` 的 `remote-line` 那一格）只认实时行：
    * 在一个已结束的远端 tab 上往上翻、取回几条旧行，不许把它翻活。
    */
@@ -112,12 +112,12 @@ export class TabStore {
    * activity 格 同步派发，而建 Tab 的行走异步 queue/drain）。ensureTab 时落实。
    */
   /**
-   * 〔U4b · 第四波 · G3〕容器事实（`container` 格）早于 Tab 建出时暂存。ensureTab 建 Tab 时落实
+   * 容器事实（`container` 格）早于 Tab 建出时暂存。ensureTab 建 Tab 时落实
    * （建出来就是活的；早到的死亡信号优先 —— 那时容器一格由死的那一刻的裁决说了算）。
    */
   readonly pendingContainer = new Map<string, "tmux" | "none">();
   /**
-   * 〔U4b · 第四波 · 说不清〕已经把活会话清单报完了的机器（`origin-sessions-listed` / 本机 `list_active_sessions`〔散文墓碑〕）。
+   * 〔说不清〕已经把活会话清单报完了的机器（`origin-sessions-listed` / 本机 `list_active_sessions`〔散文墓碑〕）。
    * 固定复活时据它分：报完了 ⇒ 已结束（它不在清单里，不然 tab 早就被建成活的了）；没报完 ⇒ 说不清。
    */
   readonly seenOrigins = new Set<string>();
@@ -126,10 +126,10 @@ export class TabStore {
     { status: string; waitingFor: string | null }
   >();
 
-  /** 「tab 集合变了」那一格。〔GAP1〕建在唯一的 pub-sub 原语上（`app-store.ts::Slice`），同值不通知。 */
+  /** 「tab 集合变了」那一格。建在唯一的 pub-sub 原语上（`app-store.ts::Slice`），同值不通知。 */
   private readonly tabsSlice = new Slice<TabsSummary>({ total: 0, live: 0, dead: 0 }, sameSummary);
 
-  /** 〔GAP1〕「当前 tab 变了」那一格（切 tab · 当前 tab 的 usage / 事实可用性变了都写这里；HUD 订阅它）。 */
+  /** 「当前 tab 变了」那一格（切 tab · 当前 tab 的 usage / 事实可用性变了都写这里；HUD 订阅它）。 */
   readonly active = new Slice<ActiveView>(NO_ACTIVE, sameActive);
 
   /** 订阅「tab 增 / 减 / 状态变」。返回退订函数。 */
@@ -138,7 +138,7 @@ export class TabStore {
   }
 
   /**
-   * 此刻的数量摘要（总数 · 活 · 死）。〔U4〕按**活性**一轴分：可重连的会话 claude 已经没了 ⇒ 算死
+   * 此刻的数量摘要（总数 · 活 · 死）。按**活性**一轴分：可重连的会话 claude 已经没了 ⇒ 算死
    * （改两轴之前它借着 `status: live` 被算进「活跃」，状态栏的「活跃 N」多数了它）。
    */
   summary(): TabsSummary {
@@ -155,15 +155,15 @@ export class TabStore {
   }
 
   /**
-   * 〔步 17·C · 2026-09-21〕新 tab 落位 = **追加到末尾，再按盘上那份顺序摆**。
+   * 新 tab 落位 = **追加到末尾，再按盘上那份顺序摆**。
    *
    * 🔴 **后一半是那个 no-op 的第二半修法**：tab 是陆续到的，而 `loadOrder` 只跑一次
    *   ⇒ 只在 `loadOrder` 里应用一次，**后到的每一个 tab 都会落到末尾**，
    *   盘上给它留的那一格永远用不上（现打：会话到齐后顺序 == 到达序）。
    * ⚠ 这里**只动 `orderedIds`、不碰 DOM** —— 拖拽期间的重画抑制（★ 6d）由
    *   `refreshTabBar` 那道守卫管，与本函数无关。
-   * 〔BG1 · V125「删掉树」〕bg 会话与普通 tab 走**同一条**落位：原先这里先把 bg 挂到同
-   *   `(cwd, origin)` 交互宿主之后排成树（Batch7-F24），用户裁删 —— 与 `设计/30 §7`
+   * 〔「删掉树」〕bg 会话与普通 tab 走**同一条**落位：原先这里先把 bg 挂到同
+   *   `(cwd, origin)` 交互宿主之后排成树（Batch7-F24），用户裁删 —— 与
    *   「不做自动归组、集合是唯一分类维」一致。本函数里零处按 kind 分叉（`tests/frontend/ui/bg-flat.vitest.ts` 钉着）。
    */
   placeInOrder(tab: Tab): void {

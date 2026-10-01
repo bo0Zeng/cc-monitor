@@ -38,7 +38,7 @@ pub(crate) fn skills_root() -> Option<PathBuf> {
 }
 
 /// 列项目的那份 `.claude.json`：设了 `CLAUDE_CONFIG_DIR` ⇒ 它下面那一份；否则 `$HOME/.claude.json`
-/// （〔SH1 · V137〕MCP 列表读法 `claudecode/mcp.rs` 也用这一份 —— monitor 那份三候选删了）。家目录都没有 ⇒ `None`。
+/// （MCP 列表读法 `claudecode/mcp.rs` 也用这一份 —— monitor 那份三候选删了）。家目录都没有 ⇒ `None`。
 pub(crate) fn claude_json() -> Option<PathBuf> {
     if let Some(dir) = std::env::var_os(CONFIG_DIR_ENV).filter(|d| !d.is_empty()) {
         return Some(config_path_in(Path::new(&dir)));

@@ -1,4 +1,4 @@
-//! 〔AS2 · 第四波 4B〕`agents/claudecode/assets.rs` 的判据：Claude 的资产布局认得对。
+//! `agents/claudecode/assets.rs` 的判据：Claude 的资产布局认得对。
 //!
 //! 守的要求（住址）：用户裁决 **V113** 逐字「本机后端在本机看见一个skill并记录下来」「mcp保持项目级别」
 //! ＋ 题面「skill（`~/.claude/skills/*`）与 MCP 定义（项目 `.mcp.json` 里的条目）」。

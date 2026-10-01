@@ -69,14 +69,14 @@ fn freeing_brings_the_live_count_back_down() {
 /// 而**同一个文件里**就有 `#[tokio::test(flavor = "multi_thread", worker_threads = 4)]`。
 /// 照抄邻居的属性 = 把量具关掉，而**没有任何东西会红**。
 ///
-/// `ROADMAP §5` 的 1k 逐字写着「**这是本件已知没堵上的洞**，不是『测不了』而是『还没钉』」。
+/// 「**这是本件已知没堵上的洞**，不是『测不了』而是『还没钉』」。
 /// 本条把它钉上。
 ///
 /// ⚠ needle 用 `reset_peak(` 而不是模块名：模块名在**本文件到处都是**（头注、函数名），
 /// 而调用点必然带括号。这是 F23/F24 两族的教训 —— 匹配单位要对得上事实。
 #[test]
 fn every_test_that_uses_this_probe_stays_single_threaded() {
-    // 🔴 〔步 7c 剖分 2026-09-19 · `设计/16 §6.2` B 类〕**人群必须含测试树。**
+    // 🔴 〔步 7c 剖分 2026-09-19〕**人群必须含测试树。**
     //
     // 本条的人群按定义是**测试代码**（「每一个用这个量具的测试都得单线程」），
     // 而测试段这一轮整批搬进了 `<repo>/tests/backend/`：`reset_peak(` 的调用点今天
@@ -93,7 +93,7 @@ fn every_test_that_uses_this_probe_stays_single_threaded() {
         &["rs"],
         &["alloc_probe_tests.rs"],
     ));
-    // 〔RE〕面 B 成员的单测镜像住 `tests/comms/outward/`（`http1_tests.rs` 用这个量具）。
+    // 面 B 成员的单测镜像住 `tests/comms/outward/`（`http1_tests.rs` 用这个量具）。
     files.extend(guard_core::scan_tree_excluding(
         &crate::guard_support::comms_tests_root(),
         &["rs"],

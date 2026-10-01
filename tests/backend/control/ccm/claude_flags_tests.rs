@@ -1,4 +1,4 @@
-//! # 要求住址：用户裁决 `99 §1` V151（取代 V138 那条「壳层选项 ∩ claude 旗标 = ∅」）
+//! # 要求住址：用户裁决（取代 V138 那条「壳层选项 ∩ claude 旗标 = ∅」）
 //!
 //! 核原文：「撞名判据改为『右边只认 ccm 表』」。异源：一侧是真解析器 `argv::parse` ＋ 真分流 `route` 的行为，另一侧是 claude 自己的 `--help` ——
 //! 固定快照 `tests/__fixtures__/claude-help.snapshot.txt`（首行记版本）；PATH 上有 `claude` 时再加读真的一份（只许跑 `--help`）。
@@ -24,9 +24,9 @@ fn flags_of(help: &str) -> BTreeSet<String> {
         .collect()
 }
 
-/// 〔V151 · 用户 09-27〕要求住址：`99 §1` V151「命令格式 `ccm [交给 claude 的…] -- [ccm 自己的…]`：没有 `--` ⇒ 整行原样交 claude；
+/// 〔用户 09-27〕要求：「命令格式 `ccm [交给 claude 的…] -- [ccm 自己的…]`：没有 `--` ⇒ 整行原样交 claude；
 /// 有 ⇒ 按最后一个 `--` 切……右边全归 ccm……认不得的词直接报错、不猜」「撞名判据改为『右边只认 ccm 表』」。
-/// 取代 V138「壳层选项 ∩ claude 旗标 = ∅」与 E2 第一版「claude 旗标 ∩ 后端第一个词」两条（〔墓碑〕后者曾钉着 `--fork-session` 豁免）。
+/// 取代「壳层选项 ∩ claude 旗标 = ∅」与 E2 第一版「claude 旗标 ∩ 后端第一个词」两条（〔墓碑〕后者曾钉着 `--fork-session` 豁免）。
 ///
 /// 语料异源：claude `--help` 快照（＋ PATH 上真 claude）∪ 后端的两张表 ∪ ccm 自己的词（问真解析器认不认）。
 /// ① 没有 `--` ⇒ 零拦截：每个词（单独、与整串混写）都原样进透传，分流也不进后端。
@@ -79,7 +79,7 @@ fn only_the_right_of_the_last_end_is_ccm_and_nothing_is_intercepted_without_it()
         flag::CCM_VERSION,
         flag::CCM_PROBE,
         flag::CCM_SID,
-        flag::NEW, // 〔V153〕
+        flag::NEW, //
     ]
     .iter()
     .map(|s| s.to_string())

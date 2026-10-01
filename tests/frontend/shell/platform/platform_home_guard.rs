@@ -1,6 +1,6 @@
-//! 要求住址：`设计/00 §1.6.4`「`platform/` | **操作系统** | 唯一允许平台原语与平台 `cfg`」· `设计/90 §4` 阶段 H「monitor 侧的 `platform/` 层」· 主会话 09-30 裁「壳生产段里平台 `cfg` / 平台原语只许在壳的 `platform/` 子模块（与 `src/common/host-core`）」。
+//! 要求：「`platform/` | **操作系统** | 唯一允许平台原语与平台 `cfg`」· 阶段 H「monitor 侧的 `platform/` 层」· 「壳生产段里平台 `cfg` / 平台原语只许在壳的 `platform/` 子模块（与 `src/common/host-core`）」。
 //!
-//! 〔P4b · 阶段 H〕**壳的源码人群里，平台形态只许住在允许区（[`HOMES`]）；还没收的逐份点名在 [`PENDING`]，名单只许变短。**
+//! **壳的源码人群里，平台形态只许住在允许区（[`HOMES`]）；还没收的逐份点名在 [`PENDING`]，名单只许变短。**
 //!
 //! - 人群：壳 `src/` 那棵模块树的生产段（`guard_core::scan_tree_excluding`：顺 `#[path]`，也收 manifest `[package.metadata.guard] population` 声明的兄弟包）。
 //! - 形态：[`platform_forms`] —— 谓词点了操作系统的 `cfg(…)` / `cfg!(…)` / `cfg_attr(谓词, …)`，以及 [`PRIMITIVES`] 里的平台原语。
@@ -13,9 +13,9 @@ use std::collections::BTreeSet;
 /// 允许区：以 `/` 结尾的按前缀认，否则整串相等。住址是 `guard_core::module_address` 给的模块住址（兄弟包带包名）。
 const HOMES: &[&str] = &[
     "platform/",
-    // 〔P4〕前端宿主原语（两个前端共用）。
+    // 前端宿主原语（两个前端共用）。
     "host-core/",
-    // 〔P4〕文件窗口包自己的平台层（主会话 09-30 认）。
+    // 文件窗口包自己的平台层（主会话 09-30 认）。
     "cc-monitor-filewin/platform.rs",
 ];
 
@@ -24,15 +24,15 @@ const HOMES: &[&str] = &[
 enum Presence {
     /// 在盘上、带形态 —— 不在就红（搬走 / 改名了改住址，收完了删行）。
     Now,
-    // 〔P4 · 合 P4b〕「P4 合入后才出现」那一档随 P4 合入退役。
+    // 〔合 P4b〕「P4 合入后才出现」那一档随 P4 合入退役。
 }
 
 /// **待收名单**：`(模块住址, 归谁收, 在不在)`。收完一份删一行，并把 [`PENDING_LEN`] 同拍减一。
-// 〔P4 · 合 P4b〕名单上本来全是「归 P4 收」的 16 行（壳 config · launch · lib · utils · local_backend_host · filewin/proc 与窗口包 download · fonts · lossy_pull · scale · shell）：
+// 〔合 P4b〕名单上本来全是「归 P4 收」的 16 行（壳 config · launch · lib · utils · local_backend_host · filewin/proc 与窗口包 download · fonts · lossy_pull · scale · shell）：
 //   P4 子步 2 / 7 收成零命中（壳的 `platform/` · 窗口包的 `platform.rs`），16 行删、上限同拍 16 → 0。
 const PENDING: &[(&str, &str, Presence)] = &[];
 
-/// 名单条数的上限，与 [`PENDING`] 恒等：删行时同拍减一；**不许加**（加一行 = 往壳里别处又写了平台代码）。〔P4 · 合 P4b〕16 → 0。
+/// 名单条数的上限，与 [`PENDING`] 恒等：删行时同拍减一；**不许加**（加一行 = 往壳里别处又写了平台代码）。〔合 P4b〕16 → 0。
 const PENDING_LEN: usize = 0;
 
 /// `cfg` 谓词里点了操作系统的词（字符串字面量之外，按整词认）。`target_arch` 不在：那是架构，不是操作系统。
@@ -237,7 +237,7 @@ fn platform_forms_live_only_at_home_or_on_the_pending_list() {
         .collect();
     assert!(
         unlisted.is_empty(),
-        "壳的生产段在允许区之外出现了平台形态（`设计/00 §1.6.4`：平台 cfg 与平台原语只许住 `platform/`）：\n{}\n\
+        "壳的生产段在允许区之外出现了平台形态（平台 cfg 与平台原语只许住 `platform/`）：\n{}\n\
          ⇒ 读法收进 `platform/` 里一个函数 / 常量，调用处改调；判定规则留在原处。不许往待收名单里加行。",
         unlisted.join("\n")
     );

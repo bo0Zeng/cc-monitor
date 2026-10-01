@@ -9,7 +9,7 @@
 //!
 //! `D4` 把适配层的接口定为四类能力（会话发现与判活 · 会话内容读 · 用量 · 起会话/resume）。
 //! 本层今天真实覆盖 **② 的一半（抽取器有、读路未接）· ③ · ④**；
-//! **① 会话发现与判活**〔`S5` 08-14 订正〕：**"这台机器上有没有这个 agent"那一格已经有了**
+//! **① 会话发现与判活**：**"这台机器上有没有这个 agent"那一格已经有了**
 //! （[`home`] + `agents::visible_homes`），**"有哪些会话、活没活"那一格仍然是空的**。
 //! 两格别混：前者只看 home 目录在不在，后者要扫会话树 + 判活（DG1，仍未接线）。
 //! ⇒ Codex 会话今天**不会**出现在流式 watcher 里，只在 `--usage` 和
@@ -20,31 +20,31 @@
 //!
 //! ⚠ 不要从"这里有个模块"推断"Codex 支持完整"。
 
-// 〔C4d · 第四波 4B〕历史清单那一面（会话枚举 ＋ 首条真用户话）：本机的 Codex 合成项目 / 会话从 monitor 搬进后端。
+// 历史清单那一面（会话枚举 ＋ 首条真用户话）：本机的 Codex 合成项目 / 会话从 monitor 搬进后端。
 pub(crate) mod history;
 pub(crate) mod parse;
-// 〔MOD〕记录分类 ＋ 映射进渲染模型（从 monitor `codex_record.rs` 搬来）。
+// 记录分类 ＋ 映射进渲染模型（从 monitor `codex_record.rs` 搬来）。
 pub(crate) mod record;
 pub(crate) mod resume;
-// 〔RE〕Codex `token_count` → token 增量的唯一映射（原共享 crate `codex-token-core`，唯一消费者 `parse.rs`）。
+// Codex `token_count` → token 增量的唯一映射（原共享 crate `codex-token-core`，唯一消费者 `parse.rs`）。
 pub(crate) mod token;
 
-/// 〔C4d〕这一家的历史清单面（注册表 `Adapter.history` 那一格；通用层经注册表够到它，不直呼本模块）。
+/// 这一家的历史清单面（注册表 `Adapter.history` 那一格；通用层经注册表够到它，不直呼本模块）。
 pub(crate) const HISTORY: crate::agents::HistoryFace = crate::agents::HistoryFace {
     sessions: history::sessions,
     excerpt: history::first_user_excerpt,
     root: history::records_root,
 };
-/// 〔MOD〕记录解释面（注册表 `Adapter.records` 那一格）。轮次边沿与漂移账这一家今天不报（`parse::codex_turn_end_uuid` 仍 staged）。
+/// 记录解释面（注册表 `Adapter.records` 那一格）。轮次边沿与漂移账这一家今天不报（`parse::codex_turn_end_uuid` 仍 staged）。
 pub(crate) const RECORDS: crate::agents::RecordFace = crate::agents::RecordFace {
     parse: record::parsed_line,
     sid: parse::codex_sid_from_path,
     turn_end: None,
-    // 〔THIN〕Codex 的会话不在按项目分的记录树里、今天也不分叉 ⇒ 这两格没有。
+    // Codex 的会话不在按项目分的记录树里、今天也不分叉 ⇒ 这两格没有。
     find_session: None,
     branch: None,
     drift: None,
-    // 〔P1〕Codex 的记录不进全局搜索 / 摘录那几条通用路（它们只走记录树那一家）⇒ 不给文本面。
+    // Codex 的记录不进全局搜索 / 摘录那几条通用路（它们只走记录树那一家）⇒ 不给文本面。
     text: None,
     delete: None,
     // Codex 的记录里今天没有委派出去的运行 ⇒ 不声明子运行（通用层把它的一切都归主运行）。它的流也不经中转（未登记默认上游），
@@ -54,16 +54,16 @@ pub(crate) const RECORDS: crate::agents::RecordFace = crate::agents::RecordFace 
     child_link: None,
     children: None,
 };
-// 〔`设计/50` 删用量〕**原 `pub(crate) mod usage;` 删了。**
+// 〔删用量〕**原 `pub(crate) mod usage;` 删了。**
 // `agents/codex/usage.rs` 是用量**聚合轴**（②）的 Codex 半：它的唯一调用方是
 // 用量聚合那条一次性查询的入口（Claude 段之后硬接的那一句），而那份文件随 ② 轴整轴退役。
 // 同一刀还带走了它的类型依赖：桶累加器用的 `usage_core::Totals` 住在
 // `crates/usage-core` 的 Claude 半，那半也删了（crate 改名 `codex-token-core`）。
 // ⇒ 它**不是被顺手删的，是编译器指着删的**：文件留着连编都编不过。
 // ⚠ **token 字段映射本身没动**：`parse.rs::last_token_delta` → `token::codex_delta`
-//   仍在，`codex_delta` 那三条单测照旧绿（`设计/50 §6` 钩子 6）。
+//   仍在，`codex_delta` 那三条单测照旧绿（钩子 6）。
 
-/// 本 agent 在 wire 上的 **`agent_kind` 值**〔`S5`〕。
+/// 本 agent 在 wire 上的 **`agent_kind` 值**。
 ///
 /// 值域由既有契约定死（`ResumeSpec.agentKind` 逐字「`"codex"`=codex，**大小写敏感**」·
 /// `session_added.agent_kind` 发 `"codex"`），改它 = 改跨仓契约。
@@ -74,7 +74,7 @@ pub(crate) const RECORDS: crate::agents::RecordFace = crate::agents::RecordFace 
 /// 根本不在做派发）。
 pub(crate) const AGENT_KIND: &str = "codex";
 
-/// 〔P1 · 第 4 件〕本家的起会话事实（注册表 `Adapter.launch` 那一格）。适配器 id 就是 wire 上的 kind（这一家没有登记默认上游）；没有 shell wrapper。
+/// 本家的起会话事实（注册表 `Adapter.launch` 那一格）。适配器 id 就是 wire 上的 kind（这一家没有登记默认上游）；没有 shell wrapper。
 pub(crate) const LAUNCH: crate::agents::LaunchFace = crate::agents::LaunchFace {
     adapter_id: AGENT_KIND,
     default_launcher: resume::DEFAULT_COMMAND,
@@ -83,7 +83,7 @@ pub(crate) const LAUNCH: crate::agents::LaunchFace = crate::agents::LaunchFace {
     nested_env: resume::NESTED_ENV,
 };
 
-/// 本 agent 在这台机器上的 home 目录 —— **只答"它该在哪"，不答"在不在"**〔`S5`〕。
+/// 本 agent 在这台机器上的 home 目录 —— **只答"它该在哪"，不答"在不在"**。
 ///
 /// 与 Claude 那家的**真实差别**：这里可能答不出来（`None`）——
 /// [`parse::resolve_codex_dir`] 认 `$CODEX_HOME`，否则 `$HOME/.codex`；

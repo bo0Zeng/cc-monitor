@@ -199,7 +199,7 @@ export function computeLayout(overview: Overview, opts?: LayoutOptions): Panoram
     }
   }
 
-  // 入口点文件集合（〔P7〕上游给的 `file` 字段，不拆 id）。
+  // 入口点文件集合（上游给的 `file` 字段，不拆 id）。
   const entryFiles = new Set<string>((overview.entry_points ?? []).map((e) => e.file));
 
   // 分数范围（半径归一化用）。
@@ -462,7 +462,7 @@ export function coverageBanner(o: {
 
 /**
  * F70：`touching` 命中的符号 → **文件集合**（去重）。全景图画的是文件级气泡，故高亮按文件粒度。
- * 〔P7〕读上游给的 `file` 字段（`SymbolRef`），不照 id 格式自己拆。
+ * 读上游给的 `file` 字段（`SymbolRef`），不照 id 格式自己拆。
  */
 export function touchedFiles(refs: SymbolRef[]): Set<string> {
   return new Set(refs.map((r) => r.file));

@@ -1,10 +1,10 @@
 /**
- * 〔FE1 · 第四波 4D〕**本机起新会话之后，拿身份 token 反查出它的 sid，再把账号 pin 写上**（`K-P5h`）。
+ * **本机起新会话之后，拿身份 token 反查出它的 sid，再把账号 pin 写上**（`K-P5h`）。
  *
  * 起停域的一格：起会话方在拉起那一刻不知道 sid（token 在 exec 之前就铸好了），会话出生之后
  * （`main.ts` 的 `onSessionStarted`）再问一次本机后端的 `accounts-sessions`。
  *
- * 从 `accounts.ts` 拆出来（审计 B §6 必须拆 4；守的要求 `设计/01 §5` D1）。
+ * 从 `accounts.ts` 拆出来（审计 B §6 必须拆 4；守的要求）。
  */
 import { LOCAL_ORIGIN } from "./ipc/origin";
 import type { SessionAccount } from "./accounts";
@@ -16,7 +16,7 @@ import { recordLocalLaunchAccount } from "./launch-account";
  *
  * # 它买的是 `K-P5` 立项时那条结构性事实的另一半
  *
- * `K-P5 §3 三` 记着：**5 处起会话方，没有一处在起新会话时知道 sid** ——
+ * 记着：**5 处起会话方，没有一处在起新会话时知道 sid** ——
  * 那正是身份 token 存在的全部理由。写侧铸 token（`K-P5b`）· backend 从
  * `/proc/<pid>/environ` 读回来（`K-P5f`）· 铸法把 token 交给调用方（`K-P5h` `KP5HD1`）
  * ⇒ 本函数是最后一跳：**起会话方终于说得出「我刚起的那条是哪个会话」。**
@@ -34,7 +34,7 @@ import { recordLocalLaunchAccount } from "./launch-account";
  * | 命中的行没有 `sessionId` | `null` | 认得出进程、说不出会话 ⇒ 说不出就不说 |
  * | **命中一条以上** | `null` | 判不出谁是原主。backend 侧本来就会把这种全置 `null`，**这一格不靠上游守** |
  *
- * # ⚠ 它答不到的（照抄 `K-P5f §12 裁七`·1 已登记的那格残留洞，别在这里悄悄拓宽）
+ * # ⚠ 它答不到的（照抄 ·1 已登记的那格残留洞，别在这里悄悄拓宽）
  *
  * `CCM_LAUNCH_ID` 是**继承型**环境变量：在一条本工具起的会话里手敲 `claude` 起出来的孩子
  * 带着同一个 token。backend 挡得住「同一个 token 同时落在一条以上**活**会话上」，
@@ -85,7 +85,7 @@ export const PENDING_LAUNCH_TTL_MS = 120_000;
 /**
  * 🔴 **问几次**：每条待回填最多 8 次。
  *
- * 每一次「问」= 一次经通道的 `accounts-sessions`（〔C4a〕此前是一次 E79 那条本机 Tauri 命令，一次 exec local_backend）。
+ * 每一次「问」= 一次经通道的 `accounts-sessions`（此前是一次 E79 那条本机 Tauri 命令，一次 exec local_backend）。
  * 触发它的是**会话集合变化事件**，不是表 —— 一台机上短时间内起十几条会话是可能的，
  * 没有这个上限时，一条永远回填不了的待办会跟着每一次事件白发一次 IPC。
  */
@@ -168,7 +168,7 @@ export async function resolvePendingLocalLaunches(nowMs: number = Date.now()): P
   );
   if (pendingLocalLaunches.length === 0) return;
 
-  // 〔C4a〕经通道问本机后端（`fetchSessionAccounts` 那一处，`force`：刚起的会话不许被 8 秒缓存挡住）。
+  // 经通道问本机后端（`fetchSessionAccounts` 那一处，`force`：刚起的会话不许被 8 秒缓存挡住）。
   //   查不到（Windows / 没有本机后端 / 没有控制通道）⇒ 空行集 ⇒ 下面一条都命不中 = 不猜，待办留着等下一次事件。
   const rows: SessionAccount[] = await fetchSessionAccounts(LOCAL_ORIGIN, true);
 

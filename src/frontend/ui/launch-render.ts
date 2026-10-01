@@ -1,5 +1,5 @@
 /**
- * 〔MIG-2 · `设计/99 §2.1 ⑬` · `01 §1.1`〕**起会话的计划与渲染问那台后端**（本机远端同一条 `chan.call(origin, …)`）：
+ * **起会话的计划与渲染问那台后端**（本机远端同一条 `chan.call(origin, …)`）：
  *
  * - `launch-render-cli` —— `ccm …` 调用行（渲不出来是诚实降级：`ok:false` ＋ 理由）；
  * - `launch-render-payload` —— 裸载荷 / 外层 tmux 三格（渲不出来是拒：坏输入，调用方不许换条路糊过去）；
@@ -64,7 +64,7 @@ export async function renderPayload(origin: Origin, req: PayloadRenderRequest): 
   return v.cmd;
 }
 
-/** 全量注入开关是 monitor 进程环境的一格（`设计/20 §3.2`「随入参交给那台后端」）。 */
+/** 全量注入开关是 monitor 进程环境的一格（「随入参交给那台后端」）。 */
 async function allSessions(): Promise<boolean> {
   return commands.relay_all_sessions_switch();
 }

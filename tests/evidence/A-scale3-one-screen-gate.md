@@ -1,6 +1,6 @@
 # 秤 3 · 一屏门控行为读数（第一份）
 
-> 出处：`设计/17-算法与复杂度.md §6` 表第 3 行「一屏门控行为读数」。
+> 表第 3 行「一屏门控行为读数」。
 > 产出日期：2026-09-18 · 产出者：波 0 · A 路
 > 仪表：`tests/scale3-one-screen-gate.vitest.ts`
 
@@ -15,7 +15,7 @@ npx vitest run tests/scale3-one-screen-gate.vitest.ts --reporter=verbose
 
 ## 🔴 先说这杆秤**不是**设计要的那一杆
 
-`设计/17 §6` 给秤 3 的装法逐字是：
+给秤 3 的装法逐字是：
 
 > 仓里已有 `debugSnapshot()`（`tabs.ts:785-805`，DEV-only）**已在读前三个**，只差"视口内真实可见卡数" ⇒ 加一行 filter
 
@@ -25,12 +25,12 @@ npx vitest run tests/scale3-one-screen-gate.vitest.ts --reporter=verbose
 | | 设计要的 | 这份读数实际做的 |
 |---|---|---|
 | 量 `scrollHeight` | 真浏览器的 `el.scrollHeight` | **Σ 各卡的 `contain-intrinsic-size` 估值**（这是浏览器对从未绘制过的 `content-visibility:auto` 卡所做的事，但**没有实测证明**浏览器就是这么加的） |
-| 量「视口内真实可见卡高」 | `getBoundingClientRect().height` | **按 `styles.css` token 手算**的真高（`设计/17 §5.3`：这类"估得准不准"今天零读数） |
+| 量「视口内真实可见卡高」 | `getBoundingClientRect().height` | **按 `styles.css` token 手算**的真高（这类"估得准不准"今天零读数） |
 | 跑在哪 | 真 WebView2 / e2e | **jsdom**（无布局引擎，`scrollHeight`/`offsetHeight` 恒 0） |
 
 ⇒ 这份读数**能**证伪的：「估值 × 门控算术」这一条链会不会导致半屏。
 ⇒ 这份读数**不能**证伪的：浏览器的 `scrollHeight` 到底怎么累加、`branch-fold` reparent
-之后 `auto` 记忆还在不在（`设计/17 §5.1`，明标分不清）。**那两条要秤 2 才有答案。**
+之后 `auto` 记忆还在不在（明标分不清）。**那两条要秤 2 才有答案。**
 
 ## 门控仿真的对象
 
@@ -48,11 +48,11 @@ for (let round = 0; round < 4; round++) {
 `styles.css:1599 contain-intrinsic-size: auto 120px`。视口取 `clientHeight = 800px`
 （`tabs.ts:470 TOP_TRIGGER_PX = 800` 是同一量级的旁证，**不是同一个量**，别当实测视口引）。
 
-判据逐字（`设计/17 §6`）：**「返回后视口内真实可见卡的累计高度 ≥ clientHeight」**。
+判据逐字：**「返回后视口内真实可见卡的累计高度 ≥ clientHeight」**。
 
 ## fixture：故意构造的「重试风暴」
 
-`设计/17 §6` 数据源纪律逐字：
+数据源纪律逐字：
 
 > §6 秤 3 额外需要一个**故意构造**的 fixture：150 条里塞 ≥60 条 `card-api-retry`。
 > ⚠ **已查证：`evidence/` 里没有现成样本**（`api_error` / `api-retry` / 重试风暴 三个词零命中，
@@ -127,7 +127,7 @@ for (let round = 0; round < 4; round++) {
 
 ⇒ **设计 §6 的 fixture 规格本身要订正**：要能「红 → 绿」，`≥60 条/150` 应改成 `10–30 条/150`。
 
-⚠ 这不推翻 `设计/17 §2.2` 的**另一半**：「虚高 ⇒ 门控提前停」在 60 条那一档照样成立
+⚠ 这不推翻**另一半**：「虚高 ⇒ 门控提前停」在 60 条那一档照样成立
 （估值 7200px vs 真高 1383px，5.2× 虚高，第二轮直接 return）。§2.2 算的是虚高，
 §6 判的是「够不够一屏」——**两件事**，60 条那一档是"虚高但碰巧够一屏"。
 
@@ -137,19 +137,19 @@ for (let round = 0; round < 4; round++) {
 `tabs.ts:635` 的 `round < 4` 把一次调用能补的量封死在 4×150 = 600 条，
 600 条里只有 20 张卡 ⇒ 461px，仍不足一屏。
 
-⇒ **「轮数封顶」是半屏的第二个成因，改常数碰不到它。** 它归 `设计/17 §2.3`（门控换判据）。
+⇒ **「轮数封顶」是半屏的第二个成因，改常数碰不到它。** 它归（门控换判据）。
 ⇒ 任何人拿这份读数说「半屏已修复」都是越读了。
 
 ## 这份读数**没有**答什么
 
 1. **真高是手算的，不是量的。** `card-api-retry` 的 23.05px = `padding 3×2 + 11px × 1.55`，
-   按 `.card-api-retry` 的 CSS token 推（现打住址 `styles.css:1974`；原写 `:2110` 是漂的，那里今天是一条 `width: 14px`）。`设计/17 §5.3` 明写这类数今天零读数。秤 2 落地后必须回来重校。
+   按 `.card-api-retry` 的 CSS token 推（现打住址 `styles.css:1974`；原写 `:2110` 是漂的，那里今天是一条 `width: 14px`）。明写这类数今天零读数。秤 2 落地后必须回来重校。
 2. **浏览器的 `scrollHeight` 是不是真等于 Σ 估值**——没测。规范上 `contain-intrinsic-size`
    对未绘制元素承担尺寸，但「绘制过一次之后 `auto` 记忆接管」的时机、以及 fold reparent
-   之后还在不在（`设计/17 §5.1`），都**实现相关，必须实测**。
+   之后还在不在，都**实现相关，必须实测**。
 3. **真机视口是不是 800px**——没测。800 是取的典型值。
 4. **真实重试风暴的 retry 密度**——没样本（见上）。
-5. **一次强制布局读多少钱**——`设计/17 §5.2` 明标分不清，本秤**刻意没给它任何数**。
+5. **一次强制布局读多少钱**—— 明标分不清，本秤**刻意没给它任何数**。
 6. **`contain-intrinsic-size` 是 content-box 还是 border-box**：`height-estimate.ts:190-192`
    的注释说是 content-box（"盒模型自会另加"），而设计 §2.2 给的 24 / 32 两个数是**含 padding 的
    border-box 值**。本轮按设计给的数照改（§7 逐字指定），**但这两者不自洽**，见报告「我判不了的」。

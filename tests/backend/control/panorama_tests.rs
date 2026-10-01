@@ -1,4 +1,4 @@
-//! 〔RM1c · 第四波〕`control/panorama.rs` 的判据。
+//! `control/panorama.rs` 的判据。
 //!
 //! 走全流程的那几条用一个**真进程**当插件（`/bin/sh` 写的小脚本，说小程序那套方言），
 //! 喂进来的字节都是它现打的 —— 找它 / 问它 / 起它 / 拿码 / 翻语义五跳全是真的。
@@ -7,7 +7,7 @@
 use super::*;
 use crate::plugin::invoke::Done;
 
-/// 〔RM1f〕`answer_with` 变成了 async（`Run::Async` 那一档）：判据在一个现起的 runtime 上等它。
+/// `answer_with` 变成了 async（`Run::Async` 那一档）：判据在一个现起的 runtime 上等它。
 fn answer_now(fixed: &[PathBuf], store: &Path, args: &Value) -> Result<Value, CmdErr> {
     tokio::runtime::Builder::new_current_thread()
         .enable_all()
@@ -30,7 +30,7 @@ fn scratch(tag: &str) -> PathBuf {
     p
 }
 
-/// 假小程序自报的那一代（后端不存形状代号：请求带什么就比什么，〔PANO〕）。
+/// 假小程序自报的那一代（后端不存形状代号：请求带什么就比什么）。
 const T_SHAPE: &str = "t-shape-1";
 
 /// 给请求补上 `shape`（前端每问都带，取自生成物）。
@@ -92,7 +92,7 @@ fn the_candidates_are_beside_the_backend_then_the_deploy_home_and_never_path() {
     );
 }
 
-/// 要求住址：`99 §1 V158`「后端不带引擎知识」·〔PANO〕题面「小程序 `--probe` 自报会哪些 op、每个 op 属哪一档；后端按自报的档给期限」。
+/// 要求：「后端不带引擎知识」·题面「小程序 `--probe` 自报会哪些 op、每个 op 属哪一档；后端按自报的档给期限」。
 ///
 /// ★ 期限按小程序自报的档：`long=` 里的 ⇒ 建索引那一档，其余 ⇒ 查询那一档（后端自己不存 op 表）。
 #[test]
@@ -153,9 +153,9 @@ fn a_real_process_walks_find_probe_run_and_back() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// 要求住址：`97 §8`「要上游给的」④ · `99 §1` V158「长活要有进度」。
+/// 要求：「要上游给的」④ · 「长活要有进度」。
 ///
-/// ★〔P7〕小程序在 stderr 上报的进度格（一个 JSON 对象）原样交 `progress`；不是对象的那种行（数组 · 坏 JSON）不转；
+/// ★小程序在 stderr 上报的进度格（一个 JSON 对象）原样交 `progress`；不是对象的那种行（数组 · 坏 JSON）不转；
 /// 应答照旧是 stdout 那一行。真进程当插件。
 #[cfg(unix)]
 #[test]
@@ -216,7 +216,7 @@ esac"#;
     let ask = |args: Value| answer_now(std::slice::from_ref(&bin), &store, &shaped(args));
     let code_of = |args: Value| ask(args).unwrap_err();
 
-    // 〔PANO〕后端不存 op 表：它没自报的 op ⇒ `unsupported`（点名那一个；放字节那条接上），不起那个 op。
+    // 后端不存 op 表：它没自报的 op ⇒ `unsupported`（点名那一个；放字节那条接上），不起那个 op。
     let (c, m) = code_of(json!({"op": "vacuum"}));
     assert_eq!(c, "unsupported");
     assert!(m.contains("「vacuum」"), "{m}");
@@ -266,7 +266,7 @@ esac"#;
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// 设计/97 §8 · §6.5 · 99 §2.1 ㉝①：「`--probe` 加形状代号，后端判旧回 `unsupported`，放字节那条自动接上」。
+/// 「`--probe` 加形状代号，后端判旧回 `unsupported`，放字节那条自动接上」。
 /// 能力都在、形状代号对不上**请求带来的那一代**（或老一代压根没这一行）⇒ `unsupported`（`PUSH_ON` 里有它 ⇒ monitor 放字节），且不起那个 op。
 #[cfg(unix)]
 #[test]
@@ -292,7 +292,7 @@ fn an_old_generation_with_every_op_is_still_unsupported() {
     }
 }
 
-/// 要求住址：`99 §1 V158`「后端不带引擎知识」·〔PANO〕主会话 09-29「`EDITS` 挪出后端：由小程序自报，后端只照自报的表走」。
+/// 要求：「后端不带引擎知识」·主会话 09-29「`EDITS` 挪出后端：由小程序自报，后端只照自报的表走」。
 ///
 /// ★ 「算」那一问（`panorama-edit` 用）只认小程序 `plans=` 自报的写表：在表里 ⇒ 起它、应答带 `then`
 /// （写成之后要跑的 op，没有 = `null`）；不在表里（哪怕它会这个 op）⇒ `bad_args`、不起那个 op。
@@ -374,7 +374,7 @@ fn a_timeout_and_an_oversized_answer_are_said_as_such() {
         classify("status", 1, done(None, Vec::new())).unwrap_err(),
         (
             "failed",
-            // 〔COPY-R〕按文案键拼出期望（`设计/91 §6`），不钉原文。
+            // 按文案键拼出期望，不钉原文。
             copy_text(
                 "bePanorama.classify.failed",
                 &[
@@ -397,7 +397,7 @@ fn a_timeout_and_an_oversized_answer_are_said_as_such() {
     );
 }
 
-/// 设计/97 §8（主会话 09-28 裁 FIX4）「全景小程序卸口：给（受管工具都应可卸，照 SU1 装卸账）」：
+/// （主会话 09-28 裁 FIX4）「全景小程序卸口：给（受管工具都应可卸，照 SU1 装卸账）」：
 /// 不在 ⇒ `removed:false`；是全景小程序（`--probe` 首行认得）⇒ 删掉那一份、索引不动；认不出 ⇒ `not_ours`、一个字节不动。
 #[cfg(unix)]
 #[tokio::test]

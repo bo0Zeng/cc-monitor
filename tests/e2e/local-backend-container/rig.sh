@@ -298,11 +298,11 @@ P_PATH="$(tsh 'command -v ccm >/dev/null 2>&1 && ccm -- --ccm-probe 2>/dev/null 
 note "② 问 PATH 上那个（产品探针 CCM_PROBE_CMD 的口径）：行数 = $(printf '%s' "$P_PATH" | grep -c . )"
 printf '%s\n' "$P_PATH" | sed 's/^/    | /'
 # ③ 包里那个 /usr/bin/cc-monitor-backend 自己答不答（argv[0] 不叫 ccm）
-#    〔主会话 09-27 裁〕分流只看 argv、不看 argv[0] ⇒ 它与 ① ② 走同一条规则，照样该答六行。
+# 分流只看 argv、不看 argv[0] ⇒ 它与 ① ② 走同一条规则，照样该答六行。
 # 🔴 **仍带 timeout** —— 09-15 头一趟就是在这里挂住的（那时按 basename 分流，它没走 ccm 那一支，
 #    进程就那么停着，实测 12 分半没退）。
 #    ⚠ 不带 timeout 的话，「它不答」这一格会表现成**整个台架挂死**，而挂死读不出是哪一格坏了。
-#    〔E2 尾 09-27〕`timeout` 放进**容器里**那一跳：外层 `timeout` 只杀得掉本机的 docker 客户端，容器里那个进程
+# `timeout` 放进**容器里**那一跳：外层 `timeout` 只杀得掉本机的 docker 客户端，容器里那个进程
 #    会留下来 —— 从前靠下面一句 `pkill -f -- '--ccm-probe'` 模式杀去收，那句删了（`tests/e2e` 不许有模式杀）。
 P_SIDE="$(timeout 15 docker exec "$CT" timeout 10 /usr/bin/cc-monitor-backend -- --ccm-probe 2>&1 | head -8)"
 SIDE_RC=$?

@@ -6,7 +6,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn(), Channel: class {} }));
-// 〔FE1〕读面拆去了 `account-reads.ts`，规则留在 `accounts.ts`：两处各桩各的。
+// 读面拆去了 `account-reads.ts`，规则留在 `accounts.ts`：两处各桩各的。
 vi.mock("../../../../src/frontend/ui/account-reads", () => ({
   fetchAccounts: vi.fn().mockResolvedValue({ accounts: [] }),
 }));

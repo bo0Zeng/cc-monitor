@@ -24,7 +24,7 @@ export const LS_KEYS = {
   tasksPanelCollapsed: "cc-monitor.tasks-panel.collapsed",
   /** issue #23：agents 面板折叠状态（与 tasks 面板同形态的全局单例） */
   agentsPanelCollapsed: "cc-monitor.agents-panel.collapsed",
-  // 🔴 〔步 17·A · 2026-09-19〕`tabArchiveCollapsed` 删掉 —— 归档抽屉整个不存在了。
+  // 🔴 `tabArchiveCollapsed` 删掉 —— 归档抽屉整个不存在了。
   //    用户逐字「没有归档这个东西，不要归档，就是灰 tab」。盘上遗留的那个键无人再读
   //    （条 80：不为盘上已有状态留兼容 ⇒ 不写清理，让它自然作废）。
   /** v2.1.0 issue #7：每分组的折叠状态。动态生成 key。 */
@@ -33,7 +33,7 @@ export const LS_KEYS = {
   historyExpandedForks: "cc-monitor.history.expanded-forks",
   /** v2.3.0：tool result 渲染模式偏好（per tool name）。 */
   toolRender: (toolName: string) => `cc-monitor.tool-render.${toolName}`,
-  // 〔DP1 · 第四波〕v1.7 那两个键（cc 集成的 PowerShell profile 选择 + 自定义路径）删掉 —— 「终端集成」页随 AL1c / AL1d 退役之后
+  // v1.7 那两个键（cc 集成的 PowerShell profile 选择 + 自定义路径）删掉 —— 「终端集成」页随 AL1c / AL1d 退役之后
   //    零读写（`AL1d.md §5` 第 6 条）。盘上遗留的值无人再读（条 80：不为盘上已有状态留兼容 ⇒ 不写清理，让它自然作废）。
   /** Batch5-F19：上次所在 tab 的 sid——启动 active 选择 + replay 优先级。 */
   lastActiveSid: "cc-monitor.last-active-sid",
@@ -52,7 +52,7 @@ export const LS_KEYS = {
   /** E62：「有改动需重启」的原因集。**进程级状态**，不能只活在设置窗口的内存里 ——
    *  windowMode 下关掉设置窗 = 那个 webview 整个没了，而 monitor 并没有重启。 */
   restartReasons: "cc-monitor.settings.restart-reasons",
-  /** Batch11-F33：竖直 tab 栏拖出来的宽度（px）。〔CFG1〕从 `main.ts` 的直写收进来，读写者只有 `tab-bar-width.ts`。 */
+  /** Batch11-F33：竖直 tab 栏拖出来的宽度（px）。从 `main.ts` 的直写收进来，读写者只有 `tab-bar-width.ts`。 */
   tabBarWidth: "cc-monitor.tab-bar-w",
 } as const;
 

@@ -9,13 +9,13 @@
  *          └────────────── 改用例表不重生成 ⇒ 红          改 Rust ⇒ 红
  * ```
  *
- * # 〔LR2〕左边从「TS 渲染器的产出」换成了「手写期望」
+ * # 左边从「TS 渲染器的产出」换成了「手写期望」
  *
  * TS 那份兜底渲染器（`launch-render-fallback.ts` ＋ `session-backend.ts`）零生产调用，
- * 照 `设计/00 §2.5 ④`「TS 的只供对拍、排期删」删了（同 LR1 删 `ccm …` 那一份的办法）。
+ * 照「TS 的只供对拍、排期删」删了（同 LR1 删 `ccm …` 那一份的办法）。
  * 夹具**没有**跟着删，因为它一直在钉两件事，只有第一件随渲染器走：
  *
- *  1. 「两种语言渲出同一串」—— 另一种语言没了，这一件没了（已知代价，`调研/第四波记录/LR2.md §1.2`）。
+ *  1. 「两种语言渲出同一串」—— 另一种语言没了，这一件没了（已知代价）。
  *  2. **生产的请求构造（`buildPayloadRenderRequest`）→ 线 → Rust 反序列化 → 生产命令**这一整条。
  *
  * ⇒ `payload` 是**手写的期望**：值是 TS 渲染器最后一次跑出、与 Rust 逐字节对过的原样，
@@ -30,10 +30,10 @@
  * - **`resume` 的 `--resume <sid>` 展开在 TS 的请求构造里**（`buildPayloadRenderRequest`）。
  *   Rust 侧 `PayloadSpec.args` 收的是**展开后**的 argv，所以用例把 resume flag 直接写进 `args`
  *   —— 这样 spec ↔ plan 的映射是 1:1 的，夹具里看得见。
- * - **launcher**：用例只用干净 launcher。〔DUP1〕原先这里写「sanitize 也在 TS（`sanitizeRemoteLauncher`〔散文墓碑〕）」——
+ * - **launcher**：用例只用干净 launcher。原先这里写「sanitize 也在 TS（`sanitizeRemoteLauncher`〔散文墓碑〕）」——
  *   TS 那份删了，字符集只在 Rust 载荷渲染判（判不过拒），前端只把空白读成默认启动器。
  *
- * 〔LR2〕住址从 `src/` 挪到 `tests/test-support/`：它的手写期望逐字就是整条 shell 命令，而 `设计/90 §3` 条 1
+ * 住址从 `src/` 挪到 `tests/test-support/`：它的手写期望逐字就是整条 shell 命令，而条 1
  * 要 `src/**\/*.ts` 零 shell 串（判据 `tests/frontend/ui/launch-no-shell-in-ts.vitest.ts`，不开例外）。当年留在 `src/` 的理由
  * 「`tests/` 不在 `tsconfig.json` 的 include 里、`LaunchPlan` 改形状 tsc 看不见这张表」重组之后已不成立
  * （`include` 今天是 `["src", "tests"]`）⇒ 挪过来 tsc 照样看得见。
@@ -55,7 +55,7 @@ export interface GoldenCase {
 }
 
 const ACCT = "/home/u/.claude-accts/z";
-/** `设计/80 §8` 步 1：一个形状合法的启动期令牌（`[0-9a-f]{32}`）。
+/** 一个形状合法的启动期令牌（`[0-9a-f]{32}`）。
  *  ⚠ 夹具里的令牌是**常量**，不是现场铸的 —— 逐字节金标准里不许有随机值。 */
 const RBIND = "0f1e2d3c4b5a69788796a5b4c3d2e1f0";
 
@@ -114,7 +114,7 @@ export const GOLDEN_CASES: readonly GoldenCase[] = [
     wrap: [],
   },
   {
-    // `设计/80 §8` 步 1：**只有令牌**的那一格 —— 它是 `container:"none"`
+    // **只有令牌**的那一格 —— 它是 `container:"none"`
     // （`planResumeDirect`，今天 ↗ 做不到的那一档）在步 1 之后的载荷形态。
     name: "只有启动期令牌（container:\"none\" 那一档也带）",
     payload: "export CCM_RBIND_TOKEN='0f1e2d3c4b5a69788796a5b4c3d2e1f0'; cd '/w' && claude",

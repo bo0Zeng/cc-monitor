@@ -1,5 +1,5 @@
 /**
- * 〔MIG-3a · `设计/99 §2.1 ⑬`〕资产目录同步**走通道**：界面直问本机常驻后端 `assets-sync`（`<local>`），
+ * 资产目录同步**走通道**：界面直问本机常驻后端 `assets-sync`（`<local>`），
  * 远端那一台只报 `origin` —— 怎么够到它由那台流握手那一刻的 `remote-reach` 登记过（可达表住本机后端）。
  * 从前 monitor 的 Tauri 命令 `assets_sync` 替界面拼拨号请求再转交；那条删了，这里按形状严格收
  * （金样 `tests/__fixtures__/assets-sync.golden.json`）。

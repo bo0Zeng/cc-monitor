@@ -1,6 +1,6 @@
 //! Codex rollout 记录的后端侧解析（per-kind · 2D）。
 //!
-//! 〔MOD〕monitor 那份 `codex_record.rs` 搬进来之后（[`super::record`]：分类 ＋ 映射进渲染模型），信封助手只剩本模块这一份，
+//! monitor 那份 `codex_record.rs` 搬进来之后（[`super::record`]：分类 ＋ 映射进渲染模型），信封助手只剩本模块这一份，
 //! 两边都用它。与 aterm 的 CodexRecordParser/CodexTurnEndDetector **golden-parity**（同 Claude 那一家 `turn.rs` 套路）。
 //! Codex 格式未文档、每几 minor churn → 宽容抽取、逐行不崩、未知/缺失安全默认、alias 归一 `turn_*`↔`task_*`。
 //!
@@ -10,10 +10,10 @@
 //! **本模块范围（渐进接线）**：DG4 = turn-end 边沿（event_msg task_complete/turn_complete → uuid=turn_id
 //! 缺→envelope timestamp 回退）。DG5（usage：token_count）复用本模块的信封助手，接线时加。
 
-// 〔AR1 订正〕DG5 那一拍本模块过半函数由用量聚合轴接线；那条轴随 `设计/50` 删了之后，发现那几个
+// DG5 那一拍本模块过半函数由用量聚合轴接线；那条轴随删了之后，发现那几个
 // （`resolve_codex_dir` · `sessions_root` · `session_meta_cwd` · `codex_sid_from_path` · `unwrap_envelope`）
 // 的读者是 `agents/codex/`，token 那几个（`is_token_count` · `last_token_delta` · `turn_context_model`）今天在
-// 后端生产树里**零读者**，按 `设计/50 §3` 留给 codex 专项，别顺手清。turn-end 4 函数仍 staged（consumer
+// 后端生产树里**零读者**，按留给 codex 专项，别顺手清。turn-end 4 函数仍 staged（consumer
 // = DG1 per-kind process_jsonl 派发 / DG3 wire），带 per-fn allow（Phase D 审计：blanket 会静默吞掉将来真死代码）。
 
 use serde_json::Value;

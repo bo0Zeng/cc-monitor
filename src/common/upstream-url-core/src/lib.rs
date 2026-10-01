@@ -1,11 +1,11 @@
-//! **上游 base URL 能不能用** —— 全仓唯一的一份（〔DUP3 · 主会话 09-26 裁 J9〕`设计/01 §5` D1 · `设计/90 §3` 判据 2）。
+//! **上游 base URL 能不能用** —— 全仓唯一的一份。
 //!
 //! 先前三份各管一截：写口 `creds-core` 的形状关 · 中转 `relay/upstream.rs::Base::parse` · 上游选择装表时的「明文只许回环」；
 //! 界面还有一份用 `new URL()` 的（与后端漂开）。今天：[`parse`]（形状）＋ [`upstream_is_loopback`] ＝ [`usable`]；
 //! 界面读 monitor 从这里现生成的式子（`src/frontend/ui/generated/judgment-rules.ts`），两侧由金样 `tests/__fixtures__/upstream-url.golden.json` 逐条对。
 //! 本 crate 只判、不说：句子归调用处（同后端 `control/gate_rules.rs::TmuxNameIssue` 的先例）。
 //!
-//! 〔RE · 第四波 D 段〕**两个消费者**（`设计/00 §1.2` 共享 crate 那张表）：后端生产（上游选择装表 `accounts/upstream_select/table.rs` ·
+//! **两个消费者**（共享 crate 那张表）：后端生产（上游选择装表 `accounts/upstream_select/table.rs` ·
 //! 中转 `src/comms/outward/upstream.rs`）；monitor 只经生成物（`tests/frontend/shell/payload_judgment_rules.rs`
 //! 现生成 `judgment-rules.ts` 的 J9 那段），monitor 生产代码零引用（依赖在 `[dev-dependencies]`）。
 
@@ -92,7 +92,7 @@ pub fn parse(url: &str) -> Result<UpstreamUrl, ShapeIssue> {
     }
     let default_port = if tls { 443 } else { 80 };
     let (host, port) = match authority.rsplit_once(':') {
-        // 〔TAIL · DUP3 §5 ④〕整段就是一对方括号（`[::1]`）⇒ 里面的 `:` 是 IPv6 的，不是端口分隔符。
+        // 〔DUP3 §5 ④〕整段就是一对方括号（`[::1]`）⇒ 里面的 `:` 是 IPv6 的，不是端口分隔符。
         Some(_) if is_bracketed(authority) => (authority, default_port),
         Some((h, p)) => (h, p.parse::<u16>().map_err(|_| ShapeIssue::BadPort)?),
         None => (authority, default_port),

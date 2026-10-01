@@ -3,9 +3,9 @@
 //! 核原文：`link-credit` 小节逐字「monitor 的做法：链路的读者每读走半个窗口就还一次（`link_mux.rs`）」·
 //! `link-close` 小节逐字「monitor 侧的链路句柄被丢时自动发这一条」· `link_data` 行逐字
 //! 「`data` = base64，标准字母表带补位；解码后 ≤ 32 KiB」—— 本族判的正是这几句。
-//! 对端超窗当场判坏并出声：契约没写 monitor 怎么反应，那一半的要求是 `设计/01 §5 D4`（一条都不许静默忽略）。〔JA1 点址 2026-09-24〕
+//! 对端超窗当场判坏并出声：契约没写 monitor 怎么反应，那一半的要求是（一条都不许静默忽略）。〔JA1 点址 2026-09-24〕
 //!
-//! 〔SR1a〕链路的 monitor 这一侧（`link_mux.rs`）的判据。
+//! 链路的 monitor 这一侧（`link_mux.rs`）的判据。
 //!
 //! 台架：一条内存管道两头 —— monitor 这头是**真的** `InboundClient`（经 `park → into_client`）＋
 //! **真的**本机吸收点（`local_backend::absorb_local_frame`），对面是一个会说链路协议的小假后端
@@ -350,7 +350,7 @@ async fn an_error_end_and_an_over_window_flood_both_surface_as_read_errors() {
     }
     let mut sink = Vec::new();
     let e = b.read_to_end(&mut sink).await.expect_err("超窗该判坏");
-    // 〔CP2b〕照 CP1 台账改：流控细节（信用 / 窗口 / 协议对不上）不上屏，说成「版本不对，连接断了」。
+    // 照 CP1 台账改：流控细节（信用 / 窗口 / 协议对不上）不上屏，说成「版本不对，连接断了」。
     assert!(e.to_string().contains("版本不对"), "超窗的说法不对：{e}");
     assert!(
         sink.len() as u64 <= LINK_WINDOW_BYTES,

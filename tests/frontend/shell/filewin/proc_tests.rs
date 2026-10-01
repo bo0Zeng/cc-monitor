@@ -1,4 +1,4 @@
-//! 〔第十三刀 2026-09-23〕`super::proc` 那一摞判据 —— **进程形态**。
+//! `super::proc` 那一摞判据 —— **进程形态**。
 //!
 //! # 这一摞逐条买什么
 //!
@@ -15,8 +15,8 @@
 //!
 //! # ⚠ 这一摞**买不到**什么（逐条）
 //!
-//! - **「窗口真的出现在屏幕上」一格都没有。** 本机 `XDG_SESSION_TYPE=tty`
-//!   （`真相源/99 §一`）。这里量的是**进程**：起没起来、pid 是不是新的、退出码是什么。
+//! - **「窗口真的出现在屏幕上」一格都没有。** 本机 `XDG_SESSION_TYPE=tty`。
+//!   这里量的是**进程**：起没起来、pid 是不是新的、退出码是什么。
 //!   实景那一维住 `shell_tests` 那个 Xvfb 台架（它自己的头注写清了它买不到的四样）。
 //! - **「三趟都成功」买不到**，只买到「**三趟都一样**」：没有图形会话时三趟都失败，
 //!   而本摞钉的是「失败的**理由与形状**逐趟相同」⇒ 结构上没有任何进程级状态
@@ -33,7 +33,7 @@ use super::*;
 /// 本仓对「偶发红会被人学会重跑绕过」记过一笔，所以这里直接串起来。
 static ENV: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
-/// 一台合成远端的名字（〔P4〕种子里只剩名字：窗口不再拿整份 `RemoteConfig`）—— 带中文与连字符，同 `cwd` 那一格的理由。
+/// 一台合成远端的名字（种子里只剩名字：窗口不再拿整份 `RemoteConfig`）—— 带中文与连字符，同 `cwd` 那一格的理由。
 fn synthetic_cfg() -> String {
     "台架-远端".to_string()
 }
@@ -42,17 +42,17 @@ fn synthetic_request() -> OpenRequest {
     OpenRequest {
         origin: synthetic_cfg(),
         cwd: Some("/home/zbl/带空格 的目录".to_string()),
-        // 〔MIG-3a · 09-28 裁 3〕「那一屏」（`rows`，含链接 · 时间 · 有损名原始字节几格）不再过这条边界：
+        // 〔09-28 裁 3〕「那一屏」（`rows`，含链接 · 时间 · 有损名原始字节几格）不再过这条边界：
         //   窗口进程自己列（`first_screen`）；那几格的解法由 `source_tests` 的 `row_from_ls_entry` 那几条判。
         reveal: Some("坏\u{FFFD}名字".to_string()),
         handoff: synthetic_handoff(),
-        // 〔FW34〕书签文件那一格也进种子对拍（带空格 ＋ 多字节，同 `cwd` 那一格的理由）。
+        // 书签文件那一格也进种子对拍（带空格 ＋ 多字节，同 `cwd` 那一格的理由）。
         bookmarks: Some(std::path::PathBuf::from(
             "/tmp/书签 目录/filewin-bookmarks.json",
         )),
-        // 〔FILES2 · V152〕机器名单也进种子对拍（带中文与空格）。
+        // 机器名单也进种子对拍（带中文与空格）。
         machines: vec!["<local>".to_string(), "台架 远端".to_string()],
-        // 〔WF2〕工作区那一格也进种子对拍（负坐标：主屏左边那台副屏）。
+        // 工作区那一格也进种子对拍（负坐标：主屏左边那台副屏）。
         work_area: Some(host_core::WorkArea {
             x: -1920,
             y: 0,
@@ -87,19 +87,19 @@ fn a_seed_survives_the_trip_through_a_process_boundary() {
         want.cwd.is_some(),
         "夹具里 cwd 得是 `Some`，否则两侧都是 `None` 恒相等"
     );
-    // 〔FW34〕书签文件那一格：漂了 ⇒ 窗口读写的是另一份书签。
+    // 书签文件那一格：漂了 ⇒ 窗口读写的是另一份书签。
     assert_eq!(got.bookmarks, want.bookmarks, "书签文件的路径漂了");
     assert!(
         want.bookmarks.is_some(),
         "夹具里这一格得是 `Some`，否则两侧都是 `None` 恒相等"
     );
-    // 〔FILES2 · V152〕机器名单（「复制到另一台」的下拉）：漂了 ⇒ 下拉里列的不是配置里那几台。
+    // 机器名单（「复制到另一台」的下拉）：漂了 ⇒ 下拉里列的不是配置里那几台。
     assert_eq!(got.machines, want.machines, "机器名单漂了");
     assert!(
         !want.machines.is_empty(),
         "夹具里这一格得非空，否则两侧都是空恒相等"
     );
-    // 〔WF2 · WIN3 读数 D〕工作区：漂了 ⇒ 窗口夹进的是别的一块。
+    // 工作区：漂了 ⇒ 窗口夹进的是别的一块。
     assert_eq!(got.work_area, want.work_area, "工作区漂了");
     assert!(
         want.work_area.is_some(),
@@ -110,12 +110,12 @@ fn a_seed_survives_the_trip_through_a_process_boundary() {
     //    （对不上就 `panic!("源的判别式没过得去")`），下面还单独喂一份
     //    `Source::Local` 的种子对拍它那一格。`Source` 收成 newtype 之后
     //    **判别式这个概念不存在了** ⇒ 那两处不是被删掉的判据，是它们判的东西没了。
-    // 〔P4〕那台的名字（从前是整份远端配置：主机 · 口 · 用户 · 钥匙路径 · 地址表逐格比；窗口今天只拿名字）。
+    // 那台的名字（从前是整份远端配置：主机 · 口 · 用户 · 钥匙路径 · 地址表逐格比；窗口今天只拿名字）。
     assert_eq!(
         got.origin, want.origin,
         "那台的名字漂了 —— 窗口会问另一台机器（或者谁都没登记过的名字）"
     );
-    // 🔴〔F2〕交接件整份过得去（地址 · 帧长 · 钥匙），否则窗口拨不回来。
+    // 🔴交接件整份过得去（地址 · 帧长 · 钥匙），否则窗口拨不回来。
     assert_eq!(got.handoff.addr, want.handoff.addr, "交接件的地址漂了");
     assert_eq!(got.handoff.frame, want.handoff.frame, "交接件的帧长漂了");
     assert!(got.handoff.key == want.handoff.key, "交接件的钥匙漂了");
@@ -432,7 +432,7 @@ fn opening_a_window_three_times_really_starts_three_independent_processes() {
 /// 分成独立一条（而不是并进上面那条）的理由：上面那条钉「三趟一样」，
 /// 而**三趟一样也可能是三趟都什么都没收到**。这一条是那条的反空真锚。
 ///
-/// 〔MIG-3a · 09-28 裁 3〕生产那条路今天**接了** stdout（就绪那一行从那里回来）⇒ 本条走的就是 [`spawn_window`] 整条：
+/// 〔09-28 裁 3〕生产那条路今天**接了** stdout（就绪那一行从那里回来）⇒ 本条走的就是 [`spawn_window`] 整条：
 /// 替身 `cat` 把 stdin 原样吐到 stdout，读回来就是它收到的那一份。上一版这里自己拼一根 `.stdin(piped())`（第二份写法）的缘由没了。
 #[cfg(unix)]
 #[test]
@@ -486,7 +486,7 @@ fn scripted_stand_in(
     p
 }
 
-/// 🔴〔MIG-3a · 主会话 09-28 裁 3〕**第一屏由窗口进程列，父进程只读它那一行。**
+/// 🔴〔主会话 09-28 裁 3〕**第一屏由窗口进程列，父进程只读它那一行。**
 ///
 /// ① 它说「列到 7 行」、然后还活着（窗口开着）⇒ 回 `(pid, 7)`；
 /// ② 它说「列不出来：原话」⇒ **原话原样**回（[`Unopened::Said`]），而且那是它不开窗就退的那一形；
@@ -547,7 +547,7 @@ fn the_window_process_lists_first_and_the_parent_carries_its_words() {
     std::fs::remove_dir_all(&dir).ok();
 }
 
-/// 〔WF2〕要求住址：`第四波记录/WIN3.md §2` 读数 J「窗口出现后 166 ms 进程退出，monitor 判成功、用户零提示（早失败检测是竞速）」·
+/// 要求：「窗口出现后 166 ms 进程退出，monitor 判成功、用户零提示（早失败检测是竞速）」·
 /// 题面 WF2 第 7 条「判成功之后很快退出也要报」。替身说「列到 3 行」、活过开窗预算（300 ms）再退：
 /// ① 退出码非零 ⇒ 开窗照回成功，**之后**收尸线程交来那一句（带退出码）；② 退出码 0（用户关窗那一形）⇒ 一句都不交。
 #[cfg(unix)]
@@ -653,7 +653,7 @@ fn the_window_binary_target_really_hosts_the_body() {
         .unwrap_or_else(|e| panic!("`{rel}` 读不动（{e}）—— `Cargo.toml` 指着一个不存在的入口"));
     // ③ 🔴 它真的调那个躯体。**这一比是本条的全部价值**：
     //    一个空 `main` 会让上面两比照样绿，而窗口永远不出来。
-    //    〔P4〕躯体住独立包 `cc_monitor_filewin`：链多一跳 —— 入口调包的 `run()`，`run()` 调 `proc::child_main()`。
+    // 躯体住独立包 `cc_monitor_filewin`：链多一跳 —— 入口调包的 `run()`，`run()` 调 `proc::child_main()`。
     assert!(
         guard_core::find_pinned(&body, "cc_monitor_filewin::run()").is_ok(),
         "`{rel}` 里没有调 `cc_monitor_filewin::run()` —— 那个二进制编得过、也产得出，\
@@ -703,13 +703,12 @@ fn a_window_process_that_dies_at_once_comes_back_as_a_reason() {
 
 /// 🔴 **零命中型：入口那条路上没有「同进程开一个」的写法。**
 ///
-/// `设计/01 §5 D11`（用户 2026-09-22 裁决）逐字「**不要退路** /
+/// （用户 2026-09-22 裁决）逐字「**不要退路** /
 /// 所有东西都不要假设后端没起来」。在这一格上它的样子是：
 /// 起不了独立进程**不许**退回同进程开一个 —— 那条路已知第二趟必然失败
 /// （winit 一个进程只许一个事件循环）。
-/// ⚠〔反订正 · 2026-09-24 · X1〕上一版这里还有一句「而且关窗时可能把整个 app 一起带走」——
+/// ⚠〔反订正〕上一版这里还有一句「而且关窗时可能把整个 app 一起带走」——
 /// 那条读数来自台架的 `xdotool windowclose`（`XDestroyWindow`，产品里不存在），
-/// 出处 `真相源/107 §2` 的〔反订正〕块与 `设计/60 §「Xvfb 抖动」`。
 ///
 /// ⚠ 它是**源码代理**，不是行为判据：它买的是「那个写法不在盘上」。
 /// 「起不来时真的报错」由 [`a_window_process_that_dies_at_once_comes_back_as_a_reason`] 买。
@@ -744,10 +743,10 @@ fn the_entry_command_has_no_in_process_fallback_left() {
     );
 }
 
-// 〔P4〕窗口进程拨回 monitor 那一下 · 第一屏那两条（窗口那一侧的躯体）随它搬去了 `tests/frontend/filewin/proc_tests.rs`。
+// 窗口进程拨回 monitor 那一下 · 第一屏那两条（窗口那一侧的躯体）随它搬去了 `tests/frontend/filewin/proc_tests.rs`。
 
 // ════════════════════════════════════════════════════════════════════════
-// 🔴〔第十一刀 2026-09-22〕「当场就死了」不再被报成成功（〔P4〕原住 `shell_tests`：`early_failure` 随起进程那一侧留在 monitor）
+// 🔴「当场就死了」不再被报成成功（原住 `shell_tests`：`early_failure` 随起进程那一侧留在 monitor）
 //    下面两条**照旧喂线程**：它们钉的是那条轮询本身的两个方向（「结束了」认得出 · 「还在跑」不误判），
 //    线程是这两个方向最便宜的合成输入；进程那一侧的行为判据是上面那几条（真起进程）。
 // ════════════════════════════════════════════════════════════════════════
@@ -794,7 +793,7 @@ fn a_thread_still_running_is_not_mistaken_for_a_failure() {
 /// ⚠ 判源码是代理（同族先例住 `entry_tests` 那条「空路径那一支」）。
 /// 买的是：起进程的结果不再被 `let _ = …` 丢掉，而且那一跳有东西可看时才跑。
 ///
-/// 🔴〔第十三刀 2026-09-23〕**射程从 `entry.rs` 换到了 `proc.rs`。**
+/// 🔴**射程从 `entry.rs` 换到了 `proc.rs`。**
 /// 上一版这一条扫的是 `entry.rs`，因为那时「起线程 ＋ 看它死没死」两步都写在入口里。
 /// 今天入口只剩一句 `open_in_new_process(…)?`，那两步整块搬进了 `filewin::proc`
 /// ⇒ 继续扫 `entry.rs` 的话，这一条会在一个**恒为零**的人群上报绿。
@@ -810,7 +809,7 @@ fn the_spawn_result_is_never_thrown_away() {
         prod.contains("pub fn open_in_new_process"),
         "剥生产段把那条路一起剥掉了 —— 下面几比此刻不可信"
     );
-    // 〔P4〕定义随「起进程那一侧」搬进本文件（从前住窗口的 `shell.rs`）⇒ 数调用处：总数减掉定义那一行。
+    // 定义随「起进程那一侧」搬进本文件（从前住窗口的 `shell.rs`）⇒ 数调用处：总数减掉定义那一行。
     assert_eq!(
         (
             prod.matches("fn early_failure(").count(),

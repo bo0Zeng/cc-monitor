@@ -1,5 +1,5 @@
 /**
- * 〔RM1b · 第四波〕任务面板按 origin 问那台机器的后端。
+ * 任务面板按 origin 问那台机器的后端。
  *
  * 三件事：① 调用带着 origin（本机逐字 `LOCAL_ORIGIN`，Tab 那一格还是 `null` 时就地换）·
  * ② 远端 tab 被切到 / 面板展开的那一刻现问一次（本机不问 —— 本机有 watcher 推送）·
@@ -8,7 +8,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-// 〔LOC1a · 第四波 4D〕任务快照改走通道（`chan.call(origin, "tasks-list", {sid})`，后端出成品 `{tasks}`）。
+// 任务快照改走通道（`chan.call(origin, "tasks-list", {sid})`，后端出成品 `{tasks}`）。
 //   替身翻译层：那一发 `chan.call` 按旧形状 `{origin, sessionId}` 交给 `getSessionTasks`、把它答的数组包成成品 ——
 //   下面各条原来的断言因此数得到**真发出去**的那一发（不换的话数的是一个没人调的旧命令，恒为 0，会空真地绿）。
 const getSessionTasks = vi.fn();

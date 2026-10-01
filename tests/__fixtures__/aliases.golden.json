@@ -1,6 +1,6 @@
 {
   "说明": [
-    "〔MIG-3a〕别名六问的跨语言金样：后端对临时 home 现算 == reply；界面 `src/frontend/ui/alias-reads.ts` 的解码器读同一份。",
+    "别名六问的跨语言金样：后端对临时 home 现算 == reply；界面 `src/frontend/ui/alias-reads.ts` 的解码器读同一份。",
     "只采结构（占位名字 / 占位参数）。`<HOME>` 由测试换成临时 home。"
   ],
   "aliases": [

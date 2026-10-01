@@ -9,7 +9,7 @@
     /* Bundler mode */
     "moduleResolution": "bundler",
     "allowImportingTsExtensions": true,
-    /* 〔UC2 · 设计/41 件 10〕CSS Modules 的逐文件类型：`x.module.css` 的类型住隔壁 `x.module.d.css.ts`。
+    /* CSS Modules 的逐文件类型：`x.module.css` 的类型住隔壁 `x.module.d.css.ts`。
        不开这一项，tsc 找不到那份声明、落回 `vite/client` 的通配 `*.module.css`（任意键都是 string）⇒ 写错类名照样绿。 */
     "allowArbitraryExtensions": true,
     "resolveJsonModule": true,

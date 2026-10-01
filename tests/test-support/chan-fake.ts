@@ -1,5 +1,5 @@
 /**
- * 〔C4a〕判据里假扮 monitor 那一跳（包装层 `chan_call`）的几样小工具。
+ * 判据里假扮 monitor 那一跳（包装层 `chan_call`）的几样小工具。
  *
  * 生产上 `chan.call` ⇒ `commands.chan_call` ⇒ `invoke("chan_call", { origin, op, payload, leftMs })`，
  * monitor 回原样字节（`ArrayBuffer`）或 `{ err, body }`（`wire::err_to_wire` 的线上形状）。
@@ -12,7 +12,7 @@ export interface ChanCallArgs {
   op: string;
   payload: number[];
   leftMs: number;
-  /** 〔MIG-3b 续〕带撤单的那一问的编号（撤单那一条 `chan_cancel` 按它找）；不带撤单 ⇒ `null`。 */
+  /** 带撤单的那一问的编号（撤单那一条 `chan_cancel` 按它找）；不带撤单 ⇒ `null`。 */
   callId?: string | null;
 }
 
@@ -44,7 +44,7 @@ export function chanArgsJson(args: ChanCallArgs): unknown {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-//  〔C4b · 第四波 4B〕会话读面三条（骨架索引 · 大纲清单 · 会话内查找）改走通道之后，判据那一侧的翻译
+// 会话读面三条（骨架索引 · 大纲清单 · 会话内查找）改走通道之后，判据那一侧的翻译
 // ════════════════════════════════════════════════════════════════════════════
 //
 // 这三条从前是三条 Tauri 命令（`read_session_index` / `list_user_inputs` / `find_in_session`〔散文墓碑〕），
@@ -60,7 +60,7 @@ const READ_OPS: Record<string, SessionRead> = {
   "history-index": "read_session_index",
   "history-user-inputs": "list_user_inputs",
   "history-find": "find_in_session",
-  // 〔C4c · 第四波 4B〕第四问：resume 之前问记录还在不在（旧命令 `probe_session_record`）。
+  // 第四问：resume 之前问记录还在不在（旧命令 `probe_session_record`）。
   "history-record": "probe_session_record",
 };
 
@@ -80,7 +80,7 @@ export function sessionReadOf(cmd: string, args: unknown): [SessionRead, Record<
     case "find_in_session":
       return [which, { origin, jsonlPath: body.path, query: body.query, includeTools: body.include_tools }];
     case "probe_session_record":
-      // 〔GP1 · 第四波〕这次 resume 要用的账号根（基座不带 ⇒ `undefined`）。
+      // 这次 resume 要用的账号根（基座不带 ⇒ `undefined`）。
       return [which, { origin, sessionId: body.sid, configDir: body.configDir }];
   }
 }
@@ -176,7 +176,7 @@ export function accountsFakeInvoke(args: ChanCallArgs, over: Record<string, unkn
 export async function sessionReadReply(which: SessionRead, res: unknown): Promise<ArrayBuffer | undefined> {
   const r = (await res) as Record<string, unknown> | undefined;
   if (r === undefined) return undefined;
-  // 〔C4c〕记录那一问的旧回包本来就是成品的形状（`{present, root}`，没有 `available` 那一格）。
+  // 记录那一问的旧回包本来就是成品的形状（`{present, root}`，没有 `available` 那一格）。
   if (which === "probe_session_record") return chanReply({ present: r.present, root: r.root });
   if (r.available === false) {
     const reason = String(r.reason ?? "");
@@ -204,7 +204,7 @@ export function withSessionReads(
   return async (cmd, args) => {
     const read = sessionReadOf(cmd, args);
     if (read) return sessionReadReply(read[0], answer(read[0], read[1]));
-    // 〔MOD〕会话正文那几问同样译回旧名字（见下面那一节）。
+    // 会话正文那几问同样译回旧名字（见下面那一节）。
     const rec = recordReadOf(cmd, args);
     if (rec) return recordReadReply(rec[0], rec[1], answer);
     return answer(cmd, (args ?? {}) as Record<string, unknown>);
@@ -212,7 +212,7 @@ export function withSessionReads(
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-//  〔MOD · `设计/90 §3` 判据 3〕会话正文那四问改走通道之后，判据那一侧的翻译
+// 会话正文那四问改走通道之后，判据那一侧的翻译
 // ════════════════════════════════════════════════════════════════════════════
 //
 // 从前是四条 Tauri 命令（`stream_read_session_jsonl` · `read_session_range` · `read_session_lines` · `load_subagent`〔散文墓碑〕），
@@ -301,7 +301,7 @@ export async function recordReadReply(
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-//  〔C4c · 第四波 4B〕账号那两问（清单 · 信任预检）改走通道之后，判据那一侧的翻译
+// 账号那两问（清单 · 信任预检）改走通道之后，判据那一侧的翻译
 // ════════════════════════════════════════════════════════════════════════════
 //
 // 它们从前是三条 Tauri 命令（`list_remote_accounts` / `list_local_accounts` / `check_account_trust`〔散文墓碑〕），
@@ -399,7 +399,7 @@ export function withAccountReads(
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-//  〔C4d · 第四波 4B〕历史清单与注解改走通道（问本机常驻后端）之后，判据那一侧的翻译
+// 历史清单与注解改走通道（问本机常驻后端）之后，判据那一侧的翻译
 // ════════════════════════════════════════════════════════════════════════════
 //
 // 它们从前是五条 Tauri 命令（`list_history_projects` / `list_remote_history_projects` / `stream_history_sessions_in_project` /
@@ -422,7 +422,7 @@ export type HistoryRead =
   | "update_history_metadata"
   | "list_last_accounts"
   | "history_forget"
-  // 〔MIG-3b〕删会话改走通道（`files-delete-session`，发给那一台）；判据里仍叫旧命令名，形参是 `{origin, sessionId}`。
+  // 删会话改走通道（`files-delete-session`，发给那一台）；判据里仍叫旧命令名，形参是 `{origin, sessionId}`。
   | "delete_history_session";
 
 /** 一发 `invoke` 若是历史那几问之一 ⇒ `[哪一问, 旧形参的形状]`；否则 `null`。 */
@@ -556,7 +556,7 @@ export function withHistoryReads(
       failedHosts: [],
     };
   return async (cmd, args) => {
-    // 〔MIG-1 续〕列 tmux 会话那一发也在这里译回旧名字（本判据族大多经这一层，免逐条改）。
+    // 列 tmux 会话那一发也在这里译回旧名字（本判据族大多经这一层，免逐条改）。
     const tmux = tmuxReadOf(cmd, args);
     if (tmux) return tmuxProduct(tmux[0], answer(tmux[0], tmux[1]));
     const mint = tmuxMintOf(cmd, args);
@@ -583,7 +583,7 @@ export function withHistoryReads(
       for (const p of remote.projects)
         if (typeof p.origin === "string") origins.add(p.origin);
       for (const h of remote.failedHosts) origins.add(h);
-      // 〔WF2〕答了、但一个项目都没有的那几台（`emptyHosts`，可缺）也是台。
+      // 答了、但一个项目都没有的那几台（`emptyHosts`，可缺）也是台。
       for (const h of remote.emptyHosts ?? []) origins.add(h);
       return [...origins];
     }
@@ -664,7 +664,7 @@ export function withHistoryReads(
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-//  〔C4e · 第四波 4C〕tmux 控制类（抓屏 · 杀会话 · 送键 · 就地 resume）改走通道之后，判据那一侧的翻译
+// tmux 控制类（抓屏 · 杀会话 · 送键 · 就地 resume）改走通道之后，判据那一侧的翻译
 // ════════════════════════════════════════════════════════════════════════════
 //
 // 它们从前是四条 Tauri 命令（`capture_remote_pane` / `kill_remote_tmux` / `tmux_send_keys` / `backend_send_into`〔散文墓碑〕），
@@ -728,7 +728,7 @@ export function tmuxControlShim(
       | undefined;
     if (res?.typed === true) return chanReply({ session: name, created: false, typed: true });
     if (res?.mayFallBack === true) throw NO_CHANNEL;
-    // 〔RESYNC〕夹具可以点名拒绝码（例 `wrong_owner` = 关卡 2）；不点名 ⇒ 照旧「拿不准」那一档。
+    // 夹具可以点名拒绝码（例 `wrong_owner` = 关卡 2）；不点名 ⇒ 照旧「拿不准」那一档。
     throw refusedReply(typeof res?.code === "string" ? res.code : "typed_unconfirmed", String(res?.reason ?? ""));
   };
 }
@@ -743,7 +743,7 @@ export function killCallsOf(calls: ReadonlyArray<readonly unknown[]>): [string, 
     });
 }
 
-// ─── 〔C4e 批 3b〕cc-bus 驾驶舱写面那几发（`src/frontend/ui/cc-bus-control.ts`）───
+// ─── cc-bus 驾驶舱写面那几发（`src/frontend/ui/cc-bus-control.ts`）───
 // 它们从前是五条 Tauri 命令（`check_cc_bus_agent_online` / `cc_bus_send` / `cc_bus_kill` / `cc_bus_spawn` / `cc_bus_broadcast`〔散文墓碑〕），
 // 驾驶舱的 DOM 判据按命令名答话、断言旧形参。今天它们是一发 `chan_call`（op = `bus-list` / `bus-send` / `bus-kill` / `bus-spawn` /
 // `bus-broadcast`）⇒ 本节把一发 `chan_call` 译回「哪一问 ＋ 旧形参」交给判据手里那个 `invoke` 替身，再把它的旧回包译成**后端的成品字节**。
@@ -769,7 +769,7 @@ export function ccBusControlShim(
       "bus-kill": "cc_bus_kill",
       "bus-spawn": "cc_bus_spawn",
       "bus-broadcast": "cc_bus_broadcast",
-      // 〔SH1 · V136〕驾驶舱读面那两条（原是 monitor 的 Tauri 命令，今天界面经通道直接问后端）。
+      // 驾驶舱读面那两条（原是 monitor 的 Tauri 命令，今天界面经通道直接问后端）。
       "bus-state": "read_cc_bus_state",
       "bus-inbox": "read_cc_bus_inbox",
     };
@@ -830,7 +830,7 @@ export function ccBusControlShim(
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-//  〔MIG-2 · `99 §2.1 ⑬`〕起会话的计划与渲染四问改走通道之后，判据那一侧的翻译
+// 起会话的计划与渲染四问改走通道之后，判据那一侧的翻译
 // ════════════════════════════════════════════════════════════════════════════
 //
 // 它们从前是 monitor 的 Tauri 命令（`render_launch_payload` · `render_ccm_launch` · `relay_endpoint_for_launch` ·
@@ -868,10 +868,10 @@ export function launchRenderShim(
 ): (cmd: string, args?: unknown) => Promise<unknown> {
   const term = terminalShim(inner);
   return async (cmd, args) => {
-    // 〔FIX4 · ⑬〕开终端那三步也在这里译回旧的那一条（起会话那几条判据都要开终端）。
+    // 开终端那三步也在这里译回旧的那一条（起会话那几条判据都要开终端）。
     if (isTerminalStep(cmd, args)) return term(cmd, args);
     if (cmd !== "chan_call") return inner(cmd, args);
-    // 〔MIG-1 续〕列 tmux 会话那一发也在这里译回旧名字（起会话那几条判据都要问名单）。
+    // 列 tmux 会话那一发也在这里译回旧名字（起会话那几条判据都要问名单）。
     const tmux = tmuxReadOf(cmd, args);
     if (tmux) return tmuxProduct(tmux[0], inner(tmux[0], tmux[1]));
     const mint = tmuxMintOf(cmd, args);
@@ -929,13 +929,13 @@ export function launchRenderShim(
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-//  〔MIG-1 续 · `99 §2.1 ⑬`〕列 tmux 会话改走通道之后，判据那一侧的翻译
+// 列 tmux 会话改走通道之后，判据那一侧的翻译
 // ════════════════════════════════════════════════════════════════════════════
 //
 // 它们从前是两条 Tauri 命令（本机 `list_local_tmux` · 远端 `list_remote_tmux`〔散文墓碑〕），判据按命令名答话、回 `TmuxSession[] | null`。
 // 今天是一发 `chan_call`（op = `tmux-list`，本机远端同一问）⇒ 本节把那一发译回旧名字交给判据手里的替身，再把旧回包译成后端成品：
 // - 列表 ⇒ `{installed: true, sessions}`（缺的字段按旧桩的意思补齐：`path` / `command` 空串 · `attached` 否 · `windows` 1 · `sid` null；
-//   〔THIN〕`agent` 缺 ⇒ 替身扮那台后端答：前台命令是 `claude` / `node` 即真 —— 与后端 `agents/claudecode/cards.rs::PROCESS_NAMES` 同一张，
+// `agent` 缺 ⇒ 替身扮那台后端答：前台命令是 `claude` / `node` 即真 —— 与后端 `agents/claudecode/cards.rs::PROCESS_NAMES` 同一张，
 //   是替身在扮后端，不是界面的判定）；
 // - `null`：远端 = 那台没装 tmux ⇒ `{installed: false, sessions: []}`；本机 = 旧口径的「不知道」⇒ 通道那一层失败（新口径里「不知道」就是抛）；
 // - `undefined`（桩没答）⇒ 那台没有控制通道（不知道）；抛 ⇒ 那台后端拒（码 `unobservable`，原话带着 —— 「不知道」要说得出为什么）。
@@ -981,7 +981,7 @@ export function withTmuxReads(
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-//  〔FIX4 · `设计/90 §3` J7〕起会话要的 tmux 名改问那台后端（`tmux-name-mint`）之后，判据那一侧的翻译
+// 起会话要的 tmux 名改问那台后端（`tmux-name-mint`）之后，判据那一侧的翻译
 // ════════════════════════════════════════════════════════════════════════════
 //
 // 同上一节的译法：一发 `chan_call`（op = `tmux-name-mint`）译成判据手里那个替身认得的名字 `tmux_name_mint`
@@ -1020,11 +1020,11 @@ export function tmuxMintCalls(calls: ReadonlyArray<readonly unknown[]>): [string
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-//  〔FIX4 · `设计/99 §2.1 ⑬`〕开终端改成三步之后，判据那一侧的翻译
+// 开终端改成三步之后，判据那一侧的翻译
 // ════════════════════════════════════════════════════════════════════════════
 //
 // 今天开终端是三步（`src/frontend/ui/terminal-open.ts`）：monitor `terminal_dial {origin}`（机器事实，只远端）→ 本机后端 `terminal-ssh`
-// （渲 `ssh -t …` 那一行）/ `terminal-local`（本机那一串）→ monitor `open_terminal_window {command, ssh}`。〔P5〕令牌交给后端那一跳。
+// （渲 `ssh -t …` 那一行）/ `terminal-local`（本机那一串）→ monitor `open_terminal_window {command, ssh}`。令牌交给后端那一跳。
 // 判据手里的替身按**旧的那一条**答话、断言（`launch_remote_terminal {origin, remoteCmd, rbindToken}`）⇒ 本节把三步译回那一条：
 // - 两条帧命令都**原样回**交进来的那串（前奏与 ssh 外壳的字节归 Rust：`tests/backend/dial_terminal_tests.rs`，这里不重抄渲染），
 //   交给后端的 `rbindToken` 记下、开窗那一步补回；

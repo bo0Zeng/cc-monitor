@@ -1,7 +1,7 @@
 //! 「**中转层里不要有账号**」的机检 —— 用户 2026-09-24 逐字：
 //! 「中转层不要有账号, 账号就账号中转就中转」。
 //!
-//! 设计里早就是这一句（`设计/01 §2.5`「中转 ≠ 账号」· `设计/20 §9` 那张两层小结 ·
+//! 设计里早就是这一句（「中转 ≠ 账号」· 那张两层小结 ·
 //! `§6` 命名推论「不许用『中转』指 ②」）。先前没落地的是**物理位置**：上游选择住在
 //! `src/backend/relay/accounts/`，就在中转的目录底下。2026-09-24 搬到了 `src/backend/accounts/`。
 //! 本文件把「两层之间到底连着什么」钉成**四条**，不用地板：
@@ -44,13 +44,13 @@ pub(super) mod tests {
     const RELAY_DIR: &str = "relay";
 
     /// ㈠ 上游选择那棵树里的文件（相对**上游选择的根**）。**相等，不是地板**。
-    // 〔`A3` 第二波〕根从 `accounts/` 收窄到 `accounts/upstream_select/`（现推，不是写死）；
+    // 根从 `accounts/` 收窄到 `accounts/upstream_select/`（现推，不是写死）；
     // 账号库管理（`accounts/manage/`）**不是**上游选择，不进本表 —— 它登记在 [`ACCOUNT_DOMAIN_OTHER_FILES`]。
-    // 〔RM1a · 第四波〕+`file_face.rs`：这台机器上那份凭据文件的帧面读写口（`apikey-key-set` / `apikey-read`）。
+    // +`file_face.rs`：这台机器上那份凭据文件的帧面读写口（`apikey-key-set` / `apikey-read`）。
     // 它是上游选择自己的状态、同一份文件、同一套格式 ⇒ 住上游选择这棵树；它用到中转的只有 `segment_is_safe`
     // （已在 [`CONTRACT`] 里），接口面一项没变宽。
-    // 〔US1 · 第四波 4D〕+`endpoint.rs`：起会话那一发走哪、注入什么（`launch-endpoint`）· 界面「表里有没有行」（`apikey-routing`）——
-    // `设计/20 §3.2` 那张表从 monitor 搬来；它用到中转的只多一样 `our_relay_listening`（见 [`CONTRACT`]）。
+    // +`endpoint.rs`：起会话那一发走哪、注入什么（`launch-endpoint`）· 界面「表里有没有行」（`apikey-routing`）——
+    // 那张表从 monitor 搬来；它用到中转的只多一样 `our_relay_listening`（见 [`CONTRACT`]）。
     const UPSTREAM_SELECTION_FILES: &[&str] = &[
         "creds.rs",
         "endpoint.rs",
@@ -60,7 +60,7 @@ pub(super) mod tests {
         "table.rs",
     ];
 
-    /// 〔`A3` 第二波〕账号**域**里、上游选择**之外**的那几份（相对账号域根）。
+    /// 账号**域**里、上游选择**之外**的那几份（相对账号域根）。
     ///
     /// 账号域根 = 上游选择根的上一级（现推）。域根自己那份 `mod.rs` 只声明两块、不放代码，
     /// 不算任何一块（由 [`the_two_halves_of_the_account_domain_do_not_reference_each_other`] 钉着）。
@@ -84,7 +84,7 @@ pub(super) mod tests {
     ///
     /// | 项 | 为什么上游选择要它 |
     /// |---|---|
-    /// | `Destinations` · `Destination` · `AuthSwap` · `Mode` · `RouteKey` | 请求路径上那一问一答（`设计/20 §2`）|
+    /// | `Destinations` · `Destination` · `AuthSwap` · `Mode` · `RouteKey` | 请求路径上那一问一答|
     /// | `Startup` · `Ready` | 启动路径上那两步（起监听前验配置 · 起监听后交出 `Destinations`）|
     /// | `host` | 常驻后端进程内起中转的装配（`accounts::upstream_select::host_relay` 把 `Boot` 递进中转的入口）。依赖方向只许上游选择 → 中转，所以装配住这一侧 |
     /// | `Base` | 一行的上游是什么 —— 中转的**传输原语**，上游选择解析它、焊进行里、原样交回 |
@@ -102,11 +102,11 @@ pub(super) mod tests {
         "Ready",
         "RouteKey",
         "Startup",
-        // 〔RL1 · V107〕常驻后端进程内起中转的入口；上游选择的 `host_relay` 把 `Boot` 递进去。
+        // 常驻后端进程内起中转的入口；上游选择的 `host_relay` 把 `Boot` 递进去。
         "host",
-        // 〔US1 · 4D〕出成品时问「这台机器上我们的中转在不在听」（`launch-endpoint` 的 `listening` · `apikey-routing` 的 `running`）。
+        // 出成品时问「这台机器上我们的中转在不在听」（`launch-endpoint` 的 `listening` · `apikey-routing` 的 `running`）。
         "our_relay_listening",
-        // 〔DEL〕`run`（`--relay` 进程的中转入口）随那一形删了。
+        // `run`（`--relay` 进程的中转入口）随那一形删了。
         "segment_is_safe",
     ];
 
@@ -118,7 +118,7 @@ pub(super) mod tests {
         let files: Vec<(String, String)> = guard_core::scan_tree!(&root, &["rs"])
             .into_iter()
             .map(|(p, raw)| {
-                // 〔RE〕面 B 成员住 `src/comms/outward/`、由 `lib.rs` 挂成 `relay` ⇒ 按模块住址认（`relay/…`）。
+                // 面 B 成员住 `src/comms/outward/`、由 `lib.rs` 挂成 `relay` ⇒ 按模块住址认（`relay/…`）。
                 let rel = guard_core::module_address(&root, &p);
                 (rel, production_code(&raw))
             })
@@ -156,7 +156,7 @@ pub(super) mod tests {
     }
 
     /// 上游选择的模块路径（`crate::` 之后的段），由它的根目录现算。
-    /// 〔`A3` 第二波〕上游选择的根（盘上现推）交给兄弟判据用 —— `creds_guard` 拿它核
+    /// 上游选择的根（盘上现推）交给兄弟判据用 —— `creds_guard` 拿它核
     /// 「中转日志白名单圈的账号那棵，恰好是上游选择这棵子树」，不自己再写第二把推法。
     pub(in crate::relay) fn upstream_selection_root_from_disk() -> String {
         upstream_selection_root(&crate_production())
@@ -228,7 +228,7 @@ pub(super) mod tests {
     fn upstream_selection_vocabulary(selection: &[&(String, String)]) -> BTreeSet<String> {
         let mut out: BTreeSet<String> = BTreeSet::new();
         out.insert("accounts".to_string());
-        // 〔RN1 · V114〕这里原先还硬插上游选择自己的模块名（`apikey`）。模块改名 `upstream` 之后它与中转自己的
+        // 这里原先还硬插上游选择自己的模块名（`apikey`）。模块改名 `upstream` 之后它与中转自己的
         //   `relay::upstream`（传输原语 `Base`）同名 ⇒ 在 ㈢ 里当场假红，**不再插**。射程不变窄：中转要点名
         //   上游选择，路径必经 `accounts`（上一行）；「`use` 进来再以裸模块名用」那一写法的 `use` 行本身也带 `accounts`。
         //   账号域内部那条（账号库管理 ↔ 上游选择）仍要这个名字 ⇒ 由那条判据自己从根目录现推、单独加（[`module_name_of_root`]）。
@@ -524,7 +524,7 @@ pub(super) mod tests {
         .is_empty());
     }
 
-    // ── 〔`A3` 第二波〕账号域的两块互不引用 ─────────────────────────────────
+    // ── 账号域的两块互不引用 ─────────────────────────────────
 
     /// `from` 这批文件里，指向 `to_mod` 那棵模块树的路径 ＋ 点名 `to_vocab` 里那些词的地方。
     /// **纯函数**：正控喂合成文本，本体喂盘上的两块。

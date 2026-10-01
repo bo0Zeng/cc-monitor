@@ -270,7 +270,7 @@ fn refusal_variants() -> Vec<String> {
 
 #[test]
 fn every_refusal_reason_is_pinned_byte_for_byte() {
-    // 〔COPY-R〕会话 ID 那一句按文案键取（`设计/91 §6`：判据按键、不钉原文），其余几句照旧逐字。
+    // 会话 ID 那一句按文案键取（判据按键、不钉原文），其余几句照旧逐字。
     let sid_refused = copy_text("rsCcmInvocation.refusal.idSid", &[("value", "\"--evil\"")]);
     let pairs: &[(Refusal, &str)] = &[
         (Refusal::NotInstalled, "远端还没装后端"),
@@ -348,7 +348,7 @@ fn every_refusal_reason_is_pinned_byte_for_byte() {
     }
 }
 
-/// 上一条那七句里的六句，**在入库夹具里逐字出现**（夹具由 TS 落盘：〔LR1〕`out` 是
+/// 上一条那七句里的六句，**在入库夹具里逐字出现**（夹具由 TS 落盘：`out` 是
 /// `src/frontend/ui/launch-cli-golden.ts` 用例表里手写的期望 —— TS 渲染器删了之后它是另一份手写说法）——
 /// 所以那六句不是自说自话。带文件规模自检：夹具读空时 `contains` 会全假、方向是红，
 /// 但那时报的错会很难懂，所以先断言它有内容。
@@ -368,12 +368,12 @@ fn the_reasons_the_fixture_covers_really_come_from_the_typescript_side() {
         ),
         (
             "FreeTextRefused",
-            "〔TL3 · §47〕夹具（`cli-golden.json`）里的请求都是好值 —— \
+            "〔§47〕夹具（`cli-golden.json`）里的请求都是好值 —— \
              由行为判据 `a_free_text_cwd_or_agent_arg_is_refused_before_it_becomes_a_ccm_argument` 顶着（正反各一格）",
         ),
         (
             "IdentifierRefused",
-            "〔DUP1 · §47 ①〕夹具（`cli-golden.json`）里的请求都是好值 —— \
+            "〔§47 ①〕夹具（`cli-golden.json`）里的请求都是好值 —— \
              由行为判据 `an_identifier_is_refused_before_it_becomes_a_ccm_argument` 顶着（正反各一格）",
         ),
     ];
@@ -688,7 +688,7 @@ fn a_fully_loaded_invocation_emits_every_part_in_registry_order() {
     s.args = &["-p"];
     assert_eq!(
         render(&s).as_deref(),
-        // 〔V151〕`ccm <交给 claude 的…> -- <ccm 自己的…>`：各半边里维度的先后照旧。
+        // `ccm <交给 claude 的…> -- <ccm 自己的…>`：各半边里维度的先后照旧。
         Ok(concat!(
             "ccm --resume s1 --model opus -p -- --ccm-tmux=cc-x --ccm-sid=sid-1 ",
             "--account z --cwd /w --launcher claude-dev"
@@ -702,8 +702,8 @@ fn a_fully_loaded_invocation_emits_every_part_in_registry_order() {
 fn args_go_after_a_bare_double_dash_and_are_quoted_one_by_one() {
     let mut s = base_spec();
     s.args = &["-p", "两个 词"];
-    // 〔V151〕交给 claude 的在 `--` 左边、ccm 的在右边。
-    // 〔V153〕起新会话吐 ccm 自己的词 `new`，恒为 `--` 右边第一个。
+    // 交给 claude 的在 `--` 左边、ccm 的在右边。
+    // 起新会话吐 ccm 自己的词 `new`，恒为 `--` 右边第一个。
     assert_eq!(render(&s).as_deref(), Ok("ccm -p '两个 词' -- new --base"));
     let mut s = base_spec();
     s.args = &[];
@@ -772,9 +772,9 @@ fn argv_quotes_everything_else_including_the_empty_token() {
     assert_eq!(argv("a'b"), shell_quote_core::posix_quote("a'b"));
 }
 
-// 🪦〔MIG-2〕这里原有「没探出来 ≠ 没装」一条（`ProbeUnknown`）：渲染进了那台后端、能力问它自己，那一态产不出来了，变体与判据同拍删。
+// 🪦这里原有「没探出来 ≠ 没装」一条（`ProbeUnknown`）：渲染进了那台后端、能力问它自己，那一态产不出来了，变体与判据同拍删。
 
-/// 〔TL3 · `INVARIANTS §47` ②〕ccm 那条路：工作目录与透传给 agent 的参数是自由文本 ⇒ 写成 ccm 参数之前先过放行判定
+/// 〔`INVARIANTS §47` ②〕ccm 那条路：工作目录与透传给 agent 的参数是自由文本 ⇒ 写成 ccm 参数之前先过放行判定
 /// （工作目录：`shell_quote_core::posix_free_path_ok`；透传参数：`shell_quote_core::free_text_ok`）—— **不拒 shell 元字符**，**正反各一格**。
 /// 要求住址：`INVARIANTS §47` ②；主会话 09-26 按 V131 裁「自由文本……拒绝集只收控制字符（NUL / CR / LF）……不拒 shell 元字符」。
 #[test]
@@ -810,8 +810,8 @@ fn a_free_text_cwd_or_agent_arg_is_refused_before_it_becomes_a_ccm_argument() {
     );
 }
 
-/// 〔DUP1 · `INVARIANTS §47` ①〕ccm 那条路：resume 的 sid 与 `--ccm-sid=` 是标识符 ⇒ 写成 ccm 参数之前先过
-/// `shell_quote_core::session_id_ok`（全仓唯一一份；前端那份按 `设计/90 §3` 判据 2 删了），**正反各一格**。
+/// 〔`INVARIANTS §47` ①〕ccm 那条路：resume 的 sid 与 `--ccm-sid=` 是标识符 ⇒ 写成 ccm 参数之前先过
+/// `shell_quote_core::session_id_ok`（全仓唯一一份；前端那份按删了），**正反各一格**。
 /// 要求住址：`INVARIANTS §47` ①「字符集白名单（闭集，默认拒）＋ 不许 `-` 开头（选项注入）＋ 有长度上界的就钉上界」。
 #[test]
 fn an_identifier_is_refused_before_it_becomes_a_ccm_argument() {
@@ -845,7 +845,7 @@ fn an_identifier_is_refused_before_it_becomes_a_ccm_argument() {
     );
 }
 
-/// 〔DUP1 · `INVARIANTS §47` ①〕`--model <名>`：真实模型名全过（主会话 09-26「真实模型名都放行」），
+/// 〔`INVARIANTS §47` ①〕`--model <名>`：真实模型名全过（主会话 09-26「真实模型名都放行」），
 /// 选项形 / shell 形拒 —— 判定住 `shell_quote_core::model_name_ok`，**正反各一格**。
 #[test]
 fn a_model_name_is_refused_before_it_becomes_a_ccm_argument() {
@@ -873,7 +873,7 @@ fn a_model_name_is_refused_before_it_becomes_a_ccm_argument() {
     }
 }
 
-/// 〔DUP1 · `INVARIANTS §47` ①〕`--account <名>`：与建账号库的后端（`accounts/manage/model.rs::name_ok`）同一份判
+/// 〔`INVARIANTS §47` ①〕`--account <名>`：与建账号库的后端（`accounts/manage/model.rs::name_ok`）同一份判
 /// （`shell_quote_core::account_name_ok`），**正反各一格**。
 #[test]
 fn an_account_name_is_refused_before_it_becomes_a_ccm_argument() {
@@ -897,8 +897,8 @@ fn an_account_name_is_refused_before_it_becomes_a_ccm_argument() {
     }
 }
 
-/// 〔DUP2 · 主会话 09-26 裁 J6〕`--ccm-tmux=<名>`（要**新建**的会话名，`§47` ①）与 `attach <名>`（一个**已有**会话，V131 ②）
-/// 写成 ccm 参数之前先过 `gate_rules` 那两条（全仓唯一一份；界面那两个谓词按 `设计/90 §3` 判据 2 删了 —— 这条路此前零判定、
+/// `--ccm-tmux=<名>`（要**新建**的会话名，`§47` ①）与 `attach <名>`（一个**已有**会话，V131 ②）
+/// 写成 ccm 参数之前先过 `gate_rules` 那两条（全仓唯一一份；界面那两个谓词按删了 —— 这条路此前零判定、
 /// 只靠界面那一道），**正反各一格**。
 #[test]
 fn a_tmux_name_is_judged_before_it_becomes_a_ccm_argument() {

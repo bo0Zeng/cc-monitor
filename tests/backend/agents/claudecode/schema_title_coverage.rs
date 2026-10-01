@@ -1,4 +1,4 @@
-/// ★ **每个带 `*title` 字段的 `JsonlRecord` 变体都必须被标题抽取吃到**〔audit-0805 08-06〕。
+/// ★ **每个带 `*title` 字段的 `JsonlRecord` 变体都必须被标题抽取吃到**。
 ///
 /// # 它钉的是一个**有历史先例**的缺口
 ///
@@ -10,8 +10,8 @@
 /// 那次是**靠人发现的**：改名之后标题会静默消失，没有任何判据会红。
 ///
 /// ⇒ 本条把「谁承载标题」这件事变成可机检的：
-/// 人群 = `agents/claudecode/schema.rs`（〔MOD〕原 monitor `messages.rs`）的 `JsonlRecord` 里**带 `*title` 字段**的变体（今天 2 个）；
-/// 性质 = 它必须被标题抽取段接住 ——〔C4d · 第四波 4B〕那一段今天住后端 `observe/history_query.rs::analyze_session`
+/// 人群 = `agents/claudecode/schema.rs`（原 monitor `messages.rs`）的 `JsonlRecord` 里**带 `*title` 字段**的变体（今天 2 个）；
+/// 性质 = 它必须被标题抽取段接住 ——那一段今天住后端 `observe/history_query.rs::analyze_session`
 /// （本机与远端同一个函数），按记录的线上类型名分臂。
 /// 加第三种标题记录而忘了接 ⇒ 红。
 ///
@@ -28,7 +28,7 @@ fn every_title_bearing_record_is_consumed_by_the_extractor() {
 
     let mut cur = String::new();
     let mut bearers: Vec<String> = Vec::new();
-    // 〔C4d〕每个变体在线上的记录类型名（它上面那行 `#[serde(rename = "…")]`）—— 后端按这个名字认记录。
+    // 每个变体在线上的记录类型名（它上面那行 `#[serde(rename = "…")]`）—— 后端按这个名字认记录。
     let mut pending_tag: Option<String> = None;
     let mut tags: std::collections::BTreeMap<String, String> = Default::default();
     for line in block.lines() {
@@ -67,11 +67,11 @@ fn every_title_bearing_record_is_consumed_by_the_extractor() {
         bearers.len()
     );
 
-    // 〔C4d · 第四波 4B〕标题抽取**搬家了**：本机历史清单从 monitor 进程内（`history·rs::analyze_jsonl`〔散文墓碑〕，
+    // 标题抽取**搬家了**：本机历史清单从 monitor 进程内（`history·rs::analyze_jsonl`〔散文墓碑〕，
     //   按 `JsonlRecord::<变体>` 分臂）搬进本机常驻后端，本机与远端同一个函数
     //   （`src/backend/observe/history_query.rs::analyze_session`，按记录的**线上类型名**分臂）。
     //   ⇒ 本条的「被接住」从「`history.rs` 里有 `JsonlRecord::<变体>`」换成「后端那个函数里有 `Some("<线上类型名>")` 那一臂」；
-    //   人群（带 `*title` 字段的变体）照旧从记录的 schema（〔MOD〕今天在 `agents/claudecode/schema.rs`）抠，线上类型名从它上面那行 `serde(rename)` 抠 —— 两份源码异源。
+    //   人群（带 `*title` 字段的变体）照旧从记录的 schema（今天在 `agents/claudecode/schema.rs`）抠，线上类型名从它上面那行 `serde(rename)` 抠 —— 两份源码异源。
     let backend = include_str!("../../../../src/backend/observe/history_query.rs");
     let at = guard_core::find_pinned(
         backend,
