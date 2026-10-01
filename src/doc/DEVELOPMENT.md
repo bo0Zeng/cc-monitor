@@ -75,7 +75,7 @@ cargo test
 
 ### e2e
 
-- CI 跑的那几套在 `.github/workflows/ci.yml` 里，每套一行 `bash tests/e2e/assert-pass-floor.sh <套件> <断言数地板>`；本机跑得动的那几套以 `shared_crate_registry_tests.rs` 的 `LOCALLY_RUNNABLE` 为准（例：`npm run test:ccm-cli`，要先在 `src/backend` 里 `cargo build --bin cc-monitor-backend`）。
+- CI 跑的那几套在 `.github/workflows/ci.yml` 里，每套一行 `bash tests/e2e/assert-pass-floor.sh <套件> <断言数地板>`；本机门禁 `tests/scripts/gate.sh` 的 `run_e2e` 每一套都跑（两向由 `shared_crate_registry_tests.rs::every_ci_step_the_local_gate_claims_is_a_real_gate_cell` 钉着）；单跑（例：`npm run test:ccm-cli`，要先在 `src/backend` 里 `cargo build --bin cc-monitor-backend`）。
 - 要 GUI 的两套：`npm run test:f40`（滚动 / 渲染管线）与 `npm run test:graylight`，前置是 Xvfb 上跑着一个 `npx tauri dev`，见 [`tests/e2e/README.md`](../../tests/e2e/README.md)。⚠ `test:f40` 会往 `~/.claude/` 写 fixture，受限环境别跑。
 - WebView2（生产）的滚动行为没有自动化覆盖：动过滚动锚定的改动，发版前在 Windows 真机按 `tests/e2e/README.md` 的「人工场景」复核。
 
