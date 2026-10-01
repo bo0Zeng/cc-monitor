@@ -103,7 +103,7 @@ const UNIT: &[&str] = &[
     "tests/comms/outward/upstream_tests.rs",
     "tests/backend/stream/tap_tests.rs",     // hub
     "tests/frontend/ui/live-card.vitest.ts", // 活卡：状态机 · 真 TabManager 三向相等（台架夹具那一条随折法搬进后端）
-    "tests/frontend/ui/runs.vitest.ts", // 子运行：主 tab 上每个在跑的子运行一行、主活卡只有主运行那段、收场收到那张卡上
+    "tests/frontend/ui/runs.vitest.ts", // 子运行：主 tab 零子运行行、agent 面板分组与五态、主活卡只有主运行那段、状态标到那张卡上
     "tests/backend/writer_task_tests.rs", // 写者优先序（tap 最低）
     "tests/frontend/ui/branch-button.vitest.ts",
     "tests/frontend/ui/branch-fold-batching.vitest.ts",

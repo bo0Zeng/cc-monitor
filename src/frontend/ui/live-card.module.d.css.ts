@@ -4,6 +4,5 @@ declare const classes: {
   readonly body: string;
   readonly card: string;
   readonly head: string;
-  readonly runRow: string;
 };
 export default classes;

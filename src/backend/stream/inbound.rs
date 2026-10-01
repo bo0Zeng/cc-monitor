@@ -2729,13 +2729,12 @@ pub const REGISTRY: &[CommandSpec] = &[
     // 同族同档（同步文件 I/O ⇒ 阻塞档）、同一个只读宿主（`read_face::answer`）。
     // 会话内查找上帧面（此前走逐次拨号 —— `STILL_DIALED` 那一行）。同族同档。
     // 会话事实（`read_face.rs` 那一臂 ＋ `observe/facts_query.rs`）。同族同档、同一个只读宿主。
-    //   `prior` 是调用方上一次拿到的应答原样（续传令牌）；应答五格即成品。
+    //   `prior` 是调用方上一次拿到的应答原样（续传令牌）；应答四格即成品。
     CommandSpec {
         name: "history-facts",
         doc_anchor: Some("#### `history-facts`"),
         codes: &["bad_args", "failed", "too_large"],
         fields: &[
-            "agents",
             "end",
             "forkedFrom",
             "path",

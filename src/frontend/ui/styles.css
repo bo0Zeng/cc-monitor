@@ -407,14 +407,14 @@
   }
 }
 
-/* issue #23（第二增量）：agents 面板行——外壳复用 tasks-popover 类，行样式自有 */
+/* issue #23：agents 面板行——外壳复用 tasks-popover 类，行样式自有。态类 `agent-<态>` 由后端的运行表给（五态）。 */
 .agent-row {
   display: flex;
   align-items: baseline;
   gap: 8px;
 }
 
-/* F77：agent 行可点击（看它的记录）。 */
+/* 点一行在它下面展开它的时间线。 */
 .agent-row-clickable {
   cursor: pointer;
   border-radius: 4px;
@@ -424,25 +424,47 @@
   background: var(--overlay-hover);
 }
 
-.agent-dot {
-  flex: none;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  align-self: center;
-  background: var(--live);
+.agent-group {
+  padding: 6px 8px 2px;
+  font-size: var(--font-size-xs);
+  color: var(--text-faint);
 }
 
-.agent-row.agent-running .agent-dot {
+.agent-older-toggle {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  color: var(--text-2);
+  cursor: pointer;
+}
+
+.agent-older-toggle:hover {
+  color: var(--text);
+}
+
+.agent-timeline {
+  padding: 0 8px 6px 24px;
+}
+
+.agent-icon {
+  flex: none;
+  width: 1em;
+  text-align: center;
+  color: var(--text-faint);
+}
+
+.agent-row.agent-running .agent-icon {
+  color: var(--live);
   animation: act-waiting-pulse 1.2s ease-in-out infinite;
 }
 
-.agent-row.agent-done .agent-dot {
-  background: var(--text-faint);
+.agent-row.agent-failed .agent-icon {
+  color: var(--error);
 }
 
-.agent-row.agent-aborted .agent-dot {
-  background: var(--error);
+.agent-row.agent-stopped .agent-icon {
+  color: var(--text-2);
 }
 
 .agent-type {
@@ -462,8 +484,7 @@
   flex: 1;
 }
 
-.agent-row.agent-done .agent-label,
-.agent-row.agent-aborted .agent-label {
+.agent-row:not(.agent-running) .agent-label {
   color: var(--text-faint);
 }
 
@@ -478,6 +499,15 @@
   color: var(--live);
 }
 
+.agent-last {
+  flex: none;
+  max-width: 40%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--font-size-xs);
+  color: var(--text-faint);
+}
 .tab-badge {
   background: var(--accent);
   color: #fff;
@@ -2076,14 +2106,6 @@
   display: flex;
   flex-direction: column;
   background: var(--bg);
-}
-
-/* F77（#53）：agents 面板点开某 agent 记录时，SessionViewer 的 body-level 挂载壳——fixed 全屏 +
-   `--z-view`（盖住顶栏触发器 `--z-chrome`；.session-viewer 是 absolute inset:0，靠这个定位祖先铺满）。 */
-.agent-records-viewer-mount {
-  position: fixed;
-  inset: 0;
-  z-index: var(--z-view);
 }
 
 .session-viewer-bar {

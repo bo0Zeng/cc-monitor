@@ -239,8 +239,22 @@ pub struct ExtDone {
 }
 
 impl ExtLoc {
-    /// 线上 `{level, dir?}` → 位置；项目目录须是那台上的绝对路径。
+    /// 线上 `{level, dir?}` → 位置；项目目录须是**这台**上的绝对路径（路径所属的那台自己的内层命令用）。
     pub(crate) fn from_arg(v: Option<&Value>, key: &str) -> Result<ExtLoc, (&'static str, String)> {
+        Self::judged(v, key, Some(super::mcp_edit::PathForm::HERE))
+    }
+
+    /// 只认形状（`{level: user}` · `{level: project, dir}` 且 dir 非空）：枢纽用，别台的路径由那台自己判。
+    pub(crate) fn shape_of(v: Option<&Value>, key: &str) -> Result<ExtLoc, (&'static str, String)> {
+        Self::judged(v, key, None)
+    }
+
+    /// 两者的本体：`form` 有 ⇒ 按那一形判项目目录是不是绝对路径；没有 ⇒ 只认形状。
+    pub(crate) fn judged(
+        v: Option<&Value>,
+        key: &str,
+        form: Option<super::mcp_edit::PathForm>,
+    ) -> Result<ExtLoc, (&'static str, String)> {
         let v = v.ok_or((
             "bad_args",
             crate::common::contract::malformed(&format!("missing `{key}`")),
@@ -253,10 +267,16 @@ impl ExtLoc {
                 )),
             )
         })?;
-        match loc {
-            ExtLoc::User => Ok(ExtLoc::User),
-            ExtLoc::Project { dir } => Ok(ExtLoc::Project {
-                dir: super::mcp_edit::project_root(&dir)?,
+        match (loc, form) {
+            (ExtLoc::User, _) => Ok(ExtLoc::User),
+            (ExtLoc::Project { dir }, Some(form)) => Ok(ExtLoc::Project {
+                dir: super::mcp_edit::project_root_as(&dir, form)?,
+            }),
+            (ExtLoc::Project { dir }, None) if dir.trim().is_empty() => {
+                Err(("bad_args", copy_text("beMcpEdit.path.emptyDir", &[])))
+            }
+            (ExtLoc::Project { dir }, None) => Ok(ExtLoc::Project {
+                dir: dir.trim().to_string(),
             }),
         }
     }

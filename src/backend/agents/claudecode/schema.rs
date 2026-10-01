@@ -49,14 +49,14 @@ impl JsonlRecord {
         {
             *child_runs = super::runs::links_in_content(&message.content)
                 .into_iter()
-                .map(|l| {
-                    (
-                        l.tool,
+                .filter_map(|l| {
+                    Some((
+                        l.tool?,
                         ChildRunTag {
                             label: l.label.unwrap_or_default(),
                             kind: l.kind,
                         },
-                    )
+                    ))
                 })
                 .collect();
             *tool_cards = message

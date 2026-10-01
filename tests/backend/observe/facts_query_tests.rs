@@ -1,7 +1,7 @@
 //! # 阶段 C
 //!
 //! 核原文：「**『这个会话到目前为止是什么样』＝ 全会话事实 ＝ 读 json** …… 后端要提供的查询都是『读一遍文件』级别：
-//! …… 改动文件集 / agent 列表 / 分叉血缘（没做）」；「旁路记账员改读 json」。
+//! …… 改动文件集 / agent 列表 / 分叉血缘（没做）」（agent 列表今天是运行表，不在会话事实里）；「旁路记账员改读 json」。
 //! 本族钉的是**口径**（逐格、从前端旧实现逐字搬来的那几条）与**续传**（接力扫 == 一次扫完）。
 //!
 //! 夹具只造**结构**（记录类型、工具名、键名、占位串），不采任何真会话正文。
@@ -30,7 +30,7 @@ fn result(id: &str) -> Value {
     json!({"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": id, "content": "x"}]}})
 }
 
-/// 一份把四格都走到的夹具（结构占位）。
+/// 一份把三格都走到的夹具（结构占位；派出子运行的调用与它的结果也在，会话事实不认它们）。
 fn mixed() -> Vec<Value> {
     vec![
         json!({"type": "system", "forkedFrom": {"sessionId": "sys-not-counted", "messageUuid": "m0"}}),
@@ -61,29 +61,12 @@ fn mixed() -> Vec<Value> {
     ]
 }
 
-/// ★ 四格逐格：分叉只认 user/assistant 且两个键都在、首条锁定 · 改动文件近因序去重 · agent 配对 · usage 取最后一条有效的。
+/// ★ 三格逐格：分叉只认 user/assistant 且两个键都在、首条锁定 · 改动文件近因序去重 · usage 取最后一条有效的。
 #[test]
-fn the_four_facts_follow_the_moved_rules() {
+fn the_three_facts_follow_the_moved_rules() {
     let f = scan_all(&jsonl(&mixed()));
     assert_eq!(f.forked_from.as_deref(), Some("src-1"));
     assert_eq!(f.touched_files, vec!["/p/n.ipynb", "/p/b.ts", "/p/a.ts"]);
-    assert_eq!(
-        f.agents,
-        vec![
-            AgentFact {
-                id: "g1".into(),
-                label: "look around".into(),
-                agent_type: Some("Explore".into()),
-                status: AgentStatus::Done,
-            },
-            AgentFact {
-                id: "g2".into(),
-                label: "first line".into(),
-                agent_type: None,
-                status: AgentStatus::Running,
-            },
-        ]
-    );
     assert_eq!(
         f.usage,
         Some(UsageFact {
@@ -94,74 +77,9 @@ fn the_four_facts_follow_the_moved_rules() {
     );
 }
 
-/// `label` 的三级回退：description ‖ prompt 首行前 80 字 ‖ 工具名；同一个 id 再来一次原位替换（位置不变、状态回 running）。
-#[test]
-fn label_falls_back_and_a_repeated_id_is_replaced_in_place() {
-    let long: String = "字".repeat(100);
-    let f = scan_all(&jsonl(&[
-        assistant(vec![
-            tool_use("a", "Task", json!({})),
-            tool_use("b", "Task", json!({"prompt": long.clone()})),
-            tool_use(
-                "c",
-                "Task",
-                json!({"description": "   ", "prompt": "\nsecond"}),
-            ),
-        ]),
-        result("a"),
-        assistant(vec![tool_use("a", "Task", json!({"description": "again"}))]),
-    ]));
-    let labels: Vec<(&str, &str, AgentStatus)> = f
-        .agents
-        .iter()
-        .map(|a| (a.id.as_str(), a.label.as_str(), a.status))
-        .collect();
-    let eighty: String = "字".repeat(crate::agents::claudecode::runs::LABEL_PROMPT_CHARS);
-    assert_eq!(
-        labels,
-        vec![
-            ("a", "again", AgentStatus::Running),
-            ("b", eighty.as_str(), AgentStatus::Running),
-            ("c", "Task", AgentStatus::Running),
-        ]
-    );
-}
-
-/// 上界：agent 软上界从最老删非 running · 硬上界删最老 · 改动文件超上界丢最久没碰的。
+/// 上界：改动文件超上界丢最久没碰的。
 #[test]
 fn every_list_is_bounded() {
-    // 40 个 agent，前 20 个有结果 ⇒ 软上界删掉最老的 10 个 done，留 10 done ＋ 20 running。
-    let mut recs = Vec::new();
-    for i in 0..40 {
-        recs.push(assistant(vec![tool_use(
-            &format!("s{i}"),
-            "Task",
-            json!({}),
-        )]));
-        if i < 20 {
-            recs.push(result(&format!("s{i}")));
-        }
-    }
-    recs.push(assistant(vec![]));
-    let f = scan_all(&jsonl(&recs));
-    assert_eq!(f.agents.len(), AGENTS_SOFT_KEEP);
-    assert_eq!(f.agents[0].id, "s10");
-    assert_eq!(
-        f.agents
-            .iter()
-            .filter(|a| a.status == AgentStatus::Running)
-            .count(),
-        20
-    );
-
-    // 全是 running ⇒ 软上界删不动，硬上界删最老的。
-    let recs: Vec<Value> = (0..AGENTS_HARD_KEEP + 5)
-        .map(|i| assistant(vec![tool_use(&format!("r{i}"), "Agent", json!({}))]))
-        .collect();
-    let f = scan_all(&jsonl(&recs));
-    assert_eq!(f.agents.len(), AGENTS_HARD_KEEP);
-    assert_eq!(f.agents[0].id, "r5");
-
     let recs: Vec<Value> = (0..TOUCHED_FILES_KEEP + 3)
         .map(|i| {
             assistant(vec![tool_use(
@@ -219,7 +137,7 @@ fn resuming_from_any_line_boundary_equals_one_pass() {
 
 /// ★ 快路只省时间、不改结果：同一批行，「先过 `could_matter` 再解析」与「每行都解析」逐格相等。
 /// 样本特意放了会骗过粗糙过滤的行：工具结果里夹着 `"tool_use"` 字样、分叉锁定后又来一条 `forkedFrom`、
-/// 没有 running agent 时来的 `tool_result`。
+/// 工具结果。
 #[test]
 fn the_fast_path_never_changes_the_answer() {
     let mut recs = mixed();
@@ -263,21 +181,12 @@ fn a_prior_of_the_wrong_shape_is_refused() {
     extra["more"] = json!(1);
     let mut bad_type = good.clone();
     bad_type["end"] = json!("12");
-    let mut agent_missing = good.clone();
-    agent_missing["agents"][0]
-        .as_object_mut()
-        .unwrap()
-        .remove("agentType");
-    let mut bad_status = good.clone();
-    bad_status["agents"][0]["status"] = json!("aborted");
     let mut usage_extra = good.clone();
     usage_extra["usage"]["x"] = json!(0);
     for (what, v) in [
         ("缺一格", missing),
         ("多一格", extra),
         ("类型不对", bad_type),
-        ("agent 缺一格", agent_missing),
-        ("中止不是后端的态", bad_status),
         ("usage 多一格", usage_extra),
         ("不是对象", json!([1])),
     ] {
@@ -285,23 +194,8 @@ fn a_prior_of_the_wrong_shape_is_refused() {
     }
 }
 
-// 派出子运行的那几次调用由适配层认（`RecordFace::child_link`；判定本身的正反两格住 `claudecode/runs_tests.rs`），
-// 会话事实经注册表那一格够它（`agents::child_links_of`）；下面钉「经注册表够到的就是那一张」与写类工具表。
-
 #[test]
-fn the_two_lookups_answer_from_their_tables() {
-    let links = |name: &str| {
-        crate::agents::child_links_of(&assistant(vec![tool_use(
-            "x",
-            name,
-            json!({"description": "d"}),
-        )]))
-    };
-    for t in ["Agent", "Task"] {
-        assert_eq!(links(t).len(), 1, "{t}");
-    }
-    assert!(links("Bash").is_empty());
-    assert!(links("task").is_empty(), "大小写敏感：工具名原样比对");
+fn the_edit_tool_lookup_answers_from_its_table() {
     for (name, key) in EDIT_TOOL_PATH_KEYS {
         assert_eq!(edit_path_key(name), Some(*key));
     }
@@ -311,7 +205,7 @@ fn the_two_lookups_answer_from_their_tables() {
 /// 写类工具的口径 —— **逐条搬自前端被删的 `tests/frontend/ui/panorama/session-files.test.ts`**（七条，被测对象
 /// `collectEditedFiles` 随搬家删了、口径住进本文件）：Edit / Write / MultiEdit 取 `file_path` · NotebookEdit 取
 /// `notebook_path` · 非写类不收 · 多个全收保序 · 非 assistant 不收 · 畸形静默跳过 · Windows 路径原样收。
-/// （单条记录内的顺序就是块序；去重 / 近因序那一格在 [`the_four_facts_follow_the_moved_rules`]。）
+/// （单条记录内的顺序就是块序；去重 / 近因序那一格在 [`the_three_facts_follow_the_moved_rules`]。）
 #[test]
 fn edit_tools_rules_moved_from_the_frontend_suite() {
     let files = |recs: Vec<Value>| scan_all(&jsonl(&recs)).touched_files;

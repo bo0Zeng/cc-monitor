@@ -145,7 +145,7 @@ pub enum SessionStreamFrame {
     Listed(OriginSessionsListedPayload),
     /// 旁路快照在途几份（全局电平；批模式据此不提前收尾）。
     SnapshotInflight(SnapshotInflightPayload),
-    /// 一个会话的运行表（那台后端给，原样转）：主 tab 上每个在跑的子运行一行，跑完收进派出它的那张工具卡。
+    /// 一个会话的运行表（那台后端给，原样转）：列在 agent 面板里，状态标到派出它的那张工具卡上。
     Runs(SessionRunsPayload),
 }
 
