@@ -471,22 +471,15 @@ fn settle_pulled(got: &Value) -> Result<String, Said> {
             code: Option<String>,
             message: Option<String>,
         }
+        // 那台答了一个错误 ⇒ 就说它那一句（码随 `Said.code` 走，不进话里）；不是信封的原样 stderr 才加一个短头。
         let envelope = serde_json::from_str::<Envelope>(stderr.trim()).ok();
-        let (code, said) = match envelope {
-            Some(Envelope {
-                code,
-                message: Some(m),
-            }) => (code, m),
-            Some(Envelope {
-                code,
-                message: None,
-            }) => (code, stderr.trim().to_string()),
-            None => (None, stderr.trim().to_string()),
+        let code = envelope.as_ref().and_then(|e| e.code.clone());
+        let message = match envelope.and_then(|e| e.message) {
+            Some(m) if !m.trim().is_empty() => m,
+            _ if stderr.trim().is_empty() => copy_text("beRemoteAsk.run.failedNoReason", &[]),
+            _ => copy_text("beRemoteAsk.run.failed", &[("said", stderr.trim())]),
         };
-        return Err(Said {
-            code,
-            message: copy_text("beRemoteAsk.run.failed", &[("said", &said.to_string())]),
-        });
+        return Err(Said { code, message });
     }
     if stdout.len() >= PULL_MAX_BYTES {
         return Err(plain(copy_text(

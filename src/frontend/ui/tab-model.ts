@@ -14,7 +14,6 @@ import type { SkeletonView } from "./skeleton-view";
 import type { UserInputPanel } from "./views/user-input-panel";
 import type { OutlineSource } from "./views/outline-source";
 import type { FactsSource } from "./views/facts-source";
-import type { AgentEntry } from "./agents-panel";
 import type { ToolUseSeen } from "./cards/index";
 import type { Origin } from "./ipc/origin";
 import type { SessionState } from "./tab-session-state";
@@ -93,14 +92,6 @@ export interface Tab {
   activity: { status: string; waitingFor: string | null } | null;
   // 〔U4〕原先这里是 `tmuxIdle: boolean`（「claude 已退但 tmux 会话还在」，与 `status` 正交、却让 `status` 留在 live）。
   //   它说的是可恢复性那一轴 ⇒ 并进 `state`：`RECONNECTABLE`（死 ＋ 容器还在）。
-  /**
-   * issue #23（第二增量）：本会话的 subagent 列表（tool_use id → entry，插入序）。
-   * 〔STC〕**后端出成品**（`history-facts` 的 `agents`：配对 Task/Agent 的 tool_use 与 tool_result、上界都在后端），
-   * 经 `tab-session-facts.ts::applyFacts` 整份落下来；前端只多一件事：会话落到不忙那一刻仍 running 的标 aborted（事件）。
-   */
-  agents: Map<string, AgentEntry>;
-  /** 〔STC〕被判中止过的 agent id（`tab-session-facts.ts::abortRunningAgents` 记下）—— 之后的成品里它仍是 running 也显示中止。 */
-  agentsAborted: Set<string>;
   /** F70：本会话写类工具（Edit/Write/MultiEdit/NotebookEdit）碰过的文件路径（原样、去重、近因序）。
    * 〔STC〕后端出成品（`history-facts` 的 `touchedFiles`），供「点会话 → 全景图高亮它改过的节点」。纯内存、不落盘（守 §28）。 */
   touchedFiles: Set<string>;

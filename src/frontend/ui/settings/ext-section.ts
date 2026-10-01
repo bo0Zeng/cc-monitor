@@ -125,7 +125,20 @@ function button(text: string, onClick: () => void, primary = false): HTMLButtonE
   return b;
 }
 
-/** 抽屉里一台机器那一行的临时状态：打开的确认卡 · 在路上 · 那一句出错的话。 */
+/** 出错那一句说的是哪个动作。 */
+type ExtVerb = "install" | "uninstall";
+
+/**
+ * 一问没成 ⇒ 给人看的那一句：「装到 / 从…卸载 <那台> 失败：」＋ 那台后端说的那句本身（码不上屏，`stale` 只决定给不给「重看」）。
+ */
+function said(e: unknown, verb: ExtVerb, m: ExtMachine): { text: string; stale: boolean } {
+  const why = e instanceof Error ? e.message : String(e);
+  const machine = machineName(m);
+  const text = verb === "install" ? copyText("extPage.error.install", { machine, said: why }) : copyText("extPage.error.uninstall", { machine, said: why });
+  return { text, stale: e instanceof ExtRefused && e.code === "stale" };
+}
+
+/** 抽屉里一台机器那一行的临时状态：打开的确认卡 · 在路上 · 那一句出错的话（整句，带动作与机器）。 */
 interface Slot {
   card?: { kind: "bring"; bring: ExtBring; card: ExtCard | null } | { kind: "remove"; at: ExtLoc; card: ExtUninstallCard | null };
   busy?: boolean;
@@ -318,7 +331,7 @@ export class ExtSection {
     if (!act && c.note) line.appendChild(el("div", "settings-hint", c.note));
     if (slot.done) line.appendChild(el("div", "settings-hint ext-done", slot.done));
     if (slot.error) {
-      const err = el("div", "ext-error", copyText("extPage.error.lead", { machine: machineName(m), said: slot.error.text }));
+      const err = el("div", "ext-error", slot.error.text);
       if (slot.error.stale && act) err.appendChild(button(copyText("extPage.card.again"), () => void this.openCard(r, m, act)));
       line.appendChild(err);
     }
@@ -340,26 +353,22 @@ export class ExtSection {
         const card = await extUninstallPreview(originOf(m), r.kind, r.name, act.at);
         this.setSlot(key, { card: { kind: "remove", at: act.at, card } });
       } catch (e) {
-        this.setSlot(key, { error: this.said(e) });
+        this.setSlot(key, { error: said(e, "uninstall", m) });
       }
       return;
     }
     const bring: ExtBring = { kind: r.kind, name: r.name, from: act.from, to: m.here ? null : m.key, scope: act.scope };
-    await this.previewBring(key, bring);
+    await this.previewBring(key, m, bring);
   }
 
-  private async previewBring(key: string, bring: ExtBring): Promise<void> {
+  private async previewBring(key: string, m: ExtMachine, bring: ExtBring): Promise<void> {
     this.setSlot(key, { busy: true, card: { kind: "bring", bring, card: null } });
     try {
       const card = await extHubPreview(bring);
       this.setSlot(key, { card: { kind: "bring", bring, card } });
     } catch (e) {
-      this.setSlot(key, { error: this.said(e) });
+      this.setSlot(key, { error: said(e, "install", m) });
     }
-  }
-
-  private said(e: unknown): { text: string; stale: boolean } {
-    return e instanceof ExtRefused ? { text: e.message, stale: e.code === "stale" } : { text: e instanceof Error ? e.message : String(e), stale: false };
   }
 
   private cardOf(m: ExtMachine, key: string, slot: Slot): HTMLElement {
@@ -380,7 +389,7 @@ export class ExtSection {
       const ok = button(
         copyText("extPage.card.confirmRemove"),
         () =>
-          void this.run(key, m, async () => {
+          void this.run(key, m, "uninstall", async () => {
             const done = await extUninstallApply(originOf(m), card, c.at);
             return done.note ?? copyText("extPage.done.removed", { n: String(done.changed.length) });
           }),
@@ -410,7 +419,7 @@ export class ExtSection {
         pick.appendChild(o);
       }
       pick.addEventListener("change", () => {
-        void this.previewBring(key, { ...c.bring, scope: { from: c.bring.scope.from, to: { level: "project", dir: pick.value } } });
+        void this.previewBring(key, m, { ...c.bring, scope: { from: c.bring.scope.from, to: { level: "project", dir: pick.value } } });
       });
       const row = el("label", "ext-card-field", copyText("extPage.card.project"));
       row.appendChild(pick);
@@ -440,7 +449,7 @@ export class ExtSection {
     const ok = button(
       copyText("extPage.card.confirm"),
       () =>
-        void this.run(key, m, async () => {
+        void this.run(key, m, "install", async () => {
           const done = await extHubApply(c.bring, card, fill);
           return done.note ?? copyText("extPage.done.written", { n: String(done.changed.length) });
         }),
@@ -452,7 +461,7 @@ export class ExtSection {
   }
 
   /** 确认之后：做 → 成了就重读那张表（那台先同步一趟），那一格的点自己变；没成就在那一行说。 */
-  private async run(key: string, m: ExtMachine, go: () => Promise<string>): Promise<void> {
+  private async run(key: string, m: ExtMachine, verb: ExtVerb, go: () => Promise<string>): Promise<void> {
     const keep = this.slots.get(key) ?? {};
     this.setSlot(key, { ...keep, busy: true, error: undefined });
     try {
@@ -460,7 +469,7 @@ export class ExtSection {
       this.setSlot(key, { done: said });
       await this.reload(false, m.here ? null : originOf(m));
     } catch (e) {
-      this.setSlot(key, { ...keep, busy: false, error: this.said(e) });
+      this.setSlot(key, { ...keep, busy: false, error: said(e, verb, m) });
     }
   }
 }

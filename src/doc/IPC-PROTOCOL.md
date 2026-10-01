@@ -421,7 +421,7 @@ monitor 记进一张 sid 表，用它 ① 拦掉 `↗` 并给出正确说法 ②
 | `probe` | `ticket`, `cell` | **〔MIG-1 收尾〕测试连接那一趟的一格进度**（`remote-probe` 在跑时才出现）：`cell` 恰好一个键 —— `stage`（拨号阶段行）· `reached`（`ssh` / `hello` / `control`）· `end`（结局，最后一格）。**不丢**：走应答那条独立通道。完整语义在「入方向」那一节的 `remote-probe` |
 | `progress` | `ticket`, `cell` | **〔P7 · V158「长活要有进度」〕一条长活此刻的一格进度**（今天：`panorama` 建索引那一档，请求交了 `ticket` 才出现）：`ticket` = 发起方交的票（进度流 `progress/<ticket>` 的名字，本后端只回填），`cell` = 那个活自己报的一格（一个 JSON 对象，原样不解释；全景是上游 `IndexProgress{phase, done, total}`）。走应答那条独立通道，但**可丢**（满了丢这一格：每格是整份快照，下一格补上；结局照旧在应答里）。完整语义在「入方向」那一节的 `panorama` |
 | `tap` | `stream`, `run?`, `resp`, `n`, `ev?`, `end?` | **中转抄出来的一段流里的一件归一事件**（或一段的收尾）。只有**进程里住着中转的那个后端**（常驻后端，本机远端同形）会发。`stream` = 请求自带的会话标识头的值（Claude Code 是 `x-claude-code-session-id`，头名由适配层登记；没带 / 过不了段闸 ⇒ 这段不发）；`resp` = 本进程第几段；`n` = 这一段里第几件，**从 0 连续**（后端归位之后重新编号）⇒ 接收侧看 `n` 连不连得上就知道缺在哪。上游的原始事件**在后端按上游协议面折过**（适配层 `StreamFace`，按协议分），界面只收 `ev`：`{"t":"start","rid":…}` · `{"t":"block","i":…,"kind":"text"\|"thinking"\|"tool"\|"other","tool"?:…}` · `{"t":"text","i":…,"s":…}` · `{"t":"stop","ok":…}`；`end`（`"done"` 上游说完 · `"broken"` 转发以错误收尾或上游那一侧缺了号）与 `ev` 恰有一个。**`run`**：这段归哪个子运行（主运行 ⇒ 省略）。归位在后端：请求自报了运行（适配层登记的头，Claude Code 是 `x-claude-code-agent-id`）⇒ 就是它；这一家登记了那个头而请求没带 ⇒ 就是主运行（当场定）；这一家没登记那个头 ⇒ 这个会话此刻没有在跑的子运行就归主运行，有就先挂起、等哪条记录的 `rid` 对上再按它的归属放出（挂起那段对上之前不上任何活卡）。**可丢**：走后端自己那条有界 tap 通道（256 件、单件原文 ≤ 16 KiB），不挤出方向的内容帧、不回推中转；SSE 只保快，jsonl 保对（V24） |
-| `session_runs` | `sid`, `runs` | **一个会话的运行表**（主运行之外的子运行），表一变就整份发一次。`runs` 每项 `{run, label?, kind?, tool?, state, last?}`：`run` 子运行标识（适配层 `run_of` 的值域）· `label` / `kind` 派出它的那次调用给的标签与类别 · `tool` 父侧工具调用 id（还没对上 ⇒ 省略）· `state` `running` / `done` / `failed` · `last` 最近一件事 `{"t":"say"}` / `{"t":"think"}` / `{"t":"tool","name":…}`。子运行的记录住哪、哪条记录属于谁、哪条派出了谁，全问适配层（`ChildFace` · `run_of` · `child_link`）；watcher 走与主记录同一条文件事件管线读它们。丢了不可恢复（`overflow.lost` 带身份，subject = sid），下一次表变了自然补上。monitor 收到交给前端：会话流 `session-lines` 里一格 `{"runs": {session_id, runs}}`（不吃 credit、F5 照最新一份重放） |
+| `session_runs` | `sid`, `runs` | **一个会话的运行表**（主运行之外的子运行），表一变就整份发一次。`runs` 每项 `{run, label?, kind?, tool?, state, last?}`：`run` 子运行标识（适配层 `run_of` 的值域）· `label` / `kind` 派出它的那次调用给的标签与类别 · `tool` 父侧工具调用 id（还没对上 ⇒ 省略）· `state` `running` / `done` / `failed` / `stopped`（被叫停）/ `unknown`（没有任何收场信号、子记录又 15 分钟没再写；只在读记录 / 收到文件事件时算，不轮询）· `last` 最近一件事 `{"t":"say"}` / `{"t":"think"}` / `{"t":"tool","name":…}`。按最近一次动静排，最早动过的在前。收场以派出那一方为准（前台：那次调用拿到结果；后台：父记录里关于它的收场通知），子记录自己写出终局也算，先到先算、收场之后不再翻回在跑。子运行的记录住哪、哪条记录属于谁、哪条派出了谁 / 说它收场了，全问适配层（`ChildFace` · `run_of` · `child_link`）；只读尾巴的流接上会话时，父记录已有的那一截按 `ChildFace::hint` 预筛、只解析说到子运行的那几行；watcher 走与主记录同一条文件事件管线读它们。丢了不可恢复（`overflow.lost` 带身份，subject = sid），下一次表变了自然补上。monitor 收到交给前端：会话流 `session-lines` 里一格 `{"runs": {session_id, runs}}`（不吃 credit、F5 照最新一份重放） |
 
 ### 入方向：流连接上的命令信封（U6b-1）
 
@@ -3507,7 +3507,7 @@ CLI 面随之自动多一条 `--history-find`。
 
 ```text
 → {"id":"q12","cmd":"history-facts","args":{"path":"/home/u/.claude/projects/-p/s.jsonl"}}
-← {"kind":"reply","id":"q12","ok":true,"data":{"end":5120088,"forkedFrom":null,"touchedFiles":["/p/a.ts"],"agents":[{"id":…,"label":…,"agentType":…,"status":"running","timestamp":…,"desc":…}],"usage":{"promptTokens":41250,"model":…}}}
+← {"kind":"reply","id":"q12","ok":true,"data":{"end":5120088,"forkedFrom":null,"touchedFiles":["/p/a.ts"],"usage":{"promptTokens":41250,"model":…}}}
 → {"id":"q13","cmd":"history-facts","args":{"path":"…/s.jsonl","prior":{上一次的 data 原样}}}
 ```
 
@@ -3518,10 +3518,9 @@ CLI 面随之自动多一条 `--history-find`。
 | `end` | ← | 最后一个完整行的末字节 |
 | `forkedFrom` | ← | 源会话 sid：首条带 `forkedFrom`（`sessionId` 与 `messageUuid` 都是串）的 user / assistant 记录；不是分叉来的 ⇒ `null`。判定与 `history-sessions` 行的 `forkedFromSessionId` 是同一个函数 |
 | `touchedFiles` | ← | 写类工具（Edit / Write / MultiEdit → `file_path`，NotebookEdit → `notebook_path`）碰过的文件，原样、去重、近因序（最近碰的在末尾），至多 1000 条（超 ⇒ 丢最久没碰的） |
-| `agents` | ← | agent 工具（`Agent` / `Task`）的调用，插入序：`status` ∈ `running`（还没见 `tool_result`）/ `done`；`label` = `description` ‖ `prompt` 首行前 80 字 ‖ 工具名；`agentType` = `subagent_type` 或 `null`；`timestamp` = 那条记录的时刻（没有 ⇒ 空串）；`desc` = trim 后的 `description`。超 30 条从最老删非 running 的，再超 200 条删最老的 |
 | `usage` | ← | 文件序最后一条 `input_tokens + cache_creation_input_tokens + cache_read_input_tokens > 0` 的 assistant 记录 ⇒ `{promptTokens, model}`（`model` 缺 ⇒ `null`）；一条都没有 ⇒ `null` |
 
-- 本体 `observe/facts_query.rs`（claude 的两张工具表也住那里：进适配层会让「加一个 agent 通用层要改几处」那只许降的棘轮涨一格）。「中止」不在这里（它是界面对「会话落到不忙」这个事件的反应）。
+- 本体 `observe/facts_query.rs`（claude 的写类工具表也住那里：进适配层会让「加一个 agent 通用层要改几处」那只许降的棘轮涨一格）。子 agent 的列表与状态不在这里：那是运行表（`session_runs`），判定只有那一处。
 - 整份超过 32 MiB ⇒ `too_large`（不截断）。界面经通道直接问（`src/frontend/ui/session-reads.ts`），本机与远端同一条路；老后端不认 ⇒ `unsupported`（界面说「不可用」，不当成空）。
 - CLI 面随之自动多一条 `--history-facts`（stdin 一段 JSON ＝ `args`，stdout 一行 JSON ＝ `data`）。
 

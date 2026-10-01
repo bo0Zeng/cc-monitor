@@ -100,12 +100,14 @@ describe("P21 ⓪ 量具自检（这几条不过，下面六格全是空转）",
     //    〔F7b 09-24〕25 → 24：少的是 `.sftp-overlay`（老 SFTP 面板的遮罩，随面板整段 CSS 退役；
     //    它挂在 `document.body` 上、不在 ② 的登记表里 —— 那张表今天一行都没因此变）。
     //    24 → 23：少的是 `.inbox-overlay`（收件箱编辑面随它的 CSS 一起删了；同样挂在 `document.body` 上、不在 ② 的表里）。
+    //    23 → 22：少的是 `.agent-records-viewer-mount`（agent 面板点一行改成就地展开时间线，全屏查看器那层挂载壳删了；
+    //    它挂在 `document.body` 上、不在 ② 的表里）。
     expect(
       fixedSelectors().length,
-      `CSS 里声明 \`position: fixed\` 的选择器有 ${fixedSelectors().length} 个（09-30 实测 23）。\n` +
+      `CSS 里声明 \`position: fixed\` 的选择器有 ${fixedSelectors().length} 个（10-01 实测 22）。\n` +
         "★ 变多 = 新加了一个浮层 ⇒ 去 ② 的登记表里交代它挂在哪；\n" +
         "★ 变少 = 要么真删了一个，要么**切规则那一刀又漏了**（第一版漏了 9 条，报 16）。",
-    ).toBe(23);
+    ).toBe(22);
   });
 
   it("🔴 正控：`alert(` 的量具对合成样本判得出「有」与「没有」两种", () => {

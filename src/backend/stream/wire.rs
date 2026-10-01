@@ -649,7 +649,8 @@ pub enum Frame {
         #[serde(skip_serializing_if = "Option::is_none")]
         end: Option<TapEnd>,
     },
-    /// 一个会话的运行表（主运行之外的那几个子运行：标签 · 状态 · 最近一件事 · 派出它的那次工具调用）。表变了就整份发一次。
+    /// 一个会话的运行表（主运行之外的那几个子运行：标签 · 状态 · 最近一件事 · 派出它的那次工具调用）。表变了就整份发一次；
+    /// 按最近一次动静排（最早动过的在前）。
     SessionRuns { sid: String, runs: Vec<RunInfo> },
 }
 
@@ -675,7 +676,7 @@ pub struct RunInfo {
     pub last: Option<crate::agents::RunDid>,
 }
 
-/// 子运行的三态。
+/// 子运行的五态。收场的三态以派出那一方说的为准（子记录自己写出终局也算，先到先算）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
@@ -684,6 +685,10 @@ pub enum RunState {
     Running,
     Done,
     Failed,
+    /// 被叫停。
+    Stopped,
+    /// 没有任何收场信号、子记录又久未再写（`observe::runs::STALE_AFTER`）：不当它在跑。
+    Unknown,
 }
 
 /// 〔TAP〕一个响应怎么收场的（[`Frame::Tap`] 的 `end`）。

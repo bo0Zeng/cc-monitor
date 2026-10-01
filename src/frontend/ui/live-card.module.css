@@ -24,14 +24,4 @@
     white-space: pre-wrap;
     overflow-wrap: anywhere;
   }
-
-  /* 主 tab 上每个在跑的子运行一行（点开是它的实时时间线）。 */
-  .runRow {
-    margin: 4px 0;
-    padding: 4px 10px;
-    border-left: 2px solid var(--accent);
-    color: var(--text-faint);
-    font-size: var(--font-size-xs);
-    cursor: pointer;
-  }
 }

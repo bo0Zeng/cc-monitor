@@ -526,7 +526,8 @@
   border-color: var(--accent, #7aa2f7);
 }
 
-.grid-monitor-peek-agent.status-aborted {
+.grid-monitor-peek-agent.status-failed,
+.grid-monitor-peek-agent.status-stopped {
   color: var(--warn);
   border-color: var(--warn);
   opacity: 0.8;

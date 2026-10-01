@@ -32,8 +32,8 @@ export type FactsWhere = () => { origin: Origin; jsonlPath: string } | null;
 
 /** 事实到了 / 可不可用变了 —— 宿主据此落到 tab 上、刷界面。 */
 export interface FactsSink {
-  /** 要到了一份新的成品（整份，不是增量）。`first` = 这是本 tab 要到的第一份（`reset` 之后重新算）。 */
-  facts(f: SessionFacts, first: boolean): void;
+  /** 要到了一份新的成品（整份，不是增量）。 */
+  facts(f: SessionFacts): void;
   /** 可不可用变了：`null` = 可用；非空 = 要不到的原因（放弃了，或一份都还没要到）。 */
   availability(reason: string | null): void;
 }
@@ -121,10 +121,9 @@ export class FactsSource {
       return;
     }
     this.transientFailures = 0;
-    const first = this.last === null;
     this.last = res.facts;
     this.setReason(null);
-    this.sink.facts(res.facts, first);
+    this.sink.facts(res.facts);
   }
 
   /** 要不到：结构性 ⇒ 放弃；瞬时 ⇒ 记一次、下一次触发再要（到上限按结构性）。 */
