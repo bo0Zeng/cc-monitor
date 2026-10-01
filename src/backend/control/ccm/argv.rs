@@ -83,8 +83,10 @@ pub(crate) enum CwdSpec {
 pub(crate) struct Defaults;
 
 impl Defaults {
-    /// 不给 `--agent` ⇒ `claude`。
-    pub(crate) const AGENT: &'static str = "claude";
+    /// 不给 `--agent` ⇒ 注册表里声明默认的那一家（`LaunchFace::is_default`）。
+    pub(crate) fn agent() -> &'static str {
+        crate::agents::default_kind()
+    }
     /// 不给 `--cwd` ⇒ `auto`，而 `K-R58` 起 **`auto` 就是恒等**：调用方自己的 cwd。
     /// 见 `plan::resolve_cwd`（`K37` 第三条：诚实的默认 = 恒等 / 不作为 / 沿用调用者状态）。
     pub(crate) const CWD: CwdSpec = CwdSpec::Auto;
@@ -207,7 +209,7 @@ pub(crate) fn parse(args: &[String]) -> Result<Parsed, Die> {
         account: String::new(),
         use_base: Defaults::USE_BASE,
         cwd_spec: Defaults::CWD,
-        agent: Defaults::AGENT.to_string(),
+        agent: Defaults::agent().to_string(),
         launcher: String::new(),
         ccm_sid: String::new(),
         print: Defaults::PRINT,

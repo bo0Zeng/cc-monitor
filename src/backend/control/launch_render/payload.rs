@@ -158,13 +158,12 @@ pub fn unset_config_dir_prefix() -> String {
 }
 
 /// 账号维度的载体（环境变量名）从适配层取（`agents::account_env_of`，通用层拿这个名字的唯一入口）。
-/// 这个载荷内核今天只起 claude 那一家（`nestedEnv` 等画像同样是那一家的）；认不出 ⇒ 是程序错，当场炸。
+/// 这个载荷内核起的是注册表里声明默认的那一家（`agents::default_kind`；`nestedEnv` 等画像同样是那一家的）；
+/// 那一家没有账号载体 ⇒ 是程序错，当场炸。
 pub(crate) fn account_env() -> &'static str {
-    crate::agents::account_env_of(LAUNCH_AGENT_KIND).expect("适配层里没有这一家的账号载体")
+    crate::agents::account_env_of(crate::agents::default_kind())
+        .expect("适配层里没有这一家的账号载体")
 }
-
-/// 这个载荷内核起的是哪一家 agent（适配层的 `kind`）。
-pub(crate) const LAUNCH_AGENT_KIND: &str = "claude";
 
 /// 启动期令牌的形状判定 —— **全仓唯一的一份住共享 crate**
 /// （`shell_quote_core::rbind_token_ok`，长度与字母表两个常量同住；后端 `identity_tag.rs` 里的 `token_is_safe` 读的是同一个令牌

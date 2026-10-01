@@ -10,7 +10,7 @@ import { join, sep } from "node:path";
 /** 族 A：待贴进配置文件才生效。**必须**走统一组件。 */
 const FAMILY_A = [
   "src/frontend/ui/settings/machine-aliases.ts", // 别名函数 → ~/.bashrc（从 `launcher-diagnostics.ts` 搬来，并进机器页「别名」）
-  "src/frontend/ui/settings/cc-bus-hooks-section.ts", // hooks JSON → ~/.claude/settings.json
+  "src/frontend/ui/settings/ext-section.ts", // cc-bus 那一行每台要加的钩子 → 那台的 agent 设置文件
   "src/frontend/ui/settings/remote-section.ts", // ccm wrapper → 远端 ~/.bashrc
 ];
 

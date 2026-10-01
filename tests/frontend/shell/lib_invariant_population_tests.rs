@@ -375,9 +375,11 @@ const QUOTE_SITES: &[QuoteRow] = &[
     // 29 → 28：`--model` 交给 claude 了，`export ANTHROPIC_MODEL=<quote>` 那一处删；模型名 / resume 的 sid 不再由 ccm 判。
     // 28 → 30：resume 接上已在跑的那一个（`Plan::Rejoin`）渲两处 —— attach 目标 `=<名>:` 与 `ccm-session=<名>` 那一行。
     //   名字是 tmux 自己在快照里报的（不是外部输入），只经这一处 quote（同 `Plan::Attach` 那一形）。
+    // 30 → 31：信任框轮询认的那句话从串里的字面量换成适配层那一格（`LaunchFace::trust_prompt`），拼进去时 quote 一次
+    //   （值是适配层的常量，不是外部输入；产出的字节与从前写死的 `'…'` 逐字相同）。
     (
         "src/backend/control/ccm/plan.rs",
-        30,
+        31,
         &[
             ("src/backend/control/ccm/plan.rs", "validate_tmux_name"),
             ("src/backend/control/ccm/plan.rs", "free_text_gate"),
@@ -535,6 +537,14 @@ const QUOTE_SITES: &[QuoteRow] = &[
         &[("src/backend/assets/aliases/mod.rs", "check_alias")],
         "",
         "我们那份别名文件的路径",
+    ),
+    // cc-bus 钩子要加的内容：两条钩子指向这台 skills 根下那两个脚本；skills 根不在家目录底下时那条路径整份 quote（是这台后端自己的路径）。
+    (
+        "src/backend/observe/cc_bus_hooks.rs",
+        1,
+        &[],
+        "",
+        "这台后端自己的 skills 根下那两个脚本的路径",
     ),
     // ssh_source.rs 2 → 0 · remote_resident.rs 2 → 0：远端后端落点是固定常量 `BACKEND_CMD`（`backendPath` 那一格删了），
     //   流 / 探针 / 常驻起停四条命令不再 quote 任何外来值 ⇒ 两行出列。

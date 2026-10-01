@@ -1,7 +1,8 @@
 //! 〔「本机远端两条路、两个命令」〕**cc-bus 钩子诊断** —— 帧命令 `hooks-diag` 的本体（只读）。
 //!
 //! 这台后端读**它自己那台**的 agent 配置根下的 `settings.json`、就地 stat 钩子点名的程序，出整份成品
-//! （诊断 ＋ 两种待贴片段 ＋ 读的是哪份文件）。本机远端同一条命令（`chan.call(origin, "hooks-diag")`）；
+//! （诊断 ＋ 要加的内容 ＋ 读的是哪份文件）。要加的内容只有一形：两条钩子直接指向这台装好的 cc-bus 里的那两个脚本
+//! （脚本靠 `readlink -f` 认自己的目录，直接跑得通；不依赖 `PATH`）；cc-bus 没装 ⇒ 不给。本机远端同一条命令（`chan.call(origin, "hooks-diag")`）；
 //! monitor 那两条 Tauri 命令（本机自己读盘 · 远端问三趟再判）连同判定本体一起删了。帧面宿主在顶层 `feature_face`。
 //!
 //! # 判据为什么不是字符串等值（B04，从 monitor 原样搬来）
@@ -9,11 +10,12 @@
 //! 用户盘上装的是 `"$HOME/.local/bin/cc-register" >/dev/null 2>&1 || true`，规范片段是 `cc-register …`：
 //! 功能等价、字符串不等 ⇒ 按「被执行的程序」判，而不是比原文。看不懂的形态答「无法判断」，不猜「未装」。
 //!
-//! 只读：不写 `settings.json`（用户 2026-07-28 定调，与 `cc-bus-install.sh` 同一条约定），只生成待贴文本。
+//! 只读：不写 `settings.json`（这是用户的共享全局配置，由用户自己合并），只生成要加的内容。
 
 use crate::platform::shell::posix;
 use copy_core::copy_text;
 use serde::Serialize;
+use serde_json::json;
 use std::path::{Path, PathBuf};
 
 /// 钩子命令里那两个程序（`SessionStart` → `cc-register` · `Stop` → `cc-bus-stop-hook`）。
@@ -57,28 +59,14 @@ pub(crate) struct HooksDiagnosis {
     pub(crate) note: String,
 }
 
-/// 生成待贴片段时盘上的实况。`None` = 取不到，不猜。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct SnippetProbe {
-    /// `$HOME/.local/bin/` 下那两个程序是否都在。
-    pub(crate) home_path_exists: Option<bool>,
-    /// 裸命令是否都解析得到（按这台 `PATH`）。
-    pub(crate) on_path: Option<bool>,
-}
-
-/// 一段待贴片段 ＋ 形态与实况冲突时的警示（`None` = 没冲突）。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub(crate) struct Snippet {
-    pub(crate) text: String,
-    pub(crate) warning: Option<String>,
-}
-
 /// 成品（形状与界面 `HooksReport` 逐字同；跨语言金样 `tests/__fixtures__/hooks-diag.golden.json`）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub(crate) struct HooksReport {
+    /// 这台跑得了 cc-bus（它要 tmux）；跑不了 ⇒ 不给要加的内容，界面只说这台不支持自动收信。
+    pub(crate) supported: bool,
     pub(crate) diagnosis: HooksDiagnosis,
-    pub(crate) snippet_home: Snippet,
-    pub(crate) snippet_bare: Snippet,
+    /// 要合并进那份 `settings.json` 的内容；这台的 cc-bus 没装（那两个脚本不在）⇒ `None`。
+    pub(crate) snippet: Option<String>,
     /// 读的是哪份文件（这台后端看到的路径）。
     pub(crate) source: String,
 }
@@ -219,54 +207,31 @@ pub(crate) fn diagnose(raw: Option<&str>, exists: &dyn Fn(&str) -> bool) -> Hook
     }
 }
 
-/// 待贴 JSON 片段（`home` = `$HOME/.local/bin/…` 显式路径形态；否则裸命令）；形态与实况**确定**冲突才带警示。
-pub(crate) fn snippet(home: bool, probe: &SnippetProbe) -> Snippet {
-    let (reg, stop) = if home {
-        // `"$HOME/…"` 那个词的写法住 `platform::shell::posix`。
-        (
-            format!(
-                "{} >/dev/null 2>&1 || true",
-                posix::home_path_word(".local/bin/cc-register")
-            ),
-            posix::home_path_word(".local/bin/cc-bus-stop-hook"),
-        )
-    } else {
-        (
-            "cc-register >/dev/null 2>&1 || true".to_string(),
-            "cc-bus-stop-hook".to_string(),
-        )
-    };
-    let text = format!(
-        "{{\n  \"hooks\": {{\n    \"SessionStart\": [ {{ \"hooks\": [ {{ \"type\": \"command\",\n      \"command\": \"{}\" }} ] }} ],\n    \"Stop\": [ {{ \"hooks\": [ {{ \"type\": \"command\",\n      \"command\": \"{}\" }} ] }} ]\n  }}\n}}",
-        reg.replace('"', "\\\""),
-        stop.replace('"', "\\\"")
-    );
-    let warning = if home && probe.home_path_exists == Some(false) {
-        Some(copy_text("rsHooksDiag.snippet.homeMissing", &[]))
-    } else if !home && probe.on_path == Some(false) {
-        Some(copy_text("rsHooksDiag.snippet.bareMissing", &[]))
-    } else {
-        None
-    };
-    Snippet { text, warning }
-}
-
-/// 按 `PATH` 逐目录反查一个裸命令在不在。切分走 `std::env::split_paths`（这台后端自己的平台规矩：
-/// Windows `;`、POSIX `:`，T03 阻塞 1）。`PATH` 取不到 / 空 ⇒ `None`（不猜）。
-pub(crate) fn resolves_on_path(
-    prog: &str,
-    path_env: Option<&str>,
-    exists: &dyn Fn(&str) -> bool,
-) -> Option<bool> {
-    let pe = path_env?;
-    if pe.trim().is_empty() {
+/// 要加的内容：两条钩子直接指向 `<skills 根>/cc-bus/scripts/` 里那两个脚本（家目录底下 ⇒ `"$HOME/…"`，否则绝对路径）。
+/// 两个脚本有一个不在 ⇒ `None`（cc-bus 没装，先装）。
+pub(crate) fn snippet(skills: &Path, home: Option<&Path>) -> Option<String> {
+    let scripts: Vec<PathBuf> = PROGRAMS
+        .iter()
+        .map(|p| {
+            skills
+                .join(crate::assets::cc_bus_install::NAME)
+                .join("scripts")
+                .join(p)
+        })
+        .collect();
+    if !scripts.iter().all(|p| p.is_file()) {
         return None;
     }
-    Some(std::env::split_paths(pe).any(|d| {
-        let d = d.to_string_lossy();
-        let d = d.trim_end_matches(['/', '\\']);
-        !d.is_empty() && exists(&format!("{d}/{prog}"))
-    }))
+    let word = |p: &Path| match home.and_then(|h| p.strip_prefix(h).ok()) {
+        Some(rel) => posix::home_path_word(&rel.to_string_lossy().replace('\\', "/")),
+        None => shell_quote_core::posix_quote(&p.display().to_string()),
+    };
+    let v = json!({ "hooks": {
+        "SessionStart": [ { "hooks": [ { "type": "command",
+            "command": format!("{} >/dev/null 2>&1 || true", word(&scripts[0])) } ] } ],
+        "Stop": [ { "hooks": [ { "type": "command", "command": word(&scripts[1]) } ] } ],
+    } });
+    serde_json::to_string_pretty(&v).ok()
 }
 
 /// `$HOME/…` · `${HOME}/…` · `~/…` 按这台家目录展开；其余原样（B04-3：花括号那一形也要认）。
@@ -278,22 +243,26 @@ fn expand(s: &str, home: Option<&Path>) -> PathBuf {
     }
 }
 
-/// 帧面入口：这台后端进程的 `HOME`（缺 ⇒ `USERPROFILE`）· `PATH` · agent 配置根。
+/// 帧面入口：这台后端进程的家目录 · agent 配置根 · skills 根 · 这份二进制所在平台有没有原生 tmux。
 pub(crate) fn answer() -> HooksReport {
-    let env = |k: &str| std::env::var(k).ok().filter(|v| !v.is_empty());
     let home = crate::platform::paths::home_dir();
     answer_at(
         home.as_deref(),
         &crate::observe::history_query::agent_home(),
-        env("PATH").as_deref(),
+        crate::agents::skills_root().as_deref(),
+        !matches!(
+            crate::TMUX_PLATFORM,
+            crate::TmuxPlatform::AbsentUnlessExeOnPath
+        ),
     )
 }
 
-/// [`answer`] 的本体（家目录 · agent 配置根 · `PATH` 是参数，判据拿夹具喂）。
+/// [`answer`] 的本体（家目录 · agent 配置根 · skills 根 · 跑不跑得了 cc-bus 是参数，判据拿夹具喂）。
 pub(crate) fn answer_at(
     home: Option<&Path>,
     agent_home: &Path,
-    path_env: Option<&str>,
+    skills: Option<&Path>,
+    supported: bool,
 ) -> HooksReport {
     let settings = agent_home.join("settings.json");
     // 超上限 / 不是普通文件 / 读不了 ⇒ 按「没读到」降级，`note` 说出来（`diagnose(None)`）。
@@ -304,22 +273,10 @@ pub(crate) fn answer_at(
         _ => None,
     };
     let exists = |s: &str| expand(s, home).exists();
-    let probe = SnippetProbe {
-        home_path_exists: home.map(|h| {
-            PROGRAMS
-                .iter()
-                .all(|p| h.join(format!(".local/bin/{p}")).exists())
-        }),
-        // 任一取不到就整体说「不知道」。
-        on_path: PROGRAMS
-            .iter()
-            .map(|p| resolves_on_path(p, path_env, &exists))
-            .try_fold(true, |acc, r| r.map(|b| acc && b)),
-    };
     HooksReport {
+        supported,
         diagnosis: diagnose(raw.as_deref(), &exists),
-        snippet_home: snippet(true, &probe),
-        snippet_bare: snippet(false, &probe),
+        snippet: skills.filter(|_| supported).and_then(|k| snippet(k, home)),
         source: settings.display().to_string(),
     }
 }
