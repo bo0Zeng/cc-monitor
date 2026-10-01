@@ -638,6 +638,8 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     base_url_shape_ok: NONE,
     KEY_FILE_REL: "J14",
     key_shape_ok: NONE,
+    // 把钥匙插进中转地址（`split_keyed_base_url` 的逆，给用户自己贴的那一段用）；TS 侧没有孪生。
+    keyed_base_url: NONE,
     // 常驻监听口的门牌（本机宿主与远端 `--resident-ensure` 同一个函数）；TS 侧没有孪生。
     listen_port_for: NONE,
     LISTEN_TOKEN_FILE_REL: NONE,

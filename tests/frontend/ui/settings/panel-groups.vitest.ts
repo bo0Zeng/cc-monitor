@@ -470,12 +470,19 @@ describe("S2 设置面板分页结构", () => {
     expect(tabPage("comp").querySelector("#stub-remote-aliases")).toBeNull();
     const stub = term.querySelector<HTMLElement>("#stub-remote-aliases")!;
     expect(stub.parentElement!.firstElementChild, "别名不在「终端」栏最前面").toBe(stub);
+    // 「让直接敲的 claude 也走中转（可选）」那一块住「终端」栏，本机远端同一块（跟着当前机器搬）。
+    expect(term.querySelector("details.relay-optin"), "远端「终端」栏里没有「直接敲的也走中转」那一块").not.toBeNull();
+    expect(tabPage("acct").querySelector("details.relay-optin")).toBeNull();
     // 本机那一格：「终端」里也有「别名」—— 两边同一个位置。
     document.querySelector<HTMLButtonElement>("#settings-tab-machine\\:（本机）")!.click();
     const localTitles = [
       ...document.querySelectorAll('.settings-page[data-route-id="machine:（本机）"] .settings-group-title'),
     ].map((e) => e.textContent);
     expect(localTitles).toContain("别名");
+    expect(
+      document.querySelector('.settings-page[data-route-id="machine:（本机）"] details.relay-optin'),
+      "本机页上没有「直接敲的也走中转」那一块",
+    ).not.toBeNull();
   });
 
   it("★ S7：没有待生效改动时，重启条不出现（恒显示的警告 = 背景噪音）", async () => {

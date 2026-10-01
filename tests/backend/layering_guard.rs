@@ -659,6 +659,10 @@ mod tests {
             "上游选择出成品（`launch-endpoint` · `apikey-routing`）时问「这台机器上我们的中转在不在听」—— 差分探针，只收端口、只回布尔",
         ),
         (
+            "door::keyed_with_key_on_disk",
+            "上游选择出「直接敲的也走中转」那一段（`relay-optin`）时把这台盘上那把钥匙插进地址 —— 只交插好的地址，钥匙不以裸值出门",
+        ),
+        (
             "route::segment_is_safe",
             "上游选择装表判账号 id 与中转切键是**同一个谓词**（`route.rs` 头注）",
         ),
