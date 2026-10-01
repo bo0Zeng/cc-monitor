@@ -133,9 +133,13 @@ async function bootstrapViewer(sid: string, origin: Origin): Promise<void> {
   dispatcher.applyOverrides(await getKeybindings());
   dispatcher.start();
 
+  // 顶栏标题：项目目录末段 —— 读 tab 上后端给的那一格（会话事实 / 宣告），不从行里猜（行上的 cwd 会漂进子目录）。
+  tabs.active.subscribe((a) => {
+    const base = a.projectDir ? basename(a.projectDir) : "";
+    if (base) titleEl.textContent = base;
+  });
   // 留存与实时行可能重叠 → 按 per-file seq 去重。
   const seen = new Set<number>();
-  let titleCwdSeq = Number.POSITIVE_INFINITY; // 顶栏标题取最早 cwd（项目根），同 tab.cwd 口径
   // **必须 await**：会话流订阅登记好再往下走。
   // 会话流的格由通道按窗口定向交（`chan.ts`）。原先那一项按窗口作用域监听的选项随 `bindEvents` 里最后的 Tauri 监听一起删了。
   await bindEvents(
@@ -144,12 +148,6 @@ async function bootstrapViewer(sid: string, origin: Origin): Promise<void> {
         if (e.session_id !== sid) return;
         if (seen.has(e.seq)) return;
         seen.add(e.seq);
-        // 顶栏标题：用**最早**记录的 cwd 末段（项目根），跟 tab.cwd 口径一致。
-        if (e.cwd && e.seq < titleCwdSeq) {
-          titleCwdSeq = e.seq;
-          const base = basename(e.cwd); // F09：已测 helper（行为等价：`if (base)` 守卫下 ""/undefined 同效）
-          if (base) titleEl.textContent = base;
-        }
         tabs.onLine(e);
       },
       onSessionEnded: (s) => {

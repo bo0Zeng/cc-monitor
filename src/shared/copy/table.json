@@ -1444,10 +1444,10 @@
       "zh": "那台机器起常驻后端的回答读不懂：{e}",
       "args": ["e"]
     },
-    "rsRemoteResident.ensure.exitCode": {
+    "rsRemoteResident.ensure.noReason": {
       "kind": "error",
-      "zh": "退出码 {code}",
-      "args": ["code"]
+      "zh": "那台机器起常驻后端失败了，没说原因",
+      "args": []
     },
     "rsRemoteResident.ensure.answerIncomplete": {
       "kind": "error",
@@ -1899,8 +1899,8 @@
     },
     "control.unavailable.other": {
       "kind": "body",
-      "zh": "{machine}做不到这件事（{code}）",
-      "args": ["machine", "code"]
+      "zh": "{machine}做不到这件事",
+      "args": ["machine"]
     },
     "tabMenu.item.resume": {
       "kind": "action",
@@ -1949,8 +1949,8 @@
     },
     "tmuxControl.capture.otherCode": {
       "kind": "error",
-      "zh": "抓取 {target} 的画面被拒（{code}）：{detail}",
-      "args": ["target", "code", "detail"]
+      "zh": "抓取 {target} 的画面被拒：{detail}",
+      "args": ["target", "detail"]
     },
     "tmuxControl.capture.noReason": {
       "kind": "error",
@@ -1989,8 +1989,8 @@
     },
     "tmuxControl.kill.otherCode": {
       "kind": "error",
-      "zh": "结束 {target} 被拒（{code}）：{detail}",
-      "args": ["target", "code", "detail"]
+      "zh": "结束 {target} 被拒：{detail}",
+      "args": ["target", "detail"]
     },
     "tmuxControl.kill.noReason": {
       "kind": "error",
@@ -2054,8 +2054,8 @@
     },
     "tmuxControl.keys.otherCode": {
       "kind": "error",
-      "zh": "发送按键给 {target} 被拒（{code}）：{detail}",
-      "args": ["target", "code", "detail"]
+      "zh": "发送按键给 {target} 被拒：{detail}",
+      "args": ["target", "detail"]
     },
     "tmuxControl.keys.noReason": {
       "kind": "error",
@@ -2079,8 +2079,8 @@
     },
     "ccBus.online.otherCode": {
       "kind": "error",
-      "zh": "问不到 {id} 在不在线（{code}）：{detail}",
-      "args": ["id", "code", "detail"]
+      "zh": "问不到 {id} 在不在线：{detail}",
+      "args": ["id", "detail"]
     },
     "ccBus.online.noReason": {
       "kind": "error",
@@ -2109,8 +2109,8 @@
     },
     "ccBus.read.otherCode": {
       "kind": "error",
-      "zh": "读不到（{code}）：{detail}",
-      "args": ["code", "detail"]
+      "zh": "读不到：{detail}",
+      "args": ["detail"]
     },
     "ccBus.read.noReason": {
       "kind": "error",
@@ -2134,7 +2134,7 @@
     },
     "ccBus.spawn.badId": {
       "kind": "error",
-      "zh": "没有派生：{detail}",
+      "zh": "没有派生：这个名字不合法（{detail}）",
       "args": ["detail"]
     },
     "beCcBus.parse.badRecipient": {
@@ -2179,8 +2179,8 @@
     },
     "ccBus.send.otherCode": {
       "kind": "error",
-      "zh": "{id} 的消息没有发出去（{code}）：{detail}",
-      "args": ["id", "code", "detail"]
+      "zh": "{id} 的消息没有发出去：{detail}",
+      "args": ["id", "detail"]
     },
     "ccBus.send.noReason": {
       "kind": "error",
@@ -2224,8 +2224,8 @@
     },
     "ccBus.kill.otherCode": {
       "kind": "error",
-      "zh": "没有收掉 {id}（{code}）：{detail}",
-      "args": ["id", "code", "detail"]
+      "zh": "没有收掉 {id}：{detail}",
+      "args": ["id", "detail"]
     },
     "ccBus.kill.noReason": {
       "kind": "error",
@@ -2274,8 +2274,8 @@
     },
     "ccBus.spawn.otherCode": {
       "kind": "error",
-      "zh": "没有派生（{code}）：{detail}",
-      "args": ["code", "detail"]
+      "zh": "没有派生：{detail}",
+      "args": ["detail"]
     },
     "ccBus.spawn.noReason": {
       "kind": "error",
@@ -2319,8 +2319,8 @@
     },
     "ccBus.broadcast.otherCode": {
       "kind": "error",
-      "zh": "没有广播（{code}）：{detail}",
-      "args": ["code", "detail"]
+      "zh": "没有广播：{detail}",
+      "args": ["detail"]
     },
     "ccBus.broadcast.noReason": {
       "kind": "error",
@@ -8636,8 +8636,8 @@
     },
     "rsFilewinShell.menu.unavailableHere": {
       "kind": "error",
-      "zh": "这台机器上改不了权限（{code}）",
-      "args": ["code"]
+      "zh": "这台机器上改不了权限",
+      "args": []
     },
     "rsFilewinShell.window.title": {
       "kind": "title",
@@ -9361,8 +9361,8 @@
     },
     "rsFilewinFind.refusal.line": {
       "kind": "error",
-      "zh": "{hint}（{code}）：{message}",
-      "args": ["hint", "code", "message"]
+      "zh": "{hint}：{message}",
+      "args": ["hint", "message"]
     },
     "rsFilewinFind.refusal.other": {
       "kind": "error",
@@ -10456,8 +10456,13 @@
     },
     "rsInboundClient.error.refused": {
       "kind": "error",
-      "zh": "远端拒绝（{code}）：{message}",
-      "args": ["code", "message"]
+      "zh": "远端拒绝：{message}",
+      "args": ["message"]
+    },
+    "rsInboundClient.error.refusedNoReason": {
+      "kind": "error",
+      "zh": "远端拒绝了，没说原因",
+      "args": []
     },
     "rsInboundClient.error.timeout": {
       "kind": "error",
@@ -10486,8 +10491,8 @@
     },
     "rsInboundClient.error.unavailable": {
       "kind": "error",
-      "zh": "这台机器做不到这件事（{code}），没有发出去",
-      "args": ["code"]
+      "zh": "这台机器做不到这件事，没有发出去",
+      "args": []
     },
     "rsInboundClient.error.unsupported": {
       "kind": "error",
@@ -13214,8 +13219,13 @@
     },
     "rsFrameQuery.call.failed": {
       "kind": "error",
-      "zh": "{who}查询失败（{code}）：{message}",
-      "args": ["who", "code", "message"]
+      "zh": "{who}查询失败：{message}",
+      "args": ["who", "message"]
+    },
+    "rsFrameQuery.call.failedNoReason": {
+      "kind": "error",
+      "zh": "{who}查询失败，没说原因",
+      "args": ["who"]
     },
     "rsFrameQuery.call.overdue": {
       "kind": "error",
@@ -14974,6 +14984,136 @@
       "zh": "缺 {k}（要一个字符串数组）",
       "args": ["k"]
     },
+    "beUpstreamEndpoint.optin.noHome": {
+      "kind": "error",
+      "zh": "这台机器上没有 HOME，找不到 claude 的设置文件。",
+      "args": []
+    },
+    "beUpstreamEndpoint.optin.noAgent": {
+      "kind": "error",
+      "zh": "这台后端里没有哪一家 agent 能这样接中转。",
+      "args": []
+    },
+    "beUpstreamEndpoint.optin.notFile": {
+      "kind": "body",
+      "zh": "那不是一个普通文件",
+      "args": []
+    },
+    "beUpstreamEndpoint.optin.tooLarge": {
+      "kind": "body",
+      "zh": "文件超过 {cap} 字节",
+      "args": ["cap"]
+    },
+    "beUpstreamEndpoint.optin.unreadable": {
+      "kind": "body",
+      "zh": "读不了这份文件（{why}），装没装说不清。",
+      "args": ["why"]
+    },
+    "beUpstreamEndpoint.optin.badShape": {
+      "kind": "body",
+      "zh": "这份文件读得到但读不懂，装没装说不清。先把它修好：它要是一个 JSON 对象，env 那一段也要是对象。",
+      "args": []
+    },
+    "beUpstreamEndpoint.optin.noKey": {
+      "kind": "body",
+      "zh": "这台的中转还没起来过，还没有钥匙，生成不了要贴的内容。等这台的 cc-monitor 后端起来之后再看。",
+      "args": []
+    },
+    "beUpstreamEndpoint.optin.noRoute": {
+      "kind": "body",
+      "zh": "这台的中转不收不带账号的 claude 请求，生成不了要贴的内容。",
+      "args": []
+    },
+    "relayOptin.section.title": {
+      "kind": "title",
+      "zh": "让直接敲的 claude 也走中转（可选）",
+      "args": []
+    },
+    "relayOptin.section.intro": {
+      "kind": "body",
+      "zh": "经 cc-monitor 或 ccm 起的会话已经走中转。直接在终端里敲 claude 起的不走：cc-monitor 要等它写进会话记录才看得到，比终端慢。要它也走，就把下面这一段合并进这台的设置文件；cc-monitor 不替你改这份文件。",
+      "args": []
+    },
+    "relayOptin.read.loading": {
+      "kind": "body",
+      "zh": "正在读这台的设置…",
+      "args": []
+    },
+    "relayOptin.read.failed": {
+      "kind": "error",
+      "zh": "读不了这台装没装：{said}",
+      "args": ["said"]
+    },
+    "relayOptin.fetch.oldBackend": {
+      "kind": "error",
+      "zh": "那台机器的后端太旧，答不了这一项，需要更新。",
+      "args": []
+    },
+    "relayOptin.state.installed": {
+      "kind": "body",
+      "zh": "已装：这台设置文件里写的就是这台中转现在的地址。",
+      "args": []
+    },
+    "relayOptin.state.stale": {
+      "kind": "body",
+      "zh": "贴的内容过期了。这台的中转换了钥匙或端口，原来那一段已经连不上；把下面新的一段换进去。",
+      "args": []
+    },
+    "relayOptin.state.absent": {
+      "kind": "body",
+      "zh": "没装：直接敲的 claude 不走中转。",
+      "args": []
+    },
+    "relayOptin.state.other": {
+      "kind": "body",
+      "zh": "这份文件里设了别的上游地址，不是这台的中转。贴下面这一段会换掉它。",
+      "args": []
+    },
+    "relayOptin.relay.notListening": {
+      "kind": "body",
+      "zh": "这台的中转此刻没在运行。贴了也发不出请求，等这台的 cc-monitor 后端起来。",
+      "args": []
+    },
+    "relayOptin.snippet.target": {
+      "kind": "body",
+      "zh": "{source} 的 env 段",
+      "args": ["source"]
+    },
+    "relayOptin.snippet.merge": {
+      "kind": "body",
+      "zh": "要合并进 env 那一段，不是整份覆盖。没有那一段就新加；这份文件里还有别的设置，覆盖会把它们删掉。",
+      "args": []
+    },
+    "relayOptin.snippet.activation": {
+      "kind": "body",
+      "zh": "改完新开的 claude 会话才生效（已经开着的不会重读它）。",
+      "args": []
+    },
+    "relayOptin.costs.title": {
+      "kind": "title",
+      "zh": "代价",
+      "args": []
+    },
+    "relayOptin.cost.backend": {
+      "kind": "body",
+      "zh": "这台的 cc-monitor 后端没在跑时，直接敲的 claude 发不出请求。要用它，就得让这台的后端一直在跑。",
+      "args": []
+    },
+    "relayOptin.cost.key": {
+      "kind": "body",
+      "zh": "中转的钥匙会写进这份文件。能读这份文件的程序，都能经这台的中转发请求。",
+      "args": []
+    },
+    "relayOptin.cost.allAccounts": {
+      "kind": "body",
+      "zh": "各号的设置文件都链回这一份：对这台所有号同时生效。",
+      "args": []
+    },
+    "relayOptin.cost.apiKey": {
+      "kind": "body",
+      "zh": "只对用订阅登录的号有用。用 API key 的号，key 只在用 ccm 起会话时才换得上；而这份文件会盖过 ccm 交给会话的地址，贴了之后这台用 API key 的号就换不上 key 了。要用这些号，先把这一行删掉。",
+      "args": []
+    },
     "beUpstreamEndpoint.relay.thisMachine": {
       "kind": "body",
       "zh": "这台机器",
@@ -15351,7 +15491,7 @@
     },
     "ccBus.broadcast.badId": {
       "kind": "error",
-      "zh": "没有广播：{detail}",
+      "zh": "没有广播：发件人的 id 不合法（{detail}）",
       "args": ["detail"]
     },
     "bePlan.build.launcherRefused": {

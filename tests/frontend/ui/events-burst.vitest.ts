@@ -172,3 +172,37 @@ describe("〔GP1〕unseen 格进 queue、交给 onOriginUnseen", () => {
     expect(order).toEqual(["line-1", "unseen-pi"]);
   });
 });
+
+// 会话宣告（会话流里的 `{"live": …}` 那一格）：项目目录（`project_dir`）与 pidfile 那一格（`cwd`）各自原样交给处理器，本机远端同一形。
+describe("live 格的项目目录交到处理器", () => {
+  beforeEach(() => {
+    subs.clear();
+    streamFake.reset();
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.runOnlyPendingTimers();
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  it("本机 → onSessionStarted、远端 → onRemoteSessionAdded，都带 projectDir 与 cwd", async () => {
+    const started = vi.fn();
+    const added = vi.fn();
+    await bindEvents({
+      onLine: vi.fn(),
+      onSessionEnded: vi.fn(),
+      onSessionStarted: started,
+      onRemoteSessionAdded: added,
+      onBatchStart: vi.fn(),
+      onBatchEnd: vi.fn(),
+    } as never, STREAMS);
+    const live = (origin: string, projectDir: string | null) => ({
+      live: { session_id: `s-${origin}`, origin, kind: null, attachable: null, cwd: "/launched", project_dir: projectDir, name: null },
+    });
+    streamFake.lifecycle([live("<local>", "/a/proj"), live("pi", null)]);
+    await vi.runAllTimersAsync();
+    expect(started).toHaveBeenCalledWith("s-<local>", expect.objectContaining({ projectDir: "/a/proj", cwd: "/launched" }));
+    expect(added).toHaveBeenCalledWith("s-pi", "pi", expect.objectContaining({ projectDir: null, cwd: "/launched" }));
+  });
+});

@@ -4,6 +4,7 @@
 //! |---|---|---|
 //! | [`relay_for_exec`] | 这个号这一发往 `ANTHROPIC_BASE_URL` 里写哪个中转地址（或不写；地址不随会话变，不带会话段）· 不在时拒还是直连 | `ccm` 在最终 exec 那一处（`control/ccm/plan.rs`）；别名预览走 [`relay_for_preview`] |
 //! | `apikey-routing` | 这几个号在这台的表里有没有行 · 这台的中转在不在 | 界面经 `chan.call` 直接问（账号页徽章） |
+//! | `relay-optin` | 直接敲的那一家也走中转：这台那份用户级设置文件里写没写、对不对 ＋ 要贴的那一段（后端只读、不写那份文件） | 界面经 `chan.call` 直接问（机器页「终端」栏） |
 //!
 //! 起会话只有 `ccm` 一处：环境、中转地址由那台机器上的 `ccm` 自己定，界面只交一行 `ccm …`。
 //!
@@ -28,6 +29,7 @@
 //! ⚠ ① 与 ⑥ 的降级**刻意不同**（`whenDown`）—— 「把这两种降级写成一样是最容易犯的错」。
 
 use super::CREDENTIALS_FILE_AGENT;
+use crate::agents::{SettingsBaseUrl, SettingsEnvFace, SettingsUnreadable};
 use copy_core::copy_text;
 use relay_route_core::{base_url, RouteMode, PORT};
 use serde_json::{json, Value};
@@ -163,18 +165,18 @@ pub(crate) fn relay_for_exec(
         all_sessions_on(&get),
         relay_port(&get),
         &super::file_face::machine_rows(),
-        &|port| {
-            relay_key(&get).is_some() && std::net::TcpStream::connect(("127.0.0.1", port)).is_ok()
+        &|port, url| {
+            keyed_for_exec(url, &get).is_some()
+                && std::net::TcpStream::connect(("127.0.0.1", port)).is_ok()
         },
     )
 }
 
-/// 这台机器上中转钥匙文件里那一把（家目录底下 `relay_route_core::KEY_FILE_REL`）。不在 / 形状不对 ⇒ `None`。只读。
-pub(crate) fn relay_key(get: &dyn Fn(&str) -> Option<String>) -> Option<String> {
+/// 一条不带钥匙的中转地址 ⇒ 插上这台盘上那把钥匙的那一形（agent 进程环境里要的就是它）。
+/// 插钥匙只经中转那一处（`relay::keyed_with_key_on_disk`）；没有家目录 / 钥匙不在 / 地址不是构造口的产物 ⇒ `None`。只读。
+pub(crate) fn keyed_for_exec(url: &str, get: &dyn Fn(&str) -> Option<String>) -> Option<String> {
     let home = crate::platform::paths::home_dir_from(&|k| get(k).map(Into::into))?;
-    let raw = std::fs::read_to_string(home.join(relay_route_core::KEY_FILE_REL)).ok()?;
-    let k = raw.trim();
-    relay_route_core::key_shape_ok(k).then(|| k.to_string())
+    crate::relay::keyed_with_key_on_disk(&home, url)
 }
 
 /// 同上，答的是常驻后端自己（别名预览 `ccm-print`）：中转就在本进程里，读本进程的监听状态。
@@ -189,7 +191,7 @@ pub(crate) fn relay_for_preview(
         all_sessions_on(&get),
         relay_port(&get),
         &super::file_face::machine_rows(),
-        &crate::relay::our_relay_listening,
+        &|port, _| crate::relay::our_relay_listening(port),
     )
 }
 
@@ -201,13 +203,13 @@ pub(crate) fn relay_with(
     all_sessions: bool,
     port: u16,
     routed: &[String],
-    listening: &dyn Fn(u16) -> bool,
+    listening: &dyn Fn(u16, &str) -> bool,
 ) -> Result<Option<String>, String> {
     let registered = super::Upstreams::from_env(&|k| std::env::var(k).ok())
         .is_some_and(|u| u.of(agent).is_some());
     match decide_launch(agent, account, all_sessions, port, routed, registered) {
         Endpoint::None => Ok(None),
-        Endpoint::Inject { url, .. } if listening(port) => Ok(Some(url)),
+        Endpoint::Inject { url, .. } if listening(port, &url) => Ok(Some(url)),
         Endpoint::Inject {
             when_down: WhenDown::Refuse,
             account,
@@ -231,13 +233,6 @@ pub(crate) fn relay_with(
             ..
         } => Ok(None),
     }
-}
-
-/// 一条不带钥匙的中转地址 ＋ 钥匙 ⇒ agent 进程环境里那一形（`http://127.0.0.1:<口>/<钥匙>/<前缀>/…`）。
-/// 拆不开（不是构造口的产物）⇒ `None`。
-pub(crate) fn keyed_base_url(base_url: &str, key: &str) -> Option<String> {
-    let (head, tail) = base_url_halves(base_url)?;
-    Some(format!("{head}{key}{tail}"))
 }
 
 /// 中转地址拆成「`http://主机:口/`」与「`/s/…` 那一截」两半（钥匙段插在中间）。不是构造口的产物 ⇒ `None`。
@@ -289,6 +284,139 @@ pub(crate) fn answer_routing_with(
         "routed": acct_core::apikey_routed_subset(&dirs, routed, agent, CREDENTIALS_FILE_AGENT),
         "running": listening(PORT),
     }))
+}
+
+/// 那份设置文件里的地址和现在该贴的那一条比，是哪一态。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum OptinState {
+    /// 贴过，且等于现在那一条。
+    Installed,
+    /// 是我们那一形（回环 ＋ 钥匙段 ＋ 我们的路由），但不等于现在那一条（钥匙 / 端口 / 路由换了）。
+    Stale,
+    /// 没写。
+    Absent,
+    /// 写了别的上游地址（不是我们那一形）。
+    Other,
+    /// 读不了 / 读不懂 ⇒ 装没装说不清。
+    Unreadable,
+}
+
+impl OptinState {
+    fn name(self) -> &'static str {
+        match self {
+            OptinState::Installed => "installed",
+            OptinState::Stale => "stale",
+            OptinState::Absent => "absent",
+            OptinState::Other => "other",
+            OptinState::Unreadable => "unreadable",
+        }
+    }
+}
+
+/// 一条地址是不是我们那一形（带钥匙段的、或没带钥匙段的构造口产物）。
+fn ours(url: &str) -> bool {
+    relay_route_core::split_keyed_base_url(url).is_some()
+        || relay_route_core::base_url_shape_ok(url)
+}
+
+/// ★ 判态（纯函数）：读出来的那一格 × 现在该贴的那一条（`None` ＝ 生成不了）。
+pub(crate) fn optin_state(found: &SettingsBaseUrl, expected: Option<&str>) -> OptinState {
+    match found {
+        SettingsBaseUrl::Unreadable(_) => OptinState::Unreadable,
+        SettingsBaseUrl::Unset => OptinState::Absent,
+        SettingsBaseUrl::Set(u) if Some(u.as_str()) == expected => OptinState::Installed,
+        SettingsBaseUrl::Set(u) if ours(u) => OptinState::Stale,
+        SettingsBaseUrl::Set(_) => OptinState::Other,
+    }
+}
+
+/// `relay-optin`：入参 `{}` → `{state, note, missing, source, snippet, listening}`。
+///
+/// 该贴的那一条 ＝ 决策表里「没表态是哪个号」那一发（[`decide_launch`]，全量注入按「是」—— 贴这一段就是用户自己选了全量）插上这台的钥匙；
+/// 已装 ⇒ 不再带那一段（钥匙只在要贴的时候才出这台）。只读：那份文件由用户自己合并，后端一个字节不写。
+pub(crate) fn answer_optin(_args: &Value) -> EndpointAnswer {
+    let home = crate::platform::paths::home_dir()
+        .ok_or(("failed", copy_text("beUpstreamEndpoint.optin.noHome", &[])))?;
+    let (agent, face) = crate::agents::settings_env_face()
+        .ok_or(("failed", copy_text("beUpstreamEndpoint.optin.noAgent", &[])))?;
+    let registered = super::Upstreams::from_env(&|k| std::env::var(k).ok())
+        .is_some_and(|u| u.of(agent).is_some());
+    Ok(optin_at(
+        &home,
+        agent,
+        &face,
+        &super::file_face::machine_rows(),
+        registered,
+        &crate::relay::our_relay_listening,
+    ))
+}
+
+/// [`answer_optin`] 的本体（家目录 · 那一家 · 表 · 已登记 · 中转在不在都是参数，判据喂夹具）。
+pub(crate) fn optin_at(
+    home: &std::path::Path,
+    agent: &str,
+    face: &SettingsEnvFace,
+    routed: &[String],
+    registered: bool,
+    listening: &dyn Fn(u16) -> bool,
+) -> Value {
+    let (file, found) = (face.read)(home);
+    let expected = match decide_launch(
+        agent,
+        &LaunchAccount::Undeclared,
+        true,
+        PORT,
+        routed,
+        registered,
+    ) {
+        Endpoint::Inject { url, .. } => Some(
+            crate::relay::keyed_with_key_on_disk(home, &url)
+                .ok_or(copy_text("beUpstreamEndpoint.optin.noKey", &[])),
+        ),
+        Endpoint::None => None,
+    };
+    let current = expected
+        .as_ref()
+        .and_then(|e| e.as_ref().ok())
+        .map(String::as_str);
+    let state = optin_state(&found, current);
+    let snippet = (state != OptinState::Installed)
+        .then_some(current)
+        .flatten()
+        .map(|u| (face.snippet)(u));
+    // 两句各说各的：`note` 说那份文件为什么读不了；`missing` 说那一段为什么生成不了（已装 / 生成得了 ⇒ 空）。
+    let note = match &found {
+        SettingsBaseUrl::Unreadable(SettingsUnreadable::BadShape) => {
+            copy_text("beUpstreamEndpoint.optin.badShape", &[])
+        }
+        SettingsBaseUrl::Unreadable(why) => {
+            let why = match why {
+                SettingsUnreadable::Io(e) => e.clone(),
+                SettingsUnreadable::NotFile => copy_text("beUpstreamEndpoint.optin.notFile", &[]),
+                SettingsUnreadable::TooLarge(cap) => copy_text(
+                    "beUpstreamEndpoint.optin.tooLarge",
+                    &[("cap", &cap.to_string())],
+                ),
+                SettingsUnreadable::BadShape => String::new(),
+            };
+            copy_text("beUpstreamEndpoint.optin.unreadable", &[("why", &why)])
+        }
+        _ => String::new(),
+    };
+    let missing = match expected {
+        _ if state == OptinState::Installed => String::new(),
+        Some(Ok(_)) => String::new(),
+        Some(Err(why)) => why,
+        None => copy_text("beUpstreamEndpoint.optin.noRoute", &[]),
+    };
+    json!({
+        "state": state.name(),
+        "note": note,
+        "missing": missing,
+        "source": file.display().to_string(),
+        "snippet": snippet,
+        "listening": listening(PORT),
+    })
 }
 
 /// 线上 `agent`（适配器 id）→ 那一家。缺席 / 不是串 ⇒ `bad_args`（入参形状，调用方没表态是哪一家就不猜）；

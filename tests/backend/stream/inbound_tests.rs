@@ -736,6 +736,7 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "apikey-key-set",
         "apikey-read",
         "apikey-routing", //
+        "relay-optin",    // 读一份设置文件 ＋ 一份钥匙文件
         // 起会话那一行：本机那条核一次目录（stat）⇒ 阻塞档；远端那条是纯函数 ⇒ 普通 spawn。
         "launch-local",
         "launch-render-cli",

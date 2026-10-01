@@ -122,6 +122,8 @@ export interface SessionFacts {
   /** 写类工具碰过的文件，近因序（最近碰的在末尾）。 */
   touchedFiles: string[];
   usage: UsageFact | null;
+  /** 会话的项目目录（会话起在哪个目录；那台后端读记录开头给的）。开头里还没有 ⇒ `null`。 */
+  projectDir: string | null;
 }
 
 /** 会话事实的回包。`available == false` 时 `facts` 缺席、`failure` 是种类、`reason` 是给人看的原因（**不是错误**）。 */
@@ -205,8 +207,9 @@ export function decodeFacts(v: unknown): SessionFacts {
   const bad = (): never => {
     throw new ShapeError("history-facts", copyText("sessionReads.missing.facts"));
   };
-  if (!isObj(v) || !exactKeys(v, ["end", "forkedFrom", "touchedFiles", "usage"])) return bad();
+  if (!isObj(v) || !exactKeys(v, ["end", "forkedFrom", "projectDir", "touchedFiles", "usage"])) return bad();
   if (!isNum(v.end) || !(v.forkedFrom === null || isStr(v.forkedFrom))) return bad();
+  if (!(v.projectDir === null || isStr(v.projectDir))) return bad();
   if (!Array.isArray(v.touchedFiles) || !v.touchedFiles.every(isStr)) return bad();
   let usage: UsageFact | null = null;
   if (v.usage !== null) {
@@ -216,7 +219,13 @@ export function decodeFacts(v: unknown): SessionFacts {
     }
     usage = { promptTokens: u.promptTokens, model: u.model as string | null };
   }
-  return { end: v.end, forkedFrom: v.forkedFrom as string | null, touchedFiles: v.touchedFiles as string[], usage };
+  return {
+    end: v.end,
+    forkedFrom: v.forkedFrom as string | null,
+    touchedFiles: v.touchedFiles as string[],
+    usage,
+    projectDir: v.projectDir as string | null,
+  };
 }
 
 // ─── 失败怎么说（唯一住址）───

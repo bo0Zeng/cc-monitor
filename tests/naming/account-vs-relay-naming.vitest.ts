@@ -320,7 +320,7 @@ export const RELAY_NAMES: { name: string; re: RegExp; why: string }[] = [
   { name: "relay_endpoint_for", re: ident("relay_endpoint_for"), why: "「往 ANTHROPIC_BASE_URL 里写哪个中转地址」的唯一判断口（有行时它把那一格交给 `apikey_endpoint_for`）" },
   { name: "relay_route_path_in", re: ident("relay_route_path_in"), why: "拼中转路由键（中转的线格式）" },
   { name: "relay_base_url_in", re: ident("relay_base_url_in"), why: "拼中转地址" },
-  // `relay_env_prefix_posix`（载荷那一层拼中转前缀）随起会话只交一行 `ccm …` 删了；接替它的是 `ccm` 那一句。
+  // 载荷那一层拼中转前缀的那一个随起会话只交一行 `ccm …` 删了；接替它的是 `ccm` 那一句。
   { name: "relay_export", re: ident("relay_export"), why: "`ccm` 非得经 shell 那一趟把中转地址渲成 export 那一句" },
   { name: "relay_prefix_for_launch", re: ident("relay_prefix_for_launch"), why: "起会话那一刻挑中转前缀的接线口" },
   { name: "relay_running", re: ident("relay_running"), why: "本机中转进程在不在跑" },

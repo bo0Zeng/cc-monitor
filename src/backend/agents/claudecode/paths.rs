@@ -54,6 +54,67 @@ pub(crate) fn settings_may_set_base_url(
     })
 }
 
+/// 直接敲的 claude 也走中转（注册表 `DefaultUpstream.settings_env` 那一格）：`~/.claude/settings.json` 的 `env.ANTHROPIC_BASE_URL`。
+/// 各号的设置文件都链回这一份 ⇒ 写进去对这台所有号同时生效；它**压过**进程环境（见 [`settings_may_set_base_url`]）。
+pub(crate) const SETTINGS_ENV: super::super::SettingsEnvFace = super::super::SettingsEnvFace {
+    read: read_settings_base_url,
+    snippet: settings_env_snippet,
+};
+
+/// 读那份设置文件的上限（几 KB 的配置；超了按「读不了」说，不当没写）。
+const SETTINGS_CAP_BYTES: u64 = 1 << 20;
+
+/// `$HOME/.claude/settings.json`（不看 `CLAUDE_CONFIG_DIR`：直接敲的 claude 没设它时读的就是这一份）＋ 里面那一格。**只读**。
+/// 不在 ⇒ 没写；不是普通文件 / 超上限 / 读不动 / 读不懂 ⇒ 读不了（带为什么，不当没写）。
+fn read_settings_base_url(home: &Path) -> (PathBuf, super::super::SettingsBaseUrl) {
+    use super::super::{SettingsBaseUrl as S, SettingsUnreadable as Why};
+    let file = home.join(HOME_DIR_NAME).join("settings.json");
+    let raw = match std::fs::metadata(&file) {
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return (file, S::Unset),
+        Err(e) => Err(Why::Io(e.to_string())),
+        Ok(m) if !m.is_file() => Err(Why::NotFile),
+        Ok(m) if m.len() > SETTINGS_CAP_BYTES => {
+            let error = Why::TooLarge(SETTINGS_CAP_BYTES);
+            Err(error)
+        }
+        Ok(_) => std::fs::read_to_string(&file).map_err(|e| Why::Io(e.to_string())),
+    };
+    let found = match raw {
+        Ok(text) => settings_base_url(&text),
+        Err(error) => S::Unreadable(error),
+    };
+    (file, found)
+}
+
+/// 原文 → `env.ANTHROPIC_BASE_URL`。BOM 容忍；空串当没写；顶层 / `env` 不是对象、值不是串 ⇒ 读不懂（不猜成没写）。
+fn settings_base_url(raw: &str) -> super::super::SettingsBaseUrl {
+    use super::super::{SettingsBaseUrl as S, SettingsUnreadable as Why};
+    let bad = || S::Unreadable(Why::BadShape);
+    let Ok(v) = serde_json::from_str::<serde_json::Value>(raw.trim_start_matches('\u{feff}'))
+    else {
+        return bad();
+    };
+    let Some(top) = v.as_object() else {
+        return bad();
+    };
+    match top.get("env") {
+        None | Some(serde_json::Value::Null) => S::Unset,
+        Some(serde_json::Value::Object(env)) => match env.get(BASE_URL_ENV) {
+            None | Some(serde_json::Value::Null) => S::Unset,
+            Some(serde_json::Value::String(u)) if u.is_empty() => S::Unset,
+            Some(serde_json::Value::String(u)) => S::Set(u.clone()),
+            Some(_) => bad(),
+        },
+        Some(_) => bad(),
+    }
+}
+
+/// 要合并进那份文件的那一段：`{"env": {"ANTHROPIC_BASE_URL": "<地址>"}}`（两格缩进）。
+fn settings_env_snippet(url: &str) -> String {
+    let v = serde_json::json!({ "env": { BASE_URL_ENV: url } });
+    serde_json::to_string_pretty(&v).unwrap_or_default()
+}
+
 /// 默认配置根在 `$HOME` 下的名字。
 pub(crate) const HOME_DIR_NAME: &str = ".claude";
 

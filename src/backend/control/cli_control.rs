@@ -157,6 +157,8 @@ pub(crate) fn cli_exposed(spec: &CommandSpec) -> bool {
 pub(crate) const STREAM_ONLY: &[&str] = &[
     "resync",
     "apikey-routing",
+    // 「直接敲的也走中转」那一段的「中转在不在」同样读本进程的监听状态。
+    "relay-optin",
     "launch-local",
     "forward-start",
     "forward-stop",

@@ -348,8 +348,13 @@ pub enum Frame {
         /// 来源：pidfile 的 `attachable` 布尔字段（契约见 `src/doc/IPC-PROTOCOL.md` §9.3）。
         #[serde(skip_serializing_if = "Option::is_none")]
         attachable: Option<bool>,
+        /// pidfile 记的 `cwd`：进程起在哪个目录（客户端认「我刚起的那条起来了」用）。
         #[serde(skip_serializing_if = "Option::is_none")]
         cwd: Option<String>,
+        /// 会话的项目目录：会话起在哪个目录（tab 标题 · 打开工作目录 · 分组都用它）。记录归哪一家就问哪一家
+        /// （`agents::project_dir_of`，只读记录开头）；记录还没写出来 ⇒ pidfile 那一格（那一刻还没有命令跑过，就是起会话的目录）。
+        #[serde(skip_serializing_if = "Option::is_none")]
+        project_dir: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
         name: Option<String>,
         /// Batch8-F25（additive）：该会话 jsonl 的远端绝对路径（同 sid 多文件时

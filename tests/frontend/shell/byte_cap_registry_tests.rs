@@ -456,6 +456,14 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
         "按内容搜一趟累计读进来的字节",
         "截断+说清",
     ),
+    // 会话的项目目录只读记录开头：读满了还没找到 ⇒ 没有这一格（标题退到 aiTitle / sid），日志里说是哪份文件。
+    (
+        "src/backend/agents/mod.rs",
+        "HEAD_CAP",
+        1 << 20,
+        "找会话的项目目录时，会话记录开头至多读多少字节",
+        "跳过+说清",
+    ),
     // ⚠ 判二进制看开头多远那个数（`BINARY_SNIFF_LEN`）不是上界 —— 什么都不因它被截掉，不登记。
     // 远端那条送法（ssh 外壳）随渲染进了本机后端，上限同值搬过去。
     (
@@ -778,6 +786,14 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
         "SETTINGS_CAP_BYTES",
         1 << 20,
         "`hooks-diag` 读那台 agent 配置根下的 `settings.json` 多大",
+        "降级+说清",
+    ),
+    // 「直接敲的也走中转」（`relay-optin`，只读）读那台用户级设置文件多大；超了按「读不了」说，不当没装。
+    (
+        "src/backend/agents/claudecode/paths.rs",
+        "SETTINGS_CAP_BYTES",
+        1 << 20,
+        "`relay-optin` 读那台 `~/.claude/settings.json` 多大",
         "降级+说清",
     ),
     // 资产目录那六个数（`agents/claudecode/assets.rs` · `asset_catalog.rs` · `asset_sync.rs`）。
