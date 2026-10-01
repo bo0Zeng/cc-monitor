@@ -2651,6 +2651,25 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
     /// `tool_registry`（→ `tool_registry_environment_tests.rs`）。
     /// 另有**真新增的一条**（退役判据留下的墓碑），挂在本表末尾、单独写了理由。
     const TOMBSTONED: &[(&str, &str, usize)] = &[
+        // cc-bus 装 / 三态那两条旧 Tauri 命令：代码里最后一处（驾驶舱判据里的替身）随驾驶舱装口删了 ⇒ 点它们的那几行墓碑从此落在死名人群上。
+        ("src/frontend/shell/src/cc_bus_deploy.rs", "deploy_local_cc_bus", 1),
+        ("src/frontend/shell/src/cc_bus_deploy.rs", "cc_bus_install_state", 1),
+        ("src/frontend/ui/ipc/commands.ts", "deploy_local_cc_bus", 1),
+        ("src/frontend/ui/ipc/commands.ts", "cc_bus_install_state", 1),
+        ("tests/frontend/shell/frame_query_tests.rs", "deploy_local_cc_bus", 1),
+        ("tests/frontend/shell/frame_query_tests.rs", "cc_bus_install_state", 1),
+        ("tests/frontend/shell/parity_ledger_tests.rs", "deploy_local_cc_bus", 1),
+        ("tests/frontend/shell/parity_ledger_tests.rs", "cc_bus_install_state", 1),
+        (
+            "tests/frontend/shell/command_home_registry_tests.rs",
+            "deploy_local_cc_bus",
+            1,
+        ),
+        (
+            "tests/frontend/shell/command_home_registry_tests.rs",
+            "cc_bus_install_state",
+            1,
+        ),
         // 〔THIN〕gate-core 收成后端模块：零调用方的取反名删了 · monitor 转调壳那条判据翻面，原处各一块。
         ("src/backend/control/gate_rules.rs", "needs_remote_sid", 1),
         (
@@ -5303,7 +5322,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/frontend/ui/account-prefs.ts", 1),
         // 〔E2 · V28〕`backendPath` · 远端三行入口 · 逐字节副本退役，点旧名的散文挂墓碑。
         // 〔MIG-3a · 09-28 预裁〕`acct_iso_deploy.rs` 那一行随整份文件删了（字节随后端二进制走）。
-        ("tests/frontend/shell/command_home_registry_tests.rs", 5), // 〔FIX4 · ⑬〕3 → 5：开终端 ssh 外壳进本机后端，点旧名的散文挂墓碑 // 〔MOD〕2 → 3 // 〔MIG-3b 续〕1 → 2：足迹那一行已迁 // 〔MIG-3a · 09-28 预裁〕新贴：待迁那一行删了，原处一块
+        ("tests/frontend/shell/command_home_registry_tests.rs", 7), // 〔10-01〕5 → 7：cc-bus 装 / 三态那一行的两个旧名各贴一块（名字随驾驶舱装口一起死了） // 〔FIX4 · ⑬〕3 → 5：开终端 ssh 外壳进本机后端，点旧名的散文挂墓碑 // 〔MOD〕2 → 3 // 〔MIG-3b 续〕1 → 2：足迹那一行已迁 // 〔MIG-3a · 09-28 预裁〕新贴：待迁那一行删了，原处一块
         ("src/frontend/shell/src/filewin/entry.rs", 2), // 〔MIG-3a · 09-28 裁 3〕新贴：开窗前那两问进窗口进程，monitor 侧三个函数退役
         ("src/frontend/shell/src/quote_singleton_guard.rs", 3), // 〔THIN〕2 → 3：病史里 `ssh_source` 那层转调壳随零生产调用删了，挂墓碑 // 〔FIX4 · ⑬〕1 → 2：开终端 ssh 外壳进本机后端，点旧名的散文挂墓碑 // 〔MIG-3a · 09-28 裁 2〕新贴：病史里那第五份 sq 随跑安装脚本退役
         // 〔FIX4 · `99 §2.1 ⑬`〕新贴：ssh 外壳（`build_remote_ssh_ps_command` 一族）搬进本机后端 `dial/terminal.rs`，

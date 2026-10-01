@@ -74,8 +74,9 @@ export function decodeHooksReport(v: unknown): HooksReport {
 /** 问 `origin` 那台后端要一份成品（本机逐字 `LOCAL_ORIGIN`）。问不出来 ⇒ 抛（带那台的原话）。 */
 export async function fetchHooksReport(origin: Origin): Promise<HooksReport> {
   try {
-    const reply = await chan.call(origin, "hooks-diag", jsonBody({}), budgetWithin(HOOKS_DIAG_BUDGET_MS));
-    return decodeHooksReport(readJson(reply));
+    const body = jsonBody({});
+    const budget = budgetWithin(HOOKS_DIAG_BUDGET_MS);
+    return decodeHooksReport(readJson(await chan.call(origin, "hooks-diag", body, budget)));
   } catch (e) {
     throw new Error(saidOf(e, copyText("ccBusHooks.fetch.oldBackend")));
   }

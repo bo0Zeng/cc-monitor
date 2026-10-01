@@ -1,6 +1,6 @@
 //! 〔MIG-3a · 子步 3 · `设计/01 §6.7a` 规矩 1 · 主会话 09-27 裁 ⑯〕**把这台二进制带着的 cc-bus 装到这台的 `<skills 根>/cc-bus/`**。
 //!
-//! 从前是 monitor 的 `cc_bus_deploy.rs`（`deploy_local_cc_bus` / `cc_bus_install_state` 两条 Tauri 命令）：monitor 读盘判三态、
+//! 从前是 monitor 那一侧读盘判、
 //! 算好经本机后端写。「资产的装不算部署」—— 往那台放 cc-bus 归**后端代管的资产**（`01 §3.4`）：判 · 写 · 记都在那台后端，
 //! 写经它自己的文件管理面（[`crate::assets::door`]），装卸账**复用 skill 装记录那一份**（`skill_ledger`，同形：`name = "cc-bus"`，
 //! 目录由记录模块按 skills 根算，不另立第二份账）。
