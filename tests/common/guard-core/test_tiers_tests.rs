@@ -579,7 +579,8 @@ const INTEGRATION: &[&str] = &[
     "tests/backend/accounts/upstream_select/endpoint_tests.rs", // 〔US1〕上游选择出的两份成品（金样那条读夹具文件）
     "tests/backend/accounts/upstream_select/file_face_tests.rs",
     "tests/backend/faces/accounts_face_tests.rs", // 账号库那几条命令在临时家目录上真建目录 · 链接 · 复制 · 回滚
-    "tests/backend/accounts/manage/mcp_share_exec_tests.rs", // 账号之间同步 MCP：临时家目录上两个号真走建库 · 加号 · 同步 · 删 · 冲突 ＋ 文件事件触发
+    // 账号之间同步 MCP：临时家目录上两个号真走建库 · 加号 · 同步 · 删 · 冲突 ＋ 文件事件触发
+    "tests/backend/accounts/manage/mcp_share_exec_tests.rs",
     "tests/backend/agents/claudecode/assets_tests.rs", // 〔AS2〕
     "tests/backend/agents/claudecode/paths_tests.rs", // 〔E2 · V146〕设置文件压不压过进程环境里的上游地址（临时目录夹具）
     "tests/frontend/shell/ccm_probe_tests.rs", // 〔E2〕SCAN → INTEGRATION：多了「先读字节认身份」那条（临时文件夹具）
