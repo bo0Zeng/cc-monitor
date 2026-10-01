@@ -830,16 +830,12 @@ export function ccBusControlShim(
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// 起会话的计划与渲染四问改走通道之后，判据那一侧的翻译
+// 起会话那两问（那一行 `ccm …`）改走通道之后，判据那一侧的翻译
 // ════════════════════════════════════════════════════════════════════════════
 //
-// 它们从前是 monitor 的 Tauri 命令（`render_launch_payload` · `render_ccm_launch` · `relay_endpoint_for_launch` ·
-// `resume_history_session` / `new_local_session` / `render_local_attach`〔散文墓碑〕），判据按命令名答话、按旧形参断言。
-// 今天是一发 `chan_call`（op = `launch-render-payload` · `launch-render-cli` · `launch-endpoint` · `launch-local`）⇒ 本节把那一发
-// 译回旧名字交给判据手里的 `invoke` 替身，再把旧回包译成后端的成品字节：
-// - 载荷：串 ⇒ `{cmd}`；抛出带 `REFUSE:` 的 ⇒ 对端拒（码 `refused`，标摘掉）；别的抛 ⇒ 那台没有控制通道（证明没发出去）。
-// - `ccm …` 调用行：`{ok, cmd, reason}` 原样；抛 ⇒ 没有控制通道。
-// - 中转地址：`string | null` ⇒ `{baseUrl}`；抛 ⇒ 对端拒（码 `relay_down`，原话）。
+// 判据按旧命令名答话（`render_ccm_launch` · `resume_history_session` / `new_local_session` / `render_local_attach`〔散文墓碑〕）。
+// 今天是一发 `chan_call`（op = `launch-render-cli` · `launch-local`）⇒ 本节把那一发译回旧名字交给判据手里的 `invoke` 替身：
+// - 那一行：替身回串 ⇒ `{cmd}`；没答 ⇒ 一个认得出的中性替身 `ccm <rendered:请求>`；抛 ⇒ 对端拒（码 `refused`，原话）。
 // - 本机起会话：按 `action.kind` 译回三条旧命令之一（旧形参），回 `{cmd, launchId}`（新起那一格的 token = 替身回的串）；
 //   抛 ⇒ 对端拒（码 `refused`）。开窗那一跳（`open_local_terminal`）原样交给替身。
 /**
@@ -879,35 +875,16 @@ export function launchRenderShim(
     const a = args as ChanCallArgs;
     const body = () => chanArgsJson(a) as Record<string, unknown>;
     switch (a.op) {
-      case "launch-render-payload": {
-        let out: unknown;
-        try {
-          out = await inner("render_launch_payload", { req: body() });
-        } catch (e) {
-          const w = wordsOf(e);
-          if (w.startsWith("REFUSE:")) throw refusedReply("refused", w.slice("REFUSE:".length).trimStart());
-          throw NO_CHANNEL;
-        }
-        return chanReply({ cmd: out });
-      }
       case "launch-render-cli": {
+        // 那一行由那台后端渲（Rust，`wire::render_ccm_launch`）；桩答的是一个认得出的中性替身（`ccm <rendered:请求>`），
+        //   判据判的是「前端把后端交的那一行原样交出去」与「请求里带了什么」，不是渲得对不对（那是 `cli-golden.json` 的活）。
         let out: unknown;
         try {
           out = await inner("render_ccm_launch", { req: body() });
-        } catch {
-          throw NO_CHANNEL;
-        }
-        return chanReply(out ?? { ok: false, cmd: null, reason: "桩没答" });
-      }
-      case "launch-endpoint": {
-        const b = body();
-        let url: unknown;
-        try {
-          url = await inner("relay_endpoint_for_launch", { origin: a.origin, account: b.account });
         } catch (e) {
-          throw refusedReply("relay_down", wordsOf(e));
+          throw refusedReply("refused", wordsOf(e));
         }
-        return chanReply({ baseUrl: url ?? null });
+        return chanReply({ cmd: typeof out === "string" ? out : `ccm <rendered:${JSON.stringify(body())}>` });
       }
       case "launch-local": {
         const [name, old] = localLaunchOldArgs(body());
@@ -917,10 +894,10 @@ export function launchRenderShim(
         } catch (e) {
           throw refusedReply("refused", wordsOf(e));
         }
-        if (name === "render_local_attach") return chanReply({ cmd: out ?? "<backend-rendered-attach>", launchId: null });
+        if (name === "render_local_attach") return chanReply({ cmd: out ?? "ccm <backend-rendered-attach>", launchId: null });
         if (name === "new_local_session")
-          return chanReply({ cmd: "<backend-rendered-local-line>", launchId: typeof out === "string" && out !== "" ? out : null });
-        return chanReply({ cmd: "<backend-rendered-local-line>", launchId: null });
+          return chanReply({ cmd: "ccm <backend-rendered-local-line>", launchId: typeof out === "string" && out !== "" ? out : null });
+        return chanReply({ cmd: "ccm <backend-rendered-local-line>", launchId: null });
       }
       default:
         return inner(cmd, args);

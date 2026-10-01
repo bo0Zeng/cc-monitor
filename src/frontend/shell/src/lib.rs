@@ -905,9 +905,7 @@ pub fn run() {
             config::load_config,
             config::patch_config,
             // K-H2a：apikey 表那把 key 的写（`KS10`）。读状态与「表里有没有行」两问走通道（`apikey-read` / `apikey-routing`）。
-            // 「起会话那一发注入哪个中转地址」那一问退役：界面经通道直接问那台后端 `launch-endpoint`（成品）；
-            //   monitor 只交它自己那个全量注入开关（monitor 进程环境）。
-            relay_all_sessions_switch,
+            // 「起会话那一发注入哪个中转地址」与全量注入开关都归起 agent 那台的 `ccm` 自己定（`relay_all_sessions_switch`〔散文墓碑〕删了）。
             // 别名六条（`aliases_*`〔散文墓碑〕）进了那台机器的后端（`assets/aliases/`），界面经通道直问 `aliases-*`。
             //   留下的只有「这台已握手的终端数」—— 它住本进程的 `BindRegistry`，不是那台盘上的事实。
             bound_terminal_count,
@@ -1321,16 +1319,6 @@ impl SkipRuns {
 // `apikey_routing_for`〔散文墓碑〕与它的答案结构退役：界面经 `chan.call` 直接问那台机器的后端 `apikey-routing`
 //   （`src/frontend/ui/apikey-reads.ts::fetchApikeyRouting`）—— 「表里有哪几行」与「中转在不在」两样事实都是那台后端的，人群只有一份。
 
-/// 全量注入开关：monitor 进程环境 `CCM_RELAY_ALL_SESSIONS`（默认开，`=0` 才关）。
-/// 它是 monitor 自己的配置（「本机 monitor 配置」），界面问一次、随起会话那一问交给那台后端（`launch-endpoint` / `launch-local`）。
-/// 原先它挂在 `history.rs` 的注入事实缝上、由 monitor 自己问后端再判（`relay_endpoint_for_launch`〔散文墓碑〕），那一判进了后端。
-#[tauri::command]
-fn relay_all_sessions_switch() -> bool {
-    std::env::var(RELAY_ALL_SESSIONS_ENV).map_or(true, |v| v != "0")
-}
-
-/// 那个开关的环境变量名。
-pub(crate) const RELAY_ALL_SESSIONS_ENV: &str = "CCM_RELAY_ALL_SESSIONS";
 
 // 墓碑：这里从前是 Tauri 命令 `write_apikey_credentials_key`〔散文墓碑〕（`K-H2a` 从界面配一把 key；
 // 按 origin 交那台机器的后端；本机那一臂先核路径）。常驻后端身份带上数据目录之后（`local_backend_host::hello_verdict`

@@ -6,11 +6,18 @@
  * 这一步必须是人做的。`print-parity:` 那 4 条是 `tests/e2e/ccm-print-parity.sh` 喂给真 `ccm --ccm-print` 的四行（按名取）。
  * ok 与 refusal 两类都要覆盖：只比 ok 的话，「该拒却渲染出来了」抓不到。
  *
- * ⚠ 留在 `src/` 而不在 `tests/`：`tests/` 不在 `tsconfig.json` 的 `include` 里，`LaunchContext` 改了形状 tsc 看不见这张表。
+ * 住 `tests/test-support/`：期望里有整条命令（就地 resume 那一格外层的 `tmux send-keys`），而 `src/` 生产段零 shell 串（条 1）。
  */
-import { AGENT_PROFILE } from "./agent-profile.ts";
-import type { LaunchContext } from "./launch-types.ts";
-import { buildCliRenderRequest } from "./remote-launch-run.ts";
+import { AGENT_PROFILE } from "../../src/frontend/ui/agent-profile.ts";
+import type { LaunchContext } from "../../src/frontend/ui/launch-types.ts";
+import { buildCliRenderRequest } from "../../src/frontend/ui/remote-launch-run.ts";
+import {
+  planAttach,
+  planLauncher,
+  planResumeDirect,
+  planResumeIntoExistingTmux,
+  planResumeTmux,
+} from "../../src/frontend/ui/launch-requests.ts";
 
 /** 能力齐全的那一份（`ccm --ccm-probe` 在有 tmux 的机器上吐的那一串）。 */
 const ALL_CAPS = [
@@ -90,6 +97,27 @@ export const CLI_GOLDEN_CASES: readonly CliGoldenCase[] = [
     ok: false, out: "会话 ID \"-x\" 不合法（1 到 64 位，只许 A-Z a-z 0-9 与 -，不以 - 开头）" },
   { name: "坏令牌", caps: ALL_CAPS, ctx: base({ rbindToken: "XYZ" }),
     ok: false, out: "启动期令牌 \"XYZ\" 不合法（要 32 位小写十六进制）" },
+  // ---- `path:` 那几条：monitor 每一条远端起会话路径真发出去的那一形（意图由生产 `plan*` 现造，与执行器同一个），
+  //      Rust 侧逐条断言它们都只交一行 `ccm …`（`cli_parity` 的 `every_monitor_launch_path_hands_over_one_ccm_line`）。----
+  { name: "path:远端直连 resume", caps: ALL_CAPS,
+    ctx: planResumeDirect("s1", "/p", "claude", { configDir: ACCT, accountName: "z", rbindToken: TOKEN }),
+    ok: true, out: `ccm --resume s1 -- --account z --ccm-rbind-token ${TOKEN} --cwd /p` },
+  { name: "path:远端 tmux 建会话 resume（换号重启 · 分叉）", caps: ALL_CAPS,
+    ctx: planResumeTmux("s1", "/p", "claude", "cc-s1", { configDir: ACCT, accountName: "z", rbindToken: TOKEN }),
+    ok: true, out: `ccm --resume s1 -- --ccm-tmux=cc-s1 --ccm-sid=s1 --account z --ccm-rbind-token ${TOKEN} --cwd /p` },
+  { name: "path:分叉继承源会话的目录（说不出名字）", caps: ALL_CAPS,
+    ctx: planResumeTmux("s1", "/p", "claude", "p-fork-cc", { configDir: ACCT, rbindToken: TOKEN }),
+    ok: true, out: `ccm --resume s1 -- --ccm-tmux=p-fork-cc --ccm-sid=s1 --account-dir /home/u/.claude-accts/z --ccm-rbind-token ${TOKEN} --cwd /p` },
+  { name: "path:就地 resume 键进 pane 的那一行", caps: ALL_CAPS,
+    ctx: { ...planResumeIntoExistingTmux("s1", "cc-s1", "claude", { rbindToken: TOKEN }), container: { kind: "none" } },
+    ok: true, out: `ccm --resume s1 -- --base --ccm-rbind-token ${TOKEN}` },
+  { name: "path:就地 resume 回落那一整串（外层只包那一行）", caps: ALL_CAPS,
+    ctx: planResumeIntoExistingTmux("s1", "cc-s1", "claude", { rbindToken: TOKEN }),
+    ok: true, out: `tmux send-keys -t '=cc-s1:' 'ccm --resume s1 -- --base --ccm-rbind-token ${TOKEN}' Enter; tmux attach -t '=cc-s1:'` },
+  { name: "path:远端开新会话", caps: ALL_CAPS,
+    ctx: planLauncher("/p", "w-cc", "claude", { rbindToken: TOKEN }),
+    ok: true, out: `ccm -- new --ccm-tmux=w-cc --base --ccm-rbind-token ${TOKEN} --cwd /p` },
+  { name: "path:远端接回", caps: ALL_CAPS, ctx: planAttach("cc-s1"), ok: true, out: "ccm -- --attach cc-s1" },
   // ---- `ccm-print-parity` 的四个场景（那套 e2e 按名取 `out`） ----
   { name: "print-parity:resumeTmuxWithIdentity", caps: ALL_CAPS, ctx: base({
       action: { kind: "resume", sid: "p1" },
@@ -115,7 +143,7 @@ export const CLI_GOLDEN_CASES: readonly CliGoldenCase[] = [
 export function renderCliGoldenFixture(): string {
   return `${JSON.stringify(
     {
-      _: "由 src/frontend/ui/launch-cli-golden.ts 生成，勿手改。重生成：npm run gen:cli-golden",
+      _: "由 tests/test-support/launch-cli-golden.ts 生成，勿手改。重生成：npm run gen:cli-golden",
       defaultLauncher: AGENT_PROFILE.defaultLauncher,
       cases: CLI_GOLDEN_CASES.map((c) => ({
         name: c.name,

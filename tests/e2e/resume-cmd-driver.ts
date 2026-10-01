@@ -4,9 +4,8 @@
 // 重写一份(那样测的是复制品、不是被测代码)。#75(CLAUDE_CONFIG_DIR 注入) / #76(复用 cc-<sid8>
 // 名不产 -N 孤儿) 的修复都活在生产那条链上,套件据本驱动器的 stdout 断言并真跑到 tmux。
 //
-// 命令串的三个 mode 改走**生产那条链**（`launch-render-driver.ts`：生产 `plan*` →
-// 生产 `buildLaunchRenderRequest` → 生产 Rust `render_launch_payload`）。此前 import 的是
-// `remote-launch.ts` 那五个 builder —— 步 22b·B 之后它们零生产调用，本驱动器从那天起验的是副本。
+// 命令串的三个 mode 走**生产那条链**（`launch-render-driver.ts`：生产 `plan*` →
+// 生产 `buildCliRenderRequest` → 生产 Rust `render_ccm_launch`），产出是那一行 `ccm …`。
 //
 // 用法(每个 mode 打印一行 stdout):
 //   into-existing <sid> <name> <launcher> [configDir]   -> planResumeIntoExistingTmux → 生产渲染
@@ -35,20 +34,20 @@ try {
     case "into-existing":
       process.stdout.write(
         renderCmdViaProduction(
-          planResumeIntoExistingTmux(a[0], a[1], a[2], { configDir: opt(a[3]) }).plan,
+          planResumeIntoExistingTmux(a[0], a[1], a[2], { configDir: opt(a[3]) }),
         ) + "\n",
       );
       break;
     case "tmux-new":
       process.stdout.write(
         renderCmdViaProduction(
-          planResumeTmux(a[0], a[1], a[2], a[3], { configDir: opt(a[4]) }).plan,
+          planResumeTmux(a[0], a[1], a[2], a[3], { configDir: opt(a[4]) }),
         ) + "\n",
       );
       break;
     case "direct":
       process.stdout.write(
-        renderCmdViaProduction(planResumeDirect(a[0], a[1], a[2], { configDir: opt(a[3]) }).plan) +
+        renderCmdViaProduction(planResumeDirect(a[0], a[1], a[2], { configDir: opt(a[3]) })) +
           "\n",
       );
       break;

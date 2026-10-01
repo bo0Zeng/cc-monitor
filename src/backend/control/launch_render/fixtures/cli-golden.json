@@ -1,5 +1,5 @@
 {
-  "_": "由 src/frontend/ui/launch-cli-golden.ts 生成，勿手改。重生成：npm run gen:cli-golden",
+  "_": "由 tests/test-support/launch-cli-golden.ts 生成，勿手改。重生成：npm run gen:cli-golden",
   "defaultLauncher": "claude",
   "cases": [
     {
@@ -683,6 +683,287 @@
       },
       "ok": false,
       "out": "启动期令牌 \"XYZ\" 不合法（要 32 位小写十六进制）"
+    },
+    {
+      "name": "path:远端直连 resume",
+      "caps": [
+        "new",
+        "resume",
+        "attach",
+        "tmux",
+        "account",
+        "model",
+        "cwd",
+        "agent",
+        "launcher",
+        "ccm-sid",
+        "print",
+        "detach",
+        "tmux-size"
+      ],
+      "req": {
+        "action": {
+          "kind": "resume",
+          "sid": "s1"
+        },
+        "container": {
+          "kind": "none"
+        },
+        "cwd": "/p",
+        "account": {
+          "kind": "account",
+          "name": "z",
+          "configDir": "/home/u/.claude-accts/z"
+        },
+        "ccmSid": null,
+        "model": null,
+        "launcher": "claude",
+        "defaultLauncher": "claude",
+        "rbindToken": "0123456789abcdef0123456789abcdef"
+      },
+      "ok": true,
+      "out": "ccm --resume s1 -- --account z --ccm-rbind-token 0123456789abcdef0123456789abcdef --cwd /p"
+    },
+    {
+      "name": "path:远端 tmux 建会话 resume（换号重启 · 分叉）",
+      "caps": [
+        "new",
+        "resume",
+        "attach",
+        "tmux",
+        "account",
+        "model",
+        "cwd",
+        "agent",
+        "launcher",
+        "ccm-sid",
+        "print",
+        "detach",
+        "tmux-size"
+      ],
+      "req": {
+        "action": {
+          "kind": "resume",
+          "sid": "s1"
+        },
+        "container": {
+          "kind": "tmux",
+          "name": "cc-s1",
+          "send_into": false
+        },
+        "cwd": "/p",
+        "account": {
+          "kind": "account",
+          "name": "z",
+          "configDir": "/home/u/.claude-accts/z"
+        },
+        "ccmSid": "s1",
+        "model": null,
+        "launcher": "claude",
+        "defaultLauncher": "claude",
+        "rbindToken": "0123456789abcdef0123456789abcdef"
+      },
+      "ok": true,
+      "out": "ccm --resume s1 -- --ccm-tmux=cc-s1 --ccm-sid=s1 --account z --ccm-rbind-token 0123456789abcdef0123456789abcdef --cwd /p"
+    },
+    {
+      "name": "path:分叉继承源会话的目录（说不出名字）",
+      "caps": [
+        "new",
+        "resume",
+        "attach",
+        "tmux",
+        "account",
+        "model",
+        "cwd",
+        "agent",
+        "launcher",
+        "ccm-sid",
+        "print",
+        "detach",
+        "tmux-size"
+      ],
+      "req": {
+        "action": {
+          "kind": "resume",
+          "sid": "s1"
+        },
+        "container": {
+          "kind": "tmux",
+          "name": "p-fork-cc",
+          "send_into": false
+        },
+        "cwd": "/p",
+        "account": {
+          "kind": "account",
+          "name": null,
+          "configDir": "/home/u/.claude-accts/z"
+        },
+        "ccmSid": "s1",
+        "model": null,
+        "launcher": "claude",
+        "defaultLauncher": "claude",
+        "rbindToken": "0123456789abcdef0123456789abcdef"
+      },
+      "ok": true,
+      "out": "ccm --resume s1 -- --ccm-tmux=p-fork-cc --ccm-sid=s1 --account-dir /home/u/.claude-accts/z --ccm-rbind-token 0123456789abcdef0123456789abcdef --cwd /p"
+    },
+    {
+      "name": "path:就地 resume 键进 pane 的那一行",
+      "caps": [
+        "new",
+        "resume",
+        "attach",
+        "tmux",
+        "account",
+        "model",
+        "cwd",
+        "agent",
+        "launcher",
+        "ccm-sid",
+        "print",
+        "detach",
+        "tmux-size"
+      ],
+      "req": {
+        "action": {
+          "kind": "resume",
+          "sid": "s1"
+        },
+        "container": {
+          "kind": "none"
+        },
+        "cwd": null,
+        "account": {
+          "kind": "base"
+        },
+        "ccmSid": null,
+        "model": null,
+        "launcher": "claude",
+        "defaultLauncher": "claude",
+        "rbindToken": "0123456789abcdef0123456789abcdef"
+      },
+      "ok": true,
+      "out": "ccm --resume s1 -- --base --ccm-rbind-token 0123456789abcdef0123456789abcdef"
+    },
+    {
+      "name": "path:就地 resume 回落那一整串（外层只包那一行）",
+      "caps": [
+        "new",
+        "resume",
+        "attach",
+        "tmux",
+        "account",
+        "model",
+        "cwd",
+        "agent",
+        "launcher",
+        "ccm-sid",
+        "print",
+        "detach",
+        "tmux-size"
+      ],
+      "req": {
+        "action": {
+          "kind": "resume",
+          "sid": "s1"
+        },
+        "container": {
+          "kind": "tmux",
+          "name": "cc-s1",
+          "send_into": true
+        },
+        "cwd": null,
+        "account": {
+          "kind": "base"
+        },
+        "ccmSid": null,
+        "model": null,
+        "launcher": "claude",
+        "defaultLauncher": "claude",
+        "rbindToken": "0123456789abcdef0123456789abcdef"
+      },
+      "ok": true,
+      "out": "tmux send-keys -t '=cc-s1:' 'ccm --resume s1 -- --base --ccm-rbind-token 0123456789abcdef0123456789abcdef' Enter; tmux attach -t '=cc-s1:'"
+    },
+    {
+      "name": "path:远端开新会话",
+      "caps": [
+        "new",
+        "resume",
+        "attach",
+        "tmux",
+        "account",
+        "model",
+        "cwd",
+        "agent",
+        "launcher",
+        "ccm-sid",
+        "print",
+        "detach",
+        "tmux-size"
+      ],
+      "req": {
+        "action": {
+          "kind": "new"
+        },
+        "container": {
+          "kind": "tmux",
+          "name": "w-cc",
+          "send_into": false
+        },
+        "cwd": "/p",
+        "account": {
+          "kind": "base"
+        },
+        "ccmSid": null,
+        "model": null,
+        "launcher": "claude",
+        "defaultLauncher": "claude",
+        "rbindToken": "0123456789abcdef0123456789abcdef"
+      },
+      "ok": true,
+      "out": "ccm -- new --ccm-tmux=w-cc --base --ccm-rbind-token 0123456789abcdef0123456789abcdef --cwd /p"
+    },
+    {
+      "name": "path:远端接回",
+      "caps": [
+        "new",
+        "resume",
+        "attach",
+        "tmux",
+        "account",
+        "model",
+        "cwd",
+        "agent",
+        "launcher",
+        "ccm-sid",
+        "print",
+        "detach",
+        "tmux-size"
+      ],
+      "req": {
+        "action": {
+          "kind": "attach",
+          "name": "cc-s1"
+        },
+        "container": {
+          "kind": "tmux",
+          "name": "cc-s1",
+          "send_into": false
+        },
+        "cwd": null,
+        "account": {
+          "kind": "base"
+        },
+        "ccmSid": null,
+        "model": null,
+        "launcher": "claude",
+        "defaultLauncher": "claude",
+        "rbindToken": null
+      },
+      "ok": true,
+      "out": "ccm -- --attach cc-s1"
     },
     {
       "name": "print-parity:resumeTmuxWithIdentity",

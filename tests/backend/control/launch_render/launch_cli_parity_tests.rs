@@ -39,8 +39,8 @@ fn the_fixture_covers_both_ok_and_refusal() {
     let refused = f.cases.len() - ok;
     // 改成**相等**（原是 ≥9 / ≥7 的地板）：两类各自的条数是用例表写死的，
     // 地板只挡「少」、挡不住「某条 refusal 悄悄变成 ok」—— 而那一条恰恰让 ok 数变多。
-    // 实数：16 ok（9 ＋ 新三形 3 ＋ print-parity 4）＋ 6 refusal。
-    assert_eq!(ok, 16, "ok 类条数变了（实数 16）");
+    // 实数：23 ok（9 ＋ 新三形 3 ＋ path 7 ＋ print-parity 4）＋ 6 refusal。
+    assert_eq!(ok, 23, "ok 类条数变了（实数 23）");
     assert_eq!(
         refused, 6,
         "refusal 类条数变了（实数 6）—— 要防的正是「该拒却渲染出来了」"
@@ -148,12 +148,74 @@ fn every_rendered_ccm_line_is_accepted_by_the_ccm_argv() {
         checked += 1;
     }
     assert_eq!(
-        checked, 15,
-        "ok 用例条数不对（16 条 ok 去掉外层包了 tmux 的那一条）—— 上面那条在少数几行上成立不算数"
+        checked, 21,
+        "ok 用例条数不对（23 条 ok 去掉外层包了 tmux 的那两条）—— 上面那条在少数几行上成立不算数"
     );
     assert_eq!(
         shell_words("ccm -- new --cwd '/home/用户/带 空格'"),
         ["ccm", "--", "new", "--cwd", "/home/用户/带 空格"],
         "切词器自己坏了"
     );
+}
+
+/// ★★ 起会话只有 ccm 一处：monitor 每一条远端起会话路径真发出去的那一形（夹具里的 `path:` 那几条，意图由生产 `plan*` 现造）
+/// 过生产命令，交出去的都只是一行 `ccm …`；就地 resume 回落那一形外层只包一层 tmux，包的那一行同样以 `ccm ` 开头。
+/// 路径名单手写、与夹具两向相等（少一条路径 / 多一条没登记的都红）。本机那几条在 `local_tests.rs`。
+#[test]
+fn every_monitor_launch_path_hands_over_one_ccm_line() {
+    const PATHS: &[&str] = &[
+        "path:远端直连 resume",
+        "path:远端 tmux 建会话 resume（换号重启 · 分叉）",
+        "path:分叉继承源会话的目录（说不出名字）",
+        "path:就地 resume 键进 pane 的那一行",
+        "path:就地 resume 回落那一整串（外层只包那一行）",
+        "path:远端开新会话",
+        "path:远端接回",
+    ];
+    let f = fixture();
+    let got: Vec<&str> = f
+        .cases
+        .iter()
+        .filter(|c| c.name.starts_with("path:"))
+        .map(|c| c.name.as_str())
+        .collect();
+    assert_eq!(got, PATHS, "夹具里的起会话路径与这张名单对不上");
+    for c in f.cases.iter().filter(|c| c.name.starts_with("path:")) {
+        let caps: std::collections::BTreeSet<String> = c.caps.iter().cloned().collect();
+        let line = super::super::wire::render_ccm_launch_with(&c.req, &caps)
+            .unwrap_or_else(|e| panic!("「{}」渲不出来：{e}", c.name));
+        let words = shell_words(&line);
+        let ok = match words.first().map(String::as_str) {
+            Some("ccm") => true,
+            // 外层只包一层：`tmux send-keys -t '=名:' '<那一行>' Enter; tmux attach -t '=名:'`。
+            Some("tmux") => words.get(1).map(String::as_str) == Some("send-keys")
+                && words.get(4).is_some_and(|inner| inner.starts_with("ccm ")),
+            _ => false,
+        };
+        assert!(ok, "「{}」交出去的不是一行 ccm：{line}", c.name);
+    }
+}
+
+/// **e2e 取「app 真正会跑的那一行」的 Rust 那一跳**（`#[ignore]` 数据出口，`tests/e2e/launch-render-emit.sh` 跑它）。
+///
+/// 请求由 e2e 那一侧用生产 TS 的 `plan*` ＋ `buildCliRenderRequest` 产（`tests/e2e/launch-render-driver.ts`），
+/// 经环境变量 `CCM_E2E_RENDER_REQ` 递进来；这里拿生产 wire 类型反序列化、跑生产命令本体（能力问这台后端自己），原样吐出去。
+/// 渲得出 ⇒ `LAUNCH_RENDER<<<命令>>>`；拒 ⇒ `LAUNCH_RENDER_ERR<<<理由>>>`（拒绝本身是读数）；请求缺失 / 解析不了 ⇒ panic。
+#[test]
+#[ignore]
+fn emit_launch_render_for_e2e() {
+    let raw = std::env::var("CCM_E2E_RENDER_REQ")
+        .expect("缺 CCM_E2E_RENDER_REQ —— 本出口只给 tests/e2e/launch-render-driver.ts 用");
+    let req: super::super::wire::CliRenderRequest =
+        serde_json::from_str(&raw).unwrap_or_else(|e| panic!("请求解析不了（{e}）：{raw}"));
+    match super::super::wire::render_ccm_launch(&req) {
+        Ok(cmd) => {
+            assert!(
+                !cmd.contains('\n'),
+                "渲出来的命令带换行，标记行会被截断：{cmd:?}"
+            );
+            println!("LAUNCH_RENDER<<<{cmd}>>>");
+        }
+        Err(e) => println!("LAUNCH_RENDER_ERR<<<{}>>>", e.replace('\n', " ")),
+    }
 }
