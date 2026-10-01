@@ -798,6 +798,11 @@ fn parameter_defaults(line: &str) -> Vec<(String, String)> {
     out
 }
 
+/// 这份路径是不是共享原语本身（按路径最后一段整段比，不按后缀）。
+fn is_the_primitive(path: &str) -> bool {
+    std::path::Path::new(path).file_name() == Some(std::ffi::OsStr::new("tmux-shim.sh"))
+}
+
 /// 判定本体：`(路径, 源码)` → 命中（`路径: 说明`）。每份文件先收自己的「名字变量」，再查它们的赋值；
 /// 带 `sock` 的变量名跨文件也认（`TMUX_SHIM_SOCK` 在套件里赋、在原语里用）。
 fn hardcoded_private_names(files: &[(String, String)]) -> Vec<String> {
@@ -850,7 +855,7 @@ fn hardcoded_private_names(files: &[(String, String)]) -> Vec<String> {
             .iter()
             .any(|l| l.contains("e2e_run_name ") && !l.contains("e2e_run_name()"));
         let sources = lines.iter().any(|l| l.contains("tmux-shim.sh"));
-        if calls && !sources && !path.ends_with("tmux-shim.sh") {
+        if calls && !sources && !is_the_primitive(path) {
             hits.push(format!(
                 "{path}: 调了 e2e_run_name 却没 `.` 共享原语 tmux-shim.sh"
             ));
@@ -879,7 +884,7 @@ fn hardcoded_private_names(files: &[(String, String)]) -> Vec<String> {
             }
         }
     }
-    if defined_in.len() != 1 || !defined_in[0].ends_with("tmux-shim.sh") {
+    if defined_in.len() != 1 || !is_the_primitive(defined_in[0]) {
         hits.push(format!(
             "e2e_run_name() 应当恰好定义在 tests/e2e/tmux-shim.sh 一处，实得：{defined_in:?}"
         ));
