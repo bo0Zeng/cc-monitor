@@ -1,6 +1,6 @@
-//! 〔C2 · `设计/05 §13`〕拨号宿主（`dial_host`）的判据。〔SR1a〕起它不再起任何进程：链路开在本机常驻后端里。
+//! 拨号宿主（`dial_host`）的判据。起它不再起任何进程：链路开在本机常驻后端里。
 //!
-//! 买到：〔MIG-1 收尾〕请求是这台原样的配置（与后端 `dial/machine.rs::resolve` 读的那几格逐键对拍，异源：后端源码）·
+//! 买到：请求是这台原样的配置（与后端 `dial/machine.rs::resolve` 读的那几格逐键对拍，异源：后端源码）·
 //! 只放私钥**路径**不放本体 · 上次赢的那条当 `prefer` 交（配置改过就不交）· **没有进程内回落、也不起代理进程**
 //! （本文件生产段零 `russh`、零起进程；monitor 生产段 `--dial` 那一套零命中）。
 //! **买不到**：真后端 × 真 sshd（读数脚本 `tests/evidence/SR1a-link-loopback.py`）。
@@ -20,7 +20,7 @@ fn cfg(label: &str) -> RemoteConfig {
     }
 }
 
-/// 〔MIG-1 收尾 · 主会话裁「一个判定一个家」〕交给本机后端的是**这台原样的配置**：键 == 后端 `dial/machine.rs::resolve` 读的那几格
+/// 〔「一个判定一个家」〕交给本机后端的是**这台原样的配置**：键 == 后端 `dial/machine.rs::resolve` 读的那几格
 /// （`machine` · `saved` · `jump` · `prefer` · `use`）＋ 其余照进 `DialRequest` 的可选格。异源：从后端源码里现抠。
 #[test]
 fn the_request_hands_over_the_machine_as_is() {
@@ -107,7 +107,7 @@ fn a_jump_to_itself_is_not_looked_up_here() {
     assert_eq!(req["machine"]["jump"], "c2-dial-host-c");
 }
 
-/// 🔴 **没有退路**（`D11`）：宿主生产段里零 `russh`、**零起进程**（〔SR1a〕C2 那一版恰好一处，起的是
+/// 🔴 **没有退路**（`D11`）：宿主生产段里零 `russh`、**零起进程**（C2 那一版恰好一处，起的是
 /// `--dial` 代理），拿链路的四个入口都经同一个 `open(`，而 `open` 恰好一次经本机那条流开链路。
 /// 进程内拨号只许住 `inproc_dial.rs`（只剩 SFTP，SR1b 的事）。
 #[test]
@@ -127,9 +127,9 @@ fn the_host_never_dials_in_process_and_spawns_nothing() {
     guard_core::find_pinned(&prod, "let client = local_channel().await")
         .expect("拿本机那条流的那一处不是恰好一处");
     for entry in [
-        // 〔MIG-3b 续〕`open_stream(` 那一格随 `stream` 用法的一次性 exec 删了。
+        // `open_stream(` 那一格随 `stream` 用法的一次性 exec 删了。
         "pub(crate) async fn capture(",
-        // 〔MIG-1 续〕`probe(` 那一格随测试连接搬进本机后端删了。
+        // `probe(` 那一格随测试连接搬进本机后端删了。
     ] {
         let at = prod
             .find(entry)
@@ -226,7 +226,7 @@ async fn loopback_roundtrip_through_the_resident_backend() {
         addresses: vec![],
         jump: None,
     };
-    // 〔MIG-3b 续〕① 字节流那两段（`head -n1` 往返 · 关写半边链路收工）删了：monitor 不再开 `stream` 用法的链路
+    // ① 字节流那两段（`head -n1` 往返 · 关写半边链路收工）删了：monitor 不再开 `stream` 用法的链路
     //   （那个一次性 exec 原语随公钥推送进本机后端一起走了）；后端那一侧的流用法照旧由 `remote-probe` 与后端判据驱动。
     // ② 收全：stdout / stderr / 退出码
     let ex = crate::ssh_source::connect_and_exec_capture(&cfg, "echo o; echo e >&2; exit 5", None)
@@ -236,18 +236,17 @@ async fn loopback_roundtrip_through_the_resident_backend() {
         (ex.stdout.as_str(), ex.stderr.as_str(), ex.exit_status),
         ("o\n", "e\n", Some(5))
     );
-    // 〔MIG-1 续〕③ 测试连接那一趟（阶段按序、ack 带指纹与胜出地址）随那一跳搬进本机后端（`dial/probe.rs`）删了。
+    // ③ 测试连接那一趟（阶段按序、ack 带指纹与胜出地址）随那一跳搬进本机后端（`dial/probe.rs`）删了。
     let _ = child.kill();
     let _ = child.wait();
     println!("SR1A-LOOPBACK-MONITOR ok");
 }
 
-// ═══ 〔NT2 · A4〕一次性那一趟的总时限 ═══════════════════════════════════════════════════════════
+// ═══ 一次性那一趟的总时限 ═══════════════════════════════════════════════════════════
 //
-// 守的要求（住址，纪律 19）：`设计/15 §3.2` 第 4 条红线（逐字）「**必须先给无期限路径装期限，再复用**，次序不能换 ——
+// 守的要求（住址，纪律 19）：红线（逐字）「**必须先给无期限路径装期限，再复用**，次序不能换 ——
 // 不复用时一条卡住只坏它自己那条连接；复用后它占掉共享连接一个槽永不释放，局部卡死升级成全局卡死」·
-// `设计/05 §3.3.2`（逐字）「🔴 **一次调用一个绝对时刻**，不是每跳一个 `Duration`」。
-// 设计与现打：`调研/第四波记录/NT2.md §0.1 · §1`。
+// （逐字）「🔴 **一次调用一个绝对时刻**，不是每跳一个 `Duration`」。
 
 /// A1 ★ 期限真生效：一条永不回字节的链路，到点读报 `TimedOut`；到点之前写进来的字节照常交出、到点之前读还在等（正控）；
 /// 摘掉期限的那条过点仍在等（另一向）。异源：一对内存管子当链路 —— 不经开链路那套逻辑，量的是生产那一层 `Bounded` 本体。
@@ -306,7 +305,7 @@ const LIVES_LONG: &[(&str, &str, usize, &str)] = &[
         "remote_resident.rs",
         "attach",
         1,
-        "〔HOST · DEL〕远端后端长连接流（远端只剩常驻这一形）是订阅：`05 §3.3.2`「`Budget` 只盖建流；流建起来之后没有总期限」；握手那几行仍在一次性总时限里；死链靠 keepalive ＋ EOF",
+        "远端后端长连接流（远端只剩常驻这一形）是订阅：「`Budget` 只盖建流；流建起来之后没有总期限」；握手那几行仍在一次性总时限里；死链靠 keepalive ＋ EOF",
     ),
     (
         "dial_host.rs",
@@ -383,7 +382,7 @@ fn only_the_three_long_lived_links_drop_the_deadline() {
     assert_eq!(
         got, want,
         "摘掉一次性总时限（`lives_long`）的地方与登记的那三形对不上。\n\
-         多出来的 ⇒ 那条路没有总时限了（`15 §3.2` 第 4 条红线）；该长活就进 `LIVES_LONG` 并写理由。"
+         多出来的 ⇒ 那条路没有总时限了（红线）；该长活就进 `LIVES_LONG` 并写理由。"
     );
     // 正控：识别器认得出、认得对所在函数。
     let synthetic =
@@ -434,11 +433,11 @@ fn every_link_is_born_with_the_one_shot_deadline() {
     );
 }
 
-// ═══ 〔W5-VIS〕一个预算、按段归因（`设计/15 §3.6` 小病 · `设计/05 §3.3.2`） ═══════════════════════════
+// ═══ 一个预算、按段归因（小病） ═══════════════════════════
 //
-// 守的要求（住址，纪律 19）：`设计/05 §3.3.2`（逐字）「**一个预算、多个归因点**：超时回的是 `Hop { at, reach, why: Overrun }`
+// 守的要求（住址，纪律 19）：（逐字）「**一个预算、多个归因点**：超时回的是 `Hop { at, reach, why: Overrun }`
 // —— 期限只有一个，但卡在哪一跳说得出来（治的是「同一个数盖了握手与远端跑查询两段、而两种成因处置完全不同」那一格）」·
-// `设计/15 §3.6` 小病（逐字）「⇒ 一个预算、多个归因点（`05 §3.3.2`；W5-VIS）」。
+// 小病（逐字）「⇒ 一个预算、多个归因点（W5-VIS）」。
 
 /// B1 ★ 到点那句话按段说：握完手之后到点 ⇒ 说出握手用了多久、之后远端跑了多久（两个数 == 喂进去的两段）；
 /// 还在握手就到点 ⇒ 另一句（两句不同）。纯函数，直接喂时长（不睡墙钟）。
@@ -537,7 +536,7 @@ fn w5vis_open_marks_the_handshake_done_right_after_the_ack() {
     );
 }
 
-// ═══ 〔VIS2 · `设计/15 §3.4 ①`「自动固化 ＋ 默认转严格 ＋ 保住多地址那一格」〕═══════════════════════════════
+// ═══ 〔「自动固化 ＋ 默认转严格 ＋ 保住多地址那一格」〕═══════════════════════════════
 
 fn vis2_book(pairs: &[(&str, &str)]) -> std::collections::BTreeMap<String, String> {
     pairs
@@ -629,7 +628,7 @@ fn vis2_pinning_writes_only_that_hosts_fingerprint_through_the_patch_door() {
 }
 
 /// 默认转严格：盘上那一份当 `saved` 一并交过去（固化之后，手里那份起来时读的 `cfg` 还没有指纹也照样转严格）——
-/// 「表单 / 手里那份没有 ⇒ 用盘上同一个 host 的」那条继承规则〔MIG-1 收尾〕只在后端 `dial/machine.rs::request`
+/// 「表单 / 手里那份没有 ⇒ 用盘上同一个 host 的」那条继承规则只在后端 `dial/machine.rs::request`
 /// （`dial_machine_tests::the_request_carries_the_form_and_only_inherits_a_same_host_fingerprint`）。
 #[test]
 fn vis2_the_saved_copy_goes_over_so_a_pinned_key_makes_the_next_dial_strict() {
@@ -643,7 +642,7 @@ fn vis2_the_saved_copy_goes_over_so_a_pinned_key_makes_the_next_dial_strict() {
 }
 
 /// 接线（剥注释）：`open` 在 `mark_shaken` 之后恰好一处 `settle_host_key(`。带正控。
-/// 〔MIG-1 收尾〕「请求里的指纹是有效指纹」那一格随组请求搬进后端（见上一条）。
+/// 「请求里的指纹是有效指纹」那一格随组请求搬进后端（见上一条）。
 #[test]
 fn vis2_open_settles_the_host_key_after_the_ack() {
     let prod =
@@ -672,7 +671,7 @@ fn vis2_open_settles_the_host_key_after_the_ack() {
     );
 }
 
-/// ★ 〔FIX · `设计/99 §2 ㊶` 第二问「只当跳板用的机器一直 TOFU（设计没写）」〕经跳板那一趟要判两台：目标按它自己那一格、
+/// ★ 〔第二问「只当跳板用的机器一直 TOFU（设计没写）」〕经跳板那一趟要判两台：目标按它自己那一格、
 /// 跳板按请求里 `jump` 那一台（origin = 它的 label、否则 host）与 ack 的 `jump_fingerprints`；直连只判目标一台。
 /// 固化之后跳板那一台交进下一趟请求的就是盘上那份（`request` 现查跳板配置 ⇒ 默认转严格对跳板同样成立）。
 #[test]
@@ -724,7 +723,7 @@ fn a_jump_host_is_pinned_under_its_own_entry_and_a_direct_dial_judges_only_the_t
             ),
         ]
     );
-    // 跳板没有 label ⇒ origin 是它的 host（同 `origin_label`）；后端说那一趟跳板已严格（〔MIG-1 收尾〕`jump_strict`）⇒ 那一格已严格。
+    // 跳板没有 label ⇒ origin 是它的 host（同 `origin_label`）；后端说那一趟跳板已严格（`jump_strict`）⇒ 那一格已严格。
     let via2 = serde_json::json!({"jump": {"host": "j.lan", "label": ""}});
     let strict_jump = Ack {
         jump_strict: true,

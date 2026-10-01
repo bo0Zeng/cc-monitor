@@ -1,13 +1,13 @@
-//! # 要求住址（本族分块，逐块点）：`设计/01 §3.3` · `设计/01 §4`（V107）· `设计/01 §6.7a` · `设计/05 §5.2` · `设计/01 §5 D1` / `D7` / `D11`
+//! # 要求住址（本族分块，逐块点）： / `D7` / `D11`
 //!
 //! 核原文，逐块：
-//! 〔脱离后接回自己的后端〕`设计/01 §3.3` 逐字「前端不在也活着，前端起来能**接回去**」；`设计/05 §5.2` 逐字「monitor 重启后还能接回自己的后端」。
-//! 〔中转并进常驻后端〕`设计/01 §4` 逐字「monitor 不单独起、不单独收中转」（V107）。
-//! 〔本机起 / 停 / 一台只起一个〕`设计/01 §6.7a` 逐字「三个控件都留着」。
+//! 〔脱离后接回自己的后端〕「前端不在也活着，前端起来能**接回去**」；「monitor 重启后还能接回自己的后端」。
+//! 〔中转并进常驻后端〕「monitor 不单独起、不单独收中转」。
+//! 〔本机起 / 停 / 一台只起一个〕「三个控件都留着」。
 //! 〔两条找二进制的路共用一处〕`D1`「一个判定只有一个家」。
 //! 〔起不来与死亡账要归因准确〕`D7`「失败要显式、归因要准确」；`D11` 展开「后端不在 ⇒ 这件事**不发生**，并且**说清楚为什么**」。
-//! 〔本机取字节前先问 OS〕乙 · 迁移底账：`设计/96 §7.1.3` 逐字「**这道闸要消失**」。〔几条量具〕丙，服务上面那几块的源码扫描。
-//! 〔监听口要钥匙 · 脱离后不留僵尸 · 起真后端必须 fail-closed 地隔离用户 tmux〕三块已升格：`INVARIANTS §48.1` · `§48.2` · `§48.3`（V121，用户 2026-09-25 拍板；
+//! 〔本机取字节前先问 OS〕乙 · 迁移底账：「**这道闸要消失**」。〔几条量具〕丙，服务上面那几块的源码扫描。
+//! 〔监听口要钥匙 · 脱离后不留僵尸 · 起真后端必须 fail-closed 地隔离用户 tmux〕三块已升格：`INVARIANTS §48.1` · `§48.2` · `§48.3`（用户 2026-09-25 拍板；
 //! 「本机后端宿主三条」）。三块各自的判据逐个点名在那三小节的「谁在守」里。〔IV1 改指 2026-09-25〕
 //! ⚠ 本族「56 条」是尺子把注释 / 字符串里的测试属性字样也数成了判据；族内真判据 33 条（`JA1.md` 记着尺子这一处怎么修的）。〔JA1 点址 2026-09-24〕
 
@@ -59,12 +59,12 @@ fn the_strip_rule_this_file_leans_on_is_still_on_disk() {
     );
 }
 
-// 〔US1 · 第四波 4D〕M3（`relay_running_really_asks_the_loopback_port`〔散文墓碑〕）随 `relay_running` 一起退役：
+// M3（`relay_running_really_asks_the_loopback_port`〔散文墓碑〕）随 `relay_running` 一起退役：
 //   本机中转在不在由本机常驻后端自己答（读它进程内的监听状态），monitor 这一侧不再连回环口。
 
 // ★★★ `D5 阻-1`：**`the_two_inputs_at_the_call_site_are_still_the_two_take_points`
 //    这条判据整条删了**，新住址是 `history.rs` 里那几条判据
-//    （〔US1〕行为：`the_launch_side_really_asks_the_backend_and_uses_its_answer`； 〔散文墓碑〕
+//    （行为：`the_launch_side_really_asks_the_backend_and_uses_its_answer`； 〔散文墓碑〕
 //     按函数地址对拍：`the_production_relay_facts_are_those_take_points`）。 〔散文墓碑〕
 //
 // 删它的理由是一个实测读数，不是风格：它量的是「`relay_prefix_for_launch` 的体切出
@@ -76,11 +76,11 @@ fn the_strip_rule_this_file_leans_on_is_still_on_disk() {
 // ⚠ **别在这里补一个「更聪明的文本判据」**（比如切实参表按逗号分段再比字面量）——
 //   `D4` 那一轮的修法（把判据搬出被扫文件）买到的东西正是被下一层的量法漏掉的，
 //   而两轮的量法都是「量文本」。这一族已经连着五层了，出路是**不量文本**：
-//   两个事实走〔MIG-2〕本机后端 `local.rs::Facts` 那张事实表，判据喂替身、断言前缀随答案变。
+//   两个事实走本机后端 `local.rs::Facts` 那张事实表，判据喂替身、断言前缀随答案变。
 //
-// ⚠ 〔US1〕先前本文件上一条买的是另一半（那个取值口自己真的去连那个口）；那个取值口随「本机中转在不在由本机后端答」一起退役。
+// ⚠ 先前本文件上一条买的是另一半（那个取值口自己真的去连那个口）；那个取值口随「本机中转在不在由本机后端答」一起退役。
 
-/// 〔RL1 · V107〕M2：**两条载体起本机后端时交的是同一份环境，且恰好是中转那两格**。
+/// M2：**两条载体起本机后端时交的是同一份环境，且恰好是中转那两格**。
 ///
 /// ① 行为：[`relay_host_envs`] 产出的键集 **两向相等** {`CCM_RELAY_PORT`, `CCM_APIKEY_CREDENTIALS`}；
 ///    值取自注入侧常量与 monitor 写凭据那条路（异源：`payload::RELAY_PORT` · `creds_store::resolve_path`）。
@@ -94,7 +94,7 @@ fn both_carriers_hand_the_backend_the_same_relay_envs() {
     let envs = relay_host_envs();
     let mut keys: Vec<&str> = envs.iter().map(|(k, _)| k.as_str()).collect();
     keys.sort_unstable();
-    // 〔C4d · 第四波 4B〕+1 格 `CCM_HISTORY_METADATA`：历史注解的读写者换成本机后端，那份文件的路径同样显式交。
+    // +1 格 `CCM_HISTORY_METADATA`：历史注解的读写者换成本机后端，那份文件的路径同样显式交。
     assert_eq!(
         keys,
         vec![
@@ -115,8 +115,8 @@ fn both_carriers_hand_the_backend_the_same_relay_envs() {
         crate::creds_store::resolve_path().map(|p| p.display().to_string()),
         "凭据路径不是 monitor 写它的那条路 —— 两侧读写两份文件，症状是一个静默的 404"
     );
-    // 🔴 〔C4d〕注解路径**就是** monitor 从前读写那份文件的那一个（同一个函数算）—— 用户的星标 / 改名 / 隐藏一条不丢，
-    //   前提是后端读写的恰是这一份（主会话 09-25 裁「文件留在原处、同一路径」）。
+    // 🔴 注解路径**就是** monitor 从前读写那份文件的那一个（同一个函数算）—— 用户的星标 / 改名 / 隐藏一条不丢，
+    //   前提是后端读写的恰是这一份（「文件留在原处、同一路径」）。
     assert_eq!(
         get("CCM_HISTORY_METADATA"),
         crate::history::metadata_path().map(|p| p.display().to_string()),
@@ -142,11 +142,11 @@ fn both_carriers_hand_the_backend_the_same_relay_envs() {
     );
 }
 
-/// 〔RL1 · V107〕M1：**monitor 生产段里零处起中转**（`--relay` 零命中），正控取自后端那一处。
+/// M1：**monitor 生产段里零处起中转**（`--relay` 零命中），正控取自后端那一处。
 ///
 /// 本机中转住进常驻后端之后，monitor 这一半再没有任何理由在 argv 里写 `--relay`；
-/// 有一处 = 有人又在 monitor 里另起了第三个进程（`真相源/70` 那个孤儿的来路）。
-/// 正控：同一把尺子喂一段**合成的**起法（形状照先前后端起脱离中转那一处，〔DEL〕已随 `--relay` 一形删了）数得到它 ⇒ 尺子不瞎。
+/// 有一处 = 有人又在 monitor 里另起了第三个进程（那个孤儿的来路）。
+/// 正控：同一把尺子喂一段**合成的**起法（形状照先前后端起脱离中转那一处，已随 `--relay` 一形删了）数得到它 ⇒ 尺子不瞎。
 /// ⚠ 刻意不 `include_str!` 后端那份文件：那会多一条跨半边的编译期边（`cross_half_edge_registry`），为一条正控不值。
 #[test]
 fn the_monitor_half_starts_no_relay_process() {
@@ -582,7 +582,7 @@ fn the_stop_command_really_calls_this_module() {
     let dc = guard_core::production_code(include_str!(
         "../../../src/frontend/shell/src/backend_control.rs"
     ));
-    // 〔HX1〕停口改成 `async`、本机那一支交阻塞线程池跑（`spawn_blocking(…::stop_local_backend)`，传的是函数本身）。
+    // 停口改成 `async`、本机那一支交阻塞线程池跑（`spawn_blocking(…::stop_local_backend)`，传的是函数本身）。
     guard_core::find_pinned(
         &dc,
         "spawn_blocking(crate::local_backend_host::stop_local_backend)",
@@ -612,9 +612,9 @@ fn the_stop_command_really_calls_this_module() {
     });
 }
 
-/// 〔STOP〕T5 **本机「停」走同一条一次性子命令**：`stop_detached_locked` 恰好调一次 `run_resident_stop`，自己不发信号、不强杀、不等；
+/// T5 **本机「停」走同一条一次性子命令**：`stop_detached_locked` 恰好调一次 `run_resident_stop`，自己不发信号、不强杀、不等；
 /// 整份生产段里没有发 `-TERM` / `-KILL` 的路（HX1 那套 SIGTERM → 等 → SIGKILL 删干净）；`run_resident_stop` 起的是那个二进制 ＋ `--resident-stop`。
-/// 守的要求：`4d-lanes.md` `### STOP`（主会话裁）逐字「本机那一格也改走同一条 `--resident-stop`（本机远端同形），
+/// 守的要求：`4d-lanes.md` `### STOP`逐字「本机那一格也改走同一条 `--resident-stop`（本机远端同形），
 /// monitor 侧 `local_backend_host.rs` 那套 SIGTERM → 等 → SIGKILL 删掉」。
 #[test]
 fn the_local_stop_rides_the_same_one_shot_supervisor() {
@@ -647,7 +647,7 @@ fn the_local_stop_rides_the_same_one_shot_supervisor() {
         );
     }
     let run = body_of("fn run_resident_stop(");
-    // 〔V151〕本机落点就是 `ccm` ⇒ `ccm -- --resident-stop`（打头的 `--` 让它当后端用）。
+    // 本机落点就是 `ccm` ⇒ `ccm -- --resident-stop`（打头的 `--` 让它当后端用）。
     guard_core::find_pinned(
         &run,
         "let words = [local_backend::BACKEND_SEP, \"--resident-stop\"];",
@@ -657,15 +657,15 @@ fn the_local_stop_rides_the_same_one_shot_supervisor() {
         .unwrap_or_else(|e| panic!("{e}"));
 }
 
-/// ★★ **本机只许用本平台能跑的二进制**〔D 阶段补审 08-11 新增 · 〔DP1〕换了机制〕。
+/// ★★ **本机只许用本平台能跑的二进制**〔D 阶段补审 08-11 新增 · 换了机制〕。
 ///
 /// 〔墓碑 —— 原先内嵌的两份 musl Linux 由一个**只按 arch 分派、不看 OS** 的函数取，本条钉的是
 ///  `start_local_backend` 在取它之前先问一道 `cfg!(target_os = "linux")`（补审阻塞 C1：少了这道门，
 ///  Windows/macOS 上会释放一个 Linux ELF、UI 与日志报告「已起」，而进程从来没起来过）。〕
 ///
-/// 〔DP1 · 第四波〕今天字节按 (OS, arch) 查表（`byte_table`，`设计/01 §6.7a` 规矩 4）⇒ 「先问 OS」不再是一道闸，
+/// 今天字节按 (OS, arch) 查表（`byte_table`，规矩 4）⇒ 「先问 OS」不再是一道闸，
 /// 是**键的一半**。本条钉：本机那条取用点的键是**这台机器自己**（`Key::this_machine()`）、取的是后端那一类，
-/// 而且键在取字节之前定下。〔P1〕本机那一行的承诺（表 B）不在这里判：放之前问手上那份字节自己（`place-verdict`）。「musl 字节只落在 Linux 格」那一半是表的行为，钉在
+/// 而且键在取字节之前定下。本机那一行的承诺（表 B）不在这里判：放之前问手上那份字节自己（`place-verdict`）。「musl 字节只落在 Linux 格」那一半是表的行为，钉在
 /// `byte_table_tests::musl_bytes_only_ever_land_on_linux_cells`。
 ///
 /// ⚠ 射程：它是**源码判据**，只证明取用点这样写着；证明不了「Windows 上真的不会释放」——
@@ -693,7 +693,7 @@ fn the_local_backend_only_takes_a_binary_this_platform_can_run() {
     let tail = &body[take..];
     assert!(
         tail.contains("Product::Backend") && !tail.contains("Route::"),
-        "本机那条取用点不是「这台 · 后端」那一格（〔P1〕表 B 不在 monitor 判，取用点不该再带 origin）：\n{tail}"
+        "本机那条取用点不是「这台 · 后端」那一格（表 B 不在 monitor 判，取用点不该再带 origin）：\n{tail}"
     );
 }
 
@@ -907,7 +907,7 @@ fn braced_block<'a>(prod: &'a str, marker: &str, lo: usize, hi: usize) -> &'a st
 #[test]
 fn the_detach_landing_is_the_host_layer_and_the_injection_is_really_used() {
     // ── ① `backend/` 那半 ──────────────────────────────────────────
-    // 🔴 〔步 7c 剖分 2026-09-19 · `设计/16 §6.2` C 类〕
+    // 🔴 〔步 7c 剖分 2026-09-19〕
     // 那条平台无关判据（`the_backend_half_stays_platform_agnostic`）这一轮跟着
     // `backend/mod.rs` 的测试段搬进了 `tests/frontend/shell/backend_tests.rs`，
     // 生产段那份里一个字都不剩 ⇒ 旧的两段（先剥生产段、剥不到再读整份）**两段都落空**。
@@ -915,7 +915,7 @@ fn the_detach_landing_is_the_host_layer_and_the_injection_is_really_used() {
     // ⚠ 顺带把原来那个 `unwrap_or_else` 兜底去掉：它当初存在的理由是
     //   「判据与被测代码同住一份文件、而 `production_code` 会把判据剥掉」——
     //   剖分之后判据与生产代码**物理不同文件**，兜底那一支恒不触发（`§4.1` 那一形）。
-    // 〔THIN〕`backend/` 目录没了：那两道判据改看逐个点名的那一组（`backend_client_guard_tests.rs::GUARDED`）。
+    // `backend/` 目录没了：那两道判据改看逐个点名的那一组（`backend_client_guard_tests.rs::GUARDED`）。
     let backend_tests = include_str!("backend_client_guard_tests.rs");
     assert!(
         backend_tests.contains("fn the_backend_half_stays_platform_agnostic"),
@@ -940,7 +940,7 @@ fn the_detach_landing_is_the_host_layer_and_the_injection_is_really_used() {
              `the_backend_half_stays_platform_agnostic` 的禁针里 —— 那一层不认识平台。\n\
              ⇒ 脱离的落点只能是**宿主知识层**（`local_backend_host.rs`），\n\
              照 `platform::fs::make_executable` 那个注入先例把「怎么起」喂进去。\n\
-             ⚠ 「加一条平台例外」这条路走不通：`PLATFORM_EXCEPTIONS` 是递减棘轮（〔P4b〕今天 0 条，〔P4〕上限随之降到 0），壳里平台形态另只许住 `platform/`。"
+             ⚠ 「加一条平台例外」这条路走不通：`PLATFORM_EXCEPTIONS` 是递减棘轮（今天 0 条，上限随之降到 0），壳里平台形态另只许住 `platform/`。"
     );
 
     // ── ② 位置性 ────────────────────────────────────────────────────
@@ -973,7 +973,7 @@ fn the_detach_landing_is_the_host_layer_and_the_injection_is_really_used() {
     // ⚠ 后两个针是**常量名**不是那两个串：串本身住在常量声明里，
     //   而它与后端那侧逐字一致由 `the_listen_env_names_are_the_same_string_on_both_sides` 管。
     //   钉「这里用的是那个常量」而不是「这里出现了那个串」，正好挡住「顺手在这里写死一个串」。
-    // 🔴〔`15 §5.1 A3` 09-18〕**第一针从 `process_group(0)` 换成 `Lifetime::Detached`。**
+    // 🔴**第一针从 `process_group(0)` 换成 `Lifetime::Detached`。**
     //   换的是**谁写它**，不是写不写：那句平台原语现在住 `spawn_managed.rs`
     //   （唯一出口），这一处声明的是**策略**。⚠ 换针之后这条判据仍然数得出同一件事 ——
     //   把这一行的 `Detached` 改成 `JobKillOnClose`（脱离当场失效、行为全变）⇒ 本条红。
@@ -1004,7 +1004,7 @@ fn the_detach_landing_is_the_host_layer_and_the_injection_is_really_used() {
     );
 }
 
-/// 〔RL1 · V107〕M4：**退出臂里零中转收法** —— 本机固定两个进程，中转随常驻后端按「退出行为」留或退。
+/// M4：**退出臂里零中转收法** —— 本机固定两个进程，中转随常驻后端按「退出行为」留或退。
 ///
 /// 先前这里是 `D7 阻-3` 那两条（替身记账量「勾了才收中转」＋ 臂里恰好一行委托）：monitor 另起的中转
 /// 自己感觉不到宿主离开，只能由退出臂收。中转并进本机后端之后那条缝与它的收口点一起删了 ⇒
@@ -1031,7 +1031,7 @@ fn the_exit_arm_collects_no_relay() {
     assert!(
         body.split("relay").count() == 1,
         "退出臂里又出现了 `relay` —— 有人又在这条臂里收中转了。\n\
-         中转住本机常驻后端进程里，随它按「退出行为」留或退（V107）；monitor 再收一次就是第二个决策处。\n实得臂体：{body}"
+         中转住本机常驻后端进程里，随它按「退出行为」留或退；monitor 再收一次就是第二个决策处。\n实得臂体：{body}"
     );
     for gone in [
         "ExitShutdownSinks",
@@ -1045,7 +1045,7 @@ fn the_exit_arm_collects_no_relay() {
     }
 }
 
-/// ★★ `KPY5`：**`detached` 的真相源只能是「起它的时候走没走那条路」。**
+/// ★★ `KPY5`：**`detached` 的源头只能是「起它的时候走没走那条路」。**
 ///
 /// 拿 `channel` / `pid` 反推是**假信号** —— `P2d §0a` 翻掉的 `SSH_CONNECTION` 就是这一形：
 /// 「假信号不会报错，它只是**一直说是**」，而在只有正例的测试里永远绿。
@@ -1140,13 +1140,13 @@ fn this_item_loosened_none_of_the_ratchets_it_touched() {
         (
             // 〔步 7c 剖分 2026-09-19 · C 类〕那条棘轮跟着测试段搬进了 `backend_tests.rs`。
             "backend_client_guard_tests.rs",
-            // 〔P4 · 合 P4b〕棘轮降到 0：那一行今天是 `is_empty()`（只收紧，不放宽）。
+            // 〔合 P4b〕棘轮降到 0：那一行今天是 `is_empty()`（只收紧，不放宽）。
             "PLATFORM_EXCEPTIONS.is_empty(),",
             1,
             "递减棘轮：平台例外只许少不许多。**本件正是被它堵着**才把脱离放进宿主层的 —— \
                  松掉它，下一个人就能把 `process_group` 直接写进 `backend/`。",
         ),
-        // 🔴 〔步 7c 剖分 2026-09-19 · `设计/16 §6.2` C 类〕
+        // 🔴 〔步 7c 剖分 2026-09-19〕
         //    **`write_site_registry.rs` 剖成了三份，下面按新住址逐条重排。**
         //
         // 原来这里是三行、盯同一份文件（`missing.is_empty(),` 写 2 次、两条地板各 1 次）。
@@ -1265,7 +1265,7 @@ fn the_listen_env_names_are_the_same_string_on_both_sides() {
 /// ① 那份共用的解析**存在**（切得出体，且体里那三问俱在 —— 反空真）；
 /// ②③ 两条路**各自恰好一处**调它；
 /// ④ 两条路体内**都不再有**自己那套取法（`extract_embedded_to(` /
-///    `resolve_beside_this_exe(` 一处都不许剩；〔DP1〕「问产物带没带」那一问搬去了宿主的 `byte_table::choose`，
+///    `resolve_beside_this_exe(` 一处都不许剩；「问产物带没带」那一问搬去了宿主的 `byte_table::choose`，
 ///    两条路共用同一个交进来的 `embedded`）——
 ///    少了④，谁在旁边**再写一份**并列的取法，②③ 照样绿。
 ///
@@ -1333,7 +1333,7 @@ fn the_two_resolution_paths_still_agree_on_the_order() {
 /// 实现只要不接到调用点就是死代码，而那四格照样绿。这一格钉的是**两个落点各自的
 /// 函数体里真的走了那一份**，而且**没有各自留一条裸 `spawn()` 直接放弃的路**。
 ///
-/// 形状照 `sftp_tests.rs` 里当时那一格「两条后端部署路都读字节自报的身份」（〔MIG-3b〕判定进了本机常驻后端，那一格随之换成「只放字节」）
+/// 形状照 `sftp_tests.rs` 里当时那一格「两条后端部署路都读字节自报的身份」（判定进了本机常驻后端，那一格随之换成「只放字节」）
 /// （`K-W4b` 那一拍也照抄过它）—— **但切函数体那一步复用本文件的 `body_of`，
 /// 不抄第三份切法**：本文件 `block_of` 的头注逐字写着「两种切法迟早在同一段代码上
 /// 给出两个答案」。反向自检因此是**两层**：`body_of` 自带的「窗口有界 + 非空」，
@@ -1376,7 +1376,7 @@ fn both_production_spawn_paths_go_through_the_shared_etxtbsy_verdict() {
             "local_backend_host.rs::spawn_detached",
             &host_side,
             "fn spawn_detached(\n    bin: &std::path::Path,\n    port: u16,",
-            // 〔`15 §5.1 A3` 09-18〕锚点从 `process_group(0)` 换成 `Lifetime::Detached`：
+            // 锚点从 `process_group(0)` 换成 `Lifetime::Detached`：
             // 那句平台原语搬进唯一出口了，这一处留下的是**它声明的策略**。
             // 锚点的职责没变 —— 证明「切出来的体真的是这一段」。
             "Lifetime::Detached",
@@ -1431,7 +1431,7 @@ fn the_listen_port_is_deterministic_and_inside_the_dynamic_range() {
     // ★ 反向锚点：**不许用 `DefaultHasher`**（它跨 Rust 版本不保证稳定）。
     //   升级一次 monitor 就换一个口 = 下一次启动去连空口、起第二个后端，
     //   而那正是本件要防的那件事。
-    // 〔HOST〕实现搬进共享 crate（本机宿主与远端 `--resident-ensure` 同一个函数）⇒ 锚点跟着看那一份。
+    // 实现搬进共享 crate（本机宿主与远端 `--resident-ensure` 同一个函数）⇒ 锚点跟着看那一份。
     let me = guard_core::production_code(include_str!(
         "../../../src/common/relay-route-core/src/lib.rs"
     ));
@@ -1526,7 +1526,7 @@ fn a_half_written_owner_record_is_refused_rather_than_guessed() {
 #[test]
 fn every_ignored_test_here_that_spawns_a_real_backend_demands_private_tmux() {
     const PRIVATE_TMUX: &str = "CCM_E2E_TMUX_SHIM_BIN";
-    // 🔴 〔搬树 2026-09-18 · `设计/16 §5.4b` 纪律 3〕**语料跟着测试搬。**
+    // 🔴 〔搬树 2026-09-18 ·  纪律 3〕**语料跟着测试搬。**
     //
     // 本条数的是「**本模块里**带 `#[ignore]` 的真进程判据」。剖分把本模块的测试段
     // 整个搬到了 `tests/frontend/shell/local_backend_host_tests.rs`（就是本文件），
@@ -1994,7 +1994,7 @@ fn the_one_shim_gate_really_fails_closed() {
 ///    错在把它读成了「所有剥法都分不开」。
 ///
 ///    **`M-c7-D` 那把刀 09-04 在本工作树上重打，两个读数都留下**（`K-R9` `D3`，
-///    语料 = 本机 tmux 帧进账本那条真后端实测 `the_local_tmux_frames_really_land_in_the_ledger`〔散文墓碑〕，〔MIG-1〕已随那本账删）：
+///    语料 = 本机 tmux 帧进账本那条真后端实测 `the_local_tmux_frames_really_land_in_the_ledger`〔散文墓碑〕，已随那本账删）：
 ///    · 旧剥法：monitor `1275 passed / 0 failed` —— **静默假绿，逐字复现**；
 ///    · 新剥法：`every_test_that_starts_the_real_backend_demands_a_private_tmux` **红**，
 ///      报文逐字点名「走的腿：两条腿都没走（连第二道锁 ② 都没有）」。
@@ -2109,7 +2109,7 @@ fn the_one_shim_gate_really_fails_closed() {
 ///    ⚠ **分母，逐字**：我实打的是**这一形**（`M-c7-D`：整段包进 `/* */` ＋ 桩值）
 ///    与它两个必要条件的反面；**「块注释这一族一共有几种走法」的分母给不出**
 ///    ⇒ 这里只登记**我量过的这几形**，不写全称。
-/// 10. ⚠ **`B2` 把剥法收口成共享原语，带进来一个新的盲点方向**〔`C` 第七拍 09-01〕。
+/// 10. ⚠ **`B2` 把剥法收口成共享原语，带进来一个新的盲点方向**。
 ///    共享原语连 **`*` 与 `/*` 打头的整行**一起剥，而 Rust 的**解引用行**
 ///    （`*g = Some(..)` / `*DETACHED.lock()… = None;`）正是那个形状
 ///    ⇒ 一条把来历字面量或 `"PATH".to_string()` 写在 `*deref = …` 行上的测试，
@@ -2180,7 +2180,7 @@ fn every_test_that_starts_the_real_backend_demands_a_private_tmux() {
              rustc 眼里就是条普通跨行块注释）⇒ 这一块掉进剥法的兜底、一个字都不剥\
              ⇒ 「以 `let ` 打头就静默通过」那一格**原样回来**，而那一版的看门判据**还是绿的**。\
              实测于 `4eb271f`：本条判「合规」，全量 monitor `1278 passed; 0 failed`。\n      \
-             〔`K-R9` `D3` 两个读数：同一把刀（那条真后端实测 `the_local_tmux_frames_really_land_in_the_ledger`〔散文墓碑〕，〔MIG-1〕已删）\
+             〔`K-R9` `D3` 两个读数：同一把刀（那条真后端实测 `the_local_tmux_frames_really_land_in_the_ledger`〔散文墓碑〕，已删）\
              旧剥法 monitor `1275 passed / 0 failed`；新剥法本条当场红。\
              ⚠ 那个 1275 量于上一拍的旧基点，**别当今天的分母**（今天 monitor 那个包是 1287 条）。〕\n      \
              ★★★ **09-04 `K-R25`：上面那一格关上了 —— 关它的是「把两把尺子的单位对齐」。**\
@@ -2214,7 +2214,7 @@ fn every_test_that_starts_the_real_backend_demands_a_private_tmux() {
              （**第三道锁 ③ · ㈢ 处数**）—— 起进程那一跳后写的赢，\
              排在 `sb.envs()` 之后的那条会把 shim 整个盖掉。委托方本体里这个形状应当**0 处**。\n      \
              ⚠ 判的是形状不是语义（同上：`\"PATH\"` 后面紧跟方法调用；纯读不算）";
-    // 🔴 〔搬树 2026-09-18 · `设计/16 §5.4b` 纪律 3〕**两个语料都跟着测试搬。**
+    // 🔴 〔搬树 2026-09-18 ·  纪律 3〕**两个语料都跟着测试搬。**
     //
     // 本条的人群是「**起真后端的测试**」，而测试段剖分之后整个住进了 `tests/`：
     // `local_backend_host.rs` → `tests/frontend/shell/local_backend_host_tests.rs`（本文件）
@@ -2284,7 +2284,7 @@ fn every_test_that_starts_the_real_backend_demands_a_private_tmux() {
     //   `local_backend.rs` 那条同族守卫在这上面**自红过一次**（它的注释里写着
     //   `#[ignore]` 与 `CCM_E2E_BACKEND`，第一版把自己算进了人群）。
     //
-    // ⚠⚠ **剥注释这一步 09-01（`C` 第七拍）收口成共享原语**〔`D6` `B2`〕。
+    // ⚠⚠ **剥注释这一步 09-01（`C` 第七拍）收口成共享原语**。
     //   这里原来是一份**私有副本**（墓碑，原文逐字）：
     //   `let code_only = |c: &str| -> String { c.lines()`
     //   `    .filter(|l| !l.trim_start().starts_with("//")).collect::<Vec<_>>().join("\n") };`
@@ -2604,13 +2604,13 @@ fn every_test_that_starts_the_real_backend_demands_a_private_tmux() {
     //    ⚠ 这是**地板不是等号**：新写一条起真后端的测试会自动进人群、自动被要求合规。
     //      地板只挡「已知的那几条**静默掉出人群**」（改名 / 换来历 / 被删）。
     let names: Vec<&str> = population.iter().map(|(n, _, _, _)| n.as_str()).collect();
-    // 🔴 〔搬树 2026-09-18 · `设计/16 §6.2` C 类〕住址跟着符号搬：这六条测试今天
+    // 🔴 〔搬树 2026-09-18〕住址跟着符号搬：这六条测试今天
     //    逐条住在 `_tests.rs` 里（符号一个都没少、也没改名，只是换了文件）。
     for must in [
         "local_backend_host_tests.rs::the_local_backend_host_can_be_stopped_and_started_again",
         "local_backend_host_tests.rs::e2e_a_second_host_adopts_the_running_backend_instead_of_starting_a_second_one",
         "local_backend_host_tests.rs::e2e_a_detached_backend_that_dies_leaves_no_zombie",
-        // 〔MIG-1〕`local_backend_tests.rs` 里起真后端验本机 tmux 帧进 monitor 账本的那条随那本账删了。
+        // `local_backend_tests.rs` 里起真后端验本机 tmux 帧进 monitor 账本的那条随那本账删了。
         "local_backend_tests.rs::the_local_backend_host_really_registers_an_inbound_client",
         "local_backend_tests.rs::e2e_the_supervisor_restarts_a_real_backend_after_it_is_killed",
     ] {
@@ -2792,7 +2792,7 @@ fn every_token_is_fresh_and_long_enough() {
     assert!(a.chars().all(|c| c.is_ascii_hexdigit()));
 }
 
-/// 要求住址：`INVARIANTS §48.1`「钥匙由宿主生成（新生成时 128 位随机）」· `设计/99 §4.4`「Windows 上本机常驻后端脱离不了」（V109 先不做 Windows 这一族）。
+/// 要求住址：`INVARIANTS §48.1`「钥匙由宿主生成（新生成时 128 位随机）」· 「Windows 上本机常驻后端脱离不了」（先不做 Windows 这一族）。
 ///
 /// 上面那条与 [`the_listen_token_file_is_pinned_cell_by_cell`] 门在 `target_os = "linux"` 上，理由只有一条：
 /// 铸 token 那条路只经 `start_detached`，而它第一步就问 `platform::proc::CAN_DETACH`，假 ⇒ `NotTaken`，走不到铸 token。
@@ -2969,7 +2969,7 @@ fn the_auto_start_refusal_is_not_only_a_log_line() {
         "那条记录不再写在 `Adopt::Refused` 那一臂里 —— \
              写在别处就等于又回到「从别的信号反推这一次是不是拒绝」"
     );
-    // 〔FIX2 · 99 §2.1 ㉛②〕按文案键断言，不按原文：原先钉着「下一步」三个字（CP1 裁「改·§2.3」处方形），
+    // 按文案键断言，不按原文：原先钉着「下一步」三个字（CP1 裁「改·§2.3」处方形），
     //   现在认那一臂取的是拒绝那一条、并把 pid 文件交给它当 `pidPath`。
     for (needle, why) in [
         (
@@ -3065,9 +3065,9 @@ fn the_user_actionable_start_failures_all_reach_the_user() {
     //  ⇒ 人群从「所有人」缩成这三批，**性质没变**，所以这条不换靶。
     //  与 `local_backend.rs` 那条「换靶」不同形：那条的**目的**随 F05b 过期，必须换；
     //  本条改的只是红了之后说给人听的那句话。〕
-    // 〔HX1 · E §E4〕6 → 7：另一个 monitor 正连着那一臂 —— 分在「用户动得了手」那一档（关掉另一个 monitor），
+    // 〔E §E4〕6 → 7：另一个 monitor 正连着那一臂 —— 分在「用户动得了手」那一档（关掉另一个 monitor），
     //   同拍调了 `note_start_refusal`（下面 ④ 那个数 3 → 4）。
-    // 〔TAIL · HOST 余项〕7 → 6：常驻后端多客户之后那一臂成死路、删了（④ 那个数 4 → 3）。
+    // 〔HOST 余项〕7 → 6：常驻后端多客户之后那一臂成死路、删了（④ 那个数 4 → 3）。
     assert_eq!(
         prod.matches("StartOutcome::Failed {").count(),
         6,
@@ -3089,7 +3089,7 @@ fn the_user_actionable_start_failures_all_reach_the_user() {
         token_lane.contains("looked_at: vec![token_path(&dir)]"),
         "拿 token 失败那一格不再把 token 文件放进 `looked_at`"
     );
-    // 〔FIX2 · 99 §2.1 ㉛②〕按文案键断言，不按原文（原先钉着「下一步：删掉这个文件再起一次」）。
+    // 按文案键断言，不按原文（原先钉着「下一步：删掉这个文件再起一次」）。
     let ensure = body_of(&prod, "fn ensure_listen_token(");
     assert!(
         ensure.contains("\"rsLocalBackendHost.token.empty\""),
@@ -3097,7 +3097,7 @@ fn the_user_actionable_start_failures_all_reach_the_user() {
              ★ 这句话现在是**直接转交给用户**的（不再只进日志），\n\
              少了它，用户拿到的就只是一句「它坏了」。"
     );
-    // ④ 写记录只有一个入口，今天恰好两条路在用它（〔HX1〕+1 另一个 monitor 那一臂 ·〔TAIL〕−1 那一臂删了）。
+    // ④ 写记录只有一个入口，今天恰好两条路在用它（+1 另一个 monitor 那一臂 ·−1 那一臂删了）。
     assert_eq!(
         prod.matches("note_start_refusal(").count(),
         3,
@@ -3378,7 +3378,7 @@ fn the_listen_token_file_is_pinned_cell_by_cell() {
 /// ⚠ **覆盖面另有缺口，一并登记**：本条 105 ＋ backend 侧 73 ＋ guard-core 自检 1 = **179 份**，
 /// 而排掉 vendor 的全仓是 **188 份**。差的 9 份里，`crates/usage-core/src/lib.rs`
 /// **确实被 `guard_core::production_code` 吃**〔墓碑 2026-09-18：原文点名 `usage.rs` 里那条
-/// 「口径只有一个家」的判据，而 `usage.rs` 已随用量 ②③ 两轴整轴退役（`设计/50`）⇒ 那条判据
+/// 「口径只有一个家」的判据，而 `usage.rs` 已随用量 ②③ 两轴整轴退役⇒ 那条判据
 /// **今天不存在**，本句只剩「剥生产段这件事本身」这一半仍成立〕
 /// ⇒ 它掉进兜底的话，三条判据一条都不会响。
 /// 〔那一拍写区只有本文件，收口要动 guard-core / 那两条守卫的切法 ⇒ 只登记，没动手。
@@ -3406,7 +3406,7 @@ fn the_listen_token_file_is_pinned_cell_by_cell() {
 /// `min_blocks` 挡「切法坏了」。棘轮纪律：只许升不许降。
 #[test]
 fn no_monitor_file_falls_back_to_leaving_block_comments_in() {
-    // 🔴 〔搬树 2026-09-18 · `设计/16 §5.4b` 纪律 3〕**两棵树一起喂，地板一格不动。**
+    // 🔴 〔搬树 2026-09-18 ·  纪律 3〕**两棵树一起喂，地板一格不动。**
     //
     // monitor 这半边今天住两处：生产段 `src/frontend/shell/src`、测试段 `<repo>/tests/frontend/shell`。
     // 而本条第二个单位（`#[test]` 块）**整个住在测试段** ⇒ 只喂 `src/` 那一棵的话
@@ -3416,7 +3416,7 @@ fn no_monitor_file_falls_back_to_leaving_block_comments_in() {
         &[
             &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src"),
             &crate::guard_support::tests_root().join("frontend/shell"),
-            // 〔P4〕文件窗口独立成包：它的判据搬到 `tests/frontend/filewin/`（代码随 `src` 那棵根的人群声明收）。
+            // 文件窗口独立成包：它的判据搬到 `tests/frontend/filewin/`（代码随 `src` 那棵根的人群声明收）。
             &crate::guard_support::tests_root().join("frontend/filewin"),
         ],
         100,
@@ -3428,7 +3428,7 @@ fn no_monitor_file_falls_back_to_leaving_block_comments_in() {
 // `KPY2` / `KPY3`：**真进程**判据（`#[ignore]`，`cargo test` 不跑它们）。
 //
 // 入口是 `tests/e2e/local-backend-supervise.sh`（第二趟 `--ignored`），执行链有两条：
-// 本机门禁 `tests/scripts/gate.sh` 的 `run_e2e local-backend <地板>`（〔E2 尾 09-27〕接上 ——
+// 本机门禁 `tests/scripts/gate.sh` 的 `run_e2e local-backend <地板>`（接上 ——
 // 此前只挂在 `ci.yml` 的 `assert-pass-floor.sh local-backend <地板>` 上，而那条流水线不通电，
 // 于是「两趟过滤串重叠、本条跑两遍当场红」红了几天没人看见）与 `ci.yml` 那一行。
 // —— 「在哪一步会被执行」这句话是 `§1` 那张表逐字要求写明的。
@@ -3444,7 +3444,7 @@ struct E2eSandbox {
     /// 本轮起过的那些进程。**一交出 `DETACHED` 就立刻塞进这里**，
     /// 中间不留任何「拿在手里但没人管」的窗口 —— 那个窗口正是 08-26 漏网的机制。
     kept: std::sync::Mutex<Vec<crate::spawn_managed::ManagedChild>>,
-    /// 〔E2 尾 09-27〕本轮在 `DETACHED` 里出现过的每一个 pid。**`kept` 那一格兜不住脱离那条路**：
+    /// 本轮在 `DETACHED` 里出现过的每一个 pid。**`kept` 那一格兜不住脱离那条路**：
     /// 「上一个宿主退了」一关写半边、那条流就断 ⇒ `reap_detached` 当场把 `Child` 取进收尸线程
     /// （它在那儿等一个还活着的进程）⇒ [`Self::forget_like_a_host_that_exited`] 拿到的是 `None`、`Drop` 手里没有它
     /// ⇒ `KPY2` 第一个宿主起的那个后端活过本条。e2e 收尾那句 `pkill -f` 替它兜了一个月；
@@ -3736,7 +3736,7 @@ fn e2e_a_detached_backend_that_dies_leaves_no_zombie() {
         assert!(alive(pid), "起出来的 pid={pid} 不在进程表里");
 
         // **从外面**把它结束掉（不是走我们的 `stop`）—— 那才是「它自己崩了」的形状。
-        // 〔STOP〕生产段那个发信号的 `signal_term` 删了（「停」改走一次性 `--resident-stop`）⇒ 这里自己发。
+        // 生产段那个发信号的 `signal_term` 删了（「停」改走一次性 `--resident-stop`）⇒ 这里自己发。
         let st = std::process::Command::new("kill")
             .args(["-TERM", &pid.to_string()])
             .status()
@@ -4089,7 +4089,7 @@ fn three_fake_backends_land_in_three_different_cells() {
 /// ★ 扫描面自检：共享剥法留住了本文件要扫的那几段，而便宜近似留不住。
 #[test]
 fn the_shared_stripper_keeps_the_exit_and_refusal_arms_this_guard_must_scan() {
-    // 本文件对 `lib.rs` 的两条判据取的针：`kill_on_exit_now(`（退出臂那一条的正控，〔RL1〕接替已删的旧缝名）·
+    // 本文件对 `lib.rs` 的两条判据取的针：`kill_on_exit_now(`（退出臂那一条的正控，接替已删的旧缝名）·
     // `start_local_backend()`（568）· `take_start_refusal()`（602）—— 都在 59 之后。
     //
     // ⚠ 本文件另有一条 `the_strip_rule_this_file_leans_on_is_still_on_disk`，它是剥法的
@@ -4106,9 +4106,9 @@ fn the_shared_stripper_keeps_the_exit_and_refusal_arms_this_guard_must_scan() {
     );
 }
 
-/// 〔C4d · 第四波 4B〕monitor 交注解路径用的环境变量名 == 后端认的那一个（两侧对拍；读后端源码现抠，运行期读、不是编译期边）。
+/// monitor 交注解路径用的环境变量名 == 后端认的那一个（两侧对拍；读后端源码现抠，运行期读、不是编译期边）。
 ///
-/// 守的要求：主会话 09-25 裁（`调研/第四波记录/C4d.md`「主会话裁」第 2 条，逐字）「文件留在原处、同一路径，不迁移、一条不丢」——
+/// 守的要求：主会话 09-25 裁（「主会话裁」第 2 条，逐字）「文件留在原处、同一路径，不迁移、一条不丢」——
 /// 名字一漂，后端就收不到路径 ⇒ 明说不知道注解在哪（不会丢，但界面上注解全成了「不知道」）。
 #[test]
 fn the_annotation_path_env_name_is_the_one_the_backend_reads() {
@@ -4132,7 +4132,7 @@ fn the_annotation_path_env_name_is_the_one_the_backend_reads() {
     assert!(!envs.iter().any(|(k, _)| k == "CCM_HISTORY_METADATA_X"));
 }
 
-/// 〔CP2b · 4C〕给人看的话进了文案表（`copy_text("key", …)`）⇒ 「这一段代码说了什么」＝
+/// 给人看的话进了文案表（`copy_text("key", …)`）⇒ 「这一段代码说了什么」＝
 /// 代码本身 ＋ 它取的那几条表项的原文（占位符原样留着）。只看代码的话，「那句话说没说下一步」
 /// 这一类判据从此永远读不到那句话 —— 字搬了家，尺子跟着去新家量。
 fn with_copy(code: impl AsRef<str>) -> String {
@@ -4161,7 +4161,7 @@ fn with_copy(code: impl AsRef<str>) -> String {
     out
 }
 
-// ═══ 〔HX2 · 第四波 4D〕常驻后端身份带数据目录 ═══════════════════════════════════════════════
+// ═══ 常驻后端身份带数据目录 ═══════════════════════════════════════════════
 //
 // 要求住址：题面 HX2 逐字「常驻后端身份带数据目录（接错了拒并出声）」；`GP1.md §7.6` 第 4 条逐字「要么注解那几条命令也先核路径
 // （照本路 §3），要么常驻后端的身份带上数据目录」；审计 `E-compat.md` §E10（「隔离数据目录的 monitor 写穿到真 profile」）。
@@ -4207,7 +4207,7 @@ fn hx2_a_backend_started_for_another_data_dir_is_refused_out_loud() {
         "CCM_HISTORY_METADATA".into(),
         "/tmp/iso/history-metadata.json".into(),
     ));
-    // 〔P3〕C-L5：值是汉字 ⇒ 与前面的汉字之间不隔空格
+    // C-L5：值是汉字 ⇒ 与前面的汉字之间不隔空格
     assert!(
         matches!(hello_verdict(&seen, "b1", "/h/.claude", &more), HelloVerdict::Stranger(w) if w.contains("CCM_HISTORY_METADATA：它用的是没有")),
         "它少一格（没被交注解路径）⇒ 该拒"
@@ -4293,7 +4293,7 @@ fn hx2_the_handed_names_are_exactly_what_the_backend_echoes() {
     );
 }
 
-/// 〔HX1 · RK1 报 3〕token 取自**内核密码学随机数**，不再从时钟 / pid / 计数器里拼。
+/// 〔RK1 报 3〕token 取自**内核密码学随机数**，不再从时钟 / pid / 计数器里拼。
 /// 守的要求：`INVARIANTS §48.1` 逐字「钥匙由宿主生成（新生成时 128 位随机）」；RK1 报备 §5.7 第 4 条（纳秒 ⊕ pid ⊕ 计数器 ＋ mtime 泄露铸造时刻）。
 /// 形状：生产段 `fresh_token` 体内零命中那几样可推的熵源、恰好读 `/dev/urandom` 一处（零富余，带正控）。
 #[test]
@@ -4327,7 +4327,7 @@ fn hx1_the_token_comes_from_the_kernel_csprng_not_from_clock_pid_or_counter() {
     assert!(guessable.iter().any(|n| old.contains(n)));
 }
 
-/// 〔HX1 · RK1 小尾巴〕`~/.cc-monitor` 这一层**建的那一下**就是 0700；**已在的**不动（两向）。
+/// 〔RK1 小尾巴〕`~/.cc-monitor` 这一层**建的那一下**就是 0700；**已在的**不动（两向）。
 /// 守的要求：`4d-lanes.md` HX1 出处「RK1 小尾巴（`~/.cc-monitor` 首建权限按 umask ⇒ 0700）」。
 #[test]
 #[cfg(unix)]
@@ -4353,9 +4353,9 @@ fn hx1_the_monitor_home_dir_is_born_private_and_an_existing_one_is_left_alone() 
     std::fs::remove_dir_all(&base).ok();
 }
 
-/// 〔HX1 · 主会话裁 HX1 拍板项 4〕**monitor 生产段每一处建目录都登记在案，建后端自家目录（`~/.cc-monitor` 一族）的只有
+/// 〔主会话裁 HX1 拍板项 4〕**monitor 生产段每一处建目录都登记在案，建后端自家目录（`~/.cc-monitor` 一族）的只有
 /// `platform::fs::ensure_private_dir` 一处**（本机起后端前 · token / pid 那一层 · 释放二进制 / 全景小程序 / ccm 入口那几处经注入）。
-/// 守的要求：主会话裁「建自家目录收成一个小函数 …… 判据：生产段建 `~/.cc-monitor` 的调用点 == 那个函数一处（两向，带正控）」。
+/// 守的要求：「建自家目录收成一个小函数 …… 判据：生产段建 `~/.cc-monitor` 的调用点 == 那个函数一处（两向，带正控）」。
 /// 形状：`src/frontend/shell/src` 生产段里 `fs::create_dir(` / `fs::create_dir_all(` / `fs::DirBuilder::new(` 的所在 (文件, 函数) == 登记表（两向）；
 /// 登记表里「后端自家目录」那一格恰好是那一个函数；正控：合成语料里多一处必被认出。后端那一半另有一份（`own_dir_tests`）。
 #[test]
@@ -4375,7 +4375,7 @@ fn hx1_every_monitor_dir_creation_is_registered_and_only_one_builds_the_backend_
         ),
         ("bind.rs", "spawn", "monitor 数据目录（绑定表）"),
         (
-            // 〔P4〕原 `utils.rs`：原子写搬进 `host-core`（两个前端共用那一份）。
+            // 原 `utils.rs`：原子写搬进 `host-core`（两个前端共用那一份）。
             "host-core/atomic.rs",
             "atomic_write_json",
             "调用方给的 JSON 文件的父目录（monitor 数据目录一族）",
@@ -4383,11 +4383,11 @@ fn hx1_every_monitor_dir_creation_is_registered_and_only_one_builds_the_backend_
         (
             "config.rs",
             "patch_config_at",
-            "monitor 数据目录（config.json，〔CFG1〕加锁读改写那一处）",
+            "monitor 数据目录（config.json，加锁读改写那一处）",
         ),
-        // 〔合并 LOC1b〕`session_map.rs` 那条 watcher 线程那一行摘了：monitor 自己那份本机判活（连同它盯的 sessions 目录）删了。
+        // `session_map.rs` 那条 watcher 线程那一行摘了：monitor 自己那份本机判活（连同它盯的 sessions 目录）删了。
         (
-            // 〔P4〕文件窗口独立成包：住址带包名。
+            // 文件窗口独立成包：住址带包名。
             "cc-monitor-filewin/bookmarks.rs",
             "lock_store",
             "monitor 数据目录（书签）",
@@ -4435,7 +4435,7 @@ fn hx1_every_monitor_dir_creation_is_registered_and_only_one_builds_the_backend_
     assert!(files.len() >= 100, "只扫到 {} 份 —— 遍历坏了", files.len());
     let mut found: Vec<(String, String)> = Vec::new();
     for (path, src) in &files {
-        // 〔P4〕按模块住址认：本包 manifest 明写的兄弟源码树（`host-core` · 文件窗口 …）里的键带包名（`host-core/atomic.rs`）。
+        // 按模块住址认：本包 manifest 明写的兄弟源码树（`host-core` · 文件窗口 …）里的键带包名（`host-core/atomic.rs`）。
         let rel = guard_core::module_address(&root, path);
         found.extend(creations(&rel, &guard_core::production_code(src)));
     }

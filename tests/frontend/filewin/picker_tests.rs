@@ -1,6 +1,6 @@
-//! 〔W5-FILES · 第五波〕`filewin/picker.rs` 的判据 —— **原生选文件框**（上传 · 存到哪儿）。
+//! `filewin/picker.rs` 的判据 —— **原生选文件框**（上传 · 存到哪儿）。
 //!
-//! 要求住址：`设计/60 §6.2`「原生选文件框 —— 上传今天是问一句本机路径；本机无图形会话验不了」
+//! 要求：「原生选文件框 —— 上传今天是问一句本机路径；本机无图形会话验不了」
 //! ＋ 主会话 09-25 补件（WIN1 报备）：「文件窗口需要选本机文件 / 目录的地方（上传、下载到…）用原生选择框」。
 //!
 //! | 判据 | 钉的那一形 | 两侧异源在哪 |
@@ -59,7 +59,7 @@ async fn browse_on_the_upload_prompt_fills_the_box_through_the_injected_picker()
     let wired = wire_up("w5-pick-up", FakeBackend::new(&[], Declared::default())).await;
     let mut w = window_on(&wired, "/srv");
     let asked = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
-    // 〔CIFIX-FW〕结局扣住：点下去那一帧自己也调 `settle_pick`，不扣的话工作线程抢先落下就被那一帧取走、
+    // 结局扣住：点下去那一帧自己也调 `settle_pick`，不扣的话工作线程抢先落下就被那一帧取走、
     //   下面的 `settle` 空等 3 秒（Windows runner 上红；本机钉一核 `taskset -c 3` 约 1/300 复现）。反过来那一序见下一条。
     let gate = std::sync::Arc::new(tokio::sync::Notify::new());
     w.picker = std::sync::Arc::new(Fake {
@@ -125,7 +125,7 @@ async fn browse_on_the_upload_prompt_fills_the_box_through_the_injected_picker()
     );
 }
 
-/// 〔CIFIX-FW〕要求住址 `设计/60 §6.2`（原生选文件框）：结局在下一帧**之前**就落下 ⇒ 那一帧自己把它接进框。
+/// （原生选文件框）：结局在下一帧**之前**就落下 ⇒ 那一帧自己把它接进框。
 ///
 /// 上一条把序钉在「帧先、结局后」；这一条钉反过来那一序（Windows runner 上的时序：被唤醒的工作线程抢在帧收尾之前落下）。
 /// 「落下了」认的是生产那一下敲窗口（`PickBoard::deliver` 落下之后 `request_repaint`），不是睡一觉。

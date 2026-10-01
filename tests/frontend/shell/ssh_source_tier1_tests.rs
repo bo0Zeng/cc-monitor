@@ -15,7 +15,7 @@ use super::*;
 /// 而**没有任何判据钉住它保持一处** —— 加一句读 `~/.ssh/id_ed25519` 或
 /// `known_hosts`，全仓判据一条不会红。
 ///
-/// ⚠ 〔MIG-3b 续〕从前 `pubkey.rs` 里那段拼给**远端**执行的 `$HOME/.ssh` shell 串登记在这里；它随公钥推送进了本机后端。
+/// ⚠ 从前 `pubkey.rs` 里那段拼给**远端**执行的 `$HOME/.ssh` shell 串登记在这里；它随公钥推送进了本机后端。
 /// 人群只取**本机路径构造**（`join(".ssh")` / `expand_tilde("~/.ssh`），
 /// 不取字符串里出现的 `.ssh` —— 否则「远端的事」会被算成「读了用户本机的东西」。
 #[test]
@@ -28,9 +28,9 @@ fn the_local_ssh_read_surface_is_exactly_one_site() {
     /// 按写法取样正是本工作区一直在治的病（`join(SSH_DIR)` 换个常量就绕过去了）。
     /// ⇒ 人群取「谁提到了这个目录」，**本机还是远端由登记回答**，不由语法判。
     const SSH_SITES: &[(&str, &str, &str, &str)] = &[
-        // 〔MIG-1 · `99 §2.1 ⑯`〕`ssh_source.rs` 读 `~/.ssh/config` 那一行走了：导入搬进后端 `dial/ssh_config.rs`
+        // `ssh_source.rs` 读 `~/.ssh/config` 那一行走了：导入搬进后端 `dial/ssh_config.rs`
         //   ⇒ monitor 生产段碰本机 `.ssh` 的从此是零处（下面只剩拼给远端的那一行）。
-        // 〔MIG-3b 续 · ⑬〕`pubkey.rs` 那一行（拼给远端的 `authorized_keys` 那一串）也走了：公钥推送进了本机后端（`pubkey-push`），
+        // `pubkey.rs` 那一行（拼给远端的 `authorized_keys` 那一串）也走了：公钥推送进了本机后端（`pubkey-push`），
         //   读本机那份 `.pub` 也在那里 ⇒ monitor 生产段碰 `.ssh` 的**零处**。人群空了，下面那条正控保证尺子不是瞎的。
     ];
 
@@ -42,7 +42,7 @@ fn the_local_ssh_read_surface_is_exactly_one_site() {
         files.len()
     );
     // 被测的 `ssh_source.rs` —— 它走普通遍历**本来就在**人群里，这一份是补的第二份。
-    // ⚠ 〔`P4` 2026-09-21〕先前这一行写着「本文件被 `scan_tree!` 按构造摘掉了
+    // ⚠ 先前这一行写着「本文件被 `scan_tree!` 按构造摘掉了
     //   （它是调用者）⇒ 手动补回」。那一刀**在这一处不生效**（判据由 `#[path]`
     //   挂载 ⇒ `file!()` 是折返路径 ⇒ 后缀比不命中），而且今天的调用者是本判据文件、
     //   不是 `ssh_source.rs`。重复在这里无害（下面 `found` 排序后 `dedup`），
@@ -114,7 +114,7 @@ fn remote_config_deserializes_frontend_shape() {
     assert_eq!(cfg.port, 2200);
     assert_eq!(cfg.user, "pi");
     assert_eq!(cfg.key_path, None, "空串 keyPath → None");
-    // 〔E2 · V41〕盘上旧的 `backendPath` 不读、不报错（那一格删了）。
+    // 盘上旧的 `backendPath` 不读、不报错（那一格删了）。
     assert_eq!(cfg.host_key_fingerprint, None, "空串指纹 → None");
 }
 
@@ -163,7 +163,7 @@ fn a_backend_that_dies_right_after_hello_does_not_keep_resetting_the_backoff() {
     );
 }
 
-/// 〔DEL 续〕守的要求：主会话裁「非 unix 远端：那一类失败按『永久不支持』记在那台的连接状态里，**不再自动按退避重连**」。
+/// 守的要求：「非 unix 远端：那一类失败按『永久不支持』记在那台的连接状态里，**不再自动按退避重连**」。
 /// 记下了 ⇒ `Stop`（带那句话，任何退避值都一样）；没记 ⇒ 照当前退避再连。
 #[test]
 fn a_permanently_unsupported_remote_stops_instead_of_backing_off() {
@@ -194,15 +194,15 @@ fn next_backoff_doubles_then_caps() {
     );
 }
 
-// 〔MIG-1 收尾 · 主会话裁「一个判定一个家」〕地址四形态解析 · `endpoints` 去重保序 · `winner_order`（last-good 排首）三组判据
+// 〔「一个判定一个家」〕地址四形态解析 · `endpoints` 去重保序 · `winner_order`（last-good 排首）三组判据
 //   随那几个函数搬进后端 `dial/machine.rs`：`tests/backend/dial_machine_tests.rs` 的 `address_lines_read_the_four_shapes_and_refuse_garbage`
 //   与 `a_wire_dial_is_composed_here_and_the_preferred_winner_goes_first`（后者同拍新加）。
 
-// 〔FIX4 · V41〕F45 那两条（`winner_address`〔散文墓碑〕：没连过 ⇒ `host:port`；连过 ⇒ 上次赢的那条，地址配置改过即失效）随被测函数删了：
+// F45 那两条（`winner_address`〔散文墓碑〕：没连过 ⇒ `host:port`；连过 ⇒ 上次赢的那条，地址配置改过即失效）随被测函数删了：
 //   远端开终端进了本机后端（`terminal-ssh`），那个函数零生产调用。两半各有等价判据、不补：
 //   「上次赢的那条排首 / 已不在这台地址里就不动」⇒ 后端 `dial_machine_tests::a_wire_dial_is_composed_here_and_the_preferred_winner_goes_first`
 //   ＋ 开终端那一行 `dial_terminal_tests::the_address_is_the_first_in_race_order_so_the_last_winner_is_used`；
 //   「地址配置改过 ⇒ 上次那条失效」⇒ monitor `dial_host_tests::the_last_winner_goes_over_as_prefer_while_the_config_is_unchanged`。
 
-// 〔E2 · V28〕`backendPath` 那一格删了（落点恒是 `relay_route_core::BACKEND_LANDING_SHELL`）⇒ 从前那道放行判定
+// `backendPath` 那一格删了（落点恒是 `relay_route_core::BACKEND_LANDING_SHELL`）⇒ 从前那道放行判定
 //   `backend_path_for_shell`〔散文墓碑〕与它的两条判据没有外来值可判，一起删了。

@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 
 /// `(文件, 函数, 起的是什么, 为什么必须起进程, 三条策略)`。**默认拒绝**：人群从源码派生。
 ///
-/// # ★ 第五列是 `15 §5.1 A3` 同拍加的：**每个落点选了哪三个策略**
+/// # ★ 第五列是同拍加的：**每个落点选了哪三个策略**
 ///
 /// 格式两种，二选一：
 /// - `"<Console> · <Lifetime> · <Stderr>"` —— 三个枚举变体名，逐字。
@@ -23,7 +23,7 @@ const SPAWNS: &[(&str, &str, &str, &str, &str)] = &[
     ("build.rs", "check_vendor_freshness", "`git`（读 vendor 目录的最后一次改动）",
      "vendor 新鲜度自检：只读地问 git，参数是仓内固定路径、不吃用户输入。\
           它必须起进程是因为「vendor 目录相对上游有没有漂」这件事只有 git 知道",
-     "—— **不进那个出口**：它跑在构建期、在开发者机器上，`00 §1.5.2` 那三个问题对它一个都不成立（没有 GUI 宿主可弹窗、没有 monitor 进程可随、错误就该打到 `cargo` 的 stderr 上）"),
+     "—— **不进那个出口**：它跑在构建期、在开发者机器上，那三个问题对它一个都不成立（没有 GUI 宿主可弹窗、没有 monitor 进程可随、错误就该打到 `cargo` 的 stderr 上）"),
     ("ccm_probe.rs", "probe_with", "`bash -lic <常量探测串>`",
      "P3t-Y2：本机 ccm 的**能力集**探测。命令串是 `CCM_PROBE_CMD` —— 与远端那条**逐字同一个常量**，\
           零插值。必须起进程的理由是「本机装没装 ccm、装的是哪一版」只有这台机器自己知道；\
@@ -34,7 +34,7 @@ const SPAWNS: &[(&str, &str, &str, &str, &str)] = &[
           由 `the_only_production_probe_command_is_the_constant` 按源码钉住，别读成「这里能跑任意命令」
           ★ 三条策略为什么是这三格：探针绝不该在用户桌面上闪窗口；`-lic` 起出来的整棵树超时时要一起收（只杀 `bash` 漏得掉用户 rc 起的东西）；有用的字节只在 stdout 上。",
      "Hidden · JobKillOnClose · Null"),
-    // ── 〔WF1 · `99 §2.2 ㉔`〕Windows 那一形的「你 PATH 上那个 `ccm` 是谁」。
+    // ── Windows 那一形的「你 PATH 上那个 `ccm` 是谁」。
     ("ccm_probe.rs", "probe_via_fresh_powershell", "`powershell.exe -NoProfile -NonInteractive -Command <现拼 PATH 的常量串>` ＋ `powershell.exe -NonInteractive -Command <常量探测串>`（带那份 PATH、照常加载 profile）",
      "同 `probe_with` 那一行问的是「终端里敲 `ccm` 走到哪」，Windows 上的终端是 PowerShell ⇒ 非起一个加载 profile 的 PowerShell 不可（profile 里的函数 / 别名与 PATH 一样决定走到哪）。\
           第一跳只读注册表里机器级 ＋ 用户级 PATH（新开终端拿到的是这一份，本进程继承来的可能是改之前的），第二跳带着它问 `Get-Command ccm` ＋ 名片；\
@@ -52,15 +52,15 @@ const SPAWNS: &[(&str, &str, &str, &str, &str)] = &[
           不吃任何用户输入；等待 / 读 / 解析与上一行**共用** `probe_spawned`（抄第二份必漂）
           ★ 三条策略为什么是这三格：同上一行逐字，只有 `Hidden` 那格更重：Windows 上问的是我们自己放下去的 `ccm.exe`（控制台子系统），不带 flag 就是每问一次身份闪一次黑框。",
      "Hidden · JobKillOnClose · Null"),
-    // ── 〔P1 · `设计/00 §1.2` 判定只在后端〕问我们自己放下去的那一份后端一次（帧命令的 CLI 面）。
+    // ── 〔判定只在后端〕问我们自己放下去的那一份后端一次（帧命令的 CLI 面）。
     ("ccm_probe.rs", "ask_once", "`<我们那份 ccm / 要放的那份暂存件> -- --<帧命令>`（不经 shell；入参 JSON 走 stdin）",
      "同步命令里要后端判一件事（本机探针认旧入口 `deploy-retired`）· 本机后端放下去之前要它自己判放不放（`place-verdict`，那一刻还没有常驻后端可连）\
           ⇒ 只能直接跑那份字节问一次；参数是路径与常量命令名，入参只经 stdin 交（不进 argv），一个字节都不写
           ★ 三条策略为什么是这三格：`Hidden` 同 `probe_binary_uncached`（Windows 上问的是控制台子系统的 `ccm.exe`）；超时收整棵；stderr 是答话的一半（错信封 `{code, message}`）⇒ `Captured`。",
      "Hidden · JobKillOnClose · Captured"),
-    // 〔SH1 · V136〕驾驶舱那条本机 shell 读 `local_shell_read`〔散文墓碑〕那一行出表了（`K-R112` 写下的出表条件兑现）：
+    // 驾驶舱那条本机 shell 读 `local_shell_read`〔散文墓碑〕那一行出表了（`K-R112` 写下的出表条件兑现）：
     //   驾驶舱读名册 / 读收件箱都改走后端（`bus-state` / `bus-inbox`，转调 cc-bus 的机器可读读命令），monitor 本机不再起 `bash`。
-    // 〔SR1a · 2026-09-24〕`dial_host.rs::open` 那一行**摘了**：它不再起 `--dial` 拨号代理子进程 ——
+    // `dial_host.rs::open` 那一行**摘了**：它不再起 `--dial` 拨号代理子进程 ——
     //   拨号挪进本机那一个常驻后端，经流上的链路做（`link_mux.rs`）。〔墓碑 —— 那一行的要点：
     //   「界面拿一条 SSH 链路的唯一入口 … 起的是 `cc-monitor-backend` … argv 只有一个常量 flag，
     //   主机名 / 用户名 / 私钥路径走环境变量」。〕
@@ -68,15 +68,15 @@ const SPAWNS: &[(&str, &str, &str, &str, &str)] = &[
     //    那个函数不存在了 —— 本机用量探针不再在界面进程里 `sh -c <载荷>`，
     //    它与远端那条**是同一条路**：往那台机器的后端发几条帧命令。
     //    ⇒ 界面进程这一侧起进程的面**净少一处**（这是好事，也是本表存在的理由）。
-    ("terminal.rs", "launch_local_posix_via", // 〔P4 · 阶段 H〕原 `launch.rs`：开窗的两个平台臂搬进 `platform/terminal.rs`
+    ("terminal.rs", "launch_local_posix_via", // 原 `launch.rs`：开窗的两个平台臂搬进 `platform/terminal.rs`
      "用户配置的终端 argv[0]",
      "在用户的终端里起会话 —— 承接 C13「最后那次 exec 在用户终端里」，这是本产品的主用途
           ★ 三条策略为什么是这三格：`Detached` 就是先前那句 `process_group(0)`。`Hidden` 在 POSIX 上是空的 —— **窗口是终端出口自己开的**，不是 `CreateProcess` 开的，别读成「这条路不开窗」。",
      "Hidden · Detached · Null"),
-    ("terminal.rs", "launch_powershell_window", // 〔P4 · 阶段 H〕原 `launch.rs`：开窗的两个平台臂搬进 `platform/terminal.rs`
+    ("terminal.rs", "launch_powershell_window", // 原 `launch.rs`：开窗的两个平台臂搬进 `platform/terminal.rs`
      "`wt.exe` / `powershell.exe`",
      "Windows 侧同上；两个名字都是常量，不吃用户输入
-          ★ 三条策略为什么是这三格：🔴 **全仓唯一一处 `NewVisible`**（Plan B 那一跳），而且是刻意的（`00 §1.5.2` 逐字点名「别把它一起改掉」）。\
+          ★ 三条策略为什么是这三格：🔴 **全仓唯一一处 `NewVisible`**（Plan B 那一跳），而且是刻意的（点名「别把它一起改掉」）。\
           `Detached`：用户的终端不该随 monitor 一起死，关掉界面 ≠ 关掉他正在敲字的会话。\
           ⚠ **这个函数里有两跳，第一格不一样**：Plan A（`wt.exe`）是 `Inherit · Detached · Inherit` —— \
           它今天一个 creation flag 都没带，而且多半只是把请求转交给已在跑的 Windows Terminal 进程。\
@@ -96,7 +96,7 @@ const SPAWNS: &[(&str, &str, &str, &str, &str)] = &[
     // 本身就是「别给同一族动作另起一条路」；② `[Environment]::SetEnvironmentVariable`
     // **自带 `WM_SETTINGCHANGE` 广播**，自己写注册表就得自己记得广播，忘了就是
     // 「改了、新终端看不到」—— **那正是 `K-R135` 在杀的那个形状**。
-    // 〔WF1 · K〕那个 .NET 调用按 `REG_SZ` 写、读回展开值（`%VAR%` 被冻成字面）⇒ 生成的那段改在 PowerShell 里按原类型写注册表、
+    // 那个 .NET 调用按 `REG_SZ` 写、读回展开值（`%VAR%` 被冻成字面）⇒ 生成的那段改在 PowerShell 里按原类型写注册表、
     // 广播自己做（`profile_installer.rs::SETTING_CHANGE_BROADCAST`）；仍是这一跳、这一段生成的字节，写点仍是加 / 撤两处。
     //
     // ⚠ **argv 是什么**：`powershell.exe -NoProfile -NonInteractive -Command <脚本>`。
@@ -110,8 +110,8 @@ const SPAWNS: &[(&str, &str, &str, &str, &str)] = &[
           ⚠ 跑的**就是界面上显示给用户看的那段字节** ⇒ 「点按钮」与「自己复制去跑」逐字同一份，实现只有一处
           ★ 三条策略为什么是这三格：`Hidden` 那格**先前没人回答过**（裸 `.output()`）—— `-NonInteractive` 只保证不等人回车，挡不住新开一个控制台。`Captured`：stderr 是下面那句报错的一部分。",
      "Hidden · JobKillOnClose · Captured"),
-    // 〔MIG-3a〕`dialect.rs::ask_get_alias` 那一行（从前住 monitor 的方言模块）随方言进了那台后端（`platform/shell/mod.rs::powershell_command`，〔OSA〕目录模块，后端 `readonly_guard::spawn_registry` 登记）。
-    ("terminal.rs", "ssh_client_available", // 〔P4 · 阶段 H〕原 `launch.rs`：开窗的两个平台臂搬进 `platform/terminal.rs`
+    // `dialect.rs::ask_get_alias` 那一行（从前住 monitor 的方言模块）随方言进了那台后端（`platform/shell/mod.rs::powershell_command`，目录模块，后端 `readonly_guard::spawn_registry` 登记）。
+    ("terminal.rs", "ssh_client_available", // 原 `launch.rs`：开窗的两个平台臂搬进 `platform/terminal.rs`
      "探测用的 `ssh`",
      "只探测「本机有没有 ssh」，不带用户参数
           ★ 三条策略为什么是这三格：同上：先前是裸 `.output()`，Windows 上闪一个 `where.exe` 的黑框。`Captured`：输出就是返回值（`status.success()`）。",
@@ -123,12 +123,12 @@ const SPAWNS: &[(&str, &str, &str, &str, &str)] = &[
     ("local_backend.rs", "supervise_with_stdio", "被监护的后端二进制",
      "本机后端监护：二进制路径来自 `candidates`（有 `candidates_never_point_into_a_build_tree` 守着）。\
           ⚠ P2 起它的 stdin 可能是 `piped()` 而不再恒为 `null` —— 那是本机入方向通道的管子\
-          （`local_stdio_consumer`）。〔RL1〕先前那个 `stdio=None` 的薄壳随本机中转并进常驻后端删了，spawn 只剩这一个入口
-          ★ 三条策略为什么是这三格：🔴 `设计/00 §1.5.2` 点名的那一处：它先前**同时**犯三个错（无 `CREATE_NO_WINDOW` · 无 job 绑定 · `stderr(Stdio::null())`），三格各对应一条策略。本层收注入参数，一个平台原语都不认识。",
+          （`local_stdio_consumer`）。先前那个 `stdio=None` 的薄壳随本机中转并进常驻后端删了，spawn 只剩这一个入口
+          ★ 三条策略为什么是这三格：🔴 点名的那一处：它先前**同时**犯三个错（无 `CREATE_NO_WINDOW` · 无 job 绑定 · `stderr(Stdio::null())`），三格各对应一条策略。本层收注入参数，一个平台原语都不认识。",
      "Hidden · JobKillOnClose · ToLog（宿主注入：local_backend_supervised）"),
-    // 〔LOC1a · 第四波 4D〕`local_query` 模块的 `run_query`〔散文墓碑〕那一行删了：本机那几问改走 `<local>` 长连接，
-    //   monitor 不再起一次性本机后端（`设计/05 §14.6`）。
-    // 〔MIG-1 · `99 §2.1 ⑯`〕`ssh -G` 那一行出表：解析 ssh config 搬进后端（`dial/ssh_config.rs::resolve`），monitor 不再起 `ssh`。
+    // `local_query` 模块的 `run_query`〔散文墓碑〕那一行删了：本机那几问改走 `<local>` 长连接，
+    //   monitor 不再起一次性本机后端。
+    // `ssh -G` 那一行出表：解析 ssh config 搬进后端（`dial/ssh_config.rs::resolve`），monitor 不再起 `ssh`。
     // ── `K-P1`：常驻那条路 ──────────────────────────────────────────────
     ("local_backend_host.rs", "spawn_detached", "被脱离起来的后端二进制",
      "本机后端**脱离宿主**起：`process_group(0)` + stdio 全 null + 协议改走回环监听口。\
@@ -143,13 +143,13 @@ const SPAWNS: &[(&str, &str, &str, &str, &str)] = &[
           ⚠ 它必须住在**宿主知识层**而不是 `backend/`：`process_group` 来自 \
           `std::os::unix::process::CommandExt`，而 `std::os::unix` 在 \
           `backend_client_guard_tests.rs::the_backend_half_stays_platform_agnostic` 的禁针里 —— 写进去当场红，\
-          而「加一条平台例外」被那张表的递减棘轮堵着（`PLATFORM_EXCEPTIONS`，〔P4b〕今天 0 条，〔P4〕上限随之降到 0）
+          而「加一条平台例外」被那张表的递减棘轮堵着（`PLATFORM_EXCEPTIONS`，今天 0 条，上限随之降到 0）
           ★ 三条策略为什么是这三格：「三样一起才叫脱离」里的两样：`Detached` 就是 `process_group(0)`，`Null` 是 stderr 那一根（stdin/stdout 仍在函数体里）。`Hidden` 那格**先前没人回答过** —— 常驻实例在 Windows 上留一个可关的黑框，等于常驻当场没了。",
      "Hidden · Detached · Null"),
-    // ── 🔴 `15 §5.1 A3`（09-18）：**出口本身**。它是唯一一处「起进程」不在上面那些
+    // ── 🔴 （09-18）：**出口本身**。它是唯一一处「起进程」不在上面那些
     //    落点里的 —— 因为上面那些落点今天全都把那一下交给了它。
     ("spawn_managed.rs", "spawn_managed", "调用方给的那个二进制 ＋ argv",
-     "`00 §1.5.2` 的唯一出口。它起进程不是为了做某件事，而是**为了让别人不用自己起** ——\
+     "唯一出口。它起进程不是为了做某件事，而是**为了让别人不用自己起** ——\
           三条策略（要不要窗口 · 要不要随我死 · 错误往哪去）在这里落成平台原语\
           （`creation_flags` / `process_group(0)` / Job Object / stderr 的四种去处），\
           全仓只此一份。\
@@ -159,7 +159,7 @@ const SPAWNS: &[(&str, &str, &str, &str, &str)] = &[
           按源码派生地钉住（`.spawn()` / `creation_flags` / `process_group` / `kill_on_drop`\
           在别处出现一次就红）。",
      "—— **它就是那个出口本身**，没有「它选了哪三条」这回事"),
-    // 🔴 〔第十三刀 2026-09-23〕**文件管理窗口的独立进程。** 这一行是新的**一整面**，
+    // 🔴 **文件管理窗口的独立进程。** 这一行是新的**一整面**，
     //    不是搬家：此前那个窗口跑在 monitor 自己的进程里（次线程 ＋ `run_native`）。
     ("proc.rs", "spawn_window", "`cc-monitor-filewin`（本包的第二个 `[[bin]]`，一个窗口一个）",
      "用户 2026-09-22 逐字裁「**窗口生命周期就是销毁**」，而 winit **一个进程只许一个事件循环** \
@@ -167,8 +167,7 @@ const SPAWNS: &[(&str, &str, &str, &str, &str)] = &[
           ⇒ 只剩「一个窗口一个进程」这条路。必须起进程的理由就是这一条，**它不是为了隔离**。\
           顺带解掉的两条（第二趟开窗必然失败 · 那 165 MiB 关掉就真还给系统）逐条住 `filewin/proc.rs` 头注 §二。\
           〔反订正 · 2026-09-24 · X1：上一版这里还有「关窗的拆卸竞态可能 abort 整个 app」一条 —— \
-          那条读数来自台架的 `xdotool windowclose`（`XDestroyWindow`，产品里不存在），\
-          出处 `真相源/107 §2` 的〔反订正〕块与 `设计/60 §「Xvfb 抖动」`〕\
+          那条读数来自台架的 `xdotool windowclose`（`XDestroyWindow`，产品里不存在）〕\
           ⚠ **argv 上一个字都没有**：种子（那一屏行 ＋ 源 ＋ cwd ＋ reveal）走 **stdin**。\
           两条硬理由 —— ① 环境变量装不下（一屏上限 5 万条，JSON 是兆字节级，\
           而 Linux 一条环境变量的上限是 32 页 ⇒ `execve` 直接 `E2BIG`）；\
@@ -186,7 +185,7 @@ const SPAWNS: &[(&str, &str, &str, &str, &str)] = &[
           接管它要再起一条泵。⚠ 代价如实记：装机那份 GUI app 没有 stderr 控制台 ⇒ 那句话今天会丢。",
      "Hidden · Detached · Inherit"),
     ("local_backend_host.rs", "run_resident_stop", "`<本机后端> --resident-stop`（不经 shell）",
-     "〔STOP · 主会话裁〕停本机常驻后端：本机远端同一条 —— 在这台机器上跑一次那个一次性子命令，\
+     "停本机常驻后端：本机远端同一条 —— 在这台机器上跑一次那个一次性子命令，\
           由它做「请它收尾 → 宽限期内按 pidfd 等 → 到点强杀」（同机监督者，k8s / systemd 同形），monitor 只拿回结局。\
           必须起进程的理由：等与强杀住后端那一份（`control/resident.rs::stop_pid`），monitor 不再自己发信号、自己等；\
           参数是**我们自己记下的那个二进制**与一个常量 flag，零用户输入
@@ -199,7 +198,7 @@ fn src_root() -> PathBuf {
     crate::guard_support::crate_src_root()
 }
 
-/// 语料 = `src/` 整棵树 **+ `build.rs`**〔audit-0805 08-08〕。
+/// 语料 = `src/` 整棵树 **+ `build.rs`**。
 ///
 /// ★ 为什么非把 `build.rs` 并进来：本表问的是「**谁能碰这台机器**」，
 /// 而构建脚本每次 `cargo build`／`cargo check` 都在开发者机器上真跑
@@ -256,7 +255,7 @@ fn variants_of(enum_name: &str) -> Vec<String> {
         .collect()
 }
 
-/// ★★ **第五列与盘面对拍**〔`15 §5.1 A3`，09-18〕。
+/// ★★ **第五列与盘面对拍**。
 ///
 /// # 它守什么
 ///
@@ -286,7 +285,7 @@ fn the_three_policies_each_site_declares_match_the_code() {
     );
 
     let files = corpus();
-    // 〔P4〕语料含壳那棵根的人群声明带进来的兄弟包（`chan-core` · 文件窗口 …）：它们也有 `lib.rs` / `proc.rs`，
+    // 语料含壳那棵根的人群声明带进来的兄弟包（`chan-core` · 文件窗口 …）：它们也有 `lib.rs` / `proc.rs`，
     //   而账本第一列写的是壳里那一份 ⇒ 按名字取时只在壳自己的 `src/` 与 `build.rs` 里取（兄弟包一处都不起进程：上一条判据现数）。
     let own = |p: &Path| p.starts_with(src_root()) || p.ends_with("build.rs");
     let src_of = |stem: &str| -> String {
@@ -370,14 +369,14 @@ fn the_three_policies_each_site_declares_match_the_code() {
              今天那两处是：`build.rs` 一处（构建期）＋ 出口自己那一处。\
              多一处 = 有人给自己开了豁免；少一处 = 构建期那两条被并进来了（那是好事，改这个数）。"
     );
-    // 〔LOC1a · 第四波 4D〕地板 14 → 13：本机一次性查询那一个落点（`local_query` 模块的 `run_query`〔散文墓碑〕）随本机那几问
+    // 地板 14 → 13：本机一次性查询那一个落点（`local_query` 模块的 `run_query`〔散文墓碑〕）随本机那几问
     //   改走 `<local>` 长连接删了 ⇒ 人群恰好少一个（15 → 13 的另一个见失败读数，人群按现打为准）。
-    // 〔SH1 · 4D〕地板 13 → 12：驾驶舱本机 shell 读那一个落点随读面改走后端删了。
-    // 〔合并 MIG-1 × 主线 8c6cdc0e〕地板 12 → 11：两边各自删掉的落点相加（现打 11；两边合并前各自现打都 ≥ 12）。
+    // 地板 13 → 12：驾驶舱本机 shell 读那一个落点随读面改走后端删了。
+    // 地板 12 → 11：两边各自删掉的落点相加（现打 11；两边合并前各自现打都 ≥ 12）。
     assert!(
         checked >= 11,
         "只对拍到 {checked} 个带策略的落点 —— 09-18 现打 14 个，\
-         〔第十三刀 09-23〕加了文件管理窗口那个独立进程之后 15 个，〔LOC1a 09-25〕删一次性本机查询之后 13 个。本条此刻在空转"
+加了文件管理窗口那个独立进程之后 15 个，删一次性本机查询之后 13 个。本条此刻在空转"
     );
 }
 
@@ -393,7 +392,7 @@ fn every_local_spawn_is_declared() {
             .and_then(|s| s.to_str())
             .unwrap()
             .to_string();
-        // 🔴 〔`15 §5.1 A3` 09-18〕**人群的锚点从一个变成两个。**
+        // 🔴 **人群的锚点从一个变成两个。**
         //
         // A3 之前「起进程」与「造一个 `Command`」是同一件事，所以数后者就够了。
         // 今天不是了：走 [`crate::spawn_managed::spawn_managed`] 那个五参数形态的落点
@@ -451,7 +450,7 @@ fn every_local_spawn_is_declared() {
         .filter(|(f, n, ..)| !found.iter().any(|(ff, nn)| ff == f && nn == n))
         .map(|(f, n, ..)| format!("  {f}::{n}"))
         .collect();
-    // ⚠ **红了还要讲对成因**〔08-08〕：死行有两种完全不同的来路 ——
+    // ⚠ **红了还要讲对成因**：死行有两种完全不同的来路 ——
     // ① 那处代码真的改名/删了；② **扫描面缩了**（语料不再包含那个文件）。
     // 实测把 `build.rs` 从语料里拿掉，旧诊断说「已经不起进程了（改名或删了）」，
     // 而 `build.rs` 里那两处一个字没动 —— 照它去查会查错方向。

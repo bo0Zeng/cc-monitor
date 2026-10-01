@@ -1,4 +1,4 @@
-//! 〔F7c · 第三波 · 2026-09-24〕工具栏「上传」那一问的判据。
+//! 工具栏「上传」那一问的判据。
 //!
 //! # 买到什么
 //!
@@ -166,7 +166,7 @@ async fn clicking_upload_then_ok_runs_the_drop_path_over_the_channel() {
     let names: Vec<&str> = got.iter().map(|(s, _)| s.as_str()).collect();
     assert_eq!(
         names,
-        // 〔FILES2 · Q5〕开单之前先问一次那台后端的 `$HOME`（开单带上，传输台连上之后比 SFTP 起始目录）。
+        // 开单之前先问一次那台后端的 `$HOME`（开单带上，传输台连上之后比 SFTP 起始目录）。
         [
             "files-stat",
             "files-home",

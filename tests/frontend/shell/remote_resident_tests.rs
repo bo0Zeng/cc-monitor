@@ -1,5 +1,5 @@
-//! 〔HOST · V139〕monitor 这一侧的远端常驻后端（`remote_resident.rs`）。
-//! 守的要求：`99 §1` V139「远端常驻、本机远端同形」；只升不降 `设计/15 §4.8`「部署只在『我的比盘上的新』时才换」。
+//! monitor 这一侧的远端常驻后端（`remote_resident.rs`）。
+//! 守的要求：「远端常驻、本机远端同形」；只升不降「部署只在『我的比盘上的新』时才换」。
 
 use super::*;
 
@@ -9,7 +9,7 @@ fn hello(build: &str) -> String {
     )
 }
 
-/// 〔THIN〕hello 只读线上形状：是 hello ⇒ 那台报的 build（缺 ⇒ 空串，交本机后端判）；不是 hello ⇒ 不是我们的。
+/// hello 只读线上形状：是 hello ⇒ 那台报的 build（缺 ⇒ 空串，交本机后端判）；不是 hello ⇒ 不是我们的。
 /// 「换一次 · 只升不降」那张真值表随判定进了本机常驻后端（`tests/backend/control/deploy_plan_tests.rs::the_verdict_replaces_only_upward_and_only_once`）。
 #[test]
 fn the_hello_is_read_for_its_build_and_nothing_else() {
@@ -18,7 +18,7 @@ fn the_hello_is_read_for_its_build_and_nothing_else() {
     assert!(hello_build(r#"{"attach":"refused"}"#).is_err());
 }
 
-/// 〔THIN〕本机常驻后端的答严格收：恰 `{action, older}`，`action` 只认 `replace` / `attach`（金样同 `IPC-PROTOCOL.md` 那一节）。
+/// 本机常驻后端的答严格收：恰 `{action, older}`，`action` 只认 `replace` / `attach`（金样同 `IPC-PROTOCOL.md` 那一节）。
 #[test]
 fn the_verdict_answer_is_read_strictly() {
     use serde_json::json;
@@ -55,8 +55,8 @@ fn exec(stdout: &str, stderr: &str, code: Option<u32>) -> crate::ssh_source::Rem
     }
 }
 
-/// 〔DEL〕D2 `--resident-ensure` 的答：成了 ⇒ 端口；那台脱离不了（`unsupported`，非 unix）⇒ **明说**「远端只支持 Unix」、
-/// 带上那台原话，并归成 `Unsupported`（〔DEL 续〕`run` 据此不再自动重连）；别的失败 ⇒ 那台原话原样；
+/// D2 `--resident-ensure` 的答：成了 ⇒ 端口；那台脱离不了（`unsupported`，非 unix）⇒ **明说**「远端只支持 Unix」、
+/// 带上那台原话，并归成 `Unsupported`（`run` 据此不再自动重连）；别的失败 ⇒ 那台原话原样；
 /// 老后端掉进流模式发 hello ⇒ 「太旧」（`Failed`：部署会把它换掉，照常重连）。四样都是失败，没有「回落」那一格。
 /// 守的要求：`4d-lanes.md` `## DEL` 逐字「非 unix 远端（Windows 远端，V29 / V132 不承诺）连不上常驻时**明说**不支持，不静默」。
 #[test]
@@ -109,9 +109,9 @@ fn the_attach_line_carries_the_token_and_exactly_the_negotiated_flags() {
     );
 }
 
-/// 〔STOP〕T4 **停的结局只认三个词**（本机远端同一个读法）：`graceful` · `killed` · `not_running` 各落一格、pid 原样；
+/// T4 **停的结局只认三个词**（本机远端同一个读法）：`graceful` · `killed` · `not_running` 各落一格、pid 原样；
 /// 认不出的词 / 老后端那一形（`{"stopped":<pid>}`）⇒ 错，不猜成「停了」；退出 2 ⇒ stderr 那句原样。
-/// 守的要求：`4d-lanes.md` `### STOP`（主会话裁）逐字「回结局 `{stopped: "graceful" | "killed" | "not_running"}` …… monitor 发一次远端 exec、按结局出声」。
+/// 守的要求：`4d-lanes.md` `### STOP`逐字「回结局 `{stopped: "graceful" | "killed" | "not_running"}` …… monitor 发一次远端 exec、按结局出声」。
 #[test]
 fn the_stop_answer_is_one_of_three_words_or_an_error() {
     for (line, want) in [
@@ -163,7 +163,7 @@ fn the_stop_answer_is_one_of_three_words_or_an_error() {
     assert_eq!(wire, ["graceful", "killed", "not_running"]);
 }
 
-/// 〔STOP〕**monitor 等那一趟的期限 > 那台停它的最长时间**（宽限期 ＋ 强杀后再等的那一段）：否则 monitor 先放弃、
+/// **monitor 等那一趟的期限 > 那台停它的最长时间**（宽限期 ＋ 强杀后再等的那一段）：否则 monitor 先放弃、
 /// 那台其实停成了，界面却说「超时」。跨半边：现抠后端 `control/resident.rs` 两个毫秒字面量（各恰好一处），与 `dial_host::ONE_SHOT_DEADLINE` 比。
 /// 守的要求：`4d-lanes.md` `### STOP` 逐字「远端控制方只发一次『停』并拿回结局，不远程轮询」。
 #[test]
@@ -192,7 +192,7 @@ fn the_one_shot_deadline_outlasts_the_remote_stop() {
     );
 }
 
-/// 〔WF2〕要求住址：`第四波记录/WIN3.md §2` 读数 E（`AllowTcpForwarding no` ⇒ 控制隧道被回拒、每分钟新拨 33 条 SSH）·
+/// （`AllowTcpForwarding no` ⇒ 控制隧道被回拒、每分钟新拨 33 条 SSH）·
 /// 题面 WF2 第 3 条「认出这个拒绝、停止重试、界面明说」。替身开隧道：
 /// ① 回拒码是「不许端口转发」⇒ **恰好开 1 次**就停、回 `Unsupported`（`after_round` 据它不再重连）、话是那一句；
 /// ② 正控：口上还没人（`connect_failed`）两次、第三次通 ⇒ 照旧等着再开，恰好 3 次、接成。

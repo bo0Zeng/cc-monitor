@@ -1,7 +1,7 @@
 const IPC_DOC: &str = include_str!("../../../src/doc/IPC-PROTOCOL.md");
 const BIND_RS_RAW: &str = include_str!("../../../src/frontend/shell/src/bind.rs");
 const ARCH_DOC: &str = include_str!("../../../src/doc/ARCHITECTURE.md");
-/// 〔MIG-3a〕模板的渲染住后端（`src/backend/assets/aliases/block.rs`）；握手那一半的对账在 monitor（`bind.rs` 在这边）⇒ 直接读模板原文。
+/// 模板的渲染住后端（`src/backend/assets/aliases/block.rs`）；握手那一半的对账在 monitor（`bind.rs` 在这边）⇒ 直接读模板原文。
 const CC_TEMPLATE: &str = include_str!("../../../src/shared/cc.ps1.tpl");
 
 /// ★ **判据一律看剥掉注释之后的代码**。
@@ -104,7 +104,7 @@ fn every_doc_that_describes_the_handshake_states_the_current_order() {
             title < await_file,
             "{name} 把握手顺序写成了「先写 ps-await、后设 WindowTitle」—— 那是 v2 之前的旧顺序，\n\
                  照它实现会复刻 v2.21『每个新 shell 首次 cc 固定烧满超时』。\n\
-                 真相源是 src/shared/cc.ps1.tpl（先设标题、后写文件）。"
+                 源头是 src/shared/cc.ps1.tpl（先设标题、后写文件）。"
         );
     }
 }
