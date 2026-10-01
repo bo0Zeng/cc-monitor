@@ -29,16 +29,15 @@ export interface Tab {
   bgName: string | null;
   /**
    * Tab 标题。优先级：[项目] aiTitle > 项目名 > session_id 前 8 位。
-   * aiTitle 一旦出现就锁住，后续 cwd 不再回退。
+   * aiTitle 一旦出现就锁住。
    */
   title: string;
-  cwd: string | null;
   /**
-   * `cwd` 来源记录的 seq。取**最小 seq（最早记录）**的 cwd = 项目根 / 启动目录。
-   * 会话的 cwd 可能中途漂移到子目录；用最早记录的 cwd 才稳定指向项目根（与历史
-   * 浏览器 quick_extract_cwd 口径一致）。Infinity = 尚未拿到任何带 cwd 的记录。
+   * 会话的项目目录（会话起在哪个目录）：只来自后端（会话宣告那一帧的 `project_dir` · 会话事实的 `projectDir`，或固定 tab 存下来的那一份）。
+   * 标题 · 打开工作目录 · 分组 · resume / 分叉的起始目录都用它；行里各自的 cwd 不读（shell 进了子目录之后写的是子目录）。
+   * `null` = 后端没给（老后端）。
    */
-  cwdSeq: number;
+  projectDir: string | null;
   /** Claude 给出的语义标题（JSONL 里 `ai-title` 记录的 aiTitle 字段），出现一次就锁定 */
   aiTitle: string | null;
   /**
@@ -203,8 +202,8 @@ export interface TabsSummary {
   dead: number;
 }
 
-function projectNameFromCwd(cwd: string): string | null {
-  const normalized = cwd.replace(/\\/g, "/").replace(/\/+$/, "");
+function projectNameFromCwd(dir: string): string | null {
+  const normalized = dir.replace(/\\/g, "/").replace(/\/+$/, "");
   const last = normalized.split("/").filter(Boolean).pop();
   return last ?? null;
 }
@@ -222,10 +221,11 @@ export function isBgKind(kind: string | null): boolean {
 
 /**
  * 标题格式（决策见 project_monitor_decisions.md）：
- *   aiTitle 有 + cwd 有 → `[项目] aiTitle`
- *   aiTitle 有 + cwd 无 → `aiTitle`
- *   aiTitle 无 + cwd 有 → `项目`
+ *   aiTitle 有 + 项目目录有 → `[项目] aiTitle`
+ *   aiTitle 有 + 项目目录无 → `aiTitle`
+ *   aiTitle 无 + 项目目录有 → `项目`
  *   都没有 → `<sid 前 8 位>`
+ * 项目 = 项目目录（`Tab.projectDir`，后端给的那一格）的最后一段。
  *
  * issue #15：远端 Tab 在以上结果前再加 `[那台远端] ` 前缀，
  * 让用户一眼区分本地 / 远端 Tab（如 `[raspberrypi.local] [proj] aiTitle`）。本机行为与历史完全一致，
@@ -237,7 +237,7 @@ export function isBgKind(kind: string | null): boolean {
  */
 export function computeTitleFor(
   sessionId: string,
-  cwd: string | null,
+  projectDir: string | null,
   aiTitle: string | null,
   remoteLabel: string | null = null,
   kind: string | null = null,
@@ -246,7 +246,7 @@ export function computeTitleFor(
 ): string {
   // issue #63①:fork 会话在最终标题前加 `↳ ` 血缘徽标——与原会话(同名)区分开。
   const mark = (s: string): string => (forkedFromSessionId ? `↳ ${s}` : s);
-  const project = cwd ? projectNameFromCwd(cwd) : null;
+  const project = projectDir ? projectNameFromCwd(projectDir) : null;
   // Batch7-F24：bg 任务 → ⚙ + 任务名（原先还有缩进 / ⌞ 的 `.tab-bg` 样式，随树一起删了）
   if (isBgKind(kind)) {
     const base = `⚙ ${bgName ?? aiTitle ?? project ?? sessionId.slice(0, 8)}`;

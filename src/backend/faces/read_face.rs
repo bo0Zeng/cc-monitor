@@ -347,7 +347,7 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answ
             let (_, total) = hits.finish(scanned)?;
             Ok(json!({ "total": total, "hits": hits.rows }))
         }
-        // 会话事实出成品（分叉血缘 · 改动文件集 · agent 列表 · 最新 usage）。
+        // 会话事实出成品（分叉血缘 · 改动文件集 · 最新 usage · 项目目录）。
         //   `prior` = 调用方上一次拿到的应答**原样**（续传令牌，后端零状态）：缺席 / `null` ⇒ 从字节 0 扫；
         //   给了 ⇒ 形状必须恰好是本命令出的那一形（`facts_query::prior_from`），从它的 `end` 接着扫、累加在它上面。
         //   续点越过文件尾 / 不在行边界 ⇒ `failed`（调用方从 0 重要一份，同大纲清单）。
@@ -361,8 +361,11 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answ
             };
             let r =
                 history_query::open_facts_at(home, path, prior.end).map_err(|e| ("failed", e))?;
-            let facts = facts_query::scan_facts(r, prior)
+            let mut facts = facts_query::scan_facts(r, prior)
                 .map_err(|e| ("failed", format!("stream failed: {e}")))?;
+            if facts.project_dir.is_none() {
+                facts.project_dir = history_query::facts_project_dir(home, path);
+            }
             let v = serde_json::to_value(&facts).map_err(|e| ("failed", e.to_string()))?;
             let size = v.to_string().len();
             if size > LINES_CAP_BYTES {

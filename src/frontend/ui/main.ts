@@ -646,11 +646,10 @@ window.addEventListener("DOMContentLoaded", async () => {
     // Batch7-F24：无 Tab（= 运行中途**新出现**的本地会话）→ 建骨架——bg 会话必须
     // 从这条通道拿 kind/name（首行 onLine→ensureTab 不带 kind，会建成无 ⚙ 普通 tab）。
     onSessionStarted: (sessionId, meta) => {
-      if (tabs.hasTab(sessionId)) {
-        tabs.reviveTab(sessionId);
-      } else {
-        tabs.createSkeletonTab(sessionId, meta.cwd || null, LOCAL_ORIGIN, meta.kind, meta.name);
-      }
+      const had = tabs.hasTab(sessionId);
+      // 没有就建骨架；已有（固定的 / 归档的）就对齐后端给的项目目录，再复活。
+      tabs.createSkeletonTab(sessionId, meta.projectDir || null, LOCAL_ORIGIN, meta.kind, meta.name);
+      if (had) tabs.reviveTab(sessionId);
       // ★★ `K-P5h` `KP5HD3`：**「过一会儿再问」搭的是这条已有的事件，不是一个新定时器。**
       //    身份 token 在会话起来**之前**就铸好了，而 `--session-accounts` 要进程已经在跑
       //    才读得到 ⇒ 回填必然要等。等的办法有两种，这里选的是「内核一有事就通知」那种：
@@ -681,13 +680,13 @@ window.addEventListener("DOMContentLoaded", async () => {
     // issue #23: 会话红绿灯（busy=绿 / idle·shell=红 / waiting=黄）
     onSessionActivity: (e) =>
       tabs.updateActivity(e.session_id, e.status, e.waiting_for),
-    // Batch5-F18：远端会话宣告 → 骨架 Tab。Batch7-F24：p1e backend 附 cwd/kind/name
-    // ——骨架标题即时完整（bg → ⚙ ＋ 任务名；不再挂宿主排成树）；旧后端缺省照旧 sid 前缀。
+    // Batch5-F18：远端会话宣告 → 骨架 Tab。附项目目录 / kind / name
+    // ——骨架标题即时完整（bg → ⚙ ＋ 任务名；不再挂宿主排成树）；旧后端不给项目目录 ⇒ 标题退到 aiTitle / sid。
     onRemoteSessionAdded: (sessionId, origin, meta) => {
       noteLive(origin, sessionId, { cwd: meta.cwd, rbindToken: meta.rbindToken }); // 起会话的真成功正信号
       tabs.createSkeletonTab(
         sessionId,
-        meta.cwd || null,
+        meta.projectDir || null,
         origin,
         meta.kind,
         meta.name,

@@ -1,4 +1,4 @@
-//! **会话事实**：分叉血缘 · 改动文件集 · 最新 usage。
+//! **会话事实**：分叉血缘 · 改动文件集 · 最新 usage · 项目目录。
 //! 子 agent 的列表与状态不在这里：它们是运行表（`observe::runs`，经 `session_runs` 帧），判定只有那一处。
 //!
 //! # 它顶掉了什么
@@ -23,6 +23,7 @@
 //! | `forkedFrom` | `history_query::fork_origin`（与历史会话行同一个函数）；首条命中即锁定 |
 //! | `touchedFiles` | `assistant` 记录里写类工具（[`EDIT_TOOL_PATH_KEYS`]）的路径，去重、**近因序**（再碰一次移到末尾），至多 [`TOUCHED_FILES_KEEP`] 条 |
 //! | `usage` | `assistant` 记录的 `message.usage` 三项 prompt token 之和 > 0 ⇒ `{promptTokens, model}`，文件序最后一条胜 |
+//! | `projectDir` | 适配层 `RecordFace.project_dir`（只读记录开头）；读到即锁定，不在本文件的逐行扫描里 |
 //!
 //! # 快路
 //!
@@ -78,6 +79,9 @@ pub(crate) struct SessionFacts {
     pub(crate) touched_files: Vec<String>,
     /// 最后一条带有效 usage 的 assistant 记录；一条都没有 ⇒ `null`。
     pub(crate) usage: Option<UsageFact>,
+    /// 会话的项目目录（会话起在哪个目录）：适配层读记录开头给（`agents::project_dir_of`），读到即锁定；
+    /// 开头里还没有 ⇒ `null`，下一次再读。与会话宣告那一帧的 `project_dir` 同一个函数。
+    pub(crate) project_dir: Option<String>,
 }
 
 /// 最新 usage：context 占用的原料（上限表与百分比在前端 `views/context-limit.ts`，那是排版）。
@@ -92,7 +96,7 @@ pub(crate) struct UsageFact {
 /// 调用方交回来的 `prior` ⇒ [`SessionFacts`]。**形状必须恰好是本文件出的那一形**：缺格 / 多格 / 类型不对 ⇒ 拒
 /// （serde 对 `Option` 缺格默认读成 `None`，所以键集合先逐层核一遍 —— 不猜）。
 pub(crate) fn prior_from(v: &Value) -> Result<SessionFacts, String> {
-    const TOP: &[&str] = &["end", "forkedFrom", "touchedFiles", "usage"];
+    const TOP: &[&str] = &["end", "forkedFrom", "projectDir", "touchedFiles", "usage"];
     const USAGE: &[&str] = &["model", "promptTokens"];
     exact_keys(v, TOP, "prior")?;
     if !v["usage"].is_null() {

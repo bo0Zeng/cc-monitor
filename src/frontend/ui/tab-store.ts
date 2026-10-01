@@ -22,11 +22,17 @@ export interface ActiveView {
   promptTokens: number | null;
   /** 会话事实要不到的原因（`null` = 可用）。 */
   unavailable: string | null;
+  /** 当前 tab 的项目目录（`Tab.projectDir`，后端给的那一格；独立窗口的顶栏标题读它）。 */
+  projectDir: string | null;
 }
 
-const NO_ACTIVE: ActiveView = { sid: null, model: null, promptTokens: null, unavailable: null };
+const NO_ACTIVE: ActiveView = { sid: null, model: null, promptTokens: null, unavailable: null, projectDir: null };
 const sameActive = (a: ActiveView, b: ActiveView): boolean =>
-  a.sid === b.sid && a.model === b.model && a.promptTokens === b.promptTokens && a.unavailable === b.unavailable;
+  a.sid === b.sid &&
+  a.model === b.model &&
+  a.promptTokens === b.promptTokens &&
+  a.unavailable === b.unavailable &&
+  a.projectDir === b.projectDir;
 const sameSummary = (a: TabsSummary, b: TabsSummary): boolean =>
   a.total === b.total && a.live === b.live && a.dead === b.dead;
 
