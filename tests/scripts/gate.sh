@@ -289,6 +289,33 @@ set -uo pipefail
 cd "$(dirname "$0")/../.." || exit 2
 fails=()
 
+# ── 起跑先摘掉开发机会话带进来的环境变量 ────────────────────────────────────────
+# 门禁常在 tmux 窗格里、在 Claude Code / cc-monitor 起的会话里跑：下面这几族是**那个会话**的状态
+# （所在窗格、账号目录、中转地址、令牌、总线身份），不是这棵树的。测试进程一继承，读数就跟着开发机走 ——
+# 经中转起的会话里 `ANTHROPIC_BASE_URL` 是真值，顶掉过 `ccm-contract-parity`「不设中转地址」那一格（假红）；
+# `TMUX`/`TMUX_PANE` 会让走身份打标的测试去给真机默认 tmux 打标。CI runner 上它们本来就不存在，
+# 摘掉 = 本机与 CI 同一个起点。摘的是：
+#   · tmux 窗格：`TMUX` `TMUX_PANE`
+#   · Claude Code 会话：`CLAUDECODE` `CLAUDE_CONFIG_DIR`，以及 `CLAUDE_CODE_` 打头的整族（按前缀现取）
+#   · 上游与中转：`ANTHROPIC_BASE_URL` `ANTHROPIC_MODEL` `ANTHROPIC_API_KEY` `ANTHROPIC_AUTH_TOKEN`
+#   · cc-monitor 起会话时注入的：`CCM_RBIND_TOKEN` `CCM_LAUNCH_ID` `CCM_CLAUDEJSON` `CCM_CODEXTOML`，
+#     与指向本机账号清单的 `CCM_ACCTS_MANIFEST`
+#   · cc-bus 身份：`CC_BUS_ID` `CC_BUS_HOME`
+# ⚠ 要这些变量的测试一律自己设（e2e 各自的 `base_env`、Rust 判据里的 `Command::env`），不靠继承；
+#   `CCM_PWSH` 这类「开发者显式打开一组测试」的开关不在名单里，刻意不摘。只印名字，不印值（里面有令牌）。
+gate_scrubbed=()
+for gate_v in TMUX TMUX_PANE CLAUDECODE CLAUDE_CONFIG_DIR \
+              ANTHROPIC_BASE_URL ANTHROPIC_MODEL ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN \
+              CCM_RBIND_TOKEN CCM_LAUNCH_ID CCM_CLAUDEJSON CCM_CODEXTOML CCM_ACCTS_MANIFEST \
+              CC_BUS_ID CC_BUS_HOME $(compgen -e | grep -E '^CLAUDE_CODE_' || true); do
+  if [ -n "${!gate_v+x}" ]; then
+    gate_scrubbed+=("$gate_v")
+    unset "$gate_v"
+  fi
+done
+unset gate_v
+printf '  ·    %-14s %s\n' "环境" "摘掉了 ${#gate_scrubbed[@]} 个从开发机会话继承来的变量：${gate_scrubbed[*]:-（一个都没有）}"
+
 # ── 〔被谁调用〕`GATE_ONLY` 子集 ＋ 一张**跑过的收据**（`G4` 空洞③，09-20）──────────
 #
 # ## 题面：这道门此前**只有人手动跑**
