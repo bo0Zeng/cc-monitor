@@ -53,7 +53,7 @@
 //!
 //! | 判据 | 它认的是 | 今天的分母 | ⚠ 它认不出的 |
 //! |---|---|---|---|
-//! | `the_generic_port_names_no_concrete_plugin` | **词汇** | [`layer_guard::concrete_plugin_words`] 那张表（成员与条数**只住那一处**，这里不复述 —— 复述一份就会漂） | ★ **它只认表里那几族词**。09-04 加了第二族（代码全景）之后，仍然**认不出第三族** —— 谁再加一个插件，就得在同一轮加上它自己那组词（`E6`） |
+//! | `the_generic_port_names_no_concrete_plugin` | **词汇** | [`layer_guard::concrete_plugin_words`] 那张表（成员与条数**只住那一处**，这里不复述 —— 复述一份就会漂） | ★ **它只认表里那几族词**，**认不出别的一族** —— 谁再加一个插件，就得在同一轮加上它自己那组词（`E6`） |
 //! | `the_generic_port_does_not_translate_exit_codes` | **形状**：`Some(<整数字面量>)` / 裸整数 `match` 臂 | 2 根形状针，**不挑插件** | 具名常量写的表 · 非 `i32` 的码 · 运行期从数据里读的表 · `mod.rs` 本身 |
 //! | `the_only_exit_code_constants_here_are_the_registered_generic_ones` | **登记**：本层的 `i32` 常量恰好是登记的那几个 | 登记表今天 **1** 条（`TIMED_OUT_CODE`） | 非 `i32` 类型的码常量 · `mod.rs` 本身 |
 //!
@@ -70,11 +70,8 @@
 //!
 //! # 诚实边界（写在这里，因为它删了不会红）
 //!
-//! - [`probe`] 〔RM1c · 第四波〕**有了第一个生产调用方**：`control/panorama.rs` —— 代码全景那个
-//!   独立小程序说这套方言（身份行 ＋ `capabilities=` 逐个 op），宿主按「这一次要的 op」做子集检查。
-//!   〔改前原话：「[`probe`] 今天**零生产调用方**：本仓第一刀的那个插件（cc-bus）**没有 probe 口**……
-//!    等哪天有插件真的说这套方言，它就地可用。」—— 那一天是 09-24。〕
-//!   cc-bus 那一族仍然没有 probe 口（「不改 cc-bus 本体」照旧）。
+//! - [`probe`] 今天**零生产调用方**：本仓用这一口的插件（cc-bus）**没有 probe 口**（「不改 cc-bus 本体」）；
+//!   唯一的读者是假插件走通全流程那份夹具（`plugin_walk_fixture`）。等哪天有插件真的说这套方言，它就地可用。
 //! - 本层管不到**被起的那个进程自己**在干什么。它 `while true` 每秒跑一圈，
 //!   本 crate 的零定时器护栏**一个字都看不见**（那条判据的主语是「backend 自己的源码」，
 //!   不是「backend + 它起的插件」这个整体）。
@@ -82,8 +79,8 @@
 pub mod discover;
 pub(crate) mod invoke;
 
-// 〔RM1c · 第四波〕有生产调用方了：`control/panorama.rs`（代码全景小程序的能力协商）。
-// 此前那句「今天零生产调用方」与压死代码提示的 `allow` 随之摘掉。
+// 今天零生产调用方（见头注「诚实边界」第一条）⇒ 非测试构建压掉死代码提示。
+#[cfg_attr(not(test), allow(dead_code))]
 pub(crate) mod probe;
 
 /// ★ 本层自己的边界判据：**通用调用口不许认识任何一个具体插件**。

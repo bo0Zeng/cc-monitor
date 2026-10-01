@@ -5,7 +5,7 @@
 //!
 //! - **门牌**：中转口 [`PORT`] · 常驻监听口 [`listen_port_for`] · 两把钥匙 [`KEY_FILE_REL`] / [`LISTEN_TOKEN_FILE_REL`] ·
 //!   路由路径的语法（两个前缀 · 段闸 · 拼 · 拆）。
-//! - **家**（相对家目录，`.cc-monitor/` 开头的每一个常量）：后端落点 [`BACKEND_LANDING_REL`] · 暂存区 · 全景索引 ·
+//! - **家**（相对家目录，`.cc-monitor/` 开头的每一个常量）：后端落点 [`BACKEND_LANDING_REL`] · 暂存区 ·
 //!   退出行为设置 · 两份别名文件 · skill 装记录 · 资产目录 · 监听口的进程记录 [`listen_pid_file_name`]。
 //!   后端各写者引它们落盘；monitor 的数据位置页（`data_paths.rs::backend_entries`）按它们列出，判据两向对着这一族。
 //! - crate 名还是「relay-route」—— 它最早只装中转门牌；改名发版后另议。
@@ -36,7 +36,7 @@
 //!   中转地址的 fail-closed 校验 [`base_url_shape_ok`]（[`base_url`] 的逆）· 起会话身份 token 的字符集 [`segment_is_safe`]）。
 //! - monitor：起本机后端时交的端口（[`PORT`]）· 常驻监听口（[`listen_port_for`]）· 后端落点（[`BACKEND_LANDING_REL`]）·
 //!   监听口的进程记录（`local_backend_host::pid_path`，[`listen_pid_file_name`]）· 数据位置页列家那一族（`data_paths.rs::backend_entries`）。
-//! - 后端按家那一族落盘：`control/exit_policy` · `control/files_commit` · `control/panorama` · `control/resident` ·
+//! - 后端按家那一族落盘：`control/exit_policy` · `control/files_commit` · `control/resident` ·
 //!   `assets/skill_ledger` · `assets/asset_catalog` · `platform/shell/dialect`（两份别名文件）。
 
 /// 〔HOST · `设计/05 §5.2` 两个端口〕**常驻监听口**的门牌也住这里（它与中转口是这台机器上后端的两个门）：
@@ -74,10 +74,6 @@ pub const KEY_FILE_REL: &str = ".cc-monitor/relay-key";
 /// 〔P3 · `设计/70 §6.2` · V160「一台机器一个家」〕后端的**上传暂存区**（相对家目录）：SFTP 传输台只往这里写 `<key>.part`，
 /// 传完由那台后端提交、挪进目标。后端按它落盘（`control/files_commit.rs::STAGING_DIR`），monitor 的数据位置页按它列出。
 pub const STAGING_DIR_REL: &str = ".cc-monitor/staging";
-
-/// 〔P3 · 同上〕代码全景的**索引根**（相对家目录）：那台后端起全景小程序时交的 `--store`（`control/panorama.rs::store_dir`），
-/// 被分析的仓零字节；monitor 的数据位置页按它列出。
-pub const PANORAMA_INDEX_REL: &str = ".cc-monitor/panorama";
 
 /// 〔P3 · 主会话 09-29 裁「家里的都进唯一枚举」〕这台机器上后端的**退出行为设置**（只有后端写，`control/exit_policy.rs`）。
 pub const BACKEND_POLICY_REL: &str = ".cc-monitor/backend.json";

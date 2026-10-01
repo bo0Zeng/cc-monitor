@@ -49,9 +49,6 @@
 //!   起进程（转调本机的 cc-bus 命令，argv 直传不过 shell），**一处**，已登记进
 //!   `readonly_guard::ALLOWED`。⚠ 它**不读** cc-bus 的任何数据文件 ——
 //!   用户 08-13 明说「后面我可能要改ccbus」⇒ 只把它的**命令**当接口。
-//! - [`panorama`]（RM1c · 第四波，V108）：**代码全景** —— 经插件通用调用口起那个只装引擎的
-//!   独立小程序（`cc-monitor-panorama`），后端自己一行引擎都不链。起进程走 `plugin::invoke::run`
-//!   （起进程点一处不增）；被起的那个进程只写**索引**（落后端自己的数据目录，不是用户文件）。
 //! - [`deploy_plan`]（MIG-3b）：产出「那台的后端要不要换、换成哪一格」的部署计划（帧命令 `deploy-plan`）。
 //!   **只读**那台（stat · read · 两条只读 exec），放字节归 monitor（经 `files` 链路）。归本层的理由同下面 `resolve_query`。
 //! - [`resolve_query`]：产出 `CommandPlan`（「这个会话该怎么起」）。
@@ -86,9 +83,6 @@ pub(crate) mod kill;
 pub(crate) mod launch;
 // 〔MIG-2 · `99 §2.1 ⑬`〕起会话的计划与渲染（从 monitor 搬来）：本机起会话 · `ccm …` 调用行 · 载荷 ＋ 外层 tmux 三格。
 pub mod launch_render;
-pub(crate) mod panorama;
-// 〔MIG-3b 续〕全景写批注 / 文档关联：问这台的小程序要计划、经这台文件管理面落盘（帧命令 `panorama-edit`）。
-pub(crate) mod panorama_edit;
 pub mod resident;
 pub mod resolve_query;
 pub mod tmux_hook;

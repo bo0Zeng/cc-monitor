@@ -407,82 +407,6 @@ async fn the_plan_hands_back_the_ack_of_the_first_trip_for_pinning() {
     assert_eq!(plan_json(&p)["ack"], fake_ack(1));
 }
 
-// ═══ 〔THIN〕`deploy-slot`：那台要哪一格字节 ═══════════════════════════════════════════════
-// 要求住址：`设计/00 §1.2`「判定只在后端」（表 B 的承诺是裁决）· `THIN` 第 4 件「`byte_table::judge` 含判定 ⇒ 进后端」。
-// 从 monitor `panorama_bytes::push_to` 那一臂（`probe_key` ＋ `choose`）搬来：全景推字节之前那一问改问本机常驻后端。
-
-/// 远端：问 `uname` → 表 A / 表 B → 带没带；本机：这台自己的键、按本机那一行承诺判。四形各落各的码；答里恰 `{os, arch, label, ack}`。
-#[tokio::test]
-async fn the_slot_is_judged_here_for_both_routes_and_refused_before_any_byte() {
-    let args =
-        |carried: Value| json!({"product": "panorama", "machine": "box", "carried": carried});
-    let linux_x86 = json!([{"os": "Linux", "arch": "x86_64"}]);
-    let f = Fake::linux(None);
-    let got = answer_slot(&args(linux_x86.clone()), Some(&f))
-        .await
-        .expect("带着那一格");
-    assert_eq!(
-        got.as_object().unwrap().keys().collect::<Vec<_>>(),
-        vec!["ack", "arch", "label", "os"]
-    );
-    assert_eq!(
-        (got["os"].as_str(), got["arch"].as_str()),
-        (Some("Linux"), Some("x86_64"))
-    );
-    assert_eq!(got["ack"], fake_ack(1), "ack 是问 `uname` 那一趟的");
-    // 没带那一格 ⇒ 拒（写第一个字节之前）。
-    let (code, msg) = answer_slot(&args(json!([{"os": "Linux", "arch": "arm64"}])), Some(&f))
-        .await
-        .unwrap_err();
-    assert_eq!(code, "refused");
-    assert!(msg.contains("box"), "{msg}");
-    // 远端 Windows ⇒ 表 B 不承诺。
-    let mut w = Fake::linux(None);
-    w.exec.insert(
-        deploy_contract::UNAME_CMD.into(),
-        said(0, "MINGW64_NT-10.0 x86_64\n"),
-    );
-    let (code, _) = answer_slot(
-        &args(json!([{"os": "Windows", "arch": "x86_64"}])),
-        Some(&w),
-    )
-    .await
-    .unwrap_err();
-    assert_eq!(code, "refused");
-    // 链路问不成 ⇒ unreachable，不是拒绝。
-    let (code, _) = answer_slot(&args(linux_x86), Some(&Fake::default()))
-        .await
-        .unwrap_err();
-    assert_eq!(code, "unreachable");
-    // 本机：这台自己的键，按本机那一行承诺判（与 `judge(Panorama, Local, 这台)` 同答），ack 为空。
-    let me = Key::this_machine().expect("跑判据的这台认得出");
-    let local = answer_slot(
-        &args(json!([{"os": me.os.label(), "arch": me.arch.label()}])),
-        None,
-    )
-    .await;
-    match judge(Product::Panorama, Route::Local, Ok(me)) {
-        Ok(_) => assert_eq!(local.expect("本机承诺")["ack"], Value::Null),
-        Err(_) => assert_eq!(local.unwrap_err().0, "refused"),
-    }
-    // 形状不对 ⇒ bad_args。
-    for bad in [
-        json!({"machine": "box", "carried": []}),
-        json!({"product": "x", "machine": "box", "carried": []}),
-        json!({"product": "panorama", "carried": []}),
-        json!({"product": "panorama", "machine": "box", "carried": [{"os": "Plan9", "arch": "x86_64"}]}),
-    ] {
-        assert_eq!(
-            answer_slot(&bad, None)
-                .await
-                .map_err(|(c, _)| c)
-                .unwrap_err(),
-            "bad_args",
-            "{bad}"
-        );
-    }
-}
-
 // ═══ 〔THIN〕`resident-verdict`：远端常驻后端 hello 的新旧 ═══════════════════════════════════
 // 要求住址：`设计/00 §1.2`「共享 crate 只放契约，判定只在后端」· `设计/00 §2.2`（monitor 里的共享判定残留：远端常驻换不换）。
 // 从 monitor `remote_resident_tests.rs` 那一条（`hello_decision` 的真值表）搬来：判定进了本机常驻后端，真值表跟着判定走。
@@ -939,17 +863,17 @@ fn the_legacy_backend_is_removed_only_when_it_carries_exactly_one_stamp() {
 fn judge_refuses_at_the_key_the_line_and_the_promise_and_nowhere_else() {
     let key_of = deploy_contract::key_of;
     let linux = key_of("Linux", "x86_64");
-    assert_eq!(judge(Product::Backend, Route::Remote, linux.clone()), linux);
+    assert_eq!(judge(Route::Remote, linux.clone()), linux);
     assert!(matches!(
-        judge(Product::Backend, Route::Remote, key_of("", "")),
+        judge(Route::Remote, key_of("", "")),
         Err(Refusal::OsUnknown { .. })
     ));
     assert!(matches!(
-        judge(Product::Backend, Route::Remote, key_of("Darwin", "arm64")),
+        judge(Route::Remote, key_of("Darwin", "arm64")),
         Err(Refusal::UnsupportedMachine { .. })
     ));
     assert!(matches!(
-        judge(Product::Backend, Route::Remote, key_of("Windows", "x86_64")),
+        judge(Route::Remote, key_of("Windows", "x86_64")),
         Err(Refusal::NotPromisedHere {
             route: Route::Remote,
             ..
@@ -1003,7 +927,7 @@ fn place_verdict_places_only_upward_and_refuses_what_it_cannot_judge() {
             arch: "arm64".into(),
             route: Route::Local
         }
-        .say(Product::Backend, "本机"),
+        .say("本机"),
         "本机 (Linux, aarch64) 说的不是本机那一句不承诺"
     );
     let (code, _) = place_verdict(
@@ -1033,7 +957,7 @@ fn the_place_frame_reads_the_one_file_and_answers_two_keys() {
         assert_eq!(answer_place(&bad).unwrap_err().0, "bad_args", "{bad}");
     }
     if Key::this_machine()
-        .and_then(|k| judge(Product::Backend, Route::Local, Ok(k)))
+        .and_then(|k| judge(Route::Local, Ok(k)))
         .is_ok()
     {
         let v = answer_place(&args).expect("不在 ⇒ 答得出");
@@ -1098,10 +1022,7 @@ fn the_promise_face_in_the_ledger_equals_the_code() {
         Arch::Aarch64 => "aarch64",
     };
     let (mut population, mut code_yes) = (BTreeSet::new(), BTreeSet::new());
-    for &(product, key) in LINES {
-        if product != Product::Backend {
-            continue;
-        }
+    for &key in LINES {
         for (route, rname) in [(Route::Local, "Local"), (Route::Remote, "Remote")] {
             let cell = (
                 rname.to_string(),

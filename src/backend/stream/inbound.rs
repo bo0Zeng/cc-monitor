@@ -144,8 +144,6 @@ pub const COMMANDS: &[&str] = &[
     "deploy-plan",
     // 〔THIN〕那台旧入口 `~/.local/bin/ccm` 的去向（认出是我们放的才删 ⇒ 后端判，monitor 照删）。**是新命令** ⇒ `build_id_guard` 红是预期的。
     "deploy-retired",
-    // 〔THIN〕那台要哪一格字节（表 A / 表 B 的承诺是裁决 ⇒ 后端判；全景推字节之前问它）。**是新命令** ⇒ `build_id_guard` 红是预期的。
-    "deploy-slot",
     // 〔MOD〕这台后端的漂移账（看不懂的记录类型；记录解释进了后端，账跟着解析走）。**是新命令** ⇒ `build_id_guard` 红是预期的。
     "drift-report",
     "exit-policy-read",
@@ -244,12 +242,6 @@ pub const COMMANDS: &[&str] = &[
     "mcp-sync-plan",
     "mcp-sync-preview",
     "mcp-sync-source",
-    // 〔RM1c · 第四波〕代码全景（V108 选 B）：后端经插件口起独立小程序，只说查询语义。
-    "panorama",
-    // 〔MIG-3b 续〕全景写：这台算计划、这台文件管理面落盘（原 monitor 那一跳在中间转）。**是新命令** ⇒ `build_id_guard` 红是预期的。
-    "panorama-edit",
-    // 〔FIX4 · `97 §8`〕全景小程序卸口：只删装时放下的那一份（先认身份、CAS 删）。**是新命令** ⇒ `build_id_guard` 红是预期的。
-    "panorama-uninstall",
     "ping",
     // 〔P1〕本机那一份放不放（monitor 自举：放本机后端之前问手上那份字节自己，CLI 面）。**是新命令** ⇒ `build_id_guard` 红是预期的。
     "place-verdict",
@@ -978,10 +970,6 @@ fn dispatch(
         other => match lookup(other) {
             Some(spec) => match spec.run {
                 Run::Async(f) => Disposition::Spawn(req, Box::new(f)),
-                Run::AsyncProgress(f) => {
-                    let p = Progress::for_request(replies, &req.args);
-                    Disposition::Spawn(req, Box::new(move |r: Request| f(r, p)))
-                }
                 Run::Blocking(f) => Disposition::SpawnBlocking(req, Box::new(f)),
                 // `cancel` 在上面那条硬臂里处理完了，走不到这儿。
                 Run::Builtin => Disposition::Reply(err(
@@ -1015,51 +1003,10 @@ fn dispatch(
 ///   与别的命令签名不同 —— 硬塞进统一签名等于给每条命令都递上「自己发帧 / 碰登记表」的能力，
 ///   而那条性质今天是成立的，不该为了整齐拆掉。**但它仍要在注册表里占一行**，
 ///   否则「镜子 == 注册表」覆盖不到它。
-/// - 〔P7〕[`Run::AsyncProgress`]：同 `Async`，另收一个 [`Progress`] —— **只能**往本请求那张票的进度流里推格的窄口
-///   （推不了别的帧、碰不到登记表 ⇒ 上面那条性质不破）。建索引那一类长活用；CLI 一次性进程里它是空的（没人订）。
 pub(crate) enum Run {
     Async(fn(Request) -> BoxFut),
-    AsyncProgress(fn(Request, Progress) -> BoxFut),
     Blocking(fn(Request) -> CmdResult),
     Builtin,
-}
-
-/// 〔P7 · `97 §8`「要上游给的」④ · V158「长活要有进度」〕一条长活往**发起方订的进度流**里推格的窄口。
-///
-/// 票是发起方在请求里交的 `ticket`（不透明的串，界面拿它订 `progress/<ticket>`，本后端只回填）；没交票 ⇒ 空口，推了也不发。
-/// 走本连接的应答通道（与应答同一条、同序），但**满了就丢这一格**（`try_send`）：每格是一整份快照，
-/// 丢一格下一格补上，而这是在建索引的读流里同步推的 —— 不许为它阻塞（阻塞就是背压回插件的 stderr 管子）。
-#[derive(Clone)]
-pub(crate) struct Progress {
-    to: Option<(mpsc::Sender<Frame>, String)>,
-}
-
-impl Progress {
-    /// 没人订的那一个（CLI 一次性进程 · 没交票的请求）。
-    pub(crate) fn none() -> Progress {
-        Progress { to: None }
-    }
-
-    /// 本请求的：请求里有 `ticket`（非空串）才通。
-    pub(crate) fn for_request(replies: &mpsc::Sender<Frame>, args: &serde_json::Value) -> Progress {
-        let ticket = args
-            .get("ticket")
-            .and_then(serde_json::Value::as_str)
-            .filter(|t| !t.is_empty());
-        Progress {
-            to: ticket.map(|t| (replies.clone(), t.to_string())),
-        }
-    }
-
-    /// 推一格（原样；格里是什么由界面解释）。
-    pub(crate) fn push(&self, cell: serde_json::Value) {
-        if let Some((tx, ticket)) = &self.to {
-            let _ = tx.try_send(Frame::Progress {
-                ticket: ticket.clone(),
-                cell,
-            });
-        }
-    }
 }
 
 /// 一条入方向命令的登记。**名字与处理器绑在同一个值里。**
@@ -1459,32 +1406,6 @@ pub const REGISTRY: &[CommandSpec] = &[
                     .await
                     .map(Some)
                     .map_err(|(c, m)| (c.to_string(), m))
-            })
-        }),
-    },
-    // 〔THIN〕**那台要哪一格字节**：`{product, machine, carried, dial?}` → `{os, arch, label, ack}`（有 `dial` ⇒ 沿池里那条 SSH 问 `uname`，真异步；
-    //   没有 ⇒ 本机那一格）。本体 `control/deploy_plan.rs::answer_slot`（与 `deploy-plan` 第 ① 步同一个 `slot_of`）。
-    CommandSpec {
-        name: "deploy-slot",
-        doc_anchor: Some("#### `deploy-slot`"),
-        codes: &["bad_args", "refused", "unreachable"],
-        fields: &[
-            "ack", "arch", "carried", "dial", "label", "machine", "os", "product",
-        ],
-        takes_input: true,
-        run: Run::Async(|r| {
-            Box::pin(async move {
-                let dial = r.args.get("dial").cloned();
-                let facing = dial.map(crate::control::deploy_plan::DialFacing::new);
-                crate::control::deploy_plan::answer_slot(
-                    &r.args,
-                    facing
-                        .as_ref()
-                        .map(|f| f as &dyn crate::control::deploy_plan::Facing),
-                )
-                .await
-                .map(Some)
-                .map_err(|(c, m)| (c.to_string(), m))
             })
         }),
     },
@@ -3681,78 +3602,6 @@ pub const REGISTRY: &[CommandSpec] = &[
             crate::faces::feature_face::answer(&r.cmd, &r.args)
                 .map(Some)
                 .map_err(|(c, m)| (c.to_string(), m))
-        }),
-    },
-    // ── 〔RM1c · 第四波〕代码全景（用户 09-24 V108 选 B）────────────────────────────
-    //
-    // 后端**不链**引擎：经插件通用调用口起那个只装引擎的独立小程序（`control/panorama.rs`），
-    // 解析发生在被起的那个进程里；索引落这台机器上后端自己的数据目录。
-    // ⚠ 只说查询语义：`op` 只许小程序 `--probe` 自报的词（== 签字白名单，`protocol_doc_guard` 那条 `P7c-2` 约束）；
-    //   〔PANO〕要的那一代由发起方带 `shape`，后端不存 op 表与形状代号。
-    // 〔RM1f〕**异步档**：起进程走 `plugin::invoke::run_abortable`（异步等子进程）⇒ `cancel` 命中时
-    //   处理器 future 被丢、小程序那一组子进程被杀、回 `cancelled` —— 建索引（可到分钟级）打得断了。
-    //   〔墓碑 —— RM1c 那一版是阻塞档：「起一个进程、等它退出。`cancel` 命中回 `not_cancellable`（不撒谎）」。〕
-    CommandSpec {
-        name: "panorama",
-        doc_anchor: Some("#### `panorama`"),
-        codes: &[
-            "bad_args",
-            "not_installed",
-            "unsupported",
-            "timed_out",
-            "too_large",
-            "failed",
-        ],
-        fields: &["args", "op", "repo", "result", "shape", "ticket"],
-        takes_input: true,
-        // 〔P7〕建索引那一档的进度格经 `Progress` 进发起方订的 `progress/<ticket>`（没交票就不推）。
-        run: Run::AsyncProgress(|r, p| {
-            Box::pin(async move {
-                let push = move |cell: serde_json::Value| p.push(cell);
-                crate::control::panorama::answer(&r.args, &push)
-                    .await
-                    .map(Some)
-            })
-        }),
-    },
-    // 〔FIX4 · `97 §8` · 主会话 09-28 裁〕**卸掉这台的全景小程序**：认身份（`--probe`）→ 这台文件管理面 CAS 删那一份；索引不动。本体 `control/panorama.rs::answer_uninstall`。
-    CommandSpec {
-        name: "panorama-uninstall",
-        doc_anchor: Some("#### `panorama-uninstall`"),
-        codes: &["not_ours", "failed", "stale", "refused", "io_failed"],
-        fields: &["index", "path", "removed"],
-        takes_input: false,
-        run: Run::Async(|_r| {
-            Box::pin(async move {
-                crate::control::panorama::answer_uninstall(LocalFiles)
-                    .await
-                    .map(Some)
-            })
-        }),
-    },
-    // 〔MIG-3b 续 · RM1d〕**全景写批注 / 文档关联**：`{repo, op, args}` → 这台的小程序算计划 → 这台文件管理面落盘（CAS，`stale` 重算）→
-    //   文档关联那两种再刷一次索引。「算」那一步的码原样交回（`not_installed` / `unsupported` ⇒ 界面放字节再问一次）。本体 `control/panorama_edit.rs`。
-    CommandSpec {
-        name: "panorama-edit",
-        doc_anchor: Some("#### `panorama-edit`"),
-        codes: &[
-            "bad_args",
-            "not_installed",
-            "unsupported",
-            "timed_out",
-            "too_large",
-            "failed",
-            "stale",
-            "refused",
-        ],
-        fields: &["args", "op", "repo", "shape"],
-        takes_input: true,
-        run: Run::Async(|r| {
-            Box::pin(async move {
-                crate::control::panorama_edit::answer(LocalFiles, &r.args)
-                    .await
-                    .map(Some)
-            })
         }),
     },
     // F04a：**第一条破坏性命令。** 三道门在 `control/gate::admit_destructive`，

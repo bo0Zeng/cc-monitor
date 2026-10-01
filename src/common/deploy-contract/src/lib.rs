@@ -46,32 +46,6 @@ pub struct Key {
     pub arch: Arch,
 }
 
-/// 要哪一类字节。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Product {
-    /// 后端本体（带身份戳）。
-    Backend,
-    /// 只装代码全景引擎的小程序（没有身份戳，按 `--probe` 的能力表认代）。
-    Panorama,
-}
-
-impl Product {
-    /// 〔THIN〕线上那个词（帧命令 `deploy-slot` 的 `product`）—— 两侧对上的契约，只此一份。
-    pub fn wire(self) -> &'static str {
-        match self {
-            Product::Backend => "backend",
-            Product::Panorama => "panorama",
-        }
-    }
-
-    /// [`Product::wire`] 的逆；认不出 ⇒ `None`。
-    pub fn of_wire(w: &str) -> Option<Product> {
-        [Product::Backend, Product::Panorama]
-            .into_iter()
-            .find(|p| p.wire() == w)
-    }
-}
-
 /// 表 B 的 origin 轴：目标机器是不是自己。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Route {
@@ -104,85 +78,38 @@ pub enum Refusal {
 impl Refusal {
     /// 对用户说的那一句（`machine` = 机器名，本机说「本机」）。**Rust 侧唯一的出口**；
     /// 每一形的 key 都是字面量（`copy-table.vitest.ts` 按调用形状读它们，与文案表两向相等）。
-    ///
-    /// 〔TL1 · 4C〕多收一个 `product`：同一种拒绝对两件产物要说两句话
-    /// （后端那几句里「它的会话不会自动接上」之类的后果，换成全景就是假话）⇒ 各一组 key（`deploy.refused.*` · `panorama.refused.*`）。
-    pub fn say(&self, product: Product, machine: &str) -> String {
-        match (product, self) {
-            (Product::Backend, Refusal::UnsupportedMachine { os, arch }) => copy_text(
+    pub fn say(&self, machine: &str) -> String {
+        match self {
+            Refusal::UnsupportedMachine { os, arch } => copy_text(
                 "deploy.refused.unsupportedMachine",
                 &[("machine", machine), ("os", os), ("arch", arch)],
             ),
-            (Product::Backend, Refusal::OsUnknown { why }) => copy_text(
+            Refusal::OsUnknown { why } => copy_text(
                 "deploy.refused.osUnknown",
                 &[("machine", machine), ("why", why)],
             ),
-            (Product::Backend, Refusal::ArchUnknown { why }) => copy_text(
+            Refusal::ArchUnknown { why } => copy_text(
                 "deploy.refused.archUnknown",
                 &[("machine", machine), ("why", why)],
             ),
-            (
-                Product::Backend,
-                Refusal::NotPromisedHere {
-                    os,
-                    route: Route::Remote,
-                    ..
-                },
-            ) => copy_text(
+            Refusal::NotPromisedHere {
+                os,
+                route: Route::Remote,
+                ..
+            } => copy_text(
                 "deploy.refused.notPromisedHere",
                 &[("machine", machine), ("os", os)],
             ),
-            (
-                Product::Backend,
-                Refusal::NotPromisedHere {
-                    os,
-                    arch,
-                    route: Route::Local,
-                },
-            ) => copy_text(
+            Refusal::NotPromisedHere {
+                os,
+                arch,
+                route: Route::Local,
+            } => copy_text(
                 "deploy.refused.notPromisedLocal",
                 &[("machine", machine), ("os", os), ("arch", arch)],
             ),
-            (Product::Backend, Refusal::NotCarried { os, arch }) => copy_text(
+            Refusal::NotCarried { os, arch } => copy_text(
                 "deploy.refused.notCarried",
-                &[("machine", machine), ("os", os), ("arch", arch)],
-            ),
-            (Product::Panorama, Refusal::UnsupportedMachine { os, arch }) => copy_text(
-                "panorama.refused.unsupportedMachine",
-                &[("machine", machine), ("os", os), ("arch", arch)],
-            ),
-            (Product::Panorama, Refusal::OsUnknown { why }) => copy_text(
-                "panorama.refused.osUnknown",
-                &[("machine", machine), ("why", why)],
-            ),
-            (Product::Panorama, Refusal::ArchUnknown { why }) => copy_text(
-                "panorama.refused.archUnknown",
-                &[("machine", machine), ("why", why)],
-            ),
-            (
-                Product::Panorama,
-                Refusal::NotPromisedHere {
-                    os,
-                    route: Route::Remote,
-                    ..
-                },
-            ) => copy_text(
-                "panorama.refused.notPromisedHere",
-                &[("machine", machine), ("os", os)],
-            ),
-            (
-                Product::Panorama,
-                Refusal::NotPromisedHere {
-                    os,
-                    arch,
-                    route: Route::Local,
-                },
-            ) => copy_text(
-                "panorama.refused.notPromisedLocal",
-                &[("machine", machine), ("os", os), ("arch", arch)],
-            ),
-            (Product::Panorama, Refusal::NotCarried { os, arch }) => copy_text(
-                "panorama.refused.notCarried",
                 &[("machine", machine), ("os", os), ("arch", arch)],
             ),
         }
@@ -275,49 +202,19 @@ impl Key {
 }
 
 /// 表 A 里「有产线」的格子（`release.yml` 真编得出字节的那几格；判据对着 `release.yml` 读）。
-pub const LINES: &[(Product, Key)] = &[
-    (
-        Product::Backend,
-        Key {
-            os: Os::Windows,
-            arch: Arch::X86_64,
-        },
-    ),
-    (
-        Product::Backend,
-        Key {
-            os: Os::Linux,
-            arch: Arch::X86_64,
-        },
-    ),
-    (
-        Product::Backend,
-        Key {
-            os: Os::Linux,
-            arch: Arch::Aarch64,
-        },
-    ),
-    (
-        Product::Panorama,
-        Key {
-            os: Os::Windows,
-            arch: Arch::X86_64,
-        },
-    ),
-    (
-        Product::Panorama,
-        Key {
-            os: Os::Linux,
-            arch: Arch::X86_64,
-        },
-    ),
-    (
-        Product::Panorama,
-        Key {
-            os: Os::Linux,
-            arch: Arch::Aarch64,
-        },
-    ),
+pub const LINES: &[Key] = &[
+    Key {
+        os: Os::Windows,
+        arch: Arch::X86_64,
+    },
+    Key {
+        os: Os::Linux,
+        arch: Arch::X86_64,
+    },
+    Key {
+        os: Os::Linux,
+        arch: Arch::Aarch64,
+    },
 ];
 
 /// 问那台机器的 (OS, arch) 那条命令（一次性 exec，`exec_site_registry` 登记）。
