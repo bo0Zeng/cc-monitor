@@ -43,12 +43,12 @@ vi.mock("../../../../src/frontend/ui/remote-config", () => ({ readRemoteConfig: 
 import { readFileSync } from "node:fs";
 // 〔US1〕API key 那两问改走通道（`chan_call`，op = `apikey-read` / `apikey-routing`）：判据按 op 分派、回成品字节。
 // 账号库那几条（`accounts-*`）由那台后端做：判据用罐头答（`accountsFakeInvoke`），只看界面问了哪台、交了什么意图。
-import { accountsFakeInvoke, chanArgsJson, chanReply, fakeLoginCmd, isAccountsOp, isChanCall, type ChanCallArgs } from "../../../test-support/chan-fake";
+import { ACCOUNT_MCP_OPS, accountsFakeInvoke, chanArgsJson, chanReply, fakeLoginCmd, isAccountsOp, isChanCall, type ChanCallArgs } from "../../../test-support/chan-fake";
 
 /** 这一趟里问过的账号库命令：`[op, origin, 入参]`。 */
 function accountOps(calls: Array<[string, unknown]>): Array<[string, string, Record<string, unknown>]> {
   return calls
-    .filter(([c, a]) => isAccountsOp(c, a))
+    .filter(([c, a]) => isAccountsOp(c, a) && !ACCOUNT_MCP_OPS.includes((a as ChanCallArgs).op))
     .map(([, a]) => [(a as ChanCallArgs).op, (a as ChanCallArgs).origin, chanArgsJson(a as ChanCallArgs) as Record<string, unknown>]);
 }
 
@@ -1137,6 +1137,13 @@ describe("N-F1b 没有远端时：设置面板列得出这台机器的账号", (
       copyText("accounts.maintenance.rollback"),
       copyText("accounts.maintenance.syncHint"),
       copyText("accounts.maintenance.rollbackHint"),
+      // ②c 各账号共用的 MCP 那一块：家在文案表（`accountsMcp.*`）
+      copyText("accountsMcp.block.title"),
+      copyText("accountsMcp.block.shared"),
+      copyText("accountsMcp.block.deleteHere"),
+      copyText("accountsMcp.block.newSessions"),
+      copyText("accountsMcp.list.empty"),
+      copyText("accountsMcp.read.reading"),
       // ③ 这一轮桩喂进去的动态值
       ...st.accounts.flatMap((a) => [a.name, a.email, a.configDir ?? ""]),
       st.meta?.manifestPath ?? "",

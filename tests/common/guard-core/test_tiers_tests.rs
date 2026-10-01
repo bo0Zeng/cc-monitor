@@ -78,6 +78,7 @@ const UNIT: &[&str] = &[
     "tests/frontend/ui/account-commands.vitest.ts",
     "tests/frontend/ui/account-restart.vitest.ts",
     "tests/frontend/ui/accounts.vitest.ts",
+    "tests/frontend/ui/settings/accounts-mcp-block.vitest.ts", // 账号页各账号共用的 MCP 那一块：只画名字与各版、只交意图（纯替身）
     "tests/frontend/ui/backend-policy.vitest.ts",
     "tests/backend/accounts/upstream_select/table_tests.rs",
     "tests/backend/accounts/manage/aliases_tests.rs",
