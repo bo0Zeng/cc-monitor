@@ -147,7 +147,8 @@ pub(crate) struct Adapter {
 /// 〔加一个 agent 只改 `agents/`〕一家的起会话事实 —— **唯一的家**。
 /// 从前住两处（monitor `adapter.rs` · 后端 `control/ccm/`，靠金样 `agent-profile-golden.tsv` 对着）；今天 `ccm` 按注册表读
 /// （[`launch_face_of`]），界面与 monitor 读从这里生成的 `src/frontend/ui/generated/agent-profile-table.ts`。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+// 不派生 `PartialEq`：带着一个函数指针（resume 命令形），函数地址相等不是一个有意义的比较。
+#[derive(Debug, Clone, Copy)]
 pub(crate) struct LaunchFace {
     /// 适配器 id（界面起会话那一发交回，上游选择按它挑那一行）。
     pub(crate) adapter_id: &'static str,
