@@ -13,7 +13,7 @@
  * | 形状不对 ⇒ 抛（多一格 / 缺一格 / 类型不对），不猜 | 「形状不对」 |
  * | 界面不判目标名：空目标原样交给后端；后端 `invalid_args` ⇒ 各动作那句「后端不接受这个会话名」带后端原话 | 「空目标」 |
  * | 本机与远端同一条路（`<local>` 照样经通道问），通道不在时两句话不同、远端那句点得出是哪台 | 「本机」「通道不在」 |
- * | 拒绝码逐码一句、两两不同、带上会话名与后端原话；认不出的码原样带出去、不被猜成已知档（码集合取自金样，不是手抄） | 「拒绝码」 |
+ * | 拒绝码逐码一句、两两不同、带上会话名与后端原话；认不出的码不上屏（只说原话，码在诊断里）、不被猜成已知档（码集合取自金样，不是手抄） | 「拒绝码」 |
  * | 结束会话 / 发按键：请求体 == 金样；`enter` 落在两个 mode 名上；`killed` / `typed` 不为真不当成功；门拒绝 ≠ 通道不在 | 「结束会话 · 发按键」两组 |
  * | 就地 resume（F14）：只有能证明没发出去才回落 —— TS `provablyNotSent` == Rust `route_call_error`（跨语言金样 `reach-collapse.golden.json`，Rust 侧 `chan/webview_tests.rs` 产） | 「就地 resume」 |
  *
@@ -95,6 +95,17 @@ async function saidOf(act: () => Promise<unknown>): Promise<string> {
 /** 跑一趟抓屏，拿抛出来的那一句。 */
 const saidBy = (origin: string, target: string): Promise<string> => saidOf(() => capturePane(origin, target));
 
+/** 失败那一下的诊断（可复制的那一份）：错误码在这里，不在给人看的那一句里。 */
+async function detailOf(act: () => Promise<unknown>): Promise<string> {
+  try {
+    await act();
+  } catch (e) {
+    expect(e).toBeInstanceOf(ControlError);
+    return (e as ControlError).detail;
+  }
+  throw new Error("本该失败却成功了");
+}
+
 describe("〔C4e〕抓一屏：按形状收", () => {
   it("★★ 金样：解码器读得懂后端真出的成品；请求体就是金样那一份", async () => {
     expect(decodeCapture("devbox", CAP.reply)).toBe(CAP.reply.screen);
@@ -165,7 +176,7 @@ describe("〔C4e〕抓一屏：失败怎么说", () => {
     expect(await saidBy("devbox", "demo-cc")).toMatch(/撤回/);
   });
 
-  it("★★ 拒绝码（取自金样）逐码一句、两两不同、带会话名与后端原话；认不出的码原样带出去、不被猜成已知档", async () => {
+  it("★★ 拒绝码（取自金样）逐码一句、两两不同、带会话名与后端原话；认不出的码不上屏（只说原话，码在诊断里）、不被猜成已知档", async () => {
     const said: string[] = [];
     for (const code of CAP.codes) {
       answer({ fail: refusedReply(code, "RAW-WORDS") });
@@ -179,8 +190,11 @@ describe("〔C4e〕抓一屏：失败怎么说", () => {
     }
     answer({ fail: refusedReply("zzz_new_code", "RAW-WORDS") });
     const unknown = await saidBy("devbox", "demo-cc");
-    expect(unknown).toContain("zzz_new_code");
+    expect(unknown).toContain("RAW-WORDS");
+    expect(unknown, "错误码上了屏").not.toContain("zzz_new_code");
     expect(said).not.toContain(unknown);
+    answer({ fail: refusedReply("zzz_new_code", "RAW-WORDS") });
+    expect(await detailOf(() => capturePane("devbox", "demo-cc")), "诊断里没有码").toContain("zzz_new_code");
     // 拒绝体读不出来 ⇒ 仍是一句「被拒」，不是空串、不是崩。
     answer({ fail: { err: "Refused", body: [0xff] } });
     expect(await saidBy("devbox", "demo-cc")).toMatch(/被拒/);
@@ -296,8 +310,11 @@ describe("〔C4e〕结束会话 · 发按键：发出去之前与失败怎么说
       }
       answer({ fail: refusedReply("zzz_new_code", "RAW-WORDS") });
       const unknown = await saidOf(() => act("demo-cc"));
-      expect(unknown, op).toContain("zzz_new_code");
+      expect(unknown, op).toContain("RAW-WORDS");
+      expect(unknown, `${op}：错误码上了屏`).not.toContain("zzz_new_code");
       expect(said, op).not.toContain(unknown);
+      answer({ fail: refusedReply("zzz_new_code", "RAW-WORDS") });
+      expect(await detailOf(() => act("demo-cc")), `${op}：诊断里没有码`).toContain("zzz_new_code");
       // 三态不许压成两态：门拒绝（身份门）与通道不在是两句话。
       answer({ fail: refusedReply("wrong_owner", "RAW-WORDS") });
       const gate = await saidOf(() => act("demo-cc"));

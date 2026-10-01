@@ -718,19 +718,22 @@ pub(super) async fn call_one(
 }
 
 /// 后端拒绝时那句话。**逐档对着 `src/doc/IPC-PROTOCOL.md §10` 的错误码写。**
-/// 〔CP1 裁「改·§2.1」〕对外那句不再点内部命令名（参数留着：调用方不动，改口只在这一处）。
-pub(super) fn refusal(_cmd: &str, code: &str, message: &str) -> String {
+/// 对外那句只说哪一步没成 ＋ 那台的原话；命令名与错误码不上屏，只进日志（排查用）。
+pub(super) fn refusal(cmd: &str, code: &str, message: &str) -> String {
+    tracing::warn!("filewin: {cmd} refused ({code}): {message}");
     let hint = match code {
         "bad_args" => &copy_text("rsFilewinFind.refusal.badArgs", &[]),
         "bad_path" => &copy_text("rsFilewinFind.refusal.badPath", &[]),
         "unreadable" => &copy_text("rsFilewinFind.refusal.cannotOpen", &[]),
         _ => &copy_text("rsFilewinFind.refusal.other", &[]),
     };
+    if message.trim().is_empty() {
+        return hint.to_string();
+    }
     copy_text(
         "rsFilewinFind.refusal.line",
         &[
             ("hint", &hint.to_string()),
-            ("code", &code.to_string()),
             ("message", &message.to_string()),
         ],
     )

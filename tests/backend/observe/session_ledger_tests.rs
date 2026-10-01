@@ -29,6 +29,7 @@ fn added(sid: &str) -> Ev {
         session_kind: None,
         attachable: None,
         cwd: None,
+        project_dir: None,
         name: None,
         path: None,
         lines: None,

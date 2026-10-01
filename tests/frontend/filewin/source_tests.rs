@@ -570,11 +570,14 @@ async fn listing_has_no_second_road_when_the_backend_refuses() {
     );
     assert!(!rows.is_empty(), "合成树是空的 —— 上面那条相等在空集上成立");
     assert!(!cut);
-    // ② 后端拒 ⇒ 失败，带码。
+    // ② 后端拒 ⇒ 失败，带那台的原话（码不上屏）。
     let e = list_dir(&wired.line, &src, "/definitely/not/here", SortBy::default())
         .await
         .expect_err("后端拒了，窗口却交出了一屏");
-    assert!(e.contains("unreadable"), "那句话里没有后端的码：{e}");
+    assert!(
+        e.contains("读目录失败") && !e.contains("unreadable"),
+        "那句话里没有后端的原话，或错误码上了屏：{e}"
+    );
     // ③ 线上恰好两条 `files-ls`（① 一条、② 一条），没有别的。
     assert_eq!(wired.cmds(), [CMD_LS, CMD_LS]);
     std::fs::remove_dir_all(&root).ok();
@@ -1013,7 +1016,7 @@ fn each_layer_of_a_channel_failure_says_something_different() {
         said("x", &hop(1, Reach::NotSent)),
         "断在哪一段没说出来"
     );
-    // 对端拒绝：码与原话都在（走 `find::refusal` 那一个翻译）。
+    // 对端拒绝：原话在、码不上屏（走 `find::refusal` 那一个翻译）。
     let refused = said(
         "files-mkdir",
         &CallError::Peer {
@@ -1023,7 +1026,7 @@ fn each_layer_of_a_channel_failure_says_something_different() {
         },
     );
     assert!(
-        refused.contains("refused") && refused.contains("refuse write: fence"),
+        refused.contains("refuse write: fence") && !refused.contains("refused"),
         "{refused}"
     );
     // 不认这条命令 ⇒ 说「版本旧了、不支持」那一条。

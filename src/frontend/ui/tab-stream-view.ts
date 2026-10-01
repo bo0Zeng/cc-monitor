@@ -539,7 +539,7 @@ export class TabStreamView {
           uuid: msg.uuid,
           sourceSessionId: tab.sessionId,
           origin: tab.origin,
-          cwd: tab.cwd ?? undefined,
+          cwd: tab.projectDir ?? undefined,
           onForked: (res) => void this.host.startForkedSession(tab, res),
         });
       },
@@ -742,7 +742,7 @@ export class TabStreamView {
           uuid: msg.uuid,
           sourceSessionId: tab.sessionId,
           origin: tab.origin,
-          cwd: tab.cwd ?? undefined,
+          cwd: tab.projectDir ?? undefined,
           onForked: (res) => void this.host.startForkedSession(tab, res),
         });
       },

@@ -355,8 +355,8 @@ export class TabBarDrag {
       const move = groupMoveForDrop((s) => this.store.tabs.get(s)?.group ?? null, sid, target);
       if (move.kind === "found") {
         const name = defaultGroupName(
-          this.store.tabs.get(sid)?.cwd ?? null,
-          this.store.tabs.get(move.with)?.cwd ?? null,
+          this.store.tabs.get(sid)?.projectDir ?? null,
+          this.store.tabs.get(move.with)?.projectDir ?? null,
           this.prefs.collections.map((c) => c.name),
         );
         // 组数到上界、没建出来 ⇒ 说出来；顺序那一半照常做。

@@ -53,6 +53,7 @@ pub(crate) const RECORDS: crate::agents::RecordFace = crate::agents::RecordFace 
     run_of: None,
     child_link: None,
     children: None,
+    project_dir: Some(history::project_dir),
 };
 // 〔删用量〕**原 `pub(crate) mod usage;` 删了。**
 // `agents/codex/usage.rs` 是用量**聚合轴**（②）的 Codex 半：它的唯一调用方是

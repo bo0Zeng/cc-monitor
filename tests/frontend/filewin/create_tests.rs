@@ -150,8 +150,8 @@ async fn an_existing_name_comes_back_as_the_backends_sentence_and_is_painted() {
     let (what, why) = &out.failed[0];
     assert_eq!(what, &label("/srv/data/exists.md"));
     assert!(
-        why.contains("io_failed") && why.contains("目标已经在了"),
-        "后端的码与原话没带回来：`{why}`"
+        why.contains("目标已经在了") && !why.contains("io_failed"),
+        "后端的原话没带回来，或错误码上了屏：`{why}`"
     );
     let ctx = egui::Context::default();
     let _ = frame_text(&ctx, &mut w, Vec::new());
