@@ -1106,8 +1106,9 @@ fn a_foreign_skill_or_mcp_entry_is_backed_up_before_it_goes() {
     let u = json!({ "kind": "skill", "name": "mine", "at": { "level": "user" } });
     let card = answer_uninstall_preview(&m.door(), &m.env, &u).unwrap();
     assert_eq!(card["recorded"], false);
-    assert!(
-        card["backup"].as_str().unwrap().ends_with("backups"),
+    assert_eq!(
+        std::path::Path::new(card["backup"].as_str().unwrap()).file_name(),
+        Some(std::ffi::OsStr::new("backups")),
         "{card}"
     );
     let mut ua = u.clone();
