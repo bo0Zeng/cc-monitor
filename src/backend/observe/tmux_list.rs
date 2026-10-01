@@ -1,4 +1,4 @@
-//! 〔MIG-1 续 · `设计/99 §2.1 ⑬`〕`tmux-list` 出**成品**：这台机器的 tmux 会话逐行解析好了交出去（原先交原样行、解析住 monitor 的
+//! `tmux-list` 出**成品**：这台机器的 tmux 会话逐行解析好了交出去（原先交原样行、解析住 monitor 的
 //! `parse_tmux_ls`〔散文墓碑〕，界面经 monitor 那两条 Tauri 命令问）。解析规则从 monitor 原样搬来（F74 `@ccm_sid` 字符集 · K-R12 段数上下溢），
 //! 本机远端同一份；界面经 `chan.call(origin, "tmux-list")` 直接问（`src/frontend/ui/tmux-reads.ts`）。
 //!
@@ -20,7 +20,7 @@ pub(crate) struct TmuxRow {
     pub(crate) windows: u32,
     /// F74：`@ccm_sid`（此 tmux 当前所跑 claude 会话的 sid）。未设置 / 不是合法 sid 字符集 ⇒ `None`。
     pub(crate) sid: Option<String>,
-    /// 〔THIN〕前台命令是注册表里某一家 agent 的进程（`agents::is_agent_process`；Claude 是 `claude` / `node`）。
+    /// 前台命令是注册表里某一家 agent 的进程（`agents::is_agent_process`；Claude 是 `claude` / `node`）。
     /// 从前界面按画像表的判活进程名自己判（`tmux-sessions.ts::isClaudeTmuxCommand`〔散文墓碑〕），判定进了后端。
     pub(crate) agent: bool,
 }
@@ -48,7 +48,7 @@ pub(crate) fn rows(raw: &str) -> Vec<TmuxRow> {
                 } else if f.len() > FIELDS {
                     tracing::warn!(
                         "tmux-list 段数过溢（{} > {FIELDS}）—— 多半是 `pane_current_path` 里有真 TAB（合法内容），\
-                         这一行的会话会从名单上消失（K-R12 §5.4 点名的误伤）。原样行：{line:?}",
+                         这一行的会话会从名单上消失（点名的误伤）。原样行：{line:?}",
                         f.len()
                     );
                 }

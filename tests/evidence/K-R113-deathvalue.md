@@ -140,7 +140,7 @@ thread 'argv_table_guard::every_listed_subcommand_has_a_live_dispatch_route'
 | `cc-send` | `send_for_inbound` | 投递（`flock` ＋ 路由层 ACL / 限流 / 去重 / 灭环） | 写收件人收件箱 |
 | `cc-kill` | `kill_for_inbound` | 杀会话 ＋ 进程树、清名册 / 台账 / 状态 | 破坏性 |
 
-⚠ **`K-R111 §H7` 那条登记说的是「三条」，本件之后是四条** —— 数变了不是因为债变多了，
+⚠ ** 那条登记说的是「三条」，本件之后是四条** —— 数变了不是因为债变多了，
 是因为本件给 spawn 台账那一半补了对侧（`cc-agents`）。**这个数别照抄散文，用尺子现打。**
 
 ### D2 裁**乙（不收）** —— 理由现打，不是「感觉大」

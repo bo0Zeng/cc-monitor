@@ -4,7 +4,7 @@
 
 ## 它治的是什么
 
-`95 §3ter` 的三条判据 ＋ `§3.2/§3.2b` 那道缝,此前**一格都没有**:
+三条判据 ＋ 那道缝,此前**一格都没有**:
 门禁里 `grep -c cc-peek tests/scripts/gate.sh` = 0,cc-bus 这一族只被 `shellcheck`
 (语法)与 `plugin_class_registry`(脚本条数)碰到过 —— **没有任何东西在判它的行为**。
 
@@ -96,9 +96,9 @@ EXPECTED_TAGS = [
     "S1", "S2", "S3", "S4", "S5", "S6", "S7",
     "B1", "B2", "B3", "B4", "B5", "B6", "B7",
     "B8", "B9", "B10", "B11", "B12", "B13", "B14",
-    # 〔kinds 09-24〕设计 95 §2 / §3bis:静态 2 条(K1 随包表 · K2 🔴 敲门够不着正文)＋ 真跑 3 条
+    # 设计:静态 2 条(K1 随包表 · K2 🔴 敲门够不着正文)＋ 真跑 3 条
     "K1", "K2", "K3", "K4", "K5",
-    # 〔保活 09-24〕设计 95 §3bis:保活是调用方(本体零提及 ＋ 调用方不循环 ＋ 真跑)
+    # 〔保活 09-24〕设计:保活是调用方(本体零提及 ＋ 调用方不循环 ＋ 真跑)
     "K6",
 ]
 
@@ -115,7 +115,7 @@ PEEK_WRITE_EXEMPT = {
     '> "$tokfile"':
         "调用方用 `--token-file` 指定的路径,**脚本里另有一条闸拒绝它落在 $BUS 里** ⇒ 不是总线状态",
     '> "$kindsfile"':
-        "〔kinds 09-24〕调用方用 `--kinds-file` 指定的路径(Stop 钩子按 kind 决定拦不拦要它),"
+        "调用方用 `--kinds-file` 指定的路径(Stop 钩子按 kind 决定拦不拦要它),"
         "与 `--token-file` 同一道闸拒绝它落在 $BUS 里 ⇒ 不是总线状态;`B5` 真跑那道闸",
 }
 
@@ -558,7 +558,7 @@ def behavioral(tmp):
 
 
 # ════════════════════════════════════════════════════════════════════════════
-# kinds 表(设计 95 §2 / §3bis,09-24):信封的 `kind` → 拦停 / 敲门 / 阀门 / 两个模板
+# kinds 表(设计,09-24):信封的 `kind` → 拦停 / 敲门 / 阀门 / 两个模板
 # ════════════════════════════════════════════════════════════════════════════
 
 KINDS_SHIPPED = ROOT / "src" / "shared" / "cc-bus" / "examples" / "kinds.tsv"
@@ -821,7 +821,7 @@ def check_k4(tmp):
 
 
 def check_k5(tmp):
-    """能力降级链(95 §3.2b)真跑:在**仓的副本**里加两本假词典(不动真脚本目录 —— 那里的条数有判据钉着)。"""
+    """能力降级链真跑:在**仓的副本**里加两本假词典(不动真脚本目录 —— 那里的条数有判据钉着)。"""
     cp = Path(tmp) / "k5-tree"
     shutil.copytree(SCRIPTS.parent, cp)
     sd = cp / "scripts"
@@ -857,7 +857,7 @@ KEEPALIVE_CALLER = ROOT / "src" / "shared" / "cc-bus" / "examples" / "cc-keepali
 
 
 def check_k6(tmp):
-    """保活是**调用方**,不是 cc-bus 的功能(95 §3bis,用户逐字「他的功能就是把会话注入 agent」)。"""
+    """保活是**调用方**,不是 cc-bus 的功能(用户逐字「他的功能就是把会话注入 agent」)。"""
     import json
     if not KEEPALIVE_CALLER.is_file():
         bad("K6", f"保活的调用方不在:{KEEPALIVE_CALLER}")

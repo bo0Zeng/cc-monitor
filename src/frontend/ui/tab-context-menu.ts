@@ -1,5 +1,5 @@
 /**
- * 〔U2 · 拆 `tabs.ts` ⑤〕**tab 右键菜单这个控件**（开 / 关 / 按 id 就地换项 / 追加 / 二级 flyout）。
+ * 〔拆 `tabs.ts` ⑤〕**tab 右键菜单这个控件**（开 / 关 / 按 id 就地换项 / 追加 / 二级 flyout）。
  *
  * 只管「菜单长什么样、怎么开关」，**不管里面放哪几项** —— 那是 `tab-menu.ts` 的事。
  * 零 IPC。原住 `tabs.ts` 文件尾，逐字搬出；唯一的形状改动是给代次加了个只读出口 `menuGeneration()`。
@@ -18,7 +18,7 @@ export interface TabMenuItem {
   danger?: boolean; // F79：破坏性项（杀会话）红色样式
   title?: string; // A5：hover tooltip（如 compact 顺序说明）
   onClick?: () => void; // 有 submenu 时不需要——点击/悬停展开子菜单而非执行动作
-  /** F09：二级 flyout（MASTERPLAN §2.6"动作 × 修饰"，R4 悬停+点击都可触发展开）。
+  /** F09：二级 flyout（"动作 × 修饰"，R4 悬停+点击都可触发展开）。
    *  有 submenu 时 `onClick` 被忽略——这一级只负责展开，不执行动作；真正的动作在叶子项上。 */
   submenu?: TabMenuItem[];
   /** F09 Phase D 审计（UX，建议）：纯展示性分隔线——不可点、不响应悬停，只用来在 flyout 里把
@@ -32,7 +32,7 @@ const activeTabMenuItems = new Map<string, HTMLElement>();
  * 只作用于发起它的那一代菜单;换/关菜单后旧查询整体 no-op(防 R-1 跨 tab 串味错配)。 */
 let tabMenuGeneration = 0;
 /**
- * 〔U2〕这一代菜单的代次（`tabMenuGeneration` 的只读出口）。菜单控件搬出 `tabs.ts` 之后，
+ * 这一代菜单的代次（`tabMenuGeneration` 的只读出口）。菜单控件搬出 `tabs.ts` 之后，
  * 在飞的异步就绪（attach 反查 / 账号列表）要在**另一个模块**里比对代次 ⇒ 给一个函数，
  * 不让别处直接碰这个 `let`（写者只有本文件的开 / 关菜单两处）。
  */

@@ -6,12 +6,12 @@ use std::path::{Path, PathBuf};
 /// 多一处没登记的 ⇒ 下面那条红。**登记表不是豁免清单**，是「这些我看过、
 /// 而且知道它归谁」的账。
 const REGISTERED: &[(&str, &str, &str)] = &[
-    // 🔴 〔`C1` · 2026-09-24〕**这里原来的第一条出去了**：`src/frontend/ui/session-accounts-poll.ts` 那个
+    // 🔴 **这里原来的第一条出去了**：`src/frontend/ui/session-accounts-poll.ts` 那个
     //    10s `refreshSessionAccounts`（data-poll）。它自己的说法栏写着退役条件 ——「先有一种账号事件
     //    （新帧或文件事件）」—— 这一拍兑现的是两件事：两条查询搬上了已有长连接（`accounts-sessions` /
     //    `accounts-list`，不再每拍握一次手），而「会话 ↔ 账号」只在会话起停时变、**起停本来就有帧**
     //    （`session_added` / `session_removed` ⇒ 远端 `live` 格 / `ended` 格），
-    //    再加一个握手完成事件 `remote-backend-ready`（〔DL1〕后来改经通道订 `accounts-changed`，那一格 `seen`）。⇒ 刷新改由事件驱动（`createEventRefresher`，零定时器），
+    //    再加一个握手完成事件 `remote-backend-ready`（后来改经通道订 `accounts-changed`，那一格 `seen`）。⇒ 刷新改由事件驱动（`createEventRefresher`，零定时器），
     //    `setInterval` 删了。留着这一行，下面那条反向检查（「登记了却已经没有周期唤醒」）会当场红。
     //    买不到的一格写在 `session-accounts-poll.ts` 头注：别处改了默认账号、而这台上没有会话起停时，
     //    账号清单要等下一次握手 / 起停 / 本 UI 操作才刷新。
@@ -21,10 +21,10 @@ const REGISTERED: &[(&str, &str, &str)] = &[
         "1s 重绘一次网格。**不取数** —— 只把已有状态（相对时间等）重画；\
              取数走事件（`events.ts` 的帧）。这一类是后端那条护栏头注说的「正当周期行为」。",
     ),
-    // 〔RST · V154〕`tab-session-actions.ts` 那条 data-poll（`awaitExitFor`：等 claude 退出的 1s 轮询）退役：
+    // `tab-session-actions.ts` 那条 data-poll（`awaitExitFor`：等 claude 退出的 1s 轮询）退役：
     //   换号重启不再键入 `/exit` 等它自己退，直接 kill ⇒ 没有要等的事，行删。
     (
-        // 🔴 〔`K-R48` 第二拍 09-11〕住址从 `shared/ccm` 换到这里：〔用@09-11 `K33`〕
+        // 🔴 住址从 `shared/ccm` 换到这里：〔用@09-11 `K33`〕
         //    那个 bash 脚本删了，容器路那段 shell **由这份 Rust 渲出来**（`render_container`
         //    里那句 `for _i in 1 2 3 4 5 6; do sleep 0.5; …`）。
         //    ⇒ 扫描面也跟着加了它一份（见 `scan()`）：**产出那段 shell 的人换了，
@@ -261,7 +261,7 @@ fn scan() -> Vec<(String, usize)> {
     let mut shells = collect_shell(&root.join("src/shared"));
     shells.sort();
     files.extend(shells);
-    // 🔴 〔`K-R48` 第二拍 09-11〕**容器路那段 shell 今天由 Rust 渲出来** ——
+    // 🔴 **容器路那段 shell 今天由 Rust 渲出来** ——
     //    `shared/ccm` 删了，而那个 6×0.5s 的预信任等待一个字没变，只是换了产出方。
     //    不把它收进人群的话，本表会读成「那个节拍退役了」⇒ 下一条判据当场说
     //    「登记表里的 xx 已经没有周期唤醒了」，而那是**假读数**。
@@ -338,7 +338,7 @@ fn the_scan_actually_reads_the_frontend_and_ccm() {
     );
     // 剥注释不能把整份文件剥空。
     //
-    // ★〔K-R14 09-01〕上一版是 `strip_comment_lines(&ccm).len() * 2 > ccm.len()`。
+    // ★上一版是 `strip_comment_lines(&ccm).len() * 2 > ccm.len()`。
     //   那条线量的**不是剥法坏没坏**，是「ccm 里以 `//` / `*` / `/*` 开头的行占多少」——
     //   一个随写作漂移的量。现打（量于 `018b134`）：抹掉 545 字节 / 9 行，余量 90209 字节。
     //   它今天离翻红很远（不像下面那条 `* 4` 只剩 97 字节），但**形状同族** ⇒ 一起换掉，
@@ -405,7 +405,7 @@ fn every_data_poll_names_its_event_source_and_owner() {
             assert!(why.contains("退役归"), "{f} 记成 data-poll 却没说谁退役它");
         }
     }
-    // 〔`C1` · 09-24〕地板 `>= 3` 换成相等：今天 data-poll 恰好 **1** 条（`cc-busd`；〔RST · V154〕`tab-session-actions.ts` 的
+    // 地板 `>= 3` 换成相等：今天 data-poll 恰好 **1** 条（`cc-busd`；`tab-session-actions.ts` 的
     //   `awaitExitFor` 那条随换号重启直接 kill 退役，2 → 1）。`C1` 那一拍少的是 `session-accounts-poll.ts` 的 10s 账号轮询（改事件驱动，见 `REGISTERED`）。
     //   地板在「少了一条」这个方向上判不出是退役还是抽取坏了 —— 相等判得出，而且逼人写清是哪一条。
     assert_eq!(polls, 1, "data-poll 条数变了（今天 1：cc-busd）—— 多了请登记事件源与退役去处，少了请写清退役的是哪条");
@@ -413,7 +413,7 @@ fn every_data_poll_names_its_event_source_and_owner() {
 
 /// **全部调度调用点的分类账**：`(相对仓根的路径, API, 处数, 这几处是什么)`。
 ///
-/// # 为什么要有这张表，而不是继续只认周期形态〔audit-0805 F14 第二刀〕
+/// # 为什么要有这张表，而不是继续只认周期形态
 ///
 /// `is_periodic` 认的是「一行里像不像周期唤醒」（`setInterval` / 名字带 `poll` 的
 /// `setTimeout` / `sleep `）。它的漏网在本模块头注里**早就自陈过**，本轮实测了后果：
@@ -441,10 +441,10 @@ const SCHEDULING_SITES: &[(&str, &str, usize, &str)] = &[
           `backend_stop` 只发 SIGKILL），命令一返回就画等于**每次操作后都显示操作前的状态**。"),
     ("src/frontend/ui/e2e-probe.ts", "requestAnimationFrame", 2, "★ **rAF 自链**：`sample` 每帧重排自己（起点 1 处 + 链内 1 处）。退出条件是 `stopReplayJitterProbe` 显式 `cancelAnimationFrame`。只在 e2e 探针里启用，不在正常路径上。"),
     ("src/frontend/ui/error-toast.ts", "setTimeout", 1, "`durationMs` 后移除 toast。一次性。"),
-    ("src/frontend/ui/launch-arrival.ts", "setTimeout", 2, "① 〔FIX3 · `设计/99 §2.2 ②`〕起会话之后等那台报出它的**预算**（`ARRIVAL_BUDGET_MS`）：每件预期一个、到点只说一次「没看到会话起来」，见到了当场 `clearTimeout`。② 〔FIX4 ④〕`awaitArrival` 发起方自己的上界（预算 ＋ 15 s：主窗口不回话也不挂着），回话一到就 `clearTimeout`。都是一次性，不重试、不取数。"),
-    ("src/frontend/ui/events.ts", "setTimeout", 2, "① `scheduleBatchEnd` 的 batch-end 哨兵（每次重排前 `clearTimeout`，且有 `BATCH_HOLD_MAX_MS` 5min 防呆上限）② `setTimeout(drain, 0)` —— **队列 drain 自链**，退出条件是 `queue.length === 0`，由 `scheduled` 标志防重入。不是节拍器：没有队列就不会再排。〔RENDER2〕原 ③（`makeYieldToMain` 的兜底）搬进 `yield-to-main.ts`（3 = 2 ＋ 1）。"),
-    // 〔`C1` · 09-24〕`src/frontend/ui/session-accounts-poll.ts` 的 `setInterval` ×1 这一行出去了（10s 账号轮询改事件驱动，理由见 `REGISTERED` 头上那段）。
-    // 〔三入口拆分 · `设计/01 §1.2`〕原先 `main.ts` 一行 3 处；代码块「复制」那段全局代理
+    ("src/frontend/ui/launch-arrival.ts", "setTimeout", 2, "① 起会话之后等那台报出它的**预算**（`ARRIVAL_BUDGET_MS`）：每件预期一个、到点只说一次「没看到会话起来」，见到了当场 `clearTimeout`。② `awaitArrival` 发起方自己的上界（预算 ＋ 15 s：主窗口不回话也不挂着），回话一到就 `clearTimeout`。都是一次性，不重试、不取数。"),
+    ("src/frontend/ui/events.ts", "setTimeout", 2, "① `scheduleBatchEnd` 的 batch-end 哨兵（每次重排前 `clearTimeout`，且有 `BATCH_HOLD_MAX_MS` 5min 防呆上限）② `setTimeout(drain, 0)` —— **队列 drain 自链**，退出条件是 `queue.length === 0`，由 `scheduled` 标志防重入。不是节拍器：没有队列就不会再排。原 ③（`makeYieldToMain` 的兜底）搬进 `yield-to-main.ts`（3 = 2 ＋ 1）。"),
+    // `src/frontend/ui/session-accounts-poll.ts` 的 `setInterval` ×1 这一行出去了（10s 账号轮询改事件驱动，理由见 `REGISTERED` 头上那段）。
+    // 〔三入口拆分〕原先 `main.ts` 一行 3 处；代码块「复制」那段全局代理
     //   （② ③ 两处）搬进了主窗与 viewer 窗共用的 `entry-render-common.ts`（viewer 窗不再加载
     //   `main.ts`，而它也要这段代理；设置窗没有代码块，不加载它）。
     //   **一处都没多、一处都没少，只是换了文件**：3 = 1 ＋ 2。
@@ -452,37 +452,37 @@ const SCHEDULING_SITES: &[(&str, &str, usize, &str)] = &[
     ("src/frontend/ui/main.ts", "setTimeout", 1, "0ms 下一拍挂 sftp 主机选择器的关闭监听。一次性 UI 反馈。"),
     ("src/frontend/ui/settings/config-surface-section.ts", "setTimeout", 1, "1.5s 后把「已复制」还原。一次性。"),
     ("src/frontend/ui/settings/drift-ledger-section.ts", "setTimeout", 1, "1.5s 后把「已复制」还原。一次性。"),
-    // 〔AL1c · 4B〕`cc_integration.ts` 并进 `machine-aliases.ts`（终端集成成了 PowerShell 那一侧的别名块）⇒ 那一处跟着换文件：一处没多一处没少。
-    // 〔AL1d · 4B〕那一处（「重新扫描」后 500ms 撤掉状态徽章的高亮描边）**删了**：别名块的现状今天随读回口的候选一起到，
+    // `cc_integration.ts` 并进 `machine-aliases.ts`（终端集成成了 PowerShell 那一侧的别名块）⇒ 那一处跟着换文件：一处没多一处没少。
+    // 那一处（「重新扫描」后 500ms 撤掉状态徽章的高亮描边）**删了**：别名块的现状今天随读回口的候选一起到，
     //   「重新读一遍」重读的是整份候选，不再闪一下徽章 ⇒ `machine-aliases.ts` 这一行整行走（少一处，不是换文件）。
-    // 〔U2 · 拆 `tabs.ts` 子步 9〕实时流视图搬进 `tab-stream-view.ts` ⇒ 原 `tabs.ts` 的 rAF ① · rIC ×1 · setTimeout ① 三处跟着走（下三行）：
+    // 〔拆 `tabs.ts` 子步 9〕实时流视图搬进 `tab-stream-view.ts` ⇒ 原 `tabs.ts` 的 rAF ① · rIC ×1 · setTimeout ① 三处跟着走（下三行）：
     //   rAF 4 = 3 ＋ 1 · rIC 1 = 0 ＋ 1（`tabs.ts` 那一行因此整行删掉）· setTimeout 3 = 2 ＋ 1。一处没多一处没少。
     ("src/frontend/ui/tab-stream-view.ts", "requestAnimationFrame", 1, "① `fillAbove` 批末复检（间接自链，有队列型守卫）：补完一批下一帧再看一眼，仍在触发区 / 仍不可滚且账本有余就再补；切走了（`activeId` 守卫）或账尽即停。"),
     ("src/frontend/ui/tab-stream-view.ts", "requestIdleCallback", 1, "★ **空闲物化队列的自链**：`run` 处理一个后台 tab 后再排自己。退出条件是队列空。"),
     ("src/frontend/ui/tab-stream-view.ts", "setTimeout", 1, "① `setTimeout(run, 200)` —— 上面那条 rIC 队列在 `requestIdleCallback` 缺失时的兜底，同一条自链。"),
-    ("src/frontend/ui/tabs.ts", "requestAnimationFrame", 2, "〔U2〕原 ① `fillAbove` 批末复检搬去了 `tab-stream-view.ts`（上面那条），编号沿用原号。② 切 Tab 后把面板整表 re-render 推到下一帧，入口处 `this.activeId !== sessionId` 早返。〔U2〕原 ③（`scheduleTabBarRefresh` 帧末合批）随 tab 栏视图搬去了 `tab-bar-view.ts`。④ ★ 步 3（`设计/10`，2026-09-18）：`switchTo` 贴底的**第二帧**（对齐 `session-viewer.ts` 已有的同一修法）。⚠ 它**不是只读校正** —— `scrollToBottom()` 会把 `stickToBottom` 重新置真，所以第二帧与第一帧一样是强制贴底。可接受的理由只有一条：两帧之间只隔 ~16ms，人滚不出意图；切走了有 `activeId` 守卫挡着。**不是自链**（回调里不再排下一次）。"),
-    // 〔U2 · 拆 `tabs.ts` 子步 11〕拖拽状态机搬进 `tab-bar-drag.ts` ⇒ 原 ⑪ 停留计时器跟着走（下一行）：`tabs.ts` setTimeout 2 = 1 ＋ 1。
-    ("src/frontend/ui/tab-bar-drag.ts", "setTimeout", 1, "⑪ ★ 〔步 17·D · 2026-09-19〕`updateDwell` 的**停留计时器**（`DWELL_MS` = 250ms，`设计/30 §D.4`）：拖动时压住某个 tab 满 250ms ⇒ 落点从 `before` 切成 `onto`（与它成组）。**一次性、非取数**：每次换目标 / 抖动超 4px 都先 `clearTimeout` 再重排，`teardownDrag` 收尾时无条件清（判据 `tests/frontend/ui/tabs.vitest.ts` 「步 17·D ⑤」那组用 `vi.getTimerCount()` 数在飞的定时器，死值验刀 21 钉着）。⚠ 它**非有不可**：指针停住之后 `mousemove` 就不再来了，靠事件驱动的话「停留」永远攒不满。"),
-    // 〔U2 · 拆 `tabs.ts` 子步 12〕tab 栏视图搬进 `tab-bar-view.ts` ⇒ 原 rAF ③ 与 setTimeout ⑩（同一个 `scheduleTabBarRefresh` 的两支）跟着走（下两行）：
+    ("src/frontend/ui/tabs.ts", "requestAnimationFrame", 2, "原 ① `fillAbove` 批末复检搬去了 `tab-stream-view.ts`（上面那条），编号沿用原号。② 切 Tab 后把面板整表 re-render 推到下一帧，入口处 `this.activeId !== sessionId` 早返。原 ③（`scheduleTabBarRefresh` 帧末合批）随 tab 栏视图搬去了 `tab-bar-view.ts`。④ ★ 步 3（2026-09-18）：`switchTo` 贴底的**第二帧**（对齐 `session-viewer.ts` 已有的同一修法）。⚠ 它**不是只读校正** —— `scrollToBottom()` 会把 `stickToBottom` 重新置真，所以第二帧与第一帧一样是强制贴底。可接受的理由只有一条：两帧之间只隔 ~16ms，人滚不出意图；切走了有 `activeId` 守卫挡着。**不是自链**（回调里不再排下一次）。"),
+    // 〔拆 `tabs.ts` 子步 11〕拖拽状态机搬进 `tab-bar-drag.ts` ⇒ 原 ⑪ 停留计时器跟着走（下一行）：`tabs.ts` setTimeout 2 = 1 ＋ 1。
+    ("src/frontend/ui/tab-bar-drag.ts", "setTimeout", 1, "⑪ ★ `updateDwell` 的**停留计时器**（`DWELL_MS` = 250ms）：拖动时压住某个 tab 满 250ms ⇒ 落点从 `before` 切成 `onto`（与它成组）。**一次性、非取数**：每次换目标 / 抖动超 4px 都先 `clearTimeout` 再重排，`teardownDrag` 收尾时无条件清（判据 `tests/frontend/ui/tabs.vitest.ts` 「步 17·D ⑤」那组用 `vi.getTimerCount()` 数在飞的定时器，死值验刀 21 钉着）。⚠ 它**非有不可**：指针停住之后 `mousemove` 就不再来了，靠事件驱动的话「停留」永远攒不满。"),
+    // 〔拆 `tabs.ts` 子步 12〕tab 栏视图搬进 `tab-bar-view.ts` ⇒ 原 rAF ③ 与 setTimeout ⑩（同一个 `scheduleTabBarRefresh` 的两支）跟着走（下两行）：
     //   `tabs.ts` rAF 3 = 2 ＋ 1 · setTimeout 1 = 0 ＋ 1（`tabs.ts` 的 setTimeout 那一行因此整行删掉）。
     ("src/frontend/ui/tab-bar-view.ts", "requestAnimationFrame", 1, "③ ★ F15：`scheduleRefresh`（原 `TabManager.scheduleTabBarRefresh`） —— live 路上后台 tab 的 unread 徽标**帧末合批**（原来每来一行整刷一次 bar）。排一次位，不是自链。⚠ 只合批这一处，用户动作触发的十几个调用点仍是同步的（合批对它们无收益，反而把「点完立刻看到」变成「下一帧」）。"),
     ("src/frontend/ui/tab-bar-view.ts", "setTimeout", 1, "⑩ ★ F15：`scheduleRefresh`（原 `TabManager.scheduleTabBarRefresh`）的**无 rAF 兜底**，0ms、一次性。"),
-    // 〔U2 · 拆 `tabs.ts` 子步 4〕右键菜单控件搬进 `tab-context-menu.ts` ⇒ 原 ⑤ ⑥ ⑦ 三处跟着走（下一行）：11 = 8 ＋ 3，一处没多一处没少。
+    // 〔拆 `tabs.ts` 子步 4〕右键菜单控件搬进 `tab-context-menu.ts` ⇒ 原 ⑤ ⑥ ⑦ 三处跟着走（下一行）：11 = 8 ＋ 3，一处没多一处没少。
     ("src/frontend/ui/tab-context-menu.ts", "setTimeout", 3, "① ② hover 菜单的 150ms 开 / 250ms 关延时（二级 flyout；`closeTabContextMenu` 统一清）③ 0ms 下一拍挂右键菜单关闭监听。都是一次性 UI 延时，不取数。"),
-    // 〔U2 · 拆 `tabs.ts` 子步 5〕会话动作搬进 `tab-session-actions.ts` ⇒ 原 ② ③ ④ ⑧ ⑨ 五处跟着走（下一行）：8 = 3 ＋ 5。
-    // 〔RST · V154〕5 → 3：`awaitExitFor` 的 ③ `stop(false)` 上限与 ④ 1s 轮询随它一起删了（换号重启直接 kill，不再等退出）。
+    // 〔拆 `tabs.ts` 子步 5〕会话动作搬进 `tab-session-actions.ts` ⇒ 原 ② ③ ④ ⑧ ⑨ 五处跟着走（下一行）：8 = 3 ＋ 5。
+    // 5 → 3：`awaitExitFor` 的 ③ `stop(false)` 上限与 ④ 1s 轮询随它一起删了（换号重启直接 kill，不再等退出）。
     ("src/frontend/ui/tab-session-actions.ts", "setTimeout", 3, "② `awaitCompactFor` 的 `timeoutMs` 上限（`finish(false)`）⑧ ⑨ 两处 `bring_*_terminal_to_front` 的 invoke 超时拒绝。都是一次性，不是周期取数。编号沿用 `tabs.ts` 那一行拆开之前的原号。"),
-    ("src/frontend/ui/views/grid-monitor.ts", "setInterval", 1, "1s 重绘 —— 〔UP1〕按格差量（没变的一拍零 DOM 写），不再整表重建。**ui-clock，不取数**，见 `REGISTERED` 那条。"),
+    ("src/frontend/ui/views/grid-monitor.ts", "setInterval", 1, "1s 重绘 —— 按格差量（没变的一拍零 DOM 写），不再整表重建。**ui-clock，不取数**，见 `REGISTERED` 那条。"),
     ("src/frontend/ui/views/history.ts", "requestAnimationFrame", 1, "展开/收起项目后合并重画一次列表，`rafPending` 标志防重入。一次性。"),
-    ("src/frontend/ui/views/history.ts", "setTimeout", 2, "〔LOC1b · 第四波 4D〕3 → 2：原先的 ① `waitForIndexThenSearch`（等本机索引就绪的 1 秒等待，F14 第四刀）随本机内存索引删了 —— 本机搜索改问本机后端，没有「索引中」。② 0ms 下一拍挂条目右键菜单的关闭监听。③ ★ **F07 下半新增**：搜索框输入去抖（250ms，每次输入前 `clearTimeout`）—— **一次性延时不是周期唤醒**，加它正是为了**减少**下游那三个放大器被触发的次数。"),
+    ("src/frontend/ui/views/history.ts", "setTimeout", 2, "3 → 2：原先的 ① `waitForIndexThenSearch`（等本机索引就绪的 1 秒等待，F14 第四刀）随本机内存索引删了 —— 本机搜索改问本机后端，没有「索引中」。② 0ms 下一拍挂条目右键菜单的关闭监听。③ ★ **F07 下半新增**：搜索框输入去抖（250ms，每次输入前 `clearTimeout`）—— **一次性延时不是周期唤醒**，加它正是为了**减少**下游那三个放大器被触发的次数。"),
     ("src/frontend/ui/views/session-viewer.ts", "requestAnimationFrame", 5, "① ② 两处 `maybeFillAbove` —— **向上补料的 rAF 链**，五道守卫在 `:418-426`（世代 / 已到顶 / 在途 等）③ 渲染批前先让状态文绘一帧 ④ ⑤ 双 rAF 后重发 `scrollIntoView`（等 content-visibility 材料化）。"),
-    ("src/frontend/ui/views/session-viewer.ts", "setTimeout", 1, "2.2s 后移除搜索命中的闪烁 class。一次性。〔MOD〕原 ①（`setTimeout(r, 0)` 让出主线程、等晚到的 Channel 块）随那条命令改走通道删了：页在同一个 Promise 链里交完。"),
-    ("src/frontend/ui/yield-to-main.ts", "setTimeout", 1, "〔RENDER2〕`makeYieldToMain` 探不到 `MessageChannel` 时的兜底 `setTimeout(run, 0)` —— 让出一跳，由调用方自链（重放 drain · 长回复分片渲染），退出条件在调用方：队列空 / 片渲完。不是节拍器。"),
+    ("src/frontend/ui/views/session-viewer.ts", "setTimeout", 1, "2.2s 后移除搜索命中的闪烁 class。一次性。原 ①（`setTimeout(r, 0)` 让出主线程、等晚到的 Channel 块）随那条命令改走通道删了：页在同一个 Promise 链里交完。"),
+    ("src/frontend/ui/yield-to-main.ts", "setTimeout", 1, "`makeYieldToMain` 探不到 `MessageChannel` 时的兜底 `setTimeout(run, 0)` —— 让出一跳，由调用方自链（重放 drain · 长回复分片渲染），退出条件在调用方：队列空 / 片渲完。不是节拍器。"),
 ];
 
 /// 数一个调度 API 在源码里的**调用**次数（散文里提到名字不算）。
 ///
-/// # 〔audit-0805 08-06〕原来是 `matches("{api}(")`，而它旁边的注释写着「允许 `api  (`」
+/// # 原来是 `matches("{api}(")`，而它旁边的注释写着「允许 `api  (`」
 ///
 /// **代码不允许，注释说允许** —— 两者对不上，而对不上的那一边正是漏洞：
 /// 把 `requestAnimationFrame (tick)`（**自链**，正是 E6 禁的连续唤醒）写进
@@ -551,7 +551,7 @@ fn scan_all_scheduling_sites() -> Vec<(String, String, usize)> {
 /// 两条都要 —— 只有前者时，一处新写的 rAF 自链可以一声不响地进仓。
 #[test]
 fn every_scheduling_call_site_is_classified() {
-    // 匹配单位自检（〔audit-0805 08-06〕，两个方向都要钉）：
+    // 匹配单位自检（两个方向都要钉）：
     // 放松的那一侧 —— 带空白的调用要数进来（本轮的洞就在这里）。
     assert_eq!(
         count_calls("requestAnimationFrame (tick);", "requestAnimationFrame"),
@@ -646,7 +646,7 @@ fn every_scheduling_call_site_is_classified() {
 /// 下面第二段断言正是靠它证明抽取器没有空转。
 #[test]
 fn the_identity_poller_is_gone_for_good() {
-    // 🔴 〔`K-R48` 第二拍 09-11〕**语料换了：`shared/ccm` → `control/ccm/{mod,plan}.rs`。**
+    // 🔴 **语料换了：`shared/ccm` → `control/ccm/{mod,plan}.rs`。**
     //    〔用@09-11 `K33`〕那个 bash 脚本删了，而它渲出来的那段 shell（容器路的 send-keys
     //    载荷与预信任等待）今天由这两份 Rust 产出 ⇒ 「与会话同寿的循环不许回来」
     //    这件事要盯的是**产出方**。剥注释也跟着换成 Rust 那套（`strip_comment_lines`）。
@@ -705,7 +705,7 @@ fn the_identity_poller_is_gone_for_good() {
     );
 }
 
-// 🔴 〔`K-R48` 第二拍 09-11〕**这里原来有 `ccm_fails_loudly_when_no_backend_can_be_found` 〔散文墓碑〕，
+// 🔴 **这里原来有 `ccm_fails_loudly_when_no_backend_can_be_found` 〔散文墓碑〕，
 //   随 `shared/ccm` 一起删了 —— 而且它是「被测对象消失」，不是「判据放宽」。**
 //
 //   它钉的是 `U-NP④`（08-14）那条：**在 tmux 里找不到 backend ⇒ 响亮失败（rc=2）**，

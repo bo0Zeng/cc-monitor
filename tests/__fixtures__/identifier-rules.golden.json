@@ -1,5 +1,5 @@
 {
-  "_": "〔DUP1 · INVARIANTS §47 ①〕标识符放行判定的共用金样：Rust（shell-quote-core 那三条，monitor payload_judgment_rules.rs 读）与 TS（生成物 src/frontend/ui/generated/judgment-rules.ts，tests/frontend/ui/identifier-rules-parity.vitest.ts 读）逐条对同一份。期望是手写的，不是由被测函数算的。",
+  "_": "〔INVARIANTS §47 ①〕标识符放行判定的共用金样：Rust（shell-quote-core 那三条，monitor payload_judgment_rules.rs 读）与 TS（生成物 src/frontend/ui/generated/judgment-rules.ts，tests/frontend/ui/identifier-rules-parity.vitest.ts 读）逐条对同一份。期望是手写的，不是由被测函数算的。",
   "session_id": {
     "ok": [
       "0473c3a0-1111-2222-3333-444455556666",

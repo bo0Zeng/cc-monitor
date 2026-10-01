@@ -149,9 +149,9 @@ fn ordinary_characters_are_not_rejected() {
     }
 }
 
-/// 〔C4c · 第四波 4B〕两条 apikey 规则搬进来之后的行为钉（逐格照搬前 monitor `history.rs` 那一份的口径）。
+/// 两条 apikey 规则搬进来之后的行为钉（逐格照搬前 monitor `history.rs` 那一份的口径）。
 ///
-/// 要求住址：`设计/01 §5` D1「**一个判定只有一个家**」—— 这两条规则此后由 monitor（起会话那一侧）与
+/// 要求：「**一个判定只有一个家**」—— 这两条规则此后由 monitor（起会话那一侧）与
 /// 后端（`accounts-list` 出成品时并表）两个调用方共用，住 `acct-core` 一处。
 #[test]
 fn the_account_id_is_the_last_path_segment_and_the_subset_is_per_agent() {
@@ -179,7 +179,7 @@ fn the_account_id_is_the_last_path_segment_and_the_subset_is_per_agent() {
     assert!(apikey_routed_subset(&dirs, &[], "claude-code", "claude-code").is_empty());
 }
 
-/// 〔DUP1 · `设计/90 §3` 判据 2 · `INVARIANTS §47` ②〕账号配置目录的全表（全仓唯一一份）：POSIX 形与任一平台形，**正反各一格**。
+/// 〔`INVARIANTS §47` ②〕账号配置目录的全表（全仓唯一一份）：POSIX 形与任一平台形，**正反各一格**。
 /// 要求住址：`INVARIANTS §47` ②「本仓自管的值（配置目录 · 后端落点）……走全表」—— 形式（绝对 · 无 `..` 段）＋ 拒绝集（控制符 · 元字符 · 欺骗字符）。
 #[test]
 fn a_config_dir_passes_the_full_table_only_when_it_is_plainly_absolute() {
@@ -226,7 +226,7 @@ fn a_config_dir_passes_the_full_table_only_when_it_is_plainly_absolute() {
     );
 }
 
-/// 〔THIN〕要求住址：`设计/15 §2.5`（`acct-core` 测试夹具没有 `cfg(test)` 门 ⇒ 编进发布二进制）· `设计/00 §1.2`「契约 crate 不带测试夹具」。
+/// （`acct-core` 测试夹具没有 `cfg(test)` 门 ⇒ 编进发布二进制）· 「契约 crate 不带测试夹具」。
 /// 三项夹具（类型 · 表 · 渲染函数）各自紧跟在 `#[cfg(any(test, feature = "fixtures"))]` 后面：摘掉一处 ⇒ 那一项又进发布二进制，本条红。
 /// 正控：同一把尺子在本 crate 的一个契约项（`AUTH_KINDS`）上认得出「没有门」。
 #[test]

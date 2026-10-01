@@ -1,10 +1,10 @@
 /**
- * K-R45 · `KR45D2`（乙 · 实时窗口）的大纲 ——〔SE1〕**清单改问后端要之后**的判据。
+ * K-R45 · `KR45D2`（乙 · 实时窗口）的大纲 ——**清单改问后端要之后**的判据。
  *
  * # 这一格从前量什么、现在量什么
  *
  * 从前实时窗口在 `onLine` 旁路里一条一条攒清单（`Tab.userInputs`）—— 到达序不是对话序，
- * monitor 起得晚就不全。〔SE1 · `设计/10 §2.2b ⑥`〕那本旁路账本删了：清单问后端要
+ * monitor 起得晚就不全。那本旁路账本删了：清单问后端要
  * （`list_user_inputs` ⇒ `--list-user-inputs`），判定只住后端（Rust 那侧自己的判据量四条口径）。
  * ⇒ 本文件**不再量口径**，量的是：
  * - **顺序 = 后端给的顺序**（文件序），与到达序无关 —— 旁路账本最大的那个病；
@@ -22,7 +22,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { readFileSync } from "node:fs";
 
 /**
- * 〔SE2〕骨架索引的替身：`null` = 回 `undefined`（== SE1 那几格的形状：索引要不到）；
+ * 骨架索引的替身：`null` = 回 `undefined`（== SE1 那几格的形状：索引要不到）；
  * 否则回一份索引，`rows[k]` 就是 seq k（大纲那几个键由用例逐行写明 —— 异源：不拿前端算的去对前端）。
  */
 const indexStub = vi.hoisted(() => ({ rows: null as null | Array<Record<string, unknown>> }));
@@ -32,7 +32,7 @@ vi.mock("@tauri-apps/api/core", async () => {
   const rig = await import("../../../test-support/session-viewer-rig");
   const { withSessionReads } = await import("../../../test-support/chan-fake");
   return {
-    // 〔C4b〕会话读面三问改走通道（`withSessionReads` 译 `chan_call` ⇄ 旧名字 ＋ 旧回包）。
+    // 会话读面三问改走通道（`withSessionReads` 译 `chan_call` ⇄ 旧名字 ＋ 旧回包）。
     invoke: vi.fn(withSessionReads(async (cmd: string, raw: Record<string, unknown>) => {
       const args = raw as { fromOffset: number };
       if (cmd === "list_user_inputs") return rig.answerListUserInputs(args);
@@ -503,7 +503,7 @@ describe("KR45D2 · SE2 实时那块查找面板（大纲在里面）在 styles.
     expect(cssLines, "没有 .active 那条 ⇒ 切过去的那个 tab 的面板也显示不出来").toContain(
       ".session-find.active {",
     );
-    // 〔SE2〕旧的独立悬浮层整块删了（`设计/10 §2.2b ④`）：规则零命中（正控 = 上面那条 `.session-find {` 命中）
+    // 旧的独立悬浮层整块删了：规则零命中（正控 = 上面那条 `.session-find {` 命中）
     expect(cssLines.filter((l) => l.startsWith(".live-user-inputs"))).toEqual([]);
 
     const open = cssLines.indexOf(".session-find {");

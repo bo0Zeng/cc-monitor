@@ -11,7 +11,7 @@ name: Release
 #
 # ── 🔴 `19b`（2026-09-19）：**本文件是「产字节那条路」的唯一驱动** ─────────────────
 #
-# `设计/96 §7.1.2` 现打两条硬事实，它们是这一段存在的全部理由：
+# 现打两条硬事实，它们是这一段存在的全部理由：
 #  ① 三个落点（`embedded-backends/` · `binaries/` · `native-backend/`）**全部 gitignore**
 #     ⇒ **字节不进仓**，它只在「发版那一趟」存在 ⇒ 表的值不是一个文件，是**一条产线**；
 #     🔴 〔步 `19c` 订正 09-19〕**这一句在步 8（全仓改名 `daemon`→`backend`）到今天之间是假的**：
@@ -312,7 +312,7 @@ jobs:
             Write-Host ("embedded {0} ({1} bytes)" -f $a, $f.Length)
           }
           # 🔴 〔步 9 · 09-19〕从 main.rs 改成 lib.rs —— BUILD_ID 与身份戳界标已按
-          #    `设计/00 §1.5.4` 前置 2 搬进后端库面（in-process 那条路没有那个 main.rs）。
+          # 前置 2 搬进后端库面（in-process 那条路没有那个 main.rs）。
           #    `src/frontend/shell/build.rs::backend_lib_rs` 与本处是同一条住址，改一处就要改另一处；
           #    `tests/backend/build_id_guard.rs` 那条判据钉着三处都指得到真东西。
           # 🔴 〔19b · 09-19〕住址收进文件头那个 `env:` —— 本文件另有一步也要抠同一个 const，
@@ -321,7 +321,7 @@ jobs:
           # 🔴 〔19b〕**抠不到要落在下面那句诊断上，不是落在 PowerShell 的空数组索引上。**
           #    原写法 `(...).Matches[0].Groups[1].Value` 在零命中时抛 "Cannot index into a null
           #    array" ⇒ 那句写好的「先修抽取」一个字都印不出来。读不出来时**显示什么**，
-          #    是 `设计/96 §7.2.4` 点名要答的一格 —— 这里答：印住址、印抠的是哪个 const、退 1。
+          #    是点名要答的一格 —— 这里答：印住址、印抠的是哪个 const、退 1。
           $mId    = Select-String -Path $main -Pattern 'const BUILD_ID: &str = "([^"]+)"'        | Select-Object -First 1
           $mOpen  = Select-String -Path $main -Pattern 'const BUILD_STAMP_OPEN: &str = "([^"]+)"'  | Select-Object -First 1
           $mClose = Select-String -Path $main -Pattern 'const BUILD_STAMP_CLOSE: &str = "([^"]+)"' | Select-Object -First 1
@@ -703,7 +703,7 @@ jobs:
           [ "$n" -eq 2 ] || { echo "::error::产物份数对不上：要 2（deb ＋ 裸二进制），现打 $n"; exit 1; }
           cat SHA256SUMS-linux.txt
 
-      # ── 🔴〔2026-09-23〕**安装包的二进制清单 ↔ 本包声明的那几个，两向集合相等** ────────
+      # ── 🔴**安装包的二进制清单 ↔ 本包声明的那几个，两向集合相等** ────────
       #
       # ## 它买的是什么（这是全仓**唯一**一处对着真产物核这件事的地方）
       #

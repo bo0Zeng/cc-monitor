@@ -1,8 +1,8 @@
-//! 〔OSA · `设计/99 §1` V156〕**PowerShell 那几句写法** —— 本机（Windows）起会话载荷与中转前缀只调这里
+//! **PowerShell 那几句写法** —— 本机（Windows）起会话载荷与中转前缀只调这里
 //! （原各自在 `control/launch_render/{payload,local}.rs` 里手写，逐字搬来，产出逐字节不变）。
 //!
 //! ⚠ 这一臂只到「编得过」：本机没有 PowerShell，这几句一次都没被 PowerShell 解析过（`K-H2` 那条登记原样延续）。
-//! 〔WF1 · M/N〕值进单引号一律经 [`ps_literal`]（唯一出口，认全 PowerShell 的五个引号字符）。
+//! 〔M/N〕值进单引号一律经 [`ps_literal`]（唯一出口，认全 PowerShell 的五个引号字符）。
 
 use super::dialect::ps_literal;
 use super::PsHost;
@@ -37,7 +37,7 @@ pub(crate) fn home_file_between(head: &str, rel: &str, tail: &str) -> String {
     format!("{head} + (Get-Content -Raw -LiteralPath (Join-Path $HOME {rel})).Trim() + {tail}")
 }
 
-/// 〔P5 · `设计/80 §8.2` 本地半〕令牌握手前奏的模板（Era 2 那条握手，marker = 令牌）。
+/// 〔本地半〕令牌握手前奏的模板（Era 2 那条握手，marker = 令牌）。
 const RBIND_BIND_PRELUDE_TPL: &str = include_str!("rbind-token-bind.ps1.tpl");
 
 /// 令牌握手前奏：剥掉模板的整行注释（`-EncodedCommand` 额度），`marker` 与 `await_dir` 经 [`ps_literal`] 填进去。
@@ -52,7 +52,7 @@ pub(crate) fn rbind_bind_prelude(marker: &str, await_dir: &str) -> String {
         .replace("{{AWAIT_DIR}}", &ps_literal(await_dir))
 }
 
-// ─── 〔WF1 · L · `设计/99 §2.3`〕执行策略：块装进 `$PROFILE` 之前先问这一代 PowerShell 会不会加载它 ───
+// ─── 执行策略：块装进 `$PROFILE` 之前先问这一代 PowerShell 会不会加载它 ───
 
 /// 生效的那一档 ＋ 组策略两档（有值 ⇒ 改当前用户那一档也没用）。三行，只读。
 const POLICY_QUERY: &str =

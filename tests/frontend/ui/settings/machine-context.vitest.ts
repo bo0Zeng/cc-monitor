@@ -18,12 +18,12 @@ import { LOCAL_ORIGIN } from "../../../../src/frontend/ui/ipc/origin";
 beforeEach(() => __resetMachineContextForTests());
 
 describe("machine-context", () => {
-  // 〔C4a · `设计/05 §8` 步 2〕本机是具名的 `LOCAL_ORIGIN`，不再是 `null`。
+  // 本机是具名的 `LOCAL_ORIGIN`，不再是 `null`。
   it("初始是本机（`LOCAL_ORIGIN`）", () => {
     expect(getCurrentMachine()).toBe(LOCAL_ORIGIN);
   });
 
-  // 〔C4a〕上一版「空串归一成 null（= 本机）」：那是「没说」被当成本机 —— 步 2 治的正是这个
+  // 上一版「空串归一成 null（= 本机）」：那是「没说」被当成本机 —— 步 2 治的正是这个
   //   （Rust `Origin::route` 同样拒空白名）。现在空白名什么都不改。
   it("设了就读得到；空白名不是任何一台机器 ⇒ 不切", () => {
     setCurrentMachine("devbox");
@@ -50,7 +50,7 @@ describe("machine-context", () => {
     setCurrentMachine("devbox");
     setCurrentMachine("devbox");
     expect(fn).toHaveBeenCalledTimes(1);
-    // 〔C4a〕切回本机通知一次；随后的空白名不是任何一台机器 ⇒ 不通知
+    // 切回本机通知一次；随后的空白名不是任何一台机器 ⇒ 不通知
     setCurrentMachine(LOCAL_ORIGIN);
     setCurrentMachine("");
     expect(fn).toHaveBeenCalledTimes(2);

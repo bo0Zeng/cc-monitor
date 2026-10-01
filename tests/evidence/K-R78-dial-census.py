@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """K-R78：`connect_sftp` 调用点普查 + 三类分工的读数。
 
-🔴 **这是第二条腿，不是真相源**。真相源是 `src-tauri/src/sftp_move_ledger.rs` 里那张
+🔴 **这是第二条腿，不是源头**。源头是 `src-tauri/src/sftp_move_ledger.rs` 里那张
 `DIAL_CENSUS`（它由 Rust 判据从源码派生再逐格比对，改坏当场红）。
 本脚本存在的理由只有一个：让 PM 不进沙箱也能复算一遍同一个数。
 

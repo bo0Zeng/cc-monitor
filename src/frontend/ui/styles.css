@@ -4,8 +4,8 @@
  * 加载它的窗口：**主窗 ＋ viewer 窗**（住址：各窗口 html 的 `<link rel="stylesheet">` 列表 ——
  * `index.html` / `settings.html` / `viewer.html`，那就是每个窗口的 CSS 清单，没有第二份）。
  *
- * 〔三入口拆分 · `设计/41 §9`〕本文件由基线 `src/frontend/ui/styles.css` 按「哪几个窗口的模块图里有它的建元素处」
- * 逐块切出来，**块内容逐字搬、块间保持原序**。切法与判据见 `设计/41` 末尾追加的那一节。
+ * 〔三入口拆分〕本文件由基线 `src/frontend/ui/styles.css` 按「哪几个窗口的模块图里有它的建元素处」
+ * 逐块切出来，**块内容逐字搬、块间保持原序**。
  */
 
 @layer components {
@@ -102,7 +102,7 @@
 
 #tab-bar {
   grid-area: tabs;
-  /* 🔴 `设计/41 §5`：显式成为**层叠上下文** —— tab 栏内部的东西关在里面，
+  /* 🔴：显式成为**层叠上下文** —— tab 栏内部的东西关在里面，
      逃不出去和 `#app` 里的叔伯元素（那六个 trigger）比 z-index。
      `position: relative` 只为开这个上下文，不改任何几何（grid item 原地不动）。 */
   position: relative;
@@ -121,7 +121,7 @@
 /* F33：窄窗折叠成图标条——只剩状态灯，悬停有原生 title。
    内容列 780px + 栏 + 呼吸空间放不下 ⇒ 980px 以下折叠。
  *
- * 🔴 S24（= `设计/40 §7` 步 5）：断点从 JS 搬进 CSS。
+ * 🔴 S24（=）：断点从 JS 搬进 CSS。
  * 改前是 `main.ts` 一个 `resize` 监听按 `innerWidth < 980` 往 body 上挂
  * `.tabbar-collapsed`，而这里的规则再读那个类 —— 一个纯视觉断点绕了一圈 JS，
  * 代价是「窄窗启动先闪一下宽栏才折叠」。那个类现打**只被写、从没被读**
@@ -130,9 +130,9 @@
  * ⚠ **为什么前缀是 `body:not(.viewer-mode)` 而不是干脆去掉**（踩过的坑，别改回去）：
  * 去掉 `body.tabbar-collapsed` 会让每条选择器**少一个类**，而下面两条靠那一个类
  * 才压得过后文同族规则 —— `.tab`（本文件 `.tab{}` 在更后面）、
- * `.tab.ended .live-dot`（〔U4〕原名 `.tab.archived`）
+ * `.tab.ended .live-dot`（原名 `.tab.archived`）
  * （`.tab.act-idle .live-dot` 同特异度、在更后面）⇒ 直接去掉会让这两条**当场失效**。
- * （〔BG1 · V125「删掉树」〕原先还有第三条 —— bg tab 的 `⌞` 前缀，随 bg 树的样式一起删了。）
+ * （〔「删掉树」〕原先还有第三条 —— bg tab 的 `⌞` 前缀，随 bg 树的样式一起删了。）
  * `:not(.viewer-mode)` 同样算一个类 ⇒ 特异度逐条与改前**完全相同**；
  * 而语义上也正好：viewer 窗口里 `#tab-bar` 本就 `display:none`，折叠样式是空跑。
  * 死值验（两个真引擎 × 7 格 computed，改前「挂类/不挂类」5 格有差异）见
@@ -224,7 +224,7 @@
 }
 /* stylelint-enable property-no-vendor-prefix */
 
-/* 〔REREAD · V155〕栏顶常驻「重新读取」：恒为 #tab-bar 第一个子元素，滚动时贴顶。 */
+/* 栏顶常驻「重新读取」：恒为 #tab-bar 第一个子元素，滚动时贴顶。 */
 .tab-bar-reread {
   position: sticky;
   top: 0;
@@ -284,7 +284,7 @@
   background: var(--overlay-hover);
 }
 
-/* 已结束（〔U4〕原名 .archived；会话状态的两轴与呈现住 tab-session-state.ts） */
+/* 已结束（原名 .archived；会话状态的两轴与呈现住 tab-session-state.ts） */
 .tab.ended {
   opacity: 0.55;
 }
@@ -320,7 +320,7 @@
   display: none;
 }
 
-/* 〔步 17·B · 设计/30 §B.3b〕📌 固定角标。
+/* 📌 固定角标。
    🔴 **没有「固定区」** —— 固定的 tab 留在原位，只多这一个角标：
    pin 管的是「别丢」，不是「排前面」（位置由 §C 的顺序落盘管，两者不抢）。
    与 .tab-badge 同族：一次性 append、可见性交给 class，不在 refreshTabBar 里建节点。 */
@@ -340,7 +340,7 @@
 }
 
 /* F78（#55）：远端 Tab 的 📂「打开工作目录」不再隐藏——点它现在在文件窗口里进入该远端 cwd
-   （openTabCwd 远端分支：按 origin 找该机配置 → openFileWindow；〔F7b〕原先是老 SFTP 面板）。找不到配置才回退 info 提示。
+   （openTabCwd 远端分支：按 origin 找该机配置 → openFileWindow；原先是老 SFTP 面板）。找不到配置才回退 info 提示。
    （原 FIX 5/issue #15 因本地打不开而隐藏；F83 起 SFTP 入口就绪，本地打不开的 cwd 改由 SFTP 浏览。） */
 
 .tab-title {
@@ -371,7 +371,7 @@
   animation: act-waiting-pulse 1.2s ease-in-out infinite;
 }
 
-/* audit-fixes F03.2：可重连——claude 退出但 tmux 会话仍在（可 attach 回去）。〔U4〕原名 .tmux-idle。
+/* audit-fixes F03.2：可重连——claude 退出但 tmux 会话仍在（可 attach 回去）。原名 .tmux-idle。
    灯不被 .ended 隐藏，此规则覆写 .live-dot 为暗色、压过红绿黄。放在 act-* 之后
    =同特异性靠源序取胜；animation:none 停掉 waiting 呼吸。 */
 .tab.reconnectable .live-dot {
@@ -590,10 +590,10 @@
 
 #message-stream {
   position: relative;
-  /* 🔴 `设计/40 §7` 步 6 顺带那条 + `设计/41 §5`：**根治**「子孙逃出去压叔伯」。
+  /* 🔴 顺带那条 +：**根治**「子孙逃出去压叔伯」。
      以前这里是 `z-index: auto` ⇒ 不创建层叠上下文 ⇒ 流里的大纲悬浮层（今天是查找面板 `.session-find`）
      （z-index 3）直接和 `#app` 里那六个 trigger（z-index 2）比大小，**压住它们连点击一起吃掉**。
-     `设计/10` 步 2 当时用 `top: 40px` 把两者错开止了血；这一行是那个 bug 的根。
+当时用 `top: 40px` 把两者错开止了血；这一行是那个 bug 的根。
      ⚠ 加了它之后，`.session-find` 的 3 只在这个圈子里有意义，永远压不到 #app 的按钮。 */
   z-index: var(--z-base);
   overflow: hidden;
@@ -609,7 +609,7 @@
 .stream {
   position: absolute;
   inset: 0;
-  /* 〔`设计/41 §6` · 件 5〕消息列的宿主是一个**尺寸容器**（名字 `stream`，只量行内方向）。
+  /* 消息列的宿主是一个**尺寸容器**（名字 `stream`，只量行内方向）。
      卡片的排版取决于「它所在那一列多宽」，不是「窗口多宽」—— 媒体查询只知道窗口，
      `@container stream (…)` 才知道列。`src/frontend/ui/height-estimate.ts` 的 `COL_W` 也改成在这个容器里实测
      （之前写死 780，列被窗口压窄时估高就用了一个错的宽度）。
@@ -617,7 +617,7 @@
      成为层叠上下文。`.stream` 本就是 `position: absolute`（absolute 后代的包含块早就是它），
      而 fixed 浮层按 `INVARIANTS` 条 13 一律挂 `document.body`（`invariants-frontend-guard` ② 机检），
      流里没有 fixed 后代 ⇒ 前者不改变任何一格；后者把流里的 z-index 关在流里 —— 正是
-     `设计/41 §5`「流里的浮层关在流里」要的方向，但**视觉上没有目视过**。
+「流里的浮层关在流里」要的方向，但**视觉上没有目视过**。
      行内尺寸包含不改变它的宽：它是 `inset: 0` 的绝对定位，宽本来就由包含块给，不由内容撑。 */
   container: stream / inline-size;
   overflow-y: auto;
@@ -724,7 +724,7 @@
   opacity: 0.7;
 }
 
-/* 〔UC2 合并 · 第四波〕原先只有 `.viewer-branch-btn:hover`（0-2-0），永远输给上面那条 `.has-branch-btn:hover .viewer-branch-btn`
+/* 原先只有 `.viewer-branch-btn:hover`（0-2-0），永远输给上面那条 `.has-branch-btn:hover .viewer-branch-btn`
    （0-3-0）——按钮是卡片的直接子元素，悬停按钮必然也悬停卡片 ⇒ 悬停时到不了 1。补一个同特异度、写在后面的选择器。 */
 .viewer-branch-btn:hover,
 .has-branch-btn .viewer-branch-btn:hover {
@@ -1915,7 +1915,7 @@
   border-radius: 10px;
   padding: 0 8px;
   height: 18px;
-  /* 〔W5-AUX · `设计/40 §8` 活规则里的死声明〕这里原有一条 `line-height: 16px`，被紧跟着的 `font: inherit`
+  /* 〔活规则里的死声明〕这里原有一条 `line-height: 16px`，被紧跟着的 `font: inherit`
      （简写，连 line-height 一起重设成继承值）整条盖掉 —— 它从来没生效过，删掉外观不变。
      ⚠ 若本意就是 16px，要把它挪到 `font` 之后 —— 那会改可见样式，要目视，本轮没做。 */
   font: inherit;
@@ -2151,7 +2151,7 @@
    而一个会出现在实时 tab 里的元素叫「session-viewer-…」就是名字在说谎 ——
    本仓最贵的那族病里，「名字与它实际住的地方对不上」是复发最多的一种。
    位置差异（查看器是流内一块、实时是悬浮在流上）落在**宿主自己的**
-   `.session-find`（〔SE2〕实时 tab 的查找面板）上，不落在这三条共用规则里。
+   `.session-find`（实时 tab 的查找面板）上，不落在这三条共用规则里。
 
    🔴 `.user-inputs` **绝不许出现 `display`**：面板靠 `el.hidden` 收起，
    而 `hidden` 是 UA 样式表里的 `display:none`，作者样式里任何一条 `display` 都会盖掉它
@@ -2190,13 +2190,13 @@
   opacity: 0.55;
 }
 
-/* 🔴 `设计/10` 步 2：开关按钮的样式 —— 在这之前它**全仓零条规则**
+/* 🔴：开关按钮的样式 —— 在这之前它**全仓零条规则**
    （`grep -c '\.user-inputs-toggle' styles.css` = 0），于是在暗色主题上以浏览器默认按钮
    渲染：浅灰底、黑字、系统边框。那不是"没来得及美化"，是**一处白底控件贴在深色界面上**。
    ⚠ 长相本身在沙箱里验不了（jsdom 无布局无渲染）—— 与 `.session-find` 同一条诚实边界。
    有判据的只有「规则在不在」。
-   〔AR1〕原先这里说它与归档抽屉的折叠钮「同族、刻意不抽公共类」—— 那颗钮随抽屉删了
-   （`设计/30 §A`），今天它没有同族。 */
+原先这里说它与归档抽屉的折叠钮「同族、刻意不抽公共类」—— 那颗钮随抽屉删了，
+  今天它没有同族。 */
 .user-inputs-toggle {
   background: var(--bg-2);
   border: 1px solid var(--border-strong);
@@ -2219,10 +2219,10 @@
   background: var(--overlay-hover);
 }
 
-/* === 〔SE2 · `设计/10 §2.2b ④`〕实时 tab 的会话内查找面板（搜索 / 大纲两个模式） ===
+/* === 实时 tab 的会话内查找面板（搜索 / 大纲两个模式） ===
    它取代了 K-R45 乙那块独立悬浮层 `.live-user-inputs`（步 2 的止血形）：大纲并进来当第二个模式，
    悬浮层从两块变一块（z-index 参与者少一个）。**位置照搬**那块悬浮层的，一个值都没改：
-   🔴 `设计/10` 步 2（`§3` 的 E2）：`top: 40px` —— 顶栏那六个入口（`.settings-trigger` 一族）占 4…32px、
+   🔴 （`§3` 的 E2）：`top: 40px` —— 顶栏那六个入口（`.settings-trigger` 一族）占 4…32px、
    `--z-chrome`，这一层 `--z-float` 且 `.active` 时 `pointer-events: auto` ⇒ 贴着按钮行放会压住它们、连点击一起吃掉。
    S21 起 `#message-stream` 显式是层叠上下文，这一层的 `--z-float` 关在流里，结构上也够不到 `#app` 的按钮。
    🔴 `visibility` 而不是 `display` 翻 `.active`：与 `.stream` 同一套机制（切 tab 0 reflow）。
@@ -2456,14 +2456,14 @@
   align-items: center;
 }
 
-/* 🔴 〔步 17·A · 2026-09-19〕这里原先是归档抽屉 `.tab-archive*` 的几条规则，
+/* 🔴 这里原先是归档抽屉 `.tab-archive*` 的几条规则，
    连同三段说明（P7a-1 抽屉是 `#tab-bar` 的兄弟、不挂拖拽 · S24 止血三条：认领 `archive`
    具名行 / 宽度跟 `--tab-bar-w` / 封顶高度 · S24 `hidden` 被作者层 `display` 盖掉），
    以及一段 S30 写的说明，讲 `.tab-archive-list`
    的 `hidden` 是空写、归档抽屉的折叠从来没生效、箭头在骗人。
    **那条缺陷随抽屉一起消失了** —— 用户 2026-09-19 逐字「没有归档这个东西，
    不要归档，就是灰 tab。现在的归档是错误的，甚至是 bug 的来源，全部删掉」。
-   `设计/30 §A` 抬头本来就写着「已定：删归档抽屉」，这一刀是步 17 的 A。
+抬头本来就写着「已定：删归档抽屉」，这一刀是步 17 的 A。
    `css-conventions.vitest.ts` 的 `HIDDEN_KNOWN_BAD` 里那条登记同拍摘了（那张表今天是空的）。 */
 
 /* P7a-2 D 补审：拖动排序的落点指示。被拖的那块会插到这个 tab **之前**。
@@ -2472,7 +2472,7 @@
   box-shadow: inset 0 2px 0 0 var(--accent, #6aa9ff);
 }
 
-/* 〔步 17·D · 设计/30 §D.5〕`onto` 落点：**与这个 tab 成组**。
+/* `onto` 落点：**与这个 tab 成组**。
    🔴 **必须用 `outline` 而不是 `border`**（§D.5 逐字）：`border` 改盒模型 ⇒ 拖动时目标
       tab 尺寸变化 ⇒ 连锁 reflow，而且会让 §D.4 那个基于矩形的停留判定**自己失效**
       （矩形一变，指针就"移出"了，停留永远攒不满 250ms）。
@@ -2530,8 +2530,8 @@
   gap: 2px;
 }
 
-/* 〔步 17·B · 设计/30 §B.5/§B.6〕复活出来的固定 tab 的**空态**。
-   已结束的会话点进去**不能看内容，只能 resume**（99 §2.5 P3 裁定）⇒ 这块里
+/* 复活出来的固定 tab 的**空态**。
+   已结束的会话点进去**不能看内容，只能 resume**（裁定）⇒ 这块里
    一条记录都不会有。不放点东西进去，用户点它就是一片空白 —— 与坏了没有区别
    （这个仓刚因为「能操作但没反应」撤掉过两个取色器）。 */
 .pin-revived-hint {

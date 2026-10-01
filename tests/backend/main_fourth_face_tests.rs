@@ -2,7 +2,7 @@ use super::{
     tmux_exe_in, tmux_in, tmux_present, unavailable_from, unavailable_here, TmuxPlatform, NO_TMUX,
 };
 
-/// ★ `K-P4` 红线之一〔NET2 真填〕：**生产 hello 填的就是这台机器的答案**（`设计/96 §2.2`「`hello.unavailable` 真填」）。
+/// ★ `K-P4` 红线之一〔NET2 真填〕：**生产 hello 填的就是这台机器的答案**（「`hello.unavailable` 真填」）。
 ///
 /// 与 `wire_tests.rs::hello_unavailable_is_additive_present_and_absent` 是两半：那条钉两形的字节，
 /// 本条钉「生产那一格恰好一处、给的是 `unavailable_here()`」—— 换回 `Vec::new()` 就红。
@@ -22,7 +22,7 @@ fn production_hello_fills_unavailable_from_this_machine() {
     );
 }
 
-/// 〔NET2〕unix 权限位那一维两向：没有权限位 ⇒ 恰好是声明了 `no_unix_mode` 的那几条（今天 `files-chmod`）、码是它；有 ⇒ 空。
+/// unix 权限位那一维两向：没有权限位 ⇒ 恰好是声明了 `no_unix_mode` 的那几条（今天 `files-chmod`）、码是它；有 ⇒ 空。
 /// 两侧异源：左边是 `unix_mode_unavailable` 的产出，右边是本条手写的名单。
 #[test]
 fn the_unix_mode_axis_lists_exactly_the_commands_that_declare_it() {
@@ -77,7 +77,7 @@ fn the_answer_is_a_function_of_the_machine_not_of_the_build() {
     //    各自登记了 `no_tmux`（它们都要起 tmux），**这张表是从 `codes` 派生的**
     //    ⇒ 它们自动进表。这正是本条报错文案里逐字预言的那一形：
     //    「本条红未必是错……那就把这里的期望值补上」。
-    //    🔴 〔`设计/50` 删用量〕**4 → 3**：`oneshot-session` 随用量 ③ 轴整轴退役
+    //    🔴 〔删用量〕**4 → 3**：`oneshot-session` 随用量 ③ 轴整轴退役
     //    （`control/oneshot_session.rs` 整删、`inbound::REGISTRY` 11 → 10）。
     //    `capture-pane` **留着**（拉屏预览在用），别把两条一起读成退役。
     //    ⚠ 顺序按 `REGISTRY` 的排列，不是字典序。
@@ -135,7 +135,7 @@ fn the_answer_is_a_function_of_the_machine_not_of_the_build() {
         //   这一步才是「不是编译期常量」的正面证据 —— 上面两组各自都只证了一半。
         // 🔴 `K-R104`：`2` → **4**（`capture-pane` / `oneshot-session` 也登记了
         //    `no_tmux`，这张表从 `codes` 派生 ⇒ 自动进表）。
-        // 🔴 〔`设计/50`〕**4 → 3**：`oneshot-session` 随用量 ③ 轴退役。
+        // 🔴 **4 → 3**：`oneshot-session` 随用量 ③ 轴退役。
         //    ⚠ 这个数**不许写成地板** —— 「有 tmux 的机器上一条都不报」那一半是
         //    `is_empty()`，而这一半要的是「恰好是登记了 `no_tmux` 的那几条」。
         let today = unavailable_from(Some(false)).len();
@@ -214,7 +214,7 @@ fn the_windows_answer_is_confirmed_absent_not_unknown() {
     .map(|u| u.command.clone())
     .collect();
     // 🔴 `K-R104`：同上一条，2 → **4**（`capture-pane` / `oneshot-session` 自动进表）。
-    // 🔴 〔`设计/50`〕**4 → 3**：`oneshot-session` 随用量 ③ 轴退役。
+    // 🔴 **4 → 3**：`oneshot-session` 随用量 ③ 轴退役。
     assert_eq!(
         names,
         vec![
@@ -326,9 +326,9 @@ fn the_windows_answer_is_confirmed_absent_not_unknown() {
 /// 那由 `#[cfg(windows)] const _` 那条编译期断言守，而**那一条在本仓门禁上不存在**。
 #[test]
 fn the_windows_arm_is_wired_into_the_source() {
-    // 〔步 9 · 09-19〕`TMUX_PLATFORM` 与 tmux 可用性那一族已搬进 `lib.rs` ⇒ 扫两份的全集。
+    // `TMUX_PLATFORM` 与 tmux 可用性那一族已搬进 `lib.rs` ⇒ 扫两份的全集。
     let prod = crate::guard_support::production_code(&crate::guard_support::backend_root_source());
-    let decl = // 〔步 9 · 09-19〕搬进 `lib.rs` 时提了权 ⇒ 逐字锚跟着改成 `pub const`。
+    let decl = // 搬进 `lib.rs` 时提了权 ⇒ 逐字锚跟着改成 `pub const`。
         // ⚠ 这一条**本该红，也真的红了**：它报的是「有一行包含它但不等于它」并把那一行
         //   原样印了出来 —— 逐字锚的正确失效方式。
         "pub const TMUX_PLATFORM: TmuxPlatform = if cfg!(windows) {";
@@ -400,7 +400,7 @@ fn the_declared_code_is_one_the_registry_already_declares() {
         !owners.is_empty(),
         "`REGISTRY` 里没有任何一条命令登记 `{NO_TMUX}` —— 要么那个 code 被改名了、\n\
              要么依赖 tmux 的命令都没了。无论哪种，握手帧第四条面此刻**永远为空**，\n\
-             而它自己不会喊疼。（本常量只是拿去查表，`REGISTRY` 才是真相源。）"
+             而它自己不会喊疼。（本常量只是拿去查表，`REGISTRY` 才是源头。）"
     );
     for u in unavailable_from(Some(false)) {
         let spec = crate::stream::inbound::REGISTRY

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# `P0b-Y2` 第十六拍〔08-13〕：**backend 起得比 tmux server 早，也要看得见后来的会话。**
+# `P0b-Y2` 第十六拍：**backend 起得比 tmux server 早，也要看得见后来的会话。**
 #
 # ## 这是 `#60` 的根因
 #
@@ -20,7 +20,7 @@
 set -o pipefail
 
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
-D="${CCM_E2E_BACKEND_BIN:-${CARGO_TARGET_DIR:-$REPO/.build/backend}/debug/cc-monitor-backend}"  # 〔OSA〕同 backend-rbind-token：认 `CARGO_TARGET_DIR`（门禁与工作树都把 target 放在仓外）
+D="${CCM_E2E_BACKEND_BIN:-${CARGO_TARGET_DIR:-$REPO/.build/backend}/debug/cc-monitor-backend}"  # 同 backend-rbind-token：认 `CARGO_TARGET_DIR`（门禁与工作树都把 target 放在仓外）
 [ -x "$D" ] || { echo "需要后端二进制：$D（先 cargo build -p cc-monitor-backend）"; exit 1; }
 command -v tmux >/dev/null 2>&1 || { echo "需要 tmux"; exit 1; }
 REALTMUX="$(command -v tmux)"

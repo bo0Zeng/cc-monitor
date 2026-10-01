@@ -47,7 +47,7 @@ fn the_src_root_address_points_at_a_real_tree() {
     for rel in [
         "control/mod.rs",
         "observe/mod.rs",
-        "relay/door.rs", // 〔RE〕面 B 成员搬去 `src/comms/outward/`，`relay/` 下今天住的是非成员
+        "relay/door.rs", // 面 B 成员搬去 `src/comms/outward/`，`relay/` 下今天住的是非成员
         "platform/mod.rs",
     ] {
         assert!(
@@ -76,7 +76,7 @@ fn the_src_root_address_points_at_a_real_tree() {
 /// 两条解耦线在 `main.rs` 里的落点，比原来那条更承重。
 #[test]
 fn main_production_section_keeps_its_load_bearing_items() {
-    // 〔步 9 · 09-19〕承重项如今分居两份（`const BUILD_ID` 在 `lib.rs`，分派在 `main.rs`）
+    // 承重项如今分居两份（`const BUILD_ID` 在 `lib.rs`，分派在 `main.rs`）
     // ⇒ 扫描面取全集。本条买的是「剥法没剥过头」，不是「它们住在同一份文件里」。
     let prod = production_code(&backend_root_source());
     for anchor in [
@@ -98,7 +98,7 @@ fn main_production_section_keeps_its_load_bearing_items() {
 // ⟦KR115D3 共用段·起⟧
 /// 这条同时是「列 0 收尾判据够不够用」的持续验证 —— **而它自己已经守不住那一形了**。
 ///
-/// ⚠ 〔`K-R115` 09-14〕上一版这里逐字写着「哪天有人在测试模块里写了一段列 0 含右
+/// ⚠ 上一版这里逐字写着「哪天有人在测试模块里写了一段列 0 含右
 /// 大括号的原始字符串，**这里会红**」。那句话**两天里假了两次**：
 /// ① `K-R110`（09-13）现打它**当时就没红** —— 那 31 行漏进生产段，而守门人看不见；
 /// ② `K-R110` 之后它**永远不会再因此红** —— 那一形已经被
@@ -142,7 +142,7 @@ fn the_reexported_leak_check_still_bites() {
 /// （住 `src/frontend/shell/src/structural_scan.rs`，扫的是另一棵树）头上挂着**同一段散文**。
 ///
 /// ⚠ 这里**刻意不写出对侧那个判据的函数名**。
-/// **成因订正**〔`P4` 2026-09-21〕：先前这里写的是「`structural_scan.rs` 里的
+/// **成因订正**：先前这里写的是「`structural_scan.rs` 里的
 /// `scan_tree!` 按构造摘掉调用者自己那一份 ⇒ 只住在那份文件里的符号进不了死名判据的
 /// 代码侧语料」。那一刀**在这一处不生效**（判据由 `#[path]` 挂载 ⇒ `file!()` 是带
 /// `..` 的折返路径 ⇒ 后缀比不命中）。今天死名判据的语料是靠**一张明写的排除名单**
@@ -169,7 +169,7 @@ fn the_two_strip_clean_notes_stay_one_sentence() {
     //    下面那条 `count() == 1` 当场变成恒假 —— 而它正是防空真的那一条。
     let beg = format!("// ⟦KR115D3 共{}", "用段·起⟧");
     let end = format!("// ⟦KR115D3 共{}", "用段·止⟧");
-    // 🔴 〔搬树 2026-09-18 · `设计/16 §6.2` C 类〕monitor 那一份住址跟着共用段搬了：
+    // 🔴 〔搬树 2026-09-18〕monitor 那一份住址跟着共用段搬了：
     //    那一段是一条判据的头注，剖分把它从 `src/frontend/shell/src/structural_scan.rs`
     //    带去了 `tests/frontend/shell/structural_scan_tests.rs`。**那段话一个字没改。**
     // 🔴 〔步 7c 剖分 2026-09-19 · C 类〕**后端那一份住址也跟着共用段搬了。**
@@ -197,7 +197,7 @@ fn the_two_strip_clean_notes_stay_one_sentence() {
         let i = src.find(beg.as_str()).unwrap() + beg.len();
         let j = src.find(end.as_str()).unwrap();
         assert!(i < j, "{rel} 里共用段的两个标记次序反了");
-        // 🔴 〔搬树 2026-09-18 · `设计/16 §5.4b`〕**比之前先把每行的行首空白削掉。**
+        // 🔴 〔搬树 2026-09-18〕**比之前先把每行的行首空白削掉。**
         //
         // 剖分把 monitor 那一份从 `mod tests {}` 里搬了出来 ⇒ 它整段**左移了一级**，
         // 而后端那一份仍在模块内、缩进 4。两份逐字节比当场不等，而**那句话

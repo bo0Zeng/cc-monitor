@@ -24,7 +24,7 @@ on_path: CcmProbeResult, verdict: PathCcmVerdict,
  */
 message: string, 
 /**
- * 〔FIX3 · `99 §2.2 ㉔` · `15 §5.4 D5`〕机器列表本机那一格（`ccm`）记什么：`Some(true)` = 两件都成
+ * 机器列表本机那一格（`ccm`）记什么：`Some(true)` = 两件都成
  * （我们那份装下来了 ＋ 登录 shell 里敲 `ccm` 走到的就是它）· `Some(false)` = 有一件不成 · `None` = 说不清（不写账本）。
  */
 ok: boolean | null, 

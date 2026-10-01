@@ -2,7 +2,7 @@
 
 > **这一路只产清单，不删一行代码，也不改 `src/`。**
 > 下面每个数都是 **2026-09-18 现打**，没有一个是从别的文档抄来的
-> （本轮已逮到 `99 §3.2` 那张表的「文档提过吗」一列整列腐了，见 §4）。
+> （本轮已逮到那张表的「文档提过吗」一列整列腐了，见 §4）。
 >
 > 量具：`tests/evidence/S26-A1-design-coverage-census.py`（定义写死在它的头注）
 > 复算（仓根下）：
@@ -14,7 +14,7 @@
 > python3 tests/evidence/S26-A1-design-coverage-census.py --backtest   # 条 67 那一刀的标定
 > ```
 > 仓位：`f3e78788` / `wave0/delete-usage-and-fix-gate`
-> 设计语料：`调研/设计/*.md` **22 篇**（非 git 仓，读的是 2026-09-18 当时的盘面）
+> 设计语料： **22 篇**（非 git 仓，读的是 2026-09-18 当时的盘面）
 
 ---
 
@@ -55,7 +55,7 @@
 | 生产行（去空行 · Rust 已剥 `cfg(test)`） | **57 307** | 45 000 | ✔ |
 | 　· `.ts` | 120 个 / **25 985** 行 | | |
 | 　· `.rs` | 131 个 / **31 322** 行 | | |
-| 设计篇 | **22** | 20 | ✔ |
+| 设计 | **22** | 20 | ✔ |
 | 设计正文（去否定区后） | **500 494** 字符 | 300 000 | ✔ |
 | 从设计抽出的带后缀住址 | **485** | 150 | ✔ |
 | 从设计抽出的目录住址 | **452** | 20 | ✔ |
@@ -92,7 +92,7 @@
 ### 甲 = 0 的两条旁证（别把它读成「都设计过了」）
 
 1. 全仓「入口走不到」的文件今天只有 **1 个**：`src/backend/plugin/probe.rs`
-   （114 生产行 / 424 总行）—— 而它**设计提过**（`设计/00` 的 `plugin/` 树里点了 `probe.rs`），
+   （114 生产行 / 424 总行）—— 而它**设计提过**（`plugin/` 树里点了 `probe.rs`），
    且 `plugin/mod.rs` 头注已自陈「零生产调用方」并挂了 `allow(dead_code)`。⇒ 它是丁，不是甲。
 2. 条 67 那一刀之后，`src/backend/sidecars/` 那一族已经没了；
    `--backtest` 证明**同一把尺子在那一刻能抓到它**。
@@ -114,7 +114,7 @@
 逐项的四问答案（① 判法 · ② 调用方名单 · ③ 删了会红哪几格 · ④ 行数）见主报告面④，
 或 `--addresses` 的全量一行一项。
 
-### 丙 · codex 那一族（`99 §3.3` / 条 16：用户 09-17 明确搁置）
+### 丙 · codex 那一族（/ 条 16：用户 09-17 明确搁置）
 
 | 住址 | 生产行 | 总行 | 族外调用方 |
 |---|---:|---:|---:|
@@ -125,14 +125,14 @@
 | `src/backend/agents/codex/resume.rs` | 5 | 41 | 1 |
 | **合计** | **398** | **825** | |
 
-🔴 **这 398 行不是 `99 §3.3` 说的那 3 186 行** —— 两个量不可比，别混：
+🔴 **这 398 行不是说的那 3 186 行** —— 两个量不可比，别混：
 
-- `99 §3.3` 数的是**前端** codex 适配（`cards/index.ts` 为主）。而那一侧的 codex 适配
+- 数的是**前端** codex 适配（`cards/index.ts` 为主）。而那一侧的 codex 适配
   是**文件内的分支**，不是独立文件：现打 `src/cards/index.ts` 里「codex」出现 **1 次**、
   `src/agent-profile.ts` **3 次**。⇒ **文件级的普查看不见它**，本量具的射程到不了
   （头注排除项第 6 条：符号级/行级残留不在射程内）。
 - `src/bridge/crates/codex-token-core/`（**87 行**）不在用户给的人群里（crates/ 排除）。
-- ⚠ 顺带两处文档腐：`99 §3.3` 写「`cards/index.ts` 1125 行」—— **现打 1 201**。
+- ⚠ 顺带两处文档腐：写「`cards/index.ts` 1125 行」—— **现打 1 201**。
 
 ---
 
@@ -165,14 +165,14 @@
 | `src/keybindings/store.ts` | 25 | `10` 提了 `keybindings` |
 | `src/ipc/local-tmux-name.ts` | 11 | `00` 提了 `src/ipc` |
 
-🔴 **其中 9 项是 `src/settings/` 的 section（1 656 生产行）**，而 `设计/70` 就是设置界面那一篇。
-现打 `设计/70` 逐字点名的 `.ts` 只有 7 个：`config-surface-section.ts` · `data-section.ts` ·
+🔴 **其中 9 项是 `src/settings/` 的 section（1 656 生产行）**，而就是设置界面那一篇。
+现打点名的 `.ts` 只有 7 个：`config-surface-section.ts` · `data-section.ts` ·
 `diagnostics-section.ts` · `panel.ts` · `router.ts` · `events.ts` · `machine-context.ts`。
 ⇒ `mcp-section` / `cc-bus-section` / `cc-bus-hooks-section` / `daemon-section` /
 `plugins-section` / `machine-status` / `restart-notice` / `acct-deploy` / `info-icon`
 **一个字都没被点名**。`70` 里 MCP 出现 3 次、cc-bus 4 次 —— 是**概念上**碰到了，
-**住址上**没有。⇒ 「设置界面的设计今天不完整」这句话（`99 §3.2` 末尾）依然成立，
-只是缺的那几块**不是它原先列的那三个**（那三个 `70 §10` 已经补了）。
+**住址上**没有。⇒ 「设置界面的设计今天不完整」这句话（末尾）依然成立，
+只是缺的那几块**不是它原先列的那三个**（那三个已经补了）。
 
 ### T4b · 靠一个单词 stem 命中 —— 11 项 / 703 生产行
 
@@ -183,12 +183,12 @@
 | `src/bridge/src/panorama.rs` | 226 | `panorama` | `15` | ✔ **真** —— `15` 里有 `panorama/api.ts`·`views/panorama.ts`·`panorama.code-graph` |
 | `src/keybindings/registry.ts` | 167 | `registry` | `16` | ⚠ **疑** —— `16` 讲的是 Rust 侧那 15 份 `*_registry.rs` |
 | `src/panorama/types.ts` | 99 | `types` | `15` | ⚠ **疑** —— 命中的是 `disallowed-types` |
-| `src/sftp/paths.ts` | 58 | `paths` | `00` | ⚠ **疑** —— `00 §503` 那句「`paths`+`records`+…五块」说的是 `claudecode/paths.rs` |
+| `src/sftp/paths.ts` | 58 | `paths` | `00` | ⚠ **疑** —— 那句「`paths`+`records`+…五块」说的是 `claudecode/paths.rs` |
 | `src/cards/slash.ts` | 48 | `slash` | `17` | ⚠ **疑** |
 | `src/format.ts` | 39 | `format` | `15` | ⚠ **疑** —— 命中的是 `format!("{}{}", …)` |
 | `src/cards/compact.ts` | 27 | `compact` | `20` | ⚠ **疑** |
 | `src/paths.ts` | 21 | `paths` | `00` | ⚠ **疑**（同 `sftp/paths.ts`） |
-| `src/backend/agents/claudecode/records.rs` | 8 | `records` | `00` | ✔ **真** —— `00 §503` 那句正是说它 |
+| `src/backend/agents/claudecode/records.rs` | 8 | `records` | `00` | ✔ **真** —— 那句正是说它 |
 | `src/backend/agents/codex/resume.rs` | 5 | `resume` | `00` | ✔ **真**（同上） |
 | `src/backend/agents/claudecode/resume.rs` | 5 | `resume` | `00` | ✔ **真**（同上） |
 
@@ -197,26 +197,26 @@
 
 ---
 
-## 4. 🔴 顺手逮到的文档腐 —— `99 §3.2` 那张表整列假了
+## 4. 🔴 顺手逮到的文档腐 —— 那张表整列假了
 
-`99 §3.2`「没有任何设计文档的界面」那张表的**行数一列全对**（逐项复核过），
+「没有任何设计文档的界面」那张表的**行数一列全对**（逐项复核过），
 但**「文档提过吗」一列今天 10 行里 8 行已经假**：
 
-| `99 §3.2` 那一行 | 它写的 | 现打 2026-09-18 |
+| 那一行 | 它写的 | 现打 2026-09-18 |
 |---|---|---|
-| `src/views/session-viewer.ts` 650 | 「无设计」 | ❌ **`设计/30` T1 点名** `views/session-viewer.ts` |
+| `src/views/session-viewer.ts` 650 | 「无设计」 | ❌ ** 点名** `views/session-viewer.ts` |
 | `src/remote-launch-run.ts` 626 | 「零提及」 | ✔ **仍然零提及**（乙档，350 生产行） |
-| `src/views/grid-monitor.ts` 480 | 「只在普查里」 | ❌ **`设计/17` T1 点名** |
-| `src/panorama/layout.ts` 453 | 「零提及」 | ❌ **`设计/17` T1 点名** |
-| `src/settings/config-surface-section.ts` 427 | 「零提及」 | ❌ **`设计/10` T1 ＋ `70 §10`** |
-| `src/cards/diff.ts` 407 | 「零提及」 | ❌ **`设计/17` T1 点名** |
-| `src/settings/data-section.ts` 300 | 「零提及」 | ❌ **`设计/70` 点名**（`§10`，2026-09-18 补） |
-| `src/settings/diagnostics-section.ts` 299 | 「零提及」 | ❌ **`设计/70` 点名**（同上，且 `99` 条 69 也点了） |
+| `src/views/grid-monitor.ts` 480 | 「只在普查里」 | ❌ ** 点名** |
+| `src/panorama/layout.ts` 453 | 「零提及」 | ❌ ** 点名** |
+| `src/settings/config-surface-section.ts` 427 | 「零提及」 | ❌ **** |
+| `src/cards/diff.ts` 407 | 「零提及」 | ❌ ** 点名** |
+| `src/settings/data-section.ts` 300 | 「零提及」 | ❌ ** 点名**（`§10`，2026-09-18 补） |
+| `src/settings/diagnostics-section.ts` 299 | 「零提及」 | ❌ ** 点名**（同上，且 `99` 条 69 也点了） |
 | `src/tasks-panel.ts` 263 | 「零提及」 | ✔ **仍然零提及**（乙档，185 生产行） |
 | `src/keybindings/` 四文件 879 | 「`registry.ts` 提过；`editor.ts` 零提及」 | ⚠ 半对 —— `actions.ts` **`10` T1 点名**；`editor.ts`/`store.ts` 只到**目录级**（T5）；`registry.ts` 只靠 T4b（疑） |
 
 **为什么会整列腐**：那一列描述的是**当下**（「今天有没有设计提过它」），
-而 `70 §10`（2026-09-18 补三块）与 `17`（算法与复杂度，新篇）一落地，它立刻就假了。
+而（2026-09-18 补三块）与 `17`（算法与复杂度，新篇）一落地，它立刻就假了。
 ⇒ 这正是 `doc_claim_registry` 头注那句「**状态列与实测答案是耐久文档里最易腐的两种字段**」
 的第 N 次复发。**本量具就是那一列的替代品**：那句话别再抄进文档，让判据去现打。
 

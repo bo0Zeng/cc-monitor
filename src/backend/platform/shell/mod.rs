@@ -1,4 +1,4 @@
-//! 〔OSA · `设计/99 §1` V156：「生成alias这个东西是不是也应该后端搞? 这样就可以融入os适配层」〕
+//! 〔：「生成alias这个东西是不是也应该后端搞? 这样就可以融入os适配层」〕
 //! **shell 方言知识只住这里**（后端 OS 适配层）：哪种方言 · 引号 · 定义函数 · 导出 / 清除环境 · 以某命令替换进程 ·
 //! rc 与 `$PROFILE` 在哪 · 落盘编码 · 内建别名探测 · 这台说哪几种。别名 · 起会话渲染 · 中转环境前缀 · `ccm` 计划都只调它。
 //!
@@ -57,7 +57,7 @@ pub(crate) fn posix_shell(script: &str) -> Option<std::process::Command> {
     }
 }
 
-/// 〔WF1 · L〕这台的哪一代 PowerShell：两代各读各的 profile 目录、各有一份执行策略（线上名 `powershell` / `pwsh`）。
+/// 这台的哪一代 PowerShell：两代各读各的 profile 目录、各有一份执行策略（线上名 `powershell` / `pwsh`）。
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
 )]
@@ -70,11 +70,11 @@ pub(crate) enum PsHost {
     Core,
 }
 
-/// 〔MIG-3a · `设计/99 §2.1 ⑬`〕备一条 `<那一代>.exe -NoProfile -NonInteractive -Command <脚本>`（不弹窗）。
+/// 备一条 `<那一代>.exe -NoProfile -NonInteractive -Command <脚本>`（不弹窗）。
 /// **非 Windows 上回 `None`** —— 那里没有自带的 PowerShell（同 [`posix_shell`] 的反面，理由同）。
 ///
 /// 只给**固定脚本**用（`Get-Alias` · 执行策略那两句）；`-NoProfile` 让结果不被用户 profile 左右，`-NonInteractive` 让它绝不等人回车。
-/// 〔WF1 · L〕剥掉继承来的 `PSExecutionPolicyPreference`：那是父进程给的进程级策略，新开的 PowerShell 窗口没有它。
+/// 剥掉继承来的 `PSExecutionPolicyPreference`：那是父进程给的进程级策略，新开的 PowerShell 窗口没有它。
 /// 不 `spawn`，送出去那一下归调用方。
 pub(crate) fn powershell_on(host: PsHost, script: &str) -> Option<std::process::Command> {
     speaks_powershell().then(|| powershell_command(host, script))
@@ -103,20 +103,20 @@ fn hide_console(c: &mut std::process::Command) {
 #[cfg(not(windows))]
 fn hide_console(_c: &mut std::process::Command) {}
 
-/// 〔MIG-3a · 主会话 09-27 裁〕这台后端**说不说 PowerShell** —— 别名方言那一道闸（`assets/aliases::dialect_here`）只问它。
+/// 这台后端**说不说 PowerShell** —— 别名方言那一道闸（`assets/aliases::dialect_here`）只问它。
 /// 「本机」与「远端」对后端没有区别（本机＝不走 ssh 的远端）：PowerShell ⇔ 这台是 Windows。
 pub(crate) fn speaks_powershell() -> bool {
     cfg!(windows)
 }
 
-/// 〔MIG-2〕这台机器上「开一个终端窗口跑一串命令」那一串是哪种语言：Windows 是 PowerShell，别处是 POSIX shell
+/// 这台机器上「开一个终端窗口跑一串命令」那一串是哪种语言：Windows 是 PowerShell，别处是 POSIX shell
 /// （本机起会话的渲染按它挑写法，`control/launch_render/local.rs`）。
 pub(crate) const LOCAL_TERMINAL_IS_POWERSHELL: bool = cfg!(windows);
 
 #[cfg(test)]
 #[path = "../../../../tests/backend/platform/shell_tests.rs"]
 mod tests;
-// 〔OSA · V156〕方言专属语法字面量只住本目录（两向）。
+// 方言专属语法字面量只住本目录（两向）。
 #[cfg(test)]
 #[path = "../../../../tests/backend/platform/shell_home_guard.rs"]
 mod home_guard;

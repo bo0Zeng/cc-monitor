@@ -1,7 +1,7 @@
 /**
- * 〔RESYNC · V149〕手动对齐的界面那一半（`src/frontend/ui/resync.ts`）。
+ * 手动对齐的界面那一半（`src/frontend/ui/resync.ts`）。
  *
- * 守的要求：`设计/15 §4.1b` 原文「关卡 2 拒绝提示里『对齐后重试』（只对那一个会话：重验 ＋ 重打 ＋ 再过一次关卡）」·
+ * 守的要求：「关卡 2 拒绝提示里『对齐后重试』（只对那一个会话：重验 ＋ 重打 ＋ 再过一次关卡）」·
  * 「本机远端同一条 `chan.call(origin, "resync", …)`」。
  *
  * | 性质 | 判据 |
@@ -9,7 +9,7 @@
  * | 请求体 / 成品 == 跨语言金样（后端 `watcher_tests::resync_face_reply_matches_the_cross_language_golden` 对同一份） | 「金样」 |
  * | 关卡 2 的拒绝（真 `killSession` 抛出来的那个）认得出，别的拒绝不认 | 「认得出关卡 2」 |
  * | 点「对齐后重试」⇒ 先对齐**那一个会话**、再做一次原动作；顺序就是这个 | 「对齐后重试」 |
- * | 〔`99 §2.1` ㉟①〕对齐后固定条记录没了 ⇒ 标出来、说一句，**不自动摘**；点了才摘；问不到的不标 | 「固定条」 |
+ * | 对齐后固定条记录没了 ⇒ 标出来、说一句，**不自动摘**；点了才摘；问不到的不标 | 「固定条」 |
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { readFileSync } from "node:fs";

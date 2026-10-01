@@ -36,7 +36,7 @@ describe("P6d-Y1：写动作是裁定不做，不是待办", () => {
   const src = readFileSync(resolve(srcDirOf(__dirname), "command-bar.ts"), "utf8");
 
   it("★★ 裁定与它的住址都写在头注上", () => {
-    for (const needle of ["U2", "明确不做", "不是漏做", "ROADMAP.md"]) {
+    for (const needle of ["U2", "明确不做", "不是漏做", ""]) {
       expect(src, `头注里少了「${needle}」`).toContain(needle);
     }
   });

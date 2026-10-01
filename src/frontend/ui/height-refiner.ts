@@ -1,5 +1,5 @@
 /**
- * 〔RENDER2 · `设计/10 §2.5b` 第二级 · `§6` 步 9〕**第二级估高的主线程那一半**：把记录拆成「正文 ＋ 其余常数」
+ * 〔第二级 · `§6` 步 9〕**第二级估高的主线程那一半**：把记录拆成「正文 ＋ 其余常数」
  * （`height-estimate.ts::refineItemOf`），交 Worker 排（`height-worker.ts`），回来的高换进骨架账本（`SkeletonView.applyRefined`）。
  *
  * 形状照设计：**按需 ＋ 后台** —— 只精算视口上下几屏之内还在占位里的行（`SkeletonView.nearbyUnrefined`），更远的不算；
@@ -55,7 +55,7 @@ export class HeightRefiner {
 
   /**
    * 这几行精算、换进账本。不值得精算的（`refineItemOf` 回 `null`）与排不出的留第一级。
-   * 〔P3〕算的途中列宽变了（账本 `relayout` 过）⇒ 回来的高是旧列宽下的，整批丢掉、回 `false`（调用方让这几行以后再问）。
+   * 算的途中列宽变了（账本 `relayout` 过）⇒ 回来的高是旧列宽下的，整批丢掉、回 `false`（调用方让这几行以后再问）。
    */
   async refine(view: SkeletonView, rows: ReadonlyArray<{ seq: number; rec: JsonlRecord }>): Promise<boolean> {
     if (!this.measure) return true;

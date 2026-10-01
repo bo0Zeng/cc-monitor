@@ -18,7 +18,7 @@
     python3 evidence/K-R124-cut.py --all
 
 副本落 `$K_R124_WORK`（缺省**系统临时目录**下的 `k-r124-cuts`，**不进仓**）。
-⚠ 〔`19c` 订正 09-19〕缺省值原来按 `ROOT.parent` 算 —— 那在 worktree 里**仍然落在主仓内**，
+⚠ 缺省值原来按 `ROOT.parent` 算 —— 那在 worktree 里**仍然落在主仓内**，
   理由与读数见下面 `WORK` 那一行的头注。
 """
 import json
@@ -31,7 +31,7 @@ import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-#: 🔴 〔`19c` 订正 09-19〕**副本落仓外，而「仓外」不等于 `ROOT.parent`。**
+#: 🔴 **副本落仓外，而「仓外」不等于 `ROOT.parent`。**
 #: 原来这里是 `ROOT.parent / "k-r124-cuts"`，读起来像「仓的上一级」——
 #: 而本仓的 agent 全跑在 `<主仓>/.claude/worktrees/<名>/` 里，那棵树的 `ROOT.parent`
 #: 是 `<主仓>/.claude/worktrees/`，**仍然在主仓里面**。上一轮就这么把一份 32 MB 的副本
@@ -40,7 +40,7 @@ ROOT = Path(__file__).resolve().parents[2]
 WORK = Path(os.environ.get("K_R124_WORK") or (Path(tempfile.gettempdir()) / "k-r124-cuts"))
 
 #: 副本里要有的那几份 —— 判据本体 ＋ 它的全部被测对象。
-#: 🔴 〔`19b` 订正 09-19〕**这张表在本拍之前整张指空**：仓库重组（09-18）把
+#: 🔴 **这张表在本拍之前整张指空**：仓库重组（09-18）把
 #:   `scripts/` · `evidence/` · `e2e/` 全并进了 `tests/`，而本工具一份都没跟
 #:   ⇒ `fresh()` 第一个 `read_bytes()` 就 `FileNotFoundError`，**这把刀具自己跑不起来**。
 #:   坏的不是某一刀，是**整套死值验**：`release-gate` 那一格从重组那天起没法再切一刀验有没有牙。
@@ -60,7 +60,7 @@ FILES = [
     "tests/evidence/K-G4-platform-ledger.py",
     "src/frontend/shell/build.rs",
     "src/backend/lib.rs",
-    # 〔`19c` 09-19〕⑬ 那一组的两份新被测对象：re-embed 那条命令本体（⑬a–⑬c ＋ ⑬g 真跑它），
+    # ⑬ 那一组的两份新被测对象：re-embed 那条命令本体（⑬a–⑬c ＋ ⑬g 真跑它），
     # 与内嵌落点的 gitignore 住址（⑬d 两向对拍）。
     "tests/scripts/re-embed.sh",
     "src/frontend/shell/.gitignore",
@@ -185,7 +185,7 @@ CUTS = {
     ),
     "d7": (
         "`CHANGELOG.md` 里**本版**那一段掏空（`KR124D3` 死值：造一处它该逮的东西）。"
-        "🔴 〔`19b` 订正 09-19〕原来这一刀把版本号**写死成 `3.8.0`**，而 `package.json` "
+        "🔴 原来这一刀把版本号**写死成 `3.8.0`**，而 `package.json` "
         "早已走到 `%s` ⇒ 它割的是**别的版本**那一段，判据一个字不动、rc=0 —— "
         "**一把切不动的刀在死值验表上长得和一把好刀一模一样**。"
         "今天版本从 `package.json` 现读，刀跟着版本走。" % CUR_VERSION,
@@ -241,7 +241,7 @@ CUTS = {
         "ruler",
     ),
     "b4": (
-        "**把 `\"unknown\"` 兜底加回 `build.rs`** —— 逐字重演 `设计/16 §5.4a` 那次事故的形状",
+        "**把 `\"unknown\"` 兜底加回 `build.rs`** —— 逐字重演那次事故的形状",
         [sub(BUILD_RS, "    let build_id = backend_source_build_id();",
              "    let build_id = std::fs::read_to_string(backend_lib_rs())\n"
              "        .ok()\n"

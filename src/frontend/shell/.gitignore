@@ -13,7 +13,7 @@
 # 而本文件还写着 `/embedded-daemons/` 与 `/native-daemon/` ⇒ 现打验过：
 # `git check-ignore -v src/frontend/shell/embedded-backends/… src/frontend/shell/native-backend/…`
 # **两条都不命中**，`git status` 里它们是 `??`。
-# ⇒ `设计/96 §7.1.2` 那条「三个落点**全部 gitignore** ⇒ 字节不进仓」的硬事实，
+# ⇒ 那条「三个落点**全部 gitignore** ⇒ 字节不进仓」的硬事实，
 #   以及 `release.yml` 文件头把它当成「这张表的门禁只能建在 release.yml 上」的
 #   全部理由 —— **在本拍之前是假的**。而 `19c` 要落的 re-embed 正是往这两个目录里
 #   铺二十多 MB 字节的那一步：不修这两行，那条命令每跑一次就往工作树里倒一次垃圾。

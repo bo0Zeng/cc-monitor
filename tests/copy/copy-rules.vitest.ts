@@ -1,9 +1,9 @@
 /**
- * CP2a · 文案规范（`调研/设计/91 §5.2` 集中分析的产物）的判据。规范住 `src/shared/copy/rules.json`。
+ * CP2a · 文案规范（集中分析的产物）的判据。规范住 `src/shared/copy/rules.json`。
  *
  * # 它治的病
  *
- * `91 §5.2` 逐字：「规范里每一条都要标能不能机检；不能机检的如实标『主观项』。
+ * 「规范里每一条都要标能不能机检；不能机检的如实标『主观项』。
  * **一份不标这个的规范会和散文一起腐**，而且腐了没人会发现」。所以本文件判三件事：
  *
  * 1. ★ **规矩 ↔ 实现两向相等**：`rules.json` 里标「机检」的规矩号 ==
@@ -13,7 +13,7 @@
  * 2. ★ **文案表逐条过全部机检规矩**：违反的要么改，要么在该条 `waive` 里登记理由；
  *    不可豁免的规矩没有例外；**豁免了却没违反 ⇒ 红（死豁免）**。
  * 3. **规范里的正反例与实现一致**：每条机检规矩的 `bad` 必须被它自己的检查逮住、`good` 必须放过
- *    —— 否则规范写的是一回事、检查查的是另一回事（`91 §4` R5 第一版就栽在这里：
+ *    —— 否则规范写的是一回事、检查查的是另一回事（第一版就栽在这里：
  *    「规矩禁的东西检法看不见」）。
  *
  * 另有一条异源对拍：C-Y3（R5）的口语词表与祈使动词表 == 普查 K-T68 的 `R5_COLLOQUIAL` / `R5_IMPERATIVE`。
@@ -46,7 +46,7 @@ interface Rule {
   probeKind?: string;
   colloquial?: string[];
   imperative?: string[];
-  /** C-Y3：问号与口语词那一条管哪几档（title ＋ aria，`99 §2.1 ㉛①`）。 */
+  /** C-Y3：问号与口语词那一条管哪几档（title ＋ aria）。 */
   kinds?: string[];
   /** C-Y3：祈使动词那一条管哪几档（用户 09-24 裁：control 档许以动词开头）。 */
   imperativeKinds?: string[];
@@ -92,20 +92,20 @@ type Check = (e: Entry, ctx: Ctx) => string | null;
 export const CHECKS: Record<string, Check> = {
   "C-Y2": (e) => (/\*\*|`|⇒|🔴/.test(e.zh) ? "有 markdown / 论证符号" : null),
   "C-Y3": (e, ctx) => {
-    // 〔FIX2 · 99 §2.1 ㉛①〕问号与口语词的射程读 `C-Y3.kinds`（title ＋ aria）。
+    // 问号与口语词的射程读 `C-Y3.kinds`（title ＋ aria）。
     if (!ctx.labelKinds.includes(e.kind)) return null;
     const s = speech(e.zh);
     if (/[？?]/.test(s)) return `${e.kind} 档里有问号`;
     const c = ctx.colloquial.find((w) => s.indexOf(w) >= 0);
     if (c) return `${e.kind} 档里有口语词「${c}」`;
-    // 〔ST2 · 用户 09-24 裁〕祈使词只查 `imperativeKinds` 那几档（今天只有 title）。
+    // 〔用户 09-24 裁〕祈使词只查 `imperativeKinds` 那几档（今天只有 title）。
     //   ⚠ 上面那一句 `labelKinds` 管的是问号与口语词，这一句管的是动词开头 —— 两件事，
     //   后者的射程住 `rules.json`，改规矩就是改那一格，检法跟着走。
     if (!ctx.imperativeKinds.includes(e.kind)) return null;
     const v = ctx.imperative.find((w) => s.trimStart().startsWith(w));
     return v ? `${e.kind} 档以祈使动词「${v}」开头` : null;
   },
-  // 〔CP2b · 设计/91 §4 R6 · 用户 09-24 裁「允许动词开头（问句仍禁）」〕control 档不许问句。
+  // 〔用户 09-24 裁「允许动词开头（问句仍禁）」〕control 档不许问句。
   "C-Y4": (e) => (e.kind === "control" && /[？?]/.test(speech(e.zh)) ? "control 档是问句" : null),
   "C-P1": (e) => (/您/.test(e.zh) ? "称用户用了「您」" : null),
   "C-P2": (e) => (/我们/.test(e.zh) ? "产品自称「我们」" : null),
@@ -126,7 +126,7 @@ export const CHECKS: Record<string, Check> = {
   "C-L3": (e) => {
     const groups = [...speech(e.zh).matchAll(PAREN)].map((m) => m[1] ?? m[2] ?? "");
     if (NARROW.has(e.kind)) {
-      // 〔CP2b〕「（可选）」标的是选填，不是说明（rules.json C-L3 的规矩文字同拍改）。
+      // 「（可选）」标的是选填，不是说明（rules.json C-L3 的规矩文字同拍改）。
       const g = groups.find((x) => hanCount(x) >= 2 && x.trim() !== "可选");
       return g !== undefined ? `${e.kind} 档的括号里装了说明「${g}」` : null;
     }
@@ -263,7 +263,7 @@ describe("〔ST2 · 用户 09-24 裁〕复选框 / 开关标签允许动词开�
   });
 });
 
-// 设计/99 §2.1 ㉛① · 设计/91 §6 第 6 条：「aria-* 单立一个 kind、按标签面规则管」。
+// 「aria-* 单立一个 kind、按标签面规则管」。
 describe("〔FIX2〕aria 档（只进 aria-label 的无障碍名）按标签面规则管", () => {
   const rules = loadRules();
   const ctx = y3Ctx(rules, loadTerms());

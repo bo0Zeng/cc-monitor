@@ -1,10 +1,10 @@
-//! 〔C4d · 第四波 4B〕**本机后端问远端后端**的那一跳 —— 全后端**只此一处**。
+//! **本机后端问远端后端**的那一跳 —— 全后端**只此一处**。
 //!
 //! # 出处与裁决
 //!
-//! `设计/01 §3.5`：「观测方沿它本来就拥有的那条连接去拉被观测方」（零新通道）。
-//! AS2 用这一形造出了资产目录的自动同步（`调研/第四波记录/AS2.md §3.4`）；C4c 的历史跨机 join 要同一跳
-//! （`C4c.md §3.3`）。主会话 09-25 裁：「**把 `DialRemote` ＋ 可达表从 `asset_sync.rs` 提到中立住址
+//! 「观测方沿它本来就拥有的那条连接去拉被观测方」（零新通道）。
+//! AS2 用这一形造出了资产目录的自动同步；C4c 的历史跨机 join 要同一跳
+//! （`C4c.md §3.3`）。「**把 `DialRemote` ＋ 可达表从 `asset_sync.rs` 提到中立住址
 //! `src/backend/stream/remote_ask.rs`（逻辑一字不改），`asset_sync` 改调它**」—— 一路造、两路用，不各写一份。
 //!
 //! # 形状（乙：池里那条连接上多开一个 capture exec）
@@ -23,7 +23,7 @@
 //!
 //! # 可达表（内存）
 //!
-//! `origin → {拨号请求, 对面的资产目录 id}`（〔E2〕后端路径恒是固定落点，不登记）：只在本进程里，后端重启就空（下次那台连上再填）。
+//! `origin → {拨号请求, 对面的资产目录 id}`（后端路径恒是固定落点，不登记）：只在本进程里，后端重启就空（下次那台连上再填）。
 //! 拨号请求里只有路径（`key_path`），没有私钥本体（凭据面 `K11` 同 `dial_host::request`）。
 //! **写口只有 [`register`] 一个**：`remote-reach`（每台远端流握手时 monitor 无条件交）与 `assets-sync`
 //! （顺手登记）都调它。
@@ -47,7 +47,7 @@ pub const MAX_REACH: usize = 256;
 pub(crate) const HELLO_MARKER: &str = "\"kind\":\"hello\"";
 
 /// 对面：在那台上跑一条一次性命令，交回它的 stdout。生产 = [`DialRemote`]（经 `dial` 的 capture）；判据用替身。
-/// `stdin`〔W5-AUX〕= exec 之后写进那个进程 stdin 的字节（缺席 = 不写）；收的一侧用 CLI 面的「只读一行」入口。
+/// `stdin`= exec 之后写进那个进程 stdin 的字节（缺席 = 不写）；收的一侧用 CLI 面的「只读一行」入口。
 pub trait Remote: Send + Sync {
     fn run<'a>(
         &'a self,
@@ -56,7 +56,7 @@ pub trait Remote: Send + Sync {
         stdin: Option<String>,
     ) -> Pin<Box<dyn Future<Output = Result<String, String>> + Send + 'a>>;
 
-    /// 〔MIG-3a · 主会话 09-28 裁〕同 [`Self::run`]，失败时**连那台 CLI 信封里的码一起交回**（[`Said`]）——
+    /// 同 [`Self::run`]，失败时**连那台 CLI 信封里的码一起交回**（[`Said`]）——
     /// 枢纽要把被写那台的 `stale` / `refused` / … 原码转给界面，不许压成一个。缺省实现：码缺席（替身不必各写一份）。
     fn run_coded<'a>(
         &'a self,
@@ -98,9 +98,9 @@ pub(crate) fn lock(t: &Table) -> std::sync::MutexGuard<'_, BTreeMap<String, Reac
     t.lock().unwrap_or_else(|e| e.into_inner())
 }
 
-/// 可达表**唯一的写口**：`{origin, dial}` 两格齐了才记（〔E2〕那台后端的路径不再由 monitor 交：落点恒是 `relay_route_core::BACKEND_LANDING_SHELL`）（`origin` 是 monitor 交来的名字，本后端只当不透明的键用）。
+/// 可达表**唯一的写口**：`{origin, dial}` 两格齐了才记（那台后端的路径不再由 monitor 交：落点恒是 `relay_route_core::BACKEND_LANDING_SHELL`）（`origin` 是 monitor 交来的名字，本后端只当不透明的键用）。
 /// 同一台再记一次 ⇒ 换新的拨号请求，`peer`（对面的资产目录 id）留着。
-/// 〔C4d〕这一段原样搬自 `asset_sync::answer_with`（AS2），逻辑一字不改；`remote-reach` 与 `assets-sync` 都经它。
+/// 这一段原样搬自 `asset_sync::answer_with`（AS2），逻辑一字不改；`remote-reach` 与 `assets-sync` 都经它。
 pub(crate) fn register(table: &Table, args: &Value) -> Result<String, (&'static str, String)> {
     let o = args.get("origin").and_then(Value::as_str).ok_or((
         "bad_args",
@@ -158,9 +158,9 @@ pub fn answer_reach_with(args: &Value, table: &Table) -> Result<Value, (&'static
 }
 
 /// 远端上那条一次性命令的完整字面：`<落点> <argv…>`，argv **每一格都过 POSIX 单引号**（项目目录名等是自由文本）。
-/// 〔E2 · V28〕那台后端恒在固定落点（`relay_route_core::BACKEND_LANDING_SHELL`，可填的 `backendPath` 删了）。
+/// 那台后端恒在固定落点（`relay_route_core::BACKEND_LANDING_SHELL`，可填的 `backendPath` 删了）。
 pub fn command_line(argv: &[&str]) -> String {
-    // 〔V151〕`ccm -- <后端子命令…>`：打头的 `--` 让那台的 `ccm` 当后端用。
+    // `ccm -- <后端子命令…>`：打头的 `--` 让那台的 `ccm` 当后端用。
     let mut s = format!("{} --", relay_route_core::BACKEND_LANDING_SHELL);
     for a in argv {
         s.push(' ');
@@ -192,7 +192,7 @@ pub async fn ask_with(
         .map_err(|s| s.message)
 }
 
-/// 〔WF2〕同 [`ask_with`]，失败时连那台 CLI 信封里的码一起交回（[`Said`]；拨不到 / 参数被拒没有码）。
+/// 同 [`ask_with`]，失败时连那台 CLI 信封里的码一起交回（[`Said`]；拨不到 / 参数被拒没有码）。
 pub async fn ask_with_coded(
     machine: &str,
     argv: &[&str],
@@ -203,9 +203,9 @@ pub async fn ask_with_coded(
         code: None,
         message,
     };
-    // 〔TL3 · `INVARIANTS §47` ② · 主会话 09-26 按 V131 裁〕argv 是自由文本（项目目录名 · 会话路径 · 搜索词 …）⇒
+    // 〔`INVARIANTS §47` ②〕argv 是自由文本（项目目录名 · 会话路径 · 搜索词 …）⇒
     //   拼进远端命令之前先过拒绝集（只收 NUL / CR / LF，**不拒 shell 元字符** —— 交给 `command_line` 里那一处 quote）。
-    //   判不过 ⇒ 一次都不拨。那台后端的路径是固定常量（〔E2〕）。
+    //   判不过 ⇒ 一次都不拨。那台后端的路径是固定常量。
     if let Some(a) = argv.iter().find(|a| !shell_quote_core::free_text_ok(a)) {
         return Err(plain(copy_text(
             "beRemoteAsk.argv.refused",
@@ -219,7 +219,7 @@ pub async fn ask_with_coded(
         .get(machine)
         .cloned()
         .ok_or_else(|| plain(unreachable_message(machine)))?;
-    // 〔FIX · `设计/96 §3.6`〕子命令之后的自由文本走 stdin 一行（JSON 数组，收的一侧 `cli_control::expand_stdin_argv`）：
+    // 子命令之后的自由文本走 stdin 一行（JSON 数组，收的一侧 `cli_control::expand_stdin_argv`）：
     //   命令行里只剩落点与旗标 ⇒ 远端登录 shell 是 fish 之类也同读。
     let (line, stdin) = match argv.split_first() {
         Some((sub, rest)) if !rest.is_empty() => (
@@ -231,7 +231,7 @@ pub async fn ask_with_coded(
     remote.run_coded(&r.dial, line, stdin).await
 }
 
-/// 〔MIG-3a · `设计/01 §3.5` · 主会话 09-28 裁〕问可达表里那一台跑一条**帧命令的 CLI 面**（`--<cmd> --stdin-line`），
+/// 问可达表里那一台跑一条**帧命令的 CLI 面**（`--<cmd> --stdin-line`），
 /// 参数（JSON 对象）一行写进它的 stdin，交回它 stdout 那一行 JSON（成品本身）。两台之间那几件的枢纽（`assets/hub.rs`）用它；
 /// 命令行里只有落点与两个旗标（同 `assets-sync` 推那一趟），载荷走 stdin（远端登录 shell 是什么都同读）。
 pub async fn ask_json(
@@ -347,11 +347,11 @@ impl Remote for DialRemote {
     }
 }
 
-/// 〔NT2 · A4〕一个 `spawn` 出去的任务，**句柄被丢 ⇒ 任务被收**。
+/// 一个 `spawn` 出去的任务，**句柄被丢 ⇒ 任务被收**。
 ///
 /// tokio 的 `JoinHandle` 被丢是**脱钩**（任务照跑），不是收。本模块的内层任务手里攥着池里那条 SSH 连接的一格通道：
 /// 调用方帧期限到点 ⇒ monitor 补发 `cancel` ⇒ 后端打断的是**外层** future（`Run::Async` 那一档）——
-/// 句柄若只是被丢，内层那一格就**永远占着**（远端不答的那一形），`设计/15 §3.2` 第 4 条红线说的正是这个。
+/// 句柄若只是被丢，内层那一格就**永远占着**（远端不答的那一形），红线说的正是这个。
 pub(crate) struct AbortOnDrop(pub(crate) tokio::task::JoinHandle<()>);
 
 impl Drop for AbortOnDrop {
@@ -362,7 +362,7 @@ impl Drop for AbortOnDrop {
 
 /// 经一条内存链路跑一趟 capture：`serve` 拿上行读端与下行写端（生产 = `dial::uses::run`），这里读 ack 与结果那一行。
 /// **抽出来是为了判据**：「外层被丢 ⇒ 内层一起收」不需要真 SSH 就验得动（`remote_ask_tests` 喂一个永不答的 `serve`）。
-/// 〔MIG-3a · 09-28 裁 4〕失败时带上那台 CLI 信封里的码（`{code, message}` 读得出来才有）；只要话的调用方取 `.message`
+/// 〔09-28 裁 4〕失败时带上那台 CLI 信封里的码（`{code, message}` 读得出来才有）；只要话的调用方取 `.message`
 /// （不另留一个只丢码的包装 —— 它唯一的生产调用方 `DialRemote::run` 已改转 `run_coded`）。
 pub(crate) async fn pull_over_coded<F, Fut>(serve: F) -> Result<String, Said>
 where
@@ -376,10 +376,10 @@ where
     settle_pulled(&got)
 }
 
-/// 〔MIG-3b〕**原样收全**一条一次性命令（退出码 · stdout · stderr 三样都交回，不替调用方判退出码）：部署计划那两问
+/// **原样收全**一条一次性命令（退出码 · stdout · stderr 三样都交回，不替调用方判退出码）：部署计划那两问
 /// （`uname` · 扫身份戳）要的正是这三样 —— `grep` 退出 1 是「一个都没有」，不是失败。拨号请求同 [`capture_request`]。
 ///
-/// 〔MIG-3b 续〕连同那一趟的 **ack**（`DialAck` 原样那一行）一起交回：拨号在本机后端里发生，逐地址指纹要交 monitor 固化
+/// 连同那一趟的 **ack**（`DialAck` 原样那一行）一起交回：拨号在本机后端里发生，逐地址指纹要交 monitor 固化
 /// （`VIS2` 那一条，`dial_host::settle_host_key`），不另写一份判定。
 pub(crate) async fn capture_full(
     dial: &Value,
@@ -423,7 +423,7 @@ where
     // 上行那根管子我们一个字节都不写（capture 不读上行）；留着不关，直到拿到结果。
     let (_up_w, up_r) = tokio::io::duplex(1024);
     let (down_w, down_r) = tokio::io::duplex(64 * 1024);
-    // 〔NT2〕随本函数（的 future）一起死：正常答完 / 出错返回 / 被 `cancel` 打断，三种收法同一个 `Drop`。
+    // 随本函数（的 future）一起死：正常答完 / 出错返回 / 被 `cancel` 打断，三种收法同一个 `Drop`。
     let _task = AbortOnDrop(tokio::spawn(serve(up_r, down_w)));
     let mut rd = BufReader::new(down_r);
     let ack = capped_line(&mut rd, 64 * 1024)
@@ -453,7 +453,7 @@ where
 }
 
 /// 一次性子命令的结果那一行 → 它的 stdout（老后端 · 非 0 退出 · 超上限各是一句错）。
-/// 〔MIG-3a · 09-28 裁 4〕非 0 退出时把那台 CLI 信封里的码一起交回（[`Said`]）。
+/// 〔09-28 裁 4〕非 0 退出时把那台 CLI 信封里的码一起交回（[`Said`]）。
 fn settle_pulled(got: &Value) -> Result<String, Said> {
     let plain = |message: String| Said {
         code: None,

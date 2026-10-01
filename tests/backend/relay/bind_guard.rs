@@ -7,7 +7,7 @@
 //! 要走 `guard_core::scan_tree!` —— 它治的是「判据在自己的登记表/注释/常量里找到自己
 //! ⇒ 恒绿」那一族（那边逐字记着：实测五次，五次都不是被判据变红发现的）。
 //!
-//! ⚠ 〔`P4` 2026-09-21〕先前这里写着「那个宏**按构造摘掉调用者自己那份**」。
+//! ⚠ 先前这里写着「那个宏**按构造摘掉调用者自己那份**」。
 //! 那一刀**在这一处不生效**：判据一律由 `#[path]` 挂进生产树 ⇒ `file!()` 是带 `..`
 //! 的折返路径 ⇒ 后缀比不命中
 //!（`the_scan_tree_macro_no_longer_excludes_its_caller_after_the_split` 守着这件事）。
@@ -46,9 +46,9 @@
 mod tests {
     #[test]
     fn no_non_loopback_bind_literal_in_relay_production_code() {
-        let dir = crate::guard_support::relay_root(); // 〔RE〕`relay` 模块的根（面 B 成员 ＋ 挂回来的 door / listen）
+        let dir = crate::guard_support::relay_root(); // `relay` 模块的根（面 B 成员 ＋ 挂回来的 door / listen）
                                                       // 针**运行时拼**：直接写字面量的话本文件自己就是命中源。
-                                                      // ⚠ 〔`P4` 2026-09-21〕先前这里写着「而 `scan_tree!` 已经摘掉了本文件 ——
+                                                      // ⚠ 先前这里写着「而 `scan_tree!` 已经摘掉了本文件 ——
                                                       //   两道保险，别只靠一道」。**那一道今天不生效**（自摘在这一处恒空转，见模块头注），
                                                       //   运行时拼针是**唯一**承重的那一道 —— 别把它改成字面量。
         let needles = [

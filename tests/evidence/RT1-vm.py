@@ -1,20 +1,20 @@
 #!/usr/bin/env python3
 """RT1 · 驱动 Win11 虚拟机真机测试的本机侧小工具（在 laptop 上跑，不在虚拟机里跑）。
 
-守的要求：用户裁决 V115 逐字「能，用虚拟机」——「在虚拟机里留一个计划任务，用用户登录的那个桌面
+守的要求：「能，用虚拟机」——「在虚拟机里留一个计划任务，用用户登录的那个桌面
 （session 1）跑真窗口」。🔴 虚拟机上的持久改动只许：一个计划任务（`ccm-rt1`）＋ 测试用临时目录
 （`%LOCALAPPDATA%\\Temp\\rt1`）；本工具不建第二个任务、不写别处。
 
 子命令（脚本一律从 stdin 读）：
   ps            —— 经 SSH 在 session 0 跑一段 PowerShell（只做文件与进程的读、拷、收；**不许起 GUI**：
-                   session 0 没有交互窗口站，`真相源/106 §4.3` 的 `0x80070578` 就是这一形）。
+                   session 0 没有交互窗口站，`0x80070578` 就是这一形）。
   job [秒]      —— 把脚本写成 `rt1\\jobs\\job.ps1`，`schtasks /run` 触发计划任务 `ccm-rt1`，
                    它在**用户登录的桌面 session 1** 里跑；等 runner 写出 END 再把那一次的日志取回来。
   push 本地 远端 / pull 远端 本地 —— scp（远端路径用正斜杠）。
   shot 名字     —— `virsh screenshot` 取整屏，存成 PNG（证据）。
 
 进虚拟机的路（记忆 `win11-vm-headless-access`）：显式 `-i ~/.ssh/winvm_ed25519 user@192.0.2.11`；
-**别用** `ssh win11`（配置过期）。远端 PowerShell 的三个坑（`真相源/106` 附录）：
+**别用** `ssh win11`（配置过期）。远端 PowerShell 的三个坑（附录）：
 EncodedCommand（UTF-16LE）＋ 先设 UTF-8 输出 ＋ 滤掉 `#< CLIXML` 尾巴。
 """
 import base64

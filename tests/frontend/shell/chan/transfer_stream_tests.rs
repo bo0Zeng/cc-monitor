@@ -1,9 +1,9 @@
-//! 〔F7c · 第三波 · 2026-09-24〕**生产上的第一条流**：传输台的进度（`设计/60 §13.6` 判据 4）。
+//! **生产上的第一条流**：传输台的进度。
 //!
 //! # 台架
 //!
 //! **真回环口 ＋ 真钥匙 ＋ 真路由器 ＋ 生产句柄 [`InboundBackends`]**（不是 `chan_tests` 那个合成句柄）。
-//! 〔SR1b · 2026-09-24〕传输台搬进了本机常驻后端 ⇒ 这里唯一合成的是**那个本机后端**：借中继判据那台
+//! 传输台搬进了本机常驻后端 ⇒ 这里唯一合成的是**那个本机后端**：借中继判据那台
 //! 「真 client ＋ 真吸收点 ＋ 假后端」（`sftp_pool::tests::rig`），它按剧本回开单 / 起跑的应答、往本机那条流上塞 `transfer` 帧。
 //! 〔墓碑 —— F7c 那一版合成的是票里「那件事」：一趟真的暂存区上传，跑在合成 SFTP 服务端上；
 //!  那一半的判据跟着传输本体搬去了后端（`tests/backend/control/transfer_tests.rs`）。〕
@@ -300,8 +300,8 @@ async fn opening_a_transfer_for_an_unknown_machine_is_refused_out_loud() {
     }
 }
 
-/// 〔FILES2 · Q5〕带码的失败经生产句柄原样到窗口：`{"state":"failed","why","code"}` —— 窗口据 `sftp_home_mismatch` 换路。
-/// 要求住址：`设计/60 §7` 第 9 条 Q5（主会话 09-27 裁「不一致 ⇒ 这台的上传改走后端链路分块写」）。
+/// 带码的失败经生产句柄原样到窗口：`{"state":"failed","why","code"}` —— 窗口据 `sftp_home_mismatch` 换路。
+/// （「不一致 ⇒ 这台的上传改走后端链路分块写」）。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_coded_failure_reaches_the_window_with_its_code() {
     let _g = crate::inbound_client::local_origin_test_lock();
@@ -329,8 +329,8 @@ async fn a_coded_failure_reaches_the_window_with_its_code() {
     );
 }
 
-/// 〔P4 · 主会话 09-29 拍板 Q2 A〕文件窗口「在此打开终端」那一问由生产句柄**自己接**（不转给那台后端）：
-/// 本机寻址 ⇒ `local_has_no_file_window`（文件窗口只开在远端上，`设计/60 §2.4`）· 没有这台的配置 ⇒ `no_such_origin`，都不碰后端、不开窗。
+/// 〔主会话 09-29 拍板 Q2 A〕文件窗口「在此打开终端」那一问由生产句柄**自己接**（不转给那台后端）：
+/// 本机寻址 ⇒ `local_has_no_file_window`（文件窗口只开在远端上）· 没有这台的配置 ⇒ `no_such_origin`，都不碰后端、不开窗。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn the_terminal_ask_is_taken_by_the_monitor_and_refused_out_loud_when_it_cannot_be_done() {
     let client = rig().await;

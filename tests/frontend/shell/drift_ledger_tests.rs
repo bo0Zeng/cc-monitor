@@ -112,7 +112,7 @@ fn the_global_entry_points_delegate_to_the_pure_ones() {
     assert_eq!(e.first_sample.as_deref(), Some("s"));
 }
 
-// ── 〔ST3〕按机器分 ─────────────────────────────────────────────────────────
+// ── 按机器分 ─────────────────────────────────────────────────────────
 
 use crate::origin::Origin;
 
@@ -269,7 +269,7 @@ fn every_face_states_its_consequence() {
     );
 }
 
-/// 〔ST3〕读口：答的是所问那台、回包带回那台；空白名（「没说」）拒收，不许被当成某一台。
+/// 读口：答的是所问那台、回包带回那台；空白名（「没说」）拒收，不许被当成某一台。
 #[test]
 fn the_read_side_answers_the_asked_machine_and_echoes_it() {
     let probe = Origin("st3-read-probe".into());
@@ -292,11 +292,11 @@ fn the_read_side_answers_the_asked_machine_and_echoes_it() {
     );
 }
 
-// ── 〔ST3〕J3：喂账调用点登记表 ──────────────────────────────────────────────
+// ── J3：喂账调用点登记表 ──────────────────────────────────────────────
 //
 // 🔴 **它的人群**：`src/frontend/shell/src` 生产段里，调了「喂账入口」的函数（`文件, 外层 fn`）。
 // 喂账入口 ＝ 直接写账的 `drift_ledger::record` ＋ 把 `origin` 一路交给它的那一个（`note_unknown_capabilities`）。
-// 〔MOD〕记录解析那几条（`parse_line` / `parse_for_kind`〔散文墓碑〕 / `batch_to_payloads` / `range_payloads`）出列：解析进了后端，账也跟着记在那台后端。
+// 记录解析那几条（`parse_line` / `parse_for_kind`〔散文墓碑〕 / `batch_to_payloads` / `range_payloads`）出列：解析进了后端，账也跟着记在那台后端。
 // 判法两条，都不是地板：
 //   ① 人群 == `FEEDERS` 的键（两向）：新长一个喂账点 ⇒ 红，必须来这里说清它记在哪台名下；
 //      删了一个 ⇒ 死条目 ⇒ 红。
@@ -315,14 +315,14 @@ enum Whose {
 
 /// `(文件, 外层 fn, 记在哪台, 理由)`。
 const FEEDERS: &[(&str, &str, Whose, &str)] = &[
-    // 〔C4d · 第四波 4B〕`("history.rs", "analyze_jsonl")` 那一行摘了：本机历史清单搬进本机常驻后端（会话行由后端摘要，
+    // `("history.rs", "analyze_jsonl")` 那一行摘了：本机历史清单搬进本机常驻后端（会话行由后端摘要，
     //   与远端同一个函数），monitor 不再为了列清单逐行解析本机 jsonl。
-    // 〔LOC1b · 第四波 4D〕本机远端的冷读合成一条：记账那一跳挪进 `SessionPager::page`（`history.rs`），
+    // 本机远端的冷读合成一条：记账那一跳挪进 `SessionPager::page`（`history.rs`），
     //   `stream_read_session_jsonl` 本身不再解析；远端那一支 `stream_read_remote_session`〔散文墓碑〕那一行随它删了。
-    // 〔CF1 · 第四波 09-24〕`lib.rs::run`（`Local`，「本机 jsonl watcher 那一批」）那一行摘了：
+    // `lib.rs::run`（`Local`，「本机 jsonl watcher 那一批」）那一行摘了：
     //   本机会话的行从此是本机后端的 `line` 帧，经 `ssh_source·rs::flush_lines`（`Given`，origin 是本机）进账。
-    // 〔LOC1b · 第四波 4D〕`("search.rs", "build_one", Local)` 那一行摘了：本机搜索改问本机后端，monitor 内存索引删了。
-    // 〔LOC1b · 第四波 4D〕`("session_map.rs", "is_interactive", Local)` 换成下面这一行：本机判活改由本机后端的帧来之后，
+    // `("search.rs", "build_one", Local)` 那一行摘了：本机搜索改问本机后端，monitor 内存索引删了。
+    // `("session_map.rs", "is_interactive", Local)` 换成下面这一行：本机判活改由本机后端的帧来之后，
     //   「未登记的会话 kind」那一笔在本机那条流上记（monitor 不再自己扫 pidfile）。
     (
         "ssh_source.rs",
@@ -347,7 +347,7 @@ const FEEDERS: &[(&str, &str, Whose, &str)] = &[
 /// 喂账入口（调用形）。
 const FEED_ENTRIES: &[&str] = &[
     "drift_ledger::record(",
-    // 〔MOD〕`parse_line(` · `parse_for_kind(` · `batch_to_payloads(` · `range_payloads(` 出列：记录解析进了后端，那几条路不再喂这本账。
+    // `parse_line(` · `parse_for_kind(` · `batch_to_payloads(` · `range_payloads(` 出列：记录解析进了后端，那几条路不再喂这本账。
     "note_unknown_capabilities(",
 ];
 
@@ -416,7 +416,7 @@ fn every_ledger_feeder_is_registered_with_whose_book_it_writes() {
     let mut found: std::collections::BTreeMap<(String, String), String> = Default::default();
     for (path, raw) in guard_core::scan_tree!(&root, &["rs"]) {
         let prod = guard_core::production_code(&raw);
-        // 〔RE〕按模块住址认：通信层成员住 `src/comms/inward/`、经 `#[path]` 挂进本 crate（`guard_core` 顺着收）。
+        // 按模块住址认：通信层成员住 `src/comms/inward/`、经 `#[path]` 挂进本 crate（`guard_core` 顺着收）。
         let file = guard_core::module_address(&root, &path);
         for (name, body) in feeders_in(&prod) {
             found.insert((file.clone(), name), body);

@@ -4,7 +4,7 @@
 # `platform/terminal.rs::launch_powershell_window` 仅 Windows(`Err("拉起终端窗口仅支持 Windows")`)——headless Linux
 # 的 GUI resume 必回退剪贴板、绝不执行,故 argv 断言的诚实天花板 = 命令级(直接驱真源 builder)。见 tests/e2e/README。
 #
-# 每条边界:①用 `resume-cmd-driver.ts` 取 app **真正会跑**的命令串(〔LR2〕走生产渲染链:生产 plan* →
+# 每条边界:①用 `resume-cmd-driver.ts` 取 app **真正会跑**的命令串(走生产渲染链:生产 plan* →
 # 生产 Rust render_launch_payload,不重写);②断言命令形状(复用 cc-<sid8> 名/无 new-session/无 -N/CLAUDE_CONFIG_DIR 前缀);③真把该串
 # 跑到真 tmux(send-keys 进 idle pane 的 sh);④断言 argv.log(sid 命中行的 CLAUDE_CONFIG_DIR + `--resume`)
 # 与 `tmux list-sessions` 孤儿计数。红线:backend 零改(不跑它) / 隔离 CLAUDE_CONFIG_DIR 绝不碰真 ~/.claude。
@@ -205,7 +205,7 @@ echo "   argv resume 行数=$N6  orphan($S6-N)=$(orphan_count "$S6")  session=$(
 #
 # **E67③（2026-07-31）：这里是全套件唯一断言「生产侧 tmux 命名形状」的地方，也正是它把
 # CI 红了两个版本。** S4b-3b（用户 2026-07-31）把命名从 `cc-<X>` 反转成 `<X>-cc`，
-# 前端（当年的铸名口；〔FIX4 · J7〕今天派生只在后端）与 Rust（`tmux::is_ccm_tmux_name`，
+# 前端（当年的铸名口；今天派生只在后端）与 Rust（`tmux::is_ccm_tmux_name`，
 # 新旧两种都认）都同步了，**只有这条 e2e 的期望值没跟上** ⇒ 断言恒假，
 # 而且连带下一条（拿老名字去 `session_exists`）也必然失败。
 #
@@ -218,7 +218,7 @@ SID7="$(cat /proc/sys/kernel/random/uuid)"
 #    名字不再是 `<sid8>-cc`，改成从 **cwd** 派生的 `<项目名>-cc`。
 #    这条 e2e 是全套件唯一断言「生产侧 tmux 命名形状」的地方（见上面 E67③ 那段），
 #    所以它**必须跟着改** —— 上一次没跟上时它红了两个版本。
-# 〔FIX4 · `设计/90 §3` J7〕名字由后端铸（`tmux-name-mint {cwd}`：`/tmp/e2e-remote` ⇒ `e2e-remote-cc`，派生与避让的逐格归
+# 名字由后端铸（`tmux-name-mint {cwd}`：`/tmp/e2e-remote` ⇒ `e2e-remote-cc`，派生与避让的逐格归
 #    `tests/backend/control/ccm/plan_tests.rs`）；本套件不碰后端 ⇒ 这里用后端会铸的那个名字，改钉「它在建之前确实没被占」——
 #    否则下面测到的是 create-gate 短路、不是回退新建（原先那一格 `drv mint-name` 调的前端铸名口随 J7 删了）。
 EXPECT7="e2e-remote-cc"   # basename("/tmp/e2e-remote") + `-cc`；撞名时才追加 `-2/-3`

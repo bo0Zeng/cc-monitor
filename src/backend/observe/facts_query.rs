@@ -1,11 +1,11 @@
-//! 〔STC · `设计/90 §4` 阶段 C · `设计/10 §2.2`〕**会话事实**：分叉血缘 · 改动文件集 · 最新 usage。
+//! **会话事实**：分叉血缘 · 改动文件集 · 最新 usage。
 //! 子 agent 的列表与状态不在这里：它们是运行表（`observe::runs`，经 `session_runs` 帧），判定只有那一处。
 //!
 //! # 它顶掉了什么
 //!
 //! 这几样从前是活 tab 在 `onLine` 旁路上一条一条攒的（前端 `tab-session-facts.ts` 那四个抽取器，已删）：
 //! **到达序不是对话序**（重放是尾块先到）、**不完整**（重放缓冲每个会话只留尾部 `REPLAY_TAIL_KEEP` 条 ⇒
-//! F5 之后长会话的分叉血缘看不见、agent / 改动文件只剩尾巴那一截）、每个 tab 各攒一份（`10 §2.2` 那三个病）。
+//! F5 之后长会话的分叉血缘看不见、agent / 改动文件只剩尾巴那一截）、每个 tab 各攒一份（那三个病）。
 //! 今天它们由本文件读一遍文件算出来，经帧命令 `history-facts`（宿主 `read_face.rs`）出**成品**，
 //! 界面经通道直接问、按形状收（`src/frontend/ui/session-reads.ts`），**本机与远端同一条路**。
 //!
@@ -13,8 +13,8 @@
 //!
 //! 事实要跟着会话长，而大会话（本机实测 120 MB）每批整份重扫是撞墙的。选的形状：调用方把**上一次的应答原样**
 //! 交回来（`prior`），本文件从 `prior.end` 接着扫、把新的一截累加在它上面 —— 判定与累加都只在这里，
-//! 前端不读、不改、不合并那一份成品；后端不留任何状态（`设计/05 §15.1` 对 `history-lines` 的同一条取舍）。
-//! 续点的两道校验（截断 · 不在行边界）在 `history_query::open_facts_at`。理由全文 `调研/第四波记录/STC.md §1.2`。
+//! 前端不读、不改、不合并那一份成品；后端不留任何状态（对 `history-lines` 的同一条取舍）。
+//! 续点的两道校验（截断 · 不在行边界）在 `history_query::open_facts_at`。理由。
 //!
 //! # 口径（逐格，三样各一个住址）
 //!
@@ -44,7 +44,7 @@ use serde_json::Value;
 // 写类工具表**只有这一份**（前端那份随搬家删了）。
 
 /// 写类工具 → 取路径的键。Edit / Write / MultiEdit 用 `file_path`；NotebookEdit 用 `notebook_path`。
-/// 与渲染那边的「写类」（〔THIN〕卡型 `diff`，适配层 `agents/claudecode/cards.rs` 那张写类工具表，行级 diff）**不是同一个问题**：
+/// 与渲染那边的「写类」（卡型 `diff`，适配层 `agents/claudecode/cards.rs` 那张写类工具表，行级 diff）**不是同一个问题**：
 /// 这里多一个 NotebookEdit（它改文件、但不按行 diff 渲染）。
 pub(crate) const EDIT_TOOL_PATH_KEYS: &[(&str, &str)] = &[
     ("Edit", "file_path"),

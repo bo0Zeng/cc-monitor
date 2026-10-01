@@ -1,5 +1,5 @@
 # RT1 · 窗口哨兵：每 150 ms 枚举一次 session 1 的可见顶层窗口，新出现 / 消失的逐条落 logs\winwatch.log。
-# 守的要求：`设计/00 §1.5.2`「三条策略」里 `ConsolePolicy::Hidden` —— 起子进程不许闪黑框；
+# 守的要求：「三条策略」里 `ConsolePolicy::Hidden` —— 起子进程不许闪黑框；
 # 一闪而过的控制台窗口截图抓不到，只有连续枚举抓得到。由 conhost --headless 起（它自己不开窗）。
 . "C:\Users\user\AppData\Local\Temp\rt1\rt1lib.ps1"
 $log = "$RT1\logs\winwatch.log"

@@ -7,16 +7,16 @@ use std::path::{Path, PathBuf};
 /// 所以它不只是"一个环境变量"，是账号这个概念在 Claude 侧的载体。
 pub(crate) const CONFIG_DIR_ENV: &str = "CLAUDE_CONFIG_DIR";
 
-/// 〔HX1 · D-f〕Claude 找上游的环境变量名。起会话时中转地址经它注入（`http://127.0.0.1:<口>/<钥匙>/<前缀>/…`，钥匙段在 pane shell 里展开）；
+/// Claude 找上游的环境变量名。起会话时中转地址经它注入（`http://127.0.0.1:<口>/<钥匙>/<前缀>/…`，钥匙段在 pane shell 里展开）；
 /// `--session-accounts` 读它**只为答一个布尔**（这条会话走不走本机中转），值本身带钥匙、**绝不出参、绝不进日志**。
 pub(crate) const BASE_URL_ENV: &str = "ANTHROPIC_BASE_URL";
 
-/// 〔HX1 · D-f〕`--session-accounts` 从会话进程环境里读的那两个**适配层的**键，收成一处交出去：账号（配置根）· 上游地址。
+/// `--session-accounts` 从会话进程环境里读的那两个**适配层的**键，收成一处交出去：账号（配置根）· 上游地址。
 /// 通用层只问适配层**一次**「该读哪两个键」（`agent_locality_guard` 那一格仍是一处：加第三家 agent 时这两个键一起换）。
 pub(crate) struct SessionEnvKeys {
     pub(crate) config_dir: &'static str,
     pub(crate) base_url: &'static str,
-    /// 〔E2 · V146〕这条会话自己的设置文件会不会压过进程环境里的上游地址（见 [`settings_may_set_base_url`]）。
+    /// 这条会话自己的设置文件会不会压过进程环境里的上游地址（见 [`settings_may_set_base_url`]）。
     pub(crate) settings_may_set_base_url: fn(Option<&Path>, &Path, Option<&Path>) -> bool,
 }
 
@@ -27,7 +27,7 @@ pub(crate) const SESSION_ENV_KEYS: SessionEnvKeys = SessionEnvKeys {
     settings_may_set_base_url,
 };
 
-/// 〔E2 · V146〕claude 的设置文件里 `env.ANTHROPIC_BASE_URL` **压过**进程环境（GAP1 件 3 取证：真跑一次，settings 那个口收到请求、
+/// claude 的设置文件里 `env.ANTHROPIC_BASE_URL` **压过**进程环境（GAP1 件 3 取证：真跑一次，settings 那个口收到请求、
 /// 进程环境那个口零次）⇒ 进程环境里是我们的中转地址，不等于它真走中转。这里答「可能被压过」：
 /// 配置根（`config_dir`，缺席 = 默认根）下的 `settings.json` · 会话 cwd 下 `.claude/settings.json` / `settings.local.json`
 /// 任一份设了非空的 `env.ANTHROPIC_BASE_URL`，或在却读不了 / 解析不了 ⇒ `true`（说不清）。
@@ -106,7 +106,7 @@ pub(crate) fn sessions_root(home: &Path) -> PathBuf {
 
 /// 一个路径**在不在 Claude 的那几棵树里** —— `~/.claude*` 那个星号的**唯一住址**。
 ///
-/// 〔步 23b · 2026-09-19〕`设计/60 §6.5.2 A` 给新的写模块定的围栏逐字是
+/// 给新的写模块定的围栏逐字是
 /// 「写点……**不许**落进 `~/.claude*` 那几棵树」。这句话里的**布局知识**
 /// （根叫什么、星号包含哪些）归本层 —— `control/` 是通用层，
 /// 它不该知道这个目录叫什么（`agent_locality_guard` 的针就钉在这上面）。
@@ -139,13 +139,13 @@ pub fn is_inside_tree(home: &Path, target: &Path) -> bool {
 /// 🔴 **一条路径是不是 Claude 的「会话记录」那几份具体文件的形状**（`projects/<proj>/<sid>.jsonl` 恰 2 段 ·
 /// `sessions/<x>.json` 恰 1 段）。
 ///
-/// # 〔FN1 · 第四波 4C · 2026-09-25 · 用户 V119〕它**不再是写侧围栏**
+/// # 〔用户〕它**不再是写侧围栏**
 ///
 /// 用户原话「**文件管理器全部都可以改. 不需要任何围栏**」⇒ 文件管理写面（`control/files_write.rs`）
 /// 不再问它。后端里它今天**只有删历史会话那一条**在问（[`session_file_for_delete_in`] 与
 /// `files_write::fenced_session_file`：「要删的必须**是**一份会话记录」—— 方向与从前那道围栏相反）。
 /// 旧名 `is_protected_session_file` / `is_protected_session_path`〔散文墓碑〕：「protected」在后端从此是假的，名字改成它真在答的那一问。
-/// 〔MIG-3a〕桥那一份逐字副本（`claude_data_fence`〔散文墓碑〕）随它最后一个用户搬进后端，全仓只剩这一份；
+/// 桥那一份逐字副本（`claude_data_fence`〔散文墓碑〕）随它最后一个用户搬进后端，全仓只剩这一份；
 /// 那个用户（skill 收件箱编辑面）09-30 整块删了。下面几节是它当写侧围栏那一段的历史。
 ///
 /// 〔波 5 ㈢ · 2026-09-23 · 用户 2026-09-23 逐字裁「文件管理器该不该能改 `~/.claude`
@@ -153,7 +153,7 @@ pub fn is_inside_tree(home: &Path, target: &Path) -> bool {
 ///
 /// # 它换掉了什么，以及为什么
 ///
-/// `设计/60 §8.7` 现打过一件事：同一次「往 `~/.claude/skills/` 里写」的操作，
+/// 现打过一件事：同一次「往 `~/.claude/skills/` 里写」的操作，
 /// 在两条路上会得到**两种结果** —— 后端那条问 [`is_inside_tree`]（拒**整棵树**），
 /// 桥／SFTP 那条问桥那一份会话形状判定〔散文墓碑〕
 /// （只拒**那几份具体的会话文件**）。那一节自陈「丙（统一成同一个判定）才是真正的解，
@@ -165,12 +165,12 @@ pub fn is_inside_tree(home: &Path, target: &Path) -> bool {
 /// 两个 crate 之间没有共享落点：`src/backend` **刻意不在** monitor 那个 workspace 里
 /// （它有自己的 `Cargo.lock`，那条隔离是真架构约束，见它 `Cargo.toml` 头注），
 /// 而新立一个共享 crate 会动门禁那句 `run_gate_sum cargo 9`（本刀写区之外），
-/// 并且 `设计/60 §8.8` 记着上一次「把围栏搬成共享 crate」当天就被撤回。
+/// 并且记着上一次「把围栏搬成共享 crate」当天就被撤回。
 /// ⇒ 处置：**函数体逐字节相同**，并由判据把这件事钉成相等断言 ——
-/// 两侧任何一处改动、另一处不跟，当场红。〔MIG-3a〕桥那一份删了，那条相等判据随之退役（全仓只剩这一份）。
+/// 两侧任何一处改动、另一处不跟，当场红。桥那一份删了，那条相等判据随之退役（全仓只剩这一份）。
 ///
 /// ⚠ **方向相反的那一道不在这儿，也不许合并**：从前是桥那一侧的 `is_safe_remote_jsonl`〔散文墓碑〕，
-/// 〔RW1 · 第四波 09-24〕今天是本文件的 [`session_file_for_delete_in`]，正题恰恰是
+/// 今天是本文件的 [`session_file_for_delete_in`]，正题恰恰是
 /// 「**只许**删恰是 `projects/<proj>/<sid>.jsonl` 的那一份」（`INVARIANTS §1` 例外 3，历史浏览器删会话）。
 /// 两道都读 Claude 的目录结构、方向相反，合成一个之后「哪些不许写」与「哪些才许删」
 /// 会共用一个真相，而它们要的恰好是补集。
@@ -212,11 +212,11 @@ pub fn is_session_record_path(target: &Path) -> bool {
     is_session_record_file(&target.to_string_lossy())
 }
 
-/// 〔RW1 · 第四波 · 2026-09-24〕「删除历史会话」那一条**要删的那一份在哪** —— 只收 sid。
+/// 「删除历史会话」那一条**要删的那一份在哪** —— 只收 sid。
 ///
 /// 用户裁「只允许后端的文件管理部分写文件」「也管本机」⇒ 删历史会话（本机那一支此前是 monitor
 /// 进程直删，远端那一支是 SFTP 直删）改成后端**一条明确的命令**。它**不收路径**
-/// （〔FN1〕从前的理由是「它是会话文件围栏唯一的例外」，那道围栏 V119 拿掉了；「只收 sid」这件事本身没变）：
+/// （从前的理由是「它是会话文件围栏唯一的例外」，那道围栏 V119 拿掉了；「只收 sid」这件事本身没变）：
 /// 落点由这里按 sid 在本机记录树里找，调用方连表达「另一份文件」的办法都没有。
 ///
 /// 三关，各治一形：

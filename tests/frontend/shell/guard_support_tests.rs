@@ -1,6 +1,6 @@
 use super::*;
 
-/// 🔴 反空真自检（`设计/16 §5.2`）—— 没有这条，上面每个住址都可能安静地指向
+/// 🔴 反空真自检—— 没有这条，上面每个住址都可能安静地指向
 /// 一个不存在的目录，而所有靠它取人群的测试会**扫空集然后通过**。
 ///
 /// ⚠ 判据**点名具体文件**，不数条目数。两个理由：
@@ -25,7 +25,7 @@ fn every_address_points_at_something_we_can_name() {
         (
             "repo_src_root",
             repo_src_root(),
-            &["README.md", "backend", "frontend"][..], // 〔RE〕前端 TS 搬进 `frontend/ui/`，`src/` 根下只剩 README 与各层目录
+            &["README.md", "backend", "frontend"][..], // 前端 TS 搬进 `frontend/ui/`，`src/` 根下只剩 README 与各层目录
         ),
         ("tests_root", tests_root(), &["backend", "e2e"][..]),
         (

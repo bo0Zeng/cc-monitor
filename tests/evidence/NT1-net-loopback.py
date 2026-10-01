@@ -24,10 +24,10 @@ sftp 子系统起始目录钉在临时目录 —— 同 `SR1b-sftp-loopback.py`�
   ② 预算满：长流 ＋ 8 条重叠的 capture（每条连接的通道闸 8 格）⇒ 全部跑通、鉴权 **恰好 2**
   ③ 远端 MaxSessions=2（乙台）：长流 ＋ 3 条重叠的 capture ⇒ 全部跑通（被拒的那一条挪到新连接上）、鉴权 **恰好 2**；sshd 的拒绝原话
   ④ 压缩（回环）：sshd 日志里我们这几条连接的协商结果全是 `compression: none`（回环不开，判准只有 `connect.rs::compression_for`）
-  ⑦ 断线续传现打：下载中途断线 ⇒ 读终局与 `.part`（〔DP1〕判：`.part` 留着且是源的前缀、重拖落地逐字节对、没有从 0 起）；上传中途断线 ⇒ failed、暂存件留着；重传 ⇒ sftp-server 记下的写入 == 总长 − 已有
+  ⑦ 断线续传现打：下载中途断线 ⇒ 读终局与 `.part`（判：`.part` 留着且是源的前缀、重拖落地逐字节对、没有从 0 起）；上传中途断线 ⇒ failed、暂存件留着；重传 ⇒ sftp-server 记下的写入 == 总长 − 已有
   ⑧ 黑洞：已有 TCP 变黑洞之后，第一条新链路在开通道那一步被吞、被关掉 ⇒ 第二条**拨新的**、跑通（新鉴权恰好 1 次；基线：第二条也被吞）
   ⑥（`--compress`）强制压 vs 不压（真 sshd）：sshd 日志按先后 `none` · `zlib@openssh.com`。上游 russh 0.61 的 zlib 解压有缺陷
-     （NT1：闸关着时压的那趟卡在第一条通道上、收不全）；〔CZ1 · V118〕后端链仓内补过的副本、闸开 ⇒ 压的那趟**收全、逐字节同、
+     （NT1：闸关着时压的那趟卡在第一条通道上、收不全）；后端链仓内补过的副本、闸开 ⇒ 压的那趟**收全、逐字节同、
      线上字节 < 不压那趟的一半**；上行那一半（客户端压、sshd 解）把一段会话 jsonl 样子的载荷喂给远端 `sha256sum`，摘要对、
      线上字节 < 一半（两个方向的压缩比由那一行 `NT1-COMPRESS` 读数给出）
   ⑤ 弱网读数（甲台经整形代理，DELAY 单程 · BPS 每方向）：下载 16 MiB 期间长流上的回声延迟 · 顺序小文件下载每件耗时 ·
@@ -302,7 +302,7 @@ class Sshd:
         return self.text().count("Accepted publickey")
 
     def read_bytes(self, path):
-        """〔DP1〕sftp-server 记下的、关掉 `path` 那一次的读出字节数（最后一次）。"""
+        """sftp-server 记下的、关掉 `path` 那一次的读出字节数（最后一次）。"""
         n = None
         if not os.path.exists(self.sftp_log):
             return None
@@ -493,8 +493,8 @@ def main():
             be.wait(lambda: any(f["got"] > 2 * 1024 * 1024 for f in be.xfer.get(xid, [])) or None, 120)
             px7.cut()
             last = be.end_of(xid, 300)
-            print(f"  read 下载中途断线 ⇒ 终局 {last and last['end']} · .part 还在：{os.path.exists(dl7 + '.part')}（〔DP1〕失败也留 .part —— 弱网上断线就是失败；NT1 现打时是 False，DP1 之后该是 True）")
-            # 〔DP1〕判据（字节数相等）：留下的 .part 是源的前缀；重拖同一份（不经整形代理）⇒ 落地逐字节 == 源，
+            print(f"  read 下载中途断线 ⇒ 终局 {last and last['end']} · .part 还在：{os.path.exists(dl7 + '.part')}（失败也留 .part —— 弱网上断线就是失败；NT1 现打时是 False，DP1 之后该是 True）")
+            # 判据（字节数相等）：留下的 .part 是源的前缀；重拖同一份（不经整形代理）⇒ 落地逐字节 == 源，
             #   且 sftp-server 记下的这一趟读出字节 == 总长 − 已有 ＋ 尾块对拍那一块（前缀没被重新读）。
             part7 = dl7 + ".part"
             have7 = os.path.getsize(part7) if os.path.exists(part7) else 0

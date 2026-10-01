@@ -33,7 +33,7 @@ fn a_stale_ccm_on_path_is_named_out_loud() {
     assert_eq!(v, PathCcmVerdict::NotOurs, "旧的没被认出来");
     let hint = render_path_ccm_hint(v, &ours, &legacy, Some("$HOME/.cc-monitor/bin/ccm"), false);
     assert!(
-        // 〔FIX5〕名片那半句按文案键取（`rsCcmProbe.card.summary` 不再是 `version=` 日志行形），不钉原文。
+        // 名片那半句按文案键取（`rsCcmProbe.card.summary` 不再是 `version=` 日志行形），不钉原文。
         hint.contains("不是")
             && hint.contains(&describe_card(&legacy))
             && hint.contains(&describe_card(&ours)),
@@ -274,7 +274,7 @@ fn empty_output_not_installed() {
     assert!(!r.installed);
 }
 
-/// 〔E2〕要求住址：`设计/96 §7.2.2`「顺序定死：先读字节定身份，再决定要不要跑它」（本机 `ccm` 那一跳点名未收）。
+/// 要求：「顺序定死：先读字节定身份，再决定要不要跑它」（本机 `ccm` 那一跳点名未收）。
 /// 行为：落点上那份字节自报身份戳恰一个才算「我们的」；一个会自称 `name=ccm` 的脚本**不跑就不认**。
 /// 接线：`local_ccm_entry_status` 里起进程那一臂恰一处、挂在字节认身份的守卫后面。
 #[test]
@@ -316,7 +316,7 @@ fn our_own_ccm_is_identified_by_its_bytes_before_it_is_run() {
     .expect("起 `--ccm-probe` 那一臂不在「先认字节」的守卫后面");
 }
 
-/// 设计/99 §2.2 ㉔「本机 ccm 那一格两件都报：我们那份装下来了 ＋ 登录 shell 里敲 ccm 走到的是不是它 —— 走到别处（如旧 shim）就明说是哪一份、怎么清，不代清」。
+/// 「本机 ccm 那一格两件都报：我们那份装下来了 ＋ 登录 shell 里敲 ccm 走到的是不是它 —— 走到别处（如旧 shim）就明说是哪一份、怎么清，不代清」。
 ///
 /// 三件：① 探针补的 `at=` 行摘得出（名片认不得也摘）；② 落在哪按**文件**判（软链解开 · 旧入口认得出 · 同名片的旧 shim 也判「不是它」）；
 /// ③ 那一格两件都说、`ok` 只在两件都成时为真，说不清不写。期望值全是手写字面量。
@@ -353,7 +353,7 @@ fn the_local_ccm_cell_reports_both_halves_and_names_where_ccm_really_goes() {
     let mine = d.join("mine-ccm");
     std::fs::write(&mine, "#!/bin/sh\necho hi\n").unwrap();
     let s = |p: &std::path::Path| p.to_string_lossy().into_owned();
-    // 〔P1〕认旧入口的是后端（`deploy-retired` 的 `{text}`，真值表住后端 `deploy_plan_tests`）；这里只钉「交过去的是那个文件的开头原文」。
+    // 认旧入口的是后端（`deploy-retired` 的 `{text}`，真值表住后端 `deploy_plan_tests`）；这里只钉「交过去的是那个文件的开头原文」。
     let shim_text = std::fs::read_to_string(&shim).unwrap();
     let asked = |head: &str| head == shim_text;
     assert_eq!(reach_of(None, Some(&landing), &asked), Reach::Nothing);
@@ -441,8 +441,8 @@ fn the_local_ccm_cell_reports_both_halves_and_names_where_ccm_really_goes() {
     );
 }
 
-/// 〔WF1 · `99 §2.2 ㉔`〕读数，**不在门禁**（要一个 PowerShell；`CCM_PWSH=<程序> cargo test -- --ignored`，那个程序收一个 `.ps1` 路径去跑）。
-/// 住址：`设计/99 §2.2 ㉔`「本机 ccm 那一格两件都报 ——「我们那份装下来了」＋「登录 shell 里敲 `ccm` 走到的是不是它」」。
+/// 读数，**不在门禁**（要一个 PowerShell；`CCM_PWSH=<程序> cargo test -- --ignored`，那个程序收一个 `.ps1` 路径去跑）。
+/// 要求：「本机 ccm 那一格两件都报 ——「我们那份装下来了」＋「登录 shell 里敲 `ccm` 走到的是不是它」」。
 ///
 /// Windows 那一形的探测串（`CCM_PROBE_PS`）在真 PowerShell 里跑三种情形，输出交给同一个 [`parse_probe_output`]：
 /// PATH 上有一个 `ccm` 程序 ⇒ 名片读得出、住址是它的路径；只有同名函数 ⇒ 名片读得出、住址是名字（判词回退比名片）；都没有 ⇒ 没装、无住址。
@@ -533,7 +533,7 @@ fn wf1_the_windows_probe_script_reports_card_and_where_ccm_resolves() {
     );
 }
 
-/// 〔P1 · `设计/00 §1.2` 判定只在后端〕[`ask_once`] 读 CLI 面的信封（`control/cli_control.rs` 头注那三条）：
+/// 〔判定只在后端〕[`ask_once`] 读 CLI 面的信封（`control/cli_control.rs` 头注那三条）：
 /// 入参从 stdin 交到（替身原样回显）· exit 0 ⇒ stdout 那行 JSON · exit 2 ⇒ `{code, message}` 成 `Refused` ·
 /// 别的退出码 / 不成 JSON ⇒ `Unreadable` · 上限内不退 ⇒ `TimedOut` · 起不来 ⇒ `Spawn`。替身是一份 sh 脚本（不是后端），
 /// 判的是问法；判词本身住后端（`deploy_plan_tests`）。
@@ -594,8 +594,8 @@ fn ask_once_reads_the_cli_envelope_both_ways() {
     let _ = std::fs::remove_dir_all(&d);
 }
 
-/// 要求住址：`设计/99 §2.3` P2 报备「monitor 让 PowerShell 吐 UTF-8 统一到「探针直写 UTF-8 字节」一形（`ccm_probe.rs` 那处 P1 跟）」。
-/// 〔P1〕同 P2 `profile_installer::render_user_path_probe_command` 那一形。
+/// 报备「monitor 让 PowerShell 吐 UTF-8 统一到「探针直写 UTF-8 字节」一形（`ccm_probe.rs` 那处 P1 跟）」。
+/// 同 P2 `profile_installer::render_user_path_probe_command` 那一形。
 /// Windows 那两段探针（现拼 PATH · 问 `ccm`）各**恰好一处**把整段编成 UTF-8 字节直写标准输出流，且**零处**再去改控制台代码页。
 /// 买不到：真 `powershell.exe` 5.1 上的读数（本机没有 PowerShell；`wf1_the_windows_probe_script_reports_card_and_where_ccm_resolves` 那台架要 `CCM_PWSH`）。
 #[test]

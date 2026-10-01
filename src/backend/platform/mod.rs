@@ -10,7 +10,7 @@
 //! `cargo check --all-targets --target x86_64-pc-windows-msvc` 必须绿，且要进 CI
 //! （在 ubuntu 上就能跑，`check` 不链接）。那是 **U4** 的 DoD，不是本模块的。
 //!
-//! # 🔴 〔`K-R52` 09-11 补〕上面那句话**今天仍然对，但它不够** —— 那道真判据够不着这里
+//! # 🔴 上面那句话**今天仍然对，但它不够** —— 那道真判据够不着这里
 //!
 //! 「唯一真判据是跨 target 编译」写下时是真的，而 09-10 有一处
 //! （已删的那条按需拉取路里「落一个可执行文件」那一跳 —— 引了 `std::os::unix::fs` 里那个给 `mode(…)` 的
@@ -45,14 +45,14 @@
 //!   ＋ `temp_root` / `current_uid`（`K-R55` 09-11 从 `observe/watcher.rs` 下沉）
 //! - [`pidwatch`]：`pidfd_open` + [`pidwatch::watch_pid_until_exit`]
 //! - [`signal`]：`send_sigusr1`（U3 从 `control/tmux_hook.rs` 下沉）
-//! - [`ssh_agent`]：连本机 ssh-agent（Unix 套接字 / Windows 命名管道）—— 〔C2〕拨号代理没配私钥路径时用
-//! - [`stderr_fd`]：〔NT2 · S1〕把本进程的 fd 2 换到一份文件上 · 问它多长（脱离常驻的后端把 stderr 落盘，`crate::stderr_log`）
-//! - [`tcp_rtt`]：〔NT1〕一条已连上的 TCP 的往返时间（问内核 `TCP_INFO`，不掐表）—— 压缩判准要它（`dial/connect.rs::compression_for`）
-//! - [`lock`]：〔HX2〕后端自有状态文件（第四层）的跨进程锁 —— 锁那份文件所在的目录（unix `flock` · Windows 命名互斥量）
+//! - [`ssh_agent`]：连本机 ssh-agent（Unix 套接字 / Windows 命名管道）—— 拨号代理没配私钥路径时用
+//! - [`stderr_fd`]：把本进程的 fd 2 换到一份文件上 · 问它多长（脱离常驻的后端把 stderr 落盘，`crate::stderr_log`）
+//! - [`tcp_rtt`]：一条已连上的 TCP 的往返时间（问内核 `TCP_INFO`，不掐表）—— 压缩判准要它（`dial/connect.rs::compression_for`）
+//! - [`lock`]：后端自有状态文件（第四层）的跨进程锁 —— 锁那份文件所在的目录（unix `flock` · Windows 命名互斥量）
 //! - [`acct_view`]：账号库读盘的平台原语（不跟链接地看一项 · unix 权限位 · 这台做不做得了多账号）—— 只读
-//! - [`fs`]：〔FIX5〕文件管理写面的两样原语：不覆盖改名（`rename_noreplace`）· 开文件不跟链接的旗（`NO_FOLLOW`）
-//! - [`detach`]：〔RM1a〕把要起的子进程放进自己的进程组（远端那台的中转不许随 SSH 断而没了）· 〔RM1f〕插件口可打断的那一形也用它（让「杀一组」有组可杀）
-//! - `win_proc`：〔WN1 · U4b〕Windows 上判活 / 起始时刻 / 等进程退出的 Win32 读法（`OpenProcess` 一族），
+//! - [`fs`]：文件管理写面的两样原语：不覆盖改名（`rename_noreplace`）· 开文件不跟链接的旗（`NO_FOLLOW`）
+//! - [`detach`]：把要起的子进程放进自己的进程组（远端那台的中转不许随 SSH 断而没了）· 插件口可打断的那一形也用它（让「杀一组」有组可杀）
+//! - `win_proc`：Windows 上判活 / 起始时刻 / 等进程退出的 Win32 读法（`OpenProcess` 一族），
 //!   只在 Windows 编译时存在（刻意不写 intra-doc 链接：本机 Linux 上它不存在，链接会悬空）
 //! - [`shell`]：`posix_shell`（`K-R55` 09-11 从 `observe/watcher.rs` 下沉 ——
 //!   那两处 `Command::new("sh")` 正是 `K-R52` 立表时挂在 A2「真漏」堆上的头两条）
@@ -83,7 +83,7 @@ pub(crate) mod stderr_fd;
 pub(crate) mod tcp_rtt;
 #[cfg(windows)]
 pub(crate) mod win_proc;
-// 〔WN1 · U4b〕Windows 判活那一臂在本机（Linux）够得着的那几半：纯换算 · 与 Linux 同契约的映射 · 唯一住址。
+// Windows 判活那一臂在本机（Linux）够得着的那几半：纯换算 · 与 Linux 同契约的映射 · 唯一住址。
 #[cfg(test)]
 #[path = "../../../tests/backend/platform/win_proc_contract_tests.rs"]
 mod win_proc_contract_tests;

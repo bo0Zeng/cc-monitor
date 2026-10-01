@@ -1,4 +1,4 @@
-//! 〔TL3 · 审计 F 🔴-2〕**同步 IPC 命令里零 `block_on` / 零同步连后端** —— 人群现扫、名字级调用闭包、例外逐条登记。
+//! 〔审计 F 🔴-2〕**同步 IPC 命令里零 `block_on` / 零同步连后端** —— 人群现扫、名字级调用闭包、例外逐条登记。
 //!
 //! # 守的要求（住址）
 //!
@@ -21,7 +21,7 @@
 //!
 //! **正控**：① [`the_reach_analyzer_sees_a_three_hop_chain_and_only_that`]：合成的几份源码（三跳链 · 方法调用 ·
 //! `async` 命令 · 字面量里的针 · 同名歧义）⇒ 分析器恰好报出那一条；② 真仓：本机起会话那两条被认成 **async** 命令
-//! （扫描器看得见属性 ＋ `async` 那一格；〔主会话 09-26 裁〕`backend_start` 改 async 之后它也在这张单子上）；
+//! （扫描器看得见属性 ＋ `async` 那一格；`backend_start` 改 async 之后它也在这张单子上）；
 //! ③ 例外表今天是空的 ⇒ 真仓上的阳性对照只剩 ② —— 合成夹具 ① 管「分析器看得见链」，② 管「扫描器读得到真仓的属性」。
 //!
 //! # 名字级闭包怎么算（规则写全，改规则就是改判据）
@@ -38,7 +38,7 @@
 //! - **针只认两样**。`§10` 同样点名的「同步命令里起进程（`Command::spawn` / `output` / `wait`）· 读写文件」
 //!   **不在射程**：TL3 现打（名字级闭包原型）今天这一类还有 `list_local_tmux`（`tmux ls`）·
 //!   `local_ccm_entry_status`（跑 `ccm --ccm-probe`）· `backend_stop`（`kill` ＋ `wait`）·
-//!   `load_config` / `save_config` 等 —— 列在 `调研/第四波记录/TL3.md §1.4`，交主会话裁。
+//!   `load_config` / `save_config` 等 —— 列在，交主会话裁。
 //! - 只看 monitor 这一个 crate（`#[tauri::command]` 全在这里）；共享 crate 里的阻塞看不见（今天零处）。
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -51,9 +51,9 @@ const NEEDLES: &[&str] = &["block_on(", "TcpStream::connect"];
 /// ⚠ **登记 ≠ 认可**。这里每一行都是**偏离 `INVARIANTS §10`**、由 TL3 报备、等主会话裁（改 `async` ＋
 /// `spawn_blocking`，或在 `§10` 登记例外）。裁掉一行 ⇒ 从这里删那一行（本条两向相等，删了不改代码会红）。
 ///
-/// 〔TL3 · 主会话 09-26 裁〕今天**空**：原先那一行 `backend_control::backend_start`（机器页「起」：同步命令一路
+/// 今天**空**：原先那一行 `backend_control::backend_start`（机器页「起」：同步命令一路
 /// `start_local_backend → start_detached → adopt_with`，在 IPC 派发线程上连本机后端口、读 hello、`sleep` 等绑定、
-/// `attach_stream` 里 `block_on`）主会话裁「改 async」，本机那一支进了 `spawn_blocking` ⇒ 摘掉。
+/// `attach_stream` 里 `block_on`）「改 async」，本机那一支进了 `spawn_blocking` ⇒ 摘掉。
 const PENDING: &[(&str, &[&str], &str)] = &[];
 
 // ───────────────────────────── 分析器 ─────────────────────────────
@@ -434,7 +434,7 @@ fn this_crate() -> Vec<(String, String)> {
     let files: Vec<(String, String)> = guard_core::scan_tree_excluding(&root, &["rs"], &[])
         .into_iter()
         .map(|(p, text)| {
-            // 〔RE〕按模块住址认：通信层成员住 `src/comms/inward/`、经 `#[path]` 挂进本 crate（`guard_core` 顺着收）。
+            // 按模块住址认：通信层成员住 `src/comms/inward/`、经 `#[path]` 挂进本 crate（`guard_core` 顺着收）。
             let rel = guard_core::module_address(&root, &p);
             (rel, text)
         })
@@ -487,12 +487,12 @@ fn no_sync_command_waits_on_the_outside_except_the_registered_deviations() {
     );
 }
 
-/// 正控（真仓）：本机起会话那一条（〔MIG-2〕今天是开终端窗口 `open_local_terminal`）与起后端那一条被认成 **async** 命令 —— 扫描器看得见属性，也读得出 `async` 那一格。
+/// 正控（真仓）：本机起会话那一条（今天是开终端窗口 `open_local_terminal`）与起后端那一条被认成 **async** 命令 —— 扫描器看得见属性，也读得出 `async` 那一格。
 #[test]
 fn the_two_local_launch_commands_are_seen_as_async_commands() {
     let a = analyze(&this_crate());
     for cmd in [
-        // 〔MIG-2〕本机起会话的计划与渲染搬进本机后端，monitor 那一跳只剩开终端窗口（阻塞那一截进 `spawn_blocking`）。
+        // 本机起会话的计划与渲染搬进本机后端，monitor 那一跳只剩开终端窗口（阻塞那一截进 `spawn_blocking`）。
         "launch.rs::open_local_terminal",
         "backend_control.rs::backend_start",
     ] {

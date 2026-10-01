@@ -1,9 +1,9 @@
 /**
- * 〔FE1 · 第四波 4D〕**账号偏好**：本机 config.json 里 `accounts` 那一段 —— 「我这台 cc-monitor 起新会话默认用哪个号」
+ * **账号偏好**：本机 config.json 里 `accounts` 那一段 —— 「我这台 cc-monitor 起新会话默认用哪个号」
  * （`defaultName`）与「每个号默认用哪个模型」（`modelByAccount`）。本机、不跨机器同步。
  *
- * 从 `accounts.ts` 拆出来（审计 B §6 必须拆 4；守的要求 `设计/01 §5` D1）。
- * 〔CFG1 · 4D〕写口改成按键补丁（`config.ts::patchConfig`）：每个写者只交 `accounts.<自己那一格>` 这一条路径，
+ * 从 `accounts.ts` 拆出来（审计 B §6 必须拆 4；守的要求）。
+ * 写口改成按键补丁（`config.ts::patchConfig`）：每个写者只交 `accounts.<自己那一格>` 这一条路径，
  * 不再「读整份 → 改一个键 → 整份写回」（E §E1：两次读-改-写一交错，后写的整份盖掉先写的键）。
  */
 import { loadConfig, patchConfig, removeAt, setAt } from "./config";
@@ -27,7 +27,7 @@ export async function getDefaultName(): Promise<string | null> {
   return null;
 }
 
-/** 写本机默认账号名。null = 清除（回退跟随 manifest）。只动 `accounts.defaultName` 这一条路径（〔CFG1〕）。 */
+/** 写本机默认账号名。null = 清除（回退跟随 manifest）。只动 `accounts.defaultName` 这一条路径。 */
 export async function setDefaultName(name: string | null): Promise<void> {
   await patchConfig([
     name === null ? removeAt([CFG_KEY, "defaultName"]) : setAt([CFG_KEY, "defaultName"], name),
@@ -63,13 +63,13 @@ export async function getModelForAccount(name: string): Promise<string | undefin
  *  命令"的 toast，且设置面板的输入框不会标出"当前值非法"，很难把两者联系起来。fail-closed：
  *  非法即 throw，调用方（UI）负责 catch 并提示，绝不静默落盘。 */
 export async function setModelForAccount(name: string, model: string | null): Promise<void> {
-  // 〔DUP1 · `设计/90 §3` 判据 2〕写入点先说一句（用户在设置里敲完就知道，不必等下次起会话）—— 但**不手抄规则**：
+  // 写入点先说一句（用户在设置里敲完就知道，不必等下次起会话）—— 但**不手抄规则**：
   // 读 monitor 从 `shell_quote_core::model_name_ok` 那组常量现生成的式子（`src/frontend/ui/generated/judgment-rules.ts`），
   // 两侧由共用金样逐条对。原先这里调 TS 自己那份 `isValidModelName`〔散文墓碑〕（会拒 `sonnet[1m]`、Bedrock / Vertex 名）。
   if (model && !modelNameOk(model)) {
     throw new Error(copyText("accounts.setModel.invalid", { model: JSON.stringify(model) }));
   }
-  // 〔CFG1〕只动 `accounts.modelByAccount.<name>` 这一条路径：别的账号、`defaultName` 都不经这里。
+  // 只动 `accounts.modelByAccount.<name>` 这一条路径：别的账号、`defaultName` 都不经这里。
   const path = [CFG_KEY, MODEL_MAP_KEY, name] as const;
   await patchConfig([model ? setAt(path, model) : removeAt(path)]);
 }

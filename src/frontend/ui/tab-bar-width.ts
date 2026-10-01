@@ -1,13 +1,13 @@
 /**
  * 竖直 tab 栏的**宽度**：右缘拖拽把手 ＋ 记忆（Batch11-F33）。
  *
- * 〔CFG1 · 4D〕从 `main.ts` 整段搬来（D §D5：拖宽把手的 DOM、拖拽逻辑和宽度读写都住在 `main.ts`，
+ * 从 `main.ts` 整段搬来（D §D5：拖宽把手的 DOM、拖拽逻辑和宽度读写都住在 `main.ts`，
  * 直调 `localStorage.getItem/setItem`、键不在 `LS_KEYS` 里 —— 绕过了存储接入层）。
  * 今天：键是 `LS_KEYS.tabBarWidth`，读写走 `safeGet` / `safeSet`（私密模式 / 配额满不抛）。
  *
- * 住址仍是 localStorage：宽度算「UI 偏好」还是「用户手写的真相」（`设计/30 §B.4` 那条要住 `config.json`），
+ * 住址仍是 localStorage：宽度算「UI 偏好」还是「用户手写的真相」（那条要住 `config.json`），
  * 设计没裁（D §D5 原话「住址请 30 裁」）—— 本模块不替它裁，只把它收进 tab 栏自己这一族、进登记。
- * 画面契约：`设计/30 §1`「显式宽度 = `--tab-bar-w`」。
+ * 画面契约：「显式宽度 = `--tab-bar-w`」。
  */
 import { LS_KEYS, safeGet, safeSet } from "./local-storage";
 import { copyText } from "./copy-table";
@@ -82,7 +82,7 @@ export function mountTabBarResizer(): void {
   });
   appEl.appendChild(resizer);
   // 窄窗折叠（内容列 780px + 栏 + 呼吸空间放不下 → 图标条 44px）现在**整条在 CSS 里**：
-  // `styles.css` 的 `@media (width < 980px)`（`设计/40 §7` 步 5 · S24）。
+  // `styles.css` 的 `@media (width < 980px)`（S24）。
   // 这里原本是一个 `resize` 监听往 body 上挂 `.tabbar-collapsed`，而那个类
   // **只被写、从没被读**（唯一读者就是那几条 CSS 规则）⇒ 纯视觉断点绕一圈 JS，
   // 白付一次「窄窗启动先闪一下宽栏」。删掉监听不留等价物，别再加回来。

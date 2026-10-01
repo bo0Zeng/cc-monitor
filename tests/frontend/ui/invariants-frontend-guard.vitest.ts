@@ -5,9 +5,9 @@
  * （分家的理由写在那边：`scanning-guard-registry.vitest.ts` 的 `WALKER_CEILING`
  * 不许测试文件再多一个遍历者）。
  *
- * # 🔴 先说这条判据**为什么**存在，以及它订正了 `真相源/105` 的哪一句
+ * # 🔴 先说这条判据**为什么**存在，以及它订正了哪一句
  *
- * `真相源/105 §1.4` 的读数是：「条 21 · 22 · 12 · 13 · 14 这五条讲的全是前端，
+ * 原先的读数是：「条 21 · 22 · 12 · 13 · 14 这五条讲的全是前端，
  * 而 TS 侧 2 129 条判据里**没有一条的断言对象是那几条条文**」。
  * 那个读数**是对的**，但它后面那句推论 ——「所以它们没人守」——**不成立**。
  * `P21` 第一步现打核过（命令与逐条读数写在件里），结论是**三种情况混在一起**：
@@ -22,7 +22,7 @@
  * | **22.4** 精简模式 CSS 不塌 grid 行 | ✅ **已有人守** —— `tests/frontend/ui/app-grid-claims.vitest.ts`，`viewer` 模式的隐式行数钉在 0 | **不在这里复制**（`D1`） |
  * | **22.5** 关窗要 `core:window:allow-close` | ✅ **已有人守** —— `tests/frontend/shell/capability_registry_tests.rs::every_webview_permission_is_registered` 那条 `stale` 断言（`ALLOWED` 里登记过的权限必须还在 `capabilities/default.json` 里）。⚠ 那份文件的头注**逐字说 `§22` 那处讲的是「要加权限，不是不许加」** —— 它当时判的是「本条服务哪条要求」，而它顺带兑现的正是 `§22` 第 5 项 | **不在这里复制**（`D1`；且 `.rs` 不在本轮写区，只能登记） |
  * | **22.3/22.6** listen 先注册再 emit · 独立窗自调 `dispatcher.start()` | 🔴 **没人守** | ⇒ 本文件 ⑥ |
- * | **22.1/22.2** 开窗 IPC 必须 `async` · 定向事件 target-kind 对齐 | ✅ **Rust 那半已有人守**〔S5 · 第四波〕—— `tests/frontend/shell/lib_window_lifecycle_tests.rs::every_window_building_command_is_async`（建窗点集合两向相等 ＋ 每处 `async fn` ＋ 紧挨 `#[tauri::command]`）· `…::every_emit_to_targets_a_webview_window_not_a_bare_label`（`emit_to` 调用点两向相等 ＋ 目标由 `EventTarget::webview_window(` 绑定）。TS 那半（viewer 传 `windowScoped: true`）〔MIG-1 收尾 · V41〕随那个选项删了：`bindEvents` 里已没有 Tauri 监听，定向投递只剩 `src/comms/inward/chan.ts` 那一处按窗口作用域听 | **不在这里复制**（`D1`） |
+ * | **22.1/22.2** 开窗 IPC 必须 `async` · 定向事件 target-kind 对齐 | ✅ **Rust 那半已有人守**—— `tests/frontend/shell/lib_window_lifecycle_tests.rs::every_window_building_command_is_async`（建窗点集合两向相等 ＋ 每处 `async fn` ＋ 紧挨 `#[tauri::command]`）· `…::every_emit_to_targets_a_webview_window_not_a_bare_label`（`emit_to` 调用点两向相等 ＋ 目标由 `EventTarget::webview_window(` 绑定）。TS 那半（viewer 传 `windowScoped: true`）随那个选项删了：`bindEvents` 里已没有 Tauri 监听，定向投递只剩 `src/comms/inward/chan.ts` 那一处按窗口作用域听 | **不在这里复制**（`D1`） |
  *
  * ⇒ **`105` 那句「所以它们没人守」要改成「五条里有两条半今天真有人守，只是那些判据的
  * 散文里没点出它服务哪条条」。** 后半句才是 `105` 量到的东西（它量的是**指向**）。
@@ -97,7 +97,7 @@ describe("P21 ⓪ 量具自检（这几条不过，下面六格全是空转）",
     // 🔴 这个 25 是**等号**，不是地板：本文件第一版用「相邻规则共用 `}`」的 matchAll 形，
     //    这里实测报 16（漏 9 条），而 16 看起来完全正常。等号让那种漏当场可见。
     //    真加了一个 fixed 浮层 ⇒ 这里与下面 ② 的登记表**同时**红，那正是要的摩擦。
-    //    〔F7b 09-24〕25 → 24：少的是 `.sftp-overlay`（老 SFTP 面板的遮罩，随面板整段 CSS 退役；
+    // 25 → 24：少的是 `.sftp-overlay`（老 SFTP 面板的遮罩，随面板整段 CSS 退役；
     //    它挂在 `document.body` 上、不在 ② 的登记表里 —— 那张表今天一行都没因此变）。
     //    24 → 23：少的是 `.inbox-overlay`（收件箱编辑面随它的 CSS 一起删了；同样挂在 `document.body` 上、不在 ② 的表里）。
     //    23 → 22：少的是 `.agent-records-viewer-mount`（agent 面板点一行改成就地展开时间线，全屏查看器那层挂载壳删了；
@@ -236,7 +236,7 @@ describe("P21 ② 条 13：CSS portal 元素必须真挂 body", () => {
  * 那个审视动作**只发生在接入层的 `LS_KEYS` 旁边**。绕过去的 key 没人会想起来审。
  * ⇒ 这一格只许降。
  */
-// 〔CFG1 · 4D〕2 → 1：`cc-monitor.tab-bar-w` 进了 `LS_KEYS.tabBarWidth`（从 `main.ts` 直写收进 `tab-bar-width.ts`）。
+// 2 → 1：`cc-monitor.tab-bar-w` 进了 `LS_KEYS.tabBarWidth`（从 `main.ts` 直写收进 `tab-bar-width.ts`）。
 const OFF_LEDGER_KEYS: readonly string[] = ["cc-monitor.boot-id"];
 
 describe("P21 ③ 条 14：localStorage / IndexedDB key 必须前缀 `cc-monitor.`", () => {
@@ -354,13 +354,13 @@ describe("P21 ⑤ 条 21.2：`.stream` 家族在 CSS 里不许出现 `overflow-a
   it("★ JS 侧那个唯一豁免类：每处临时 `overflow-anchor:none` 都有还原，且还原在 `finally` 里", () => {
     const toggles = anchorToggles(SOURCES);
     // 分母：09-22 实测两处（`tabs.fillAbove` F40b · `session-viewer.maybeFillAbove` F39）。
-    // 〔`设计/10` 骨架 · 子步 4〕+2，同一豁免类（同步任务内临时关、`finally` 还原）：
+    // 〔骨架〕+2，同一豁免类（同步任务内临时关、`finally` 还原）：
     // `tabs.attachSkeleton`（视口上方插一块高占位时按 ΔscrollHeight 补偿）·
     // `skeleton-view.materializeRanges`（物化可见区时钉住视口里那张已渲染卡）。
     expect(
       toggles.length,
       "找不到任何临时关闭处 —— 下面两条在空集合上绿。要么补批路都删了（那这一格一起删），要么量具坏了",
-    ).toBe(6); // 〔U3b〕+1 同一豁免类：`skeleton-view.attachGaps`（查看器接骨架时钉住视口那张卡） // 〔RENDER2〕+1 同一豁免类：`skeleton-view.applyRefined`（第二级精算改占位高时钉住视口）
+    ).toBe(6); // +1 同一豁免类：`skeleton-view.attachGaps`（查看器接骨架时钉住视口那张卡） // +1 同一豁免类：`skeleton-view.applyRefined`（第二级精算改占位高时钉住视口）
     expect(
       toggles.filter((t) => t.onLine === null).map((t) => `${t.file}:${t.offLine}`),
       "临时关掉了 `overflow-anchor` 却找不到还原处 ⇒ 那个 tab / viewer 会话**永久**失去原生锚定",
@@ -392,7 +392,7 @@ describe("P21 ⑤ 条 21.2：`.stream` 家族在 CSS 里不许出现 `overflow-a
 
 describe("P21 ⑥ 条 22：独立窗口契约里 TS 这一侧的三项", () => {
   // 〔三入口拆分 · 住址搬家〕两个精简 bootstrap 从 `main.ts` 搬到了各自的入口模块
-  // （`viewer.html → entry-viewer.ts`、`settings.html → entry-settings.ts`，`设计/01 §1.2`）。
+  // （`viewer.html → entry-viewer.ts`、`settings.html → entry-settings.ts`）。
   // 切函数体的尺子与下面四条断言一字未改，只是换了文件读。
   const codeOf = (file: string): string => SOURCES.find((s) => s.file === file)?.code ?? "";
   const VIEWER = topLevelFnBody(codeOf("src/frontend/ui/entry-viewer.ts"), "bootstrapViewer");
@@ -405,7 +405,7 @@ describe("P21 ⑥ 条 22：独立窗口契约里 TS 这一侧的三项", () => {
     expect((SETTINGS ?? "").length, "`bootstrapSettings` 切得太短").toBeGreaterThan(300);
   });
 
-  // 〔CF2 · 第四波 4B〕viewer 不再单独调定向重放命令（`replay_session_to_window` 退役）：会话流经 `bindEvents` 的
+  // viewer 不再单独调定向重放命令（`replay_session_to_window` 退役）：会话流经 `bindEvents` 的
   //   `streams` 选项订（`session-lines/<sid>`，留存由那条订阅当场交）。「先注册再触发」这一条的两半因此换了住址：
   //   ① viewer 这一侧：订阅**只**经 `await bindEvents(…, { streams })`；② `events.ts` 那一侧：所有 listen 注册完
   //   （`await Promise.all(registrations)`）之后才 `chan.subscribe(`（订阅一登记，句柄就可能开始交格）。
@@ -415,7 +415,7 @@ describe("P21 ⑥ 条 22：独立窗口契约里 TS 这一侧的三项", () => {
     expect(bind, "`bootstrapViewer` 里找不到 `await bindEvents(` —— 要么改名了，要么 `await` 被摘了").toBeGreaterThan(-1);
     expect(/streams:\s*\[/.test(body.slice(bind)), "`bootstrapViewer` 的 `bindEvents` 没带 `streams` —— 独立窗口收不到会话内容").toBe(true);
     expect(body.includes("replay_session_to_window"), "退役的定向重放命令又回来了").toBe(false);
-    // 〔合并 MIG-1 × 主线 8c6cdc0e〕`events.ts` 那一半换判法：`bindEvents` 里最后几条 Tauri 监听两边各自退役（MIG-1 会话起停并进会话流 · MIG-3b `task-update`），
+    // `events.ts` 那一半换判法：`bindEvents` 里最后几条 Tauri 监听两边各自退役（MIG-1 会话起停并进会话流 · MIG-3b `task-update`），
     //   「先注册完 listen 再订」没有可排的序了 ⇒ 判「那里一条异步注册的 `listen` 都没有」—— 谁长回来一条，这里先红，逼人把「等注册完」那一格补回来。
     const ev = codeOf("src/frontend/ui/events.ts");
     expect(ev.indexOf("chan.subscribe("), "`events.ts` 里找不到 `chan.subscribe(`").toBeGreaterThan(-1);
@@ -426,7 +426,7 @@ describe("P21 ⑥ 条 22：独立窗口契约里 TS 这一侧的三项", () => {
     ).toBe(false);
   });
 
-  // 〔MIG-1 收尾 · V41〕「22.2（TS 那半）：viewer 的 `bindEvents` 必须带 `windowScoped: true`」那一条随那个选项删了（主会话裁）。
+  // 「22.2（TS 那半）：viewer 的 `bindEvents` 必须带 `windowScoped: true`」那一条随那个选项删了。
 
   it("★ 22.6：settings 窗必须自调 `dispatcher.applyOverrides` ＋ `dispatcher.start()`，各恰一处", () => {
     const body = SETTINGS ?? "";

@@ -23,7 +23,7 @@
      src-tauri/src/backend/control/local_backend.rs:1600  〔libc::fork〕 "libc::fork",        // 手写 fork+exec ⇒ 中间那段全归调用方
      src-tauri/src/backend/control/local_backend.rs:1601  〔libc::vfork〕 "libc::vfork",       // 同上，且它连地址空间都不换
      src-tauri/src/backend/control/local_backend.rs:1602  〔pre_exec〕 "command_fds",       // 那个 crate 装 fd 用的就是 `pre_exec`
-     src-tauri/src/backend/control/local_backend.rs:1603  〔CommandFdExt〕 "CommandFdExt",      // 同上，trait 名那一半
+     src-tauri/src/backend/control/local_backend.rs:1603 "CommandFdExt",      // 同上，trait 名那一半
      src-tauri/src/backend/control/local_backend.rs:1604  〔libc::posix_spawn〕 "libc::posix_spawn", // 手写 file actions：同一段窗口，只是搬进了 libc
      src-tauri/src/backend/control/local_backend.rs:1634  〔pre_exec〕 let live = "    unsafe { cmd.pre_exec(|| Ok(())) };";
      src-tauri/src/backend/control/local_backend.rs:1643  〔pre_exec〕 let commented = "// unsafe { cmd.pre_exec(|| Ok(())) };\n\
@@ -38,7 +38,7 @@
      src-tauri/src/backend/control/local_backend.rs:1600  〔libc::fork〕 "libc::fork",
      src-tauri/src/backend/control/local_backend.rs:1601  〔libc::vfork〕 "libc::vfork",
      src-tauri/src/backend/control/local_backend.rs:1602  〔command_fds〕 "command_fds",
-     src-tauri/src/backend/control/local_backend.rs:1603  〔CommandFdExt〕 "CommandFdExt",
+     src-tauri/src/backend/control/local_backend.rs:1603 "CommandFdExt",
      src-tauri/src/backend/control/local_backend.rs:1604  〔libc::posix_spawn〕 "libc::posix_spawn",
      src-tauri/src/backend/control/local_backend.rs:1634  〔pre_exec〕 let live = "    unsafe { cmd.pre_exec(|| Ok(())) };";
      src-tauri/src/backend/control/local_backend.rs:1643  〔pre_exec〕 let commented = "// unsafe { cmd.pre_exec(|| Ok(())) };\n\

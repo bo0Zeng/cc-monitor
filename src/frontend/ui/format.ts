@@ -60,7 +60,7 @@ export function formatBytes(n: number): string {
 /**
  * 路径的最后一段（给人看的短名；兼容 `\` 分隔与尾随 `/`）。
  *
- * 〔F7b〕从退役的老 SFTP 面板（`sftp/paths.ts`）搬来 —— 今天唯一的消费者是 viewer 窗的标题
+ * 从退役的老 SFTP 面板（`sftp/paths.ts`）搬来 —— 今天唯一的消费者是 viewer 窗的标题
  * （`entry-viewer.ts`：会话工作目录 → 窗口名）。它不切**远端**路径给后端用：那件事归 Rust 侧
  * `filewin::source::remote_basename`，只认 `/`。
  */
@@ -71,9 +71,9 @@ export function basename(path: string): string {
 }
 
 /**
- * 〔W5-RENDER R2 · `设计/17 §2.5`〕**第一条非空行**（trim 过），最多取 `max` 个字符。
+ * **第一条非空行**（trim 过），最多取 `max` 个字符。
  *
- * 为什么不 `text.split("\n").find(…)`：那是 O(整条) —— 单条正文最大 617 KB（`设计/17 §1.1`），
+ * 为什么不 `text.split("\n").find(…)`：那是 O(整条) —— 单条正文最大 617 KB，
  * 而这里只要 ≤ 60 个字。本函数只走到第一条非空行为止，而且**不切整行**：
  * 行首 / 行尾的空白各扫一次，正文只切出前 `max` 个字符。
  *
@@ -81,7 +81,7 @@ export function basename(path: string): string {
  * - `more`：那一行 trim 之后比 `max` 长。
  *
  * 空白的口径与 `String.prototype.trim` 相同（JS 的 `\s` 就是 WhiteSpace ∪ LineTerminator）。
- * 调用方：`cards/index.ts::firstLinePreview`；`设计/17 §2.5` 点名的第三处（agent 标签取首行）住
+ * 调用方：`cards/index.ts::firstLinePreview`；点名的第三处（agent 标签取首行）住
  * `tab-session-facts.ts` 的旁路记账员（STC 写区），那一处没有改过来。
  */
 export function firstLineOf(text: string, max: number): { line: string; more: boolean } {
@@ -106,7 +106,7 @@ export function firstLineOf(text: string, max: number): { line: string; more: bo
 }
 
 /**
- * 〔W5-RENDER R2 · `设计/17 §2.5`「只序列化头几个 key」〕`JSON.stringify(v)` 的**前缀**：
+ * 〔「只序列化头几个 key」〕`JSON.stringify(v)` 的**前缀**：
  * 一旦攒够 `limit + 1` 个字符就停，返回的串逐字等于 `JSON.stringify(v)` 的开头
  * （长度 > `limit` ⇔ 完整序列化也 > `limit`）。整份序列化是 O(整条)，而调用方只要 60 个字。
  *

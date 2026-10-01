@@ -6,7 +6,7 @@ workspace = "../shell"
 description = "cc-monitor 的文件管理窗口（又一个前端：egui 原生窗口，一窗一进程，只经通道说 call / subscribe）。"
 license = "MIT"
 
-# 〔P4 · `设计/90 §0.5.3` ⑰「文件窗口成独立包 `src/frontend/filewin/`」· 主会话 09-29 拍板 Q1〕
+# 〔「文件窗口成独立包 `src/frontend/filewin/`」· 主会话 09-29 拍板 Q1〕
 #   本包只有 lib：打包路线不变 —— 二进制仍是 monitor 包里的第二个 `[[bin]] cc-monitor-filewin`（一行转调 [`run`]），
 #   tauri-cli 按「包里每个 [[bin]]」把它装到主程序旁（`tests/evidence/K-R124-ruler.py` ⑭）。
 #   依赖只许契约类 ＋ 前端宿主原语 ＋ 自己的界面库；不链 monitor、不链判定类 crate（`contract_crate_guard_tests.rs` 钉）。
@@ -30,16 +30,16 @@ futures = "0.3"
 tracing = "0.1"
 uuid = { version = "1", features = ["v4"] }
 
-# 〔FILES2 · Q5〕上传块形（SFTP 起始目录不是后端 home 时窗口经后端链路分块写）要窗口自己算整份摘要交给提交当 `expect`。
+# 上传块形（SFTP 起始目录不是后端 home 时窗口经后端链路分块写）要窗口自己算整份摘要交给提交当 `expect`。
 # 已在 lockfile（`0.10.9`，别的依赖带进来的），此处提升为直接依赖、零新包。
 sha2 = "0.10"
 
-# 〔W5-FILES · 第五波 · `设计/60 §6.2`「原生选文件框」〕文件窗口（独立 egui 进程）的上传 / 存到哪儿那两问用操作系统自己的选择框。
+# 〔「原生选文件框」〕文件窗口（独立 egui 进程）的上传 / 存到哪儿那两问用操作系统自己的选择框。
 # 与 `tauri-plugin-dialog` 同一个版本、同一组 feature（它的缺省 `gtk3` ＋ `common-controls-v6`）⇒ 锁文件不多一个 crate。
 rfd = { version = "0.16", default-features = false, features = ["gtk3", "common-controls-v6"] }
 
-# 🔴〔步 24e · 2026-09-20〕**原生文件管理窗口**（`设计/60 §4 戊` · `§5` 第三段）。
-# 框架定案 egui 的读数住 `真相源/99`；许可 `MIT OR Apache-2.0`，与「不要 GPL」不冲突。
+# 🔴**原生文件管理窗口**（第三段）。
+# 框架定案 egui 的读数住；许可 `MIT OR Apache-2.0`，与「不要 GPL」不冲突。
 #
 # ⚠ **为什么这两条依赖挂在 `monitor` 上，而不是一个新 crate** —— 两条独立的理由，
 #    都不是省事（详细论证与现打依据住 `src/filewin/mod.rs` 的头注）：

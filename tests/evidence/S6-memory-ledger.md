@@ -1,4 +1,4 @@
-# 秤 6「内存」读数（`设计/17 §6` 表第 6 行）
+# 秤 6「内存」读数（表第 6 行）
 
 - **判据**：`tests/scale6-memory-ledger.vitest.ts`（13 格，全绿）
 - **死值验**：`bash tests/evidence/S6-mutations.sh`（8 刀，**8 刀全红**）
@@ -6,7 +6,7 @@
   （`branchRecordCount` ＋ `debugSnapshot` 里三个账本的条数）
 - **语料**：`tests/__fixtures__/scale2-height-records.jsonl`（69 条，**结构采自真机、正文全部合成**）。
   本轮**没有**读 `~/.claude/projects`，**没有**新造含真实会话正文的夹具
-  （`设计/17 §6` 数据源纪律 2026-09-18 改判，用户逐字「这是测试啊 / 不应该进」）。
+  （数据源纪律 2026-09-18 改判，用户逐字「这是测试啊 / 不应该进」）。
 - **日期**：2026-09-18。机器：devbox（Linux，node 22 / vitest 4.1.10 / jsdom）。
 
 ---
@@ -29,7 +29,7 @@
 | ① | `src/cards/index.ts` `buildResultBody` 的闭包（`renderMode` / 两个 click 监听 / `onToggle` 都捕获 `text`，而这些监听器挂在卡片的 DOM 上 ⇒ 与卡同寿） | **tool_result 正文全文** | 「展开前整个 DOM 里找不到正文；不喂第二遍、只展开一下 ⇒ 正文一字不差地回来了」 |
 | ② | `src/cards/index.ts` `RenderContext.pendingToolResults`（fallback 那一支 `ctx.pendingToolResults.set(id, { block, element })`） | **整条 `block`，含 `content` 原文**；配不上的（tool_use 永远不会来）一直留在表里 | 「第二处：tool_use 没来过 ⇒ 整条 block（含正文）留在 `ctx.pendingToolResults` 里」 |
 
-**① 是怎么在没有 heap snapshot 的情况下定论的**——`设计/17 §2.8` 逐字写着「这条要 heap snapshot 才能定论」。
+**① 是怎么在没有 heap snapshot 的情况下定论的**——写着「这条要 heap snapshot 才能定论」。
 本轮走的是另一条不需要 retainer 图的路，形状是**活体**而不是快照：
 
 1. 渲染一条 tool_result，正文里深处埋一个记号 `DEEP-MARK-6f3a91`（刻意不在首行 —— 首行会被
@@ -69,7 +69,7 @@
 
 ## 1. 甲：`buildResultBody` 闭包持有的文本总量
 
-装表处（`设计/17 §5.5` 点名「在 `cards/index.ts:570` 累加 `text.length`」）：
+装表处（点名「在 `cards/index.ts:570` 累加 `text.length`」）：
 
 - **出口侧** `produced` / `producedUnits` / `maxUnits` —— 记在 `injectOrBuildToolResult` 里
   `renderResultContent` 的返回处（设计点名的那一处）。
@@ -105,7 +105,7 @@
 
 ### §2.8 那个「约 7 MB/会话」对不对
 
-`设计/17 §2.8` 的推法是「4566 条 × 均值 3192 B，若一半是 tool_result ⇒ 约 7 MB/会话（UTF-16 下 ~14 MB）」。
+推法是「4566 条 × 均值 3192 B，若一半是 tool_result ⇒ 约 7 MB/会话（UTF-16 下 ~14 MB）」。
 拿本轮的单条均值 4 129 码元代进去：2283 条 × 4 129 ≈ **9.4 M 码元 ≈ 18.9 MB**（V8 双字节）。
 
 ⚠ **这是外推，不是读数，而且外推的分母是坏的**：这 12 条是**按字节分位分层挑**出来的，
@@ -117,7 +117,7 @@
 
 ## 2. 丙：三个账本的大小进 `debugSnapshot`
 
-现打的一行快照（`设计/17 §6` 要的三个数已在里面）：
+现打的一行快照（要的三个数已在里面）：
 
 ```
 [S6-丙] debugSnapshot = {"sid":"s1","scrollTop":0,"scrollHeight":0,"clientHeight":0,
@@ -138,7 +138,7 @@
 `BranchFolder.records` 是 private，而本轮写区**不含** `src/branch-fold.ts`（同一棵树上还有别路 agent 在写）。
 TS 的 `private` 只活在编译期 ⇒ `branchRecordCount` 按名字读一次。**读不到时返 `-1` 而不是 `0`**：
 返 0 会被读成「账本是空的」—— 那是一句**朝着「看起来一切正常」方向**的假话，
-正是 `设计/17 §6` 反复点名的那一族（坏掉的尺子把真缺陷一起藏起来）。
+正是反复点名的那一族（坏掉的尺子把真缺陷一起藏起来）。
 判据里有一格专钉「它不许是 -1」，死值验 M8 就是拔这根针。
 
 ### 反空真自检
@@ -209,7 +209,7 @@ M8 原本改的是 `folder as unknown as { records?: unknown }` 里的**类型�
    GC 的实际时机 —— 一个都不在里面。想要 RSS 得在真 WebView2 里用 devtools 或系统计数器量。
 2. **`resultTextLedger` 是累计流量，不是瞬时驻留。** 同一条 result 被重渲一次
    （`replaceChildren` 那一支）就再记一次，而旧闭包此刻已可回收 ⇒ 它是**驻留量的上界**。
-   要瞬时值还是得 heap snapshot（`设计/17 §5.5` 的另一半，**本轮没做** —— jsdom 里没有 retainer 图）。
+   要瞬时值还是得 heap snapshot（另一半，**本轮没做** —— jsdom 里没有 retainer 图）。
 3. **单位是 UTF-16 码元，不是字节。** 换算成堆上的量级要 ×2（V8 非 Latin-1 双字节）。
    上面每处都同时给了两个单位，别只抄一个数。
 4. **三个账本量的是条数，不是字节。** `pending` 一条是整条 payload（几 KB 级），
@@ -241,10 +241,10 @@ npx vitest run tests/scale2-height-truth.vitest.ts             # 12 格：证明
 
 ---
 
-## 6. 〔2026-09-24 · SE1〕第三个账本换了来源（本节只追加）
+## 6. 第三个账本换了来源（本节只追加）
 
-- **§0 引的那段原话已随字段一起删掉**：`Tab.userInputs` 那个旁路账本与它的头注在 SE1 删了
-  （`设计/10 §2.2b ⑤`）。大纲的清单改问后端要（`--list-user-inputs`），前端只剩
+- **§0 引的那段原话已随字段一起删掉**：`Tab.userInputs` 那个旁路账本与它的头注在 SE1 删了。
+ 大纲的清单改问后端要（`--list-user-inputs`），前端只剩
   `views/outline-source.ts::OutlineSource`（记 `end` 与已列 uuid）＋ 面板上那几行 80 字摘要。
   §0 的判词（「文本前端零处留存」不成立，破口在 tool_result）与这个账本无关，**不受影响**。
 - **快照字段名 `userInputs` 没改**，读数换成 `tab.outline.count`（= 后端清单的条数）。

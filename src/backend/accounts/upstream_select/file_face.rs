@@ -1,16 +1,16 @@
-//! 〔RM1a · 第四波〕**这台机器上那份凭据文件的帧面读写口** —— 上游选择自己的状态，不是用户文件。
+//! **这台机器上那份凭据文件的帧面读写口** —— 上游选择自己的状态，不是用户文件。
 //!
 //! # 它补的是哪一格
 //!
-//! 远端账号页建的 apikey 号，key 一直写进的是**本机**那份表（`设计/70 §13.2` 第三条）——
+//! 远端账号页建的 apikey 号，key 一直写进的是**本机**那份表（第三条）——
 //! 远端会话用不上。那份文件要落在**会话跑的那台机器**上，而那台机器上唯一住着的是它的后端。
 //! ⇒ 本模块是那台机器上这份文件**唯一的程序写者**：`apikey-key-set` 写一条账号的 key，
 //! `apikey-read` 回文件级的状态与「表里有哪几行」。两条都只从 `inbound.rs` 登记进来。
 //!
-//! # 🔴 归属：上游选择自己的状态，**不是用户文件**（判清的全文住 `调研/第四波记录/RM1a.md §1`）
+//! # 🔴 归属：上游选择自己的状态，**不是用户文件**（判清的全文住）
 //!
 //! 文件名、格式、落点都是本仓定的（`creds_core::store`），只有中转进程里的上游选择读它。
-//! ⇒ 它**不走**文件管理那一面（第三层 · 路径解析 · 暂存区 —— 那是给用户文件的；〔AR1 · V119〕上一版写「Claude 会话数据围栏」，
+//! ⇒ 它**不走**文件管理那一面（第三层 · 路径解析 · 暂存区 —— 那是给用户文件的；上一版写「Claude 会话数据围栏」，
 //!   FN1 之后那一面已不设会话文件围栏），
 //! 走 `readonly_guard` **第四层**（后端自有状态文件：按文件登记、动词闭集、只从一扇门进来）。
 //!
@@ -67,7 +67,7 @@ pub(crate) fn answer_set(args: &Value) -> FileFaceAnswer {
 
 /// [`answer_set`] 的本体，路径是参数（判据拿临时目录喂它，不碰真家目录）。
 pub(crate) fn answer_set_at(path: &Path, args: &Value) -> FileFaceAnswer {
-    // 〔HX2 · 第四波 4D〕入参从 `account` 换成 `configDir`：账号 id 由**这台后端**按全仓唯一那份规则推
+    // 入参从 `account` 换成 `configDir`：账号 id 由**这台后端**按全仓唯一那份规则推
     //   （`acct_core::apikey_account_id_of_dir`，起会话那一侧 `endpoint.rs` 调的同一个）。从前是 monitor 推好了交过来 ——
     //   那一跳随写 key 改走 `chan.call` 一起退了（前端一个字都不推账号 id：`KH2C1`）。不为旧形状留兼容：还给 `account` ⇒ 拒。
     let account_id = account_of(args)?;
@@ -77,8 +77,8 @@ pub(crate) fn answer_set_at(path: &Path, args: &Value) -> FileFaceAnswer {
         crate::common::contract::malformed("missing `key` (string)"),
     ))?;
     let key = SecretKey::new(plain);
-    // 〔ST2 × RM1a〕Base URL（加账号表单 apikey 那一支的第二格）：缺席 / null / 空串 = **不碰那一格**
-    //   （只配 key 时已有端点原样留着）；给了就先过**与装表同一个谓词**（〔DUP3 · J9〕`upstream_url_core::usable`：
+    // Base URL（加账号表单 apikey 那一支的第二格）：缺席 / null / 空串 = **不碰那一格**
+    //   （只配 key 时已有端点原样留着）；给了就先过**与装表同一个谓词**（`upstream_url_core::usable`：
     //   写得进去、却装不进表 ⇒ 那一行永远用不了），不对 ⇒ 整次不写（key 也不落）。
     let base_url = match args.get("baseUrl") {
         None | Some(Value::Null) => None,
@@ -251,8 +251,8 @@ pub(crate) fn answer_read() -> FileFaceAnswer {
 /// 界面要的正是那一句「读坏了」，而不是一次「命令失败」。
 ///
 /// `configured` / `masked` 说的是**顶层那一把**（`KH2C3`）。界面经 `chan.call` 直接问它、按形状收
-/// （〔US1〕monitor 那一份状态读者 `creds_store::read_status`〔散文墓碑〕与转发的 Tauri 命令退役）。
-/// 〔US1〕先前还回一格 `rows`（表里有哪几行，只给 monitor 起会话那一侧用）：「表里有哪几行」从此只有 [`rows_at`] 一份、
+/// （monitor 那一份状态读者 `creds_store::read_status`〔散文墓碑〕与转发的 Tauri 命令退役）。
+/// 先前还回一格 `rows`（表里有哪几行，只给 monitor 起会话那一侧用）：「表里有哪几行」从此只有 [`rows_at`] 一份、
 /// 只在这台后端里用（`launch-endpoint` · `apikey-routing` · `accounts-list`），不再出线。
 pub(crate) fn read_at(path: &Path) -> Value {
     let verdict = perm::judge(&perm::probe(path));
@@ -276,7 +276,7 @@ pub(crate) fn read_at(path: &Path) -> Value {
     })
 }
 
-/// ★★〔US1 · 第四波 4D〕**「表里有哪几行」的唯一住址** = 上游选择装表那一步（`table::build`，中转装表同一个函数、
+/// ★★**「表里有哪几行」的唯一住址** = 上游选择装表那一步（`table::build`，中转装表同一个函数、
 /// 同一张每 agent 默认上游）**真收进表**的那几行的 id。
 ///
 /// 先前这里（与 monitor `history::apikey_rows_at`〔散文墓碑〕）只筛「id 当不当得了路由段」，而装表还会因为
@@ -348,7 +348,7 @@ fn write_at(
     key: &SecretKey,
     base_url: Option<&str>,
 ) -> Result<(), (&'static str, String)> {
-    // 〔GP1 · 第四波〕本机那一份也由（本机）后端的这一处写，monitor 那侧的写口删了。
+    // 本机那一份也由（本机）后端的这一处写，monitor 那侧的写口删了。
     rewrite_at(path, &|current| {
         let merged = store::merge_account_key(current, id, key);
         Some(match base_url {
@@ -373,7 +373,7 @@ fn rewrite_at(path: &Path, change: Rewrite) -> Result<bool, (&'static str, Strin
             &[("path", &path.display().to_string())],
         ),
     ))?;
-    // 只建**这一层**（数据目录 `~/.cc-monitor`，也是后端的家）：建的那一下只给本人（V160）；父目录是家目录，不在就说出来、不替它建。
+    // 只建**这一层**（数据目录 `~/.cc-monitor`，也是后端的家）：建的那一下只给本人；父目录是家目录，不在就说出来、不替它建。
     if let Err(e) = crate::common::own_dir::ensure_private_dir(dir) {
         return Err((
             "io_failed",
@@ -383,7 +383,7 @@ fn rewrite_at(path: &Path, change: Rewrite) -> Result<bool, (&'static str, Strin
             ),
         ));
     }
-    // 〔HX2〕读—改—写整段在那个目录的跨进程锁里（`platform/lock.rs`）：两个后端进程同时给两个号写 key，
+    // 读—改—写整段在那个目录的跨进程锁里（`platform/lock.rs`）：两个后端进程同时给两个号写 key，
     //   从前后写的那一份整份盖掉先写的那一格（这一份连进程内锁都没有）。
     let _lock = crate::platform::lock::hold(dir).map_err(|e| ("io_failed", e))?;
     // ★ 写的这一刻读盘。解析不了 ⇒ `bad_file`，**不覆盖**。

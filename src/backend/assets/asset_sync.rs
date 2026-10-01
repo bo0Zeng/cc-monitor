@@ -1,9 +1,9 @@
-//! 〔AS2 · 第四波 4B · V113〕**资产目录的自动同步** —— 本机常驻后端沿它已有的那条 SSH 连接，拉远端的目录、合并、回写。
+//! **资产目录的自动同步** —— 本机常驻后端沿它已有的那条 SSH 连接，拉远端的目录、合并、回写。
 //!
-//! # 用户裁决（2026-09-25，`99 §1` V113，逐字）
+//! # 要求（逐字）
 //!
 //! 「比如本机后端在本机看见一个skill并记录下来, 就会和远端后端同步, 这样远端后端也能在远端装skill或者mcp」·
-//! 「目录自动同步，装要你点」。`设计/01 §3.5`：「观测方沿它本来就拥有的那条连接去拉被观测方」（零新通道）。
+//! 「目录自动同步，装要你点」。：「观测方沿它本来就拥有的那条连接去拉被观测方」（零新通道）。
 //!
 //! # 形状（一趟 = 对一台远端）
 //!
@@ -20,11 +20,11 @@
 //!
 //! - **不起远端的流模式**：流模式一起来就往 tmux server 装全局 hook（`control/tmux_hook.rs::install_hooks`，
 //!   载荷里烤着**那个进程**的 pid）—— 一个用完就退的流会把 monitor 那条真流的 hook 盖成一个死 pid。
-//! - **CLI 面默认读 stdin 读到 EOF**，而 capture 不关远端的 stdin ⇒〔W5-AUX · `设计/96 §3.6`〕推那一趟走 CLI 面的
+//! - **CLI 面默认读 stdin 读到 EOF**，而 capture 不关远端的 stdin ⇒推那一趟走 CLI 面的
 //!   「只读一行」入口（`lib.rs::STDIN_LINE_FLAG`，`control/cli_control.rs::read_input` 收）：命令行里只有后端路径与两个旗标，载荷一行由 capture 写进远端 stdin。
 //!   此前是 `printf '%s\n' '<json>' | …` 把载荷拼进命令行 —— 那要求远端登录 shell 认 POSIX 单引号与管道（fish 不认），已退役。
 //!   ⚠ 后端路径那一格仍过 POSIX 单引号（`remote_ask::command_line`）：路径里没有 `'` / `\` 时 fish 也认；
-//!   起远端后端那条命令用的也是同一个口径（`shell_quote_core::posix_quote`；〔THIN〕monitor `ssh_source` 那层转调壳已删）。
+//!   起远端后端那条命令用的也是同一个口径（`shell_quote_core::posix_quote`；monitor `ssh_source` 那层转调壳已删）。
 //! - **一趟的大小有上限**：远端 CLI 面 stdin 的上限（`cli_control::MAX_CLI_STDIN`，1 MiB，超了拒、不截断）⇒ 推的载荷按台切块，
 //!   一块不超过 [`PUSH_MAX_BYTES`]；**单独一台就超了 ⇒ 那一台不推、说出来**（不截断）。
 //!
@@ -36,7 +36,7 @@
 //!
 //! # 可达表（内存）与「问远端」那一跳
 //!
-//! 〔C4d · 第四波 4B〕两样都**不住这里了**：主会话 09-25 裁「一路造、两路用」—— `DialRemote`（capture 那一跳）
+//! 两样都**不住这里了**：「一路造、两路用」—— `DialRemote`（capture 那一跳）
 //! 与可达表（`origin → {拨号请求, 远端后端路径, 对面的 id}`）原样提到中立住址 `crate::stream::remote_ask`，逻辑一字不改；
 //! 本模块只剩资产目录那一套（拉什么、并什么、推什么、扇不扇出）。历史跨机 join 用的是同一张表、同一个对面。
 
@@ -45,11 +45,11 @@ use std::collections::BTreeMap;
 
 use serde_json::{json, Value};
 
-// 〔C4d〕问远端那一跳与可达表住 `remote_ask`（原样搬过去的）；这里只取用，不再导出。
+// 问远端那一跳与可达表住 `remote_ask`（原样搬过去的）；这里只取用，不再导出。
 use crate::stream::remote_ask::{lock, Reach, Remote, Table, REACH};
 
 /// 一块推的载荷（JSON 本身）的上限。
-/// 〔W5-AUX〕原理由是「`sh -c` 那一个参数 128 KiB，留出引号转义的余量」—— 载荷改走 stdin 之后那条上限不在了，
+/// 原理由是「`sh -c` 那一个参数 128 KiB，留出引号转义的余量」—— 载荷改走 stdin 之后那条上限不在了，
 /// 今天管它的是远端 CLI 面 stdin 的上限（1 MiB，判据钉「本值不超过它」）。值**没动**（放不放大交主会话，见 `W5-AUX.md §7`）。
 pub const PUSH_MAX_BYTES: usize = 96 * 1024;
 
@@ -66,7 +66,7 @@ pub fn pull_command() -> String {
     crate::stream::remote_ask::command_line(&[PULL_FLAG])
 }
 
-/// 〔W5-AUX · `设计/96 §3.6`〕推那一趟的命令行：**只有后端路径与两个旗标，不含载荷**；载荷由 [`push_stdin`] 经 capture 写进 stdin。
+/// 推那一趟的命令行：**只有后端路径与两个旗标，不含载荷**；载荷由 [`push_stdin`] 经 capture 写进 stdin。
 pub fn push_command() -> String {
     crate::stream::remote_ask::command_line(&[PUSH_FLAG, crate::STDIN_LINE_FLAG])
 }
@@ -262,7 +262,7 @@ pub async fn answer_with(
     let origin = args.get("origin").and_then(Value::as_str);
     let mut first: Option<String> = None;
     if let (Some(o), None) = (origin.filter(|o| !o.is_empty()), args.get("dial")) {
-        // 〔MIG-3a〕界面经通道直问（只给 `origin`）：怎么够到那台由握手那一刻的 `remote-reach` 登记过 —— 查不到就明说，不猜。
+        // 界面经通道直问（只给 `origin`）：怎么够到那台由握手那一刻的 `remote-reach` 登记过 —— 查不到就明说，不猜。
         if !lock(table).contains_key(o) {
             return Err((
                 "unreachable",
@@ -271,7 +271,7 @@ pub async fn answer_with(
         }
         first = Some(o.to_string());
     } else if origin.is_some() {
-        // 〔C4d〕登记那一段原样搬进 `remote_ask::register`（可达表唯一的写口；`remote-reach` 也经它）。
+        // 登记那一段原样搬进 `remote_ask::register`（可达表唯一的写口；`remote-reach` 也经它）。
         first = Some(crate::stream::remote_ask::register(table, args)?);
     } else if args.get("dial").is_some() {
         return Err((

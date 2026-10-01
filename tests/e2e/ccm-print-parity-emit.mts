@@ -1,6 +1,6 @@
 // F03「--print 平价预言机」的输入源：一批代表性场景的完整 `ccm …` 调用行。
 //
-// 〔LR1 · U8c-3〕输入源从「现场跑 TS 渲染器 `tryRenderCli`」换成**入库夹具 `cli-golden.json`**
+// 输入源从「现场跑 TS 渲染器 `tryRenderCli`」换成**入库夹具 `cli-golden.json`**
 // 里名字以 `print-parity:` 打头的那四条用例的 `out`。
 // ⚠ 这**不是**换成手搓命令：那四行的来历有一条链，每一环都有东西会红 ——
 //   ① `out` 写在 `src/frontend/ui/launch-cli-golden.ts` 的用例表里（手写期望），落盘 == 现场由

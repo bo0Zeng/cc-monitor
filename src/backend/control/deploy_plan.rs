@@ -1,4 +1,4 @@
-//! 要求住址：`调研/第四波记录/_施工/4d-lanes.md` MIG-3b 第 1 条 ——「`sftp.rs` 部署决策（该不该换 · 换成什么 · 身份判定）进后端；monitor 只放字节」。
+//! MIG-3b 第 1 条 ——「`sftp.rs` 部署决策（该不该换 · 换成什么 · 身份判定）进后端；monitor 只放字节」。
 //!
 //! # 帧命令 `deploy-plan`（本机常驻后端答）
 //!
@@ -6,25 +6,25 @@
 //! （`carried`，`[{os, arch, id}]`，放字节的一侧才知道）。本模块沿池里那条 SSH 问那台：
 //!
 //! 1. `uname -s -m`（[`deploy_contract::key_from_uname`]）→ 表 A / 表 B（[`judge`]）→ 这一版带没带那一格（`carried`）——
-//!    **换成什么**；拒绝点在写第一个字节之前（`设计/96 §7.1.4b`）；
+//!    **换成什么**；拒绝点在写第一个字节之前；
 //! 2. 落点那一份是谁：stat（没有 / 0 字节就不必再问）→ 扫它字节里的身份戳（一次 exec，不跑它）；
-//!    不肯说自己是谁时读回来看是不是从前那份三行入口 —— **身份判定**（`96 §7.2`）；
+//!    不肯说自己是谁时读回来看是不是从前那份三行入口 —— **身份判定**；
 //! 3. **该不该换**（[`landing_verdict`]：只升不降）；旧落点那份字节要不要删（[`legacy_verdict`]）；
-//! 4. 〔WF2 · WIN3 读数 B〕落点那个目录里上一趟没收拾掉的临时件 / 备份件（[`stale_leftovers`]）—— 每次连上都问一次，交 monitor 删。
+//! 4. 落点那个目录里上一趟没收拾掉的临时件 / 备份件（[`stale_leftovers`]）—— 每次连上都问一次，交 monitor 删。
 //!
-//! # 〔THIN〕帧命令 `deploy-retired`（同一家：落点上该清的东西）
+//! # 帧命令 `deploy-retired`（同一家：落点上该清的东西）
 //!
-//! 旧版放在远端 `~/.local/bin/ccm` 的那一份（`设计/01 §6.7b` ③）：认出是我们放的才删、删带读到的那一份当期望值（[`retired_verdict`]）；
+//! 旧版放在远端 `~/.local/bin/ccm` 的那一份：认出是我们放的才删、删带读到的那一份当期望值（[`retired_verdict`]）；
 //! monitor 照答经那台后端 `files-delete` 删。不并进 `deploy-plan` 的答：计划是连上那台常驻后端**之前**问的（预检），
 //! 那时 `files-delete` 无门可走（那一格在 SFTP 两个写根之外）；删它的两个时刻（部署按钮 · 那台长连接握手完成）那台后端都在。
 //!
 //! 回计划，一个字节都不写：放字节（mkdir · 原子上传 · 读回比对）与删旧落点 · 删残件仍是 monitor 经 `files` 链路做（SR1b 那条路不变）。
 //!
-//! # 〔THIN〕帧命令 `resident-verdict`（同一家）
+//! # 帧命令 `resident-verdict`（同一家）
 //!
 //! 远端常驻后端 hello 报的 build 比 monitor 手上这一版旧 ⇒ 换一次（[`resident_verdict`]）；monitor 只照做（`remote_resident::attach`）。
 //!
-//! # 〔P1〕帧命令 `place-verdict`（同一家：本机那一份放不放）
+//! # 帧命令 `place-verdict`（同一家：本机那一份放不放）
 //!
 //! monitor 放本机后端之前还没有常驻后端可问 ⇒ 问手上那份字节自己（写成暂存件、跑它的 CLI 面）：表 B 本机那一行 · 落点那一份
 //! vs 自己的 `BUILD_ID`（[`place_verdict`]）。原共享 crate `deploy-core` 的判定那一半（承诺 · 换不换 · 认不认 · 取样解释）从此只住本文件；
@@ -49,7 +49,7 @@ use deploy_contract::{
 };
 use serde_json::{json, Value};
 
-/// 〔THIN〕旧入口 `~/.local/bin/ccm` 最多读多少：读到的全文要原样装进 monitor 那一趟 `files-delete` 的 `expect`
+/// 旧入口 `~/.local/bin/ccm` 最多读多少：读到的全文要原样装进 monitor 那一趟 `files-delete` 的 `expect`
 /// （后端一行上限 1 MiB）⇒ 取与 `files-peek` 同一个口径的数（那一面的常量不跨模块取：文件管理后端只经它的门够）。
 const RETIRED_READ_MAX: u64 = 256 * 1024;
 
@@ -75,19 +75,19 @@ pub trait Facing: Send + Sync {
     ) -> Fut<'a, Result<(Option<Option<u64>>, Option<bool>), String>>;
     /// 整份读回来；读不出 · 比 `max` 大（先问大小，大了不读）⇒ `None`。
     fn read<'a>(&'a self, rel: &'a str, max: u64) -> Fut<'a, Option<Vec<u8>>>;
-    /// 〔WF2〕列一个目录：`(名字, 修改时间秒)`；列不出 ⇒ `None`。
+    /// 列一个目录：`(名字, 修改时间秒)`；列不出 ⇒ `None`。
     fn list<'a>(&'a self, rel: &'a str) -> Fut<'a, Option<Vec<(String, Option<u64>)>>>;
 }
 
-// ═══ 〔P1〕部署判定：原共享 crate `deploy-core` 的判定那一半（`设计/00 §1.2` 判定只在后端）══════════════
+// ═══ 部署判定：原共享 crate `deploy-core` 的判定那一半（判定只在后端）══════════════
 //
 // 契约那一半（键 · 戳格式 · 答话形状 · 路径）住 `deploy_contract`，两侧同一份；下面这几条裁决只住这里，
 // monitor 那两处自举（本机后端放下去之前）改问手上那份字节自己（[`answer_place`]，帧命令 `place-verdict`）。
 
-/// 表 B：这个 origin 今天承诺哪几种机器（`01 §6.7a`：本机 Windows x86_64 · 本机 Linux〔用户 09-18「算」〕· 远端 Linux 两个 arch）。
+/// 表 B：这个 origin 今天承诺哪几种机器（本机 Windows x86_64 · 本机 Linux〔用户 09-18「算」〕· 远端 Linux 两个 arch）。
 ///
-/// 〔V132 · 09-25〕用户原话「不承诺. 适配部分, 即os适配部分后面单独写单独做.」⇒ **本机 (Linux, aarch64) 不承诺**
-/// （`96 §7.1.5` 那句「建议本机 Linux 限定 x86_64、本机侧走「不承诺」那一形」，即 [`Refusal::NotPromisedHere`]）。于是本表不再只按 OS 分：
+/// 用户原话「不承诺. 适配部分, 即os适配部分后面单独写单独做.」⇒ **本机 (Linux, aarch64) 不承诺**
+/// （那句「建议本机 Linux 限定 x86_64、本机侧走「不承诺」那一形」，即 [`Refusal::NotPromisedHere`]）。于是本表不再只按 OS 分：
 /// 本机那两行都钉到 x86_64（本机 Windows arm64 本来就不在产线里，`V31`），远端 Linux 两个 arch 照旧。
 /// 承诺面的唯一住址是 `tests/evidence/K-G4-platform-ledger.py` 的 `PROMISE_FACE`；本函数与它两向相等
 /// 由 `deploy_plan_tests.rs::the_promise_face_in_the_ledger_equals_the_code` 钉着。
@@ -165,11 +165,11 @@ pub fn is_newer(mine: &str, theirs: &str) -> bool {
     matches!((deploy_contract::build_order(mine), deploy_contract::build_order(theirs)), (Some(m), Some(t)) if m > t)
 }
 
-/// 要不要（重）部署 —— **对照物是手上那份字节自报的身份**（`96 §7.2.3`），不是源码常量。**纯函数**。
+/// 要不要（重）部署 —— **对照物是手上那份字节自报的身份**，不是源码常量。**纯函数**。
 ///
 /// `Err` = 显式失败、**一个字节都不写**（出路交给用户：机器页「卸载后端」删掉那个文件，就是明确授权覆盖）。
 ///
-/// 〔HX2 · D-b〕「另一版」那一格按 [`deploy_contract::build_order`] 拆两格：那台上的**比这一版旧** ⇒ 换；**不比这一版旧** ⇒ [`DeployAction::Keep`]
+/// 「另一版」那一格按 [`deploy_contract::build_order`] 拆两格：那台上的**比这一版旧** ⇒ 换；**不比这一版旧** ⇒ [`DeployAction::Keep`]
 /// （两个不同版本的 monitor 连同一台远端，从此只会升不会降，不再每次连上互相换掉 —— 审计 E3）。
 pub fn identity_decision(
     id: &RemoteIdentity,
@@ -232,7 +232,7 @@ pub fn identity_decision(
 }
 
 /// 这份文本是不是我们从前放的那一形 `ccm` 入口（三行 shim / bash 启动器两形之一）。**纯函数**。
-/// 用户：旧落点那一份（[`retired_verdict`]，远端读回的 · 〔P1〕monitor 本机探针交来的 PATH 上另一个 `ccm` 的开头）· 今天的落点上从前那份三行入口（[`landing_verdict`]）。
+/// 用户：旧落点那一份（[`retired_verdict`]，远端读回的 · monitor 本机探针交来的 PATH 上另一个 `ccm` 的开头）· 今天的落点上从前那份三行入口（[`landing_verdict`]）。
 /// 两形的记号是文件格式（`deploy_contract::SHIM_MARK` · `LAUNCHER_MARK`）。
 pub fn is_ours(text: &str) -> bool {
     let mut lines = text.lines();
@@ -245,7 +245,7 @@ pub fn is_ours(text: &str) -> bool {
     second == deploy_contract::SHIM_MARK || second.starts_with(deploy_contract::LAUNCHER_MARK)
 }
 
-/// 〔E2〕落点那一份怎么办：先按身份戳判（[`identity_decision`]）；「不说自己是谁」时再看它是不是我们从前放的
+/// 落点那一份怎么办：先按身份戳判（[`identity_decision`]）；「不说自己是谁」时再看它是不是我们从前放的
 /// 三行入口（[`is_ours`]，`old_entry` = 读回来的那一份字节，读不到 ⇒ `None`）—— 是 ⇒ 换成后端本体（部署那一步是原子替换）；
 /// 不是 ⇒ 照旧显式失败、不动。**纯函数**。
 pub fn landing_verdict(
@@ -276,11 +276,11 @@ pub fn legacy_verdict(id: Result<RemoteIdentity, String>) -> LegacyVerdict {
     }
 }
 
-/// 〔WF2 · WIN3 读数 B〕残件多久没动过才算没人要：远大于 monitor 等一次 `put` 的上限（`dial_host::FILES_PUT_DEADLINE`，600 秒）
+/// 残件多久没动过才算没人要：远大于 monitor 等一次 `put` 的上限（`dial_host::FILES_PUT_DEADLINE`，600 秒）
 /// ⇒ 另一个部署者正在写的那一份（修改时间随写不断刷新）不会被当成残件；也容得下两台机器之间一些钟差。
 pub const LEFTOVER_STALE_SECS: u64 = 3600;
 
-/// 〔WF2 · WIN3 读数 B〕`dir` 里哪几份是 [`crate::dial::sftp::put_atomic`] 留下、已经没人要的临时件 / 备份件（`dir/名字`，排序）。
+/// `dir` 里哪几份是 [`crate::dial::sftp::put_atomic`] 留下、已经没人要的临时件 / 备份件（`dir/名字`，排序）。
 /// 只认那个形状（`dial::sftp::is_trip_leftover`）；修改时间缺 / 比 `now` 新 ⇒ 不算（宁可多留一轮）。
 pub fn stale_leftovers(dir: &str, entries: &[(String, Option<u64>)], now_secs: u64) -> Vec<String> {
     let mut out: Vec<String> = entries
@@ -299,13 +299,13 @@ pub fn stale_leftovers(dir: &str, entries: &[(String, Option<u64>)], now_secs: u
 #[derive(Debug, PartialEq, Eq)]
 pub struct Plan {
     pub key: Key,
-    /// 这一版带着的那一格自报的身份（对照物，`96 §7.2.3`）。
+    /// 这一版带着的那一格自报的身份（对照物）。
     pub expected: String,
     pub action: DeployAction,
     pub legacy: LegacyVerdict,
-    /// 〔WF2〕落点目录里没人要的临时件 / 备份件（家目录相对）；monitor 照删。列不出那个目录 ⇒ 空（下次再问）。
+    /// 落点目录里没人要的临时件 / 备份件（家目录相对）；monitor 照删。列不出那个目录 ⇒ 空（下次再问）。
     pub leftovers: Vec<String>,
-    /// 〔MIG-3b 续 · VIS2〕问 `uname` 那一趟的 ack（本机后端里拨的号 —— 第一次连一台没钉过指纹的机器就在这一跳）：
+    /// 问 `uname` 那一趟的 ack（本机后端里拨的号 —— 第一次连一台没钉过指纹的机器就在这一跳）：
     /// 原样交回，monitor 按它固化指纹（`dial_host::settle_host_key`，与自己拨号那几条同一个判定）。
     pub ack: Value,
 }
@@ -333,10 +333,10 @@ async fn identity_at(facing: &dyn Facing, rel: &str, word: &str) -> Result<Remot
     })
 }
 
-/// 〔THIN〕**那台要哪一格字节** —— 部署计划的第 ① 步。
+/// **那台要哪一格字节** —— 部署计划的第 ① 步。
 ///
 /// 问 `uname -s -m`（[`deploy_contract::key_from_uname`]）→ 表 A / 表 B（[`judge`]）→ 这一版带没带那一格（`carried`）。
-/// 拒绝点在写第一个字节之前（`设计/96 §7.1.4b`）；回那一格与问 `uname` 那一趟拨号的 ack。
+/// 拒绝点在写第一个字节之前；回那一格与问 `uname` 那一趟拨号的 ack。
 async fn slot_of(
     facing: &dyn Facing,
     carried: &[Key],
@@ -563,7 +563,7 @@ pub async fn answer(args: &Value, facing: &dyn Facing) -> Result<Value, (&'stati
         .map(|p| plan_json(&p))
 }
 
-// ═══ 〔THIN〕旧入口 `~/.local/bin/ccm` 的去向（帧命令 `deploy-retired`）══════════════════════════════
+// ═══ 旧入口 `~/.local/bin/ccm` 的去向（帧命令 `deploy-retired`）══════════════════════════════
 //
 // 与上传残件（[`stale_leftovers`]）同一家：落点上该清的东西，判在这里，monitor 照删。从前 monitor `ccm_legacy::sweep`
 // 自己读、自己认（`is_ours`）、自己决定删；今天它只把这里的答交给那台后端的 `files-delete`（带 `expect`）。
@@ -600,7 +600,7 @@ pub fn retired_verdict(at: TargetBinary, bytes: Option<Vec<u8>>) -> Retired {
 }
 
 /// 帧面入口：`{dial}` → `{verdict: "absent" | "remove" | "keep", expect, why}`。缺 `dial` ⇒ `bad_args`；SFTP 开不成 ⇒ `unreachable`。
-/// 〔P1 · 第 3 件〕另一形 `{text}`：本机 PATH 上另一个 `ccm` 的开头一截（monitor 读的），同一个 [`retired_verdict`] 认它是不是我们早先放的
+/// 另一形 `{text}`：本机 PATH 上另一个 `ccm` 的开头一截（monitor 读的），同一个 [`retired_verdict`] 认它是不是我们早先放的
 /// （monitor 只拿来说话，不删）。两形恰给一个，都给 / 都不给 ⇒ `bad_args`（不许退成问本机落点）。
 pub async fn answer_retired(
     args: &Value,
@@ -645,10 +645,10 @@ fn retired_json(r: Retired) -> Value {
     }
 }
 
-// ═══ 〔THIN〕远端常驻后端 hello 的新旧（帧命令 `resident-verdict`）═══════════════════════════
+// ═══ 远端常驻后端 hello 的新旧（帧命令 `resident-verdict`）═══════════════════════════
 //
 // monitor 接远端常驻后端时读到 hello，从前自己判「那台比手上这一版旧 ⇒ 换一次」（`is_newer`）；
-// 判定归后端（`设计/00 §1.2`「判定只在后端」），与部署计划同一家：「换不换」都在这里判，monitor 只照做。
+// 判定归后端（「判定只在后端」），与部署计划同一家：「换不换」都在这里判，monitor 只照做。
 
 /// hello 那一问的答：`replace` = 换掉再接（只升不降，HX2 D-b，且只换一次）；`older` = 那台比手上这一版旧（版本那句话按它挑）。
 #[derive(Debug, PartialEq, Eq)]
@@ -689,12 +689,12 @@ pub fn answer_resident_verdict(args: &Value) -> Result<Value, (&'static str, Str
     }))
 }
 
-// ═══ 〔P1〕本机那一份放不放（帧命令 `place-verdict`）═══════════════════════════════════════════
+// ═══ 本机那一份放不放（帧命令 `place-verdict`）═══════════════════════════════════════════
 //
-// 本机常驻后端放下去之前没有后端可问 —— 可「`ccm` 就是后端本体」（V28）：monitor 手上那份字节就是一个后端。
+// 本机常驻后端放下去之前没有后端可问 —— 可「`ccm` 就是后端本体」：monitor 手上那份字节就是一个后端。
 // monitor 把它写成暂存件、跑 `<暂存件> -- --place-verdict` 问一次（CLI 面自动派生），照答放或不放（`local_backend::extract_embedded_to`）；
 // 判定（表 B 本机那一行 · 落点那一份 vs 自己的 `BUILD_ID`，只升不降）只在这里。
-// 〔主会话 09-29 认的偏离〕本机 (Linux, aarch64) 的「不承诺」落在写暂存件之后（`96 §7.1.4b` 字面是写第一个字节之前）：问完即删、净足迹零。
+// 〔主会话 09-29 认的偏离〕本机 (Linux, aarch64) 的「不承诺」落在写暂存件之后（字面是写第一个字节之前）：问完即删、净足迹零。
 
 /// 本机那一份的去向。
 #[derive(Debug, PartialEq, Eq)]

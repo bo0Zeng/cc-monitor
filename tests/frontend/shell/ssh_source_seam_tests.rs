@@ -75,7 +75,7 @@ fn the_overflow_message_stops_lying_when_state_was_lost() {
     assert!(!m.contains("清单**不全**"), "没截断就别说截断：{m}");
 }
 
-/// 只丢内容帧时**沿用老说法那一句**（按文案键，`设计/91 §6`）—— 旧后端（`p1x` 之前）不发 `lost`，
+/// 只丢内容帧时**沿用老说法那一句**（按文案键）—— 旧后端（`p1x` 之前）不发 `lost`，
 /// 也落这一档，说的必须是同一句。
 #[test]
 fn the_overflow_message_is_byte_identical_when_only_lines_were_lost() {
@@ -192,5 +192,5 @@ fn routing_without_a_client_is_reported_not_panicked() {
     assert!(!route_inbound_frame("no-client-origin", None, other));
 }
 
-// 〔MIG-1 续 · ⑬〕控制通道往返探测那两条（真发 ping 并等应答 · 对旧后端一个字节不发）随测试连接搬进后端：
+// 控制通道往返探测那两条（真发 ping 并等应答 · 对旧后端一个字节不发）随测试连接搬进后端：
 //   `tests/backend/dial_probe_tests.rs`（`a_hello_that_answers_ping_is_all_green` · `an_old_backend_without_commands_says_too_old`）。

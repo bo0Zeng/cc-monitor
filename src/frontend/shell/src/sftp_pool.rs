@@ -1,9 +1,9 @@
-//! 传输台的 **monitor 这一侧：只剩中继**（〔SR1b · 2026-09-24〕用户 V89「SFTP 进本机常驻后端，只写暂存区」）。
+//! 传输台的 **monitor 这一侧：只剩中继**（用户「SFTP 进本机常驻后端，只写暂存区」）。
 //!
 //! # 它今天是什么
 //!
 //! 窗口进程经通道说 `call(origin, "transfer-upload" | "transfer-download", …)` 开单、`subscribe(origin, "transfer/<id>")`
-//! 起跑并看进度、停订即撤（`设计/60 §4.2`，**一个字没变**）。那一面的宿主 `chan/host.rs` 把这两条交到这里；
+//! 起跑并看进度、停订即撤（**一个字没变**）。那一面的宿主 `chan/host.rs` 把这两条交到这里；
 //! 这里把它们**原样转给本机常驻后端**（`transfer-upload` / `-download` / `-start` / `-stop`，后端 `control/transfer.rs`），
 //! 再把后端推上来的 `transfer` 帧（经本机那条流的吸收点，[`deliver`]）翻成窗口认的那几格（[`Snap`]）。
 //!
@@ -70,11 +70,11 @@ pub struct Snap {
 /// 怎么收场的。
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum End {
-    /// 传完了。〔FW1 · 第四波 4D〕上传那一路带整份本机文件的摘要（窗口提交时原样交回当 `expect`）；下载那一路 `None`。
+    /// 传完了。上传那一路带整份本机文件的摘要（窗口提交时原样交回当 `expect`）；下载那一路 `None`。
     Done { bytes: u64, sha256: Option<String> },
     /// 失败（带下层原话）。上传那一路的暂存件**留着**给续传。
     Failed(String),
-    /// 〔FILES2 · Q5〕带码的失败（传输台说的码，今天只有 `sftp_home_mismatch`：SFTP 起始目录不是那台后端的 home）。
+    /// 带码的失败（传输台说的码，今天只有 `sftp_home_mismatch`：SFTP 起始目录不是那台后端的 home）。
     FailedCoded { why: String, code: String },
     /// 撤了（停订 / 连接断了）。上传那一路的暂存件已删。
     Cancelled,
@@ -133,7 +133,7 @@ pub async fn transfer_call(
     };
     let dial = crate::dial_host::transfer_dial(&cfg).map_err(|e| ("bad_args".to_string(), e))?;
     let args = match op {
-        // 〔FILES2 · Q5〕`home`（可缺席）：窗口问那台后端拿到的 `$HOME`，传输台连上之后与 SFTP 起始目录比，原样转。
+        // `home`（可缺席）：窗口问那台后端拿到的 `$HOME`，传输台连上之后与 SFTP 起始目录比，原样转。
         TRANSFER_UPLOAD => {
             let mut a = serde_json::json!({ "dial": dial, "local_path": text("local_path")? });
             if let Some(h) = payload.get("home").filter(|v| v.is_string()) {
@@ -141,9 +141,9 @@ pub async fn transfer_call(
             }
             a
         }
-        // 〔FN1 · V119〕这里原来先判一次本机落点是不是 Claude 会话数据（开单时出声早）。用户「文件管理器全部都可以改.
+        // 这里原来先判一次本机落点是不是 Claude 会话数据（开单时出声早）。用户「文件管理器全部都可以改.
         //   不需要任何围栏」⇒ 删了；落点的路径解析（绝对路径 · 父目录在盘上）在本机常驻后端 `transfer-download` 开单那一判。
-        // 〔FILES2 · Q4〕下载的本机落点收字符串或 `{"b16": …}`（有损名在 Linux 上按原始字节落名），原样转给本机后端判。
+        // 下载的本机落点收字符串或 `{"b16": …}`（有损名在 Linux 上按原始字节落名），原样转给本机后端判。
         TRANSFER_DOWNLOAD => serde_json::json!({
             "dial": dial,
             "remote_path": text("remote_path")?,
@@ -330,7 +330,7 @@ pub(crate) fn fail_owned_by(client: &Arc<InboundClient>, why: &str) {
 #[path = "../../../../tests/frontend/shell/sftp_pool_tests.rs"]
 pub(crate) mod tests;
 
-/// 〔F7c · 第三波 09-24〕**SFTP 那一族收到只剩传输**的恒等登记（`设计/60 §13.4`）；〔SR1b〕再收到「中继零 SFTP」。
+/// **SFTP 那一族收到只剩传输**的恒等登记；再收到「中继零 SFTP」。
 #[cfg(test)]
 #[path = "../../../../tests/frontend/shell/sftp_family_registry_tests.rs"]
 mod family_registry;

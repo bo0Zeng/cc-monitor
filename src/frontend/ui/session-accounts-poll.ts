@@ -31,7 +31,7 @@
  * 账号列表只在迁移/登录时变。**两者的区别是数据变化率，不是疏忽** ——
  * 写在这里免得下一个人「顺手统一一下」。
  *
- * # 🔴 〔`C1` · 2026-09-24〕那个 10 秒轮询**删了**
+ * # 🔴 那个 10 秒轮询**删了**
  *
  * 它补的是「别人改了账号没有事件源」（`polling_registry` 那条 F02 订正逐字）。两件事改了它的前提：
  *
@@ -41,7 +41,7 @@
  *    进程活着时环境不变）—— 而会话起停**本来就有帧**（`session_added` / `session_removed`），
  *    monitor 早就把它们转成 远端 `live` 格 / `ended` 格 两个事件。
  *
- * ⇒ 刷新改由事件驱动（{@link createEventRefresher}）：长连接握手完成（〔DL1〕经通道订的 `accounts-changed` 流里那一格 `seen`，
+ * ⇒ 刷新改由事件驱动（{@link createEventRefresher}）：长连接握手完成（经通道订的 `accounts-changed` 流里那一格 `seen`，
  * 强制刷账号清单；原先是裸事件 `remote-backend-ready`，见 {@link accountsChangedItems}）· 会话起停 · 本 UI 切号。**零定时器**。
  * 买不到的一格如实写：**另一个 monitor 改了默认账号、而这台上没有任何会话起停** ——
  * 这边的账号清单要等下一次握手 / 会话起停 / 本 UI 操作才刷新（此前最多 30 秒）。
@@ -149,7 +149,7 @@ export async function collectAccountRows(
 }
 
 /**
- * 事件驱动的刷新器〔`C1` · 2026-09-24〕—— 替掉那个 10 秒 `setInterval`。
+ * 事件驱动的刷新器—— 替掉那个 10 秒 `setInterval`。
  *
  * - **零定时器**：只在 {@link EventRefresher.request} 时跑。
  * - **不叠加**：在飞时再来的请求合并成**一次**补跑（跑完立刻再跑一轮，拿到最新）；
@@ -212,19 +212,19 @@ export function createEventRefresher(
 }
 
 /**
- * 〔DL1 · `设计/01 §2.2`「前端只有两个动作」〕流标签：那台机器上「账号清单可能变了」。
+ * 〔「前端只有两个动作」〕流标签：那台机器上「账号清单可能变了」。
  * 与 Rust `event_replay.rs::ACCOUNTS_CHANGED_KIND` 同一个串（两侧对拍在 `session-accounts-poll.vitest.ts`）。
  */
 export const ACCOUNTS_CHANGED_KIND = "accounts-changed";
 
 /**
  * 每条 `accounts-changed` 订阅一开始给多少格 credit。那一格很稀（一台一次连上 / 一次清单变），
- * 收到的 `frame` 当场还 ⇒ 正常用法打不满；打满了句柄就丢、下一次原位给 `gap`（`05 §3.3.4` 级 2），这里当成「变过」照刷。
+ * 收到的 `frame` 当场还 ⇒ 正常用法打不满；打满了句柄就丢、下一次原位给 `gap`（级 2），这里当成「变过」照刷。
  */
 export const ACCOUNTS_CHANGED_WINDOW = 8;
 
 /**
- * 〔DL1 · 合并 TAP 时收成这一形〕**`accounts-changed` 流里的一批格 ⇒ 要不要刷、还多少 credit**（纯函数）。
+ * 〔合并 TAP 时收成这一形〕**`accounts-changed` 流里的一批格 ⇒ 要不要刷、还多少 credit**（纯函数）。
  *
  * 订阅本身与会话行 · tap 走**同一处** `chan.subscribe`（`events.ts::bindEvents` 的 `plan`，`X6` 调用点恰好一处）；
  * 这里只答「这一批格是什么意思」：
@@ -232,7 +232,7 @@ export const ACCOUNTS_CHANGED_WINDOW = 8;
  * | 格 | 意思 | 这里 |
  * |---|---|---|
  * | `seen` | 那台的长连接（又）通了、能问了 | 要刷 |
- * | `frame` | 那台后端说账号清单变了（`05 §13.6 ③`） | 要刷，占一格 credit（当场还） |
+ * | `frame` | 那台后端说账号清单变了 | 要刷，占一格 credit（当场还） |
  * | `gap` | 没 credit 时丢过几格 | 当成变过：要刷 |
  * | `unseen` / `closed` | 断了 / 这条订阅没了 | 不刷（断着问不到；连上时会有 `seen`） |
  *

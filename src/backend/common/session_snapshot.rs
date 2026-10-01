@@ -74,7 +74,7 @@ impl TakenNames {
         &self.0
     }
 
-    /// 〔FIX · V138 · `设计/71 §8` 第 12 条〕claude 会话 `sid` 正在哪个 tmux 会话里跑（`@ccm_sid` 对上）；没有 ⇒ `None`。
+    /// claude 会话 `sid` 正在哪个 tmux 会话里跑（`@ccm_sid` 对上）；没有 ⇒ `None`。
     /// 与避让同一份快照（同一次探测）⇒ `ccm --ccm-print` 与真跑对「在跑」也同答。
     pub(crate) fn running(&self, sid: &str) -> Option<&str> {
         self.1

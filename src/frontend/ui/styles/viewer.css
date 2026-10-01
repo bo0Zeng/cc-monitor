@@ -4,13 +4,13 @@
  * 加载它的窗口：**只有 viewer 窗**（住址：各窗口 html 的 `<link rel="stylesheet">` 列表 ——
  * `index.html` / `settings.html` / `viewer.html`，那就是每个窗口的 CSS 清单，没有第二份）。
  *
- * 〔三入口拆分 · `设计/41 §9`〕本文件由基线 `src/frontend/ui/styles.css` 按「哪几个窗口的模块图里有它的建元素处」
- * 逐块切出来，**块内容逐字搬、块间保持原序**。切法与判据见 `设计/41` 末尾追加的那一节。
+ * 〔三入口拆分〕本文件由基线 `src/frontend/ui/styles.css` 按「哪几个窗口的模块图里有它的建元素处」
+ * 逐块切出来，**块内容逐字搬、块间保持原序**。
  */
 
 @layer components {
 /* viewer 窗口照样 new 一个 TabManager（`main.ts` bootstrapViewer），主窗的 chrome 在这里一律藏。
-   〔AR1〕S24 那段说归档抽屉也要在这张单子里 —— 抽屉删了（`设计/30 §A`），单子里早已没有它。 */
+S24 那段说归档抽屉也要在这张单子里 —— 抽屉删了，单子里早已没有它。 */
 body.viewer-mode #tab-bar,
 body.viewer-mode #tab-bar-resizer,
 body.viewer-mode .settings-trigger,

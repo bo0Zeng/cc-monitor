@@ -1,5 +1,5 @@
 /**
- * TS 侧的**生产源码遍历**：一个家，别处不再各写一份〔audit-0805 08-08〕。
+ * TS 侧的**生产源码遍历**：一个家，别处不再各写一份。
  *
  * # 为什么有这个文件
  *
@@ -50,7 +50,7 @@ export function productionTsFiles(subdir = "src"): ProductionSource[] {
 }
 
 /**
- * 〔DP1 · 第四波〕同一套遍历，收 `.rs`（文案表的 Rust 读口落地之后，`copy-table.vitest.ts` 的「引用」一侧要读它们）。
+ * 同一套遍历，收 `.rs`（文案表的 Rust 读口落地之后，`copy-table.vitest.ts` 的「引用」一侧要读它们）。
  * Rust 这一侧的判据住在仓外的 `tests/frontend/shell/` 等目录（经 `#[path]` 挂进来），`src/` 下的 `.rs` 就是生产段 ——
  * 与 `.ts` 同一个用意：判据读不到自己。⚠ 不剥注释（同上，那是调用方的事）。
  */
@@ -59,7 +59,7 @@ export function productionRsFiles(subdir: string): ProductionSource[] {
 }
 
 /**
- * 〔BG1 · 第四波 4D〕同一套遍历，收 `.css`（`bg-flat.vitest.ts` 要看「`.tab-bg` 在全部样式里零处」）。
+ * 同一套遍历，收 `.css`（`bg-flat.vitest.ts` 要看「`.tab-bg` 在全部样式里零处」）。
  * CSS 里没有判据住着 ⇒ 读不到自己按构造成立；借这一个家是为了不在测试里另写一份目录遍历（`scanning-guard-registry` 那条棘轮）。
  */
 export function productionCssFiles(subdir = "src"): ProductionSource[] {

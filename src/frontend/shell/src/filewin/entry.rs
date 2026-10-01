@@ -13,21 +13,21 @@
 //! 列出来了才开窗，而且那一屏**直接交给窗口**（[`super::shell::open_detached_seeded`]）
 //! ⇒ 窗口一出来就是有内容的，也不会对同一个目录连打两次往返。
 //!
-//! 🔴〔MIG-3a · 主会话 09-28 裁 3〕**谁去列换了：从 monitor 换成窗口进程自己。** 上一版这里由 monitor 经宿主注入的句柄
+//! 🔴〔主会话 09-28 裁 3〕**谁去列换了：从 monitor 换成窗口进程自己。** 上一版这里由 monitor 经宿主注入的句柄
 //! 问那台后端 `files-home` / `files-ls`（`host_ask` · `ask_home` · `list_first_screen`〔散文墓碑〕），列好的一屏放进种子 ——
-//! 那是 monitor 替窗口问后端（`99 §2.1 ⑬` 待迁那一行）。今天窗口进程拨回通道后自己问（`proc::first_screen`），
+//! 那是 monitor 替窗口问后端（待迁那一行）。今天窗口进程拨回通道后自己问（`proc::first_screen`），
 //! 在 stdout 上说一行「列到 N 行」或「列不出来：原话」；本命令只起进程、等那一行（[`super::proc::open_in_new_process`]）。
 //! 「列不出来就不开窗、带原话」一个字没变，变的是它在哪个进程里成立。
 //!
 //! ⚠ **它买不到「窗口真的出现在屏幕上」**。那一格要一个图形会话，本机
-//! `XDG_SESSION_TYPE=tty`（`真相源/99 §一`）⇒ 本机永远量不到。
+//! `XDG_SESSION_TYPE=tty`⇒ 本机永远量不到。
 //! 能确定地量到的是「那个窗口进程起来了、而且没有在开窗预算内就退」，
 //! 与「这个目录此刻列得出来」（回值那个行数）。**两件都不是「窗口在屏幕上」，别读宽。**
 //!
-//! 🔴〔第十三刀 2026-09-23〕**开窗 ＝ 起一个独立进程。** 上一版这一节的①逐字写着
+//! 🔴**开窗 ＝ 起一个独立进程。** 上一版这一节的①逐字写着
 //! 「走 [`super::source::list_remote`]，也就是**共用那条池**」。
-//! 〔TL3 · 审计 F 🔴-3 订正〕今天两侧都不走池；〔MIG-3a · 09-28 裁 3〕开窗前那一屏也由窗口进程经通道 `call` 那台后端
-//! `files-home` / `files-ls`（「列不出来就别开窗」一个字没变），与它之后的每一次列目录同一条路，一行 SFTP 都不碰（`60 §2.2`）。代价与买到的东西逐条住 [`super::proc`] 头注 §二 / §四。
+//! 〔审计 F 🔴-3 订正〕今天两侧都不走池；〔09-28 裁 3〕开窗前那一屏也由窗口进程经通道 `call` 那台后端
+//! `files-home` / `files-ls`（「列不出来就别开窗」一个字没变），与它之后的每一次列目录同一条路，一行 SFTP 都不碰。代价与买到的东西逐条住 [`super::proc`] 头注 §二 / §四。
 //!
 //! # 二、为什么回一个行数，而不是 `()`
 //!
@@ -48,7 +48,7 @@
 //!
 //! 🔴〔第七刀补记〕`path` 传空串现在是**合法调用**，意思是「开在远端 home」（〔09-28 裁 3〕由窗口进程去问）——
 //! 于是顶栏那颗按钮接过来时**不必先自己解一趟路径**（那正是老面板今天在做的事）。
-//! 逐条理由住 [`open_file_window`] 的 `# 🔴〔第七刀〕` 那一节。
+//! 逐条理由住 [`open_file_window`] 的 `# 🔴` 那一节。
 //!
 //! ⚠ 顶栏那个 SFTP 入口（`src/frontend/ui/main.ts::openSftpFromTopbar`，0 台提示 / 1 台直开 / 多台选单）
 //! **这一刀没碰** —— `src/frontend/ui/main.ts` 不在本刀写区。要把原生窗口接到顶栏上，
@@ -66,12 +66,12 @@ pub enum Target {
     Dir(String),
     /// 进 `dir` 并高亮 `name` 那一行（老面板 `revealPath`，F54）。
     Reveal { dir: String, name: String },
-    /// 都没说 ⇒ 问那台机器上的后端 `files-home`（第七刀立的这一支；〔F7a〕从 SFTP 换成了后端；
-    /// 〔MIG-3a · 09-28 裁 3〕由窗口进程自己问：种子里 `cwd` 缺席）。**只有这一支要多一趟 IO。**
+    /// 都没说 ⇒ 问那台机器上的后端 `files-home`（第七刀立的这一支；从 SFTP 换成了后端；
+    /// 〔09-28 裁 3〕由窗口进程自己问：种子里 `cwd` 缺席）。**只有这一支要多一趟 IO。**
     Home,
 }
 
-/// 🔴〔第十刀〕**三者的优先级** —— 与老面板逐字相同：
+/// 🔴**三者的优先级** —— 与老面板逐字相同：
 /// `path`（非空）> `reveal_file` > home。
 ///
 /// # 为什么抽成纯函数
@@ -125,7 +125,7 @@ pub fn plan_target(path: &str, reveal_file: Option<&str>) -> Result<Target, Stri
 /// 回值 = 这一趟列到的行数。⚠ 它是「开窗那一刻那个目录有多少项」，
 /// 不是「窗口里现在有多少行」（窗口自己会刷新、会换目录）。
 ///
-/// # 🔴〔第七刀 2026-09-21〕`path` 是空的 ⇒ **去问远端 home**
+/// # 🔴`path` 是空的 ⇒ **去问远端 home**
 ///
 /// 上一版这里逐字写着「路径是空的 ⇒ 立刻回错（**不拿 `.` 兜底**：远端的 `.`
 /// 归谁解释是 `sftp_realpath` 的事，在这里猜一个默认值就是把两处的规矩写成两份）」。
@@ -134,7 +134,7 @@ pub fn plan_target(path: &str, reveal_file: Option<&str>) -> Result<Target, Stri
 /// 我们去问了那个唯一权威（那台机器上的后端 `files-home`；〔09-28 裁 3〕窗口进程的 `proc::first_screen` 问）。
 /// 「在这里猜」与「去问那个说得上话的」是两件事，上一版只有前者可选，所以它选了回错。
 ///
-/// 🔴〔F7a · 第三波 2026-09-24〕**问的对象换了：从 SFTP 换成后端。** 第七刀那一版问的是
+/// 🔴**问的对象换了：从 SFTP 换成后端。** 第七刀那一版问的是
 /// SFTP 的 `realpath(".")`（monitor 为这一问单拨一条 SFTP）；现在问后端 `files-home`，
 /// 与列第一屏那一趟**同一条路**（〔09-28 裁 3〕都在窗口进程里）。⇒ monitor 这一侧开窗一个 SFTP 都不拨了。
 ///
@@ -154,7 +154,7 @@ pub fn plan_target(path: &str, reveal_file: Option<&str>) -> Result<Target, Stri
 ///
 /// - `path` 是空的、且远端 home 问不出来 ⇒ 带着原文回错，不开窗。
 /// - 目录列不出来（连不上 / 没权限 / 不是目录）⇒ 把窗口进程说的那句原文带回去。
-/// 〔FILES2 · V152〕「复制到另一台」下拉里的机器：本机（`<local>`）＋ 已配的远端（`origin_label`，与通道寻址同一个名字）。
+/// 「复制到另一台」下拉里的机器：本机（`<local>`）＋ 已配的远端（`origin_label`，与通道寻址同一个名字）。
 /// 来自已有的配置读口，不新建数据源。
 fn machine_names() -> Vec<String> {
     std::iter::once(crate::inbound_client::LOCAL_ORIGIN.to_string())
@@ -174,12 +174,12 @@ pub async fn open_file_window(
     reveal_file: Option<String>,
 ) -> Result<usize, String> {
     use tauri::{Emitter, Manager};
-    // 〔WF2 · WIN3 读数 D〕主窗所在那台显示器的工作区（窗口进程开出来第一拍夹进它）。
+    // 主窗所在那台显示器的工作区（窗口进程开出来第一拍夹进它）。
     let work_area = app
         .get_webview_window(crate::MAIN_WINDOW_LABEL)
         .as_ref()
         .and_then(crate::work_area_of);
-    // 〔WF2 · WIN3 读数 J〕开出来之后又不体面地退了 ⇒ 经远端健康那条通道出声（同一个 toast 出口）。
+    // 开出来之后又不体面地退了 ⇒ 经远端健康那条通道出声（同一个 toast 出口）。
     let origin = cfg.origin_label();
     let late: super::proc::LateExit = Box::new(move |said| {
         let payload = crate::ui_contract::RemoteHealthPayload {
@@ -194,7 +194,7 @@ pub async fn open_file_window(
     open_with(cfg, path, reveal_file, work_area, late).await
 }
 
-/// 〔WF2〕文件窗口开出来之后又退了那一形在 `remote-health` 上的 `kind`（界面 `remote-health.ts` 按它选标题）。
+/// 文件窗口开出来之后又退了那一形在 `remote-health` 上的 `kind`（界面 `remote-health.ts` 按它选标题）。
 pub(crate) const FILEWIN_EXIT_KIND: &str = "filewin-exit";
 
 /// [`open_file_window`] 去掉「问 Tauri」那一步之后的全部（判据从这里进：判据进程里没有 `AppHandle`）。
@@ -205,19 +205,19 @@ pub(crate) async fn open_with(
     work_area: Option<host_core::WorkArea>,
     late: super::proc::LateExit,
 ) -> Result<usize, String> {
-    // 〔P4〕窗口进程只拿那台的名字（寻址用，`origin_label` 口径）；它不认识 monitor 的配置类型。
+    // 窗口进程只拿那台的名字（寻址用，`origin_label` 口径）；它不认识 monitor 的配置类型。
     let origin = cfg.origin_label();
-    // 〔FW34〕书签文件住 monitor 自己的数据目录（不是用户文件），路径在这一侧算好交过去（名字只住 `data_paths`）。
+    // 书签文件住 monitor 自己的数据目录（不是用户文件），路径在这一侧算好交过去（名字只住 `data_paths`）。
     let bookmarks = crate::config::resolve_monitor_data_dir()
         .map(|d| d.join(crate::data_paths::FILEWIN_BOOKMARKS_FILE));
     // ⓪ 三者优先级 —— 那一段是**纯函数**（[`plan_target`]），理由见它的头注。
-    //    〔MIG-3a · 09-28 裁 3〕home 那一支不在这里问了：`cwd` 缺席交给窗口进程（`proc::first_screen`）。
+    //    〔09-28 裁 3〕home 那一支不在这里问了：`cwd` 缺席交给窗口进程（`proc::first_screen`）。
     let (cwd, reveal) = match plan_target(&path, reveal_file.as_deref())? {
         Target::Dir(d) => (Some(d), None),
         Target::Reveal { dir, name } => (Some(dir), Some(name)),
         Target::Home => (None, None),
     };
-    // 🔴〔F2 · 2026-09-24〕通道没起来 ⇒ 开不了窗（`D11`：窗口只有这一条路够后端）。
+    // 🔴通道没起来 ⇒ 开不了窗（`D11`：窗口只有这一条路够后端）。
     let handoff =
         crate::chan::host::handoff().ok_or_else(|| copy_text("rsFilewinEntry.open.noHost", &[]))?;
     let req = OpenRequest {
@@ -229,7 +229,7 @@ pub(crate) async fn open_with(
         machines: machine_names(),
         work_area,
     };
-    // 🔴〔第十三刀 2026-09-23〕**起一个独立进程**；〔MIG-3a · 09-28 裁 3〕它先列第一屏、说一行，再开窗。
+    // 🔴**起一个独立进程**；〔09-28 裁 3〕它先列第一屏、说一行，再开窗。
     //
     //    逐条理由住 `proc` 头注（用户「窗口生命周期就是销毁」那条裁决 ＋
     //    「winit 一个进程只许一个事件循环」那条现打事实 ⇒ 同进程形态下
@@ -256,7 +256,7 @@ fn unopened_said(u: Unopened) -> String {
     }
 }
 
-// 〔MIG-3a · 09-28 裁 3〕`list_first_screen` · `ask_home` · `host_ask`〔散文墓碑〕与开窗前那两问的期限退役：
+// 〔09-28 裁 3〕`list_first_screen` · `ask_home` · `host_ask`〔散文墓碑〕与开窗前那两问的期限退役：
 //   monitor 这一侧不再替窗口问后端；那两问进了窗口进程（`proc::first_screen`，期限 `proc::FIRST_SCREEN_BUDGET`）。
 
 #[cfg(test)]

@@ -1,7 +1,7 @@
 /**
- * 〔US1 · 第四波 4D〕API key 那两问（`apikey-read` · `apikey-routing`）改走通道、后端出成品之后的判据。
+ * API key 那两问（`apikey-read` · `apikey-routing`）改走通道、后端出成品之后的判据。
  *
- * 要求住址：`设计/05 §14.3`「成品的两侧对拍：界面按形状严格收（多一格 / 缺一格 / 类型不对 ⇒ 抛「两端契约对不上」，不猜）；
+ * 要求：「成品的两侧对拍：界面按形状严格收（多一格 / 缺一格 / 类型不对 ⇒ 抛「两端契约对不上」，不猜）；
  * 线上形状由一份跨语言金样钉住（后端测试产出 == 金样 · TS 解码器读同一份）」· B 组 `creds.apikey` · `apikey.routing`。
  *
  * | 性质 | 判据 |
@@ -128,9 +128,9 @@ describe("失败：一句人话，不退化成「没配」/「没行」", () => 
   });
 });
 
-// ═══ 〔HX2 · 第四波 4D〕写 key 也走通道（`apikey-key-set`）═══════════════════════════════════
+// ═══ 写 key 也走通道（`apikey-key-set`）═══════════════════════════════════
 //
-// 要求住址：`设计/05 §14.3` B 组（`creds.apikey` 经 `chan.call`）；`第四波记录/US1.md` 表「`creds.apikey` 写 … 等 HX2 落了再迁」；
+// （`creds.apikey` 经 `chan.call`）；表「`creds.apikey` 写 … 等 HX2 落了再迁」；
 // `KH2C1`（前端一个字都不推账号 id：请求体里只有 `configDir`）。
 describe("〔HX2〕W2 写 key：经通道交那台机器的后端", () => {
   const WRITTEN = { account: "work", path: "/h/k.json", masked: "sk-****", baseUrl: null };

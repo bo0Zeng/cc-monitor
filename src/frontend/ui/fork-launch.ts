@@ -24,7 +24,7 @@
  * ——同 `readiness.ts` 那条「缺 ≠ 不知道」：不知道就说不知道。
  */
 
-// 〔FIX4 · `90 §3` J7〕分叉会话的 tmux 名（原 `forkTmuxName`：`<源名>-fork-cc` ＋ 避让）搬进后端
+// 分叉会话的 tmux 名（原 `forkTmuxName`：`<源名>-fork-cc` ＋ 避让）搬进后端
 //   （`control/ccm/plan.rs::fork_tmux_base`，帧命令 `tmux-name-mint {forkOf}`）；这里只剩推断与追问。
 import { copyText } from "./copy-table";
 

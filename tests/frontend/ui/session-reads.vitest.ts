@@ -1,5 +1,5 @@
 /**
- * 〔C4b · 第四波 4B〕会话读面三问（`src/frontend/ui/session-reads.ts`）的判据。
+ * 会话读面三问（`src/frontend/ui/session-reads.ts`）的判据。
  *
  * | 性质 | 判据 |
  * |---|---|
@@ -152,8 +152,8 @@ describe("〔C4b〕会话读面三问：经通道说对的帧命令", () => {
   });
 });
 
-// 〔C4c · 第四波 4B〕第四问：resume 之前问记录还在不在（`history-record`）。要求住址：`设计/01 §6.2` 最后一条
-//   「对方那份记录也没了 ⇒ 重开必失败，要诚实报错，不许静默变成『起了个新会话』」· `设计/05 §8` 步 5。
+// 第四问：resume 之前问记录还在不在（`history-record`）。最后一条
+//   「对方那份记录也没了 ⇒ 重开必失败，要诚实报错，不许静默变成『起了个新会话』」。
 describe("〔C4c〕记录还在不在：经通道问 `history-record`", () => {
   it("★★ 帧命令与请求体（只收 sid）；本机也走同一条路；成品原样交回", async () => {
     invokeMock.mockResolvedValueOnce(chanReply({ present: false, root: "/h/.claude/projects" }));
@@ -186,7 +186,7 @@ describe("〔C4c〕记录还在不在：经通道问 `history-record`", () => {
   });
 });
 
-// 〔STC · `设计/90 §4` 阶段 C〕第五问：会话事实（`history-facts`）。金样同一份文件的 `history-facts` 一格，
+// 第五问：会话事实（`history-facts`）。金样同一份文件的 `history-facts` 一格，
 // 后端那侧 `read_face_tests::the_three_products_match_the_cross_language_golden` 写它（异源：Rust 造、TS 解）。
 describe("〔STC〕第五问：会话事实", () => {
   it("★★ 金样：TS 解码器读得懂后端真出的会话事实（逐字段）", () => {
@@ -237,7 +237,7 @@ describe("〔STC〕第五问：会话事实", () => {
   });
 });
 
-// 〔MOD · `设计/05 §14.3` C 组〕会话正文那几条：TS 解码器读同一份跨语言金样（后端 `read_face_tests.rs` 钉着它 == 帧面现打）。
+// 会话正文那几条：TS 解码器读同一份跨语言金样（后端 `read_face_tests.rs` 钉着它 == 帧面现打）。
 describe("〔MOD〕会话正文：按形状收那台后端出的成品", () => {
   const recordGolden = JSON.parse(
     readFileSync(resolve(REPO_ROOT, "tests/__fixtures__/record-reads.golden.json"), "utf8"),

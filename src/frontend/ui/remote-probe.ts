@@ -1,8 +1,8 @@
 /**
- * 〔MIG-1 续 · `设计/99 §2.1 ⑬` · 主会话裁「后端持有全部 SSH」〕「测试连接」**走通道，本机常驻后端拨一次**：
+ * 〔「后端持有全部 SSH」〕「测试连接」**走通道，本机常驻后端拨一次**：
  * `chan.call(<local>, "remote-probe", {ticket, machine, saved, jump})`。
  *
- * 〔MIG-1 收尾 · 主会话裁「进度不许倒退」〕阶段**边拨边推**：调用之前先订 `subscribe(<local>, "probe-progress/<ticket>")`，
+ * 〔「进度不许倒退」〕阶段**边拨边推**：调用之前先订 `subscribe(<local>, "probe-progress/<ticket>")`，
  * 后端每走完一段推一格 —— 握手那几行（`{stage}`，与 `ConnectStage` 同形）→ `{reached: "ssh"}` → `{reached: "hello"}` →
  * `{reached: "control"}`（ping 往返了）—— 结局是最后一格（`{end}`）。界面边收边画（`onStage`）。
  * 期限归发起方（DL1）：这一问的预算 15 s 由本文件给；到点没等到结局 ⇒ 抛 {@link ProbeStalled}，带「停在哪一段」（最后收到的那一格）。
@@ -27,7 +27,7 @@ export interface ConnTestResult {
   endpoint: string | null;
   /** 那台后端回了 hello 没有。 */
   backendOk: boolean;
-  /** 那台后端的三格（版本 · 能用几项 / 做不到几项 · 往返毫秒），后端按文案表拼好的一句（〔FIX5 续〕不再是 `v=.. build=..` 日志行）。 */
+  /** 那台后端的三格（版本 · 能用几项 / 做不到几项 · 往返毫秒），后端按文案表拼好的一句（不再是 `v=.. build=..` 日志行）。 */
   backendHello: string | null;
   /** 这台说做不到的那几类：码 ＋ 这一类几项（后端按 hello 的 `unavailable` 分好；空 = 没有 / 没回 hello）。人话在界面说（`control-said.ts::unavailableReason`）。 */
   backendGaps: { code: string; count: number }[];

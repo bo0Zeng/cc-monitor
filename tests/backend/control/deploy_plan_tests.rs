@@ -1,7 +1,7 @@
-//! 要求住址：`4d-lanes.md` MIG-3b 第 1 条 —— 部署决策（该不该换 · 换成什么 · 身份判定）在本机常驻后端出计划。
+//! 要求：部署决策（该不该换 · 换成什么 · 身份判定）在本机常驻后端出计划。
 //!
 //! 替身对面：按命令 / 路径答预设的话（不起 SSH）。钉的是**编排**：先问机器、再判表、再问落点、再问旧落点，每一步的失败落在哪一格码上；
-//! 〔P1〕文件末尾是随判定从共享 crate `deploy-core` 搬来的逐格判据（期望一字未改）与 `place-verdict` 的真值表。
+//! 文件末尾是随判定从共享 crate `deploy-core` 搬来的逐格判据（期望一字未改）与 `place-verdict` 的真值表。
 //! 戳格式那几格（扫描命令 · 扫描回话 · 字节自报 · 序键）住契约 crate 的 `tests/common/deploy-contract/lib_tests.rs`。
 
 use super::*;
@@ -15,12 +15,12 @@ struct Fake {
     exec: BTreeMap<String, Result<crate::dial::Captured, String>>,
     stat: BTreeMap<String, (Option<Option<u64>>, Option<bool>)>,
     read: BTreeMap<String, Vec<u8>>,
-    /// 〔WF2〕`list` 按目录查表；没登记 ⇒ 列不出。
+    /// `list` 按目录查表；没登记 ⇒ 列不出。
     list: BTreeMap<String, Vec<(String, Option<u64>)>>,
     asked: Mutex<Vec<String>>,
 }
 
-/// 〔WF2〕判据里的「此刻」（秒）。
+/// 判据里的「此刻」（秒）。
 const NOW: u64 = 1_000_000;
 
 fn said(exit: u32, stdout: &str) -> Result<crate::dial::Captured, String> {
@@ -268,7 +268,7 @@ async fn a_stamped_legacy_backend_is_marked_for_removal_and_an_unasked_one_is_un
     );
 }
 
-/// 〔WF2〕要求住址：`第四波记录/WIN3.md §2` 读数 B「部署失败留下半截 ~/.cc-monitor/bin/ccm.…tmp，之后连上也不清」· 题面 WF2 第 2 条「下次连上清旧的」。
+/// 要求：「部署失败留下半截 ~/.cc-monitor/bin/ccm.…tmp，之后连上也不清」· 题面 WF2 第 2 条「下次连上清旧的」。
 /// 落点目录里陈旧的临时件 · 备份件 ⇒ 进计划；新的（另一个部署者正在写）· 恰在门槛上 · 修改时间缺 · 不是 `put_atomic` 那个形状（陈旧也不碰）
 /// · 落点本身 ⇒ 不进（两向相等）。目录列不出 ⇒ 空、计划照出。
 #[tokio::test]
@@ -357,7 +357,7 @@ fn carried_rows_outside_table_a_or_without_an_id_are_bad_args() {
     }
 }
 
-/// 〔MIG-3b〕原住 `tests/frontend/shell/sftp_tests.rs`（序键那时住 monitor）；序键搬进 `deploy-core` 之后放在后端这一侧：读的历史表与 `BUILD_ID` 都在这一半。
+/// 原住 `tests/frontend/shell/sftp_tests.rs`（序键那时住 monitor）；序键搬进 `deploy-core` 之后放在后端这一侧：读的历史表与 `BUILD_ID` 都在这一半。
 /// 🔴 B1b：**出过的每一个 `BUILD_ID` 都有序、历史表按表序严格爬升、现在这个不低于最后一行**（读后端源码，异源）。
 /// 下一次 bump 写出一个解不出序的形状（或比历史低）⇒ 当场红 —— 那一版部署出去就永远不会被判「更新」而换上。
 #[test]
@@ -397,7 +397,7 @@ fn hx2_every_build_id_ever_shipped_has_an_order_and_the_history_climbs() {
     );
 }
 
-/// 🔴〔MIG-3b 续 · VIS2〕本机后端里拨的号，逐地址指纹要交回 monitor 固化：计划里原样带着**问 `uname` 那一趟**的 ack
+/// 🔴本机后端里拨的号，逐地址指纹要交回 monitor 固化：计划里原样带着**问 `uname` 那一趟**的 ack
 /// （那一趟就是第一次连上的那一趟；后面几趟走池里同一条连接）。帧面那一格也带着它。
 #[tokio::test]
 async fn the_plan_hands_back_the_ack_of_the_first_trip_for_pinning() {
@@ -407,8 +407,8 @@ async fn the_plan_hands_back_the_ack_of_the_first_trip_for_pinning() {
     assert_eq!(plan_json(&p)["ack"], fake_ack(1));
 }
 
-// ═══ 〔THIN〕`resident-verdict`：远端常驻后端 hello 的新旧 ═══════════════════════════════════
-// 要求住址：`设计/00 §1.2`「共享 crate 只放契约，判定只在后端」· `设计/00 §2.2`（monitor 里的共享判定残留：远端常驻换不换）。
+// ═══ `resident-verdict`：远端常驻后端 hello 的新旧 ═══════════════════════════════════
+// 要求：「共享 crate 只放契约，判定只在后端」（monitor 里的共享判定残留：远端常驻换不换）。
 // 从 monitor `remote_resident_tests.rs` 那一条（`hello_decision` 的真值表）搬来：判定进了本机常驻后端，真值表跟着判定走。
 
 /// 只升不降、只换一次：那台旧 ⇒ 换（换过一次就接）；同一版 · 更新 · 序解不出 ⇒ 接。`older` 与 `replaced` 无关。
@@ -453,10 +453,10 @@ fn the_verdict_frame_has_exactly_two_keys_and_refuses_missing_args() {
     }
 }
 
-// ═══ 〔THIN〕`deploy-retired`：那台旧入口 `~/.local/bin/ccm` 的去向 ═══════════════════════
+// ═══ `deploy-retired`：那台旧入口 `~/.local/bin/ccm` 的去向 ═══════════════════════
 //
-// 要求住址：`设计/01 §6.7b` ③（V28 · V41）「部署后端时、每次连上时各扫一次，认出是我们放的才删（`files-delete` 带期望值），
-// 认不出的不动」＋ `设计/00 §1.2`「判定只在后端」。真值表的期望是字面量，取自 git 史上那两份真文件的头两行
+// 要求：「部署后端时、每次连上时各扫一次，认出是我们放的才删（`files-delete` 带期望值），
+// 认不出的不动」＋「判定只在后端」。真值表的期望是字面量，取自 git 史上那两份真文件的头两行
 // （`git show e8f9e08e^:shared/ccm` · `ccm_entry_shim`〔散文墓碑〕在 `b2bab98f` / `e2af9404` 的两代；从前住 monitor `ccm_legacy_tests.rs` 的 L1）。
 
 /// 09-15 那一代 shim（带 `CCM_SELF` 那一行）。
@@ -521,8 +521,8 @@ async fn retired_only_the_two_forms_we_ever_placed_are_removed_and_with_what_was
     assert!(kept(&retired_at(present, Some(&[0xff, 0xfe, b'\n'])).await));
 }
 
-/// 要求住址：`设计/00 §1.2`「判定只在后端」· 题面 `4d-lanes.md ### P1` 第 3 件「（`is_ours`，只显示不删）→ 后端答，monitor 只显示」。
-/// 〔P1 · 第 3 件〕`{text}` 那一形（本机 PATH 上另一个 `ccm` 的开头一截）与 `{dial}` 读回来的走同一条规矩：
+/// 要求：「判定只在后端」· 「（`is_ours`，只显示不删）→ 后端答，monitor 只显示」。
+/// `{text}` 那一形（本机 PATH 上另一个 `ccm` 的开头一截）与 `{dial}` 读回来的走同一条规矩：
 /// 逐条与 [`retired_at`] 读回同一段字节的答相等，且一次 stat / 读都不发（`Fake` 什么都没登记，发了就是 `unreachable`）。
 #[tokio::test]
 async fn retired_text_form_judges_the_same_way_without_touching_any_disk() {
@@ -566,9 +566,9 @@ async fn retired_refuses_without_a_dial_and_says_unreachable_when_the_link_fails
     assert_eq!(code, "unreachable");
 }
 
-// ═══ 〔P1〕随判定从共享 crate `deploy-core` 搬来的逐格判据（`设计/00 §1.2` 判定只在后端；期望一字未改）══════════════
+// ═══ 随判定从共享 crate `deploy-core` 搬来的逐格判据（判定只在后端；期望一字未改）══════════════
 
-/// I1：六形逐形（期望取自 `96 §7.2.4` 那张表 ＋ 0 字节那一格按「没装」）。
+/// I1：六形逐形（期望取自那张表 ＋ 0 字节那一格按「没装」）。
 #[test]
 fn identity_decision_answers_each_state_without_merging_them() {
     const EXPECT: &str = "p9b-sample";
@@ -646,7 +646,7 @@ fn probe_metadata_saying_zero_bytes_maps_to_empty() {
     assert_ne!(
         interpret_target_probe(Some(Some(0)), None),
         interpret_target_probe(Some(Some(1)), None),
-        "0 字节与有字节判成了同一格 ⇒ 身份那一步的 0 字节那一格（〔DP1〕按没装装）永远走不到"
+        "0 字节与有字节判成了同一格 ⇒ 身份那一步的 0 字节那一格（按没装装）永远走不到"
     );
 }
 
@@ -747,7 +747,7 @@ fn probe_no_cell_answers_in_place_of_another() {
     );
 }
 
-/// B1a 后半（〔P1〕随 `is_newer` 从 `deploy-core` 搬来）：只有两边都解得出、且这一版严格大才算新。
+/// B1a 后半（随 `is_newer` 从 `deploy-core` 搬来）：只有两边都解得出、且这一版严格大才算新。
 #[test]
 fn hx2_newer_means_both_orders_parse_and_mine_is_strictly_greater() {
     assert!(is_newer("p3n-a", "p3m-b") && is_newer("p4a-a", "p3z-b"));
@@ -792,8 +792,8 @@ fn hx2_a_different_build_is_replaced_only_when_it_is_older() {
     }
 }
 
-/// 〔E2〕已部署的机器上落点是旧的三行入口（无身份戳）：认得出 ⇒ 换成后端本体；认不出的无戳文件照旧显式失败。
-/// 〔MIG-3b〕原是 `sftp.rs` 那个落点判定函数体的源码切片判据，判定搬来之后改成行为判据。
+/// 已部署的机器上落点是旧的三行入口（无身份戳）：认得出 ⇒ 换成后端本体；认不出的无戳文件照旧显式失败。
+/// 原是 `sftp.rs` 那个落点判定函数体的源码切片判据，判定搬来之后改成行为判据。
 #[test]
 fn an_old_three_line_entry_at_the_landing_is_recognised_as_ours() {
     let old = "#!/bin/sh\n# cc-monitor: ccm = 后端本体的一次性模式（K33：所有命令只许有一处）\nexec '/home/u/.cc-monitor/bin/cc-monitor-backend' ccm \"$@\"\n";
@@ -829,7 +829,7 @@ fn an_old_three_line_entry_at_the_landing_is_recognised_as_ours() {
     .is_err());
 }
 
-/// 〔E2 · E-c〕旧落点那份后端字节：恰一个戳（我们编的）⇒ 删；不在 ⇒ 不说话；别的 ⇒ 不动；连问都没问成 ⇒ 带原话。四格互不合并。
+/// 旧落点那份后端字节：恰一个戳（我们编的）⇒ 删；不在 ⇒ 不说话；别的 ⇒ 不动；连问都没问成 ⇒ 带原话。四格互不合并。
 #[test]
 fn the_legacy_backend_is_removed_only_when_it_carries_exactly_one_stamp() {
     assert_eq!(
@@ -881,9 +881,9 @@ fn judge_refuses_at_the_key_the_line_and_the_promise_and_nowhere_else() {
     ));
 }
 
-// 要求住址：`设计/01 §6.7a` 表 B（V132：本机 (Linux, aarch64) 不承诺）· `设计/00 §1.2`「判定只在后端」· HX2 D-b「只在我的比盘上的新时才换」。
-// ═══ 〔P1〕`place-verdict`：本机那一份放不放（monitor 自举时问手上那份字节自己）══════════════════════
-// 题面 `4d-lanes.md ### P1` 第 1 件（主会话 09-29 拍板形状 A：自举那一刻问手上那份字节自己 ⇒ 判定只住后端一家）。期望手写。
+// （本机 (Linux, aarch64) 不承诺）· 「判定只在后端」· HX2 D-b「只在我的比盘上的新时才换」。
+// ═══ `place-verdict`：本机那一份放不放（monitor 自举时问手上那份字节自己）══════════════════════
+// 形状 A：自举那一刻问手上那份字节自己 ⇒ 判定只住后端一家。期望手写。
 
 fn landed(id: &str) -> Result<Option<Vec<u8>>, String> {
     Ok(Some(format!("junk{}junk", stamp(id)).into_bytes()))
@@ -974,11 +974,11 @@ fn the_place_frame_reads_the_one_file_and_answers_two_keys() {
     let _ = std::fs::remove_dir_all(&d);
 }
 
-// ═══ 〔V132 · TL2 · P1〕承诺面：账本 == 代码（两向；〔P1〕随 `promised` 从 monitor `byte_table_tests` 搬来）══════
+// ═══ 承诺面：账本 == 代码（两向；随 `promised` 从 monitor `byte_table_tests` 搬来）══════
 
-/// 〔V132〕承诺面的唯一住址是 `tests/evidence/K-G4-platform-ledger.py`（`PROMISE_FACE` · `NOT_PROMISED`），代码那一份是 [`promised`]。
+/// 承诺面的唯一住址是 `tests/evidence/K-G4-platform-ledger.py`（`PROMISE_FACE` · `NOT_PROMISED`），代码那一份是 [`promised`]。
 ///
-/// 要求住址：用户裁决 **`V132`**（`设计/99 §1`）原话「不承诺. 适配部分, 即os适配部分后面单独写单独做.」· `设计/01 §6.7a` 表 B「承诺是 (键 × origin) 的属性」。
+/// 要求住址：用户裁决 **`V132`**原话「不承诺. 适配部分, 即os适配部分后面单独写单独做.」· 「承诺是 (键 × origin) 的属性」。
 /// 人群 = 表 A 里有后端产线的每个键（`LINES`）× 两个 origin；每一格恰好落在账本两表之一，且落在 `PROMISE_FACE` ⇔ `promised(route, key)`。
 /// 异源：账本是 Python 源码里的字面量，代码是 Rust 的 `matches!`。
 #[test]

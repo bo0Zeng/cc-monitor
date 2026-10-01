@@ -143,7 +143,7 @@ interface TruthRow {
 async function sectionA(): Promise<{ rows: TruthRow[]; retryTemplate: HTMLElement | null }> {
   const { host, content } = makeScroller("s22-truth", VIEW_W, VIEW_H);
   // 关 c-v：c-v:auto 的卡在视口外会被 skip，那时读到的是**估值本身**，
-  // 拿它当真值就是自己跟自己比（`设计/17 §5.3` 点名的那个病）。
+  // 拿它当真值就是自己跟自己比（点名的那个病）。
   const off = document.createElement("style");
   off.textContent = `#s22-truth .stream-content > * { content-visibility: visible !important; }`;
   document.head.appendChild(off);

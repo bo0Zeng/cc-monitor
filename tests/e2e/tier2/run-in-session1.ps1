@@ -11,7 +11,7 @@ Set-Location $PSScriptRoot
 
 $log = Join-Path $PSScriptRoot 'wdio.log'
 
-# 🔴〔2026-09-21 订正〕APP_EXE 原先在这里兜着一个**三段全错**的默认值
+# 🔴APP_EXE 原先在这里兜着一个**三段全错**的默认值
 #（用户名 vm260726 / 构建目录 src/frontend/shell/target / 那台机器上没有这个仓），
 # 而 wdio.conf.mjs 里**抄着同一个错值** ⇒ 一个错的默认值有两处住址。
 # ⇒ 改成**说不出就当场停**，理由与失败签名逐条写在 wdio.conf.mjs 那一处。
@@ -21,7 +21,7 @@ if (-not $env:APP_EXE) {
 # 这两个可以留空：tauri-driver 自己会去 PATH 里找 msedgedriver。
 if (-not $env:TAURI_DRIVER) { $env:TAURI_DRIVER = "$env:USERPROFILE\.cargo\bin\tauri-driver.exe" }
 
-# 🔴〔2026-09-21 补〕**node 那一格原先漏了。** 上面三个 env 都显式给了路径，
+# 🔴**node 那一格原先漏了。** 上面三个 env 都显式给了路径，
 # 理由逐字是「非交互会话 PATH 可能瘦」—— 而下面那句 `npx wdio` 同样吃 PATH，
 # 却没人给它。现打：那台虚拟机上 **node 与 npm 都不在 PATH 里**
 # ⇒ 这一行在它该跑的机器上**必挂**，而挂出来的话跟 wdio 无关。

@@ -2,13 +2,13 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 /// 唯一允许持有这个判定的文件（相对仓根）。
-// 〔THIN〕共享 crate `gate-core` 收成后端模块（monitor 那一侧的门删了）。
+// 共享 crate `gate-core` 收成后端模块（monitor 那一侧的门删了）。
 const SOLE_HOME: &str = "src/backend/control/gate_rules.rs";
 
 /// 判定形状的源码指纹。**运行时拼**，免得本文件自己被扫到时命中。
 /// 判定的**源码指纹**。
 ///
-/// # 〔audit-0805 08-06〕补上现行命名那两个形态
+/// # 补上现行命名那两个形态
 ///
 /// `is_ccm_tmux_name` 认三种形状：`cc-<X>`（**旧**前缀）· `<X>-cc`（**现行**）·
 /// `<X>-cc-<N>`（撞名避让）。而指纹原来只有前两者的字面量
@@ -39,7 +39,7 @@ fn repo_root() -> PathBuf {
 
 fn rust_sources(root: &Path) -> Vec<PathBuf> {
     let mut out = Vec::new();
-    // 〔P4〕monitor 那棵根换成它的全部人群根（`guard_support::crate_population_roots`：壳 `src/` ＋ manifest 明写的兄弟包，
+    // monitor 那棵根换成它的全部人群根（`guard_support::crate_population_roots`：壳 `src/` ＋ manifest 明写的兄弟包，
     //   窗口包也在内）；兄弟包有几个住 `src/common/`，下面去重。
     for base in crate::guard_support::crate_population_roots()
         .into_iter()
@@ -126,7 +126,7 @@ fn the_sole_home_really_holds_the_decision() {
     }
 }
 
-/// ★ 〔THIN〕monitor 这一侧**一道门都没有**：生产段零处够 Gate 判定（`gate_rules` · 旧名 `gate_core`），清单里也没有 `gate-core`。
+/// ★ monitor 这一侧**一道门都没有**：生产段零处够 Gate 判定（`gate_rules` · 旧名 `gate_core`），清单里也没有 `gate-core`。
 ///
 /// 替掉的是 `the_monitor_wrapper_really_delegates`〔散文墓碑〕（「monitor 的转调壳真在转调」）：那个壳只剩跨轨对拍锚点在用，
 /// 随 monitor 侧的 Gate 残留删了 —— 「monitor 不许自己再实现一份」从「锚在壳上」换成「monitor 里零处」（上面那条管指纹，本条管调用）。

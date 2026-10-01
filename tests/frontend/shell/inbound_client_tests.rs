@@ -1,5 +1,5 @@
 use super::*;
-// 〔`设计/05 §8.1` 步 3.5，2026-09-21〕三样参数构造器搬去了 `command_args`
+// 〔.5，2026-09-21〕三样参数构造器搬去了 `command_args`
 // （`C1` 在 `inbound_client.rs` 上咬的 `sid` / `agent` 两处全在它们身上）。
 // 下面那三条判据**刻意留在这里** —— 理由（跨半边 include 被别人的登记表按文件路径钉着）
 // 写在 `command_args` 的头注里，不在这里抄第二份。
@@ -52,7 +52,7 @@ fn client_on_duplex(
 /// P2s：**`<local>` 在两侧必须是同一个串**。
 ///
 /// 漂了**不会报错** —— 前端的本机开关会去操作一个谁都没登记过的 origin：
-/// 〔B2〕问 / 改「退出行为」那一格会发到一个谁都没登记过的 origin（`backend_exit_policy("<localhost>")` 恒回「没有控制通道」），
+/// 问 / 改「退出行为」那一格会发到一个谁都没登记过的 origin（`backend_exit_policy("<localhost>")` 恒回「没有控制通道」），
 /// `backend_status` 永远回 `channel: false`。**设了没反应，且不报错。**
 ///
 /// 照仓里现成的跨语言对拍形状写（`payload.rs` 的 `REFUSE_TAG` 那条 / `launch.rs` 的
@@ -361,7 +361,7 @@ fn the_e2e_ping_line_is_exactly_what_the_encoder_produces() {
 /// ★ U8a-2c-1：同上，但钉的是**业务命令**那一行。
 ///
 /// ping 那条证明「backend 认得 monitor 编的信封」；这条证明的是
-/// **界面真正会发的那条 `launch`**（〔C4e〕此前是 monitor 的 `backend_send_into`〔散文墓碑〕，今天是
+/// **界面真正会发的那条 `launch`**（此前是 monitor 的 `backend_send_into`〔散文墓碑〕，今天是
 /// `src/frontend/ui/tmux-control.ts::sendInto` / `sendKeys` 说的 `send-into`）。
 /// 少了它，那套 e2e 只验证了「backend 认得我手写的 launch 形状」——
 /// 而发送那一侧的键名一改，e2e 会继续全绿而生产里一条命令都发不出去。
@@ -378,9 +378,9 @@ fn the_e2e_send_into_line_is_exactly_what_the_encoder_produces() {
         literal.len() > 40,
         "抽到的字面量太短（{literal:?}）—— 抽取坏了"
     );
-    // 〔C4e · 第四波 4C〕这一格原来比的是「e2e 那一行 == monitor 编码器 `launch_args`〔散文墓碑〕的产物」。
+    // 这一格原来比的是「e2e 那一行 == monitor 编码器 `launch_args`〔散文墓碑〕的产物」。
     //   就地 resume / 送键迁到界面之后，发这条的是 `src/frontend/ui/tmux-control.ts`（经通道，monitor 那一跳只把 JSON 原样
-    //   转成 `args`）⇒ 「真在发的形状」的真相源换成跨语言金样 `tests/__fixtures__/tmux-control.golden.json`
+    //   转成 `args`）⇒ 「真在发的形状」的源头换成跨语言金样 `tests/__fixtures__/tmux-control.golden.json`
     //   里 `launch` 的请求样例（TS 那侧逐字断言它发的就是这一份）。本格比：e2e 那一行的 `args` 键集合 == 金样那一份，
     //   mode 是 `send-into`，且信封是 monitor 那一跳会产出的那一行（`encode_request` 重编一遍逐字节相等）。
     let line: serde_json::Value = serde_json::from_str(literal).expect("e2e 那一行不是 JSON");
@@ -475,13 +475,13 @@ fn the_e2e_command_list_matches_the_backend_command_table() {
     );
 }
 
-// 〔C4e · 第四波 4C〕这里原来住着 `KR104D1` 那条跨轨对拍（抓屏的参数构造器 `capture_pane_args` ↔ 后端 `REGISTRY` 那一格 `fields`）〔散文墓碑〕。
+// 这里原来住着 `KR104D1` 那条跨轨对拍（抓屏的参数构造器 `capture_pane_args` ↔ 后端 `REGISTRY` 那一格 `fields`）〔散文墓碑〕。
 //   抓屏改由界面经通道直接问（`src/frontend/ui/tmux-control.ts::capturePane`），monitor 侧那个构造器没了生产调用方、随发送端删了；
 //   请求 / 成品的形状从此由跨语言金样 `tests/__fixtures__/tmux-control.golden.json` 钉着：后端侧
 //   `capture_pane_tests.rs::the_capture_product_matches_the_cross_language_golden`（请求样例过生产解析器 · 成品 == 生产构造器 ·
 //   码集合 == `REGISTRY`），界面侧 `tests/frontend/ui/tmux-control.vitest.ts`（请求体 · 解码器读同一份）。
 
-// 〔C4e · 第四波 4C〕这里原来住着「`launch_args`〔散文墓碑〕吐的键名恰好是后端解析器认的那几个」（跨轨读后端 `control/launch.rs`）。
+// 这里原来住着「`launch_args`〔散文墓碑〕吐的键名恰好是后端解析器认的那几个」（跨轨读后端 `control/launch.rs`）。
 //   monitor 侧那个构造器随发送端迁到界面删了；「发出去的键 == 后端解析器认的键」改由跨语言金样钉：
 //   后端侧 `tests/backend/control/launch_tests.rs` 让金样的请求样例（两个 mode 各一份）过**生产**解析器，
 //   界面侧 `tests/frontend/ui/tmux-control.vitest.ts` 断言它发的就是那一份。
@@ -585,9 +585,9 @@ async fn an_undeclared_command_is_refused_without_writing_anything() {
     assert!(read.is_err(), "被拒的命令却发出去了：{buf:?}");
 }
 
-/// 〔DL1 · D1〕**一个截止时刻管好几问：后一问只剩前一问没用完的那一点**。
+/// **一个截止时刻管好几问：后一问只剩前一问没用完的那一点**。
 ///
-/// 守的要求：`设计/05 §3.3.2` 逐字「**一次调用一个绝对时刻**，不是每跳一个 `Duration`」「`Duration` 跨跳传递时
+/// 守的要求：「**一次调用一个绝对时刻**，不是每跳一个 `Duration`」「`Duration` 跨跳传递时
 /// 每一跳都会重新开始计时 —— 那正是病 2 的机制。绝对时刻只能收紧、不能放宽」。
 ///
 /// 异源：真 `InboundClient` 接一根内存双工管子，对端由本用例扮演（不经 `frame_query`，不看源码）。
@@ -674,7 +674,7 @@ async fn a_timeout_fires_a_cancel_for_the_abandoned_id() {
     );
 }
 
-/// ★〔RM1f · C4〕**调用方放弃等待**（future 被丢）⇒ 同样补发一条 `cancel{target: 那条 id}`；
+/// ★**调用方放弃等待**（future 被丢）⇒ 同样补发一条 `cancel{target: 那条 id}`；
 /// 拿到结局之后再丢 ⇒ 一条都不发；超时 ⇒ 恰一条（上面那条钉「有」，这里钉「不多发」）。
 ///
 /// 为什么非有它：界面撤一问在 monitor 这一侧落成的是「把等应答的那个 future 丢掉」——
@@ -797,7 +797,7 @@ impl Warns {
     }
 }
 
-/// 〔NET2 · `设计/05 §3.3.3`〕「对面认不认撤是一条能力……不认 ⇒ 本地照撤，**并且在结果里说明对端不认**」。
+/// 「对面认不认撤是一条能力……不认 ⇒ 本地照撤，**并且在结果里说明对端不认**」。
 /// 两形各两向：① 握手没交出 `cancel` ⇒ 结果 `NotOffered` ＋ 那句话多说一句 ＋ warn 一条；交出了 ⇒ `Asked`、零条。
 /// ② 补发的撤单被回 `not_cancellable` ⇒ warn 一条、点名那条命令；回 ok ⇒ 零条。
 #[tokio::test]
@@ -826,7 +826,7 @@ async fn a_peer_that_cannot_withdraw_is_said_out_loud() {
         let told = warns.peer_cannot_withdraw();
         match want {
             Withdraw::NotOffered => {
-                // 〔COPY-R〕按文案键断言（`设计/91 §6`），不钉原文。
+                // 按文案键断言，不钉原文。
                 assert_eq!(
                     said,
                     copy_text("rsInboundClient.error.timeoutPeerRunsOn", &[("after", &ms)]),
@@ -1037,7 +1037,7 @@ fn the_shared_stripper_keeps_the_construction_site_this_guard_must_scan() {
     );
 }
 
-/// 〔NET2 续 · 主会话 09-27 裁 A · B〕握手里的能力事实从线上一路进 `Offer`，调用侧照它办：
+/// 握手里的能力事实从线上一路进 `Offer`，调用侧照它办：
 /// ① `unavailable` 列了的命令 ⇒ 不发、回 `Unavailable{code}`（与那台事后回的码同一个）；没列的照发。
 /// ② `uncancellable` 列了的命令超时 ⇒ `NotOffered`、一条撤单都不补；没列的 ⇒ `Asked`、补一条。
 /// 两侧异源：左边是真 hello 行经 `ssh_source::parse_frame` 解出来的，右边是本条手写的期望。
@@ -1095,7 +1095,7 @@ async fn the_hello_facts_decide_what_is_sent_and_what_is_withdrawn() {
     }
 }
 
-/// 〔RESYNC · 主会话 09-27 裁〕**握手之后才装上 tmux 的机器，靠「重新对齐」认出来**：hello 说 `kill` 做不到 ⇒ 事前拒；
+/// **握手之后才装上 tmux 的机器，靠「重新对齐」认出来**：hello 说 `kill` 做不到 ⇒ 事前拒；
 /// `resync` 的应答交回那台当下的能力事实（`unavailable` 空了）⇒ 换进 `Offer`，之后 `kill` 照发。
 #[tokio::test]
 async fn a_resync_reply_refreshes_the_offer_with_the_facts_of_this_moment() {

@@ -15,7 +15,7 @@ fn shape_validation_rejects_what_would_break_the_tmux_target() {
     ] {
         assert!(parse_name(&bad).is_err(), "{why} 应当被拒：{bad:?}");
     }
-    // 〔TAIL · DUP3 §5 ③〕`=` 放行：`=a=b:` 精确命中名叫 `a=b` 的会话（attach 那一条同样放行）。
+    // 〔DUP3 §5 ③〕`=` 放行：`=a=b:` 精确命中名叫 `a=b` 的会话（attach 那一条同样放行）。
     for good in ["proj-cc", "a=b", "=a"] {
         assert_eq!(parse_name(&json!({ "name": good })).unwrap(), good);
     }
@@ -33,7 +33,7 @@ fn the_kill_path_admits_before_it_kills() {
     let admit = src
         .find("gate::admit_destructive")
         .expect("生产段里没有 `gate::admit_destructive` —— 这条 kill 没过门");
-    // ⚠ **锚在调用形态上，不是那个词**〔08-08〕：生产段里 `kill-session` 有**两处**
+    // ⚠ **锚在调用形态上，不是那个词**：生产段里 `kill-session` 有**两处**
     //（真调用 + 一句错误消息「kill-session 失败…」），`find` 取首处 —— 今天命中对的
     // 那一处**是排序运气**。换成 `.args([` 那个形状（唯一），并当场核一次唯一性。
     let verb = format!(".args([\"kill-{}\"", "session");
@@ -57,7 +57,7 @@ fn the_kill_path_admits_before_it_kills() {
     );
 }
 
-/// 〔SH1 · D-g〕顺序钉：读 pane pid 在**过门之后、杀之前**（杀了就读不到了）；顺手注销在**杀成之后**（没杀成不注销）。
+/// 顺序钉：读 pane pid 在**过门之后、杀之前**（杀了就读不到了）；顺手注销在**杀成之后**（没杀成不注销）。
 #[test]
 fn the_kill_path_reads_panes_before_it_kills_and_unregisters_only_after() {
     let src =
@@ -104,9 +104,9 @@ fn kill_uses_the_destructive_gate_not_the_plain_one() {
     );
 }
 
-/// ★★〔C4e · 第四波 4C〕**跨语言金样**：界面直接收的 `kill` 成品，两侧读同一份 `tests/__fixtures__/tmux-control.golden.json`。
+/// ★★**跨语言金样**：界面直接收的 `kill` 成品，两侧读同一份 `tests/__fixtures__/tmux-control.golden.json`。
 ///
-/// 守的要求：`设计/05 §14.3` 逐字「**成品的两侧对拍**：界面按形状严格收……线上形状由一份跨语言金样钉住
+/// 守的要求：「**成品的两侧对拍**：界面按形状严格收……线上形状由一份跨语言金样钉住
 /// （后端测试产出 == 金样 · TS 解码器读同一份）」。杀会话从这一拍起由界面经通道直接说（`src/frontend/ui/tmux-control.ts::killSession`），
 /// monitor 那一跳只搬字节 —— 成品的键、拒绝码的集合从此只有后端这一侧与金样说了算。
 ///
@@ -143,7 +143,7 @@ fn the_kill_product_matches_the_cross_language_golden() {
     );
 }
 
-/// 设计/95 §6「要说得给 `kill` 的成品加一格」：注销结局三样原样进 `bus` 那一格（期望值手写）。
+/// 「要说得给 `kill` 的成品加一格」：注销结局三样原样进 `bus` 那一格（期望值手写）。
 #[test]
 fn the_kill_reply_carries_what_the_bus_cleanup_did() {
     let c = crate::control::cc_bus::BusCleanup {

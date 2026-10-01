@@ -1,4 +1,4 @@
-//! 从一套 [`Opts`] 算出「这一趟到底要干什么」，以及 `--ccm-print` 那条等价命令行（V138 前叫 `--print`）。
+//! 从一套 [`Opts`] 算出「这一趟到底要干什么」，以及 `--ccm-print` 那条等价命令行（前叫 `--print`）。
 //!
 //! # 为什么计划与执行分开
 //!
@@ -19,7 +19,7 @@ use crate::common::session_snapshot::TakenNames;
 use crate::platform::shell::posix;
 use shell_quote_core::posix_quote as sq;
 
-/// 〔US1 · RK1 报 2〕把继承来的 `ANTHROPIC_BASE_URL` 显式化进新 pane 载荷时，`export … =` 右边那个 shell 词。
+/// 〔RK1 报 2〕把继承来的 `ANTHROPIC_BASE_URL` 显式化进新 pane 载荷时，`export … =` 右边那个 shell 词。
 ///
 /// 继承来的值是上一个 pane 的 shell **展开过**的：我们注入的中转地址里那一段 `$(cat ~/<钥匙文件>)`
 /// 已经变成了 64 位钥匙本身。原样 `export` ⇒ 钥匙进这一次 `tmux send-keys` 的 **argv**（同机别的用户 `ps` 看得见）、
@@ -52,7 +52,7 @@ pub(crate) struct Env {
     pub(crate) inherited_config_dir: Option<String>,
     pub(crate) anthropic_base_url: Option<String>,
     pub(crate) ccm_launch_id: Option<String>,
-    /// 〔S5 · 第四波〕本进程环境里的启动期令牌（`CCM_RBIND_TOKEN`，变量名借自 `identity_tag`）。
+    /// 本进程环境里的启动期令牌（`CCM_RBIND_TOKEN`，变量名借自 `identity_tag`）。
     /// 只有直路上 `--ccm-sid` 那一格看它（[`DirectIdentity`]）；形状不在这里判，原样装着。
     pub(crate) launch_token: Option<String>,
     /// 起 agent 前要 eval 的机器级 env 串。
@@ -66,16 +66,16 @@ pub(crate) struct Env {
     /// **账号维度的载体**：切账号靠改哪个环境变量。由 `mod.rs` 从
     /// `agents::account_env_of(<这一趟的 agent>)` 取来 —— 本文件不认识任何 agent 的名字。
     pub(crate) account_env: String,
-    /// 「怎么叫我」（内层载荷要用它把自己再叫一次）：`[argv0]`（〔09-27〕分流不看 argv0，
+    /// 「怎么叫我」（内层载荷要用它把自己再叫一次）：`[argv0]`（分流不看 argv0，
     /// 入口② `[argv0, "ccm"]`〔散文墓碑〕）。取法住 [`super::self_invocation`]。
-    /// 〔MC1 · 2026-09-24〕从前还有一档「设了 `CCM_SELF` 就用那个值」—— 那个环境变量删了
-    /// （`设计/01 §6.7b`：它只为远端 shim 存在）。
+    /// 从前还有一档「设了 `CCM_SELF` 就用那个值」—— 那个环境变量删了
+    /// （它只为远端 shim 存在）。
     pub(crate) self_argv: Vec<String>,
     /// `CCM_NO_PRETRUST=1`。
     pub(crate) no_pretrust: bool,
     /// cc-bus 脚本目录（`CC_BUS_SCRIPTS`），找不到就空。
     pub(crate) bus_scripts: Option<String>,
-    /// 〔FIX · V138 订正〕问「此刻哪些会话在跑」的那一次扫描（观测层的，由入口注入 —— control 不引用 observe）。
+    /// 问「此刻哪些会话在跑」的那一次扫描（观测层的，由入口注入 —— control 不引用 observe）。
     /// 入参 = 这一趟要用的账号配置目录（`None` = agent 自己的默认家目录）。`None` = 这一趟不问（预览 / 不是 resume）。
     pub(crate) running_sessions: Option<super::RunningScan>,
 }
@@ -91,7 +91,7 @@ impl Env {
     /// **这不是等价**，登记在模块头注。
     pub(crate) fn from_process(process_argv: &[String]) -> Self {
         use super::argv::Defaults;
-        // 〔WIN1〕家目录：`HOME`，没有再退 `USERPROFILE` —— 与本 crate 其余各处同一个口径
+        // 家目录：`HOME`，没有再退 `USERPROFILE` —— 与本 crate 其余各处同一个口径
         //   （`exit_policy::policy_path` · `asset_catalog`）。从前只认 `HOME`：Windows 上
         //   默认没有它 ⇒ 账号库落成 `/.claude-alt/accounts.json`（当前盘的根），找不到号还说「不在那个文件里」。
         let home = home_of(|k| std::env::var(k).ok());
@@ -128,13 +128,13 @@ impl Env {
             inherited_config_dir: None,
             account_env: String::new(),
             // 🔴 内层载荷要用**「我是被当作什么叫的」**那一段：这个进程**自己被怎么叫的**
-            //   （`[argv0]`，CC1 的 `self_invocation`；〔09-27〕入口②删了，分流不看名字）。
-            // 〔MC1 · 2026-09-24〕这里从前先看环境变量 `CCM_SELF`、没设才落到 argv。
+            //   （`[argv0]`，CC1 的 `self_invocation`；入口②删了，分流不看名字）。
+            // 这里从前先看环境变量 `CCM_SELF`、没设才落到 argv。
             //   它存在的唯一理由是远端 shim：shim `exec <后端> ccm "$@"` 之后 `argv[0]` 是真身路径，
             //   而当时这一段只取 `argv[0]`、丢了 `ccm` 那个词 ⇒ 要 shim 把 `$0` 塞进环境变量补回来。
             //   CC1 之后不再丢词 ⇒ **shim 制造的那个问题没了，补丁也就不需要了**
-            //   （`设计/01 §6.7b` 逐字「`CCM_SELF` 这个环境变量随之删掉」）。
-            // 〔MOD · ⑮〕argv 由调用方交（`main.rs` 取的那一次），本模块不再自己读。
+            //   （「`CCM_SELF` 这个环境变量随之删掉」）。
+            // argv 由调用方交（`main.rs` 取的那一次），本模块不再自己读。
             self_argv: super::self_invocation(process_argv),
             no_pretrust: std::env::var("CCM_NO_PRETRUST").as_deref() == Ok("1"),
             bus_scripts: discover_bus_scripts(),
@@ -144,9 +144,9 @@ impl Env {
     }
 }
 
-// 〔W5-ALIAS〕预览那一份单独一个 `impl` 块：`from_process` 那一块的判据按「块尾」截函数体（`plan_tests` 的家目录那条）。
+// 预览那一份单独一个 `impl` 块：`from_process` 那一块的判据按「块尾」截函数体（`plan_tests` 的家目录那条）。
 impl Env {
-    /// 〔W5-ALIAS · 第五波先行〕别名预览用的那一份（帧命令 `ccm-print`，`设计/71 §2.3`）：
+    /// 别名预览用的那一份（帧命令 `ccm-print`）：
     /// **「从这台机器家目录里的一个新终端敲这条别名」**。问的人是常驻后端进程，而它的 cwd / 环境
     /// 不是那个终端的 ⇒ 这几格写死、而且写在这一处（判据 `ccm::tests` 的预览那几条逐格钉）：
     /// - `self_argv = ["ccm"]` —— 别名叫的就是 `ccm`（容器路内层要把自己再叫一次，叫法就是它）；
@@ -197,8 +197,8 @@ fn is_exec(p: &std::path::Path) -> bool {
             .map(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
             .unwrap_or(false);
     }
-    // 〔WIN1 · WN1 件 G〕从前这一臂是 `p.is_file()` ⇒ Windows 上「可执行」退化成「存在」
-    //   （`真相源/106 §3.4`：种一个两行文本的 `cc-register`，照样被认了）。Windows 上「跑得起来」
+    // 〔WN1 件 G〕从前这一臂是 `p.is_file()` ⇒ Windows 上「可执行」退化成「存在」
+    //   （种一个两行文本的 `cc-register`，照样被认了）。Windows 上「跑得起来」
     //   看的是扩展名在不在 `PATHEXT` 里 —— 判定住 [`runnable_on_windows`]（纯函数，Linux 上直接测）。
     #[cfg(not(unix))]
     {
@@ -300,7 +300,7 @@ struct Manifest {
     accounts: Vec<Account>,
 }
 
-/// 账号表。**唯一真相源是那份 manifest** —— 从前 `shared/ccm` 要跨一次进程去问 backend
+/// 账号表。**唯一源头是那份 manifest** —— 从前 `shared/ccm` 要跨一次进程去问 backend
 /// 才拿得到它（`--list-accounts --accts-dir`），那一整段是 bash 与后端说话的**税**，
 /// 不是功能。同一个二进制之下它整块消失。
 #[derive(Debug, Clone, Default)]
@@ -416,7 +416,7 @@ pub(crate) enum Plan {
     Container(Container),
     /// 在**本进程**里设好环境、`cd`、然后 `exec`。
     Direct(Direct),
-    /// 〔FIX · V138〕resume 的那条会话已经在 tmux 会话 `name` 里跑 ⇒ 接上它，不另起一份（`--detach` ⇒ 只报名字）。
+    /// resume 的那条会话已经在 tmux 会话 `name` 里跑 ⇒ 接上它，不另起一份（`--detach` ⇒ 只报名字）。
     Rejoin {
         name: String,
         sid: String,
@@ -434,12 +434,12 @@ pub(crate) struct Container {
     pub(crate) detach: bool,
     /// 送进容器的那条内层命令（已经是一整条 POSIX 命令串）。
     pub(crate) payload: String,
-    /// 〔CC1〕**同一条内层命令的自检形**：同一段 `export` 前缀、同一个入口、同一串参数，
+    /// **同一条内层命令的自检形**：同一段 `export` 前缀、同一个入口、同一串参数，
     /// 只在 `--` 前多一个 `--ccm-print`。收尾那段在登记之前先跑它（见 [`render_container_tail`]）。
     pub(crate) self_check: String,
     /// 要不要挂那段「抓信任框、自动按 Enter」的兜底轮询。
     pub(crate) trust_poll: bool,
-    // ★★ 〔`K-R96` 09-12〕**`avoid_collision` 这个字段删了** —— 散文墓碑留在这里。
+    // ★★ **`avoid_collision` 这个字段删了** —— 散文墓碑留在这里。
     //
     // 它从前的意思是「这个名字撞了要不要退让」，而退让本身发生在 `mod.rs::execute`
     // ——**只在真跑那条路上**，`--ccm-print` 吐的是没退让过的名字。
@@ -473,12 +473,12 @@ pub(crate) struct Direct {
     pub(crate) ccm_env: String,
     /// codex 要的 cc-bus 身份配方（claude 不要 —— 会盖掉 `@cc_id` 细分）。
     pub(crate) bus_id_recipe: bool,
-    /// 🔴 〔`P19` 09-22〕这一趟**真的在 tmux 里**吗（`$TMUX` 非空）。
+    /// 🔴 这一趟**真的在 tmux 里**吗（`$TMUX` 非空）。
     ///
     /// 上一行那段配方（[`super::BUS_ID_RECIPE`]）**整段裹在 `if [ -n "${TMUX:-}" ]` 里** ⇒
     /// 这一格为假时它**一个字都不做**。真跑那一侧靠这一格判断「还要不要请一个 shell 进来」
     /// （[`super::needs_shell`]）—— 而那正是 `--agent codex` 在 Windows 上
-    /// `program not found` 的那一跳（读数住 `真相源/106 §3.3`）。
+    /// `program not found` 的那一跳（读数住）。
     ///
     /// ⚠ **只有真跑那一侧读它；[`render`] 一个字不看** —— `--ccm-print` 必须对宿主环境
     /// 逐字节稳定（`INVARIANTS §33a` 铁律 2：不查实时 tmux 状态，**值不知道就打印配方**）。
@@ -493,18 +493,18 @@ pub(crate) struct Direct {
     /// 要 unset 的嵌套标记（claude 四个 / codex 零个）。
     pub(crate) nested: Vec<String>,
     pub(crate) cwd: String,
-    /// 最终 exec 的 argv：启动器 ＋ 原样透传（V138：`--resume` 这类 ccm 不吃，照写交出去）。
+    /// 最终 exec 的 argv：启动器 ＋ 原样透传（`--resume` 这类 ccm 不吃，照写交出去）。
     pub(crate) argv: Vec<String>,
     /// 这一趟有没有身份面（claude 有、codex 没有）。
     pub(crate) has_identity: bool,
-    /// 〔S5 · 第四波〕`--ccm-sid` 在直路上交给谁 —— 见 [`DirectIdentity`]。
+    /// `--ccm-sid` 在直路上交给谁 —— 见 [`DirectIdentity`]。
     pub(crate) identity: DirectIdentity,
 }
 
-/// 〔S5 · 第四波 · `99 §4.4` 那一行 · `WN1.md §3`〕**直路上 `--ccm-sid` 的语义 = 启动期令牌。**
+/// 〔那一行 · `WN1.md §3`〕**直路上 `--ccm-sid` 的语义 = 启动期令牌。**
 ///
 /// 从前 `--ccm-sid` 进了 `Opts` 之后只有容器路消费（写 `@ccm_sid_expect`），直路上**被接受、零效果、不出声**
-/// （`lib.rs::TARGET_GAPS` 那一行逐字）。主会话裁：**不报错**（报错 ＝ 让它依赖 tmux，撞 V63
+/// （`lib.rs::TARGET_GAPS` 那一行逐字）。主会话裁：**不报错**（报错 ＝ 让它依赖 tmux，撞
 /// 「`--ccm-sid` 不要依赖 tmux」），直路语义走已落地的启动期令牌那条路。
 ///
 /// 为什么是令牌、不是再造一个变量：`--ccm-sid` 要的是「让拉前认得这个会话」，V63 之后这件事的载体
@@ -525,7 +525,7 @@ pub(crate) enum DirectIdentity {
     NoCarrier,
 }
 
-/// 直路上 `--ccm-sid` 交给谁。形状判定只有一份（〔DUP3〕`shell_quote_core::rbind_token_ok`，这里经 `identity_tag::token_is_safe` 那个再导出名调它）。
+/// 直路上 `--ccm-sid` 交给谁。形状判定只有一份（`shell_quote_core::rbind_token_ok`，这里经 `identity_tag::token_is_safe` 那个再导出名调它）。
 pub(crate) fn direct_identity(ccm_sid: &str, launch_token: Option<&str>) -> DirectIdentity {
     if ccm_sid.is_empty() {
         return DirectIdentity::NotAsked;
@@ -555,7 +555,7 @@ pub(crate) fn qarg(s: &str) -> String {
 /// tmux 会话名里**一段**的净化（不含 `-cc` 后缀）：取末段路径 → 非 `[A-Za-z0-9_-]` 换 `-` → 折叠 → 截 32 → 剥首尾 `-`。
 /// 结果可能是空串（输入全是分隔符 / 根目录），调用方给兜底。
 ///
-/// 〔FIX4 · `设计/90 §3` J7〕全仓**唯一一份**：前端那份（`shell-quote.ts::tmuxNameSegment` · `remote-launch.ts::deriveTmuxName`）删了，
+/// 全仓**唯一一份**：前端那份（`shell-quote.ts::tmuxNameSegment` · `remote-launch.ts::deriveTmuxName`）删了，
 /// 界面要名字就问这台后端的 `tmux-name-mint`（[`super::answer_tmux_name_mint`]）。
 fn name_segment(raw: &str) -> String {
     let trimmed = raw.trim_end_matches('/');
@@ -585,7 +585,7 @@ fn name_segment(raw: &str) -> String {
 /// 从一个目录派生 tmux 会话名（**基名**，还没避让）：`<段>-cc`；段为空 ⇒ `session-cc`。
 ///
 /// 同规则 = 终端里敲 `ccm` 与 app「开新 Claude」在同一目录造出**同一个基名**。
-/// 〔FIX4 · J7〕界面那份 `deriveTmuxName` 删了（原先两边逐字同规则、`ccm-cli.test.sh` 跨语言对拍钉着）：规则只剩这一份。
+/// 界面那份 `deriveTmuxName` 删了（原先两边逐字同规则、`ccm-cli.test.sh` 跨语言对拍钉着）：规则只剩这一份。
 pub(crate) fn derive_tmux_name(cwd: &str) -> String {
     let s = name_segment(cwd);
     if s.is_empty() {
@@ -595,7 +595,7 @@ pub(crate) fn derive_tmux_name(cwd: &str) -> String {
     }
 }
 
-/// 〔FIX4 · J7〕分叉出来那条会话的**基名**：`<源名去掉末尾 -cc 再净化>-fork-cc`；净化后为空 ⇒ `session-fork-cc`。
+/// 分叉出来那条会话的**基名**：`<源名去掉末尾 -cc 再净化>-fork-cc`；净化后为空 ⇒ `session-fork-cc`。
 ///
 /// 源是源会话所在的 tmux 名；源会话已退出、没有 tmux 名可继承时调用方交它的 cwd（同一个净化器 ⇒ 产不出非法名，
 /// Phase G 审计抓过的那一下：`/home/pi/proj-fork-cc`）。**必须与源名不同**，否则 `ccm` 会把新会话接进原会话那个窗口。
@@ -610,7 +610,7 @@ pub(crate) fn fork_tmux_base(source: &str) -> String {
     format!("{seg}-fork-cc")
 }
 
-/// 〔FIX4 · J7〕给一个基名、一份**那张快照**里的已占用名 ⇒ 最终名（撞了往后排）。
+/// 给一个基名、一份**那张快照**里的已占用名 ⇒ 最终名（撞了往后排）。
 /// 帧命令 `tmux-name-mint` 与 [`build`] 走同一个 [`next_free_name`]；`taken` 只收 [`TakenNames`]（造不出第二份）。
 pub(crate) fn mint_tmux_name(base: &str, taken: &TakenNames) -> String {
     next_free_name(base, taken.as_slice())
@@ -620,7 +620,7 @@ pub(crate) fn mint_tmux_name(base: &str, taken: &TakenNames) -> String {
 ///
 /// 纯函数（已占用的名字由调用方给）—— 这样「退让规则」测得了。
 ///
-/// 〔`K-R96` 09-12〕**谁给那份 `taken`，今天只有一个答案**：[`build`] 从
+/// **谁给那份 `taken`，今天只有一个答案**：[`build`] 从
 /// [`TakenNames`] 里拿，而 `TakenNames` 的字段是 `common::session_snapshot` 模块私有的
 /// ⇒ 「另起一份名字集合」在类型层面就造不出来。`--ccm-print` 与真跑用的是同一份。
 fn next_free_name(base: &str, taken: &[String]) -> String {
@@ -639,12 +639,12 @@ fn next_free_name(base: &str, taken: &[String]) -> String {
 
 /// 会话名的形状校验 —— 显式名与基名都过这里（`ccm` 要**新建**的会话名）。
 ///
-/// 〔DUP2 · 主会话 09-26 裁 J6〕**规则只有一份**，住共享 crate（`crate::control::gate_rules::new_tmux_name_issue`：非空 · 不以 `-` 开头 ·
+/// **规则只有一份**，住共享 crate（`crate::control::gate_rules::new_tmux_name_issue`：非空 · 不以 `-` 开头 ·
 /// 无 `*?.:=` · 无控制符与视觉欺骗字符 · ≤128）；monitor 的载荷外层与 `ccm …` 调用行调的是同一个函数。本函数只剩「说哪一句」。
 /// 这里原来自己写了一份（自称「唯一一份」，而 monitor 与界面各还有一份、规则各不相同）；比那一份多出来的两格
 /// （欺骗字符 · 超长）是三份取交集时从 monitor 载荷那一份与界面那一份带进来的。
 pub(crate) fn validate_tmux_name(n: &str) -> Result<(), Die> {
-    // 〔FIX · `99 §2 ㊹`〕说哪一句住 `launch::new_tmux_name_said`（后端 `launch` 新建那一支也用它）。
+    // 说哪一句住 `launch::new_tmux_name_said`（后端 `launch` 新建那一支也用它）。
     match crate::control::launch::new_tmux_name_said(n) {
         None => Ok(()),
         Some(said) => Err(Die(said)),
@@ -781,7 +781,7 @@ pub(crate) fn resolve_account(
     }
 }
 
-/// 〔TL3 · `INVARIANTS §47` ② · 主会话 09-26 按 V131 裁〕**自由文本**那几格拼进 shell（`--ccm-print` 那一串 · pane 里键入的载荷 ·
+/// 〔`INVARIANTS §47` ②〕**自由文本**那几格拼进 shell（`--ccm-print` 那一串 · pane 里键入的载荷 ·
 /// 收尾那几段 `sh -c`）之前的放行判定：
 ///
 /// | 格 | 形式（按本机语境） | 拒绝集 |
@@ -790,12 +790,12 @@ pub(crate) fn resolve_account(
 /// | 透传给 agent 的参数 · 登记备注（可以跨行：多行初始任务） | — | NUL / CR（`shell_quote_core::arg_text_ok`） |
 /// | 继承来的 `CLAUDE_CONFIG_DIR` / `ANTHROPIC_BASE_URL` / `CCM_LAUNCH_ID` | — | NUL / CR / LF |
 ///
-/// 〔DUP3 · 主会话 09-26 裁 · `INVARIANTS §47` ③〕**启动器不在上表**：它是命令片段（带参数 · alias · 路径），不是自由文本 ——
-/// 过全仓那一张白名单 `shell_quote_core::launcher_refused_char`（与 monitor 本机 `history.rs` · 远端载荷 `payload.rs` 同一条，
-/// `设计/01 §6.8`；先前这一格只拒 NUL / CR / LF）。空 = 没给（下面用这个 agent 的默认启动器）。
+/// 〔`INVARIANTS §47` ③〕**启动器不在上表**：它是命令片段（带参数 · alias · 路径），不是自由文本 ——
+/// 过全仓那一张白名单 `shell_quote_core::launcher_refused_char`（与 monitor 本机 `history.rs` · 远端载荷 `payload.rs` 同一条；
+/// 先前这一格只拒 NUL / CR / LF）。空 = 没给（下面用这个 agent 的默认启动器）。
 ///
 /// **不拒 shell 元字符**（`Bob's` · `(2019)` 照放，交给唯一的 quote）。拒绝集住 `shell_quote_core::free_text_ok` / `arg_text_ok`。
-/// ⚠ 模型名与 `--ccm-sid` **不在这里**：主会话裁交 DUP1（判定唯一住址那一路）统一定规则（`调研/第四波记录/TL3.md §7.3`）。
+/// ⚠ 模型名与 `--ccm-sid` **不在这里**：主会话裁交 DUP1（判定唯一住址那一路）统一定规则。
 /// ⚠ 继承来的那三个只在它们真会被拼进去的时候才判（容器路把它们显式化进载荷，[`inherited_gate`]）：
 ///   环境里一个用不上的怪值不该挡住起会话（拒过头）。
 fn free_text_gate(cwd: &str, o: &Opts) -> Result<(), Die> {
@@ -885,7 +885,7 @@ pub(crate) fn build(
         });
     }
 
-    // ── resume 先查是否已在跑（V138「只看不吃 `--resume` 以复用 tmux 名」· `设计/71 §8` 第 12 条）──
+    // ── resume 先查是否已在跑（「只看不吃 `--resume` 以复用 tmux 名」）──
     //    在跑 ⇒ 接上它，不另起第二份（两份 claude 同写一份记录）。判「在跑」只问避让那同一份快照。
     if let Some((sid, name)) = o
         .resumes
@@ -902,13 +902,13 @@ pub(crate) fn build(
     let cwd = resolve_cwd(o, env);
     free_text_gate(&cwd, o)?;
     let (config_dir, account) = resolve_account(o, env, table)?;
-    // 〔TL3 · §47〕账号配置目录（manifest 里来的）是本仓自管的路径，该走全表。
-    // 〔DUP1〕全表原先住 `observe/accounts_query.rs`（`control → observe` 是禁止方向，TL3 在这里先只过了自由文本那一层）；
+    // 〔§47〕账号配置目录（manifest 里来的）是本仓自管的路径，该走全表。
+    // 全表原先住 `observe/accounts_query.rs`（`control → observe` 是禁止方向，TL3 在这里先只过了自由文本那一层）；
     //   今天整份搬进共享 crate（`acct_core::config_dir_ok`，全仓唯一一份），这里直接用。空串 = 账号 0 / 继承，不注入、不判。
     if !config_dir.is_empty() && !acct_core::config_dir_ok(&config_dir) {
         return Err(refuse(&env.account_env, &config_dir));
     }
-    // 〔FIX · V138 订正〕在跑、却不在 ccm 认得的 tmux 会话里（上面那一格没接上）⇒ 接不上，也不另起第二份：明说。
+    // 在跑、却不在 ccm 认得的 tmux 会话里（上面那一格没接上）⇒ 接不上，也不另起第二份：明说。
     //   判活是观测层起步初扫那一份（`observe::watcher::running_sessions`，入口注入）。
     if let (Some(sid), Some(scan)) = (o.resumes.as_deref(), env.running_sessions) {
         let dir = if !config_dir.is_empty() {
@@ -963,7 +963,7 @@ pub(crate) fn build(
             _ => base,
         };
         // 内层：同一条命令去掉 `--ccm-tmux`，并把**继承来的**那几个变量显式化。
-        // 〔V151〕形状 `self <交给 agent 的…> -- <ccm 自己的…>`（ccm 那一半恒非空 ⇒ 恒带 `--`，透传里有 claude 自己的 `--` 也切得对）。
+        // 形状 `self <交给 agent 的…> -- <ccm 自己的…>`（ccm 那一半恒非空 ⇒ 恒带 `--`，透传里有 claude 自己的 `--` 也切得对）。
         let mut opts: Vec<String> = vec![
             flag::CWD.into(),
             cwd.clone(),
@@ -989,7 +989,7 @@ pub(crate) fn build(
         inner.extend(o.passthru.iter().cloned());
         inner.push(flag::END.into());
         inner.extend(opts);
-        // 🔴 〔CC1〕**自检那一趟与 pane 里那一趟是同一串 argv**，只在 ccm 那一半末尾多一个 `--ccm-print`。
+        // 🔴 **自检那一趟与 pane 里那一趟是同一串 argv**，只在 ccm 那一半末尾多一个 `--ccm-print`。
         //    两条都从这一个 `inner` 渲出来，不许在别处另拼一份。
         let mut dry = inner.clone();
         dry.push(flag::CCM_PRINT.into());
@@ -1168,7 +1168,7 @@ fn render_container(c: &Container) -> String {
 pub(crate) fn render_container_tail(c: &Container) -> String {
     let t = sq(&format!("={}:", c.name));
     let mut seq = String::new();
-    // ★★ 〔CC1〕**先自检，再谈兜底 / 接进去 / 登记** —— 排在收尾的最前面，而且只能在这里。
+    // ★★ **先自检，再谈兜底 / 接进去 / 登记** —— 排在收尾的最前面，而且只能在这里。
     //
     // 从前 ccm 的 rc=0 只说明「会话建了、载荷键入了、收尾跑了」，pane 里那一跳一个字都没看：
     // BS1b 现打入口② 那一跳当场「unknown argument: --cwd」退回空 bash，而 cc-spawn 照报成功、
@@ -1183,7 +1183,7 @@ pub(crate) fn render_container_tail(c: &Container) -> String {
     // ⚠ 它**买到**的：入口路由（BS1b 那一形）· 参数解析 · 账号解析 · 被叫的那个入口（`argv[0]`）是一份不认这套参数的旧副本。
     // ⚠ 它**买不到**的（别读成做到了）：`--ccm-print` 不解析启动器 ⇒ 「启动器在 PATH 上找不到」仍会在 pane 里
     //   退回 shell 而这里照报成功；agent exec 起来之后自己当场退出，同样看不见。要看见这两类得有一个
-    //   **exec 那一刻的正信号**（今天没有），登记在 `设计/95` 末尾。
+    //   **exec 那一刻的正信号**（今天没有），登记在末尾。
     seq.push_str(&format!(
         " && {{ _ccm_e=$({{ {}; }} 2>&1 >/dev/null) || {{ printf '%s\\n' \"$_ccm_e\" >&2; printf {} {} >&2; exit 4; }}; }}",
         c.self_check,
@@ -1193,7 +1193,7 @@ pub(crate) fn render_container_tail(c: &Container) -> String {
     // 🔴 下面那条**自带节拍的 shell 串**不是漏进来的，是 `C14` 逐字登记的那个例外
     //（「预信任的『等信任框』没有内核事件源 …… `C8` 的唯一登记例外：`control/` 继续
     // 以 shell 字符串形态产出它」）。节拍由**目标 shell** 提供，后端进程自己一个定时器都没有。
-    // ⚠〔`K-R103` 09-13〕`no_timer_guard::f09` 从今天起**扫得到它**（匹配单位从「行」
+    // ⚠`no_timer_guard::f09` 从今天起**扫得到它**（匹配单位从「行」
     // 改成「表达式」之后，`format!(` 的续行不再掉出人群）⇒ 它在
     // `no_timer_guard::f09_external_beat::REGISTERED_EXTERNAL_BEATS` 上**签了字**。
     // 改这一段之前先看那张表：动了这条串的形状，那边会红。

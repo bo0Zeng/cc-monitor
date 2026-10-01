@@ -1,9 +1,9 @@
-//! # 要求住址：`设计/70 §6.3`（日志那一块：三个开关 ＋ 文件位置）＋ `INVARIANTS §2.1`（`config.json` 是真相）
+//! # （日志那一块：三个开关 ＋ 文件位置）＋ `INVARIANTS §2.1`（`config.json` 是真相）
 //!
-//! 核原文：`设计/70 §6.3` 逐字「日志文件开关（改了要重启）· 级别（立即生效）· 错误提示开关 · 文件位置 ＋ 大小」
+//! 核原文：「日志文件开关（改了要重启）· 级别（立即生效）· 错误提示开关 · 文件位置 ＋ 大小」
 //! —— 本族判诊断配置的默认值、`logging.rs::build_env_filter` 认哪些级别、`logging.rs::find_latest_log_file` 指到哪一份；
 //! 写回 `diagnostics` 不丢同文件别的字段，对 `INVARIANTS §2.1` 那张表里 `config.json` 的「真相 · 全用户手填」。
-//! 〔JA1 点址 2026-09-24〕〔TL1 · 4C〕`diagnostics_legacy_config_missing_field_uses_defaults` 从前在测试里逐字重写了
+//! 〔JA1 点址 2026-09-24〕`diagnostics_legacy_config_missing_field_uses_defaults` 从前在测试里逐字重写了
 //! `logging.rs::read_diagnostics_from_config` 那条链、不在执行链上；今天改调生产函数，且「缺 `diagnostics` 键」那一支只有它量（`TL1.md` 件 1）。
 
 use super::*;
@@ -22,7 +22,7 @@ fn diagnostics_default_is_user_friendly() {
 
 /// 一份没有 `diagnostics` 键的 `config.json`（别的设置都在）⇒ 诊断设置取默认值。
 ///
-/// 〔TL1 · 4C〕从前这里把 `read_diagnostics_from_config` 那条链在测试里逐字重写了一遍、没调生产函数（`JA1.md §3.3`）；
+/// 从前这里把 `read_diagnostics_from_config` 那条链在测试里逐字重写了一遍、没调生产函数（`JA1.md §3.3`）；
 /// 今天经临时目录真读一份文件。「缺这个键」那一支只有本条走：`write_then_read_diagnostics_roundtrip` 走的是「键在」那一支。
 #[test]
 fn diagnostics_legacy_config_missing_field_uses_defaults() {
@@ -133,14 +133,14 @@ fn find_latest_log_picks_newest_mtime() {
     let _ = std::fs::remove_dir_all(&tmp);
 }
 
-/// 〔S5 · 第四波〕要求住址：D4（不许把「读不出」静默当成空）· D7（失败要说清原因）——
+/// 要求住址：D4（不许把「读不出」静默当成空）· D7（失败要说清原因）——
 /// 主会话转来的 JA1 读数逐字「遇坏 config.json 会退成 `{}` 再整份写回，用户手填的内容被覆盖、没有判据守」。
 ///
 /// 一份读不懂的 config.json（少一个逗号）⇒ `Err`、**盘上字节一个不动**、话里点名那份文件并说为什么没存。
 /// 对照：合法的那份照常写（上面 `write_diagnostics_preserves_other_fields`）。
 #[test]
 fn a_config_we_cannot_parse_is_left_alone_not_overwritten() {
-    // 〔NT2〕先前与 `find_latest_log_picks_newest_mtime` 共用 `ccm-log-test3-<pid>` 这一个目录 ⇒ 两条并行时互删对方的文件（时好时坏）。
+    // 先前与 `find_latest_log_picks_newest_mtime` 共用 `ccm-log-test3-<pid>` 这一个目录 ⇒ 两条并行时互删对方的文件（时好时坏）。
     let tmp = std::env::temp_dir().join(format!("ccm-log-test3b-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&tmp);
     std::fs::create_dir_all(&tmp).unwrap();
@@ -155,7 +155,7 @@ fn a_config_we_cannot_parse_is_left_alone_not_overwritten() {
         broken,
         "读不懂的那份被改了 —— 用户手填的内容没了"
     );
-    // 〔CFG1〕临时件名带 pid 了（`config.json.<pid>.tmp`，写口 `config::patch_config_at`）。
+    // 临时件名带 pid 了（`config.json.<pid>.tmp`，写口 `config::patch_config_at`）。
     assert!(
         !tmp.join(format!("config.json.{}.tmp", std::process::id()))
             .exists(),
@@ -168,11 +168,11 @@ fn a_config_we_cannot_parse_is_left_alone_not_overwritten() {
     let _ = std::fs::remove_dir_all(&tmp);
 }
 
-// ═══ 〔NT2 · S1〕本机后端（脱离那条载体）的 stderr 诊断文件 ═══════════════════════════════════════
+// ═══ 本机后端（脱离那条载体）的 stderr 诊断文件 ═══════════════════════════════════════
 //
-// 守的要求（住址，纪律 19）：`设计/15 §4.7 S1`（逐字）「**本机 · 脱离常驻载体**（Linux 缺省；全部 SSH 与中转都在它里面）|
+// 守的要求（住址，纪律 19）：（逐字）「**本机 · 脱离常驻载体**（Linux 缺省；全部 SSH 与中转都在它里面）|
 // null（`StderrSink::Null`）| **仍开**」· 主会话 4C 第二批裁（逐字）「脱离载体的常驻后端 stderr 落本机日志文件（有上限、滚动），
-// 设置页『日志』里看得到」。设计：`调研/第四波记录/NT2.md §2`。
+// 设置页『日志』里看得到」。
 
 /// L4 ★ 设置页读到的那一族：后端那个子目录里的普通文件，新在前；目录不在 ⇒ 空（不报错）。
 /// 另一向：日志目录顶层只收 `.log`，后端那个子目录不混进 monitor 自己的「当前文件」。
@@ -215,7 +215,7 @@ fn the_backend_stderr_files_are_listed_newest_first_and_kept_apart_from_ours() {
     let _ = std::fs::remove_dir_all(&root);
 }
 
-/// 〔DATA-HOME〕V160 逐字「日志分 `logs/backend/` · `logs/monitor/`」：monitor 的滚动日志与本机后端那份各住一层、不撞名（期望手写）。
+/// V160 逐字「日志分 `logs/backend/` · `logs/monitor/`」：monitor 的滚动日志与本机后端那份各住一层、不撞名（期望手写）。
 #[test]
 fn monitor_and_backend_logs_live_side_by_side_under_logs() {
     let root = std::path::Path::new("/d");

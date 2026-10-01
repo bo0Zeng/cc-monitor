@@ -1,14 +1,14 @@
-//! **对外文案表的 Rust 取文口** —— 全仓 Rust 一侧唯一的一份实现（〔CP2c · 第四波 4C〕从 monitor 的
+//! **对外文案表的 Rust 取文口** —— 全仓 Rust 一侧唯一的一份实现（从 monitor 的
 //! `copy_table.rs` 搬来：那一份原样转发到这里）。
 //!
-//! 要求住址：`设计/01 §6.9` 逐字「**所有对外文案与报错都从一张表来**（结构化的 key → 文本，插值点留在表里）」；
-//! `设计/91 §5.1` 决定 2 逐字「**一份文件，两侧各读，零转换**」。
+//! 要求：「**所有对外文案与报错都从一张表来**（结构化的 key → 文本，插值点留在表里）」；
+//! 决定 2 逐字「**一份文件，两侧各读，零转换**」。
 //!
 //! # 为什么住共享 crate、不住某一个宿主里
 //!
-//! 读它的有三方：monitor（界面进程）· 常驻后端（`src/backend`，自己出句子 —— 选 A 的理由住
-//! `调研/第四波记录/CP2c.md §2.1`）· `creds-core`（被上面两方同时链接，自己也有要对人说的话）。
-//! `creds-core` 够不着任何一个宿主的 `crate::copy_table`；各写一份取文实现就是 `91 §5.1` 的先例 B 形。
+//! 读它的有三方：monitor（界面进程）· 常驻后端（`src/backend`，自己出句子）
+//! · `creds-core`（被上面两方同时链接，自己也有要对人说的话）。
+//! `creds-core` 够不着任何一个宿主的 `crate::copy_table`；只能各写一份取文实现。
 //!
 //! # 纪律（与 TS 那一侧 `src/frontend/ui/copy-table.ts::copyText` 同一套，判据住 `tests/copy/copy-table.vitest.ts`）
 //!
@@ -35,15 +35,15 @@ fn entries() -> &'static serde_json::Map<String, serde_json::Value> {
 
 /// 取一条文案并填上具名占位符。
 ///
-/// 表里没有这个 key ⇒ 回 `〔key〕`（走不到：`copy-table.vitest.ts` 把 `.rs` 的每个调用点与表两向对拍；
+/// 表里没有这个 key ⇒ 回 ``（走不到：`copy-table.vitest.ts` 把 `.rs` 的每个调用点与表两向对拍；
 /// 但不许 panic —— 一句话缺了不该拖垮它所在的那条路）。
 ///
-/// 〔DUP3 · 主会话 09-26 裁〕**单趟**：从左到右扫一遍模板，`{名}` 且这个名给了值 ⇒ 换成值，**值本身不再被扫**；
-/// 没给的原样留 `{名}`（Rust 读口的处置，`设计/01 §6.9` 认可的两读口差异，金样 `_differences` 登记着）。
+/// **单趟**：从左到右扫一遍模板，`{名}` 且这个名给了值 ⇒ 换成值，**值本身不再被扫**；
+/// 没给的原样留 `{名}`（Rust 读口的处置，认可的两读口差异，金样 `_differences` 登记着）。
 /// 先前逐个参数对整串 `replace` —— 前一个参数的值里若含 `{后一个参数名}`，会被后一个再换一遍：插值重新解释了值。
 /// 与前端读口 `copy-table.ts::copyText` 那一趟同形（金样 `tests/__fixtures__/copy-interpolation.golden.json` 两侧各对）。
 ///
-/// 〔P3 · `rules.json` C-L5〕值与相邻汉字之间的空格随值定（[`join_seams`]）：「{machine}上」与「{machine} 上」同一个意思。
+/// 〔`rules.json` C-L5〕值与相邻汉字之间的空格随值定（[`join_seams`]）：「{machine}上」与「{machine} 上」同一个意思。
 pub fn copy_text(key: &str, args: &[(&str, &str)]) -> String {
     let Some(zh) = entries()
         .get(key)
@@ -104,7 +104,7 @@ fn seam_wants(a: char, b: char) -> Option<bool> {
     }
 }
 
-/// 〔P3 · C-L5〕拼回一句：`parts` 是「字面 · 值 · 字面 · 值 … 字面」交替（字面可为空）。每个非空的值与它两边的**模板字**之间
+/// 拼回一句：`parts` 是「字面 · 值 · 字面 · 值 … 字面」交替（字面可为空）。每个非空的值与它两边的**模板字**之间
 /// 按 [`seam_wants`] 补上或拿掉**一个**空格；接缝上两个以上空格是排版，照留；两个值之间只隔空格的那一段不动。
 /// 与前端 `copy-table.ts::joinSeams` 同形（两侧各对插值金样）。
 fn join_seams(parts: &[String]) -> String {

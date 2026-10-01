@@ -1,5 +1,5 @@
 /**
- * S1：远端配置的**局部合并**（〔FIX2 续〕今天全按键认元素：`remoteHostsEdits`）。
+ * S1：远端配置的**局部合并**（今天全按键认元素：`remoteHostsEdits`）。
  *
  * 为什么这几条值得写：整表覆盖今天之所以不出事，是因为 `RemoteSection.collect()`
  * 恰好映射了**全部**卡片 —— **正确性来自 UI 的巧合，不是来自构造**。S2 把机器拆成
@@ -12,7 +12,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-// 〔CFG1〕config 写只交补丁；替身把补丁应用到 `loadConfig` 摆的那份上，写完的整份交 `fakeCfg.saved`。
+// config 写只交补丁；替身把补丁应用到 `loadConfig` 摆的那份上，写完的整份交 `fakeCfg.saved`。
 vi.mock("../../../src/frontend/ui/config", async (orig) => (await import("./config-patch-fake")).mockedConfigModule(orig));
 import { loadConfig } from "../../../src/frontend/ui/config";
 import { fakeCfg } from "./config-patch-fake";
@@ -57,7 +57,7 @@ describe("hostKey", () => {
   });
 });
 
-// 〔FIX2 续 · `设计/99 §2 ㊶`〕设置页增删机器也按键认元素：「固化那一写与设置页同写 `remote.hosts` 有毫秒级丢更新窗口」。
+// 设置页增删机器也按键认元素：「固化那一写与设置页同写 `remote.hosts` 有毫秒级丢更新窗口」。
 //   假盘与 Rust 写口跑同一份金样（`config-patch-fake.vitest.ts`）⇒ 这里看到的盘上终态就是 Rust 会落的那份。
 describe("〔FIX2 续 · ㊶〕增 / 删一台 ⇒ insertin / removein，不整段写 remote", () => {
   beforeEach(() => vi.resetAllMocks());
@@ -142,7 +142,7 @@ describe("S4b-3 pickResumeCommand —— per-machine 优先，全局兜底", () 
 
 describe("S1：整表覆盖那条路必须**不可达**", () => {
   it("〔FIX2 续 · ㊶〕整段写 `remote` 的补丁在 remote-config.ts 里零处（增删改全按键认元素）", () => {
-    // 〔CFG1〕从前叫 `writeRemoteConfig`（读整份 → 换 `remote` → 整份写），后来只出一条 `set ["remote"]` 补丁。 〔散文墓碑〕
+    // 从前叫 `writeRemoteConfig`（读整份 → 换 `remote` → 整份写），后来只出一条 `set ["remote"]` 补丁。 〔散文墓碑〕
     const whole = /setAt\(\s*\[\s*"remote"\s*\]\s*,|patchConfigFrom\(/;
     expect(whole.test('setAt(["remote"], {})'), "正控：认得出整段写那一形").toBe(true);
     expect(whole.test('setAt(["remote", "enabled"], true)'), "反控：写 enabled 那一格不是整段").toBe(false);
@@ -164,7 +164,7 @@ describe("S1：整表覆盖那条路必须**不可达**", () => {
 });
 
 /**
- * 〔S5 · 第四波〕要求住址：`调研/设计/99 §1` V41「不为旧配置留兼容」· D4（不许把认不出静默当成空）。
+ * 要求：「不为旧配置留兼容」· D4（不许把认不出静默当成空）。
  *
  * `remote` 段没有 `hosts` 列表（旧的单台写法 / `hosts` 写成别的类型 / 只有 `enabled`）⇒ **认不出**：
  * 一台都不给（不猜那是哪台）、并带上那一句。对照：`hosts: []` 是合法的零台、没有 `remote` 段是「没配」，两者都不带那一句。
@@ -201,7 +201,7 @@ describe("〔S5 · V41〕remote 段认不出", () => {
   });
 });
 
-// 〔FIX · `设计/99 §2 ㊶` 第一问〕守的要求（逐字）：「固化那一写与设置页同写 `remote.hosts` 有毫秒级丢更新窗口」。
+// 〔第一问〕守的要求（逐字）：「固化那一写与设置页同写 `remote.hosts` 有毫秒级丢更新窗口」。
 describe("〔FIX · ㊶〕设置页改一台 ⇒ 按格 setin，不整台盖", () => {
   beforeEach(() => vi.resetAllMocks());
 

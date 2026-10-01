@@ -1,6 +1,6 @@
-//! tmux 观测：四态 · `NO_TMUX` 哨兵 · `tmux ls` · 关闭集合 diff · socket 目录（`设计/15 §4.1` A 块）。
+//! tmux 观测：四态 · `NO_TMUX` 哨兵 · `tmux ls` · 关闭集合 diff · socket 目录（块）。
 //!
-//! 〔RE · C4〕整块从 `observe/watcher.rs` 搬来（`15 §5.3 C4` 余下那一刀），逐字不变；
+//! 整块从 `observe/watcher.rs` 搬来（余下那一刀），逐字不变；
 //! 只把 watcher 主循环要用的几项升成 `pub(super)`。事件总线、主循环、jsonl 增量读、
 //! pidfile 生命周期仍住 `watcher.rs`。
 
@@ -76,7 +76,7 @@ const TMUX_LS_FMT_FIELDS: usize = 6;
 //    而挂 env 一个字节都不用动它。
 use crate::common::tmux_utf8::{tab_underflow, UTF8_CLIENT_ENV};
 
-// ---------- P1（zero-poll-liveness）：tmux 观测的取值（〔MIG-1 续〕原 `tmux_sessions` 帧的 `observation` 格；那一帧删了，只喂会话账本） ----------
+// ---------- P1（zero-poll-liveness）：tmux 观测的取值（原 `tmux_sessions` 帧的 `observation` 格；那一帧删了，只喂会话账本） ----------
 //
 // **双写点**：与 monitor `src/frontend/shell/src/tmux.rs` 的同名 const 逐字节一致，由 monitor 侧
 // `observation_tokens_double_write_point_stays_in_sync`〔散文墓碑〕 测试钉住（`include_str!` 读本文件 +
@@ -158,7 +158,7 @@ pub(super) enum TmuxObservation {
 /// 这是**诚实降级**（承接 **C7**）：在没有 `timeout` 的系统上行为与从前一字不差，
 /// 而不是假装有上界。⚠ 代价要说清：那些系统上 I-2 **仍然存在**。
 fn tmux_probe_script() -> String {
-    // 〔OSA · V156〕`command -v` 分支与 `exec` 的写法住 `platform::shell::posix`（产出逐字节不变）。
+    // `command -v` 分支与 `exec` 的写法住 `platform::shell::posix`（产出逐字节不变）。
     use crate::platform::shell::posix;
     posix::if_command(
         "tmux",
@@ -173,7 +173,7 @@ fn tmux_probe_script() -> String {
     )
 }
 
-/// 探测的墙钟上界（秒）〔audit-0805 F09〕。
+/// 探测的墙钟上界（秒）。
 ///
 /// `tmux ls` 在健康机器上是毫秒级；给到 5 秒是为了容忍一次慢盘/高负载，
 /// 又远短于「用户会注意到 tmux 面板不更新」的时间尺度。
@@ -233,7 +233,7 @@ fn classify_tmux_probe(code: Option<i32>, stdout: &str) -> TmuxObservation {
 /// **无超时**：`output()` 是无超时阻塞调用，远端 tmux 卡死（D-state/socket 卡住/NFS home）时会永不返回。
 /// 故**只能在一次性后台线程里调用**（见 `watch_loop` 的 `tmux_inflight`），**绝不可**直接跑在 watch_loop
 /// 线程上——否则会冻结整个 reader（Line/notify/判活全停）。
-/// 〔SH1〕帧命令 `tmux-list` 的读法：同一趟 `tmux ls`（同一段脚本、同一个四态分类）。
+/// 帧命令 `tmux-list` 的读法：同一趟 `tmux ls`（同一段脚本、同一个四态分类）。
 /// `Ok((装了没有, 原样行))`；观测无效（通道脏 / 超时 / 起不来）⇒ `Err` —— 绝不当成零会话。
 pub(crate) fn list_for_query() -> Result<(bool, Vec<String>), String> {
     query_reply(run_tmux_ls())
@@ -292,7 +292,7 @@ pub(super) struct TmuxProbe {
 /// 与 `run_tmux_ls` 同一套 `sh -c` + `command -v` 门控；rc≠0（没有 server）⇒ 全 None。
 fn query_tmux_server() -> (Option<u32>, Option<PathBuf>) {
     // 一行两列（TAB 分隔），避免两次 subprocess。
-    // 〔OSA · V156〕写法住 `platform::shell::posix`（产出逐字节不变）。
+    // 写法住 `platform::shell::posix`（产出逐字节不变）。
     let script = crate::platform::shell::posix::if_command(
         "tmux",
         &crate::platform::shell::posix::exec(&[
@@ -496,7 +496,7 @@ fn diff_closed_into(
     closed
 }
 
-/// 〔MIG-1〕一份 tmux 观测（[`observation_parts`] 的产物）**能不能拿来收割**：有会话 · 确证零会话 ⇒ 能；
+/// 一份 tmux 观测（[`observation_parts`] 的产物）**能不能拿来收割**：有会话 · 确证零会话 ⇒ 能；
 /// 没装 tmux · 观测无效 ⇒ 不能（「不知道」绝不当成「都没了」）。与 [`observation_parts`] 读同一组 `OBS_*`，一个家。
 pub(crate) fn tmux_view_is_observable(raw: &str, observation: Option<&str>) -> bool {
     match observation {
@@ -506,7 +506,7 @@ pub(crate) fn tmux_view_is_observable(raw: &str, observation: Option<&str>) -> b
     }
 }
 
-/// 一份观测 → 会话账本读的那两格 `(tmux ls 原文, 观测取值)`（〔MIG-1 续 · V41〕原 `tmux_sessions` 帧的载荷，那一帧不再上线）。
+/// 一份观测 → 会话账本读的那两格 `(tmux ls 原文, 观测取值)`（原 `tmux_sessions` 帧的载荷，那一帧不再上线）。
 pub(super) fn observation_parts(obs: TmuxObservation) -> (String, Option<&'static str>) {
     match obs {
         // 有会话：原文本身就说明是有会话。

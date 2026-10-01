@@ -1,4 +1,4 @@
-//! 〔RM1b · 第四波〕**功能侧只读查询的帧面宿主** —— 任务列表（〔MIG-3b〕＋ cc-bus 钩子诊断）。
+//! **功能侧只读查询的帧面宿主** —— 任务列表（＋ cc-bus 钩子诊断）。
 //!
 //! # 它补的是哪一格
 //!
@@ -18,7 +18,7 @@
 //!
 //! - 住顶层、不住 `observe/`：`inbound.rs` 不许出现 `observe::`；本文件只做换壳，
 //!   读的本体在 `observe/`（那一层今天就是 Claude 专属的）。
-//! - 应答都是**成品**：〔LOC1a〕`tasks-list` → `{tasks: [...]}`
+//! - 应答都是**成品**：`tasks-list` → `{tasks: [...]}`
 //!   （字段语义住 `observe/tasks_query.rs::task_entry`），界面经通道直接问、按形状收。
 //!   整份超过 [`crate::faces::read_face::LINES_CAP_BYTES`] ⇒ `too_large`（不截断）。
 //! - 不拨号、不起进程、不写盘。
@@ -42,12 +42,12 @@ fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answer {
                 "bad_args",
                 crate::common::contract::malformed("missing `sid` (a string)"),
             ))?;
-            // 〔LOC1a · 第四波 4D · C4e 批 4〕应答**是成品** `{tasks: [...]}`（此前是原样对象的 `lines`，字段由 monitor 解）。
+            // 应答**是成品** `{tasks: [...]}`（此前是原样对象的 `lines`，字段由 monitor 解）。
             capped(json!({ "tasks": crate::observe::tasks_query::session_tasks(home, sid)? }))
         }
-        // 〔SH1〕列这台的 tmux 会话：同 watcher 那一趟 `tmux ls`。〔MIG-1 续 · ⑬〕出成品（`observe/tmux_list.rs`，解析从 monitor 搬来）。
+        // 列这台的 tmux 会话：同 watcher 那一趟 `tmux ls`。出成品（`observe/tmux_list.rs`，解析从 monitor 搬来）。
         "tmux-list" => capped(crate::observe::tmux_list::answer()?),
-        // 〔MIG-3b〕cc-bus 钩子诊断出成品：这台自己的 `settings.json` ＋ stat（本机远端同一条，monitor 那两条 Tauri 命令删了）。
+        // cc-bus 钩子诊断出成品：这台自己的 `settings.json` ＋ stat（本机远端同一条，monitor 那两条 Tauri 命令删了）。
         "hooks-diag" => {
             let v = serde_json::to_value(crate::observe::cc_bus_hooks::answer()).map_err(|e| {
                 (
@@ -59,7 +59,7 @@ fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answer {
             })?;
             capped(v)
         }
-        // 〔SH1 · V137〕MCP 列表出成品：读法住适配层那一格（`agents::mcp_read`，注册表里第一家认得 MCP 的），这里只换壳。
+        // MCP 列表出成品：读法住适配层那一格（`agents::mcp_read`，注册表里第一家认得 MCP 的），这里只换壳。
         "mcp-read" => {
             let dir = match args.get("projectDir") {
                 None | Some(Value::Null) => None,
@@ -111,7 +111,7 @@ fn capped(v: Value) -> Answer {
     Ok(v)
 }
 
-/// 〔SH1 · V137〕`mcp-read` 的成品 —— 纯构造器（跨语言金样 `tests/__fixtures__/mcp-read.golden.json` 拿它对拍）。
+/// `mcp-read` 的成品 —— 纯构造器（跨语言金样 `tests/__fixtures__/mcp-read.golden.json` 拿它对拍）。
 pub(crate) fn mcp_reply(r: &crate::agents::McpRead) -> Value {
     let entries: Vec<Value> = r
         .entries

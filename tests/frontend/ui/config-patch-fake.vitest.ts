@@ -1,7 +1,7 @@
 /**
- * 〔CFG1〕假盘（`tests/frontend/ui/config-patch-fake.ts`）的补丁语义 == 金样 `tests/__fixtures__/config-patch.golden.json`。
+ * 假盘（`tests/frontend/ui/config-patch-fake.ts`）的补丁语义 == 金样 `tests/__fixtures__/config-patch.golden.json`。
  *
- * 守的要求：`设计/30 §4`「各自只写自己那个键」· `设计/70 §6.3` 红线 ④「读不懂的 `config.json` 不写」。
+ * 守的要求：「各自只写自己那个键」· 红线 ④「读不懂的 `config.json` 不写」。
  * Rust 写口跑同一份金样（`tests/frontend/shell/config_tests.rs::the_golden_cases_hold`）⇒ 前端测试里那块假盘不是自说自话。
  */
 import { describe, it, expect } from "vitest";
@@ -21,7 +21,7 @@ const GOLDEN = JSON.parse(readFileSync("tests/__fixtures__/config-patch.golden.j
 
 describe("CFG1 · 假盘补丁语义 == 金样", () => {
   it("金样不是空的（空集上的相等恒真）", () => {
-    expect(GOLDEN.cases.length).toBe(16); // 〔FIX2 续〕12 → 16：insertin / removein 各两条
+    expect(GOLDEN.cases.length).toBe(16); // 12 → 16：insertin / removein 各两条
   });
   for (const c of GOLDEN.cases) {
     it(c.name, () => {

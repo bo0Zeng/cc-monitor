@@ -1,6 +1,6 @@
 //! `cc-monitor-backend` 的**库面**。
 //!
-//! 🔴 **它为什么存在**（`设计/00 §1.5.4` 前置 1、2）：目标形态是
+//! 🔴 **它为什么存在**（前置 1、2）：目标形态是
 //! 「`backend-core` 一份，两个宿主 link 同一份」—— 本机 GUI **进程内**直接跑它，
 //! 远端仍走那个薄 `main` 壳。今天这个 crate 只有 `main.rs`，模块全是 bin 私有的
 //! ⇒ **没有任何东西能 link 它**，in-process 那条路在编译期就不存在。
@@ -25,7 +25,7 @@ mod agent_locality_guard; // S2：codex 的格式知识只许住 agents/codex/ +
 pub mod agents; // S2/S3：agent 适配层——每个 agent 一份，装它专属的知识（codex + claudecode）
 #[cfg(test)]
 mod alloc_probe; // U-2：线程级内存量具（F22：`VmHWM` 是进程级的，会把邻居测试算进来）
-pub mod assets; // 〔MIG-3a · `99 §2.1 ⑬`〕后端代管的用户资产（别名 · MCP · skill）：D 组的计算与判定，写经本进程的文件管理面
+pub mod assets; // 后端代管的用户资产（别名 · MCP · skill）：D 组的计算与判定，写经本进程的文件管理面
 #[cfg(test)]
 #[path = "../../tests/backend/build_id_guard.rs"]
 mod build_id_guard; // E77：加了子命令必须 bump BUILD_ID（内部整体 #[cfg(test)]，生产构建为空）
@@ -34,13 +34,13 @@ mod build_id_guard; // E77：加了子命令必须 bump BUILD_ID（内部整体 
 mod cc_bus_boundary_guard; // P4f-Y2：backend 不许碰 cc-bus 的数据布局（整体 #[cfg(test)]）
 pub mod common; // U2：两边都要、又不含平台原语的纯工具（§0.5-6 打掉了「三分够用」那个判断）
 pub mod control; // U3：控制面 —— 会改变世界（写盘 / 改 tmux server / 发信号），或产出改变世界的计划
-pub mod dial; // K-P6b / C2 / 〔SR1a〕：SSH 的一切 —— 握手 · 连接池 · 链路（**只此一处**，判据在它自己的测块）
-pub mod faces; // 〔MOD〕帧面宿主：read_face · feature_face · fork_face · resync_face（薄壳，本体在 observe/ · control/）
-pub mod files; // 步 24f：`files-read` 这一族（**只读**）—— 常驻文件名索引 ＋ 四条只读能力（`设计/96 §2.9`）
+pub mod dial; // K-P6b / C2 /：SSH 的一切 —— 握手 · 连接池 · 链路（**只此一处**，判据在它自己的测块）
+pub mod faces; // 帧面宿主：read_face · feature_face · fork_face · resync_face（薄壳，本体在 observe/ · control/）
+pub mod files; // 步 24f：`files-read` 这一族（**只读**）—— 常驻文件名索引 ＋ 四条只读能力
 pub mod footprint; // 〔RM1a → MIG-3b 续〕「足迹」：帧面 `footprint-report`（申报表 ＋ 判定 ＋ 这台的 stat，出整份成品；只读）
 #[cfg(test)]
 mod guard_support; // U-1：各条源码扫描型守卫共用的「只留生产段」剥法（仅测试构建）
-pub mod history; // 〔MOD〕历史跨机 join 与注解（history_join · history_annotations）
+pub mod history; // 历史跨机 join 与注解（history_join · history_annotations）
 #[cfg(test)]
 #[path = "../../tests/backend/layering_guard.rs"]
 mod layering_guard; // U3：§1.1 第二条解耦线的机器判据（observe↔control 方向与条数）
@@ -62,7 +62,7 @@ mod ratchet_guard; // K-P1 KPY7：本件动过的那几张登记表，**断言�
 #[cfg(test)]
 #[path = "../../tests/backend/readonly_guard.rs"]
 mod readonly_guard; // F08a：backend 只读机器护栏（内部整体 #[cfg(test)]，生产构建为空）
-                    // 〔RE〕面 B 的成员住 `src/comms/outward/`（`99 §2.1 ⑰`）；非成员 door / listen 留 `relay/`，模块树不变
+                    // 面 B 的成员住 `src/comms/outward/`；非成员 door / listen 留 `relay/`，模块树不变
 #[path = "../comms/outward/mod.rs"]
 pub mod relay; // K-H1：HTTP 中转（搬字节那半）——只听回环、按路径前缀分流、逐块透传 + tee
 #[cfg(test)]
@@ -71,8 +71,8 @@ mod runs_guard; // 子运行：通用层只认「运行」（扫描 ＋ 假适�
 #[cfg(test)]
 #[path = "../../tests/backend/single_stream_guard.rs"]
 mod single_stream_guard; // K-P1 KPY8：「多客户端的流」明确不做 —— 三处「恰好一个客户端」的触发器（整体 #[cfg(test)]）
-pub mod stderr_log; // 〔NT2 · S1〕脱离常驻那条载体的 stderr 落进一份有上限、滚动的文件（宿主交 `CCM_BACKEND_STDERR_LOG` 才接；第四层自有状态，写口只从 main.rs 进）
-pub mod stream; // 〔MOD〕进后端的口 ① 帧面 ＋ 跨机问答原语：wire · inbound · listen · remote_ask · tap
+pub mod stderr_log; // 脱离常驻那条载体的 stderr 落进一份有上限、滚动的文件（宿主交 `CCM_BACKEND_STDERR_LOG` 才接；第四层自有状态，写口只从 main.rs 进）
+pub mod stream; // 进后端的口 ① 帧面 ＋ 跨机问答原语：wire · inbound · listen · remote_ask · tap
 
 /// Streaming wire-protocol major version, reported as `v` in the `Hello` frame.
 /// Bump ONLY on a breaking wire change; additive forward-compatible frame kinds
@@ -164,8 +164,8 @@ pub const PROTO_VERSION: u32 = 1;
 ///   `inbound::COMMANDS` 从零条长到 5 条（`cancel`/`ping`/`resolve` 08-02、`kill` 08-04），
 ///   而 `build_id_guard` 的指纹只看 `main.rs` 的 `Some("--`（一次性子命令那一面）
 ///   ⇒ **加了整整一个命令面，一次 bump 都没被逼出来**。
-///   ⚠ 后果不是纸面的：部署判定（当年住 monitor 的 `sftp.rs`，今天住 `control/deploy_plan.rs` 的 `identity_decision`，〔P1〕原共享 crate `deploy-core` 的判定那一半）判**版本那一维**的唯一判据是 build_id 字符串
-///   （〔K-W4 09-04〕backend 部署路另看「落点文件在不在」；〔DP1 09-25〕今天读那份字节自报的身份戳；stale 但文件在时仍只凭 build_id），
+///   ⚠ 后果不是纸面的：部署判定（当年住 monitor 的 `sftp.rs`，今天住 `control/deploy_plan.rs` 的 `identity_decision`，原共享 crate `deploy-core` 的判定那一半）判**版本那一维**的唯一判据是 build_id 字符串
+///   （backend 部署路另看「落点文件在不在」；今天读那份字节自报的身份戳；stale 但文件在时仍只凭 build_id），
 ///   报同一个 id ⇒ 判 `Skip` ⇒ 已部署的旧 backend **整个控制面静默不可用**。
 ///   本轮把通道面纳入指纹并 bump；**本条 bump 本身就是那笔欠账的偿付** ——
 ///   报 `p1v` 的远端从此会被判 stale 并重装。CLI 那一面**一字未改**。
@@ -180,12 +180,12 @@ pub const PROTO_VERSION: u32 = 1;
 ///   **必须 bump**：monitor 要靠新后端才拿得到这个字段；不 bump 就不判 stale、不重装。
 ///   （wire 是 additive、旧 monitor 忽略未知字段 ⇒ **不 bump PROTO_VERSION**。）
 ///
-/// - p2a-rewatch-sessions〔`P0b-Y2` 08-13〕：**盯着的 `sessions/` 被换掉/还没出现时会重挂**。
+/// - p2a-rewatch-sessions：**盯着的 `sessions/` 被换掉/还没出现时会重挂**。
 ///   wire 一个字节没变（不 bump `PROTO_VERSION`），但**二进制行为变了** ⇒ 照上面的先例 bump。
 ///   ★ **必须 bump**：旧后端在这条路上是**静默失效**的（活着、不吭声、不发 `session_added`），
 ///   报同一个 id 就不会被判 stale、不会自动重装 —— 用户会带着一个永远不宣告会话的后端过日子。
 ///
-/// - p2e-dial〔`K-P6b` 09-06〕：新增 `--dial` —— 把 **backend 那条长连接流**的 SSH 握手
+/// - p2e-dial：新增 `--dial` —— 把 **backend 那条长连接流**的 SSH 握手
 ///   搬进一个由界面起的子进程（候选 E 的字节代理）。
 ///   ⚠ **必须 bump**：`--dial` 是**新的进程形态**（常驻、只有一条管子进一条管子出），
 ///   已部署的旧后端根本没有这条臂；而 monitor 判 stale 只看 build_id
@@ -194,7 +194,7 @@ pub const PROTO_VERSION: u32 = 1;
 ///   本件只覆盖 1 处，SFTP / 端口转发 / 跳板 / 其余 exec 路径**界面仍然自己拨**。
 ///   ★ 与 `p2d-relay` 同一条如实登记：这一半是**源码半**，re-embed（CI 交叉编译）归发版那一拍。
 ///
-/// - p2f-build-stamp〔`K-R70` 09-12〕：**这一份二进制第一次说得出自己是谁。**
+/// - p2f-build-stamp：**这一份二进制第一次说得出自己是谁。**
 ///   两件事同拍落：① 下面那个 [`CC_MONITOR_BUILD_STAMP`] —— 一段**保证连续**的
 ///   `<<ccm-build-id:…:ccm-build-id>>`，谁拿到字节都扫得出来；
 ///   ② `--ccm-probe` 多吐一行 `build=<BUILD_ID>`（**能跑它的人直接问**）。
@@ -204,7 +204,7 @@ pub const PROTO_VERSION: u32 = 1;
 ///   已部署的旧 backend **既没有戳、也答不出 `build=`** ⇒ 它必须被判 stale 换掉，
 ///   否则「问得出它是谁」这条性质在已部署的机器上永远为假。
 ///
-/// - p2g-capture-pane〔`K-R86` 09-13〕：新增 `--capture-pane` —— **一条只读的一次性原语**，
+/// - p2g-capture-pane：新增 `--capture-pane` —— **一条只读的一次性原语**，
 ///   把某个 tmux 会话此刻那一屏抓回来（`tmux -u capture-pane -p -t '=名:'`）。
 ///   在此之前后端会列会话、会探 `@ccm_sid`、会杀、会键入，**唯独没有「把那一屏取回来」**；
 ///   monitor 侧账本 `parity_ledger` 的 `tmux.manage` 那一格为此挂了一个月的欠账。
@@ -217,7 +217,7 @@ pub const PROTO_VERSION: u32 = 1;
 ///   🔴 **别把它读成「远端画面预览通了」**：本件只出后端这一侧的原语，
 ///   monitor 那条 `capture_remote_pane` 一个字节没动 —— 欠账换了个名字，没有被结掉。
 ///
-/// - p2h-oneshot-session〔`K-R87` 09-13〕：新增 `--oneshot-session` —— **一次性会话**，
+/// - p2h-oneshot-session：新增 `--oneshot-session` —— **一次性会话**，
 ///   起一个到点**自己会死**的 tmux 会话（`new-session -d -P -F '#{session_id}'` ＋
 ///   一条 `setsid sh -c 'sleep N; tmux kill-session -t $N'` 的**外部**看门狗）。
 ///   `K-R86` 出的是「看得见」那一半（抓一屏），这一条是「有寿命」那一半 ——
@@ -231,7 +231,7 @@ pub const PROTO_VERSION: u32 = 1;
 ///   🔴 **别把它读成「用量探针搬进后端了」**：本件只出后端这一侧的原语，
 ///   monitor 的 `account_usage` 那条 shell 串编排**一个字节没动**。
 ///
-/// - p2i-frame-tmux-primitives〔`K-R104` 09-13〕：**`capture-pane` 与 `oneshot-session`
+/// - p2i-frame-tmux-primitives：**`capture-pane` 与 `oneshot-session`
 ///   上了帧面** —— `inbound::REGISTRY` 8 → 10。CLI 那一面（`SUBCOMMANDS`）**一个字没动**，
 ///   这是本谱系里第一次**只有通道面**变。
 ///   为什么非搬不可：那两条此前只有 CLI 面，而 CLI 面**每调一次一次 SSH 握手** ——
@@ -244,7 +244,7 @@ pub const PROTO_VERSION: u32 = 1;
 ///   ⇒ 探针在已部署的旧远端上整条不可用，而判 stale 只看 build_id。
 ///   ★ 同 p2d / p2e / p2g / p2h：这一半是**源码半**，re-embed 归发版那一拍，本轮**没做**。
 ///
-/// - p2j-bus-state〔`K-R113` 09-13〕：新增 `bus-state` —— cc-bus 的**具名读命令**，
+/// - p2j-bus-state：新增 `bus-state` —— cc-bus 的**具名读命令**，
 ///   总线名单 ＋ spawn 台账**一次回全**。两个命令面**同拍都动**（`SUBCOMMANDS` 26 → 27、
 ///   `inbound::REGISTRY` 与 `COMMANDS` 10 → 11），这是本谱系里第一次两面一起变。
 ///   它补的是 `K-R111` 摸底点名的那个缺口：monitor 侧 `read_cc_bus_state` 想改走后端，
@@ -258,13 +258,13 @@ pub const PROTO_VERSION: u32 = 1;
 ///   🔴 **别把它读成「驾驶舱那条读面接上后端了」**：本件只出后端这一侧的命令，
 ///   monitor 的 `read_cc_bus_state` **一个字节没动**（那是下一件）。
 ///
-/// - p2k-usage-retired〔`设计/50` 删用量〕：**减法那一侧的第一条** —— 两条子命令与一条帧面命令
+/// - p2k-usage-retired〔删用量〕：**减法那一侧的第一条** —— 两条子命令与一条帧面命令
 ///   同拍**退役**（`SUBCOMMANDS` 27 → 25：`--usage` ＋ `--oneshot-session`；
 ///   `inbound::REGISTRY` 与 `COMMANDS` **11 → 10**：`oneshot-session`）。
 ///   起因是产品裁定：用量的**聚合轴**（后端服务端聚合 `--usage`）与**探针轴**
 ///   （一次性会话跑 `/usage` 抓屏）两轴整轴不做了；`oneshot-session` 这条原语当初
 ///   （`K-R87`）就是为探针建的，探针没了它零生产调用方 ⇒ 随之退役。
-///   ⚠ **`capture-pane` 不在这一刀里**：拉屏预览真在用它（〔C4e〕今天由界面 `src/frontend/ui/tmux-control.ts::capturePane` 经通道直接问）。
+///   ⚠ **`capture-pane` 不在这一刀里**：拉屏预览真在用它（今天由界面 `src/frontend/ui/tmux-control.ts::capturePane` 经通道直接问）。
 ///   ⚠ **必须 bump，而这一次的理由与前九次相反**：前九次是「新能力在旧后端上休眠」，
 ///   这一次是**旧后端上那三条还在**，而新 monitor 不再调它们 ——
 ///   真正会出事的是**反向**：一台装着新后端的远端，旧 monitor 仍会去调
@@ -273,7 +273,7 @@ pub const PROTO_VERSION: u32 = 1;
 ///   否则「它变了」这件事在协议面上无人可知。
 ///   ★ 同 p2d / p2e / p2g / p2h / p2i / p2j 如实登记：这一半是**源码半**，
 ///   re-embed（CI 交叉编译）归发版那一拍，本轮**没做**。
-/// - p2l-rename-daemon-to-backend〔`设计/99 §4` 步 8 · 全仓改名一刀〕：**第一次「只换口，不换能力」** ——
+/// - p2l-rename-daemon-to-backend〔全仓改名一刀〕：**第一次「只换口，不换能力」** ——
 ///   `--daemon-probe` → `--backend-probe`。`SUBCOMMANDS` 仍是 25 条，帧面那半一个字没动。
 ///   ⚠ **必须 bump**：同一条能力换了名字，**两个方向都会断** —— 旧后端不认 `--backend-probe`，
 ///   新后端不认 `--daemon-probe`，两边都落 `unknown argument` + exit 2。而「这台机上的后端是哪一版」
@@ -284,7 +284,7 @@ pub const PROTO_VERSION: u32 = 1;
 ///   ★ 同 p2d / p2e / p2g / p2h / p2i / p2j / p2k 如实登记：这一半是**源码半**，
 ///   re-embed（CI 交叉编译）归发版那一拍，本轮**没做**。
 ///
-/// - p2m-files-read-online〔步 `24f` **第二刀** · `设计/96 §2.9` · `设计/60 §3.5`〕：
+/// - p2m-files-read-online〔步 `24f` **第二刀**〕：
 ///   **`files-read` 这一族上线** —— 四条**纯读**能力同拍进两个命令面
 ///   （[`SUBCOMMANDS`] 25 → 29：`--files-ls` / `--files-stat` / `--files-find` /
 ///   `--files-index-status`；`inbound::REGISTRY` 与 `inbound::COMMANDS` 10 → 14）。
@@ -295,8 +295,8 @@ pub const PROTO_VERSION: u32 = 1;
 ///      `InboundClient::accepts` 当场判 `CallError::Unsupported`、一个字节都不发。
 ///   两条都止于「调用方判 stale 只看 build_id」⇒ 不 bump 就不重装，能力在远端休眠。
 ///   🔴 **别把它读成「文件管理器的搜索能用了」**，两条如实登记（全文在 `files/mod.rs` 头注）：
-///   ① **索引今天没有任何线上办法叫它建** —— `设计/60 §3.5.2a` 把节拍留在调用方，
-///      而那条「重走」命令**不在** `设计/96 §2.9` 那张四条的表里
+///   ① **索引今天没有任何线上办法叫它建** —— 把节拍留在调用方，
+///      而那条「重走」命令**不在** 那张四条的表里
 ///      ⇒ `files::index::rebuild_once` 与 `files::browse_watch::set_browsing` 至今
 ///      零生产调用方 ⇒ 真机上 `files-find` 恒回 `index_missing: true`。
 ///      〔⚠ 2026-09-21 收窄：**「零生产调用方」这半已假** —— 波 β 的 `P2` 接上了
@@ -310,7 +310,7 @@ pub const PROTO_VERSION: u32 = 1;
 ///   `bash tests/scripts/re-embed.sh --check` 答的是「这棵树上没有一份对不上的字节」，
 ///   **不是**「字节是对的」（那条边界是它自己头注里逐字写的）。
 ///
-/// - p2n-files-rebuild-and-browse〔步 `24f` **第三刀** · `设计/96 §2.9`（PM 2026-09-21 裁）〕：
+/// - p2n-files-rebuild-and-browse：
 ///   **同族第五、第六条上线** —— `files-index-rebuild`（`index::rebuild_once` 的线上面）
 ///   与 `files-browse`（`browse_watch::set_browsing` 的线上面），两条**仍然纯读**、
 ///   两个命令面同拍（[`SUBCOMMANDS`] 29 → 31；`inbound::REGISTRY` 与
@@ -319,20 +319,20 @@ pub const PROTO_VERSION: u32 = 1;
 ///   `unknown argument` + exit 2；② 旧后端的 `hello.commands` 里没有它们 ⇒ monitor 的
 ///   `InboundClient::accepts` 判 `Unsupported`、一个字节都不发），两条都止于
 ///   「调用方判 stale 只看 build_id」。
-///   🔴 **别把它读成「`设计/60 §3.5.2a` 那个缺口填上了」** —— 补的只是**机制的线上面**：
+///   🔴 **别把它读成「那个缺口填上了」** —— 补的只是**机制的线上面**：
 ///   节拍仍归调用方（`no_timer_guard` 那条铁律一个字没动），而「调用方到底发不发那条
 ///   命令」后端这棵树的判据钉不住 ⇒ 没人发的时候 `files-find` 照旧恒回 `index_missing`。
 ///   〔✅ 2026-09-21：**那条判据有了，住在发命令那一侧** ——
 ///    `filewin::find::tests` 四条两侧都钉（没索引 ⇒ 恰好 1 条重走、顺序也钉 ·
 ///    **阴性对照**：不过期 ⇒ 一条都不发 · 只差 `stale` 一个布尔的对照 · 连打五趟只发一趟）。
 ///    ⇒ 「后端这棵树钉不住」仍然成立，而**那一格换成由壳（`src/frontend/shell`）那棵树钉着**。〕
-///   〔W5-FILES · 09-25 订正〕上一版这里登记「`BrowseWatcher` 零生产调用方」—— 今天 `files-browse`
+/// 上一版这里登记「`BrowseWatcher` 零生产调用方」—— 今天 `files-browse`
 ///   会让进程里那一个监听器跟上名单（`files::browse_watch::keep_watching`），浏览的目录此后一有动静 overlay 就重列。
 ///   ★ 同 p2d…p2m 如实登记：这一半是**源码半**，re-embed（CI 交叉编译）归发版那一拍，
 ///   本轮**没做** —— 本工作树没铺 `src/frontend/shell/embedded-backends/`，现打
 ///   `bash tests/scripts/re-embed.sh --check` 答的仍是「这棵树上没有一份对不上的字节」。
 ///
-/// ★★ **欠着一笔 bump：`设计/80 §8.7` 步 2（`rbind-token`）** —— 本轮**刻意不 bump**。
+/// ★★ **欠着一笔 bump：（`rbind-token`）** —— 本轮**刻意不 bump**。
 /// 照 F66 那条「待 bump」的先例，把账挂在看得见的地方。
 ///
 /// **这一刀真的动了线上面，三处**：① `hello.capabilities` 多一条 `rbind-token`
@@ -358,7 +358,7 @@ pub const PROTO_VERSION: u32 = 1;
 /// `--with-rbind-token` 之后，bump 到 `p2o-rbind-token`（或那一波的合并版本号）
 /// ＋ **同拍 re-embed**。**在那之前这条能力在已部署的远端上是休眠的 —— 这是刻意的。**
 ///
-/// ★★★ **p2o-files-write-and-rbind-token**（2026-09-24，第一波合并那一拍）：
+/// ★★★ **p2o-files-write-and-rbind-token**（2026-09-24）：
 /// 上面那笔「欠着的 bump」**在这一拍还掉**，与 F1 写面六条命令合成一次 ——
 /// 解锁条件逐条核过：步 1（`CCM_RBIND_TOKEN` 进环境）与步 3（铸币口 ＋ 本地半）已落，
 /// monitor 已在协商到 `rbind-token` 时发 `--with-rbind-token`。
@@ -367,198 +367,198 @@ pub const PROTO_VERSION: u32 = 1;
 /// ② `hello.capabilities` 的 `rbind-token` 从此有人认、有人发。
 /// ★ re-embed 归发版那一拍（同 p2d…p2n 的登记）；本机 `--native` 那份由合并那一拍重打。
 ///
-/// ★★★ **p2p-readface-outline-acctiso-spawn-504**（2026-09-24，第二波合并那一拍）：
+/// ★★★ **p2p-readface-outline-acctiso-spawn-504**（2026-09-24）：
 /// 子命令 ＋21 —— C1 只读查询面八条上帧面（及其自动派生的 CLI 面）· SE1 `--list-user-inputs` ·
 /// A3 `--acct-iso-status` / `--acct-iso-shellinit` · BS1b `bus-spawn`（两个命令面）；
 /// ＋ 一处**行为**变更（R2：中转传输失败回 504 并说清卡在哪一步）。
 /// ★ re-embed 归发版那一拍（同 p2d…p2o）。
 ///
-/// ★★★ **p2q-no-ccm-self**（2026-09-24，第二波 MC1+AL1 合并那一拍）：**子命令集一个没变，是行为变了**
+/// ★★★ **p2q-no-ccm-self**（2026-09-24）：**子命令集一个没变，是行为变了**
 /// —— 后端不再读 `CCM_SELF`，重起自己只认 `ccm::self_invocation`（CC1 那一刀之上）；远端 shim 回到一行裸 `exec`。
 /// ⚠ 旧后端配新 shim ⇒ 容器路内层缺 `ccm` 那个词（入口②的老病复发）⇒ **必须**让已部署的远端被判 stale。
 /// 照 p1v 的先例（只改行为/wire、不改子命令 ⇒ bump 但**不**往 `SUBCOMMAND_HISTORY` 加行）。
 /// ★ re-embed 归发版那一拍。
 ///
-/// ★★★ **p2r-apikey-naming**（2026-09-24，第三波 R3 合并那一拍）：**子命令集一个没变，是行为变了** ——
+/// ★★★ **p2r-apikey-naming**（2026-09-24）：**子命令集一个没变，是行为变了** ——
 /// 上游选择读的凭据文件改叫 `apikey-credentials.json`、环境变量改叫 `CCM_APIKEY_CREDENTIALS` /
 /// `CCM_AGENT_UPSTREAM_CLAUDE_CODE`（旧名逐条登记在 `tests/naming/account-vs-relay-naming.vitest.ts` 那张表里，
 /// 这里**刻意不复写**，否则那条判据当场红）。用户裁「不要把账号和中转混为一谈」，不留兼容读旧名。
 /// ⚠ 新 monitor 递新变量名、旧后端不认 ⇒ 回头读旧文件名 ⇒ 界面配好了、请求静默 404 ⇒ **必须**让已部署的后端被判 stale。
 /// 线上字节不变（`wire_golden` 未动）。照 p1v 先例不往 `SUBCOMMAND_HISTORY` 加行。
 ///
-/// ★★★ **p2s-files-copy-exit-policy**（2026-09-24，第三波 F7a ＋ B2 合并那一拍）：子命令 ＋10 ——
+/// ★★★ **p2s-files-copy-exit-policy**（2026-09-24）：子命令 ＋10 ——
 /// F7a `files-copy` / `files-read-text` / `files-home`，B2 `exit-policy-read` / `exit-policy-set`（两个命令面）；
 /// ＋ B2 行为：常驻后端最后一条流断开时现读 `backend.json` 决定退不退（读到「结束」就自己退）。
 ///
-/// ★★★ **p2t-commit-upload-dial-v2**（2026-09-24，第三波收尾）：子命令 ＋2（F7c `files-commit-upload`，两个命令面）
+/// ★★★ **p2t-commit-upload-dial-v2**（2026-09-24）：子命令 ＋2（F7c `files-commit-upload`，两个命令面）
 /// ＋ C2 行为：`--dial` 成为界面进程拨 SSH 的唯一代理（stream / capture / forward 三种用法、ack v2、ssh-agent 鉴权）。
 ///
-/// ★★★ **p2u-stage-find-tasks**（2026-09-24，第四波 4A 第一批合并那一拍）：子命令 ＋5 ——
+/// ★★★ **p2u-stage-find-tasks**（2026-09-24）：子命令 ＋5 ——
 /// F9c `files-stage-chunk` / `files-commit-text`（大文件分块进暂存区、后端读回拼接提交）· SE2 `find-in-session` ·
 /// RM1b `tasks-list` / `plugins-marketplaces`（两个命令面都动）。
 /// ＋ 行为：FW5 递归删非空目录（逐条目过围栏）与批量改权限 · F9c 超长请求行的应答从前 4 KiB 抠回 `id` ·
 /// S4 冷启动首建索引的读数进 `files.index.status`。
 ///
-/// ★★★ **p2v-resident-link**（2026-09-24，第四波 SR1a 合并那一拍）：子命令集大改 ——
+/// ★★★ **p2v-resident-link**（2026-09-24）：子命令集大改 ——
 /// `--dial` 删（界面进程不再起拨号代理）；入方向 ＋ `link-open` / `link-data` / `link-credit` / `link-close`（只在帧面），
 /// ＋ `history-index` / `history-user-inputs` / `history-find`（骨架索引 · 大纲清单 · 会话内查找上帧面，CLI 面同名派生）。
 /// 线上多三种出方向帧：`link_data` · `link_end` · `accounts_changed`。
 /// ⚠ 旧本机后端不认 `link-open` ⇒ 界面判「本机后端太旧」、不回落（D11）⇒ **必须**让它被判 stale。
 ///
-/// ★★★ **p2w-apikey-relay-footprint**（2026-09-24，第四波 C4a ＋ RM1a 合并那一拍）：子命令 ＋5 ——
+/// ★★★ **p2w-apikey-relay-footprint**（2026-09-24）：子命令 ＋5 ——
 /// RM1a `apikey-key-set` / `apikey-read`（上游选择那份凭据文件：远端由那台后端读写，第四层）· `relay-status` / `relay-ensure`
 /// （远端中转）· `footprint-probe`（足迹的这台机器那一半），两个命令面都动。
 /// ＋ 行为：后端开 `creds-core` 的 `harden`（远端要写那份文件；「后端写不了」从编译期收窄成两条判据）。C4a 不动后端。
 ///
-/// ★★★ **p2x-user-files-put**（2026-09-24，第四波 RW1 合并那一拍）：子命令 ＋3 ——
+/// ★★★ **p2x-user-files-put**（2026-09-24）：子命令 ＋3 ——
 /// `files-peek` / `files-put`（读改写，CAS）· `files-delete-session`（只收 sid 的会话文件围栏例外 —— 当时的说法；
-/// 〔AR1〕V119（FN1）之后写面已无会话文件围栏，它只剩自己「只许删会话形状」那道限制），两个命令面都动。
+/// V119（FN1）之后写面已无会话文件围栏，它只剩自己「只许删会话形状」那道限制），两个命令面都动。
 /// ＋ 行为：后端开始写**用户**文件（别名 / `$PROFILE` / `.mcp.json` / skill `INBOX.txt` / cc-bus skill 部署），
 /// 本机分叉与删历史会话改走后端 —— 旧后端不认这三条 ⇒ 这些按钮在旧后端上会明确报错，所以必须判 stale。
 ///
-/// ★★★ **p2y-win-proc**（2026-09-24，第四波 WN1 合并那一拍）：子命令集不变，**行为**变更 ——
+/// ★★★ **p2y-win-proc**（2026-09-24）：子命令集不变，**行为**变更 ——
 /// Windows 上的判活（`pid_alive` / `proc_starttime`）与进程看守从 `unimplemented!()` / 空壳换成真实现
 /// （`platform/win_proc.rs` · `pidwatch/win32.rs`）。旧后端在 Windows 本机见到第一个会话就 panic ⇒ 必须判 stale。
 /// 照 p1v 先例不往 `SUBCOMMAND_HISTORY` 加行。
 ///
-/// ★★★ **p2z-relay-in-resident**（2026-09-24，第四波 RL1 合并那一拍）：子命令集不变，**行为**变更 ——
-/// 流模式后端被交了 `CCM_RELAY_PORT` 就在本进程里起中转（V107：中转住本机常驻后端，monitor 不再单独起它）。
+/// ★★★ **p2z-relay-in-resident**（2026-09-24）：子命令集不变，**行为**变更 ——
+/// 流模式后端被交了 `CCM_RELAY_PORT` 就在本进程里起中转（中转住本机常驻后端，monitor 不再单独起它）。
 /// 旧后端不开中转 ⇒ 本机 apikey 号起会话会被「中转没在跑」拒掉 ⇒ 必须判 stale。照 p1v 先例不加历史行。
 ///
-/// ★★★ **p3a-panorama-engine**（2026-09-24，第四波 RM1c 合并那一拍）：子命令 ＋1 —— `panorama`（两个命令面）：
-/// 后端经插件口起独立全景小程序 `cc-monitor-panorama`，只说查询语义（V108）；后端本体仍零 code-picture。
+/// ★★★ **p3a-panorama-engine**（2026-09-24）：子命令 ＋1 —— `panorama`（两个命令面）：
+/// 后端经插件口起独立全景小程序 `cc-monitor-panorama`，只说查询语义；后端本体仍零 code-picture。
 ///
-/// ★★★ **p3b-session-facts**（2026-09-24，第四波 U4b 合并那一拍）：子命令 ＋1 —— `history-record`（`{sid}` → 记录在不在，两个命令面）。
+/// ★★★ **p3b-session-facts**（2026-09-24）：子命令 ＋1 —— `history-record`（`{sid}` → 记录在不在，两个命令面）。
 /// ＋ 线上：`session_added` 多一个可选字段 `container`（tmux / none）· 新出方向帧 `sessions_replayed`。
 ///
-/// ★★★ **p3c-panorama-plan**（2026-09-24，第四波 RM1d 合并那一拍）：子命令集不变，**行为**变更 ——
+/// ★★★ **p3c-panorama-plan**（2026-09-24）：子命令集不变，**行为**变更 ——
 /// 后端 `panorama` 的 op 表 ＋7（六个 `plan_*` 只回算好的新内容、不写盘 ＋ `refresh_doc_links`）；
 /// 旧后端不认 ⇒ 写批注会回 `unsupported` ⇒ 必须判 stale。照 p1v 先例不加历史行。
 ///
-/// ★★★ **p3d-sftp-resident**（2026-09-24，第四波 SR1b 合并那一拍）：子命令 ＋4 —— `ch:transfer-upload` / `-download` / `-start` / `-stop`
+/// ★★★ **p3d-sftp-resident**（2026-09-24）：子命令 ＋4 —— `ch:transfer-upload` / `-download` / `-start` / `-stop`
 /// （传输台搬进后端，只在帧面）。＋ 线上：链路多一种用途 `use:"files"`（sftp 子系统上的一问一答）· 新出方向帧 `transfer`。
-/// 界面进程从此零 SSH（V89）：旧后端不认 `files` 用途 ⇒ 部署 / 传输全断 ⇒ 必须判 stale。
+/// 界面进程从此零 SSH：旧后端不认 `files` 用途 ⇒ 部署 / 传输全断 ⇒ 必须判 stale。
 ///
-/// ★★★ **p3e-shapes-cas-withbg**（2026-09-25，第四波 RM1e ＋ C4b ＋ CF1 合并那一拍）：子命令集不变，**行为**变更 ——
+/// ★★★ **p3e-shapes-cas-withbg**（2026-09-25）：子命令集不变，**行为**变更 ——
 /// RM1e `files-delete` 多收可选 `expect`、多回 `stale`（旧后端会忽略 expect 照删 ⇒ CAS 是空的）；
 /// C4b `history-index` / `history-user-inputs` / `history-find` / `plugins-marketplaces` 四条应答形状变成后端出成品；
 /// CF1 本机常驻后端起参统一加 `--with-bg`（adopt 只比 build_id ⇒ 不 bump 会接上按旧起参起的后端，bg 会话内容缺）。
 /// 照 p1v 先例不加历史行。
 ///
-/// ★★★ **p3f-mcp-sync-exitwire**（2026-09-25，第四波 AL1d ＋ S5 ＋ AS1 合并那一拍）：子命令 ＋1 —— AS1 `mcp-sync-plan`（两个命令面）。
+/// ★★★ **p3f-mcp-sync-exitwire**（2026-09-25）：子命令 ＋1 —— AS1 `mcp-sync-plan`（两个命令面）。
 /// ＋ 行为：S5 `exit-policy-*` 线上删 `shell` 字段 · `ccm` 直路给了 `--ccm-sid` 而无令牌时 stderr 说一句 · `--list-accounts` 认带 BOM 的 manifest。
 ///
-/// ★★★ **p3g-conn-family**（2026-09-25，第四波 NT1 合并那一拍）：子命令集不变、线上字节不变，**行为**变更 ——
+/// ★★★ **p3g-conn-family**（2026-09-25）：子命令集不变、线上字节不变，**行为**变更 ——
 /// 长流在时传输走同一身份的第二条 SSH 连接 · 被远端回拒的连接不再摘 · 在黑洞上等回话被打断时摘掉那条 ·
 /// 传输用完的 sftp 会话停着复用（远端多一个空闲 sftp-server）。照 p1v 先例不加历史行。
 ///
-/// ★★★ **p3h-accounts-product**（2026-09-25，第四波 C4c 合并那一拍）：子命令 ＋1 —— `accounts-trust`（两个命令面）。
+/// ★★★ **p3h-accounts-product**（2026-09-25）：子命令 ＋1 —— `accounts-trust`（两个命令面）。
 /// ＋ 行为：`accounts-list` 应答改成后端出成品 `{meta, accounts, notice}`、并上这台自己的 apikey 表（agent 随请求带）。
 ///
-/// ★★★ **p3i-assets-cancel**（2026-09-25，第四波 AS2 ＋ RM1f 合并那一拍）：子命令 ＋5 —— AS2 `assets-catalog` / `assets-catalog-merge` /
+/// ★★★ **p3i-assets-cancel**（2026-09-25）：子命令 ＋5 —— AS2 `assets-catalog` / `assets-catalog-merge` /
 /// `assets-sync` / `skill-read` / `skill-install-plan`（两个命令面）。
 /// ＋ 行为：RM1f `panorama` 改异步档、`cancel` 真撤（杀子进程组）· Windows 上找全景小程序认 `.exe` 后缀。
 ///
-/// ★★★ **p3j-history-lines**（2026-09-25，第四波 CF2 合并那一拍）：子命令 ＋1 —— `history-lines`（按可计行号取原文，两个命令面）。
+/// ★★★ **p3j-history-lines**（2026-09-25）：子命令 ＋1 —— `history-lines`（按可计行号取原文，两个命令面）。
 ///
-/// ★★★ **p3k-deploy-by-bytes**（2026-09-25，第四波 DP1 合并那一拍）：子命令集不变，**行为**变更 ——
+/// ★★★ **p3k-deploy-by-bytes**（2026-09-25）：子命令集不变，**行为**变更 ——
 /// 下载失败留 `.part`（只清零字节的空 `.part`）· 上传失败先等完已发出的写再走 · 远端身份改由 monitor 读字节里的戳判（`.build_id` 退役）。
 /// 照 p1v 先例不加历史行。
 ///
-/// ★★★ **p3l-remote-ask-history**（2026-09-25，第四波 C4d 合并那一拍）：子命令 ＋4 —— `remote-reach` · `history-annotate` ·
+/// ★★★ **p3l-remote-ask-history**（2026-09-25）：子命令 ＋4 —— `remote-reach` · `history-annotate` ·
 /// `history-forget` · `history-last-accounts`（两个命令面）。＋ 行为：`history-projects` / `history-sessions` 应答改成
 /// 本机后端出的跨机 join 成品 `{rows, notice}`；注解文件的读写者换成本机后端。
 ///
-/// ★★★ **p3m-ssh-zlib**（2026-09-25，第四波 CZ1 合并那一拍）：行为 —— russh 换成仓内打补丁的副本（`src/vendor/russh`，
+/// ★★★ **p3m-ssh-zlib**（2026-09-25）：行为 —— russh 换成仓内打补丁的副本（`src/vendor/russh`，
 /// 修 zlib 解压一包只交出约 2 倍包长的缺陷），闸 `RUSSH_ZLIB_SOUND` 开 ⇒ 判准下「远」的链路从此真走 zlib@openssh.com。
 /// 子命令没变，照 p1v 先例不加历史行。
 ///
-/// ★★★ **p3n-channel-bus-skill-key**（2026-09-25，第四波 4C 合并列车 MG1：RT1 · RK1 · FN1 · GP1 · NT2 · SU1 · C4e · CP2b · CP2c 那一拍）：
+/// ★★★ **p3n-channel-bus-skill-key**（2026-09-25）：
 /// 子命令 ＋4 —— SU1 `--skill-install-record` · `--skill-installs` · `--skill-uninstall-plan`（skill 卸载，两个命令面）·
 /// C4e `--bus-broadcast`（cc-bus 广播的挑人与逐个投递挪进后端，两个命令面）。
 /// ＋ 行为：RK1 中转口要钥匙（`~/.cc-monitor/relay-key` 0600、跨重起不变；进门三问 403 / 421；`relay-*` 多 `not_ours`）·
-/// FN1 文件管理面不再拦会话文件（V119，无围栏，只剩删会话认会话形状）·
+/// FN1 文件管理面不再拦会话文件（无围栏，只剩删会话认会话形状）·
 /// GP1 `files.stat` 回 `mode` · `history-record` 收 `configDir` · 本机凭据文件的写者换成本机常驻后端 ·
 /// NT2 capture 放弃时关通道、`remote_ask` 内层随外层收 · 被交 `CCM_BACKEND_STDERR_LOG` 时 stderr 落有上限、滚动的文件 ·
 /// SU1 `skill-install-plan` 带 `take` 时多答 `ledger` · CP2c 后端对外的句子经文案表（`copy-core`）出、契约错改英文诊断。
 ///
-/// ★★★ **p3o-upstream-endpoint**（2026-09-25，第四波 4D US1 合并那一拍）：子命令 ＋2 —— `launch-endpoint` · `apikey-routing`
+/// ★★★ **p3o-upstream-endpoint**（2026-09-25）：子命令 ＋2 —— `launch-endpoint` · `apikey-routing`
 /// （上游选择出成品：这一发走哪、注入什么由后端答，monitor 只转交执行）。＋ 行为：`apikey-read` 应答去掉 `rows`；
 /// 路由语法 / 端口 / 钥匙路径改住共享 crate `relay-route-core`；无账号的本机会话在全量注入下走 `/t/…/_/…`（开关仍默认关）。
 ///
-/// ★★★ **p3p-drain-atomic-stop**（2026-09-25，第四波 4D HX1 合并那一拍）：行为 —— 流模式三个退出口先关闸、等在跑的阻塞命令做完再退
+/// ★★★ **p3p-drain-atomic-stop**（2026-09-25）：行为 —— 流模式三个退出口先关闸、等在跑的阻塞命令做完再退
 /// （新来的阻塞命令回 `shutting_down`）· 覆盖写改「同目录临时件 → 沿用权限位 → 改名上位」原子化 · tracing 只在 stderr 是终端时上色。
 /// 子命令没变，照 p1v 先例不加历史行。
 ///
-/// ★★★ **p3q-windows-probe-home**（2026-09-25，第四波 4D WIN1 合并那一拍）：行为 —— Windows 上 `ccm --ccm-probe` 不再自报 tmux 那一族能力
+/// ★★★ **p3q-windows-probe-home**（2026-09-25）：行为 —— Windows 上 `ccm --ccm-probe` 不再自报 tmux 那一族能力
 /// （`ccm_launcher_with(TMUX_PLATFORM)`，与能力账同一个内核）· `ccm` 找账号库的家目录 `HOME` 为空退 `USERPROFILE`、路径逐段 join ·
 /// 远端 `uname` 回话不是 UTF-8 时说清而不照抄乱码。子命令没变，照 p1v 先例不加历史行。
 ///
-/// ★★★ **p3r-cas-digest-filegone**（2026-09-25，第四波 4D FW1 合并那一拍）：行为 / 协议 —— `files-read-text` 回 `sha256`，
+/// ★★★ **p3r-cas-digest-filegone**（2026-09-25）：行为 / 协议 —— `files-read-text` 回 `sha256`，
 /// `files-write-text` / `files-commit-text` / `files-commit-upload` 必带 `expect:{sha256}`（不等 ⇒ `stale`、零写；上传暂存件不等即删）·
 /// `files-delete` 多一形 `expect:{"empty_dir":true}` · 传输 done 帧带 `sha256` · 新帧 `session_file_gone` / `session_file_reread`
 /// （活会话 jsonl 被删 / 截短 / 原地改写变长）。子命令没变，照 p1v 先例不加历史行；旧远端后端会被判旧、自动重装。
 ///
-/// ★★★ **p3s-drain-deadline-viarelay**（2026-09-25，第四波 4D HX1 续做合并那一拍）：行为 —— 退出排空加 30 s 期限（`inbound::DRAIN_DEADLINE`，
+/// ★★★ **p3s-drain-deadline-viarelay**（2026-09-25）：行为 —— 退出排空加 30 s 期限（`inbound::DRAIN_DEADLINE`，
 /// 后端零定时器唯一登记让位的一处；到点记哪几条没做完再退）· 覆盖写遇硬链接 / 别人属主退回就地写并说明 · 自家目录一律 `own_dir::ensure_private_dir`
 /// 建成 0700（远端部署新建目录 SETSTAT 0700）· `accounts-sessions` 每行多一格 `viaRelay`。子命令没变，照 p1v 先例不加历史行。
 ///
-/// ★★★ **p3t-local-longconn-fork**（2026-09-25，第四波 4D LOC1a 合并那一拍）：子命令 ＋1 `--session-fork`、帧命令 ＋3（`session-fork` · `acct-iso-status` ·
+/// ★★★ **p3t-local-longconn-fork**（2026-09-25）：子命令 ＋1 `--session-fork`、帧命令 ＋3（`session-fork` · `acct-iso-status` ·
 /// `acct-iso-shellinit`）—— 本机四处一次性 exec 改走 `<local>` 长连接、远端 acct-iso 改问那台后端。＋ 行为：`tasks-list` 应答 `{lines}` → 成品 `{tasks}`。
 ///
-/// ★★★ **p3u-local-same-path**（2026-09-25，第四波 4D LOC1b 合并那一拍）：行为 —— `session_added` 多一个 additive 字段 `pid`
+/// ★★★ **p3u-local-same-path**（2026-09-25）：行为 —— `session_added` 多一个 additive 字段 `pid`
 /// （与 `rbind_token` 同闸，只有 `--with-rbind-token` 才带）· 按路径读会话的围栏也认 Codex 的记录根（根由适配层给）·
 /// 本机冷读 / 搜索 / 判活从此都问本机后端（monitor 侧删内存索引、`session_map` 的 notify / `/proc` / 2 s 心跳）。子命令没变，照 p1v 先例不加历史行。
 ///
-/// ★★★ **p3v-monotonic-deploy-hostenv**（2026-09-25，第四波 4D HX2 合并那一拍）：行为 / 协议 —— 部署只升不降（`sftp.rs` 的 `build_order`〔MIG-3b 起住共享 crate `deploy-core`〕，不比这一版旧就 `Keep`）·
+/// ★★★ **p3v-monotonic-deploy-hostenv**（2026-09-25）：行为 / 协议 —— 部署只升不降（`sftp.rs` 的 `build_order`〔MIG-3b 起住共享 crate `deploy-core`〕，不比这一版旧就 `Keep`）·
 /// `put_atomic` 临时件 / 备份件唯一名 · tmux hook 按实例占段 `[50,100)` 一格、起时摘死槽 · 后端自有状态写口跨进程锁（`platform/lock.rs::hold`）·
 /// hello 多 additive `host_env`（回显宿主交来的端口 / 凭据路径 / 注解路径，token 永不回显）· `apikey-key-set` 入参 `account` → `configDir`（**不兼容**，旧远端连上即判旧重装）。
 /// 子命令没变，照 p1v 先例不加历史行。
 ///
-/// ★★★ **p3w-relay-tap-stream**（2026-09-25，第四波 W5 TAP 合并那一拍）：行为 —— 进程内中转的 tee 落点由丢弃改交 `TapPort`（新模块 `tap.rs`，
-/// 每条流一条 256 件有界通道、只 `try_send`），新帧 `wire::Frame::Tap{stream,resp,n,data|end}`（`EMITS` 加 `tap`）经会话流 `subscribe` 到前端活卡（V124）。
+/// ★★★ **p3w-relay-tap-stream**（2026-09-25）：行为 —— 进程内中转的 tee 落点由丢弃改交 `TapPort`（新模块 `tap.rs`，
+/// 每条流一条 256 件有界通道、只 `try_send`），新帧 `wire::Frame::Tap{stream,resp,n,data|end}`（`EMITS` 加 `tap`）经会话流 `subscribe` 到前端活卡。
 /// `--relay` 那一形 stdout 照旧。子命令没变，照 p1v 先例不加历史行；wire 新增帧、`PROTO_VERSION` 不动。
 ///
-/// ★★★ **p3x-ccm-print-preview**（2026-09-26，第五波 W5-ALIAS 合并那一拍）：子命令 ＋1 `--ccm-print`、帧命令 ＋1 `ccm-print`（别名预览，与 `ccm --print`
+/// ★★★ **p3x-ccm-print-preview**（2026-09-26）：子命令 ＋1 `--ccm-print`、帧命令 ＋1 `ccm-print`（别名预览，与 `ccm --print`
 /// 共用 `plan_of`；预览环境 = 家目录里新开终端、以 `ccm` 调起、不在 tmux、不继承账号目录）。＋ 行为：远端 `ccm` 入口改走 `read_marker` ＋ `upload_verified`（读回坏了删、下次部署补）。
 ///
-/// ★★★ **p3y-files-inplace**（2026-09-26，第五波 W5-FILES 合并那一拍）：子命令 ＋1 `--files-size`、帧命令 ＋1 `files-size`。＋ 行为：复制保权限位 ·
+/// ★★★ **p3y-files-inplace**（2026-09-26）：子命令 ＋1 `--files-size`、帧命令 ＋1 `files-size`。＋ 行为：复制保权限位 ·
 /// `files-copy` 收 `recursive`（计划趟逐条目解析、整趟拒 / 执行趟逐条目再解析、中途失败撤回本趟所建）· 索引不跨文件系统 · `files-browse` 真挂 watcher
 /// （应答多 `watching` / `watch_failed` / `watch_error`）· 暂存件跨盘提交退回「复制后删」（`EXDEV`）· 非 UTF-8 名按字节寻址。
 ///
-/// ★★★ **p3z-fence-home-backendpath**（2026-09-26，第四波 4D TL3 合并那一拍）：行为 —— 读路径围栏收成 `observe/fence.rs::Fence` 一个家（history / search 两个读者）·
+/// ★★★ **p3z-fence-home-backendpath**（2026-09-26）：行为 —— 读路径围栏收成 `observe/fence.rs::Fence` 一个家（history / search 两个读者）·
 /// `remote-reach` 进门判 `backend` 形状、不合形回 `bad_args`。子命令没变，照 p1v 先例不加历史行。
 ///
-/// ★★★ **p4a-free-text-gate**（2026-09-26，第四波 4D TL3 续做合并那一拍）：行为 —— `ccm` 拒相对 / 带 `..` / 带换行的 `--cwd`，
-/// 也拒带 NUL / CR / LF 的启动器 · 透传参数 · 登记备注（`plan.rs::free_text_gate` / `inherited_gate`）· `remote_ask` 拒带换行的 argv（V131：拒绝集只收控制字符 ＋ 形式判定 ＋ 唯一 quote）。
+/// ★★★ **p4a-free-text-gate**（2026-09-26）：行为 —— `ccm` 拒相对 / 带 `..` / 带换行的 `--cwd`，
+/// 也拒带 NUL / CR / LF 的启动器 · 透传参数 · 登记备注（`plan.rs::free_text_gate` / `inherited_gate`）· `remote_ask` 拒带换行的 argv（拒绝集只收控制字符 ＋ 形式判定 ＋ 唯一 quote）。
 /// 代号 3 → 4（`p3z` 之后按 `(代号, 字母)` 序是 `p4a`，只升不降那条路据此判新旧）。子命令没变，照 p1v 先例不加历史行。
 ///
-/// ★★★ **p4b-single-home-judgments**（2026-09-26，第四波 4D DUP1 合并那一拍）：行为 —— `ccm` 拒不合规的 sid（`resume` / `--resume` / `--ccm-sid`，
+/// ★★★ **p4b-single-home-judgments**（2026-09-26）：行为 —— `ccm` 拒不合规的 sid（`resume` / `--resume` / `--ccm-sid`，
 /// `shell-quote-core::session_id_ok`）· `--model`（`model_name_ok`）· `--account`（`account_name_ok`，与 cc-acct-iso 同）；配置目录走 `acct-core` 全表
 /// （`config_dir_posix_ok` / `config_dir_ok`）。`resolve_query::is_valid_session_id` 照 V126 冻结给仓外 aterm、没收。子命令没变，照 p1v 先例不加历史行。
 ///
-/// ★★★ **p4c-history-facts**（2026-09-26，第四波 4D STC 合并那一拍）：子命令 ＋1 `--history-facts`、帧命令 ＋1 `history-facts`（`90` 阶段 C：
+/// ★★★ **p4c-history-facts**（2026-09-26）：子命令 ＋1 `--history-facts`、帧命令 ＋1 `history-facts`（`90` 阶段 C：
 /// 后端出会话事实成品 `{end, forkedFrom, touchedFiles, agents, usage}`，续传令牌 = 上一份成品原样交回、后端零状态；分叉判定抽成 `history_query::fork_origin`
 /// 与历史树同一个函数）。前端 `onLine` 旁路四个记账员删到只剩真事件。
 ///
-/// ★★★ **p4d-acct-iso-cmd**（2026-09-26，第四波 4D DUP2 合并那一拍）：子命令 ＋1 `--acct-iso-cmd`、帧命令 ＋1 `acct-iso-cmd`（建号命令由后端出、
+/// ★★★ **p4d-acct-iso-cmd**（2026-09-26）：子命令 ＋1 `--acct-iso-cmd`、帧命令 ＋1 `acct-iso-cmd`（建号命令由后端出、
 /// 界面预览 / 弹终端经 `call` 问，TS 零拼 shell 串）。＋ 行为：`bus-send` / `bus-kill` / `bus-spawn` 入口先判 id（`shell_quote_core::bus_id_ok`，拒码 `bad_id`）·
 /// `ccm` 新建会话名走 `gate-core::new_tmux_name_issue`（多拒欺骗字符与超过 128 的名字）· agent 工具名收进共享 crate `agent-tools-core`。
 ///
-/// ★★★ **p4e-failure-visible**（2026-09-26，第五波 W5-VIS 合并那一拍）：行为 —— 备份沿用不上原文件权限位 ⇒ 删备份、整趟拒（`files_write`）·
+/// ★★★ **p4e-failure-visible**（2026-09-26）：行为 —— 备份沿用不上原文件权限位 ⇒ 删备份、整趟拒（`files_write`）·
 /// 读不动的会话逐份 warn、扫完出总数（`search_query`）· 认不出的帧 / 非 UTF-8 行计数出声（`frame_tally`）· 次要动作失败留一行日志。子命令没变，照 p1v 先例不加历史行。
 ///
-/// ★★★ **p4f-stdin-line**（2026-09-26，第五波 W5-AUX 合并那一拍）：行为 / 协议 —— CLI 修饰 `--stdin-line` ＋ `capture.stdin`：资产目录推送的载荷改经 stdin 一行交，
+/// ★★★ **p4f-stdin-line**（2026-09-26）：行为 / 协议 —— CLI 修饰 `--stdin-line` ＋ `capture.stdin`：资产目录推送的载荷改经 stdin 一行交，
 /// 命令行不再带载荷（旧远端后端收到 `--stdin-line` 会一直读到 EOF、卡到调用方期限 ⇒ 必须 bump 让它被换掉）。`build_id_guard` 的指纹不数 `SUBCOMMAND_OPTIONS` ⇒ 没红，手动 bump。
 ///
-/// ★★★ **p4g-single-home-3**（2026-09-26，第四波 4D DUP3 合并那一拍）：行为 —— `bus-broadcast` / `bus-send` 的 from 与收件人过 `bus_id_ok`（拒码 `bad_id`）·
+/// ★★★ **p4g-single-home-3**（2026-09-26）：行为 —— `bus-broadcast` / `bus-send` 的 from 与收件人过 `bus_id_ok`（拒码 `bad_id`）·
 /// 启动器一张白名单 `launcher_refused_char`（本机 / 远端载荷 / ccm 同一条）· base URL 写口与装表同一个谓词（新 crate `upstream-url-core`）· tmux Gate 1 并进 gate-core。
 /// 子命令没变，照 p1v 先例不加历史行。
 ///
 /// ★★★ **p4h-search-index-hostkey**（2026-09-26，SX1 ＋ VIS2 合并那一拍）：行为 —— `history-search` 背后常驻内存增量索引（应答逐字节不变）·
 /// watcher `agent_home` 不在先挂父目录、出现后挂它本身（`rewatch_agent_home`）· `DialAck` 多一格 `fingerprints`（additive，`ACK_V` 不动）。子命令没变，照 p1v 先例不加历史行。
 ///
-/// ★★★ **p4i-bus-mcp-tmux-reads**（2026-09-26，第四波 4D SH1 合并那一拍）：子命令 ＋3 `--bus-inbox` · `--mcp-read` · `--tmux-list`（帧命令同名 ＋3）。
+/// ★★★ **p4i-bus-mcp-tmux-reads**（2026-09-26）：子命令 ＋3 `--bus-inbox` · `--mcp-read` · `--tmux-list`（帧命令同名 ＋3）。
 /// ＋ 行为：`bus-state` 读 `cc-list --tsv`（应答形状变）· `kill` 成功后按 pane pid `cc-kill` 注销 · `BUS_ID_RECIPE` 读会话名走 UTF-8 客户端（`-u`）。
 ///
 /// ★★★ **p4j-relay-all-sid-from-claude**（2026-09-26，RELAY 合并那一拍）：行为 / 协议 —— 全量中转默认开（`CCM_RELAY_ALL_SESSIONS=0` 才关，V135 真跑一次过了）·
@@ -578,7 +578,7 @@ pub const PROTO_VERSION: u32 = 1;
 /// 后端 Gate 1 并进 gate-core、不再拒 `=` · `http://[::1]` 不带端口按默认口读 · CP2c 续抽空 14 份后端文案。
 ///
 /// ★★★ **p4n-backend-log**（2026-09-26，GAP1 合并那一拍）：子命令 ＋1 `--backend-log`、帧命令 ＋1 `backend-log`（远端常驻后端的 stderr 落
-/// `~/.cc-monitor/logs/backend/stderr.log`，机器页「日志」经它读尾巴，`15 §4.7 S1`）。＋ 行为：`history-find` 走 SX1 常驻索引 · 账号目录不在 / 重建不再失聪 ·
+/// `~/.cc-monitor/logs/backend/stderr.log`，机器页「日志」经它读尾巴）。＋ 行为：`history-find` 走 SX1 常驻索引 · 账号目录不在 / 重建不再失聪 ·
 /// 远端历史判活由那台后端 `--session-accounts` 答。
 ///
 /// ★★★ **p4o-resident-stop**（2026-09-27，STOP 合并那一拍）：行为 —— `--resident-stop` 成为同机监督者（SIGTERM → 宽限期内按 pidfd 等 →
@@ -595,7 +595,7 @@ pub const PROTO_VERSION: u32 = 1;
 /// V146 载荷先看用户自设的 `ANTHROPIC_BASE_URL`。
 ///
 /// ★★★ **p4s-wave-b-train**（2026-09-27，B 段合并列车）：子命令 ＋3 `--files-extract`（解压，挡 zip-slip）· `--files-read-chunk`（按字节寻址分块读）·
-/// `--resync`（V149 对齐：与起步初扫同一个 `reconcile_sessions`）。＋ 行为 / 协议：hello additive `uncancellable` · 身份标签在 pidfile 重写与 tmux 探测到达时对账 ·
+/// `--resync`（对齐：与起步初扫同一个 `reconcile_sessions`）。＋ 行为 / 协议：hello additive `uncancellable` · 身份标签在 pidfile 重写与 tmux 探测到达时对账 ·
 /// seq 跨截断换代（`session_file_reread` ＋ `SeqCounter::restart`）· `Gap.to_seq` 可缺 · A6 退休前补读 · 注入噪声规则一份（`search-core::user_text`）·
 /// 搜索索引起来就后台建、常驻 64 MiB 上界 · `--stdin-line` 扩到 argv 一族 · ack 带 `jump_fingerprints` · ccm resume 在跑就接上 · 全景 `--probe` 形状代号 · 凭据模板说明进文案表。
 ///
@@ -614,14 +614,14 @@ pub const PROTO_VERSION: u32 = 1;
 /// ★★★ **p4x-relay-state-in-process**（2026-09-27，DEL 续合并那一拍）：子命令 −2（`--apikey-routing` · `--launch-endpoint` 只留帧面）·
 /// 「我们的中转在不在」读常驻后端进程内的监听状态（差分 HTTP 探针删）· 非 unix 远端归「永久不支持」、流收工不再按退避重连。
 ///
-/// ★★★ **p4y-no-raw-keys**（2026-09-27，RST 续合并那一拍）：协议 —— 后端 `launch` 的 `send-keys-raw` mode 删（V154 之后零生产调用者，V41）；
+/// ★★★ **p4y-no-raw-keys**（2026-09-27，RST 续合并那一拍）：协议 —— 后端 `launch` 的 `send-keys-raw` mode 删（之后零生产调用者）；
 /// `launch` 只剩 `create-or-attach` / `send-into` 两个 mode。子命令没变，照 p1v 先例不加历史行。
 ///
 /// ★★★ **p4z-assets-in-backend**（2026-09-27，MIG-3a 前半合并那一拍）：子命令 ＋7（MCP 增删 · MCP 同步三问 · skill 装卸），后端新模块 `assets/`；
 /// `assets-sync` 多认只给 `origin` 的调用（查握手登记的可达表）。MCP 编辑 / 同步、skill 装卸的判定与写都在被写那台。
 ///
 /// ★★★ **p5a-resync-caught-up**（2026-09-28，REREAD 续合并那一拍）：协议 —— `resync` 应答 ＋1 格 `caught_up`（本次从游标补读出的行数合计），
-/// 给 V155「重新读取」按台说补读了几条。子命令没变，照 p1v 先例不加历史行。
+/// 给「重新读取」按台说补读了几条。子命令没变，照 p1v 先例不加历史行。
 ///
 /// ★★★ **p5b-launch-in-backend**（2026-09-28，MIG-2 合并那一拍）：子命令 ＋2、帧命令 ＋3 —— 起会话渲染核心进后端 `control/launch_render/`
 /// （`launch-render-cli` · `launch-render-payload` · `launch-local`）；`launch-endpoint` 答 `{baseUrl}` 或拒 `relay_down`；㊴ `exit-policy-read` / `-set` 出成品 `said`。
@@ -665,7 +665,7 @@ pub const PROTO_VERSION: u32 = 1;
 /// ★★★ **p5p-probe-said-link-fallback**（2026-09-28，FIX5 续合并那一拍）：行为 / 协议 —— 盘不认 `RENAME_NOREPLACE` 时普通文件走 `link` ＋ `unlink`、目录拒并出声；
 /// `remote-probe` 结局那一行改人话（版本 · 能用 / 做不到几项 · 往返毫秒）＋ `backendGaps`。子命令没变。
 ///
-/// ★★★ **p5q-panorama-self-report**（2026-09-29，PANO 合并那一拍，V158）：协议 —— `panorama` / `panorama-edit` 请求必带 `shape`（期望的小程序形状由发起方带，后端比 `--probe` 自报的）；
+/// ★★★ **p5q-panorama-self-report**（2026-09-29，PANO 合并那一拍）：协议 —— `panorama` / `panorama-edit` 请求必带 `shape`（期望的小程序形状由发起方带，后端比 `--probe` 自报的）；
 /// op 表 · 期限档 · 写表（算 op → 写成之后那一步）都由小程序自报，后端零引擎常量；`panorama-edit` 的 `op` 改成「算」op 名；op `subgraph` 删、`neighborhood` 加（跳数由小程序给，前端不算图）。形状代号换代 ⇒ 各台首次打开全景重放一次小程序字节。
 ///
 /// ★★★ **p5r-link-fixes-win3**（2026-09-29，WF2 合并那一拍，WIN3 上一趟读数）：行为 / 协议 —— russh 副本压缩循环 CZ2（撑满就扩、吃光且冲刷完才收工：压缩链路上大块不可压数据不再断）·
@@ -676,9 +676,9 @@ pub const PROTO_VERSION: u32 = 1;
 ///
 /// ★★★ **p5t-monitor-thin**（2026-09-29，THIN 合并那一拍）：monitor 里残留的共享判定全部进后端 —— 远端常驻换不换（`resident-verdict`）· 那台要哪一格字节（`deploy-slot`）· 远端旧 `~/.local/bin/ccm` 认不认得出、删不删（`deploy-retired`）· agent 卡型与判活词表进 `agents/claudecode/cards.rs`（assistant 成品带 `toolCards`，`tmux-list` 每行带 `agent`）· Gate 1 前检删、gate-core 收成后端模块 · branch-core 进 `agents/claudecode/` · acct-core 夹具挪到 feature 后面；共享 crate 只放契约，monitor 只许链契约类。
 ///
-/// ★★★ **p5u-one-data-home**（2026-09-29，DATA-HOME 合并那一拍，V160）：行为 —— monitor 数据目录默认 `~/.cc-monitor/`（与后端的 `bin/` 等并排；API 号凭据 `apikey-credentials.json` 在它根上，两侧经同一个 `monitor_data_dir` 推，认 `CCM_DATA_DIR`）· monitor 日志在 `logs/monitor/` · 数据目录建出来只给本人 · PowerShell 别名块模板 v5（旧块判旧、提示重装）。子命令没变。
+/// ★★★ **p5u-one-data-home**（2026-09-29，DATA-HOME 合并那一拍）：行为 —— monitor 数据目录默认 `~/.cc-monitor/`（与后端的 `bin/` 等并排；API 号凭据 `apikey-credentials.json` 在它根上，两侧经同一个 `monitor_data_dir` 推，认 `CCM_DATA_DIR`）· monitor 日志在 `logs/monitor/` · 数据目录建出来只给本人 · PowerShell 别名块模板 v5（旧块判旧、提示重装）。子命令没变。
 ///
-/// ★★★ **p5v-plain-copy**（2026-09-29，COPY-R 合并那一拍，V161）：文案 —— 用户看得到的文字只说现在是什么、能做什么：去掉演进叙事、内部名挪进句末括号或换成人话、删重复解释（文案表改 282 条；写进用户文件的别名块头注去掉版本沿革）· 后端 IO 错误按种类说人话（`files::io_kind_said`）。子命令没变。
+/// ★★★ **p5v-plain-copy**（2026-09-29，COPY-R 合并那一拍）：文案 —— 用户看得到的文字只说现在是什么、能做什么：去掉演进叙事、内部名挪进句末括号或换成人话、删重复解释（文案表改 282 条；写进用户文件的别名块头注去掉版本沿革）· 后端 IO 错误按种类说人话（`files::io_kind_said`）。子命令没变。
 ///
 /// ★★★ **p5w-readme-shots**（2026-09-29，SHOTS 合并那一拍）：行为 / 协议 —— 足迹行的现状多一档 `expected_absent`（旧版遗留认出就删的那一类不在 ＝ 该有的样子，由后端 `footprint/rows.rs::read_absence` 给结论）· 设置 → 机器那张表补样式 · README 配图 `docs/screenshots/`（合成数据渲染）。子命令没变。
 ///
@@ -701,7 +701,9 @@ pub const PROTO_VERSION: u32 = 1;
 /// p6f-ext-page：skill 与 MCP 收成一张跨机器的表，一套「装到 / 卸载」；密钥不出来源机。
 ///
 /// p6g-child-runs：子 agent 的流归各自的运行，主 tab 上每个在跑的子运行一行；通用层只认运行，各家的形状住适配层。
-pub const BUILD_ID: &str = "p6g-child-runs";
+///
+/// p6h-runs-panel：子 agent 不进主 tab，只在 agent 面板里列；收场以派出它的那一方为准；扩展页的项目目录由它所属的那台判。
+pub const BUILD_ID: &str = "p6h-runs-panel";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src/frontend/shell/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），
@@ -780,17 +782,17 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--accounts-rollback",
     "--accounts-set-default",
     "--accounts-verify",
-    // 〔`C1` · 2026-09-24〕只读查询面那八条帧命令**自动派生**出来的 CLI 面
+    // 只读查询面那八条帧命令**自动派生**出来的 CLI 面
     //（`cli_control::cli_exposed`）。登记在这里的理由与下面那几族逐字相同 ——
     // `is_query_mode` 那道闸门读的就是本表；不在表里 ⇒ 当未知 flag ⇒ 静默进流模式。
     // ⚠ 它们与 `--list-accounts` / `--session-accounts` 是**同一个函数的两个宿主**，
     //   不是第二份实现（理由整段在 `inbound::REGISTRY` 那一段）。
     "--accounts-list",
     "--accounts-sessions",
-    // 〔C4c · 第四波 4B〕帧命令 `accounts-trust` 自动派生出来的 CLI 面（与 `--account-trust` / `--account-trust-zero`
+    // 帧命令 `accounts-trust` 自动派生出来的 CLI 面（与 `--account-trust` / `--account-trust-zero`
     //   是同一个函数的两个宿主）。⚠ 逼出一次 `BUILD_ID` bump —— 本路不 bump，合并那一拍统一做。
     "--accounts-trust",
-    // 〔GAP1 · `设计/15 §4.7 S1`〕帧面 `backend-log`（这台后端的 stderr 诊断文件尾部）自动派生的 CLI 面。
+    // 帧面 `backend-log`（这台后端的 stderr 诊断文件尾部）自动派生的 CLI 面。
     //   **是新子命令** ⇒ `build_id_guard` 红是预期的，BUILD_ID 由合并那一拍统一 bump（本路不 bump）。
     "--backend-log",
     // ── P4d：控制面的 CLI 面。**它们不在这里各写一条实现** ——
@@ -802,16 +804,16 @@ pub const SUBCOMMANDS: &[&str] = &[
     // 不在表里 ⇒ 当成未知 flag ⇒ 打一行 warn 之后**照常进流模式**，
     // CLI 面看上去"存在"却永远调不到（08-13 实测到了这个形状）。
     // ⇒ 现由 `cli_control::tests::every_cli_exposed_command_is_in_the_query_mode_gate` 钉住。
-    // 〔C4e · 第四波 4C〕广播（`inbound::REGISTRY` 的 `bus-broadcast`）：原是 monitor 里的组合（列名单 ＋ 逐个发），
+    // 广播（`inbound::REGISTRY` 的 `bus-broadcast`）：原是 monitor 里的组合（列名单 ＋ 逐个发），
     //   界面改经通道直接说后端之后收进后端。登记理由同下面那几条；⚠ 加这一行逼出一次 `BUILD_ID` bump
     //   （`build_id_guard`）—— 本路**不 bump**，合并那一拍统一做。
     "--bus-broadcast",
-    // 〔SH1 · V136〕帧面 `bus-inbox` 自动派生的 CLI 面（只读看收件箱尾巴）。⚠ 加这一行逼出 `BUILD_ID` bump，本路不 bump。
+    // 帧面 `bus-inbox` 自动派生的 CLI 面（只读看收件箱尾巴）。⚠ 加这一行逼出 `BUILD_ID` bump，本路不 bump。
     "--bus-inbox",
     "--bus-kill",
     "--bus-list",
     "--bus-send",
-    // 〔BS1b 09-24〕派生协作 agent（`inbound::REGISTRY` 的 `bus-spawn`）。登记理由同上面那三条。
+    // 派生协作 agent（`inbound::REGISTRY` 的 `bus-spawn`）。登记理由同上面那三条。
     "--bus-spawn",
     // `K-R113`：cc-bus 的**具名读命令**（名单 ＋ spawn 台账一次回全）。
     // 登记在这里的理由与上面那三条逐字相同 —— `is_query_mode` 那道闸门读的就是本表。
@@ -820,45 +822,45 @@ pub const SUBCOMMANDS: &[&str] = &[
     // `is_query_mode` 那道**闸门**读的就是本表，不在表里 ⇒ 被当未知 flag ⇒
     // 打一行 warn 之后**照常进流模式**，调用方拿到一堆 jsonl 行而不是那一屏。
     "--capture-pane",
-    // 〔MIG-3b〕部署计划（帧面 `deploy-plan` 的 CLI 面，自动派生）。
+    // 部署计划（帧面 `deploy-plan` 的 CLI 面，自动派生）。
     "--deploy-plan",
-    // 〔THIN〕远端常驻后端 hello 的新旧（帧面 `resident-verdict` 的 CLI 面，自动派生）。⇒ `build_id_guard` 红是预期的（本路不 bump）。
+    // 远端常驻后端 hello 的新旧（帧面 `resident-verdict` 的 CLI 面，自动派生）。⇒ `build_id_guard` 红是预期的（本路不 bump）。
     "--resident-verdict",
-    // 〔THIN〕那台旧入口的去向（帧面 `deploy-retired` 的 CLI 面，自动派生）。⇒ `build_id_guard` 红是预期的（本路不 bump）。
+    // 那台旧入口的去向（帧面 `deploy-retired` 的 CLI 面，自动派生）。⇒ `build_id_guard` 红是预期的（本路不 bump）。
     "--deploy-retired",
-    // 〔P1〕本机那一份放不放（帧面 `place-verdict` 的 CLI 面，自动派生；monitor 自举时跑手上那份字节问它）。⇒ `build_id_guard` 红是预期的（本路不 bump）。
+    // 本机那一份放不放（帧面 `place-verdict` 的 CLI 面，自动派生；monitor 自举时跑手上那份字节问它）。⇒ `build_id_guard` 红是预期的（本路不 bump）。
     "--place-verdict",
-    // 〔MOD〕这台后端的漂移账（帧面 `drift-report` 的 CLI 面，自动派生）。⇒ `build_id_guard` 红是预期的（本路不 bump）。
+    // 这台后端的漂移账（帧面 `drift-report` 的 CLI 面，自动派生）。⇒ `build_id_guard` 红是预期的（本路不 bump）。
     "--drift-report",
-    // 〔MIG-3b 续〕公钥推送两条（帧面 `pubkey-push` / `authorized-keys-add` 的 CLI 面，自动派生；远端那台被 `remote_ask::ask_json` 走的就是后一条）。
+    // 公钥推送两条（帧面 `pubkey-push` / `authorized-keys-add` 的 CLI 面，自动派生；远端那台被 `remote_ask::ask_json` 走的就是后一条）。
     "--authorized-keys-add",
     "--pubkey-push",
-    // 〔B2 · 条 66〕「退出行为」那个值的两条命令（`inbound::REGISTRY` 的 `exit-policy-*`）自动派生的 CLI 面。
+    // 〔条 66〕「退出行为」那个值的两条命令（`inbound::REGISTRY` 的 `exit-policy-*`）自动派生的 CLI 面。
     // 登记理由与上面那几族逐字相同 —— `is_query_mode` 那道闸门读本表，不在表里 ⇒ 当未知 flag 静默进流模式。
     // ⚠ 加这两行会逼出一次 `BUILD_ID` bump（`build_id_guard`）—— 本路**不 bump**，合并那一拍统一做。
     "--exit-policy-read",
     "--exit-policy-set",
-    // 〔RM1a · 第四波〕上游选择那份凭据文件在这台机器上的两条命令（`inbound::REGISTRY` 的 `apikey-*`）
+    // 上游选择那份凭据文件在这台机器上的两条命令（`inbound::REGISTRY` 的 `apikey-*`）
     // 自动派生的 CLI 面。⚠ `--apikey-key-set` 的入参（含 key）**从 stdin 读**（`takes_input: true`），
     // 不收 argv —— argv 在同机任何用户的 `ps` 里都看得见。加这两行会逼出一次 `BUILD_ID` bump，本路不 bump。
     "--apikey-key-set",
     "--apikey-read",
-    // 〔DEL 续〕`--apikey-routing` / `--launch-endpoint` 摘了（`cli_control::STREAM_ONLY`：一次性进程里没有中转，答「不在」是假话）。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
-    // 〔DEL〕`--relay-ensure` / `--relay-status` 随帧面那两条删了。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
-    // 〔MIG-2 · `99 §2.1 ⑬`〕起会话的两条渲染（`inbound::REGISTRY` 的 `launch-render-*`，纯函数）自动派生的 CLI 面，入参从 stdin 读。
+    // `--apikey-routing` / `--launch-endpoint` 摘了（`cli_control::STREAM_ONLY`：一次性进程里没有中转，答「不在」是假话）。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
+    // `--relay-ensure` / `--relay-status` 随帧面那两条删了。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
+    // 起会话的两条渲染（`inbound::REGISTRY` 的 `launch-render-*`，纯函数）自动派生的 CLI 面，入参从 stdin 读。
     //   `launch-local` 不上 CLI 面（`STREAM_ONLY`：要读本进程的中转状态，同 `launch-endpoint`）。加这两行会逼出一次 `BUILD_ID` bump，本路不 bump。
     "--launch-render-cli",
     "--launch-render-payload",
-    // 〔MIG-3b 续〕「足迹」出成品（`inbound::REGISTRY` 的 `footprint-report`，替掉 `--footprint-probe`）派生的 CLI 面。只读。
+    // 「足迹」出成品（`inbound::REGISTRY` 的 `footprint-report`，替掉 `--footprint-probe`）派生的 CLI 面。只读。
     "--footprint-report",
-    // 〔E2〕帧命令 `ccm-print` 的 CLI 面删了：`--ccm-*` 这族名字归 ccm 的诊断口（V138），二进制叫 `ccm` 时
+    // 帧命令 `ccm-print` 的 CLI 面删了：`--ccm-*` 这族名字归 ccm 的诊断口，二进制叫 `ccm` 时
     //   按本表分流会把 `ccm --ccm-print` 抢进后端（`cli_control::cli_exposed` 排除 ccm 的词）。逼出 `BUILD_ID` bump，本路不 bump。
-    // 〔AS1 · 第四波 4B〕MCP 资产同步的判定（`inbound::REGISTRY` 的 `mcp-sync-plan`）派生的 CLI 面。只读，入参从 stdin 读。
+    // MCP 资产同步的判定（`inbound::REGISTRY` 的 `mcp-sync-plan`）派生的 CLI 面。只读，入参从 stdin 读。
     // 加这一行会逼出一次 `BUILD_ID` bump（`build_id_guard`）—— 本路**不 bump**，合并那一拍统一做。
-    // 〔SH1 · V137〕帧面 `mcp-read` 自动派生的 CLI 面（MCP 列表成品）。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
+    // 帧面 `mcp-read` 自动派生的 CLI 面（MCP 列表成品）。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
     "--mcp-read",
     "--mcp-sync-plan",
-    // 〔MIG-3a〕MCP 写两条 ＋ 推拉三条（`inbound::REGISTRY` 派生的 CLI 面）。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
+    // MCP 写两条 ＋ 推拉三条（`inbound::REGISTRY` 派生的 CLI 面）。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
     "--mcp-server-put",
     "--mcp-server-remove",
     "--mcp-sync-source",
@@ -874,34 +876,34 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--aliases-block-render",
     "--aliases-block-install",
     "--aliases-block-remove",
-    // 〔WF1 · L〕帧面 `powershell-policy-set` 派生的 CLI 面。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
+    // 帧面 `powershell-policy-set` 派生的 CLI 面。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
     "--powershell-policy-set",
-    // 〔AS2 · 第四波 4B〕资产目录那两条（`inbound::REGISTRY` 的 `assets-catalog` / `assets-catalog-merge`）派生的 CLI 面。
+    // 资产目录那两条（`inbound::REGISTRY` 的 `assets-catalog` / `assets-catalog-merge`）派生的 CLI 面。
     // 加这两行会逼出一次 `BUILD_ID` bump（`build_id_guard`）—— 本路**不 bump**，合并那一拍统一做。
     "--assets-catalog",
     "--assets-catalog-merge",
-    // 〔AS2〕`assets-sync` 是真异步命令 ⇒ 按派生规则上 CLI 面（`cli_control::cli_exposed`：非内建即上）。
+    // `assets-sync` 是真异步命令 ⇒ 按派生规则上 CLI 面（`cli_control::cli_exposed`：非内建即上）。
     // ⚠ 一次性进程没有常驻那一个的连接池与可达表：它自己新拨一条、对那一台做一趟，扇出恒为零台。
     "--assets-sync",
-    // 〔AS2〕skill「装到这台」那两条（`skill-read` / `skill-install-plan`）派生的 CLI 面。只读，入参从 stdin 读。
+    // skill「装到这台」那两条（`skill-read` / `skill-install-plan`）派生的 CLI 面。只读，入参从 stdin 读。
     "--skill-read",
     "--skill-install-plan",
-    // 〔SU1 · 第四波 4C〕装记录那一条（`skill-install-record`）派生的 CLI 面。
+    // 装记录那一条（`skill-install-record`）派生的 CLI 面。
     "--skill-install-record",
     // 扩展页「从这台卸」那两条（`ext-uninstall-preview` / `ext-uninstall-apply`）派生的 CLI 面。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
     "--ext-uninstall-preview",
     "--ext-uninstall-apply",
-    // 〔C4d · 第四波 4B〕可达表登记（`inbound::REGISTRY` 的 `remote-reach`）派生的 CLI 面，入参从 stdin 读。
+    // 可达表登记（`inbound::REGISTRY` 的 `remote-reach`）派生的 CLI 面，入参从 stdin 读。
     // ⚠ 一次性进程的可达表随进程退出就空 —— 真正的用法是常驻后端的帧面。加这一行会逼出一次 `BUILD_ID` bump，本路**不 bump**。
     "--remote-reach",
-    // 〔MIG-1 收尾〕测试连接（`remote-probe`）那一行 CLI 面摘了：进度格改走本连接的应答通道（硬臂，只在帧面，理由见 `cli_control_tests::NOT_ON_CLI`）。
-    // 〔C4d · 第四波 4B〕历史注解那三条（`inbound::REGISTRY` 的 `history-annotate` / `-forget` / `-last-accounts`）派生的 CLI 面。
+    // 测试连接（`remote-probe`）那一行 CLI 面摘了：进度格改走本连接的应答通道（硬臂，只在帧面，理由见 `cli_control_tests::NOT_ON_CLI`）。
+    // 历史注解那三条（`inbound::REGISTRY` 的 `history-annotate` / `-forget` / `-last-accounts`）派生的 CLI 面。
     // ⚠ 一次性进程多半没被交 `CCM_HISTORY_METADATA` ⇒ 明拒（不猜路径）。加这三行会逼出一次 `BUILD_ID` bump，本路**不 bump**。
     "--history-annotate",
     "--history-forget",
     "--history-last-accounts",
     "--backend-probe",
-    // 〔SR1a · 09-24〕`--dial`（拨号代理，`K-P6b` / C2）**从本表摘掉了**：拨号挪进本机那一个常驻后端、
+    // `--dial`（拨号代理，`K-P6b` / C2）**从本表摘掉了**：拨号挪进本机那一个常驻后端、
     // 经流上的链路（`link-*` 四条，`dial/link.rs`）做，不再每条链路起一个进程。
     // 〔墓碑 —— 那一行原来的理由要点：「**常驻**（起来就一直搬字节，不返回），配置走**环境变量**
     //  `CCM_DIAL_REQUEST`，argv 与 stdin 都不走」。〕⚠ 摘这一行会让 `build_id_guard` 红 —— 本路**不 bump**，合并那一拍统一做。
@@ -911,35 +913,35 @@ pub const SUBCOMMANDS: &[&str] = &[
     // ⚠ 线上名用 `-` 不用 `.`（能力名仍是 `files.ls` 那一套）：理由整段在
     // `files::answer_wire` 的头注 —— 一句话是 `"--files.ls"` 会被本仓两个 token
     // 取词器**静默丢弃**，那等于把这四条从三条判据底下同时抽走而三条都照常报绿。
-    // 〔步 `24f` 第三刀 09-21〕同族的第五、第六条（`设计/96 §2.9` 裁）。登记在这里的理由
+    // 〔步 `24f` 第三刀 09-21〕同族的第五、第六条。登记在这里的理由
     // 与上面那四条逐字相同 —— `is_query_mode` 那道闸门读的就是本表。
-    // 🔴 〔波 5 ㈠ · 2026-09-23 · `设计/60 §8.6` 第 2 步〕**本族第一条会往盘上写的命令。**
+    // 🔴 〔波 5 ㈠〕**本族第一条会往盘上写的命令。**
     //
     // 它落在这张表里**不是选择，是派生的必然**：`cli_control::cli_exposed` 逐字是
     // `!matches!(spec.run, Run::Builtin)` —— 只要一条命令进了 `inbound::REGISTRY`
     // 且不是那个硬臂，CLI 面就**自动**认得它；而本表是 `is_query_mode` 那道闸门。
     // ⇒ 不加这一行的后果与上面那几条逐字相同（当未知 flag、照常进流模式）。
     // ⚠ **如实登记一条代价**：因此「写这一面只从帧面进来」这句话**做不到**，
-    //   两个宿主共用同一个 `run`（`设计/60 §8.1` 的「一份代码两种宿主」正是这一形）。
+    //   两个宿主共用同一个 `run`（「一份代码两种宿主」正是这一形）。
     //   写面的「窄」因此**不靠命令面**，而靠 `readonly_guard` 第三层那条
     //   「只从声明过的那一面来」—— 它判的是**谁引用得到那个模块**，不是谁发得出命令。
     "--files-create",
-    // 〔波 5 ㈡ 09-23〕同一面的另外五条（`设计/60 §8.6` 第 3 步）。登记理由与上一行逐字相同。
+    // 〔波 5 ㈡ 09-23〕同一面的另外五条。登记理由与上一行逐字相同。
     "--files-chmod",
     "--files-delete",
     "--files-mkdir",
     "--files-rename",
     "--files-write-text",
-    // 〔F7a · 第三波 09-24〕同一面第七条（同根内复制）。登记理由与上面逐字相同。
+    // 同一面第七条（同根内复制）。登记理由与上面逐字相同。
     "--files-copy",
-    // 〔FILES2 · 第四波〕解压（`设计/60 §6.2`）。**是新子命令** ⇒ `build_id_guard` 红是预期的，BUILD_ID 由合并那一拍统一 bump。
+    // 解压。**是新子命令** ⇒ `build_id_guard` 红是预期的，BUILD_ID 由合并那一拍统一 bump。
     "--files-extract",
-    // 〔F7c · 第三波 09-24〕上传的提交（`设计/60 §13`）。登记理由同上面写面那几条（CLI 面从 `REGISTRY` 派生）。
+    // 上传的提交。登记理由同上面写面那几条（CLI 面从 `REGISTRY` 派生）。
     "--files-commit-upload",
-    // 〔F9c · 第四波〕存盘装不进一行时的两步（逐块进暂存区 ＋ 读回拼起来原地覆盖）。登记理由同上。
+    // 存盘装不进一行时的两步（逐块进暂存区 ＋ 读回拼起来原地覆盖）。登记理由同上。
     "--files-stage-chunk",
     "--files-commit-text",
-    // 〔RW1 · 第四波 09-24〕用户文件的读改写 ＋ 删历史会话。登记理由同上面写面那几条（CLI 面从 `REGISTRY` 派生）。
+    // 用户文件的读改写 ＋ 删历史会话。登记理由同上面写面那几条（CLI 面从 `REGISTRY` 派生）。
     "--files-delete-session",
     "--files-peek",
     "--files-put",
@@ -949,38 +951,38 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--files-index-status",
     "--files-ls",
     "--files-stat",
-    // 〔F7a · 第三波 09-24〕同族第七、第八条（`设计/60 §13`）。登记理由与上面那几条逐字相同。
+    // 同族第七、第八条。登记理由与上面那几条逐字相同。
     "--files-home",
     "--files-read-text",
-    // 〔FILES2 · V152〕读族第十条（按字节寻址分块读回）。**是新子命令** ⇒ `build_id_guard` 红是预期的。
+    // 读族第十条（按字节寻址分块读回）。**是新子命令** ⇒ `build_id_guard` 红是预期的。
     "--files-read-chunk",
-    // 〔W5-FILES · 第五波〕读族第九条（算目录大小）。**是新子命令** ⇒ `build_id_guard` 红是预期的，BUILD_ID 由合并那一拍统一 bump。
+    // 读族第九条（算目录大小）。**是新子命令** ⇒ `build_id_guard` 红是预期的，BUILD_ID 由合并那一拍统一 bump。
     "--files-size",
-    // 〔FILES3 · `99 §2.2 ㉜`〕读族第十一条（按内容搜）。**是新子命令** ⇒ `build_id_guard` 红是预期的。
+    // 读族第十一条（按内容搜）。**是新子命令** ⇒ `build_id_guard` 红是预期的。
     "--files-grep",
-    // 〔SE2 · `设计/10 §6 步 6`〕会话内查找（Ctrl+F）。**是新子命令** ⇒ `build_id_guard` 红是预期的，
+    // 会话内查找（Ctrl+F）。**是新子命令** ⇒ `build_id_guard` 红是预期的，
     // BUILD_ID 由合并那一拍统一 bump（本路不 bump）。
     "--find-in-session",
     "--fork-session",
-    // 〔LOC1a · 第四波 4D〕帧面 `session-fork` 自动派生的 CLI 面（读 stdin）。刻意不与上一行同名：那一条是对 aterm 冻结的
+    // 帧面 `session-fork` 自动派生的 CLI 面（读 stdin）。刻意不与上一行同名：那一条是对 aterm 冻结的
     //   argv 形。⚠ 加这一行逼出一次 `BUILD_ID` bump（`build_id_guard`）—— 本路**不 bump**，合并那一拍统一做。
     "--session-fork",
-    // 〔`C1`〕同上一段：`history-*` 六条帧命令的 CLI 面。
-    // 〔SR1a〕+2：`history-index` / `history-user-inputs`（骨架索引与大纲清单上帧面）的 CLI 面，
+    // 同上一段：`history-*` 六条帧命令的 CLI 面。
+    // +2：`history-index` / `history-user-inputs`（骨架索引与大纲清单上帧面）的 CLI 面，
     //   登记理由同上 —— `is_query_mode` 那道闸门读本表。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
-    // 〔STC · `设计/90 §4` 阶段 C〕`history-facts`（会话事实出成品）的 CLI 面（从 `REGISTRY` 派生，`is_query_mode` 那道闸门读本表）。
+    // `history-facts`（会话事实出成品）的 CLI 面（从 `REGISTRY` 派生，`is_query_mode` 那道闸门读本表）。
     //   **是新子命令** ⇒ `build_id_guard` 红是预期的，BUILD_ID 由合并那一拍统一 bump（本路不 bump）。
     "--history-facts",
     "--history-find",
     "--history-index",
-    // 〔CF2 · 第四波 4B〕`history-lines`（按行号取回）的 CLI 面。**是新子命令** ⇒ `build_id_guard` 红是预期的，
+    // `history-lines`（按行号取回）的 CLI 面。**是新子命令** ⇒ `build_id_guard` 红是预期的，
     //   BUILD_ID 由合并那一拍统一 bump（本路不 bump）。
     "--history-lines",
-    // 〔MOD〕`history-page`（按字节分页出记录行）的 CLI 面。**是新子命令** ⇒ `build_id_guard` 红是预期的（本路不 bump）。
+    // `history-page`（按字节分页出记录行）的 CLI 面。**是新子命令** ⇒ `build_id_guard` 红是预期的（本路不 bump）。
     "--history-page",
     "--history-projects",
     "--history-read",
-    // 〔U4b · 第四波〕`history-record` 的 CLI 面（CLI 面从 `REGISTRY` 派生，`is_query_mode` 那道闸门读本表）。
+    // `history-record` 的 CLI 面（CLI 面从 `REGISTRY` 派生，`is_query_mode` 那道闸门读本表）。
     // **是新子命令** ⇒ `build_id_guard` 红是预期的，BUILD_ID 由合并那一拍统一 bump（本路不 bump）。
     "--history-record",
     // 按运行读一个子运行的记录（替掉按目录与描述挑的那一条）。**子命令换了** ⇒ `build_id_guard` 红是预期的（本路不 bump）。
@@ -989,12 +991,12 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--history-sessions",
     "--history-tail",
     "--history-user-inputs",
-    // 〔MIG-3b〕帧面 `hooks-diag` 自动派生的 CLI 面。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
+    // 帧面 `hooks-diag` 自动派生的 CLI 面。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
     "--hooks-diag",
     "--kill",
     "--launch",
     "--list-accounts",
-    // 〔`设计/10 §2.2b ⑥` · SE1〕大纲的数据源：「你说过的话」清单。**是新子命令** ⇒
+    // 大纲的数据源：「你说过的话」清单。**是新子命令** ⇒
     // `build_id_guard` 红是预期的，BUILD_ID 由合并那一拍统一 bump（本路不 bump）。
     "--list-user-inputs",
     "--list-projects",
@@ -1003,29 +1005,29 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--read-session",
     "--read-session-from-offset",
     "--read-session-tail",
-    // 〔DEL〕`--relay`（独立的中转进程）删了：中转只住常驻后端进程里。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
-    // 〔HOST · V139〕远端常驻后端的起 · 找 · 停（`control/resident.rs`；monitor 经链路 capture 跑）。
+    // `--relay`（独立的中转进程）删了：中转只住常驻后端进程里。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
+    // 远端常驻后端的起 · 找 · 停（`control/resident.rs`；monitor 经链路 capture 跑）。
     // ⚠ 新子命令 ⇒ `build_id_guard` 红是预期的，本路不 bump。
     "--resident-ensure",
     "--resident-stop",
     "--resolve",
-    // 〔RESYNC〕`--resync` 摘了（`cli_control::STREAM_ONLY`：一次性进程里没有 watcher，答 `watchers: 0` 是假话）。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
+    // `--resync` 摘了（`cli_control::STREAM_ONLY`：一次性进程里没有 watcher，答 `watchers: 0` 是假话）。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
     "--search",
     "--session-accounts",
-    // 〔MIG-1 · `99 §2.1 ⑯`〕`ssh-config-*` 三条帧命令自动派生的 CLI 面（理由同 `--tasks-list`）。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
+    // `ssh-config-*` 三条帧命令自动派生的 CLI 面（理由同 `--tasks-list`）。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
     "--ssh-config-aliases",
     "--ssh-config-import",
     "--ssh-config-resolve",
-    // 〔RM1b · 第四波〕`tasks-list` 帧命令**自动派生**出来的 CLI 面（`cli_control::cli_exposed`），
+    // `tasks-list` 帧命令**自动派生**出来的 CLI 面（`cli_control::cli_exposed`），
     // 登记理由同 `C1` 那一段：不在表里 ⇒ `is_query_mode` 当未知 flag ⇒ 静默进流模式。
     // ⚠ 新子命令 ⇒ `build_id_guard` 红是预期的，BUILD_ID 由合并那一拍统一 bump（本路不 bump）。
     "--tasks-list",
-    // 〔SH1〕帧面 `tmux-list` 自动派生的 CLI 面。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
+    // 帧面 `tmux-list` 自动派生的 CLI 面。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
     "--tmux-list",
     "--tmux-notify",
 ];
 
-// ── 〔步 9 · 09-19〕argv 那一族 ＋ 四个贴着 `main.rs` 的测试模块 ─────────────
+// ── argv 那一族 ＋ 四个贴着 `main.rs` 的测试模块 ─────────────
 //
 // 🔴 **它们为什么也在这里，而不是留在 bin**：那四个测试模块用 `super::CAPABILITIES` /
 //   `super::is_query_mode` / `super::split_stream_flags` 引这几项。模块搬进 lib 之后
@@ -1036,7 +1038,7 @@ pub const SUBCOMMANDS: &[&str] = &[
 //
 // ⚠ 这几项本来也不属于「分派」：`is_query_mode` / `split_stream_flags` 是对 argv 的纯函数，
 //   `CAPABILITIES` 是一张声明表。in-process 那条路一样要问「这次调用是不是查询模式」。
-//   真正的分派（那个 `match`）仍然留在 `main.rs`，规格 `00 §1.5.4` 逐字。
+//   真正的分派（那个 `match`）仍然留在 `main.rs`，规格。
 
 /// F66（#58③）：本构建**声明支持的能力 token**（hello 帧 `capabilities` 字段）。
 /// monitor 按此决定发 `--with-bg`/`--tail-only`，不再靠 build_id 精确匹配去猜
@@ -1054,9 +1056,9 @@ pub const SUBCOMMANDS: &[&str] = &[
 /// （monitor 发对应 flag → 本后端不剥 → 当查询退出 → 无 hello → 重连死循环）。
 /// **此硬约束由 `every_capability_token_is_strippable` 测试代码强制**（不再只是约定）。
 ///
-/// # 🔴 `rbind-token`〔`设计/80 §8.7` 步 2，2026-09-22〕—— 它为什么住**这一张**表
+/// # 🔴 `rbind-token`—— 它为什么住**这一张**表
 ///
-/// `设计/80 §8` 的方案 E 要把「会话身份」从 tmux 上解绑：起会话的那一方注一个
+/// 方案 E 要把「会话身份」从 tmux 上解绑：起会话的那一方注一个
 /// `CCM_RBIND_TOKEN`，后端从 `/proc/<pid>/environ` 读出来、随 `session_added` 报回去。
 /// `§8.6 ④` 逐字要求「**能力协商** ＋ 老后端诚实降级」。
 ///
@@ -1080,10 +1082,10 @@ pub const SUBCOMMANDS: &[&str] = &[
 // 拿汇总那侧（排过序）与本表**逐项相等**。
 pub const CAPABILITIES: &[&str] = &["bg", "rbind-token", "tail-only"];
 
-// ══════════════════ 步 `8a`：能力清单的**汇总** —— `设计/96 §2` 第 2 层 ══════════════════
+// ══════════════════ 步 `8a`：能力清单的**汇总** —— 第 2 层 ══════════════════
 //
 // 🔴 **这一段填的是 `files/mod.rs` 头注自己登记的那个缺口**，逐字：
-//   「`CAPABILITIES` 的汇总没接。`设计/96 §2` 第 2 层要求『能力清单从实现派生，
+//   「`CAPABILITIES` 的汇总没接。第 2 层要求『能力清单从实现派生，
 //    `CAPABILITIES` 由它们汇总而来』。本族把自己那一份声明成了**数据**，但**没有**
 //    把它汇进 `lib.rs::CAPABILITIES` —— 那一处的语义今天是『会在一次性查询判定前
 //    剥离对应 flag 的**流**能力』，本族六条都不是那种东西，硬塞进去会当场红，
@@ -1095,7 +1097,7 @@ pub const CAPABILITIES: &[&str] = &["bg", "rbind-token", "tail-only"];
 //   「无 flag 映射 …… 否则埋 §26 死循环」。⇒ 那一处的语义**保持不动**，
 //   它在本汇总里是**一个面**（`stream-flags`），不是汇总本身。
 //
-// # 这一层买到什么 · 买不到什么（`设计/96 §2` 那张三层表逐字）
+// # 这一层买到什么 · 买不到什么（那张三层表逐字）
 //
 // | 层 | 做什么 | 本段 |
 // |---|---|---|
@@ -1110,32 +1112,31 @@ pub const CAPABILITIES: &[&str] = &["bg", "rbind-token", "tail-only"];
 //   而「某一族整个没被登记进来」那一形函数拦不住 —— 那一格由
 //   `tests/backend/capability_ledger_guard.rs` 的**源码树点名**接着（两侧异源）。
 
-/// 一个能力**属于哪一类**。`设计/96 §2` 那条射程要求的兑现处。
+/// 一个能力**属于哪一类**。那条射程要求的兑现处。
 ///
 /// # 🔴 为什么这个枚举必须有两个成员（不是分类癖）
 ///
-/// `设计/96 §2` 逐字：
 ///
 /// > **清单的射程要能装下「协议级能力」** —— 不只是「能管哪几类资产」。
 /// > ⇒ **清单的条目 ＝「我能管哪几类资产」＋「我认不认这条协议帧」两类**，
-/// > 第 2 层那条派生要把后者也派生进来；否则 `05 §8` 步 8 接上来的时候，
+/// > 第 2 层那条派生要把后者也派生进来；否则接上来的时候，
 /// > 它要协商的东西在清单里找不到住址。
 ///
 /// ⇒ 两个成员就是那两类。**而且两类今天都有真成员**（不是「留着以后用」）：
 /// `files-read` 那六条是 [`CapabilityKind::Asset`]，`stream-flags` 那两条是
-/// [`CapabilityKind::Protocol`] —— 后者正是 `05 §3.3.3`「对面认不认这条」那一形。
+/// [`CapabilityKind::Protocol`] —— 后者正是「对面认不认这条」那一形。
 /// 「两个成员各有人用」由 `capability_ledger_guard` 钉住：只剩一类时这条射程就是空话。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum CapabilityKind {
     /// **我能管哪几类资产** —— 文件 / 会话 / 插件那一轴。
     Asset,
-    /// **我认不认这条协议上的东西** —— 流 flag / 帧 / 命令那一轴（`05 §3.3.3`）。
+    /// **我认不认这条协议上的东西** —— 流 flag / 帧 / 命令那一轴。
     Protocol,
 }
 
-/// 编译 target —— `设计/96 §2` 那条跨 target 对拍的人群。
+/// 编译 target —— 那条跨 target 对拍的人群。
 ///
-/// # 🔴 它为什么住在这一层（`设计/96 §2` 第 2 层逐字「**每个能力面**声明自己在哪些
+/// # 🔴 它为什么住在这一层（第 2 层逐字「**每个能力面**声明自己在哪些
 /// target 上有实现」）
 ///
 /// 这个轴原先住 `files/mod.rs`（那时只有一个能力面）。汇总一接上，声明 target 的面
@@ -1149,16 +1150,16 @@ pub enum CapabilityKind {
 ///
 /// 他那一拍是三句，合起来是一条完整裁决：
 /// ① 判「**做得到**」；② 「**除非暂时不做**」；③ 「**Windows 用 Windows 自己的后台服务，后面再做**」。
-/// 〔TL3 · 审计 F 🔴-11〕③ 的**机制**那半被 09-24 的 V109 收回：Windows 上「会话活在前端之外」用哪种机制
+/// 〔审计 F 🔴-11〕③ 的**机制**那半被 09-24 的 V109 收回：Windows 上「会话活在前端之外」用哪种机制
 /// （甲 · 控制台窗口本身就是容器 / 乙 · 常驻后端用 ConPTY 托管 / 丙 · 真 Windows 服务）用户裁「都先不做」、**机制未定**
-/// ⇒ [`TARGET_GAPS`] 的理由串不许替他选（`设计/96 §2.3`「以 V109 为准」）；①② 两句照旧。
+/// ⇒ [`TARGET_GAPS`] 的理由串不许替他选（「以 V109 为准」）；①② 两句照旧。
 ///
 /// ⇒ 于是本轴的形状变了三处：
 /// 1. `targets` 那一栏的意思从「编得过」变成「**这一面在这个 target 上真的做得到**」；
 /// 2. 做不到的那几条要**逐条登记**成 [`TARGET_GAPS`]，每条写明**为什么做不到**
 ///    与**将来怎么办**（「暂时不做」也是一种答复，但必须写出来）；
 /// 3. 「编不编得过」**仍然是一条真性质**，但它不再由本轴承担 —— 它由跨 target
-///    编译门禁（`设计/96 §2` 第 1 层）承担，而那一层**本仓今天只有两格**（两条 `-gnu`），
+///    编译门禁（第 1 层）承担，而那一层**本仓今天只有两格**（两条 `-gnu`），
 ///    macOS 那一格**两道都没有**。
 ///
 /// ⚠ **`wire::Unavailable` 那个轴仍然是另一个轴，别合并** —— 它是**运行期逐机器**的
@@ -1186,13 +1187,13 @@ pub const TARGETS: &[Target] = &[
     Target::MacOs,
 ];
 
-/// 一个**能力面**的登记 —— `设计/96 §2` 第 2 层那条派生的**人群**。
+/// 一个**能力面**的登记 —— 第 2 层那条派生的**人群**。
 ///
 /// ⚠ [`CapabilityFace::declares`] 是一个**函数指针**，不是又抄一份名单。
 /// 那是本结构最要紧的一栏：它让「这一面有哪些能力」**只有一个住址**
 ///（那一族自己的声明表），汇总侧连一个可以漂开的副本都没有。
 pub struct CapabilityFace {
-    /// 这一面的族名。`设计/96 §2.9` 那种标题。
+    /// 这一面的族名。那种标题。
     pub family: &'static str,
     /// 它属于射程里的哪一类。
     pub kind: CapabilityKind,
@@ -1205,7 +1206,7 @@ pub struct CapabilityFace {
     /// 它在哪些 target 上**有实现**（第 2 层逐字要求每个面自己说）。
     pub targets: &'static [Target],
     /// 🔴 上一栏的**依据**，一句话。**不许留空**（判据有长度地板）。
-    /// 空着等于「抄了个 `TARGETS` 上去」，而 `设计/96 §2.9` 逐字管那叫**假声明**。
+    /// 空着等于「抄了个 `TARGETS` 上去」，而管那叫**假声明**。
     pub target_basis: &'static str,
 }
 
@@ -1261,7 +1262,7 @@ pub const CAPABILITY_FACES: &[CapabilityFace] = &[
                         `control/ccm/mod.rs::exec_direct` 从前只要 `needs_bus_id(agent)` 为真\
                         就把**整条**改走 `sh -c`，而它对 codex 恒真 ⇒ 真机现打 \
                         `--agent codex --launcher hostname` → `EXIT=4 program not found`\
-                        （`真相源/106 §3.3`；同一个 launcher 在 `--agent claude` 那趟 `EXIT=0`）。\
+                        （同一个 launcher 在 `--agent claude` 那趟 `EXIT=0`）。\
                         `P19` 把那道闸收窄成「那段配方**真有事可做**时」—— 配方整段裹在 \
                         `if [ -n \"${TMUX:-}\" ]` 里，`$TMUX` 空则它一个字不做 ⇒ \
                         Windows 上（`$TMUX` 恒空）直路不再请 shell 进来，**那句话才开始成立**。\
@@ -1281,14 +1282,14 @@ pub const CAPABILITY_FACES: &[CapabilityFace] = &[
     },
 ];
 
-/// 一条 [`TargetGap`] 属于哪一档 —— 〔PR1 · 2026-09-24〕「差异」要分两档登记，**不许合成一档**。
+/// 一条 [`TargetGap`] 属于哪一档 —— 「差异」要分两档登记，**不许合成一档**。
 ///
 /// # 为什么非分不可
 ///
 /// 两档要的**下一步动作相反**：结构上没有的那一格，正确的结局是**永远留在表里**；
 /// 欠着的那一格，正确的结局是**有一天被删掉**（`P19` 删 `agent` 那一行就是这一形）。
 /// 混成一档 ⇒ 读表的人分不清「这一行该不该有人去还」，而「欠着」会被读成「本来就这样」——
-/// 那正是 `真相源/30` 与 `no_timer_guard` 各栽过一次的静默缩水。
+/// 那正是与 `no_timer_guard` 各栽过一次的静默缩水。
 ///
 /// ⚠ 与 `parity_ledger`（本机 ↔ 远端那条轴）的 `NaturallyAsymmetric` / `ParityDebt` 是**同一对**，
 /// 只是轴换成了编译 target。两张表不合并：轴不同，人群不同。
@@ -1320,7 +1321,7 @@ pub enum GapKind {
 /// ⚠ **「暂时不做」是一种合法答复，但必须写出来** —— 用户那一拍逐字
 /// 「**做得到. 除非暂时不做. windows用windows自己的后台服务. 后面在做**」。
 /// ⇒ [`TargetGap::rationale`] 要同时答两件：**今天为什么做不到** ＋ **将来怎么办**。
-/// 〔TL3〕「将来怎么办」那一半**不许预设机制**：09-24 V109 把「用哪种机制」收回成未定（见 [`Target`] 头注）。
+/// 「将来怎么办」那一半**不许预设机制**：09-24 V109 把「用哪种机制」收回成未定（见 [`Target`] 头注）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TargetGap {
     /// 哪一面。必须是 [`CAPABILITY_FACES`] 或 [`COMMAND_FACES`] 里真有的族名。
@@ -1333,27 +1334,27 @@ pub struct TargetGap {
     pub kind: GapKind,
     /// 🔴 **为什么做不到 ＋ 将来怎么办。** 不许留空（判据有长度地板）。
     ///
-    /// 〔CP2c · 第四波 4C〕字段名 `why` → `rationale`：它是**设计登记的理由散文**（只给判据读，从不上界面），
+    /// 字段名 `why` → `rationale`：它是**设计登记的理由散文**（只给判据读，从不上界面），
     /// 而普查的字段出口按字段名认文案（`why:` / `reason:` / `what:` …）—— 叫 `why` 就被数成了对外文案。
-    /// 改名让字段说实话（`调研/第四波记录/CP2c.md §3` 第 5 类），不是给它开豁免。
+    /// 改名让字段说实话（第 5 类），不是给它开豁免。
     pub rationale: &'static str,
 }
 
 /// 🔴 **全部逐能力豁免 —— 唯一住址。**
 ///
-/// 〔FW5 · 09-24〕**14 → 16**：`files-chmod` × Windows（帧面 ＋ CLI 面各一行，档 = 结构），
+/// **14 → 16**：`files-chmod` × Windows（帧面 ＋ CLI 面各一行，档 = 结构），
 /// 由 `no_unix_mode` 码 × [`unix_mode_bits_on`] 现推出来（表尾那一段）。
 ///
-/// 〔PR1 · 09-24〕**8 → 14**：命令面并进第 3 层之后，帧面 3 条 ＋ CLI 面 3 条（`capture-pane` /
+/// **8 → 14**：命令面并进第 3 层之后，帧面 3 条 ＋ CLI 面 3 条（`capture-pane` /
 /// `kill` / `launch` × Windows）被那条横向两向相等**现推出来**、逐条登记在表尾。下面那段账说的是
 /// `ccm-launcher` 那 8 条：
 ///
 /// 那 8 条都在 `ccm-launcher` × Windows 这一格上：
 /// **6 条**是读源码推出来的（tmux 那一族），**另 2 条是真机现打补的**
 /// （`bus-register` / `ccm-sid`）—— 上一版的账把它们记成「做得到」，
-/// 🔴 **那两格是错的，不是缺的**。逐条读数住 `真相源/106`。
+/// 🔴 **那两格是错的，不是缺的**。逐条读数住。
 ///
-/// 🔴 〔`P19` 09-22〕**9 → 8：`agent` 那一条删了，而它是这张表里第一条被「做掉」的。**
+/// 🔴 **9 → 8：`agent` 那一条删了，而它是这张表里第一条被「做掉」的。**
 /// 前两次改这张表都是**往里加**（读源码推的 6 条 → 真机现打补 3 条），本轮第一次**往外减**
 /// ⇒ 减法的判准与加法不同，写在那一行的墓碑里（`capability` 那一栏搜 `P19`）：
 /// 加一条要的是「现打出它做不到」，**减一条要的是「那条『做不到』的根因在源码里没了」＋
@@ -1364,8 +1365,8 @@ pub const TARGET_GAPS: &[TargetGap] = &[
     // 🔴 **将来的答复是用户给的，不是我们挑的**：他 2026-09-21 逐字
     //    「**windows用windows自己的后台服务. 后面在做**」
     //    ⇒ 当时读成「方向已定」（**不是**去 Windows 上装个 tmux，也**不是**自己写一个终端复用器），落地时间推后。
-    // 〔TL3 · 审计 F 🔴-11 订正〕09-24 用户又裁 **V109**〔选〕「先不做 Windows 这一族」：甲 · 乙 · 丙三种机制都先不做，
-    //    **机制未定** ⇒ 上面那句「方向已定」以 V109 为准不再成立（`设计/96 §2.3`）。下面各行的理由只说「等 V109 那一族」，
+    // 〔审计 F 🔴-11 订正〕09-24 用户又裁 **V109**〔选〕「先不做 Windows 这一族」：甲 · 乙 · 丙三种机制都先不做，
+    //    **机制未定** ⇒ 上面那句「方向已定」以 V109 为准不再成立。下面各行的理由只说「等 V109 那一族」，
     //    不替用户选机制；判据 `target_parity_guard::no_gap_rationale_picks_the_windows_mechanism`。
     TargetGap {
         family: "ccm-launcher",
@@ -1408,7 +1409,7 @@ pub const TARGET_GAPS: &[TargetGap] = &[
         rationale: "tmux 的窗格编号基数（`base-index`）。它是 tmux 自己的配置面，\
               Windows 上连对应概念都没有 ⇒ **不是推后，是这一条本身不该跨过去**（V109 那一族选哪种机制都一样）。",
     },
-    // ── `ccm-launcher` × Windows：**真机现打补上的三条**〔2026-09-21〕 ───────
+    // ── `ccm-launcher` × Windows：**真机现打补上的三条** ───────
     //
     // 🔴 上面那六条是**读源码**推出来的（「Windows 上没有 tmux」）。
     //    这三条不是 —— 它们是在本机那台 Win11 虚拟机上**真跑 `ccm.exe`** 量出来的，
@@ -1417,7 +1418,7 @@ pub const TARGET_GAPS: &[TargetGap] = &[
     // ⚠ 如实写清本表买不到什么：`why` 里那几句是**读数的转述**，
     //    而「这条能力在 Windows 上做不到」这件事**本 crate 的判据买不到**
     //    （要真机）。判据能守的只有「名字真存在」「答了将来怎么办」「不是整面豁免」。
-    //    真机那一维的住址是 `真相源/106`（跑法、命令、读数逐条在那儿）。
+    //    真机那一维的住址是（跑法、命令、读数逐条在那儿）。
     TargetGap {
         family: "ccm-launcher",
         capability: "bus-register",
@@ -1435,10 +1436,10 @@ pub const TARGET_GAPS: &[TargetGap] = &[
         capability: "ccm-sid",
         target: Target::Windows,
         kind: GapKind::Owed,
-        rationale: "〔S5 · 第四波 09-24〕**直路语义已定，Windows 上仍欠在读侧。** \
+        rationale: "**直路语义已定，Windows 上仍欠在读侧。** \
               从前：`--ccm-sid` 只在容器（tmux）那条路上被消费（`Container.ccm_sid` → \
               `tmux set-option @ccm_sid_expect`），直路上被接受、零效果、不出声。\
-              主会话裁：**不报错**（报错 ＝ 让它依赖 tmux，撞 V63），直路语义走启动期令牌 \
+              主会话裁：**不报错**（报错 ＝ 让它依赖 tmux，撞），直路语义走启动期令牌 \
               （`control/ccm/plan.rs::DirectIdentity`：有合格的 `CCM_RBIND_TOKEN` ⇒ 由它承载；\
               没有 ⇒ 说一句、照常起）。\
               🔴 **而令牌那条路的读侧在 Windows 上不通**：后端从 agent 进程的环境里读令牌 \
@@ -1447,7 +1448,7 @@ pub const TARGET_GAPS: &[TargetGap] = &[
               **将来**：件 E（Windows 上读别的进程的环境）落地那一拍，这一行跟着删；件 E 随 V109 \
               「先不做 Windows 这一族」挂着，在那之前暂时不做。",
     },
-    // ── 🔴 〔散文墓碑〕〔`P19` 09-22〕**`agent` 那一条豁免删了，原话留在这里** ──────
+    // ── 🔴 〔散文墓碑〕**`agent` 那一条豁免删了，原话留在这里** ──────
     //
     // 它从前逐字写着：
     //   「**只有一半做得到**：`claude` 那支真机 `EXIT=0`，`codex` 那支 `EXIT=4 program not
@@ -1485,14 +1486,14 @@ pub const TARGET_GAPS: &[TargetGap] = &[
         kind: GapKind::Owed,
         rationale: "把中转地址跨 tmux 会话传下去。载体没了这一条就没了；\
               将来 V109 那一族选定机制时要自己回答「地址怎么传给它起的会话」，**暂时不做**。",
-    },    // ── 〔PR1 · 2026-09-24〕命令面 × Windows：**不是新裁的，是第一次被看见** ────────────
+    },    // ── 命令面 × Windows：**不是新裁的，是第一次被看见** ────────────
     //
     // 这六行在 PR1 之前就是真的（`K-P4` 那一拍 `unavailable_from` 在 Windows 上就会列出这三条），
     // 只是没有任何东西把命令面放进 target 这根轴里对 —— PR1 把帧面 / CLI 面并进第 3 层的人群，
     // 那条两向相等当场点出它们，于是逐条登记。**差异是现推出来的**（命令自己声明的 `no_tmux` 码 ×
     // Windows 平台档），这里只补理由与档。
     // 档：六条都是**欠着** —— 「起会话 / 杀会话 / 看一眼画面」与 tmux 无关，是 Windows 该有的；
-    // 谁来还：挂在 V109（09-24「先不做 Windows 这一族」，机制未定）。〔TL3〕先前这里写「用户 09-21 那一句
+    // 谁来还：挂在 V109（09-24「先不做 Windows 这一族」，机制未定）。先前这里写「用户 09-21 那一句
     //   （Windows 用 Windows 自己的后台服务，后面再做）」—— 那句的机制那半以 V109 为准。
     TargetGap {
         family: "wire-commands",
@@ -1545,7 +1546,7 @@ pub const TARGET_GAPS: &[TargetGap] = &[
         rationale: "与帧面 `launch` 那一行是**同一条实现**（CLI 面经 `cli_control::spec_for` \
               派生到同一条登记）⇒ 同一个理由（V109），将来与帧面那一行同拍还，**暂时不做**。",
     },
-    // ── 〔FW5 · 第四波 · 2026-09-24〕`files-chmod` × Windows：`设计/96 §8.5` 待拍 3 ────────────
+    // ── `files-chmod` × Windows：待拍 3 ────────────
     //
     // PR1 报告「买不到 1」逐字：`change_mode` 在非 unix 上恒回失败，而 `files-chmod` 的 `codes`
     // 说不出「这个平台没有」⇒ 本条判它处处都在。FW5 给它声明了 `no_unix_mode`，现推段按
@@ -1584,7 +1585,7 @@ fn ccm_capability_names() -> Vec<&'static str> {
     control::ccm::CAPABILITIES.to_vec()
 }
 
-/// 🔴🔴 **汇总本体** —— `设计/96 §2` 第 2 层那份「由它们汇总而来」的清单。
+/// 🔴🔴 **汇总本体** —— 第 2 层那份「由它们汇总而来」的清单。
 ///
 /// 交出去的是 `(族名, 能力名)` 的**有序**表。
 ///
@@ -1607,7 +1608,7 @@ pub fn capability_ledger() -> Vec<(&'static str, &'static str)> {
     out
 }
 
-// ══════════════ PR1：`设计/96 §2` 第 3 层的**人群** —— 每个 target 上做得到的那一份 ══════════════
+// ══════════════ PR1：第 3 层的**人群** —— 每个 target 上做得到的那一份 ══════════════
 //
 // 🔴 **这一段只许从声明现推，一个能力名都不许手抄。** 本波另有几路在往命令表 / 能力表里加行
 //   （`inbound::REGISTRY` · `SUBCOMMANDS` · 各族 `CAPABILITIES`）；这里要是抄一份清单，
@@ -1622,7 +1623,7 @@ pub fn capability_ledger() -> Vec<(&'static str, &'static str)> {
 //
 // ⚠ **本段是声明层，不是产物层。** 「每个 `[[bin]]` 都有一条入包路线」那一层是
 //   `tests/evidence/K-R124-ruler.py` ⑭ 的事（两向相等，已在门禁上）；本段不复制它。
-//   而 `设计/96 §7` 那句「没有字节的 target，第 3 层是在对空集断言」对本段**如实成立**：
+//   而那句「没有字节的 target，第 3 层是在对空集断言」对本段**如实成立**：
 //   macOS 今天两道编译门禁都没有、也没有产线（`§7.1.1b` 第 5、6 行）⇒ 本段对 [`Target::MacOs`]
 //   那一列判的只是「**声明上**与别的 target 一样」，不是「那边真跑得起来」。
 
@@ -1644,7 +1645,7 @@ pub const fn tmux_platform_of(t: Target) -> TmuxPlatform {
     }
 }
 
-/// 〔FW5 · 第四波〕编译 target → 那个平台**有没有 unix 权限位**（`files-chmod` 那一格的载体）。
+/// 编译 target → 那个平台**有没有 unix 权限位**（`files-chmod` 那一格的载体）。
 ///
 /// 与 [`tmux_platform_of`] 并列的第二根平台轴，同一条纪律：**只把 [`Target`] 接到一个编译期就成立的事实上**，
 /// 不另立平台知识 —— 事实是「`change_mode` 那一支是 `#[cfg(unix)]`」，本函数与它对不对得上由
@@ -1687,7 +1688,7 @@ fn tmux_by_platform(t: Target) -> Option<bool> {
 }
 
 /// 帧面命令里，在 target `t` 上**平台默认做不到**的那几条（`codes` 里声明了 `no_tmux` 的 ·
-/// 〔FW5〕声明了 [`NO_UNIX_MODE`] 且那个 target 没有 unix 权限位的）。
+/// 声明了 [`NO_UNIX_MODE`] 且那个 target 没有 unix 权限位的）。
 ///
 /// tmux 那一维读的就是生产里填 `hello.unavailable` 的那一个函数（[`unavailable_from`]），不另写判准；
 /// unix 权限位那一维同形：**谁声明会回那个码，谁就依赖那个机制**，从 `codes` 现推，不抄名单。
@@ -1707,7 +1708,7 @@ fn ccm_launcher_on(t: Target) -> Vec<&'static str> {
     ccm_launcher_with(tmux_platform_of(t))
 }
 
-/// 〔WIN1 · RT1 F7〕上面那一步的内核：平台档是**入参**（同 [`tmux_present`] 的做法），
+/// 上面那一步的内核：平台档是**入参**（同 [`tmux_present`] 的做法），
 /// 于是「能力账」（按 [`Target`] 问）与「`ccm --ccm-probe` 自报」（按本二进制的 [`TMUX_PLATFORM`] 问）
 /// 走的是**同一个函数**，不另写名单。
 pub(crate) fn ccm_launcher_with(p: TmuxPlatform) -> Vec<&'static str> {
@@ -1854,48 +1855,48 @@ pub const EMITS: &[&str] = &[
     "session_added",
     "session_status",
     "session_removed",
-    // 〔MIG-1 · `99 §2.1 ⑬`〕会话账本的成品（可重连 / 已结束，`observe::session_ledger` 经 watcher 的 sink 真发，登记 = 承诺真发）。
+    // 会话账本的成品（可重连 / 已结束，`observe::session_ledger` 经 watcher 的 sink 真发，登记 = 承诺真发）。
     // 旧 monitor / 仓外 aterm 不认 ⇒ 忽略（additive）。⚠ hello 字节变了 ⇒ 合并那一拍 bump `BUILD_ID`。
     "session_state",
     "overflow",
     "turn_end", // backend-09：process_jsonl 已发 TurnEnd（登记=承诺真发，已接线）
-    // 〔MIG-1 续 · V41〕`tmux_sessions` / `tmux_session_closed` 两格删了：tmux 快照只喂这台的会话账本、不上线（`wire.rs` 那一处墓碑）。
-    // 〔SR1a · `设计/05 §13.6 ③`〕账号清单变了（watcher 盯 manifest 所在目录，登记 = 承诺真发，已接线）。
+    // `tmux_sessions` / `tmux_session_closed` 两格删了：tmux 快照只喂这台的会话账本、不上线（`wire.rs` 那一处墓碑）。
+    // 账号清单变了（watcher 盯 manifest 所在目录，登记 = 承诺真发，已接线）。
     "accounts_changed",
-    // 〔MIG-3b · `99 §2.1 ㉓②`〕某个会话的任务清单变了（watcher 盯 `<agent 家>/tasks/`，登记 = 承诺真发，已接线）。
+    // 某个会话的任务清单变了（watcher 盯 `<agent 家>/tasks/`，登记 = 承诺真发，已接线）。
     "tasks_changed",
-    // 〔U4b · 第四波〕活会话清单报完了（watch_loop Phase 1 走完那一刻发一次，登记 = 承诺真发，已接线）。
-    // 固定复活的 tab 靠它分「说不清」与「已结束」（`设计/30 §3.5.7a`）。
+    // 活会话清单报完了（watch_loop Phase 1 走完那一刻发一次，登记 = 承诺真发，已接线）。
+    // 固定复活的 tab 靠它分「说不清」与「已结束」。
     "sessions_replayed",
-    // 〔FW1 · 第四波 4D · D-d〕活会话的记录文件不见了 / 被改过已从头重读（`process_jsonl` 真发，登记 = 承诺真发，已接线）。
+    // 活会话的记录文件不见了 / 被改过已从头重读（`process_jsonl` 真发，登记 = 承诺真发，已接线）。
     // 旧 monitor / 仓外 aterm 不认 ⇒ 忽略（additive）。
     "session_file_gone",
     "session_file_reread",
-    // 〔SR1a〕链路的下行字节与收尾（`dial/link.rs` 的两台泵真发，登记 = 承诺真发）。
+    // 链路的下行字节与收尾（`dial/link.rs` 的两台泵真发，登记 = 承诺真发）。
     // 只在 monitor 开了链路之后才出现；旧 monitor / 仓外 aterm 不认这两个 kind ⇒ 忽略（additive）。
     "link_data",
     "link_end",
-    // 〔SR1b〕一趟传输的进度与终局（`control/transfer.rs` 的转发任务真发，登记 = 承诺真发）。
+    // 一趟传输的进度与终局（`control/transfer.rs` 的转发任务真发，登记 = 承诺真发）。
     // 只在客户端 `transfer-start` 之后才出现；旧客户端不认 ⇒ 忽略（additive）。
     "transfer",
-    // 〔MIG-1 收尾〕测试连接那一趟的进度与结局（`dial/probe.rs` 真发，登记 = 承诺真发）。只在 `remote-probe` 在跑时出现；
+    // 测试连接那一趟的进度与结局（`dial/probe.rs` 真发，登记 = 承诺真发）。只在 `remote-probe` 在跑时出现；
     // 旧客户端不认 ⇒ 忽略（additive）。⚠ hello 字节变了 ⇒ 合并那一拍 bump `BUILD_ID`。
     "probe",
-    // 〔TAP · V124〕中转抄出来的 SSE 事件（`tap::attach` 的接收端经 `writer_task` 真发，登记 = 承诺真发）。
+    // 中转抄出来的 SSE 事件（`tap::attach` 的接收端经 `writer_task` 真发，登记 = 承诺真发）。
     // 只有进程里住着中转的那个后端（本机常驻）才会有；旧客户端不认 ⇒ 忽略（additive）。
     "tap",
     // 一个会话的运行表（watcher 读子运行记录、表变了真发，登记 = 承诺真发）。⚠ hello 字节变了 ⇒ 合并那一拍 bump `BUILD_ID`。
     "session_runs",
 ];
 
-/// 〔E2 · V28 · `设计/01 §6.7b`〕`--stream`：「我是流模式后端」的**显式词**。二进制叫 `ccm` 时零参数是「起会话」，
+/// `--stream`：「我是流模式后端」的**显式词**。二进制叫 `ccm` 时零参数是「起会话」，
 /// 起流那几发（monitor 远端流 / 测试连接探针 / 本机宿主 / 远端常驻子进程）一律带它打头，由 `control::ccm::intercept` 按本表分流。
 /// 它不对应任何能力（老后端不认 ⇒ 按未知旗标照常进流模式，同 U6b-2 的降级）。
 pub const STREAM_FLAG_EXPLICIT: &str = "--stream";
 
 /// ① 流模式 flag：出现即剥离并置位，**不影响模式判定**。
 ///
-/// 〔`设计/80 §8.7` 步 2，09-22〕`--with-rbind-token`：客户端**显式索要**
+/// `--with-rbind-token`：客户端**显式索要**
 /// `session_added` 上的 `rbind_token`（`CCM_RBIND_TOKEN`）。默认关的理由是
 /// 「令牌是敏感数据」（`§8.6 ③`），整段论证住 [`CAPABILITIES`] 的头注。
 pub const STREAM_FLAGS: &[&str] = &[
@@ -1905,7 +1906,7 @@ pub const STREAM_FLAGS: &[&str] = &[
     "--with-rbind-token",
 ];
 
-/// 〔W5-AUX · `设计/96 §3.6`〕**「只读一行 stdin」的入口**：跟在子命令后面（`--assets-catalog-merge --stdin-line`）。
+/// **「只读一行 stdin」的入口**：跟在子命令后面（`--assets-catalog-merge --stdin-line`）。
 ///
 /// 为什么要它：远端那一跳（`remote_ask::DialRemote`，capture）**不关远端的 stdin** ⇒ 默认那种「读到 EOF」会一直等；
 /// 此前的出路是把载荷拼进命令行 `printf '%s\n' '<json>' | …`，那要求远端登录 shell 认 POSIX 单引号与管道 ——
@@ -1918,7 +1919,7 @@ pub const STREAM_FLAGS: &[&str] = &[
 pub const STDIN_LINE_FLAG: &str = "--stdin-line";
 
 /// 帧命令名 → 它的 CLI 子命令（`launch` → `--launch`）。**唯一一处拼法**：本进程的 CLI 面（`control/cli_control.rs::flag_of`）
-/// 与问远端那台 CLI 面的那一跳（`remote_ask::ask_json`）都经它 —— 〔MIG-3a〕住这里而不住 `cli_control`，是为了让
+/// 与问远端那台 CLI 面的那一跳（`remote_ask::ask_json`）都经它 —— 住这里而不住 `cli_control`，是为了让
 /// `remote_ask` 不必引 `control/`（引了，按文件画的引用图就把问远端的几条命令连到 tmux 上）。
 pub fn cli_flag(name: &str) -> String {
     format!("--{name}")
@@ -1928,22 +1929,22 @@ pub fn cli_flag(name: &str) -> String {
 pub const SUBCOMMAND_OPTIONS: &[&str] = &[
     "--accts-dir",
     "--after-ms",
-    // 〔SE1〕`--list-user-inputs` 的增量起点（字节偏移，传上次尾行的 `end`）。
+    // `--list-user-inputs` 的增量起点（字节偏移，传上次尾行的 `end`）。
     "--from",
-    // 〔STOP〕`--resident-stop` 的宽限期（秒；必须大于退出排空上限）。
+    // `--resident-stop` 的宽限期（秒；必须大于退出排空上限）。
     "--grace",
     "--include-tools",
-    // 〔`设计/10` 骨架 · 子步 1〕`--read-session-from-offset` 的两个选项（出骨架索引 / 右端收口）。
+    // 〔骨架〕`--read-session-from-offset` 的两个选项（出骨架索引 / 右端收口）。
     // 刻意是**选项**不是新子命令：新子命令会逼出 `BUILD_ID` bump，本轮不许 —— 理由与老后端上的
     // 降级形状住 `observe::history_query::FromOffsetOpts` 的头注。
     "--index",
     "--limit",
-    // 〔SE2〕`--find-in-session` 的查询串（选项值，不是位置参数：查询本身可能以 `--` 起头）。
+    // `--find-in-session` 的查询串（选项值，不是位置参数：查询本身可能以 `--` 起头）。
     "--query",
-    // 〔HOST〕`--resident-ensure` 的「先停口上那一位再起」（只升不降由 monitor 按 hello 判）。
+    // `--resident-ensure` 的「先停口上那一位再起」（只升不降由 monitor 按 hello 判）。
     "--replace",
     "--scope",
-    // 〔W5-AUX · `设计/96 §3.6`〕CLI 控制面那一族（`--<帧命令>`）的「只读一行 stdin」修饰词。
+    // CLI 控制面那一族（`--<帧命令>`）的「只读一行 stdin」修饰词。
     STDIN_LINE_FLAG,
     "--until",
 ];
@@ -1952,7 +1953,7 @@ pub const SUBCOMMAND_OPTIONS: &[&str] = &[
 ///
 /// **必须在一次性查询模式判定之前调用**（INVARIANT §26）。
 ///
-/// ⚠ 返回值已经是**三个并列的裸布尔**〔`设计/80 §8.7` 步 2 加的第三个〕。
+/// ⚠ 返回值已经是**三个并列的裸布尔**〔加的第三个〕。
 /// 再加第四个之前先把它们收成一个结构体 —— 位置型布尔到四个就开始靠记性调用了。
 /// **本轮刻意没有顺手收**：那是一次会波及 `main.rs` 与 11 处夹具的形状变更，
 /// 与「把身份从 tmux 上解绑」不是同一件活，硬塞进来只会让这一刀读不清。
@@ -2032,28 +2033,28 @@ mod argv_table_guard;
 
 use std::path::PathBuf;
 
-// ── 〔步 9 · 09-19〕第四面：本机到底缺什么（tmux 可用性）＋ `EMITS` ───────────
+// ── 第四面：本机到底缺什么（tmux 可用性）＋ `EMITS` ───────────
 // 同上一段的理由：它们不是「分派」，是 hello 帧的**内容**。in-process 那条路一样要回答
 // 「这台机器有没有 tmux」「本构建会发哪些帧」。`main_fourth_face_tests` 用 `super::` 引它们。
 /// `K-P4`（09-04）：命令级 code —— **「这台机器上没有 tmux」**。
 ///
-/// ⚠ 这是这个字面量在仓里的第 N 份，但它**不是第 N 个真相源**：真相是
+/// ⚠ 这是这个字面量在仓里的第 N 份，但它**不是第 N 个源头**：真相是
 /// `inbound::REGISTRY` 里各条命令自己登记的 `codes`，本常量只拿它去**查那张表**。
 /// 查不到就红（`the_declared_code_is_one_the_registry_already_declares`）⇒
 /// 谁把那边的拼写改了，这边不会静默跟丢。
 pub const NO_TMUX: &str = "no_tmux";
 
-/// 〔FW5 · 第四波 · 2026-09-24〕命令级 code —— **「这个平台没有 unix 权限位」**。
+/// 命令级 code —— **「这个平台没有 unix 权限位」**。
 ///
 /// 只有 `files-chmod` 声明它（`control/files_write.rs::change_mode` 在非 unix 上回它）。
 /// 与 [`NO_TMUX`] 同形：真相是 `inbound::REGISTRY` 里命令自己登记的 `codes`，本常量只拿去查那张表；
 /// target 轴（[`unix_mode_bits_on`] × 这个码）由此现推「Windows 上没有 `files-chmod`」
-/// ——`设计/96 §8.5` 待拍 3 那一格（「得让它的声明带一个『这个平台没有』的码」）。
+/// —— 待拍 3 那一格（「得让它的声明带一个『这个平台没有』的码」）。
 ///
-/// 运行期那条轴（`hello.unavailable`）读的是同一个判准：[`unix_mode_unavailable`]（〔NET2〕接线那一拍加进来）。
+/// 运行期那条轴（`hello.unavailable`）读的是同一个判准：[`unix_mode_unavailable`]（接线那一拍加进来）。
 pub const NO_UNIX_MODE: &str = "no_unix_mode";
 
-/// 〔NET2〕unix 权限位那一维：这台（或那个 target）没有 unix 权限位 ⇒ 声明会回 [`NO_UNIX_MODE`] 的命令做不到。
+/// unix 权限位那一维：这台（或那个 target）没有 unix 权限位 ⇒ 声明会回 [`NO_UNIX_MODE`] 的命令做不到。
 /// 与 tmux 那一维同形：谁声明会回那个码，谁就依赖那个机制，从 `inbound::REGISTRY` 的 `codes` 现推。
 pub fn unix_mode_unavailable(unix_mode_bits: bool) -> Vec<stream::wire::Unavailable> {
     if unix_mode_bits {
@@ -2243,7 +2244,7 @@ const _: () = assert!(
      改回 NoOpinion 会让握手帧第四条面在 Windows 上恒空，而 Windows 正是这一件的动机平台。"
 );
 
-/// `K-P4`：生产入口 —— hello 那一帧填的就是它（〔NET2〕真填：`main.rs::build_hello`）。
+/// `K-P4`：生产入口 —— hello 那一帧填的就是它（真填：`main.rs::build_hello`）。
 /// 两维：tmux（[`unavailable_from`]）· unix 权限位（[`unix_mode_unavailable`]，这份二进制是不是 unix）。
 ///
 /// 🔴 **这一趟探测的结果会被用很久。**

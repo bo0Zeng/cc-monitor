@@ -1,9 +1,9 @@
 /**
- * 🔴 `设计/70 §8` 判据 **#3「非落地页零 I/O」**（第一刀 · 步 2 的主锚）。
+ * 🔴 判据 **#3「非落地页零 I/O」**（第一刀 · 步 2 的主锚）。
  *
  * # 它钉的是什么
  *
- * `70 §1.2` 的成因链第 ③ 层 ＋ `§10.4` 那一行逐字：判据 #3 今天正是被
+ * 成因链第 ③ 层：判据 #3 今天正是被
  * **足迹 · 数据位置 · 日志** 这三块、**外加 `drift-ledger`** 打破的 ——
  * 合计 **4 发** IPC（足迹 1 · 数据位置 1 · **日志 2**）＋ 漂移记账 1 发，
  * 全部在 `buildBody` 时就打出去，而落地页是 `machines`。
@@ -25,7 +25,7 @@
  * - **盖不到**：① 绕过包装层直呼 `invoke("...")` 的调用点（本仓有过这种形态，
  *   `installface` 那格的裁词里也写着同一条边界）；② 那几块 per-machine 分节
  *   （账号 / 终端集成 / MCP / 插件 / cc-bus 钩子）—— 本文件把它们 stub 掉了。
- *   〔ST1 · 09-24〕那笔「它们构造期也发 I/O」的债已还：它们改成机器子页第一次可见时才放，
+ * 那笔「它们构造期也发 I/O」的债已还：它们改成机器子页第一次可见时才放，
  *   判据住 `panel-per-machine-deferred-io.vitest.ts`（不 stub、两层录音机）；③ 真实排版（jsdom 没有排版引擎）。
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -42,7 +42,7 @@ vi.mock("../../../../src/frontend/ui/ipc/commands", () => ({
     {
       get: (_t, name: string) => () => {
         ipc.calls.push(name);
-        // 〔FIX2〕登记在 `hold` 里的命令挂住不回，量「先开窗、后读配置」的先后。
+        // 登记在 `hold` 里的命令挂住不回，量「先开窗、后读配置」的先后。
         if (name in ipc.hold) return ipc.hold[name];
         return Promise.reject(new Error(`[录音机] ${name} 没有真后端`));
       },
@@ -80,7 +80,7 @@ vi.mock("../../../../src/frontend/ui/settings/mcp-section", () => ({
 vi.mock("../../../../src/frontend/ui/settings/plugins-section", () => ({
   PluginsSection: class { element = document.createElement("div"); },
 }));
-// 〔AS2 · 4B〕资产目录那一块同上替身掉：本文件量的是「足迹」那一发跟不跟着机器子页走，
+// 资产目录那一块同上替身掉：本文件量的是「足迹」那一发跟不跟着机器子页走，
 //   这一块自己的延后加载归 `panel-per-machine-deferred-io.vitest.ts`（那边逐发登记了它）。
 vi.mock("../../../../src/frontend/ui/settings/assets-section", () => ({
   AssetsSection: class { element = document.createElement("div"); },
@@ -88,7 +88,7 @@ vi.mock("../../../../src/frontend/ui/settings/assets-section", () => ({
 vi.mock("../../../../src/frontend/ui/settings/cc-bus-hooks-section", () => ({
   CcBusHooksSection: class { element = document.createElement("div"); },
 }));
-// 〔AL1c · 4B〕`cc_integration.ts` 并进了 `machine-aliases.ts`（终端集成成了「别名」那一块 PowerShell 那一侧），它的替身随之删掉。
+// `cc_integration.ts` 并进了 `machine-aliases.ts`（终端集成成了「别名」那一块 PowerShell 那一侧），它的替身随之删掉。
 vi.mock("../../../../src/frontend/ui/keybindings/editor", () => ({
   KeybindingsEditor: class { element = document.createElement("div"); },
 }));
@@ -120,8 +120,8 @@ const LANDING_IPC = ["load_config", "backend_machines", "backend_status"] as con
 /**
  * 登记表 ②：点进「应用」才该出现的那几发。
  *
- * 就是 `70 §10.4` 逐字点名的那三块（日志 2 · 数据位置 1）。
- * 〔AL1 · 2026-09-24〕从前这里还有两条（`local_ccm_entry_status` ＋ 一次 `write_account_aliases`〔散文墓碑〕
+ * 就是点名的那三块（日志 2 · 数据位置 1）。
+ * 从前这里还有两条（`local_ccm_entry_status` ＋ 一次 `write_account_aliases`〔散文墓碑〕
  * 的 `dryRun` 预览）—— 那是「按账号生成命令」那一块的；它搬去了机器页「本机 → 工具 → 别名」，
  * 而且在那里**连「本机页可见」都不够**：它是个 `<details>`，第一次展开才发 I/O
  * （那三发 —— `local_ccm_entry_status` · `aliases_read` · `aliases_render` —— 由 `machine-aliases.vitest.ts` 钉）。
@@ -136,7 +136,7 @@ const APP_PAGE_IPC = [
 /**
  * 登记表 ②b：**重开一次设置**之后再点进「应用」，该重来的是哪几发。
  *
- * 〔AL1〕与 ② 同一份（那三块每次重开都重读）。从前这里比 ② 少两发 —— 那两发属于「按账号生成命令」那一块
+ * 与 ② 同一份（那三块每次重开都重读）。从前这里比 ② 少两发 —— 那两发属于「按账号生成命令」那一块
  * （「建一次 DOM」、重开不重来）；那一块搬走之后两张表相等了，仍分开写，因为它们回答的是两个问题。
  */
 const APP_PAGE_IPC_ON_REOPEN = [
@@ -147,15 +147,15 @@ const APP_PAGE_IPC_ON_REOPEN = [
 
 /**
  * 登记表 ③：「未识别的数据」那一发（原顶层「改动足迹」页的漂移记账）。
- * 〔ST2〕顶层页删了，那一块住**每台机器子页的「足迹」栏**，只有本机那一栏读 ⇒ 并进登记表 ④。
+ * 顶层页删了，那一块住**每台机器子页的「足迹」栏**，只有本机那一栏读 ⇒ 并进登记表 ④。
  */
 const FOOTPRINT_IPC = ["drift_ledger_report"] as const;
 
 /** 登记表 ④：点进某台机器的子页才该出现的那一发（步 14a 之后「足迹」住那儿）。 */
-// 〔MIG-3b 续〕足迹本机那一栏第一拍问 monitor 自己那几行的环境（`footprint_client_facts`；成品经通道问本机后端）。
+// 足迹本机那一栏第一拍问 monitor 自己那几行的环境（`footprint_client_facts`；成品经通道问本机后端）。
 const MACHINE_PAGE_IPC = ["footprint_client_facts", ...FOOTPRINT_IPC] as const;
 
-/** 〔ST2 · 步 15〕「应用」下两个子页各自的那几发（原来合在「应用」一页里）。 */
+/** 「应用」下两个子页各自的那几发（原来合在「应用」一页里）。 */
 const LOGS_PAGE_IPC = ["get_diagnostics_config", "get_log_file_info"] as const;
 const DATA_PAGE_IPC = ["get_data_paths"] as const;
 
@@ -172,7 +172,7 @@ function since(mark: number): string[] {
   return uniq(ipc.calls.slice(mark));
 }
 
-describe("`70 §8` 判据 #3：非落地页零 I/O（第一刀 · 步 2）", () => {
+describe(" 判据 #3：非落地页零 I/O（第一刀 · 步 2）", () => {
   beforeEach(() => {
     ipc.calls = [];
     document.body.replaceChildren();
@@ -238,15 +238,15 @@ describe("`70 §8` 判据 #3：非落地页零 I/O（第一刀 · 步 2）", () 
   it("🔴 步 14a：「足迹」那一发跟着**机器子页**走", async () => {
     new SettingsPanel({ windowMode: true });
     await tick();
-    // 〔ST2〕顶层「改动足迹」页已删 —— 连那颗导航按钮都不该有。
+    // 顶层「改动足迹」页已删 —— 连那颗导航按钮都不该有。
     expect(document.querySelector("#settings-tab-footprint")).toBeNull();
-    // 点进本机页才发（足迹 ＋ 未识别的数据，〔ST2〕两块同栏）。
+    // 点进本机页才发（足迹 ＋ 未识别的数据，两块同栏）。
     const mark = ipc.calls.length;
     document
       .querySelector<HTMLButtonElement>('#settings-tab-machine\\:（本机）')!
       .click();
     await tick();
-    // 〔MOD〕「未识别的数据」记录那两面经通道问那台后端（`drift-report`，包装层那一条 `chan_call`）；
+    // 「未识别的数据」记录那两面经通道问那台后端（`drift-report`，包装层那一条 `chan_call`）；
     //   `chan_call` 这个名字别的页也用，不进上面那几张「打开设置不许碰」的表，只在这里点名。
     expect(since(mark)).toEqual(uniq([...MACHINE_PAGE_IPC, "chan_call"]));
   });
@@ -284,7 +284,7 @@ describe("`70 §8` 判据 #3：非落地页零 I/O（第一刀 · 步 2）", () 
   });
 });
 
-// 设计/70 §10 第 5 条 · 设计/01 §1.4「先画框架，再并行取值填进去」· 设计/99 §2.1 ㉛④：设置窗先开窗，再读一次配置派生三格。
+// 「先画框架，再并行取值填进去」：设置窗先开窗，再读一次配置派生三格。
 describe("〔FIX2〕设置窗先开窗，再读一次配置派生外观 · 数据目录 · 行为三格", () => {
   beforeEach(() => {
     ipc.calls = [];

@@ -1,7 +1,7 @@
 //! # 要求住址：`INVARIANTS §36`（只绑本地 Windows 那条路：嵌套标记在进程启动时一次清掉）
 //!
 //! 核原文：`INVARIANTS §36`（本地 Windows 路径）逐字「这条攻击面已经在进程启动阶段一次性堵死：`src/frontend/shell/src/lib.rs::run()` 里
-//! `scrub_env_vars(&nested_env_markers())`（〔P1〕从前是 `adapter::active().nested_env_to_scrub()`）是 Tauri `Builder` 构造之前就跑的第一批实质语句」
+//! `scrub_env_vars(&nested_env_markers())`（从前是 `adapter::active().nested_env_to_scrub()`）是 Tauri `Builder` 构造之前就跑的第一批实质语句」
 //! —— 本族判 `lib.rs::scrub_env_vars` 只清列出且存在的、跳过不在的、不碰没列的。〔JA1 点址 2026-09-24〕
 
 use super::{nested_env_markers, scrub_env_vars};
@@ -27,7 +27,7 @@ fn removes_present_keeps_unlisted_skips_absent() {
     std::env::remove_var("CCM_TEST_SCRUB_KEEP");
 }
 
-/// 〔P1 · 第 4 件〕起前清洗那份名单读的是**生成物**（值的家在后端 `agents/<名>/resume.rs`）：
+/// 起前清洗那份名单读的是**生成物**（值的家在后端 `agents/<名>/resume.rs`）：
 /// 读出来的 == 金样 `agent-profile-golden.tsv` 里每一家 `nested_env` 的并集（按出现序去重）。异源：金样，不取自生成物也不取自被测函数。
 /// 读法认不出那一形（生成器改了格式）⇒ 少一格 ⇒ 这里红，不会静默少清。
 #[test]

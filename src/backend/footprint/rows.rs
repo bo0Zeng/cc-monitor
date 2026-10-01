@@ -1,6 +1,6 @@
 //! T02：**配置面审计视图**的判定——「cc-monitor 到底动过你哪些文件」。
 //!
-//! 〔MIG-3b 续 · 主会话 09-28 裁①（用户 09-27「一处后端」压过 `设计/96 §4`「tool_registry 只住 monitor」）〕从 monitor
+//! 〔主会话 09-28 裁①（用户 09-27「一处后端」压过 「tool_registry 只住 monitor」）〕从 monitor
 //! `config_surface.rs` 搬进后端：那台后端对它自己那台出整份成品（帧命令 `footprint-report`，face 在 [`super`]）；
 //! `HostScope::Client` 那一族（monitor 自己那台的东西）的**事实**仍由 monitor 答，判定只在这里。
 //! Claude 布局（`~/.claude/…` 以哪个 agent 家为基准 · settings 两个作用域）住 `agents/claudecode/footprint.rs`。
@@ -115,7 +115,7 @@ pub struct FsProbe<'a> {
     pub list: &'a dyn Fn(&Path) -> Option<Vec<String>>,
 }
 
-/// 〔RM1a · 第四波〕**从哪台机器上看**这张表 —— 「足迹」per-origin 那一维。
+/// **从哪台机器上看**这张表 —— 「足迹」per-origin 那一维。
 ///
 /// | 取值 | `home` / `agent_home` / 探针是谁的 | 远端落点（`HostScope::Remote`）| monitor 那台的落点（`HostScope::Client`）|
 /// |---|---|---|---|
@@ -132,11 +132,11 @@ pub enum Vantage {
     Remote,
 }
 
-// 〔MIG-3b 续〕`claude_config_dir`〔散文墓碑〕删了：agent 家由调用方按 `agents/claudecode/paths.rs` 那一条规则算好交进来（[`SurfaceEnv::agent_home`]）。
+// `claude_config_dir`〔散文墓碑〕删了：agent 家由调用方按 `agents/claudecode/paths.rs` 那一条规则算好交进来（[`SurfaceEnv::agent_home`]）。
 
 /// 按 `$PATH` 逐目录反查一个裸命令在不在（`exists` 注入）。切分走 `std::env::split_paths`（T03 阻塞 1：
 /// 写死 `':'` 在 Windows 上把盘符切碎、给出确定的否定答案）；`path_env` 取不到 / 空 ⇒ `None`（不猜）。
-/// 〔MIG-3b〕从 `hooks_diag.rs` 挪来。
+/// 从 `hooks_diag.rs` 挪来。
 pub fn resolves_on_path(
     prog: &str,
     path_env: Option<&str>,
@@ -159,7 +159,7 @@ pub fn resolves_on_path(
 /// `~/.claude/...` 以 `agent_home` 为基准（Claude 布局那一条：`agents/claudecode/footprint.rs::under_agent_home`）——
 /// 那条 `CLAUDE_CONFIG_DIR` 规则只准解释一次，在调用方算 `agent_home` 的那一处。
 ///
-/// 〔RM1a〕第一个参数是视角（[`Vantage`]）：本机视角与先前逐字同一个行为，判据一律显式写 `Vantage::Monitor`。
+/// 第一个参数是视角（[`Vantage`]）：本机视角与先前逐字同一个行为，判据一律显式写 `Vantage::Monitor`。
 pub fn resolve_touched_path(
     vantage: Vantage,
     declared: &str,
@@ -218,7 +218,7 @@ fn project_onto_host(
     host: HostScope,
     declared: &str,
 ) -> PathResolution {
-    // 〔RM1a〕从远端那台看：`Remote` 落点**就在这台上**，本机解析的结果原样留下（探针是这台的后端）。
+    // 从远端那台看：`Remote` 落点**就在这台上**，本机解析的结果原样留下（探针是这台的后端）。
     //   `Client` 那一族在这个视角下不进人群（`build_rows` 滤掉），走不到这里；`Either` 与下面同一条。
     if vantage == Vantage::Remote && host == HostScope::Remote {
         return by_dest;
@@ -285,17 +285,17 @@ fn resolve_by_destination(
                 resolve_local_home(declared, home, agent_home)
             }
         }
-        // 〔RM1a〕从远端那台看，「远端家目录相对」就是**这台**的家目录相对 ⇒ 照本机路径解析（`home` 是那台的）。
+        // 从远端那台看，「远端家目录相对」就是**这台**的家目录相对 ⇒ 照本机路径解析（`home` 是那台的）。
         ToolDestination::RemoteHomeRelative(_) => match vantage {
             Vantage::Monitor => Ok(PathResolution::Remote(declared.to_string())),
             Vantage::Remote => resolve_local_home(declared, home, agent_home),
         },
-        // 🔴 〔`K-R81` 09-12〕`BothHomeRelative` 那一臂删了 —— 墓碑住 `tool_registry::Carrier`
+        // 🔴 `BothHomeRelative` 那一臂删了 —— 墓碑住 `tool_registry::Carrier`
         //    的头注。一句话：那个变体是为「一个 `destination` 装不下两个落点」造的，
         //    而载体这一维立起来之后那个前提没了（`ccm` 现在是两个载体，
         //    远端那个 `RemoteHomeRelative`、本机那个 `LocalHomeRelative`，各带各的 touch）。
         ToolDestination::LocalHomeRelative(_) => resolve_local_home(declared, home, agent_home),
-        // 〔`K-R60`〕「不是我们装的」**不等于「查不了」** —— 恰恰相反：
+        // 「不是我们装的」**不等于「查不了」** —— 恰恰相反：
         // 这一档的全部意义就是「我们查得到它在不在，但装不了」。
         // ⇒ 照本机路径解析（`host` 是 `Either` 时 `project_onto_host` 会再包一层，
         //    于是「本机没找到」照样不会被说成「不存在」）。
@@ -317,7 +317,7 @@ fn resolve_local_home(
         )
     })?;
     // `~/.claude/…` 的真实基准目录是 `CLAUDE_CONFIG_DIR`（若它确实是个目录）
-    // 〔MIG-3b 续〕哪一段算「agent 家底下」是那一家的布局知识（注册表里的足迹面答，`agents/claudecode/footprint.rs`）。
+    // 哪一段算「agent 家底下」是那一家的布局知识（注册表里的足迹面答，`agents/claudecode/footprint.rs`）。
     let under = crate::agents::footprint_faces().find_map(|f| (f.under_agent_home)(rest));
     let (base, rel) = match under {
         Some(r) => (agent_home.to_path_buf(), r.to_string()),
@@ -363,7 +363,7 @@ fn resolve_local_home(
     ))
 }
 
-/// 〔WF2 · WIN3 §2〕申报表里的 `~/` 之后那段用 `/` 写；拼到本机家目录上时换成这台的分隔符 ——
+/// 〔WIN3 §2〕申报表里的 `~/` 之后那段用 `/` 写；拼到本机家目录上时换成这台的分隔符 ——
 /// 否则 Windows 上足迹页是 `C:\Users\u\.cc-monitor/bin/ccm*` 这样正反斜杠混拼。`sep` 由调用方给（判据喂 `\`）。
 pub(crate) fn native_rel(rel: &str, sep: char) -> String {
     rel.replace('/', &sep.to_string())
@@ -502,7 +502,7 @@ pub fn observe(res: &PathResolution, fs: &FsProbe) -> SurfaceState {
         // 所以那边该指路而不是耸肩。
         PathResolution::WindowsProfile => SurfaceState::Undetermined {
             why: if cfg!(target_os = "windows") {
-                // 〔DP1 · 第四波〕从前这句指「终端集成」页 —— AL1c 起那一页就没有了，今天在「本机 → 工具 → 别名」。
+                // 从前这句指「终端集成」页 —— AL1c 起那一页就没有了，今天在「本机 → 工具 → 别名」。
                 copy_text("rsConfigSurface.observe.profileWindows", &[]).into()
             } else {
                 copy_text("rsConfigSurface.observe.profileNotWindows", &[])
@@ -520,7 +520,7 @@ pub fn source_label(s: &ToolSource) -> String {
             copy_text("rsConfigSurface.source.embeddedBinary", &[])
         }
         ToolSource::Generated => copy_text("rsConfigSurface.source.generated", &[]),
-        // 〔`K-R60`〕装不了的那一档：措辞必须**先说清不是我们的**，
+        // 装不了的那一档：措辞必须**先说清不是我们的**，
         // 否则用户会以为这一行也是 cc-monitor 放上去的。
         ToolSource::NotOurs { who } => {
             copy_text("rsConfigSurface.source.notOurs", &[("who", &who.get())])
@@ -555,7 +555,7 @@ pub fn effect_label(e: TouchEffect) -> String {
         TouchEffect::GenerateOnly => copy_text("rsConfigSurface.effect.generateOnly", &[]),
         // 措辞必须把「谁动的手」说清：不是 cc-monitor 直接写，但**是你在 cc-monitor 里点的**
         TouchEffect::IndirectWrite => copy_text("rsConfigSurface.effect.indirectWrite", &[]),
-        // 〔GP1 · 第四波〕旧版放的那一份：我们不再写它，只在认出是我们放的时删掉。
+        // 旧版放的那一份：我们不再写它，只在认出是我们放的时删掉。
         TouchEffect::RetiredLegacy => copy_text("rsConfigSurface.effect.retiredLegacy", &[]),
     }
 }
@@ -565,7 +565,7 @@ pub fn effect_label(e: TouchEffect) -> String {
 pub struct SurfaceRow {
     pub tool_id: &'static str,
     pub tool_name: String,
-    /// 🔴 〔`K-R65`〕**档进线上形状了。**
+    /// 🔴 **档进线上形状了。**
     ///
     /// 上一版 `config-surface-section.ts` 的 `describeUndo` 逐字写着
     /// 「⚠ 两类**今天在行上分不开**：`SurfaceRow` 的线上形状里没有档这一格」——
@@ -584,7 +584,7 @@ pub struct SurfaceRow {
     pub uninstallable: bool,
 }
 
-/// 🔴 〔`K-R81` 09-12〕**多收一个 `c`（载体），而那正是本件买到的东西。**
+/// 🔴 **多收一个 `c`（载体），而那正是本件买到的东西。**
 ///
 /// 先前这里拿的是 `t.destination` 与 `t.source` —— 一个工具一份。
 /// 于是「同一个后端的三个落点」这件事**在这一行里根本表达不出来**：
@@ -616,7 +616,7 @@ fn row(
                     suffix,
                 } => Some(format!("{}/{prefix}*{suffix}", dir.display())),
                 PathResolution::EitherHost(_) => Some(describe_target(r)),
-                // 〔audit-0805 08-06〕**兜底臂换成四条显式臂**（零行为变更）。
+                // **兜底臂换成四条显式臂**（零行为变更）。
                 // 原来是 `_ => None`：新增一种解析形态会**静默显示为空**，
                 // 而这一页是「配置面审计」——「显示为空」与「这一项不存在」
                 // 在界面上长得一模一样，用户读不出区别。
@@ -640,7 +640,7 @@ fn row(
         tool_id: t.id,
         tool_name: t.display_name.get(),
         tier: e.tier,
-        // 🔴 〔`K-R81`〕读的是**这一份载体**的来源，不是「这个工具的来源」——
+        // 🔴 读的是**这一份载体**的来源，不是「这个工具的来源」——
         //    `ccm` 那一行先前只能填一个，而它的注释自己承认「本机那一半的来源不是这个」。
         source_label: source_label(&c.source),
         path_declared: f.path,
@@ -662,7 +662,7 @@ fn row(
 /// 收成一个具名结构之后，加第六样不会再让每个调用点都改一遍。
 pub struct SurfaceEnv<'a> {
     pub home: &'a Path,
-    /// 〔MIG-3b 续〕agent 家（`~/.claude/…` 的基准），调用方按 `agents/claudecode/paths.rs` 那一条规则算好交进来。
+    /// agent 家（`~/.claude/…` 的基准），调用方按 `agents/claudecode/paths.rs` 那一条规则算好交进来。
     pub agent_home: &'a Path,
     pub fs: &'a FsProbe<'a>,
     /// `$PATH` 原样。
@@ -672,13 +672,13 @@ pub struct SurfaceEnv<'a> {
     /// 这条纪律不是新写的：[`resolves_on_path`] 的头注记着它在生产平台上
     /// 曾经「既没取到、又给了一个确定的否定答案」。
     pub path_env: Option<&'a str>,
-    /// 〔RM1a〕从哪台机器上看（见 [`Vantage`]）。探针与上面几样必须是**同一台**的。
+    /// 从哪台机器上看（见 [`Vantage`]）。探针与上面几样必须是**同一台**的。
     pub vantage: Vantage,
 }
 
 /// 清单里**没有 `ToolSpec`** 的那一项，在这一页上长什么样。
 ///
-/// # 🔴 〔`K-R65`〕这个函数的正题变了：从「不查」变成「查」
+/// # 🔴 这个函数的正题变了：从「不查」变成「查」
 ///
 /// 上一版这里逐字写着：
 ///
@@ -796,17 +796,17 @@ fn observe_unmanaged(
 
 /// 遍历**环境清单的闭集**建表。纯函数（探针全从 [`SurfaceEnv`] 注入）。
 ///
-/// 🔴 〔`K-R60`〕**人群从 `TOOLS` 换成了 [`environment`]。**
+/// 🔴 **人群从 `TOOLS` 换成了 [`environment`]。**
 /// 原来它只遍历 `TOOLS` 的 `touches`，于是这一页能答的是模块头注那句
 /// 「cc-monitor 动过你哪些文件」，而**答不了**「app 要的东西齐了没有」——
 /// 后者的人群里有一整档是 app 装不了也不查的东西，它们一条都不在 `TOOLS` 里。
 /// 拿前者当后者用是**分母对不上**。
 /// 钉住它的是 `the_view_population_is_exactly_the_closed_set`。
 ///
-/// 〔C5 · TAIL〕`client` 有 ⇒ `HostScope::Client` 那一族改由它答：本机那一栏的事实问本机后端，
+/// `client` 有 ⇒ `HostScope::Client` 那一族改由它答：本机那一栏的事实问本机后端，
 /// 只有 monitor 自己那台的东西留在 monitor 进程里查。
 pub fn build_rows(env: &SurfaceEnv, client: Option<&SurfaceEnv>) -> Vec<SurfaceRow> {
-    // 〔RM1a〕从远端那台看：住 monitor 所在那台的那一族（`HostScope::Client`）**不在这台上** ⇒ 不进人群。
+    // 从远端那台看：住 monitor 所在那台的那一族（`HostScope::Client`）**不在这台上** ⇒ 不进人群。
     //   不是「查不到」，是「这一格不属于这台机器」—— 画成一行「未确定」反而是在说一句关于这台的假话。
     let pick = |h: HostScope| match (h, client) {
         (HostScope::Client, Some(c)) => Some(c),
@@ -817,7 +817,7 @@ pub fn build_rows(env: &SurfaceEnv, client: Option<&SurfaceEnv>) -> Vec<SurfaceR
         .iter()
         .flat_map(|e| match e.backing {
             // 有 ToolSpec ⇒ 路径 / effect / host 全从那一份读，这里一个字都不复述
-            // 🔴 〔`K-R81`〕人群从「工具 × touch」变成「工具 × **载体** × touch」——
+            // 🔴 人群从「工具 × touch」变成「工具 × **载体** × touch」——
             //    行数不变（touch 总数没变过），变的是**每一行知道自己属于哪一份产物**。
             EnvBacking::Managed(t) => t
                 .carrier_touches()
@@ -868,8 +868,8 @@ fn scope_row(
 
 /// 列出**用户级**的两个 settings 作用域，并把「项目级没查」如实写成一行。
 ///
-/// 〔RM1a〕第三个参数是「有没有钩子字样」（[`HOOK_PROGRAMS`]；原文不出这台）。
-/// 〔MIG-3b 续〕两个作用域的文件名是那一家的布局（注册表里的足迹面答，`agents/claudecode/footprint.rs::user_settings_files`）。
+/// 第三个参数是「有没有钩子字样」（[`HOOK_PROGRAMS`]；原文不出这台）。
+/// 两个作用域的文件名是那一家的布局（注册表里的足迹面答，`agents/claudecode/footprint.rs::user_settings_files`）。
 pub fn build_settings_scopes(
     agent_home: &Path,
     has_hooks: &dyn Fn(&Path) -> Option<bool>,
@@ -919,10 +919,10 @@ pub struct ConfigSurfaceReport {
     /// 解析基准，展示用（让用户知道 `~/.claude` 被解释成了哪里）。
     pub claude_config_dir: String,
     pub home: String,
-    // 〔MIG-3b 续〕`origin` 那一格不上线了：界面经通道问哪台自己知道，回声校验那一格由读者挂上（`src/frontend/ui/settings/footprint-reads.ts`）。
+    // `origin` 那一格不上线了：界面经通道问哪台自己知道，回声校验那一格由读者挂上（`src/frontend/ui/settings/footprint-reads.ts`）。
 }
 
-// 〔MIG-3b 续〕Tauri 命令 `config_surface_report`〔散文墓碑〕与 monitor 自己那台的探针（`with_monitor_probe`〔散文墓碑〕）删了：
+// Tauri 命令 `config_surface_report`〔散文墓碑〕与 monitor 自己那台的探针（`with_monitor_probe`〔散文墓碑〕）删了：
 //   成品由那台后端的 `footprint-report` 出（[`super::answer`]），monitor 那一族的事实由 monitor `footprint_client_facts` 答。
 
 #[cfg(test)]

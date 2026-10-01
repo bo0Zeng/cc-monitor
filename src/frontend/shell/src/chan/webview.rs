@@ -1,6 +1,6 @@
 //! 通道 · **webview 那一侧的宿主**：主界面（webview 里的 TS）经 Tauri IPC 说 `call` 的那一跳。
 //!
-//! # 为什么要有它（`设计/05 §3.3` · `§10` · C4a）
+//! # 为什么要有它（C4a）
 //!
 //! 通道那一拍（`§10`）给了**进程外**的前端（文件窗口）一条路：回环 TCP ＋ 钥匙 ＋ 路由器。
 //! 主界面**不在进程外** —— 它是 monitor 进程里的 webview，与后端之间隔着的是 Tauri IPC，
@@ -33,7 +33,7 @@
 //! 失败时回 `{ err, body }`：`err` 是 [`super::wire::err_to_wire`] 给的**线上形状**（回环那条同一份），
 //! `body` 是 `Refused` 那份不透明体。TS 那侧按它解回 `§3.3.1` 的三层。
 //!
-//! # 〔CF2 · 第四波 4B〕`subscribe` 那一半
+//! # `subscribe` 那一半
 //!
 //! ```text
 //! webview (src/comms/inward/chan.ts)  ── chan_subscribe(origin, kind, from, want, id) ──▶ 本文件 ──▶ 注入的句柄（event_replay·rs）
@@ -41,7 +41,7 @@
 //!                            ── chan_want(id, more) / chan_stop(id) ────────────▶
 //! ```
 //!
-//! - **传输选 Tauri 事件，不选 `tauri::ipc::Channel`**（`调研/第四波记录/CF2.md §3.2`）：前端那一条 queue 的顺序
+//! - **传输选 Tauri 事件，不选 `tauri::ipc::Channel`**：前端那一条 queue 的顺序
 //!   （行 · `ended` 格 · 宣告 …）靠「同一个 webview 上按 emit 先后执行」；`Channel` 的大消息走「先存、再让 JS
 //!   `fetch` 回来」，会被之后 `eval` 出去的起停事件超车（Tauri 2.11.6 `ipc/channel.rs`）。
 //! - **编号由 webview 那一侧给**（每页从 1 起）：格可能先于 `chan_subscribe` 的应答到达，
@@ -53,9 +53,9 @@
 //!
 //! # 买不到
 //!
-//! - 〔MIG-3b 续 · 主会话 09-28 裁「撤单不许回退」〕**TS 那侧撤单传到这一跳了**：`Budget.cancel` 拨下 ⇒ TS 本地立即回
+//! - 〔「撤单不许回退」〕**TS 那侧撤单传到这一跳了**：`Budget.cancel` 拨下 ⇒ TS 本地立即回
 //!   `Ours{Cancelled}`，同时带着那一问的编号发 [`chan_cancel`] ⇒ 在飞表里那一格的撤单手柄拨下 ⇒ 路由器丢掉那次调用
-//!   （`router::settle`）⇒ `inbound_client` 的 `AbandonGuard` 补发 `cancel`（〔RM1f〕，同回环那条）⇒ 后端可取消档停下。
+//!   （`router::settle`）⇒ `inbound_client` 的 `AbandonGuard` 补发 `cancel`（同回环那条）⇒ 后端可取消档停下。
 //!   〔墓碑 —— 上一版这里写着「这一跳缺的只剩 TS → monitor 的撤单命令 ＋ 在飞编号表，本拍不开」：这一拍开了。〕
 //!   撤单那一条先于 `chan_call` 本身到（两条 IPC 不保序）⇒ 记下编号，那一问登记时当场撤、一个字节不发。
 //! - **webview 这一跳的 `subscribe` 没有续传**（`from` 给了就原位说用法错）与**回环那条上没有会话流**
@@ -82,7 +82,7 @@ fn fail(e: CallError) -> Fail {
 }
 
 /// 经给定句柄走一次 `call`（第 1 跳）。判据用它喂合成句柄；生产由 [`chan_call`] 喂 [`InboundBackends`]。
-/// 〔MIG-3b 续〕`call_id` 给了 ⇒ 这一问登记进在飞表，[`chan_cancel`] 拨下它的撤单手柄（见头注「撤单」）。
+/// `call_id` 给了 ⇒ 这一问登记进在飞表，[`chan_cancel`] 拨下它的撤单手柄（见头注「撤单」）。
 pub(crate) async fn call_via(
     backends: &dyn Backends,
     origin: super::wire::Origin,
@@ -101,7 +101,7 @@ pub(crate) async fn call_via(
     router::settle(fut, left, cancel).await
 }
 
-/// 〔MIG-3b 续 · 主会话 09-28 裁「撤单不许回退」〕webview 这一跳在飞的调用：TS 给的编号 → 撤单手柄；
+/// 〔「撤单不许回退」〕webview 这一跳在飞的调用：TS 给的编号 → 撤单手柄；
 /// 外加「撤单先到、那一问还没登记」的编号（两条 IPC 不保序），留最近 [`EARLY_KEEP`] 个，那一问登记时当场撤。
 /// 有结局 / 被撤 / 调用方被丢都摘掉（[`Inflight`] 的 `Drop`）。编号由 TS 那一侧现造（每一问一个 UUID），本侧只当不透明的键。
 #[derive(Default)]
@@ -157,7 +157,7 @@ pub(crate) fn cancel_inflight(id: &str) -> bool {
     false
 }
 
-/// 〔MIG-3b 续〕主界面撤掉一问（`src/comms/inward/chan.ts`：`Budget.cancel` 拨下 ⇒ 带着那一问的编号发这一条）。
+/// 主界面撤掉一问（`src/comms/inward/chan.ts`：`Budget.cancel` 拨下 ⇒ 带着那一问的编号发这一条）。
 /// 撤单手柄拨下 ⇒ `router::settle` 丢掉那次调用 ⇒ `inbound_client` 的放弃守卫补发 `cancel{target}` ⇒ 后端可取消档停下。
 #[tauri::command]
 pub fn chan_cancel(id: String) -> bool {
@@ -194,7 +194,7 @@ pub async fn chan_call(
     }
 }
 
-/// 〔NET2〕webview 手里那份能力事实：判断已在这边做完（`Offer` 的方法），TS 只查成员、不另算。
+/// webview 手里那份能力事实：判断已在这边做完（`Offer` 的方法），TS 只查成员、不另算。
 #[derive(Debug, Serialize, PartialEq, Eq)]
 pub struct OfferView {
     /// 那台认的 op。
@@ -222,7 +222,7 @@ pub fn offer_view(o: &super::wire::Offer) -> OfferView {
     }
 }
 
-/// 〔NET2〕主界面要那台机器的能力事实。与回环那条同一个句柄（`InboundBackends::offer`）；
+/// 主界面要那台机器的能力事实。与回环那条同一个句柄（`InboundBackends::offer`）；
 /// `None` = 今天没有控制通道 / 空白名。
 #[tauri::command]
 pub fn chan_offer(origin: crate::origin::Origin) -> Option<OfferView> {
@@ -231,7 +231,7 @@ pub fn chan_offer(origin: crate::origin::Origin) -> Option<OfferView> {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-//  〔CF2 · 第四波 4B〕`subscribe`
+// `subscribe`
 // ════════════════════════════════════════════════════════════════════════════
 
 /// 交给 webview 的事件名（`src/comms/inward/chan.ts` 按窗口作用域听它）。
@@ -246,7 +246,7 @@ pub(crate) enum WebviewItem {
         seq: u64,
         body: String,
     },
-    /// 〔RENDER2〕`to_seq` 缺 = 知道丢了、不知道丢到哪（`Item::Gap` 头注）。
+    /// `to_seq` 缺 = 知道丢了、不知道丢到哪（`Item::Gap` 头注）。
     Gap {
         from_seq: u64,
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -320,7 +320,7 @@ impl crate::event_replay::ItemSink for WebviewSink {
     }
 }
 
-/// 主界面说 `subscribe` 的那一条命令。**不回错**（`05 §3.3.5`）：说不了的在流里原位说。
+/// 主界面说 `subscribe` 的那一条命令。**不回错**：说不了的在流里原位说。
 /// `id` 由 webview 那一侧给（见模块头注）；`from` 是不透明游标（本句柄不支持，原位说用法错）。
 #[tauri::command]
 pub fn chan_subscribe(

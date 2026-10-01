@@ -83,7 +83,7 @@ const WALK_FORMS = ["readdirSync", "globSync", "readdir("];
  *    → 2026-09-18 起 **11** 个）。
  *
  * 🔴 **09-18 那一格抬得起来的理由，逐字记在这里**（抬上限只有这一种合法写法）：
- * 新增的是 `tests/frontend/ui/scale3-one-screen-gate.vitest.ts`（`设计/17 §6` 的秤 3）。
+ * 新增的是 `tests/frontend/ui/scale3-one-screen-gate.vitest.ts`（秤 3）。
  * 它**结构上读不到自己** —— 它遍历的是 `src/frontend/ui/cards/`（`readdirSync(CARD_SRC_DIR)`，
  * 从卡片源码里派生出全部 `card-*` 类名），而它自己住 `tests/`。**两棵不同的树。**
  * 这是本条诊断给的第二条出路（「或者干脆扫别的扩展名」）的更彻底版：扫别的**目录**。
@@ -91,9 +91,9 @@ const WALK_FORMS = ["readdirSync", "globSync", "readdir("];
  *
  * 只许降 —— 新增一个就红，那时要么让它摘掉自己、要么把它加进来并写明凭什么安全。
  *
- * ⚠⚠ 〔`P9` 08-12〕第 10 个曾是 `session-backend-gate.vitest.ts`（把 `INVARIANTS §31` 最终形态第①条
- * 从散文里的一条手工 grep 变成机检）。〔LR2〕它随 TS 座 `session-backend.ts` 一起退役，接替它的
- * `tests/frontend/ui/launch-no-shell-in-ts.vitest.ts`（`设计/90 §3` 条 1）走共享遍历 `test-support/production-sources.ts`
+ * ⚠⚠ 第 10 个曾是 `session-backend-gate.vitest.ts`（把 `INVARIANTS §31` 最终形态第①条
+ * 从散文里的一条手工 grep 变成机检）。它随 TS 座 `session-backend.ts` 一起退役，接替它的
+ * `tests/frontend/ui/launch-no-shell-in-ts.vitest.ts`（条 1）走共享遍历 `test-support/production-sources.ts`
  * （那一份按构造排掉 `.vitest.ts` / `.test.ts`），自己不做目录遍历 ⇒ **11 → 10**，棘到现打值。
  */
 const WALKER_CEILING = 10;

@@ -196,14 +196,14 @@ const DUAL_ROUTE_ARMS: &[(&str, &str)] = &[
     ),
 ];
 
-/// ★★ `KR102D2` 甲〔`K-R102` 09-13〕：**表里每一条子命令都有一条活的分派落点。**
+/// ★★ `KR102D2` 甲：**表里每一条子命令都有一条活的分派落点。**
 ///
 /// # 它买的是哪一形：「子命令表里有、分派臂没有」
 ///
 /// 上面 [`every_listed_subcommand_is_actually_dispatched`] 的头注写清了它为什么看不见
 /// 这一形。这一形不是假想：`K-P6b` 实打过一次（摘掉 `--dial` 那条臂，backend 侧
 /// 一条判据都不红，见那时 `dial/dial_tests.rs` 里的 `the_dial_arm_is_actually_wired_into_the_dispatch`〔散文墓碑〕 ——
-/// 〔SR1a〕`--dial` 删了，那条判据换了入口、改名 `dial_tests.rs::the_link_arms_are_actually_wired_into_the_dispatch`），
+/// `--dial` 删了，那条判据换了入口、改名 `dial_tests.rs::the_link_arms_are_actually_wired_into_the_dispatch`），
 /// `K-R86` 又撞了一次（`--capture-pane`）。两次都是**一件一件地各补一把伞**。
 /// 本条是那把**总伞**：人群不是手写的，是 [`SUBCOMMANDS`] 自己。
 ///
@@ -387,7 +387,7 @@ fn listed_subcommands_still_enter_query_mode() {
     }
 }
 
-/// 〔MOD · `99 §2.1 ⑮`〕**argv 只在 `main.rs` 取一次**：后端生产树里读进程 argv 的地方（`env::args(` · `env::args_os(`）
+/// **argv 只在 `main.rs` 取一次**：后端生产树里读进程 argv 的地方（`env::args(` · `env::args_os(`）
 /// 恰好一处，住 `main.rs::main`；`control/ccm/plan.rs` 那一格由调用方交（`ccm::run` 的 `process_argv`）。
 #[test]
 fn x15_the_process_argv_is_read_once_in_main() {

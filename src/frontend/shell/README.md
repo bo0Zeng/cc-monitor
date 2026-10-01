@@ -6,7 +6,7 @@ Rust + Tauri 2。crate 名 `monitor`（lib 名 `monitor_lib`）。
 
 > ## ⚠ `src/backend/` 的逐文件清单**不在本文件里**〔G3 加〕
 >
-> 〔THIN 09-29〕monitor 侧的 `backend` 目录（从前「本机那种宿主」）没了：那一组 monitor 自己的客户端 · 命令层 · 宿主代码回了壳根，
+> monitor 侧的 `backend` 目录（从前「本机那种宿主」）没了：那一组 monitor 自己的客户端 · 命令层 · 宿主代码回了壳根，
 > 宿主无关 · 平台无关两道判据改看 `tests/frontend/shell/backend_client_guard_tests.rs` 的 `GUARDED`（逐个点名）。
 > 后端本体的逐文件清单住后端自己那棵树（`src/backend/README.md`）。`src/`src/doc/ARCHITECTURE.md` §2.7` 就是这么分派的。
 >
@@ -46,12 +46,12 @@ src/frontend/shell/
     ├── event_replay.rs # F5 重放（v2.6 起出锁 emit、顺序靠前端按 seq 排；非旧「持锁严格按序」）
     ├── history.rs     # 历史浏览器：两级懒加载 + 元数据 + 删除 + resume
     ├── launch.rs      # B14-F41 终端拉起单一入口（wt.exe→PowerShell）+ 远端 ssh 拉起（本地 resume 与 F41/F51/F52/F53 共用）
-    ├── （search.rs 〔LOC1b〕已删：本机全文搜索也问本机后端 `history-search`）
+    ├── （search.rs 已删：本机全文搜索也问本机后端 `history-search`）
     ├── mcp.rs         # F87 MCP 管理：跨 scope 宽容读 / 只写项目 .mcp.json（SS-14 读写分界）
     ├── ssh_source.rs  # russh 远端数据源：连接/鉴权/指纹校验 + 后端流帧解析 + 版本协商 + ssh-config 导入 + 测试连接 + B14-F59 daemonless 降级读取(纯 tail 轮询)
     ├── remote_history.rs # 远端历史浏览 + 远端全文搜索查询（一次性 exec 后端子命令，多机 fan-out）
     ├── sftp.rs        # SS-D 统一 SFTP 写层：后端自动部署 (#29) + 远端历史删除 (F11) + ccm 安装 (F10)
-    ├── sftp_pool.rs   # SFTP 只做传输（F7c）：per-host 连接池 + 传输台（暂存区上传 · 下载 · 进度流）；〔第四波 S4〕零条 Tauri 命令
+    ├── sftp_pool.rs   # SFTP 只做传输（F7c）：per-host 连接池 + 传输台（暂存区上传 · 下载 · 进度流）；零条 Tauri 命令
     ├── pubkey.rs      # B14-F50 公钥一键推送 authorized_keys（防注入 sanitize + 幂等去重）
     ├── tmux.rs        # B14-F51/F60 tmux 反查 attach + 画面预览快照（capture-pane 只读）
     ├── tmux_reconcile.rs # F74c(#60-A) tmux 存活对账 poller：带外杀 tmux → tab 有界变灰（retire 送 remote_tx 单写者）
@@ -68,34 +68,34 @@ src/frontend/shell/
 | 文件 | 角色 | 关键 API |
 |---|---|---|
 | **lib.rs** | Tauri Builder + setup() + IPC handler 注册 + single-instance plugin (issue #9) + 启动清洗嵌套 CLAUDECODE/CLAUDE_CODE_* 标记 (#24) | `pub fn run()` |
-| **config.rs**（〔RE〕原 paths.rs 并进来） | 解析 `.claude` 数据目录（三级回退） | `resolve_claude_dir() / resolve_monitor_data_dir() / resolve_config_path()` |
+| **config.rs**（原 paths.rs 并进来） | 解析 `.claude` 数据目录（三级回退） | `resolve_claude_dir() / resolve_monitor_data_dir() / resolve_config_path()` |
 | **messages.rs** | `JsonlRecord` enum + `ApiMessage` + `ContentBlock` | `JsonlRecord::is_displayable()` |
 | **parser.rs** | 单行 JSONL → JsonlRecord | `parse_line(origin, raw)` |
 | **local_lines.rs** (CF1) | 本机会话内容的入口通道：本机两条读循环（常驻 TCP · stdio 监护）把本机后端发来的内容帧（`line` / `session_added` / `session_removed`）送进来，交给 `ssh_source::consume_local`，再进与远端同一个 `LineIntake`（攒批 ＋ 静默窗 ＋ 旁路快照 ＋ 续点）。有界通道 ⇒ 消费者跟不上时读循环停读、后端写阻塞（背压，不丢）。原先 monitor 自己那套 jsonl watcher（第二套游标与 seq）随 CF1 删了 | `install / deliver / deliver_blocking / stream_ended` |
-| **session_map.rs** | 〔LOC1b · 第四波 4D〕**本机活会话表**：由本机常驻后端那条流的起停帧喂（`session_added` / `session_status` / `session_removed` / `sessions_replayed`，经 `ssh_source::consume_local`），纯核 `LocalTable::step` 出 `SessionChange` 给本机 emitter（与远端同一套裁决）；本机流断 ⇒ 活会话 ∪ 可重连一律 `Unseen`（与远端断连 flush 同一个函数）。从前这里是 monitor 自己的判活（读 pidfile ＋ Win32 / `/proc` 探活 ＋ 2 s 心跳），整份删了 | `local() / feed() / install_sink() / LocalTable::step` |
+| **session_map.rs** | **本机活会话表**：由本机常驻后端那条流的起停帧喂（`session_added` / `session_status` / `session_removed` / `sessions_replayed`，经 `ssh_source::consume_local`），纯核 `LocalTable::step` 出 `SessionChange` 给本机 emitter（与远端同一套裁决）；本机流断 ⇒ 活会话 ∪ 可重连一律 `Unseen`（与远端断连 flush 同一个函数）。从前这里是 monitor 自己的判活（读 pidfile ＋ Win32 / `/proc` 探活 ＋ 2 s 心跳），整份删了 | `local() / feed() / install_sink() / LocalTable::step` |
 | **bind.rs** | cc 集成的核心：监听 `ps-await/`、PS 改窗口标题、EnumWindows 找 marker、写 `ps-registry/`、`SidHwndCache` 持久化 sid↔hwnd、`bring_terminal_to_front` | `BindRegistry::spawn() / SidHwndCache::load() / bring_terminal_to_front` |
-| **profile_installer.rs** | 别名块（POSIX `cc` / `cct` · PowerShell `__ccm_bind` ＋ 可选 `cc`）的渲染 / 插入 / 卸载 / 现状 / 冲突检测；〔AL1d〕`$PROFILE` 在哪不归它（只有 `shell_dialect.rs` 答） | `block_state / render_block / install_to_profile / uninstall_from_profile / render_cc_code` |
+| **profile_installer.rs** | 别名块（POSIX `cc` / `cct` · PowerShell `__ccm_bind` ＋ 可选 `cc`）的渲染 / 插入 / 卸载 / 现状 / 冲突检测；`$PROFILE` 在哪不归它（只有 `shell_dialect.rs` 答） | `block_state / render_block / install_to_profile / uninstall_from_profile / render_cc_code` |
 | **auto_launch.rs** | "用 cc 启动 claude 时自动开 monitor" 开关持久化（模块级函数，非 impl 方法） | `auto_launch::{load, save, get_config, set_enabled, update_monitor_path_on_startup}` |
-| ~~adapter.rs~~ (F-MA) | 〔P1〕**已删**：起会话事实（默认启动器 · wrapper · resume 字面量 · 嵌套标记）只住后端适配层 `src/backend/agents/<名>/resume.rs`（注册表 `Adapter.launch`）；monitor 起前清洗读生成物 `src/frontend/ui/generated/agent-profile-table.ts`（`lib.rs::nested_env_markers`） | — |
-| **event_replay.rs**（〔CF2 · 第四波 4B〕会话流的句柄 ＋ 重放缓冲） | 内存 buffer（**每个会话只留 seq 最高的 600 条**，摊还余量 150；丢掉的前端按字节 / 按行号取回）＋ 会话流订阅表：`on_line_batch_awaited`（〔CF1〕唯一入口）进缓冲并**当场**交进各条已过就绪点的订阅（< 50 行逐行一格；≥ 50 行切块、带 `batch` 边界、块间 tokio sleep，交完才返回 —— 行先于随后的归档）；有 credit 才交，没有就丢、原位报 `Gap`；`ready_point(priority_sid)`（frontend-ready 那个任务里）按 credit 交留存（不丢，等 `want`），优先会话的块先发 | `EventReplay::on_line_batch_awaited() / ready_point(priority_sid)（async）/ subscribe() / want() / stop() / origin_seen() / forget() / buffered_{local,remote}_session_ids()（#19/#20 重放后对账）` |
-| **history.rs** | 历史会话的 monitor 这一侧：读一整份会话（Channel 分块）+ resume 的命令渲染（〔MIG-3b〕删会话与分叉界面经通道直说那台后端，`src/frontend/ui/session-writes.ts`）。〔C4d · 第四波 4B〕项目 / 会话清单与注解（星标 / 改名 / 隐藏 / 上次账号）搬进本机常驻后端（`history-projects` / `history-sessions` / `history-annotate` / `history-last-accounts`，界面经 `src/frontend/ui/history-reads.ts` 问），注解那份文件原地不动、路径仍由本文件 `metadata_path` 算 | IPC `stream_read_session_jsonl / resume` |
-| **launch.rs** (B14-F41) | 终端拉起单一入口：`launch_powershell_window`（从 `history.rs` 的 `resume_impl`〔散文墓碑〕抽出，wt.exe Plan A → `CREATE_NEW_CONSOLE` Plan B，`-NoExit -EncodedCommand` 不带 `-NoProfile`）+ `open_terminal_window`（开窗：接令牌握手前奏再开 PowerShell 窗口；〔FIX4 · ⑬〕远端那一行 `ssh -t … -- '<bash -lic ''…''>'` 由本机后端帧命令 `terminal-ssh` 渲好交来，这里不拼 ssh）+ `terminal_dial`（交机器事实）；本地与远端族 F41 resume / F51 attach / F52 tmux / F53 launcher 共用此单一入口；命令为 async（`spawn_blocking` 起窗） | `launch_powershell_window() / open_terminal_window() / terminal_dial()` + IPC `open_terminal_window` · `terminal_dial` |
-| ~~search.rs~~ (issue #6) | 〔LOC1b · 第四波 4D〕**已删**：本机全文搜索改问本机后端（`history-search`，每次现扫，口径在后端（`observe/search_rules.rs` · `agents/claudecode/text.rs`，原 `search-core`） 那一份），monitor 不再建内存索引 | — |
-| **mcp.rs** (F87 #50+#51 / F89a-b #远端MCP) | MCP 管理（SS-14 读写分界）：**读**跨 scope 宽容展示（〔SH1 · V137〕本机远端都问那台后端 `mcp-read`；**远端项目** `.mcp.json` 经 `files-peek`）；**写只**项目 `.mcp.json`——本机 `mcp_json_path` 硬编码 / **远端** `is_safe_remote_mcp_json` 守卫经 `sftp::upload_atomic`（SS-14：绝不写 `~/.claude.json`/`settings.json`，本机远端皆然；SS-G 用户显式触发，见 INVARIANTS §1 例外 #5） | `read_mcp_servers / list_mcp_project_dirs / write_project_mcp_server / remove_project_mcp_server`（〔步 12·C〕后三条**都吃 `origin`，两侧各一条**）` / read_remote_mcp_servers / read_remote_project_mcp / list_remote_mcp_origins` —— 远端那三个写函数（`write_remote_mcp_server` / `remove_remote_mcp_server` / `list_remote_mcp_project_dirs`）**已不是命令**，是上面那三条的远端分支 | 〔散文墓碑〕
+| ~~adapter.rs~~ (F-MA) | **已删**：起会话事实（默认启动器 · wrapper · resume 字面量 · 嵌套标记）只住后端适配层 `src/backend/agents/<名>/resume.rs`（注册表 `Adapter.launch`）；monitor 起前清洗读生成物 `src/frontend/ui/generated/agent-profile-table.ts`（`lib.rs::nested_env_markers`） | — |
+| **event_replay.rs**（会话流的句柄 ＋ 重放缓冲） | 内存 buffer（**每个会话只留 seq 最高的 600 条**，摊还余量 150；丢掉的前端按字节 / 按行号取回）＋ 会话流订阅表：`on_line_batch_awaited`（唯一入口）进缓冲并**当场**交进各条已过就绪点的订阅（< 50 行逐行一格；≥ 50 行切块、带 `batch` 边界、块间 tokio sleep，交完才返回 —— 行先于随后的归档）；有 credit 才交，没有就丢、原位报 `Gap`；`ready_point(priority_sid)`（frontend-ready 那个任务里）按 credit 交留存（不丢，等 `want`），优先会话的块先发 | `EventReplay::on_line_batch_awaited() / ready_point(priority_sid)（async）/ subscribe() / want() / stop() / origin_seen() / forget() / buffered_{local,remote}_session_ids()（#19/#20 重放后对账）` |
+| **history.rs** | 历史会话的 monitor 这一侧：读一整份会话（Channel 分块）+ resume 的命令渲染（删会话与分叉界面经通道直说那台后端，`src/frontend/ui/session-writes.ts`）。项目 / 会话清单与注解（星标 / 改名 / 隐藏 / 上次账号）搬进本机常驻后端（`history-projects` / `history-sessions` / `history-annotate` / `history-last-accounts`，界面经 `src/frontend/ui/history-reads.ts` 问），注解那份文件原地不动、路径仍由本文件 `metadata_path` 算 | IPC `stream_read_session_jsonl / resume` |
+| **launch.rs** (B14-F41) | 终端拉起单一入口：`launch_powershell_window`（从 `history.rs` 的 `resume_impl`〔散文墓碑〕抽出，wt.exe Plan A → `CREATE_NEW_CONSOLE` Plan B，`-NoExit -EncodedCommand` 不带 `-NoProfile`）+ `open_terminal_window`（开窗：接令牌握手前奏再开 PowerShell 窗口；远端那一行 `ssh -t … -- '<bash -lic ''…''>'` 由本机后端帧命令 `terminal-ssh` 渲好交来，这里不拼 ssh）+ `terminal_dial`（交机器事实）；本地与远端族 F41 resume / F51 attach / F52 tmux / F53 launcher 共用此单一入口；命令为 async（`spawn_blocking` 起窗） | `launch_powershell_window() / open_terminal_window() / terminal_dial()` + IPC `open_terminal_window` · `terminal_dial` |
+| ~~search.rs~~ (issue #6) | **已删**：本机全文搜索改问本机后端（`history-search`，每次现扫，口径在后端（`observe/search_rules.rs` · `agents/claudecode/text.rs`，原 `search-core`） 那一份），monitor 不再建内存索引 | — |
+| **mcp.rs** (F87 #50+#51 / F89a-b #远端MCP) | MCP 管理（SS-14 读写分界）：**读**跨 scope 宽容展示（本机远端都问那台后端 `mcp-read`；**远端项目** `.mcp.json` 经 `files-peek`）；**写只**项目 `.mcp.json`——本机 `mcp_json_path` 硬编码 / **远端** `is_safe_remote_mcp_json` 守卫经 `sftp::upload_atomic`（SS-14：绝不写 `~/.claude.json`/`settings.json`，本机远端皆然；SS-G 用户显式触发，见 INVARIANTS §1 例外 #5） | `read_mcp_servers / list_mcp_project_dirs / write_project_mcp_server / remove_project_mcp_server`（后三条**都吃 `origin`，两侧各一条**）` / read_remote_mcp_servers / read_remote_project_mcp / list_remote_mcp_origins` —— 远端那三个写函数（`write_remote_mcp_server` / `remove_remote_mcp_server` / `list_remote_mcp_project_dirs`）**已不是命令**，是上面那三条的远端分支 | 〔散文墓碑〕
 | **sftp_pool.rs** (B14-F47/F49) | SFTP 文件面板后端:per-host utility 连接池(与后端流分离)+ 浏览/传输/写命令 + 小文件编辑(F49:`decode_editable` 三防护 + `sftp_read_text_for_edit`〔散文墓碑〕/`sftp_write_text`);防误伤守卫**已搬走** —— 见下面 `claude_data_fence.rs` 那一行(池子这边只剩一行 `pub use`) | `with_sftp() / sftp_list_dir / sftp_download / sftp_upload / ...`(11 命令) |
-| **claude_data_fence.rs** (步 H2) | **哪些路径是 Claude 自己的数据,不许我们写** —— 一个判定 ＋ 它的拒绝,别无他物(零 IO / 零 async ⇒ 「被挡住」在一台没有连接的机器上判得动)。`INVARIANTS §1` 底下 **F47**(SFTP 面板 / 原生文件窗口)与 **F03b**(收件箱编辑的纵深②)两段澄清共用它这**一个**判定;〔用户 2026-09-21 逐字裁「拆」,`设计/99 §2 Q2`〕从 `sftp_pool.rs` 搬出,**判定的射程一个字没动**。⚠ 方向相反的那一道从前是 `sftp.rs` 里的 `is_safe_remote_jsonl`〔散文墓碑〕(〔RW1 · 第四波 09-24〕随 F11 改经远端后端删走了,今天住后端 `session_file_for_delete`;下面是原话:「只许删 projects 下的 jsonl」),**两道不许互相替代** | `is_protected_claude_data_path() / guard_write()` |
-| **ssh_source.rs** (issue #15) | russh 远端数据源：`connect_session` 全套 host-key 指纹校验 + publickey/agent 鉴权；`run` 长连接 exec 后端把流帧（`InboundFrame`）的内容那一半交 `LineIntake`（〔CF1〕本机那条流 `consume_local` 用同一个）；hello 带 `build_id` 做版本协商（#33）；`Overflow` 帧 → remote-health 提示（#32）；测试连接（〔MIG-1〕ssh-config 导入搬进了后端）。**B14-F56 跳板**：`RemoteConfig.jump`（另一主机 label）有值时 `connect_via_jump`——connect_session(跳板)→ `channel_open_direct_tcpip` → `connect_stream` 跑目标 SSH（隧道上验目标指纹）；跳板 session 存 `jump_holders` 保活；fail-closed（环/查无/连不上 → Err）。**B14-F59 daemonless 降级**：`RemoteConfig.daemonless=true`（per-host 开关）时 `run()` 顶层二选一走 `daemonless_stream_loop`（不连后端，持久会话上 `exec_on_session` 跑 `find`+`tail -c +offset` 轮询读 jsonl，`drain_complete_lines`/`plan_file_read` 复刻 watcher 增量语义、复用 `flush_lines` 下游），default-false 时后端路径 `stream_loop` 一行不动；能力子集经 `degraded` remote-health 如实提示 | `run() / stream_loop() / daemonless_stream_loop() / connect_session() / connect_via_jump() / connect_and_exec_cmd() / parse_frame()` + IPC `test_remote_connection` |
-| **remote_history.rs** (issue #16/#28/#30) | 远端会话的 monitor 这一侧：按名字取远端配置（〔MIG-3b〕删一份远端会话那一件也走了：界面经通道直说那台后端）。〔LOC1b · 第四波 4D〕读一整份会话本机远端合成一条，住 `history.rs`（都经那台后端的 `history-read` 分页）。〔C4d · 第四波 4B〕远端项目 / 会话清单与它们的 join 搬进本机常驻后端（`history_join.rs`，远端那一跳经 `remote_ask`），逐次拨号那条路也删了；〔C4a〕远端全文搜索早已搬去前端 `views/history-search.ts`。〔`设计/50`：原先还有一条**远端用量聚合**（`--usage` / `aggregate_remote_usage_all`），随用量 ② 轴整轴退役〕 | 两个远端分支函数：`stream_read_remote_session` · `delete_remote_history_session`（〔步 12·C 09-20〕并进了本机那两条同名命令，`origin` 成了参数） |  〔散文墓碑〕
-| ~~pubkey.rs~~ (B14-F50) | 〔MIG-3b 续 · ⑬〕**已删**：公钥一键推送进了本机常驻后端（帧命令 `pubkey-push`，`src/backend/assets/pubkey.rs`：读本机 `.pub` · 校验 · 那台后端在就经它写 / 不在就一次 exec），界面经通道问（`src/frontend/ui/pubkey-push.ts`） | — |
-| 〔MIG-1 · `99 §2.1 ⑬`〕端口转发（F58）那份命令面与转发账删了 | 账住本机常驻后端（`src/backend/dial/forwards.rs`：可达表查那台 → 池里那条 SSH 上 `use: forward` 链路 → 等 ack 才进账），界面经通道直问 `forward-start` / `forward-stop` / `forward-list`（`src/frontend/ui/port-forward-reads.ts`） |
-| **tmux.rs** (B14-F51/F60) | 〔MIG-1 续〕只剩 Gate 1 的跨轨对拍锚点（`exact_target`）与 Gate 2 转调壳：列会话那一族（格式串 · 按真 TAB 分列的解析 · 两条命令）搬进后端 `observe/tmux_list.rs`（`tmux-list` 出成品），界面经通道直问（`src/frontend/ui/tmux-reads.ts`） |
+| **claude_data_fence.rs** (步 H2) | **哪些路径是 Claude 自己的数据,不许我们写** —— 一个判定 ＋ 它的拒绝,别无他物(零 IO / 零 async ⇒ 「被挡住」在一台没有连接的机器上判得动)。`INVARIANTS §1` 底下 **F47**(SFTP 面板 / 原生文件窗口)与 **F03b**(收件箱编辑的纵深②)两段澄清共用它这**一个**判定;〔用户 2026-09-21 逐字裁「拆」,〕从 `sftp_pool.rs` 搬出,**判定的射程一个字没动**。⚠ 方向相反的那一道从前是 `sftp.rs` 里的 `is_safe_remote_jsonl`〔散文墓碑〕(随 F11 改经远端后端删走了,今天住后端 `session_file_for_delete`;下面是原话:「只许删 projects 下的 jsonl」),**两道不许互相替代** | `is_protected_claude_data_path() / guard_write()` |
+| **ssh_source.rs** (issue #15) | russh 远端数据源：`connect_session` 全套 host-key 指纹校验 + publickey/agent 鉴权；`run` 长连接 exec 后端把流帧（`InboundFrame`）的内容那一半交 `LineIntake`（本机那条流 `consume_local` 用同一个）；hello 带 `build_id` 做版本协商（#33）；`Overflow` 帧 → remote-health 提示（#32）；测试连接（ssh-config 导入搬进了后端）。**B14-F56 跳板**：`RemoteConfig.jump`（另一主机 label）有值时 `connect_via_jump`——connect_session(跳板)→ `channel_open_direct_tcpip` → `connect_stream` 跑目标 SSH（隧道上验目标指纹）；跳板 session 存 `jump_holders` 保活；fail-closed（环/查无/连不上 → Err）。**B14-F59 daemonless 降级**：`RemoteConfig.daemonless=true`（per-host 开关）时 `run()` 顶层二选一走 `daemonless_stream_loop`（不连后端，持久会话上 `exec_on_session` 跑 `find`+`tail -c +offset` 轮询读 jsonl，`drain_complete_lines`/`plan_file_read` 复刻 watcher 增量语义、复用 `flush_lines` 下游），default-false 时后端路径 `stream_loop` 一行不动；能力子集经 `degraded` remote-health 如实提示 | `run() / stream_loop() / daemonless_stream_loop() / connect_session() / connect_via_jump() / connect_and_exec_cmd() / parse_frame()` + IPC `test_remote_connection` |
+| **remote_history.rs** (issue #16/#28/#30) | 远端会话的 monitor 这一侧：按名字取远端配置（删一份远端会话那一件也走了：界面经通道直说那台后端）。读一整份会话本机远端合成一条，住 `history.rs`（都经那台后端的 `history-read` 分页）。远端项目 / 会话清单与它们的 join 搬进本机常驻后端（`history_join.rs`，远端那一跳经 `remote_ask`），逐次拨号那条路也删了；远端全文搜索早已搬去前端 `views/history-search.ts`。〔：原先还有一条**远端用量聚合**（`--usage` / `aggregate_remote_usage_all`），随用量 ② 轴整轴退役〕 | 两个远端分支函数：`stream_read_remote_session` · `delete_remote_history_session`（并进了本机那两条同名命令，`origin` 成了参数） |  〔散文墓碑〕
+| ~~pubkey.rs~~ (B14-F50) | **已删**：公钥一键推送进了本机常驻后端（帧命令 `pubkey-push`，`src/backend/assets/pubkey.rs`：读本机 `.pub` · 校验 · 那台后端在就经它写 / 不在就一次 exec），界面经通道问（`src/frontend/ui/pubkey-push.ts`） | — |
+| 端口转发（F58）那份命令面与转发账删了 | 账住本机常驻后端（`src/backend/dial/forwards.rs`：可达表查那台 → 池里那条 SSH 上 `use: forward` 链路 → 等 ack 才进账），界面经通道直问 `forward-start` / `forward-stop` / `forward-list`（`src/frontend/ui/port-forward-reads.ts`） |
+| **tmux.rs** (B14-F51/F60) | 只剩 Gate 1 的跨轨对拍锚点（`exact_target`）与 Gate 2 转调壳：列会话那一族（格式串 · 按真 TAB 分列的解析 · 两条命令）搬进后端 `observe/tmux_list.rs`（`tmux-list` 出成品），界面经通道直问（`src/frontend/ui/tmux-reads.ts`） |
 | **tmux_reconcile.rs** (F74c issue #60-A) | tmux 存活对账 poller：补一条独立 tmux 存活信号，让带外（`Ctrl-b &` / `tmux kill-session`）杀掉某会话 tmux 后端时对应 tab 有界变灰。**§24 单写者不破**——retire 的 sid 当 `SessionChange{removed}` 送进 `remote_tx` 的一个 clone、由唯一写者处理；source-agnostic（`reconcile_step` 吃裸 HashSet，F90 可整段 lift）；三重防误判（ever_bound 门 + debounce + /branch 漂移剔除） | `reconcile_step()`（纯函数）+ poller |
-| **sftp.rs** (SS-D, issue #29) | 统一 SFTP 写层（复用 ssh_source 鉴权起 sftp 子系统）：F08 后端自动部署（arch 探测 + build_id 版本门控 + 原子上传）+ F11 远端历史 jsonl 删除（双重路径白名单 + realpath 防 symlink 逃逸）（〔W5-ALIAS〕F10 远端别名块搬去了 `profile_installer.rs`）+ **F89a 远端项目 `.mcp.json` 增改删（`mcp.rs` 经 `upload_atomic`，`is_safe_remote_mcp_json` 守卫，SS-14 只 .mcp.json）**。`upload_atomic` 加固：tmp 用 EXCLUDE 防 symlink clobber + 旧目标备份 `.bak`（失败可恢复、成功即清）。只读铁律豁免（穷举）见 `src/`src/doc/INVARIANTS.md` §1` + 模块文档 | `ensure_backend_deployed() / remove_remote_file() / upload_atomic()` + 〔AL2〕远端别名块已并进 `aliases_block_*`（带 origin；〔MC1〕更早叫 `install_remote_ccm_helper`〔散文墓碑〕；〔步 12·C 收尾 09-20〕原先这里还列着 `write_remote_mcp_server`，它**已不是 IPC** —— 今天是 `mcp::write_project_mcp_server` 的远端分支） |
-| **tasks.rs** (v2.3.0 issue #11；〔RM1b〕读法归后端) | Claude Code CLI 的 task 列表：按 `origin` 问那台机器的后端 `tasks-list`（本机与远端同一条路；读 `<tasks>/<sid>/<数字>.json` 那一段住后端 `observe/tasks_query.rs`），本侧只剩字段语义与本机 watcher：notify-debouncer 100ms 监听整个 tasks 目录递归；变更 → 反推 sid → 经本机后端重读 → emit `task-update`。tasks_root 不存在时静默不 spawn | `parse_task_lines() / spawn_task_watcher()` + IPC `get_session_tasks(origin, sessionId)` |
+| **sftp.rs** (SS-D, issue #29) | 统一 SFTP 写层（复用 ssh_source 鉴权起 sftp 子系统）：F08 后端自动部署（arch 探测 + build_id 版本门控 + 原子上传）+ F11 远端历史 jsonl 删除（双重路径白名单 + realpath 防 symlink 逃逸）（F10 远端别名块搬去了 `profile_installer.rs`）+ **F89a 远端项目 `.mcp.json` 增改删（`mcp.rs` 经 `upload_atomic`，`is_safe_remote_mcp_json` 守卫，SS-14 只 .mcp.json）**。`upload_atomic` 加固：tmp 用 EXCLUDE 防 symlink clobber + 旧目标备份 `.bak`（失败可恢复、成功即清）。只读铁律豁免（穷举）见 `src/`src/doc/INVARIANTS.md` §1` + 模块文档 | `ensure_backend_deployed() / remove_remote_file() / upload_atomic()` + 远端别名块已并进 `aliases_block_*`（带 origin；更早叫 `install_remote_ccm_helper`〔散文墓碑〕；原先这里还列着 `write_remote_mcp_server`，它**已不是 IPC** —— 今天是 `mcp::write_project_mcp_server` 的远端分支） |
+| **tasks.rs** (v2.3.0 issue #11；读法归后端) | Claude Code CLI 的 task 列表：按 `origin` 问那台机器的后端 `tasks-list`（本机与远端同一条路；读 `<tasks>/<sid>/<数字>.json` 那一段住后端 `observe/tasks_query.rs`），本侧只剩字段语义与本机 watcher：notify-debouncer 100ms 监听整个 tasks 目录递归；变更 → 反推 sid → 经本机后端重读 → emit `task-update`。tasks_root 不存在时静默不 spawn | `parse_task_lines() / spawn_task_watcher()` + IPC `get_session_tasks(origin, sessionId)` |
 | **data_paths.rs** (v2.3.0 issue #3 A) | 透明化展示：枚举 monitor 所有持久路径（config / sid-hwnd-cache / auto-launch / history-metadata / ps-await / ps-registry / logs）+ WebView2 UserDataFolder（用 `app_local_data_dir().join("EBWebView")` 推断）+ PowerShell profile 备份目录。stat 不递归算大小，避免大目录卡 IPC | `collect()` + IPC `get_data_paths` |
-| **config.rs** | monitor 自己的 config.json R/W（Windows MoveFileExW 原子）。〔CFG1〕写只有 `patch_config_at` 一个函数（进程级锁内现读 → 逐条 set/remove → 原子替换；读不懂不写），`logging.rs` 的诊断写口也经它 | `patch_config_at()` + IPC `load_config / patch_config` |
+| **config.rs** | monitor 自己的 config.json R/W（Windows MoveFileExW 原子）。写只有 `patch_config_at` 一个函数（进程级锁内现读 → 逐条 set/remove → 原子替换；读不懂不写），`logging.rs` 的诊断写口也经它 | `patch_config_at()` + IPC `load_config / patch_config` |
 | **logging.rs** (v2.0.0+) | tracing init（在 `tauri::Builder` 之前）+ 滚动 log 文件 + EnvFilter reload Handle + ErrorEmitterLayer（拦 ERROR emit `monitor-error` 给前端弹 toast）+ DiagnosticsConfig R/W | `init() / install_error_emitter() / update_config() / log_file_info()` + 5 个 IPC |
-| **ui_contract.rs** | 事件 / payload 常量与 schema。**v2.6 `JsonlLinePayload` 加 `seq: u64`** 字段（后端给的 per-file 行号，前端 RecordTimeline 按 seq 排到 DOM）。〔CF2〕会话内容不再是事件：流里一格的体是 `SessionStreamFrame`（`{"line": …}` / `{"batch": "start"｜"end"}`） | `events::SESSION_ENDED / TASKS_UPDATE / SESSION_ACTIVITY …`，`JsonlLinePayload { session_id, cwd, path, seq, origin?, message } / SessionStreamFrame / SessionEndedPayload / TasksUpdatePayload / SessionActivityPayload` |
+| **ui_contract.rs** | 事件 / payload 常量与 schema。**v2.6 `JsonlLinePayload` 加 `seq: u64`** 字段（后端给的 per-file 行号，前端 RecordTimeline 按 seq 排到 DOM）。会话内容不再是事件：流里一格的体是 `SessionStreamFrame`（`{"line": …}` / `{"batch": "start"｜"end"}`） | `events::SESSION_ENDED / TASKS_UPDATE / SESSION_ACTIVITY …`，`JsonlLinePayload { session_id, cwd, path, seq, origin?, message } / SessionStreamFrame / SessionEndedPayload / TasksUpdatePayload / SessionActivityPayload` |
 | **utils.rs** ⭐ v2.6 大归并 | 跨模块共享 helper：`days_from_civil` (日期换算) / `NetTicks` + `FileTime` newtype (procStart 单位隔离) / `parse_iso8601_ms` + `systime_to_ms` + `now_ms` (时间换算，归并 history/subagent/bind 三处) / `scan_dir_jsons<T, K, F>` (泛型目录扫，归并 session_map+bind 两处) / `atomic_write_json<T>` (Windows ReplaceFileW + dst-not-exist rename fallback) / **v2.8.1** `powershell_encoded_command` (命令 → UTF-16LE base64，给 resume 的 `-EncodedCommand` 用，穿 wt/cmd 不被引号/`;` 切碎，零依赖) | (pub items 完整列表见模块 doc 注释) |
 
 ## IPC 清单
@@ -107,32 +107,32 @@ src/frontend/shell/
 | `load_config` | — | `Value` | 启动时 / 设置面板打开时 |
 | `patch_config` | `{ edits: ConfigEdit[] }` | `()` | 前端各模块存设置时（只交改哪几条路径） |
 | `list_remote_mcp_origins` (F87b) | `{}` | `String[]` | 远端机器选择器 |
-<!-- 〔MIG-3a · 09-27〕MCP 读写六条与推 / 拉两条退役：界面经通道直问那台后端（`mcp-read` · `mcp-server-put` / `-remove` · `mcp-sync-source` / `-preview` / `-apply`，`src/frontend/ui/mcp-reads.ts` · `src/frontend/ui/mcp-sync-reads.ts`）。`list_remote_mcp_origins` 读的是 monitor 自己的配置，挪进 `config.rs`。 -->
-| `list_remote_accounts / check_account_trust` (A2 #68/#69) | `{ origin }` / `{ origin, dir }` | `AccountsResult / bool` | 多账号**只读**查询（各账号名/邮箱/登录态 · 目录是否可信）——账号=一个 `CLAUDE_CONFIG_DIR`，经后端纯只读（`accounts.rs`，全 stateless）。〔C4a〕「某会话属哪个账号」那一条退役：前端经通道 `chan_call` 直接说帧命令 `accounts-sessions`（本机与远端同一条路） |
+<!-- MCP 读写六条与推 / 拉两条退役：界面经通道直问那台后端（`mcp-read` · `mcp-server-put` / `-remove` · `mcp-sync-source` / `-preview` / `-apply`，`src/frontend/ui/mcp-reads.ts` · `src/frontend/ui/mcp-sync-reads.ts`）。`list_remote_mcp_origins` 读的是 monitor 自己的配置，挪进 `config.rs`。 -->
+| `list_remote_accounts / check_account_trust` (A2 #68/#69) | `{ origin }` / `{ origin, dir }` | `AccountsResult / bool` | 多账号**只读**查询（各账号名/邮箱/登录态 · 目录是否可信）——账号=一个 `CLAUDE_CONFIG_DIR`，经后端纯只读（`accounts.rs`，全 stateless）。「某会话属哪个账号」那一条退役：前端经通道 `chan_call` 直接说帧命令 `accounts-sessions`（本机与远端同一条路） |
 | `forget_session` | `{ sessionId }` | `()` | 用户关闭 archived Tab |
 | `open_session_in_new_window` (issue #10) | `{ sessionId, title }` | `()` | Tab 右键「在新窗口打开」/ Ctrl+Shift+N，建 `viewer-<sid>` 独立只读窗口 |
-| `chan_subscribe` / `chan_want` / `chan_stop`（〔CF2〕） | `{ origin, kind, from, want, id }` / `{ id, more }` / `{ id }`（webview 注入） | `()` | 通道 `subscribe` 在 Tauri IPC 那一跳：会话内容流（`session-lines` / `session-lines/<sid>`），交格走事件 `chan-items`；经 `src/comms/inward/chan.ts` 用 |
-| 〔C4d · 第四波 4B〕历史清单那两条（本机项目 · 展开一个项目）已删 | — | — | 界面经通道问本机常驻后端 `history-projects` / `history-sessions`（`src/frontend/ui/history-reads.ts`；远端那台由它沿池里那条 SSH 去问） |
-| `stream_read_session_jsonl` | `{ origin, jsonlPath, onChunk }` | `u32` (count) | 点击历史会话进入只读视图（流式 Channel）。〔步 12·C 09-20〕**本机与远端合成了一条**，`origin` 是它的参数（`设计/00 §2.5 ①`）。旧的远端命令名**已退役、不留别名** |
-| 〔MIG-3b〕删会话 · 分叉（F62）那两条已删 | — | — | 界面经通道直说那台后端 `files-delete-session`（只收 sid）· `session-fork`（`src/frontend/ui/session-writes.ts`；分叉成品由金样 `session-fork.golden.json` 钉） |
-| 〔C4d · 第四波 4B〕改注解 / 上次账号表那两条已删 | — | — | 注解的读写者是本机常驻后端：`history-annotate` / `history-last-accounts`（删会话之后界面另交 `history-forget`） |
+| `chan_subscribe` / `chan_want` / `chan_stop` | `{ origin, kind, from, want, id }` / `{ id, more }` / `{ id }`（webview 注入） | `()` | 通道 `subscribe` 在 Tauri IPC 那一跳：会话内容流（`session-lines` / `session-lines/<sid>`），交格走事件 `chan-items`；经 `src/comms/inward/chan.ts` 用 |
+| 历史清单那两条（本机项目 · 展开一个项目）已删 | — | — | 界面经通道问本机常驻后端 `history-projects` / `history-sessions`（`src/frontend/ui/history-reads.ts`；远端那台由它沿池里那条 SSH 去问） |
+| `stream_read_session_jsonl` | `{ origin, jsonlPath, onChunk }` | `u32` (count) | 点击历史会话进入只读视图（流式 Channel）。**本机与远端合成了一条**，`origin` 是它的参数。旧的远端命令名**已退役、不留别名** |
+| 删会话 · 分叉（F62）那两条已删 | — | — | 界面经通道直说那台后端 `files-delete-session`（只收 sid）· `session-fork`（`src/frontend/ui/session-writes.ts`；分叉成品由金样 `session-fork.golden.json` 钉） |
+| 改注解 / 上次账号表那两条已删 | — | — | 注解的读写者是本机常驻后端：`history-annotate` / `history-last-accounts`（删会话之后界面另交 `history-forget`） |
 | `resume_history_session` | `{ sessionId, cwd, launcher? }` | `()` | ↺ 按钮（v2.8.1：拉起 wt.exe / powershell.exe，读 profile + `cc` 优先回退 `claude`；F34 起 `launcher` 自定义启动命令）。F62 建分支后一键 resume 复用此命令 |
-| `open_terminal_window` (B14-F41 · 〔FIX4 · ⑬〕) | `{ command, rbindToken, ssh }` | `()` | 开一个终端窗口跑交来的成品（远端那一行由本机后端 `terminal-ssh` 渲）：接令牌握手前奏 → wt.exe/PowerShell；`ssh` ⇒ Windows 上先查 ssh.exe（缺 ⇒ Err，前端回退复制命令）。只经 `src/frontend/ui/terminal-open.ts` 调 |
-| `terminal_dial` (〔FIX4 · ⑬〕) | `{ origin }` | 机器事实 `{machine, saved, jump, prefer}` | 开终端那一问要的那一台（monitor 的机器表 ＋ 上次赢的那条，`dial_host::machine_facts`）；`<local>` ⇒ Err（本机不经 ssh） |
-| 〔F7c 收尾 09-24〕池子那十二条（`sftp_realpath` · `sftp_list_dir` · `sftp_stat` · `sftp_download` · `sftp_upload` · `sftp_cancel_transfer`〔散文墓碑〕 · `sftp_mkdir` · `sftp_rename` · `sftp_delete` · `sftp_read_text_for_edit`〔散文墓碑〕 · `sftp_write_text` · `sftp_chmod`）已删 | — | — | 老面板删了；文件窗口的浏览 / 写 / 读文本走后端 `files-*`，上传 / 下载经通道开单（`transfer-upload` / `transfer-download`）、订阅 `transfer/<id>` 进度（`设计/60 §13b`）。池子的 Tauri 命令只剩 `sftp_copy`；〔第四波 S4〕它也随门禁 `f3-copy` 那一格退役删了 ⇒ 零条 |
-| 〔MIG-1 续〕列 tmux 会话两条命令（远端 · 本机）删了 | — | — | 界面经通道问那台后端 `tmux-list`（成品 `{installed, sessions}`，本机远端同一形） |
-| ~~`capture_remote_pane`~~ (B14-F60) | — | — | 〔C4e · 第四波 4C〕退役：预览窗经 `src/frontend/ui/tmux-control.ts::capturePane` 直接问那台机器的后端（`capture-pane`，成品 `{name, screen}`），monitor 那一跳只搬字节 |
+| `open_terminal_window` (B14-F41) | `{ command, rbindToken, ssh }` | `()` | 开一个终端窗口跑交来的成品（远端那一行由本机后端 `terminal-ssh` 渲）：接令牌握手前奏 → wt.exe/PowerShell；`ssh` ⇒ Windows 上先查 ssh.exe（缺 ⇒ Err，前端回退复制命令）。只经 `src/frontend/ui/terminal-open.ts` 调 |
+| `terminal_dial` | `{ origin }` | 机器事实 `{machine, saved, jump, prefer}` | 开终端那一问要的那一台（monitor 的机器表 ＋ 上次赢的那条，`dial_host::machine_facts`）；`<local>` ⇒ Err（本机不经 ssh） |
+| 池子那十二条（`sftp_realpath` · `sftp_list_dir` · `sftp_stat` · `sftp_download` · `sftp_upload` · `sftp_cancel_transfer`〔散文墓碑〕 · `sftp_mkdir` · `sftp_rename` · `sftp_delete` · `sftp_read_text_for_edit`〔散文墓碑〕 · `sftp_write_text` · `sftp_chmod`）已删 | — | — | 老面板删了；文件窗口的浏览 / 写 / 读文本走后端 `files-*`，上传 / 下载经通道开单（`transfer-upload` / `transfer-download`）、订阅 `transfer/<id>` 进度。池子的 Tauri 命令只剩 `sftp_copy`；它也随门禁 `f3-copy` 那一格退役删了 ⇒ 零条 |
+| 列 tmux 会话两条命令（远端 · 本机）删了 | — | — | 界面经通道问那台后端 `tmux-list`（成品 `{installed, sessions}`，本机远端同一形） |
+| ~~`capture_remote_pane`~~ (B14-F60) | — | — | 退役：预览窗经 `src/frontend/ui/tmux-control.ts::capturePane` 直接问那台机器的后端（`capture-pane`，成品 `{name, screen}`），monitor 那一跳只搬字节 |
 | `chan_cancel` (MIG-3b 续) | `{ id }` | `boolean`（那一问此刻在不在飞） | 撤掉 webview 那一跳上带编号的一问：路由器丢掉调用 ⇒ 补发 `cancel` 给后端（撤单先到也撤得到） |
-| 〔MIG-1 · ⑬〕端口转发那三条命令（起 · 停 · 列）删了 | — | — | 界面经通道问本机常驻后端 `forward-*`（`IPC-PROTOCOL.md` 那三节） |
-| 〔LOC1b · 第四波 4D〕历史全文搜索那三条命令（搜索 · 查索引状态 · 重建索引，issue #6）删了 | — | — | 本机搜索也经通道问本机后端 `history-search`（与远端同一条路，界面 `src/frontend/ui/views/history-search.ts`）；monitor 进程内那份索引一起没了 |
+| 端口转发那三条命令（起 · 停 · 列）删了 | — | — | 界面经通道问本机常驻后端 `forward-*`（`IPC-PROTOCOL.md` 那三节） |
+| 历史全文搜索那三条命令（搜索 · 查索引状态 · 重建索引，issue #6）删了 | — | — | 本机搜索也经通道问本机后端 `history-search`（与远端同一条路，界面 `src/frontend/ui/views/history-search.ts`）；monitor 进程内那份索引一起没了 |
 | `bring_terminal_to_front` | `{ sessionId }` | `()` | Tab ↗ / `Ctrl+\`` 跳焦 |
 | `bring_remote_terminal_to_front` (issue #18) | `{ sessionId }` | `()` | 远端 Tab ↗（按 ccm-rbind 标题缓存的 HWND 拉本地 ssh 窗口；未绑定则现扫一次兜底） |
 | `list_session_activity`〔散文墓碑〕 (issue #23) | — | `SessionActivityPayload[]` | 启动/F5 后拉一次红绿灯快照（增量走 `session-activity` 事件，双路收敛） |
 | `list_active_sessions`〔散文墓碑〕 (Batch5-F18) | — | `ActiveSessionPayload[] {session_id, cwd}` | frontend-ready 前拉一次本地活跃清单建骨架 Tab（按 (cwd,sid) 排序防 tab 栏洗牌；远端骨架走 `remote-session-added` 事件） |
 | `bring_monitor_to_front` (v2.4.0 issue #2) | — | `()` | watcher 反推用户在终端输入时，可选拉前 monitor 自身窗口（unminimize + show + set_focus） |
-| `aliases_read` (〔AL1d〕并进了原「终端集成」的状态 / 扫一份) | `{ origin, shell, rcPath? }` | `AliasListing` | 展开「别名」：清单 ＋ 启动文件候选（各带别名块现状）＋ 握手终端数 |
+| `aliases_read` (并进了原「终端集成」的状态 / 扫一份) | `{ origin, shell, rcPath? }` | `AliasListing` | 展开「别名」：清单 ＋ 启动文件候选（各带别名块现状）＋ 握手终端数 |
 | `aliases_block_render` | `{ origin, rcPath, withCc }` | `string` | [预览别名块] 按钮（方言按那份文件的扩展名定） |
-| `aliases_block_install` | `{ origin, rcPath, withCc }` | `()` | [装别名块] 按钮（写入 BEGIN/END 块，经那台后端；〔AL2〕本机远端同一条） |
+| `aliases_block_install` | `{ origin, rcPath, withCc }` | `()` | [装别名块] 按钮（写入 BEGIN/END 块，经那台后端；本机远端同一条） |
 | `aliases_block_remove` | `{ origin, rcPath }` | `()` | [卸载别名块] / 远端卡「卸载 ccm」按钮（删除 BEGIN/END 块，经那台后端） |
 | `cc_get_auto_launch` | — | `AutoLaunchConfig` | 设置面板加载 auto-launch 状态 |
 | `cc_set_auto_launch` | `{ enabled }` | `()` | 用户勾选/取消 auto-launch |
@@ -143,16 +143,16 @@ src/frontend/shell/
 | `open_log_dir` (v2.0.0+) | — | `()` | 用资源管理器打开 log 目录 |
 | `get_session_tasks` (v2.3.0 issue #11) | `{ sessionId }` | `TaskEntry[]` | Tab 创建时拉一次初始 task 列表（之后变更由 `task-update` 事件推） |
 | `get_data_paths` (v2.3.0 issue #3 A) | — | `DataPathsResponse` | 设置面板「数据存储」区打开时调一次，拉所有持久路径 + WebView2 + profile 备份 |
-| 〔C4d · 第四波 4B〕远端项目清单那一条已删 | — | — | fan-out 搬到前端（`src/frontend/ui/history-reads.ts::fetchRemoteProjects`：问 `list_remote_mcp_origins` 拿台名单，逐台经本机后端问） |
-〔步 12·C 09-20〕**这里原先有三行** —— `stream_remote_history_sessions`〔散文墓碑〕（〔C4d〕这个函数也删了：远端会话清单改由本机后端问） ·
-`stream_read_remote_session`〔散文墓碑〕（〔LOC1b〕函数也删了：本机远端合成一条） · `delete_remote_history_session`。三条都已**退役**：
+| 远端项目清单那一条已删 | — | — | fan-out 搬到前端（`src/frontend/ui/history-reads.ts::fetchRemoteProjects`：问 `list_remote_mcp_origins` 拿台名单，逐台经本机后端问） |
+**这里原先有三行** —— `stream_remote_history_sessions`〔散文墓碑〕（这个函数也删了：远端会话清单改由本机后端问） ·
+`stream_read_remote_session`〔散文墓碑〕（函数也删了：本机远端合成一条） · `delete_remote_history_session`。三条都已**退役**：
 它们并进了本机那三条同名能力，`origin` 成了参数（见下面「本机历史」那张表）。
 ⚠ 它们作为**函数**还在 `remote_history.rs` 里（合并后那条命令的远端分支），
 只是不再是 IPC 命令 —— 别把「函数还在」读成「命令还在」。
-| 〔AL2 · 第四波 4D〕远端装 / 卸别名块两条已删 | — | — | 并进上面 `aliases_block_install` / `aliases_block_remove`（带 `origin`，本机远端同一条）。〔MC1〕更早叫 `install_remote_ccm_helper`〔散文墓碑〕 |
-| `deploy_remote_backend` (F08c, SFTP) | `{ cfg }` | `String` | 设置面板「安装后端」：按远端 arch 选内嵌二进制 + build_id 版本门控 + 原子上传到固定落点 `~/.cc-monitor/bin/ccm`（〔E2〕它就是 ccm；已最新则跳过，那里是旧版三行入口就换掉）；返回人读结果，无 arch 等显式报错 |
-| `uninstall_remote_backend` (F08c, SFTP) | `{ cfg }` | `String` | 设置面板「卸载后端」：删远端固定落点 `~/.cc-monitor/bin/ccm`（〔E2〕它就是后端本身；机器仍启用会自动装回的提示） |
-| 〔MIG-1〕`~/.ssh/config` 导入那三条已删 | — | — | 搬进后端帧命令 `ssh-config-aliases` / `ssh-config-resolve` / `ssh-config-import`（`src/backend/dial/ssh_config.rs`），设置页经 `chan.call(<local>, …)` 问本机常驻后端（`src/frontend/ui/ssh-config-reads.ts`） |
+| 远端装 / 卸别名块两条已删 | — | — | 并进上面 `aliases_block_install` / `aliases_block_remove`（带 `origin`，本机远端同一条）。更早叫 `install_remote_ccm_helper`〔散文墓碑〕 |
+| `deploy_remote_backend` (F08c, SFTP) | `{ cfg }` | `String` | 设置面板「安装后端」：按远端 arch 选内嵌二进制 + build_id 版本门控 + 原子上传到固定落点 `~/.cc-monitor/bin/ccm`（它就是 ccm；已最新则跳过，那里是旧版三行入口就换掉）；返回人读结果，无 arch 等显式报错 |
+| `uninstall_remote_backend` (F08c, SFTP) | `{ cfg }` | `String` | 设置面板「卸载后端」：删远端固定落点 `~/.cc-monitor/bin/ccm`（它就是后端本身；机器仍启用会自动装回的提示） |
+| `~/.ssh/config` 导入那三条已删 | — | — | 搬进后端帧命令 `ssh-config-aliases` / `ssh-config-resolve` / `ssh-config-import`（`src/backend/dial/ssh_config.rs`），设置页经 `chan.call(<local>, …)` 问本机常驻后端（`src/frontend/ui/ssh-config-reads.ts`） |
 | `test_remote_connection` (issue #15) | `{ cfg }` | `ConnTestResult` | 「测试连接」：实连一次回 SSH ✓/✗ + 指纹 + 后端 hello |
 
 ## 事件
@@ -161,9 +161,9 @@ src/frontend/shell/
 
 | 常量 | 事件名 | payload | 时机 |
 |---|---|---|---|
-| （`chan/webview.rs::ITEMS_EVENT`） | `chan-items` | `{ sub, items }` | 〔CF2〕会话流的交格（原 `jsonl-line` / `jsonl-batch` 两个事件退役）；定向发给订阅所在的 webview |
+| （`chan/webview.rs::ITEMS_EVENT`） | `chan-items` | `{ sub, items }` | 会话流的交格（原 `jsonl-line` / `jsonl-batch` 两个事件退役）；定向发给订阅所在的 webview |
 | `SESSION_ENDED` | `session-ended` | `SessionEndedPayload` | sessions/<PID>.json 被删（session 退出） |
-| `SESSION_STARTED` (resume 复活) | `session-started` | `SessionStartedPayload {session_id, cwd, kind, name}` | 本地会话（重新）变活：本机后端宣告了它（〔LOC1b〕本机判活改由本机后端的帧来；宣告前后端已核过进程与 `procStart`）时 emit——session-ended 的对称面；前端 `tabs.reviveTab` 复活已归档本地 Tab（`/resume` 免 F5），无 Tab 时建骨架 |
+| `SESSION_STARTED` (resume 复活) | `session-started` | `SessionStartedPayload {session_id, cwd, kind, name}` | 本地会话（重新）变活：本机后端宣告了它（本机判活改由本机后端的帧来；宣告前后端已核过进程与 `procStart`）时 emit——session-ended 的对称面；前端 `tabs.reviveTab` 复活已归档本地 Tab（`/resume` 免 F5），无 Tab 时建骨架 |
 | `TASKS_UPDATE` (v2.3.0 issue #11) | `task-update` | `TasksUpdatePayload {sessionId, tasks}` | tasks/<sid>/ 内任何文件变更（debounce 100ms + dedup by sid） |
 | `SESSION_ACTIVITY` (issue #23) | `session-activity` | `SessionActivityPayload {session_id, status, waiting_for}` | sessions/<PID>.json 的官方 status 字段变化时（CLI 仅状态转换时重写文件，天然稀疏；红绿灯：busy=绿 idle/shell=红 waiting=黄） |
 | `REMOTE_HEALTH` (SS-F, issue #32/#33) | `remote-health` | `RemoteHealthPayload {origin, kind, message}` | 远端健康提示：后端管道拥塞丢帧（kind=`overflow`，#32）/ 版本不符（kind=`version`，#33）→ 前端 remote-health.ts 按 origin 节流弹 toast |
@@ -209,7 +209,7 @@ src/frontend/shell/
 `std::fs::rename` 在 Windows 上 dst 存在时失败（POSIX rename atomic overwrite 行为在 Windows 上没有）。MoveFileExW 是 Windows 原生原子替换 API，专门设计来实现"覆盖现有文件"语义。
 
 ### `profile_installer::atomic_write_string`〔散文墓碑〕 用 `ReplaceFileW` 而非 `MoveFileExW`
-〔RW1 · 第四波 2026-09-24〕**那个原语已删**：用户裁「只允许后端的文件管理部分写文件」也管本机 ⇒ `$PROFILE` / rc / 项目 `.mcp.json` 改经后端写（`user_files` → `files-put`）。下面这条「替换要保住 dst 的 explicit ACE」的性质跟着搬到了后端（`control/files_write.rs` 的 `swap_in`：Windows 上已在的目标就地覆盖写）。以下是原文：
+**那个原语已删**：用户裁「只允许后端的文件管理部分写文件」也管本机 ⇒ `$PROFILE` / rc / 项目 `.mcp.json` 改经后端写（`user_files` → `files-put`）。下面这条「替换要保住 dst 的 explicit ACE」的性质跟着搬到了后端（`control/files_write.rs` 的 `swap_in`：Windows 上已在的目标就地覆盖写）。以下是原文：
 `MoveFileExW(tmp, dst)` 用 tmp 的 ACL 覆盖 dst → 用户 explicit ACE 丢失（Documents 重定向到非默认盘的用户读不了自己的 profile）。**ReplaceFileW 专门设计来保留 dst 的 ACL/ADS/创建时间**。这是 Windows 文档明确推荐用于"替换配置文件"的 API。详 [doc/INVARIANTS § 4](../`src/doc/INVARIANTS.md`#4-profile-等用户文件写入--replacefilew--backup--写后校验)。
 
 ### `history::resume_impl` 用 `powershell.exe -NoExit -EncodedCommand`（v2.8.1 修复）
@@ -217,7 +217,7 @@ src/frontend/shell/
 
 改用系统自带 `powershell.exe -NoExit -EncodedCommand <base64>`：**不带 `-NoProfile`** → 加载 profile → 代理 / `cc` 生效；命令体 `if (Get-Command cc) { cc --resume <sid> } else { claude --resume <sid> }`（装了 wrapper 走 `cc`，没装回退 `claude`，回退也在加载了 profile 的真 PowerShell 里）；`-NoExit` 让 claude 退出后窗口保留且 `cc` 可继续用。命令经 `utils::powershell_encoded_command` 编码（UTF-16LE base64）透过 wt.exe / cmd 多层 shell（绕开引号 / `;` 分隔符），并对 `session_id` 做注入校验（仅 `[A-Za-z0-9_-]`，抽成可测试的 `build_resume_ps_command`）。 〔散文墓碑〕
 
-### ~~`session_map` 双触发（事件 + 2s 心跳）~~ 〔LOC1b · 第四波 4D〕退役
+### ~~`session_map` 双触发（事件 + 2s 心跳）~~ 退役
 monitor 不再自己判本机会话活不活：本机活会话表由本机常驻后端的 `session_added` / `session_removed` 帧喂（后端 pidfd 看守 ＋
 Windows 的死亡事件，RT1 F9 真机读数：强杀 claude 之后后端 1 ms 就醒）。这一节原来论证的「强杀时 pidfile 不删 ⇒ 要心跳兜底」
 那一形由后端的进程级看守接住，monitor 那条 2 s 心跳连同 notify 监听一起删了。

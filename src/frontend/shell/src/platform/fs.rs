@@ -23,7 +23,7 @@ use std::path::Path;
 ///
 /// 这是 `local_backend.rs::extract_embedded_to` 的注入参数：
 /// backend 那边只知道「写完要让它可执行」，不知道**这个平台上那句话怎么落**。
-// 〔GP1 · 第四波〕这里原来有 `make_private`〔散文墓碑〕（转发 `creds_core::perm::make_private`，把凭据文件收成只给本人）。
+// 这里原来有 `make_private`〔散文墓碑〕（转发 `creds_core::perm::make_private`，把凭据文件收成只给本人）。
 // 唯一的调用方是 monitor 那侧的凭据写口，那个写口随「本机那一份也交本机常驻后端写」删了 ⇒ 它零调用、删掉。
 // 收窄那条原语照旧只住 `creds_core::perm`，今天只有后端账号域那一份写口在用。
 
@@ -41,7 +41,7 @@ pub fn make_executable(p: &Path) -> Result<(), String> {
     Ok(())
 }
 
-/// 〔HX1 · 4D · 主会话裁 HX1 拍板项 4〕**monitor 建后端自家目录（`~/.cc-monitor` 与它底下几层）的那一个函数**：
+/// 〔主会话裁 HX1 拍板项 4〕**monitor 建后端自家目录（`~/.cc-monitor` 与它底下几层）的那一个函数**：
 /// 建的那一下就是只给本人（unix：`DirBuilder` 的 mode 在创建时生效，没有「先按 umask 建出来、再收窄」的那一段），
 /// 缺的中间几层一并这样建；**已在的不动**（那可能是用户自己设的）。别的平台照常建（那边不是 unix 权限位这一问）。
 ///
@@ -67,7 +67,7 @@ pub fn ensure_private_dir(dir: &Path) -> Result<(), String> {
     })
 }
 
-/// 〔P4 · 阶段 H〕这一趟 `open` 若是**新建**，新文件只给本人（unix：`mode(0o600)`，创建那一刻生效）；别的平台照常建。
+/// 这一趟 `open` 若是**新建**，新文件只给本人（unix：`mode(0o600)`，创建那一刻生效）；别的平台照常建。
 /// 调用方是 `local_backend_host.rs` 写监听口钥匙 / pid 记录的那两处（钥匙是那条回环口上唯一的门）。
 pub fn only_me_on_create(opts: &mut std::fs::OpenOptions) {
     #[cfg(unix)]
@@ -81,7 +81,7 @@ pub fn only_me_on_create(opts: &mut std::fs::OpenOptions) {
     }
 }
 
-/// 〔HX2 · 第四波 4D〕**monitor 自有状态文件的跨进程锁**：锁那份文件所在的**目录**（不是文件：文件每写一次就被原子挪换成新 inode）。
+/// **monitor 自有状态文件的跨进程锁**：锁那份文件所在的**目录**（不是文件：文件每写一次就被原子挪换成新 inode）。
 ///
 /// 守的要求：主会话 4D 追加「CFG1 把 `config.json` 收成单一写口 …… 两个 monitor 进程同写没有跨进程锁 —— 用你那一族同一套 `flock`
 /// （Windows 对应）把它也包上」。与后端那一份（`src/backend/platform/lock.rs::hold`）是**同一种锁**、两个 crate 各一份
@@ -194,18 +194,18 @@ impl Drop for DirLock {
     }
 }
 
-// 〔P4 · 阶段 H〕原住 `config.rs`（逐字）：monitor 自己的文件（config.json）的原子替换，两个平台臂。
+// 原住 `config.rs`（逐字）：monitor 自己的文件（config.json）的原子替换，两个平台臂。
 /// 把 src 原子替换到 dst。
 ///
-/// ⚠ 〔`K-H2a` 08-27〕**从私有改成 `pub(crate)`，理由不是「顺手」**：
-/// 〔GP1 · 第四波〕那个调用方（`creds_store::write_key`〔散文墓碑〕）随本机凭据文件的写者换成本机常驻后端一起删了；
+/// ⚠ **从私有改成 `pub(crate)`，理由不是「顺手」**：
+/// 那个调用方（`creds_store::write_key`〔散文墓碑〕）随本机凭据文件的写者换成本机常驻后端一起删了；
 /// 下面是它当年的理由，留作来历：它要一次原子替换，而它**不许自己写一个 `fs::rename`** ——
 /// `atomic_replace_registry` 按「`rename` / `MoveFileExW` 的**出现次数**」逐文件登记，
 /// 那张表不在 `K-H2a` 的写区。复用这一份 ⇒ 新文件里那两个字面量出现 **0** 次，
 /// 既不动那张表，也不给它挖洞。
 /// 选它（`MoveFileExW` 那套语义）而不是 `ReplaceFileW` 是**有理由的**：
 /// `INVARIANTS §4` 那条 ACL 保留只限定在**用户的**文件，而凭据文件与 `config.json` 同类
-/// ——**都是 monitor 自己的文件**（登记表里那两行逐字这么写的；〔P4〕住址今天是 `platform/fs.rs`）。
+/// ——**都是 monitor 自己的文件**（登记表里那两行逐字这么写的；住址今天是 `platform/fs.rs`）。
 /// std::fs::rename 在 Windows 上目标文件已存在时会失败（不像 POSIX 原子覆盖），
 /// 所以这里走 MoveFileExW(MOVEFILE_REPLACE_EXISTING)；非 Windows 走 std::fs::rename。
 #[cfg(windows)]

@@ -1,4 +1,4 @@
-/// ★ **backend 帧的消费分派不许有兜底臂**〔audit-0805 08-06〕。
+/// ★ **backend 帧的消费分派不许有兜底臂**。
 ///
 /// # 它钉的是「谁是被偶然守住的」那一类（第三例）
 ///
@@ -125,7 +125,7 @@ fn the_shared_stripper_keeps_the_dispatch_this_guard_must_scan() {
     );
 }
 
-/// 〔HOST · H7 · `99 §1` V139「流沿已有的后端链路回到 monitor」〕远端那条流的 `Tap` 臂把帧交 `session_tap`（origin = 那台），
+/// 〔「流沿已有的后端链路回到 monitor」〕远端那条流的 `Tap` 臂把帧交 `session_tap`（origin = 那台），
 /// 与本机那条流同一个口；monitor 生产段里交 tap 的地方恰好两处：远端这一臂 ＋ 本机吸收点。
 #[test]
 fn the_remote_stream_hands_tap_frames_to_the_session_tap_with_its_own_origin() {

@@ -34,11 +34,11 @@ struct ResumeSpec {
     session_id: String,
     #[serde(default)]
     launch_candidates: Vec<Option<String>>,
-    /// ⚠ **冻结兼容字段，不许改名**〔`S4b`〕—— 与 `wire.rs::Hello.claude_dir` 同族。
+    /// ⚠ **冻结兼容字段，不许改名**—— 与 `wire.rs::Hello.claude_dir` 同族。
     ///
     /// 它是 `--resolve` 的 **stdin 契约**（`rename_all = "camelCase"` ⇒ 线上是 `claudeDir`），
     /// 与仓外 aterm **冻结在 2026-07-18**。Rust 侧标识符改名 = 线上字段名改名
-    ///（除非再挂一条 `serde(rename)` —— 那是把一条契约拆成两个真相源），
+    ///（除非再挂一条 `serde(rename)` —— 那是把一条契约拆成两个源头），
     /// 所以 `S4b` 那轮「通用层标识符去 agent 名」**绕开它**，登记在
     /// `agent_locality_guard::AGENT_NAMED_WIRE_FIELDS`（带解锁条件）。
     ///
@@ -303,8 +303,8 @@ fn session_name_for(sid: &str, is_codex: bool) -> String {
 }
 
 /// 错误信封：`{code, message}` 一行紧凑 JSON。**纯**，抽出来是为了判得到
-/// —— 〔V126〕它是给 aterm 的跨仓承诺的一部分（`IPC-PROTOCOL §10`「`resolve`」跨仓承诺小节），
-/// 由 `resolve_query_tests.rs` 里带 `〔V126〕` 的那一族钉着。序列化失败兜底纯文本（同形）。
+/// —— 它是给 aterm 的跨仓承诺的一部分（`IPC-PROTOCOL §10`「`resolve`」跨仓承诺小节），
+/// 由 `resolve_query_tests.rs` 里带 `` 的那一族钉着。序列化失败兜底纯文本（同形）。
 fn error_envelope(code: &str, message: String) -> String {
     let err = ResolveError { code, message };
     match serde_json::to_string(&err) {
@@ -313,7 +313,7 @@ fn error_envelope(code: &str, message: String) -> String {
     }
 }
 
-/// 一次性那条的错误退出码。〔V126〕跨仓承诺的一格（aterm `runCatching` 按它认结构化失败）。
+/// 一次性那条的错误退出码。跨仓承诺的一格（aterm `runCatching` 按它认结构化失败）。
 const ERROR_EXIT: i32 = 2;
 
 /// 错误统一出口：stderr 写 `{code,message}` JSON（不污染 stdout wire）、返 [`ERROR_EXIT`]。

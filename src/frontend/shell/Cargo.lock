@@ -2319,6 +2319,9 @@ dependencies = [
 [[package]]
 name = "guard-core"
 version = "0.1.0"
+dependencies = [
+ "regex",
+]
 
 [[package]]
 name = "guillotiere"
@@ -3188,7 +3191,7 @@ dependencies = [
 
 [[package]]
 name = "monitor"
-version = "4.0.2"
+version = "4.0.3"
 dependencies = [
  "acct-core",
  "cc-monitor-filewin",

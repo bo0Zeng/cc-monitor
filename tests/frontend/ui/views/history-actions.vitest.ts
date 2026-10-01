@@ -72,7 +72,7 @@ function menuItem(text: string): HTMLButtonElement | undefined {
 describe("HistoryView 共享动作表 + 右键菜单 (F96 #62)", () => {
   beforeEach(() => {
     invokeMock.mockReset();
-    // 〔C4d〕改注解 / 上次账号那几问改走通道（问本机常驻后端）⇒ 经 chan-fake 译回旧名字再答。
+    // 改注解 / 上次账号那几问改走通道（问本机常驻后端）⇒ 经 chan-fake 译回旧名字再答。
     invokeMock.mockImplementation(withHistoryReads(launchRenderShim(() => Promise.resolve({ starred: true, hidden: false, customTitle: null }))));
     runNewRemote.mockClear();
     document.body.replaceChildren();
@@ -88,7 +88,7 @@ describe("HistoryView 共享动作表 + 右键菜单 (F96 #62)", () => {
     expect(call!).toMatchObject({ sessionId: "s1", patch: { starred: true } });
   });
 
-  // 〔CFG1 · 4D〕星标 / 改名 / 隐藏写失败要出声（E §3.3：从前只 `console.warn`，点了什么都没变、也不说）。
+  // 星标 / 改名 / 隐藏写失败要出声（E §3.3：从前只 `console.warn`，点了什么都没变、也不说）。
   //   守的要求：`INVARIANTS §12`「关键失败必须 …… 状态栏 toast」。期望标题从文案表取（表是对外文案的唯一来源）。
   it("〔CFG1〕星标 / 改名 / 隐藏写失败 ⇒ 各恰好一条 toast、标题是表里那句", async () => {
     const toast = vi.mocked(showActionFailureToast);
@@ -97,7 +97,7 @@ describe("HistoryView 共享动作表 + 右键菜单 (F96 #62)", () => {
       return undefined;
     });
     vi.spyOn(console, "warn").mockImplementation(() => {});
-    // 〔CFG1 × W5-UI 合并〕改名那一格原先靠 `window.prompt` 给新标题；W5-UI 之后改名走应用内 `askText`，要在对话框里答。
+    // 改名那一格原先靠 `window.prompt` 给新标题；W5-UI 之后改名走应用内 `askText`，要在对话框里答。
     const view = new HistoryView();
     for (const [label, key] of [
       ["标星", "history.star.failed"],
@@ -160,7 +160,7 @@ describe("HistoryView 共享动作表 + 右键菜单 (F96 #62)", () => {
     };
     invokeMock.mockImplementation(withHistoryReads(withAccountReads(launchRenderShim((cmd: string, args: unknown) => {
       // ★ 会话真的跑起来了 —— 两条行里只有一条带着我们那个 token。
-      //   〔C4a〕经通道问本机后端 `accounts-sessions`（原先是 E79 那条已退役的本机 Tauri 命令）。
+      // 经通道问本机后端 `accounts-sessions`（原先是 E79 那条已退役的本机 Tauri 命令）。
       if (isChanCall(cmd, args, "accounts-sessions")) {
         return Promise.resolve(
           linesReply([
@@ -190,7 +190,7 @@ describe("HistoryView 共享动作表 + 右键菜单 (F96 #62)", () => {
     //   所以起会话那一跳读到的很可能还是冷快照 —— 那是一条**已登记的诚实边界**，不是本条要量的东西。
     //   本条量的是「**说得出账号名时，那次拉起被记住了**」。
     const snap: AccountsState = {
-      origin: LOCAL_ORIGIN, // 〔C4b〕账号面的本机就是 `LOCAL_ORIGIN`（`"__local__"` 已退役）
+      origin: LOCAL_ORIGIN, // 账号面的本机就是 `LOCAL_ORIGIN`（`"__local__"` 已退役）
       available: true,
       oldBackend: false,
       error: null,
@@ -265,8 +265,8 @@ describe("HistoryView 共享动作表 + 右键菜单 (F96 #62)", () => {
     invalidateAccountsCache(); // fetchAccounts 有模块级缓存,别泄漏进同文件其它测试
   });
 
-  // 〔C4d · 第四波 4B〕BACKLOG E35：「留空恢复默认」要真的清掉标题 —— 清空传**空串**（缺格 / `null` 在后端 patch 里都是「不改」）。
-  //   守的要求：主会话 09-25 裁（`调研/第四波记录/C4d.md`「主会话裁」第 2 条）注解读写者换成本机常驻后端，patch 语义逐格照搬
+  // BACKLOG E35：「留空恢复默认」要真的清掉标题 —— 清空传**空串**（缺格 / `null` 在后端 patch 里都是「不改」）。
+  //   守的要求：主会话 09-25 裁（「主会话裁」第 2 条）注解读写者换成本机常驻后端，patch 语义逐格照搬
   //   monitor 那一份（`null` = 不改）⇒ 界面这一侧要传对的那一个值。
   it("重命名留空 ⇒ 交的是空串（清掉），不是 null（后端当「不改」）", async () => {
     const view = new HistoryView();
@@ -274,7 +274,7 @@ describe("HistoryView 共享动作表 + 右键菜单 (F96 #62)", () => {
     row.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 5, clientY: 5 }));
     menuItem("重命名")!.click();
     await Promise.resolve();
-    // 〔W5-UI〕问名字走应用内对话框（初值 = 现名）。
+    // 问名字走应用内对话框（初值 = 现名）。
     expect(document.querySelector<HTMLInputElement>('[role="dialog"] input')!.value).toBe("旧名");
     await answerAskText("   ");
     const call = historyCalls(invokeMock.mock.calls, "update_history_metadata")[0];
@@ -303,10 +303,10 @@ describe("HistoryView 共享动作表 + 右键菜单 (F96 #62)", () => {
     await answerAskDialog(true);
     const call = historyCalls(invokeMock.mock.calls, "delete_history_session")[0];
     expect(call).toBeTruthy();
-    // 🔴 〔步 12·C 09-20〕`origin` 是**新加的必填项**，而且本机要逐字送 `"<local>"`。
+    // 🔴 `origin` 是**新加的必填项**，而且本机要逐字送 `"<local>"`。
     //    ⚠ `toMatchObject` 是**子集**匹配 ⇒ 光靠它，调用点漏送 origin 这一条照样绿。
     //      所以下面那格单独把 origin 断死（这一条正是本仓治过的「子集匹配假绿」那一形）。
-    // 〔MIG-3b〕经通道直说那台后端 `files-delete-session`：只交 sid（落点由后端按 sid 找），路径不过线。
+    // 经通道直说那台后端 `files-delete-session`：只交 sid（落点由后端按 sid 找），路径不过线。
     expect(call!).toMatchObject({ sessionId: "s1" });
     expect(
       (call! as { origin?: unknown }).origin,
@@ -323,7 +323,7 @@ describe("HistoryView 共享动作表 + 右键菜单 (F96 #62)", () => {
     expect(historyCalls(invokeMock.mock.calls, "delete_history_session").length > 0).toBe(false);
   });
 
-  // 〔FW1 · 第四波 4D · 主会话裁 D-e〕删会话前看活不活：活着（条目说活 / tab 栏里活）⇒ 多问一句；说不清（`isLive: null`）⇒ 也多问；
+  // 删会话前看活不活：活着（条目说活 / tab 栏里活）⇒ 多问一句；说不清（`isLive: null`）⇒ 也多问；
   //   确定不活 ⇒ 照原来那一问。多问那句答「不」⇒ 一趟 delete 都不发。异源：问了什么由文案表现取、发没发由 invoke 记录判。
   it("〔FW1〕删会话前看活不活：活 / 说不清多问一句，不活照旧；多问那句答不 ⇒ 不删", async () => {
     // 〔W5-UI 之后〕问的是应用内对话框：当用户读正文、点真按钮（`ask-dialog-driver`），答案异步到，与真 app 同形。
@@ -366,7 +366,7 @@ describe("HistoryView 共享动作表 + 右键菜单 (F96 #62)", () => {
     expect(inner.isOpen).toBe(true); // 视图没被误关
   });
 
-  // 🔴 〔步 12·C 09-20〕标题里的命令名跟上：`delete_remote_history_session` 已退役，〔散文墓碑〕
+  // 🔴 标题里的命令名跟上：`delete_remote_history_session` 已退役，〔散文墓碑〕
   //    远端删除走的是**同一条** `delete_history_session`，只是 `origin` 是那台机器。
   it("删除远端项目最后一个会话 → delete_history_session(origin=hostA) + remoteCache 同步移除（F76 护栏）", async () => {
     const view = new HistoryView();
@@ -400,7 +400,7 @@ describe("HistoryView 共享动作表 + 右键菜单 (F96 #62)", () => {
     ).toEqual([]);
     // F76 承重不变式：删空的远端项目从 remoteCache 同步移除，否则 TTL 内重开会拼回幽灵
     const cache = (view as unknown as { remoteCache: { projects: unknown[] } }).remoteCache;
-    // 〔合并 MIG-3b × MIG-2〕删会话经通道（`session-writes.ts::deleteSession`）、替身又多包了一层起会话翻译 ⇒ 应答晚几拍到；等它落定再判。
+    // 删会话经通道（`session-writes.ts::deleteSession`）、替身又多包了一层起会话翻译 ⇒ 应答晚几拍到；等它落定再判。
     await vi.waitFor(() => expect(cache.projects.length).toBe(0));
   });
 });
@@ -438,7 +438,7 @@ describe("K-R46：历史页 resume 的 tmux 名（行为）", () => {
     return call!;
   }
 
-  /** 〔FIX4 · `设计/90 §3` J7〕让本机后端答铸名那一问（`tmux-name-mint`）：名字 ⇒ 它铸了这个；`null` ⇒ 问不到（不知道）。
+  /** 让本机后端答铸名那一问（`tmux-name-mint`）：名字 ⇒ 它铸了这个；`null` ⇒ 问不到（不知道）。
    *  派生 ＋ 避让的规则只在后端（逐格归 `tests/backend/control/ccm/plan_tests.rs`）⇒ 替身写死它铸了什么，不重抄规则。 */
   function serveLocalMint(minted: string | null): void {
     invokeMock.mockImplementation(withHistoryReads(launchRenderShim((cmd: string) =>
@@ -484,7 +484,7 @@ describe("K-R46：历史页 resume 的 tmux 名（行为）", () => {
 
   it("★★ KR96D3：问铸名时只交 cwd（名字读得出是哪个项目，**一个 sid 片段都进不去**）；sid 仍在载荷里", async () => {
     // 夹具的 sid 是 `s1`、cwd 是 `/p`。用户 `R55` 裁定一逐字：「**要是可读的名字 / 不要id**」。
-    // 〔FIX4 · J7〕名字由本机后端从 cwd 派生 ⇒ 前端这一侧能钉的是「交出去的只有 cwd」—— 把 sid 一起交过去 ⇒ 这一行当场红。
+    // 名字由本机后端从 cwd 派生 ⇒ 前端这一侧能钉的是「交出去的只有 cwd」—— 把 sid 一起交过去 ⇒ 这一行当场红。
     serveLocalMint("p-cc");
     await clickResume();
     expect(tmuxMintCalls(invokeMock.mock.calls)).toEqual([[LOCAL_ORIGIN, { cwd: "/p" }]]);

@@ -1,5 +1,5 @@
 #!/bin/bash
-# U9a「保住清单差分对拍」：把主计划 S10 里那七条散文式的「U9 之后必须保住」，
+# U9a「保住清单差分对拍」：把里那七条散文式的「U9 之后必须保住」，
 # 变成会红的判据。跑的是**真 `ccm`**（= 后端二进制本体），不是 shim、不是手搓字符串。
 #
 # ★★ `K-R48` 第二拍（09-11）：被测对象从那份 bash `ccm` 换成**后端二进制**。
@@ -37,7 +37,7 @@
 #   只命中 ccm 自己与计划文档）。它是「真正非 shell 不可」的那一条，U9b 之后也必须还在。
 # - **C 组 `--ccm-probe` 契约**：`src/frontend/shell/src/ccm_probe.rs::parse_probe_output` 靠**字面** `name=ccm`
 #   判「装没装」，`src/backend/control/launch_render/ccm_invocation.rs::CLI_REQUIRED_CAPS` 靠 `capabilities=` 决定
-#   走 CLI 渲染器还是兜底（〔LR1〕TS 那份随 TS 渲染器删了，清单只剩 Rust 这一份）。两处都只对**手写 fixture** 测过。
+#   走 CLI 渲染器还是兜底（TS 那份随 TS 渲染器删了，清单只剩 Rust 这一份）。两处都只对**手写 fixture** 测过。
 #   ⚠ 精确说法（审计订正）：真脚本的 probe 输出**并非全无覆盖** —— `cc-spawn-uplift` 主流程
 #   不设 `CCM_BIN`，于是 `cc-spawn` 解析到真 `ccm` 并对 `detach`/`tmux-size` 两项
 #   fail-closed，那 21 条间接盖住了这两项。**零覆盖的是**：首行 `name=ccm` · `version=` ·
@@ -64,7 +64,7 @@ CCMDIR="$(mktemp -d)"
 ln -s "$CCM_NATIVE" "$CCMDIR/ccm"
 CCM="$CCMDIR/ccm"
 
-# ⚠ 〔`K-R48` 第二拍 09-11〕**原来这里有一道 `jq` 的 fail-closed 硬依赖闸，本轮删了。**
+# ⚠ **原来这里有一道 `jq` 的 fail-closed 硬依赖闸，本轮删了。**
 #   它守的是 `_acct_prefix`（把夹具 manifest 翻成 `--list-accounts` 帧形状喂给假后端）——
 #   而那个函数与它服务的那几组断言本轮一起删了（同一个进程之下没有「帧」这回事）。
 #   留着它就是一句假话：本文件今天**一处都不用 `jq`**（现打 `grep -c jq` 自己看）。
@@ -82,13 +82,13 @@ CWD="$W/proj"
 # 其余（set-option 等）一律吞掉回 0。PATH 前置 ⇒ ccm 与它起的 poller 都只看得到这份。
 cat > "$W/bin/tmux" <<'SHIM'
 #!/bin/sh
-[ "$1" = "-u" ] && shift   # 〔SH1 · §49〕配方里那一发带 `-u`（UTF-8 客户端）
+[ "$1" = "-u" ] && shift   # 〔§49〕配方里那一发带 `-u`（UTF-8 客户端）
 if [ "$1" = "display-message" ]; then printf 'faux-sess\n'; fi
 exit 0
 SHIM
 chmod +x "$W/bin/tmux"
 
-# ⚠ 〔`K-R48` 第二拍 09-11〕**这里原来有一整块假后端脚手架，本轮整块删了。**
+# ⚠ **这里原来有一整块假后端脚手架，本轮整块删了。**
 #   它存在的理由逐字是「本套件必须让 ccm『查得到 backend』，否则每一条真跑都会被身份前置检查挡下」
 #   （`U-NP④` 08-14）＋「账号解析改成问后端之后，每一条真跑都会先问它一次」（`K-C1` 08-24）。
 #   **这两条今天都没有指称对象了**：敲的那个命令**就是**后端 ——「查得到后端」不是一个问题，
@@ -130,7 +130,7 @@ ccm_keys() { grep -E "$CCM_KEYS" | LC_ALL=C sort | tr '\n' '|'; }
 # 用文件重定向而非 `$(...)`：claude 那条路会留一个身份回填 poller 在后台，
 # 命令替换会等它关掉 stdout（多等 1 秒/次）。
 actual_env() {
-  # 〔V151〕调用方交来的是 `[交给 agent 的…] -- [ccm 的…]`（恒带 `--`），本条往 ccm 那一半末尾补自己的选项。
+  # 调用方交来的是 `[交给 agent 的…] -- [ccm 的…]`（恒带 `--`），本条往 ccm 那一半末尾补自己的选项。
   base_env "$CCM" "$@" --cwd "$CWD" --launcher env > "$W/a.out" 2>&1
   ccm_keys < "$W/a.out"
 }
@@ -156,24 +156,24 @@ echo "===== A 组：--ccm-print 说的 == 真跑做的 ====="
 pair "codex（CC_BUS_ID 派生）"            -- --ccm-agent codex
 pair "claude（嵌套 env 清理）"             -- --ccm-agent claude
 pair "claude + --account b"               -- --ccm-agent claude --account b
-# 〔AL3 · V138〕`--model` 交给 agent 了（启动器是 `env` 时它会被 env 当选项拒）⇒ 两格换成「账号 × codex」与「透传不改环境」。
+# `--model` 交给 agent 了（启动器是 `env` 时它会被 env 当选项拒）⇒ 两格换成「账号 × codex」与「透传不改环境」。
 pair "codex + --account b"                -- --ccm-agent codex --account b
 pair "claude + --account b + 透传（交给 agent 的词不改环境）" AL3_PASSTHRU=1 -- --ccm-agent claude --account b
 
 # `--base` 要有意义，基础环境里必须**先有**一个 CLAUDE_CONFIG_DIR 让它去 unset。
-# 〔V138〕从前靠再带一个 `--model` 撑住受控键集合，今天换成 codex（它留着 CC_BUS_ID 与嵌套标记）：`claude + --base` 单独跑的话，受控键集合会被清成**空集**
+# 从前靠再带一个 `--model` 撑住受控键集合，今天换成 codex（它留着 CC_BUS_ID 与嵌套标记）：`claude + --base` 单独跑的话，受控键集合会被清成**空集**
 # （config_dir 被 unset、四个嵌套标记被 unset、codex 专属的 CC_BUS_ID 又不适用）⇒
 # 差分退化成 `"" == ""`。上面那条自检就是逮到这个的（第一次跑当场红）。
 BASE_EXTRA=(CLAUDE_CONFIG_DIR="$W/acct-z")
 pair "codex + --base（#75 逃生口）" -- --ccm-agent codex --base
 BASE_EXTRA=()
 
-# ⚠ 〔`K-R48` 第二拍 09-11〕**`A″` 组 7 条整组删了**（判词 `N`，住 `tests/evidence/K-R48-356-verdicts.tsv`
+# ⚠ **`A″` 组 7 条整组删了**（判词 `N`，住 `tests/evidence/K-R48-356-verdicts.tsv`
 #   第 297–303 行）。它问的是「`--account b` 拿到的 `configDir` **来自哪一条路**」，
 #   而它的夹具要害逐字是「**backend 与 manifest 必须答不同的目录**」——
 #   同一个进程之下两者**是同一件事**，这个夹具造不出来了。
 #   ⚠ 「值真的跟着账号表走」这一半**没丢**：backend 侧 `control::ccm` 的
-#   `the_account_table_has_exactly_one_source` 钉着「账号表只有一处真相源」。
+#   `the_account_table_has_exactly_one_source` 钉着「账号表只有一处源头」。
 
 echo
 echo "===== A′ 组：print↔exec 的 **argv** 一致（A 组只比 env，且六格全是 new）====="
@@ -199,7 +199,7 @@ chmod +x "$W/bin/argvstub"
 
 # 真跑：`--launcher argvstub` ⇒ 最终 `exec argvstub …` ⇒ stdout 就是**真实** argv。
 actual_argv() {
-  # 〔V138〕位置动作取消，`--resume` 在哪个位置都原样交给 agent；`"$@"` 仍排在前面（原顺序即交出去的顺序）。
+  # 位置动作取消，`--resume` 在哪个位置都原样交给 agent；`"$@"` 仍排在前面（原顺序即交出去的顺序）。
   base_env "$CCM" "$@" --cwd "$CWD" --launcher "$W/bin/argvstub" > "$W/aa.out" 2>&1
   grep '^ARGV|' "$W/aa.out" | head -1
 }
@@ -216,10 +216,10 @@ pair_argv() { # pair_argv <标签> <flags…>
   ck "A′ · 真跑确实产出了 argv（差分自检）：$label" "yes" "$([ -n "$a" ] && echo yes || echo no)"
   ck "A′ · print↔exec argv 一致：$label" "$a" "$(predicted_argv "$@")"
 }
-pair_argv "resume（V138：--resume 原样交给 agent）" --resume abc-123 -- --ccm-agent claude
+pair_argv "resume（--resume 原样交给 agent）" --resume abc-123 -- --ccm-agent claude
 pair_argv "resume + --model（交给 agent 的词不许只落一边）" --resume abc-123 --model opus -- --ccm-agent claude
 pair_argv "new（对照组：证明差分不是只对 resume 有效）"            -- --ccm-agent claude
-# ⚠ 〔`K-R48` 第二拍 09-11〕**`A′d` / `A′e` 共 13 条整组删了**（判词 `N`，verdicts 第 310–322 行）。
+# ⚠ **`A′d` / `A′e` 共 13 条整组删了**（判词 `N`，verdicts 第 310–322 行）。
 #   它们量的是「backend 在位/不在位时 argv 从哪来」「不给 `CCM_BACKEND_BIN` 也找得到部署落点」
 #   「后端答不出 `--resolve` 时落回本地那条」—— **全是「ccm 去问另一个进程」这件事的形状**。
 #   一个后端之后没有谁要去找谁：`resume` 那一问在进程内直接答。
@@ -244,7 +244,7 @@ ck "--account b 真跑注入其 configDir" "CLAUDE_CONFIG_DIR=$W/acct-b" \
    "$(actual_env -- --ccm-agent claude --account b | tr '|' '\n' | grep '^CLAUDE_CONFIG_DIR=')"
 # `--model` 与 `--base` 原先**只有差分**，两边一起坏掉时全绿（审计变异 M6/M7 实证）。
 # §33a 铁律 3 要求每条保住项都配一条绝对断言 —— 这两条就是补上的那两条。
-# 〔V138〕`--model` 不再 export `ANTHROPIC_MODEL`，原样交给 agent。
+# `--model` 不再 export `ANTHROPIC_MODEL`，原样交给 agent。
 ck "--model opus 真跑原样交给 agent" "ARGV|--model opus" \
    "$(actual_argv --model opus -- --ccm-agent claude)"
 # 继承值刻意用 **b**（≠ manifest 的默认号 z）：这样下面「不带 --base 时它还在」
@@ -292,14 +292,14 @@ ck "首行逐字 name=ccm（ccm_probe.rs::parse_probe_output 的判活依据）"
 ck "有 version= 行" "1" "$(printf '%s\n' "$PROBE" | grep -c '^version=')"
 CAPS="$(printf '%s\n' "$PROBE" | sed -n 's/^capabilities=//p' | tr ',' '\n')"
 # 渲染器要求的能力从**源码里抽**，不手抄——手抄一份等于又造一个双写点。
-# 〔LR1 · U8c-3〕源从 TS `src/launch-render-cli.ts`（已删）换成生产那一份 Rust
+# 源从 TS `src/launch-render-cli.ts`（已删）换成生产那一份 Rust
 # `ccm_invocation.rs`：从 `pub const CLI_REQUIRED_CAPS` 那一行抽到 `];`，收引号串 ——
 # 不认行形（`rustfmt` 折不折行都抽得到）。
 REQ_CAPS="$(sed -n '/^pub const CLI_REQUIRED_CAPS: /,/\];/p' "$REPO/src/backend/control/launch_render/ccm_invocation.rs" \
            | grep -o '"[^"]*"' | tr -d '"')"
 REQ_N="$(printf '%s\n' "$REQ_CAPS" | grep -c .)"
 # ★ 抽取器自检：抽空了的话下面那条"逐个都在"会**零命中零失败**地变绿。
-# 〔LR1〕由「≥5」改成**相等**：Rust 那份清单增删一项 ⇒ 这里红，回来改数（强制触碰）；
+# 由「≥5」改成**相等**：Rust 那份清单增删一项 ⇒ 这里红，回来改数（强制触碰）；
 # 抽法坏了（抽成 0 或把别的引号串也收进来）同样红。
 ck "抽取器自检：CLI_REQUIRED_CAPS 抽到恰好 7 项（实得 $REQ_N）" "7" "$REQ_N"
 MISSING=""
@@ -312,7 +312,7 @@ ck "capabilities= 覆盖渲染器全部 CLI_REQUIRED_CAPS（⊇，不是 ==）" 
 ck "agents= 行列出 claude 与 codex" "1" \
    "$(printf '%s\n' "$PROBE" | grep -c '^agents=claude,codex$')"
 
-# ── 🔴 〔`K-R70` 09-12〕**问一份真的二进制「你是哪一次构建」** ────────────────
+# ── 🔴 **问一份真的二进制「你是哪一次构建」** ────────────────
 #
 # 这三格是本件唯一**真跑一份编出来的二进制**的判据（上面 Rust 侧那几条跑的是测试壳）。
 # 题面（`K-R68` 摸底 · `DECISIONS.md#R26` 裁定零）：在此之前，后端的身份只能去读它
@@ -321,8 +321,8 @@ ck "agents= 行列出 claude 与 codex" "1" \
 #
 # ⚠ **左值取自源码那一处唯一住址，不手抄** —— 手抄一个 `p2f-…` 进来，
 #   下次 bump 时这一格会以「假红」的形式提醒错人（而且它测的会变成「我抄对了没有」）。
-# 🔴 〔步 9 · 09-19〕住址从 `main.rs` 改成 `lib.rs`，认的那一行也从 `const` 变成
-#    `pub const` —— `BUILD_ID` 按 `设计/00 §1.5.4` 前置 2 搬进后端库面（in-process
+# 🔴 住址从 `main.rs` 改成 `lib.rs`，认的那一行也从 `const` 变成
+#    `pub const` —— `BUILD_ID` 按前置 2 搬进后端库面（in-process
 #    那条路没有那个 `main.rs`）。⚠ 两样都要改：只改文件名会抠出空串，而上面那条
 #    抽取器自检正是为此而立（它当场红了，没让下面两格零命中地绿）。
 SRC_BUILD_ID="$(sed -n 's/^pub const BUILD_ID: &str = "\([^"]*\)";$/\1/p' \
@@ -337,7 +337,7 @@ ck "build= 与 version= 不是同一个值（前者答『你是谁』，后者�
    "$([ "$(printf '%s\n' "$PROBE" | sed -n 's/^build=//p')" = \
        "$(printf '%s\n' "$PROBE" | sed -n 's/^version=//p')" ] && echo yes || echo no)"
 
-# ── 〔`K-R61` 09-11〕**申报与兑现要一起量** ──────────────────────────────────
+# ── **申报与兑现要一起量** ──────────────────────────────────
 # monitor 侧 `history.rs::RELAY_KEEPS_THE_OLD_PATH` 的退役条件点名的就是这个 token。
 # 它先前的形状是「能力在、声明不在」：容器路真的转发 `ANTHROPIC_BASE_URL`，
 # 而 `capabilities=` 里一个 token 都没声明它 ⇒ 那条降级理由挡的是我们自己做到的事。
@@ -355,7 +355,7 @@ NORELAY_PRINT="$(base_env "$CCM" -- --ccm-print --ccm-tmux=r61-caps --cwd "$CWD"
 ck "反空真：不设中转地址时那一串里没有 ANTHROPIC_BASE_URL" "0" \
    "$(printf '%s\n' "$NORELAY_PRINT" | grep -c 'ANTHROPIC_BASE_URL')"
 
-# ⚠ 〔`K-R48` 第二拍 09-11〕**`A′f`(6) · `A′g`(2) · `A′h`(5) 共 13 条整组删了**
+# ⚠ **`A′f`(6) · `A′g`(2) · `A′h`(5) 共 13 条整组删了**
 #   （verdicts 第 344–356 行；`A′g` 判 `M/rust`，其余判 `N`）。
 #   · `A′f`：backend hang / garbage / broken 三种坏法的兜底与 `timeout 3` —— 超时与降级都是**跨进程调用的形状**。
 #   · `A′g`：「后端回的命令串里的 `*` 不许被 cwd 的文件名改写、`$(…)` 不许被执行」——

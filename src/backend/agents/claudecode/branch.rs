@@ -1,4 +1,4 @@
-//! 〔THIN〕**会话分叉的记录变换 ＋ 按 sid 找那份会话文件** —— Claude 记录格式的知识，住它的适配层（`设计/00 §1.6.4` 组 3 ·
+//! **会话分叉的记录变换 ＋ 按 sid 找那份会话文件** —— Claude 记录格式的知识，住它的适配层（组 3 ·
 //! `§1.2`「共享 crate 只放契约」）。从前是共享 crate `branch-core`（G1 立：当时 monitor 本机分叉也要算这一段）；本机分叉改问本机后端
 //! 之后 monitor 零引用，它只剩后端用 ⇒ 收进这里。通用层（`control/fork_write.rs` · `observe/history_query.rs`）经注册表那两格够它
 //! （`RecordFace.find_session` · `.branch` → `agents::find_session_file` · `agents::build_branch_records`），不直呼 `agents::claudecode::`。
@@ -123,9 +123,9 @@ use std::path::{Path, PathBuf};
 /// 而它们不是可分叉的会话 —— 同一件事的另一半是上面那条 sidechain 判据。
 pub(crate) const SESSION_LOOKUP_DEPTH: usize = 2;
 
-// sid 的合法形状：〔DUP1〕规则只有一份，住 `shell_quote_core::session_id_ok`（1..=64 位 · 首字符 ASCII 字母数字 · 其余 `[A-Za-z0-9-]`）。
+// sid 的合法形状：规则只有一份，住 `shell_quote_core::session_id_ok`（1..=64 位 · 首字符 ASCII 字母数字 · 其余 `[A-Za-z0-9-]`）。
 //   它挡掉 `..`、`/`、`\` 与任何能拼出别处路径的字符（`src/doc/INVARIANTS.md` §41.6 三条收窄里的第 3 条）。
-//   〔THIN〕从前这里再导出成 `is_plain_sid`〔散文墓碑〕好让两侧调用方一个不动；收进后端之后调用方直呼那一条。
+// 从前这里再导出成 `is_plain_sid`〔散文墓碑〕好让两侧调用方一个不动；收进后端之后调用方直呼那一条。
 use shell_quote_core::session_id_ok;
 
 /// **唯一的一份「找文件」**：在记录树 `records_root` 下按 sid 找那份 `<sid>.jsonl`。

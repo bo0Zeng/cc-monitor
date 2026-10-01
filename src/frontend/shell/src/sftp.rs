@@ -1,32 +1,32 @@
 //! SS-D：远端**自部署**的业务那一半（issue #29 自动部署 F08 · 手动安装 / 卸载 · `ccm` 入口）＋ 别名块的规划。
 //!
-//! 〔SR1b〕执行那一半（SFTP）不在本模块：经本机常驻后端的 `files` 链路（见下「本模块手里已经没有 SFTP 了」）。
+//! 执行那一半（SFTP）不在本模块：经本机常驻后端的 `files` 链路（见下「本模块手里已经没有 SFTP 了」）。
 //! 〔墓碑 —— 从前这里逐字「复用 `ssh_source::connect_session` 的全套 host-key 指纹校验 + publickey/agent 鉴权，
 //!  在一条已鉴权的 russh 连接上开 SFTP 子系统」—— 那条进程内拨号随 SR1b 删了。〕
 //!
 //! ## 只读铁律豁免（INVARIANT §1 / 账本 SS-G）—— 穷举登记见 `src/doc/INVARIANTS.md §1`
 //! cc-monitor 对远端的写入均**用户显式触发**，各自独立路径守卫、绝不混用：
 //! - **F08**：自部署后端二进制到 `~/.cc-monitor/bin/`（非用户数据、幂等、版本门控）。
-//! - **F11**：用户**主动**删除远端会话 jsonl。〔RW1 · 第四波 09-24〕**已不在本模块**：经远端后端的
+//! - **F11**：用户**主动**删除远端会话 jsonl。**已不在本模块**：经远端后端的
 //!   `files-delete-session`（只收 sid）删，从前那道 SFTP 直删与它的结构守卫〔散文墓碑〕走了。
-//! - **F89a**：用户**显式**增/改/删远端**项目** `.mcp.json`。〔RW1 · 第四波 09-24〕**写已不在本模块**；
-//!   〔MIG-3a〕今天由那台后端自己算、自己写（帧命令 `mcp-server-put` / `-remove`，`mcp_edit.rs::project_root` 守落点）。
+//! - **F89a**：用户**显式**增/改/删远端**项目** `.mcp.json`。**写已不在本模块**；
+//! 今天由那台后端自己算、自己写（帧命令 `mcp-server-put` / `-remove`，`mcp_edit.rs::project_root` 守落点）。
 //!   **SS-14**：写面**只** `.mcp.json`，非 Claude 会话数据。
-//! - **F10**：别名块装/卸——〔AL2 · 第四波 4D〕今天是 `lib.rs` 的 `aliases_block_install` / `aliases_block_remove`（带 `origin`，本机远端同一条）
-//!   （〔MC1〕从前这一对叫 `install_remote_ccm_helper`〔散文墓碑〕/ `uninstall_…`，推入口那一半并进了 [`deploy_remote_backend`]）
+//! - **F10**：别名块装/卸——今天是 `lib.rs` 的 `aliases_block_install` / `aliases_block_remove`（带 `origin`，本机远端同一条）
+//!   （从前这一对叫 `install_remote_ccm_helper`〔散文墓碑〕/ `uninstall_…`，推入口那一半并进了 [`deploy_remote_backend`]）
 //!   （BEGIN/END 块 + 备份 + 写后校验回滚）；本机 profile 写在 `profile_installer`。（batch20 审计修：原「非远端」措辞误——本模块确写远端 `~/.bashrc`。）
-//!   〔RW1 · 第四波 09-24〕**落盘已不在本模块**：经那台后端读改写（`user_files`）；规划那一半
-//!   （`merge_profile_block` / `strip_profile_block`）〔W5-ALIAS〕住 `profile_installer`。
-//! - **F50**：追加公钥到远端 `~/.ssh/authorized_keys`〔MIG-3b 续〕今天是本机常驻后端的帧命令 `pubkey-push`（那台后端在就经它写 · 不在就一次 exec；不在本模块，登记于此备查）。
+//! **落盘已不在本模块**：经那台后端读改写（`user_files`）；规划那一半
+//!   （`merge_profile_block` / `strip_profile_block`）住 `profile_installer`。
+//! - **F50**：追加公钥到远端 `~/.ssh/authorized_keys`今天是本机常驻后端的帧命令 `pubkey-push`（那台后端在就经它写 · 不在就一次 exec；不在本模块，登记于此备查）。
 //!
 //! 原子写（EXCL 临时件 → 旧目标先**改名成 `.bak`**（不是删）→ 上位 → 清 `.bak`）与它的来历住后端
 //! `dial/sftp.rs::put_atomic`（F89a 审计后加固 · DN-7 订正「删旧」那句 · setstat 截断事故）。
 //!
-//! # 〔SR1b · 2026-09-24〕**本模块手里已经没有 SFTP 了**
+//! # **本模块手里已经没有 SFTP 了**
 //!
-//! 用户 V89「SFTP 进本机常驻后端，只写暂存区」：SFTP 客户端住本机常驻后端（`src/backend/dial/sftp.rs`，
+//! 用户「SFTP 进本机常驻后端，只写暂存区」：SFTP 客户端住本机常驻后端（`src/backend/dial/sftp.rs`，
 //! 与其它 SSH 同一条连接），**远端写只许两处**（`~/.cc-monitor/staging/` · `~/.cc-monitor/bin/`）。
-//! 〔MIG-3b · 4d-lanes 子步 1〕**部署判定也不在本模块了**：该不该换 · 换成哪一格 · 落点那一份是谁由本机常驻后端出计划
+//! **部署判定也不在本模块了**：该不该换 · 换成哪一格 · 落点那一份是谁由本机常驻后端出计划
 //! （帧命令 `deploy-plan`，本体 `src/backend/control/deploy_plan.rs`，判定住后端那一份、两侧对上的形状住契约 crate `deploy-contract`）；
 //! 本模块只**照计划放字节**（取这一版带着的那一格 · 身份戳自检 · mkdir · 原子上传 ＋ 读回判定 · 删旧落点），
 //! 执行经 [`crate::dial_host::RemoteFs`]（本机后端那条 `files` 链路的一问一答）。〔墓碑 —— 从前本模块自己开 SFTP：`connect_sftp`〔散文墓碑〕在一条
@@ -34,7 +34,7 @@
 //! 那段序列与它的两条事故教训（先备份不删旧 · **绝不** rename 之后 setstat 兜底 chmod）逐字搬去了后端
 //! `dial/sftp.rs::put_atomic` 的头注。〕
 //! ⇒ 落点变了一格：`ccm` 入口从 `~/.local/bin/ccm` 挪到 **`~/.cc-monitor/bin/ccm`**（两个写根之内；也正是
-//! `设计/01 §6.7b` 用户 09-18 拍的落点；自带别名块把 `~/.cc-monitor/bin` 加进 PATH）。
+//! 用户 09-18 拍的落点；自带别名块把 `~/.cc-monitor/bin` 加进 PATH）。
 
 use crate::copy_table::copy_text;
 
@@ -45,7 +45,7 @@ use crate::ssh_source::RemoteConfig;
 /// 但"读回的字节该不该判通过"这条判据可以，而它正是此前完全缺失的那一环。
 ///
 /// 按字节而不是按字符串：`deploy_remote_backend` 上传的是**可执行二进制**。
-/// 〔SR1b〕读回那一趟住本机后端（它就在远端文件旁边，不必把 MB 级的字节再拉回界面），
+/// 读回那一趟住本机后端（它就在远端文件旁边，不必把 MB 级的字节再拉回界面），
 /// 它交回的是**比对的事实**（读回长度 · 首个差异的偏移，读不回 ⇒ `None`）；判不判通过、话怎么说仍住这里。
 pub fn verify_readback(path: &str, expected_len: u64, readback: Readback) -> Result<(), String> {
     let Some((got_len, first_diff)) = readback else {
@@ -81,7 +81,7 @@ pub fn verify_readback(path: &str, expected_len: u64, readback: Readback) -> Res
 ///
 /// ## 为什么这个函数此前不存在（T04 审计①）
 ///
-/// `deploy_remote_backend` 的**全部**上传（〔MIG-3a · 09-28〕另一条 cc-acct-iso 那条随字节进后端退役）
+/// `deploy_remote_backend` 的**全部**上传（另一条 cc-acct-iso 那条随字节进后端退役）
 /// ——1 个后端可执行二进制 + 6 个远端脚本（含 0755 的 `cc-acct-iso` / `lib.sh` /
 /// install.sh）——写完**直接写版本标记**，中间没有任何读回。
 ///
@@ -92,9 +92,9 @@ pub fn verify_readback(path: &str, expected_len: u64, readback: Readback) -> Res
 /// 后果具体：传输损坏的后端二进制照样被写上正确的 `.build_id` 标记 →
 /// 下次 `deploy_decision` 判「已是最新，跳过」→ **坏二进制永久驻留**，
 /// 而用户看到的是部署成功。标记写在校验之后，就断了这条链。
-/// 〔SR1b〕上传与读回都经本机后端（`RemoteFs::put`，`verify` 那一格）；判定照旧是 [`verify_readback`]。
+/// 上传与读回都经本机后端（`RemoteFs::put`，`verify` 那一格）；判定照旧是 [`verify_readback`]。
 ///
-/// 〔DP1 · 第四波〕**读回不对 ⇒ 当场删掉传坏的那一份。** 从前断这条链靠「标记写在校验之后」；后端那条路的旁挂标记
+/// **读回不对 ⇒ 当场删掉传坏的那一份。** 从前断这条链靠「标记写在校验之后」；后端那条路的旁挂标记
 /// 退役之后（身份读字节自己的戳），一份传坏的字节若恰好还带着对的戳，下次会被判「已是这一版」⇒ 坏字节永久驻留。
 /// 删掉它，下次就是「落点没有 ⇒ 装」。删不掉也要说出来（那一份还在）。
 pub(crate) async fn upload_verified(
@@ -116,9 +116,9 @@ pub(crate) async fn upload_verified(
     })
 }
 
-// 〔MIG-3a · 09-28 预裁〕`read_marker` · `put_marker`〔散文墓碑〕与标记读上限随 `acct_iso_deploy` 删了（按目录取标记那条路的唯一消费者）。
+// `read_marker` · `put_marker`〔散文墓碑〕与标记读上限随 `acct_iso_deploy` 删了（按目录取标记那条路的唯一消费者）。
 
-/// 远端那台要的那一份后端（〔DP1〕字节从 `byte_table` 按那台的 (OS, arch) 取，`include_bytes!` 不在本文件）。
+/// 远端那台要的那一份后端（字节从 `byte_table` 按那台的 (OS, arch) 取，`include_bytes!` 不在本文件）。
 pub struct BackendBinary {
     /// 🔴 `K-R70`：**这份字节自报的身份**（`build.rs` 从二进制里扫 `CC_MONITOR_BUILD_STAMP`
     /// 得来，不是从旁边那个 `.build_id` 文本文件抄的）。
@@ -141,13 +141,13 @@ pub(crate) const STAMP_MARKS: deploy_contract::Marks<'static> = deploy_contract:
     close: env!("BACKEND_STAMP_CLOSE"),
 };
 
-/// 〔MIG-3b · P1〕部署计划答话的形状住契约 crate `deploy-contract`（判定住后端 `control/deploy_plan.rs`）；本 crate 里还要它的几处从这里拿同一份名字。
+/// 部署计划答话的形状住契约 crate `deploy-contract`（判定住后端 `control/deploy_plan.rs`）；本 crate 里还要它的几处从这里拿同一份名字。
 pub use deploy_contract::DeployAction;
 
-// 〔MIG-3a · 09-28 预裁〕`deploy_decision`〔散文墓碑〕（比旁挂版本标记）删了：它只留给 `acct_iso_deploy` 那条按目录取标记的路，那条路整条退役
+// `deploy_decision`〔散文墓碑〕（比旁挂版本标记）删了：它只留给 `acct_iso_deploy` 那条按目录取标记的路，那条路整条退役
 //   （账号库今天由那台后端自己建，不再部署外部工具）。后端那条路的判定住 `deploy_contract::identity_decision`。
 
-/// 〔MIG-3b · 4d-lanes 子步 1〕**本机常驻后端出的部署计划**（帧命令 `deploy-plan`，线上形状 `tests/__fixtures__/deploy-plan.golden.json`）。
+/// **本机常驻后端出的部署计划**（帧命令 `deploy-plan`，线上形状 `tests/__fixtures__/deploy-plan.golden.json`）。
 /// 该不该换 · 换成哪一格 · 落点那一份是谁 · 旧落点那份删不删 —— 全是后端判的；本模块只照它放字节。
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct Plan {
@@ -156,9 +156,9 @@ pub(crate) struct Plan {
     pub(crate) expected: String,
     pub(crate) action: DeployAction,
     pub(crate) legacy: deploy_contract::LegacyVerdict,
-    /// 〔WF2 · WIN3 读数 B〕落点目录里没人要的上传残件（家目录相对；后端判的，这里只照删）。
+    /// 落点目录里没人要的上传残件（家目录相对；后端判的，这里只照删）。
     pub(crate) leftovers: Vec<String>,
-    /// 〔MIG-3b 续 · VIS2〕问 `uname` 那一趟拨号的 ack（拨号在本机后端里）：逐地址指纹由 [`ask_plan_for`] 交给
+    /// 问 `uname` 那一趟拨号的 ack（拨号在本机后端里）：逐地址指纹由 [`ask_plan_for`] 交给
     /// `dial_host::settle_host_key` 固化 —— 与 monitor 自己开链路那几条同一个判定，不另写。
     pub(crate) ack: crate::ssh_link::Ack,
 }
@@ -267,12 +267,12 @@ async fn ask_plan_for(
                 },
             )?;
     let plan = decode_plan(&data.ok_or_else(|| copy_text("rsSftp.plan.internal", &[]))?)?;
-    // 〔MIG-3b 续 · VIS2〕第一次连一台没钉过指纹的机器就在这一跳 ⇒ 照 monitor 自己开链路那几条同一个判定固化。
+    // 第一次连一台没钉过指纹的机器就在这一跳 ⇒ 照 monitor 自己开链路那几条同一个判定固化。
     crate::dial_host::settle_host_key(cfg, &dial, &plan.ack);
     Ok(plan)
 }
 
-/// 〔MIG-3b〕照计划取字节：那一格这一版带着的那一份（`byte_table::pick`）。计划说的身份与字节自报的对不上 ⇒ 两侧漂了，不推。
+/// 照计划取字节：那一格这一版带着的那一份（`byte_table::pick`）。计划说的身份与字节自报的对不上 ⇒ 两侧漂了，不推。
 fn planned_binary(plan: &Plan) -> Result<BackendBinary, String> {
     crate::byte_table::pick(plan.key)
         .map(|p| (p.bytes, p.build_id))
@@ -290,12 +290,12 @@ fn planned_binary(plan: &Plan) -> Result<BackendBinary, String> {
         })
 }
 
-/// 〔DP1 · 第四波〕自动部署没成的两种说法 —— **类型上与「部署成功」分得开**（`设计/96 §7.1.4` 第 3 条：
+/// 自动部署没成的两种说法 —— **类型上与「部署成功」分得开**（
 /// 「返回类型上不许有『成功』这一支」）。〔墓碑 —— 从前是 `Result<Option<String>, String>`：`Ok(None)` 就是
 /// 「没部署也算成功」那一支，路径含 `~` / 问不出 arch / 没这格字节 / 字节问不出身份全落在它上面、只留一行 `debug!`。〕
 #[derive(Debug)]
 pub enum DeployError {
-    /// 那台要不了这份 / 这一版没带 / 判不清它是谁 —— 〔MIG-3b〕那句话是本机常驻后端说的（`deploy-plan` 失败那一形），原样带回。
+    /// 那台要不了这份 / 这一版没带 / 判不清它是谁 —— 那句话是本机常驻后端说的（`deploy-plan` 失败那一形），原样带回。
     Refused(String),
     /// 做了但没做成（配置、链路、放字节那几步）—— 一句说清楚的话。
     Failed(String),
@@ -316,11 +316,11 @@ impl From<String> for DeployError {
     }
 }
 
-/// 〔E2 · V28 · `设计/01 §6.7b`〕后端的落点：SFTP 那一侧（家目录相对）· 给人看的。**本机与远端同一个**，常量住 `relay_route_core`。
+/// 后端的落点：SFTP 那一侧（家目录相对）· 给人看的。**本机与远端同一个**，常量住 `relay_route_core`。
 pub(crate) const LANDING_REL: &str = relay_route_core::BACKEND_LANDING_REL;
 const LANDING_SHOWN: &str = "~/.cc-monitor/bin/ccm";
 
-/// 〔E2 · E-c〕旧落点那份后端字节：照计划删（后端认出身份戳恰一个 = 我们编的）· 不在 ⇒ 不说话 · 别的 ⇒ 不动、说一句为什么。
+/// 旧落点那份后端字节：照计划删（后端认出身份戳恰一个 = 我们编的）· 不在 ⇒ 不说话 · 别的 ⇒ 不动、说一句为什么。
 /// 回「要对人说的那一句」（空 = 没东西）。
 async fn apply_legacy(verdict: &deploy_contract::LegacyVerdict, fs: &RemoteFs) -> String {
     let shown = format!("~/{}", deploy_contract::LEGACY_BACKEND_REL);
@@ -341,7 +341,7 @@ async fn apply_legacy(verdict: &deploy_contract::LegacyVerdict, fs: &RemoteFs) -
     }
 }
 
-/// 〔WF2 · WIN3 读数 B〕照计划删上一趟没收拾掉的上传残件（后端判的哪几份；删不掉只进日志、不挡连接，下次连上再来）。
+/// 照计划删上一趟没收拾掉的上传残件（后端判的哪几份；删不掉只进日志、不挡连接，下次连上再来）。
 async fn sweep_leftovers(leftovers: &[String], fs: &RemoteFs, origin: &str) {
     for rel in leftovers {
         match fs.remove(rel).await {
@@ -351,14 +351,14 @@ async fn sweep_leftovers(leftovers: &[String], fs: &RemoteFs, origin: &str) {
     }
 }
 
-/// 连接前确保远端后端已（自动）部署到固定落点 `~/.cc-monitor/bin/ccm`（issue #29；〔E2〕那个文件就是后端本身）。
+/// 连接前确保远端后端已（自动）部署到固定落点 `~/.cc-monitor/bin/ccm`（issue #29；那个文件就是后端本身）。
 ///
-/// 流程：① 〔MIG-3b〕问本机常驻后端要计划（[`ask_plan`]：那台是什么机器、要哪一格、落点那一份是谁、换不换）——
+/// 流程：① 问本机常驻后端要计划（[`ask_plan`]：那台是什么机器、要哪一格、落点那一份是谁、换不换）——
 /// 它拒了 ⇒ [`DeployError::Refused`]；② 照计划取字节（[`planned_binary`]）、需要则开 `files` 链路 mkdir -p + 原子上传；
-/// ③ 〔E2〕照计划清旧落点那份字节。
+/// ③ 照计划清旧落点那份字节。
 ///
 /// **不阻断**：调用方（ssh_source::run）拿到 `Err` 仍接着试连已有后端（手动部署的后端照样能连），
-/// 但〔DP1〕那句话经远端健康通道（`kind = "deploy"`）发到界面上，不再只是一行日志（`设计/96 §7.1.4` 第 2 条）。
+/// 但那句话经远端健康通道（`kind = "deploy"`）发到界面上，不再只是一行日志。
 /// 返回值：`Ok(build_id)` = 已**确认**远端后端就是手上这份字节（部署成功或已是这一版）。调用方据此决定
 /// 是否传新版才认识的流模式参数（如 `--with-bg`）——`Err` 一律降级不传，
 /// 避免旧后端把未知参数当一次性查询处理后退出（无 hello 死循环）。
@@ -381,10 +381,10 @@ pub async fn ensure_backend_deployed(cfg: &RemoteConfig) -> Result<String, Deplo
             &[],
         )));
     }
-    // 〔SR1b〕经本机常驻后端那条 `files` 链路（写只许 `~/.cc-monitor/bin/` 与暂存区）。
+    // 经本机常驻后端那条 `files` 链路（写只许 `~/.cc-monitor/bin/` 与暂存区）。
     let fs = RemoteFs::open(cfg).await?;
     let theirs = match plan.action {
-        // 〔HX2 · D-b〕不比这一版旧 ⇒ 一个字节不写、照旧连上那一份；回**那台上的**身份（不是这一版的 ——
+        // 不比这一版旧 ⇒ 一个字节不写、照旧连上那一份；回**那台上的**身份（不是这一版的 ——
         //   否则调用方的乐观路径会拿这一版内嵌的能力常量去发 flag），能力由那一份的 hello 自报。
         DeployAction::Keep { theirs, why } => {
             tracing::info!("远端 [{}] 不部署：{why}", cfg.origin_label());
@@ -413,7 +413,7 @@ pub async fn ensure_backend_deployed(cfg: &RemoteConfig) -> Result<String, Deplo
             None
         }
     };
-    // 〔E2 · E-c〕每次连上（预检）都照计划处理一次旧落点；结局只进日志，不挡连接。〔WF2〕上传残件同一拍。
+    // 每次连上（预检）都照计划处理一次旧落点；结局只进日志，不挡连接。上传残件同一拍。
     sweep_leftovers(&plan.leftovers, &fs, &cfg.origin_label()).await;
     let swept = apply_legacy(&plan.legacy, &fs).await;
     if !swept.is_empty() {
@@ -463,28 +463,28 @@ pub fn bytes_carry_build_stamp(bytes: &[u8], build_id: &str) -> bool {
     bytes_contain(bytes, stamp.as_bytes())
 }
 
-// 〔DP1 · 第四波〕这里原来是按 arch 取字节的那个函数：两份 musl 的 `include_bytes!` 与一个只认 arch 的 `match`。
+// 这里原来是按 arch 取字节的那个函数：两份 musl 的 `include_bytes!` 与一个只认 arch 的 `match`。
 //   槽与它们的 `K-R70` 身份取值口（`BACKEND_EMBEDDED_ID_<ARCH>`）逐字搬进了 `byte_table.rs`（全仓唯一的取字节口）。
 
 // ============================================================================
 // F08c：手动安装 / 卸载后端（设置面板两个按钮）。安装逻辑同自动部署、但返回人读结果；
-// 卸载删落点那个文件（〔E2〕固定落点 `~/.cc-monitor/bin/ccm`，没有外来路径要守）。
+// 卸载删落点那个文件（固定落点 `~/.cc-monitor/bin/ccm`，没有外来路径要守）。
 // ============================================================================
 
-// 〔MIG-3a · 09-28 预裁〕`is_safe_remote_managed_path`〔散文墓碑〕删了：第 2 个消费者（`acct_iso_deploy` 的落点围栏）随那条命令退役，只剩零个。
+// `is_safe_remote_managed_path`〔散文墓碑〕删了：第 2 个消费者（`acct_iso_deploy` 的落点围栏）随那条命令退役，只剩零个。
 
 /// 手动安装 / 更新远端后端（机器页 ①「部署后端」按钮）。逻辑同自动部署 [`ensure_backend_deployed`]，
 /// 但**返回人读结果**，且把自动部署里「优雅跳过」的几种情况（探测不到 arch / 无该 arch 内嵌）显式报错。
-/// 〔E2 · V28〕落点就是 `~/.cc-monitor/bin/ccm`（后端本体，没有 shim）⇒ 部署后端就是放 `ccm`，没有第二样要放。
+/// 落点就是 `~/.cc-monitor/bin/ccm`（后端本体，没有 shim）⇒ 部署后端就是放 `ccm`，没有第二样要放。
 #[tauri::command]
 pub async fn deploy_remote_backend(cfg: RemoteConfig) -> Result<String, String> {
-    // 〔MIG-3b〕与自动部署同一份计划（本机常驻后端判）、同一个取字节口、同一句拒绝的话。
+    // 与自动部署同一份计划（本机常驻后端判）、同一个取字节口、同一句拒绝的话。
     let plan = ask_plan(&cfg).await?;
     let bin = planned_binary(&plan)?;
-    // 〔SR1b〕经本机常驻后端那条 `files` 链路。
+    // 经本机常驻后端那条 `files` 链路。
     let fs = RemoteFs::open(&cfg).await?;
     let backend_msg = match plan.action {
-        // 〔HX2 · D-b〕手动点也不降级：出路与「它不说自己是谁」那一格同一句（先卸载再部署 = 明确授权覆盖）。
+        // 手动点也不降级：出路与「它不说自己是谁」那一格同一句（先卸载再部署 = 明确授权覆盖）。
         DeployAction::Keep { why, .. } => copy_text("rsSftp.deploy.keptNotOlder", &[("why", &why)]),
         DeployAction::Skip => copy_text(
             "rsSftp.deploy.upToDate",
@@ -513,11 +513,11 @@ pub async fn deploy_remote_backend(cfg: RemoteConfig) -> Result<String, String> 
             )
         }
     };
-    // 〔E2 · E-c〕旧落点那份后端字节（后端认出是我们编的才删）。〔WF2〕上传残件同一拍。
+    // 旧落点那份后端字节（后端认出是我们编的才删）。上传残件同一拍。
     sweep_leftovers(&plan.leftovers, &fs, &cfg.origin_label()).await;
     let swept = apply_legacy(&plan.legacy, &fs).await;
-    // 〔GP1 · 第四波〕`设计/01 §6.7b` 迁移 ② ③：旧版放在 `~/.local/bin/ccm` 的那一份，认出是我们放的就删
-    //   （〔THIN〕认不认得出由本机常驻后端判，这里照答经那台的后端删、带 CAS；那一格在 SFTP 两个写根之外）。
+    // 迁移 ② ③：旧版放在 `~/.local/bin/ccm` 的那一份，认出是我们放的就删
+    //   （认不认得出由本机常驻后端判，这里照答经那台的后端删、带 CAS；那一格在 SFTP 两个写根之外）。
     //   没东西 ⇒ 不多说一句；查不成 ⇒ 说出来，不挡部署。
     let legacy = match crate::ccm_legacy::sweep(&cfg).await {
         Ok(s) => s.say(),
@@ -532,11 +532,11 @@ pub async fn deploy_remote_backend(cfg: RemoteConfig) -> Result<String, String> 
     Ok(format!("{backend_msg}{swept}{legacy}"))
 }
 
-/// 卸载远端后端（设置面板「卸载后端」按钮）：删落点那个文件（〔E2〕它就是 `ccm`，卸后端就是卸 `ccm`）。
+/// 卸载远端后端（设置面板「卸载后端」按钮）：删落点那个文件（它就是 `ccm`，卸后端就是卸 `ccm`）。
 /// 只读铁律豁免（SS-G）：用户显式触发的删。注意：若该机器仍启用，自动部署会在下次连接重新装回——提示见返回消息。
 #[tauri::command]
 pub async fn uninstall_remote_backend(cfg: RemoteConfig) -> Result<String, String> {
-    // 〔SR1b〕经本机常驻后端那条 `files` 链路删（写只许 `~/.cc-monitor/bin/` 与暂存区 —— 围栏拒 ⇒ 原话带回）。
+    // 经本机常驻后端那条 `files` 链路删（写只许 `~/.cc-monitor/bin/` 与暂存区 —— 围栏拒 ⇒ 原话带回）。
     let fs = RemoteFs::open(&cfg).await?;
     let removed = fs.remove(LANDING_REL).await?;
     tracing::info!(
@@ -554,18 +554,18 @@ pub async fn uninstall_remote_backend(cfg: RemoteConfig) -> Result<String, Strin
 
 // ============================================================================
 // F11：远端用户数据写（删除远端历史 jsonl）。
-// 〔RW1 · 第四波 · 2026-09-24〕**这一段整个搬走了**：F11 按用户裁「按推荐改」经那台远端的后端删
-// （`files-delete-session`，只收 sid —— 〔AR1 · V119〕当时说「会话文件围栏唯一的例外」，FN1 之后写面已无那道围栏；
+// **这一段整个搬走了**：F11 按用户裁「按推荐改」经那台远端的后端删
+// （`files-delete-session`，只收 sid —— 当时说「会话文件围栏唯一的例外」，FN1 之后写面已无那道围栏；
 // 落点由远端后端按 sid 在它自己的记录树里找），
 // 从前这里那道结构守卫 `is_safe_remote_jsonl`〔散文墓碑〕与 SFTP 直删 `remove_remote_file`〔散文墓碑〕零调用方 ⇒ 删了。
 // 「哪几份才许删」那一问的住址从此是 `src/backend/agents/claudecode/paths.rs::session_file_for_delete`。
 // ============================================================================
 
-// 〔W5-ALIAS · 第五波先行〕F10（别名块）这一段搬去了 `profile_installer.rs`（B §2 第 12 条：本文件已经不做 SFTP，
+// F10（别名块）这一段搬去了 `profile_installer.rs`（B §2 第 12 条：本文件已经不做 SFTP，
 //   别名块的真相 —— 围栏那一对 · 块的内容 · 自带的名字 · 合 / 剥 · 远端装 / 卸两条命令 —— 归别名域）。
 //   本文件只剩部署：后端字节 · 身份 · 读回 · `ccm` 入口。
 
-// 〔E2 · V28 · `设计/01 §6.7b`〕这里原先是 `ccm` 入口那一段（三行 shim 的推送口 `put_ccm_entry`〔散文墓碑〕、落点常量
+// 这里原先是 `ccm` 入口那一段（三行 shim 的推送口 `put_ccm_entry`〔散文墓碑〕、落点常量
 //   `CCM_CLI_REMOTE_PATH`〔散文墓碑〕）：`ccm` 就是后端本身之后，落点 `~/.cc-monitor/bin/ccm` 上放的就是后端字节（[`LANDING_REL`]），
 //   没有第二样要放。`K-R48` 那句墓碑（打包 bash 启动器的 `include_str!` 已删，`KR48D1` 盯着）照旧成立。
 

@@ -1,5 +1,5 @@
 /**
- * 〔CFG1〕前端测试用的**假 config.json**：`load_config` / `patch_config` 两条命令的内存替身。
+ * 前端测试用的**假 config.json**：`load_config` / `patch_config` 两条命令的内存替身。
  *
  * 补丁语义与 Rust 写口（`src/frontend/shell/src/config.rs::patch_config_at`）同一份金样
  * `tests/__fixtures__/config-patch.golden.json` 对拍（`tests/frontend/ui/config-patch-fake.vitest.ts` 跑这边，
@@ -40,7 +40,7 @@ export function applyConfigEdits(text: string, edits: readonly Edit[]): string {
   let exists = false;
   for (const e of edits) {
     if (e.op === "insertin") {
-      // 〔FIX2 续 · ㊶〕同 Rust `InsertIn`：路上缺的段补成 `{}`、数组缺就建；已有满足 where 的 ⇒ 整批拒（element_exists）。
+      // 同 Rust `InsertIn`：路上缺的段补成 `{}`、数组缺就建；已有满足 where 的 ⇒ 整批拒（element_exists）。
       let cur = obj;
       for (const seg of e.path.slice(0, -1)) {
         if (!isObj(cur[seg])) cur[seg] = {};
@@ -55,7 +55,7 @@ export function applyConfigEdits(text: string, edits: readonly Edit[]): string {
       continue;
     }
     if (e.op === "removein") {
-      // 〔FIX2 续 · ㊶〕同 Rust `RemoveIn`：认恰好一个才删，否则整批拒（element_gone）。
+      // 同 Rust `RemoveIn`：认恰好一个才删，否则整批拒（element_gone）。
       let cur: unknown = obj;
       for (const seg of e.path) cur = isObj(cur) ? cur[seg] : undefined;
       if (!Array.isArray(cur)) throw new ConfigRefused("element_gone");
@@ -65,7 +65,7 @@ export function applyConfigEdits(text: string, edits: readonly Edit[]): string {
       continue;
     }
     if (e.op === "setin") {
-      // 〔FIX · ㊶〕同 Rust `apply_edit` 的 `SetIn`：认恰好一个元素（每条 where：fields 按序第一个非空字符串 == equals），只改一格。
+      // 同 Rust `apply_edit` 的 `SetIn`：认恰好一个元素（每条 where：fields 按序第一个非空字符串 == equals），只改一格。
       let cur: unknown = obj;
       for (const seg of e.path) cur = cur && typeof cur === "object" && !Array.isArray(cur) ? (cur as Record<string, unknown>)[seg] : undefined;
       if (!Array.isArray(cur)) throw new ConfigRefused("element_gone");

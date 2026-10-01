@@ -1,6 +1,6 @@
-//! 〔W5-VIS〕**业务路径零裸吞** —— 人群判据与登记表（设计与射程住 `src/frontend/shell/src/swallow_registry.rs` 头注）。
+//! **业务路径零裸吞** —— 人群判据与登记表（设计与射程住 `src/frontend/shell/src/swallow_registry.rs` 头注）。
 //!
-//! 要求住址：`设计/15 §4.7 S5`（逐字）「**处置不是别吞，是吞了要留一行日志**」。
+//! （逐字）「**处置不是别吞，是吞了要留一行日志**」。
 //!
 //! 三条：① 人群 == 登记表（两向：没登记的新裸吞 · 修掉了还留着的死行）② 量具正控（合成语料：该认的认出、不该认的不认）
 //! ③ 测试专用模块确实被排除（按 `mod` 声明派生出来的那一组里有已知的那几份）。
@@ -51,7 +51,7 @@ const ALLOWED: &[(&str, &str, usize, Why, &str)] = &[
     ("src/backend/accounts/upstream_select/creds.rs", "let _ = writeln!(out, \"[apikey] credentials file: {}\", loaded.path.display());", 1, Why::Diag, "`announce` 往它的诊断出口（stderr）印上游选择的状态行"),
     ("src/backend/accounts/upstream_select/creds.rs", "let _ = writeln!(out, \"[apikey] credentials permissions too wide: {how}\");", 1, Why::Diag, "`announce` 往它的诊断出口（stderr）印上游选择的状态行"),
     ("src/backend/accounts/upstream_select/creds.rs", "let _ = writeln!(out, \"[apikey] credentials permissions unknown: {why}\");", 1, Why::Diag, "`announce` 往它的诊断出口（stderr）印上游选择的状态行"),
-    // 〔DATA-HOME〕1 → 2：`announce_unresolved` 同一句（推不出凭据文件在哪），同一个诊断出口。
+    // 1 → 2：`announce_unresolved` 同一句（推不出凭据文件在哪），同一个诊断出口。
     ("src/backend/accounts/upstream_select/creds.rs", "let _ = writeln!(out, \"[apikey] credentials problem: {p}\");", 2, Why::Diag, "`announce` / `announce_unresolved` 往它的诊断出口（stderr）印上游选择的状态行"),
     ("src/backend/accounts/upstream_select/creds.rs", "let _ = writeln!(out, \"[apikey] credentials: auth_style must be one of: {legal}\");", 1, Why::Diag, "`announce` 往它的诊断出口（stderr）印上游选择的状态行"),
     ("src/backend/accounts/upstream_select/creds.rs", "let _ = writeln!(out, \"[apikey] credentials: configured, {rows} account(s) routable\");", 1, Why::Diag, "`announce` 往它的诊断出口（stderr）印上游选择的状态行"),
@@ -70,31 +70,31 @@ const ALLOWED: &[(&str, &str, usize, Why, &str)] = &[
     ("src/backend/control/files_commit.rs", "let _ = std::fs::remove_file(&side);", 1, Why::CleanupAfterFailure, "跨盘提交抄写失败后删自己这一趟的旁名；主错误已在回"),
     ("src/backend/control/files_commit.rs", "let _ = std::fs::remove_file(&staged);", 1, Why::CleanupAfterFailure, "目标已落好之后删暂存件；删不掉由孤儿扫（`sweep_stale`）按期限收（该处注释原话）"),
     ("src/backend/control/files_write.rs", "std::fs::remove_file(&bak).ok();", 1, Why::CleanupAfterFailure, "写失败之后删自己这一趟建的旁名 / 半成品；主错误已在回"),
-    // 〔FILES2 · 第四波〕解压落一份文件写一半 / 设权限失败 ⇒ 删自己 `O_EXCL` 刚建的那一份；上传块形拼暂存件失败 ⇒ 删自己刚建的 `<key>.part`。
+    // 解压落一份文件写一半 / 设权限失败 ⇒ 删自己 `O_EXCL` 刚建的那一份；上传块形拼暂存件失败 ⇒ 删自己刚建的 `<key>.part`。
     ("src/backend/control/files_extract.rs", "std::fs::remove_file(&at).ok();", 1, Why::CleanupAfterFailure, "解压写一份失败之后删自己 `O_EXCL` 刚建的那一份；主错误已在回（随后整趟回滚）"),
     ("src/backend/control/files_upload_chunks.rs", "std::fs::remove_file(p).ok();", 1, Why::CleanupAfterFailure, "拼暂存件失败之后删自己 `O_EXCL` 刚建的那一份；主错误已在回，块由 `drop_chunks` 收"),
-    // 〔FIX5〕`(&land)` 那一行 3 → 0：复制也先落旁名，三处清理并成 `land_copy` 里一处删 `side`；`(&side)` 3 → 5：多的是那一处 ＋ 读改写新建那一形不覆盖上位失败那一处。
+    // `(&land)` 那一行 3 → 0：复制也先落旁名，三处清理并成 `land_copy` 里一处删 `side`；`(&side)` 3 → 5：多的是那一处 ＋ 读改写新建那一形不覆盖上位失败那一处。
     ("src/backend/control/files_write.rs", "std::fs::remove_file(&side).ok();", 5, Why::CleanupAfterFailure, "写失败之后删自己这一趟建的旁名 / 半成品；主错误已在回"),
-    ("src/backend/control/tmux_hook.rs", "let _ = crate::platform::signal::send_sigusr1(pid);", 1, Why::PeerGone, "信号送不到 = 那个进程已不在；发之前有进程身份复核（`15 §4.7` 做得好的对照组）"),
+    ("src/backend/control/tmux_hook.rs", "let _ = crate::platform::signal::send_sigusr1(pid);", 1, Why::PeerGone, "信号送不到 = 那个进程已不在；发之前有进程身份复核（做得好的对照组）"),
     ("src/backend/control/transfer.rs", "let _ = forward.await;", 1, Why::Reap, "等进度转发任务收尾（它自己只往已结束的票上报数）"),
     ("src/backend/control/transfer.rs", "let _ = rf.shutdown().await;", 1, Why::DeadLink, "关远端文件句柄；传输的结局已经定了"),
     ("src/backend/control/transfer.rs", "let _ = sftp::remove(s, &part).await;", 1, Why::CleanupAfterFailure, "撤了 ⇒ 删暂存区里的半截（用户说了不要）；删不掉只是暂存区里多一份，孤儿扫会收"),
     ("src/backend/control/transfer.rs", "let _ = std::fs::remove_file(&at);", 1, Why::CleanupAfterFailure, "DP1 之后只清**空的** `.part`（一个字节都没落）；清不掉只剩一个 0 字节文件，主错误已在回"),
     ("src/backend/dial/link.rs", "let _ = replies.send(Frame::LinkEnd { link: link.clone(), error, }).await;", 1, Why::PeerGone, ""),
-    ("src/backend/dial/probe.rs", "let _ = up_w.shutdown().await;", 1, Why::DeadLink, "〔MIG-1 续〕测试连接探完关上行写半边（结局已定，这条探活链路随即整条丢掉）"),
+    ("src/backend/dial/probe.rs", "let _ = up_w.shutdown().await;", 1, Why::DeadLink, "测试连接探完关上行写半边（结局已定，这条探活链路随即整条丢掉）"),
     ("src/backend/dial/pool.rs", "let _ = self.freed.set(freed);", 1, Why::SetOnce, "族的铃只挂一次"),
-    ("src/backend/dial/sftp.rs", "let _ = s.sftp().remove_file(b).await;", 2, Why::CleanupAfterFailure, "〔HX2〕部署换名成功后删自己挪走的旧备份件 / 换名失败而落点已被别的部署者占上时删它；删不掉只剩一份 `.bak`"),
-    ("src/backend/dial/sftp.rs", "let _ = s.sftp().rename(b, rel.clone()).await;", 1, Why::CleanupAfterFailure, "〔HX2〕换名失败、落点还空着 ⇒ 把自己挪走的旧文件挪回去（主错误已在回）"),
+    ("src/backend/dial/sftp.rs", "let _ = s.sftp().remove_file(b).await;", 2, Why::CleanupAfterFailure, "部署换名成功后删自己挪走的旧备份件 / 换名失败而落点已被别的部署者占上时删它；删不掉只剩一份 `.bak`"),
+    ("src/backend/dial/sftp.rs", "let _ = s.sftp().rename(b, rel.clone()).await;", 1, Why::CleanupAfterFailure, "换名失败、落点还空着 ⇒ 把自己挪走的旧文件挪回去（主错误已在回）"),
     ("src/backend/dial/sftp.rs", "let _ = tokio::io::copy(&mut (&mut *input).take(size), &mut tokio::io::sink()).await;", 1, Why::Drain, ""),
     ("src/backend/dial/sftp.rs", "let _ = write_line(out, &refused(\"bad_request\", &e)).await;", 1, Why::DeadLink, ""),
     ("src/backend/dial/uses.rs", "let _ = out.flush().await;", 1, Why::DeadLink, ""),
-    ("src/backend/dial/uses.rs", "let _ = self.close().await;", 1, Why::Reap, "放弃 / 提前收工时向远端发关通道：对端撤活只是尽力（`05 §3.3.3`）"),
+    ("src/backend/dial/uses.rs", "let _ = self.close().await;", 1, Why::Reap, "放弃 / 提前收工时向远端发关通道：对端撤活只是尽力"),
     ("src/backend/dial/uses.rs", "let _ = write_line(out, &got).await;", 1, Why::DeadLink, ""),
     ("src/backend/dial/uses.rs", "let _ = write_stages_then_ack(out, stages, &DialAck::failed(crate::common::contract::malformed(\"use=capture without `cap", 1, Why::DeadLink, ""),
     ("src/backend/dial/uses.rs", "let _ = write_stages_then_ack(out, stages, &DialAck::failed(crate::common::contract::malformed(\"use=forward without `for", 1, Why::DeadLink, ""),
-    // 〔HOST〕隧道那一臂的两条失败 ack（同上几行：写不进去说明界面已经走了）。
+    // 隧道那一臂的两条失败 ack（同上几行：写不进去说明界面已经走了）。
     ("src/backend/dial/uses.rs", "let _ = write_stages_then_ack(out, stages, &DialAck::failed(crate::common::contract::malformed(\"use=tunnel without `tunn", 1, Why::DeadLink, ""),
-    // 〔WF2〕开 direct-tcpip 失败那一条改成先按回拒码组 ack（`open_refused`）再写；写不进去同上。
+    // 开 direct-tcpip 失败那一条改成先按回拒码组 ack（`open_refused`）再写；写不进去同上。
     ("src/backend/dial/uses.rs", "let _ = write_stages_then_ack(out, stages, &ack).await;", 1, Why::DeadLink, ""),
     ("src/backend/dial/uses.rs", "let _ = write_stages_then_ack(out, stages, &DialAck::failed(e, fp)).await;", 4, Why::DeadLink, ""),
     ("src/backend/dial/uses.rs", "let _ = write_stages_then_ack(out, stages, &DialAck::failed(copy_text(\"beUses.exec.failed\", &[(\"e\", &e.to_string())]), f", 1, Why::DeadLink, ""),
@@ -106,12 +106,12 @@ const ALLOWED: &[(&str, &str, usize, Why, &str)] = &[
     ("src/backend/stream/inbound.rs", "let _ = gate_rx.await;", 1, Why::Signal, ""),
     ("src/backend/stream/inbound.rs", "let _ = gate_tx.send(());", 1, Why::Signal, ""),
     ("src/backend/stream/inbound.rs", "let _ = replies.send(frame).await;", 1, Why::PeerGone, ""),
-    ("src/backend/stream/inbound.rs", "let _ = tx.try_send(Frame::Progress { ticket: ticket.clone(), cell, });", 1, Why::Backpressure, "〔P7〕`Progress::push`：应答通道满了丢这一格进度（每格整份快照，下一格补上；结局在应答里）—— 不许为它堵住建索引的读流"),
+    ("src/backend/stream/inbound.rs", "let _ = tx.try_send(Frame::Progress { ticket: ticket.clone(), cell, });", 1, Why::Backpressure, "`Progress::push`：应答通道满了丢这一格进度（每格整份快照，下一格补上；结局在应答里）—— 不许为它堵住建索引的读流"),
     ("src/backend/stream/inbound.rs", "let _ = replies.try_send(Frame::Cancelled { id: target });", 1, Why::Backpressure, ""),
     ("src/backend/stream/inbound.rs", "let _ = replies.try_send(err(&req.id, \"not_cancellable\", &copy_text(\"beInbound.dispatch.cannotCancel\", &[])));", 1, Why::Backpressure, ""),
     ("src/backend/stream/inbound.rs", "let _ = replies.try_send(ok(&req.id));", 1, Why::Backpressure, ""),
     ("src/backend/stream/inbound.rs", "let _ = replies_sup.send(err(&id_sup, \"handler_panicked\", &copy_text(\"beInbound.spawnHandler.crashed\", &[]))).await;", 1, Why::PeerGone, ""),
-    // 〔HOST〕多客户：流结束那一格带上连接号（原 `done.send(())`）；认证通过的连接交主循环 —— 主循环不在了 = 进程在收尾。
+    // 多客户：流结束那一格带上连接号（原 `done.send(())`）；认证通过的连接交主循环 —— 主循环不在了 = 进程在收尾。
     ("src/backend/main.rs", "let _ = done.send(id).await;", 1, Why::Signal, ""),
     ("src/backend/main.rs", "let _ = attached.send(Attached { reader: r, writer: w, hello_flushed, flags: flags.unwrap_or(None), }).await;", 1, Why::PeerGone, ""),
     ("src/backend/main.rs", "let _ = listen::write_line(&mut w, &listen::refusal_line(reason)).await;", 1, Why::DeadLink, ""),
@@ -121,47 +121,47 @@ const ALLOWED: &[(&str, &str, usize, Why, &str)] = &[
     ("src/backend/observe/watcher.rs", "let _ = self.0.send(WatchEvent::Notify(event));", 1, Why::PeerGone, ""),
     ("src/backend/observe/watcher.rs", "let _ = self.0.send(WatchEvent::Poke);", 1, Why::PeerGone, ""),
     ("src/backend/observe/watcher.rs", "let _ = self.0.send(WatchEvent::Shutdown);", 1, Why::PeerGone, ""),
-    // 〔RESYNC〕基数 3 → 1：起探测收成 `start_tmux_probe` 一处（三处搬进去，不是删）。
+    // 基数 3 → 1：起探测收成 `start_tmux_probe` 一处（三处搬进去，不是删）。
     ("src/backend/observe/watcher.rs", "let _ = tx.send(WatchEvent::TmuxObserved(run_tmux_probe()));", 1, Why::PeerGone, ""),
-    // 〔RESYNC〕+2：对齐的应答发回等它的那一方（它可能已退）· 对每份 watcher 发对齐（那份可能正在退出；它丢了应答端，`resync` 不会挂住）。
+    // +2：对齐的应答发回等它的那一方（它可能已退）· 对每份 watcher 发对齐（那份可能正在退出；它丢了应答端，`resync` 不会挂住）。
     ("src/backend/observe/watcher.rs", "let _ = done.send(got);", 1, Why::PeerGone, ""),
-    // 〔RESYNC 续〕+1：SIGUSR1 戳名单上的每一份（`PokeSlot` 并进来；那一份可能正在退出）。
+    // +1：SIGUSR1 戳名单上的每一份（`PokeSlot` 并进来；那一份可能正在退出）。
     ("src/backend/observe/watcher.rs", "let _ = w.send(WatchEvent::Poke);", 1, Why::PeerGone, ""),
     ("src/backend/observe/watcher.rs", "let _ = w.send(WatchEvent::Resync { only: only.map(str::to_string), done: tx.clone(), });", 1, Why::PeerGone, ""),
     ("src/backend/observe/watcher.rs", "let _ = tx.send(WatchEvent::TmuxProbeDue);", 1, Why::PeerGone, ""),
     ("src/backend/observe/watcher.rs", "let _ = tx.send(target.death_event(pid));", 1, Why::PeerGone, ""),
-    ("src/backend/platform/signal.rs", "let _ = t.recv().await;", 1, Why::Signal, "装不上 SIGTERM 时退回只等 SIGINT（〔HX1〕从 `main.rs` 下沉来）"),
-    ("src/backend/platform/signal.rs", "let _ = tokio::signal::ctrl_c().await;", 2, Why::Signal, "〔HX1〕从 `main.rs` 下沉来的停机信号监听"),
+    ("src/backend/platform/signal.rs", "let _ = t.recv().await;", 1, Why::Signal, "装不上 SIGTERM 时退回只等 SIGINT（从 `main.rs` 下沉来）"),
+    ("src/backend/platform/signal.rs", "let _ = tokio::signal::ctrl_c().await;", 2, Why::Signal, "从 `main.rs` 下沉来的停机信号监听"),
     ("src/backend/relay/door.rs", "let _ = std::fs::remove_file(&tmp);", 1, Why::CleanupAfterFailure, "原子写的临时件：换名失败之后删它；主错误已在回，删不掉只剩一份临时件"),
-    ("src/backend/control/resident.rs", "let _ = std::fs::remove_file(&tmp);", 1, Why::CleanupAfterFailure, "〔HOST〕钥匙 / pid 文件的原子写临时件：换名失败之后删它；主错误已在回"),
-    ("src/backend/control/resident.rs", "let _ = log_dir_chain(&h);", 1, Why::Diag, "〔GAP1〕诊断文件那层目录建不了 ⇒ 子进程装不上 stderr 文件、照旧 null（「写不进去不拖垮后端」`15 §4.7 S1`）；这是一次性子命令，stderr 只许一行 JSON 信封，没有第二个地方可说"),
-    ("src/backend/faces/read_face.rs", "let _ = BACKEND_LOG.set(path);", 1, Why::SetOnce, "〔GAP1〕`main.rs` 装上 stderr 诊断文件之后交一次"),
+    ("src/backend/control/resident.rs", "let _ = std::fs::remove_file(&tmp);", 1, Why::CleanupAfterFailure, "钥匙 / pid 文件的原子写临时件：换名失败之后删它；主错误已在回"),
+    ("src/backend/control/resident.rs", "let _ = log_dir_chain(&h);", 1, Why::Diag, "诊断文件那层目录建不了 ⇒ 子进程装不上 stderr 文件、照旧 null（「写不进去不拖垮后端」）；这是一次性子命令，stderr 只许一行 JSON 信封，没有第二个地方可说"),
+    ("src/backend/faces/read_face.rs", "let _ = BACKEND_LOG.set(path);", 1, Why::SetOnce, "`main.rs` 装上 stderr 诊断文件之后交一次"),
     ("src/backend/relay/listen.rs", "let _ = server::respond_and_drain(&mut s, server::BUSY, \"busy\");", 1, Why::DeadLink, "回一句「忙」给被拒的那条连接"),
     ("src/backend/relay/listen.rs", "let _ = server::respond_and_drain(&mut stream, server::BUSY, \"busy\");", 1, Why::DeadLink, "回一句「忙」给被拒的那条连接"),
     ("src/comms/outward/server.rs", "let _ = down.set_nonblocking(false);", 1, Why::DeadLink, "已经答完的那条连接上排掉已到的字节，排不掉就算了"),
     ("src/comms/outward/server.rs", "let _ = down.set_nonblocking(true);", 1, Why::DeadLink, "已经答完的那条连接上排掉已到的字节，排不掉就算了"),
-    ("src/comms/outward/tee.rs", "let _ = self.port.offer(TapEvent { stream: id.stream.to_string(), owner: id.owner.to_string(), resp: at.resp, n, body: T", 1, Why::Backpressure, "〔TAP〕投不进就丢：号照占，缺口在接收侧按号算得出（`20 §8`「SSE 保快、jsonl 保对」）"),
-    ("src/comms/outward/tee.rs", "let _ = self.port.offer(TapEvent { stream: id.stream.to_string(), owner: id.owner.to_string(), resp: at.resp, n: at.n, b", 1, Why::Backpressure, "〔TAP〕同上（收尾那一件）"),
-    // 〔DEL〕NDJSON 那一形的四行（写线程 · 两处 `write_all` · `flush`）随独立 `--relay` 删了。
+    ("src/comms/outward/tee.rs", "let _ = self.port.offer(TapEvent { stream: id.stream.to_string(), owner: id.owner.to_string(), resp: at.resp, n, body: T", 1, Why::Backpressure, "投不进就丢：号照占，缺口在接收侧按号算得出（「SSE 保快、jsonl 保对」）"),
+    ("src/comms/outward/tee.rs", "let _ = self.port.offer(TapEvent { stream: id.stream.to_string(), owner: id.owner.to_string(), resp: at.resp, n: at.n, b", 1, Why::Backpressure, "同上（收尾那一件）"),
+    // NDJSON 那一形的四行（写线程 · 两处 `write_all` · `flush`）随独立 `--relay` 删了。
     ("src/backend/assets/skill_ledger.rs", "let _ = std::fs::remove_file(&tmp);", 1, Why::CleanupAfterFailure, "原子写的临时件：换名失败之后删它；主错误已在回，删不掉只剩一份临时件"),
-    ("src/backend/stderr_log.rs", "let _ = f.write_all(roll_note(&self.old).as_bytes());", 1, Why::Diag, "「写不进去不拖垮后端」（`15 §4.7 S1` 脱离载体那一格）"),
-    ("src/backend/stderr_log.rs", "let _ = self.fresh();", 1, Why::Diag, "「写不进去不拖垮后端」（`15 §4.7 S1` 脱离载体那一格）"),
+    ("src/backend/stderr_log.rs", "let _ = f.write_all(roll_note(&self.old).as_bytes());", 1, Why::Diag, "「写不进去不拖垮后端」（脱离载体那一格）"),
+    ("src/backend/stderr_log.rs", "let _ = self.fresh();", 1, Why::Diag, "「写不进去不拖垮后端」（脱离载体那一格）"),
     ("src/common/creds-core/src/perm.rs", "let _ = CloseHandle(token);", 1, Why::Reap, "Windows 句柄 / 内存释放"),
     ("src/common/creds-core/src/perm.rs", "let _ = GetTokenInformation(token, TokenUser, None, 0, &mut need);", 1, Why::NotAnError, "第一次调用只为问缓冲区要多大，按约定一定回「缓冲区不够」"),
     ("src/common/creds-core/src/perm.rs", "let _ = LocalFree(HLOCAL(psd.0));", 5, Why::Reap, "Windows 句柄 / 内存释放"),
     ("src/common/creds-core/src/perm.rs", "let _ = LocalFree(HLOCAL(s.0 as *mut core::ffi::c_void));", 2, Why::Reap, "Windows 句柄 / 内存释放"),
-    // 〔SH1 · V136〕`cc_bus.rs` 那两行（本机 shell 读收尸）随那条读删了。
+    // `cc_bus.rs` 那两行（本机 shell 读收尸）随那条读删了。
     ("src/frontend/shell/src/inbound_client.rs", "let _ = w.shutdown().await;", 1, Why::DeadLink, ""),
     ("src/frontend/shell/src/local_backend.rs", "let _ = c.kill();", 3, Why::Reap, ""),
     ("src/frontend/shell/src/local_backend.rs", "let _ = c.wait();", 1, Why::Reap, ""),
-    // 〔E2〕3 → 2：逐字节副本那一处删了。〔P1〕2 → 1：后端那一份的暂存件改走 `drop_partial`（任何结局都清、清不掉出声，不吞），只剩全景那一份。
+    // 3 → 2：逐字节副本那一处删了。2 → 1：后端那一份的暂存件改走 `drop_partial`（任何结局都清、清不掉出声，不吞），只剩全景那一份。
     ("src/frontend/shell/src/local_backend.rs", "let _ = std::fs::remove_file(&tmp);", 1, Why::CleanupAfterFailure, "原子写的临时件：换名失败之后删它；主错误已在回，删不掉只剩一份临时件"),
-    // 〔E2〕1 → 2：+1 收换版时挪开的旧 `ccm`（`.old`，Windows 上正在跑的删不掉）；删不掉下次放置时再清。
+    // 1 → 2：+1 收换版时挪开的旧 `ccm`（`.old`，Windows 上正在跑的删不掉）；删不掉下次放置时再清。
     ("src/frontend/shell/src/local_backend.rs", "let _ = std::fs::remove_file(ent.path());", 2, Why::CleanupAfterFailure, "清过期的释放半成品（`STALE_PARTIAL_AGE`）· 换版时挪开的旧 `ccm`；删不掉下次再清"),
     ("src/frontend/shell/src/local_backend.rs", "let _ = std::io::copy(&mut o, &mut std::io::sink());", 1, Why::Drain, ""),
-    // 〔OSA · V156〕`launch_render/payload.rs::render_env_ops` 那四行 `let _ = write!(out, "export …")` 摘了：
+    // `launch_render/payload.rs::render_env_ops` 那四行 `let _ = write!(out, "export …")` 摘了：
     //   `export` / `unset` 的写法搬进 `platform::shell::posix`，那里返回 `String`，调用处 `push_str`，不再有吞。
-    // 〔P4b · 阶段 H〕下面六行随 `bind.rs` 的 Win32 读法搬进 `platform/{pid,hwnd}.rs`（处数不变）。
+    // 下面六行随 `bind.rs` 的 Win32 读法搬进 `platform/{pid,hwnd}.rs`（处数不变）。
     ("src/frontend/shell/src/platform/pid.rs", "let _ = CloseHandle(handle);", 2, Why::Reap, "Windows 句柄 / 内存释放"),
     ("src/frontend/shell/src/platform/pid.rs", "let _ = CloseHandle(snap);", 1, Why::Reap, "Windows 句柄 / 内存释放"),
     ("src/frontend/shell/src/platform/hwnd.rs", "let _ = EnumWindows(Some(cb), LPARAM(0));", 1, Why::NotAnError, "回调里自己收结果；回调提前停时它回 Err 是约定"),
@@ -172,7 +172,7 @@ const ALLOWED: &[(&str, &str, usize, Why, &str)] = &[
     ("src/frontend/shell/src/platform/hwnd.rs", "let _ = unsafe { GetWindowThreadProcessId(hwnd, Some(&mut owner_pid)) };", 1, Why::NotAnError, "要的是出参里的属主 pid，返回值（线程 id）用不上"),
     ("src/frontend/shell/src/ccm_probe.rs", "let _ = child.kill();", 1, Why::Reap, ""),
     ("src/frontend/shell/src/ccm_probe.rs", "let _ = child.wait();", 1, Why::Reap, ""),
-    // 〔P1〕`capture_full` 交入参那条写线程：对面不读 stdin 就退了 ⇒ 写端断，结局由它的退出码与 stderr 说；等那条线程收尾同理。
+    // `capture_full` 交入参那条写线程：对面不读 stdin 就退了 ⇒ 写端断，结局由它的退出码与 stderr 说；等那条线程收尾同理。
     ("src/frontend/shell/src/ccm_probe.rs", "let _ = w.write_all(&bytes);", 1, Why::DeadLink, ""),
     ("src/frontend/shell/src/ccm_probe.rs", "let _ = w.join();", 1, Why::Signal, ""),
     ("src/comms/inward/chan/client.rs", "tx.send(Err(hop(0, \"read\", Reach::Unknown, HopFault::Dropped))).ok();", 1, Why::PeerGone, ""),
@@ -182,16 +182,16 @@ const ALLOWED: &[(&str, &str, usize, Why, &str)] = &[
     ("src/comms/inward/chan/router.rs", "tx.send(out).await.ok();", 1, Why::PeerGone, ""),
     ("src/comms/inward/chan/router.rs", "write_frame(&mut wr, &Head::Denied, &[]).await.ok();", 1, Why::DeadLink, ""),
     ("src/comms/inward/chan/wire.rs", "rx.wait_for(|c| *c).await.ok();", 1, Why::Signal, ""),
-    ("src/frontend/shell/src/config.rs", "let _ = std::fs::remove_file(&tmp);", 1, Why::CleanupAfterFailure, "〔CFG1〕原子写的临时件：换名失败之后删它；主错误已在回"),
+    ("src/frontend/shell/src/config.rs", "let _ = std::fs::remove_file(&tmp);", 1, Why::CleanupAfterFailure, "原子写的临时件：换名失败之后删它；主错误已在回"),
     ("src/frontend/filewin/src/scale.rs", "let _ = render_headless(&ctx, rows, screen, off);", 1, Why::NotAnError, "量渲染耗时，只要时间不要画出来的东西"),
-    // 〔FILES2 · 第四波〕窗口那几问的答复送回等答的那一趟（它已收场 ⇒ 没人要）· 暂存件收尾删不掉交孤儿扫（不盖下载 / 复制本身的结局）。
+    // 窗口那几问的答复送回等答的那一趟（它已收场 ⇒ 没人要）· 暂存件收尾删不掉交孤儿扫（不盖下载 / 复制本身的结局）。
     ("src/frontend/filewin/src/extract.rs", "tx.send(fresh).ok();", 1, Why::PeerGone, "解压撞名那一问的答复；等答的那一趟已收场就没人要"),
     ("src/frontend/filewin/src/cross_copy.rs", "tx.send(overwrite).ok();", 1, Why::PeerGone, "复制到另一台「盖不盖」那一问的答复；等答的那一趟已收场就没人要"),
     ("src/frontend/filewin/src/cross_copy.rs", "let _ = super::source::ask(line, &local, \"files-delete\", &serde_json::json!({ \"root\": staging, \"rel\": rel }), super::wri", 1, Why::CleanupAfterFailure, "清本机暂存件（成败都清）；删不掉只剩一份垃圾，不改复制本身的结局"),
     ("src/frontend/filewin/src/cross_copy.rs", "let _ = super::source::ask(line, &to, \"files-delete\", &serde_json::json!({ \"root\": bstaging, \"rel\": format!(\"{k}.part\") ", 1, Why::CleanupAfterFailure, "半路失败之后清 B 那头开过单的暂存件；主错误已在回，删不掉交那台的孤儿扫"),
-    // 〔MOD〕`history.rs` 那一处（读整份会话末块交前端、前端已走）随那条命令退役。
-    ("src/frontend/shell/src/platform/terminal.rs", "let _ = child.wait();", 1, Why::Reap, ""), // 〔P4 · 阶段 H〕原 `launch.rs`
-    // 〔P4 · 阶段 H〕下面九行原住 `lib.rs`（主窗口拉前 · 单实例回调）：随两个平台臂搬进 `platform/window.rs`，处数不变。
+    // `history.rs` 那一处（读整份会话末块交前端、前端已走）随那条命令退役。
+    ("src/frontend/shell/src/platform/terminal.rs", "let _ = child.wait();", 1, Why::Reap, ""), // 原 `launch.rs`
+    // 下面九行原住 `lib.rs`（主窗口拉前 · 单实例回调）：随两个平台臂搬进 `platform/window.rs`，处数不变。
     ("src/frontend/shell/src/platform/window.rs", "let _ = AttachThreadInput(fg_thread, cur_thread, false);", 1, Why::WindowBestEffort, ""),
     ("src/frontend/shell/src/platform/window.rs", "let _ = BringWindowToTop(h);", 1, Why::WindowBestEffort, ""),
     ("src/frontend/shell/src/platform/window.rs", "let _ = SetWindowPos(h, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);", 1, Why::WindowBestEffort, ""),
@@ -199,7 +199,7 @@ const ALLOWED: &[(&str, &str, usize, Why, &str)] = &[
     ("src/frontend/shell/src/platform/window.rs", "let _ = ShowWindow(h, SW_RESTORE);", 1, Why::WindowBestEffort, ""),
     ("src/frontend/shell/src/platform/window.rs", "let _ = ShowWindow(h, SW_SHOW);", 1, Why::WindowBestEffort, ""),
     ("src/frontend/shell/src/lib.rs", "let _ = local_cache.record(sid, pid, bind_registry);", 1, Why::NotAnError, "`None` = 这个会话不是经 cc 起的 / 还没握手完（常态）；绑上了 `record` 自己记日志"),
-    // 〔MIG-1〕F5 重放那两处裸 `let _ = handle.emit(…)`（容器 · 可重连）〔MIG-1 · ⑬〕随起停事件并进会话流删了（就绪点在流里原位交成品）。
+    // F5 重放那两处裸 `let _ = handle.emit(…)`（容器 · 可重连）随起停事件并进会话流删了（就绪点在流里原位交成品）。
     ("src/frontend/shell/src/lib.rs", "let _ = w.set_focus();", 2, Why::WindowBestEffort, ""),
     ("src/frontend/shell/src/lib.rs", "let _ = w.show();", 2, Why::WindowBestEffort, ""),
     ("src/frontend/shell/src/lib.rs", "let _ = w.unminimize();", 2, Why::WindowBestEffort, ""),
@@ -213,17 +213,17 @@ const ALLOWED: &[(&str, &str, usize, Why, &str)] = &[
     ("src/frontend/shell/src/local_backend_host.rs", "let _ = sock.set_read_timeout(None);", 1, Why::NotAnError, "这条 socket 下一行就转成非阻塞交给 tokio：`SO_RCVTIMEO` / `SO_SNDTIMEO` 对非阻塞读写不起作用，摘不掉也没有残留"),
     ("src/frontend/shell/src/local_backend_host.rs", "let _ = sock.set_write_timeout(None);", 1, Why::NotAnError, "这条 socket 下一行就转成非阻塞交给 tokio：`SO_RCVTIMEO` / `SO_SNDTIMEO` 对非阻塞读写不起作用，摘不掉也没有残留"),
     ("src/frontend/shell/src/logging.rs", "let _ = h.emit(ERROR_EVENT, p);", 1, Why::Diag, "把一条错误日志推给界面；推不上它照样进了日志文件"),
-    // 〔P4b · 阶段 H〕下面两行随 Job Object 那一段搬进 `platform/spawn.rs`（处数不变）。
+    // 下面两行随 Job Object 那一段搬进 `platform/spawn.rs`（处数不变）。
     ("src/frontend/shell/src/platform/spawn.rs", "let _ = CloseHandle(job);", 2, Why::Reap, "Windows 句柄 / 内存释放"),
     ("src/frontend/shell/src/platform/spawn.rs", "let _ = windows::Win32::Foundation::CloseHandle(h);", 1, Why::Reap, "Windows 句柄 / 内存释放"),
     ("src/frontend/shell/src/ssh_source.rs", "let _ = frame_tx.send(Err(\"ssh backend stdout closed (EOF / connection dropped)\".to_string())).await;", 1, Why::PeerGone, ""),
     ("src/frontend/shell/src/ssh_source.rs", "let _ = frame_tx.send(Err(format!(\"ssh backend stdout read error: {e}\"))).await;", 1, Why::PeerGone, ""),
     ("src/common/host-core/src/atomic.rs", "let _ = std::fs::remove_file(&tmp);", 1, Why::CleanupAfterFailure, "原子写的临时件：换名失败之后删它；主错误已在回，删不掉只剩一份临时件"),
-    // 〔W5-AUX · `设计/96 §3.6`〕capture 带 stdin 那一形：写那一行失败时回一行失败的 ack；ack 本身写不出去 ⇒ 链路已死，同上面那几条。
+    // capture 带 stdin 那一形：写那一行失败时回一行失败的 ack；ack 本身写不出去 ⇒ 链路已死，同上面那几条。
     ("src/backend/dial/uses.rs", "let _ = write_stages_then_ack(out, stages, &DialAck::failed(copy_text(\"beUses.exec.stdinLost\", &[(\"e\", &e.to_string())])", 1, Why::DeadLink, ""),
-    // 〔VIS2 · 09-26〕`agent_home` 的可重入挂法（`rewatch_agent_home`，`设计/15 §4.7 S3`）：同上面三个目录那一族。
+    // `agent_home` 的可重入挂法（`rewatch_agent_home`）：同上面三个目录那一族。
     ("src/backend/observe/watcher.rs", "let _ = debouncer.watcher().unwatch(agent_home);", 2, Why::Reap, "撤旧 inode 上的 watch：目录被删 / 换过 inode 时 unwatch 本来就会失败"),
-    ("src/backend/control/resident.rs", "let _ = std::fs::remove_file(&path);", 1, Why::Reap, "〔STOP〕停完之后收掉还指着它的那份 pid 记录：结局（graceful / killed）已经定了；删不掉只剩一份陈记录，下次认身份时 ESRCH / exe 对不上照样答对；一次性子命令，stderr 只许一行 JSON 信封"),
+    ("src/backend/control/resident.rs", "let _ = std::fs::remove_file(&path);", 1, Why::Reap, "停完之后收掉还指着它的那份 pid 记录：结局（graceful / killed）已经定了；删不掉只剩一份陈记录，下次认身份时 ESRCH / exe 对不上照样答对；一次性子命令，stderr 只许一行 JSON 信封"),
 ];
 
 /// 键的长度上限（字符）。长语句（带一整句报错的 `write_stages_then_ack(…)`）截到这里就认得出。
@@ -537,7 +537,7 @@ fn population() -> BTreeMap<(String, String), usize> {
             &[],
         ));
     }
-    // 〔P4〕壳那棵根的人群声明带进来的兄弟包（`chan-core` · `host-core` …）也住 `src/common` 那棵：同一份只数一次。
+    // 壳那棵根的人群声明带进来的兄弟包（`chan-core` · `host-core` …）也住 `src/common` 那棵：同一份只数一次。
     files.sort_by(|a, b| a.0.cmp(&b.0));
     files.dedup_by(|a, b| a.0 == b.0);
     let test_only = test_only_modules(&files);
@@ -592,7 +592,7 @@ fn w5vis_every_bare_swallow_in_production_is_registered_with_a_reason() {
         "生产代码里的裸吞与登记表对不上。\n\
          ★ 盘上有、表里没有（或处数不同）—— 要么别吞（说出来 / 往上抛），要么登记为什么可以丢（{}）：\n{}\n\
          ★ 表里有、盘上没有（修掉了 / 搬走了就删那一行）：\n{}",
-        "`设计/15 §4.7 S5`：处置不是别吞，是吞了要留一行日志",
+        "：处置不是别吞，是吞了要留一行日志",
         unlisted.join("\n"),
         dead.join("\n")
     );
@@ -650,7 +650,7 @@ fn w5vis_test_only_modules_are_derived_and_excluded() {
             &[],
         ));
     }
-    // 〔P4〕壳那棵根的人群声明带进来的兄弟包（`chan-core` · `host-core` …）也住 `src/common` 那棵：同一份只数一次。
+    // 壳那棵根的人群声明带进来的兄弟包（`chan-core` · `host-core` …）也住 `src/common` 那棵：同一份只数一次。
     files.sort_by(|a, b| a.0.cmp(&b.0));
     files.dedup_by(|a, b| a.0 == b.0);
     let derived = test_only_modules(&files);

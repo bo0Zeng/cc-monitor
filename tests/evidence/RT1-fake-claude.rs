@@ -3,10 +3,10 @@
 //!
 //!     rustc -O --edition 2021 --target x86_64-pc-windows-gnu -o claude.exe tests/evidence/RT1-fake-claude.rs
 //!
-//! 守的要求：用户裁决 V115 逐字「能，用虚拟机」（虚拟机当真机测试资源）；
+//! 守的要求：「能，用虚拟机」（虚拟机当真机测试资源）；
 //! V120 逐字「真机测试量一次并发再开」（中转全量注入先在真机上量）。
 //!
-//! 它只模仿 monitor / 后端**看得见的那几样**（`设计/30`、后端 `observe/watcher.rs` 读的那几格），
+//! 它只模仿 monitor / 后端**看得见的那几样**（后端 `observe/watcher.rs` 读的那几格），
 //! 形状取自真 pidfile 的**键与类型**（值全是本程序现编的，不含任何真会话正文）：
 //!   · `<配置目录>/sessions/<PID>.json`：`pid · sessionId · cwd · startedAt · kind · entrypoint · version · status · updatedAt`；
 //!   · `<配置目录>/projects/<cwd 的 slug>/<sid>.jsonl`：两行合成的 user / assistant 记录；

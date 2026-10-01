@@ -170,8 +170,8 @@ fn the_message_does_not_blame_the_call() {
         .err()
         .expect("该拒的没拒");
     let msg = err.message();
-    // 〔CP2c〕句子照 CP1 裁词去掉了「这不是调用失败」那半句反驳（`91 §2.2`）；要的仍是「归因到能力」。
-    // 〔FIX2 · 99 §2.1 ㉛②〕按拒绝种类断言、不钉原文：拒的是「缺能力」那一种、缺的是那一个。
+    // 句子照 CP1 裁词去掉了「这不是调用失败」那半句反驳；要的仍是「归因到能力」。
+    // 按拒绝种类断言、不钉原文：拒的是「缺能力」那一种、缺的是那一个。
     assert!(
         matches!(&err, Rejected::MissingCapability { token, .. } if *token == required[0]),
         "没归因到能力，调用方会去查错方向：{msg}"

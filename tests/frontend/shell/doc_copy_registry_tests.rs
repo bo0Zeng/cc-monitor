@@ -36,7 +36,7 @@ const POINTER_ONLY: &[(&str, &[&str], &str, &str)] = &[
         "各套测试的条数",
         &[
             "后端 cargo ",
-            // 🔴 〔`K-R116` 09-14〕**两条并列，别删上面那条**：`R61` 的措辞收干净把
+            // 🔴 **两条并列，别删上面那条**：`R61` 的措辞收干净把
             // 写区那 9 份散文里下面那个旧前缀全换成了「远端后端」，而 `PROSE_FILES`
             // 里还有**不在那一轮写区**的文件（`src/doc/REMOTE-PHASE0-DEPLOY.md`）仍写旧词。
             // 只换不加 ⇒ 旧词那半静默掉出人群；只加不留 ⇒ 新词那半没人看。
@@ -76,14 +76,14 @@ const POINTER_ONLY: &[(&str, &[&str], &str, &str)] = &[
         "套数与地板值一律不抄在这里",
         "`ci.yml` 里 `run: bash tests/e2e/assert-pass-floor.sh <套件> <地板>` 那 19 行",
     ),
-    // 〔THIN〕「`backend/` 下 `.rs` 的个数」那一行摘了：monitor 侧 `backend` 目录没了（那一组回了壳根，`GUARDED` 逐个点名）。
+    // 「`backend/` 下 `.rs` 的个数」那一行摘了：monitor 侧 `backend` 目录没了（那一组回了壳根，`GUARDED` 逐个点名）。
 ];
 
 /// 已按 **E12 第一条路**处置（有一条会红的判据读它）的事实 —— 判据名必须真的还在。
 ///
 /// V6 逐条对上的那批。这里不重复它们的值，只钉「**那条判据还活着**」。
 const HAS_A_GUARD: &[(&str, &str)] = &[
-    // 〔THIN〕「`backend/` 下 `.rs` 清单」那一格换靶：目录没了，那一组逐个点名、点名的都在（`every_guarded_file_exists`）。
+    // 「`backend/` 下 `.rs` 清单」那一格换靶：目录没了，那一组逐个点名、点名的都在（`every_guarded_file_exists`）。
     ("从前 `backend/` 那一组的清单", "every_guarded_file_exists"),
     ("node 套件组数", "NODE_SUITES"),
     ("本机读取面 reader 文件数", "local_read_surface_registry"),
@@ -115,7 +115,7 @@ const NOT_DOING: &[(&str, &str)] = &[(
     "那份副本住在 `项目审阅报告-PhaseG-2026-07-29.md` —— **带日期的历史报告**。\
          改它等于篡改当时的记录；报告是快照，不是活文档。\
          另两份活副本已在 F18 上半处置。\
-         〔2026-09-17〕那份报告已随旧文档退役（`git rm`，历史仍在），\
+那份报告已随旧文档退役（`git rm`，历史仍在），\
          工作区里不再有第三份副本 —— 本行保留，因为『决定不处置』这个事实本身要留账。",
 )];
 
@@ -149,7 +149,7 @@ const DONE_ROWS: &[&str] = &[
 /// 本文件自己的路径 —— 扫符号时要摘出去（表里写着那些符号名）。
 /// 「事实 → 关键词」：**数量形态**出现即红，不管连接词怎么写。
 ///
-/// # 〔audit-0805 08-06〕它补的是 [`POINTER_ONLY`] 的**锚点腐坏**那一面
+/// # 它补的是 [`POINTER_ONLY`] 的**锚点腐坏**那一面
 ///
 /// 那张表按**精确前缀**取样（`"CI 共 "` / `"今天清单上有 "` …）。实测：
 /// 把同一个副本写成 `CI 一共 7 个 job` / `CI 目前有 7 个 job` / `本仓 CI 是 7 个 job`，
@@ -284,7 +284,7 @@ fn no_quantity_form_of_a_pointer_only_fact_appears_in_prose() {
     );
 }
 
-// 🔴 〔步 7c 剖分 2026-09-19 · `设计/16 §6.2` C 类〕**自摘的住址跟着 `HAS_A_GUARD` 搬。**
+// 🔴 〔步 7c 剖分 2026-09-19〕**自摘的住址跟着 `HAS_A_GUARD` 搬。**
 // 那张表这一轮从 `src/frontend/shell/src/doc_copy_registry.rs` 搬进了本文件；
 // 自摘要摘的一直是**表住的那一份**（不摘 ⇒ 每条都能在自己的表里找到自己 ⇒ 恒绿）。
 // 没跟着改的后果现打过：`own` 读出来的是生产段那份、里面已经没有 `HAS_A_GUARD`
@@ -459,7 +459,7 @@ fn the_guards_that_keep_the_accurate_numbers_accurate_still_exist() {
     // 〔搬树 2026-09-17〕**这里没有 `"src/backend"`，不是漏了**：后端树搬到
     // `<repo>/src/backend` 之后它已经是 `"src"` 的**子目录**，两个都列会把
     // 后端的每个文件数两遍（搬家前 `src/backend` 与 `src` 是互斥的）。
-    // 〔搬 src-tauri 2026-09-17〕**这里没有 `"src/frontend/shell/src"`，不是漏了**：
+    // **这里没有 `"src/frontend/shell/src"`，不是漏了**：
     // 它已经是 `"src"` 的子目录，两个都列会把每个文件数两遍。
     // 🔴 〔搬树 2026-09-18 补 `"tests"`〕`HAS_A_GUARD` 里点名的符号有一部分
     // 住在测试文件里（例：`NODE_SUITES` 今天在 `tests/frontend/ui/node-suite-registry-guard.vitest.ts`），
@@ -523,7 +523,7 @@ fn the_treated_prose_rows_only_go_up() {
     }
 }
 
-/// ★ 把 `tests/e2e/README.md` 那句「**只能靠这条提醒**」变成一条会红的判据〔F18 下半〕。
+/// ★ 把 `tests/e2e/README.md` 那句「**只能靠这条提醒**」变成一条会红的判据。
 ///
 /// 那份表原先连**套数**带**逐套地板**一起抄，并在旁边逐字写着
 /// 「副本漂了不会让任何东西变红，所以只能靠这条提醒」—— 然后它漂了三次

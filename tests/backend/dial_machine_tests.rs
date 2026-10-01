@@ -1,4 +1,4 @@
-//! 设计/99 §2.1 ⑬ 主会话裁「`test_remote_connection`：界面把表单里（未保存的）那台配置交给本机后端，后端组拨号请求」·
+//! 「`test_remote_connection`：界面把表单里（未保存的）那台配置交给本机后端，后端组拨号请求」·
 //! 「端口转发：流没起的远端不许拒，本机后端按配置自己拨」—— `dial/machine.rs` 的规则判据（从 monitor `dial_host::request` /
 //! `ssh_source::parse_address_line` 搬来：地址四形态 · 指纹只继承同一个 host 的 · 跳板查无 / 环都拒）。
 use super::*;
@@ -104,7 +104,7 @@ fn a_jump_must_be_handed_over_and_must_not_point_at_itself() {
 
 #[test]
 fn a_wire_dial_is_composed_here_and_the_preferred_winner_goes_first() {
-    // 〔MIG-1 收尾〕线上交来的是一台原样的配置（monitor 不再解析地址 / 组请求）：组法只在这里。
+    // 线上交来的是一台原样的配置（monitor 不再解析地址 / 组请求）：组法只在这里。
     let wire = json!({
         "machine": {"host": "10.0.0.2", "user": "u", "addresses": ["devbox.lan", "[fe80::1]:2200"]},
         "prefer": {"host": "fe80::1", "port": 2200},
@@ -153,7 +153,7 @@ fn a_wire_dial_is_composed_here_and_the_preferred_winner_goes_first() {
 
 #[test]
 fn the_ack_says_how_strict_the_composed_request_was() {
-    // 〔MIG-1 收尾〕界面判「要不要自动固化」看 ack 的 `strict` / `jump_strict`，不再自己重推指纹继承（规则只在本文件）。
+    // 界面判「要不要自动固化」看 ack 的 `strict` / `jump_strict`，不再自己重推指纹继承（规则只在本文件）。
     let strict_of = |wire: Value| crate::dial::uses::strictness(&resolve(&wire).unwrap());
     let form = json!({"host": "10.0.0.2", "label": "devbox", "user": "u", "jump": "bastion"});
     let bastion = |fp: &str| json!({"host": "b.lan", "label": "bastion", "user": "u", "hostKeyFingerprint": fp});

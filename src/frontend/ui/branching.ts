@@ -73,7 +73,7 @@ export function computeMainBranch(rawRecords: ReadonlyArray<BranchRecord>): Set<
   if (rawRecords.length === 0) return new Set();
 
   // issue #25：入口按 uuid 去重（保首见）——算法对重复输入必须幂等。
-  // 投递层是 at-least-once（违反此约束见 src/doc/INVARIANTS.md § 25）；〔RENDER2〕截断重读已改成换代
+  // 投递层是 at-least-once（违反此约束见 src/doc/INVARIANTS.md § 25）；截断重读已改成换代
   // （先出声、行号从 0 重数、tab 整份重来），这一道留作纵深防御。重复记录一旦进入下面的 childrenOf，同一 child 被计两次 → Kahn 的
   // remaining 永远扣不到 0 → 重复点的全部祖先落 leftover fallback（latestDescTs=
   // 自身、hasAssistant=false 全错）→ fork 赢家/多 root 分类误判，最坏整段历史被当
@@ -128,7 +128,7 @@ export function computeMainBranch(rawRecords: ReadonlyArray<BranchRecord>): Set<
       remaining.set(r.uuid, c);
     }
   }
-  // 〔W5-RENDER R1 · `设计/17 §2.10`〕头下标出队，不用 `shift()`（V8 的 left-trim 快路不是无条件的，
+  // 头下标出队，不用 `shift()`（V8 的 left-trim 快路不是无条件的，
   // 长数组上每次 `shift` 退化成整份搬移）。每条记录恰好进队一次 ⇒ 数组不必压缩，长度 ≤ N。
   for (let qh = 0; qh < queue.length; qh++) {
     const r = queue[qh];
@@ -279,7 +279,7 @@ export function extractBranchRecord(rec: {
   parentUuid?: string | null;
   timestamp?: string | null;
   message?: { content?: unknown };
-  /** 〔RENDER2 · J10〕user 记录的注入噪声成品（monitor 填，`agents/claudecode/text.rs::user_text`）；只读 `interrupt`。 */
+  /** user 记录的注入噪声成品（monitor 填，`agents/claudecode/text.rs::user_text`）；只读 `interrupt`。 */
   userText?: { interrupt: boolean };
 }): BranchRecord | null {
   if (
@@ -301,7 +301,7 @@ export function extractBranchRecord(rec: {
     timestamp: rec.timestamp,
     type: rec.type,
     // issue #22：只有 user 记录可能是回撤打断叶子；其他类型恒 false。
-    // 〔RENDER2 · J10〕「是不是 ESC 中断标记」只读成品（整条恰是它才算，标记后面跟着真话的不算）。
+    // 「是不是 ESC 中断标记」只读成品（整条恰是它才算，标记后面跟着真话的不算）。
     isInterrupt: rec.type === "user" && rec.userText?.interrupt === true,
     // issue #36：队列消息豁免匹配用
     text: rec.type === "user" && userText ? userText.trim() : undefined,

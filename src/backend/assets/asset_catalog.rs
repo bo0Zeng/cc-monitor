@@ -1,6 +1,6 @@
 //! **资产目录** —— 每台后端把它看到的 skill 与 MCP（用户级 ＋ 这台上开过会话的项目里的）记成一份目录，目录在后端之间自动对上。
 //!
-//! # 用户裁决（2026-09-25，`99 §1` V113，逐字）
+//! # 要求（逐字）
 //!
 //! 「比如本机后端在本机看见一个skill并记录下来, 就会和远端后端同步, 这样远端后端也能在远端装skill或者mcp /
 //! mcp保持项目级别」，并选「**目录自动同步，装要你点**」。仍有效：V112（内容原样拷 ＋ 标可疑项，不替用户改写）。
@@ -17,7 +17,7 @@
 //!
 //! `machines[id]` 是那台机器**自己**扫出来的一整份（[`Snapshot`]），`gen` 是那台自己的代数（它自己那份变了才 +1）。
 //! **同一台取 `gen` 大的那一份整份**；自己那一格只认自己扫的（[`merge`]）。不比墙钟（两台的钟不可比）、删除随整份替换传播、
-//! 幂等可交换 ⇒ 反复同步收敛。「这台缺什么」的判定（[`rows`]）也住这里（`01 §1.1`：判定在后端）。
+//! 幂等可交换 ⇒ 反复同步收敛。「这台缺什么」的判定（[`rows`]）也住这里（判定在后端）。
 //!
 //! # 摘要
 //!
@@ -30,7 +30,7 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 
-/// 目录文件名。〔P3〕字面量只住契约 crate（`relay_route_core::ASSET_CATALOG_REL`：monitor 的数据位置页按它列出），
+/// 目录文件名。字面量只住契约 crate（`relay_route_core::ASSET_CATALOG_REL`：monitor 的数据位置页按它列出），
 /// 写者仍只有本模块（`asset_catalog_tests` 钉）。
 pub const FILE_NAME: &str = relay_route_core::file_name_of(relay_route_core::ASSET_CATALOG_REL);
 
@@ -752,7 +752,7 @@ fn write_at(path: &Path, cat: &Catalog) -> Result<(), String> {
     result
 }
 
-// 〔HX2 · 第四波 4D〕墓碑：这里从前是一把**进程内** `Mutex`（头注逐字「只挡同一进程：两个后端进程同时写，后写的整份盖掉先写的」）。
+// 墓碑：这里从前是一把**进程内** `Mutex`（头注逐字「只挡同一进程：两个后端进程同时写，后写的整份盖掉先写的」）。
 //   今天读—改—写整段在那个目录的**跨进程**锁里（`platform/lock.rs`，[`update_at`] 开头拿）：首建时第二个进程读到第一个写下的
 //   `self`，不再生出第二个 id（幽灵机器，审计 E14a）；同一台两个进程各自 +1 代数变成串行（E14b）。
 
@@ -784,7 +784,7 @@ pub fn update_with(
             &[("path", &path.display().to_string())],
         ),
     ))?;
-    // 〔HX1〕只建那一层、建的那一下就是 0700（`own_dir`：后端建自家目录的那一个函数）。〔HX2〕挪到拿锁之前：锁的是这个目录，它得先在。
+    // 只建那一层、建的那一下就是 0700（`own_dir`：后端建自家目录的那一个函数）。挪到拿锁之前：锁的是这个目录，它得先在。
     crate::common::own_dir::ensure_private_dir(dir).map_err(|e| {
         (
             "io_failed",

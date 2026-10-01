@@ -9,7 +9,7 @@
  * 数据全来自 `TabManager.snapshotSessions()`（纯派生 DTO）+ 选中时 `peekSession()`；overlay 开着时 1Hz 轮询重渲染
  * （偶尔开、快照纯内存、成本可忽略；push 订阅 = 后续精化）。
  *
- * 〔UP1 · `设计/10 §3.4` C2〕1Hz 那一拍**按行（按格子）差量更新**，不再 `replaceChildren()` 整块重建：
+ * 1Hz 那一拍**按行（按格子）差量更新**，不再 `replaceChildren()` 整块重建：
  * 格子按 sid 留住、组按机器留住，每一拍只写真变了的那几处（没变的一拍零 DOM 写）。
  *
  * 分组 / 排序 / 汇总是纯函数，抽出可测。
@@ -64,7 +64,7 @@ export function groupSessionsByOrigin(sessions: GridSessionSnapshot[]): OriginGr
  *  同档保持输入序（稳定）。纯函数——不改入参，返回新数组。 */
 export function sortSessionsInGroup(sessions: GridSessionSnapshot[]): GridSessionSnapshot[] {
   const rank = (s: GridSessionSnapshot): number => {
-    // 〔U4〕两轴：已结束（只能 resume）排最后；可重连（claude 退、tmux 在）排活会话之后、已结束之前。
+    // 两轴：已结束（只能 resume）排最后；可重连（claude 退、tmux 在）排活会话之后、已结束之前。
     if (isResumeOnly(s.state)) return 9;
     if (s.state.liveness === "dead") return 8;
     switch (s.activityStatus) {
@@ -98,7 +98,7 @@ export function summarizeSessions(sessions: GridSessionSnapshot[]): GridSummary 
   let runningAgents = 0;
   for (const s of sessions) {
     origins.add(s.origin);
-    if (isLive(s.state)) liveSessions += 1; // 〔U4〕按活性：可重连的不算活（原先借着 status: live 被算进来）
+    if (isLive(s.state)) liveSessions += 1; // 按活性：可重连的不算活（原先借着 status: live 被算进来）
     runningAgents += s.runningAgents;
   }
   return { machines: origins.size, liveSessions, runningAgents };
@@ -118,7 +118,7 @@ function peekSignature(selected: GridSessionSnapshot | null, peek: SessionPeek |
     selected.title,
     selected.origin,
     selected.cwd,
-    selected.state.liveness, // 〔U4〕两轴都签：「状态」一格从两轴派生
+    selected.state.liveness, // 两轴都签：「状态」一格从两轴派生
     selected.state.recoverability,
     selected.activityStatus,
     selected.waitingFor,
@@ -151,7 +151,7 @@ interface GroupRefs {
 }
 
 /**
- * 〔UP1〕徽标行画成什么样只取决于这几项（下面 `renderBadges` 逐字照原 `renderCell` 那一段）⇒ 拿它们当签名，
+ * 徽标行画成什么样只取决于这几项（下面 `renderBadges` 逐字照原 `renderCell` 那一段）⇒ 拿它们当签名，
  * 一样就不重画。纯函数。
  */
 function badgesInputs(s: GridSessionSnapshot): string {
@@ -198,7 +198,7 @@ function renderBadges(s: GridSessionSnapshot, badges: HTMLElement): void {
   }
 }
 
-/** 组的留存键 —— 就是那台机器的 origin（〔合并 C4a〕本机是具名的 `LOCAL_ORIGIN`，与主机名撞不上：
+/** 组的留存键 —— 就是那台机器的 origin（本机是具名的 `LOCAL_ORIGIN`，与主机名撞不上：
  *  `"<local>"` 在全仓只指本机，`Origin::route` 就按它分本机）。 */
 const groupKey = (origin: Origin): string => origin;
 
@@ -213,13 +213,13 @@ export class GridMonitorView {
   private selectedId: string | null = null;
   /** F91b：上次 peek 渲染的内容签名——1Hz 重渲染下签名不变则跳过重建（保住选区/滚动）。 */
   private peekSig: string | null = null;
-  /** 〔UP1〕sid → 格子。格子跨拍留住，每拍只改变了的那几处。 */
+  /** sid → 格子。格子跨拍留住，每拍只改变了的那几处。 */
   private readonly cells = new Map<string, CellRefs>();
-  /** 〔UP1〕机器 → 分组容器（键见 `groupKey`）。 */
+  /** 机器 → 分组容器（键见 `groupKey`）。 */
   private readonly groups = new Map<string, GroupRefs>();
-  /** 〔UP1〕摘要那一行上次写的时候的数（`null` = 还没写过）。 */
+  /** 摘要那一行上次写的时候的数（`null` = 还没写过）。 */
   private summarySig: string | null = null;
-  /** 〔UP1〕空态那一行（建一次，没会话时挂上、有会话时摘掉）。 */
+  /** 空态那一行（建一次，没会话时挂上、有会话时摘掉）。 */
   private emptyEl: HTMLElement | null = null;
 
   constructor(private source: GridSource) {
@@ -297,7 +297,7 @@ export class GridMonitorView {
   private render(): void {
     const sessions = this.source.snapshotSessions();
     const summary = summarizeSessions(sessions);
-    // 〔UP1〕摘要那一行也只在数变了时写。
+    // 摘要那一行也只在数变了时写。
     const summarySig = `${sessions.length}/${summary.machines}/${summary.liveSessions}/${summary.runningAgents}`;
     if (this.summarySig !== summarySig) {
       this.summarySig = summarySig;
@@ -314,13 +314,13 @@ export class GridMonitorView {
     if (this.selectedId && !selected) this.selectedId = null;
 
     // F91b-fix(batch18 审计修)：焦点在某个 cell 上时，本拍之后要让它还在同一会话的 cell 上。
-    // 〔UP1〕格子不再每拍销毁，焦点天然留着；但被 `insertBefore` 挪了位置的那一格会丢焦点
+    // 格子不再每拍销毁，焦点天然留着；但被 `insertBefore` 挪了位置的那一格会丢焦点
     // （浏览器的 focus fixup），所以「丢了就按 sid 找回来」这一段保留，只在真丢了时做。
     const active = document.activeElement;
     const focusedSid =
       active instanceof HTMLElement && this.bodyEl.contains(active) ? active.dataset.sid : undefined;
 
-    // 〔UP1〕先摘：本拍快照里没有了的格子、没有了的机器分组。
+    // 先摘：本拍快照里没有了的格子、没有了的机器分组。
     const alive = new Set(sessions.map((s) => s.sessionId));
     for (const [sid, refs] of this.cells) {
       if (!alive.has(sid)) {
@@ -349,7 +349,7 @@ export class GridMonitorView {
     }
     if (this.emptyEl?.parentNode === this.bodyEl) this.emptyEl.remove();
 
-    // 〔UP1〕再摆：组按 `groupSessionsByOrigin` 的顺序、格子按 `sortSessionsInGroup` 的顺序，
+    // 再摆：组按 `groupSessionsByOrigin` 的顺序、格子按 `sortSessionsInGroup` 的顺序，
     // 「游标 ＋ 不在位才 `insertBefore`」（与 tab 栏同一个形状）⇒ 顺序没变的一拍零搬动。
     let groupCursor: ChildNode | null = null;
     for (const group of groups) {
@@ -381,7 +381,7 @@ export class GridMonitorView {
     this.renderPeek(selected); // 1Hz 也刷 peek（选中会话内容随之更新）
   }
 
-  /** 〔UP1〕某台机器的分组容器（没有就建一次）。 */
+  /** 某台机器的分组容器（没有就建一次）。 */
   private groupFor(origin: Origin): GroupRefs {
     const key = groupKey(origin);
     let g = this.groups.get(key);
@@ -480,7 +480,7 @@ export class GridMonitorView {
         : selected.waitingFor
           ? copyText("gridMonitor.renderPeek.statusWaiting", { activityStatus: selected.activityStatus, waitingFor: selected.waitingFor })
           : selected.activityStatus;
-    // 〔U4〕活着 ⇒ 活动状态；死了 ⇒ 状态名（已结束 / 可重连）。原先是「已归档 · <活动>」，死会话的活动是陈旧的。
+    // 活着 ⇒ 活动状态；死了 ⇒ 状态名（已结束 / 可重连）。原先是「已归档 · <活动>」，死会话的活动是陈旧的。
     addFact(copyText("gridMonitor.fact.status"), stateView(selected.state).name ?? act);
     if (peek?.model) addFact(copyText("gridMonitor.fact.model"), peek.model);
     this.peekEl.appendChild(facts);
@@ -537,7 +537,7 @@ export class GridMonitorView {
     }
   }
 
-  /** 〔UP1〕某个会话的格子（没有就建一次：骨架 ＋ 点击监听；内容由 `updateCell` 填）。 */
+  /** 某个会话的格子（没有就建一次：骨架 ＋ 点击监听；内容由 `updateCell` 填）。 */
   private cellFor(sessionId: string): CellRefs {
     let refs = this.cells.get(sessionId);
     if (!refs) {
@@ -564,11 +564,11 @@ export class GridMonitorView {
     return refs;
   }
 
-  /** 〔UP1〕按输出比：每一处只在「要画的」与「已画的」不同时写。 */
+  /** 按输出比：每一处只在「要画的」与「已画的」不同时写。 */
   private updateCell(refs: CellRefs, s: GridSessionSnapshot): void {
     const { cell } = refs;
     // `toggle(x, 布尔)` 状态没变时不写 DOM（规范：force 与现状一致直接返回）。
-    const view = stateView(s.state); // 〔U4〕类与灯只从两轴派生（与 tab 栏同一份）
+    const view = stateView(s.state); // 类与灯只从两轴派生（与 tab 栏同一份）
     cell.classList.toggle("ended", view.ended);
     cell.classList.toggle("cell-bg", s.kind !== null && s.kind !== "interactive");
     cell.classList.toggle("is-selected", s.sessionId === this.selectedId); // F91b 选中高亮

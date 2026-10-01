@@ -1,6 +1,6 @@
-//! 设计/99 §2.1 ⑬ 主会话裁「`test_remote_connection`：后端组拨号请求、拨一次、回结局（后端持有全部 SSH）」——
+//! 「`test_remote_connection`：后端组拨号请求、拨一次、回结局（后端持有全部 SSH）」——
 //! `dial/probe.rs` 的三步各自的结局（链路那一侧用替身）：握手不成 ⇒ `sshOk:false` 且不回指纹 · 通了没 hello · 通了有 hello、控制通道往返。
-//! 〔MIG-1 收尾 · 主会话裁「进度不许倒退」〕进度边拨边推：每条判据同时钉**推了哪几格、什么顺序**（结局是最后一格）。
+//! 〔「进度不许倒退」〕进度边拨边推：每条判据同时钉**推了哪几格、什么顺序**（结局是最后一格）。
 use super::*;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
 
@@ -82,7 +82,7 @@ async fn ssh_up_but_no_hello_is_its_own_verdict() {
     assert_eq!(r["message"], copy_text("beProbe.test.noHello", &[]));
 }
 
-/// 设计/91 §6 第 9 条 · 99 §2.2 R1 认形状 ＋ 主会话 09-28 裁：机器页「测试连接」那一行不露 `v=… build=… caps=[…]` 日志行，
+/// 认形状 ＋ 主会话 09-28 裁：机器页「测试连接」那一行不露 `v=… build=… caps=[…]` 日志行，
 /// 露三格（版本 · 能用几项 / 做不到几项 · 往返毫秒），做不到的那几类按码分类交给界面；键值对那一形只进日志。
 fn is_not_a_log_line(s: &str) -> bool {
     !s.contains('=') && !s.contains('[')

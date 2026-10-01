@@ -1,10 +1,10 @@
 /**
- * 🔴 〔CFG1 · 4D〕**config.json 丢更新**的复现判据（E §E1 · B §2.4）。
+ * 🔴 **config.json 丢更新**的复现判据（E §E1 · B §2.4）。
  *
  * 守的要求（住址）：
- * - `设计/30 §4`：「两者 …… 各自只写自己那个键」；`§C.3`：「**只动自己那个键**（`tabBar.order`），不整段覆盖 ——
+ * -：「两者 …… 各自只写自己那个键」；`§C.3`：「**只动自己那个键**（`tabBar.order`），不整段覆盖 ——
  *   否则 order 与 pinned 两条路会互相把对方写没」。
- * - `设计/01 §3.3b`：「两边写不同的文件 ⇒ 单写者，『读—改—写整份覆盖掉对方刚写的键』那个竞态在构造上不存在」
+ * -：「两边写不同的文件 ⇒ 单写者，『读—改—写整份覆盖掉对方刚写的键』那个竞态在构造上不存在」
  *   —— config.json 是**同一个文件、多个写者**，本条要的是同一个性质：谁写的键谁的值留在盘上。
  *
  * # 形状
@@ -74,7 +74,7 @@ const PIN = {
   name: null,
   title: "固定那条",
 };
-// 〔GRP1 · V140〕组只存 `{id, name}`；组员关系是 tab 自己的属性（`tabBar.groupOf.<sid>`）。
+// 组只存 `{id, name}`；组员关系是 tab 自己的属性（`tabBar.groupOf.<sid>`）。
 const COLS = [{ id: "c1", name: "组一" }];
 const BEHAVIOR = {
   autoFollowUserActive: false,
@@ -85,7 +85,7 @@ const BEHAVIOR = {
   resumeCommandLocalPresets: [],
   resumeCommandRemotePresets: [],
   notifyTurnEnd: true,
-  // 〔LR2〕`forceLaunchPayloadRenderer` 退役，行为配置里没有这一格了。
+  // `forceLaunchPayloadRenderer` 退役，行为配置里没有这一格了。
 };
 const KEYS = { "open-settings": "Ctrl+,", "kill-session": null };
 
@@ -98,7 +98,7 @@ const EXPECTED: Record<string, unknown> = {
   claudeDir: "/tmp/cfg1-claude",
   keybindings: KEYS,
   accounts: { defaultName: "a1", modelByAccount: { a1: "opus" } },
-  remote: { enabled: true }, // 〔FIX2 续 · ㊶〕只写 enabled 那一格，不再整段写出一个空 hosts
+  remote: { enabled: true }, // 只写 enabled 那一格，不再整段写出一个空 hosts
 };
 
 /** 一个 realm 的全部写者（一份模块实例）。 */
@@ -117,7 +117,7 @@ async function realm(): Promise<{
   const remote = await import("../../../src/frontend/ui/remote-config");
   return {
     // 主窗：tab 栏那几条（E1 的原形：拖放同拍发分组 ＋ 顺序）。
-    // 〔GRP1〕分组那一条的形状照 `TabBarPrefs.foundGroup`：组表 ＋ 两个 tab 的组 id 键装进**一次**补丁。
+    // 分组那一条的形状照 `TabBarPrefs.foundGroup`：组表 ＋ 两个 tab 的组 id 键装进**一次**补丁。
     main: () => [
       cfg.patchConfig([
         cols.collectionsEdit(COLS),

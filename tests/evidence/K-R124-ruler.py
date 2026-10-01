@@ -34,7 +34,7 @@
 
 `K-G4-platform-ledger.py`（`platform`，第 24 格）判的是「**门禁盖到了哪些平台**」——
 它读 `gate.sh`。本条判的是「**产线盖到了哪些平台**」—— 它读 `release.yml`。
-两件事分开的理由是硬的（`设计/96 §7.1.2` 现打）：三个落点全部 gitignore ⇒ **字节不进仓**，
+两件事分开的理由是硬的（现打）：三个落点全部 gitignore ⇒ **字节不进仓**，
 三条产线**只由 `release.yml` 一个文件驱动** ⇒ 「这张表的门禁只能建在 `release.yml` 上，
 不能建在 `cargo` 上」。⇒ 门禁编得过 ≠ 发版那趟产得出字节，**两格都要有**。
 ⚠ **条 63 的承诺面本文件一个字不抄**：`PROMISED` 的唯一住址是那份账本，这里 import 它。
@@ -159,7 +159,7 @@ COMPILE_STEPS = [
      "本机 Linux x86_64（文件窗口；内嵌进裸 `cc-monitor`）"),
     ("build-linux", "Build local backend (native)",
      "runner host triple 的原生 glibc 字节",
-     "🟡 **本机 Linux 的第二份来源** —— `设计/96 §7.3` 逐字「哪一份该留、哪一份该删，"
+     "🟡 **本机 Linux 的第二份来源** —— 「哪一份该留、哪一份该删，"
      "我判不了 —— 要先有条 62 那次迁移（步 `19`）把落点收成一个」。"
      "⇒ 本条**不是**在认可它，是把「同一格今天有两份来源」这件事钉成一个**数**："
      "变成三份会红，被人在裁之前偷偷删掉一份也会红"),
@@ -196,7 +196,7 @@ BYTE_LINES = [
                 "`build.rs::embed_backends` 的 `include_bytes!` ⇒ 进 exe 本体",
     },
     {
-        # 〔V132 · TL2〕本机 Linux 只承诺 x86_64（这一格的 runner 就是 x86_64 的 `ubuntu-latest`）；
+        # 本机 Linux 只承诺 x86_64（这一格的 runner 就是 x86_64 的 `ubuntu-latest`）；
         #   本机 (Linux, aarch64) 不承诺 —— 名字逐字与账本 `PROMISED` 同改（⑨a 两向靠它）。
         "plat": "本机 Linux x86_64",
         "runner": ("build-linux", "ubuntu-latest"),
@@ -206,7 +206,7 @@ BYTE_LINES = [
             ("build-linux", "Build local filewin (native)"),
             ("build-linux", "Stage native filewin for self-extract"),
         ],
-        "into": "后端**不另编一份**（`设计/96 §7.1.5` 待点① 逐字：`local_daemon.rs::start_local_backend` 里"
+        "into": "后端**不另编一份**（待点① 逐字：`local_daemon.rs::start_local_backend` 里"
                 "那道 `cfg!(target_os = \"linux\")` 闸让本机 Linux 直接用远端那两份 **musl 静态**字节自释放）"
                 "⇒ 这一件的产线增量是 **0**，它要的是**门禁多一格 ＋ 一次真机验**。"
                 "文件窗口程序另编一份，经 `build.rs::embed_native_filewin` 进裸 `cc-monitor` 本体。"
@@ -241,7 +241,7 @@ IDENTITY_READS = {
 # —— 判它就得同时读那两份文本，而「同时读那两份」正是本格的定义。
 # ⇒ 本组判据与 ⑨⑩⑪⑫ 共用同一个被测面，拆出去就得把 `release.yml` 的解析再抄一份。
 #
-# 🔴 **它治的病**（`设计/99 §4` 步 `19c` 逐字）：协议面一变就要 bump `BUILD_ID`，
+# 🔴 **它治的病**（步 `19c` 逐字）：协议面一变就要 bump `BUILD_ID`，
 # 而 bump 那一刻 `embedded-backends/` 里那两份 musl 字节立刻变旧 ⇒ `build.rs` 的
 # **半 bump 守卫**当场 panic，**整棵树编不过**（2026-09-18 实地踩过一次，四路 agent 同时编不过）。
 # 今天盘上有一张 mtime 安全网，但那**只是安全网不是机制** —— 机制那一半是
@@ -274,7 +274,7 @@ FILEWIN_WORKDIR = "src/frontend/shell"
 LANDING_CONSTS = ["EMBEDDED_BACKENDS_DIR", "NATIVE_BACKEND_DIR"]
 #: ⑬d 第三个落点**不在 `build.rs` 里**：它是 Tauri `externalBin` 的暂存区，由
 #: `release.yml` 的 `Stage local backend for externalBin` 铺，没有任何 Rust 代码提它的名字。
-#: 🔴 它照样要被挡住 —— `设计/96 §7.1.2` 那条硬事实说的是「**三个**落点全部 gitignore」。
+#: 🔴 它照样要被挡住 —— 那条硬事实说的是「**三个**落点全部 gitignore」。
 EXTERNALBIN_LANDING = "binaries"
 #: ⑬d 盘侧：`.gitignore` 里每一行落点上面那句机检锚，逐字。
 LANDING_MARK = "# ⇐ 内嵌落点"
@@ -289,12 +289,12 @@ BANNED_RECIPE = [
 ]
 
 #: ⑪ `build.rs` 那一侧：这两个函数**必须**以 panic 结束「抠不到」那一支，
-#: 且函数体里**不许**再出现兜底值（`设计/96 §7.2.5` 逐字：「`"unknown"` 这个值必须从类型上消失」）。
+#: 且函数体里**不许**再出现兜底值（「`"unknown"` 这个值必须从类型上消失」）。
 #: 每条：(函数名, 禁词逐条, 为什么)
 NO_FALLBACK_FNS = [
     ("backend_source_build_id", ['"unknown"', "unwrap_or_default()"],
      "抠不到源码 `const BUILD_ID` 时给一个会参与比较的字符串 ⇒ 每台远端判 StaleBuild ⇒ "
-     "无限重装（真事故，`设计/16 §5.4a`）"),
+     "无限重装（真事故）"),
     ("backend_stamp_marks", ["unwrap_or_default()"],
      "抠不到身份戳界标时给一对空串 ⇒ 运行期拿空界标去扫，对**任何**字节都答不出身份 ⇒ "
      "与 `\"unknown\"` 同族的静默恒假"),
@@ -1011,7 +1011,7 @@ def run_checks(emit):
             check(not hit, "⑪`%s` 没有兜底值" % fname,
                   "函数体里出现 %r —— %s" % (hit, why))
             check("panic!" in body, "⑪`%s` 抠不到就当场失败" % fname,
-                  "函数体里%s `panic!`（`设计/96 §7.2.5`：让「抠不到」在**所有**构建形态下都响，"
+                  "函数体里%s `panic!`（让「抠不到」在**所有**构建形态下都响，"
                   "而不是只在恰好铺了字节的那种）" % ("有" if "panic!" in body else "**没有**"))
         emitter = rust_fn_body(brs, "emit_backend_build_id")
         wired = bool(emitter) and "backend_source_build_id()" in emitter
@@ -1122,7 +1122,7 @@ def run_checks(emit):
     #   🔴 **这一条今天有现物**：步 8 全仓改名（`daemon` → `backend`）之后，
     #     `.gitignore` 还写着 `/embedded-daemons/` 与 `/native-daemon/`
     #     ⇒ 09-19 现打 `git check-ignore` 两条都不命中，两个落点从那天起就没被挡住。
-    #     而 `设计/96 §7.1.2` 与 `release.yml` 文件头都还把「三个落点全部 gitignore」
+    #     而与 `release.yml` 文件头都还把「三个落点全部 gitignore」
     #     当硬事实在用 —— **那句话在本拍之前是假的**，而它正是「门禁只能建在
     #     `release.yml` 上」这条推理的全部前提。
     registered = {rust_str_const(brs, c) or "<`const %s` 抠不到>" % c for c in LANDING_CONSTS}
@@ -1187,7 +1187,7 @@ def run_checks(emit):
     except subprocess.TimeoutExpired:
         check(False, "⑬g re-embed `--check` 跑得起来且有数", "跑超时 120s —— 判不了，按红记")
 
-    # ── ⑬h〔B1 · 09-24〕开发构建的判词 `--check-dev` **有牙**：真跑，四个夹具 ──────────
+    # ── ⑬h开发构建的判词 `--check-dev` **有牙**：真跑，四个夹具 ──────────
     #   它治的：「开发构建起不起得来本机后端」在这之前**只有一句 cargo 警告**，而那句还写着
     #   「开发构建里这是正常的」（`D11` 反面）。B1 把它收成 `re-embed.sh --check-dev`：
     #   本机那一份缺席即红、铺了就**真起一趟**、第一行必须是自报源码 `BUILD_ID` 的 hello。

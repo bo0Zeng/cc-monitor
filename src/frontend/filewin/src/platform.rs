@@ -1,4 +1,4 @@
-//! 文件窗口包的平台层〔P4 · 阶段 H：`设计/90 §4`；主会话 09-30 认：窗口包链不到壳的 `platform/`，自开这一份〕：本包平台 cfg 的唯一住址。
+//! 文件窗口包的平台层〔阶段 H：；主会话 09-30 认：窗口包链不到壳的 `platform/`，自开这一份〕：本包平台 cfg 的唯一住址。
 //! 都原住别处、逐字搬来：[`any_thread_hook`]（`shell.rs`）· [`local_dest_kept`] · [`path_from_bytes`]（`lossy_pull.rs`）·
 //! [`SYSTEM_CJK_FONTS`]（`fonts.rs`）· [`rss_kib`]（`scale.rs`）· [`BACKSLASH_IS_SEP`]（`download.rs` · `lossy_pull.rs` 各一处 `cfg!(windows)`）。
 
@@ -18,7 +18,7 @@ pub fn any_thread_hook(builder: &mut eframe::EventLoopBuilder<eframe::UserEvent>
     {
         use winit::platform::windows::EventLoopBuilderExtWindows;
         EventLoopBuilderExtWindows::with_any_thread(builder, true);
-        // 🔴 〔WN1 · 09-24〕**进程 DPI 归这个窗口进程自己管** —— 这个进程里没有 Tauri。
+        // 🔴 **进程 DPI 归这个窗口进程自己管** —— 这个进程里没有 Tauri。
         // 从前是 `false`（「进程 DPI 归 Tauri 管」，同进程时代）；窗口进程独立之后那一格
         // 让它全程 `UNAWARE`。四格读数与改回来的理由住本模块头注「WN1」那一节。
         EventLoopBuilderExtWindows::with_dpi_aware(builder, true);
@@ -64,10 +64,10 @@ pub(crate) fn local_dest_kept(
     )
 }
 
-/// 本机路径的分隔符里有没有 `\`（Windows 有，别处只有 `/`）。〔P4 · 阶段 H〕原是 `download.rs::plan_dest` · `lossy_pull.rs::split_local` 里各一处 `cfg!(windows)`。
+/// 本机路径的分隔符里有没有 `\`（Windows 有，别处只有 `/`）。原是 `download.rs::plan_dest` · `lossy_pull.rs::split_local` 里各一处 `cfg!(windows)`。
 pub const BACKSLASH_IS_SEP: bool = cfg!(windows);
 
-/// 线上那一形解出来的字节 → 本机路径：unix 按字节原样；别处按 UTF-8 有损转。〔P4 · 阶段 H〕原住 `lossy_pull.rs::local_path_of`。
+/// 线上那一形解出来的字节 → 本机路径：unix 按字节原样；别处按 UTF-8 有损转。原住 `lossy_pull.rs::local_path_of`。
 pub fn path_from_bytes(b: &[u8]) -> std::path::PathBuf {
     #[cfg(unix)]
     {
@@ -80,7 +80,7 @@ pub fn path_from_bytes(b: &[u8]) -> std::path::PathBuf {
     }
 }
 
-/// 系统自带的 CJK 字体候选，按优先级（`fonts::candidates` 把它接在 `CCM_CJK_FONT` 之后）。〔P4 · 阶段 H〕原住 `fonts.rs::candidates`，逐字。
+/// 系统自带的 CJK 字体候选，按优先级（`fonts::candidates` 把它接在 `CCM_CJK_FONT` 之后）。原住 `fonts.rs::candidates`，逐字。
 #[cfg(target_os = "windows")]
 pub const SYSTEM_CJK_FONTS: &[&str] = &[
     // 微软雅黑 —— Vista 起随系统装，**不分区域设置**

@@ -1,4 +1,4 @@
-//! 〔步 24f〕常驻索引的行为判据 —— **在真盘上真走一遍**，不是源码扫描。
+//! 常驻索引的行为判据 —— **在真盘上真走一遍**，不是源码扫描。
 //!
 //! # 🔴 主锚全部是**相等**断言，不是地板
 //!
@@ -15,7 +15,7 @@
 //!
 //! # 语料
 //!
-//! **全合成**，现造现删（`设计/17 §6` 的数据源纪律：测试夹具不许含真会话正文、
+//! **全合成**，现造现删（数据源纪律：测试夹具不许含真会话正文、
 //! 不许锚在活体上）。本族一个字节都不读用户的真目录。
 
 use super::*;
@@ -180,7 +180,7 @@ fn the_declared_rewalk_interval_is_what_status_reports() {
     assert_eq!(
         s.rewalk_interval_secs, REWALK_INTERVAL_SECS,
         "`files.index.status` 报的周期与声明的那个常量不是同一个数 ——\n\
-         🔴 `设计/96 §2.9` 边界③ 逐字要求这个数**可查询**、不许只活在代码里"
+         🔴 边界③ 逐字要求这个数**可查询**、不许只活在代码里"
     );
     assert_eq!(
         s.entries, fx.entries,
@@ -210,7 +210,7 @@ fn the_age_is_a_real_number_and_a_backwards_clock_does_not_blow_it_up() {
     assert_eq!(
         snap.age_secs(t0 + std::time::Duration::from_secs(1234)),
         1234,
-        "年龄算错了 —— 而它就是 `设计/60 §3.5.3` 要求显示在界面上的那个延迟"
+        "年龄算错了 —— 而它就是要求显示在界面上的那个延迟"
     );
     assert_eq!(
         snap.age_secs(t0 - std::time::Duration::from_secs(9)),
@@ -329,7 +329,7 @@ fn a_query_against_a_missing_index_says_so_instead_of_saying_no_hits() {
     assert_eq!(r.scanned, 0);
 }
 
-/// 🔴 非 UTF-8 的文件名**真的搜得到、真的原样回来** —— `设计/60 §2 档②` 那条的活体。
+/// 🔴 非 UTF-8 的文件名**真的搜得到、真的原样回来** —— 那条的活体。
 #[test]
 fn a_non_utf8_filename_is_indexed_searchable_and_returned_byte_for_byte() {
     let _lock = resident_lock();
@@ -388,7 +388,7 @@ fn a_non_utf8_filename_is_indexed_searchable_and_returned_byte_for_byte() {
 ///
 /// # 为什么是「互斥」而不是「周期 ≥ 耗时 × N」
 ///
-/// `真相源/104 §4` 现打：「周期 = 单次耗时 × N」这种形式的推荐值**业界没有公认值**
+/// 现打：「周期 = 单次耗时 × N」这种形式的推荐值**业界没有公认值**
 /// （六个方向各自查完都没有）。而**互斥不重叠**是那一类周期性任务真正的工业做法，
 /// 四家一致：`plocate`/`mlocate` 的 `flock --nonblock` ·
 /// Kubernetes CronJob 的 `concurrencyPolicy: Forbid` ·

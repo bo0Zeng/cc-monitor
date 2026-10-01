@@ -7,7 +7,7 @@
  *
  * 两级懒加载（性能优化）：
  *   1. open / refresh：问本机后端 `history-projects` 只拿项目级元数据（不读 jsonl 内容）。
- *      所有组**默认折叠**。〔C4d〕本机与远端都问本机常驻后端（远端那台由它沿 SSH 去问）。
+ *      所有组**默认折叠**。本机与远端都问本机常驻后端（远端那台由它沿 SSH 去问）。
  *   2. 用户展开某个项目组：问本机后端 `history-sessions`（带 projectDir 与 origin）拿该项目
  *      下所有会话详情，缓存到 `sessionCache`。下次展开同项目直接读缓存。
  *
@@ -24,12 +24,12 @@
 
 import { deleteSession } from "../session-writes";
 import { resolveResumeCommand } from "../remote-config";
-// 〔步 12·C〕本机那个 origin 的**唯一住址**（Rust 侧是 `inbound_client::LOCAL_ORIGIN`，
+// 本机那个 origin 的**唯一住址**（Rust 侧是 `inbound_client::LOCAL_ORIGIN`，
 // 两侧由 `origin_tests::the_sentinel_agrees_with_the_two_existing_homes` 两向钉着）。
 import { LOCAL_ORIGIN } from "../backend-policy";
 import { originFromWire } from "../ipc/origin";
 import { searchAllMachines } from "./history-search";
-// 〔FE1〕本机 resume 的编排只有一份（铸名 · 账号 · 记 pin 都在里面）。
+// 本机 resume 的编排只有一份（铸名 · 账号 · 记 pin 都在里面）。
 import { resumeLocalSession } from "../local-resume";
 import { SessionViewer, type ViewerOptions } from "./session-viewer";
 // `K-R92`：那三格是三态（`null` = 不知道，不是 0）。排序档与加减都只许从这里走 ——
@@ -67,7 +67,7 @@ import {
   type OriginOpenOverrides,
 } from "./history-prefs";
 
-/** 项目级元数据，从本机后端 `history-projects` 拿（〔C4d〕`../history-reads::fetchLocalProjects`）。不含 session 内容。 */
+/** 项目级元数据，从本机后端 `history-projects` 拿（`../history-reads::fetchLocalProjects`）。不含 session 内容。 */
 
 /** issue #16：项目缓存/展开态的 key。本地 = projectDir；远端用 origin 命名空间隔离
  *  （本地与远端可能有相同的编码目录名，裸 projectDir 会撞 key）。 */
@@ -75,7 +75,7 @@ function projectKey(p: { origin?: string; projectDir: string }): string {
   return p.origin ? `${p.origin}\u0000${p.projectDir}` : p.projectDir;
 }
 
-/** 会话级详情，从本机后端 `history-sessions` 拿（〔C4d〕`../history-reads::fetchSessions`，一次交全）。 */
+/** 会话级详情，从本机后端 `history-sessions` 拿（`../history-reads::fetchSessions`，一次交全）。 */
 
 /**
  * issue #12: session tree node。child 关系由 forkedFromSessionId 建。
@@ -87,7 +87,7 @@ function projectKey(p: { origin?: string; projectDir: string }): string {
 //
 // `SessionTreeNode` **留手写**：它是前端自己的树形模型（Rust 不认识它），
 // 同账本第 4 行「IR 是前端的意图模型，别拖过边界」。
-// 〔C4d · 第四波 4B〕项目 / 会话两行的类型从 ts-rs 生成物改成手写（Rust 那份随 monitor 的 join 一起删了；形状由本机后端的成品 ＋
+// 项目 / 会话两行的类型从 ts-rs 生成物改成手写（Rust 那份随 monitor 的 join 一起删了；形状由本机后端的成品 ＋
 //   跨语言金样 `tests/__fixtures__/history-products.golden.json` 定），与问法一起住 `../history-reads`。
 import {
   annotate,
@@ -100,7 +100,7 @@ import {
   type HistoryProject,
   type HistorySessionEntry,
 } from "../history-reads";
-// 〔LOC1b · 4D〕搜索那三个线上类型的家从 Rust `search.rs` 的生成物换到 `history-search.ts`（本机也改问本机后端，那份 Rust 删了）。
+// 搜索那三个线上类型的家从 Rust `search.rs` 的生成物换到 `history-search.ts`（本机也改问本机后端，那份 Rust 删了）。
 import type { Hit as SearchHit, SearchResult, SessionHits as SearchSessionHits } from "./history-search";
 import { askConfirm, askText } from "../ask-dialog";
 
@@ -111,7 +111,7 @@ interface SessionTreeNode {
   orphan: boolean;
 }
 
-/** 〔C4d〕改注解回的那一条（`EntryMetadata`）住 `../history-reads`（本机后端 `history-annotate`）。 */
+/** 改注解回的那一条（`EntryMetadata`）住 `../history-reads`（本机后端 `history-annotate`）。 */
 
 /** 组内会话排序模式（顶层布局固定按工作目录分组，不是 sort 选项）。 */
 type SortMode = "updated_desc" | "started_desc";
@@ -134,7 +134,7 @@ type RowActionCtx = HistoryActionCtx & {
 
 export class HistoryView {
   /**
-   * 〔FW1 · 第四波 4D · D-e〕「这个会话此刻在 tab 栏里活着吗」—— `main.ts` 装成 `TabManager.isSessionLive`。
+   * 「这个会话此刻在 tab 栏里活着吗」—— `main.ts` 装成 `TabManager.isSessionLive`。
    * 缺省答「不活」：没装的时候只看条目自己那一格（判据与独立用法都不必带一个 TabManager）。
    */
   liveInTabs: (sid: string) => boolean = () => false;
@@ -153,7 +153,7 @@ export class HistoryView {
   /** F76：`refresh()` 的代际号，防并发/交叠 refresh 的旧结果覆盖新结果（对齐 ftSeq）。 */
   private refreshSeq = 0;
   /**
-   * 〔WF2 · WIN3 读数 H〕答了、但一个项目都没有的那几台（`undefined` = 本机）。按机器分组时各画一行「这台还没有会话记录」，
+   * 答了、但一个项目都没有的那几台（`undefined` = 本机）。按机器分组时各画一行「这台还没有会话记录」，
    * 不是整页空态。只存内存：远端那一半随每次成功的 fan-out 换；持久化的暖绘缓存不带它（首开必刷，刷完就有）。
    */
   private emptyOrigins = new Set<string | undefined>();
@@ -308,7 +308,7 @@ export class HistoryView {
   close(): void {
     if (!this.isOpen) return;
     // ★ audit-0805 F14：关掉视图时递增代际号 —— 还在路上的那一次全文搜索回来时 `seq !== this.ftSeq`，
-    //   不把结果写进已 detach 的 DOM。〔LOC1b · 4D〕F14 当年要掐的那条 1 秒重试链（等本机索引建好）随本机内存索引删了，
+    //   不把结果写进已 detach 的 DOM。F14 当年要掐的那条 1 秒重试链（等本机索引建好）随本机内存索引删了，
     //   这一行留下来管的是「在飞的那一问」。
     this.ftSeq++;
     this.closeViewer();
@@ -360,7 +360,7 @@ export class HistoryView {
     return this.isOpen;
   }
 
-  /** 〔MIG-2 · `99 §2.1 ㊱③`〕Ctrl+F：历史页开着、且正在看一份会话 ⇒ 查看器的查找面板打开到「搜索」、回 `true`；
+  /** Ctrl+F：历史页开着、且正在看一份会话 ⇒ 查看器的查找面板打开到「搜索」、回 `true`；
    *  否则回 `false`（交给实时 tab 那一块 —— 历史页盖在上面时打开底下那块，用户看不见）。 */
   openFind(): boolean {
     if (!this.isOpen || !this.viewer) return false;
@@ -404,12 +404,12 @@ export class HistoryView {
     this.listEl.replaceChildren();
     this.sessionCache.clear();
     this.loadingProjects.clear();
-    // 本地批：每次重扫。〔WF2 · WIN3 读数 H〕本机读不了 ≠ 整页失败：说一声，本机那一段空着，远端照常加载。
+    // 本地批：每次重扫。本机读不了 ≠ 整页失败：说一声，本机那一段空着，远端照常加载。
     let local: HistoryProject[] = [];
     let localFailed: string | null = null;
     let localEmpty = false;
     try {
-      // 〔C4d〕问本机常驻后端（它并注解、判活、合成 Codex 项目）；注解没并上 ⇒ 说一声（星标 / 隐藏数显示成「不知道」）。
+      // 问本机常驻后端（它并注解、判活、合成 Codex 项目）；注解没并上 ⇒ 说一声（星标 / 隐藏数显示成「不知道」）。
       const got = await fetchLocalProjects();
       local = got.projects;
       localEmpty = local.length === 0;
@@ -431,7 +431,7 @@ export class HistoryView {
     }
     // 需 fan-out：独立 try——远端连不上/无配置不影响本地浏览。
     try {
-      // 〔C4d〕逐台问本机后端（它沿池里那条 SSH 去问那台、并上本机的注解）；fan-out 住 `../history-reads`。
+      // 逐台问本机后端（它沿池里那条 SSH 去问那台、并上本机的注解）；fan-out 住 `../history-reads`。
       const res = await fetchRemoteProjects();
       if (seq !== this.refreshSeq) return; // 抢占：丢弃过期结果
       const remote = res.projects;
@@ -464,7 +464,7 @@ export class HistoryView {
   /**
    * 懒加载某个项目下的会话详情。重复调返回同一个 Promise。
    *
-   * 〔C4d · 第四波 4B〕问本机常驻后端 `history-sessions`，一次交全（从前 issue #12 那条逐条流式的 Tauri Channel 退役：
+   * 问本机常驻后端 `history-sessions`，一次交全（从前 issue #12 那条逐条流式的 Tauri Channel 退役：
    * 本机那一支原是 monitor 进程内自己边扫边发；join 进了本机后端之后本机与远端同一条路、同一份口径）。
    */
   private loadProjectSessions(proj: HistoryProject): Promise<void> {
@@ -476,7 +476,7 @@ export class HistoryView {
     const entries: HistorySessionEntry[] = [];
     this.sessionCache.set(key, entries);
 
-    // 〔C4d · 第四波 4B〕本机与远端同一条路：问本机常驻后端 `history-sessions`（远端那台由它沿 SSH 去问、并上本机的注解）。
+    // 本机与远端同一条路：问本机常驻后端 `history-sessions`（远端那台由它沿 SSH 去问、并上本机的注解）。
     //   从前本机那条是 Tauri Channel **逐条流式**（monitor 自己边扫边发）—— 今天一次交全（后端扫完整个项目才回），
     //   大项目「首条 < 100ms 出现」那一格没了（如实登记在 `C4d.md`），换来本机与远端同一份口径（fork 树 · 标题 · 摘录）。
     const p = (async () => {
@@ -685,7 +685,7 @@ export class HistoryView {
     bar.appendChild(timeSel);
     this.fulltextOnlyEls.push(timeSel);
 
-    // 〔LOC1b · 4D〕「重新索引」按钮随本机内存索引一起删了：本机也问本机后端，每次现扫、没有可重建的东西。
+    // 「重新索引」按钮随本机内存索引一起删了：本机也问本机后端，每次现扫、没有可重建的东西。
 
     this.listShell.appendChild(bar);
 
@@ -751,7 +751,7 @@ export class HistoryView {
     this.updateSearchPlaceholder();
   }
 
-  /** 全文模式但无关键词时给个提示。〔LOC1b · 4D〕本机没有索引了 ⇒ 不再有「已索引 N 个 / 构建中」那两态。 */
+  /** 全文模式但无关键词时给个提示。本机没有索引了 ⇒ 不再有「已索引 N 个 / 构建中」那两态。 */
   private showIndexIdleHint(): void {
     this.resultsEl.replaceChildren();
     this.statusEl.textContent = copyText("history.indexHint.idle");
@@ -759,7 +759,7 @@ export class HistoryView {
 
   /**
    * 执行全文搜索。竞态防护：每次调用递增 ftSeq，异步结果回来时若 seq 已过期则丢弃。
-   * 〔LOC1b · 4D〕「索引未就绪 ⇒ 显示进度并每秒重试」那一支随本机内存索引删了（本机也问本机后端，没有「索引中」）。
+   * 「索引未就绪 ⇒ 显示进度并每秒重试」那一支随本机内存索引删了（本机也问本机后端，没有「索引中」）。
    */
   private async runFullTextSearch(): Promise<void> {
     const query = this.searchInput.value.trim();
@@ -771,7 +771,7 @@ export class HistoryView {
     }
     this.statusEl.textContent = copyText("history.search.searching");
     try {
-      // 本机 ＋ 各台远端，逐台经通道说 `history-search`（〔LOC1b〕本机也是），〔FIX4 · J15〕合并排序问本机后端（`history-search.ts`）。
+      // 本机 ＋ 各台远端，逐台经通道说 `history-search`（本机也是），合并排序问本机后端（`history-search.ts`）。
       //   条数上限不在这里写：不交 `limit` ⇒ 每台后端用 `search_rules::DEFAULT_LIMIT`（前端那份 300 的副本删了）。
       const resp = await searchAllMachines({
         query,
@@ -788,7 +788,7 @@ export class HistoryView {
     }
   }
 
-  // 〔LOC1b · 4D〕`INDEX_WAIT_MAX_TICKS` 与 `waitForIndexThenSearch`〔散文墓碑〕删了：它们等的是本机内存索引建好
+  // `INDEX_WAIT_MAX_TICKS` 与 `waitForIndexThenSearch`〔散文墓碑〕删了：它们等的是本机内存索引建好
   //   （audit-0805 F14 那条「只问本地索引状态、不再每秒重跑整条搜索」的 1 秒链），本机也改问本机后端之后没有「索引中」这一态。
 
   private renderSearchResults(resp: SearchResult, query: string): void {
@@ -911,7 +911,7 @@ export class HistoryView {
     row.className = "search-hit";
 
     const kind = document.createElement("span");
-    // 〔W5-AUX · `设计/41 §7`〕命中的种类是有限枚举 ⇒ 走 `data-kind`（全仓 `kind` 这个状态名只用这一种载体），不再拼 `kind-<值>` 类名。
+    // 命中的种类是有限枚举 ⇒ 走 `data-kind`（全仓 `kind` 这个状态名只用这一种载体），不再拼 `kind-<值>` 类名。
     kind.className = "search-hit-kind";
     kind.dataset.kind = hit.kind;
     kind.textContent =
@@ -945,7 +945,7 @@ export class HistoryView {
     return row;
   }
 
-  // 〔LOC1b · 4D〕`rebuildIndex`〔散文墓碑〕（「重新索引」按钮的动作）随本机内存索引删了。
+  // `rebuildIndex`〔散文墓碑〕（「重新索引」按钮的动作）随本机内存索引删了。
 
   // === 列表渲染 ===
 
@@ -953,7 +953,7 @@ export class HistoryView {
     this.fanoutStats.renders += 1;
     this.listEl.replaceChildren();
     this.renderOriginFilter(); // F03：同步来源筛选 chip 行
-    // 〔WF2〕有几台：有项目的 ∪ 答了但零项目的（后者按机器分组时各画一行空态）。
+    // 有几台：有项目的 ∪ 答了但零项目的（后者按机器分组时各画一行空态）。
     const allOrigins = this.knownOrigins();
     if (this.projects.length === 0 && allOrigins.length <= 1) {
       this.statusEl.textContent =
@@ -1000,7 +1000,7 @@ export class HistoryView {
     } else {
       for (const origin of this.orderOrigins(allOrigins)) {
         const group = sorted.filter((p) => p.origin === origin);
-        // 〔WF2 · WIN3 读数 H〕那台答了、一个项目都没有 ⇒ 画它的大区 ＋ 一行「这台还没有会话记录」（被 F03 隐藏的照旧不画）。
+        // 那台答了、一个项目都没有 ⇒ 画它的大区 ＋ 一行「这台还没有会话记录」（被 F03 隐藏的照旧不画）。
         if (this.emptyOrigins.has(origin) && !this.hiddenOrigins.has(origin ?? "")) {
           this.listEl.appendChild(this.buildOriginGroup(origin, [], searchActive));
           continue;
@@ -1164,7 +1164,7 @@ export class HistoryView {
   }
 
   /** F03 多机 #30：来源筛选 chip 行。distinct origin ≤1 → 隐藏；否则每来源一个 chip。 */
-  /** 〔WF2〕这一拍认得的几台：有项目的 ∪ 答了但零项目的。 */
+  /** 这一拍认得的几台：有项目的 ∪ 答了但零项目的。 */
   private knownOrigins(): (string | undefined)[] {
     return [...new Set<string | undefined>([...this.projects.map((p) => p.origin), ...this.emptyOrigins])];
   }
@@ -1515,7 +1515,7 @@ export class HistoryView {
       this.renderList();
     } catch (err) {
       console.warn("star update failed:", err);
-      // 〔CFG1 · 4D〕从前只记日志：点了星标、什么都没变、也不说（E §3.3）。改名 / 隐藏同。
+      // 从前只记日志：点了星标、什么都没变、也不说（E §3.3）。改名 / 隐藏同。
       showActionFailureToast(copyText("history.star.failed"), String(err));
     }
   }
@@ -1527,7 +1527,7 @@ export class HistoryView {
     const next = await askText(copyText("history.rename.prompt"), { initial: cur });
     if (next === null) return;
     try {
-      // 〔C4d〕清空传**空串**（缺格 / `null` = 不改 —— 从前这里传 `null`，而 monitor 那份 patch 同样把 `null` 读成「不改」，
+      // 清空传**空串**（缺格 / `null` = 不改 —— 从前这里传 `null`，而 monitor 那份 patch 同样把 `null` 读成「不改」，
       //   「留空恢复默认」其实一直没生效；本机后端照搬了那条语义，这里改传空串，清空才真的清空）。
       const updated = await annotate(e.sessionId, { customTitle: next.trim() });
       e.customTitle = updated.customTitle;
@@ -1575,7 +1575,7 @@ export class HistoryView {
           rowLastAccount = undefined;
         }
       }
-      // A4：带账号 resume 统一走 withAccount（resolve configDir → 不可选则不起、说清〔FE1 · D-h〕→ record 源②）。
+      // A4：带账号 resume 统一走 withAccount（resolve configDir → 不可选则不起、说清→ record 源②）。
       await withAccount(
         origin,
         ctx.account ?? null,
@@ -1591,12 +1591,12 @@ export class HistoryView {
         },
         {
           sessionId: ctx.sessionId,
-          // 〔FE1 · D-h〕要的号选不了 ⇒ `withAccount` 自己不起、说清、给显式选择（先前这里的提示完按基座起）。
+          // 要的号选不了 ⇒ `withAccount` 自己不起、说清、给显式选择（先前这里的提示完按基座起）。
           follow: ctx.account ? undefined : { lastAccount: rowLastAccount },
         },
       );
     } else {
-      // 〔FE1〕本机 resume 的编排只有一份（`local-resume.ts`）：校验 sid → 铸名 → 起 → 记 pin。
+      // 本机 resume 的编排只有一份（`local-resume.ts`）：校验 sid → 铸名 → 起 → 记 pin。
       //   这里先前逐字抄着一份（`K-R46` 补铸名 · `K-H2b` 补账号 · `D3 阻-2` 补记 pin，三次都是
       //   「tab 栏那条早有了、这条没有」）。账号跟随这条会话上次的号 —— 与上面远端那条 `follow` **同形**。
       await resumeLocalSession({ sid: ctx.sessionId, cwd: ctx.cwd, account: { kind: "follow" } });
@@ -1627,21 +1627,21 @@ export class HistoryView {
     } else {
       try {
         // 本地：本机后端 `launch-local`（cc 优先 + F34 自定义，无 sid/resume flag）。
-        // 〔DUP1〕这里原来调一次 `validateLocalLaunch`〔散文墓碑〕（new 动作恒不 throw，只为「让本地那条路活过」）——
+        // 这里原来调一次 `validateLocalLaunch`〔散文墓碑〕（new 动作恒不 throw，只为「让本地那条路活过」）——
         // 那个函数随它唯一的一格（sid 字符集，交 Rust 判）删了。
         // ★★ `K-H2b` `D1 阻-1`：起新会话这条主路同样一个账号都不传。
         //    ⚠ 它取的是**当前账号**（不是从别的会话继承 —— 那是 fork 的语义），
         //    与远端那条 `runNewSessionRemote` 的 `withAccount(origin, null, …, {follow:{}})`
         //    **同形**：新会话跟随当前账号。
         // ★★ `K-P5h` `KP5HD2`：**这条命令现在把这次拉起的身份 token 交回来。**
-        //    `K-P5 §3 三` 现打的那条结构性事实（「没有一处在起新会话时知道 sid」）
+        // 现打的那条结构性事实（「没有一处在起新会话时知道 sid」）
         //    在这一行上是活的：这一刻我们手上有 cwd、有账号，**就是没有 sid** ——
         //    于是那条 `recordLocalLaunchAccount` 的 pin 今天写不出来
         //    （`tabs.ts` 那条远端同形注释逐字写着「新会话无 sid → 不记账」）。
         //    ⇒ 把 token 挂进待回填表，等这条会话真的跑起来之后拿它反查 sid 再补写 pin。
         //    ⚠ **不 `await` 回填**（它要等进程起来，见 `resolvePendingLocalLaunches` 头注）；
         //      这里只是登记，一拍都不多花 —— 那两条只放行一个微任务的 DOM 判据在盯着。
-        // 〔MIG-2 · `99 §2.1 ⑬`〕计划与渲染问本机后端（`launch-local`），monitor 只在 cwd 开一个终端窗口跑那一串。
+        // 计划与渲染问本机后端（`launch-local`），monitor 只在 cwd 开一个终端窗口跑那一串。
         const launchId = await launchLocal(
           {
             action: { kind: "new" },
@@ -1653,7 +1653,7 @@ export class HistoryView {
           ctx.cwd,
         );
         if (launchId !== null) rememberLocalLaunch(launchId, localLaunchAccountNameSync(null));
-        // 〔FIX3 · `设计/99 §2.2 ②`〕窗口开了不等于起来了：等本机后端报出一条在这个目录里新起的会话再说
+        // 窗口开了不等于起来了：等本机后端报出一条在这个目录里新起的会话再说
         //   （身份 token 在 Windows 上读不回来，认它靠「之后第一次出现、同目录的新 sid」）。
         expectArrival({
           origin: LOCAL_ORIGIN,
@@ -1672,14 +1672,14 @@ export class HistoryView {
       proj = ctx.project;
     if (!e || !proj) return;
     const label = e.customTitle ?? e.aiTitle ?? e.sessionId.slice(0, 8);
-    // 〔FW1 · 第四波 4D · 主会话裁 D-e〕删之前看活不活：活着 ⇒ 多问一句（Claude 还往旧文件里写，之后 resume 不到）；
+    // 删之前看活不活：活着 ⇒ 多问一句（Claude 还往旧文件里写，之后 resume 不到）；
     //   说不清（这条路答不出，`isLive === null`）⇒ 也多问一句（09-25 裁）。确定不活 ⇒ 照原来那一问 / 两问。
     const liveness = deleteLiveness(e.isLive, this.liveInTabs(e.sessionId));
     //   〔W5-UI 之后〕问一律走应用内对话框（`askConfirm`；原生 `confirm` 在真 app 里恒真、从来不拦）。
     if (liveness === "live" && !(await askConfirm(copyText("sessionState.deleteLive.confirm", { label })))) return;
     if (liveness === "unknown" && !(await askConfirm(copyText("sessionState.deleteUnknown.confirm", { label })))) return;
     if (e.origin) {
-      // 远端删除更危险（删的是别人机器上的文件）→ 二次确认。〔RW1〕删那一下由那台机器的后端做。
+      // 远端删除更危险（删的是别人机器上的文件）→ 二次确认。删那一下由那台机器的后端做。
       const ok1 = await askConfirm(
         copyText("history.delete.confirmRemote", { label, origin: e.origin }),
       );
@@ -1689,7 +1689,7 @@ export class HistoryView {
       );
       if (!ok2) return;
       try {
-        // 〔步 12·C〕与本机那条是**同一条命令**了，只是 origin 不同。〔MIG-3b〕界面经通道直说那台后端（`session-writes.ts::deleteSession`）。
+        // 与本机那条是**同一条命令**了，只是 origin 不同。界面经通道直说那台后端（`session-writes.ts::deleteSession`）。
         await deleteSession(e.origin, e.sessionId);
       } catch (err) {
         showActionFailureToast(copyText("history.delete.remoteFailed"), String(err));
@@ -1707,7 +1707,7 @@ export class HistoryView {
         return;
       }
     }
-    // 〔C4d〕会话删了 ⇒ 连带删本机那条注解（从前 monitor 删完顺手清；今天注解归本机后端，由这里交 `history-forget`）。
+    // 会话删了 ⇒ 连带删本机那条注解（从前 monitor 删完顺手清；今天注解归本机后端，由这里交 `history-forget`）。
     void forgetAnnotation(e.sessionId);
     // 成功后：从缓存移除 + 同步 project counts（本地 / 远端一致）。
     const arr = this.sessionCache.get(projectKey(proj));
@@ -1955,8 +1955,8 @@ export class HistoryView {
     meta.className = "history-meta";
     meta.append(
       // `isLive` 是三态（`null` = 这条路答不出，`K-R92`）。三态各一个词，全从 `sessionState.*` 取
-      // （`设计/30 §3.5.2`：说到会话状态的字只住那里；`§3.5.7a`：说不清不许说成已结束）。
-      // 〔AR1〕此前这一格显示英文 `live` / `archived`，而且把「不知道」也显示成 `archived`。
+      // （说到会话状态的字只住那里；`§3.5.7a`：说不清不许说成已结束）。
+      // 此前这一格显示英文 `live` / `archived`，而且把「不知道」也显示成 `archived`。
       makeChip(livenessWord(e.isLive), e.isLive === true ? "history-live" : ""),
       makeChip(copyText("history.entry.messages", { count: e.messageCountApprox })),
       makeChip(formatTimestampSmart(e.updatedAt)),
@@ -2046,7 +2046,7 @@ function makeStatusRow(text: string): HTMLElement {
  *
  * # 为什么**不加 memo**〔audit-0805 §5 1u，08-06 结案〕
  *
- * `ROADMAP §5` 的 1u 写着「合并重画把**次数**降了一个量级，**单次代价没动**」，
+ * 实测：「合并重画把**次数**降了一个量级，**单次代价没动**」，
  * 并把它挂成一条待办。08-06 按第四问（**这个数你量过吗**）去量，结论是**不该做**：
  *
  * | 单个项目的会话数 | 一次 `buildSessionTree` + `sortTree` |
@@ -2138,11 +2138,11 @@ function loadPersistedRemoteCache(): RemoteSourceCache<HistoryProject> | null {
 }
 
 /**
- * 〔AR1〕历史条目的活性三态 → 说给用户的那个词（`设计/30 §3.5.2` · `§3.5.7a`）。
+ * 历史条目的活性三态 → 说给用户的那个词。
  * `null` = 这条路答不出 ⇒「说不清」，不许落成「已结束」。
  */
 /**
- * 〔FW1 · 第四波 4D · D-e〕删会话前的活性判定（纯函数）：tab 栏里活着 ∨ 条目说活着 ⇒ `live`；
+ * 删会话前的活性判定（纯函数）：tab 栏里活着 ∨ 条目说活着 ⇒ `live`；
  * 否则条目答不出（`null`）⇒ `unknown`；否则 `dead`。tab 栏那一格是此刻的事实，所以它说活就算活。
  */
 export function deleteLiveness(entryIsLive: boolean | null, liveInTabs: boolean): "live" | "unknown" | "dead" {

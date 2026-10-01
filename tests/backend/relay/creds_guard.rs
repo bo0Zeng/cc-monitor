@@ -2,11 +2,11 @@
 //!
 //! # 为什么单住一个文件
 //!
-//! 与隔壁 `bind_guard.rs`（以及〔AR1〕已退役的 `nodelay_guard.rs`）同一个理由，它的头注逐字写着：
+//! 与隔壁 `bind_guard.rs`（以及已退役的 `nodelay_guard.rs`）同一个理由，它的头注逐字写着：
 //! monitor 侧 `scanning_guard_registry` 立过一条递减棘轮 —— 扫描型判据不许裸遍历目录，
 //! 要走 `guard_core::scan_tree!`。
 //!
-//! ⚠ 〔`P4` 2026-09-21〕先前这里跟着抄了一句「那个宏**按构造摘掉调用者自己那一份**」——
+//! ⚠ 先前这里跟着抄了一句「那个宏**按构造摘掉调用者自己那一份**」——
 //! **那一刀在这一处不生效**（判据由 `#[path]` 挂载 ⇒ `file!()` 是折返路径 ⇒ 后缀比
 //! 恒不命中）。结论「**判据与被扫的代码必须不在同一个文件**」仍然成立，但成因只剩一种：
 //! 判据若写在被扫文件自己的 `#[cfg(test)]` 段里（不经 `#[path]`），`file!()` 就会命中
@@ -44,7 +44,7 @@ mod tests {
         ("e", "错误对象本身（`std::io::Error` / 解析错误）—— 它不含请求头"),
         (
             "upstream_failure",
-            "中转传输失败那一行（`server::UpstreamFailure::for_log`，`设计/20 §3.1a`）：\
+            "中转传输失败那一行（`server::UpstreamFailure::for_log`）：\
              上游的**主机与端口** ＋ 一句固定文案（卡在哪一跳）＋ 底层那条 `io::Error`。\
              ⚠ 刻意**不带**基址里的路径前缀（凭据文件内容，同 `note.what` 那条理由）、\
              不含请求头、与任何一把 key 无关 —— 这几格由 `UpstreamFailure` 的字段集兜着",
@@ -52,7 +52,7 @@ mod tests {
         ("a", "监听地址（`local_addr()`）"),
         (
             "status",
-            "〔RK1〕门拒绝那一格的**状态行**（`door::FORBIDDEN` / `door::MISDIRECTED` 两个常量之一）—— 不含请求里的任何字节",
+            "门拒绝那一格的**状态行**（`door::FORBIDDEN` / `door::MISDIRECTED` 两个常量之一）—— 不含请求里的任何字节",
         ),
         ("port", "端口号"),
         (
@@ -64,7 +64,7 @@ mod tests {
         ("fix", "怎么修 —— 一句固定的指引"),
         (
             "reason",
-            "〔RL1〕常驻后端进程内中转起不来的那句「为什么」（`relay::listen::Hosted::Failed`）：\
+            "常驻后端进程内中转起不来的那句「为什么」（`relay::listen::Hosted::Failed`）：\
              只由 `listen::prepare` / `listen::host` 造，内容是端口号、`CCM_RELAY_PORT` 那一格的原串与 io 错误文本 —— \
              不经过任何请求、不碰凭据文件内容",
         ),
@@ -139,7 +139,7 @@ mod tests {
             "起线程失败",
         ),
         (
-            // 〔`设计/20 §3.1a`〕先前是 `[relay] upstream connect failed`，只管「连不上」一支；
+            // 先前是 `[relay] upstream connect failed`，只管「连不上」一支；
             //   今天等响应那四支（没回应就断 · 读出错 · 不是 HTTP · 只有 1xx）与发到一半断了（FIX3）也走这一行 ⇒ 回 502 / 504。
             "relay/server.rs",
             "[relay] upstream failed",
@@ -158,12 +158,12 @@ mod tests {
         (
             "relay/listen.rs",
             "[relay] refusing to listen without a relay key",
-            "〔RK1〕绑上口之后拿不到钥匙（家目录解析不出 / 铸不出 / 写不进）⇒ 不起。只带路径与 io 错误文本，**永远没有钥匙值**",
+            "绑上口之后拿不到钥匙（家目录解析不出 / 铸不出 / 写不进）⇒ 不起。只带路径与 io 错误文本，**永远没有钥匙值**",
         ),
         (
             "relay/server.rs",
             "[relay] refused at the door",
-            "〔RK1〕进门三问拒了一条（Origin / Host 非回环 / 钥匙不对）。只印状态行，**不印请求头与路径**（路径里可能正是一把错钥匙）",
+            "进门三问拒了一条（Origin / Host 非回环 / 钥匙不对）。只印状态行，**不印请求头与路径**（路径里可能正是一把错钥匙）",
         ),
         (
             "relay/listen.rs",
@@ -178,25 +178,25 @@ mod tests {
         (
             "relay/listen.rs",
             "[relay] not hosted",
-            "〔RL1〕常驻后端被交了一个认不出的中转端口 ⇒ 不开中转、后端照常",
+            "常驻后端被交了一个认不出的中转端口 ⇒ 不开中转、后端照常",
         ),
         (
             "relay/listen.rs",
             "[relay] cannot spawn accept thread",
-            "〔RL1〕常驻后端进程内中转的接受线程起不来",
+            "常驻后端进程内中转的接受线程起不来",
         ),
         (
             "relay/listen.rs",
             "[relay] 中转住本进程，听",
-            "〔RL1〕`Hosted` 的说法（`Display`）：进程内中转在听哪个地址 —— 宿主（`main.rs` 流模式那一处）记进它的日志",
+            "`Hosted` 的说法（`Display`）：进程内中转在听哪个地址 —— 宿主（`main.rs` 流模式那一处）记进它的日志",
         ),
         (
             "relay/listen.rs",
             "[relay] 被交了中转端口却起不来",
-            "〔RL1〕`Hosted` 的说法（`Display`）：进程内中转起不来、后端照常服务",
+            "`Hosted` 的说法（`Display`）：进程内中转起不来、后端照常服务",
         ),
         (
-            // ⚠ 〔`设计/20 §7` 步 1〕它**搬家了**：热重载整块归上游选择，住址从
+            // ⚠ 它**搬家了**：热重载整块归上游选择，住址从
             //   `server.rs` 变成 `accounts/mod.rs`。话一个字没改。
             "accounts/upstream_select/mod.rs",
             "[apikey] 凭据文件读不成表，**保留上一张表不动**",
@@ -214,7 +214,7 @@ mod tests {
             "文件读不动 / 解析不了",
         ),
         (
-            // 〔DATA-HOME · 主会话裁〕同一个头、另一处：推不出那份文件在哪（`CCM_DATA_DIR` 相对 / 没有家目录）—— 装表那一刻说一次。
+            // 同一个头、另一处：推不出那份文件在哪（`CCM_DATA_DIR` 相对 / 没有家目录）—— 装表那一刻说一次。
             "accounts/upstream_select/creds.rs",
             "[apikey] credentials problem:",
             "推不出凭据文件在哪（`creds::announce_unresolved`）",
@@ -276,7 +276,7 @@ mod tests {
     ///   搬走之后只扫 `relay/` 的话，上游选择那 12 行日志会**掉出扫描面** —— 它们记的恰恰是
     ///   凭据文件那一侧的事，是 `KS4` 最该看着的那一批。⇒ 两棵根明写在这里，
     ///   并由判据本体断言「盘上有日志的根 ⇔ 登记表里出现的根 ⇔ 本表」三方相等。
-    // 〔`A3` 第二波〕上游选择的根从 `accounts` 收窄成 `accounts/upstream_select`：`accounts/` 是账号**域**，
+    // 上游选择的根从 `accounts` 收窄成 `accounts/upstream_select`：`accounts/` 是账号**域**，
     // 其中 `iso.rs`（账号隔离工具的查询）**不是**中转的上游选择，不进本白名单的人群。
     const LOG_ROOTS: &[&str] = &["relay", "accounts/upstream_select"];
 
@@ -291,13 +291,13 @@ mod tests {
             .collect()
     }
 
-    /// ★★★ **`K-H2a` 裁四那句话的判据** —— 〔RM1a · 第四波〕裁四**收窄**之后，本条改钉收窄后的那一句。
+    /// ★★★ **`K-H2a` 裁四那句话的判据** —— 裁四**收窄**之后，本条改钉收窄后的那一句。
     ///
     /// # 那句话怎么变的
     ///
     /// 原话：「本 crate 不许打开 `creds-core` 的 `harden` feature」—— 那时「backend 写不了这份文件」
     /// 是**编译器**兜的（`make_private` / `create_private` 都挂在 `harden` 上，不开就不存在）。
-    /// 远端那台机器上的 key 只能由那台的后端写（上游选择自己的状态文件，`调研/第四波记录/RM1a.md §1`）
+    /// 远端那台机器上的 key 只能由那台的后端写（上游选择自己的状态文件）
     /// ⇒ feature 开了。编译器那一格没了，**两条判据接住**：
     ///
     /// 1. **本条**：`harden` 在本 crate 那份 manifest 里只从**一处声明**进来 —— `creds-core` 那一行
@@ -341,7 +341,7 @@ mod tests {
         );
 
         // ★ 非空对照：同一把尺子量 `creds-core` 自己那份 manifest（定义这个 feature 的那一行），**必须数得到**。
-        //   〔US1 · 4D〕先前量的是 monitor 那份（它当时也开着）；monitor 从此不读不写这份文件、不开它 ⇒ 反过来钉「monitor 零处」。
+        // 先前量的是 monitor 那份（它当时也开着）；monitor 从此不读不写这份文件、不开它 ⇒ 反过来钉「monitor 零处」。
         let read_manifest = |rel: &str| {
             guard_core::strip_hash_comment_lines(
                 &std::fs::read_to_string(crate::guard_support::repo_root().join(rel))
@@ -510,7 +510,7 @@ mod tests {
              **必须先在件计划里说清那一处是什么**，不许在实现里顺手把这个数改大。",
             header_sites.len()
         );
-        // ⚠ 〔`P16` 2026-09-22〕住址从 `server.rs`（中转）换成 `accounts/mod.rs`（上游选择）——
+        // ⚠ 住址从 `server.rs`（中转）换成 `accounts/mod.rs`（上游选择）——
         //    **换的是住址，不是处数**：上面那条「恰好 1」的相等断言一个字节都没动。
         //    搬的理由：中转的类型面上不许再出现 `creds-core` 的类型（`C2`），
         //    而「把 key 拼成头值」必须拿着 `SecretKey` ⇒ 它只能在上游选择。
@@ -523,7 +523,7 @@ mod tests {
             header_sites[0]
         );
         // ★ 另一半：**落盘那个明文出口在本 crate 里应当一次都没有**。
-        //   〔RM1a〕裁四收窄后本 crate 有了一个写凭据文件的模块（`accounts/upstream_select/file_face.rs`），
+        // 裁四收窄后本 crate 有了一个写凭据文件的模块（`accounts/upstream_select/file_face.rs`），
         //   但它**不自己取明文**：拼落盘文本走 `creds_core::store::merge_account_key`，
         //   明文出口（`expose_for_persisting`）仍只在 `creds-core` 里那一处 ⇒ 本 crate 这边照旧 0。
         assert_eq!(
@@ -619,7 +619,7 @@ mod tests {
         let root = crate::guard_support::src_root();
         let mut files = Vec::new();
         for r in LOG_ROOTS {
-            // 〔RE〕`relay` 模块的根住 `src/comms/outward/`（`mod.rs` 在那儿，door / listen 由它挂回）。
+            // `relay` 模块的根住 `src/comms/outward/`（`mod.rs` 在那儿，door / listen 由它挂回）。
             let dir = if *r == "relay" {
                 crate::guard_support::relay_root()
             } else {
@@ -638,14 +638,14 @@ mod tests {
         let mut found: Vec<(String, String)> = Vec::new();
         let mut bad: Vec<String> = Vec::new();
         for (path, raw) in &files {
-            // ⚠⚠ 〔`设计/20 §7` 步 1〕先前这里取的是 `file_name()`（**只有文件名**）。
+            // ⚠⚠ 先前这里取的是 `file_name()`（**只有文件名**）。
             //    上游选择搬进 `relay/accounts/` 之后那样取会得出 `mod.rs` —— 一个
             //    **指不准是谁**的住址（`relay/mod.rs` 与 `relay/accounts/mod.rs` 同名）。
             //    ⇒ 改成**相对路径**。这是**收紧**：登记表里那一栏从此
             //    点得到唯一一份文件，改不改都不会让一条日志悄悄换个家。
-            //    〔2026-09-24〕上游选择搬到 `src/backend/accounts/` 之后，基准从 `relay/` 换成
+            // 上游选择搬到 `src/backend/accounts/` 之后，基准从 `relay/` 换成
             //    `src/backend/`（两棵根都相对它），中转那几行的住址栏因此多了 `relay/` 前缀。
-            let name = guard_core::module_address(&root, path); // 〔RE〕按模块住址认
+            let name = guard_core::module_address(&root, path); // 按模块住址认
             let prod = production_code(raw);
             // ⚠⚠ **针不许互相包含** —— 这一行是改过一次的，经过记这里，因为它正是
             //    本工作区那族病的第一形（**针拼错**），而且是**相等断言逮住的**：
@@ -701,7 +701,7 @@ mod tests {
         );
         // ★ 〔上游选择搬出 `relay/` 那一拍〕**两层的日志都在扫描面里**：盘上扫到日志的根
         //   ⇔ 登记表里出现的根 ⇔ `LOG_ROOTS`，三方相等。少了一棵 = 那一层的日志掉出白名单。
-        // 〔`A3` 第二波〕根不再都是一段（`accounts/upstream_select` 两段）⇒ 按 `LOG_ROOTS` 认前缀，不按第一段切。
+        // 根不再都是一段（`accounts/upstream_select` 两段）⇒ 按 `LOG_ROOTS` 认前缀，不按第一段切。
         let root_of = |f: &str| {
             LOG_ROOTS
                 .iter()
@@ -715,7 +715,7 @@ mod tests {
             LOG_SITES.iter().map(|(f, _, _)| root_of(f)).collect();
         let want_roots: std::collections::BTreeSet<String> =
             LOG_ROOTS.iter().map(|r| (*r).to_string()).collect();
-        // 〔`A3` 第二波〕白名单圈的非中转那一棵，**恰好**是上游选择的根（盘上现推，住 `upstream_selection_guard`）——
+        // 白名单圈的非中转那一棵，**恰好**是上游选择的根（盘上现推，住 `upstream_selection_guard`）——
         //   不是整个账号域：`accounts/iso.rs`（账号隔离工具的查询）不是中转的上游选择，不进本白名单。
         let sel_root =
             super::super::upstream_selection_guard::tests::upstream_selection_root_from_disk();
@@ -738,7 +738,7 @@ mod tests {
             registered_roots, want_roots,
             "登记表里出现的根与 `LOG_ROOTS` 对不上"
         );
-        // ★ 〔`设计/90 §1.2` · `设计/20 §6` 命名推论〕**前缀按层分，两向**：
+        // ★ 〔命名推论〕**前缀按层分，两向**：
         //   住上游选择（`accounts/`）的那几行 ⇔ 前缀是 `[apikey]`；其余（中转）⇔ 前缀是 `[relay]`。
         //   常驻后端一个进程承载两层，先前两层共用 `[relay]` ⇒ 读日志的人判不出是哪一层出的事。
         //   ⚠ 反空真：两边都得**非空**，否则「前缀按层分」在一个只剩一层的表上恒真。
@@ -759,7 +759,7 @@ mod tests {
                 is_upstream_selection(file),
                 "{file} “{head}”：前缀与它住的那一层对不上。\n\
                  上游选择（apikey / 账号）的日志用 `[apikey]`，中转（搬字节）用 `[relay]` —— \
-                 **不许用中转的名字说上游选择的事**（`设计/20 §6`）。"
+                 **不许用中转的名字说上游选择的事**。"
             );
             assert!(
                 head.starts_with("[apikey] ") || head.starts_with("[relay] "),

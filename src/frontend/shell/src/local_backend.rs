@@ -69,12 +69,12 @@
 //! **装出来那份** `C:\Program Files\cc-monitor\` 下 `cc-monitor-backend.exe` **2 个进程在跑**；
 //! **裸 `monitor.exe`** 那份 **0 个**。⇒ 走 [`Resolved::Found`] 还是 [`Resolved::Missing`]，
 //! 取决于**用户手里是哪一份产物**，不再是一个常数。
-//! **C7 由 F05a + F05b 两件共同满足**，ROADMAP §3 就是这么记的 —— 两件今天都在了。
+//! **C7 由 F05a + F05b 两件共同满足**，就是这么记的 —— 两件今天都在了。
 //!
 //! 🔴 **`K-R42`（09-10 同日，上面那次读数之后）：上面那句「取决于哪一份产物」被这一件改小了。**
 //! 那次读数**没有被推翻**（它量的是 v3.7.0 的产物，那一版的裸 exe 确实是 0 个）——
 //! 变的是**它之后的机制**：本模块这条路今天多了第二个二进制来源
-//! （`build.rs::embed_native_backend` 按 `TARGET` 嵌进来的那一份；〔DP1〕今天与其余几份一起由宿主经
+//! （`build.rs::embed_native_backend` 按 `TARGET` 嵌进来的那一份；今天与其余几份一起由宿主经
 //! `byte_table::pick` 按这台机器的 (OS, arch) 取来，本层只收字节），
 //! 于是 [`resolve_with`] 的 `Missing` **不再等于「这台机器上没有本机后端」**，
 //! 它只等于「**旁边**没有」。裸 exe 那一支从此走的是「自己释放一份再起」。
@@ -83,7 +83,7 @@
 //!
 //! 真进程行为由 `tests/e2e/local-backend-supervise.sh` 验：它**显式**把二进制路径喂给
 //! [`supervise_with_stdio`]，并强制私有 tmux 隔离，绝不碰用户真实 tmux server。
-//! ⚠ 〔`P0e` 08-12〕隔离**换过机制**：原来靠私有 `TMUX_TMPDIR`，而 `$TMUX` 一有值就压过它
+//! ⚠ 隔离**换过机制**：原来靠私有 `TMUX_TMPDIR`，而 `$TMUX` 一有值就压过它
 //! （08-11 就是这么打没用户 9 个真实会话的）⇒ `C7i` 逐字禁掉那条路。
 //! 现在给后端一条**前面挂着 shim 的 PATH**（`tests/e2e/tmux-shim.sh`），它 shell out 的 tmux
 //! 被强插 `-L` —— **显式选择器压得过 `$TMUX`**。
@@ -112,7 +112,7 @@ pub const LOCAL_BACKEND_STEM: &str = "cc-monitor-backend";
 /// ⚠ **这个名字只有一个家** —— `shared/ccm` 读的必须是同一个字面量，
 /// 由 `the_backend_bin_env_name_has_exactly_one_home` 钉住（定框 §4）。
 ///
-/// ⚠ **ccm 那一半已接**〔F06b-1c〕：旧 `shared/ccm` 的 `resolve_from_backend` 〔散文墓碑〕（函数，exec 路用）
+/// ⚠ **ccm 那一半已接**：旧 `shared/ccm` 的 `resolve_from_backend` 〔散文墓碑〕（函数，exec 路用）
 /// 与 `resolve_recipe`（文本，print 路用），照该文件里 `derive_bus_id`/`BUS_ID_RECIPE` 的先例写；
 /// 一致性由 `tests/e2e/ccm-contract-parity.sh` 的 **A′/A′d 组**钉住（print↔exec 的 argv 差分）。
 ///
@@ -225,7 +225,7 @@ pub fn decide(crash_times_ms: &[u64], now_ms: u64, limits: CrashLimits) -> Decis
 
 /// 消费者这一侧观测到的两维证据 —— **只搬观测，不做判断**。
 ///
-/// # 为什么这一维要有一个「没观测到」的档〔`K-P3b KP3W2`〕
+/// # 为什么这一维要有一个「没观测到」的档
 ///
 /// `supervise_with_stdio` 有两种客户：**接了消费者**的（backend —— 有人解帧、有人读错误）
 /// 与**没接消费者**的（中转 —— 缺省那支只把 stdout `io::copy` 进 `sink`）。
@@ -349,7 +349,7 @@ pub enum ConsumerExit {
     Early,
 }
 
-/// 消费者返回时交回来的**全部**东西〔`K-P3b`〕。
+/// 消费者返回时交回来的**全部**东西。
 ///
 /// ⚠ [`ConsumerExit`] 一个字节没动：它回答的是「`supervise` 要不要补一刀」，
 /// 与「这次死亡的证据是什么」是**两件事**。把两件事塞进同一个枚举，
@@ -455,7 +455,7 @@ pub enum SpawnFailure {
 ///
 /// # 这个数的**出处**（`K-R30`，09-06 沙箱实测）
 ///
-/// 〔出处·K-R30〕上面几节是**理由**，不是读数。`K-R30` 去把读数打了出来：
+/// 〔出处〕上面几节是**理由**，不是读数。`K-R30` 去把读数打了出来：
 /// 量具 `tests/evidence/K-R30-etxtbsy-window.py`（读数落在同名 `.out`）。
 /// 台架 = 真造那个竞态：一个进程攥着目标文件的写 fd（`fork` 继承来的 —— `CLOEXEC` 要到它
 /// `execve` 那一刻才生效），我们自己那把立刻关掉，然后**立即重试**到 `execve` 成功，
@@ -475,7 +475,7 @@ pub enum SpawnFailure {
 /// ⇒ `C12` 那条「按次数、不按时间」在这一格上买到的**不只是「没有定时器」**，
 /// 还有「这把尺子自己会随负载伸缩」。
 ///
-/// ⚠ **它买不到的三样，别读大**（`K-R30 §4`）：
+/// ⚠ **它买不到的三样，别读大**：
 /// ① 这是**沙箱**读数 —— 真机的负载 / 文件系统 / 内核版本未必同值；
 /// ② 上表第一行是那个窗口的**上界**，不是窗口本身；
 /// ③ 泄漏方那个孩子若在 `fork` 与 `execve` 之间**还要干活**（量具的臂 B：一个 CPython 子进程，
@@ -551,7 +551,7 @@ pub fn spawn_retrying_etxtbsy<T>(
 /// 原样进诚实边界。
 ///
 /// `backoff` 这个注入点是**特意留着的**：PM 裁定之后，接上去只改这一行。
-/// ⚠ **`spawn` 是注入进来的**〔`15 §5.1 A3`，09-18〕：起进程那一下要回答三个问题
+/// ⚠ **`spawn` 是注入进来的**：起进程那一下要回答三个问题
 /// （要不要窗口 · 要不要随我死 · 错误往哪去），而那三个答案要落成**平台原语**
 /// （`creation_flags` / `process_group` / Job Object）—— 它们进不了本层
 /// （`the_backend_half_stays_platform_agnostic` 的禁针，而平台例外表有递减棘轮）。
@@ -620,7 +620,7 @@ const STDERR_CUT_MARK: &str = " …〔这一行超过单行上界，在此切开
 /// 3. **级别按行首映射，但封顶 `warn`、绝不 `error`。** `logging.rs` 的 `ErrorEmitterLayer` 只拦
 ///    `Level::ERROR`，拦到就 emit `monitor-error` → 前端弹红色 toast。而这里搬的是
 ///    **子进程说的话**，它自己的级别在文本里（后端那侧 `tracing_subscriber` 的 fmt 前缀）。
-///    〔HX1 · 4D〕主会话裁（NT2 问 3 ＋ RT1 F3）「后端 stderr 进 monitor 日志按级别映射，不一律 WARN」⇒
+/// 主会话裁（NT2 问 3 ＋ RT1 F3）「后端 stderr 进 monitor 日志按级别映射，不一律 WARN」⇒
 ///    [`backend_stderr_level`] 认行首那个级别字：`INFO` / `DEBUG` / `TRACE` 照原级记，`WARN` 与 `ERROR` 记 `warn`，
 ///    认不出（panic 信息、继承 stderr 的子进程的裸输出）记 `warn`（它们本来就是异常路径）。
 ///    ⚠ `ERROR` 封顶在 `warn` 是**刻意的**（本条原话的理由不变）：拿不准就别替用户决定「这值得弹一个红框」
@@ -681,10 +681,10 @@ pub(crate) fn drain_child_stderr_into_log(err: std::process::ChildStderr, pid: u
     }
 }
 
-/// 〔HX1〕后端 stderr 一行 ⇒ 记进 monitor 日志用的级别（约束 3）。
+/// 后端 stderr 一行 ⇒ 记进 monitor 日志用的级别（约束 3）。
 ///
 /// 后端那侧是 `tracing_subscriber::fmt()` 的缺省格式：`<时间戳> <级别> <target>: <正文>`，级别右对齐补到 5 格
-/// （`" INFO"`）；〔HX1〕后端从此不往非终端上色，行首没有转义码。⇒ 看**前两个**空白分隔的词里有没有一个恰是级别字。
+/// （`" INFO"`）；后端从此不往非终端上色，行首没有转义码。⇒ 看**前两个**空白分隔的词里有没有一个恰是级别字。
 /// `ERROR` 封顶成 `WARN`；认不出 ⇒ `WARN`。
 pub(crate) fn backend_stderr_level(line: &str) -> tracing::Level {
     for word in line.split_whitespace().take(2) {
@@ -700,7 +700,7 @@ pub(crate) fn backend_stderr_level(line: &str) -> tracing::Level {
 }
 
 /// 见 [`StdioSink`]。`stdio` 为 `None` ⇒ 不接消费者（stdin 恒 `null`）。
-/// 〔RL1 · V107〕先前还有一个 `stdio=None` 的薄壳入口，它唯一的生产客户是 monitor 另起的本机中转；
+/// 先前还有一个 `stdio=None` 的薄壳入口，它唯一的生产客户是 monitor 另起的本机中转；
 /// 中转并进本机常驻后端之后那个薄壳没了客户，随之删掉 —— 生产上只剩这一个入口。
 #[allow(clippy::too_many_arguments)]
 pub fn supervise_with_stdio(
@@ -739,7 +739,7 @@ pub fn supervise_with_stdio(
             // ⇒ 这里无条件清掉：backend 该按自己的 `TMUX_TMPDIR`（或默认 socket）解析，
             // 而不是继承「monitor 恰好从哪个 tmux 里被启动」这个偶然。
             cmd.env_remove("TMUX");
-            // ★★ `00 §1.5.1` 步 1（不开控制台窗口）与 `15 §5.1 A2`（stderr 接进滚动日志）
+            // ★★ （不开控制台窗口）与（stderr 接进滚动日志）
             //    **都已经不在这一层了**〔A3 落地，09-18〕。
             //
             // 先前这里有两段平台/宿主知识：一句 `crate::local_backend_host::hide_console_window(&mut cmd)`
@@ -878,7 +878,7 @@ pub fn supervise_with_stdio(
             // 这个做法的前提**由自己保证**，而不是靠调用路径碰巧成立。
             //
             // ⚠ 刻意**不无条件 kill**：那会把正常退出码换成信号死，而 `decide()` 正是按退出码
-            // 分「崩溃 / 正常退出」（`ROADMAP` 风险 5d 记着「`code: Some(0)` 被计成崩溃」那次观测）。
+            // 分「崩溃 / 正常退出」（风险 5d 记着「`code: Some(0)` 被计成崩溃」那次观测）。
             // ⚠ 也刻意**不探子进程**：本模块禁「自己醒过来」的构件，见 [`ConsumerExit`] 头注 ——
             // B4 的第一版正是拿那个构件去探，判据当场逮到。
             let mut reaped = {
@@ -948,7 +948,7 @@ pub fn supervise_with_stdio(
 /// **local_backend 不在就不设** —— 导一个指向空处的路径不会让 ccm 更聪明（它那边 `[ -x ]` 一样过不了），
 /// 只会让「这台机到底有没有本机后端」这个问题多一个假阳性来源。⇒ 空值 ≠ 未设（Z01 那条支点）。
 ///
-/// # 〔LOC1a · 第四波 4D〕给的是**正在跑的那一份**，不是「exe 旁边那一份」
+/// # 给的是**正在跑的那一份**，不是「exe 旁边那一份」
 ///
 /// 此前这里自己 `resolve_beside_this_exe`：只认 exe 同目录那份文件，**不认自释放之后正在跑的那一份**
 /// （RT1 F2 / WIN1 报备：Windows 发版包里旁边没有 ⇒ 窗口里 `CCM_BACKEND_BIN` 一直不设）。
@@ -982,11 +982,11 @@ pub fn resolve_beside_this_exe(target_triple: &str) -> Resolved {
     )
 }
 
-/// 〔E2 · V28 · `设计/01 §6.7b`〕**本机后端的落点：`dir/ccm(.exe)` —— 它就是后端本身**（文件名 = [`local_ccm_entry_name`]）。
+/// **本机后端的落点：`dir/ccm(.exe)` —— 它就是后端本身**（文件名 = [`local_ccm_entry_name`]）。
 ///
-/// 从前释放成 `cc-monitor-backend-<build_id>`、再逐字节拷一份叫 `ccm`（V28「第二份拷贝」）；今天只有这一个文件，
+/// 从前释放成 `cc-monitor-backend-<build_id>`、再逐字节拷一份叫 `ccm`（「第二份拷贝」）；今天只有这一个文件，
 /// 本机常驻后端跑的就是它，终端里敲的 `ccm` 也是它。名字不带 build_id 之后「两个版本的 monitor 互相换掉对方」那一形
-/// 由换版规则挡：照 HX2 D-b「盘上的比我旧才换」（〔P1〕判在后端 `control/deploy_plan.rs::place_verdict`，与远端部署同一条 `identity_decision`；手上那份字节自己答），见 [`extract_embedded_to`]。
+/// 由换版规则挡：照 HX2 D-b「盘上的比我旧才换」（判在后端 `control/deploy_plan.rs::place_verdict`，与远端部署同一条 `identity_decision`；手上那份字节自己答），见 [`extract_embedded_to`]。
 /// 名字的后缀由 `build.rs` 从 `TARGET` 算好（`CCM_TARGET_EXE_SUFFIX`，`K-R42`），本层不现算平台原语。
 
 /// 陈旧 `.partial` 的年龄阈值。
@@ -1042,7 +1042,7 @@ fn sweep_moved_aside(dir: &Path, name: &str) {
     }
 }
 
-/// 〔E2 · E-c〕旧版本机释放的 `cc-monitor-backend-<build_id>` 们：身份戳恰一个（是我们编的）才删；删不掉（正在跑）不管。
+/// 旧版本机释放的 `cc-monitor-backend-<build_id>` 们：身份戳恰一个（是我们编的）才删；删不掉（正在跑）不管。
 /// 回删掉了几份（给日志）。
 pub fn sweep_legacy_extracts(dir: &Path) -> usize {
     let Ok(rd) = std::fs::read_dir(dir) else {
@@ -1071,7 +1071,7 @@ pub fn sweep_legacy_extracts(dir: &Path) -> usize {
 /// 旧版本机释放名的前缀（`cc-monitor-backend-<build_id>[.exe]`）。
 pub const LEGACY_EXTRACT_PREFIX: &str = "cc-monitor-backend-";
 
-/// 〔P1 · `设计/00 §1.2` 判定只在后端〕问手上这份字节「放不放」的那一口 —— **宿主注入**（起进程的三条策略是宿主知识，`15 §5.1 A3`；
+/// 〔判定只在后端〕问手上这份字节「放不放」的那一口 —— **宿主注入**（起进程的三条策略是宿主知识，；
 /// 本层平台无关）。入参 = 暂存件的路径 · 帧命令 `place-verdict` 的入参；回 = 它的答，或没问成的那一形。生产 = `ccm_probe::ask_place_verdict`。
 pub type PlaceAsk<'a> =
     &'a dyn Fn(&Path, &serde_json::Value) -> Result<serde_json::Value, crate::ccm_probe::OnceErr>;
@@ -1143,9 +1143,9 @@ fn rename_into_place(dir: &Path, name: &str, tmp: &Path, dest: &Path) -> std::io
     })
 }
 
-/// P2z：**单 exe 自释放** ——〔E2〕把手上这份后端字节放到 `dir/ccm(.exe)`（它就是后端本身），返回落点。
+/// P2z：**单 exe 自释放** ——把手上这份后端字节放到 `dir/ccm(.exe)`（它就是后端本身），返回落点。
 ///
-/// 〔P1〕放不放**问手上这份字节自己**（`ask` ⇒ `<暂存件> -- --place-verdict`：表 B 本机那一行 · 盘上那份 vs 它自己的 `BUILD_ID`，
+/// 放不放**问手上这份字节自己**（`ask` ⇒ `<暂存件> -- --place-verdict`：表 B 本机那一行 · 盘上那份 vs 它自己的 `BUILD_ID`，
 /// 只升不降 —— 判定住后端 `control/deploy_plan.rs::place_verdict`，本层只照答办）：盘上与手上逐字节相同 ⇒ 直接用、不问（事实）；
 /// 否则写暂存件 `.<名>.<pid>.partial` → 置可执行位 → 问 → `place` ⇒ `rename` 上位（Windows 上旧的正在跑 ⇒ 先把旧的改名挪开再上位）·
 /// `keep` ⇒ 用盘上那份 · 说「不」/ 没问成 ⇒ 不放、盘上那份不动（[`Unplaced::Said`]）。暂存件任何结局下都清。
@@ -1155,7 +1155,7 @@ pub fn extract_embedded_to(
     build_id: &str,
     bytes: &[u8],
     make_executable: &dyn Fn(&Path) -> Result<(), String>,
-    // 〔HX1 · 拍板项 4〕建落点目录（`~/.cc-monitor/bin` 一族）也是宿主知识：建的那一下就只给本人（`platform::fs::ensure_private_dir`）。
+    // 〔拍板项 4〕建落点目录（`~/.cc-monitor/bin` 一族）也是宿主知识：建的那一下就只给本人（`platform::fs::ensure_private_dir`）。
     ensure_dir: &dyn Fn(&Path) -> Result<(), String>,
     ask: PlaceAsk<'_>,
 ) -> Result<PathBuf, Unplaced> {
@@ -1234,7 +1234,7 @@ pub fn place_local_program(
     file: &str,
     bytes: &[u8],
     make_executable: &dyn Fn(&Path) -> Result<(), String>,
-    // 〔HX1 · 拍板项 4〕建落点目录（`~/.cc-monitor/bin` 一族）也是宿主知识：建的那一下就只给本人（`platform::fs::ensure_private_dir`）。
+    // 〔拍板项 4〕建落点目录（`~/.cc-monitor/bin` 一族）也是宿主知识：建的那一下就只给本人（`platform::fs::ensure_private_dir`）。
     ensure_dir: &dyn Fn(&Path) -> Result<(), String>,
 ) -> Result<PathBuf, String> {
     let dest = dir.join(file);
@@ -1274,7 +1274,7 @@ pub fn place_local_program(
 //
 // 立件时现打（量于 `79bf97d`）：闭集 `tool_registry::TOOLS` 里落点是 `…/ccm` 的**只有一条**，
 // 而它是 `RemoteHomeRelative(".local/bin/ccm")` ⇒ **本机侧 0 条**；装口也只有远端那一个
-// （`sftp::install_remote_ccm_helper`〔散文墓碑〕，〔MC1〕今天那一半在 `sftp::deploy_remote_backend`）。⇒ 用户 `K34` 逐字要的「装了新版后
+// （`sftp::install_remote_ccm_helper`〔散文墓碑〕，今天那一半在 `sftp::deploy_remote_backend`）。⇒ 用户 `K34` 逐字要的「装了新版后
 // `~/.local/bin/ccm` 可以干净退役」**今天没有承接方** —— 不是「没验过旧的能不能退役」，
 // 是**本机压根没有新的那一份**。
 //
@@ -1283,27 +1283,27 @@ pub fn place_local_program(
 //    只是换了个名字：`control::ccm::intercept` 的入口①逐字写着「`argv[0]` 的 basename
 //    是 `ccm`（别名 / 软链 / **改名拷贝**指过来）」。⇒ 零新增实现、零新增 argv 解析。
 
-/// 🔴 `ccm` 这个词的**唯一住址**〔`13b`：闭集只许有一个住址〕。
+/// 🔴 `ccm` 这个词的**唯一住址**〔闭集只许有一个住址〕。
 ///
-/// 〔E2〕本机与远端的落点都是**后端二进制本身**，文件名就是这个词（[`local_ccm_entry_name`]；远端 `relay_route_core::BACKEND_LANDING_REL`）
+/// 本机与远端的落点都是**后端二进制本身**，文件名就是这个词（[`local_ccm_entry_name`]；远端 `relay_route_core::BACKEND_LANDING_REL`）
 /// ⇒ 都走 `intercept` 的入口①（basename）；别名块（`profile_installer.rs` / `shell_dialect.rs`）也取这个词。
 pub const CCM_ENTRY_WORD: &str = "ccm";
 
-/// 本机 `ccm` 入口的**文件名**（唯一真相源，判据与生产共用这一个）。
+/// 本机 `ccm` 入口的**文件名**（唯一源头，判据与生产共用这一个）。
 ///
 /// 后缀与本机落点同一个来路：`build.rs` 按 **`TARGET`** 算好的编译期常量
 /// `CCM_TARGET_EXE_SUFFIX`。这一份是要**被起成进程**的 ⇒ 在把扩展名当身份的平台上
 /// 它得带着自己那个后缀。
 /// ⚠ 这里**不许**现算 `EXE_SUFFIX` —— 那是**本进程**的后缀，而这一份要的是**目标**平台的（`build.rs` 按 `TARGET` 算好）；
-/// 〔P4b · 阶段 H〕平台原语本身也只许住 `platform/`（`resolve_beside_this_exe` 那一处已改引 `platform::proc::EXE_SUFFIX`）。
+/// 平台原语本身也只许住 `platform/`（`resolve_beside_this_exe` 那一处已改引 `platform::proc::EXE_SUFFIX`）。
 pub fn local_ccm_entry_name() -> String {
     format!("{CCM_ENTRY_WORD}{}", env!("CCM_TARGET_EXE_SUFFIX"))
 }
 
-// 〔E2 · V28 · `设计/01 §6.7b`〕远端三行入口的生成器 `ccm_entry_shim`〔散文墓碑〕删了：远端落点 `~/.cc-monitor/bin/ccm` 上放的就是
-//   后端字节（`sftp.rs::LANDING_REL`）。已部署机器上的旧入口由本机常驻后端认（`deploy_plan::retired_verdict` 调 `deploy_plan::is_ours`，〔THIN〕从前在 `ccm_legacy`）。
+// 远端三行入口的生成器 `ccm_entry_shim`〔散文墓碑〕删了：远端落点 `~/.cc-monitor/bin/ccm` 上放的就是
+//   后端字节（`sftp.rs::LANDING_REL`）。已部署机器上的旧入口由本机常驻后端认（`deploy_plan::retired_verdict` 调 `deploy_plan::is_ours`，从前在 `ccm_legacy`）。
 
-// 〔E2 · V28〕`install_local_ccm_entry`〔散文墓碑〕（把后端逐字节拷一份叫 `ccm`，V28「第二份拷贝」）删了：
+// `install_local_ccm_entry`〔散文墓碑〕（把后端逐字节拷一份叫 `ccm`，「第二份拷贝」）删了：
 //   落点 `~/.cc-monitor/bin/ccm` 放的就是后端本身（[`extract_embedded_to`]）。
 
 /// 「带着后端但放不下来」这一形的**认路标记**。
@@ -1405,7 +1405,7 @@ pub fn start_if_present(
 /// # 返回
 ///
 /// `Ok(None)` = EOF（**判死信号**）· `Ok(Some(Some(s)))` = 一行 ·
-/// `Ok(Some(None))` = 〔RENDER2〕超限、整行丢了（调用方原位说出来，`local_lines::line_lost_blocking`）·
+/// `Ok(Some(None))` = 超限、整行丢了（调用方原位说出来，`local_lines::line_lost_blocking`）·
 /// `Err` = 真的读错误。
 ///
 /// ⚠ **字节转字符串走 `from_utf8_lossy`**〔D 阶段补审 08-11 修〕：
@@ -1415,7 +1415,7 @@ pub fn start_if_present(
 /// 远端那条路早就明确取了相反的取舍（`ssh_source` 里 `from_utf8_lossy`，注释逐字
 /// 「非 UTF-8 不该让整条连接死掉」），本机这条当时把它漏了。
 ///
-/// 〔W5-VIS · `设计/15 §3.4 ②`〕行旁边多回一位「这一行不是合法 UTF-8、按替换字符读的」，
+/// 行旁边多回一位「这一行不是合法 UTF-8、按替换字符读的」，
 /// 让调用方记进丢帧账（`frame_tally`）—— lossy 这条取舍不动，只是不再静默。
 #[allow(clippy::type_complexity)]
 fn read_capped_line_sync<R: std::io::BufRead>(
@@ -1471,21 +1471,21 @@ fn decode_line(buf: Vec<u8>) -> (String, bool) {
     }
 }
 
-/// 〔CF1 · 2026-09-24〕本机后端的**流模式起参** —— 两条载体（stdio 监护 · 常驻脱离）共用这一份。
+/// 本机后端的**流模式起参** —— 两条载体（stdio 监护 · 常驻脱离）共用这一份。
 ///
 /// - `--tail-only`：连接不重放历史，历史由 monitor 经旁路快照拉（与远端同一套：`ssh_source::LineIntake`）。
 ///   本机内容消费者据此认定「这条流恒为 tail-only」（`ssh_source::LOCAL_STREAM_TAIL_ONLY`）。
 /// - `--with-bg`：bg 会话也宣告、也发行 —— 本机会话内容从这条流来之后，少了它 bg 会话的内容就静默没了
 ///   （monitor 的 `showBgSessions` 缺省是开的）。显示与否在 monitor 那一侧按 `session_kind` 定。
 ///
-/// - 〔LOC1b · 第四波 4D〕`--with-rbind-token`：索要给 ↗ 绑窗口的材料 —— `session_added` 带上 `pid`（与令牌同一道闸，
+/// - `--with-rbind-token`：索要给 ↗ 绑窗口的材料 —— `session_added` 带上 `pid`（与令牌同一道闸，
 ///   `wire::Frame::SessionAdded::pid`）。本机判活改由本机后端的帧来之后，monitor 不再自己读 pidfile，
 ///   本机 ↗ 按 pid 找父 PowerShell 绑窗口（`bind::SidHwndCache::record`）只能从这一格拿 pid。
 ///
 /// 几个字面量都必须是后端 `lib.rs::STREAM_FLAGS` 的成员（后端据它剥旗标；不认的会被当成一次性查询跑完就退）——
 /// 由判据对拍后端源码。
 ///
-/// - 〔E2 · V28〕[`STREAM_WORD`] 打头：后端就叫 `ccm` 之后零参数是「起会话」，流模式靠这个显式词。
+/// - [`STREAM_WORD`] 打头：后端就叫 `ccm` 之后零参数是「起会话」，流模式靠这个显式词。
 pub(crate) const LOCAL_STREAM_ARGS: &[&str] = &[
     BACKEND_SEP,
     STREAM_WORD,
@@ -1494,17 +1494,17 @@ pub(crate) const LOCAL_STREAM_ARGS: &[&str] = &[
     "--with-rbind-token",
 ];
 
-/// 〔E2 · V28〕「我是流模式后端」的显式词（后端 `lib.rs::STREAM_FLAG_EXPLICIT`，由判据对拍后端源码）。
+/// 「我是流模式后端」的显式词（后端 `lib.rs::STREAM_FLAG_EXPLICIT`，由判据对拍后端源码）。
 /// monitor 起流的每一发（本机两条载体 · 远端流 · 测试连接探针）都以它打头。
 pub(crate) const STREAM_WORD: &str = "--stream";
 
-/// 〔V151 · 用户 09-27〕叫后端时打头的那个 `--`：后端二进制就是 `ccm`，`ccm [交给 claude 的…] -- [ccm 自己的…]` ——
+/// 〔用户 09-27〕叫后端时打头的那个 `--`：后端二进制就是 `ccm`，`ccm [交给 claude 的…] -- [ccm 自己的…]` ——
 /// 打头的 `--` 紧跟后端的词（子命令 / 流模式旗标）才当后端用，没有它整行交给 claude。monitor 叫后端的每一发都带它。
 pub(crate) const BACKEND_SEP: &str = "--";
 
 /// P3 刀 1 的**唯一**吸收点：本机后端推来的帧里，哪些要进账本。
 ///
-/// # 为什么抽成函数〔`P3` 08-12〕
+/// # 为什么抽成函数
 ///
 /// 原来这三行**长在读行循环里**，而那个循环要有一个**真的在跑的 backend** 才进得去
 /// ⇒ `P3-Y1`（acceptor: **实测**）唯一的证据只能是一条会起真 tmux 的测试，而那条
@@ -1520,18 +1520,18 @@ pub(crate) const BACKEND_SEP: &str = "--";
 /// （逐字「登记 = 承诺真发」）与协议文档守卫 —— 那一跳本判据**够不到**，
 /// 那条会起真 tmux 的实测因此**留着**（仍 `#[ignore]`），不是删掉了事。
 ///
-/// 〔SR1a · 2026-09-24〕它从此是本机那条流上**所有**非 hello 帧的吸收点（两条读循环各调一次：
+/// 它从此是本机那条流上**所有**非 hello 帧的吸收点（两条读循环各调一次：
 /// 本文件的 [`local_stdio_consumer`] 与宿主的 `local_backend_host::attach_stream`）：
 /// - `reply` / `cancelled` ⇒ 交本机那条入方向客户端按 `id` 路由回请求方。
 ///   ⚠ **此前本机两条读循环一条都不路由应答**（现打逐行读过）⇒ 在本机那条通道上发出去的入方向命令
 ///   **只会等到超时**。开链路（`link-open`）要这条应答，所以这一格在这一拍补上。
 /// - `link_data` / `link_end` ⇒ 交 [`crate::link_mux`]（链路的 monitor 这一侧）。
-/// - 〔SR1b〕`transfer` ⇒ 交 [`crate::sftp_pool::deliver`]（传输台的中继）。
+/// - `transfer` ⇒ 交 [`crate::sftp_pool::deliver`]（传输台的中继）。
 ///
-/// 〔CF1 · 2026-09-24〕**内容三种（`line` · `session_added` · `session_removed`）原样交回调用方**
+/// **内容三种（`line` · `session_added` · `session_removed`）原样交回调用方**
 /// （返回 `Some`），由读循环送进 `crate::local_lines`（再进与远端同一个 `LineIntake`）。
 /// 此前这三种落在最后那个 `_ => {}` 里整个丢掉（注释逐字「本机会话走本地 watcher」）——
-/// 那是「同一批 jsonl 同机读两遍、第二遍扔掉」的那一半（`真相源/10 §7.1`）。
+/// 那是「同一批 jsonl 同机读两遍、第二遍扔掉」的那一半。
 /// ⚠ 交回而不是在这里就地送：两条读循环一条是 tokio 任务、一条是裸线程，送法不同（`local_lines` 头注）。
 /// 其余帧仍就地吸收，返回 `None`。
 pub(crate) fn absorb_local_frame(
@@ -1540,7 +1540,7 @@ pub(crate) fn absorb_local_frame(
 ) -> Option<crate::ssh_source::InboundFrame> {
     use crate::ssh_source::InboundFrame;
     match frame {
-        // 〔MIG-1 · `99 §2.1 ⑬`〕本机的 tmux 观测两种帧 monitor 不再消费（〔MIG-1 续〕后端也不再发，那两帧删了）：
+        // 本机的 tmux 观测两种帧 monitor 不再消费（后端也不再发，那两帧删了）：
         //   收割与「可重连」由本机后端的会话账本裁（`observe/session_ledger.rs`），成品 `session_state` 走下面那一臂进本机内容通道。
         //   〔从前这里记 tmux 原文账（`ssh_source::record_tmux_raw`〔散文墓碑〕）＋ 本机收割器（`local_idle_retirements`〔散文墓碑〕）；
         //    `session_added` 这一臂还记容器（`session_facts::note_container`〔散文墓碑〕）——容器今天随活会话成品一起进 `session_book`。〕
@@ -1564,25 +1564,25 @@ pub(crate) fn absorb_local_frame(
         },
         InboundFrame::LinkData { link, data } => crate::link_mux::deliver_data(&link, data),
         InboundFrame::LinkEnd { link, error } => crate::link_mux::deliver_end(&link, error),
-        // 〔SR1b〕传输台住本机后端：进度 / 终局交中继（`sftp_pool::deliver`，从不阻塞）。
+        // 传输台住本机后端：进度 / 终局交中继（`sftp_pool::deliver`，从不阻塞）。
         InboundFrame::Transfer {
             id,
             got,
             total,
             end,
         } => crate::sftp_pool::deliver(&id, got, total, end),
-        // 〔MIG-1 收尾〕测试连接在本机常驻后端里跑：进度格原样交中继（`probe_relay::deliver`，从不阻塞），进界面订的 `probe-progress/<票>`。
+        // 测试连接在本机常驻后端里跑：进度格原样交中继（`probe_relay::deliver`，从不阻塞），进界面订的 `probe-progress/<票>`。
         InboundFrame::Probe { ticket, cell } => crate::probe_relay::deliver(&ticket, cell),
-        // 〔TAP · V124〕中转住本机常驻后端：它抄出来的 SSE 事件原样转前端（`session_tap::deliver`，从不阻塞、不进内容通道）。
+        // 中转住本机常驻后端：它抄出来的 SSE 事件原样转前端（`session_tap::deliver`，从不阻塞、不进内容通道）。
         InboundFrame::Tap(t) => {
             crate::session_tap::deliver(crate::inbound_client::LOCAL_ORIGIN, t)
         }
-        // 〔CF1〕内容三种（`session_added` 在上面那一臂记完容器也交回）：交回读循环，送进本机内容通道。
-        // 〔LOC1b · 第四波 4D〕起停另两种（`session_status` 红绿灯 · `sessions_replayed` 清单报完了）也交回：
+        // 内容三种（`session_added` 在上面那一臂记完容器也交回）：交回读循环，送进本机内容通道。
+        // 起停另两种（`session_status` 红绿灯 · `sessions_replayed` 清单报完了）也交回：
         //   本机会话的起停改由本机后端的帧来（`session_map` 的本机活会话表），与内容走同一条有序通道 ——
         //   「清单报完了」必须排在它前面那些宣告之后才有意义。此前这两种落在最后那个 `_ => {}` 里丢掉。
-        // 〔FW1 · D-d〕记录文件不见了 / 被改过 ⇒ 同一条内容通道（与行同序）。
-        // 〔MIG-1〕会话成品 `session_added` · `session_state` 同一条有序通道（去向必须排在那个会话的行之后）。
+        // 记录文件不见了 / 被改过 ⇒ 同一条内容通道（与行同序）。
+        // 会话成品 `session_added` · `session_state` 同一条有序通道（去向必须排在那个会话的行之后）。
         f @ (InboundFrame::Line { .. }
         | InboundFrame::SessionAdded { .. }
         | InboundFrame::SessionRemoved { .. }
@@ -1590,7 +1590,7 @@ pub(crate) fn absorb_local_frame(
         | InboundFrame::SessionStatus { .. }
         | InboundFrame::SessionsReplayed
         | InboundFrame::SessionFileNotice { .. }
-        // 〔MIG-3b · ㉓②〕任务清单变了 ⇒ 交回读循环（`consume_local` 交重放缓冲那张订阅表，与远端同一个口）。
+        // 任务清单变了 ⇒ 交回读循环（`consume_local` 交重放缓冲那张订阅表，与远端同一个口）。
         | InboundFrame::TasksChanged { .. }
         // 一个会话的运行表 ⇒ 同一条有序通道（排在那个会话的宣告之后；`consume_local` 交会话账）。
         | InboundFrame::SessionRuns { .. }) => return Some(f),
@@ -1600,7 +1600,7 @@ pub(crate) fn absorb_local_frame(
     None
 }
 
-// 〔MIG-1〕本机收割器那三个函数（`local_reaper_state`〔散文墓碑〕· `local_idle_retirements`〔散文墓碑〕· `local_tmux_closed`〔散文墓碑〕）
+// 本机收割器那三个函数（`local_reaper_state`〔散文墓碑〕· `local_idle_retirements`〔散文墓碑〕· `local_tmux_closed`〔散文墓碑〕）
 //   删了：收割搬进本机后端的会话账本（`src/backend/observe/session_ledger.rs`），与远端同一份。
 
 /// # 诚实边界 10a + 10e：通道**通了**，但没人往里发命令，也没验命令真能执行
@@ -1680,12 +1680,12 @@ pub(crate) fn local_stdio_consumer(
     let mut reader_end = crate::backend_policy::ReaderEnd::CleanEof;
 
     let mut rd = std::io::BufReader::new(stdout);
-    // 〔W5-VIS · `设计/15 §3.4 ②`〕这条载体上跳过了几帧认不出的、几行不是合法 UTF-8 —— 记账，流结束出总账。
+    // 这条载体上跳过了几帧认不出的、几行不是合法 UTF-8 —— 记账，流结束出总账。
     let mut tally = crate::frame_tally::FrameTally::new("本机后端（stdio 载体）");
     loop {
         let line = match read_capped_line_sync(&mut rd, crate::ssh_source::BACKEND_FRAME_LINE_CAP) {
             Ok(Some(None)) => {
-                // 〔RENDER2 · `99 §2.1` ㉓①〕超长整行丢了 ⇒ 原位说出来（与远端 / 常驻载体同形：订阅收一格 `Gap`）。
+                // 超长整行丢了 ⇒ 原位说出来（与远端 / 常驻载体同形：订阅收一格 `Gap`）。
                 crate::local_lines::line_lost_blocking();
                 continue;
             }
@@ -1719,15 +1719,15 @@ pub(crate) fn local_stdio_consumer(
             continue;
         };
         // 还没登记时先看它是不是 hello；不是 hello（或已经登记过了）⇒ 交吸收点。
-        // P3 刀 1 ＋〔SR1a〕应答与链路帧：**理由与前置条件写在 `absorb_local_frame` 的头注上**
-        // ——〔08-12〕抽函数时这段散文一度**两处各一份**，那是第二份真相源，收敛掉。
+        // P3 刀 1 ＋应答与链路帧：**理由与前置条件写在 `absorb_local_frame` 的头注上**
+        // ——抽函数时这段散文一度**两处各一份**，那是第二份源头，收敛掉。
         let witness = if parked.is_some() {
             crate::inbound_client::BackendHello::from_hello_frame(&frame)
         } else {
             None
         };
         let Some(witness) = witness else {
-            // 〔CF1〕交回来的内容帧送进本机内容通道 —— 这是裸线程 ⇒ `_blocking` 那一形。
+            // 交回来的内容帧送进本机内容通道 —— 这是裸线程 ⇒ `_blocking` 那一形。
             if let Some(f) = absorb_local_frame(frame, registered.as_ref()) {
                 crate::local_lines::deliver_blocking(f);
             }
@@ -1754,13 +1754,13 @@ pub(crate) fn local_stdio_consumer(
         );
     }
 
-    // 〔SR1a〕流没了 ⇒ 经它开的在飞链路全部带原因结束（不让调用方干等到超时）。
+    // 流没了 ⇒ 经它开的在飞链路全部带原因结束（不让调用方干等到超时）。
     if let Some(mine) = registered.as_ref() {
         crate::link_mux::fail_owned_by(mine, &copy_text("rsLocalBackend.stdio.broken", &[]));
-        // 〔SR1b〕经它开的传输也一律收场（后端的票表随那条流一起撤了）。
+        // 经它开的传输也一律收场（后端的票表随那条流一起撤了）。
         crate::sftp_pool::fail_owned_by(mine, &copy_text("rsLocalBackend.stdio.broken", &[]));
     }
-    // 〔CF1〕告诉本机内容消费者这条流结束了（冲掉残批、下一条流换新的收口）。
+    // 告诉本机内容消费者这条流结束了（冲掉残批、下一条流换新的收口）。
     crate::local_lines::stream_ended_blocking();
     // ★ `K-P3b`：**「它跟我们说过话没有」的唯一变真处就是上面那一行 `registered = Some(client)`**
     //   —— 而那一行只在 `BackendHello::from_hello_frame` 给出见证之后才跑得到。
@@ -1774,7 +1774,7 @@ pub(crate) fn local_stdio_consumer(
     if let Some(mine) = registered {
         crate::inbound_client::unregister(crate::inbound_client::LOCAL_ORIGIN, &mine);
     }
-    // 〔MIG-1〕流结束时清本机 tmux 原文那一步（`forget_tmux_raw`〔散文墓碑〕）随那本账一起删了：monitor 不再存 tmux 快照，
+    // 流结束时清本机 tmux 原文那一步（`forget_tmux_raw`〔散文墓碑〕）随那本账一起删了：monitor 不再存 tmux 快照，
     //   本机的成品由 `consume_local` 收到流断那一件时整份作废（`session_book::In::LinkLost`）。
     ConsumerReport {
         exit: if early {
@@ -1839,10 +1839,10 @@ fn local_stdio_consumer_guarded(
 /// ⚠ **这个顺序也是 P2z-Y1 的验收陷阱**：dev 构建里第一步恒命中 ⇒ 不把旁边那个挪开，
 /// 测到的是旧路径，而读数看起来和「释放成功」一模一样。
 ///
-/// `embedded` 由调用方给（〔DP1〕宿主经 `byte_table::choose` 按这台机器的 (OS, arch) 取来；取不到时是那句拒绝的话）—— 本模块不认识那张表，
+/// `embedded` 由调用方给（宿主经 `byte_table::choose` 按这台机器的 (OS, arch) 取来；取不到时是那句拒绝的话）—— 本模块不认识那张表，
 /// 也不认识「当前是什么 arch」，那都是宿主知识。`make_executable` 同理（`C10`）。
 ///
-/// # `embedded` 只有一个来源（〔DP1〕）
+/// # `embedded` 只有一个来源
 ///
 /// 〔墓碑 —— `K-R42` 那一版这里写着「`embedded` 给 `None` 时还有第二个来源」：宿主那侧只在 Linux 上给 musl 字节，
 ///  本层在它交白卷时再问这一份产物按 `TARGET` 内嵌的那一份（那一槽今天住 `byte_table.rs`）。
@@ -1872,13 +1872,13 @@ pub fn resolve_or_extract(
     extract_dir: &Path,
     embedded: Result<(&str, &[u8]), String>,
     make_executable: &dyn Fn(&Path) -> Result<(), String>,
-    // 〔HX1 · 拍板项 4〕建落点目录（`~/.cc-monitor/bin` 一族）也是宿主知识：建的那一下就只给本人（`platform::fs::ensure_private_dir`）。
+    // 〔拍板项 4〕建落点目录（`~/.cc-monitor/bin` 一族）也是宿主知识：建的那一下就只给本人（`platform::fs::ensure_private_dir`）。
     ensure_dir: &dyn Fn(&Path) -> Result<(), String>,
-    // 〔P1〕放不放问手上那份字节自己（[`PlaceAsk`]，宿主注入）。
+    // 放不放问手上那份字节自己（[`PlaceAsk`]，宿主注入）。
     ask: PlaceAsk<'_>,
 ) -> Resolved {
-    // 〔E2 · V28〕字节从哪来：安装包旁边那一份（读它、按它自报的身份）优先，其次这一份产物内嵌的那一份；
-    //   **落点恒是 `extract_dir/ccm`** —— 本机常驻后端跑的与终端里敲的 `ccm` 是同一个文件（`设计/01 §6.7b`）。
+    // 字节从哪来：安装包旁边那一份（读它、按它自报的身份）优先，其次这一份产物内嵌的那一份；
+    //   **落点恒是 `extract_dir/ccm`** —— 本机常驻后端跑的与终端里敲的 `ccm` 是同一个文件。
     //   带标号的块照旧：`the_self_extract_path_really_asks_the_product_whether_it_carries_one` 切的是本函数的体。
     let resolved = 'resolve: {
         let beside = resolve_beside_this_exe(target_triple);
@@ -1908,7 +1908,7 @@ pub fn resolve_or_extract(
             },
             Resolved::Missing { .. } => None,
         };
-        // 〔DP1〕旁边没有、宿主从那张表里也取不到 ⇒ 它交进来的是那句拒绝的话：接在「旁边没有」后面，两件事都说。
+        // 旁边没有、宿主从那张表里也取不到 ⇒ 它交进来的是那句拒绝的话：接在「旁边没有」后面，两件事都说。
         let (build_id, bytes): (&str, &[u8]) = match &from_beside {
             Some((id, b)) => (id.as_str(), b.as_slice()),
             None => match embedded {
@@ -1936,7 +1936,7 @@ pub fn resolve_or_extract(
             Err(e) => {
                 // 🔴 `K-R42` 硬要求①：**这一支不许被读成「这份产物没带后端」。**
                 //    它是「带了，但这台机器不让我把它放下来」——两件事的下一步完全不同。
-                //    〔P1〕手上那份字节自己说「不」/ 问它没问成 ⇒ 那句话已经说全，原样交出（不套「写不进去」那一句）。
+                // 手上那份字节自己说「不」/ 问它没问成 ⇒ 那句话已经说全，原样交出（不套「写不进去」那一句）。
                 let reason = match e {
                     Unplaced::Write(e) => extraction_failure_reason(extract_dir, &e),
                     Unplaced::Said(said) => said,
@@ -1953,7 +1953,7 @@ pub fn resolve_or_extract(
             }
         }
     };
-    // 〔E2 · E-c〕放好之后清旧版释放的 `cc-monitor-backend-<id>` 们（身份戳认得出才删；失败不拖垮后端）。
+    // 放好之后清旧版释放的 `cc-monitor-backend-<id>` 们（身份戳认得出才删；失败不拖垮后端）。
     if matches!(resolved, Resolved::Found(_)) {
         let n = sweep_legacy_extracts(extract_dir);
         if n > 0 {
@@ -1973,13 +1973,13 @@ pub fn start_or_extract(
     extract_dir: &Path,
     embedded: Result<(&str, &[u8]), String>,
     make_executable: &dyn Fn(&Path) -> Result<(), String>,
-    // 〔HX1 · 拍板项 4〕建落点目录（`~/.cc-monitor/bin` 一族）也是宿主知识：建的那一下就只给本人（`platform::fs::ensure_private_dir`）。
+    // 〔拍板项 4〕建落点目录（`~/.cc-monitor/bin` 一族）也是宿主知识：建的那一下就只给本人（`platform::fs::ensure_private_dir`）。
     ensure_dir: &dyn Fn(&Path) -> Result<(), String>,
     on_event: Arc<dyn Fn(SuperviseEvent) + Send + Sync>,
     spawn: Arc<crate::spawn_managed::ManagedSpawn>,
-    // 〔RL1 · V107〕交给后端的环境（中转端口 ＋ 凭据路径）由**宿主**给 —— 本层不认识中转，只原样转交。
+    // 交给后端的环境（中转端口 ＋ 凭据路径）由**宿主**给 —— 本层不认识中转，只原样转交。
     envs: Vec<(String, String)>,
-    // 〔P1〕放不放问手上那份字节自己（[`PlaceAsk`]，宿主注入）。
+    // 放不放问手上那份字节自己（[`PlaceAsk`]，宿主注入）。
     ask: PlaceAsk<'_>,
 ) -> (Resolved, Option<SuperviseHandle>) {
     let resolved = resolve_or_extract(

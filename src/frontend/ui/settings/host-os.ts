@@ -3,7 +3,7 @@
  *
  * # 为什么需要它
  *
- * 「PowerShell 集成」这一块（从前的 `cc_integration.ts`；〔AL1c〕今天是 `machine-aliases.ts` 里 PowerShell 那一侧的别名块，
+ * 「PowerShell 集成」这一块（从前的 `cc_integration.ts`；今天是 `machine-aliases.ts` 里 PowerShell 那一侧的别名块，
  * 由 `machine-aliases.ts::localShell` 按本模块选平台）挂在**本机页**上，而它整篇都是
  * `$PROFILE` / `Microsoft.PowerShell_profile.ps1`。v3.4.0 已经发了 `.deb` ——
  * Linux 用户打开设置就会看到一个装 PowerShell profile 的安装器。
@@ -15,7 +15,7 @@
  *
  * - `@tauri-apps/plugin-os` 要**装包**。
  * - 新开一个 Tauri 命令读 `std::env::consts::OS`：除了要动三处钉死的命令总数，
- *   更要紧的是它会**新增一项「本地独有能力」**—— 而主计划 §2.2 反对「部署→远端/本地」
+ *   更要紧的是它会**新增一项「本地独有能力」**—— 而反对「部署→远端/本地」
  *   分栏的立足点，正是 `parity_ledger` 里本地独有一侧正在清空。为一个 UI 显隐
  *   给自己的架构论证挖坑，不划算。
  * - UA 零依赖、零 IPC、是个**纯函数**，好测。Tauri 的 webview 在三个平台上分别是
