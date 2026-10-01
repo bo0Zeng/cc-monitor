@@ -21,8 +21,7 @@
  *   各类恰好这些行（`渲染管线` 只有 `this.view.ingest` 一行 —— 管线内部的 sink 不在 `10 §2.2` 那张表的射程里，见「买不到」）。
  * - 正控：同一个抽取器对一段内嵌样本抽得出 `noteAgents(tab, payload.message)` 与经别名的 `f(m)`，抽不出 `g(tab)`。
  *
- * **L2 · 五个事实字段只有登记的写者**（`agents` · `agentsAborted` · `touchedFiles` · `latestPromptTokens` · `latestModel` ·
- * `forkedFromSessionId`）
+ * **L2 · 四个事实字段只有登记的写者**（`touchedFiles` · `latestPromptTokens` · `latestModel` · `forkedFromSessionId`）
  * - 人群：`src/**\/*.ts` 生产段里对这几个名字的**写**（`x.<名> = …` 的左边 · `x.<名>.set / add / delete / clear(…)`），
  *   按 `(文件, 所在声明)` 归并 == 登记表（两向）。L1 只看 `onLine` 自己的方法体；L2 管的是「记账员换个地方长回来」
  *   （例如塞进渲染管线的某个回调里）—— 那样它必然要写这几个字段，就会在这里多出一行。
@@ -174,8 +173,6 @@ describe("〔STC〕L1 · onLine 上只剩真事件（`设计/90 §3` 判据 3）
 // ─────────────────────────────── L2 ───────────────────────────────
 
 const FACT_FIELDS = [
-  "agents",
-  "agentsAborted",
   "touchedFiles",
   "latestPromptTokens",
   "latestModel",
@@ -185,9 +182,7 @@ const MUTATORS = new Set(["set", "add", "delete", "clear"]);
 
 /** `(文件, 所在声明)` —— 今天对这几个名字的全部写者，逐条写理由。 */
 const FACT_WRITERS: ReadonlyArray<readonly [string, string, string]> = [
-  ["src/frontend/ui/tab-session-facts.ts", "applyFacts", "后端成品的投影：四样整份替换（唯一的正门）"],
-  ["src/frontend/ui/tab-session-facts.ts", "abortRunningAgents", "中止是事件（会话落到不忙）：记住判过的 id"],
-  ["src/frontend/ui/agents-panel.ts", "AgentsPanel.setSession", "同名不同物：面板自己那份展示副本（`this.agents`），不是 `Tab.agents`"],
+  ["src/frontend/ui/tab-session-facts.ts", "applyFacts", "后端成品的投影：三样整份替换（唯一的正门）"],
   ["src/frontend/ui/views/panorama.ts", "PanoramaView.load", "同名不同物：全景图自己的高亮态（`this.touchedFiles`，null = 不高亮），换仓时清掉"],
   ["src/frontend/ui/views/panorama.ts", "PanoramaView.highlightSession", "同名不同物：同上，按 `touching` 命中的符号派生出来的高亮集（`touchedFiles`）"],
   ["src/frontend/ui/views/panorama.ts", "PanoramaView.clearHighlight", "同名不同物：同上，取消高亮"],

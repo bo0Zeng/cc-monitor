@@ -1,19 +1,5 @@
 {
   "history-facts": {
-    "agents": [
-      {
-        "agentType": "Explore",
-        "id": "tu-2",
-        "label": "scan",
-        "status": "done"
-      },
-      {
-        "agentType": null,
-        "id": "tu-3",
-        "label": "p1",
-        "status": "running"
-      }
-    ],
     "end": 729,
     "forkedFrom": "src-0",
     "touchedFiles": [

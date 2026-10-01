@@ -693,6 +693,14 @@ mod tests {
         "缩性质",
         "后端的收场改由外部（宿主 / 进程管理器）保证上限、远端也有人叫它退的那天 —— 那时这一条与 `REGISTERED_EXIT_DEADLINE` 一起摘。",
     ),
+        (
+        "runs.rs",
+        "Duration::from_millis(15 * 60 * 1000)",
+        "子运行「久未再写 ⇒ 状态不明」的**阈值**（`observe::runs::STALE_AFTER`）：只在读到一条记录 / 收到一个文件事件时\
+         拿「现在」与子记录的写入时刻比一次（`Sess::settle`），不让任何线程醒来、不驱动任何循环 —— 没有事件就不算。不是定时器。",
+        "收窄人群",
+        "子运行的收场改由别的信号完全兜住（不再需要「久未再写」这一格）的那天。",
+    ),
     ];
     // 〔DEL 续〕`relay/machine.rs` 那一行（差分探针的 socket 读写期限）摘了：「在不在」改由常驻后端进程内的状态答，探针删了。
 
@@ -1363,9 +1371,11 @@ mod g6_reach {
         // 〔HX1 · 4D〕6 → **7**：多的那一条是 `inbound.rs` 的 `DRAIN_DEADLINE`（退出排空期限）—— 它是本表第一条
         //   **真会醒来**的登记（cell `缩性质`），调用那一处另住 `REGISTERED_EXIT_DEADLINE`。
         // 〔DEL 续〕7 → **6**：`relay/machine.rs` 的 `PROBE_DEADLINE` 随差分探针删了（「在不在」改读进程内状态）。
+        // 6 → **7**：多的那一条是 `observe/runs.rs` 的 `STALE_AFTER`（子运行「久未再写 ⇒ 状态不明」的阈值，
+        //   只在读记录 / 收到文件事件时比一次，不醒来）。
         assert_eq!(
-            registered, 6,
-            "登记表从 6 条变成 {registered} 条了 —— 这个数就是那条相等断言的分母，\
+            registered, 7,
+            "登记表从 7 条变成 {registered} 条了 —— 这个数就是那条相等断言的分母，\
              改它等于改判据的射程"
         );
     }

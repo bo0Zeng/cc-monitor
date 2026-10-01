@@ -265,3 +265,107 @@ async fn the_hub_passes_the_remote_code_through() {
     assert_eq!(code, "stale", "{said}");
     assert!(said.contains("被改过"));
 }
+
+/// 枢纽这台按 Windows 那一形判它自己的路径（内层命令收到的 `project` 先过一遍 Windows 形的判定，再答定好的成品）。
+struct WindowsHere {
+    answers: BTreeMap<&'static str, Value>,
+}
+
+impl Here for WindowsHere {
+    fn ask(&self, cmd: &str, args: Value) -> Result<Value, (String, String)> {
+        if let Some(p) = args["project"].as_str() {
+            crate::assets::mcp_edit::project_root_as(p, crate::assets::mcp_edit::PathForm::Windows)
+                .map_err(|(c, m)| (c.to_string(), m))?;
+        }
+        self.answers
+            .get(cmd)
+            .cloned()
+            .ok_or_else(|| ("unknown_command".to_string(), cmd.to_string()))
+    }
+}
+
+/// 被写那台是 POSIX 那一形：自己判收到的 `project`，判不过 ⇒ 按码答错；记下每次被问的参数。
+struct PosixRemote {
+    plan: Value,
+    asked: Mutex<Vec<Value>>,
+}
+
+impl Remote for PosixRemote {
+    fn run<'a>(
+        &'a self,
+        _dial: &'a Value,
+        _command: String,
+        _stdin: Option<String>,
+    ) -> Pin<Box<dyn Future<Output = Result<String, String>> + Send + 'a>> {
+        Box::pin(async { Err("不该走到这里".to_string()) })
+    }
+    fn run_coded<'a>(
+        &'a self,
+        _dial: &'a Value,
+        _command: String,
+        stdin: Option<String>,
+    ) -> Pin<Box<dyn Future<Output = Result<String, crate::stream::remote_ask::Said>> + Send + 'a>>
+    {
+        let args: Value = serde_json::from_str(stdin.unwrap_or_default().trim()).unwrap();
+        self.asked.lock().unwrap().push(args.clone());
+        let judged = crate::assets::mcp_edit::project_root_as(
+            args["project"].as_str().unwrap_or_default(),
+            crate::assets::mcp_edit::PathForm::Posix,
+        );
+        let out = match judged {
+            Ok(_) => Ok(format!("{}\n", self.plan)),
+            Err((code, message)) => Err(crate::stream::remote_ask::Said {
+                code: Some(code.to_string()),
+                message,
+            }),
+        };
+        Box::pin(async move { out })
+    }
+}
+
+/// ★ 项目目录由它所属的那台判：枢纽这台是 Windows 那一形，被写那台的 `/home/user` 原样交过去（那台判过、给出卡）；
+/// 被写那台收到相对路径 ⇒ 那台自己拒、码与原话交回；正控：同一个 `/home/user` 落在枢纽自己这台 ⇒ 这台按 Windows 那一形拒。
+#[tokio::test]
+async fn a_project_dir_is_judged_by_the_machine_it_belongs_to() {
+    use crate::assets::mcp_edit::{project_root_as, PathForm};
+    let files =
+        json!([{ "path": "SKILL.md", "text": "a", "exec": false, "why": null, "bytes": 1 }]);
+    let plan = json!({ "dir": "/home/user/.claude/skills/demo", "target": [], "base": "/home/user/.claude/skills", "prefix": "demo",
+                       "rows": [{ "path": "SKILL.md", "state": "new", "suspects": [], "blocked": null }] });
+    let here: Arc<dyn Here> = Arc::new(WindowsHere {
+        answers: [("skill-read", json!({ "files": files }))]
+            .into_iter()
+            .collect(),
+    });
+    let t = table_with("laptop");
+    let laptop = PosixRemote {
+        plan,
+        asked: Mutex::new(Vec::new()),
+    };
+    let args = |to: Value, dir: &str| {
+        json!({ "kind": "skill", "name": "demo", "from": null, "to": to,
+                "scope": { "from": { "level": "project", "dir": "C:\\w" }, "to": { "level": "project", "dir": dir } } })
+    };
+
+    let card = ext_preview(&here, &args(json!("laptop"), "/home/user"), &t, &laptop)
+        .await
+        .expect("枢纽把被写那台的项目目录拒了");
+    assert_eq!(card["path"], "/home/user/.claude/skills/demo");
+    assert_eq!(laptop.asked.lock().unwrap()[0]["project"], "/home/user");
+
+    let (code, said) = ext_preview(&here, &args(json!("laptop"), "w/x"), &t, &laptop)
+        .await
+        .expect_err("被写那台收下了相对路径");
+    let want = project_root_as("w/x", PathForm::Posix).unwrap_err();
+    assert_eq!((code.as_str(), said), (want.0, want.1));
+    assert_eq!(
+        laptop.asked.lock().unwrap().len(),
+        2,
+        "相对路径该由被写那台判（它要被问到）"
+    );
+
+    let (code, _) = ext_preview(&here, &args(Value::Null, "/home/user"), &t, &laptop)
+        .await
+        .expect_err("正控：Windows 那一形的这台收下了 /home/user");
+    assert_eq!(code, "bad_path");
+}

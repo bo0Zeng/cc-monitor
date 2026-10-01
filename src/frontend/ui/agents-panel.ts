@@ -1,29 +1,27 @@
 /**
- * issue #23（第二增量）：当前会话的 subagent 列表 + 每个 agent 自己的状态灯。
+ * issue #23：当前会话的子 agent 面板 —— status bar 一枚 chip（`N agents (M 在跑)`，0 个隐藏）＋ 点击展开 popover，
+ * 与 task 面板同位同形态。子运行只在这里列，不进主 tab 的消息流。
  *
- * 用户决策：不在 Tab 圆点上区分 agent，而是与 task 面板同位同形态——status bar
- * 一枚 chip（`N agents (M 运行中)`，0 agent 隐藏；F80 去纯装饰 🤖）+ 点击展开 popover，每行
- * 一个 agent：灯（🟢 运行中 / ✓ 完成 / ✗ 中止）+ [类型] 描述。
+ * 数据是那台后端的运行表（`session_runs`，`runs.ts::RunBoard`）：标签 · 状态 · 最近一件事 · 派出它的那次工具调用。
+ * **状态只读后端给的那一份**，面板不自己判（「有结果 ⇒ 完成」「会话不忙 ⇒ 中止」这类判断一条都没有）。
  *
- * 〔STC · `设计/90 §4` 阶段 C〕数据是后端的会话事实（`history-facts` 的 `agents`：后端读一遍文件配对 Task/Agent 的
- * tool_use（running）与 tool_result（done））；前端只做一件事：会话变 idle/归档时把仍
- * running 的标 aborted（ESC 打断/崩溃不会有 result，防僵尸绿灯 —— 那是事件，`tab-session-facts.ts::abortRunningAgents`）。
+ * 列哪些（有上界）：在跑的全列 ＋ 最近结束的 `RECENT_ENDED` 个；其余（含状态不明的）收进「更早的」，点开才列（`runs.ts::panelGroups`）。
+ * 每行：图标 · [类别] · 标签 · 状态 · 最近：…；点一行就在它下面展开它的实时时间线（按运行读，宿主留着、续读），再点收起。
  *
- * UI 外壳复用 tasks-popover 的 CSS 类（同形态零新外壳样式）；行样式 .agents-* 自有。
- * 折叠状态写 localStorage（LS_KEYS.agentsPanelCollapsed，全局单例）。
+ * UI 外壳复用 tasks-popover 的 CSS 类（同形态零新外壳样式）；行样式 .agent-* 自有。
+ * 挂到 `#app` 里当 fixed popover。折叠状态写 localStorage（LS_KEYS.agentsPanelCollapsed，全局单例）。
  */
 
 import { LS_KEYS, safeGet, safeSet } from "./local-storage";
 import { copyText } from "./copy-table";
+import type { RunInfo } from "./generated/RunInfo";
+import { panelGroups, runLabel, runLastText, runStateIcon, runStateText, type LiveBlockView } from "./runs";
 
-export interface AgentEntry {
-  /** 派出它的那次工具调用 id（点进去按它读那个子运行，`history-run`） */
-  id: string;
-  /** 后端给的标签 */
-  label: string;
-  /** 后端给的类别，无则 null */
-  agentType: string | null;
-  status: "running" | "done" | "aborted";
+/** 宿主给面板的口：某个子运行的时间线（点开时要；宿主留着、续读）· 收起了 · 它此刻在生成的那一块。 */
+export interface AgentsPanelHost {
+  timeline(sid: string, run: string): HTMLElement;
+  closed(sid: string, run: string): void;
+  liveOf(sid: string, run: string): LiveBlockView | null;
 }
 
 function loadCollapsed(): boolean {
@@ -40,11 +38,17 @@ export class AgentsPanel {
   private summaryText: HTMLElement;
   private list: HTMLUListElement;
 
-  private agents: AgentEntry[] = [];
+  private runs: RunInfo[] = [];
   private activeSid: string | null = null;
   private collapsed: boolean;
-  /** F77：点某行 agent → 看它的记录。main.ts 注入（load_subagent → SessionViewer）。 */
-  onAgentOpen: ((entry: AgentEntry) => void) | null = null;
+  /** 「更早的」那一组展开着没有（换会话就收起）。 */
+  private olderOpen = false;
+  /** 点开着时间线的那几行（`sid\0run`）。 */
+  private readonly open = new Set<string>();
+  /** 上一次画出来的样子（行字没变就不重画：流里每段文字都会叫一次 `refresh`）。 */
+  private drawn = "";
+  /** main.ts 注入（时间线由 TabManager 建、留着）。 */
+  host: AgentsPanelHost | null = null;
 
   constructor() {
     this.collapsed = loadCollapsed();
@@ -63,9 +67,7 @@ export class AgentsPanel {
     this.summaryText.className = "status-tasks-text";
     this.summaryElement.appendChild(this.summaryText);
 
-    this.summaryElement.addEventListener("click", () =>
-      this.setCollapsed(!this.collapsed),
-    );
+    this.summaryElement.addEventListener("click", () => this.setCollapsed(!this.collapsed));
 
     this.popoverElement = document.createElement("div");
     this.popoverElement.className = "tasks-popover agents-popover";
@@ -93,80 +95,155 @@ export class AgentsPanel {
     this.applyCollapsedArrow();
   }
 
-  /** 切换当前显示的 session（TabManager.switchTo / agents 变化时调）。 */
-  setSession(sid: string | null, agents: AgentEntry[]): void {
+  /** 当前会话与它的运行表（切 tab / 运行表到了时调）。 */
+  setSession(sid: string | null, runs: RunInfo[]): void {
+    if (sid !== this.activeSid) {
+      this.closeAll();
+      this.olderOpen = false;
+    }
     this.activeSid = sid;
-    this.agents = agents;
-    this.render();
+    this.runs = runs;
+    // 不再在表里的那几行，时间线交还宿主。
+    for (const k of [...this.open]) {
+      const run = k.split("\u0000")[1];
+      if (!runs.some((r) => r.run === run)) this.close(k);
+    }
+    this.render(true);
+  }
+
+  /** 某个子运行的流有动静：「最近：…」可能变了（字没变就不重画）。 */
+  refresh(): void {
+    this.render(false);
   }
 
   private setCollapsed(collapsed: boolean): void {
     this.collapsed = collapsed;
     safeSet(LS_KEYS.agentsPanelCollapsed, collapsed ? "1" : "0");
     this.applyCollapsedArrow();
-    this.render();
+    this.render(true);
   }
 
   private applyCollapsedArrow(): void {
     this.summaryArrow.textContent = this.collapsed ? copyText("agentsPanel.arrow.collapsed") : copyText("agentsPanel.arrow.expanded");
   }
 
-  private render(): void {
-    if (this.agents.length === 0 || this.activeSid === null) {
+  private keyOf(run: string): string {
+    return `${this.activeSid ?? ""}\u0000${run}`;
+  }
+
+  private close(k: string): void {
+    this.open.delete(k);
+    const [sid, run] = k.split("\u0000");
+    if (sid !== undefined && run !== undefined) this.host?.closed(sid, run);
+  }
+
+  private closeAll(): void {
+    for (const k of [...this.open]) this.close(k);
+  }
+
+  private lastOf(r: RunInfo): string | null {
+    const sid = this.activeSid;
+    const live = r.state === "running" && sid !== null ? (this.host?.liveOf(sid, r.run) ?? null) : null;
+    return runLastText(r, live);
+  }
+
+  private render(force: boolean): void {
+    if (this.runs.length === 0 || this.activeSid === null) {
       this.summaryElement.style.display = "none";
       this.popoverElement.style.display = "none";
+      this.drawn = "";
       return;
     }
+    const g = panelGroups(this.runs);
+    const shown = [...g.running, ...g.recent, ...(this.olderOpen ? g.older : [])];
+    const sig = JSON.stringify([
+      this.collapsed,
+      this.olderOpen,
+      [...this.open],
+      g.older.length,
+      shown.map((r) => [r.run, r.state, r.label, r.kind, this.lastOf(r)]),
+    ]);
+    if (!force && sig === this.drawn) return;
+    this.drawn = sig;
+
     this.summaryElement.style.display = "";
     this.popoverElement.style.display = this.collapsed ? "none" : "";
-
-    const running = this.agents.filter((a) => a.status === "running").length;
+    const running = g.running.length;
     this.summaryText.textContent =
-      running > 0
-        ? copyText("agentsPanel.render.summary", { n: this.agents.length, running })
-        : `${this.agents.length} agents`;
+      running > 0 ? copyText("agentsPanel.render.summary", { n: this.runs.length, running }) : `${this.runs.length} agents`;
 
-    // 全量 replace —— per-tab 上限 30 条（TabManager 侧裁剪）
-    this.list.replaceChildren();
-    for (const a of this.agents) {
-      const row = document.createElement("li");
-      row.className = `tasks-popover-item agent-row agent-${a.status} agent-row-clickable`;
-      // F77：点整行 → 看该 agent 的记录（按运行读 → SessionViewer，main.ts 注入）。键盘可达：
-      // role=button + tabindex + Enter/Space（DoD 要求）。
-      row.setAttribute("role", "button");
-      row.tabIndex = 0;
-      row.addEventListener("click", () => this.onAgentOpen?.(a));
-      row.addEventListener("keydown", (e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          this.onAgentOpen?.(a);
-        }
+    const items: HTMLElement[] = [];
+    if (g.running.length > 0) items.push(this.head(copyText("agentsPanel.group.running")), ...g.running.flatMap((r) => this.row(r)));
+    if (g.recent.length > 0) items.push(this.head(copyText("agentsPanel.group.recent")), ...g.recent.flatMap((r) => this.row(r)));
+    if (g.older.length > 0) {
+      const li = document.createElement("li");
+      li.className = "agent-group agent-older";
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "agent-older-toggle";
+      b.setAttribute("aria-expanded", this.olderOpen ? "true" : "false");
+      b.textContent = copyText("agentsPanel.group.older", { n: g.older.length });
+      b.addEventListener("click", () => {
+        this.olderOpen = !this.olderOpen;
+        if (!this.olderOpen) for (const r of g.older) if (this.open.has(this.keyOf(r.run))) this.close(this.keyOf(r.run));
+        this.render(true);
       });
-
-      const dot = document.createElement("span");
-      dot.className = "agent-dot";
-      row.appendChild(dot);
-
-      if (a.agentType) {
-        const type = document.createElement("span");
-        type.className = "agent-type";
-        type.textContent = a.agentType;
-        row.appendChild(type);
-      }
-
-      const label = document.createElement("span");
-      label.className = "agent-label";
-      label.textContent = a.label;
-      row.appendChild(label);
-
-      const state = document.createElement("span");
-      state.className = "agent-state";
-      state.textContent =
-        a.status === "running" ? copyText("agentsPanel.status.running") : a.status === "done" ? copyText("agentsPanel.status.done") : copyText("agentsPanel.status.aborted");
-      row.appendChild(state);
-
-      row.title = a.label;
-      this.list.appendChild(row);
+      li.appendChild(b);
+      items.push(li);
+      if (this.olderOpen) items.push(...g.older.flatMap((r) => this.row(r)));
     }
+    this.list.replaceChildren(...items);
+  }
+
+  private head(text: string): HTMLElement {
+    const li = document.createElement("li");
+    li.className = "agent-group";
+    li.textContent = text;
+    return li;
+  }
+
+  /** 一行（点开着 ⇒ 下面紧跟它的时间线）。 */
+  private row(r: RunInfo): HTMLElement[] {
+    const k = this.keyOf(r.run);
+    const row = document.createElement("li");
+    row.className = `tasks-popover-item agent-row agent-${r.state} agent-row-clickable`;
+    row.dataset.run = r.run;
+    row.setAttribute("role", "button");
+    row.tabIndex = 0;
+    const toggle = (): void => {
+      if (this.open.has(k)) this.close(k);
+      else this.open.add(k);
+      this.render(true);
+    };
+    row.addEventListener("click", toggle);
+    row.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        toggle();
+      }
+    });
+
+    const span = (cls: string, text: string): void => {
+      const s = document.createElement("span");
+      s.className = cls;
+      s.textContent = text;
+      row.appendChild(s);
+    };
+    span("agent-icon", runStateIcon(r.state));
+    if (r.kind) span("agent-type", r.kind);
+    const label = runLabel(r);
+    span("agent-label", label);
+    span("agent-state", runStateText(r.state));
+    const last = this.lastOf(r);
+    if (last !== null) span("agent-last", copyText("agentsPanel.row.last", { last }));
+    row.title = label;
+
+    const sid = this.activeSid;
+    if (!this.open.has(k) || sid === null || !this.host) return [row];
+    row.setAttribute("aria-expanded", "true");
+    const li = document.createElement("li");
+    li.className = "agent-timeline";
+    li.appendChild(this.host.timeline(sid, r.run));
+    return [row, li];
   }
 }

@@ -51,44 +51,144 @@ fn run_of_needs_both_marks_and_reads_the_end_and_the_last_thing() {
     let cut = json!({"type":"user","isSidechain":true,"agentId":"a1","message":{"content":[{"type":"text","text":"[Request interrupted by user]"}]}});
     assert_eq!(
         run_of(&cut).unwrap().end,
-        Some(RunEnd::Failed),
-        "被打断 ⇒ 不会再有终局，按失败收"
+        Some(RunEnd::Stopped),
+        "被打断 ⇒ 不会再有终局，按被叫停收"
+    );
+    let mut last_tool = rec(json!({}));
+    last_tool["message"]["content"] = json!([{"type":"tool_use","name":"Handback"}]);
+    assert_eq!(
+        run_of(&last_tool).unwrap().end,
+        None,
+        "以一次工具调用收尾不是终局（收场看派出那一方）"
     );
 }
 
 #[test]
 fn child_link_reads_the_call_and_its_result() {
+    let long: String = "字".repeat(100);
     let call = json!({"type":"assistant","message":{"content":[
         {"type":"tool_use","id":"t1","name":"Agent","input":{"description":"  scan  ","subagent_type":"Explore"}},
         {"type":"tool_use","id":"t2","name":"Task","input":{"prompt":"first\nsecond"}},
-        {"type":"tool_use","id":"t3","name":"Bash","input":{}}
+        {"type":"tool_use","id":"t3","name":"Bash","input":{}},
+        {"type":"tool_use","id":"t4","name":"Task","input":{"description":"   ","prompt":long}},
+        {"type":"tool_use","id":"t5","name":"Task","input":{}}
     ]}});
     let l = child_link(&call);
+    let eighty: String = "字".repeat(LABEL_PROMPT_CHARS);
     assert_eq!(
         l.iter()
             .map(|x| (
-                x.tool.as_str(),
+                x.tool.as_deref(),
                 x.label.as_deref(),
                 x.kind.as_deref(),
                 x.run.as_deref()
             ))
             .collect::<Vec<_>>(),
         vec![
-            ("t1", Some("scan"), Some("Explore"), None),
-            ("t2", Some("first"), None, None)
-        ]
+            (Some("t1"), Some("scan"), Some("Explore"), None),
+            (Some("t2"), Some("first"), None, None),
+            (Some("t4"), Some(eighty.as_str()), None, None),
+            (Some("t5"), Some("Task"), None, None),
+        ],
+        "标签：description ‖ prompt 首行前 80 字 ‖ 工具名"
     );
-    let launched = json!({"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"t1"}]},"toolUseResult":{"status":"async_launched","agentId":"a1"}});
-    let l = child_link(&launched);
+    let result = |status: &str, is_error: bool| json!({"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"t1","is_error":is_error}]},"toolUseResult":{"status":status,"agentId":"a1"}});
+    let got = |v: &serde_json::Value| {
+        child_link(v)
+            .into_iter()
+            .map(|l| (l.tool, l.run, l.end))
+            .collect::<Vec<_>>()
+    };
+    let t1 = || Some("t1".to_string());
+    let a1 = || Some("a1".to_string());
     assert_eq!(
-        (l[0].tool.as_str(), l[0].run.as_deref(), l[0].end),
-        ("t1", Some("a1"), None)
+        got(&result("async_launched", false)),
+        vec![(t1(), a1(), None)],
+        "后台派出当场回的那次：对上是哪个，不算收场"
     );
-    let done = json!({"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"t1"}]},"toolUseResult":{"status":"completed","agentId":"a1"}});
-    assert_eq!(child_link(&done)[0].end, Some(RunEnd::Done));
+    assert_eq!(
+        got(&result("completed", false)),
+        vec![(t1(), a1(), Some(RunEnd::Done))],
+        "前台：拿到结果 ⇒ 完成"
+    );
+    assert_eq!(
+        got(&result("completed", true)),
+        vec![(t1(), a1(), Some(RunEnd::Failed))]
+    );
     let plain =
         json!({"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"t9"}]}});
     assert!(child_link(&plain).is_empty());
+}
+
+/// 后台派出的收场通知：三处住址（排队 · 附件 · user 字符串正文），只读 `task-id` 与 `status`；正文里夹的同名标签不算，不是通知打头的不算。
+#[test]
+fn a_task_notice_ends_the_run_it_names() {
+    let n = |status: &str| {
+        format!("<task-notification>\n<task-id>a1</task-id>\n<tool-use-id>t1</tool-use-id>\n<status>{status}</status>\n<summary>s</summary>\n<result><status>completed</status></result>\n</task-notification>")
+    };
+    let ends = |v: serde_json::Value| {
+        child_link(&v)
+            .into_iter()
+            .map(|l| (l.tool, l.run, l.end))
+            .collect::<Vec<_>>()
+    };
+    let one = |e| vec![(None, Some("a1".to_string()), Some(e))];
+    assert_eq!(
+        ends(json!({"type":"queue-operation","operation":"enqueue","content":n("completed")})),
+        one(RunEnd::Done)
+    );
+    assert_eq!(
+        ends(
+            json!({"type":"attachment","attachment":{"type":"queued_command","prompt":n("failed")}})
+        ),
+        one(RunEnd::Failed)
+    );
+    assert_eq!(
+        ends(json!({"type":"user","message":{"role":"user","content":n("killed")}})),
+        one(RunEnd::Stopped)
+    );
+    assert_eq!(
+        ends(json!({"type":"queue-operation","content":n("stopped")})),
+        one(RunEnd::Stopped)
+    );
+    assert!(
+        ends(json!({"type":"queue-operation","content":n("running")})).is_empty(),
+        "认不得的状态不算收场"
+    );
+    assert!(
+        ends(json!({"type":"queue-operation","content":"<task-notification><task-id>a1</task-id><summary>s</summary><event>e</event></task-notification>"}))
+            .is_empty(),
+        "没有状态那一格的（事件）不算收场"
+    );
+    assert!(
+        ends(json!({"type":"queue-operation","content":format!("x {}", n("completed"))}))
+            .is_empty(),
+        "不是通知打头的不算"
+    );
+    assert!(
+        ends(json!({"type":"assistant","message":{"content":[{"type":"text","text":n("completed")}]}}))
+            .is_empty(),
+        "回复里引用的通知不算"
+    );
+}
+
+/// 预筛只许放过、不许误拦：上面每一种会答出东西的记录，它都认；一行普通记录它不认。
+#[test]
+fn the_parent_hint_covers_every_line_child_link_answers() {
+    let lines = [
+        r#"{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t1","name":"Agent","input":{}}]}}"#,
+        r#"{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t1","name":"Task","input":{}}]}}"#,
+        r#"{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"t1"}]},"toolUseResult":{"status":"completed","agentId":"a1"}}"#,
+        r#"{"type":"queue-operation","content":"<task-notification><task-id>a1</task-id><status>completed</status></task-notification>"}"#,
+    ];
+    for l in lines {
+        let v: serde_json::Value = serde_json::from_str(l).unwrap();
+        assert!(!child_link(&v).is_empty(), "夹具本身该答出东西：{l}");
+        assert!(hint(l), "预筛拦了一行会答出东西的：{l}");
+    }
+    assert!(!hint(
+        r#"{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t1","name":"Bash","input":{}}]}}"#
+    ));
 }
 
 #[test]
