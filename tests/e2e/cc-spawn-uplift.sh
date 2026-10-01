@@ -88,8 +88,8 @@ CCM="$CCMDIR/ccm"     # 本套件里那几处**直接叫 ccm**（不经 cc-spawn
 #   ⇒ 量完人群是 1，**不扩登记表**，照同一个形状补上即可。
 cleanup() {
   set +e
-  "$REALTMUX" -L "$SOCK" kill-server 2>/dev/null
-  "$REALTMUX" -L "${SOCK}b" kill-server 2>/dev/null
+  e2e_tmux_reap "$REALTMUX" "$SOCK"
+  e2e_tmux_reap "$REALTMUX" "${SOCK}b"
   rm -rf "$BIN" "$SANDBOX" "$WORK" "${CCMDIR:-}"
 }
 trap cleanup EXIT

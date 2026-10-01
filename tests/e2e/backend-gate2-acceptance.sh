@@ -38,8 +38,8 @@ cleanup() {
   set +e
   exec 3>&- 2>/dev/null
   [ -n "${BACKEND_PID:-}" ] && kill "$BACKEND_PID" 2>/dev/null
-  # C7i：socket 显式给死（见 local-backend-supervise.sh 的同款注释）
-  "$TMUX_BIN" -L "$TMUX_SHIM_SOCK" kill-server 2>/dev/null
+  # C7i：只收本趟那台（shim 的收尾：带选择器 kill-server、删它的 socket 文件与 shim 目录）
+  tmux_shim_cleanup
   rm -rf -- "$WORK"
 }
 trap cleanup EXIT

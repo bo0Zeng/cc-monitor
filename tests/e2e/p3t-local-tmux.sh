@@ -37,7 +37,7 @@ TMP="$(mktemp -d /tmp/p3t-y5.XXXXXX)"
 # 收尾：**只收自己那台**（`-L` 选择器在，绝不裸 kill-server）。
 cleanup() {
   "$TMUX_BIN" -L "$SOCK" kill-session -t "=$TMUXNAME:" 2>/dev/null
-  "$TMUX_BIN" -L "$SOCK" kill-server 2>/dev/null
+  e2e_tmux_reap "$TMUX_BIN" "$SOCK"
   [ -n "${P3T_KEEP:-}" ] && { echo "  [keep] $TMP"; return; }
   rm -rf -- "$TMP"
 }

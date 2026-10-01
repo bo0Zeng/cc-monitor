@@ -31,7 +31,7 @@ W="$(mktemp -d /tmp/e2e-lateserver.XXXXXX)"
 SOCK="$(e2e_run_name lateSrv)" || exit 2
 cleanup() {
   set +e
-  "$REALTMUX" -L "$SOCK" kill-server 2>/dev/null
+  for l in early late; do e2e_tmux_reap "$REALTMUX" "$SOCK$l"; done
   rm -rf -- "$W"
 }
 trap cleanup EXIT
@@ -74,7 +74,7 @@ run_case() {
   sleep 8
 
   kill "$dp" 2>/dev/null; wait "$dp" 2>/dev/null
-  "$REALTMUX" -L "$sock" kill-server 2>/dev/null
+  e2e_tmux_reap "$REALTMUX" "$sock"
   # 判据：**帧里带着会话名与它的 @ccm_sid** —— 那正是 monitor 判「灰还是归档」要的东西。
   grep -c "sid-$label" "$out" 2>/dev/null || true
 }
