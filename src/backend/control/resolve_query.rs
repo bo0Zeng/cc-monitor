@@ -54,7 +54,7 @@ struct ResumeSpec {
     #[serde(default)]
     already_in_tmux: bool,
     /// DG3（#2D，additive）：会话属哪 agent kind → DG6 据此构 `codex resume <uuid>` vs `claude --resume`。
-    /// camelCase（rename_all）→ wire `agentKind`。缺/`""`/`"claude"`=claude、`"codex"`=codex（DG6 消费）。
+    /// camelCase（rename_all）→ wire `agentKind`。注册表里的一家 = 那一家；缺/`""`/认不出 = 默认那一家。
     #[serde(default)]
     agent_kind: String,
 }
@@ -126,7 +126,7 @@ pub fn run(_agent_home: &Path, _args: &[String]) -> i32 {
     {
         return emit_err("stdin_read_failed", format!("read stdin failed: {e}"));
     }
-    match resolve_from_json(&input) {
+    match resolve_from_json(crate::agents::REGISTRY, &input) {
         Ok(json) => {
             println!("{json}"); // stdout 一行 JSON（紧凑、无内嵌裸换行）
             0
@@ -148,7 +148,15 @@ pub fn run(_agent_home: &Path, _args: &[String]) -> i32 {
 /// 两条路的差别只在信封：一次性那条是「1 exec = 1 请求 1 响应 1 退出、天然 1:1、无 request-id」；
 /// 流通道那条有 `id`、可取消、不用为一次极小的 RPC 单开一整条 SSH exec。
 pub fn resolve_json_for_inbound(input: &str) -> Result<serde_json::Value, (&'static str, String)> {
-    let json = resolve_from_json(input)?;
+    resolve_json_among(crate::agents::REGISTRY, input)
+}
+
+/// [`resolve_json_for_inbound`] 的内核：按哪一家 resume 只问 `registry`（生产走 `agents::REGISTRY`，判据喂含夹具家的合成注册表）。
+pub(crate) fn resolve_json_among(
+    registry: &[crate::agents::Adapter],
+    input: &str,
+) -> Result<serde_json::Value, (&'static str, String)> {
+    let json = resolve_from_json(registry, input)?;
     serde_json::from_str(&json).map_err(|e| {
         (
             "serialize_failed",
@@ -162,10 +170,13 @@ pub fn resolve_json_for_inbound(input: &str) -> Result<serde_json::Value, (&'sta
 /// 纯：ResumeSpec JSON 串 → CommandPlan JSON 串（或 `(code,message)`）。`run()` 与单测共用——
 /// 审计 quality-阻塞：让 stdin→响应 的分发逻辑（bad_request / serialize / happy）**可测**，
 /// 不必真接 stdin/stdout（此前 `run()` 零覆盖、commit「端到端 smoke」实为手工一次性验证、无测件）。
-fn resolve_from_json(input: &str) -> Result<String, (&'static str, String)> {
+fn resolve_from_json(
+    registry: &[crate::agents::Adapter],
+    input: &str,
+) -> Result<String, (&'static str, String)> {
     let spec: ResumeSpec = serde_json::from_str(input.trim())
         .map_err(|e| ("bad_request", format!("ResumeSpec JSON parse failed: {e}")))?;
-    let plan = resolve(&spec)?;
+    let plan = resolve(registry, &spec)?;
     serde_json::to_string(&plan).map_err(|e| {
         (
             "serialize_failed",
@@ -175,7 +186,11 @@ fn resolve_from_json(input: &str) -> Result<String, (&'static str, String)> {
 }
 
 /// 纯：ResumeSpec → CommandPlan（或 (code,message) 错误）。供单测（不碰 stdin/stdout）。
-fn resolve(spec: &ResumeSpec) -> Result<CommandPlan, (&'static str, String)> {
+/// 按哪一家 resume（默认命令 · 命令形 · 会话名前缀）只问 `registry` 里那一家的起会话事实，不认名字。
+fn resolve(
+    registry: &[crate::agents::Adapter],
+    spec: &ResumeSpec,
+) -> Result<CommandPlan, (&'static str, String)> {
     // B2 纪律：sessionId 会进 command 串 → 先过本地校验（注入防线，backend 自产也过）。
     if !is_valid_session_id(&spec.session_id) {
         return Err((
@@ -186,12 +201,20 @@ fn resolve(spec: &ResumeSpec) -> Result<CommandPlan, (&'static str, String)> {
             ),
         ));
     }
-    // DG6：per-kind——`agent_kind=="codex"` → Codex resume 路（默认基底 `codex`、子命令 `resume`、
-    // 会话名 `cx-`）；否则 Claude（默认 `claude`、`--resume` flag、`cc-`）。缺/`""`/其它 = claude。
-    // **大小写敏感**：wire 值契约定死小写 `"codex"`（doc §agent_kind + 两端锁定）；`"Codex"` 等非规范
-    // 值落 Claude 路（生产方 monitor/aterm 发规范小写故无碍）。`.trim()` 仅容空白、不容大小写。
-    let is_codex = spec.agent_kind.trim() == "codex";
-    // 首个非空 launchCandidate → command 基底；无 → kind 默认（Codex=codex / Claude=claude）。
+    // 哪一家：`agentKind` 是注册表里的一家就按它；缺 / `""` / 认不出 ⇒ 注册表里声明默认的那一家（线上契约：缺省即默认那家）。
+    // **大小写敏感**：wire 值契约定死小写；`.trim()` 仅容空白、不容大小写。
+    let kind = spec.agent_kind.trim();
+    let Some(face) = crate::agents::launch_face_among(registry, kind)
+        .or_else(|| crate::agents::default_launch_among(registry).map(|(_, f)| f))
+    else {
+        return Err((
+            "bad_request",
+            crate::common::contract::malformed(&format!(
+                "agentKind {kind:?} names no agent this backend can resume, and none is the default"
+            )),
+        ));
+    };
+    // 首个非空 launchCandidate → command 基底；无 → 这一家的默认启动器。
     let candidate = spec
         .launch_candidates
         .iter()
@@ -200,12 +223,7 @@ fn resolve(spec: &ResumeSpec) -> Result<CommandPlan, (&'static str, String)> {
         .find(|s| !s.is_empty());
     let base = match candidate {
         Some(c) => c.to_string(),
-        None => if is_codex {
-            crate::agents::codex::resume::DEFAULT_COMMAND
-        } else {
-            crate::agents::claudecode::resume::DEFAULT_COMMAND
-        }
-        .to_string(),
+        None => face.default_launcher.to_string(),
     };
     // 审计 security-重要①：B2 纪律**对称化**——`base` 同样进 command 串、由客户端 pty 执行，
     // 原只校验 sid、base 零校验（端到端两侧都没人查 base：客户端 B2 复校也只覆盖 sid）。补 base
@@ -220,14 +238,8 @@ fn resolve(spec: &ResumeSpec) -> Result<CommandPlan, (&'static str, String)> {
             ),
         ));
     }
-    // command（sid 过 is_valid_session_id、base 过 is_shell_safe_base）。**golden-parity aterm
-    // CodexInvocation.resumeInvocation**：Codex=`<base> resume <sid>`（子命令、**无 `--resume` flag、
-    // 无 unset**、真机 `codex resume <SESSION_ID>` 核）；Claude=`<base> --resume <sid>`。
-    let command = if is_codex {
-        crate::agents::codex::resume::resume_command(&base, &spec.session_id)
-    } else {
-        crate::agents::claudecode::resume::resume_command(&base, &spec.session_id)
-    };
+    // command（sid 过 is_valid_session_id、base 过 is_shell_safe_base）；形状是这一家自己的（flag 形 / 子命令形）。
+    let command = (face.resume_command)(&base, &spec.session_id);
     Ok(CommandPlan {
         command,
         mode: "PtyInject".to_string(), // MVP 恒 PtyInject（aterm 今隐含亦此）
@@ -238,7 +250,7 @@ fn resolve(spec: &ResumeSpec) -> Result<CommandPlan, (&'static str, String)> {
             supports_multi_client: true,
             supports_multi_window: true,
         },
-        session_name: Some(session_name_for(&spec.session_id, is_codex)), // Codex cx- / Claude cc-
+        session_name: Some(session_name_for(&spec.session_id, face.session_name_prefix)),
         launch_label: None, // MVP 不产 label（aterm 侧自算）
         // substitutedFrom：aterm 语义（`TmuxBackend.resume` 核实，2026-07-18 回）=「被替换掉的原命令」
         // = `intended?.takeIf { it != launch }`——仅当解析出的 launch ≠ 用户原意首候选时非空。MVP backend
@@ -290,15 +302,9 @@ fn is_shell_safe_base(s: &str) -> bool {
         })
 }
 
-/// resume 会话名：Claude `cc-<sid8>` / **Codex `cx-<sid8>`**（前 8 字符；不足 8 取全部）。
-/// golden-parity aterm（Claude `cc-`、Codex CodexInvocation.resumeSessionName `cx-`）。客户端亦自算、backend 顺带给。
-fn session_name_for(sid: &str, is_codex: bool) -> String {
+/// resume 会话名：`<这一家的前缀>-<sid 前 8 字符>`（不足 8 取全部）。客户端亦自算、backend 顺带给。
+fn session_name_for(sid: &str, prefix: &str) -> String {
     let head: String = sid.chars().take(8).collect();
-    let prefix = if is_codex {
-        crate::agents::codex::resume::SESSION_NAME_PREFIX
-    } else {
-        crate::agents::claudecode::resume::SESSION_NAME_PREFIX
-    };
     format!("{prefix}-{head}")
 }
 

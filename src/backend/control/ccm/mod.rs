@@ -189,48 +189,11 @@ pub(crate) static BUS_ID_RECIPE: std::sync::LazyLock<String> = std::sync::LazyLo
 pub(crate) static USAGE: std::sync::LazyLock<String> =
     std::sync::LazyLock::new(|| copy_text("beCcm.usage.body", &[]));
 
-/// 这个 agent 的默认启动器。事实只住适配层（`agents::LaunchFace`，注册表那一格）；
-/// `agent` 已由 argv 按 [`agents`] 闭集收过（同一张注册表）⇒ 认不出只剩直接调用的路；空串（exec 当场说起不来，不猜成 claude）。
-pub(crate) fn default_launcher(agent: &str) -> &'static str {
-    crate::agents::launch_face_of(agent).map_or("", |f| f.default_launcher)
-}
-
-/// 起这个 agent 之前要清掉的嵌套标记（同上，住适配层；认不出 ⇒ 不清）。
-pub(crate) fn nested_env(agent: &str) -> Vec<String> {
-    crate::agents::launch_face_of(agent)
-        .map(|f| f.nested_env.iter().map(|s| s.to_string()).collect())
-        .unwrap_or_default()
-}
-
-/// 这个 agent 够不着 tmux socket、要把会话名经 env 透进去吗。
-///
-/// # ⚠ 它答的是「**要不要**」，不是「**能不能**」—— 两者别混
-///
-/// 这一格为真只说明「codex 要一个 `CC_BUS_ID`」。**值从哪来**是另一件事：
-/// 来源恒是 tmux 的会话名（[`BUS_ID_RECIPE`] 里那句 `tmux -u display-message -p "#S"`）
-/// ⇒ **没有 tmux 就没有这个值**，而这不是「codex 这一支做不到」，是**载体没了**
-///（与 `base-url-across-tmux` 同一形，`lib.rs::TARGET_GAPS` 里 tmux 那一族 6 条已覆盖）。
-///
-/// 🔴 这两件事混在一起过一次，代价是一年的账：从前 `exec_direct` 拿本函数当
-/// 「要不要请一个 `sh` 进来」的闸 ⇒ `--agent codex` **每一趟**都要 `sh`，
-/// Windows 上因此 `EXIT=4 program not found`（真机现打住）。
-/// 今天那个闸在 [`needs_shell`]，而且它多问一句「配方**真有事可做**吗」。
-pub(crate) fn needs_bus_id(agent: &str) -> bool {
-    agent == "codex"
-}
+// 按哪一家起会有什么不同（默认启动器 · 嵌套标记 · cc-bus 身份 · 身份面 · pidfile · 信任框）全是适配层那一格
+// （`agents::LaunchFace`），`plan::build_among` 一处问完；本模块不认识任何一家的名字。
 
 /// 入口注入的「此刻在跑的会话」扫描：入参 = 账号配置目录（`None` = agent 默认家目录），出 `(sid, pid)`。
 pub type RunningScan = fn(Option<&std::path::Path>) -> Vec<(String, u32)>;
-
-/// 这个 agent 的会话有 pidfile 可判活吗（注入的那份扫描只认这一家的布局）。
-pub(crate) fn has_pidfiles(agent: &str) -> bool {
-    agent == "claude"
-}
-
-/// 这个 agent 有身份面（`@ccm_sid`）吗。
-pub(crate) fn has_identity(agent: &str) -> bool {
-    agent == "claude"
-}
 
 /// 本文件自己的源码，给别的护栏对账用。
 ///
@@ -327,8 +290,8 @@ pub fn run(args: &[String], process_argv: &[String], running: RunningScan) -> i3
         }
         Parsed::Opts(o) => {
             let mut env = env;
-            env.running_sessions =
-                (o.resumes.is_some() && has_pidfiles(&o.agent)).then_some(running);
+            // 这一家认不认得这份扫描由计划那一侧问适配层（`LaunchFace::has_pidfiles`）。
+            env.running_sessions = o.resumes.is_some().then_some(running);
             let plan = match plan_of(&o, env, true) {
                 Ok(p) => p,
                 Err(Die(msg)) => return die(&msg),

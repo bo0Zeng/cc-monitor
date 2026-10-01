@@ -30,7 +30,7 @@
  * # ⚠ 诚实边界（三条）
  *
  * 1. 本条只对拍 **golden 有 key 的那两项**（`default_launcher` / `resume_kind`+`resume_token`）。
- *    ccm 的 `has_identity` · `needs_bus_id`（`control/ccm/mod.rs`）· backend 的 `SESSION_NAME_PREFIX`（`cc-`/`cx-`）
+ *    起会话事实里的 `has_identity` · `needs_bus_id`（`agents/mod.rs` 的 `LaunchFace`）· backend 的 `SESSION_NAME_PREFIX`（`cc-`/`cx-`）
  *    **今天在 golden 里没有 key** ⇒ 它们**没有源头、也没被本条守住**。
  *    那是 `EL6` 的欠账，不是本条能顺手解决的（加 key 要动 golden 的契约面）。
  *    下面 `the_gaps_are_named_not_forgotten` 把这三项**逐个点名钉住**：
@@ -94,6 +94,8 @@ const GOLDEN = "tests/__fixtures__/agent-profile-golden.tsv";
 // （〔用@09-11 `K33`〕「后端只有一个…**不要有什么 bash 脚本**」），
 // per-agent 适配表搬进了后端本体。**三写点还是三个，第二份换了语言与住址。**
 const CCM = "src/backend/control/ccm/mod.rs";
+const CCM_FILES = ["mod.rs", "argv.rs", "plan.rs"].map((f) => `src/backend/control/ccm/${f}`);
+const ADAPTER_INDEX = "src/backend/agents/mod.rs";
 const BACKEND_RESUME = (agent: string) =>
   `src/backend/agents/${agent}/resume.rs`;
 
@@ -172,15 +174,14 @@ describe("agent 适配表的三写点对拍（plugin-split E4c / EL6）", () => 
         g[a]?.default_launcher,
       );
     }
-    // ccm 的 `default_launcher` / `nested_env` 按注册表读：函数体里不许再有 per-agent 的臂。
-    const src = productionRust(read(CCM));
-    for (const fn of ["default_launcher", "nested_env"]) {
-      const at = src.indexOf(`fn ${fn}(`);
-      expect(at, `${CCM} 里找不到 \`fn ${fn}(\``).toBeGreaterThan(-1);
-      const body = src.slice(at, at + src.slice(at).indexOf("\n}"));
-      expect(/launch_face_of\(/.test(body), `${CCM} 的 ${fn} 不再按注册表读`).toBe(true);
-      expect(/"(claude|codex)"\s*=>/.test(body), `${CCM} 的 ${fn} 又长回了 per-agent 的臂`).toBe(false);
+    // ccm 按注册表里那一家的起会话事实起：三份生产段里一个 agent 名字面量都没有，规划那一处问的是那一格。
+    for (const f of CCM_FILES) {
+      expect(/"(claude|codex)"/.test(productionRust(read(f))), `${f} 又按 agent 名字分叉了`).toBe(false);
     }
+    expect(
+      /launch_face_among\(/.test(productionRust(read("src/backend/control/ccm/plan.rs"))),
+      "ccm 的规划不再按注册表那一格读",
+    ).toBe(true);
   });
 
   it("★ resume 的形状（flag 还是子命令）：golden ↔ backend 一致，命令模板用的就是那个字面量", () => {
@@ -213,15 +214,15 @@ describe("agent 适配表的三写点对拍（plugin-split E4c / EL6）", () => 
       ).toBe(false);
     }
     // 反向：这三项**确实**在别处有实现，不是我记错了。仍用带锚的声明形状，不用子串。
-    const ccm = read(CCM);
-    // 名字搬进 Rust 之后掉了 `agent_` 前缀，声明形状也换了。
+    // 前两项是适配层起会话事实的两格（`LaunchFace`），ccm 按那一格起。
+    const adapters = read(ADAPTER_INDEX);
     expect(
-      /^pub\(crate\) fn has_identity\(agent: &str\)/m.test(ccm),
-      "ccm 里没有 has_identity 的定义",
+      /^\s*pub\(crate\) has_identity: bool,/m.test(adapters),
+      "起会话事实里没有 has_identity 那一格",
     ).toBe(true);
     expect(
-      /^pub\(crate\) fn needs_bus_id\(agent: &str\)/m.test(ccm),
-      "ccm 里没有 needs_bus_id 的定义",
+      /^\s*pub\(crate\) needs_bus_id: bool,/m.test(adapters),
+      "起会话事实里没有 needs_bus_id 那一格",
     ).toBe(true);
     expect(
       /SESSION_NAME_PREFIX:\s*&str\s*=\s*"[^"]+"/.test(backendSrc("claude")),
