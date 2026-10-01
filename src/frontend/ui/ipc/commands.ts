@@ -200,11 +200,7 @@ export const commands = {
   // `read_apikey_credentials_status` / `apikey_routing_for` 退役：界面经通道直接问那台后端
   //   `apikey-read` / `apikey-routing`（`src/frontend/ui/apikey-reads.ts`）。
 
-  // 「这次拉起写哪个中转地址」那一问退役成那台后端的成品（界面经通道直接问 `launch-endpoint`，
-  //   `src/frontend/ui/launch-render.ts::launchEndpoint`）。monitor 这边只剩那个开关自己的值（下一条）。
-
-  /** 全量注入开关：monitor 进程环境 `CCM_RELAY_ALL_SESSIONS`（默认开，`=0` 才关）。monitor 自己的配置，界面带给那台后端。 */
-  relay_all_sessions_switch: () => invoke<boolean>("relay_all_sessions_switch"),
+  // 「这次拉起写哪个中转地址」与全量注入开关都归起 agent 那台的 `ccm` 自己定（`relay_all_sessions_switch` 退役）。
 
   // 独立窗口的定向重放（`replay_session_to_window`〔散文墓碑〕）退役：独立窗口自己订
   //   `session-lines/<sid>`（`chan.subscribe`），留存由那条订阅当场交。

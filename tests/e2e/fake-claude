@@ -1,7 +1,7 @@
 #!/bin/sh
 # auto-e2e F-E0:确定性 `claude` shim(测试 fixture,**非** backend 改动——红线:backend
 # 零行为改动,只加 tests/e2e/ 外部 wrapper/shim)。职责:
-#   1. 把 argv + $CLAUDE_CONFIG_DIR 追加进 argv.log(F-E2/F-E3 验 resume/换号命令用;F-E1 只登记);
+#   1. 把 argv + $CLAUDE_CONFIG_DIR + 有没有中转地址追加进 argv.log(F-E2/F-E3 验 resume/换号命令用;F-E1 只登记);
 #   2. 写自身 $CLAUDE_CONFIG_DIR/sessions/<PID>.json pidfile(pid/sessionId/procStart/kind/status)
 #      ——喂后端判活(procStart=/proc/<pid>/stat 第 22 字段=starttime ticks,add-time 判活主证据);
 #   3. 追一条 jsonl 记录(projects/<enc-cwd>/<sid>.jsonl);
@@ -29,10 +29,12 @@ CWD="${CCM_FAKE_CWD:-/tmp/e2e-remote}"
 
 mkdir -p "$SESS_DIR"
 
-# argv + env 审计日志(换行分隔一行一次调用)
+# argv + env 审计日志(换行分隔一行一次调用)。中转地址只记「有没有」(`relay=set|unset`),不记值(值里有钥匙)。
+RELAY=unset
+[ -n "${ANTHROPIC_BASE_URL:-}" ] && RELAY=set
 {
-  printf 'ts=%s pid=%s CLAUDE_CONFIG_DIR=%s sid=%s argv=' \
-    "$(date +%s%3N)" "$$" "$CLAUDE_DIR" "$SID"
+  printf 'ts=%s pid=%s CLAUDE_CONFIG_DIR=%s sid=%s relay=%s argv=' \
+    "$(date +%s%3N)" "$$" "$CLAUDE_DIR" "$SID" "$RELAY"
   for a in "$@"; do printf '%s ' "$a"; done
   printf '\n'
 } >>"$CLAUDE_DIR/argv.log"

@@ -108,7 +108,7 @@ describe("Z02：`--base` 跨语言契约（monitor ↔ shared/ccm）", () => {
    */
   it("account 态照旧走 --account（--base 只留给「不注入」）", () => {
     expect(
-      countIn(MONITOR_CLI, 'CliAccount::Named { name: Some(n) } => Some(vec!["--account".into(), n.to_string()]),'),
+      countIn(MONITOR_CLI, 'CliAccount::Named { name: Some(n), .. } => {\n                Some(vec!["--account".into(), n.to_string()])'),
     ).toBe(1);
   });
 

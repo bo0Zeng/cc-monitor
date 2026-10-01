@@ -102,10 +102,6 @@ export async function invoke(cmd, args = {}) {
     //   `{err:"Refused", body:<{code,message} 的字节>}` 抛（`chan.ts::decodeFail` 认的那一形）。
     case "chan_call":
       return chanCall(args.op, JSON.parse(Buffer.from(args.payload || []).toString("utf8") || "{}"));
-    // 起会话的渲染 / 中转地址改走通道（`launch-render-*` · `launch-endpoint`，见 `chanCall`）；
-    //   这里只剩「全部会话走中转」那个开关（monitor 自己的一格：夹具不走中转）。
-    case "relay_all_sessions_switch":
-      return false;
     default:
       seq("invoke?:" + cmd);
       return undefined;
@@ -150,23 +146,19 @@ function chanCall(op, body) {
       if (r.status !== 0) refused("no_such_session", String(r.stderr || "").trim());
       return enc({ session: name, created: false, typed: true });
     }
-    // resume 那一串由那台后端出（`src/frontend/ui/launch-render.ts` ⇒ 帧命令 `launch-render-payload`，成品 `{cmd}`）。
+    // resume 那一行由那台后端出（`src/frontend/ui/launch-render.ts` ⇒ 帧命令 `launch-render-cli`，成品 `{cmd}`）。
     //   ⇒ 交给**生产那一条**：`launch-render-emit.sh` → 后端 `emit_launch_render_for_e2e` → 生产
-    //   `control/launch_render/wire.rs::render_launch_payload`（与 `launch-render-driver.ts` 同一个出口，一字不另写）。
-    //   拒了 ⇒ 与后端 `launch_render::answer_payload` 同一个码 `refused`，原话带出去。
-    case "launch-render-payload": {
+    //   `control/launch_render/wire.rs::render_ccm_launch`（与 `launch-render-driver.ts` 同一个出口，一字不另写）。
+    //   拒了 ⇒ 与后端 `launch_render::answer_cli` 同一个码 `refused`，原话带出去。
+    case "launch-render-cli": {
       let cmd;
       try {
         cmd = renderViaProduction(body);
       } catch (e) {
-        refused("refused", String(e && e.message ? e.message : e).replace(/^REFUSE:\s*/, ""));
+        refused("refused", String(e && e.message ? e.message : e));
       }
       return enc({ cmd });
     }
-    case "launch-render-cli":
-      // `ccm …` 调用行由那台后端渲（它自己就是 ccm）；命令级驱动器那一端没有后端可执行 ⇒ 如实说渲不出
-      //（成品形状 `{ok, cmd, reason}` 里的降级那一形），编排照生产逻辑降级到载荷那条。
-      return enc({ ok: false, cmd: null, reason: "e2e shim：那一端没有后端（ccm）可渲" });
     case "history-annotate": {
       // 换号成功后记账（`account-restart.ts`：kill ＋ resume 全成才记 pin）—— 问本机常驻后端 `history-annotate`。
       //   记进序列（`record account=<名>`），回成品 `{entry}`（`history-reads.ts::decodeEntry` 逐键要的那一份）。
@@ -182,9 +174,6 @@ function chanCall(op, body) {
         },
       });
     }
-    case "launch-endpoint":
-      // 成品 `{baseUrl}`：`null` = 不注入（夹具的账号都是订阅号，不走中转）。
-      return enc({ baseUrl: null });
     case "kill": {
       const { name } = body;
       seq("kill-attempt");
@@ -218,6 +207,6 @@ function renderViaProduction(req) {
   const ok = /LAUNCH_RENDER<<<(.*)>>>/.exec(out);
   if (ok) return ok[1];
   const err = /LAUNCH_RENDER_ERR<<<(.*)>>>/.exec(out);
-  // 拒了 ⇒ 照生产那样抛（`REFUSE:` 那句原样带出去）；取不到标记行 ⇒ 抛，**绝不回空串**（空串会被读成「渲出了空命令」）。
+  // 拒了 ⇒ 照生产那样抛（那句原样带出去）；取不到标记行 ⇒ 抛，**绝不回空串**（空串会被读成「渲出了空命令」）。
   throw new Error(err ? err[1] : `取不到生产渲染器的输出（launch-render-emit.sh 退出码 ${String(r.status)}）：${out.slice(-800)}${String(r.stderr ?? "").slice(-800)}`);
 }

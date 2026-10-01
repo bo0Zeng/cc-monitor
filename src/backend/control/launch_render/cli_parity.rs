@@ -1,6 +1,6 @@
 //! 生产命令 `wire::render_ccm_launch`（那一行 `ccm …`）**↔** 入库夹具 `fixtures/cli-golden.json` 的**逐字节对拍**。
 //!
-//! `out` 由 `src/frontend/ui/launch-cli-golden.ts` 用例表里**手写**，`req` 由生产请求构造（`buildCliRenderRequest`）现产
+//! `out` 由 `tests/test-support/launch-cli-golden.ts` 用例表里**手写**，`req` 由生产请求构造（`buildCliRenderRequest`）现产
 //! ⇒ 钉的是「生产 TS 请求构造 → 线 → 生产 wire 类型 → 生产命令」这一整条。改渲染器的产出 ⇒ 本条红 ⇒ 回去改期望。
 //! ok 与 refusal 两类都比：只比 ok 的话，「该拒却渲染出来了」抓不到。
 
@@ -9,9 +9,10 @@ use serde::Deserialize;
 const FIXTURE: &str = include_str!("fixtures/cli-golden.json");
 
 /// 写成相等而不是地板，加/删用例被迫回来改这个数。
-/// 20 → 22：删「未装」「本地 transport」「send-into 无 CLI 形」三条拒（那三形今天都渲得出 / 产不出来了），
-/// 加「只有目录」「启动期令牌」「就地 resume」三条 ok 与「缺 cwd 能力」「坏 sid」两条拒（tmux 那条拒换成「容器要 tmux」）。
-const EXPECT_CASES: usize = 22;
+/// 20 → 29：删「未装」「本地 transport」「send-into 无 CLI 形」三条拒（那三形今天都渲得出 / 产不出来了），
+/// 加「只有目录」「启动期令牌」「就地 resume」三条 ok 与「缺 cwd 能力」「坏 sid」两条拒（tmux 那条拒换成「容器要 tmux」），
+/// 再加 `path:` 七条（monitor 每条远端起会话路径真发出去的那一形）。
+const EXPECT_CASES: usize = 29;
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]

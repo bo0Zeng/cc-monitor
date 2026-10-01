@@ -122,7 +122,7 @@ interface Judgment {
 /** `mirror` 的 `why` 必须点出它守的要求：`INVARIANTS §N`，或逐字引那一句「…」。 */
 const DESIGN_ADDRESS = /INVARIANTS §\d+|「[^」]{4,}」/;
 
-const PAYLOAD_RS = "src/backend/control/launch_render/payload.rs"; // 随载荷渲染搬进后端
+const LAUNCH_RS = "src/backend/control/launch_render/ccm_invocation.rs"; // 起会话那一行的渲染（载荷那份删了，最可能长回来的地方跟着挪）
 
 /**
  * ★ 登记表：判定 → 唯一住址，以及 TS 侧的孪生今天在不在。
@@ -169,7 +169,7 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     needles: [{ text: "[;|&$`<>\\r\\n]", count: 0 }],
     rustGone: ["src/frontend/shell/src/history.rs::sanitize_launcher"],
     rustNeedles: [
-      { file: PAYLOAD_RS, text: "';' | '|' | '&'", count: 0 },
+      { file: LAUNCH_RS, text: "';' | '|' | '&'", count: 0 },
       { file: "src/frontend/shell/src/history.rs", text: "'-' | '_' | '.' | ' '", count: 0 },
       // 本机起会话的计划与渲染搬进本机后端 ⇒ 私有那份最可能长回来的地方跟着挪。
       { file: "src/backend/control/launch_render/local.rs", text: "'-' | '_' | '.' | ' '", count: 0 },
@@ -268,13 +268,13 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     parity: { via: "src/common/shell-quote-core/src/lib.rs", tests: ["tests/frontend/ui/rbind-token-shape-parity.vitest.ts"] },
     rustGone: [
       "src/frontend/shell/src/bind.rs::rbind_token_shape_ok",
-      `${PAYLOAD_RS}::rbind_token_shape_ok`,
+      `${LAUNCH_RS}::rbind_token_shape_ok`,
       "src/backend/control/identity_tag.rs::token_is_safe",
     ],
     // 字母表字面量只住共享 crate 一处；两半各自的写法不许长回来。
     rustNeedles: [
       { file: "src/common/shell-quote-core/src/lib.rs", text: '"0123456789abcdef"', count: 1 },
-      { file: PAYLOAD_RS, text: '"0123456789abcdef"', count: 0 },
+      { file: LAUNCH_RS, text: '"0123456789abcdef"', count: 0 },
       { file: "src/backend/control/identity_tag.rs", text: "(b'a'..=b'f')", count: 0 },
     ],
   },

@@ -170,16 +170,11 @@ const MONITOR_OWN: &[(&str, Own, &str)] = &[
         Own::Channel,
         "通信层面 A：撤掉 webview 那一跳上带编号的一问（撤单过这一跳）",
     ),
-    // 起会话的计划与渲染进了后端之后，monitor 在这件事上只剩下面两格。
+    // 起会话的那一行进了后端之后，monitor 在这件事上只剩开窗这一格。
     (
         "open_local_terminal",
         Own::Window,
-        "开一个本机终端窗口跑那一串（串由本机后端 `launch-local` 出成品；这里不判不拼，只开窗）",
-    ),
-    (
-        "relay_all_sessions_switch",
-        Own::Config,
-        "全量注入开关 = monitor 进程环境 `CCM_RELAY_ALL_SESSIONS`（monitor 自己的配置，界面带给那台后端）",
+        "开一个本机终端窗口跑那一行（`ccm …` 由本机后端 `launch-local` 出成品；这里不判不拼，只开窗）",
     ),
     // 放字节：判定（该不该换 · 换成哪一格 · 落点那一份是谁）住本机常驻后端 `deploy-plan`。
     (

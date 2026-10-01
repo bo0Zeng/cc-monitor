@@ -67,7 +67,6 @@ pub enum FreeTextSlot {
 impl Refusal {
     /// 降级理由。入库夹具 `cli-golden.json` 的 refusal 用例逐字节比它（夹具那一侧是手写期望）。
     pub fn reason(&self) -> String {
-        let id = |key: &str, value: &str| copy_text(key, &[("value", value)]);
         match self {
             Refusal::MissingCap(c) => copy_text(
                 "rsCcmInvocation.refusal.missingCap",
@@ -83,18 +82,40 @@ impl Refusal {
                 &[("dim", &dim.to_string()), ("cap", &cap.to_string())],
             ),
             Refusal::FreeTextRefused { slot, value } => match slot {
-                FreeTextSlot::Cwd => id("rsCcmInvocation.refusal.freeTextCwd", value),
-                FreeTextSlot::AgentArg => id("rsCcmInvocation.refusal.freeTextArg", value),
-                FreeTextSlot::AttachTarget => id("rsCcmInvocation.refusal.freeTextAttach", value),
-                FreeTextSlot::AccountDir => id("rsCcmInvocation.refusal.freeTextAccountDir", value),
+                FreeTextSlot::Cwd => {
+                    copy_text("rsCcmInvocation.refusal.freeTextCwd", &[("value", value)])
+                }
+                FreeTextSlot::AgentArg => {
+                    copy_text("rsCcmInvocation.refusal.freeTextArg", &[("value", value)])
+                }
+                FreeTextSlot::AttachTarget => copy_text(
+                    "rsCcmInvocation.refusal.freeTextAttach",
+                    &[("value", value)],
+                ),
+                FreeTextSlot::AccountDir => copy_text(
+                    "rsCcmInvocation.refusal.freeTextAccountDir",
+                    &[("value", value)],
+                ),
             },
             Refusal::IdentifierRefused { slot, value } => match slot {
-                IdentifierSlot::Sid => id("rsCcmInvocation.refusal.idSid", value),
-                IdentifierSlot::CcmSid => id("rsCcmInvocation.refusal.idCcmSid", value),
-                IdentifierSlot::Model => id("rsCcmInvocation.refusal.idModel", value),
-                IdentifierSlot::Account => id("rsCcmInvocation.refusal.idAccount", value),
-                IdentifierSlot::RbindToken => id("rsCcmInvocation.refusal.idRbindToken", value),
-                IdentifierSlot::LaunchId => id("rsCcmInvocation.refusal.idLaunchId", value),
+                IdentifierSlot::Sid => {
+                    copy_text("rsCcmInvocation.refusal.idSid", &[("value", value)])
+                }
+                IdentifierSlot::CcmSid => {
+                    copy_text("rsCcmInvocation.refusal.idCcmSid", &[("value", value)])
+                }
+                IdentifierSlot::Model => {
+                    copy_text("rsCcmInvocation.refusal.idModel", &[("value", value)])
+                }
+                IdentifierSlot::Account => {
+                    copy_text("rsCcmInvocation.refusal.idAccount", &[("value", value)])
+                }
+                IdentifierSlot::RbindToken => {
+                    copy_text("rsCcmInvocation.refusal.idRbindToken", &[("value", value)])
+                }
+                IdentifierSlot::LaunchId => {
+                    copy_text("rsCcmInvocation.refusal.idLaunchId", &[("value", value)])
+                }
                 IdentifierSlot::TmuxName => copy_text(
                     "rsCcmInvocation.refusal.idTmuxName",
                     &[

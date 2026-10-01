@@ -1,8 +1,8 @@
-// 把那一行 `ccm …` 的入库夹具写盘。用例与请求构造都在 `src/frontend/ui/launch-cli-golden.ts`（受 tsc 管），
+// 把那一行 `ccm …` 的入库夹具写盘。用例与请求构造都在 `tests/test-support/launch-cli-golden.ts`（受 tsc 管），
 // 本文件只负责落盘 —— 与 tests/e2e/ccm-print-parity-emit.mts 同一模式（emitter 不含判据）。
 import { writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { renderCliGoldenFixture } from "../../src/frontend/ui/launch-cli-golden.ts";
+import { renderCliGoldenFixture } from "../test-support/launch-cli-golden.ts";
 
 const OUT_CLI = new URL("../../src/backend/control/launch_render/fixtures/cli-golden.json", import.meta.url);
 writeFileSync(OUT_CLI, renderCliGoldenFixture());

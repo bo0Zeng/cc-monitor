@@ -3321,11 +3321,6 @@
       "zh": "本机不开终端窗口，命令已复制",
       "args": []
     },
-    "remoteLaunchRun.renderCli.fallback": {
-      "kind": "error",
-      "zh": "后端生成命令失败，改用本机的写法：{e}",
-      "args": ["e"]
-    },
     "launchRender.refused.onMachine": {
       "kind": "error",
       "zh": "{machine}：{said}",
@@ -3335,16 +3330,6 @@
       "kind": "error",
       "zh": "后端没说明原因",
       "args": []
-    },
-    "remoteLaunchRun.render.outerRefused": {
-      "kind": "error",
-      "zh": "后端生成不了 tmux 命令：{e}",
-      "args": ["e"]
-    },
-    "remoteLaunchRun.render.payloadRefused": {
-      "kind": "error",
-      "zh": "后端生成不了启动命令：{e}",
-      "args": ["e"]
     },
     "remoteLaunchRun.token.noRandom": {
       "kind": "error",
@@ -10354,76 +10339,6 @@
       "zh": "本机",
       "args": []
     },
-    "rsPayload.outer.attachWithPayload": {
-      "kind": "error",
-      "zh": "请求格式不对：接进已有会话时不该带要运行的内容。",
-      "args": []
-    },
-    "rsPayload.outer.sendIntoNoPayload": {
-      "kind": "error",
-      "zh": "请求格式不对：没带要运行的内容。往已有会话里发送的话，只会接进一个空 shell。",
-      "args": []
-    },
-    "rsPayload.sessionMark.bad": {
-      "kind": "error",
-      "zh": "会话 ID {value} 不合法（1 到 64 位，只许 A-Z a-z 0-9 与 -，不以 - 开头）",
-      "args": ["value"]
-    },
-    "rsPayload.model.bad": {
-      "kind": "error",
-      "zh": "模型名 {value} 用不了（字母数字开头，只许字母数字与 . _ - : @ / [ ]，最长 256）",
-      "args": ["value"]
-    },
-    "rsPayload.cwd.bad": {
-      "kind": "error",
-      "zh": "工作目录 {value} 不能用。要绝对路径，不含 .. 段、换行或 NUL",
-      "args": ["value"]
-    },
-    "rsPayload.cwd.empty": {
-      "kind": "error",
-      "zh": "工作目录是空串：空值不等于没设",
-      "args": []
-    },
-    "rsPayload.outer.createNoPayload": {
-      "kind": "error",
-      "zh": "请求格式不对：没带要运行的内容。新建会话的话，只会建一个空会话。",
-      "args": []
-    },
-    "rsPayload.tmuxName.control": {
-      "kind": "error",
-      "zh": "tmux 会话名 {name} 含控制符或视觉欺骗字符 {c}，不能拼进命令。",
-      "args": ["name", "c"]
-    },
-    "rsPayload.tmuxName.newShape": {
-      "kind": "error",
-      "zh": "新建的会话名不合规：{name}。不能以 - 开头，不能含 {refused} 这几个字符，最长 {max} 个字符",
-      "args": ["name", "refused", "max"]
-    },
-    "rsPayload.tmuxName.rawBad": {
-      "kind": "error",
-      "zh": "tmux 会话名 {name} 含不许的字符（只许 A-Z a-z 0-9 _ -）",
-      "args": ["name"]
-    },
-    "rsPayload.tmuxName.empty": {
-      "kind": "error",
-      "zh": "tmux 会话名是空串：空值不等于没设",
-      "args": []
-    },
-    "rsPayload.launcher.injection": {
-      "kind": "error",
-      "zh": "启动命令 {launcher} 里有不允许的字符 {c}，不能拼进命令。只许字母、数字、空格、-_./ 和开头的 ~/（命令名或路径，可带参数）。",
-      "args": ["launcher", "c"]
-    },
-    "rsPayload.arg.notSafe": {
-      "kind": "error",
-      "zh": "参数 {arg} 里有不允许的字符，不能拼进命令。只许 A-Z a-z 0-9 与 -_.:/=,@+，不许空白和非 ASCII 字符。",
-      "args": ["arg"]
-    },
-    "rsPayload.nestedEnv.empty": {
-      "kind": "error",
-      "zh": "请求格式不对：要清掉的环境变量列表是空的",
-      "args": []
-    },
     "beCcm.relay.userBaseUrl": {
       "kind": "body",
       "zh": "cc-monitor：这个会话用你自己设的端点（ANTHROPIC_BASE_URL），不走中转，拿不到流式",
@@ -10431,32 +10346,7 @@
     },
     "beCcm.relay.noKey": {
       "kind": "error",
-      "zh": "起不来：这台机器上 cc-monitor 的中转在运行，却读不到它的钥匙（家目录下 .cc-monitor/relay-key）。重启这台的后端后再试",
-      "args": []
-    },
-    "rsPayload.relayUrl.bad": {
-      "kind": "error",
-      "zh": "中转地址格式不对，不能拼进命令：{value}（要 http://127.0.0.1:<端口>/s|t/<两段>）",
-      "args": ["value"]
-    },
-    "rsPayload.rbindToken.bad": {
-      "kind": "error",
-      "zh": "启动令牌格式不对，不能拼进命令：{value}（要 32 个小写十六进制字符）",
-      "args": ["value"]
-    },
-    "rsPayload.configDir.bad": {
-      "kind": "error",
-      "zh": "非法 CLAUDE_CONFIG_DIR，不能拼进命令：{value}",
-      "args": ["value"]
-    },
-    "rsPayload.configDir.emptyString": {
-      "kind": "error",
-      "zh": "配置目录是空串（账号 0 请不设它）",
-      "args": []
-    },
-    "rsPayload.configDir.emptyNamed": {
-      "kind": "error",
-      "zh": "具名账号的配置目录是空的（账号 0 不设配置目录）",
+      "zh": "读不到这台机器上中转的钥匙，起不来。重启这台的后端后再试",
       "args": []
     },
     "rsLocalBackend.stdio.broken": {
@@ -10622,26 +10512,6 @@
     "rsBackendRoute.layer.unsupported": {
       "kind": "error",
       "zh": "远端后端版本旧，不支持这个操作",
-      "args": []
-    },
-    "rsLaunchWire.cwd.both": {
-      "kind": "error",
-      "zh": "请求格式不对：同时给了两个工作目录。",
-      "args": []
-    },
-    "rsLaunchWire.resumeSid.bad": {
-      "kind": "error",
-      "zh": "会话 ID {value} 不合法（1 到 64 位，只许 A-Z a-z 0-9 与 -，不以 - 开头）",
-      "args": ["value"]
-    },
-    "rsLaunchWire.resumeSid.notInArgs": {
-      "kind": "error",
-      "zh": "要接着聊的会话 ID {value} 和要跑的参数对不上，请求格式不对",
-      "args": ["value"]
-    },
-    "rsLaunchWire.attach.withPayload": {
-      "kind": "error",
-      "zh": "请求格式不对：接进已有会话时不该带要运行的内容（env / args / launcher）。",
       "args": []
     },
     "rsConfigSurface.scope.projectNote": {
@@ -13302,21 +13172,6 @@
       "zh": "缺少会话名，无法启动",
       "args": []
     },
-    "rsHistory.launch.cannotAttach": {
-      "kind": "error",
-      "zh": "这台机器接不回已有会话，只能新开一个",
-      "args": []
-    },
-    "rsHistory.configDir.empty": {
-      "kind": "error",
-      "zh": "拒绝 resume：这个账号没有配置目录",
-      "args": []
-    },
-    "rsHistory.configDir.invalid": {
-      "kind": "error",
-      "zh": "拒绝拼入命令：CLAUDE_CONFIG_DIR 不合法：{dir}",
-      "args": ["dir"]
-    },
     "rsHistory.launcher.badChars": {
       "kind": "error",
       "zh": "拒绝 resume：自定义命令 {launcher} 含不允许的字符 {c}。只许字母、数字、空格、-_./ 和开头的 ~/",
@@ -15109,11 +14964,6 @@
       "zh": "base_url 是明文 http，而主机不是本机。那会把这一行的 key 明着发上网线；要么换 https，要么把上游放到本机上。",
       "args": []
     },
-    "beUpstreamEndpoint.args.missingBool": {
-      "kind": "error",
-      "zh": "缺 {k}（要一个布尔）",
-      "args": ["k"]
-    },
     "beUpstreamEndpoint.args.missingString": {
       "kind": "error",
       "zh": "缺 {k}（要一个字符串）",
@@ -15123,21 +14973,6 @@
       "kind": "error",
       "zh": "缺 {k}（要一个字符串数组）",
       "args": ["k"]
-    },
-    "beUpstreamEndpoint.account.namedNoDir": {
-      "kind": "error",
-      "zh": "{field} 说是具名账号，却没给配置目录",
-      "args": ["field"]
-    },
-    "beUpstreamEndpoint.account.badKind": {
-      "kind": "error",
-      "zh": "{field} 的种类只认具名账号与账号 0",
-      "args": ["field"]
-    },
-    "beUpstreamEndpoint.account.badShape": {
-      "kind": "error",
-      "zh": "{field} 要一个对象或空",
-      "args": ["field"]
     },
     "beUpstreamEndpoint.relay.thisMachine": {
       "kind": "body",
