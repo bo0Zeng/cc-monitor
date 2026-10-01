@@ -4,6 +4,7 @@
 //! |---|---|---|
 //! | `launch-endpoint` | 这个号这一发往 `ANTHROPIC_BASE_URL` 里写哪个中转地址（或不写；地址不随会话变，不带会话段）· 这台的中转在不在 · 不在时拒还是直连 | monitor 起会话那一侧（本机与远端同一条：`history::relay_endpoint_on`） |
 //! | `apikey-routing` | 这几个号在这台的表里有没有行 · 这台的中转在不在 | 界面经 `chan.call` 直接问（账号页徽章） |
+//! | `relay-optin` | 直接敲的那一家也走中转：这台那份用户级设置文件里写没写、对不对 ＋ 要贴的那一段（后端只读、不写那份文件） | 界面经 `chan.call` 直接问（机器页「终端」栏） |
 //!
 //! # 为什么搬到这里（必须拆 1）
 //!
@@ -33,6 +34,7 @@
 //! ⚠ ① 与 ⑥ 的降级**刻意不同**，而且从此写在线上（`whenDown`）—— 「把这两种降级写成一样是最容易犯的错」。
 
 use super::CREDENTIALS_FILE_AGENT;
+use crate::agents::{SettingsBaseUrl, SettingsEnvFace, SettingsUnreadable};
 use copy_core::copy_text;
 use relay_route_core::{base_url, RouteMode, PORT};
 use serde_json::{json, Value};
@@ -243,6 +245,133 @@ pub(crate) fn answer_routing_with(
         "routed": acct_core::apikey_routed_subset(&dirs, routed, agent, CREDENTIALS_FILE_AGENT),
         "running": listening(PORT),
     }))
+}
+
+/// 那份设置文件里的地址和现在该贴的那一条比，是哪一态。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum OptinState {
+    /// 贴过，且等于现在那一条。
+    Installed,
+    /// 是我们那一形（回环 ＋ 钥匙段 ＋ 我们的路由），但不等于现在那一条（钥匙 / 端口 / 路由换了）。
+    Stale,
+    /// 没写。
+    Absent,
+    /// 写了别的上游地址（不是我们那一形）。
+    Other,
+    /// 读不了 / 读不懂 ⇒ 装没装说不清。
+    Unreadable,
+}
+
+impl OptinState {
+    fn name(self) -> &'static str {
+        match self {
+            OptinState::Installed => "installed",
+            OptinState::Stale => "stale",
+            OptinState::Absent => "absent",
+            OptinState::Other => "other",
+            OptinState::Unreadable => "unreadable",
+        }
+    }
+}
+
+/// 一条地址是不是我们那一形（带钥匙段的、或没带钥匙段的构造口产物）。
+fn ours(url: &str) -> bool {
+    relay_route_core::split_keyed_base_url(url).is_some()
+        || relay_route_core::base_url_shape_ok(url)
+}
+
+/// ★ 判态（纯函数）：读出来的那一格 × 现在该贴的那一条（`None` ＝ 生成不了）。
+pub(crate) fn optin_state(found: &SettingsBaseUrl, expected: Option<&str>) -> OptinState {
+    match found {
+        SettingsBaseUrl::Unreadable(_) => OptinState::Unreadable,
+        SettingsBaseUrl::Unset => OptinState::Absent,
+        SettingsBaseUrl::Set(u) if Some(u.as_str()) == expected => OptinState::Installed,
+        SettingsBaseUrl::Set(u) if ours(u) => OptinState::Stale,
+        SettingsBaseUrl::Set(_) => OptinState::Other,
+    }
+}
+
+/// `relay-optin`：入参 `{}` → `{state, note, missing, source, snippet, listening}`。
+///
+/// 该贴的那一条 ＝ 决策表里「没表态是哪个号」那一发（[`decide_launch`]，全量注入按「是」—— 贴这一段就是用户自己选了全量）插上这台的钥匙；
+/// 已装 ⇒ 不再带那一段（钥匙只在要贴的时候才出这台）。只读：那份文件由用户自己合并，后端一个字节不写。
+pub(crate) fn answer_optin(_args: &Value) -> EndpointAnswer {
+    let home = crate::platform::paths::home_dir()
+        .ok_or(("failed", copy_text("beUpstreamEndpoint.optin.noHome", &[])))?;
+    let (agent, face) = crate::agents::settings_env_face()
+        .ok_or(("failed", copy_text("beUpstreamEndpoint.optin.noAgent", &[])))?;
+    let registered = super::Upstreams::from_env(&|k| std::env::var(k).ok())
+        .is_some_and(|u| u.of(agent).is_some());
+    Ok(optin_at(
+        &home,
+        agent,
+        &face,
+        &super::file_face::machine_rows(),
+        registered,
+        &crate::relay::our_relay_listening,
+    ))
+}
+
+/// [`answer_optin`] 的本体（家目录 · 那一家 · 表 · 已登记 · 中转在不在都是参数，判据喂夹具）。
+pub(crate) fn optin_at(
+    home: &std::path::Path,
+    agent: &str,
+    face: &SettingsEnvFace,
+    routed: &[String],
+    registered: bool,
+    listening: &dyn Fn(u16) -> bool,
+) -> Value {
+    let (file, found) = (face.read)(home);
+    let expected = match decide_launch(agent, &LaunchAccount::Undeclared, true, routed, registered)
+    {
+        Endpoint::Inject { url, .. } => Some(
+            crate::relay::keyed_with_key_on_disk(home, &url)
+                .ok_or(copy_text("beUpstreamEndpoint.optin.noKey", &[])),
+        ),
+        Endpoint::None => None,
+    };
+    let current = expected
+        .as_ref()
+        .and_then(|e| e.as_ref().ok())
+        .map(String::as_str);
+    let state = optin_state(&found, current);
+    let snippet = (state != OptinState::Installed)
+        .then_some(current)
+        .flatten()
+        .map(|u| (face.snippet)(u));
+    // 两句各说各的：`note` 说那份文件为什么读不了；`missing` 说那一段为什么生成不了（已装 / 生成得了 ⇒ 空）。
+    let note = match &found {
+        SettingsBaseUrl::Unreadable(SettingsUnreadable::BadShape) => {
+            copy_text("beUpstreamEndpoint.optin.badShape", &[])
+        }
+        SettingsBaseUrl::Unreadable(why) => {
+            let why = match why {
+                SettingsUnreadable::Io(e) => e.clone(),
+                SettingsUnreadable::NotFile => copy_text("beUpstreamEndpoint.optin.notFile", &[]),
+                SettingsUnreadable::TooLarge(cap) => copy_text(
+                    "beUpstreamEndpoint.optin.tooLarge",
+                    &[("cap", &cap.to_string())],
+                ),
+                SettingsUnreadable::BadShape => String::new(),
+            };
+            copy_text("beUpstreamEndpoint.optin.unreadable", &[("why", &why)])
+        }
+        _ => String::new(),
+    };
+    let missing = match expected {
+        _ if state == OptinState::Installed => String::new(),
+        Some(Ok(_)) => String::new(),
+        Some(Err(why)) => why,
+        None => copy_text("beUpstreamEndpoint.optin.noRoute", &[]),
+    };
+    json!({
+        "state": state.name(),
+        "note": note,
+        "missing": missing,
+        "source": file.display().to_string(),
+        "snippet": snippet,
+        "listening": listening(PORT),
+    })
 }
 
 /// 线上 `agent`（适配器 id）→ 那一家。缺席 / 不是串 ⇒ `bad_args`（入参形状，调用方没表态是哪一家就不猜）；

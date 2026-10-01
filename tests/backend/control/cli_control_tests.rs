@@ -149,6 +149,10 @@ const NOT_ON_CLI: &[(&str, &str)] = &[
         "「中转在不在」读本进程的监听状态；一次性进程里没有中转，只能答 `running: false` —— 那是假话（`cli_control::STREAM_ONLY`）。",
     ),
     (
+        "relay-optin",
+        "同上：成品里「中转在不在」读本进程的监听状态，一次性进程里恒答「不在」（`cli_control::STREAM_ONLY`）。",
+    ),
+    (
         "launch-endpoint",
         "同 `apikey-routing`：一次性进程里只能答 `listening: false`（`cli_control::STREAM_ONLY`）。",
     ),
@@ -356,6 +360,8 @@ fn the_no_input_commands_are_registered_and_declared_consistently() {
         "ssh-config-import",
         // 这台的 cc-bus 钩子诊断：无入参（问的就是「这台」）。
         "hooks-diag",
+        // 这台「直接敲的也走中转」装没装 ＋ 要贴的那一段：无入参（问的就是「这台」）。
+        "relay-optin",
     ];
     let declared: Vec<&str> = REGISTRY
         .iter()

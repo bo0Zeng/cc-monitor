@@ -80,6 +80,8 @@ pub(crate) const UPSTREAM: super::DefaultUpstream = super::DefaultUpstream {
     owner_header: Some(runs::OWNER_HEADER),
     // 界面给这一家的账号配第三方 key 时写那份凭据文件 ⇒ 文件里的行都是这一家的。
     owns_credentials_file: true,
+    // 直接敲的 claude 读 `~/.claude/settings.json` 的 `env` 块（各号的那一份都链回它）。
+    settings_env: Some(paths::SETTINGS_ENV),
 };
 
 /// 本家的**起会话事实**（注册表 `Adapter.launch` 那一格）：`ccm` 按它起、界面按生成物 `agent-profile-table.ts` 读，同一份。

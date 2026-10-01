@@ -2616,6 +2616,23 @@ body.settings-window-mode .settings-panel {
   .ext-hook-snippet {
     margin-top: 4px;
   }
+  /* 机器页「终端」栏：让直接敲的 claude 也走中转（可选）—— 状态行的三种语气。 */
+  .relay-optin {
+    margin: 6px 0;
+  }
+  .relay-optin-state {
+    margin: 4px 0;
+    font-size: var(--font-size-small);
+  }
+  .relay-optin-state.is-ok {
+    color: var(--success);
+  }
+  .relay-optin-state.is-bad {
+    color: var(--error);
+  }
+  .relay-optin-state.is-unknown {
+    color: var(--warn);
+  }
   /* 确认卡上「装到哪」：不能选的那几项置灰、旁注为什么。 */
   .ext-targets {
     margin: 6px 0;

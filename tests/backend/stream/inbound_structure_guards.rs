@@ -222,6 +222,8 @@ fn every_registered_command_declares_its_run_kind() {
                 // 上游选择出的两份成品：读一份凭据文件 ＋ 装表 ＋ 回环上探一次中转（每发有读期限），同步阻塞。
                 | "apikey-routing"
                 | "launch-endpoint"
+                // 直接敲的也走中转：读一份用户级设置文件 ＋ 一份钥匙文件（同步文件 I/O）。
+                | "relay-optin"
                 // `relay-ensure` / `relay-status` 两条随脱离 `--relay` 一族删了。
                 // 足迹那一条：一批 stat / 读几份小文件，同步文件 I/O。
                 | "footprint-report"
@@ -417,6 +419,7 @@ fn every_registered_command_declares_its_run_kind() {
         "apikey-read",
         "apikey-routing",  //
         "launch-endpoint", //
+        "relay-optin",     //
         "footprint-report",
         // 别名预览（阻塞档，理由在上面 `expected_blocking`）。
         "ccm-print",
