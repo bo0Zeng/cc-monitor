@@ -1,7 +1,7 @@
-//! 〔SR1b · 2026-09-24〕**SFTP 住本机常驻后端**：在池里那条 SSH 连接上开 sftp 子系统 ·
+//! **SFTP 住本机常驻后端**：在池里那条 SSH 连接上开 sftp 子系统 ·
 //! **远端写围栏（只许两处）** · 远端写原语 · 部署那条链路（`use:"files"`）的一问一答。
 //!
-//! # 用户裁决（`99 §1` V89，逐字）
+//! # 用户裁决
 //!
 //! 「SFTP 怎么进单一常驻后端」一题选「**进本机常驻后端，只写暂存区**」：SFTP 连接由本机常驻后端管、
 //! 与其它 SSH 复用；只往远端暂存区写，落进用户目录仍只经远端后端文件管理提交（`files-commit-upload`）；
@@ -45,7 +45,7 @@ use super::{pool, write_line, DialRequest, StageSink};
 
 /// 🔴 **远端写根：恰好这两处**（home 相对）。`readonly_guard::remote_write_layer` 现读本行源码逐字比。
 ///
-/// - `staging`：上传只写暂存区（`设计/60 §4.3`），落进用户目录由远端后端 `files-commit-upload` 做；
+/// - `staging`：上传只写暂存区，落进用户目录由远端后端 `files-commit-upload` 做；
 /// - `bin`：自部署（F08 后端二进制 ＋ `.build_id` · `ccm` 入口），后端还不在时只能靠它放上去。
 pub(crate) const REMOTE_WRITE_ROOTS: [&str; 2] = [".cc-monitor/staging", ".cc-monitor/bin"];
 
@@ -75,11 +75,11 @@ pub(crate) struct Session {
 enum Keep {
     /// 台架 / files 链路：攥着就好，用完关掉（生产上 files 链路是 `(pool::Permit, Arc<Linked>)`）。
     Hold(#[allow(dead_code)] Box<dyn std::any::Any + Send + Sync>),
-    /// 〔NT1〕传输：用完**停进这条连接的空位**（[`Parked`]）—— 连同这一格传输许可；空位已有 / 连接关了 ⇒ 照常关掉。
+    /// 传输：用完**停进这条连接的空位**（[`Parked`]）—— 连同这一格传输许可；空位已有 / 连接关了 ⇒ 照常关掉。
     Park(Option<pool::Permit>, Arc<Linked>),
 }
 
-/// 〔NT1 · 2026-09-24〕**一条停着的空闲 sftp 会话**，住在它那条连接里（`Linked::idle_sftp`，每条连接**一个空位**）。
+/// **一条停着的空闲 sftp 会话**，住在它那条连接里（`Linked::idle_sftp`，每条连接**一个空位**）。
 ///
 /// 读数（`NT1.md §0.2` ⑤c）：1 KB 小文件每件 ≈ 9.7 个往返，其中开 sftp 通道（开 channel · 请求子系统 · `SSH_FXP_INIT` ·
 /// `realpath .`）占 4 个。停一个 ⇒ 下一趟只花 1 个往返验活（`realpath .` 对一遍 home）。
@@ -123,7 +123,7 @@ fn subsystem(
 }
 
 /// 开一条 SFTP 会话：过这条连接的预算（`lane`）→ 开 session channel → 请求 sftp 子系统 → `SSH_FXP_INIT` →
-/// 问一次起始目录的真路径。**三到四个往返**。〔NT1〕传输那一形用完停进这条连接的空位（[`Parked`]），
+/// 问一次起始目录的真路径。**三到四个往返**。传输那一形用完停进这条连接的空位（[`Parked`]），
 /// 下一趟传输先取它（[`open_for_transfer`]，1 个往返验活）—— 旧 monitor 池的空闲栈随它一起删了，今天回来的是「每条连接一个空位」。
 pub(crate) async fn open(
     lease: &mut Lease,
@@ -140,7 +140,7 @@ pub(crate) async fn open(
         // files 链路（部署）：用完就关。
         return Session::over(stream, Box::new((permit, linked))).await;
     }
-    // 〔NT1〕传输：用完停进这条连接的空位（`Parked`）。
+    // 传输：用完停进这条连接的空位（`Parked`）。
     let (sftp, home) = init(stream).await?;
     Ok(Session {
         sftp: Some(sftp),
@@ -149,7 +149,7 @@ pub(crate) async fn open(
     })
 }
 
-/// 〔NT1〕在这个身份的一族里找一条**停着的空闲会话**（只在传输能放的成员上找 —— 与放置同一条分道规矩），
+/// 在这个身份的一族里找一条**停着的空闲会话**（只在传输能放的成员上找 —— 与放置同一条分道规矩），
 /// 取出来、验活（`realpath .` 与停进去时的 home 相同）。验不过 ⇒ 丢掉它（关通道、还格），接着找下一条。
 async fn take_parked(req: &DialRequest) -> Option<Session> {
     if req.probe || req.stages {
@@ -198,7 +198,7 @@ impl Dial {
     }
 }
 
-/// 传输那一趟的会话：〔NT1〕先找一条停着的空闲会话（1 个往返）；没有 ⇒ 在池里放置（同身份复用 / 分道到批量连接）
+/// 传输那一趟的会话：先找一条停着的空闲会话（1 个往返）；没有 ⇒ 在池里放置（同身份复用 / 分道到批量连接）
 /// → 过**传输车道**开一条 sftp 通道（4 个往返）。
 pub(crate) async fn open_for_transfer(d: &Dial) -> Result<Session, String> {
     let req = &d.0;
@@ -419,11 +419,11 @@ pub(crate) async fn fenced_remote(
 
 /// 原子上传 `bytes` 到 `path`，权限 `mode`（只在 open-create 的属性里设一次）。
 ///
-/// 〔SR1b · 2026-09-24〕搬自 monitor `sftp.rs` 的 F08 原子上传（那一份随界面进程零 SFTP 删了），序列逐步相同：
-/// 写 `<path>.<这一趟独有的后缀>.tmp`（〔HX2〕从前是固定 `<path>.tmp` ＋ 先删残留；**EXCLUDE** 创建：临时件是一条预置的链接也不会跟过去 —— F89a 审计）
+/// 搬自 monitor `sftp.rs` 的 F08 原子上传（那一份随界面进程零 SFTP 删了），序列逐步相同：
+/// 写 `<path>.<这一趟独有的后缀>.tmp`（从前是固定 `<path>.tmp` ＋ 先删残留；**EXCLUDE** 创建：临时件是一条预置的链接也不会跟过去 —— F89a 审计）
 /// → 旧目标**改名成 `.<后缀>.bak`**（不是删：「先删旧」一旦后续改名失败就丢原件，DN-7 订正过那句注释）
 /// → 临时件上位 → 删 `.bak`。临时件与 `.bak` 都在目标**同一个父目录**里，那个父目录已经过了围栏。
-/// 标准 SFTP 的改名不覆盖（`russh-sftp` 没有 `posix-rename@openssh.com`）⇒ 只能这样近似原子。〔HX2〕两个部署者交错时临时件 / 备份件各是各的（唯一名）；仍剩的一格如实记：`rel → .bak` 与 `tmp → rel` 之间 `rel` 有一瞬不在。
+/// 标准 SFTP 的改名不覆盖（`russh-sftp` 没有 `posix-rename@openssh.com`）⇒ 只能这样近似原子。两个部署者交错时临时件 / 备份件各是各的（唯一名）；仍剩的一格如实记：`rel → .bak` 与 `tmp → rel` 之间 `rel` 有一瞬不在。
 ///
 /// ⚠ **改名之后绝不 `set_metadata` 兜底 chmod** —— 真机 e2e 实证：OpenSSH sftp-server 上那一次 setstat 把刚上位的
 /// 后端**截成 0 字节** ⇒ 不可 exec → 连接 EOF → 标记变空 → 无限重部署。权限只在 open-create 的属性里设一次。
@@ -439,13 +439,13 @@ pub(crate) async fn put_atomic(
     mode: u32,
 ) -> Result<(), Refusal> {
     let rel = fenced_remote(s, path, Intent::File).await?;
-    // 〔HX2 · 主会话 D-b「临时件名唯一」〕临时件与备份件都带**这一趟独有**的后缀：两个部署者（两台 monitor 各自的常驻后端）
+    // 〔主会话 D-b「临时件名唯一」〕临时件与备份件都带**这一趟独有**的后缀：两个部署者（两台 monitor 各自的常驻后端）
     //   同时往同一个落点放字节时，谁也不删谁的那一份（从前是固定的 `<rel>.tmp` / `<rel>.bak` ＋「先删残留」—— 那一删删的可能是
     //   别人正在写的那一份，审计 E3 子形 2）。仍 `EXCLUDE` 新建：真撞了名 ⇒ 当场失败，不会写进别人的那一份。
     //   〔墓碑 —— 「先删残留」那一步没了：固定名时它清上一趟崩掉留下的那一份；唯一名之后崩掉的那一趟留下的临时件
     //    没人认领（`put_atomic` 失败那几支会删自己的；进程被杀那一形留在 `~/.cc-monitor/bin/` 里，如实登记）。〕
     let tmp = format!("{rel}.{}.tmp", trip_tag());
-    // 〔WF2 · WIN3 读数 B〕失败那几支删**自己这一趟**的临时件；连接已经断了（`sender dropped`）⇒ 删不掉：说一句，
+    // 失败那几支删**自己这一趟**的临时件；连接已经断了（`sender dropped`）⇒ 删不掉：说一句，
     //   留下的那一份由下次连上的部署计划认领（`control/deploy_plan.rs::stale_leftovers`）。
     let drop_own_tmp = || async {
         if let Err(e) = s.sftp().remove_file(tmp.clone()).await {
@@ -513,7 +513,7 @@ pub(crate) async fn put_atomic(
     };
     if let Err(e) = s.sftp().rename(tmp.clone(), rel.clone()).await {
         drop_own_tmp().await;
-        // 〔HX2〕自己挪走的那份旧的：落点还空着 ⇒ 挪回去（不留一个没有后端的落点）；
+        // 自己挪走的那份旧的：落点还空着 ⇒ 挪回去（不留一个没有后端的落点）；
         //   落点已经被另一个部署者放上了新的 ⇒ 那份旧的没人要了，删掉（不留一个没人认领的备份件）。
         if let Some(b) = bak {
             if s.sftp().try_exists(rel.clone()).await.unwrap_or(true) {
@@ -533,7 +533,7 @@ pub(crate) async fn put_atomic(
     Ok(())
 }
 
-/// 〔HX2〕一趟上传独有的后缀：pid ⊕ 纳秒 ⊕ 进程内计数（十六进制）。**不是**密码学随机 —— 它只要「两个部署者不撞」，
+/// 一趟上传独有的后缀：pid ⊕ 纳秒 ⊕ 进程内计数（十六进制）。**不是**密码学随机 —— 它只要「两个部署者不撞」，
 /// 撞了由 `EXCLUDE` 当场挡住（失败，不是写进别人的那一份）。
 fn trip_tag() -> String {
     use std::sync::atomic::{AtomicU64, Ordering};
@@ -550,7 +550,7 @@ fn trip_tag() -> String {
     )
 }
 
-/// 〔WF2 · WIN3 读数 B〕这个名字是不是 [`put_atomic`] 留下的临时件 / 备份件：`<名>.<trip_tag>.tmp` 或 `.bak`
+/// 这个名字是不是 [`put_atomic`] 留下的临时件 / 备份件：`<名>.<trip_tag>.tmp` 或 `.bak`
 /// （`trip_tag` = 三段非空小写十六进制、`-` 相连）。形状只认这一种 —— 别的名字不是我们放的，一个不碰。
 pub(crate) fn is_trip_leftover(name: &str) -> bool {
     let Some(stem) = name
@@ -593,7 +593,7 @@ pub(crate) async fn remove(s: &Session, path: &str) -> Result<bool, Refusal> {
 
 /// 建**一层**目录（已在 ⇒ 什么都不做）。
 ///
-/// 〔HX1 · 主会话裁 HX1 拍板项 4〕**这一趟建出来的**那一层当场收成只给本人（`own_dir::PRIVATE_DIR_MODE`，0700）——
+/// 〔主会话裁 HX1 拍板项 4〕**这一趟建出来的**那一层当场收成只给本人（`own_dir::PRIVATE_DIR_MODE`，0700）——
 /// 远端第一个建 `~/.cc-monitor`（以及 `bin` / `staging`）的就是这里（部署），此前按服务端 umask 建（常见 0755）。
 /// 本机那一份是 `own_dir::ensure_private_dir`（它在本机文件系统上、这里调不到它）；两边共用同一个权限位常量。
 /// ⚠ 用 `set_metadata`（SETSTAT）只对**目录**、只带 `permissions` 一格 —— `put_atomic` 头注那条「改名之后绝不 setstat」
@@ -785,7 +785,7 @@ async fn answer<R: AsyncRead + Unpin>(
         let bad = |m: String| refused("bad_request", &m);
         match op {
             "home" => Ok(serde_json::json!({ "home": s.home() })),
-            // 〔MIG-3b 续 · V41〕`stat` 那一问删了：它唯一的问者（monitor 部署时问落点在不在）随部署判定进了本机后端
+            // `stat` 那一问删了：它唯一的问者（monitor 部署时问落点在不在）随部署判定进了本机后端
             //   （`control/deploy_plan.rs` 直接用本文件的 `metadata_size` / `exists`），这条链路上零调用方。
             "read" => {
                 let path = arg_str(req, "path").map_err(bad)?;

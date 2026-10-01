@@ -1,9 +1,9 @@
-//! 〔MIG-2〕**线上形状 → 渲染器**：`launch-render-cli`（`ccm …` 调用行）与 `launch-render-payload`（裸载荷 / 外层 tmux 三格）
+//! **线上形状 → 渲染器**：`launch-render-cli`（`ccm …` 调用行）与 `launch-render-payload`（裸载荷 / 外层 tmux 三格）
 //! 两条帧命令的入参与映射（原 monitor `launch_wire.rs` 两条 Tauri 命令，搬进后端后形状只少了 `ccm` 那一格）。
 //!
 //! `ccm …` 调用行渲不出来**不是错误**，是诚实降级（§33）：回 `ok:false` ＋ 理由，调用方换载荷那条；
 //! 载荷那条渲不出来是拒（带 `REFUSE:` 标，`mod.rs::refused` 转成码）。
-//! 🪦〔MIG-2〕原先这里有两段沿革（U8c-2c-2 只切 CLI 支 · 返回值为什么 tagged）—— 结论仍成立，考据删了。
+//! 🪦原先这里有两段沿革（U8c-2c-2 只切 CLI 支 · 返回值为什么 tagged）—— 结论仍成立，考据删了。
 
 use super::ccm_invocation::{render_ccm_invocation, Action, CliAccount, CliSpec, Container};
 use copy_core::copy_text;
@@ -33,10 +33,10 @@ pub struct CliRenderRequest {
     ///
     /// 那么**本条上线路今天为什么仍然只见 `is_ssh: true`**？不是因为 §36 禁了（它只绑 Windows），
     /// 是因为**前端只在 `transport.kind === "ssh"` 时才调这条 IPC** ——
-    /// POSIX 本机那条路住在 Rust 里（〔MIG-2〕`local.rs::render_ccm`），
+    /// POSIX 本机那条路住在 Rust 里（`local.rs::render_ccm`），
     /// 不必绕一圈 IPC 问自己。⇒ 这是**路由事实**，不是禁令。
     pub is_ssh: bool,
-    // 〔MIG-2〕原先这里是 `ccm`（界面探了那台 `ccm-probe` 再带过来，三态，R95b）。渲染进了那台后端 ⇒ 能力问它自己
+    // 原先这里是 `ccm`（界面探了那台 `ccm-probe` 再带过来，三态，R95b）。渲染进了那台后端 ⇒ 能力问它自己
     //   （[`render_ccm_launch`] 里 `ccm_launcher_with`，与 `--ccm-probe` 同一份），这一格删了。
     pub action: WireAction,
     pub container: WireContainer,
@@ -64,7 +64,7 @@ pub enum WireContainer {
     Tmux { name: String, send_into: bool },
 }
 
-/// 🔴 **它比 [`CliAccount`] 少一态，那不是漏，是边界**〔`K-R89` 09-13〕。
+/// 🔴 **它比 [`CliAccount`] 少一态，那不是漏，是边界**。
 ///
 /// `CliAccount` 09-13 起有第三态 `Inherit`（省略 `--account`，语义由
 /// `DECISIONS.md#R28` 定、由 `src/backend/control/ccm/plan.rs::resolve_account`
@@ -97,7 +97,7 @@ pub struct CliRenderResponse {
 }
 
 pub fn render_ccm_launch(req: CliRenderRequest) -> CliRenderResponse {
-    // 〔MIG-2〕`ccm` 就是这台后端本身（V28）⇒ 装着、能力是它自己的（`--ccm-probe` 那一行同一份）。
+    // `ccm` 就是这台后端本身⇒ 装着、能力是它自己的（`--ccm-probe` 那一行同一份）。
     let caps: BTreeSet<String> = crate::ccm_launcher_with(crate::TMUX_PLATFORM)
         .into_iter()
         .map(str::to_string)
@@ -135,7 +135,7 @@ pub(crate) fn render_ccm_launch_with(
         //
         // 本条 IPC **只有远端会走**：前端的闸是 `ctx.transport.kind === "ssh"`
         //（`remote-launch-run.ts::renderLaunchCommand`），POSIX 本机那条路住在 Rust 里
-        //（〔MIG-2〕`local.rs::render_ccm` 直接调渲染器），**不必绕一圈 IPC 问自己**。
+        //（`local.rs::render_ccm` 直接调渲染器），**不必绕一圈 IPC 问自己**。
         // ⇒ 这里没有「本机是什么平台」这个问题要答。
         //
         // Y1 原本在这里读一个进程内全局量（`host_facts::local_is_posix()`），**那是错的**：
@@ -193,12 +193,12 @@ pub struct PayloadRenderRequest {
     pub args: Vec<String>,
     /// 嵌套 env 键表（TS `AGENT_PROFILE.nestedEnvVars`）—— `unset-nested-env` 用。
     pub nested_env: Vec<String>,
-    /// `设计/90 §4 E`：**外层容器那一层**。`None` = `container:"none"` 那一格
+    /// **外层容器那一层**。`None` = `container:"none"` 那一格
     /// （本命令 U8a-2c-pre 交付时的唯一形态，字节一个都没变）。
     ///
     /// # 为什么是加一个字段，而不是加一条新命令
     ///
-    /// `设计/00 §2.5 ④` 要的是「5 个渲染实现 → **2 个**」—— **消灭副本**。
+    /// 要的是「5 个渲染实现 → **2 个**」—— **消灭副本**。
     /// 「起一个会话的那条串」在 Rust 这侧只该有一个入口；给外层单开一条 IPC
     /// 等于在同一件事上再开一个家（而且会连带动 `parity_ledger` 的命令底账与
     /// `installface` 的装卸分组 —— 那两处要动的理由应该是「多了一项能力」，
@@ -217,10 +217,10 @@ pub struct PayloadRenderRequest {
     /// 今天 `plan.wrap` 恒空所以无生产影响；补上之后那条用例才真的在验生产路径。
     #[serde(default)]
     pub wrap: Vec<WireWrap>,
-    /// 〔DUP1 · `INVARIANTS §47` ①〕**resume 的那个 sid**（`args` 里 `[resume 旗, sid, …]` 那一格的同一个值，单独再报一次）。
+    /// 〔`INVARIANTS §47` ①〕**resume 的那个 sid**（`args` 里 `[resume 旗, sid, …]` 那一格的同一个值，单独再报一次）。
     ///
     /// 为什么要单报：这条线上 sid 住在 `args` 里，渲染侧认不出哪一格是 sid（旗随 agent 变，而 monitor 的
-    /// `backend/` 这一半不许去问 agent 画像）；前端那份 `isValidSessionId`〔散文墓碑〕按 `设计/90 §3` 判据 2 删了之后，
+    /// `backend/` 这一半不许去问 agent 画像）；前端那份 `isValidSessionId`〔散文墓碑〕按删了之后，
     /// 「resume 的 sid 不许 `-` 开头」（`--dangerously-skip-permissions` 当 sid 会被 agent 吃成参数）得有人在拼进载荷之前判 ——
     /// 单报一次、这里判、再核它确实就是 `args` 第二格（报了一个、渲了另一个 ⇒ 拒），比按位置猜稳。
     /// `None` = 不是 resume（`#[serde(default)]`：入库夹具里那些非 resume 的请求一个字不用动）。
@@ -293,13 +293,13 @@ pub enum WireEnvOp {
     ExportModel {
         value: String,
     },
-    /// `设计/80 §8` 步 1：启动期令牌。与 TS `launch-cli-wire.ts::WireEnvOp` 同名同序。
+    /// 启动期令牌。与 TS `launch-cli-wire.ts::WireEnvOp` 同名同序。
     /// 形状不对由 [`super::payload::render_env_ops`] fail-closed 拒（不在 wire 这一层拒 ——
     /// 拒绝理由要带 `REFUSE:` 标才走得到前端那条按标分流的逻辑）。
     ExportRbindToken {
         value: String,
     },
-    /// 〔RL1〕中转地址。与 TS `launch-cli-wire.ts::WireEnvOp` 同名同序；形状由
+    /// 中转地址。与 TS `launch-cli-wire.ts::WireEnvOp` 同名同序；形状由
     /// [`super::payload::render_env_ops`] fail-closed 拒（带 `REFUSE:` 标）。
     ExportRelayBaseUrl {
         value: String,
@@ -371,7 +371,7 @@ pub fn render_launch_payload(req: PayloadRenderRequest) -> Result<String, String
         })
         .collect();
     let args: Vec<&str> = req.args.iter().map(String::as_str).collect();
-    // 〔DUP1 · `INVARIANTS §47` ①〕resume 的 sid：共享那一份判（`shell_quote_core::session_id_ok`），且必须就是 `args` 第二格。
+    // 〔`INVARIANTS §47` ①〕resume 的 sid：共享那一份判（`shell_quote_core::session_id_ok`），且必须就是 `args` 第二格。
     if let Some(sid) = req.resume_sid.as_deref() {
         if !shell_quote_core::session_id_ok(sid) {
             return Err(super::payload::refuse(copy_text(

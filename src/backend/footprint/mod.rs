@@ -1,6 +1,6 @@
-//! 〔MIG-3b 续 · 主会话 09-28 裁①〕「足迹」**由那台后端出整份成品**：帧面 `footprint-report` —— 只读。
+//! 「足迹」**由那台后端出整份成品**：帧面 `footprint-report` —— 只读。
 //!
-//! 用户 09-27「一处后端」压过 `设计/96 §4`「「哪一行属于哪个工具」仍只住 monitor 的 `tool_registry`」⇒ 申报表（[`registry`]）
+//! 用户 09-27「一处后端」压过「「哪一行属于哪个工具」仍只住 monitor 的 `tool_registry`」⇒ 申报表（[`registry`]）
 //! 与判定（[`rows`]：哪一行属于哪个工具、存在 / 缺失 / 查不动怎么分）都住后端，这台 stat 这台自己的盘。
 //! 〔墓碑 —— RM1a 那一版这里是 `footprint-probe`：只交路径事实，判定住 monitor `config_surface.rs`，monitor 问两趟。〕
 //!
@@ -9,7 +9,7 @@
 //! - **远端那一栏**（`{}`）：视角 [`rows::Vantage::Remote`]：住 monitor 那台的那一族（`HostScope::Client`）不进人群。
 //! - **本机那一栏**（`{client: {home, agentHome, path?}}`）：视角 [`rows::Vantage::Monitor`]。本机后端与 monitor 同一台、同一用户 ⇒
 //!   `HostScope::Client` 那一族也由这里 stat；monitor 只交它**独有**的那几条事实（它自己进程的家目录 · agent 家 · `PATH`，
-//!   `05 §14.3` E 组「足迹里 monitor 自己那几行」），那一族按它们解。〔主会话 09-28 裁：四拍收成两拍，纪律 22 ③〕
+//! 「足迹里 monitor 自己那几行」），那一族按它们解。〔主会话 09-28 裁：四拍收成两拍，纪律 22 ③〕
 //!
 //! # 上限
 //!

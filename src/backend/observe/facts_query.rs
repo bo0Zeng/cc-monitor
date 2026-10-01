@@ -1,10 +1,10 @@
-//! 〔STC · `设计/90 §4` 阶段 C · `设计/10 §2.2`〕**会话事实**：分叉血缘 · 改动文件集 · agent 列表 · 最新 usage。
+//! **会话事实**：分叉血缘 · 改动文件集 · agent 列表 · 最新 usage。
 //!
 //! # 它顶掉了什么
 //!
 //! 这四样从前是活 tab 在 `onLine` 旁路上一条一条攒的（前端 `tab-session-facts.ts` 那四个抽取器，已删）：
 //! **到达序不是对话序**（重放是尾块先到）、**不完整**（重放缓冲每个会话只留尾部 `REPLAY_TAIL_KEEP` 条 ⇒
-//! F5 之后长会话的分叉血缘看不见、agent / 改动文件只剩尾巴那一截）、每个 tab 各攒一份（`10 §2.2` 那三个病）。
+//! F5 之后长会话的分叉血缘看不见、agent / 改动文件只剩尾巴那一截）、每个 tab 各攒一份（那三个病）。
 //! 今天它们由本文件读一遍文件算出来，经帧命令 `history-facts`（宿主 `read_face.rs`）出**成品**，
 //! 界面经通道直接问、按形状收（`src/frontend/ui/session-reads.ts`），**本机与远端同一条路**。
 //!
@@ -12,8 +12,8 @@
 //!
 //! 事实要跟着会话长，而大会话（本机实测 120 MB）每批整份重扫是撞墙的。选的形状：调用方把**上一次的应答原样**
 //! 交回来（`prior`），本文件从 `prior.end` 接着扫、把新的一截累加在它上面 —— 判定与累加都只在这里，
-//! 前端不读、不改、不合并那一份成品；后端不留任何状态（`设计/05 §15.1` 对 `history-lines` 的同一条取舍）。
-//! 续点的两道校验（截断 · 不在行边界）在 `history_query::open_facts_at`。理由全文 `调研/第四波记录/STC.md §1.2`。
+//! 前端不读、不改、不合并那一份成品；后端不留任何状态（对 `history-lines` 的同一条取舍）。
+//! 续点的两道校验（截断 · 不在行边界）在 `history_query::open_facts_at`。理由。
 //!
 //! # 口径（逐格，四样各一个住址）
 //!
@@ -24,7 +24,7 @@
 //! | `agents` | `assistant` 里派出子运行的那几次调用（适配层 `RecordFace::child_link` 认，`agents::child_links_of`）⇒ `running`；`user` 里命中的 `tool_result` ⇒ `done`；超 [`AGENTS_SOFT_KEEP`] 从最老删非 running，再超 [`AGENTS_HARD_KEEP`] 删最老 |
 //! | `usage` | `assistant` 记录的 `message.usage` 三项 prompt token 之和 > 0 ⇒ `{promptTokens, model}`，文件序最后一条胜 |
 //!
-//! 「中止」不在这里：它是「会话落到不忙那一刻」这个**事件**的反应（`10 §2.2`「刚刚发生了什么留在流上」），住前端。
+//! 「中止」不在这里：它是「会话落到不忙那一刻」这个**事件**的反应（「刚刚发生了什么留在流上」），住前端。
 //!
 //! # 快路
 //!
@@ -43,13 +43,13 @@ use serde_json::Value;
 // 搬进适配层 `agents/claudecode/` 就要从这里直呼它 ⇒ `agent_locality_guard::NEW_AGENT_GAP_BASELINE` 26 → 27，
 // 而那是只许降的棘轮 ⇒ 不抬。收进接口（`L2`/`S6`）时这两张随本文件一起走。
 //
-// 〔DUP2 · 主会话 09-26 裁 J19〕agent 工具名**只有一份**。〔THIN〕界面不再认工具名（卡型随记录成品带出）⇒ 那一份只剩后端用，
+// agent 工具名**只有一份**。界面不再认工具名（卡型随记录成品带出）⇒ 那一份只剩后端用，
 //   从共享 crate `agent-tools-core` 收进适配层 `agents/claudecode/cards.rs`；会话事实经注册表的派出链接那一格够它（`agents::child_links_of`，
 //   不直呼 `agents::claudecode::`，`agent_locality_guard` 判据④的读数不涨）。
 // 写类工具表**只有这一份**（前端 `panorama/session-files.ts` 整份随搬家删了）。
 
 /// 写类工具 → 取路径的键。Edit / Write / MultiEdit 用 `file_path`；NotebookEdit 用 `notebook_path`。
-/// 与渲染那边的「写类」（〔THIN〕卡型 `diff`，适配层 `agents/claudecode/cards.rs` 那张写类工具表，行级 diff）**不是同一个问题**：
+/// 与渲染那边的「写类」（卡型 `diff`，适配层 `agents/claudecode/cards.rs` 那张写类工具表，行级 diff）**不是同一个问题**：
 /// 这里多一个 NotebookEdit（它改文件、但不按行 diff 渲染）。
 pub(crate) const EDIT_TOOL_PATH_KEYS: &[(&str, &str)] = &[
     ("Edit", "file_path"),

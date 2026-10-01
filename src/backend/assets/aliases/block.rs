@@ -1,6 +1,6 @@
 //! PowerShell profile 路径解析 + 块插入/卸载 + 命令名冲突检测。
 //!
-//! 〔MIG-3a · `设计/99 §2.1 ⑬` · 主会话 09-27 裁〕从 monitor `profile_installer.rs` 搬来**别名块那一半**：规划 · 围栏 · 装 / 卸
+//! 从 monitor `profile_installer.rs` 搬来**别名块那一半**：规划 · 围栏 · 装 / 卸
 //! 今天在那台机器的后端里算、经它自己的文件管理面写（[`super`]）。用户级 PATH 那一格（本机后端的引导）仍住 monitor。
 //!
 //! ## 块标记
@@ -15,21 +15,21 @@
 //!
 //! 重装时找到 BEGIN/END 范围整块替换；卸载时整块删除。用户在块外的任何内容不动。
 //!
-//! ## 🔴 〔`K-R62` 09-11〕本模块从「PowerShell 专用」扩到**两种方言**
+//! ## 🔴 本模块从「PowerShell 专用」扩到**两种方言**
 //!
-//! 立件时现打的账（`K-R57` 摸底 → `K-R62 §0b`）：**本机 POSIX 那一格，装与查都缺。**
+//! 立件时现打的账（`K-R57` 摸底 →）：**本机 POSIX 那一格，装与查都缺。**
 //!
 //! | 面 | 本机 Windows | 本机 POSIX（本件之前） | 远端 POSIX |
 //! |---|---|---|---|
-//! | 装「别名块」 | [`install_to_profile`] | 🔴 **零口** | `sftp::install_remote_ccm_helper`〔散文墓碑〕（〔AL2〕今天就是 [`install_to_profile`]，带远端 `origin`） |
-//! | 查「你 rc 里那几行是旧的」 | `scan_legacy_profiles`〔散文墓碑〕（〔AL1d〕删了：每份候选各带块的现状） | 🔴 **零口** | —— |
+//! | 装「别名块」 | [`install_to_profile`] | 🔴 **零口** | `sftp::install_remote_ccm_helper`〔散文墓碑〕（今天就是 [`install_to_profile`]，带远端 `origin`） |
+//! | 查「你 rc 里那几行是旧的」 | `scan_legacy_profiles`〔散文墓碑〕（删了：每份候选各带块的现状） | 🔴 **零口** | —— |
 //!
 //! 补法有两条硬边界，两条都是**这件事的一半价值**：
 //!
 //! 1. **不许变成第四套。** 装进本机 rc 的内容与远端那个口来自**同一个常量**
 //!    （[`CCM_WRAPPER_SNIPPET`]），合块与剥块走**同一份实现**
 //!    （[`merge_profile_block`] / [`strip_profile_block`]），围栏是**同一对标记**
-//!    （[`CCM_PROFILE_BEGIN`] / `..._END`）。〔W5-ALIAS〕这几样从前住 `sftp.rs`，今天住本模块尾部。本模块**一个字节的 snippet 都不生成**，
+//!    （[`CCM_PROFILE_BEGIN`] / `..._END`）。这几样从前住 `sftp.rs`，今天住本模块尾部。本模块**一个字节的 snippet 都不生成**，
 //!    也**没有第二套 merge/strip** —— 见 [`plan_install`] / [`plan_uninstall`]。
 //! 2. **一个字节都不许删用户的行**（`K31` + 用户逐字「原本的配置要手动删除」）。
 //!    「查」这一半的产物是 [`render_manual_cleanup_hint`]：**逐行指名 + 一段让他自己动手的提示**，
@@ -59,13 +59,13 @@ const CC_TEMPLATE: &str = include_str!("../../../shared/cc.ps1.tpl");
 /// 别名块里那个 `cc` 函数的名字（PowerShell 那一臂由它渲染；POSIX 那一臂的名字住 `src/shared/ccm-aliases.sh`，
 /// 这里只拿它查「用户 rc 里有没有同名函数」）。
 ///
-/// 〔AL1d · 第四波 4B〕从前是 `cc_integration_*` 三条命令的入参 `command_name`，而界面从来只传 `"cc"`
-/// （`设计/71 §7` 那张表：「界面写死 `CC_COMMAND_NAME = "cc"`」）⇒ 一个没人用的自由度，收成这一个常量。
+/// 从前是 `cc_integration_*` 三条命令的入参 `command_name`，而界面从来只传 `"cc"`
+/// （那张表：「界面写死 `CC_COMMAND_NAME = "cc"`」）⇒ 一个没人用的自由度，收成这一个常量。
 pub(crate) const CC_FUNCTION_NAME: &str = "cc";
 
 /// 一份启动文件（rc / `$PROFILE`）里**别名块**的现状。
 ///
-/// 〔AL1d · 第四波 4B〕别名块与别名文件那一行 source 装进的是**同一批**启动文件，候选从前却有两份来历
+/// 别名块与别名文件那一行 source 装进的是**同一批**启动文件，候选从前却有两份来历
 /// （`AL1d.md §1.2`）⇒ 今天只有一份：`account_aliases::StartupFile` 每份候选都带着这一格，
 /// 由 [`block_state`] 在读回口那一次扫描里一起算出来。
 #[derive(Debug, Default, Clone, PartialEq, Eq, Serialize)]
@@ -75,15 +75,15 @@ pub(crate) struct BlockState {
     pub present: bool,
     /// 块头上的版本串（PowerShell 那一对才有；POSIX 那一对恒 `None`）。
     pub version: Option<String>,
-    /// 〔TL1 · 4C〕块在、而版本串不是这一版模板的那个 ⇒ `true`（只有 PowerShell 那一对有版本串）。
-    /// v3 起模板结尾多一行接上别名文件（`设计/71 §6.1`）—— 装着 v2 的人**重装一次**才带上那一行，界面据此提示。
-    /// 〔HX2 · 4D〕v4 起 `__ccm_bind` 找 monitor 数据目录走唯一出口（渲染时填）—— 装着 v3 的人同样重装一次。
-    /// 〔DATA-HOME · V160〕v5：数据目录搬到 `~/.cc-monitor`，v4 块里 `$ccmDir` 写的是旧住址 ⇒ 抬版本，装着 v4 的人重装一次（不认老路径）。
+    /// 块在、而版本串不是这一版模板的那个 ⇒ `true`（只有 PowerShell 那一对有版本串）。
+    /// v3 起模板结尾多一行接上别名文件—— 装着 v2 的人**重装一次**才带上那一行，界面据此提示。
+    /// v4 起 `__ccm_bind` 找 monitor 数据目录走唯一出口（渲染时填）—— 装着 v3 的人同样重装一次。
+    /// v5：数据目录搬到 `~/.cc-monitor`，v4 块里 `$ccmDir` 写的是旧住址 ⇒ 抬版本，装着 v4 的人重装一次（不认老路径）。
     /// 「这一版是哪个」只从模板本身读（[`current_block_version`]），不另写一份字面量。
     pub outdated: bool,
     /// 块外已有的同名函数（与 [`CC_FUNCTION_NAME`] 同名）。
     pub conflicting_functions: Vec<String>,
-    /// 🔴 〔`K-R62`〕**「你 rc 里这几行是旧的」那段话。** 空串 = 没有要清的。
+    /// 🔴 **「你 rc 里这几行是旧的」那段话。** 空串 = 没有要清的。
     ///
     /// 它是 [`render_manual_cleanup_hint`] 的产物：**逐行指名**（行号 + 原文）
     /// 加一段给用户自己动手的说明。**产品一个字节都不删**（`K31` + 用户逐字
@@ -91,7 +91,7 @@ pub(crate) struct BlockState {
     ///
     /// ⚠ **只对 [`Shell::Posix`] 有内容**：它找的是**根本没有围栏的裸行**。
     /// 「整块装在了别的哪份里」是另一件事，今天由每份候选各自的 [`BlockState::present`] 照实答
-    /// （〔AL1d〕从前 PowerShell 那一侧另有一段只查 `profile.ps1` 两份的遗留扫描，随候选收成一份删了）。
+    /// （从前 PowerShell 那一侧另有一段只查 `profile.ps1` 两份的遗留扫描，随候选收成一份删了）。
     pub manual_cleanup_hint: String,
 }
 
@@ -120,7 +120,7 @@ pub(crate) fn block_state(path: &Path, raw: &str) -> BlockState {
 
 /// **纯**：别名块渲染成代码 —— 「往一份空文件里装一次，那份文件会变成什么」（BOM 那一层除外）。
 ///
-/// 〔AL1d · 第四波 4B〕从前的预览只会 PowerShell 那一块（`render_cc_code`），POSIX 那一块没有预览。
+/// 从前的预览只会 PowerShell 那一块（`render_cc_code`），POSIX 那一块没有预览。
 /// 今天两种方言都答，而且答的是**装那一跳调的同一个** [`plan_install`] —— 「预览的就是写的那一份」
 /// 由同一个函数保证，不是两份拼法对拍。`with_cc` 只对 PowerShell 那一臂有意义（同 [`plan_install`]）。
 pub(crate) fn render_block(shell: Shell, with_cc: bool, home: &str) -> Result<String, String> {
@@ -128,7 +128,7 @@ pub(crate) fn render_block(shell: Shell, with_cc: bool, home: &str) -> Result<St
     plan_install(shell, "", CC_FUNCTION_NAME, with_cc, &what, home)
 }
 
-// 〔AL1d · 第四波 4B〕这里原来是 `ProfileKind`（PS 5.1 / PS 7 / 自定义 三个标签）与 `ProfileScan`〔散文墓碑〕
+// 这里原来是 `ProfileKind`（PS 5.1 / PS 7 / 自定义 三个标签）与 `ProfileScan`〔散文墓碑〕
 // （一份 profile 的扫描结果，给终端集成那两条命令出参）。今天候选只有一份来历（`shell_dialect::ShellDialect::startup_files`），
 // 扫描结果是 `account_aliases::StartupFile` ＋ 上面的 [`BlockState`]；「哪一份是 PS 5.1 的」这个标签没有消费者了。
 
@@ -138,7 +138,7 @@ pub(crate) fn render_block(shell: Shell, with_cc: bool, home: &str) -> Result<St
 
 /// 一份 profile 的**方言**：这份文件里该放哪种语言的内容、认哪一对围栏。
 ///
-/// 〔AL1c · 第四波 4B〕它从前是本模块自己的一个两值枚举 ＋ 一个按扩展名判的函数（旧名见 `git log`）；
+/// 它从前是本模块自己的一个两值枚举 ＋ 一个按扩展名判的函数（旧名见 `git log`）；
 /// 今天是 `shell_dialect::Shell` —— 别名文件、别名块、source 那一行问的是**同一个问题**，
 /// 不许有两个枚举各答一半。认法没变：`Shell::of_target` 按**文件扩展名**判，不按 `cfg!(windows)`。
 ///
@@ -152,7 +152,7 @@ pub(crate) fn render_block(shell: Shell, with_cc: bool, home: &str) -> Result<St
 /// 也没有第二套 merge —— 内容是 [`CCM_WRAPPER_SNIPPET`]（= `src/shared/ccm-aliases.sh`
 /// 本身），合块是 [`merge_profile_block`]，围栏是 [`CCM_PROFILE_BEGIN`] / `_END`。
 /// ⇒ 本机与远端装进 rc 的**是同一份东西**（`K15` / `K36`），
-/// 而不是「同一件事的第四个形状」（`K-R62 §0c` 那三套）。
+/// 而不是「同一件事的第四个形状」（那三套）。
 ///
 /// `command_name` / `include_cc_function` **只对 PowerShell 那一臂有意义**：
 /// POSIX 那一块的名字（`cc` / `cct`）住在 `src/shared/ccm-aliases.sh` 里，
@@ -167,8 +167,8 @@ pub(crate) fn plan_install(
 ) -> Result<String, String> {
     match flavor {
         Shell::PowerShell => {
-            // 〔HX2〕数据目录解不出（`CCM_DATA_DIR` 给了但不是绝对路径 / 找不到家目录）⇒ 拒，不往 `$PROFILE` 里写一个猜的路径。
-            // 〔MIG-3a〕这台后端按同一份规则推（`creds_core::store::monitor_data_dir`，常驻后端 hello 回显的那一对也是它推的）：
+            // 数据目录解不出（`CCM_DATA_DIR` 给了但不是绝对路径 / 找不到家目录）⇒ 拒，不往 `$PROFILE` 里写一个猜的路径。
+            // 这台后端按同一份规则推（`creds_core::store::monitor_data_dir`，常驻后端 hello 回显的那一对也是它推的）：
             //   `$PROFILE` 在这台上，`__ccm_bind` 找的也是这台上 monitor 的那个目录。
             let dir = monitor_data_dir(home)
                 .ok_or_else(|| copy_text("rsProfileInstaller.ps.noDataDir", &[]))?;
@@ -263,7 +263,7 @@ fn mentions_ccm(line: &str) -> bool {
 /// 这一行是不是 cc-monitor 自己的围栏标记（每一对都认）。
 ///
 /// 认的是**共同前缀** `# === cc-monitor`，而不是某一对 —— 今天是 `profile_installer` 的 `BEGIN_MARKER`
-/// 与 `sftp` 的 `CCM_PROFILE_BEGIN` 两对；〔TL1 · 4C〕从前还有 `account_aliases` 包 rc 里那一行 source 的第三对
+/// 与 `sftp` 的 `CCM_PROFILE_BEGIN` 两对；从前还有 `account_aliases` 包 rc 里那一行 source 的第三对
 /// （那一步退役了，用户盘上可能还留着那一块 —— 共同前缀照样认得它是**我们的**边界，不当成用户的裸行）。
 /// 这一格问的是「这一行是不是**我们的**边界」，那个答案对每一对是同一个。
 fn fence_marker(line: &str) -> Option<bool> {
@@ -284,7 +284,7 @@ fn fence_marker(line: &str) -> Option<bool> {
 ///
 /// # 为什么不是「给 `scan_legacy_profiles`〔散文墓碑〕的路径表加两行」
 ///
-/// 那个函数（〔AL1d〕已删）认的是 [`find_block_version`]（**围栏**）。而 `K-R57` 现打用户本机：
+/// 那个函数（已删）认的是 [`find_block_version`]（**围栏**）。而 `K-R57` 现打用户本机：
 /// `~/.bashrc` 三种围栏**全部零命中**，那 14 行 ccm 相关**全是裸写的**
 /// ⇒ **加路径解决不了「够不着裸行」**，只会让读数看起来像做完了。
 /// ⇒ 这里换的是**判法**：按行走、跳过我们自己的围栏段、按**词**认 `ccm`。
@@ -326,7 +326,7 @@ pub(crate) fn scan_legacy_rc_lines(content: &str) -> Vec<LegacyRcLine> {
     out
 }
 
-// 〔OSA〕这里原来有 POSIX「`名字() {` ⇒ 名字」那一份认法 —— 定义函数的写法归方言，搬进
+// 这里原来有 POSIX「`名字() {` ⇒ 名字」那一份认法 —— 定义函数的写法归方言，搬进
 //   （`platform/shell/dialect.rs` 的 `ShellDialect::declared_function`），[`builtin_alias_names`] 与本扫描共用那一份。
 
 /// 🔴 `KR62D2` 的产物：**一段让用户自己动手的提示。** 没有要清的就是空串。
@@ -392,7 +392,7 @@ pub(crate) fn render_manual_cleanup_hint(what: &str, hits: &[LegacyRcLine]) -> S
 ///
 /// # 为什么需要它
 ///
-/// 那三条命令（〔AL1d〕今天是 `aliases_block_install` / `aliases_block_remove` ＋ `aliases_read` 的「其它文件」；
+/// 那三条命令（今天是 `aliases_block_install` / `aliases_block_remove` ＋ `aliases_read` 的「其它文件」；
 /// 从前叫 `cc_integration_*`〔散文墓碑〕）收的是 **webview 给的字符串**（前端那一格是用户可输入的
 /// 文本框），此前**原样** `PathBuf::from` 就交给了安装器：装往那里写、
 /// 文件不存在还会创建；卸会重写它；扫是任意路径的存在性探针。
@@ -404,13 +404,13 @@ pub(crate) fn render_manual_cleanup_hint(what: &str, hits: &[LegacyRcLine]) -> S
 /// 而「其它文件」是产品特性（用户可以指 `~/.config/fish/config.fish`）。
 /// ⇒ 围栏只挡「跑出 home」这一类，**不缩小功能**。
 ///
-/// # 〔AL2 · 第四波 4D〕拆成两层：**词法**（本函数，两侧都过）＋ **符号链接**（[`fence_on`]，只对本机）
+/// # 拆成两层：**词法**（本函数，两侧都过）＋ **符号链接**（[`fence_on`]，只对本机）
 ///
 /// 词法四条：① `~` / `~/x` 先展开（用户会手打这种）；② 必须是绝对路径；
 /// ③ 不许含 `..`（不做「消解后再看」——直接拒绝更简单也更难绕）；④ 前缀必须是 home。
 /// 全是**字符串**上的判断（与 `user_files::rel_under` 同一种算法）：`home` 是**那台机器**的后端答的
 /// （`files-home`），而那台可能不是 monitor 这台 —— `std::path::Path::is_absolute` 在 Windows 上把 `/home/zbl/.bashrc`
-/// 判成相对（没有盘符），`Path::join` 又用本机分隔符（`第四波记录/W5-ALIAS.md §2.2` · `AL2.md §2.5`）。
+/// 判成相对（没有盘符），`Path::join` 又用本机分隔符（`AL2.md §2.5`）。
 pub(crate) fn fence_lexical(home: &str, raw: &str) -> Result<String, String> {
     let expanded = if raw == "~" {
         home.to_string()
@@ -458,7 +458,7 @@ pub(crate) fn fence_lexical(home: &str, raw: &str) -> Result<String, String> {
 /// 同一道围栏：词法（[`fence_lexical`]）＋ **符号链接逃逸**那一步。
 ///
 /// 符号链接那一步：父目录已存在时用它的真身再查一次前缀 —— 挡掉 `~/link -> /etc` 这种逃逸（`install` 会跟着链接写过去）。
-/// 〔MIG-3a〕围栏住进了那台机器的后端 ⇒ `canonicalize` 量的就是**那台自己的盘**，本机远端同一道（〔AL2〕从前住 monitor 时
+/// 围栏住进了那台机器的后端 ⇒ `canonicalize` 量的就是**那台自己的盘**，本机远端同一道（从前住 monitor 时
 /// 只对本机做，远端靠写口 `files_write::resolve_existing_in_root` 兜）。写口那一道照旧在。
 pub(crate) fn fence(home: &str, raw: &str) -> Result<String, String> {
     let expanded = fence_lexical(home, raw)?;
@@ -479,13 +479,13 @@ pub(crate) fn fence(home: &str, raw: &str) -> Result<String, String> {
     Ok(expanded)
 }
 
-// 〔AL1d · 第四波 4B〕这里原来住着 `$PROFILE` 的两份认法 ＋ 一段扫描：`discover_profiles` · `legacy_profile_paths` · `scan_legacy_profiles`〔散文墓碑〕
+// 这里原来住着 `$PROFILE` 的两份认法 ＋ 一段扫描：`discover_profiles` · `legacy_profile_paths` · `scan_legacy_profiles`〔散文墓碑〕
 // （前者认 PS 5.1 / 7 的 `Microsoft.PowerShell_profile.ps1`；后者把同目录的 `profile.ps1` 当成「v1.7.0-1.7.1 装错的位置」），
 // 以及扫一份的 `scan_path` / `scan_profile`〔散文墓碑〕。`$PROFILE` 在哪今天**只有** `shell_dialect.rs` 的 PowerShell 那一臂答（四份都列：
-// `profile.ps1` 是合法的 AllHosts 位置，不是「装错了」—— 从前两处认法正是在这一格上互相矛盾，`调研/第四波记录/AL1d.md §1.3`）；
+// `profile.ps1` 是合法的 AllHosts 位置，不是「装错了」—— 从前两处认法正是在这一格上互相矛盾）；
 // 扫一份的判内容那一半是上面的 [`block_state`]，读盘那一次在 `account_aliases::rc_candidates_in`。
 
-// 〔MIG-3a〕`K-R132` 那一节「装上了、能跑、用户敲不到」（用户级 PATH 那一格）留在 monitor（`profile_installer.rs`，本机后端的引导）。
+// `K-R132` 那一节「装上了、能跑、用户敲不到」（用户级 PATH 那一格）留在 monitor（`profile_installer.rs`，本机后端的引导）。
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 🔴 `K-R132` 真机现打逮到的**第二条缺陷**：BOM-less UTF-8 ＋ PS 5.1 ＝ 吞掉一行
@@ -508,7 +508,7 @@ pub(crate) fn fence(home: &str, raw: &str) -> Result<String, String> {
 // ## 机制
 //
 // 那时的落盘原语 `atomic_write_string`〔散文墓碑〕走标准库的整份写，写的是**不带 BOM 的 UTF-8**
-// （〔RW1〕今天落盘在后端 `files-put`，同样原样写字节、不加 BOM）。
+// （今天落盘在后端 `files-put`，同样原样写字节、不加 BOM）。
 // 而 **Windows PowerShell 5.1 把不带 BOM 的 `.ps1` 按系统 ANSI 代码页解**
 // （这台机器上是 GBK）。一个 UTF-8 的 CJK 字符被当成 GBK 解，末尾会剩下一个
 // **落单的前导字节**，它把紧随其后的换行吃掉 ⇒ 下一行被并进注释。
@@ -529,11 +529,11 @@ pub(crate) fn fence(home: &str, raw: &str) -> Result<String, String> {
 //
 // BOM 是 Microsoft 自己对 PS 5.1 脚本的建议编码，PS 5.1 / PS 7 / Notepad / VSCode
 // 都认。⚠ **不能加在落盘那一层** —— 那一层还有别的用户（项目 `.mcp.json`、别名那份 shell 脚本；
-// 〔RW1〕今天那一层是后端的 `files-put`，照样是这几家共用），给 JSON 和 `.sh` 加 BOM 是往别人身上引入同族的病。
+// 今天那一层是后端的 `files-put`，照样是这几家共用），给 JSON 和 `.sh` 加 BOM 是往别人身上引入同族的病。
 // ⇒ 分岔点放在**方言**这一层（[`encode_for_disk`] / [`strip_bom`]），与
 // 「写什么」那一处分岔（[`plan_install`]）同一条线。
 
-// 〔AL1c · 第四波 4B〕这里原来住着 BOM 常量与「读时剥 / 写时按方言加」那一对（`K-R132`），
+// 这里原来住着 BOM 常量与「读时剥 / 写时按方言加」那一对（`K-R132`），
 // 它们是**方言**的一格 ⇒ 搬去 `shell_dialect.rs`（`ShellDialect::encode_for_disk` / `::decode_from_disk`，
 // BOM 常量的唯一住址也跟过去了）。分岔点仍在方言这一层，与「写什么」那一处分岔（[`plan_install`]）同一条线。
 
@@ -560,12 +560,12 @@ fn encode_for_disk(flavor: Shell, content: &str) -> String {
 ///   `function cc`——避免覆盖用户原有 cd/代理/etc 逻辑，用户自己在 cc 开头加
 ///   `__ccm_bind` 一行调用即可）。
 ///
-/// 🔴 〔`R86` 09-15〕**PATH 那一段不在这里了** —— 生成它的那两个函数整个删了
+/// 🔴 **PATH 那一段不在这里了** —— 生成它的那两个函数整个删了
 /// （理由住本文件上面那段横幅）⇒ 这一块现在**只装 `cc`**。
 /// 用户级 PATH 那件事换成**用户点一下**（`R85`），命令文本由
 /// monitor `profile_installer.rs` 的 `render_user_path_setup_command` / `render_user_path_removal_command` 生成（本机后端的引导那一格）。
 ///
-/// 🔴 〔`KR135D2` 09-15〕**`cc` 翻正了：它现在走 `ccm`，不再直呼 `claude`。**
+/// 🔴 **`cc` 翻正了：它现在走 `ccm`，不再直呼 `claude`。**
 ///
 /// 上一轮（`K-R132`）这一行是 `& claude $RemainingArgs`，并被登记成一处**反向锚点** ——
 /// 那不是遗忘，是刻意钉住的一处不一致。本轮把它翻正，它当初那三条暂缓理由逐条到期：
@@ -588,19 +588,19 @@ fn encode_for_disk(flavor: Shell, content: &str) -> String {
 ///
 /// ⚠ **`K-R132` 把「把 `cct` 从 Windows 文案里摘掉」随动到 `src/frontend/ui/launcher-diagnostics.ts`
 /// 那一句上 —— 本轮现打，那个随动的前提是假的**：那一句只在 **POSIX rc** 那一臂印
-/// （它的下拉只遍历 `AccountAliasReport::rc_candidates`〔散文墓碑〕（〔AL1〕今天是 `AliasListing::rc_candidates`），而那张表现算自
-/// 那时 `account_aliases` 里那张 POSIX 候选表（〔AL1c〕今天住 `shell_dialect.rs` 的 POSIX 那一臂），**一份 PowerShell profile 都没有**），
+/// （它的下拉只遍历 `AccountAliasReport::rc_candidates`〔散文墓碑〕（今天是 `AliasListing::rc_candidates`），而那张表现算自
+/// 那时 `account_aliases` 里那张 POSIX 候选表（今天住 `shell_dialect.rs` 的 POSIX 那一臂），**一份 PowerShell profile 都没有**），
 /// 而那一臂的 `cct` 是**真有**的（`src/shared/ccm-aliases.sh` 里就定义着）。
-/// PowerShell 那一臂是另一份文件（那时的 `src/frontend/ui/settings/cc_integration.ts` 的 `renderScanResult`；〔AL1c〕今天并进了
+/// PowerShell 那一臂是另一份文件（那时的 `src/frontend/ui/settings/cc_integration.ts` 的 `renderScanResult`；今天并进了
 /// `src/frontend/ui/settings/machine-aliases.ts`，是 PowerShell 那一侧的别名块，生成的别名在 PowerShell 上照样不带 tmux 那一族），
 /// 现打 `cct` **零命中**。⇒ **Windows 文案里今天一个 `cct` 都没有，没有东西要摘。**
 /// 读数 · 量法 · 分母住 `tests/evidence/K-R135-摸底.md`。
 ///
-/// 〔HX2 · RT1 F6〕`monitor_data_dir` 填进模板那一格 `{{MONITOR_DATA_DIR}}`（`__ccm_bind` 找 `ps-registry/` · `ps-await/` ·
+/// `monitor_data_dir` 填进模板那一格 `{{MONITOR_DATA_DIR}}`（`__ccm_bind` 找 `ps-registry/` · `ps-await/` ·
 /// `auto-launch.json` 的那个目录），按 PowerShell 单引号字面量写。它只有一个出口 —— `paths::resolve_monitor_data_dir`
 /// （跟 `CCM_DATA_DIR`），由 [`plan_install`] 取了交进来。
 /// 〔墓碑 —— 从前模板里自己写死一份 `Join-Path $env:USERPROFILE '<数据目录的旧住址>'`：数据目录的第二个住址，
-///  `CCM_DATA_DIR` 隔离跑时每次 `cc` 白等 3 s ＋ 一句「绑定超时」（`第四波记录/RT1.md §8` F6）。〕
+///  `CCM_DATA_DIR` 隔离跑时每次 `cc` 白等 3 s ＋ 一句「绑定超时」。〕
 pub(crate) fn render_cc_code(
     command_name: &str,
     include_cc_function: bool,
@@ -614,7 +614,7 @@ pub(crate) fn render_cc_code(
     } else {
         String::new()
     };
-    // 〔`R86`〕这里原先是一个三项拼装：会话级 PATH 那一段 ＋ 它的说明注释 ＋ `cc` 那一块。
+    // 这里原先是一个三项拼装：会话级 PATH 那一段 ＋ 它的说明注释 ＋ `cc` 那一块。
     // 前两项删了（理由住上面那段横幅），于是**装进 profile 的东西只剩 `cc` 那一块**。
     CC_TEMPLATE
         .replace("{{CC_FUNCTION_BLOCK}}", &cc_block)
@@ -630,7 +630,7 @@ pub(crate) fn render_cc_code(
 /// `include_cc_function = false` 时只装 `__ccm_bind` helper，不抢 cc function 名。
 ///
 /// v1.7.10 那四道安全加固（先备份 · 真原子替换 · 写后回读 · 盘上有字节却读到空就中止）
-/// 〔RW1 · 第四波 09-24〕**住后端**（`files-put` ／ `files-peek`，本机与远端同一份规则）——
+/// **住后端**（`files-put` ／ `files-peek`，本机与远端同一份规则）——
 /// 本进程不再落盘。本函数只答方言那一半：[`plan_install`] ＋ [`encode_for_disk`]，读写经 `door`。
 /// ⚠ 内容与盘上逐字相同时**一个字节都不写**。
 pub(crate) fn install_to_profile(
@@ -644,7 +644,7 @@ pub(crate) fn install_to_profile(
     let home = door::home(d)?;
     let rel = door::rel_under(&home, &what)?;
     door::edit(d, &home, &rel, true, true, |raw| {
-        // 〔`K-R132`〕BOM 剥在**最靠近读的那一跳**；落盘那一份按方言再编码回去 ——
+        // BOM 剥在**最靠近读的那一跳**；落盘那一份按方言再编码回去 ——
         // 读回比对比的是落盘那一份（比计划出来的那一份会恒差三个字节，当场回滚）。
         let existing = strip_bom(raw.unwrap_or(""));
         let updated = plan_install(
@@ -675,7 +675,7 @@ pub(crate) fn uninstall_from_profile(d: &dyn Door, path: &Path) -> Result<(), St
     .map(|_| ())
 }
 
-/// 〔TL1 · 4C〕这一版模板的块头版本串（`src/shared/cc.ps1.tpl` 第一行 `BEGIN vN` 那个 `vN`）—— 版本号的唯一住址是模板本身。
+/// 这一版模板的块头版本串（`src/shared/cc.ps1.tpl` 第一行 `BEGIN vN` 那个 `vN`）—— 版本号的唯一住址是模板本身。
 pub(crate) fn current_block_version() -> Option<String> {
     find_block_version(CC_TEMPLATE).1
 }
@@ -712,7 +712,7 @@ fn find_conflicting_functions(flavor: Shell, content: &str, command_name: &str) 
     // 简单 line-based regex 替代：检查 "function <name>" 模式
     for line in content.lines() {
         let l = line.trim_start();
-        // 〔`K-R62`〕三对围栏一起认（`fence_marker` 的共同前缀就包含 [`BEGIN_MARKER`]）——
+        // 三对围栏一起认（`fence_marker` 的共同前缀就包含 [`BEGIN_MARKER`]）——
         // 只认 PowerShell 那一对的话，我们自己装进 rc 的 `cc() { ccm "$@"; }`
         // 会被当成「用户已有的同名函数」报成冲突。
         if let Some(open) = fence_marker(line) {
@@ -722,10 +722,10 @@ fn find_conflicting_functions(flavor: Shell, content: &str, command_name: &str) 
         if inside_ccm_block {
             continue;
         }
-        // 〔`K-R62`〕**两种方言的函数写法不同**：PowerShell 是 `function cc {`，
+        // **两种方言的函数写法不同**：PowerShell 是 `function cc {`，
         // POSIX sh 是 `cc() {`。此前只认前一形 ⇒ 在 rc 上恒空，
         // 而「恒空」与「真的没冲突」在界面上一模一样。
-        // 〔OSA〕两种写法的认法住方言（`ShellDialect::declared_function`）。
+        // 两种写法的认法住方言（`ShellDialect::declared_function`）。
         if let Some(name) = flavor.dialect().declared_function(l) {
             if name.eq_ignore_ascii_case(&safe) {
                 hits.push(safe.clone());
@@ -740,7 +740,7 @@ fn find_conflicting_functions(flavor: Shell, content: &str, command_name: &str) 
 ///
 /// 在 existing 中替换 ccm 块；若不存在则追加。
 ///
-/// 〔AL1 · 2026-09-24〕配对之后怎么拼**只剩一份**：`fenced_block::splice_in`，
+/// 配对之后怎么拼**只剩一份**：`fenced_block::splice_in`，
 /// PowerShell 那几处排版（保住原文件的 CRLF · 追加前空一行）是它的 `Layout::PowerShell` 那一臂。
 /// 那条「必须保留原文件的 EOL 风格」的来历（早期 `lines().join("\n")` 静默把 CRLF 换成 LF，
 /// 长度校验检不出、notepad 报行尾不一致）跟着搬过去了，判据仍是本文件的 CRLF 那几条。
@@ -782,14 +782,14 @@ fn sanitize_command_name(name: &str) -> String {
     }
 }
 
-// 〔RW1 · 第四波 09-24〕这里原来是本机用户文件的原子写原语 `atomic_write_string`〔散文墓碑〕与它的
+// 这里原来是本机用户文件的原子写原语 `atomic_write_string`〔散文墓碑〕与它的
 // 两份平台副本 `atomic_replace_path`〔散文墓碑〕（Windows `ReplaceFileW` 保 ACL · POSIX `rename`）。
 // 用户裁「只允许后端的文件管理部分写文件」也管本机 ⇒ `$PROFILE` / rc / 别名文件 / 项目 `.mcp.json`
 // 全改经后端写（`user_files`），三件零调用方 ⇒ 走。「Windows 上替换要保住 explicit ACE」那条性质
 // 跟着写搬到了后端（`control/files_write.rs::swap_in` 的 `cfg(windows)` 那一支）。
 
 // ═══════════════════════════════════════════════════════════════════════════
-// 〔W5-ALIAS · 第五波先行〕**别名块的真相**：从 `sftp.rs` 搬来（那份文件已经不做 SFTP，B §2 第 12 条）
+// **别名块的真相**：从 `sftp.rs` 搬来（那份文件已经不做 SFTP，B §2 第 12 条）
 // ═══════════════════════════════════════════════════════════════════════════
 //
 // 搬的是：POSIX rc 里那一对围栏 · 块的内容（`src/shared/ccm-aliases.sh`）· 自带的名字 · 合 / 剥 ·
@@ -835,7 +835,7 @@ pub(crate) const CCM_WRAPPER_SNIPPET: &str = include_str!("../../../shared/ccm-a
 /// 于是「删/加一个别名」这件事**不需要同时去改两份名单**（改漏一份正是 `KR58D1`
 /// 的失效方向）。
 ///
-/// 🔴 〔`K-R62` 09-11〕**它从 `#[cfg(test)]` 转正了**，因为多了一个生产使用者：
+/// 🔴 **它从 `#[cfg(test)]` 转正了**，因为多了一个生产使用者：
 /// `profile_installer::render_manual_cleanup_hint` 要回答「你 rc 里那几行裸的
 /// `cc()` / `cct()`，会不会把我们装的那一块遮蔽掉」—— 那个答案**只有这份文件说了算**，
 /// 在提示文案里抄一份名字清单就是第二个住址。转正**没有放宽任何东西**：
@@ -846,7 +846,7 @@ pub(crate) const CCM_WRAPPER_SNIPPET: &str = include_str!("../../../shared/ccm-a
 /// 换一种写法（`function cc {`）它会**漏**，而漏出来的形状是「人群变空」，
 /// 调用处一律先断 `!is_empty()`，不让它静默变成空真。
 pub(crate) fn builtin_alias_names() -> Vec<String> {
-    // 〔OSA〕认法住方言（`ShellDialect::declared_function`，POSIX 那一臂）。
+    // 认法住方言（`ShellDialect::declared_function`，POSIX 那一臂）。
     let mut v: Vec<String> = CCM_WRAPPER_SNIPPET
         .lines()
         .filter_map(|l| Shell::Posix.dialect().declared_function(l))
@@ -856,7 +856,7 @@ pub(crate) fn builtin_alias_names() -> Vec<String> {
     v
 }
 
-/// 〔OSA〕我们自己那块别名块的正文 —— 撞名那一问交给方言认函数用（`ShellDialect::name_taken`）：
+/// 我们自己那块别名块的正文 —— 撞名那一问交给方言认函数用（`ShellDialect::name_taken`）：
 /// POSIX 是 [`CCM_WRAPPER_SNIPPET`] 本身；PowerShell 是模板渲染出来的那一份（与数据目录无关 —— 喂一个占位目录）。
 pub(crate) fn own_block(shell: Shell) -> String {
     match shell {
@@ -890,7 +890,7 @@ pub(crate) fn merge_profile_block(
     // 原实现是自己 `find(BEGIN)` 再在其后 `find(END)`——
     // 但本机侧漏了同一道保护，于是两侧对"围栏损坏"处置不一致、本机那边会**吃掉用户内容**。
     // 现在两侧同一个函数，判定不可能再漂移。
-    // 〔AL1 · 2026-09-24〕配对之后怎么拼，**也只剩一份**：`fenced_block::splice_in`（`71 §12.5`）。
+    // 配对之后怎么拼，**也只剩一份**：`fenced_block::splice_in`。
     //   本函数只答「POSIX rc 里这一块长什么样」（方言的内容与围栏），不再自己切行拼接。
     let block = format!(
         "{CCM_PROFILE_BEGIN}\n{}\n{CCM_PROFILE_END}\n",
@@ -919,7 +919,7 @@ pub(crate) fn strip_profile_block(existing: &str, what: &str) -> Result<String, 
     // `af21ffb` 之后本机 Err、远端静默 no-op（不一致）。我 commit 里那句
     // 「两侧不可能再漂移」**只对 install 半边成立，对 uninstall 半边方向相反**。
     // 现在两侧的装与卸四条路全走 `find_pair`。
-    // 〔AL1〕拼接走 `fenced_block::splice_out`（与装那一半同一份，`71 §12.5`）。
+    // 拼接走 `fenced_block::splice_out`（与装那一半同一份）。
     super::fence::splice_out(
         existing,
         CCM_PROFILE_BEGIN,
@@ -929,7 +929,7 @@ pub(crate) fn strip_profile_block(existing: &str, what: &str) -> Result<String, 
     )
 }
 
-// 〔AL2 · 第四波 4D〕远端装 / 卸别名块那两条 Tauri 命令（连同只收 home 下裸文件名的那道小围栏）删了：
+// 远端装 / 卸别名块那两条 Tauri 命令（连同只收 home 下裸文件名的那道小围栏）删了：
 //   并进 `lib.rs` 的 `aliases_block_install` / `_remove`（带 `origin`，本机远端同一条）。
 
 #[cfg(test)]

@@ -24,7 +24,7 @@
 //!
 //! # 诚实边界
 //!
-//! 远端那一跳失败时码随原话一起交回（`remote_ask::Said`，〔主会话 09-28 裁〕别压成一个）：被写那台答 `stale` 就是 `stale`；
+//! 远端那一跳失败时码随原话一起交回（`remote_ask::Said`，别压成一个）：被写那台答 `stale` 就是 `stale`；
 //! 读不出码的（拨号失败 · 链路断了 · 那台太旧）回 `unreachable` ＋ 原话。本机那一跳的码原样保留。
 
 use copy_core::copy_text;
@@ -88,7 +88,7 @@ async fn ask_one(
                     crate::stream::remote_ask::unreachable_message(m),
                 ));
             }
-            // 〔主会话 09-28 裁〕码随原话一起交回（`stale` / `refused` / …照那台的原码）；读不出码（拨号 / 链路坏了）⇒ `unreachable`。
+            // 码随原话一起交回（`stale` / `refused` / …照那台的原码）；读不出码（拨号 / 链路坏了）⇒ `unreachable`。
             crate::stream::remote_ask::ask_json(m, cmd, &args, table, remote)
                 .await
                 .map_err(|s| {

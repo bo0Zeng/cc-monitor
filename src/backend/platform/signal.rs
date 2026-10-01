@@ -8,7 +8,7 @@
 //! **身份校验刻意留在调用方**（`tmux_hook`）：那是域判断（「这个 pid 是不是我那个后端」，
 //! 靠 starttime 比对），不是平台能力。本层只负责「把信号发出去」这一件事。
 
-/// 〔HX1〕**等一次停机信号**（unix：SIGTERM 或 SIGINT；别处：Ctrl-C）。从 `main.rs` 下沉（那里原有一个同形的等信号函数，已删）——
+/// **等一次停机信号**（unix：SIGTERM 或 SIGINT；别处：Ctrl-C）。从 `main.rs` 下沉（那里原有一个同形的等信号函数，已删）——
 /// 那一段带平台 cfg，而流模式的收场（`inbound::exit_after_drain`）也要它（排空时再来一次 ⇒ 不等了）。
 ///
 /// ★ **监听在调用的这一刻就登记好**，返回的 future 只负责等 —— 写成 `async fn` 的话，登记要等第一次被 poll，
@@ -72,7 +72,7 @@ pub(crate) fn send_sigusr1(pid: u32) -> bool {
     }
 }
 
-/// 〔RM1f〕给**整个进程组** `pgid` 发 `SIGKILL`。返回是否发成功。
+/// 给**整个进程组** `pgid` 发 `SIGKILL`。返回是否发成功。
 ///
 /// 谁要它：`plugin::invoke::run_abortable` —— 调用方放弃等待时，要连同 `timeout(1)` 前缀
 /// 起的那个孙进程一起收掉（只杀直接子进程会留下干活的那一个）。组是起的时候自己立的
@@ -98,7 +98,7 @@ pub(crate) fn kill_group(pgid: u32) -> bool {
     }
 }
 
-/// 〔STOP〕**一个要被停的进程的把手** —— 「请它收尾 → 宽限期内等 → 强杀」三步都经它（`control/resident.rs::stop_pid`）。
+/// **一个要被停的进程的把手** —— 「请它收尾 → 宽限期内等 → 强杀」三步都经它（`control/resident.rs::stop_pid`）。
 /// Linux 是 pidfd：信号经它发、退出经它等，拿到把手之后 pid 被复用也打不到别人；Windows 是进程句柄（没有「请它收尾」那一格）。
 /// 只给一次性子命令用：带期限的等待登记在 `no_timer_guard::REGISTERED_ONE_SHOT_CLI_WAITS`。
 pub(crate) struct Stoppable {

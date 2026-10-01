@@ -8,11 +8,11 @@
 //! 恒返回 `true`，是个已登记的静默错误地雷 …… Windows 今天编不过（12 个错）」——
 //! 而**这三条事实全部被 U4a 证伪**，且它就在被改的那个函数上方几行。
 //!
-//! **现状**〔WN1 · 09-24 改写〕：判活三件（`pid_alive` / `proc_starttime` / `start_epoch_from_ticks`）
+//! **现状**〔09-24 改写〕：判活三件（`pid_alive` / `proc_starttime` / `start_epoch_from_ticks`）
 //! 有了 **Windows 臂**（U4b 那一半：`OpenProcess` ＋ 退出码 ＋ `GetProcessTimes`，Win32 读法只住
 //! `platform/win_proc.rs`）；其余平台（macOS 等）仍是 U4a 那个大声的 `unimplemented!()` / `None`。
 //! `proc_env_var` / `proc_cmdline` 在 Windows 上仍是「读不到」（读别的进程的环境与命令行要读对方
-//! PEB，未公开结构，交叉编译验不了语义 ⇒ 本轮不做，登记在 `第四波记录/WN1.md` 件 E）。
+//! PEB，未公开结构，交叉编译验不了语义 ⇒ 本轮不做，登记在件 E）。
 //! 🚫 Windows 臂**只买到编得过**（`winchk-backend`）＋ 纯换算那一半在 Linux 上的对拍；真机零读数。
 //! `platform/fallback_guard.rs` 钉住这一族：fallback 分支不许凭空返回「成功」值。
 
@@ -21,7 +21,7 @@
 /// Linux (the backend's real target): `/proc/<pid>` existence. This is the
 /// add-time gate; the reuse-proof check is [`session_alive`].
 ///
-/// Windows〔WN1 · U4b〕：开得到句柄且退出码是 `STILL_ACTIVE` ⇒ 在；**「拒绝访问」也算在**
+/// Windows：开得到句柄且退出码是 `STILL_ACTIVE` ⇒ 在；**「拒绝访问」也算在**
 /// （与 Linux 同契约：`/proc/<pid>` 对别的用户的进程照样存在 —— 这里问的是存在性，不是权限）；
 /// 开得到句柄但这一刻问不出退出码 ⇒ 按「读不到不判死」算在（`liveness.rs` 那条纪律）；
 /// 其余开不出来 ⇒ 不在。
@@ -36,8 +36,8 @@ pub(crate) fn pid_alive(pid: u32) -> bool {
     }
     #[cfg(not(any(target_os = "linux", windows)))]
     {
-        // 〔WN1 · 09-24〕Windows 那一格已由上面的 `#[cfg(windows)]` 臂接走；本臂今天只剩
-        // 没有承诺的平台（macOS 等，`01 §7` 表 B）。下面这段是 U4a 的原话，照留。
+        // Windows 那一格已由上面的 `#[cfg(windows)]` 臂接走；本臂今天只剩
+        // 没有承诺的平台（macOS 等）。下面这段是 U4a 的原话，照留。
         //
         // ★ U4a（2026-08-01）：**从「静默说谎」改成「大声未实现」。**
         //
@@ -48,7 +48,7 @@ pub(crate) fn pid_alive(pid: u32) -> bool {
         //
         // U2 与 U3 两轮都明确把它推迟到本功能，理由是「改它 = 决定 Windows 语义」。
         // 到了 U4a，真语义（`OpenProcess` + 退出码）仍属 **U4b** —— 它需要 Windows 真机验证，
-        // 而主计划自己写着「等价性仓里无实测，第一步先验」。
+        // 而自己写着「等价性仓里无实测，第一步先验」。
         //
         // 那 U4a 能做的是什么？**把谎换成事实**：
         // - `panic` 是一个没人能忽略的信号，`true` 不是。
@@ -104,7 +104,7 @@ pub(crate) fn parse_starttime_from_stat(stat: &str) -> Option<u64> {
 /// 一个是「这一刻我读不出来」，一个是「我读到了，它确实没设」。
 /// 支四的两个真实来源：**exec 窗口**（60–140 µs，进程刚 `execve`、mm 还没装好）
 /// 与**僵尸进程**（`/proc/<pid>/stat` 还在 ⇒ 判活仍是 `true`，而 mm 已释放 ⇒ environ 读回 0 字节）。
-/// ⚠ exec 窗口还有一形**不走支四**〔CIFIX-BE 09-30〕：vfork 父进程被放回来、子进程还没换 mm 的那一刻，读到的是**父进程**的环境
+/// ⚠ exec 窗口还有一形**不走支四**：vfork 父进程被放回来、子进程还没换 mm 的那一刻，读到的是**父进程**的环境
 /// （非空 ⇒ `Unset` 或父的值）。生产调用方读的都是自己写了 pidfile 的进程（早 exec 完）碰不到；起子进程的夹具要自己等（`identity_tag_tests::spawn_settled_sleep`）。
 ///
 /// # 🔴 它**只**拆出一支，另两支**刻意仍然合并**（`K-R21` PM 裁定选「乙」不选「甲」）
@@ -224,13 +224,13 @@ pub(crate) fn proc_env_var(pid: u32, name: &str) -> EnvRead {
 /// The PID's procStart (start time), used to defend against PID reuse (#34).
 ///
 /// Linux: the `starttime` field (jiffies since boot) from `/proc/<pid>/stat`.
-/// Windows〔WN1 · U4b〕：`GetProcessTimes` 的创建时刻，**FILETIME 原值**（UTC、100ns、自 1601）。
+/// Windows：`GetProcessTimes` 的创建时刻，**FILETIME 原值**（UTC、100ns、自 1601）。
 /// ⚠ **单位是平台原生的，与 Linux 的 jiffies 不可互比** —— 本值只拿来与**同一个读法**读出来的
 /// 另一次比相等（`#34` 基线 · `pidwatch` 开句柄后的复核），或经 [`start_epoch_from_ticks`] 换成秒。
 /// ⚠ 于是 `watcher.rs::add_time_verdict` 的「与 pidfile 里的 `procStart` 逐值相等」那一支在 Windows 上
 /// **按构造不会命中**（claude 在 Windows 上写的是 .NET 本地 ticks，`src/frontend/shell/src/utils.rs::NetTicks`），
-/// 那一趟落到它自己的兜底启发式（「进程起得比 pidfile 晚 ⇒ 冒名」）—— 保守方向，登记在
-/// `第四波记录/WN1.md`；把两种单位对上是那个判定自己的事（`observe/`），不在翻译官这一层。
+/// 那一趟落到它自己的兜底启发式（「进程起得比 pidfile 晚 ⇒ 冒名」）—— 保守方向；
+/// 把两种单位对上是那个判定自己的事（`observe/`），不在翻译官这一层。
 /// 其余平台：`None`（「不知道」的诚实表达）。`proc_cmdline` 在 Windows 上仍是 `None`（要读 PEB）。
 pub(crate) fn proc_starttime(pid: u32) -> Option<u64> {
     #[cfg(target_os = "linux")]
@@ -272,7 +272,7 @@ pub(crate) const USER_HZ: u64 = 100;
 /// constant offset that mis-kills every future real session with no self-heal
 /// (F20 audit I-1). Session-add is rare; one small /proc read is free.
 ///
-/// Windows〔WN1 · U4b〕：`ticks` 是 [`proc_starttime`] 那一臂交的 FILETIME 原值 ⇒
+/// Windows：`ticks` 是 [`proc_starttime`] 那一臂交的 FILETIME 原值 ⇒
 /// 纯换算（[`unix_secs_from_filetime`]），不读任何东西、不碰时区。
 pub(crate) fn start_epoch_from_ticks(ticks: Option<u64>) -> Option<u64> {
     #[cfg(target_os = "linux")]
@@ -312,7 +312,7 @@ pub(crate) fn unix_secs_from_filetime(filetime: u64) -> Option<u64> {
         .map(|t| t / FILETIME_TICKS_PER_SEC)
 }
 
-/// 〔HOST〕`pid` 此刻跑的二进制路径（Linux `/proc/<pid>/exe`；别的平台答不上 ⇒ `None`，调用方不杀）。
+/// `pid` 此刻跑的二进制路径（Linux `/proc/<pid>/exe`；别的平台答不上 ⇒ `None`，调用方不杀）。
 pub(crate) fn exe_of(pid: u32) -> Option<String> {
     #[cfg(target_os = "linux")]
     {

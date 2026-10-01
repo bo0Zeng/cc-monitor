@@ -34,7 +34,7 @@
 //! 唯一严格对称的只有 `resume`。⇒ 现在就立 trait 会得到一个"两边都别扭"的抽象。
 //! 立接口的动作留给 `L2`，由 `S6`（最小假 agent）**反过来**逼出真正需要的那几个方法。
 //!
-//! ⚠ 另一半如实说〔`S4b` 08-14 订正〕：那个 `claude_dir` **参数名已经清了**
+//! ⚠ 另一半如实说：那个 `claude_dir` **参数名已经清了**
 //!（8 个文件；生产段 `claude_dir` 64 行 → 3 行，剩下的 3 处全是冻结的 wire 字段名；
 //! `agent_locality_guard` 判据③钉住不许长回来）。
 //! **但通用层仍然叫得出 agent 的名字** —— 换了个形状：8 个文件 / 27 处
@@ -42,7 +42,7 @@
 //! 「知识收进适配层」与「通用层不再叫得出 agent 名字」是两件事，本层只做到了第一件；
 //! 第二件卡在**还没有接口**（`L2`），归 `S6`。
 //!
-//! # 〔`S5` 08-14〕**注册表**：本文件从"目录索引"变成了"这台机器认得哪几个 agent"
+//! # **注册表**：本文件从"目录索引"变成了"这台机器认得哪几个 agent"
 //!
 //! [`REGISTRY`] + [`visible_homes`] 让 backend **有能力**声明它看得见哪些 agent
 //! （`G1` 成功标准③）。⚠ **能力先建、生产路径今天不接** —— `main.rs` 仍硬写
@@ -74,7 +74,7 @@ pub mod claudecode;
 pub(crate) mod codex;
 pub(crate) mod sse_anthropic;
 
-/// 〔`S6`〕**夹具家** —— 本区验收件的最小假 agent。
+/// **夹具家** —— 本区验收件的最小假 agent。
 ///
 /// ⚠ **那行 `#[cfg(test)]` 就是它与一个真 agent 的全部差别**（外加它不进 [`REGISTRY`]）：
 /// 生产二进制里一个字节都没有它，真 `hello.homes` 永远不会声明它。
@@ -84,7 +84,7 @@ pub(crate) mod sse_anthropic;
 #[cfg(test)]
 pub(crate) mod fake;
 
-/// 一个 agent 适配层在注册表里的样子〔`S5`〕。
+/// 一个 agent 适配层在注册表里的样子。
 ///
 /// ⚠ **刻意不是 trait**（`D4` 逐字「接口由现有能力反推，不凭空设计」；`S4b §2` 复述过一遍）。
 /// 今天两家能对称答出来的只有"我叫什么"与"我的 home 在哪"这两问 ——
@@ -96,7 +96,7 @@ pub(crate) struct Adapter {
     pub(crate) kind: &'static str,
     /// **账号维度在这一家上的载体** —— 切账号靠改哪个环境变量。`None` = 这一家没有账号维度。
     ///
-    /// 〔`K-R48` 09-11〕加这一格的理由：终端 `ccm` 面（`control/ccm/`）要设 / 清 / 读它，
+    /// 加这一格的理由：终端 `ccm` 面（`control/ccm/`）要设 / 清 / 读它，
     /// 而那个名字**是某一家的知识**。让通用层直接 `use agents::claudecode::paths::…`
     /// 会在 `agent_locality_guard` 的「④ 通用层直呼适配层」上凭空多出 5 处 ——
     /// 而那个数是 `G1` 成功标准②的头条数字、**只许降**。
@@ -108,43 +108,43 @@ pub(crate) struct Adapter {
     /// 让每家自己定判准的话，「看得见一个 agent」就成了两套语义，
     /// 而 `S6` 的最小假 agent 得先猜自己该伪造哪一套。
     pub(crate) home: fn() -> Option<PathBuf>,
-    /// 〔AS2 · 第四波 4B · V113〕这一家的**资产面**（skill · 项目级 MCP 住哪、怎么认出来）。
+    /// 这一家的**资产面**（skill · 项目级 MCP 住哪、怎么认出来）。
     /// `None` = 这一家今天没有可记进资产目录的东西。
     ///
     /// ⚠ 收进注册表而不是让 `asset_catalog.rs` 直呼 `agents::<名>::` —— 理由与 [`Adapter::account_env`] 同一条：
     /// 后者会让 `agent_locality_guard` 判据④的读数（只许降）凭空上涨。
     pub(crate) assets: Option<AssetFace>,
-    /// 〔C4d · 第四波 4B〕这一家的**合成历史**面：它的会话不在「按项目目录分」的记录树里（Codex 按日期分），
+    /// 这一家的**合成历史**面：它的会话不在「按项目目录分」的记录树里（Codex 按日期分），
     /// 历史清单要由通用层按 cwd 分组合成项目。`None` = 这一家的历史走记录树那一条（Claude）或没有历史。
     ///
     /// ⚠ 收进注册表而不是让 `history_join.rs` 直呼 `agents::<名>::` —— 理由同 [`Adapter::assets`]。
     pub(crate) history: Option<HistoryFace>,
-    /// 〔NT2 · V25〕这一家的**默认上游**（中转 `/t/` 直通、表里没有那一行时发到哪）。`None` = 未登记 ⇒ 上游选择拒（404 ＋ 原因头，FIX3 之前是 502），不回落。
+    /// 这一家的**默认上游**（中转 `/t/` 直通、表里没有那一行时发到哪）。`None` = 未登记 ⇒ 上游选择拒（404 ＋ 原因头，FIX3 之前是 502），不回落。
     ///
-    /// 用户 2026-09-18 逐字「**写死, 跟着适配层**」（`99 §1` V25）：先前这一格住上游选择自己那张表
-    /// （`accounts::upstream_select` 的每 agent 一行表），与「跟着适配层」不是同一格（`设计/20 §3.1` 自陈待对齐）。
+    /// 用户 2026-09-18 逐字「**写死, 跟着适配层**」：先前这一格住上游选择自己那张表
+    /// （`accounts::upstream_select` 的每 agent 一行表），与「跟着适配层」不是同一格（自陈待对齐）。
     /// 今天上游选择**只从这里读**（`default_upstreams`）—— 加一家的默认上游，改的就是注册表里那一行。
     pub(crate) upstream: Option<DefaultUpstream>,
-    /// 〔SH1 · V137〕这一家的 **MCP 读**（server 表住哪几层、项目表住哪 —— 那一家的格式知识）。`None` = 这一家今天没有。
+    /// 这一家的 **MCP 读**（server 表住哪几层、项目表住哪 —— 那一家的格式知识）。`None` = 这一家今天没有。
     /// 收进注册表而不是让帧面宿主直呼 `agents::<名>::` —— 理由同 [`Adapter::assets`]（判据④的读数只许降）。
     pub(crate) mcp: Option<McpFace>,
-    /// 〔MIG-3b 续〕这一家的**足迹面**：落在它自己布局里的那几条申报 ＋ 申报路径里 `~/<它的家>/…` 怎么认 ＋ 用户级 settings 住哪。
+    /// 这一家的**足迹面**：落在它自己布局里的那几条申报 ＋ 申报路径里 `~/<它的家>/…` 怎么认 ＋ 用户级 settings 住哪。
     /// 收进注册表而不是让 `footprint/` 直呼 `agents::<名>::` —— 理由同 [`Adapter::assets`]（判据④的读数只许降）。
     pub(crate) footprint: Option<FootprintFace>,
     /// 这一家的**账号库布局**：一个身份由哪几份文件组成 · 没设账号时的配置根 · 登录邮箱在哪读。`None` = 这一家今天没有多账号。
     /// 收进注册表而不是让 `accounts/manage/` 直呼 `agents::<名>::` —— 理由同 [`Adapter::assets`]（判据④的读数只许降）。
     pub(crate) accounts: Option<AccountsFace>,
-    /// 〔MOD · `设计/90 §3` 判据 3〕这一家的**记录解释**：一行原文在渲染模型里是什么 · sid 怎么从文件名来 · 轮次边沿 · 漂移账。
+    /// 这一家的**记录解释**：一行原文在渲染模型里是什么 · sid 怎么从文件名来 · 轮次边沿 · 漂移账。
     /// 收进注册表而不是让通用层直呼 `agents::<名>::` —— 理由同 [`Adapter::assets`]（判据④的读数只许降）。
     pub(crate) records: Option<RecordFace>,
-    /// 〔THIN〕tmux 前台命令（`#{pane_current_command}`）是这几个之一 ⇒ 那个 pane 跑的是这一家（从前界面按画像表自己判）。
+    /// tmux 前台命令（`#{pane_current_command}`）是这几个之一 ⇒ 那个 pane 跑的是这一家（从前界面按画像表自己判）。
     /// `None` ＝ 今天没人考据过。收进注册表而不是让 `observe/tmux_list.rs` 直呼 `agents::<名>::` —— 理由同 [`Adapter::assets`]。
     pub(crate) processes: Option<&'static [&'static str]>,
-    /// 〔P1 · 第 4 件〕这一家的**起会话事实**（默认启动器 · shell wrapper · resume 字面量 · 嵌套标记）；`None` ＝ 这一家不由我们起。
+    /// 这一家的**起会话事实**（默认启动器 · shell wrapper · resume 字面量 · 嵌套标记）；`None` ＝ 这一家不由我们起。
     pub(crate) launch: Option<LaunchFace>,
 }
 
-/// 〔P1 · 第 4 件 · `设计/00 §2.1` 加一个 agent 只改 `agents/`〕一家的起会话事实 —— **唯一的家**。
+/// 〔加一个 agent 只改 `agents/`〕一家的起会话事实 —— **唯一的家**。
 /// 从前住两处（monitor `adapter.rs` · 后端 `control/ccm/`，靠金样 `agent-profile-golden.tsv` 对着）；今天 `ccm` 按注册表读
 /// （[`launch_face_of`]），界面与 monitor 读从这里生成的 `src/frontend/ui/generated/agent-profile-table.ts`。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -178,9 +178,9 @@ pub(crate) fn launchable_kinds() -> Vec<&'static str> {
         .collect()
 }
 
-/// 〔THIN〕一个 `tool_use` 在界面上画成哪一种卡 —— **通用的值域**；哪个工具名算哪一种是各家的格式知识（`agents/<名>/`，
+/// 一个 `tool_use` 在界面上画成哪一种卡 —— **通用的值域**；哪个工具名算哪一种是各家的格式知识（`agents/<名>/`，
 /// 注册表 [`RecordFace::tool_card`]）。没有这一格 ＝ 普通工具卡。随记录成品带出（`JsonlRecord::Assistant` 的 `toolCards`），
-/// 界面只按它画、不认工具名（`设计/00 §1.2` 判定只在后端 · `§2.1` 加一个 agent 只改 `agents/`）。
+/// 界面只按它画、不认工具名（判定只在后端 · `§2.1` 加一个 agent 只改 `agents/`）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
@@ -196,11 +196,11 @@ pub enum ToolCard {
     Md,
 }
 
-/// 〔THIN〕[`RecordFace::branch`] 的形状。
+/// [`RecordFace::branch`] 的形状。
 pub(crate) type BranchFn =
     fn(&[serde_json::Value], &str, &str, &str) -> Result<Vec<serde_json::Value>, String>;
 
-/// 〔THIN〕记录树那一家按 sid 找会话文件 —— 通用层（分叉 · 「记录还在不在」）按 sid 找文件的唯一入口。没有哪一家答得了 ⇒ 照实拒。
+/// 记录树那一家按 sid 找会话文件 —— 通用层（分叉 · 「记录还在不在」）按 sid 找文件的唯一入口。没有哪一家答得了 ⇒ 照实拒。
 pub(crate) fn find_session_file(records_root: &Path, sid: &str) -> Result<PathBuf, String> {
     match stream_record_face().and_then(|r| r.find_session) {
         Some(f) => f(records_root, sid),
@@ -208,7 +208,7 @@ pub(crate) fn find_session_file(records_root: &Path, sid: &str) -> Result<PathBu
     }
 }
 
-/// 〔THIN〕记录树那一家的分叉记录变换 —— 通用层（`control/fork_write.rs`）分叉的唯一入口。没有哪一家答得了 ⇒ 照实拒。
+/// 记录树那一家的分叉记录变换 —— 通用层（`control/fork_write.rs`）分叉的唯一入口。没有哪一家答得了 ⇒ 照实拒。
 pub(crate) fn build_branch_records(
     lines: &[serde_json::Value],
     message_uuid: &str,
@@ -221,7 +221,7 @@ pub(crate) fn build_branch_records(
     }
 }
 
-/// 〔THIN〕这个 tmux 前台命令是不是注册表里某一家的进程（[`Adapter::processes`]）—— `tmux-list` 每一行的 `agent`。
+/// 这个 tmux 前台命令是不是注册表里某一家的进程（[`Adapter::processes`]）—— `tmux-list` 每一行的 `agent`。
 pub(crate) fn is_agent_process(command: &str) -> bool {
     REGISTRY
         .iter()
@@ -229,7 +229,7 @@ pub(crate) fn is_agent_process(command: &str) -> bool {
         .any(|names| names.contains(&command))
 }
 
-/// 〔MOD〕一家的记录解释面：函数指针（同 [`Adapter::home`]，不立 trait）。
+/// 一家的记录解释面：函数指针（同 [`Adapter::home`]，不立 trait）。
 #[derive(Clone, Copy)]
 pub(crate) struct RecordFace {
     /// 一行原文 ⇒ 渲染模型那一条（空行 / 纯 BOM ⇒ `Ok(None)`；连 JSON 都不是 ⇒ `Err`，调用方照占号、不出成品）。
@@ -238,15 +238,15 @@ pub(crate) struct RecordFace {
     pub(crate) sid: fn(&Path) -> Option<String>,
     /// 这一行是不是一轮的结束 ⇒ 那条记录的 uuid（`turn_end` 帧）。`None` ＝ 这一家今天不报轮次边沿。
     pub(crate) turn_end: Option<fn(&str) -> Option<String>>,
-    /// 〔THIN〕在这一家的记录树（`records_root`）下按 sid 找那份会话文件（原共享 crate `branch-core`）。`None` ＝ 这一家不按 sid 找。
+    /// 在这一家的记录树（`records_root`）下按 sid 找那份会话文件（原共享 crate `branch-core`）。`None` ＝ 这一家不按 sid 找。
     pub(crate) find_session: Option<fn(&Path, &str) -> Result<PathBuf, String>>,
-    /// 〔THIN〕分叉的记录变换：`(记录, 分叉点 uuid, 源 sid, 新 sid)` ⇒ 新会话的记录（原共享 crate `branch-core`）。`None` ＝ 这一家不分叉。
+    /// 分叉的记录变换：`(记录, 分叉点 uuid, 源 sid, 新 sid)` ⇒ 新会话的记录（原共享 crate `branch-core`）。`None` ＝ 这一家不分叉。
     pub(crate) branch: Option<BranchFn>,
     /// 这一家的漂移账（看不懂的记录类型记在哪）⇒ 成品；`None` ＝ 这一家不记。
     pub(crate) drift: Option<fn() -> serde_json::Value>,
-    /// 〔P1〕这一家的记录文本面（正文 / 工具内容怎么抽 · CLI 注入怎么剥）；`None` ＝ 这一家不进搜索 / 摘录那几条通用路。
+    /// 这一家的记录文本面（正文 / 工具内容怎么抽 · CLI 注入怎么剥）；`None` ＝ 这一家不进搜索 / 摘录那几条通用路。
     pub(crate) text: Option<TextFace>,
-    /// 〔MOD · 子步 4〕删历史会话那一条的两问（按 sid 找那一份 · 它是不是一份会话记录）；`None` ＝ 这一家不删。
+    /// 删历史会话那一条的两问（按 sid 找那一份 · 它是不是一份会话记录）；`None` ＝ 这一家不删。
     pub(crate) delete: Option<SessionDelete>,
     /// 一条记录与流对账用的键（同一次上游应答写出的记录都带它）。`None` ＝ 这一家的流对不上记录（活卡不定稿，只靠收尾撤）。
     pub(crate) response_id: Option<fn(&serde_json::Value) -> Option<String>>,
@@ -423,7 +423,7 @@ pub(crate) fn child_links_of(v: &serde_json::Value) -> Vec<ChildLink> {
     stream_run_faces().child_links(v)
 }
 
-/// 〔P1〕一家的记录文本面（原共享 crate `search-core` 里 Claude 记录文本那一半）：函数指针（同 [`Adapter::home`]，不立 trait）。
+/// 一家的记录文本面（原共享 crate `search-core` 里 Claude 记录文本那一半）：函数指针（同 [`Adapter::home`]，不立 trait）。
 /// 通用层（全局搜索 · 会话内查找 · 历史摘录 · 用户输入列表）经 [`main_text`] · [`tool_text`] · [`clean_user_text`] 够它，不按名字够。
 #[derive(Clone, Copy)]
 pub(crate) struct TextFace {
@@ -440,22 +440,22 @@ fn text_face() -> Option<TextFace> {
     stream_record_face().and_then(|r| r.text)
 }
 
-/// 〔P1〕记录树那一家怎么抽正文 —— 通用层够它的唯一入口。没有哪一家答得了 ⇒ 空串（不搜、不摘）。
+/// 记录树那一家怎么抽正文 —— 通用层够它的唯一入口。没有哪一家答得了 ⇒ 空串（不搜、不摘）。
 pub(crate) fn main_text(content: &serde_json::Value) -> String {
     text_face().map_or_else(String::new, |t| (t.main)(content))
 }
 
-/// 〔P1〕记录树那一家怎么抽工具内容。没有哪一家答得了 ⇒ 空串。
+/// 记录树那一家怎么抽工具内容。没有哪一家答得了 ⇒ 空串。
 pub(crate) fn tool_text(content: &serde_json::Value, is_assistant: bool) -> String {
     text_face().map_or_else(String::new, |t| (t.tool)(content, is_assistant))
 }
 
-/// 〔P1〕记录树那一家怎么剥 user 正文里的 CLI 注入。没有哪一家答得了 ⇒ 原样（不剥）。
+/// 记录树那一家怎么剥 user 正文里的 CLI 注入。没有哪一家答得了 ⇒ 原样（不剥）。
 pub(crate) fn clean_user_text(s: &str) -> String {
     text_face().map_or_else(|| s.to_string(), |t| (t.clean_user)(s))
 }
 
-/// 〔MOD · 子步 4 · 主会话裁〕删历史会话那一条要问适配层的两件事 —— 那是记录布局的知识，文件管理写面不认；
+/// 删历史会话那一条要问适配层的两件事 —— 那是记录布局的知识，文件管理写面不认；
 /// 由门（命令注册那一处）经 [`locate_session_for_delete`] · [`is_session_record`] 这一个窄口递给它。
 #[derive(Clone, Copy)]
 pub(crate) struct SessionDelete {
@@ -470,7 +470,7 @@ fn session_delete() -> Option<SessionDelete> {
     stream_record_face().and_then(|r| r.delete)
 }
 
-/// 〔MOD〕窄口之一：sid ⇒ 要删的那一份。没有哪一家答得了 ⇒ 照实拒。
+/// 窄口之一：sid ⇒ 要删的那一份。没有哪一家答得了 ⇒ 照实拒。
 pub(crate) fn locate_session_for_delete(sid: &str) -> Result<PathBuf, String> {
     match session_delete() {
         Some(d) => (d.locate)(sid),
@@ -481,12 +481,12 @@ pub(crate) fn locate_session_for_delete(sid: &str) -> Result<PathBuf, String> {
     }
 }
 
-/// 〔MOD〕窄口之二：这一份是不是会话记录（没有哪一家答得了 ⇒ 不是）。
+/// 窄口之二：这一份是不是会话记录（没有哪一家答得了 ⇒ 不是）。
 pub(crate) fn is_session_record(p: &Path) -> bool {
     session_delete().is_some_and(|d| (d.is_record)(p))
 }
 
-/// 〔MOD〕一行原文在渲染模型里的样子 —— 适配层给，通用层只搬（`message` 的字段通用层一个都不读）。
+/// 一行原文在渲染模型里的样子 —— 适配层给，通用层只搬（`message` 的字段通用层一个都不读）。
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct ParsedLine {
     /// 渲染模型那一条（界面收到的就是它）。
@@ -497,7 +497,7 @@ pub(crate) struct ParsedLine {
     pub(crate) cwd: Option<String>,
 }
 
-/// 〔MOD〕一份已过围栏的会话记录是哪一家的：落在某一家合成历史的根下 ⇒ 那一家；否则 ⇒ 家目录记录树那一家
+/// 一份已过围栏的会话记录是哪一家的：落在某一家合成历史的根下 ⇒ 那一家；否则 ⇒ 家目录记录树那一家
 /// （注册表里**没有**合成历史面的那一家 —— 它的会话就住在按项目分的记录树里，流式 watcher 跟的也是它）。
 pub(crate) fn record_face_of(path: &Path) -> Option<RecordFace> {
     record_face_among(REGISTRY, path)
@@ -516,7 +516,7 @@ pub(crate) fn record_face_among(registry: &[Adapter], path: &Path) -> Option<Rec
         .and_then(|a| a.records)
 }
 
-/// 〔MOD〕流式 watcher 跟的那一家（家目录记录树那一家）的记录解释面。
+/// 流式 watcher 跟的那一家（家目录记录树那一家）的记录解释面。
 pub(crate) fn stream_record_face() -> Option<RecordFace> {
     REGISTRY
         .iter()
@@ -524,7 +524,7 @@ pub(crate) fn stream_record_face() -> Option<RecordFace> {
         .and_then(|a| a.records)
 }
 
-/// 〔MOD〕注册表里每一家的漂移账（注册序；不记的跳过）—— 帧命令 `drift-report` 的读法入口。
+/// 注册表里每一家的漂移账（注册序；不记的跳过）—— 帧命令 `drift-report` 的读法入口。
 pub(crate) fn drift_reports() -> Vec<serde_json::Value> {
     REGISTRY
         .iter()
@@ -532,7 +532,7 @@ pub(crate) fn drift_reports() -> Vec<serde_json::Value> {
         .collect()
 }
 
-/// 〔MIG-3b 续〕见 [`Adapter::footprint`]。
+/// 见 [`Adapter::footprint`]。
 #[derive(Clone, Copy)]
 pub(crate) struct FootprintFace {
     pub(crate) tools: &'static [crate::footprint::registry::ToolSpec],
@@ -584,13 +584,13 @@ pub(crate) fn footprint_faces() -> impl Iterator<Item = FootprintFace> {
     REGISTRY.iter().filter_map(|a| a.footprint)
 }
 
-/// 〔SH1 · V137〕一家的 MCP 读面：函数指针（同 [`Adapter::home`]，不立 trait）。入参是项目目录（可缺）。
+/// 一家的 MCP 读面：函数指针（同 [`Adapter::home`]，不立 trait）。入参是项目目录（可缺）。
 #[derive(Clone, Copy)]
 pub(crate) struct McpFace {
     pub(crate) read: fn(Option<&Path>) -> McpRead,
 }
 
-/// 〔SH1 · V137〕一家读出来的 MCP 事实：条目（user / local / project）· 用过的项目目录（`dirs`）· 读不出来的那几份（说出来，不当成空）。
+/// 一家读出来的 MCP 事实：条目（user / local / project）· 用过的项目目录（`dirs`）· 读不出来的那几份（说出来，不当成空）。
 #[derive(Debug, Default, Clone, PartialEq)]
 pub(crate) struct McpRead {
     pub entries: Vec<McpEntry>,
@@ -607,7 +607,7 @@ pub(crate) struct McpEntry {
     pub source: String,
 }
 
-/// 〔SH1 · V137〕注册表里第一家有 MCP 读面的，读一遍（今天只有 Claude 一家）。`None` = 没有哪一家认得 MCP。
+/// 注册表里第一家有 MCP 读面的，读一遍（今天只有 Claude 一家）。`None` = 没有哪一家认得 MCP。
 pub(crate) fn mcp_read_among(registry: &[Adapter], project_dir: Option<&Path>) -> Option<McpRead> {
     registry
         .iter()
@@ -619,17 +619,17 @@ pub(crate) fn mcp_read(project_dir: Option<&Path>) -> Option<McpRead> {
     mcp_read_among(REGISTRY, project_dir)
 }
 
-/// 〔NT2 · V25〕一家的默认上游：路由里叫它什么 · 盖掉内置默认的那个旋钮 · 内置默认。三格焊在一起
+/// 一家的默认上游：路由里叫它什么 · 盖掉内置默认的那个旋钮 · 内置默认。三格焊在一起
 /// （分开取就写得出「A 家的旋钮配 B 家的默认值」—— 与上游选择那张表的 `Row` 焊住上游与 key 同一条理由）。
 pub(crate) struct DefaultUpstream {
     /// 中转路由键第 1 段里这一家的名字（monitor 起会话拼 `/t/<它>/…`）。⚠ 与 [`Adapter::kind`]（wire 上的 `agent_kind`）
     /// 是两个值域：Claude 在 wire 上叫 `claude`、在路由里叫 `claude-code` —— 各有各的既有契约，不在这里对齐。
     pub(crate) route_id: &'static str,
-    /// 盖掉内置默认的环境变量名。**每家一个**（V26「每家一个」：不留「覆盖哪一家说不清」的全局旋钮）。
+    /// 盖掉内置默认的环境变量名。**每家一个**（「每家一个」：不留「覆盖哪一家说不清」的全局旋钮）。
     pub(crate) env: &'static str,
     /// 没配 `env` 时这一家发到哪儿。
     pub(crate) fallback: &'static str,
-    /// 〔V141〕这一家的请求里**它自己带着会话标识**的那个头（中转拿它给流打标签）。`None` = 说不出 ⇒ 流不带标签。
+    /// 这一家的请求里**它自己带着会话标识**的那个头（中转拿它给流打标签）。`None` = 说不出 ⇒ 流不带标签。
     pub(crate) session_header: Option<&'static str>,
     /// 这一家的上游说哪种流协议（归一流的折法）。`None` ＝ 它的流不折（活卡认不得）。
     pub(crate) stream: Option<StreamFace>,
@@ -638,12 +638,12 @@ pub(crate) struct DefaultUpstream {
     pub(crate) owner_header: Option<&'static str>,
 }
 
-/// 〔NT2 · V25〕登记了默认上游的每一家：`(路由名, 那一格)`。**上游选择读默认上游的唯一入口**。
+/// 登记了默认上游的每一家：`(路由名, 那一格)`。**上游选择读默认上游的唯一入口**。
 pub(crate) fn default_upstreams() -> impl Iterator<Item = &'static DefaultUpstream> {
     REGISTRY.iter().filter_map(|a| a.upstream.as_ref())
 }
 
-/// 〔V141〕各家登记的会话标识头（注册序、去重）：中转经上游选择拿到这份名单，按它从请求里认会话 —— 会话 id 归 agent 自己。
+/// 各家登记的会话标识头（注册序、去重）：中转经上游选择拿到这份名单，按它从请求里认会话 —— 会话 id 归 agent 自己。
 pub(crate) fn session_headers() -> Vec<&'static str> {
     let mut v: Vec<&'static str> = Vec::new();
     for h in REGISTRY
@@ -693,19 +693,19 @@ pub(crate) fn stream_families() -> Vec<StreamFamily> {
         .collect()
 }
 
-/// 〔C4d〕一家的合成历史面：函数指针（同 [`Adapter::home`]，不立 trait）。
+/// 一家的合成历史面：函数指针（同 [`Adapter::home`]，不立 trait）。
 #[derive(Clone, Copy)]
 pub(crate) struct HistoryFace {
     /// 这台机器上这一家的会话（没装 ⇒ 空）。
     pub(crate) sessions: fn() -> Vec<SynthSession>,
     /// 一份会话的首条真用户话（列表摘要）。
     pub(crate) excerpt: fn(&Path) -> String,
-    /// 〔LOC1b · 4D〕这一家会话记录的根（没装 / 说不出 ⇒ `None`）。按路径读会话那几条命令（`history-read` 等）的
+    /// 这一家会话记录的根（没装 / 说不出 ⇒ `None`）。按路径读会话那几条命令（`history-read` 等）的
     /// 围栏认它 —— 历史清单列出来的这一家的会话，要能按同一条路打开（本机冷读也走后端之后，本机 Codex 会话靠它）。
     pub(crate) root: fn() -> Option<PathBuf>,
 }
 
-/// 〔C4d〕合成历史里的一个会话（通用层按 `cwd` 分组成项目）。
+/// 合成历史里的一个会话（通用层按 `cwd` 分组成项目）。
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct SynthSession {
     pub sid: String,
@@ -715,7 +715,7 @@ pub(crate) struct SynthSession {
     pub mtime_ms: i64,
 }
 
-/// 〔C4d〕注册表里有合成历史面的每一家：`(kind, 面)`（注册序）。
+/// 注册表里有合成历史面的每一家：`(kind, 面)`（注册序）。
 pub(crate) fn history_faces() -> Vec<(&'static str, HistoryFace)> {
     REGISTRY
         .iter()
@@ -723,7 +723,7 @@ pub(crate) fn history_faces() -> Vec<(&'static str, HistoryFace)> {
         .collect()
 }
 
-/// 〔LOC1b · 4D〕注册表里每一家合成历史面给的记录根（注册序；说不出的跳过）。按路径读会话的围栏在 Claude 的
+/// 注册表里每一家合成历史面给的记录根（注册序；说不出的跳过）。按路径读会话的围栏在 Claude 的
 /// `projects/` 之外还认这几个（`observe/history_query.rs::validate_session_path`）。
 pub(crate) fn history_roots() -> Vec<PathBuf> {
     history_faces()
@@ -732,7 +732,7 @@ pub(crate) fn history_roots() -> Vec<PathBuf> {
         .collect()
 }
 
-/// 〔AS2〕一家的资产面：函数指针（同 [`Adapter::home`]，不立 trait）。几件布局知识：怎么扫 · skill 住哪 · 用户级 MCP 住哪。
+/// 一家的资产面：函数指针（同 [`Adapter::home`]，不立 trait）。几件布局知识：怎么扫 · skill 住哪 · 用户级 MCP 住哪。
 #[derive(Clone, Copy)]
 pub(crate) struct AssetFace {
     /// 按这台机器的环境现解根、现扫：用户级那一份 ＋ 交进来的那几个项目目录（这台上开过会话的项目）。
@@ -766,7 +766,7 @@ pub(crate) struct McpSeen {
     pub file: PathBuf,
 }
 
-/// 〔AS2〕一家适配层看到的原始资产事实。**还没有摘要**（通用层 `asset_catalog.rs` 算）。
+/// 一家适配层看到的原始资产事实。**还没有摘要**（通用层 `asset_catalog.rs` 算）。
 #[derive(Debug, Default, Clone, PartialEq)]
 pub(crate) struct Sightings {
     pub skills: Vec<SkillSeen>,
@@ -775,7 +775,7 @@ pub(crate) struct Sightings {
     pub problems: Vec<String>,
 }
 
-/// 〔AS2〕注册表里每一家有资产面的，各扫一遍（注册序）。
+/// 注册表里每一家有资产面的，各扫一遍（注册序）。
 pub(crate) fn asset_sightings(projects: &[String]) -> Vec<Sightings> {
     REGISTRY
         .iter()
@@ -783,7 +783,7 @@ pub(crate) fn asset_sightings(projects: &[String]) -> Vec<Sightings> {
         .collect()
 }
 
-/// 〔AS2〕skill 的根：注册表里**第一家**有资产面的那一家（今天只有一家）。
+/// skill 的根：注册表里**第一家**有资产面的那一家（今天只有一家）。
 /// ⚠ 第二家也有 skill 的那天，这里要按 kind 选 —— 那时 `skill-read` / `skill-install-plan` 的入参得带上 kind。
 pub(crate) fn skills_root() -> Option<PathBuf> {
     REGISTRY
@@ -808,7 +808,7 @@ pub(crate) fn user_mcp_file() -> Option<PathBuf> {
         .find_map(|a| a.assets.and_then(|f| (f.user_mcp_file)()))
 }
 
-/// **这个后端认得哪几个 agent**〔`S5`〕。加一个 agent = 加一行（+ 上面加一行 `mod`）。
+/// **这个后端认得哪几个 agent**。加一个 agent = 加一行（+ 上面加一行 `mod`）。
 ///
 /// ⚠ 它与 `agent_locality_guard::tests::HOMES`（判据用的"agent 家"清单）**必须一样长**，
 /// 由 `every_agent_adapter_has_exactly_one_registry_entry` 双向钉住：
@@ -823,7 +823,7 @@ pub(crate) const REGISTRY: &[Adapter] = &[
     //   账号维度来自机器上唯一那一套账号库（`accounts/manage/`），而那套库切的就是这个变量。
     //   `ccm --agent codex --account b` 从来就是这个行为（`shared/ccm` 那侧也是无条件 export）。
     //   codex 自己并不读它 ⇒ 哪天账号维度按家拆开，改的就是这一行。
-    // 〔NT2 · V25〕codex **刻意不登记**默认上游：它的默认上游是哪一个、认不认 base URL 覆盖，本仓零证据（`C7`）⇒ 未登记即拒（fail-closed）。
+    // codex **刻意不登记**默认上游：它的默认上游是哪一个、认不认 base URL 覆盖，本仓零证据（`C7`）⇒ 未登记即拒（fail-closed）。
     Adapter { kind: codex::AGENT_KIND,      home: codex::home,      account_env: Some(claudecode::paths::CONFIG_DIR_ENV), assets: None, history: Some(codex::HISTORY), upstream: None, mcp: None, footprint: None, accounts: None, records: Some(codex::RECORDS), processes: None, launch: Some(codex::LAUNCH) },
 ];
 

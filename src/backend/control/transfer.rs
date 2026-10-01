@@ -1,5 +1,5 @@
-//! 〔SR1b · 2026-09-24〕**传输台住本机常驻后端**（`设计/60 §4.6`：「那时 `§4.2` 的传输台从 monitor 搬进本机后端，
-//! 窗口那一侧的 `call` / `subscribe` 不变」）。用户 V89「SFTP 进本机常驻后端，只写暂存区」。
+//! **传输台住本机常驻后端**（「那时 `§4.2` 的传输台从 monitor 搬进本机后端，
+//! 窗口那一侧的 `call` / `subscribe` 不变」）。用户「SFTP 进本机常驻后端，只写暂存区」。
 //!
 //! # 线上四条命令（`Run::Builtin`：要碰本连接的票表与应答通道，同 `link-*`）
 //!
@@ -10,7 +10,7 @@
 //! | `transfer-start` | `{id}` | — | 起跑；进度走出方向 `transfer` 帧（`wire.rs`） |
 //! | `transfer-stop` | `{id}` | — | 撤（幂等）。上传删暂存件；下载留 `.part` |
 //!
-//! **起跑挂在 `transfer-start` 上、不挂在开单上** —— 与旧传输台「起跑挂在订阅上」同一条理由（`设计/60 §4.2`）：
+//! **起跑挂在 `transfer-start` 上、不挂在开单上** —— 与旧传输台「起跑挂在订阅上」同一条理由：
 //! monitor 那一侧先登记好看的人、再起跑，终局就不会没人收。
 //!
 //! # 它是第三层（文件管理写面）的成员
@@ -20,12 +20,12 @@
 //! **每一处改动之前先过 `files_write::resolve_in_root`**（借用、不抄）；门仍只有 `inbound.rs`。
 //! 远端那一半（暂存区的写）一行都不在这里 —— 全经 `dial/sftp.rs` 的写原语（只许两处、先过 `fenced_remote`）。
 //!
-//! # 存亡规矩（逐字沿用旧传输台，`设计/60 §4.3` 那张表）
+//! # 存亡规矩（逐字沿用旧传输台，那张表）
 //!
 //! | 事件 | 上传的暂存件 | 下载的 `.part` |
 //! |---|---|---|
 //! | 撤（`transfer-stop` / 本机流断了） | **删**（用户说了不要） | **留**（续传的本钱） |
-//! | 失败 | **留**（续传最值钱的正是这一档） | **留**（〔DP1〕同一条理由；一个字节都没落的空 `.part` 才清） |
+//! | 失败 | **留**（续传最值钱的正是这一档） | **留**（同一条理由；一个字节都没落的空 `.part` 才清） |
 //! | 成功 | 远端后端那次提交把它变成目标 | 改名上位 |
 //!
 //! 判的是**撤的旗**，不是错误文案。续传：两侧都先把**尾块**逐字节对一遍，对得上才接（半成品只记了「写到哪」、
@@ -82,7 +82,7 @@ pub const MAX_TICKETS_PER_CONNECTION: usize = 64;
 
 /// 由（本机路径 · 大小 · 修改时间）派生暂存件的键：**同一份文件重拖一次落到同一个暂存件上** ⇒ 续传的尾块对拍照旧生效。
 ///
-/// 〔SR1b〕搬自 monitor `sftp_pool::staging_key`：暂存区、键长、键派生从此与提交那一侧（`files_commit`）**同一个 crate 一份**
+/// 搬自 monitor `sftp_pool::staging_key`：暂存区、键长、键派生从此与提交那一侧（`files_commit`）**同一个 crate 一份**
 /// （原来是「两份逐字副本 ＋ 相等断言」）。⚠ 标准库默认散列**跨 Rust 版本不保证稳定** —— 那只意味着
 /// 「升级之后第一次重拖不续传、从 0 来」，尾块对拍另有一道兜底，不会接错。
 pub fn staging_key(local_path: &str, size: u64, mtime_ns: u128) -> String {
@@ -108,7 +108,7 @@ pub fn staging_part(key: &str) -> String {
 // ═══ 本机落点（第三层：每一处改动先过路径解析）══════════════════════════════════════════════
 
 /// 本机落点拆成 `(父目录 = 路径解析的根, 文件名, 半成品名)`。必须是绝对路径、有文件名。
-/// 〔FILES2 · Q4〕名字按 `OsString` 拿（Linux 上落点可以是非 UTF-8 的原始字节：有损名下载「字节原样当文件名」）。
+/// 名字按 `OsString` 拿（Linux 上落点可以是非 UTF-8 的原始字节：有损名下载「字节原样当文件名」）。
 fn land_parts(local_path: &Path) -> Result<(PathBuf, OsString, OsString), String> {
     let p = local_path;
     let shown = p.display().to_string();
@@ -325,9 +325,9 @@ async fn drain_sent_writes(rf: &mut sftp::RemoteFile) {
 
 /// 🔴 **上传的唯一形状**：本机文件 → 暂存件 `~/.cc-monitor/staging/<key>.part`。回传完的字节数 ＋ 整份的摘要。
 ///
-/// 〔FW1 · 第四波 4D · 主会话裁 09-25〕**摘要是提交那一下的对拍依据**：一边传一边对本机那份逐字节算 SHA-256
+/// **摘要是提交那一下的对拍依据**：一边传一边对本机那份逐字节算 SHA-256
 /// （续传时先把前缀 `[0, 接上的位置)` 在本机读一遍算进去 —— 本机盘速，不过网）；远端后端改名上位之前对暂存件算一遍，
-/// 不等 ⇒ 拒并删掉那份暂存件。尾块对拍只看尾巴，看不见「前缀 ＋ 洞 ＋ 尾巴」（`设计/60 §7` 第 8 条）；整份摘要看得见任何一种坏前缀。
+/// 不等 ⇒ 拒并删掉那份暂存件。尾块对拍只看尾巴，看不见「前缀 ＋ 洞 ＋ 尾巴」；整份摘要看得见任何一种坏前缀。
 ///
 /// 暂存区不在就建最后那一段（上一级 `~/.cc-monitor` 不在 ⇒ 报错，**不顺手建** —— D11：后端是给定的，提交也要它在）。
 /// 孤儿不在这里扫（远端后端 `files_commit::sweep_stale`，每次提交成功时顺手扫）。
@@ -383,7 +383,7 @@ pub(crate) async fn upload_to_staging(
                 &[("n", &resume_from.to_string()), ("e", &e.to_string())],
             )
         })?;
-    // 〔FW1〕续传：接上的那一截前缀在本机读一遍算进摘要（与发出去的那一份逐字节同源：同一个本机文件）。
+    // 续传：接上的那一截前缀在本机读一遍算进摘要（与发出去的那一份逐字节同源：同一个本机文件）。
     let mut digest = crate::files::ContentDigest::new();
     if resume_from > 0 {
         lf.seek(std::io::SeekFrom::Start(0)).await.map_err(|e| {
@@ -494,7 +494,7 @@ pub(crate) async fn download_to_local(
         .await
         .map(|m| m.len())
         .unwrap_or(0);
-    // 〔FW1 · 第四波〕`rf_at` = 远端句柄此刻停在哪（知道才填）。尾块对上了 ⇒ 探针那一读恰好读满到 `have`，
+    // `rf_at` = 远端句柄此刻停在哪（知道才填）。尾块对上了 ⇒ 探针那一读恰好读满到 `have`，
     //   句柄就停在 `have` == `resume_from`。
     let (resume_from, rf_at) = if have > 0 {
         match tokio::fs::OpenOptions::from(opener())
@@ -518,7 +518,7 @@ pub(crate) async fn download_to_local(
     };
     // 两种开法回来的游标都停在 `resume_from`（新建 ⇒ 0；抄完前缀 ⇒ 前缀末尾）。
     let mut lf = tokio::fs::File::from_std(std_file);
-    // 🔴〔FW1 · 第四波〕**句柄已经停在 `resume_from` 就不 seek**。russh-sftp 的第一读按服务端肯给的最大包请求
+    // 🔴**句柄已经停在 `resume_from` 就不 seek**。russh-sftp 的第一读按服务端肯给的最大包请求
     //   （约 255 KiB，远大于探针那 32 KiB），多出来的那一截留在它的读缓冲里 —— 正好是续传要的下一段；
     //   seek 一下（哪怕 seek 到原地）就把缓冲整个扔掉、从 `have` 再请求一遍。DP1 真 sshd 上量到的「一次续传多读
     //   228 352 字节」= 255 KiB − 32 KiB 就是这一截。病根是 seek 丢缓冲，不是探针与续传共用一个句柄（单开一个句柄，
@@ -577,9 +577,9 @@ pub(crate) async fn download_to_local(
     let done = match core {
         Ok(d) => d,
         Err(e) => {
-            // 🔴 撤 ⇒ **留着** `.part`（下次续传的本钱）。〔DP1 · 第四波〕失败 ⇒ **也留着**：弱网上「连接没了」就是失败，
+            // 🔴 撤 ⇒ **留着** `.part`（下次续传的本钱）。失败 ⇒ **也留着**：弱网上「连接没了」就是失败，
             //   从前这里失败即删，断一次线续传的本钱全没、重下从 0 起（NT1 报备 2 现打）。与上传「失败留」同一条理由
-            //   （`设计/60 §4.3`：「续传最值钱的正是这一档；重拖同一份从尾块接上」）；不按错误文案分「断线 / 别的失败」——
+            //   （「续传最值钱的正是这一档；重拖同一份从尾块接上」）；不按错误文案分「断线 / 别的失败」——
             //   判的是撤的旗，不是错误文案。唯一还清的一形：一个字节都没落（空 `.part` 没有续传的本钱，只是垃圾）。
             let landed = tokio::fs::metadata(root.join(&part))
                 .await
@@ -598,7 +598,7 @@ pub(crate) async fn download_to_local(
 // ═══ 票表（每条流连接一张）═══════════════════════════════════════════════════════════════
 
 enum Job {
-    /// 〔FILES2 · Q5〕`home`：窗口问那台后端拿到的 `$HOME`（给了才比）—— SFTP 起始目录与它不一致 ⇒ 一个字节不写、以 `sftp_home_mismatch` 收场。
+    /// `home`：窗口问那台后端拿到的 `$HOME`（给了才比）—— SFTP 起始目录与它不一致 ⇒ 一个字节不写、以 `sftp_home_mismatch` 收场。
     Upload {
         local: String,
         key: String,
@@ -660,7 +660,7 @@ fn err(id: &str, code: &str, message: &str) -> Frame {
     }
 }
 
-/// 〔FILES2 · Q4〕下载的本机落点：字符串或 `{"b16": …}`（与文件管理面同一个字节形）。
+/// 下载的本机落点：字符串或 `{"b16": …}`（与文件管理面同一个字节形）。
 fn local_path_of(args: &serde_json::Value) -> Result<PathBuf, String> {
     args.get("local_path")
         .and_then(crate::files::raw::from_json)
@@ -800,7 +800,7 @@ impl Desk {
 
     /// `transfer-download`：开单；本机落点当场过路径解析。
     fn download(&self, id: &str, args: &serde_json::Value) -> Frame {
-        // 〔FILES2 · Q4〕本机落点收字符串或 `{"b16": …}`（有损名下载在 Linux 上按原始字节落名）。
+        // 本机落点收字符串或 `{"b16": …}`（有损名下载在 Linux 上按原始字节落名）。
         let parsed = dial_of(args).and_then(|d| {
             Ok((
                 d,
@@ -947,7 +947,7 @@ async fn run(
     };
     match job {
         Job::Upload { local, key, home } => {
-            // 〔FILES2 · Q5〕连上时比：SFTP 起始目录（`realpath(".")`）≠ 那台后端的 `$HOME` ⇒ 暂存件会落到后端看不见的地方
+            // 连上时比：SFTP 起始目录（`realpath(".")`）≠ 那台后端的 `$HOME` ⇒ 暂存件会落到后端看不见的地方
             //   （chroot / `internal-sftp -d`），一个字节不写，交窗口改走后端链路分块写。
             if let Some(why) = home
                 .as_deref()
@@ -969,7 +969,7 @@ async fn run(
     }
 }
 
-/// 〔FILES2 · Q5〕上传收场码：SFTP 起始目录不是那台后端的 home。
+/// 上传收场码：SFTP 起始目录不是那台后端的 home。
 pub const SFTP_HOME_MISMATCH: &str = "sftp_home_mismatch";
 
 /// SFTP 起始目录与后端 `$HOME` 不一致 ⇒ 那一句话；一致（去掉尾 `/` 逐字节相等）⇒ `None`。
