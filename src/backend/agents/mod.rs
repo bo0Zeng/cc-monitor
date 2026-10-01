@@ -146,7 +146,7 @@ pub(crate) struct Adapter {
 
 /// 〔加一个 agent 只改 `agents/`〕一家的起会话事实 —— **唯一的家**。
 /// 从前住两处（monitor `adapter.rs` · 后端 `control/ccm/`，靠金样 `agent-profile-golden.tsv` 对着）；今天 `ccm` 按注册表读
-/// （[`launch_face_of`]），界面与 monitor 读从这里生成的 `src/frontend/ui/generated/agent-profile-table.ts`。
+/// （[`launch_face_among`]），界面与 monitor 读从这里生成的 `src/frontend/ui/generated/agent-profile-table.ts`。
 // 不派生 `PartialEq`：带着一个函数指针（resume 命令形），函数地址相等不是一个有意义的比较。
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct LaunchFace {
@@ -187,12 +187,6 @@ pub(crate) fn launch_face_among(registry: &[Adapter], kind: &str) -> Option<Laun
         .iter()
         .find(|a| a.kind == kind)
         .and_then(|a| a.launch)
-}
-
-/// 某一家（wire 上的 kind）在生产注册表里的起会话事实。认不出 ⇒ `None`。生产段一律走 [`launch_face_among`]（注册表是入参）。
-#[cfg(test)]
-pub(crate) fn launch_face_of(kind: &str) -> Option<LaunchFace> {
-    launch_face_among(REGISTRY, kind)
 }
 
 /// 给定注册表里声明「不说是哪一家时就是我」（[`LaunchFace::is_default`]）的那一家：`(kind, 起会话事实)`。没有 ⇒ `None`。
