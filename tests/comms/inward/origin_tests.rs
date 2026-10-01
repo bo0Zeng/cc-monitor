@@ -1,4 +1,4 @@
-//! `Origin` 的判据。`设计/00 §2.5 ①` 的第一刀，`设计/05 §8` 步 2 的那一刀在 `A`/`C`/`E` 三组。
+//! `Origin` 的判据，在 `A`/`C`/`E` 三组。
 //!
 //! # 🔴 反空真：绿从哪来
 //!
@@ -9,7 +9,7 @@
 //! · `C` 语义**逐个点名**（「没给名字」不等于 `Local` 那一条单独一格）
 //! · `D` 迁移进度是一条**递减棘轮**（现打还在用裸 `&str`/`String` 的处数，只许变少）
 //!
-//! # 🔴 〔`设计/05 §8` 步 2，2026-09-20〕`Unspecified(())` 退役之后，这几组怎么改的
+//! # 🔴 `Unspecified(())` 退役之后，这几组怎么改的
 //!
 //! 变体退役了，而它守的那条性质（「**「没说」不许被悄悄当成本机**」）**一条判据都没少**，
 //! 只是各自换了被钉的那个值 —— 处置与理由逐条写在 `src/comms/inward/origin.rs` 头注里，
@@ -71,7 +71,7 @@ fn an_unknown_shape_is_refused_not_guessed() {
     // 🔴 数字 / 数组 / 对象都不是 origin。不许有一种「猜」的路 ——
     //   猜出来的那一趟会去操作一台不存在的机器，而且不报错。
     //
-    // 🔴 **〔步 2〕`null` 从「解得出一个变体」变成了「解不出来」** —— 这一格就是
+    // 🔴 **`null` 从「解得出一个变体」变成了「解不出来」** —— 这一格就是
     //   `Unspecified(())` 退役之后那条性质的新住址：「没说」不再有**任何**类型表示，
     //   于是命令的代码**结构上**见不到那一档。
     for bad in ["null", "3", "[]", "{}", "true"] {
@@ -134,7 +134,7 @@ fn a_blank_name_is_neither_local_nor_remote() {
     //   `INVARIANTS §40`「本地 ＝ 不走 ssh 的远端」⇒「没说」要么被拒、
     //   要么由调用点补默认，**不许在类型这一层悄悄当成本机**。
     //
-    // 🔴 **〔步 2〕它钉的值换了：`Unspecified` → 空白名。**
+    // 🔴 **它钉的值换了：`Unspecified` → 空白名。**
     //   `null` 已经在反序列化那一层被拒（`A` 组那一格），构造不出来；
     //   而空串是它退役之后线上**唯一**还能表达「没说」的值 —— 而且它在盘上
     //   **真的**被当过本机：`subagent·rs` 那个 `Backend::for_origin`〔散文墓碑〕上一拍逐字写着
@@ -176,7 +176,7 @@ fn local_and_remote_are_exactly_complementary() {
 //
 // 🔴 **它不是「都换完了」的判据，是「别再新增」的判据。**
 //   `Origin` 落地那一刻，盘上有 46 处 `origin: &str` ＋ 33 处 `origin: String`
-//   ＋ 8 处 `origin: Option<String>`（`真相源/97` 现打）。换掉它们是分批的活。
+//   ＋ 8 处 `origin: Option<String>`（现打）。换掉它们是分批的活。
 //
 // ⚠ **口径写死**：数的是 `src/frontend/shell/src/**.rs` 与 `src/backend/**.rs` 的**生产段**里
 //   形如 `origin: &str` / `origin: String` / `origin: Option<String>` 的**签名处**。
@@ -187,20 +187,20 @@ fn local_and_remote_are_exactly_complementary() {
 //   —— 新写一处裸 `&str` 的 origin 参数当场红，那正是要挡的。
 //   ⚠ 反过来说：它在「变少」方向上**是瞎的**（这是刻意的，不是漏）。
 // ⚠ **这个数是现打的 93，不是 46+33+8=87。** 我第一版写 87 —— 那是从
-//   `真相源/97` 的**全仓 grep** 算来的，而本条的口径是「**两棵树的生产段**」：
+//   **全仓 grep** 算来的，而本条的口径是「**两棵树的生产段**」：
 //   两者人群不同（普查含注释与测试段、不含 `src/backend` 的一部分）。
 //   🔴 **这正是「抄一个别处的数当分母」的典型** —— 本仓反复治的那一形。
 //   ⇒ 用本条自己现打的数，并把口径写在上面。
-// 🔴 **〔步 12·C 2026-09-20〕93 → 88，降的 5 处逐处记在这里**（本条自己要求
+// 🔴 **93 → 88，降的 5 处逐处记在这里**（本条自己要求
 //    「换掉一批之后**把上面那个数改小**（连着改，别攒着）」）。
 //
 //    五处全部出自「同义双份命令合成一条带 origin 的」那一刀 —— 被合掉的那 5 条
 //    远端命令，签名从 `origin: String` 变成了 `host: &str`：
 //      · `remote_branch.rs` 的 `create_remote_branch_session`〔散文墓碑〕
 //      · `remote_history.rs` 的 `delete_remote_history_session`〔散文墓碑〕
-//      · `stream_remote_history_sessions`〔散文墓碑〕（〔C4d〕随远端会话清单搬进本机后端一起删了）
-//      · `stream_read_remote_session`〔散文墓碑〕（〔LOC1b〕函数也删了：本机远端合成一条 `history·rs::stream_read_session_jsonl`）
-//      · `list_remote_mcp_project_dirs`〔散文墓碑〕（〔SH1 · V137〕本机远端同一条 `mcp-read`，那个远端分支删了）
+//      · `stream_remote_history_sessions`〔散文墓碑〕（随远端会话清单搬进本机后端一起删了）
+//      · `stream_read_remote_session`〔散文墓碑〕（函数也删了：本机远端合成一条 `history·rs::stream_read_session_jsonl`）
+//      · `list_remote_mcp_project_dirs`〔散文墓碑〕（本机远端同一条 `mcp-read`，那个远端分支删了）
 //
 // 🔴 **为什么参数名从 `origin` 改成 `host`，而不是原样留着**：
 //    这五个函数今天拿到的是**已经分过本机**的机器名（分本机那一步住合并后那条命令里）。
@@ -209,12 +209,12 @@ fn local_and_remote_are_exactly_complementary() {
 //
 // ⚠ **这个数是跑出来的**：把上限临时改成 0、让本条印出现打的 88，再照它写。
 //    93 − 5 = 88 恰好也对得上，但「算出来恰好相等」不是判据（本仓治过的同形病）。
-// 🔴 **〔步 12·C 收尾 2026-09-20〕88 → 86，降的 2 处逐处记在这里**（本条自己要求
+// 🔴 **88 → 86，降的 2 处逐处记在这里**（本条自己要求
 //    「换掉一批之后**把上面那个数改小**（连着改，别攒着）」）。
 //
 //    两处都出自「`origin` 归一的**最后两对**同义双份命令合成一条带 origin 的」那一刀 ——
 //    被合掉的那 2 条远端命令，签名从 `origin: String` 变成了 `host: &str`：
-//      · `write_remote_mcp_server`〔散文墓碑〕（原住 `mcp.rs`，〔MIG-3a〕随 MCP 进后端删了）
+//      · `write_remote_mcp_server`〔散文墓碑〕（原住 `mcp.rs`，随 MCP 进后端删了）
 //      · `remove_remote_mcp_server`〔散文墓碑〕（同上）
 //
 //    改名的理由与上一拍那五处**逐字同形**：这两个函数今天拿到的是**已经分过本机**的
@@ -227,7 +227,7 @@ fn local_and_remote_are_exactly_complementary() {
 // ⚠ 这一拍**没有**新增一条吃 `Origin` 的命令却让这个数不动的情形：
 //   新落地的 `sftp_pool::sftp_chmod` 收的是 `RemoteConfig` 不是 origin，不进本条人群。
 //
-// 🔴 **〔`设计/05 §8` 步 2 · 2026-09-20〕86 → 85，降的 1 处记在这里**（本条自己要求
+// 🔴 **86 → 85，降的 1 处记在这里**（本条自己要求
 //    「换掉一批之后**把上面那个数改小**（连着改，别攒着）」）。
 //
 //    那一处是**全仓最后一条在入方向收 `Option<String>` origin 的命令**：
@@ -243,17 +243,17 @@ fn local_and_remote_are_exactly_complementary() {
 //   （现打那一行逐字「裸字符串 origin 参数现打 85 处，上限 0」）。
 //   86 − 1 = 85 恰好也对得上，但「算出来恰好相等」不是判据（本仓治过的同形病）。
 //
-// 🔴 **〔B2 · 条 66 · 2026-09-24〕85 → 83，降的 2 处记在这里**：「退出行为」那个值搬到后端那台机器上，
+// 🔴 **〔条 66〕85 → 83，降的 2 处记在这里**：「退出行为」那个值搬到后端那台机器上，
 //    monitor 侧那两处裸字符串 origin 随原来那条推送链一起没了 ——
 //      · 推生效值的那条 tauri 命令（`origin: String`）退役；
 //      · 读进程内那张表的 `kill_on_exit(origin: &str)` 退役。
 //    新的两条命令（`backend_exit_policy` / `set_backend_exit_policy`）与退出臂那一问**一开始就收 `Origin`**，
 //    不进本条人群。⚠ 这个数是跑出来的：上限临时改成 0，现打那一行逐字「裸字符串 origin 参数现打 83 处，上限 0」。
 //
-// 🔴 **〔ST3 · 第四波 4B 2026-09-24〕83 → 81**：
+// 🔴 **83 → 81**：
 //    · 基线 `1f7a8bf7` 上现打就是 **82**（上限 83 那一格富余不是本路造成的，本路起步时就在；来历没追）；
 //    · 本路降 1 处：`lib·rs::batch_to_payloads`（`origin: Option<String>`，`None` = 本机）→ `origin: &Origin` ——
-//      它同时是漂移记账的那台，缺省当本机正是「没说被悄悄当成本机」那一形（`调研/第四波记录/ST3.md §1.1`）。
+//      它同时是漂移记账的那台，缺省当本机正是「没说被悄悄当成本机」那一形。
 // ⚠ 这个数是跑出来的：上限临时改成 0，现打那一行逐字「裸字符串 origin 参数现打 81 处，上限 0」。
 const ORIGIN_MIGRATION_CEILING: usize = 81;
 
@@ -292,7 +292,7 @@ fn no_new_raw_string_origin_parameters() {
         hits.len() <= ORIGIN_MIGRATION_CEILING,
         "裸字符串 origin 参数现打 {} 处，上限 {}。\n\
          **它只许变少。** 新写一处 `origin: &str` / `origin: String` / `origin: Option<String>` \n\
-         就是给这个概念再造一种表达 —— 而 `设计/00 §2.5 ①` 那一节整篇治的就是这个。\n\
+         就是给这个概念再造一种表达 —— 而那一节整篇治的就是这个。\n\
          ⇒ 新代码用 `crate::origin::Origin`。\n\
          ⚠ 换掉一批之后**把上面那个数改小**（连着改，别攒着）。",
         hits.len(),
@@ -372,7 +372,7 @@ fn route_is_exactly_two_outcomes_and_local_is_not_a_missing_value() {
         assert_eq!(is_local, want_local, "{o:?} 路由错了边");
     }
 
-    // 🔴 **〔步 2〕这一条换成了对线上形状的全集断言。**
+    // 🔴 **这一条换成了对线上形状的全集断言。**
     //
     //    上一拍它逐字是「本机与『没说』序列化出来不是同一个东西」—— 那条断言以
     //    `Unspecified` 存在为前提，变体退役之后它连编译都过不去。
@@ -498,9 +498,9 @@ fn every_origin_taking_command_splits_local_through_route() {
         }
     }
     // 反向自检①：抽取器真的摘到了命令（塌成 0 的话下面那条相等是 `{} == {}`）。
-    // 〔MIG-3a〕地板 100 → 50：命令按设计逐批迁通道、人群在缩（今天 98）；这是抽取器反空真地板（塌了是个位数），不是计数棘轮。
+    // 地板 100 → 50：命令按设计逐批迁通道、人群在缩（今天 98）；这是抽取器反空真地板（塌了是个位数），不是计数棘轮。
     assert!(
-        total_cmds >= 45, // 〔MOD〕50 → 45：会话正文四条退役（今天 47）
+        total_cmds >= 45, // 50 → 45：会话正文四条退役（今天 47）
         "只摘到 {total_cmds} 条 `#[tauri::command]` —— 抽取器坏了，本条在空转"
     );
     // 反向自检②：左边那个人群不许是空集 —— 步 12·C 落地之后它至少有 5 条。

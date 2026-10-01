@@ -1,8 +1,8 @@
 /**
- * ST1「延后加载」（`设计/70 §5.3` 判据 2：**子页内容只在该子页可见时才发 I/O**）。
+ * ST1「延后加载」（**子页内容只在该子页可见时才发 I/O**）。
  *
  * `panel-deferred-io.vitest.ts` 头注〔射程〕② 登记过一笔债：per-machine 那几块
- * （账号 / 终端集成（〔AL1c〕已并进「别名」）/ cc-bus 钩子）在那边被 stub 掉了，而它们**构造期也发 I/O**
+ * （账号 / 终端集成（已并进「别名」）/ cc-bus 钩子）在那边被 stub 掉了，而它们**构造期也发 I/O**
  * —— 落地页是「机器」列表，这几块住在机器子页上，打开设置时那几发是白发的。
  * 本文件**不 stub 它们**，用真分节 ＋ 两层录音机（`commands` 包装层 ＋ 直呼的 `invoke`）量：
  *
@@ -80,45 +80,45 @@ const LANDING_IPC = ["load_config", "backend_machines", "backend_status"] as con
  * 逐块登记（改哪一块的读口，这张表跟着改一行，而不是整体换个数）：
  */
 const LOCAL_PAGE_IPC = [
-  "footprint_client_facts", // 足迹（步 14a）：〔MIG-3b 续〕本机那一栏第一拍问 monitor 自己那几行的环境（录音机下它失败就停在这一拍）
-  "drift_ledger_report", // 〔ST2〕未识别的数据（原顶层「改动足迹」那一块）；〔ST3〕按这台去问
+  "footprint_client_facts", // 足迹（步 14a）：本机那一栏第一拍问 monitor 自己那几行的环境（录音机下它失败就停在这一拍）
+  "drift_ledger_report", // 未识别的数据（原顶层「改动足迹」那一块）；按这台去问
   "load_config", // 账号：先读远端清单（落地页也读它 —— 这里量的是「新增」那一段）
-  // 〔C4c · 第四波 4B〕账号（本机那一支）改走通道：`chan_call`（`accounts-list` 发给 `<local>`）—— 本表按集合比，
+  // 账号（本机那一支）改走通道：`chan_call`（`accounts-list` 发给 `<local>`）—— 本表按集合比，
   //   与下面插件那一条同名，不另起一行。
-  // 〔AL1c · 4B〕这里原来还有终端集成那两发（终端集成的状态那一发〔AL1d：今天并进 `aliases_read`〕/ `cc_get_auto_launch`）：那块并进了「别名」
+  // 这里原来还有终端集成那两发（终端集成的状态那一发〔今天并进 `aliases_read`〕/ `cc_get_auto_launch`）：那块并进了「别名」
   // （一个 `<details>`，**第一次展开**才建它、才发那两发）⇒ 子页可见时不再发，往后又延了一层。
   // MCP · 资产目录 · 插件三块搬去了顶层「扩展」页（它自己那一页可见时才问），不在这一批里。
   "list_remote_mcp_origins", // cc-bus 钩子：认得哪些远端
-  "chan_call", // 〔MIG-3b〕cc-bus 钩子本机诊断改走通道（`hooks-diag` 发给 `<local>`，包装层那一条 `chan_call`；账号本机那一问同名，按集合比不另起一行）
+  "chan_call", // cc-bus 钩子本机诊断改走通道（`hooks-diag` 发给 `<local>`，包装层那一条 `chan_call`；账号本机那一问同名，按集合比不另起一行）
 ] as const;
 
 /**
  * 已经放过一次之后切到 devbox：只有**跟着机器走、切换即重读**的那几块（足迹 · 未识别的数据）重读。
  * 账号那块也订阅了机器，但它只认「已加载的远端清单里有的那台」—— 录音机下清单是空的 ⇒ 不读；
  * cc-bus 钩子切机器**刻意不发**（它的既有语义：远端诊断只在点「检查远端」时发）。
- * 〔ST2 · 用户 09-24 裁「远端也有真栏」〕足迹在远端页上**也去问**（按 devbox 那台，回声不对就说答不了）——
+ * 〔用户 09-24 裁「远端也有真栏」〕足迹在远端页上**也去问**（按 devbox 那台，回声不对就说答不了）——
  *   它并进了 per-machine 那一批单例，切机器由它自己的订阅重读，恰好一发。
  */
 const SWITCH_TO_AYA_IPC: readonly string[] = [
-  "chan_call", // 足迹：〔MIG-3b 续〕按 devbox 经通道问 `footprint-report`
-  // 〔ST3〕「未识别的数据」按机器分：切到 devbox 由它自己的订阅重读，按 devbox 去问，恰好一发。
+  "chan_call", // 足迹：按 devbox 经通道问 `footprint-report`
+  // 「未识别的数据」按机器分：切到 devbox 由它自己的订阅重读，按 devbox 去问，恰好一发。
   "drift_ledger_report",
-  "chan_call", // 〔MOD〕未识别的数据里记录那两面：经通道问 devbox 那台后端 `drift-report`
+  "chan_call", // 未识别的数据里记录那两面：经通道问 devbox 那台后端 `drift-report`
 ];
 /**
  * 第一次可见就是 devbox：per-machine 那一批放一次，**每一发恰好一次**。
- * 〔AL1c〕从前这里如实记着一笔代价：「终端集成」只对本机有意义，却在远端页上也跟着这一批读了两发。
+ * 从前这里如实记着一笔代价：「终端集成」只对本机有意义，却在远端页上也跟着这一批读了两发。
  *   它并进「别名」之后要展开才读 ⇒ 这笔代价没了，下面那两行跟着删。
- *   〔RM1b · 第四波〕「插件」那块不再是本机专属：它问的是**当前那台**（这里就是 devbox），同样恰好一次。
+ * 「插件」那块不再是本机专属：它问的是**当前那台**（这里就是 devbox），同样恰好一次。
  */
 const FIRST_VISIT_AYA_IPC: readonly string[] = [
-  "chan_call", // 足迹：〔ST2 · MIG-3b 续〕按 devbox 经通道问 `footprint-report`
-  "drift_ledger_report", // 未识别的数据：〔ST3〕按 devbox 去问
-  "chan_call", // 〔MOD〕未识别的数据里记录那两面：经通道问 devbox 那台后端 `drift-report`
+  "chan_call", // 足迹：按 devbox 经通道问 `footprint-report`
+  "drift_ledger_report", // 未识别的数据：按 devbox 去问
+  "chan_call", // 未识别的数据里记录那两面：经通道问 devbox 那台后端 `drift-report`
   "load_config", // 账号：读远端清单
-  "chan_call", // 账号：devbox 那一台（〔C4c〕经通道说 `accounts-list`）
+  "chan_call", // 账号：devbox 那一台（经通道说 `accounts-list`）
   "list_remote_mcp_origins",
-  "chan_call", // 〔MIG-3b〕cc-bus 钩子：本机诊断（经通道说 `hooks-diag`）
+  "chan_call", // cc-bus 钩子：本机诊断（经通道说 `hooks-diag`）
 ];
 
 const tick = () => new Promise((r) => setTimeout(r, 0));

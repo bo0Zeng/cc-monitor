@@ -1,11 +1,11 @@
-//! 〔CF1 · 2026-09-24〕**本机会话内容的入口通道** —— 本机那条流上的内容帧从两条读循环送到
+//! **本机会话内容的入口通道** —— 本机那条流上的内容帧从两条读循环送到
 //! [`crate::ssh_source::consume_local`]（再进与远端同一个 `LineIntake`）。
 //!
 //! # 为什么要它
 //!
 //! 本机会话的内容以前由 monitor 自己的 jsonl watcher 读（`watcher.rs`，已删），
-//! 同一批文件本机常驻后端也在读，它发来的 `line` 帧被本机读循环整个丢掉（`真相源/10 §7.1`）。
-//! `设计/00 §2.5 ②`：本机改走后端的 Line 帧。⇒ 读循环把内容帧交到这里，一个进程级任务收它们。
+//! 同一批文件本机常驻后端也在读，它发来的 `line` 帧被本机读循环整个丢掉。
+//! 本机改走后端的 Line 帧。⇒ 读循环把内容帧交到这里，一个进程级任务收它们。
 //!
 //! # 两种送法，因为两条读循环一条异步一条不是
 //!
@@ -13,7 +13,7 @@
 //! - stdio 载体（`local_backend::local_stdio_consumer`）是裸 `std::thread` ⇒ [`deliver_blocking`]。
 //!   ⚠ 反过来就错：在 tokio 任务里 `blocking_send` 会 panic，在裸线程里没有 runtime 可 `.await`。
 //!
-//! # 背压：级 1（`设计/05 §3.3.4`）
+//! # 背压：级 1
 //!
 //! 通道**有界**（[`LOCAL_LINES_CAPACITY`]）。消费者跟不上 ⇒ 送的那一方停在送上 ⇒ 读循环不再读 ⇒
 //! 本机后端写阻塞、自己减速。**不丢、不无界堆。**
@@ -70,12 +70,12 @@ pub(crate) fn deliver_blocking(frame: InboundFrame) {
     send_blocking(LocalItem::Frame(frame))
 }
 
-/// 〔RENDER2 · `99 §2.1` ㉓①〕常驻载体上一行超长、整行丢了（下游原位给订阅一格 `Gap`）。
+/// 常驻载体上一行超长、整行丢了（下游原位给订阅一格 `Gap`）。
 pub(crate) async fn line_lost() {
     send(LocalItem::LineLost).await
 }
 
-/// 〔RENDER2〕stdio 载体上一行超长、整行丢了。
+/// stdio 载体上一行超长、整行丢了。
 pub(crate) fn line_lost_blocking() {
     send_blocking(LocalItem::LineLost)
 }

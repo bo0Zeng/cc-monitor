@@ -11,7 +11,7 @@ fn row(name: &str, is_dir: bool, lossy: bool, size: u64) -> Row {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// 「超了怎么办」—— `设计/60 §5.4b` 指名留给这一刀的第二问
+// 「超了怎么办」—— 指名留给这一刀的第二问
 // ═══════════════════════════════════════════════════════════════════
 
 /// 普通小文本 ⇒ 改得了，而且**一句话都不用说**。
@@ -40,7 +40,7 @@ fn an_oversized_file_says_so_with_both_numbers_and_never_asks_the_remote() {
     );
     let why = why_not_editable(&over).expect("超上限却说改得了");
     // 上限那个数要在那句话里。
-    // 〔F9 续〕上限 256 KiB → 1 MiB（`MAX_EDIT_BYTES` 头注），`human_size` 印出来是 `1.0 M`。
+    // 上限 256 KiB → 1 MiB（`MAX_EDIT_BYTES` 头注），`human_size` 印出来是 `1.0 M`。
     assert!(
         why.contains(&crate::rows::human_size(
             crate::editor::MAX_EDIT_BYTES as u64
@@ -133,7 +133,7 @@ fn the_not_text_notice_covers_what_is_left_after_the_size_check() {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// 〔F7a · 第三波 09-24〕读那一半经通道问后端 `files-read-text`
+// 读那一半经通道问后端 `files-read-text`
 // ═══════════════════════════════════════════════════════════════════
 
 /// 后端那一趟的结局 → 三形（纯函数）：`too_large` / `not_text` 是「不可编辑」（`None`），
@@ -197,7 +197,7 @@ async fn reading_goes_through_the_channel_and_each_refusal_lands_on_its_own_shap
     assert_eq!(got("/srv/binary.bin").await, Ok(None));
     assert_eq!(got("/srv/huge.log").await, Ok(None));
     let e = got("/srv/gone.txt").await.expect_err("读不到竟然成了");
-    // 〔CP2b · CP1 裁「改·§2.1」〕对外那句不再点内部命令名 ⇒ 改认它说了是哪个文件、带着后端的码。
+    // 〔CP1 裁「改·§2.1」〕对外那句不再点内部命令名 ⇒ 改认它说了是哪个文件、带着后端的码。
     assert!(
         e.contains("/srv/gone.txt") && e.contains("unreadable"),
         "那句原话没说是哪个文件、后端怎么说：{e}"
@@ -296,7 +296,7 @@ fn typing_past_the_cap_is_visible_before_the_save_fails() {
 ///
 /// # 它是「上限该多大」那一问在**原生文本控件语境**里的约束
 ///
-/// `设计/60 §5.4b` 逐字把那一问留给「原生窗口的文本控件」这个语境。
+/// 把那一问留给「原生窗口的文本控件」这个语境。
 /// 而在这个语境里，上限的真实约束不是内存（256 KiB 的 2× 是 512 KiB，
 /// 那一节自己算过「不值一改」），是 **egui 的 `TextEdit` 每帧要把整段文字排一次版**
 /// ⇒ 上限决定「打字卡不卡」。
@@ -317,7 +317,7 @@ fn typing_past_the_cap_is_visible_before_the_save_fails() {
 /// 16–30 ms、在 **release** 档上是 **2.19 ms**。
 /// ⇒ 上一刀拿这个数去跟 60 fps 的 16.67 ms 比，比错了两处（档位 · 冷首帧）。
 /// ⇒ **要看「打字卡不卡」，看 `bigfile_tests::the_readings_behind_the_two_thresholds`**
-///   〔F9：原先指的第十四刀那条读数判据随窗口化内核一起删了，读数改由这一条重打〕
+///   〔原先指的第十四刀那条读数判据随窗口化内核一起删了，读数改由这一条重打〕
 ///   —— 那一条烤热之后再量、连跑三趟、印明档位，而且它还量了本条量不到的那一维：
 ///   **同样 256 KiB，代价随「最长的一行有多少字节」差两三个数量级**。
 /// ⇒ 本条**保留**（它钉的「跑完了 ＋ 真排了那么多字」仍然成立），
@@ -381,25 +381,25 @@ fn a_full_cap_worth_of_text_still_lays_out_in_one_frame() {
     );
 }
 
-// 〔F9 2026-09-24〕第十四刀那一族判据（行索引 · 窗口写回 · 「开窗买不到」· 交给排版的字节相等 ·
+// 第十四刀那一族判据（行索引 · 窗口写回 · 「开窗买不到」· 交给排版的字节相等 ·
 //   读数）随那组内核一起删了：它们钉的是「窗口化 `TextEdit`」那条没被选的路。
 //   落地那条路的判据住 `bigfile_tests.rs`（理由见 `editor.rs` 头注 §四）。
 
 // ═══════════════════════════════════════════════════════════════════
-// 〔F9c · 第四波〕存盘：装得进一行的一条 `files-write-text`；装不进的分块走暂存区（`调研/第四波记录/F9c.md`）
+// 存盘：装得进一行的一条 `files-write-text`；装不进的分块走暂存区
 // ═══════════════════════════════════════════════════════════════════
 
 const SAVE_PATH: &str = "/srv/data/app.conf";
 
-/// 〔FW1〕只用来占位的摘要（纯函数判据里 Pane 要一个；合成后端那几条用 [`opened_sha`]）。
+/// 只用来占位的摘要（纯函数判据里 Pane 要一个；合成后端那几条用 [`opened_sha`]）。
 const SHA0: &str = "0000000000000000000000000000000000000000000000000000000000000000";
 
-/// 〔FW1〕合成后端上 `SAVE_PATH` 一开始那一份的摘要（打开那一趟会交的那个）。
+/// 合成后端上 `SAVE_PATH` 一开始那一份的摘要（打开那一趟会交的那个）。
 fn opened_sha() -> String {
     crate::find::testing::fake_sha256(&format!("text of {SAVE_PATH}"))
 }
 
-// 〔P4〕「窗口量的那一行 == monitor 真发出去的那一行」与「切块每块装得进一行」两条要 monitor 编请求行的那个纯函数
+// 「窗口量的那一行 == monitor 真发出去的那一行」与「切块每块装得进一行」两条要 monitor 编请求行的那个纯函数
 //   （`inbound_client::encode_request`）当异源一侧 ⇒ 随窗口独立成包挪到 monitor 那一侧：`tests/frontend/shell/filewin/cross_half_tests.rs`。
 
 /// 🔴 **逐字转义长度 == `serde_json` 的**，对**全部** Unicode 标量值（异源：`serde_json::to_string`）。
@@ -475,7 +475,7 @@ async fn a_save_that_fits_one_line_goes_as_one_write_and_one_byte_more_goes_in_c
         want,
         "多一个字节的那一份不是「逐块 ＋ 一次提交」"
     );
-    // 〔FW1〕从前这里是「恰好两块」：那时一整行的写与一块的信封几乎一样大。存盘带上 `expect`（定长 64 位摘要）之后，
+    // 从前这里是「恰好两块」：那时一整行的写与一块的信封几乎一样大。存盘带上 `expect`（定长 64 位摘要）之后，
     //   一行写的信封比一块的大 ⇒ 刚好装不进一行写的那一份，一块就装得下 —— 块数照 `plan_chunks` 现算，不写死。
     assert_eq!(
         n, 1,
@@ -574,7 +574,7 @@ async fn a_chunk_that_fails_stops_the_save_before_the_commit() {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// 〔FW1 · 第四波 4D〕存盘 CAS 的窗口半（主会话裁 D-c）：结局分两形 · 没摘要不打开 · 基准是发出去的那一份
+// 存盘 CAS 的窗口半（主会话裁 D-c）：结局分两形 · 没摘要不打开 · 基准是发出去的那一份
 // ═══════════════════════════════════════════════════════════════════
 
 /// 对端回 `stale` ⇒ `Stale`（让人选）；别的码 / 没走通 ⇒ `Failed`（原话）；成了却没交摘要 / 形状不对 ⇒ `Failed`（不猜）。
@@ -659,8 +659,8 @@ fn after_a_save_the_baseline_is_what_was_sent_and_the_digest_is_the_new_one() {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// 〔W5-FILES · 第五波〕编辑面的查找替换
-// 要求住址：`设计/60 §6.2`「标签页快捷键（Ctrl+T / Ctrl+W）· **查找替换** · 语法高亮 · 三击选行 —— 无排期」
+// 编辑面的查找替换
+// 要求：「标签页快捷键（Ctrl+T / Ctrl+W）· **查找替换** · 语法高亮 · 三击选行 —— 无排期」
 // ＋ `§5.5`「（大文件模式）没有三击选行、查找替换、语法高亮」（那一格维持边界、出声）。
 // ════════════════════════════════════════════════════════════════════════
 
@@ -789,7 +789,7 @@ fn big_file_mode_has_no_find_and_says_so() {
     assert_eq!(w.editing().unwrap().text.len(), big.len());
 }
 
-/// 〔W5-FILES · 有损名全寻址（`设计/60 §6.2`「有损名的…编辑」）〕存盘那一行按字节切：有损目录 ⇒ `root` 发 `{"b16": …}`、
+/// 〔有损名全寻址（「有损名的…编辑」）〕存盘那一行按字节切：有损目录 ⇒ `root` 发 `{"b16": …}`、
 /// 合法 UTF-8 的尾段照旧是字符串；读文本那一行的 `path` 同理（期望手写）。
 #[test]
 fn a_lossy_path_is_saved_by_its_bytes() {

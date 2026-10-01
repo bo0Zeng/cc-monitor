@@ -35,7 +35,7 @@ use copy_core::copy_text;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
-/// 〔P7〕插件往 **stderr** 写的一行以它开头 ⇒ 那是**一格进度**（前缀后面那段原样交调用方的回调），不进诊断。
+/// 插件往 **stderr** 写的一行以它开头 ⇒ 那是**一格进度**（前缀后面那段原样交调用方的回调），不进诊断。
 ///
 /// 通用方言（同 `--probe` 那套 `key=value`），不认识任何具体插件：格里是什么由调用方解释。
 /// 只有调用方给了回调（[`run_abortable_reporting`]）才分拣；没给 ⇒ 这种行照旧当普通 stderr 留着。
@@ -185,7 +185,7 @@ fn deadline_bin() -> Option<PathBuf> {
 }
 
 /// ★ **本层唯一一处起进程**（已登记进 `readonly_guard::spawn_registry::ALLOWED`）——
-/// 〔RM1f〕两种等法（[`run`] 同步等 · [`run_abortable`] 异步等、可被打断）**共用这一处构造**，
+/// 两种等法（[`run`] 同步等 · [`run_abortable`] 异步等、可被打断）**共用这一处构造**，
 /// 程序 · argv · 环境 · `stdin` 一个字都不分叉。
 ///
 /// 入参：`bin` 是已经找到的那个可执行文件（[`super::discover::find`] 的产出）；
@@ -247,7 +247,7 @@ pub(crate) fn run(
     }
 }
 
-/// 〔RM1f〕起它、**异步**等它退出 —— **这个 future 被丢掉 = 子进程被杀**（可取消档的调用方用）。
+/// 起它、**异步**等它退出 —— **这个 future 被丢掉 = 子进程被杀**（可取消档的调用方用）。
 ///
 /// # 为什么要有它（`RM1b.md §3.3` ③「长期限 ＋ 可取消」的后一半）
 ///
@@ -287,7 +287,7 @@ pub(crate) async fn run_abortable(
     abortable(bin, args, deadline_secs, env, keep, None).await
 }
 
-/// 〔P7〕同 [`run_abortable`]，另把 stderr 上的**进度行**（[`PROGRESS_PREFIX`] 开头、整行）边读边交 `on_progress`
+/// 同 [`run_abortable`]，另把 stderr 上的**进度行**（[`PROGRESS_PREFIX`] 开头、整行）边读边交 `on_progress`
 /// （前缀后面那段，去掉行尾）；进度行不进 [`Done::stderr`]（诊断照旧是那条失败的话）。一行也最多读 `keep ＋ 1` 字节：
 /// 超长的那一截不算进度、照普通 stderr 留（上限同一个）。
 pub(crate) async fn run_abortable_reporting(
@@ -341,7 +341,7 @@ async fn abortable(
     })
 }
 
-/// 〔RM1f〕读一条子进程的流：留前 `keep ＋ 1` 字节，其余照读照丢（见 [`run_abortable`]「每条流」一段）。
+/// 读一条子进程的流：留前 `keep ＋ 1` 字节，其余照读照丢（见 [`run_abortable`]「每条流」一段）。
 async fn keep_then_drain<R: tokio::io::AsyncRead + Unpin>(
     r: Option<&mut R>,
     keep: u64,
@@ -356,7 +356,7 @@ async fn keep_then_drain<R: tokio::io::AsyncRead + Unpin>(
     let _ = tokio::io::copy(r, &mut tokio::io::sink()).await;
 }
 
-/// 〔P7〕stderr 那条流：没给回调 ⇒ 同 [`keep_then_drain`]；给了 ⇒ 逐行读，整行的进度行交回调，其余留前 `keep ＋ 1` 字节。
+/// stderr 那条流：没给回调 ⇒ 同 [`keep_then_drain`]；给了 ⇒ 逐行读，整行的进度行交回调，其余留前 `keep ＋ 1` 字节。
 async fn stderr_side<R: tokio::io::AsyncRead + Unpin>(
     r: Option<&mut R>,
     keep: u64,
@@ -390,7 +390,7 @@ async fn stderr_side<R: tokio::io::AsyncRead + Unpin>(
     }
 }
 
-/// 〔RM1f〕[`run_abortable`] 被丢时对子进程那一组开一枪（见那里「杀谁」一段）。
+/// [`run_abortable`] 被丢时对子进程那一组开一枪（见那里「杀谁」一段）。
 struct KillGroupOnDrop {
     /// `Some(组号)` ⇒ 还没收尸、被丢就杀这一组；`None` ⇒ 不开枪（没分组 / 已收尸）。
     group: Option<u32>,

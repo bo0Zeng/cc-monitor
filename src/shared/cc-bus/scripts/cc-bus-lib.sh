@@ -14,14 +14,14 @@
 
 : "${BUS:=${CC_BUS_HOME:-$HOME/.cc-bus}}"
 
-# ── 三个适配面(设计 95 §3.2):本文件是**通用层**,不认识 tmux / flock ─────────────
+# ── 三个适配面(设计):本文件是**通用层**,不认识 tmux / flock ─────────────
 # 缝切在 shell 里、**不搬进后端**(条 55)。装不齐就地 return 13(fail-closed):
 # 少一个函数而继续跑,后果是投递路径上某一步静默变成 no-op —— 那正是本仓在治的病。
 # shellcheck source=cc-bus-adapt.sh
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/cc-bus-adapt.sh"
 ccbus_adapt_load || return 13
 
-# ── kinds 表(设计 95 §2):信封的 `kind` → 一组行为 ──────────────────────────────
+# ── kinds 表(设计):信封的 `kind` → 一组行为 ──────────────────────────────
 #
 # cc-bus 的功能只有「把一段文本注入 agent」这一件;`kind` 决定的是**怎么注入**:
 #   拦停(Stop 钩子要不要把这条喂回去、拦下本轮结束)· 敲门(要不要往对方屏幕打字)·
@@ -92,7 +92,7 @@ kinds_check_row() {
     printf '%s: 拦停=yes 的注入模板必须含 {body} —— 否则消息根本没喂回去' "$kind"; return 1
   fi
   bad=$(_kinds_vars_ok "$t1" "$CCBUS_KIND_T1_VARS") || { printf '%s: 注入模板里有不认识的变量 {%s}' "$kind" "$bad"; return 1; }
-  # 🔴 安全项(95 §2.1 / §4 步 4):敲门模板不许放正文
+  # 🔴 安全项:敲门模板不许放正文
   if [[ "$t2" == *"{body}"* ]]; then
     printf '%s: 🔴 敲门模板里不许放 {body} —— 它走 send-keys,正文里的换行会被当成回车执行' "$kind"; return 1
   fi
@@ -148,7 +148,7 @@ kinds_lookup_or_msg() {
 
 kinds_has_valve() { case ",$KIND_VALVES," in *",$1,"*) return 0 ;; *) return 1 ;; esac; }
 
-# T1(注入模板)渲染到 <out>。正文走 `--rawfile`,**不走 argv**(160KB 那件事故,95 §3ter.0)。
+# T1(注入模板)渲染到 <out>。正文走 `--rawfile`,**不走 argv**(160KB 那件事故)。
 # `\n` 只在**模板**里展开成换行;`{body}` 最后填 ⇒ 正文里碰巧有 `{from}` 也不会被替换。
 kinds_render_inject() {   # <模板> <out> <正文文件> <from> <to> <kind> <count>
   jq -jn --arg t "$1" --rawfile body "$3" --arg from "$4" --arg to "$5" \
@@ -399,7 +399,7 @@ route_loop_check() {
   return 0
 }
 
-# 投递:写收件人 inbox(真相源),加锁。返回非零=投递失败(调用方应退回重试)。
+# 投递:写收件人 inbox(源头),加锁。返回非零=投递失败(调用方应退回重试)。
 route_deliver() {
   local to="$1" line="$2"
   local inbox="$BUS/inbox/$to.jsonl"      # 独立行:同一 local 里引用刚赋的 $to 会取到旧值
@@ -469,10 +469,10 @@ route_process() {
   # 🔴 阀门① ACL 与 ② 限流**不看 kind**:这两行无条件跑(kind 是发信方自己选的,不许靠它绕开)。
   route_policy_check "$from" "$to" || return 10
   route_rate_check   "$from" "$to" || return 10
-  # ③ 去重 ④ 灭环按 kind 可关(保活文本按定义重复 ⇒ 去重必须能关,95 §3bis)
+  # ③ 去重 ④ 灭环按 kind 可关(保活文本按定义重复 ⇒ 去重必须能关)
   if kinds_has_valve loop;  then route_loop_check  "$line" || return 10; fi
   if kinds_has_valve dedup; then route_dedup_check "$line" || return 10; fi
-  # 能力降级(95 §3.2b):按收件方 agent 词典的三位能力,把想要的行为降到做得到的那一档。
+  # 能力降级:按收件方 agent 词典的三位能力,把想要的行为降到做得到的那一档。
   #   拦停 ⇒ 敲门 ⇒ 只入收件箱 ⇒ **投递前就拒**(别让消息烂在收件箱里)。每降一级 bus.log 里一行。
   # ⚠ 买不到:「收件方是哪种 agent」—— 按**本进程**装载的词典算(今天只有 claude 一本)。
   local want=inbox got nudge_on=no

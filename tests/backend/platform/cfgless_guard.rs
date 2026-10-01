@@ -54,7 +54,7 @@
 //!   而同一份样本**只要把其中任意一样放回去就被逮住** —— 三格逐格断在那一条里。
 //!   这条仍然**刻意不追**：完备性在这里做不到，而本模块挡的是
 //!   「顺手写一行平台代码」这个真实且高频的形态。
-//! - **`sh` / `bash` 那两条认的是「整条字面量恰好是它」，不是「出现过 `sh`」**〔`K-R103` 09-13〕。
+//! - **`sh` / `bash` 那两条认的是「整条字面量恰好是它」，不是「出现过 `sh`」**。
 //!   放宽的是**形状**不是**宽度**：`Command::new("sh")` 与 `const POSIX_SHELL: &str = "sh"`
 //!   都进人群；而渲进一条更长的命令串里的 `sh`（`"tmux run-shell 'sh -c …'"`）、
 //!   以及 `ssh` / `shell` / 变量名 `sh` 这类标识符**一律不进**。
@@ -62,7 +62,7 @@
 //!   现打（09-13，本 crate `src/` 生产段）：整条字面量这一口径命中 **3** 处
 //!   （`control/ccm/mod.rs` 已签字 · `platform/shell.rs` 在 `#[cfg(unix)]` 门后 ·
 //!   `control/oneshot_session.rs` 本轮新签），**假红 0**。
-//! - **同一趟普查补上的 `posix-setsid`**〔`K-R103` 09-13〕：那条 argv 路是
+//! - **同一趟普查补上的 `posix-setsid`**：那条 argv 路是
 //!   `setsid` ＋ `sh` ＋ `sleep` **三件**，而上一版只有 `sh` 那一件有针。
 //!   `"setsid"` 整条字面量现打命中 **1** 处（`control/oneshot_session.rs`，本轮签字），假红 0。
 //!   ⚠ `sleep` 那一件**刻意不加针**：它渲在一条更长的串里（`"sleep \"$1\"; shift; …"`），
@@ -642,7 +642,7 @@ mod tests {
             "control/launch_render/local.rs",
             "find(\"bash\"",
             "合法线外",
-            "〔MIG-2〕本机起会话前探 `ccm`（`bash -lic` 里问 PATH 上那个）。调用点只在 POSIX 终端那一支走得到 \
+            "本机起会话前探 `ccm`（`bash -lic` 里问 PATH 上那个）。调用点只在 POSIX 终端那一支走得到 \
              （`plan` 先按 `Facts.windows` 分，Windows 走 PowerShell 旧路、接回当场拒）；找不到 `bash` ⇒ 按没装办、退旧路，\
              不是一个会在别的平台上答错的值。",
         ),
@@ -650,7 +650,7 @@ mod tests {
             "footprint/registry.rs",
             "named: \"bash\"",
             "合法线外",
-            "〔MIG-3b 续〕足迹环境清单那一项（登录 shell）：一个**申报的名字**，本页按它去 `PATH` 上查在不在（`EnvProbe::OnPath`），\
+            "足迹环境清单那一项（登录 shell）：一个**申报的名字**，本页按它去 `PATH` 上查在不在（`EnvProbe::OnPath`），\
              查不到就如实说「缺 / 查不动」—— 不起它、不假设它在，在任何平台上都不是一个会答错的值。",
         ),
         (
@@ -691,7 +691,7 @@ mod tests {
         ),
         (
             "observe/tmux_observe.rs",
-            "〔RE · C4〕原 `watcher.rs` A 块整块搬来（那两跳 `sh -c` 的调用点与 socket 目录都在这块里）\
+            "原 `watcher.rs` A 块整块搬来（那两跳 `sh -c` 的调用点与 socket 目录都在这块里）\
              ⇒ 上一行那份承诺跟着代码走",
         ),
     ];
@@ -968,11 +968,11 @@ mod tests {
                 bad.push(format!("  {rel}：{why}\n      {what}"));
             }
         }
-        // 🔴 〔条 67 · 2026-09-18〕地板 57 → **53**（现打 55，留 2 份余量，与立表时同 margin）：
+        // 🔴 〔条 67〕地板 57 → **53**（现打 55，留 2 份余量，与立表时同 margin）：
         // 用户逐字「**不在现在设计里的全部删掉**」⇒ 删了 `sidecars/` 那四份 `.rs`。
         // ⚠ 同拍删的 `platform/landing.rs` **不在本条人群里**（本条把 `platform/` 整个 continue 掉了）
         // ⇒ 本条只少 4，上一条少 5。**两个数不一样是对的**，别照抄。
-        // 〔上一次：`设计/50` 删用量 09-18 地板 60 → 57（现打 59），删的是 `observe/usage_query.rs` ·
+        // 〔上一次：删用量 09-18 地板 60 → 57（现打 59），删的是 `observe/usage_query.rs` ·
         //   `control/oneshot_session.rs` · `agents/codex/usage.rs` 三份。〕
         assert!(
             scanned >= 53,
@@ -996,10 +996,10 @@ mod tests {
     #[test]
     fn the_population_is_not_silently_empty() {
         let (all, files) = scan_tree();
-        // 🔴 〔条 67 · 2026-09-18〕地板 67 → **62**（现打 64）：用户逐字「**不在现在设计里的全部删掉**」
+        // 🔴 〔条 67〕地板 67 → **62**（现打 64）：用户逐字「**不在现在设计里的全部删掉**」
         // ⇒ `sidecars/` 整棵树四份 `.rs`（2 008 行）＋ `platform/landing.rs`（唯一消费者没了）一起走。
         // 人群**真的**小了 5。**这不是遍历坏了** —— 两者读数长得一样，所以降地板必须逐份点名。
-        // 〔上一次：`设计/50` 09-18 地板 70 → 67（现打 69），那一刀删了三份 `.rs`。〕
+        // 〔上一次： 09-18 地板 70 → 67（现打 69），那一刀删了三份 `.rs`。〕
         assert!(
             files >= 62,
             "只扫到 {files} 份 `.rs`（宏自称已摘除本文件，那一刀其实不生效；\

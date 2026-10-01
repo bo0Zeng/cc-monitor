@@ -1,4 +1,4 @@
-//! 〔WN1 · U4b 后半〕Windows 实现：开一个带 `SYNCHRONIZE` 的进程句柄 ＋ 无超时地等它被触发。
+//! Windows 实现：开一个带 `SYNCHRONIZE` 的进程句柄 ＋ 无超时地等它被触发。
 //!
 //! 整个文件 `#![cfg(windows)]`，由 `mod.rs` 那一行 `#[cfg(windows)] mod win32;` 选进来。
 //! Win32 读法本身（开句柄 · 等句柄）住 `platform/win_proc.rs`，本文件只写**看守的形状** ——
@@ -23,7 +23,7 @@
 //!
 //! 🚫 **买不到**：本机是 Linux，这份文件在门禁上只买到 `winchk-backend` 的「编得过」；
 //! 「真 Windows 上关掉终端窗口 ⇒ claude 被强杀 ⇒ 这条线程醒 ⇒ 会话归档」**一格都没有读数**
-//! （本路不碰 Win11 虚拟机，`99 §2 ⑤` 未拍）。与 `linux.rs` 的逐形对拍住
+//! （本路不碰 Win11 虚拟机，未拍）。与 `linux.rs` 的逐形对拍住
 //! `tests/backend/platform/pidwatch_windows_shape_tests.rs`（把源码当数据读）。
 
 #![cfg(windows)]

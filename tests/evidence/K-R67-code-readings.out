@@ -42,7 +42,7 @@
 2686:                 三样一起才叫脱离：`process_group(0)`（否则 Ctrl-C 的 SIGINT 打到整个前台进程组）\
 3187:                "fn spawn_detached(\n    bin: &std::path::Path,\n    port: u16,",
 3188:                "process_group(0)",
-    分母/量法：grep 'fn spawn_detached|process_group(0)|fn reap_detached' src-tauri/src/local_daemon.rs；P2d〔control-parity〕当年判「结构性做不到」的依据是这几个词命中 0
+    分母/量法：grep 'fn spawn_detached|process_group(0)|fn reap_detached' src-tauri/src/local_daemon.rs；P2d当年判「结构性做不到」的依据是这几个词命中 0
 【hello 帧 commands 的取值空间】102:    /// 哪条命令 —— 取值空间与 `Hello.commands` **同一套**（`inbound::COMMANDS`）。
     分母/量法：grep inbound::COMMANDS remote-daemon-proto/src/wire.rs
 【local_read_surface_registry 里 `reader` 条数】8

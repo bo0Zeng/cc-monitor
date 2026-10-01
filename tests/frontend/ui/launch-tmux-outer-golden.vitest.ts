@@ -1,5 +1,5 @@
 /**
- * `设计/90 §4 E`：外层 tmux 那三格的夹具 **入库版 == 现场渲染版**。
+ * 外层 tmux 那三格的夹具 **入库版 == 现场渲染版**。
  *
  * 这是跨语言对拍的 TS 那一半（另一半是
  * `src/frontend/shell/src/launch_tmux_outer_parity.rs`）。
@@ -21,7 +21,7 @@ const FIXTURE_PATH = resolve(
   "src/backend/control/launch_render/fixtures/tmux-outer-golden.json",
 );
 
-describe("外层 tmux 命令黄金串夹具（`设计/90 §4 E` 跨语言对拍的 TS 半边）", () => {
+describe("外层 tmux 命令黄金串夹具（跨语言对拍的 TS 半边）", () => {
   test("入库的夹具与现场渲染逐字节相同（改了渲染器/座就得重生成）", () => {
     expect(readFileSync(FIXTURE_PATH, "utf8")).toBe(renderTmuxOuterFixture());
   });

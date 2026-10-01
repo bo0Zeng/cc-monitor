@@ -68,10 +68,10 @@ mod tests {
             "const SPAWN_SITES_TODAY: usize = 16;",
             1,
             "backend 侧起进程登记表的**相等断言**（不是地板）。〔WF1 · L：`15` → **16**，往**上**走一格：`platform/shell/mod.rs` 按代起 PowerShell，\
-             多一个 `pwsh.exe` 字面量（PowerShell 7 的执行策略，`ALLOWED` 里已写明）；`readonly_guard` 那条 `assert_eq!` 自己先红了，本针跟着记新值。〕〔合并 MIG-1 × 主线 8c6cdc0e：`14` → **15**，往**上**走一格：主线 MIG-3a 的 `platform/shell.rs` `powershell.exe` 与 MIG-1 的 `dial/ssh_config.rs` `ssh -G` 两边各一处相加（都已在 `ALLOWED` 里写明）；`readonly_guard` 那条 `assert_eq!` 自己先红了，本针跟着记新值。〕〔合并 MIG-1 × 主线 b9818369：基数 14 − DEL 1 ＋ MIG-1 1（`dial/ssh_config.rs` 那一处 `ssh -G`，从 monitor 搬来）⇒ **14**。〕〔DEL：`14` → **13**，往**下**走一格：`relay/machine.rs` 那一处（起脱离的 `--relay`）随那一族删了——真的少了一个面，不是抽取坏了；`readonly_guard` 那条 `assert_eq!` 实数跟着改。〕〔HOST · V139：`13` → **14**，往**上**走一格：`control/resident.rs` 那一处（远端那台上起一个脱离的常驻后端）——真的新面，`ALLOWED` 里已写明；`readonly_guard` 那条 `assert_eq!` 自己先红了，本针跟着记新值。〕\
+             多一个 `pwsh.exe` 字面量（PowerShell 7 的执行策略，`ALLOWED` 里已写明）；`readonly_guard` 那条 `assert_eq!` 自己先红了，本针跟着记新值。〕〔合并 MIG-1 × 主线 8c6cdc0e：`14` → **15**，往**上**走一格：主线 MIG-3a 的 `platform/shell.rs` `powershell.exe` 与 MIG-1 的 `dial/ssh_config.rs` `ssh -G` 两边各一处相加（都已在 `ALLOWED` 里写明）；`readonly_guard` 那条 `assert_eq!` 自己先红了，本针跟着记新值。〕〔合并 MIG-1 × 主线 b9818369：基数 14 − DEL 1 ＋ MIG-1 1（`dial/ssh_config.rs` 那一处 `ssh -G`，从 monitor 搬来）⇒ **14**。〕〔`14` → **13**，往**下**走一格：`relay/machine.rs` 那一处（起脱离的 `--relay`）随那一族删了——真的少了一个面，不是抽取坏了；`readonly_guard` 那条 `assert_eq!` 实数跟着改。〕〔`13` → **14**，往**上**走一格：`control/resident.rs` 那一处（远端那台上起一个脱离的常驻后端）——真的新面，`ALLOWED` 里已写明；`readonly_guard` 那条 `assert_eq!` 自己先红了，本针跟着记新值。〕\
              〔SH1 · D-g：`12` → **13**，往**上**走一格：`control/kill.rs` 多一处只读 `tmux list-panes`（杀之前读 pane 根进程 pid）；\
              `readonly_guard` 那条 `assert_eq!` 自己先红了，本针跟着记新值。〕\
-             〔RM1a · 第四波：`11` → **12**，往**上**走一格：`relay/machine.rs` 那一处（远端那台上起一个脱离的 `--relay`）\
+             〔`11` → **12**，往**上**走一格：`relay/machine.rs` 那一处（远端那台上起一个脱离的 `--relay`）\
              ——**真的新面，不是搬家**，`ALLOWED` 里已逐条写明它起什么、为什么不违反收窄后的铁律。\
              往上走**不是本针在放宽**：`readonly_guard` 那条 `assert_eq!` 自己先红了，本针跟着记新值。〕\
              ⚠⚠ **这条针钉的是「那一行长什么样」，不是那个数字本身** —— 它挡的是\
@@ -106,7 +106,7 @@ mod tests {
               先红了，本针跟着记新值。\
               ⚠ 而「看门狗只杀自己铸的那个会话」这件事**不是这个数买的**（键分不出被起的是谁）：\
               买它的是 `control/oneshot_session.rs` 自己那几条判据。〕\
-             〔🔴 `设计/50` 删用量：`13` → **11**，本表**第二次往下走**，逐条写清为什么它不是放宽：① `control/oneshot_session.rs` 那两处起进程点（`Command::new` 起 `tmux` 那处 ＋ 看门狗那个 `Command::new(<非字面量>)`）随**整份文件**退役 —— 用量 ③ 轴（探针会话）整轴不做了，`oneshot-session` 这条原语当初就是为它建的、零生产调用方；② **扫描面一个字节没缩**：那条判据递归扫 `src/`，`control/capture_pane.rs` 那一处还在（拉屏预览在用），`readonly_guard` 失败文案里的 `found` 清单逐条印得出来；③ 「变少多半是抽取坏了」这一格真去核过：实测清单 11 条逐条对得上 `ALLOWED`。⇒ 本针记新值。**下一次再往下走，仍然要像这样逐条写，不许只改数。**〕⚠ 这一行**只挡「不动断言、只把数调小」**；「把断言原地调松」由下面两条实参针挡。",
+             〔🔴  删用量：`13` → **11**，本表**第二次往下走**，逐条写清为什么它不是放宽：① `control/oneshot_session.rs` 那两处起进程点（`Command::new` 起 `tmux` 那处 ＋ 看门狗那个 `Command::new(<非字面量>)`）随**整份文件**退役 —— 用量 ③ 轴（探针会话）整轴不做了，`oneshot-session` 这条原语当初就是为它建的、零生产调用方；② **扫描面一个字节没缩**：那条判据递归扫 `src/`，`control/capture_pane.rs` 那一处还在（拉屏预览在用），`readonly_guard` 失败文案里的 `found` 清单逐条印得出来；③ 「变少多半是抽取坏了」这一格真去核过：实测清单 11 条逐条对得上 `ALLOWED`。⇒ 本针记新值。**下一次再往下走，仍然要像这样逐条写，不许只改数。**〕⚠ 这一行**只挡「不动断言、只把数调小」**；「把断言原地调松」由下面两条实参针挡。",
         ),
         (
             "readonly_guard.rs",
@@ -251,7 +251,7 @@ mod tests {
     ///
     /// ⚠ **不扩到注释的理由，08-27 订正过一次**（`D2` `重-D2-8`）：
     /// 原先写的是「得先解决**自摘**」——**那条理由今天仍然不成立，但成因换了**
-    /// 〔`P4` 2026-09-21〕：`crate_production_sources()` 走的 `scan_tree!`，而它那一刀
+    /// `crate_production_sources()` 走的 `scan_tree!`，而它那一刀
     /// **在这一处不生效**（判据由 `#[path]` 挂载 ⇒ `file!()` 是折返路径 ⇒ 后缀比不命中）。
     /// 本模块不在自己的语料里靠的是**住址**：它住 `tests/backend/`，扫的是 `src/backend`；
     /// 同仓 `src/frontend/shell/src/frame_cadence_guard.rs` 更是**已经在连注释一起扫**
@@ -263,7 +263,7 @@ mod tests {
     ///    而「带没带历史限定词」是自然语言判断 ——
     ///    `frame_cadence_guard.rs` 里那条判据的 `///` 量过同一格：
     ///    试跑那条规则**今天**误红 7 处全是合法文本，把限定词表调到全绿就是曲线拟合。
-    ///    ⚠ 〔`K-R20` 订正 09-03〕这一句原先写的是「`frame_cadence_guard` **头注**」：
+    ///    ⚠ 这一句原先写的是「`frame_cadence_guard` **头注**」：
     ///    部位假（原话在一条 `///` 上，不在 `//!` 头注里）+ **「今天」掉了**
     ///    ⇒ 一个有日期的快照被引成了无时态的性质。本处是三跳链的**第二跳**，
     ///    第三跳（`structural_scan.rs` 逐字抄了本处）同轮一起收 —— 分两次改会留下
@@ -431,7 +431,7 @@ mod tests {
 
     /// 全 crate 生产段。
     ///
-    /// ⚠ 〔`P4` 2026-09-21〕先前这里写着「`scan_tree!` **按构造**摘除调用者自己那份 ——
+    /// ⚠ 先前这里写着「`scan_tree!` **按构造**摘除调用者自己那份 ——
     /// 本模块的短语表逐字带着那三个短语，不摘就是恒绿」。**那一刀在这一处不生效**
     /// （判据由 `#[path]` 挂载 ⇒ `file!()` 是折返路径 ⇒ 后缀比不命中）。
     /// 今天挡住「判据在自己的登记表里找到自己 ⇒ 恒绿」的是**住址**：本模块住

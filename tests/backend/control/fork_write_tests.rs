@@ -73,7 +73,7 @@ fn write_new_file_refuses_existing_target() {
     std::fs::remove_dir_all(&root).ok();
 }
 
-/// 找那一份走的是注册表那一格（〔THIN〕本体住适配层 `agents/claudecode/branch.rs`）—— 这里钉的是**这条路真的经过它**。
+/// 找那一份走的是注册表那一格（本体住适配层 `agents/claudecode/branch.rs`）—— 这里钉的是**这条路真的经过它**。
 fn find_here(root: &Path, sid: &str) -> Result<PathBuf, String> {
     crate::agents::find_session_file(&projects_root(root), sid)
 }
@@ -168,11 +168,11 @@ fn sargs(v: &[&str]) -> Vec<String> {
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// 〔LOC1a · 第四波 4D〕帧面 `session-fork`：与 CLI `--fork-session` 同一份本体
+// 帧面 `session-fork`：与 CLI `--fork-session` 同一份本体
 // ═════════════════════════════════════════════════════════════════════════════
 //
-// 要求住址：`设计/05 §14.6`「本机那几问从『exec 一次性本机后端』改走 `<local>` 长连接」—— 分叉上了帧面之后，
-// 帧面与 CLI 两个入口必须是**同一份**实现（`设计/05 §14.3`「业务解释只有一个家」）。
+// 要求：「本机那几问从『exec 一次性本机后端』改走 `<local>` 长连接」—— 分叉上了帧面之后，
+// 帧面与 CLI 两个入口必须是**同一份**实现（「业务解释只有一个家」）。
 
 /// ★ J3：同一份夹具会话、同一个 uuid，帧面 `answer_wire_at` 与 CLI `run_inner` 落盘的**内容**逐字相同（只差新 sid），
 /// 帧面的 `data` 键集 == CLI 那一行的键集（两个入口，一份形状）；金样 `tests/__fixtures__/session-fork.golden.json`
@@ -240,7 +240,7 @@ fn the_frame_face_refuses_bad_args_before_touching_the_disk() {
     std::fs::remove_dir_all(&root).ok();
 }
 
-/// 〔MIG-3b · 要求住址 `INVARIANTS §47` ①「分叉的 sid / 消息 uuid」〕界面经通道直说、不再判 ⇒ 帧面入口先过放行判定
+/// 〔要求住址 `INVARIANTS §47` ①「分叉的 sid / 消息 uuid」〕界面经通道直说、不再判 ⇒ 帧面入口先过放行判定
 /// （共享那一份 `session_id_ok`，从 monitor 分叉那一侧的白名单判据搬来）：坏值 `bad_args`、源一个字节不动；
 /// 真实形状的 id 放得过（正控，防判定焊成恒拒）。
 #[test]

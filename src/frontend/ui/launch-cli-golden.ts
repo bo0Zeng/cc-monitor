@@ -1,13 +1,13 @@
 /**
  * `ccm …` 调用行的入库夹具（`src/backend/control/launch_render/fixtures/cli-golden.json`）的用例表与落盘函数。
  *
- * # 〔LR1 · U8c-3〕它从「TS 渲染器的金串」换成了「生产请求 ＋ 手写期望」
+ * # 它从「TS 渲染器的金串」换成了「生产请求 ＋ 手写期望」
  *
  * TS 那份 `ccm …` 渲染器已删（生产从 U8c-2c-2 起就走 Rust 的
  * `backend::control::ccm_invocation::render_ccm_invocation`）。这份夹具**没有**跟着删，
  * 因为它一直在钉两件事，只有第一件随渲染器走：
  *
- *  1. 「两种语言渲出同一行」—— 另一种语言没了，这一件没了（已知代价，`调研/第四波记录/LR1.md §1.2`）。
+ *  1. 「两种语言渲出同一行」—— 另一种语言没了，这一件没了（已知代价）。
  *  2. **生产的请求构造 → 线 → Rust 反序列化与映射 → 生产命令**这一整条。
  *     `req` 由生产的 `buildCliRenderRequest`（`renderCliViaBackend` 用的同一个）现产，
  *     Rust 侧拿生产 wire 类型反序列化、跑 `render_ccm_launch`、与 `out` 逐字节比。
@@ -19,7 +19,7 @@
  *   `print-parity:` 那 4 条是 `tests/e2e/ccm-print-parity.sh` 喂给真 `ccm --print` 的四行
  *   （那套 e2e 从本夹具按名取行 —— 它验的是「生产渲染器那一行真 ccm 读得懂」）。
  *   改 Rust 渲染器的产出 ⇒ 回来改这里的期望，这一步必须是人做的。
- *   〔AL3 · V138〕`ccm new …` → `ccm …`、`resume <sid>` / `attach <名>` → `--resume <sid>` / `--attach <名>`（位置动作取消）。
+ * `ccm new …` → `ccm …`、`resume <sid>` / `attach <名>` → `--resume <sid>` / `--attach <名>`（位置动作取消）。
  *
  * ⚠ **ok 与 refusal 两类都要覆盖**：只比 ok 的话，「该降级却渲染出来了」抓不到 ——
  * 而那正是 `src/doc/INVARIANTS.md` §33 铁律要防的形态。
@@ -40,7 +40,7 @@ const ALL_CAPS = [
 
 export interface CliGoldenCase {
   name: string;
-  /** 那台 `ccm` 的能力：`null` = 未装。〔MIG-2〕不上线（渲染进了那台后端、能力问它自己），只当对拍那一侧的输入落进夹具。 */
+  /** 那台 `ccm` 的能力：`null` = 未装。不上线（渲染进了那台后端、能力问它自己），只当对拍那一侧的输入落进夹具。 */
   caps: string[] | null;
   ctx: LaunchContext;
   /** 期望：渲得出（`true`，`out` 是命令）还是诚实降级（`false`，`out` 是降级理由）。 */

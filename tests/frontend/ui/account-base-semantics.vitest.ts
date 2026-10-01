@@ -59,7 +59,7 @@ function uiStrings(src: string): string[] {
     })
     .join("\n");
   const literal = [...prod.matchAll(/"([^"\\\n]*不指定账号[^"\\\n]*)"/g)].map((m) => m[1]);
-  // 〔CP2b〕抽表之后这句话住文案表，文件里只剩 copyText("key") ⇒ 表条目一起算（否则抽完就零命中地绿）。
+  // 抽表之后这句话住文案表，文件里只剩 copyText("key") ⇒ 表条目一起算（否则抽完就零命中地绿）。
   return [...literal, ...copyTableTextsIn(prod).filter((zh) => zh.includes("不指定账号"))];
 }
 
@@ -124,7 +124,7 @@ describe("「不指定账号」的文案必须与 --base 的真实语义对上�
   });
 
   it("★ 文案赖以成立的那个事实还在：ccm 收到 --base 会 unset 账号载体", () => {
-    // 🔴 〔`K-R48` 第二拍 2026-09-11〕`shared/ccm` 那个 bash 脚本删了
+    // 🔴 `shared/ccm` 那个 bash 脚本删了
     //（〔用@09-11 `K33`〕「不要有什么 bash 脚本」），`--base` 的落点搬进了后端本体。
     // ⚠ **「两处」变「一处」不是判据放宽**：bash 那版 send-keys 载荷与进程自身 env 是
     //   **两段手写副本**（所以要数 2，缺一处就漏）；原生实现里 `--print` 与真跑
@@ -143,7 +143,7 @@ describe("「不指定账号」的文案必须与 --base 的真实语义对上�
         "本文件整套文案论证都建立在「它会清掉账号载体」上。它一变，上面几条要求的文案就成了新的假话。",
     ).toBe(1);
     expect(
-      // 〔OSA · V156〕`unset` 的写法搬进后端 OS 适配层（`platform::shell::posix::unset`），落点这一行跟着换形。
+      // `unset` 的写法搬进后端 OS 适配层（`platform::shell::posix::unset`），落点这一行跟着换形。
       planLines.filter((l) => l === "line.push_str(&posix::unset(&[cfg_env]));").length,
       "那条 `unset <账号载体>` 的渲染没了（要恰好一处）—— 同上。\n" +
         "（另有 `base-flag-contract-guard.vitest.ts` 从跨语言双写点那一面钉同一个事实。）",
@@ -162,7 +162,7 @@ const WITH_ACCOUNT_SITES: ReadonlyArray<
   readonly [file: string, count: number, follow: boolean, why: string]
 > = [
   [
-    // 〔U2 · 第三波〕住址从 `src/frontend/ui/tabs.ts` 换到这里：tab 上的会话动作整块搬进了 `tab-session-actions.ts`，
+    // 住址从 `src/frontend/ui/tabs.ts` 换到这里：tab 上的会话动作整块搬进了 `tab-session-actions.ts`，
     //   三处 `withAccount(` 逐字随行（resume 直连 · tmux 就地 · tmux 新起），派别不变。
     "src/frontend/ui/tab-session-actions.ts",
     3,
@@ -176,12 +176,12 @@ const WITH_ACCOUNT_SITES: ReadonlyArray<
     "历史里拉起旧会话：同上，有 sid 就跟随；其中一处 `{ follow: {} }` 是「跟随但没有 pin」。",
   ],
   [
-    // 〔FE1 · D-h〕`withAccount` 自己的一处：要的号选不了 ⇒ 不起、给一个显式选择；用户点了 ⇒ 以**显式**选号再走一次。
-    //   〔FE1 子步 5〕`withAccount` 随起停那一格从 `accounts.ts` 搬到 `launch-account.ts`。
+    // `withAccount` 自己的一处：要的号选不了 ⇒ 不起、给一个显式选择；用户点了 ⇒ 以**显式**选号再走一次。
+    // `withAccount` 随起停那一格从 `accounts.ts` 搬到 `launch-account.ts`。
     "src/frontend/ui/launch-account.ts",
     1,
     false,
-    "〔FE1 · D-h〕用户点了「改用当前账号 / 不指定账号」那条提示之后的再起：号是用户这一次**点的**，" +
+    "用户点了「改用当前账号 / 不指定账号」那条提示之后的再起：号是用户这一次**点的**，" +
       "不传 `follow`（再跟随一次就又撞上那个选不了的 pin）。",
   ],
   [
@@ -273,7 +273,7 @@ describe("withAccount 的两派调用点（audit-0805 F12：记下分歧，不�
   it("不传 follow 那一派必须写清「为什么不传」，不许只登记文件名", () => {
     for (const [file, , follow, why] of WITH_ACCOUNT_SITES) {
       if (follow) continue;
-      // 〔FE1 · D-h〕不传的理由从一种变两种：没有 sid 可跟随（新会话）· 号是用户这一次显式点的（D-h 那条提示之后的再起）。
+      // 不传的理由从一种变两种：没有 sid 可跟随（新会话）· 号是用户这一次显式点的（D-h 那条提示之后的再起）。
       expect(
         why.includes("没有 sid") || why.includes("新") || why.includes("这一次**点的**"),
         `${file} 没说清为什么不传：「${why}」`,

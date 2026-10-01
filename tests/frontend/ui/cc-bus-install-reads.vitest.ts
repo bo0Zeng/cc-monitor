@@ -1,7 +1,7 @@
 /**
- * 设计/05 §14.3：「成品的两侧对拍：界面按形状严格收（多一格 / 缺一格 / 类型不对 ⇒ 抛「两端契约对不上」，不猜）」。
+ * 「成品的两侧对拍：界面按形状严格收（多一格 / 缺一格 / 类型不对 ⇒ 抛「两端契约对不上」，不猜）」。
  *
- * 〔MIG-3a · 子步 3〕cc-bus 装到本机改经通道问本机后端（`cc-bus-install` / `-state`）：三态严格收、装的结果严格收、问的是本机。
+ * cc-bus 装到本机改经通道问本机后端（`cc-bus-install` / `-state`）：三态严格收、装的结果严格收、问的是本机。
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { copyText } from "../../../src/frontend/ui/copy-table";

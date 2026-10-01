@@ -4,15 +4,15 @@
 const EXEMPT: &[(&str, &str)] = &[
     (
         "backend-rbind-token",
-        "〔第二波 T4 09-24〕**进的是本机门禁 `tests/scripts/gate.sh`**（`run_e2e backend-rbind-token 11`，\
+        "**进的是本机门禁 `tests/scripts/gate.sh`**（`run_e2e backend-rbind-token 11`，\
              `assert-pass-floor.sh … exact`，与 `ccm-*` 四套同形），不是没进门禁。\
-             它不在 `ci.yml` 的计数地板里，是因为那一行是 `设计/80 §8.7` 步 2 落地时\
+             它不在 `ci.yml` 的计数地板里，是因为那一行是落地时\
              **报备待拍板**的另一件事（`ci.yml` 那段注释逐字「也没有加 `assert-pass-floor` 那一行 …… 待拍板」）；\
              本条登记的是「这件事有人在管、管在哪」，不是替它拍板。拍了加进 `ci.yml` 的那一拍，本行删掉",
     ),
     (
         "rbind-token-endtoend",
-        "〔第二波 T4 09-24〕同上一条：**进的是本机门禁 `tests/scripts/gate.sh`**\
+        "同上一条：**进的是本机门禁 `tests/scripts/gate.sh`**\
              （`run_e2e rbind-token-endtoend 9`，exact）。`ci.yml` 计数地板那一行是 `§8.7` 步 3 落地时\
              报备待拍板的（`ci.yml` 同段注释逐字）。拍了加进 `ci.yml` 的那一拍，本行删掉",
     ),
@@ -226,7 +226,7 @@ fn every_exemption_still_points_at_a_real_ungated_suite() {
     }
 }
 
-/// 〔第二波 T4 09-24〕**自称「进的是本机门禁」的豁免，本机门禁里真得跑它** —— 两向集合相等。
+/// **自称「进的是本机门禁」的豁免，本机门禁里真得跑它** —— 两向集合相等。
 ///
 /// 左 = `EXEMPT` 里理由写着 `本机门禁 \`tests/scripts/gate.sh\`` 的那几套；
 /// 右 = `package.json` 里跑 e2e 的套中，`ci.yml` 没有地板行、而 `tests/scripts/gate.sh` 里
@@ -336,9 +336,9 @@ fn the_harness_no_longer_teaches_a_bare_pattern_kill() {
     );
 }
 
-// 〔DEL〕E1（收孤儿那把刀认得出独立中转进程、只列不收）随那一形删了：盘上再没有独立的中转进程。
+// E1（收孤儿那把刀认得出独立中转进程、只列不收）随那一形删了：盘上再没有独立的中转进程。
 
-/// ★★ `C7i` 红线：**没有任何 e2e 套件靠 `TMUX_TMPDIR` 做隔离**〔`P0e` 08-12〕。
+/// ★★ `C7i` 红线：**没有任何 e2e 套件靠 `TMUX_TMPDIR` 做隔离**。
 ///
 /// # 红线逐字
 ///
@@ -360,7 +360,7 @@ fn the_harness_no_longer_teaches_a_bare_pattern_kill() {
 /// ⇒ 换成**夹具自检**（下面那三条 `assert!`）：判定对不对，用合成输入问，
 /// 不靠「盘上还欠着东西」。
 ///
-/// 〔IV1 · V121〕要求住址：`INVARIANTS §48.3`（测试里起真后端必须 fail-closed 地隔离用户 tmux）；shell 套件那一侧。
+/// 要求住址：`INVARIANTS §48.3`（测试里起真后端必须 fail-closed 地隔离用户 tmux）；shell 套件那一侧。
 #[test]
 fn no_e2e_suite_isolates_with_tmux_tmpdir() {
     // ── 夹具自检：判定本身对不对（不依赖盘上有没有存量）
@@ -396,7 +396,7 @@ fn no_e2e_suite_isolates_with_tmux_tmpdir() {
             .lines()
             .filter(|l| !l.trim_start().starts_with('#'))
             .collect();
-        // ★★ **零例外**〔`P0e` 第三拍 08-12〕。最后一条例外是 `local-backend-supervise.sh`
+        // ★★ **零例外**。最后一条例外是 `local-backend-supervise.sh`
         //   —— 它把私有目录**喂给被监护的 backend**，所以换 shim 要连 Rust 那侧一起改。
         //   已改：传的不再是 `TMUX_TMPDIR`，而是**带 shim 的 PATH**
         //   （`CCM_E2E_TMUX_SHIM_BIN` → backend 的 `PATH` 前缀）⇒ backend shell out 的
@@ -480,7 +480,7 @@ fn no_e2e_suite_isolates_with_tmux_tmpdir() {
 /// 抽出来之前它在三个套件里**各抄了一份** —— 红线的落地有三份实现，
 /// 改一处漏两处正是本仓一路在收的那一族。
 ///
-/// 〔IV1 · V121〕要求住址：`INVARIANTS §48.3`（测试里起真后端必须 fail-closed 地隔离用户 tmux）；shell 套件那一侧。
+/// 要求住址：`INVARIANTS §48.3`（测试里起真后端必须 fail-closed 地隔离用户 tmux）；shell 套件那一侧。
 #[test]
 fn the_tmux_shim_primitive_has_exactly_one_home() {
     let shim = read_e2e("tmux-shim.sh");
@@ -548,7 +548,7 @@ fn strip_comments(src: &str) -> String {
         .join("\n")
 }
 
-/// 〔E2 尾 09-27〕`backend-wrapper.sh` 是夹具：**在仓里直接跑就拒**，一个字节都不交给后端。
+/// `backend-wrapper.sh` 是夹具：**在仓里直接跑就拒**，一个字节都不交给后端。
 ///
 /// 起因（09-27 实发）：分流不看 argv0 之后，没有打头 `--` 的调用就是「起 claude」⇒ 在仓里直接跑它
 /// 起了一次 PATH 上**真的** claude。合法的叫法只有台架那一形（`tier2-rig.sh` 拷进台架目录、旁边放
@@ -638,7 +638,7 @@ fn the_backend_wrapper_fixture_refuses_to_run_outside_a_rig() {
     let _ = std::fs::remove_dir_all(&d);
 }
 
-/// 〔E2 尾 09-27〕`tests/e2e/` 底下**一处模式杀都不许有**（`pkill` / `killall`，剥注释后）。
+/// `tests/e2e/` 底下**一处模式杀都不许有**（`pkill` / `killall`，剥注释后）。
 ///
 /// 模式杀没有「只杀我起的那些」这个概念：打到什么由命令行长相决定。本仓第三次栽在这上面是
 /// `local-backend-supervise.sh` 收尾的 `pkill -f "$BACKEND"` —— 它打死了**跑这套件的那条调用方 shell**，

@@ -11,7 +11,7 @@
 //! 由生产段亲手拉起，而本护栏一个字都看不见。
 //! ⇒ **它今天真能拦住的形状全表在 [`g6_reach`]，那条反例也在那里。**
 //!
-//! 〔`K-G6` 订正〕本头注原先第一句把性质写成了**进程级**的全称，而判据只兑现 crate 级的那句；
+//! 本头注原先第一句把性质写成了**进程级**的全称，而判据只兑现 crate 级的那句；
 //! 收窄措辞的同时由 `readonly_guard::g6_scope_pins` 立了一条**反向棘轮**，钉住那句全称不许回来。
 //!
 //! # 它守的是什么性质
@@ -52,7 +52,7 @@ mod f09_external_beat {
     //!
     //! 针（逐字）：`sh -c` · `run-shell` · `format!`
     //!
-    //! # 🔴〔`K-R103` 09-13〕本条不再是零命中守卫：**它今天恰好逮住一处，而那一处登记在案**
+    //! # 🔴本条不再是零命中守卫：**它今天恰好逮住一处，而那一处登记在案**
     //!
     //! 上一版这里有两句话，今天两句都不准了，逐句订正：
     //!
@@ -516,7 +516,7 @@ mod f09_external_beat {
         );
     }
 
-    // 〔`设计/50` 删用量〕**`the_oneshot_watchdog_script_carries_no_loop` 这一条整删。**  〔散文墓碑〕
+    // 〔删用量〕**`the_oneshot_watchdog_script_carries_no_loop` 这一条整删。**  〔散文墓碑〕
     // 它自陈「**本条只盖 `control/oneshot_session.rs` 这一份文件**」，而那份文件随用量 ③ 轴
     // （探针会话）整轴退役而整删 ⇒ **守卫没有标的了**，不是放宽。
     // ⚠ 它守的性质（「交给 shell 的那条串不许自带节拍」）没有失去主人：
@@ -559,7 +559,7 @@ mod tests {
         false
     }
 
-    /// ★ 调用匹配器的**负向**自检〔audit-0805 08-06〕。
+    /// ★ 调用匹配器的**负向**自检。
     ///
     /// ⚠ 加它是因为一次实测：把 `is_call_of` 的词边界整段删掉，**六条判据照样绿** ——
     /// 也就是说这个匹配器的收紧那一侧当时**没有任何断言在行使**。
@@ -605,7 +605,7 @@ mod tests {
     /// 这不是豁免清单 —— 下面的断言要求生产段里的 `Duration::from_` 调用**恰好**等于
     /// 本表的条数。多出一处就红，逼人回答「这处是不是又把轮询请回来了」。
     ///
-    /// # 〔`K-G6` `KG64`〕三元组扩成**五元组**
+    /// # 三元组扩成**五元组**
     ///
     /// `(文件名, 片段, why——为什么它不是定时器, 格——`§0a` 四情形表里的哪一格, unlock——什么条件满足之后这一条就能删)`
     ///
@@ -627,8 +627,8 @@ mod tests {
         (
         "listen.rs",
         "Duration::from_millis(30_000)",
-        "中转**下游** socket 的 `SO_RCVTIMEO`/`SO_SNDTIMEO`（〔`P16` 2026-09-22〕那个**值**\
-         今天住 `relay/listen.rs::DOWNSTREAM_DEADLINE` —— 按 `设计/01 §2.1 C4`「期限值全部由后端\
+        "中转**下游** socket 的 `SO_RCVTIMEO`/`SO_SNDTIMEO`（那个**值**\
+         今天住 `relay/listen.rs::DOWNSTREAM_DEADLINE` —— 按「期限值全部由后端\
          交给它」搬出中转；装它的那一手仍在 `relay/server.rs::apply_downstream_deadline`，收入参）：\
          它说的是「**这一次**阻塞的读/写最多等多久」——有字节就立刻返回，没字节就**报错**返回。\
          它**不让任何线程自己醒来**、不产生节拍、不驱动任何循环：期限一到那条连接就被结掉，\
@@ -642,7 +642,7 @@ mod tests {
         (
         "listen.rs",
         "Duration::from_millis(600_000)",
-        "中转**上游** socket 的 `SO_RCVTIMEO`/`SO_SNDTIMEO`（〔`P16`〕同上，那个**值**今天住\
+        "中转**上游** socket 的 `SO_RCVTIMEO`/`SO_SNDTIMEO`（同上，那个**值**今天住\
          `relay/listen.rs::UPSTREAM_DEADLINE`；装它的那一手仍在 `relay/upstream::connect`，收入参）：\
          性质同上一条（一次阻塞的上限，不是唤醒），值不同是因为这一跳等的是**模型在想** ——\
          SSE 长流上游几十秒不发字节是正常形态，所以它必须比下游那条宽得多。\
@@ -652,7 +652,7 @@ mod tests {
          ⚠ 「没有任何一层重试」这句同样是**登记理由里的话**，没被独立重打过。",
     ),
         (
-        // 〔C2 09-24〕住址 `dial/mod.rs` → `dial/connect.rs`（拨号那一段拆出去了，值与理由不变，
+        // 住址 `dial/mod.rs` → `dial/connect.rs`（拨号那一段拆出去了，值与理由不变，
         // 名字叫 `KEEPALIVE`）。同一份文件里还有下一条（`PROBE_INACTIVITY`，同一个值、不同的用途）。
         "dial/connect.rs",
         "Duration::from_millis(30_000)",
@@ -681,14 +681,14 @@ mod tests {
          不驱动任何循环、不产生节拍；长连接那条（上一条）不设它。\
          ⚠ 与上一条**同一个串**（值都是 30 秒）：两条各登记一次，计数才对得上生产段的两处。\
          ⚠ 握手看门狗（界面侧原来的 45 秒）**没有**搬进来 —— 本护栏按调用形态禁 `timeout(`，\
-         那一格改由界面侧等 ack 时执行（`设计/05 §3.3.2`：值与执行都在调用方那一头）。",
+         那一格改由界面侧等 ack 时执行（值与执行都在调用方那一头）。",
         "收窄人群",
         "「测试连接」不再走代理、或探活改由界面侧期限兜住的那天。",
     ),
         (
         "inbound.rs",
         "Duration::from_millis(30_000)",
-        "〔HX1 · 4D〕流模式收场的**退出排空期限**（`inbound::DRAIN_DEADLINE`）。它**是**一个会醒来的构件 —— \
+        "流模式收场的**退出排空期限**（`inbound::DRAIN_DEADLINE`）。它**是**一个会醒来的构件 —— \
          零定时器在这里让位，那一处的调用另登记在 `REGISTERED_EXIT_DEADLINE`（恰好一行）。只在进程要退时装一次。",
         "缩性质",
         "后端的收场改由外部（宿主 / 进程管理器）保证上限、远端也有人叫它退的那天 —— 那时这一条与 `REGISTERED_EXIT_DEADLINE` 一起摘。",
@@ -702,11 +702,11 @@ mod tests {
         "子运行的收场改由别的信号完全兜住（不再需要「久未再写」这一格）的那天。",
     ),
     ];
-    // 〔DEL 续〕`relay/machine.rs` 那一行（差分探针的 socket 读写期限）摘了：「在不在」改由常驻后端进程内的状态答，探针删了。
+    // `relay/machine.rs` 那一行（差分探针的 socket 读写期限）摘了：「在不在」改由常驻后端进程内的状态答，探针删了。
 
     use crate::guard_support::production_code;
 
-    /// 🔴〔HX1 · 4D · 主会话裁 HX1 拍板项 1〕**唯一**一处会让后端自己醒来的构件：**退出排空期限**。
+    /// 🔴〔主会话裁 HX1 拍板项 1〕**唯一**一处会让后端自己醒来的构件：**退出排空期限**。
     ///
     /// `(文件, 生产段里的片段——恰好一处, why——为什么零定时器在这里让位)`。**类型就是一行**（不是表）：
     /// 想再加第二处，得先把这个类型改成表 —— 那一改本身就是一次会被看见的放宽。
@@ -732,7 +732,7 @@ mod tests {
         }
     }
 
-    /// 〔STOP · 主会话裁「等待住一次性 CLI」〕**一次性 CLI 例外表**：带期限的内核等待（`poll(pidfd, ms)` · `WaitForSingleObject(h, ms)`）
+    /// 〔「等待住一次性 CLI」〕**一次性 CLI 例外表**：带期限的内核等待（`poll(pidfd, ms)` · `WaitForSingleObject(h, ms)`）
     /// 只许出现在这里登记的地方，且只许由一次性子命令 `--resident-stop` / `--resident-ensure --replace` 走到（`control/resident.rs`）。
     ///
     /// `(文件, 生产段里的片段——恰好一处, why)`。理由：停一个进程要「宽限期内等它退、到点强杀」（k8s / systemd / Docker 同形），
@@ -803,7 +803,7 @@ mod tests {
         // 〔搬测试 2026-09-17〕人群是「**全体后端代码**」，而它今天住两棵树。
         // 只走 `src_root()` 会安静地少 19 个文件 —— 下面那条「采集 ＋ 跳过 ＝ 树上全部」
         // 正是因此红的（它跳过的 `no_timer_guard.rs` 自己就搬去了第二棵树）。
-        // 🔴 〔步 7c 2026-09-19〕**手写递归遍历迁到共享原语。**
+        // 🔴 **手写递归遍历迁到共享原语。**
         //
         // `scanning_guard_registry::PENDING` 那张存量清单里的一条，真的迁掉了一条。
         // 起因：`src/backend/observe/watcher.rs` 的裸遍历读数这一轮**一条变两条**
@@ -813,7 +813,7 @@ mod tests {
         // `guard_core::scan_tree_excluding` 逐字相同（递归收 `.rs`、按名单排除）。
         //
         // ⚠ 顺带把「跳过自身」从**按文件名过滤**换成 `scan_tree_excluding` 的明写名单
-        //   （`设计/16 §5.4b` 纪律 4）：那个原语**摘不到就 panic**，
+        //   （纪律 4）：那个原语**摘不到就 panic**，
         //   所以本文件改名之后不会安静地把自己收进语料。
         //   `SKIPPED_BY_NAME` 那张表**留着**：下面那条「采集 ＋ 跳过 ＝ 树上全部」
         //   要用它算跳过了几个，两处口径必须是同一张表。
@@ -920,7 +920,7 @@ mod tests {
         // 两棵树 —— 与 `backend_sources()` 同一个人群，否则那条「数量相等」在对拍两个不同的集合。
         let mut n = 0usize;
         let mut stack: Vec<std::path::PathBuf> = crate::guard_support::code_roots().to_vec();
-        // 〔RE〕面 B 成员住 `src/comms/outward/`（`backend_sources` 那一侧由 `guard_core` 顺着 `#[path]` 收进来）。
+        // 面 B 成员住 `src/comms/outward/`（`backend_sources` 那一侧由 `guard_core` 顺着 `#[path]` 收进来）。
         stack.push(crate::guard_support::relay_root());
         while let Some(dir) = stack.pop() {
             for entry in std::fs::read_dir(&dir).expect("read src dir") {
@@ -996,7 +996,7 @@ mod tests {
                 files.iter().map(|(n, _)| n.as_str()).collect::<Vec<_>>()
             );
         }
-        // ★〔audit-0805 08-06〕**再按「调用」扫一遍** —— 上面那批针全是路径拼法。
+        // ★**再按「调用」扫一遍** —— 上面那批针全是路径拼法。
         //
         // 实测：往 `inbound.rs` 写
         //   `use tokio::time::{self as _t, sleep};`
@@ -1008,7 +1008,7 @@ mod tests {
         // 补的是**调用形态**（名字要是完整的词、后面紧跟 `(`），与怎么导入无关。
         // ⚠ 补之前量过误红面：这八个名字在后端生产段今天**全为 0 处**。
         for (name, code) in &files {
-            // 〔HX1〕唯一的退出期限让位（只剥那一个片段，同一份文件其余照扫）。
+            // 唯一的退出期限让位（只剥那一个片段，同一份文件其余照扫）。
             let code = &without_exit_deadline(name, code);
             for call in [
                 "sleep",
@@ -1088,7 +1088,7 @@ mod tests {
         }
     }
 
-    /// 〔HX1 · 4D〕**唯一的退出期限还在盘上、恰好一处、只在它登记的那份文件里**；而且让位只让了它 ——
+    /// **唯一的退出期限还在盘上、恰好一处、只在它登记的那份文件里**；而且让位只让了它 ——
     /// 剥掉登记的片段之后，那份文件的生产段对两条扫描都干净；**不剥**的话调用形态那一条当场认得出它（正控：让位是真在让）。
     /// 守的要求：主会话裁 HX1 拍板项 1「在 `no_timer_guard` 开一个登记口（登记表一行，写明它是唯一的退出期限）」。
     #[test]
@@ -1142,8 +1142,8 @@ mod tests {
         }
     }
 
-    /// 〔STOP〕**带期限的内核等待 == 一次性 CLI 例外表**（两向相等），且走得到它们的只有一次性子命令那一份文件。
-    /// 守的要求：`4d-lanes.md` `### STOP`（主会话裁）逐字「等待住一次性 CLI（不是常驻后端的事件循环）⇒ 不碰『常驻后端零定时器』；
+    /// **带期限的内核等待 == 一次性 CLI 例外表**（两向相等），且走得到它们的只有一次性子命令那一份文件。
+    /// 要求：「等待住一次性 CLI（不是常驻后端的事件循环）⇒ 不碰『常驻后端零定时器』；
     /// 登记进 `no_timer_guard` 的一次性 CLI 例外表并写理由」· `INVARIANTS §41`（后端零定时器）。
     #[test]
     fn bounded_kernel_waits_are_exactly_the_one_shot_cli_exceptions() {
@@ -1235,7 +1235,7 @@ mod tests {
 
     /// 登记表每条都要有非空理由 —— 不写理由的登记等于无声豁免。
     ///
-    /// 〔`K-G6` `KG64`〕同轮加了两栏：**走的是哪一格**（闭集比对）与**解锁条件**（长度地板）。
+    /// 同轮加了两栏：**走的是哪一格**（闭集比对）与**解锁条件**（长度地板）。
     #[test]
     fn registered_uses_all_have_reasons() {
         for (file, snippet, why, cell, unlock) in REGISTERED_DURATION_USES {
@@ -1260,7 +1260,7 @@ mod tests {
     }
 }
 
-/// 〔`K-G6` `KG61`〕**本护栏今天真能拦住的形状全表 + 一个今天就通过了的反例。**
+/// **本护栏今天真能拦住的形状全表 + 一个今天就通过了的反例。**
 ///
 /// # 先列全表，再谈放宽（`§0c 裁五`）
 ///
@@ -1360,17 +1360,17 @@ mod g6_reach {
     #[test]
     fn the_duration_registry_is_an_equality_not_a_floor() {
         let registered = REGISTERED_DURATION_USES.len();
-        // 〔`K-P6b` 09-06〕3 → **4**：新增的那一条是 `dial/mod.rs` 的 SSH keepalive 间隔。
+        // 3 → **4**：新增的那一条是 `dial/mod.rs` 的 SSH keepalive 间隔。
         // ⚠ 那一条的登记理由**与前三条不同族** —— 它没说「这不是定时器」，
         //   它说的是「有一个，而它长在依赖 crate 里、在本护栏的人群外面」。
         //   ⇒ 这个分母涨了 1，而**护栏能拦住的形状一个都没多**。别把涨读成变强。
-        // 〔C2 09-24〕4 → **5**：多的那一条是 `dial/connect.rs` 的 `PROBE_INACTIVITY`（「测试连接」
+        // 4 → **5**：多的那一条是 `dial/connect.rs` 的 `PROBE_INACTIVITY`（「测试连接」
         //   那条一次性连接的 inactivity 上限，从界面侧搬进拨号代理）。keepalive 那一条只是换了住址。
-        // 〔RK1 · 第四波 4C〕5 → **6**：多的那一条是 `relay/machine.rs` 的 `PROBE_DEADLINE`（远端「口上是不是我们的中转」
+        // 5 → **6**：多的那一条是 `relay/machine.rs` 的 `PROBE_DEADLINE`（远端「口上是不是我们的中转」
         //   那两发差分探针的一次阻塞上限）。同族于中转那两条 socket 期限，不驱动任何循环。
-        // 〔HX1 · 4D〕6 → **7**：多的那一条是 `inbound.rs` 的 `DRAIN_DEADLINE`（退出排空期限）—— 它是本表第一条
+        // 6 → **7**：多的那一条是 `inbound.rs` 的 `DRAIN_DEADLINE`（退出排空期限）—— 它是本表第一条
         //   **真会醒来**的登记（cell `缩性质`），调用那一处另住 `REGISTERED_EXIT_DEADLINE`。
-        // 〔DEL 续〕7 → **6**：`relay/machine.rs` 的 `PROBE_DEADLINE` 随差分探针删了（「在不在」改读进程内状态）。
+        // 7 → **6**：`relay/machine.rs` 的 `PROBE_DEADLINE` 随差分探针删了（「在不在」改读进程内状态）。
         // 6 → **7**：多的那一条是 `observe/runs.rs` 的 `STALE_AFTER`（子运行「久未再写 ⇒ 状态不明」的阈值，
         //   只在读记录 / 收到文件事件时比一次，不醒来）。
         assert_eq!(
@@ -1380,7 +1380,7 @@ mod g6_reach {
         );
     }
 
-    /// 〔`KG61` ②〕**今天在盘上、形状与本护栏声称要拦的相同、而它放过了的那一处。**
+    /// **今天在盘上、形状与本护栏声称要拦的相同、而它放过了的那一处。**
     ///
     /// `(住址, 生产段里的片段, 形状对得上的是禁用表里的哪几条, why, unlock)`
     const KNOWN_PASSING_COUNTEREXAMPLES: &[(&str, &str, &str, &str, &str)] = &[(
@@ -1448,7 +1448,7 @@ mod g6_reach {
         let pats = periodic_wake_patterns();
         let mut hits: Vec<String> = Vec::new();
         for (name, code) in &files {
-            // 〔HX1〕唯一的退出期限让位（与正题那条同一个剥法：`tests::without_exit_deadline`）。
+            // 唯一的退出期限让位（与正题那条同一个剥法：`tests::without_exit_deadline`）。
             let code = super::tests::without_exit_deadline(name, code);
             for pat in &pats {
                 if code.contains(pat.as_str()) {

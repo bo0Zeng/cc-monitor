@@ -1,13 +1,13 @@
 /**
- * 〔TAP · V124〕活卡的判据。
+ * 活卡的判据。
  *
  * 守的要求（住址 · 逐字）：
- * - `设计/20 §8`（V24）：「SSE 只保快（临时态），jsonl 到了整轮覆盖，对账键是 `message.id`，不做记录级合并」（对账键今天由后端给：
+ * -：「SSE 只保快（临时态），jsonl 到了整轮覆盖，对账键是 `message.id`，不做记录级合并」（对账键今天由后端给：
  *   记录那一侧 `line.rid`、流那一侧归一事件 `start.rid`）·
  *   「按 sid 与 jsonl 对账（`<key>` 段就是 sid；对不上的只能当匿名流）」·「前端现有的去重层就是吸收层」。
- * - `设计/05 §3.3.4`：「`Gap` 必须在流里的原位」—— 这里是每个响应里连续的位置号 `n`，缺口由接收侧纯算术看出来。
- * - `设计/05 §4.5.3` ③：「不买抄流的完整性 —— 抄流可以有缺口，主路不可以」⇒ T8：SSE 断 / 丢不影响 jsonl 那条路。
- * 设计与上界表住仓外 `调研/第四波记录/TAP.md §2 · §4 · §5 · §7`。
+ * -：「`Gap` 必须在流里的原位」—— 这里是每个响应里连续的位置号 `n`，缺口由接收侧纯算术看出来。
+ * -：「不买抄流的完整性 —— 抄流可以有缺口，主路不可以」⇒ T8：SSE 断 / 丢不影响 jsonl 那条路。
+ * 设计与上界表住仓外。
  *
  * 分两段：T6 纯状态机（期望手写，喂的是归一事件）· T8 真 TabManager（jsonl 那条路三种 tap 情形下建出的 DOM 逐字相等）。
  * T7（台架夹具：真 jsonl × 真 tap 按对账键比正文）随上游协议的折法搬进后端：`tests/backend/agents/sse_anthropic_tests.rs`。
@@ -79,7 +79,7 @@ function taps(stream: string, resp: number, evs: StreamEv[], end?: "done" | "bro
   return out;
 }
 
-/** 按 sid 路由：`stream` 就是 tab 的 sid 才算（`20 §8`）。 */
+/** 按 sid 路由：`stream` 就是 tab 的 sid 才算。 */
 function core(tabs: string[] = ["s1"]): LiveCore {
   return new LiveCore((origin, stream) => (origin === O && tabs.includes(stream) ? stream : null));
 }
@@ -207,7 +207,7 @@ describe("T6 活卡状态机（期望手写）", () => {
 
 // ─── T8：SSE 断 / 丢不影响 jsonl 那条路（真 TabManager，jsonl 那条路建出的 DOM 三向逐字相等） ──
 
-describe("T8 SSE 断 / 丢不碰 jsonl 那条对的路（`05 §4.5.3` ③：抄流可以有缺口，主路不可以）", () => {
+describe("T8 SSE 断 / 丢不碰 jsonl 那条对的路（抄流可以有缺口，主路不可以）", () => {
   afterEach(() => vi.unstubAllGlobals());
 
   const jsonl: RigPayload[] = [

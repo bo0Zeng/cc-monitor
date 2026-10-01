@@ -1,4 +1,4 @@
-//! 〔MIG-2 · `99 §2.1 ⑬` · `01 §1.1`〕**起一个会话的计划与渲染** —— 这台后端出成品，界面只把那串交给 monitor 开终端跑。
+//! **起一个会话的计划与渲染** —— 这台后端出成品，界面只把那串交给 monitor 开终端跑。
 //!
 //! 从 monitor `src/frontend/shell/src/` 搬来（原在 monitor 进程里渲、界面 Tauri 问）：
 //! [`payload`]（载荷内核 ＋ 外层 tmux 三格）· [`ccm_invocation`]（`ccm …` 调用行）· [`wire`]（线上形状 → 渲染器）。

@@ -1,30 +1,30 @@
 /**
- * 〔AL1 · 2026-09-24〕机器页上的 ②「别名」—— `设计/71`（别名 ＝ ccm 参数附加器）＋ `设计/70 §3.3`（并入机器页）。
+ * 机器页上的 ②「别名」—— （别名 ＝ ccm 参数附加器）＋（并入机器页）。
  *
  * # 它取代了什么
  *
  * 从前别名有两块、住在「应用 → 行为」里：一块「按账号生成命令」（加了账号就多一条、删了就没一条 ——
  * 把**用户的清单**当成了**账号表的投影**），一块「生成自定义别名」（只吐文本、不落盘）。
  * 账号表单下面还有一句散文把人指过去 ——「用一句散文告诉用户去另一个顶层页找一个功能，
- * 本身就是 IA 失败的自证」（`70 §3.1`）。
+ * 本身就是 IA 失败的自证」。
  *
  * 今天只有**一类**：一条别名 ＝ 名字 ＋ 一组 ccm 参数；账号只是参数里的一个维度。
- * 清单归用户，「为每个账号加一条」只是个一次性的便利按钮（`71 §8`）。
+ * 清单归用户，「为每个账号加一条」只是个一次性的便利按钮。
  *
- * # 两跳（`71 §12.6`）—— 本文件一个字节的 shell 文本都不自己拼
+ * # 两跳—— 本文件一个字节的 shell 文本都不自己拼
  *
  * ① `aliases_render`（纯）：清单 → 代码 ＋ 每条的问题 ＋ 撞名提示。预览与「复制去手贴」只调它；
- * ② `aliases_install`（唯一的副作用）：同一份渲染落进 `~/.cc-monitor/aliases.sh`（〔RW1〕经本机后端写），
- *    选了 rc 就**只查**它接没接上（〔TL1 · 4C〕`71 §6.1`：接上那一行只住别名块里，不代装）。
+ * ② `aliases_install`（唯一的副作用）：同一份渲染落进 `~/.cc-monitor/aliases.sh`（经本机后端写），
+ *    选了 rc 就**只查**它接没接上（接上那一行只住别名块里，不代装）。
  * 读回口 `aliases_read`：打开这一块时先读盘上那份，清单从它开始编辑。
  *
  * # 纪律（`launcher-diagnostics.ts` 头注那条，原样适用）
  *
  * **绝不在用户没要求时改他的配置**：打开这一块只读；「写入」按钮写明写到哪、写什么；
  * 那份 rc 由人在下拉里选，默认项是「不动我的 shell 配置」。
- * **构造零 I/O**：这一块是个 `<details>`，第一次展开才发第一条 IPC（`70 §1.3 B` · `§8` #3）。
+ * **构造零 I/O**：这一块是个 `<details>`，第一次展开才发第一条 IPC。
  *
- * # 〔AL1c · 第四波 4B〕两个平台一份组件（`设计/71 §7` W5）—— 平台是它的一个输入
+ * # 两个平台一份组件—— 平台是它的一个输入
  *
  * 从前 Windows 上这里只有一句「PowerShell 写法的别名还没做」，`cc` 那一块住另一份组件（`cc_integration.ts`，
  * 本机页上单独一块「终端集成」）。今天两份并成这一份，`platform`（`posix` / `powershell`）是入参：
@@ -41,7 +41,7 @@ import { isLocalOrigin } from "../ipc/origin";
 import { showActionFailureToast } from "../error-toast"; // `K-R135`：用户级 PATH 那一格的失败要出声
 import { buildPasteBlock } from "../paste-block";
 import { ACTIVE_AGENT, listAgents } from "../agent-profile";
-// 〔MIG-3a〕别名六问走通道、那台后端出成品（`../alias-reads`）；类型随成品住那边（从前是 monitor 生成的类型）。
+// 别名六问走通道、那台后端出成品（`../alias-reads`）；类型随成品住那边（从前是 monitor 生成的类型）。
 import type { Alias, AliasRender, ExecPolicy, PsHost, StartupFile, Shell } from "../alias-reads";
 import { askConfirm, type ConfirmFn } from "../ask-dialog";
 import {
@@ -61,13 +61,13 @@ import { copyText } from "../copy-table";
 import { recordFacet, LOCAL_MACHINE_KEY } from "./machine-status";
 import type { LocalCcmEntry } from "../generated/LocalCcmEntry";
 
-/** 〔WF1 · L〕界面上怎么叫那一代 PowerShell（两代的执行策略分开存）。 */
+/** 界面上怎么叫那一代 PowerShell（两代的执行策略分开存）。 */
 const psName = (h: PsHost): string =>
   h === "pwsh" ? copyText("machineAliases.policy.hostPwsh") : copyText("machineAliases.policy.hostPowershell");
 
 /**
- * 〔AL1c〕这台机器（monitor 跑在的那台本机）用哪种 shell 的方言。
- * 〔FIX4 · `71 §8` 第 7 条，主会话 09-28 裁〕**认不出就不猜**（`null`）：别名块那一格明说「认不出这台的系统」、安装入口置灰
+ * 这台机器（monitor 跑在的那台本机）用哪种 shell 的方言。
+ * **认不出就不猜**（`null`）：别名块那一格明说「认不出这台的系统」、安装入口置灰
  * （[`buildUnknownOsAliasBlock`]）—— 先前按 POSIX 猜，Windows 上猜错了就把装 bash 块的入口摆给一台 PowerShell 机器。
  */
 export function localShell(): Shell | null {
@@ -76,7 +76,7 @@ export function localShell(): Shell | null {
   return os === "windows" ? "powershell" : "posix";
 }
 
-/** 〔FIX4 · `71 §8` 第 7 条〕认不出本机系统时别名那一格：说清为什么没有，安装入口在、但置灰（出声不静默）。 */
+/** 认不出本机系统时别名那一格：说清为什么没有，安装入口在、但置灰（出声不静默）。 */
 export function buildUnknownOsAliasBlock(): HTMLElement {
   const wrap = el("details", "ccm-alias-gen machine-aliases");
   wrap.dataset.shell = "unknown";
@@ -91,7 +91,7 @@ export function buildUnknownOsAliasBlock(): HTMLElement {
 }
 
 /** 平台那几格的措辞（写死在一处，组件里按 `platform` 取）。 */
-// 〔CP2b〕做成函数、用到时才取文：模块顶层一句取文口调用都不留 —— 顶层有调用，Rollup 就把这份（连同 paste-block / info-icon）
+// 做成函数、用到时才取文：模块顶层一句取文口调用都不留 —— 顶层有调用，Rollup 就把这份（连同 paste-block / info-icon）
 //   从设置窗口的入口 chunk 挪进主窗也加载的共享 chunk，主窗的样式清单就对不上了（entry-graphs 那条判据现打逮到）。
 const platformCopy = (): Record<
   Shell,
@@ -100,7 +100,7 @@ const platformCopy = (): Record<
     pasteActivation: string;
     rcLabel: string;
     nameHint: string;
-    /** 〔AL1d〕别名块是什么（状态行里「还没有别名块（…）」那一格）。 */
+    /** 别名块是什么（状态行里「还没有别名块（…）」那一格）。 */
     blockWhat: string;
     blockInstallTitle: string;
     blockAfterInstall: string;
@@ -129,18 +129,18 @@ const platformCopy = (): Record<
   },
 });
 
-/** 〔W5-ALIAS〕问一次预览（`ccm-print`）最多等多久：读一份账号库 ＋ 问一次会话快照，秒级内。 */
+/** 问一次预览（`ccm-print`）最多等多久：读一份账号库 ＋ 问一次会话快照，秒级内。 */
 const PREVIEW_BUDGET_MS = 10_000;
 
 /**
- * 〔W5-ALIAS · 第五波先行〕**一条别名实际会执行什么**（`设计/71 §2.3`「`ccm --print` 不跑、吐出等价的一行 shell
+ * **一条别名实际会执行什么**（「`ccm --print` 不跑、吐出等价的一行 shell
  * ⇒ 生成器旁边显示这条别名实际会执行什么，是真验证，不是前端拼串」）。
  *
  * 问这台机器的后端（帧命令 `ccm-print`，经通道 `chan.call`）—— 与终端里 `ccm --print` 同一个计划函数；
  * 语境是「家目录里的一个新终端」（后端那一侧写死，`control/ccm/plan.rs::Env::for_preview`）。
  * 本文件一个字节的 shell 都不拼：`line` 原样上屏。点了才问（不在首开的那几发里）。
  */
-// 〔AL2〕问的是**那台**机器的后端（`origin`）：本机远端同一条帧命令。
+// 问的是**那台**机器的后端（`origin`）：本机远端同一条帧命令。
 export async function previewAlias(origin: Origin, a: Alias): Promise<string> {
   try {
     const budget = budgetWithin(PREVIEW_BUDGET_MS);
@@ -158,11 +158,11 @@ export async function previewAlias(origin: Origin, a: Alias): Promise<string> {
   }
 }
 
-/** tmux 那一维的四个取值（`71 §4` 第一档）。 */
+/** tmux 那一维的四个取值（第一档）。 */
 export type TmuxMode = "none" | "auto" | "named" | "base";
 
 /**
- * 〔W5-ALIAS · 第五波先行〕tmux 四选各自**撞名时会怎样**（`设计/71 §8 #9`：表单上那四个选项只有名字，没有一句说撞了会怎样）。
+ * tmux 四选各自**撞名时会怎样**（表单上那四个选项只有名字，没有一句说撞了会怎样）。
  *
  * 规则不在这里：取名与退让住后端 `control/ccm/plan.rs::build`（`next_free_name`，`--print` 与真跑同一个名字）。
  * 这里只把那三条取名路的态度说成人话 —— `stepsAside` 那一格与后端逐条对拍
@@ -201,7 +201,7 @@ export interface AliasForm {
   detach: boolean;
   busRegister: boolean;
   busNote: string;
-  /** 原样交给 agent 的那几个词（按空白切；〔V151〕渲在 `--` 左边）。 */
+  /** 原样交给 agent 的那几个词（按空白切；渲在 `--` 左边）。 */
   passthru: string;
 }
 
@@ -227,7 +227,7 @@ export function emptyForm(): AliasForm {
 
 /**
  * 表单 → 一条别名（原样的 ccm argv）。纯函数。
- * 〔V151〕`<交给 claude 的…> -- <ccm 自己的…>`：`--model` 与透传栏是 claude 的（左边），其余是 ccm 的（右边）。
+ * `<交给 claude 的…> -- <ccm 自己的…>`：`--model` 与透传栏是 claude 的（左边），其余是 ccm 的（右边）。
  */
 export function formToAlias(f: AliasForm): Alias {
   const claude: string[] = [];
@@ -256,7 +256,7 @@ export function formToAlias(f: AliasForm): Alias {
   return { name: f.name.trim(), args: needsEnd ? [...claude, "--", ...ours] : claude };
 }
 
-/** 一条别名 → 表单（「改」那一下）。〔V151〕按最后一个 `--` 切；认不出的参数原样塞回透传栏，**不静默丢**。 */
+/** 一条别名 → 表单（「改」那一下）。按最后一个 `--` 切；认不出的参数原样塞回透传栏，**不静默丢**。 */
 export function aliasToForm(a: Alias): AliasForm {
   const f = emptyForm();
   f.name = a.name;
@@ -264,7 +264,7 @@ export function aliasToForm(a: Alias): AliasForm {
   const cut = a.args.lastIndexOf("--");
   const left = cut < 0 ? a.args : a.args.slice(0, cut);
   const right = cut < 0 ? [] : a.args.slice(cut + 1);
-  // 〔V153〕右边第一个词 `new`（起新会话，缺省就是它）是 ccm 的位置词，表单里没有对应格、也不进透传。
+  // 右边第一个词 `new`（起新会话，缺省就是它）是 ccm 的位置词，表单里没有对应格、也不进透传。
   if (right[0] === "new") right.shift();
   for (let i = 0; i < left.length; i++) {
     if (left[i] === "--model" && i + 1 < left.length && !f.model) f.model = left[++i];
@@ -318,7 +318,7 @@ function el<K extends keyof HTMLElementTagNameMap>(
   return e;
 }
 
-// 〔W5-AUX · AR1 拍板 3〕`variant` 空串 = 默认那一种按钮（原先挂一个从没有过规则的 `settings-btn-secondary`，已摘）。
+// 〔AR1 拍板 3〕`variant` 空串 = 默认那一种按钮（原先挂一个从没有过规则的 `settings-btn-secondary`，已摘）。
 function button(label: string, variant: string, onClick: () => void): HTMLButtonElement {
   const b = el("button", variant ? `settings-btn ${variant}` : "settings-btn", label);
   b.type = "button";
@@ -327,9 +327,9 @@ function button(label: string, variant: string, onClick: () => void): HTMLButton
 }
 
 /**
- * 机器卡上的 ②。〔AL1c〕两个平台同一份，`platform` 是入参；〔AL2〕本机远端同一份，`origin` 是入参（`设计/71 §5` · `§6`）。
+ * 机器卡上的 ②。两个平台同一份，`platform` 是入参；本机远端同一份，`origin` 是入参。
  *
- * @param platform 这台机器用哪种 shell 的方言（本机 = [`localShell`]；远端恒 `posix`，`01 §6.7b` 表 B）。
+ * @param platform 这台机器用哪种 shell 的方言（本机 = [`localShell`]；远端恒 `posix`）。
  * @param origin 那台机器（取值函数：远端卡改名后跟着它走）。六条 `aliases_*` 都带它。
  * @param onBlockDone 装 / 卸别名块之后（远端卡拿它记机器列表那一格；`error` 为空 = 成了）。
  */
@@ -337,12 +337,12 @@ export function buildAliasManager(opts: {
   platform: Shell;
   origin: () => Origin;
   onBlockDone?: (verb: "install" | "remove", error: string | null) => void;
-  /** 〔WF1 · L〕改执行策略之前问一句的注入缝（缺省走应用内对话框）。 */
+  /** 改执行策略之前问一句的注入缝（缺省走应用内对话框）。 */
   confirm?: ConfirmFn;
 }): HTMLElement {
   const shell = opts.platform;
   const copy = platformCopy()[shell];
-  // 〔AL2〕只本机挂的几格（平台格 · 本机 ccm 入口 · 用系统编辑器打开）问的是 monitor 这台，远端不挂。
+  // 只本机挂的几格（平台格 · 本机 ccm 入口 · 用系统编辑器打开）问的是 monitor 这台，远端不挂。
   const local = isLocalOrigin(opts.origin());
   const wrap = el("details", "ccm-alias-gen machine-aliases");
   wrap.dataset.shell = shell;
@@ -402,7 +402,7 @@ export function buildAliasManager(opts: {
     ...listAgents().map((a): [string, string] => [a, `agent：${a}`]),
   ]);
   grid.append(nameIn, cwdIn, acctSel, tmuxSel, tmuxNameIn, agentSel);
-  // 〔W5-ALIAS〕选了哪种 tmux，下面一句说清撞名时会怎样（`TMUX_NAMING`）。
+  // 选了哪种 tmux，下面一句说清撞名时会怎样（`TMUX_NAMING`）。
   for (const o of [...tmuxSel.options]) o.title = TMUX_NAMING[o.value as TmuxMode].text();
   // 挂钩用 `data-role` 不用类名：这一行的外观就是 `.settings-hint`，多一个没有规则的类名只会让悬空类名那条棘轮多一格。
   const tmuxHint = el("div", "settings-hint");
@@ -437,7 +437,7 @@ export function buildAliasManager(opts: {
   // ── 渲染结果（第①跳）────────────────────────────────────────────────────
   const problemsBox = el("div", "settings-hint machine-aliases-problems");
   wrap.appendChild(problemsBox);
-  // 〔MIG-3a〕撞名那一格由那台后端查它自己的 `PATH`（规则住在那台上）⇒ 〔AL2〕「远端只核自带别名块」那句说明退役。
+  // 撞名那一格由那台后端查它自己的 `PATH`（规则住在那台上）⇒ 「远端只核自带别名块」那句说明退役。
   let rendered: AliasRender | null = null;
   const paste = buildPasteBlock({
     text: () => rendered?.fileText ?? "",
@@ -457,8 +457,8 @@ export function buildAliasManager(opts: {
   wrap.appendChild(paste.element);
 
   // ── 写入（第②跳）────────────────────────────────────────────────────────
-  // 〔AL1d · 第四波 4B〕这个下拉是这台机器上**唯一**的启动文件选择器：别名块装进哪份、
-  // 「写入」时查哪份接没接上别名文件（〔TL1〕只查不写 —— 接上那一行只住别名块里），都是它（从前 PowerShell 上另有一个版本预设下拉 ＋ 路径框，候选另有来历，`AL1d.md §1.2`）。
+  // 这个下拉是这台机器上**唯一**的启动文件选择器：别名块装进哪份、
+  // 「写入」时查哪份接没接上别名文件（只查不写 —— 接上那一行只住别名块里），都是它（从前 PowerShell 上另有一个版本预设下拉 ＋ 路径框，候选另有来历，`AL1d.md §1.2`）。
   // 候选只来自读回口 `aliases_read`（`$PROFILE` 在哪由后端 `shell_dialect.rs` 一处答），本文件一个路径都不推。
   const rcSel = el("select", "ccm-acct-alias-rc");
   const rcRow = el("label", "settings-row");
@@ -477,7 +477,7 @@ export function buildAliasManager(opts: {
   wrap.append(rcRow, otherRow, writeBtn, result);
 
   // ── 别名块：装 / 卸 / 预览 / 现状 —— 两种 shell 同一块，装进上面那个下拉选中的那份 ──────
-  // `K-R62`：本机 POSIX 那一格的装口从前就住这里；〔AL1d〕PowerShell 那一块（`__ccm_bind` ＋ 可选 `cc`，
+  // `K-R62`：本机 POSIX 那一格的装口从前就住这里；PowerShell 那一块（`__ccm_bind` ＋ 可选 `cc`，
   // 原「终端集成」）并进来了：同一个选择器、同一次读回、同一族命令（`aliases_block_*`）。
   // 默认什么都不做：下拉停在「不动我的 shell 配置」时整块藏着。选了之后**不发 IPC** —— 现状随读回口的候选一起到。
   const rcBlock = document.createElement("div");
@@ -514,7 +514,7 @@ export function buildAliasManager(opts: {
   const uninstallBtn = document.createElement("button");
   uninstallBtn.type = "button";
   uninstallBtn.className = "settings-btn";
-  // 〔AL2〕远端卡那一颗按 V134 叫「卸载 ccm」；本机那颗要不要随之改名还待用户（主会话现场），不在这里裁。
+  // 远端卡那一颗按 V134 叫「卸载 ccm」；本机那颗要不要随之改名还待用户（主会话现场），不在这里裁。
   uninstallBtn.textContent = local ? copyText("machineAliases.rc.uninstall") : copyText("machineCard.aliases.uninstall");
   uninstallBtn.addEventListener("click", () =>
     void runRc("remove", (path) => removeAliasBlock(opts.origin(), path)),
@@ -535,7 +535,7 @@ export function buildAliasManager(opts: {
   rcElsewhere.className = "settings-cc-legacy-warn";
   rcElsewhere.hidden = true;
   const rcNote = el("div", "settings-hint");
-  // 〔WF1 · L · `设计/99 §2.3`〕加载这份 `$PROFILE` 的那一代 PowerShell 会不会跑它（执行策略由那台后端现问、判）；
+  // 加载这份 `$PROFILE` 的那一代 PowerShell 会不会跑它（执行策略由那台后端现问、判）；
   //   不会且不是组策略钉着 ⇒ 给标准做法的按钮，点了先确认再发。
   // 两个都会被 `hidden` 切：照 `uninstallBtn` 那一形直接挂类（`css-conventions` S30 ⑦ 那把尺子才认得出它们身上没有裸 display）。
   const rcPolicy = document.createElement("div");
@@ -549,7 +549,7 @@ export function buildAliasManager(opts: {
   allowBtn.addEventListener("click", () => void onAllow());
   rcBlock.append(rcStatusRow, withCcRow, rcWarn, rcPolicy, allowBtn, rcButtons, rcNote, rcLegacy, rcElsewhere);
   wrap.appendChild(rcBlock);
-  // 〔AL1c〕PowerShell 那一侧还有两格不随启动文件走：握手的终端数 ＋ 自动打开 monitor（原「终端集成」）· 用户级 PATH。
+  // PowerShell 那一侧还有两格不随启动文件走：握手的终端数 ＋ 自动打开 monitor（原「终端集成」）· 用户级 PATH。
   // 它们一构造就问后端 ⇒ **第一次展开才建**（见下面 `toggle`），守住这一块「构造零 I/O」。
   const psSlot = el("div", "ccm-ps-slot");
   wrap.appendChild(psSlot);
@@ -575,8 +575,8 @@ export function buildAliasManager(opts: {
     passthru: passIn.value,
   });
 
-  /** `71 §5` V3 / V4 在控件上：不进 tmux ⇒ 那几格禁用；不 --detach ⇒ 登记那格禁用。 */
-  // 〔AL1c〕能力（不是方言）：PowerShell 目标 ⇔ Windows ⇔ 没有 tmux ⇒ tmux 那几格整组不给选
+  /** / V4 在控件上：不进 tmux ⇒ 那几格禁用；不 --detach ⇒ 登记那格禁用。 */
+  // 能力（不是方言）：PowerShell 目标 ⇔ Windows ⇔ 没有 tmux ⇒ tmux 那几格整组不给选
   // （后端 `account_aliases::check_alias` 的能力闸是真判定；这里只是不让人选一个必被拒的组合）。
   const hasTmux = shell === "posix";
   if (!hasTmux) {
@@ -632,7 +632,7 @@ export function buildAliasManager(opts: {
     list.forEach((a, i) => {
       const row = el("div", "settings-row machine-aliases-row");
       row.append(el("code", "", a.name), el("span", "settings-hint", describeArgs(a.args)));
-      // 〔W5-ALIAS〕「实际会执行什么」那一行：点「预览」才问后端（`previewAlias`），答案挂在这一条下面。
+      // 「实际会执行什么」那一行：点「预览」才问后端（`previewAlias`），答案挂在这一条下面。
       // 点了才建、才挂（不用 `hidden` 切：会被切的元素要一个静态认得出的类，而这一格的外观没有自己的规则）。
       const previewOut = document.createElement("pre");
       previewOut.dataset.role = "alias-preview";
@@ -707,7 +707,7 @@ export function buildAliasManager(opts: {
   };
 
   /**
-   * 〔MIG-3a〕握手终端数住 monitor 进程里（不是那台盘上的事实）⇒ 另问 monitor；只有本机 PowerShell 那一格显示它。
+   * 握手终端数住 monitor 进程里（不是那台盘上的事实）⇒ 另问 monitor；只有本机 PowerShell 那一格显示它。
    */
   const refreshBound = (): void => {
     if (!psExtras || !local) return;
@@ -719,7 +719,7 @@ export function buildAliasManager(opts: {
 
   /**
    * 读回口：盘上那份就是清单的起点；认不出的行原样说出来 —— 写回去之前人得知道它们会没。
-   * 〔AL1d〕同一次读回带回启动文件候选（各带别名块的现状）与握手终端数 ⇒ 别名块那一格不再另问。
+   * 同一次读回带回启动文件候选（各带别名块的现状）与握手终端数 ⇒ 别名块那一格不再另问。
    * `keepList`：只刷新盘上的现状，不动人正在编辑的清单（装 / 卸别名块之后、「重新读一遍」）。
    */
   const readBack = async (keepList: boolean): Promise<void> => {
@@ -741,7 +741,7 @@ export function buildAliasManager(opts: {
   };
 
   const load = async (): Promise<void> => {
-    // 本机 ccm 那一格：我们那一份装下来了没有 ＋ 终端里敲 `ccm` 走到的是不是它（〔WF1 · ㉔〕Windows 上问新开的 PowerShell）。
+    // 本机 ccm 那一格：我们那一份装下来了没有 ＋ 终端里敲 `ccm` 走到的是不是它（Windows 上问新开的 PowerShell）。
     wrap.dataset.origin = opts.origin();
     if (local) {
       try {
@@ -771,7 +771,7 @@ export function buildAliasManager(opts: {
     await load();
   };
 
-  /** 〔AL1d〕「其它文件」：交给读回口过围栏、并进候选，然后选中它。过不了围栏 ⇒ 原话上屏，候选不动。 */
+  /** 「其它文件」：交给读回口过围栏、并进候选，然后选中它。过不了围栏 ⇒ 原话上屏，候选不动。 */
   const onOther = async (): Promise<void> => {
     const raw = otherIn.value.trim();
     if (!raw) return;
@@ -798,12 +798,12 @@ export function buildAliasManager(opts: {
     if (!c) return;
     const b = c.block;
     if (c.unreadable) {
-      // 〔AL2〕在盘上、那台后端却读不了 ⇒ 照实说（别把「读不了」说成「没有别名块」）。
+      // 在盘上、那台后端却读不了 ⇒ 照实说（别把「读不了」说成「没有别名块」）。
       rcStatus.textContent = copyText("machineAliases.rcStatus.unreadable", { path: c.path, why: c.unreadable });
       rcStatus.className = "ccm-rc-block-status settings-cc-profile-badge settings-cc-badge-warn";
     } else if (b.present) {
       const version = b.version ? `（${b.version}）` : "";
-      // 〔TL1 · 4C〕旧版块（PowerShell v2）没有接上别名文件那一行 —— 重装一次就带上（`71 §6.1`）。
+      // 旧版块（PowerShell v2）没有接上别名文件那一行 —— 重装一次就带上。
       rcStatus.textContent = b.outdated
         ? copyText("machineAliases.rcStatus.installedOutdated", { path: c.path, version })
         : c.policy?.loads === false
@@ -843,7 +843,7 @@ export function buildAliasManager(opts: {
   withCc.addEventListener("change", () => refreshRc());
 
   const runRc = async (
-    verb: "install" | "remove", // 〔CP2b〕原先拿「装」「卸」两个字当动作名再拼进句子里 —— 拆成整句各自进表
+    verb: "install" | "remove", // 原先拿「装」「卸」两个字当动作名再拼进句子里 —— 拆成整句各自进表
     act: (path: string) => Promise<void>,
   ): Promise<void> => {
     const path = rcSel.value;
@@ -872,7 +872,7 @@ export function buildAliasManager(opts: {
           : copyText("machineAliases.policy.afterInstall");
   };
 
-  /** 〔WF1 · L〕执行策略那一行：只在它会挡住块（或说不清）时出声；不会挡 ⇒ 不占地方。 */
+  /** 执行策略那一行：只在它会挡住块（或说不清）时出声；不会挡 ⇒ 不占地方。 */
   const showPolicy = (p: ExecPolicy | null): void => {
     const ps = p ? psName(p.host) : "";
     rcPolicy.textContent =
@@ -889,7 +889,7 @@ export function buildAliasManager(opts: {
     allowBtn.hidden = !(p?.loads === false && !p.groupPolicy);
   };
 
-  /** 〔WF1 · L〕标准做法那颗按钮：先确认（不代改），再请那台后端设、再重读（现状以它现问的为准）。 */
+  /** 标准做法那颗按钮：先确认（不代改），再请那台后端设、再重读（现状以它现问的为准）。 */
   const onAllow = async (): Promise<void> => {
     const p = selected()?.policy;
     if (!p) return;
@@ -914,7 +914,7 @@ export function buildAliasManager(opts: {
     rcNote.textContent = said;
   };
 
-  /** 〔AL1d〕预览别名块：与装那一下同一份渲染（后端 `plan_install`），方言由选中那份文件定。 */
+  /** 预览别名块：与装那一下同一份渲染（后端 `plan_install`），方言由选中那份文件定。 */
   const onPreview = async (): Promise<void> => {
     const path = rcSel.value;
     if (!path) return;
@@ -955,7 +955,7 @@ export function buildAliasManager(opts: {
   return wrap;
 }
 
-// 〔AL2 · 第四波 4D〕这里原来是远端卡那一半「把本机的别名清单复制过去贴」（读本机清单、按 POSIX 渲染给人手贴）。
+// 这里原来是远端卡那一半「把本机的别名清单复制过去贴」（读本机清单、按 POSIX 渲染给人手贴）。
 //   远端卡换成上面同一个 `buildAliasManager`（`origin` = 那台），清单在那台读、在那台写 ⇒ 删。
 
 /**
@@ -1122,14 +1122,14 @@ export function buildUserPathBlock(): HTMLElement {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// 〔AL1c · 第四波 4B〕PowerShell 那一侧不随启动文件走的两格（原「终端集成」剩下的那一半）
+// PowerShell 那一侧不随启动文件走的两格（原「终端集成」剩下的那一半）
 // ═══════════════════════════════════════════════════════════════════════════
 //
-// 〔AL1d · 第四波 4B〕原「终端集成」一整块（`PsTerminalIntegration`）拆成两半：
+// 原「终端集成」一整块（`PsTerminalIntegration`）拆成两半：
 // - **随启动文件走的那一半**（选哪份 `$PROFILE` · 装 / 卸 / 预览 / 现状 · 块外同名函数 · 「块也装在 profile.ps1 里」）
 //   并进了上面那个两种 shell 共用的「别名块」—— 同一个下拉、同一次读回、同一族命令（`aliases_block_*`）。
 //   它自己那一份版本预设下拉（PS 5.1 / 7 × CurrentHost / AllHosts）、TS 推 `profile.ps1` 的那一步、记住上次选择的
-//   localStorage 都删了：`$PROFILE` 在哪今天只有后端 `shell_dialect.rs` 一处答（`调研/第四波记录/AL1d.md §2.3`）。
+//   localStorage 都删了：`$PROFILE` 在哪今天只有后端 `shell_dialect.rs` 一处答。
 // - **不随启动文件走的那一半**留在这里：已完成拉前握手的终端数（读回口带回来）· 自动打开 monitor。
 
 /** 握手终端数（读回口带回来）＋ 自动打开 monitor 那一格。构造零 I/O；`loadNow()` 才问后端。 */
@@ -1211,7 +1211,7 @@ function buildPsExtras(): PsExtras {
       autoLaunchPathSpan.title = cfg.monitor_exe_path ?? "";
     } catch (e) {
       console.warn("cc_get_auto_launch failed:", e);
-      // 〔W5-UI · 设计/70 §7 #4〕读不到时别把「不知道」画成「没勾」：复选框禁用、路径那格说读不到。
+      // 读不到时别把「不知道」画成「没勾」：复选框禁用、路径那格说读不到。
       autoLaunchCheckbox.disabled = true;
       autoLaunchPathSpan.textContent = copyText("machineAliases.autoLaunch.unreadable", { e: String(e) });
       return;
@@ -1271,10 +1271,10 @@ function showPreviewModal(titleText: string, code: string): void {
 }
 
 /**
- * 设计/99 §2.2 ㉔ · `15 §5.4 D5`：**本机 `ccm` 那一格的唯一写点**（K-R117 S2 本机半钉在本文件）。问一次本机那一格（判定与那句话在 monitor
+ * **本机 `ccm` 那一格的唯一写点**（K-R117 S2 本机半钉在本文件）。问一次本机那一格（判定与那句话在 monitor
  * `ccm_probe::local_ccm_cell`），`ok` 说得清就记账（两件都成 ⇒ ok；有一件不成 ⇒ fail 并照记那句话；说不清 ⇒ 不写）。
- * 调用方：别名管理器读回 · 设置页机器列表（打开时一次）· 〔FIX4 ⑥〕本机那一行「重新对齐」（`fresh`：先作废 PATH 探针那份 5 分钟缓存，V149 手动兜底）。
- * 〔WF1 · ㉔〕Windows 本机同样问（新开的 PowerShell 里敲 `ccm` 走到哪）。
+ * 调用方：别名管理器读回 · 设置页机器列表（打开时一次）· 本机那一行「重新对齐」（`fresh`：先作废 PATH 探针那份 5 分钟缓存，V149 手动兜底）。
+ * Windows 本机同样问（新开的 PowerShell 里敲 `ccm` 走到哪）。
  */
 export async function noteLocalCcm(fresh = false): Promise<LocalCcmEntry> {
   const st = await commands.local_ccm_entry_status(fresh);

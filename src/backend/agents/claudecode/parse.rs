@@ -1,6 +1,6 @@
 //! 单行 JSONL → [`JsonlRecord`]。剥 UTF-8 BOM（INVARIANT § 3）+ 跳空行。
 //!
-//! **F63 (issue #49)：这里是「零信息损失」的唯一关口。**〔MOD〕它从 monitor 的 `parser.rs` 搬进后端：
+//! **F63 (issue #49)：这里是「零信息损失」的唯一关口。**它从 monitor 的 `parser.rs` 搬进后端：
 //! 后端读正文的每一条路（实时 `line` 帧 · 按页 · 按偏移 · 按行号 · 子 agent）都经这一个函数出成品，
 //! 手里正好有原始字符串 ——**绕开点和修复点是同一个地方**。
 //!
@@ -24,7 +24,7 @@ use super::schema::JsonlRecord;
 /// - `Err(_)`：原文**连合法 JSON 都不是**（半截行 / 语法坏）——没身份可救，
 ///   caller 决定容错策略。**`Unknown` 绝不出这个出口**（护栏见测试）。
 ///
-/// 〔MOD〕看不懂的东西记在**这台后端自己**的漂移账上（[`drift_ledger`]）：解析就发生在这台，
+/// 看不懂的东西记在**这台后端自己**的漂移账上（[`drift_ledger`]）：解析就发生在这台，
 /// 账本天然按机器分（monitor 那一侧原先要带 `origin` 说「记在哪台名下」，那一格随解析一起没了）。
 pub fn parse_line(raw: &str) -> Result<Option<JsonlRecord>, serde_json::Error> {
     let trimmed = raw.trim_start_matches('\u{feff}').trim();
@@ -47,7 +47,7 @@ pub fn parse_line(raw: &str) -> Result<Option<JsonlRecord>, serde_json::Error> {
             );
             Ok(Some(salvage(&v, trimmed, "unknown-type".to_string())))
         }
-        // 〔RENDER2 · J10〕user 记录带上注入噪声规则的成品；〔THIN〕assistant 记录带上每个 tool_use 的卡型。
+        // user 记录带上注入噪声规则的成品；assistant 记录带上每个 tool_use 的卡型。
         Ok(record) => Ok(Some(record.with_user_text().with_tool_cards())),
         Err(e) => match serde_json::from_str::<serde_json::Value>(trimmed) {
             // 合法 JSON，但我们的 schema 认不出（如已知 type 缺必填字段 / 字段形状
@@ -72,7 +72,7 @@ pub fn parse_line(raw: &str) -> Result<Option<JsonlRecord>, serde_json::Error> {
     }
 }
 
-/// 〔MOD〕[`parse_line`] 交给通用层的那一形（注册表 `RecordFace.parse`）：渲染模型那一条 ＋ 进不进界面 ＋ 它自己的 `cwd`。
+/// [`parse_line`] 交给通用层的那一形（注册表 `RecordFace.parse`）：渲染模型那一条 ＋ 进不进界面 ＋ 它自己的 `cwd`。
 pub(crate) fn parsed_line(raw: &str) -> Result<Option<crate::agents::ParsedLine>, String> {
     let Some(rec) = parse_line(raw).map_err(|e| e.to_string())? else {
         return Ok(None);

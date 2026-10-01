@@ -109,7 +109,7 @@ def main() -> int:
     rc, out = sh(r"""grep -n 'fn spawn_detached\|process_group(0)\|fn reap_detached' src-tauri/src/local_daemon.rs""", root)
     line("本机 daemon 脱离那条路", out or "🔴 零命中",
          "grep 'fn spawn_detached|process_group(0)|fn reap_detached' src-tauri/src/local_daemon.rs；"
-         "P2d〔control-parity〕当年判「结构性做不到」的依据是这几个词命中 0")
+         "P2d当年判「结构性做不到」的依据是这几个词命中 0")
 
     # ⑨ hello 帧的 commands 集（§D-3：同一道跨仓门）
     rc, out = sh(r"""grep -n 'inbound::COMMANDS' remote-daemon-proto/src/wire.rs | head -3""", root)

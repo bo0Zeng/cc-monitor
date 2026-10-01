@@ -57,7 +57,7 @@ fn the_windows_half_is_not_a_no_op() {
              上面两条就成了守着一段没人调的代码"
     );
     // ④ 第三类平台**不许凭空返回成功**（backend `fallback_guard` 那条道理的同款）。
-    // 〔CP2c〕那句话进了文案表（`credsPerm.makePrivate.unsupported`）⇒ 判「那一支回的是 `Err(` 取这一句」
+    // 那句话进了文案表（`credsPerm.makePrivate.unsupported`）⇒ 判「那一支回的是 `Err(` 取这一句」
     //   ＋「这句说的是没做到」（原先认源码里的「不假装做到了」，句子搬走后源码里只剩 key）。
     let compact: String = mp.split_whitespace().collect();
     assert!(

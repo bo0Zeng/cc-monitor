@@ -1,6 +1,6 @@
 ---
 name: cc-bus
-description: 让 tmux 里几个各自独立运行的 Claude Code 实例互发消息、接力协作、广播的消息总线(带智能路由)。触发场景——收到「🔔 cc-bus」敲门提示、要联系/唤醒另一个正在跑的 CC 实例、要广播给所有实例、要多个 claude 协作或接力、看到 cc-send/cc-recv/cc-broadcast/cc-list/cc-busd 相关操作、要搭建或排障多实例通信/路由。机制=tmux send-keys 投递 + inbox 文件(唯一真相源) + 路由管线(ACL/限流/去重/灭环/敲门去抖) + broker 守护进程 cc-busd(挂了 cc-send 就地兜底) + Stop 钩子收信。区别于 subagent(同会话内派生):这是**跨独立进程、独立上下文**的实例间通信。触发词:「让另一个 CC 看这个」「通知 B 实例」「广播给所有 agent」「把结论发给 planner」「多个 claude 接力」「收到 cc-bus 提示」。
+description: 让 tmux 里几个各自独立运行的 Claude Code 实例互发消息、接力协作、广播的消息总线(带智能路由)。触发场景——收到「🔔 cc-bus」敲门提示、要联系/唤醒另一个正在跑的 CC 实例、要广播给所有实例、要多个 claude 协作或接力、看到 cc-send/cc-recv/cc-broadcast/cc-list/cc-busd 相关操作、要搭建或排障多实例通信/路由。机制=tmux send-keys 投递 + inbox 文件(唯一源头) + 路由管线(ACL/限流/去重/灭环/敲门去抖) + broker 守护进程 cc-busd(挂了 cc-send 就地兜底) + Stop 钩子收信。区别于 subagent(同会话内派生):这是**跨独立进程、独立上下文**的实例间通信。触发词:「让另一个 CC 看这个」「通知 B 实例」「广播给所有 agent」「把结论发给 planner」「多个 claude 接力」「收到 cc-bus 提示」。
 ---
 
 # cc-bus:多 Claude Code 实例消息总线(带智能路由)
@@ -11,7 +11,7 @@ description: 让 tmux 里几个各自独立运行的 Claude Code 实例互发消
 ## 一句话模型
 **投递靠敲门,送达靠钩子,去重靠 offset,路由靠管线,承载靠 broker+兜底,拓扑靠策略。**
 
-- **唯一真相源**=`~/.cc-bus/inbox/<id>.jsonl`(消息落盘、不丢、按 offset 去重消费)。
+- **唯一源头**=`~/.cc-bus/inbox/<id>.jsonl`(消息落盘、不丢、按 offset 去重消费)。
 - **投递入口**=`cc-send`:组信封 → 入队 `queue/` → 有 `cc-busd` 守护进程则它异步施策投递,**没有则 cc-send 就地跑同一套管线兜底**(不卡/不丢)。
 - **管线(唯一实现在 `cc-bus-lib.sh`,backend 与兜底共用)**:ACL → 限流/熔断 → 灭环 → 去重 → 写 inbox → 敲门去抖。
 - **收信**=看到 🔔 或被 Stop 钩子喂进来 → 跑 `cc-recv`。

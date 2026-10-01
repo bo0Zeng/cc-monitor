@@ -81,7 +81,7 @@ async fn the_probe_and_the_question_both_come_before_anything_is_copied() {
             let t = &tape;
             async move {
                 t.mark("launch");
-                // 〔F7a〕问过且答了「覆盖」⇒ 覆盖策略就是 `true`。
+                // 问过且答了「覆盖」⇒ 覆盖策略就是 `true`。
                 assert!(overwrite, "人答了「覆盖」，发出去的却不是覆盖策略");
                 Ok(7)
             }
@@ -133,7 +133,7 @@ async fn a_target_that_is_not_there_yet_asks_nobody() {
         },
         |_, overwrite| {
             launched.fetch_add(1, O::SeqCst);
-            // 🔴〔F7a〕没问过 ⇒ **不覆盖**（后端 `O_EXCL`）：探完之后才冒出来的同名文件照样不会被盖掉。
+            // 🔴没问过 ⇒ **不覆盖**（后端 `O_EXCL`）：探完之后才冒出来的同名文件照样不会被盖掉。
             assert!(!overwrite, "没问过人，发出去的却是覆盖策略");
             async move { Ok(3) }
         },
@@ -215,7 +215,7 @@ async fn a_failure_comes_back_with_the_message_the_pool_gave() {
     );
 }
 
-/// 〔F7a〕成功那一句说出**复制了几个字节**与**在哪儿复制的**，而且**不是**警告档；
+/// 成功那一句说出**复制了几个字节**与**在哪儿复制的**，而且**不是**警告档；
 /// 失败那一句带原文、**是**警告档（阴性对照：两档不许画成一样）。
 ///
 /// 🔴 第三刀那条「退路要原样出声」随 SFTP 那条路一起没了（模块头注逐条）：
@@ -310,7 +310,7 @@ fn the_path_we_probe_is_the_one_that_would_get_overwritten() {
 }
 
 /// 🔴 egui **只在有事发生时才画下一帧** ⇒ 三个时刻都要敲窗口：
-/// **有问题要问** · **起了一趟**（〔F7a〕后端没有进度，换成「在跑」那一下）· **跑完了**。
+/// **有问题要问** · **起了一趟**（后端没有进度，换成「在跑」那一下）· **跑完了**。
 ///
 /// ⚠ 判的是 `Context::has_requested_repaint()`（egui 自己那个标志，＝ 行为），
 /// 不是「源码里有 `request_repaint` 这行字」。
@@ -429,8 +429,8 @@ fn the_suggested_name_matches_the_old_panel() {
     assert_eq!(p.to_job().unwrap().to, "/srv/data/big.bin.copy");
 }
 
-/// 〔W5-FILES〕能复制的是「名字寻址得到」的那一档 —— 文件与**目录**都行（目录经后端 `recursive: true` 复制整棵，
-/// 要求住址 `设计/60 §6.2`「复制目录」· `§7 #6`）。**相等断言，逐档。**
+/// 能复制的是「名字寻址得到」的那一档 —— 文件与**目录**都行（目录经后端 `recursive: true` 复制整棵，
+/// 要求：「复制目录」· `§7 #6`）。**相等断言，逐档。**
 #[test]
 fn files_and_directories_with_addressable_names_can_be_copied() {
     assert!(is_copyable(&row("big.bin", false, false)));
@@ -445,7 +445,7 @@ fn files_and_directories_with_addressable_names_can_be_copied() {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// 委派：〔F7a · 第三波 09-24〕**经通道问后端 `files-copy`，本层一行复制逻辑都没有**
+// 委派：**经通道问后端 `files-copy`，本层一行复制逻辑都没有**
 // ════════════════════════════════════════════════════════════════════════
 
 /// 一件复制 → 线上参数：`root` = 源的上一级、`from` / `to` = 两个尾段、覆盖策略原样；
@@ -542,7 +542,7 @@ fn the_real_adapter_asks_the_backend_and_touches_no_transfer_machinery() {
         "生产段只剩 {} 字节 —— 剥法把它剥没了，下面几条在空转",
         prod.len()
     );
-    // 〔W5-FILES · 有损名全寻址〕探目标换成 `probe_remote_at`（路径可以是字节；`probe_remote` 是它路径为串时的那一形，同一个口径）。
+    // 〔有损名全寻址〕探目标换成 `probe_remote_at`（路径可以是字节；`probe_remote` 是它路径为串时的那一形，同一个口径）。
     for needle in ["source::ask(", "transfer::probe_remote_at("] {
         assert_eq!(
             prod.matches(needle).count(),
@@ -574,8 +574,8 @@ fn the_real_adapter_asks_the_backend_and_touches_no_transfer_machinery() {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// 〔W5-FILES〕一摞复制（复制到另一栏的多选 / 目录）
-// 要求住址：`设计/60 §6.2`「复制目录 · 批量复制」· `§6.3`「批量…走『一次问完』」「悄悄跳过其中一项正是…反面」。
+// 一摞复制（复制到另一栏的多选 / 目录）
+// 要求：「复制目录 · 批量复制」· `§6.3`「批量…走『一次问完』」「悄悄跳过其中一项正是…反面」。
 // ════════════════════════════════════════════════════════════════════════
 
 fn named(name: &str, is_dir: bool) -> CopyJob {

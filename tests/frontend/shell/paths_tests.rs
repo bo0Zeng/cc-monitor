@@ -1,6 +1,6 @@
 //! # 要求住址：`INVARIANTS §2`（含「唯一的明文例外：`CCM_DATA_DIR`」那一段）· V160（一台机器一个家 `~/.cc-monitor/`）
 //!
-//! `with_nothing_set_it_is_the_documented_default` 点的是 `§2` 正文，逐字「monitor 自己的 data dir 永远是 `~/.cc-monitor/`」（V160）。
+//! `with_nothing_set_it_is_the_documented_default` 点的是 `§2` 正文，逐字「monitor 自己的 data dir 永远是 `~/.cc-monitor/`」。
 //! 其余几条判的是那句「永远」的**出口**（`config.rs::monitor_data_dir_from`），逐字点 `§2` 例外段的四条规矩：
 //! 「只认**绝对路径**；空串 == 没设」·「给了但不合法（相对路径）⇒ **`None`，不退回用户真 profile**」·
 //! 「全树只经 `config.rs::resolve_monitor_data_dir` 派生」。
@@ -9,7 +9,7 @@
 use super::*;
 
 // ════════════════════════════════════════════════════════════════════════
-// 🔴〔`P17` 2026-09-22〕`CCM_DATA_DIR` —— 那个目录此前没有任何出口
+// 🔴`CCM_DATA_DIR` —— 那个目录此前没有任何出口
 // ════════════════════════════════════════════════════════════════════════
 //
 // # 这一摞为什么不碰环境变量
@@ -82,7 +82,7 @@ fn an_empty_value_means_unset_not_broken() {
 ///
 /// 退回真 profile 看起来「更稳」，实际是**反面**：那一趟自动化会以为自己被隔离了，
 /// 而它正在写用户的东西 —— `config.json` · tab 集合名 · 固定了哪些 tab · 凭据库。
-/// 而 `设计/30 §B.4` 逐字的理由是「**集合名是用户手写的真相，不是能重算的缓存**」。
+/// 理由是「**集合名是用户手写的真相，不是能重算的缓存**」。
 ///
 /// 🔴 这一形 2026-09-21 在那台 Win11 虚拟机上**真发生过**：跑 tier-2 时
 /// `auto-launch.json` 从 87 字节被改成 133 字节，那一路只能靠跑前备份、跑后还原
@@ -124,10 +124,10 @@ fn no_home_and_no_override_is_still_none() {
 /// 🔴 **那个出口真的盖住了 monitor 这一侧的全部** —— monitor 经 `config.rs` 转交共享那一份规则、只读一处 env。
 ///
 /// ⚠ 判源码是**代理**（同族先例 `transfer_tests::the_real_adapters_speak_only_through_the_channel`）。
-/// 「没人自己拼那条路径」那一半〔DATA-HOME〕挪进 [`the_data_dir_is_spelled_in_one_place`]（全 `src/` 生产段，不只 monitor 这棵树）。
+/// 「没人自己拼那条路径」那一半挪进 [`the_data_dir_is_spelled_in_one_place`]（全 `src/` 生产段，不只 monitor 这棵树）。
 #[test]
 fn nothing_else_in_the_monitor_tree_builds_that_path_itself() {
-    // 〔TAIL〕规则搬进共享 crate（`creds_core::store::monitor_data_dir`，远端常驻后端按同一份推默认路径）⇒
+    // 规则搬进共享 crate（`creds_core::store::monitor_data_dir`，远端常驻后端按同一份推默认路径）⇒
     //   `config.rs`（原 `paths.rs`）转交它。
     assert!(
         guard_core::production_code(include_str!("../../../src/frontend/shell/src/config.rs"))
@@ -148,7 +148,7 @@ fn nothing_else_in_the_monitor_tree_builds_that_path_itself() {
     assert!(!me.contains("env::var(DATA_DIR_ENV_THAT_DOES_NOT_EXIST)"));
 }
 
-/// 要求住址：V160「一台机器一个家 `~/.cc-monitor/`……**不写搬家代码、不认老路径**」· `INVARIANTS §2` 规矩 3「默认住址只在 `creds_core::store::monitor_data_dir` 拼」。
+/// 要求住址：「一台机器一个家 `~/.cc-monitor/`……**不写搬家代码、不认老路径**」· `INVARIANTS §2` 规矩 3「默认住址只在 `creds_core::store::monitor_data_dir` 拼」。
 ///
 /// ① `src/` 生产段（`.rs` 剥掉测试段；`src/doc` 与 `.md` 散文、不进 git 的 `.cargo/` · `gen/` · `embedded-backends/` 不算）**零处**旧住址的名字；
 /// ② 默认住址那个目录名在 `creds-core/src/store.rs` 生产段恰好一处，且就在 `monitor_data_dir` 里。
@@ -189,7 +189,7 @@ fn the_data_dir_is_spelled_in_one_place() {
     assert_eq!(
         hits,
         Vec::<String>::new(),
-        "生产段里还有数据目录的旧住址（V160：不认老路径）"
+        "生产段里还有数据目录的旧住址（不认老路径）"
     );
     assert!(
         spells_old("x.ts", &format!("const d = '~/.claude/{old}';")),

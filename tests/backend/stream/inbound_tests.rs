@@ -224,7 +224,7 @@ async fn an_oversized_line_is_rejected_without_killing_the_reader() {
     );
 }
 
-/// 〔F9c · 第四波〕🔴 **超长行的应答带回请求的 `id`**（`设计/60 §9c.2`：此前回空串，调用方熬满预算才超时）。
+/// 🔴 **超长行的应答带回请求的 `id`**（此前回空串，调用方熬满预算才超时）。
 ///
 /// 真读循环、真超长行（行长 > [`MAX_LINE_BYTES`]）。四形：`id` 在第一个键 · `id` 排在一个
 /// 含假 `"id"` 的嵌套对象之后 · `id` 带转义 · 两条超长行挨着（第二条不许沾上第一条的 `id`）。
@@ -261,7 +261,7 @@ async fn an_oversized_line_answers_with_the_id_it_carried() {
     );
 }
 
-/// 〔F9c〕[`sniff_id`] 的边：只看给它的那一段，顶层之外的 `id` 不认，形状不对就不编。
+/// [`sniff_id`] 的边：只看给它的那一段，顶层之外的 `id` 不认，形状不对就不编。
 #[test]
 fn the_id_sniffer_only_believes_a_top_level_string_id() {
     let cases: &[(&str, Option<&str>)] = &[
@@ -422,39 +422,39 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
              而且 `cancel` 会对它撒谎（abort 对 spawn_blocking 是空操作）"
     );
     // 纯计算的两条留在普通 spawn 上（它们能在 await 点被真取消）。
-    // 〔AS2 · 第四波 4B〕`assets-sync`：等拨号 / 等远端 capture —— 真异步，也在普通 spawn 上。
-    // 〔RM1f〕`panorama` 起进程，但**异步等**（`plugin::invoke::run_abortable`）⇒ 同在这一档：
+    // `assets-sync`：等拨号 / 等远端 capture —— 真异步，也在普通 spawn 上。
+    // `panorama` 起进程，但**异步等**（`plugin::invoke::run_abortable`）⇒ 同在这一档：
     //   不占 worker（等的是子进程退出，不是一段同步计算），`cancel` 命中时 future 被丢、子进程组被杀。
-    // 〔C4d · 第四波 4B〕`remote-reach`：纯内存登记（一把锁、插一行），同 `ping` 在普通 spawn 上。
-    // 〔C4d · 第四波 4B〕历史两条出成品：远端那一支等 `remote_ask`（真异步），本机扫盘那段自己挪到阻塞线程池。
+    // `remote-reach`：纯内存登记（一把锁、插一行），同 `ping` 在普通 spawn 上。
+    // 历史两条出成品：远端那一支等 `remote_ask`（真异步），本机扫盘那段自己挪到阻塞线程池。
     for c in [
         "ping",
         "resolve",
-        "ccm-probe",            // 〔E2〕纯函数，普通 spawn
-        "terminal-ssh",         // 〔FIX4 · ⑬〕纯函数（校验 ＋ quote），普通 spawn
-        "terminal-local",       // 〔P5〕纯函数（接前奏），普通 spawn
-        "history-search-merge", // 〔FIX4 · J15〕纯计算（合并排序），普通 spawn
+        "ccm-probe",            // 纯函数，普通 spawn
+        "terminal-ssh",         // 纯函数（校验 ＋ quote），普通 spawn
+        "terminal-local",       // 纯函数（接前奏），普通 spawn
+        "history-search-merge", // 纯计算（合并排序），普通 spawn
         "assets-sync",
         // 两台之间「装」那一件的枢纽：等远端 capture（真异步），本机那一跳自己挪到阻塞线程池。
         "ext-hub-preview",
         "ext-hub-apply",
-        "pubkey-push",        // 〔MIG-3b 续〕等远端（问那台后端 / 一次 exec），真异步
-        "panorama-edit", // 〔MIG-3b 续〕同 `panorama`（起小程序、等它），落盘那一步挪到阻塞线程池
-        "panorama-uninstall", // 〔FIX4〕同上：起小程序认身份、等它；读与删挪到阻塞线程池
-        "files-grep",    // 〔FILES3〕可撤：走那一趟在阻塞线程池上、看取消位，future 被丢即收手
-        "deploy-plan",   // 〔MIG-3b〕真异步（拨号 / 等远端 capture · SFTP），在 await 点可取消
-        "resident-verdict", // 〔THIN〕纯判定，普通 spawn
-        "deploy-slot",   // 〔THIN〕有 `dial` 时真异步（等远端 capture），在 await 点可取消
-        "deploy-retired", // 〔THIN〕真异步（沿池里那条 SSH 开 SFTP），在 await 点可取消
+        "pubkey-push",        // 等远端（问那台后端 / 一次 exec），真异步
+        "panorama-edit",      // 同 `panorama`（起小程序、等它），落盘那一步挪到阻塞线程池
+        "panorama-uninstall", // 同上：起小程序认身份、等它；读与删挪到阻塞线程池
+        "files-grep",         // 可撤：走那一趟在阻塞线程池上、看取消位，future 被丢即收手
+        "deploy-plan",        // 真异步（拨号 / 等远端 capture · SFTP），在 await 点可取消
+        "resident-verdict",   // 纯判定，普通 spawn
+        "deploy-slot",        // 有 `dial` 时真异步（等远端 capture），在 await 点可取消
+        "deploy-retired",     // 真异步（沿池里那条 SSH 开 SFTP），在 await 点可取消
         "panorama",
         "remote-reach",
         "history-projects",
         "history-sessions",
-        // 〔MIG-1〕端口转发：起 = 真异步（拨号 / 等 ack），停 / 列 = 纯内存一把锁 ⇒ 都在普通 spawn 上。
+        // 端口转发：起 = 真异步（拨号 / 等 ack），停 / 列 = 纯内存一把锁 ⇒ 都在普通 spawn 上。
         "forward-start",
         "forward-stop",
         "forward-list",
-        "drift-report", // 〔MOD〕漂移账：纯内存一把锁
+        "drift-report", // 漂移账：纯内存一把锁
         "remote-probe",
     ] {
         assert!(
@@ -464,7 +464,7 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
     }
     assert!(matches!(d("cancel"), Disposition::Done));
     assert!(matches!(d("nope"), Disposition::Reply(..)));
-    // 〔SR1a〕链路四条是硬臂、**就地**做完（不进任何 spawn 档）：`link-data` 要保序，
+    // 链路四条是硬臂、**就地**做完（不进任何 spawn 档）：`link-data` 要保序，
     // 另三条只碰本连接的链路表。空 `args` ⇒ 当场回一条 `invalid_args` 应答（不起任务）。
     for c in ["link-open", "link-data", "link-credit", "link-close"] {
         assert!(
@@ -488,7 +488,7 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "bus-state",
         "bus-inbox",
         "capture-pane",
-        // 〔LOC1a · 第四波 4D〕读写整份 jsonl。
+        // 读写整份 jsonl。
         "session-fork",
     ] {
         assert!(
@@ -499,7 +499,7 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
 
     // 〔步 `24f` 第二刀〕`files-read` 四条**不起子进程**，但同样在阻塞档上：
     // `files::answer` 是**同步**函数 —— 前两条真做文件系统 I/O（`read_dir` / 取元数据），
-    // `files-find` 在 64 万条量纲上的现打外推是 20–50 ms（`设计/60 §3.5.3`）。
+    // `files-find` 在 64 万条量纲上的现打外推是 20–50 ms。
     // 走 `Run::Async` 就是把这些跑在 tokio worker 上，而 `main` 是裸 `#[tokio::main]`
     //（worker 数 = 可用并行度）⇒ 单核机上一条查询就占住唯一的 worker，
     // 而出方向 writer 与入方向 reader 都在同一个 runtime 上。
@@ -522,7 +522,7 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "files-rename",
         "files-write-text",
         "files-copy",
-        // 〔FILES2〕解压：同步读包 ＋ 落盘。
+        // 解压：同步读包 ＋ 落盘。
         "files-extract",
         "files-ls",
         "files-stat",
@@ -530,77 +530,77 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "files-index-status",
         "files-index-rebuild",
         "files-browse",
-        // 〔F7a · 第三波 09-24〕同族第七、第八条：`files-read-text` 读一整份文件（同步 I/O）。
+        // 同族第七、第八条：`files-read-text` 读一整份文件（同步 I/O）。
         "files-read-text",
         "files-home",
-        // 〔W5-FILES〕读族第九条：走一整棵树（同步 I/O）。
+        // 读族第九条：走一整棵树（同步 I/O）。
         "files-size",
-        // 〔FILES2〕读族第十条：分块读回（同步 I/O）。
+        // 读族第十条：分块读回（同步 I/O）。
         "files-read-chunk",
-        // 〔`C1` · 09-24〕只读查询面八条：全做文件 I/O（`history-search` 扫全库）。
-        // 〔C4d · 第四波 4B〕`history-projects` / `history-sessions` 出列：它们出成品、远端那一支要等 ⇒ 真异步（见上面那一档）。
+        // 只读查询面八条：全做文件 I/O（`history-search` 扫全库）。
+        // `history-projects` / `history-sessions` 出列：它们出成品、远端那一支要等 ⇒ 真异步（见上面那一档）。
         "history-index",
         "history-user-inputs",
         "history-find",
-        "backend-log",   // 〔GAP1〕
-        "history-facts", // 〔STC〕
+        "backend-log",   //
+        "history-facts", //
         "history-read",
-        "history-lines",  // 〔CF2〕
-        "history-record", // 〔U4b〕
+        "history-lines",  //
+        "history-record", //
         "history-search",
         "history-run",
-        "history-page", // 〔MOD〕
+        "history-page", //
         "history-tail",
         "accounts-list",
         "accounts-sessions",
-        // 〔C4c · 第四波 4B〕信任预检：读一份 manifest ＋ 一份 `.claude.json`（同步文件 I/O），同族同档。
+        // 信任预检：读一份 manifest ＋ 一份 `.claude.json`（同步文件 I/O），同族同档。
         "accounts-trust",
-        // 〔B2 · 条 66〕「退出行为」那两条：同步文件 I/O（读 / 原子写 `~/.cc-monitor` 下那一份）。
+        // 〔条 66〕「退出行为」那两条：同步文件 I/O（读 / 原子写 `~/.cc-monitor` 下那一份）。
         "exit-policy-read",
         "exit-policy-set",
-        // 〔RM1b · 第四波〕功能侧只读查询：读一个目录 ＋ 每个文件各一次（同步文件 I/O）。
+        // 功能侧只读查询：读一个目录 ＋ 每个文件各一次（同步文件 I/O）。
         "tasks-list",
         "mcp-read",
         "tmux-list",
-        "tmux-name-mint", // 〔FIX4 · J7〕问一次会话快照 = 起一次 `tmux`
-        // 〔MIG-3b〕钩子诊断：读一份 settings ＋ 几次 stat（同步文件 I/O），阻塞档。
+        "tmux-name-mint", // 问一次会话快照 = 起一次 `tmux`
+        // 钩子诊断：读一份 settings ＋ 几次 stat（同步文件 I/O），阻塞档。
         "hooks-diag",
-        // 〔RESYNC〕手动对齐：等每份 watcher 做完（对表 ＋ 打标起 tmux），阻塞档。
+        // 手动对齐：等每份 watcher 做完（对表 ＋ 打标起 tmux），阻塞档。
         "resync",
-        // 〔RM1f〕`panorama` 从这里挪走了：起进程改走 `invoke::run_abortable`（异步等子进程），
+        // `panorama` 从这里挪走了：起进程改走 `invoke::run_abortable`（异步等子进程），
         //   上面「纯计算留在普通 spawn」那一格里单列它（可取消档）。
-        // 〔RM1a · 第四波〕上游选择那份凭据文件的两条：同步文件 I/O（读 / 原子写那一份）。
+        // 上游选择那份凭据文件的两条：同步文件 I/O（读 / 原子写那一份）。
         "apikey-key-set",
         "apikey-read",
-        // 〔US1 · 第四波 4D〕上游选择出的两份成品：读一份凭据文件 ＋ 装一次表 ＋（要注入时）回环上探一次中转，同步阻塞。
+        // 上游选择出的两份成品：读一份凭据文件 ＋ 装一次表 ＋（要注入时）回环上探一次中转，同步阻塞。
         "apikey-routing",
         "launch-endpoint",
-        // 〔DEL〕中转那两条（`relay-ensure` / `relay-status`）随脱离 `--relay` 一族删了。
-        // 〔RM1a · 第四波〕足迹那一条：一批 stat / 读几份小文件。
+        // 中转那两条（`relay-ensure` / `relay-status`）随脱离 `--relay` 一族删了。
+        // 足迹那一条：一批 stat / 读几份小文件。
         "footprint-report",
-        // 〔W5-ALIAS〕别名预览：读账号库 manifest ＋ 问会话快照。
+        // 别名预览：读账号库 manifest ＋ 问会话快照。
         "ccm-print",
-        // 〔AS2 · 第四波 4B〕资产目录两条：扫盘 ＋ 原子写目录文件。
+        // 资产目录两条：扫盘 ＋ 原子写目录文件。
         "assets-catalog",
         "assets-catalog-merge",
-        // 〔AS2〕skill「装到这台」两条：走目录 ＋ 读原文 ＋ stat。
+        // skill「装到这台」两条：走目录 ＋ 读原文 ＋ stat。
         "skill-read",
         "skill-install-plan",
-        // 〔SU1 · 第四波 4C〕装记录的写口 ＋ 扩展页那张表 ＋ 卸之前那张卡：同步文件 I/O。
+        // 装记录的写口 ＋ 扩展页那张表 ＋ 卸之前那张卡：同步文件 I/O。
         "skill-install-record",
         "ext-list",
         "ext-uninstall-preview",
-        // 〔C4d · 第四波 4B〕历史注解三条：读 / 原子写一份小文件（同步文件 I/O）。
+        // 历史注解三条：读 / 原子写一份小文件（同步文件 I/O）。
         "history-annotate",
         "history-forget",
         "history-last-accounts",
-        // 〔RW1 · 第四波 09-24〕读改写两条 ＋ 删历史会话：同步文件 I/O（围栏 ＋ 读 / 写满换名 / 删）。
+        // 读改写两条 ＋ 删历史会话：同步文件 I/O（围栏 ＋ 读 / 写满换名 / 删）。
         "files-peek",
         "files-put",
         "files-delete-session",
-        // 〔AS1 · 第四波 4B〕MCP 同步的判定：逐条 stat ＋ PATH 上找名字。
+        // MCP 同步的判定：逐条 stat ＋ PATH 上找名字。
         "mcp-sync-plan",
-        // 〔MIG-3a〕MCP 写两条 ＋ 推拉三条 ＋ skill 装卸两条：同步文件 I/O（经本进程文件管理面）。
+        // MCP 写两条 ＋ 推拉三条 ＋ skill 装卸两条：同步文件 I/O（经本进程文件管理面）。
         "skill-install-apply",
         "cc-bus-install",
         // 账号库那一族：读账号库 ＋ 经本进程文件管理面落盘（同步文件 I/O）。
@@ -616,7 +616,7 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "accounts-mcp-read",
         "accounts-mcp-remove",
         "accounts-mcp-pick",
-        "authorized-keys-add", // 〔MIG-3b 续〕同步文件 I/O（经本进程文件管理面）
+        "authorized-keys-add", // 同步文件 I/O（经本进程文件管理面）
         "files-link",
         "cc-bus-install-state",
         "aliases-render",
@@ -645,36 +645,36 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "kill",
         "ping",
         "resolve",
-        // 〔E2〕`ccm-probe`：纯函数，普通 spawn。
+        // `ccm-probe`：纯函数，普通 spawn。
         "ccm-probe",
-        // 〔FIX4 · ⑬〕`terminal-ssh`：纯函数，普通 spawn。
+        // `terminal-ssh`：纯函数，普通 spawn。
         "terminal-ssh",
-        // 〔P5〕`terminal-local`：纯函数，普通 spawn。
+        // `terminal-local`：纯函数，普通 spawn。
         "terminal-local",
-        // 〔FIX4 · J15〕`history-search-merge`：纯计算，普通 spawn。
+        // `history-search-merge`：纯计算，普通 spawn。
         "history-search-merge",
         "assets-sync",
         "ext-hub-preview",
         "ext-hub-apply",
-        "pubkey-push",        // 〔MIG-3b 续〕等远端（问那台后端 / 一次 exec），真异步
-        "panorama-edit", // 〔MIG-3b 续〕同 `panorama`（起小程序、等它），落盘那一步挪到阻塞线程池
-        "panorama-uninstall", // 〔FIX4〕同上：起小程序认身份、等它；读与删挪到阻塞线程池
-        "files-grep",    // 〔FILES3〕可撤：走那一趟在阻塞线程池上、看取消位，future 被丢即收手
-        // 〔MIG-3b〕部署计划：真异步（拨号 / 等远端），普通 spawn。
+        "pubkey-push",        // 等远端（问那台后端 / 一次 exec），真异步
+        "panorama-edit",      // 同 `panorama`（起小程序、等它），落盘那一步挪到阻塞线程池
+        "panorama-uninstall", // 同上：起小程序认身份、等它；读与删挪到阻塞线程池
+        "files-grep",         // 可撤：走那一趟在阻塞线程池上、看取消位，future 被丢即收手
+        // 部署计划：真异步（拨号 / 等远端），普通 spawn。
         "deploy-plan",
-        // 〔THIN〕远端常驻后端 hello 的新旧：纯判定，普通 spawn。
+        // 远端常驻后端 hello 的新旧：纯判定，普通 spawn。
         "resident-verdict",
-        // 〔THIN〕那台要哪一格：远端真异步（等 capture），本机纯判定。
+        // 那台要哪一格：远端真异步（等 capture），本机纯判定。
         "deploy-slot",
-        // 〔THIN〕那台旧入口的去向：真异步（SFTP stat ＋ 读回）。
+        // 那台旧入口的去向：真异步（SFTP stat ＋ 读回）。
         "deploy-retired",
-        // 〔C4d · 第四波 4B〕可达表登记（纯内存，普通 spawn）。
+        // 可达表登记（纯内存，普通 spawn）。
         "remote-reach",
-        // 〔MIG-1〕端口转发三条：起真异步（在 await 点可取消）· 停 / 列纯内存。
+        // 端口转发三条：起真异步（在 await 点可取消）· 停 / 列纯内存。
         "forward-start",
         "forward-stop",
         "forward-list",
-        "drift-report", // 〔MOD〕漂移账：纯内存一把锁
+        "drift-report", // 漂移账：纯内存一把锁
         "remote-probe",
         "cancel",
         "link-open",
@@ -700,7 +700,7 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "files-rename",
         "files-write-text",
         "files-copy",
-        // 〔FILES2〕解压：同步读包 ＋ 落盘。
+        // 解压：同步读包 ＋ 落盘。
         "files-extract",
         "files-ls",
         "files-stat",
@@ -710,72 +710,72 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "files-browse",
         "files-read-text",
         "files-home",
-        // 〔W5-FILES〕读族第九条：走一整棵树（同步 I/O）。
+        // 读族第九条：走一整棵树（同步 I/O）。
         "files-size",
-        // 〔FILES2〕读族第十条：分块读回（同步 I/O）。
+        // 读族第十条：分块读回（同步 I/O）。
         "files-read-chunk",
         "history-projects",
         "history-index",
         "history-user-inputs",
         "history-find",
-        "backend-log",   // 〔GAP1〕
-        "history-facts", // 〔STC〕
+        "backend-log",   //
+        "history-facts", //
         "history-read",
-        "history-lines",  // 〔CF2〕
-        "history-record", // 〔U4b〕
+        "history-lines",  //
+        "history-record", //
         "history-search",
         "history-sessions",
         "history-run",
-        "history-page", // 〔MOD〕
+        "history-page", //
         "history-tail",
         "accounts-list",
         "accounts-sessions",
-        "accounts-trust", // 〔C4c〕
+        "accounts-trust", //
         "exit-policy-read",
         "exit-policy-set",
         "tasks-list",
         "mcp-read",
         "tmux-list",
-        "tmux-name-mint",     // 〔FIX4 · J7〕问一次会话快照 = 起一次 `tmux`
-        "ssh-config-aliases", // 〔MIG-1〕读一份文件
-        "ssh-config-import",  // 〔MIG-1〕逐个起 `ssh -G`
-        "ssh-config-resolve", // 〔MIG-1〕起一次 `ssh -G`
-        "hooks-diag",         // 〔MIG-3b〕
-        "resync",             // 〔RESYNC〕
+        "tmux-name-mint",     // 问一次会话快照 = 起一次 `tmux`
+        "ssh-config-aliases", // 读一份文件
+        "ssh-config-import",  // 逐个起 `ssh -G`
+        "ssh-config-resolve", // 起一次 `ssh -G`
+        "hooks-diag",         //
+        "resync",             //
         "panorama",
         "apikey-key-set",
         "apikey-read",
-        "apikey-routing",  // 〔US1〕
-        "launch-endpoint", // 〔US1〕
-        // 〔MIG-2〕起会话的计划与渲染：本机那条探一次 `ccm`（起进程）⇒ 阻塞档；两条渲染是纯函数 ⇒ 普通 spawn。
+        "apikey-routing",  //
+        "launch-endpoint", //
+        // 起会话的计划与渲染：本机那条探一次 `ccm`（起进程）⇒ 阻塞档；两条渲染是纯函数 ⇒ 普通 spawn。
         "launch-local",
         "launch-render-cli",
         "launch-render-payload",
         "footprint-report",
-        // 〔P1〕本机那一份放不放：读一遍落点那个文件 ⇒ 阻塞档。
+        // 本机那一份放不放：读一遍落点那个文件 ⇒ 阻塞档。
         "place-verdict",
-        // 〔W5-ALIAS〕别名预览，阻塞档。
+        // 别名预览，阻塞档。
         "ccm-print",
-        // 〔AS2 · 第四波 4B〕资产目录两条，阻塞档。
+        // 资产目录两条，阻塞档。
         "assets-catalog",
         "assets-catalog-merge",
         "skill-read",
         "skill-install-plan",
-        // 〔SU1 · 第四波 4C〕skill 卸三条，阻塞档。
+        // skill 卸三条，阻塞档。
         "skill-install-record",
         "ext-list",
         "ext-uninstall-preview",
-        // 〔C4d · 第四波 4B〕历史注解三条，阻塞档。
+        // 历史注解三条，阻塞档。
         "history-annotate",
         "history-forget",
         "history-last-accounts",
-        // 〔RW1 · 第四波 09-24〕读改写两条 ＋ 删历史会话：同步文件 I/O，阻塞档。
+        // 读改写两条 ＋ 删历史会话：同步文件 I/O，阻塞档。
         "files-peek",
         "files-put",
         "files-delete-session",
-        // 〔AS1 · 第四波 4B〕MCP 同步的判定，阻塞档。
+        // MCP 同步的判定，阻塞档。
         "mcp-sync-plan",
-        // 〔MIG-3a〕MCP 写两条 ＋ 推拉三条 ＋ skill 装卸两条，阻塞档。
+        // MCP 写两条 ＋ 推拉三条 ＋ skill 装卸两条，阻塞档。
         "skill-install-apply",
         "cc-bus-install",
         // 账号库那一族：读账号库 ＋ 经本进程文件管理面落盘（同步文件 I/O）。
@@ -791,7 +791,7 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "accounts-mcp-read",
         "accounts-mcp-remove",
         "accounts-mcp-pick",
-        "authorized-keys-add", // 〔MIG-3b 续〕同步文件 I/O（经本进程文件管理面）
+        "authorized-keys-add", // 同步文件 I/O（经本进程文件管理面）
         "files-link",
         "cc-bus-install-state",
         "aliases-render",
@@ -807,7 +807,7 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "mcp-sync-source",
         "mcp-sync-preview",
         "mcp-sync-apply",
-        // 〔SR1b〕传输四条：硬臂，就地记账（起跑那一下只 `spawn`、不 await）⇒ 不阻塞。
+        // 传输四条：硬臂，就地记账（起跑那一下只 `spawn`、不 await）⇒ 不阻塞。
         "transfer-upload",
         "transfer-download",
         "transfer-start",
@@ -878,7 +878,7 @@ fn every_registered_command_is_reachable_through_the_real_dispatch() {
     );
 }
 
-/// 〔NET2 · `设计/05 §3.3.3`〕hello 的 `uncancellable` == 真 `dispatch` 会送进阻塞档（开跑之后撤不动）的那几条，两向。
+/// hello 的 `uncancellable` == 真 `dispatch` 会送进阻塞档（开跑之后撤不动）的那几条，两向。
 /// 两侧异源：左边是 `uncancellable()`（读表的档位），右边是真调一次 `dispatch` 看它回哪种 `Disposition`。
 #[test]
 fn the_uncancellable_list_is_exactly_what_dispatch_runs_blocking() {
@@ -1089,7 +1089,7 @@ async fn cancelling_an_unknown_id_is_idempotent_not_an_error() {
     );
 }
 
-/// ★〔RM1f · C3〕**`cancel` 打得断在飞的 `panorama`**：回 `cancelled`（不是 `not_cancellable`），
+/// ★**`cancel` 打得断在飞的 `panorama`**：回 `cancelled`（不是 `not_cancellable`），
 /// 小程序那一组子进程没了。
 ///
 /// 处理器走**真的** `control::panorama::answer_with`（找它 · 问它会什么 · 起它全是真进程：
@@ -1208,9 +1208,9 @@ async fn a_cancel_really_stops_an_in_flight_panorama_index() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// 要求住址：`97 §8`「要上游给的」④「插件口转订阅流」· `99 §1` V158「长活要有进度」。
+/// 要求：「要上游给的」④「插件口转订阅流」· 「长活要有进度」。
 ///
-/// ★〔P7〕进度的窄口只推**本请求那张票**的 `progress` 帧：请求交了 `ticket` ⇒ 推一格就是一帧 `progress{ticket, cell}`（原样）；
+/// ★进度的窄口只推**本请求那张票**的 `progress` 帧：请求交了 `ticket` ⇒ 推一格就是一帧 `progress{ticket, cell}`（原样）；
 /// 没交 / 交了空串 / CLI 那个空口 ⇒ 一帧都不发。
 #[test]
 fn the_progress_capability_only_pushes_frames_for_the_requests_own_ticket() {

@@ -4,7 +4,7 @@
 //!
 //! 三条理由，每条都指向本仓一条真实存在的判据：
 //!
-//! 1. **backend 的写面逐文件登记**〔`K-H2a` 裁四，〔RM1a〕收窄后〕：`readonly_guard.rs` 扫后端生产段
+//! 1. **backend 的写面逐文件登记**〔`K-H2a` 裁四，收窄后〕：`readonly_guard.rs` 扫后端生产段
 //!    （剥掉 `#[cfg(test)]` 块之后），写只许出现在登记过的那几层模块里（账号域那一份凭据写口在第四层）。
 //!    本 crate 被 backend depend、而那张登记表**扫不到**本 crate ⇒ 写调用放进来是在给那道护栏挖洞。
 //! 2. **写盘落点必须被登记表看见**：`src/frontend/shell/src/write_site_registry.rs` 与
@@ -31,7 +31,7 @@ use serde_json::{Map, Value};
 /// [`ACCOUNTS_FIELD`] 里每一条账号内部。**刻意同名** —— 人手编时不必记两套词。
 pub const KEY_FIELD: &str = "api_key";
 
-/// 多账号那张表住哪个字段。**这个名字是契约**〔`K-H2` `KH5`〕。
+/// 多账号那张表住哪个字段。**这个名字是契约**。
 ///
 /// 形状：`{"accounts": {"<账号 id>": {"api_key": "…", "base_url": "…"}}}`。
 /// `<账号 id>` 会**原样**变成路由键里那一段（`/s/<agent>/<账号 id>/<key>/…`）
@@ -39,17 +39,17 @@ pub const KEY_FIELD: &str = "api_key";
 /// 由上游选择装表时出声（`accounts::upstream_select::table::build` 那条「这一行进不了表」）。
 pub const ACCOUNTS_FIELD: &str = "accounts";
 
-/// 一条账号的**上游端点**住哪个字段。缺席 / 空串 ⇒ 用这个 agent 的默认上游（适配层 `agents::Adapter::upstream`，〔NT2 · V25〕）。
+/// 一条账号的**上游端点**住哪个字段。缺席 / 空串 ⇒ 用这个 agent 的默认上游（适配层 `agents::Adapter::upstream`）。
 ///
 /// ⚠ 它**不是**「回落」：`base_url` 缺席说的是「这一行用默认端点」，
 /// 而「这一行根本不在表里」说的是**404**。两件事不许混 —— 见 `K-H2` `KH2`。
 pub const BASE_URL_FIELD: &str = "base_url";
 
-/// 一条账号**怎么把 key 交给上游**住哪个字段〔`K-R1`〕。缺席 / 空串 ⇒ [`AuthStyle::DEFAULT`]。
+/// 一条账号**怎么把 key 交给上游**住哪个字段。缺席 / 空串 ⇒ [`AuthStyle::DEFAULT`]。
 ///
 /// ⚠⚠ **它说的只有「鉴权头怎么写」这一件事，不是「上游说哪种方言」。**
 /// 这两件事读起来像，混成一个字段就是本工作区最贵的那族病（一个值装了两件事）：
-/// 中转对请求体**一个字节都不解析**（`relay/` 生产段零 `serde_json`，`K-R1 §0c` 乙路现打），
+/// 中转对请求体**一个字节都不解析**（`relay/` 生产段零 `serde_json`，乙路现打），
 /// ⇒ 它没有资格声称自己知道上游要哪种 body。方言那一格若将来真要买，
 /// 是**另一个字段**（`K-R1` 的 `KR12`/`KR13`），不是给本字段多加几个值。
 pub const AUTH_STYLE_FIELD: &str = "auth_style";
@@ -73,7 +73,7 @@ pub const AUTH_STYLE_FIELD: &str = "auth_style";
 ///   **谁都不许顺手删它**（删掉就是打掉老用户手上那份文件），
 ///   由 `the_legacy_top_level_key_becomes_one_named_row_not_a_default_row` 与
 ///   `an_unconfigured_file_yields_no_rows_at_all` 两条钉着。
-/// - **写**：界面那条路（〔GP1 · 第四波〕每台机器那台后端的写口 `accounts/upstream_select/file_face.rs`，本机也是）落的是 `accounts.<id>`，
+/// - **写**：界面那条路（每台机器那台后端的写口 `accounts/upstream_select/file_face.rs`，本机也是）落的是 `accounts.<id>`，
 ///   **一个字节都不再往顶层那一格写**。机检住后端那一侧的
 ///   `file_face_tests::gp1_the_write_side_never_targets_the_legacy_top_level_slot`。
 ///
@@ -104,8 +104,8 @@ pub const DATA_DIR_ENV: &str = "CCM_DATA_DIR";
 /// 历史注解文件在 monitor 数据目录下的名字（monitor `history::metadata_path` 与常驻后端默认推导共用）。
 pub const HISTORY_METADATA_FILE: &str = "history-metadata.json";
 
-/// monitor 数据目录：`CCM_DATA_DIR`（非空且绝对）优先，否则 `<home>/.cc-monitor`（V160：一台机器一个家，与后端同一个）；
-/// 设了却不是绝对路径 ⇒ `None`（不退回真 profile）。〔TAIL〕两侧共用这一份，谁起常驻后端推出来的路径都一样。
+/// monitor 数据目录：`CCM_DATA_DIR`（非空且绝对）优先，否则 `<home>/.cc-monitor`（一台机器一个家，与后端同一个）；
+/// 设了却不是绝对路径 ⇒ `None`（不退回真 profile）。两侧共用这一份，谁起常驻后端推出来的路径都一样。
 /// **这个目录的默认住址只在这里拼**（判据 `paths_tests::the_data_dir_is_spelled_in_one_place`）。
 pub fn monitor_data_dir(
     env_val: Option<&str>,
@@ -124,7 +124,7 @@ pub fn monitor_data_dir(
 const HOME_ENV: &str = "HOME";
 const USERPROFILE_ENV: &str = "USERPROFILE";
 
-/// 〔P5 · 主会话 09-29 裁〕**这台机器的家目录只有这一条规矩**（monitor 与后端都调它，[`monitor_data_dir`] 同一家）：
+/// **这台机器的家目录只有这一条规矩**（monitor 与后端都调它，[`monitor_data_dir`] 同一家）：
 /// 按平台惯例 —— Windows：`USERPROFILE` → `HOME`；其余：`HOME` → `USERPROFILE`（与 Claude Code / Node `os.homedir()` 一致）。
 /// 空串当没有；都没有 ⇒ `None`（调用方明说，不猜一个路径）。
 pub fn home_dir() -> Option<std::path::PathBuf> {
@@ -207,7 +207,7 @@ pub enum StoreError {
 }
 
 impl StoreError {
-    /// 给人看的那一句（`path` = 读的是哪一份文件）。〔FIX · COPY ④〕不再把整份模板插进报错。
+    /// 给人看的那一句（`path` = 读的是哪一份文件）。不再把整份模板插进报错。
     pub fn said(&self, path: &std::path::Path) -> String {
         match self {
             StoreError::NotJson(e) => {
@@ -258,7 +258,7 @@ fn read_base_url(doc: &Map<String, Value>) -> Option<String> {
     Some(s.to_string())
 }
 
-/// 这一行的 key **用哪种鉴权头交给上游**〔`K-R1`〕。
+/// 这一行的 key **用哪种鉴权头交给上游**。
 ///
 /// # ★ 为什么这三个值是「头怎么写」，而不是「哪一家供应商」
 ///
@@ -332,7 +332,7 @@ impl AuthStyle {
     }
 }
 
-/// 文件里那一格 `auth_style` 的**三种状态**〔`K-R1`〕。
+/// 文件里那一格 `auth_style` 的**三种状态**。
 ///
 /// # ⚠ 为什么是三态而不是 `Option<AuthStyle>`
 ///
@@ -382,17 +382,17 @@ pub fn read_auth_style(doc: &Map<String, Value>) -> AuthStyleSetting {
 pub struct AccountEntry {
     /// 路由键里那一段账号 id。
     pub id: String,
-    /// 这一行的上游端点；`None` = 用这个 agent 的默认上游（适配层 `agents::Adapter::upstream`，〔NT2 · V25〕）。
+    /// 这一行的上游端点；`None` = 用这个 agent 的默认上游（适配层 `agents::Adapter::upstream`）。
     pub base_url: Option<String>,
     /// 这一行的 key；`None` = **原样转发下游那份鉴权头**（订阅制那一档是合法状态）。
     pub key: Option<SecretKey>,
-    /// 这一行的鉴权头风格〔`K-R1`〕。**三态原样带出去，本模块不替它做决定** ——
+    /// 这一行的鉴权头风格。**三态原样带出去，本模块不替它做决定** ——
     /// 同 `base_url`：把 `Unknown` 折成默认值是一次静默回落，而出声那一步在上游选择装表那侧
     /// （它才有日志出口）。
     pub auth_style: AuthStyleSetting,
 }
 
-/// 把一份文档读成**一张表**〔`K-H2` `KH5`〕。
+/// 把一份文档读成**一张表**。
 ///
 /// # 两个来源，合成一张表，**顺序由键名定**
 ///
@@ -438,7 +438,7 @@ pub fn read_accounts(doc: &Map<String, Value>) -> Vec<AccountEntry> {
     if !out.iter().any(|e| e.id == LEGACY_ACCOUNT_ID) {
         let key = read_key(doc);
         let base_url = read_base_url(doc);
-        // ⚠⚠ **顶层的 `auth_style` 单独在，不足以造出这一行**〔`K-R1`〕：
+        // ⚠⚠ **顶层的 `auth_style` 单独在，不足以造出这一行**：
         //   它进不了上面那个 `if` 的条件，是刻意的 —— 加进去就等于「只写了
         //   `auth_style` 的文件也有一条什么都没配的 default 行」，而那正是本函数头注
         //   逐字禁的**回落**。⇒ 它只在这一行**因为别的字段已经存在**时被读进来。
@@ -456,7 +456,7 @@ pub fn read_accounts(doc: &Map<String, Value>) -> Vec<AccountEntry> {
     out
 }
 
-/// **`KS10` 在多条形状下的正主**〔`K-H2` `KH5`〕：只改 `accounts.<id>.api_key` 那一格，
+/// **`KS10` 在多条形状下的正主**：只改 `accounts.<id>.api_key` 那一格，
 /// **别的条一个字节都不动**，两层的未知键都留着。
 ///
 /// # 为什么它不收「整张 accounts」
@@ -496,9 +496,9 @@ pub fn merge_account_key(
     out
 }
 
-// 〔DUP3 · J9〕`base_url` 写之前的那一道形状关搬走了：写口与装表同一个谓词，住共享 crate `upstream_url_core::usable`。
+// `base_url` 写之前的那一道形状关搬走了：写口与装表同一个谓词，住共享 crate `upstream_url_core::usable`。
 
-/// 〔第四波 ST2 · `设计/70 §4.4`〕把**某一条**的 `base_url` 并进一份刚从盘上读回来的文档，其余键一个不动。
+/// 把**某一条**的 `base_url` 并进一份刚从盘上读回来的文档，其余键一个不动。
 ///
 /// 形状与 [`merge_account_key`] 逐条相同（clone-then-replace 两层、签名逼调用方说清改哪一条），
 /// 只是这一格不是凭据：`base_url` 是明文端点，不经 `SecretKey`。
@@ -617,7 +617,7 @@ pub fn ordered_keys<'a>(keys: impl Iterator<Item = &'a String>) -> Vec<&'a Strin
     v
 }
 
-/// 递归地把每一层对象的键按名字排好〔`K-H2` `KH5c`〕。
+/// 递归地把每一层对象的键按名字排好。
 ///
 /// # 它补的是一个**今天就已经漏着**的洞（`K-H2` `Bx` 摸底发现）
 ///

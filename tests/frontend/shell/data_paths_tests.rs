@@ -1,9 +1,9 @@
-//! # 要求住址：`设计/70 §6.2`（数据位置：逐个文件、目录不算大小、说明不说内部词）＋ `INVARIANTS §2.1`（真相 / 缓存两类）
+//! # （数据位置：逐个文件、目录不算大小、说明不说内部词）＋ `INVARIANTS §2.1`（真相 / 缓存两类）
 //!
-//! 核原文：`设计/70 §6.2` 红线格逐字「③ 不递归算目录大小 ⇒ 目录行只显示「已创建」，是刻意的」——
+//! 核原文：红线格逐字「③ 不递归算目录大小 ⇒ 目录行只显示「已创建」，是刻意的」——
 //! `probe_dir_never_returns_size` 判这一句；同节「今天 / 改成」表逐字「去掉 `sid` / `HWND`」——
 //! `no_entry_description_speaks_our_internal_words` 判这一句；每项的类与 `INVARIANTS §2.1` 那张表两向相等。
-//! ⚠ 那条判据原先自称出自「`70 §10.2` 差项 4」，`设计/70` 里没有那一节（已改指 `§6.2`；生产侧同一处注释在写区外，未改）。〔JA1 点址 2026-09-24〕
+//! ⚠ 那条判据原先自称出自「差项 4」，里没有那一节（已改指 `§6.2`；生产侧同一处注释在写区外，未改）。〔JA1 点址 2026-09-24〕
 
 use super::*;
 use std::fs;
@@ -66,10 +66,10 @@ fn probe_dir_never_returns_size() {
     assert_eq!(info.kind, "dir");
 }
 
-// 〔OSA · 主会话 09-28 裁〕这里原来有「目录里认得出 `.ccm-backup-`」那一条 —— 那一格随 `$PROFILE` 备份搬到界面问本机后端
+// 这里原来有「目录里认得出 `.ccm-backup-`」那一条 —— 那一格随 `$PROFILE` 备份搬到界面问本机后端
 //   （`tests/frontend/ui/settings/profile-backups.vitest.ts`）。
 
-// ── 〔第四波 ST2 · 用户 09-24 裁「真相 / 缓存列提前做」〕────────────────────────
+// ── 〔用户 09-24 裁「真相 / 缓存列提前做」〕────────────────────────
 
 /// 把 `INVARIANTS.md §2.1` 那张散文表读成 `(名字, 类)`。**异源**：那张表是人写的散文，
 /// 枚举是代码 —— 两边各自漂了才会不等。「混（良性）」按真相记（理由见 `DataClass` 头注）。
@@ -114,7 +114,7 @@ fn every_entry_carries_the_class_the_invariants_table_gives_it() {
         "从 §2.1 只抽出 {truths} 条真相 / {caches} 条缓存 —— 抽取器坏了"
     );
     let d = TestDir::new("classes");
-    // 〔P3 · V160〕后端住在同一个家里的那几样也在这张表里（家目录与数据目录在测试里是同一个临时目录，只比名字与类）；
+    // 后端住在同一个家里的那几样也在这张表里（家目录与数据目录在测试里是同一个临时目录，只比名字与类）；
     //   进程记录那一行的名字带口号，表里写 `listen-<口>.pid`。
     let mut got: Vec<(String, DataClass)> = monitor_entries(d.path())
         .into_iter()
@@ -151,8 +151,8 @@ fn the_class_goes_over_the_wire_as_two_lowercase_words() {
     );
 }
 
-/// ★ `设计/70 §6.2`「今天 / 改成」表那一行：条目说明里不许再有 R1 那两个词（`sid` / `HWND`）。带正控。
-/// 〔JA1 2026-09-24〕原写「`70 §10.2` 差项 4」—— `设计/70` 里已没有那一节，改指今天写着这件事的那一节。
+/// ★ 「今天 / 改成」表那一行：条目说明里不许再有 R1 那两个词（`sid` / `HWND`）。带正控。
+/// 原写「差项 4」—— 里已没有那一节，改指今天写着这件事的那一节。
 #[test]
 fn no_entry_description_speaks_our_internal_words() {
     let hits = |s: &str| {
@@ -173,7 +173,7 @@ fn no_entry_description_speaks_our_internal_words() {
     assert_eq!(bad, Vec::<String>::new(), "条目说明里又出现了 sid / HWND");
 }
 
-/// ★ 〔P3 · `设计/70 §6.2` · V160「一台机器一个家」· 主会话 09-29 裁〕后端那几样的**路径**就是后端落盘用的那一份：
+/// ★ 〔「一台机器一个家」〕后端那几样的**路径**就是后端落盘用的那一份：
 /// 每一行 == 家目录 ＋ 契约常量（`relay_route_core`，后端各写者引的就是它）/ 数据目录 ＋ 凭据文件名（`creds_core::store`）/
 /// 宿主交给后端的错误输出所在的目录。期望逐条手写常量名，不从被测函数派生。
 #[test]
@@ -229,7 +229,7 @@ fn backend_rows_point_where_the_backend_itself_writes() {
     assert!(!without.iter().any(|l| l.ends_with(".pid")), "{without:?}");
 }
 
-/// ★★ 〔P3 · 主会话 09-29 裁「家里的都进唯一枚举，判据两向」〕契约 crate 里 `~/.cc-monitor/` 下的每一个相对路径常量
+/// ★★ 〔「家里的都进唯一枚举，判据两向」〕契约 crate 里 `~/.cc-monitor/` 下的每一个相对路径常量
 /// == 数据位置页后端那几行覆盖的路径（后端落点由它所在的 `bin/` 那一行覆盖）。**异源**：一侧是 `relay-route-core`
 /// 源码里现抽的常量值，一侧是被测枚举。契约里新长一个家里的路径却没进这一页 ⇒ 红；这一页列了契约里没有的 ⇒ 红。
 #[test]

@@ -29,7 +29,7 @@ type Probe = { repo: string | null; root: HTMLElement; titleEl: HTMLElement };
 const probe = (v: PanoramaView): Probe => v as unknown as Probe;
 const bar = (v: PanoramaView, key: string): HTMLButtonElement =>
   probe(v).root.querySelector(`[data-pano="${key}"]`) as HTMLButtonElement;
-// 〔RM1c〕入口改吃 `RepoAt`（哪台机器上的哪个仓）；手选的仓与本机会话都在本机。
+// 入口改吃 `RepoAt`（哪台机器上的哪个仓）；手选的仓与本机会话都在本机。
 const statusCalls = (): string[] =>
   vi.mocked(api.status).mock.calls.map((c) => {
     expect(c[0].origin).toBe(LOCAL_ORIGIN);
@@ -101,7 +101,7 @@ describe("自己挑一个仓看", () => {
     expect(probe(v).repo).toBe("/work/repo");
   });
 
-  // 〔RM1c · 第四波〕远端会话不再挡在门外：看的是**那台机器上**的仓（origin 跟着走）；
+  // 远端会话不再挡在门外：看的是**那台机器上**的仓（origin 跟着走）；
   // 手选的本机仓照旧压过它。判法同本文件：`api.status` 的完整调用序列相等（这里连机器一起比）。
   it("R5 活跃会话是远端的：看那台机器上的仓；手选的本机仓压过它", async () => {
     session = { cwd: "/remote/x", origin: "box1" };

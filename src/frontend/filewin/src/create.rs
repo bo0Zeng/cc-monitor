@@ -1,10 +1,10 @@
-//! 〔F7b · 2026-09-24〕窗口上的**「新建空文件」** —— 老面板 7 项里写侧那一项
-//! （用户裁「1. 全补」；`设计/99 §4.16.4` 那张表）。
+//! 窗口上的**「新建空文件」** —— 老面板 7 项里写侧那一项
+//! （用户裁「1. 全补」；那张表）。
 //!
 //! # 一、后端那一半早就在了，这一刀只接窗口这一半
 //!
 //! `files-create`（F1 · 波 5）：在一个目标根底下 `O_EXCL` 新建一份文件，**不给 `content`
-//! 就是一份空文件**；先过写面那道路径解析（〔FN1〕会话数据围栏 V119 拿掉了）；目标已经在（哪怕只是一条 symlink）就失败，
+//! 就是一份空文件**；先过写面那道路径解析（会话数据围栏 V119 拿掉了）；目标已经在（哪怕只是一条 symlink）就失败，
 //! 绝不覆盖。契约住 `src/doc/IPC-PROTOCOL.md` 的 `files-create` 那一节。
 //! ⇒ 本模块**一行写盘代码都没有**，它做三件事：要一个名字 · 切成 `(root, rel)` · 经
 //! [`super::source::ask`] 说那一条命令（窗口进程够后端只有那一处 `call`）。
@@ -20,8 +20,8 @@
 //!
 //! `WriteOp` 是刻意封闭的（那四条改动**既有**数据的操作）；它那条流水线的三段里，
 //! 本操作只用得上第三段：
-//! - ① 本地预判围栏〔FN1 · V119：连同后端那一道一起删了，这一条今天是历史〕：那道围栏的本地副本（`sftp_pool::is_protected_claude_data_path`）的去留
-//!   正挂在 `boundary_tests::WINDOW_SIDE` 那一格上（`设计/60 §12.3`「本地预判围栏」）。
+//! - ① 本地预判围栏〔连同后端那一道一起删了，这一条今天是历史〕：那道围栏的本地副本（`sftp_pool::is_protected_claude_data_path`）的去留
+//!   正挂在 `boundary_tests::WINDOW_SIDE` 那一格上（「本地预判围栏」）。
 //!   给它添一个新消费者是往**留**那一侧加码 ⇒ 本操作只靠**后端那一道**（它才是权威；
 //!   被拒那句原话经 [`super::source::said`] 原样画到窗口上）。
 //! - ② 一次问完：新建不毁任何东西（存在就拒）⇒ 不问（同 `writeops` 头注 §四「新建目录不问」）。
@@ -64,7 +64,7 @@ impl NewFilePrompt {
     }
 
     /// 框上那一行提示。
-    /// 〔CP2b〕字从文案表取 ⇒ 回 `String`。
+    /// 字从文案表取 ⇒ 回 `String`。
     pub fn heading() -> String {
         copy_text("rsFilewinCreate.heading.newFile", &[])
     }
@@ -103,7 +103,7 @@ pub async fn create_remote(line: &Line, origin: &Origin, path: &str) -> Result<(
     create_remote_at(line, origin, &super::source::RemotePath::plain(path)).await
 }
 
-/// 〔W5-FILES · 有损名全寻址〕同 [`create_remote`]，路径可以带字节（有损目录里新建：根发 `{"b16": …}`）。
+/// 〔有损名全寻址〕同 [`create_remote`]，路径可以带字节（有损目录里新建：根发 `{"b16": …}`）。
 pub async fn create_remote_at(
     line: &Line,
     origin: &Origin,
@@ -172,7 +172,7 @@ impl FileWindow {
         let origin = self.source.origin();
         let board = self.write_board.clone();
         board.attach(ctx);
-        // 〔W5-FILES〕落点 ＝ 当前目录的字节 ＋ 新名字（合法 UTF-8 目录时与 `path` 逐字节同）。
+        // 落点 ＝ 当前目录的字节 ＋ 新名字（合法 UTF-8 目录时与 `path` 逐字节同）。
         let at = super::shell::join_path(
             &self.cwd_path(),
             super::source::remote_basename(&path).as_bytes(),

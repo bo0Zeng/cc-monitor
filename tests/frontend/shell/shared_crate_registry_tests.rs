@@ -8,7 +8,7 @@ fn root() -> &'static Path {
     Path::new(env!("CARGO_MANIFEST_DIR"))
 }
 
-/// 共享 crate 的家 —— `<repo>/src/common/`〔RE · `设计/90 §0.5.3` · `99 §2.1 ⑰`〕。
+/// 共享 crate 的家 —— `<repo>/src/common/`。
 fn common_dir() -> std::path::PathBuf {
     crate::guard_support::repo_src_root().join("common")
 }
@@ -129,10 +129,10 @@ fn the_crate_scan_actually_finds_crates() {
     // 绝对地板**留着**，但它今天的岗位只有两个：① 反空真（两边同时归零时对拍会「相等」）；
     // ② 删共享 crate 时的**刻意摩擦**（原注释逐字写的那条）。
     // 棘紧记录：**7**（`K-H2a` 的 `creds-core`）→ **8**〔`K-R100` 09-13 加 `search-core`〕。
-    // 〔P1〕`search-core` 拆进后端之后今天实测仍是 8（其间加过 `copy-core` · `relay-route-core` · `upstream-url-core` · `deploy-contract`，搬走过几份），地板不动。
+    // `search-core` 拆进后端之后今天实测仍是 8（其间加过 `copy-core` · `relay-route-core` · `upstream-url-core` · `deploy-contract`，搬走过几份），地板不动。
     assert!(
         n >= 8,
-        "只从 src/common/*/Cargo.toml 抽到 {n} 个包名（〔P1〕今天实测 8）—— 抽取器坏了，\
+        "只从 src/common/*/Cargo.toml 抽到 {n} 个包名（今天实测 8）—— 抽取器坏了，\
              下面那条「三样都在 CI 里」会零命中零失败地绿"
     );
 }
@@ -156,7 +156,7 @@ fn the_crate_scan_actually_finds_crates() {
 /// ⇒ 加/删共享 crate 时，这条判据**自动跟上**；漏改 `gate.sh` 的那个数就当场红，
 ///   而且报文直接说「去改 gate.sh 那个数」，不会像 `gate` 自己那样指错方向。
 ///
-/// 〔TL1 · 4C〕从前这里写「`--exclude` 那几项（当时只有 `code-picture-core`）被人加减，本条认不出」——
+/// 从前这里写「`--exclude` 那几项（当时只有 `code-picture-core`）被人加减，本条认不出」——
 /// 那条 `--exclude` 随 vendor 退出 workspace 删了（monitor 不再依赖它）。⚠ 本条**认不出** vendor 被拉回成员
 /// （它比的是 gate.sh 那个数与共享 crate 数，不数真成员）；认得出的是 `the_windows_cross_target_signal_covers_only_the_backend` ③
 /// （monitor 清单零 vendor 依赖）与门禁 `cargo` 那一格运行时的包数相等（死值验现打：加回依赖 ⇒ 成员 10）。
@@ -171,7 +171,7 @@ fn the_gate_package_count_tracks_the_number_of_shared_crates() {
         .next()
         .and_then(|t| t.parse().ok())
         .expect("`run_gate_sum cargo` 后面那个数读不出来");
-    // 〔P4〕workspace 里除了根包与共享 crate，还有「前端包」（文件窗口 `src/frontend/filewin`）：从 `[workspace] members` 现数
+    // workspace 里除了根包与共享 crate，还有「前端包」（文件窗口 `src/frontend/filewin`）：从 `[workspace] members` 现数
     //   （不住 `../../common/`、不是 `.` 的那几行）。
     let toml = fs::read_to_string(root().join("Cargo.toml")).expect("Cargo.toml 读不到");
     let members = toml
@@ -239,17 +239,17 @@ fn every_shared_crate_is_a_workspace_member() {
         "这些共享 crate 不在 `[workspace] members` 里：{missing:?}\n\
              ⇒ `cargo test --workspace` 覆不到它们，测试会**静默地**从门禁里消失。"
     );
-    // 〔RE〕vendor 随唯一消费者搬出本包（`src/panorama-engine/vendor/` · `src/vendor/`，`99 §2.1 ⑰`），
+    // vendor 随唯一消费者搬出本包（`src/panorama-engine/vendor/` · `src/vendor/`），
     //   那条 `exclude` 随之删了：住在 workspace 根外面的 path 依赖按构造成不了成员。
     //   同一个意图（vendor 别掺进 `--workspace` 的读数）改钉位置那一半：本包根下没有 vendor 目录、也不再需要 exclude。
     assert!(
         !ws.lines().any(|l| l.trim_start().starts_with("exclude"))
             && !root().join("vendor").exists(),
-        "本包根下又出现了 vendor 目录 / `[workspace] exclude` —— vendor 该跟它的唯一消费者住（`99 §2.1 ⑰`）"
+        "本包根下又出现了 vendor 目录 / `[workspace] exclude` —— vendor 该跟它的唯一消费者住"
     );
 }
 
-/// ★★ **每个 path 依赖的 `Cargo.toml` 都必须已被 git 跟踪**〔G2-3〕。
+/// ★★ **每个 path 依赖的 `Cargo.toml` 都必须已被 git 跟踪**。
 ///
 /// # 它是那个真事故的**结构性**修法
 ///
@@ -273,7 +273,7 @@ fn every_path_dependency_is_actually_committed() {
     let toml = fs::read_to_string(root().join("Cargo.toml")).expect("Cargo.toml 读不到");
     // 抽 `path = "…"` 的值 —— **只认内联表里那一个**（`x = { path = "…" }`）。
     //
-    // 🔴〔第十三刀 2026-09-23〕**这一刀是现打逼出来的，不是洁癖。**
+    // 🔴**这一刀是现打逼出来的，不是洁癖。**
     // 上一版抽的是文件里**每一处** `path = "`，而 `[[bin]]` / `[[example]]` /
     // `[[test]]` 这种**目标**声明里那个顶格的 `path = "src/…"` 指的是**一个入口文件**，
     // 不是一棵 crate 树 ⇒ 它会被拼成 `src/frontend/shell/src/main.rs/Cargo.toml` 去问 git，
@@ -338,7 +338,7 @@ fn ci_actually_runs_the_three_converged_commands() {
     }
 }
 
-/// ★★ **backend job 那四步也必须真的在跑**〔audit-0805 F01〕。
+/// ★★ **backend job 那四步也必须真的在跑**。
 ///
 /// # 为什么单开一条（而不是往上面那条的 needle 表里加）
 ///
@@ -461,7 +461,7 @@ fn the_only_windows_signal_still_runs_on_a_windows_runner() {
         "`rust:` job 的 runner 变成了 `{}` —— 它是**生产平台唯一的编译与测试信号**。\n\
              换掉之后所有门禁依旧全绿（审计实测：改成 ubuntu 后 `cargo test --lib` 888 passed），\n\
              ⇒ 这条判据存在的全部理由就是让这个改动红一次。\n\
-             真要换平台：先在 `audit-0805/ROADMAP §5` 写清「此后没有 Windows 证据」再改这里。",
+             真要换平台：先在写清「此后没有 Windows 证据」再改这里。",
         runs_on[0]
     );
 }
@@ -597,7 +597,7 @@ const STEPS: &[(&str, Local, &str)] = &[
     // ── job e2e-smoke
     ("shellcheck (errors only)", Gate(&["shellcheck"]), "人群与地板都从 `ci.yml` 那一步现读"),
     ("python syntax compile", Gate(&["e2e-smoke"]), "照 `ci.yml` 原样跑"),
-    // 〔TL1 · 4C〕标题里那个数 19 → 20（接回 p3t-local-tmux）。
+    // 标题里那个数 19 → 20（接回 p3t-local-tmux）。
     ("G-A/G-C 覆盖面地板（20 套真机套件都必须带断言数地板）", Gate(&["e2e-smoke"]), "照 `ci.yml` 原样跑"),
     ("exec-bit guard (src/shared/** shebang files must be 100755 in git)", Gate(&["e2e-smoke"]), "照 `ci.yml` 原样跑"),
     (
@@ -770,7 +770,7 @@ fn gate_cells() -> Vec<String> {
     out
 }
 
-/// 〔audit-0805 08-06〕**`ci.yml` 的每一个 `run:` 步骤都要有归属**：本地门禁由哪几格跑它，
+/// **`ci.yml` 的每一个 `run:` 步骤都要有归属**：本地门禁由哪几格跑它，
 /// 或者写清「为什么门禁里没有它」。
 ///
 /// **为什么建它**：Windows 信号定格后 72 个提交没有任何一次 CI 执行，而本地那一路的门禁命令只有
@@ -913,7 +913,7 @@ fn every_ci_step_the_local_gate_claims_is_a_real_gate_cell() {
     );
 }
 
-/// 〔audit-0805 08-06〕**`package.json` 里每个 `test*` 脚本，要么 CI 会跑它，
+/// **`package.json` 里每个 `test*` 脚本，要么 CI 会跑它，
 /// 要么在这里登记成「手测」并写清原因。**
 ///
 /// 与上一条是同一族的**另一个方向**：那条问「CI 有的步骤本地数过没有」，
@@ -998,7 +998,7 @@ fn every_test_script_is_either_run_by_ci_or_registered_as_manual() {
             return true;
         }
         // ① `assert-pass-floor.sh <后缀>`；② CI 直接 `bash tests/e2e/xxx.sh`（`exec-bits` 就是这样）。
-        // ③ 〔第二波 T4 09-24〕本机门禁 `tests/scripts/gate.sh` 的 `run_e2e <后缀> `（`find_pinned`：恰好一处）。
+        // ③ 本机门禁 `tests/scripts/gate.sh` 的 `run_e2e <后缀> `（`find_pinned`：恰好一处）。
         //   那是每趟出货都跑的闸 —— 登记成「手测」会是假话（`MANUAL` 的语义是「没有自动触发器」，
         //   本文件下面那段第三档的头注逐字同一条理由）。令牌那两套（`backend-rbind-token` ·
         //   `rbind-token-endtoend`）走的就是这一条：`ci.yml` 的计数地板那一行待拍板，本机门禁先接上。
@@ -1025,7 +1025,7 @@ fn every_test_script_is_either_run_by_ci_or_registered_as_manual() {
         );
     }
 
-    // ★ 前提触发器〔08-06〕：f40 那条例外的**硬理由**是「它往 `~/.claude/` 写」。
+    // ★ 前提触发器：f40 那条例外的**硬理由**是「它往 `~/.claude/` 写」。
     // 哪天它改用临时目录，这条理由就消失、它可能变成本机跑得动的 —— 必须回来重判。
     {
         let f40 = std::fs::read_to_string(
@@ -1056,7 +1056,7 @@ fn every_test_script_is_either_run_by_ci_or_registered_as_manual() {
     );
 }
 
-/// 〔audit-0805 08-06〕**每条 `#[ignore]` 测试都要真有人来触发它。**
+/// **每条 `#[ignore]` 测试都要真有人来触发它。**
 ///
 /// 本族第三条（前两条：CI 步骤本地数过没有 · 套件有没有人调）。这条问最里面那层：
 /// **被 `#[ignore]` 挡在常规门禁之外的测试，说好的那个「触发者」还在吗。**
@@ -1078,7 +1078,7 @@ fn every_test_script_is_either_run_by_ci_or_registered_as_manual() {
 /// 而后四条确实自 `1eeb4bf` 起零执行（`ci.yml` 只在 push/PR 触发，停推后没跑过）。
 /// 本条守的是「链还连着」，**不是**「它们跑过了」——两件事别混。
 #[test]
-/// ⚠⚠ **`ROADMAP §5 3x`「七条 `#[ignore]` 执行次数为零」这条账，08-13 已不再成立**：
+/// ⚠⚠ **「七条 `#[ignore]` 执行次数为零」这条账，08-13 已不再成立**：
 /// 本轮把触发脚本一条条真跑了，逐条读数（每次都对照用户真实 server，**9 个会话逐字未变**）：
 ///
 /// | 触发脚本 | 读数 | 带动的 `#[ignore]` |
@@ -1098,37 +1098,37 @@ fn every_test_script_is_either_run_by_ci_or_registered_as_manual() {
 fn every_ignored_test_still_has_someone_who_triggers_it() {
     /// 不由 e2e 驱动、**刻意手动**的，逐条写清谁在什么时候跑它。
     const MANUAL: &[(&str, &str)] = &[
-        // 〔MOD〕`f63_real_data_ledger` 那一行随记录解析搬进了后端（`tests/backend/agents/claudecode/parse_tests.rs`）。
+        // `f63_real_data_ledger` 那一行随记录解析搬进了后端（`tests/backend/agents/claudecode/parse_tests.rs`）。
         (
             "wf1_real_powershell_add_then_remove_restores_the_user_path",
-            "〔WF1 · K〕不是判据是**读数**：要一个 PowerShell（`CCM_PWSH`，收一个 `.ps1` 路径的程序；本机用容器里的 PowerShell 7）\
+            "不是判据是**读数**：要一个 PowerShell（`CCM_PWSH`，收一个 `.ps1` 路径的程序；本机用容器里的 PowerShell 7）\
              跑生成的用户级 PATH 加 / 撤两段（注册表换替身）。谁什么时候跑：改 `profile_installer.rs` 那两段渲染的那一拍，交付前跑一趟、把结果贴进报告。",
         ),
         (
             "wf1_the_windows_probe_script_reports_card_and_where_ccm_resolves",
-            "〔WF1 · ㉔〕不是判据是**读数**：同上一条要一个 PowerShell（`CCM_PWSH`），跑 Windows 那一形的 ccm 探测串三种情形。\
+            "不是判据是**读数**：同上一条要一个 PowerShell（`CCM_PWSH`），跑 Windows 那一形的 ccm 探测串三种情形。\
              谁什么时候跑：改 `ccm_probe.rs` 里 `CCM_PROBE_PS` 的那一拍，交付前跑一趟、把结果贴进报告。",
         ),
         (
             "p2_the_path_probe_reads_back_a_non_ascii_home_under_an_oem_console",
-            "〔P2〕不是判据是**读数**：同上要一个 PowerShell（`CCM_PWSH`），控制台编码设成 936 当替身跑 PATH 探针、读回汉字目录。\
+            "不是判据是**读数**：同上要一个 PowerShell（`CCM_PWSH`），控制台编码设成 936 当替身跑 PATH 探针、读回汉字目录。\
              谁什么时候跑：改 `profile_installer.rs::render_user_path_probe_command` 的那一拍，交付前跑一趟、把结果贴进报告。",
         ),
         (
             "p2_powershell_under_a_936_console_writes_the_sample_bytes_to_stderr",
-            "〔P2〕不是判据是**读数**：同上要一个 PowerShell（`CCM_PWSH`），核 `platform/console_text_tests.rs` 那段 936 替身字节就是 PowerShell 在 936 控制台下往 stderr 写的。\
+            "不是判据是**读数**：同上要一个 PowerShell（`CCM_PWSH`），核 `platform/console_text_tests.rs` 那段 936 替身字节就是 PowerShell 在 936 控制台下往 stderr 写的。\
              谁什么时候跑：改那段替身字节或 `platform/console_text.rs` 的那一拍，交付前跑一趟、把结果贴进报告。",
         ),
         (
             "the_readings_behind_the_two_thresholds",
-            "〔F9 09-24〕不是判据是**读数**：大文件模式两个门槛的来源，只在 **release** 档上有意义\
-             （debug 档慢一个数量级，拿它推门槛就是 `设计/60 §9 §四.0` 订正过的那个错）。\
+            "不是判据是**读数**：大文件模式两个门槛的来源，只在 **release** 档上有意义\
+             （debug 档慢一个数量级，拿它推门槛就是订正过的那个错）。\
              跑法写在它自己的头注里；它产出的两个数落在 `bigfile::LINE_READING` / `TOTAL_READING`，\
              由 `the_two_thresholds_are_what_the_readings_derive` 每趟钉住「推算式 == 常量」。",
         ),
         (
             "loopback_roundtrip_through_the_resident_backend",
-            "〔SR1a 09-24〕不是 e2e：它要一台**真 sshd**（本用户身份的临时回环 sshd）＋ 一份编好的后端二进制（起成本机常驻后端，\
+            "不是 e2e：它要一台**真 sshd**（本用户身份的临时回环 sshd）＋ 一份编好的后端二进制（起成本机常驻后端，\
              stdio 载体、私有 HOME / TMUX_TMPDIR）。触发器是读数脚本 `tests/evidence/SR1a-link-loopback.py --monitor`\
              （它起 sshd、设好 `SR1A_LOOPBACK` 再按名字跑这一条，并核输出里那句 `SR1A-LOOPBACK-MONITOR ok`）。\
              门禁沙箱里起不了 sshd ⇒ 进不了门禁。谁什么时候跑：改 `dial_host` / `link_mux` / `ssh_link` / 后端 `dial/` 的那一拍，\
@@ -1136,14 +1136,14 @@ fn every_ignored_test_still_has_someone_who_triggers_it() {
         ),
         (
             "sr1b_loopback_deploy_and_transfer_through_the_resident_backend",
-            "〔SR1b 09-24〕不是 e2e：同上一条，要**真 sshd**（sftp 子系统起始目录钉在临时目录）＋ 编好的后端二进制。\
+            "不是 e2e：同上一条，要**真 sshd**（sftp 子系统起始目录钉在临时目录）＋ 编好的后端二进制。\
              触发器是读数脚本 `tests/evidence/SR1b-sftp-loopback.py --monitor`（设好 `SR1B_LOOPBACK` 按名字跑这一条，\
              核输出里那句 `SR1B-LOOPBACK-MONITOR ok`）。谁什么时候跑：改 `sftp.rs` 部署那几问 / `sftp_pool.rs` 中继 /\
              `dial_host::RemoteFs` / 后端 `dial/sftp.rs` · `control/transfer.rs` 的那一拍，交付前跑一趟、把输出贴进报告。",
         ),
         (
             "a_real_backend_feeds_local_lines_through_the_production_read_loop",
-            "〔CF1 09-24〕不是 e2e：它要一份编好的后端二进制（stdio 载体、起参就是生产的 `LOCAL_STREAM_ARGS`，私有 HOME / \
+            "不是 e2e：它要一份编好的后端二进制（stdio 载体、起参就是生产的 `LOCAL_STREAM_ARGS`，私有 HOME / \
              `CLAUDE_CONFIG_DIR` / `TMUX_TMPDIR`）＋ `/proc`（冒充会话的 `sleep` 要有启动时刻）。触发器是读数脚本 \
              `tests/evidence/CF1-local-lines.py`（设好 `CF1_BACKEND` 再按名字跑这一条，并核输出里那句 `CF1-LOCAL-LINES ok`）。\
              门禁那一格不先编后端二进制 ⇒ 进不了门禁。谁什么时候跑：改本机内容那条路（`local_lines` · 两条本机读循环 · \
@@ -1185,7 +1185,7 @@ fn every_ignored_test_still_has_someone_who_triggers_it() {
         ),
         (
             "xvfb_worker_real_keys_on_the_window",
-            "〔FW1+FW2 09-24〕真 X 键盘那一趟：由 `shell_keys_tests.rs` 的 \
+            "真 X 键盘那一趟：由 `shell_keys_tests.rs` 的 \
              `a_real_x_keyboard_drives_the_list` spawn 子进程跑",
         ),
     ];
@@ -1193,7 +1193,7 @@ fn every_ignored_test_still_has_someone_who_triggers_it() {
     let repo = crate::guard_support::repo_root().to_path_buf();
     // ── 收 `#[ignore]` 测试：(文件名 stem, fn 名)
     let mut ignored: Vec<(String, String)> = Vec::new();
-    // 🔴 〔搬树 2026-09-18 · `设计/16 §5.4b` 纪律 3〕**加上 `tests/frontend/shell` 这一棵。**
+    // 🔴 〔搬树 2026-09-18 ·  纪律 3〕**加上 `tests/frontend/shell` 这一棵。**
     //    那 7 条 `#[ignore]` 全都是测试，剖分之后一条都不在 `src/frontend/shell/src` 里了
     //    ⇒ 老语料收到 0 条，下面那条「剥法坏了」的反空真按设计响了。
     let mut ignore_corpus = guard_core::scan_tree!(&repo.join("src/frontend/shell/src"), &["rs"]);
@@ -1201,12 +1201,12 @@ fn every_ignored_test_still_has_someone_who_triggers_it() {
         &repo.join("tests/frontend/shell"),
         &["rs"]
     ));
-    // 〔RE〕通信层成员的单测镜像（`tests/comms/inward/`）也是本 crate 的测试。
+    // 通信层成员的单测镜像（`tests/comms/inward/`）也是本 crate 的测试。
     ignore_corpus.extend(guard_core::scan_tree!(
         &repo.join("tests/comms/inward"),
         &["rs"]
     ));
-    // 〔P4〕文件窗口独立成包（代码随上面那棵的人群声明收），它的测试住 `tests/frontend/filewin/`。
+    // 文件窗口独立成包（代码随上面那棵的人群声明收），它的测试住 `tests/frontend/filewin/`。
     ignore_corpus.extend(guard_core::scan_tree!(
         &repo.join("tests/frontend/filewin"),
         &["rs"]
@@ -1334,12 +1334,12 @@ fn every_ignored_test_still_has_someone_who_triggers_it() {
                 .into_iter()
                 .filter(|(path, _)| !path.to_string_lossy().ends_with(me))
                 .collect();
-        // 〔RE〕本 crate 的第二棵测试树（通信层成员单测，`tests/comms/inward/`）。
+        // 本 crate 的第二棵测试树（通信层成员单测，`tests/comms/inward/`）。
         judge_corpus.extend(guard_core::scan_tree!(
             &repo.join("tests/comms/inward"),
             &["rs"]
         ));
-        // 〔P4〕文件窗口的测试树。
+        // 文件窗口的测试树。
         judge_corpus.extend(guard_core::scan_tree!(
             &repo.join("tests/frontend/filewin"),
             &["rs"]
@@ -1408,7 +1408,7 @@ fn every_ignored_test_still_has_someone_who_triggers_it() {
     );
 }
 
-/// 〔audit-0805 08-06〕**跨 target（Windows）编译信号今天只覆盖后端，不覆盖 monitor
+/// **跨 target（Windows）编译信号今天只覆盖后端，不覆盖 monitor
 /// —— 把这个不对称本身钉住，让它不能悄悄变。**
 ///
 /// 定框 **E7** 逐字写着「C10 的**真判据是跨 target 编得过**
@@ -1430,7 +1430,7 @@ fn every_ignored_test_still_has_someone_who_triggers_it() {
 /// 连编译错误都不报**（实证：往里写一个不存在的标识符，`cargo build` **零 error**）。
 /// ⇒ 对那片代码做变异抽样得到的「SURVIVED」**没有信息量**，那是方法的盲区不是门禁的漏洞。
 ///
-/// 本条是那条诚实边界（`ROADMAP §5`）的**前提触发器**：前提一旦消失就红，逼人回来重判。
+/// 本条是那条诚实边界的**前提触发器**：前提一旦消失就红，逼人回来重判。
 #[test]
 fn the_windows_cross_target_signal_covers_only_the_backend() {
     const NEEDLE: &str = "--target x86_64-pc-windows-msvc";
@@ -1448,14 +1448,14 @@ fn the_windows_cross_target_signal_covers_only_the_backend() {
     assert!(
         !rust_block.contains(NEEDLE),
         "`rust` job（monitor）现在**有跨 target check 了** —— 好事，但请顺手：\n\
-             ① 删掉 `ROADMAP §5` 里「monitor 的 Windows 面没有编译信号」那条诚实边界；\n\
+             ① 删掉里「monitor 的 Windows 面没有编译信号」那条诚实边界；\n\
              ② 删掉本条判据（它的全部意义就是钉住这个不对称）。"
     );
 
     // ③ 那条「本机补不上」的理由**今天不成立了**〔RM1f 09-25：这一格按设计响了一次，重判结论如下〕。
     //    当初挡住本机 `cargo check --target x86_64-pc-windows-msvc -p monitor` 的，是 vendor `code-picture-core`
     //    那条**无条件** path 依赖带进来的 `tree-sitter-*` C build script（`cc-rs: lib.exe`）。本机对称那一拍
-    //    （V108 后半句：monitor 摘掉内嵌引擎）把那条依赖删了 ⇒ 现打（09-25，本工作树，`native-backend/` 挪开后）：
+    //    （后半句：monitor 摘掉内嵌引擎）把那条依赖删了 ⇒ 现打（09-25，本工作树，`native-backend/` 挪开后）：
     //    `cargo check --offline -p monitor --target x86_64-pc-windows-msvc` ⇒ **Finished（零 error）**。
     //    ⇒ 「monitor 的 Windows 面本机补不上」这条诚实边界的**前提没了**；要不要把它变成一格门禁是门禁那一侧的事
     //      （已报备，本条不替它加）。本条改钉**反方向**：谁把引擎依赖加回 monitor，这个新读数就当场作废。
@@ -1468,14 +1468,14 @@ fn the_windows_cross_target_signal_covers_only_the_backend() {
             .any(|l| l.trim_start().starts_with("code-picture-core") && guard_core::contains_word(l, "path")),
         "`src/frontend/shell/Cargo.toml` 又依赖上了 vendor `code-picture-core` —— 那会把 `tree-sitter-*` 的 C build script\n\
              带回 monitor，本机 `cargo check --target x86_64-pc-windows-msvc -p monitor` 会重新挂在 `lib.exe` 上\n\
-             （〔RM1f 09-25〕摘掉它之后现打是 Finished）。先去 `EU5` 把「monitor 摘内嵌引擎」那笔账改了再回来。"
+             （摘掉它之后现打是 Finished）。先去 `EU5` 把「monitor 摘内嵌引擎」那笔账改了再回来。"
     );
 }
 
 /// 〔audit-0805 08-06 立 · `K-R114` / `R73` 09-14 重判后改措辞〕
 /// **三条诚实边界压在同一个前提上：「CI 今天不会跑」——把这个前提钉住。**
 ///
-/// `ROADMAP §5`（住 `audit-0805` 那个工作区）的 3w（release.yml 的版本 guard 不触发）·
+/// （住 `audit-0805` 那个工作区）的 3w（release.yml 的版本 guard 不触发）·
 /// 3x（七条 `#[ignore]` 执行次数为零）· 3y（monitor 的 Windows 面没有编译信号），
 /// 三条当初的成立**都只因为一件事**：两个 workflow 都只在 `push` / `pull_request` 上触发，
 /// 而〔用 08-05〕裁定不再 push。
@@ -1507,7 +1507,7 @@ fn the_windows_cross_target_signal_covers_only_the_backend() {
 /// ② 它认的是 `on:` 段里**有没有那个词**，不解释 GitHub 的触发语义
 ///    （`schedule` 配一个永不命中的 cron，本条照样算它「有」）；
 /// ③ 登记一行买到的是「**有人回来过**」，**不是**「那三条边界今天写得对」——
-///    后者要读 `audit-0805` 那份 `ROADMAP` 的正文，不在本条射程里。
+///    后者不在本条射程里。
 #[test]
 fn the_premise_behind_three_honesty_boundaries_still_holds() {
     /// 会让 workflow **在没有 push 的情况下也能跑起来**的触发器。
@@ -1621,7 +1621,7 @@ fn the_premise_behind_three_honesty_boundaries_still_holds() {
     );
 }
 
-/// 〔audit-0805 08-06〕**跑不了的那批 e2e，静态断言条数只许涨不许掉。**
+/// **跑不了的那批 e2e，静态断言条数只许涨不许掉。**
 ///
 /// # 为什么需要它
 ///
@@ -1647,7 +1647,7 @@ fn dormant_e2e_suites_keep_their_assertions() {
         // `U-NP④`（08-14）：19 → 26。场景 3b/5ter 从「验 ccm 那条每秒 poller 打 `@ccm_sid`」
         // 改成「验后端打标的那把钥匙（`/proc/<pid>/environ` 的 `TMUX_PANE`）＋按它的算法
         // 打一次」——poller 已整条删除，旧判据测的东西不存在了。**条数是涨的，不是删测试。**
-        // 🔴 〔`K-R48` 第二拍 09-11〕**`ccm-acceptance`(26) 与 `ccm-pretrust`(15) 两行摘了 ——
+        // 🔴 **`ccm-acceptance`(26) 与 `ccm-pretrust`(15) 两行摘了 ——
         //    那两套 e2e 删了。摘的理由要写清，不然这就是「把棘轮往下拧」。**
         //    它们**只测 `shared/ccm` 那个 bash 脚本的真机行为**：`ccm-pretrust` 测的预信任
         //    （写 `~/.claude.json` / `~/.codex/config.toml`）`K-R48` 第一拍逐字登记为**没搬**
@@ -1666,7 +1666,7 @@ fn dormant_e2e_suites_keep_their_assertions() {
         //    ⚠ 而现打验过：原生实现**真的建得出会话**（隔离 socket 上 `ccm --tmux=<名>
         //    --detach` ⇒ `tmux ls` 看得到）—— 那 18 条红是**夹具形状**的，不是功能回归。
         //    归 `K-R48` 下一拍（先裁 `@ccm_sid`，再把这套重新指过去）。
-        // 🔴 〔`K-R72` 09-12〕**`tmux-guarded`(14) 这一行摘了 —— 摘的理由**（同 `K-R48`
+        // 🔴 **`tmux-guarded`(14) 这一行摘了 —— 摘的理由**（同 `K-R48`
         //    那两行的口径：摘棘轮的行必须写清，不然就是「把棘轮往下拧」）：
         //    那套 e2e 的**输入源**是 `tmux.rs` 里那条 `emit_guarded_commands_for_e2e`，  〔散文墓碑〕
         //    它 emit 的是 `build_guarded_tmux_cmd` 那条原子远端 shell 串的生产命令。
@@ -1680,7 +1680,7 @@ fn dormant_e2e_suites_keep_their_assertions() {
         //    真机那一面的等价覆盖在 `backend-gate2-acceptance.sh`（下面 `NO_STATIC_SIGNAL`
         //    那张表里，真 backend + 真 tmux，用例逐行来自同一张 `gate2-golden.tsv`）。
         ("tmux-target", "tmux-target-acceptance.sh", "ck", 26),
-        // 🔴 〔`设计/50` 删用量〕**`usage-probe`(9) 这一行摘了 —— 摘的理由**（同上面
+        // 🔴 〔删用量〕**`usage-probe`(9) 这一行摘了 —— 摘的理由**（同上面
         //    `tmux-guarded` 那条的口径：摘棘轮的行必须写清）：
         //    用量 ②③ 两轴整轴退役 ⇒ **被测对象没了**，`tests/e2e/usage-probe-acceptance.sh`
         //    整份删除。留在这里的一行只会让本条去读一个不存在的文件（`read_to_string` 直接 panic）。
@@ -1750,7 +1750,7 @@ fn dormant_e2e_suites_keep_their_assertions() {
     }
 }
 
-/// 〔audit-0805 08-06〕**唯一量「提交状态」的那道门，本身没人守着。**
+/// **唯一量「提交状态」的那道门，本身没人守着。**
 ///
 /// `tests/scripts/verify-committed-state.sh` 的头注逐字写着它为什么必须存在：
 /// 2026-08-04 实测，`gate-core` 那条 path 依赖**一次都没落盘**，
@@ -1804,7 +1804,7 @@ fn the_only_gate_that_measures_committed_state_still_does_all_three_checks() {
     }
 }
 
-/// 〔audit-0805 08-08〕**三项还在 ≠ 三项都跑了**。
+/// **三项还在 ≠ 三项都跑了**。
 ///
 /// 上一条钉的是那三项检查**存在**。而 `backend-win` 那项包在
 /// `if rustup target list --installed | grep -q x86_64-pc-windows-msvc` 里 ——
@@ -1833,7 +1833,7 @@ fn the_only_gate_that_measures_committed_state_still_does_all_three_checks() {
 ///
 /// 真路今天由人跑（改前/改后各一次，输出见上）。没做成自动判据的理由具体：
 /// 它要在临时 worktree 里真编两遍 cargo check（约一分钟），
-/// 放进 `cargo test` 等于每轮门禁多编一遍全仓。⇒ 登记进 `ROADMAP §5`。
+/// 放进 `cargo test` 等于每轮门禁多编一遍全仓。⇒ 登记进。
 /// 本条能挡的是「有人把降级那一支改回成和成功一样的结论」；
 /// 挡不住的是「`run` 函数本身坏掉但文本还在」。
 #[test]

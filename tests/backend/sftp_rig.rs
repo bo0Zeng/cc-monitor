@@ -1,4 +1,4 @@
-//! 〔SR1b · 2026-09-24〕**合成 SFTP 服务端**（台架）：`dial/sftp.rs` 与 `control/transfer.rs` 两族判据共用。
+//! **合成 SFTP 服务端**（台架）：`dial/sftp.rs` 与 `control/transfer.rs` 两族判据共用。
 //!
 //! 来历：monitor 那一侧 `tests/frontend/shell/sftp_staging_tests.rs`（F7c）那台「逐条记改动路径」的服务端，
 //! SFTP 客户端搬进本机后端时一起搬过来，再补三样本仓那台没有的：
@@ -44,16 +44,16 @@ pub(crate) struct Fs {
     read_calls: usize,
     /// 每一次 `WRITE` 的偏移（续传那一格判「从哪儿接上的」）。
     pub(crate) write_offsets: Vec<u64>,
-    /// 〔DP1〕服务端**看到过**的写（含回坏的那几条）盖到的最远字节 —— 「客户端发出去的写，走之前是不是都有了回话」。
+    /// 服务端**看到过**的写（含回坏的那几条）盖到的最远字节 —— 「客户端发出去的写，走之前是不是都有了回话」。
     pub(crate) seen_write_end: u64,
-    /// 〔DP1〕每条 `WRITE` 处理之前让出几次（`yield_now`）：把「写还在路上、客户端已经拿到第一条坏回话」那一形
+    /// 每条 `WRITE` 处理之前让出几次（`yield_now`）：把「写还在路上、客户端已经拿到第一条坏回话」那一形
     /// 从调度的运气变成台架的设定（负载高时才碰得上的那个竞态，在这里每次都碰上）。
     pub(crate) yield_per_write: usize,
-    /// 〔DP1〕每一次 `READ` 的偏移（下载续传那一格判「前缀没有被重新读一遍」）。
+    /// 每一次 `READ` 的偏移（下载续传那一格判「前缀没有被重新读一遍」）。
     pub(crate) read_offsets: Vec<u64>,
-    /// 〔FW1〕服务端**交出去**的读字节数（逐条 `READ` 应答里 `data` 的长度之和）—— 「同一段字节有没有被要了两遍」。
+    /// 服务端**交出去**的读字节数（逐条 `READ` 应答里 `data` 的长度之和）—— 「同一段字节有没有被要了两遍」。
     pub(crate) served_bytes: u64,
-    /// 〔HX1〕目录上被 `SETSTAT` 设过的权限位（`目录 → permissions`）—— 部署建出来的那几层收没收窄。
+    /// 目录上被 `SETSTAT` 设过的权限位（`目录 → permissions`）—— 部署建出来的那几层收没收窄。
     pub(crate) dir_modes: BTreeMap<String, u32>,
 }
 

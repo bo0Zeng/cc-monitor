@@ -75,7 +75,7 @@ fn check_origin(origin: &str) -> Result<(), String> {
 /// | 3 | 前端忽略 `cfg.enabled` | 远端总开关关着时 `load_remote_configs` 直接返回空 ⇒ 一个都没注册，而 UI 照样列出全部 |
 /// | 4 | `register_remote` 只在 `setup()` 跑一次 | 启动之后新增的远端机永远不会被注册，却会出现在列表里 |
 ///
-/// ⇒ **注册表本身就是真相源**：本命令直接倒它。前端只负责画。
+/// ⇒ **注册表本身就是源头**：本命令直接倒它。前端只负责画。
 /// 本机（`<local>`）**永远在第一行** —— 它不是「另一种机器」，只是不走 ssh 的那一台（`C1`）。
 #[tauri::command]
 pub fn backend_machines() -> Result<Vec<String>, String> {
@@ -103,7 +103,7 @@ pub fn backend_machines() -> Result<Vec<String>, String> {
 pub fn backend_status(origin: String) -> Result<serde_json::Value, String> {
     check_origin(&origin)?;
     let channel = crate::inbound_client::client_for(&origin).is_some();
-    // ★★ `K-P1 KPY5`：**`detached` 的真相源只能是「起它的时候走没走那条路」。**
+    // ★★ `K-P1 KPY5`：**`detached` 的源头只能是「起它的时候走没走那条路」。**
     //
     // `is_detached()` 读的是一条**只在真的走过脱离那条路时才会被写下**的记录
     // （`local_backend_host::DETACHED`）。
@@ -129,7 +129,7 @@ pub fn backend_status(origin: String) -> Result<serde_json::Value, String> {
     // ⚠ 它**不走 `is_local` 分派**，理由是硬的：那张账是按 origin 存的
     // （`backend_policy::health(origin)`），远端那一格今天恒是「四个 0」——
     // 而那对远端是**真话**：本件不接远端（退出状态在别人机器上拿不到），
-    // 所以「没人在记」正是那台机的实情，那一格说「答不出来」（〔PB1〕判定在 `backend_policy::health_face`）。
+    // 所以「没人在记」正是那台机的实情，那一格说「答不出来」（判定在 `backend_policy::health_face`）。
     // ⇒ 这里**不能**填 `null` 装作不对称：`pid`/`attempts` 是「那个进程在别人机器上」，
     // 而这一格是「我们这边一条都没记过」，两件事。
     //
@@ -142,9 +142,9 @@ pub fn backend_status(origin: String) -> Result<serde_json::Value, String> {
         "pid": pid,
         "attempts": attempts,
         "detached": detached,
-        // 〔B2 · 条 66〕原来这里还有一格 `killOnExit`（读 monitor 进程内那张表）。值搬到后端那台机器上之后
+        // 〔条 66〕原来这里还有一格 `killOnExit`（读 monitor 进程内那张表）。值搬到后端那台机器上之后
         //   这里没有它了 —— 要它问那台机器（后端 `exit-policy-read`），不许在这儿留一份副本。
-        // 〔PB1 · `设计/90 §4` 阶段 B〕「健康」那一格是**成品**（状态 ＋ 一句 ＋ ⓘ ＋ `[详情]`），判定只在 `health_face`；
+        // 「健康」那一格是**成品**（状态 ＋ 一句 ＋ ⓘ ＋ `[详情]`），判定只在 `health_face`；
         //   原来这里交出去的四个计数与短摘要是原料，界面拿它再判一遍三档 —— 那一份判定随原料一起不上线了。
         "health": crate::backend_policy::health_face(&h),
     }))
@@ -152,7 +152,7 @@ pub fn backend_status(origin: String) -> Result<serde_json::Value, String> {
 
 /// P2s（`C8`②）：**起这台机的 backend**。已经在跑就是 no-op（`C8`①：每台机只许一个）。
 ///
-/// 〔TL3 · `INVARIANTS §10` · 主会话 09-26 裁〕**`async`**：本机那一支（`start_local_backend`）一路会起进程、
+/// 〔`INVARIANTS §10`〕**`async`**：本机那一支（`start_local_backend`）一路会起进程、
 /// 连本机后端口、读 hello、`sleep` 等它绑上口、`attach_stream` 里 `block_on` —— 同步命令跑在 IPC 派发线程上，
 /// 那几秒里别的 IPC 全排队。今天那一支进 `spawn_blocking`（形状照 [`backend_stop`] 本机那一支）；
 /// 远端那一支只是换一个流任务的把手，不等任何东西，照旧就地做。判据 `sync_command_registry_tests`（例外表今天是空的）。
@@ -208,7 +208,7 @@ pub async fn backend_start(origin: String) -> Result<String, String> {
 
 /// P2s（`C8`②）：**停这台机的 backend**。
 ///
-/// 〔STOP · 主会话裁〕本机远端同一条：在**那台机器上**跑一次 `--resident-stop`（同机监督者：请它收尾 → 宽限期内等 → 到点强杀），
+/// 本机远端同一条：在**那台机器上**跑一次 `--resident-stop`（同机监督者：请它收尾 → 宽限期内等 → 到点强杀），
 /// 这里只发一次、拿回结局 `{stopped: graceful | killed | not_running, pid}`，机器页按它说一句。
 /// 远端先 `abort()` 那条流再发（流随被停的那一位断，不能请它自己经那条流停自己）。本机那一支会等到结局（≤ 宽限期 ＋ 强杀后那一小段），
 /// 同步命令跑在主线程上 ⇒ 等的那一段进阻塞线程池。
@@ -237,7 +237,7 @@ pub async fn backend_stop(origin: String) -> Result<crate::remote_resident::Stop
     stop_remote_resident(&origin).await
 }
 
-/// 〔HOST〕停那台的常驻后端（`--resident-stop`，经链路在那台跑）。只由 [`backend_stop`] 在分过本机之后调。
+/// 停那台的常驻后端（`--resident-stop`，经链路在那台跑）。只由 [`backend_stop`] 在分过本机之后调。
 async fn stop_remote_resident(origin: &str) -> Result<crate::remote_resident::StopAnswer, String> {
     let cfg = crate::load_remote_config_by_label(origin).ok_or_else(|| {
         copy_text(

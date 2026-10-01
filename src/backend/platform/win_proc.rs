@@ -1,4 +1,4 @@
-//! 〔WN1 · U4b〕**Windows 上「一个 pid 还在不在 · 它哪一刻起的 · 等它死」的 Win32 读法** —— 唯一住址。
+//! **Windows 上「一个 pid 还在不在 · 它哪一刻起的 · 等它死」的 Win32 读法** —— 唯一住址。
 //!
 //! # 为什么有这份文件
 //!
@@ -6,12 +6,12 @@
 //! `pidwatch` 的看守，在非 Linux 上从 U4a 起就是空壳（`pid_alive` 甚至是 `unimplemented!()`）。
 //! 而 V105 之后 Windows 本机**一定**有一个后端进程在跑 ⇒ 它的 `watcher` 每见一份
 //! `sessions/<PID>.json` 就调一次 `pid_alive` ⇒ **见到第一个 claude 会话就 panic**。
-//! 这份文件把那几件的 Windows 读法补上；**判定规则一条都不在这里**（翻译官只翻译读法，
-//! `01 §3.1`）—— 「exists / captured / current 三者怎么组合成存活」仍只住 `liveness.rs`。
+//! 这份文件把那几件的 Windows 读法补上；**判定规则一条都不在这里**（翻译官只翻译读法）
+//! —— 「exists / captured / current 三者怎么组合成存活」仍只住 `liveness.rs`。
 //!
 //! # 身份那一半是照搬，不是新写
 //!
-//! monitor 侧当年 `session_map.rs` 那份进程判活（〔LOC1b · 4D〕随本机判活改由本机后端的帧来删了）的 `cfg(windows)` 那支
+//! monitor 侧当年 `session_map.rs` 那份进程判活（随本机判活改由本机后端的帧来删了）的 `cfg(windows)` 那支
 //! （`OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION)` ＋ `GetExitCodeProcess == STILL_ACTIVE`
 //! ＋ `GetProcessTimes`）在 Windows 用户机上跑过很久（`tests/frontend/shell/rust_timer_registry_tests.rs`
 //! 那条「F12 解锁闹钟」的头注逐字）。本文件用的是**同一组 Win32 调用、同一个访问掩码**。
@@ -34,7 +34,7 @@
 //! 本机是 Linux：这份文件**只在 Windows 编译时存在**，门禁买到的是 `winchk-backend`
 //! 那一格的「编得过」。「在真 Windows 上 `OpenProcess` 真的回那几个错误码、
 //! `WaitForSingleObject` 真的在进程退出那一刻醒」—— **一格都没有读数**（本路不碰 Win11 虚拟机，
-//! `99 §2 ⑤` 未拍）。能在 Linux 上验的只有纯函数那一半（`proc.rs::unix_secs_from_filetime`）
+//! 未拍）。能在 Linux 上验的只有纯函数那一半（`proc.rs::unix_secs_from_filetime`）
 //! 与「看守三条判死路径 ＋ 一条不判死」和 Linux 臂逐形对拍（`pidwatch` 那边的源码判据）。
 
 #![cfg(windows)]
@@ -78,7 +78,7 @@ const WAIT_FOREVER: u32 = 0xFFFF_FFFF;
 const WAIT_OBJECT_0: u32 = 0;
 /// `WaitForSingleObject` 的「期限到了，对象没被触发」。
 const WAIT_TIMEOUT: u32 = 0x0000_0102;
-/// 〔STOP〕允许 `TerminateProcess`。
+/// 允许 `TerminateProcess`。
 const PROCESS_TERMINATE: u32 = 0x0000_0001;
 
 /// 开一个进程句柄的三种结局 —— **三种，不压成 `Option`**：
@@ -171,7 +171,7 @@ pub(crate) fn wait_for_exit(h: &OwnedHandle) -> Result<(), std::io::Error> {
     }
 }
 
-/// 〔STOP〕开一个「停得了」的句柄：查询 ＋ 等 ＋ 强杀（`platform/signal.rs::stoppable` 的 Windows 臂）。
+/// 开一个「停得了」的句柄：查询 ＋ 等 ＋ 强杀（`platform/signal.rs::stoppable` 的 Windows 臂）。
 pub(crate) fn open_for_stop(pid: u32) -> Opened {
     open(
         pid,
@@ -179,7 +179,7 @@ pub(crate) fn open_for_stop(pid: u32) -> Opened {
     )
 }
 
-/// 〔STOP〕**至多等 `ms` 毫秒**看它退没退（内核事件，不轮询）。只给一次性子命令 `--resident-stop` 用 ——
+/// **至多等 `ms` 毫秒**看它退没退（内核事件，不轮询）。只给一次性子命令 `--resident-stop` 用 ——
 /// 登记在 `no_timer_guard::REGISTERED_ONE_SHOT_CLI_WAITS`。`Ok(true)` = 退了；`Ok(false)` = 期限到了还在。
 pub(crate) fn wait_within(h: &OwnedHandle, ms: u32) -> Result<bool, std::io::Error> {
     // SAFETY：句柄有效，且带 `SYNCHRONIZE`（由 `open_for_stop` 开出来的）。
@@ -191,7 +191,7 @@ pub(crate) fn wait_within(h: &OwnedHandle, ms: u32) -> Result<bool, std::io::Err
     }
 }
 
-/// 〔STOP〕强杀（`TerminateProcess`，退出码 1）。
+/// 强杀（`TerminateProcess`，退出码 1）。
 pub(crate) fn terminate(h: &OwnedHandle) -> Result<(), std::io::Error> {
     // SAFETY：句柄有效，且带 `PROCESS_TERMINATE`（由 `open_for_stop` 开出来的）。
     if unsafe { TerminateProcess(h.as_raw_handle(), 1) } != 0 {

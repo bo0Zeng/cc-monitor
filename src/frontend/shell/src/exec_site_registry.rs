@@ -4,9 +4,9 @@
 //!
 //! 引用原语这一侧钉得很密：`shell_quote` 的**实现**只有一个家
 //! （`quote_singleton_guard`），逃逸形态四种写法都认。个别调用点也有自己的行为判据
-//! （`hooks_diag` 钉自己那处用常量；〔BS1b 09-24〕原先这里还点了 `cc_bus` 派生那条 SSH 构造器的行为判据 ——
+//! （`hooks_diag` 钉自己那处用常量；原先这里还点了 `cc_bus` 派生那条 SSH 构造器的行为判据 ——
 //! 派生改走后端原语 `bus-spawn`，那条路连同判据一起删了）。
-//! ⚠〔`K-R98` 09-13〕这里原先点的是发消息那条（`cc_bus` 里那个 send 构造器的行为判据）——
+//! ⚠这里原先点的是发消息那条（`cc_bus` 里那个 send 构造器的行为判据）——
 //! **它连同那条 shell 路一起删净了**（发消息改走后端的 `bus-send` 原语）
 //! ⇒ 换成点今天真的还在的那一条，别留一个指向空处的名字。
 //!
@@ -37,7 +37,7 @@
 //! ④ `PassThrough` **不追调用链**：`cc_bus::exec_read` 的三个调用方各走 `build_*_cmd`，
 //!    那是它们自己那条 singleton 判据在守，本条只确认转发者自己不构造；
 //! ⑤ 走 SFTP / 本机 `Command` 的路（本条只管 `connect_and_exec_cmd` 这一个扼流点）。
-//!    ★〔devbench F10c〕**SFTP 那半已经有人接了**：`remote_write_registry` 按「谁拿得到
+//!    ★**SFTP 那半已经有人接了**：`remote_write_registry` 按「谁拿得到
 //!    SFTP 会话」取样，接的正是本条划出去的这道缝。
 //!    ★★ **订正〔P3t-Y2，08-11〕：这里原本写「`Command` 那半仍无人接」——那句话是错的。**
 //!    `write_site_registry::spawn_sites::every_local_spawn_is_declared` 就在接它

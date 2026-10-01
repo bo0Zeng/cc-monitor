@@ -1,11 +1,11 @@
-//! 〔HOST · V139〕**远端常驻后端的起 · 找 · 停**（`99 §1` V139「远端常驻、本机远端同形」· `设计/01 §3.3` · `05 §5.2`）。
+//! **远端常驻后端的起 · 找 · 停**（「远端常驻、本机远端同形」·）。
 //!
-//! 两条一次性子命令，由 monitor 经本机常驻后端的链路 `capture` 在远端跑（设计住仓外 `调研/第四波记录/HOST.md §1`）：
+//! 两条一次性子命令，由 monitor 经本机常驻后端的链路 `capture` 在远端跑（设计住仓外）：
 //! - `--resident-ensure [--replace]`：读回或铸这台的监听钥匙（`~/.cc-monitor/listen-token`，与本机宿主同一份文件）→
 //!   **无条件起一个脱离的自己**（常驻载体；钥匙经文件交，不进 env / argv）→ 回一行 `{"port","token","pid"}`。
 //!   口上已有常驻后端时，子进程照旧「绑不上就退 3、绝不换口」⇒ 找与起是同一步，本进程不等任何东西（零定时器）。
 //!   `--replace`：先按下面那个停法停掉口上那一位（它自己记的 pid 文件），再起（只升不降由 monitor 按 hello 判）。
-//! - `--resident-stop [--grace <秒>]`：〔STOP〕**同机监督者**那一形（k8s `terminationGracePeriodSeconds` · systemd `TimeoutStopSec`）：
+//! - `--resident-stop [--grace <秒>]`：**同机监督者**那一形（k8s `terminationGracePeriodSeconds` · systemd `TimeoutStopSec`）：
 //!   SIGTERM（它按 HX1 排空后自己退）→ 在宽限期内等内核通知 → 到点 SIGKILL → 回 `{"stopped":"graceful"|"killed"|"not_running","pid":n|null}`。
 //!   等待住这个一次性进程里，常驻后端的事件循环不加定时器（`no_timer_guard::REGISTERED_ONE_SHOT_CLI_WAITS`）。
 //!
@@ -18,9 +18,9 @@ use copy_core::copy_text;
 
 /// `--resident-ensure` 起子进程时给的流模式默认旗标（空转那份 watcher 用；每条连接按 attach 行自己的 `flags`）。
 /// 与本机宿主 `LOCAL_STREAM_ARGS` 同一组。
-/// 〔E2〕流模式显式词打头（本二进制就叫 `ccm` 时零参数是起会话；这里其实已有 `--tail-only` 打头，带上它是为了与宿主那组同形）。
+/// 流模式显式词打头（本二进制就叫 `ccm` 时零参数是起会话；这里其实已有 `--tail-only` 打头，带上它是为了与宿主那组同形）。
 pub(crate) const DEFAULT_STREAM_ARGS: &[&str] = &[
-    // 〔V151〕打头的 `--`：后面是后端的词（本二进制就叫 `ccm`，没有它整行交给 claude）。
+    // 打头的 `--`：后面是后端的词（本二进制就叫 `ccm`，没有它整行交给 claude）。
     "--",
     crate::STREAM_FLAG_EXPLICIT,
     "--tail-only",
@@ -28,7 +28,7 @@ pub(crate) const DEFAULT_STREAM_ARGS: &[&str] = &[
     "--with-rbind-token",
 ];
 
-/// 〔STOP〕宽限期默认值（毫秒）。**必须大于**常驻后端自己的退出排空上限（`inbound::DRAIN_DEADLINE`）：
+/// 宽限期默认值（毫秒）。**必须大于**常驻后端自己的退出排空上限（`inbound::DRAIN_DEADLINE`）：
 /// 后端先把「哪几条没做完」说出来、自己退；强杀只兜它连那一步都走不到的情形。关系由 `resident_tests` 钉住。
 pub(crate) const STOP_GRACE_MS: u32 = 35_000;
 /// 强杀之后再等它没了的上限（毫秒）：SIGKILL 是立刻的，还在 ⇒ 卡在内核里（D 态），如实报「没停掉」。
@@ -40,7 +40,7 @@ const GRACE_MAX_SECS: u32 = 3_600;
 const TOKEN_BYTES: usize = 16;
 
 /// 远端常驻后端自己的 stderr 诊断文件（本机那一份由宿主交数据目录下的路径）；env 名由 `main.rs` 交（诊断文件的门在那里）。
-/// 〔GAP1 · `设计/15 §4.7 S1`〕与本机同一层级 `logs/backend/stderr.log`（滚出来的旧那份在同目录 `stderr.old.log`）。
+/// 与本机同一层级 `logs/backend/stderr.log`（滚出来的旧那份在同目录 `stderr.old.log`）。
 pub const STDERR_LOG_REL: &str = ".cc-monitor/logs/backend/stderr.log";
 
 fn home() -> Option<PathBuf> {
@@ -101,8 +101,8 @@ pub fn run_ensure(agent_home: &Path, args: &[String], hosted: &[(&str, String)])
     }
 }
 
-/// `--resident-ensure` 的入口：宿主层环境 = 中转口（V139）· stderr 诊断文件 ·
-/// 〔TAIL · HOST 余项〕数据目录那两格按默认推（谁起都一样）⇒ 那台自己的 monitor 能收养它。
+/// `--resident-ensure` 的入口：宿主层环境 = 中转口· stderr 诊断文件 ·
+/// 〔HOST 余项〕数据目录那两格按默认推（谁起都一样）⇒ 那台自己的 monitor 能收养它。
 pub fn ensure(agent_home: &Path, args: &[String]) -> i32 {
     let mut hosted = vec![
         (
@@ -292,7 +292,7 @@ fn write_private(path: &Path, body: &str) -> Result<(), String> {
     result
 }
 
-/// 〔TAIL · HOST 余项〕数据目录那两格（凭据文件 · 历史注解）的默认值 —— 与那台 monitor 自己算的是同一条规矩
+/// 〔HOST 余项〕数据目录那两格（凭据文件 · 历史注解）的默认值 —— 与那台 monitor 自己算的是同一条规矩
 /// （`creds_core::store::monitor_data_dir`）⇒ 谁起的常驻后端，hello 回显的都是同一对值，那台自己的 monitor 能收养（HX2 不拒）。
 /// 本进程环境里已有的那一格不覆盖；推不出来（`CCM_DATA_DIR` 不是绝对路径）⇒ 两格都缺席。纯函数。
 pub fn data_dir_envs(
@@ -312,7 +312,7 @@ pub fn data_dir_envs(
         .collect()
 }
 
-/// 子进程的环境：口 · 钥匙文件路径（不是钥匙）· 宿主层交的那几格（V139 中转口 · stderr 诊断文件，值里的 `~` 换成家目录）。
+/// 子进程的环境：口 · 钥匙文件路径（不是钥匙）· 宿主层交的那几格（中转口 · stderr 诊断文件，值里的 `~` 换成家目录）。
 /// 纯函数，判据钉它。
 pub(crate) fn child_env(
     port: u16,
@@ -408,7 +408,7 @@ fn stop_owner(home: &Path, port: u16, grace_ms: u32) -> Result<Stopped, String> 
     Ok(end)
 }
 
-/// 〔STOP〕同机监督者本体：先拿进程把手、再核身份（pid 会被复用；拿到把手之后信号只打得到它）→ SIGTERM →
+/// 同机监督者本体：先拿进程把手、再核身份（pid 会被复用；拿到把手之后信号只打得到它）→ SIGTERM →
 /// 至多等 `grace_ms` → 还在 ⇒ 强杀 → 至多再等 `kill_wait_ms`；还在 ⇒ `Err`（不说「停了」）。
 pub(crate) fn stop_pid(
     pid: u32,

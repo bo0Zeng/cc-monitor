@@ -26,7 +26,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const store = vi.hoisted(() => ({ cfg: {} as Record<string, unknown>, saved: [] as unknown[] }));
 
-// 〔CFG1〕写只交补丁（`patchConfig`）；这里按与 Rust 写口同一份金样的语义（`tests/frontend/ui/config-patch-fake.ts`）应用到 `store.cfg`。
+// 写只交补丁（`patchConfig`）；这里按与 Rust 写口同一份金样的语义（`tests/frontend/ui/config-patch-fake.ts`）应用到 `store.cfg`。
 vi.mock("../../../src/frontend/ui/config", async (orig) => {
   const actual = await orig<Record<string, unknown>>();
   const { applyConfigEdits } = await import("./config-patch-fake");

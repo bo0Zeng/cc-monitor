@@ -20,10 +20,10 @@
 /// 无 `launchCandidate` 时的默认命令基底。
 pub(crate) const DEFAULT_COMMAND: &str = "codex";
 
-/// 〔P1 · 第 4 件〕resume 那个字面量：**子命令形**（不以 `--` 开头）。[`resume_command`] 与画像表同一份。
+/// resume 那个字面量：**子命令形**（不以 `--` 开头）。[`resume_command`] 与画像表同一份。
 pub(crate) const RESUME_TOKEN: &str = "resume";
 
-/// 〔P1〕起之前要清掉的嵌套会话标记：Codex 今天没人考据出有（空 ＝ 考据过、确实没有要清的）。
+/// 起之前要清掉的嵌套会话标记：Codex 今天没人考据出有（空 ＝ 考据过、确实没有要清的）。
 pub(crate) const NESTED_ENV: &[&str] = &[];
 
 /// resume 会话名前缀（Claude 是 `cc`）。

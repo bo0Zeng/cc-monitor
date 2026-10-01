@@ -13,7 +13,7 @@ fn repo_root() -> PathBuf {
 
 /// `doc/` 下**递归**收 `.md`。
 ///
-/// 〔audit-0805 08-06〕原来用非递归 `read_dir` —— 今天 `doc/` 恰好是平的（11 份、零子目录），
+/// 原来用非递归 `read_dir` —— 今天 `doc/` 恰好是平的（11 份、零子目录），
 /// 所以那不是活缺陷；但**新建一个 `doc/design/` 就整目录隐形**，而且不会有任何信号。
 fn doc_files() -> Vec<PathBuf> {
     let mut v: Vec<PathBuf> = Vec::new();
@@ -37,7 +37,7 @@ fn doc_files() -> Vec<PathBuf> {
 
 /// 全仓的入口 `README*.md`（**派生，不是手写清单**）。
 ///
-/// # 〔audit-0805 08-06〕这张表原来是我手写的七条，而仓里有八份
+/// # 这张表原来是我手写的七条，而仓里有八份
 ///
 /// 少的那一份是 **`README.en.md`** —— 于是英文入口文档里的符号引用与路径引用
 /// **一处都没人守**。同一个文件在本会话里已经是第二次成为盲区
@@ -116,11 +116,11 @@ fn status_tables() -> Vec<(String, usize, Vec<(String, String, String)>)> {
 fn the_doc_scan_actually_reads_the_durable_docs() {
     let files = doc_files();
     // 〔2026-09-18 下调 11 → 10〕不是遍历坏了：`306c862e`（退役三份旧设计文档、
-    // 设计与真相源归并到 `调研/`）删掉了 `doc/账号用量-usage抓取方案.md`。
+    // 设计与源头归并到）删掉了 `doc/账号用量-usage抓取方案.md`。
     // 现打 `src/doc/*.md` = 10，`git ls-files` 同为 10 ⇒ **没有文件丢，是地板没跟着改**。
     // 〔2026-09-18 二次下调 10 → 9〕又删了一篇：
     // `远端支持方案-agent查看器与代码全景图.md`（2026-07-20 的「设计草案，待用户定 / 未写码」，
-    // 已由 `调研/设计/` 那一族取代）。现打 `src/doc/*.md` = 9，`git ls-files` 同为 9。
+    // 已由那一族取代）。现打 `src/doc/*.md` = 9，`git ls-files` 同为 9。
     // ⚠ 往下拧地板的合法理由**只有**「那些文件真的不在了」—— 这两次都是。
     assert!(
         files.len() >= 9,
@@ -140,8 +140,8 @@ fn the_doc_scan_actually_reads_the_durable_docs() {
         "`doc/` 总共只剩 {total} 行 —— 路径或读法坏了（摸底实测 4158 行）"
     );
     let tables = status_tables();
-    // 〔F19〕1 → 2：`src/doc/ARCHITECTURE.md` 新增「backend 四层落地」表。
-    // 〔P6 · 09-29〕2 → **1**：那张表退役（架构文档不放进度），它的四格登记与量法同拍删；
+    // 1 → 2：`src/doc/ARCHITECTURE.md` 新增「backend 四层落地」表。
+    // 2 → **1**：那张表退役（架构文档不放进度），它的四格登记与量法同拍删；
     //   剩下的一张是 `INVARIANTS §33b` 那张（五格，照旧逐格量）。
     assert_eq!(
         tables.len(),
@@ -267,7 +267,7 @@ fn the_doc_number_for_production_launch_calls_matches_reality() {
 /// ★ 「外层载荷那几个产出方」—— 逐个**按文档说的状态**复核。
 ///
 /// 这条是「可数的实测断言」里第二条能钉的。⚠ 它**只钉住「在不在」**，
-/// 钉不住「它们各自还是不是生产在跑」—— 那需要真远端/真安装包（ROADMAP §5）。
+/// 钉不住「它们各自还是不是生产在跑」—— 那需要真远端/真安装包。
 ///
 /// # 🔴 `K-R104`（09-13）：它从「四个都还在」变成「各自是不是文档说的那个状态」
 ///
@@ -286,8 +286,8 @@ fn the_outer_layer_producers_are_in_the_state_the_doc_claims() {
     let root = repo_root();
     let checks: &[(&str, bool)] = &[
         (
-            // 🔴 〔LR2 2026-09-25〕**「必须在」翻成「必须不在」**（同 `K-R104` 那一格的处置）：
-            //    TS 座按 `设计/00 §2.5 ④` 删了（外层三格只剩 `payload::render_tmux_outer` 一个家），
+            // 🔴 **「必须在」翻成「必须不在」**（同 `K-R104` 那一格的处置）：
+            //    TS 座按删了（外层三格只剩 `payload::render_tmux_outer` 一个家），
             //    `INVARIANTS §33b` 产出方表那一行同拍改记「已删」。长回来 ⇒ 红。
             "session-backend.ts（TS 座，LR2 已删 —— 必须不在）",
             !root.join("src/session-backend.ts").is_file(),
@@ -297,7 +297,7 @@ fn the_outer_layer_producers_are_in_the_state_the_doc_claims() {
             root.join("src/backend/control/launch.rs").is_file(),
         ),
         (
-            // 🔴 〔`K-R48` 第二拍 09-11〕住址换了，**产出方本身没退役**：
+            // 🔴 住址换了，**产出方本身没退役**：
             //    〔用@09-11 `K33`〕那个 bash 脚本删了，「用户终端那条路」今天由
             //    后端本体的一次性模式渲（`control::ccm::plan::render_container`）。
             //    ⇒ `INVARIANTS §33b` 那句「四个产出方，一个都没退役」**仍然成立**，
@@ -392,7 +392,7 @@ fn the_three_questions_in_33b_have_todays_answers() {
     };
 
     // ── 量法 ② ────────────────────────────────────────────────────────────
-    // 〔LR2〕座本身（`session-backend.ts`）删了；量法照旧数「生产 TS 里还有谁问座要 attach」——
+    // 座本身（`session-backend.ts`）删了；量法照旧数「生产 TS 里还有谁问座要 attach」——
     // 座长回来、又有人问它要，这一问的判词就翻回「前端仍产」。
     let seat_attach = format!("SESSION_BACKEND.{}", "attach");
     let mut askers: Vec<String> = Vec::new();
@@ -403,7 +403,7 @@ fn the_three_questions_in_33b_have_todays_answers() {
             .unwrap_or_default()
             .to_string_lossy()
             .to_string();
-        // 座本身不算 —— 它是被问的那一层，不是问的人（〔LR2〕今天它不在盘上，这一格留着给「长回来」那天）。
+        // 座本身不算 —— 它是被问的那一层，不是问的人（今天它不在盘上，这一格留着给「长回来」那天）。
         if name.ends_with(".test.ts")
             || name.ends_with(".vitest.ts")
             || name == "session-backend.ts"
@@ -437,7 +437,7 @@ fn the_three_questions_in_33b_have_todays_answers() {
              真要改，回 `INVARIANTS §33b` 与 `U8c-3` 重裁，别只改头注。"
     );
 
-    // 🔴 〔步 8 · 条 80 「不要管旧配置」〕**量法 ③ 与第三问一起删了。**
+    // 🔴 〔条 80 「不要管旧配置」〕**量法 ③ 与第三问一起删了。**
     //    原先它量那一档的三个载体：`remote-config.ts` 的落盘字段 `"daemonless",` ·
     //    `machine-card.ts` 的 `daemonlessInput` · `ssh_source.rs` 的 `daemonless_stream_loop`。
     //    `K-R59`（09-11）早把前两个删了，条 80 又删掉最后那块墓碑
@@ -513,11 +513,11 @@ fn every_status_cell_measure_is_in_the_census() {
              **普查表多出来的**：那一行在描述一个已经不存在的量法，摘掉它。"
     );
     // 分母自检：表空了上面那个等号会退化成「空 == 空」。
-    // 〔`设计/50` 09-18〕地板 10 → **9**：`usage-probe-uses-the-kernel` 那一格
+    // 地板 10 → **9**：`usage-probe-uses-the-kernel` 那一格
     // 随用量 ③ 轴整轴退役（它量的是「用量探针在不在调载荷内核」，探针没了）。
     // ⚠ **降地板要写清是哪一行、为什么** —— 这一条挡的是「偷偷删行」，
     // 而「那一格量的东西整块不存在了」是唯一正当的降法。
-    // 〔P6 · 09-29〕地板 9 → **5**：`monitor-backend-*-landed` 那四行随 ARCHITECTURE 那张进度表整块退役
+    // 地板 9 → **5**：`monitor-backend-*-landed` 那四行随 ARCHITECTURE 那张进度表整块退役
     //   （那四格量的东西在文档里不存在了 —— 同上面那条唯一正当的降法），剩 `INVARIANTS §33b` 的五格。
     assert!(
         MEASURE_CENSUS.len() >= 5,
@@ -546,9 +546,9 @@ fn every_status_cell_measure_is_in_the_census() {
     );
 }
 
-// 〔P6 · 09-29 · 主会话裁〕这里原住着那四格「monitor 侧四层落地」的落地探针与它的反向自检：
+// 这里原住着那四格「monitor 侧四层落地」的落地探针与它的反向自检：
 //   `a_capability_line_has_landed` · `layer_has_landed_at` · `the_capability_line_landing_probe_actually_bites`〔散文墓碑〕。
-//   它们只服务 ARCHITECTURE 那张进度表；那张表退役（架构文档不放进度，进度住 `调研/设计/99`），四格人群为空，
+//   它们只服务 ARCHITECTURE 那张进度表；那张表退役（架构文档不放进度，进度住），四格人群为空，
 //   探针连同自检一起删 —— 留着就是一条没人喂的恒真判据。量法与普查行同拍删（`STATUS_CELLS` / `MEASURE_CENSUS`）。
 
 /// ★★ 逐格跑「现场量法」：**文档里那一格**记的状态今天还对不对。
@@ -573,7 +573,7 @@ fn each_registered_status_still_matches_reality() {
     for (item, how) in STATUS_CELLS {
         let (delivered, why) = match *how {
             "payload-kernel-exists" => (
-                // 〔MIG-2〕内核搬进后端（`99 §2.1 ⑬`），量法跟着换住址。
+                // 内核搬进后端，量法跟着换住址。
                 prod("src/backend/control/launch_render/payload.rs").contains("fn render_payload"),
                 "载荷内核在后端 `control/launch_render/payload.rs`",
             ),
@@ -584,7 +584,7 @@ fn each_registered_status_still_matches_reality() {
             // ⇒ 改成读真正的家，并加一条「文件必须存在」的断言，杜绝同样的静默空转。
             "posix-quote-has-one-home" => (
                 {
-                    // 〔THIN〕从前读 monitor `ssh_source.rs` 那层转调壳（`shell_quote`〔散文墓碑〕）转不转内核；那层壳零生产调用、删了
+                    // 从前读 monitor `ssh_source.rs` 那层转调壳（`shell_quote`〔散文墓碑〕）转不转内核；那层壳零生产调用、删了
                     //   ⇒ 量法改读家本身（唯一性另由 `quote_singleton_guard` 守）。
                     let home = "src/common/shell-quote-core/src/lib.rs";
                     assert!(
@@ -601,7 +601,7 @@ fn each_registered_status_still_matches_reality() {
                 "ccm 调用行内核在后端 `control/launch_render/ccm_invocation.rs`",
             ),
             "production-ts-calls-the-rust-renderers" => (
-                // 〔MIG-2〕两条渲染今天是那台后端的帧命令，主路经 `src/frontend/ui/launch-render.ts` 问。
+                // 两条渲染今天是那台后端的帧命令，主路经 `src/frontend/ui/launch-render.ts` 问。
                 read("src/frontend/ui/launch-render.ts")
                     .contains("chan.call(origin, \"launch-render-cli\"")
                     && read("src/frontend/ui/launch-render.ts")
@@ -726,7 +726,7 @@ fn the_protocol_level_error_codes_in_the_doc_are_the_ones_the_backend_uses() {
     );
 }
 
-/// 〔audit-0805 08-06〕**`doc/` 里点名的代码符号必须解析得到，且住在文档说的那个文件里。**
+/// **`doc/` 里点名的代码符号必须解析得到，且住在文档说的那个文件里。**
 ///
 /// **为什么建它**：08-06 把本会话逮到的每一处文档/计划腐坏按机制归了族，主力是
 /// **停滞式** —— 世界变了、文本一个字没动（改代码的那个提交**碰过**那份文件，
@@ -747,7 +747,7 @@ fn the_protocol_level_error_codes_in_the_doc_are_the_ones_the_backend_uses() {
 /// （`DEVELOPMENT.md` 指向本文件里的一条判据）。
 /// 现在本文件自己也进扫描面（见下方 `srcs.push`）。**「只在极少数情况下会错」不是边界，是欠账。**
 ///
-/// ⚠ 〔`P4` 2026-09-21〕上面被划掉那句话的**前提**也是假的，一并记下来：
+/// ⚠ 上面被划掉那句话的**前提**也是假的，一并记下来：
 /// `scan_tree!` 那一刀在这一处不生效（判据由 `#[path]` 挂载 ⇒ `file!()` 是折返路径
 /// ⇒ 后缀比不命中）。也就是说 08-06 那次误红**不是**「摘除生效带来的已知例外」，
 /// 而是当年判据与 `doc_claim_registry.rs` 同住一份文件、`file!()` 真的命中过。
@@ -758,46 +758,46 @@ fn every_code_symbol_named_in_the_docs_still_resolves() {
     const EXCEPTIONS: &[(&str, &str)] = &[
         (
             "render_local_attach",
-            "〔MIG-2 · `99 §2.1 ⑬`〕历史句：原 monitor Tauri 命令（本机接回那一句），搬成本机后端 `launch-local` 的接回那一格。\
+            "历史句：原 monitor Tauri 命令（本机接回那一句），搬成本机后端 `launch-local` 的接回那一格。\
              `INVARIANTS §33b` ② 那一格的沿革与 `CONTRIBUTING` 那张表逐字点着它，那是「attach 归谁产」怎么一步步落地的线索",
         ),
         (
             "setup",
             "tauri 的 `.setup(move |app| …)` 钩子闭包 —— 是真东西，但不是一处声明",
         ),
-        // 〔P6 · 09-29〕「示例占位符」那一行（CONTRIBUTING 教人照着加一条 Tauri 命令的那个假名字）摘了：CONTRIBUTING 按 4.0.0 重写，加命令的做法改成讲帧命令与 `MONITOR_OWN`，那个示例占位符不在了。
+        // 「示例占位符」那一行（CONTRIBUTING 教人照着加一条 Tauri 命令的那个假名字）摘了：CONTRIBUTING 按 4.0.0 重写，加命令的做法改成讲帧命令与 `MONITOR_OWN`，那个示例占位符不在了。
         (
             "run_tmux_reconcile_poller",
             "`INVARIANTS.md` 那句逐字写着它**已删**（audit-fixes F03.2）—— 历史句，\
                  删掉反而丢掉「为什么今天没有 poller」的解释",
         ),
-        // 〔LR2 2026-09-25〕下面四条：`INVARIANTS.md` §33b 的沿革段逐字点着它们 —— 它们是 TS 兜底一族的
+        // 下面四条：`INVARIANTS.md` §33b 的沿革段逐字点着它们 —— 它们是 TS 兜底一族的
         //   「存续理由」判据与两把尺子，随那一族（`launch-render-fallback.ts` · `session-backend.ts` · 五个 builder）
-        //   按 `设计/00 §2.5 ④` 删了。那几句是「那一族当年靠什么站着」的解释，改写会丢线索（同 `build_usage_probe_cmd`）；
+        //   按删了。那几句是「那一族当年靠什么站着」的解释，改写会丢线索（同 `build_usage_probe_cmd`）；
         //   「那一族长回来」由 `tests/frontend/ui/launch-no-shell-in-ts.vitest.ts` 挡着。
         (
             "the_ts_fallback_renderer_now_stands_on_its_own_consumers",
-            "〔LR2〕历史句：TS 兜底渲染器的「存续理由」判据，那一族删了",
+            "历史句：TS 兜底渲染器的「存续理由」判据，那一族删了",
         ),
         (
             "the_retired_premise_left_a_tombstone_that_is_still_on_the_board",
-            "〔LR2〕历史句：上一条的看守，同一拍删了",
+            "历史句：上一条的看守，同一拍删了",
         ),
         (
             "TS_FALLBACK_KEEPERS",
-            "〔LR2〕历史句：尺子A（兜底一族的消费者处数表），同一拍删了",
+            "历史句：尺子A（兜底一族的消费者处数表），同一拍删了",
         ),
         (
             "TS_FALLBACK_REACH",
-            "〔LR2〕历史句：尺子B（兜底一族有没有生产调用方），同一拍删了",
+            "历史句：尺子B（兜底一族有没有生产调用方），同一拍删了",
         ),
         (
             "build_usage_probe_cmd",
-            "★〔`K-R104` 09-13〕`INVARIANTS.md` §33b 那两处逐字写着它**已退役** \
+            "★`INVARIANTS.md` §33b 那两处逐字写着它**已退役** \
                  —— 用量探针的整条编排搬上后端帧面之后，monitor 一个 shell 字符都不渲染。\
                  那两句正是「外层四个产出方里退役了哪一个、为什么」的解释，\
                  **删掉这个地址反而丢掉线索**（同上面 `run_tmux_reconcile_poller` 那条）。\
-                 ⚠ 〔`设计/50`〕它**今天是无人看管的**：原先由 \
+                 ⚠ 它**今天是无人看管的**：原先由 \
                  `the_outer_layer_producers_are_in_the_state_the_doc_claims` 翻面钉着\
                  （「这个函数要是回来了就红」），而用量 ②③ 两轴整轴退役之后那一格已随\
                  `account_usage.rs` 整删 —— **如实登记为射程边界**：\
@@ -810,7 +810,7 @@ fn every_code_symbol_named_in_the_docs_still_resolves() {
 
     // ── 收全仓声明：符号名 → 它出现在哪些文件名里
     let mut srcs: Vec<(PathBuf, String)> = Vec::new();
-    // 🔴 〔搬树 2026-09-18 · `设计/16 §5.4b` 纪律 3〕**第四棵：`tests`。**
+    // 🔴 〔搬树 2026-09-18 ·  纪律 3〕**第四棵：`tests`。**
     //    `doc/` 点名的符号里有一整批是**判据名**（`INVARIANTS.md` 那几行逐字
     //    「由某某 `every_…` 那条判据钉着」，写成住址形），
     //    而判据剖分之后整个住进了 `<repo>/tests/`。
@@ -828,7 +828,7 @@ fn every_code_symbol_named_in_the_docs_still_resolves() {
         srcs.extend(guard_core::scan_tree!(&repo_root().join(root), &["rs"]));
     }
     // 〔08-06 第二次补扫描面〕**把 `doc_claim_registry.rs` 也收进来**。
-    // ⚠ 〔`P4` 2026-09-21〕先前这里的理由是「`scan_tree!` 按构造摘除调用者」——
+    // ⚠ 先前这里的理由是「`scan_tree!` 按构造摘除调用者」——
     //   那一刀**在这一处不生效**（判据由 `#[path]` 挂载 ⇒ 折返路径 ⇒ 后缀比不命中），
     //   而且上面四棵根里逐字含 `"tests"` ⇒ **本判据文件本来就在语料里**。
     //   ⇒ 下面这一 `push` 今天是冗余的（`src/frontend/shell/src` 那棵已经收过同一份），
@@ -989,7 +989,7 @@ fn every_code_symbol_named_in_the_docs_still_resolves() {
     );
 }
 
-/// 〔audit-0805 08-06〕**`doc/` 里点名的仓内文件路径必须解析得到。**
+/// **`doc/` 里点名的仓内文件路径必须解析得到。**
 ///
 /// 与上一条（`file.rs::symbol`）同族、更宽一档：符号那条只看得见 `.rs`，
 /// 而 `doc/` 里点名的还有 `.ts` / `.sh` / `.mjs` / `.json` / `.yml`。
@@ -1018,52 +1018,48 @@ fn every_repo_path_named_in_the_docs_still_resolves() {
         ),
         (
             "tests/e2e/tmux-guarded-acceptance.sh",
-            "**历史句**〔`K-R72` 09-12〕：`INVARIANTS §34` 那一段逐字在说「这套 e2e 的输入源是\
+            "**历史句**：`INVARIANTS §34` 那一段逐字在说「这套 e2e 的输入源是\
                  那个已被删掉的 builder ⇒ 整套删了」——它点这个路径正是为了说清**哪一套没了**；\
                  删掉这句话，读的人只会看见「三道门少了一层真机验收」而不知道为什么",
         ),
         (
             "src/launch-render-cli.ts",
-            "**历史句**〔LR1 · U8c-3 09-25〕：`INVARIANTS §33` 背景段逐字讲「F03 当时有两个渲染器、\
+            "**历史句**：`INVARIANTS §33` 背景段逐字讲「F03 当时有两个渲染器、\
                  各住哪」—— TS 那份 CLI 渲染器已删，§33 末尾的 LR1 更新段给了今天的住址\
                  （`ccm_invocation.rs`）。改写背景段会丢掉「这条铁律当初是对着哪一份立的」",
         ),
         (
             "tests/launch-render-cli.test.ts",
-            "**历史句**〔LR1 · U8c-3 09-25〕：`INVARIANTS §33` 三处「验证」逐字记着当时那几刀下在\
+            "**历史句**：`INVARIANTS §33` 三处「验证」逐字记着当时那几刀下在\
                  哪套测试上（R04① · #76 防线）。套件随 TS 渲染器删了，今天的验证住址逐条写在\
                  §33 末尾的 LR1 更新段",
         ),
-        // 〔LR2 2026-09-25〕下面四条：TS 兜底一族（座 · 兜底渲染器）与它们的两份套件按 `设计/00 §2.5 ④` 删了。
+        // 下面四条：TS 兜底一族（座 · 兜底渲染器）与它们的两份套件按删了。
         //   `INVARIANTS §31 / §31a / §33 / §33b` 与 `CONTRIBUTING` 那一节点它们的句子都是**沿革**
-        //   （「阶段①问前端座」「门禁腐过一次」「四处同源」「双渲染器」），每处旁边都补了〔LR2〕那句今天的住址；
+        //   （「阶段①问前端座」「门禁腐过一次」「四处同源」「双渲染器」），每处旁边都补了那句今天的住址；
         //   删掉路径，读的人就不知道今天那条规矩当初是对着哪一份立的。
         (
             "src/session-backend.ts",
-            "**历史句**〔LR2〕：TS 座，已删（外层三格今天只在 `payload.rs`）",
+            "**历史句**：TS 座，已删（外层三格今天只在 `payload.rs`）",
         ),
         (
             "src/launch-render-fallback.ts",
-            "**历史句**〔LR2〕：TS 兜底渲染器，已删",
+            "**历史句**：TS 兜底渲染器，已删",
         ),
         (
             "tests/session-backend-gate.vitest.ts",
-            "**历史句**〔LR2〕：`§31` 第①条的旧机检，已由 `tests/frontend/ui/launch-no-shell-in-ts.vitest.ts` 接替",
+            "**历史句**：`§31` 第①条的旧机检，已由 `tests/frontend/ui/launch-no-shell-in-ts.vitest.ts` 接替",
         ),
-        // 〔P6 · 09-29〕`tests/session-backend.test.ts` 那一行摘了：唯一点它的 CONTRIBUTING 沿革段随重写删了。
-        // 〔P6 · 09-29〕`src/frontend/ui/cards/memory-recall.ts` 那一行摘了：CONTRIBUTING 的示例改成「写在 `cards/` 下」，不再点那个占位文件名。
+        // `tests/session-backend.test.ts` 那一行摘了：唯一点它的 CONTRIBUTING 沿革段随重写删了。
+        // `src/frontend/ui/cards/memory-recall.ts` 那一行摘了：CONTRIBUTING 的示例改成「写在 `cards/` 下」，不再点那个占位文件名。
         (
             "code-picture/doc/agents/claude-code.md",
             "**跨仓引用**：另一个仓的语料，本仓解析不到是正常的",
         ),
         ("agents/claude-code.md", "同上（同一句里的简写形）"),
-        (
-            "account-ux/MASTERPLAN.md",
-            "**计划工作区**住在 `.claude/planned-build/`（另一个 git 仓）",
-        ),
-        ("unify-launch/MASTERPLAN.md", "同上"),
+        // `account-ux/` · `unify-launch/` 两行摘了：`doc/` 里点它们的出处删了之后没人再这样写。
         // 账号切换那份计划仓设计稿那一行摘了：INVARIANTS 那一段改写成现状之后 `doc/` 里没人再指它。
-        // 〔MIG-3a〕`/.mcp.json` 那一行摘了：INVARIANTS 那两处改写之后 `doc/` 里没人再这样写。
+        // `/.mcp.json` 那一行摘了：INVARIANTS 那两处改写之后 `doc/` 里没人再这样写。
     ];
     const EXTS: &[&str] = &["rs", "ts", "sh", "mjs", "json", "yml", "toml", "md", "py"];
 
@@ -1173,7 +1169,7 @@ fn every_repo_path_named_in_the_docs_still_resolves() {
     );
 }
 
-/// 〔audit-0805 08-06〕**发版版本号六处必须一致**（`package.json` 是权威源，其余对拍）。
+/// **发版版本号六处必须一致**（`package.json` 是权威源，其余对拍）。
 ///
 /// **为什么建它**：`src/doc/RELEASING.md` 自己逐字记着 ——
 /// 「v3.1→v3.4 **连续四次**发版漏改 README，于是 README 的『当前版本』长期落后一个大版本；
@@ -1217,11 +1213,11 @@ fn every_repo_path_named_in_the_docs_still_resolves() {
 ///
 /// ⇒ 结论如实记着：lock 这一处**本地钉不住**，唯一能查它的是 `release.yml` 那道
 /// PowerShell 步骤（它不经 cargo 读文件），而那道今天不会跑。这是一条**真的诚实边界**，
-/// 不是「以后补」—— 记进 `ROADMAP §5`。
+/// 不是「以后补」—— 记进。
 ///
 /// ★ 它差一点就成了本仓最讨厌的那种东西：**一条永远不会红的判据**。
 /// 逮住它的不是「测试失败」，是**变异之后诊断栏一个字都没有** —— 只看 exit code 会当它绿了。
-/// **那道版本 guard 被 Linux job「继承」这件事，压在一条 `needs:` 边上**〔08-08〕。
+/// **那道版本 guard 被 Linux job「继承」这件事，压在一条 `needs:` 边上**。
 ///
 /// `release.yml` 的 `build-linux` 头上逐字写着为什么它串在 Windows 之后：
 ///
@@ -1743,7 +1739,7 @@ fn the_npm_lockfile_claims_the_version_we_ship() {
     );
 }
 
-/// 〔audit-0805 08-06〕**文档里写成 `CONST = 数` 的，代码里那个常量必须真是这个数。**
+/// **文档里写成 `CONST = 数` 的，代码里那个常量必须真是这个数。**
 ///
 /// **这是定框 E12 自己点名的洞**：E12 的 ⚠ 逐字写着「那四个准确的细节数
 /// （`CHUNK_SIZE=600` 等）**一个都不在它的扫描面里**」—— 本模块此前只管
@@ -1927,7 +1923,7 @@ fn every_constant_value_quoted_in_the_docs_matches_the_code() {
     );
 }
 
-/// 〔audit-0805 08-06〕**`scripts/` 里的每个文件都要在它自己的 README 里登记。**
+/// **`scripts/` 里的每个文件都要在它自己的 README 里登记。**
 ///
 /// # 逮到的是一条「找不到」的缺陷
 ///
@@ -1974,7 +1970,7 @@ fn every_script_in_the_directory_is_listed_in_its_readme() {
     );
 }
 
-/// 〔audit-0805 08-06〕**开发者入口文档里的后端测试命令，必须与 `ci.yml` 逐字相同。**
+/// **开发者入口文档里的后端测试命令，必须与 `ci.yml` 逐字相同。**
 ///
 /// # 逮到的是「照它做会少测」
 ///
@@ -2027,7 +2023,7 @@ fn the_backend_test_command_in_the_docs_matches_ci() {
              新人照入口文档做会得到一个**少测**的读数，而它长得和全量读数一模一样。\n\
              ⇒ 命令的唯一的家是 `ci.yml`，文档要与它逐字一致（本条不持有第三份副本）。"
     );
-    // ★ 反向，且**扫全 `doc/` 而不只是这一份**〔08-06 第二刀〕。
+    // ★ 反向，且**扫全 `doc/` 而不只是这一份**。
     //
     // 第一刀只查了 `DEVELOPMENT.md`，而同一条少测命令在 `CONTRIBUTING.md` 里**还有三处**
     // （删完跑 / 发版前 checklist / 新 IPC 命令后的检查）。
@@ -2361,7 +2357,7 @@ fn the_registry_file_itself_stays_out_of_that_population() {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// 〔TL2 · 4D · IV1 余〕代码里点到的 `INVARIANTS §N` 必须真有那一节
+// 〔IV1 余〕代码里点到的 `INVARIANTS §N` 必须真有那一节
 // ════════════════════════════════════════════════════════════════════════
 
 /// `INVARIANTS.md` 里的节号 → 那一节的正文（到下一个同级或更高级标题为止）。
@@ -2462,7 +2458,7 @@ fn invariant_ref_resolves(secs: &std::collections::BTreeMap<String, String>, id:
     })
 }
 
-/// 〔TL2 · 4D〕要求住址：`INVARIANTS`「修改本文档」第 2 条（生产模块头注要引 `§ N`）· `设计/01 §7.4`
+/// 要求住址：`INVARIANTS`「修改本文档」第 2 条（生产模块头注要引 `§ N`）
 /// 「每个判据族点得出它守的是哪条要求」· 共用纪律 19（判据头注写明它守的要求住址，`INVARIANTS §N` 是三种之一）。
 ///
 /// IV1 交上来的缺口逐字：「判据 → 条这一向**没有机检**：`INVARIANTS §N` 被判据头注点到时，没有东西核那一节存在」。

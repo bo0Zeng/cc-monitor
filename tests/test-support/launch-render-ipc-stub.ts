@@ -4,18 +4,18 @@
  * # 它为什么存在，以及它**不是**什么
  *
  * 前端那几套 vitest 桩掉 `@tauri-apps/api/core::invoke`，于是「后端渲出什么」要在 JS 侧给。
- * 步 22b·B（`设计/90 §4 E` 收官）把**外层 tmux 那三格**也切到这条命令之后，
+ * 步 22b·B（收官）把**外层 tmux 那三格**也切到这条命令之后，
  * `remote-launch-run.vitest.ts` 与 `send-into-backend.vitest.ts` 两处的桩**都得会拼外层** ——
  * 而那两处此前各有一份手写镜像（一份只会内层，一份干脆返回一个常量串）。
  *
  * 🔴 **两份手写镜像必漂**，这是本仓反复记过的形状（`K-R105` 那两把尺子、
  * `doc_claim_registry` 那一整套都是同一个病的产物）⇒ 收成这一份。
  *
- * ⚠⚠ **它不是第三份渲染实现，也不许被当成真相源。**
+ * ⚠⚠ **它不是第三份渲染实现，也不许被当成源头。**
  * 「这条命令渲出来的字节对不对」由**入库夹具的跨语言逐字节对拍**钉着：
  * `src/backend/control/launch_render/fixtures/payload-golden.json`（内层，10 条）与
  * `fixtures/tmux-outer-golden.json`（外层三格，13 条）——
- * 左边是用例表里的手写期望（〔LR2〕原来是 TS 的真渲染器 + 真座，那一族删了），右边是 Rust 的生产命令。
+ * 左边是用例表里的手写期望（原来是 TS 的真渲染器 + 真座，那一族删了），右边是 Rust 的生产命令。
  * 本文件只负责让 IPC 桩**吐出形状对的串**，好让上层那些「终端那条命令里有没有
  * `send-keys`／有没有 `attach`／会话名让到 `-2` 了没有」的判据判得动。
  *
@@ -64,13 +64,13 @@ function renderInner(req: PayloadRenderRequest): string {
           return `export CLAUDE_CONFIG_DIR=${q(op.value)}; `;
         case "export-model":
           return `export ANTHROPIC_MODEL=${q(op.value)}; `;
-        // `设计/80 §8` 步 1。⚠ 桩**不模拟**真命令那道形状闸
+        // ⚠ 桩**不模拟**真命令那道形状闸
         // （`payload.rs::rbind_token_shape_ok` ⇒ `REFUSE:`）—— 同本文件头注那条口径：
         // 它只模拟已登记的那两道，别的拒绝要验就直接 mock 一次 reject。
         case "export-rbind-token":
           return `export CCM_RBIND_TOKEN=${q(op.value)}; `;
-        // 〔RL1〕同上口径：桩不模拟 `relay_base_url_shape_ok` 那道形状闸。
-        // 〔RK1〕钥匙段是读钥匙文件的命令替换（与真命令 `payload.rs::relay_env_prefix_posix` 同形）。
+        // 同上口径：桩不模拟 `relay_base_url_shape_ok` 那道形状闸。
+        // 钥匙段是读钥匙文件的命令替换（与真命令 `payload.rs::relay_env_prefix_posix` 同形）。
         case "export-relay-base-url": {
           const m = /^(http:\/\/[^/]*\/)(.*)$/.exec(op.value);
           const [origin, path] = m ? [m[1], `/${m[2]}`] : [op.value, ""];

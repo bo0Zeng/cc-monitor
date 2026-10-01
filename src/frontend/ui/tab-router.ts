@@ -1,5 +1,5 @@
 /**
- * 〔U2 · 拆 `tabs.ts` ② · `设计/01 §1.5`「一个 store，一个 router」〕**路由**：
+ * 〔拆 `tabs.ts` ② · 「一个 store，一个 router」〕**路由**：
  * 切到哪个 tab、谁有权切。
  *
  * - 手动（点 tab / Ctrl+Tab / Ctrl+1..9）：`cycleTarget` / `indexTarget` 算目标；切完 `noteSwitched`

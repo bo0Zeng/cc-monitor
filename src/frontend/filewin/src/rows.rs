@@ -2,7 +2,7 @@
 //!
 //! # 🔴 这个模块存在的全部理由，是那一个 API 名字
 //!
-//! `真相源/99 §2.3` 那组对照读数（**同一趟、同一台机器、同一份语料**）：
+//! 那组对照读数（**同一趟、同一台机器、同一份语料**）：
 //!
 //! | 行数 | `ScrollArea::show_rows`（虚拟） | `ScrollArea::show`（不虚拟） |
 //! |---:|---:|---:|
@@ -10,7 +10,7 @@
 //! | 100 000 | **0.90 ms** | **83.63 ms（12 fps）** |
 //! | 640 413 | **0.90 ms** | 刻意没跑（按斜率是秒级/帧） |
 //!
-//! ⇒ `设计/60 §4 戊` 逐字：**「egui 扛得住」这句话的主语是 `show_rows`，不是 egui。
+//! ⇒：**「egui 扛得住」这句话的主语是 `show_rows`，不是 egui。
 //! 用错 API，egui 一样死。**
 //!
 //! # ⚠ 所以判据必须钉住「用的是虚拟滚动」，而不是「盘上写着 show_rows」
@@ -35,7 +35,7 @@ use super::editor::{editable, EDIT_LABEL};
 use super::source::{format_mtime, Listed};
 use super::writeops::{is_writable, CHMOD_LABEL, DELETE_LABEL, RENAME_LABEL};
 
-/// 一行的高度（不含 item spacing）。与 `真相源/99` 那趟原型同值，
+/// 一行的高度（不含 item spacing）。与那趟原型同值，
 /// 那趟的「一屏约 44 行 @ 1280×800」就是按这个数算的。
 pub const ROW_HEIGHT: f32 = 18.0;
 
@@ -55,19 +55,19 @@ pub struct RenderTally {
     /// 唯一一条画列表的路（见它的头注），所以「谁被点了」也只能从它带出来。
     /// 上一刀差点栽在同一形上：判据自己抄了一份 `ScrollArea`，于是它钉的是副本。
     pub clicked: Option<usize>,
-    /// 🔴〔第三刀〕这一帧哪一行的**「复制」**被点了（`None` = 没人点）。
+    /// 🔴这一帧哪一行的**「复制」**被点了（`None` = 没人点）。
     ///
     /// 与 [`Self::clicked`] **刻意分开两个值**：一个装「双击这一行」，一个装
     /// 「点这一行上那颗按钮」。合成一个就得再编一个「点的是什么」的枚举，
     /// 而那个枚举的两支在窗口那侧走的是两条完全不同的路（换目录 / 摆命名框）。
     pub copy_clicked: Option<usize>,
-    /// 🔴〔第五刀〕这一帧哪一行的**「改名」**被点了。
+    /// 🔴这一帧哪一行的**「改名」**被点了。
     pub rename_clicked: Option<usize>,
-    /// 🔴〔第五刀〕这一帧哪一行的**「删除」**被点了。
+    /// 🔴这一帧哪一行的**「删除」**被点了。
     pub delete_clicked: Option<usize>,
-    /// 🔴〔第五刀〕这一帧哪一行的**「权限」**被点了。
+    /// 🔴这一帧哪一行的**「权限」**被点了。
     pub chmod_clicked: Option<usize>,
-    /// 🔴〔第十刀〕这一帧哪一行被画成了**「就是这个文件」**（`None` = 没有）。
+    /// 🔴这一帧哪一行被画成了**「就是这个文件」**（`None` = 没有）。
     ///
     /// # 为什么高亮这件事要有一个收数口
     ///
@@ -77,35 +77,35 @@ pub struct RenderTally {
     ///
     /// ⚠ 它**买不到**「那一行在屏幕上真的看起来是高亮的」—— 那要人看。
     pub revealed_row: Option<usize>,
-    /// 🔴〔第九刀〕这一帧哪一行的**「编辑」**被点了。
+    /// 🔴这一帧哪一行的**「编辑」**被点了。
     pub edit_clicked: Option<usize>,
-    /// 🔴〔第八刀〕这一帧哪一行的**「下载」**被点了。
+    /// 🔴这一帧哪一行的**「下载」**被点了。
     ///
     /// ⚠ 它与那三颗写按钮**刻意不共用一个值**（同 [`Self::copy_clicked`] 的理由）：
     /// 那三颗在窗口那侧走 `writeops::run_writes` 那条路（远端写），
     /// 这一颗走 `download` 那两问（**本机**落点）。合成一个就得再编一个
     /// 「点的是什么」的枚举，而两支的下一跳完全不同。
     pub download_clicked: Option<usize>,
-    /// 🔴〔FW2〕这一帧哪一行被**单击**了（整行那块，不是按钮），带着当时按着的修饰键。
+    /// 🔴这一帧哪一行被**单击**了（整行那块，不是按钮），带着当时按着的修饰键。
     ///
     /// 与 [`Self::clicked`]（**双击** = 打开）刻意分开：单击改选中态，双击才动目录。
     /// 双击的第一下照样落在这里 —— 那正是文件管理器的手感（先选中，再打开）。
     pub picked_click: Option<(usize, egui::Modifiers)>,
-    /// 🔴〔FW2〕这一帧哪一行被**右键**点了（`None` = 没有）。菜单摆在哪儿由窗口读指针位置。
+    /// 🔴这一帧哪一行被**右键**点了（`None` = 没有）。菜单摆在哪儿由窗口读指针位置。
     pub menu_clicked: Option<usize>,
-    /// 〔W5-FILES · `设计/60 §6.2`〕这一帧哪一行被**拖起**了（带出「从哪一行拖起」）。
+    /// 这一帧哪一行被**拖起**了（带出「从哪一行拖起」）。
     pub drag_started: Option<usize>,
-    /// 🔴〔FW2〕这一帧被画成「**选中**」的那几行（下标，按画的顺序）。
+    /// 🔴这一帧被画成「**选中**」的那几行（下标，按画的顺序）。
     ///
     /// 与 [`Self::revealed_row`] 同一条理由：背景色判据看不见 ⇒ 这一格是那件事的
     /// **可判读出**，而且与那块背景色在**同一处**写下（`paint_one_row` 前面同一个 `if`）。
     /// ⚠ 只含**真被画出来的**那几行（虚拟滚动）—— 它不是「选中了几项」，是「这一帧画了几块选中色」。
     pub picked_rows: Vec<usize>,
-    /// 🔴〔FW1〕这一帧被画成「**键盘光标**」的那一行（`None` = 光标不在视野里 / 没有光标）。
+    /// 🔴这一帧被画成「**键盘光标**」的那一行（`None` = 光标不在视野里 / 没有光标）。
     pub cursor_row: Option<usize>,
 }
 
-/// 〔FW1+FW2〕一行在选中态里是什么样子 —— [`paint_one_row`] 要的那两格。
+/// 一行在选中态里是什么样子 —— [`paint_one_row`] 要的那两格。
 ///
 /// ⚠ 刻意不把 [`super::select::Selection`] 整个递进 `paint_one_row`：画一行的函数
 /// 只需要知道「我被选中了吗 · 我是光标吗」，不需要知道选中态怎么记。
@@ -150,21 +150,21 @@ pub struct RowHit {
     pub activated: bool,
     /// 这一行的「复制」被**单击**了。
     pub copy: bool,
-    /// 〔第五刀〕这一行的「改名」被**单击**了。
+    /// 这一行的「改名」被**单击**了。
     pub rename: bool,
-    /// 〔第五刀〕这一行的「删除」被**单击**了。
+    /// 这一行的「删除」被**单击**了。
     pub delete: bool,
-    /// 〔第五刀〕这一行的「权限」被**单击**了。
+    /// 这一行的「权限」被**单击**了。
     pub chmod: bool,
-    /// 〔第八刀〕这一行的「下载」被**单击**了。
+    /// 这一行的「下载」被**单击**了。
     pub download: bool,
-    /// 〔第九刀〕这一行的「编辑」被**单击**了。
+    /// 这一行的「编辑」被**单击**了。
     pub edit: bool,
-    /// 〔FW2〕整行那块被**单击**了（带修饰键）。
+    /// 整行那块被**单击**了（带修饰键）。
     pub picked: Option<egui::Modifiers>,
-    /// 〔FW2〕整行那块被**右键**点了。
+    /// 整行那块被**右键**点了。
     pub menu: bool,
-    /// 〔W5-FILES · `设计/60 §6.2`「行拖到另一栏的手势」〕整行那块这一帧**被拖起**了。
+    /// 〔「行拖到另一栏的手势」〕整行那块这一帧**被拖起**了。
     pub drag_started: bool,
 }
 
@@ -179,7 +179,7 @@ pub struct RowHit {
 ///
 /// `scroll_offset_y`：`None` = 由 egui 自己管（生产）；`Some(y)` = 钉死偏移（量帧时用）。
 ///
-/// `picked`〔FW1+FW2〕：选中态（`None` = 这一趟不画选中，判据那几条量虚拟滚动的就这么喂）。
+/// `picked`：选中态（`None` = 这一趟不画选中，判据那几条量虚拟滚动的就这么喂）。
 /// ⚠ 每一行只问两次集合查找（`is_picked` / `is_cursor`），**只对真被画出来的行问**。
 pub fn show_file_rows(
     ui: &mut Ui,
@@ -200,7 +200,7 @@ pub fn show_file_rows(
         for i in range {
             let r = &rows[i];
             tally.rows_materialized += 1;
-            // 🔴〔第十刀〕高亮判定按**名字**（同一个目录里名字唯一），
+            // 🔴高亮判定按**名字**（同一个目录里名字唯一），
             //    而不是按下标 —— 下标会随「刚好有人新建了一个文件」整摞移位。
             let revealed = reveal.is_some_and(|want| want == r.name);
             if revealed {
@@ -251,7 +251,7 @@ pub fn show_file_rows(
     });
 }
 
-/// 〔第四刀〕画一屏**命中**。`files-find` 回来的那一摞路径。
+/// 画一屏**命中**。`files-find` 回来的那一摞路径。
 ///
 /// # 🔴 为什么它不是 [`show_file_rows`]，而这一条又为什么不算「第二条画列表的路」
 ///
@@ -269,7 +269,7 @@ pub fn show_file_rows(
 /// 于是「点了之后干什么」这个问题在结构上不存在，不用靠纪律守。
 /// ⚠ **如实登记为未做**：「点一条命中跳到它所在的目录」是个该有的功能，这一刀没做。
 ///
-/// 🔴〔第五刀 2026-09-21〕**上面那句「不用靠纪律守」当初只有一半是真的。**
+/// 🔴**上面那句「不用靠纪律守」当初只有一半是真的。**
 /// 两条路共用 [`RenderTally`] ⇒ 在这儿加一颗按钮、把下标塞进 `clicked`
 /// 编译器一声不吭。第五刀在行上加了三颗**写**按钮（改名 · 删除 · 权限）
 /// ⇒ 那个代价从「复制到错的地方」升级成「**删错东西**」。
@@ -310,7 +310,7 @@ pub fn show_hit_rows(ui: &mut Ui, hits: &[String], tally: &mut HitTally) {
 /// （[`super::shell::FileWindow::activate`] / [`super::shell::FileWindow::begin_copy`]），
 /// 画一行的函数不许知道「换目录」「起一趟复制」这回事。
 ///
-/// # 🔴〔第三刀〕那颗「复制」与整行那块命中矩形**会打架**，而且是按钮输
+/// # 🔴那颗「复制」与整行那块命中矩形**会打架**，而且是按钮输
 ///
 /// 直觉写法是「按钮照画，整行那块矩形照旧拉满整行宽」。**那样按钮是死的。**
 /// egui 的命中测试在距离平手（两块矩形都盖着指针）时逐字
@@ -331,7 +331,7 @@ pub fn show_hit_rows(ui: &mut Ui, hits: &[String], tally: &mut HitTally) {
 /// **那一版在 headless 下现打是死的**：同一趟里、同一个位置上，
 /// `ui.button()` 拿得到 `hovered/clicked`，而 `ui.horizontal(…)` 那个**布局作用域
 /// 响应**上再 `interact` 出来的那一份 `hovered` 恒 `false`
-/// （逐帧读数见 `真相源/99 §9.1`）——
+/// （逐帧读数见）——
 /// 命中测试在 `begin_pass` 时按上一帧的 widget 表做，而那条路上那个 id 没进到能被命中的那一档。
 ///
 /// ⇒ 换成**给这一行自己造一个 `Id`、用 `ui.interact` 正经登记一个 widget**，
@@ -347,14 +347,14 @@ fn paint_one_row(ui: &mut Ui, index: usize, r: &Listed, revealed: bool, mark: Ma
         ui.cursor().min,
         egui::vec2(ui.available_width(), ROW_HEIGHT),
     );
-    // 🔴〔第十刀〕**就是这个文件** —— 一块背景色。
+    // 🔴**就是这个文件** —— 一块背景色。
     //    与 `RenderTally::revealed_row` 在同一处写下（见那个字段的头注）。
-    // 🔴〔FW2〕**选中**用同一块选中色（与 `RenderTally::picked_rows` 在调用方同一个 `if` 里记下）。
+    // 🔴**选中**用同一块选中色（与 `RenderTally::picked_rows` 在调用方同一个 `if` 里记下）。
     if revealed || mark.picked {
         let vis = ui.visuals().selection.bg_fill;
         ui.painter().rect_filled(band_rect, 2.0, vis);
     }
-    // 🔴〔FW1〕**键盘光标**：一圈描边（不是底色 —— Ctrl 取消选中之后光标还在那一行，
+    // 🔴**键盘光标**：一圈描边（不是底色 —— Ctrl 取消选中之后光标还在那一行，
     //    那时它没有底色，只剩这一圈；两件事在屏幕上分得开）。
     if mark.cursor {
         let stroke = ui.visuals().selection.stroke;
@@ -391,21 +391,21 @@ fn paint_one_row(ui: &mut Ui, index: usize, r: &Listed, revealed: bool, mark: Ma
         }
         if r.lossy_name {
             // 非 UTF-8 名：显示串寻址不到真字节。
-            // 〔FW5〕带着原始字节（后端 `files-ls` 送的）⇒ 三颗写按钮照画（改名 · 删除 · 权限走 b16）；
+            // 带着原始字节（后端 `files-ls` 送的）⇒ 三颗写按钮照画（改名 · 删除 · 权限走 b16）；
             //   复制 / 下载 / 编辑那几颗用的是整条路径字符串，照旧不画（`is_copyable` / `is_downloadable` / `is_editable`）。
             ui.label(&copy_text("rsFilewinRows.icon.warn", &[]));
         }
-        // 〔第三刀〕「复制」——**只对能复制的那一档画**。`is_copyable` 是唯一住址，
+        // 「复制」——**只对能复制的那一档画**。`is_copyable` 是唯一住址，
         // 窗口状态机那一侧（`begin_copy`）问的是同一个函数。
         // ⚠ `small_button`：普通 `Button` 的最小高度是 `interact_size.y`（默认 18），
         //   一行只有 `ROW_HEIGHT` 高，撑高了行与行会叠在一起（下一行就点不准了）。
-        // 〔W5-FILES〕有损名带着字节也画（`copy::copyable`：线上走字节）。
+        // 有损名带着字节也画（`copy::copyable`：线上走字节）。
         let copy = if copyable(r) {
             Some(ui.small_button(COPY_LABEL.as_str()))
         } else {
             None
         };
-        // 🔴〔第五刀〕改名 · 删除 · 权限 —— **三颗都是写操作**。
+        // 🔴改名 · 删除 · 权限 —— **三颗都是写操作**。
         //   判准是 `is_writable`（有损名一律不画），而它与 `is_copyable`
         //   **刻意不是同一个函数**：目录能改名/删除/改权限，但不能零流量复制。
         let (rename, delete, chmod) = if is_writable(r) {
@@ -417,7 +417,7 @@ fn paint_one_row(ui: &mut Ui, index: usize, r: &Listed, revealed: bool, mark: Ma
         } else {
             (None, None, None)
         };
-        // 🔴〔第八刀〕「下载」—— 判准是 `is_downloadable`，它与 `is_copyable`
+        // 🔴「下载」—— 判准是 `is_downloadable`，它与 `is_copyable`
         //   今天逐行相同但**刻意是两个函数**（理由住 `download::is_downloadable` 头注，
         //   「它们今天一致」由 `download_tests` 那条相等断言钉着）。
         let download = if is_downloadable(r) {
@@ -425,7 +425,7 @@ fn paint_one_row(ui: &mut Ui, index: usize, r: &Listed, revealed: bool, mark: Ma
         } else {
             None
         };
-        // 🔴〔第九刀〕「编辑」—— 判准是 `is_editable`，而它就是 `why_not_editable`
+        // 🔴「编辑」—— 判准是 `is_editable`，而它就是 `why_not_editable`
         //   的 `is_none()`（**刻意不另写一套条件**：那正是「按钮画了但点了没反应」
         //   那个静默态的来源）。⚠ 超上限那一档在这儿就不画了，
         //   而**为什么**不画由那一行被点时的那句话给（`begin_edit` 会说）。
@@ -448,7 +448,7 @@ fn paint_one_row(ui: &mut Ui, index: usize, r: &Listed, revealed: bool, mark: Ma
     // 🔴 **但右边界要停在那几颗按钮里**最左**那一颗**的左侧 —— 拉满整行宽的话，
     //    egui 在平手时取「最后登记的那个」，而这块矩形是后登记的
     //    ⇒ 按钮永远点不到（见上面头注）。
-    //    ⚠〔第五刀〕这里原先只让开「复制」那一颗。第五刀之后一行上有四颗，
+    //    ⚠这里原先只让开「复制」那一颗。第五刀之后一行上有四颗，
     //      只让开一颗 = 另外三颗**照旧点不到**，而它们是写操作
     //      ⇒ 取的是**最小**的那个左边界，而不是某一颗的。
     let band = inner.response.rect;
@@ -463,7 +463,7 @@ fn paint_one_row(ui: &mut Ui, index: usize, r: &Listed, revealed: bool, mark: Ma
     );
     // ⚠ `Id` 按**行下标**造（不是按名字）：下标随滚动是绝对的、且同一行跨帧稳定，
     //   而名字会重（同名文件在不同目录、或列表里刚好两行同名）。
-    // 〔W5-FILES · `设计/60 §6.2`〕`Sense::click()` → `click_and_drag()`：行能被拖起（拖到另一栏 ＝ 复制过去）。
+    // `Sense::click()` → `click_and_drag()`：行能被拖起（拖到另一栏 ＝ 复制过去）。
     //   单击 / 双击 / 右键的手感不变（没挪过拖动阈值的一下照旧是点击）。
     let row = ui.interact(
         full,
@@ -496,9 +496,9 @@ struct RowButtons {
     rename: Option<egui::Response>,
     delete: Option<egui::Response>,
     chmod: Option<egui::Response>,
-    /// 〔第八刀〕「下载」。
+    /// 「下载」。
     download: Option<egui::Response>,
-    /// 〔第九刀〕「编辑」。
+    /// 「编辑」。
     edit: Option<egui::Response>,
 }
 
@@ -537,7 +537,7 @@ impl RowButtons {
     }
 }
 
-/// 🔴〔第十刀〕`name` 那一行在这一摞里的**下标**（`None` = 不在）。
+/// 🔴`name` 那一行在这一摞里的**下标**（`None` = 不在）。
 ///
 /// # 为什么回下标而不是回像素偏移
 ///
@@ -550,7 +550,7 @@ impl RowButtons {
 /// 本函数只答**下标** —— 那一半是纯的、零 UI 依赖、判得到。
 ///
 /// ⚠ 找下标那一趟是 O(n)，但它**只在一次 reveal 里跑一遍，不是每帧** ——
-/// 谁把它挪进每帧就撞上 `设计/60 §4 戊` 那条纪律
+/// 谁把它挪进每帧就撞上那条纪律
 /// （「「egui 扛得住」的主语是 `show_rows`」，对照组 10 万行 83.6 ms/帧）。
 pub fn reveal_index(rows: &[Listed], name: &str) -> Option<usize> {
     rows.iter().position(|r| r.name == name)
@@ -590,7 +590,7 @@ pub fn human_size(n: u64) -> String {
 /// Headless 跑一趟 egui 并收 [`RenderTally`]。
 ///
 /// ⚠ **这是 CPU 段**：布局 ＋ 生成绘制命令 ＋ 文字整形，不含把三角形交给 GPU。
-/// 理由与射程照 `真相源/99 §一`（本机 `XDG_SESSION_TYPE=tty`，没有图形会话）。
+/// 理由与射程照（本机 `XDG_SESSION_TYPE=tty`，没有图形会话）。
 /// 那一节的旁证也照抄下来：虚拟滚动那一档三角形数与总行数无关
 /// ⇒ 交给 GPU 的活不随行数涨，**它不是 64 万行的风险点**。
 pub fn render_headless(

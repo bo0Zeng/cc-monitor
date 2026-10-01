@@ -1,5 +1,5 @@
 /**
- * CP2a（`调研/设计/91 §5.1.1` 抽表 · `§5.2④` 术语表）：术语表与文案表的**读法**，两个判据文件共用一份。
+ * CP2a（抽表 · `§5.2④` 术语表）：术语表与文案表的**读法**，两个判据文件共用一份。
  *
  * 只读 `src/shared/copy/` 下两份 JSON；不遍历目录（遍历住 `test-support/production-sources.ts`）。
  */
@@ -29,7 +29,7 @@ export interface Term {
   source?: string;
   note?: string;
   ask?: string;
-  /** 〔CP2b〕限用词计数棘轮：计数正则（不是 `scan`）与文案表里命中它的条数（`91 §4` R1b「计数只许变少」）。 */
+  /** 限用词计数棘轮：计数正则（不是 `scan`）与文案表里命中它的条数（「计数只许变少」）。 */
   tally?: { re: string; flags: string };
   inTable?: number;
 }
@@ -74,7 +74,7 @@ export interface Entry {
 }
 export type Table = Record<string, Entry>;
 
-/** 〔CP2b〕限用词在文案表里的命中条数（对 `speech()` 跑：占位符名不算文字）。 */
+/** 限用词在文案表里的命中条数（对 `speech()` 跑：占位符名不算文字）。 */
 export function tallyOf(t: Term, table: Table): number {
   if (!t.tally) return 0;
   const rx = new RegExp(t.tally.re, t.tally.flags.replace(/g/g, ""));

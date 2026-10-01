@@ -17,7 +17,7 @@
 #   ssh_source EXPECTED_BACKEND_BUILD_ID)
 E2E_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 REPO=$(CDPATH= cd -- "$E2E_DIR/../.." && pwd)
-# 🔴 〔E2 尾 09-27〕**防呆：直接跑就拒。** 本脚本是夹具（loopback 远端的后端包装器），合法的叫法只有一种：
+# 🔴 **防呆：直接跑就拒。** 本脚本是夹具（loopback 远端的后端包装器），合法的叫法只有一种：
 #   tier-2 台架把它**拷进台架目录、旁边放一个 `backend-path`**，再由 app 经 SSH 当远端后端执行。
 #   认的是那个文件，不是环境变量 —— SSH exec 不带 env（下面 `backend-path` 那段同一个理由）。
 #   不拒的后果现打过：分流不看 argv0 之后，没有打头 `--` 的调用就是「起 claude」⇒ 在仓里直接跑它
@@ -29,7 +29,7 @@ if [ ! -f "$E2E_DIR/backend-path" ]; then
 fi
 : "${CCM_E2E_CLAUDE_DIR:=/tmp/e2e-remote-claude}"
 : "${CCM_E2E_BACKEND:=$REPO/.build/backend/debug/cc-monitor-backend}"
-# ★★ 〔`P0b` 第十拍 08-13〕**同目录的 `backend-path` 文件优先于下面的自愈**。
+# ★★ **同目录的 `backend-path` 文件优先于下面的自愈**。
 #
 # 病:全链跑法要求把**本脚本的副本**放进一个目录(见上面的部署告警),而副本一旦离开仓,
 # `$REPO` 就解析到了别处 ⇒ 上面那个默认落空 ⇒ 走下面的自愈 ⇒ **静默换成另一个二进制**
@@ -96,13 +96,13 @@ fi
 #   ② 连接管理（keepalive / 重连 / 与每 10s 一次的账号查询并行）；
 #   ③ `--with-bg` 子进程与父的生命周期。
 #
-# 〔`P0b` 第七拍 08-13〕**可选的帧 tap**：设了 `CCM_E2E_FRAME_TAP` 就把后端的 stdout
+# **可选的帧 tap**：设了 `CCM_E2E_FRAME_TAP` 就把后端的 stdout
 # 抄一份到那个文件。全链套件失败时，这是唯一能回答「**backend 到底发了什么**」的口子 ——
 # 在它之前只能看 monitor 记了什么，而那分不清「没发」与「发了没收到」。
 # ⚠ `stdbuf -oL` 不能省：不加的话 tee 到管道会变**块缓冲**，把帧攒住、改变时序。
 # ⚠ 不设就是**原样 exec**（与本改动之前逐字同行为）——默认路径一个字节不变。
 #
-# ★★ 〔第十拍 08-13〕**给它一个默认值**。理由与 `CCM_E2E_CLAUDE_DIR`/`CCM_E2E_TMUX_SOCK`
+# ★★ **给它一个默认值**。理由与 `CCM_E2E_CLAUDE_DIR`/`CCM_E2E_TMUX_SOCK`
 # 逐字相同:**经 SSH exec 本脚本时 env 不带 `CCM_E2E_*`** ⇒ 靠调用方传是传不进来的,
 # 而没有 tap 就回到「只能看 monitor 记了什么」——那分不清「没发」与「发了没收到」,
 # 正是这条排除链前六拍卡住的原因。本脚本是**测试 fixture**,写 /tmp 是它的本分。
@@ -118,7 +118,7 @@ if [ -n "${CCM_E2E_FRAME_TAP:-}" ]; then
     echo "    claude_dir=$CCM_E2E_CLAUDE_DIR  pid=$$  $(date -Iseconds)"
     "$CCM_E2E_BACKEND" -- --backend-probe 2>/dev/null | head -1
   } >> "${CCM_E2E_FRAME_TAP}.err" 2>&1
-  # ⚠⚠ **stderr 也要抄**〔第八拍 08-13〕：backend 的 `tracing` 日志走 stderr，
+  # ⚠⚠ **stderr 也要抄**：backend 的 `tracing` 日志走 stderr，
   #   而它正是唯一会说出「watch failed / sessions dir does not exist / 我在盯哪」的地方。
   #   只抄 stdout 的那一版实测**问不出**「backend 自己怎么看这件事」——
   #   全链里它 hello 之后只发一帧就沉默，而沉默的理由只可能写在 stderr 上。

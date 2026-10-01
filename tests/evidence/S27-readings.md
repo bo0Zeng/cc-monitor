@@ -1,4 +1,4 @@
-# S27 读数 —— `99 §4` 步 `23a`：把 crate 条目喂进断网门禁的缓存
+# S27 读数 —— 步 `23a`：把 crate 条目喂进断网门禁的缓存
 
 > 现打 2026-09-19，量于主树 `/home/user/work/cc-monitor`
 > （分支 `wave0/delete-usage-and-fix-gate`，提交 `1bdfbec7`）。
@@ -36,7 +36,6 @@
 这四条**不在本件的写区里**（那份文件在仓库外），**没动**，原样报出来。
 
 > 🔴 **〔后续 2026-09-19〕这四条已全部修掉，本节以上的读数到此为止。**
-> 修在哪：`调研/真相源/96-门禁自述腐了-坏尺子两头坏.md §五`。
 > 镜像重建（`b73a4c31ff5d`，这一版含 `rustfmt`）· 入场守卫 `src-tauri/ → src/bridge/` ·
 > 末行 `scripts/gate.sh → tests/scripts/gate.sh` · 顺带摘掉 `$SKILL` 挂载与 `-e PB_WS`
 > （`pb check` 那一格 09-18 已整格删除）。播种实测 **1.9 G**，与本节下面那个数吻合。
@@ -65,7 +64,7 @@ Locking 26 packages to latest compatible versions
 
 ### ⚠ 但 60 那份的拆法是错的（总数对、构成错）
 
-`调研/真相源/60-触手全图-它碰到你机器上的什么.md` §3 那张表写：
+§3 那张表写：
 
 | 60 写的 | 现打 |
 |---|---|
@@ -175,7 +174,7 @@ Caused by:
 
 | 件 | 是什么 | 跑法 |
 |---|---|---|
-| `tests/evidence/S27-cache-manifest.md` | 那 26 条的**唯一真相源**（机器读的表） | — |
+| `tests/evidence/S27-cache-manifest.md` | 那 26 条的**唯一源头**（机器读的表） | — |
 | `tests/evidence/S27-offline-cache-check.py` | 量具：两个人群逐条点名 | `python3 tests/evidence/S27-offline-cache-check.py` |
 | `tests/offline-cargo-cache.vitest.ts` | 把量具挂进 `npm test`（门禁第 `npm` 格） | `npx vitest run tests/offline-cargo-cache.vitest.ts` |
 | `tests/evidence/S27-prove-offline.py` | 真断网跑一趟 ＋ 反向对照 | `python3 tests/evidence/S27-prove-offline.py [--prime\|--negative <file>]` |

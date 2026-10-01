@@ -56,7 +56,7 @@ vi.mock("@tauri-apps/api/webviewWindow", () => ({
 vi.mock("../../../src/frontend/ui/ipc/commands", () => ({
   commands: new Proxy({}, { get: () => vi.fn().mockResolvedValue(undefined) }),
 }));
-// 〔CF2 · 第四波 4B〕会话内容从通道 `subscribe` 来：换成桩，按句柄的形状灌（`test-support/chan-stream-fake.ts`）。
+// 会话内容从通道 `subscribe` 来：换成桩，按句柄的形状灌（`test-support/chan-stream-fake.ts`）。
 vi.mock("../../../src/comms/inward/chan", async () => (await import("../../test-support/chan-stream-fake.ts")).chanStreamModule);
 
 import { bindEvents } from "../../../src/frontend/ui/events";
@@ -74,7 +74,7 @@ interface Harness {
   onBatchStart: ReturnType<typeof vi.fn>;
   onBatchEnd: ReturnType<typeof vi.fn>;
   onLine: ReturnType<typeof vi.fn>;
-  /** 发成批那一段的一块（〔CF2〕`chunkIndex === 0` 才以 `batch:start` 开头；每块以 `batch:end` 收尾）。 */
+  /** 发成批那一段的一块（`chunkIndex === 0` 才以 `batch:start` 开头；每块以 `batch:end` 收尾）。 */
   chunk: (chunkIndex: number, seqs: number[]) => void;
   /** 发一条逐行来的实时格。 */
   line: (seq: number) => void;
@@ -94,7 +94,7 @@ async function bind(): Promise<Harness> {
     onBatchStart,
     onBatchEnd,
   } as never, { streams: [{ origin: "<local>", kind: "session-lines" }] });
-  // 抽取器自检：会话流少订一条，下面全是零命中地绿。〔MIG-1〕snapshot-inflight 并进会话流（`{"snapshot_inflight": …}` 那一格）。
+  // 抽取器自检：会话流少订一条，下面全是零命中地绿。snapshot-inflight 并进会话流（`{"snapshot_inflight": …}` 那一格）。
   expect(streamFake.subscriptions.length, "没订到会话流 —— 本文件会零命中地绿").toBe(1);
   return {
     onBatchStart,
@@ -285,9 +285,9 @@ describe("events.ts 批量调度状态机（audit-0805 F17 下半的三条分支
 });
 
 // ═══════════════════════════════════════════════════════════════════════
-// 〔CF2 · 第四波 4B〕会话流那一段：credit 怎么还 · `gap` 怎么进队
+// 会话流那一段：credit 怎么还 · `gap` 怎么进队
 //
-// 要求住址：`设计/05 §3.3.4`「级 1 · 回推：订阅方不取 ⇒ 通信层不读」（这一侧的队列上界 = 给出去的 credit，
+// 要求：「级 1 · 回推：订阅方不取 ⇒ 通信层不读」（这一侧的队列上界 = 给出去的 credit，
 // 处理掉一格还一格）· 「`Gap` 必须在流里的原位」（进 queue 与行保序）。
 // ═══════════════════════════════════════════════════════════════════════
 describe("〔CF2〕会话流：还 credit 与丢格", () => {
@@ -337,9 +337,9 @@ describe("〔CF2〕会话流：还 credit 与丢格", () => {
   });
 });
 
-// ★ S6〔CF2 · 第四波 4B〕：会话内容的旧路（两个广播事件 ＋ 独立窗口的定向重放命令）在前端生产段**零命中**。
+// ★ S6：会话内容的旧路（两个广播事件 ＋ 独立窗口的定向重放命令）在前端生产段**零命中**。
 //
-// 要求住址：`设计/05 §8` 步 6「流那半收口成 `subscribe`」—— 旧路留着一处订阅，会话内容就有了第二个入口
+// 要求：「流那半收口成 `subscribe`」—— 旧路留着一处订阅，会话内容就有了第二个入口
 // （而且那个入口没有 credit、丢了也不报 `Gap`）。正控：同一识别器在合成代码上三针全中、在注释里不中。
 describe("〔CF2〕会话内容的旧路退役", () => {
   const needles = [`"jsonl-${"line"}"`, `"jsonl-${"batch"}"`, `replay_session_${"to_window"}`];
@@ -470,7 +470,7 @@ describe("启动接线：记忆与骨架的先后", () => {
     return code.indexOf(needle);
   };
 
-  // 〔MIG-1 · ⑬〕本机骨架也挪进就绪点（会话流里的 `live` 成品）：「启动骨架批」这个锚没了，换成「就绪点」`frontend-ready`；
+  // 本机骨架也挪进就绪点（会话流里的 `live` 成品）：「启动骨架批」这个锚没了，换成「就绪点」`frontend-ready`；
   //   抑制写回那一对随之删了（它罩的那批骨架不在这里建了）⇒ 那条判据换成「两处骨架入口都按 pending 补切」。
   it("读 last-active 记忆排在就绪点（骨架从那里才来）之前", () => {
     const read = at("safeGet(LS_KEYS.lastActiveSid)", 1);
@@ -481,7 +481,7 @@ describe("启动接线：记忆与骨架的先后", () => {
     ).toBe(true);
   });
 
-  // 〔MIG-1 续〕补切交给 `startup-active.ts`（它自己的真值表住 `tests/frontend/ui/startup-active.vitest.ts`）：两处骨架入口各报一次「出现了」。
+  // 补切交给 `startup-active.ts`（它自己的真值表住 `tests/frontend/ui/startup-active.vitest.ts`）：两处骨架入口各报一次「出现了」。
   it("本机与远端两处骨架入口都按 pending 补切上次所在 tab", () => {
     at("startup?.onAppeared(sessionId);", 2);
   });

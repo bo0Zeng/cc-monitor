@@ -20,7 +20,7 @@
 // 计数是**本进程内**的，重启 cc-monitor 就归零 —— 这一点必须在页面上说，
 // 否则用户会把它当成历史统计。
 //
-// ## 〔ST3〕按机器分
+// ## 按机器分
 //
 // 账本第一层键是 origin（`drift_ledger·rs` 头注）：远端的记录本来就在 monitor 里解析、在这个进程里记账，
 // 缺的只是「这一行从哪台来」—— ST3 把它一路带到了写点。⇒ 每台机器子页的「足迹」栏问的就是**这一台**，
@@ -40,7 +40,7 @@ import { readRecordDrift, type RecordDriftFace } from "../record-reads";
 export type { DriftEntry, DriftFace, DriftFaceReport, DriftLedgerReport };
 
 /**
- * 〔MOD · `设计/90 §3` 判据 3〕一个面：记录那两面（未知类型 · 已知类型解析失败）由**那台后端**答（`drift-report`，
+ * 一个面：记录那两面（未知类型 · 已知类型解析失败）由**那台后端**答（`drift-report`，
  * 记录解释住那台后端），monitor 天生观测的两面由 monitor 答（`drift_ledger_report`）—— 两份并排摆，本文件不合并、不解释。
  */
 export type ShownFace = DriftFaceReport | RecordDriftFace;
@@ -83,12 +83,12 @@ export function formatEntry(face: DriftFace | string, e: DriftEntry): string {
   return `  ${e.key} —— ${e.count} ${countUnit(face)}${sample}`;
 }
 
-/** 〔ST3〕诊断文本里那台机器怎么称呼（贴进 issue 时要分得清是哪台的账）。 */
+/** 诊断文本里那台机器怎么称呼（贴进 issue 时要分得清是哪台的账）。 */
 function machineName(origin: Origin): string {
   return isLocalOrigin(origin) ? copyText("driftLedger.machine.local") : origin;
 }
 
-/** 整份报告 → 可粘贴的纯文本（提 issue 时直接贴）。〔ST3〕首行带上是哪台机器的。 */
+/** 整份报告 → 可粘贴的纯文本（提 issue 时直接贴）。首行带上是哪台机器的。 */
 export function formatReport(report: ShownFace[], origin: Origin): string {
   const where = machineName(origin);
   if (report.length === 0) {
@@ -104,7 +104,7 @@ export function formatReport(report: ShownFace[], origin: Origin): string {
 }
 
 /**
- * 〔ST3〕回声：回包里的 `origin` 与所问**相等**才算这台的答复。
+ * 回声：回包里的 `origin` 与所问**相等**才算这台的答复。
  * 读口是 monitor 自己的命令、今天不会答错台 —— 这一格防的是**以后**有人把它改回一本不分机器的账，
  * 界面还照画不误。ST2 那一拍账不分机器，只能在界面上照实说两句「分不开」；ST3 把账分开、那两句删了，
  * 「不拿一台的账冒充另一台」这件事由这一格接着守。
@@ -118,19 +118,19 @@ export class DriftLedgerSection {
   private body!: HTMLElement;
   private copyBtn!: HTMLButtonElement;
   private last: ShownFace[] = [];
-  /** 〔ST3〕`last` 是哪台的（复制诊断文本时写进首行）。 */
+  /** `last` 是哪台的（复制诊断文本时写进首行）。 */
   private lastOrigin: Origin = getCurrentMachine();
   /** 宿主放过第一发没有（放过之后切机器才由订阅重读）。 */
   private started = false;
-  /** 〔ST3〕切机器快过答复时，晚到的那一份不许盖掉当前这台的（同足迹那一格）。 */
+  /** 切机器快过答复时，晚到的那一份不许盖掉当前这台的（同足迹那一格）。 */
   private seq = 0;
 
   constructor() {
     this.element = this.build();
-    // 〔ST2〕跟着「当前在看哪台机器」走（它住机器子页的「足迹」栏，是 per-machine 那一批单例之一）。
+    // 跟着「当前在看哪台机器」走（它住机器子页的「足迹」栏，是 per-machine 那一批单例之一）。
     subscribeMachine(() => this.onMachineChanged());
-    // 🔴 步 2（`70 §1.3 B` · `§10.4`）：**构造期不再发 I/O。**
-    // 这一块原住「改动足迹」页（〔ST2〕今天在每台机器子页的「足迹」栏里，跟 per-machine 那一批一起放），
+    // 🔴 步 2：**构造期不再发 I/O。**
+    // 这一块原住「改动足迹」页（今天在每台机器子页的「足迹」栏里，跟 per-machine 那一批一起放），
     // 而落地页是「机器」⇒ 原来那句 `void this.refresh()`
     // 是每次打开设置都白发的一趟 `drift_ledger_report`。
     // `§10.4` 那一行逐字点了它：判据 #3「非落地页零 I/O」今天正是被那三块
@@ -143,7 +143,7 @@ export class DriftLedgerSection {
    */
   loadNow(): void {
     this.started = true;
-    // 〔ST3〕本机、远端同一条路：问的就是当前这台。
+    // 本机、远端同一条路：问的就是当前这台。
     void this.refresh();
   }
 
@@ -159,10 +159,10 @@ export class DriftLedgerSection {
 
     const hint = document.createElement("div");
     hint.className = "settings-hint";
-    // 〔ST2〕顶层「改动足迹」页删了，这一块搬到机器列表页 ⇒ 不再说「这一页」；
-    //   「只读、按需读一次，不后台轮询」是**我们的设计承诺**（`70 §10.1` 差项 3 同一种病）⇒ 拿掉。
+    // 顶层「改动足迹」页删了，这一块搬到机器列表页 ⇒ 不再说「这一页」；
+    //   「只读、按需读一次，不后台轮询」是**我们的设计承诺**（差项 3 同一种病）⇒ 拿掉。
     //   「计数在本进程内，重启归零」留着 —— 头注逐字：这一点必须在页面上说，否则会被当成历史统计。
-    // 〔ST3〕账按机器分了 ⇒「遇到的」→「从这台机器读到的」（ST2 那两句「今天不分机器」随之删掉）。
+    // 账按机器分了 ⇒「遇到的」→「从这台机器读到的」（ST2 那两句「今天不分机器」随之删掉）。
     hint.textContent =
       copyText("driftLedger.build.intro");
     host.appendChild(hint);
@@ -172,7 +172,7 @@ export class DriftLedgerSection {
     const refreshBtn = document.createElement("button");
     refreshBtn.className = "btn";
     refreshBtn.textContent = copyText("driftLedger.build.reread");
-    // 步 4·E（`70 §1.3 E`）：读一趟账本是一次真往返，期间按住。
+    // 步 4·E：读一趟账本是一次真往返，期间按住。
     refreshBtn.addEventListener("click", () =>
       void withPending(refreshBtn, copyText("driftLedger.build.reading"), () => this.refresh()),
     );
@@ -203,11 +203,11 @@ export class DriftLedgerSection {
       this.body.textContent = "";
     }
     try {
-      // 〔MOD〕两份各问各的：记录那两面问那台后端，monitor 天生观测的两面问 monitor；次序同原先那一本（记录在前）。
+      // 两份各问各的：记录那两面问那台后端，monitor 天生观测的两面问 monitor；次序同原先那一本（记录在前）。
       const [records, r] = await Promise.all([readRecordDrift(origin), commands.drift_ledger_report({ origin })]);
       if (my !== this.seq) return;
       if (!r || !Array.isArray(r.faces)) throw new Error(copyText("driftLedger.refresh.badShape"));
-      // 〔ST3〕回声对不上 ⇒ 当读不到（拿另一台的账冒充这台，比读不到更糟）。
+      // 回声对不上 ⇒ 当读不到（拿另一台的账冒充这台，比读不到更糟）。
       if (!answersFor(r, origin)) throw new Error(copyText("driftLedger.refresh.wrongMachine", { machine: String(r.origin) }));
       this.last = [...records, ...r.faces];
       this.lastOrigin = origin;

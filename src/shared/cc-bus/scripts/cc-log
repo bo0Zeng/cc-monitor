@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# cc-log <id> [-n N]  只读看一个 agent 收件箱的尾巴(V136:后端 bus-inbox 读它,不读收件箱文件本身)。
+# cc-log <id> [-n N]  只读看一个 agent 收件箱的尾巴(后端 bus-inbox 读它,不读收件箱文件本身)。
 #   首行 `#cc-log<TAB>1`,随后收件箱末 N 行原样(缺省 200)。不推已读位置、不写任何状态(与 cc-peek 同一条零写面);
-#   持共享锁,锁文件仍是 <inbox>.lock(95 §3ter.5 锁族不增)。退出码:0 · 2 = 参数非法 · 13 = 适配层办不到。
+#   持共享锁,锁文件仍是 <inbox>.lock(锁族不增)。退出码:0 · 2 = 参数非法 · 13 = 适配层办不到。
 set -euo pipefail
 BUS="${CC_BUS_HOME:-$HOME/.cc-bus}"
 SELFDIR=$(cd "$(dirname "$(readlink -f "$0")")" && pwd)

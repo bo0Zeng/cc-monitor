@@ -8,7 +8,7 @@
  *
  * 设计要点：
  * - **单一通道**：所有远端健康提示走这一个事件 + 这一个 listener。#33 版本协商复用，
- *   只换 `kind`/`message`，不另开事件（主计划 SS-F 最终形态）。
+ *   只换 `kind`/`message`，不另开事件（SS-F 最终形态）。
  * - **节流**：每个 (origin,kind) 至少隔 THROTTLE_MS 才再弹一次。纯函数
  *   `shouldShowHealthToast` 便于单测（remote-health.test.ts）。
  * - 致命错误仍走 error-toast 的红色 `monitor-error` 栈；本通道是 info 级提示。
@@ -36,13 +36,13 @@ function headlineFor(kind: string): string {
       return copyText("remoteHealth.head.degraded");
     case "snapshot":
       return copyText("remoteHealth.head.historyFailed");
-    // 〔DP1 · 第四波〕连接前那一步自动部署没成（那台机器不要这份后端 / 这一版没带 / 装不上），正文是那句原因。
+    // 连接前那一步自动部署没成（那台机器不要这份后端 / 这一版没带 / 装不上），正文是那句原因。
     case "deploy":
       return copyText("remoteHealth.head.notDeployed");
-    // 〔WF2 · WIN3 读数 J〕文件窗口开出来之后又不体面地退了（`filewin/entry.rs::FILEWIN_EXIT_KIND`），正文带退出码。
+    // 文件窗口开出来之后又不体面地退了（`filewin/entry.rs::FILEWIN_EXIT_KIND`），正文带退出码。
     case "filewin-exit":
       return copyText("remoteHealth.head.fileWindowGone");
-    // 〔RM1f〕推代码全景组件之前那一句（`panorama_bytes.rs::install_notice`）。不是故障，所以不带 ⚠。
+    // 推代码全景组件之前那一句（`panorama_bytes.rs::install_notice`）。不是故障，所以不带 ⚠。
     case "panorama-install":
       return copyText("remoteHealth.head.panoramaInstalling");
     default:

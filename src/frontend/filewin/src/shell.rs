@@ -49,19 +49,19 @@
 //!    改掉的只有一件事：**这个进程里不再有第二个人去设那块全局状态**。
 //!
 //! ⇒ 于是 [`any_thread_hook`] 的 Windows 分支当时加了 `with_dpi_aware(false)`，
-//! 把「进程 DPI 归谁管」明确判给 Tauri。〔WN1 · 09-24：窗口进程独立之后翻回 `true`，见下一节。〕
+//! 把「进程 DPI 归谁管」明确判给 Tauri。〔09-24：窗口进程独立之后翻回 `true`，见下一节。〕
 //!
 //! ⚠ **这一格虚拟机够用，可以说「验过了」** —— 它问的是**调用顺序与全局状态归属**，
-//! 是逻辑题，不是显卡题。⚠ 但**别把它读宽**：`设计/99 §4.0 G2a` 逐字记着
+//! 是逻辑题，不是显卡题。⚠ 但**别把它读宽**：记着
 //! KVM 虚拟机不是物理机 ⇒ **「真机上 DPI 缩放长什么样」那一格仍然没有读数**
 //! （那台机器 DPI 缩放 100%、单显示器、QXL 虚拟显卡）。
 //!
 //! 出事的形状仍然照记：哪天 egui 窗口比 Tauri 主窗先建（或 winit 换了默认值），
 //! WebView2 那侧的 DPI 行为会跟着变 —— 而本仓在 Windows DPI/WebView 上
-//! 已经吃过亏（`真相源/70` 那一族、以及 `F12 nudge` 那处 WebView2 bounds 修正）。
+//! 已经吃过亏（那一族、以及 `F12 nudge` 那处 WebView2 bounds 修正）。
 //! 这一改正是把那个形状从「靠顺序碰巧对上」变成「只有一个人设它」。
 //!
-//! ## 🔴 〔WN1 · 2026-09-24〕上面那个处置的**前提没了**，开关翻回 `true`
+//! ## 🔴 上面那个处置的**前提没了**，开关翻回 `true`
 //!
 //! 上面整节的前提是「同一个进程里有 Tauri」。第十三刀之后这个窗口跑在**自己的进程**里
 //! （`cc-monitor-filewin`，躯体 `super::proc::child_main`，进程里一个 `tao` 事件循环都不建）
@@ -78,7 +78,7 @@
 //! 🚫 **买不到**：真 Windows 上一趟都没跑（本路不碰 Win11 虚拟机）。这一改的依据是上面那张
 //! 09-20 的四格真机读数 ＋ 「窗口进程里没有 `tao`」这条源码事实，是逻辑题，不是新读数。
 //!
-//! # ⚠ 没做到的，写在这儿而不是藏着〔第二刀 2026-09-20 订正〕
+//! # ⚠ 没做到的，写在这儿而不是藏着
 //!
 //! - **本机跑不了真窗口**（`XDG_SESSION_TYPE=tty`，无图形会话）⇒ [`open_detached`]
 //!   这条路在本机**没有端到端读数**；有的是 scratchpad 那个 `tao ＋ eframe` 原型的
@@ -88,21 +88,21 @@
 //!   它买的是「egui 收到这串事件之后认出来的是哪一行」——
 //!   逐条与那次现打的读数写在 [`super::rows`] 的 `paint_one_row` 头注里。
 //! - **Windows 上一次都没跑过。**
-//! - 〔FW34 2026-09-24〕**预览 · 双栏 · 标签页做了**，住 [`super::workspace`]（最外一层）与
+//! - **预览 · 双栏 · 标签页做了**，住 [`super::workspace`]（最外一层）与
 //!   [`super::preview`]；本文件的 [`FileWindow`] 照旧是「一个目录视图」，一个标签页就是一个它。
-//!   〔此前这一格写的是「预览 · 双栏仍然一个都没有」（`设计/60 §4 戊` 代价第 2 条）。〕
-//!   〔FW1+FW2 2026-09-24〕**多选与右键菜单做了**（还有键盘）：纯的那一份（选中态 · 键位 ·
+//!   〔此前这一格写的是「预览 · 双栏仍然一个都没有」（ 代价第 2 条）。〕
+//! **多选与右键菜单做了**（还有键盘）：纯的那一份（选中态 · 键位 ·
 //!   「能做什么」那张表）住 [`super::select`]，接到窗口上的那几跳住本文件
 //!   [`FileWindow::apply_keys`] / [`FileWindow::apply_pick_click`] /
 //!   [`FileWindow::apply_menu_click`] / [`FileWindow::perform`]。
 //!   🔴 **写操作一条新路都没长**：键盘与菜单做的每一件，都落回行上那几颗按钮已经在走的
-//!   那几个 `begin_*`（以及删除那一摞的 `start_writes`）⇒ 一次问完 · 只经通道说 `call`（〔FN1〕围栏那一道 V119 拿掉了）
+//!   那几个 `begin_*`（以及删除那一摞的 `start_writes`）⇒ 一次问完 · 只经通道说 `call`（围栏那一道 V119 拿掉了）
 //!   这几道闸一道都没绕开。
 //!   ⚠ **拖放从这一条里划出去了**：第二刀做了「拖入本机文件 → 上传到当前远端目录」
 //!   那一半（见 [`FileWindow::start_drop`] 与 [`super::transfer`]）；
-//!   往外拖（下载）〔第八刀〕做了（[`super::download`]）；窗口之间互拖没做。
-//! - `设计/60 §5.4b`（大文件编辑改流式）**仍然没做** —— 这一刀没有编辑面。
-//! - `设计/60 §5.4d`（拖入多文件先一次问完再并行）**第二刀做了**，
+//!   往外拖（下载）做了（[`super::download`]）；窗口之间互拖没做。
+//! - （大文件编辑改流式）**仍然没做** —— 这一刀没有编辑面。
+//! - （拖入多文件先一次问完再并行）**第二刀做了**，
 //!   住 [`super::transfer::run_drop`]；三段的顺序就是那个函数的结构，判据钉的是顺序与并行度。
 
 use copy_core::copy_text;
@@ -119,9 +119,9 @@ use super::source::{breadcrumbs, Line, Listed, SortBy, Source};
 use super::transfer::{DropBoard, Pending};
 use super::writeops::{is_writable, WriteBoard, WriteOp, WritePrompt, MKDIR_LABEL};
 
-/// 〔NET2〕接上通道时问那台能力事实的期限（一问一答，同读侧那几问的量级）。
+/// 接上通道时问那台能力事实的期限（一问一答，同读侧那几问的量级）。
 const OFFER_WITHIN: std::time::Duration = std::time::Duration::from_secs(10);
-/// 「在此打开终端」那一问的期限（〔P4〕monitor 接下它：问本机后端渲那一行 ＋ 开窗，都在本机）：给足握手余量即可。
+/// 「在此打开终端」那一问的期限（monitor 接下它：问本机后端渲那一行 ＋ 开窗，都在本机）：给足握手余量即可。
 const TERMINAL_WITHIN: std::time::Duration = std::time::Duration::from_secs(10);
 
 /// 开过几个窗口 —— **egui 那条线程真的跑起来了**几次。
@@ -139,9 +139,9 @@ static WINDOWS_OPENED: AtomicU64 = AtomicU64::new(0);
 /// ⇒ 一个值装一件事：请求面用这个，线程面用上面那个。
 static OPEN_REQUESTED: AtomicU64 = AtomicU64::new(0);
 
-/// 〔FW2〕开过几次右键菜单 —— 每次开菜单换一个 egui id（理由住 [`MenuAt::serial`]）。
+/// 开过几次右键菜单 —— 每次开菜单换一个 egui id（理由住 [`MenuAt::serial`]）。
 ///
-/// 🔴〔FW34〕**进程级，不是每个目录视图一个**：双栏时两栏同时画在一个 egui 上下文里，
+/// 🔴**进程级，不是每个目录视图一个**：双栏时两栏同时画在一个 egui 上下文里，
 /// 各数各的话两栏的第一个菜单撞同一个 id ⇒ 在另一栏右键那一下「只关不开」（与序号本来要防的同一形）。
 static MENU_SERIAL: AtomicU64 = AtomicU64::new(0);
 
@@ -164,7 +164,7 @@ pub fn open_requested() -> u64 {
     OPEN_REQUESTED.load(Ordering::SeqCst)
 }
 
-// 〔P4 · 阶段 H〕`any_thread_hook`（winit 事件循环建在次线程上 · 本进程自己管 DPI，三个平台各一句）住 `platform.rs`。
+// `any_thread_hook`（winit 事件循环建在次线程上 · 本进程自己管 DPI，三个平台各一句）住 `platform.rs`。
 
 /// **「存到哪儿」那一问的缺省落点** —— 用户的 home。
 ///
@@ -174,7 +174,7 @@ pub fn open_requested() -> u64 {
 /// [`super::download::default_dest`]（往外拖时「存到哪儿」那一格的缺省值）。
 /// ⇒ 它**不再是文件管理器的一部分**，是**往外传**那条路上的一格。
 ///
-/// 〔P4 · P5 收家目录〕家目录取法走全仓那一条规矩（`creds_core::store::home_dir`，monitor 与后端同一家），不再自己调 `dirs`。
+/// 〔P5 收家目录〕家目录取法走全仓那一条规矩（`creds_core::store::home_dir`，monitor 与后端同一家），不再自己调 `dirs`。
 ///
 /// ⚠ 它**只把 home 当一条缺省路径**，不去读 home 里的任何东西 —— 零次 `read_dir`。
 /// 拿不到 home 就退到 `.`（当前工作目录），**不猜一个路径出来**。
@@ -188,7 +188,7 @@ pub fn local_home() -> String {
 pub static NO_LINE: std::sync::LazyLock<String> =
     std::sync::LazyLock::new(|| copy_text("rsFilewinShell.noLine.message", &[]));
 
-// 〔P4〕「在此打开终端」那一串（`build_open_terminal_cmd`〔散文墓碑〕· `build_open_terminal_cmd_at`〔散文墓碑〕· `cd_then_shell`〔散文墓碑〕）
+// 「在此打开终端」那一串（`build_open_terminal_cmd`〔散文墓碑〕· `build_open_terminal_cmd_at`〔散文墓碑〕· `cd_then_shell`〔散文墓碑〕）
 //   随「窗口只交意图」搬进本机后端：`src/backend/dial/terminal.rs::command_for_cwd`（期望串原样搬去 `tests/backend/dial_terminal_tests.rs`）。
 
 /// 列目录这件事的**共享落点** —— 一次列目录要写的东西全在这儿。
@@ -207,7 +207,7 @@ pub struct Listing {
     pub epoch: Arc<AtomicU64>,
     /// 还有几趟列目录在飞。0 = 列完了。
     pub inflight: Arc<AtomicU64>,
-    // 〔F2 · 2026-09-24〕这里原先还有一格「上一趟走没走成主路」（退路那一句话的落点）。
+    // 这里原先还有一格「上一趟走没走成主路」（退路那一句话的落点）。
     // 退路整条拿掉之后（`D11`，理由住 `source.rs` 那一节）那一格没有可说的了，一起摘掉。
     /// 🔴 上一趟**被后端截断了吗**。
     ///
@@ -297,7 +297,7 @@ impl Listing {
 }
 
 /// 窗口的全部状态。
-/// 🔴〔第十刀〕**「就是这个文件」** —— 一次 reveal 的两半。
+/// 🔴**「就是这个文件」** —— 一次 reveal 的两半。
 ///
 /// ⚠ 刻意是一个结构而不是 `Option<String>` ＋ 一个 `bool`：那两个散着放的时候
 /// 「滚过了但名字清空了」与「名字还在但忘了滚」两种半态都可表示，
@@ -313,12 +313,12 @@ pub struct Reveal {
 pub struct FileWindow {
     pub source: Source,
     pub cwd: String,
-    /// 〔W5-FILES · `设计/60 §6.2`「有损名的进目录…整条寻址链要换成字节」〕当前目录不是合法 UTF-8 时它的原始字节
+    /// 〔「有损名的进目录…整条寻址链要换成字节」〕当前目录不是合法 UTF-8 时它的原始字节
     /// （`cwd` 是它的有损显示串）。`None` ⇒ `cwd` 就是真字节。发出去的一律经 [`Self::cwd_path`] / [`Self::row_path`]。
     pub cwd_raw: Option<Vec<u8>>,
     pub listing: Listing,
     pub tally: RenderTally,
-    /// 〔第五刀〕命中那一摞这一帧画了什么。**与 [`Self::tally`] 刻意是两个类型** ——
+    /// 命中那一摞这一帧画了什么。**与 [`Self::tally`] 刻意是两个类型** ——
     /// [`HitTally`] 里没有「谁被点了」这个概念，逐条理由住那个类型的头注。
     pub hits_tally: HitTally,
     /// 远端列目录要在 tokio 上跑，而**判据里大量窗口拿不到运行时**，所以是 `Option`。
@@ -328,14 +328,14 @@ pub struct FileWindow {
     /// 起窗那条路（`super::proc`）与判据都可能手上没有运行时，而那时它要**出声**
     /// （[`Self::reload`] 里那一支），不许假装列了个空目录。
     pub rt: Option<tokio::runtime::Handle>,
-    /// 🔴〔F2 · 2026-09-24〕**通道**：窗口进程够后端的唯一一条路（`source::Line`）。
+    /// 🔴**通道**：窗口进程够后端的唯一一条路（`source::Line`）。
     ///
     /// 是 `Option` 的理由与 [`Self::rt`] 同：判据里大量窗口不连后端（只画行、只点按钮）。
     /// 没有它的时候，每一件要问后端的事都**出声**（[`NO_LINE`]），不静默、不退回 SFTP（`D11`）。
     pub line: Option<Line>,
-    /// 〔NET2〕这台机器的能力事实（接上通道时问一次，`chan::wire::Offer`）：做不到的那几件在菜单上置灰并说为什么。
+    /// 这台机器的能力事实（接上通道时问一次，`chan::wire::Offer`）：做不到的那几件在菜单上置灰并说为什么。
     pub offer: std::sync::Arc<std::sync::Mutex<Option<chan_core::chan::wire::Offer>>>,
-    /// `设计/60 §5.4d`：拖入那一摞的状态机（**先一次问完，再并行传**）。
+    /// 拖入那一摞的状态机（**先一次问完，再并行传**）。
     pub board: DropBoard,
     /// 已经消化过几趟拖入。`board.rounds()` 走在它前面 ⇒ 该重列一次目录了。
     ///
@@ -343,27 +343,27 @@ pub struct FileWindow {
     /// 而把 `cwd` 也塞进 `Arc` 只为了让它能读，是把窗口状态搬到共享内存里去。
     /// ⇒ 换个方向：任务只记「我跑完了」，**换目录这件事一直留在 UI 线程手上**。
     seen_rounds: u64,
-    /// `设计/60 §5` 第二段：零流量复制那一趟的状态机（**问覆盖 · 进度 · 裁决**）。
+    /// 第二段：零流量复制那一趟的状态机（**问覆盖 · 进度 · 裁决**）。
     pub copy_board: CopyBoard,
-    /// 〔W5-FILES · `设计/60 §6.2`〕算大小那一摞的看板（在算哪一项 · 上一摞的结局）。
+    /// 算大小那一摞的看板（在算哪一项 · 上一摞的结局）。
     pub size_board: super::size::SizeBoard,
-    /// 〔FILES2 · `设计/60 §6.2` Q3〕解压那一趟的看板（在解哪一个 · 撞名那一问 · 结局）。
+    /// 解压那一趟的看板（在解哪一个 · 撞名那一问 · 结局）。
     pub extract_board: super::extract::ExtractBoard,
     /// 已经消化过几趟解压（同 [`Self::seen_rounds`]）。
     seen_extract_rounds: u64,
-    /// 〔W5-FILES〕正在读的那一份的原始字节（到货时交给编辑面；`(显示路径, 字节)`）。
+    /// 正在读的那一份的原始字节（到货时交给编辑面；`(显示路径, 字节)`）。
     edit_raw: Option<(String, Vec<u8>)>,
-    /// 〔W5-FILES · `设计/60 §6.2`「原生选文件框」〕选择框（生产是操作系统自己的，判据换一个假的）＋ 结局落点 ＋ 下载那一问上「没选到」那句话。
+    /// 〔「原生选文件框」〕选择框（生产是操作系统自己的，判据换一个假的）＋ 结局落点 ＋ 下载那一问上「没选到」那句话。
     pub picker: std::sync::Arc<dyn super::picker::Picker>,
     pick_board: super::picker::PickBoard,
     pick_notice: Option<String>,
     /// 「复制为」那个框。`None` = 没在问名字。**UI 线程自己的**（理由见 [`CopyPrompt`]）。
     copy_prompt: Option<CopyPrompt>,
-    /// 〔FILES2 · V152〕「复制到另一台」下拉里的机器（开窗种子带来；新标签页照抄）。
+    /// 「复制到另一台」下拉里的机器（开窗种子带来；新标签页照抄）。
     pub machines: Vec<String>,
-    /// 〔FILES2 · Q2〕「复制到另一台」那一问（UI 线程自己的）。
+    /// 「复制到另一台」那一问（UI 线程自己的）。
     cross_prompt: Option<super::cross_copy::CrossPrompt>,
-    /// 〔FILES2 · Q2〕复制到另一台那一趟的看板（盖不盖那一问 · 一条进度 · 结局）。
+    /// 复制到另一台那一趟的看板（盖不盖那一问 · 一条进度 · 结局）。
     pub cross_board: super::cross_copy::CrossBoard,
     /// 已经消化过几趟复制（同 [`Self::seen_rounds`]，两条路各一个数）。
     seen_copy_rounds: u64,
@@ -373,36 +373,36 @@ pub struct FileWindow {
     /// 判据直接 `FileWindow::new(...)` 建出来的窗口就是这一态，而它**会在界面上出声**。
     /// 「装字体那一步被谁摘了」因此不可能安静地过去。
     pub font: FontState,
-    /// 〔第四刀〕`设计/60 §3.5`：搜索那一趟的共享落点（UI 线程读，tokio 那条写）。
+    /// 搜索那一趟的共享落点（UI 线程读，tokio 那条写）。
     pub search: SearchBoard,
     /// 搜索框里那几个字。**UI 线程自己的**（同 [`Self::copy_prompt`] 的理由：
     /// 它是一个正在被编辑的草稿，不该出现在两条线程共享的那份状态里）。
     query: String,
-    /// 〔FILES3 · `设计/99 §2.2 ㉜`〕按内容搜那一趟的共享落点（UI 线程读，tokio 那条写；`super::grep`）。
+    /// 按内容搜那一趟的共享落点（UI 线程读，tokio 那条写；`super::grep`）。
     pub grep: GrepBoard,
     /// 按内容搜那个框里的字（UI 线程自己的草稿，同 [`Self::query`]）。
     grep_query: String,
     /// 命中那一摞这一帧交出来的东西（被点了哪一条 —— **命中这一摞**的下标）。
     pub grep_tally: GrepTally,
-    /// 🔴〔第五刀〕`设计/99 §4.6.4`：那四条写操作的状态机（**一次问完 · 结果**；〔FN1〕围栏那一段 V119 拿掉了）。
+    /// 🔴：那四条写操作的状态机（**一次问完 · 结果**；围栏那一段 V119 拿掉了）。
     pub write_board: WriteBoard,
     /// 「叫什么名字 / 改成什么权限」那个框。`None` = 没在问。
     /// **UI 线程自己的**（理由见 [`WritePrompt`]）。
     write_prompt: Option<WritePrompt>,
-    /// 〔GP1 · 第四波〕改权限那个框的**现值**那一趟（UI 线程读，tokio 那条写；`writeops::ModeProbe`）。
+    /// 改权限那个框的**现值**那一趟（UI 线程读，tokio 那条写；`writeops::ModeProbe`）。
     pub mode_probe: super::writeops::ModeProbe,
     /// 已经消化过几摞写操作（同 [`Self::seen_rounds`]，每条路各一个数）。
     seen_write_rounds: u64,
-    /// 🔴〔第八刀〕**往外拖**那一趟的共享落点（进度 · 结局）。
+    /// 🔴**往外拖**那一趟的共享落点（进度 · 结局）。
     pub pull: super::download::DownloadBoard,
     /// 「存到哪儿 / 盖掉它吗」那两问。`None` = 没在问。
     /// **UI 线程自己的**（同 [`Self::write_prompt`] 的理由：它是一个正在被编辑的草稿）。
     pull_ask: Option<super::download::Ask>,
-    /// 〔FILES2 · Q4〕那一问摆着的那一行，若整条路径不是 UTF-8：`(整条路径的字节, 显示名, 名字的字节)`。
+    /// 那一问摆着的那一行，若整条路径不是 UTF-8：`(整条路径的字节, 显示名, 名字的字节)`。
     pull_raw: Option<(Vec<u8>, String, Vec<u8>)>,
-    /// 〔F7c · 第三波 09-24〕工具栏「上传」那一问（状态与判定全在 `upload.rs`，这里只挂着）。
+    /// 工具栏「上传」那一问（状态与判定全在 `upload.rs`，这里只挂着）。
     pub upload: super::upload::UploadPrompt,
-    /// 🔴〔第九刀〕编辑那一趟的共享落点（读到货 · 存结局）。
+    /// 🔴编辑那一趟的共享落点（读到货 · 存结局）。
     pub edits: super::editor::EditBoard,
     /// 打开着的那一份文本。`None` = 没在编辑。**UI 线程自己的**。
     editing: Option<super::editor::Pane>,
@@ -423,7 +423,7 @@ pub struct FileWindow {
     /// ⇒ 用户点了按钮、什么都没发生、也没有一句话 —— 那正是本仓的头号病形。
     /// ⇒ 结果落在这一格，界面上画出来，判据读同一个值。
     term_notice: Arc<Mutex<Option<String>>>,
-    /// 🔴〔第十刀〕**「就是这个文件」** —— 要高亮的那一行的名字 ＋ 滚过去了没有。
+    /// 🔴**「就是这个文件」** —— 要高亮的那一行的名字 ＋ 滚过去了没有。
     ///
     /// 它是 `P3`（老面板退役）的最后一格功能前置：老面板 `open(revealPath)`
     /// 那一形（会话工具卡 → 文件跳转，`src/frontend/ui/cards/index.ts::openRemoteFileInSftp`）
@@ -432,40 +432,40 @@ pub struct FileWindow {
     /// ⚠ 两个字段刻意分开：**高亮要一直留着**（一帧的高亮在连续重绘的窗口上等于看不见），
     /// 而**滚只滚一次**（每帧都滚就把用户自己的滚动按住了）。
     reveal: Option<Reveal>,
-    /// 🔴〔FW1+FW2〕**选中态**（哪几行 · 键盘光标 · Shift 的锚）。**UI 线程自己的**。
+    /// 🔴**选中态**（哪几行 · 键盘光标 · Shift 的锚）。**UI 线程自己的**。
     ///
     /// ⚠ 按名字记（理由住 [`super::select`] 头注 §二）。换目录清空；
     ///   一摞写操作跑完只清「选中」、留着光标（[`Self::settle_finished_writes`]）。
     selection: Selection,
-    /// 〔FW1〕打字跳转攒着的那几个字。
+    /// 打字跳转攒着的那几个字。
     type_ahead: TypeAhead,
-    /// 〔FW1〕键盘把光标挪到了第几行 ⇒ 这一帧画列表时要不要把它滚进视野。**只滚一次**。
+    /// 键盘把光标挪到了第几行 ⇒ 这一帧画列表时要不要把它滚进视野。**只滚一次**。
     key_scroll: Option<usize>,
-    /// 〔FW2〕摆着的那个右键菜单（`None` = 没摆）。
+    /// 摆着的那个右键菜单（`None` = 没摆）。
     menu: Option<MenuAt>,
-    /// 〔FW1+FW2〕键盘 / 菜单那一下**做不了**时说的那句话（`None` = 没话说）。
+    /// 键盘 / 菜单那一下**做不了**时说的那句话（`None` = 没话说）。
     ///
     /// ⚠ 刻意不写进 `listing.error`：那一格只在下一趟列目录时才清，
     ///   而「打字跳转没找到」是一句**下一次按键就过时**的话 ⇒ 下一次按键 / 点击就清掉。
     key_notice: Option<String>,
-    /// 〔F7b〕「新建空文件叫什么」那个框。`None` = 没在问。逻辑住 [`super::create`]。
+    /// 「新建空文件叫什么」那个框。`None` = 没在问。逻辑住 [`super::create`]。
     pub(super) new_file: Option<super::create::NewFilePrompt>,
-    /// 〔FW34〕书签（一个窗口一份，所有标签页 / 两栏共用；逻辑住 [`super::bookmarks`]）。
+    /// 书签（一个窗口一份，所有标签页 / 两栏共用；逻辑住 [`super::bookmarks`]）。
     /// `None` ＝ 没接上（判据里直接建的窗口）⇒ 书签栏不画。生产那条开窗路恒是 `Some`。
     pub shelf: Option<super::bookmarks::Shelf>,
-    /// 〔FW34〕这个目录视图此刻**是不是焦点那一个**（双栏 / 标签页时只有一个是）。
+    /// 这个目录视图此刻**是不是焦点那一个**（双栏 / 标签页时只有一个是）。
     ///
     /// `false` ⇒ 不接键盘、不接拖入（[`Self::keys_blocked`] / [`Self::take_drops`]）。缺省 `true`：
     /// 单独建出来的目录视图（判据里那几百个）就是唯一那一个。谁来改它：[`super::workspace`]。
     pub focused: bool,
-    /// 〔W5-FILES · `设计/60 §6.2`「行拖到另一栏的手势」〕有一行（连同它所在的那一摞选中）被拖起、还没松手。
+    /// 〔「行拖到另一栏的手势」〕有一行（连同它所在的那一摞选中）被拖起、还没松手。
     ///   松在哪儿由 [`super::workspace::Workspace`] 看（它才知道另一栏在哪）；它收摊时清掉这一格。
     pub dragging: bool,
-    /// 〔FW34〕起过几摞写操作（与 `write_board.rounds()` 比 ⇒ 有没有还没回话的；关标签那一问用）。
+    /// 起过几摞写操作（与 `write_board.rounds()` 比 ⇒ 有没有还没回话的；关标签那一问用）。
     writes_started: u64,
 }
 
-/// 〔FW2〕一个摆着的右键菜单：**在哪儿 · 列哪几项 · 对几项说话**。
+/// 一个摆着的右键菜单：**在哪儿 · 列哪几项 · 对几项说话**。
 ///
 /// 🔴 那几项是**开菜单那一刻**按 [`select::actions_for`] 算好的快照 ——
 /// 每帧重算要扫一遍整摞行找选中（64 万行那一档每帧一趟 O(n)）。
@@ -482,7 +482,7 @@ pub struct MenuAt {
     pub serial: u64,
 }
 
-/// 〔FW2〕菜单上一项都没有时摆的那一句（有损名那一档：什么都做不了，但要说出来）。
+/// 菜单上一项都没有时摆的那一句（有损名那一档：什么都做不了，但要说出来）。
 pub static MENU_EMPTY: std::sync::LazyLock<String> =
     std::sync::LazyLock::new(|| copy_text("rsFilewinShell.menuEmpty.message", &[]));
 
@@ -495,7 +495,7 @@ impl FileWindow {
 
     /// 接上通道（`proc::child_main` 拨通之后调；判据里接一台合成后端）。
     pub fn attach_line(&mut self, line: Line) {
-        // 〔NET2〕接上就问一次那台的能力事实（不等它：没回来之前菜单照常，点了由那台的回话兜）。
+        // 接上就问一次那台的能力事实（不等它：没回来之前菜单照常，点了由那台的回话兜）。
         if let Some(h) = &self.rt {
             let (l, origin, slot) = (line.clone(), self.source.origin(), self.offer.clone());
             h.spawn(async move {
@@ -511,7 +511,7 @@ impl FileWindow {
         self.line = Some(line);
     }
 
-    /// 〔NET2〕这件事在这台机器上做不到 ⇒ 那句为什么（菜单置灰的 hover · 键盘按了的回话）；做得到 / 没把握 ⇒ `None`。
+    /// 这件事在这台机器上做不到 ⇒ 那句为什么（菜单置灰的 hover · 键盘按了的回话）；做得到 / 没把握 ⇒ `None`。
     pub fn unavailable_here(&self, a: Action) -> Option<String> {
         let op = match a {
             Action::Chmod => "files-chmod",
@@ -609,15 +609,15 @@ impl FileWindow {
     pub fn reload(&self) {
         let l = self.listing.clone();
         let mine = l.start();
-        // 〔W5-FILES · 有损名全寻址〕发出去的是线上那一形（有损目录 ⇒ `{"b16": …}`）。
+        // 〔有损名全寻址〕发出去的是线上那一形（有损目录 ⇒ `{"b16": …}`）。
         let cwd = self.cwd_path().wire();
-        // 🔴〔第十二刀 2026-09-22〕**先问后端，问不到才退回旧路** ——
+        // 🔴**先问后端，问不到才退回旧路** ——
         //    用户指令的第 1 步，逐条理由住 `source.rs` 那一段头注。
-        // 🔴〔F2 · 2026-09-24〕「问不到才退回旧路」那半句**拿掉了**（`D11`）：只问后端。
+        // 🔴「问不到才退回旧路」那半句**拿掉了**（`D11`）：只问后端。
         match &self.rt {
             // ── 有运行时 ⇒ 主路（`files-ls` on 这个 origin）───────────
             Some(h) => {
-                // 🔴〔F2〕有运行时但没连上通道 ⇒ 出声（`D11`：不退回 SFTP）。
+                // 🔴有运行时但没连上通道 ⇒ 出声（`D11`：不退回 SFTP）。
                 let Some(line) = self.line.clone() else {
                     store_if_current(&l, mine, Err(NO_LINE.to_string()));
                     return;
@@ -660,30 +660,30 @@ impl FileWindow {
         self.navigate_to_at(super::source::RemotePath::plain(&path));
     }
 
-    /// 〔W5-FILES · 有损名全寻址〕当前目录（显示串 ＋ 可能有的字节）。
+    /// 〔有损名全寻址〕当前目录（显示串 ＋ 可能有的字节）。
     pub fn cwd_path(&self) -> super::source::RemotePath {
         super::source::RemotePath::of(&self.cwd, self.cwd_raw.as_deref())
     }
 
-    /// 〔W5-FILES〕列表里那一行的整条路径 ＝ 当前目录的字节 ＋ `/` ＋ 名字的字节（有损名用后端送的那一段字节）。
+    /// 列表里那一行的整条路径 ＝ 当前目录的字节 ＋ `/` ＋ 名字的字节（有损名用后端送的那一段字节）。
     pub fn row_path(&self, r: &super::source::Listed) -> super::source::RemotePath {
         join_path(&self.cwd_path(), &name_bytes(r))
     }
 
-    // 〔散文墓碑〕〔FILES2〕这里原有 `refused_in_lossy_cwd`（W5-FILES：有损目录里上传 / 搜索 / 开终端出声拒）——
-    //   三件都改成按字节做了（搜索 `find::run_search_at` · 上传 `Pending::remote_dir_raw` · 终端 `build_open_terminal_cmd_at`〔散文墓碑〕，〔P4〕今天是后端 `dial/terminal.rs::command_for_cwd`），它没了调用方。
+    // 〔散文墓碑〕这里原有 `refused_in_lossy_cwd`（W5-FILES：有损目录里上传 / 搜索 / 开终端出声拒）——
+    //   三件都改成按字节做了（搜索 `find::run_search_at` · 上传 `Pending::remote_dir_raw` · 终端 `build_open_terminal_cmd_at`〔散文墓碑〕，今天是后端 `dial/terminal.rs::command_for_cwd`），它没了调用方。
 
-    /// 〔W5-FILES · 有损名全寻址〕进一个目录（显示串 ＋ 可能有的字节）。与 [`Self::navigate_to`] 同一套收摊。
+    /// 〔有损名全寻址〕进一个目录（显示串 ＋ 可能有的字节）。与 [`Self::navigate_to`] 同一套收摊。
     pub fn navigate_to_at(&mut self, at: super::source::RemotePath) {
         if at == self.cwd_path() {
             return;
         }
         let path = at.shown.clone();
-        // 🔴〔第十刀〕换了目录，那一行就不在这儿了 ⇒ 高亮清掉。
+        // 🔴换了目录，那一行就不在这儿了 ⇒ 高亮清掉。
         //    留着的话，新目录里**恰好同名**的另一个文件会被高亮 ——
         //    而用户会以为那就是他要找的那个。
         self.reveal = None;
-        // 🔴〔FW1+FW2〕选中态按名字记 ⇒ 新目录里**同名**的那几个不是同一样东西。
+        // 🔴选中态按名字记 ⇒ 新目录里**同名**的那几个不是同一样东西。
         //    留着的话按 Delete 删的是新目录里恰好同名的文件。
         self.selection.clear();
         self.type_ahead.clear();
@@ -694,7 +694,7 @@ impl FileWindow {
         self.cwd_raw = at.raw;
         self.listing.invalidate();
         self.reload();
-        // 〔FW34〕换目录时现读一次书签：别的窗口刚加的那几条从这里进来（小文件一次读，不是每帧）。
+        // 换目录时现读一次书签：别的窗口刚加的那几条从这里进来（小文件一次读，不是每帧）。
         if let Some(s) = &self.shelf {
             s.refresh();
         }
@@ -702,7 +702,7 @@ impl FileWindow {
 
     /// 上一级。已经在顶上就什么都不做（[`parent_dir`] 到顶回原值）。
     pub fn navigate_up(&mut self) {
-        // 〔W5-FILES〕按字节切（合法 UTF-8 时与 `parent_dir` 逐字节同）。
+        // 按字节切（合法 UTF-8 时与 `parent_dir` 逐字节同）。
         let up = self.cwd_path().parent();
         self.navigate_to_at(up);
     }
@@ -716,7 +716,7 @@ impl FileWindow {
     ///
     /// # ⚠ 为什么不是「每帧排一次」
     ///
-    /// `设计/60 §4 戊` 那条纪律：64 万行那一档每帧一次 `sort` 直接把帧时打穿
+    /// 那条纪律：64 万行那一档每帧一次 `sort` 直接把帧时打穿
     /// （虚拟滚动省的是**画**，不是遍历）。⇒ 排序只在两个时刻发生：
     /// **一屏落地**（[`super::source::list_dir`]）与**用户换档**（这里）。
     pub fn set_sort(&mut self, by: SortBy) -> bool {
@@ -735,7 +735,7 @@ impl FileWindow {
 
     /// 在**当前这个目录**里给用户开一个真终端。回值 = 真的发出去了。
     ///
-    /// 〔P4 · 主会话 09-29 拍板 Q2 A〕窗口只交**意图**：经它那条通道 `call` 一条 monitor 自己接的
+    /// 〔主会话 09-29 拍板 Q2 A〕窗口只交**意图**：经它那条通道 `call` 一条 monitor 自己接的
     /// [`filewin_contract::TERMINAL_OPEN_OP`]（寻址 ＝ 这台 · 参数 `{cwd}`）。之后三步都在 monitor 那一侧
     /// （`chan/host.rs::terminal_open`）：补这台的机器事实 → 问本机后端 `terminal-ssh` 渲那一行（`cd` 那一串也在那里拼，
     /// `src/backend/dial/terminal.rs::command_for_cwd`）→ `launch::open_terminal_window` 开窗 —— 与主界面开终端同一条路。
@@ -761,7 +761,7 @@ impl FileWindow {
             *self.term_notice.lock().unwrap() = Some(NO_LINE.to_string());
             return false;
         };
-        // 〔FILES2〕有损目录：当前目录按字节交（线上形 `{"b16": …}`），`cd` 那一串在后端走唯一的 quote 的字节形。
+        // 有损目录：当前目录按字节交（线上形 `{"b16": …}`），`cd` 那一串在后端走唯一的 quote 的字节形。
         let args = filewin_contract::terminal_open_args(self.cwd_path().wire());
         let origin = self.source.origin();
         let slot = self.term_notice.clone();
@@ -792,12 +792,12 @@ impl FileWindow {
     /// 点开第 `i` 行。**目录进去，文件不动。**
     ///
     /// 回值 = 真的换了目录。对文件是明确的「什么都不做」：文件那一侧各有各的口
-    /// （编辑 · 下载在行上与菜单里；〔FW34〕预览是右侧那块面板，跟着选中走，不靠双击）。
+    /// （编辑 · 下载在行上与菜单里；预览是右侧那块面板，跟着选中走，不靠双击）。
     pub fn activate(&mut self, i: usize) -> bool {
         let target = {
             let rows = self.listing.rows.lock().unwrap();
             match rows.get(i) {
-                // 〔W5-FILES〕有损名目录：没带字节就进不去（寻址不到）；带了 ⇒ 按字节进。
+                // 有损名目录：没带字节就进不去（寻址不到）；带了 ⇒ 按字节进。
                 Some(r) if r.is_dir && (!r.lossy_name || r.raw_name.is_some()) => {
                     join_path(&self.cwd_path(), &name_bytes(r))
                 }
@@ -832,7 +832,7 @@ impl FileWindow {
     /// ⚠ **它自己拿那把锁，而且只握到扫完为止** —— 第一版我让它吃一个 `&[Row]`，
     /// 于是调用方得先 `rows.lock().unwrap().clone()` 才借得出 `&mut self`（E0502）
     /// ⇒ **那会每帧克隆整摞行**。编得过，但在 64 万条量纲上正是
-    /// `设计/60 §4 戊` 那条纪律的反面。⇒ 锁与扫描都收进来，一次克隆都没有。
+    /// 那条纪律的反面。⇒ 锁与扫描都收进来，一次克隆都没有。
     pub fn take_reveal_offset(&mut self, pitch: f32) -> Option<Result<f32, String>> {
         // ① 先取出要找的名字（只读借用，随即放掉）。
         let want = match self.reveal.as_ref() {
@@ -868,7 +868,7 @@ impl FileWindow {
         }
     }
 
-    /// 🔴〔第四刀〕**发一趟搜索** —— `设计/60 §3.5` 那一件在窗口上的落点。
+    /// 🔴**发一趟搜索** —— 那一件在窗口上的落点。
     ///
     /// 回值 = 真的发出去了一趟（子串是空的、或这个窗口没有 tokio 运行时 ⇒ `false`）。
     ///
@@ -877,7 +877,7 @@ impl FileWindow {
     /// 走那条长连接上的 `files-find`（[`Source::origin`] 给的是登记表里的键）。
     /// ⚠ 与列目录**刻意不同**：列目录**有一条退路**（后端问不到就退回 SFTP，
     /// 见 [`Self::reload`] 与 `super::source::list_dir`），而搜索**只有后端那一条**
-    /// （`设计/60 §2 档①`：SFTP 给不了搜索）。
+    /// （SFTP 给不了搜索）。
     /// ⇒ 后端没起来时这里拿到的是「没有可用的控制通道」那句话，而**不是**
     /// 悄悄退回一趟 `walkdir` —— 那会是第二份搜索实现，而且它没有常驻索引。
     ///
@@ -885,9 +885,9 @@ impl FileWindow {
     ///
     /// `true` 只由界面上那颗「重建索引」来（用户明说「现在就重走」）。
     /// 平时是 `false`，要不要重走由**后端报的** `index_missing` / `stale` 决定
-    /// （`设计/60 §3.5.2a`；周期那个数不在这一侧，见 [`super::find`] 头注 §四）。
+    /// （周期那个数不在这一侧，见 [`super::find`] 头注 §四）。
     pub fn fire_search(&mut self, ctx: Option<egui::Context>, force_rebuild: bool) -> bool {
-        // 〔FILES2〕有损目录里也搜：索引的根与浏览名单按字节发（此前 W5-FILES 在这里出声拒）。
+        // 有损目录里也搜：索引的根与浏览名单按字节发（此前 W5-FILES 在这里出声拒）。
         let needle = self.query.trim().to_string();
         self.search.attach(ctx);
         self.search.invalidate(&needle);
@@ -913,7 +913,7 @@ impl FileWindow {
         true
     }
 
-    /// 〔FILES3 · ㉜〕**发一趟按内容搜**：根 = 窗口现在在看的那个目录（同文件名搜索那一条取舍），要找的那一串 = 那个框里的字。
+    /// **发一趟按内容搜**：根 = 窗口现在在看的那个目录（同文件名搜索那一条取舍），要找的那一串 = 那个框里的字。
     /// 回值 = 真的发出去了（框是空的 / 没有运行时 / 没接上通道 ⇒ `false`，后两种出声）。上一趟还在飞 ⇒ 先撤掉它。
     pub fn fire_grep(&mut self, ctx: Option<egui::Context>) -> bool {
         let needle = self.grep_query.trim().to_string();
@@ -1004,7 +1004,7 @@ impl FileWindow {
         if items.is_empty() {
             return false;
         }
-        // 〔FILES2〕有损目录里也传：暂存区那一段与目录无关，探在不在与提交按目录的字节寻址（此前 W5-FILES 在这里出声拒）。
+        // 有损目录里也传：暂存区那一段与目录无关，探在不在与提交按目录的字节寻址（此前 W5-FILES 在这里出声拒）。
         let items: Vec<Pending> = items
             .into_iter()
             .map(|p| Pending {
@@ -1026,11 +1026,11 @@ impl FileWindow {
         // 🔴 **把窗口交给看板**，它自己会在「有问题要问 / 进度动了 / 跑完了」时敲一下。
         //   不交的话：进度条要等用户下次动鼠标才跳一格（egui 只在有事发生时才画下一帧）。
         board.attach(ctx);
-        // 🔴〔第五刀〕新的一摞 ⇒ 取消台复位。不复位的后果是具体的：
+        // 🔴新的一摞 ⇒ 取消台复位。不复位的后果是具体的：
         //    上一摞按过取消 ⇒ 这一摞一件都起不来，而屏幕上看起来是「拖进去没反应」。
         board.cancels().reset();
         h.spawn(async move {
-            // 〔F7c〕上传那一腿也经通道（开单 → 起跑并看 → 提交），拿同一条线 ＋ 同一个地址。
+            // 上传那一腿也经通道（开单 → 起跑并看 → 提交），拿同一条线 ＋ 同一个地址。
             let (up_line, up_origin) = (line.clone(), origin.clone());
             let ask_board = board.clone();
             let up_board = board.clone();
@@ -1052,7 +1052,7 @@ impl FileWindow {
                     move |p| {
                         let (line, origin) = (up_line.clone(), up_origin.clone());
                         let b = up_board.clone();
-                        // 🔴〔第五刀〕**取消那道闸在这儿**：按过取消之后，还没起的那几件
+                        // 🔴**取消那道闸在这儿**：按过取消之后，还没起的那几件
                         //   一件都不起，而且这一趟的 `transfer_id` 由那道闸造并登记
                         //   （两件事一个落点，理由住 `launch_unless_cancelled`）。
                         async move {
@@ -1080,11 +1080,11 @@ impl FileWindow {
     /// ⚠ **上一问还没答完就不接新的** —— 两摞问题叠在一个模态框上，
     /// 「一次问完」就变成「两次问完」。
     fn take_drops(&mut self, ctx: &egui::Context) {
-        // ⚠〔第三刀〕复制那一摞也在问的时候同样不接 —— 两个模态框叠起来，
+        // ⚠复制那一摞也在问的时候同样不接 —— 两个模态框叠起来，
         //   「一次问完」就变成「答错了哪一个都不知道」。
-        // ⚠〔第五刀〕写操作那一摞同理，而它的代价更大：那个框上「都别做」与
+        // ⚠写操作那一摞同理，而它的代价更大：那个框上「都别做」与
         //   上传那个框上「全都不覆盖」叠在一起，答错一个就是删错东西。
-        // 〔FW34〕不是焦点那一个 ⇒ 不接（两栏都接的话，拖一个文件进来两栏各传一次）。
+        // 不是焦点那一个 ⇒ 不接（两栏都接的话，拖一个文件进来两栏各传一次）。
         if !self.focused || self.modal_up() {
             return;
         }
@@ -1139,7 +1139,7 @@ impl FileWindow {
     }
 
     // ════════════════════════════════════════════════════════════════════
-    // 〔第三刀〕`设计/60 §5` 第二段：**零流量复制**接到这一侧
+    // 第二段：**零流量复制**接到这一侧
     // ════════════════════════════════════════════════════════════════════
 
     /// 正摆着的那个「复制为」框（判据与 [`Self::copy_ui`] 用）。
@@ -1180,7 +1180,7 @@ impl FileWindow {
             }
         };
         let mut p = CopyPrompt::for_row(&self.cwd, &row);
-        // 〔W5-FILES · 有损名全寻址〕源与当前目录的字节跟着框走（合法 UTF-8 ⇒ 两格都是 `None`，与此前逐字节同）。
+        // 〔有损名全寻址〕源与当前目录的字节跟着框走（合法 UTF-8 ⇒ 两格都是 `None`，与此前逐字节同）。
         p.from_raw = self.row_path(&row).raw;
         p.dir_raw = self.cwd_raw.clone();
         self.copy_prompt = Some(p);
@@ -1240,7 +1240,7 @@ impl FileWindow {
             let run_board = board.clone();
             let out = super::copy::run_copy(
                 job,
-                // 〔W5-FILES〕目录那一件不问覆盖（目录复制不合并）：目标已在由后端拒、原话摆出来。
+                // 目录那一件不问覆盖（目录复制不合并）：目标已在由后端拒、原话摆出来。
                 move |j| async move {
                     !j.is_dir && super::copy::probe_target(&probe_line, &probe_origin, &j).await
                 },
@@ -1248,7 +1248,7 @@ impl FileWindow {
                     let rx = ask_board.ask(j);
                     async move { rx.await.unwrap_or(false) }
                 },
-                // 〔F7a〕经通道问后端 `files-copy`；第二个参数是覆盖策略（问过且答了「覆盖」）。
+                // 经通道问后端 `files-copy`；第二个参数是覆盖策略（问过且答了「覆盖」）。
                 //   后端这一趟取消不掉 ⇒ 不再走取消那道闸（理由住 `copy.rs` 头注）。
                 move |j, overwrite| async move {
                     run_board.begin(&j.name);
@@ -1261,7 +1261,7 @@ impl FileWindow {
         true
     }
 
-    /// 〔W5-FILES〕**一摞复制到这一栏**（「复制到另一栏」的按钮与拖，`Workspace::copy_to_other` 起在目标那一栏上）：
+    /// **一摞复制到这一栏**（「复制到另一栏」的按钮与拖，`Workspace::copy_to_other` 起在目标那一栏上）：
     /// 三段在 [`super::copy::run_copy_batch`] 的结构里（逐件探 → 撞名目录整摞不做 → 撞名文件一次问完 → 逐件发），
     /// 这里只接「问谁 · 怎么问 · 怎么起」三个口。参数是跨目录那一形（[`super::workspace::across_args`]）。
     /// 〔FW34 那一版〕只收一件、只收文件；今天一件就是一摞里只有一件。
@@ -1309,7 +1309,7 @@ impl FileWindow {
         true
     }
 
-    /// 〔FILES2〕解压跑完一趟就重列当前目录（新目录要出现在列表里）。同 [`Self::settle_finished_copies`]。
+    /// 解压跑完一趟就重列当前目录（新目录要出现在列表里）。同 [`Self::settle_finished_copies`]。
     pub fn settle_finished_extracts(&mut self) -> bool {
         let now = self.extract_board.rounds();
         if now == self.seen_extract_rounds {
@@ -1320,7 +1320,7 @@ impl FileWindow {
         true
     }
 
-    /// 〔FILES2 · `设计/60 §6.2` Q3〕第 `i` 行那份文件「解压到这里」：发 `files-extract`，撞名就问（[`super::extract::run`]）。
+    /// 第 `i` 行那份文件「解压到这里」：发 `files-extract`，撞名就问（[`super::extract::run`]）。
     /// 接不上（没运行时 / 没通道）⇒ 出声。回值 ＝ 真的起来了。
     pub fn start_extract(&mut self, i: usize, ctx: Option<egui::Context>) -> bool {
         let Some(h) = self.rt.clone() else {
@@ -1359,7 +1359,7 @@ impl FileWindow {
         true
     }
 
-    /// 〔FILES2 · Q2〕摆出「复制到另一台」那一问（机器名 ＋ 目标目录，空 ＝ 那台的 home）。回值 ＝ 真的摆出来了。
+    /// 摆出「复制到另一台」那一问（机器名 ＋ 目标目录，空 ＝ 那台的 home）。回值 ＝ 真的摆出来了。
     pub fn begin_cross(&mut self, i: usize) -> bool {
         let Some((name, src)) = self
             .listing
@@ -1381,12 +1381,12 @@ impl FileWindow {
         true
     }
 
-    /// 〔FILES2 · Q2〕那一问里正在填的（判据与 [`Self::cross_ui`] 用）。
+    /// 那一问里正在填的（判据与 [`Self::cross_ui`] 用）。
     pub fn cross_prompt_mut(&mut self) -> Option<&mut super::cross_copy::CrossPrompt> {
         self.cross_prompt.as_mut()
     }
 
-    /// 〔FILES2 · Q2〕答完那一问 ⇒ 起那一趟（机器名空 ⇒ 框留着、出声）。回值 ＝ 真的起来了。
+    /// 答完那一问 ⇒ 起那一趟（机器名空 ⇒ 框留着、出声）。回值 ＝ 真的起来了。
     pub fn confirm_cross(&mut self, ctx: Option<egui::Context>) -> bool {
         let Some(p) = self.cross_prompt.clone() else {
             return false;
@@ -1411,7 +1411,7 @@ impl FileWindow {
         true
     }
 
-    /// 〔FILES2 · Q2〕画「复制到另一台」那一问。**模态**。
+    /// 画「复制到另一台」那一问。**模态**。
     fn cross_ui(&mut self, ui: &mut egui::Ui) {
         let Some(mut p) = self.cross_prompt.clone() else {
             return;
@@ -1423,7 +1423,7 @@ impl FileWindow {
                 &[("name", &p.name)],
             ));
             ui.label(copy_text("rsFilewinCrossCopy.prompt.machine", &[]));
-            // 〔FILES2 · V152〕下拉选（本机 ＋ 已配远端，除开这一台），下面那一格照旧可以手填。
+            // 下拉选（本机 ＋ 已配远端，除开这一台），下面那一格照旧可以手填。
             let here = self.source.origin().0;
             egui::ComboBox::from_id_salt("filewin-cross-machine")
                 .selected_text(p.machine.clone())
@@ -1501,7 +1501,7 @@ impl FileWindow {
     }
 
     // ════════════════════════════════════════════════════════════════════
-    // 🔴〔第五刀〕`设计/99 §4.6.4`：**新建目录 · 改名 · 删除 · 改权限**
+    // 🔴：**新建目录 · 改名 · 删除 · 改权限**
     // ════════════════════════════════════════════════════════════════════
 
     /// 正摆着的那个框（判据与 [`Self::write_ui`] 用）。
@@ -1540,7 +1540,7 @@ impl FileWindow {
         self.begin_chmod_rows(&[i])
     }
 
-    /// 〔FW5〕摆出「把这几行的权限改成」那个框（批量改权限；一行时与 [`Self::begin_chmod`] 同一个框）。
+    /// 摆出「把这几行的权限改成」那个框（批量改权限；一行时与 [`Self::begin_chmod`] 同一个框）。
     /// 有一行不能写 ⇒ **整摞不摆**（同 [`Self::delete_picked`] 那条理由）。
     pub fn begin_chmod_rows(&mut self, idx: &[usize]) -> bool {
         let Some(rows) = idx
@@ -1552,13 +1552,13 @@ impl FileWindow {
         };
         let refs: Vec<&super::source::Listed> = rows.iter().collect();
         self.write_prompt = Some(WritePrompt::for_chmod_many(&self.cwd, &refs));
-        // 〔GP1 · 第四波〕框一摆出来就逐项问现值（`files-stat` 的 `mode`）；答回来之后框上说、只预填一次。
+        // 框一摆出来就逐项问现值（`files-stat` 的 `mode`）；答回来之后框上说、只预填一次。
         let paths: Vec<String> = rows.iter().map(|r| r.path.clone()).collect();
         self.start_mode_probe(paths);
         !refs.is_empty()
     }
 
-    /// 〔GP1〕起「现值」那一趟。没有运行时 / 没有通道 ⇒ 当场落「全读不到」（框上说「读不到现在的权限」，不猜、不静默）。
+    /// 起「现值」那一趟。没有运行时 / 没有通道 ⇒ 当场落「全读不到」（框上说「读不到现在的权限」，不猜、不静默）。
     fn start_mode_probe(&mut self, paths: Vec<String>) {
         let gen = self.mode_probe.start();
         let (Some(h), Some(line)) = (self.rt.clone(), self.line.clone()) else {
@@ -1591,7 +1591,7 @@ impl FileWindow {
     fn writable_row(&mut self, i: usize) -> Option<super::source::Listed> {
         let rows = self.listing.rows.lock().unwrap();
         match rows.get(i) {
-            // 〔FW5〕交出去的是**整个 `Listed`**：此前只交那五格（链接与时间写操作不读），
+            // 交出去的是**整个 `Listed`**：此前只交那五格（链接与时间写操作不读），
             //   现在写操作要读 `raw_name`（有损名的原始字节，改名 · 删除 · 改权限都走它）。
             Some(r) if is_writable(r) => Some(r.clone()),
             _ => None,
@@ -1611,7 +1611,7 @@ impl FileWindow {
         let Some(p) = self.write_prompt.clone() else {
             return false;
         };
-        // 〔FW5〕批量改权限那个框一次出 N 件 ⇒ `to_ops`（新建目录 / 改名恒一件）。
+        // 批量改权限那个框一次出 N 件 ⇒ `to_ops`（新建目录 / 改名恒一件）。
         let ops = match p.to_ops() {
             Ok(ops) => ops,
             Err(why) => {
@@ -1626,7 +1626,7 @@ impl FileWindow {
         true
     }
 
-    /// 起一摞 `§4.6.4`：**一次问完，才动手。**（〔FN1〕原来是「先过围栏，再……」，围栏 V119 拿掉了）
+    /// 起一摞 `§4.6.4`：**一次问完，才动手。**（原来是「先过围栏，再……」，围栏 V119 拿掉了）
     ///
     /// 🔴 三段的顺序不在这里，在 [`super::writeops::run_writes`] 的结构里 ——
     /// 这里只负责把「怎么问 · 怎么做」两个口接上去（同 [`Self::start_drop`]）。
@@ -1648,7 +1648,7 @@ impl FileWindow {
         let board = self.write_board.clone();
         board.attach(ctx);
         self.writes_started += 1;
-        // 〔W5-FILES · 有损名全寻址〕写的对象恒是当前目录的直接子项 ⇒ 根就是当前目录；有损 ⇒ 根发字节。
+        // 〔有损名全寻址〕写的对象恒是当前目录的直接子项 ⇒ 根就是当前目录；有损 ⇒ 根发字节。
         let root_raw = self.cwd_raw.clone();
         h.spawn(async move {
             let ask_board = board.clone();
@@ -1682,14 +1682,14 @@ impl FileWindow {
             return false;
         }
         self.seen_write_rounds = now;
-        // 〔FW2〕删掉 / 改了名的那几个名字已经不在了 ⇒ 选中清掉（光标留着，理由住 `Selection::clear_picked`）。
+        // 删掉 / 改了名的那几个名字已经不在了 ⇒ 选中清掉（光标留着，理由住 `Selection::clear_picked`）。
         self.selection.clear_picked();
         self.reload();
         true
     }
 
     // ═══════════════════════════════════════════════════════════════════
-    // 🔴〔第八刀〕往外拖：**两问，然后拉**
+    // 🔴往外拖：**两问，然后拉**
     // ═══════════════════════════════════════════════════════════════════
 
     /// 现在在问什么（`None` = 没在问）。判据与界面看同一个值。
@@ -1714,7 +1714,7 @@ impl FileWindow {
         }
     }
 
-    /// 〔W5-FILES · `设计/60 §6.2`「原生选文件框」〕起一趟原生选择框（在 tokio 那条线程上，不堵 UI 线程）。
+    /// 〔「原生选文件框」〕起一趟原生选择框（在 tokio 那条线程上，不堵 UI 线程）。
     /// 上传 ⇒ 选一个或几个文件；下载 ⇒ 选保存位置（建议名 ＝ 那一问里现在的名字）。接不上（没运行时）⇒ 说一句。回值 ＝ 真的起了。
     pub fn start_pick(
         &mut self,
@@ -1746,7 +1746,7 @@ impl FileWindow {
         true
     }
 
-    /// 〔W5-FILES〕选择框的结局落回那一问：上传 ⇒ 路径接进框里；下载 ⇒ 保存位置填进「存到哪儿」。没选到 ⇒ 那一问上说一句、框不动。
+    /// 选择框的结局落回那一问：上传 ⇒ 路径接进框里；下载 ⇒ 保存位置填进「存到哪儿」。没选到 ⇒ 那一问上说一句、框不动。
     pub fn settle_pick(&mut self) -> bool {
         use super::picker::Purpose;
         let Some((purpose, picked)) = self.pick_board.take() else {
@@ -1776,7 +1776,7 @@ impl FileWindow {
         let (row, full) = {
             let rows = self.listing.rows.lock().unwrap();
             match rows.get(i) {
-                // 〔FILES2 · Q4〕有损名带着字节 / 有损目录里的行也拉得下来（按字节，`lossy_pull.rs`）。
+                // 有损名带着字节 / 有损目录里的行也拉得下来（按字节，`lossy_pull.rs`）。
                 Some(r) if super::download::is_downloadable_listed(r) => {
                     (r.clone(), self.row_path(r))
                 }
@@ -1796,7 +1796,7 @@ impl FileWindow {
         self.pull_raw = None;
     }
 
-    /// 〔FILES2 · Q4〕框里那一串 → 线上的本机落点（有损名那一行按平台换成原始字节 / 有损形），外加结局旁那一句。
+    /// 框里那一串 → 线上的本机落点（有损名那一行按平台换成原始字节 / 有损形），外加结局旁那一句。
     fn pull_local(&self, dest: &str) -> (serde_json::Value, Option<String>) {
         match &self.pull_raw {
             Some((_, shown, raw)) => super::lossy_pull::local_dest(dest, shown, raw),
@@ -1824,7 +1824,7 @@ impl FileWindow {
                 true
             }
             Ask::Dest { .. } => {
-                // 〔FILES2 · Q4〕「那儿已经有东西了吗」问的是**真落点**（有损名在 Linux 上是原始字节那一份）。
+                // 「那儿已经有东西了吗」问的是**真落点**（有损名在 Linux 上是原始字节那一份）。
                 let exists = |d: &str| {
                     super::lossy_pull::local_path_of(&self.pull_local(d).0)
                         .is_some_and(|p| super::download::dest_exists_at(&p))
@@ -1855,7 +1855,7 @@ impl FileWindow {
     /// 🔴 `transfer_id` 经 [`super::transfer::launch_unless_cancelled`] 造
     /// （那是池子取消登记表的唯一造键落点）⇒ 这一趟从此**取消得掉**，
     /// 与上传/复制两条路共用同一张在飞表。
-    /// 〔FILES2 · V152〕`overwrite` ＝ 人在「盖掉它？」那一问里答了盖（有损名那条路经本机后端提交，覆盖要显式给）。
+    /// `overwrite` ＝ 人在「盖掉它？」那一问里答了盖（有损名那条路经本机后端提交，覆盖要显式给）。
     pub fn start_pull(
         &mut self,
         src_path: &str,
@@ -1868,7 +1868,7 @@ impl FileWindow {
                 Some(copy_text("rsFilewinShell.pull.noRuntime", &[]).into());
             return false;
         };
-        // 〔F7c〕下载经通道开单、订阅进度 —— 要那条线 ＋ 那台机器的地址。
+        // 下载经通道开单、订阅进度 —— 要那条线 ＋ 那台机器的地址。
         let Some(line) = self.line.clone() else {
             *self.listing.error.lock().unwrap() = Some(NO_LINE.to_string());
             return false;
@@ -1878,7 +1878,7 @@ impl FileWindow {
         board.attach(ctx);
         let src = src_path.to_string();
         let to = dest.to_string();
-        // 〔FILES2 · Q4〕有损名：远端按字节（就地拷进暂存区再下）、本机按平台落名；否则与此前逐字同一条路。
+        // 有损名：远端按字节（就地拷进暂存区再下）、本机按平台落名；否则与此前逐字同一条路。
         let (local, note) = self.pull_local(dest);
         let raw_src = self.pull_raw.take().map(|(b, _, _)| b);
         board.set_note(note);
@@ -1927,7 +1927,7 @@ impl FileWindow {
     }
 
     // ═══════════════════════════════════════════════════════════════════
-    // 🔴〔第九刀〕改一份远端文本
+    // 🔴改一份远端文本
     // ═══════════════════════════════════════════════════════════════════
 
     /// 打开着的那一份（`None` = 没在编辑）。判据与界面看同一个值。
@@ -1958,7 +1958,7 @@ impl FileWindow {
             let rows = self.listing.rows.lock().unwrap();
             match rows.get(i) {
                 // ⚠ 拿的是**那五格**（同 `writable_row`）：读一份文本要的是路径、
-                //   名字与大小，链接与时间两格它一格都不读。〔W5-FILES〕外加整条路径的字节（有损名全寻址）。
+                //   名字与大小，链接与时间两格它一格都不读。外加整条路径的字节（有损名全寻址）。
                 Some(r) => (
                     r.row.clone(),
                     self.row_path(r),
@@ -1992,7 +1992,7 @@ impl FileWindow {
         self.edit_raw = at.raw.clone().map(|b| (row.path.clone(), b));
         h.spawn(async move {
             use super::editor::Arrived;
-            // 〔F7a〕读文本经通道问后端（`files-read-text`），不再拨 SFTP。〔W5-FILES〕路径按字节发。
+            // 读文本经通道问后端（`files-read-text`），不再拨 SFTP。路径按字节发。
             let got = super::editor::read_text_at(&line, &origin, &at).await;
             board.deliver(match got {
                 Ok(Some(o)) => Arrived::Text {
@@ -2028,7 +2028,7 @@ impl FileWindow {
                 sha256,
             } => {
                 let mut pane = super::editor::Pane::opened(&path, &name, text, sha256);
-                // 〔W5-FILES〕有损名：读的时候记下的字节交给编辑面（存盘走它）。
+                // 有损名：读的时候记下的字节交给编辑面（存盘走它）。
                 pane.raw_path = self
                     .edit_raw
                     .take()
@@ -2091,7 +2091,7 @@ impl FileWindow {
         true
     }
 
-    /// 〔FW1 · D-c〕存盘撞上「盘上那份在你打开之后被改过了」之后，人点了**仍然覆盖**。回值 = 真的发出去了。
+    /// 存盘撞上「盘上那份在你打开之后被改过了」之后，人点了**仍然覆盖**。回值 = 真的发出去了。
     ///
     /// 先重读一趟拿盘上此刻那一份的摘要、再以它为 `expect` 存（`editor::overwrite_anyway`）—— CAS 仍在。
     pub fn overwrite_edit(&mut self, ctx: Option<egui::Context>) -> bool {
@@ -2117,7 +2117,7 @@ impl FileWindow {
         true
     }
 
-    /// 〔FW1 · D-c〕存盘撞上 stale 之后，人点了**丢掉我的改动、重新打开**：编辑面收掉、同一份重读一遍。
+    /// 存盘撞上 stale 之后，人点了**丢掉我的改动、重新打开**：编辑面收掉、同一份重读一遍。
     /// 回值 = 真的发出去了（拿不到运行时 / 通道 ⇒ 编辑面照旧留着，一个字不丢）。
     pub fn reopen_edit(&mut self, ctx: Option<egui::Context>) -> bool {
         let Some(p) = self.editing.as_ref() else {
@@ -2240,10 +2240,10 @@ impl FileWindow {
         false
     }
 
-    /// 🔴〔第九刀〕画**编辑面**：在飞指示 ＋ 那一份文本 ＋ 存的结局 ＋ 关窗那一问。
+    /// 🔴画**编辑面**：在飞指示 ＋ 那一份文本 ＋ 存的结局 ＋ 关窗那一问。
     ///
     /// ⚠ 它是模态的（同别的几摞）：一份文本改着的时候不该同时去改目录结构。
-    /// 〔W5-FILES · `设计/60 §6.2`「查找替换」〕从编辑框此刻的光标 / 选区起找查找框里那几个字（往后找从选区尾起、往前找从选区头起，
+    /// 〔「查找替换」〕从编辑框此刻的光标 / 选区起找查找框里那几个字（往后找从选区尾起、往前找从选区头起，
     /// 到头绕回）；找到 ⇒ 把它选中、焦点给编辑框；没找到 ⇒ 查找栏上说一句。大文件模式没有这件事（`§5.5`）。回值 ＝ 找到了。
     pub fn find_in_editor(&mut self, ctx: &egui::Context, backward: bool) -> bool {
         let id = super::bigfile::normal_editor_id();
@@ -2280,12 +2280,12 @@ impl FileWindow {
         }
     }
 
-    /// 〔W5-FILES〕编辑面查找栏那一格（判据与界面同一个口）。没开编辑面 ⇒ `None`。
+    /// 编辑面查找栏那一格（判据与界面同一个口）。没开编辑面 ⇒ `None`。
     pub fn find_bar_mut(&mut self) -> Option<&mut super::editor::FindBar> {
         self.editing.as_mut().map(|p| &mut p.find)
     }
 
-    /// 〔W5-FILES〕替换：`all` ⇒ 全文替换，说换了几处；否则 ⇒ 选区恰好是查找串就换掉它，再找下一个（不是 ⇒ 只找下一个）。
+    /// 替换：`all` ⇒ 全文替换，说换了几处；否则 ⇒ 选区恰好是查找串就换掉它，再找下一个（不是 ⇒ 只找下一个）。
     /// 回值 ＝ 换了几处。改的是编辑框那一份字（与敲键同一个 `String`）；存盘照旧要点「存」。
     pub fn replace_in_editor(&mut self, ctx: &egui::Context, all: bool) -> usize {
         let id = super::bigfile::normal_editor_id();
@@ -2390,7 +2390,7 @@ impl FileWindow {
             return;
         }
         let (mut save, mut close, mut overwrite, mut reopen) = (false, false, false, false);
-        // 〔W5-FILES · `设计/60 §6.2`〕查找替换：普通路径才有（大文件模式没有，`§5.5` 写明的边界）。Ctrl+F 把焦点给查找框。
+        // 查找替换：普通路径才有（大文件模式没有，`§5.5` 写明的边界）。Ctrl+F 把焦点给查找框。
         let big = pane.big.is_big();
         let mut find_act: Option<FindAct> = None;
         if !big && ui.input_mut(|i| i.consume_key(egui::Modifiers::COMMAND, egui::Key::F)) {
@@ -2436,7 +2436,7 @@ impl FileWindow {
                     ),
                 };
             }
-            // 〔FW1 · D-c〕盘上那份在打开之后被改过了 ⇒ 让人选，不替他选（编辑框的字一个不动）。
+            // 盘上那份在打开之后被改过了 ⇒ 让人选，不替他选（编辑框的字一个不动）。
             if pane.stale {
                 ui.horizontal(|ui| {
                     if ui.button(super::editor::OVERWRITE_LABEL.as_str()).clicked() {
@@ -2499,7 +2499,7 @@ impl FileWindow {
         }
     }
 
-    /// 🔴〔第八刀〕画**往外拖**那一摞：两问（模态）＋ 进度 ＋ 上一趟的结局。
+    /// 🔴画**往外拖**那一摞：两问（模态）＋ 进度 ＋ 上一趟的结局。
     ///
     /// ⚠ 与 [`Self::write_ui`] 同一个结构，但两问的第二问**没有输入框** ——
     /// 它是一个是非题（「盖掉它？」），给一个框反而让用户以为还能改路径。
@@ -2523,7 +2523,7 @@ impl FileWindow {
         // ── 上一趟的结局：**成功也出声** ──
         //    只在失败时说话的话，「拖完了」与「点了没反应」在屏幕上长得一样。
         if let Some(o) = self.pull.last() {
-            // 〔FILES2 · Q4〕有损名在 Windows 上落成了有损形 ⇒ 结局旁边说一句改成了什么。
+            // 有损名在 Windows 上落成了有损形 ⇒ 结局旁边说一句改成了什么。
             if let Some(n) = self
                 .pull
                 .note()
@@ -2570,7 +2570,7 @@ impl FileWindow {
                 };
                 ui.text_edit_singleline(text);
                 ui.label(&copy_text("rsFilewinShell.pull.dirHint", &[]));
-                // 〔W5-FILES · `设计/60 §6.2`〕原生选择框：选到的保存位置填进上面那个框，确定照旧走这一问的判定。
+                // 原生选择框：选到的保存位置填进上面那个框，确定照旧走这一问的判定。
                 if ui
                     .button(&copy_text("rsFilewinPicker.ui.browse", &[]))
                     .clicked()
@@ -2642,7 +2642,7 @@ impl FileWindow {
             return;
         };
         let (mut go, mut cancel) = (false, false);
-        // 〔GP1 · 第四波〕改权限那个框：现值答回来了 ⇒ 预填至多一次（`writeops::apply_prefill`）。
+        // 改权限那个框：现值答回来了 ⇒ 预填至多一次（`writeops::apply_prefill`）。
         let readout = matches!(p.kind, super::writeops::PromptKind::Chmod { .. }).then(|| {
             self.mode_probe.attach(ui.ctx().clone());
             self.mode_probe.readout()
@@ -2689,7 +2689,7 @@ impl FileWindow {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// 🔴〔FW1+FW2 2026-09-24〕键盘 · 多选 · 右键菜单 —— 接到窗口上的那几跳
+// 🔴键盘 · 多选 · 右键菜单 —— 接到窗口上的那几跳
 // ════════════════════════════════════════════════════════════════════════
 //
 // 纯的那一份（选中态 · 键位翻译 · 「能做什么」那张表）住 `select.rs`；这里只有胶水，
@@ -2702,7 +2702,7 @@ impl FileWindow {
         &self.selection
     }
 
-    /// 〔FW34〕选中的**恰好那一项**叫什么；`Err(n)` ＝ 选中了 `n` 项（`n ≠ 1`）。
+    /// 选中的**恰好那一项**叫什么；`Err(n)` ＝ 选中了 `n` 项（`n ≠ 1`）。
     /// O(1)：只问选中态，不扫列表（预览每帧都问它）。
     pub fn picked_name(&self) -> Result<String, usize> {
         match self.selection.len() {
@@ -2711,7 +2711,7 @@ impl FileWindow {
         }
     }
 
-    /// 〔W5-FILES〕选中的那一摞（按列表的显示序）。选中态按 `pick_key` 记，这里按同一把键取回行。
+    /// 选中的那一摞（按列表的显示序）。选中态按 `pick_key` 记，这里按同一把键取回行。
     pub fn picked_rows(&self) -> Vec<Listed> {
         let rows = self.listing.rows.lock().unwrap();
         self.selection
@@ -2721,7 +2721,7 @@ impl FileWindow {
             .collect()
     }
 
-    /// 〔FW34〕按名字找那一行（O(n)：只在「选中的那一项换了」时调，不是每帧）。
+    /// 按名字找那一行（O(n)：只在「选中的那一项换了」时调，不是每帧）。
     pub fn row_named(&self, name: &str) -> Option<Listed> {
         self.listing
             .rows
@@ -2732,7 +2732,7 @@ impl FileWindow {
             .cloned()
     }
 
-    /// 〔FW34〕这个目录视图**手上有没有活**（`None` ＝ 没有）—— 关标签页 / 收右栏之前问它。
+    /// 这个目录视图**手上有没有活**（`None` ＝ 没有）—— 关标签页 / 收右栏之前问它。
     ///
     /// 有一问摆着、有一份文本开着、有东西在传 / 在复制 / 在写 / 在读写文本 ⇒ 说是哪一件。
     /// 后台那几趟任务不随标签页走，关掉就再也没人把结局摆给你看 ⇒ 这时候不许关。
@@ -2800,16 +2800,16 @@ impl FileWindow {
         self.menu.as_ref()
     }
 
-    /// 有一个模态框摆着吗（上传那一问 · 复制那两问 · 写操作那两问 · 新建空文件那个框〔F7b〕· 往外拖那两问 · 编辑面）。
+    /// 有一个模态框摆着吗（上传那一问 · 复制那两问 · 写操作那两问 · 新建空文件那个框 · 往外拖那两问 · 编辑面）。
     ///
     /// 🔴 **一处**：拖入那一口（[`Self::take_drops`]）与键盘那一口（[`Self::apply_keys`]）
     /// 问的是同一个函数 —— 分成两份的症状是「编辑面开着，按 Delete 删掉了列表里的文件」。
     fn modal_up(&self) -> bool {
         self.board.is_asking()
             || self.copy_board.is_asking()
-            // 〔FILES2〕解压撞名那一问。
+            // 解压撞名那一问。
             || self.extract_board.is_asking()
-            // 〔FILES2 · Q2〕复制到另一台：填机器名那一问 · 盖不盖那一问。
+            // 复制到另一台：填机器名那一问 · 盖不盖那一问。
             || self.cross_prompt.is_some()
             || self.cross_board.is_asking()
             || self.copy_prompt.is_some()
@@ -2817,14 +2817,14 @@ impl FileWindow {
             || self.write_prompt.is_some()
             || self.new_file.is_some()
             || self.pull_ask.is_some()
-            // 〔F7c〕工具栏「上传」那一问（框开着时键盘不许动列表）。
+            // 工具栏「上传」那一问（框开着时键盘不许动列表）。
             || self.upload.is_open()
             || self.editing.is_some()
     }
 
     /// 键盘这一帧该不该归列表。**五道闸**，任一成立就不接：
     ///
-    /// 0. 〔FW34〕这个目录视图不是焦点那一个（双栏时另一栏、后台标签页）—— 不闸的话按一下 Delete 两栏各删一次；
+    /// 0. 这个目录视图不是焦点那一个（双栏时另一栏、后台标签页）—— 不闸的话按一下 Delete 两栏各删一次；
     /// 1. 有模态框摆着（[`Self::modal_up`]）—— 键是给那个框的；
     /// 2. 右键菜单摆着 —— Esc / 点别处先把它收掉；
     /// 3. 画的是搜索命中那一摞 —— 那一摞交不出下标（`rows::HitTally` 头注那条），
@@ -2971,14 +2971,14 @@ impl FileWindow {
             (Action::Edit, [i]) => self.begin_edit(*i, ctx),
             (Action::Copy, [i]) => self.begin_copy(*i),
             (Action::Download, [i]) => self.begin_pull(*i),
-            // 〔W5-FILES〕一项或多项。
+            // 一项或多项。
             (Action::Size, _) => self.start_sizes(&idx, ctx),
-            // 〔FILES2〕恰好一份文件。
+            // 恰好一份文件。
             (Action::Extract, [i]) => self.start_extract(*i, ctx),
-            // 〔FILES2 · Q2〕恰好一份文件。
+            // 恰好一份文件。
             (Action::CrossCopy, [i]) => self.begin_cross(*i),
             (Action::Rename, [i]) => self.begin_rename(*i),
-            // 〔FW5〕一项或多项：同一个框（多项时框上说件数）。
+            // 一项或多项：同一个框（多项时框上说件数）。
             (Action::Chmod, _) => self.begin_chmod_rows(&idx),
             // `actions_for` 只对恰好一项给出单项动作 ⇒ 这一支走不到；
             // 真走到了也**出声**，不静默。
@@ -3027,7 +3027,7 @@ impl FileWindow {
         true
     }
 
-    /// 〔W5-FILES · `设计/60 §6.2`〕**胶水**：列表说「第 `i` 行被拖起了」→ 拖的是哪一摞（它在选中里 ⇒ 整摞；
+    /// **胶水**：列表说「第 `i` 行被拖起了」→ 拖的是哪一摞（它在选中里 ⇒ 整摞；
     /// 不在 ⇒ 改成只选它 —— 与右键同一个手感，[`select::Selection::pick_for_menu`]）→ 记下「在拖」。
     /// 松手落在另一栏 ⇒ 工作区走「复制到另一栏」那一个入口（不另起一条复制路）。
     pub fn apply_drag_start(&mut self) -> bool {
@@ -3042,7 +3042,7 @@ impl FileWindow {
         true
     }
 
-    /// 〔W5-FILES · `设计/60 §6.2`「算目录大小」〕选中的这几项逐项问后端 `files-size`（顺序发），跑完一句话摆出来。
+    /// 〔「算目录大小」〕选中的这几项逐项问后端 `files-size`（顺序发），跑完一句话摆出来。
     /// 纯读 ⇒ 不重列目录。接不上（没运行时 / 没通道）⇒ 出声。回值 ＝ 真的起来了。
     pub fn start_sizes(&mut self, idx: &[usize], ctx: Option<egui::Context>) -> bool {
         let Some(h) = self.rt.clone() else {
@@ -3056,7 +3056,7 @@ impl FileWindow {
         };
         let items: Vec<(serde_json::Value, String)> = {
             let rows = self.listing.rows.lock().unwrap();
-            // 〔W5-FILES · 有损名全寻址〕路径按字节发。
+            // 〔有损名全寻址〕路径按字节发。
             idx.iter()
                 .filter_map(|&i| rows.get(i))
                 .map(|r| (self.row_path(r).wire(), r.name.clone()))
@@ -3133,7 +3133,7 @@ impl FileWindow {
                 ui.label(MENU_EMPTY.as_str());
             }
             for a in &m.actions {
-                // 〔NET2〕这台做不到的那一件置灰，hover 说为什么。
+                // 这台做不到的那一件置灰，hover 说为什么。
                 let blocked = self.unavailable_here(*a);
                 let b = ui.add_enabled(blocked.is_none(), egui::Button::new(a.label(m.n)));
                 let b = match &blocked {
@@ -3156,7 +3156,7 @@ impl FileWindow {
 }
 
 impl FileWindow {
-    /// 🔴〔第四刀〕**每一帧的正文。** 从 `eframe::App::ui` 里剥出来的，
+    /// 🔴**每一帧的正文。** 从 `eframe::App::ui` 里剥出来的，
     /// 剥的理由只有一个：**让它进得了执行链**。
     ///
     /// `eframe::App::ui` 的签名逐字要一个 `&mut eframe::Frame`
@@ -3167,7 +3167,7 @@ impl FileWindow {
     /// 这正是本仓那条「判据不在执行链上就等于不存在」。
     ///
     /// ⇒ 从此 `eframe::App::ui` 只剩一句委派，判据直接喂本函数。
-    /// 〔FW34〕那一句委派今天住 [`super::workspace::Workspace`]（它才是 `eframe::App`）：
+    /// 那一句委派今天住 [`super::workspace::Workspace`]（它才是 `eframe::App`）：
     /// 每个标签页的正文就是这里，外面只多了标签栏 · 双栏 · 预览那一层。
     pub fn frame_body(&mut self, ui: &mut egui::Ui) {
         // 🔴 **第一帧**才复核得了字体 —— 之前碰 `fonts_mut` 会 panic，
@@ -3196,7 +3196,7 @@ impl FileWindow {
         //    编不过。`⬆ 上一级` 与 `刷新` 两颗**例外**：它们调的那两个方法
         //    在这个闭包里借得出来（现状如此，别读成「跳转可以在闭包里做」）。
         let mut mkdir = false;
-        let mut new_file = false; // 〔F7b〕同 `mkdir` 的借用理由，收在帧尾
+        let mut new_file = false; // 同 `mkdir` 的借用理由，收在帧尾
         let mut go: Option<String> = None;
         let mut pick: Option<SortBy> = None;
         let mut term = false;
@@ -3213,16 +3213,16 @@ impl FileWindow {
             {
                 self.reload();
             }
-            // 🔴〔第五刀〕「新建目录」—— 它是四条写操作里**唯一**不针对某一行的那条
+            // 🔴「新建目录」—— 它是四条写操作里**唯一**不针对某一行的那条
             //    （另外三条在行上），所以它的落点是工具栏。
             if ui.button(MKDIR_LABEL.as_str()).clicked() {
                 mkdir = true;
             }
-            // 〔F7b〕「新建空文件」—— 同样不针对某一行，所以同样在工具栏（逻辑住 `create.rs`）。
+            // 「新建空文件」—— 同样不针对某一行，所以同样在工具栏（逻辑住 `create.rs`）。
             if ui.button(super::create::NEW_FILE_LABEL.as_str()).clicked() {
                 new_file = true;
             }
-            // 〔F7c〕「上传」—— 选完走拖入那一条（`upload.rs` 头注）。
+            // 「上传」—— 选完走拖入那一条（`upload.rs` 头注）。
             if ui.button(super::upload::UPLOAD_LABEL.as_str()).clicked() {
                 self.upload.open();
             }
@@ -3258,7 +3258,7 @@ impl FileWindow {
                 ui.spinner();
                 ui.label(&copy_text("rsFilewinShell.frame.listing", &[]));
             }
-            // 〔FW2〕选中了不止一项 ⇒ 说一声几项（一项时那块选中色自己就说清了）。
+            // 选中了不止一项 ⇒ 说一声几项（一项时那块选中色自己就说清了）。
             //   ⚠ 摆在工具栏上而不是另起一行：另起一行会在选中第二项的那一下把整张列表往下推。
             let n = self.selection.len();
             if n > 1 {
@@ -3273,7 +3273,7 @@ impl FileWindow {
         //      同住一处，逐条理由住那个函数的头注）—— 这一行**不许自己切**。
         ui.horizontal_wrapped(|ui| {
             ui.label(format!("{} :", self.source.label()));
-            // 〔W5-FILES〕有损目录里面包屑只画不点：那一摞前缀是有损串，点上去寻址不到（「上一级」照样按字节走）。
+            // 有损目录里面包屑只画不点：那一摞前缀是有损串，点上去寻址不到（「上一级」照样按字节走）。
             let lossy = self.cwd_raw.is_some();
             for (seg, full) in breadcrumbs(&self.cwd) {
                 // 当前这一级**不画成按钮**：点它什么都不会发生（`navigate_to` 同路径直接返回）
@@ -3285,8 +3285,8 @@ impl FileWindow {
                 }
             }
         });
-        // 〔FW34〕书签栏（★ 切换当前目录 ＋ 一排书签）。点了哪一条也收在帧尾跳（同面包屑）。
-        // 〔W5-FILES〕有损目录里不画书签栏：书签落盘是字符串，收进去的会是一条寻址不到的书签。
+        // 书签栏（★ 切换当前目录 ＋ 一排书签）。点了哪一条也收在帧尾跳（同面包屑）。
+        // 有损目录里不画书签栏：书签落盘是字符串，收进去的会是一条寻址不到的书签。
         if let Some(shelf) = self.shelf.clone().filter(|_| self.cwd_raw.is_none()) {
             if let Some(d) = shelf.bar_ui(ui, &self.cwd) {
                 go = Some(d);
@@ -3308,7 +3308,7 @@ impl FileWindow {
             let ctx = ui.ctx().clone();
             self.open_terminal_here(Some(ctx));
         }
-        // 🔴〔FW1〕**键盘** —— 在画列表之前接：这一帧按的键，这一帧的列表就要画出结果
+        // 🔴**键盘** —— 在画列表之前接：这一帧按的键，这一帧的列表就要画出结果
         //    （光标那一圈、滚进视野）。能不能接由 `keys_blocked` 那四道闸说了算。
         //    ⚠ 滚进视野要**上一帧**真物化的那一段 ⇒ 在 `tally` 被清零之前取。
         let (prev_first, prev_last) = (self.tally.first_row, self.tally.last_row);
@@ -3327,7 +3327,7 @@ impl FileWindow {
         if let Some(e) = self.listing.error.lock().unwrap().clone() {
             ui.colored_label(egui::Color32::RED, e);
         }
-        // 〔F2〕这里原先画「这一屏没走后端：…」（退路那一句）。退路没了，那一句也没了。
+        // 这里原先画「这一屏没走后端：…」（退路那一句）。退路没了，那一句也没了。
         // 🔴 截断也要出声 —— 「这个目录里就这么多」与「后端只给了前 N 条」
         //    在屏幕上长得一样，而用户会据此以为某个文件不存在。
         if self.listing.truncated.load(Ordering::SeqCst) {
@@ -3339,9 +3339,9 @@ impl FileWindow {
                 ),
             );
         }
-        // 🔴〔第四刀〕搜索那一行 ＋ **新鲜度那一行**（`设计/60 §3.5.3` 那条 ⬜）。
+        // 🔴搜索那一行 ＋ **新鲜度那一行**（那条 ⬜）。
         self.search_row(ui);
-        // 〔FILES3 · ㉜〕按内容搜那一行（回车 / 按钮才发，「停」撤掉在飞那一趟）。
+        // 按内容搜那一行（回车 / 按钮才发，「停」撤掉在飞那一趟）。
         self.grep_row(ui);
         // `§5.4d` 那一摞：确认框 ／ 进度。**画在列表之前** —— 它是模态的。
         self.board.ui(ui);
@@ -3352,27 +3352,27 @@ impl FileWindow {
         self.cross_board.ui(ui);
         self.cross_ui(ui);
         self.copy_ui(ui);
-        // 🔴〔第五刀〕`§4.6.4` 那一摞：一次问完的确认框 ／ 结果（〔FN1〕「被围栏挡住那几句话」那一段删了）。
+        // 🔴`§4.6.4` 那一摞：一次问完的确认框 ／ 结果（「被围栏挡住那几句话」那一段删了）。
         //    同样模态、同样画在列表之前。
         self.write_board.ui(ui);
         self.write_ui(ui);
-        // 〔F7b〕新建空文件那个框（同样模态、同样在前）。
+        // 新建空文件那个框（同样模态、同样在前）。
         self.new_file_ui(ui);
-        // 🔴〔第八刀〕往外拖那一摞：两问 ／ 进度 ／ 结局。同样模态、同样在前。
+        // 🔴往外拖那一摞：两问 ／ 进度 ／ 结局。同样模态、同样在前。
         self.pull_ui(ui);
-        // 〔F7c〕「上传」那一问：确定之后走拖入那一条（先一次问完覆盖，再并行传）。
+        // 「上传」那一问：确定之后走拖入那一条（先一次问完覆盖，再并行传）。
         let up_dir = self.cwd.clone();
         if let Some(items) = self.upload.ui(ui, &up_dir) {
             let ctx = ui.ctx().clone();
             self.start_drop(items, Some(ctx));
         }
-        // 〔W5-FILES〕上传那一问上点了「选择…」⇒ 起原生选择框；选完的结局下一帧由 `settle_pick` 填回去。
+        // 上传那一问上点了「选择…」⇒ 起原生选择框；选完的结局下一帧由 `settle_pick` 填回去。
         if self.upload.take_browse() {
             let ctx = ui.ctx().clone();
             self.start_pick(super::picker::Purpose::Upload, Some(ctx));
         }
         self.settle_pick();
-        // 🔴〔第九刀〕编辑那一摞：**先消化到货，再画** ——
+        // 🔴编辑那一摞：**先消化到货，再画** ——
         //    反了的话这一帧画的是上一帧的状态（读完了却还显示「正在读」）。
         self.settle_opened_edits();
         self.settle_saved_edits();
@@ -3388,7 +3388,7 @@ impl FileWindow {
         self.tally = RenderTally::default();
         self.hits_tally = HitTally::default();
         self.grep_tally = GrepTally::default();
-        // 🔴〔第四刀〕搜索框里有字 ⇒ 画命中，否则画当前目录。**二选一，不并排** ——
+        // 🔴搜索框里有字 ⇒ 画命中，否则画当前目录。**二选一，不并排** ——
         //    并排会让「你现在看的是哪一摞」变成一个要靠标题猜的问题。
         if self.showing_hits() {
             let hits: Vec<String> = self
@@ -3397,12 +3397,12 @@ impl FileWindow {
                 .outcome
                 .map(|o| o.hits.iter().map(|h| h.display()).collect())
                 .unwrap_or_default();
-            // 🔴〔第五刀〕收数口是 [`HitTally`]，**不是** `self.tally` ——
+            // 🔴收数口是 [`HitTally`]，**不是** `self.tally` ——
             //    于是命中那一摞**在类型上**交不出任何一个下标，而下面那三条胶水
             //    索引的是 `listing.rows`（另一摞东西）。逐条理由住那个类型的头注。
             show_hit_rows(ui, &hits, &mut self.hits_tally);
         } else if self.showing_grep() {
-            // 〔FILES3 · ㉜〕按内容搜的命中：每行点得开（跳到那份文件），收数口是 [`GrepTally`]（它的下标只指这一摞）。
+            // 按内容搜的命中：每行点得开（跳到那份文件），收数口是 [`GrepTally`]（它的下标只指这一摞）。
             let hits: Vec<String> = self
                 .grep
                 .shown()
@@ -3411,8 +3411,8 @@ impl FileWindow {
                 .unwrap_or_default();
             grep::show_grep_rows(ui, &hits, &mut self.grep_tally);
         } else {
-            // 🔴〔第十刀〕reveal 的两半在这里落地：**算**出偏移（只算一次）＋ 高亮那个名字。
-            //    ⚠ 偏移是算的不是找的 —— `设计/60 §4 戊` 那条纪律（`show_rows` 才是主语）。
+            // 🔴reveal 的两半在这里落地：**算**出偏移（只算一次）＋ 高亮那个名字。
+            //    ⚠ 偏移是算的不是找的 —— 那条纪律（`show_rows` 才是主语）。
             // ⚠ **先问 reveal（它自己拿锁），再拿锁画** —— 顺序反了就要克隆整摞行。
             let pitch = super::rows::row_pitch(ui);
             let jump = match self.take_reveal_offset(pitch) {
@@ -3423,7 +3423,7 @@ impl FileWindow {
                 }
                 None => None,
             };
-            // 〔FW1〕键盘挪了光标 ⇒ 不在视野里才滚（reveal 那一下优先：它也是「只滚一次」）。
+            // 键盘挪了光标 ⇒ 不在视野里才滚（reveal 那一下优先：它也是「只滚一次」）。
             let key_jump = self
                 .key_scroll
                 .take()
@@ -3443,20 +3443,20 @@ impl FileWindow {
         // ⚠ 这三条只对**目录列表**那一摞有意义（下标索引的是 `listing.rows`）。
         //   命中那一摞交不出下标 —— 第四刀靠的是「那个函数不画可点控件」这条纪律，
         //   第五刀换成了**类型**（上面那一段）。
-        // 〔FILES3〕按内容搜那一摞的胶水：点了第 i 条 ⇒ 跳过去（下标只指命中那一摞，与下面几条胶水不相干）。
+        // 按内容搜那一摞的胶水：点了第 i 条 ⇒ 跳过去（下标只指命中那一摞，与下面几条胶水不相干）。
         if let Some(i) = self.grep_tally.jump.take() {
             self.jump_to_grep_hit(i);
         }
         self.apply_click();
         self.apply_copy_click();
         self.apply_write_clicks(Some(ctx.clone()));
-        // 🔴〔第八刀〕第四条胶水。**不许写在这行之外** —— 理由住 `apply_pull_click`。
+        // 🔴第四条胶水。**不许写在这行之外** —— 理由住 `apply_pull_click`。
         self.apply_pull_click();
-        // 🔴〔第九刀〕第五条胶水。
+        // 🔴第五条胶水。
         self.apply_edit_click(Some(ctx.clone()));
-        // 🔴〔FW2〕第六、七条胶水：单击改选中 · 右键摆菜单。然后画菜单（它在最上层）。
+        // 🔴第六、七条胶水：单击改选中 · 右键摆菜单。然后画菜单（它在最上层）。
         self.apply_pick_click();
-        // 〔W5-FILES〕第八条胶水：拖起一行。
+        // 第八条胶水：拖起一行。
         self.apply_drag_start();
         let at = ctx.input(|i| i.pointer.interact_pos()).unwrap_or_default();
         self.apply_menu_click(at);
@@ -3465,7 +3465,7 @@ impl FileWindow {
 
     /// 搜索那一行：输入框 ＋「重建索引」＋ 在飞指示，接着是新鲜度那一行。
     ///
-    /// 🔴 **`changed()` 就发** —— `设计/60 §3.5` 要的形状逐字是「打字即出结果，不等」。
+    /// 🔴 **`changed()` 就发** —— 要的形状逐字是「打字即出结果，不等」。
     /// ⚠ 代价如实记：**没有去抖** ⇒ 每敲一个字一趟往返。去抖要一个定时器，
     ///   而 monitor 侧每一个定时器都要进 `rust_timer_registry` 并说清谁退役它
     ///   ⇒ 那是一件独立的活。在飞的那几趟由 [`super::find::SearchBoard`] 的号作废掉，
@@ -3503,7 +3503,7 @@ impl FileWindow {
 }
 
 impl FileWindow {
-    /// 〔FILES3 · `设计/99 §2.2 ㉜`〕按内容搜那一行：输入框 ＋「搜内容」＋ 在飞时「停」，接着是总述那一行。
+    /// 按内容搜那一行：输入框 ＋「搜内容」＋ 在飞时「停」，接着是总述那一行。
     ///
     /// 🔴 **回车或按钮才发**（不是 `changed()` 就发）：按内容搜要把整棵树读一遍，打一个字发一趟就是一个字一次全树读。
     fn grep_row(&mut self, ui: &mut egui::Ui) {
@@ -3546,14 +3546,14 @@ impl FileWindow {
     }
 }
 
-// 〔P4〕`early_failure` · `EARLY_FAILURE_BUDGET`（开窗之后看它是不是当场就退了）随「起进程那一侧」留在 monitor：壳里 `filewin/proc.rs`。
+// `early_failure` · `EARLY_FAILURE_BUDGET`（开窗之后看它是不是当场就退了）随「起进程那一侧」留在 monitor：壳里 `filewin/proc.rs`。
 
 /// 在**次线程**上开一个文件管理窗口。立刻返回，不阻塞调用方。
 ///
 /// ⚠ `eframe::run_native` 在它自己那条线程上是**阻塞到窗口关闭**的；
 /// 这里把它整个丢进 `std::thread::spawn` ⇒ 对调用方是非阻塞的。
 ///
-/// 🔴〔第十三刀〕**这两个函数今天跑在窗口进程里，不在 monitor 里** ——
+/// 🔴**这两个函数今天跑在窗口进程里，不在 monitor 里** ——
 /// 调用方是 [`super::proc::child_main`]。它们**不带种子**的这一支（本函数）
 /// 生产上没人走：入口那条命令恒是先列一趟再把那一屏交出去。
 pub fn open_detached(
@@ -3578,30 +3578,30 @@ pub fn open_detached(
 ///
 /// 🔴 用它而不是 `open_detached` 的理由住 [`FileWindow::seeded`]：
 /// 入口那条命令为了能在 webview 那侧出声，已经列过一趟了，别再打第二次往返。
-/// 🔴〔第十三刀〕**为什么窗口进程里还是「起一条次线程」而不是直接占 `main`**
+/// 🔴**为什么窗口进程里还是「起一条次线程」而不是直接占 `main`**
 ///
 /// 两条，都不是省事：
 /// ① `with_any_thread(true)` 那条路是这个窗口**唯一被实地量过**的形态
-///    （`真相源/99 §八` 那四趟读数、Xvfb 台架那一摞都是在它上面打的）。
+///    （那四趟读数、Xvfb 台架那一摞都是在它上面打的）。
 ///    换成「占 `main` 线程」是换一个**没有读数**的配置，而换了被测对象就要重打读数。
-/// ② 那个 hook 里还挂着 Windows 的进程 DPI 归属那一句（〔WN1〕今天是 `with_dpi_aware(builder, true)`），
+/// ② 那个 hook 里还挂着 Windows 的进程 DPI 归属那一句（今天是 `with_dpi_aware(builder, true)`），
 ///    它有自己的判据。绕开 hook 就是把那一句一起绕开。
 /// ⇒ 保持不动：窗口进程的 `main` 只负责读种子、起运行时、`join` 这条线程。
 pub fn open_detached_seeded(
     source: Source,
     cwd: String,
     rt: Option<tokio::runtime::Handle>,
-    // 🔴〔F2〕通道（`None` = 判据那一形：不连后端）。
+    // 🔴通道（`None` = 判据那一形：不连后端）。
     line: Option<Line>,
     rows: Vec<Listed>,
-    // 🔴〔第十刀〕`reveal` = 开窗就高亮这一行（`None` = 不高亮）。
+    // 🔴`reveal` = 开窗就高亮这一行（`None` = 不高亮）。
     //    那是老面板 `open(revealPath)` 那一形（会话工具卡 → 文件跳转）。
     reveal: Option<String>,
-    // 〔FW34〕书签文件（monitor 算好交过来；`None` ＝ 数据目录解不出来，书签栏上出声）。
+    // 书签文件（monitor 算好交过来；`None` ＝ 数据目录解不出来，书签栏上出声）。
     bookmarks: Option<std::path::PathBuf>,
-    // 〔FILES2 · V152〕「复制到另一台」下拉里的机器（开窗种子带来的）。
+    // 「复制到另一台」下拉里的机器（开窗种子带来的）。
     machines: Vec<String>,
-    // 〔WF2 · WIN3 读数 D〕开出来第一拍夹进这块工作区（`None` ＝ 不夹）。
+    // 开出来第一拍夹进这块工作区（`None` ＝ 不夹）。
     work_area: Option<host_core::WorkArea>,
 ) -> std::thread::JoinHandle<Result<(), String>> {
     OPEN_REQUESTED.fetch_add(1, Ordering::SeqCst);
@@ -3623,17 +3623,17 @@ pub fn open_detached_seeded(
                 if let Some(line) = line {
                     w.attach_line(line);
                 }
-                // 🔴〔第十刀〕开窗就高亮那一行。**在这里设而不是进 `seeded` 的签名** ——
+                // 🔴开窗就高亮那一行。**在这里设而不是进 `seeded` 的签名** ——
                 //    `seeded` 有 5 处调用点（判据 4 处），而 reveal 只有开窗那一条路用得上。
                 if let Some(name) = reveal {
                     w.set_reveal(&name);
                 }
-                // 〔FW34〕书签：按这台机器的 origin 读一次。
+                // 书签：按这台机器的 origin 读一次。
                 w.shelf = Some(super::bookmarks::Shelf::open(bookmarks, &w.source.origin()));
                 w.machines = machines;
                 // 第一拍：读文件 ＋ `set_fonts`。**这里复核不了**（`fonts.rs §四`）。
                 w.font = FontState::Pending(fonts::install(&cc.egui_ctx));
-                // 〔FW34〕最外一层是 `Workspace`（标签页 ＋ 双栏 ＋ 预览），开窗那一个目录视图是它的第一个标签页。
+                // 最外一层是 `Workspace`（标签页 ＋ 双栏 ＋ 预览），开窗那一个目录视图是它的第一个标签页。
                 Ok(Box::new(FitOnce {
                     inner: super::workspace::Workspace::new(w),
                     work: work_area,
@@ -3648,12 +3648,12 @@ pub fn open_detached_seeded(
 #[path = "../../../../tests/frontend/filewin/shell_tests.rs"]
 mod tests;
 
-// 〔FW1+FW2〕键盘 · 多选 · 右键菜单接到窗口上的那一摞（每一条都真跑 `frame_body`）。
+// 键盘 · 多选 · 右键菜单接到窗口上的那一摞（每一条都真跑 `frame_body`）。
 #[cfg(test)]
 #[path = "../../../../tests/frontend/filewin/shell_keys_tests.rs"]
 mod keys_tests;
 
-/// 〔WF2 · WIN3 读数 D〕开窗后第一拍（窗口几何有了的那一拍）把窗口夹进 monitor 交来的工作区，之后原样转交。
+/// 开窗后第一拍（窗口几何有了的那一拍）把窗口夹进 monitor 交来的工作区，之后原样转交。
 struct FitOnce<A> {
     inner: A,
     work: Option<host_core::WorkArea>,
@@ -3700,7 +3700,7 @@ pub(crate) fn fit_commands(
     ]
 }
 
-/// 〔W5-FILES〕编辑面查找栏上按了哪一颗。
+/// 编辑面查找栏上按了哪一颗。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum FindAct {
     Next,
@@ -3709,10 +3709,10 @@ enum FindAct {
     ReplaceAll,
 }
 
-/// 〔W5-FILES〕查找框的 egui id（Ctrl+F 把焦点给它）。
+/// 查找框的 egui id（Ctrl+F 把焦点给它）。
 const FIND_ID: &str = "filewin-editor-find";
 
-/// 〔W5-FILES · `设计/60 §6.2`〕编辑面那一截查找替换：查找框 · 上一个 · 下一个 · 替换框 · 替换 · 全部替换 · 上一下那句话。
+/// 编辑面那一截查找替换：查找框 · 上一个 · 下一个 · 替换框 · 替换 · 全部替换 · 上一下那句话。
 /// 在查找框里按回车 ＝「下一个」。回这一帧按了哪一颗。
 fn find_row(ui: &mut egui::Ui, f: &mut super::editor::FindBar) -> Option<FindAct> {
     let mut act = None;
@@ -3759,14 +3759,14 @@ fn find_row(ui: &mut egui::Ui, f: &mut super::editor::FindBar) -> Option<FindAct
     act
 }
 
-/// 〔W5-FILES · 有损名全寻址〕一行的名字的真字节：有损 ⇒ 后端送的那一段（`raw_name`），否则 ⇒ 名字的 UTF-8。
+/// 〔有损名全寻址〕一行的名字的真字节：有损 ⇒ 后端送的那一段（`raw_name`），否则 ⇒ 名字的 UTF-8。
 pub fn name_bytes(r: &super::source::Listed) -> Vec<u8> {
     r.raw_name
         .clone()
         .unwrap_or_else(|| r.name.as_bytes().to_vec())
 }
 
-/// 〔W5-FILES〕目录 ＋ `/` ＋ 名字（按字节拼；根上不重复那个 `/`）。
+/// 目录 ＋ `/` ＋ 名字（按字节拼；根上不重复那个 `/`）。
 pub fn join_path(dir: &super::source::RemotePath, name: &[u8]) -> super::source::RemotePath {
     let mut b = dir.bytes();
     while b.len() > 1 && b.last() == Some(&b'/') {

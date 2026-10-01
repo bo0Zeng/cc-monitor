@@ -19,7 +19,7 @@ type RemoteArgs = Parameters<ForkStartDeps["startRemote"]>[0];
 type AskFn = ForkStartDeps["ask"];
 type MintFn = ForkStartDeps["mintForkName"];
 
-/** 〔FIX4 · J7〕铸名是那台后端的事（`tmux-name-mint {forkOf}`）；替身回一个与源名**无关**的固定名，好认出「用的就是它铸的」。 */
+/** 铸名是那台后端的事（`tmux-name-mint {forkOf}`）；替身回一个与源名**无关**的固定名，好认出「用的就是它铸的」。 */
 const MINTED = "minted-by-backend-fork-cc";
 
 function deps(over: { ask?: AskFn; mint?: MintFn } = {}) {
@@ -190,7 +190,7 @@ describe("G6：本机那条路不问 tmux", () => {
 });
 
 describe("tmux 名", () => {
-  // 〔FIX4 · `设计/90 §3` J7〕名字由那台后端铸（「与源名不同」「避让已占用」两条期望随 `fork_tmux_base` 搬进
+  // 名字由那台后端铸（「与源名不同」「避让已占用」两条期望随 `fork_tmux_base` 搬进
   //   `tests/backend/control/ccm/plan_tests.rs`）。这里钉编排那一半：问的是源名、用的是它铸的、问不到就不起。
   it("★ 问那台后端铸名：交的是源会话的 tmux 名，用的是它铸回来的那个", async () => {
     const d = deps();
@@ -209,7 +209,7 @@ describe("tmux 名", () => {
     expect(d.startRemote.mock.calls[0][0].tmuxName).toBe(MINTED);
   });
 
-  // 〔FE1〕`设计/01 §5` D4：问不到而要进 tmux ⇒ 不起、抛给 `runForkFlow` 出声（不自己拼一个不避让的名字）。
+  // 问不到而要进 tmux ⇒ 不起、抛给 `runForkFlow` 出声（不自己拼一个不避让的名字）。
   it("★ 〔FE1〕铸不出名字且要进 tmux ⇒ 抛（不起），原因带出去", async () => {
     const d = deps({ mint: async () => ({ ok: false, why: "链路断了" }) });
     await expect(
@@ -249,7 +249,7 @@ describe("Phase G：远端拉起失败不许被读成成功", () => {
     expect(r).toBe("failed");
   });
 
-  // 〔FE1〕本机那一跳与远端同形：`startLocal` 失败时自己出声并回 `false`（`local-resume.ts`），
+  // 本机那一跳与远端同形：`startLocal` 失败时自己出声并回 `false`（`local-resume.ts`），
   //   编排器据此回 `failed` —— 否则调用点接着弹「✓ 已起来」，同屏一条失败一条成功。
   it("★ 〔FE1〕startLocal 回 false → failed；回 true → started", async () => {
     const d = deps();
@@ -313,7 +313,7 @@ describe("本机 / 远端分流", () => {
     // `deps()` 造的夹具，那是**断言夹具等于它自己，恒真**；而且 `asDeps` 经 `unknown` 强转，
     // 真接口新增字段它也不会红。要守「没有作用于原会话的口子」得从**类型侧**守：
     // 下面这行让 `ForkStartDeps` 一旦多出第四个成员就编译不过（`Exclude` 结果非 never）。
-    // 〔FIX4 · J7〕`mintForkName` 进名单：它只问那台后端要一个**新**名字（只读，不作用于任何会话）。
+    // `mintForkName` 进名单：它只问那台后端要一个**新**名字（只读，不作用于任何会话）。
     type Extra = Exclude<keyof ForkStartDeps, "ask" | "startLocal" | "startRemote" | "mintForkName">;
     const noExtraMembers: Extra extends never ? true : never = true;
     expect(noExtraMembers).toBe(true);

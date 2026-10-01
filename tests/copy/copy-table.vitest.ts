@@ -1,5 +1,5 @@
 /**
- * CP2a · 抽表机制（`调研/设计/91 §5.1.1` 四个决定）的判据。表住 `src/shared/copy/table.json`，
+ * CP2a · 抽表机制（四个决定）的判据。表住 `src/shared/copy/table.json`，
  * 取文口住 `src/frontend/ui/copy-table.ts::copyText`。
  *
  * # 判什么
@@ -7,19 +7,19 @@
  * 1. **表 ↔ 引用两向相等**（本拍的主判据）：表里每个 key 在生产代码里至少被 `copyText("…")`
  *    引用一次；生产代码里每个 `copyText("…")` 的 key 都在表里。两侧异源：一侧是 JSON，
  *    一侧是用 TypeScript 编译器把 `src/**.ts` 真解析出来的调用点（不是 grep）。
- * 2. **调用点的参数 == 表里的 args**（`91 §5.1.1` 决定 3）：第二个实参必须是对象字面量，
+ * 2. **调用点的参数 == 表里的 args**（决定 3）：第二个实参必须是对象字面量，
  *    属性名集合与表里 `args` 相等。
  * 3. **绕不过去**：key 不是字面量、参数对象里有展开、把 `copyText` 改名导入或当值传走 ⇒ 红
  *    —— 否则那一处引用本判据看不见，两向相等就是在一个缺角的集合上成立的。
  * 4. **表的形状**：key 三段式 · kind 六档 · 占位符只许具名 · `args` 与 `zh` 里的占位符两向相等。
- * 5. **`kind == "title"` 的条数不为 0**（`91 §5.1.1` 决定 4 的反空真：全填成 body 会让 R5 静默空转）。
+ * 5. **`kind == "title"` 的条数不为 0**（决定 4 的反空真：全填成 body 会让 R5 静默空转）。
  *
  * 标题以 `[C-xx]` 开头的两条是 `src/shared/copy/rules.json` 里那两条「机检」规矩的实现
  * （`copy-rules.vitest.ts` 按这个前缀做规矩 ↔ 实现两向对拍，改标题要连规矩表一起改）。
  *
  * # 不判什么（诚实段）
  *
- * - 〔DP1 · 第四波〕**Rust 读口已落地**（`src/frontend/shell/src/copy_table.rs::copy_text`，与 TS 读同一份 JSON）⇒
+ * - **Rust 读口已落地**（`src/frontend/shell/src/copy_table.rs::copy_text`，与 TS 读同一份 JSON）⇒
  *   `src/frontend/shell/src/**.rs` 的 `copy_text("…", &[("名", 值), …])` 调用点也收进「引用」一侧（[`rustRefsIn`]）。
  *   〔墓碑 —— 原话「Rust 一侧没有调用点，本文件也不扫 `.rs`；Rust 读口落地那一拍要把 `.rs` 的调用点加进『引用』那一侧」。〕
  *   ⚠ Rust 那一侧不是编译器解析：按调用形状读（剥掉 `//` 注释后找 `copy_text(`），key 必须是紧跟的字符串字面量、
@@ -38,7 +38,7 @@ import { productionRsFiles, productionTsFiles } from "../test-support/production
 import { REPO_ROOT } from "../test-support/repo-root.ts";
 import { loadTable, NAMED_PH, type Table } from "./copy-support.ts";
 
-// 〔FIX2 · 99 §2.1 ㉛①〕第六档 aria：只进 aria-label 的无障碍名。
+// 第六档 aria：只进 aria-label 的无障碍名。
 const KINDS = new Set(["title", "control", "action", "body", "error", "aria"]);
 const KEY_RE = /^[a-z][A-Za-z0-9]*\.[a-z][A-Za-z0-9]*\.[a-z][A-Za-z0-9]*$/;
 /** 取文口自己住的文件：它里头的 `copyText` 是定义，不是引用。 */
@@ -117,10 +117,10 @@ export function refsIn(file: string, text: string): { refs: Ref[]; problems: str
 /** Rust 取文口自己住的文件：它里头的 `copy_text` 是定义，不是引用。 */
 const RS_HOME = "src/frontend/shell/src/copy_table.rs";
 const RS_FN = "copy_text";
-/** 〔CP2c〕同一个取文口的 `&'static str` 形（`copy-core` 的宏）。 */
+/** 同一个取文口的 `&'static str` 形（`copy-core` 的宏）。 */
 const RS_STATIC = "copy_static";
 /**
- * 〔CP2c〕取文口的**定义**住的两份文件：`copy-core` 的实现，与 monitor 那一层转发（`copy_core::copy_text(key, args)`，
+ * 取文口的**定义**住的两份文件：`copy-core` 的实现，与 monitor 那一层转发（`copy_core::copy_text(key, args)`，
  * key 不是字面量 —— 它是转发，不是引用）。它们不进「引用」一侧。
  */
 const RS_DEFINITIONS = new Set([RS_HOME, "src/common/copy-core/src/lib.rs"]);
@@ -145,7 +145,7 @@ function stripRustLineComments(text: string): string {
     .join("\n");
 }
 
-/** 〔DP1〕读一份 `.rs` 里的全部 `copy_text` 调用点（按调用形状，见头注「不判什么」）。 */
+/** 读一份 `.rs` 里的全部 `copy_text` 调用点（按调用形状，见头注「不判什么」）。 */
 export function rustRefsIn(file: string, text: string): { refs: Ref[]; problems: string[] } {
   const refs: Ref[] = [];
   const problems: string[] = [];
@@ -159,7 +159,7 @@ export function rustRefsIn(file: string, text: string): { refs: Ref[]; problems:
     if (file === RS_HOME && before === "fn ") continue;
     // 别人的同名**方法**（`ui.ctx().copy_text(…)`，egui 的剪贴板）不是我们的取文口。
     if (before.endsWith(".")) continue;
-    // 〔CP2b〕`\buse`：原先裸 `use\s` 把「OursFault::Misuse => copy_text(…)」这一行当成了 `use` 导入 ⇒ 那个调用点
+    // `\buse`：原先裸 `use\s` 把「OursFault::Misuse => copy_text(…)」这一行当成了 `use` 导入 ⇒ 那个调用点
     //   从「引用」一侧漏掉、表里那条被报成死文案（现打逮到：filewin/source.rs 的 said.internal）。
     if (/^\s*[;,}]/.test(after) || /^::/.test(after) || /\buse\s[^;]*$/.test(code.slice(code.lastIndexOf("\n", at) + 1, at))) {
       if (/\buse\s[^;]*$/.test(code.slice(code.lastIndexOf("\n", at) + 1, at))) continue;
@@ -219,7 +219,7 @@ export function rustRefsIn(file: string, text: string): { refs: Ref[]; problems:
     }
     refs.push({ file: `${file}:${lineOf(at)}`, key: km[1], args });
   }
-  // 〔CP2c〕`copy_static!("…")`：同一条文案给成 `&'static str`（后端几处类型刻意是 `&'static str`，
+  // `copy_static!("…")`：同一条文案给成 `&'static str`（后端几处类型刻意是 `&'static str`，
   //   见 `copy-core` 那个宏的头注）。没有参数；key 必须是紧跟的字符串字面量，别的写法一律报「绕过」。
   for (const m of code.matchAll(new RegExp(`\\b${RS_STATIC}!`, "g"))) {
     const at = m.index ?? 0;
@@ -267,16 +267,16 @@ describe("CP2a · 文案表 ↔ 生产代码引用", () => {
   const all = files
     .filter((f) => new RegExp(`\\b${FN}\\b`).test(f.text))
     .map((f) => refsIn(f.file, f.text));
-  // 〔DP1〕Rust 读口的调用点。
-  // 〔CP2c · 第四波 4C〕射程从 monitor crate 扩到常驻后端与子 crate（后端也读同一份表、自己出句子 ——
-  //   `设计/91 §5.1` 决定 2「一份文件，两侧各读，零转换」；理由住 `调研/第四波记录/CP2c.md §2`）。
+  // Rust 读口的调用点。
+  // 射程从 monitor crate 扩到常驻后端与子 crate（后端也读同一份表、自己出句子 ——
+  // 决定 2「一份文件，两侧各读，零转换」；理由住）。
   //   取文实现本身住 `copy-core`，monitor 的 `copy_table.rs` 只剩转发 ⇒ 这两份是定义不是引用，不进人群。
   const rsFiles = [
     ...productionRsFiles("src/frontend/shell/src"),
-    ...productionRsFiles("src/frontend/filewin/src"), // 〔P4〕文件窗口独立成包（它的取文口调用点从前住上一棵）
+    ...productionRsFiles("src/frontend/filewin/src"), // 文件窗口独立成包（它的取文口调用点从前住上一棵）
     ...productionRsFiles("src/backend"),
     ...productionRsFiles("src/common"),
-    ...productionRsFiles("src/comms"), // 〔RE〕通信层成员（两个 crate 经 `#[path]` 编它们）
+    ...productionRsFiles("src/comms"), // 通信层成员（两个 crate 经 `#[path]` 编它们）
   ];
   const rsAll = rsFiles
     .filter((f) => !RS_DEFINITIONS.has(f.file))
@@ -290,8 +290,8 @@ describe("CP2a · 文案表 ↔ 生产代码引用", () => {
     expect(rsFiles.length, "一个 .rs 都没扫到").toBeGreaterThan(100);
     expect(rsFiles.map((f) => f.file)).toContain(RS_HOME);
     expect(rsRefs.length, "一个 copy_text 调用点都没找到 —— 读口没接上，或者读法坏了").toBeGreaterThan(0);
-     // 〔CP2c〕三棵树各自真的扫到了、也各自读到了调用点（扩根那一步没接上时，下面的两向相等会在缺角的集合上成立）。
-    // 〔P1〕`src/common/` 10 → 5：`search-core` 删、`deploy-core` 的判定进后端（契约 `deploy-contract` 只剩一份 lib.rs），盘上现 10 份。
+     // 三棵树各自真的扫到了、也各自读到了调用点（扩根那一步没接上时，下面的两向相等会在缺角的集合上成立）。
+    // `src/common/` 10 → 5：`search-core` 删、`deploy-core` 的判定进后端（契约 `deploy-contract` 只剩一份 lib.rs），盘上现 10 份。
     for (const [root, n] of [["src/backend/", 100], ["src/common/", 5]] as const) {
       expect(rsFiles.filter((f) => f.file.startsWith(root)).length, `${root} 下一个 .rs 都没扫到`).toBeGreaterThan(n);
     }
@@ -356,9 +356,9 @@ describe("CP2a · 文案表判据自己会不会死（正控）", () => {
     expect(rustRefsIn("x.rs", 'copy_text("a.b.c", &[(name, n)]);').problems.join()).toMatch(/参数项/);
     expect(rustRefsIn("x.rs", "use crate::copy_table::copy_text;").problems).toEqual([]);
     expect(rustRefsIn("x.rs", "ui.ctx().copy_text(s.to_string());").refs).toEqual([]);
-    // 〔CP2b〕行里前面有个以 use 结尾的标识符（Misuse）不是 `use` 导入 —— 这个调用点照样得认出来。
+    // 行里前面有个以 use 结尾的标识符（Misuse）不是 `use` 导入 —— 这个调用点照样得认出来。
     expect(rustRefsIn("x.rs", 'Fault::Misuse => copy_text("a.b.c", &[]),').refs.map((r) => r.key)).toEqual(["a.b.c"]);
-    // 〔CP2c〕`&'static str` 形：字面量 key 认得出；非字面 key / 带参数 各被逮住。
+    // `&'static str` 形：字面量 key 认得出；非字面 key / 带参数 各被逮住。
     expect(rustRefsIn("x.rs", 'let w = copy_static!("a.b.c");').refs.map((r) => [r.key, r.args])).toEqual([["a.b.c", []]]);
     expect(rustRefsIn("x.rs", "copy_static!(KEY);").problems.join()).toMatch(/不是字面量/);
     expect(rustRefsIn("x.rs", 'copy_static!("a.b.c", x);').problems.join()).toMatch(/不是字面量/);
@@ -372,7 +372,7 @@ describe("CP2a · 文案表判据自己会不会死（正控）", () => {
   });
 });
 
-// 〔P3〕`rules.json` C-L5 逐字「插进来的值与相邻汉字之间的空格随值定」（WF2 报备：「lx上报出了这个会话」）。
+// `rules.json` C-L5 逐字「插进来的值与相邻汉字之间的空格随值定」（WF2 报备：「lx上报出了这个会话」）。
 describe("[C-L5] 值与汉字之间的空格随值定", () => {
   const table = loadTable();
   const HAN = "[\\u3400-\\u4dbf\\u4e00-\\u9fff\\uf900-\\ufaff]";
@@ -407,10 +407,10 @@ describe("[C-L5] 值与汉字之间的空格随值定", () => {
 });
 
 /**
- * 〔DUP2 · `设计/01 §6.9`「前端读口 `copy-table.ts::copyText`；Rust 读口只有一份实现 `copy-core::copy_text`」〕
+ * 〔「前端读口 `copy-table.ts::copyText`；Rust 读口只有一份实现 `copy-core::copy_text`」〕
  * **两个读口的插值对拍（TS 这一侧）**：共用金样 `tests/__fixtures__/copy-interpolation.golden.json` 逐条喂给 `copyText`，
  * 期望是金样里手写的；Rust 那一侧 `tests/common/copy-core/lib_tests.rs::the_shared_interpolation_golden_agrees_with_this_reader`
- * 读同一份。两侧有意不同的几形（缺键 · 参数对不上）登记在金样 `_differences`，不在这里（〔DUP3〕「值里含别的占位符」那一形 Rust 改成单趟之后两侧一致，挪进了 `cases`）。
+ * 读同一份。两侧有意不同的几形（缺键 · 参数对不上）登记在金样 `_differences`，不在这里（「值里含别的占位符」那一形 Rust 改成单趟之后两侧一致，挪进了 `cases`）。
  */
 describe("DUP2 · 两个读口的插值对拍（金样 copy-interpolation.golden.json）", () => {
   const golden = JSON.parse(readFileSync(resolve(REPO_ROOT, "tests/__fixtures__/copy-interpolation.golden.json"), "utf8")) as {

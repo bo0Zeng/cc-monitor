@@ -353,7 +353,7 @@ fn system_record_keeps_uuid_for_branch_detection() {
     }
 }
 
-/// 〔W5-RENDER R10〕`设计/17 §1.2` 逐字：「19% 的记录是纯元数据，字节只占 0.7% ⇒ **在解析阶段就滤掉**」「该在解析阶段滤掉，不进管线」。
+/// 「19% 的记录是纯元数据，字节只占 0.7% ⇒ **在解析阶段就滤掉**」「该在解析阶段滤掉，不进管线」。
 /// 判据（两向相等）：每一类记录（按变体 ＋ 链身份分）⇒ 进不进前端，与手写的期望表逐格相等。
 /// 期望表的异源：仍进前端的每一格都写得出前端读者（下面每行的注）；没读者的一格也不许进。
 /// `class_of` 是穷尽 `match`、不带 `_` ⇒ 以后加变体编译期就得在这里表态。
@@ -414,15 +414,15 @@ fn displayable_classes_equal_the_table_with_a_reader_for_each() {
         ("last-prompt", false),           // 无读者
         ("file-history-snapshot", false), // 无读者
         ("unrecognized+identity", true),  // 进链（F63 保险那一半）
-        ("unrecognized-bare", false),     // 〔R10〕无读者、不进链
+        ("unrecognized-bare", false),     // 无读者、不进链
     ]
     .into_iter()
     .collect();
     assert_eq!(got, want);
 }
 
-/// 〔RENDER2 · J10 乙（主会话 09-27 裁）〕要求住址：`设计/10 §2.2b ⑤`「判定全仓一个住址」＋ 裁定原话「monitor 解析记录时调同一个
-/// `search-core::user_text` 填进记录」（〔P1〕那条规则今天住 `agents/claudecode/text.rs`）。经生产出口 `parse_line`：user 记录过线时带 `userText`（= 规则的输出），别的类型不带。
+/// 〔J10 乙〕要求：「判定全仓一个住址」＋ 裁定原话「monitor 解析记录时调同一个
+/// `search-core::user_text` 填进记录」（那条规则今天住 `agents/claudecode/text.rs`）。经生产出口 `parse_line`：user 记录过线时带 `userText`（= 规则的输出），别的类型不带。
 #[test]
 fn a_parsed_user_record_carries_the_one_noise_rule_product() {
     let cases = [
@@ -457,7 +457,7 @@ fn a_parsed_user_record_carries_the_one_noise_rule_product() {
         .is_none());
 }
 
-/// 〔RENDER2 · J10〕TS 夹具助手 `tests/test-support/user-text.ts::withUserText` 只给「不含注入噪声」的 user 记录补成品
+/// TS 夹具助手 `tests/test-support/user-text.ts::withUserText` 只给「不含注入噪声」的 user 记录补成品
 /// （正文抽出来 trim）。这里用真规则把那份语料里的每条 user 记录过一遍：成品必须恰好就是那样（否则助手在替规则说假话）。
 #[test]
 fn the_ts_fixture_user_records_carry_no_injected_noise() {

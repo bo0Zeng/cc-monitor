@@ -1,6 +1,6 @@
 //! 路由表：路由键里 **agent ＋ 账号** 那两段 → **上游与 key 焊在一起的一个值**〔`K-H2` `KH1`/`KH2`；键的第二维是条 49〕。
 //!
-//! # 🔴 表的键是 `(agent, 账号)`，不是账号〔条 49 · `设计/20 §3.1` 拍板 (b) 甲〕
+//! # 🔴 表的键是 `(agent, 账号)`，不是账号〔条 49 ·  拍板 (b) 甲〕
 //!
 //! 先前 `lookup` 只收一个账号 ⇒ **claude 的 3 号账号与 codex 的 3 号账号是同一行**。
 //! 那一形今天不疼只因为 codex 那边没有注入；「让所有会话都过中转」那一刀一落地，
@@ -30,7 +30,7 @@
 //! 「**编译器**买的」。`D1` 逐条编出反例，**本模块那三条腿 + 那条棘轮一条都没红**。
 //! 下面是**重打之后**的表 —— 每一格要么给读数，要么写「判不了」。
 //!
-//! ⚠⚠ 🔴 **〔`设计/20 §7` 步 1–2〕下面这张表是 `D1` 那一拍的读数，三行今天已经过期了，
+//! ⚠⚠ 🔴 **〔–2〕下面这张表是 `D1` 那一拍的读数，三行今天已经过期了，
 //! 逐行标着「今天」。旧读数**刻意不删** —— 它记着「读着像买断 ≠ 买断了」那一课是怎么打出来的。**
 //!
 //! | 性质 | 今天真正由谁守 | 实测出来的洞（**分母 = `D1` 编出来的这几形**） |
@@ -38,7 +38,7 @@
 //! | **从一个 `Row` 里拿不到 `&Base`** | ⚠ **这条今天不成立了**：`Row::base()` 存在（层间契约要它），但**收成了 `pub(super)`** ⇒ 中转够不到整个 `Row`。旧话：⭐ 编译器（字段私有 · 住 `mod sealed` · 无 `base()` 访问器） | 这是编译器**真正**买到的**唯一**一条 |
 //! | ⚠ **另一半（`&SecretKey`）根本不在这张表的保护面里** | **没有人** —— [`Row::key`] 就是一个 `pub(crate)` 访问器 | 〔`D2` `§五-2`，`C-补` 08-28 补的话，**不是新缺陷**〕`Row` 两个半边**不对称**：`base` 那半没访问器（要「有意重建」，见 `D1-M1`），`key` 那半**一个方法调用**就够 ⇒ 「拿 B 的 key」不需要重建任何东西。⚠ 它下游那一跳另有人守：把 `&SecretKey` 变成明文的地方由 `creds_guard` ㈢（`expose_for_auth_header(` 恰好 1 处）钉着 —— 但那守的是**明文出口**，**不是**「谁拿得到这个值」 |
 //! | 上游与 key「只能同源」 | **只有行为判据** | `D1-M2`：两行同时在作用域、A 连 B 渲染 ⇒ **编译通过**（我复打过）。`D1-M1`：换签名收 `host: &str` + 用 `row.host_header()` **重建 `Base`** 去连 ⇒ **488 passed / 0 failed** |
-//! | 进程里「没有默认上游可回落」 | ⚠ **今天换人守了**：那个进程级常量先搬进上游选择、条 59 又把它**整删**成每 agent 一行的表（`agents::Adapter::upstream`，〔NT2 · V25〕跟着适配层），`table_guard::the_relay_has_no_default_upstream_to_fall_back_to` 两向相等断言钉着「中转零处 · 上游选择恰好登记那几处」。旧话：只有一条文本棘轮（禁 `Relay` 里出现 `base:` / `key:` 字面） | **假**（那一拍）：那个默认上游常量当时是**中转的** crate 常量（当时的住址见本表下面那一段），`Base` 三个字段全 `pub(crate)`、`Base::parse` 也是 ⇒ 一行就能造一个。⚠ **后半句今天仍成立** —— 中转有意去 `Base::parse` 现造一个，没人拦得住 |
+//! | 进程里「没有默认上游可回落」 | ⚠ **今天换人守了**：那个进程级常量先搬进上游选择、条 59 又把它**整删**成每 agent 一行的表（`agents::Adapter::upstream`，跟着适配层），`table_guard::the_relay_has_no_default_upstream_to_fall_back_to` 两向相等断言钉着「中转零处 · 上游选择恰好登记那几处」。旧话：只有一条文本棘轮（禁 `Relay` 里出现 `base:` / `key:` 字面） | **假**（那一拍）：那个默认上游常量当时是**中转的** crate 常量（当时的住址见本表下面那一段），`Base` 三个字段全 `pub(crate)`、`Base::parse` 也是 ⇒ 一行就能造一个。⚠ **后半句今天仍成立** —— 中转有意去 `Base::parse` 现造一个，没人拦得住 |
 //! | 装表**只有一处**做 | **文本判据**（`table_guard.rs` 那几条相等断言；⚠ 「`sealed` 里面」那一格今天改成「`accounts/` 里面」） | `D1-M4`：㈠ 那根针在它自称「真正的人群」（`sealed` 里面）**恰恰最弱** —— **一个字面量能焊出任意多行**，数字面量数不出「焊了几行、每行装了什么」。实测多行焊接 + 把回落整个加回来 ⇒ `table_guard` 单跑 **10 passed / 0 failed** |
 //!
 //! ⚠⚠ **上表第 4 行那个「当时的住址」是 `server.rs:24`** —— 逐条说清它为什么还写着行号：
@@ -60,7 +60,7 @@
 //!
 //! # ⚠ 「这一行的 `base_url` 缺席」与「这一行不在表里」是两件事
 //!
-//! - 缺席 ⇒ 用**这一行所属那个 agent** 的默认上游（每 agent 一行，`agents::Adapter::upstream`，〔NT2 · V25〕跟着适配层）。
+//! - 缺席 ⇒ 用**这一行所属那个 agent** 的默认上游（每 agent 一行，`agents::Adapter::upstream`，跟着适配层）。
 //!   它是**一行已经存在**的行的一个字段取默认值，**不是**回落。
 //! - 不在表里 ⇒ **404，一个字节都不发上游**。
 //!
@@ -70,10 +70,10 @@ use crate::relay::{segment_is_safe, Base};
 use copy_core::copy_text;
 use creds_core::store::{AccountEntry, AuthStyle, AuthStyleSetting};
 
-// ★★ 🔴 〔`设计/20 §7` 步 2〕**`mod sealed` 删掉了** —— 换来的东西写在这里
+// ★★ 🔴 **`mod sealed` 删掉了** —— 换来的东西写在这里
 //
 // 先前 `Row`/`RoutingTable` 住一个私有 `mod sealed`，买的是「`table.rs` 自己那半
-// 也够不到 `Row` 的字段」。`20 §6` 逐字判过这一格：那道墙挡的只是「顺手」，
+// 也够不到 `Row` 的字段」。判过这一格：那道墙挡的只是「顺手」，
 // 而本模块头注那张表里两条实测（`D1-M1`/`D1-M2`）记着它挡不住「有意」。
 //
 // **换到手里的是两样更硬的**：
@@ -88,14 +88,14 @@ use std::collections::BTreeMap;
 
 /// 表里的一行：**这条路由发到哪儿 + 用哪把 key**。
 ///
-/// # ⚠ 谁拿得到它 —— 这一段 `设计/20 §7` 步 2 重写过，**旧话与新话都留着**
+/// # ⚠ 谁拿得到它 —— 这一段重写过，**旧话与新话都留着**
 ///
 /// **今天**：字段私有；三个访问器（[`Row::base`] · [`Row::key`] · [`Row::auth_style`]）
 /// 全是 `pub(super)` ⇒ **只有 `accounts/` 里面够得到这一行的任何一格**。
 /// 中转（`server.rs` / `listen.rs` / `http1.rs` / `tee.rs`）连 `Row` 这个类型都点不到，
 /// 它手里只有 `resolve` 递过来的**一个** `Destination`。**这一格是编译器买的。**
 ///
-/// **先前**（`K-H2` 到 `20 §7` 步 1 之间）：`Row` 住一个私有 `mod sealed`，
+/// **先前**（`K-H2` 到之间）：`Row` 住一个私有 `mod sealed`，
 /// 没有 `base()` 访问器，而三个方法是 `pub(crate)`。那一版的读数逐条留着，
 /// 因为它是本仓最值钱的一课（「读着像买断 ≠ 买断了」）：
 /// - `D1-M2`：**根本不用 `base()`** —— 两行同时在作用域里，`a.connect()` 配
@@ -106,7 +106,7 @@ use std::collections::BTreeMap;
 ///   而 `key` 那半**一个方法调用**就够。
 ///
 /// ⇒ 那一版挡的只是「顺手」。今天挡住「A 的端点配 B 的 key」的是
-/// **一次请求只拿到一个 `Destination`**（`20 §6` 第 1 行）＋ 上面那条可见性，
+/// **一次请求只拿到一个 `Destination`**＋ 上面那条可见性，
 /// 而**量它的**仍然是 `KH2`/`KH4` 那几条走真转发的行为判据 ＋ `wire_golden` 的字节金标准。
 ///
 /// ⚠ **刻意没有 `derive(Debug)`**：同 `Relay`（`KS1` 的第二道）。
@@ -114,7 +114,7 @@ use std::collections::BTreeMap;
 pub(crate) struct Row {
     base: Base,
     key: Option<SecretKey>,
-    /// 这一把 key **用哪种鉴权头**交给上游〔`K-R1`〕。
+    /// 这一把 key **用哪种鉴权头**交给上游。
     ///
     /// ★ 它焊在这里而**不是**一个进程级设置，理由与 `base`/`key` 逐字同一条：
     /// 上游、key、鉴权头形状是**同一个决定的三个面**。分开取就写得出
@@ -129,14 +129,14 @@ pub(crate) struct Row {
 impl Row {
     /// 这一行发到哪儿。
     ///
-    /// # ⚠⚠ 🔴 **它是 `设计/20 §7` 步 1 新开的一个口，代价要认下来**
+    /// # ⚠⚠ 🔴 **它是新开的一个口，代价要认下来**
     ///
     /// 先前这里**刻意没有** `base()`，而外面拿得到的只有 `connect()` 与 `host_header()`
     /// ⇒ `&Base` 这个值不出这个边界。今天它出得去了，因为**层间契约要求它出去**：
     /// `Destination::{Passthrough,Substitute}` 逐字带着 `upstream`，而「连上游」
-    /// 是中转的活（`20 §4`：`exchange` 那一行是「resolve → 连上游 → pump → tee」）。
+    /// 是中转的活（`exchange` 那一行是「resolve → 连上游 → pump → tee」）。
     ///
-    /// **换到手里的是 `20 §6` 第 1 行那一格**：先前那道墙挡的只是「顺手」
+    /// **换到手里的是那一格**：先前那道墙挡的只是「顺手」
     /// （本模块头注两条实测 `D1-M1`/`D1-M2` 逐字记着它挡不住「有意」）；
     /// 今天挡住「A 的端点配 B 的 key」的是**一次请求只拿到一个 `Destination`**
     /// —— 上游与 key 是同一个变体的两个字段，要拼错得先有两个 `Destination`
@@ -219,7 +219,7 @@ impl RoutingTable {
         self.rows.get(&(agent.to_string(), account.to_string()))
     }
 
-    /// 〔US1〕这一家在表里有哪几条账号 id（有序）。**「表里有哪几行」的唯一出处**（`file_face::rows_at`）。
+    /// 这一家在表里有哪几条账号 id（有序）。**「表里有哪几行」的唯一出处**（`file_face::rows_at`）。
     pub(crate) fn ids_of(&self, agent: &str) -> Vec<String> {
         self.rows
             .keys()
@@ -244,7 +244,7 @@ pub(crate) struct Rejected {
     pub(crate) why: &'static str,
 }
 
-/// 一条**进了表、但有一件事必须让人知道**的账号〔`K-R1`〕。
+/// 一条**进了表、但有一件事必须让人知道**的账号。
 ///
 /// # ⚠ 它为什么是一个**新类型**，不是 `Rejected` 多一个字段
 ///
@@ -273,7 +273,7 @@ pub(crate) static WHY_ID_UNUSABLE: std::sync::LazyLock<String> =
 pub(crate) static WHY_PLAINTEXT_OFF_LOOPBACK: std::sync::LazyLock<String> =
     std::sync::LazyLock::new(|| copy_text("beUpstreamTable.whyPlaintextOffLoopback.say", &[]));
 
-/// 〔DUP3 · J9〕一条 `base_url` 能用 ⇒ 装成 `Base`；不能用 ⇒ 那一句（装表与写口 `file_face.rs` 共用）。
+/// 一条 `base_url` 能用 ⇒ 装成 `Base`；不能用 ⇒ 那一句（装表与写口 `file_face.rs` 共用）。
 /// 明文只许回环判的是**这一刻的字面**，不是「连出去之后落到哪」（解析到回环的域名照样拒）。
 pub(crate) fn base_if_usable(url: &str) -> Result<Base, &'static str> {
     let base = Base::parse(url).map_err(|i| i.0)?;
@@ -337,7 +337,7 @@ fn note_for_auth_style(style: AuthStyle) -> Option<&'static str> {
 
 /// 把文件里读出来的那些条，装成一张表。**每一条都挂在 `agent` 名下**（条 49）。
 ///
-/// `default_base` 是 **`agent` 那一家**的默认上游（每 agent 一行，住 `agents::Adapter::upstream`，〔NT2 · V25〕跟着适配层），
+/// `default_base` 是 **`agent` 那一家**的默认上游（每 agent 一行，住 `agents::Adapter::upstream`，跟着适配层），
 /// 不是进程级的某一个 —— 它只给「这一行没写 `base_url`」那一格取值，**不是**回落。
 ///
 /// # 「装不进去」的判断都在这里，都出声 —— **条数别写死，数下面那几条**
@@ -356,8 +356,8 @@ fn note_for_auth_style(style: AuthStyle) -> Option<&'static str> {
 ///    `http` 现在也给**本机部署**（〔用 09-04〕要的那一格），而「只给夹具」这个说法
 ///    读起来像「生产里配 `http` 是不该的」。今天准确的分界线是**回环**，见下面第 3 条。
 ///
-/// 3. 🔴 **明文 http 指向非回环**〔`K-R1`〕—— 见 [`WHY_PLAINTEXT_OFF_LOOPBACK`]。
-/// 4. 🔴 **`auth_style` 认不出** / **`auth_style` 说不发头却又配了 key**〔`K-R1`〕——
+/// 3. 🔴 **明文 http 指向非回环**—— 见 [`WHY_PLAINTEXT_OFF_LOOPBACK`]。
+/// 4. 🔴 **`auth_style` 认不出** / **`auth_style` 说不发头却又配了 key**——
 ///    见 [`WHY_AUTH_STYLE_UNKNOWN`] / [`WHY_NO_AUTH_WITH_KEY`]。两条都**刻意不回落**。
 ///
 /// # ⚠ 判断的**次序**是有意的，写下来（几条同时成立时报哪一句）
@@ -395,7 +395,7 @@ pub(crate) fn build(
             });
             continue;
         }
-        // 〔DUP3 · J9〕「能不能用」（形状 ＋ 明文只许回环）只有一份：`upstream_url_core::usable`，与写口 · 界面同一条。
+        // 「能不能用」（形状 ＋ 明文只许回环）只有一份：`upstream_url_core::usable`，与写口 · 界面同一条。
         //   ★ `K-R1`：理由**来自判定自己**（逐形一句），不是调用方现编一句万能的话。
         let base = match e.base_url.as_deref() {
             None => default_base.clone(),

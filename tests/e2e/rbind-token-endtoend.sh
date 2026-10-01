@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# `设计/80 §8.7` 步 3：**令牌真的走完了「载荷 → shell → 进程环境 → 后端 → wire」这一整条**。
+# **令牌真的走完了「载荷 → shell → 进程环境 → 后端 → wire」这一整条**。
 #
 # ## 它补的是哪一格（`ccm-rbind-title.sh` 同族）
 #
@@ -51,7 +51,7 @@
 set -o pipefail
 
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
-# 〔第二波 T4 接进执行链〕与 `ccm-*` 那四套同一条取法：`$CARGO_TARGET_DIR` 优先，
+# 〔接进执行链〕与 `ccm-*` 那四套同一条取法：`$CARGO_TARGET_DIR` 优先，
 #   缺省落仓根 `.build/backend`（`src/backend/.cargo/config.toml` 的 `target-dir`）。
 #   此前只认后一半 ⇒ 门禁若在设了 `CARGO_TARGET_DIR` 的沙箱里跑，本套件会找不到它刚 build 的那一份。
 D="${CCM_E2E_BACKEND_BIN:-${CARGO_TARGET_DIR:-$REPO/.build/backend}/debug/cc-monitor-backend}"
@@ -140,7 +140,7 @@ chk "bare 帧上没有 rbind_token 字段" "$(grep -c '"rbind_token"' "$OUT" 2>/
 
 echo
 echo "rbind-token-endtoend: $pass passed, $fail failed"
-# 〔第二波 T4〕`tests/scripts/gate.sh` 经 `tests/e2e/assert-pass-floor.sh` 按 exact 判本套件，
+# `tests/scripts/gate.sh` 经 `tests/e2e/assert-pass-floor.sh` 按 exact 判本套件，
 #   那把尺子只认这一行的格式（`合计 PASS=<n>`）。上面那句人读的留着，这一行给尺子。
 echo "===== 合计 PASS=$pass FAIL=$fail ====="
 [ "$fail" -eq 0 ] || exit 1

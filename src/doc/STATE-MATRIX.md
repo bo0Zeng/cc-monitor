@@ -12,12 +12,12 @@
 
 | State 类型 | 注册位置 | 创建位置 | Arc 所有权 |
 |---|---|---|---|
-| ~~`Arc<session_map::SessionMap>`~~ 〔LOC1b · 4D〕已删 | — | — | 本机活会话表改由本机后端那条流的起停帧喂，住进程级的一张（`session_map::local()`，不 manage）；写者只有本机那条流的消费者（`ssh_source::consume_local` ⇒ `session_map::feed`），读者：本机 emitter · `frontend-ready` 对账 · `list_active_sessions`〔散文墓碑〕 / `list_session_activity`〔散文墓碑〕 |
+| ~~`Arc<session_map::SessionMap>`~~ 已删 | — | — | 本机活会话表改由本机后端那条流的起停帧喂，住进程级的一张（`session_map::local()`，不 manage）；写者只有本机那条流的消费者（`ssh_source::consume_local` ⇒ `session_map::feed`），读者：本机 emitter · `frontend-ready` 对账 · `list_active_sessions`〔散文墓碑〕 / `list_session_activity`〔散文墓碑〕 |
 | `Arc<event_replay::EventReplay>` | `lib.rs::setup()` `app.manage(replay.clone())` | `EventReplay::new()` | 共享：setup 局部 + frontend-ready listener + jsonl async pump + State |
 | `Arc<bind::BindRegistry>` | `lib.rs::setup()` `app.manage(bind_registry.clone())` | `BindRegistry::spawn()` | 共享：setup 局部 + `session-book-emitter` 线程 + `bind-await-watcher` 线程 + `bind-heartbeat` 线程 + State |
 | `Arc<bind::SidHwndCache>` | `lib.rs::setup()` `app.manage(sid_hwnd_cache.clone())` | `SidHwndCache::load()` | 共享：setup 局部 + `session-book-emitter` 线程 + State |
 | `Arc<logging::LoggingState>` | `lib.rs::setup()` `app.manage(logging_state.clone())` | `logging::init(monitor_data_dir)`（在 `tauri::Builder` 之前） | 共享：`lib.rs::run()` 局部（持有 WorkerGuard 到 setup 结束）+ setup 闭包内 `install_error_emitter` 注入 closure + State |
-| ~~`Arc<search::SearchIndex>`~~ (issue #6) 〔LOC1b · 4D〕已删 | — | — | 本机全文搜索改问本机后端（`history-search`），monitor 不再建索引 |
+| ~~`Arc<search::SearchIndex>`~~ (issue #6) 已删 | — | — | 本机全文搜索改问本机后端（`history-search`），monitor 不再建索引 |
 | `Arc<bind::RemoteHwndCache>` (issue #18) | `lib.rs::setup()` `app.manage(remote_hwnd_cache.clone())` | `RemoteHwndCache::new()` | 共享：setup 局部 + `session-book-emitter` 线程（`remote_cache_for_emitter` → `lib.rs::session_side_effects`：远端活会话没令牌时起 `remote-bind-scan` 子线程 `try_bind`；离开时 `apply_remote_disposition`，已结束才 `forget`）+ State |
 
 ---
@@ -27,15 +27,15 @@
 任何 `#[tauri::command]` 函数签名里出现 `State<...>` 就是这里的消费者。
 
 ### `Arc<SessionMap>`
-- 〔C4d · 第四波 4B〕历史清单那两条（本机项目 · 展开一个项目）退役：清单与判活搬进本机常驻后端（`history-projects` / `history-sessions`），不再接 `State`。
-- 〔MIG-1 · ⑬〕红绿灯启动快照与启动骨架清单那两条命令〔已删〕：本机骨架与初始灯是会话流里的 `live` / `activity` 成品（就绪点按 `session_book.rs::Book` 重放）。
+- 历史清单那两条（本机项目 · 展开一个项目）退役：清单与判活搬进本机常驻后端（`history-projects` / `history-sessions`），不再接 `State`。
+- 红绿灯启动快照与启动骨架清单那两条命令〔已删〕：本机骨架与初始灯是会话流里的 `live` / `activity` 成品（就绪点按 `session_book.rs::Book` 重放）。
 
 ### `Arc<EventReplay>`
 - `lib.rs::forget_session(session_id, replay: State<'_, Arc<EventReplay>>)`
-- `chan/webview.rs::chan_subscribe(webview, origin, kind, from, want, id, replay: State<'_, Arc<EventReplay>>)` · `chan_want` · `chan_stop`（〔CF2 · 第四波 4B〕会话内容经通道 `subscribe`：主窗口每台机器一条 `session-lines`，独立窗口一条 `session-lines/<sid>`；原来的定向重放命令〔散文墓碑〕退役）
+- `chan/webview.rs::chan_subscribe(webview, origin, kind, from, want, id, replay: State<'_, Arc<EventReplay>>)` · `chan_want` · `chan_stop`（会话内容经通道 `subscribe`：主窗口每台机器一条 `session-lines`，独立窗口一条 `session-lines/<sid>`；原来的定向重放命令〔散文墓碑〕退役）
 
 ### `Arc<BindRegistry>`
-- `lib.rs::bound_terminal_count(bind_state: State<'_, Arc<BindRegistry>>)`（〔MIG-3a〕握手终端数单独一问；从前夹在别名读回口里 —— 别名那一族进了那台后端，`aliases-read`）
+- `lib.rs::bound_terminal_count(bind_state: State<'_, Arc<BindRegistry>>)`（握手终端数单独一问；从前夹在别名读回口里 —— 别名那一族进了那台后端，`aliases-read`）
 - `lib.rs::bring_remote_terminal_to_front(session_id, cache: State<'_, Arc<RemoteHwndCache>>, registry: State<'_, Arc<BindRegistry>>)`
 
 ### `Arc<SidHwndCache>`
@@ -51,15 +51,15 @@
 - `lib.rs::open_log_file(state: State<'_, Arc<logging::LoggingState>>)`
 - `lib.rs::open_log_dir(state: State<'_, Arc<logging::LoggingState>>)`
 
-### ~~`Arc<SearchIndex>` (issue #6)~~ 〔LOC1b · 第四波 4D〕已删
+### ~~`Arc<SearchIndex>` (issue #6)~~ 已删
 本机全文搜索改问本机后端（帧命令 `history-search`，界面经通道问，与远端同一条路）；monitor 进程内那份索引与它的三条命令一起删了，这一格 State 不再有。
 
 ### 无 State 依赖（自包含 / 用 path 解析）
 - `config::load_config / patch_config`（用 `paths::resolve_config_path`；写经进程级锁，见 `config.rs::patch_config_at`）
-- `launch::open_terminal_window` · `launch::terminal_dial`（B14-F41 · 〔FIX4 · ⑬〕；后者用 `lib::load_remote_config_by_label` 读配置文件，ssh 那一行由本机后端 `terminal-ssh` 渲）
-- `aliases_block_render / aliases_block_install / aliases_block_remove`（〔AL2〕`origin` ＋ `rc_path`；装 / 卸经那台后端写）
+- `launch::open_terminal_window` · `launch::terminal_dial`（B14-F41；后者用 `lib::load_remote_config_by_label` 读配置文件，ssh 那一行由本机后端 `terminal-ssh` 渲）
+- `aliases_block_render / aliases_block_install / aliases_block_remove`（`origin` ＋ `rc_path`；装 / 卸经那台后端写）
 - `cc_get_auto_launch / cc_set_auto_launch`（用 `paths::resolve_monitor_data_dir`）
-- `history::stream_read_session_jsonl / update_history_metadata / resume_history_session`（v2.6 删了非流式 `read_session_jsonl`；〔MIG-3b〕删会话 · F62 分叉两条改由界面经通道直说那台后端，monitor 这一侧已无命令）
+- `history::stream_read_session_jsonl / update_history_metadata / resume_history_session`（v2.6 删了非流式 `read_session_jsonl`；删会话 · F62 分叉两条改由界面经通道直说那台后端，monitor 这一侧已无命令）
 - `tasks::get_session_tasks` (v2.3 issue #11)：用 `paths::resolve_claude_dir().join("tasks")`，session_id 参数直接拼路径；watcher 线程独立 spawn 不通过 State 共享
 - `data_paths::get_data_paths` (v2.3 issue #3 A)：用 `paths::resolve_monitor_data_dir()` + `AppHandle.path().app_local_data_dir()` 推断 WebView2 路径；纯 stat 不持有状态
 - `bring_monitor_to_front` (v2.4 issue #2)：通过 `AppHandle.get_webview_window("main")` 直接拿主窗口；三层 Win32 hack 拉前（详 ARCHITECTURE.md § 5「bring_monitor_to_front 三层 hack」；其中 HWND 跨 windows crate 版本互操作详 INVARIANTS § 19）；无外部 State
@@ -72,8 +72,8 @@ Arc 不只通过 State 共享，还通过 `.clone()` 喂给 spawn 出去的线�
 
 | Arc | 还在哪持有 |
 |---|---|
-| 〔MIG-1〕会话成品缓存 `session_book::book()`（进程级，**非 State**；替掉 LOC1b 那张本机活会话表） | (1) 两条流（`ssh_source::stream_loop` · `consume_local`）经 `session_book::feed` 交成品（**唯一写口**） (2) `session-book-emitter` 线程（转交会话流 ＋ 拉前绑定） (3) 就绪点 / 开窗重放（`event_replay.rs::lifecycle_replay`） |
-| ~~`remote_active`~~ 〔MIG-1〕已删（THIN 09-29 订正本行） | 连同写它的那条远端会话 emitter 线程一起没了：活 / 可重连 / 已结束的账住那台后端 `src/backend/observe/session_ledger.rs::SessionLedger`（发帧唯一出口上那一问），monitor 只收成品、存进上一行那本 `session_book`（INVARIANTS § 24 顶注） |
+| 会话成品缓存 `session_book::book()`（进程级，**非 State**；替掉 LOC1b 那张本机活会话表） | (1) 两条流（`ssh_source::stream_loop` · `consume_local`）经 `session_book::feed` 交成品（**唯一写口**） (2) `session-book-emitter` 线程（转交会话流 ＋ 拉前绑定） (3) 就绪点 / 开窗重放（`event_replay.rs::lifecycle_replay`） |
+| ~~`remote_active`~~ 已删（THIN 09-29 订正本行） | 连同写它的那条远端会话 emitter 线程一起没了：活 / 可重连 / 已结束的账住那台后端 `src/backend/observe/session_ledger.rs::SessionLedger`（发帧唯一出口上那一问），monitor 只收成品、存进上一行那本 `session_book`（INVARIANTS § 24 顶注） |
 | `bind_registry` | (1) `BindRegistry::spawn()` 内部启动的 `bind-await-watcher` + `bind-heartbeat` 两个线程 (2) `session-book-emitter` 线程 (`bind_for_emitter`) (3) `app.manage` |
 | `sid_hwnd_cache` | (1) `session-book-emitter` 线程 (`cache_for_emitter`) (2) `app.manage` |
 | `replay` | (1) `app.listen("frontend-ready", ...)` 闭包 (2) spawn 的 jsonl 处理 async task (3) `app.manage` |

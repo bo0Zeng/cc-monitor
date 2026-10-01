@@ -4,8 +4,8 @@
  * 加载它的窗口：**主窗 ＋ viewer 窗**（住址：各窗口 html 的 `<link rel="stylesheet">` 列表 ——
  * `index.html` / `settings.html` / `viewer.html`，那就是每个窗口的 CSS 清单，没有第二份）。
  *
- * 〔三入口拆分 · `设计/41 §9`〕本文件由基线 `src/frontend/ui/styles.css` 按「哪几个窗口的模块图里有它的建元素处」
- * 逐块切出来，**块内容逐字搬、块间保持原序**。切法与判据见 `设计/41` 末尾追加的那一节。
+ * 〔三入口拆分〕本文件由基线 `src/frontend/ui/styles.css` 按「哪几个窗口的模块图里有它的建元素处」
+ * 逐块切出来，**块内容逐字搬、块间保持原序**。
  */
 
 @layer layout {
@@ -25,11 +25,11 @@
      ⚠ 这条模板与 `tests/frontend/ui/app-grid-claims.vitest.ts` 绑着：`#app` 的每个 in-flow 直接
        子元素都必须认领一个**本模板里声明过的**具名区域，否则那条判据当场红。 */
   display: grid;
-  /* 🔴 〔步 17·A · 2026-09-19〕`archive` 那一行**删了**，模板从三行回到两行。
+  /* 🔴 `archive` 那一行**删了**，模板从三行回到两行。
      上面那段 S24 的病史留着（它记录的是当时为真的事），但它治的那个病
      随归档抽屉一起消失了：抽屉不存在 ⇒ 没有那个没认领格子的 grid item ⇒
      不需要给它开一行，`main` 也不必再跨两行。
-     ⚠ `设计/30 §A.1` 逐字承诺的「左边 450px 空地消失」就是这一刀。 */
+     ⚠ 承诺的「左边 450px 空地消失」就是这一刀。 */
   grid-template-areas:
     "tabs main"
     "status status";

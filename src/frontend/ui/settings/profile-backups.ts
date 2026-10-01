@@ -1,10 +1,10 @@
 /**
- * 〔OSA · `设计/99 §1` V156 · 主会话 09-28 裁子步 4「拆」〕`$PROFILE` 备份在哪 —— **经通道直接问本机后端**。
+ * 〔主会话 09-28 裁子步 4「拆」〕`$PROFILE` 备份在哪 —— **经通道直接问本机后端**。
  *
  * 从前是 monitor `data_paths.rs` 自己探 `$PROFILE` 的两个目录名（`$PROFILE` 在哪的第二个读者）。今天：
  * ① 候选启动文件由本机后端的方言答（`aliases-read`，PowerShell 那一臂 —— 全仓唯一答「`$PROFILE` 在哪」的地方）；
  * ② 它们所在的目录里有没有 `<名>.ccm-backup-…`（后端 `files-put` 备份的落点）问同一台的 `files-ls`。
- * `get_data_paths` 仍是 monitor 自己的（`99 §2.1 ⑬` Own::Log，不碰后端），只是不再带这一格。
+ * `get_data_paths` 仍是 monitor 自己的（Own::Log，不碰后端），只是不再带这一格。
  *
  * 只在本机说 PowerShell 时问（`machine-aliases.ts::localShell`：本机后端就跑在这台上）；别的平台没有 `$PROFILE` ⇒ 空。
  */

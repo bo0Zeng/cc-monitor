@@ -1,6 +1,6 @@
 use super::*;
 
-// 〔MOD〕「快照那一行计不计号」那一条随函数删了：后端只交可计行，口径只住后端 `history_query::line_counts`。
+// 「快照那一行计不计号」那一条随函数删了：后端只交可计行，口径只住后端 `history_query::line_counts`。
 
 /// 队列语义：sid 幂等、priority 优先出队、close 后清空账再 None。
 #[tokio::test]

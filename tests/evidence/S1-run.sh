@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 秤 1（`设计/17 §6` 表第 1 行）的**一键复算**。
+# 秤 1（表第 1 行）的**一键复算**。
 #
 # 它只干一件事：跑门禁并把**直方图原文**落到 `tests/evidence/S1-render-cost-log.txt`。
 # 直方图是 `beforeAll` 里 `console.log` 出来的，而 vitest 的**默认 reporter 会把

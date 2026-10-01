@@ -1,10 +1,10 @@
 /// ★ 围栏本身的行为：**跑出 home 的一律拒绝，home 之内的照常放行**。
 ///
-/// ⚠ 正例那一半不是凑数：围栏收得太紧会**悄悄砍掉「其它文件」**（〔AL1d〕从前叫 `ProfileKind::Custom`〔散文墓碑〕）
+/// ⚠ 正例那一半不是凑数：围栏收得太紧会**悄悄砍掉「其它文件」**（从前叫 `ProfileKind::Custom`〔散文墓碑〕）
 /// （用户指 `~/.config/fish/config.fish` 这种），那是把一个洞换成一个回归。
 #[test]
 fn the_profile_fence_keeps_writes_inside_home() {
-    // 〔AL2 · 第四波 4D〕围栏拆成词法（两侧）＋ 符号链接（只本机）两层，入口是 `fence_on(origin, home, raw)`；
+    // 围栏拆成词法（两侧）＋ 符号链接（只本机）两层，入口是 `fence_on(origin, home, raw)`；
     //   本条量的是**本机**那一侧（两层都过），用真 home 当基准只为「父目录真存在」那一格（只解路径、不读不写）。
     let home = std::path::PathBuf::from(std::env::var_os("HOME").expect("测试需要 home"));
     let home_s = home.display().to_string();
@@ -54,7 +54,7 @@ fn the_profile_fence_keeps_writes_inside_home() {
 
 /// ★★ **收启动文件路径的命令都必须先过路径围栏**〔audit-0805 08-08，Phase G 第 86 件〕。
 ///
-/// 〔AL1d · 第四波 4B〕那三条从前叫 `cc_integration_install` / `_uninstall` / `_scan_path`〔散文墓碑〕，
+/// 那三条从前叫 `cc_integration_install` / `_uninstall` / `_scan_path`〔散文墓碑〕，
 /// 今天是别名块的 `aliases_block_install` / `aliases_block_remove` ＋ 读回口 `aliases_read` 的「其它文件」
 /// （读回口的围栏在 `account_aliases::read_in` 里过：它拿临时目录当 home 才测得了，见下面第二段）。
 ///
@@ -85,7 +85,7 @@ fn every_profile_command_passes_through_the_fence() {
     )
     .expect("读不到 assets/aliases/mod.rs");
     let prod = guard_core::production_code(&lib);
-    // 〔MIG-3a〕线上那两口（`aliases-block-install` / `-remove`）都先过 `block_target`，它再过围栏 `block::fence`。
+    // 线上那两口（`aliases-block-install` / `-remove`）都先过 `block_target`，它再过围栏 `block::fence`。
     const CMDS: &[(&str, &str)] = &[
         ("answer_block_install", "block_target("),
         ("answer_block_remove", "block_target("),
@@ -158,13 +158,13 @@ fn tmpdir(tag: &str) -> TmpDir {
     TmpDir(d)
 }
 
-/// 〔RW1 · 第四波 09-24〕profile 的读写经「门」（生产 = 本机后端的文件管理那一面）。
+/// profile 的读写经「门」（生产 = 本机后端的文件管理那一面）。
 /// 判据用落在临时目录上的替身门，home = 那份文件所在的目录；写的规则（备份 · 原子替换 · 回读 · 回滚）
 /// 住后端，由 `files_write_tests.rs` 判。
 fn door_at(p: &std::path::Path) -> super::super::tests::HomeDoor {
     super::super::tests::HomeDoor(p.parent().expect("有父目录").to_path_buf())
 }
-/// 〔MIG-3a〕后端这一族是同步的；恒等包装，判据正文不必逐处改写。
+/// 后端这一族是同步的；恒等包装，判据正文不必逐处改写。
 fn run<T>(x: T) -> T {
     x
 }
@@ -274,7 +274,7 @@ fn render_cc_code_with_function() {
     assert!(out.contains("function ccm"));
     assert!(out.contains("__ccm_bind"));
     assert!(!out.contains("{{CC_FUNCTION_BLOCK}}"));
-    // 〔TL1 · 4C〕v2 → v3：块结尾多了接上别名文件那一行（`71 §6.1`）。〔DATA-HOME〕v4 → v5：数据目录换住址。
+    // v2 → v3：块结尾多了接上别名文件那一行。v4 → v5：数据目录换住址。
     assert!(out.contains("BEGIN v5"));
     assert!(out.contains("cc-monitor END"));
 }
@@ -332,15 +332,15 @@ fn find_block_version_v1() {
     assert_eq!(ver, Some("v1".to_string()));
 }
 
-/// ★〔TL1 · 4C〕**旧版别名块认得出来**：PowerShell 那一对块头版本串 ≠ 这一版模板的那个 ⇒ `outdated`（界面据此说「重装一次」）；
+/// ★**旧版别名块认得出来**：PowerShell 那一对块头版本串 ≠ 这一版模板的那个 ⇒ `outdated`（界面据此说「重装一次」）；
 /// 刚装的那一份（同一个 `render_cc_code`）不旧；POSIX 那一对没有版本串 ⇒ 恒不旧；块不在 ⇒ 不旧。
 /// 两侧异源：「这一版」从模板文件现读（`current_block_version`），「旧的」是手写的 v2 块。
 #[test]
 fn an_older_powershell_block_is_flagged_and_a_fresh_one_is_not() {
     let cur = current_block_version().expect("模板第一行读不出版本串");
-    // 〔HX2 · 4D〕v3 → v4：`__ccm_bind` 找 monitor 数据目录改走唯一出口（渲染时填，跟 `CCM_DATA_DIR`）——
-    //   块内容变了就抬版本，装着 v3 的人在机器页看到「重装一次」（主会话 4D 审计 F 裁）。
-    // 〔DATA-HOME · V160〕v4 → v5：数据目录搬到 `~/.cc-monitor`，v4 块的 `$ccmDir` 是旧住址 ⇒ 装着 v4 的人也重装一次。
+    // v3 → v4：`__ccm_bind` 找 monitor 数据目录改走唯一出口（渲染时填，跟 `CCM_DATA_DIR`）——
+    //   块内容变了就抬版本，装着 v3 的人在机器页看到「重装一次」。
+    // v4 → v5：数据目录搬到 `~/.cc-monitor`，v4 块的 `$ccmDir` 是旧住址 ⇒ 装着 v4 的人也重装一次。
     assert_eq!(
         cur, "v5",
         "模板版本串变了就来改这里（并想清楚：旧块的人要不要重装）"
@@ -366,7 +366,7 @@ fn an_older_powershell_block_is_flagged_and_a_fresh_one_is_not() {
     );
 }
 
-/// 〔DATA-HOME〕V160 原话「**不写搬家代码、不认老路径**」＋ 题面「已装的块由既有的「版本不同 ⇒ 需要重装」那条认出来」：
+/// V160 原话「**不写搬家代码、不认老路径**」＋ 题面「已装的块由既有的「版本不同 ⇒ 需要重装」那条认出来」：
 /// 装在用户 `$PROFILE` 里的上一版块（v4）把数据目录的**旧住址**写死在 `$ccmDir` 里 ⇒ 它必须被判成旧的（界面说「重装一次」），
 /// 重装那一份指到新住址。旧块手写（异源），「新住址」手写。
 #[test]
@@ -541,9 +541,9 @@ fn install_preserves_existing_user_content() {
     assert!(after.contains("# === cc-monitor BEGIN"));
     assert!(!after.is_empty());
 
-    // 〔RW1 · 第四波 09-24〕备份由后端做（`files-put` 的 `backup: true`，判据在 `files_write_tests.rs`）；
+    // 备份由后端做（`files-put` 的 `backup: true`，判据在 `files_write_tests.rs`）；
     //   这一侧钉的是「要了备份」—— 用户的 profile 不许在没有备份的情况下被改。
-    //   〔MIG-3a〕门就是本进程的 `files-put` ⇒ 直接看盘：旁边真留了一份备份。
+    // 门就是本进程的 `files-put` ⇒ 直接看盘：旁边真留了一份备份。
     let parent = p.parent().unwrap();
     let stem = p.file_name().unwrap().to_string_lossy().to_string();
     let backups = std::fs::read_dir(parent)
@@ -615,7 +615,7 @@ fn reinstall_replaces_block_keeps_user_content() {
     }
 }
 
-// 〔RW1 · 第四波 09-24〕这里原来是 `install_preserves_explicit_acl_entries`〔散文墓碑〕（Windows：v1.7.10
+// 这里原来是 `install_preserves_explicit_acl_entries`〔散文墓碑〕（Windows：v1.7.10
 // `ReplaceFileW` 保住 explicit ACE）。写从本进程搬到了后端（用户裁「只允许后端的文件管理部分写文件」也管本机），
 // 那条性质跟着搬：`tests/backend/control/files_write_tests.rs::put_keeps_explicit_acl_entries_on_windows`。
 
@@ -690,7 +690,7 @@ fn the_local_posix_port_is_byte_for_byte_the_remote_one() {
             got, want,
             "本机 POSIX 装进 rc 的东西与远端那个口不再是同一份 —— \
                  `KR62D1` 要买的一半正是「补这一格的时候没有变成第四套」。\
-                 若这里改成了一份自己的 snippet / 一套自己的 merge，就把 `K-R62 §0c` 那三套变成了四套。"
+                 若这里改成了一份自己的 snippet / 一套自己的 merge，就把那三套变成了四套。"
         );
         // 卸那一半同样恒等（装了又卸回得去，是同一对围栏才可能成立）。
         let back = plan_uninstall(Shell::Posix, &got, what).expect("本机 POSIX 卸口");
@@ -708,7 +708,7 @@ fn the_local_posix_port_is_byte_for_byte_the_remote_one() {
 /// 两条一起才关得住「不许出现第二份 snippet」。
 #[test]
 fn the_alias_snippet_has_exactly_one_home_in_the_rust_tree() {
-    // 〔MIG-3a〕人群 = 两棵 Rust 树（monitor `src/frontend/shell/src` ＋ 后端 `src/backend`）：住址从 monitor 搬进了后端。
+    // 人群 = 两棵 Rust 树（monitor `src/frontend/shell/src` ＋ 后端 `src/backend`）：住址从 monitor 搬进了后端。
     let root = crate::guard_support::repo_root();
     let mut files =
         guard_core::scan_tree_excluding(&root.join("src/frontend/shell/src"), &["rs"], &[]);
@@ -730,7 +730,7 @@ fn the_alias_snippet_has_exactly_one_home_in_the_rust_tree() {
     }
     assert_eq!(
         homes,
-        // 〔W5-ALIAS〕住址从 `sftp.rs` 搬进了本模块（别名块的真相归别名域，B §2 第 12 条）。
+        // 住址从 `sftp.rs` 搬进了本模块（别名块的真相归别名域，B §2 第 12 条）。
         vec!["block.rs".to_string()],
         "`src/shared/ccm-aliases.sh` 在 Rust 侧的住址应当**恰好一处**（`assets/aliases/block.rs` 的 \
              `CCM_WRAPPER_SNIPPET`），实得 {homes:?}。多一处就是第二份 snippet —— \
@@ -740,7 +740,7 @@ fn the_alias_snippet_has_exactly_one_home_in_the_rust_tree() {
 
 /// ★★ `KR62D1`：**没有第二套 merge/strip，也没有第二对 POSIX 围栏。**
 ///
-/// 〔W5-ALIAS · 第五波先行〕从前这条钉「本模块借 `sftp.rs` 那一份（跨文件调用恰好一次）」；
+/// 从前这条钉「本模块借 `sftp.rs` 那一份（跨文件调用恰好一次）」；
 /// 那一份今天搬进了本模块（`sftp.rs` 已经不做 SFTP，B §2 第 12 条），性质不变、量法换成：
 /// ① 合 / 剥两个函数在本模块的生产段里**各定义恰好一次**（多一个 `fn merge_…` 就是第二套）；
 /// ② 本机 POSIX 那一臂（[`plan_install`] / [`plan_uninstall`] 的函数体）**调的就是它们**；
@@ -975,7 +975,7 @@ fn the_hint_names_every_line_and_the_product_deletes_nothing() {
         );
     }
     // 「会盖过 cc-monitor 那一段」这一格现算自 `src/shared/ccm-aliases.sh`，不是抄的名单。
-    // 〔CP2b〕原措辞「会赢过我们那一块」照 CP1 台账改（去「我们」、去 declare -f 的实现说法）。
+    // 原措辞「会赢过我们那一块」照 CP1 台账改（去「我们」、去 declare -f 的实现说法）。
     let builtin = super::builtin_alias_names();
     assert!(
         !builtin.is_empty(),
@@ -1010,9 +1010,9 @@ fn scanning_a_rc_changes_not_a_single_byte_on_disk() {
     let before = std::fs::read(&p).expect("读");
     let before_n = std::fs::read_dir(&td.0).unwrap().count();
 
-    // 〔AL1d〕扫一份今天走读回口那一趟（`account_aliases::rc_candidates_in`：读一次、算块的现状），
+    // 扫一份今天走读回口那一趟（`account_aliases::rc_candidates_in`：读一次、算块的现状），
     //   把这份 rc 当「其它文件」递进去 —— 那正是界面上扫它的那条路。
-    //   〔AL2 · 第四波 4D〕那一趟改走门（`rc_candidates_via`，读经那台后端的 `files-peek`）；这里的门是落在临时目录上的替身。
+    // 那一趟改走门（`rc_candidates_via`，读经那台后端的 `files-peek`）；这里的门是落在临时目录上的替身。
     let door = super::super::tests::HomeDoor(td.0.clone());
     let cands = super::super::rc_candidates_via(
         &door,
@@ -1137,7 +1137,7 @@ fn the_powershell_block_never_touches_the_session_path_again() {
     }
 }
 
-/// ★★ 〔`KR135D2` 09-15〕**`cc` 翻正了 —— 这一条是那处反向锚点翻过来的那一面。**
+/// ★★ **`cc` 翻正了 —— 这一条是那处反向锚点翻过来的那一面。**
 ///
 /// 上一轮那条判据（`K-R132` 立的，名字里逐字写着「仍然绕过后端、而这是登记过的、
 /// 不是忘了」）钉的是「今天这一行就是 `& claude`」这处**已登记的不一致**。
@@ -1191,7 +1191,7 @@ fn the_powershell_cc_goes_through_ccm_exactly_like_the_posix_one() {
     // ── 反面：这一块里**只许有这一条**调用行 ─────────────────────────
     //
     // ⚠ 不写成 `!out.contains("claude")`：模板里本来就有 `claude`
-    //   （从前是数据目录的旧路径 ＋ 一句注释；〔HX2〕路径改由渲染时填，
+    //   （从前是数据目录的旧路径 ＋ 一句注释；路径改由渲染时填，
     //   渲染产物里仍带着数据目录 ＋ 那句注释）⇒ 那样写第一天就是红的，
     //   而「第一天就红的判据」的唯一出路是放宽它。⇒ 人群收成「调用行」这一形。
     let invokes: Vec<String> = out
@@ -1301,7 +1301,7 @@ fn the_powershell_profile_lands_with_a_bom_and_the_posix_rc_never_does() {
     );
 }
 
-/// 🔴 〔AL1d · 第四波 4B〕**P4**：别名块的**预览就是写的那一份** —— `render_block` 与「往一份空文件里装一次」之后
+/// 🔴 **P4**：别名块的**预览就是写的那一份** —— `render_block` 与「往一份空文件里装一次」之后
 /// 盘上那份（BOM 剥掉）逐字相等。两种方言 × 要不要连 `cc` 函数，四格都走。
 ///
 /// 这不是两份拼法对拍：两边调的是同一个 `plan_install`。它钉的是「预览没有另起一条拼法」这件事 ——
@@ -1312,7 +1312,7 @@ fn the_block_preview_is_byte_for_byte_what_an_install_writes() {
         for with_cc in [false, true] {
             let td = tmpdir("block-preview");
             let p = td.0.join(name);
-            // 〔MIG-3a〕home 与装那一跳同一个（`__ccm_bind` 的数据目录按那台的 home 推）。
+            // home 与装那一跳同一个（`__ccm_bind` 的数据目录按那台的 home 推）。
             let preview = render_block(shell, with_cc, &td.0.display().to_string()).expect("渲染");
             run(install_to_profile(
                 &door_at(&p),
@@ -1350,7 +1350,7 @@ fn the_block_preview_is_byte_for_byte_what_an_install_writes() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// 〔W5-ALIAS · 第五波先行〕别名块的内容与合 / 剥 —— 这几条随被测对象从 `sftp_tests.rs` 搬来（逐字，只改住址）
+// 别名块的内容与合 / 剥 —— 这几条随被测对象从 `sftp_tests.rs` 搬来（逐字，只改住址）
 // ═══════════════════════════════════════════════════════════════════════════
 
 /// 单一来源漂移守卫①：写进远端 profile 的**别名块**。
@@ -1359,11 +1359,11 @@ fn the_block_preview_is_byte_for_byte_what_an_install_writes() {
 #[test]
 fn ccm_aliases_snippet_has_required_elements() {
     for needle in [
-        // CLI 落点必须进 PATH，否则别名全指向不存在的命令。〔COPY-R〕钉整条 export：原先钉的 `.local/bin` 只剩头注里一句旧话在喂它。
+        // CLI 落点必须进 PATH，否则别名全指向不存在的命令。钉整条 export：原先钉的 `.local/bin` 只剩头注里一句旧话在喂它。
         "export PATH=\"$HOME/.cc-monitor/bin:$PATH\"",
         "cc()",                     // 裸起（`K-R58` 起 = 就在当前目录，ccm 不再替用户挑）
         "cct()",                    // tmux 版
-        "ccm \"$@\" -- --ccm-tmux", // 别名只做组合，不自己建容器；〔V151〕ccm 的选项在 `--` 右边
+        "ccm \"$@\" -- --ccm-tmux", // 别名只做组合，不自己建容器；ccm 的选项在 `--` 右边
         "declare -f",               // 防覆盖用户已有同名函数
     ] {
         assert!(
@@ -1383,7 +1383,7 @@ fn ccm_aliases_snippet_has_required_elements() {
 /// `KR58D2` —— `src/doc/IPC-PROTOCOL.md` §11 里描述别名块的那一句，**行数与名单同句**。
 ///
 /// 本区最高频的那条病就是「数与名单同句、只改一半」⇒ 这里**两样一起对**，
-/// 而且两样都**现算**自真相源 [`CCM_WRAPPER_SNIPPET`]（= `src/shared/ccm-aliases.sh` 本身），
+/// 而且两样都**现算**自源头 [`CCM_WRAPPER_SNIPPET`]（= `src/shared/ccm-aliases.sh` 本身），
 /// 判据里不抄第二份名单、不写死行数。
 ///
 /// ⚠ **它买到的射程只有这一句**：§11 其余部分（`shared/ccm` · `CCM_CLI_SCRIPT`）
@@ -1555,15 +1555,15 @@ fn strip_aborts_on_malformed_begin_without_end() {
     );
 }
 
-/// 🔴 〔W5-ALIAS · 第五波先行〕**别名块只有一个写口**：`user_files::edit`（→ 那台机器后端的 `files-put`）。
+/// 🔴 **别名块只有一个写口**：`user_files::edit`（→ 那台机器后端的 `files-put`）。
 ///
-/// 住址：`设计/71 §3`「写入 —— **那台机器后端的文件管理那一面**（带围栏，本机和远端同一条路）」·
-/// `§4.5`「围栏管理 · 备份 · 原子写 · 写后校验 · 回滚 —— 这些是『判定的规则』，只许一份」· 用户裁 V86 / V88。
+/// 要求：「写入 —— **那台机器后端的文件管理那一面**（带围栏，本机和远端同一条路）」·
+/// `§4.5`「围栏管理 · 备份 · 原子写 · 写后校验 · 回滚 —— 这些是『判定的规则』，只许一份」· 用户裁。
 ///
 /// 人群（从源码现打，monitor 生产段全树）：函数体里碰「别名块内容」的函数 —— 调合 / 剥 / 计划装卸 / 装卸入口
 /// （`merge_profile_block(` · `strip_profile_block(` · `plan_install(` · `plan_uninstall(` · `install_to_profile(` ·
 /// `uninstall_from_profile(`）的那几个。两向相等于下面这张手写表（异源：表是人按角色写的，右边是源码现扫）：
-/// - **写的**（〔AL2〕两个：远端那两条命令并进了转交那两条）函数体里必须恰好一处 `crate::user_files::edit(`；
+/// - **写的**（两个：远端那两条命令并进了转交那两条）函数体里必须恰好一处 `crate::user_files::edit(`；
 /// - **纯规划 / 预览**（三个）与**转交**（两条命令，交给写的那两个）一处写原语都不许有；
 /// - 全体都不许碰别的写原语（`.put(` · `std::fs::write` · `fenced_block::apply`〔散文墓碑〕）。
 ///
@@ -1590,7 +1590,7 @@ fn the_alias_block_is_written_through_exactly_one_door() {
             "uninstall_from_profile",
             Role::Writes,
         ),
-        // 〔MIG-3a〕转交那几条是线上那几口（`aliases-block-*`，住 `assets/aliases/mod.rs`）。
+        // 转交那几条是线上那几口（`aliases-block-*`，住 `assets/aliases/mod.rs`）。
         (
             "assets/aliases/mod.rs",
             "answer_block_install",
@@ -1611,7 +1611,7 @@ fn the_alias_block_is_written_through_exactly_one_door() {
         "uninstall_from_profile(",
     ];
     const OTHER_WRITES: &[&str] = &[".put(", "std::fs::write", "fenced_block::apply"];
-    // 〔MIG-3a〕人群 = 后端生产段全树（别名块整族搬进来了）。
+    // 人群 = 后端生产段全树（别名块整族搬进来了）。
     let root = crate::guard_support::repo_root().join("src/backend");
     let files = guard_core::scan_tree_excluding(&root, &["rs"], &[]);
     let mut seen: Vec<(String, String, String)> = Vec::new(); // (文件, 函数, 函数体)
@@ -1693,10 +1693,10 @@ fn the_alias_block_is_written_through_exactly_one_door() {
     }
 }
 
-/// 🔴 〔HX2 · RT1 F6〕C1：**`__ccm_bind` 找 monitor 数据目录只有一个住址**（`paths::resolve_monitor_data_dir`，跟 `CCM_DATA_DIR`）。
+/// 🔴 C1：**`__ccm_bind` 找 monitor 数据目录只有一个住址**（`paths::resolve_monitor_data_dir`，跟 `CCM_DATA_DIR`）。
 ///
 /// 要求住址：`INVARIANTS §2`「monitor 自己的 data dir 永远是 `~/.cc-monitor/`」那一节的出口
-/// （`paths.rs` 头注：`CCM_DATA_DIR` 只为「把这个进程整体挪到别处跑」而存在）；`第四波记录/RT1.md §8` F6（模板写死一份 ⇒ 数据目录的第二个住址）。
+/// （`paths.rs` 头注：`CCM_DATA_DIR` 只为「把这个进程整体挪到别处跑」而存在）；（模板写死一份 ⇒ 数据目录的第二个住址）。
 /// ① 渲染出来的块里 `$ccmDir =` 恰一行、值 == 喂进去的那个目录（带单引号的路径逐字转义成 PowerShell 字面量）；
 /// ② 模板源码里零处数据目录旧住址的字面量（正控：渲染产物里喂一个带它的目录时数得到）；
 /// ③ 装那一跳交的就是唯一出口算出来的那个（源码：`plan_install` 的 PowerShell 臂恰一处 `resolve_monitor_data_dir()`）。

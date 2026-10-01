@@ -288,10 +288,10 @@ fn version_warning_messages() {
     assert!(incompat.contains("wsl") && incompat.contains("不兼容"));
 }
 
-/// 〔HX2 · 主会话 D-b〕B4：版本不同那句按新旧分两句（期望手写）—— 那台旧 ⇒「下次连上时自动换成这一版」；
+/// B4：版本不同那句按新旧分两句（期望手写）—— 那台旧 ⇒「下次连上时自动换成这一版」；
 /// 那台不比这一版旧 ⇒「不会把它换回去」、叫人升级**这个** monitor。两句互不相同，都不再说过期的「后续将支持自动部署」。
 /// 要求住址：主会话 4D 裁 D-b 逐字「部署只在「我的比盘上的新」时才换（BUILD_ID 可比序）」。
-/// 〔THIN〕新旧不在 monitor 里比：接上那一刻本机常驻后端答的 `older` 交进来，这里只钉「按答挑哪一句」
+/// 新旧不在 monitor 里比：接上那一刻本机常驻后端答的 `older` 交进来，这里只钉「按答挑哪一句」
 /// （「解不出序 ⇒ 不比这一版旧」那一格随判定进了后端：`deploy_plan_tests.rs::the_verdict_replaces_only_upward_and_only_once`）。
 #[test]
 fn hx2_the_version_warning_says_which_side_is_older() {
@@ -320,7 +320,7 @@ fn hx2_the_version_warning_says_which_side_is_older() {
 /// 两条 line 帧：逐字段断言 session_id / path / seq / message / cwd 都原样取出。
 #[test]
 fn parses_two_line_frames_with_all_fields() {
-    // 〔MOD〕帧上带的是成品（`message` 原样收下、monitor 不读它）与这条记录自己的 `cwd`，不再是原文 `raw`。
+    // 帧上带的是成品（`message` 原样收下、monitor 不读它）与这条记录自己的 `cwd`，不再是原文 `raw`。
     let l0 = r#"{"kind":"line","session_id":"s-1","path":"/home/pi/.claude/projects/p/s-1.jsonl","seq":0,"message":{"type":"user"},"cwd":"/w"}"#;
     let l1 = r#"{"kind":"line","session_id":"s-1","path":"/home/pi/.claude/projects/p/s-1.jsonl","seq":1}"#;
 
@@ -333,7 +333,7 @@ fn parses_two_line_frames_with_all_fields() {
             seq: 0,
             message: crate::ui_contract::RecordBody::from_json(r#"{"type":"user"}"#.to_string()),
             cwd: Some("/w".to_string()),
-            end: None, // 〔RENDER2〕这条金样没带 `byte_offset`
+            end: None, // 这条金样没带 `byte_offset`
             rid: None,
         }
     );
@@ -348,7 +348,7 @@ fn parses_two_line_frames_with_all_fields() {
     }
 }
 
-// 〔MIG-1 续 · V41〕tmux 观测两帧（`tmux_session_closed` · `tmux_sessions`）的解析判据随帧删了：老后端发来 ⇒ 落下面那条「未知 kind」。
+// tmux 观测两帧（`tmux_session_closed` · `tmux_sessions`）的解析判据随帧删了：老后端发来 ⇒ 落下面那条「未知 kind」。
 #[test]
 fn a_retired_tmux_frame_from_an_old_backend_is_an_unknown_kind() {
     assert_eq!(
@@ -361,7 +361,7 @@ fn a_retired_tmux_frame_from_an_old_backend_is_an_unknown_kind() {
     );
 }
 
-/// 〔MIG-1 收尾〕测试连接的进度帧：票 ＋ 那一格原样（对象的 JSON 文本，monitor 不解释）；那一格不是对象 / 缺票 ⇒ 坏帧。
+/// 测试连接的进度帧：票 ＋ 那一格原样（对象的 JSON 文本，monitor 不解释）；那一格不是对象 / 缺票 ⇒ 坏帧。
 #[test]
 fn a_probe_frame_carries_its_ticket_and_the_cell_verbatim() {
     assert_eq!(
@@ -381,7 +381,7 @@ fn a_probe_frame_carries_its_ticket_and_the_cell_verbatim() {
     );
 }
 
-/// 〔P7〕长活的进度帧：与 `probe` 同一种收法（票 ＋ 那一格原样；那一格不是对象 / 缺票 ⇒ 坏帧）。
+/// 长活的进度帧：与 `probe` 同一种收法（票 ＋ 那一格原样；那一格不是对象 / 缺票 ⇒ 坏帧）。
 #[test]
 fn a_progress_frame_carries_its_ticket_and_the_cell_verbatim() {
     // 原样 = 同一个 JSON 值（重新成文时的键序随 serde_json 的特性开关变 ⇒ 比值，不比字面串）。
@@ -496,7 +496,7 @@ fn session_status_frame_parses() {
     );
 }
 
-/// session_removed 映射到对应 variant。〔MIG-1〕monitor 不再读 `cause`（去向由后端裁成 `session_state`）：带不带都解成同一形。
+/// session_removed 映射到对应 variant。monitor 不再读 `cause`（去向由后端裁成 `session_state`）：带不带都解成同一形。
 #[test]
 fn parses_session_removed() {
     for line in [
@@ -512,7 +512,7 @@ fn parses_session_removed() {
     }
 }
 
-/// 〔MIG-1 · `99 §2.1 ⑬`〕`session_state`：两个字面量认得（帧串 == 后端 `wire_tests::mig1_session_state_has_exactly_these_bytes`，异源）；
+/// `session_state`：两个字面量认得（帧串 == 后端 `wire_tests::mig1_session_state_has_exactly_these_bytes`，异源）；
 /// 不认识的取值 / 缺格 ⇒ 整帧坏帧（`None`，不猜成哪一种）。
 #[test]
 fn session_state_reads_two_literals_and_anything_else_is_a_bad_frame() {
@@ -598,7 +598,7 @@ fn dispatch_over_a_frame_sequence() {
     ));
 }
 
-// ══════ `设计/80 §8.7` 步 4 的读侧：wire 上那个 `rbind_token` 读回来了 ══════
+// ══════ 读侧：wire 上那个 `rbind_token` 读回来了 ══════
 //
 // 这一组守的是**方案 E 的远端那一半**：`sid ──wire──→ token`。
 // 另一半（`token ──→ HWND`）在 `bind_tests.rs` 那一组。
@@ -699,7 +699,7 @@ fn the_wire_side_shape_check_is_the_same_one_the_local_table_uses() {
     assert!(!crate::bind::rbind_token_shape_ok("0f1e2d3c"));
 }
 
-/// 🔴 ★ 令牌的**值**不许进日志（`设计/80 §8.6 ③`）。
+/// 🔴 ★ 令牌的**值**不许进日志。
 ///
 /// 消费点今天只打一句 `has_rbind_token={bool}` —— 那个布尔正是 `§8.5 ②` 要的东西，
 /// 而它不泄露值。本条按源文本钉住：凡是把 `rbind_token` 交给 `tracing!` 的地方，
@@ -755,9 +755,9 @@ fn the_token_value_never_reaches_a_log_macro() {
     }
 }
 
-/// 〔SR1a · `设计/05 §13.6 ③`〕`accounts_changed`：认得出（无载荷，多余字段忽略）；
+/// `accounts_changed`：认得出（无载荷，多余字段忽略）；
 /// 远端流收到它 ⇒ 交给前端（恰好一处）。
-/// 〔DL1 · `设计/01 §2.2`「前端只有两个动作」〕交法从裸 Tauri 事件（`remote-backend-ready`）换成通道订阅：
+/// 〔「前端只有两个动作」〕交法从裸 Tauri 事件（`remote-backend-ready`）换成通道订阅：
 /// 那一臂调 `replay.accounts_changed`（订了这台 `accounts-changed` 的订阅收一格 `Frame`），且**整份** `ssh_source.rs`
 /// 生产段里那个裸事件的常量名零处（零命中带正控：同一个找法认得出这一臂真在调的那个名字）。
 #[test]
@@ -797,7 +797,7 @@ fn accounts_changed_is_recognised_and_reaches_the_frontend_as_ready() {
     );
 }
 
-/// 〔U4b · 第四波 · M1〕`session_added.container`：两个字面量认得；缺席 / 不认识的取值 ⇒ `None`（不知道 ≠ 不在）。
+/// `session_added.container`：两个字面量认得；缺席 / 不认识的取值 ⇒ `None`（不知道 ≠ 不在）。
 /// 帧串与后端 `wire_tests::session_added_container_is_additive_with_two_literals` 的精确字节逐字相同（异源：那边是后端序列化器的产物）。
 #[test]
 fn session_added_container_reads_two_literals_and_unknown_is_none() {
@@ -825,7 +825,7 @@ fn session_added_container_reads_two_literals_and_unknown_is_none() {
     );
 }
 
-/// 〔U4b · 第四波 · M1〕`sessions_replayed`（无载荷）认得。帧串 == 后端 `wire_tests::sessions_replayed_has_exactly_these_bytes`。
+/// `sessions_replayed`（无载荷）认得。帧串 == 后端 `wire_tests::sessions_replayed_has_exactly_these_bytes`。
 #[test]
 fn sessions_replayed_is_known() {
     assert_eq!(
@@ -834,7 +834,7 @@ fn sessions_replayed_is_known() {
     );
 }
 
-/// 〔TAP · V124〕`tap` 的几形（字面量与后端 `wire_tests::tap_frames_have_exactly_these_bytes` 同一串 —— 异源 = 各自对手写字面量）；
+/// `tap` 的几形（字面量与后端 `wire_tests::tap_frames_have_exactly_these_bytes` 同一串 —— 异源 = 各自对手写字面量）；
 /// `ev` 与 `end` 都缺 · `end` 不认识 · `ev` 不是对象 · 缺 `n` · `run` 不是串 ⇒ 整帧 `None`（坏帧，不猜）。
 #[test]
 fn tap_frames_parse_into_their_shapes_and_bad_ones_are_none() {
@@ -908,7 +908,7 @@ fn session_runs_frames_carry_the_runs_verbatim() {
     );
 }
 
-/// 〔TAP〕转交是纯照搬：帧 → `session-tap` 的 payload（origin 由调用方给；`end` 用线上那个字）。
+/// 转交是纯照搬：帧 → `session-tap` 的 payload（origin 由调用方给；`end` 用线上那个字）。
 #[test]
 fn a_tap_frame_becomes_the_session_tap_payload_field_for_field() {
     use crate::session_tap::{to_payload, Tap, TapBody, TapEnd};
@@ -945,7 +945,7 @@ fn a_tap_frame_becomes_the_session_tap_payload_field_for_field() {
     );
 }
 
-/// 〔LOC1b · 第四波 4D〕`session_added.pid` 的读侧：装得进 u32 的非负整数才认，别的一律当没带（缺席 = 老后端 / 没索要）。
+/// `session_added.pid` 的读侧：装得进 u32 的非负整数才认，别的一律当没带（缺席 = 老后端 / 没索要）。
 #[test]
 fn loc1b_the_pid_on_session_added_is_read_only_when_it_is_a_real_pid() {
     let pid_of = |line: &str| match parse_frame(line) {
@@ -971,7 +971,7 @@ fn loc1b_the_pid_on_session_added_is_read_only_when_it_is_a_real_pid() {
     );
 }
 
-/// 〔FW1 · 第四波 4D · D-d〕两个新帧认得（帧串 == 后端 `watcher_tests::the_two_session_file_frames_have_exactly_these_bytes`）；
+/// 两个新帧认得（帧串 == 后端 `watcher_tests::the_two_session_file_frames_have_exactly_these_bytes`）；
 /// `why` 认不出 / 缺字段 ⇒ 整帧跳过（不猜成哪一种）。
 #[test]
 fn the_session_file_frames_are_known_and_an_unknown_why_is_dropped() {
@@ -1008,7 +1008,7 @@ fn the_session_file_frames_are_known_and_an_unknown_why_is_dropped() {
     }
 }
 
-/// 〔MIG-3b · `99 §2.1 ㉓②`〕`tasks_changed`：认得出（带 sid；缺 sid ⇒ 坏帧），流循环那一臂交 `replay.tasks_changed`（恰好一处）。
+/// `tasks_changed`：认得出（带 sid；缺 sid ⇒ 坏帧），流循环那一臂交 `replay.tasks_changed`（恰好一处）。
 #[test]
 fn tasks_changed_is_recognised_and_reaches_the_frontend_stream() {
     assert_eq!(

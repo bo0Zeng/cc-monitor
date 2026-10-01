@@ -118,13 +118,13 @@ describe("#42 奇数/游离 $$ 不吞掉真公式 + 行边界回归", () => {
 });
 
 /**
- * `设计/17 §7` 第 3 条 ＝ `§2.6`：**`preprocessMath` 前置闸**。
+ * ＝ `§2.6`：**`preprocessMath` 前置闸**。
  *
  * # 它钉的那条链
  *
  * `preprocessMathUnguarded` 里那六遍 `replace` 是**无条件**从头扫到尾的（O(6·len) 时间、
  * O(len) 空间 × 多份峰值），而 `render.ts` 自己在上面写着「多数消息不含 LaTeX」。
- * 【`设计/17 §2.6` 现打】44 万字符 **5.81 ms**。⇒ 加一道单遍前置闸。
+ * 【现打】44 万字符 **5.81 ms**。⇒ 加一道单遍前置闸。
  *
  * # 判据钉什么 —— **不钉「快了多少」，钉「快路与慢路逐字节相同」**
  *
@@ -148,7 +148,7 @@ describe("#42 奇数/游离 $$ 不吞掉真公式 + 行边界回归", () => {
  * 不是判据。真要钉死它得对 `unguarded` 做属性测试（随机语料上 `!needs(s) ⇒ unguarded(s)===s`），
  * 那超出本条「当天可上」的射程，**如实记在这里**。
  */
-describe("`设计/17 §2.6` preprocessMath 前置闸：快路必须与慢路逐字节相同", () => {
+describe(" preprocessMath 前置闸：快路必须与慢路逐字节相同", () => {
   /**
    * 登记语料。`slow` 逐条**手写**：这一条该不该走那六遍全文正则。
    * `changes` 逐条手写：慢路在这一条上到底改没改到东西（阳性对照用）。
@@ -262,7 +262,7 @@ describe("`设计/17 §2.6` preprocessMath 前置闸：快路必须与慢路逐�
    * 它只产读数，读数落 `tests/evidence/W2-17s7-readings.md`。
    */
   it.skipIf(!process.env.W2_COST)("读数：44 万字符无公式正文，慢路 vs 快路的 wall time", () => {
-    // 结构照真的、内容合成（`设计/17 §6` 数据源纪律）：CJK 段落 + 代码围栏 + 表格，
+    // 结构照真的、内容合成（数据源纪律）：CJK 段落 + 代码围栏 + 表格，
     // 一个数学记号都没有 —— 这正是「多数消息」的形状。
     const para = "这是一段没有任何数学记号的中文正文，用来把长度堆到长尾那一档。";
     const block = `${para.repeat(8)}\n\n\`\`\`ts\nconst a = [1, 2, 3];\nfn(a);\n\`\`\`\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\n`;
@@ -295,11 +295,11 @@ describe("`设计/17 §2.6` preprocessMath 前置闸：快路必须与慢路逐�
 });
 
 /**
- * 〔W5-RENDER R3〕`设计/10 §3.5` D3 逐字：「`currentLazy` 是模块单例，安全性依赖『同步调用栈』这条隐式不变量」。
+ * 「`currentLazy` 是模块单例，安全性依赖『同步调用栈』这条隐式不变量」。
  * 修法：急 / 惰是两个 `Marked` 实例，模块里没有任何可变状态可串。
  * 两格：① 源码顶层零 `let`（剥注释；正控：改之前那一行原文数得出 1）；② 两个实例交错调用互不串味。
  */
-describe("D3 · 急 / 惰两个实例、模块零可变状态（`设计/10 §3.5`）", () => {
+describe("D3 · 急 / 惰两个实例、模块零可变状态", () => {
   /** 剥注释后，数**顶格**（模块顶层）的 `let` 声明。 */
   const topLevelLets = (src: string): number =>
     src
@@ -316,7 +316,7 @@ describe("D3 · 急 / 惰两个实例、模块零可变状态（`设计/10 §3.5
   it("src/frontend/ui/render.ts 模块顶层零 `let`", () => {
     const src = readFileSync(resolve(__dirname, "../../../src/frontend/ui/render.ts"), "utf8");
     expect(src.length, "src/frontend/ui/render.ts 读出来是空的 —— 本条会零命中地绿").toBeGreaterThan(1000);
-    expect(topLevelLets(src), "render.ts 又长出了模块级可变状态 —— `设计/10 §3.5` D3").toBe(0);
+    expect(topLevelLets(src), "render.ts 又长出了模块级可变状态 —— ").toBe(0);
   });
 
   it("交错调用：急路恒同步高亮、惰路恒留占位", () => {
@@ -333,13 +333,13 @@ describe("D3 · 急 / 惰两个实例、模块零可变状态（`设计/10 §3.5
 });
 
 /**
- * 〔W5-RENDER R4〕`设计/10 §3.5` D1 逐字：「KaTeX 从不 lazy —— 含 `$$` 的长公式在重放期同步阻塞主线程
+ * 「KaTeX 从不 lazy —— 含 `$$` 的长公式在重放期同步阻塞主线程
  * （代码高亮有 lazy，数学没有）」。修法：惰路只出占位，`enhanceCard` 进视口时补算。
  * 三格：① 惰路 ＋ 补算之后的 DOM 与急路逐字相同（异源：急路是 marked-katex-extension 自己的渲染器，
  * 补算是 `render.ts::enhanceMath`）；② 惰路期间 `katex.renderToString` 零次、补算次数 == 急路次数；
  * ③ 展开时才建的 thinking body 一律急路（不再留一块永远没人补的占位）。
  */
-describe("D1 · 数学也 lazy（`设计/10 §3.5`）", () => {
+describe("D1 · 数学也 lazy", () => {
   const MATH = [
     "行内 $x_i^2$ 与 $$y=\\sqrt{2}$$ 同行",
     "\\(a+b\\) 与 \\[c=d\\]",
@@ -405,11 +405,11 @@ describe("D1 · 数学也 lazy（`设计/10 §3.5`）", () => {
 });
 
 /**
- * 〔W5-RENDER R5〕`设计/10 §3.5` D2：IO 按滚动容器分（root 必填）。单元这一半：同 root 复用、不同 root 各一个、
+ * IO 按滚动容器分（root 必填）。单元这一半：同 root 复用、不同 root 各一个、
  * 回调里补算并 unobserve、`releaseEnhanceRoot` 断开且之后再 observe 会新建。真渲染管线上的那一半在
  * `tests/frontend/ui/views/session-viewer-scroll.vitest.ts`「D2」。
  */
-describe("D2 · 每个滚动容器一个 IO（`设计/10 §3.5`）", () => {
+describe("D2 · 每个滚动容器一个 IO", () => {
   class FakeIO {
     static all: FakeIO[] = [];
     readonly observed = new Set<Element>();

@@ -1,4 +1,4 @@
-//! 〔B2 · 条 66 · `设计/01 §3.3b`〕**「退出行为」那个值的唯一住址** —— `~/.cc-monitor/backend.json`。
+//! 〔条 66〕**「退出行为」那个值的唯一住址** —— `~/.cc-monitor/backend.json`。
 //!
 //! # 它从哪搬来、为什么非搬不可
 //!
@@ -42,7 +42,7 @@ use std::path::{Path, PathBuf};
 /// 后端在每台机器上的家目录名（相对用户家目录）。
 pub const DIR_NAME: &str = ".cc-monitor";
 
-/// 那个值住的文件名。〔P3〕字面量只住契约 crate（`relay_route_core::BACKEND_POLICY_REL`：monitor 的数据位置页按它列出、只看在不在），
+/// 那个值住的文件名。字面量只住契约 crate（`relay_route_core::BACKEND_POLICY_REL`：monitor 的数据位置页按它列出、只看在不在），
 /// 写者仍只有本模块（E1 的判据按字面量找家、按写口找写者）。
 pub const FILE_NAME: &str = relay_route_core::file_name_of(relay_route_core::BACKEND_POLICY_REL);
 
@@ -52,10 +52,10 @@ pub const KEY_KILL_ON_EXIT: &str = "killOnExit";
 /// 缺省：**不结束**（`C8③` 的前半句，`§3.3b ⑤` 逐字「本条不推翻」）。
 pub const DEFAULT_KILL_ON_EXIT: bool = false;
 
-// 〔S5 · 第四波 · V105 清账〕这里原来有 `pub const SHELL: &str = "standalone"`，
-//   随线上 `shell` 那一格一起删了：「折进前端进程」那一档已放弃（`99 §1` V105），壳只剩独立进程，
+// 〔V105 清账〕这里原来有 `pub const SHELL: &str = "standalone"`，
+//   随线上 `shell` 那一格一起删了：「折进前端进程」那一档已放弃，壳只剩独立进程，
 //   这一格恒为同一个值、唯一的读者是界面那条永远走不到的「不适用」臂（E4，同拍删）。
-//   线上形状由 `tests::the_wire_shape_is_exactly_the_registered_fields` 按键集相等钉住（〔MIG-2 · ㊴〕四格 ＋ 成品 `said`）。
+//   线上形状由 `tests::the_wire_shape_is_exactly_the_registered_fields` 按键集相等钉住（四格 ＋ 成品 `said`）。
 
 /// 现读一次的结果。**三态，不许合并**（`§3.3b ⑤`：「读不出来」与「用户选了默认」不是一回事）。
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -171,14 +171,14 @@ fn write_at(path: &Path, kill: bool) -> Result<(), String> {
             &[("path", &(path.display()).to_string())],
         )
     })?;
-    // 〔HX1〕只建那一层、建的那一下就是 0700（`own_dir`：后端建自家目录的那一个函数）。
+    // 只建那一层、建的那一下就是 0700（`own_dir`：后端建自家目录的那一个函数）。
     crate::common::own_dir::ensure_private_dir(dir).map_err(|e| {
         copy_text(
             "beExitPolicy.writeAt.mkdirFailed",
             &[("dir", &(dir.display()).to_string()), ("e", &e.to_string())],
         )
     })?;
-    // 〔HX2〕第四层同一条规矩：写之前拿那个目录的跨进程锁（`platform/lock.rs`）。这一份没有读—改—写（整份一格），
+    // 第四层同一条规矩：写之前拿那个目录的跨进程锁（`platform/lock.rs`）。这一份没有读—改—写（整份一格），
     //   锁在这里只为「每一份第四层写口都在锁里写」这条规矩没有例外（`readonly_guard` 第四层 ⑥）。
     let _lock = crate::platform::lock::hold(dir)?;
     let tmp = dir.join(format!("{FILE_NAME}.{}.tmp", std::process::id()));
@@ -219,8 +219,8 @@ fn write_at(path: &Path, kill: bool) -> Result<(), String> {
     result
 }
 
-/// 〔MIG-2 · `99 §2.1 ㊴`〕这台后端是不是回环常驻（脱离了起它的那一方）—— 与 `main` 选载体同一个纯函数、同一份环境，
-/// 不另记一份（记了就是第二个真相源，也撞 E2「不缓存」）。一次性 CLI 面没有这些环境 ⇒ 按被监护说（保守那一句）。
+/// 这台后端是不是回环常驻（脱离了起它的那一方）—— 与 `main` 选载体同一个纯函数、同一份环境，
+/// 不另记一份（记了就是第二个源头，也撞 E2「不缓存」）。一次性 CLI 面没有这些环境 ⇒ 按被监护说（保守那一句）。
 fn resident_now() -> bool {
     matches!(
         crate::stream::listen::mode_from(&|k| std::env::var(k).ok()),
@@ -229,7 +229,7 @@ fn resident_now() -> bool {
     )
 }
 
-/// 〔MIG-2 · ㊴〕「这台退出时会发生什么」—— 一句话四档，判定只在这里（`01 §3.3b ⑤` · `70 §2.3`）。
+/// 「这台退出时会发生什么」—— 一句话四档，判定只在这里。
 /// 顺序承重：读不出来先说读不出来（不看套过缺省的 `killOnExit`）· 勾上 ⇒ 会结束 · 没勾 ⇒ 看是不是常驻。
 /// 「无人监护」只许出现在常驻那一档（K14）。
 fn said(r: &Read, resident: bool) -> String {
@@ -241,7 +241,7 @@ fn said(r: &Read, resident: bool) -> String {
     }
 }
 
-/// 一次读数的线上形状（`exit-policy-read` 与 `exit-policy-set` 共用）。〔㊴〕`said` 是成品，界面原样摆。
+/// 一次读数的线上形状（`exit-policy-read` 与 `exit-policy-set` 共用）。`said` 是成品，界面原样摆。
 fn wire(r: &Read, path: Option<&Path>) -> serde_json::Value {
     wire_as(r, path, resident_now())
 }

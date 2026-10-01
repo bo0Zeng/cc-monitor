@@ -1,5 +1,5 @@
 /**
- * 〔RENDER2 · 从 `events.ts` 搬来〕**让出主线程一跳**：`MessageChannel` 宏任务（规范没给它嵌套钳制，`设计/10 §2.4`），
+ * 〔从 `events.ts` 搬来〕**让出主线程一跳**：`MessageChannel` 宏任务（规范没给它嵌套钳制），
  * 探不到才退回 `setTimeout(0)`。重放 drain（`events.ts`）与长回复分片渲染（`cards/index.ts`）共用这一份。
  *
  * ⚠ **必须带特性探测**（`§2.4` 逐字要求）。两个生产壳（WebView2 / WebKitGTK）都有它，

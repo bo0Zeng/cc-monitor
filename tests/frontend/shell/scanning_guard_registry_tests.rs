@@ -25,7 +25,7 @@ const RAW_WALKS: &[&str] = &["read_dir(", "WalkDir", "collect_rs(", "collect_ts(
 ///   （删掉的那份文件还在裸遍历 ⇒ 当场以 `newcomers` 红）。
 /// - 它**挡不住把那条判据本身删掉** —— 买的是**留痕**，不是不可能。
 const PENDING: &[&str] = &[
-    // 🔴 〔步 7c 剖分 2026-09-19 · `设计/16 §6.2` C 类〕**下面 15 行换了住址，条数一格没变。**
+    // 🔴 〔步 7c 剖分 2026-09-19〕**下面 15 行换了住址，条数一格没变。**
     //    整份是判据的那批 registry 文件这一轮剖分了 ⇒ 它们的裸遍历跟着测试段
     //    搬进了 `tests/frontend/shell/`。`PENDING_CEILING` **没有动** —— 一个裸遍历都没少。
     //    逐份点名（`src/frontend/shell/src/X.rs` → `tests/frontend/shell/…`）：
@@ -49,27 +49,27 @@ const PENDING: &[&str] = &[
     //    （`backend_tests.rs` ＋ `backend_layering.rs`），两份里都有裸遍历
     //    ⇒ 按文件数的这张清单会从 1 条变 2 条。抬上限是被明文禁止的
     //    （而且 `the_pending_ratchet_never_turns_backwards` 对着 git 历史比，
-    //    抬了也不会绿）⇒ **真迁掉一个**：`backend_tests.rs` 里 `backend_files` 那个（〔THIN〕那份文件今天改写成 `backend_client_guard_tests.rs`）
+    //    抬了也不会绿）⇒ **真迁掉一个**：`backend_tests.rs` 里 `backend_files` 那个（那份文件今天改写成 `backend_client_guard_tests.rs`）
     //    手写递归改走 `guard_core::scan_tree_excluding`（语义逐字相同，是纯死重）。
     //    ⇒ 清单里只留 `backend_layering.rs` 一条，条数与上限都不变。
-    // 🔴 〔搬树 2026-09-18 · `设计/16 §6.2` C 类〕**下面 7 行换了住址，条数一格没变**
+    // 🔴 〔搬树 2026-09-18〕**下面 7 行换了住址，条数一格没变**
     //    （`PENDING_CEILING` 因此**没有动** —— 一个裸遍历都没少，只是它们跟着
     //    自己那条判据搬进了 `tests/`）。逐份点名：
     //      `backend/control/backend_kill.rs`  → `tests/frontend/shell/backend_kill_tests.rs`
     //      `backend/control/launch_wire.rs`  → `tests/frontend/shell/launch_wire_f07_main_path_tests.rs`
     //      `panorama.rs`                     → `tests/frontend/shell/panorama_tests.rs`
-    //      `parser.rs`                       → `tests/frontend/shell/parser_tests.rs`（〔MOD〕今天在 `tests/backend/agents/claudecode/parse_tests.rs`）
+    //      `parser.rs`                       → `tests/frontend/shell/parser_tests.rs`（今天在 `tests/backend/agents/claudecode/parse_tests.rs`）
     //      `profile_installer.rs`            → `tests/frontend/shell/profile_installer_tests.rs`
     //      `ssh_source.rs`                   → `tests/frontend/shell/ssh_source_f032_idle_tests.rs`
     //      `utils.rs`                        → `tests/frontend/shell/utils_tests.rs`
     "tests/frontend/shell/atomic_replace_registry_tests.rs",
     "tests/frontend/shell/backend_kill_tests.rs",
-    // 〔MIG-2〕`launch_wire_f07_main_path_tests.rs` 这一行删了 —— 随载荷内核搬进后端测试段，同拍把手写递归换成 `scan_tree_excluding`
+    // `launch_wire_f07_main_path_tests.rs` 这一行删了 —— 随载荷内核搬进后端测试段，同拍把手写递归换成 `scan_tree_excluding`
     //   （真迁完了）⇒ 存量少一条，上限同拍往下拧一格。
-    // 〔THIN〕`backend_layering.rs` 这一行删了 —— 那份判据随 monitor 侧 `backend` 目录删了 ⇒ 存量少一条，上限同拍往下拧一格。
-    // 〔LOC1a · 第四波 4D〕`tests/frontend/shell/backend/observe/local_query_tests.rs` 这一行删了 —— 那份判据文件随被测的
+    // `backend_layering.rs` 这一行删了 —— 那份判据随 monitor 侧 `backend` 目录删了 ⇒ 存量少一条，上限同拍往下拧一格。
+    // `tests/frontend/shell/backend/observe/local_query_tests.rs` 这一行删了 —— 那份判据文件随被测的
     //   `local_query.rs` 一起删（本机那几问改走 `<local>` 长连接）⇒ 存量少一条，上限同拍往下拧一格。
-    // 🔴 〔步 7c 2026-09-19〕**`cross_half_edge_registry_tests.rs` 这一行删了 —— 真迁完了。**
+    // 🔴 **`cross_half_edge_registry_tests.rs` 这一行删了 —— 真迁完了。**
     //    它的 `both_halves()` 手写递归改走了 `guard_core::scan_tree_excluding`
     //    （语义逐字相同，是纯死重）。腾出来的这一格给了 watcher 那条「一变二」。
     //    ⇒ 清单条数 28 → 28，`PENDING_CEILING` **一格没动**。
@@ -78,20 +78,20 @@ const PENDING: &[&str] = &[
     "tests/frontend/shell/frame_cadence_guard_tests.rs",
     "tests/frontend/shell/gate_singleton_guard_tests.rs",
     "tests/frontend/shell/local_read_surface_registry_tests.rs",
-    // 〔RM1f〕`tests/frontend/shell/panorama_tests.rs` 这一行删了：那份文件随 monitor 的内嵌引擎（`panorama.rs`（已删））一起删了 ⇒ 上限跟着 −1。
-    // 〔MOD〕`tests/frontend/shell/parser_tests.rs` 随记录解析搬进后端 → `tests/backend/agents/claudecode/parse_tests.rs`（同一条手动台账，照旧裸遍历真语料）。
+    // `tests/frontend/shell/panorama_tests.rs` 这一行删了：那份文件随 monitor 的内嵌引擎（`panorama.rs`（已删））一起删了 ⇒ 上限跟着 −1。
+    // `tests/frontend/shell/parser_tests.rs` 随记录解析搬进后端 → `tests/backend/agents/claudecode/parse_tests.rs`（同一条手动台账，照旧裸遍历真语料）。
     "tests/backend/agents/claudecode/parse_tests.rs",
     "tests/frontend/shell/polling_registry_tests.rs",
-    // 〔MIG-3a〕`tests/frontend/shell/profile_installer_tests.rs` → `tests/backend/assets/aliases/block_tests.rs`（别名块那一半的判据随代码进了后端，
+    // `tests/frontend/shell/profile_installer_tests.rs` → `tests/backend/assets/aliases/block_tests.rs`（别名块那一半的判据随代码进了后端，
     //   裸遍历那几处跟着走；monitor 留下的那份不再遍历）⇒ 换住址，条数不变。
     "tests/backend/assets/aliases/block_tests.rs",
     "tests/frontend/shell/quote_singleton_guard_tests.rs",
     "tests/frontend/shell/rust_timer_registry_tests.rs",
     "tests/frontend/shell/session_name_registry_tests.rs",
     "tests/frontend/shell/shared_crate_registry_tests.rs",
-    // 〔MIG-1〕`tests/frontend/shell/ssh_source_f032_idle_tests.rs` 这一行删了：那份判据随 monitor 的 idle / tmux 账本一起删 ⇒ 存量少一条，上限同拍往下拧一格。
+    // `tests/frontend/shell/ssh_source_f032_idle_tests.rs` 这一行删了：那份判据随 monitor 的 idle / tmux 账本一起删 ⇒ 存量少一条，上限同拍往下拧一格。
     "tests/frontend/shell/tmux_backend_gate_guard_tests.rs",
-    // 〔P4〕原 `tests/frontend/shell/utils_tests.rs`：那一处 `read_dir`（查临时目录里有没有残留的临时件）随原子写的判据搬进 `host-core`，条数不变。
+    // 原 `tests/frontend/shell/utils_tests.rs`：那一处 `read_dir`（查临时目录里有没有残留的临时件）随原子写的判据搬进 `host-core`，条数不变。
     "tests/common/host-core/lib_tests.rs",
     "tests/backend/layering_guard.rs",
     "tests/backend/no_timer_guard.rs",
@@ -126,7 +126,7 @@ const PENDING: &[&str] = &[
 /// [`no_new_guard_walks_the_tree_without_excluding_itself`]。
 // 08-08：`backend_route.rs` 的裸遍历迁到了 `guard_core::scan_tree!`（那一轮把它的
 // 发现面从一个目录扩到整棵树，顺带就该换掉手写遍历）⇒ 清单少一行，上限一起降。
-const PENDING_CEILING: usize = 23; // 〔THIN〕24 → 23：`backend_layering.rs` 随 `backend` 目录删了 · // 〔合并 MIG-1 × 主线 bc175f33〕两路各少一条（MIG-1 `ssh_source_f032_idle_tests.rs` · MIG-2 f07）⇒ 24 · 〔MIG-2〕f07 那份真迁完 ⇒ 26 → 25 · 〔LOC1a〕`local_query_tests.rs` 随被测模块删了 ⇒ 存量少一条，上限同拍往下拧一格 · 〔RM1f〕`tests/frontend/shell/panorama_tests.rs` 随 monitor 的内嵌引擎删了 ⇒ 存量少一条，上限同拍往下拧一格 · `设计/50`：`account_usage.rs` 整删 ⇒ 存量少一条，上限同拍往下拧一格
+const PENDING_CEILING: usize = 23; // 24 → 23：`backend_layering.rs` 随 `backend` 目录删了 · // 两路各少一条（MIG-1 `ssh_source_f032_idle_tests.rs` · MIG-2 f07）⇒ 24 · f07 那份真迁完 ⇒ 26 → 25 · `local_query_tests.rs` 随被测模块删了 ⇒ 存量少一条，上限同拍往下拧一格 · `tests/frontend/shell/panorama_tests.rs` 随 monitor 的内嵌引擎删了 ⇒ 存量少一条，上限同拍往下拧一格：`account_usage.rs` 整删 ⇒ 存量少一条，上限同拍往下拧一格
 
 /// 判定「这是一个带登记表的判据文件」的声明形态。**闭集，按名字认。**
 ///
@@ -239,7 +239,7 @@ fn repo_root() -> PathBuf {
 }
 
 /// 抠出所有 `#[cfg(test)]` 段（到下一个顶层 `}` 为止）。
-/// 🔴 〔搬树 2026-09-18 · `设计/16 §5.4b` 纪律 3〕**住 `tests/` 的文件整份就是测试段。**
+/// 🔴 〔搬树 2026-09-18 ·  纪律 3〕**住 `tests/` 的文件整份就是测试段。**
 ///
 /// [`test_regions`] 与 `guard_core::test_source` 都靠 `#[cfg(test)]` 这个**标记**
 /// 切出测试段 —— 那个标记是「生产段与测试段同住一份文件」那个年代的产物。
@@ -267,7 +267,7 @@ fn test_regions(src: &str) -> String {
     out
 }
 
-/// # 〔audit-0805 08-06〕横扫结论：「多条判据一起瞎」这一族**全仓已清**
+/// # 横扫结论：「多条判据一起瞎」这一族**全仓已清**
 ///
 /// 起因是两次实测：`no_timer_guard` 的两道针被同一种改写一次穿两层；
 /// `inbound` 的两条判据开头是**同一句** `if spec.fields.is_empty() { continue; }`
@@ -288,7 +288,7 @@ fn test_regions(src: &str) -> String {
 /// `backend_files` 三个**有自检**的误报成没有（它们的自检写在变量上、或是等数对拍）。
 /// ⇒ 依它建判据 = 把一个测不准的量具钉进门禁。**登记为已核事实，不做成机检。**
 ///
-/// 「扫描面 + 登记表」型判据的**反向那半**必须在（〔audit-0805 08-06〕裁决件产出）。
+/// 「扫描面 + 登记表」型判据的**反向那半**必须在（裁决件产出）。
 ///
 /// # 它钉的是一个被实测证明**今天成立**的前提，不是一个缺陷
 ///
@@ -374,7 +374,7 @@ fn every_registry_guard_keeps_its_reverse_half() {
     // 自己会 `panic!("读目录 … 失败")`。本格接的是**存在、但采不到东西**那一形
     //（后缀写错 · 指到一个几乎空的子目录）。两形各有各的接手人，别把本格读大。
     // 🔴 **地板按子树各给一个**，不是一个数管三棵。
-    // 〔2026-09-18〕`"tests"` 是新加的那棵，而它只有 **19 份 `.rs`**
+    // `"tests"` 是新加的那棵，而它只有 **19 份 `.rs`**
     // （另外 150 份是 `.ts`，不在本条的后缀里）⇒ 一个 40 的通用地板会**假红**，
     // 而假红正是本仓记过账的那件事：「假阳会训练人绕过判据」。
     // 现打：`src/frontend/shell/src` 111 · `src/backend` 72 · `tests` 19。
@@ -459,7 +459,7 @@ fn every_registry_guard_keeps_its_reverse_half() {
     // 改一个名字 ⇒ 那一形当场退回「没被扫到」，而「没被扫到」与「过了」在上面那条
     // 断言上**输出完全相同**（都不红）。⇒ 拿真实住址把至少一形钉住，让它改名即红。
     const MUST_BE_RECOGNISED: &[(&str, &str)] = &[(
-        // 〔搬树 2026-09-18 · `设计/16 §6.2` C 类〕住址跟着判据搬：`K-R31` 那条判据
+        // 〔搬树 2026-09-18〕住址跟着判据搬：`K-R31` 那条判据
         // 与它那张 `FORMS` 一起从 `src/backend/control/local_backend.rs` 搬到了
         // `tests/frontend/shell/local_backend_tests.rs`（现打：全树 `const FORMS:`
         // 仍然**恰好一处**，就是它）。**表名与判据名一个字都没改。**
@@ -516,7 +516,7 @@ fn every_registry_guard_keeps_its_reverse_half() {
     // 而 0 条时下面那两条断言**恒真地绿** —— 与 `K-R33` 那一格同形：
     // 「没扫到你」与「判过你了」在输出上一模一样。⇒ 拿真实住址把**本件的题眼**钉住。
     const MUST_BE_JUDGED_PER_GUARD: &[(&str, &str)] = &[(
-        // 〔搬树 2026-09-18 · `16 §6.2` C 类〕住址跟着判据搬（表名与判据名没改）。
+        // 〔搬树 2026-09-18〕住址跟着判据搬（表名与判据名没改）。
         "tests/frontend/shell/local_backend_tests.rs::nothing_in_the_production_path_runs_code_between_fork_and_exec",
         "`K-R36` 的题眼：它的表叫 `FORMS`、声明在它自己体内，\
              而同一份文件的测试段里另有几十处 `assert_eq!(` ——\
@@ -548,7 +548,7 @@ fn every_registry_guard_keeps_its_reverse_half() {
     /// 三列：**住址**（`路径::判据名`）· 为什么今天不补 · **解锁条件**。
     /// 起名 `REGISTERED` 是照本模块头注那条纪律（新写的「扫描面 ＋ 常量表」型判据，
     /// 表要起成 `TABLE_DECLS` 里已有的名字之一）。
-    /// ⚠ **诚实边界订正**〔`P4` 2026-09-21〕：先前这里写着「本文件被 `scan_tree!`
+    /// ⚠ **诚实边界订正**：先前这里写着「本文件被 `scan_tree!`
     /// 按构造摘除 ⇒ 这条元判据**看不见自己这张表**，起对名字在这里买到的只是纪律的
     /// 一致性，不是『它真被判到了』」。**那句话是假的。**
     /// ① 自摘那一刀在这一处不生效（判据由 `#[path]` 挂载 ⇒ `file!()` 是带 `..` 的
@@ -751,7 +751,7 @@ fn raw_walkers() -> Vec<String> {
         ("src/backend", &[]),
         ("tests", &["shell/scanning_guard_registry_tests.rs"]),
     ] {
-        // 🔴 〔步 7c 剖分 2026-09-19 · `设计/16 §5.4b` 纪律 4〕
+        // 🔴 〔步 7c 剖分 2026-09-19 ·  纪律 4〕
         //    **摘除从 `file!()` 改成明写名单，而且它现在是真承重的。**
         //
         // 上一版的注释说「摘除今天不是承重的，真正让本文件不被标记的是
@@ -861,7 +861,7 @@ fn the_pending_inventory_only_shrinks() {
 
 /// 本文件在仓里的相对住址 —— 下面要拿它去问 git 历史。
 ///
-/// 🔴 〔步 7c 剖分 2026-09-19 · `设计/16 §6.2` C 类〕**从 `src/frontend/shell/src/…` 换到
+/// 🔴 〔步 7c 剖分 2026-09-19〕**从 `src/frontend/shell/src/…` 换到
 /// `tests/frontend/shell/…`**：`PENDING` 与 `PENDING_CEILING` 这一轮跟着测试段搬过来了，
 /// 而这两个解析器要跑在**住着那两个常量的那份文件**的历史版本上。
 /// 没跟着改的后果现打过：两个解析器在「本文件此刻的源码」上都回 `None`
@@ -874,7 +874,7 @@ const SELF_REL: &str = "tests/frontend/shell/scanning_guard_registry_tests.rs";
 /// 🔴 为什么是一张表而不是一个字符串：**剖分不是改名**，`--follow` 跨不过去。
 /// 逐条写明每一个住址买到哪一段历史（缺一段 = 历史面变短 = 棘轮变松）：
 /// · `tests/frontend/shell/scanning_guard_registry_tests.rs` —— 步 7c 剖分**之后**的提交。
-///   〔RE〕带 `--follow`：收尾重排把它从 `tests/bridge/` 挪到这里（改名链一步），剖分那一刻它是新增文件、`--follow` 停在那儿。
+/// 带 `--follow`：收尾重排把它从 `tests/bridge/` 挪到这里（改名链一步），剖分那一刻它是新增文件、`--follow` 停在那儿。
 /// · `src/frontend/shell/src/scanning_guard_registry.rs` —— 剖分**之前**的整条历史。
 ///   带 `--follow`：它自己还跨着 2026-09-17 那次搬树（`src-tauri/src/…` → `src/frontend/shell/src/…`）。
 const SELF_HOMES: &[(&str, bool)] = &[
@@ -996,7 +996,7 @@ fn ratchet_history(root: &Path) -> (Vec<(String, usize, usize)>, usize) {
         if *follow {
             args.push("--follow");
         }
-        // 〔MIG-2〕sha 那一行打 `@` 标：合并提交若与两个父都不同，`--name-only` **不列文件名**（组合 diff 缺省不出），
+        // sha 那一行打 `@` 标：合并提交若与两个父都不同，`--name-only` **不列文件名**（组合 diff 缺省不出），
         //   原先「一行 sha、一行路径」交替取 ⇒ 下一个提交的 sha 被当成路径（`git show <sha>:<sha>` 退出 128）。
         //   有标 ⇒ 没有路径跟着的 sha 自己丢掉（那一提交在历史面上照样有它的父可读），不再错位。
         args.extend(["--format=@%h", "--name-only", "--", rel]);
@@ -1083,7 +1083,7 @@ fn the_pending_ratchet_never_turns_backwards() {
     // 上面那两个针是拿文本认的，而下面比的是**真常量**（`PENDING_CEILING` / `n`）。
     // 解析器要是系统性偏了（比如总是多数一行、或总回一个大数），历史最低档跟着偏，
     // 而**真树上照样绿**。⇒ 拿本文件此刻的源码喂一遍解析器，逼它复现那两个真值。
-    // 🔴 〔步 7c 剖分 2026-09-19 · `设计/16 §6.2` C 类〕**嵌的是「本文件」，不是那份生产文件。**
+    // 🔴 〔步 7c 剖分 2026-09-19〕**嵌的是「本文件」，不是那份生产文件。**
     //
     // 这一行的意思逐字是「拿**本文件此刻的源码**喂一遍解析器」。剖分之前本条住在
     // `src/frontend/shell/src/scanning_guard_registry.rs` 的 `#[cfg(test)]` 段里，那份文件就是本文件；
@@ -1278,19 +1278,19 @@ const SELF_EXCL_WINDOW: usize = 2;
 
 /// 散文树：**判据树两棵 ＋ 生产树三棵**，逐棵给地板。
 ///
-/// ⚠ 五棵**互不包含**（`设计/16 §5.4b` 纪律 1）。为什么生产树也要扫：那几句话有一半
+/// ⚠ 五棵**互不包含**（纪律 1）。为什么生产树也要扫：那几句话有一半
 /// 住在**生产文件的 `//!` 头注**里（剖分把一条判据的散文劈成了两个住址），
 /// 只扫 `tests/` 会漏掉它们，而**少扫不会红**。
 const PROSE_TREES: &[(&str, usize)] = &[
     ("src/frontend/shell/src", 100),
     ("src/common", 8),
     ("src/backend", 58),
-    // 〔P4〕140 → 120：文件窗口那 31 份判据搬去 `tests/frontend/filewin/`（下一行）；〔合并主线 211bb498〕P1 删了 monitor 适配表那一族的判据，这一棵现打 124。
+    // 140 → 120：文件窗口那 31 份判据搬去 `tests/frontend/filewin/`（下一行）；P1 删了 monitor 适配表那一族的判据，这一棵现打 124。
     ("tests/frontend/shell", 120),
-    // 〔P4〕文件窗口独立成包，它的判据从上一棵搬到这里（地板取现打份数）。
+    // 文件窗口独立成包，它的判据从上一棵搬到这里（地板取现打份数）。
     ("tests/frontend/filewin", 33),
     ("tests/backend", 65),
-    // 〔RE〕通信层成员的单测镜像（从上面两棵里搬出来的 9 份 ＋ 1 份 `.vitest.ts` 不在 `.rs` 人群）；地板取现打份数。
+    // 通信层成员的单测镜像（从上面两棵里搬出来的 9 份 ＋ 1 份 `.vitest.ts` 不在 `.rs` 人群）；地板取现打份数。
     ("tests/comms", 9),
 ];
 
@@ -1384,7 +1384,7 @@ fn live_self_exclusion_claims() -> (Vec<(String, String, String)>, Vec<(&'static
         //
         // 本条治的就是「靠 `file!()` 自摘」那句话（它在这一处恒空转），
         // 所以它自己一个字都不许靠那一刀
-        //（`设计/16 §5.4b` 纪律 2：把靠位置的排除换成明写的排除）。
+        //（纪律 2：把靠位置的排除换成明写的排除）。
         //
         // ⚠ **为什么名单是空的、不把本文件摘出去**：本条是一条 `== 0` 的断言
         // ⇒ 把自己收进语料只可能让它**变红**，不可能让它静默变绿
@@ -1477,7 +1477,7 @@ fn no_guard_prose_still_claims_the_scan_tree_self_exclusion_works() {
     /// 表要起成 [`TABLE_DECLS`] 里已有的名字之一）—— 起对了，
     /// [`every_registry_guard_keeps_its_reverse_half`] 就判得到本条。
     const REGISTERED: &[(&str, &str, &str)] = &[
-        // 🔴 **空了 —— 而空是对的那一种空**〔2026-09-21〕
+        // 🔴 **空了 —— 而空是对的那一种空**
         //
         // `P4` 收工时这里有 5 行：3 份生产树文件（`panorama_seam_registry.rs` ·
         // `plugin_class_registry.rs` · `scanning_guard_registry.rs`，后者 3 段）

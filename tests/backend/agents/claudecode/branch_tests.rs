@@ -5,7 +5,7 @@
 //! `build_branch_records` 走祖先回溯、逐字段对齐原生 fork 形状、拒 sidechain 与未知 uuid；`is_plain_sid` 拒能拼出别的路径的 sid。〔JA1 点址 2026-09-24〕
 
 use super::build_branch_records;
-// 〔THIN〕从前是本 crate 再导出的 `is_plain_sid`；收进后端之后 `find_session_file` 直呼这一条，判据照旧钉它。
+// 从前是本 crate 再导出的 `is_plain_sid`；收进后端之后 `find_session_file` 直呼这一条，判据照旧钉它。
 use shell_quote_core::session_id_ok as is_plain_sid;
 
 /// `K-R88`：sid 的形状是 `find_session_file` 先过的那一把闸，且它先于任何 IO。
@@ -30,7 +30,7 @@ fn a_session_id_that_could_spell_another_path_is_refused() {
     }
     assert!(is_plain_sid(&"a".repeat(64)));
     assert!(!is_plain_sid(&"a".repeat(65)), "上限是 64");
-    // 〔DUP1〕规则收进 `shell_quote_core::session_id_ok` 之后多挡的一样：前导 `-`（选项注入）。
+    // 规则收进 `shell_quote_core::session_id_ok` 之后多挡的一样：前导 `-`（选项注入）。
     assert!(!is_plain_sid("-abc"), "前导 - 该拒");
 }
 

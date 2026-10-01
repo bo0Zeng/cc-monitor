@@ -1,8 +1,8 @@
-//! 要求住址：`INVARIANTS §34`（破坏性动作过三道门，门只住后端）·「〔THIN〕共享 crate 只放契约、判定只在后端」（`设计/00 §1.2`）。
+//! 要求住址：`INVARIANTS §34`（破坏性动作过三道门，门只住后端）·「共享 crate 只放契约、判定只在后端」。
 //!
 //! **§34 Gate 2（identity）与 tmux 会话名两条规则的唯一实现** ——「这个 tmux 会话是不是本工具管的？」「这个名字能不能建 / 能不能寻址？」
 //!
-//! 〔THIN〕它从前是共享 crate `gate-core`（F03 立：当时 monitor 与后端各有一份门）。monitor 侧最后两处（Gate 1 前检 ·
+//! 它从前是共享 crate `gate-core`（F03 立：当时 monitor 与后端各有一份门）。monitor 侧最后两处（Gate 1 前检 ·
 //! `is_ccm_tmux_name` 的转调壳，只剩跨轨对拍锚点在用）删了之后，消费者只剩后端 `control/` 一层
 //! （`gate.rs` 送键 / 杀会话之前那道门 · `launch.rs` · `kill.rs` · `launch_render/` · `ccm/plan.rs`）⇒ 收成后端模块，共享 crate 那一格没了。
 //! 金表 `tests/__fixtures__/gate2-golden.tsv` 两个读者：`gate_tests.rs` 与 e2e `backend-gate2-acceptance.sh`。
@@ -84,7 +84,7 @@ pub(crate) fn is_ccm_tmux_name(name: &str) -> bool {
     charset_ok && (old_prefix || new_suffix)
 }
 
-// 〔THIN〕`needs_remote_sid`〔散文墓碑〕删：它是给「两侧同一个取反」立的名字，monitor 那一侧没了之后零调用方。
+// `needs_remote_sid`〔散文墓碑〕删：它是给「两侧同一个取反」立的名字，monitor 那一侧没了之后零调用方。
 
 /// Gate 2 union：名字命中 **或** 远端 `@ccm_sid` 已设。
 ///
@@ -107,7 +107,7 @@ pub(crate) fn gate2(name: &str, remote_sid: Option<&str>) -> Gate2 {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// 〔DUP2 · 主会话 09-26 裁 J6〕**tmux 会话名的形状 —— 全仓唯一一份**（`设计/01 §5` D1 · `设计/90 §3` 判据 2）。
+// **tmux 会话名的形状 —— 全仓唯一一份**。
 //
 // 此前三份、规则互不相同（`DUP1.md §0.3`）：后端 `ccm/plan.rs::validate_tmux_name`（非空 · 不以 `-` 开头 · 无 `*?.:=` · 无控制符）·
 // monitor 载荷 `TmuxTarget::check`（`Raw` 只放行 `[A-Za-z0-9_-]`、却放过前导 `-`；`Quoted` 拒控制符与欺骗字符）·
@@ -119,7 +119,7 @@ pub(crate) fn gate2(name: &str, remote_sid: Option<&str>) -> Gate2 {
 //   F04b「别建一个主路杀不掉的名字」）· 无控制符与视觉欺骗字符 · ≤ [`NEW_TMUX_NAME_MAX`] 个字符；
 // - **已有会话**（attach / 送进一个已在的会话，V131：`§47` ② 那一形）：非空 · 无控制符与视觉欺骗字符（**拒绝集**，不是白名单：
 //   那些名字不是我们建的，里面真有 glob 字符）。寻址恒走 tmux 精确匹配形 `=<名>:`（`INVARIANTS §31a`：`*` `?` 不被当通配、
-//   前导 `-` 不被当选项 —— DUP2 在隔离 socket 上现打过，读数在 `调研/第四波记录/DUP2.md §0.1`）。
+//   前导 `-` 不被当选项 —— DUP2 在隔离 socket 上现打过，读数在）。
 //
 // 本模块只判、不说：各调用处按 [`TmuxNameIssue`] 用自己的文案出声（句子不进本模块）。
 // 欺骗字符表是 `acct_core::is_deceptive_char` 那一张权威表（`§47` ② 的拒绝集），不在这里另抄一份。
@@ -181,7 +181,7 @@ pub(crate) fn new_tmux_name_issue(n: &str) -> Option<TmuxNameIssue> {
     None
 }
 
-/// **已有会话**的名字（attach · 送进一个已在的会话）过不过：`None` = 过。只拒空、控制符与视觉欺骗字符（V131 ②）。
+/// **已有会话**的名字（attach · 送进一个已在的会话）过不过：`None` = 过。只拒空、控制符与视觉欺骗字符（②）。
 pub(crate) fn existing_tmux_name_issue(n: &str) -> Option<TmuxNameIssue> {
     if n.is_empty() {
         return Some(TmuxNameIssue::Empty);

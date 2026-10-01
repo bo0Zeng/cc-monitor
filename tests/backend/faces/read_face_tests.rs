@@ -1,16 +1,16 @@
-//! 〔`C1` · 2026-09-24〕只读查询帧面宿主的判据。
+//! 只读查询帧面宿主的判据。
 //!
 //! 夹具只造**结构**（目录名、行数、字节边界），行内容是占位的最小 JSON —— 不采任何真会话正文。
 
 use super::*;
 use std::path::{Path, PathBuf};
 
-/// 本族的八条帧命令 —— **题面给的那八条**（`设计/15 §3.2` 那一串 ＋ `99 §4.19.2 ⑥`），
+/// 本族的八条帧命令 —— **题面给的那八条**（那一串 ＋），
 /// 写成帧面名。它是判据的**异源**那一侧：下面那条从 `inbound.rs` 源码里数「谁把活交给了
 /// `read_face::answer`」，两边必须相等。
-/// 〔SR1a · 09-24〕+2：`history-index` / `history-user-inputs`（题面「`--list-user-inputs` 与骨架
+/// +2：`history-index` / `history-user-inputs`（题面「`--list-user-inputs` 与骨架
 /// `--read-session-from-offset --index` 上帧面」那一句 —— 异源仍是题面，不是 `inbound.rs`）。
-/// 〔C4c · 第四波 4B〕+1：`accounts-trust`（主会话裁「仍在拨号的 `--account-trust` / `--account-trust-zero`」
+/// +1：`accounts-trust`（「仍在拨号的 `--account-trust` / `--account-trust-zero`」
 /// 随账号域一起上帧面 —— 异源是题面 `C4c` 那一句，不是 `inbound.rs`）。
 const FAMILY: &[&str] = &[
     "accounts-list",
@@ -18,27 +18,27 @@ const FAMILY: &[&str] = &[
     "accounts-trust",
     "history-index",
     "history-user-inputs",
-    // 〔CF2 · 第四波 4B〕按行号取回（异源是题面 CF2「后端给『从第 N 行起 k 行』的读口」，不是 `inbound.rs`）。
+    // 按行号取回（异源是题面 CF2「后端给『从第 N 行起 k 行』的读口」，不是 `inbound.rs`）。
     "history-lines",
-    // 〔SR1a × SE2〕会话内查找。
+    // 会话内查找。
     "history-find",
-    // 〔STC · 第四波〕会话事实出成品（异源是题面 STC「三样由后端出成品」＋ `设计/90 §4` 阶段 C，不是 `inbound.rs`）。
+    // 会话事实出成品（异源是题面 STC「三样由后端出成品」＋阶段 C，不是 `inbound.rs`）。
     "history-facts",
-    // 〔C4d · 第四波 4B〕`history-projects` / `history-sessions` 出列：它们出成品（并注解 ＋ 判活 ＋ 远端那一跳），
+    // `history-projects` / `history-sessions` 出列：它们出成品（并注解 ＋ 判活 ＋ 远端那一跳），
     //   交给 `history_join`（历史跨机 join 的唯一的家；异源仍是题面 —— 主会话 09-25 裁 C4d 第 2 条）。
     "history-read",
-    // 〔U4b · 第四波〕记录还在不在（resume 一跳先问；异源是题面 `U4b` G1，不是 `inbound.rs`）。
+    // 记录还在不在（resume 一跳先问；异源是题面 `U4b` G1，不是 `inbound.rs`）。
     "history-record",
     "history-search",
-    // 〔FIX4 · `90 §3` J15〕各台搜索结果合一份（异源是题面 FIX4 第 3 件 ＋ 主会话 09-28 裁 B，不是 `inbound.rs`）。
+    // 各台搜索结果合一份（异源是题面 FIX4 第 3 件 ＋ 主会话 09-28 裁 B，不是 `inbound.rs`）。
     "history-search-merge",
-    // 〔MOD · `05 §14.3` C 组〕按字节分页出记录行 · 漂移账（异源是题面 MOD 第 1 件，不是 `inbound.rs`）。
+    // 按字节分页出记录行 · 漂移账（异源是题面 MOD 第 1 件，不是 `inbound.rs`）。
     // 按运行读一个子运行的记录（异源是「子 agent 的流归各自的运行、通用层按运行读」那条要求，不是 `inbound.rs`）。
     "history-run",
     "history-page",
     "drift-report",
     "history-tail",
-    // 〔GAP1 · `设计/15 §4.7 S1`〕这台后端的 stderr 诊断文件尾部（异源是题面 GAP1 第 2 件「经那台后端的只读面」，不是 `inbound.rs`）。
+    // 这台后端的 stderr 诊断文件尾部（异源是题面 GAP1 第 2 件「经那台后端的只读面」，不是 `inbound.rs`）。
     "backend-log",
 ];
 
@@ -192,7 +192,7 @@ fn the_frame_read_keeps_the_projects_fence() {
     let _ = std::fs::remove_dir_all(&home);
 }
 
-// 〔C4d · 第四波 4B〕「按行那几条」那一条（`line_shaped_answers_carry_the_rows`〔散文墓碑〕）随 `history-projects` / `history-sessions`
+// 「按行那几条」那一条（`line_shaped_answers_carry_the_rows`〔散文墓碑〕）随 `history-projects` / `history-sessions`
 //   搬去 `history_join` 一起退役：同一件事（行与夹具结构对得上 · 缺参 bad_args）今天在 `history_join_tests.rs` 里按成品钉
 //   （`a_local_listing_joins_the_record_tree_and_the_synthesized_history` · `unreachable_or_malformed_requests_are_refused_without_asking`）。
 
@@ -246,7 +246,7 @@ fn an_oversized_listing_is_refused_not_truncated() {
     assert_eq!(ok, serde_json::json!({"lines": ["a", "b"]}));
 }
 
-/// ★ F2（〔SR1a〕→〔C4b〕出成品）：骨架索引与大纲清单两条帧命令的应答**就是成品**，
+/// ★ F2（→出成品）：骨架索引与大纲清单两条帧命令的应答**就是成品**，
 /// 条目与**夹具算出来的**逐条相等（异源：期望的偏移 / 行长 / uuid 从夹具字节自己数，不借被测函数）；
 /// 键集合恒等（`{from, end, rows}` / `{from, end, entries}`）—— 不再是按行的头尾三段。
 #[test]
@@ -343,7 +343,7 @@ fn index_and_user_input_answers_carry_the_rows_the_fixture_predicts() {
     let _ = std::fs::remove_dir_all(&home);
 }
 
-/// ★★〔C4b〕帧面成品的条目 == CLI 那一臂**中段**的逐行（同一份夹具、两个出口）。
+/// ★★帧面成品的条目 == CLI 那一臂**中段**的逐行（同一份夹具、两个出口）。
 ///
 /// 异源在：CLI 那一臂照旧写头尾三段（`write_*` 经 stdout 那条路），本条把它的中段剥出来，
 /// 与帧面那一臂的成品逐条比 —— 两臂共用的是扫描，不是装配；装配任一边丢一条 / 多一条 / 改一个键都红。
@@ -418,7 +418,7 @@ fn the_frame_products_carry_exactly_the_rows_the_cli_arm_prints() {
     let _ = std::fs::remove_dir_all(&home);
 }
 
-/// ★ 〔SR1a × SE2〕→〔C4b 出成品〕`history-find` 的 `hits`：命中集合 == 夹具里 `hit-*` 那几条（异源：期望取自夹具的 uuid 命名），
+/// ★ →〔C4b 出成品〕`history-find` 的 `hits`：命中集合 == 夹具里 `hit-*` 那几条（异源：期望取自夹具的 uuid 命名），
 /// 成品键集合恒等（`{total, hits}`）；围栏同一套。
 #[test]
 fn the_find_answer_hits_exactly_the_fixture_hits() {
@@ -474,7 +474,7 @@ fn the_find_answer_hits_exactly_the_fixture_hits() {
     let _ = std::fs::remove_dir_all(&home);
 }
 
-/// 〔C4b · 第四波 4B〕金样那份夹具会话：结构占位（uuid 按角色命名、正文是无意义占位词），不采任何真会话正文。
+/// 金样那份夹具会话：结构占位（uuid 按角色命名、正文是无意义占位词），不采任何真会话正文。
 fn golden_session(home: &Path) -> String {
     let dir = home.join("projects").join("-golden");
     std::fs::create_dir_all(&dir).unwrap();
@@ -493,7 +493,7 @@ fn golden_session(home: &Path) -> String {
     p.to_string_lossy().to_string()
 }
 
-/// 〔STC · 第四波〕会话事实那一格的金样夹具：结构占位（id / uuid 按角色命名、正文是无意义占位词），不采任何真会话正文。
+/// 会话事实那一格的金样夹具：结构占位（id / uuid 按角色命名、正文是无意义占位词），不采任何真会话正文。
 /// 三格各走到一次：分叉（首条 user 记录）· 写类工具 · usage；派出子运行的调用与它的结果也在，会话事实不认它们。
 fn golden_facts_session(home: &Path) -> String {
     let dir = home.join("projects").join("-golden");
@@ -512,8 +512,8 @@ fn golden_facts_session(home: &Path) -> String {
     p.to_string_lossy().to_string()
 }
 
-/// ★★〔C4b · 第四波 4B〕**跨语言金样**：三条帧命令对同一份夹具会话的成品 == `tests/__fixtures__/session-reads.golden.json`。
-/// 〔STC · 第四波〕＋ 第四条 `history-facts`（对它自己那份夹具 [`golden_facts_session`]）。
+/// ★★**跨语言金样**：三条帧命令对同一份夹具会话的成品 == `tests/__fixtures__/session-reads.golden.json`。
+/// ＋ 第四条 `history-facts`（对它自己那份夹具 [`golden_facts_session`]）。
 ///
 /// 那份金样的另一个读者是 TS 解码器（`tests/frontend/ui/session-reads.vitest.ts` 读同一份文件、逐字段断言）⇒ 两侧**异源**：
 /// 后端改一个键名 ⇒ 本条红；TS 解码器改一个键名 ⇒ 那边红。金样是手写落盘的，不是任一侧跑出来就算数的
@@ -540,7 +540,7 @@ fn the_three_products_match_the_cross_language_golden() {
     );
 }
 
-/// ★〔STC · 第四波〕`history-facts` 经帧面续传：把上一次的应答**原样**当 `prior` 交回（与线上同形：过一遍 JSON 文本），
+/// ★`history-facts` 经帧面续传：把上一次的应答**原样**当 `prior` 交回（与线上同形：过一遍 JSON 文本），
 /// 文件长了一截之后接着问 == 对长了之后的整份从 0 问（两向：整个值相等）。续点的两道校验：
 /// 截断（续点越过文件尾）⇒ `failed`；改写到续点不在行边界上 ⇒ `failed`；`prior` 形状不对 / 缺 `path` ⇒ `bad_args`。
 #[test]
@@ -606,7 +606,7 @@ fn history_facts_resumes_from_its_own_answer_and_refuses_a_stale_resume_point() 
     let _ = std::fs::remove_dir_all(&home);
 }
 
-/// 〔U4b · 第四波 · B4〕`history-record`：在 ⇒ `present:true`；不在 ⇒ `present:false`（一个答案，不是错误）；
+/// `history-record`：在 ⇒ `present:true`；不在 ⇒ `present:false`（一个答案，不是错误）；
 /// 坏 sid ⇒ `bad_args`；`root` == 这棵夹具树的 `projects`。
 ///
 /// 夹具只造结构（目录名 ＋ 占位行），不采真会话正文。符号链接那一格由 `branch_core::find_session_file`
@@ -639,7 +639,7 @@ fn history_record_answers_present_absent_and_refuses_a_bad_sid() {
     std::fs::remove_dir_all(&home).ok();
 }
 
-/// 〔GP1 · 第四波 · H1〕`history-record` 按**这次 resume 要用的账号根**查（`设计/30 §8` 第 4 条 · `GP1.md §4`）。
+/// `history-record` 按**这次 resume 要用的账号根**查（`GP1.md §4`）。
 ///
 /// 夹具两棵树：这台的家（`home`）与一个账号目录（`acct`），sid 只在账号目录里。
 /// 不带 `configDir` ⇒ 答不在（与改之前逐字同一问）；带了 ⇒ 答在，`root` == 那棵树的 `projects`（两向）。
@@ -685,10 +685,10 @@ fn gp1_history_record_looks_in_the_account_root_it_is_given() {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-//  〔CF2 · 第四波 4B〕`history-lines`：按行号取回
+// `history-lines`：按行号取回
 //
-//  要求住址：`设计/05 §3.3.4`「⇒ **级 3 是判据**：任何一个订阅侧缓冲都要有上界，满了必须落级 1 或级 2，
-//  **不许静默堆**」· `设计/99 §4.4`「无索引会话的重放缓冲上界（要先有不依赖索引的取回路）」——
+//  要求：「⇒ **级 3 是判据**：任何一个订阅侧缓冲都要有上界，满了必须落级 1 或级 2，
+//  **不许静默堆**」· 「无索引会话的重放缓冲上界（要先有不依赖索引的取回路）」——
 //  本族是那条「不依赖索引的取回路」，它取回来的行号必须与实时 `seq` 同一个空间，否则取回的正文落错位置。
 // ════════════════════════════════════════════════════════════════════════════
 
@@ -839,7 +839,7 @@ fn lines_by_number_share_the_seq_space_with_tail_and_index() {
         Some(n),
         "history-index 的行数"
     );
-    // 〔MOD〕`history-lines` 出的是**记录行**（只装进界面的那些；这份结构占位语料一条都不进）⇒ 条数不再等于行数，
+    // `history-lines` 出的是**记录行**（只装进界面的那些；这份结构占位语料一条都不进）⇒ 条数不再等于行数，
     //   行号空间由 `next`（数的是可计行）钉。
     assert_eq!(lines["lines"].as_array().map(Vec::len), Some(0));
     assert_eq!(
@@ -903,9 +903,9 @@ fn lines_by_number_match_the_shared_seq_space_golden() {
     assert!(pg.eof);
 }
 
-/// 〔C4c · 第四波 4B〕账号那两条的入参闸：`accounts-list` 缺 `agent` ⇒ `bad_args`（不猜是哪一家 ——
+/// 账号那两条的入参闸：`accounts-list` 缺 `agent` ⇒ `bad_args`（不猜是哪一家 ——
 /// 猜错就是把别家的号按 apikey 号报）；`accounts-trust` 缺 `cwd` / `configDir` 类型不对 ⇒ `bad_args`。
-/// 要求住址：`设计/05 §3.3.1`「② 对端错 —— 通道是通的，答案是『不行』」（入参错是对端的明拒，不是一个空答案）。
+/// 要求：「② 对端错 —— 通道是通的，答案是『不行』」（入参错是对端的明拒，不是一个空答案）。
 #[test]
 fn the_account_pair_refuses_missing_or_mistyped_arguments() {
     let home = scratch("c4c-args");
@@ -926,7 +926,7 @@ fn the_account_pair_refuses_missing_or_mistyped_arguments() {
     let _ = std::fs::remove_dir_all(&home);
 }
 
-/// ★ 〔GAP1 · `设计/15 §4.7 S1`〕`backend-log`：没装 ⇒ `path: null`；装了 ⇒ 尾部，截断时从截点后第一个换行起（不给半行）。期望手写。
+/// ★ `backend-log`：没装 ⇒ `path: null`；装了 ⇒ 尾部，截断时从截点后第一个换行起（不给半行）。期望手写。
 #[test]
 fn gap1_backend_log_returns_the_tail_cut_at_a_line() {
     let home = scratch("gap1-log");
@@ -970,7 +970,7 @@ fn gap1_backend_log_returns_the_tail_cut_at_a_line() {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-//  〔MOD · `设计/05 §14.3` C 组〕会话正文那几条出成品：跨语言金样
+// 会话正文那几条出成品：跨语言金样
 // ════════════════════════════════════════════════════════════════════════════
 
 /// 金样夹具：结构占位（uuid 按角色命名、正文是无意义占位词），不采任何真会话正文。
@@ -1004,7 +1004,7 @@ fn golden_record_session(home: &Path) -> PathBuf {
     p
 }
 
-/// ★★〔MOD〕**跨语言金样**：`history-read`（monitor 旁路快照收）· `history-page` · `history-lines` · `history-run`
+/// ★★**跨语言金样**：`history-read`（monitor 旁路快照收）· `history-page` · `history-lines` · `history-run`
 /// （界面收）对同一份夹具的成品 == `tests/__fixtures__/record-reads.golden.json`（路径里夹具那一截换成 `<home>`）。
 ///
 /// 另两个读者读同一份：monitor `frame_query::row_of`（`tests/frontend/shell/frame_query_tests.rs`）·

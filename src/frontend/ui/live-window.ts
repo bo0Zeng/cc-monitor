@@ -14,9 +14,9 @@
  * UnrenderedRanges 语义(区间集,render-window.ts 已有现成实现)——单洞后缀
  * 不变量在"跳到中部"时不再成立,届时窗口=多区间、fill=按洞取段。
  *
- * 〔`设计/10` 骨架 · 2026-09-24〕**上面预言的那次升级发生了，但只在骨架接上的 tab 上。**
+ * 〔骨架〕**上面预言的那次升级发生了，但只在骨架接上的 tab 上。**
  * 骨架（`skeleton-view.ts`）按可见区取**岛**（`takeRange`），于是已渲染集 = 尾后缀 ∪ 若干岛，
- * 单洞后缀不变量**不再成立**；「哪些 seq 还没物化」的真相源换成骨架的占位集（`SkeletonView.isPending`），
+ * 单洞后缀不变量**不再成立**；「哪些 seq 还没物化」的源头换成骨架的占位集（`SkeletonView.isPending`），
  * 本类退成「还没建卡的 payload 放哪」的账本。没接上骨架的 tab（没索引 / 老后端 / seq 对不上）
  * 仍是原来的单洞后缀，行为逐字不变。⚠ `INVARIANTS.md §21.3` 与 `ARCHITECTURE.md` 那两处
  * 「单洞后缀」的描述**还没同步**（不在本刀写区）。
@@ -30,7 +30,7 @@ import {
 } from "./height-estimate";
 
 /**
- * 〔RENDER2 · `设计/10 §3.2`〕**一个 tab 见过的行号**（入口按 seq 去重的那一格），存成升序、互不相邻的半开区间 `[lo, hi)`。
+ * **一个 tab 见过的行号**（入口按 seq 去重的那一格），存成升序、互不相邻的半开区间 `[lo, hi)`。
  * 段数的上界：不可显示的行由 monitor 以 `skipped_from` 告知、取回的整段按 `[from, next)` 记 ⇒ 一份收全了的会话收成一段；
  * 余下的段只来自真没到过的洞（重放在途 · 丢格）与「最后一个可显示行之后那一截不可显示的」，不随会话长度涨。
  */
@@ -106,10 +106,10 @@ function lowerBound(arr: JsonlLinePayload[], x: number): number {
 }
 
 /**
- * 〔CF2 · 第四波 4B〕**账本（还没上屏的那些）的上界**：超过 {@link PENDING_CAP} 条就只留 seq 最高的
+ * **账本（还没上屏的那些）的上界**：超过 {@link PENDING_CAP} 条就只留 seq 最高的
  * {@link PENDING_KEEP} 条，其余出账 —— 它们往上翻到时按行号取回（`fetchBelow`；接了骨架的按字节，`fetchMissingRows`）。
  *
- * `设计/05 §3.3.4` 逐字「⇒ **级 3 是判据**：任何一个订阅侧缓冲都要有上界」—— 这本账本就是 webview 这一侧的订阅缓冲：
+ * 「⇒ **级 3 是判据**：任何一个订阅侧缓冲都要有上界」—— 这本账本就是 webview 这一侧的订阅缓冲：
  * 原来没接骨架的 tab 在这里驻留整段历史（一份 4 万行的会话，后台 tab 里 4 万个 payload）。
  * 取数：一次物化最多 600 条（`materializeUntilFilled` 150 × 4）、上翻一批 200 条 ⇒ 留 2000 条够首屏 ＋ 七八次上翻不用等 IPC；
  * 摊还余量 1000（与 monitor 那一侧 `TRIM_SLACK` 同一个道理：每来一条都修会让收纳路付 O(n)）。
@@ -118,7 +118,7 @@ export const PENDING_KEEP = 2000;
 export const PENDING_CAP = 3000;
 
 /**
- * 〔CF2 · 第四波 4B〕**账本之下还有没有行**（`调研/第四波记录/CF2.md §1.4`）。
+ * **账本之下还有没有行**。
  *
  * seq 就是行号、从 0 起 ⇒ 渲染窗口最老那一条的 seq > 0 且账本空了 ⇒ 下面**可能**还有
  * （被 monitor 的重放缓冲修剪掉的 · 被本账本修剪掉的 · 或只是几条不显示的记录）。
@@ -127,7 +127,7 @@ export const PENDING_CAP = 3000;
  * - `maybe`：还没问过（或上次问回来之后还没到 0）；
  * - `fetching`：问着；
  * - `none`：问到了第 0 行 —— 到顶了；
- * - `failed`：问不动（老后端不认 / 断了），带一句给人看的原因。〔GAP1 · `设计/10 §7` 第 5 条〕第一次失败回 `maybe`
+ * - `failed`：问不动（老后端不认 / 断了），带一句给人看的原因。第一次失败回 `maybe`
  *   （下一次上翻触发再问一次），**连续**第二次才落这里；此后不自动重问（上翻逐 scroll 事件触发，无界重问是重试环），
  *   切走再切回来（`retryBelow`）才再问一次。
  */
@@ -137,7 +137,7 @@ export type BelowState =
   | { kind: "none" }
   | { kind: "failed"; reason: string };
 
-/** 〔RENDER2〕一批的第二道闸：每条的分量（调用方给）与这一批的上限。 */
+/** 一批的第二道闸：每条的分量（调用方给）与这一批的上限。 */
 export interface TakeBudget {
   weight: (p: JsonlLinePayload) => number;
   max: number;
@@ -149,34 +149,34 @@ export class TailWindow {
   /** 未渲染 payload;尾追加免排序,乱序块标 dirty 惰性 sort */
   private pending: JsonlLinePayload[] = [];
   private dirty = false;
-  /** 〔CF2〕账本之下还有没有（见 {@link BelowState}） */
+  /** 账本之下还有没有（见 {@link BelowState}） */
   private below: BelowState = { kind: "maybe" };
   /**
-   * 〔CF2〕按行号往下已经问到了第几行（上一问的 `from`）：下一问的上界是它与 floor 里小的那个。
+   * 按行号往下已经问到了第几行（上一问的 `from`）：下一问的上界是它与 floor 里小的那个。
    * **不能只看 floor**：问回来的那一段若全是不显示的记录，floor 不动 ⇒ 按 floor 算的下一问原地重问，
    * 而这一问又是在上一问的回调里同步发起的 ⇒ 一个不让出的无限循环（死值验 K5 首刀现打：vitest worker OOM）。
    * `null` = 没问过，或账本出过账（那些行要重新问，从 floor 起算）。
    */
   private askedDownTo: number | null = null;
   /**
-   * 〔CF2〕上一问的上界。下一问的上界必须**严格更小**，否则不问 —— 兜住「上界没往下走」的任何一种写法
+   * 上一问的上界。下一问的上界必须**严格更小**，否则不问 —— 兜住「上界没往下走」的任何一种写法
    * （那一形在这里是一个同步发起的无限循环，不是慢一点）。与 {@link askedDownTo} 同时复位。
    */
   private lastUntil: number | null = null;
-  /** 〔GAP1〕这一串失败里已经自动重问过一次了（问回来 / 切回来清掉）。 */
+  /** 这一串失败里已经自动重问过一次了（问回来 / 切回来清掉）。 */
   private belowRetried = false;
 
   get floorSeq(): number | null {
     return this.floor;
   }
 
-  /** 〔CF2〕账本之下的状态（哨兵那句话按它说）。 */
+  /** 账本之下的状态（哨兵那句话按它说）。 */
   get belowState(): BelowState {
     return this.below;
   }
 
   /**
-   * 〔CF2〕该不该按行号往下问：账本空了、渲染窗口最老那一条不是第 0 行、还没问到顶、此刻没在问、上次没失败。
+   * 该不该按行号往下问：账本空了、渲染窗口最老那一条不是第 0 行、还没问到顶、此刻没在问、上次没失败。
    * 问的区间是 `[max(0, 上界 − batch), 上界)`，上界 = min(floor, 上一问的 from)（{@link belowRange}）。
    */
   get wantsBelow(): boolean {
@@ -185,7 +185,7 @@ export class TailWindow {
     );
   }
 
-  /** 〔CF2〕要问的那一段 `[from, until)`（`until` = min(渲染窗口最老那一条, 上一问的 from)）。没得问 ⇒ `null`。 */
+  /** 要问的那一段 `[from, until)`（`until` = min(渲染窗口最老那一条, 上一问的 from)）。没得问 ⇒ `null`。 */
   belowRange(batch: number): { from: number; until: number } | null {
     if (!this.wantsBelow || this.floor === null) return null;
     const until = Math.min(this.floor, this.askedDownTo ?? this.floor);
@@ -193,20 +193,20 @@ export class TailWindow {
     return { from: Math.max(0, until - Math.max(1, batch)), until };
   }
 
-  /** 〔CF2〕开始问 `[…, until)`。 */
+  /** 开始问 `[…, until)`。 */
   markFetchingBelow(until: number): void {
     this.below = { kind: "fetching" };
     this.lastUntil = until;
   }
 
-  /** 〔CF2〕问回来了：问的是从第 `from` 行起 ⇒ `from == 0` 就到顶了，否则还可能有。 */
+  /** 问回来了：问的是从第 `from` 行起 ⇒ `from == 0` 就到顶了，否则还可能有。 */
   markFetchedBelow(from: number): void {
     this.below = from <= 0 ? { kind: "none" } : { kind: "maybe" };
     this.askedDownTo = from;
     this.belowRetried = false;
   }
 
-  /** 〔CF2〕问不动。〔GAP1〕这一串里第一次 ⇒ 回 `maybe`（下一次触发再问同一段），第二次才 `failed`。 */
+  /** 问不动。这一串里第一次 ⇒ 回 `maybe`（下一次触发再问同一段），第二次才 `failed`。 */
   markBelowFailed(reason: string): void {
     if (!this.belowRetried) {
       this.belowRetried = true;
@@ -217,7 +217,7 @@ export class TailWindow {
     this.below = { kind: "failed", reason };
   }
 
-  /** 〔CF2〕失败过的，允许再问一次（切走再切回来时调；其余状态原样）。 */
+  /** 失败过的，允许再问一次（切走再切回来时调；其余状态原样）。 */
   retryBelow(): void {
     if (this.below.kind === "failed") {
       this.below = { kind: "maybe" };
@@ -227,7 +227,7 @@ export class TailWindow {
   }
 
   /**
-   * 〔CF2〕会话流里丢过格（`gap`）⇒ 账本里还没上屏的那些**不可信**（它们之间可能夹着洞，而 seq 里本来就有
+   * 会话流里丢过格（`gap`）⇒ 账本里还没上屏的那些**不可信**（它们之间可能夹着洞，而 seq 里本来就有
    * 不显示的记录占的号，前端从 seq 看不出哪里缺）⇒ 整份出账，之后往上翻按行号重新取（`below` 回到 `maybe`）。
    * 返回丢掉的条数。
    */
@@ -253,7 +253,7 @@ export class TailWindow {
 
   /**
    * 收纳一条未渲染 payload。到达序通常块内升序 → 尾追加免排序。
-   * 〔CF2〕账本超过 {@link PENDING_CAP} ⇒ 只留 seq 最高的 {@link PENDING_KEEP} 条（出账的那些往上翻时按行号取回；
+   * 账本超过 {@link PENDING_CAP} ⇒ 只留 seq 最高的 {@link PENDING_KEEP} 条（出账的那些往上翻时按行号取回；
    * 「下面还有」这件事随之回到 `maybe`）。
    */
   defer(p: JsonlLinePayload): void {
@@ -280,7 +280,7 @@ export class TailWindow {
     }
     let from = Math.max(0, this.pending.length - k);
     if (budget) {
-      // 〔RENDER2 · `设计/17 §1.1`〕条数与分量双闸、先到先停；至少取一条（单条超预算也要能前进）。
+      // 条数与分量双闸、先到先停；至少取一条（单条超预算也要能前进）。
       let used = 0;
       let i = this.pending.length;
       while (i > from) {
@@ -300,13 +300,13 @@ export class TailWindow {
     return this.pending.length;
   }
 
-  /** 〔RENDER2〕账本里这几个 seq 的 payload（不出账；没有的跳过）。第二级估高借正文用，看完就丢。 */
+  /** 账本里这几个 seq 的 payload（不出账；没有的跳过）。第二级估高借正文用，看完就丢。 */
   peekSeqs(seqs: ReadonlySet<number>): JsonlLinePayload[] {
     return this.pending.filter((p) => seqs.has(p.seq));
   }
 
   /**
-   * 〔U3b · `设计/10` 步 8〕只留 seq 最高的 `keep` 条，其余**出账丢弃**；返回丢掉的条数。
+   * 只留 seq 最高的 `keep` 条，其余**出账丢弃**；返回丢掉的条数。
    *
    * 只许在**骨架接上之后**调：丢掉的那些从此只能按偏移要回来（`read_session_range`）。
    * 没骨架的 tab 调了它，上翻到头就没了。
@@ -322,7 +322,7 @@ export class TailWindow {
   }
 
   /**
-   * 〔`设计/10` 骨架 · 子步 4〕只读看几条 pending（**不出账**）—— 骨架接上之前用它对拍
+   * 〔骨架〕只读看几条 pending（**不出账**）—— 骨架接上之前用它对拍
    * 「seq 与索引行号是不是同一个空间」（截断重读换过 seq 的会话对不上，不许硬接）。
    */
   peek(n: number): readonly JsonlLinePayload[] {
@@ -330,7 +330,7 @@ export class TailWindow {
   }
 
   /**
-   * 〔`设计/10` 骨架 · 子步 3〕弹出 pending 里 seq ∈ `[lo, hi)` 的那些（升序、出账）。
+   * 〔骨架〕弹出 pending 里 seq ∈ `[lo, hi)` 的那些（升序、出账）。
    *
    * **不动 floor** —— 这是骨架「只物化可见区」取的**岛**，不是后缀；单洞后缀不变量从骨架接上那一刻起
    * 不再成立（见文件头注最后一段预言的那次升级）。`takeTail` 仍然可用：pending 恒在 floor 之下，
@@ -354,7 +354,7 @@ export class TailWindow {
   }
 
   /**
-   * 〔CF2〕把一条**见过**（`seenSeqs` 里有）而此刻不在账本里的记录放回账本 —— 按行号取回来的那一段里，
+   * 把一条**见过**（`seenSeqs` 里有）而此刻不在账本里的记录放回账本 —— 按行号取回来的那一段里，
    * 早先被修剪出账本的那些（旁路账早记过了，不能再过一遍 `onLine`）。与 {@link defer} 同一个口，
    * 只是不许重复：已在渲染窗口里的、已在账本里的同一 seq 都不再放。
    */
@@ -366,7 +366,7 @@ export class TailWindow {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// 〔`设计/10` 骨架 · 子步 2〕**骨架账本**：拿到后端索引就知道「一共多少条、每条大概多高、
+// 〔骨架〕**骨架账本**：拿到后端索引就知道「一共多少条、每条大概多高、
 // uuid 在哪一条」—— 不持有任何正文。
 // ═══════════════════════════════════════════════════════════════════════
 
@@ -376,7 +376,7 @@ export class TailWindow {
  * # 它替掉的是什么
  *
  * `TailWindow` 只会 `takeTail(k)`，**问不出「第 500 条在哪」**，也不知道一共有多少条
- * ⇒ 滚动条只算得出已建卡的那一段 ⇒ 「往上翻才显示」（`设计/10 §2.1` 第 3 条）。
+ * ⇒ 滚动条只算得出已建卡的那一段 ⇒ 「往上翻才显示」。
  * 本账本回答三件 `TailWindow` 答不了的事：
  * 1. **总条数与总高**（`endSeq` / `heightOf`）—— 画骨架的总高与滚动条；
  * 2. **某个像素落在哪一条**（`seqAt`）—— 只物化可见区用；
@@ -391,7 +391,7 @@ export class TailWindow {
  *
  * - **精度**：高度是第一级粗估（`estimateFromFacts`）。已渲染的卡由 `contain-intrinsic-size: auto`
  *   记住真值，那部分不走这里；这里只管**没渲染**的那些占多高。
- * - **截断重写**：后端的 jsonl 读者截断重读会换新 seq（INVARIANTS §25；〔TL1〕本机远端同一个读者），那之后 seq 与行号不再相等，
+ * - **截断重写**：后端的 jsonl 读者截断重读会换新 seq（INVARIANTS §25；本机远端同一个读者），那之后 seq 与行号不再相等，
  *   本账本对不上 —— 调用方见 `endSeq` 与实到的 seq 对不上时应当丢掉骨架（不许硬对）。
  */
 export class SkeletonLedger {
@@ -402,7 +402,7 @@ export class SkeletonLedger {
   private kinds: SkeletonKind[] = [];
   /** 每行第一级粗估（`prefix` 由它与 `refined` 合出来）。 */
   private est: number[] = [];
-  /** 〔RENDER2 · `设计/10 §2.5b` 第二级〕Worker 精算回来的高（seq → px，当前列宽下）；有它就用它、没有用第一级。 */
+  /** 〔第二级〕Worker 精算回来的高（seq → px，当前列宽下）；有它就用它、没有用第一级。 */
   private refined = new Map<number, number>();
   private colW: number | undefined;
   /** uuid → seq（无 uuid 的行不占） */
@@ -430,8 +430,8 @@ export class SkeletonLedger {
   }
 
   /**
-   * 列宽变了：整份重估（O(n)，纯算术）。精算过的那几行在新列宽下作废 —— 返回它们（`设计/10 §2.5b`「列宽变化只重算已精算过的」，
-   * 调用方把它们重交 Worker）。调用方：`SkeletonView.relayout`（〔P3〕宿主在消息流尺寸变了、现量列宽变了时调）。
+   * 列宽变了：整份重估（O(n)，纯算术）。精算过的那几行在新列宽下作废 —— 返回它们（「列宽变化只重算已精算过的」，
+   * 调用方把它们重交 Worker）。调用方：`SkeletonView.relayout`（宿主在消息流尺寸变了、现量列宽变了时调）。
    */
   relayout(colW: number | undefined): number[] {
     const rows = this.rows;
@@ -452,13 +452,13 @@ export class SkeletonLedger {
     return this.colW;
   }
 
-  /** 〔RENDER2〕这一行精算过没有。 */
+  /** 这一行精算过没有。 */
   isRefined(seq: number): boolean {
     return this.refined.has(seq);
   }
 
   /**
-   * 〔RENDER2 · 第二级〕Worker 精算回来的高换进账本（越界 / 不建卡的行不收）；从改动的最低那一行起重合一次前缀和。
+   * 〔第二级〕Worker 精算回来的高换进账本（越界 / 不建卡的行不收）；从改动的最低那一行起重合一次前缀和。
    * 返回有没有哪一行真的变了。
    */
   refine(entries: Iterable<readonly [number, number]>): boolean {

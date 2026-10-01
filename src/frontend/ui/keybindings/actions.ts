@@ -1,5 +1,5 @@
 /**
- * issue #5: 快捷键系统的 **Action 清单 = 单一真相源**。
+ * issue #5: 快捷键系统的 **Action 清单 = 单一源头**。
  *
  * 这里改一条新增/改默认/标可用性，全套（dispatcher / 编辑器 UI / 持久化 schema）
  * 自动收敛 —— 各处只引 ACTIONS 不要自己写动作 id 字面量。
@@ -9,7 +9,7 @@
  * - `id`：稳定字符串 key，进 config.json `keybindings.<id>` 持久化字段
  * - `default`：默认 chord（规范化串，详 `registry.ts::normalizeChord`）；`null` = 默认未绑
  * - `available`：false 表示功能未上线（editor.ts 灰显那一行），用户既不能
- *   触发它（因为代码没 bind）也不能改它的绑定。〔第四波 S4〕今天清单里没有未上线的：
+ *   触发它（因为代码没 bind）也不能改它的绑定。今天清单里没有未上线的：
  *   用不上的预留位不留（最后一条 `app.search-history`〔散文墓碑〕删了），真要做时再加
  * - `category`：UI 表格分组用，纯展示
  *
@@ -49,7 +49,7 @@ export interface Action {
  * 加新 action 时：
  *  1. 这里加一条
  *  2. main.ts 里 `dispatcher.bind("<id>", callback)`
- *  3. （如果是预留）`available: false`〔第四波 S4：预留位不留 —— 真做时再加〕
+ *  3. （如果是预留）`available: false`〔预留位不留 —— 真做时再加〕
  */
 // 默认快捷键全部为**单键**（无 Ctrl/Shift）—— cc-monitor 是只读监视窗口，主视图不接受
 // 文本输入，单键导航更顺手。**前提**：dispatcher 在可编辑文本元素聚焦时不触发快捷键
@@ -77,7 +77,7 @@ export const ACTIONS: ReadonlyArray<Action> = [
     default: "KeyN",
     available: true,
   },
-  // 〔SE2 · `设计/10 §6 步 6`〕会话内查找（大纲在同一块面板里）。与命令栏同理带 Ctrl：
+  // 会话内查找（大纲在同一块面板里）。与命令栏同理带 Ctrl：
   // 查找要能在任何时候唤起，而单键 F 在只读主视图上容易误触；Ctrl+KeyF 全表空闲（`actions.vitest.ts` 查重）。
   // ⚠ 只搜当前 tab 这一份会话；跨全部会话的全文搜索在历史浏览器里（它没有独立快捷键，`app.search-history` 那个预留位已删）。
   {
@@ -98,7 +98,7 @@ export const ACTIONS: ReadonlyArray<Action> = [
   // F84（#57）：命令栏。唯一默认带 Ctrl 的 chord（palette 惯例；单键 K 会在只读主视图误触发，
   // 且 palette 要在任意上下文唤起，故用组合键——经核实 Ctrl+KeyK 全表空闲、零冲突）。
   { id: "app.open-command-bar", label: copyText("keybindingActions.app.commandBar"), category: "App", default: "Ctrl+KeyK", available: true },
-  // 〔第四波 S4〕这里原先是 `app.search-history`〔散文墓碑〕：历史浏览器全文搜索的**预留位**（`default: null`、
+  // 这里原先是 `app.search-history`〔散文墓碑〕：历史浏览器全文搜索的**预留位**（`default: null`、
   //   `available: false`，编辑器里灰着一行「未上线」）。它从没上线过，而全文搜索本身早就能用（H 打开历史后切「全文」）
   //   ⇒ 用不上的预留位不留，真要给它一个快捷键时再加。它是清单里唯一一条未上线的，
   //   只为它存在的 `comingSoon` 说明字段与编辑器那枚「未上线（…）」标签一起删了。

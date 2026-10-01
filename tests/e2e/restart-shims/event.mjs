@@ -1,4 +1,4 @@
-// 〔FIX4 · 主会话裁 ④〕`@tauri-apps/api/event` 的 e2e 替身：换号重启今天等「那台报出这条会话起来了」才算成（`launch-arrival.ts::awaitArrival`）。
+// `@tauri-apps/api/event` 的 e2e 替身：换号重启今天等「那台报出这条会话起来了」才算成（`launch-arrival.ts::awaitArrival`）。
 //
 // 生产那一侧：发起方 `emit("launch-arrival-expect", {…, ticket})` → 主窗口看会话流的 `live` 格认出它 → 回 `launch-arrival-done {ticket, arrived}`。
 // 命令级驱动器没有主窗口、也没有会话流 ⇒ 本替身站在主窗口那个位置，用这台 e2e 能看得见的那一格代替 `live`：

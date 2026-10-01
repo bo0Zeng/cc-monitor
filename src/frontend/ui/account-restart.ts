@@ -1,11 +1,11 @@
 // A5：换号破坏性重启会话的编排（DESIGN §5）。活跃会话 → 杀旧进程 + 用新账号 resume 同一 sid。
-// 〔`A3` 第二波〕本机会话也走这一条（`origin = <local>`），只在第⑤步换成本机那一跳。
+// 本机会话也走这一条（`origin = <local>`），只在第⑤步换成本机那一跳。
 // **破坏性**（中断当前回合）。失败语义严格照 §5.2：compact 失败/超时**不阻断**；kill 失败**必须中止**、
 // 绝不续 resume（否则新旧两个进程抢同一会话）。在 A4 的账号解析/记账之上插入 [compact]→kill→resume。
 // 依赖经 import（vitest 可 vi.mock）；confirm / awaitCompact 两个交互点可注入，便于纯逻辑单测。
 //
 // **为何另起、不复用 A4 的 `withAccount`**（D 架构审计裁定，防下轮重新纠结）：两者语义天然不兼容——
-//   ① 不可选账号时：restart **中止**（破坏性重启绝不能退化用默认号）。〔FE1 · D-h〕withAccount 今天同样不起
+//   ① 不可选账号时：restart **中止**（破坏性重启绝不能退化用默认号）。withAccount 今天同样不起
 //      （先前是「降级默认起」），但它的出口是「说清 ＋ 给一个显式选择再起」，restart 这里没有那一步。
 //   ② 记 lastAccount 条件：withAccount run 后**无条件**记；restart **仅 kill+resume 全成后**才记
 //      （kill 失败提前 return、绝不记，见 §5.2 + vitest ④）。硬合需给 withAccount 加 abort-vs-degrade /
@@ -20,10 +20,10 @@ import { fetchAccounts, checkTrust } from "./account-reads";
 import { getModelForAccount } from "./account-prefs";
 import { recordLastAccount } from "./launch-account";
 import { showActionFailureToast } from "./error-toast";
-// 〔`A3` 第二波〕本机那一侧：`origin` 是 backend 的 `<local>`（〔C4b〕账号面那个第二种写法已退役，只剩这一个）。
-// 〔TL3 · 审计 F 🔴-5〕「是不是本机」只经 `ipc/origin.ts` 判（`设计/00 §2.5 ①`），这里不再自己比常量。
+// 本机那一侧：`origin` 是 backend 的 `<local>`（账号面那个第二种写法已退役，只剩这一个）。
+// 〔审计 F 🔴-5〕「是不是本机」只经 `ipc/origin.ts` 判，这里不再自己比常量。
 import { isLocalOrigin } from "./ipc/origin";
-// 〔FE1〕本机那一跳走 resume 编排的唯一一份（原 `account-restart-local.ts` 并进去了）。
+// 本机那一跳走 resume 编排的唯一一份（原 `account-restart-local.ts` 并进去了）。
 import { resumeLocalSessionAndWait } from "./local-resume";
 import { copyText } from "./copy-table";
 
@@ -32,10 +32,10 @@ export interface RestartWithAccountOpts {
   sessionId: string;
   cwd: string;
   /** 本工具的会话名（send-keys / kill 目标；后端的身份门对发按键与结束会话都只认 `*-cc`
-   *  ——audit-fixes F02 后 kill 也对称加了守卫）。〔C4e〕此前这里点的是 monitor 的 `tmux_send_keys` /〔散文墓碑〕
+   *  ——audit-fixes F02 后 kill 也对称加了守卫）。此前这里点的是 monitor 的 `tmux_send_keys` /〔散文墓碑〕
    *  `kill_remote_tmux`〔散文墓碑〕；今天两件经 `src/frontend/ui/tmux-control.ts` 直接问那台机器的后端，门只在后端。
    *
-   *  ⚠ 〔`K-R96` 09-12 订正〕这两句**原本都写反了**：写的是「`cc-<sid8>` 会话名」＋
+   *  ⚠ 这两句**原本都写反了**：写的是「`cc-<sid8>` 会话名」＋
    *  「白名单都只认 `cc-*`」。真实形状是 **`<X>-cc` 后缀**（S4b-3b，用户 2026-07-31 把
    *  `cc-` 前缀反转成 `-cc` 后缀），白名单认的是 `*-cc`（老的 `cc-*` 前缀仍兼容认，
    *  但那是**向后兼容**，不是今天产的形状 —— 判定住后端 `control/gate_rules.rs::is_ccm_tmux_name`）。
@@ -91,7 +91,7 @@ export async function restartWithAccount(opts: RestartWithAccountOpts): Promise<
   }
 
   // ② 破坏性二次确认。
-  // 〔W5-UI〕默认走应用内对话框：真 app 里 `window.confirm` 是插件注入的 async 替身（返回 Promise，恒真值）。
+  // 默认走应用内对话框：真 app 里 `window.confirm` 是插件注入的 async 替身（返回 Promise，恒真值）。
   const confirmFn: ConfirmFn = opts.confirm ?? askConfirm;
   const msg =
     copyText("accountRestart.confirm.body", { name: accountName, tmuxName, compact: (opts.compactFirst
@@ -127,13 +127,13 @@ export async function restartWithAccount(opts: RestartWithAccountOpts): Promise<
     }
   }
 
-  // ④ 结束旧会话（`tmux-control.ts::killSession`，关卡 2 在那台后端）。〔V154〕不再先发 `Escape` ＋ `/exit` 等它自己退：
+  // ④ 结束旧会话（`tmux-control.ts::killSession`，关卡 2 在那台后端）。不再先发 `Escape` ＋ `/exit` 等它自己退：
   //   直接杀。**失败 → 中止不续 ⑤**（避免新旧两进程抢同一会话；§5.2 ④）。
   try {
     await killSession(origin, tmuxName);
   } catch (e) {
     const said = copyText("accountRestart.aborted.body", { e: saidOfControl(e) });
-    // 〔RESYNC · V149〕关卡 2 拒的 ⇒ 「对齐后重试」：只对这个会话重验 ＋ 重打，再从头走一遍（二次确认照问）。
+    // 关卡 2 拒的 ⇒ 「对齐后重试」：只对这个会话重验 ＋ 重打，再从头走一遍（二次确认照问）。
     if (isIdentityRefusal(e)) {
       offerResyncRetry(origin, sessionId, copyText("accountRestart.aborted.title"), said, async () => {
         await restartWithAccount(opts);
@@ -151,7 +151,7 @@ export async function restartWithAccount(opts: RestartWithAccountOpts): Promise<
   // F07：同样补查一次该账号的模型偏好（withAccount 内部也做同一次查询——两条并列路径各自补
   // 一次，同 F05 对 accountName 的处理模式）。
   //
-  // 〔`A3` 第二波〕**本机那一跳**：编排上面五步两侧逐字共用（发按键 / 结束会话
+  // **本机那一跳**：编排上面五步两侧逐字共用（发按键 / 结束会话
   // 都按 origin 分流、`<local>` 走得通；账号清单与信任预检也按 origin 分流到本机后端），
   // 只有「resume」这一跳两侧起法不同：
   //
@@ -164,7 +164,7 @@ export async function restartWithAccount(opts: RestartWithAccountOpts): Promise<
   //
   // ⚠ 账号**不走**跟随（`follow`）：换号重启的正题恰恰是换成另一个号，跟随会把用户的选择丢了。
   const isLocal = isLocalOrigin(origin);
-  // 〔FIX4 · 主会话裁 ④〕「全成」的定义换成**看见会话起来**：执行器等那台报出这条会话才回 `arrived`；
+  // 「全成」的定义换成**看见会话起来**：执行器等那台报出这条会话才回 `arrived`；
   //   没等到（`missed`，那一句主窗口已经说了）⇒ 不记账、不说「已用新账号重启」；没真发出去（`unsent`）⇒ 照旧说失败。
   const launched = isLocal
     ? await resumeLocalSessionAndWait({
@@ -207,7 +207,7 @@ export async function restartWithAccount(opts: RestartWithAccountOpts): Promise<
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// 〔FE1 · 第四波 4D〕从 `accounts.ts` 搬来：换号重启定位不到会话时的那句话（起停域）。
+// 从 `accounts.ts` 搬来：换号重启定位不到会话时的那句话（起停域）。
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
@@ -248,7 +248,7 @@ export function restartLocateFailureMessage(
 } {
   // ⚠ `undefined`（老后端不出这个键）与 `null`（backend 说「不作数」）在这里是同一件事。
   const carriesOurLaunchMark = Boolean(row && row.alive && row.launchId);
-  // 〔`A3` 第二波〕最后那句补救**只对远端成立**：本机归档 tab 的 Resume 不带账号选择
+  // 最后那句补救**只对远端成立**：本机归档 tab 的 Resume 不带账号选择
   // （走 `localLaunchAccountSync`，沿用这条会话上次的号），「把此会话切到账号 X」在本机不存在。
   // 对本机说那句话，是在指一条走不通的路。
   const tail = opts.local

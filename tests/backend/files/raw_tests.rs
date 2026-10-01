@@ -1,4 +1,4 @@
-//! 〔步 24f〕`files/raw.rs` 的判据 —— **钉住「路径一路走字节」这件事**。
+//! `files/raw.rs` 的判据 —— **钉住「路径一路走字节」这件事**。
 //!
 //! # 它买到的
 //!
@@ -58,7 +58,7 @@ fn a_non_utf8_path_goes_down_the_hex_branch_and_round_trips_byte_for_byte() {
     assert!(
         v.get(HEX_KEY).is_some(),
         "非 UTF-8 没走十六进制那条路：{v:?}\n\
-         🔴 这正是 `设计/60 §2 档②` 那条「库层有损解码，**寻址不到**」——\n\
+         🔴 这正是那条「库层有损解码，**寻址不到**」——\n\
          一旦在这里解成替换字符，回程拿着那串去找的就是一个不存在的名字。"
     );
     assert_eq!(

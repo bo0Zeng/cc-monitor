@@ -1,4 +1,4 @@
-//! 〔RM1a · 第四波〕`accounts/upstream_select/file_face.rs` 的判据 —— 这台机器上那份凭据文件的帧面读写口。
+//! `accounts/upstream_select/file_face.rs` 的判据 —— 这台机器上那份凭据文件的帧面读写口。
 //!
 //! # 买到的（全在本机临时目录上真读真写，不是源码扫描）
 //!
@@ -27,7 +27,7 @@ fn temp_dir(tag: &str) -> PathBuf {
     p
 }
 
-/// 那份文件在临时「家目录」下的位置（〔V160〕与生产同一个落点：`<家>/.cc-monitor/<FILE_NAME>`，期望手写）。
+/// 那份文件在临时「家目录」下的位置（与生产同一个落点：`<家>/.cc-monitor/<FILE_NAME>`，期望手写）。
 fn file_in(home: &Path) -> PathBuf {
     home.join(".cc-monitor").join(store::FILE_NAME)
 }
@@ -140,7 +140,7 @@ fn an_unparseable_file_is_refused_and_left_byte_for_byte() {
         r["problem"].is_string(),
         "读口把读坏了的文件报成了没问题：{r}"
     );
-    // 〔US1〕「表里有哪几行」不再出线（`rows_at` 一份）：读坏了 ⇒ 零条。
+    // 「表里有哪几行」不再出线（`rows_at` 一份）：读坏了 ⇒ 零条。
     assert!(
         r.get("rows").is_none(),
         "`rows` 又回到了 `apikey-read` 的应答里：{r}"
@@ -155,7 +155,7 @@ fn bad_arguments_are_refused_before_a_single_byte_is_written() {
     let home = temp_dir("args");
     let f = file_in(&home);
     std::fs::create_dir_all(&home).unwrap();
-    // 〔HX2 · 4D〕入参从 `account` 换成 `configDir`（账号 id 由后端推）：坏形按新入参重写；还给 `account` 那一形也拒。
+    // 入参从 `account` 换成 `configDir`（账号 id 由后端推）：坏形按新入参重写；还给 `account` 那一形也拒。
     let cases = [
         (json!({"key": PLAIN}), "缺 configDir"),
         (json!({"configDir": "/h/accts/work"}), "缺 key"),
@@ -233,7 +233,7 @@ fn the_plaintext_never_leaves_in_either_answer() {
     let _ = std::fs::remove_dir_all(&home);
 }
 
-/// 文件 0600；〔DATA-HOME · V160〕它那一层目录（`~/.cc-monitor`，也是后端的家）由这一下建出来时是 0700。
+/// 文件 0600；它那一层目录（`~/.cc-monitor`，也是后端的家）由这一下建出来时是 0700。
 #[test]
 fn the_written_file_is_owner_only_and_no_temp_file_is_left() {
     let home = temp_dir("perm");
@@ -304,7 +304,7 @@ fn assert_no_residue(dir: &Path) {
     assert!(!tmp.exists(), "留下了临时文件：{}", tmp.display());
 }
 
-/// 〔ST2 × RM1a〕Base URL 跟着 key 写进**这台机器**那一份：给了 ⇒ 落进这一行、读回；
+/// Base URL 跟着 key 写进**这台机器**那一份：给了 ⇒ 落进这一行、读回；
 /// 只配 key（缺席 / null / 空串）⇒ **已有端点原样留着**；形状不对 ⇒ 整次不写（key 也不落，文件逐字节不动）。
 #[test]
 fn base_url_is_written_with_the_key_and_left_alone_when_only_the_key_changes() {
@@ -348,7 +348,7 @@ fn base_url_is_written_with_the_key_and_left_alone_when_only_the_key_changes() {
     .unwrap_err();
     assert_eq!(err.0, "bad_args");
     assert_eq!(std::fs::read(&f).unwrap(), before, "形状不对却动了文件");
-    // 〔DUP3 · J9〕与装表**同一个谓词**（`upstream_url_core::usable`）：装不进表的（明文非回环）写口当场拒、文件不动。
+    // 与装表**同一个谓词**（`upstream_url_core::usable`）：装不进表的（明文非回环）写口当场拒、文件不动。
     let err = answer_set_at(
         &f,
         &json!({"configDir": "/h/accts/work", "key": PLAIN, "baseUrl": "http://api.example.com"}),
@@ -364,12 +364,12 @@ fn base_url_is_written_with_the_key_and_left_alone_when_only_the_key_changes() {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// 〔GP1 · 第四波〕本机那一份的写者也换成了本机常驻后端（主会话裁「每台机器一个写者 ＝ 那台的后端」）⇒
+// 本机那一份的写者也换成了本机常驻后端（「每台机器一个写者 ＝ 那台的后端」）⇒
 // monitor 那侧 `creds_store::write_key_at`〔散文墓碑〕删了，它身上三条**本侧没有同形**的写路判据逐条搬到这里
 // （写的是同一份 `creds_core::store` 规则，被测换成这一侧唯一那个写口）。其余几条本侧早有同形：
 // 写的那一刻读盘 / 别的行不动（`other_rows_and_unknown_keys_survive_…`）· 出生即只给本人（`the_written_file_is_owner_only_…`）·
 // Base URL（`base_url_is_written_with_the_key_…`）· 说不出账号拒写（`bad_arguments_are_refused_…`）。
-// 要求住址：`调研/第四波记录/GP1.md §3` · `INVARIANTS §42`（每台机器上的程序写者恰好一个）。
+// 要求住址：`INVARIANTS §42`（每台机器上的程序写者恰好一个）。
 // ════════════════════════════════════════════════════════════════════════════
 
 /// ★★ `KS10` 行为那一半（原 monitor `a_program_write_keeps_everything_the_human_put_there`〔散文墓碑〕）：
@@ -512,10 +512,10 @@ fn gp1_the_write_side_never_targets_the_legacy_top_level_slot() {
     let _ = std::fs::remove_dir_all(&home);
 }
 
-/// 〔US1 · 4D〕E2：「表里有哪几行」只有一份 —— [`rows_at`] == 上游选择装表**真收进表**的那几行。
+/// E2：「表里有哪几行」只有一份 —— [`rows_at`] == 上游选择装表**真收进表**的那几行。
 ///
-/// 守的要求：B-decouple §2.1 必须拆 1（monitor `history::apikey_rows_at`〔散文墓碑〕另算人群，头注自认
-/// 「`base_url` 写错的号界面说经本机中转、后端 404」）· `设计/05 §14.3`「业务解释只有一个家」。
+/// 守的要求：必须拆 1（monitor `history::apikey_rows_at`〔散文墓碑〕另算人群，头注自认
+/// 「`base_url` 写错的号界面说经本机中转、后端 404」）· 「业务解释只有一个家」。
 /// 夹具里四行进不了表（`base_url` 坏 · 明文非回环 · `auth_style` 认不出 · id 当不了路由段）、一行能进；
 /// 正控：`store::read_accounts` 读得到全部五行（旧口径下前三行都算「有行」）。
 #[test]
@@ -547,7 +547,7 @@ fn us1_the_rows_are_exactly_what_the_table_builder_keeps() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// 〔US1 · 4D，原 monitor `creds_store_tests` 同名一条搬来〕`KS11` 门①那半：那份文件被放宽了，读口**出声**；只给本人时**不出声**（两向）。
+/// 〔4D，原 monitor `creds_store_tests` 同名一条搬来〕`KS11` 门①那半：那份文件被放宽了，读口**出声**；只给本人时**不出声**（两向）。
 /// 守的要求：`INVARIANTS §42`（凭据文件的读写）· `KS11`「权限过宽要在界面上显出来」—— 界面那一格今天就是这台后端 `apikey-read` 的 `notice`。
 #[cfg(unix)]
 #[test]
@@ -570,7 +570,7 @@ fn us1_a_widened_file_is_called_out_and_an_owner_only_one_is_not() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// 〔US1 · 4D，原 monitor `creds_store_tests` 同名一条搬来〕三态：没配 · 配了 · 文件读坏了。**「读坏了」不许退化成「没配」**；
+/// 〔4D，原 monitor `creds_store_tests` 同名一条搬来〕三态：没配 · 配了 · 文件读坏了。**「读坏了」不许退化成「没配」**；
 /// 配了 ⇒ 只回掩码（`KS6`：应答整串里零明文，带正控：掩码里有遮蔽符）。
 #[test]
 fn us1_a_broken_file_is_surfaced_instead_of_looking_unconfigured() {
@@ -645,10 +645,10 @@ fn us1_what_the_write_side_wrote_is_exactly_the_row_the_launch_answer_uses() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// 🔴 〔HX2 · 第四波 4D〕W1：**账号 id 由这台后端按全仓唯一那份规则从 `configDir` 推**（`acct_core::apikey_account_id_of_dir`）。
+/// 🔴 W1：**账号 id 由这台后端按全仓唯一那份规则从 `configDir` 推**（`acct_core::apikey_account_id_of_dir`）。
 ///
-/// 要求住址：`第四波记录/US1.md` 表「`creds.apikey` 写 … 迁了要么后端收 configDir、要么前端推 —— 前者可做」＋ `KH2C1`（前端一个字都不推账号 id）；
-/// `设计/05 §14.3` B 组（`creds.apikey` 经 `chan.call`）。期望的 id 由规则那一份现算（异源：不是本模块自己再写一个 basename）。
+/// 表「`creds.apikey` 写 … 迁了要么后端收 configDir、要么前端推 —— 前者可做」＋ `KH2C1`（前端一个字都不推账号 id）；
+/// （`creds.apikey` 经 `chan.call`）。期望的 id 由规则那一份现算（异源：不是本模块自己再写一个 basename）。
 #[test]
 fn hx2_the_account_id_is_derived_here_from_the_config_dir() {
     let home = temp_dir("hx2-derive");

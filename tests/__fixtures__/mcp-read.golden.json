@@ -1,6 +1,6 @@
 {
   "说明": [
-    "〔SH1 · V137〕`mcp-read` 的跨语言金样：后端（适配层 `agents/claudecode/mcp.rs` ＋ `feature_face::mcp_reply`）对夹具现算 == reply；monitor `mcp.rs::decode_mcp_read` 读同一份 reply。",
+    "`mcp-read` 的跨语言金样：后端（适配层 `agents/claudecode/mcp.rs` ＋ `feature_face::mcp_reply`）对夹具现算 == reply；monitor `mcp.rs::decode_mcp_read` 读同一份 reply。",
     "只采结构（占位 server 名 / 占位命令）。`<DIR>` / `<CJ>` 由测试换成临时目录下的真路径。"
   ],
   "claudeJson": "{\"mcpServers\":{\"u1\":{\"command\":\"/opt/u1\"}},\"projects\":{\"<DIR>\":{\"mcpServers\":{\"l1\":{\"type\":\"http\",\"url\":\"http://x\"}}},\"/other\":{}}}",

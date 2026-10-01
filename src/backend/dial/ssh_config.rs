@@ -1,4 +1,4 @@
-//! 〔MIG-1 · `设计/99 §2.1 ⑯`〕**`~/.ssh/config` 的解读住这里** —— 与拨号同一个家（本目录）。
+//! **`~/.ssh/config` 的解读住这里** —— 与拨号同一个家（本目录）。
 //!
 //! 三条帧命令（界面经 `chan.call(<local>, …)` 问本机常驻后端；远端后端同一份代码，答的是它自己那台的 config）：
 //!
@@ -8,7 +8,7 @@
 //! | `ssh-config-resolve {alias}` | 一台的有效连接参数（系统 `ssh -G` 解析，Include / Match / 通配都由它处理） |
 //! | `ssh-config-import` | 全部别名逐个解析后按「同一台机器的多个地址」聚合成的预览组 |
 //!
-//! 从 monitor `ssh_source.rs` 原样搬来（规则一个字没改）；monitor 从此一处 `.ssh` 都不读、不起 `ssh`（`00 §1.1`「monitor 零 SSH」字面成立）。
+//! 从 monitor `ssh_source.rs` 原样搬来（规则一个字没改）；monitor 从此一处 `.ssh` 都不读、不起 `ssh`（「monitor 零 SSH」字面成立）。
 //! 只读 `~/.ssh/config`，**不碰任何密钥文件**（`identityfile` 只问「在不在」，不读内容）。
 
 use copy_core::copy_text;

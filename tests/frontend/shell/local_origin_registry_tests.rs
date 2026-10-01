@@ -125,17 +125,17 @@ fn every_remote_config_lookup_deals_with_the_local_origin_first() {
     //    ⚠ 地板守的是「抽取器还够得到东西」；人群真的少了一个成员时不跟着改，
     //    才是让它替真判据挡枪（`K-G8`）。
     // 🔴 `K-R112`（09-13）：地板 19 → **17**，理由与上面 `K-R104` 那一条**同形**：
-    //    `check_cc_bus_agent_online`〔散文墓碑〕（`cc_bus.rs`，〔C4e〕已迁到界面）与 `capture_remote_pane`〔散文墓碑〕（`tmux.rs`，〔C4e〕已迁到界面）
+    //    `check_cc_bus_agent_online`〔散文墓碑〕（`cc_bus.rs`，已迁到界面）与 `capture_remote_pane`〔散文墓碑〕（`tmux.rs`，已迁到界面）
     //    不再自己去查远端配置（两条都整条走后端通道，`client_for(origin)` 对 `<local>`
     //    与远端一视同仁）⇒ 这个人群**恰好少两处**。
-    // 🔴 〔SR1b · 09-24〕地板 17 → **16**：`inproc_dial.rs` 里跳板那一跳的 `connect_via_jump`〔散文墓碑〕（查配置，只服务 SFTP）
+    // 🔴 地板 17 → **16**：`inproc_dial.rs` 里跳板那一跳的 `connect_via_jump`〔散文墓碑〕（查配置，只服务 SFTP）
     //    随那份文件整份删了（界面进程零 SSH）⇒ 这个人群**恰好少一处**（登记表那一行同拍还掉）。
-    // 🔴 〔LOC1a · 第四波 4D〕地板 16 → **15**：`remote_branch.rs` 的 `create_remote_branch_session` 不再自己去查远端配置〔散文墓碑〕
+    // 🔴 地板 16 → **15**：`remote_branch.rs` 的 `create_remote_branch_session` 不再自己去查远端配置〔散文墓碑〕
     //    （分叉本机远端同一条帧命令，`client_for(origin)` 对 `<local>` 与远端一视同仁）⇒ 这个人群**恰好少一处**。
-    // 🔴 〔SH1 · 4D〕地板 15 → **13**：驾驶舱读名册 / 读收件箱那两处（`read_cc_bus_state` · `cfg_of`，〔散文墓碑〕）随 shell 读删了。
-    // 〔SH1〕13 → 12：钩子诊断远端那一处不再查远端配置（改问那台后端）；12 → 10：MCP 远端两处同理。
+    // 🔴 地板 15 → **13**：驾驶舱读名册 / 读收件箱那两处（`read_cc_bus_state` · `cfg_of`，〔散文墓碑〕）随 shell 读删了。
+    // 13 → 12：钩子诊断远端那一处不再查远端配置（改问那台后端）；12 → 10：MCP 远端两处同理。
     assert!(
-        sites >= 6, // 〔FIX4 · ⑬〕7 → 6：`launch.rs` 两处（远端拼 ssh 外壳时查跳板 · 开终端那一条查这台）随 ssh 外壳进本机后端删了，新 `terminal_dial` 一处（先分本机） // 〔MOD〕8 → 7：`remote_history·rs` 那个 `require_cfg_by_label`〔散文墓碑〕随子 agent 那条命令删了 // 〔SH1〕10 → 9：列 tmux 那一处改问那台后端 · 〔MIG-1〕9 → 8：端口转发那一处（宿主起转发那个函数）随转发账进本机后端删了
+        sites >= 6, // 7 → 6：`launch.rs` 两处（远端拼 ssh 外壳时查跳板 · 开终端那一条查这台）随 ssh 外壳进本机后端删了，新 `terminal_dial` 一处（先分本机） // 8 → 7：`remote_history·rs` 那个 `require_cfg_by_label`〔散文墓碑〕随子 agent 那条命令删了 // 10 → 9：列 tmux 那一处改问那台后端 · 9 → 8：端口转发那一处（宿主起转发那个函数）随转发账进本机后端删了
         "只数到 {sites} 处 `{CALL}` —— 抽取坏了，本断言在空转（08-12 实测 28 处，\
              `K-R104` 09-13 现打 19，`K-R112` 09-13 现打 17，SR1b 09-24 现打 16，LOC1a 09-25 现打 15，SH1 09-26 现打 13）"
     );
@@ -155,16 +155,16 @@ fn every_remote_config_lookup_deals_with_the_local_origin_first() {
     // ★ 存量表**只许变短**：等号不是地板。
     // 地板在「变大」这个方向上是瞎的 —— 这个仓因为这件事栽过三次
     // （`shell_lint_registry` 的账逐字：「`≥` 正是它落后三次的成因」）。
-    // K-R56（09-11）：16 → 15，`tmux_send_keys`〔散文墓碑〕真去分了本机（〔C4e〕那条命令后来整个迁到界面）。
+    // K-R56（09-11）：16 → 15，`tmux_send_keys`〔散文墓碑〕真去分了本机（那条命令后来整个迁到界面）。
     // 🔴 `K-R104`（09-13）：15 → **14**。用量探针那一条
     //    随编排搬上帧面而**真的还掉了**（理由逐字在表里那条注释）。
-    //    〔`设计/50`：那一族今天连功能都不在了 —— 这个数**不动**，因为它当时就已经出表了。〕
+    //    〔：那一族今天连功能都不在了 —— 这个数**不动**，因为它当时就已经出表了。〕
     //    ★ 这是本表第二次往下走，而「变少 ⇒ 好事」正是它自己报错文案里写的那一句。
-    // 〔RW1 · 第四波 09-24〕14 → **12**：`mcp.rs` 远端写 / 删两个分支随「用户文件改经后端写」不再查远端配置。
-    // 〔SR1b · 第四波 09-24〕12 → **11**：`inproc_dial.rs` 里的 `connect_via_jump`〔散文墓碑〕（只服务 SFTP 的跳板查配置）随那份文件整份删了。
-    // 〔C4c · 第四波 4B〕11 → **10**：账号面那一处查远端配置（`cfg_for`，原住 `accounts.rs`）随那两条命令改走通道删了〔散文墓碑〕。
-    // 〔LOC1a · 第四波 4D〕10 → **9**：`remote_branch.rs` 的 `create_remote_branch_session` 不再查远端配置（分叉走帧命令 `session-fork`）。〔散文墓碑〕
-    const TRIAGE_DEBT_TODAY: usize = 0; // 〔FIX4 · ⑬〕1 → 0：`launch.rs` 远端拼 ssh 外壳那一处随外壳进本机后端删了 —— 存量欠账清零 // 〔MOD〕2 → 1：`remote_history·rs` 那个 `require_cfg_by_label`〔散文墓碑〕随子 agent 那条命令删了（那台后端自己找 · 挑 · 读）// 〔MIG-1〕3 → 2：端口转发那一处随转发账进本机常驻后端删了（后端查自己的可达表） // 〔MIG-3a〕4 → 3：远端项目 `.mcp.json` 读那一处随 `mcp.rs` 删了（MCP 进了那台后端） // 〔E2〕5 → 4：远端 `ccm` 探针那一处还掉了（改经那台后端的门问 `ccm-probe`） // 〔SH1〕6 → 5：列 tmux 那一处还掉了 // 〔SH1〕9 → 8：钩子诊断远端那一处还掉了（改问那台后端）；8 → 6：MCP 远端两处同理
+    // 14 → **12**：`mcp.rs` 远端写 / 删两个分支随「用户文件改经后端写」不再查远端配置。
+    // 12 → **11**：`inproc_dial.rs` 里的 `connect_via_jump`〔散文墓碑〕（只服务 SFTP 的跳板查配置）随那份文件整份删了。
+    // 11 → **10**：账号面那一处查远端配置（`cfg_for`，原住 `accounts.rs`）随那两条命令改走通道删了〔散文墓碑〕。
+    // 10 → **9**：`remote_branch.rs` 的 `create_remote_branch_session` 不再查远端配置（分叉走帧命令 `session-fork`）。〔散文墓碑〕
+    const TRIAGE_DEBT_TODAY: usize = 0; // 1 → 0：`launch.rs` 远端拼 ssh 外壳那一处随外壳进本机后端删了 —— 存量欠账清零 // 2 → 1：`remote_history·rs` 那个 `require_cfg_by_label`〔散文墓碑〕随子 agent 那条命令删了（那台后端自己找 · 挑 · 读）// 3 → 2：端口转发那一处随转发账进本机常驻后端删了（后端查自己的可达表） // 4 → 3：远端项目 `.mcp.json` 读那一处随 `mcp.rs` 删了（MCP 进了那台后端） // 5 → 4：远端 `ccm` 探针那一处还掉了（改经那台后端的门问 `ccm-probe`） // 6 → 5：列 tmux 那一处还掉了 // 9 → 8：钩子诊断远端那一处还掉了（改问那台后端）；8 → 6：MCP 远端两处同理
     assert_eq!(
         TRIAGE_DEBT.len(),
         TRIAGE_DEBT_TODAY,

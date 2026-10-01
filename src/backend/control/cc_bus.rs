@@ -25,7 +25,7 @@
 //! 改的时候前者会被当接口对待，后者不会。
 //!
 //! ⚠ 张力如实写：不读文件就意味着**依赖输出格式**。二者必居其一。
-//! 〔FIX · `99 §2 ㊷`〕名册只读 `cc-list --tsv` 那一形（首尾两行有标记，行形状归 cc-bus、id 形状本侧判）⇒ 一个解析器（[`parse_roster_tsv`]）。
+//! 名册只读 `cc-list --tsv` 那一形（首尾两行有标记，行形状归 cc-bus、id 形状本侧判）⇒ 一个解析器（[`parse_roster_tsv`]）。
 //!
 //! 这条由 [`tests::no_cc_bus_data_layout_leaks_into_the_backend`] 钉住。
 //!
@@ -60,7 +60,7 @@
 //! 而三条判据全绿 —— 起进程登记的键里程序名是 `<非字面量>`，三条命令**共用同一个键**，
 //! 加第三条不会红。这一句与 `ALLOWED` 那一行的理由**同轮一起订正**。
 //!
-//! ⚠ 〔`K-R113` 09-13〕**这一次加第四条是红着加进来的**，而红它的不是上面那条登记：
+//! ⚠ **这一次加第四条是红着加进来的**，而红它的不是上面那条登记：
 //! `readonly_guard::g6_reach::the_non_literal_spawn_key_still_covers_exactly_three_commands`
 //! 把「今天是三条」钉成**相等** ⇒ 加 `cc-agents` 当场红，逼人回去重读那条豁免理由。
 //! 那一格与本文件的 [`tests::TRANSCALLS`] **不是同一条规矩的两处住址**：
@@ -165,7 +165,7 @@ fn run(name: &str, args: &[&str]) -> Result<Done, CmdErr> {
 /// `cc-whoami` 的优先级第一条逐字就是 `$CC_BUS_ID`（可选覆盖）——**这是 cc-bus 现成的契约**。
 /// 用户 08-13 逐字「细节先按原本的就行」⇒ 不动 cc-bus 本体。
 ///
-/// # ★★ 这一族环境键从此**由本模块显式交办**，不再靠继承〔`K-R26` 09-05〕
+/// # ★★ 这一族环境键从此**由本模块显式交办**，不再靠继承
 ///
 /// `plugin::invoke::run` 今天先 `env_clear()`、再按它自己那张白名单
 /// （`plugin::invoke::INHERITED_ENV_KEYS`）喂 —— 那一刀关掉的是「backend 进程内部的秘密
@@ -236,8 +236,8 @@ fn timed_out_err() -> (String, String) {
     )
 }
 
-/// 〔SH1 · V136〕机器可读形的首行标记（`cc-list --tsv` / `cc-agents --tsv` / `cc-log`）。老 cc-bus 不认 `--tsv`、
-/// 照打人读表 ⇒ 见不到标记就明说「cc-bus 比后端旧」，不猜着按人读表解（95 §3.3：命令是接口，接口认不出就说）。
+/// 机器可读形的首行标记（`cc-list --tsv` / `cc-agents --tsv` / `cc-log`）。老 cc-bus 不认 `--tsv`、
+/// 照打人读表 ⇒ 见不到标记就明说「cc-bus 比后端旧」，不猜着按人读表解（命令是接口，接口认不出就说）。
 const ROSTER_TSV_HEAD: &str = "#cc-list-tsv\t1";
 const SPAWNED_TSV_HEAD: &str = "#cc-agents-tsv\t1";
 const LOG_HEAD: &str = "#cc-log\t1";
@@ -385,11 +385,11 @@ pub(crate) fn classify_send(code: Option<i32>, detail: &str) -> Result<(), (Stri
     }
 }
 
-/// 〔DUP2 · 主会话 09-26 裁 J12 · `INVARIANTS §47` ①〕agent id / 账号名在交给 `cc-send` / `cc-kill` / `cc-spawn` **之前**先过形状判定
+/// 〔`INVARIANTS §47` ①〕agent id / 账号名在交给 `cc-send` / `cc-kill` / `cc-spawn` **之前**先过形状判定
 /// （`shell_quote_core::bus_id_ok`：非空 · 不以 `-` 开头 · 只含 `[A-Za-z0-9_-]`，全仓唯一一份）。判不过 ⇒ `bad_id`，一个进程都不起。
 ///
 /// 为什么在这里判、而不是「交给 cc-bus 自己去拒」：`§47` 逐字「**『对端会校验』不是理由**」—— 收掉一个 agent 的后果是杀一棵进程树；
-/// 界面那一道（C4e 第四次搬家住在 `src/frontend/ui/cc-bus-control.ts`）按 `设计/90 §3` 判据 2 删了，「本侧」从此是真把 id 交出去的这一侧（第五次搬家）。
+/// 界面那一道（C4e 第四次搬家住在 `src/frontend/ui/cc-bus-control.ts`）按删了，「本侧」从此是真把 id 交出去的这一侧（第五次搬家）。
 /// ⚠ 判的是**形状**，不是**成员资格**：「这个名字登没登记过」仍归 cc-bus（`registered` 那一格照旧如实回）。
 /// `said` 收那个值的 `{:?}` 形、给出那一句（文案走表：key 在各调用处写字面量，`copy-table.vitest.ts` 按调用点两向对拍）。
 fn refuse_bad_bus_id(v: &str, said: impl FnOnce(&str) -> String) -> Result<(), CmdErr> {
@@ -401,7 +401,7 @@ fn refuse_bad_bus_id(v: &str, said: impl FnOnce(&str) -> String) -> Result<(), C
 
 /// 形状校验：这组参数能不能构成一次有意义的调用。
 ///
-/// ⚠ 与 `kill::parse_name` 同一条纪律：argv 直传不过 shell。〔DUP2〕`to` 的**形状**在这里判（[`refuse_bad_bus_id`]，§47 ①）；
+/// ⚠ 与 `kill::parse_name` 同一条纪律：argv 直传不过 shell。`to` 的**形状**在这里判（[`refuse_bad_bus_id`]，§47 ①）；
 /// 收件人**是否存在**（成员资格）仍归 cc-bus —— 见 [`classify_send`]。
 fn parse_send(args: &serde_json::Value) -> Result<(String, String, Option<String>), CmdErr> {
     let obj = args.as_object().ok_or((
@@ -434,7 +434,7 @@ fn parse_send(args: &serde_json::Value) -> Result<(String, String, Option<String
 
 /// `from`（以谁的身份发）：可选；给了就在交给 `cc-send`（作 `CC_BUS_ID`）**之前**先过同一个形状判定（[`refuse_bad_bus_id`]）。
 ///
-/// 〔DUP3 · 主会话 09-26 裁 · `INVARIANTS §47`「交给对端之前本侧先判」〕先前 `from` 原样交给 `cc-send`、一格都不判 ——
+/// 〔`INVARIANTS §47`「交给对端之前本侧先判」〕先前 `from` 原样交给 `cc-send`、一格都不判 ——
 /// 它与收件人是同一种值（agent id），同样是交给对端去寻址的。`bus-send` 与 `bus-broadcast` 共用这一处。
 fn given_sender(
     obj: &serde_json::Map<String, serde_json::Value>,
@@ -511,9 +511,9 @@ pub(crate) fn join_identity(
         .collect()
 }
 
-/// 总线名单 —— `bus-list` 与 `bus-broadcast` 读它。〔FIX · `设计/99 §2 ㊷`〕与 `bus-state` 同读机器可读形（[`roster`]，
+/// 总线名单 —— `bus-list` 与 `bus-broadcast` 读它。与 `bus-state` 同读机器可读形（[`roster`]，
 /// `cc-list --tsv`）：名册只有一个解析器。没重部署 cc-bus 的机器上老脚本不认 `--tsv` ⇒ 明说「cc-bus 比后端旧」（[`too_old`]），
-/// 不退回去按人读表猜（`95 §3.3`：命令是接口，接口认不出就说）。
+/// 不退回去按人读表猜（命令是接口，接口认不出就说）。
 fn agents_via_cc_list() -> Result<Vec<serde_json::Value>, (String, String)> {
     let (rows, skipped) = roster()?;
     if skipped > 0 {
@@ -560,7 +560,7 @@ fn read_via(name: &str, args: &[&str]) -> Result<String, (String, String)> {
     }
 }
 
-/// 〔SH1 · V136〕名册（机器可读形）：`bus-state` 与杀会话顺手注销（D-g）读它。
+/// 名册（机器可读形）：`bus-state` 与杀会话顺手注销（D-g）读它。
 pub(crate) fn roster() -> Result<(Vec<RosterRow>, usize), (String, String)> {
     parse_roster_tsv(&read_via("cc-list", &["--tsv"])?)
 }
@@ -574,14 +574,14 @@ pub(crate) fn list_for_inbound() -> Result<serde_json::Value, (String, String)> 
     Ok(list_reply(agents_via_cc_list()?))
 }
 
-/// 〔C4e · 第四波 4C〕`bus-list` 的成品 `{agents}` —— 从 [`list_for_inbound`] 里原样抽出来（逻辑不动），
+/// `bus-list` 的成品 `{agents}` —— 从 [`list_for_inbound`] 里原样抽出来（逻辑不动），
 /// 只为让跨语言金样 `tests/__fixtures__/cc-bus-control.golden.json` 拿**同一个**构造器对拍：
 /// 界面（`src/frontend/ui/cc-bus-control.ts`）从此直接收这份成品，monitor 那一跳只搬字节。
 pub(crate) fn list_reply(agents: Vec<serde_json::Value>) -> serde_json::Value {
     serde_json::json!({ "agents": agents })
 }
 
-/// `bus-state`：**一次回全** —— 总线名单 ＋ spawn 台账〔`K-R113` 09-13〕。
+/// `bus-state`：**一次回全** —— 总线名单 ＋ spawn 台账。
 ///
 /// # 为什么它是一条**具名读命令**，而不是让调用方读文件
 ///
@@ -602,7 +602,7 @@ pub(crate) fn list_reply(agents: Vec<serde_json::Value>) -> serde_json::Value {
 /// 任何一半失败都回错误，**不回一份看上去完整的半份**。
 /// 半份的失效是静默的：`spawned: []` 与「问不到」在调用方那里长得一模一样。
 ///
-/// 〔SH1 · V136〕登记时间 · 派生时间 · 坏行数由 cc-bus 新加的机器可读形（`cc-list --tsv` / `cc-agents --tsv`）答，
+/// 登记时间 · 派生时间 · 坏行数由 cc-bus 新加的机器可读形（`cc-list --tsv` / `cc-agents --tsv`）答，
 /// 仍不读那两份 `.tsv`（`cc_bus_boundary_guard`）；驾驶舱经通道直接问本条（monitor 那条 shell 读退役）。
 pub(crate) fn state_for_inbound() -> Result<serde_json::Value, (String, String)> {
     let (agents, sk_agents) = roster()?;
@@ -616,8 +616,8 @@ pub(crate) fn state_for_inbound() -> Result<serde_json::Value, (String, String)>
     ))
 }
 
-/// 〔SH1 · V136〕`bus-state` 的成品 —— 纯构造器（跨语言金样 `tests/__fixtures__/cc-bus-read.golden.json` 拿它对拍）。
-/// 名册那一半照旧挂到身份空间上（`live` / `ccm_sid`，「登记 ≠ 在线」`95 §3bis`）；pane pid 不上线（界面用不着）。
+/// `bus-state` 的成品 —— 纯构造器（跨语言金样 `tests/__fixtures__/cc-bus-read.golden.json` 拿它对拍）。
+/// 名册那一半照旧挂到身份空间上（`live` / `ccm_sid`，「登记 ≠ 在线」）；pane pid 不上线（界面用不着）。
 pub(crate) fn state_reply(
     agents: Vec<RosterRow>,
     spawned: Vec<serde_json::Value>,
@@ -639,7 +639,7 @@ pub(crate) fn state_reply(
     })
 }
 
-/// 〔SH1 · V136〕`bus-inbox` 缺省看几行 / 最多看几行 / 回显最多带多少字节（超了保尾、说 `truncated`）。
+/// `bus-inbox` 缺省看几行 / 最多看几行 / 回显最多带多少字节（超了保尾、说 `truncated`）。
 const INBOX_LINES_DEFAULT: u64 = 200;
 const INBOX_LINES_MAX: u64 = 2000;
 const INBOX_CAP: usize = 4 * 1024 * 1024;
@@ -676,7 +676,7 @@ pub(crate) fn parse_inbox(args: &serde_json::Value) -> Result<(String, u64), (St
     Ok((id.to_string(), lines))
 }
 
-/// `bus-inbox`：只读看一个 agent 收件箱的尾巴（转调 `cc-log`，不推已读位置 —— 不是 `bus-recv`，`95 §3.3`）。
+/// `bus-inbox`：只读看一个 agent 收件箱的尾巴（转调 `cc-log`，不推已读位置 —— 不是 `bus-recv`）。
 pub(crate) fn inbox_for_inbound(
     args: &serde_json::Value,
 ) -> Result<serde_json::Value, (String, String)> {
@@ -836,7 +836,7 @@ fn kill_id(id: &str) -> Result<serde_json::Value, (String, String)> {
     Ok(kill_reply(&id, killed, stale_only))
 }
 
-/// 〔SH1 · D-g〕名册里**登记在这组 pane 上**的 id —— 纯函数。认人核第 4 列 pane pid（登记那一刻 pane 根进程的 pid），
+/// 名册里**登记在这组 pane 上**的 id —— 纯函数。认人核第 4 列 pane pid（登记那一刻 pane 根进程的 pid），
 /// 不按会话名猜（主会话裁 TL2 A）；第 4 列空的老格式行核不了 ⇒ 不挑；id 形状不过 `bus_id_ok` 的不挑（`§47`）。
 pub(crate) fn ids_on_panes(rows: &[RosterRow], pane_pids: &[u32]) -> Vec<String> {
     rows.iter()
@@ -846,7 +846,7 @@ pub(crate) fn ids_on_panes(rows: &[RosterRow], pane_pids: &[u32]) -> Vec<String>
         .collect()
 }
 
-/// 〔SH1 · D-g〕monitor 杀会话成功之后：对登记在那个会话 pane 上的每个 id 调 `cc-kill`（名册 · 台账 · 状态 · 收件箱一起清）。
+/// monitor 杀会话成功之后：对登记在那个会话 pane 上的每个 id 调 `cc-kill`（名册 · 台账 · 状态 · 收件箱一起清）。
 /// 这一步不改杀会话的结局：cc-bus 没装就安静跳过；读不到名册 / 某个 `cc-kill` 失败 ⇒ warn 一句说清。
 pub(crate) fn unregister_panes(session: &str, pane_pids: &[u32]) -> BusCleanup {
     let mut out = BusCleanup::default();
@@ -879,7 +879,7 @@ pub(crate) fn unregister_panes(session: &str, pane_pids: &[u32]) -> BusCleanup {
     out
 }
 
-/// 〔FIX4 · `95 §6`〕杀会话顺手注销的结局（进 `kill` 成品的 `bus` 那一格；界面说一句）。
+/// 杀会话顺手注销的结局（进 `kill` 成品的 `bus` 那一格；界面说一句）。
 /// 全空 ＝ 没有要注销的（没装 cc-bus / 这个会话上没登记 / 读不到 pane）。
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct BusCleanup {
@@ -902,7 +902,7 @@ impl BusCleanup {
 }
 
 /// `bus-kill` 的入参 —— 纯函数〔C4e：从 [`kill_for_inbound`] 里原样抽出（逻辑不动），跨语言金样拿它核请求样例〕。
-/// 〔DUP2 · J12〕交给 `cc-kill` 之前先过形状判定（[`refuse_bad_bus_id`]）—— 这是破坏性的那一条，更不能靠对端。
+/// 交给 `cc-kill` 之前先过形状判定（[`refuse_bad_bus_id`]）—— 这是破坏性的那一条，更不能靠对端。
 pub(crate) fn parse_kill(args: &serde_json::Value) -> Result<String, (String, String)> {
     let id = args
         .as_object()
@@ -923,7 +923,7 @@ pub(crate) fn parse_kill(args: &serde_json::Value) -> Result<String, (String, St
     Ok(id.to_string())
 }
 
-/// 〔C4e · 第四波 4C〕`bus-kill` 的成品 `{id, killed, stale_only}` —— 从 [`kill_for_inbound`] 里原样抽出来（逻辑不动），
+/// `bus-kill` 的成品 `{id, killed, stale_only}` —— 从 [`kill_for_inbound`] 里原样抽出来（逻辑不动），
 /// 理由同 [`list_reply`]。
 pub(crate) fn kill_reply(id: &str, killed: bool, stale_only: bool) -> serde_json::Value {
     serde_json::json!({
@@ -972,7 +972,7 @@ fn deliver(to: &str, text: &str, from: Option<&str>) -> Result<(), (String, Stri
     classify_send(out.code, &detail)
 }
 
-/// 〔C4e · 第四波 4C〕`bus-send` 的成品 —— 从 [`send_for_inbound`] 里原样抽出来（逻辑不动），理由同 [`list_reply`]。
+/// `bus-send` 的成品 —— 从 [`send_for_inbound`] 里原样抽出来（逻辑不动），理由同 [`list_reply`]。
 pub(crate) fn send_reply(
     to: &str,
     registered: bool,
@@ -989,14 +989,14 @@ pub(crate) fn send_reply(
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// `bus-broadcast`：给总线上**在线**的成员群发一条〔C4e · 第四波 4C〕
+// `bus-broadcast`：给总线上**在线**的成员群发一条
 // ═══════════════════════════════════════════════════════════════════════════
 //
 // # 它治的是什么
 //
 // 广播此前是 **monitor 里的组合**（`bus-list` 挑人 ＋ 逐个 `bus-send`，monitor `cc_bus.rs` 的
 // `broadcast_via_backend` / `pick_broadcast_targets`〔散文墓碑〕）。界面改成经通道直接说后端之后
-// （`设计/05 §14.3`：业务解释只有一个家），一个组合要么在界面里再写一遍（第二份挑人规则），要么收进后端 ——
+// （业务解释只有一个家），一个组合要么在界面里再写一遍（第二份挑人规则），要么收进后端 ——
 // 收进来：挑人与逐个投递都在这一台机器上做，界面只收一份成品（三个数分开说）。
 //
 // # 挑人规则（逐字承接 monitor 那一份，P4f 08-13 实测出来的）
@@ -1028,7 +1028,7 @@ fn parse_broadcast(args: &serde_json::Value) -> Result<(String, Option<String>),
             crate::common::contract::malformed("`text` is empty"),
         ));
     }
-    // 〔DUP3〕`from` 给了就先判（同 `bus-send` 那一处）：判不过 ⇒ 整条 `bad_id`，一个人都没发。
+    // `from` 给了就先判（同 `bus-send` 那一处）：判不过 ⇒ 整条 `bad_id`，一个人都没发。
     let from = given_sender(obj)?;
     Ok((text.to_string(), from))
 }
@@ -1071,7 +1071,7 @@ pub(crate) fn pick_broadcast_targets(agents: &[serde_json::Value], me: &str) -> 
 
 /// 广播名单里的一个收件人过不过形状判定 —— 纯函数：过 ⇒ `None`；不过 ⇒ 成品 `failed` 里那一格（`{id, error:"bad_id", detail}`）。
 ///
-/// 〔DUP3 · 主会话 09-26 裁 · `INVARIANTS §47`〕名单是 `cc-list` 的输出 —— **对端来的**值（「这是我们自己的数据」不是理由：
+/// 〔`INVARIANTS §47`〕名单是 `cc-list` 的输出 —— **对端来的**值（「这是我们自己的数据」不是理由：
 /// 盘上真出现过 `--help.jsonl`）。先前原样交给 `cc-send`；今天与 `bus-send` 的收件人同一个判定（[`refuse_bad_bus_id`]）。
 /// 不整条回错：到这一步时可能已经投出去几个了（本节头注「部分失败不回错」那一条），判不过的这一个照实列进 `failed`。
 pub(crate) fn recipient_refused(id: &str) -> Option<serde_json::Value> {
@@ -1106,7 +1106,7 @@ pub(crate) fn broadcast_for_inbound(
     let mut sent = 0usize;
     let mut failed = Vec::new();
     for id in &plan.targets {
-        // 〔DUP3〕名单里的收件人（`cc-list` 的输出，对端来的）交给 `cc-send` 之前先判形状；判不过的不发、进 `failed`（不静默跳过）。
+        // 名单里的收件人（`cc-list` 的输出，对端来的）交给 `cc-send` 之前先判形状；判不过的不发、进 `failed`（不静默跳过）。
         if let Some(entry) = recipient_refused(id) {
             failed.push(entry);
             continue;
@@ -1124,7 +1124,7 @@ pub(crate) fn broadcast_for_inbound(
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// `bus-spawn`：派生一个协作 agent（转调 `cc-spawn`）〔ccbus-spawn 09-24〕
+// `bus-spawn`：派生一个协作 agent（转调 `cc-spawn`）
 // ═══════════════════════════════════════════════════════════════════════════
 //
 // # 它治的是什么
@@ -1134,7 +1134,7 @@ pub(crate) fn broadcast_for_inbound(
 // ⇒ **本节就是那条原语**。登记之后本机与远端都改走它（`K-R98` 给发消息、`K-R112` 给收掉
 // 做过的同一件事），远端那条拼 `cc-spawn …` shell 串走 SSH 的老路同轮删掉。
 //
-// # 登记与 `BUILD_ID`〔BS1b 09-24〕
+// # 登记与 `BUILD_ID`
 //
 // 登记 = `inbound::COMMANDS` / `REGISTRY` 各一行 ＋ `SUBCOMMANDS` 一行 `--bus-spawn`
 // ⇒ 子命令集指纹变了 ⇒ `build_id_guard::adding_a_subcommand_forces_a_build_id_bump` 红。
@@ -1166,14 +1166,14 @@ pub(crate) struct SpawnArgs {
 /// 它判的是「这组参数能不能构成一次**有意义且表过态**的调用」：
 /// `tool` 非空（**是哪几种 agent 不在这里判** —— 见下）· `dir` 非空 ·
 /// `account` 与 `base:true` **恰好给一个**（都不给 ⇒ 拒：那是替用户选了默认号）·
-/// 〔DUP2〕给了 `account` 就先过形状判定（[`refuse_bad_bus_id`]，`§47` ①）。
+/// 给了 `account` 就先过形状判定（[`refuse_bad_bus_id`]，`§47` ①）。
 pub(crate) fn parse_spawn(args: &serde_json::Value) -> Result<SpawnArgs, CmdErr> {
     let obj = args.as_object().ok_or((
         "invalid_args",
         crate::common::contract::malformed("args must be an object"),
     ))?;
     let s = |k: &str| obj.get(k).and_then(|v| v.as_str()).unwrap_or("").trim();
-    // ⚠ **不在后端白名单 agent 种类**〔BS1b 09-24〕：初版这里是 `matches!(tool, <两个字面量>)`，
+    // ⚠ **不在后端白名单 agent 种类**：初版这里是 `matches!(tool, <两个字面量>)`，
     //   `agent_locality_guard::kind_dispatch_sites_are_enumerated_one_by_one` 当场红 ——
     //   通用层里又多一处「加 agent 要跟着改」的地方。合法性归 cc-spawn 自己
     //   （它的 `case "$tool"` 不认就 rc=2 ⇒ 这里的 `invalid_args`），与 `P4f-Y5`
@@ -1194,7 +1194,7 @@ pub(crate) fn parse_spawn(args: &serde_json::Value) -> Result<SpawnArgs, CmdErr>
     }
     let base = obj.get("base").and_then(|v| v.as_bool()).unwrap_or(false);
     let account = s("account");
-    // 〔DUP2 · J12〕账号名交给 `cc-spawn --account` 之前先过同一条形状判定（C4e 那一道原来住界面 `checkSpawnShape`）。
+    // 账号名交给 `cc-spawn --account` 之前先过同一条形状判定（C4e 那一道原来住界面 `checkSpawnShape`）。
     if !account.is_empty() {
         refuse_bad_bus_id(account, |v| {
             copy_core::copy_text("beCcBus.parse.badAccount", &[("account", v)])
@@ -1289,7 +1289,7 @@ pub(crate) fn spawn_for_inbound(
     Ok(spawn_reply(&said))
 }
 
-/// 〔C4e · 第四波 4C〕`bus-spawn` 的成品 `{spawned, id, said}` —— 从 [`spawn_for_inbound`] 里原样抽出来（逻辑不动），
+/// `bus-spawn` 的成品 `{spawned, id, said}` —— 从 [`spawn_for_inbound`] 里原样抽出来（逻辑不动），
 /// 理由同 [`list_reply`]。
 pub(crate) fn spawn_reply(said: &str) -> serde_json::Value {
     serde_json::json!({

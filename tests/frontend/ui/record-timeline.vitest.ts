@@ -69,12 +69,12 @@ describe("RecordTimeline F40b 查询扩展", () => {
 });
 
 /**
- * 〔W5-RENDER R6〕`设计/10 §3.5` D4 逐字：「`insertBefore` 的锚点可能已过期 ⇒ 降级成末尾追加，DOM 临时错序
+ * 「`insertBefore` 的锚点可能已过期 ⇒ 降级成末尾追加，DOM 临时错序
  * （账本仍对，等下次折叠 rebuild 自愈）」。现打：rebuild **不**重排卡（它只解开 / 重包），错序不会自愈；
  * 而锚点在折叠段里时，原来爬到顶层、插在整段之前 —— 新卡若该落在段中间，同样错序。
  * 判据（相等）：两种锚点状态下插一条，**文档序**（按 `#seq` 文本取）== seq 序；已离场的后继被出账。
  */
-describe("D4 · 锚点离场 / 在折叠段里：插入仍按 seq 序（`设计/10 §3.5`）", () => {
+describe("D4 · 锚点离场 / 在折叠段里：插入仍按 seq 序", () => {
   const docOrder = (stream: MessageStream): string[] =>
     [...stream.contentElement.querySelectorAll("[data-t]")].map((e) => e.textContent ?? "");
   const card = (seq: number): HTMLElement => {

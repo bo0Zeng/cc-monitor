@@ -17,7 +17,7 @@
 import { isChanCall, UNSUPPORTED } from "../../test-support/chan-fake";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-// 〔C4e · 第四波 4C〕就地 resume 那一次键入从 Tauri 命令 `backend_send_into`〔散文墓碑〕改成界面经通道直接说后端的
+// 就地 resume 那一次键入从 Tauri 命令 `backend_send_into`〔散文墓碑〕改成界面经通道直接说后端的
 //   `launch{mode:"send-into"}`（`src/frontend/ui/tmux-control.ts::sendInto`）。本文件判的是起会话那几条路的**编排**与 F14 的三态处置 ⇒
 //   生产 `invoke` 换成一层翻译（`chan-fake.ts::tmuxControlShim`）：那一发 `chan_call` 照旧按旧名字 `backend_send_into`
 //   交给 `invokeMock`，旧回包（`{typed, mayFallBack, reason}`）译成通道那一跳的结局。
@@ -27,7 +27,7 @@ vi.mock("@tauri-apps/api/core", async () => {
   return { invoke: tmuxControlShim(launchRenderShim(invokeMock), "backend_send_into") };
 });
 vi.mock("../../../src/frontend/ui/error-toast", () => ({ showActionFailureToast: vi.fn() }));
-// 〔LR2〕原来这里 mock 了 `../src/behavior`（只为那个已删的逃生口）；`remote-launch-run.ts` 不再读行为配置。
+// 原来这里 mock 了 `../src/behavior`（只为那个已删的逃生口）；`remote-launch-run.ts` 不再读行为配置。
 
 import { runRemoteResumeIntoExistingTmux } from "../../../src/frontend/ui/remote-launch-run";
 import { showActionFailureToast } from "../../../src/frontend/ui/error-toast";
@@ -47,11 +47,11 @@ function route(): void {
   invokeMock.mockImplementation((cmd: string, args?: unknown) => {
     seen.push({ cmd, args });
     // 探测恒答「未装 ccm」⇒ send-into 照常走兜底渲染器（本来也是：CLI 渲染器对
-    // send-into 恒 `ok:false`，#76 防线）。〔MIG-3b〕探测经通道 `ccm-probe`，「未装」＝ 对端不认这条。
+    // send-into 恒 `ok:false`，#76 防线）。探测经通道 `ccm-probe`，「未装」＝ 对端不认这条。
     if (isChanCall(cmd, args, "ccm-probe")) return Promise.reject(UNSUPPORTED);
     switch (cmd) {
-      // 🔴 〔步 22b·B 2026-09-20〕**这一格原来恒返回常量 `PAYLOAD`。**
-      // `设计/90 §4 E` 收官之后，`send-into` 与 `attach` 两格的**外层 tmux 命令**
+      // 🔴 **这一格原来恒返回常量 `PAYLOAD`。**
+      // 收官之后，`send-into` 与 `attach` 两格的**外层 tmux 命令**
       // 也从这条命令出来 ⇒ 恒返回内层载荷等于把外层那一层从桩里抹掉，
       // 于是本文件 ①② 那三条（「终端串里只 attach」「逐字回落到 send-keys + attach」）
       // 会一律读到一条没有 tmux 的串 —— 而它们要判的正是那一层。
@@ -132,7 +132,7 @@ describe("U8a-2c-1 send-into：send-keys 半边走 backend", () => {
     ).toBeUndefined();
   });
 
-  // 〔RESYNC · `99 §2.1` ㉒〕拒绝提示带「对齐后重试」只在**关卡 2** 拒的那一形；「拿不准执行没有」那一形不带
+  // 拒绝提示带「对齐后重试」只在**关卡 2** 拒的那一形；「拿不准执行没有」那一形不带
   //   （重试会把载荷再键一遍）。两形都照旧不回落。
   it("★ ②d 关卡 2 拒的 ⇒ 提示可点（对齐后重试）；拿不准执行没有 ⇒ 提示不可点", async () => {
     const toast = showActionFailureToast as unknown as ReturnType<typeof vi.fn>;
@@ -159,7 +159,7 @@ describe("U8a-2c-1 send-into：send-keys 半边走 backend", () => {
     expect(launchedCmd()).toBeUndefined();
   });
 
-  // 〔C4e · 第四波 4C〕这一条**翻了面**，而且是往严里翻。原来是「IPC 整个抛了也回落」：那时键入走 Tauri 命令
+  // 这一条**翻了面**，而且是往严里翻。原来是「IPC 整个抛了也回落」：那时键入走 Tauri 命令
   //   `backend_send_into`〔散文墓碑〕，它自己从不回错，IPC 一抛就说明 monitor 那条命令根本没跑 ⇒ 能证明没发出去。
   //   今天键入经通道（`chan_call`）说，monitor 那一跳交回的失败**一律是分好层的**；解不出层的那一种
   //   （`ours/Broken`：那一跳自己坏了）**拿不准**到没到后端 ⇒ 按最坏算、**不回落**（F14：回落那条整串没有门，

@@ -26,9 +26,9 @@ function accountOf(configDir?: string, name?: string): LaunchAccount {
   return configDir ? { kind: "account", name, configDir } : { kind: "base" };
 }
 
-/** 原先对应 `remote-launch.ts` 的 `buildResumeDirectCmd`（〔LR2〕那五个 builder 已删，生产走 `buildLaunchRenderRequest` → Rust）：无容器（直连），resume 到当前登录 shell。
+/** 原先对应 `remote-launch.ts` 的 `buildResumeDirectCmd`（那五个 builder 已删，生产走 `buildLaunchRenderRequest` → Rust）：无容器（直连），resume 到当前登录 shell。
  *
- *  🔴 **`设计/80 §8.4` 那张表里「今天做不到 ↗ 的那一档」就是这一格**（`container:{kind:"none"}`，
+ *  🔴 ** 那张表里「今天做不到 ↗ 的那一档」就是这一格**（`container:{kind:"none"}`，
  *  `§6.1`/`§5 方案 A` 明确不覆盖它，因为它没有 tmux 可以挂 `@ccm_sid`）。
  *  步 1 之后它**自动**带上启动期令牌（步 3 起真的有人铸了，铸币口是
  *  `remote-launch-run.ts::mintRbindToken`）—— 本函数为此**一行特殊处理都没有**：
@@ -57,7 +57,7 @@ export function planResumeDirect(
   return { ctx, plan: buildLaunchPlan(ctx) };
 }
 
-/** 原先对应 `remote-launch.ts` 的 `buildResumeTmuxCmd`（〔LR2〕那五个 builder 已删，生产走 `buildLaunchRenderRequest` → Rust）：新建/幂等接回 tmux，resume 进去。 */
+/** 原先对应 `remote-launch.ts` 的 `buildResumeTmuxCmd`（那五个 builder 已删，生产走 `buildLaunchRenderRequest` → Rust）：新建/幂等接回 tmux，resume 进去。 */
 export function planResumeTmux(
   sid: string,
   cwd: string,
@@ -79,7 +79,7 @@ export function planResumeTmux(
   // 但两个 **wrapper 的类型**（`buildResumeTmuxCmd` / `runRemoteResumeTmux`）当时写的是
   // `name?: string`，所以「省略 name」在**类型上是允许的**，只是碰巧没人这么调。
   // ⇒ 把这一路的 `name` 全改成必填，让 `tsc` 把「碰巧」变成「不可能」。
-  // 〔DUP2 · J6〕会话名的形状不在这里判：规则只有一份（后端 `control/gate_rules.rs`），渲染那一跳（`payload.rs` 外层 · `ccm_invocation.rs`）判、
+  // 会话名的形状不在这里判：规则只有一份（后端 `control/gate_rules.rs`），渲染那一跳（`payload.rs` 外层 · `ccm_invocation.rs`）判、
   //   判不过带 `REFUSE:` 标拒。这里原来的内联式子（首字符不许 `-`，`raw` 那一支唯一挡前导 `-` 的一道）今天由后端 `gate_rules` 的新建那一条接住。
   const tmuxName = name;
   const ctx: LaunchContext = {
@@ -96,7 +96,7 @@ export function planResumeTmux(
   return { ctx, plan: buildLaunchPlan(ctx) };
 }
 
-/** 原先对应 `remote-launch.ts` 的 `buildResumeIntoExistingTmuxCmd`（〔LR2〕那五个 builder 已删，生产走 `buildLaunchRenderRequest` → Rust）：往已存在的 idle tmux 就地送键，不 new-session。 */
+/** 原先对应 `remote-launch.ts` 的 `buildResumeIntoExistingTmuxCmd`（那五个 builder 已删，生产走 `buildLaunchRenderRequest` → Rust）：往已存在的 idle tmux 就地送键，不 new-session。 */
 export function planResumeIntoExistingTmux(
   sid: string,
   name: string,
@@ -104,7 +104,7 @@ export function planResumeIntoExistingTmux(
   mods: LaunchModifiers = {},
 ): LaunchPlanBuild {
   const { configDir, accountName, modelOverride, rbindToken } = mods;
-  // 〔DUP2 · J6〕名字原样进请求（送进一个已在的会话 ⇒ 渲染侧按「已有会话」那一条判；`raw` 那一支另有裸拼的渲染前提）。
+  // 名字原样进请求（送进一个已在的会话 ⇒ 渲染侧按「已有会话」那一条判；`raw` 那一支另有裸拼的渲染前提）。
   const ctx: LaunchContext = {
     transport: { kind: "ssh" },
     action: { kind: "resume", sid },
@@ -119,7 +119,7 @@ export function planResumeIntoExistingTmux(
   return { ctx, plan: buildLaunchPlan(ctx) };
 }
 
-/** 原先对应 `remote-launch.ts` 的 `buildLauncherCmd`（〔LR2〕那五个 builder 已删，生产走 `buildLaunchRenderRequest` → Rust）：「在这台机开新 Claude」——新建/幂等接回 tmux，起全新会话。 */
+/** 原先对应 `remote-launch.ts` 的 `buildLauncherCmd`（那五个 builder 已删，生产走 `buildLaunchRenderRequest` → Rust）：「在这台机开新 Claude」——新建/幂等接回 tmux，起全新会话。 */
 export function planLauncher(
   cwd: string,
   tmuxName: string,
@@ -128,7 +128,7 @@ export function planLauncher(
 ): LaunchPlanBuild {
   const { configDir, accountName, modelOverride, rbindToken } = mods;
   const name = tmuxName.trim();
-  // 〔DUP2 · J6〕新建那一条（非空 · 不以 `-` 开头 · 无 `*?.:=` · 无控制符与欺骗字符 · ≤128）由渲染侧调后端 `gate_rules` 判。
+  // 新建那一条（非空 · 不以 `-` 开头 · 无 `*?.:=` · 无控制符与欺骗字符 · ≤128）由渲染侧调后端 `gate_rules` 判。
   const ctx: LaunchContext = {
     transport: { kind: "ssh" },
     action: { kind: "new" },
@@ -143,19 +143,19 @@ export function planLauncher(
   return { ctx, plan: buildLaunchPlan(ctx) };
 }
 
-// 〔DUP1 · `设计/90 §3` 判据 2〕这里原来有 `validateLocalLaunch`〔散文墓碑〕—— 本机路径在发起 IPC 之前的「前置校验」，
+// 这里原来有 `validateLocalLaunch`〔散文墓碑〕—— 本机路径在发起 IPC 之前的「前置校验」，
 // 它唯一的一格是 sid 字符集（TS `isValidSessionId`〔散文墓碑〕）。本机拉起那条路上 Rust 侧自己判同一件事
 // （`history.rs` 本机决策那一处，今天调共享那一份 `shell_quote_core::session_id_ok`）⇒ 前端这份删了，四个调用点一起去掉。
 // R07 那段「为什么不真接上本地 IR」的论证原文住 `src/doc/INVARIANTS.md` §36（那一条只绑 Windows 分支）。
 
-/** 原先对应 `remote-launch.ts` 的 `buildAttachCmd`（〔LR2〕那五个 builder 已删，生产走 `buildLaunchRenderRequest` → Rust）：接回一个已存在的 tmux 会话，不启动任何东西。
+/** 原先对应 `remote-launch.ts` 的 `buildAttachCmd`（那五个 builder 已删，生产走 `buildLaunchRenderRequest` → Rust）：接回一个已存在的 tmux 会话，不启动任何东西。
  *
  *  ⚠ **刻意不收 `mods`**（原状），于是也**不带启动期令牌** —— 不是漏了：
- *  attach 一个 agent 进程都不起，而令牌的唯一消费者是 agent 进程的 `environ`
- *  （`设计/80 §8.2`）。`RBIND_TOKEN_DIMENSION.applies` 那条 `action.kind` 判断是第二道
+ *  attach 一个 agent 进程都不起，而令牌的唯一消费者是 agent 进程的 `environ`。
+ *  `RBIND_TOKEN_DIMENSION.applies` 那条 `action.kind` 判断是第二道
  *  同向的闸（万一将来这里开始收 `mods`，它也不会往 attach 里注一个没人读的敏感值）。 */
 export function planAttach(name: string): LaunchPlanBuild {
-  // 〔DUP2 · J6〕已有会话那一条（V131 ②：拒绝集 ＋ 非空）由渲染侧调后端 `gate_rules` 判；寻址恒是 `=<名>:`。
+  // 已有会话那一条（②：拒绝集 ＋ 非空）由渲染侧调后端 `gate_rules` 判；寻址恒是 `=<名>:`。
   const ctx: LaunchContext = {
     transport: { kind: "ssh" },
     action: { kind: "attach", name },

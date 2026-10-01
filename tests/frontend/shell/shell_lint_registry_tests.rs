@@ -94,10 +94,10 @@ fn floor_in_ci() -> usize {
         .unwrap_or_else(|| panic!("地板行解析不出数字：{line}"))
 }
 
-/// **PowerShell 那一半：今天全仓零 lint，而没人盯着它别长大**〔08-08〕。
+/// **PowerShell 那一半：今天全仓零 lint，而没人盯着它别长大**。
 ///
 /// `ci.yml` 逐字写着「两个 `.ps1` 仍**零 lint**（全仓无 PowerShell linter）」，
-/// `ROADMAP §5 1c` 也登记着同一件事（08-06 复核成立：`pwsh`/`powershell` 都不在 PATH，
+/// 也登记着同一件事（08-06 复核成立：`pwsh`/`powershell` 都不在 PATH，
 /// 引一个 linter 属扩范围）。08-08 再复核：**仍是这两个、仍无 linter** —— 边界没漂。
 ///
 /// ⇒ 本条不要求给它们上 lint（那是扩范围，且理由没变），只钉**这一族别悄悄长大**：
@@ -133,7 +133,7 @@ fn the_powershell_family_has_not_grown() {
         found, known,
         "全仓 `.ps1` 的集合变了。\n\
              ★ 多出来的那些**一行 lint 都没有**：全仓没有 PowerShell linter（`pwsh` 不在 PATH），\n\
-             而 `ci.yml` 与 `ROADMAP §5 1c` 都把「就这两个」当成已登记的诚实边界写着。\n\
+             而 `ci.yml` 与都把「就这两个」当成已登记的诚实边界写着。\n\
              ⇒ 两条路：① 这一族真长大了 ⇒ 该重新问一次「要不要引 PSScriptAnalyzer」，\n\
              并把 `§5 1c` 那句「两个」改掉；② 只是挪了位置 ⇒ 更新这张表。\n\
              ⚠ 别把它当成登记表填一填就完 —— 本条存在的理由正是「零 lint 这件事不许悄悄变大」。"

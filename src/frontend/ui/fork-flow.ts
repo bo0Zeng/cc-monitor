@@ -53,7 +53,7 @@ export interface ForkSourceFacts {
   source: ForkLaunchInput;
   /** 源会话所在 tmux 名（新名要避开它）。 */
   sourceTmuxName: string | null;
-  // 〔FIX4 · `90 §3` J7〕`takenTmuxNames` 删了：避让在那台后端（`tmux-name-mint {forkOf}`），前端不再拿名单自己铸。
+  // `takenTmuxNames` 删了：避让在那台后端（`tmux-name-mint {forkOf}`），前端不再拿名单自己铸。
 }
 
 /**
@@ -92,7 +92,7 @@ export function deriveForkSource(
 /**
  * 取源会话事实。取数失败一律降级成「不知道」（⇒ 弹窗问一次），**绝不**降级成一个具体值。
  *
- * ~~**本机没有对侧探针**~~（〔E79〕之后有了；〔C4a〕与远端同一条路）：backend 的 `--session-accounts` 是远端专属，本机侧至今没有
+ * ~~**本机没有对侧探针**~~（之后有了；与远端同一条路）：backend 的 `--session-accounts` 是远端专属，本机侧至今没有
  * 「某 sid 现在跑在哪个账号下」的查询（`local_accounts.rs` 只枚举账号，不认会话）。
  * 所以本机一律按「查不出来」处理 —— 问一次，而不是拿当前账号顶替。
  */
@@ -107,8 +107,8 @@ export async function collectForkSource(
     // 本机会话也要白弹一次追问小窗，而那个 pidfile 就在本机、monitor 明明够得着。
     //
     // 平台答不出时（Windows）后端会明说答不出 ⇒ 这里照旧落「不知道」，走追问那条路。
-    // **「查不出来」与「查了但没有」在这里是同一个结论，但理由不同**（〔C4a〕两种都回空行集）。
-    // 〔C4a〕经通道问本机后端（与远端同一个 `fetchSessionAccounts`；`force`：分叉要此刻的读数）。
+    // **「查不出来」与「查了但没有」在这里是同一个结论，但理由不同**（两种都回空行集）。
+    // 经通道问本机后端（与远端同一个 `fetchSessionAccounts`；`force`：分叉要此刻的读数）。
     //   查不到 ⇒ 空行集 ⇒ 「不知道」，不猜。
     const rows: SessionAccount[] = await fetchSessionAccounts(origin, true);
     // 本机这条路不进 tmux（`fork-start.ts` 已把 tmux 那一格摘掉），所以只用账号那一半。
@@ -118,7 +118,7 @@ export async function collectForkSource(
       sourceTmuxName: null,
     };
   }
-  // 〔FE1〕tmux 名单只经 `tmux-name-mint.ts::readTmuxListing` 取（本机远端同一个家）：
+  // tmux 名单只经 `tmux-name-mint.ts::readTmuxListing` 取（本机远端同一个家）：
   //   没问到 ⇒ `unknown` ⇒ 这里交 `null`；远端没装 tmux ⇒ 一张确定的空表。
   const [rows, listing] = await Promise.all([
     fetchSessionAccounts(origin).catch(() => [] as SessionAccount[]),
@@ -160,13 +160,13 @@ function productionDeps(input: ForkFlowInput): ForkStartDeps {
         defaultUseTmux: isRemoteOrigin(input.origin),
       }),
 
-    // 〔FE1〕本机那一跳走 resume 编排的唯一一份（`local-resume.ts`）：sid 校验先于任何 IPC（F06）、
+    // 本机那一跳走 resume 编排的唯一一份（`local-resume.ts`）：sid 校验先于任何 IPC（F06）、
     //   名字现铸（`K-R46`：后端故意不铸，不传 ⇒ 不进容器；这条路上尤其贵 —— 分叉是全仓唯一说得出
     //   「账号 0」的生产路，而 POSIX 后端只有那一态渲染得出容器）、账号是**用户在小窗里显式选的**：
     //   账号 0 ⇒ 显式 `base`（不是省略：省略 = 没表态 = 被 shell rc 里的默认号顶掉），具名 ⇒ 名字说得出才带（`K-R53`）。
     //   ⚠ 这里铸的是**新会话自己**的 `<项目名>-cc`（避让本机现有名字），与远端那条「避开源会话的名字」
     //     （`fork-start.ts` 问那台后端 `tmux-name-mint {forkOf}`）不是一回事。失败它自己出声，这里只回布尔（与 `startRemote` 同形）。
-    // 〔FIX4 · 主会话裁 ④〕「起了」= 看见那台报出分叉出来的会话（等到才说「已分叉」；没等到那一句主窗口说过了）。
+    // 「起了」= 看见那台报出分叉出来的会话（等到才说「已分叉」；没等到那一句主窗口说过了）。
     startLocal: async (a) =>
       (await resumeLocalSessionAndWait({
         sid: a.sessionId,
@@ -188,7 +188,7 @@ function productionDeps(input: ForkFlowInput): ForkStartDeps {
       return r === "arrived";
     },
 
-    // 〔FIX4 · `90 §3` J7〕分叉会话的 tmux 名问那台后端铸（派生 ＋ 避让都在那一台）。
+    // 分叉会话的 tmux 名问那台后端铸（派生 ＋ 避让都在那一台）。
     mintForkName: mintForkTmuxName,
   };
 }

@@ -1,4 +1,4 @@
-//! 〔C2 · U3 第 3 件〕**远端流断线重连之后，旁路快照从续点接着拉，不再从第 0 行整份重拉。**
+//! **远端流断线重连之后，旁路快照从续点接着拉，不再从第 0 行整份重拉。**
 //!
 //! # 病
 //!
@@ -20,11 +20,11 @@
 //! ⚠ **不用骨架索引**（当时的 `read_session_index`〔散文墓碑〕）：它那时不在帧面（`frame_query::STILL_DIALED` 那一形）⇒
 //! 用它续传等于每次重连多拨一条 SSH，与 `C1`「去掉逐次拨号」方向相反。帧面的 `history-tail` ＋
 //! `history-read` 已经是「按偏移」—— 续传要的两样（行号 ↔ 字节的锚 · 按字节区间读）都在。
-//! 设计住 `设计/05 §13.6 ①`。
+//! 设计住。
 //!
-//! # 〔W5-VIS · `设计/15 §3.4 ②`〕截断 / 改写检测：续传之前先核一行
+//! # 截断 / 改写检测：续传之前先核一行
 //!
-//! `15 §3.4 ②` 逐字：「**截断检测**（远端 jsonl 在断连期间被截断/分叉，`(sid,seq)` 会指向不同的行而没有东西会发现）—— **仍开**（W5-VIS）」。
+//! 「**截断检测**（远端 jsonl 在断连期间被截断/分叉，`(sid,seq)` 会指向不同的行而没有东西会发现）—— **仍开**（W5-VIS）」。
 //! 上面那条「文件比锚短 ⇒ 整份」只接住了**变短**；断线期间被**整份改写而且变长**（编辑器存盘整份覆盖、agent 按路径重建）的文件，
 //! 续传照接，前端已有的那几行与盘上不再是同一内容。
 //! ⇒ 续点旁边多记一格**见证**（[`Witness`]）：快照做完那一刻文件最后一个可计行的字节区间与内容摘要。续传之前先读回那一行
@@ -35,10 +35,10 @@
 //! # 买不到
 //!
 //! - 见证只钉**锚那一行**：锚之后、续点之前那几条实时行被单独改掉（前缀原样、只改中段）看不见 —— 实时行没带字节偏移。
-//! - 〔MOD〕见证那一行的字节位与摘要都由后端按原始字节给（原先 monitor 拿有损解码过的正文自己切、自己算，
+//! - 见证那一行的字节位与摘要都由后端按原始字节给（原先 monitor 拿有损解码过的正文自己切、自己算，
 //!   碰到非 UTF-8 字节那一次就记不了见证）。
 //! - 改写之后整份重读出来的行，行号与旧行同号（远端 `seq` 是行号空间，`INVARIANTS §25a`）—— 前端怎么把两份收成一份不在本处。
-//! - 〔RENDER2 · `99 §2.1` ㊱②〕实时行带着后端的 `byte_offset`（它的末端）⇒ 推续点时记下第 `next` 行的起点（`Cursor::next_byte`），
+//! - 实时行带着后端的 `byte_offset`（它的末端）⇒ 推续点时记下第 `next` 行的起点（`Cursor::next_byte`），
 //!   续传就从那一行读起、一行都不数掉。只剩「推的那一行说不准末端」（快照那一行是没收尾的残尾）
 //!   才退回挑锚、锚到续点那一截照样过线。
 //! - 进程重启续点全丢（本来就是进程内软状态；主会话 09-27 销案：monitor 重启时界面状态本就没了，要的是整份）。
@@ -60,13 +60,13 @@ pub(crate) struct Cursor {
     pub(crate) anchor_end: u64,
     /// 已有到哪：`[0, next)` 这些行号前端**确实**拿到过（发出去过）。
     pub(crate) next: u64,
-    /// 〔RENDER2 · `99 §2.1` ㊱②〕第 `next` 行从哪个字节起（推 `next` 的那一行带着它的末端）；说不准 ⇒ `None`（退回挑锚）。
+    /// 第 `next` 行从哪个字节起（推 `next` 的那一行带着它的末端）；说不准 ⇒ `None`（退回挑锚）。
     pub(crate) next_byte: Option<u64>,
-    /// 〔W5-VIS〕锚那一行的见证（续传之前先核它）；`None` = 这一次没记下（那一行是残尾 / 一行可计行都没有）。
+    /// 锚那一行的见证（续传之前先核它）；`None` = 这一次没记下（那一行是残尾 / 一行可计行都没有）。
     pub(crate) witness: Option<Witness>,
 }
 
-/// 〔W5-VIS〕见证：一行在文件里的**原始字节区间** `[start, end)`（含它的换行）与它的内容摘要（〔MOD〕后端算的）。
+/// 见证：一行在文件里的**原始字节区间** `[start, end)`（含它的换行）与它的内容摘要（后端算的）。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Witness {
     pub(crate) start: u64,
@@ -74,15 +74,15 @@ pub(crate) struct Witness {
     pub(crate) hash: u64,
 }
 
-/// 〔W5-VIS〕读回 `[w.start, w.end)` 那一段（`history-read` 的逐行成品）之后：还是不是那一行。
-/// 恰好一行、末端对得上、摘要对得上（〔MOD〕摘要由后端按原始字节算、跨进程稳定；原先 monitor 按本进程的哈希算）。
+/// 读回 `[w.start, w.end)` 那一段（`history-read` 的逐行成品）之后：还是不是那一行。
+/// 恰好一行、末端对得上、摘要对得上（摘要由后端按原始字节算、跨进程稳定；原先 monitor 按本进程的哈希算）。
 pub(crate) fn witness_holds(w: &Witness, rows: &[crate::frame_query::Row]) -> bool {
     matches!(rows, [r] if r.end == Some(w.end) && r.hash == w.hash)
 }
 
-/// 〔W5-VIS〕一页的逐行成品 ⇒ 每行在文件里的原始字节区间 `[start, end)`（含换行）。
+/// 一页的逐行成品 ⇒ 每行在文件里的原始字节区间 `[start, end)`（含换行）。
 ///
-/// 〔MOD〕末端由后端按原始字节给（永远说得准）；起点 ＝ 上一个可计行的末端（页的第一行 ＝ `offset`）——
+/// 末端由后端按原始字节给（永远说得准）；起点 ＝ 上一个可计行的末端（页的第一行 ＝ `offset`）——
 /// 中间夹着的空白行（不是可计行，后端不交）算进这一行的区间：续传前读回这一段时空白行照样不成行，见证照样比得上。
 /// 残尾（末端 `None`）那一行及其后说不准 ⇒ `None`。
 pub(crate) fn row_spans(offset: u64, rows: &[crate::frame_query::Row]) -> Vec<Option<(u64, u64)>> {
@@ -96,7 +96,7 @@ pub(crate) fn row_spans(offset: u64, rows: &[crate::frame_query::Row]) -> Vec<Op
         .collect()
 }
 
-/// 〔W5-VIS〕走读时挑见证：**区间末端是 `plan.end` 的那一段**里、最后一个可计行（整份读时是尾段，续传时是唯一那一段）。
+/// 走读时挑见证：**区间末端是 `plan.end` 的那一段**里、最后一个可计行（整份读时是尾段，续传时是唯一那一段）。
 /// 那一行的区间说不准 ⇒ 这一次不记。
 #[derive(Debug, Default)]
 pub(crate) struct WitnessPick {
@@ -138,7 +138,7 @@ pub(crate) enum Read {
     },
 }
 
-/// 〔RENDER2〕同一份文件的续点比这一次的图还长（行数 / 字节 / 已有到哪 任一越过）⇒ 文件在断线期间变短了。
+/// 同一份文件的续点比这一次的图还长（行数 / 字节 / 已有到哪 任一越过）⇒ 文件在断线期间变短了。
 pub(crate) fn shrank(cursor: Option<&Cursor>, path: &str, plan: &TailPlan) -> bool {
     cursor.is_some_and(|c| {
         c.path == path
@@ -156,7 +156,7 @@ pub(crate) fn plan_read(cursor: Option<&Cursor>, path: &str, plan: &TailPlan) ->
     if shrank(Some(c), path, plan) {
         return Read::Full;
     }
-    // 〔RENDER2 · ㊱②〕确知第 `next` 行的起点 ⇒ 就从那里读：锚到续点之间那一截不再过线。
+    // 确知第 `next` 行的起点 ⇒ 就从那里读：锚到续点之间那一截不再过线。
     if let Some(b) = c.next_byte.filter(|b| *b <= plan.end) {
         return Read::Resume {
             from_byte: b,
@@ -265,12 +265,12 @@ pub(crate) fn note_snapshot_done(origin: &Origin, sid: &str, path: &str, plan: &
     let key = (origin.as_wire_str().to_string(), sid.to_string());
     let same = g.get(&key).filter(|c| c.path == path);
     let next = same.map_or(plan.total, |c| c.next.max(plan.total));
-    // 〔RENDER2〕`next` 落在锚上 ⇒ 起点就是锚的末字节；推得比锚远 ⇒ 沿用推的那一行带来的。
+    // `next` 落在锚上 ⇒ 起点就是锚的末字节；推得比锚远 ⇒ 沿用推的那一行带来的。
     let next_byte = match same {
         Some(c) if c.next > plan.total => c.next_byte,
         _ => Some(plan.end),
     };
-    // 〔W5-VIS〕见证先照旧带过来（这一趟没读到新的可计行时它仍是锚那一行）；[`note_witness`] 随后按这一趟的走读改。
+    // 见证先照旧带过来（这一趟没读到新的可计行时它仍是锚那一行）；[`note_witness`] 随后按这一趟的走读改。
     let witness = same.and_then(|c| c.witness.clone());
     g.insert(
         key,
@@ -285,7 +285,7 @@ pub(crate) fn note_snapshot_done(origin: &Origin, sid: &str, path: &str, plan: &
     );
 }
 
-/// 〔W5-VIS〕立锚之后按这一趟的走读改见证（[`WitnessPick::done`] 的三形：`None` 照留 · `Some(None)` 清掉 · `Some(Some)` 换新）。
+/// 立锚之后按这一趟的走读改见证（[`WitnessPick::done`] 的三形：`None` 照留 · `Some(None)` 清掉 · `Some(Some)` 换新）。
 pub(crate) fn note_witness(origin: &Origin, sid: &str, picked: Option<Option<Witness>>) {
     let Some(witness) = picked else {
         return;
@@ -300,7 +300,7 @@ pub(crate) fn note_witness(origin: &Origin, sid: &str, picked: Option<Option<Wit
 }
 
 /// 一批行发给前端之后：有续点的会话，行号**恰好接上** `next` 才往前推（连续才推）；
-/// 〔RENDER2 · ㊱②〕推的那一行带着它的末端 ⇒ 记成新 `next` 的起点（不带 ⇒ 说不准）。
+/// 推的那一行带着它的末端 ⇒ 记成新 `next` 的起点（不带 ⇒ 说不准）。
 pub(crate) fn note_flushed<'a>(
     origin: &Origin,
     flushed: impl IntoIterator<Item = (&'a str, u64, Option<u64>)>,

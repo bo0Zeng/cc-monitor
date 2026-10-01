@@ -134,7 +134,7 @@ function panorama(op: string, args: Json | null): unknown {
           internal_edges: m.files.length * 3,
           external_edges: m.files.length,
         })),
-        entry_points: [{ id: "src/routes/index.ts#mountRoutes", file: "src/routes/index.ts", symbol: "mountRoutes" }], // 〔P7〕上游 `SymbolRef`
+        entry_points: [{ id: "src/routes/index.ts#mountRoutes", file: "src/routes/index.ts", symbol: "mountRoutes" }], // 上游 `SymbolRef`
         total_symbols: panoSymbolCount,
         total_files: panoFiles.length,
         unresolved_calls: PANO_UNRESOLVED,

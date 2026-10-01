@@ -1,4 +1,4 @@
-//! 〔MIG-3b 续 · 主会话 09-28 裁①〕「足迹」里的 **Claude 布局**：申报路径里的 `~/.claude/…` 以哪个家为基准 ·
+//! 「足迹」里的 **Claude 布局**：申报路径里的 `~/.claude/…` 以哪个家为基准 ·
 //! 用户级 settings 的两个作用域是哪两份文件。判定本体住 `footprint/rows.rs`（通用层），这里只交布局知识。
 
 use copy_core::copy_text;
@@ -42,7 +42,7 @@ pub(crate) const SKILLS_DIR: &str = "~/.claude/skills";
 /// Claude Code 自己写的会话记录树。
 pub(crate) const PROJECTS_DIR: &str = "~/.claude/projects/";
 
-/// 〔MIG-3b 续〕足迹申报表里**这一家**的那一半（从 `footprint/registry.rs::TOOLS` 搬来，逐字未改）：
+/// 足迹申报表里**这一家**的那一半（从 `footprint/registry.rs::TOOLS` 搬来，逐字未改）：
 /// 落点在这一家的布局里的受管工具。经注册表（`agents::Adapter::footprint`）汇进 `footprint::registry::tools`。
 pub(crate) const TOOLS: &[ToolSpec] = &[
     ToolSpec {
@@ -131,7 +131,7 @@ pub(crate) const TOOLS: &[ToolSpec] = &[
                     // 本机确实会被读（`P4a`），所以说「本机存在」不再是冒充。
                     // ⚠ 但 `IndirectWrite` 那句仍要留神：**写**面（`cc_bus_send`/`_spawn`/〔散文墓碑〕
                     // `_broadcast`/`_kill`）至今**只动远端**（`refuse_local_write`），
-                    // 〔C4e 订正〕这半句早已不成立（P4f / BS1b 起写面本机也走后端，〔C4e〕起由界面经通道直接说，本机与远端同一条路）；
+                    // 这半句早已不成立（P4f / BS1b 起写面本机也走后端，起由界面经通道直接说，本机与远端同一条路）；
                     // 所以 note 里把「读」与「写」分开说，别让人以为本机那个也会被写。
                     host: HostScope::Either,
                     note: Some(Text(|| {
@@ -183,10 +183,10 @@ pub(crate) const TOOLS: &[ToolSpec] = &[
             ],
         }],
     },
-    // 〔AS2 · 第四波 4B · V113〕**skill「装到这台」**：资产目录里别的机器有的 skill，用户点了才装到这台 ——
-    //   文件原样从来源那台拷来（V112），〔MIG-3a〕判、写、记都在这台后端（`skill_flow.rs::answer_install`）。
-    //   `96 §4`：每个写点都要在足迹里可见。落点由用户点的那一条决定（这台 skills 下以那个名字为名的目录）⇒ 占位符，不猜。
-    //   〔SU1 · 第四波 4C · V116〕`uninstallable: true`：用户裁「要，只删装时写进去的文件」—— 装的时候那台后端记下写了哪几个
+    // **skill「装到这台」**：资产目录里别的机器有的 skill，用户点了才装到这台 ——
+    //   文件原样从来源那台拷来，判、写、记都在这台后端（`skill_flow.rs::answer_install`）。
+    // 每个写点都要在足迹里可见。落点由用户点的那一条决定（这台 skills 下以那个名字为名的目录）⇒ 占位符，不猜。
+    // `uninstallable: true`：用户裁「要，只删装时写进去的文件」—— 装的时候那台后端记下写了哪几个
     //   （第二条 touch：那台后端自己的装记录），卸口 `skill_flow.rs::answer_uninstall` 只删记着的那几个（装完改过的先问）。
     //   〔墓碑 —— AS2 那一版这里是 `uninstallable: false`（「没有卸掉装来的 skill 这条口，如实声明」）。〕
     ToolSpec {

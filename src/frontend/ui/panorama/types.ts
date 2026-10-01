@@ -1,5 +1,5 @@
 // 生成物 —— 不许手改。由 `tests/panorama-engine/cli_tests.rs::the_frontend_types_are_generated_from_upstream_and_this_program` 写出。
-// 要求住址：`99 §1` V158「线上契约由上游给、本仓不手抄」。
+// 要求：「线上契约由上游给、本仓不手抄」。
 // ① 上游 code-picture-core 的线上类型（vendored `src/wire.ts` 原样；ts-rs 从上游的 serde 属性写出，可选性随之过来）
 // ② 全景小程序自己的应答（`src/panorama-engine/main.rs` 的 DTO，ts-rs）
 
@@ -559,9 +559,9 @@ export type TypeRelKind = "implements" | "composes";
 // ── ② 全景小程序自己的应答 ──
 
 /**
- * 〔PANO〕本程序**自己的**应答形状（引擎直出之外的那几样）：`status` 那三格。
+ * 本程序**自己的**应答形状（引擎直出之外的那几样）：`status` 那三格。
  * `stale` = 源文件有改动、索引已陈旧；`indexedAt` = 上次索引的 unix 秒（`null` = 从未建完）；`symbols` = 已索引符号数。
- * 〔P7〕它与下面那份的 TS 声明进前端生成物 `types.ts`（ts-rs，只在测试构建里派生）。
+ * 它与下面那份的 TS 声明进前端生成物 `types.ts`（ts-rs，只在测试构建里派生）。
  */
 export type PanoramaStatus = { stale: boolean, indexedAt: number | null, symbols: number, };
 
