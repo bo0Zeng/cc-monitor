@@ -1,4 +1,4 @@
-//! 〔F9〕大文件模式的判据。
+//! 大文件模式的判据。
 //!
 //! 🔴 这一族**不钉毫秒数**（钉了就是一条随机器快慢红的判据）。它钉的全是**相等 / 零命中**：
 //!
@@ -115,7 +115,7 @@ fn is_file_text(t: &str) -> bool {
 }
 
 /// 本族量的是**编辑面自己**（排版 · 编辑 · 撤销）在大文本上的形状。
-/// 〔F9c〕上一版这里要把「打开即只读」摘掉（1 MiB 以上存不回）；存盘改走暂存区之后那一档整个删了。
+/// 上一版这里要把「打开即只读」摘掉（1 MiB 以上存不回）；存盘改走暂存区之后那一档整个删了。
 fn pane(text: String) -> Pane {
     Pane::opened(
         "/srv/big.txt",
@@ -744,11 +744,11 @@ fn the_readings_behind_the_two_thresholds() {
     };
     // 普通路径（不进模式时那个 `TextEdit`，与 `show` 里那一支逐项相同）每敲一个键那一帧。
     //
-    // 🔴〔F9 续 · 09-24 订正〕**上一版量的不是「敲一个键」**：它在帧与帧之间 `s.push('x')`，控件那一帧
+    // 🔴**上一版量的不是「敲一个键」**：它在帧与帧之间 `s.push('x')`，控件那一帧
     //    只是「文本变了、重排一次」。真敲键走的是控件自己的事件路径（有焦点 ⇒ `Event::Text`）：
     //    撤销器前后各克隆一次全文、字下标换字节下标 O(n)、**改完再排一次**（一帧两次排版）。
     //    现打（debug，512 KiB / 每行 64 字节）：push 那一形 ~19 ms、真敲键那一形 **~61 ms**，差三倍多。
-    //    ⇒ 两个门槛的读数要按真敲键重打（`设计/60 §9c 续`）；这里改成先给焦点、再每帧送一个字。
+    //    ⇒ 两个门槛的读数要按真敲键重打；这里改成先给焦点、再每帧送一个字。
     let normal = |text: &str| -> (f64, f64) {
         let ctx = egui::Context::default();
         let mut s = text.to_string();
@@ -861,11 +861,11 @@ fn the_readings_behind_the_two_thresholds() {
         );
     }
 
-    // ── 〔F9 续 · 09-24 → F9c 第四波〕**存得回的最大那一份**（〔F9c〕编辑上限 ＝ 8 MiB，装不进一行的分块走暂存区）
+    // ── 〔09-24 → F9c〕**存得回的最大那一份**（编辑上限 ＝ 8 MiB，装不进一行的分块走暂存区）
     //    **经窗口的生产路径**：打开那一帧（到货 → 立编辑面 → 判模式 → 建行表 → 排第一屏，含 `shell.rs` 每帧那一次
     //    `Pane` 克隆）与打字帧（真点一下拿焦点、再送字）。⚠ 不含后端读盘与线上搬运那一段。
-    //    ⚠ 这一段第一版量的是 8 MiB（后端 `files-read-text` 一趟的天花板），读数记在 `设计/60 §9c`；
-    //    那一拍逮出「存不回去」之后上限一度定成一行的上限（1 MiB）；〔F9c〕存盘走暂存区之后回到 8 MiB，
+    //    ⚠ 这一段第一版量的是 8 MiB（后端 `files-read-text` 一趟的天花板），读数记在；
+    //    那一拍逮出「存不回去」之后上限一度定成一行的上限（1 MiB）；存盘走暂存区之后回到 8 MiB，
     //    「存得回的最大」＝ 恰好 `MAX_EDIT_BYTES` 那么大（每一形都存得回，不再按转义削）。
     let window = |text: &str| -> ((f64, f64), (f64, f64), bool) {
         let mut w = crate::shell::FileWindow::seeded(
@@ -923,7 +923,7 @@ fn the_readings_behind_the_two_thresholds() {
         assert!(w.editing().unwrap().dirty(), "送的字没落进全文");
         (open, k, big)
     };
-    // 存得回的最大那一份：〔F9c〕恰好 `MAX_EDIT_BYTES`（语料生成器按它切齐）。
+    // 存得回的最大那一份：恰好 `MAX_EDIT_BYTES`（语料生成器按它切齐）。
     let largest = |make: &dyn Fn(usize) -> String| -> String {
         let mut t = make(crate::editor::MAX_EDIT_BYTES);
         let mut cut = t.len().min(crate::editor::MAX_EDIT_BYTES);

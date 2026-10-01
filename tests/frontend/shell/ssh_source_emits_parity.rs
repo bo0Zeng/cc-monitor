@@ -1,7 +1,7 @@
 /// backend `lib.rs` 的 `EMITS` 常量（编译期内嵌后端源码，同 `build_id` 那套单源思路）。
 ///
-/// 🔴 〔步 9 · 09-19〕住址从 `main.rs` 改成 `lib.rs` —— `EMITS` / `CAPABILITIES` /
-/// `BUILD_ID` 这一族按 `设计/00 §1.5.4` 前置 1、2 搬进了后端库面（in-process 那条路
+/// 🔴 住址从 `main.rs` 改成 `lib.rs` —— `EMITS` / `CAPABILITIES` /
+/// `BUILD_ID` 这一族按前置 1、2 搬进了后端库面（in-process 那条路
 /// **没有那个 `main.rs`**）。⚠ 下面那句 `expect` 的文案一起改，否则它报的是一个
 /// **今天不存在的文件名**，下一个人会照着它去错的地方找。
 const BACKEND_MAIN: &str = include_str!("../../../src/backend/lib.rs");
@@ -52,7 +52,7 @@ fn every_kind_the_backend_emits_is_known_to_the_monitor() {
 /// 两份名单必然漂移 —— 这条让它们只能是同一份（同后端侧
 /// `inbound_structure_guards.rs::the_commands_mirror_matches_the_registry` 的思路）。
 ///
-/// 〔`K-R19` 订正 09-03〕这一句原先点的是 `hello_commands_match_the_dispatch_table`，
+/// 这一句原先点的是 `hello_commands_match_the_dispatch_table`，
 /// **全仓零定义**——那是后端侧那条判据的**上一版**名字（`U8a-2d` 换掉的），
 /// 而这一句仍当成现状在说。
 #[test]

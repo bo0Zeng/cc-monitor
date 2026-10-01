@@ -2,7 +2,7 @@ use super::*;
 use crate::source::parent_dir;
 use crate::source::Row;
 
-/// 合成那台远端的名字（〔P4〕窗口只拿名字，不再拿整份 `RemoteConfig`；名字怎么从配置来是 monitor 那一侧的事，判据在 `entry_tests`）。
+/// 合成那台远端的名字（窗口只拿名字，不再拿整份 `RemoteConfig`；名字怎么从配置来是 monitor 那一侧的事，判据在 `entry_tests`）。
 fn synth_cfg(label: &str) -> String {
     String::from(label)
 }
@@ -62,7 +62,7 @@ fn a_remote_window_without_a_runtime_says_so_instead_of_showing_an_empty_dir() {
 #[test]
 fn every_source_has_a_non_empty_label() {
     assert_eq!(Source::remote(synth_cfg("tagged")).label(), "tagged");
-    // 〔P4〕「`label` 为空时回退到 `host`」那一半是 `RemoteConfig::origin_label` 的契约，随名字在 monitor 那一侧算搬去了
+    // 「`label` 为空时回退到 `host`」那一半是 `RemoteConfig::origin_label` 的契约，随名字在 monitor 那一侧算搬去了
     //   `entry_tests::the_seed_names_the_machine_by_its_origin_label`。
 }
 
@@ -72,7 +72,7 @@ fn every_source_has_a_non_empty_label() {
 
 /// 🔴 **「能往下走、退得回来」这件事有判据了。**
 ///
-/// # ⚠〔2026-09-23〕它换了构造器，**买到的东西缩了一格，如实记**
+/// # ⚠它换了构造器，**买到的东西缩了一格，如实记**
 ///
 /// 从前这条跑在**本机侧的真目录**上（真 `read_dir`），于是它顺带买到
 /// 「进去之后列的是 `sub` 的内容，不是上一层留下的」那一格相等断言。
@@ -340,7 +340,7 @@ fn directories_lossy_names_and_out_of_range_rows_put_up_nothing() {
     assert!(!w.begin_copy(1), "有损名也摆出了「复制为」框");
     assert!(!w.begin_copy(99), "越界下标也摆出了框（或者 panic 了）");
     assert!(w.copy_prompt().is_none());
-    // 〔W5-FILES〕目录**摆得出**「复制为」框了（后端 `recursive: true`，`设计/60 §6.2`），框里记着「源是目录」
+    // 目录**摆得出**「复制为」框了（后端 `recursive: true`），框里记着「源是目录」
     //   ⇒ 那一趟线上带 `recursive: true`（`copy_tests::a_directory_job_says_recursive_and_its_reply_must_count`）。
     assert!(w.begin_copy(0), "目录摆不出「复制为」框");
     let job = w
@@ -416,12 +416,12 @@ fn finishing_a_copy_round_triggers_exactly_one_reload() {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// 🔴〔第四刀 2026-09-20〕**实景**：那条路走完之后，窗口真的起来了
+// 🔴**实景**：那条路走完之后，窗口真的起来了
 // ════════════════════════════════════════════════════════════════════════
 //
 // # 这一格此前记的是「判不了」，而那个判断**框大了一格**
 //
-// `真相源/99 §9.4` 逐字：「那个 egui 窗口真的出现在屏幕上 —— **判不动**。
+// 「那个 egui 窗口真的出现在屏幕上 —— **判不动**。
 // 本机没有图形会话 ⇒ `eframe::run_native` 在这台机器上必然失败。
 // **缺一台有图形会话的机器。**」而同一份文件的 `§八` 那四趟读数
 // （17 945 帧 / 29 秒）**本来就是在 Xvfb 上打的** —— 「有画面的机器」一直在手上。
@@ -435,7 +435,7 @@ fn finishing_a_copy_round_triggers_exactly_one_reload() {
 // |---|---|---|
 // | `the_native_window_really_comes_up_on_a_real_graphics_session` | 有画面的机器上，那条路真的把一个窗口摆到屏幕上，而且事件循环干净退出 | 「起不来」与「起来了」分不开 |
 // | `a_window_that_cannot_come_up_comes_back_as_a_reason_not_a_silent_ok` | **阴性对照**：没有 X 服务器时那条路回的是一句**非空的原因** | 上一条可能恒真（一条永远回 `Ok` 的假实现照样绿） |
-// | `opening_a_window_again_is_a_new_process_and_it_really_comes_up` | 🔴〔第十三刀 09-23〕**第二趟、第三趟开窗都成功**（一趟一个进程，pid 互不相同） | 那正是旧形态的病：第二趟被一个**进程级**标志挡回去，而且此前是静默的 |
+// | `opening_a_window_again_is_a_new_process_and_it_really_comes_up` | 🔴**第二趟、第三趟开窗都成功**（一趟一个进程，pid 互不相同） | 那正是旧形态的病：第二趟被一个**进程级**标志挡回去，而且此前是静默的 |
 //
 // ⚠ 前两条各跑一趟自己的子进程；第三条要**三趟**，而第一条用的就是那三趟里的头一趟
 // （`scenario_trips` / `scenario_a`）—— 理由是 winit 一个进程只许一个事件循环，
@@ -498,7 +498,7 @@ fn xvfb_worker_opens_a_real_window() {
     let rows = vec![dir_row("sub"), file_row("f.txt")];
     xvfb::emit("a.seed_rows", rows.len());
 
-    // 🔴〔第十三刀〕**印出自己的 pid**：「一趟一个进程」那条判据靠它做反空真锚
+    // 🔴**印出自己的 pid**：「一趟一个进程」那条判据靠它做反空真锚
     //    （三趟的 pid 互不相同 ⇒ 那三份读数真是三个进程各自量的，
     //     不是同一趟输出被读了三遍）。
     xvfb::emit("a.pid", std::process::id());
@@ -537,14 +537,14 @@ fn xvfb_worker_opens_a_real_window() {
         //
         // 上一版逐字登记了两句互相矛盾的话，并明说「没有读数能判哪句对」：
         // 「`windowclose` 走的是协议消息（优雅）」对「失效链第一步是硬销毁」。
-        // `真相源/107 §2` 后来读了 `xprop` 看到 winit 列了 `WM_DELETE_WINDOW`，
+        // 后来读了 `xprop` 看到 winit 列了 `WM_DELETE_WINDOW`，
         // 于是**推断** `windowclose` 发的是 ClientMessage、判「硬销毁」不成立。
         // 🔴 **那条推断是错的** —— 它推的是 xdotool 的实现，没量 xdotool 实际发了什么。
         // X1 现打：拿 `xev`（它也列了 `WM_DELETE_WINDOW`）当靶子跑本机那版
         // `xdotool windowclose`（3.20160805），`xev` 收到的是 `UnmapNotify` ＋ `DestroyNotify`，
         // **零条 ClientMessage** ⇒ **它是 `XDestroyWindow`，硬销毁。**
         //
-        // 硬销毁之后逐趟分类（本工作面单跑，各 80 趟，读数全文住 `设计/60`「Xvfb 抖动」）：
+        // 硬销毁之后逐趟分类（本工作面单跑，各 80 趟，读数全文住「Xvfb 抖动」）：
         // **干净退出 0/240 · 线程 panic（进程活着，上一版父判据放行）≈ 九成 ·
         // 进程 abort（父判据红）≈ 一成**，环境负载 ~50 与加压到 ~108 两档红率不可分
         // （8/80 · 10/80 · 8/80）⇒ **不是负载下的时序，是台架那一锤本身每趟都弄坏 winit**；
@@ -584,7 +584,7 @@ fn xvfb_worker_opens_a_real_window() {
     }
 
     // ══════════════════════════════════════════════════════════════════
-    // 🪦〔墓碑 · 第十三刀 2026-09-23〕**「同一个进程、换一条线程再开一趟」那一段删了。**
+    // 🪦〔墓碑〕**「同一个进程、换一条线程再开一趟」那一段删了。**
     // ══════════════════════════════════════════════════════════════════
     //
     // 原话逐字：「台架头注第四节论证过它必然走另一条路；这里把它**量出来**
@@ -644,7 +644,7 @@ fn xvfb_worker_opens_with_no_x_server_at_all() {
     xvfb::emit("n.reason", why.replace('\n', " "));
 }
 
-/// 实景子进程的读数 —— 🔴〔第十三刀 2026-09-23〕**一趟变三趟。**
+/// 实景子进程的读数 —— 🔴**一趟变三趟。**
 ///
 /// # 为什么是三趟，而且是三个**进程**
 ///
@@ -672,7 +672,7 @@ fn scenario_trips() -> &'static [crate::rows::testing::xvfb::ChildRun; 3] {
     use crate::rows::testing::xvfb;
     static RUNS: std::sync::OnceLock<[xvfb::ChildRun; 3]> = std::sync::OnceLock::new();
     RUNS.get_or_init(|| {
-        // 🔴〔`P25` 2026-09-22〕拿独占闸 —— 逐条理由住 `xvfb::exclusive`。
+        // 🔴拿独占闸 —— 逐条理由住 `xvfb::exclusive`。
         let _guard = xvfb::exclusive();
         xvfb::require_toolbox("「点了那颗按钮之后窗口真的起来了」");
         let screen = xvfb::Screen::start()
@@ -711,13 +711,13 @@ fn scenario_a() -> &'static crate::rows::testing::xvfb::ChildRun {
 ///
 /// - **真 GPU / 字体回落 / DPI / 合成器四样一个都买不到**（Xvfb 软渲染、
 ///   无窗口管理器、恒 96 dpi）。逐格住台架头注。
-/// - **它不量帧时也不量内存** —— `真相源/99` 那些数是另一个分母，
+/// - **它不量帧时也不量内存** —— 那些数是另一个分母，
 ///   不许拿这一趟去替换或「订正」。
 /// - **Windows 一趟没跑过**（本族整条 `cfg(not(windows))`）。
 /// - **「用户在旧面板上点那颗按钮」那一跳不在这一格里** —— 那一跳由
-///   jsdom 那条与包装层那两条钉着（`真相源/99 §9.5` 刀 1／刀 2）。
+///   jsdom 那条与包装层那两条钉着（刀 1／刀 2）。
 ///   这一格接的是它下游那一段：命令进来之后窗口起没起来。
-/// - ⚠ **「用户点窗口那个关闭按钮，事件循环干净退出」只买到 Xvfb 那一半**〔X1 2026-09-24〕：
+/// - ⚠ **「用户点窗口那个关闭按钮，事件循环干净退出」只买到 Xvfb 那一半**：
 ///   台架今天替窗口管理器发那条 `WM_DELETE_WINDOW`（`xvfb::close_like_a_wm`），
 ///   本判据判 `a.run_native == ok`（上一版这里只印不判，因为那把锤子是硬销毁）。
 ///   **买不到**真窗口管理器那一层：真桌面上窗口会被 reparent 进一层框，
@@ -755,7 +755,7 @@ fn the_native_window_really_comes_up_on_a_real_graphics_session() {
             .unwrap_or_else(|_| panic!("{what}读不出整数：{}", run.reading(k)));
         assert!(v > 0, "窗口{what}是 {v} —— 一个 0 像素的窗口照样能被数到");
     }
-    // 🔴〔X1 2026-09-24〕关窗那一维**从「只印不判」变成判据**。
+    // 🔴关窗那一维**从「只印不判」变成判据**。
     //    上一版不判的理由是「那把锤子是硬销毁，判它就得把 panic 钉成期望值」；
     //    锤子换成了窗口管理器那一条请求（`xvfb::close_like_a_wm`）⇒ 期望值就是干净收场。
     //    ⚠ 先判「消息送到了」再判「收场干净」：前者不成立时后者红的原因会被读错。
@@ -769,7 +769,7 @@ fn the_native_window_really_comes_up_on_a_real_graphics_session() {
         "ok",
         "窗口管理器请它关之后，事件循环没有干净收场：裁决 `{}`（{}）。\n\
          `panic` 且原因含 `BadWindow`／`TranslateCoordinates` = 有人又在它还活着时把窗口硬拆了\
-         （`xdotool windowclose` 在本机那一版就是 `XDestroyWindow`，逐条住 `设计/60`「Xvfb 抖动」）；\
+         （`xdotool windowclose` 在本机那一版就是 `XDestroyWindow`，逐条住「Xvfb 抖动」）；\
          `timeout` = 那条消息 winit 没认（原子或事件布局不对，先看 `x11_wire_tests`）",
         run.reading("a.run_native"),
         run.reading("a.reason")
@@ -805,7 +805,7 @@ fn the_native_window_really_comes_up_on_a_real_graphics_session() {
 ///
 /// 没有这一条，上面那条可能恒真 —— 一个「永远回 `Ok(())`、什么都不做」的假实现
 /// 在上面那几条里除了窗口数之外全都会绿，而
-/// `真相源/99 §8.5`／`§9.1` 记的那条教训（「编得过、跑得动、什么都不做」）
+/// ／`§9.1` 记的那条教训（「编得过、跑得动、什么都不做」）
 /// 正是这一族最常见的失效形状。
 ///
 /// ⚠ 它买的是**壳那一层**：`open_detached_seeded` 的回值里装着原因。
@@ -940,7 +940,7 @@ fn opening_a_window_again_is_a_new_process_and_it_really_comes_up() {
         );
     }
 
-    // ④〔X1 2026-09-24〕三趟都**干净收场**：退出码 0 ＋ `run_native == ok`。
+    // ④三趟都**干净收场**：退出码 0 ＋ `run_native == ok`。
     //    上一版刻意不判它（「归因未定的抖动」）；归因定了、锤子换了 ⇒ 判。
     //    ⚠ 排在 ③ 前面：abort 那一形（退出码 `None`）下 ③ 的读数照样印得出来，
     //    先判它才不会让一个崩掉的进程冒充「计数器对得上」。
@@ -950,7 +950,7 @@ fn opening_a_window_again_is_a_new_process_and_it_really_comes_up() {
         (vec![Some(0); 3], vec!["ok".to_string(); 3]),
         "三趟里有一趟没有干净收场。退出码 {codes:?} · 裁决 {verdicts:?}。\n\
          `None` = 进程被信号打死（winit 在析构里二次 panic ⇒ abort）；\
-         `panic` = 窗口被人硬拆了。逐条住 `设计/60`「Xvfb 抖动」"
+         `panic` = 窗口被人硬拆了。逐条住「Xvfb 抖动」"
     );
 
     // ③ 每一趟自己那个计数器都是 +1 —— 三趟不共享进程级状态。
@@ -965,7 +965,7 @@ fn opening_a_window_again_is_a_new_process_and_it_really_comes_up() {
     }
 }
 
-/// 🔴 **进程 DPI 归属〔WN1 · 09-24 改写〕：窗口进程里没有 Tauri ⇒ winit 自己设 DPI。**
+/// 🔴 **进程 DPI 归属〔09-24 改写〕：窗口进程里没有 Tauri ⇒ winit 自己设 DPI。**
 ///
 /// 论证与四格现打读数住 `shell.rs` 头注（2026-09-20，本机那台 Win11 虚拟机的真桌面）。
 /// 承重的是「起 `tao` = 否」那两行：
@@ -978,7 +978,7 @@ fn opening_a_window_again_is_a_new_process_and_it_really_comes_up() {
 ///
 /// ① **值**：那一句是 `with_dpi_aware(builder, true)`，恰好一行（`pin_line`）；`false` 零命中。
 /// ② **前提**：这个 hook 在生产上只经一条链被用到 ——
-///    `win_main.rs`（窗口进程入口，monitor 包里那个 `[[bin]]`）→ 〔P4〕`cc_monitor_filewin::run` → `proc::child_main` → `shell::open_detached_seeded` → `any_thread_hook`，
+///    `win_main.rs`（窗口进程入口，monitor 包里那个 `[[bin]]`）→ `cc_monitor_filewin::run` → `proc::child_main` → `shell::open_detached_seeded` → `any_thread_hook`，
 ///    每个符号的「生产段里提到它的文件」集合与期望**两向相等**；且链上两份文件的生产段里
 ///    一个 `tauri` / `tao` 都没有。哪天有人在 monitor 进程里开这个窗口（集合多一个文件），
 ///    ② 先红 —— 逼他回来重答「这个进程的 DPI 归谁」，而不是让 ① 静静地守着一个过期的值。
@@ -987,7 +987,7 @@ fn opening_a_window_again_is_a_new_process_and_it_really_comes_up() {
 /// 「那一句在真 Windows 上真的把进程设成 V2」要真机（本路不碰 Win11 虚拟机，买不到）。
 #[test]
 fn the_window_process_owns_its_dpi_because_no_tauri_lives_there() {
-    // 〔P4 · 阶段 H〕`any_thread_hook` 住窗口包的平台层 `platform.rs`（平台 cfg 只许住那里）。
+    // `any_thread_hook` 住窗口包的平台层 `platform.rs`（平台 cfg 只许住那里）。
     let shell = guard_core::production_code(include_str!(
         "../../../src/frontend/filewin/src/platform.rs"
     ));
@@ -1009,14 +1009,14 @@ fn the_window_process_owns_its_dpi_because_no_tauri_lives_there() {
     );
 
     // ② 前提：谁在生产段里提到这条链上的每一个符号。
-    //    〔P4〕窗口独立成包：人群是 monitor 那棵（入口 `filewin/win_main.rs` 住那里）＋ 本包这棵（键带包名前缀，
+    // 窗口独立成包：人群是 monitor 那棵（入口 `filewin/win_main.rs` 住那里）＋ 本包这棵（键带包名前缀，
     //    免得与 monitor 那一侧同名的 `filewin/proc.rs` 撞）；链多了一跳 `cc_monitor_filewin::run`（本包 `lib.rs`）。
     let monitor_src = crate::guard_support::repo_root().join("src/frontend/shell/src");
     let own_src = crate::guard_support::crate_src_root();
     let files: Vec<(String, String)> = guard_core::scan_tree_excluding(&monitor_src, &["rs"], &[])
         .into_iter()
         .map(|(p, raw)| {
-            // 〔RE〕按模块住址认：通信层成员住 `src/comms/inward/`、经 `#[path]` 挂进本 crate（`guard_core` 顺着收）。
+            // 按模块住址认：通信层成员住 `src/comms/inward/`、经 `#[path]` 挂进本 crate（`guard_core` 顺着收）。
             (guard_core::module_address(&monitor_src, &p), raw)
         })
         .chain(
@@ -1063,7 +1063,7 @@ fn the_window_process_owns_its_dpi_because_no_tauri_lives_there() {
             "child_main",
             set(&["cc-monitor-filewin/proc.rs", "cc-monitor-filewin/lib.rs"]),
         ),
-        // 〔P4〕monitor 那一侧只有那个 `[[bin]]` 入口提到本包（`contract_crate_guard` 的「前端包」那一类同钉）。
+        // monitor 那一侧只有那个 `[[bin]]` 入口提到本包（`contract_crate_guard` 的「前端包」那一类同钉）。
         ("cc_monitor_filewin", set(&["filewin/win_main.rs"])),
     ] {
         assert_eq!(
@@ -1096,12 +1096,12 @@ fn the_window_process_owns_its_dpi_because_no_tauri_lives_there() {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// 🔴〔第五刀 2026-09-21〕`设计/99 §4.6.4`：那四条写操作接在这一侧
+// 🔴：那四条写操作接在这一侧
 // ════════════════════════════════════════════════════════════════════════
 
 /// 一行**目录**（第五刀起目录也能改名/删除/改权限，只是不能复制）。
 ///
-/// ⚠〔2026-09-23〕导航那两条判据现在也吃它：本机侧退役之前它们走的是
+/// ⚠导航那两条判据现在也吃它：本机侧退役之前它们走的是
 /// 本机一棵真目录树（那棵树自带一个真目录），今天走 `seeded` ＋ 这一行。
 fn dir_row(name: &str) -> Row {
     Row {
@@ -1237,7 +1237,7 @@ fn finishing_a_write_round_triggers_exactly_one_reload() {
     assert!(!w.settle_finished_writes(), "同一摞重列了第二次");
 }
 
-// 〔FN1 · V119〕这里原来有一条「被围栏挡住那句话真的被画在窗口上」（从 egui 这一帧的 galley 里把那句话读回来）。
+// 这里原来有一条「被围栏挡住那句话真的被画在窗口上」（从 egui 这一帧的 galley 里把那句话读回来）。
 //   用户「文件管理器全部都可以改. 不需要任何围栏」⇒ 那句话与画它的那一段一起删了，靶子不在，这一条随之退役。
 
 /// 🔴 **命中那一摞交不出任何一个下标** —— 那三条写胶水索引的是另一摞东西。
@@ -1315,7 +1315,7 @@ fn the_window_starts_a_batch_through_the_shared_three_step_function() {
         "`writeops::run_writes(` 在 `shell.rs` 生产段里不是恰好一处 —— \
          多了就是长出了第二条确认流，少了就是这一条被绕过了"
     );
-    // 〔W5-FILES〕落点换成 `apply_remote_in`（根可以是当前目录的字节，有损名全寻址）；`apply_remote` 是它根为串时的那一形。
+    // 落点换成 `apply_remote_in`（根可以是当前目录的字节，有损名全寻址）；`apply_remote` 是它根为串时的那一形。
     assert_eq!(
         prod.matches("writeops::apply_remote_in(").count(),
         1,
@@ -1337,7 +1337,7 @@ fn the_window_starts_a_batch_through_the_shared_three_step_function() {
 
 /// 🔴🔴 **整条链一趟走完**：真点一下会话文件那一行的「删除」→ 问一次 → 答做 → 后端真收到 `files-delete`。
 ///
-/// 〔FN1 · V119 翻面〕从前这一条是「→ 围栏挡住 → 屏幕上有话」，而且断「后端一行都没收到」。
+/// 〔V119 翻面〕从前这一条是「→ 围栏挡住 → 屏幕上有话」，而且断「后端一行都没收到」。
 /// 用户「文件管理器全部都可以改. 不需要任何围栏」⇒ 同一行、同一次真点击，今天必须**走到后端**。
 ///
 /// # 它是这一摞里唯一一条**不跳任何一跳**的判据
@@ -1375,8 +1375,8 @@ async fn a_real_click_on_delete_walks_the_whole_chain_even_on_a_session_file() {
         }],
     );
     assert!(w.rt.is_some(), "这一条要一个运行时，否则它卡在另一支上");
-    // 〔F2〕写面走通道 ⇒ 挂一台合成后端（它声明了 `files-delete`）。
-    //   〔FN1〕本条从前证的是「本地那道预判把它挡在上线之前」；今天证的是它**上了线**。
+    // 写面走通道 ⇒ 挂一台合成后端（它声明了 `files-delete`）。
+    // 本条从前证的是「本地那道预判把它挡在上线之前」；今天证的是它**上了线**。
     let wired = crate::find::testing::wire_up(
         "e2e-fence",
         crate::find::testing::FakeBackend::new(
@@ -1470,7 +1470,7 @@ async fn a_real_click_on_delete_walks_the_whole_chain_even_on_a_session_file() {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// 🔴〔第六刀 2026-09-21 · **整摞退役 2026-09-23**〕「本机」那颗按钮
+// 🔴〔**整摞退役 2026-09-23**〕「本机」那颗按钮
 // ════════════════════════════════════════════════════════════════════════
 //
 // 这里原来有 3 条判据，钉的是「点一下『本机』还回得来」那条往返
@@ -1489,7 +1489,7 @@ async fn a_real_click_on_delete_walks_the_whole_chain_even_on_a_session_file() {
 // **它的靶子还在不在** —— 两个问题不一样，混起来就会把真判据当兼容债删掉。
 //
 // ════════════════════════════════════════════════════════════════════════
-// 🔴〔第八刀 2026-09-22〕往外拖 —— 行上那颗「下载」到窗口那两问
+// 🔴往外拖 —— 行上那颗「下载」到窗口那两问
 // ════════════════════════════════════════════════════════════════════════
 
 /// 🔴🔴 **整条链一趟走完**：真点一下行上那颗「下载」→ 第一问摆出来了。
@@ -1727,7 +1727,7 @@ async fn no_download_button_is_painted_on_rows_that_cannot_be_pulled() {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// 🔴〔第九刀 2026-09-22〕改一份远端文本 —— 行上那颗「编辑」到编辑面
+// 🔴改一份远端文本 —— 行上那颗「编辑」到编辑面
 // ════════════════════════════════════════════════════════════════════════
 
 /// 🔴🔴 **整条链一趟走完**：真点一下行上那颗「编辑」→ 那趟读真的发出去了。
@@ -1735,7 +1735,7 @@ async fn no_download_button_is_painted_on_rows_that_cannot_be_pulled() {
 /// 五跳：`frame_body` → `show_file_rows` → `RenderTally::edit_clicked` →
 /// `apply_edit_click` → `begin_edit`。
 ///
-/// 🔴〔F7a · 第三波 09-24〕**本条从「发出去了」升级成「读到了」**：读那一问换成经通道问后端
+/// 🔴**本条从「发出去了」升级成「读到了」**：读那一问换成经通道问后端
 /// （`files-read-text`）之后，合成后端（真回环口、真钥匙、真 `dial`）答得了它 ⇒ 链子一直走到
 /// 编辑面立起来；线上那一行的参数逐格读回（`path` 原样 · `max_bytes` == 窗口那个上限）。
 /// 第九刀那一版读走 SFTP、连不上（`.invalid`），只买得到「那一趟发出去了」。
@@ -1823,7 +1823,7 @@ async fn a_real_click_on_edit_fires_the_read() {
         "真点了「{EDIT_LABEL}」，那趟读一次都没发出去 —— 胶水那一跳断了",
         EDIT_LABEL = EDIT_LABEL.as_str()
     );
-    // 〔F7a〕等它到货，然后编辑面真的立起来，内容就是后端那一趟交回来的。
+    // 等它到货，然后编辑面真的立起来，内容就是后端那一趟交回来的。
     for _ in 0..400 {
         if w.edits.opens() > 0 {
             break;
@@ -1851,7 +1851,7 @@ async fn a_real_click_on_edit_fires_the_read() {
 
 /// 🔴 **太大的那一行：一颗按钮都不画，而点这一行也不会发往返 —— 但会出声。**
 ///
-/// 这是 `设计/60 §5.4b` 那一问（「超了怎么办」）在窗口上的落点判据。
+/// 这是那一问（「超了怎么办」）在窗口上的落点判据。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn an_oversized_row_never_asks_the_remote_and_still_says_why() {
     use crate::editor::EDIT_LABEL;
@@ -1968,7 +1968,7 @@ async fn a_refused_save_shows_the_reason_and_keeps_the_text() {
         tokio::runtime::Handle::try_current().ok(),
         Vec::<Row>::new(),
     );
-    // 〔F2〕存那一趟走后端写面（`files-write-text`）。合成后端对 `root` 里带 `refuse` 的
+    // 存那一趟走后端写面（`files-write-text`）。合成后端对 `root` 里带 `refuse` 的
     //   一律按围栏那一档拒（`refused`）—— 本条要的是「拒了 ⇒ 原话画上、字不丢」。
     let wired = crate::find::testing::wire_up(
         "edit-fence",
@@ -2012,7 +2012,7 @@ async fn a_refused_save_shows_the_reason_and_keeps_the_text() {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// 🔴〔第十刀 2026-09-22〕「就是这个文件」—— 高亮 ＋ 滚进视野
+// 🔴「就是这个文件」—— 高亮 ＋ 滚进视野
 // ════════════════════════════════════════════════════════════════════════
 
 fn many_rows(n: usize) -> Vec<Row> {
@@ -2029,7 +2029,7 @@ fn many_rows(n: usize) -> Vec<Row> {
 
 /// 🔴🔴 **偏移是算出来的，而虚拟滚动没塌。**
 ///
-/// # 它钉的是 `设计/60 §4 戊` 立的那条纪律
+/// # 它钉的是立的那条纪律
 ///
 /// 那一节逐字：「**「egui 扛得住」这句话的主语是 `show_rows`，不是 egui**」——
 /// 对照组是不虚拟的 `ScrollArea::show` 在 10 万行上 **83.6 ms/帧（12 fps）**。
@@ -2098,7 +2098,7 @@ async fn revealing_a_deep_row_scrolls_by_arithmetic_without_materialising_everyt
     assert!(
         w.tally.rows_materialized < 200,
         "这一帧物化了 {} 行（共 {n}）—— 虚拟滚动塌了。\n\
-         ★ 那不是「慢一点」：`设计/60 §4 戊` 现打，不虚拟的 `ScrollArea::show` \
+         ★ 那不是「慢一点」：现打，不虚拟的 `ScrollArea::show` \
          在 10 万行上是 83.6 ms/帧（12 fps）。\n\
          ⇒ 检查有没有人把「滚到某一行」改成了 `scroll_to_rect`（它要那一行先被画出来）",
         w.tally.rows_materialized
@@ -2197,7 +2197,7 @@ async fn a_reveal_target_that_is_gone_says_so_and_drops_the_highlight() {
 /// 🔴 留着的后果具体：新目录里**恰好同名**的另一个文件会被高亮，
 /// 而用户会以为那就是他要找的那个。
 ///
-/// ⚠〔2026-09-23〕从前这条还判「**换机器**那两条路同样」（`go_local` / `go_remote`
+/// ⚠从前这条还判「**换机器**那两条路同样」（`go_local` / `go_remote`
 /// 各清一次）。本机侧退役之后一个窗口的机器**一辈子只有一台** ——
 /// 换机器那件事不存在了，不是那两格没人看了。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -2214,7 +2214,7 @@ async fn navigating_away_drops_the_highlight() {
     assert!(w.reveal_name().is_none(), "换了目录高亮还挂着");
 }
 
-// 〔P4〕「当场就死了」不再被报成成功那三条（`early_failure` 两个方向 · 起进程的结果不许丢）随 monitor 那一侧的 `early_failure` /
+// 「当场就死了」不再被报成成功那三条（`early_failure` 两个方向 · 起进程的结果不许丢）随 monitor 那一侧的 `early_failure` /
 //   `open_in_new_process` 留在 `tests/frontend/shell/filewin/proc_tests.rs`。
 
 // ════════════════════════════════════════════════════════════════════════
@@ -2284,13 +2284,13 @@ fn opening_a_terminal_with_no_runtime_says_so_on_the_window() {
     );
 }
 
-// 〔P4〕「在此打开终端」拼那一串的两条判据（三种形状 · 当前目录的形式与拒绝集）随拼法搬去本机后端：
+// 「在此打开终端」拼那一串的两条判据（三种形状 · 当前目录的形式与拒绝集）随拼法搬去本机后端：
 //   `tests/backend/dial_terminal_tests.rs::the_open_terminal_command_keeps_its_three_shapes` ·
 //   `::the_open_terminal_cwd_passes_real_names_and_refuses_what_quote_cannot_hold`（期望串一个字没改）。
 
 // ════════════════════════════════════════════════════════════════════════
-// 〔FW1 · 第四波 4D · 2026-09-25〕编辑器存盘 CAS（主会话裁 D-c ＋ 09-25 认可「stale 让用户选 仍然覆盖 / 丢掉重开」）
-// 要求住址：题面 `4d-lanes.md`「主会话本批裁的」D-c；`设计/60 §3.3`「读的那一刻与写的那一刻之间被别人改了 ⇒ stale，一个字节不写」。
+// 编辑器存盘 CAS（主会话裁 D-c ＋ 09-25 认可「stale 让用户选 仍然覆盖 / 丢掉重开」）
+// 要求住址：题面 `4d-lanes.md`「主会话本批裁的」D-c；「读的那一刻与写的那一刻之间被别人改了 ⇒ stale，一个字节不写」。
 // ════════════════════════════════════════════════════════════════════════
 
 /// 真点一颗按钮（按它画出来的字找位置）：先一帧建 widget 表，再移过去，再点。
@@ -2429,8 +2429,8 @@ async fn a_save_over_a_file_someone_else_changed_asks_instead_of_overwriting() {
     assert_eq!(disk.lock().unwrap()[path], "theirs\n", "丢掉重开却动了盘");
 }
 
-/// 〔GP1 · 第四波〕改权限那个框：没有运行时 / 没有通道 ⇒ 现值那一趟**当场**落「读不到」（框上说出来，不静默、不猜），
-/// 框照旧空着开。要求住址：`设计/60 §7` · `调研/第四波记录/GP1.md §5`。
+/// 改权限那个框：没有运行时 / 没有通道 ⇒ 现值那一趟**当场**落「读不到」（框上说出来，不静默、不猜），
+/// 框照旧空着开。。
 #[test]
 fn gp1_a_chmod_box_without_a_line_says_the_current_mode_is_unreadable() {
     let mut w = remote_window_with_rows("/srv/data", vec![file_row("a.bin")]);
@@ -2446,7 +2446,7 @@ fn gp1_a_chmod_box_without_a_line_says_the_current_mode_is_unreadable() {
     assert_eq!(w.write_prompt().map(|p| p.text.as_str()), Some(""));
 }
 
-/// 〔GP1 · 第四波〕P2⁗（`设计/60 §7` · `GP1.md §5`）：现值那一趟**真上线**：挂一台合成后端（它按盘上真文件答 `files-stat`，`mode` 取真权限位），逐项问、按序交回；
+/// P2⁗（`GP1.md §5`）：现值那一趟**真上线**：挂一台合成后端（它按盘上真文件答 `files-stat`，`mode` 取真权限位），逐项问、按序交回；
 /// 不在的那一项 ⇒ `None`（读不到，不猜）。异源：期望的权限位是本测试自己 `set_permissions` 设下去的。
 #[cfg(unix)]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -2487,8 +2487,8 @@ async fn gp1_the_mode_probe_asks_files_stat_per_target_over_the_wire() {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// 〔W5-FILES · 第五波〕有损名全寻址
-// 要求住址：`设计/60 §6.2`「有损名的进目录 / 复制 / 下载 / 编辑 —— 窗口的当前目录与这几条用的是整条路径字符串，
+// 有损名全寻址
+// 要求：「有损名的进目录 / 复制 / 下载 / 编辑 —— 窗口的当前目录与这几条用的是整条路径字符串，
 // 整条寻址链要换成字节（`source.rs` 头注那一刀）；改名成正常名之后就都能做」。下载那一格按 `§4.1`（SFTP 库寻址不到）维持不做。
 // ════════════════════════════════════════════════════════════════════════
 
@@ -2519,7 +2519,7 @@ fn last_args(wired: &crate::find::testing::Wired, cmd: &str) -> serde_json::Valu
 }
 
 /// 进一个有损名目录（按字节）⇒ 列目录发 `{"b16": …}`；里面一个有损名文件：算大小 / 读文本 / 复制为 / 删除，
-/// 线上的路径（或根 ＋ 尾段）逐格等于手算的字节；上一级按字节回到 `/srv`；〔FILES2〕有损目录里上传（探目标）/ 搜索 / 开终端也按字节。
+/// 线上的路径（或根 ＋ 尾段）逐格等于手算的字节；上一级按字节回到 `/srv`；有损目录里上传（探目标）/ 搜索 / 开终端也按字节。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_lossy_directory_is_entered_and_everything_inside_is_addressed_by_its_bytes() {
     use crate::find::testing::{window_on, wire_up, Declared, FakeBackend};
@@ -2620,7 +2620,7 @@ async fn a_lossy_directory_is_entered_and_everything_inside_is_addressed_by_its_
         last_args(&wired, "files-delete"),
         serde_json::json!({ "root": b16(b"/srv/d\xff"), "rel": b16(b"f\xfe") })
     );
-    // 〔FILES2〕有损目录里上传 / 搜索 / 开终端都按字节做（此前 W5-FILES 出声拒）。
+    // 有损目录里上传 / 搜索 / 开终端都按字节做（此前 W5-FILES 出声拒）。
     // 搜索：浏览名单与重走的根按字节上线。
     assert!(w.fire_search(None, true), "有损目录里搜索没起来");
     wait_for(&wired, "files-index-rebuild", 1).await;
@@ -2643,7 +2643,7 @@ async fn a_lossy_directory_is_entered_and_everything_inside_is_addressed_by_its_
         last_args(&wired, "files-stat")["path"],
         b16(b"/srv/d\xff/up.txt")
     );
-    // 开终端：〔P4〕窗口只交意图，当前目录按字节交给 monitor 接的那一问（`cd` 那一串的字节形在后端拼，
+    // 开终端：窗口只交意图，当前目录按字节交给 monitor 接的那一问（`cd` 那一串的字节形在后端拼，
     //   判据 `tests/backend/dial_terminal_tests.rs::the_open_terminal_cwd_passes_real_names_and_refuses_what_quote_cannot_hold`）。
     assert!(w.open_terminal_here(None), "有损目录里开终端那一问没发出去");
     wait_for(&wired, filewin_contract::TERMINAL_OPEN_OP, 1).await;
@@ -2656,7 +2656,7 @@ async fn a_lossy_directory_is_entered_and_everything_inside_is_addressed_by_its_
     assert_eq!((w.cwd.as_str(), w.cwd_raw.clone()), ("/srv", None));
 }
 
-/// 〔WF2〕要求住址：`第四波记录/WIN3.md §2` 读数 D · 题面 WF2 第 6 条（文件窗口也夹进工作区）。
+/// 要求住址：题面 WF2 第 6 条（文件窗口也夹进工作区）。
 /// 1.5 倍缩放下一扇 800×620 点的窗（外框左上 (100,50) 点）⇒ 物理 1200×930 放不进 1280×712 的工作区 ⇒
 /// 内框缩到 1176×667 像素、外框挪到 (80,0) 像素，换回点（期望手算）；放得下 ⇒ 一条命令都不发。
 /// 在执行链上：monitor 算好工作区进种子（`entry.rs`），窗口进程把它交给开窗那一处（`proc.rs`）。

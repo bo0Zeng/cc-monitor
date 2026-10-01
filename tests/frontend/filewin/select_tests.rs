@@ -355,7 +355,7 @@ fn what_can_be_done_matches_a_hand_written_table() {
     let huge = row("h.bin", false, big, false);
     let lossy = row("\u{FFFD}x", false, 3, true);
     let lossy_dir = row("\u{FFFD}d", true, 0, true);
-    // 〔FW5〕有损名**带着原始字节**（后端 `files-ls` 送的就是字节）⇒ 三件写操作放开。
+    // 有损名**带着原始字节**（后端 `files-ls` 送的就是字节）⇒ 三件写操作放开。
     let lossy_raw = Listed {
         raw_name: Some(b"\xffx".to_vec()),
         ..row("\u{FFFD}x", false, 3, true)
@@ -365,13 +365,13 @@ fn what_can_be_done_matches_a_hand_written_table() {
         (
             "一个普通文件",
             vec![&file],
-            // 〔W5-FILES〕算大小（`files-size`，`设计/60 §6.2`）一格：名字寻址得到就给。
-            // 〔FILES2〕解压到这里（`files-extract`，`设计/60 §6.2` Q3）一格：一份文件就给，认不认这种包由后端判。
+            // 算大小（`files-size`）一格：名字寻址得到就给。
+            // 解压到这里（`files-extract`）一格：一份文件就给，认不认这种包由后端判。
             vec![
                 Edit, Copy, Download, Size, Extract, CrossCopy, Rename, Chmod, Delete,
             ],
         ),
-        // 〔W5-FILES〕目录能复制了（后端 `recursive: true`，`设计/60 §6.2`）⇒ 多一格「复制」。
+        // 目录能复制了（后端 `recursive: true`）⇒ 多一格「复制」。
         (
             "一个目录",
             vec![&dir],
@@ -393,8 +393,8 @@ fn what_can_be_done_matches_a_hand_written_table() {
         (
             "一个有损名文件（带原始字节）",
             vec![&lossy_raw],
-            // 〔W5-FILES · 有损名全寻址（`设计/60 §6.2`）〕带着字节 ⇒ 编辑 / 复制 / 算大小也放开（线上走字节）；
-            // 〔FILES2 · Q4〕下载也放开（远端按字节就地拷进暂存区再下，`lossy_pull.rs`）。
+            // 〔有损名全寻址（）〕带着字节 ⇒ 编辑 / 复制 / 算大小也放开（线上走字节）；
+            // 下载也放开（远端按字节就地拷进暂存区再下，`lossy_pull.rs`）。
             vec![
                 Edit, Copy, Download, Size, Extract, CrossCopy, Rename, Chmod, Delete,
             ],
@@ -448,7 +448,7 @@ fn every_refusal_says_something() {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// 〔FW5〕有损名按原始字节记选中（头注 §四）
+// 有损名按原始字节记选中（头注 §四）
 // ════════════════════════════════════════════════════════════════════════
 
 /// 🔴 两个**不同字节**的有损名解成**同一个**显示串 —— 点一个，只选中那一个。

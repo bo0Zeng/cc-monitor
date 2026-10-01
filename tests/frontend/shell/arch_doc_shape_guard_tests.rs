@@ -140,7 +140,7 @@ fn no_fact_may_rest_on_a_probe_that_is_everywhere() {
 
 /// ★ 形状钉之二：**State 注册表的摘要不许长回来。**
 ///
-/// 〔F19〕原 §3 有一张 7 行的 State 表，而 `src/doc/STATE-MATRIX.md` 里有**严格更全的同一张**
+/// 原 §3 有一张 7 行的 State 表，而 `src/doc/STATE-MATRIX.md` 里有**严格更全的同一张**
 /// （多三列 + 逐命令 consumer），且原文自己就写着「详细矩阵 → STATE-MATRIX.md」——
 /// **自己承认家在那边、又存了一份摘要**。⇒ 摘要删除、只留指针，本条钉住它不再长回来。
 ///
@@ -190,7 +190,7 @@ fn code_units(line: &str) -> Vec<&str> {
     out
 }
 
-/// ★ 形状钉之二：**换成「模块表」也不许长回来**〔audit-0805 08-06〕。
+/// ★ 形状钉之二：**换成「模块表」也不许长回来**。
 ///
 /// # 它补的洞
 ///
@@ -318,7 +318,7 @@ fn every_citation_of_invariant_36_says_which_platform_it_binds() {
     // `parity_ledger` 那张平价账本整个住在测试段里：它是**登记表**，不是运行时代码。
     // 拿「生产段」当人群 = 把本条最主要的目标全摘掉。
     //
-    // 🔴 〔步 7c 剖分 2026-09-19 · `设计/16 §6.2` B 类 ＋ `§5.4b` 纪律 3、4〕
+    // 🔴 〔步 7c 剖分 2026-09-19 ·  纪律 3、4〕
     //    **上面那句话正是这一轮失效的那一句 —— 两件一起改。**
     //
     // · **B 类**：那张账本这一轮从 `src/frontend/shell/src/parity_ledger.rs` 搬进了
@@ -343,19 +343,19 @@ fn every_citation_of_invariant_36_says_which_platform_it_binds() {
         &["rs"],
         &["arch_doc_shape_guard_tests.rs"],
     ));
-    // 〔P4〕文件窗口独立成包（它的代码随上面那棵根的人群声明一起收）：它的判据住 `tests/frontend/filewin/`。
+    // 文件窗口独立成包（它的代码随上面那棵根的人群声明一起收）：它的判据住 `tests/frontend/filewin/`。
     files_src.extend(guard_core::scan_tree_excluding(
         &repo.join("tests/frontend/filewin"),
         &["rs"],
         &[],
     ));
-    // 〔RE〕本 crate 的通信层成员（`src/comms/inward/`，经 `#[path]` 由上面那棵根顺进来）的单测镜像住 `tests/comms/inward/`。
+    // 本 crate 的通信层成员（`src/comms/inward/`，经 `#[path]` 由上面那棵根顺进来）的单测镜像住 `tests/comms/inward/`。
     files_src.extend(guard_core::scan_tree_excluding(
         &repo.join("tests/comms/inward"),
         &["rs"],
         &[],
     ));
-    // 〔MIG-2〕`ccm …` 调用行渲染器搬进后端（`99 §2.1 ⑬`）：它那几处 §36 引用跟着搬，人群补上它的新家（只这一个目录，不是扩面）。
+    // `ccm …` 调用行渲染器搬进后端：它那几处 §36 引用跟着搬，人群补上它的新家（只这一个目录，不是扩面）。
     let render_dir = repo.join("src/backend/control/launch_render");
     files_src.extend(guard_core::scan_tree_excluding(&render_dir, &["rs"], &[]));
     let mut blocks: Vec<(String, String)> = Vec::new(); // (文件, 块)

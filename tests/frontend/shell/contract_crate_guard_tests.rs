@@ -1,14 +1,14 @@
-//! 要求住址：`设计/00 §1.2`「共享 crate 只放两边必须对上的契约（路径 · 端口 · 文件格式 · 文案表 · 令牌形状 · 字节表键），不放判定；判定只在后端」＋ `99 §2.3` THIN 第 5 件「monitor 生产段只许依赖契约类 crate」
-//! ＋ 〔P1〕`4d-lanes.md ## 发版后四路 ### P1` 第 1 件「`contract_crate_guard_tests.rs` ③ 由『按符号』改成 crate 级」。
+//! 要求：「共享 crate 只放两边必须对上的契约（路径 · 端口 · 文件格式 · 文案表 · 令牌形状 · 字节表键），不放判定；判定只在后端」＋ THIN 第 5 件「monitor 生产段只许依赖契约类 crate」
+//! ＋ `4d-lanes.md ## 发版后四路 ### P1` 第 1 件「`contract_crate_guard_tests.rs` ③ 由『按符号』改成 crate 级」。
 //!
 //! 三道：
 //! ① `src/common/` 下每个 crate 恰好登记一类、逐个写理由（两向：目录 == [`CRATES`]）；
 //! ② monitor 生产段（`[dependencies]` · `[build-dependencies]` · `[target.*.dependencies]`）点名的每个 path 依赖、连同它们自己生产段的
-//!    path 依赖闭包，只许住 `src/common/` 且是契约类；判定类出现即红，**没有例外**（〔P1〕`deploy-core` 拆成契约 `deploy-contract` ＋ 后端判定之后，按符号那道豁免退役）；
+//!    path 依赖闭包，只许住 `src/common/` 且是契约类；判定类出现即红，**没有例外**（`deploy-core` 拆成契约 `deploy-contract` ＋ 后端判定之后，按符号那道豁免退役）；
 //! ③ crate 级：部署判定（[`DEPLOY_DECISIONS`]）只有一个家 —— 后端 `control/deploy_plan.rs` 恰一处定义；契约 crate `deploy-contract` 与
 //!    monitor 生产源码里用着部署契约的每一份（壳 `src/**` ＋ 它经 `#[path]` 收进来的通信层文件）零处定义。
-//! ④〔P4〕「前端宿主原语」类（`host-core`）只许两个前端链：后端生产段闭包里出现即红。
-//! ⑤〔P4 · 主会话 09-29 拍板 Q1〕「前端包」（[`FRONTEND_PACKAGES`]：文件窗口）不住 `src/common/`：monitor 链它**只为**那个 `[[bin]]`
+//! ④「前端宿主原语」类（`host-core`）只许两个前端链：后端生产段闭包里出现即红。
+//! ⑤〔主会话 09-29 拍板 Q1〕「前端包」（[`FRONTEND_PACKAGES`]：文件窗口）不住 `src/common/`：monitor 链它**只为**那个 `[[bin]]`
 //!    （生产源码里提到它的恰好是 `filewin/win_main.rs` 一份），它自己的闭包照 ② 判；monitor 的源码人群声明
 //!    （`[package.metadata.guard] population`）== monitor 生产闭包 − 后端生产闭包（两向）。
 //!
@@ -26,11 +26,11 @@ enum Class {
     Decision,
     /// 判据原语：两侧只在 dev 侧。
     TestInfra,
-    /// 〔P4 · 主会话 09-29 拍板 Q2〕前端宿主原语：两个前端（monitor · 文件窗口）都要、只该有一份的宿主那几件；后端不许链。
+    /// 〔主会话 09-29 拍板 Q2〕前端宿主原语：两个前端（monitor · 文件窗口）都要、只该有一份的宿主那几件；后端不许链。
     HostPrimitive,
 }
 
-/// `src/common/` 每个 crate 的类与理由（`00 §1.2` 表「类」一列的判据版）。
+/// `src/common/` 每个 crate 的类与理由（表「类」一列的判据版）。
 const CRATES: &[(&str, Class, &str)] = &[
     ("acct-core", Class::Decision, "账号能不能用 · 走哪一支（`auth_ready` · `apikey_routed_subset`）是裁决；界面那份 `AUTH_KINDS` 由测试档的生成器现生成（monitor 只在 dev 侧链它）"),
     ("chan-core", Class::Contract, "通道（通信层面 A）的线上词汇与帧格式，两端必须对上；外加搬字节的客户端 / 路由器 / 拨号（零业务判断，`05` C1–C5）"),
@@ -45,11 +45,11 @@ const CRATES: &[(&str, Class, &str)] = &[
     ("upstream-url-core", Class::Decision, "上游 URL 能不能用是裁决；界面读的是生成器现生成的式子（monitor 只在 dev 侧链它）"),
 ];
 
-/// ⑤〔P4〕前端包：不住 `src/common/`、monitor 生产段只为某个 `[[bin]]` 链它的包 —— (包目录（仓根相对）, 那个 bin 的 crate 根, 理由)。
+/// ⑤前端包：不住 `src/common/`、monitor 生产段只为某个 `[[bin]]` 链它的包 —— (包目录（仓根相对）, 那个 bin 的 crate 根, 理由)。
 const FRONTEND_PACKAGES: &[(&str, &str, &str)] = &[(
     "src/frontend/filewin",
     "src/frontend/shell/src/filewin/win_main.rs",
-    "文件窗口（又一个前端，`设计/60 §2.2`）：包里第二个 `[[bin]] cc-monitor-filewin` 一行转调它，打包路线不变（K-R124 ⑭）；monitor 库面一行都不引它",
+    "文件窗口（又一个前端）：包里第二个 `[[bin]] cc-monitor-filewin` 一行转调它，打包路线不变（K-R124 ⑭）；monitor 库面一行都不引它",
 )];
 
 /// 部署判定（原 `deploy-core` 的判定那一半）：只许在后端 [`DEPLOY_HOME`] 恰一处定义。

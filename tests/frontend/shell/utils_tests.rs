@@ -30,7 +30,7 @@ fn leap_year_feb_29() {
     assert_eq!(mar_1 - feb_29, 1);
 }
 
-// 〔MOD〕`parse_iso8601_ms` 那五条随函数删了（按时间戳挑子 agent 那一份进了后端，后端 `search_query` 那份自带判据）。
+// `parse_iso8601_ms` 那五条随函数删了（按时间戳挑子 agent 那一份进了后端，后端 `search_query` 那份自带判据）。
 
 #[test]
 fn now_ms_increases_monotonically() {

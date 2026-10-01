@@ -1,4 +1,4 @@
-//! 〔C2 · U3 第 3 件〕续传的判据。
+//! 续传的判据。
 //!
 //! 买到：续点在时**只读锚之后那一截、第一条发出去的行号恰好是续点**，每条发出去的行号与它的正文逐行对得上
 //! （夹具是一份自己数出行边界的假会话，期望值由夹具独立数出，不调被测函数）· 续点作废的三形都回整份 ·
@@ -63,7 +63,7 @@ fn cursor(path: &str, anchor_total: u64, anchor_end: u64, next: u64) -> Cursor {
         anchor_total,
         anchor_end,
         next,
-        next_byte: None, // 说不准第 `next` 行的起点 ⇒ 挑锚那一形（〔RENDER2〕确知起点那一形另有一格）
+        next_byte: None, // 说不准第 `next` 行的起点 ⇒ 挑锚那一形（确知起点那一形另有一格）
         witness: None,
     }
 }
@@ -204,7 +204,7 @@ fn the_snapshot_path_is_wired_through_the_cursor() {
         "let Some(seq) = walk.step() else {",
         "crate::snapshot_resume::note_snapshot_done(&origin, sid, path, &plan);",
         "crate::snapshot_resume::note_flushed(",
-        // 〔CF1〕「会话结束真的忘」搬进了 `LineIntake::removed`（远端与本机两个帧源共用那一处）。
+        // 「会话结束真的忘」搬进了 `LineIntake::removed`（远端与本机两个帧源共用那一处）。
         "crate::snapshot_resume::forget(&crate::origin::Origin(self.origin_label.clone()), sid);",
     ] {
         guard_core::find_pinned(&prod, anchor)
@@ -212,9 +212,9 @@ fn the_snapshot_path_is_wired_through_the_cursor() {
     }
 }
 
-// ═══ 〔W5-VIS · `设计/15 §3.4 ②`〕截断 / 改写检测：续传之前先核锚那一行 ═══════════════════════════
+// ═══ 截断 / 改写检测：续传之前先核锚那一行 ═══════════════════════════
 //
-// 要求住址：`设计/15 §3.4 ②`（逐字）「它另一半用处 —— **截断检测**（远端 jsonl 在断连期间被截断/分叉，
+// （逐字）「它另一半用处 —— **截断检测**（远端 jsonl 在断连期间被截断/分叉，
 // `(sid,seq)` 会指向不同的行而没有东西会发现）—— **仍开**（W5-VIS）」。
 
 /// 把一份全文按 `page` 字节左右切成若干页（每页切在行尾 —— 同 `frame_query::Page` 的约定），回 `(页起点, 页文本)`。
@@ -235,7 +235,7 @@ fn pages(text: &str, from: usize, upto: usize, page: usize) -> Vec<(u64, String)
     out
 }
 
-/// 〔MOD〕后端那一页的逐行成品，在夹具这一侧**自己**造（异源：按原文数行尾、自己算 FNV-1a 64，不调后端也不调被测代码）：
+/// 后端那一页的逐行成品，在夹具这一侧**自己**造（异源：按原文数行尾、自己算 FNV-1a 64，不调后端也不调被测代码）：
 /// 每个可计行 `{end, hash}`（不进界面 ⇒ 没有成品，这里用不着）。
 fn rows_of_page(off: u64, body: &str) -> Vec<crate::frame_query::Row> {
     let fnv = |b: &[u8]| {
@@ -437,7 +437,7 @@ fn w5vis_fetch_snapshot_checks_the_witness_before_it_resumes() {
     assert!(wired(&old).is_err(), "摘掉核那一步没被认出 —— 量具瞎了");
 }
 
-/// 〔RENDER2 · `99 §2.1` ㊱②〕逐字「续传：『锚到续点那一截照样过线』要修 —— 续订从续点 seq 起发」：
+/// 逐字「续传：『锚到续点那一截照样过线』要修 —— 续订从续点 seq 起发」：
 /// 推续点的那一行带着自己的末端 ⇒ 续传只读 `[第 next 行的起点, end)`，一行都不数掉（过线的 == 发出去的）。
 /// 阴性：推的那一行说不准末端 ⇒ 退回挑锚（锚到续点那一截照样过线）。
 #[test]

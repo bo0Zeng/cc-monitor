@@ -1,6 +1,6 @@
-//! 〔FILES2 · 第四波 · 2026-09-27〕`filewin/cross_copy.rs` 的判据 —— **复制到另一台机器**。
+//! `filewin/cross_copy.rs` 的判据 —— **复制到另一台机器**。
 //!
-//! 要求住址：`设计/60 §6.2`「跨机复制」· `§7` 第 9 条 Q2；主会话 09-27 按通行做法裁：「一个任务『从 A 下到本机暂存 → 传到 B 的暂存 →
+//! 要求：「跨机复制」· `§7` 第 9 条 Q2；主会话 09-27 按通行做法裁：「一个任务『从 A 下到本机暂存 → 传到 B 的暂存 →
 //! B 那台提交』（经本机中转），一条进度、可撤、半路失败清暂存」。
 //!
 //! | 判据 | 钉的那一形 | 两侧异源在哪 |
@@ -249,7 +249,7 @@ fn the_local_origin_is_the_app_one() {
 
 #[test]
 fn the_staging_dir_is_the_backend_one() {
-    // 〔P3〕后端那一份的值住契约 crate（`relay_route_core::STAGING_DIR_REL`；数据位置页也按它列），
+    // 后端那一份的值住契约 crate（`relay_route_core::STAGING_DIR_REL`；数据位置页也按它列），
     //   后端 `files_commit::STAGING_DIR` 引它 ⇒ 这里钉「后端引的是契约那一份」＋「窗口这份 == 契约那一份」。
     let backend =
         guard_core::production_code(include_str!("../../../src/backend/control/files_commit.rs"));
@@ -267,7 +267,7 @@ fn the_staging_dir_is_the_backend_one() {
     );
 }
 
-/// 〔FILES2 · V152〕目标选的是本机（下拉里的 `<local>`）⇒ 没有第二腿：直接从 A 下到落点，不开上传的单、不碰本机暂存区。
+/// 目标选的是本机（下拉里的 `<local>`）⇒ 没有第二腿：直接从 A 下到落点，不开上传的单、不碰本机暂存区。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn copying_to_this_machine_is_just_a_download_to_the_target() {
     let (o, log) = go_to(LOCAL_ORIGIN, false).await;

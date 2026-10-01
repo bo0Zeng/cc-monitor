@@ -1,25 +1,25 @@
-//! 要求住址：`设计/00 §2.2`「monitor 侧的 `backend/` 目录有一道宿主无关判据（禁 `AppHandle`/`State<`/`.emit(`）与一道平台无关判据」·
-//! 〔THIN〕`99 §2.3`「壳里 `src/frontend/shell/src/backend/` 九份逐份回真住址、`backend` 目录名从壳里消失」。
+//! 要求：「monitor 侧的 `backend/` 目录有一道宿主无关判据（禁 `AppHandle`/`State<`/`.emit(`）与一道平台无关判据」·
+//! 「壳里 `src/frontend/shell/src/backend/` 九份逐份回真住址、`backend` 目录名从壳里消失」。
 //!
-//! 〔THIN〕从前本文件住 `backend/mod.rs` 的测试段（`backend_tests.rs`〔散文墓碑〕），人群是「`backend/` 目录下的全部 `.rs`」，
+//! 从前本文件住 `backend/mod.rs` 的测试段（`backend_tests.rs`〔散文墓碑〕），人群是「`backend/` 目录下的全部 `.rs`」，
 //! 外加两条按目录认的登记（目录 == `BACKEND_FILES`〔散文墓碑〕两向 · 每份都住在 `control/` / `observe/` 能力线上）与一份层间方向判据
 //! （`backend_layering.rs`〔散文墓碑〕：`observe/` 早删了，只剩一条线）。目录没了 ⇒ 按目录认的三条随之退役；
 //! 宿主无关 · 平台无关两条**人群一个不少**：改成逐个点名的那一组（[`GUARDED`]），两向钉住「点名的都在」。
 use std::fs;
 use std::path::{Path, PathBuf};
 
-/// 从前 `backend/` 目录那一组（〔THIN〕今天都住壳根，通信层成员 `backend_route` 住 `src/comms/inward/`），相对仓根。
+/// 从前 `backend/` 目录那一组（今天都住壳根，通信层成员 `backend_route` 住 `src/comms/inward/`），相对仓根。
 /// 删了的两份（`tmux.rs` · `gate2_parity.rs`，子步 1）不在。**加一份调后端的客户端 / 宿主进来就在这里加一行。**
 const GUARDED: &[&str] = &[
-    // 〔P1〕`agent_profile_parity.rs` 出列：monitor 那份适配表删了，对拍随家进了后端 `agents_tests.rs`。
+    // `agent_profile_parity.rs` 出列：monitor 那份适配表删了，对拍随家进了后端 `agents_tests.rs`。
     "src/frontend/shell/src/backend_control.rs",
     "src/frontend/shell/src/cc_bus.rs",
     "src/frontend/shell/src/frame_query.rs",
     "src/frontend/shell/src/inbound_client.rs",
     "src/frontend/shell/src/local_backend.rs",
-    // 〔P4 · `90 §1.1`〕原先被 SFTP 拨号挡路石那张底账挡回的那份：那张账随 SR1b 退役，它今天只照本机后端的计划经 `files` 链路放字节，两道都过。
+    // 原先被 SFTP 拨号挡路石那张底账挡回的那份：那张账随 SR1b 退役，它今天只照本机后端的计划经 `files` 链路放字节，两道都过。
     "src/frontend/shell/src/sftp.rs",
-    // 〔P4 · `90 §1.1` C13〕原先被宿主无关判据挡回的那份：`remote-health` 改经注入的 `HealthOut`（`lib.rs::remote_health_out` 造），生产段零窗口把手。
+    // 原先被宿主无关判据挡回的那份：`remote-health` 改经注入的 `HealthOut`（`lib.rs::remote_health_out` 造），生产段零窗口把手。
     "src/frontend/shell/src/ssh_source.rs",
     "src/comms/inward/backend_route.rs",
 ];
@@ -144,8 +144,8 @@ fn platform_needles() -> Vec<String> {
 /// ① **单点**（该形态在该文件生产段里恰好出现 **1** 次）；
 /// ② **「已收敛」不是散文** —— 第四列是那句话的机检锚点，锚点没了就红。
 #[allow(clippy::type_complexity)]
-// 〔P4b · 阶段 H〕唯一那一行（`local_backend.rs` 的 `env::consts::`）随 `EXE_SUFFIX` 收进 `platform::proc` 出列，表今天是空的。
-// 〔P4 · 合 P4b〕上限随之降到 0（递减棘轮只许降；那一行被 `local_backend_host_tests::this_item_loosened_none_of_the_ratchets_it_touched` 按整行钉着，同拍改）；
+// 唯一那一行（`local_backend.rs` 的 `env::consts::`）随 `EXE_SUFFIX` 收进 `platform::proc` 出列，表今天是空的。
+// 〔合 P4b〕上限随之降到 0（递减棘轮只许降；那一行被 `local_backend_host_tests::this_item_loosened_none_of_the_ratchets_it_touched` 按整行钉着，同拍改）；
 // 真正挡「往这组里写平台代码」的已是 `platform/platform_home_guard.rs`：这里加一行例外、那边照样红。
 const PLATFORM_EXCEPTIONS: &[(&str, &str, &str, &str)] = &[];
 
@@ -161,7 +161,7 @@ fn platform_hits(prod: &str) -> Vec<String> {
 ///
 /// # 摸底把这件的前提证伪了一半
 ///
-/// 路线图原写「C10 在 monitor 侧零落地，而且**没有任何判据、登记表或诚实边界提到过它**」。
+/// 原先的说法是「C10 在 monitor 侧零落地，而且**没有任何判据、登记表或诚实边界提到过它**」。
 /// 实测：`backend/` 的**生产段零平台 cfg、零平台原语** —— 那 3 处
 /// 平台 cfg 全在 `control/local_backend.rs` 的**测试段**（660 / 722 / 726 行，
 /// chmod 0o755 与 kill/taskkill，都是夹具在收拾自己起的子进程）。
@@ -193,7 +193,7 @@ fn platform_hits(prod: &str) -> Vec<String> {
 /// 上触发，而〔用 08-05〕裁定不再 push ⇒ 至今 70+ 个提交**一次都没跑过**。
 /// 也就是说 monitor 的 Windows 面已经很久没有被任何编译器看过，
 /// 而这段头注原文会让人以为它有人管。**这不是判据的洞，是判据的前提没了。**
-/// 实况与解锁条件记在 `ROADMAP §5` 的 3y；前提本身由
+/// 前提本身由
 /// `shared_crate_registry::the_windows_cross_target_signal_covers_only_the_backend`
 /// 盯着（backend 那步被删 / monitor 那侧补上 / vendor 依赖变 optional，三种都会红）。
 /// 本条是它的**源码形态那一半**：编译只能证明「今天两边都过」，
@@ -293,7 +293,7 @@ fn the_platform_exception_table_is_not_dead_wood() {
                  留着就是一条永远不匹配的死规则，而死规则会在下次真有人写它时**悄悄放行**。"
         );
     }
-    // 例外只许少不许多（**递减棘轮**）。〔P4 · 合 P4b〕1 → 0：表空了，上限跟着降到 0。
+    // 例外只许少不许多（**递减棘轮**）。〔合 P4b〕1 → 0：表空了，上限跟着降到 0。
     assert!(
         PLATFORM_EXCEPTIONS.is_empty(),
         "平台例外涨到 {} 条了 —— 只许降（今天上限 0）。C10 的意思是「平台原语有唯一的家」，\
@@ -327,7 +327,7 @@ fn the_platform_exception_table_is_not_dead_wood() {
 ///
 /// ⚠ **总数刻意不写在这里，也不写进计划**：它每加一个平台分支就变，
 /// 而没有任何判据读它 ⇒ 抄到哪里就在哪里腐（`plan-lint` 判据 3.9 那一族）。
-/// 计划侧（`ROADMAP §5 2h`、`features/F19-*`）只说「C9 那一半占绝大多数」并指到这里。
+/// 计划侧（`features/F19-*`）只说「C9 那一半占绝大多数」并指到这里。
 /// 08-06 实测顺带纠正一处口误：那个数是**全 `src/frontend/shell/src` 的总量**，
 /// 不是「backend 之外那一半」—— 后者要再减掉 backend 测试段里的那几处。
 #[test]
@@ -337,11 +337,11 @@ fn the_platform_needles_actually_match_the_platform_heavy_half() {
     // ⚠ 第一版把 21 处 / 9 处（次数）当成了种类数，判据当场红。
     // 实测种类数：`utils.rs` **6** · `bind.rs` **4**。
     // 地板留一格余量（少一种形态不算警报，少两种就说明形态集在烂）。
-    // 〔LOC1b · 第四波 4D〕`session_map.rs`（原 4 种）那个锚摘了：monitor 自己那份进程身份判活（`/proc` · `GetProcessTimes`）
+    // `session_map.rs`（原 4 种）那个锚摘了：monitor 自己那份进程身份判活（`/proc` · `GetProcessTimes`）
     //   随本机判活改由本机后端的帧来删了，那份文件今天零平台形态 —— 它不再是「平台重的那一半」，拿它当锚会恒红。
-    // 〔P4〕`utils.rs`（原 6 种）那个锚换成 `platform/fs.rs`：原子替换那段平台代码搬进了 `host-core`、FileTime 的 Win32 那两件进了 `platform/filetime.rs`，utils 零平台形态；
+    // `utils.rs`（原 6 种）那个锚换成 `platform/fs.rs`：原子替换那段平台代码搬进了 `host-core`、FileTime 的 Win32 那两件进了 `platform/filetime.rs`，utils 零平台形态；
     //   阶段 H 把壳里平台形态收进 `platform/` 之后，平台最重的正是那一层。
-    // 〔P4b · 阶段 H〕`bind.rs`（原 4 种）那个锚换成它的平台那一半的新住址 `platform/hwnd.rs`：Win32 窗口读法整段搬去了，`bind.rs` 今天零平台形态。
+    // `bind.rs`（原 4 种）那个锚换成它的平台那一半的新住址 `platform/hwnd.rs`：Win32 窗口读法整段搬去了，`bind.rs` 今天零平台形态。
     for (rel, least) in [("platform/fs.rs", 5usize), ("platform/hwnd.rs", 3usize)] {
         let p = src_root.join(rel);
         assert!(

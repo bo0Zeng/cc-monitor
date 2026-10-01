@@ -1,9 +1,9 @@
-//! 〔DP1 · 第四波〕`copy_table.rs`（对外文案表的 Rust 读口）的判据。
+//! `copy_table.rs`（对外文案表的 Rust 读口）的判据。
 //!
 //! # 要求住址
 //!
-//! `设计/01 §6.9`，逐字：「**所有对外文案与报错都从一张表来**（结构化的 key → 文本，插值点留在表里）」；
-//! `设计/91 §5.1.1` 决定 2：一份文件两侧各读，不是两份表加一条对拍。
+//! 要求：「**所有对外文案与报错都从一张表来**（结构化的 key → 文本，插值点留在表里）」；
+//! 决定 2：一份文件两侧各读，不是两份表加一条对拍。
 //! 「表 ↔ 引用」两向相等那一条住 `tests/copy/copy-table.vitest.ts`（它把 `.rs` 的 `copy_text` 调用点也收进引用一侧）。
 
 use super::*;
@@ -25,7 +25,7 @@ fn it_reads_the_same_table_the_frontend_reads() {
     );
 }
 
-/// 表里没有 ⇒ `〔key〕`（不 panic）；没给的占位符原样留着（调用方写错会在界面上看得见，由 vitest 那条对拍在上游拦）。
+/// 表里没有 ⇒ ``（不 panic）；没给的占位符原样留着（调用方写错会在界面上看得见，由 vitest 那条对拍在上游拦）。
 #[test]
 fn a_missing_key_says_its_name_instead_of_panicking() {
     assert_eq!(copy_text("no.such.key", &[]), "〔no.such.key〕");

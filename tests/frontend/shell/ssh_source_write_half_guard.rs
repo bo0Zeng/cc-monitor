@@ -3,9 +3,9 @@
 //! # 🔴 它服务哪条要求：**这里没有条**〔`P20` 第二刀 2026-09-22 核过原文〕
 //!
 //! `INVARIANTS.md` 里没有任何一条讲这件事。最近邻是 `§24bis` 那句「**单写者已机器化**」，
-//! 而它点的是 idle 账单写者那条判据 `remote_idle_single_writer_guard`〔散文墓碑〕（〔MIG-1〕随那本账删了）
+//! 而它点的是 idle 账单写者那条判据 `remote_idle_single_writer_guard`〔散文墓碑〕（随那本账删了）
 //! —— **同一个文件里的另一条判据、另一个对象**（那条守的是 `REMOTE_IDLE` 的写者，
-//! 本族守的是 TCP 的写半）。**缺条也是一种住址**；缺口登记在 `设计/99 §4.11.2`，
+//! 本族守的是 TCP 的写半）。**缺条也是一种住址**；缺口登记在，
 //! 升格与否要用户拍（`§4.11.7 ⑥`）。
 //!
 //! ⚠ 不升格的代价是量过的：补两路之前，往生产段加一处 `stream.into_split()`,
@@ -14,7 +14,7 @@
 //! # 本文件第一条判据是**给量具立的负对照**
 //!
 //! `the_shared_stripper_keeps_the_part_this_guard_must_scan` 判的不是产品性质，
-//! 是「剥法没把我要扫的那一段剥掉」。那一形值得推广到每条源码扫描型守卫（`设计/99 P28`）。
+//! 是「剥法没把我要扫的那一段剥掉」。那一形值得推广到每条源码扫描型守卫。
 
 use crate::structural_scan::ScanReport;
 
@@ -41,7 +41,7 @@ fn the_shared_stripper_keeps_the_part_this_guard_must_scan() {
     for anchor in [
         "fn parse_frame",
         "async fn stream_loop",
-        // 〔MIG-1 续〕`probe_backend`〔散文墓碑〕 那一锚随测试连接搬进本机后端删了。
+        // `probe_backend`〔散文墓碑〕 那一锚随测试连接搬进本机后端删了。
     ] {
         assert!(
             good.contains(anchor),
@@ -155,7 +155,7 @@ fn ssh_source_never_splits_a_stream_itself() {
     }
     .require(
         1,
-        // 〔MIG-1 续〕2 → 1：一次性探测那一处随测试连接搬进本机后端。
+        // 2 → 1：一次性探测那一处随测试连接搬进本机后端。
         "本文件应有一处双工切分（stream_loop 的长连接）",
     )
     .expect("split_and_park 用量");
@@ -176,7 +176,7 @@ fn ssh_source_never_writes_to_a_stream_itself() {
     .map(|s| format!(".{s}"))
     .collect();
     let ufcs = format!("AsyncWrite{}::", "Ext");
-    // ★★ **把流交给别人写**也算自己写〔audit-0805 08-07〕。
+    // ★★ **把流交给别人写**也算自己写。
     //
     // 上面两个 needle 认的是「点调用」，`ufcs` 认的是 UFCS —— 三者都盯着
     // **写这个动作长什么样**。而 `tokio::io::copy(&mut src, stream)` 一个字都不沾，
@@ -257,9 +257,9 @@ fn ssh_source_never_writes_to_a_stream_itself() {
     //   已记过四次。**量具要用被测者那一套**，这是第五次。
     const ALLOWED_IO_IMPORTS: &[&str] = &[
         "use tokio::io::{AsyncBufReadExt, BufReader};",
-        // 〔`C1` · 09-24〕`use tokio::io::AsyncBufReadExt;` 这一行随 `fetch_snapshot` 改走长连接出去了
+        // `use tokio::io::AsyncBufReadExt;` 这一行随 `fetch_snapshot` 改走长连接出去了
         // （它读的那条 SSH 流没了）。反向锚点当场逮住它 —— 放行清单不许留死行。
-        // 〔C2 · 09-24〕`use tokio::io::AsyncReadExt;` 也出去了：它只服务读拨号代理 ack 的那一段
+        // `use tokio::io::AsyncReadExt;` 也出去了：它只服务读拨号代理 ack 的那一段
         // （`.take(` 有界读），那一段搬进了通信层成员 `ssh_link.rs`。反向锚点同一刀逮住它。
     ];
     let io_imports: Vec<&str> = prod

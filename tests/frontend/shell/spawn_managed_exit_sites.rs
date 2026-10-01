@@ -71,7 +71,7 @@ const SITES: &[(&str, &str, &str, &str)] = &[
         "filewin/proc.rs",
         "spawn_window",
         "spawn_managed_cmd",
-        "🔴〔第十三刀 2026-09-23〕文件管理窗口的独立进程。**它非自己造 `Command` 不可，\
+        "🔴文件管理窗口的独立进程。**它非自己造 `Command` 不可，\
          唯一的理由是 stdin**：那一屏（＋ 源 ＋ cwd ＋ reveal）走 stdin 递过去，\
          而出口只回答三条策略、不回答「跑什么」。\
          ⚠ 为什么不走环境变量（那样就能用出口最简那个形态）：一屏上限 5 万条，\
@@ -91,7 +91,7 @@ const SITES: &[(&str, &str, &str, &str)] = &[
         "ccm_probe.rs",
         "probe_via_fresh_powershell",
         "spawn_managed_cmd",
-        "〔WF1 · ㉔〕Windows 那一形的「终端里敲 `ccm` 走到哪」，两跳各造一个：`powershell.exe -NoProfile` 现拼 PATH ·\
+        "Windows 那一形的「终端里敲 `ccm` 走到哪」，两跳各造一个：`powershell.exe -NoProfile` 现拼 PATH ·\
          带那份 PATH（`env`）照常加载 profile 的 `powershell.exe` 问探测串；stdin null、stdout piped 同 `probe_with`。\
          出口只回答三条策略 ⇒ `Command` 由这里装好再递进去。（这一行记第一跳。）",
     ),
@@ -113,18 +113,18 @@ const SITES: &[(&str, &str, &str, &str)] = &[
         "ccm_probe.rs",
         "ask_once",
         "spawn_managed_cmd",
-        "〔P1〕问我们自己放下去的那份后端一次（帧命令的 CLI 面）：argv 是 `-- --<命令>`、stdin 要接成管道交入参 JSON、\
+        "问我们自己放下去的那份后端一次（帧命令的 CLI 面）：argv 是 `-- --<命令>`、stdin 要接成管道交入参 JSON、\
          stderr 要接出来读错信封 —— 这三样本处特有，出口只回答三条策略 ⇒ `Command` 由这里装好再递进去。",
     ),
     (
-        "platform/terminal.rs", // 〔P4 · 阶段 H〕原 `launch.rs`
+        "platform/terminal.rs", // 原 `launch.rs`
         "launch_local_posix_via",
         "spawn_managed_cmd",
         "argv 来自 `local_posix_spawn_plan`（用户配置的终端出口），cwd 只在真是目录时才设，\
          env 还要带上 `backend_bin_env_for_window` 那一对 —— 三样都是本处特有。",
     ),
     (
-        "platform/terminal.rs", // 〔P4 · 阶段 H〕原 `launch.rs`
+        "platform/terminal.rs", // 原 `launch.rs`
         "launch_powershell_window",
         "spawn_managed_cmd",
         "Plan A（`wt.exe`）那一跳。argv 是「`-d <目录>` ＋ `powershell.exe` ＋ 那三个参数」\
@@ -132,7 +132,7 @@ const SITES: &[(&str, &str, &str, &str)] = &[
          ⚠ 本表两行同键、处数对得上；**哪一跳配哪三格**不归本条（见模块头注的射程边界）。",
     ),
     (
-        "platform/terminal.rs", // 〔P4 · 阶段 H〕原 `launch.rs`
+        "platform/terminal.rs", // 原 `launch.rs`
         "launch_powershell_window",
         "spawn_managed_cmd",
         "Plan B（`powershell.exe` 直起）那一跳 —— 全仓唯一一处 `ConsolePolicy::NewVisible`，\
@@ -140,7 +140,7 @@ const SITES: &[(&str, &str, &str, &str)] = &[
          env 在这一跳**一定继承**（Plan A 未必）⇒ 两跳的 `Command` 内容真的不同。",
     ),
     (
-        "platform/terminal.rs", // 〔P4 · 阶段 H〕原 `launch.rs`
+        "platform/terminal.rs", // 原 `launch.rs`
         "ssh_client_available",
         "spawn_managed_cmd",
         "`where.exe ssh` 探测：stdout 要 piped，因为它的输出**是返回值**\
@@ -160,7 +160,7 @@ const SITES: &[(&str, &str, &str, &str)] = &[
         "local_backend_host.rs",
         "run_resident_stop",
         "spawn_managed_cmd",
-        "〔STOP〕机器页「停」本机后端：起一次 `<后端> --resident-stop`（不经 shell），等与强杀由那个一次性子命令做（同机监督者）。\
+        "机器页「停」本机后端：起一次 `<后端> --resident-stop`（不经 shell），等与强杀由那个一次性子命令做（同机监督者）。\
          argv 是那个二进制与一个常量 flag，环境只多一格 `CLAUDE_CONFIG_DIR`（本 monitor 认的 Claude 家目录，让它算出同一个口）。\
          stdout 要 piped（结局那一行是返回值）、stderr 要 captured（失败那句 `{code,message}`）。⚠ 已登记在 `SPAWNS`。",
     ),
@@ -172,10 +172,10 @@ const SITES: &[(&str, &str, &str, &str)] = &[
          而本件刚把我们自己那段从 profile 里删掉）· `-NonInteractive`（界面点一下不许挂住）\
          · `-Command <我们自己 render 出来的脚本>`。stdout 要 piped：它是返回值。",
     ),
-    // 〔MIG-3a〕别名撞名问 PowerShell 内建别名那一行（`ask_get_alias`）随方言进了那台后端 —— 后端那一处起进程由它自己的 `readonly_guard::spawn_registry` 登记。
-    // 〔SR1a · 2026-09-24〕拨号代理宿主那一行**摘了**：它不再起 `--dial` 子进程（拨号挪进本机常驻后端，经流上的链路做）。
-    // 〔MIG-1 · `99 §2.1 ⑯`〕`ssh -G` 那一行出表（解析 ssh config 搬进后端）。
-    // 〔SH1 · V136〕monitor 驾驶舱那条本机 shell 读 `local_shell_read`〔散文墓碑〕出表：驾驶舱读面改走后端，monitor 不再起 `bash`。
+    // 别名撞名问 PowerShell 内建别名那一行（`ask_get_alias`）随方言进了那台后端 —— 后端那一处起进程由它自己的 `readonly_guard::spawn_registry` 登记。
+    // 拨号代理宿主那一行**摘了**：它不再起 `--dial` 子进程（拨号挪进本机常驻后端，经流上的链路做）。
+    // `ssh -G` 那一行出表（解析 ssh config 搬进后端）。
+    // monitor 驾驶舱那条本机 shell 读 `local_shell_read`〔散文墓碑〕出表：驾驶舱读面改走后端，monitor 不再起 `bash`。
     (
         "local_backend.rs",
         "supervise_with_stdio",
@@ -186,7 +186,7 @@ const SITES: &[(&str, &str, &str, &str)] = &[
          那两根管子（stdout 的 EOF 是「进程死了」这个事件的唯一来源）——\
          那两根**不是**三条策略里的任何一条。",
     ),
-    // 〔LOC1a · 第四波 4D〕一次性本机查询那一处（`local_query` 模块的 `run_query`〔散文墓碑〕）那一行删了（注入形第二处）：
+    // 一次性本机查询那一处（`local_query` 模块的 `run_query`〔散文墓碑〕）那一行删了（注入形第二处）：
     //   本机那几问改走 `<local>` 长连接，宿主那侧的一次性查询三格（`local_backend_one_shot_query`〔散文墓碑〕）随之删。
 ];
 

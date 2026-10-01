@@ -181,7 +181,7 @@ fn the_retry_budget_number_has_a_measured_origin_pinned_to_it() {
     let decl = guard_core::find_pinned(whole, &decl_needle)
         .expect("那个常量的定义不在了 —— 改了名的人请顺手改本条");
     let head = &whole[..decl];
-    let at = guard_core::find_pinned(head, "〔出处·K-R30〕").unwrap_or_else(|e| {
+    let at = guard_core::find_pinned(head, "〔出处〕").unwrap_or_else(|e| {
         panic!(
             "这个数的**出处段**不在它头注里了（{e}）。\n\
                  `K-R30` 之前它只有理由、没有读数；出处一删，它当场退回「一个判断」。\n\
@@ -243,7 +243,7 @@ fn the_retry_budget_number_has_a_measured_origin_pinned_to_it() {
 /// 🔴 最可能长出这种写法的恰恰是 `local_backend.rs`
 /// （生产段起进程那一跳就在那儿）⇒ 它另走 `include_str!` **单独喂一遍**。
 ///
-/// ⚠ 〔`P4` 2026-09-21〕先前这一段的理由是「`scan_tree!` 按构造**摘除调用者自己那一份**」——
+/// ⚠ 先前这一段的理由是「`scan_tree!` 按构造**摘除调用者自己那一份**」——
 /// 那一刀**在这一处不生效**（判据由 `#[path]` 挂载 ⇒ `file!()` 是带 `..` 的折返路径
 /// ⇒ 后缀比不命中），而且今天的调用者是本判据文件、**不是** `local_backend.rs`：
 /// 后者走普通遍历本来就在人群里，那句 `include_str!` 喂的是**第二份**。
@@ -549,7 +549,7 @@ fn the_sweep_only_takes_the_old_ones() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-// 〔MIG-1〕`P3-Y1` 那两条（本机 tmux 帧进 monitor 的 tmux 原文账 · 那条 #[ignore] 的真 tmux 实测）删了：monitor 不再存 tmux 原文，
+// `P3-Y1` 那两条（本机 tmux 帧进 monitor 的 tmux 原文账 · 那条 #[ignore] 的真 tmux 实测）删了：monitor 不再存 tmux 原文，
 //   本机 tmux 帧由本机后端的会话账本自己消费（`tests/backend/observe/session_ledger_tests.rs`）。
 
 /// `P3-Y1` 的**第二半**：读行循环**真的调**那个吸收点。
@@ -562,7 +562,7 @@ fn the_read_loop_really_calls_the_absorb_point() {
     let prod = guard_core::production_code(include_str!(
         "../../../src/frontend/shell/src/local_backend.rs"
     ));
-    // 〔CF1〕吸收点从此把内容帧交回（`-> Option<InboundFrame>`），调用形去掉了行尾分号；
+    // 吸收点从此把内容帧交回（`-> Option<InboundFrame>`），调用形去掉了行尾分号；
     //   「交回的帧真送进本机内容通道」由 `local_lines_tests` 另钉。
     let at = guard_core::find_pinned(&prod, "absorb_local_frame(frame, registered.as_ref())")
         .expect("读行循环里必须恰好有一处 `absorb_local_frame(frame, registered.as_ref())`");
@@ -571,7 +571,7 @@ fn the_read_loop_really_calls_the_absorb_point() {
         before.contains("parse_frame(&line)"),
         "吸收点必须排在**解析出帧之后** —— 顺序反了就是拿没解析的东西去收"
     );
-    // 〔SR1a〕★ M3：常驻那条载体（宿主的 `attach_stream`）**也**只经这一个吸收点 —— 恰好一处，
+    // ★ M3：常驻那条载体（宿主的 `attach_stream`）**也**只经这一个吸收点 —— 恰好一处，
     // 而且两条循环结束时都把经它开的在飞链路一起结束（`link_mux::fail_owned_by`，各恰好一处）。
     let host = guard_core::production_code(include_str!(
         "../../../src/frontend/shell/src/local_backend_host.rs"
@@ -597,7 +597,7 @@ fn the_read_loop_really_calls_the_absorb_point() {
     }
 }
 
-/// 〔SR1a〕★ 本机那条流上的**应答**真的路由回请求方（此前本机两条读循环一条都不路由 ⇒ 本机入方向命令只会等到超时）。
+/// ★ 本机那条流上的**应答**真的路由回请求方（此前本机两条读循环一条都不路由 ⇒ 本机入方向命令只会等到超时）。
 /// 走**真的**吸收点：造一个 client、发一条命令，把对应的 `reply` 帧喂给吸收点，调用方拿到 `data`。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_local_reply_reaches_the_caller_through_the_absorb_point() {
@@ -641,7 +641,7 @@ async fn a_local_reply_reaches_the_caller_through_the_absorb_point() {
     assert_eq!(got, Some(serde_json::json!({"pong": 1})));
 }
 
-// 〔MIG-1〕`P3-Y1` 那两条（本机 tmux 帧进 monitor 的 tmux 原文账 · 那条 #[ignore] 的真 tmux 实测）删了：monitor 不再存 tmux 原文，
+// `P3-Y1` 那两条（本机 tmux 帧进 monitor 的 tmux 原文账 · 那条 #[ignore] 的真 tmux 实测）删了：monitor 不再存 tmux 原文，
 //   本机 tmux 帧由本机后端的会话账本自己消费（`tests/backend/observe/session_ledger_tests.rs`）。
 
 /// ★★ **本机读帧不许被一个坏字节杀死，也不许无界**〔D 阶段补审 08-11 新增〕。
@@ -969,7 +969,7 @@ fn tmpdir_e2(tag: &str) -> PathBuf {
     d
 }
 
-/// 〔P1〕替身问话口：答预设的那一句，并记下每一次问的暂存件在不在、装的是不是手上那份字节、入参是什么。
+/// 替身问话口：答预设的那一句，并记下每一次问的暂存件在不在、装的是不是手上那份字节、入参是什么。
 struct FakeAsk {
     answer: Result<serde_json::Value, crate::ccm_probe::OnceErr>,
     asked: std::cell::RefCell<Vec<(std::path::PathBuf, bool, serde_json::Value)>>,
@@ -1001,7 +1001,7 @@ fn place() -> Result<serde_json::Value, crate::ccm_probe::OnceErr> {
     Ok(serde_json::json!({ "action": "place", "why": "那台上是 p4z-old，这一版是 p5a-mine" }))
 }
 
-/// 〔E2 · P1〕要求住址：`设计/01 §6.7b`「落点 `~/.cc-monitor/bin/ccm` —— 本机与远端同一个」· `4d-lanes.md ## 发版后四路 ### P1` 第 1 件
+/// 要求：「落点 `~/.cc-monitor/bin/ccm` —— 本机与远端同一个」· `4d-lanes.md ## 发版后四路 ### P1` 第 1 件
 /// （主会话 09-29 拍板形状 A：放不放问手上那份字节自己，判定只住后端 `deploy_plan::place_verdict`；那张真值表住后端 `deploy_plan_tests`）。
 ///
 /// 真跑 [`extract_embedded_to`]、替身答话，逐格比盘上那份字节与目录（不读源码）：缺 ⇒ 问（问时暂存件里恰是手上那份、入参是落点与「本机」）⇒
@@ -1089,10 +1089,10 @@ fn the_local_landing_is_placed_exactly_as_the_bytes_in_hand_say() {
 // 🔴 `K-R69` / `KR69D1`：**本机那条 `ccm` 入口，与远端那条同源**
 // ═══════════════════════════════════════════════════════════════════════
 
-// 〔E2 · V28〕`the_local_ccm_entry_is_a_copy_of_the_backend_itself` · `the_resolution_path_really_puts_the_local_ccm_entry_down`（两条都〔散文墓碑〕）
+// `the_local_ccm_entry_is_a_copy_of_the_backend_itself` · `the_resolution_path_really_puts_the_local_ccm_entry_down`（两条都〔散文墓碑〕）
 //   随逐字节副本删了：本机没有「副本」可比，落点本身就是后端。下面那条改成直接问「解析出来的那份就是 `ccm`」。
 
-/// 〔E2〕要求住址：`设计/01 §6.7b`「不要的三样：③ 与后端重复的第二份字节」· `W5-ALIAS.md §2.5.2` E-c「旧文件清」。
+/// 要求：「不要的三样：③ 与后端重复的第二份字节」· `W5-ALIAS.md §2.5.2` E-c「旧文件清」。
 /// 真跑一趟 `resolve_or_extract`（旁边必没有 ⇒ 走内嵌那份）：`Found` 的就是 `dir/ccm`、字节就是喂进去的那份、目录里没有第二份后端字节；
 /// 旧版释放的 `cc-monitor-backend-<id>` 认得出（有戳）就删、认不出（无戳）不动。
 #[test]
@@ -1140,7 +1140,7 @@ fn the_resolution_path_hands_the_ccm_entry_the_backend_it_just_resolved() {
 ///
 /// # 它买的是什么
 ///
-/// 本机那条落点的**文件名**、远端那条落点的**文件名**。〔09-27〕分流已不看名字，
+/// 本机那条落点的**文件名**、远端那条落点的**文件名**。分流已不看名字，
 /// 但用户敲的是这个词 ⇒ 两处要是各写一个字面量，改一个漏一个的后果是**静默的**：
 /// 一边落成别的名字，用户在那台机器上敲 `ccm` 就找不到它，没有任何一条判据会红。
 /// ⇒ 闭集只许有一个住址（`13b`），那个住址是 [`CCM_ENTRY_WORD`]。
@@ -1153,7 +1153,7 @@ fn both_ccm_entries_spell_the_word_from_the_same_place() {
         Some(env!("CCM_TARGET_EXE_SUFFIX").to_string()),
         "本机那条入口的文件名不是「那个词 + 目标平台后缀」：{name:?}"
     );
-    // ② 远端：〔E2〕落点那个文件的名字就是这个词（shim 删了，远端也走入口① basename）。
+    // ② 远端：落点那个文件的名字就是这个词（shim 删了，远端也走入口① basename）。
     assert_eq!(
         relay_route_core::BACKEND_LANDING_REL.rsplit('/').next(),
         Some(CCM_ENTRY_WORD),
@@ -1167,10 +1167,10 @@ fn both_ccm_entries_spell_the_word_from_the_same_place() {
     );
 }
 
-// 〔E2 · V28〕`remote_shim_sets_no_environment_of_its_own`〔散文墓碑〕 删了：远端 shim 本身删了（落点就是后端字节），没有 shim 可判。
+// `remote_shim_sets_no_environment_of_its_own`〔散文墓碑〕 删了：远端 shim 本身删了（落点就是后端字节），没有 shim 可判。
 
-/// P2z-Y3：**本机那条路不许自己写版本比较** —— 版本比对只有一个家（〔MIG-3a · 09-28〕当年是 `sftp.rs` 的比标记函数，
-/// 那一族退役后是共享判定 `identity_decision`；〔P1〕今天住后端 `control/deploy_plan.rs`，本机那一份经 `place-verdict` 问手上那份字节自己）。
+/// P2z-Y3：**本机那条路不许自己写版本比较** —— 版本比对只有一个家（当年是 `sftp.rs` 的比标记函数，
+/// 那一族退役后是共享判定 `identity_decision`；今天住后端 `control/deploy_plan.rs`，本机那一份经 `place-verdict` 问手上那份字节自己）。
 ///
 /// 它会失效的地方（如实写）：那个判定只回答「要不要装」，
 /// **不回答「装完对不对」**。本条只挡「另写一套比较逻辑」，不是完整校验。
@@ -1184,7 +1184,7 @@ fn the_local_path_does_not_hand_roll_version_comparison() {
     assert!(
         !src.contains(&bad),
         "生产段出现了手写的 build_id 比较（`{bad}`）。\n\
-             版本比对只有一个真相源：后端 `control/deploy_plan.rs` 的 `identity_decision`（本机经 `place-verdict` 问）。\n\
+             版本比对只有一个源头：后端 `control/deploy_plan.rs` 的 `identity_decision`（本机经 `place-verdict` 问）。\n\
              另写一套 ⇒ 两处判「要不要装」的逻辑迟早分叉，而分叉的后果是无限重装。"
     );
 }
@@ -1265,7 +1265,7 @@ const A_STEP_THE_USER_CAN_TAKE: &[&str] = &["-setup.exe", ".msi", "装一次安�
 ///
 /// # 🔴 `K-R42`（09-10 同日）：**换完靶之后一天，被测对象自己变了 —— 本条现在守什么**
 ///
-/// 本件给自释放那条路接上了「产物自己带着的那份」（〔DP1〕那一槽今天住 `byte_table.rs`，由宿主取来交进来），
+/// 本件给自释放那条路接上了「产物自己带着的那份」（那一槽今天住 `byte_table.rs`，由宿主取来交进来），
 /// 〔那条路 `K-R42` 时住 [`start_or_extract`] 体内，`K-R43` 抽进了 [`resolve_or_extract`]〕
 /// 于是要先回答一句：**「找不到本机后端」这一形还存不存在？**
 ///
@@ -1443,7 +1443,7 @@ fn a_directory_it_cannot_create_really_takes_the_loud_path() {
 ///
 /// # 没有这一条会怎样
 ///
-/// 「产物带没带」那一问（`K-R42` 时住本层，〔DP1〕今天是宿主的 `byte_table::choose`）是纯的、[`extraction_failure_reason`] 是纯的 ——
+/// 「产物带没带」那一问（`K-R42` 时住本层，今天是宿主的 `byte_table::choose`）是纯的、[`extraction_failure_reason`] 是纯的 ——
 /// 两条都测得漂漂亮亮，而**只要没人在生产段里接上它们，整件事就是死代码**，
 /// 上面那几格照样全绿。本仓这一形有名字（`K-R28` 那条「防空转」逐字记着同一件事）。
 ///
@@ -1492,13 +1492,13 @@ fn the_self_extract_path_really_asks_the_product_whether_it_carries_one() {
                  而 `the_extraction_refusal_…` 这类纯函数判据**照样全绿**（本轮实测过）。\n逐字：{body}"
         )
     });
-    // 〔DP1 · 第四波〕「问产物自己带没带」搬去了宿主（`byte_table::choose` 按这台机器的 (OS, arch) 查表，
+    // 「问产物自己带没带」搬去了宿主（`byte_table::choose` 按这台机器的 (OS, arch) 查表，
     //   `byte_table_tests::the_old_byte_doors_and_the_linux_gate_are_gone` 钉着宿主真的问了）。
     //   本层只剩「用宿主交进来的那份」：取不到时那句拒绝的话要被接上，不许被丢掉。
     //   〔墓碑 —— 本条原先在这里钉「问产物带没带」那一次调用恰好一处，那条第二取法随它一起搬走了。〕
     assert!(
         !body.contains(&format!("native_embedded_{}", "backend")),
-        "那份共用的解析体又自己问起了「这份产物带没带」—— 那是第二个取字节口（`设计/96 §7.1.1b`）"
+        "那份共用的解析体又自己问起了「这份产物带没带」—— 那是第二个取字节口"
     );
     let asked = guard_core::find_pinned(&body, "match embedded {").unwrap_or_else(|e| {
         panic!(
@@ -1563,7 +1563,7 @@ fn the_native_backend_path_is_spelled_the_same_on_both_sides() {
     };
     let dir = spelled("NATIVE_BACKEND_DIR");
     let file = spelled("NATIVE_BACKEND_FILE");
-    // 〔DP1 · 第四波〕`include_bytes!` 那一处从 `local_backend.rs` 搬进了 `byte_table.rs`（全仓唯一的取字节口）。
+    // `include_bytes!` 那一处从 `local_backend.rs` 搬进了 `byte_table.rs`（全仓唯一的取字节口）。
     let prod = guard_core::production_code(include_str!(
         "../../../src/frontend/shell/src/byte_table.rs"
     ));
@@ -1586,7 +1586,7 @@ fn the_native_backend_path_is_spelled_the_same_on_both_sides() {
 #[test]
 fn the_extracted_name_carries_the_target_exe_suffix() {
     let suffix = env!("CCM_TARGET_EXE_SUFFIX");
-    // 〔E2〕落点名就是 `ccm` ＋ 目标平台后缀（从前带 build_id 的那一形删了）。
+    // 落点名就是 `ccm` ＋ 目标平台后缀（从前带 build_id 的那一形删了）。
     let name = local_ccm_entry_name();
     assert_eq!(
         name,
@@ -1595,7 +1595,7 @@ fn the_extracted_name_carries_the_target_exe_suffix() {
              在把扩展名当身份的平台上，那个文件起不起得来是碰运气"
     );
     // 后缀是**编译期常量**、不是现算的平台原语 —— 现算要 `env::consts::`，
-    // 而〔P4b · 阶段 H〕平台原语只许住 `platform/`（`platform_home_guard`），本文件那一处已改引 `platform::proc::EXE_SUFFIX`。
+    // 而平台原语只许住 `platform/`（`platform_home_guard`），本文件那一处已改引 `platform::proc::EXE_SUFFIX`。
     // ⚠ 用 `contains_word`（两侧有边界）而不是裸 `contains` —— 后者被
     //   `needle_anchor_registry` 那条递减棘轮数着，而这里也确实不该用子串匹配。
     //   **不用 `find_pinned`**：这个名字在本文件里还出现在头注里，本条要的是
@@ -1719,14 +1719,14 @@ fn nothing_in_the_production_path_wakes_itself_up() {
 /// 候选路径里**只能有 exe 同目录**，出现任何 `target`/`debug`/仓库相对路径就红。
 /// ★★ **F06b-1d：给窗口的那份 env —— 名字从唯一的家来，local_backend 不在就不设。**
 ///
-/// 判据形态：**纯函数**（跑法：单测 · 钉的性质：wire/边界映射 —— 两维分开写，见 `ROADMAP §4`
+/// 判据形态：**纯函数**（跑法：单测 · 钉的性质：wire/边界映射 —— 两维分开写，
 /// 登记的计量缺陷）。它钉两件：
 /// ① `Found` ⇒ 键**必须**是 [`super::BACKEND_BIN_ENV`]（不是另抄一个字面量），值是那条真路径；
 /// ② `Missing` ⇒ **`None`，不是 `Some((名, ""))`** —— 导一个指向空处的路径不会让 ccm 更聪明
 ///    （它那边 `[ -x ]` 一样过不了），只会给「这台机有没有本机后端」多一个假阳性来源。
 #[test]
 fn the_window_env_uses_the_one_home_and_stays_silent_without_a_local_backend() {
-    // 〔LOC1a〕路径由宿主交进来（正在跑的那一份）：给了 ⇒ 那一对；没给 ⇒ 不设。
+    // 路径由宿主交进来（正在跑的那一份）：给了 ⇒ 那一对；没给 ⇒ 不设。
     let found = super::backend_bin_env_for_window(Some("/tmp/x/ccm-remote".into()));
     let (k, v) = found.expect("Found 必须给出一对 env");
     assert_eq!(
@@ -2191,7 +2191,7 @@ fn the_exit_path_really_stops_the_local_backend() {
         )
     });
     // ── P2s 翻面新增的两条 ──────────────────────────────────────────
-    // 〔B2 · 条 66〕读策略那一处从「读一张推进来的表」换成「现问本机后端」（`kill_on_exit_now(`）。
+    // 〔条 66〕读策略那一处从「读一张推进来的表」换成「现问本机后端」（`kill_on_exit_now(`）。
     //   形状不变：仍是 `let <名> = …(` 一行，下面那几条位置 / 绑定名判据一格没动。
     let policy_at = guard_core::find_pinned(body, "kill_on_exit_now(").unwrap_or_else(|e| {
         panic!(
@@ -2267,11 +2267,11 @@ fn the_exit_path_really_stops_the_local_backend() {
 /// **两个文件一起扫**，不看任何属性。
 /// **本条留着**（它守的是一格更窄但仍然真的性质），但别把它读成「起真后端有人守了」。
 ///
-/// 〔IV1 · V121〕要求住址：`INVARIANTS §48.3`（测试里起真后端必须 fail-closed 地隔离用户 tmux）。
+/// 要求住址：`INVARIANTS §48.3`（测试里起真后端必须 fail-closed 地隔离用户 tmux）。
 #[test]
 fn every_real_backend_e2e_demands_a_private_tmux_dir() {
     const REAL: &str = "CCM_E2E_BACKEND";
-    // ⚠⚠ 〔`P0e` 08-12〕这个名字换过一次，**换的是机制不是名字**：
+    // ⚠⚠ 这个名字换过一次，**换的是机制不是名字**：
     //   原来是 `CCM_E2E_TMUX_TMPDIR`（把私有目录传给后端）—— 而 `$TMUX` 一有值
     //   就会压过它，那正是 08-11 打没用户 9 个真实会话的机制，`C7i` 因此逐字禁止
     //   「靠 `TMUX_TMPDIR` 做隔离」。
@@ -2279,9 +2279,9 @@ fn every_real_backend_e2e_demands_a_private_tmux_dir() {
     //   **显式选择器压得过 `$TMUX`**。本条钉的性质一个字没变：
     //   **起真后端的 e2e 必须 fail-closed 地要一个私有 tmux 隔离**。
     const PRIVATE_TMUX: &str = "CCM_E2E_TMUX_SHIM_BIN";
-    // 取 shim 的**唯一入口**〔`K-R7` 09-01〕：住 `local_backend_host::tests::demand_tmux_shim`。
+    // 取 shim 的**唯一入口**：住 `local_backend_host::tests::demand_tmux_shim`。
     const GATE: &str = "demand_tmux_shim(";
-    // 🔴 〔搬树 2026-09-18 · `设计/16 §5.4b` 纪律 3〕**语料跟着测试搬。**
+    // 🔴 〔搬树 2026-09-18 ·  纪律 3〕**语料跟着测试搬。**
     //
     // 本条数的是「**本文件里**带 `#[ignore]` 的真 backend e2e」。剖分把本模块的测试段
     // 整个搬来了 `tests/frontend/shell/local_backend_tests.rs`（就是本文件），
@@ -2340,7 +2340,7 @@ fn every_real_backend_e2e_demands_a_private_tmux_dir() {
     //   ⇒ 现在**先剥再判**，与主守卫**同一把尺子**。
     //   ⚠ 只让本条**更松**（少几行可看），不放水：被判的那一行本来就得是代码。
     //
-    //   ⚠⚠ **09-01（`C` 第七拍）两处一起收口成共享原语**〔`D6` `B2`〕：
+    //   ⚠⚠ **09-01（`C` 第七拍）两处一起收口成共享原语**：
     //   本条与主守卫原来各写了一份**私有副本**（只剥 `//` 打头的整行），现在都直接调
     //   `guard_core::strip_comment_lines`。仓规逐字「剥注释只许有一个权威实现」
     //   （`structural_scan.rs:425`）；**先量再选**的读数（`*` 打头的解引用行会被多剥掉，
@@ -2949,7 +2949,7 @@ fn the_shared_stripper_keeps_the_exit_arm_this_guard_must_scan() {
     );
 }
 
-/// 〔RL1 · V107〕生产那个 `stdio=None` 薄壳（唯一客户是 monitor 另起的本机中转）随中转并进常驻后端删了；
+/// 生产那个 `stdio=None` 薄壳（唯一客户是 monitor 另起的本机中转）随中转并进常驻后端删了；
 /// 本文件四条判据要的正是「不接消费者」那一形 ⇒ 在测试段里留一个同形的转交，生产段不再有它。
 #[allow(clippy::too_many_arguments)]
 fn supervise(
@@ -2964,14 +2964,14 @@ fn supervise(
     supervise_with_stdio(bin, args, envs, limits, now_ms, on_event, None, spawn)
 }
 
-// 〔MIG-1 · `99 §2.1 ⑬`〕本机收割那四条判据（先摘后退 · 去抖两拍 · 容器交 `session_facts`〔散文墓碑〕· 本机 emitter 只查本机那一格）删了：
+// 本机收割那四条判据（先摘后退 · 去抖两拍 · 容器交 `session_facts`〔散文墓碑〕· 本机 emitter 只查本机那一格）删了：
 //   收割与可重连的裁决搬进本机后端的会话账本，本机远端同一份（判据住 `tests/backend/observe/session_ledger_tests.rs`）；
 //   monitor 这一侧只剩「成品原样交出口」（`tests/frontend/shell/session_book_tests.rs`）。
 
-/// 〔DP1 · 第四波〕宿主从 `byte_table` 取不到字节时交进来的是**那句拒绝的话**（`Err`）：
+/// 宿主从 `byte_table` 取不到字节时交进来的是**那句拒绝的话**（`Err`）：
 /// `resolve_or_extract` 必须把它接在「旁边没有」那句后面交回，**两件事都说**，而且一个字节都不写。
 ///
-/// 要求住址：`设计/96 §7.1.4` 第 2 条「拒绝是一个会到达用户的结论，不是一行 `debug` 日志」。
+/// 要求：「拒绝是一个会到达用户的结论，不是一行 `debug` 日志」。
 /// 夹具：`target_triple` 取盘上必不存在的中性串 ⇒ 旁边必 `Missing`（同上一条的做法）。
 #[test]
 fn a_refusal_from_the_byte_table_reaches_the_missing_reason_and_writes_nothing() {
@@ -3001,7 +3001,7 @@ fn a_refusal_from_the_byte_table_reaches_the_missing_reason_and_writes_nothing()
         .unwrap_or_else(|e| panic!("拒绝了却往盘上写了东西（目录删不掉：{e}）"));
 }
 
-/// 〔HX1 · NT2 问 3 ＋ RT1 F3〕后端 stderr 进 monitor 日志**按行首级别映射**（`ERROR` 封顶 `WARN`，认不出 ⇒ `WARN`）。
+/// 〔NT2 问 3 ＋ RT1 F3〕后端 stderr 进 monitor 日志**按行首级别映射**（`ERROR` 封顶 `WARN`，认不出 ⇒ `WARN`）。
 /// 守的要求：主会话 4D 裁「后端 stderr 进 monitor 日志按级别映射，不一律 WARN」（`4d-lanes.md`）；封顶的理由见
 /// `drain_child_stderr_into_log` 头注约束 3（`ERROR` 会弹红色 toast）。
 /// 形状：纯函数逐格相等（后端 fmt 缺省格式的五个级别 ＋ 认不出的三形）；再喂一个真子进程的 stderr 给生产那一个搬运函数，
