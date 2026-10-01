@@ -232,23 +232,17 @@ pub(crate) fn parse_request(args: &serde_json::Value) -> Result<LaunchRequest, C
         }
     }
 
-    // `@ccm_agent` 标记的值。收窄到 `[A-Za-z0-9_-]`：它进的是 tmux 的
-    // option 值，且下游（monitor / `ccm attach`）按字面比对 agent 名。
-    let agent = get_str("agent").map(str::to_string);
-    if let Some(a) = &agent {
-        check_field("agent", a)?;
-        if !a
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
-        {
-            return Err((
-                "invalid_args",
-                crate::common::contract::malformed(&format!(
-                    "`agent` must match [A-Za-z0-9_-]: {a:?}"
-                )),
-            ));
-        }
-    }
+    // `@ccm_agent` 标记的值：给了就得是注册表里由我们起的一家（写空 ⇒ 默认那一家；认不出 ⇒ 拒、列出认得的几家），
+    // 标上的是解析好的 kind。没给 ⇒ 不标（这一发起的是什么由载荷说了算，不替它猜）。
+    let agent = match get_str("agent") {
+        None => None,
+        Some(a) => Some(
+            crate::agents::pick_kind(Some(a))
+                .map_err(|say| ("invalid_args", say))?
+                .0
+                .to_string(),
+        ),
+    };
 
     // 新建会话的尺寸。**两个一起给或都不给**，见字段头注。
     let width = get_str("width").map(str::to_string);

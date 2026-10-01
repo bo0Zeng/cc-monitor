@@ -257,6 +257,11 @@ pub(crate) fn parse(args: &[String]) -> Result<Parsed, Die> {
             flag::ACCOUNT => o.account = val!(),
             flag::BASE => o.use_base = true,
             flag::CWD => o.cwd_spec = CwdSpec::Explicit(val!()),
+            // 写空（`--ccm-agent ""`）⇒ 默认那一家，不当成漏了参数（认法住 `agents::pick_kind`）。
+            flag::AGENT if inline.is_none() && args.get(i + 1).is_some_and(|v| v.is_empty()) => {
+                o.agent = String::new();
+                i += 1;
+            }
             flag::AGENT => o.agent = val!(),
             flag::LAUNCHER => o.launcher = val!(),
             flag::ATTACH => o.attach_name = val!(),
@@ -287,6 +292,11 @@ pub(crate) fn parse(args: &[String]) -> Result<Parsed, Die> {
     }
 
     o.resumes = resume_sid(&o.passthru).map(str::to_string);
+    // 哪一家：空 ⇒ 默认那一家；注册表里没有 ⇒ 报错、列出认得的几家（不落默认）。下游只见解析好的 kind。
+    o.agent = crate::agents::pick_kind(Some(&o.agent))
+        .map_err(Die)?
+        .0
+        .to_string();
     validate(&o)?;
     Ok(Parsed::Opts(Box::new(o)))
 }
@@ -319,13 +329,6 @@ pub(crate) fn resume_sid(passthru: &[String]) -> Option<&str> {
 /// 组合校验。**一条都不许静默忽略** —— 静默忽略正是本工作区反复消灭的那类病
 ///（写了个修饰、看起来生效了、实际被吃掉）。
 fn validate(o: &Opts) -> Result<(), Die> {
-    let known = crate::control::ccm::agents();
-    if !known.contains(&o.agent.as_str()) {
-        return die(copy_text(
-            "beArgv.validate.unknownAgent",
-            &[("agent", &o.agent.to_string()), ("known", &known.join("|"))],
-        ));
-    }
     if !o.account.is_empty() && o.use_base {
         return die(&copy_text("beArgv.validate.accountAndBase", &[]));
     }

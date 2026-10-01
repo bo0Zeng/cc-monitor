@@ -169,7 +169,7 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answ
         //   monitor 那一份行解析 / 降级说明 / 本机并表（`local_accounts::with_apikey_table`）删了〔散文墓碑〕，界面经通道直接问。
         //   并的是**这台机器自己**那份表（与 `apikey-read` · 中转里的上游选择同一个出处）—— 远端从此第一次并上它自己的表。
         "accounts-list" => {
-            let agent = str_arg(args, "agent")?;
+            let agent = crate::accounts::upstream_select::endpoint::agent_arg(args)?;
             let rows = crate::accounts::upstream_select::file_face::machine_rows();
             let v = accounts_query::list_product(
                 &rows,

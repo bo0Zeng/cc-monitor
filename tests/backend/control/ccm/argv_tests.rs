@@ -131,7 +131,13 @@ fn the_attach_option_never_swallows_the_next_flag_as_its_value() {
 /// 〔搬自 `ccm-cli`「未知 agent 报错」「--account 与 --base 互斥」〕
 #[test]
 fn the_combination_rules_all_fail_loudly() {
-    assert!(err(&["--ccm-agent", "gemini"]).starts_with("未知 agent: gemini"));
+    assert_eq!(
+        err(&["--ccm-agent", "gemini"]),
+        "不认识这个 agent：gemini（认得的：claude / codex）"
+    );
+    // 写空 ⇒ 默认那一家（两种写法），不当成漏了参数、也不报不认识。
+    assert_eq!(ok(&["--ccm-agent", ""]).agent, Defaults::agent());
+    assert_eq!(ok(&["--ccm-agent="]).agent, Defaults::agent());
     assert_eq!(
         err(&["--account", "z", "--base"]),
         "--account 与 --base 互斥"

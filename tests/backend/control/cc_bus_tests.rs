@@ -446,7 +446,6 @@ fn bus_spawn_refuses_to_pick_an_account_for_the_user() {
         json!({"tool":"claude","dir":"/p"}),              // 没表态
         json!({"tool":"claude","dir":"/p","base":false}), // 表了个「不」
         json!({"tool":"claude","dir":"/p","account":"a","base":true}), // 两样都给
-        json!({"tool":"  ","dir":"/p","base":true}),      // 没说起哪种
         json!({"tool":"claude","dir":"  ","base":true}),  // 空目录
         json!({"tool":"claude","base":true}),             // 缺目录
         json!("不是对象"),
@@ -454,11 +453,22 @@ fn bus_spawn_refuses_to_pick_an_account_for_the_user() {
         let e = parse_spawn(&bad).expect_err(&format!("形状不对却放行了：{bad}"));
         assert_eq!(e.0, "invalid_args", "{bad} 的码不对：{e:?}");
     }
-    // 🔴 agent 种类**不在这里判**：一个 cc-spawn 不认的 tool 要放行到 cc-spawn，由它 rc=2 拒
-    //   （后端写第二份白名单 = 通用层又多一处「加 agent 要跟着改」，`agent_locality_guard` 钉着）。
-    assert!(
-        parse_spawn(&json!({"tool":"not-an-agent","dir":"/p","base":true})).is_ok(),
-        "后端又开始白名单 agent 种类了 —— 那是 cc-spawn 的事"
+    // 哪一家问注册表：没说 / 空 ⇒ 默认那一家（交给 cc-spawn 的是解析好的 kind）；注册表里没有 ⇒ 拒，说出认得的几家。
+    for unsaid in [
+        json!({"dir":"/p","base":true}),
+        json!({"tool":"  ","dir":"/p","base":true}),
+    ] {
+        assert_eq!(
+            parse_spawn(&unsaid).expect("没说起哪种 ⇒ 默认那一家").tool,
+            "claude"
+        );
+    }
+    let (code, said) = parse_spawn(&json!({"tool":"not-an-agent","dir":"/p","base":true}))
+        .expect_err("注册表里没有的 tool 被放行了");
+    assert_eq!(code, "invalid_args");
+    assert_eq!(
+        said,
+        "不认识这个 agent：not-an-agent（认得的：claude / codex）"
     );
 }
 

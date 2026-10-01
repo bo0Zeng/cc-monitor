@@ -16,7 +16,7 @@
  *
  * # 本文件做的只有三件（都是调用方那一侧的事）
  *
- * 1. **先核入参**：正文非空 · 派生的形状（[`checkSpawnShape`]：选了 tool、目录非空）。过不了就一个字节都不发。
+ * 1. **先核入参**：正文非空 · 派生的形状（[`checkSpawnShape`]：目录非空）。过不了就一个字节都不发。
  * agent id / 派生账号名的**形状**不在这里判了：规则只有一份（`shell_quote_core::bus_id_ok`），
  *    后端在把它交给 `cc-send` / `cc-kill` / `cc-spawn` 之前先判、判不过回 `bad_id`（`INVARIANTS §47` 那一格改写成「后端交给 `cc-send` 之前」）；
  *    这里把那个码说成人话。
@@ -222,6 +222,7 @@ export async function killAgent(origin: Origin, id: string): Promise<string> {
 
 /** 派生那一趟要交给后端的几样。`account` 空串 / 缺 = **显式**用基座（发 `base:true`，不存在「什么都不传」这一档）。 */
 export interface SpawnRequest {
+  /** 派生哪一家（空 ⇒ 默认那一家）。认不认由那台后端按注册表判，认不出就拒、说出认得的几家。 */
   tool: string;
   dir: string;
   task: string;
@@ -229,12 +230,11 @@ export interface SpawnRequest {
 }
 
 /**
- * 派生交给后端之前这一侧自己判的形状：`tool` / `dir` 非空。
- * ⚠ **刻意不白名单 `tool`**：认不认归 `cc-spawn`（后端那侧同一条）。过不了 ⇒ 抛那一句。
+ * 派生交给后端之前这一侧自己判的形状：`dir` 非空。
+ * ⚠ **刻意不判 `tool`**：空 ⇒ 默认那一家、认不认都归那台后端（注册表那一处），这一侧不维护第二份名单。过不了 ⇒ 抛那一句。
  * 账号名的字符集原来也在这里判（`isValidBusId`〔散文墓碑〕）；今天归后端（`bad_id`，同一个 `bus_id_ok`）。
  */
 export function checkSpawnShape(req: SpawnRequest): void {
-  if (req.tool.trim() === "") throw new ControlError(copyText("ccBus.spawn.noTool"), "no tool chosen");
   if (req.dir.trim() === "") throw new ControlError(copyText("ccBus.spawn.noDir"), "empty working directory");
 }
 

@@ -201,6 +201,64 @@ pub(crate) fn default_kind() -> &'static str {
     default_launch_among(REGISTRY).map_or("", |(kind, _)| kind)
 }
 
+/// 收 agent 名字的入口用哪一家：**全仓只有这一种认法**（[`pick_kind_among`] 认 wire 上的 kind，[`pick_adapter_among`] 认适配器 id）。
+///
+/// - 没写 / 写空（两侧空白不算字）⇒ 注册表里声明默认（[`LaunchFace::is_default`]）的那一家；
+/// - 写了注册表里由我们起的一家 ⇒ 就是它（大小写敏感）；
+/// - 写了注册表里没有的名字 ⇒ 报错，那句话列出认得的那几家（从注册表取）。**不落默认**：拼错了就跑成另一家，比起不来更坏。
+///
+/// 回 `(kind, 起会话事实)`；`Err` 是给用户看的那一句。
+fn pick_among(
+    registry: &[Adapter],
+    name: Option<&str>,
+    name_of: fn(&'static str, &LaunchFace) -> &'static str,
+) -> Result<(&'static str, LaunchFace), String> {
+    let launchable = || {
+        registry
+            .iter()
+            .filter_map(|a| a.launch.map(|f| (a.kind, f)))
+    };
+    let name = name.map(str::trim).unwrap_or_default();
+    let hit = if name.is_empty() {
+        launchable().find(|(_, f)| f.is_default)
+    } else {
+        launchable().find(|(k, f)| name_of(k, f) == name)
+    };
+    hit.ok_or_else(|| {
+        let known: Vec<&str> = launchable().map(|(k, f)| name_of(k, &f)).collect();
+        copy_core::copy_text(
+            "beAgents.pick.unknown",
+            &[("agent", name), ("known", &known.join(" / "))],
+        )
+    })
+}
+
+/// 按 wire 上的 kind 认（`ccm --ccm-agent` · resume 规格的 `agentKind` · cc-bus 派生的 `tool` · 起会话那一发的 `agent`）。规则见 [`pick_among`]。
+pub(crate) fn pick_kind_among(
+    registry: &[Adapter],
+    name: Option<&str>,
+) -> Result<(&'static str, LaunchFace), String> {
+    pick_among(registry, name, |kind, _| kind)
+}
+
+/// 按适配器 id 认（上游选择那几问的 `agent`：`launch-endpoint` · `apikey-routing` · `accounts-list` · `launch-local`）。规则见 [`pick_among`]。
+pub(crate) fn pick_adapter_among(
+    registry: &[Adapter],
+    id: Option<&str>,
+) -> Result<(&'static str, LaunchFace), String> {
+    pick_among(registry, id, |_, f| f.adapter_id)
+}
+
+/// [`pick_kind_among`] 在生产注册表上。
+pub(crate) fn pick_kind(name: Option<&str>) -> Result<(&'static str, LaunchFace), String> {
+    pick_kind_among(REGISTRY, name)
+}
+
+/// [`pick_adapter_among`] 在生产注册表上；回那一家的适配器 id。
+pub(crate) fn pick_adapter(id: Option<&str>) -> Result<&'static str, String> {
+    pick_adapter_among(REGISTRY, id).map(|(_, f)| f.adapter_id)
+}
+
 /// 由我们起的那几家（带 [`LaunchFace`] 的，注册表序）—— `ccm --agent` 的闭集就是它，不另写一份。
 pub(crate) fn launchable_kinds() -> Vec<&'static str> {
     REGISTRY

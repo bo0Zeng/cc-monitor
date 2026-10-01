@@ -199,12 +199,12 @@ describe("〔C4e〕发出去之前：调用方不能靠对端校验", () => {
     expect(invokeMock).not.toHaveBeenCalled();
   });
 
-  it("★★ 派生的形状先核：tool / 目录非空；**不白名单 tool**（认不认归 cc-spawn）；账号名交后端判（`bad_id` 说成人话）", async () => {
+  it("★★ 派生的形状先核：目录非空；**不判 tool**（空 ⇒ 默认那一家、认不认归后端注册表）；账号名交后端判（`bad_id` 说成人话）", async () => {
     answer({ ok: SPAWN.reply });
-    expect(thrownBy(() => checkSpawnShape({ tool: "", dir: "/w", task: "" }))).toMatch(/没选派生哪种 agent/);
     expect(thrownBy(() => checkSpawnShape({ tool: "claude", dir: " ", task: "" }))).toMatch(/工作目录是空的/);
     expect(invokeMock, "坏形状也发出去了").not.toHaveBeenCalled();
-    // 没见过的 tool 照样放行 —— 本侧不维护第二份名单。
+    // 空的 / 没见过的 tool 照样交给后端 —— 本侧不维护第二份名单（后端认不出会拒，那一句走 `invalid_args`）。
+    expect(() => checkSpawnShape({ tool: "", dir: "/w", task: "" })).not.toThrow();
     expect(() => checkSpawnShape({ tool: "some-future-agent", dir: "/w", task: "" })).not.toThrow();
     await spawnAgent("devbox", { tool: "some-future-agent", dir: "/w", task: "", account: "z" });
     expect(sentCalls().length).toBe(1);

@@ -40,7 +40,7 @@ import { budgetWithin, jsonBody, readJson, saidOf } from "../ipc/chan-caller";
 import { isLocalOrigin } from "../ipc/origin";
 import { showActionFailureToast } from "../error-toast"; // `K-R135`：用户级 PATH 那一格的失败要出声
 import { buildPasteBlock } from "../paste-block";
-import { ACTIVE_AGENT, listAgents } from "../agent-profile";
+import { DEFAULT_AGENT, listAgents } from "../agent-profile";
 // 别名六问走通道、那台后端出成品（`../alias-reads`）；类型随成品住那边（从前是 monitor 生成的类型）。
 import type { Alias, AliasRender, ExecPolicy, PsHost, StartupFile, Shell } from "../alias-reads";
 import { askConfirm, type ConfirmFn } from "../ask-dialog";
@@ -398,7 +398,7 @@ export function buildAliasManager(opts: {
   ]);
   const tmuxNameIn = text(copyText("machineAliases.form.tmuxName"));
   const agentSel = select([
-    ["", copyText("machineAliases.form.agentNone", { agent: ACTIVE_AGENT })],
+    ["", copyText("machineAliases.form.agentNone", { agent: DEFAULT_AGENT })],
     ...listAgents().map((a): [string, string] => [a, `agent：${a}`]),
   ]);
   grid.append(nameIn, cwdIn, acctSel, tmuxSel, tmuxNameIn, agentSel);

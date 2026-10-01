@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# cc-spawn [--tool claude|codex] <目录> [初始任务...]  在该目录开一个独立 claude 或 codex 会话、自动上总线、返回其 id。
+# cc-spawn [--tool <agent>] <目录> [初始任务...]  在该目录开一个独立的 agent 会话(不给 --tool 就是默认那一家)、自动上总线、返回其 id。
 # 产物是【独立历史 + 原生读该目录文件】的长驻协作 agent(区别于 subagent:同上下文、一次性)。
 # 收掉用 cc-kill <id>;看它用 tmux attach -t <id>;跟它聊用 cc-send <id> "..."。
 set -euo pipefail
@@ -15,7 +15,7 @@ use_base=0
 while true; do
   case "${1:-}" in
     --new)  shift;;                                               # P4b 后**默认就是新建**,本旗标是 no-op。保留它是因为外面可能有人在传——让它报错等于把别人的脚本弄坏
-    --tool) tool="${2:-}"; shift 2 2>/dev/null || { echo "cc-spawn: --tool 需要参数(claude|codex)" >&2; exit 2; };;  # 派生哪个 CLI
+    --tool) tool="${2:-}"; shift 2 2>/dev/null || { echo "cc-spawn: --tool 需要参数" >&2; exit 2; };;  # 派生哪一家(认不认由 ccm 按后端注册表判)
     # L2(unify-launch B03 审计):显式指定账号。**不加这个的话** ccm 会落 manifest 的默认号,
     # 于是从驾驶舱点两下就在默认账号上起真 agent 烧额度,而用户无从选择也无从得知用了哪个号。
     # ccm 本来就支持 --account/--base,这里只是转发——**不改 ccm 本体**(账本红线)。
@@ -27,17 +27,14 @@ while true; do
 done
 # ⚠ 用法串里**不再宣传 `--new`**:它今天是 no-op(默认就是新建),宣传一个什么都不做的旗标
 #   等于让人以为不加它会有别的行为。旗标本身仍然接受,见上面的 case 臂。
-dir="${1:?用法: cc-spawn [--tool claude|codex] <目录> [初始任务...]}"; shift || true
+dir="${1:?用法: cc-spawn [--tool <agent>] <目录> [初始任务...]}"; shift || true
 task="$*"
 
-# 定 tool:显式 --tool > 从 CCSPAWN_LAUNCH basename 推断 > 默认 claude(向后兼容)。
-if [ -z "$tool" ]; then
-  case "$(basename "${CCSPAWN_LAUNCH:-claude}")" in *codex*) tool=codex;; *) tool=claude;; esac
-fi
-case "$tool" in claude|codex) ;; *) echo "cc-spawn: 未知 --tool '$tool'(应为 claude|codex)" >&2; exit 2;; esac
+# 哪一家:本脚本不认名字、不猜 —— 原样交给 ccm(`--ccm-agent`),认法在后端注册表那一处:
+#   不给 ⇒ 默认那一家;给了注册表里没有的名字 ⇒ ccm 报错、列出认得的几家(rc=2,不落默认)。
 [ -n "$acct" ] && [ "$use_base" = 1 ] && { echo "cc-spawn: --account 与 --base 互斥" >&2; exit 2; }
-# 启动器:CCSPAWN_LAUNCH 覆盖;否则按 tool 取默认。(可测性钩子:测试时设 mock 命令免起真 CLI)
-LAUNCH="${CCSPAWN_LAUNCH:-$tool}"
+# 启动器:CCSPAWN_LAUNCH 覆盖(可测性钩子:测试时设 mock 命令免起真 CLI);不设 ⇒ 不给 `--launcher`,用那一家的默认启动器。
+LAUNCH="${CCSPAWN_LAUNCH:-}"
 
 # ★★ `K-R48` 第二拍(09-11):**`ccm` 不再是一个脚本,它就是后端二进制。**
 #    〔用@09-11 `K33`〕逐字「后端**只有一个**…**不要有什么 bash 脚本**,**不要有什么单独的 ccm**。
@@ -157,10 +154,15 @@ base="$(printf '%s' "$bn" | tr -c 'A-Za-z0-9_-' '_' | sed 's/^-*//; s/-*$//')_cc
 #
 # 等价还原:首词 → `--launcher`,余词 → `--` 透传的**最前面**,任务排在余词之后。
 # `exec env VAR=x codex '<任务>'` 与旧的 `send-keys "env VAR=x codex '<任务>'"` 逐字同义。
-# shellcheck disable=SC2206  # 这里的分词是**有意的**,正是要复刻旧 shell 的行为
-launch_argv=($LAUNCH)
-[ ${#launch_argv[@]} -gt 0 ] || { echo "cc-spawn: 启动器为空(CCSPAWN_LAUNCH?)" >&2; exit 2; }
-ccm_args=(--tmux-base="$base" --detach --bus-register --tmux-size 220x50 --cwd "$absdir" --ccm-agent "$tool" --launcher "${launch_argv[0]}")
+launch_argv=()
+if [ -n "${CCSPAWN_LAUNCH+set}" ]; then
+  # shellcheck disable=SC2206  # 这里的分词是**有意的**,正是要复刻旧 shell 的行为
+  launch_argv=($LAUNCH)
+  [ ${#launch_argv[@]} -gt 0 ] || { echo "cc-spawn: 启动器为空(CCSPAWN_LAUNCH?)" >&2; exit 2; }
+fi
+ccm_args=(--tmux-base="$base" --detach --bus-register --tmux-size 220x50 --cwd "$absdir")
+[ -n "$tool" ] && ccm_args+=(--ccm-agent "$tool")
+[ ${#launch_argv[@]} -gt 0 ] && ccm_args+=(--launcher "${launch_argv[0]}")
 # ⚠ `--bus-note` **只在任务非空时给**:`need_val` 拒收空串(所有带值旗标同一条纪律),
 #   `--bus-note ""` 会当场 die「--bus-note 需要一个值」。
 #   ★ 首版就是无条件给的 —— **单测全绿、e2e 当场红四条**(1-5 号用例都带任务,
