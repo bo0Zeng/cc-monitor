@@ -81,6 +81,14 @@ pub(crate) const LAUNCH: crate::agents::LaunchFace = crate::agents::LaunchFace {
     launcher_alias: None,
     resume_token: resume::RESUME_TOKEN,
     nested_env: resume::NESTED_ENV,
+    is_default: false,
+    resume_command: resume::resume_command,
+    session_name_prefix: resume::SESSION_NAME_PREFIX,
+    // 它的沙箱够不着 tmux socket ⇒ cc-bus 身份经 `CC_BUS_ID` 交进去。
+    needs_bus_id: true,
+    has_identity: false,
+    has_pidfiles: false,
+    trust_prompt: None,
 };
 
 /// 本 agent 在这台机器上的 home 目录 —— **只答"它该在哪"，不答"在不在"**。

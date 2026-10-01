@@ -375,9 +375,11 @@ const QUOTE_SITES: &[QuoteRow] = &[
     // 29 → 28：`--model` 交给 claude 了，`export ANTHROPIC_MODEL=<quote>` 那一处删；模型名 / resume 的 sid 不再由 ccm 判。
     // 28 → 30：resume 接上已在跑的那一个（`Plan::Rejoin`）渲两处 —— attach 目标 `=<名>:` 与 `ccm-session=<名>` 那一行。
     //   名字是 tmux 自己在快照里报的（不是外部输入），只经这一处 quote（同 `Plan::Attach` 那一形）。
+    // 30 → 31：信任框轮询认的那句话从串里的字面量换成适配层那一格（`LaunchFace::trust_prompt`），拼进去时 quote 一次
+    //   （值是适配层的常量，不是外部输入；产出的字节与从前写死的 `'…'` 逐字相同）。
     (
         "src/backend/control/ccm/plan.rs",
-        30,
+        31,
         &[
             ("src/backend/control/ccm/plan.rs", "validate_tmux_name"),
             ("src/backend/control/ccm/plan.rs", "free_text_gate"),

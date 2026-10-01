@@ -158,13 +158,34 @@ pub(crate) fn cmdline_may_be_agent(lower: &str) -> bool {
 /// 能力 10：无 `launchCandidate` 时的默认命令基底。
 pub(crate) const DEFAULT_COMMAND: &str = "fakeagent";
 
+/// resume 那个字面量：子命令形，动词与 Codex 也不同。
+pub(crate) const RESUME_TOKEN: &str = "revive";
+
 /// 能力 11：resume 命令 —— **子命令形，且动词与 Codex 也不同**。
 pub(crate) fn resume_command(base: &str, session_id: &str) -> String {
-    format!("{base} revive {session_id}")
+    format!("{base} {RESUME_TOKEN} {session_id}")
 }
 
 /// 能力 12：resume 会话名前缀（Claude `cc` / Codex `cx`）。
 pub(crate) const SESSION_NAME_PREFIX: &str = "fk";
+
+/// 起会话事实（`Adapter.launch` 那一格）。**组合与两家都不同**：Claude 是「有身份面 · 留 pidfile · 弹信任框 · 不要 cc-bus 身份」，
+/// Codex 是「要 cc-bus 身份，其余都没有」；这一家是「要 cc-bus 身份 · 有身份面 · 弹信任框（话也不同）· 不留 pidfile」。
+/// 通用层若在哪一格上按名字认人，喂这一家就会答错（`fake_tests.rs` 的 ccm 规划那几条）。
+pub(crate) const LAUNCH: crate::agents::LaunchFace = crate::agents::LaunchFace {
+    adapter_id: AGENT_KIND,
+    default_launcher: DEFAULT_COMMAND,
+    launcher_alias: None,
+    resume_token: RESUME_TOKEN,
+    nested_env: &["FAKEAGENT_PARENT"],
+    is_default: false,
+    resume_command,
+    session_name_prefix: SESSION_NAME_PREFIX,
+    needs_bus_id: true,
+    has_identity: true,
+    has_pidfiles: false,
+    trust_prompt: Some("Trust this workspace?"),
+};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 能力表 + 走全流程的 driver
@@ -302,8 +323,9 @@ pub(crate) enum Stop {
 /// # ⚠ 边界（本函数最容易被读错的一句，写在这里而不是只写在计划里）
 ///
 /// 前两段（`发现` / `宣告`）**真的调用通用层的机器**：
-/// [`crate::agents::visible_among`] 的判准与 [`crate::stream::wire::Frame::Hello`] 的序列化。
-/// 后四段（`读会话`/`判活`/`账号`/`resume`）**没有过通用层** ——
+/// [`crate::agents::visible_among`] 的判准与 [`crate::stream::wire::Frame::Hello`] 的序列化；
+/// 末段 `resume` 也真的过通用层（`resolve_query::resolve_json_among` 按注册表里这一家的起会话事实拼）。
+/// 中间三段（`读会话`/`判活`/`账号`）**没有过通用层** ——
 /// 通用层今天在这五段上直呼 `crate::agents::claudecode::…`（27 处里的 22 处），
 /// 没有任何入口收第二种布局。⇒ 这五段是假 agent 拿自己的知识自问自答。
 ///
@@ -489,7 +511,7 @@ pub(crate) fn walk(caps: &FakeCaps, fixture_home: &Path) -> Result<Vec<&'static 
     }
     done.push(STAGES[4]);
 
-    // ── ⑥ resume：默认命令 + 命令形 + 会话名前缀。
+    // ── ⑥ resume：默认命令 + 命令形 + 会话名前缀 —— **真的走通用层**（resume 规格 → 注册表里这一家那一格）。
     let base = caps.default_command.ok_or(Stop::MissingCapability {
         stage: STAGES[5],
         capability: "resume 默认命令",
@@ -506,6 +528,42 @@ pub(crate) fn walk(caps: &FakeCaps, fixture_home: &Path) -> Result<Vec<&'static 
         return Err(Stop::MissingCapability {
             stage: STAGES[5],
             capability: "resume 命令形",
+        });
+    }
+    let registry = [crate::agents::Adapter {
+        kind: AGENT_KIND,
+        home: home_fn,
+        account_env: None,
+        assets: None,
+        history: None,
+        upstream: None,
+        mcp: None,
+        footprint: None,
+        accounts: None,
+        records: None,
+        processes: None,
+        launch: Some(crate::agents::LaunchFace {
+            default_launcher: base,
+            resume_command: cmd,
+            session_name_prefix: prefix,
+            ..LAUNCH
+        }),
+    }];
+    let spec = format!("{{\"agentKind\":\"{AGENT_KIND}\",\"sessionId\":\"{sid}\"}}");
+    let plan =
+        crate::control::resolve_query::resolve_json_among(&registry, &spec).map_err(|_| {
+            Stop::MissingCapability {
+                stage: STAGES[5],
+                capability: "resume 命令形",
+            }
+        })?;
+    let head: String = sid.chars().take(8).collect();
+    if plan["command"] != serde_json::json!(cmd(base, sid))
+        || plan["sessionName"] != serde_json::json!(format!("{prefix}-{head}"))
+    {
+        return Err(Stop::MissingCapability {
+            stage: STAGES[5],
+            capability: "resume 会话名前缀",
         });
     }
     done.push(STAGES[5]);

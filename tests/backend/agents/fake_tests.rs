@@ -345,11 +345,11 @@ fn removing_any_one_capability_stops_the_flow_somewhere_that_can_name_it() {
 /// | `history_query --list-projects` | rc=2 + 报错，但措辞是 **Claude 的布局**（`<home>/projects`） |
 /// | `search_query --search` | **rc=0、零输出** ⇒ 静默 |
 /// | `accounts_query --session-accounts` | **rc=0、零行** ⇒ 静默 |
-/// | `resolve_query`（`agentKind:"fake"`） | **rc=0，返回 `claude --resume <sid>`** ⇒ 静默**跑错命令** |
+/// | `resolve_query`（`agentKind:"fake"`，生产注册表里没有这一家） | **rc=0，返回默认那一家的 `claude --resume <sid>`** |
 ///
-/// 最后一条最坏：它不是「这个 agent 没有会话」，是「**当成 Claude 去跑**」。
-/// `resolve` 的分支写的是 `agent_kind == "codex"`，**其它一律落 Claude 路**——
-/// 对第三个 agent 来说那不是默认值，是**误路由**。
+/// 最后一条：resume 已经按注册表里那一家的那一格拼了（注册了的家走它自己的命令形，见
+/// `the_ccm_plan_and_resume_read_only_the_launch_face_for_every_family`）；**没注册**的 kind 照线上契约落默认那一家
+///（缺 / 空 / 认不出 = 默认那家）。对一个没进注册表的第三家，那仍是误路由 —— 要改得改契约，不在这里。
 ///
 /// ⚠ 本格**不是**在说这些入口有 bug —— 它们今天的契约就是「只服务一种 agent」。
 /// 它记的是：`G1` 成功标准②今天差的那 27 处，**每一处的失败长什么样**。
@@ -398,19 +398,15 @@ fn the_general_layer_answers_a_non_claude_agent_silently_or_with_claudes_words()
     );
     assert_eq!(rc, 0, "`--session-accounts` 的反应变了");
 
-    // ④ resume：**静默按 Claude 跑** —— 本件实测到的最坏一种。
+    // ④ resume：生产注册表里没有这一家 ⇒ 照线上契约落默认那一家。
     let spec = format!("{{\"agentKind\":\"{AGENT_KIND}\",\"sessionId\":\"{FIXTURE_SESSION_ID}\"}}");
     let plan = crate::control::resolve_query::resolve_json_for_inbound(&spec)
-        .expect("`--resolve` 对未知 agentKind 今天不报错（这正是本格要记的）");
+        .expect("`--resolve` 对注册表里没有的 agentKind 不报错（落默认那一家）");
     assert_eq!(
         plan["command"],
         serde_json::json!(format!("claude --resume {FIXTURE_SESSION_ID}")),
-        "\n`--resolve` 对 `agentKind:\"{AGENT_KIND}\"` 的返回变了。\n\
-             本格记的事实是：**它不报错，它返回 Claude 的命令**（`agent_kind == \"codex\"` \
-             之外一律落 Claude 路）。\n\
-             ⚠ 这是 27 处里唯一一处**不是「读不出东西」而是「跑错东西」**的 —— \
-             收接口那轮必须给它一个真正的错误出口（`unknown_agent_kind`），\n\
-             而不是继续拿 Claude 当默认值。实得：{plan:?}"
+        "\n`--resolve` 对注册表里没有的 `agentKind:\"{AGENT_KIND}\"` 的返回变了。\n\
+             本格记的事实是：**它不报错，落默认那一家**（注册表里声明 `is_default` 的那一家）。实得：{plan:?}"
     );
     assert_eq!(
         plan["sessionName"],
@@ -419,6 +415,176 @@ fn the_general_layer_answers_a_non_claude_agent_silently_or_with_claudes_words()
     );
 
     let _ = std::fs::remove_dir_all(&root);
+}
+
+/// 一张含夹具家的注册表：生产那几家的起会话事实 ＋ 本假 agent 的（其余各面这几条用不到，留空）。
+fn registry_with_fake() -> Vec<crate::agents::Adapter> {
+    let row = |kind, home, launch| crate::agents::Adapter {
+        kind,
+        home,
+        account_env: None,
+        assets: None,
+        history: None,
+        upstream: None,
+        mcp: None,
+        footprint: None,
+        accounts: None,
+        records: None,
+        processes: None,
+        launch,
+    };
+    let mut reg: Vec<crate::agents::Adapter> = crate::agents::REGISTRY
+        .iter()
+        .map(|a| row(a.kind, a.home, a.launch))
+        .collect();
+    reg.push(row(AGENT_KIND, home_of_announce, Some(LAUNCH)));
+    reg
+}
+
+/// 起会话那几格：**通用层只看能力、不看名字**。
+///
+/// 用户逐字：「思考怎么解耦, 不要硬适配claude code」「如果是其他agent呢, 比如codex」。
+/// 喂一张含本假 agent 的注册表（它的组合与两家都不同：要 cc-bus 身份 · 有身份面 · 弹信任框、话也不同 · 不留 pidfile），
+/// 每一家都过同一条 ccm 规划与 resume 解析，每一格的产出都必须等于**那一家**声明的那一格。
+/// 通用层若在哪一格上按名字认人，本假 agent 那一行就会答错。
+#[test]
+fn the_ccm_plan_and_resume_read_only_the_launch_face_for_every_family() {
+    use crate::control::ccm::argv::{self, Parsed};
+    use crate::control::ccm::plan::{self, AccountTable, Env, Plan};
+    let reg = registry_with_fake();
+    let env = Env {
+        home: "/home/pi".into(),
+        pwd: "/p".into(),
+        accts_manifest: "/nonexistent/accounts.json".into(),
+        self_argv: vec!["/usr/local/bin/ccm".into()],
+        ..Default::default()
+    };
+    fn scan(_: Option<&Path>) -> Vec<(String, u32)> {
+        vec![("sid-1".into(), 4242)]
+    }
+    let opts = |agent: &str, args: &[&str]| -> argv::Opts {
+        let a: Vec<String> = args.iter().map(|s| s.to_string()).collect();
+        let Parsed::Opts(mut o) = argv::parse(&argv::tests::v138_to_v151(&a)).expect("解析得动")
+        else {
+            panic!("该是一趟起会话")
+        };
+        // 解析那一关认的是生产注册表；这里要的是「同一份意图换一家起」。
+        o.agent = agent.to_string();
+        *o
+    };
+    let t = AccountTable::default();
+    let mut seen: Vec<&str> = Vec::new();
+    for a in &reg {
+        let face = a.launch.expect("这张注册表里每一家都带起会话事实");
+        seen.push(a.kind);
+        // 直路：启动器 · 嵌套标记 · cc-bus 身份 · 身份面。
+        let Ok(Plan::Direct(d)) = plan::build_among(&reg, &opts(a.kind, &[]), &env, &t, None)
+        else {
+            panic!("{} 该是直路", a.kind)
+        };
+        assert_eq!(
+            d.argv.first().map(String::as_str),
+            Some(face.default_launcher),
+            "{}",
+            a.kind
+        );
+        assert_eq!(d.nested, face.nested_env.to_vec(), "{} 的嵌套标记", a.kind);
+        assert_eq!(
+            d.bus_id_recipe, face.needs_bus_id,
+            "{} 的 cc-bus 身份",
+            a.kind
+        );
+        assert_eq!(d.has_identity, face.has_identity, "{} 的身份面", a.kind);
+        // 容器路：信任框轮询认的就是这一家那句话。
+        let Ok(Plan::Container(c)) = plan::build_among(
+            &reg,
+            &opts(a.kind, &["--ccm-tmux=w-x", "--detach"]),
+            &env,
+            &t,
+            None,
+        ) else {
+            panic!("{} 该是容器路", a.kind)
+        };
+        assert_eq!(c.trust_prompt, face.trust_prompt, "{} 的信任框", a.kind);
+        let tail = plan::render_container_tail(&c);
+        match face.trust_prompt {
+            Some(p) => assert!(
+                tail.contains(&format!("grep -q '{p}'")),
+                "{} 声明了信任框，收尾却没有轮询它：{tail}",
+                a.kind
+            ),
+            None => assert!(
+                !tail.contains("grep -q"),
+                "{} 没有信任框却挂了轮询：{tail}",
+                a.kind
+            ),
+        }
+        // resume 前问「是不是已在别处跑着」：只对留 pidfile 的那一家问。
+        let mut e = env.clone();
+        e.running_sessions = Some(scan);
+        let refused =
+            plan::build_among(&reg, &opts(a.kind, &["--resume", "sid-1"]), &e, &t, None).is_err();
+        assert_eq!(refused, face.has_pidfiles, "{} 的 pidfile 那一格", a.kind);
+        // resume 规格：命令形与会话名前缀是这一家的。
+        let spec = format!(
+            "{{\"agentKind\":\"{}\",\"sessionId\":\"{FIXTURE_SESSION_ID}\"}}",
+            a.kind
+        );
+        let rp = crate::control::resolve_query::resolve_json_among(&reg, &spec).expect("解析得动");
+        assert_eq!(
+            rp["command"],
+            serde_json::json!((face.resume_command)(
+                face.default_launcher,
+                FIXTURE_SESSION_ID
+            )),
+            "{} 的 resume 命令",
+            a.kind
+        );
+        assert_eq!(
+            rp["sessionName"],
+            serde_json::json!(format!(
+                "{}-{}",
+                face.session_name_prefix,
+                &FIXTURE_SESSION_ID[..8]
+            )),
+            "{} 的会话名前缀",
+            a.kind
+        );
+    }
+    assert_eq!(
+        seen,
+        ["claude", "codex", AGENT_KIND],
+        "这张注册表的人群变了"
+    );
+    // 本假 agent 声明了要预信任 ⇒ 它真被预信任；组合与两家都不同（不是第三个 claude / codex）。
+    assert_eq!(LAUNCH.trust_prompt, Some("Trust this workspace?"));
+    let differs = |k: &str| {
+        let f = reg
+            .iter()
+            .find(|a| a.kind == k)
+            .and_then(|a| a.launch)
+            .expect("在注册表里");
+        (
+            f.needs_bus_id,
+            f.has_identity,
+            f.has_pidfiles,
+            f.trust_prompt.is_some(),
+        ) != (
+            LAUNCH.needs_bus_id,
+            LAUNCH.has_identity,
+            LAUNCH.has_pidfiles,
+            LAUNCH.trust_prompt.is_some(),
+        )
+    };
+    assert!(
+        differs("claude") && differs("codex"),
+        "假 agent 的组合与某一家真 agent 同形 —— 那样它证不了通用层只看能力"
+    );
+    // 默认那一家由注册表声明：本假 agent 不是默认，生产那张恰一家是。
+    assert_eq!(
+        crate::agents::default_launch_among(&reg).map(|(k, _)| k),
+        Some(crate::agents::default_kind())
+    );
 }
 
 /// `S6-Z5`：**夹具家永远不上生产** —— 判据两向。

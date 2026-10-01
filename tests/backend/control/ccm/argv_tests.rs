@@ -191,7 +191,7 @@ fn everything_after_the_terminator_goes_to_the_agent_untouched() {
 #[test]
 fn every_default_lives_only_in_the_defaults_block() {
     let o = ok(&[]);
-    assert_eq!(o.agent, Defaults::AGENT);
+    assert_eq!(o.agent, Defaults::agent());
     assert_eq!(o.cwd_spec, Defaults::CWD);
     assert_eq!(o.use_tmux, Defaults::USE_TMUX);
     assert_eq!(o.use_base, Defaults::USE_BASE);
@@ -200,7 +200,11 @@ fn every_default_lives_only_in_the_defaults_block() {
     assert_eq!(o.bus_register, Defaults::BUS_REGISTER);
     assert!(o.passthru.is_empty() && o.attach_name.is_empty());
     // 反向：把默认值本身换掉，上面那一族必须跟着动 —— 否则它们是自说自话。
-    assert_ne!(Defaults::AGENT, "", "默认 agent 是空串的话这条判据就是空真");
+    assert_ne!(
+        Defaults::agent(),
+        "",
+        "默认 agent 是空串的话这条判据就是空真"
+    );
 }
 
 /// 🔴 `KR48D2` 的机检：**这套 argv 的解析只许在本文件里发生。**

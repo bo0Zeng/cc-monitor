@@ -23,7 +23,7 @@
 //!
 //! 两条判据钉住这个分界，都住 [`crate::agent_locality_guard`]：
 //! ① 专有的格式针**只许**在 `agents/<名>/` 下出现；
-//! ② 通用层里的 kind 派发点**逐个登记**（今天恰好 1 处）—— 那份登记表**就是**上面说的那份清单。
+//! ② 通用层里**一个 agent 名字面量都没有** —— 按哪一家做什么，只问适配层那一格（如 [`LaunchFace`]）。
 //!
 //! # ⚠ 两个 agent 都在了，但**故意还没有 trait**
 //!
@@ -146,8 +146,9 @@ pub(crate) struct Adapter {
 
 /// 〔加一个 agent 只改 `agents/`〕一家的起会话事实 —— **唯一的家**。
 /// 从前住两处（monitor `adapter.rs` · 后端 `control/ccm/`，靠金样 `agent-profile-golden.tsv` 对着）；今天 `ccm` 按注册表读
-/// （[`launch_face_of`]），界面与 monitor 读从这里生成的 `src/frontend/ui/generated/agent-profile-table.ts`。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// （[`launch_face_among`]），界面与 monitor 读从这里生成的 `src/frontend/ui/generated/agent-profile-table.ts`。
+// 不派生 `PartialEq`：带着一个函数指针（resume 命令形），函数地址相等不是一个有意义的比较。
+#[derive(Debug, Clone, Copy)]
 pub(crate) struct LaunchFace {
     /// 适配器 id（界面起会话那一发交回，上游选择按它挑那一行）。
     pub(crate) adapter_id: &'static str,
@@ -159,14 +160,45 @@ pub(crate) struct LaunchFace {
     pub(crate) resume_token: &'static str,
     /// 起之前要清掉的嵌套会话标记（顺序决定载荷字节）。
     pub(crate) nested_env: &'static [&'static str],
+    /// 不说是哪一家时就起这一家（`ccm` 不给 `--agent` · resume 规格里没写或写了认不出的 `agentKind` · 载荷内核）。
+    /// 注册表里恰一家为真（`agents_tests.rs` 钉着）。
+    pub(crate) is_default: bool,
+    /// resume 命令怎么拼：`(启动器, sid) → 整条命令`。
+    pub(crate) resume_command: fn(&str, &str) -> String,
+    /// resume 那个 tmux 会话名的前缀（会话名 ＝ `<前缀>-<sid 前 8 个字符>`）。
+    pub(crate) session_name_prefix: &'static str,
+    /// 这一家自己够不着 tmux socket ⇒ 起它时要把 cc-bus 身份（tmux 会话名）经 `CC_BUS_ID` 交进去。
+    ///
+    /// ⚠ 它答的是「**要不要**」，不是「**能不能**」：值恒来自 tmux 的会话名（`control::ccm::BUS_ID_RECIPE`），
+    /// 没有 tmux 就没有这个值 —— 那是载体没了，不是这一家做不到。要不要请一个 `sh` 进来另由 `ccm` 的 `needs_shell` 判。
+    pub(crate) needs_bus_id: bool,
+    /// 这一家的会话有身份面（`@ccm_sid` 回填）。
+    pub(crate) has_identity: bool,
+    /// 这一家的会话留 pidfile、入口注入的那份「此刻在跑」扫描认得出来 ⇒ resume 之前先问它是不是已经在别处跑着。
+    pub(crate) has_pidfiles: bool,
+    /// 起来时会弹「信任这个目录吗」那一框：框里认得出的那句话（容器路收尾轮询它、按 Enter）。`None` ＝ 不弹。
+    pub(crate) trust_prompt: Option<&'static str>,
 }
 
-/// 某一家（wire 上的 kind）的起会话事实。认不出 ⇒ `None`。
-pub(crate) fn launch_face_of(kind: &str) -> Option<LaunchFace> {
-    REGISTRY
+/// 某一家（wire 上的 kind）在给定注册表里的起会话事实。认不出 ⇒ `None`。
+/// 生产走 [`REGISTRY`]；判据喂合成注册表（含夹具家），通用层因此只看这一格、不看名字。
+pub(crate) fn launch_face_among(registry: &[Adapter], kind: &str) -> Option<LaunchFace> {
+    registry
         .iter()
         .find(|a| a.kind == kind)
         .and_then(|a| a.launch)
+}
+
+/// 给定注册表里声明「不说是哪一家时就是我」（[`LaunchFace::is_default`]）的那一家：`(kind, 起会话事实)`。没有 ⇒ `None`。
+pub(crate) fn default_launch_among(registry: &[Adapter]) -> Option<(&'static str, LaunchFace)> {
+    registry
+        .iter()
+        .find_map(|a| a.launch.filter(|f| f.is_default).map(|f| (a.kind, f)))
+}
+
+/// 生产注册表里默认那一家的 kind。注册表恰有一家声明默认（判据钉着）；没有 ⇒ 空串（下游按认不出处理）。
+pub(crate) fn default_kind() -> &'static str {
+    default_launch_among(REGISTRY).map_or("", |(kind, _)| kind)
 }
 
 /// 由我们起的那几家（带 [`LaunchFace`] 的，注册表序）—— `ccm --agent` 的闭集就是它，不另写一份。
@@ -645,6 +677,23 @@ pub(crate) struct DefaultUpstream {
     /// 请求本身就说出「我是哪个子运行」的那个头（值 ＝ 子运行的标识，与 [`RecordFace::run_of`] 同一个值域）。
     /// 声明了 ⇒ 带头的请求归那个子运行、不带头的就是主运行（当场定）；`None` ＝ 请求认不出运行 ⇒ 通用层按记录对账归位。
     pub(crate) owner_header: Option<&'static str>,
+    /// API key 凭据文件（界面给账号配第三方 key 时写的那一份）里的行挂在这一家名下。
+    /// 那份文件没有 agent 这一维 ⇒ 至多一家为真；没有一家为真 ⇒ 上游选择起不来（fail-closed）。
+    pub(crate) owns_credentials_file: bool,
+}
+
+/// 声明拥有 API key 凭据文件（[`DefaultUpstream::owns_credentials_file`]）的第一家的路由名；没有一家 ⇒ 空串（上游选择据此起不来）。
+pub(crate) const fn credentials_file_agent() -> &'static str {
+    let mut i = 0;
+    while i < REGISTRY.len() {
+        if let Some(u) = &REGISTRY[i].upstream {
+            if u.owns_credentials_file {
+                return u.route_id;
+            }
+        }
+        i += 1;
+    }
+    ""
 }
 
 /// 登记了默认上游的每一家：`(路由名, 那一格)`。**上游选择读默认上游的唯一入口**。
