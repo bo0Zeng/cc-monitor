@@ -1,5 +1,5 @@
 {
-  "_": "由 src/frontend/ui/launch-cli-golden.ts 生成，勿手改。重生成：npm run gen:payload-golden",
+  "_": "由 src/frontend/ui/launch-cli-golden.ts 生成，勿手改。重生成：npm run gen:cli-golden",
   "defaultLauncher": "claude",
   "cases": [
     {
@@ -20,7 +20,6 @@
         "tmux-size"
       ],
       "req": {
-        "isSsh": true,
         "action": {
           "kind": "new"
         },
@@ -34,7 +33,8 @@
         "ccmSid": null,
         "model": null,
         "launcher": "claude",
-        "defaultLauncher": "claude"
+        "defaultLauncher": "claude",
+        "rbindToken": null
       },
       "ok": true,
       "out": "ccm -- new --base"
@@ -57,7 +57,6 @@
         "tmux-size"
       ],
       "req": {
-        "isSsh": true,
         "action": {
           "kind": "new"
         },
@@ -67,15 +66,56 @@
         "cwd": null,
         "account": {
           "kind": "account",
-          "name": "z"
+          "name": "z",
+          "configDir": "/home/u/.claude-alt/z"
         },
         "ccmSid": null,
         "model": null,
         "launcher": "claude",
-        "defaultLauncher": "claude"
+        "defaultLauncher": "claude",
+        "rbindToken": null
       },
       "ok": true,
       "out": "ccm -- new --account z"
+    },
+    {
+      "name": "只有目录没有名字 ⇒ --account-dir",
+      "caps": [
+        "new",
+        "resume",
+        "attach",
+        "tmux",
+        "account",
+        "model",
+        "cwd",
+        "agent",
+        "launcher",
+        "ccm-sid",
+        "print",
+        "detach",
+        "tmux-size"
+      ],
+      "req": {
+        "action": {
+          "kind": "new"
+        },
+        "container": {
+          "kind": "none"
+        },
+        "cwd": null,
+        "account": {
+          "kind": "account",
+          "name": null,
+          "configDir": "/home/u/.claude-alt/z"
+        },
+        "ccmSid": null,
+        "model": null,
+        "launcher": "claude",
+        "defaultLauncher": "claude",
+        "rbindToken": null
+      },
+      "ok": true,
+      "out": "ccm -- new --account-dir /home/u/.claude-alt/z"
     },
     {
       "name": "resume + tmux + 具名账号",
@@ -95,7 +135,6 @@
         "tmux-size"
       ],
       "req": {
-        "isSsh": true,
         "action": {
           "kind": "resume",
           "sid": "abc-123"
@@ -108,12 +147,14 @@
         "cwd": null,
         "account": {
           "kind": "account",
-          "name": "z"
+          "name": "z",
+          "configDir": "/home/u/.claude-alt/z"
         },
         "ccmSid": null,
         "model": null,
         "launcher": "claude",
-        "defaultLauncher": "claude"
+        "defaultLauncher": "claude",
+        "rbindToken": null
       },
       "ok": true,
       "out": "ccm --resume abc-123 -- --ccm-tmux=cc-abc123 --account z"
@@ -136,7 +177,6 @@
         "tmux-size"
       ],
       "req": {
-        "isSsh": true,
         "action": {
           "kind": "resume",
           "sid": "s1"
@@ -151,10 +191,89 @@
         "ccmSid": null,
         "model": "opus",
         "launcher": "claude",
-        "defaultLauncher": "claude"
+        "defaultLauncher": "claude",
+        "rbindToken": null
       },
       "ok": true,
       "out": "ccm --resume s1 --model opus -- --base --cwd /w"
+    },
+    {
+      "name": "启动期令牌",
+      "caps": [
+        "new",
+        "resume",
+        "attach",
+        "tmux",
+        "account",
+        "model",
+        "cwd",
+        "agent",
+        "launcher",
+        "ccm-sid",
+        "print",
+        "detach",
+        "tmux-size"
+      ],
+      "req": {
+        "action": {
+          "kind": "resume",
+          "sid": "s1"
+        },
+        "container": {
+          "kind": "none"
+        },
+        "cwd": null,
+        "account": {
+          "kind": "base"
+        },
+        "ccmSid": null,
+        "model": null,
+        "launcher": "claude",
+        "defaultLauncher": "claude",
+        "rbindToken": "0123456789abcdef0123456789abcdef"
+      },
+      "ok": true,
+      "out": "ccm --resume s1 -- --base --ccm-rbind-token 0123456789abcdef0123456789abcdef"
+    },
+    {
+      "name": "就地 resume：外层只包那一行直路",
+      "caps": [
+        "new",
+        "resume",
+        "attach",
+        "tmux",
+        "account",
+        "model",
+        "cwd",
+        "agent",
+        "launcher",
+        "ccm-sid",
+        "print",
+        "detach",
+        "tmux-size"
+      ],
+      "req": {
+        "action": {
+          "kind": "resume",
+          "sid": "s1"
+        },
+        "container": {
+          "kind": "tmux",
+          "name": "cc-x",
+          "send_into": true
+        },
+        "cwd": null,
+        "account": {
+          "kind": "base"
+        },
+        "ccmSid": null,
+        "model": null,
+        "launcher": "claude",
+        "defaultLauncher": "claude",
+        "rbindToken": null
+      },
+      "ok": true,
+      "out": "tmux send-keys -t '=cc-x:' 'ccm --resume s1 -- --base' Enter; tmux attach -t '=cc-x:'"
     },
     {
       "name": "identity（--ccm-sid）",
@@ -174,7 +293,6 @@
         "tmux-size"
       ],
       "req": {
-        "isSsh": true,
         "action": {
           "kind": "new"
         },
@@ -188,7 +306,8 @@
         "ccmSid": "sid-1",
         "model": null,
         "launcher": "claude",
-        "defaultLauncher": "claude"
+        "defaultLauncher": "claude",
+        "rbindToken": null
       },
       "ok": true,
       "out": "ccm -- new --ccm-sid=sid-1 --base"
@@ -211,7 +330,6 @@
         "tmux-size"
       ],
       "req": {
-        "isSsh": true,
         "action": {
           "kind": "new"
         },
@@ -225,7 +343,8 @@
         "ccmSid": null,
         "model": null,
         "launcher": "mycc",
-        "defaultLauncher": "claude"
+        "defaultLauncher": "claude",
+        "rbindToken": null
       },
       "ok": true,
       "out": "ccm -- new --base --launcher mycc"
@@ -248,7 +367,6 @@
         "tmux-size"
       ],
       "req": {
-        "isSsh": true,
         "action": {
           "kind": "new"
         },
@@ -262,13 +380,14 @@
         "ccmSid": null,
         "model": null,
         "launcher": "claude",
-        "defaultLauncher": "claude"
+        "defaultLauncher": "claude",
+        "rbindToken": null
       },
       "ok": true,
       "out": "ccm -- new --base"
     },
     {
-      "name": "attach（分支在维度循环之前 return）",
+      "name": "attach（不起 agent，不收修饰）",
       "caps": [
         "new",
         "resume",
@@ -285,7 +404,6 @@
         "tmux-size"
       ],
       "req": {
-        "isSsh": true,
         "action": {
           "kind": "attach",
           "name": "cc-foo"
@@ -302,7 +420,8 @@
         "ccmSid": null,
         "model": null,
         "launcher": "claude",
-        "defaultLauncher": "claude"
+        "defaultLauncher": "claude",
+        "rbindToken": null
       },
       "ok": true,
       "out": "ccm -- --attach cc-foo"
@@ -325,7 +444,6 @@
         "tmux-size"
       ],
       "req": {
-        "isSsh": true,
         "action": {
           "kind": "new"
         },
@@ -339,36 +457,14 @@
         "ccmSid": null,
         "model": null,
         "launcher": "claude",
-        "defaultLauncher": "claude"
+        "defaultLauncher": "claude",
+        "rbindToken": null
       },
       "ok": true,
       "out": "ccm -- new --base --cwd '/home/用户/带 空格'"
     },
     {
-      "name": "未装 ccm",
-      "caps": null,
-      "req": {
-        "isSsh": true,
-        "action": {
-          "kind": "new"
-        },
-        "container": {
-          "kind": "none"
-        },
-        "cwd": null,
-        "account": {
-          "kind": "base"
-        },
-        "ccmSid": null,
-        "model": null,
-        "launcher": "claude",
-        "defaultLauncher": "claude"
-      },
-      "ok": false,
-      "out": "远端还没装后端"
-    },
-    {
-      "name": "本地 transport",
+      "name": "缺无条件能力 cwd",
       "caps": [
         "new",
         "resume",
@@ -376,7 +472,6 @@
         "tmux",
         "account",
         "model",
-        "cwd",
         "agent",
         "launcher",
         "ccm-sid",
@@ -385,7 +480,6 @@
         "tmux-size"
       ],
       "req": {
-        "isSsh": false,
         "action": {
           "kind": "new"
         },
@@ -399,13 +493,14 @@
         "ccmSid": null,
         "model": null,
         "launcher": "claude",
-        "defaultLauncher": "claude"
+        "defaultLauncher": "claude",
+        "rbindToken": null
       },
       "ok": false,
-      "out": "Windows 本机不用 ccm 命令起会话"
+      "out": "这台机器上的 ccm 做不到这样起会话（缺 cwd）"
     },
     {
-      "name": "缺静态能力 tmux",
+      "name": "建 tmux 会话而这台没有 tmux",
       "caps": [
         "new",
         "resume",
@@ -421,51 +516,13 @@
         "tmux-size"
       ],
       "req": {
-        "isSsh": true,
-        "action": {
-          "kind": "new"
-        },
-        "container": {
-          "kind": "none"
-        },
-        "cwd": null,
-        "account": {
-          "kind": "base"
-        },
-        "ccmSid": null,
-        "model": null,
-        "launcher": "claude",
-        "defaultLauncher": "claude"
-      },
-      "ok": false,
-      "out": "远端的后端太旧，不支持这样起会话（缺 tmux）"
-    },
-    {
-      "name": "#76 防线：send-into 无 CLI 等价语法",
-      "caps": [
-        "new",
-        "resume",
-        "attach",
-        "tmux",
-        "account",
-        "model",
-        "cwd",
-        "agent",
-        "launcher",
-        "ccm-sid",
-        "print",
-        "detach",
-        "tmux-size"
-      ],
-      "req": {
-        "isSsh": true,
         "action": {
           "kind": "new"
         },
         "container": {
           "kind": "tmux",
           "name": "cc-x",
-          "send_into": true
+          "send_into": false
         },
         "cwd": null,
         "account": {
@@ -474,48 +531,11 @@
         "ccmSid": null,
         "model": null,
         "launcher": "claude",
-        "defaultLauncher": "claude"
+        "defaultLauncher": "claude",
+        "rbindToken": null
       },
       "ok": false,
-      "out": "ccm 命令没法在已有的 tmux 会话里就地起新会话"
-    },
-    {
-      "name": "§35 安全网：只有 configDir 没有名字 ⇒ 说不出 --account",
-      "caps": [
-        "new",
-        "resume",
-        "attach",
-        "tmux",
-        "account",
-        "model",
-        "cwd",
-        "agent",
-        "launcher",
-        "ccm-sid",
-        "print",
-        "detach",
-        "tmux-size"
-      ],
-      "req": {
-        "isSsh": true,
-        "action": {
-          "kind": "new"
-        },
-        "container": {
-          "kind": "none"
-        },
-        "cwd": null,
-        "account": {
-          "kind": "account",
-          "name": null
-        },
-        "ccmSid": null,
-        "model": null,
-        "launcher": "claude",
-        "defaultLauncher": "claude"
-      },
-      "ok": false,
-      "out": "这一项设置（account）写不成 ccm 参数"
+      "out": "这台机器上的 ccm 做不到这样起会话（缺 tmux）"
     },
     {
       "name": "已触发的 model 维度要的能力缺失",
@@ -534,7 +554,6 @@
         "tmux-size"
       ],
       "req": {
-        "isSsh": true,
         "action": {
           "kind": "new"
         },
@@ -548,10 +567,11 @@
         "ccmSid": null,
         "model": "opus",
         "launcher": "claude",
-        "defaultLauncher": "claude"
+        "defaultLauncher": "claude",
+        "rbindToken": null
       },
       "ok": false,
-      "out": "远端的后端太旧，不认 model 这一项设置（缺 model）"
+      "out": "这台机器上的 ccm 不认 model 这一项设置（缺 model）"
     },
     {
       "name": "已触发的 account 维度要的能力缺失",
@@ -570,7 +590,6 @@
         "tmux-size"
       ],
       "req": {
-        "isSsh": true,
         "action": {
           "kind": "new"
         },
@@ -584,10 +603,86 @@
         "ccmSid": null,
         "model": null,
         "launcher": "claude",
-        "defaultLauncher": "claude"
+        "defaultLauncher": "claude",
+        "rbindToken": null
       },
       "ok": false,
-      "out": "远端的后端太旧，不认 account 这一项设置（缺 account）"
+      "out": "这台机器上的 ccm 不认 account 这一项设置（缺 account）"
+    },
+    {
+      "name": "坏 sid",
+      "caps": [
+        "new",
+        "resume",
+        "attach",
+        "tmux",
+        "account",
+        "model",
+        "cwd",
+        "agent",
+        "launcher",
+        "ccm-sid",
+        "print",
+        "detach",
+        "tmux-size"
+      ],
+      "req": {
+        "action": {
+          "kind": "resume",
+          "sid": "-x"
+        },
+        "container": {
+          "kind": "none"
+        },
+        "cwd": null,
+        "account": {
+          "kind": "base"
+        },
+        "ccmSid": null,
+        "model": null,
+        "launcher": "claude",
+        "defaultLauncher": "claude",
+        "rbindToken": null
+      },
+      "ok": false,
+      "out": "会话 ID \"-x\" 不合法（1 到 64 位，只许 A-Z a-z 0-9 与 -，不以 - 开头）"
+    },
+    {
+      "name": "坏令牌",
+      "caps": [
+        "new",
+        "resume",
+        "attach",
+        "tmux",
+        "account",
+        "model",
+        "cwd",
+        "agent",
+        "launcher",
+        "ccm-sid",
+        "print",
+        "detach",
+        "tmux-size"
+      ],
+      "req": {
+        "action": {
+          "kind": "new"
+        },
+        "container": {
+          "kind": "none"
+        },
+        "cwd": null,
+        "account": {
+          "kind": "base"
+        },
+        "ccmSid": null,
+        "model": null,
+        "launcher": "claude",
+        "defaultLauncher": "claude",
+        "rbindToken": "XYZ"
+      },
+      "ok": false,
+      "out": "启动期令牌 \"XYZ\" 不合法（要 32 位小写十六进制）"
     },
     {
       "name": "print-parity:resumeTmuxWithIdentity",
@@ -607,7 +702,6 @@
         "tmux-size"
       ],
       "req": {
-        "isSsh": true,
         "action": {
           "kind": "resume",
           "sid": "p1"
@@ -624,7 +718,8 @@
         "ccmSid": "p1",
         "model": null,
         "launcher": "claude",
-        "defaultLauncher": "claude"
+        "defaultLauncher": "claude",
+        "rbindToken": null
       },
       "ok": true,
       "out": "ccm --resume p1 -- --ccm-tmux=cc-p1 --ccm-sid=p1 --base --cwd /tmp"
@@ -647,7 +742,6 @@
         "tmux-size"
       ],
       "req": {
-        "isSsh": true,
         "action": {
           "kind": "new"
         },
@@ -663,7 +757,8 @@
         "ccmSid": null,
         "model": null,
         "launcher": "CCMPROBE",
-        "defaultLauncher": "claude"
+        "defaultLauncher": "claude",
+        "rbindToken": null
       },
       "ok": true,
       "out": "ccm -- new --ccm-tmux=cc-proj --base --cwd '/home/pi/my proj' --launcher CCMPROBE"
@@ -686,7 +781,6 @@
         "tmux-size"
       ],
       "req": {
-        "isSsh": true,
         "action": {
           "kind": "attach",
           "name": "cc-p1"
@@ -703,7 +797,8 @@
         "ccmSid": null,
         "model": null,
         "launcher": "claude",
-        "defaultLauncher": "claude"
+        "defaultLauncher": "claude",
+        "rbindToken": null
       },
       "ok": true,
       "out": "ccm -- --attach cc-p1"
@@ -726,7 +821,6 @@
         "tmux-size"
       ],
       "req": {
-        "isSsh": true,
         "action": {
           "kind": "resume",
           "sid": "p1"
@@ -743,7 +837,8 @@
         "ccmSid": "p1",
         "model": "opus",
         "launcher": "claude",
-        "defaultLauncher": "claude"
+        "defaultLauncher": "claude",
+        "rbindToken": null
       },
       "ok": true,
       "out": "ccm --resume p1 --model opus -- --ccm-tmux=cc-p1 --ccm-sid=p1 --base --cwd /tmp"

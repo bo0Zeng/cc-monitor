@@ -180,7 +180,7 @@ fn the_exported_predicate_agrees_with_what_parse_accepts() {
     );
 }
 
-/// ★★★ **上游选择拼给起会话那一发的 `/t/` 地址**（`accounts::upstream_select::endpoint::launch_relay_with`，
+/// ★★★ **上游选择拼给起会话那一发的 `/t/` 地址**（`accounts::upstream_select::endpoint::relay_with`，
 /// 路由语法住共享 crate `relay_route_core`）本解析器读成**直通模式**、各段各落各位；再交给**生产段那张决策表**
 /// （`accounts::upstream_select::decide`）：那一家（登记过）⇒ 发到它自己的默认上游；同一条路由把第 1 段换成 `codex`（未登记，手写）⇒ 拒（404 ＋ 原因头，FIX3 之前是 502）。
 ///
@@ -190,9 +190,13 @@ fn the_exported_predicate_agrees_with_what_parse_accepts() {
 /// 买不到的那一截（claude 拿到这个变量之后怎么走）同今天（`C7`）。
 #[test]
 fn the_passthrough_url_the_launch_answer_builds_parses_as_passthrough() {
-    let answer = crate::accounts::upstream_select::endpoint::launch_relay_with(
-        &serde_json::json!({"agent":"claude-code","account":{"kind":"named","configDir":"/h/.claude-alt/acct-a"},
-            "allSessions":true}),
+    let answer = crate::accounts::upstream_select::endpoint::relay_with(
+        "claude-code",
+        &crate::accounts::upstream_select::endpoint::LaunchAccount::Named {
+            config_dir: "/h/.claude-alt/acct-a".to_string(),
+        },
+        true,
+        relay_route_core::PORT,
         &[],
         &|_| true,
     )

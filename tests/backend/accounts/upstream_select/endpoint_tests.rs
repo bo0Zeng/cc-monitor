@@ -7,7 +7,6 @@
 //!
 //! - E1 决策表：每一格 × 账号三态 × 开关 × 登记与否 == 手写期望（期望不由 `decide_launch` 现算）。
 //! - E11 F5：没表态 ⇒ `/t/…/_/…`；与 `_` 同名的行 ⇒ 不注入。
-//! - 线上形状：两条应答的键集恒定（注入与不注入同一组键）；入参闸（缺字段 · 坏 `account`）。入参没有 `key`。
 //! - `listening` 只在要注入时才探（不注入就一次都不连）。
 //!
 //! # 买不到的
@@ -121,7 +120,7 @@ fn us1_the_launch_table_matches_the_hand_written_one() {
         ),
     ];
     for (agent, account, all, reg, want) in cases {
-        let got = decide_launch(agent, &account, all, &rows, reg);
+        let got = decide_launch(agent, &account, all, relay_route_core::PORT, &rows, reg);
         assert_eq!(
             got, want,
             "agent={agent} account={account:?} 开关={all} 登记={reg}"
@@ -131,7 +130,14 @@ fn us1_the_launch_table_matches_the_hand_written_one() {
     for (label_row, account) in [("0", LaunchAccount::Base), ("_", LaunchAccount::Undeclared)] {
         let rows = vec![label_row.to_string()];
         assert_eq!(
-            decide_launch("claude-code", &account, true, &rows, true),
+            decide_launch(
+                "claude-code",
+                &account,
+                true,
+                relay_route_core::PORT,
+                &rows,
+                true
+            ),
             Endpoint::None,
             "标签 {label_row} 与表里一行同名却注入了"
         );
@@ -142,6 +148,7 @@ fn us1_the_launch_table_matches_the_hand_written_one() {
             "claude-code",
             &LaunchAccount::Base,
             true,
+            relay_route_core::PORT,
             &["x".to_string()],
             true
         ),
@@ -149,30 +156,31 @@ fn us1_the_launch_table_matches_the_hand_written_one() {
     );
 }
 
-/// 成品：不注入 ⇒ `{baseUrl:null}`；注入且在听 ⇒ 那个地址；注入而没在听 ⇒ 按「非它不可 / 有它更好」
-/// 拒（`relay_down`）或直连（`null`）。只在要注入时才探中转。原先四格（`listening` / `whenDown` / `account`）交 monitor 再判，那一判收进这里。
+/// 成品：不注入 ⇒ `None`；注入且在听 ⇒ 那个地址；注入而没在听 ⇒ 按「非它不可 / 有它更好」拒或直连（`None`）。
+/// 只在要注入时才探中转，探的是交进来的那个口（同机常驻后端被交的口）。
 #[test]
-fn us1_the_launch_answer_is_the_product_and_probes_only_when_injecting() {
+fn us1_the_relay_answer_is_the_product_and_probes_only_when_injecting() {
     let rows = vec!["acct-a".to_string()];
     let probes = std::cell::Cell::new(0u32);
     let probe = |p: u16| {
-        assert_eq!(p, relay_route_core::PORT);
+        assert_eq!(p, 9911, "探的不是交进来的那个口");
         probes.set(probes.get() + 1);
         true
     };
-    let none = answer_launch(
-        &json!({"agent":"claude-code","account":{"kind":"base"},"allSessions":false}),
-    );
-    assert_eq!(none.unwrap(), json!({"baseUrl":null}));
-    let named = json!({"agent":"claude-code","account":{"kind":"named","configDir":"/h/.claude-alt/acct-a","name":"a"},"allSessions":false});
+    let named = named("/h/.claude-alt/acct-a");
     assert_eq!(
-        launch_relay_with(&named, &rows, &probe).unwrap().as_deref(),
-        Some("http://127.0.0.1:8788/s/claude-code/acct-a")
+        relay_with("claude-code", &named, false, 9911, &rows, &probe)
+            .unwrap()
+            .as_deref(),
+        Some("http://127.0.0.1:9911/s/claude-code/acct-a")
     );
     assert_eq!(probes.get(), 1);
     assert_eq!(
-        launch_relay_with(
-            &json!({"agent":"claude-code","account":{"kind":"base"},"allSessions":false}),
+        relay_with(
+            "claude-code",
+            &LaunchAccount::Base,
+            false,
+            9911,
             &rows,
             &probe
         )
@@ -181,50 +189,57 @@ fn us1_the_launch_answer_is_the_product_and_probes_only_when_injecting() {
     );
     assert_eq!(probes.get(), 1, "不注入也去探了中转");
     // 非它不可而没在听 ⇒ 拒，说得出是哪个号。
-    let down = launch_relay_with(&named, &rows, &|_| false).unwrap_err();
-    assert_eq!(down.0, "relay_down");
-    assert!(
-        down.1.contains("acct-a"),
-        "拒的那一句没说是哪个号：{}",
-        down.1
-    );
+    let down = relay_with("claude-code", &named, false, 9911, &rows, &|_| false).unwrap_err();
+    assert!(down.contains("acct-a"), "拒的那一句没说是哪个号：{down}");
     // 有它更好（`/t/`）而没在听 ⇒ 这一发直连。
-    let direct = launch_relay_with(
-        &json!({"agent":"claude-code","allSessions":true}),
-        &rows,
-        &|_| false,
-    );
-    assert_eq!(direct.unwrap(), None);
+    let undeclared = LaunchAccount::Undeclared;
     assert_eq!(
-        launch_relay_with(
-            &json!({"agent":"claude-code","allSessions":true}),
-            &rows,
-            &|_| true
-        )
-        .unwrap()
-        .as_deref(),
-        Some("http://127.0.0.1:8788/t/claude-code/_")
+        relay_with("claude-code", &undeclared, true, 9911, &rows, &|_| false).unwrap(),
+        None
+    );
+    assert_eq!(
+        relay_with("claude-code", &undeclared, true, 9911, &rows, &|_| true)
+            .unwrap()
+            .as_deref(),
+        Some("http://127.0.0.1:9911/t/claude-code/_")
     );
 }
 
-/// 入参闸：每一形都 `bad_args`，且不探中转。
+/// 全量开关读起 agent 那个进程自己的环境（缺席 / 其余值 ⇒ 开，`0` ⇒ 关）；口读常驻后端被交的那个（认不出 ⇒ 默认口）。
 #[test]
-fn us1_bad_launch_args_are_refused_before_anything_is_probed() {
-    let probe = |_: u16| -> bool { panic!("入参不对还去探了中转") };
-    for bad in [
-        json!({"account":null,"allSessions":true}),
-        json!({"agent":"claude-code"}),
-        json!({"agent":"claude-code","allSessions":"yes"}),
-        json!({"agent":"claude-code","allSessions":true,"account":{"kind":"named"}}),
-        json!({"agent":"claude-code","allSessions":true,"account":{"kind":"other"}}),
-        json!({"agent":"claude-code","allSessions":true,"account":"base"}),
-        // 注册表里没有的适配器 id（wire kind 不是适配器 id）⇒ 拒，不当成「这一家没有表」往下走。
-        json!({"agent":"claude","allSessions":true}),
-        json!({"agent":"claud-code","allSessions":true}),
-    ] {
-        let got = launch_relay_with(&bad, &[], &probe);
-        assert!(matches!(got, Err(("bad_args", _))), "{bad} ⇒ {got:?}");
-    }
+fn the_switch_and_the_port_come_from_the_launching_process_env() {
+    let env = |pairs: &'static [(&'static str, &'static str)]| {
+        move |k: &str| {
+            pairs
+                .iter()
+                .find(|(n, _)| *n == k)
+                .map(|(_, v)| v.to_string())
+        }
+    };
+    assert!(all_sessions_on(&env(&[])));
+    assert!(all_sessions_on(&env(&[("CCM_RELAY_ALL_SESSIONS", "1")])));
+    assert!(!all_sessions_on(&env(&[("CCM_RELAY_ALL_SESSIONS", "0")])));
+    assert_eq!(relay_port(&env(&[])), relay_route_core::PORT);
+    assert_eq!(relay_port(&env(&[("CCM_RELAY_PORT", "9911")])), 9911);
+    assert_eq!(
+        relay_port(&env(&[("CCM_RELAY_PORT", "x")])),
+        relay_route_core::PORT
+    );
+    assert_eq!(
+        relay_port(&env(&[("CCM_RELAY_PORT", "0")])),
+        relay_route_core::PORT
+    );
+}
+
+/// 钥匙拼进地址的那一形（钥匙在第一段，路由不变）；不是构造口的产物 ⇒ 拼不出。
+#[test]
+fn the_key_goes_into_the_first_segment_and_nowhere_else() {
+    let key = "a".repeat(64);
+    assert_eq!(
+        keyed_base_url("http://127.0.0.1:8788/t/claude-code/_", &key).as_deref(),
+        Some(format!("http://127.0.0.1:8788/{key}/t/claude-code/_").as_str())
+    );
+    assert_eq!(keyed_base_url("https://x/t/a/b", &key), None);
 }
 
 /// `apikey-routing`：回的是传进来的 configDir 原样（有行的那几个）＋ 探针的答案；别家 agent ⇒ 空集。
@@ -263,7 +278,7 @@ fn us1_the_routing_answer_is_the_routed_dirs_and_the_probe() {
     }
 }
 
-/// ★★ 跨语言金样：三条成品（`apikey-read` · `apikey-routing` · `launch-endpoint`）对同一份夹具 ==
+/// ★★ 跨语言金样：两条成品（`apikey-read` · `apikey-routing`）对同一份夹具 ==
 /// `tests/__fixtures__/apikey.golden.json`（夹具根替换成 `<root>`）。另一个读者是 TS 解码器（`tests/frontend/ui/apikey-reads.vitest.ts`）
 /// ⇒ 两侧异源：后端改一个键名本条红，TS 解码器改一个键名那边红。金样手写落盘（本条红时印出现打的成品，人读过再改）。
 /// 守的要求：「线上形状由一份跨语言金样钉住（后端测试产出 == 金样 · TS 解码器读同一份）」。
@@ -283,9 +298,6 @@ fn us1_the_apikey_products_match_the_cross_language_golden() {
         "apikey-routing": answer_routing_with(
             &json!({"agent":"claude-code","configDirs":["/h/.claude-alt/work","/h/.claude-alt/bad-url","/h/.claude-alt/me"]}),
             &rows, &|_| true).unwrap(),
-        "launch-endpoint": json!({ "baseUrl": launch_relay_with(
-            &json!({"agent":"claude-code","account":{"kind":"named","configDir":"/h/.claude-alt/work","name":"work"},"allSessions":false}),
-            &rows, &|_| true).unwrap() }),
     });
     let got: Value = serde_json::from_str(
         &got.to_string()
