@@ -14,13 +14,13 @@ fn servers(v: Value) -> Servers {
 fn seen(name: &str, now: Value) -> Seen {
     Seen {
         name: name.to_string(),
-        dir: format!("/h/.claude-alt/{name}"),
+        dir: format!("/h/.cc-monitor/accounts/{name}"),
         now: Some(servers(now)),
     }
 }
 
 fn dir(name: &str) -> String {
-    format!("/h/.claude-alt/{name}")
+    format!("/h/.cc-monitor/accounts/{name}")
 }
 
 /// 两个号都同步过 `cclsp` 那一刻的样子。

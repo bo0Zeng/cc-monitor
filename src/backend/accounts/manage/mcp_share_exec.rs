@@ -63,10 +63,7 @@ pub(crate) fn accounts_in(home: &str) -> Result<Option<Vec<(String, String)>>, R
     if layout::face().is_none() || crate::platform::acct_view::multi_account_supported().is_err() {
         return Ok(None);
     }
-    let mpath = join(
-        &join(home, acct_core::ACCTS_DIR_NAME),
-        acct_core::MANIFEST_NAME,
-    );
+    let mpath = join(&super::scan::accts_root(home), super::scan::MANIFEST_FILE);
     let text = read_text(&mpath, MAX_SMALL_BYTES).map_err(|e| {
         (
             "io_failed",
@@ -259,7 +256,7 @@ fn view_of(store: &Store, conflicts: &[mcp_share::Conflict]) -> AccountMcpView {
 /// 账号库在就拿它那把锁（与改账号库那几条命令同一把：锁的是账号库目录本身）。
 /// 不借命令那一层的那一份：那一层还认得 `ccm` 的命令行，扩展页读共享集合时会被连带引用进来。
 fn lock(home: &str) -> Result<Option<crate::platform::lock::DirLock>, Refusal> {
-    let accts = join(home, acct_core::ACCTS_DIR_NAME);
+    let accts = super::scan::accts_root(home);
     if item_at(&accts).exists() {
         crate::platform::lock::hold(Path::new(&accts))
             .map(Some)

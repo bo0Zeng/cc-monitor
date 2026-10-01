@@ -338,6 +338,11 @@ fn backend_entries(
             copy_text("rsDataPaths.backend.assetCatalog", &[]),
             DataClass::Cache,
         ),
+        dir(
+            rr::ACCOUNTS_DIR_REL,
+            copy_text("rsDataPaths.backend.accounts", &[]),
+            DataClass::Truth,
+        ),
         file(
             rr::ACCOUNTS_MCP_REL,
             copy_text("rsDataPaths.backend.accountsMcp", &[]),

@@ -51,7 +51,7 @@ export interface TmuxOuterCase {
   cmd: string;
 }
 
-const ACCT = "/home/u/.claude-alt/z";
+const ACCT = "/home/u/.cc-monitor/accounts/z";
 const SID = "0f1e2d3c";
 /** 形状合法的启动期令牌（`[0-9a-f]{32}`），夹具里是常量不是现场铸的。 */
 const RBIND = "0f1e2d3c4b5a69788796a5b4c3d2e1f0";
@@ -84,7 +84,7 @@ export const TMUX_OUTER_CASES: readonly TmuxOuterCase[] = [
   }),
   base({
     name: "create：cwd + @ccm_sid + 具名账号 + 嵌套 env 清理",
-    cmd: "tmux new-session -d -s cc-0f1e2d3c -c '/w' && (tmux set-option -t =cc-0f1e2d3c: @ccm_sid 0f1e2d3c 2>/dev/null || true) && (tmux set-option -t =cc-0f1e2d3c: set-titles on 2>/dev/null || true) && (tmux set-option -t =cc-0f1e2d3c: set-titles-string ccm-rbind-#{@ccm_sid} 2>/dev/null || true) && tmux send-keys -t =cc-0f1e2d3c: 'export CLAUDE_CONFIG_DIR='\\''/home/u/.claude-alt/z'\\''; unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_SESSION_ID CLAUDE_CODE_CHILD_SESSION; claude' Enter && tmux attach -t =cc-0f1e2d3c:",
+    cmd: "tmux new-session -d -s cc-0f1e2d3c -c '/w' && (tmux set-option -t =cc-0f1e2d3c: @ccm_sid 0f1e2d3c 2>/dev/null || true) && (tmux set-option -t =cc-0f1e2d3c: set-titles on 2>/dev/null || true) && (tmux set-option -t =cc-0f1e2d3c: set-titles-string ccm-rbind-#{@ccm_sid} 2>/dev/null || true) && tmux send-keys -t =cc-0f1e2d3c: 'export CLAUDE_CONFIG_DIR='\\''/home/u/.cc-monitor/accounts/z'\\''; unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_SESSION_ID CLAUDE_CODE_CHILD_SESSION; claude' Enter && tmux attach -t =cc-0f1e2d3c:",
     cwd: "/w",
     ccmSid: SID,
     env: [{ kind: "export-config-dir", value: ACCT }, { kind: "unset-nested-env" }],

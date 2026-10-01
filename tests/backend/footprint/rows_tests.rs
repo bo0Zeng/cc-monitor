@@ -592,7 +592,7 @@ fn every_host_declaration_is_pinned() {
         //   ⇒ `Either`。理由的长版住 `tool_registry.rs` 那条 `TouchedFile`。
         ("cc-bus", "~/.cc-bus/", Either),
         // 账号库：哪台机器的后端建它就在哪台（本机远端同一条路）→ 两端皆可。
-        ("accounts", "~/.claude-alt/", Either),
+        ("accounts", "~/.cc-monitor/accounts/", Either),
         // 各号共用的用户级 MCP 与改写前的备份：那台后端自己的状态，账号库在哪台就写哪台 ⇒ `Either`。
         ("accounts", "~/.cc-monitor/accounts-mcp.json", Either),
         ("accounts", "~/.cc-monitor/backups/accounts-mcp", Either),

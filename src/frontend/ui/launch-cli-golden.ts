@@ -49,7 +49,7 @@ export interface CliGoldenCase {
   out: string;
 }
 
-const ACCT = "/home/u/.claude-alt/z";
+const ACCT = "/home/u/.cc-monitor/accounts/z";
 const base = (over: Partial<LaunchContext> = {}): LaunchContext => ({
   transport: { kind: "ssh" },
   action: { kind: "new" },

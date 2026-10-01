@@ -1,4 +1,5 @@
-//! 账号清单（`~/.claude-alt/accounts.json`，schema v1）的**模型与读写** —— 纯：文本进、文本出，不碰盘。
+//! 账号清单（`~/.cc-monitor/accounts/accounts.json`，schema v1）的**模型与读写** —— 纯：文本进、文本出，不碰盘。
+//! 账号库在哪由家决定，清单里不记它；每个号的 `configDir` 照旧写绝对路径。
 //!
 //! 盘上那一份是用户的活数据，原样接着用：认得的格改，认不得的格（顶层与每个号上的）原样留着写回去；
 //! 形状不合规矩的号（名字或配置目录过不了）整条原样留着、不去动它。
@@ -51,7 +52,6 @@ const TOP_KEYS: &[&str] = &[
     "version",
     "updatedAt",
     "sharedStore",
-    "acctsDir",
     "accounts",
 ];
 /// 每个号上本模块认得的键。`mode` 每次写都按配置目录重算。
@@ -123,7 +123,6 @@ impl Manifest {
     /// 写回去的全文。`zero_email` = 账号 0 此刻的登录邮箱（`$HOME/.claude.json` 里读的；没有就空串）。
     pub(crate) fn render(
         &self,
-        accts_dir: &str,
         shared_store: &str,
         zero_email: &str,
         updated_at: &str,
@@ -132,7 +131,6 @@ impl Manifest {
             ("version".into(), Value::from(acct_core::SUPPORTED_SCHEMA)),
             ("updatedAt".into(), Value::from(updated_at)),
             ("sharedStore".into(), Value::from(shared_store)),
-            ("acctsDir".into(), Value::from(accts_dir)),
         ];
         top.extend(self.extra.iter().map(|(k, v)| (k.clone(), v.clone())));
         let mut rows: Vec<String> = self

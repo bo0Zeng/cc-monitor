@@ -756,7 +756,7 @@
     },
     "bePlan.env.configIgnored": {
       "kind": "error",
-      "zh": "ccm: {path} 不会被读取。里面的两个值改用环境变量 CCM_ACCTS_MANIFEST 和 CCM_ENV。",
+      "zh": "ccm: {path} 不会被读取。要设 CCM_ENV 请改用环境变量；账号库的位置跟着家目录走，不用设。",
       "args": ["path"]
     },
     "bePlan.bus.noScripts": {
@@ -18065,6 +18065,11 @@
     "rsToolRegistry.tools.accountsMcpBackupNote": {
       "kind": "body",
       "zh": "同步改写之前的原文放在这里。改写某个号的 .claude.json 之前留一份，每个号一份，下一次改写前换成新的；要找回就从这里拿。",
+      "args": []
+    },
+    "rsDataPaths.backend.accounts": {
+      "kind": "body",
+      "zh": "多账号的账号库：账号清单，和每个号一份登录凭据",
       "args": []
     },
     "rsDataPaths.backend.accountsMcp": {

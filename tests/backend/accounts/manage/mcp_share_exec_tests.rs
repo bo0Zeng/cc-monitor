@@ -79,7 +79,7 @@ impl Tmp {
 }
 
 fn cfg(acct: &str) -> String {
-    format!(".claude-alt/{acct}/.claude.json")
+    format!(".cc-monitor/accounts/{acct}/.claude.json")
 }
 
 /// Claude 自己写的那种排版（两格缩进），里面有登录与别的本机状态。
