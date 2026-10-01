@@ -2134,7 +2134,7 @@
     },
     "ccBus.spawn.badId": {
       "kind": "error",
-      "zh": "没有派生：{detail}",
+      "zh": "没有派生：这个名字不合法（{detail}）",
       "args": ["detail"]
     },
     "beCcBus.parse.badRecipient": {
@@ -15501,7 +15501,7 @@
     },
     "ccBus.broadcast.badId": {
       "kind": "error",
-      "zh": "没有广播：{detail}",
+      "zh": "没有广播：发件人的 id 不合法（{detail}）",
       "args": ["detail"]
     },
     "bePlan.build.launcherRefused": {
