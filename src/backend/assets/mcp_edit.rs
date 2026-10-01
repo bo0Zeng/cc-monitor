@@ -7,23 +7,62 @@
 use super::door::{self, Door, Edited};
 use copy_core::copy_text;
 use serde_json::{json, Map, Value};
-use std::path::Path;
 
 /// 项目 `.mcp.json` 的文件名（写面只此一个落点）。
 pub(crate) const MCP_JSON: &str = ".mcp.json";
 
 type Answer = Result<Value, (&'static str, String)>;
 
+/// 一台机器的绝对路径写法。路径只由它所属的那台判（枢纽不替别台判）；判据拿它在 Linux 上换成 Windows 那一形。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum PathForm {
+    /// `/…`
+    Posix,
+    /// `X:\…` · `X:/…` · `\\…`
+    Windows,
+}
+
+impl PathForm {
+    /// 本进程这一台的写法。
+    pub(crate) const HERE: PathForm = if cfg!(windows) {
+        PathForm::Windows
+    } else {
+        PathForm::Posix
+    };
+
+    pub(crate) fn is_absolute(self, d: &str) -> bool {
+        let b = d.as_bytes();
+        match self {
+            PathForm::Posix => d.starts_with('/'),
+            PathForm::Windows => {
+                d.starts_with("\\\\")
+                    || (b.len() >= 3
+                        && b[0].is_ascii_alphabetic()
+                        && b[1] == b':'
+                        && (b[2] == b'\\' || b[2] == b'/'))
+            }
+        }
+    }
+}
+
 /// 项目目录必须是这台机器上的绝对路径（相对路径在后端这个进程里指的是别处）。
 pub(crate) fn project_root(project_dir: &str) -> Result<String, (&'static str, String)> {
+    project_root_as(project_dir, PathForm::HERE)
+}
+
+/// [`project_root`] 的本体，「这台怎么写绝对路径」是参数。
+pub(crate) fn project_root_as(
+    project_dir: &str,
+    form: PathForm,
+) -> Result<String, (&'static str, String)> {
     let d = project_dir.trim();
     if d.is_empty() {
         return Err(("bad_args", copy_text("beMcpEdit.path.emptyDir", &[])));
     }
-    if !Path::new(d).is_absolute() || d.split(['/', '\\']).any(|s| s == "..") {
+    if !form.is_absolute(d) || d.split(['/', '\\']).any(|s| s == "..") {
         return Err((
             "bad_path",
-            copy_text("beMcpEdit.path.notAbsolute", &[("dir", &format!("{d:?}"))]),
+            copy_text("beMcpEdit.path.notAbsolute", &[("dir", d)]),
         ));
     }
     Ok(d.trim_end_matches(['/', '\\']).to_string())

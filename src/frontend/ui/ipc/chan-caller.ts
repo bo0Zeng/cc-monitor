@@ -75,8 +75,9 @@ export function saidOf(e: unknown, oldBackendSays: string): string {
   switch (err.layer) {
     case "peer": {
       if (unsupported(err)) return oldBackendSays;
+      // 对端答了一个错误 ⇒ 就说它那一句（码不上屏：调用方要按码分支的自己读 `refusalOf`）。
       const r = refusalOf(err.body);
-      return r ? copyText("chanCaller.said.errorCoded", { code: r.code, message: r.message }) : copyText("chanCaller.said.error");
+      return r && r.message.trim() !== "" ? r.message : copyText("chanCaller.said.error");
     }
     case "hop":
       return err.why === "Overrun"

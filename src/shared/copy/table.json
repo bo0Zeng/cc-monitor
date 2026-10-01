@@ -24,14 +24,9 @@
       "zh": "那台机器的后端版本对不上，需要更新：{detail}",
       "args": ["detail"]
     },
-    "accountOps.said.otherCode": {
-      "kind": "error",
-      "zh": "没做成（{code}）：{detail}",
-      "args": ["code", "detail"]
-    },
     "accountOps.said.noReason": {
       "kind": "error",
-      "zh": "没做成，那台机器的后端没说原因",
+      "zh": "那台机器的后端报了错，没说原因",
       "args": []
     },
     "accountNewForm.form.makeDefault": {
@@ -4169,23 +4164,18 @@
     },
     "chanCaller.said.unreachable": {
       "kind": "error",
-      "zh": "现在够不着那台机器的后端，连接不在或断了。这次先不显示。",
+      "zh": "现在够不着那台机器的后端，连接不在或断了",
       "args": []
     },
     "chanCaller.said.timeout": {
       "kind": "error",
-      "zh": "等那台机器的后端答复超时了，这次先不显示",
+      "zh": "等那台机器的后端答复超时了",
       "args": []
     },
     "chanCaller.said.error": {
       "kind": "error",
-      "zh": "那台机器的后端没有答出来",
+      "zh": "那台机器的后端报了错，没说原因",
       "args": []
-    },
-    "chanCaller.said.errorCoded": {
-      "kind": "error",
-      "zh": "那台机器的后端没有答出来（{code}）：{message}",
-      "args": ["code", "message"]
     },
     "chanCaller.linesOf.badShape": {
       "kind": "error",
@@ -16316,8 +16306,13 @@
     },
     "beRemoteAsk.run.failed": {
       "kind": "error",
-      "zh": "那台的后端没办成：{said}",
+      "zh": "那台的后端报错：{said}",
       "args": ["said"]
+    },
+    "beRemoteAsk.run.failedNoReason": {
+      "kind": "error",
+      "zh": "那台的后端报了错，没说原因",
+      "args": []
     },
     "beRemoteAsk.run.tooOld": {
       "kind": "error",
@@ -18597,7 +18592,7 @@
     },
     "beMcpEdit.path.notAbsolute": {
       "kind": "error",
-      "zh": "项目目录须为绝对路径（实得 {dir}）",
+      "zh": "项目目录「{dir}」不是绝对路径。要从根目录或盘符写起，中间不能有 ..",
       "args": ["dir"]
     },
     "beMcpEdit.upsert.emptyName": {
@@ -19028,9 +19023,14 @@
       "zh": "有，和别处那一版不同",
       "args": []
     },
-    "extPage.error.lead": {
+    "extPage.error.install": {
       "kind": "error",
-      "zh": "{machine}没办成：{said}",
+      "zh": "装到{machine}失败：{said}",
+      "args": ["machine", "said"]
+    },
+    "extPage.error.uninstall": {
+      "kind": "error",
+      "zh": "从{machine}卸载失败：{said}",
       "args": ["machine", "said"]
     },
     "beExt.card.sameMachine": {

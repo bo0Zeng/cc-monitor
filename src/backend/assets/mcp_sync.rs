@@ -182,13 +182,8 @@ impl Facts for Live {
 ///
 /// ⚠ 不认 `~/…`：那是「各台机器各自的家目录」，拷过去照样解得开，不是「本机绝对路径」。
 pub(crate) fn is_abs_any(s: &str) -> bool {
-    let b = s.as_bytes();
-    s.starts_with('/')
-        || s.starts_with("\\\\")
-        || (b.len() >= 3
-            && b[0].is_ascii_alphabetic()
-            && b[1] == b':'
-            && (b[2] == b'\\' || b[2] == b'/'))
+    use crate::assets::mcp_edit::PathForm;
+    PathForm::Posix.is_absolute(s) || PathForm::Windows.is_absolute(s)
 }
 
 /// 一个字段值里的那条绝对路径：整串就是，或 `--opt=<绝对路径>` 的 `=` 右边是。**纯**。
