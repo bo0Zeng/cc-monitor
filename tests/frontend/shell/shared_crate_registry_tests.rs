@@ -1,5 +1,5 @@
 use super::ci_yaml;
-use super::ci_yaml::{job_block as ci_job_block, yml as ci_yml};
+use super::ci_yaml::job_block as ci_job_block;
 use std::fs;
 use std::path::Path;
 
@@ -517,232 +517,174 @@ fn workspace_members_do_not_reference_crates_that_no_longer_exist() {
     );
 }
 
-/// 〔audit-0805 08-06〕**`ci.yml` 的每一个 `run:` 步骤都要有归属**：
-/// 要么本地必跑，要么写清「结构上为什么跑不了」。
-///
-/// **为什么建它**（实测，不是设想）：Windows 信号定格后 72 个提交没有任何一次 CI 执行，
-/// 而本地那一路的门禁命令**只有 `cargo test`**。08-06 第一次把 `cargo fmt --all --check`
-/// 补进去，**两侧当场都红**（13 个文件，`blame` 落在十来个不同提交上）——
-/// 也就是说 CI 的**第一个 Rust 步骤**已经红了很久，而每一轮的结论都写着「全绿」。
-///
-/// 病根不是「漏跑一条命令」，是**本地门禁的度量面比 CI 小，而小了多少没人数过**。
-/// 上面那几条 `ci_actually_runs_*` 守的是反方向（CI 里别把步骤悄悄删了）；
-/// 本条守的是这一侧：**CI 里有而本地没数过的步骤，一步都不许有。**
-///
-/// ⇒ 新增 / 改名一个 CI 步骤就会红，直到有人回答「本地跑不跑它」。
-///
-/// ⚠⚠ **08-07：本条自己也犯了它要防的那个病。** 人群原本是「带 `- name:` 的 `run:` 步骤」——
-/// 按**怎么写的**取，而 GitHub Actions 的步骤不要求有名字。51 条步骤里它只看得见 47 条。
-/// 隐形的四条中三条是 `- run: npm ci`（环境步骤，无害），**第四条是 `- run: npx tsc --noEmit`**
-/// —— 一条**真门禁命令**，一直在 CI 里跑、本地也一直在跑，但**从来没被本条数过**。
-/// 也就是说：本条自陈守的是「本地度量面比 CI 小了多少」，而它自己的度量面就小了一块。
-/// ⇒ 人群改按「它是不是 `steps:` 里的一条 `run:`」取，无名步骤用命令首行当标识。
-#[test]
-fn every_ci_run_step_is_classified_as_local_or_unrunnable() {
-    /// 整个 job 结构上跑不了 —— 理由**逐 job 一条**，且下面有前提触发器盯着它别过期。
-    ///
-    /// ⚠ **08-06 订正：这条豁免曾经过宽。** 它当初写成「整个 job 跑不了」，
-    /// 而实测（用一个只会报错的 `tmux` 桩遮住 PATH，谁碰谁当场失败）发现
-    /// 这两个 job 里有**四套根本不碰 tmux**、在本机跑得通且全过：
-    /// `ccm-cli`(53) · `ccm-contract-parity`(45) · `ccm-print-parity`(12) · `backend-fork`(10)
-    /// —— 合计 **120 条断言**，此前被我按 job 一刀切成「结构上跑不了」。
-    /// 那四套的名字登记在 [`LOCALLY_RUNNABLE`]，本地门禁要跑它们。
-    /// ⇒ 教训：**豁免的粒度要贴着「为什么跑不了」的粒度**。job 级理由（装 tmux）
-    /// 不等于步骤级理由（这一步用不用 tmux）。
-    const BLANKET: &[(&str, &str)] = &[
-        (
-            "e2e-tmux",
-            "本区红线〔用〕：绝不用真 tmux server。该 job 逐字 `apt-get install -y tmux` 并起真 server",
-        ),
-        (
-            "e2e-tmux-rust",
-            "同上（红线：真 tmux server）——它还额外装整套 Tauri Linux 依赖",
-        ),
-    ];
-    /// **住在 blanket job 里、但本机跑得通**的那几套（08-06 用 tmux 桩实测）。
-    /// 它们不需要 tmux，红线挡不住它们 —— 登记在这里是为了**别让 job 级豁免把它们盖住**。
-    const LOCALLY_RUNNABLE: &[(&str, &str)] = &[
-        ("ccm CLI 契约（F02）", "`npm run test:ccm-cli` —— 全走 `--print` 断言命令串，实测 PASS=53"),
-        (
-            "ccm 契约差分对拍（U9a · S10 保住清单）",
-            "`npm run test:ccm-contract-parity` —— 实测 PASS=45",
-        ),
-        (
-            "ccm --print 平价预言机（F03）",
-            "`npm run test:ccm-print-parity` —— 实测 PASS=12",
-        ),
-        (
-            "backend 分叉（G2 `--fork-session`）",
-            "`npm run test:backend-fork` —— 脚本头注逐字「不需要 tmux、不需要 ssh」，实测 PASS=10",
-        ),
-        (
-            "本机后端监护真进程验收（F05a + K-P1 常驻）",
-            "`npm run test:local-backend` —— 〔`K-P1` 08-26 重打〕实测 **PASS=14**（原 7），\
-                 它**跑两趟** `--ignored`：`local_backend`（F05a 监护那条路，3 条）+ \
-                 `local_backend_host`（`K-P1` 常驻那条路，2 条）—— 都真起后端进程。\
-                 ⚠ **只许带 tmux 隔离跑**：被起的后端一上来就往它连得到的 tmux server 装三条\
-                 **全局** hook（固定槽位 `[50]`，没有关掉它的开关）⇒ 裸跑就是去改用户真实 tmux 的状态。\
-                 隔离走 `tests/e2e/tmux-shim.sh`（`C7i` 的唯一原语：shim 强插 `-L`，\
-                 **不是** `TMUX_TMPDIR` —— `$TMUX` 一有值就压过它，08-11 那次事故正是这个机制）。\
-                 ⚠ 收尾顺序是承重的：**先收进程、再删 shim**；漏网的后端在 shim 没了之后\
-                 重装 hook 会落到真 tmux 上（08-26 实测发生过一次）。",
-        ),
-    ];
-    /// 其余每一步逐条登记：`(步骤名, 本地跑不跑, 说法)`。
-    /// 「跑不了」那几条要写**结构性**理由，不许写「太慢」这种可以克服的话。
-    const STEPS: &[(&str, bool, &str)] = &[
-        // ── job rust
-        ("cargo fmt --check（整个 workspace）", true, "`cd src/frontend/shell && cargo fmt --all --check`"),
-        ("cargo clippy（整个 workspace，vendor 除外）", true, "同名命令；无 `-D warnings` ⇒ 只有真错才红"),
-        ("cargo test（整个 workspace，vendor 除外）", true, "本区门禁主命令"),
-        ("生成物必须最新（C05；改了 Rust 就得重新生成并提交）", true, "`git diff --exit-code -- ../src/frontend/ui/generated/`"),
-        ("cargo test (vendor code-picture-core)", true, "只**读地跑**；实测跑完 `git status` 对 vendor 零改动 ⇒ 不违反红线"),
-        // ── job rust-linux〔`15 §5.2 B4`〕
-        // 🔴 **写区外的随动**，与 `K-R114` 09-14 那条同一形（见下面 `e2e-smoke` 那一格的注释）：
-        // 这条判据的题面逐字就是「CI 里加了一步、本地门禁不知道」⇒ **加步骤必须同拍登记**。
-        // 本行只登记事实（本地跑不跑得动、怎么跑），不裁定任何东西。
-        //
-        // ⚠ 那个 job 的 `Install Linux build deps` **不在这里** —— 它与 `linux-app-build`
-        //   那一步**同名**，而本表按**步骤名**匹配 ⇒ 已有的那条登记同时盖住两处
-        //   （`run: npm ci` 是同一形：一条登记，三个 job）。再加一条同名的反而会让
-        //   `stale` 那半永远找得到、`unregistered` 那半永远看不出差别。
-        (
-            "cargo test（整个 workspace，vendor 除外；Linux 执行面）",
-            true,
-            "`cd src/frontend/shell && cargo test --workspace` —— \
-                 与 `rust` job 那条**逐字同一条命令**，只是 runner 从 windows 换成 ubuntu。\
-                 ⚠ 本地门禁 `gate.sh` 那格带 `--lib`（丢 doctest 与 bin 档）⇒ **本地跑得动，\
-                 但本地今天跑的不是同一把尺子**；这一格买的正是 `15 §2.6` 漏洞 3 点名的\
-                 「monitor 的 Linux 行为云端执行面 = 0」。",
-        ),
-        (
-            "Install test-time deps (Xvfb · xdotool · CJK font)",
-            false,
-            "apt 装测试期依赖（文件窗口的真图形会话台架与 CJK 字体）：要 sudo ⇒ 属于**环境准备**不是判据",
-        ),
-        // ── job frontend
-        ("npm audit (production deps, high)", true, "同名命令"),
-        // 〔P3 · 主会话 09-29 裁〕基线清到 0 ⇒ 去掉 `|| true`、改成会拦（步骤名同拍改）。
-        ("eslint (blocking, baseline 0)", true, "同名命令（`npm run lint`，有一条错就红）"),
-        ("stylelint (advisory, baseline)", true, "同上，也带 `|| true`"),
-        ("unit tests (node pure-fn + vitest DOM)", true, "`npm test`"),
-        ("coverage floor (vitest jsdom)", true, "`npm run coverage`"),
-        ("coverage per-file floors + zero-coverage ratchet", true, "`node tests/scripts/assert-coverage-floors.mjs`"),
-        ("vite build (dist/)", true, "`npm run build`"),
-        // ── job backend
-        ("cargo fmt --check", true, "`cd src/backend && cargo fmt --check`"),
-        ("cargo check（跨 target：Windows 编得过 —— 平台线的真判据）", true, "E7 的真判据；本机装了 `x86_64-pc-windows-msvc` target，实测跑得通"),
-        ("cargo clippy", true, "同名命令"),
-        ("cargo test", true, "同名命令"),
-        // ── job linux-app-build
-        ("Install Linux build deps", false, "apt 装系统依赖：本机已装，且要 sudo ⇒ 属于**环境准备**不是判据"),
-        ("npm ci", false, "按 lockfile **重装** node_modules：本地等价物是既有依赖树，重跑改变的是环境不是结论"),
-        ("npm run build (tsc + vite)", true, "与 frontend job 同一条命令"),
-        ("cargo build (full app binary, not --lib)", true, "`cd src/frontend/shell && cargo build` —— 它编的是 bin，`--lib` 那条盖不住"),
-        // ── job e2e-smoke
-        ("shellcheck (errors only)", true, "本机装了 shellcheck；步骤体从 `ci.yml` 原样抽出来跑"),
-        ("python syntax compile", true, "`python3 -m py_compile tests/e2e/*.py`"),
-        // 〔`K-R48` 第二拍 09-11〕标题里那个数从 23 变 21（删了 ccm-acceptance / ccm-pretrust 两套）。
-        // 〔TL1 · 4C〕标题里那个数 19 → 20（接回 p3t-local-tmux）。
-        ("G-A/G-C 覆盖面地板（20 套真机套件都必须带断言数地板）", true, "纯 `grep` 数 `ci.yml` 自己，不需要 tmux"),
-        ("exec-bit guard (src/shared/** shebang files must be 100755 in git)", true, "`bash tests/e2e/exec-bit-guard.sh`"),
-        // 🔴 **写区外的随动**〔`K-R114` 09-14〕：本轮往 `e2e-smoke` 加了一步，
-        // 而这条判据的题面逐字就是「CI 里加了一步、本地门禁不知道」⇒ 加步骤必须同拍登记。
-        // 本行**只登记事实**（这一步本地跑得动，以及怎么跑），不裁定任何东西。
-        //
-        // 🔴 **〔`K-R124` 09-15〕上一版这一行是一条假登记，订正在这里** ——
-        //    它逐字写着「沙箱镜像里 `python3 -c 'import yaml'` **直接有**」。**那是假的**：
-        //    现打 `docker run --rm ccmon-devbox:latest python3 -c 'import yaml'` 是
-        //    `ModuleNotFoundError: No module named 'yaml'`（2026-09-15）。
-        //    ⚠ **而真正的病不是这句话写错了**：那条守卫当时是用 `yaml.safe_load` 写的
-        //    ⇒ 它**在本地一次都跑不起来**，于是「CI 里有、本地也跑得动」这条登记
-        //    从来没有人真的去兑现过 —— 它坏了一个月（`d1a0552` → `4cf2ec2`）没人看见。
-        //    ⇒ 本轮把判据本体搬出 `ci.yml`、改成不依赖 PyYAML，并在本地门禁里收成一格
-        //    （`tests/scripts/gate.sh` 的 `release-gate`）。**「跑得动」从此是一个有读数的事实，
-        //    不是一句登记。**
-        ("release.yml 发版守卫（KR114D1 ＋ KR124D2）", true, "判据本体住 `tests/evidence/K-R124-ruler.py`（**不依赖 PyYAML**，自带 YAML 子集切块器）；CI 与本地门禁 `release-gate` 那一格跑的是**同一份文件**，不是两份抄件。被测对象由环境变量 `RELEASE_WORKFLOW` 给、整棵树由 `K_R124_ROOT` 给，缺省是本仓 `.github/workflows/release.yml`"),
-        // ── 无名步骤（`- run: <命令>`，08-07 人群扩到它们之后才第一次可见）。
-        // 标识是命令本身，多个 job 里同一条命令共用这一行登记。
-        ("run: npm ci", false, "按 lockfile **重装** node_modules（三个 job 各一条无名步骤）：本地等价物是既有依赖树，重跑改变的是环境不是结论 —— 与上面那条有名字的 `npm ci` 同一个理由"),
-        // ★ 这一条是人群扩面**当场**逮出来的，而且不是无害的环境步骤：它是一条**真门禁命令**。
-        // 它一直在 CI 里跑、本地也一直在跑（本区每轮门禁都有它），但**从来没被这条判据数过** ——
-        // 「没人守着」与「碰巧没坏」是两回事，本仓第二次在同一句话上撞到实例。
-        ("run: npx tsc --noEmit", true, "`npx tsc --noEmit`（仓根）—— 本区门禁固定项之一"),
-        // ── job weak-net〔`W-F1` 09-05，**PM 落的登记**〕
-        // 这两条是弱网台架（`tests/e2e/weak-net/`）的 CI 落点。实现方按写区划分没碰本文件，
-        // 而这条判据要求「新 CI 步骤同拍登记」⇒ 这一格由 PM 补，属**登记家务**，不是功能代码。
-        // ⚠ 名字里**不带** `[weak-net]` 那个前缀：判据报错时印的是 `[{job}] {步骤名}`，
-        // 而它比对的只有步骤名。带前缀照抄进来会**一个都匹配不上**（PM 09-05 实测红过一趟）。
-        (
-            "建弱网台架镜像（装包这一步，也只有这一步，用宿主 netns）",
-            true,
-            "`bash tests/e2e/weak-net/build-image.sh`（幂等：镜像已在就跳过）。\
-                 ⚠ 它是全仓**唯一**一处刻意用宿主网络的地方 —— 这台机的容器上不了外网，\
-                 只能借宿主代理装包；**跑台架那一步一律自建 docker 网络**（定框 `W3`，`guard-run-netns.sh` 钉着）",
-        ),
-        (
-            "弱网台架四维 + SSH（改前/改后两个读数，带断言数地板）",
-            true,
-            "`bash tests/e2e/weak-net/assert-floor.sh 26` —— 要 docker 与 `NET_ADMIN`，实测 `PASS=26`",
-        ),
-        // ── job local-gate〔`G4` 空洞③ 09-20，**写区外的随动**，同上面 weak-net 那两条的性质〕
-        // 🔴 做那件事的那一路 agent 的写区是
-        //   `tests/scripts/gate.sh` · `tests/evidence/` · `.github/workflows/` · `tests/hooks/` · `.cargo/`
-        //   ——**本文件不在里面**。而本条判据要求「新 CI 步骤同拍登记」，且它在那一拍的
-        //   `cargo` 那一格**当场红**（逐字：「`ci.yml` 里这些步骤没人回答「本地跑不跑」」）。
-        //   ⇒ 照 09-05 `W-F1` 那次立的先例处理：**这两行是登记家务，不是功能代码**，
-        //   只登记事实（本地跑不跑得动、怎么跑），不裁定任何东西。
-        //   ⚠ 已在交回件里逐字报备为**唯一一处跨写区改动**，两行删掉即可回退。
-        // ⚠ 名字不带 `[local-gate]` 前缀 —— 同 weak-net 那条注释里记的坑：判据比对的只有步骤名。
-        (
-            "跑本地门禁的云端子集（GATE_ONLY，裁决行只会是 PARTIAL）",
-            true,
-            "`GATE_ONLY=\"hooks copy2 shellcheck ci-e2e-prereq release-gate gate-selfdesc platform installface\" \
-                 bash tests/scripts/gate.sh` —— 就是本地门禁自己，只是用 `GATE_ONLY` 取了个 8 格子集。\
-                 那 8 格全是读盘上文本的静态判据，只要 git/bash/python3/node/shellcheck，不装任何工具链。\
-                 ⚠ 取子集时裁决行是 `GATE: PARTIAL` 而**不是** `GATE: OK` —— 后者只许有一个意思：\
-                 盘上每一格都跑过了。⚠ 哪几格不进云端逐格登记在 \
-                 `tests/evidence/K-R80-gate-cell-coverage.py` 的 `INVOCATION` 里，\
-                 它与 `ci.yml` 那一行 `GATE_ONLY:` 由 `C8d` **两向集合相等**地对拍。\
-                 ⚠⚠ 它**从没在云端跑过**（本仓红线是不推送，这条流水线不触发）⇒ \
-                 「配置写对了」≠「验过了」—— 与上面 `rust-linux` 那条同一笔账",
-        ),
-        (
-            "这一趟到底跑没跑门禁（收据对拍，该跑的那几格从 INVOCATION 现取）",
-            true,
-            "`python3 tests/evidence/K-G4C-gate-receipt.py` —— 读上一步落的收据 \
-                 （`.build/gate-receipt.json`）：这份 `gate.sh` 的 sha256 · 这棵树的 tree oid · \
-                 真判过哪几格。🔴 它治的是「**装了钩子不等于它跑过**」：上一步那条 `run:` \
-                 可以因为 `if:` 求值成 false / 被 `continue-on-error` 洗绿 / 被注释掉而\
-                 什么都没干还回 0，那几种在流水线的绿勾上一模一样。\
-                 反空真锚是它的 `R6`：`ran ∪ skipped` 与 `gate.sh` 现打的格名**两向集合相等**",
-        ),
-    ];
+/// 本地门禁怎么对待 `ci.yml` 的一步。
+#[derive(Clone, Copy)]
+enum Local {
+    /// 本地门禁 `tests/scripts/gate.sh` 里由这几格跑（格名 = `run_gate` / `run_gate_sum` 的第一个参数）。
+    Gate(&'static [&'static str]),
+    /// 本地门禁不跑它；说法那一栏写结构性理由（「慢」不算）。
+    NoCell,
+}
+use Local::{Gate, NoCell};
 
-    // ── 解析：(job, 步骤标识)
-    //
-    // ⚠⚠ **08-07 订正：人群原本是「带 `- name:` 的 `run:` 步骤」** ——
-    // 那是按**怎么写的**取人群，而 GitHub Actions 的步骤**根本不要求有名字**。
-    // 实测：`ci.yml` 的 51 条步骤里，判据看得见 47 条（`defaults:` 底下那几条 `run:` 不是步骤，不计），
-    // **四条无名步骤整个在人群之外**（三条 `- run: npm ci` + 一条 `- run: npx tsc --noEmit`）——
-    // 也就是说往 CI 里加一步 `- run: cargo something`（不写 name）
-    // 本条**一个字都不会说**，而它存在的全部理由正是「CI 里有而本地没数过的步骤，一步都不许有」。
-    // ⇒ 人群改按**「它是不是一个步骤」**取：`steps:` 之内的每一条 `run:` 都算，
-    //   有名字用名字当标识，没名字用 `run: <命令首行>`。
-    //
-    // ⚠ `defaults:` 底下那三条 `run:`（`working-directory` / `shell` 的容器）**不是步骤** ——
-    //   靠 `steps:` 之内这个条件排除，不靠「它没名字」。
-    let yml = ci_yml();
+/// `ci.yml` 的每一个 `run:` 步骤 → 本地门禁怎么跑它：`(步骤标识, 跑法, 说法)`。
+/// 标识 = 步骤名；无名步骤用 `run: <命令首行>`；多个 job 里的同名步骤共用一行。
+/// `assert-pass-floor.sh <套件> <地板>` 那批 e2e 不在这里：它们按套件名与 `gate.sh` 的 `run_e2e <套件>` 对拍。
+const STEPS: &[(&str, Local, &str)] = &[
+    // ── job rust（windows-latest）
+    ("cargo fmt --check（整个 workspace）", Gate(&["fmt"]), "`cd src/frontend/shell && cargo fmt --all --check`"),
+    (
+        "cargo clippy（整个 workspace，vendor 除外）",
+        Gate(&["clippy", "winchk"]),
+        "同一条命令在 Linux 上跑一趟（`clippy`）；CI 那一步跑在 Windows 上，「Windows 上编得过」那一维由 `winchk`（`-gnu` 交叉 check）盖",
+    ),
+    (
+        "cargo test（整个 workspace，vendor 除外）",
+        Gate(&["cargo"]),
+        "`cargo test --workspace --lib`：本地那格带 `--lib`（丢 doctest 与 bin 档），另加包数相等断言",
+    ),
+    (
+        "生成物必须最新（C05；改了 Rust 就得重新生成并提交）",
+        Gate(&["generated"]),
+        "`git diff --exit-code -- src/frontend/ui/generated/`，排在 `cargo` 那格之后",
+    ),
+    ("cargo test (vendor code-picture-core)", Gate(&["code-picture-core"]), "同一目录同一条命令；只读地跑，vendor 源码零改动"),
+    // ── job rust-linux
+    (
+        "cargo test（整个 workspace，vendor 除外；Linux 执行面）",
+        Gate(&["cargo"]),
+        "与 `rust` job 那一步同一条命令换到 Linux runner；本地那格本来就跑在 Linux 上（带 `--lib`）",
+    ),
+    (
+        "Install Linux build deps",
+        NoCell,
+        "apt 装系统依赖（两个 job 各一条同名步骤）：要 sudo、改的是环境不是结论 ⇒ 环境准备，不是判据",
+    ),
+    ("Install test-time deps (Xvfb · xdotool · CJK font)", NoCell, "apt 装测试期依赖：要 sudo ⇒ 环境准备，不是判据"),
+    // ── job frontend
+    ("run: npm ci", NoCell, "按 lockfile 重装 node_modules（三个 job 各一条无名步骤）：改的是环境不是结论"),
+    ("npm audit (production deps, high)", Gate(&["audit"]), "照 `ci.yml` 原样跑；要联网"),
+    ("run: npx tsc --noEmit", Gate(&["tsc"]), "`tsc --noEmit` ＋ 程序面份数对账"),
+    (
+        "eslint (blocking, baseline 0)",
+        Gate(&["npm"]),
+        "`tests/frontend/ui/eslint-baseline.vitest.ts` 真跑 `eslint .` 并把错误数钉成 0（在 `npm test` 的 vitest 那一段里）",
+    ),
+    ("stylelint (advisory, baseline)", NoCell, "CI 那一步带 `|| true`，结构上不会红；门禁照抄只会多一格空转的绿"),
+    ("unit tests (node pure-fn + vitest DOM)", Gate(&["npm"]), "`npm test`"),
+    ("coverage floor (vitest jsdom)", Gate(&["coverage"]), "照 `ci.yml` 原样跑"),
+    ("coverage per-file floors + zero-coverage ratchet", Gate(&["coverage"]), "照 `ci.yml` 原样跑，排在上一步之后"),
+    (
+        "vite build (dist/)",
+        Gate(&["tsc", "npm"]),
+        "`npm run build` = `tsc && vite build`：前一半是 `tsc` 那格；后一半由 `tests/frontend/ui/entry-graphs.vitest.ts` \
+             用同一份 `vite.config.ts` 真跑 vite 的 `build()`（`write: false`，不落 `dist/`）",
+    ),
+    // ── job backend
+    ("cargo fmt --check", Gate(&["fmt-backend"]), "`cd src/backend && cargo fmt --check`"),
+    (
+        "cargo check（跨 target：Windows 编得过 —— 平台线的真判据）",
+        Gate(&["winchk-backend"]),
+        "`-msvc` 本机编不过（`ring` 的 build script 要 MSVC 的 `lib.exe`，Linux 上没有）⇒ 本地用 `-gnu` 交叉 check \
+             盖 Windows 这一维；MSVC ABI 专属那一类登记在门禁射程表 `msvc-abi`",
+    ),
+    ("cargo clippy", Gate(&["clippy-backend"]), "`cd src/backend && cargo clippy --all-targets`"),
+    ("cargo test", Gate(&["backend"]), "`cd src/backend && cargo test`"),
+    // ── job linux-app-build
+    ("npm ci", NoCell, "同 `run: npm ci`：按 lockfile 重装 node_modules"),
+    ("npm run build (tsc + vite)", Gate(&["tsc", "npm"]), "同 `vite build (dist/)` 那一行"),
+    ("cargo build (full app binary, not --lib)", Gate(&["appbuild"]), "`cd src/frontend/shell && cargo build`：真编真链两个二进制"),
+    // ── job e2e-smoke
+    ("shellcheck (errors only)", Gate(&["shellcheck"]), "人群与地板都从 `ci.yml` 那一步现读"),
+    ("python syntax compile", Gate(&["e2e-smoke"]), "照 `ci.yml` 原样跑"),
+    // 〔TL1 · 4C〕标题里那个数 19 → 20（接回 p3t-local-tmux）。
+    ("G-A/G-C 覆盖面地板（20 套真机套件都必须带断言数地板）", Gate(&["e2e-smoke"]), "照 `ci.yml` 原样跑"),
+    ("exec-bit guard (src/shared/** shebang files must be 100755 in git)", Gate(&["e2e-smoke"]), "照 `ci.yml` 原样跑"),
+    (
+        "release.yml 发版守卫（KR114D1 ＋ KR124D2）",
+        Gate(&["release-gate"]),
+        "同一份判据本体 `tests/evidence/K-R124-ruler.py`（不依赖 PyYAML，自带 YAML 子集切块器）",
+    ),
+    // ── job e2e-tmux / e2e-tmux-rust：`assert-pass-floor.sh` 那批按套件名对拍，这里只剩环境步骤
+    ("install tmux + jq", NoCell, "apt 装 tmux 与 jq：要 sudo ⇒ 环境准备，不是判据"),
+    ("install tmux + jq + Tauri Linux build deps", NoCell, "同上，外加 Tauri 的系统依赖"),
+    (
+        "build debug backend（供 backend-frames 三套）",
+        NoCell,
+        "本地门禁在跑 e2e 之前编同一个后端二进制（`gate.sh` 的「e2e 前置」）；它不成格 —— \
+             编不出来时每一套 e2e 各自 fail-closed 红",
+    ),
+    // ── job local-gate
+    (
+        "跑本地门禁的云端子集（GATE_ONLY，裁决行只会是 PARTIAL）",
+        NoCell,
+        "它就是本地门禁自己（取 `GATE_ONLY` 子集），不是门禁里的一格",
+    ),
+    (
+        "这一趟到底跑没跑门禁（收据对拍，该跑的那几格从 INVOCATION 现取）",
+        NoCell,
+        "`tests/evidence/K-G4C-gate-receipt.py` 判的是门禁落下的收据，必须由调用方排在门禁**之后**跑；\
+             放进门禁里跑就是同源恒真",
+    ),
+    // ── job weak-net
+    (
+        "建弱网台架镜像（装包这一步，也只有这一步，用宿主 netns）",
+        Gate(&["weak-net"]),
+        "照 `ci.yml` 原样跑（镜像已在就跳过）；要 docker",
+    ),
+    (
+        "弱网台架四维 + SSH（改前/改后两个读数，带断言数地板）",
+        Gate(&["weak-net"]),
+        "照 `ci.yml` 原样跑；本地另判台架 PASS 与地板恒等",
+    ),
+];
+
+/// 本地门禁里**不对应 `ci.yml` 任何一步**的格：`(格名, 为什么 CI 那边没有同一步)`。
+/// 与 [`STEPS`] 里点到的格、`ci.yml` 带地板的 e2e 套合起来，必须恰好是 `gate.sh` 现打的全部格。
+const LOCAL_ONLY_CELLS: &[(&str, &str)] = &[
+    ("worktree-clean", "判仓里有没有第二份工作副本；CI 是全新 checkout，这个条件在那儿恒成立"),
+    ("hooks", "判 `tests/hooks/` 的可执行位与语法；`ci.yml` 没有单列的一步（只随 local-gate 那个 job 的门禁子集进云端）"),
+    ("copy2", "判 `tests/evidence/*.py` 的保元数据复制族；同 hooks，只随门禁子集进云端"),
+    ("ci-e2e-prereq", "判 `ci.yml` 自己那批 e2e 的 build 前置；同 hooks"),
+    ("gate-selfdesc", "判本门禁自己的登记与自述；同 hooks"),
+    ("platform", "承诺平台 ↔ 门禁格的对拍；同 hooks"),
+    ("installface", "安装面那批命令的落点；同 hooks"),
+    ("ccbus-twophase", "cc-bus 两段式的静态 ＋ 真跑判据；`ci.yml` 没有对应步骤"),
+    ("muslbuild", "两个 musl target 真编；`ci.yml` 不编 musl（产字节住 `release.yml`）"),
+    ("winlink", "`-gnu` 上真链两个 Windows 二进制；`ci.yml` 的 Windows job 只链测试二进制"),
+    ("comm-boundary", "通信层那一族的三方对拍（条数同时算在 `cargo` 里）；`ci.yml` 只有 workspace test 的合计"),
+    ("test-tiers", "测试层分级那一族的三方对拍；同 comm-boundary"),
+    ("deadcode", "monitor 非 test 构建里 `never used` 的恒等棘轮；`ci.yml` 的 clippy 跑 `--all-targets`，量的不是同一个数"),
+    ("panorama-engine", "全景小程序自己的 `cargo test`；`ci.yml` 在那棵树里只跑 vendor 的测试"),
+    ("backend-rbind-token", "`ci.yml` 没有它的地板行（`e2e_gate_registry` 的 `EXEMPT` 登记着为什么）"),
+    ("rbind-token-endtoend", "同 backend-rbind-token"),
+];
+
+/// `ci.yml` 带 `assert-pass-floor.sh` 地板、而本地门禁**确实跑不了**的 e2e 套：`(套件名, 结构性理由)`。
+/// 今天一套都没有 —— 那批全走隔离的 tmux socket 或根本不碰 tmux。
+const CI_ONLY_E2E: &[(&str, &str)] = &[];
+
+/// `ci.yml` 里的一步：所在 job · 标识（步骤名，无名步骤用 `run: <命令首行>`）· `run:` 的首行命令。
+struct CiStep {
+    job: String,
+    id: String,
+    head: String,
+    named: bool,
+}
+
+/// `ci.yml` 里**每一个步骤**（`steps:` 之内的每一条 `run:`，有名无名都算；`defaults:` 底下那几条不是步骤）。
+///
+/// ⚠ 人群按「它是不是 `steps:` 里的一条 `run:`」取，不按「带不带 `- name:`」取：GitHub Actions 不要求步骤有名字，
+/// 按名字取时 `- run: npx tsc --noEmit` 那条真门禁命令整个落在人群之外。
+fn ci_steps() -> Vec<CiStep> {
+    // 整行注释由 `ci_yaml::live_lines` 剔（`ci.yml` 怎么剔注释只有那一个家）。
+    let yml = ci_yaml::live_lines();
     let src: Vec<&str> = yml.lines().collect();
-    let mut found: Vec<(String, String)> = Vec::new();
+    let mut found = Vec::new();
     let mut job = String::new();
     let mut name: Option<String> = None;
     let mut in_steps = false;
-    let mut unnamed_seen = 0usize;
     for (i, line) in src.iter().enumerate() {
-        if line.trim_start().starts_with('#') {
-            continue;
-        }
         let t = line.trim_end();
         if t.len() > 2
             && t.starts_with("  ")
@@ -766,91 +708,101 @@ fn every_ci_run_step_is_classified_as_local_or_unrunnable() {
             continue;
         }
         let trimmed = line.trim_start();
-        // 两种步骤写法：`- name:` 之后的 `run:`，与直接内联的 `- run:`。
         let inline = trimmed.strip_prefix("- run:");
         if trimmed.starts_with("run:") || inline.is_some() {
-            match name.take() {
-                Some(n) => found.push((job.clone(), n)),
-                None => {
-                    // 无名步骤：拿命令首行当标识。`|` / `>` 块标量则往下看一行。
-                    let raw = inline
-                        .unwrap_or_else(|| trimmed.strip_prefix("run:").expect("上面已判过前缀"));
-                    let head = match raw.trim() {
-                        "" | "|" | ">" | "|-" | ">-" => src
-                            .get(i + 1)
-                            .map(|l| l.trim())
-                            .unwrap_or("(空)")
-                            .to_string(),
-                        other => other.to_string(),
-                    };
-                    unnamed_seen += 1;
-                    found.push((job.clone(), format!("run: {head}")));
-                }
-            }
+            let raw =
+                inline.unwrap_or_else(|| trimmed.strip_prefix("run:").expect("上面已判过前缀"));
+            // `|` / `>` 块标量：命令在下一行。
+            let head = match raw.trim() {
+                "" | "|" | ">" | "|-" | ">-" => src
+                    .get(i + 1)
+                    .map(|l| l.trim())
+                    .unwrap_or("(空)")
+                    .to_string(),
+                other => other.to_string(),
+            };
+            let (id, named) = match name.take() {
+                Some(n) => (n, true),
+                None => (format!("run: {head}"), false),
+            };
+            found.push(CiStep {
+                job: job.clone(),
+                id,
+                head,
+                named,
+            });
         }
     }
+    found
+}
+
+/// 这一步若是 `bash tests/e2e/assert-pass-floor.sh <套件> <地板>`，取出套件名。
+fn floored_suite(head: &str) -> Option<&str> {
+    let rest = head.strip_prefix("bash tests/e2e/assert-pass-floor.sh ")?;
+    let mut it = rest.split_whitespace();
+    let (suite, floor) = (it.next()?, it.next()?);
+    floor.chars().all(|c| c.is_ascii_digit()).then_some(suite)
+}
+
+fn gate_sh() -> String {
+    fs::read_to_string(crate::guard_support::repo_root().join("tests/scripts/gate.sh"))
+        .expect("读不到 tests/scripts/gate.sh")
+}
+
+/// `tests/scripts/gate.sh` 现打的判定格名：行首 `run_gate <名> ` · `run_gate_sum <名> ` · `run_e2e <名> `
+/// （e2e 那批用套件短名，与 `GATE_ONLY` 同一套名字），外加手写判定的 `if gate_wants <名>;`。
+/// 缩进着的是门禁自己的自检探针，不是格 ⇒ 只认行首。
+fn gate_cells() -> Vec<String> {
+    let text = gate_sh();
+    let mut out = Vec::new();
+    for line in text.lines() {
+        let rest = ["run_gate_sum ", "run_gate ", "run_e2e "]
+            .iter()
+            .find_map(|p| line.strip_prefix(p))
+            .or_else(|| {
+                line.strip_prefix("if gate_wants ")
+                    .map(|r| r.split(';').next().unwrap_or_default())
+            });
+        if let Some(n) = rest.and_then(|r| r.split_whitespace().next()) {
+            out.push(n.to_string());
+        }
+    }
+    out
+}
+
+/// 〔audit-0805 08-06〕**`ci.yml` 的每一个 `run:` 步骤都要有归属**：本地门禁由哪几格跑它，
+/// 或者写清「为什么门禁里没有它」。
+///
+/// **为什么建它**：Windows 信号定格后 72 个提交没有任何一次 CI 执行，而本地那一路的门禁命令只有
+/// `cargo test`；第一次把 `cargo fmt --all --check` 补进去，两侧当场都红（13 个文件）。
+/// 病根是**本地门禁的度量面比 CI 小，而小了多少没人数过**。上面几条 `ci_actually_runs_*` 守的是反方向
+/// （CI 里别把步骤悄悄删了）；本条守这一侧：新增 / 改名一个 CI 步骤就红，直到 [`STEPS`] 里有人回答它。
+/// 「登记了就真在跑」那一半归下一条 [`every_ci_step_the_local_gate_claims_is_a_real_gate_cell`]。
+#[test]
+fn every_ci_run_step_is_classified_as_local_or_unrunnable() {
+    let found = ci_steps();
     // ★ 抽取器自检：数量掉下来就说明 YAML 形态变了、下面整条会零命中地绿。
-    // 地板只管「抽取器抓没抓到」，**留足余量**：某一步真被删掉那件事由下面的
-    // `stale`（登记表里有、ci.yml 里没有）逐条点名 —— 上一轮刚学到的教训是
-    // 「地板与回归锚点抢同一个变异时，先响的那个会讲错成因」。
+    //   地板只管「抽取器抓没抓到」，留足余量；某一步真被删掉由下面的 `stale` 逐条点名。
+    let unnamed = found.iter().filter(|s| !s.named).count();
     assert!(
         found.len() >= 45,
-        "只从 `ci.yml` 解析到 {} 个 `run:` 步骤（其中有名字 {}、无名 {}）—— 解析坏了。\n\
-             08-07 改成按步骤取人群后实测 51 = 47 有名 + 4 无名。",
-        found.len(),
-        found.len() - unnamed_seen,
-        unnamed_seen
+        "只从 `ci.yml` 解析到 {} 个 `run:` 步骤（其中无名 {unnamed}）—— 解析坏了。",
+        found.len()
     );
-    // ★ **常驻自检：无名那一支必须真的被行使过**。
-    // 它是本次订正新长出来的分支，而「新分支平时没人走」在本仓已连着栽过五次 ——
-    // 哪天三条 `- run: npm ci` 都补上名字，这里会红，提醒人确认那一支还认得出无名步骤
-    // （处置：造一条无名步骤当样本，或确认这条自检已无意义再撤）。
-    assert!(
-        unnamed_seen >= 1,
-        "解析结果里一条**无名步骤**都没有 —— 要么 ci.yml 里真的不剩无名步骤了，\n\
-             要么无名那一支又不认识它们了（那正是 08-07 之前的状态：四条无名步骤隐形，含 `npx tsc --noEmit`）。"
-    );
-
-    // ★ 前提触发器：blanket 豁免的理由是「这个 job 要真 tmux」——理由没了就得重判。
-    for (j, why) in BLANKET {
-        let block = ci_job_block(j);
-        assert!(
-            !block.trim().is_empty(),
-            "`ci.yml` 里已经没有 job `{j}` 了 —— 删掉这条整 job 豁免（它当初的理由：{why}）"
-        );
-        assert!(
-            block.contains("install -y tmux"),
-            "job `{j}` **不再装 tmux 了** —— 那么「红线挡住、结构上跑不了」这个豁免理由就没了，\n\
-                 请重新逐步登记它（当初的理由：{why}）"
-        );
-    }
-
-    // ★ 登记表保鲜：`LOCALLY_RUNNABLE` 里的步骤必须仍住在 blanket job 里。
-    // 哪天它被挪出去（或改名），本地门禁那份清单就该跟着改 —— 不许它悄悄失联。
-    for (step, how) in LOCALLY_RUNNABLE {
-        let at = found.iter().find(|(_, n)| n == step).unwrap_or_else(|| {
-            panic!("`{step}` 在 `ci.yml` 里找不到了 —— 本地门禁那份清单要跟着改。（跑法：{how}）")
-        });
-        assert!(
-            BLANKET.iter().any(|(b, _)| *b == at.0),
-            "`{step}` 已经不在 blanket job 里了（现在在 `{}`）—— \n\
-                 那它就该按普通步骤逐条登记，而不是靠 `LOCALLY_RUNNABLE` 兜着。（跑法：{how}）",
-            at.0
-        );
-    }
+    // ★ 常驻自检：无名那一支必须真的被行使过（哪天 `- run:` 步骤都补上了名字，这里会红，提醒人确认那一支还认得出它们）。
+    assert!(unnamed >= 1, "解析结果里一条**无名步骤**都没有 —— 要么 ci.yml 里真的不剩了，要么无名那一支又不认识它们了");
 
     let unregistered: Vec<String> = found
         .iter()
-        .filter(|(j, _)| !BLANKET.iter().any(|(b, _)| b == j))
-        .filter(|(_, n)| !STEPS.iter().any(|(s, _, _)| s == n))
-        .map(|(j, n)| format!("  [{j}] {n}"))
+        .filter(|s| floored_suite(&s.head).is_none())
+        .filter(|s| !STEPS.iter().any(|(id, _, _)| *id == s.id))
+        .map(|s| format!("  [{}] {}", s.job, s.id))
         .collect();
     assert!(
         unregistered.is_empty(),
-        "`ci.yml` 里这些步骤**没人回答「本地跑不跑」**：\n{}\n\n\
-             ⚠ 这正是 fmt 那条溜掉的方式：CI 里加了一步、本地门禁不知道，\n\
-             于是「本地全绿」与「CI 全绿」之间的差距**一直在长而没人数**。\n\
-             登记进 `STEPS`：能跑就写下本地怎么跑，跑不了就写**结构性**理由（「慢」不算）。",
+        "`ci.yml` 里这些步骤**没人回答「本地门禁跑不跑」**：\n{}\n\n\
+             ⚠ 这正是 fmt 那条溜掉的方式：CI 里加了一步、本地门禁不知道。\n\
+             登记进 `STEPS`：门禁由哪几格跑就写 `Gate(&[…])`，不跑就写 `NoCell` ＋ **结构性**理由（「慢」不算）。",
         unregistered.join("\n")
     );
 
@@ -858,12 +810,106 @@ fn every_ci_run_step_is_classified_as_local_or_unrunnable() {
     let stale: Vec<&str> = STEPS
         .iter()
         .map(|(s, _, _)| *s)
-        .filter(|s| !found.iter().any(|(_, n)| n == s))
+        .filter(|s| {
+            !found
+                .iter()
+                .any(|f| f.id == *s && floored_suite(&f.head).is_none())
+        })
         .collect();
     assert!(
         stale.is_empty(),
         "登记表里这些步骤 `ci.yml` 里已经找不到了（改名或删了）：{stale:?}\n\
              改名也要红 —— 名字变了就该有人重新回答一次「本地跑不跑它」。"
+    );
+}
+
+/// **登记成「本地门禁跑它」的 CI 步骤，门禁里真有那一格** —— 两向。
+///
+/// 上一条只问「每一步有没有人回答」，答成「本地跑」之后门禁里照样可以一格都没有：覆盖率逐文件地板、
+/// clippy、vendor 的测试、`cc-spawn-uplift` 等七套 e2e 都这样只在 CI 上跑过（`cc-spawn-uplift` 一个真回归
+/// 红了四天，本机门禁一格都看不见）。本条把那句登记钉到 `gate.sh` 的现物上：
+/// - 普通步骤：[`STEPS`] 里 `Gate(&[…])` 点到的每一格，`gate.sh` 里都得有；
+/// - e2e：`ci.yml` 里 `assert-pass-floor.sh <套件>` 的套件集合（减 [`CI_ONLY_E2E`]）每一套都得有 `run_e2e <套件>`；
+/// - 反向：上面两批点到的格 ∪ [`LOCAL_ONLY_CELLS`] **恰好等于** `gate.sh` 现打的全部格 ——
+///   门禁多长了一格而登记还说「门禁不跑」、或本机独有的格没登记，同样红。
+/// 两侧异源：左边是本文件与 `ci.yml` 的登记，右边是 `gate.sh` 的行首调用。
+#[test]
+fn every_ci_step_the_local_gate_claims_is_a_real_gate_cell() {
+    use std::collections::BTreeSet;
+    let steps = ci_steps();
+    let gate: BTreeSet<String> = gate_cells().into_iter().collect();
+
+    let mut missing = Vec::new();
+    let mut mapped: BTreeSet<&str> = BTreeSet::new();
+    for (id, how, why) in STEPS {
+        match how {
+            Gate(cells) => {
+                assert!(
+                    !cells.is_empty(),
+                    "`{id}` 登记成 `Gate(&[])` —— 空清单等于没登记，写 `NoCell` 并给理由"
+                );
+                for c in *cells {
+                    mapped.insert(*c);
+                    if !gate.contains(*c) {
+                        missing.push(format!("  `{id}` → 格 `{c}`（{why}）"));
+                    }
+                }
+            }
+            NoCell => assert!(!why.trim().is_empty(), "`{id}` 登记成 `NoCell` 却没写理由"),
+        }
+    }
+
+    let floored: BTreeSet<&str> = steps
+        .iter()
+        .filter_map(|s| floored_suite(&s.head))
+        .collect();
+    for (suite, why) in CI_ONLY_E2E {
+        assert!(
+            floored.contains(suite),
+            "`CI_ONLY_E2E` 登记着 `{suite}`，而 `ci.yml` 已经没有它的地板行 ⇒ 删掉这一行"
+        );
+        assert!(
+            !gate.contains(*suite),
+            "`{suite}` 登记成「本地门禁跑不了」（{why}），可 `gate.sh` 里已经有 `run_e2e {suite}` 了 ⇒ 删掉这条登记"
+        );
+    }
+    for suite in &floored {
+        if CI_ONLY_E2E.iter().any(|(s, _)| s == suite) {
+            continue;
+        }
+        mapped.insert(*suite);
+        if !gate.contains(*suite) {
+            missing.push(format!(
+                "  `ci.yml` 的 `assert-pass-floor.sh {suite}` → `run_e2e {suite}`"
+            ));
+        }
+    }
+    assert!(
+        missing.is_empty(),
+        "登记说本地门禁跑这些步骤，`tests/scripts/gate.sh` 里却没有那一格：\n{}\n\n\
+             ⇒ 本机门禁全绿而 CI 照样会红的就是这一形。补上那一格；真跑不了就改登记（`NoCell` / `CI_ONLY_E2E`）并写结构性理由。",
+        missing.join("\n")
+    );
+
+    let local_only: BTreeSet<&str> = LOCAL_ONLY_CELLS.iter().map(|(c, _)| *c).collect();
+    let both: Vec<&&str> = local_only.intersection(&mapped).collect();
+    assert!(
+        both.is_empty(),
+        "这几格既登记成「不对应 CI 任何一步」，又被某一步点到了：{both:?} —— 从 `LOCAL_ONLY_CELLS` 删掉"
+    );
+    let claimed: BTreeSet<String> = mapped
+        .iter()
+        .chain(local_only.iter())
+        .map(|s| s.to_string())
+        .collect();
+    assert_eq!(
+        claimed,
+        gate,
+        "登记（`STEPS` 点到的格 ∪ `ci.yml` 带地板的 e2e ∪ `LOCAL_ONLY_CELLS`）与 `gate.sh` 现打的格对不上。\n\
+             登记了而门禁没有：{:?}\n门禁有而登记没有：{:?}\n\
+             ⇒ 门禁新加的格要么对应 `ci.yml` 的某一步（改那一步的 `STEPS` 行），要么登记进 `LOCAL_ONLY_CELLS`。",
+        claimed.difference(&gate).collect::<Vec<_>>(),
+        gate.difference(&claimed).collect::<Vec<_>>()
     );
 }
 
@@ -1642,8 +1688,7 @@ fn dormant_e2e_suites_keep_their_assertions() {
         //    要**同拍**整条删掉 —— 〔09-18 接力〕**已删**：那一步（`e2e-tmux-rust` 的
         //    「用量探针（F10）」）整步摘了，上面 `for pair` 那张地板清单里的同名一条也摘了
         //    （20 → 19）。⚠ 本表（`shared_crate_registry` 的 `STEPS`）**本来就没有它的登记**
-        //    —— `e2e-tmux-rust` 整个 job 吃 `BLANKET` 豁免 ⇒ 删它不必动 `STEPS`，
-        //    `stale` 那半也不会因此变红（删前删后现打都是绿的）。
+        //    —— `assert-pass-floor.sh` 那批步骤按套件名对拍、不进 `STEPS` ⇒ 删它不必动 `STEPS`。
     ];
     /// 静态计数不是那个量的代理的套件 —— `(脚本名, 助手, 当日静态数, CI 地板)`。
     const NO_STATIC_SIGNAL: &[(&str, &str, usize, usize)] = &[

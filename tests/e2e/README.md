@@ -187,8 +187,8 @@ DISPLAY=:80 CCM_NO_DEVTOOLS=1 npx tauri dev &   # 等编译完、窗口出现
 > `shared_crate_registry_tests.rs::the_premise_behind_three_honesty_boundaries_still_holds` 盯着
 > （谁加了 `workflow_dispatch`/`schedule`，这句话与另外三条诚实边界都要一起重判）。
 >
-> ★ 而且**这些套件并非都要真 tmux**：实测有几套零依赖跑得通（清单与跑法以判据里的
-> `LOCALLY_RUNNABLE` 为准，**此处不抄**）。所以「手跑」的成本比这段话当初以为的低。
+> ★ 而且这些套件**本机都跑得动**（隔离的 tmux socket 或根本不碰 tmux）：本机门禁
+> `tests/scripts/gate.sh` 的 `run_e2e` 每一套都跑（清单以那里为准，**此处不抄**）。
 
 **`graylight-suite`（全链级）不在上表那些套件里**：它断言的是**正在跑的 dev app** 写的
 `monitor.*.log`，需要 GUI runner + 起整个 app —— 与本文件开头「跑法」那段要 Xvfb 的
