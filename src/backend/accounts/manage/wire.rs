@@ -294,9 +294,8 @@ pub(crate) fn run_change(
         });
     }
     let zero_email = snap.email_of(&home).unwrap_or_default().to_string();
-    let render = |m: &super::model::Manifest| {
-        m.render(&r.shared, &zero_email, &exec::utc_stamp(true))
-    };
+    let render =
+        |m: &super::model::Manifest| m.render(&r.shared, &zero_email, &exec::utc_stamp(true));
     let Applied { backup, steps } =
         exec::apply(d, &r, &plan, snap.manifest_text.as_deref(), &render, keys)?;
     change.applied = !plan.ops.is_empty();

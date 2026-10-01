@@ -63,7 +63,8 @@ impl Tmp {
         std::fs::set_permissions(self.p(rel), std::fs::Permissions::from_mode(m)).unwrap();
     }
     fn manifest(&self) -> Value {
-        serde_json::from_str(&self.read(".cc-monitor/accounts/accounts.json")).unwrap_or(Value::Null)
+        serde_json::from_str(&self.read(".cc-monitor/accounts/accounts.json"))
+            .unwrap_or(Value::Null)
     }
 }
 
@@ -235,7 +236,10 @@ fn init_moves_the_identity_links_the_rest_and_writes_the_manifest_and_alias() {
         );
         assert!(!t.is_link(&format!(".cc-monitor/accounts/d/{moved}")));
     }
-    assert!(t.p(".cc-monitor/accounts/d/backups").is_dir() && !t.is_link(".cc-monitor/accounts/d/backups"));
+    assert!(
+        t.p(".cc-monitor/accounts/d/backups").is_dir()
+            && !t.is_link(".cc-monitor/accounts/d/backups")
+    );
     assert!(!t.exists(".claude/.credentials.json"), "共享库里还留着凭据");
     assert!(!t.exists(".claude.json"), "$HOME/.claude.json 没迁走");
     for shared in ["skills", "projects", "settings.json", "CLAUDE.md"] {
@@ -281,7 +285,8 @@ fn init_moves_the_identity_links_the_rest_and_writes_the_manifest_and_alias() {
     );
     assert_eq!(accts[1]["mode"], "bare");
     assert!(
-        !t.read(".cc-monitor/accounts/accounts.json").contains("cred-d"),
+        !t.read(".cc-monitor/accounts/accounts.json")
+            .contains("cred-d"),
         "清单里漏了凭据"
     );
     let alias = t.read(".cc-monitor/aliases.sh");
@@ -368,10 +373,19 @@ fn add_imports_credentials_links_shared_items_and_updates_manifest_and_aliases()
         "源被动了"
     );
     assert_eq!(t.mode(".cc-monitor/accounts/x"), 0o700);
-    assert_eq!(t.link_of(".cc-monitor/accounts/x/skills"), t.s(".claude/skills"));
+    assert_eq!(
+        t.link_of(".cc-monitor/accounts/x/skills"),
+        t.s(".claude/skills")
+    );
     assert!(!t.is_link(".cc-monitor/accounts/x/stats-cache.json"));
-    assert_eq!(t.read(".cc-monitor/accounts/x/stats-cache.json"), "{\"tpl\":1}");
-    assert!(!t.exists(".cc-monitor/accounts/x/.claude.json"), "从别处种了身份");
+    assert_eq!(
+        t.read(".cc-monitor/accounts/x/stats-cache.json"),
+        "{\"tpl\":1}"
+    );
+    assert!(
+        !t.exists(".cc-monitor/accounts/x/.claude.json"),
+        "从别处种了身份"
+    );
     let m = t.manifest();
     let names: Vec<&str> = m["accounts"]
         .as_array()
@@ -391,7 +405,10 @@ fn add_imports_credentials_links_shared_items_and_updates_manifest_and_aliases()
     assert_eq!(got["aliases"]["names"], json!(["zetacc", "xcc"]));
 
     // 两个号的身份互不覆盖：各写各的。
-    t.write(".cc-monitor/accounts/d/.credentials.json", "{\"fake\":\"d2\"}");
+    t.write(
+        ".cc-monitor/accounts/d/.credentials.json",
+        "{\"fake\":\"d2\"}",
+    );
     assert_eq!(
         t.read(".cc-monitor/accounts/x/.credentials.json"),
         "{\"fake\":\"cred-x\"}"
@@ -536,7 +553,9 @@ fn api_key_account_lands_its_key_in_the_apikey_table_not_in_the_manifest() {
         ]
     );
     assert_eq!(t.manifest()["accounts"][1]["authKind"], "api-key");
-    assert!(!t.read(".cc-monitor/accounts/accounts.json").contains("sk-secret"));
+    assert!(!t
+        .read(".cc-monitor/accounts/accounts.json")
+        .contains("sk-secret"));
     assert!(!got.to_string().contains("sk-secret"));
     // 核对不因 API 号没有订阅凭据而提示「没登录」：它那几条里一条提示都没有。
     let v = verify(&t);
@@ -779,7 +798,11 @@ fn verify_fails_on_each_broken_invariant() {
             |t| t.chmod(".cc-monitor/accounts/x/.credentials.json", 0o644),
             "644",
         ),
-        ("dir-mode", |t| t.chmod(".cc-monitor/accounts/x", 0o755), "755"),
+        (
+            "dir-mode",
+            |t| t.chmod(".cc-monitor/accounts/x", 0o755),
+            "755",
+        ),
         (
             "missing",
             |t| std::fs::remove_file(t.p(".cc-monitor/accounts/x/CLAUDE.md")).unwrap(),
@@ -845,7 +868,11 @@ fn repair_restores_every_invariant_and_is_idempotent() {
     std::fs::remove_file(t.p(".cc-monitor/accounts/x/skills")).unwrap();
     std::os::unix::fs::symlink(t.p("elsewhere"), t.p(".cc-monitor/accounts/x/skills")).unwrap();
     t.write(".claude/newdir/a", "a");
-    std::os::unix::fs::symlink(t.p(".claude/retired"), t.p(".cc-monitor/accounts/d/retired")).unwrap();
+    std::os::unix::fs::symlink(
+        t.p(".claude/retired"),
+        t.p(".cc-monitor/accounts/d/retired"),
+    )
+    .unwrap();
     t.chmod(".cc-monitor/accounts/x", 0o755);
     t.chmod(".cc-monitor/accounts/x/.credentials.json", 0o644);
     t.write(
@@ -860,7 +887,10 @@ fn repair_restores_every_invariant_and_is_idempotent() {
         t.link_of(".cc-monitor/accounts/x/CLAUDE.md"),
         t.s(".claude/CLAUDE.md")
     );
-    assert_eq!(t.link_of(".cc-monitor/accounts/x/skills"), t.s(".claude/skills"));
+    assert_eq!(
+        t.link_of(".cc-monitor/accounts/x/skills"),
+        t.s(".claude/skills")
+    );
     for a in ["d", "x"] {
         assert_eq!(
             t.link_of(&format!(".cc-monitor/accounts/{a}/newdir")),
@@ -896,7 +926,10 @@ fn repair_privatises_a_linked_identity_item_instead_of_deleting_it() {
     .unwrap();
     ok(&t, "accounts-repair", json!({}));
     assert!(!t.is_link(".cc-monitor/accounts/x/stats-cache.json"));
-    assert_eq!(t.read(".cc-monitor/accounts/x/stats-cache.json"), "{\"s\":1}");
+    assert_eq!(
+        t.read(".cc-monitor/accounts/x/stats-cache.json"),
+        "{\"s\":1}"
+    );
     assert_eq!(t.read(".claude/stats-cache.json"), "{\"s\":1}");
     t.write(".cc-monitor/accounts/x/stats-cache.json", "{\"mine\":1}");
     assert_eq!(
@@ -917,7 +950,10 @@ fn isolate_makes_a_private_copy_per_account() {
         "accounts-isolate",
         json!({ "item": "settings.json", "dryRun": true }),
     );
-    assert!(t.is_link(".cc-monitor/accounts/d/settings.json"), "预演动了盘");
+    assert!(
+        t.is_link(".cc-monitor/accounts/d/settings.json"),
+        "预演动了盘"
+    );
     assert!(!dry["notes"].as_array().unwrap().is_empty());
     ok(&t, "accounts-isolate", json!({ "item": "settings.json" }));
     for a in ["d", "x"] {
@@ -926,7 +962,10 @@ fn isolate_makes_a_private_copy_per_account() {
         assert_eq!(t.read(&rel), "{\"theme\":\"dark\"}");
     }
     assert_eq!(t.read(".claude/settings.json"), "{\"theme\":\"dark\"}");
-    t.write(".cc-monitor/accounts/d/settings.json", "{\"theme\":\"zzz\"}");
+    t.write(
+        ".cc-monitor/accounts/d/settings.json",
+        "{\"theme\":\"zzz\"}",
+    );
     assert_eq!(
         t.read(".cc-monitor/accounts/x/settings.json"),
         "{\"theme\":\"dark\"}"
@@ -1070,7 +1109,11 @@ fn an_existing_manifest_keeps_what_it_does_not_understand() {
         .as_array_mut()
         .unwrap()
         .insert(1, json!({ "name": "weird", "configDir": "relative/dir" }));
-    std::fs::write(t.p(".cc-monitor/accounts/accounts.json"), format!("\u{feff}{v}")).unwrap();
+    std::fs::write(
+        t.p(".cc-monitor/accounts/accounts.json"),
+        format!("\u{feff}{v}"),
+    )
+    .unwrap();
     ok(
         &t,
         "accounts-add",

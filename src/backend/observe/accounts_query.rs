@@ -69,8 +69,8 @@ use acct_core::{
     auth_kind_from_manifest, auth_kind_with_apikey_table, auth_ready, CREDENTIALS_NAME,
     SUPPORTED_SCHEMA,
 };
-use relay_route_core::{ACCOUNTS_DIR_REL, ACCOUNTS_MANIFEST_NAME};
 use copy_core::copy_text;
+use relay_route_core::{ACCOUNTS_DIR_REL, ACCOUNTS_MANIFEST_NAME};
 use std::path::{Path, PathBuf};
 
 /// manifest 读取上限。账号数有限，几 MB 足矣，此处宽松给 8MB 兜底。

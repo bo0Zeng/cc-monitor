@@ -48,12 +48,7 @@ pub(crate) struct Manifest {
 }
 
 /// 顶层本模块认得（每次写都重算或原样处置）的键。
-const TOP_KEYS: &[&str] = &[
-    "version",
-    "updatedAt",
-    "sharedStore",
-    "accounts",
-];
+const TOP_KEYS: &[&str] = &["version", "updatedAt", "sharedStore", "accounts"];
 /// 每个号上本模块认得的键。`mode` 每次写都按配置目录重算。
 const ACCOUNT_KEYS: &[&str] = &[
     "name",
@@ -121,12 +116,7 @@ impl Manifest {
     }
 
     /// 写回去的全文。`zero_email` = 账号 0 此刻的登录邮箱（`$HOME/.claude.json` 里读的；没有就空串）。
-    pub(crate) fn render(
-        &self,
-        shared_store: &str,
-        zero_email: &str,
-        updated_at: &str,
-    ) -> String {
+    pub(crate) fn render(&self, shared_store: &str, zero_email: &str, updated_at: &str) -> String {
         let mut top: Vec<(String, Value)> = vec![
             ("version".into(), Value::from(acct_core::SUPPORTED_SCHEMA)),
             ("updatedAt".into(), Value::from(updated_at)),
