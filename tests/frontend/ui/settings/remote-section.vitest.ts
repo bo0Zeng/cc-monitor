@@ -343,7 +343,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
   function fakePages() {
     const added: { id: string; title: string; element: HTMLElement }[] = [];
     const addedParts: (
-      | { connection: HTMLElement; components: HTMLElement; tools: HTMLElement }
+      | { connection: HTMLElement; components: HTMLElement; terminal: HTMLElement }
       | undefined
     )[] = [];
     const removed: string[] = [];
@@ -358,7 +358,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
           id: string,
           title: string,
           element: HTMLElement,
-          parts?: { connection: HTMLElement; components: HTMLElement; tools: HTMLElement },
+          parts?: { connection: HTMLElement; components: HTMLElement; terminal: HTMLElement },
         ) => {
           added.push({ id, title, element });
           addedParts.push(parts);
@@ -924,22 +924,22 @@ describe("S1 RemoteSection：保存走局部合并", () => {
       [...el.querySelectorAll<HTMLButtonElement>("button")]
         .filter((b) => !b.closest("details"))
         .map((b) => b.textContent ?? "");
-    // 〔ST2 · 协调方转主会话裁〕别名统一放「工具」栏：远端那一块与本机「工具 → 别名」同一个位置。
+    // 别名放「终端」栏：远端那一块与本机「终端 → 别名」同一个位置。
     expect(labels(got.components)).toEqual(["部署后端", "卸载后端"]);
     // 〔AL2 · 第四波 4D〕② 别名是与本机同一个组件（`buildAliasManager`，`data-origin` = 这台）；装 / 卸在组件里，
     //   卸那一颗按 V134 叫「卸载 ccm」（V80 原裁）。组件是 `<details>`，栏上裸露的按钮一颗都不剩。
-    expect(labels(got.tools)).toEqual([]);
-    const mgr = got.tools.querySelector<HTMLElement>(".machine-aliases");
+    expect(labels(got.terminal)).toEqual([]);
+    const mgr = got.terminal.querySelector<HTMLElement>(".machine-aliases");
     expect(mgr?.dataset.origin).toBe("a");
     expect([...mgr!.querySelectorAll("button")].map((b) => b.textContent)).toContain("卸载 ccm");
-    expect(got.tools.textContent).toContain("别名");
+    expect(got.terminal.textContent).toContain("别名");
     expect(labels(got.connection).filter((t) => t !== "重置主机指纹")).toEqual([
       "测试连接",
       "推送公钥",
       "文件",
       "开新 Claude",
     ]);
-    for (const part of [got.connection, got.components, got.tools]) {
+    for (const part of [got.connection, got.components, got.terminal]) {
       const txt = [part.textContent ?? "", ...[...part.querySelectorAll("[title]")].map((e) => e.getAttribute("title") ?? "")].join("\n");
       expect(txt).not.toMatch(/ccm (助手|启动器)/);
     }
