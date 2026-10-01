@@ -40,7 +40,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { productionTsFiles } from "../../test-support/production-sources.ts";
+import { productionTsFiles, SCAN_TIMEOUT_MS } from "../../test-support/production-sources.ts";
 import { REPO_ROOT } from "../../test-support/repo-root.ts";
 
 // ─────────────────────────────── L1 ───────────────────────────────
@@ -261,5 +261,5 @@ describe("〔STC〕L2 · 会话事实字段只有登记的写者（记账员换�
       FACT_WRITERS.map(([f, o]) => `${f} :: ${o}`).sort(),
     );
     for (const [f, o, why] of FACT_WRITERS) expect(why.trim().length, `${f} :: ${o} 没写理由`).toBeGreaterThan(0);
-  });
+  }, SCAN_TIMEOUT_MS);
 });
