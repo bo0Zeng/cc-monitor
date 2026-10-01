@@ -5,7 +5,8 @@
 //! 在来源那台就换成空位（`null`），交出去的只有键名与一个记号；被写那台补空位时只取用户在确认卡上填的、或它自己那一条原有的值，
 //! 两样都没有 ⇒ 拒（`needs_input`），不拿骨架凑。
 //! 🔴 写**不重读重算**：用户确认的是他看到的那一份；被写那台在他看过之后变了 ⇒ `stale` 就停。
-//! 用户级 MCP 住 agent 自己的热状态文件 ⇒ 只当来源读，这里不往它里面写。
+//! 用户级 MCP：这台有账号库 ⇒ 写进各账号共用的那一份、同步到所有号（`accounts::manage::mcp_share_exec::put`）；
+//! 没有 ⇒ 它住 agent 自己的热状态文件，只当来源读，这里不往它里面写。
 
 use super::door::{self, Door, Refused};
 use super::ext::ExtLoc;
@@ -119,13 +120,13 @@ fn def_arg(args: &Value) -> Result<Value, (&'static str, String)> {
 type Target = (String, door::Peeked, Map<String, Value>);
 
 fn target_of(d: &dyn Door, at: &ExtLoc) -> Result<Target, (&'static str, String)> {
-    let dir = crate::assets::ext::mcp_dir(at)?;
-    let tgt = door::peek(d, dir, MCP_JSON).map_err(|m| ("refused", m))?;
+    let (root, rel) = crate::assets::ext::mcp_file(d, at)?;
+    let tgt = door::peek(d, &root, &rel).map_err(|m| ("refused", m))?;
     let servers = servers_of(
         tgt.text.as_deref(),
         &copy_text("beMcpSync.answerWith.targetSide", &[]),
     )?;
-    Ok((dir.to_string(), tgt, servers))
+    Ok((root, tgt, servers))
 }
 
 fn has_value(existing: Option<&Value>, field: &str, key: &str) -> Option<String> {
@@ -209,9 +210,18 @@ pub(crate) fn answer_apply(d: &dyn Door, record: Record, args: &Value) -> Answer
         ))?;
         full[field.as_str()][key.as_str()] = Value::String(value);
     }
-    let at_path = door::join_under(&root, MCP_JSON);
+    let at_path = match at {
+        ExtLoc::User => tgt.path.clone(),
+        ExtLoc::Project { .. } => door::join_under(&root, MCP_JSON),
+    };
     if existing == Some(&full) {
         return Ok(json!({ "path": at_path, "written": false, "recordFailed": null }));
+    }
+    if at == ExtLoc::User {
+        // 全局 = 这台各账号共用的那一份：写进它、同步到所有号（不记装记录：从全局删只有一条路，各账号一起撤）。
+        let view = crate::accounts::manage::mcp_share_exec::put(d, name, &full)?;
+        let note = (!view.notes.is_empty()).then(|| view.notes.join(" "));
+        return Ok(json!({ "path": at_path, "written": true, "recordFailed": note }));
     }
     let next = plan_project_mcp(&at_path, tgt.text.as_deref(), &mut |v: &mut Value| {
         upsert_mcp_server_value(v, name.to_string(), full.clone())?;

@@ -53,7 +53,8 @@ const listWith = (there: unknown, extra: ReturnType<typeof row>[] = []) => ({
 });
 const card = { kind: "skill", name: "demo", path: "/g/.claude/skills/demo", writes: ["SKILL.md"], unchanged: false, suspects: [], stop: null, config: null, slots: [], tokens: { source: "s", target: "t" } };
 const synced = { self: "h", synced: [], reach: [{ origin: "laptop", machine: "g" }] };
-const diag = (snippet: string | null) => ({
+const diag = (snippet: string | null, supported = true) => ({
+  supported,
   diagnosis: { session_start: { kind: "not-installed" }, stop: { kind: "installed-at-path", command: "x", path: "$HOME/.claude/skills/cc-bus/scripts/cc-bus-stop-hook" }, note: "" },
   snippet,
   source: "/h/.claude/settings.json",
@@ -290,6 +291,20 @@ describe("备注 · cc-bus 那一行", () => {
     expect(lines[0].querySelector(".paste-block-target")?.textContent).toContain("/h/.claude/settings.json");
     expect(lines[1].querySelector(".paste-block-out")).toBeNull();
     expect(lines[1].querySelector(".ext-hook-install-first")?.textContent).toBe(copyText("extPage.hooks.installFirst"));
+  });
+
+  it("cc-bus：跑不了它的那台（没有 tmux）⇒ 那一行只说这台不支持自动收信，不列钩子态、不给内容", async () => {
+    const list = listWith(demoMissing, [ccBus([here, demoMissing])]);
+    backend([list], undefined, (o) => diag(o === "laptop" ? null : '{"hooks":{}}', o !== "laptop"));
+    const s = new ExtSection();
+    document.body.replaceChildren(s.element);
+    s.loadNow();
+    await settle();
+    open(s, "skill/cc-bus");
+    await settle();
+    const laptop = [...s.element.querySelectorAll(".ext-hooks .ext-hook")][1];
+    expect(laptop.querySelector(".ext-hook-unsupported")?.textContent).toBe(copyText("extPage.hooks.unsupported"));
+    expect(laptop.querySelectorAll(".ext-hook-state, .paste-block-out")).toHaveLength(0);
   });
 
   it("cc-bus 装到本机之后：顺手问一次本机的命令够不够新，不够就在那一句后面说", async () => {

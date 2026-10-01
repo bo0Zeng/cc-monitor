@@ -4,7 +4,7 @@
 //! 交被写那台判与写（被写那台照旧自己判 CAS、`stale` 就停）。种类在这里分派到原来那两条内层路：
 //! skill = `skill-read` → `skill-install-plan` / `skill-install-apply`；MCP = `mcp-sync-source` → `mcp-sync-preview` / `mcp-sync-apply`；
 //! cc-monitor 自带的那一个（cc-bus）不从别的机器拿：被写那台用它自己二进制里那一份（`cc-bus-install-state` / `cc-bus-install`）。
-//! 落点先过 `ext::target_refused`（用户级 MCP 只读 · 自带的只装全局），不行就拒、一跳都不发。
+//! 落点先过 `ext::builtin_refused`（自带的只装全局），不行就拒、一跳都不发；用户级 MCP 能不能写由被写那台自己判（有账号库 ⇒ 写进各账号共用的那一份）。
 //! 本机那一跳就是「不走 ssh 的远端」—— 同一条内层命令，本机经 [`Here`]（本进程 `REGISTRY` 的 `run`），远端经
 //! `remote_ask`（池里那条 SSH 上多开一个 capture，跑那台 CLI 面的同名子命令）。
 //!
@@ -34,7 +34,7 @@ use serde_json::{json, Value};
 use std::sync::Arc;
 
 use super::ext::{
-    is_builtin, same_place, target_refused, token_of, ExtCard, ExtDone, ExtKind, ExtLoc, ExtSlot,
+    builtin_refused, is_builtin, same_place, token_of, ExtCard, ExtDone, ExtKind, ExtLoc, ExtSlot,
     ExtTokens,
 };
 use crate::stream::remote_ask::{Remote, Table};
@@ -152,7 +152,7 @@ fn ask_of(args: &Value) -> Result<Ask<'_>, (String, String)> {
     let (from, to) = (machine_of(args, "from")?, machine_of(args, "to")?);
     let name = str_arg(args, "name")?;
     let (at_from, at_to) = scope_of(args)?;
-    if let Some(why) = target_refused(kind, name, &at_to) {
+    if let Some(why) = builtin_refused(kind, name, &at_to) {
         return Err(("refused".to_string(), why));
     }
     if !is_builtin(kind, name) && same_place(from.as_deref(), &at_from, to.as_deref(), &at_to) {
@@ -320,18 +320,24 @@ fn mcp_card(a: &Ask<'_>, src: &Value, pre: &Value) -> ExtCard {
         })
         .collect();
     let path = pre["path"].as_str().unwrap_or_default().to_string();
+    let mut suspects: Vec<String> = pre["suspects"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .map(|s| super::ext::suspect_said(s, &to))
+        .collect();
+    if a.at_to == ExtLoc::User {
+        // 全局 = 这台各账号共用的那一份：卡上说清删除只有一条路、什么时候用上。
+        suspects.push(copy_text("beExt.card.sharedDeleteHere", &[]));
+        suspects.push(copy_text("beExt.card.sharedNewSessions", &[]));
+    }
     ExtCard {
         kind: ExtKind::Mcp,
         name: a.name.to_string(),
         unchanged: pre["state"] == "same" && slots.is_empty(),
         writes: vec![path.clone()],
         path,
-        suspects: pre["suspects"]
-            .as_array()
-            .into_iter()
-            .flatten()
-            .map(|s| super::ext::suspect_said(s, &to))
-            .collect(),
+        suspects,
         stop: None,
         config: serde_json::to_string_pretty(&json!({ a.name: pre["def"] })).ok(),
         slots,

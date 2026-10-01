@@ -17,8 +17,9 @@ export type HookState =
   | { kind: "path-missing"; command: string; path: string }
   | { kind: "unknown"; command: string };
 export type HooksDiagnosis = { session_start: HookState; stop: HookState; note: string };
-/** `snippet` = 要合并进那份文件的内容（两条钩子直接指向那台装好的 cc-bus 里的脚本）；那台的 cc-bus 没装 ⇒ `null`。 */
-export type HooksReport = { diagnosis: HooksDiagnosis; snippet: string | null; source: string };
+/** `supported` = 那台跑得了 cc-bus（要 tmux）；`snippet` = 要合并进那份文件的内容（两条钩子直接指向那台装好的 cc-bus 里的脚本）；
+ *  那台的 cc-bus 没装 / 跑不了 ⇒ `null`。 */
+export type HooksReport = { supported: boolean; diagnosis: HooksDiagnosis; snippet: string | null; source: string };
 
 /** 读一份 `settings.json` ＋ 几次 stat ＋ 回程。 */
 const HOOKS_DIAG_BUDGET_MS = 30_000;
@@ -58,9 +59,11 @@ export function decodeHooksReport(v: unknown): HooksReport {
         return bad(`${what}.kind is ${JSON.stringify(kind)}`);
     }
   };
-  const top = obj(v, "reply", ["diagnosis", "snippet", "source"]);
+  const top = obj(v, "reply", ["supported", "diagnosis", "snippet", "source"]);
+  if (typeof top.supported !== "boolean") return bad("supported is not a boolean");
   const d = obj(top.diagnosis, "diagnosis", ["session_start", "stop", "note"]);
   return {
+    supported: top.supported,
     diagnosis: {
       session_start: state(d.session_start, "session_start"),
       stop: state(d.stop, "stop"),

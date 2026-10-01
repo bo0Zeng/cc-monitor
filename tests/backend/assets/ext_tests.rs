@@ -2,10 +2,10 @@
 //! 装 / 卸跨两台走同一对枢纽命令，装到哪由用户选（skill：全局 / 项目；MCP：只项目，全局由后端拒），看过之后源变了 ⇒ `stale`、目标零写；
 //! 卸：cc-monitor 装的按装记录撤，不是的先备份再删；备注随目录同步到别的后端；cc-bus 是自带的一行，装它用被写那台二进制里那一份。
 use super::*;
+use crate::assets::aliases::tests::HomeDoor;
 use crate::assets::asset_catalog::{Scanned, Snapshot, Visits};
 use crate::assets::hub::{ext_apply, ext_preview, Here};
 use crate::assets::mcp_sync::{Facts, There};
-use crate::stream::inbound::LocalFiles;
 use crate::stream::remote_ask::{register, Remote, Said, Table};
 use std::future::Future;
 use std::pin::Pin;
@@ -49,6 +49,7 @@ fn snap(label: &str, assets: Vec<Asset>, projects: &[&str]) -> Snapshot {
         assets,
         project_dirs: projects.iter().map(|p| p.to_string()).collect(),
         notes: BTreeMap::new(),
+        shared_mcp: false,
     }
 }
 
@@ -281,9 +282,11 @@ fn a_skill_and_an_mcp_with_the_same_name_are_listed_as_two_rows() {
         ),
     );
     let list = table(&cat, &[]);
+    let same = format!("note:{}", copy_text("beExt.card.sameMachine", &[]));
     let got: Vec<(Value, String, Vec<String>)> = list
         .rows
         .iter()
+        .filter(|r| r.builtin.is_none())
         .map(|r| {
             (
                 serde_json::to_value(r.kind).unwrap(),
@@ -298,12 +301,12 @@ fn a_skill_and_an_mcp_with_the_same_name_are_listed_as_two_rows() {
             (
                 json!("mcp"),
                 "code-picture".to_string(),
-                vec!["project:uninstall@/h/p".to_string()]
+                vec![format!("project:user=missing,/h/p=same+卸 {same}")]
             ),
             (
                 json!("skill"),
                 "code-picture".to_string(),
-                vec!["same:uninstall@user".to_string()]
+                vec!["same:user=same+卸 bring<here@user>@/h/p [user✗ /h/p]".to_string()]
             ),
         ]
     );
@@ -338,6 +341,10 @@ fn machine(base: &Path, tag: &'static str) -> M {
 }
 
 impl M {
+    /// 这台的门：家目录是这台的临时家（不碰真机）。
+    fn door(&self) -> HomeDoor {
+        HomeDoor(self.env.home.clone().unwrap())
+    }
     fn projects(&self) -> Vec<String> {
         vec![self.proj.display().to_string()]
     }
@@ -348,10 +355,12 @@ impl M {
             &self.projects(),
         );
         let (assets, problems) = asset_catalog::assets_from(&[s]);
+        let home = self.env.home.clone().unwrap().display().to_string();
         Scanned {
             assets,
             projects: self.projects(),
             problems,
+            shared_mcp: crate::accounts::manage::mcp_share_exec::store_file_in(&home).is_some(),
         }
     }
     fn refresh(&self, incoming: Option<BTreeMap<String, Snapshot>>) -> Catalog {
@@ -374,26 +383,26 @@ impl M {
                 super::super::skill_install::answer_plan_with(&NoFacts, Some(&root), args)
             }
             "skill-install-apply" => super::super::skill_flow::answer_install(
-                &LocalFiles,
+                &self.door(),
                 &NoFacts,
                 Some(&root),
                 &record,
                 args,
             ),
             "mcp-sync-source" => super::super::mcp_sync_flow::answer_source(
-                &LocalFiles,
+                &self.door(),
                 self.env.user_mcp.as_deref(),
                 args,
             ),
             "mcp-sync-preview" => {
-                super::super::mcp_sync_flow::answer_preview(&LocalFiles, &NoFacts, args)
+                super::super::mcp_sync_flow::answer_preview(&self.door(), &NoFacts, args)
             }
             "mcp-sync-apply" => {
-                super::super::mcp_sync_flow::answer_apply(&LocalFiles, &record, args)
+                super::super::mcp_sync_flow::answer_apply(&self.door(), &record, args)
             }
             "cc-bus-install-state" => Ok(super::super::cc_bus_install::state_at(&skills)),
             "cc-bus-install" => {
-                super::super::cc_bus_install::install_at(&LocalFiles, &skills, &record)
+                super::super::cc_bus_install::install_at(&self.door(), &skills, &record)
             }
             other => Err(("unknown_command", other.to_string())),
         };
@@ -454,9 +463,16 @@ struct Two {
 }
 
 fn two(tag: &str) -> (PathBuf, Two) {
+    two_with(tag, |_| {})
+}
+
+/// 同 [`two`]，被写的那台（b）在包成 `Arc` 之前先交 `prep` 改一改（比如给它建账号库）。
+fn two_with(tag: &str, prep: impl FnOnce(&mut M)) -> (PathBuf, Two) {
     let base = temp(tag);
     let a = Arc::new(machine(&base, "a"));
-    let b = Arc::new(machine(&base, "b"));
+    let mut b = machine(&base, "b");
+    prep(&mut b);
+    let b = Arc::new(b);
     let reach: Table = Mutex::new(BTreeMap::new());
     register(
         &reach,
@@ -579,7 +595,7 @@ async fn a_skill_goes_to_the_other_machine_and_comes_back_off() {
 
     // 卸在被卸那台上判、写（界面直问那台）：装记录里有 ⇒ 只撤装时写的。
     let u = json!({ "kind": "skill", "name": "demo", "at": at });
-    let card = answer_uninstall_preview(&LocalFiles, &t.b.env, &u).expect("卸之前那张卡");
+    let card = answer_uninstall_preview(&t.b.door(), &t.b.env, &u).expect("卸之前那张卡");
     assert_eq!(card["recorded"], true);
     assert_eq!(card["files"], json!(["SKILL.md", "lib/x.txt"]));
     let mut ua = u.clone();
@@ -587,7 +603,7 @@ async fn a_skill_goes_to_the_other_machine_and_comes_back_off() {
     let ledger = t.b.env.ledger.clone().unwrap();
     let skills = t.b.env.skills.clone().unwrap();
     let record = |a: &Value| super::super::skill_ledger::record_at(&ledger, Some(&skills), a);
-    answer_uninstall_apply(&LocalFiles, &t.b.env, &record, &ua).expect("卸不掉");
+    answer_uninstall_apply(&t.b.door(), &t.b.env, &record, &ua).expect("卸不掉");
     assert!(!dst.exists(), "装时建的目录没收掉");
 
     let list = t.list();
@@ -654,7 +670,7 @@ async fn an_mcp_entry_goes_over_without_its_secret_and_comes_back_off() {
     assert_eq!(there.state, ExtState::Project, "装进项目之后那一格是 ◎");
     let at = removable(&there);
     let u = json!({ "kind": "mcp", "name": "m", "at": at });
-    let card = answer_uninstall_preview(&LocalFiles, &t.b.env, &u).unwrap();
+    let card = answer_uninstall_preview(&t.b.door(), &t.b.env, &u).unwrap();
     assert_eq!(
         (card["recorded"].clone(), card["backup"].clone()),
         (json!(true), Value::Null)
@@ -664,7 +680,7 @@ async fn an_mcp_entry_goes_over_without_its_secret_and_comes_back_off() {
     let ledger = t.b.env.ledger.clone().unwrap();
     let skills = t.b.env.skills.clone().unwrap();
     let record = |a: &Value| super::super::skill_ledger::record_at(&ledger, Some(&skills), a);
-    answer_uninstall_apply(&LocalFiles, &t.b.env, &record, &ua).expect("卸不掉");
+    answer_uninstall_apply(&t.b.door(), &t.b.env, &record, &ua).expect("卸不掉");
     let list = t.list();
     assert_eq!(t.cell(&list, "m", 1).state, ExtState::Missing);
     assert!(
@@ -771,10 +787,141 @@ async fn the_hub_refuses_a_target_the_table_greys_out() {
             .expect_err("不可选的那一处也给装了");
         assert_eq!(code, "refused");
     }
+    assert!(
+        !t.remote
+            .1
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|c| c == "mcp-sync-apply" || c.starts_with("cc-bus-install")),
+        "拒了还叫那台去写 / 去看 cc-bus"
+    );
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// 在这台的临时家目录里经账号库那几条帧命令建库（z）、加一个号（b）；之后它的用户级 MCP 就是各账号共用的那一份。
+/// 夹具只造结构：登录状态是写死的假邮箱。
+#[cfg(unix)]
+fn make_library(m: &mut M) {
+    use crate::accounts::upstream_select::file_face;
+    use crate::faces::accounts_face::{answer, KeyDoor};
+    let home = m.env.home.clone().unwrap();
+    let w = |rel: &str, body: &str| {
+        let p = home.join(rel);
+        std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+        std::fs::write(p, body).unwrap();
+    };
+    w(".claude/.credentials.json", "{\"fake\":\"cred\"}");
+    w(".claude/settings.json", "{}");
+    w(
+        ".claude.json",
+        &json!({ "oauthAccount": { "emailAddress": "z@example.test" }, "mcpServers": {} })
+            .to_string(),
+    );
+    let table = home.join(".cc-monitor/apikey-credentials.json");
+    let set = |v: &Value| file_face::answer_set_at(&table, v);
+    let drop = |v: &Value| file_face::answer_drop_at(&table, v);
+    let restore = |v: &Value| file_face::answer_restore_at(&table, v);
+    let path = || Ok(table.clone());
+    let keys = KeyDoor {
+        set: &set,
+        drop: &drop,
+        restore: &restore,
+        path: &path,
+    };
+    let d = HomeDoor(home.clone());
+    let init = answer(&d, "accounts-init", &json!({ "name": "z" }), &keys).expect("建库");
+    assert_eq!(init["applied"], true, "{init}");
+    answer(
+        &d,
+        "accounts-add",
+        &json!({ "name": "b", "kind": "subscription" }),
+        &keys,
+    )
+    .expect("加号");
+    let store = crate::accounts::manage::mcp_share_exec::store_file_in(&home.display().to_string())
+        .expect("建了库却没有共用的那一份");
+    m.env.user_mcp = Some(PathBuf::from(store));
+}
+
+/// 各账号共用的那一份里此刻有哪几个名字（经帧命令那一侧读，异源于扩展页）。
+#[cfg(unix)]
+fn shared_names(m: &M) -> Vec<String> {
+    crate::accounts::manage::mcp_share_exec::read(&m.door())
+        .expect("读共用的那一份")
+        .servers
+}
+
+/// ★ 有账号库的那台：MCP「装到全局」能选；装 ⇒ 写进那台各账号共用的那一份（所有号都有）、卡上说清删除只有一条路与什么时候用上；
+/// 从全局卸 ⇒ 共用的那一份里没了。没有账号库的那台全局不可选由 `the_hub_refuses_a_target_the_table_greys_out` 钉。
+#[cfg(unix)]
+#[tokio::test]
+async fn an_mcp_entry_goes_global_into_the_shared_set_and_comes_back_off() {
+    let (base, t) = two_with("mcp-global", make_library);
+    std::fs::write(
+        t.a.proj.join(".mcp.json"),
+        json!({ "mcpServers": { "m": { "command": "srv", "env": { "KEY": "secret-A" } } } })
+            .to_string(),
+    )
+    .unwrap();
+    let list = t.list();
+    let row = list
+        .rows
+        .iter()
+        .find(|r| r.name == "m")
+        .expect("表里没有 m");
+    let there = row.cells[1].bring.clone().expect("有库的那台该有「装到…」");
     assert_eq!(
-        t.remote.1.lock().unwrap().clone(),
+        (there.targets[0].at.clone(), there.targets[0].ok),
+        (ExtLoc::User, true),
+        "有账号库的那台：全局可选"
+    );
+    let args = json!({ "kind": "mcp", "name": "m", "from": there.from, "to": "laptop",
+        "scope": { "from": there.scope.from, "to": { "level": "user" } } });
+    let card = ext_preview(&t.here, &args, &t.reach, &t.remote)
+        .await
+        .expect("看卡");
+    let suspects = card["suspects"].to_string();
+    for k in [
+        "beExt.card.sharedDeleteHere",
+        "beExt.card.sharedNewSessions",
+    ] {
+        assert!(
+            suspects.contains(&copy_text(k, &[])),
+            "卡上缺一句 {k}：{suspects}"
+        );
+    }
+    let mut apply = args.clone();
+    apply["tokens"] = card["tokens"].clone();
+    apply["fill"] = json!({ "env": { "KEY": "typed-B" } });
+    ext_apply(&t.here, &apply, &t.reach, &t.remote)
+        .await
+        .expect("装不到全局");
+    assert_eq!(
+        shared_names(&t.b),
+        vec!["m".to_string()],
+        "共用的那一份里没有它"
+    );
+    let cell = t.cell(&t.list(), "m", 1);
+    assert_eq!(cell.places[0].at, ExtLoc::User);
+    assert!(cell.places[0].uninstall, "全局那一处该能卸：{cell:?}");
+
+    let u = json!({ "kind": "mcp", "name": "m", "at": { "level": "user" } });
+    let ucard = answer_uninstall_preview(&t.b.door(), &t.b.env, &u).expect("卸之前那张卡");
+    assert_eq!(
+        ucard["said"],
+        copy_text("beExt.uninstall.mcpShared", &[("name", "m")])
+    );
+    let mut ua = u.clone();
+    ua["token"] = ucard["token"].clone();
+    let ledger = t.b.env.ledger.clone().unwrap();
+    let skills = t.b.env.skills.clone().unwrap();
+    let record = |a: &Value| super::super::skill_ledger::record_at(&ledger, Some(&skills), a);
+    answer_uninstall_apply(&t.b.door(), &t.b.env, &record, &ua).expect("从全局卸不掉");
+    assert_eq!(
+        shared_names(&t.b),
         Vec::<String>::new(),
-        "拒之前已经问过那台了"
+        "卸完共用的那一份里还有它"
     );
     let _ = std::fs::remove_dir_all(&base);
 }
@@ -957,7 +1104,7 @@ fn a_foreign_skill_or_mcp_entry_is_backed_up_before_it_goes() {
     std::fs::write(dir.join("SKILL.md"), "mine\n").unwrap();
     let record = |_: &Value| Ok(json!({}));
     let u = json!({ "kind": "skill", "name": "mine", "at": { "level": "user" } });
-    let card = answer_uninstall_preview(&LocalFiles, &m.env, &u).unwrap();
+    let card = answer_uninstall_preview(&m.door(), &m.env, &u).unwrap();
     assert_eq!(card["recorded"], false);
     assert!(
         card["backup"].as_str().unwrap().ends_with("backups"),
@@ -967,12 +1114,12 @@ fn a_foreign_skill_or_mcp_entry_is_backed_up_before_it_goes() {
     ua["token"] = card["token"].clone();
     std::fs::write(dir.join("SKILL.md"), "edited\n").unwrap();
     let (code, _) =
-        answer_uninstall_apply(&LocalFiles, &m.env, &record, &ua).expect_err("变了还删了");
+        answer_uninstall_apply(&m.door(), &m.env, &record, &ua).expect_err("变了还删了");
     assert_eq!(code, "stale");
     assert!(dir.join("SKILL.md").exists());
-    let card = answer_uninstall_preview(&LocalFiles, &m.env, &u).unwrap();
+    let card = answer_uninstall_preview(&m.door(), &m.env, &u).unwrap();
     ua["token"] = card["token"].clone();
-    let done = answer_uninstall_apply(&LocalFiles, &m.env, &record, &ua).expect("卸不掉");
+    let done = answer_uninstall_apply(&m.door(), &m.env, &record, &ua).expect("卸不掉");
     assert!(!dir.exists(), "没删");
     let backups = m
         .env
@@ -994,11 +1141,11 @@ fn a_foreign_skill_or_mcp_entry_is_backed_up_before_it_goes() {
     )
     .unwrap();
     let u = json!({ "kind": "mcp", "name": "x", "at": { "level": "project", "dir": m.proj.display().to_string() } });
-    let card = answer_uninstall_preview(&LocalFiles, &m.env, &u).unwrap();
+    let card = answer_uninstall_preview(&m.door(), &m.env, &u).unwrap();
     assert_eq!(card["recorded"], false);
     let mut ua = u.clone();
     ua["token"] = card["token"].clone();
-    let done = answer_uninstall_apply(&LocalFiles, &m.env, &record, &ua).expect("卸不掉");
+    let done = answer_uninstall_apply(&m.door(), &m.env, &record, &ua).expect("卸不掉");
     let after: Value =
         serde_json::from_str(&std::fs::read_to_string(m.proj.join(".mcp.json")).unwrap()).unwrap();
     assert_eq!(
@@ -1015,9 +1162,9 @@ fn a_foreign_skill_or_mcp_entry_is_backed_up_before_it_goes() {
         json!({ "command": "c" }),
         "MCP 那份原文没抄进备份"
     );
-    // 用户级 MCP：只读，卸也拒。
+    // 这台没建账号库：用户级 MCP 只读，卸也拒。
     let (code, _) = answer_uninstall_preview(
-        &LocalFiles,
+        &m.door(),
         &m.env,
         &json!({ "kind": "mcp", "name": "x", "at": { "level": "user" } }),
     )
@@ -1074,13 +1221,13 @@ async fn the_wire_matches_the_cross_language_golden() {
         .await
         .unwrap();
     let u = json!({ "kind": "skill", "name": "demo", "at": { "level": "user" } });
-    let ucard = answer_uninstall_preview(&LocalFiles, &t.b.env, &u).unwrap();
+    let ucard = answer_uninstall_preview(&t.b.door(), &t.b.env, &u).unwrap();
     let mut ua = u.clone();
     ua["token"] = ucard["token"].clone();
     let ledger = t.b.env.ledger.clone().unwrap();
     let skills = t.b.env.skills.clone().unwrap();
     let record = |a: &Value| super::super::skill_ledger::record_at(&ledger, Some(&skills), a);
-    let udone = answer_uninstall_apply(&LocalFiles, &t.b.env, &record, &ua).unwrap();
+    let udone = answer_uninstall_apply(&t.b.door(), &t.b.env, &record, &ua).unwrap();
     let got = json!({
         "list": serde_json::to_value(&list).unwrap(),
         "card": card,

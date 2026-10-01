@@ -39,6 +39,7 @@ describe("`hooks-diag` 成品按形状严格收", () => {
     expect(bad((g) => (at(g, "diagnosis").stop = { kind: "sixth-state" }))).toThrow(/shape mismatch/);
     expect(bad((g) => (at(at(g, "diagnosis"), "session_start").path = 1))).toThrow(/shape mismatch/);
     expect(bad((g) => (g.snippet = 0))).toThrow(/shape mismatch/);
+    expect(bad((g) => (g.supported = "yes"))).toThrow(/shape mismatch/);
     expect(decodeHooksReport({ ...golden, snippet: null }).snippet).toBeNull();
   });
 

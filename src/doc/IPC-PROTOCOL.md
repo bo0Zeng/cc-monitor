@@ -3004,8 +3004,8 @@ D 组「monitor 算好、后端写」按用户 09-27「一处后端」收进这�
 | `builtin` | ← | 自带的扩展才有：`{note, hooks}` —— 内置备注 · 要不要在抽屉里列各台的钩子状态（界面问那台 `hooks-diag`） |
 | `note` | ← | 用户写的备注（`ext-note-set`；随目录同步，各台里最新的那一条），没有 ⇒ `null` |
 | `cells[].state` | ← | 表上那个点，闭集 `same`（用户级有，且是持有人最多的那一版；打平时本机那一份优先；自带的 = 本机后端二进制里那一份）· `differs` · `missing` · `project`（用户级没有、只在项目里有） |
-| `cells[].places` | ← | 那台上的各处：全局一行在前（没有也列），再是每个装着它的项目，各 `{at, state, dir, uninstall, note}`：`state` 全局那一行 `same` / `differs` / `missing`、项目那几行 `same` / `differs`（与「这一版」比）；`uninstall` = 这一处有「卸载」；有它却不能卸 ⇒ `note` 说为什么（用户级 MCP 只读） |
-| `cells[].bring` | ← | 机器那一行的「装到…」：`{from, fromName, scope:{from, to}, targets}`（`from` 同枢纽的键；`scope.to` = 建议的那一处，与来源同级）；`targets` = 能选的各处 `{at, ok, note}`，全局一项 ＋ 那台每个开过会话的项目，不能选的 `ok: false` 带一句（用户级 MCP 只读 · 自带的只装全局 · 就是来源那一处）；没有 ⇒ `null`，`cells[].note` 说为什么（没连上 · 没有来源 · 那台没有项目） |
+| `cells[].places` | ← | 那台上的各处：全局一行在前（没有也列），再是每个装着它的项目，各 `{at, state, dir, uninstall, note}`：`state` 全局那一行 `same` / `differs` / `missing`、项目那几行 `same` / `differs`（与「这一版」比）；`uninstall` = 这一处有「卸载」；有它却不能卸 ⇒ `note` 说为什么（那台没建账号库时用户级 MCP 只读） |
+| `cells[].bring` | ← | 机器那一行的「装到…」：`{from, fromName, scope:{from, to}, targets}`（`from` 同枢纽的键；`scope.to` = 建议的那一处，与来源同级）；`targets` = 能选的各处 `{at, ok, note}`，全局一项 ＋ 那台每个开过会话的项目，不能选的 `ok: false` 带一句（那台没建账号库时用户级 MCP 只读 · 自带的只装全局 · 就是来源那一处）；那台有账号库 ⇒ MCP 的全局那一项可选（写进那台各账号共用的那一份、同步到所有号）；没有 ⇒ `null`，`cells[].note` 说为什么（没连上 · 没有来源 · 那台没有项目） |
 | `problems` | ← | 这台扫的时候读不出来的那几份 |
 
 错误码：`bad_args` · `catalog_unreadable` · `io_failed`。读本进程的可达表 ⇒ **只在帧面上**（没有 CLI 面）。
@@ -3049,7 +3049,7 @@ cc-monitor 自带的那一个（cc-bus）不从别的机器拿，交被写那台
 | `config` · `slots` | ← | MCP：装上之后那一条（待填的值是 `null`）· 每个空位 `{field, key, kept}` |
 | `tokens` | ← | 两头看过的那一份的记号 `{source, target}` —— 应用时原样交回 |
 
-`scope.to` 先过表上那一道（用户级 MCP 只读 · 自带的只装全局），不行 ⇒ `refused`、一跳都不发；同一台同一处 ⇒ `refused`。错误码：`bad_args` · `bad_file` · `missing` · `refused` · `unreachable`（可达表里没有那台）· `io_failed`；远端那一跳的码原样转回。**只在帧面上**。
+`scope.to` 先过「自带的只装全局」那一道，不行 ⇒ `refused`、一跳都不发；MCP 装到全局由被写那台自己判：它有账号库 ⇒ 写进各账号共用的那一份（卡上的 `suspects` 带「删除只在 cc-monitor 里做」「新开的会话才用上」两句），没有 ⇒ `refused`；同一台同一处 ⇒ `refused`。错误码：`bad_args` · `bad_file` · `missing` · `refused` · `unreachable`（可达表里没有那台）· `io_failed`；远端那一跳的码原样转回。**只在帧面上**。
 
 #### `ext-hub-apply`：装到一台，本机后端当枢纽（09-30，**写用户文件**）
 
@@ -3076,7 +3076,7 @@ skill 交 `skill-install-apply`（`take` = 卡上 `writes`，`differs` 的算用
 
 | 字段 | 向 | 说明 |
 |---|---|---|
-| `kind` · `name` · `at` | → | 种类 · 名字 · 在这台哪一级（用户级 MCP 只读 ⇒ `refused`） |
+| `kind` · `name` · `at` | → | 种类 · 名字 · 在这台哪一级（用户级 MCP：这台有账号库 ⇒ 从各账号共用的那一份里删、所有号一起撤；没有 ⇒ 只读、`refused`） |
 | `path` | ← | skill 目录 / MCP 配置文件 |
 | `recorded` | ← | 装记录里有（cc-monitor 装的）⇒ 只撤装时写进去的；没有 ⇒ 不是 cc-monitor 装的 |
 | `files` | ← | 要删的那几个（skill：相对路径；MCP：那一条） |
@@ -3101,6 +3101,7 @@ skill 交 `skill-install-apply`（`take` = 卡上 `writes`，`differs` 的算用
 
 cc-monitor 装的：skill 按装记录逐文件删（带逐字节 `expect`），收掉装时建出来、此刻已空的目录，从装记录摘掉；MCP 删那一条、摘记录。
 不是的：skill 目录整个挪进 `~/.cc-monitor/backups/<毫秒>-skill-<名>`（不在家目录底下 ⇒ 不删、说出来）；MCP 先把整份配置抄一份进去再删那一条。
+全局的 MCP（这台有账号库）：经账号库那一侧从共用的那一份里删、同步到所有号（各号改写前的原文由那一侧留备份），不记装记录。
 写都经本进程文件管理面。错误码：`bad_args` · `bad_file` · `bad_path` · `io_failed` · `ledger_unreadable` · `needs_consent` · `not_found` · `refused` · `stale`。⚠ **CLI 面也有它**（`--ext-uninstall-apply`）。
 
 #### `aliases-render`：清单 → 代码（MIG-3a，09-28，**纯**）
@@ -3425,7 +3426,7 @@ marker = `ccm-rbind-token-<令牌>`；marker 前缀与目录名是共享契约�
 
 ```text
 → {"id":"h1","cmd":"hooks-diag","args":{}}
-← {"kind":"reply","id":"h1","ok":true,"data":{"diagnosis":{"session_start":{"kind":"installed-via-path","command":"cc-register"},"stop":{"kind":"not-installed"},"note":""},"snippet":"{…}","source":"/home/u/.claude/settings.json"}}
+← {"kind":"reply","id":"h1","ok":true,"data":{"diagnosis":{"session_start":{"kind":"installed-via-path","command":"cc-register"},"stop":{"kind":"not-installed"},"note":""},"snippet":"{…}","source":"/home/u/.claude/settings.json","supported":true}}
 ```
 
 | 字段 | 向 | 说明 |
@@ -3434,6 +3435,7 @@ marker = `ccm-rbind-token-<令牌>`；marker 前缀与目录名是共享契约�
 | `session_start` / `stop` / `note` | ← | 见上一行 |
 | `kind` | ← | 一态：`not-installed` · `installed-via-path` · `installed-at-path` · `path-missing` · `unknown`；除第一态都带 `command`，两种显式路径态另带 `path` |
 | `command` / `path` | ← | 钩子原文（去首尾空白）· 它点名的路径（原样，`$HOME` 未展开） |
+| `supported` | ← | 这台跑得了 cc-bus（它要 tmux；这份后端编到的平台没有原生 tmux ⇒ `false`，`snippet` 恒 `null`，界面只说这台不支持自动收信） |
 | `snippet` | ← | 要合并进那份文件的内容：两条钩子直接指向这台 `<skills 根>/cc-bus/scripts/` 里那两个脚本（家目录底下写 `"$HOME/…"`，否则绝对路径），不依赖 `PATH`；那两个脚本不在（cc-bus 没装）⇒ `null` |
 | `source` | ← | 读的是哪份文件：这台后端的 agent 配置根下的 `settings.json` |
 

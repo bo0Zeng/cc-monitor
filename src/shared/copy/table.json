@@ -17379,7 +17379,7 @@
     },
     "beExt.note.userMcpReadOnly": {
       "kind": "body",
-      "zh": "全局的 MCP 由 Claude 自己管，这里只读。",
+      "zh": "这台没建账号库：全局的 MCP 由 Claude 自己管，这里只读。",
       "args": []
     },
     "extReads.backend.tooOld": {
@@ -18160,6 +18160,26 @@
     "beAcctFace.mcp.listSep": {
       "kind": "body",
       "zh": "、",
+      "args": []
+    },
+    "beExt.card.sharedDeleteHere": {
+      "kind": "body",
+      "zh": "装到全局 = 写进这台各账号共用的那一份、同步到所有号。删除只在 cc-monitor 里做：在某个号里删掉不算数，会被补回去。",
+      "args": []
+    },
+    "beExt.card.sharedNewSessions": {
+      "kind": "body",
+      "zh": "已经在跑的会话不会重读，新开的会话才用上。",
+      "args": []
+    },
+    "beExt.uninstall.mcpShared": {
+      "kind": "body",
+      "zh": "从这台所有号里删掉 {name}。删除只在 cc-monitor 里做；已经在跑的会话不受影响，新开的会话里就没有它了。",
+      "args": ["name"]
+    },
+    "extPage.hooks.unsupported": {
+      "kind": "body",
+      "zh": "这台不支持自动收信：cc-bus 要 tmux。",
       "args": []
     }
   }

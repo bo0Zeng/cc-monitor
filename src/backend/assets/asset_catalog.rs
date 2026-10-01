@@ -98,6 +98,13 @@ pub struct Snapshot {
     /// 用户在这台上写下的备注（[`entry_key`] → 那一条）。随整份一起同步；生效的是各台里 `rev` 最大的那一条（[`note_of`]）。
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub notes: BTreeMap<String, Note>,
+    /// 这台的用户级 MCP 是各账号共用的那一份（这台有账号库）⇒ 全局那一级能装、能卸；否则只读。随整份同步。
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub shared_mcp: bool,
+}
+
+fn is_false(b: &bool) -> bool {
+    !*b
 }
 
 /// 一条备注。`rev` 是写它那一刻这台目录里同一条目各台备注的最大 `rev` ＋ 1（不比墙钟）；`text` 空 = 清掉了。
@@ -135,6 +142,8 @@ pub struct Scanned {
     pub assets: Vec<Asset>,
     pub projects: Vec<String>,
     pub problems: Vec<String>,
+    /// 这台有账号库（用户级 MCP 是各账号共用的那一份）。
+    pub shared_mcp: bool,
 }
 
 /// 一个条目的键（种类 ＋ 名字）：「新见到」按它记，扩展页一行也按它分。
@@ -393,10 +402,16 @@ pub(crate) fn scan_here() -> Scanned {
         user_mcp.as_deref(),
     ));
     problems.extend(why);
+    let shared_mcp = crate::platform::paths::home_dir()
+        .and_then(|h| {
+            crate::accounts::manage::mcp_share_exec::store_file_in(&h.display().to_string())
+        })
+        .is_some();
     Scanned {
         assets,
         projects,
         problems,
+        shared_mcp,
     }
 }
 
@@ -428,10 +443,10 @@ pub fn refresh_self(
         }
     }
     let gen = cat.machines.get(&id).map_or(0, |s| s.gen) + 1;
-    let notes = cat
+    let (notes, shared_mcp) = cat
         .machines
         .get(&id)
-        .map(|s| s.notes.clone())
+        .map(|s| (s.notes.clone(), s.shared_mcp))
         .unwrap_or_default();
     cat.machines.insert(
         id,
@@ -442,9 +457,24 @@ pub fn refresh_self(
             assets,
             project_dirs: projects,
             notes,
+            shared_mcp,
         },
     );
     true
+}
+
+/// 这台有没有账号库记进自己那一格：变了才 `gen + 1`，回「变了没有」。自己那一格还没有 ⇒ 不记。
+pub fn mark_shared_mcp(cat: &mut Catalog, shared: bool, now: u64) -> bool {
+    let id = cat.self_id.clone();
+    match cat.machines.get_mut(&id) {
+        Some(me) if me.shared_mcp != shared => {
+            me.shared_mcp = shared;
+            me.gen += 1;
+            me.seen_at = now;
+            true
+        }
+        _ => false,
+    }
 }
 
 /// 一个条目现在生效的备注：各台里 `rev` 最大的那一条（打平按机器 id）；没有 / 清掉了 ⇒ `None`。
@@ -582,6 +612,7 @@ pub fn wire(cat: &Catalog, problems: &[String], changed: bool, path: Option<&Pat
                 "assets": s.assets,
                 "projectDirs": s.project_dirs,
                 "notes": s.notes,
+                "sharedMcp": s.shared_mcp,
             })
         })
         .collect();
@@ -654,6 +685,15 @@ pub fn machines_from_wire(v: &Value) -> Result<BTreeMap<String, Snapshot>, Strin
                 ))
             })?,
         };
+        let shared_mcp = match m.get("sharedMcp") {
+            None | Some(Value::Null) => false,
+            Some(Value::Bool(b)) => *b,
+            Some(_) => {
+                return Err(crate::common::contract::malformed(
+                    "a machine `sharedMcp` must be a boolean",
+                ))
+            }
+        };
         if let Some(a) = assets.iter().find(|a| !KINDS.contains(&a.kind.as_str())) {
             return Err(crate::common::contract::malformed(&format!(
                 "asset kind `{}` is not one of {KINDS:?}",
@@ -669,6 +709,7 @@ pub fn machines_from_wire(v: &Value) -> Result<BTreeMap<String, Snapshot>, Strin
                 assets,
                 project_dirs,
                 notes,
+                shared_mcp,
             },
         );
     }
@@ -897,8 +938,10 @@ fn update_core(
         assets,
         projects,
         problems,
+        shared_mcp,
     } = scanned;
     let mut changed = refresh_self(&mut cat, assets, projects, label, now);
+    changed |= mark_shared_mcp(&mut cat, shared_mcp, now);
     if let Some(inc) = incoming {
         changed |= merge(&mut cat, inc);
     }
