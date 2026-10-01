@@ -57,12 +57,16 @@ mkdir -p "$OLD/sessions" "$OLD/projects" "$NEW/sessions" "$NEW/projects" "$CWD_D
 ACCTS='{"available":true,"error":null,"meta":null,"accounts":[{"name":"bold","email":"","configDir":"'"$OLD"'","isDefault":false,"mode":"isolated","exists":true,"loggedIn":true,"authKind":"subscription","authReady":true},{"name":"znew","email":"","configDir":"'"$NEW"'","isDefault":true,"mode":"isolated","exists":true,"loggedIn":true,"authKind":"subscription","authReady":true}]}'
 export CCM_ACCOUNTS_JSON="$ACCTS"
 # 同两个号给 ccm 自己的账号库（`--account znew` 由那台的 ccm 按它解析）。
+case "$CCM_ACCTS_MANIFEST" in
+  "$CCM_SHIM_DIR"/*) ;;
+  *) echo "账号库 $CCM_ACCTS_MANIFEST 不在本趟沙箱里 —— 拒绝往里写" >&2; exit 9 ;;
+esac
 printf '{"accounts":[{"name":"bold","configDir":"%s"},{"name":"znew","configDir":"%s","isDefault":true}]}\n' "$OLD" "$NEW" >"$CCM_ACCTS_MANIFEST"
 
-# 中转：本趟自己的「中转口」（只是一个在听的回环口）＋ 一把假钥匙。pane 里那一趟 ccm 在最终 exec 那一处判注入，
-#   私有 tmux server 起来时带的 HOME 就是 pane 里的 HOME ⇒ 先用临时家目录把 server 起起来（钥匙不碰这台机器的真那一份）。
-RELAY_HOME="$WORK/home"; mkdir -p "$RELAY_HOME/.cc-monitor"
-python3 -c 'import secrets;print(secrets.token_hex(32))' >"$RELAY_HOME/.cc-monitor/relay-key"
+# 中转：本趟自己的「中转口」（只是一个在听的回环口）＋ 一把假钥匙，落在沙箱家目录里（ccm-shim.sh 已把 HOME 换成沙箱）。
+#   pane 里那一趟 ccm 在最终 exec 那一处判注入；私有 tmux server 带的 HOME 就是这一个。
+mkdir -p "$HOME/.cc-monitor"
+python3 -c 'import secrets;print(secrets.token_hex(32))' >"$HOME/.cc-monitor/relay-key"
 RELAY_PORT_FILE="$WORK/relay-port"
 python3 -c '
 import socket,sys
@@ -74,9 +78,6 @@ while True:
 RELAY_PID=$!
 for _ in $(seq 1 50); do [ -s "$RELAY_PORT_FILE" ] && break; sleep 0.1; done
 export CCM_RELAY_PORT="$(cat "$RELAY_PORT_FILE")"
-unset CCM_RELAY_ALL_SESSIONS ANTHROPIC_BASE_URL
-KEEP="e2e-keep-$$"
-HOME="$RELAY_HOME" tmux new-session -d -s "$KEEP"
 
 pass=0; fail=0
 ok()  { echo "  PASS $1"; pass=$((pass+1)); }
@@ -86,7 +87,6 @@ SESSIONS=()
 cleanup() {
   set +e
   [ -n "${RELAY_PID:-}" ] && kill "$RELAY_PID" 2>/dev/null
-  [ -n "${KEEP:-}" ] && tmux kill-session -t "=$KEEP:" 2>/dev/null
   for s in "${SESSIONS[@]:-}"; do [ -n "$s" ] && tmux kill-session -t "=$s:" 2>/dev/null; done
   for d in "$OLD" "$NEW"; do
     for pf in "$d"/sessions/*.json; do

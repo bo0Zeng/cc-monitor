@@ -12,6 +12,12 @@ set -eu
 # 安全默认:CLAUDE_CONFIG_DIR 未设时落到一次性测试目录,**绝不**默认写真 ~/.claude(测试
 # fixture 红线——tmux new-session 不传 env 的老坑曾污染真 ~/.claude)。
 CLAUDE_DIR="${CLAUDE_CONFIG_DIR:-/tmp/e2e-remote-claude}"
+# 它扮的就是 claude：账号目录由起它的那一方交（ccm 按账号设）。只许落在 /tmp 下 ——
+#   交来的若是开发机上的真账号目录（套件漏摘了继承来的那一格），宁可起不来也不往里写。
+case "$CLAUDE_DIR" in
+  /tmp/*) ;;
+  *) echo "fake-claude：账号目录 $CLAUDE_DIR 不在 /tmp 下 —— 拒绝写" >&2; exit 2 ;;
+esac
 SESS_DIR="$CLAUDE_DIR/sessions"
 
 # sid:CCM_FAKE_SID 环境 > 首个非 flag 参数 > 随机 UUID
