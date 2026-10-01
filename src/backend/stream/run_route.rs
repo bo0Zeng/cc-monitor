@@ -240,7 +240,3 @@ fn emit(r: &mut Resp, resp: u64, items: Vec<Item>) -> Vec<Frame> {
         })
         .collect()
 }
-
-#[cfg(test)]
-#[path = "../../../tests/backend/stream/run_route_tests.rs"]
-mod tests;

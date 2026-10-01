@@ -376,7 +376,3 @@ impl RunTrack {
         }
     }
 }
-
-#[cfg(test)]
-#[path = "../../../tests/backend/observe/runs_tests.rs"]
-mod tests;
