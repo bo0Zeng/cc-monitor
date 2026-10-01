@@ -16,12 +16,8 @@ fn acct(name: &str, default: bool) -> Account {
 }
 
 fn render(m: &Manifest) -> serde_json::Value {
-    serde_json::from_str(&m.render(
-        "/h/.claude",
-        "zero@example.test",
-        "2026-01-01T00:00:00Z",
-    ))
-    .unwrap()
+    serde_json::from_str(&m.render("/h/.claude", "zero@example.test", "2026-01-01T00:00:00Z"))
+        .unwrap()
 }
 
 #[test]

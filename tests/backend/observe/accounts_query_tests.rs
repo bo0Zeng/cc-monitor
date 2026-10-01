@@ -1300,7 +1300,7 @@ fn the_protocol_doc_row_for_session_accounts_matches_what_we_emit() {
     );
     let row = DOC
         .lines()
-        .find(|l| l.starts_with("- `--session-accounts "))
+        .find(|l| l.starts_with("- `--session-accounts`（"))
         .expect("`src/doc/IPC-PROTOCOL.md` 里找不到 `--session-accounts` 那一行 —— 锚点挪了");
 
     // ── ① 出参字段表：从生产段把 `json!` 的键抠出来，与文档里那个花括号表对拍 ──
@@ -1980,7 +1980,10 @@ fn every_group_of_deceptive_characters_is_rejected_in_a_config_dir() {
 #[test]
 fn the_accounts_library_lives_under_the_contract_directory_name() {
     assert_eq!(
-        (relay_route_core::ACCOUNTS_DIR_REL, relay_route_core::ACCOUNTS_MANIFEST_NAME),
+        (
+            relay_route_core::ACCOUNTS_DIR_REL,
+            relay_route_core::ACCOUNTS_MANIFEST_NAME
+        ),
         (".cc-monitor/accounts", "accounts.json"),
         "账号库位置变了 —— 改了它后端就去别处找账号库，界面上只表现为「一个账号都没有」"
     );
@@ -2007,39 +2010,38 @@ fn nothing_in_the_product_still_points_at_the_old_account_library() {
     // 针运行时拼：本文件自己不进人群也不含针。
     let old_dir = format!(".claude-{}", "accts");
     let old_env = format!("CCM_ACCTS_{}", "MANIFEST");
-    fn walk(dir: &Path, skip: &[&str], out: &mut Vec<(PathBuf, String)>) {
-        let Ok(rd) = fs::read_dir(dir) else { return };
-        for e in rd.flatten() {
-            let p = e.path();
-            let name = e.file_name().to_string_lossy().into_owned();
-            let Ok(ft) = e.file_type() else { continue };
-            if ft.is_dir() {
-                if !name.starts_with('.')
-                    && !["node_modules", "target", "vendor"].contains(&name.as_str())
-                    && !skip.iter().any(|s| p.ends_with(s))
-                {
-                    walk(&p, skip, out);
-                }
-            } else if ft.is_file() {
-                if let Ok(t) = fs::read_to_string(&p) {
-                    out.push((p, t));
-                }
-            }
-        }
-    }
-    let rel = |p: &Path| p.strip_prefix(&root).unwrap().to_string_lossy().replace('\\', "/");
-    let hits = |pop: &[(PathBuf, String)], needle: &str| -> std::collections::BTreeSet<String> {
-        pop.iter().filter(|(_, t)| t.contains(needle)).map(|(p, _)| rel(p)).collect()
+    // 本文件明写在排除名单里（针虽是运行时拼的，扫描口径仍走那一份带「摘不到就 panic」的遍历）。
+    const SELF: &str = "tests/backend/observe/accounts_query_tests.rs";
+    let rel = |p: &Path| {
+        p.strip_prefix(&root)
+            .unwrap_or(p)
+            .to_string_lossy()
+            .replace('\\', "/")
     };
-    let mut product = Vec::new();
-    walk(&root.join("src"), &[], &mut product);
+    let hits = |pop: &[(PathBuf, String)], needle: &str| -> std::collections::BTreeSet<String> {
+        pop.iter()
+            .filter(|(_, t)| t.contains(needle))
+            .map(|(p, _)| rel(p))
+            .collect()
+    };
+    let mut product = guard_core::scan_tree_excluding(&root.join("src"), &[], &[]);
     for f in ["README.md", "README.en.md"] {
         product.push((root.join(f), fs::read_to_string(root.join(f)).unwrap()));
     }
-    let mut scripts = Vec::new();
-    walk(&root.join("tests"), &["tests/evidence"], &mut scripts);
-    walk(&root.join(".github"), &[], &mut scripts);
-    scripts.push((root.join("package.json"), fs::read_to_string(root.join("package.json")).unwrap()));
+    let mut scripts: Vec<(PathBuf, String)> =
+        guard_core::scan_tree_excluding(&root.join("tests"), &[], &[SELF])
+            .into_iter()
+            .filter(|(p, _)| !rel(p).starts_with("tests/evidence/"))
+            .collect();
+    scripts.extend(guard_core::scan_tree_excluding(
+        &root.join(".github"),
+        &[],
+        &[],
+    ));
+    scripts.push((
+        root.join("package.json"),
+        fs::read_to_string(root.join("package.json")).unwrap(),
+    ));
 
     // 正控
     assert_eq!(
@@ -2059,13 +2061,25 @@ fn nothing_in_the_product_still_points_at_the_old_account_library() {
         );
     }
     let fake = vec![(root.join("x"), format!("a {old_dir}/b {old_env}=c"))];
-    assert_eq!(hits(&fake, &old_dir).len() + hits(&fake, &old_env).len(), 2, "合成串里的针没认出来");
+    assert_eq!(
+        hits(&fake, &old_dir).len() + hits(&fake, &old_env).len(),
+        2,
+        "合成串里的针没认出来"
+    );
 
     // 正题
     let empty = std::collections::BTreeSet::<String>::new();
     assert_eq!(hits(&product, &old_dir), empty, "产品里还有旧账号库目录名");
-    assert_eq!(hits(&product, &old_env), empty, "产品里还有另指账号库位置的环境变量");
-    assert_eq!(hits(&scripts, &old_env), empty, "测试脚本 / 门禁里还有另指账号库位置的环境变量");
+    assert_eq!(
+        hits(&product, &old_env),
+        empty,
+        "产品里还有另指账号库位置的环境变量"
+    );
+    assert_eq!(
+        hits(&scripts, &old_env),
+        empty,
+        "测试脚本 / 门禁里还有另指账号库位置的环境变量"
+    );
 }
 
 /// ★**本机判活源头**（历史跨机 join 用）：pidfile 里的会话 id ＋ 那个进程还在（同 watcher 那一道平台原语）。

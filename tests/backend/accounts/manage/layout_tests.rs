@@ -127,7 +127,10 @@ fn add_plans_dir_links_and_manifest_and_refuses_duplicates() {
         make_default: false,
     };
     let p = plan_add(&s, &want).unwrap();
-    assert_eq!(p.ops.first(), Some(&Op::MkDir("/h/.cc-monitor/accounts/b".into())));
+    assert_eq!(
+        p.ops.first(),
+        Some(&Op::MkDir("/h/.cc-monitor/accounts/b".into()))
+    );
     assert_eq!(p.ops.last(), Some(&Op::WriteManifest));
     let m = p.manifest.unwrap();
     assert_eq!(m.find("b").unwrap().auth_kind.as_deref(), Some("api-key"));
