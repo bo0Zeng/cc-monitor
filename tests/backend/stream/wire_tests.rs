@@ -554,7 +554,10 @@ fn transfer_frames_have_exactly_these_bytes() {
 #[test]
 fn tap_frames_have_exactly_these_bytes() {
     use crate::agents::{BlockKind, StreamEv};
-    let tap = |run: Option<&str>, n: u64, ev: Option<StreamEv>, end: Option<crate::stream::wire::TapEnd>| Frame::Tap {
+    let tap = |run: Option<&str>,
+               n: u64,
+               ev: Option<StreamEv>,
+               end: Option<crate::stream::wire::TapEnd>| Frame::Tap {
         stream: "0b6c1f7e-sid".into(),
         run: run.map(str::to_string),
         resp: 12,
@@ -616,7 +619,9 @@ fn session_runs_frames_have_exactly_these_bytes() {
                 kind: Some("Explore".into()),
                 tool: Some("t1".into()),
                 state: RunState::Running,
-                last: Some(RunDid::Tool { name: "Bash".into() }),
+                last: Some(RunDid::Tool {
+                    name: "Bash".into(),
+                }),
             },
             RunInfo {
                 run: "a2".into(),
@@ -632,7 +637,10 @@ fn session_runs_frames_have_exactly_these_bytes() {
         to_line(&f).unwrap(),
         "{\"kind\":\"session_runs\",\"sid\":\"s1\",\"runs\":[{\"run\":\"a1\",\"label\":\"scan\",\"kind\":\"Explore\",\"tool\":\"t1\",\"state\":\"running\",\"last\":{\"t\":\"tool\",\"name\":\"Bash\"}},{\"run\":\"a2\",\"state\":\"done\",\"last\":{\"t\":\"say\"}}]}\n"
     );
-    assert!(!f.loss_is_recoverable(), "运行表丢了别处补不回来（要等下一次变）");
+    assert!(
+        !f.loss_is_recoverable(),
+        "运行表丢了别处补不回来（要等下一次变）"
+    );
 }
 
 /// 〔SR1a〕base64 编解码对 **RFC 4648 §10** 的七条标准向量（异源 = RFC；monitor 侧那一份拿同一组向量核自己）。

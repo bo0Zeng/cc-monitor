@@ -88,12 +88,11 @@ impl RunRouter {
                 self.bury(resp);
                 return Vec::new();
             }
-            let Some(face) = self
-                .faces
-                .iter()
-                .copied()
-                .find(|f| (f.fold)(d).iter().any(|e| matches!(e, StreamEv::Start { .. })))
-            else {
+            let Some(face) = self.faces.iter().copied().find(|f| {
+                (f.fold)(d)
+                    .iter()
+                    .any(|e| matches!(e, StreamEv::Start { .. }))
+            }) else {
                 self.bury(resp);
                 return Vec::new();
             };
@@ -148,11 +147,7 @@ impl RunRouter {
                 r.ended = true;
                 vec![(
                     None,
-                    Some(if broken {
-                        TapEnd::Broken
-                    } else {
-                        TapEnd::Done
-                    }),
+                    Some(if broken { TapEnd::Broken } else { TapEnd::Done }),
                 )]
             }
         };

@@ -33,7 +33,11 @@ fn repo() -> PathBuf {
 /// 一棵树里每个针出现在哪几份文件（原文照扫，注释也算 —— 「零出现」就是零出现）。
 fn hits(root: &Path, exts: &[&str]) -> Vec<(String, String)> {
     let files = guard_core::scan_tree_excluding(root, exts, &[]);
-    assert!(!files.is_empty(), "{} 下一份文件都没扫到 —— 扫描空转", root.display());
+    assert!(
+        !files.is_empty(),
+        "{} 下一份文件都没扫到 —— 扫描空转",
+        root.display()
+    );
     let mut out = Vec::new();
     for (p, text) in files {
         for n in NEEDLES {
@@ -66,12 +70,16 @@ fn the_general_layers_never_name_a_single_agents_run_shape() {
             .join("\n")
     );
     // 正控：同一把扫描在适配层里把六个针全找到（扫描本身没瞎）。
-    let in_adapters: std::collections::BTreeSet<String> = hits(&r.join("src/backend/agents"), &["rs"])
-        .into_iter()
-        .map(|(n, _)| n)
-        .collect();
+    let in_adapters: std::collections::BTreeSet<String> =
+        hits(&r.join("src/backend/agents"), &["rs"])
+            .into_iter()
+            .map(|(n, _)| n)
+            .collect();
     let want: std::collections::BTreeSet<String> = NEEDLES.iter().map(|s| s.to_string()).collect();
-    assert_eq!(in_adapters, want, "正控：适配层里这几个针该一个不少（扫描瞎了，或适配层的形状搬走了）");
+    assert_eq!(
+        in_adapters, want,
+        "正控：适配层里这几个针该一个不少（扫描瞎了，或适配层的形状搬走了）"
+    );
 }
 
 // ── 两套形状 ────────────────────────────────────────────────────────────────────
@@ -111,26 +119,41 @@ fn claude_code() -> Shape {
                 .join(format!("agent-{run}.jsonl"))
         },
         main_say: |rid| {
-            format!(r#"{{"type":"assistant","uuid":"u-{rid}","message":{{"id":"{rid}","role":"assistant","content":[{{"type":"text","text":"x"}}],"stop_reason":"end_turn"}}}}"#)
+            format!(
+                r#"{{"type":"assistant","uuid":"u-{rid}","message":{{"id":"{rid}","role":"assistant","content":[{{"type":"text","text":"x"}}],"stop_reason":"end_turn"}}}}"#
+            )
         },
         spawn: |tool, label| {
-            format!(r#"{{"type":"assistant","uuid":"u-{tool}","message":{{"id":"m-{tool}","role":"assistant","content":[{{"type":"tool_use","id":"{tool}","name":"Agent","input":{{"description":"{label}","subagent_type":"k"}}}}]}}}}"#)
+            format!(
+                r#"{{"type":"assistant","uuid":"u-{tool}","message":{{"id":"m-{tool}","role":"assistant","content":[{{"type":"tool_use","id":"{tool}","name":"Agent","input":{{"description":"{label}","subagent_type":"k"}}}}]}}}}"#
+            )
         },
         spawned: |tool, run| {
-            format!(r#"{{"type":"user","uuid":"r-{tool}","message":{{"role":"user","content":[{{"type":"tool_result","tool_use_id":"{tool}","content":"x"}}]}},"toolUseResult":{{"status":"async_launched","agentId":"{run}"}}}}"#)
+            format!(
+                r#"{{"type":"user","uuid":"r-{tool}","message":{{"role":"user","content":[{{"type":"tool_result","tool_use_id":"{tool}","content":"x"}}]}},"toolUseResult":{{"status":"async_launched","agentId":"{run}"}}}}"#
+            )
         },
         child_tool: |run, rid, name| {
-            format!(r#"{{"type":"assistant","uuid":"c-{rid}","isSidechain":true,"agentId":"{run}","message":{{"id":"{rid}","role":"assistant","content":[{{"type":"tool_use","id":"x-{rid}","name":"{name}","input":{{}}}}],"stop_reason":"tool_use"}}}}"#)
+            format!(
+                r#"{{"type":"assistant","uuid":"c-{rid}","isSidechain":true,"agentId":"{run}","message":{{"id":"{rid}","role":"assistant","content":[{{"type":"tool_use","id":"x-{rid}","name":"{name}","input":{{}}}}],"stop_reason":"tool_use"}}}}"#
+            )
         },
         child_end: |run, rid| {
-            format!(r#"{{"type":"assistant","uuid":"c-{rid}","isSidechain":true,"agentId":"{run}","message":{{"id":"{rid}","role":"assistant","content":[{{"type":"text","text":"x"}}],"stop_reason":"end_turn"}}}}"#)
+            format!(
+                r#"{{"type":"assistant","uuid":"c-{rid}","isSidechain":true,"agentId":"{run}","message":{{"id":"{rid}","role":"assistant","content":[{{"type":"text","text":"x"}}],"stop_reason":"end_turn"}}}}"#
+            )
         },
         sse: |rid, tool| {
-            let mut v = vec![format!(r#"{{"type":"message_start","message":{{"id":"{rid}"}}}}"#)];
+            let mut v = vec![format!(
+                r#"{{"type":"message_start","message":{{"id":"{rid}"}}}}"#
+            )];
             if let Some(t) = tool {
                 v.push(format!(r#"{{"type":"content_block_start","index":0,"content_block":{{"type":"tool_use","name":"{t}"}}}}"#));
             } else {
-                v.push(r#"{"type":"content_block_start","index":0,"content_block":{"type":"text"}}"#.into());
+                v.push(
+                    r#"{"type":"content_block_start","index":0,"content_block":{"type":"text"}}"#
+                        .into(),
+                );
                 v.push(r#"{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"hi"}}"#.into());
             }
             v.push(r#"{"type":"message_stop"}"#.into());
@@ -152,14 +175,22 @@ fn fake() -> Shape {
                 .join(format!("{run}.ndjson"))
         },
         main_say: |rid| format!(r#"{{"kind":"say","resp":"{rid}"}}"#),
-        spawn: |tool, label| format!(r#"{{"kind":"spawn","call":"{tool}","title":"{label}","role":"k"}}"#),
+        spawn: |tool, label| {
+            format!(r#"{{"kind":"spawn","call":"{tool}","title":"{label}","role":"k"}}"#)
+        },
         spawned: |tool, run| format!(r#"{{"kind":"spawned","call":"{tool}","lane":"{run}"}}"#),
-        child_tool: |run, rid, name| format!(r#"{{"kind":"act","lane":"{run}","resp":"{rid}","use":"{name}"}}"#),
-        child_end: |run, rid| format!(r#"{{"kind":"say","lane":"{run}","resp":"{rid}","over":"ok"}}"#),
+        child_tool: |run, rid, name| {
+            format!(r#"{{"kind":"act","lane":"{run}","resp":"{rid}","use":"{name}"}}"#)
+        },
+        child_end: |run, rid| {
+            format!(r#"{{"kind":"say","lane":"{run}","resp":"{rid}","over":"ok"}}"#)
+        },
         sse: |rid, tool| {
             let mut v = vec![format!(r#"{{"ev":"open","rid":"{rid}"}}"#)];
             match tool {
-                Some(t) => v.push(format!(r#"{{"ev":"part","at":0,"is":"call","call":"{t}"}}"#)),
+                Some(t) => v.push(format!(
+                    r#"{{"ev":"part","at":0,"is":"call","call":"{t}"}}"#
+                )),
                 None => {
                     v.push(r#"{"ev":"part","at":0,"is":"words"}"#.into());
                     v.push(r#"{"ev":"chunk","at":0,"txt":"hi"}"#.into());
@@ -274,9 +305,19 @@ fn run_the_scenario(shape: &Shape) {
     ] {
         main_line(&track, l);
     }
-    append(&(shape.child_of)(&parent, "w1"), &[(shape.child_tool)("w1", "r-w1a", "Bash")]);
-    append(&(shape.child_of)(&parent, "w2"), &[(shape.child_tool)("w2", "r-w2a", "Grep")]);
-    assert!(track.adopt(SID, &parent), "[{}] 会话宣告时它已有的子运行没被发现", shape.name);
+    append(
+        &(shape.child_of)(&parent, "w1"),
+        &[(shape.child_tool)("w1", "r-w1a", "Bash")],
+    );
+    append(
+        &(shape.child_of)(&parent, "w2"),
+        &[(shape.child_tool)("w2", "r-w2a", "Grep")],
+    );
+    assert!(
+        track.adopt(SID, &parent),
+        "[{}] 会话宣告时它已有的子运行没被发现",
+        shape.name
+    );
     assert_eq!(
         states(&book),
         vec![
@@ -319,7 +360,9 @@ fn run_the_scenario(shape: &Shape) {
         shape.name
     );
     assert!(
-        said(&s2).iter().all(|(r, run, _)| *r == 2 && *run == w("w2")),
+        said(&s2)
+            .iter()
+            .all(|(r, run, _)| *r == 2 && *run == w("w2")),
         "[{}] 子运行 w2 的流归 w2 那一行：{:?}",
         shape.name,
         said(&s2)
@@ -343,10 +386,18 @@ fn run_the_scenario(shape: &Shape) {
 
     // 没自报的子运行段：挂起，等它自己的记录对上对账键 ⇒ 归它。
     let quiet = feed(&mut router, 3, "", (shape.sse)("r-w1c", Some("Read")));
-    assert!(quiet.is_empty(), "[{}] 没自报的那段在对上之前不许放出", shape.name);
+    assert!(
+        quiet.is_empty(),
+        "[{}] 没自报的那段在对上之前不许放出",
+        shape.name
+    );
     let w1 = (shape.child_of)(&parent, "w1");
     append(&w1, &[(shape.child_tool)("w1", "r-w1c", "Read")]);
-    assert!(track.on_path(&w1).is_some(), "[{}] 子运行记录的文件事件没被认出", shape.name);
+    assert!(
+        track.on_path(&w1).is_some(),
+        "[{}] 子运行记录的文件事件没被认出",
+        shape.name
+    );
     assert!(
         said(&router.on_learned())
             .iter()
@@ -357,12 +408,20 @@ fn run_the_scenario(shape: &Shape) {
 
     // 子运行写出终局 ⇒ 运行表里它变完成；两个都收场之后，主运行的流不再挂起。
     append(&w1, &[(shape.child_end)("w1", "r-w1d")]);
-    assert_eq!(track.on_path(&w1), Some((SID.to_string(), true)), "[{}] 终局没让运行表变", shape.name);
+    assert_eq!(
+        track.on_path(&w1),
+        Some((SID.to_string(), true)),
+        "[{}] 终局没让运行表变",
+        shape.name
+    );
     let w2 = (shape.child_of)(&parent, "w2");
     append(&w2, &[(shape.child_end)("w2", "r-w2d")]);
     track.on_path(&w2);
     assert_eq!(
-        states(&book).into_iter().map(|(r, _, _, s)| (r, s)).collect::<Vec<_>>(),
+        states(&book)
+            .into_iter()
+            .map(|(r, _, _, s)| (r, s))
+            .collect::<Vec<_>>(),
         vec![("w1".into(), RunState::Done), ("w2".into(), RunState::Done)],
         "[{}] 子运行写出终局 ⇒ 那一行变完成",
         shape.name

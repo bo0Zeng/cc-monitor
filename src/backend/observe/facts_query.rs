@@ -127,7 +127,7 @@ pub(crate) struct UsageFact {
 /// （serde 对 `Option` 缺格默认读成 `None`，所以键集合先逐层核一遍 —— 不猜）。
 pub(crate) fn prior_from(v: &Value) -> Result<SessionFacts, String> {
     const TOP: &[&str] = &["agents", "end", "forkedFrom", "touchedFiles", "usage"];
-    const AGENT: &[&str] = &["agentType", "desc", "id", "label", "status", "timestamp"];
+    const AGENT: &[&str] = &["agentType", "id", "label", "status"];
     const USAGE: &[&str] = &["model", "promptTokens"];
     exact_keys(v, TOP, "prior")?;
     for a in v["agents"]

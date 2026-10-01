@@ -1657,9 +1657,11 @@ pub fn parse_frame(line: &str) -> Option<InboundFrame> {
             let resp = obj.get("resp")?.as_u64()?;
             let n = obj.get("n")?.as_u64()?;
             let body = match obj.get("ev") {
-                Some(e) => crate::session_tap::TapBody::Ev(crate::ui_contract::RecordBody::from_json(
-                    e.as_object().map(|_| e.to_string())?,
-                )?),
+                Some(e) => {
+                    crate::session_tap::TapBody::Ev(crate::ui_contract::RecordBody::from_json(
+                        e.as_object().map(|_| e.to_string())?,
+                    )?)
+                }
                 None => crate::session_tap::TapBody::End(crate::session_tap::TapEnd::from_wire(
                     obj.get("end")?.as_str()?,
                 )?),

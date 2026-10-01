@@ -839,7 +839,8 @@ fn sessions_replayed_is_known() {
 #[test]
 fn tap_frames_parse_into_their_shapes_and_bad_ones_are_none() {
     use crate::session_tap::{Tap, TapBody, TapEnd};
-    let body = |s: &str| TapBody::Ev(crate::ui_contract::RecordBody::from_json(s.to_string()).unwrap());
+    let body =
+        |s: &str| TapBody::Ev(crate::ui_contract::RecordBody::from_json(s.to_string()).unwrap());
     let start = "{\"kind\":\"tap\",\"stream\":\"0b6c1f7e-sid\",\"resp\":12,\"n\":0,\"ev\":{\"t\":\"start\",\"rid\":\"r-1\"}}";
     assert_eq!(
         parse_frame(start),
@@ -848,7 +849,7 @@ fn tap_frames_parse_into_their_shapes_and_bad_ones_are_none() {
             run: None,
             resp: 12,
             n: 0,
-            body: body(r#"{"rid":"r-1","t":"start"}"#),
+            body: body(r#"{"t":"start","rid":"r-1"}"#),
         }))
     );
     let block = "{\"kind\":\"tap\",\"stream\":\"0b6c1f7e-sid\",\"run\":\"a1\",\"resp\":12,\"n\":1,\"ev\":{\"t\":\"block\",\"i\":0,\"kind\":\"tool\",\"tool\":\"Bash\"}}";
@@ -893,7 +894,10 @@ fn session_runs_frames_carry_the_runs_verbatim() {
     match parse_frame(line) {
         Some(InboundFrame::SessionRuns { sid, runs }) => {
             assert_eq!(sid, "s1");
-            assert_eq!(runs.0.get(), r#"[{"last":{"t":"say"},"run":"a2","state":"done"}]"#);
+            assert_eq!(
+                runs.0.get(),
+                r#"[{"run":"a2","state":"done","last":{"t":"say"}}]"#
+            );
         }
         other => panic!("运行表没解出来：{other:?}"),
     }
@@ -929,7 +933,10 @@ fn a_tap_frame_becomes_the_session_tap_payload_field_for_field() {
             run: Some("a1".into()),
             resp: 4,
             n: 1,
-            body: TapBody::Ev(crate::ui_contract::RecordBody::from_json(r#"{"t":"stop","ok":true}"#.into()).unwrap()),
+            body: TapBody::Ev(
+                crate::ui_contract::RecordBody::from_json(r#"{"t":"stop","ok":true}"#.into())
+                    .unwrap(),
+            ),
         },
     );
     assert_eq!(

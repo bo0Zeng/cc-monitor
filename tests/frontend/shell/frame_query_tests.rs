@@ -12,7 +12,7 @@ const DESIGN_EIGHT: &[&str] = &[
     "--session-accounts",
     "--list-accounts",
     "--search",
-    "--list-subagents",
+    // `--list-subagents` 摘了：按目录列子 agent 候选那一条随「按运行读」（`history-run`）删了，没有被替掉的拨号子命令。
     // 〔SR1a · 09-24〕题面逐字「`--list-user-inputs` 与骨架 `--read-session-from-offset --index` 上帧面」。
     "--list-user-inputs",
     "--read-session-from-offset",
@@ -181,13 +181,7 @@ const CHANNELED: &[(&str, &str)] = &[
         "history-sessions",
         "同 `history-projects`：会话行口径收成后端一份（`analyze_session`，本机与远端同一个函数），monitor 那份 `analyze_jsonl` /\
          `remote_session_entry` 删了",
-    ),    // 〔MOD · `设计/90 §3` 判据 3 · `05 §14.3` C 组〕子 agent 那一条：记录解释进了后端（`agents/claudecode/`），
-    //   后端出成品，界面经 `src/frontend/ui/record-reads.ts` 直问；monitor 那份解析与那条 Tauri 命令删了。
-    (
-        "history-subagent",
-        "子 agent 那一份：列 ＋ 挑 ＋ 读 ＋ 解析都在后端（`history_query::pick_subagent` ＋ `record_page::all_records`），成品 `{path, agent_id, records}`",
-    ),
-];
+    ),];
 
 /// 〔C4b · 第四波 4B〕**帧面只读查询那一族之外**、同样改成「前端经通道直接问、后端出成品」的帧命令 ——
 /// `(帧命令, 为什么迁、迁了之后解释住哪)`。它们不在 [`MOVED`] 里（不是 `C1` 那一族），但前端 `chan.call` 的
@@ -227,6 +221,10 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     (
         "drift-report",
         "那台后端的漂移账（看不懂的记录类型）：看不懂的那一刻在场的是那台后端，成品 `{faces}`；monitor 只留它天生观测的两面",
+    ),
+    (
+        "history-run",
+        "一个子运行的记录，按运行读（父记录 ＋ 子运行 ‖ 派出它的工具调用）：子运行住哪、哪条属于谁都问那台后端的适配层，成品 `{run, path, rows, end, more}`",
     ),
     // 〔MIG-1 · `99 §2.1 ⑯`〕`~/.ssh/config` 的解读从 monitor 三条 Tauri 命令（`ssh_source.rs` 里那三条，〔散文墓碑〕）搬进后端。
     (

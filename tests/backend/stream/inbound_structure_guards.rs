@@ -190,7 +190,7 @@ fn every_registered_command_declares_its_run_kind() {
                 | "history-lines" // 〔CF2〕按行号取回：从文件头数，同档
                 | "history-record" // 〔U4b〕记录还在不在：一次目录枚举，同档
                 | "history-search"
-                | "history-subagent" // 〔MOD〕列 ＋ 挑 ＋ 读一份子 agent 记录，同档
+                | "history-run" // 按运行读一个子运行的记录（同步文件 I/O），同档
                 | "history-page" // 〔MOD〕按字节分页出记录行，同档
                 | "history-tail"
                 | "accounts-list"
@@ -399,8 +399,8 @@ fn every_registered_command_declares_its_run_kind() {
         "history-record", // 〔U4b〕
         "history-search",
         "history-sessions",
-        "history-subagent", // 〔MOD〕
-        "history-page",     // 〔MOD〕
+        "history-run",
+        "history-page", // 〔MOD〕
         "history-tail",
         "accounts-list",
         "accounts-sessions",

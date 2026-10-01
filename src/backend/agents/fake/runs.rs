@@ -8,13 +8,13 @@
 //! | 派出 | `{"kind":"spawn","call":…,"title":…,"role":…}` 给标签；`{"kind":"spawned","call":…,"lane":…}` 说是哪个 |
 //! | 子运行记录住址 | `<父记录去后缀>.lanes/<lane>.ndjson` |
 //! | 流协议 | `{"ev":"open","rid":…}` · `{"ev":"part","at":i,"is":"call"|"words","call":…}` · `{"ev":"chunk","at":i,"txt":…}` · `{"ev":"shut"}` · `{"ev":"fail"}` |
-//! | 请求自报运行的头 | `x-fake-lane` |
 
-use crate::agents::{BlockKind, ChildLink, RunDid, RunEnd, RunFaces, RunMark, StreamEv, StreamFace};
+use crate::agents::{
+    BlockKind, ChildLink, RunDid, RunEnd, RunFaces, RunMark, StreamEv, StreamFace,
+};
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 
-pub(crate) const OWNER_HEADER: &str = "x-fake-lane";
 const LANES_SUFFIX: &str = "lanes";
 const LANE_EXT: &str = "ndjson";
 
@@ -37,7 +37,9 @@ fn run_of(v: &Value) -> Option<RunMark> {
         _ => None,
     };
     let did = match (s(v, "use"), s(v, "kind")) {
-        (Some(t), _) => Some(RunDid::Tool { name: t.to_string() }),
+        (Some(t), _) => Some(RunDid::Tool {
+            name: t.to_string(),
+        }),
         (None, Some("say")) => Some(RunDid::Say),
         _ => None,
     };
@@ -65,7 +67,8 @@ fn child_link(v: &Value) -> Vec<ChildLink> {
 }
 
 fn sources(parent: &Path) -> Vec<PathBuf> {
-    let (Some(dir), Some(stem)) = (parent.parent(), parent.file_stem().and_then(|x| x.to_str())) else {
+    let (Some(dir), Some(stem)) = (parent.parent(), parent.file_stem().and_then(|x| x.to_str()))
+    else {
         return Vec::new();
     };
     let lanes = dir.join(format!("{stem}.{LANES_SUFFIX}"));
@@ -100,7 +103,11 @@ fn fold(data: &str) -> Vec<StreamEv> {
             let call = s(&v, "is") == Some("call");
             StreamEv::Block {
                 i,
-                kind: if call { BlockKind::Tool } else { BlockKind::Text },
+                kind: if call {
+                    BlockKind::Tool
+                } else {
+                    BlockKind::Text
+                },
                 tool: call.then(|| s(&v, "call").map(str::to_string)).flatten(),
             }
         }),

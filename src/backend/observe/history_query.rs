@@ -326,7 +326,8 @@ fn run_of_tool(parent: &Path, faces: &crate::agents::RunFaces, tool: &str) -> Op
         if !line.contains(tool) {
             continue;
         }
-        let Ok(v) = serde_json::from_str::<serde_json::Value>(line.trim_start_matches('\u{feff}').trim())
+        let Ok(v) =
+            serde_json::from_str::<serde_json::Value>(line.trim_start_matches('\u{feff}').trim())
         else {
             continue;
         };
@@ -351,7 +352,9 @@ fn first_run_of(path: &Path, faces: &crate::agents::RunFaces) -> Option<String> 
         .lines()
         .map_while(Result::ok)
         .take(HEAD_LINES)
-        .filter_map(|l| serde_json::from_str::<serde_json::Value>(l.trim_start_matches('\u{feff}').trim()).ok())
+        .filter_map(|l| {
+            serde_json::from_str::<serde_json::Value>(l.trim_start_matches('\u{feff}').trim()).ok()
+        })
         .find_map(|v| faces.run_of(&v))
         .map(|m| m.run)
 }

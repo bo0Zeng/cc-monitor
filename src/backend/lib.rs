@@ -17,9 +17,6 @@
 
 pub mod accounts; // 账号域：上游选择（`resolve` 那张决策表 ＋ 表 ＋ 凭据 ＋ 热重载）＋ `iso`。**不是中转**，不住 relay/
 #[cfg(test)]
-#[path = "../../tests/backend/runs_guard.rs"]
-mod runs_guard; // 子运行：通用层只认「运行」（扫描 ＋ 假适配层与 Claude Code 两套形状跑同一批判据）
-#[cfg(test)]
 #[path = "../../tests/backend/agent_boundary_guard.rs"]
 mod agent_boundary_guard; // S1：通用层不许知道任何 agent 的名字与文件格式（整体 #[cfg(test)]）
 #[cfg(test)]
@@ -71,6 +68,9 @@ mod readonly_guard; // F08a：backend 只读机器护栏（内部整体 #[cfg(te
                     // 〔RE〕面 B 的成员住 `src/comms/outward/`（`99 §2.1 ⑰`）；非成员 door / listen 留 `relay/`，模块树不变
 #[path = "../comms/outward/mod.rs"]
 pub mod relay; // K-H1：HTTP 中转（搬字节那半）——只听回环、按路径前缀分流、逐块透传 + tee
+#[cfg(test)]
+#[path = "../../tests/backend/runs_guard.rs"]
+mod runs_guard; // 子运行：通用层只认「运行」（扫描 ＋ 假适配层与 Claude Code 两套形状跑同一批判据）
 #[cfg(test)]
 #[path = "../../tests/backend/single_stream_guard.rs"]
 mod single_stream_guard; // K-P1 KPY8：「多客户端的流」明确不做 —— 三处「恰好一个客户端」的触发器（整体 #[cfg(test)]）

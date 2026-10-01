@@ -67,7 +67,9 @@ pub(crate) fn run_of(v: &Value) -> Option<super::super::RunMark> {
     let interrupted = s(v, "type") == Some("user")
         && v.get("message")
             .and_then(|m| m.get("content"))
-            .is_some_and(|c| super::text::user_text(&super::text::extract_text_blocks(c)).interrupt);
+            .is_some_and(|c| {
+                super::text::user_text(&super::text::extract_text_blocks(c)).interrupt
+            });
     let end = end.or(interrupted.then_some(RunEnd::Failed));
     let did = if assistant {
         content(v).last().and_then(|b| match s(b, "type") {
@@ -138,38 +140,38 @@ pub(crate) fn links_in_content(content: &Value) -> Vec<super::super::ChildLink> 
         .into_iter()
         .flatten()
         .filter(|b| s(b, "type") == Some("tool_use"))
-            .filter_map(|b| {
-                let name = s(b, "name")?;
-                if super::cards::tool_card(name) != Some(ToolCard::Agent) {
-                    return None;
-                }
-                let input = b.get("input");
-                let field = |k: &str| input.and_then(|i| s(i, k));
-                let desc = trim(field("description").unwrap_or(""));
-                let head: String = field("prompt")
-                    .unwrap_or("")
-                    .split('\n')
-                    .next()
-                    .unwrap_or("")
-                    .chars()
-                    .take(LABEL_PROMPT_CHARS)
-                    .collect();
-                let label = if !desc.is_empty() {
-                    desc.to_string()
-                } else if !head.is_empty() {
-                    head
-                } else {
-                    name.to_string()
-                };
-                Some(ChildLink {
-                    tool: s(b, "id")?.to_string(),
-                    label: Some(label),
-                    kind: field("subagent_type").map(str::to_string),
-                    run: None,
-                    end: None,
-                })
+        .filter_map(|b| {
+            let name = s(b, "name")?;
+            if super::cards::tool_card(name) != Some(ToolCard::Agent) {
+                return None;
+            }
+            let input = b.get("input");
+            let field = |k: &str| input.and_then(|i| s(i, k));
+            let desc = trim(field("description").unwrap_or(""));
+            let head: String = field("prompt")
+                .unwrap_or("")
+                .split('\n')
+                .next()
+                .unwrap_or("")
+                .chars()
+                .take(LABEL_PROMPT_CHARS)
+                .collect();
+            let label = if !desc.is_empty() {
+                desc.to_string()
+            } else if !head.is_empty() {
+                head
+            } else {
+                name.to_string()
+            };
+            Some(ChildLink {
+                tool: s(b, "id")?.to_string(),
+                label: Some(label),
+                kind: field("subagent_type").map(str::to_string),
+                run: None,
+                end: None,
             })
-            .collect()
+        })
+        .collect()
 }
 
 /// 父记录 ⇒ 此刻在盘上的子 agent 记录（按路径排好序）。

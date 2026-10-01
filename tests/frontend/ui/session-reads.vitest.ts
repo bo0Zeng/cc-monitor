@@ -196,8 +196,8 @@ describe("〔STC〕第五问：会话事实", () => {
       forkedFrom: "src-0",
       touchedFiles: ["/w/a.ts"],
       agents: [
-        { id: "tu-2", label: "scan", agentType: "Explore", status: "done", timestamp: "t3", desc: "scan" },
-        { id: "tu-3", label: "p1", agentType: null, status: "running", timestamp: "t4", desc: "" },
+        { id: "tu-2", label: "scan", agentType: "Explore", status: "done" },
+        { id: "tu-3", label: "p1", agentType: null, status: "running" },
       ],
       usage: { promptTokens: 6, model: "m-g" },
     });
