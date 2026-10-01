@@ -111,12 +111,9 @@ fn unknown_type_is_salvaged_never_leaves_as_unknown() {
         }
         other => panic!("期望 Unrecognized，得到 {other:?}"),
     }
-    // 〔W5-RENDER R10 · `设计/17 §1.2`〕没有链身份 ⇒ 不 emit（它不进链，断不了链；「不静默」归 drift_ledger）。
+    // 没有链身份 ⇒ 不 emit（它不进链，断不了链；「不静默」归 drift_ledger）。
     //   原断言「必须 emit —— 否则链断」对**无身份**的这一形不成立；带身份的那一形见下一条。
-    assert!(
-        !r.is_displayable(),
-        "无链身份的看不懂记录在解析阶段滤掉（设计/17 §1.2）"
-    );
+    assert!(!r.is_displayable(), "无链身份的看不懂记录在解析阶段滤掉");
 }
 
 /// ★ 这条是 F63 真正要防的未来：Claude 发一个**带链身份**的新类型。
@@ -223,7 +220,7 @@ fn zero_information_loss_over_mixed_fixture() {
                         matches!(r, JsonlRecord::Unrecognized { .. }),
                         "该行应被抢救：{line}"
                     );
-                    // 〔W5-RENDER R10〕抢救出来的：带链身份 ⇔ emit（无身份的元数据在解析阶段滤掉，`设计/17 §1.2`）
+                    // 抢救出来的：带链身份 ⇔ emit（无身份的元数据在解析阶段滤掉）
                     let ident = matches!(&r, JsonlRecord::Unrecognized { uuid, parent_uuid, .. } if uuid.is_some() || parent_uuid.is_some());
                     assert_eq!(
                         r.is_displayable(),

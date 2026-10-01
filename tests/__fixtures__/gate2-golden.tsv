@@ -1,6 +1,6 @@
 # §34 Gate 2 的**唯一判定表** —— 三条轨道各自独立读它，谁漂谁红。
 #
-# 读它的两方（〔THIN〕monitor 那一轨随 monitor 侧的 Gate 残留一起删了：门只在后端）：
+# 读它的两方（monitor 那一轨随 monitor 侧的 Gate 残留一起删了：门只在后端）：
 #   1. 后端  tests/backend/control/gate_tests.rs   （Rust，调后端 `control/gate_rules.rs`）
 #   2. e2e   tests/e2e/backend-gate2-acceptance.sh （bash，跑真后端二进制 + 真 tmux）
 #

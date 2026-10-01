@@ -1,10 +1,10 @@
-//! 〔HX1 · 4D〕**覆盖写原子化** —— 判据。
+//! **覆盖写原子化** —— 判据。
 //!
 //! 守的要求（住址）：
-//! - 主会话 4D 裁 D-a（`4d-lanes.md`「主会话本批裁的」）逐字：「退出时在飞的写：覆盖写一律『临时件 ＋ rename』原子化」；
+//! - 要求：「退出时在飞的写：覆盖写一律『临时件 ＋ rename』原子化」；
 //! - 审计 E §E2：「`overwrite_text` 是先截断再写 …… 远端那份文件被截成半份或 0 字节」；
 //! - 审计 E §3.3 吞错：「`files_commit.rs` 上传提交失败后删 0 字节占位也失败了 ⇒ 用户目录里留一个 0 字节文件，报错里没提」。
-//! 设计与读数住 `调研/第四波记录/HX1.md` §2。⚠ 与 `设计/60 §5.5`「存盘不是原子的 …… 刻意不换语义」冲突，按 D-a 做、已报备。
+//! 设计与读数住 §2。⚠ 与「存盘不是原子的 …… 刻意不换语义」冲突，按 D-a 做、已报备。
 //!
 //! | # | 判据 | 形状 |
 //! |---|---|---|
@@ -189,7 +189,7 @@ fn w3_a_placeholder_that_could_not_be_removed_is_named_in_the_refusal() {
     );
 }
 
-/// 就地写在一段生产代码里的位置：`fs::write(` · 〔FIX5〕不跟链接的截断开（`.truncate(true)`，`files_write::opener` 那条链）。
+/// 就地写在一段生产代码里的位置：`fs::write(` · 不跟链接的截断开（`.truncate(true)`，`files_write::opener` 那条链）。
 fn write_calls(code: &str) -> Vec<usize> {
     let mut at: Vec<usize> = code
         .match_indices("fs::write(")
@@ -216,8 +216,8 @@ fn w4_the_only_in_place_write_left_is_the_windows_arm_of_swap_in() {
             );
         }
     }
-    // 〔HX1 · 拍板项 2〕两处：`swap_in` 的 Windows 臂 ＋ `overwrite_text` 的「硬链接 / 别人的属主」那一支
-    // （〔FIX5〕后者从 `fs::write` 换成不跟链接的截断开，处数不变）。
+    // 〔拍板项 2〕两处：`swap_in` 的 Windows 臂 ＋ `overwrite_text` 的「硬链接 / 别人的属主」那一支
+    // （后者从 `fs::write` 换成不跟链接的截断开，处数不变）。
     assert_eq!(
         files,
         vec![
@@ -266,8 +266,8 @@ fn w4_the_only_in_place_write_left_is_the_windows_arm_of_swap_in() {
     );
 }
 
-/// 〔HX1 · 主会话裁拍板项 2〕**有硬链接的目标退回就地写**：两个名字都看得见新内容、inode 不换、链接数不变。
-/// 守的要求：主会话裁「目标 `nlink > 1` 或属主不是后端用户 ⇒ 退回就地写（保住硬链接与属主）」。
+/// 〔主会话裁拍板项 2〕**有硬链接的目标退回就地写**：两个名字都看得见新内容、inode 不换、链接数不变。
+/// 守的要求：「目标 `nlink > 1` 或属主不是后端用户 ⇒ 退回就地写（保住硬链接与属主）」。
 /// 对照：同一目录里没有硬链接的那一份照旧原子换（inode 换了 —— W2 那一形）。
 #[test]
 #[cfg(unix)]
@@ -299,7 +299,7 @@ fn h1_a_hardlinked_target_is_written_in_place_so_both_names_see_it() {
     std::fs::remove_dir_all(&root).ok();
 }
 
-/// 〔HX1 · 拍板项 2〕「该不该原子换」那一问逐格（属主那一格要 root 才造得出真文件，只在纯函数上量 —— 如实登记）；
+/// 〔拍板项 2〕「该不该原子换」那一问逐格（属主那一格要 root 才造得出真文件，只在纯函数上量 —— 如实登记）；
 /// 接线：`overwrite_text` 问它时交的恰是 `links_and_owner` 与 `current_uid`。
 #[test]
 fn h2_the_in_place_reasons_are_exactly_links_and_owner() {

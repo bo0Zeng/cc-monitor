@@ -93,7 +93,7 @@ assertion `left == right` failed: 夹具用例数变了（加/删用例请一起
 消费这份夹具的今天仍是两个：① 上面那条 Rust 对拍 · ② `src/launch-cli-golden.ts`
 用 `tryRenderCli` **生成**它。⇒ TS 那个渲染器整个还在，删它要动 6 个写区没给的文件，
 而且删掉会让这份夹具变成「没有生成者的冻结文件」（`ccm_invocation.rs` 的 P1 头注逐字预告过）。
-逐条住件文件 `§8` 的 `〔R95e〕`。
+逐条住件文件 `§8` 的 ``。
 
 ⚙ 本件顺手把这一族**补厚了一格**：夹具里的 `defaultLauncher` 此前挂 `#[allow(dead_code)]`、
 头注逐字写着「只为『让夹具能被解析』」—— 而它是「`--launcher` 吐不吐」那条分支的唯一输入。
@@ -118,7 +118,7 @@ assertion `left != right` failed: 「没探出来」被写成了「远端未装 
   （`{"kind":"named","cfgDir":"/d"}` 必须被拒）。验不过 ⇒ `npm run gen:types` 当场 panic
   ⇒ **不会写出一份旧的/默认的表**给前端拿去拼命令。
 
-### 🔴 未闭合的一格（`〔R95b〕`，交回里报了）
+### 🔴 未闭合的一格（``，交回里报了）
 
 线上那份 `CliRenderRequest.caps: Option<Vec<String>>` **只有两态**，而它上游
 （`ccm-probe.ts`，`K-R53` 起）是三态。⇒ 走**生产主路**（`remote-launch-run.ts::renderCliViaBackend`

@@ -15,10 +15,10 @@
  */
 
 
-// 〔MIG-1 续〕类型住读口 `tmux-reads.ts`（那台后端的成品形状，跨语言金样钉着；原先是 monitor `tmux.rs` 的 ts-rs 生成物）。
+// 类型住读口 `tmux-reads.ts`（那台后端的成品形状，跨语言金样钉着；原先是 monitor `tmux.rs` 的 ts-rs 生成物）。
 export type { TmuxSession } from "./tmux-reads";
 import type { TmuxSession } from "./tmux-reads";
-// 〔THIN〕`isClaudeTmuxCommand`〔散文墓碑〕删：「这个 tmux 前台命令算不算 agent 的会话」（claude / node）由那台后端判，
+// `isClaudeTmuxCommand`〔散文墓碑〕删：「这个 tmux 前台命令算不算 agent 的会话」（claude / node）由那台后端判，
 //   随 `tmux-list` 每一行的 `agent` 带来（`observe/tmux_list.rs` 经注册表 `Adapter.processes`）。界面只读那一格。
 
 /**

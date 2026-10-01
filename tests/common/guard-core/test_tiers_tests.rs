@@ -1,10 +1,10 @@
-//! **测试层分级**〔TQ1 · 第四波 4B 第四批〕：五层（单元 / 源码扫描 / 集成 / e2e / 真机），
+//! **测试层分级**：五层（单元 / 源码扫描 / 集成 / e2e / 真机），
 //! 每层一张登记表、每层一条会红的反空真自检。
 //!
 //! # 它回答什么，不回答什么
 //!
 //! 层是**机制轴**：跑它要什么环境、谁来跑它、它会以什么方式**静默变空**。
-//! 它**不**回答「这条判据服务哪条业务要求」—— 那是价值轴（`真相源/105` 已实测两轴统计上不相关，
+//! 它**不**回答「这条判据服务哪条业务要求」—— 那是价值轴（已实测两轴统计上不相关，
 //! 价值轴的住址归各判据头注）。所以这里一个字都不判「哪一层更有用」。
 //!
 //! # 五层，各自最典型的「静默变空」与本文件给它的那一条自检
@@ -12,7 +12,7 @@
 //! | 层 | 静默变空的方式 | 自检（相等 / 零命中带正控） |
 //! |---|---|---|
 //! | 单元 | 文件在盘上、没有 `#[path]` 把它挂进编译单元 ⇒ 零条被编译、`cargo test` 照绿；`.test.ts` 不在 `npm test` 链上 | [`unit_tier_every_file_is_reached_by_its_runner`] |
-//! | 源码扫描 | 路径断了 ⇒ 扫空集 ⇒ 恒绿（`设计/16 §5.2`） | [`scan_tier_every_root_anchored_path_literal_resolves`] |
+//! | 源码扫描 | 路径断了 ⇒ 扫空集 ⇒ 恒绿 | [`scan_tier_every_root_anchored_path_literal_resolves`] |
 //! | 集成 | 缺环境时裸 `return` ⇒ 没跑也算过 | [`integration_tier_never_skips_silently`] |
 //! | e2e | 写了套件没人跑 | [`e2e_tier_is_what_package_json_runs_and_no_helper_is_orphaned`] |
 //! | 真机 | `#[ignore]` 挡在门禁外，改个名触发者就点不到它（`cargo test` 跑零条 exit 0） | [`real_machine_tier_every_ignored_test_is_registered_and_its_trigger_still_reaches_it`] |
@@ -46,7 +46,7 @@
 //!   （helper 里跳过的看不见）。
 //! - 真机层的触发者核的是「过滤串是那条测试全名的子串」（`cargo test` 的过滤语义），
 //!   **不**核那个脚本今天有没有人跑、跑了是不是绿。
-//! - `tests/evidence/` 里的 `.py` / `.md` / `.rs` 量具与读数（`真相源/105 §3.4` 第 5 条）不在任何一层的人群里：
+//! - `tests/evidence/` 里的 `.py` / `.md` / `.rs` 量具与读数不在任何一层的人群里：
 //!   它们不是哪个跑者按后缀会捡起来的东西。那棵树里真编译的那条 `[[bench]]` 已搬去 `tests/benches/`。
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -56,24 +56,24 @@ use std::path::{Path, PathBuf};
 
 /// 单元层：不读仓内文本、不碰 OS 的测试文件。
 const UNIT: &[&str] = &[
-    // 〔MOD〕记录解释搬进后端：Claude 轮次判词（原 `observe/turn_detect_tests.rs`）· Codex 记录映射（原 monitor `codex_record_tests.rs`）·
+    // 记录解释搬进后端：Claude 轮次判词（原 `observe/turn_detect_tests.rs`）· Codex 记录映射（原 monitor `codex_record_tests.rs`）·
     //   按路径读正文出成品那个核（新）。
     "tests/backend/agents/claudecode/turn_tests.rs",
     "tests/backend/agents/codex/record_tests.rs",
     "tests/backend/observe/record_page_tests.rs",
-    "tests/frontend/ui/startup-active.vitest.ts", // 〔MIG-1 续〕F19 启动时记住的那一格（按事件判的真值表）
-    "tests/backend/dial_machine_tests.rs",        // 〔MIG-1 续〕机器配置 → 拨号请求的规则
-    "tests/backend/dial_probe_tests.rs",          // 〔MIG-1 续〕测试连接三步的结局（链路替身）
-    // 〔MIG-1 收尾〕`tests/frontend/ui/remote-probe.vitest.ts` 挪进 SCAN：它多读一份 Rust 源码对拍进度流名（`event_replay.rs::PROBE_PROGRESS_KIND`）。
-    "tests/frontend/ui/session-writes.vitest.ts", // 〔MIG-3b〕删会话 · 分叉经通道直说那台后端：解码器读金样 ＋ 替身数请求
-    "tests/frontend/ui/pubkey-push.vitest.ts", // 〔MIG-3b 续〕公钥推送走通道：解码器读金样 ＋ 替身数请求
-    "tests/backend/assets/hub_tests.rs", // 〔MIG-3a · 主会话 09-28 裁〕两台之间那几件的枢纽（替身的这台 ＋ 替身的远端 capture，纯内存）
-    "tests/frontend/ui/cc-bus-install-reads.vitest.ts", // 〔MIG-3a · 子步 3〕cc-bus 装 / 三态走通道：严格收 ＋ 问本机（纯替身）
-    "tests/backend/agents/claudecode/cards_tests.rs", // 〔THIN〕原 `tests/common/agent-tools-core/lib_tests.rs`：工具词表收进后端适配层（纯函数）
-    "tests/backend/observe/facts_query_tests.rs", // 〔DUP2 · J19〕SCAN → UNIT：读生成物那条异源对拍随两份收成一份退役，余下全是行为判据
-    "tests/frontend/ui/config-lost-update.vitest.ts", // 〔CFG1〕J1 两 realm 11 写者同拍写 · J5 写者路径集合
-    "tests/frontend/ui/config-persist-failure.vitest.ts", // 〔CFG1〕J8 落盘失败恰好一条 toast
-    "tests/frontend/ui/events-stream-closed.vitest.ts", // 〔W5-UI〕会话流 closed 格 ⇒ 恰好一条 toast
+    "tests/frontend/ui/startup-active.vitest.ts", // F19 启动时记住的那一格（按事件判的真值表）
+    "tests/backend/dial_machine_tests.rs",        // 机器配置 → 拨号请求的规则
+    "tests/backend/dial_probe_tests.rs",          // 测试连接三步的结局（链路替身）
+    // `tests/frontend/ui/remote-probe.vitest.ts` 挪进 SCAN：它多读一份 Rust 源码对拍进度流名（`event_replay.rs::PROBE_PROGRESS_KIND`）。
+    "tests/frontend/ui/session-writes.vitest.ts", // 删会话 · 分叉经通道直说那台后端：解码器读金样 ＋ 替身数请求
+    "tests/frontend/ui/pubkey-push.vitest.ts",    // 公钥推送走通道：解码器读金样 ＋ 替身数请求
+    "tests/backend/assets/hub_tests.rs", // 两台之间那几件的枢纽（替身的这台 ＋ 替身的远端 capture，纯内存）
+    "tests/frontend/ui/cc-bus-install-reads.vitest.ts", // cc-bus 装 / 三态走通道：严格收 ＋ 问本机（纯替身）
+    "tests/backend/agents/claudecode/cards_tests.rs", // 原 `tests/common/agent-tools-core/lib_tests.rs`：工具词表收进后端适配层（纯函数）
+    "tests/backend/observe/facts_query_tests.rs", // SCAN → UNIT：读生成物那条异源对拍随两份收成一份退役，余下全是行为判据
+    "tests/frontend/ui/config-lost-update.vitest.ts", // J1 两 realm 11 写者同拍写 · J5 写者路径集合
+    "tests/frontend/ui/config-persist-failure.vitest.ts", // J8 落盘失败恰好一条 toast
+    "tests/frontend/ui/events-stream-closed.vitest.ts", // 会话流 closed 格 ⇒ 恰好一条 toast
     "tests/frontend/ui/account-color.vitest.ts",
     "tests/frontend/ui/account-commands.vitest.ts",
     "tests/frontend/ui/account-restart.vitest.ts",
@@ -89,66 +89,66 @@ const UNIT: &[&str] = &[
     "tests/backend/agents/claudecode/resume_tests.rs",
     "tests/backend/agents/codex/parse_tests.rs",
     "tests/backend/agents/codex/resume_tests.rs",
-    "tests/backend/agents/codex/token_tests.rs", // 〔RE〕原 `tests/common/codex-token-core/lib_tests.rs`（crate 搬进后端成模块）
+    "tests/backend/agents/codex/token_tests.rs", // 原 `tests/common/codex-token-core/lib_tests.rs`（crate 搬进后端成模块）
     "tests/backend/dial_pool_tests.rs",
     "tests/backend/observe/history_query_tail_tests.rs",
-    "tests/backend/observe/session_ledger_tests.rs", // 〔MIG-1〕会话账本（可重连 / 已结束的裁决）真值表
+    "tests/backend/observe/session_ledger_tests.rs", // 会话账本（可重连 / 已结束的裁决）真值表
     "tests/backend/observe/user_inputs_tests.rs",
     "tests/backend/platform/shell_tests.rs",
-    "tests/backend/platform/tcp_rtt_tests.rs", // 〔P2〕Windows 臂 `SIO_TCP_INFO` 的布局与控制码对 SDK
+    "tests/backend/platform/tcp_rtt_tests.rs", // Windows 臂 `SIO_TCP_INFO` 的布局与控制码对 SDK
     "tests/backend/plugin/probe_tests.rs",
     "tests/comms/outward/http1_tests.rs",
-    "tests/comms/outward/route_tests.rs", // 〔US1〕跨半边抠 monitor 源码那几条退役 ⇒ 只剩纯解析 ＋ 成品→决策表（SCAN → UNIT）
+    "tests/comms/outward/route_tests.rs", // 跨半边抠 monitor 源码那几条退役 ⇒ 只剩纯解析 ＋ 成品→决策表（SCAN → UNIT）
     "tests/comms/outward/tee_tests.rs",
     "tests/comms/outward/upstream_tests.rs",
-    "tests/backend/stream/tap_tests.rs",     // 〔TAP〕hub
-    "tests/frontend/ui/live-card.vitest.ts", // 〔TAP〕活卡：状态机 · 真 TabManager 三向相等（台架夹具那一条随折法搬进后端）
+    "tests/backend/stream/tap_tests.rs",     // hub
+    "tests/frontend/ui/live-card.vitest.ts", // 活卡：状态机 · 真 TabManager 三向相等（台架夹具那一条随折法搬进后端）
     "tests/frontend/ui/runs.vitest.ts", // 子运行：主 tab 零子运行行、agent 面板分组与五态、主活卡只有主运行那段、状态标到那张卡上
-    "tests/backend/writer_task_tests.rs", // 〔TAP〕写者优先序（tap 最低）
+    "tests/backend/writer_task_tests.rs", // 写者优先序（tap 最低）
     "tests/frontend/ui/branch-button.vitest.ts",
     "tests/frontend/ui/branch-fold-batching.vitest.ts",
     "tests/frontend/ui/branching.test.ts",
-    // 〔C4d〕`tests/frontend/shell/accounts_tests.rs` 删了（随 `accounts.rs` 整份出列）。
-    // 〔P1 · 第 4 件〕`tests/frontend/shell/adapter/claude_code_tests.rs` 删了（monitor 那份适配表退役，对拍与生成器随家进了后端 `tests/backend/agents_tests.rs`）。
-    // 〔P1 · 第 4 件〕`tests/frontend/shell/adapter/codex_tests.rs` 删了（monitor 那份适配表退役，对拍与生成器随家进了后端 `tests/backend/agents_tests.rs`）。
+    // `tests/frontend/shell/accounts_tests.rs` 删了（随 `accounts.rs` 整份出列）。
+    // `tests/frontend/shell/adapter/claude_code_tests.rs` 删了（monitor 那份适配表退役，对拍与生成器随家进了后端 `tests/backend/agents_tests.rs`）。
+    // `tests/frontend/shell/adapter/codex_tests.rs` 删了（monitor 那份适配表退役，对拍与生成器随家进了后端 `tests/backend/agents_tests.rs`）。
     "tests/backend/control/launch_render/launch_cli_parity_tests.rs",
     "tests/backend/control/launch_render/launch_payload_parity_tests.rs",
     "tests/backend/control/launch_render/launch_tmux_outer_parity_tests.rs",
     "tests/frontend/shell/chan/transfer_stream_tests.rs",
-    "tests/backend/agents/claudecode/branch_tests.rs", // 〔THIN〕原 `tests/common/branch-core/lib_tests.rs`：分叉变换收进后端适配层
-    "tests/backend/control/gate_rules_tests.rs", // 〔THIN〕原 `tests/common/gate-core/lib_tests.rs`：gate-core 收成后端模块
-    "tests/common/relay-route-core/lib_tests.rs", // 〔US1〕中转门牌共享 crate
-    // 〔P1〕`search-core` 删了：它的纯函数判据随家拆成两份（通用口径 · Claude 记录文本），同层。
+    "tests/backend/agents/claudecode/branch_tests.rs", // 原 `tests/common/branch-core/lib_tests.rs`：分叉变换收进后端适配层
+    "tests/backend/control/gate_rules_tests.rs", // 原 `tests/common/gate-core/lib_tests.rs`：gate-core 收成后端模块
+    "tests/common/relay-route-core/lib_tests.rs", // 中转门牌共享 crate
+    // `search-core` 删了：它的纯函数判据随家拆成两份（通用口径 · Claude 记录文本），同层。
     "tests/backend/agents/claudecode/text_tests.rs",
     "tests/frontend/filewin/corpus_tests.rs",
-    "tests/frontend/shell/filewin/cross_half_tests.rs", // 〔P4〕窗口独立成包之后跨两半的那几条（异源一侧在 monitor）
+    "tests/frontend/shell/filewin/cross_half_tests.rs", // 窗口独立成包之后跨两半的那几条（异源一侧在 monitor）
     "tests/frontend/filewin/create_tests.rs",
     "tests/frontend/filewin/editor_tests.rs",
     "tests/frontend/filewin/preview_tests.rs",
-    "tests/frontend/filewin/picker_tests.rs", // 〔W5-FILES〕原生选文件框（假选择框注入）
+    "tests/frontend/filewin/picker_tests.rs", // 原生选文件框（假选择框注入）
     "tests/frontend/filewin/rows_tests.rs",
     "tests/frontend/filewin/scale_tests.rs",
     "tests/frontend/filewin/shell_keys_tests.rs",
-    "tests/frontend/filewin/size_tests.rs", // 〔W5-FILES〕算大小（窗口那一侧）
-    "tests/frontend/filewin/extract_tests.rs", // 〔FILES2〕解压到这里（窗口那一侧，合成后端）
+    "tests/frontend/filewin/size_tests.rs", // 算大小（窗口那一侧）
+    "tests/frontend/filewin/extract_tests.rs", // 解压到这里（窗口那一侧，合成后端）
     "tests/frontend/filewin/workspace_tests.rs",
     "tests/frontend/filewin/writeops_tests.rs",
     "tests/frontend/shell/lib_batch_tests.rs",
     "tests/frontend/shell/lib_nudge_skip_tests.rs",
     "tests/frontend/shell/lib_remote_config_tests.rs",
-    // 〔MIG-1〕`port_forward_tests.rs` 随转发账进本机常驻后端删了（判据搬去 `tests/backend/dial_forwards_tests.rs`）。
-    "tests/frontend/shell/session_book_tests.rs", // 〔MIG-1〕会话成品缓存的真值表（替掉容器账与本机活会话表那两份判据，两本账随裁决搬进后端）
-    // 〔LOC1b · 4D〕`session_map_f13_tests.rs` 与 `session_map_linux_liveness.rs` 随 monitor 自己那份本机判活删了。
+    // `port_forward_tests.rs` 随转发账进本机常驻后端删了（判据搬去 `tests/backend/dial_forwards_tests.rs`）。
+    "tests/frontend/shell/session_book_tests.rs", // 会话成品缓存的真值表（替掉容器账与本机活会话表那两份判据，两本账随裁决搬进后端）
+    // `session_map_f13_tests.rs` 与 `session_map_linux_liveness.rs` 随 monitor 自己那份本机判活删了。
     "tests/frontend/shell/sftp_pool_tests.rs",
     "tests/comms/inward/ssh_link_tests.rs",
     "tests/frontend/shell/ssh_source_batcher_tests.rs",
     "tests/frontend/shell/ssh_source_seam_tests.rs",
     "tests/frontend/shell/ssh_source_snapshot_tail_tests.rs",
     "tests/frontend/shell/ssh_source_snapshot_tests.rs",
-    // 〔MIG-3b 续〕足迹申报表的两份判据随表搬进后端（原 `tests/frontend/shell/tool_registry_{environment,not_managed}_tests.rs`）。
+    // 足迹申报表的两份判据随表搬进后端（原 `tests/frontend/shell/tool_registry_{environment,not_managed}_tests.rs`）。
     "tests/backend/footprint/registry_environment_tests.rs",
     "tests/backend/footprint/registry_not_managed_tests.rs",
-    "tests/frontend/shell/footprint_client_tests.rs", // 〔MIG-3b 续〕monitor 自己进程那几条事实（纯函数；两拍之后它不再 stat）
+    "tests/frontend/shell/footprint_client_tests.rs", // monitor 自己进程那几条事实（纯函数；两拍之后它不再 stat）
     "tests/frontend/ui/cards/api-error.test.ts",
     "tests/frontend/ui/cards/bash-collapse.vitest.ts",
     "tests/frontend/ui/cards/bash.test.ts",
@@ -156,7 +156,7 @@ const UNIT: &[&str] = &[
     "tests/frontend/ui/cards/diff.test.ts",
     "tests/frontend/ui/cards/file-input.vitest.ts",
     "tests/frontend/ui/cards/interactive.vitest.ts",
-    "tests/frontend/ui/cards/json-prefix.vitest.ts", // 〔W5-RENDER R2〕firstLineOf / jsonPrefix 与原式对拍（纯函数）
+    "tests/frontend/ui/cards/json-prefix.vitest.ts", // firstLineOf / jsonPrefix 与原式对拍（纯函数）
     "tests/frontend/ui/config-fields.vitest.ts",
     "tests/frontend/ui/e2e-probe.vitest.ts",
     "tests/frontend/ui/error-toast.vitest.ts",
@@ -170,7 +170,7 @@ const UNIT: &[&str] = &[
     "tests/frontend/ui/height-estimate.vitest.ts",
     "tests/frontend/ui/invariants-frontend-guard.vitest.ts",
     "tests/frontend/ui/keybindings/actions.vitest.ts",
-    "tests/frontend/ui/launch-arrival.vitest.ts", // 〔FIX3〕起会话的真成功正信号（纯函数 ＋ 假定时器，不碰真窗口）
+    "tests/frontend/ui/launch-arrival.vitest.ts", // 起会话的真成功正信号（纯函数 ＋ 假定时器，不碰真窗口）
     "tests/frontend/ui/launch-dimensions.test.ts",
     "tests/frontend/ui/launch-menu.vitest.ts",
     "tests/frontend/ui/launch-requests.vitest.ts",
@@ -179,7 +179,7 @@ const UNIT: &[&str] = &[
     "tests/frontend/ui/panorama/agent-clip.vitest.ts",
     "tests/frontend/ui/panorama/d20-gate.vitest.ts",
     "tests/frontend/ui/panorama/layout.vitest.ts",
-    // 〔STC〕`tests/frontend/ui/panorama/session-files.test.ts` 出列：被测对象（写类工具口径）搬进后端，七条搬成 `tests/backend/observe/facts_query_tests.rs` 里一条。
+    // `tests/frontend/ui/panorama/session-files.test.ts` 出列：被测对象（写类工具口径）搬进后端，七条搬成 `tests/backend/observe/facts_query_tests.rs` 里一条。
     "tests/frontend/ui/panorama/subgraph-layers.vitest.ts",
     "tests/frontend/ui/reconcile-shell.vitest.ts",
     "tests/frontend/ui/record-timeline.vitest.ts",
@@ -195,7 +195,7 @@ const UNIT: &[&str] = &[
     "tests/frontend/ui/settings/cc-bus-hooks-section.vitest.ts",
     "tests/frontend/ui/settings/cc-bus-section.vitest.ts",
     "tests/frontend/ui/settings/config-surface-section.vitest.ts",
-    "tests/frontend/ui/settings/context-limits-section.vitest.ts", // 〔FIX4〕`contextLimits` 的入口（假 IPC）
+    "tests/frontend/ui/settings/context-limits-section.vitest.ts", // `contextLimits` 的入口（假 IPC）
     "tests/frontend/ui/settings/diagnostics-section.vitest.ts",
     "tests/frontend/ui/settings/drift-ledger-section.vitest.ts",
     "tests/frontend/ui/settings/host-os.vitest.ts",
@@ -208,7 +208,7 @@ const UNIT: &[&str] = &[
     "tests/frontend/ui/settings/panel-block-isolation.vitest.ts",
     "tests/frontend/ui/settings/panel-deferred-io.vitest.ts",
     "tests/frontend/ui/settings/panel-groups.vitest.ts",
-    "tests/frontend/ui/settings/panorama-section.vitest.ts", // 〔FIX4〕全景小程序卸口（假通道）
+    "tests/frontend/ui/settings/panorama-section.vitest.ts", // 全景小程序卸口（假通道）
     "tests/frontend/ui/settings/panel-machine-page-visibility.vitest.ts",
     "tests/frontend/ui/settings/panel-per-machine-deferred-io.vitest.ts",
     "tests/frontend/ui/settings/panel-window-lifecycle.vitest.ts",
@@ -237,9 +237,9 @@ const UNIT: &[&str] = &[
     "tests/frontend/ui/views/history-actions.test.ts",
     "tests/frontend/ui/views/history-actions.vitest.ts",
     "tests/frontend/ui/views/history-cache.test.ts",
-    // 〔LOC1b · 4D〕两份等本机索引的前端判据（`history-close-stops-retry` · `history-index-wait`）随那条 1 s 重跑链删了。
+    // 两份等本机索引的前端判据（`history-close-stops-retry` · `history-index-wait`）随那条 1 s 重跑链删了。
     "tests/frontend/ui/views/history-counted.vitest.ts",
-    "tests/frontend/ui/views/history-state-chip.vitest.ts", // 〔AR1〕历史状态词只住 sessionState.*
+    "tests/frontend/ui/views/history-state-chip.vitest.ts", // 历史状态词只住 sessionState.*
     "tests/frontend/ui/views/history-filter-collapse.vitest.ts",
     "tests/frontend/ui/views/history-prefs.test.ts",
     "tests/frontend/ui/views/history-search-resume.vitest.ts",
@@ -261,12 +261,12 @@ const UNIT: &[&str] = &[
     "tests/frontend/ui/views/session-viewer-scroll.vitest.ts",
     "tests/frontend/ui/views/session-viewer-skeleton.vitest.ts",
     "tests/frontend/ui/views/user-input-panel.vitest.ts",
-    "tests/common/upstream-url-core/lib_tests.rs", // 〔DUP3 · J9〕新共享 crate `upstream-url-core` 的判定（纯函数）
-    "tests/common/deploy-contract/lib_tests.rs", // 〔MIG-3b · P1〕部署契约（戳格式那几格；判定那几格随判定进了后端 `deploy_plan_tests`）
-    "tests/frontend/ui/cards/long-reply.vitest.ts", // 〔RENDER2〕超长回复切片 ＋「显示全部」分片渲染（jsdom，假定时器）
-    // 〔MIG-2〕基数 → 增量 +1：起会话那几问的帧命令应答（`control/launch_render/mod.rs::answer_*`）。
+    "tests/common/upstream-url-core/lib_tests.rs", // 新共享 crate `upstream-url-core` 的判定（纯函数）
+    "tests/common/deploy-contract/lib_tests.rs", // 部署契约（戳格式那几格；判定那几格随判定进了后端 `deploy_plan_tests`）
+    "tests/frontend/ui/cards/long-reply.vitest.ts", // 超长回复切片 ＋「显示全部」分片渲染（jsdom，假定时器）
+    // 基数 → 增量 +1：起会话那几问的帧命令应答（`control/launch_render/mod.rs::answer_*`）。
     "tests/backend/control/launch_render/answers_tests.rs",
-    // 〔OSA〕基数 → 增量 +1：`$PROFILE` 备份那一格问本机后端（假通道）。
+    // 基数 → 增量 +1：`$PROFILE` 备份那一格问本机后端（假通道）。
     "tests/frontend/ui/settings/profile-backups.vitest.ts",
 ];
 
@@ -274,35 +274,35 @@ const UNIT: &[&str] = &[
 const SCAN: &[&str] = &[
     "tests/frontend/ui/ext-reads.vitest.ts", // 扩展页几问走通道：严格收 ＋ 问对那台（假通道 ＋ 金样）
     "tests/frontend/ui/settings/ext-section.vitest.ts", // 扩展页：表 · 抽屉 · 确认卡（假通道）＋ 界面零判定扫描
-    // 〔P1 · 第 4 件〕UNIT → SCAN：起前清洗那份名单读生成物（`include_str!` 画像表），判据对金样读。
+    // UNIT → SCAN：起前清洗那份名单读生成物（`include_str!` 画像表），判据对金样读。
     "tests/frontend/shell/lib_env_scrub_tests.rs",
-    // 〔P1〕原 `search-core` 纯函数判据的通用那一半 ＋ 「口径只有一个家」那两道（读后端三份生产源码）⇒ 扫描层。
+    // 原 `search-core` 纯函数判据的通用那一半 ＋ 「口径只有一个家」那两道（读后端三份生产源码）⇒ 扫描层。
     "tests/backend/observe/search_rules_tests.rs",
-    // 〔MOD〕记录解释搬进后端：漂移账（原 monitor `drift_ledger_tests.rs` 的记录两面）· 抢救与记账（原 `parser_tests.rs`）·
+    // 记录解释搬进后端：漂移账（原 monitor `drift_ledger_tests.rs` 的记录两面）· 抢救与记账（原 `parser_tests.rs`）·
     //   记录的线上形状（原 `messages_tests.rs`）· 标题记录一个不漏被接住（原 `history_title_coverage.rs`）。
     "tests/backend/agents/claudecode/drift_tests.rs",
     "tests/backend/agents/claudecode/parse_tests.rs",
     "tests/backend/agents/claudecode/schema_tests.rs",
     "tests/backend/agents/claudecode/schema_title_coverage.rs",
-    "tests/frontend/ui/remote-probe.vitest.ts", // 〔MIG-1 收尾〕测试连接的读口（请求体 · 进度流 · 严格收）＋ 与 Rust `event_replay.rs::PROBE_PROGRESS_KIND` 对拍流名
-    "tests/frontend/shell/remote_resident_tests.rs", // 〔STOP〕UNIT → SCAN：多一条跨半边期限对拍（`include_str!` 读后端 `control/resident.rs`）
-    "tests/frontend/ui/remote-launch.test.ts", // 〔LR2〕UNIT → SCAN：五个 builder 删后剩下的格读源码 / 夹具（判别器判 SCAN）
-    "tests/frontend/ui/tasks-decode.vitest.ts", // 〔LOC1a〕读跨语言金样 tasks-list.golden.json
-    "tests/frontend/ui/record-file-notice.vitest.ts", // 〔FW1〕D-d：活会话 jsonl 不见了 / 被截短 / 被改写 ⇒ tab 顶一行提示
-    "tests/frontend/ui/config-patch-fake.vitest.ts", // 〔CFG1〕假盘对跨语言金样 config-patch.golden.json
-    "tests/frontend/ui/tab-bar-width.vitest.ts", // 〔CFG1〕J7 tab 栏宽度走存储接入层、零裸 localStorage
-    "tests/frontend/ui/ask-dialog.vitest.ts", // 〔W5-UI〕D1 生产 TS 零原生 confirm/prompt（AST 扫）· D1b askConfirm/askText 必 await ＋ 调用方清单
-    "tests/frontend/ui/bg-flat.vitest.ts", // 〔BG1〕V125：tab 栏通用代码零 bg 分叉（扫 `src/frontend/ui/tabs.ts` ＋ `src/tab-*.ts`）· CSS 零 `.tab-bg`
+    "tests/frontend/ui/remote-probe.vitest.ts", // 测试连接的读口（请求体 · 进度流 · 严格收）＋ 与 Rust `event_replay.rs::PROBE_PROGRESS_KIND` 对拍流名
+    "tests/frontend/shell/remote_resident_tests.rs", // UNIT → SCAN：多一条跨半边期限对拍（`include_str!` 读后端 `control/resident.rs`）
+    "tests/frontend/ui/remote-launch.test.ts", // UNIT → SCAN：五个 builder 删后剩下的格读源码 / 夹具（判别器判 SCAN）
+    "tests/frontend/ui/tasks-decode.vitest.ts", // 读跨语言金样 tasks-list.golden.json
+    "tests/frontend/ui/record-file-notice.vitest.ts", // D-d：活会话 jsonl 不见了 / 被截短 / 被改写 ⇒ tab 顶一行提示
+    "tests/frontend/ui/config-patch-fake.vitest.ts",  // 假盘对跨语言金样 config-patch.golden.json
+    "tests/frontend/ui/tab-bar-width.vitest.ts", // J7 tab 栏宽度走存储接入层、零裸 localStorage
+    "tests/frontend/ui/ask-dialog.vitest.ts", // D1 生产 TS 零原生 confirm/prompt（AST 扫）· D1b askConfirm/askText 必 await ＋ 调用方清单
+    "tests/frontend/ui/bg-flat.vitest.ts", // V125：tab 栏通用代码零 bg 分叉（扫 `src/frontend/ui/tabs.ts` ＋ `src/tab-*.ts`）· CSS 零 `.tab-bg`
     "tests/frontend/ui/account-availability-guard.vitest.ts",
     "tests/frontend/ui/account-base-semantics.vitest.ts",
     "tests/frontend/ui/account-chip.vitest.ts",
-    "tests/frontend/ui/accounts-decode.vitest.ts", // 〔C4c〕读跨语言金样（`tests/__fixtures__/accounts.golden.json`）
-    "tests/frontend/ui/apikey-reads.vitest.ts", // 〔US1〕读跨语言金样（`tests/__fixtures__/apikey.golden.json`）
-    "tests/frontend/ui/ssh-config-reads.vitest.ts", // 〔MIG-1〕读跨语言金样（`tests/__fixtures__/ssh-config.golden.json`）
-    "tests/frontend/ui/tmux-reads.vitest.ts", // 〔MIG-1 续〕读跨语言金样（`tests/__fixtures__/tmux-list.golden.json`）
-    "tests/frontend/ui/port-forward-reads.vitest.ts", // 〔MIG-1〕读跨语言金样（`tests/__fixtures__/forward-list.golden.json`）
-    "tests/frontend/ui/session-stream-credit.vitest.ts", // 〔MIG-1〕读跨语言金样（`tests/__fixtures__/session-stream-credit.golden.json`）
-    "tests/frontend/ui/history-reads.vitest.ts", // 〔C4d〕读跨语言金样（`tests/__fixtures__/history-products.golden.json`）
+    "tests/frontend/ui/accounts-decode.vitest.ts", // 读跨语言金样（`tests/__fixtures__/accounts.golden.json`）
+    "tests/frontend/ui/apikey-reads.vitest.ts", // 读跨语言金样（`tests/__fixtures__/apikey.golden.json`）
+    "tests/frontend/ui/ssh-config-reads.vitest.ts", // 读跨语言金样（`tests/__fixtures__/ssh-config.golden.json`）
+    "tests/frontend/ui/tmux-reads.vitest.ts", // 读跨语言金样（`tests/__fixtures__/tmux-list.golden.json`）
+    "tests/frontend/ui/port-forward-reads.vitest.ts", // 读跨语言金样（`tests/__fixtures__/forward-list.golden.json`）
+    "tests/frontend/ui/session-stream-credit.vitest.ts", // 读跨语言金样（`tests/__fixtures__/session-stream-credit.golden.json`）
+    "tests/frontend/ui/history-reads.vitest.ts", // 读跨语言金样（`tests/__fixtures__/history-products.golden.json`）
     "tests/frontend/ui/agent-profile-parity.vitest.ts",
     "tests/frontend/ui/app-grid-claims.vitest.ts",
     "tests/backend/agent_boundary_guard.rs",
@@ -318,13 +318,13 @@ const SCAN: &[&str] = &[
     "tests/backend/control/cli_control_tests.rs",
     "tests/backend/control/gate_tests.rs",
     "tests/backend/control/kill_tests.rs",
-    "tests/backend/control/resolve_query_tests.rs", // 〔TL2 · V126〕UNIT → SCAN：跨仓承诺那一族读冻结金样与 IPC-PROTOCOL
+    "tests/backend/control/resolve_query_tests.rs", // UNIT → SCAN：跨仓承诺那一族读冻结金样与 IPC-PROTOCOL
     "tests/backend/dial_sftp_tests.rs",
-    "tests/backend/observe/tmux_list_tests.rs", // 〔MIG-1 续〕解析判据 ＋ 写跨语言金样（`include_str!` 读 `tmux-list.golden.json`）
-    "tests/backend/dial_forwards_tests.rs", // 〔MIG-1〕转发账判据 ＋ 写跨语言金样（`include_str!` 读 `forward-list.golden.json`）
-    "tests/backend/dial_ssh_config_tests.rs", // 〔MIG-1〕规则判据 ＋ 写跨语言金样（`include_str!` 读 `ssh-config.golden.json`）
-    "tests/common/creds-core/store_tests.rs", // 〔P5〕UNIT → SCAN：多一条「两侧读家目录同一个函数」（读两棵生产树的源码现扫调用点）
-    "tests/backend/dial_terminal_tests.rs", // 〔WF1 · G〕UNIT → SCAN：开终端那一行的渲染规则 ＋ 三份起会话夹具的全部请求都过守卫（`include_str!` 读 `launch_render/fixtures/*.json`）
+    "tests/backend/observe/tmux_list_tests.rs", // 解析判据 ＋ 写跨语言金样（`include_str!` 读 `tmux-list.golden.json`）
+    "tests/backend/dial_forwards_tests.rs", // 转发账判据 ＋ 写跨语言金样（`include_str!` 读 `forward-list.golden.json`）
+    "tests/backend/dial_ssh_config_tests.rs", // 规则判据 ＋ 写跨语言金样（`include_str!` 读 `ssh-config.golden.json`）
+    "tests/common/creds-core/store_tests.rs", // UNIT → SCAN：多一条「两侧读家目录同一个函数」（读两棵生产树的源码现扫调用点）
+    "tests/backend/dial_terminal_tests.rs", // UNIT → SCAN：开终端那一行的渲染规则 ＋ 三份起会话夹具的全部请求都过守卫（`include_str!` 读 `launch_render/fixtures/*.json`）
     "tests/backend/dial_tests.rs",
     "tests/backend/files/module_boundary_guard.rs",
     "tests/backend/guard_support_tests.rs",
@@ -334,7 +334,7 @@ const SCAN: &[&str] = &[
     "tests/backend/main_stream_flag_tests.rs",
     "tests/backend/main_window_raise_guard.rs",
     "tests/backend/no_timer_guard.rs",
-    // 〔STC〕会话事实的口径与续传（纯字节）＋ 一条异源对拍读生成物 `src/frontend/ui/generated/agent-profile-table.ts` ⇒ 判别器判扫描层。
+    // 会话事实的口径与续传（纯字节）＋ 一条异源对拍读生成物 `src/frontend/ui/generated/agent-profile-table.ts` ⇒ 判别器判扫描层。
     "tests/backend/panorama_locus_guard.rs",
     "tests/backend/platform/cfgless_guard.rs",
     "tests/backend/platform/fallback_guard.rs",
@@ -355,35 +355,35 @@ const SCAN: &[&str] = &[
     "tests/backend/single_stream_guard.rs",
     "tests/backend/target_parity_guard.rs",
     "tests/frontend/ui/base-flag-contract-guard.vitest.ts",
-    // 〔P1 · 第 4 件〕`tests/frontend/shell/agent_dispatch_registry_tests.rs` 删了（monitor 那份适配表退役，对拍与生成器随家进了后端 `tests/backend/agents_tests.rs`）。
+    // `tests/frontend/shell/agent_dispatch_registry_tests.rs` 删了（monitor 那份适配表退役，对拍与生成器随家进了后端 `tests/backend/agents_tests.rs`）。
     "tests/frontend/shell/arch_doc_shape_guard_tests.rs",
-    "tests/frontend/shell/asset_sync_tests.rs", // 〔AS2〕
+    "tests/frontend/shell/asset_sync_tests.rs", //
     "tests/frontend/shell/atomic_replace_registry_tests.rs",
-    // 〔P1 · 第 4 件〕`tests/frontend/shell/agent_profile_parity_tests.rs` 删了（monitor 那份适配表退役，对拍与生成器随家进了后端 `tests/backend/agents_tests.rs`）。
+    // `tests/frontend/shell/agent_profile_parity_tests.rs` 删了（monitor 那份适配表退役，对拍与生成器随家进了后端 `tests/backend/agents_tests.rs`）。
     "tests/frontend/shell/backend_control_tests.rs",
-    "tests/frontend/shell/backend_kill_tests.rs", // 〔C4e〕挂载点从 `backend_kill.rs` 换成 `backend/control/mod.rs`（发送端删了，判据留着）；同拍 `backend_launch_tests.rs` / `backend_send_keys_tests.rs` 随发送端删掉、摘了
+    "tests/frontend/shell/backend_kill_tests.rs", // 挂载点从 `backend_kill.rs` 换成 `backend/control/mod.rs`（发送端删了，判据留着）；同拍 `backend_launch_tests.rs` / `backend_send_keys_tests.rs` 随发送端删掉、摘了
     "tests/comms/inward/backend_route_tests.rs",
     "tests/backend/control/launch_render/ccm_invocation_tests.rs",
     "tests/frontend/shell/frame_query_tests.rs",
     "tests/frontend/shell/inbound_client_tests.rs",
     "tests/backend/control/launch_render/launch_wire_f07_main_path_tests.rs",
     "tests/frontend/shell/backend_policy_tests.rs",
-    "tests/frontend/shell/backend_client_guard_tests.rs", // 〔THIN〕原 `backend_tests.rs`：`backend/` 目录没了，两道判据改看逐个点名的那一组
-    "tests/frontend/shell/platform/platform_home_guard.rs", // 〔P4b · 阶段 H〕壳里平台形态只许住 `platform/`（与 host-core）＋ 待收名单
-    "tests/frontend/shell/contract_crate_guard_tests.rs", // 〔THIN 第 5 件〕读 manifest 与生产源码
+    "tests/frontend/shell/backend_client_guard_tests.rs", // 原 `backend_tests.rs`：`backend/` 目录没了，两道判据改看逐个点名的那一组
+    "tests/frontend/shell/platform/platform_home_guard.rs", // 壳里平台形态只许住 `platform/`（与 host-core）＋ 待收名单
+    "tests/frontend/shell/contract_crate_guard_tests.rs",   // 读 manifest 与生产源码
     "tests/frontend/shell/bus_identity_registry_tests.rs",
     "tests/frontend/shell/byte_cap_registry_tests.rs",
     "tests/frontend/shell/byte_table_tests.rs",
     "tests/frontend/shell/ccm_cli_contract_tests.rs",
     "tests/frontend/shell/chan/webview_tests.rs",
-    "tests/frontend/ui/alias-reads.vitest.ts", // 〔MIG-3a〕别名六问走通道：解码器读跨语言金样 aliases.golden.json ＋ 问对那台
-    "tests/backend/platform/shell/dialect_tests.rs", // 〔OSA · V156〕随方言搬进 `platform/shell/` // 〔MIG-3a〕方言进了那台后端（读法 ＋ `$PROFILE` 一个家的全树普查）
-    "tests/backend/assets/aliases/fence_tests.rs",   // 〔MIG-3a〕围栏块配对 ＋ 形状账（源码扫描）
-    "tests/frontend/shell/cc_bus_deploy_tests.rs", // 〔MIG-3a · 子步 3〕装 / 三态进了后端，只剩装前 `ccm` 预检（纯函数 ＋ 读源码）⇒ INTEGRATION → SCAN
-    "tests/frontend/shell/command_home_registry_tests.rs", // 〔MIG-3a · `99 §2.1 ⑬`〕Tauri 命令两张封闭表（扫源码）
-    "tests/backend/footprint/rows_tests.rs", // 〔MIG-3b 续〕原 `tests/frontend/shell/config_surface_tests.rs` 随判定搬进后端
+    "tests/frontend/ui/alias-reads.vitest.ts", // 别名六问走通道：解码器读跨语言金样 aliases.golden.json ＋ 问对那台
+    "tests/backend/platform/shell/dialect_tests.rs", // 随方言搬进 `platform/shell/` // 方言进了那台后端（读法 ＋ `$PROFILE` 一个家的全树普查）
+    "tests/backend/assets/aliases/fence_tests.rs",   // 围栏块配对 ＋ 形状账（源码扫描）
+    "tests/frontend/shell/cc_bus_deploy_tests.rs", // 装 / 三态进了后端，只剩装前 `ccm` 预检（纯函数 ＋ 读源码）⇒ INTEGRATION → SCAN
+    "tests/frontend/shell/command_home_registry_tests.rs", // Tauri 命令两张封闭表（扫源码）
+    "tests/backend/footprint/rows_tests.rs", // 原 `tests/frontend/shell/config_surface_tests.rs` 随判定搬进后端
     "tests/frontend/shell/copy_table_tests.rs",
-    "tests/frontend/shell/creds_store_tests.rs", // 〔US1〕读侧那几条（读真文件）搬去后端 ⇒ 只剩源码扫描（INTEGRATION → SCAN）
+    "tests/frontend/shell/creds_store_tests.rs", // 读侧那几条（读真文件）搬去后端 ⇒ 只剩源码扫描（INTEGRATION → SCAN）
     "tests/common/acct-core/lib_tests.rs",
     "tests/common/copy-core/lib_tests.rs",
     "tests/common/creds-core/lib_tests.rs",
@@ -394,33 +394,33 @@ const SCAN: &[&str] = &[
     "tests/frontend/shell/doc_claim_registry_frozen_daemon_census.rs",
     "tests/frontend/shell/doc_copy_registry_tests.rs",
     "tests/frontend/shell/drift_ledger_tests.rs",
-    // 〔CF2 · 第四波 4B〕单元层 → 扫描层：多了一条「分档那一套在两棵生产段零命中」（`repo_root()` 扫 `src/`）。
+    // 单元层 → 扫描层：多了一条「分档那一套在两棵生产段零命中」（`repo_root()` 扫 `src/`）。
     "tests/frontend/shell/event_replay_tests.rs",
     "tests/frontend/shell/exec_site_registry_tests.rs",
-    "tests/frontend/shell/frame_tally_tests.rs", // 〔W5-VIS〕丢帧账：账本行为 ＋ 三条读帧循环的接线（剥过的生产文本）
-    "tests/frontend/shell/swallow_registry_tests.rs", // 〔W5-VIS〕业务路径零裸吞：人群从四棵生产源码树派生 == 登记表
-    // 〔MIG-3a〕`tests/frontend/shell/fenced_block_tests.rs` 随别名那一族进了那台后端（`tests/backend/assets/aliases/`）。
+    "tests/frontend/shell/frame_tally_tests.rs", // 丢帧账：账本行为 ＋ 三条读帧循环的接线（剥过的生产文本）
+    "tests/frontend/shell/swallow_registry_tests.rs", // 业务路径零裸吞：人群从四棵生产源码树派生 == 登记表
+    // `tests/frontend/shell/fenced_block_tests.rs` 随别名那一族进了那台后端（`tests/backend/assets/aliases/`）。
     "tests/frontend/filewin/bigfile_tests.rs",
-    "tests/frontend/filewin/guard_support_tests.rs", // 〔P4〕窗口包的判据住址反空真
+    "tests/frontend/filewin/guard_support_tests.rs", // 窗口包的判据住址反空真
     "tests/frontend/shell/filewin/boundary_tests.rs",
     "tests/frontend/filewin/copy_tests.rs",
     "tests/frontend/filewin/download_tests.rs",
-    "tests/frontend/shell/filewin/entry_tests.rs", // 〔TAIL〕INTEGRATION → SCAN：落盘那条（书签旧键搬家）随 V41 退役删了
+    "tests/frontend/shell/filewin/entry_tests.rs", // INTEGRATION → SCAN：落盘那条（书签旧键搬家）随 V41 退役删了
     "tests/frontend/filewin/find_tests.rs",
-    "tests/frontend/filewin/grep_tests.rs", // 〔FILES3 · ㉜〕按内容搜：真通道上的合成后端 ＋ 跨半边金样
-    "tests/frontend/filewin/lossy_pull_tests.rs", // 〔FILES2〕有损名下载：合成对端 ＋ 读后端源码钉暂存区常量相等
-    "tests/frontend/filewin/cross_copy_tests.rs", // 〔FILES2〕复制到另一台：合成对端（按 origin 记）＋ 读 app 源码钉 <local> 相等
+    "tests/frontend/filewin/grep_tests.rs", // 按内容搜：真通道上的合成后端 ＋ 跨半边金样
+    "tests/frontend/filewin/lossy_pull_tests.rs", // 有损名下载：合成对端 ＋ 读后端源码钉暂存区常量相等
+    "tests/frontend/filewin/cross_copy_tests.rs", // 复制到另一台：合成对端（按 origin 记）＋ 读 app 源码钉 <local> 相等
     "tests/frontend/filewin/fonts_tests.rs",
     "tests/frontend/filewin/select_tests.rs",
     "tests/frontend/filewin/transfer_tests.rs",
     "tests/frontend/shell/fixture_guard_tests.rs",
-    // 〔MIG-3b 续〕`tests/frontend/shell/footprint_remote_tests.rs` 删了：两趟问法随实现进后端 face（`tests/backend/footprint/face_tests.rs`）。
-    "tests/frontend/ui/settings/footprint-reads.vitest.ts", // 〔MIG-3b 续〕足迹成品的跨语言金样（TS 那一侧读同一份）
+    // `tests/frontend/shell/footprint_remote_tests.rs` 删了：两趟问法随实现进后端 face（`tests/backend/footprint/face_tests.rs`）。
+    "tests/frontend/ui/settings/footprint-reads.vitest.ts", // 足迹成品的跨语言金样（TS 那一侧读同一份）
     "tests/frontend/shell/frame_cadence_guard_tests.rs",
     "tests/frontend/shell/gate_singleton_guard_tests.rs",
     "tests/frontend/shell/guard_support_tests.rs",
     "tests/frontend/shell/launcher_identity_registry_tests.rs",
-    "tests/frontend/shell/lib_invariant_population_tests.rs", // 〔TL2〕§47 / §49 人群判据（读仓内源码）
+    "tests/frontend/shell/lib_invariant_population_tests.rs", // §47 / §49 人群判据（读仓内源码）
     "tests/frontend/shell/lib_mod_decl_hygiene_tests.rs",
     "tests/frontend/shell/lib_remote_bind_prescan_tests.rs",
     "tests/frontend/shell/lib_window_lifecycle_tests.rs",
@@ -438,7 +438,7 @@ const SCAN: &[&str] = &[
     "tests/frontend/shell/polling_registry_tests.rs",
     "tests/frontend/shell/profile_installer_handshake_doc_guard.rs",
     "tests/frontend/shell/quote_singleton_guard_tests.rs",
-    // 〔C4d〕`tests/frontend/shell/remote_history_kr83_tests.rs` 删了（`K-R83` 那三条随 join 搬进后端 `history_join_tests.rs`）。
+    // `tests/frontend/shell/remote_history_kr83_tests.rs` 删了（`K-R83` 那三条随 join 搬进后端 `history_join_tests.rs`）。
     "tests/frontend/shell/remote_write_registry_tests.rs",
     "tests/frontend/shell/rust_timer_registry_tests.rs",
     "tests/frontend/shell/search_kou_jing_guard.rs",
@@ -448,7 +448,7 @@ const SCAN: &[&str] = &[
     "tests/frontend/shell/snapshot_resume_tests.rs",
     "tests/frontend/shell/spawn_managed_exit_sites.rs",
     "tests/frontend/shell/spawn_managed_tests.rs",
-    "tests/frontend/ui/events-tap-machines.vitest.ts", // 〔HOST〕读 `src/frontend/ui/main.ts` 的 tap 订阅清单
+    "tests/frontend/ui/events-tap-machines.vitest.ts", // 读 `src/frontend/ui/main.ts` 的 tap 订阅清单
     "tests/frontend/shell/ssh_source_capped_line_tests.rs",
     "tests/frontend/shell/ssh_source_coldstart_perf_guard.rs",
     "tests/frontend/shell/ssh_source_coldstart_preflight_guard.rs",
@@ -459,9 +459,9 @@ const SCAN: &[&str] = &[
     "tests/frontend/shell/ssh_source_stream_flag_gate_tests.rs",
     "tests/frontend/shell/ssh_source_tier1_tests.rs",
     "tests/frontend/shell/ssh_source_write_half_guard.rs",
-    "tests/frontend/shell/sync_command_registry_tests.rs", // 〔TL3〕同步 IPC 命令的调用闭包零 `block_on` / 零同步连后端（`INVARIANTS §10`）
+    "tests/frontend/shell/sync_command_registry_tests.rs", // 同步 IPC 命令的调用闭包零 `block_on` / 零同步连后端（`INVARIANTS §10`）
     "tests/frontend/shell/tmux_backend_gate_guard_tests.rs",
-    "tests/backend/footprint/registry_tests.rs", // 〔MIG-3b 续〕原 `tests/frontend/shell/tool_registry_tests.rs` 随申报表搬进后端
+    "tests/backend/footprint/registry_tests.rs", // 原 `tests/frontend/shell/tool_registry_tests.rs` 随申报表搬进后端
     "tests/frontend/shell/write_site_registry_spawn_sites.rs",
     "tests/frontend/shell/write_site_registry_tests.rs",
     "tests/frontend/ui/config-unknown-keys.vitest.ts",
@@ -477,35 +477,35 @@ const SCAN: &[&str] = &[
     "tests/frontend/ui/fork-flow.vitest.ts",
     "tests/frontend/ui/generated-boundary-guard.vitest.ts",
     "tests/frontend/ui/gray-light-wiring.vitest.ts",
-    "tests/frontend/ui/identifier-rules-parity.vitest.ts", // 〔DUP1〕读共用金样（仓内文本）⇒ 扫描层
+    "tests/frontend/ui/identifier-rules-parity.vitest.ts", // 读共用金样（仓内文本）⇒ 扫描层
     "tests/frontend/ui/import-cycle-guard.vitest.ts",
     "tests/comms/inward/chan.vitest.ts",
     "tests/frontend/ui/ipc/commands.vitest.ts",
-    // 〔DUP1〕判定只有一个家（`90 §3` 判据 2：读 `*-core` 与 TS 生产段全集 ⇒ 扫描层）。
+    // 判定只有一个家（读 `*-core` 与 TS 生产段全集 ⇒ 扫描层）。
     "tests/frontend/ui/judgment-single-home.vitest.ts",
     "tests/frontend/ui/launch-cli-wire.vitest.ts",
-    "tests/frontend/ui/launch-no-shell-in-ts.vitest.ts", // 〔LR2〕`设计/90 §3` 条 1（接替 session-backend-gate）
-    // 〔FE1〕铸名 / 本机 resume 编排各只有一个家（读生产段全集 ⇒ 扫描层）。
+    "tests/frontend/ui/launch-no-shell-in-ts.vitest.ts", // 条 1（接替 session-backend-gate）
+    // 铸名 / 本机 resume 编排各只有一个家（读生产段全集 ⇒ 扫描层）。
     "tests/frontend/ui/launch-orchestration-single-home.vitest.ts",
     "tests/frontend/ui/launch-payload-golden.vitest.ts",
     "tests/frontend/ui/launch-tmux-outer-golden.vitest.ts",
     "tests/backend/agents/sse_anthropic_tests.rs", // Anthropic 流的折法 ＋ 台架那一轮（读 `tests/__fixtures__/tap-bench.json`，随折法从界面那一侧搬来）
-    // 〔THIN〕`tests/frontend/ui/liveness-process-names-parity.vitest.ts` 删：判活进程名的前端那一份随判定进了后端，
+    // `tests/frontend/ui/liveness-process-names-parity.vitest.ts` 删：判活进程名的前端那一份随判定进了后端，
     //   后端两处（tmux 那一格 · cmdline 判活）今天读同一张 `agents/claudecode/cards.rs::PROCESS_NAMES`，对拍无对象。
-    // 〔STC〕`设计/90 §3` 判据 3：`onLine` 调用人群 ＋ 事实字段写者（读 `src/frontend/ui/tabs.ts` 与 `src/**/*.ts` 的 AST）。
+    // `onLine` 调用人群 ＋ 事实字段写者（读 `src/frontend/ui/tabs.ts` 与 `src/**/*.ts` 的 AST）。
     "tests/frontend/ui/online-bypass-ledger.vitest.ts",
-    // 〔TL3〕「是不是本机」只在 `src/frontend/ui/ipc/origin.ts` 判（读生产段全集 ⇒ 扫描层）。
+    // 「是不是本机」只在 `src/frontend/ui/ipc/origin.ts` 判（读生产段全集 ⇒ 扫描层）。
     "tests/frontend/ui/origin-single-home.vitest.ts",
-    // 〔GAP1 · `设计/01 §1.5`〕overlay 路由的语义 ＋ `main.ts` 零处自判开没开（源码扫描）。
+    // overlay 路由的语义 ＋ `main.ts` 零处自判开没开（源码扫描）。
     "tests/frontend/ui/overlay-router.vitest.ts",
     "tests/frontend/ui/panorama/api-remote.vitest.ts",
     "tests/frontend/ui/panorama/diagram-guards.vitest.ts",
     "tests/frontend/ui/paste-block-guard.vitest.ts",
     "tests/frontend/ui/paste-block.vitest.ts",
     "tests/frontend/ui/remote-config.vitest.ts",
-    "tests/frontend/ui/rbind-token-shape-parity.vitest.ts", // 〔LR2〕从 launch-render-fallback.vitest.ts 搬来（读 Rust `payload.rs`）
+    "tests/frontend/ui/rbind-token-shape-parity.vitest.ts", // 从 launch-render-fallback.vitest.ts 搬来（读 Rust `payload.rs`）
     "tests/frontend/ui/replay-tail-keep.vitest.ts",
-    "tests/frontend/ui/render.vitest.ts", // 〔W5-RENDER R3〕由 UNIT 挪来：D3 那一格读 `src/frontend/ui/render.ts` 源码（顶层零 `let`）
+    "tests/frontend/ui/render.vitest.ts", // 由 UNIT 挪来：D3 那一格读 `src/frontend/ui/render.ts` 源码（顶层零 `let`）
     "tests/frontend/ui/scale1-render-cost.vitest.ts",
     "tests/frontend/ui/scale2-height-truth.vitest.ts",
     "tests/frontend/ui/scale3-one-screen-gate.vitest.ts",
@@ -513,27 +513,27 @@ const SCAN: &[&str] = &[
     "tests/frontend/ui/scale5-replay-queue-depth.vitest.ts",
     "tests/frontend/ui/scale6-memory-ledger.vitest.ts",
     "tests/frontend/ui/scanning-guard-registry.vitest.ts",
-    "tests/frontend/ui/session-reads.vitest.ts", // 〔C4b〕读跨语言金样（`tests/__fixtures__/session-reads.golden.json`）
-    "tests/frontend/ui/tmux-control.vitest.ts", // 〔C4e〕读跨语言金样（`tests/__fixtures__/tmux-control.golden.json`）
-    "tests/frontend/ui/resync.vitest.ts", // 〔RESYNC〕读跨语言金样（`tests/__fixtures__/resync.golden.json`）
-    "tests/frontend/ui/cc-bus-control.vitest.ts", // 〔C4e 批 3b〕读跨语言金样（`tests/__fixtures__/cc-bus-control.golden.json`）
+    "tests/frontend/ui/session-reads.vitest.ts", // 读跨语言金样（`tests/__fixtures__/session-reads.golden.json`）
+    "tests/frontend/ui/tmux-control.vitest.ts", // 读跨语言金样（`tests/__fixtures__/tmux-control.golden.json`）
+    "tests/frontend/ui/resync.vitest.ts", // 读跨语言金样（`tests/__fixtures__/resync.golden.json`）
+    "tests/frontend/ui/cc-bus-control.vitest.ts", // 读跨语言金样（`tests/__fixtures__/cc-bus-control.golden.json`）
     "tests/frontend/ui/settings/accounts-section.vitest.ts",
     "tests/frontend/ui/settings/backend-section.vitest.ts",
     "tests/frontend/ui/settings/base-wording-guard.vitest.ts",
     "tests/frontend/ui/settings/data-section.vitest.ts",
     "tests/frontend/ui/settings/facet-producer-guard.vitest.ts",
-    "tests/frontend/ui/settings/machine-aliases-naming.vitest.ts", // 〔W5-ALIAS〕读后端 `plan.rs` 原文对拍撞名退让
+    "tests/frontend/ui/settings/machine-aliases-naming.vitest.ts", // 读后端 `plan.rs` 原文对拍撞名退让
     "tests/frontend/ui/settings/open-settings.vitest.ts",
     "tests/frontend/ui/settings/remote-section.vitest.ts",
     "tests/frontend/ui/settings/settings-source-markdown.vitest.ts",
-    // 〔DUP1〕`tests/shell-quote-deceptive-parity.vitest.ts` 删了：它拍的是 TS 那份 `isValidConfigDir` 对 Rust 欺骗字符集，
-    //   TS 那份按 `设计/90 §3` 判据 2 删了（拒绝集只在 Rust，`payload_tests.rs` 逐码位钉）。
+    // `tests/shell-quote-deceptive-parity.vitest.ts` 删了：它拍的是 TS 那份 `isValidConfigDir` 对 Rust 欺骗字符集，
+    //   TS 那份按删了（拒绝集只在 Rust，`payload_tests.rs` 逐码位钉）。
     "tests/frontend/ui/tab-session-state.vitest.ts",
     "tests/frontend/ui/tabs-copy-terms.vitest.ts",
     "tests/frontend/ui/tabs-split-graph.vitest.ts",
     "tests/frontend/ui/tabs.vitest.ts",
     "tests/frontend/ui/terminal-front-command.vitest.ts",
-    "tests/frontend/ui/terminal-open.vitest.ts", // 〔FIX4 · ⑬〕开终端三步 ＋「开窗只有一个家」（扫生产段）
+    "tests/frontend/ui/terminal-open.vitest.ts", // 开终端三步 ＋「开窗只有一个家」（扫生产段）
     "tests/test-support/strip-comments.vitest.ts",
     "tests/frontend/ui/tmux-cache-single-writer.vitest.ts",
     "tests/frontend/ui/topbar-icons.vitest.ts",
@@ -543,15 +543,15 @@ const SCAN: &[&str] = &[
     "tests/frontend/ui/views/history-fanout.vitest.ts",
     "tests/frontend/ui/views/live-user-inputs.vitest.ts",
     "tests/frontend/ui/views/session-viewer-user-inputs.vitest.ts",
-    "tests/frontend/ui/upstream-url-parity.vitest.ts", // 〔DUP3 · J9〕读共用金样（仓内文本）⇒ 扫描层
-    "tests/frontend/ui/events-tap.vitest.ts", // 〔TAP〕session-tap 走 subscribe；〔MIG-3b〕另读后端 `event_replay.rs` 的流名钉两侧同名（仓内文本）⇒ 扫描层
-    "tests/frontend/ui/cc-bus-read.vitest.ts", // 〔SH1 · V136〕驾驶舱读面读跨语言金样（`tests/__fixtures__/cc-bus-read.golden.json`）
-    "tests/frontend/shell/cc_bus_tests.rs", // 〔SH1〕INTEGRATION → SCAN：起进程的那几条（本机 shell 读 · 超时不留孤儿）随驾驶舱 shell 读退役
-    // 〔AL2 · 第四波 4D〕从 INTEGRATION 挪来（候选那一条不再建临时目录）。
-    // 〔MIG-3a〕`tests/frontend/shell/shell_dialect_tests.rs` 随别名那一族进了那台后端（`tests/backend/assets/aliases/`）。
-    // 〔MIG-2〕基数 → 增量 +1：本机起会话的计划与渲染（`control/launch_render/local.rs`，从 monitor `history.rs` 搬来）。
+    "tests/frontend/ui/upstream-url-parity.vitest.ts", // 读共用金样（仓内文本）⇒ 扫描层
+    "tests/frontend/ui/events-tap.vitest.ts", // session-tap 走 subscribe；另读后端 `event_replay.rs` 的流名钉两侧同名（仓内文本）⇒ 扫描层
+    "tests/frontend/ui/cc-bus-read.vitest.ts", // 驾驶舱读面读跨语言金样（`tests/__fixtures__/cc-bus-read.golden.json`）
+    "tests/frontend/shell/cc_bus_tests.rs", // INTEGRATION → SCAN：起进程的那几条（本机 shell 读 · 超时不留孤儿）随驾驶舱 shell 读退役
+    // 从 INTEGRATION 挪来（候选那一条不再建临时目录）。
+    // `tests/frontend/shell/shell_dialect_tests.rs` 随别名那一族进了那台后端（`tests/backend/assets/aliases/`）。
+    // 基数 → 增量 +1：本机起会话的计划与渲染（`control/launch_render/local.rs`，从 monitor `history.rs` 搬来）。
     "tests/backend/control/launch_render/local_tests.rs",
-    // 〔OSA · V156〕基数 → 增量 +1：方言专属语法字面量只住 `platform/shell/`（扫后端生产树的字符串字面量）。
+    // 基数 → 增量 +1：方言专属语法字面量只住 `platform/shell/`（扫后端生产树的字符串字面量）。
     "tests/backend/platform/shell_home_guard.rs",
 ];
 
@@ -559,50 +559,50 @@ const SCAN: &[&str] = &[
 const INTEGRATION: &[&str] = &[
     "tests/backend/runs_guard.rs", // 子运行：扫描 ＋ 两套形状跑同一批运行判据（临时目录里造夹具）
     "tests/backend/agents/claudecode/runs_tests.rs", // Claude Code 的子运行形状（子运行记录住址那一条碰临时目录）
-    // 〔P1〕SCAN → INTEGRATION：部署计划的编排（替身对面）＋ 读金样与后端历史表之外，`place-verdict` 帧面那一条真读写临时目录里的落点文件。
+    // SCAN → INTEGRATION：部署计划的编排（替身对面）＋ 读金样与后端历史表之外，`place-verdict` 帧面那一条真读写临时目录里的落点文件。
     "tests/backend/control/deploy_plan_tests.rs",
-    // 〔E2 尾 · 09-27〕扫描层 → 集成层：多了「门禁那一行的判法与 CI 那一行的数由判据现算」—— 读 gate.sh ＋ ci.yml 两份外部件。
+    // 扫描层 → 集成层：多了「门禁那一行的判法与 CI 那一行的数由判据现算」—— 读 gate.sh ＋ ci.yml 两份外部件。
     "tests/frontend/shell/e2e_gate_registry_tests.rs",
-    "tests/backend/observe/cc_bus_hooks_tests.rs", // 〔MIG-3b〕钩子诊断进后端：造一台假机器（临时目录里的 settings ＋ 程序）读回成品
-    "tests/backend/control/tmux_hook_tests.rs", // 〔HX2〕读真 `/proc` 的那一条进来之后判别器判集成（SCAN → INTEGRATION）
-    "tests/backend/platform/lock_tests.rs",     // 〔HX2〕目录锁：真目录、真线程
-    "tests/backend/common/own_dir_tests.rs", // 〔HX1 续〕O1–O3 自家目录一律 0700、建目录调用点两向登记
-    "tests/frontend/shell/config_tests.rs",  // 〔CFG1〕J2/J3 12 线程 × 20 轮并发补丁写 · 补丁语义
-    "tests/backend/control/overwrite_atomic_tests.rs", // 〔HX1〕W1 ulimit -f 下子进程写到一半被 SIGXFSZ 杀，目标仍是旧整份
-    "tests/backend/stream/drain_tests.rs", // 〔HX1〕D2 真子进程 ＋ 真 SIGTERM：在飞阻塞命令做完才退
-    "tests/common/shell-quote-core/lib_tests.rs", // 〔FILES2〕单元层 → 集成层：字节形 quote 由真 bash 读回来对拍
-    "tests/frontend/filewin/chunk_upload_tests.rs", // 〔FILES2〕上传块形：临时目录里一份本机文件 ＋ 合成对端
+    "tests/backend/observe/cc_bus_hooks_tests.rs", // 钩子诊断进后端：造一台假机器（临时目录里的 settings ＋ 程序）读回成品
+    "tests/backend/control/tmux_hook_tests.rs", // 读真 `/proc` 的那一条进来之后判别器判集成（SCAN → INTEGRATION）
+    "tests/backend/platform/lock_tests.rs",     // 目录锁：真目录、真线程
+    "tests/backend/common/own_dir_tests.rs",    // O1–O3 自家目录一律 0700、建目录调用点两向登记
+    "tests/frontend/shell/config_tests.rs",     // J2/J3 12 线程 × 20 轮并发补丁写 · 补丁语义
+    "tests/backend/control/overwrite_atomic_tests.rs", // W1 ulimit -f 下子进程写到一半被 SIGXFSZ 杀，目标仍是旧整份
+    "tests/backend/stream/drain_tests.rs", // D2 真子进程 ＋ 真 SIGTERM：在飞阻塞命令做完才退
+    "tests/common/shell-quote-core/lib_tests.rs", // 单元层 → 集成层：字节形 quote 由真 bash 读回来对拍
+    "tests/frontend/filewin/chunk_upload_tests.rs", // 上传块形：临时目录里一份本机文件 ＋ 合成对端
     "tests/backend/accounts/upstream_select/creds_tests.rs",
-    "tests/backend/accounts/upstream_select/endpoint_tests.rs", // 〔US1〕上游选择出的两份成品（金样那条读夹具文件）
+    "tests/backend/accounts/upstream_select/endpoint_tests.rs", // 上游选择出的两份成品（金样那条读夹具文件）
     "tests/backend/accounts/upstream_select/file_face_tests.rs",
     "tests/backend/faces/accounts_face_tests.rs", // 账号库那几条命令在临时家目录上真建目录 · 链接 · 复制 · 回滚
-    "tests/backend/agents/claudecode/assets_tests.rs", // 〔AS2〕
-    "tests/backend/agents/claudecode/paths_tests.rs", // 〔E2 · V146〕设置文件压不压过进程环境里的上游地址（临时目录夹具）
-    "tests/frontend/shell/ccm_probe_tests.rs", // 〔E2〕SCAN → INTEGRATION：多了「先读字节认身份」那条（临时文件夹具）
+    "tests/backend/agents/claudecode/assets_tests.rs", //
+    "tests/backend/agents/claudecode/paths_tests.rs", // 设置文件压不压过进程环境里的上游地址（临时目录夹具）
+    "tests/frontend/shell/ccm_probe_tests.rs", // SCAN → INTEGRATION：多了「先读字节认身份」那条（临时文件夹具）
     "tests/backend/agents/fake_tests.rs",
     "tests/backend/agents_tests.rs",
-    "tests/backend/assets/asset_catalog_tests.rs", // 〔AS2〕
-    "tests/backend/assets/asset_sync_tests.rs",    // 〔AS2〕
-    "tests/backend/agents/codex/history_tests.rs", // 〔C4d〕Codex 历史清单那一面（临时目录上的会话树）
-    "tests/backend/history/history_annotations_tests.rs", // 〔C4d〕注解读写（夹具拷进临时目录真写真读）
-    "tests/backend/history/history_join_tests.rs", // 〔C4d〕历史跨机 join（临时目录上的记录树 ＋ 替身对面）
-    "tests/backend/stream/remote_ask_tests.rs", // 〔C4d〕问远端那一跳（真 sh 读回引号 ＋ 替身对面）
-    "tests/backend/assets/skill_install_tests.rs", // 〔AS2〕
+    "tests/backend/assets/asset_catalog_tests.rs", //
+    "tests/backend/assets/asset_sync_tests.rs",    //
+    "tests/backend/agents/codex/history_tests.rs", // Codex 历史清单那一面（临时目录上的会话树）
+    "tests/backend/history/history_annotations_tests.rs", // 注解读写（夹具拷进临时目录真写真读）
+    "tests/backend/history/history_join_tests.rs", // 历史跨机 join（临时目录上的记录树 ＋ 替身对面）
+    "tests/backend/stream/remote_ask_tests.rs",    // 问远端那一跳（真 sh 读回引号 ＋ 替身对面）
+    "tests/backend/assets/skill_install_tests.rs", //
     "tests/backend/common/fs_tests.rs",
     "tests/backend/control/capture_pane_tests.rs",
-    "tests/backend/control/ccm/claude_flags_tests.rs", // 〔AL3 · V138〕读 claude --help 快照 ＋ PATH 上有就跑真 `claude --help`
+    "tests/backend/control/ccm/claude_flags_tests.rs", // 读 claude --help 快照 ＋ PATH 上有就跑真 `claude --help`
     "tests/backend/control/ccm/plan_tests.rs",
     "tests/backend/control/exit_policy_tests.rs",
     "tests/backend/control/files_commit_tests.rs",
     "tests/backend/control/files_extract_tests.rs",
     "tests/backend/control/files_upload_chunks_tests.rs",
     "tests/backend/control/files_write_tests.rs",
-    "tests/backend/control/files_toctou_tests.rs", // 〔FIX5〕TOCTOU 闭合的竞争判据：临时目录上真改名 / 真复制 / 真链接
+    "tests/backend/control/files_toctou_tests.rs", // TOCTOU 闭合的竞争判据：临时目录上真改名 / 真复制 / 真链接
     "tests/backend/control/fork_write_tests.rs",
     "tests/backend/control/identity_tag_tests.rs",
-    "tests/backend/control/launch_tests.rs", // 〔W5-VIS〕由扫描层挪来：S4 那条判据真起一个假 tmux 子进程（`ran` 收 stderr）
+    "tests/backend/control/launch_tests.rs", // 由扫描层挪来：S4 那条判据真起一个假 tmux 子进程（`ran` 收 stderr）
     "tests/backend/control/panorama_tests.rs",
-    "tests/backend/control/resident_tests.rs", // 〔HOST〕临时目录上真铸钥匙、读钥匙文件 ·〔STOP〕真 sh 子进程 ＋ 真信号：graceful / killed / not_running
+    "tests/backend/control/resident_tests.rs", // 临时目录上真铸钥匙、读钥匙文件 ·真 sh 子进程 ＋ 真信号：graceful / killed / not_running
     "tests/backend/control/transfer_tests.rs",
     "tests/backend/dial_compress_tests.rs",
     "tests/backend/dial_link_tests.rs",
@@ -612,23 +612,23 @@ const INTEGRATION: &[&str] = &[
     "tests/backend/files/index_tests.rs",
     "tests/backend/files/raw_tests.rs",
     "tests/backend/files/scale_f2.rs",
-    "tests/backend/files/size_tests.rs", // 〔W5-FILES〕算目录大小（临时目录真走一棵树）
-    "tests/backend/files/grep_tests.rs", // 〔FILES3 · ㉜〕按内容搜：真铺一棵临时树、注入设备号与小上界
-    "tests/backend/footprint/face_tests.rs", // 〔MIG-3b 续〕`footprint-report` 那一面（真 stat 临时目录；原 `tests/backend/footprint_tests.rs`）
-    // 〔RM1f〕SCAN → 集成：多了一条真进程判据（`cancel` 真打断在飞的 `panorama`，替身小程序是真进程）
+    "tests/backend/files/size_tests.rs", // 算目录大小（临时目录真走一棵树）
+    "tests/backend/files/grep_tests.rs", // 按内容搜：真铺一棵临时树、注入设备号与小上界
+    "tests/backend/footprint/face_tests.rs", // `footprint-report` 那一面（真 stat 临时目录；原 `tests/backend/footprint_tests.rs`）
+    // SCAN → 集成：多了一条真进程判据（`cancel` 真打断在飞的 `panorama`，替身小程序是真进程）
     "tests/backend/stream/inbound_tests.rs",
     "tests/backend/layering_guard.rs",
     "tests/backend/main_fourth_face_tests.rs",
-    "tests/backend/assets/mcp_sync_tests.rs",      // 〔AS1〕
-    "tests/backend/assets/mcp_edit_tests.rs", // 〔MIG-3a〕MCP 写进了那台后端（临时目录 ＋ 跨语言金样 mcp-edit.golden.json）
-    "tests/backend/assets/mcp_sync_flow_tests.rs", // 〔MIG-3a〕MCP 装到一台的内层三问（临时目录；密钥值不出来源机）
+    "tests/backend/assets/mcp_sync_tests.rs",        //
+    "tests/backend/assets/mcp_edit_tests.rs", // MCP 写进了那台后端（临时目录 ＋ 跨语言金样 mcp-edit.golden.json）
+    "tests/backend/assets/mcp_sync_flow_tests.rs", // MCP 装到一台的内层三问（临时目录；密钥值不出来源机）
     "tests/backend/assets/ext_tests.rs", // 扩展页：表的判定 ＋ 两台（本机 ＋ 假远端）装 / 卸端到端 ＋ 金样 ext-flow.golden.json
-    "tests/backend/assets/skill_flow_tests.rs", // 〔MIG-3a〕skill 装卸进了被写那台后端（临时目录 ＋ 金样 skill-flow.golden.json）
-    "tests/backend/assets/cc_bus_install_tests.rs", // 〔MIG-3a · 子步 3〕cc-bus 装进了本机后端（临时目录真装 · 真改名备份 · 可执行位）
-    "tests/backend/assets/aliases/aliases_tests.rs", // 〔MIG-3a〕别名进了那台后端（临时 home 上真走本进程 files-* ＋ 真 bash ＋ 金样 aliases.golden.json）
-    "tests/backend/assets/aliases/block_tests.rs", // 〔MIG-3a〕别名块进了那台后端（临时目录真装真卸）
+    "tests/backend/assets/skill_flow_tests.rs", // skill 装卸进了被写那台后端（临时目录 ＋ 金样 skill-flow.golden.json）
+    "tests/backend/assets/cc_bus_install_tests.rs", // cc-bus 装进了本机后端（临时目录真装 · 真改名备份 · 可执行位）
+    "tests/backend/assets/aliases/aliases_tests.rs", // 别名进了那台后端（临时 home 上真走本进程 files-* ＋ 真 bash ＋ 金样 aliases.golden.json）
+    "tests/backend/assets/aliases/block_tests.rs",   // 别名块进了那台后端（临时目录真装真卸）
     "tests/backend/observe/accounts_query_tests.rs",
-    "tests/backend/observe/fence_tests.rs", // 〔TL3〕读路径围栏一个家（扫 observe 全树）＋ 放行 / 拒绝行为（临时目录 · symlink）
+    "tests/backend/observe/fence_tests.rs", // 读路径围栏一个家（扫 observe 全树）＋ 放行 / 拒绝行为（临时目录 · symlink）
     "tests/backend/observe/history_query_f07_tests.rs",
     "tests/backend/observe/history_query_index_tests.rs",
     "tests/backend/observe/history_query_kr83_tests.rs",
@@ -640,7 +640,7 @@ const INTEGRATION: &[&str] = &[
     "tests/backend/observe/tmux_observe_tests.rs",
     "tests/backend/observe/watcher_tests.rs",
     "tests/backend/plugin/discover_tests.rs",
-    // 〔RM1f〕单元 → 集成：`run_abortable` 两条判据真起进程（被丢 ⇒ 整组都没了 · 没被丢 ⇒ 与同步那一形同果）
+    // 单元 → 集成：`run_abortable` 两条判据真起进程（被丢 ⇒ 整组都没了 · 没被丢 ⇒ 与同步那一形同果）
     "tests/backend/plugin/invoke_tests.rs",
     "tests/backend/plugin_walk_fixture.rs",
     "tests/backend/faces/read_face_tests.rs",
@@ -649,36 +649,37 @@ const INTEGRATION: &[&str] = &[
     "tests/backend/relay/host_tests.rs",
     "tests/comms/outward/server_tests.rs",
     "tests/backend/relay/wire_golden.rs",
-    // 〔NT2 · S1〕L2 真起子进程（re-exec 本测试二进制，fd 2 真被换走）
+    // L2 真起子进程（re-exec 本测试二进制，fd 2 真被换走）
     // 〔MG1 合 SU1〕skill 装记录：临时家目录里真写 / 读 / 摘 `~/.cc-monitor/skill-installs.json` ⇒ 判别器判集成层。
     "tests/backend/assets/skill_ledger_tests.rs",
     "tests/backend/stderr_log_tests.rs",
     "tests/backend/stream/wire_tests.rs",
-    // 〔MIG-3a〕`tests/frontend/shell/account_aliases_tests.rs` 随别名那一族进了那台后端（`tests/backend/assets/aliases/`）。
-    // 〔P1 · 第 4 件〕`tests/frontend/shell/adapter_tests.rs` 删了（monitor 那份适配表退役，对拍与生成器随家进了后端 `tests/backend/agents_tests.rs`）。
+    // `tests/frontend/shell/account_aliases_tests.rs` 随别名那一族进了那台后端（`tests/backend/assets/aliases/`）。
+    // `tests/frontend/shell/adapter_tests.rs` 删了（monitor 那份适配表退役，对拍与生成器随家进了后端 `tests/backend/agents_tests.rs`）。
     "tests/frontend/shell/auto_launch_tests.rs",
     "tests/backend/control/launch_render/launch_wire_k_r95_launch_render_facts.rs",
     "tests/frontend/shell/local_backend_tests.rs",
     // 〔MG1 合 RK1〕SCAN → INTEGRATION：RK1 加的 `the_rendered_relay_export_carries_no_key_and_a_real_shell_expands_it_from_home`
     // 铺夹具家目录、起真 `sh` 展开 `$(cat …)` ⇒ 判别器判集成层，照挪。
     "tests/backend/control/launch_render/payload_tests.rs",
-    // 〔DUP1〕标识符放行判定的生成物（写 `src/frontend/ui/generated/judgment-rules.ts`）＋ 共用金样 ⇒ 写真文件 ⇒ 集成层。
+    // 标识符放行判定的生成物（写 `src/frontend/ui/generated/judgment-rules.ts`）＋ 共用金样 ⇒ 写真文件 ⇒ 集成层。
     "tests/frontend/shell/payload_judgment_rules.rs",
-    // 〔THIN〕`tests/frontend/shell/backend_layering.rs` 删：它判 monitor 侧 `backend/` 里 `observe/` ↔ `control/` 两条线的方向，目录没了。
+    // `tests/frontend/shell/backend_layering.rs` 删：它判 monitor 侧 `backend/` 里 `observe/` ↔ `control/` 两条线的方向，目录没了。
     "tests/frontend/shell/bind_tests.rs",
     "tests/frontend/shell/capability_registry_tests.rs",
     "tests/frontend/shell/chan/chan_tests.rs",
     "tests/frontend/shell/comm_boundary_registry_tests.rs",
     "tests/common/creds-core/perm_tests.rs",
-    "tests/common/host-core/lib_tests.rs", // 〔P4〕原子写（真写临时文件）＋ 窗口几何，原在 `utils_tests` / `lib_window_lifecycle_tests`
-    // 〔GP1 · 第四波〕旧版 `~/.local/bin/ccm` 那一份：替身门在临时目录上真读真删。
+    "tests/common/host-core/lib_tests.rs", // 原子写（真写临时文件）＋ 窗口几何，原在 `utils_tests` / `lib_window_lifecycle_tests`
+    // 旧版 `~/.local/bin/ccm` 那一份：替身门在临时目录上真读真删。
     "tests/frontend/shell/ccm_legacy_tests.rs",
     "tests/frontend/shell/data_paths_tests.rs",
     "tests/frontend/shell/dial_home_registry_tests.rs",
     "tests/frontend/shell/dial_host_tests.rs",
     "tests/frontend/shell/doc_claim_registry_tests.rs",
+    "tests/common/guard-core/no_outside_refs_tests.rs", // 起 `git ls-files` 取人群，同上一行
     "tests/frontend/filewin/bookmarks_tests.rs",
-    "tests/frontend/filewin/proc_tests.rs", // 〔P4〕窗口进程那一侧（拨回 · 第一屏 · 就绪那一行）随躯体搬进窗口包
+    "tests/frontend/filewin/proc_tests.rs", // 窗口进程那一侧（拨回 · 第一屏 · 就绪那一行）随躯体搬进窗口包
     "tests/frontend/shell/filewin/proc_tests.rs",
     "tests/frontend/filewin/shell_tests.rs",
     "tests/frontend/filewin/source_tests.rs",
@@ -686,30 +687,29 @@ const INTEGRATION: &[&str] = &[
     "tests/frontend/filewin/xvfb_rig.rs",
     "tests/frontend/shell/history_tests.rs",
     "tests/frontend/shell/launch_tests.rs",
-    // 〔C4d〕`tests/frontend/shell/local_accounts_tests.rs` 挪进 `UNIT`：驱动本机 manifest 参照实现的那几条（临时目录真写真读）随实现删了，
+    // `tests/frontend/shell/local_accounts_tests.rs` 挪进 `UNIT`：驱动本机 manifest 参照实现的那几条（临时目录真写真读）随实现删了，
     //   剩下的只喂纯函数、判别器判它是单元层。
     "tests/frontend/shell/local_backend_host_tests.rs",
     "tests/frontend/shell/local_lines_tests.rs",
     "tests/frontend/shell/logging_tests.rs",
-    // 〔AS2〕
-    // 〔RM1f〕SCAN → 集成：本机那一份小程序的放法（临时目录真写 · 逐字节相等零写 · 字节变了重写）
+    // SCAN → 集成：本机那一份小程序的放法（临时目录真写 · 逐字节相等零写 · 字节变了重写）
     "tests/frontend/shell/panorama_bytes_tests.rs",
-    // 〔MIG-3b 续〕`tests/frontend/shell/panorama_call_tests.rs` 删了：问 · 交那一环随实现搬进后端（`tests/backend/control/panorama_edit_tests.rs`）。
-    // 〔RM1f〕`tests/frontend/shell/panorama_tests.rs` 删了（monitor 的内嵌引擎连同它的判据一起删了）。
+    // `tests/frontend/shell/panorama_call_tests.rs` 删了：问 · 交那一环随实现搬进后端（`tests/backend/control/panorama_edit_tests.rs`）。
+    // `tests/frontend/shell/panorama_tests.rs` 删了（monitor 的内嵌引擎连同它的判据一起删了）。
     "tests/frontend/shell/profile_installer_tests.rs",
-    "tests/frontend/shell/platform/console_text_tests.rs", // 〔P2〕控制台字节按 OEM 代码页解（Windows 臂 ＋ PowerShell 读数起进程）
-    "tests/backend/control/panorama_edit_tests.rs", // 〔MIG-3b 续〕全景写：问 · 交那一环（原 `tests/frontend/shell/panorama_call_tests.rs`）随实现搬来，临时目录当仓
-    "tests/backend/assets/pubkey_tests.rs", // 〔MIG-3b 续〕原 `tests/frontend/shell/pubkey_tests.rs` 随实现搬来（真 `sh` 上跑那一串 · 临时目录当家）
+    "tests/frontend/shell/platform/console_text_tests.rs", // 控制台字节按 OEM 代码页解（Windows 臂 ＋ PowerShell 读数起进程）
+    "tests/backend/control/panorama_edit_tests.rs", // 全景写：问 · 交那一环（原 `tests/frontend/shell/panorama_call_tests.rs`）随实现搬来，临时目录当仓
+    "tests/backend/assets/pubkey_tests.rs", // 原 `tests/frontend/shell/pubkey_tests.rs` 随实现搬来（真 `sh` 上跑那一串 · 临时目录当家）
     "tests/frontend/shell/scanning_guard_registry_tests.rs",
-    // 〔LOC1b · 4D〕`search_tests.rs` 随 monitor 内存索引删了；`session_map_linux_liveness.rs` 随本机判活删了；`session_map_tests.rs` 挪进 SCAN（判据里多了读源码的那两条）。
+    // `search_tests.rs` 随 monitor 内存索引删了；`session_map_linux_liveness.rs` 随本机判活删了；`session_map_tests.rs` 挪进 SCAN（判据里多了读源码的那两条）。
     "tests/frontend/shell/sftp_tests.rs",
     "tests/frontend/shell/shared_crate_registry_tests.rs",
-    // 〔AL2 · 第四波 4D〕`shell_dialect_tests.rs` 挪进 SCAN：候选那一条不再建临时目录（方言只给路径与列法、不读盘）。
-    // 〔MIG-3a〕`skill_host_tests.rs` · `claude_data_fence_tests.rs` 随 skill 接入面进后端删了（判据搬去 tests/backend/agents/claudecode/skill_host_tests.rs）。
+    // `shell_dialect_tests.rs` 挪进 SCAN：候选那一条不再建临时目录（方言只给路径与列法、不读盘）。
+    // `skill_host_tests.rs` · `claude_data_fence_tests.rs` 随 skill 接入面进后端删了（判据搬去 tests/backend/agents/claudecode/skill_host_tests.rs）。
     "tests/frontend/shell/structural_scan_tests.rs",
     "tests/frontend/shell/user_files_tests.rs",
     "tests/frontend/shell/utils_tests.rs",
-    // 〔CF1 · 09-24〕`tests/frontend/shell/watcher_tests.rs` 随 monitor 自己那套 jsonl watcher 一起删了（本机会话内容改走本机后端的 `line` 帧）。
+    // `tests/frontend/shell/watcher_tests.rs` 随 monitor 自己那套 jsonl watcher 一起删了（本机会话内容改走本机后端的 `line` 帧）。
     "tests/frontend/ui/copy-verdicts-ledger.vitest.ts",
     "tests/copy/backend-copy-pending.vitest.ts",
     // 〔MG1 合 CP2b〕CP2b 待办表判据：起 python3 子进程跑 `CP2b-copy-pending.py --json` ⇒ 判别器判集成层（CP2b 分支上漏登记）。
@@ -718,19 +718,19 @@ const INTEGRATION: &[&str] = &[
     "tests/naming/account-vs-relay-naming.vitest.ts",
     "tests/frontend/ui/node-suite-registry-guard.vitest.ts",
     "tests/frontend/ui/offline-cargo-cache.vitest.ts",
-    "tests/backend/observe/search_query_golden_tests.rs", // 〔SX1〕J1 合成语料写临时目录、对冻结金样
-    "tests/backend/observe/search_query_reading.rs", // 〔SX1〕秤（真机层那一条）：起 python3 丢页缓存
-    "tests/backend/observe/search_query_index_tests.rs", // 〔SX1〕J2 / J3 临时目录上一串变更
-    "tests/backend/control/ccm_tests.rs", // 〔SH1〕SCAN → INTEGRATION：多了一条隔离 socket 真 tmux 判据（`BUS_ID_RECIPE` 读会话名走 UTF-8 客户端）
-    "tests/backend/agents/claudecode/mcp_tests.rs", // 〔SH1 · V137〕Claude 的 MCP 布局读法（临时目录夹具 ＋ 跨语言金样 mcp-read.golden.json）
-    "tests/backend/observe/watcher_lines_tests.rs", // 〔RENDER2〕watcher D 块（jsonl 增量读）：临时目录假行
+    "tests/backend/observe/search_query_golden_tests.rs", // J1 合成语料写临时目录、对冻结金样
+    "tests/backend/observe/search_query_reading.rs",      // 秤（真机层那一条）：起 python3 丢页缓存
+    "tests/backend/observe/search_query_index_tests.rs",  // J2 / J3 临时目录上一串变更
+    "tests/backend/control/ccm_tests.rs", // SCAN → INTEGRATION：多了一条隔离 socket 真 tmux 判据（`BUS_ID_RECIPE` 读会话名走 UTF-8 客户端）
+    "tests/backend/agents/claudecode/mcp_tests.rs", // Claude 的 MCP 布局读法（临时目录夹具 ＋ 跨语言金样 mcp-read.golden.json）
+    "tests/backend/observe/watcher_lines_tests.rs", // watcher D 块（jsonl 增量读）：临时目录假行
 ];
 
 /// 支撑：测试树里**没有一条测试**的那几份（夹具 / helper）。不是一层，是让分区闭合的补集。
 /// ⚠ 一份真测试文件掉光了测试属性，判别器会把它判进这里 ⇒ 与登记不一致 ⇒ 红。
 const SUPPORT: &[&str] = &[
     "tests/backend/files/index_testing.rs",
-    "tests/backend/control/identity_tag_door.rs", // 〔RESYNC〕`identity_tag` 起 tmux 那个口的测试构建那一份（假 tmux 注入，§48.3）
+    "tests/backend/control/identity_tag_door.rs", // `identity_tag` 起 tmux 那个口的测试构建那一份（假 tmux 注入，§48.3）
     "tests/backend/sftp_rig.rs",
     "tests/frontend/shell/backend_kill_creation_detect.rs",
     "tests/frontend/filewin/copy_testing.rs",
@@ -760,7 +760,7 @@ const E2E: &[&str] = &[
     "tests/e2e/graylight-suite.sh",
     "tests/e2e/inbound-backend-frames.sh",
     "tests/e2e/local-backend-supervise.sh",
-    "tests/e2e/p3t-local-tmux.sh", // 〔TL1 · 4C〕接回执行链（`package.json` ＋ `ci.yml` 地板）
+    "tests/e2e/p3t-local-tmux.sh", // 接回执行链（`package.json` ＋ `ci.yml` 地板）
     "tests/e2e/rbind-token-endtoend.sh",
     "tests/e2e/restart-backend-frames.sh",
     "tests/e2e/restart-suite.sh",
@@ -776,7 +776,7 @@ const E2E_SUPPORT: &[&str] = &[
     "tests/e2e/fake-backend.sh",
     "tests/e2e/fake-claude",
     "tests/e2e/gen-idle-tmux.sh",
-    "tests/e2e/launch-render-emit.sh", // 〔LR2〕生产 Rust 渲染器给 e2e 的出口（`launch-render-driver.ts` 调它）
+    "tests/e2e/launch-render-emit.sh", // 生产 Rust 渲染器给 e2e 的出口（`launch-render-driver.ts` 调它）
     "tests/e2e/local-backend-container/build-image.sh",
     "tests/e2e/local-backend-container/guard-run-netns.sh",
     "tests/e2e/local-backend-container/rig.sh",
@@ -793,7 +793,7 @@ const E2E_SUPPORT: &[&str] = &[
 /// **报备、不处置**（删还是接回执行链，是主会话 / 用户的裁定）：
 /// `(文件, 为什么还留着 / 现状)`。每一行必须真的仍是孤儿（有人引用了 ⇒ 死行 ⇒ 红）。
 ///
-/// 〔TL1 · 4C〕TQ1 落地时报备的两份都裁了，表清空：`p3t-local-tmux.sh` 现打 10 过 / 0 败 ⇒ 接回执行链（进了 `E2E`）；
+/// TQ1 落地时报备的两份都裁了，表清空：`p3t-local-tmux.sh` 现打 10 过 / 0 败 ⇒ 接回执行链（进了 `E2E`）；
 /// `tier2-rig.sh` 是手动真机台架 ⇒ 留，挪进 [`MANUAL_RIGS`]（有了裁定就不再是「报备」）。再长出孤儿 ⇒ 照红。
 const UNREFERENCED: &[(&str, &str)] = &[];
 
@@ -802,9 +802,9 @@ const UNREFERENCED: &[(&str, &str)] = &[];
 /// （有脚本 / 配置 / 测试引用它了 ⇒ 它不再是「只有人手跑」⇒ 死行 ⇒ 红）。
 const MANUAL_RIGS: &[(&str, &str)] = &[(
     "tests/e2e/tier2-rig.sh",
-    "〔TL1 · 4C 裁〕tier-2 台架搭建器（`setup` / `dev` / `run` / `teardown`：沙箱 ＋ Xvfb ＋ dev 实例 ＋ 回环 ssh）；\
+    "tier-2 台架搭建器（`setup` / `dev` / `run` / `teardown`：沙箱 ＋ Xvfb ＋ dev 实例 ＋ 回环 ssh）；\
      它起的是**跑着的 dev app**，无头门禁与 CI 里没有那个 app（同 `e2e_gate_registry` 里 `graylight` / `f40` 两条豁免的理由）。\
-     真机测试资源（`99 §2 ⑤`）未拍 ⇒ 留作手动工具，跑法在 `tests/e2e/README.md`「全链套件怎么跑」",
+     真机测试资源未拍 ⇒ 留作手动工具，跑法在 `tests/e2e/README.md`「全链套件怎么跑」",
 )];
 
 /// 集成层自检现打逮到的「缺环境就 `return`」，**报备、不处置**（改测试体不在本件写区）：
@@ -832,7 +832,7 @@ const REAL_MACHINE: &[(&str, &str, Trigger)] = &[
     (
         "tests/backend/control/tmux_hook_tests.rs",
         "hx2_real_tmux_reading_on_a_private_socket",
-        Trigger::Manual("〔HX2〕读数不是判据：真 tmux 私有 socket（`-L`）上装一趟 hook 看段内格位；跑法住它自己的头注"),
+        Trigger::Manual("读数不是判据：真 tmux 私有 socket（`-L`）上装一趟 hook 看段内格位；跑法住它自己的头注"),
     ),
     (
         "tests/backend/control/overwrite_atomic_tests.rs",
@@ -884,7 +884,7 @@ const REAL_MACHINE: &[(&str, &str, Trigger)] = &[
         "the_local_backend_host_really_registers_an_inbound_client",
         Trigger::Filter { by: "tests/e2e/local-backend-supervise.sh", needle: "local_backend" },
     ),
-    // 〔MIG-1〕`local_backend_tests.rs` 那条真 tmux 实测（本机 tmux 帧进 monitor 账本）随那本账删了（真机层 28 → 27）。
+    // `local_backend_tests.rs` 那条真 tmux 实测（本机 tmux 帧进 monitor 账本）随那本账删了（真机层 28 → 27）。
     (
         "tests/frontend/shell/local_lines_tests.rs",
         "a_real_backend_feeds_local_lines_through_the_production_read_loop",
@@ -921,7 +921,7 @@ const REAL_MACHINE: &[(&str, &str, Trigger)] = &[
         Trigger::Filter { by: "tests/frontend/filewin/shell_tests.rs", needle: "shell::tests::xvfb_worker_opens_with_no_x_server_at_all" },
     ),
     (
-        // 〔LR2〕生产命令 `render_launch_payload` 给 e2e 的数据出口（`resume-suite` · `resume-backend-frames` ·
+        // 生产命令 `render_launch_payload` 给 e2e 的数据出口（`resume-suite` · `resume-backend-frames` ·
         //   `tmux-target-acceptance` 三套经这个驱动取「app 真正会跑的那一串」）。
         "tests/backend/control/launch_render/launch_tmux_outer_parity_tests.rs",
         "emit_launch_render_for_e2e",
@@ -947,7 +947,7 @@ const REAL_MACHINE: &[(&str, &str, Trigger)] = &[
         "the_local_backend_host_can_be_stopped_and_started_again",
         Trigger::Filter { by: "tests/e2e/local-backend-supervise.sh", needle: "local_backend_host" },
     ),
-    // 〔MOD〕住址随记录解析搬进后端（原 `tests/frontend/shell/parser_tests.rs`）。
+    // 住址随记录解析搬进后端（原 `tests/frontend/shell/parser_tests.rs`）。
     (
         "tests/backend/agents/claudecode/parse_tests.rs",
         "f63_real_data_ledger",
@@ -968,7 +968,7 @@ const REAL_MACHINE: &[(&str, &str, Trigger)] = &[
         "zr_real_sshd_negotiates_zlib_and_moves_fewer_bytes_when_forced",
         Trigger::Filter { by: "tests/evidence/NT1-net-loopback.py", needle: "zr_real_sshd_negotiates_zlib_and_moves_fewer_bytes_when_forced" },
     ),
-    // 〔WF2 · WIN3 读数 A〕一次性容器 sshd 上强制压、放不可压的大块（那份驱动一趟跑 ZR 与 ZR2 两条）。
+    // 一次性容器 sshd 上强制压、放不可压的大块（那份驱动一趟跑 ZR 与 ZR2 两条）。
     (
         "tests/backend/dial_compress_tests.rs",
         "zr_real_sshd_takes_incompressible_puts_when_forced",
@@ -977,27 +977,27 @@ const REAL_MACHINE: &[(&str, &str, Trigger)] = &[
     (
         "tests/backend/observe/search_query_reading.rs",
         "sx1_real_history_search_reading",
-        Trigger::Manual("〔SX1〕读数不是判据：真规模本机历史只量冷首趟 / 热态耗时与条数；跑法住它自己的头注"),
+        Trigger::Manual("读数不是判据：真规模本机历史只量冷首趟 / 热态耗时与条数；跑法住它自己的头注"),
     ),
     (
         "tests/frontend/shell/profile_installer_tests.rs",
         "wf1_real_powershell_add_then_remove_restores_the_user_path",
-        Trigger::Manual("〔WF1 · K〕读数不是判据：要一个 PowerShell（`CCM_PWSH`）跑生成的加 / 撤两段（注册表换替身）；跑法住它自己的头注"),
+        Trigger::Manual("读数不是判据：要一个 PowerShell（`CCM_PWSH`）跑生成的加 / 撤两段（注册表换替身）；跑法住它自己的头注"),
     ),
     (
         "tests/frontend/shell/ccm_probe_tests.rs",
         "wf1_the_windows_probe_script_reports_card_and_where_ccm_resolves",
-        Trigger::Manual("〔WF1 · ㉔〕读数不是判据：要一个 PowerShell（`CCM_PWSH`）跑 Windows 那一形的探测串三种情形；跑法住它自己的头注"),
+        Trigger::Manual("读数不是判据：要一个 PowerShell（`CCM_PWSH`）跑 Windows 那一形的探测串三种情形；跑法住它自己的头注"),
     ),
     (
         "tests/frontend/shell/profile_installer_tests.rs",
         "p2_the_path_probe_reads_back_a_non_ascii_home_under_an_oem_console",
-        Trigger::Manual("〔P2〕读数不是判据：要一个 PowerShell（`CCM_PWSH`）在 936 控制台编码替身下跑 PATH 探针、读回汉字目录；跑法住它自己的头注"),
+        Trigger::Manual("读数不是判据：要一个 PowerShell（`CCM_PWSH`）在 936 控制台编码替身下跑 PATH 探针、读回汉字目录；跑法住它自己的头注"),
     ),
     (
         "tests/frontend/shell/platform/console_text_tests.rs",
         "p2_powershell_under_a_936_console_writes_the_sample_bytes_to_stderr",
-        Trigger::Manual("〔P2〕读数不是判据：要一个 PowerShell（`CCM_PWSH`）核 936 替身字节就是它往 stderr 写的那一段；跑法住它自己的头注"),
+        Trigger::Manual("读数不是判据：要一个 PowerShell（`CCM_PWSH`）核 936 替身字节就是它往 stderr 写的那一段；跑法住它自己的头注"),
     ),
 ];
 
@@ -1007,7 +1007,7 @@ const OVERRIDES: &[(&str, Tier, &str)] = &[];
 // ───────────────────────────── 人群 ─────────────────────────────
 
 /// 本文件（仓根相对）。引用语料走 `scan_tree_excluding` 的明写名单摘掉它
-/// （`file!()` 那条路在 `#[path]` 挂载下不生效 —— `设计/16 §5.4b` 纪律 4）。
+/// （`file!()` 那条路在 `#[path]` 挂载下不生效 —— 纪律 4）。
 const SELF: &str = "tests/common/guard-core/test_tiers_tests.rs";
 
 /// 仓根。`guard-core` 零依赖、够不着 monitor 的 `guard_support` ⇒ 这里就地算一次。
@@ -1030,7 +1030,7 @@ fn rust_test_files(root: &Path) -> BTreeMap<String, String> {
     let mut out = BTreeMap::new();
     for sub in [
         "tests/frontend/shell",
-        "tests/frontend/filewin", // 〔P4〕文件窗口独立成包
+        "tests/frontend/filewin", // 文件窗口独立成包
         "tests/backend",
         "tests/common",
         "tests/comms",
@@ -1609,7 +1609,7 @@ fn module_path(
     if depth > 8 {
         return None;
     }
-    // 〔P4〕文件窗口独立成包：它那棵 `src/` 也按目录推模块路径。
+    // 文件窗口独立成包：它那棵 `src/` 也按目录推模块路径。
     const ROOTS: &[&str] = &[
         "src/frontend/shell/src/",
         "src/frontend/filewin/src/",
@@ -1625,7 +1625,7 @@ fn module_path(
             return Some(segs.join("::"));
         }
     }
-    // 〔RE〕住在「被 `#[path]` 挂进来的 `mod.rs`」那一层目录里、由它隐式声明的子模块（`src/comms/outward/server.rs`
+    // 住在「被 `#[path]` 挂进来的 `mod.rs`」那一层目录里、由它隐式声明的子模块（`src/comms/outward/server.rs`
     //   ← `mod.rs` 的 `mod server;`，而那份 `mod.rs` 由 `src/backend/lib.rs` 挂成 `relay`）。
     if !mounts.contains_key(rel) {
         let (dir, file) = rel.rsplit_once('/')?;
@@ -1735,7 +1735,7 @@ fn the_tiers_partition_the_test_files_on_disk() {
         problems.is_empty(),
         "测试层分区对不上（{} 处）：\n{}\n\n\
          本表的人群是 `tests/frontend/shell/**/*.rs` ∪ `tests/frontend/filewin/**/*.rs` ∪ `tests/backend/**/*.rs` ∪ `tests/common/**/*.rs` ∪ `tests/comms/**/*.rs` ∪ `tests/**/*.{{vitest,test}}.ts`。\n\
-         ⇒ 新加一份测试文件就要在这里登记它的层；那是这张表存在的理由（`设计/16 §5.2`：人群从登记表来，\
+         ⇒ 新加一份测试文件就要在这里登记它的层；那是这张表存在的理由（人群从登记表来，\
          盘上条数 == 登记条数，不是「扫到几个算几个」）。",
         problems.len(),
         problems.join("\n")
@@ -1855,9 +1855,9 @@ fn unit_tier_every_file_is_reached_by_its_runner() {
 
 /// 一个「根」函数名 ⇒ 它在那一侧指向的仓根相对目录。按文件所在的树分两侧（两个 crate 的 `guard_support` 语义不同）。
 fn root_fn_base(rel: &str, fname: &str) -> Option<&'static str> {
-    // 〔RE〕`tests/comms/outward/` 由后端 crate 挂载 ⇒ 它的 `guard_support` 是后端那一份。
+    // `tests/comms/outward/` 由后端 crate 挂载 ⇒ 它的 `guard_support` 是后端那一份。
     let backend = under(rel, "tests/backend/") || under(rel, "tests/comms/outward/");
-    // 〔P4〕文件窗口独立成包：它的判据由窗口包挂载 ⇒ `guard_support` 是窗口包那一份（三个根）。
+    // 文件窗口独立成包：它的判据由窗口包挂载 ⇒ `guard_support` 是窗口包那一份（三个根）。
     if under(rel, "tests/frontend/filewin/") {
         return match fname {
             "repo_root" => Some("."),
@@ -1875,7 +1875,7 @@ fn root_fn_base(rel: &str, fname: &str) -> Option<&'static str> {
         (false, "repo_src_root") => Some("src"),
         (true, "tests_root") => Some("tests/backend"),
         (true, "src_root") => Some("src/backend"),
-        // 〔RE〕后端那一侧新立的两个根（面 B 成员与它们的单测镜像）。
+        // 后端那一侧新立的两个根（面 B 成员与它们的单测镜像）。
         (true, "relay_root") => Some("src/comms/outward"),
         (true, "comms_tests_root") => Some("tests/comms/outward"),
         _ => None,
@@ -1997,11 +1997,11 @@ fn root_anchored_literals(rel: &str, raw: &str) -> Vec<(usize, String, String)> 
     out
 }
 
-/// 〔主会话 09-25 · 合并 LR2〕**按设计必须不在**的路径字面量：判据用它钉「这个文件删了、长回来就红」（`!root.join(..).is_file()`），
+/// **按设计必须不在**的路径字面量：判据用它钉「这个文件删了、长回来就红」（`!root.join(..).is_file()`），
 /// 下面那条「字面量必须解析得到」对它们反着核 —— 在表里的必须**不存在**，存在了就红；表里的行在盘上用不到也红（两向）。
 /// 加一行 = 显式声明「这一处是反向量法」，不是给路径断了的扫描开后门。
 const ABSENT_BY_DESIGN: &[(&str, &str)] = &[
-    // LR2：TS 座 `session-backend.ts` 按 `设计/00 §2.5 ④` 删了；`doc_claim_registry_tests.rs` 两处量「它必须不在」。
+    // LR2：TS 座 `session-backend.ts` 按删了；`doc_claim_registry_tests.rs` 两处量「它必须不在」。
     (
         "tests/frontend/shell/doc_claim_registry_tests.rs",
         "src/session-backend.ts",
@@ -2062,7 +2062,7 @@ fn scan_tier_every_root_anchored_path_literal_resolves() {
     assert!(
         !SCAN.is_empty() && bad.is_empty(),
         "扫描层（{} 份；路径字面量在单元 / 扫描 / 集成三层的 Rust 文件里都核，本趟核了 {checked} 处）：\n{}\n\n\
-         ⇒ 路径断了的扫描型判据不报错，它扫空集然后绿（`设计/16 §5.2`）。",
+         ⇒ 路径断了的扫描型判据不报错，它扫空集然后绿。",
         SCAN.len(),
         bad.join("\n")
     );

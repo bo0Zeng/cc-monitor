@@ -65,7 +65,7 @@ fn shape_validation_rejects_the_things_that_would_break_tmux() {
     assert_eq!(e.0, "invalid_args");
 }
 
-/// ★〔`K-P2` `D3` 09-03〕`agent` / `width` / `height` 的形状校验。
+/// ★`agent` / `width` / `height` 的形状校验。
 ///
 /// # 为什么 `width`/`height` 要一条**「只给一半就拒」**
 ///
@@ -134,7 +134,7 @@ fn the_create_only_fields_have_their_own_shapes() {
     }
 }
 
-/// ★★〔`K-P2` `D3` 09-03〕**收得下 ≠ 起作用**：那三个新字段必须真的被 `run` 用掉。
+/// ★★**收得下 ≠ 起作用**：那三个新字段必须真的被 `run` 用掉。
 ///
 /// # 它补的洞
 ///
@@ -227,7 +227,7 @@ fn arm_of<'a>(src: &'a str, head: &str) -> &'a str {
 }
 
 /// `=name:` 就是 tmux 的精确匹配形（F01：裸 `-t` 会打到兄弟会话上）。
-/// 〔THIN〕从前还跨轨对拍 monitor `tmux.rs` 里那一份；那一份（只剩对拍锚点在用）随 monitor 侧的 Gate 残留删了 ⇒ 只剩这一个家。
+/// 从前还跨轨对拍 monitor `tmux.rs` 里那一份；那一份（只剩对拍锚点在用）随 monitor 侧的 Gate 残留删了 ⇒ 只剩这一个家。
 #[test]
 fn exact_target_is_the_exact_match_shape() {
     assert_eq!(exact_target("cc-abc"), "=cc-abc:");
@@ -241,7 +241,7 @@ fn exact_target_is_the_exact_match_shape() {
 /// 表达力缺口没了，但**语义陷阱还在**：顺手新建就是 #76 的反向。
 ///
 /// 这条扫的是 `run()` 的 `SendInto` 分支源码：它里面不许出现 `new-session`。
-/// ★ **建会话必须是后台建**〔audit-0805 08-07〕。
+/// ★ **建会话必须是后台建**。
 ///
 /// `-d` 不是可有可无的旗标，它**就是**「后台建会话」这件事：没有它，
 /// `tmux new-session` 会去 attach 当前终端，而后端这条路上根本没有终端。
@@ -311,7 +311,7 @@ fn send_into_never_creates_a_session() {
 
 /// ★★ **前提触发器：载荷内容至今**不是**安全边界**〔audit-0805 08-08，Phase G 第 95 件〕。
 ///
-/// # 它守的是 `ROADMAP §5 4h` 那条登记
+/// # 它守的是那条登记
 ///
 /// 08-08 先核出来的事实：`payload` 从 webview 一路进到这里，本后端只查
 /// **三件形状**（非空 / 长度上限 / 无控制字符），**不查它是什么命令**。
@@ -336,7 +336,7 @@ fn the_payload_is_still_only_shape_checked() {
     ));
     let at = src
         .find("fn check_field(")
-        .expect("`check_field` 不见了 —— 形状检查搬家了，`ROADMAP §5 4h` 要跟着重判");
+        .expect("`check_field` 不见了 —— 形状检查搬家了，要跟着重判");
     // 切到函数体收尾（花括号配平；两个字符字面量成对出现）。
     let bytes = src.as_bytes();
     let open = (at..bytes.len())
@@ -365,14 +365,14 @@ fn the_payload_is_still_only_shape_checked() {
     // 今天的三件形状检查，一件都不许少（少了 = 姿态变松，也要有人看见）。
     for (needle, what) in [
         ("is_empty()", "非空"),
-        // 〔TAIL〕长度那一件抽成 `check_len`（会话名也用它，名字的其余两件归 Gate 1 那一份）。
+        // 长度那一件抽成 `check_len`（会话名也用它，名字的其余两件归 Gate 1 那一份）。
         ("check_len(", "长度上限"),
         ("is_control", "无控制字符"),
     ] {
         assert!(
             body.contains(needle),
             "`check_field` 里没有「{what}」那一件了（找 `{needle}`）。\n\
-                 三件形状检查是 `ROADMAP §5 4h` 的**下界**：少一件，连「形状」都不成立了。"
+                 三件形状检查是**下界**：少一件，连「形状」都不成立了。"
         );
     }
 
@@ -394,7 +394,7 @@ fn the_payload_is_still_only_shape_checked() {
         assert!(
             !body.contains(probe.as_str()),
             "`check_field` 里出现了 `{probe}` —— 看起来它开始**查载荷的内容**了。\n\
-                 ★ 这不是坏消息，是**边界搬家了**：`ROADMAP §5 4h` 逐字写着\n\
+                 ★ 这不是坏消息，是**边界搬家了**：写着\n\
                  「载荷内容不是安全边界，monitor 侧那几道字符闸是纵深」，\n\
                  而那句话整个压在「本函数只做形状检查」上。\n\
                  ⇒ 请一起改：① `§5 4h` 那一行；② `payload.rs` 里 launcher 闸旁边\n\
@@ -476,7 +476,7 @@ fn the_three_success_shapes_are_distinguishable() {
     assert_ne!(idempotent, sent);
 }
 
-// ===== 〔RST 续 · V41〕裸键 mode `send-keys-raw` 删了（V154 之后无生产调用者）=====
+// ===== 裸键 mode `send-keys-raw` 删了（之后无生产调用者）=====
 
 /// mode 集合恰好是 `create-or-attach` / `send-into` 两个；删掉的 `send-keys-raw` 回 `invalid_args`，
 /// 错误文案列的是真集合（不再提那个名字）。
@@ -516,7 +516,7 @@ fn the_mode_set_is_exactly_the_two_and_the_raw_one_is_gone() {
 /// 逼人回来给新变体配判据。（同族：`tmux_backend_gate_guard` 的硬编码文件表。）
 #[test]
 fn every_mode_variant_has_an_arm_and_a_parse_and_is_named_in_some_judge() {
-    // 🔴 〔步 7c 剖分 2026-09-19 · `设计/16 §6.2` C 类〕**两个语料分开了。**
+    // 🔴 〔步 7c 剖分 2026-09-19〕**两个语料分开了。**
     //
     // 原来只有一份 `raw`（那份生产文件的**全文**，含 `#[cfg(test)]` 段），
     // 生产面与判据面都从它取 —— 那成立的前提是**判据与生产代码同住一份文件**。
@@ -623,7 +623,7 @@ fn typed_is_only_as_strong_as_the_send_keys_exit_code() {
                 "`{f}` 里出现了 `{confirm}` —— 看起来加了第二种确认。\n\
                      ★ 那是**好事**，但契约与注释此刻还写着「只有退出码那么强」：\n\
                      `src/doc/IPC-PROTOCOL.md` 的 `typed` 那几行 · 本文件 `LaunchOutcome::typed` \n\
-                     · 界面 `src/frontend/ui/tmux-control.ts::decodeTyped`（〔C4e〕此前是 monitor 的 `SendIntoResponse::typed`）。**一起改。**"
+                     · 界面 `src/frontend/ui/tmux-control.ts::decodeTyped`（此前是 monitor 的 `SendIntoResponse::typed`）。**一起改。**"
             );
         }
     }
@@ -667,7 +667,7 @@ fn the_contract_says_how_strong_typed_actually_is() {
 fn no_doc_claims_the_payload_really_landed() {
     let root = crate::guard_support::repo_root();
     let overclaim = format!("{}键入了", "真的");
-    // 〔C4e · 第四波 4C〕第二份原是 monitor 的就地 resume 发送端（`backend_launch.rs`，逐字转发 `typed`）；
+    // 第二份原是 monitor 的就地 resume 发送端（`backend_launch.rs`，逐字转发 `typed`）；
     //   它迁到界面删了，今天读 `typed` 的是 `src/frontend/ui/tmux-control.ts::decodeTyped` / `sendInto` ⇒ 换成那一份。
     let files = ["src/doc/IPC-PROTOCOL.md", "src/frontend/ui/tmux-control.ts"];
     let mut total = 0usize;
@@ -692,15 +692,15 @@ fn no_doc_claims_the_payload_really_landed() {
              `typed:true` ⇒ 前端不回落（`launch-cli-wire.ts:63` 逐字：那是回落的**唯一线索**）\n\
              ⇒ 用户的载荷静默消失。**这是报告 I-3 那条链。**\n\
              要说「真的键入了」，先给它第二种确认（探测模态 / 回读），\n\
-             而那要真 tmux 才验得了 —— 登记在 `ROADMAP §5`，留给 e2e tier2。",
+             而那要真 tmux 才验得了 —— 登记在，留给 e2e tier2。",
         hits.join("\n")
     );
 }
 
-/// ★★〔C4e · 第四波 4C〕**跨语言金样**：界面直接说的 `launch`（送键 · 就地 resume）请求与成品，
+/// ★★**跨语言金样**：界面直接说的 `launch`（送键 · 就地 resume）请求与成品，
 /// 两侧读同一份 `tests/__fixtures__/tmux-control.golden.json`。
 ///
-/// 守的要求：`设计/05 §14.3` 逐字「**成品的两侧对拍**：……线上形状由一份跨语言金样钉住
+/// 守的要求：「**成品的两侧对拍**：……线上形状由一份跨语言金样钉住
 /// （后端测试产出 == 金样 · TS 解码器读同一份）」。送键 / 就地 resume 从这一拍起由界面经通道直接说
 /// （`src/frontend/ui/tmux-control.ts::sendKeys` / `sendInto`），monitor 那一跳只搬字节。
 ///
@@ -746,9 +746,9 @@ fn the_launch_request_and_product_match_the_cross_language_golden() {
     assert_eq!(got, want, "金样里的拒绝码与后端登记的不相等");
 }
 
-// ═══ 〔W5-VIS · `设计/15 §4.7 S4 · S5`〕tmux 的原话进错误 · 次要动作失败留一行日志 ═══════════════════
+// ═══ tmux 的原话进错误 · 次要动作失败留一行日志 ═══════════════════
 //
-// 要求住址：`设计/15 §4.7 S4` 逐字「`control/kill.rs` 用 `output()`，把 tmux 自己说的原因放进错误消息。
+// 要求：「`control/kill.rs` 用 `output()`，把 tmux 自己说的原因放进错误消息。
 // **正确形状就在隔壁文件。**」· `§4.7 S5` 逐字「**处置不是别吞，是吞了要留一行日志**」。
 
 /// 不起进程的 tmux 替身：按子命令分派结局，并记下每一次被调的 argv（顺序即调用顺序）。
@@ -963,7 +963,7 @@ fn w5vis_s4_s5_no_tmux_result_or_stderr_is_thrown_away_any_more() {
     assert_eq!(offences(&old).len(), 3, "旧形没被全认出 —— 量具瞎了");
 }
 
-/// ★ 〔FIX · `设计/99 §2 ㊹`（逐字「后端 `launch` 新建会话那一支没接 J6 新建规则」）〕`create-or-attach` 要新建的名字过 J6 新建那一条：
+/// ★ 〔（逐字「后端 `launch` 新建会话那一支没接 J6 新建规则」）〕`create-or-attach` 要新建的名字过 J6 新建那一条：
 /// 过不了、会话也不在 ⇒ `invalid_args` 带与 `ccm` 铸名同一句、**一次 `new-session` 都不起**；过不了但会话已在 ⇒ 照旧幂等接回；
 /// 过得了 ⇒ 与先前逐字同（先 `new-session`）。
 #[test]

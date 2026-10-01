@@ -2,7 +2,7 @@
 import type { Origin } from "./Origin";
 
 /**
- * 〔TAP · V124〕会话流 `session-tap`（通道 `subscribe`，`设计/05 §15`）里一格的体：后端 `tap` 帧的字段原样 ＋ 哪台机器。
+ * 会话流 `session-tap`（通道 `subscribe`）里一格的体：后端 `tap` 帧的字段原样 ＋ 哪台机器。
  *
  * `stream` = 请求自带的会话标识（== 它的 sid；前端拿它对 tab 的 sid，对不上 / 空 ⇒ 匿名流、不显示）；`run` = 归哪个子运行（缺 ＝ 主运行）；
  * `resp` · `n` 见后端 `wire::Frame::Tap`；`ev`（归一事件，后端按上游协议折好的）与 `end`（`"done"` / `"broken"`）恰有一个。

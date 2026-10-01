@@ -1,10 +1,10 @@
 /**
  * Issue #11: Claude Code CLI 的 task 列表展示。
  *
- * 数据源：那台机器的后端 `tasks-list`（〔RM1b · 第四波〕本机与远端同一条路，按 `origin` 问）。
- * 〔LOC1a · 第四波 4D · C4e 批 4〕Tab 创建时**经通道直接问**（`chan.call(origin, "tasks-list")`），后端出成品 `{tasks}`，
+ * 数据源：那台机器的后端 `tasks-list`（本机与远端同一条路，按 `origin` 问）。
+ * Tab 创建时**经通道直接问**（`chan.call(origin, "tasks-list")`），后端出成品 `{tasks}`，
  * 这里按形状严格收（{@link decodeTasks}；字段语义只住后端 `observe/tasks_query.rs::task_entry`）。
- * 〔MIG-3b · `设计/99 §2.1 ㉓②`〕**变更推送本机远端同形**：那台后端自己盯任务目录，变了发 `tasks_changed{sid}` 帧；
+ * **变更推送本机远端同形**：那台后端自己盯任务目录，变了发 `tasks_changed{sid}` 帧；
  * monitor 交进通道 `subscribe(origin, "session-tasks")`（{@link SESSION_TASKS_KIND}），界面收到那个 sid 就重问一次
  * （{@link tasksChangedItems} 读那一批格）。monitor 自己那条 notify 与 `task-update` 事件删了。
  * 「被切到的那一刻 / 面板被展开的那一刻」现问一次那条照旧（兜住订阅建立之前那一窗）。
@@ -39,7 +39,7 @@ import { copyText } from "./copy-table";
 
 /**
  * `tasks-list` 成品里的一个任务（线上形状：跨语言金样 `tests/__fixtures__/tasks-list.golden.json` 钉住，{@link decodeTasks} 严格收）。
- * 〔MIG-3b〕原来是 monitor `tasks.rs::TaskEntry` 的生成物；那份文件随任务 notify 进后端删了，形状手写在这里。
+ * 原来是 monitor `tasks.rs::TaskEntry` 的生成物；那份文件随任务 notify 进后端删了，形状手写在这里。
  */
 export type TaskEntry = {
   id: string;
@@ -51,7 +51,7 @@ export type TaskEntry = {
   blockedBy: string[];
 };
 
-// 〔MIG-3b · ㉓②〕`session-tasks` 那条流的串与读格函数住叶子模块 `src/frontend/ui/tasks-stream.ts`（`events.ts` 也要它，避免 import 成环）。
+// `session-tasks` 那条流的串与读格函数住叶子模块 `src/frontend/ui/tasks-stream.ts`（`events.ts` 也要它，避免 import 成环）。
 export { SESSION_TASKS_KIND, SESSION_TASKS_WINDOW, tasksChangedItems } from "./tasks-stream";
 
 function loadCollapsed(): boolean {
@@ -79,7 +79,7 @@ export class TasksPanel {
   /** 当前显示的 session（来自 TabManager.activeId）。`null` = 无 active Tab。 */
   private activeSid: string | null = null;
   private collapsed: boolean;
-  /** 〔RM1b〕远端现问的代次：慢的那次回来不许盖掉后发的那次（同 `plugins-section.ts` 的 `seq`）。 */
+  /** 远端现问的代次：慢的那次回来不许盖掉后发的那次（同 `plugins-section.ts` 的 `seq`）。 */
   private refreshSeq = 0;
 
   constructor() {
@@ -146,12 +146,12 @@ export class TasksPanel {
     this.activeSid = sid;
     this.tasks = tasks;
     this.render();
-    // 〔RM1b〕远端 tab 被切到的那一刻现问一次（本机有 watcher 推送，不必）。
+    // 远端 tab 被切到的那一刻现问一次（本机有 watcher 推送，不必）。
     if (sid !== null) void this.refreshIfRemote(sid);
   }
 
   /**
-   * 〔RM1b〕远端会话：向那台机器的后端现问一次，回来时仍是同一个 sid、且没被更晚的一次盖过才换上。
+   * 远端会话：向那台机器的后端现问一次，回来时仍是同一个 sid、且没被更晚的一次盖过才换上。
    * 本机会话 / 不知道 origin 的 sid ⇒ 什么都不做（前者有推送，后者没有可问的对象）。
    */
   async refreshIfRemote(sid: string): Promise<void> {
@@ -246,7 +246,7 @@ export class TasksPanel {
     this.collapsed = next;
     saveCollapsed(next);
     this.applyCollapsedClass();
-    // 〔RM1b〕展开的那一刻，远端会话现问一次（看的就是这一刻的列表）。
+    // 展开的那一刻，远端会话现问一次（看的就是这一刻的列表）。
     if (!next && this.activeSid !== null) void this.refreshIfRemote(this.activeSid);
     // 0 task 时即使被 setCollapsed(false) 也不会 popoverElement 显示，
     // render() 会强制 display:none
@@ -279,7 +279,7 @@ const TASK_REQUIRED_KEYS = ["blockedBy", "blocks", "id", "status", "subject"];
 const TASK_OPTIONAL_KEYS = ["activeForm", "description"];
 
 /**
- * 〔LOC1a · 第四波 4D〕`tasks-list` 的成品 → `TaskEntry[]`。**按形状严格收，不解释**：多一格 / 缺一格 / 类型不对 ⇒ 抛
+ * `tasks-list` 的成品 → `TaskEntry[]`。**按形状严格收，不解释**：多一格 / 缺一格 / 类型不对 ⇒ 抛
  * （两端契约对不上，不猜、不跳过）。字段语义（哪几格必填、`null` 怎么算）只住后端 `task_entry`；
  * 线上形状由 `tests/__fixtures__/tasks-list.golden.json` 钉住（后端产出 == 金样 · 本解码器读同一份）。
  */
@@ -308,7 +308,7 @@ export function decodeTasks(v: unknown): TaskEntry[] {
   });
 }
 
-/** 〔RM1b〕sid → 它住哪台机器。{@link fetchSessionTasks} 每次调用都记一笔（Tab 创建时那一次必带）。 */
+/** sid → 它住哪台机器。{@link fetchSessionTasks} 每次调用都记一笔（Tab 创建时那一次必带）。 */
 const originBySid = new Map<string, Origin>();
 
 /** 这个会话住哪台机器；从没被问过 ⇒ `undefined`（不猜成本机）。 */
@@ -319,8 +319,8 @@ export function originOfSession(sid: string): Origin | undefined {
 /**
  * 向那台机器的后端拉一次 task 快照（本机逐字 `LOCAL_ORIGIN`）。失败返空数组（panel 自然隐藏）。
  *
- * 〔RM1b〕第二个参数必填：本机与远端同一条路，差别只在问哪台。它收的是 **Tab 自己那一格**
- * （`Tab["origin"]`）而不是另写一份类型。〔合并 C4a〕那一格已收成 `Origin`（本机 = `LOCAL_ORIGIN`），
+ * 第二个参数必填：本机与远端同一条路，差别只在问哪台。它收的是 **Tab 自己那一格**
+ * （`Tab["origin"]`）而不是另写一份类型。那一格已收成 `Origin`（本机 = `LOCAL_ORIGIN`），
  * 原样过线 —— 上一版这里那个 `?? LOCAL_ORIGIN` 随之删了。
  */
 export async function fetchSessionTasks(

@@ -1,18 +1,18 @@
-//! # 要求住址：`INVARIANTS §42` → `src/doc/IPC-PROTOCOL.md`「功能侧只读查询（RM1b，第四波）」节（任务列表 · 插件市场）
+//! # 要求住址：`INVARIANTS §42` → `src/doc/IPC-PROTOCOL.md`「功能侧只读查询」节（任务列表 · 插件市场）
 //!
 //! 核原文：该节逐字「宿主是 `feature_face`（不是 `read_face`，理由在它头注），本体在 `observe/`」·「应答一律**按行**」；
 //! `plugins-marketplaces` 条逐字「文件不在 ⇒ `file_absent: true`（诚实的空）；读 / 解析失败 ⇒ `failed`」；`tasks-list` 条 `sid` 行逐字
 //! 「只许一段普通路径名（空 / 含分隔符 / `.` / `..` ⇒ `bad_args`）」—— 本族三条一一对上。〔JA1 点址 2026-09-24〕
 //!
-//! 〔RM1b · 第四波〕功能侧帧面宿主的判据。夹具只造结构，不采任何真会话正文。
+//! 功能侧帧面宿主的判据。夹具只造结构，不采任何真会话正文。
 
 use super::*;
 
 /// 本族的帧命令 —— **题面给的**那几样（任务列表 · 插件市场），写成帧面名。
 /// 它是判据的**异源**那一侧：下面那条从 `inbound.rs` 源码里数「谁把活交给了
 /// `feature_face::answer`」，两边必须相等。
-// 〔SH1 · V137〕＋ `mcp-read`（MCP 列表成品，读法住适配层）。
-// 〔MIG-3b〕＋ `hooks-diag`（cc-bus 钩子诊断成品，本体 `observe/cc_bus_hooks.rs`）。
+// ＋ `mcp-read`（MCP 列表成品，读法住适配层）。
+// ＋ `hooks-diag`（cc-bus 钩子诊断成品，本体 `observe/cc_bus_hooks.rs`）。
 const FAMILY: &[&str] = &["hooks-diag", "mcp-read", "tasks-list", "tmux-list"];
 
 fn scratch(tag: &str) -> std::path::PathBuf {
@@ -63,7 +63,7 @@ fn tasks_list_answers_the_product_and_refuses_a_missing_sid() {
     )
     .unwrap();
     let v = answer_at(&h, "tasks-list", &json!({"sid": "s"})).unwrap();
-    // 〔LOC1a〕应答是成品 `{tasks}`，不再是原样对象的 `lines`。
+    // 应答是成品 `{tasks}`，不再是原样对象的 `lines`。
     let rows = v["tasks"].as_array().expect("tasks");
     assert_eq!(rows.len(), 1);
     assert!(v.get("lines").is_none(), "还在回原始行：{v}");
@@ -84,9 +84,9 @@ fn tasks_list_answers_the_product_and_refuses_a_missing_sid() {
     );
 }
 
-/// 〔LOC1a · 第四波 4D · C4e 批 4〕★ `tasks-list` 的成品 == 跨语言金样（`tests/__fixtures__/tasks-list.golden.json`）。
+/// ★ `tasks-list` 的成品 == 跨语言金样（`tests/__fixtures__/tasks-list.golden.json`）。
 ///
-/// 要求住址：`设计/05 §14.3`「正路是把解释挪进后端、直接出成品……线上形状由一份跨语言金样钉住（后端测试产出 == 金样 ·
+/// 要求：「正路是把解释挪进后端、直接出成品……线上形状由一份跨语言金样钉住（后端测试产出 == 金样 ·
 /// TS 解码器读同一份）」。异源：金样里的 `files` 由**生产**路径（`answer_at` → `session_tasks` → `task_entry`）现算，
 /// 与手写的 `product` 逐格相等；界面那一侧（`tests/frontend/ui/tasks-decode.vitest.ts`）读同一份。
 /// 金样的 `files` 覆盖了旧口径（serde `TaskEntry`）的每一档：多余键不带 · BOM · `null` 可选格不出现 · id 不是串 / blocks 是 null /

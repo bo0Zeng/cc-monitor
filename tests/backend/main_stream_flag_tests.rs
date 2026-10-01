@@ -16,7 +16,7 @@ fn every_capability_token_is_strippable() {
         match token {
             "bg" => "--with-bg",
             "tail-only" => "--tail-only",
-            // 〔`设计/80 §8.7` 步 2，09-22〕启动期令牌那一条。
+            // 启动期令牌那一条。
             // ⚠ 它的 flag **不是为了喂饱本条判据编出来的** ——
             // 默认关、由客户端显式索要，因为令牌是敏感数据（`§8.6 ③`）；
             // 整段论证住 `lib.rs::CAPABILITIES` 的头注。
@@ -48,7 +48,7 @@ fn flags_are_stripped_and_detected() {
     assert!(tail);
     assert!(
         !rbind,
-        "没发 `--with-rbind-token` 就不该置位 —— 令牌默认不上 wire（`设计/80 §8.6 ③`）"
+        "没发 `--with-rbind-token` 就不该置位 —— 令牌默认不上 wire"
     );
     let (rest, bg, tail, rbind) = split_stream_flags(v(&["--tail-only"]));
     assert!(rest.is_empty());
@@ -60,7 +60,7 @@ fn flags_are_stripped_and_detected() {
     assert!(!bg);
     assert!(!tail);
     assert!(!rbind);
-    // ★ 〔`设计/80 §8.7` 步 2〕第三条 flag 自己那一格：**剥得干净 ＋ 只置自己那一位**。
+    // ★ 第三条 flag 自己那一格：**剥得干净 ＋ 只置自己那一位**。
     // 两半都要断：只断“置位了”会漏掉 §26 那条（不剥 ⇒ 当查询退出 ⇒ 无 hello），
     // 只断“剥干净了”会漏掉“剥掉了但忘了抬位”（那会让客户端永远收不到令牌、而没任何信号）。
     let (rest, bg, tail, rbind) = split_stream_flags(v(&["--with-rbind-token"]));

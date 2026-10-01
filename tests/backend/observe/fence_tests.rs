@@ -1,8 +1,8 @@
-//! 〔TL3 · 审计 F 🔴-6〕**读路径的越界围栏在 observe 里只有一个家**（`observe/fence.rs`），两个读者都经它。
+//! 〔审计 F 🔴-6〕**读路径的越界围栏在 observe 里只有一个家**（`observe/fence.rs`），两个读者都经它。
 //!
 //! # 守的要求（住址）
 //!
-//! `设计/15 §4.2`，逐字：「`history_query::fence_under_projects` 是具名围栏，头注逐字『**别再造一份**』；
+//! 要求：「`history_query::fence_under_projects` 是具名围栏，头注逐字『**别再造一份**』；
 //! `search_query::search` 里又内联了一份（头注『复刻 history_query』）。⇒ 判据的人群是『本文件』，而性质说的是
 //! 『别再造一份』—— 又一个守卫范围 ≠ 性质范围，而这次护的是**安全判定**」；「⇒ 正确处置是在 **observe 内部**
 //! 给它一个家（`observe/fence.rs`，`§5.3 C5`……）；**不是改 `common` 的门槛**」。
@@ -13,7 +13,7 @@
 //!   含 `canonicalize(` 的文件集合 == `{fence.rs}`（两向相等），且 `fence.rs` 里恰好两处、`Fence::at` 与
 //!   `Fence::admit` 各一处（解开根 · 解开目标）。
 //!   ⇒ 名字接自 `history_query_tests.rs` 里原来那一条（audit-0805 E3 立的，人群只有 `history_query.rs` 一份 ——
-//!   正是 `15 §4.2` 说的「守卫范围 ≠ 性质范围」那一形，`search_query` 那份内联的它看不见）：性质没变，人群换成 observe 全树。
+//!   正是说的「守卫范围 ≠ 性质范围」那一形，`search_query` 那份内联的它看不见）：性质没变，人群换成 observe 全树。
 //! - **F2 两个读者都经它**：observe 生产段里点名围栏（`fence::` · `Fence::` · `fence_under_projects(`）的文件集合
 //!   == `{history_query.rs, search_query.rs}`（除家本身）。F1 在「内联那份删了、围栏也没接上」那一形下照绿 ——
 //!   这一条就是为那一形立的（`search` 那一处围栏是纵深防御：它那一趟目录遍历默认不跟 symlink，行为判据打不到它）。
@@ -22,7 +22,7 @@
 //!
 //! # 买不到
 //!
-//! - `observe/` 之外的路径解析（`files/` 一族是 V119「无数据围栏」的写面，不是这道读围栏；`control/` 的写口各有自己的判据）。
+//! - `observe/` 之外的路径解析（`files/` 一族是「无数据围栏」的写面，不是这道读围栏；`control/` 的写口各有自己的判据）。
 //! - 不认 `canonicalize(` 这个词、换一种写法自己判越界（例如手搓 `components()` 消 `..`）的第二份看不见。
 
 use super::*;
@@ -72,7 +72,7 @@ fn path_resolution_has_exactly_one_home() {
     assert_eq!(
         homes,
         BTreeSet::from(["fence.rs"]),
-        "\n🔴 observe 里自己解析路径再判越界的不只一处（`设计/15 §4.2`「别再造一份」）：{homes:?}\n\
+        "\n🔴 observe 里自己解析路径再判越界的不只一处（「别再造一份」）：{homes:?}\n\
          ⇒ 经 `observe/fence.rs::Fence`（或 `fence_under_projects`）放行，别再写一份 canonicalize ＋ `starts_with`。\n\
          少了 `fence.rs` ⇒ 围栏本身被改掉了，去看它是不是还挡得住 symlink 逃逸。"
     );

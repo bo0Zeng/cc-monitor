@@ -65,7 +65,7 @@ e2e **12 / 8 / 46 / 45**（±0）· hooks 11 · fmt · fmt-daemon · winchk · g
   `the_probe_payload_still_requires_tmux_so_the_windows_branch_is_still_right` ·
   `the_probe_is_a_composition_of_commands_the_daemon_already_has` · `the_orchestration_registry_still_describes_what_this_file_does` ·
   `every_monitor_side_tmux_creation_is_a_registered_d3_exception` ·
-  `emit_usage_probe_cmd_for_e2e`〔ignore〕· `e2e_the_local_execution_surface_runs_the_probe_and_returns_output`〔ignore〕。
+  `emit_usage_probe_cmd_for_e2e` · `e2e_the_local_execution_surface_runs_the_probe_and_returns_output`。
   ⚠ 其中三条**不是删掉、是翻面重写**：`the_probe_is_a_composition_…` → `…_of_frame_commands_…`（对拍面从 CLI 换成帧面）·
   `the_orchestration_registry_…` → 由 `the_probe_never_falls_back_to_rendering_a_shell_string` ＋ 登记表那一列的「必须是 daemon」接 ·
   `every_monitor_side_tmux_creation_is_a_registered_d3_exception` → `monitor_never_creates_a_tmux_session_of_its_own`（登记制翻成零命中）。

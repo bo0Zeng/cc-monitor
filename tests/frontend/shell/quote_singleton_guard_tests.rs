@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 const ESCAPE_RAW: &str = r#"r"'\''""#;
 const ESCAPE_PLAIN: &str = r#""'\\''""#;
 
-/// 〔audit-0805 08-06〕**同一件事的第二种标准写法**：`'"'"'`。
+/// **同一件事的第二种标准写法**：`'"'"'`。
 ///
 /// # 为什么它必须在人群里
 ///
@@ -22,7 +22,7 @@ const ESCAPE_PLAIN: &str = r#""'\\''""#;
 ///
 /// ⚠ 走过一次弯路，记下来：我先想按「动作」派生人群（凡是替换单引号字符的都算）。
 /// 量了之后否掉 —— 它**够不着唯一的家**（那里是逐 char `push_str`，根本没有 `replace`），
-/// 却会**误伤当年 monitor 里那个 PowerShell `''` 转义**（另一门语言的正确写法；〔P5〕它已删，PowerShell 字面量只在后端写）。
+/// 却会**误伤当年 monitor 里那个 PowerShell `''` 转义**（另一门语言的正确写法；它已删，PowerShell 字面量只在后端写）。
 /// **派生不是万能的：派生错了人群，比手写清单更糟，因为它看起来更有原则。**
 const ESCAPE_ALT_RAW: &str = r#"'"'"'"#;
 const ESCAPE_ALT_PLAIN: &str = r#"'\"'\"'"#;
@@ -38,7 +38,7 @@ fn repo_root() -> PathBuf {
 /// 扫 monitor + backend + 共享 crate 的**所有** `.rs`（`target/` 与 vendor 除外）。
 fn rust_sources(root: &Path) -> Vec<PathBuf> {
     let mut out = Vec::new();
-    // 〔P4〕monitor 那棵根换成它的全部人群根（`guard_support::crate_population_roots`：壳 `src/` ＋ manifest 明写的兄弟包，
+    // monitor 那棵根换成它的全部人群根（`guard_support::crate_population_roots`：壳 `src/` ＋ manifest 明写的兄弟包，
     //   窗口包也在内）；兄弟包有几个住 `src/common/`，下面去重。
     for base in crate::guard_support::crate_population_roots()
         .into_iter()
@@ -139,13 +139,13 @@ fn the_sole_home_really_holds_the_implementation() {
     );
 }
 
-// 〔THIN〕「monitor 侧的入口逐字节对拍」那一条删了：最后一个入口（`ssh_source` 里那层转调壳）随它唯一的生产调用方
+// 「monitor 侧的入口逐字节对拍」那一条删了：最后一个入口（`ssh_source` 里那层转调壳）随它唯一的生产调用方
 //   （monitor 侧 Gate 1 前检，THIN 第 3 件删）零调用、一起删 ⇒ monitor 侧零个 quote 入口，要 quote 直调内核。
 //   更早摘掉的两个：`launch::posix_quote`〔散文墓碑〕（FIX4，远端 ssh 外壳随渲染进了本机后端）· `acct_iso_deploy::sq`（MIG-3a）。
 //   「不逃逸的第二份实现」那一形照旧由上面的零命中守卫 ＋ 唯一的家那两条挡（当年只比一个入口时，把 `posix_quote`〔散文墓碑〕
 //   换成不逃逸的写法照样全绿 —— 那条教训今天落在「monitor 侧零个入口」上）。
 
-// ═══════ 〔P5〕PowerShell 那一门：monitor 里一个引号器都不许有 ═══════════════════
+// ═══════ PowerShell 那一门：monitor 里一个引号器都不许有 ═══════════════════
 
 /// PowerShell 单引号引号器必有的记号：双写替换串 `"''"`（只转 ASCII 的那一形）· PowerShell 专有的四个引号字符
 /// （认全的那一形必须点名它们；字面或 `\u{…}` 两种写法）。`(记号名, 源码里的写法)`。
@@ -172,14 +172,14 @@ fn ps_quoter_census(src: &str) -> std::collections::BTreeMap<&'static str, usize
         .collect()
 }
 
-/// ★ 住址：`4d-lanes` P5 ——「判据：monitor 生产段零 PowerShell 引号器（零命中）」
+/// ★ 要求：「判据：monitor 生产段零 PowerShell 引号器（零命中）」
 /// （主会话裁：V156 方言只住后端，PowerShell 字面量只走后端 `platform/shell/dialect.rs::ps_literal`）。
 /// 人群：前端树 `src/frontend/**.rs` 的生产段（剥注释与测试段）。零命中；正控两条：同一把尺子量后端那唯一的出口恰好量出四个引号字符 ·
 /// 往 `launch.rs` 副本塞回旧的只转 ASCII 那一形数得出。买不到：按码点现算出引号、不写任何字面量的等价实现这把尺子看不见。
 #[test]
 fn the_monitor_holds_no_powershell_quoter() {
     let root = repo_root();
-    // 〔P4〕前端树 ＋ monitor 人群声明里住在它外面的兄弟包（通道 · 宿主原语 · 开窗契约，住 `src/common/`）：
+    // 前端树 ＋ monitor 人群声明里住在它外面的兄弟包（通道 · 宿主原语 · 开窗契约，住 `src/common/`）：
     //   通道成员从前经壳 `lib.rs` 的 `#[path]` 挂进来、在这棵树的人群里；搬进 `chan-core` 之后照旧算。
     let frontend = root.join("src/frontend");
     let mut files = guard_core::scan_tree_excluding(&frontend, &["rs"], &[]);

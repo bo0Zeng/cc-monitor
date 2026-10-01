@@ -1,5 +1,5 @@
-//! 〔HOST · V139〕远端常驻后端的起 · 找 · 停（`control/resident.rs`）。
-//! 守的要求：`99 §1` V139「远端常驻、本机远端同形」；`INVARIANTS §48.1`「监听口要钥匙」（钥匙不进 env / argv）。
+//! 远端常驻后端的起 · 找 · 停（`control/resident.rs`）。
+//! 守的要求：「远端常驻、本机远端同形」；`INVARIANTS §48.1`「监听口要钥匙」（钥匙不进 env / argv）。
 
 use super::*;
 
@@ -50,7 +50,7 @@ fn the_token_is_private_stable_and_never_handed_through_the_environment() {
             "CCM_RELAY_PORT",
             "CCM_BACKEND_STDERR_LOG",
         ],
-        "子进程环境那几格对不上（V139：中转口要交给它）"
+        "子进程环境那几格对不上（中转口要交给它）"
     );
     assert_eq!(
         env[3].1,
@@ -87,7 +87,7 @@ fn env_of<'a>(pairs: &'a [(&'a str, &'a str)]) -> impl Fn(&str) -> Option<String
     }
 }
 
-/// 〔HOST〕远端 `--resident-ensure` 那一形：钥匙在文件里（env 只有路径）⇒ 读出来就是常驻；文件空 / 读不动 ⇒ 拒（fail closed）。
+/// 远端 `--resident-ensure` 那一形：钥匙在文件里（env 只有路径）⇒ 读出来就是常驻；文件空 / 读不动 ⇒ 拒（fail closed）。
 #[test]
 fn a_token_file_gives_listen_mode_and_an_empty_one_is_refused() {
     let dir = std::env::temp_dir().join(format!("ccm-listen-tokfile-{}", std::process::id()));
@@ -117,8 +117,8 @@ fn a_token_file_gives_listen_mode_and_an_empty_one_is_refused() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// 〔TAIL · HOST 余项〕远端起的常驻后端也带上数据目录那两格（与那台自己的 monitor 交的同一对值）⇒ 那台 monitor 收养它、HX2 不拒。
-/// 守的要求：主会话裁 HOST 待拍 1「后端自己按默认推出这两格路径（谁起都一样）」（`_施工/paused-state.md`）。期望路径手写。
+/// 〔HOST 余项〕远端起的常驻后端也带上数据目录那两格（与那台自己的 monitor 交的同一对值）⇒ 那台 monitor 收养它、HX2 不拒。
+/// 守的要求：主会话裁 HOST 待拍 1「后端自己按默认推出这两格路径（谁起都一样）」。期望路径手写。
 #[test]
 fn the_resident_derives_the_same_data_dir_pair_whoever_starts_it() {
     let names = ("CCM_APIKEY_CREDENTIALS", "CCM_HISTORY_METADATA");
@@ -153,7 +153,7 @@ fn the_resident_derives_the_same_data_dir_pair_whoever_starts_it() {
     .is_empty());
 }
 
-/// ★ 〔GAP1 · `设计/15 §4.7 S1`〕远端常驻后端的诊断文件落 `~/.cc-monitor/logs/backend/stderr.log`（与本机同一层级），
+/// ★ 远端常驻后端的诊断文件落 `~/.cc-monitor/logs/backend/stderr.log`（与本机同一层级），
 /// 那几层目录由起它的那一步逐层建好（`stderr_log` 只建文件不建目录），每层只给本人。
 #[test]
 fn the_resident_log_lives_under_logs_backend_and_its_dirs_are_made() {
@@ -179,8 +179,8 @@ fn the_resident_log_lives_under_logs_backend_and_its_dirs_are_made() {
     let _ = std::fs::remove_dir_all(&home);
 }
 
-/// 〔STOP〕T1 **宽限期 > 退出排空上限**：默认值与 `--grace` 的下限两格都比 `inbound::DRAIN_DEADLINE` 长。
-/// 守的要求：`4d-lanes.md` `### STOP`（主会话裁）逐字「常驻后端自己收 SIGTERM 排空在飞写的上限（HX1）必须 < 宽限期（判据钉两者关系）」。
+/// T1 **宽限期 > 退出排空上限**：默认值与 `--grace` 的下限两格都比 `inbound::DRAIN_DEADLINE` 长。
+/// 要求：「常驻后端自己收 SIGTERM 排空在飞写的上限（HX1）必须 < 宽限期（判据钉两者关系）」。
 /// 等得比排空短 ⇒ 后端那句「哪几条没做完」永远被 SIGKILL 截断，而且不会报错。
 #[test]
 fn the_grace_period_outlasts_the_backend_drain_cap() {
@@ -240,9 +240,9 @@ impl Drop for Reap {
     }
 }
 
-/// 〔STOP〕T2 **同机监督者三态，真进程 ＋ 真信号**：听话的（收 SIGTERM 就退）⇒ `graceful`；聋的（忽略 SIGTERM）⇒ 宽限期满强杀、
+/// T2 **同机监督者三态，真进程 ＋ 真信号**：听话的（收 SIGTERM 就退）⇒ `graceful`；聋的（忽略 SIGTERM）⇒ 宽限期满强杀、
 /// `killed`、它真没了（收尸后 `/proc` 里没有）；不在的 ⇒ `not_running`；记下的程序对不上 ⇒ 拒、不发信号。
-/// 守的要求：`4d-lanes.md` `### STOP` 逐字「读 pid → SIGTERM → 在本机按 pidfd 等到退出或宽限期到 → 到点 SIGKILL → 回结局」。
+/// 要求：「读 pid → SIGTERM → 在本机按 pidfd 等到退出或宽限期到 → 到点 SIGKILL → 回结局」。
 #[test]
 #[cfg(target_os = "linux")]
 fn the_one_shot_supervisor_stops_politely_then_by_force() {

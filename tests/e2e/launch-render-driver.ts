@@ -1,4 +1,4 @@
-// 〔LR2〕e2e 取「app 真正会跑的那一串」的**唯一出口**（测试 fixture，非生产代码）。
+// e2e 取「app 真正会跑的那一串」的**唯一出口**（测试 fixture，非生产代码）。
 //
 // 这条链上每一段都是生产代码，一段都不在测试里另写：
 //
@@ -8,7 +8,7 @@
 //     → `launch-render-emit.sh` → Rust `emit_launch_render_for_e2e`（#[ignore] 数据出口）→ 生产命令 `launch_wire::render_launch_payload`
 //
 // 为什么这么绕：步 22b·B 之后生产那一行由 Rust 渲染，TS 那五个 builder（`remote-launch.ts`）
-// 零生产调用，LR2 按 `设计/00 §2.5 ④` 删了。e2e 若继续 import 它们，验的就是一份不在执行链上的副本
+// 零生产调用，LR2 按删了。e2e 若继续 import 它们，验的就是一份不在执行链上的副本
 // （本仓记忆「判据不在执行链上就等于不存在」）。
 //
 // ⚠ 本文件只做「取串」，不断言任何事；断言在调用它的那三套 shell 里（resume-suite · resume-backend-frames ·

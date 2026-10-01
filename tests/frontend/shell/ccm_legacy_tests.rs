@@ -1,8 +1,8 @@
-//! 〔GP1 · 第四波〕`ccm_legacy.rs` 的判据 —— 旧版放在 `~/.local/bin/ccm` 的那一份，认出是我们放的就删。
+//! `ccm_legacy.rs` 的判据 —— 旧版放在 `~/.local/bin/ccm` 的那一份，认出是我们放的就删。
 //!
-//! 要求住址：`设计/01 §6.7b` 逐字「远端要同拍做三件 —— … ② 清掉旧的 `~/.local/bin/ccm` shim · ③ 清掉同目录下与后端重复的字节。
-//! 按 `96 §4`，三件都要在足迹里有入口」· 主会话 09-25 裁（按 V28 / V41 清掉，部署 / 升级时顺手删）。设计与编号：`GP1.md §2`（L1–L3）。
-//! 〔THIN · 09-29〕「认不认得出」随判定进了本机常驻后端（`deploy-retired`）⇒ L1 那张两形真值表搬去
+//! 要求：「远端要同拍做三件 —— … ② 清掉旧的 `~/.local/bin/ccm` shim · ③ 清掉同目录下与后端重复的字节。
+//! 按，三件都要在足迹里有入口」· 主会话 09-25 裁（按 V28 / V41 清掉，部署 / 升级时顺手删）。设计与编号：`GP1.md §2`（L1–L3）。
+//! 「认不认得出」随判定进了本机常驻后端（`deploy-retired`）⇒ L1 那张两形真值表搬去
 //! `tests/backend/control/deploy_plan_tests.rs`（`retired_*`）；本文件只剩照答办（L2）· 线上形状 · 接线与足迹（L3）。
 //!
 //! 替身门是 `user_files::tests::DiskDoor`（临时目录上的「读 · CAS · 删」），结构夹具（不采任何真会话正文）。
@@ -138,7 +138,7 @@ fn gp1_both_triggers_are_wired_once_and_the_footprint_lists_the_legacy_file() {
         1,
         "长连接握手那一处没扫（或扫了不止一次）"
     );
-    // 〔MIG-3b 续〕足迹申报表进了后端（`src/backend/footprint/registry.rs`）⇒ 读它的源码：
+    // 足迹申报表进了后端（`src/backend/footprint/registry.rs`）⇒ 读它的源码：
     //   `path: "~/<LEGACY_REL>"` 恰好一处，它那一格（`TouchedFile { … }`）的 host 是远端、effect 是「旧版放的、认出才删」。
     let table =
         guard_core::production_code(include_str!("../../../src/backend/footprint/registry.rs"));

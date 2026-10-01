@@ -1,6 +1,6 @@
 //! Claude Code `projects/**/*.jsonl` 单行记录的 Rust schema —— **这些类型就是界面收到的记录的线上形状**
-//! （ts-rs 从这里导出 `src/frontend/ui/generated/`）。〔MOD · `设计/90 §3` 判据 3〕它从 monitor 的 `messages.rs` 搬进来：
-//! 记录解释只住后端，monitor 只把成品原样转交（`15 §5.3 C7`）。
+//! （ts-rs 从这里导出 `src/frontend/ui/generated/`）。它从 monitor 的 `messages.rs` 搬进来：
+//! 记录解释只住后端，monitor 只把成品原样转交。
 //!
 //! `JsonlRecord` enum 按 `type` 字段反序列化（user / assistant / system / summary /
 //! ai-title / attachment / permission-mode / last-prompt / file-history-snapshot 等）。
@@ -19,7 +19,7 @@ use serde::{Deserialize, Serialize};
 use crate::agents::{ChildRunTag, ToolCard};
 use std::collections::BTreeMap;
 
-/// 〔RENDER2 · J10 · `设计/10 §2.2b ⑤` 那条不等价的根〕一条 user 正文按注入噪声规则判过的成品。
+/// 〔那条不等价的根〕一条 user 正文按注入噪声规则判过的成品。
 #[derive(Debug, Serialize, Clone, Default, PartialEq, Eq)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
@@ -38,7 +38,7 @@ impl UserText {
 }
 
 impl JsonlRecord {
-    /// 〔THIN〕assistant 记录填上 `toolCards`（`content` 里每个 `tool_use` 按本家工具词表判一次）与 `childRuns`（派出子运行的那几次）；别的类型原样。
+    /// assistant 记录填上 `toolCards`（`content` 里每个 `tool_use` 按本家工具词表判一次）与 `childRuns`（派出子运行的那几次）；别的类型原样。
     pub(crate) fn with_tool_cards(mut self) -> Self {
         if let Self::Assistant {
             message,
@@ -134,7 +134,7 @@ pub enum JsonlRecord {
         // issue #12: fork session 的所有记录都带这个字段；非 fork session 缺失
         #[serde(rename = "forkedFrom", default)]
         forked_from: Option<ForkedFrom>,
-        /// 〔RENDER2 · J10〕剥完 CLI 注入噪声的正文与「是不是 ESC 中断标记」—— 规则只在 `agents/claudecode/text.rs::user_text`，
+        /// 剥完 CLI 注入噪声的正文与「是不是 ESC 中断标记」—— 规则只在 `agents/claudecode/text.rs::user_text`，
         /// 前端渲染 / 分叉折叠只读这个成品（不自己再判）。原文里没有这一格：解析完由 [`UserText::of`] 填（`parse::parse_line` · `agents/codex/record.rs`）。
         #[serde(rename = "userText", skip_deserializing, default)]
         user_text: UserText,
@@ -175,7 +175,7 @@ pub enum JsonlRecord {
         error: Option<serde_json::Value>,
         #[serde(rename = "apiErrorStatus", default)]
         api_error_status: Option<u32>,
-        /// 〔THIN · `设计/00 §1.2` 判定只在后端〕这条消息里每个 `tool_use` 的卡型：`tool_use.id` → [`ToolCard`]（普通工具卡不列）。
+        /// 〔判定只在后端〕这条消息里每个 `tool_use` 的卡型：`tool_use.id` → [`ToolCard`]（普通工具卡不列）。
         /// 原文里没有这一格：解析完由 [`JsonlRecord::with_tool_cards`] 按本家工具词表（`cards::tool_card`）填；界面只按它画、不认工具名。
         #[serde(
             rename = "toolCards",
@@ -323,7 +323,7 @@ pub enum JsonlRecord {
     ///
     /// **带链身份的**进 `is_displayable()`（照 `Attachment` 先例：**不渲染卡片但进链**）；
     /// 前端 `cards/index.ts::renderMessage` 的 `default => skip` 已能优雅跳过，无需建卡。
-    /// 〔W5-RENDER R10 · `设计/17 §1.2`〕**没有链身份的**（uuid 与 parentUuid 都缺 —— 上面实测的那 7 种今天全是）
+    /// **没有链身份的**（uuid 与 parentUuid 都缺 —— 上面实测的那 7 种今天全是）
     /// 在这里就滤掉、不出 payload：它们不建卡、不进链，前端没有任何读者，却要付每条的固定开销（去重入集合 · sink · 门控），
     /// 还带着整行原文 `raw` 过线。「不静默」那一半由 `drift_ledger`（`UnknownRecordType` 面，解析时记）接着管 ——
     /// 诊断面照旧看得见「多了一种没见过的类型」。
@@ -431,7 +431,7 @@ impl JsonlRecord {
     ///    需要完整 uuid+parentUuid 链，attachment 夹在 user/assistant 之间，
     ///    不 emit 会让前端 parent 链断成碎片 → 主线全错 → 全部消息被错折叠
     ///
-    /// 〔W5-RENDER R10 · `设计/17 §1.2`「纯元数据记录在解析阶段滤掉，不进管线」〕**没有链身份的** Unrecognized
+    /// 〔「纯元数据记录在解析阶段滤掉，不进管线」〕**没有链身份的** Unrecognized
     /// （`mode` / `atis-latch` / `pr-link` / … 一族，真机普查 9.8% 行 / 0.4% 字节）返回 false：前端零读者。
     /// 仍进前端的元数据都有读者：`ai-title` / `custom-title`（标题）· `queue-operation`（`enqueue` 喂折叠豁免、`remove` 建卡）。
     ///
@@ -441,7 +441,7 @@ impl JsonlRecord {
     /// - `Unknown` = **不认识**，曾经从这里被静默丢弃（实测 8,774 条 / 5.6%）。
     ///   F63 起它不再出 `parse_line`（被抢救成 `Unrecognized`），此处 false 只是
     ///   兜底——真走到说明 `parse_line` 的后处理漏了，属 bug。
-    /// 这条记录自己的 `cwd`（只有 user 记录带）—— 行成品里那一格（〔MOD〕原 monitor `lib·rs` 那个 `extract_cwd`〔散文墓碑〕）。
+    /// 这条记录自己的 `cwd`（只有 user 记录带）—— 行成品里那一格（原 monitor `lib·rs` 那个 `extract_cwd`〔散文墓碑〕）。
     pub fn cwd(&self) -> Option<&str> {
         match self {
             Self::User { cwd, .. } => cwd.as_deref(),
@@ -470,7 +470,7 @@ impl JsonlRecord {
 #[path = "../../../../tests/backend/agents/claudecode/schema_tests.rs"]
 mod tests;
 
-// 〔MOD〕「每个承载标题的记录都被标题抽取接住」随 schema 从 monitor 搬来（原 `history_title_coverage.rs`）。
+// 「每个承载标题的记录都被标题抽取接住」随 schema 从 monitor 搬来（原 `history_title_coverage.rs`）。
 #[cfg(test)]
 #[path = "../../../../tests/backend/agents/claudecode/schema_title_coverage.rs"]
 mod title_coverage;

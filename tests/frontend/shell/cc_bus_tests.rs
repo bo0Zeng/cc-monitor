@@ -1,4 +1,4 @@
-//! 〔SH1 · 09-26〕驾驶舱读面（名册 · 收件箱）迁到界面经通道直接问那台后端 —— monitor 这边那一整套 shell 读与它的判据（坏行解析 · 自述头 ·
+//! 驾驶舱读面（名册 · 收件箱）迁到界面经通道直接问那台后端 —— monitor 这边那一整套 shell 读与它的判据（坏行解析 · 自述头 ·
 //! 本机 `bash` 解析 · 超时不留孤儿 · 命令模板一处构造）随生产代码一起删了〔散文墓碑〕；坏行契约的判据住后端 `tests/backend/control/cc_bus_tests.rs`。
 //! 这里只剩：id 规则的再导出（`INVARIANTS §47`）· 唯一 quote 的往返性质 · monitor 零写面 · 界面只经一处说。
 
@@ -100,12 +100,12 @@ fn quote_roundtrip_is_the_real_property() {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// 〔C4e · 第四波 4C〕cc-bus 写面迁到界面之后：monitor 里一条路都不剩 · 界面只经一处说 · id 规则两份对拍
+// cc-bus 写面迁到界面之后：monitor 里一条路都不剩 · 界面只经一处说 · id 规则两份对拍
 // ════════════════════════════════════════════════════════════════════════
 
-/// ★★〔C4e · 第四波 4C〕**monitor 里 cc-bus 写面一条路都不剩**（零命中 ＋ 正控）。
+/// ★★**monitor 里 cc-bus 写面一条路都不剩**（零命中 ＋ 正控）。
 ///
-/// 守的要求：`设计/05 §14.3` 逐字「迁到通道之后，业务解释是不是**只有一个家**」—— 发消息 / 收掉 / 派生 / 广播的解释
+/// 守的要求：「迁到通道之后，业务解释是不是**只有一个家**」—— 发消息 / 收掉 / 派生 / 广播的解释
 /// 今天只住 `src/frontend/ui/cc-bus-control.ts`（广播的挑人住后端）；monitor 里再长出一条拼 `cc-send` / `cc-kill` / `cc-spawn` /
 /// `cc-broadcast` shell 串的路，就是 `K-R98` / `K-R112` / BS1b 一条条删掉的那几条 SSH 路回来了（它们纯按名字、没有身份核对）。
 /// 帧命令名那一格由 `frame_query_tests` 的 `CHANNELED_ELSEWHERE`（monitor 生产段零字面量）管，本条管 shell 串那几种形态。
@@ -141,7 +141,7 @@ fn the_monitor_has_no_cc_bus_write_path_any_more() {
         }
     }
     assert!(files > 100, "只扫到 {files} 份 monitor 源码 —— 遍历坏了");
-    // 〔MIG-3a · 子步 3〕部署器那份字节表随装 cc-bus 进了本机后端（`src/backend/assets/cc_bus_install.rs`）⇒ 豁免过期、人群清零。
+    // 部署器那份字节表随装 cc-bus 进了本机后端（`src/backend/assets/cc_bus_install.rs`）⇒ 豁免过期、人群清零。
     let _ = deployer;
     let only_deployer: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
     assert_eq!(
@@ -159,7 +159,7 @@ fn the_monitor_has_no_cc_bus_write_path_any_more() {
     );
 }
 
-/// ★★〔C4e · 第四波 4C〕**界面说 cc-bus 那五条只经一处**：`chan.call(origin, "bus-…"` 只住 `src/frontend/ui/cc-bus-control.ts`，
+/// ★★**界面说 cc-bus 那五条只经一处**：`chan.call(origin, "bus-…"` 只住 `src/frontend/ui/cc-bus-control.ts`，
 /// 各恰好一处。
 ///
 /// 守的要求：同上一条（业务解释只有一个家）—— 先核 id / 正文 / 派生形状、按形状收、逐态说人话，这几件只写在那一份里；
@@ -174,7 +174,7 @@ fn the_front_end_speaks_the_bus_ops_only_through_one_module() {
         "bus-kill",
         "bus-spawn",
         "bus-broadcast",
-        // 〔SH1 · V136〕驾驶舱读面那两条。
+        // 驾驶舱读面那两条。
         "bus-state",
         "bus-inbox",
     ];
@@ -214,10 +214,10 @@ fn the_front_end_speaks_the_bus_ops_only_through_one_module() {
     }
 }
 
-/// ★〔C4e · 第四波 4C〕**agent id 的规则对金样**：monitor [`is_valid_bus_id`]（读收件箱那一条）读跨语言金样
+/// ★**agent id 的规则对金样**：monitor [`is_valid_bus_id`]（读收件箱那一条）读跨语言金样
 /// `cc-bus-control.golden.json` 的 `ids`。
 ///
-/// 〔DUP2 · J12〕界面那一份（`src/frontend/ui/cc-bus-control.ts` 里的 TS 副本）删了，实现搬进共享 crate（`shell_quote_core::bus_id_ok`），
+/// 界面那一份（`src/frontend/ui/cc-bus-control.ts` 里的 TS 副本）删了，实现搬进共享 crate（`shell_quote_core::bus_id_ok`），
 /// 这里的 [`is_valid_bus_id`] 是它的再导出；后端 `bus-*` 入口用同一个函数判同一份 `ids`
 /// （`tests/backend/control/cc_bus_tests.rs::bus_ids_are_judged_here_before_they_reach_cc_bus`）。本条留着：读收件箱这一侧对金样。
 #[test]

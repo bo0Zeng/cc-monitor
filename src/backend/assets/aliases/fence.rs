@@ -1,6 +1,6 @@
 //! T04 第二步：**围栏块配对判定**——本机 profile 与远端 profile 共用同一条规则。
 //!
-//! 〔MIG-3a · `设计/99 §2.1 ⑬` · 主会话 09-27 裁〕从 monitor `fenced_block.rs` 搬来：别名块装 / 卸今天在那台后端里算、经它自己的
+//! 从 monitor `fenced_block.rs` 搬来：别名块装 / 卸今天在那台后端里算、经它自己的
 //! 文件管理面写（[`super`]），配对与拼接这份纯规划跟着住这里；一个字节的规则没变。
 //!
 //! ## 为什么只抽这一条，而不是"统一部署器"
@@ -10,7 +10,7 @@
 //! | 范式 | 使用者 | 现状 |
 //! |---|---|---|
 //! | 指纹判过期 → 决定装/升/跳过 | backend（后端二进制自部署） | backend 那条住 `control/deploy_plan.rs` 的 `identity_decision` |
-//! | 备份 → 写 → 读回比对 → 回滚 | 5 处 | **已共享**（〔W5-ALIAS〕今天只住后端 `files_write.rs::put_text`） |
+//! | 备份 → 写 → 读回比对 → 回滚 | 5 处 | **已共享**（今天只住后端 `files_write.rs::put_text`） |
 //! | 围栏块插入/替换/剥离 | ccm 远端 profile + PowerShell 本机 profile（2） | **两套独立实现** ← 本模块 |
 //! | 整份 JSON 覆写 | 项目 MCP（1） | 单例，不抽 |
 //!
@@ -22,7 +22,7 @@
 //!
 //! 两侧对「有 BEGIN 但找不到配对的 END」（上次安装中断 / 用户手改坏）处置**不一致**：
 //!
-//! - 远端（`block::merge_profile_block`，〔W5-ALIAS〕从前住 `sftp.rs`，〔MIG-3a〕从 monitor 搬进后端）：**Err 中止**。这是 F10 审计 B1 专门加的——
+//! - 远端（`block::merge_profile_block`，从前住 `sftp.rs`，从 monitor 搬进后端）：**Err 中止**。这是 F10 审计 B1 专门加的——
 //!   原话「绝不用独立 `find` 误配前面的 END 而吞掉用户内容；宁可报错让用户手修，
 //!   也不破坏文件」。
 //! - 本机（`profile_installer::find_block_range`〔散文墓碑〕）：返回 `None` → 走**追加**分支。
@@ -81,19 +81,19 @@ pub(crate) fn find_pair(
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// 〔AL1 · 2026-09-24〕`设计/71 §12.5`：**规则只有一份** —— 拼接一处，落盘序列一处
+// **规则只有一份** —— 拼接一处，落盘序列一处
 // ═══════════════════════════════════════════════════════════════════════════
 //
 // 立件时现打（`tests/evidence/MC1-AL1-摸底.md` 第四节）：配对判定早就只有 [`find_pair`] 一份，
 // 但「配对之后怎么拼」写了三份（`sftp::merge/strip_profile_block` · `profile_installer` 的
-// `replace_or_append_block/strip_block` · `account_aliases::ensure_rc_source_line` 里内联的那一段 —— 〔TL1〕那一跳后来整个退役了），〔散文墓碑〕
+// `replace_or_append_block/strip_block` · `account_aliases::ensure_rc_source_line` 里内联的那一段 —— 那一跳后来整个退役了），〔散文墓碑〕
 // 「备份 → 原子写 → 回读比对 → 回滚」这个序列写了五个函数体（本机三处 ＋ 远端装/卸）。
 // 当年的回滚写入器头注自己记着为什么远端那几处没收进去：「回滚是 `async` SFTP 操作，塞不进 `impl FnOnce()`」。
 //
-// ⇒ 按 `71 §12.3` 第 4、5 格切：**拼接是规则（留这里，一份）**；「排版」随目标文件的方言走（[`Layout`]）。
-// 〔RW1 · 第四波 09-24〕**序列那一半搬去了后端**（`control/files_write.rs::put_text`）：用户文件（rc ·
+// ⇒ 按第 4、5 格切：**拼接是规则（留这里，一份）**；「排版」随目标文件的方言走（[`Layout`]）。
+// **序列那一半搬去了后端**（`control/files_write.rs::put_text`）：用户文件（rc ·
 //   `$PROFILE` · 别名文件 · 远端 rc）从此经那台机器的后端写，本机那一份原语 `LocalFile`〔散文墓碑〕随之走了。
-//   〔W5-ALIAS〕留在这里的那一份序列后来也删了（见下面 `KR62D3` 那一节之前的墓碑）。
+// 留在这里的那一份序列后来也删了（见下面 `KR62D3` 那一节之前的墓碑）。
 
 /// 排版方言。**规则不分方言**（配对 → 整块替换 / 追加 / 悬空中止；剥离 → 删 / 原样 / 悬空中止），
 /// 分方言的只有排版这一层 —— 由目标文件决定（`profile_installer::flavor_of` 按扩展名答），
@@ -238,13 +238,13 @@ pub(crate) fn splice_out(
     })
 }
 
-// 〔W5-ALIAS · 第五波先行〕这里原来是落盘那一个序列：`apply`〔散文墓碑〕（读 → 计划 → 相同不写 → 备份 → 原子替换 →
+// 这里原来是落盘那一个序列：`apply`〔散文墓碑〕（读 → 计划 → 相同不写 → 备份 → 原子替换 →
 //   回读比对 → 回滚）＋ 它的四个原语 `Store`〔散文墓碑〕＋ 结局 `Applied`〔散文墓碑〕＋ 回滚措辞 `undo_note`〔散文墓碑〕。
-//   RW1 之后用户文件（rc / `$PROFILE` / 别名文件 / 别名块）一律经那台机器的后端写（〔MIG-3a〕今天是 `door::edit` → 本进程 `files-put`，
+//   RW1 之后用户文件（rc / `$PROFILE` / 别名文件 / 别名块）一律经那台机器的后端写（今天是 `door::edit` → 本进程 `files-put`，
 //   序列住后端 `control/files_write.rs::put_text`），它只剩一个用户 —— 远端 `ccm` 入口那三行（部署物，不是用户文件）；
 //   那一处改走部署那一族的 `sftp::upload_verified` 之后零调用方 ⇒ 删。本模块只剩**纯规划**（配对 · 拼接 · 账）。
 
-// 〔MIG-3a〕`KR62D3` 那张「同一件事今天有几套形状」的账（`FenceShape` / `FENCE_SHAPES`）只有判据读它 ⇒ 随搬家住进判据文件
+// `KR62D3` 那张「同一件事今天有几套形状」的账（`FenceShape` / `FENCE_SHAPES`）只有判据读它 ⇒ 随搬家住进判据文件
 //   （`fence_tests.rs`；从前在 monitor 生产段里是一条死代码，占 `deadcode` 棘轮一格）。
 
 #[cfg(test)]

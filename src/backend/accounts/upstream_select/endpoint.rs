@@ -1,13 +1,13 @@
-//! 〔US1 · 第四波 4D〕**起会话那一发走哪、注入什么** —— 上游选择在帧面上出的两份成品。
+//! **起会话那一发走哪、注入什么** —— 上游选择在帧面上出的两份成品。
 //!
 //! | 帧命令 | 答什么 | 谁问 |
 //! |---|---|---|
-//! | `launch-endpoint` | 这个号这一发往 `ANTHROPIC_BASE_URL` 里写哪个中转地址（或不写；〔V141〕地址不随会话变，不带会话段）· 这台的中转在不在 · 不在时拒还是直连 | monitor 起会话那一侧（本机与远端同一条：`history::relay_endpoint_on`） |
+//! | `launch-endpoint` | 这个号这一发往 `ANTHROPIC_BASE_URL` 里写哪个中转地址（或不写；地址不随会话变，不带会话段）· 这台的中转在不在 · 不在时拒还是直连 | monitor 起会话那一侧（本机与远端同一条：`history::relay_endpoint_on`） |
 //! | `apikey-routing` | 这几个号在这台的表里有没有行 · 这台的中转在不在 | 界面经 `chan.call` 直接问（账号页徽章） |
 //!
-//! # 为什么搬到这里（`设计/05 §14.3` B 组 · B-decouple §2.1 必须拆 1）
+//! # 为什么搬到这里（必须拆 1）
 //!
-//! 先前 `设计/20 §3.2` 那张「注入什么」的表住 monitor（`payload::relay_endpoint_for`），它要的两样事实
+//! 先前那张「注入什么」的表住 monitor（`payload::relay_endpoint_for`），它要的两样事实
 //! （表里有哪几行 · 中转在不在）monitor 自己读凭据文件、自己连回环口去拿 —— 人群与后端装表那一步**各算一份**
 //! （头注自认的残留：`base_url` 写坏的那一行，界面说「经本机中转」，中转 404）。今天两样事实都在这台后端手里，
 //! 表也就搬来：monitor 只转交入参、执行成品（远端「不在就起、有界等」那一截要定时器，后端零定时器 ⇒ 留 monitor）。
@@ -17,7 +17,7 @@
 //! 「表里有哪几行」= `table::build` 真收进表的那几行（与中转装表同一个函数）。`accounts-list` 并表、
 //! `apikey-routing`、`launch-endpoint` 三处读的都是它。
 //!
-//! # 决策表（`设计/20 §3.2`，逐行搬来；F5 那一行是主会话 4D 新裁）
+//! # 决策表（逐行搬来；F5 那一行是主会话 4D 新裁）
 //!
 //! | # | 情况 | 答 |
 //! |---|---|---|
@@ -28,9 +28,9 @@
 //! | ⑤ | 标签与表里某一行同名 | 不注入（`/t/` 有行那一格会把这条会话自己的鉴权头送去那一行的上游） |
 //! | ⑥ | 其余 | `/t/<agent>/<标签>`，中转不在 ⇒ **直连**（有它更好） |
 //!
-//! 〔V141〕地址里没有会话段：会话 id 归 claude 自己，中转从它请求里自带的头认会话（`relay::Destinations::stream_label_headers`）。
+//! 地址里没有会话段：会话 id 归 claude 自己，中转从它请求里自带的头认会话（`relay::Destinations::stream_label_headers`）。
 //!
-//! ⚠ ① 与 ⑥ 的降级**刻意不同**，而且从此写在线上（`whenDown`）—— 「把这两种降级写成一样是最容易犯的错」（`20 §3.2`）。
+//! ⚠ ① 与 ⑥ 的降级**刻意不同**，而且从此写在线上（`whenDown`）—— 「把这两种降级写成一样是最容易犯的错」。
 
 use super::CREDENTIALS_FILE_AGENT;
 use copy_core::copy_text;
@@ -43,7 +43,7 @@ pub(crate) type EndpointAnswer = Result<Value, (&'static str, String)>;
 /// 账号 0（不注入 `CLAUDE_CONFIG_DIR` 那一档）在 `/t/` 路由里的账号段。只是标签（`/t/` 从不查它的 key）。
 pub(crate) const BASE_ACCOUNT_SEGMENT: &str = "0";
 
-/// 〔F5 · 主会话 4D 裁〕起会话时**没表态**是哪个号（没建账号库的机器上本机起会话就是这一形）在 `/t/` 里的账号段。
+/// 起会话时**没表态**是哪个号（没建账号库的机器上本机起会话就是这一形）在 `/t/` 里的账号段。
 ///
 /// 不借账号 0 的 `0`：没表态 ≠ 账号 0（建了账号库的机器上，没表态时 pane 可能落到 shell rc 里导出的那个配置根上），
 /// 流标签不该替它说是哪个号。与表里某一行同名的风险同 `0`，由决策表第 ⑤ 行挡。
@@ -138,8 +138,8 @@ pub(crate) fn decide_launch(
 }
 
 /// `launch-endpoint`：入参 `{agent, account?, allSessions}` → 成品 `{baseUrl}`（`null` = 不注入）。
-/// 〔MIG-2 · `99 §2.1 ⑬`〕「中转不在时拒还是直连」也在这里判完（原先 monitor 的 `relay_endpoint_on`〔散文墓碑〕 拿四格再判一遍）：
-/// 非它不可（API 号代入）而没在听 ⇒ 码 `relay_down` ＋ 一句；有它更好（`/t/` 直通）而没在听 ⇒ 这一发直连（`01 §6.5`）。
+/// 「中转不在时拒还是直连」也在这里判完（原先 monitor 的 `relay_endpoint_on`〔散文墓碑〕 拿四格再判一遍）：
+/// 非它不可（API 号代入）而没在听 ⇒ 码 `relay_down` ＋ 一句；有它更好（`/t/` 直通）而没在听 ⇒ 这一发直连。
 pub(crate) fn answer_launch(args: &Value) -> EndpointAnswer {
     launch_relay(args).map(|u| json!({ "baseUrl": u }))
 }

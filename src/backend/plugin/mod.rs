@@ -70,7 +70,7 @@
 //!
 //! # 诚实边界（写在这里，因为它删了不会红）
 //!
-//! - [`probe`] 〔RM1c · 第四波〕**有了第一个生产调用方**：`control/panorama.rs` —— 代码全景那个
+//! - [`probe`] **有了第一个生产调用方**：`control/panorama.rs` —— 代码全景那个
 //!   独立小程序说这套方言（身份行 ＋ `capabilities=` 逐个 op），宿主按「这一次要的 op」做子集检查。
 //!   〔改前原话：「[`probe`] 今天**零生产调用方**：本仓第一刀的那个插件（cc-bus）**没有 probe 口**……
 //!    等哪天有插件真的说这套方言，它就地可用。」—— 那一天是 09-24。〕
@@ -82,7 +82,7 @@
 pub mod discover;
 pub(crate) mod invoke;
 
-// 〔RM1c · 第四波〕有生产调用方了：`control/panorama.rs`（代码全景小程序的能力协商）。
+// 有生产调用方了：`control/panorama.rs`（代码全景小程序的能力协商）。
 // 此前那句「今天零生产调用方」与压死代码提示的 `allow` 随之摘掉。
 pub(crate) mod probe;
 

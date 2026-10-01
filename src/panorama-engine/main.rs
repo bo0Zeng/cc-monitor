@@ -1,10 +1,10 @@
-//! 〔RM1c · 第四波〕`cc-monitor-panorama` —— 只装代码全景引擎的**独立小程序**（用户 09-24 V108 选 B）。
+//! `cc-monitor-panorama` —— 只装代码全景引擎的**独立小程序**（用户 09-24 V108 选 B）。
 //!
 //! # 它是什么、谁起它
 //!
 //! vendored `code-picture-core` ＋ 一问一答的 JSON CLI。起它的是**那台机器上的后端**，经插件
 //! 通用调用口（找它 → 问它会什么 → 传 argv 起它，期限走 `timeout` 前缀）按需起；
-//! 后端本体仍零 code-picture（`C21` / `95 §0` 照旧）。索引落后端交给它的那个目录
+//! 后端本体仍零 code-picture（`C21` / 照旧）。索引落后端交给它的那个目录
 //! （那台机器上后端自己的数据目录），**不落进被分析的仓**。
 //!
 //! # 线上契约（1 exec = 1 请求 = 1 行应答）
@@ -17,12 +17,12 @@
 //!   成功 `{"ok":true,"data":…}`（退出码 0）；失败 `{"ok":false,"code":…,"message":…}`，
 //!   退出码 [`EXIT_BAD_ARGS`]（调用方给错了东西）/ [`EXIT_FAILED`]（仓打不开 / 引擎报错）。
 //!   失败那句话同时写 stderr 一行（调用口摘诊断时 stderr 优先）。
-//! - 〔P7〕建索引那一档边走边往 **stderr** 写进度行 `progress=<一格 JSON>`（[`PROGRESS_PREFIX`]；格 = 上游 `IndexProgress`）。
+//! - 建索引那一档边走边往 **stderr** 写进度行 `progress=<一格 JSON>`（[`PROGRESS_PREFIX`]；格 = 上游 `IndexProgress`）。
 //!   后端插件口把这种行分拣出来、转进发起方订的进度流，不进诊断；stdout 照旧恰一行。
 //! - ⚠ **退出码的语义只在这里定义一次**；起它的那一侧（后端适配层）自己持一张码 → 语义码的表，
 //!   插件口本身不翻码（那条纪律住 `src/backend/plugin/mod.rs` 头注）。
 //!
-//! # 引擎只算、文件管理来写（〔RM1d〕用户 09-24 V110）
+//! # 引擎只算、文件管理来写（用户 09-24）
 //!
 //! 批注增 / 提 / 批 / 删与文档关联写 / 删，写的是**被分析仓里的文件**（`<仓>/.codepicture/annotations/`、
 //! 文档的 frontmatter）—— 用户文件。用户 09-24 裁「只允许后端的文件管理部分写用户文件」⇒
@@ -54,10 +54,10 @@ pub const NAME: &str = "cc-monitor-panorama";
 /// 能力探测旗标（插件口那套方言）。
 pub const PROBE_FLAG: &str = "--probe";
 
-/// 〔P7〕进度行的前缀（插件口那套方言：stderr 上以它开头的一行 = 一格进度，后端 `plugin::invoke::PROGRESS_PREFIX` 同一个串）。
+/// 进度行的前缀（插件口那套方言：stderr 上以它开头的一行 = 一格进度，后端 `plugin::invoke::PROGRESS_PREFIX` 同一个串）。
 pub const PROGRESS_PREFIX: &str = "progress=";
 
-/// 〔P7〕建索引的进度 → 进度行。**节流**：同一阶段里整百分比变了才出一行（每阶段第一格 `0/n` 与最后一格 `n/n` 都必出）——
+/// 建索引的进度 → 进度行。**节流**：同一阶段里整百分比变了才出一行（每阶段第一格 `0/n` 与最后一格 `n/n` 都必出）——
 /// 上游每做完一个文件回调一次，大仓上千份，一格一行会把那条管子与界面一起淹掉。节流按份数算，不看钟（零定时器）。
 struct ProgressLines<'a> {
     out: &'a mut dyn FnMut(String),
@@ -90,7 +90,7 @@ pub const EXIT_FAILED: i32 = 3;
 pub enum Need {
     /// 不碰仓、不碰索引（今天只有图种注册表 —— 它编在二进制里）。
     Nothing,
-    /// 〔RM1d〕只读仓里那一两份文件、算出新内容：要仓，**不要索引根、不上锁、不开引擎**。
+    /// 只读仓里那一两份文件、算出新内容：要仓，**不要索引根、不上锁、不开引擎**。
     Repo,
     /// 读：要仓与索引根，**共享**锁（多个读可以并行）。
     Read,
@@ -106,7 +106,7 @@ impl Need {
 }
 
 /// ★ **op 表 —— 本程序会什么的唯一住址**。`--probe` 报的能力由它派生；
-/// 分派臂与它两向相等（判据从源码抽臂，异源）；〔PANO〕后端不再存 op 表（按 `--probe` 自报的能力与档办），
+/// 分派臂与它两向相等（判据从源码抽臂，异源）；后端不再存 op 表（按 `--probe` 自报的能力与档办），
 /// 前端与各判据读的是它的生成物 `src/frontend/ui/panorama/engine-contract.json`（判据 `the_frontend_contract_is_generated_from_this_program`）。
 ///
 /// ⚠ 词表只说**查询语义**（`protocol_doc_guard` 那条 `P7c-2` 约束：不暴露存储、grammar、解析开关）。
@@ -116,7 +116,7 @@ pub const OPS: &[(&str, Need)] = &[
     ("reindex", Need::Build),
     ("overview", Need::Read),
     ("node", Need::Read),
-    // 〔PANO · CP1〕以某符号为心的邻域，每个符号带「距根几跳」（〔P7〕上游 `Engine::neighborhood` 直出；前端只分组，不算）。
+    // 以某符号为心的邻域，每个符号带「距根几跳」（上游 `Engine::neighborhood` 直出；前端只分组，不算）。
     ("neighborhood", Need::Read),
     ("callers", Need::Read),
     ("callees", Need::Read),
@@ -129,18 +129,18 @@ pub const OPS: &[(&str, Need)] = &[
     ("list_annotations", Need::Read),
     ("diagram_kinds", Need::Nothing),
     ("diagram", Need::Read),
-    // 〔RM1d〕只算不写：回一份编辑计划，落盘归那台机器的后端文件管理（头注）。
+    // 只算不写：回一份编辑计划，落盘归那台机器的后端文件管理（头注）。
     ("plan_add_annotation", Need::Repo),
     ("plan_propose_annotation", Need::Repo),
     ("plan_approve_annotation", Need::Repo),
     ("plan_remove_annotation", Need::Repo),
     ("plan_write_doc_link", Need::Repo),
     ("plan_remove_doc_link", Need::Repo),
-    // 〔RM1d〕外面落了 `.md` 的 `covers:` 之后让索引跟上（只写索引）。
+    // 外面落了 `.md` 的 `covers:` 之后让索引跟上（只写索引）。
     ("refresh_doc_links", Need::Build),
 ];
 
-/// ★〔PANO · V158「后端不带引擎知识」〕**写那几种 → 落盘之后还要跑哪一个 op** —— 唯一住址（原住后端 `panorama_edit.rs` 那张表）。
+/// ★〔「后端不带引擎知识」〕**写那几种 → 落盘之后还要跑哪一个 op** —— 唯一住址（原住后端 `panorama_edit.rs` 那张表）。
 ///
 /// 键 = `Need::Repo` 那几个「算」op（判据两向）；值 = 写成之后要跑的 op（文档关联那两种要让索引跟上）。
 /// `--probe` 以 `plans=` 自报（`<算 op>[><之后>]` 逗号列表），那台后端的 `panorama-edit` 只照它走；前端从生成物取、按档给期限。
@@ -162,9 +162,9 @@ fn plans_line() -> String {
         .join(",")
 }
 
-/// 〔PANO〕本程序**自己的**应答形状（引擎直出之外的那几样）：`status` 那三格。
+/// 本程序**自己的**应答形状（引擎直出之外的那几样）：`status` 那三格。
 /// `stale` = 源文件有改动、索引已陈旧；`indexedAt` = 上次索引的 unix 秒（`null` = 从未建完）；`symbols` = 已索引符号数。
-/// 〔P7〕它与下面那份的 TS 声明进前端生成物 `types.ts`（ts-rs，只在测试构建里派生）。
+/// 它与下面那份的 TS 声明进前端生成物 `types.ts`（ts-rs，只在测试构建里派生）。
 #[derive(Serialize, Default)]
 #[cfg_attr(test, derive(ts_rs::TS), ts(rename = "PanoramaStatus"))]
 struct StatusReply {
@@ -308,8 +308,8 @@ fn vendor_pin() -> &'static str {
     &rest[..rest.find('`').expect("pin 没收尾")]
 }
 
-/// 〔FIX2 · `设计/97 §8` · `99 §2.1 ㉝①`〕**形状代号**：op 表（名 ＋ 档）＋ 写表（[`PLANS`]）＋ 自己的应答形状（[`own_dtos`]）
-/// ＋ vendored pin 的摘要（FNV-1a 64）。能力表相同、某个 op 的应答形状变了（re-vendor，或〔PANO〕本程序自己的 DTO 改了）时它会变
+/// **形状代号**：op 表（名 ＋ 档）＋ 写表（[`PLANS`]）＋ 自己的应答形状（[`own_dtos`]）
+/// ＋ vendored pin 的摘要（FNV-1a 64）。能力表相同、某个 op 的应答形状变了（re-vendor，或本程序自己的 DTO 改了）时它会变
 /// ⇒ 后端按它判旧、回 `unsupported`、monitor 重放字节。
 pub fn shape_code() -> String {
     let ops: Vec<String> = OPS
@@ -337,7 +337,7 @@ pub fn shape_code() -> String {
 
 /// `--probe` 的全文（插件口方言，首行是身份）。
 ///
-/// 〔PANO · V158「后端不带引擎知识」〕`long=` 自报长活档（建索引那几个，由 [`OPS`] 的 `Need::Build` 派生）；
+/// 〔「后端不带引擎知识」〕`long=` 自报长活档（建索引那几个，由 [`OPS`] 的 `Need::Build` 派生）；
 /// 不在里面的是短活档。起它的后端按档给期限，自己不存 op 表。
 pub fn probe_text() -> String {
     let caps: Vec<&str> = OPS.iter().map(|(n, _)| *n).collect();
@@ -497,7 +497,7 @@ struct DiagramArgs {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct AnnotateArgs {
-    /// 〔P7〕挂在谁身上：**整个**符号 id（文件级批注 = 裸文件路径）。截 `@行号`、取文件段归上游 `SymbolRef::of`，本程序不拆。
+    /// 挂在谁身上：**整个**符号 id（文件级批注 = 裸文件路径）。截 `@行号`、取文件段归上游 `SymbolRef::of`，本程序不拆。
     target: String,
     body: String,
     author: String,
@@ -540,7 +540,7 @@ fn plan_fail(e: edits::PlanError) -> Fail {
     }
 }
 
-/// 〔RM1d〕只算不写的那几个 op：调上游 `edits::plan_*`（读 ＋ 纯），把计划原样交回。
+/// 只算不写的那几个 op：调上游 `edits::plan_*`（读 ＋ 纯），把计划原样交回。
 /// **这里没有一处写盘**（判据 `the_program_never_calls_an_engine_method_that_writes_user_files`）。
 fn dispatch_plan(op: &str, repo: &Path, args: Value) -> Result<Value, Fail> {
     match op {

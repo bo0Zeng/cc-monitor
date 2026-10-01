@@ -1,5 +1,5 @@
 /**
- * 〔`设计/10` 骨架 · 子步 4〕骨架层的判据 —— **真 `MessageStream` ＋ 真 `RecordTimeline`**，
+ * 〔骨架〕骨架层的判据 —— **真 `MessageStream` ＋ 真 `RecordTimeline`**，
  * 几何由下面那个极小的布局模型给（jsdom 没有布局引擎，所有 rect 恒 0）。
  *
  * 🔴 主判据是「**只物化可见区**」那一组：骨架快的主语是它，不是占位本身
@@ -17,7 +17,7 @@ import { RecordTimeline } from "../../../src/frontend/ui/record-timeline";
 import { SKELETON_GAP_CLASS, SkeletonView, ledgerFromIndex } from "../../../src/frontend/ui/skeleton-view";
 import { MessageStream } from "../../../src/frontend/ui/stream";
 
-// 〔P3〕列宽那一组要真 `TabStreamView`（它只在被问时才碰到 IPC；这里一次都不问）
+// 列宽那一组要真 `TabStreamView`（它只在被问时才碰到 IPC；这里一次都不问）
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn().mockResolvedValue(null) }));
 vi.mock("@tauri-apps/plugin-opener", () => ({ openPath: vi.fn(), openUrl: vi.fn() }));
 
@@ -281,8 +281,8 @@ describe("〔U3b〕attachGaps（查看器：已渲染集不是后缀）", () => 
   });
 });
 
-// ===== 〔RENDER2 · `设计/10 §2.5b` 第二级 · `§6` 步 9〕Worker 精算：按需 ＋ 后台 =====
-// 要求住址：`设计/10 §2.5b` 逐字「Worker 做成『按需 ＋ 后台』：窗口附近上下各 N 屏优先精算，其余空闲时补或干脆不算」
+// ===== 〔第二级 · `§6` 步 9〕Worker 精算：按需 ＋ 后台 =====
+// 要求：「Worker 做成『按需 ＋ 后台』：窗口附近上下各 N 屏优先精算，其余空闲时补或干脆不算」
 // ＋「第二级（Worker 算完回来）：pretext 精确高度覆盖粗估」。量法在这里是替身（jsdom 没有 Worker / canvas）。
 describe("〔RENDER2〕第二级估高", () => {
   it("账本换进精算高之后，任意区间的高 == 逐行（精算 ?? 粗估）相加（随机）", () => {
@@ -385,8 +385,8 @@ describe("〔RENDER2〕第二级与第一级同一套外框常数", () => {
   });
 });
 
-// ===== 〔P3〕列宽变了：账本按新列宽重估、只重算精算过的 =====
-// 要求住址：`设计/10 §2.5b` 逐字「列宽变化只重算已精算过的」＋「今天列宽只量一次（`COL_W`），列宽变了只重算精算过的那一步（`relayout`）还没有入口」；`99 §4.4` 同一行。
+// ===== 列宽变了：账本按新列宽重估、只重算精算过的 =====
+// 要求：「列宽变化只重算已精算过的」＋「今天列宽只量一次（`COL_W`），列宽变了只重算精算过的那一步（`relayout`）还没有入口」；同一行。
 describe("〔P3〕列宽变了", () => {
   const rec = (seq: number) =>
     ({ type: "assistant", uuid: `u${seq}`, message: { role: "assistant", content: [{ type: "text", text: "x".repeat(200) }] } }) as never;

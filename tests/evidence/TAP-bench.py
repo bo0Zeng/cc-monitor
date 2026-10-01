@@ -4,7 +4,7 @@
 
 住址：`<仓根>/tests/evidence/TAP-bench.py`
 夹具：`<仓根>/tests/__fixtures__/tap-bench.json`（由 `tests/frontend/ui/live-card.vitest.ts` 的 T7 读）
-服务的要求：`设计/20 §8`（V24「SSE 确保快，落盘确保对」；对账键 `message.id`）· 设计与读数住仓外 `调研/第四波记录/TAP.md §7 T7 · §8 题 3 · §9`。
+服务的要求：（「SSE 确保快，落盘确保对」；对账键 `message.id`）· 设计与读数住仓外。
 
 跑法（仓根下；要先 `cargo build`（`src/backend`）出后端二进制，要本机有 `claude`）：
     python3 tests/evidence/TAP-bench.py            # 跑一轮，写夹具，印读数
@@ -17,7 +17,7 @@
   `writer_task` → stdout 上的 `tap` 帧。本脚本只从 stdout 收帧，不碰后端内部。
 - **正文是假上游合成的**（固定的几段中文 ＋ 编号），不含任何真会话正文（`test-fixtures-no-real-transcript`）。夹具里的 jsonl
   只留 `type` · `apiBlockIndex` · `message.{id,content}`（去掉 cwd / 版本 / 时间戳这些机器相关的格）。
-- 〔V141〕流标签 = claude 请求头 `x-claude-code-session-id`（== `--session-id` 给它的那个 UUID）⇒ `stream == sid`；地址里没有会话段。
+- 流标签 = claude 请求头 `x-claude-code-session-id`（== `--session-id` 给它的那个 UUID）⇒ `stream == sid`；地址里没有会话段。
 
 同一趟还量一件事（`TAP.md §8` 题 3）：假上游在**思考块收尾之后、正文开始之前**停一拍，看那一刻 claude 有没有已经把
 这一轮（同 `message.id`）的第一条记录写进 jsonl。写了 ⇒「同 id 第一条记录就整张覆盖」会在正文开始流之前撤掉活卡。

@@ -1,4 +1,4 @@
-//! 〔P4〕窗口进程那一侧的躯体（`proc.rs`：拨回通道 · 列第一屏 · `child_main` 的行序）那几条判据 ——
+//! 窗口进程那一侧的躯体（`proc.rs`：拨回通道 · 列第一屏 · `child_main` 的行序）那几条判据 ——
 //! 原住 `tests/frontend/shell/filewin/proc_tests.rs` 的后半，随躯体搬进独立包；进程形态（起进程 · 种子 · 就绪那一行）那一半留在 monitor 那一侧。
 
 use super::*;
@@ -9,7 +9,7 @@ fn synthetic_cfg() -> String {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// 🔴〔F2 · 2026-09-24〕窗口进程拨回 monitor 那一下
+// 🔴窗口进程拨回 monitor 那一下
 // ════════════════════════════════════════════════════════════════════════
 
 /// 🔴 **拿着交接件拨得通；钥匙不对 / 口不在就是错 —— 而且错的时候窗口不开**（`D11`）。
@@ -71,21 +71,21 @@ async fn the_window_dials_back_with_the_handoff_and_refuses_to_open_without_it()
         at_dial < at_open,
         "开窗排在拨通道之前 —— 拨不通时窗口已经开了"
     );
-    // ⑤〔FW34〕种子里每一格都真的交给了开窗那一下（漏交一格 ＝ 那一格在窗口那侧恒是默认值，
+    // ⑤种子里每一格都真的交给了开窗那一下（漏交一格 ＝ 那一格在窗口那侧恒是默认值，
     //    种子对拍照样绿 —— 它只判「过得了进程边界」，判不了「过去之后有人接」）。
     for f in ["reveal", "bookmarks", "machines"] {
         let at = guard_core::find_pinned(&prod, &format!("        req.{f},\n"))
             .unwrap_or_else(|e| panic!("child_main 没把种子里的 `{f}` 交给开窗那一下：{e}"));
         assert!(at > at_open, "`req.{f}` 不在开窗那一下的实参里");
     }
-    // 〔P4〕那台的名字（种子 `origin`）先造成窗口那一侧的 `Source`，再交给开窗那一下。
+    // 那台的名字（种子 `origin`）先造成窗口那一侧的 `Source`，再交给开窗那一下。
     let at_src = guard_core::find_pinned(&prod, "Source::remote(req.origin.clone())")
         .expect("child_main 没拿种子里那台的名字造 `Source`");
     let at_src_arg = guard_core::find_pinned(&prod[at_open..], "        source,\n")
         .expect("开窗那一下的实参里没有 `source`");
     assert!(at_src < at_open, "`Source` 造在开窗之后");
     let _ = at_src_arg;
-    // ⑥〔MIG-3a · 09-28 裁 3〕第一屏：拨通之后、开窗之前列；列不出来就退（不开窗）；起点与那一屏是它列出来的那一份。
+    // ⑥〔09-28 裁 3〕第一屏：拨通之后、开窗之前列；列不出来就退（不开窗）；起点与那一屏是它列出来的那一份。
     let at_first = guard_core::find_pinned(
         &prod,
         "rt.block_on(first_screen(&line, &source, req.cwd.clone()))",
@@ -149,7 +149,7 @@ impl chan_core::chan::router::Backends for FakeBackendHost {
     }
 }
 
-/// 〔MIG-3a · 09-28 裁 3〕答 `files-home` / `files-ls` 的替身后端：记下问了哪几条；`refuse` 里的那条回「不行 + 原话」。
+/// 〔09-28 裁 3〕答 `files-home` / `files-ls` 的替身后端：记下问了哪几条；`refuse` 里的那条回「不行 + 原话」。
 struct ScreenHost {
     asked: std::sync::Mutex<Vec<String>>,
     refuse: Option<&'static str>,
@@ -217,7 +217,7 @@ impl chan_core::chan::router::Backends for ScreenHost {
     }
 }
 
-/// 🔴〔MIG-3a · 主会话 09-28 裁 3〕**窗口进程自己问第一屏**（真通道口 ＋ 替身后端）：
+/// 🔴〔主会话 09-28 裁 3〕**窗口进程自己问第一屏**（真通道口 ＋ 替身后端）：
 /// ① 没给目录 ⇒ 先问 home、再列 home（恰好这两问，按这个顺序）；② 给了目录 ⇒ 只列它、**不问 home**；
 /// ③ 列不出来 ⇒ 带那台的原话回错（窗口那侧据此说 `Failed` 并不开窗）；④ home 问不到 ⇒ 同样带原话、不去列。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

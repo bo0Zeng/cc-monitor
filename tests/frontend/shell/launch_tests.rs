@@ -1,9 +1,9 @@
 use super::*;
-// 〔P4 · 阶段 H〕开窗的两个平台臂搬进 `platform/terminal.rs`：本文件那几条照旧判它们。
+// 开窗的两个平台臂搬进 `platform/terminal.rs`：本文件那几条照旧判它们。
 #[allow(unused_imports)]
 use crate::platform::terminal::*;
 
-/// 〔P4 · 阶段 H〕开终端这一族今天住两份：`launch.rs`（跑什么 · 两条 Tauri 命令）＋ `platform/terminal.rs`（开窗的两个平台臂）。
+/// 开终端这一族今天住两份：`launch.rs`（跑什么 · 两条 Tauri 命令）＋ `platform/terminal.rs`（开窗的两个平台臂）。
 /// 按源码判的那几条读两份的合订本（射程与搬家前那一份 `launch.rs` 相同）。
 const LAUNCH_SRC: &str = concat!(
     include_str!("../../../src/frontend/shell/src/launch.rs"),
@@ -19,7 +19,7 @@ const LAUNCH_SRC: &str = concat!(
 /// ★★ **F06b-1d（C9）：backend 开的每一个终端窗口都必须带上后端路径。**
 ///
 /// 判据形态：**零命中守卫**（跑法：单测扫生产源码 · 钉的性质：**生产接线** ——
-/// 两维分开写，见 `ROADMAP §4` 登记的计量缺陷）。
+/// 两维分开写，登记的计量缺陷）。
 ///
 /// # 它防的是什么
 ///
@@ -87,7 +87,7 @@ fn every_terminal_window_backend_opens_carries_the_backend_path() {
     );
 }
 
-/// ★ **那一句无条件断言不许出现在散文里**〔audit-0805 F08 下半〕
+/// ★ **那一句无条件断言不许出现在散文里**
 ///
 /// ⚠ **08-06 把这条标题收窄了**：原来写的是「『容器一定是 tmux』这个**无条件说法**
 /// 不许出现」—— 那比它实际做的宽。实测两个洞：
@@ -138,7 +138,7 @@ fn no_prose_claims_the_session_container_is_always_tmux() {
         "README.md",
         "README.en.md",
         "src/frontend/shell/src/launch.rs",
-        "src/frontend/shell/src/platform/terminal.rs", // 〔P4 · 阶段 H〕开窗的平台臂连同头注搬到这里
+        "src/frontend/shell/src/platform/terminal.rs", // 开窗的平台臂连同头注搬到这里
     ] {
         let body = std::fs::read_to_string(root.join(f))
             .unwrap_or_else(|e| panic!("{f} 读不到：{e} —— 文件搬了就把本条一起改"));
@@ -149,7 +149,7 @@ fn no_prose_claims_the_session_container_is_always_tmux() {
     // 08-06 那次（`c87d123`）的账是「扫描面本身是个洞」，扩到了 `doc/` + 两份 README。
     // 今天再量：**洞还在，只是挪了个位置** —— `tests/e2e/restart-cmd-driver.ts:6` 那句
     // 「GUI 全链在 Linux 结构性不可达（launch.rs 仅 Windows→回退剪贴板）」
-    // 就躺在扫不到的地方，而 `launch_local_posix` 明明就在本文件扫的那几份里（〔P4〕今天住 `platform/terminal.rs`）。
+    // 就躺在扫不到的地方，而 `launch_local_posix` 明明就在本文件扫的那几份里（今天住 `platform/terminal.rs`）。
     //
     // ⇒ **这不是巧合**：扫描面按「想到哪扫哪」长出来，而假话按「写在哪就在哪」分布。
     // 两者的形状不一样，所以「上次扩过了」不等于「这次够了」。
@@ -159,13 +159,13 @@ fn no_prose_claims_the_session_container_is_always_tmux() {
     // 只管「某一族够不够」，管不了「少了一棵树」⇒ 会安静地少扫，不会红。
     for (dir, exts) in [("tests", &["ts", "sh", "md"][..]), ("src", &["ts"][..])] {
         for (q, body) in guard_core::scan_tree!(&root.join(dir), exts) {
-            // 🔴 〔2026-09-18〕**`evidence/` 要排掉。** 它是量具与记录，
+            // 🔴 **`evidence/` 要排掉。** 它是量具与记录，
             // 里面的审计表会**逐字引用探针自己的那句话**（实发一例：一份 deathvalue
             // 记录里有一行在复述本条的探针串）⇒ 收进来等于**把探针的串喂给探针**，
             // 当场一条假阳。`structural_scan` 那边排掉它是同一条理由。
             //
             // ⚠ 本注释**刻意不复述那句探针串、也不写出那边那个函数名**：
-            // 写全了会被本条与死名那条各命中一次（`调研/设计/16 §5.5`：
+            // 写全了会被本条与死名那条各命中一次（
             // 注释里引用旧形状时，不要写成能被同一条规则命中的完整形）。
             // 实测：第一版注释把两者都写全了，当场多出两条假阳。
             if q.to_string_lossy()
@@ -251,11 +251,11 @@ fn the_posix_message_states_a_decision_not_a_missing_feature() {
         m.contains("tmux"),
         "没说清会话容器是什么，用户不知道去哪找：{m}"
     );
-    // 〔CP2b〕原来还要求逐字有「既定设计」（「这是既定设计，不是没做完」那句）。CP1 台账把那句裁成
+    // 原来还要求逐字有「既定设计」（「这是既定设计，不是没做完」那句）。CP1 台账把那句裁成
     //   防御性论证、要删（改·§2.2）；「刻意不替你挑」已经说清这是决定、不是缺口 ⇒ 这一格改认「刻意」那半句
     //   （上面已判），不再要求「既定设计」。
-    // 〔LR2 · 主会话 4D 裁：按 CP1 裁词改〕那句防御性论证不许回来 —— 零命中，不是「少了一个要求」：
-    //   `设计/91 §2.2`「防御性论证」一类（替自己辩护「这不是没做完」）与 `§2.x` 去 markdown。
+    // 〔主会话 4D 裁：按 CP1 裁词改〕那句防御性论证不许回来 —— 零命中，不是「少了一个要求」：
+    // 「防御性论证」一类（替自己辩护「这不是没做完」）与 `§2.x` 去 markdown。
     //   正控：同一把尺子在 CP2b 之前那句原文上必须命中（否则零命中是尺子瞎了）。
     const DEFENSIVE: &[&str] = &["既定设计", "不是没做完", "**"];
     let hits = |s: &str| -> Vec<&str> {
@@ -318,7 +318,7 @@ fn the_posix_marker_is_the_one_the_frontend_matches_on() {
 
 /// ★ P5L-Y1/Y3：**候选表有序，且第一个存在的胜出**。
 ///
-/// ⚠⚠ **补门的代价：本条从此在 Windows 上 0 次执行**〔win-compile 09-09〕。
+/// ⚠⚠ **补门的代价：本条从此在 Windows 上 0 次执行**。
 /// 被测的 `TERMINAL_EXITS` 与 `pick_terminal_exit_from` 都带 `#[cfg(not(windows))]`，
 /// 而本条**漏了对应的门** ⇒ 云端（windows-latest，本仓**唯一**跑 `cargo test` 的平台）
 /// 上 `--all-targets` 直接**编译失败**（E0425 ×7），不是警告。
@@ -358,7 +358,7 @@ fn the_terminal_exit_is_picked_in_declared_order() {
 /// ⇒ 那一跳抽成了纯函数 [`build_local_posix_spawn`]，本条改成**读它产出来的东西**。
 /// 「分流真的看 `term`」那一格也跟着变成行为：两个入参各喂一次，答案必须不同。
 ///
-/// ⚠⚠ **补门的代价：本条从此在 Windows 上 0 次执行**〔win-compile 09-09〕。
+/// ⚠⚠ **补门的代价：本条从此在 Windows 上 0 次执行**。
 /// [`build_local_posix_spawn`] 带 `#[cfg(not(windows))]` 而本条**漏了对应的门**
 /// ⇒ 云端（windows-latest，本仓**唯一**跑 `cargo test` 的平台）上编译失败（E0425 ×4）。
 /// ⚠ 连坐的还有本条**末尾那一格源码守卫**（「降级的说明得是一条真日志」）——
@@ -426,7 +426,7 @@ fn the_terminal_exit_table_says_why_it_refuses_to_pick() {
         "只读到 {} 字节的 `launch.rs` —— 本条在空转",
         me.len()
     );
-    // 🔴 〔搬树 2026-09-18 · `设计/16 §4.2`〕**地板从 `>= 2` 拧到 `>= 1`，而要的事实一个字没变。**
+    // 🔴 〔搬树 2026-09-18〕**地板从 `>= 2` 拧到 `>= 1`，而要的事实一个字没变。**
     //
     // 上一版写 `>= 2` 的理由逐字写在这儿：「本判据自己的字面量也在这个文件里」——
     // 当年本条住在 `launch.rs` 的 `#[cfg(test)]` 段里，那两个串在同一份文件里必然
@@ -435,7 +435,7 @@ fn the_terminal_exit_table_says_why_it_refuses_to_pick() {
     //
     // 剖分之后本条搬来了 `tests/`，语料里**只剩真的那一份** ⇒ 现打各 1 处。
     // ⇒ 拧到 `>= 1` **不是放宽**：要的事实（头注里那句话还在）一模一样，
-    //   变的只是「判据自己那份还算不算在里面」。这正是 `设计/16 §4.2` 说的
+    //   变的只是「判据自己那份还算不算在里面」。这正是说的
     //   「自指恒绿一族按构造消失」—— 判据与语料物理不同文件之后，那个 +1 没有了。
     // ⚠ 留着 `matches().count()` 而不退回 `contains`：`needle_anchor_registry`
     //   那条棘轮按写法认，换回 `contains` 会另起一笔账。
@@ -543,7 +543,7 @@ fn no_terminal_emulator_is_ever_spawned_from_this_file() {
 /// 与 `the_terminal_we_hand_the_command_to_really_gets_the_relay_prefix`（`term = Some(假终端)`），
 /// **两条都不开窗**。
 ///
-/// ⚠⚠ **补门的代价 —— 这一条最贵，逐字写清**〔win-compile 09-09〕。
+/// ⚠⚠ **补门的代价 —— 这一条最贵，逐字写清**。
 /// 本条自述钉的是**第八层**那一整跳（命令串 → 真正要 spawn 的 `(program, args)`），
 /// 而它用的 `local_posix_spawn_plan` 带 `#[cfg(not(windows))]`、本条**漏了对应的门**
 /// ⇒ 云端（windows-latest，本仓**唯一**跑 `cargo test` 的平台）上编译失败（E0425 ×2）。
@@ -610,10 +610,10 @@ fn the_local_argv_hands_the_command_through_byte_for_byte_prefix_and_all() {
     }
 }
 
-/// ★ L1 的验收判据（主计划 §2「关键判断」第 1 条逐字）：
+/// ★ L1 的验收判据（「关键判断」第 1 条逐字）：
 /// **给同一个 plan 换 transport，除 ssh 包装外输出逐字节相同。**
 ///
-/// 〔FIX4 · `设计/99 §2.1 ⑬`〕远端那一半（ssh 外壳 ＋ PS 单引号层剥净之后就是同一串）随渲染搬进本机后端：
+/// 远端那一半（ssh 外壳 ＋ PS 单引号层剥净之后就是同一串）随渲染搬进本机后端：
 /// `tests/backend/dial_terminal_tests.rs::the_basic_shape_goes_through_the_agent_and_wraps_the_payload_only_twice`。
 /// 这里留本地那一半：直接 exec `bash -lic <载荷>`，载荷逐字节不动、没有 ssh 包。
 #[test]
@@ -642,7 +642,7 @@ fn local_argv_shares_the_transport_agnostic_validation() {
 /// ★ 「拒绝双引号」是 **PowerShell 5.1 的怪癖**，不是命令本身的性质
 /// ⇒ 它只该拦远端那条路，**不该**跟着搬到 POSIX 本地。
 ///
-/// 〔FIX4〕远端（走 PowerShell）那一半的「应拒」随渲染搬进本机后端（`dial_terminal_tests.rs::bad_inputs_are_refused_and_say_which_cell`）；
+/// 远端（走 PowerShell）那一半的「应拒」随渲染搬进本机后端（`dial_terminal_tests.rs::bad_inputs_are_refused_and_say_which_cell`）；
 /// 这里留本地那一半。
 #[test]
 fn double_quote_rejection_is_powershell_only() {
@@ -747,7 +747,7 @@ fn wait_for(path: &std::path::Path) -> bool {
 /// 本件的中转前缀 —— 照后端生产那一形手写（monitor 这棵树够不着后端渲染器，见下面那条注释）。
 #[cfg(not(windows))]
 fn relay_probe_prefix(url: &str) -> String {
-    // 〔MIG-2〕载荷内核搬进后端，monitor 够不着；这里照它的形状手写一份（钥匙段读 `$HOME` 下那个文件的命令替换，
+    // 载荷内核搬进后端，monitor 够不着；这里照它的形状手写一份（钥匙段读 `$HOME` 下那个文件的命令替换，
     //   `launch_render/payload.rs::relay_env_prefix_posix`）—— 本条验的是开窗那一跳把整串原样交给了进程，不是前缀怎么渲。
     let (origin, path) = url.split_at(url.find("/s/").expect("夹具 URL 带 /s/"));
     format!(
@@ -911,7 +911,7 @@ fn the_spawned_process_really_gets_the_relay_prefix_without_a_terminal() {
         prefix.contains("ANTHROPIC_BASE_URL") && !prefix.is_empty(),
         "生产那一处渲染器没渲出中转注入 —— 本条按红处理：{prefix:?}"
     );
-    // 〔RK1〕注入的 URL 里钥匙那一段是「读 `$HOME/.cc-monitor/relay-key`」的命令替换 ⇒ 给这一趟一个夹具家目录、
+    // 注入的 URL 里钥匙那一段是「读 `$HOME/.cc-monitor/relay-key`」的命令替换 ⇒ 给这一趟一个夹具家目录、
     //   放一把夹具钥匙，期望值是**展开之后**那条带钥匙的 URL（不碰用户真实的家目录）。
     let fixture_key = "5eed".repeat(16);
     std::fs::create_dir_all(dir.join(".cc-monitor")).expect("夹具 .cc-monitor");
@@ -1231,17 +1231,17 @@ fn the_thin_wrapper_hands_the_command_straight_through_to_the_via_form() {
     );
 }
 
-// 〔FIX4 · `设计/99 §2.1 ⑬`〕这里原来六条钉 `build_remote_ssh_ps_command`〔散文墓碑〕与 `build_jump_arg`〔散文墓碑〕（基本形态 · 钥匙与口 ·
+// 这里原来六条钉 `build_remote_ssh_ps_command`〔散文墓碑〕与 `build_jump_arg`〔散文墓碑〕（基本形态 · 钥匙与口 ·
 // IPv6 · 跳板参数 · 坏输入 · 单引号过两层）：ssh 外壳搬进本机后端（帧命令 `terminal-ssh`），期望原样搬进
 // `tests/backend/dial_terminal_tests.rs`（被测对象搬了家，一个期望没改；跳板那一格改经 `machine::resolve`）。
 
-// 〔P5 · 主会话裁「整段前奏由后端渲」〕这里原来一组钉令牌握手前奏（`设计/80 §8.7` 步 3 收尾，第二波 T4）的判据：
+// 〔「整段前奏由后端渲」〕这里原来一组钉令牌握手前奏（收尾）的判据：
 // 渲染搬进本机后端（`dial/terminal.rs::with_bind_prelude` ＋ `platform/shell/rbind-token-bind.ps1.tpl`），期望原样搬进
 // `tests/backend/dial_terminal_tests.rs`；await 文件三键 == `AwaitRequest` 那一条留在读侧 `bind_tests.rs`；开窗那一条接线判据
 // 随 monitor 不再接前奏退役（令牌交给后端那一跳由 `tests/frontend/ui/terminal-open.vitest.ts` 钉）。
 
 /// 🔴 令牌不进日志（`§8.6 ③`）：`launch.rs` 生产段里**没有一处** `tracing!` 的实参碰得到
-/// 装着令牌的那条命令（〔P5〕开窗交来的成品里前奏带着 marker）。切法与 `bind_tests.rs` 那条同名判据同一种。
+/// 装着令牌的那条命令（开窗交来的成品里前奏带着 marker）。切法与 `bind_tests.rs` 那条同名判据同一种。
 #[test]
 fn the_launch_token_never_reaches_a_log_macro_in_launch_rs() {
     let prod = guard_core::production_code(LAUNCH_SRC);
@@ -1273,7 +1273,7 @@ fn the_launch_token_never_reaches_a_log_macro_in_launch_rs() {
     let leak: Vec<&String> = calls
         .iter()
         .filter(|c| {
-            // 〔P5〕`command`：开窗交来的成品（前奏里带着令牌 marker）。
+            // `command`：开窗交来的成品（前奏里带着令牌 marker）。
             ["rbind_token", "ps_command", "remote_cmd", "tok", "command"]
                 .iter()
                 .any(|w| guard_core::contains_word(c, w))

@@ -46,7 +46,7 @@ id	state	exit	类	主层	同拍层	停车理由今天	交付读数住址	依据	
 K-P2	在做	改件	乙	后端本体	本机后端	成立	parked_全文.K-P2 · audits/K-P2-PM-2.md · 主干合入	理由自陈的 5 项未做（退出码 2/4 统一 · ccm-acceptance 挂门禁 · 真机往返 · exit 4 下游 · 题面住址）今天没有一项被别的件带走	K-P2 `ccm` 基础命令进后端
 K-P3	未开	待摸底	乙	本机后端	-	已馊	parked_全文.K-P3 · audits/K-P3-PM.md	理由逐字「record_death 还没有生产调用点，账上恒空；三处接线归下一拍单独一件」——K-P3b（已签收）已把三处接上并配相等断言，住 src-tauri/src/daemon_policy.rs:500 DEATH_RECORD_SITES（note_detached_death / daemon_supervise_events / note_never_started）	K-P3 后端自愈：前端没开时后端崩了自己再起来
 K-P4	在做	改件	乙	本机后端	适配层	半馊	parked_全文.K-P4 · audits/K-P4-W-PM.md · 主干 3a2ba00	理由「要真机跑 Windows，而 win11 VM 归用户 ⇒ 归排期」——「真机拿不到」那半今天不成立：K-R42 09-10 夜就在 win11 上取过读数（features/K-R42…#§9 · audits/K-R42-真机读数-PM.md）。剩下的是排期与许可，不是可得性	K-P4 调出会话归后端（⚠ 标题里那句「那台机器自己的 `daemon`」已被 `§0c` 的读数证伪，见 `§0c-2②`）
-K-P6	未开	改件	丁	本机后端	适配层	无理由	（零交付；第一拍 KP6D1 交回后 PM 重切，features/K-P6…#§0-订正）	🔴 .dispatch.json 的 parked 里**没有这一条** —— 44 件未签收里唯一一件「既不在 inflight、也没有任何一处写下为什么不推它」的（K-R41 是终态不算）。它的真阻塞是未闭合的 ROADMAP.md#KU11	K-P6 把「往外拨 SSH」搬进本机后端 —— 用户 09-05 直接开件，不摸底
+K-P6	未开	改件	丁	本机后端	适配层	无理由	（零交付；第一拍 KP6D1 交回后 PM 重切，features/K-P6…#§0-订正）	🔴 .dispatch.json 的 parked 里**没有这一条** —— 44 件未签收里唯一一件「既不在 inflight、也没有任何一处写下为什么不推它」的（K-R41 是终态不算）。它的真阻塞是未闭合的 #KU11	K-P6 把「往外拨 SSH」搬进本机后端 —— 用户 09-05 直接开件，不摸底
 K-R1	未开	照做	乙	中转	-	成立	parked_全文.K-R1 · audits/K-R1-PM-2.md	理由自陈的 5 项（转换层 · message_start usage · 界面入口 · 前缀末段出声 · IPC-PROTOCOL 三行）没有一项被带走	K-R1 上游格式不是 Anthropic 的也能接
 K-R11	未开	照做	丁	判据卫生	-	成立	（零交付）	现打复核：`find /home/zbl/文档/claudecode-frontend -name pb.py -not -path '*/node_modules/*'` = **0**；pb.py 只住上线位（~/.claude/skills/planned-build/bin/pb.py，558567 B）⇒「这个工作区做不了它的一半」今天仍然为真	K-R11 门禁里那一格判的是**另一个仓**
 K-R12	未开	照做	乙	适配层	后端本体	成立	parked_全文.K-R12 · audits/K-R12-PM-3.md	理由自陈的三项（旗真被走到 · SSH 送 env 实测 · K-R23 D4）未见落点	K-R12 非 UTF-8 客户端下，tmux 的 TAB 分隔输出**整条被改写**（六处同病）
@@ -65,7 +65,7 @@ K-R41	判定不做	钉不上	戊	判据卫生	-	无理由	features/K-R41…#§PM
 K-R42	未开	照做	甲	环境部署	本机后端	成立	features/K-R42…#§9 · audits/K-R42-真机读数-PM.md（win11 实测）	四条卡签收的全是 PM 的账（①②③ 登记被手工摘掉 · ④ §8 三十条要重排版）；现打 inflight 里没有 K-R42 ⇒ ①②③ 未修	K-R42 裸 exe 自己带上本机后端 —— 远端那条路早就这么干了，本机这条没跟
 K-R43	未开	照做	乙	本机后端	-	成立	主干 20e3394 · audits/K-R43-PM.md	三格未做：两格要 PM 先裁、一格要真机（且明写别把 K-R42 那趟读成这条也验过了）	K-R43 同职的第二处还在说那句分不开的话 —— 修好一处，反倒多出一个不对称
 K-R44	未开	待摸底	丁	环境部署	-	已馊	（零交付，09-10 深夜立）	理由逐字「前提是 P2d（认已有实例）给出「谁还在跑」—— P2d 没做」。现打两笔：① P2d 住 control-parity 工作区，state=**已签收**、exit=**改件**（没交付 ①②，是改了计划出的口）；② P2d 当年判「结构性做不到」的读数是「setsid/process_group/DETACHED_PROCESS/pre_exec 命中数 = 0」，而**今天 src-tauri/src/local_daemon.rs:526 的 spawn_detached 就带 process_group(0)、收尸走 reap_detached** ⇒ 那条依据被推翻，结论要重判	K-R44 释放出来的旧版本不删 —— 一笔如实记着的账，`K-R42` 把它的分母变大了
-K-R47	未开	照做	丁	界面	-	成立	（零交付）	理由是排序不是冲突：MASTERPLAN.md#K32〔用 09-10〕把 Linux 前端往后排，而本件验收面是界面行为。K32 今天没被改	K-R47 「这条记录会不会建成一张卡」今天没有单一住址
+K-R47	未开	照做	丁	界面	-	成立	（零交付）	理由是排序不是冲突：#K32〔用 09-10〕把 Linux 前端往后排，而本件验收面是界面行为。K32 今天没被改	K-R47 「这条记录会不会建成一张卡」今天没有单一住址
 K-R48	未开	照做	乙	后端本体	环境部署	成立	第二拍主干 07e4e72 · audits/K-R48-第二拍-PM.md	KR48D3（旧副本）本拍没做，且形状已被 K34 改写成「退役，不是更新」⇒ 归 K-R57 那条线重写	K-R48 `ccm` 的**入口**还没变成后端的原生命令 —— 定框只兑现了一半
 K-R50	未开	待摸底	丁	界面	本机后端	半馊	（零交付）	「排在 K-R55 之后」那半**已满足**（K-R55 09-11 已合入 6bb9399）；仍要用户点的只剩第 3 条（立唯一入口，与 K-P4 射程重叠）	K-R50 让「加参数安全」的那个机制，同时让「漏传参数」不可见
 K-R51	未开	待摸底	丙	后端本体	跨层	已馊	四路只读审计已交回，读数住 features/K-R51…#§6/§7 · LEDGER.md「四路只读审计交回三路」与「第四路（分层）也回来了」	理由逐字「解锁：四路交回、PM 合并成一张图之后…那时再按正常流程派 D2」—— 四路**都已交回**（LEDGER 两节现打）⇒ 解锁条件已到	K-R51 后端集成摸底：`ccm` 到底还没管到什么行为

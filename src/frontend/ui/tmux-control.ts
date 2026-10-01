@@ -1,5 +1,5 @@
 /**
- * 〔C4e · 第四波 4C · `设计/05 §8` 步 5〕**界面直接说的 tmux 控制类帧命令** —— 抓一屏（`capture-pane`）·
+ * **界面直接说的 tmux 控制类帧命令** —— 抓一屏（`capture-pane`）·
  * 结束会话（`kill`）· 往会话里发按键 / 就地恢复（`launch` 的 `send-into` mode）。
  *
  * # 它顶掉了什么
@@ -8,15 +8,15 @@
  * `backend_send_into`〔散文墓碑〕。monitor 在每一条上做的都只是：先拒空目标、转一条后端帧命令、核应答那一格、
  * 把拒绝码与「通道不在」说成人话、给就地恢复判「能不能回落」—— 那一份解释住 monitor 中层（`backend/control/`
  * 的 `tmux.rs` · `backend_kill.rs` · `backend_send_keys.rs` · `backend_launch.rs`）。后端的帧应答本来就是成品
- * ⇒ 按 `设计/05 §14.3` 的判准（业务解释只有一个家）迁：界面经 `chan.call` 直接问那台机器的后端，
+ * ⇒ 按判准（业务解释只有一个家）迁：界面经 `chan.call` 直接问那台机器的后端，
  * 解释只剩本文件这一份，monitor 那四条命令与那一份解释一起删了。**本机与远端同一条路**（本机由 `<local>` 那条长连接答）。
  *
  * # 本文件做的只有四件（都是调用方那一侧的事）
  *
- * 1. **不判目标名**（〔DUP3 · 主会话 09-26 裁〕`§34` Gate 1 并进后端 `control/gate_rules.rs` 的 tmux 名那一族，TS 零）：会话名原样交给后端；
+ * 1. **不判目标名**（`§34` Gate 1 并进后端 `control/gate_rules.rs` 的 tmux 名那一族，TS 零）：会话名原样交给后端；
  *    空目标由后端入口拒（`invalid_args`，`=:` 会被 tmux 读成「当前会话」那一格），本文件照各动作那句「后端不接受这个会话名」
  *    带上后端原话说出来。**Gate 2 / 3（身份门 · 窗口门）只在后端 `control/gate.rs`**，本文件不写第二份。
- *    （先前这里有一道「空目标就地拒、一个字节都不发」—— 那是 Gate 1 在界面的一份，`设计/90 §3` 判据 2 删了。）
+ *    （先前这里有一道「空目标就地拒、一个字节都不发」—— 那是 Gate 1 在界面的一份，删了。）
  * 2. **按形状收**：成品恰好是那几格、类型对 ⇒ 收；多一格 / 缺一格 / 类型不对 ⇒ 当成「两边版本对不上」抛，不猜。
  *    破坏性的两件（结束 · 发按键）还要成品**明说做成了**（`killed` / `typed` 为真）—— 形状不对或没说做成
  *    ⇒ 当成「不知道做了没有」，**不当成功、也不换条路重做**。
@@ -49,7 +49,7 @@ import { budgetWithin, jsonBody, provablyNotSent } from "./ipc/chan-caller";
 import type { Origin } from "./ipc/origin";
 import { isIdentityRefusal } from "./resync";
 
-// 〔C4e 批 3〕这一层与 `src/frontend/ui/cc-bus-control.ts` 说的是同一件事的那几样（`ControlError` · 通道三层的说法 · 成品形状核验 ·
+// 这一层与 `src/frontend/ui/cc-bus-control.ts` 说的是同一件事的那几样（`ControlError` · 通道三层的说法 · 成品形状核验 ·
 //   `settle`）搬进了 `src/frontend/ui/control-said.ts`；本文件的调用方照旧从这里取那两样。
 export { ControlError, saidOfControl };
 
@@ -130,7 +130,7 @@ function killRefusals(target: string): Refusals {
 }
 
 /**
- * `kill` 的成品 ⇒ 做成了没有 ＋ 〔FIX4 · `95 §6`〕顺手从 cc-bus 名册注销的结局那一句（没有要说的 ⇒ `null`）。
+ * `kill` 的成品 ⇒ 做成了没有 ＋顺手从 cc-bus 名册注销的结局那一句（没有要说的 ⇒ `null`）。
  * 恰好 `{session, killed, bus}` 且 `killed === true` 才算结束了；形状对但 `killed` 不为真 ⇒ 「后端没确认结束」
  * （**不当成功**：破坏性动作在未知状态上不许往下走）。`bus` 那一格形状不对 ⇒ 整份读不懂。
  */
@@ -176,7 +176,7 @@ export async function killSession(origin: Origin, target: string): Promise<strin
 
 // ─── 发按键 · 就地恢复（都是 `launch` 那条帧命令） ───
 
-/** `launch` 那条（发按键 / 就地恢复）的拒绝码 ⇒ 一句话。`wrong_owner` 来自后端的身份门（§34 Gate 2；〔TL2〕后端登记表与金样已补上它）。 */
+/** `launch` 那条（发按键 / 就地恢复）的拒绝码 ⇒ 一句话。`wrong_owner` 来自后端的身份门（§34 Gate 2；后端登记表与金样已补上它）。 */
 function keysRefusals(target: string): Refusals {
   return {
     byCode(code, detail) {
@@ -241,7 +241,7 @@ export type SendIntoOutcome =
   /** **能证明一个字节都没到对端** ⇒ 调用方可以回落到那条整串（重做不会重复执行）。 */
   | { verdict: "fallback"; reason: string }
   /** 对端说了话，**或者**拿不准它执行没有 ⇒ **不许回落**，把这句话交给用户。
-   *  〔RESYNC · `99 §2.1` ㉒〕`gate2` = 是关卡 2（身份门）拒的 ⇒ 提示可以带「对齐后重试」（别的拒绝不带：拿不准执行没有时重试会重复键入）。 */
+   * `gate2` = 是关卡 2（身份门）拒的 ⇒ 提示可以带「对齐后重试」（别的拒绝不带：拿不准执行没有时重试会重复键入）。 */
   | { verdict: "refused"; reason: string; gate2?: true };
 
 /**
@@ -249,7 +249,7 @@ export type SendIntoOutcome =
  * 会话名或载荷为空 ⇒ `refused`（坏数据不是缺省，也不许拿去渲染整串）。
  */
 export async function sendInto(origin: Origin, name: string, payload: string): Promise<SendIntoOutcome> {
-  // 〔FIX · `设计/99 §2 ㊹`〕空名 / 空载荷不在这里判：交给那台后端（`launch` 进门拒 ⇒ refused，带它的原话）；
+  // 空名 / 空载荷不在这里判：交给那台后端（`launch` 进门拒 ⇒ refused，带它的原话）；
   //   回落那一跳渲整串的是 Rust 渲染器（`payload.rs::render_tmux_outer`，目标过后端 `gate_rules` 已有会话那一条）⇒ 坏数据两条路都被同一处拒。
   try {
     const body = jsonBody({ mode: "send-into", name, payload });

@@ -1,5 +1,5 @@
-// 〔RM1f · V108 后半句「之后本机也走这条路、monitor 摘内嵌引擎」〕**两条性质的住址都搬了家**：
-//   ① 全景的命令面：monitor 这一侧〔MIG-3b 续〕只剩 `panorama_bytes.rs` 那一条（放字节 `panorama_place`；问 · 写 · 撤那三条
+// 〔V108 后半句「之后本机也走这条路、monitor 摘内嵌引擎」〕**两条性质的住址都搬了家**：
+//   ① 全景的命令面：monitor 这一侧只剩 `panorama_bytes.rs` 那一条（放字节 `panorama_place`；问 · 写 · 撤那三条
 //      随界面直问那台后端删了），它的签名里仍不许有存储 / 解析细节；**op 词表**那一层（真正说「查什么」的地方）住后端
 //      `protocol_doc_guard::the_panorama_protocol_would_only_expose_query_semantics`（两向 ＋ 禁词）。
 //   ② 引擎取用口恰好一处：从 monitor `panorama.rs`（已删）搬到全景小程序 `src/panorama-engine/main.rs`
@@ -47,10 +47,10 @@ fn the_panorama_command_surface_leaks_no_storage_or_parser_detail() {
     let prod = prod();
     let sigs = command_signatures(&prod);
     // 反向自检：抽取坏了的话下面的空集会"恰好通过"。
-    // 〔RM1d〕地板 20 → 15：六条写命令删了（写改走当时 `panorama_call.rs` 里那条写命令），今天 17 条。
+    // 地板 20 → 15：六条写命令删了（写改走当时 `panorama_call.rs` 里那条写命令），今天 17 条。
     //   这是反空真的自检地板（抽取坏了会塌到个位数），不是判据；判据是下面那条恒等计数。
-    // 〔RM1f〕地板 15 → 3：人群换成 `panorama_call.rs`（进程内那 17 条随内嵌引擎删了），今天 3 条。
-    // 〔MIG-3b 续〕地板 3 → 1：人群换成 `panorama_bytes.rs`（问 · 写 · 撤那三条随界面直问那台后端删了），今天 1 条。
+    // 地板 15 → 3：人群换成 `panorama_call.rs`（进程内那 17 条随内嵌引擎删了），今天 3 条。
+    // 地板 3 → 1：人群换成 `panorama_bytes.rs`（问 · 写 · 撤那三条随界面直问那台后端删了），今天 1 条。
     assert!(
         sigs.len() >= 1,
         "只抽到 {} 条命令签名 —— 抽取坏了，本断言在空转",
@@ -93,17 +93,17 @@ fn the_panorama_command_surface_leaks_no_storage_or_parser_detail() {
 fn adding_a_panorama_command_forces_a_look_at_this_seam() {
     // ⚠ **21 不是 22**：裸 grep 数到 22，其中一处命令属性写在注释里
     //（`production_code` 剥掉了它）。判据数的是**生产段**，两个数不一样是对的。
-    // 〔PN1b 09-24〕21 → 23：多了 `panorama_diagram_kinds`〔散文墓碑〕（注册表原样透出）与
+    // 21 → 23：多了 `panorama_diagram_kinds`〔散文墓碑〕（注册表原样透出）与
     // `panorama_diagram`（画一张图）—— 都是查询语义：说的是「代码里有什么结构」，
     // 参数是图种 id ＋ 画图旋钮，没有一个字关于存储或解析。
-    // 〔RM1d 09-24〕23 → 17：少了六条**写**命令（人写 / 提议 / 批准 / 删批注、写 / 删文档关联）——
-    // 它们经内嵌引擎直写被分析仓（V88），改成「算（`plan_local`，不是命令）＋ 那台后端的文件管理写」，
+    // 23 → 17：少了六条**写**命令（人写 / 提议 / 批准 / 删批注、写 / 删文档关联）——
+    // 它们经内嵌引擎直写被分析仓，改成「算（`plan_local`，不是命令）＋ 那台后端的文件管理写」，
     // 命令入口挪到当时 `panorama_call.rs` 里那条写命令（本机远端同一条）。只减不加，没有新面要看。
-    // 〔RM1f 09-25〕人群换了一份文件：进程内那 17 条随内嵌引擎删了（本机也经 `panorama_call` 问本机后端），
+    // 人群换了一份文件：进程内那 17 条随内嵌引擎删了（本机也经 `panorama_call` 问本机后端），
     // 今天数的是 `panorama_call.rs` 的三条 —— `panorama_call`（按 origin 转一问：`op` 是不透明串，
     // 词表那一层在后端 `protocol_doc_guard` 钉着）· `panorama_edit`（写：只收 `EDITS` 那六个词）·
     // `panorama_cancel`（撤一张票）。三条的签名里都没有一个字关于存储或解析。
-    // 〔MIG-3b 续 09-28〕3 → 1，人群换成 `panorama_bytes.rs`：问 · 写 · 撤那三条〔散文墓碑〕随界面经通道直问那台后端删了，
+    // 3 → 1，人群换成 `panorama_bytes.rs`：问 · 写 · 撤那三条〔散文墓碑〕随界面经通道直问那台后端删了，
     // 剩 `panorama_place`（放字节：只收 origin）。只减不加，没有新面要看。
     const COMMANDS_TODAY: usize = 1;
     let n = prod().matches(cmd_attr().as_str()).count();
@@ -116,7 +116,7 @@ fn adding_a_panorama_command_forces_a_look_at_this_seam() {
     );
 }
 
-/// `P7c2-Y2`：**引擎取用口恰好一处**。〔RM1f〕那一处今天住全景小程序（`src/panorama-engine/main.rs`）。
+/// `P7c2-Y2`：**引擎取用口恰好一处**。那一处今天住全景小程序（`src/panorama-engine/main.rs`）。
 #[test]
 fn the_engine_is_opened_in_exactly_one_place() {
     let prod = guard_core::production_code(ENGINE_PROGRAM);
@@ -135,7 +135,7 @@ fn the_engine_is_opened_in_exactly_one_place() {
     });
 }
 
-/// `P7c2-Y2` 的射程：〔RM1f〕**monitor 这棵源码树零引擎导入**（`EU5` 兑现：monitor 摘掉内嵌引擎）。
+/// `P7c2-Y2` 的射程：**monitor 这棵源码树零引擎导入**（`EU5` 兑现：monitor 摘掉内嵌引擎）。
 ///
 /// 〔改前是「vendor 引擎只被 `panorama.rs`（已删）导入」—— 那一份文件随内嵌引擎删了，
 ///  monitor 里**一处都不许有**；引擎的家只剩全景小程序（上一条钉它在那里恰好一处，
@@ -167,7 +167,7 @@ fn the_engine_type_does_not_escape_the_panorama_module() {
     assert!(
         elsewhere.is_empty(),
         "monitor 源码树里又有了引擎导入：{elsewhere:?}\n\
-             ⇒ 〔RM1f〕monitor 已经摘掉内嵌引擎（V108 后半句）：全景本机远端都经那台机器的后端 → 全景小程序。\n\
+             ⇒ monitor 已经摘掉内嵌引擎（后半句）：全景本机远端都经那台机器的后端 → 全景小程序。\n\
              要全景里的东西请经那台后端的 `panorama`（加 op 是小程序 ＋ 后端适配层 ＋ 协议白名单三处同拍的事）。"
     );
 }

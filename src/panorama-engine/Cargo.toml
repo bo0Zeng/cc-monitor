@@ -1,10 +1,10 @@
 [package]
 name = "cc-monitor-panorama"
-# 〔RM1c · 第四波〕只装代码全景引擎的**独立小程序**（用户 09-24 V108 选 B）。
+# 只装代码全景引擎的**独立小程序**（用户 09-24 V108 选 B）。
 #
 # 它是什么：vendored `code-picture-core` ＋ 一问一答的 JSON CLI（argv 进、stdout 一行 JSON 出）。
 # 谁起它：那台机器上的后端，经插件通用调用口（`src/backend/plugin/`）按需起；
-#        后端本体**仍零** code-picture（`C21`「也不编进 backend」· `95 §0`「不并进后端本体」照旧）。
+#        后端本体**仍零** code-picture（`C21`「也不编进 backend」· 「不并进后端本体」照旧）。
 #
 # ⚠ 版本号只进 `--probe` 的 `version=` 那一行（插件口那套方言：**只进诊断文案、不参与判断**），
 #   能不能用按 `capabilities=` 逐个 op 查，不比版本号。
@@ -32,7 +32,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
 [dev-dependencies]
-# 〔P7 · C01 同一条理由〕前端 `src/frontend/ui/panorama/types.ts` 是生成物：上游 vendored `src/wire.ts` ＋ 本程序自己那几份应答的
+# 〔C01 同一条理由〕前端 `src/frontend/ui/panorama/types.ts` 是生成物：上游 vendored `src/wire.ts` ＋ 本程序自己那几份应答的
 # TS 声明（派生挂 `#[cfg_attr(test, …)]`）由判据拼出、对拍。**只在 dev 侧**：codegen 工具，不进小程序字节；
 # 版本就是 monitor 那份 lock 里早已解析的 12.0.1（离线可用）。
 ts-rs = "12.0.1"

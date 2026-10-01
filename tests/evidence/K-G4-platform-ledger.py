@@ -5,13 +5,13 @@
 
 # 它买什么
 
-`设计/01 §7.3` 逐字：「独立进程那个壳要为**每一个我们发布的平台**编得过，且这条要在门禁里。」
-（「折进前端那个壳要能链接进前端」那一半随那一档放弃（`99 §1` V105）作废 —— 见下面 `P4` 的墓志。）
+「独立进程那个壳要为**每一个我们发布的平台**编得过，且这条要在门禁里。」
+（「折进前端那个壳要能链接进前端」那一半随那一档放弃作废 —— 见下面 `P4` 的墓志。）
 行数由 **条 63** 定：承诺的是**三格**（本机 Windows x86_64 · 远端 Linux · 本机 Linux x86_64），
-(Windows, aarch64) **显式拒绝**。〔V132 · 09-25〕本机 (Linux, aarch64) **不承诺**（用户原话
+(Windows, aarch64) **显式拒绝**。本机 (Linux, aarch64) **不承诺**（用户原话
 「不承诺. 适配部分, 即os适配部分后面单独写单独做.」）—— 它不是零脚印（远端那格有 musl 字节），
 所以不进 `REFUSED`，进 `NOT_PROMISED`：代码里后端 `control/deploy_plan.rs::promised` 对它答「否」，由后端
-`deploy_plan_tests.rs::the_promise_face_in_the_ledger_equals_the_code`（〔P1〕随 `promised` 从 monitor `byte_table_tests.rs` 搬来） 把下面 `PROMISE_FACE` / `NOT_PROMISED`
+`deploy_plan_tests.rs::the_promise_face_in_the_ledger_equals_the_code`（随 `promised` 从 monitor `byte_table_tests.rs` 搬来） 把下面 `PROMISE_FACE` / `NOT_PROMISED`
 与代码两向钉住（本文件是承诺面的唯一住址，那条判据读的就是这里）。
 
 ⇒ 本文件判三条：
@@ -19,7 +19,7 @@
   · `P1` **承诺表 ↔ 门禁格**两向集合相等 —— 承诺了却没门禁的格、有门禁却没登记的格，都红
   · `P2` 每一格登记的**逐字锚点**在 `gate.sh` 里 `count() == 1`（登记指得到真东西）
   · `P3` **显式拒绝的那格真的零脚印** —— `aarch64-pc-windows` 全仓命中必须是 0
-  · ~~`P4`~~ 「壳-折」那一维有被检查的对象 —— 〔S5 · 第四波 · V105 清账〕**删了**：
+  · ~~`P4`~~ 「壳-折」那一维有被检查的对象 —— 〔V105 清账〕**删了**：
     「折进前端进程」那一档已放弃，那一维没有对象，判它「有对象」等于替一个不建的东西守门。
     `[lib]` 本身还在 —— 它是 `4a`（库化）的产物，有自己的住址（`readonly_guard` 的
     `BACKEND_CORE_MODULES`），不靠这里活着。
@@ -62,8 +62,8 @@ PROMISED = [
      "后端那个 crate 在 host triple 上编得过并跑得过测试"),
 ]
 
-# ── 承诺面（后端 `control/deploy_plan.rs::promised` 的真相源；键 = (origin, OS, arch)，只列表 A 里有产线的格）──────
-# 🔴 与代码两向相等（后端 `deploy_plan_tests.rs::the_promise_face_in_the_ledger_equals_the_code` 读这两张表；〔P1〕从前在 monitor `byte_table_tests.rs`）：
+# ── 承诺面（后端 `control/deploy_plan.rs::promised` 的源头；键 = (origin, OS, arch)，只列表 A 里有产线的格）──────
+# 🔴 与代码两向相等（后端 `deploy_plan_tests.rs::the_promise_face_in_the_ledger_equals_the_code` 读这两张表；从前在 monitor `byte_table_tests.rs`）：
 #    承诺了而代码不放行、代码放行而这里没写，都红。
 PROMISE_FACE = [
     ("Local", "Windows", "x86_64"),
@@ -73,7 +73,7 @@ PROMISE_FACE = [
 ]
 
 # ── 不承诺（有产线、却不承诺；与 `REFUSED` 不同：它不是零脚印）────────────────────────
-# 〔V132 · 09-25〕用户原话「不承诺. 适配部分, 即os适配部分后面单独写单独做.」
+# 用户原话「不承诺. 适配部分, 即os适配部分后面单独写单独做.」
 NOT_PROMISED = [
     ("Local", "Linux", "aarch64",
      "V132：本机 (Linux, aarch64) 不承诺；OS 适配以后单独写设计、单独做。起不来时出声「这台不在承诺里」"),

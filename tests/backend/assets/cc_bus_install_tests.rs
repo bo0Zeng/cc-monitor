@@ -1,4 +1,4 @@
-//! 〔MIG-3a · 子步 3〕cc-bus 装到这台的判据：从 monitor `cc_bus_deploy_tests.rs` 搬来（判 · 写 · 记进了后端）。
+//! cc-bus 装到这台的判据：从 monitor `cc_bus_deploy_tests.rs` 搬来（判 · 写 · 记进了后端）。
 //! 写经本进程的 `files-*`（[`crate::stream::inbound::LocalFiles`]，根由调用方给 ⇒ 临时目录）；装记录的写口换成替身（记下交了什么）。
 use super::*;
 use crate::stream::inbound::LocalFiles;
@@ -26,7 +26,7 @@ fn install(p: &Path) -> Result<Value, (&'static str, String)> {
     install_at(&LocalFiles, &p.join("skills"), &|_| Ok(json!({})))
 }
 
-/// ★ 装卸账**复用 skill 装记录那一份**（主会话 09-27 裁）：装完交给记录写口的是 `{op:"add", name:"cc-bus", files:{路径:{digest, created}}}`
+/// ★ 装卸账**复用 skill 装记录那一份**：装完交给记录写口的是 `{op:"add", name:"cc-bus", files:{路径:{digest, created}}}`
 /// —— 与 skill「装到这台」同形，每个内嵌文件一行、摘要就是那份原文的摘要；一致那一趟（什么都没写）不记。
 #[test]
 fn an_install_is_recorded_in_the_skill_install_ledger() {
@@ -131,9 +131,9 @@ fn an_empty_dir_counts_as_not_installed() {
 }
 
 /// ★ 幂等：装两次，第二次**一个字节都不写**、也不留备份。
-/// ★★ **内嵌清单不许漏掉仓里的脚本**〔08-13〕。
+/// ★★ **内嵌清单不许漏掉仓里的脚本**。
 ///
-/// `FILES` 是手写的 `include_bytes!` 清单，而 `src/shared/cc-bus/scripts/` 是真相源。
+/// `FILES` 是手写的 `include_bytes!` 清单，而 `src/shared/cc-bus/scripts/` 是源头。
 /// 08-13 往那个目录**新建过一个脚本**（`cc-spawned-record`）—— 漏进清单的后果是：
 /// 编译照过、测试照绿，而**装出去的 cc-bus 少一个文件**，
 /// 在用户机器上表现成「新版 cc-spawn 调一个不存在的命令」。
@@ -323,7 +323,7 @@ fn a_regular_file_at_the_destination_is_not_installed_and_gets_backed_up() {
 /// ⚠ 必须是 `Err` 而不是「装了 0 个文件的 Ok」：后者会让 UI 报「已装到 …（写了 0 个）」，
 /// 又一次「假成功比失败更坏」。
 ///
-/// ⚠⚠ **补门的代价：本条从此在 Windows 上 0 次执行**〔win-compile 09-09〕。
+/// ⚠⚠ **补门的代价：本条从此在 Windows 上 0 次执行**。
 /// 它靠 `std::os::unix::fs::PermissionsExt` 造「只读目录」这个可控替身，而先前
 /// **漏了门** ⇒ 云端（windows-latest，本仓**唯一**跑 `cargo test` 的平台）上
 /// 编译失败（E0433 ×1 + E0599 ×2）。门照本文件既有口径写成 `#[cfg(unix)]`

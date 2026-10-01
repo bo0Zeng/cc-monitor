@@ -18,7 +18,7 @@ export default tseslint.config(
       //   `.build/dist/assets/*.js`（打包产物）与 `.build/shell/**/out/*.js`（Tauri 生成的 API 壳）。
       //   这正是本文件下面那段注释预言的形状：「每新增一个带脚本的目录，洞就复发一次」。
       ".build/**",
-      // 〔主会话 09-26 · DUP1 报备〕施工纪律第 21 条把各路编译产物放 `<工作树>/.scratch/` ⇒ 同一个洞第二次复发：
+      // 施工纪律第 21 条把各路编译产物放 `<工作树>/.scratch/` ⇒ 同一个洞第二次复发：
       //   cargo 在那里生成的一份 js 被 `eslint .` 扫进来，`eslint-baseline` 假红（多数一条）。
       ".scratch/**",
       "node_modules/**",
@@ -72,12 +72,12 @@ export default tseslint.config(
     //
     // ⇒ 补上 globals（node + wdio 的 mocha 风格全局），并把 `npm run lint` 放开到 `eslint .`。
     // 补完实测：全仓当时是 7 个，与 `eslint src` 的基线**一致** —— 基线数字不变，覆盖面变大。
-    // 〔AL1d · 第四波 4B · 09-24〕那天剩三处：`src/frontend/ui/settings/machine-aliases.ts` 里那四处空 catch（原「终端集成」
+    // 那天剩三处：`src/frontend/ui/settings/machine-aliases.ts` 里那四处空 catch（原「终端集成」
     //   记住上次选择的 localStorage 写）随那段代码删了（`tests/frontend/ui/eslint-baseline.vitest.ts` 的基线常量同拍 7 → 3）。
-    // 〔DUP1 · 第四波 4D〕那天剩两处：`src/frontend/ui/shell-quote.ts` 那处 `no-control-regex` 随 `isValidConfigDir` 删了（基线常量同拍 3 → 2）。
-    // 〔STC · 第四波 4D〕那天剩一处：`tests/frontend/ui/panorama/session-files.test.ts` 随被测对象（写类工具口径搬进后端）整份删了，
+    // 那天剩两处：`src/frontend/ui/shell-quote.ts` 那处 `no-control-regex` 随 `isValidConfigDir` 删了（基线常量同拍 3 → 2）。
+    // 那天剩一处：`tests/frontend/ui/panorama/session-files.test.ts` 随被测对象（写类工具口径搬进后端）整份删了，
     //   它那一处未用变量跟着没了（合并 DUP1 时按「基数 3 ＋ 两边各 −1」算成 1，eslint 现打核过）。
-    // 〔P3 · 发版后〕今天全仓 0 个：`render.ts` 那处 `no-control-regex`（代码 stub 的 `\u0000` 哨兵）换成非字符 `\uFDD0`。
+    // 〔发版后〕今天全仓 0 个：`render.ts` 那处 `no-control-regex`（代码 stub 的 `\u0000` 哨兵）换成非字符 `\uFDD0`。
     files: ["tests/e2e/**/*.mjs"],
     languageOptions: {
       globals: {
@@ -129,7 +129,7 @@ export default tseslint.config(
     },
   },
   {
-    // 〔MG1 · 第四波 4C 合并 RT1〕`tests/evidence/RT1-cdp.mjs`（经 WebView2 远程调试口在真页里求值的台架）
+    // `tests/evidence/RT1-cdp.mjs`（经 WebView2 远程调试口在真页里求值的台架）
     // 是 `tests/evidence/` 下第一份 `.mjs` —— V7-3 那个洞的第三次复发形态（新目录、没有 globals 块，
     // 11 条 `no-undef: process/console/fetch/WebSocket` 一次性把基线 3 顶成 14）。照上一块止血。
     files: ["tests/evidence/**/*.mjs"],

@@ -1,19 +1,19 @@
-//! 〔CF1 · 第四波 4B · 2026-09-24〕**本机会话内容走本机后端的 Line 帧** 的判据。
+//! **本机会话内容走本机后端的 Line 帧** 的判据。
 //!
-//! 守的要求：`设计/00 §2.5 ②`「本机改走后端的 Line 帧，消掉 monitor 里第二套 watcher 与第二套 offsets/seq」·
-//! `设计/01 §6.1`「一条流，一个来源；本机与远端走同一条帧路」· `设计/05 §3.3.4`（级 3 无界堆积是禁止态）。
-//! 设计与读数住 `调研/第四波记录/CF1.md`。
+//! 守的要求：「本机改走后端的 Line 帧，消掉 monitor 里第二套 watcher 与第二套 offsets/seq」·
+//! 「一条流，一个来源；本机与远端走同一条帧路」· 级 3 无界堆积是禁止态。
+//! 设计与读数住。
 //!
 //! | # | 判什么 | 异源 / 两向 |
 //! |---|---|---|
-//! | F1 | 本机吸收点交回的帧种类 == {line, session_added, session_removed} ∪〔LOC1b〕{session_status, sessions_replayed} ∪〔FW1〕{session_file_gone, session_file_reread}；喂的种类 == `parse_frame` 认得的全部种类 | 帧是手写线上 JSON；种类全集从 `parse_frame` 源码里摘（两向） |
+//! | F1 | 本机吸收点交回的帧种类 == {line, session_added, session_removed} ∪{session_status, sessions_replayed} ∪{session_file_gone, session_file_reread}；喂的种类 == `parse_frame` 认得的全部种类 | 帧是手写线上 JSON；种类全集从 `parse_frame` 源码里摘（两向） |
 //! | F2 | 本机消费者的纯分派核真值表 | 期望手写 |
 //! | F3 | 两条读循环各恰好一处把交回的帧送进本机内容通道（送法各按载体）、各恰好一处送「流结束」 | 源码锚，恰好一处 |
 //! | F4 | 内容出口的调用方集合（`batch_to_payloads` / `on_line_batch_awaited` / `flush_lines` / `LineIntake::open` / `Batcher::new` / `SnapshotQueue::new`） | 全仓生产段扫描，两向集合相等 |
 //! | F5 | 两条载体的起参是同一份常量，且其中每一个旗标都 ∈ 后端 `STREAM_FLAGS`；`--tail-only` 在 ⟺ 消费者认定 tail-only | 后端源码 —— 住 `ssh_source_stream_flag_gate_tests.rs`（同一条跨半边已登记，不另开一条） |
 //! | F6 | 快照被撤时的补偿归档：本机不补、远端补 | — |
 //! | F7 | monitor 生产段里那套 watcher 的名字零命中（带正控） | — |
-//! | L1 | 〔LOC1b〕本机起停帧 ⇒ 本机活会话表的起停事实（藏起来的 bg 不进；流断带上可重连那一摞） | 期望手写 |
+//! | L1 | 本机起停帧 ⇒ 本机活会话表的起停事实（藏起来的 bg 不进；流断带上可重连那一摞） | 期望手写 |
 //! | F8 | 真后端 × 生产 stdio 读循环 ⇒ 宣告带 `path`/`lines`、新行的 `seq` == 行号（`#[ignore]`，由 `tests/evidence/CF1-local-lines.py` 带二进制跑） | 两侧各是真实现 |
 
 use super::*;
@@ -58,7 +58,7 @@ fn callers_of(needle: &str) -> BTreeSet<(String, String)> {
     let mut out = BTreeSet::new();
     for (path, raw) in guard_core::scan_tree!(&root, &["rs"]) {
         let prod = guard_core::production_code(&raw);
-        // 〔RE〕按模块住址认：通信层成员住 `src/comms/inward/`、经 `#[path]` 挂进本 crate（`guard_core` 顺着收）。
+        // 按模块住址认：通信层成员住 `src/comms/inward/`、经 `#[path]` 挂进本 crate（`guard_core` 顺着收）。
         let file = guard_core::module_address(&root, &path);
         let lines: Vec<&str> = prod.lines().collect();
         for (i, l) in lines.iter().enumerate() {
@@ -123,7 +123,7 @@ fn parse_frame_kinds() -> BTreeSet<String> {
 /// 每一种帧一行手写线上 JSON（**不从实现生成**）。
 ///
 /// ⚠ 一种不在表里、理由写清：`turn_end`：`parse_frame` 对它回 `None`（本就不进任何吸收点）。
-/// 〔MIG-1 续〕tmux 观测那两种帧删了（后端不再发，monitor 不再认）。
+/// tmux 观测那两种帧删了（后端不再发，monitor 不再认）。
 ///
 /// ⇒ 表的种类 ＋ 这一种 == `parse_frame` 的全部臂（两向），新长一种帧就红：先答它是不是内容。
 const FRAMES: &[(&str, &str)] = &[
@@ -147,7 +147,7 @@ const FRAMES: &[(&str, &str)] = &[
         "session_removed",
         r#"{"kind":"session_removed","sid":"s1"}"#,
     ),
-    // 〔MIG-1〕后端会话账本的成品（去向）—— 进内容通道（去向必须排在那个会话的行之后）。
+    // 后端会话账本的成品（去向）—— 进内容通道（去向必须排在那个会话的行之后）。
     (
         "session_state",
         r#"{"kind":"session_state","sid":"s1","state":"ended"}"#,
@@ -167,10 +167,10 @@ const FRAMES: &[(&str, &str)] = &[
         "link_end",
         r#"{"kind":"link_end","link":"cf1-no-such-link"}"#,
     ),
-    // 〔合并主线 5014e2f3〕U4b 的「A 的清单报完了」与 SR1b 的传输进度 —— 都不是会话内容。
-    //   〔LOC1b · 4D〕「清单报完了」从此交回（本机活会话表要它，且要排在它前面那些宣告之后）；传输进度仍就地吸收。
+    // U4b 的「A 的清单报完了」与 SR1b 的传输进度 —— 都不是会话内容。
+    // 「清单报完了」从此交回（本机活会话表要它，且要排在它前面那些宣告之后）；传输进度仍就地吸收。
     ("sessions_replayed", r#"{"kind":"sessions_replayed"}"#),
-    // 〔FW1 · 第四波 4D · D-d〕记录文件不见了 / 被改过 —— **是**会话内容那一族（与行同序进内容通道）。
+    // 记录文件不见了 / 被改过 —— **是**会话内容那一族（与行同序进内容通道）。
     (
         "session_file_gone",
         r#"{"kind":"session_file_gone","session_id":"s1","path":"/h/.claude/projects/p/s1.jsonl"}"#,
@@ -183,19 +183,19 @@ const FRAMES: &[(&str, &str)] = &[
         "transfer",
         r#"{"kind":"transfer","id":"cf1-no-such-ticket","got":1,"total":2}"#,
     ),
-    // 〔MIG-3b · ㉓②〕某个会话的任务清单变了 —— 交回读循环（本机消费者交重放缓冲那张订阅表，与远端同一个口）。
+    // 某个会话的任务清单变了 —— 交回读循环（本机消费者交重放缓冲那张订阅表，与远端同一个口）。
     ("tasks_changed", r#"{"kind":"tasks_changed","sid":"s1"}"#),
-    // 〔MIG-1 收尾〕测试连接的进度格 —— 不是会话内容，就地交中继（`probe_relay`），不进内容通道。
+    // 测试连接的进度格 —— 不是会话内容，就地交中继（`probe_relay`），不进内容通道。
     (
         "probe",
         r#"{"kind":"probe","ticket":"no-such-ticket","cell":{"reached":"ssh"}}"#,
     ),
-    // 〔P7〕本机那一趟建索引的进度格 —— 交回读循环（本机消费者交重放缓冲那张订阅表，与远端同一个口）。
+    // 本机那一趟建索引的进度格 —— 交回读循环（本机消费者交重放缓冲那张订阅表，与远端同一个口）。
     (
         "progress",
         r#"{"kind":"progress","ticket":"no-such-ticket","cell":{"phase":"Parse","done":0,"total":1}}"#,
     ),
-    // 〔TAP · V124〕中转抄出来的 SSE 事件 —— 不是会话内容（jsonl 才是），就地转给前端，不进内容通道。
+    // 中转抄出来的 SSE 事件 —— 不是会话内容（jsonl 才是），就地转给前端，不进内容通道。
     (
         "tap",
         r#"{"kind":"tap","stream":"s1","resp":0,"n":0,"ev":{"t":"stop","ok":true}}"#,
@@ -258,12 +258,12 @@ fn the_absorb_point_hands_back_exactly_the_content_and_lifecycle_frames() {
             "session_state",
             "session_status",
             "sessions_replayed",
-            // 〔FW1〕记录文件的出声（同一条内容通道，与行同序）。
+            // 记录文件的出声（同一条内容通道，与行同序）。
             "session_file_gone",
             "session_file_reread",
-            // 〔MIG-3b · ㉓②〕任务清单变了（本机消费者交重放缓冲那张订阅表）。
+            // 任务清单变了（本机消费者交重放缓冲那张订阅表）。
             "tasks_changed",
-            // 〔P7〕建索引的进度格（同上，交 `on_progress`）。
+            // 建索引的进度格（同上，交 `on_progress`）。
             "progress",
             // 运行表（会话成品，交会话账）。
             "session_runs",
@@ -271,8 +271,8 @@ fn the_absorb_point_hands_back_exactly_the_content_and_lifecycle_frames() {
         .iter()
         .map(|s| s.to_string())
         .collect::<BTreeSet<_>>(),
-        "本机吸收点交回的帧种类 ≠ 内容三种 ＋ 起停两种（〔LOC1b〕红绿灯 · 清单报完了：本机活会话表由这条流喂）＋ 记录文件出声两种（〔FW1〕）：\
-         多交 ⇒ 别的帧混进来；少交 ⇒ 本机那一种又被就地丢了（`真相源/10 §7.1` 那一形）"
+        "本机吸收点交回的帧种类 ≠ 内容三种 ＋ 起停两种（红绿灯 · 清单报完了：本机活会话表由这条流喂）＋ 记录文件出声两种：\
+         多交 ⇒ 别的帧混进来；少交 ⇒ 本机那一种又被就地丢了"
     );
 }
 
@@ -353,7 +353,7 @@ fn the_local_dispatch_core_matches_the_hand_written_table() {
         }
     );
     assert_eq!(local_step(frame(LINE_A), false, &mut h), line_a);
-    // 退场：撤它；〔MIG-1〕藏起来的集合要留到它的去向（`session_state`）那一帧才忘 —— 去向也照「藏」滤掉。
+    // 退场：撤它；藏起来的集合要留到它的去向（`session_state`）那一帧才忘 —— 去向也照「藏」滤掉。
     assert_eq!(
         local_step(frame(REM_B), false, &mut h),
         LocalStep::Remove { sid: "b".into() }
@@ -547,7 +547,7 @@ fn the_second_watcher_leaves_no_trace_in_monitor_production() {
     assert!(n >= 90, "只扫到 {n} 份 .rs —— 遍历坏了");
     assert!(
         !root.join("watcher.rs").exists(),
-        "`src/frontend/shell/src/watcher.rs` 又出现了 —— 那是第二套 watcher（`真相源/10 §7.1`）"
+        "`src/frontend/shell/src/watcher.rs` 又出现了 —— 那是第二套 watcher"
     );
     assert!(
         bad.is_empty(),
@@ -664,7 +664,7 @@ fn a_real_backend_feeds_local_lines_through_the_production_read_loop() {
     assert_eq!(path.as_deref(), Some(jsonl.to_string_lossy().as_ref()));
     assert_eq!(lines, Some(2), "prime 到的完整行数（空白行不计）");
     // ② 追加一行 ⇒ 下一条这个会话的 line 帧就是它：seq == 行号 2（历史两行不重放）。
-    // 〔MOD〕后端出成品：这一行要进得了界面（带链身份的 user 记录），帧上才有 `message` 可比。
+    // 后端出成品：这一行要进得了界面（带链身份的 user 记录），帧上才有 `message` 可比。
     let appended = "{\"type\":\"user\",\"uuid\":\"u2\",\"timestamp\":\"t\",\"message\":{\"role\":\"user\",\"content\":\"x\"}}";
     let mut f = std::fs::OpenOptions::new()
         .append(true)
@@ -727,15 +727,15 @@ fn a_real_backend_feeds_local_lines_through_the_production_read_loop() {
     println!("CF1-LOCAL-LINES ok");
 }
 
-// ─── L1〔LOC1b · MIG-1〕本机起停帧 ⇒ 交 `session_book` 的成品 ──────────────────────────────────
+// ─── L1本机起停帧 ⇒ 交 `session_book` 的成品 ──────────────────────────────────
 //
-// 要求住址：`INVARIANTS §40` 逐字「我的目的就是把本地当成不走 ssh 的远端」· `设计/01 §1.1` 逐字「一切判定都在后端」。
+// 要求住址：`INVARIANTS §40` 逐字「我的目的就是把本地当成不走 ssh 的远端」· 「一切判定都在后端」。
 
 #[test]
 fn the_local_product_core_matches_the_hand_written_table() {
     use crate::session_book::{Fate, In, LiveMeta};
     use crate::ssh_source::local_product;
-    // 〔FIX3 · `99 §2.2 ②`〕带启动期令牌：成品要把它原样交给前端（`launch-arrival.ts` 认「我刚起的那条」）。
+    // 带启动期令牌：成品要把它原样交给前端（`launch-arrival.ts` 认「我刚起的那条」）。
     const ADD_A: &str = r#"{"kind":"session_added","sid":"a","session_kind":"interactive","cwd":"/w","name":"n","status":"busy","pid":42,"container":"tmux","rbind_token":"0123456789abcdef0123456789abcdef"}"#;
     const ADD_B_BG: &str = r#"{"kind":"session_added","sid":"b","session_kind":"bg"}"#;
     const STATUS_A: &str = r#"{"kind":"session_status","sid":"a","status":"idle"}"#;
@@ -816,7 +816,7 @@ fn the_local_product_core_matches_the_hand_written_table() {
     );
 }
 
-/// 〔FW1 · 第四波 4D · D-d〕本机分派核：记录文件的出声交 `Notice`；藏起来的 bg 会话照旧不出声。
+/// 本机分派核：记录文件的出声交 `Notice`；藏起来的 bg 会话照旧不出声。
 #[test]
 fn a_session_file_notice_is_dispatched_unless_the_session_is_hidden() {
     const GONE: &str = r#"{"kind":"session_file_gone","session_id":"a","path":"/p/a.jsonl"}"#;

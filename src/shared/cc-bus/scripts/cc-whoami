@@ -13,7 +13,7 @@ if [ -z "$id" ] && [ -n "${TMUX_PANE:-}" ]; then
   id=$(resolve "$tag")
 fi
 if [ -z "$id" ] && [ -n "${TMUX_PANE:-}" ]; then
-  # 〔SH1 · INVARIANTS §49 · V121〕读**会话名**的三处都用 UTF-8 客户端(`-u`,排在子命令之前):
+  # 〔INVARIANTS §49〕读**会话名**的三处都用 UTF-8 客户端(`-u`,排在子命令之前):
   #   非 UTF-8 客户端下中文被改写成 `_`,`resolve` 之后的身份与 UTF-8 客户端下不一样 —— 同一个会话两种身份。
   sess=$(tmux -u display-message -p -t "$TMUX_PANE" '#{session_name}' 2>/dev/null || true)
   id=$(resolve "$sess")

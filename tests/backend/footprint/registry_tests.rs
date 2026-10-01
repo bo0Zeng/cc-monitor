@@ -2,7 +2,7 @@ use super::*;
 use guard_core::ScanReport;
 use std::collections::HashSet;
 
-/// 〔MIG-3b 续〕受管工具**全集**（本表 ＋ 注册表里各家足迹面带来的那一半）—— 下面的判据按全集判，与搬家前同一个人群。
+/// 受管工具**全集**（本表 ＋ 注册表里各家足迹面带来的那一半）—— 下面的判据按全集判，与搬家前同一个人群。
 static TOOLS: std::sync::LazyLock<Vec<ToolSpec>> =
     std::sync::LazyLock::new(|| tools().into_iter().cloned().collect());
 
@@ -120,7 +120,7 @@ fn declared_fields(code: &str) -> Vec<(String, String)> {
 
 /// `TOOLS` 里每一个 `ToolSpec { … }` 字面量的**体**文本。
 fn literals_of<'a>(code: &'a str, type_name: &str) -> Vec<&'a str> {
-    // 〔MIG-3b 续〕`TOOLS` 常量有两份（本表 ＋ 这一家的那一半），逐份取体。
+    // `TOOLS` 常量有两份（本表 ＋ 这一家的那一半），逐份取体。
     let mut out = Vec::new();
     let mut from = 0usize;
     let head = "const TOOLS: &[ToolSpec] = &[";
@@ -508,7 +508,7 @@ fn touch_effects_are_all_really_used() {
 #[test]
 fn declarations_match_reality_not_intent() {
     let ccbus = TOOLS.iter().find(|t| t.id == "cc-bus").unwrap();
-    // ⚠⚠ 〔`PS1` 08-13〕**这条断言今天落后于代码一格，理由如实写在这里**：
+    // ⚠⚠ **这条断言今天落后于代码一格，理由如实写在这里**：
     // `U10b`〔用@08-13〕裁「开」之后，cc-bus 的部署**真的实现了**
     // （`cc_bus_deploy.rs`，6 条行为判据：围栏拒软链 / 幂等不重写 / 覆盖留备份 /
     //  装完可执行 / 内嵌清单与仓对拍）。按本条的名字（「声明要配现实」），
@@ -598,7 +598,7 @@ fn owned_file_implies_installable() {
 /// 这是「禁词守卫」的反面：**必需词**守卫。删掉那段话的人会被拦一次。
 #[test]
 fn cc_bus_says_why_it_is_not_installable_at_the_real_depth() {
-    // 🔴 〔步 7c 剖分 2026-09-19 · `设计/16 §6.2` D 类 ＋ `§4.2` 那条预言**这一格兑现了**〕
+    // 🔴 〔步 7c 剖分 2026-09-19 ·  那条预言**这一格兑现了**〕
     //
     // 原来这里是 `me.matches(must).count() >= 2`，理由写在原注里：
     //「本判据自己的数组里就写着这两句 ⇒ `contains` 恒真」——
@@ -609,11 +609,11 @@ fn cc_bus_says_why_it_is_not_installable_at_the_real_depth() {
     // ⇒ 改成它今天该有的形状，而这个形状**比原来严**：
     //   ① 正题直接读**那份生产文件**，要求 `>= 1` ——
     //      针已经不在草垛里了，`contains` 不再恒真，`>= 2` 那个绕法**不需要了**。
-    //      这正是 `设计/16 §4.2` 预言的「判据和语料物理不同文件 ⇒ 自指不可能发生」，
+    //      这正是预言的「判据和语料物理不同文件 ⇒ 自指不可能发生」，
     //      而它在这一格上**第一次真的成立**（`§4.2` 订正说的是「全仓不成立」，不是「一处都不成立」）。
     //   ② 反向钉一句「针在本文件里恰好一处」：哪天有人把那段头注搬回测试段，
     //      本条当场红 —— 也就是「自指回来了」这件事从此有人看着。
-    // 〔MIG-3b 续〕cc-bus 那一条随 Claude 布局那一半搬进了适配层（`agents/claudecode/footprint.rs`）。
+    // cc-bus 那一条随 Claude 布局那一半搬进了适配层（`agents/claudecode/footprint.rs`）。
     let target = AGENT_SRC;
     let me = include_str!("registry_tests.rs");
     for must in ["开第 7 条豁免", "绝不碰"] {
@@ -636,7 +636,7 @@ fn cc_bus_says_why_it_is_not_installable_at_the_real_depth() {
 
 /// 一个载体的**申报落点**（`destination` ⇒ 那条 touch 该写成什么）。
 ///
-/// **唯一一份口径**〔`13b`〕：下面三条判据（落点在不在 touches 里 · 同一个东西有几个
+/// **唯一一份口径**：下面三条判据（落点在不在 touches 里 · 同一个东西有几个
 /// 落点 · 那几个落点逐条钉死）都从这里取，别在第二处再写一份 `match`。
 /// `None` = 这一格回答的不是「装到哪」（[`ToolDestination::NotInstalledByUs`]）。
 fn landing_path_of(d: &ToolDestination) -> Option<String> {
@@ -670,13 +670,13 @@ fn installable_tools_declare_where_they_land() {
         if !t.installable {
             continue;
         }
-        // 🔴 〔`K-R81` 09-12〕**逐载体判，而这一步比先前严**。
+        // 🔴 **逐载体判，而这一步比先前严**。
         //    `K-R69` 那一版是「一个工具一个 `destination`、一串期望落点、去这个工具的
         //    **全部** touches 里找」—— 那时 M 个落点 × N 条 touch **没有 key**，
         //    一个落点被另一个载体的 touch「凑巧接住」也照样绿。
         //    今天落点与 touch 都挂在同一个载体下 ⇒ 接住它的必须是**它自己那一份**。
         for c in t.carriers {
-            // 〔`K-R60`〕跨字段：「这不是我们的落点」与「装得了」不许同时成立。
+            // 跨字段：「这不是我们的落点」与「装得了」不许同时成立。
             let Some(want) = landing_path_of(&c.destination) else {
                 panic!(
                     "{} 声明 installable: true，而载体「{}」的落点写着「不是我们装的」——\
@@ -702,7 +702,7 @@ fn installable_tools_declare_where_they_land() {
 // 下面四条判的是**这句话在闭集里说得出来**，不是「表好看一点」。
 // ═══════════════════════════════════════════════════════════════════════
 
-/// 后端那条 `ToolSpec` 的 id —— **只许有一个住址**〔`13b`〕，
+/// 后端那条 `ToolSpec` 的 id —— **只许有一个住址**，
 /// 下面几条判据与别处引用它的地方都从这里取。
 const BACKEND_ID: &str = "backend";
 
@@ -790,12 +790,12 @@ fn the_backend_is_one_thing_landing_in_several_places() {
             "$APP_DIR".into(),
             HostScope::Client,
         ),
-        // 〔E2 · V28〕① 自释放那一份的本机落点就是 `~/.cc-monitor/bin/ccm`（后端本身）—— 声明挂在 `ccm` 那一条的本机载体上，
+        // ① 自释放那一份的本机落点就是 `~/.cc-monitor/bin/ccm`（后端本身）—— 声明挂在 `ccm` 那一条的本机载体上，
         //   不在这里再记一遍（`the_declared_local_ccm_path_really_matches_the_name_we_install` 要本机 `ccm` 落点恰一条）。
         // ② 推给远端那台机器、在那台机器上当**它的本地后端**跑的那份
         (
             "embedded-backends".into(),
-            // 〔E2 · V28〕可填的 `backendPath` 删了：落点恒是那台的 `~/.cc-monitor/bin/ccm`（它就是 `ccm`）。
+            // 可填的 `backendPath` 删了：落点恒是那台的 `~/.cc-monitor/bin/ccm`（它就是 `ccm`）。
             "~/.cc-monitor/bin/ccm".into(),
             HostScope::Remote,
         ),
@@ -834,7 +834,7 @@ fn the_two_ccm_carriers_do_not_share_one_false_source() {
     assert_eq!(
         ccm.carriers.len(),
         2,
-        "`ccm` 今天是**两个载体**：远端那台的后端本身 + 本机那台的后端本身（〔E2〕shim 与改名副本都删了）"
+        "`ccm` 今天是**两个载体**：远端那台的后端本身 + 本机那台的后端本身（shim 与改名副本都删了）"
     );
     let srcs: Vec<&ToolSource> = ccm.carriers.iter().map(|c| &c.source).collect();
     assert_ne!(
@@ -854,7 +854,7 @@ fn the_two_ccm_carriers_do_not_share_one_false_source() {
         ToolSource::EmbeddedBinary { repo_path } => assert!(
             repo_path.ends_with("::extract_embedded_to"),
             "本机那条 `ccm` 的来源指到了 {repo_path:?} —— 它该指到真把那份字节\
-                 放下去的那个符号（〔E2〕`local_backend::extract_embedded_to`：落点就是后端本身）"
+                 放下去的那个符号（`local_backend::extract_embedded_to`：落点就是后端本身）"
         ),
         other => {
             panic!("本机那条 `ccm` 是**一份二进制**（后端本身），不是 {other:?}")
@@ -964,11 +964,11 @@ fn every_carrier_says_which_one_it_is() {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum Why {
     /// **符号名**（那几个 `*_backend` 的 `pub async fn`、以及对它们的逐字引用）。
-    /// 改它要与 `structural_scan` 的逐字签名钉、`sftp_move_ledger`〔散文墓碑〕（〔SR1b〕已退役）、
+    /// 改它要与 `structural_scan` 的逐字签名钉、`sftp_move_ledger`〔散文墓碑〕（已退役）、
     /// `parity_ledger`、`remote_write_registry` 那几张登记表**同拍**改 ——
     /// 那是一件纯符号改名件，与本件的正题（名字说错了「它**是什么**」）不同轴。
     /// **解锁条件**：另立一件「符号改名」，把那几张表一起带上。
-    /// ✅ 〔步 8 2026-09-19〕**那一件做了**（`设计/99 §4` 步 8，全仓冻结窗口）——
+    /// ✅ **那一件做了**（全仓冻结窗口）——
     /// 这一档降到 12 处，剩下的 12 处**不是符号改名问题**：它们全在「远端那份后端的路径」
     /// 那一族符号上，而那个拼写由**用户盘上那个配置键**锁着（见 [`SITES`]）。
     SymbolName,
@@ -977,13 +977,13 @@ enum Why {
     /// 用户裁的是它的**身份**（那是**那台机器的本地后端**，`K36`）。
     /// 订正措辞要连**前端那一面**一起过（`src/**/*.ts` 现打 30 余处），
     /// 只改 Rust 半边会让两边说两种话。**解锁条件**：另立一件「文案面」，两侧同拍。
-    /// ✅ 〔步 8 2026-09-19〕**那一件做了，这一档清零** —— Rust 报文、TS 界面串与散文
+    /// ✅ **那一件做了，这一档清零** —— Rust 报文、TS 界面串与散文
     /// 一趟同拍改成「远端后端」。**这一档今天在 [`SITES`] 里一行都没有。**
     Wording,
     /// **逐字引用旧的闭集 id** —— 全部是订正段 / 墓碑 / 病史
     /// （「本条落地当场逮到 `<旧 id>`」这一族）。
     /// 🔴 **刻意保留，不改**：一句话写下时真、后来被别的裁定推翻，
-    /// **那是历史，不是错误**（同 `MASTERPLAN#K25` 对 `C18` 三处的处置）。
+    /// **那是历史，不是错误**（同对 `C18` 三处的处置）。
     /// 改掉它等于抹掉推翻的过程。**没有解锁条件 —— 它本来就不该被改。**
     OldId,
 }
@@ -1000,7 +1000,7 @@ enum Why {
 /// ⚠ **这张表不是愿望清单，是读数**：每一行都由下面那条判据在**真树**上对拍，
 /// 多一处红、少一处也红（少 ⇒ 那一行该删了，账不许挂着空号）。
 const SITES: &[(&str, Why, usize)] = &[
-    // 🔴 〔步 8 改名一刀 2026-09-19 · `设计/99 §4` 步 8〕**这张账从 43 行塌到 12 行。**
+    // 🔴 〔步 8 改名一刀 2026-09-19〕**这张账从 43 行塌到 12 行。**
     //
     // 塌下去的那 31 行**不是被删掉了，是债真的还了**：`Why::SymbolName` 与 `Why::Wording`
     // 两档当年各自写着「解锁条件：另立一件『符号改名』／『文案面，两侧同拍』」——
@@ -1024,13 +1024,13 @@ const SITES: &[(&str, Why, usize)] = &[
     //     而不是**某个动作**（「迁移落地」）——后者遇到「动作被取消」就会指空。
     //   · `Why::Wording`（0 行）—— **这一档清零了**。界面串与散文里那句「远端 ＋ 旧词」
     //     两侧同拍改成了「远端后端」，一处不剩。
-    // 〔MIG-3a〕`src/skill_host.rs` / `tests/frontend/shell/skill_host_tests.rs` 两行随文件删了（收件箱那一面进了后端）。
-    // 〔MIG-3b 续〕`src/structural_scan.rs` 那一行随 `fn_names_starting_with` 的头注搬进共享的 guard-core（处数不变）。
+    // `src/skill_host.rs` / `tests/frontend/shell/skill_host_tests.rs` 两行随文件删了（收件箱那一面进了后端）。
+    // `src/structural_scan.rs` 那一行随 `fn_names_starting_with` 的头注搬进共享的 guard-core（处数不变）。
     ("src/common/guard-core/src/lib.rs", Why::OldId, 1),
-    // 〔MIG-3b 续〕下面四行随申报表与它的判据搬进后端（`src/backend/footprint/` · `tests/backend/footprint/`），处数不变。
+    // 下面四行随申报表与它的判据搬进后端（`src/backend/footprint/` · `tests/backend/footprint/`），处数不变。
     ("src/backend/footprint/registry.rs", Why::OldId, 2),
-    ("tests/backend/footprint/rows_tests.rs", Why::OldId, 3), // 〔E2〕4 → 3：远端投影那条判据不再点后端（`$BACKEND_PATH` 删了），讲后端旧名的那句随之删
-    // 〔MIG-3a〕`tests/frontend/shell/fenced_block_tests.rs` 那一行随判据搬进后端（`tests/backend/assets/aliases/fence_tests.rs`）。
+    ("tests/backend/footprint/rows_tests.rs", Why::OldId, 3), // 4 → 3：远端投影那条判据不再点后端（`$BACKEND_PATH` 删了），讲后端旧名的那句随之删
+    // `tests/frontend/shell/fenced_block_tests.rs` 那一行随判据搬进后端（`tests/backend/assets/aliases/fence_tests.rs`）。
     (
         "tests/backend/footprint/registry_environment_tests.rs",
         Why::OldId,
@@ -1081,7 +1081,7 @@ fn count_of(text: &str, w: Why) -> usize {
 /// 「换个名字的同一份剥法仍然是第二份剥法」，**本函数第一版就是那样，当场被它逮到**。
 /// 顺序也照它的纪律：**先剥整份，再切块**（`strip_comment_lines` 头注的 `K-R25` 那一段）。
 fn tools_literal_data() -> String {
-    // 〔MIG-3b 续〕两份 `TOOLS`（本表 ＋ 这一家的那一半）各取体，接起来。
+    // 两份 `TOOLS`（本表 ＋ 这一家的那一半）各取体，接起来。
     let mut bodies = String::new();
     for src in [REGISTRY_SRC, AGENT_SRC] {
         let me = guard_core::strip_comment_lines(src);
@@ -1108,7 +1108,7 @@ fn tools_literal_data() -> String {
         bodies.push('\n');
     }
     let body = bodies.as_str();
-    // 〔CP2b · 4C〕表里给人看的那几格进了文案表（`Text(|| copy_text("key", &[]))`）⇒ 「数据」＝
+    // 表里给人看的那几格进了文案表（`Text(|| copy_text("key", &[]))`）⇒ 「数据」＝
     // 源码体 ＋ 它引用的那几条表项的原文。只看源码体的话，措辞那一档（`Why::Wording`）
     // 从此永远数到 0 —— 字搬了家，尺子得跟着去新家量。
     let mut out = body.to_string();
@@ -1172,7 +1172,7 @@ fn the_old_backend_name_is_gone_from_the_closed_set_itself() {
         "\n闭集那张表的**数据**里还留着旧名字（[符号名, 旧 id, 措辞]）。\n\
              用户 09-12 逐字：「一个后端要两处使用 / 即远程后端就是远程本地机器的后端」——\n\
              远端那台上跑的那一份是**那台机器的本地后端**，不是「远端的后端」。\n\
-             ⚠ 这一格已经花过一次真钱（`ROADMAP#KU26`：Linux 裸 exe 装出来没有本机后端）。"
+             ⚠ 这一格已经花过一次真钱（Linux 裸 exe 装出来没有本机后端）。"
     );
 }
 
@@ -1200,7 +1200,7 @@ fn the_old_backend_name_is_gone_from_the_closed_set_itself() {
 ///
 /// # ⚠ 本文件自己在面里（`K-R31` 那一形，`scanning_guard_registry` 登记为「第五形」）
 ///
-/// ⚠ 〔`P4` 2026-09-21〕先前这里写着「`scan_tree!` 按构造摘掉调用者那一份 —— 而调用者
+/// ⚠ 先前这里写着「`scan_tree!` 按构造摘掉调用者那一份 —— 而调用者
 /// 恰恰是**闭集的家**，摘掉等于在最该看的那一份上瞎掉」。那一刀**在这一处不生效**
 /// （判据由 `#[path]` 挂载 ⇒ `file!()` 是带 `..` 的折返路径 ⇒ 后缀比不命中），
 /// 而且今天的调用者是本判据文件、**不是**闭集的家 `tool_registry.rs`。
@@ -1215,26 +1215,26 @@ fn every_place_that_still_says_the_old_name_is_registered_and_only_shrinks() {
     use std::collections::BTreeMap;
     use std::path::PathBuf;
 
-    // 〔MIG-3b 续〕本判据随申报表搬进了后端，扫的仍是 monitor 那半边（外加随表搬来的那四份）：根改按仓根现算。
+    // 本判据随申报表搬进了后端，扫的仍是 monitor 那半边（外加随表搬来的那四份）：根改按仓根现算。
     let shell = crate::guard_support::repo_root().join("src/frontend/shell");
     let manifest = shell.as_path();
     let src_root = manifest.join("src");
     let crates_root = crate::guard_support::repo_root().join("src/common");
     let mut files: Vec<(PathBuf, String)> = guard_core::scan_tree!(&src_root, &["rs"]);
     files.extend(guard_core::scan_tree!(&crates_root, &["rs"]));
-    // 🔴 〔搬树 2026-09-18 · `设计/16 §5.4b` 纪律 3〕monitor 这半边今天**第三棵树**：
+    // 🔴 〔搬树 2026-09-18 ·  纪律 3〕monitor 这半边今天**第三棵树**：
     //    测试段整个住 `<repo>/tests/frontend/shell`。少扫它 ⇒ 搬过去的那几处旧名字
     //    整批掉出人群，读起来像「债还了」，而那句话一个字没改。
     files.extend(guard_core::scan_tree!(
         &crate::guard_support::repo_root().join("tests/frontend/shell"),
         &["rs"]
     ));
-    // 〔RE〕monitor 那半边的通信层成员单测镜像住 `tests/comms/inward/`。
+    // monitor 那半边的通信层成员单测镜像住 `tests/comms/inward/`。
     files.extend(guard_core::scan_tree!(
         &crate::guard_support::repo_root().join("tests/comms/inward"),
         &["rs"]
     ));
-    // 闭集的家与随它搬进后端的三份判据（〔MIG-3b 续〕它们不在上面三棵根里了，逐份加回来）。
+    // 闭集的家与随它搬进后端的三份判据（它们不在上面三棵根里了，逐份加回来）。
     let root = crate::guard_support::repo_root();
     for (rel, text) in [
         (
@@ -1376,7 +1376,7 @@ fn carrier_fields_follow_the_same_discipline() {
 
 /// 闭集里所有**末段是 `ccm` 那个词**的落点，按「在哪台机器上」分。
 ///
-/// ⚠ 人群**现算**、不写死一个名单〔`13b`〕：`TOOLS` 是唯一一份，
+/// ⚠ 人群**现算**、不写死一个名单：`TOOLS` 是唯一一份，
 /// 而 `ccm` 那个词的唯一住址是 `local_backend::CCM_ENTRY_WORD`。
 /// 末段允许带一个尾 `*`（本机那条要盖住 Windows 上的 `.exe`，见它自己的 note）。
 fn ccm_landing_sites() -> Vec<(&'static str, HostScope)> {
@@ -1392,7 +1392,7 @@ fn ccm_landing_sites() -> Vec<(&'static str, HostScope)> {
         .collect()
 }
 
-/// 〔MIG-3b 续〕monitor 那一侧 `ccm` 这个词（`local_backend.rs::CCM_ENTRY_WORD`）：申报表进了后端，
+/// monitor 那一侧 `ccm` 这个词（`local_backend.rs::CCM_ENTRY_WORD`）：申报表进了后端，
 /// 这个词仍住 monitor（本机那份由 monitor 释放）⇒ 读 monitor 的源码现抠（跨半边的边登记在 `cross_half_edge_registry.rs`）。
 fn monitor_ccm_word() -> &'static str {
     const SRC: &str = include_str!("../../../src/frontend/shell/src/local_backend.rs");
@@ -1428,7 +1428,7 @@ fn monitor_ccm_entry_name() -> String {
 ///
 /// 守的是**申报**（这张表里有没有这条落点、在哪台机器上）。
 /// 「那个文件真的被放下去了吗」「放下去的是不是后端本体」由
-/// `local_backend` 那两条管（〔E2 · P1〕今天是 `the_local_landing_is_placed_exactly_as_the_bytes_in_hand_say`
+/// `local_backend` 那两条管（今天是 `the_local_landing_is_placed_exactly_as_the_bytes_in_hand_say`
 /// 与 `the_resolution_path_hands_the_ccm_entry_the_backend_it_just_resolved`：落点就是后端本身，没有副本可比）。
 /// **三条合起来才是那一格，单独任何一条都不够。**
 #[test]
@@ -1481,7 +1481,7 @@ fn the_closed_set_declares_a_ccm_landing_site_on_this_machine_too() {
 ///
 /// # 没有这一条会怎样
 ///
-/// 名字的唯一真相源是 `local_backend::local_ccm_entry_name()`（后缀由 `build.rs`
+/// 名字的唯一源头是 `local_backend::local_ccm_entry_name()`（后缀由 `build.rs`
 /// 按 `TARGET` 算，Windows 上是 `ccm.exe`）。这张表里写的是一个**常量串**。
 /// 两边一漂，审计页会在 Windows 上对着一个**我们真的装了**的东西显示「缺失」——
 /// 那正是本模块头注禁的「对能用的安装报假警报」。
@@ -1507,7 +1507,7 @@ fn the_declared_local_ccm_path_really_matches_the_name_we_install() {
     assert!(
         ok,
         "闭集里申报的本机落点末段是 {last:?}，而生产上真放下去的名字是 {name:?} —— \n\
-             两边漂了。名字的唯一真相源是 `local_backend::local_ccm_entry_name()`；\n\
+             两边漂了。名字的唯一源头是 `local_backend::local_ccm_entry_name()`；\n\
              这一格漂开的后果不是编译错，是审计页在**装得好好的**机器上显示「缺失」。"
     );
 }
@@ -1558,7 +1558,7 @@ fn fenced_block_implies_uninstallable() {
 struct ImplSite {
     addr: &'static str,
     definition: &'static str,
-    /// 〔FIX4 · `97 §8`〕这一处不住 [`Claim::home`] 那份文件时，它自己的家（全景小程序：装口在 monitor 放字节、卸口在那台后端）。
+    /// 这一处不住 [`Claim::home`] 那份文件时，它自己的家（全景小程序：装口在 monitor 放字节、卸口在那台后端）。
     /// `None` = 住 `home` 那份（其余各行）。
     elsewhere: Option<ImplHome>,
 }
@@ -1591,18 +1591,18 @@ struct Claim {
 /// **唯一一份**对拍表。覆盖由下面那条性质的第 ① 步钉死（多一条少一条都红）。
 fn claims() -> Vec<Claim> {
     const SFTP: &str = include_str!("../../../src/frontend/shell/src/sftp.rs");
-    // 〔MIG-3a · 主会话 09-27 裁〕别名块（`ccm` 的装 / 卸口）进了那台后端：`src/backend/assets/aliases/block.rs`。
+    // 别名块（`ccm` 的装 / 卸口）进了那台后端：`src/backend/assets/aliases/block.rs`。
     const PROFILE_INSTALLER: &str = include_str!("../../../src/backend/assets/aliases/block.rs");
-    // 〔MIG-3a〕项目 `.mcp.json` 的写进了那台后端（D 组收进后端）：装 / 卸口住 `src/backend/assets/mcp_edit.rs`。
+    // 项目 `.mcp.json` 的写进了那台后端（D 组收进后端）：装 / 卸口住 `src/backend/assets/mcp_edit.rs`。
     const MCP: &str = include_str!("../../../src/backend/assets/mcp_edit.rs");
-    // 〔MIG-3a · 子步 3〕cc-bus 装进了本机后端（资产的装不算部署）：装口住 `src/backend/assets/cc_bus_install.rs`。
+    // cc-bus 装进了本机后端（资产的装不算部署）：装口住 `src/backend/assets/cc_bus_install.rs`。
     const CC_BUS_DEPLOY: &str = include_str!("../../../src/backend/assets/cc_bus_install.rs");
-    // 〔AS2 · 第四波 4B〕skill「装到这台」的家。
-    // 〔MIG-3a〕skill 装 / 卸的写那一半进了被写那台后端：装 / 卸口住 `src/backend/assets/skill_flow.rs`。
+    // skill「装到这台」的家。
+    // skill 装 / 卸的写那一半进了被写那台后端：装 / 卸口住 `src/backend/assets/skill_flow.rs`。
     const SKILL_INSTALL: &str = include_str!("../../../src/backend/assets/skill_flow.rs");
     // 账号库由那台后端自己建（界面「启用多账号」）：装口住 `src/backend/accounts/manage/wire.rs`（`accounts-init` 走它）。
     const ACCOUNTS_WIRE: &str = include_str!("../../../src/backend/accounts/manage/wire.rs");
-    // 〔TL1 · 4C〕代码全景小程序的家（本机放 · 远端推，同一个入口 `push_to` 按 origin 分）。
+    // 代码全景小程序的家（本机放 · 远端推，同一个入口 `push_to` 按 origin 分）。
     const PANORAMA_BYTES: &str = include_str!("../../../src/frontend/shell/src/panorama_bytes.rs");
     let sftp = || ImplHome {
         addr: "sftp.rs",
@@ -1617,8 +1617,8 @@ fn claims() -> Vec<Claim> {
     let profile_install = || {
         ImplSite {
         addr: "block.rs::install_to_profile",
-        // 〔RW1 · 第四波 09-24〕签名变了：落盘经「门」（生产 = 本机后端的文件管理那一面），本进程不写。
-        // 〔MIG-3a〕门就是那台后端本进程的 `files-*`（同步）。
+        // 签名变了：落盘经「门」（生产 = 本机后端的文件管理那一面），本进程不写。
+        // 门就是那台后端本进程的 `files-*`（同步）。
         definition: "pub(crate) fn install_to_profile(\n    d: &dyn Door,\n    path: &Path,\n    command_name: &str,\n    include_cc_function: bool,\n) -> Result<(), String> {",
         elsewhere: None,
     }
@@ -1633,9 +1633,9 @@ fn claims() -> Vec<Claim> {
     vec![
         Claim {
             tool: "ccm",
-            // 〔W5-ALIAS〕别名块那两条命令从 `sftp.rs` 搬进了别名域（`profile_installer.rs`）。
+            // 别名块那两条命令从 `sftp.rs` 搬进了别名域（`profile_installer.rs`）。
             home: Some(profile()),
-            // 〔AL2 · 第四波 4D〕远端装 / 卸别名块那两条并进 `aliases_block_*`（带 `origin`）⇒ 装卸口与本机同一处。
+            // 远端装 / 卸别名块那两条并进 `aliases_block_*`（带 `origin`）⇒ 装卸口与本机同一处。
             install: Some(profile_install()),
             uninstall: Some(profile_uninstall()),
         },
@@ -1679,8 +1679,8 @@ fn claims() -> Vec<Claim> {
                 elsewhere: None,
             }),
         },
-        // 〔TL1 · 4C〕代码全景小程序：装口 `push_to`（本机那一臂落 `place_local`，远端那一臂经那台后端的文件链路推）；
-        //   〔FIX4〕卸口住那台后端 `control/panorama.rs::answer_uninstall`（`elsewhere`）。
+        // 代码全景小程序：装口 `push_to`（本机那一臂落 `place_local`，远端那一臂经那台后端的文件链路推）；
+        // 卸口住那台后端 `control/panorama.rs::answer_uninstall`（`elsewhere`）。
         Claim {
             tool: "panorama",
             home: Some(ImplHome {
@@ -1692,7 +1692,7 @@ fn claims() -> Vec<Claim> {
                 definition: "pub(crate) async fn push_to(origin: &crate::origin::Origin) -> Result<(), String> {",
                 elsewhere: None,
             }),
-            // 〔FIX4 · `97 §8` · 主会话 09-28 裁〕卸口在那台后端（`panorama-uninstall`：认身份、只删装时放下的那一份）。
+            // 卸口在那台后端（`panorama-uninstall`：认身份、只删装时放下的那一份）。
             uninstall: Some(ImplSite {
                 addr: "panorama.rs::answer_uninstall",
                 definition: "pub(crate) async fn answer_uninstall(",
@@ -1710,7 +1710,7 @@ fn claims() -> Vec<Claim> {
             }),
             install: Some(ImplSite {
                 addr: "assets/mcp_edit.rs::answer_put",
-                // 〔MIG-3a〕从 monitor 那条 Tauri 命令搬进那台后端的帧命令 `mcp-server-put`。
+                // 从 monitor 那条 Tauri 命令搬进那台后端的帧命令 `mcp-server-put`。
                 definition: "pub(crate) fn answer_put(d: &dyn Door, args: &Value) -> Answer {",
                 elsewhere: None,
             }),
@@ -1720,8 +1720,8 @@ fn claims() -> Vec<Claim> {
                 elsewhere: None,
             }),
         },
-        // 〔AS2 · 第四波 4B · V113〕资产目录里「装到这台」的 skill；〔SU1 · V116〕卸只删装记录里那几个文件。
-        // 〔MIG-3a〕装 / 卸口进了被写那台后端（`skill-install-apply` 的本体 · `ext-uninstall-apply` 调的那一份）。
+        // 资产目录里「装到这台」的 skill；卸只删装记录里那几个文件。
+        // 装 / 卸口进了被写那台后端（`skill-install-apply` 的本体 · `ext-uninstall-apply` 调的那一份）。
         //   〔墓碑 —— AS2 那一版这里是 `uninstall: None`，负向扫描守着「家里长出 `uninstall…` 就红」；SU1 落卸口那一拍它当场红了（`uninstall_with`），照它说的登记。〕
         Claim {
             tool: "skill-install",
@@ -1766,8 +1766,8 @@ fn claims() -> Vec<Claim> {
 }
 
 /// 从逐字签名里抠出 `pin_definition` 要的**赋值前缀**（签名到 `fn <名>` 之后第一个 `(` 为止）。
-/// **算出来的，不再写第二份字面量**〔`13b`〕。
-/// 〔TL1 · 4C〕从前是「到第一个 `(` 为止」—— 可见性带括号（`pub(crate)`）时会抠成 `pub`；`panorama` 那一行
+/// **算出来的，不再写第二份字面量**。
+/// 从前是「到第一个 `(` 为止」—— 可见性带括号（`pub(crate)`）时会抠成 `pub`；`panorama` 那一行
 /// 的装口是 `pub(crate)`，当场逮住（住址 `…::push_to` 对上抠出来的 `…::pub`）。
 fn assign_prefix_of(definition: &str) -> &str {
     let from = definition.find("fn ").unwrap_or(0);
@@ -1849,9 +1849,9 @@ fn every_tool_declares_install_and_uninstall_as_the_implementations_really_are()
         let c = claims.iter().find(|c| c.tool == t.id).expect("① 已经钉过");
 
         // ③ 「有没有家」不由填表的人说了算，由 `destination` 那个变体说了算。
-        //    🔴 〔`K-R81`〕多载体之后走 `Provisioning::of_tool` 的**聚合规则**
+        //    🔴 多载体之后走 `Provisioning::of_tool` 的**聚合规则**
         //    （全部载体都是 `NotInstalledByUs` 才算「不是装出来的」）——
-        //    那条规则只许有一个住址，这里不再手写第二份 `matches!`〔`13b`〕。
+        //    那条规则只许有一个住址，这里不再手写第二份 `matches!`。
         assert_eq!(
             c.home.is_none(),
             Provisioning::of_tool(t) == Provisioning::NotAnInstall,
@@ -1975,12 +1975,12 @@ fn the_property_that_pins_both_declarations_is_not_named_after_any_tool() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// 〔MIG-3b 续〕从 `footprint/registry.rs` 搬来的两个现算口（生产上已无调用方）＋ 它们今天对拍的那一个
+// 从 `footprint/registry.rs` 搬来的两个现算口（生产上已无调用方）＋ 它们今天对拍的那一个
 // ═══════════════════════════════════════════════════════════════════════
 
 /// 🔴 `K-R132`：本机那条 `ccm` 入口**所在的目录**（home 相对，`/` 分隔，不带末尾斜杠）。
 ///
-/// # 它**不是**一个新的字面量〔`13b`：闭集只许有一个住址〕
+/// # 它**不是**一个新的字面量〔闭集只许有一个住址〕
 ///
 /// 它从 [`TOOLS`] 里 `ccm` 那条**本机载体**的落点**现算**
 /// （`LocalHomeRelative(".cc-monitor/bin/ccm*")` ⇒ `".cc-monitor/bin"`）。
@@ -2004,7 +2004,7 @@ fn the_property_that_pins_both_declarations_is_not_named_after_any_tool() {
 /// ⚠ **诚实边界**：它答的是「**表里申报的**本机落点在哪个目录」，
 /// 不是「盘上那份**真的**在哪」。两者对不对得上由
 /// `profile_installer` 那条跨文件判据钉住（它去读真正调
-/// `extract_embedded_to` 的那一行源码；〔E2〕从前是逐字节副本 `install_local_ccm_entry`〔散文墓碑〕）。
+/// `extract_embedded_to` 的那一行源码；从前是逐字节副本 `install_local_ccm_entry`〔散文墓碑〕）。
 fn local_ccm_bin_dir_rel() -> Option<&'static str> {
     let mut found: Option<&'static str> = None;
     for spec in TOOLS.iter() {
@@ -2045,7 +2045,7 @@ fn local_ccm_bin_dir_rel() -> Option<&'static str> {
 /// 在判据里手抄一个 `.local/bin` 就是第二个住址，而那正是本病的成因。
 ///
 /// 两条同名落点 ⇒ 回 `None`（「那个目录」没有唯一答案时**不许猜一个**，同本机那条）。
-// 🔴 〔`K-R135` 09-15〕**它今天的使用者只有判据，所以住在判据档里，而不是挂一个
+// 🔴 **它今天的使用者只有判据，所以住在判据档里，而不是挂一个
 // `#[allow(dead_code)]` 把警告压掉。** 两者的差别是**下一个人读得出什么**：
 // `allow` 说的是「有人用，只是编译器看不见」，而这一档说的是「**今天只有判据用它**」——
 // 后者才是实话。⚠ 它不是可有可无的：判据要证「那一行把**两边申报的**目录都放上了 PATH」，
@@ -2072,8 +2072,8 @@ fn remote_ccm_bin_dir_rel() -> Option<&'static str> {
     found
 }
 
-/// ★〔MIG-3b 续〕本表申报的 `ccm` 两个载体（本机 · 远端）落点所在的目录 == 共享 crate 里后端的落点那一个目录
-/// （`relay_route_core::BACKEND_LANDING_REL`，本机远端同一个，V28；monitor 补 PATH 那一步取的就是它）。
+/// ★本表申报的 `ccm` 两个载体（本机 · 远端）落点所在的目录 == 共享 crate 里后端的落点那一个目录
+/// （`relay_route_core::BACKEND_LANDING_REL`，本机远端同一个，；monitor 补 PATH 那一步取的就是它）。
 #[test]
 fn the_declared_ccm_bin_dirs_are_the_shared_landing_dir() {
     let landing = relay_route_core::BACKEND_LANDING_REL;

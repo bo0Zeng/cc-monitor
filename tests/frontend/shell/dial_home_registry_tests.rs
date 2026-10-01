@@ -21,11 +21,11 @@ fn repo_root() -> PathBuf {
 /// ⚠ 第二栏是**锚点**处数，不是 `DIAL_SITES` 那个**调用点**处数 —— 两个数不是一回事，
 /// 模块头注「两个数别读混」那一节写着为什么不合并。
 const SITES: &[(&str, usize, &str, &str)] = &[
-    // 〔C2 09-24〕`ssh_source.rs`（3）与 `port_forward.rs`（1）两行**整行删了**：拨号与端口转发搬进了后端的
+    // `ssh_source.rs`（3）与 `port_forward.rs`（1）两行**整行删了**：拨号与端口转发搬进了后端的
     // 拨号代理（`src/backend/dial/`），这两份文件里一处锚点都不剩。
-    // 〔SR1b · 2026-09-24〕**家变成空集**：最后一行 `inproc_dial.rs`（3 处：竞速握手 · 跳板上握手 · 跳板开隧道，
+    // **家变成空集**：最后一行 `inproc_dial.rs`（3 处：竞速握手 · 跳板上握手 · 跳板开隧道，
     //   只服务 SFTP）兑现了它写的解锁条件 ——「SFTP 换走那天这一行整行删掉，家变成空集，`russh` 同拍从
-    //   `src/frontend/shell/Cargo.toml` 里走」。三件同拍：SFTP 进本机常驻后端（V89）· 那份文件整份删 · `russh` 出界面清单。
+    //   `src/frontend/shell/Cargo.toml` 里走」。三件同拍：SFTP 进本机常驻后端· 那份文件整份删 · `russh` 出界面清单。
     //   模块头注那句「家变成空集那一刻，正是二值旗该翻面的那一刻」—— 旗今天翻面了（下面 `the_interface_side_ssh_debt…` 钉）。
 ];
 
@@ -51,7 +51,7 @@ fn anchors() -> Vec<String> {
 const CORPUS_FLOOR_BYTES: usize = 400_000;
 /// 文件数地板：`src/frontend/shell/src` 09-12 现打 100+ 份 `.rs`。
 ///
-/// ⚠ 〔`P4` 2026-09-21〕先前括号里写着「`scan_tree!` 摘掉本文件」—— 那一刀**在本仓
+/// ⚠ 先前括号里写着「`scan_tree!` 摘掉本文件」—— 那一刀**在本仓
 /// 一处都不生效**，而且本文件住 `tests/frontend/shell/`、根本不在这棵树里。
 const CORPUS_FLOOR_FILES: usize = 80;
 
@@ -120,7 +120,7 @@ fn dial_locality(corpus: &[(String, String)], home: &[(&str, usize)]) -> Result<
 /// 🔴 **必须走 `guard_core::scan_tree!`**（`scanning_guard_registry` 那条判据钉着）：
 /// 裸 `read_dir` 的扫描型判据会在自己的登记表 / 注释里找到自己 ⇒ 恒绿。
 ///
-/// ⚠ 〔`P4` 2026-09-21〕先前这里写着「`scan_tree!` **按构造摘除调用者自己那一份**
+/// ⚠ 先前这里写着「`scan_tree!` **按构造摘除调用者自己那一份**
 /// （本文件）」—— 那一刀**在这一处不生效**（判据由 `#[path]` 挂载 ⇒ `file!()` 是
 /// 折返路径 ⇒ 后缀比不命中），而且本文件住 `tests/frontend/shell/`、不在这棵树里。
 /// backend 那侧把被测那一份 `include_str!` 补回来是因为**锚点恰恰住在那一份里**，
@@ -430,12 +430,12 @@ fn the_interface_side_ssh_debt_is_one_number_and_it_is_printed() {
              —— 空了才算 `R32` 裁定一那句话成真。"
     );
 
-    // 〔SR1b · 2026-09-24〕**终点到了**：过程那个数归零、终点那面旗翻面（manifest 里零 `russh` 家族依赖）。
+    // **终点到了**：过程那个数归零、终点那面旗翻面（manifest 里零 `russh` 家族依赖）。
     //   两个都钉成相等 —— 哪一个回弹都红（回弹 = 界面进程又拨起 SSH / 又开起 SFTP）。
     assert_eq!(truth, 0, "界面侧还没搬走的拨号又不是 0 了：{truth}");
     assert!(
         deps.is_empty(),
-        "界面 crate 的 manifest 里又有 `russh` 家族的直接依赖了：{deps:?} —— 界面进程零 SSH（V89）"
+        "界面 crate 的 manifest 里又有 `russh` 家族的直接依赖了：{deps:?} —— 界面进程零 SSH"
     );
     // 终点与过程咬在一起：数还没归零，旗就必须还立着。
     // 反过来那一半（旗翻面了而数还没归零）由上面的对拍与棘轮各自接住。

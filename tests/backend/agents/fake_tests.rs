@@ -203,7 +203,7 @@ fn a_brand_new_agent_is_discovered_and_announced_with_zero_general_layer_change(
     let adapter = crate::agents::Adapter {
         kind: AGENT_KIND,
         account_env: None,
-        // 〔AS2〕最小假 agent 没有资产面（它要证的是「通用层零改动」，不是资产）。
+        // 最小假 agent 没有资产面（它要证的是「通用层零改动」，不是资产）。
         assets: None,
         history: None,
         upstream: None,
@@ -456,9 +456,9 @@ fn the_fixture_agent_never_ships() {
     );
 }
 
-/// 〔SH1 · V137〕**fake 适配器同拍长一格 MCP 读**：通用层经注册表那一格读到假 agent 的 MCP 条目 ——
+/// **fake 适配器同拍长一格 MCP 读**：通用层经注册表那一格读到假 agent 的 MCP 条目 ——
 /// 通用层（`agents::mcp_read_among`）不认识 `.fake-mcp.json` 这个名字，认它的只有假 agent 自己。
-/// 要求住址：`99 §1` V137「`agents::Adapter` 长一格『MCP 读』（fake 适配器同拍）」。
+/// 要求：「`agents::Adapter` 长一格『MCP 读』（fake 适配器同拍）」。
 #[test]
 fn the_fake_agents_mcp_face_is_read_through_the_generic_layer() {
     let dir = std::env::temp_dir().join(format!("sh1-fake-mcp-{}", std::process::id()));

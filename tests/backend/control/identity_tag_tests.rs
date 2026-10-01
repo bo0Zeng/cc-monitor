@@ -50,7 +50,7 @@ pub(crate) fn spawn_settled_sleep(
     kid
 }
 
-/// 〔RESYNC · `INVARIANTS §48.3`〕**那个口真的 fail-closed**：没注入 ⇒ `tag` 炸（连 sid 都不看）；
+/// 〔`INVARIANTS §48.3`〕**那个口真的 fail-closed**：没注入 ⇒ `tag` 炸（连 sid 都不看）；
 /// 注入了 ⇒ 探测真落到假 tmux 上（带着子进程环境里的那个 pane）。
 /// 住址 `INVARIANTS §48.3` 原文：「拿不到就炸，不许降级裸跑」。
 #[cfg(unix)]
@@ -131,7 +131,7 @@ fn only_percent_digits_is_a_pane_id() {
 ///
 /// ⚠ 本条**不起 tmux**：`pane_of` 在 `gate::probe` 之前就给出结局。
 ///
-/// 〔U4b · 第四波〕结局从 `NotInTmux` 改成 `PaneUnknown`：PID 0 的环境是**读不到**，不是「读到了、
+/// 结局从 `NotInTmux` 改成 `PaneUnknown`：PID 0 的环境是**读不到**，不是「读到了、
 /// 没设 `TMUX_PANE`」。前者说「不知道」，后者说「不在 tmux 里」—— 容器那一格（`session_added.container`）
 /// 不许把前者报成 `"none"`。打标行为不变（两支都不打）。
 #[test]
@@ -144,7 +144,7 @@ fn a_pid_without_tmux_pane_never_reaches_tmux() {
     );
 }
 
-/// 〔U4b〕**「不在 tmux 里」那一格真能出来**：本测试进程自己的环境读得到；把 `TMUX_PANE` 摘掉的子进程
+/// **「不在 tmux 里」那一格真能出来**：本测试进程自己的环境读得到；把 `TMUX_PANE` 摘掉的子进程
 /// ⇒ `NotInTmux`（容器 `"none"` 的唯一来源）。与上一条合起来，两格两向各有一个活例。
 #[test]
 fn a_readable_env_without_tmux_pane_is_not_in_tmux() {
@@ -166,7 +166,7 @@ fn a_bad_sid_short_circuits_before_any_io() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// 启动期令牌（`CCM_RBIND_TOKEN`）—— `设计/80 §8.7` 步 2
+// 启动期令牌（`CCM_RBIND_TOKEN`）——
 //
 // 本组买到什么 / 买不到什么（写清楚，别读宽）：
 //   ✅ 形状白名单 fail closed 到位（正/反两侧都断）
@@ -212,7 +212,7 @@ fn a_well_formed_launch_token_is_accepted() {
 /// fail closed：**任何**偏离一律当「没有令牌」，不当「大概是它」。
 ///
 /// 理由住 `token_is_safe` 的头注：下游用途是跨机器的 join 键，
-/// 而 `设计/80 §8.5 ②` 那个布尔（「这个 sid 有没有令牌」）只有在
+/// 而那个布尔（「这个 sid 有没有令牌」）只有在
 /// 「有 = 形状确定对」时才说得准。
 #[test]
 fn anything_that_is_not_exactly_thirty_two_lowercase_hex_is_rejected() {
@@ -236,7 +236,7 @@ fn anything_that_is_not_exactly_thirty_two_lowercase_hex_is_rejected() {
 /// # 为什么必须是真进程（而不是喂一个字符串给 `token_is_safe`）
 ///
 /// 要证的不是「白名单会放行 32 个 hex」，是「**那条读 `/proc/<pid>/environ` 的路真的通**」
-/// —— `设计/80 §8.3` 那张表声称「后端已经在读这个文件」，本条是它的现打核。
+/// —— 那张表声称「后端已经在读这个文件」，本条是它的现打核。
 /// 喂字符串的版本对「`proc_env_var` 的键名拼错了」「`EnvRead` 那三支接错了」
 /// 一律恒绿（本仓逐字「判据不在执行链上就等于不存在」）。
 ///
@@ -260,7 +260,7 @@ fn the_token_is_read_back_out_of_a_real_child_process_environ() {
         got.as_deref(),
         Some(GOOD_TOKEN),
         "后端读不出一个**真进程**环境里的 {RBIND_TOKEN_ENV} \
-         —— `设计/80 §8.3` 那张「零件都在盘上」的表在这一格上不成立"
+         —— 那张「零件都在盘上」的表在这一格上不成立"
     );
 
     // ── 阴性一：压根没设 ───────────────────────────────────────────────────
@@ -294,7 +294,7 @@ fn a_pid_whose_environ_cannot_be_read_yields_no_token() {
     assert_eq!(rbind_token_of(0), None);
 }
 
-/// ★★ **那次读的射程不许悄悄变大**〔`设计/80 §8.7` 步 2 的硬约束 1〕。
+/// ★★ **那次读的射程不许悄悄变大**〔的硬约束 1〕。
 ///
 /// # 它守的性质
 ///
@@ -350,11 +350,11 @@ fn the_env_keys_this_file_reads_are_exactly_two_named_constants() {
         prod.matches("const RBIND_TOKEN_ENV: &str = \"CCM_RBIND_TOKEN\";")
             .count(),
         1,
-        "启动期令牌的变量名被改了 —— 它是两路共用的契约（`设计/80 §8.7` 那张表钉死）"
+        "启动期令牌的变量名被改了 —— 它是两路共用的契约（那张表钉死）"
     );
 }
 
-/// ★★ **令牌的值进不了日志**〔`设计/80 §8.6 ③`：它是敏感数据〕。
+/// ★★ **令牌的值进不了日志**〔：它是敏感数据〕。
 ///
 /// # 为什么本文件要自带这一条
 ///
@@ -419,7 +419,7 @@ fn the_token_value_never_reaches_a_log_macro() {
     assert!(
         offenders.is_empty(),
         "\n★★ 有日志宏在印那个**装着令牌的变量**：\n{}\n\n\
-         `设计/80 §8.6 ③`：令牌是敏感数据 —— 它出现在 `/proc/<pid>/environ`、\n\
+令牌是敏感数据 —— 它出现在 `/proc/<pid>/environ`、\n\
          `/proc/<pid>/cmdline` 与 shell 历史里，而那几处按进程属主设权限；\n\
          **日志文件不是**。要诊断「注进去了但形状不对」，印**长度**就够\n\
          （`rbind_token_of` 里那句 warn 就是那么写的）。",
@@ -427,7 +427,7 @@ fn the_token_value_never_reaches_a_log_macro() {
     );
 }
 
-/// 〔U4b · 第四波 · B1〕打标结局 → 容器：**七个结局逐格 == 手写表**（`U4b.md §1.1` 那张）。
+/// 打标结局 → 容器：**七个结局逐格 == 手写表**（`U4b.md §1.1` 那张）。
 ///
 /// 期望是手写的，不从实现生成。要守的方向是「不知道不许报成 `none`」：
 /// 四个「不知道」的结局里任何一个被改成 `Some(None)`，界面就会对一条其实在 tmux 里的会话说
@@ -449,9 +449,9 @@ fn container_maps_every_tag_outcome_to_the_hand_written_table() {
     }
 }
 
-// ═══ 〔W5-VIS · `设计/15 §4.7 S2`〕打标失败说出来 ＋ `#[must_use]` ═══════════════════════════════
+// ═══ 打标失败说出来 ＋ `#[must_use]` ═══════════════════════════════
 //
-// 要求住址：`设计/15 §4.7 S2` 逐字「⇒ 失败那一形要说出来 ＋ `#[must_use]`（`§5.1 A2`；W5-VIS）」。
+// 要求：「⇒ 失败那一形要说出来 ＋ `#[must_use]`（`§5.1 A2`；W5-VIS）」。
 
 /// 一个会失败 / 会成功的假 tmux（**绝对路径**交给 `set_sid`，不碰进程级 `PATH`）。
 ///

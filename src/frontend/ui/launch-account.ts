@@ -1,5 +1,5 @@
 /**
- * 〔FE1 · 第四波 4D〕**起会话挑哪个号** —— 起停域里「账号」那一格的唯一住址。
+ * **起会话挑哪个号** —— 起停域里「账号」那一格的唯一住址。
  *
  * - 远端（及「开新 Claude」）：[`withAccount`] —— 显式选号 / 跟随（这条会话的 pin → 当前号 → 基座）解析，注入，起成了记 pin；
  * - 本机：同步快照（[`localLaunchAccountSync`] 一族，量出来的：主路不许多等一拍）＋ 载荷上 `account` 那一格的形状（键名来自生成物，`K-R95`）；
@@ -7,7 +7,7 @@
  * - pin 存在历史注解里（`history-reads.ts` 的 `annotate` / `lastAccounts`）—— 账号面里**唯一**碰历史域的一处就在这里。
  *
  * 从 `accounts.ts` 拆出来（审计 B §6 必须拆 4：那个文件跨账号 · 起停 · 历史三个域）。
- * 守的要求：`设计/01 §5` D1「一个判定只有一个家」· `设计/01 §6.2`「「哪个账号」非有不可 —— 缺了 resume 会静默落到默认号，撞 `D4`」。
+ * 守的要求：「一个判定只有一个家」· 「「哪个账号」非有不可 —— 缺了 resume 会静默落到默认号，撞 `D4`」。
  */
 import type { LaunchModifiers } from "./launch-types";
 // 🔴 `K-R95`（定框 `K28`：前端不许自己发明对外行为）：本机拉起载荷里「哪个号」那一格的
@@ -17,7 +17,7 @@ import type { LaunchModifiers } from "./launch-types";
 import { LOCAL_LAUNCH_ACCOUNT_WIRE } from "./generated/launch-render-facts";
 import { isLocalOrigin, LOCAL_ORIGIN } from "./ipc/origin";
 import { appStore, putAccounts } from "./app-store";
-// 〔C4d〕上次账号那一份注解归本机常驻后端（`history-last-accounts` / `history-annotate`）。
+// 上次账号那一份注解归本机常驻后端（`history-last-accounts` / `history-annotate`）。
 import { annotate, lastAccounts } from "./history-reads";
 import { showActionFailureToast } from "./error-toast";
 import { copyText } from "./copy-table";
@@ -70,7 +70,7 @@ import { getModelForAccount } from "./account-prefs";
 let localLaunchPins: Record<string, string> | null = null;
 
 /**
- * 〔FIX · `设计/99 §2 ㊸` · `01 §1.5`「账号快照……收进一处」〕本机那份账号清单**不在这里另存**：读 `appStore.accounts` 里本机那一格
+ * 〔「账号快照……收进一处」〕本机那份账号清单**不在这里另存**：读 `appStore.accounts` 里本机那一格
  * （`account-reads.ts::fetchAccounts` 每取回一次就换进去）；这里只留 resume 跟随要的「上次用的号」（history-metadata 的 pin，不是账号快照）。
  * 两样都到了才算热 —— 只有清单没有 pin 时照旧不表态（否则 resume 会落到当前号上，`#75` 那一形）。
  */
@@ -109,7 +109,7 @@ export function localLaunchAccountNameSync(sid: string | null): string | null {
 }
 
 /**
- * 〔FE1 · D-h〕本机 resume 跟随那一态的**三种答案**（取名字那半的规则不变，只是把「说不出」拆开）：
+ * 本机 resume 跟随那一态的**三种答案**（取名字那半的规则不变，只是把「说不出」拆开）：
  *
  * | 答案 | 什么时候 | 调用方怎么办 |
  * |---|---|---|
@@ -118,7 +118,7 @@ export function localLaunchAccountNameSync(sid: string | null): string | null {
  * | `pinGone` | **有 pin，而那个号选不了** | **不起**，说清、给「用当前账号」的显式选择（`launch-account.ts::refuseUnavailableAccount`） |
  *
  * 🔴 `pinGone` 先前落进 `silent`：载荷不带账号 ⇒ 落 shell rc 里的默认号，**不说一个字**（E7 的本机那一形）。
- * `设计/01 §6.2`「「哪个账号」非有不可 —— 缺了 resume 会静默落到默认号，撞 `D4`」。
+ * 「「哪个账号」非有不可 —— 缺了 resume 会静默落到默认号，撞 `D4`」。
  */
 export type LocalFollowPlan =
   | { kind: "named"; name: string; configDir: string; wire: LocalLaunchAccountWire }
@@ -165,7 +165,7 @@ export function localFollowPlan(sid: string): LocalFollowPlan {
  *
  * 后端那条 ccm 路只会 `--account <名字>`（`shared/ccm:606`）。本函数先前只回
  * `{kind:"named", configDir}` ⇒ Rust 那侧的 `LaunchAccount::Named` 手上**没有名字**
- * ⇒ 〔MIG-2〕本机后端 `local.rs::render_ccm_with` 对它必然 §35 短路 ⇒ **本机具名账号一条都进不了
+ * ⇒ 本机后端 `local.rs::render_ccm_with` 对它必然 §35 短路 ⇒ **本机具名账号一条都进不了
  * ccm 容器**。而盘上四个本机拉起入口里有三个只说得出具名账号（`tabs.ts` 一处 +
  * `views/history.ts` 两处，人群由 `ipc/commands.vitest.ts` 那条「恰好 4 处」钉着）
  * ⇒ 那三条**在类型上**就到不了后端那条路，100% 落第二实现。
@@ -184,9 +184,9 @@ export type LocalLaunchAccountWire = Record<
   Record<typeof LOCAL_LAUNCH_ACCOUNT_WIRE.name, string>;
 
 /**
- * 〔GP1 · 第四波〕本机这次起会话**要用的账号配置目录**（[`localLaunchAccountSync`] 载荷里 `configDir` 那一格的同一个值，
+ * 本机这次起会话**要用的账号配置目录**（[`localLaunchAccountSync`] 载荷里 `configDir` 那一格的同一个值，
  * 同一个快照、同一条规则）。说不出 ⇒ `undefined`（基座）。resume 之前问记录还在不在，要查的就是这棵树
- * （`tab-session-actions.ts::recordStillThere`；`设计/30 §8` 第 4 条）。
+ * （`tab-session-actions.ts::recordStillThere`）。
  */
 export function localLaunchConfigDirSync(sid: string | null): string | undefined {
   const snap = localLaunchSnapshotNow();
@@ -229,7 +229,7 @@ export type LocalAccountWire =
       Record<typeof LOCAL_LAUNCH_ACCOUNT_WIRE.configDir, string>);
 
 /**
- * 〔FE1〕**用户显式选的那一格** → 本机载荷上的 `account`（分叉小窗 · 换号重启菜单）。
+ * **用户显式选的那一格** → 本机载荷上的 `account`（分叉小窗 · 换号重启菜单）。
  *
  * - `configDir === null` = 账号 0 ⇒ `base`（后端产出 `unset CLAUDE_CONFIG_DIR`）—— **不是省略**：
  *   省略 = 没表态 = 一个字都不注入，会被 shell rc 里的默认号顶掉（Phase G 抓出的静默串号）。
@@ -307,7 +307,7 @@ export function __setLocalLaunchSnapshotForTests(
 /**
  * A4：记录「这个会话上次用账号 X 起」到 history-metadata（源②，DESIGN §3）。history / tabs
  * 两处「带账号 resume」共用。失败不挡 resume 本身（记忆是非关键路径），但**要说一句**
- * 〔W5-UI · E §3.3〕：原先只打 console，下次 resume 的账号跟随悄悄失准，用户无从知道为什么。
+ * 〔E §3.3〕：原先只打 console，下次 resume 的账号跟随悄悄失准，用户无从知道为什么。
  */
 export async function recordLastAccount(sessionId: string, account: string): Promise<void> {
   try {
@@ -333,12 +333,12 @@ export async function recordLastAccount(sessionId: string, account: string): Pro
  *
  *   - `accountName == null` **且无 `opts.follow`** → 默认起：`run({ 三字段皆 undefined })`（不注入、不记账、不 fetch，A4 逐字节旧行为）。
  *   - `accountName == null` **且有 `opts.follow`**（account-ux U2 opt-in 跟随）→ `fetchAccounts` 后：
- *       · 会话**有 pin、而那个号选不了**（或账号清单读不到）⇒ 〔FE1 · D-h〕**不起**，[`refuseUnavailableAccount`]
+ *       · 会话**有 pin、而那个号选不了**（或账号清单读不到）⇒ **不起**，[`refuseUnavailableAccount`]
  *         说清、给「用当前账号」的显式选择（先前这里静默下沉到当前号 / 基座 —— E7）；
  *       · 否则经 `resolveFollowAccount`（lastAccount → 当前账号 → null）解析：命中则注入其 configDir +（给了
  *         sessionId 时）记 lastAccount（会话账号 sticky 自增强）；解析不到（没 pin、也没可选的当前号）→ `run({ 三字段皆 undefined })` 落基座。
  *   - `accountName` 非空 → `fetchAccounts` 解析 configDir：
- *       · 解析不到（不可选 / 账号库不可用）⇒ 〔FE1 · D-h〕**不起**，同上说清 ＋ 显式选择（先前：调用方 toast 后**退化为默认起**）；
+ *       · 解析不到（不可选 / 账号库不可用）⇒ **不起**，同上说清 ＋ 显式选择（先前：调用方 toast 后**退化为默认起**）；
  *       · 解析到 → `run({ configDir, accountName, modelOverride })`；再在**给了 sessionId 时**记 lastAccount（源②，新会话无 sid 不记）。
  * `run` 内部的拉起失败由 run 自己处理（runRemote* 有复制命令回退）；本编排只统一 resolve/record 口径。
  */
@@ -347,13 +347,13 @@ export async function withAccount(
   accountName: string | null,
   /** R03：收 `LaunchModifiers` 而非三个位置参数。这里曾是**整条位置参数长列车的车头**——
    *  F05 加 `accountName`、F07 再加 `modelOverride`，每次都要同时改这个签名与全部调用点，
-   *  于是 MASTERPLAN §0.1 成功标准②（加维度零改调用点）永远差最后一层。收成 bag 后，
+   *  于是成功标准②（加维度零改调用点）永远差最后一层。收成 bag 后，
    *  加第 4 个维度只需本函数内部往 `mods` 里多塞一个字段，**6 个**调用点一个字符都不用改
    *  （审计核实是 6 不是 7：`remote-section.ts` 1 + `views/history.ts` 2 + `tabs.ts` 3）。
    *  注意这只对"值能由本函数自己推出"的维度成立；若是用户在 UI 现场勾选的维度
    *  （如 `--dangerously-skip-permissions`），本函数推不出来，届时需给 `opts` 加
    *  `extraModifiers?: LaunchModifiers` 让调用方注入并在内部 merge，那时 lambda 才真的零改。 */
-  /** 回 `false` = 这一趟没起（被记录探针拦下，`设计/30 §8` 第 4 条）⇒ 不记「上次用的账号」。 */
+  /** 回 `false` = 这一趟没起（被记录探针拦下）⇒ 不记「上次用的账号」。 */
   run: (mods: LaunchModifiers) => Promise<void | false>,
   opts: {
     sessionId?: string;
@@ -379,7 +379,7 @@ export async function withAccount(
         : { kind: "base" };
   // 🔴 D-h：要的那个号选不了 ⇒ **不起**，说清是哪个号、给一个显式选择（点了就以显式选号再走一次，A4 语义记 pin）。
   //   先前：显式点号 ⇒ 提示后按基座起（提示说的「改用上次的账号 / 当前账号」与做的也不一致）；
-  //   跟随 ⇒ 下沉、不说（E7）。两形都是「不静默换号」要拦的（`设计/01 §6.2` ＋ D4）。
+  //   跟随 ⇒ 下沉、不说（E7）。两形都是「不静默换号」要拦的（＋ D4）。
   if (resolution.kind === "unavailable") {
     refuseUnavailableAccount({
       machine: origin,
@@ -421,11 +421,11 @@ export async function withAccount(
 }
 
 /**
- * 〔FE1 · D-h〕**账号选不了 ⇒ 不起、说清、给「用当前账号」的显式选择** —— 本机远端同一句话、同一个出口。
+ * **账号选不了 ⇒ 不起、说清、给「用当前账号」的显式选择** —— 本机远端同一句话、同一个出口。
  *
- * 守的要求：主会话 4D 裁 D-h（「选不了原账号时 resume ⇒ 照 `01 §6.2` / D4：不静默换号，拒并说清、给「用当前账号」的显式选择」）；
- * `设计/01 §6.2`「「哪个账号」非有不可 —— 缺了 resume 会静默落到默认号，撞 `D4`」；
- * `设计/80 §9.6`「**显式反馈优于静默隐藏**」。
+ * 守的要求：主会话 4D 裁 D-h（「选不了原账号时 resume ⇒ 照 / D4：不静默换号，拒并说清、给「用当前账号」的显式选择」）；
+ * 「「哪个账号」非有不可 —— 缺了 resume 会静默落到默认号，撞 `D4`」；
+ * 「**显式反馈优于静默隐藏**」。
  *
  * @param listKnown 账号清单读到了没有；没读到 ⇒ 说「读不到清单」，选择只给「不指定账号」（说不清当前号是谁）。
  * @param alternative `string` = 当前账号的名字；`null` = 「不指定账号」。

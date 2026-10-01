@@ -1,4 +1,4 @@
-//! 〔MIG-1 收尾 · 主会话裁「测试连接的进度不许倒退」〕**测试连接进度的消费侧（monitor 这一半）**：本机常驻后端发来的
+//! 〔「测试连接的进度不许倒退」〕**测试连接进度的消费侧（monitor 这一半）**：本机常驻后端发来的
 //! `probe` 帧（`dial/probe.rs` 边拨边推的一格），原样交给会话流的句柄（`event_replay::EventReplay::on_probe`），
 //! 界面经通道 `subscribe(<local>, "probe-progress/<票>")` 收（`src/frontend/ui/remote-probe.ts`）。
 //!

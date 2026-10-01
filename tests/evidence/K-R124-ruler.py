@@ -34,7 +34,7 @@
 
 `K-G4-platform-ledger.py`（`platform`，第 24 格）判的是「**门禁盖到了哪些平台**」——
 它读 `gate.sh`。本条判的是「**产线盖到了哪些平台**」—— 它读 `release.yml`。
-两件事分开的理由是硬的（`设计/96 §7.1.2` 现打）：三个落点全部 gitignore ⇒ **字节不进仓**，
+两件事分开的理由是硬的（现打）：三个落点全部 gitignore ⇒ **字节不进仓**，
 三条产线**只由 `release.yml` 一个文件驱动** ⇒ 「这张表的门禁只能建在 `release.yml` 上，
 不能建在 `cargo` 上」。⇒ 门禁编得过 ≠ 发版那趟产得出字节，**两格都要有**。
 ⚠ **条 63 的承诺面本文件一个字不抄**：`PROMISED` 的唯一住址是那份账本，这里 import 它。
@@ -147,7 +147,7 @@ COMPILE_STEPS = [
     ("build-backends", "Cross-compile backend for both musl targets",
      "两个 musl target 的静态字节（x86_64 ＋ aarch64）",
      "远端 Linux（musl 两个 arch）· 本机 Linux（同一份字节自释放，不另编）"),
-    # 〔RM1c · 第四波〕只装代码全景引擎的独立小程序（V108 选 B）：同一格平台、同两个 target，
+    # 只装代码全景引擎的独立小程序（选 B）：同一格平台、同两个 target，
     # 另一个 crate（`src/panorama-engine`）。它是那一格的**第二件字节**，不是第二个平台。
     ("build-backends", "Cross-compile panorama for both musl targets",
      "全景小程序两个 musl target 的静态字节（x86_64 ＋ aarch64）",
@@ -155,7 +155,7 @@ COMPILE_STEPS = [
     ("build-windows", "Build local backend (native)",
      "runner host triple 的原生 `.exe`",
      "本机 Windows x86_64"),
-    # 〔RM1f〕本机原生的全景小程序（monitor 摘内嵌引擎之后本机全景经本机后端起它）：同一格平台的**第二件字节**。
+    # 本机原生的全景小程序（monitor 摘内嵌引擎之后本机全景经本机后端起它）：同一格平台的**第二件字节**。
     ("build-windows", "Build local panorama (native)",
      "runner host triple 的原生 `cc-monitor-panorama.exe`",
      "本机 Windows x86_64（代码全景；Linux 本机用 musl 那两份，不另编）"),
@@ -168,7 +168,7 @@ COMPILE_STEPS = [
      "本机 Linux x86_64（文件窗口；内嵌进裸 `cc-monitor`）"),
     ("build-linux", "Build local backend (native)",
      "runner host triple 的原生 glibc 字节",
-     "🟡 **本机 Linux 的第二份来源** —— `设计/96 §7.3` 逐字「哪一份该留、哪一份该删，"
+     "🟡 **本机 Linux 的第二份来源** —— 「哪一份该留、哪一份该删，"
      "我判不了 —— 要先有条 62 那次迁移（步 `19`）把落点收成一个」。"
      "⇒ 本条**不是**在认可它，是把「同一格今天有两份来源」这件事钉成一个**数**："
      "变成三份会红，被人在裁之前偷偷删掉一份也会红"),
@@ -185,7 +185,7 @@ BYTE_LINES = [
             ("build-windows", "Build local backend (native)"),
             ("build-windows", "Stage local backend for externalBin"),
             ("build-windows", "Stage native backend for self-extract"),
-            # 〔RM1f〕同一格的第二件字节：本机原生的全景小程序。
+            # 同一格的第二件字节：本机原生的全景小程序。
             ("build-windows", "Build local panorama (native)"),
             ("build-windows", "Stage native panorama for self-extract"),
             # 同一格的第三件字节：文件窗口程序。
@@ -209,7 +209,7 @@ BYTE_LINES = [
                 "`build.rs::embed_backends` 的 `include_bytes!` ⇒ 进 exe 本体",
     },
     {
-        # 〔V132 · TL2〕本机 Linux 只承诺 x86_64（这一格的 runner 就是 x86_64 的 `ubuntu-latest`）；
+        # 本机 Linux 只承诺 x86_64（这一格的 runner 就是 x86_64 的 `ubuntu-latest`）；
         #   本机 (Linux, aarch64) 不承诺 —— 名字逐字与账本 `PROMISED` 同改（⑨a 两向靠它）。
         "plat": "本机 Linux x86_64",
         "runner": ("build-linux", "ubuntu-latest"),
@@ -219,7 +219,7 @@ BYTE_LINES = [
             ("build-linux", "Build local filewin (native)"),
             ("build-linux", "Stage native filewin for self-extract"),
         ],
-        "into": "后端与全景小程序**不另编一份**（`设计/96 §7.1.5` 待点① 逐字：`local_daemon.rs::start_local_backend` 里"
+        "into": "后端与全景小程序**不另编一份**（待点① 逐字：`local_daemon.rs::start_local_backend` 里"
                 "那道 `cfg!(target_os = \"linux\")` 闸让本机 Linux 直接用远端那两份 **musl 静态**字节自释放）"
                 "⇒ 这两件的产线增量是 **0**，它要的是**门禁多一格 ＋ 一次真机验**。"
                 "文件窗口程序另编一份，经 `build.rs::embed_native_filewin` 进裸 `cc-monitor` 本体。"
@@ -254,7 +254,7 @@ IDENTITY_READS = {
 # —— 判它就得同时读那两份文本，而「同时读那两份」正是本格的定义。
 # ⇒ 本组判据与 ⑨⑩⑪⑫ 共用同一个被测面，拆出去就得把 `release.yml` 的解析再抄一份。
 #
-# 🔴 **它治的病**（`设计/99 §4` 步 `19c` 逐字）：协议面一变就要 bump `BUILD_ID`，
+# 🔴 **它治的病**（步 `19c` 逐字）：协议面一变就要 bump `BUILD_ID`，
 # 而 bump 那一刻 `embedded-backends/` 里那两份 musl 字节立刻变旧 ⇒ `build.rs` 的
 # **半 bump 守卫**当场 panic，**整棵树编不过**（2026-09-18 实地踩过一次，四路 agent 同时编不过）。
 # 今天盘上有一张 mtime 安全网，但那**只是安全网不是机制** —— 机制那一半是
@@ -277,7 +277,7 @@ BRIDGE_GITIGNORE = "src/frontend/shell/.gitignore"
 REEMBED_CMD = "bash tests/scripts/re-embed.sh"
 #: ⑬b 的对照物：`release.yml` 里产 musl 字节那一步（与 `COMPILE_STEPS` 第一条同源）。
 MUSL_STEP = ("build-backends", "Cross-compile backend for both musl targets")
-#: ⑬b 的第三个对照物〔RM1c · 第四波〕：全景小程序那一步。本机 re-embed 用**同一对**
+#: ⑬b 的第三个对照物：全景小程序那一步。本机 re-embed 用**同一对**
 #: `REEMBED_TARGETS` / `REEMBED_BUILD_FLAGS` 编它 ⇒ 它与发版那一步同样要两向对拍。
 PANORAMA_STEP = ("build-backends", "Cross-compile panorama for both musl targets")
 #: ⑬b 的第二个对照物：两个 job 里那条原生编译（`--native` 那一趟要与它同配方）。
@@ -290,7 +290,7 @@ FILEWIN_WORKDIR = "src/frontend/shell"
 LANDING_CONSTS = ["EMBEDDED_BACKENDS_DIR", "NATIVE_BACKEND_DIR"]
 #: ⑬d 第三个落点**不在 `build.rs` 里**：它是 Tauri `externalBin` 的暂存区，由
 #: `release.yml` 的 `Stage local backend for externalBin` 铺，没有任何 Rust 代码提它的名字。
-#: 🔴 它照样要被挡住 —— `设计/96 §7.1.2` 那条硬事实说的是「**三个**落点全部 gitignore」。
+#: 🔴 它照样要被挡住 —— 那条硬事实说的是「**三个**落点全部 gitignore」。
 EXTERNALBIN_LANDING = "binaries"
 #: ⑬d 盘侧：`.gitignore` 里每一行落点上面那句机检锚，逐字。
 LANDING_MARK = "# ⇐ 内嵌落点"
@@ -305,12 +305,12 @@ BANNED_RECIPE = [
 ]
 
 #: ⑪ `build.rs` 那一侧：这两个函数**必须**以 panic 结束「抠不到」那一支，
-#: 且函数体里**不许**再出现兜底值（`设计/96 §7.2.5` 逐字：「`"unknown"` 这个值必须从类型上消失」）。
+#: 且函数体里**不许**再出现兜底值（「`"unknown"` 这个值必须从类型上消失」）。
 #: 每条：(函数名, 禁词逐条, 为什么)
 NO_FALLBACK_FNS = [
     ("backend_source_build_id", ['"unknown"', "unwrap_or_default()"],
      "抠不到源码 `const BUILD_ID` 时给一个会参与比较的字符串 ⇒ 每台远端判 StaleBuild ⇒ "
-     "无限重装（真事故，`设计/16 §5.4a`）"),
+     "无限重装（真事故）"),
     ("backend_stamp_marks", ["unwrap_or_default()"],
      "抠不到身份戳界标时给一对空串 ⇒ 运行期拿空界标去扫，对**任何**字节都答不出身份 ⇒ "
      "与 `\"unknown\"` 同族的静默恒假"),
@@ -413,7 +413,7 @@ FOREIGN_SIDECARS = {
 CARGO_CONFIGS = [
     ".cargo/config.toml",
     "src/backend/.cargo/config.toml",
-    # 〔RM1c · 第四波〕全景小程序那棵树（`release.yml` 从 `.build/panorama/…` 取它的 musl 字节）。
+    # 全景小程序那棵树（`release.yml` 从 `.build/panorama/…` 取它的 musl 字节）。
     "src/panorama-engine/.cargo/config.toml",
 ]
 #: ⑮ 的口径：路径里有一段**恰好**是这些之一 ⇒ 它是一条 cargo 产物路径。
@@ -1029,7 +1029,7 @@ def run_checks(emit):
             check(not hit, "⑪`%s` 没有兜底值" % fname,
                   "函数体里出现 %r —— %s" % (hit, why))
             check("panic!" in body, "⑪`%s` 抠不到就当场失败" % fname,
-                  "函数体里%s `panic!`（`设计/96 §7.2.5`：让「抠不到」在**所有**构建形态下都响，"
+                  "函数体里%s `panic!`（让「抠不到」在**所有**构建形态下都响，"
                   "而不是只在恰好铺了字节的那种）" % ("有" if "panic!" in body else "**没有**"))
         emitter = rust_fn_body(brs, "emit_backend_build_id")
         wired = bool(emitter) and "backend_source_build_id()" in emitter
@@ -1102,7 +1102,7 @@ def run_checks(emit):
               "脚本 %r · 发版那一步现打 %r —— 少一个 `--locked` 就是"
               "「本机编的那份与发版编的那份依赖树可能不同」（理由住 `release.yml` 那一步的头注）"
               % (want, yml_flags))
-        # 〔RM1c〕全景小程序那一步：target 两向集合相等 ＋ 旗标逐字相同（同上两格的口径）。
+        # 全景小程序那一步：target 两向集合相等 ＋ 旗标逐字相同（同上两格的口径）。
         pano_run = next((str(st.get("run") or "") for jn, _, st in steps
                          if (jn, str(st.get("name") or "")) == PANORAMA_STEP), "")
         pano_targets = set(re.findall(r"--target\s+(\S+)", pano_run))
@@ -1137,7 +1137,7 @@ def run_checks(emit):
               "差一格就是「本机铺的那份与发版内嵌的那份不是同一条路编的」，或某个 job 的单文件 monitor 没带它"
               % (fw, fw_want, FILEWIN_WORKDIR, fw_sh, "在" if fw_sh in reembed else "**不在**"))
 
-    # ── ⑬i〔RM1c · 第四波〕全景小程序的字节**一路走到落点**：暂存 → artifact → 两个 job 的铺放 ──────
+    # ── ⑬i全景小程序的字节**一路走到落点**：暂存 → artifact → 两个 job 的铺放 ──────
     #   ⑨ 只看「编它的那一步在不在」；编出来之后每一跳都可能把它静默丢掉（没进 artifact、
     #   Windows / Linux 那一步没铺）⇒ `embed_panoramas` 缺席时**不 panic、只 warning**，
     #   于是整条远端全景在安装包里静默关掉。本条逐跳钉「那一跳的文本里点名了它」。
@@ -1179,7 +1179,7 @@ def run_checks(emit):
           "脚本派生 %s · `build.rs` 现打 %s —— 铺了没人吃（多出来的那份白编）"
           "或吃了没人铺（那一格的自动部署静默关掉）"
           % (sorted(sh_arches), sorted(rs_arches) if m else "<`for arch in [...]` 抠不到>"))
-    # 〔RM1c〕全景小程序：re-embed 铺的 arch ↔ `embed_panoramas` 吃的 arch，两向集合相等。
+    # 全景小程序：re-embed 铺的 arch ↔ `embed_panoramas` 吃的 arch，两向集合相等。
     ep = rust_fn_body(brs, "embed_panoramas") or ""
     mp = re.search(r"for arch in \[([^\]]*)\]", ep)
     rs_pano = set(re.findall(r'"([^"]+)"', mp.group(1))) if mp else set()
@@ -1198,7 +1198,7 @@ def run_checks(emit):
     #   🔴 **这一条今天有现物**：步 8 全仓改名（`daemon` → `backend`）之后，
     #     `.gitignore` 还写着 `/embedded-daemons/` 与 `/native-daemon/`
     #     ⇒ 09-19 现打 `git check-ignore` 两条都不命中，两个落点从那天起就没被挡住。
-    #     而 `设计/96 §7.1.2` 与 `release.yml` 文件头都还把「三个落点全部 gitignore」
+    #     而与 `release.yml` 文件头都还把「三个落点全部 gitignore」
     #     当硬事实在用 —— **那句话在本拍之前是假的**，而它正是「门禁只能建在
     #     `release.yml` 上」这条推理的全部前提。
     registered = {rust_str_const(brs, c) or "<`const %s` 抠不到>" % c for c in LANDING_CONSTS}
@@ -1263,7 +1263,7 @@ def run_checks(emit):
     except subprocess.TimeoutExpired:
         check(False, "⑬g re-embed `--check` 跑得起来且有数", "跑超时 120s —— 判不了，按红记")
 
-    # ── ⑬h〔B1 · 09-24〕开发构建的判词 `--check-dev` **有牙**：真跑，四个夹具 ──────────
+    # ── ⑬h开发构建的判词 `--check-dev` **有牙**：真跑，四个夹具 ──────────
     #   它治的：「开发构建起不起得来本机后端」在这之前**只有一句 cargo 警告**，而那句还写着
     #   「开发构建里这是正常的」（`D11` 反面）。B1 把它收成 `re-embed.sh --check-dev`：
     #   本机那一份缺席即红、铺了就**真起一趟**、第一行必须是自报源码 `BUILD_ID` 的 hello。

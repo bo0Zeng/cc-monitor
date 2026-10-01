@@ -1,4 +1,4 @@
-# 设计/80 §8.2 本地半的写入方 —— 令牌握手前奏（〔P5〕由本机后端渲：`powershell.rs::rbind_bind_prelude`，接线在 `dial/terminal.rs::with_bind_prelude`）。
+# 本地半的写入方 —— 令牌握手前奏（由本机后端渲：`powershell.rs::rbind_bind_prelude`，接线在 `dial/terminal.rs::with_bind_prelude`）。
 #
 # 开终端时（`terminal-local` · `terminal-ssh` 带 `rbindToken`）把这一段接在要跑的命令**前面**，同一个 `-EncodedCommand` 里。
 # 它做的事与 `cc.ps1.tpl` 的 `__ccm_bind` 逐步相同（Era 2 那条握手，monitor `bind.rs` 头注的信息流 1–3），只差一件：

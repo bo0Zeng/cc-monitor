@@ -3,7 +3,7 @@
 #
 # 与两条 Rust 轨道的分工：
 #   - 后端 `control/gate_rules.rs` 的单测断言「判定函数怎么答」；
-#   - 后端 `control/gate.rs` 的测试断言「对这张表答得一样」（〔THIN〕monitor 那一轨随 monitor 侧的门删了）；
+#   - 后端 `control/gate.rs` 的测试断言「对这张表答得一样」（monitor 那一轨随 monitor 侧的门删了）；
 #   - **本脚本断言「真后端收到 `launch{send-into}` 之后，在真 tmux 上到底干了什么」。**
 # 门禁只锁判定不锁行为是 R1 的教训（三门禁全绿仍放行过一个让 send-keys 完全失效的改动）。
 #
@@ -58,7 +58,7 @@ pass=0; fail=0; skip=0; waived=0
 #   前两轨照常验它 —— 那两轨不依赖 tmux 怎么给会话命名。本轨欠的只是「真会话」这一层。
 # ⚠ 只豁免**登记在册**的：没登记的 skip 仍然让整套 RC=1（原纪律一个字没松）。
 #
-# 🔴🔴 **在这里加/删一条 = 同一拍要改 CI 的地板**〔`CI-J3` 09-09〕。
+# 🔴🔴 **在这里加/删一条 = 同一拍要改 CI 的地板**。
 #   豁免走的是下面 `skipped()` 里 `waived=$((waived+1))` 那一支 —— **既不进 `pass` 也不进 `skip`**
 #   ⇒ 每登记一条，本套件的**可达 PASS 上限就少一格**。08-13 加第一条（`meta_colon`）时
 #   没人动 CI 那个数，于是那条地板从此**够不到**：它不会以「地板红」的形式被看见，
@@ -69,7 +69,7 @@ pass=0; fail=0; skip=0; waived=0
 #   ⇒ 你在这里加一条，那条判据会当场告诉你地板该改成几；**别绕过它去改数**。
 #
 # 〔墓碑〕第二条登记 `meta_dollar`（`CI-J3` 09-09）〔散文墓碑〕：它是「环境相关」的豁免（只在 tmux ≤3.4 上成立），
-#   在更新的 tmux 上静悄悄用不到、PASS 数随机器变。〔E2 尾 09-27〕换成下面的**版本门**（`min_tmux_for`）。
+#   在更新的 tmux 上静悄悄用不到、PASS 数随机器变。换成下面的**版本门**（`min_tmux_for`）。
 waiver_reason() {
   case "$1" in
     meta_colon) echo "tmux 会把名字里的 ':' 换成 '_'（本机 3.6 实测 cc-a:b → cc-a_b）⇒ 这一轨造不出真会话；判定由 monitor/backend 两条纯函数轨覆盖（同一张 TSV）" ;;
@@ -143,7 +143,7 @@ while IFS=$'\t' read -r id name sid expect; do
   n=$((n+1))
 
   # `:` 是 tmux 目标语法的分隔符：`parse_request` 在门**之前**就 invalid_args（`kill::admit_existing_name`）。
-  # 〔E2 尾 09-27〕`=` **不再**在这里：DUP3 §5 ⑦（`adf3fe38`）把送键的 Gate 1 并进已有会话名那一份，
+  # `=` **不再**在这里：DUP3 §5 ⑦（`adf3fe38`）把送键的 Gate 1 并进已有会话名那一份，
   #   `=` 按设计放行（`=a=b:` 精确命中名叫 `a=b` 的会话）⇒ `=cc-a` 走到 Gate 2、按「不是本工具的会话」拒成
   #   `wrong_owner`。这里原来照旧期望 `invalid_args` ⇒ 本格从那天起本机恒红，是判据过时、不是行为回归。
   # ⚠ 这一档**不 skip、照样验** —— 「更早的一道门也把它挡住了」是要真的量出来的，

@@ -1,5 +1,5 @@
-// 〔MIG-2 · `99 §2.1 ⑬`〕本机起会话那一族判据（旧路形状 · 账号三态 · 注入闸 · `ccm` 容器路 · 中转前缀 · 身份 token · 三条缝）
-//   随计划与渲染搬进本机后端：`tests/backend/control/launch_render/local_tests.rs`。这里只剩「只一处」那几条（〔MOD〕读正文那一族随判定进了后端）。
+// 本机起会话那一族判据（旧路形状 · 账号三态 · 注入闸 · `ccm` 容器路 · 中转前缀 · 身份 token · 三条缝）
+//   随计划与渲染搬进本机后端：`tests/backend/control/launch_render/local_tests.rs`。这里只剩「只一处」那几条（读正文那一族随判定进了后端）。
 use super::*;
 
 /// 每个测试独占的临时目录（仓库约定不引 `tempfile`，用 pid + 计数器保唯一）。
@@ -28,14 +28,14 @@ impl Drop for TmpDir {
     }
 }
 
-// 〔RW1 · 第四波 · 2026-09-24〕这里原来是本机分叉读 jsonl 那一格（`read_jsonl_values`〔散文墓碑〕：剥 BOM · 静默丢坏行）
+// 这里原来是本机分叉读 jsonl 那一格（`read_jsonl_values`〔散文墓碑〕：剥 BOM · 静默丢坏行）
 // 的判据。本机分叉交给后端之后那个函数零调用方、删了；后端那份读法的判据住 `fork_write_tests.rs`。
 
 /// ★★〔`K-R97` 09-12 后继形态〕**「从 jsonl 头部抠 cwd」这件事，全仓只剩一处了。**
 ///
 /// # 原形是什么、为什么换
 ///
-/// 原形叫「两个提取器仍旧照登记的样子不一致」〔audit-0805 08-06〕：同一个问题两处实现 ——
+/// 原形叫「两个提取器仍旧照登记的样子不一致」：同一个问题两处实现 ——
 /// monitor 窗口 **30** 行且只认 `JsonlRecord::User`，后端窗口 **40** 行且认任何带非空 cwd
 /// 的记录。后果具体：首个带 cwd 的记录落在第 31–40 行时，**两边给两个答案**。
 /// 那一版**只钉不改**（走档①：登记 + 钉住），因为「取 30 还是 40」是会改行为的设计决定。
@@ -86,7 +86,7 @@ fn extracting_cwd_from_a_jsonl_head_now_lives_in_exactly_one_place() {
     );
 }
 
-// 〔C4d · 第四波 4B〕历史清单与注解搬进本机常驻后端（主会话 09-25 裁：join 只一个家、注解读写者换成本机后端）——
+// 历史清单与注解搬进本机常驻后端（主会话 09-25 裁：join 只一个家、注解读写者换成本机后端）——
 //   这里原先驱动 monitor 那一份实现的几组判据随被测函数一起退役，它们钉的性质各自在新家有判据（逐条对应）：
 //   - `K-R97` 本机项目清单来自后端那一行 · 行里的「不知道」不被压平 · 本机判活答真值 · 一次列举只问一次
 //     （`the_local_project_list_is_whatever_the_backend_said` 那一组〔散文墓碑〕）⇒ 后端 `tests/backend/history/history_join_tests.rs`
@@ -101,16 +101,16 @@ fn extracting_cwd_from_a_jsonl_head_now_lives_in_exactly_one_place() {
 //     ＋ `history_join_tests.rs::synthesized_history_groups_by_cwd_under_the_kind_prefix`；
 //   - 上次账号的 serde 与 patch 三态 · 只含真有的那几条（`last_account_serde_and_patch_semantics` 那两条〔散文墓碑〕）⇒ 后端
 //     `tests/backend/history/history_annotations_tests.rs`（`patch_semantics_match_what_the_monitor_did` · `last_accounts_are_only_the_entries_that_have_one`）；
-//   - 摘录按字符截断（`truncate_chars_unicode` 那三条〔散文墓碑〕）⇒ 通用搜索口径的 `truncate_excerpt`（后端会话行改用它；〔P1〕今天住 `observe/search_rules.rs`）；
+//   - 摘录按字符截断（`truncate_chars_unicode` 那三条〔散文墓碑〕）⇒ 通用搜索口径的 `truncate_excerpt`（后端会话行改用它；今天住 `observe/search_rules.rs`）；
 //   - 「迁移前」旧读者读注解夹具 == 金样（`c4d_the_old_reader_reads_the_annotation_fixture_as_the_golden`〔散文墓碑〕，子步 4 那一拍对过）
 //     ⇒ 金样 `tests/__fixtures__/history-metadata.readout.golden.json` 留作「迁移前」的冻结读数，后端新读者照旧对它。
 
-// 〔MIG-3b〕删会话那道 stem 一致性闸的两条判据（只交 sid · 对不上一个请求都不发）与
+// 删会话那道 stem 一致性闸的两条判据（只交 sid · 对不上一个请求都不发）与
 //   分叉结果形状那一条（驼峰键）随 monitor 那两条命令删了：界面经通道直说那台后端（`src/frontend/ui/session-writes.ts`），
 //   分叉成品由金样 `tests/__fixtures__/session-fork.golden.json` 钉（`tests/frontend/ui/session-writes.vitest.ts` 读同一份）；
 //   stem 闸是恒真的（会话行的 `sessionId` 由后端按文件名 stem 出），后端删之前自己判「落点恰是 `<sid>.jsonl`」。
 
-// 〔RW1 · 第四波 · 2026-09-24〕这里原来是本机分叉那份实现的四条 IO 判据（`O_EXCL` 不覆盖 · 软链逃逸按 sid 找不到 ·
+// 这里原来是本机分叉那份实现的四条 IO 判据（`O_EXCL` 不覆盖 · 软链逃逸按 sid 找不到 ·
 // 源零改动 ＋ 新文件原生格式 · 以及它们共用的最小会话夹具）。本机分叉改成 exec 本机后端 `--fork-session` 之后，
 // 同一组性质由后端那份实现（`src/backend/control/fork_write.rs`）的同形判据守着（`fork_write_tests.rs`），
 // 本侧只剩「结果怎么解释」（`remote_branch_tests.rs`：本机那一趟的三态折成与远端同形的结果）。
@@ -147,7 +147,7 @@ fn r88_backend_production(rel: &str) -> String {
 /// 判据不可能替代它 —— 那一刀要真的改一次再看两边红不红。
 #[test]
 fn finding_a_session_file_by_sid_now_lives_in_exactly_one_place() {
-    // 〔THIN〕共享 crate `branch-core` 收进后端适配层 `agents/claudecode/branch.rs`；通用层经注册表那一格（`agents::find_session_file`）够它。
+    // 共享 crate `branch-core` 收进后端适配层 `agents/claudecode/branch.rs`；通用层经注册表那一格（`agents::find_session_file`）够它。
     const CALL: &str = "agents::find_session_file(";
 
     // ① 唯一那份：声明只有一处，住在适配层（运行期读：它在后端那一半，不长编译期的跨半边边）。
@@ -159,13 +159,13 @@ fn finding_a_session_file_by_sid_now_lives_in_exactly_one_place() {
              0 ⇒ 它被搬走/删了，下面两条会零命中地绿；2 ⇒ 唯一那份自己裂了。"
     );
 
-    // ② 〔RW1 · 第四波 09-24〕**monitor 那一侧零处、后端那一侧恰好一处**。
+    // ② **monitor 那一侧零处、后端那一侧恰好一处**。
     //    从前两侧各有一处（本机分叉在 monitor 进程里找、写）；本机分叉改成 exec 本机后端的
     //    `--fork-session` 之后，「按 sid 找那份」只剩后端那一处在问 —— monitor 这一侧再出现一处，
     //    就是有人又在本进程里做分叉了（那正是用户裁掉的那一形：monitor 不直接写用户文件）。
     let mine =
         guard_core::production_code(include_str!("../../../src/frontend/shell/src/history.rs"));
-    // 〔MIG-3b〕monitor 分叉那一侧的模块删了（界面经通道直说 `session-fork`），人群只剩 `history.rs` 与后端。
+    // monitor 分叉那一侧的模块删了（界面经通道直说 `session-fork`），人群只剩 `history.rs` 与后端。
     let theirs = r88_backend_production("src/backend/control/fork_write.rs");
     for (who, src, want) in [
         ("monitor `history.rs`", &mine, 0usize),
@@ -179,7 +179,7 @@ fn finding_a_session_file_by_sid_now_lives_in_exactly_one_place() {
                  后端那一侧 ≠ 1 ⇒ 不走共享那份了，或一条路上问了两遍。"
         );
     }
-    // 〔MIG-3b〕「只有一处发送点」那一格挪到界面：前端 `chan.call` 的 `session-fork` 只在 `src/frontend/ui/session-writes.ts`
+    // 「只有一处发送点」那一格挪到界面：前端 `chan.call` 的 `session-fork` 只在 `src/frontend/ui/session-writes.ts`
     //   （`frame_query_tests::the_channeled_ops_are_sent_only_through_the_channel` 数 monitor 零字面量）。
 
     // ③ 两条分叉路径上**一处目录枚举都没有** —— 「自己又找了一遍」的形状。
@@ -195,7 +195,7 @@ fn finding_a_session_file_by_sid_now_lives_in_exactly_one_place() {
             .map(|l| l.trim().to_string())
             .collect()
     };
-    // 〔MIG-3b〕monitor 那一侧没有分叉那条路了（界面直说后端），人群只剩后端那一份。
+    // monitor 那一侧没有分叉那条路了（界面直说后端），人群只剩后端那一份。
     // 反向自检：尺子够得着 —— 把针塞进一份副本，量具必须数得出来。
     let poisoned = format!("{theirs}\n  let _ = std::fs::read{}dir(root);\n", "_");
     assert_eq!(
@@ -215,18 +215,18 @@ fn finding_a_session_file_by_sid_now_lives_in_exactly_one_place() {
     }
 }
 
-// 〔RW1 · 第四波 · 2026-09-24〕这里原来是 `KR88D2` 的 monitor 那一侧（查不到的 sid ⇒ 报错，不静默挑第一个）。
+// 这里原来是 `KR88D2` 的 monitor 那一侧（查不到的 sid ⇒ 报错，不静默挑第一个）。
 // monitor 进程里不再有分叉的实现，那条性质只住后端（`fork_write·rs::an_unknown_session_id_is_refused_not_silently_substituted`）。
 
-// 〔MIG-3b〕`KR88D2`「两侧入参都收 sid、都不收路径」那一条随
+// `KR88D2`「两侧入参都收 sid、都不收路径」那一条随
 //   monitor 那两条分叉命令一起退役：今天只有一处发出分叉（界面 `session-writes.ts::forkSession`，请求体恰好 `{sid, uuid}`，
 //   由金样 `session-fork.golden.json` 的 `request` 钉），后端入口只认这两格。
 
 // P3 归并：iso_parse_* 测试已搬到 utils::tests（函数本身搬到 utils）。
 
-/// ★★ 〔C4c · US1〕**「configDir → 表里的 id」与「哪几个号在表里有行」两条规则只有一个家：`acct-core`**。
+/// ★★ **「configDir → 表里的 id」与「哪几个号在表里有行」两条规则只有一个家：`acct-core`**。
 ///
-/// 要求住址：`设计/01 §5` D1「**一个判定只有一个家**」。〔US1〕monitor 那一个绑定（`history::apikey_routed_subset`〔散文墓碑〕）
+/// 要求：「**一个判定只有一个家**」。monitor 那一个绑定（`history::apikey_routed_subset`〔散文墓碑〕）
 /// 随界面那一问搬进后端一起删了 ⇒ 两棵生产树里两条规则的**定义**都零处；反空真：同一个识别器在 `acct-core` 上各数得出恰好 1。
 #[test]
 fn the_two_apikey_rules_are_defined_only_in_acct_core() {
@@ -259,15 +259,15 @@ fn the_two_apikey_rules_are_defined_only_in_acct_core() {
     }
 }
 
-// 〔MOD · `05 §14.3` C 组〕`SessionPager` 那四条（本机远端同一个分页器 · 行号跨页连续 · 种类按文件名判 · 冷读只经后端）
+// `SessionPager` 那四条（本机远端同一个分页器 · 行号跨页连续 · 种类按文件名判 · 冷读只经后端）
 //   随读正文那条命令一起退役：判定进了后端，住 `tests/backend/observe/record_page_tests.rs`（编号 · 只出进界面的 ·
 //   按根认是哪一家）与 `tests/backend/faces/read_face_tests.rs`（`history-page` 那一臂）。
 
-// 〔MOD〕`remote_history.rs` 整份删了（最后一个函数 `require_cfg_by_label`〔散文墓碑〕随子 agent 那条命令退役），它的测试文件里
+// `remote_history.rs` 整份删了（最后一个函数 `require_cfg_by_label`〔散文墓碑〕随子 agent 那条命令退役），它的测试文件里
 //   这一条与它无关的对照挪到这里。
 #[test]
 fn shell_quote_via_the_shared_core() {
-    // 〔THIN〕`ssh_source` 那一层转调壳删了（零生产调用方），对照直指共享内核。
+    // `ssh_source` 那一层转调壳删了（零生产调用方），对照直指共享内核。
     assert_eq!(
         shell_quote_core::posix_quote("/a/b c.jsonl"),
         "'/a/b c.jsonl'"

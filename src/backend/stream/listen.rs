@@ -1,20 +1,20 @@
 //! `K-P1`：**常驻监听口** —— 脱离宿主之后，backend 还能被找到、被问到、被接上。
 //!
-//! 违反此约束见 `src/doc/INVARIANTS.md` § 48.1（监听口要钥匙；〔TL2〕照「修改本文档」第 2 条补的反指）。
+//! 违反此约束见 `src/doc/INVARIANTS.md` § 48.1（监听口要钥匙；照「修改本文档」第 2 条补的反指）。
 //!
 //! # 它存在的理由（不是「常驻」本身）
 //!
 //! 今天 monitor 与后端讲协议走的就是那对 stdio 管道；宿主一退读端就断，
 //! backend 在 **153 毫秒**内自己 broken-pipe 退出（`backend_policy.rs` 头注实测）。
 //! ⇒ **真脱离的代价是「再也说不上话」** —— 那正是本模块要补的那一格。
-//! `K-P1 §0b-2` 逐字：「难的**不是**怎么脱离（仓里三份现成的），
+//! 「难的**不是**怎么脱离（仓里三份现成的），
 //! 难的是**脱离之后还怎么跟它对话**」。
 //!
 //! # 走回环 TCP，理由是判据面已经付过一遍钱
 //!
 //! `K-H1` 的中转（`relay/server.rs`）已经把这条路上的东西买齐了：`LOOPBACK` 字面量常量
 //! + 非回环 bind 的零命中守卫 + 在途上界 + 出声的拒绝。本模块**抄它的形状**。
-//! 现打（`K-P1 §0b-2㈠`，分母 = `src/backend` ∪ `src/frontend/shell/src` 下 169 个 `.rs`）：
+//! 现打（分母 = `src/backend` ∪ `src/frontend/shell/src` 下 169 个 `.rs`）：
 //! `UnixListener` 0 处 · backend 侧 `NamedPipe` 0 处 ⇒ 走 Unix socket / 命名管道都要**从零立**一套。
 //!
 //! ⚠ **代价如实记，这是一条真裁决不是实现细节**：回环 TCP 上**同机任何本地进程都连得上**，
@@ -49,7 +49,7 @@
 //!    所以宿主那一侧连上去**先读 hello 比对**，对不上就出声并拒绝，**不许静默复用**
 //!    （`P2t §1` 第 3 问问的正是这一格）。本模块这一侧的处置是：
 //!    bind 不上就带 [`EXIT_ADDR_IN_USE`] 退出，**绝不自己换端口**（换端口 = 每台机 N 个 backend，
-//!    中转口与全部 SSH 各 N 份，比今天更糟。〔HX2〕从前这里还有「互相盖 tmux hook 槽位 `[50]`」—— 今天 hook 按实例一格，那一条不成立了）。
+//!    中转口与全部 SSH 各 N 份，比今天更糟。从前这里还有「互相盖 tmux hook 槽位 `[50]`」—— 今天 hook 按实例一格，那一条不成立了）。
 //! 3. **本模块一个定时器都没有**：`accept` 阻塞在内核事件上，读一行阻塞在内核事件上。
 //!    没有 `Duration::from_*`、没有任何会「自己醒过来」的构件
 //!    （`no_timer_guard::backend_production_code_has_no_periodic_wakeups`）。
@@ -73,11 +73,11 @@ pub const ENV_PORT: &str = "CCM_LISTEN_PORT";
 /// 而 token 必须在两个宿主进程之间传得下去（上一个 monitor 退了，下一个要接上同一个后端）。
 pub const ENV_TOKEN: &str = "CCM_LISTEN_TOKEN";
 
-/// 〔HOST〕钥匙文件的**路径**（不是钥匙）：远端那台由 `--resident-ensure` 起常驻后端时交，子进程自己读 ——
+/// 钥匙文件的**路径**（不是钥匙）：远端那台由 `--resident-ensure` 起常驻后端时交，子进程自己读 ——
 /// 钥匙一次都不经过 env / argv（与中转钥匙同形，`relay/door.rs` 头注）。本机宿主仍交 [`ENV_TOKEN`]。
 pub const ENV_TOKEN_FILE: &str = "CCM_LISTEN_TOKEN_FILE";
 
-/// 〔HOST · V139〕远端 `--resident-ensure` 起常驻后端时交的中转口 env 名（`main.rs` 在库外，够不着 `relay::` 的 crate 内口）。
+/// 远端 `--resident-ensure` 起常驻后端时交的中转口 env 名（`main.rs` 在库外，够不着 `relay::` 的 crate 内口）。
 pub const RELAY_PORT_ENV: &str = crate::relay::ENV_PORT;
 
 /// bind 不上（多半是 `EADDRINUSE`）的退出码。**与「起不来」区分开**：
@@ -166,7 +166,7 @@ where
 
 /// 拒绝的三种理由。**是闭集**：`refusal_line` 只拼这几个常量，没有任何一段外来字节
 /// 会进到那行 JSON 里（由 `refusal_reasons_are_a_closed_set` 钉住）。
-/// 〔HOST〕多客户之后**不再发**（[`admit`]）；常量留着只因 monitor 本机宿主还认它（那一臂成死路，列报主会话）。
+/// 多客户之后**不再发**（[`admit`]）；常量留着只因 monitor 本机宿主还认它（那一臂成死路，列报主会话）。
 pub const REFUSE_BUSY: &str = "stream-busy";
 pub const REFUSE_AUTH: &str = "bad-token";
 pub const REFUSE_MALFORMED: &str = "malformed-attach";
@@ -181,7 +181,7 @@ pub enum Mode {
     Stdio,
     /// 常驻：听一个回环口，认 token 之后才交出流。
     Listen { port: u16, token: String },
-    /// 〔HOST〕同上，钥匙在文件里（[`ENV_TOKEN_FILE`]）；`main` 读出来再换成 [`Mode::Listen`]（[`token_from_file`]）。
+    /// 同上，钥匙在文件里（[`ENV_TOKEN_FILE`]）；`main` 读出来再换成 [`Mode::Listen`]（[`token_from_file`]）。
     ListenTokenFile { port: u16, path: String },
 }
 
@@ -230,7 +230,7 @@ fn parse_port(p: &str) -> Result<u16, String> {
     Ok(port)
 }
 
-/// 〔HOST〕形态 ⇒ 载体：`None` = stdio；`Some((口, 钥匙))` = 常驻（钥匙在文件里那一形此刻读出来）。
+/// 形态 ⇒ 载体：`None` = stdio；`Some((口, 钥匙))` = 常驻（钥匙在文件里那一形此刻读出来）。
 pub fn resolve(m: Mode) -> Result<Option<(u16, String)>, String> {
     match m {
         Mode::Stdio => Ok(None),
@@ -239,7 +239,7 @@ pub fn resolve(m: Mode) -> Result<Option<(u16, String)>, String> {
     }
 }
 
-/// 〔HOST〕读钥匙文件：读不动 / 空 ⇒ `Err`（fail closed：不起一个不设防的口）。报错里只有路径。
+/// 读钥匙文件：读不动 / 空 ⇒ `Err`（fail closed：不起一个不设防的口）。报错里只有路径。
 pub fn token_from_file(path: &str) -> Result<String, String> {
     let t = std::fs::read_to_string(path).map_err(|e| {
         crate::common::contract::malformed(&format!("{ENV_TOKEN_FILE}={path:?}: {e}"))
@@ -287,7 +287,7 @@ pub fn attach_verdict(line: &str, expected: &str) -> Verdict {
     }
 }
 
-/// 〔HOST〕attach 行里这条连接要的流模式旗标（`{"attach":…,"flags":["--tail-only",…]}`）。
+/// attach 行里这条连接要的流模式旗标（`{"attach":…,"flags":["--tail-only",…]}`）。
 /// 缺 ⇒ `Ok(None)`（用进程起参那一份）；有但不是串数组、或含 `lib::STREAM_FLAGS` 以外的 ⇒ `Err`（当 malformed 拒）。
 /// 回 `(with_bg, tail_only, with_rbind_token)`：每个客户各按自己的能力协商（monitor `decide_stream_flags`）。
 pub fn attach_flags(line: &str) -> Result<Option<(bool, bool, bool)>, ()> {
@@ -312,7 +312,7 @@ pub fn attach_flags(line: &str) -> Result<Option<(bool, bool, bool)>, ()> {
 ///
 /// 长度不同直接判不等（长度本来就藏不住，它在 `read_line` 的字节数里）。
 ///
-/// 〔RK1〕中转口的门（`relay/door.rs::admit`）比钥匙也用这一份 —— 定长比对只许有一个住址。
+/// 中转口的门（`relay/door.rs::admit`）比钥匙也用这一份 —— 定长比对只许有一个住址。
 pub(crate) fn tokens_match(a: &str, b: &str) -> bool {
     let (a, b) = (a.as_bytes(), b.as_bytes());
     if a.len() != b.len() || a.is_empty() {
@@ -341,7 +341,7 @@ pub enum Admit {
     Refuse(&'static str),
 }
 
-/// 分档。〔HOST · `设计/01 §3.3b ⑥`〕多客户：钥匙对上就交流，不再看「有没有人占着」（[`REFUSE_BUSY`] 不再发）。
+/// 分档。多客户：钥匙对上就交流，不再看「有没有人占着」（[`REFUSE_BUSY`] 不再发）。
 pub fn admit(verdict: Verdict) -> Admit {
     match verdict {
         Verdict::Malformed => Admit::Refuse(REFUSE_MALFORMED),
@@ -350,7 +350,7 @@ pub fn admit(verdict: Verdict) -> Admit {
     }
 }
 
-/// 〔HOST · `设计/01 §3.3b ⑥`〕此刻连着的流（多客户）。连接号从 1 起（0 留给空转那一份 watcher 的槽位）；
+/// 此刻连着的流（多客户）。连接号从 1 起（0 留给空转那一份 watcher 的槽位）；
 /// 「最后一个客户走了」= [`Clients::leave`] 回 0 —— 不是「起我的那个 monitor 退了」。
 #[derive(Debug, Default)]
 pub struct Clients {

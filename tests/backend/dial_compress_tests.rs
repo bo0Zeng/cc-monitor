@@ -1,14 +1,13 @@
-//! # 要求住址：用户裁决 `V23`（`设计/99 §1`）· `设计/15 §3.3` · `§5.5` · 用户裁决 `V118`（`设计/99 §1`）
 //!
 //! 核原文：V23 逐字「今天每台机器只有一条连接可以看情况多开. 智能一点. 这是属于 ssh 优化的部分. 智能多开链接\压缩等等」；
-//! `15 §3.3` 那张表「SSH 传输层 | 没显式开；russh `client::Config` 零处设 `preferred`」；
+//! 那张表「SSH 传输层 | 没显式开；russh `client::Config` 零处设 `preferred`」；
 //! `§5.5`「默认已经压上 ⇒ 别重复投资；没有 ⇒ 一行 `preferred` 覆盖全部 SSH 跳」。
 //! NT1 题面：「跨互联网那一跳按需开 SSH 压缩 …… 什么时候开（本机回环 / 局域网不开）写清判准，判准只有一处」。
 //! V118 逐字〔选〕「打补丁版 russh，现在就开」：vendor 一份修好 zlib 解压的 russh（`[patch.crates-io]`），SSH 压缩按已写好的判准开。
 //!
-//! 〔CZ1 · 2026-09-25〕闸开了（Z5 翻面 ＋ 多包一格）；补丁那一族两条：V1 副本只改了登记的那一份 · V2 补丁真接上了。
+//! 闸开了（Z5 翻面 ＋ 多包一格）；补丁那一族两条：V1 副本只改了登记的那一份 · V2 补丁真接上了。
 //!
-//! 〔NT1 · 2026-09-24〕`dial/connect.rs` 的压缩判准（[`compression_for`]）与它的接法。四件：
+//! `dial/connect.rs` 的压缩判准（[`compression_for`]）与它的接法。四件：
 //! Z1 真值表 · Z2 两张偏好序 · Z3 判准只有一处、只有一个调用点 · Z4 回环上内核真量得到往返时间、判准答「不压」。
 //! 真 sshd 上「强制压 ⇒ 协商出 zlib、线上字节变少」那一维是 [`ZR`] 那条 `#[ignore]` 读数
 //! （由 `tests/evidence/NT1-net-loopback.py --compress` 带环境变量来跑）。
@@ -158,7 +157,7 @@ fn the_compression_judge_lives_in_exactly_one_place() {
 }
 
 /// ★ Z4：回环上**内核真量得到**这一跳的往返时间（读不到就是平台那一半坏了），而且它在门槛之下、判准答「不压」。
-/// 异源 = 内核。Linux 与 Windows（〔P2〕`SIO_TCP_INFO`）两臂读得到；其余平台那一支回 `None`，本条不在那里编。
+/// 异源 = 内核。Linux 与 Windows（`SIO_TCP_INFO`）两臂读得到；其余平台那一支回 `None`，本条不在那里编。
 /// ⚠ Windows 那一格本机只交叉编译、没在真 Windows 上跑过。
 #[cfg(any(target_os = "linux", windows))]
 #[tokio::test]
@@ -219,7 +218,7 @@ fn russh_zlib_stream_round_trips(packets: &[Vec<u8>]) -> bool {
     })
 }
 
-/// 〔WF2 · WIN3 读数 A〕**压**那一半：用 russh 生产路上那个 `compress_into`（`PacketWriter` 每包调它、输出接在 5 字节包头之后）
+/// **压**那一半：用 russh 生产路上那个 `compress_into`（`PacketWriter` 每包调它、输出接在 5 字节包头之后）
 /// 连着压几包，再用**另一只**解压器（flate2 原生 `Decompress`，每包 `Sync` 冲刷，与对端 sshd 的 inflate 同形）逐包解 ——
 /// 每包逐字节同、包头原样才算对。上游缺陷的真形：一包的压缩输出超出「输入 + 10」那一刻就收工，没吐完的拼进下一包。
 fn russh_zlib_compresses_whole_packets(packets: &[Vec<u8>]) -> bool {
@@ -259,7 +258,7 @@ fn russh_zlib_compresses_whole_packets(packets: &[Vec<u8>]) -> bool {
 /// ★ Z5：**闸 == russh 的解压今天对不对**（两向相等）。异源 = russh 自己的编解码。
 ///
 /// NT1 现打（上游 0.61.1）：一包 1000 字节的可压载荷（压成 39 字节）解回来只有 78 字节 —— 解压器最多交出 ≈ 2 × 包长。
-/// 〔CZ1〕今天链的是 `[patch.crates-io]` 那份补过的副本 ⇒ 对 ⇒ 闸开。多包那一格：三包连着走（1000 · 30000 · 200 字节，
+/// 今天链的是 `[patch.crates-io]` 那份补过的副本 ⇒ 对 ⇒ 闸开。多包那一格：三包连着走（1000 · 30000 · 200 字节，
 /// 可压比都 ≫ 2），每包逐字节同 —— 补丁若只修了「这一包交全」而状态跨包错了，这一格看得见。
 /// 正控：压缩比 < 2 的一包（短、近乎不可压）照样一来一回全对 —— 量具本身没用错，坏的只是「解出来比输入多一倍以上」那一形。
 #[test]
@@ -271,7 +270,7 @@ fn the_gate_matches_what_russh_really_does() {
         .enumerate()
         .map(|(k, &n)| (0..n).map(|i| line[(i + k) % line.len()]).collect())
         .collect();
-    // 〔WF2〕压那一半：满长的一包通道数据（32 768 字节 ＋ 9 字节消息头）不可压 · 一包可压的 · 再一包更长的不可压 · 收尾一包可压的。
+    // 压那一半：满长的一包通道数据（32 768 字节 ＋ 9 字节消息头）不可压 · 一包可压的 · 再一包更长的不可压 · 收尾一包可压的。
     let pressed: Vec<Vec<u8>> = vec![
         incompressible(32_777, 7),
         stream[0].clone(),
@@ -362,7 +361,7 @@ fn files_under(dir: &std::path::Path) -> BTreeMap<String, String> {
         .collect()
 }
 
-/// ★ V1〔CZ1〕：**副本只改了登记的那几份**（「副本是上游的镜子，不是分身」—— 改了哪几行要一眼可见、上游修好之后撤得干净）。
+/// ★ V1：**副本只改了登记的那几份**（「副本是上游的镜子，不是分身」—— 改了哪几行要一眼可见、上游修好之后撤得干净）。
 ///
 /// `VENDOR.md` 三张表：原样清单（`sha256  路径`，逐份取自 `russh-0.61.1.crate`，那份 `.crate` 的 sha256 == 后端 lock 原先锁的 checksum）·
 /// 改过的文件（`路径  原样 sha256  补后 sha256`）· 副本特有的（`sha256  路径`）。判：
@@ -463,7 +462,7 @@ fn the_vendored_russh_differs_from_the_crate_only_where_registered() {
     );
 }
 
-/// ★ V2〔CZ1〕：**补丁真接上了**（三份文本对拍）。
+/// ★ V2：**补丁真接上了**（三份文本对拍）。
 ///
 /// ① 后端清单 `[patch.crates-io]` 段里恰好一条、就是 `russh`、指向 `../vendor/russh`（== [`VENDORED_RUSSH`]）；
 /// ② 依赖声明那一行的版本 == 副本 `Cargo.toml` 的 `version` == lock 里 `russh` 那一块的 `version`；
@@ -555,7 +554,7 @@ fn the_russh_patch_is_really_wired() {
 /// - 不压那趟：载荷收全（> 2 MB）；
 /// - 压的那趟：**闸关着（russh 解压坏着）⇒ 30 秒内收不全**（现打的样子是卡在第一条通道上）；
 ///   闸开着 ⇒ 载荷逐字节同、线上字节 < 不压那趟的一半。
-/// - 〔CZ1〕上行那一半（客户端压、sshd 解 —— 与下行是两套代码）：同一条连接上把一段会话 jsonl 样子的载荷喂给远端 `sha256sum`，
+/// - 上行那一半（客户端压、sshd 解 —— 与下行是两套代码）：同一条连接上把一段会话 jsonl 样子的载荷喂给远端 `sha256sum`，
 ///   两趟都要摘要 == 本侧算的；闸开着 ⇒ 压的那趟上行线上字节 < 不压那趟的一半。
 #[ignore = "要真 sshd：由 tests/evidence/NT1-net-loopback.py --compress 带环境变量来跑"]
 #[tokio::test(flavor = "multi_thread")]
@@ -620,7 +619,7 @@ async fn zr_real_sshd_negotiates_zlib_and_moves_fewer_bytes_when_forced() {
             .await
             .ok()
             .flatten();
-            // 〔CZ1〕上行那一半：同一条连接上把 `upload` 喂给远端 `sha256sum`，回来的摘要 == 本侧算的才算收全
+            // 上行那一半：同一条连接上把 `upload` 喂给远端 `sha256sum`，回来的摘要 == 本侧算的才算收全
             // （客户端压、sshd 解 —— 与下行走的是两套代码）。上行字节另记（`sent`）。
             let sent_before = sent.load(std::sync::atomic::Ordering::SeqCst);
             let up = tokio::time::timeout(std::time::Duration::from_secs(30), async {
@@ -709,7 +708,7 @@ fn incompressible(n: usize, seed: u64) -> Vec<u8> {
         .collect()
 }
 
-/// ★ ZR2（读数，`#[ignore]`）〔WF2 · WIN3 读数 A〕：**真 sshd 上**强制压 / 强制不压各一趟，经部署那条路（`sftp::put_atomic`）
+/// ★ ZR2（读数，`#[ignore]`）：**真 sshd 上**强制压 / 强制不压各一趟，经部署那条路（`sftp::put_atomic`）
 /// 往暂存区放 33 000 字节与 1 MiB **不可压**的字节，读回逐字节同。WIN3 现打（p5p）：压的那趟 > 32 000 字节就断
 /// （sshd「channel_input_data: … incomplete message」）。由 `tests/evidence/WF2-zlib-container.py` 起一次性容器 sshd、
 /// 带 `NT1_COMPRESS={host,port,user,key_path}` 来跑；协商结果由那份脚本读 sshd 日志核（异源）。
@@ -826,7 +825,7 @@ impl tokio::io::AsyncWrite for Counting {
     }
 }
 
-/// 〔VIS2 · `设计/15 §3.4 ①`「保住多地址那一格」〕一趟里每个地址的校验器都把「地址 → 实得指纹」记进同一格：
+/// 〔「保住多地址那一格」〕一趟里每个地址的校验器都把「地址 → 实得指纹」记进同一格：
 /// 接受支与拒绝支都记；两把钥匙 ⇒ 两格不同，同一把 ⇒ 两格相同（期望手写，指纹取钥匙本身）。
 #[tokio::test]
 async fn vis2_every_checker_of_one_run_writes_its_address_into_the_shared_book() {
@@ -881,8 +880,8 @@ async fn vis2_every_checker_of_one_run_writes_its_address_into_the_shared_book()
     );
 }
 
-/// 〔VIS2〕接线：目标那一趟的竞速与经跳板那一次握手都记进同一格、那一格进 `Linked`；跳板自己那一趟另开一格。带正控。
-/// 〔FIX · `设计/99 §2 ㊶` 第二问「只当跳板用的机器一直 TOFU（设计没写）」〕跳板那一格也进 `Linked`（`jump_fingerprints`），界面按那一台自己固化。
+/// 接线：目标那一趟的竞速与经跳板那一次握手都记进同一格、那一格进 `Linked`；跳板自己那一趟另开一格。带正控。
+/// 〔第二问「只当跳板用的机器一直 TOFU（设计没写）」〕跳板那一格也进 `Linked`（`jump_fingerprints`），界面按那一台自己固化。
 #[test]
 fn vis2_the_target_run_and_only_it_feeds_the_linked_book() {
     let prod =

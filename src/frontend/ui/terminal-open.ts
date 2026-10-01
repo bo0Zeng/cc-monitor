@@ -1,12 +1,12 @@
 /**
- * 要求住址：`设计/99 §2.1 ⑬`「待迁」最后一行 ——「远端拉起那串的 ssh 外壳（`ssh -t -J … host '<串>'` · PowerShell 窗口载荷）
+ * 要求：「待迁」最后一行 ——「远端拉起那串的 ssh 外壳（`ssh -t -J … host '<串>'` · PowerShell 窗口载荷）
  * 由本机后端渲（组请求用 `dial/machine.rs::resolve`），monitor 只开终端」（FIX4 题面第 1 条）。
  *
  * **在用户面前这台机器上开一个终端，跑 `command`** —— 全仓开终端只有这一个家；本机远端同形：本机后端出成品，monitor 只开窗。
  * - 本机：① 本机后端 `terminal-local` 交回那一串 → ② monitor 开窗（`open_terminal_window`，`ssh: false`）；
  * - 远端：① monitor 交那台的机器事实（`terminal_dial`：它的机器表 ＋ 上次赢的那条）→ ② 本机后端 `terminal-ssh` 渲出那一行
  *   PowerShell（`& ssh -t[ -J …] … -- '<bash -lic ''…''>'`）→ ③ monitor 开窗（`ssh: true`）。
- * 〔P5 · `设计/80 §8.2` 本地半〕这次拉起的启动期令牌交给本机后端，由它在成品前面接令牌握手前奏（V156：PowerShell 只在后端写）。
+ * 〔本地半〕这次拉起的启动期令牌交给本机后端，由它在成品前面接令牌握手前奏（PowerShell 只在后端写）。
  *
  * 哪一步不成 ⇒ 抛一句人话（调用方照旧走剪贴板回退 / 出声）。POSIX 上开窗那一步回 `POSIX_NO_TERMINAL_WINDOW`
  * （既定设计：刻意不替你挑终端模拟器；调用方按 `POSIX_NO_WINDOW_MARKER` 判，不按 OS 猜）。

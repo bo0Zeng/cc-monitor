@@ -1,4 +1,4 @@
-//! 〔MIG-3a〕别名块那一半的判据随 `assets/aliases/block.rs` 进了后端（`tests/backend/assets/aliases/block_tests.rs`）；
+//! 别名块那一半的判据随 `assets/aliases/block.rs` 进了后端（`tests/backend/assets/aliases/block_tests.rs`）；
 //! 这里只剩**用户级 PATH** 那一格（本机后端的引导，`ccm_user_path_*`）与共享片段对后端落点（`relay_route_core::BACKEND_LANDING_REL`）的那一条。
 use super::*;
 
@@ -28,7 +28,7 @@ fn tmpdir(tag: &str) -> TmpDir {
 ///
 /// # 为什么单独一条：上一条只证「这两处一致」，这一条证「它们对得上现实」
 ///
-/// 上一条比的是**我们生成的那段命令**与后端落点那个常量（〔MIG-3b 续〕从前是足迹申报表）—— **两边同时改错**
+/// 上一条比的是**我们生成的那段命令**与后端落点那个常量（从前是足迹申报表）—— **两边同时改错**
 /// 照样全绿。真落点住在**第三处**：`local_backend_host.rs` 里算 `extract_dir` 的那一行，
 /// 它就是 `install_local_ccm_entry` 的 `dir` 实参。⇒ 这一条去读**那一行源码**。
 ///
@@ -131,7 +131,7 @@ fn the_generated_path_command_edits_only_the_user_scope_and_never_via_setx() {
             !cmd.trim().is_empty(),
             "「{which}」生成出来是空的 —— 下面全是空真"
         );
-        // 「探」那条只读（读展开值，比整格）；〔WF1 · K〕「加」「撤」读 `HKCU\Environment` 的**未展开原值与原类型**、按原类型写回、自己广播。
+        // 「探」那条只读（读展开值，比整格）；「加」「撤」读 `HKCU\Environment` 的**未展开原值与原类型**、按原类型写回、自己广播。
         if *which == "探" {
             assert!(
                 cmd.contains("GetEnvironmentVariable('Path', 'User')"),
@@ -194,7 +194,7 @@ fn the_generated_path_command_edits_only_the_user_scope_and_never_via_setx() {
         "「撤」顺手把 PATH 上的空项也滤掉了 —— 空项在 Windows 上语义是「当前目录」，\
              删它是一次**我们没被要求做的改动**。除我们那一格之外要逐字复原。\n{del}"
     );
-    // ── 🔴 〔`R88` 09-15〕**这一条翻正了，不是放宽了** ────────────────
+    // ── 🔴 **这一条翻正了，不是放宽了** ────────────────
     //
     // 上一轮它是 `!prod.contains("Command::new(")`（生产段一个进程都不许起），
     // 理由是「产品自己跑就变成了替用户改他的环境」。`R85` 用户逐字
@@ -240,7 +240,7 @@ fn the_generated_path_command_edits_only_the_user_scope_and_never_via_setx() {
                  `-NonInteractive` 保证它不会弹提示等人回车，把界面挂住。"
         );
     }
-    // 〔WF1 · K〕写法换成按原类型写注册表：数的是 `SetValue('Path'`（加 · 撤各一处），`SetEnvironmentVariable` 一处都不许有。
+    // 写法换成按原类型写注册表：数的是 `SetValue('Path'`（加 · 撤各一处），`SetEnvironmentVariable` 一处都不许有。
     assert_eq!(prod.matches("SetEnvironmentVariable").count(), 0);
     let writers = prod.matches("SetValue('Path'").count();
     assert_eq!(
@@ -253,7 +253,7 @@ fn the_generated_path_command_edits_only_the_user_scope_and_never_via_setx() {
     );
 }
 
-/// ★★ 〔`KR135D1` 09-15〕**线上字段名与前端那份手写接口逐字对得上。**
+/// ★★ **线上字段名与前端那份手写接口逐字对得上。**
 ///
 /// # 它补的是一处**有意的例外**，让这处例外不比生成物弱
 ///
@@ -307,7 +307,7 @@ fn the_user_path_status_wire_fields_match_the_hand_written_ts() {
     }
 }
 
-/// ★★ 〔`KR135D1` 09-15〕**那一格的「现在状态」：`~/.cc-monitor\bin` 在不在
+/// ★★ **那一格的「现在状态」：`~/.cc-monitor\bin` 在不在
 /// 用户级 PATH 上 —— 它与那两条命令必须用**同一种相等**。**
 ///
 /// # 为什么这一条单独存在：不一致的代价是**界面撒谎**
@@ -369,7 +369,7 @@ fn the_user_path_status_uses_the_same_equality_as_the_generated_commands() {
     assert!(!user_path_has_our_bin("", dir));
 }
 
-/// 住址：`设计/99 §2.3` WF1 报备「PATH 状态探针读输出不设 UTF-8 … 发版后另排」（`第四波记录/WF1.md §3.7` 第 7 条：用户目录含非 ASCII 时判错）。
+/// 报备「PATH 状态探针读输出不设 UTF-8 … 发版后另排」（用户目录含非 ASCII 时判错）。
 /// 探针除赋值之外只有「写字节 · 冲刷」两句（两向相等）⇒ 没有一句经 PowerShell 的输出流（那一路按控制台代码页编码）；
 /// 写出去的字节恰好来自一次 UTF-8 编码。真跑那一半见下一条读数。
 #[test]
@@ -402,7 +402,7 @@ fn p2_the_path_probe_writes_nothing_but_its_utf8_bytes() {
     );
 }
 
-/// 住址：主会话 09-29 裁（`第四波记录/P2.md §6` 第 3 条）「加 / 撤两条失败时 stderr 的解码 —— Windows 臂按那台控制台的 OEM 代码页解」。
+/// 住址：主会话 09-29 裁「加 / 撤两条失败时 stderr 的解码 —— Windows 臂按那台控制台的 OEM 代码页解」。
 /// 两路按各自怎么写出来的解：stderr（PowerShell 按控制台代码页写）只经 `platform::console_text`；stdout（探针自己写 UTF-8 字节）只按 UTF-8。
 /// 解码本身的判据在 `platform/console_text_tests.rs`。
 #[test]
@@ -423,7 +423,7 @@ fn p2_stderr_and_stdout_are_decoded_the_way_they_were_written() {
     );
 }
 
-/// 〔P2〕读数，**不在门禁**（要一个 PowerShell；`CCM_PWSH=<程序> cargo test -- --ignored p2_`，那个程序收一个 `.ps1` 路径去跑）。
+/// 读数，**不在门禁**（要一个 PowerShell；`CCM_PWSH=<程序> cargo test -- --ignored p2_`，那个程序收一个 `.ps1` 路径去跑）。
 /// 住址同上一条。替身：控制台编码设成 936（中文 Windows PowerShell 5.1 往管道写的那一种）· `USERPROFILE` 含汉字 · `Join-Path` 按 Windows 拼 ·
 /// 用户级 `Path` 换成含我们那一格的字面值（Linux 上没有用户级那一档）。读回走生产那一份解析，期望目录逐字、判「在」。
 /// 买不到：真 Windows PowerShell 5.1 的控制台与真注册表。
@@ -467,10 +467,10 @@ fn p2_the_path_probe_reads_back_a_non_ascii_home_under_an_oem_console() {
     );
 }
 
-/// ★★ 〔`KR135D3` 09-15 · 〔E2〕改裁〕**那份共用的 POSIX 别名 snippet，真的把 `ccm` 落点放上了 PATH，而且只放它。**
+/// ★★ 〔`KR135D3` 09-15 · 改裁〕**那份共用的 POSIX 别名 snippet，真的把 `ccm` 落点放上了 PATH，而且只放它。**
 ///
-/// 要求住址：`设计/01 §6.7b`「落点 `~/.cc-monitor/bin/ccm` —— 本机与远端同一个」「清掉旧的 `~/.local/bin/ccm`」· V41（不为旧状态留兼容）。
-/// 〔E2〕从前这一行把 `~/.local/bin` 也加进来（「更早的版本放在那儿，不删、照旧能用」）—— 旧入口今天部署时认出来就删（GP1），
+/// 要求：「落点 `~/.cc-monitor/bin/ccm` —— 本机与远端同一个」「清掉旧的 `~/.local/bin/ccm`」· V41（不为旧状态留兼容）。
+/// 从前这一行把 `~/.local/bin` 也加进来（「更早的版本放在那儿，不删、照旧能用」）—— 旧入口今天部署时认出来就删（GP1），
 /// `ccm` 就是后端本身、只住 `~/.cc-monitor/bin` ⇒ 那一格退役。两边落点同一个常量（共享 crate）；足迹申报表那两条与它相等由后端判据钉住。
 ///
 /// 量真实输出：真 `source` 一趟问 `$PATH`，**加进来的目录集合 == {落点}**（两向）；source 两趟 PATH 不变（幂等）。
@@ -478,7 +478,7 @@ fn p2_the_path_probe_reads_back_a_non_ascii_home_under_an_oem_console() {
 #[cfg(unix)]
 #[test]
 fn the_shared_alias_snippet_puts_exactly_the_ccm_landing_on_path() {
-    // 〔MIG-3b 续〕本机远端同一个落点（`relay_route_core::BACKEND_LANDING_REL`）；足迹申报表那两条与它相等由后端判据对拍。
+    // 本机远端同一个落点（`relay_route_core::BACKEND_LANDING_REL`）；足迹申报表那两条与它相等由后端判据对拍。
     let local = ccm_bin_dir_rel().expect("后端落点的目录");
     let td = tmpdir("aliassnip");
     let home = td.0.join("h");
@@ -525,8 +525,8 @@ fn the_shared_alias_snippet_puts_exactly_the_ccm_landing_on_path() {
     );
 }
 
-/// 〔WF1 · K〕读数，**不在门禁**（要一个 PowerShell；`CCM_PWSH=<程序> cargo test -- --ignored`，那个程序收一个 `.ps1` 路径去跑）。
-/// 住址：`设计/99 §2.3`「中低各条发版前修」· `第四波记录/WIN3.md §2` K（用户级 PATH 由 `ExpandString` 变 `String`、`%VAR%` 被冻成字面、多一个空项）。
+/// 读数，**不在门禁**（要一个 PowerShell；`CCM_PWSH=<程序> cargo test -- --ignored`，那个程序收一个 `.ps1` 路径去跑）。
+/// 要求：「中低各条发版前修」（用户级 PATH 由 `ExpandString` 变 `String`、`%VAR%` 被冻成字面、多一个空项）。
 ///
 /// 用真 PowerShell 跑生成的「加」「撤」两段：注册表那一跳换成替身键（只有 Windows 有注册表），`Join-Path` 按 Windows 拼，
 /// 广播那三行换成计数。期望逐条手写：加 ⇒ 我们那一格恰好多一格（原值以 `;` 收尾就插在那个空项之前）、类型不变、广播一次；

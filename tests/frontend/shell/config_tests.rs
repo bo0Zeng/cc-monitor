@@ -1,8 +1,8 @@
-//! 〔CFG1 · 4D〕`config.json` 唯一写口 `config::patch_config_at` 的判据。
+//! `config.json` 唯一写口 `config::patch_config_at` 的判据。
 //!
 //! 守的要求（住址）：
-//! - `设计/30 §4`：「两者 …… 各自只写自己那个键」；`§C.3`：「**只动自己那个键** …… 不整段覆盖」。
-//! - `设计/70 §6.3` 红线 ④：「**读不懂的 `config.json` 不写** …… 盘上一个字节不动（不退回『当成空对象覆盖』，
+//! -：「两者 …… 各自只写自己那个键」；`§C.3`：「**只动自己那个键** …… 不整段覆盖」。
+//! - 红线 ④：「**读不懂的 `config.json` 不写** …… 盘上一个字节不动（不退回『当成空对象覆盖』，
 //!   那会把用户其余配置一起抹掉）」。
 //!
 //! J2（并发不丢）打真文件、真线程；J3（补丁语义）期望全是手写 JSON 字面量，不经被测代码生成。
@@ -169,7 +169,7 @@ fn an_empty_path_refuses_the_whole_batch() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// J3：`70 §6.3` 红线 ④ —— 读不懂 / 根不是对象 ⇒ `Unreadable`、盘上字节不变、没有临时件。
+/// J3：红线 ④ —— 读不懂 / 根不是对象 ⇒ `Unreadable`、盘上字节不变、没有临时件。
 #[test]
 fn an_unreadable_file_is_left_alone() {
     for (tag, original) in [("bad", r#"{"a":1 "b":2}"#), ("arr", "[1,2]")] {
@@ -220,7 +220,7 @@ fn the_golden_cases_hold() {
     let cases = golden["cases"].as_array().unwrap();
     assert_eq!(
         cases.len(),
-        16, // 〔FIX2 续〕12 → 16：insertin / removein 各两条
+        16, // 12 → 16：insertin / removein 各两条
         "金样条数变了 —— 两边（这里与 vitest 那边）一起改"
     );
     for (i, c) in cases.iter().enumerate() {
@@ -257,10 +257,10 @@ fn the_golden_cases_hold() {
     }
 }
 
-// ═══ 〔HX2 · 第四波 4D〕两个 monitor 进程同写：跨进程锁 ═══════════════════════════════════════
+// ═══ 两个 monitor 进程同写：跨进程锁 ═══════════════════════════════════════
 //
 // 要求住址：主会话 4D 追加逐字「CFG1 把 config.json 收成单一写口 `config.rs::patch_config_at`（进程内锁、锁内现读、按路径补丁），
-// 但**两个 monitor 进程同写**没有跨进程锁 —— 用你那一族同一套 `flock`（Windows 对应）把它也包上」；`设计/30 §4`「各自只写自己那个键」。
+// 但**两个 monitor 进程同写**没有跨进程锁 —— 用你那一族同一套 `flock`（Windows 对应）把它也包上」；「各自只写自己那个键」。
 // ⚠ 用两个线程各开一次描述量（`flock` 锁在打开文件描述上，与两个进程同一种互斥）；限期只在判据里。
 
 /// 🔴 C-L1：别人（另一个进程的样子：本线程直接拿目录锁）拿着锁时，`patch_config_at` 限期内不落盘；
@@ -361,8 +361,8 @@ fn hx2_the_monitor_and_backend_dir_locks_are_the_same_kind_of_lock() {
     );
 }
 
-// ── 〔FIX · `设计/99 §2 ㊶` 第一问〕按键认数组元素 ──────────────────────────────────────────
-// 守的要求（`99 §2 ㊶` 逐字）：「固化那一写与设置页同写 `remote.hosts` 有毫秒级丢更新窗口（要不要给补丁口加「按键认数组元素」）」。
+// ── 〔第一问〕按键认数组元素 ──────────────────────────────────────────
+// 守的要求：「固化那一写与设置页同写 `remote.hosts` 有毫秒级丢更新窗口（要不要给补丁口加「按键认数组元素」）」。
 // 主会话裁：加，且带 CAS（已有值不动）。
 
 fn set_in(where_: &[(&[&str], &str)], field: &str, value: Value, if_empty: bool) -> ConfigEdit {

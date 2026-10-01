@@ -1,9 +1,9 @@
-//! 〔C4d · 第四波 4B〕Codex 的**历史清单那一面**：这台机器上有哪些 Codex 会话、各自的首条真用户话。
+//! Codex 的**历史清单那一面**：这台机器上有哪些 Codex 会话、各自的首条真用户话。
 //!
 //! # 从哪来
 //!
 //! 本机历史浏览器里的 Codex 合成项目 / 会话，此前由 monitor 进程内自己枚举（`history·rs::enumerate_codex_sessions`〔散文墓碑〕
-//! 与 `codex_first_user_excerpt`〔散文墓碑〕）。主会话 09-25 裁「codex 合成的项目与会话一起进后端（join 只一个家）」⇒
+//! 与 `codex_first_user_excerpt`〔散文墓碑〕）。「codex 合成的项目与会话一起进后端（join 只一个家）」⇒
 //! 枚举与摘录搬进这里（Codex 的格式知识只许住 `agents/codex/`，`agent_locality_guard` 判据①），
 //! 通用层（`history_join.rs`）经注册表 `Adapter.history` 那一格够到它（不增 `ADAPTER_CALL_SITES`）。
 //!
@@ -22,7 +22,7 @@ use std::path::Path;
 
 use super::parse;
 
-// 〔MOD〕「注入的上下文」那张表与数组文本拍平只住 [`super::record`] 一份（渲染那一侧从 monitor 搬进来之后，
+// 「注入的上下文」那张表与数组文本拍平只住 [`super::record`] 一份（渲染那一侧从 monitor 搬进来之后，
 //   同一个模块里没有理由再留第二份、再靠判据对拍）。
 use super::record::{flatten_text, is_injected_context};
 
@@ -58,7 +58,7 @@ pub(crate) fn sessions() -> Vec<crate::agents::SynthSession> {
     }
 }
 
-/// 〔LOC1b · 4D〕这台机器上 Codex 会话记录的根（`<codex home>/sessions`；说不出 home ⇒ `None`）。与 [`sessions`] 扫的是同一个根。
+/// 这台机器上 Codex 会话记录的根（`<codex home>/sessions`；说不出 home ⇒ `None`）。与 [`sessions`] 扫的是同一个根。
 pub(crate) fn records_root() -> Option<std::path::PathBuf> {
     super::home().map(|h| parse::sessions_root(&h))
 }

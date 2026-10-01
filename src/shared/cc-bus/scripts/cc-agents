@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # cc-agents  列出 cc-spawn 派生的会话(区别于手工起的),标注还活着/已退。
-# cc-agents --tsv  机器可读形(V136:后端 bus-state 读它):首行 `#cc-agents-tsv<TAB>1` ·
+# cc-agents --tsv  机器可读形(后端 bus-state 读它):首行 `#cc-agents-tsv<TAB>1` ·
 #   每条 `id<TAB>状态<TAB>目录<TAB>派生时间<TAB>任务(余下全部)` · 末行 `#skipped<TAB><坏行数>`;
 #   状态用机器词 live / unknown / exited(与人读表的 活 / 活? / 已退 是同一个判定);坏行 = 有内容但字段 < 4 或 id 不过字符集。
 set -uo pipefail
@@ -8,7 +8,7 @@ BUS="${CC_BUS_HOME:-$HOME/.cc-bus}"
 tsv=0; [ "${1:-}" = --tsv ] && tsv=1
 [ "$tsv" = 0 ] || printf '#cc-agents-tsv\t1\n'
 [ -f "$BUS/spawned.tsv" ] || { if [ "$tsv" = 1 ]; then printf '#skipped\t0\n'; else echo "(还没 spawn 过会话)"; fi; exit 0; }
-# ★★ **「同名会话在」不等于「它还活着」**〔08-13〕
+# ★★ **「同名会话在」不等于「它还活着」**
 #
 # 这一列原来只判 `tmux has-session -t "=$id"` —— **纯按名字**。而会话名会被重用
 #（`cc-spawn` 就按目录基名取名）：agent 退出后别人占了这个名字，这里照样标「活」。

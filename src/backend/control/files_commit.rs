@@ -1,9 +1,9 @@
-//! 〔F7c · 第三波 · 2026-09-24〕**上传的提交** —— 把暂存区里一份传完的件挪进用户指定的目标。
+//! **上传的提交** —— 把暂存区里一份传完的件挪进用户指定的目标。
 //!
 //! # 为什么有这一份（用户逐字两句）
 //!
 //! 「**保留SFTP. 思考怎么干净**」＋「**现在只允许后端的文件管理部分写文件**」。
-//! ⇒ `设计/60 §13`：SFTP 缩成只做传输，而上传**不直接写到目标** —— SFTP 只写进我们自己的暂存区
+//! ⇒：SFTP 缩成只做传输，而上传**不直接写到目标** —— SFTP 只写进我们自己的暂存区
 //! （`~/.cc-monitor/staging/<key>.part`，断点续传的本钱也住在那儿），传完由**这里**提交。
 //! ⇒ 真正落进用户目录的那一下，只有后端文件管理这一处。
 //!
@@ -11,7 +11,7 @@
 //!
 //! 同 `control/files_write.rs` 那条理由：它会改变世界 ⇒ 住「会改变世界」那一层；
 //! 它属于文件管理后端这个模块（`tests/backend/files/module_boundary_guard.rs` 的成员名单）。
-//! ⚠ 刻意**不住 `files/`**：那一族的头注与 `设计/96 §2.9` 边界①逐字「整族纯读」——
+//! ⚠ 刻意**不住 `files/`**：那一族的头注与边界①逐字「整族纯读」——
 //! 往那棵树里放一个会改名的模块，那句话就当场变假。
 //!
 //! # 它在 `readonly_guard` 第三层上（第二个登记的模块）
@@ -32,7 +32,7 @@
 //!
 //! # 买不到什么（逐条）
 //!
-//! - 〔W5-FILES · 第五波 · `设计/60 §7 #7`〕**跨盘的提交做了**：改名回 `EXDEV` ⇒ 「复制 ＋ 删」（目标同目录 `O_EXCL` 暂存旁名 →
+//! - **跨盘的提交做了**：改名回 `EXDEV` ⇒ 「复制 ＋ 删」（目标同目录 `O_EXCL` 暂存旁名 →
 //!   写满 → 换名上位 → 删暂存件；一步复制那个动词照旧在禁表上，由闭集里已有的几个拼出来），住 [`land_staged`]。
 //!   上一版这里写着「跨盘的提交做不到 …… 新形状，要单独论证」。
 //! - **「SFTP 的起始目录 == 这里的 `$HOME`」是前提**：`ChrootDirectory` / `internal-sftp -d`
@@ -42,16 +42,16 @@
 //! - **Windows 远端**：改名覆盖的语义不同（目标在就失败），`overwrite: true` 那一支在那边会拒。没量过。
 
 //!
-//! # 〔F9c · 第四波 · 2026-09-24〕第二种件：**存盘的块**（`files-stage-chunk` ＋ `files-commit-text`）
+//! # 第二种件：**存盘的块**（`files-stage-chunk` ＋ `files-commit-text`）
 //!
 //! 文件窗口存一份装不进一条请求行的文本（后端入方向一行 1 MiB，`inbound.rs::MAX_LINE_BYTES`）时，
 //! 把它切成几块逐块送进暂存区（`<key>.<seq>.chunk`，**`O_EXCL` 新建**：一块只写一次），
 //! 再由 `files-commit-text` 按块号读回、拼起来、核总长，交给写面那一份覆盖写
-//! （`files_write::overwrite_text`，**一字不抄**）。设计全文住 `调研/第四波记录/F9c.md`。
+//! （`files_write::overwrite_text`，**一字不抄**）。设计全文住。
 //!
 //! ⚠ 为什么不是「把暂存件改名上位」（上面那种件的提交）：暂存区与目标可能不在同一个盘（`EXDEV`），
 //! 而且那样权限位不沿用、链接会被顶掉。同一份文件 1 MiB 上下存出两种结果不行 ⇒ 提交这一下与 `files-write-text` 走**同一个原语**。
-//! 🪦〔HX1 · 4D〕原话「存盘是改一份已经在的文件，**原地覆盖**保留权限位 / 属主 / 硬链接……」—— 那个原语今天是
+//! 🪦原话「存盘是改一份已经在的文件，**原地覆盖**保留权限位 / 属主 / 硬链接……」—— 那个原语今天是
 //! **同目录暂存旁名 ＋ 换名上位**（主会话 D-a：覆盖写一律原子化）：权限位沿用、链接解到底、不跨盘；属主 / 硬链接不再保留，
 //! 代价全文在 `files_write::overwrite_text` 头注。
 //! ⚠ 为什么一块一份文件、不往一份上续写：续写、截断、「在就打开不在就建」那几种开法都在第三层禁表上，
@@ -71,10 +71,10 @@ use std::path::{Path, PathBuf};
 
 /// 暂存区相对 `$HOME` 的那一段。
 ///
-/// 〔SR1b · 2026-09-24〕往里写的那一侧（SFTP 传输台）**搬进了本 crate**（`dial/sftp.rs::STAGING_ROOT` ·
+/// 往里写的那一侧（SFTP 传输台）**搬进了本 crate**（`dial/sftp.rs::STAGING_ROOT` ·
 /// `control/transfer.rs`）⇒ 从前「桥那一侧一份逐字副本 ＋ 相等断言」那一对收成**同一个 crate 里的两个名字**，
 /// 判据直接比（`dial_sftp_tests::the_declared_write_roots_are_exactly_staging_and_bin`）。
-/// 〔P3〕值只住契约 crate（`relay_route_core::STAGING_DIR_REL`：monitor 的数据位置页按同一个常量列出它）。
+/// 值只住契约 crate（`relay_route_core::STAGING_DIR_REL`：monitor 的数据位置页按同一个常量列出它）。
 pub const STAGING_DIR: &str = relay_route_core::STAGING_DIR_REL;
 
 /// 暂存件的键长（十六进制位数）。造键的那一侧（`control/transfer.rs::staging_key`）同一个数（直接引用）。
@@ -83,16 +83,16 @@ pub const KEY_LEN: usize = 32;
 /// 暂存件的后缀。
 pub const PART_SUFFIX: &str = ".part";
 
-/// 〔F9c〕存盘块的后缀（`<key>.<seq>.chunk`）。与 [`PART_SUFFIX`] 刻意不同名：两种件的消耗方式不同
+/// 存盘块的后缀（`<key>.<seq>.chunk`）。与 [`PART_SUFFIX`] 刻意不同名：两种件的消耗方式不同
 /// （上传件改名上位、块读回后删），混一个名字，提交与孤儿扫就得去猜它是哪一种。
 pub const CHUNK_SUFFIX: &str = ".chunk";
 
-/// 〔F9c〕第 `seq` 块的文件名。
+/// 第 `seq` 块的文件名。
 pub fn chunk_name(key: &str, seq: u64) -> String {
     format!("{key}.{seq}{CHUNK_SUFFIX}")
 }
 
-/// 〔F9c〕这个名字是不是一块（回 `(键, 块号)`）。块号只认**规范**十进制（`0` 或不以 `0` 开头），
+/// 这个名字是不是一块（回 `(键, 块号)`）。块号只认**规范**十进制（`0` 或不以 `0` 开头），
 /// 否则 `a.01.chunk` 与 `a.1.chunk` 会是同一块的两个名字。
 pub fn parse_chunk_name(name: &str) -> Option<(&str, u64)> {
     let (key, seq) = name.strip_suffix(CHUNK_SUFFIX)?.split_once('.')?;
@@ -110,14 +110,14 @@ pub const COMMIT_COMMANDS: &[ManageCommand] = &[
     ManageCommand {
         name: "files-commit-upload",
         purpose:
-            "把暂存区里一份传完的上传件挪进用户指定的目标（先过路径解析；〔FW1〕先核整份摘要 `expect: {sha256}`，\
+            "把暂存区里一份传完的上传件挪进用户指定的目标（先过路径解析；先核整份摘要 `expect: {sha256}`，\
              不等 ⇒ 删掉坏暂存件、`stale`；不覆盖时 `O_EXCL` 占位再改名上位）",
-        // 〔FILES2 · Q5〕+`chunks`（入，可缺席；`bytes` 同时是入）：块形 ⇒ 先把块拼成暂存件（`files_upload_chunks`）再走这同一条提交。
+        // +`chunks`（入，可缺席；`bytes` 同时是入）：块形 ⇒ 先把块拼成暂存件（`files_upload_chunks`）再走这同一条提交。
         args: &["bytes", "chunks", "expect", "key", "overwrite", "rel", "root"],
         fields: &["bytes", "path"],
         codes: &["bad_args", "bad_path", "io_failed", "refused", "stale"],
     },
-    // ── 〔F9c · 第四波〕存盘装不进一行时的两步（头注「第二种件」一节）──────────────
+    // ── 存盘装不进一行时的两步（头注「第二种件」一节）──────────────
     ManageCommand {
         name: "files-stage-chunk",
         purpose: "把存盘的一块写进暂存区 `<key>.<seq>.chunk`（`O_EXCL` 新建：同一块写第二次就拒；暂存区不在就建）",
@@ -128,7 +128,7 @@ pub const COMMIT_COMMANDS: &[ManageCommand] = &[
     ManageCommand {
         name: "files-commit-text",
         purpose: "按块号读回 `0..chunks` 块、拼起来、总长必须等于 `bytes`，再覆盖写目标（原子换，与 \
-               `files-write-text` 同一个原语：跟链接、只收已在的普通文件）；〔FW1〕`expect: {sha256}` 必给，\
+               `files-write-text` 同一个原语：跟链接、只收已在的普通文件）；`expect: {sha256}` 必给，\
                盘上那份对不上 ⇒ `stale`、一个字节不写；不论成败都删掉这些块",
         args: &["bytes", "chunks", "expect", "key", "rel", "root"],
         fields: &["bytes", "path", "sha256"],
@@ -163,9 +163,9 @@ pub fn staged_path(home: &Path, key: &str) -> Result<PathBuf, WriteRefusal> {
 ///
 /// 第一件事是过路径解析（第三层 ③ 逐函数扫这个顺序）。
 ///
-/// 〔FW1 · 第四波 4D · 主会话裁 09-25〕**改名上位之前先对整份摘要**：暂存件的 SHA-256 必须等于 `expect_sha256`
+/// **改名上位之前先对整份摘要**：暂存件的 SHA-256 必须等于 `expect_sha256`
 /// （传输台对本机那份一边传一边算的，窗口原样交来）。不等 ⇒ 这份暂存件是坏的（「前缀 ＋ 洞 ＋ 尾巴」：失败后晚到的写
-/// 在中间留了洞、续传的尾块对拍看不见 —— `设计/60 §7` 第 8 条；或任何别的坏前缀）⇒ **删掉它**（留着只会被下一次续传接上）、
+/// 在中间留了洞、续传的尾块对拍看不见 ——；或任何别的坏前缀）⇒ **删掉它**（留着只会被下一次续传接上）、
 /// `stale`、目标一个字节不动；调用方从 0 重传。⚠ 核与改名之间仍有窗（暂存区是我们自己的目录，窗里没人该碰它；如实登记）。
 pub fn commit_upload(
     home: &Path,
@@ -263,7 +263,7 @@ pub fn commit_upload_in(
         })?;
     if let Err(e) = land_staged(home, key, root, rel, &dest, cross_device) {
         // 撤掉自己那个 0 字节的占位（它是这一次刚建的，不是用户既有数据）。
-        // 〔HX1 · E 吞错〕撤不掉 ⇒ 说出来：此前 `let _ =` 吞掉，用户目录里留一份 0 字节文件、报错一个字不提，重试撞「目标已经在了」。
+        // 〔E 吞错〕撤不掉 ⇒ 说出来：此前 `let _ =` 吞掉，用户目录里留一份 0 字节文件、报错一个字不提，重试撞「目标已经在了」。
         let undo = std::fs::remove_file(&dest);
         return Err(WriteRefusal::Io(copy_text(
             "beFilesCommit.upload.moveFailedNote",
@@ -277,7 +277,7 @@ pub fn commit_upload_in(
     Ok((dest, bytes))
 }
 
-/// 〔W5-FILES · `设计/60 §7 #7`「跨盘提交 —— 要做就得『复制 ＋ 删』，一步复制在禁表里」〕把暂存件挪到 `dest`：
+/// 〔「跨盘提交 —— 要做就得『复制 ＋ 删』，一步复制在禁表里」〕把暂存件挪到 `dest`：
 /// 先改名上位（同盘，原子）；回 `EXDEV`（暂存区与目标不在同一个文件系统）⇒ **复制 ＋ 删**：
 /// 在目标**同目录**用 `O_EXCL` 建一个暂存旁名（过路径解析）→ 从暂存件读、写满 → 旁名改名上位（同目录，原子；
 /// 不覆盖那一支盖掉的是本次那个 `O_EXCL` 占位）→ 删暂存件。任一步失败 ⇒ 删掉旁名，暂存件留着（续传本钱，`§4.3` 失败留）。
@@ -338,7 +338,7 @@ fn land_staged(
     Ok(())
 }
 
-/// 〔HX1〕提交失败之后撤占位那一步的结局 ⇒ 接在报错后面的那半句。撤掉了 ⇒ 空（没什么要用户做的）。
+/// 提交失败之后撤占位那一步的结局 ⇒ 接在报错后面的那半句。撤掉了 ⇒ 空（没什么要用户做的）。
 pub(crate) fn placeholder_note(dest: &Path, undo: &std::io::Result<()>) -> String {
     match undo {
         Ok(()) => String::new(),
@@ -349,7 +349,7 @@ pub(crate) fn placeholder_note(dest: &Path, undo: &std::io::Result<()>) -> Strin
     }
 }
 
-// ═══════════════ 〔F9c · 第四波〕存盘的块：写一块 · 读回拼起来提交 · 删掉 ═══════════════
+// ═══════════════ 存盘的块：写一块 · 读回拼起来提交 · 删掉 ═══════════════
 
 /// 暂存区在盘上的位置；不在就建（两层：`~/.cc-monitor` 与它底下的 `staging`，已在不算错）。
 ///
@@ -359,7 +359,7 @@ fn ensure_staging(home: &Path) -> Result<PathBuf, WriteRefusal> {
     let mut at = home.to_path_buf();
     for seg in STAGING_DIR.split('/') {
         let next = resolve_in_root(&at, seg).map_err(WriteRefusal::Refused)?;
-        // 〔HX1〕这一趟建出来的那一层建的那一下就是 0700、已在的不动（`own_dir`：后端建自家目录的那一个函数）。
+        // 这一趟建出来的那一层建的那一下就是 0700、已在的不动（`own_dir`：后端建自家目录的那一个函数）。
         crate::common::own_dir::ensure_private_dir(&next).map_err(|e| {
             WriteRefusal::Io(copy_text(
                 "beFilesCommit.staging.mkdirFailed",
@@ -523,7 +523,7 @@ pub fn commit_text(
     rel: &str,
     expect_sha256: &str,
 ) -> Result<(PathBuf, u64, String), WriteRefusal> {
-    // 〔FW1〕与 `files-write-text` 同一道 CAS（`overwrite_text_expecting`）：两支存盘同一种结果，含「盘上被改过 ⇒ stale」。
+    // 与 `files-write-text` 同一道 CAS（`overwrite_text_expecting`）：两支存盘同一种结果，含「盘上被改过 ⇒ stale」。
     let r = gather_chunks(home, key, chunks, bytes).and_then(|body| {
         overwrite_text_expecting(root, rel, &body, expect_sha256)
             .map(|at| (at, body.len() as u64, content_sha256(&body)))
@@ -538,14 +538,14 @@ pub fn commit_text(
 /// 一趟正在传的件每写一块修改时间就刷新一次，永远不会被判成孤儿。
 /// ⚠ 7 天不是量出来的，是一个约定：一周没人回来续的件，那次续传已经不值得等了。
 ///
-/// 🔴 **这个值住后端，不住传输那一侧**：它是一个期限的**值**（`设计/05 §3.3.2`「值归后端」），
+/// 🔴 **这个值住后端，不住传输那一侧**：它是一个期限的**值**（「值归后端」），
 /// 而且「修改时间」与「此刻」必须取**同一台机器的钟** —— 放在 monitor 那边比，
 /// 就是拿 monitor 的钟去比远端的时间戳（两台机器差几个小时，判出来的「老」就差几个小时）。
 pub const STAGING_STALE_SECS: u64 = 7 * 24 * 3600;
 
 /// **孤儿扫**：暂存区里修改时间早于 `now - STAGING_STALE_SECS` 的暂存件删掉。回删掉的名字。
 ///
-/// - 只认**我们自己的形状**：`<32 位十六进制>.part` 与〔F9c〕`<32 位十六进制>.<块号>.chunk`；
+/// - 只认**我们自己的形状**：`<32 位十六进制>.part` 与`<32 位十六进制>.<块号>.chunk`；
 ///   别的名字一个不碰（那不是我们放的）。
 /// - `keep` 那一个不碰（调用方此刻手上的那一份）。
 /// - 每一处删之前**先过路径解析**（以暂存区为根的 [`resolve_in_root`]）—— 第三层 ③ 逐函数扫这个顺序；
@@ -563,7 +563,7 @@ pub fn sweep_stale(home: &Path, now_secs: u64, keep: &str) -> Vec<String> {
         let Some(name) = entry.file_name().to_str().map(str::to_string) else {
             continue;
         };
-        // 两种形状：上传件 `<key>.part` · 〔F9c〕存盘块 `<key>.<seq>.chunk`。
+        // 两种形状：上传件 `<key>.part` · 存盘块 `<key>.<seq>.chunk`。
         let Some(key) = name
             .strip_suffix(PART_SUFFIX)
             .or_else(|| parse_chunk_name(&name).map(|(k, _)| k))
@@ -635,7 +635,7 @@ fn answer_commit(args: &serde_json::Value) -> Answer {
 /// 那是全进程共享的，改了会波及同一进程里并发跑的别的判据）。
 fn answer_commit_at(home: &Path, args: &serde_json::Value) -> Answer {
     let root = path_arg(args, "root")?;
-    // 〔FILES2 · V152〕`rel` 也收 `{"b16": …}`：本机落点是非 UTF-8 名（有损名下载在 Linux 上按原始字节落名）时经这条提交。
+    // `rel` 也收 `{"b16": …}`：本机落点是非 UTF-8 名（有损名下载在 Linux 上按原始字节落名）时经这条提交。
     let rel = path_arg(args, "rel")?;
     let key = str_arg(args, "key")?.to_string();
     // 🔴 覆盖策略**必须显式给**：默认成哪一边都是替用户做了一个他没做的决定。
@@ -646,9 +646,9 @@ fn answer_commit_at(home: &Path, args: &serde_json::Value) -> Answer {
             "bad_args",
             crate::common::contract::malformed("missing `overwrite` (true / false, no default)"),
         ))?;
-    // 〔FW1〕整份摘要**必给**（传输台 done 帧交的那个）：没有「不核就上位」这一形。
+    // 整份摘要**必给**（传输台 done 帧交的那个）：没有「不核就上位」这一形。
     let expect = sha256_expect_of(args)?;
-    // 〔FILES2 · Q5〕块形（SFTP 起始目录不是后端 home ⇒ 窗口改走后端链路分块写）：先拼成暂存件，下面照旧同一条提交。
+    // 块形（SFTP 起始目录不是后端 home ⇒ 窗口改走后端链路分块写）：先拼成暂存件，下面照旧同一条提交。
     if args.get("chunks").is_some() {
         let (chunks, bytes) = (u64_arg(args, "chunks")?, u64_arg(args, "bytes")?);
         super::files_upload_chunks::assemble_part(home, &key, chunks, bytes)
@@ -656,7 +656,7 @@ fn answer_commit_at(home: &Path, args: &serde_json::Value) -> Answer {
     }
     let (landed, bytes) = commit_upload(home, &key, &root, &rel, overwrite, &expect)
         .map_err(|e| (e.code(), e.message().to_string()))?;
-    // 暂存区清理「孤儿」那一格的事件：一次提交成功（`设计/60 §13.2 ④`）。
+    // 暂存区清理「孤儿」那一格的事件：一次提交成功。
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
@@ -684,7 +684,7 @@ fn home_dir() -> Result<PathBuf, (&'static str, String)> {
         .ok_or(("io_failed", copy_text("beFilesCommit.staging.noHome", &[])))
 }
 
-/// 〔F9c〕`files-stage-chunk`。
+/// `files-stage-chunk`。
 fn answer_stage_at(home: &Path, args: &serde_json::Value) -> Answer {
     let key = str_arg(args, "key")?.to_string();
     let seq = u64_arg(args, "seq")?;
@@ -707,7 +707,7 @@ fn answer_stage_at(home: &Path, args: &serde_json::Value) -> Answer {
     Ok(serde_json::json!({ "bytes": n }))
 }
 
-/// 〔F9c〕`files-commit-text`。
+/// `files-commit-text`。
 fn answer_commit_text_at(home: &Path, args: &serde_json::Value) -> Answer {
     let root = path_arg(args, "root")?;
     let rel = str_arg(args, "rel")?.to_string();

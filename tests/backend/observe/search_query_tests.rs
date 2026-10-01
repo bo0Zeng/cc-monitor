@@ -1,7 +1,7 @@
 use super::*;
 
 // ⚠ `extract_*` / `clean_user_text` / `find_ci` / `make_snippet` 那 4 条单元测试
-// **随实现住在口径的家里**（`K-R100`；〔P1〕通用那几条在 `search_rules_tests.rs`，记录文本那几条在 `agents/claudecode/text_tests.rs`）。
+// **随实现住在口径的家里**（`K-R100`；通用那几条在 `search_rules_tests.rs`，记录文本那几条在 `agents/claudecode/text_tests.rs`）。
 // 在这里再抄一份 = 又在本文件养出一个「口径的家」，正是本件要治的形状。
 
 #[test]
@@ -45,7 +45,7 @@ fn search_end_to_end_and_rejects_traversal() {
         after_ms: 0,
         limit: 300,
     };
-    // 〔SX1〕会话那一格来自索引：整份读进一格 `FileEntry`，查询对它跑。
+    // 会话那一格来自索引：整份读进一格 `FileEntry`，查询对它跑。
     let mut entry = FileEntry::empty(None, true);
     entry.take(None, &std::fs::read(&jsonl).expect("读夹具"));
     let mut budget = SnippetBudget::new(opts.limit);
@@ -229,7 +229,7 @@ fn truncation_is_stated_not_left_to_an_empty_array() {
 /// （`search` → `session_hits_in` → `search_rules::make_snippet`）来。
 /// · 改 core 的 `SNIPPET_CTX` ⇒ 实际与期望**一起动**，本条仍绿（＝行为跟着变了）；
 /// · 本侧哪天自己写回一个 `const SNIPPET_CTX = 48` ⇒ 实际不动、期望动 ⇒ **当场红**。
-/// monitor 侧原有一条同形的（〔LOC1b · 4D〕随 monitor 内存索引一起删了：本机搜索也走本条测的这一份）。
+/// monitor 侧原有一条同形的（随 monitor 内存索引一起删了：本机搜索也走本条测的这一份）。
 #[test]
 fn the_snippet_window_comes_from_core() {
     let ctx = search_rules::SNIPPET_CTX;
@@ -257,11 +257,11 @@ fn the_snippet_window_comes_from_core() {
     std::fs::remove_dir_all(&tmp).ok();
 }
 
-/// 〔W5-VIS · E 吞错普查点名 `search_query` 那一处〕**读不动的会话不许从结果里静默消失**：
+/// 〔E 吞错普查点名 `search_query` 那一处〕**读不动的会话不许从结果里静默消失**：
 /// 两份会话都含那个词，其中一份不是合法 UTF-8（整份读不动）⇒ 结果只有读得动的那一份（行形状不动），
 /// 而这一趟回的「读不动」数 == 1、那句总账说出这个数；全都读得动 ⇒ 0、不说话（两向）。
 ///
-/// 要求住址：`设计/15 §4.7 S5`（逐字）「处置不是别吞，是吞了要留一行日志」。
+/// （逐字）「处置不是别吞，是吞了要留一行日志」。
 #[test]
 fn w5vis_an_unreadable_session_is_counted_and_said_not_silently_dropped() {
     let tmp = std::env::temp_dir().join(format!("ccm-w5vis-search-{}", std::process::id()));
@@ -296,7 +296,7 @@ fn w5vis_an_unreadable_session_is_counted_and_said_not_silently_dropped() {
     std::fs::remove_dir_all(&tmp).ok();
 }
 
-/// 要求住址：`设计/90 §3` J15「多机合并排序收进 `search-core::sort_by_recency`，前端 `mergeSearchResults` 删」（主会话 09-28 裁 B：
+/// 要求：「多机合并排序收进 `search-core::sort_by_recency`，前端 `mergeSearchResults` 删」（主会话 09-28 裁 B：
 /// 界面照旧逐台扇出、合并排序问本机后端 `history-search-merge`）。期望原样搬自 `tests/frontend/ui/views/history-search.vitest.ts` 那几条合并用例。
 #[test]
 fn the_merge_frame_sorts_newest_first_stably_and_sums_what_each_machine_said() {

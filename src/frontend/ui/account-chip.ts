@@ -9,9 +9,9 @@
 // `D1` 现打、PM 复核：`fetchAccounts` 只 `invoke("list_remote_accounts")`，本机那条是
 // **另一个函数** `fetchLocalAccounts`，而它在本文件里当时命中 **0**
 // ⇒ **chip 一次都没渲染过本机账号**（`origin` 为 `null` 时它整个隐藏、直接 `return`）。
-// ⚠ 那两句假话不是笔误，是**从上一轮报告里抄来没量的**（`ROADMAP` `己1-f34` 记着这一条）。
+// ⚠ 那两句假话不是笔误，是**从上一轮报告里抄来没量的**（`己1-f34` 记着这一条）。
 //
-// ★★ `D1 阻-5`〔08-28〕：现在它**真的会**渲染本机账号 —— 没有远端时回落到
+// ★★ `D1 阻-5`：现在它**真的会**渲染本机账号 —— 没有远端时回落到
 // `fetchLocalAccounts`，并且那几行的徽章带上「这个号走不走 apikey 端点改写」的三态
 // （`accountStatusBadge` 的 `{scope:"local",…}`）。在此之前 `KH2B7` 那三态
 // **在用户看得见的地方一处都没落地**（两个取值函数生产调用方各 0）。
@@ -30,7 +30,7 @@ import { appStore, putAccounts } from "./app-store";
 
 /** 选 chip 绑定的那台机器：第一台已配置远端；一台都没有 ⇒ **本机**（`LOCAL_ORIGIN`）。
  *  ⚠ `K-R59` 之前这里还排掉 `daemonless` 的主机 —— 那一档没了，不再有可排的。
- *  〔C4a · `设计/05 §8` 步 2〕上一版「无 → `null`」，调用方再把 `null` 读成「回落本机」——
+ * 上一版「无 → `null`」，调用方再把 `null` 读成「回落本机」——
  *  两步说同一件事；`D1 阻-5` 之后「没有远端」就是「本机」，这里直接说出来。 */
 export function pickPrimaryOrigin(hosts: RemoteHostConfig[]): Origin {
   const h = hosts.find((x) => x.label || x.host);
@@ -76,10 +76,10 @@ export class AccountChip {
   private local = false;
   /** `D1 阻-5`：本机那几个 configDir 走不走 apikey 端点改写。`null` = 没问到（远端那半恒 `null`）。 */
   private apikeyRouting: ApikeyRoutingView | null = null;
-  /** 〔GAP1 · `设计/01 §1.5`〕`refresh` 跑过一次没有（在那之前 chip 不绑任何一台，`state` 恒 `null`）。 */
+  /** `refresh` 跑过一次没有（在那之前 chip 不绑任何一台，`state` 恒 `null`）。 */
   private bound = false;
   /**
-   * 〔GAP1 · `设计/01 §1.5`〕chip 不再自己存一份账号清单：读 store 里它绑的那一台（`account-reads.ts` 每取回一次写进去）。
+   * chip 不再自己存一份账号清单：读 store 里它绑的那一台（`account-reads.ts` 每取回一次写进去）。
    * 本机那一档 not-ready ⇒ `null`（整个隐藏，`D2 阻-7`）。
    */
   private get state(): AccountsState | null {
@@ -108,7 +108,7 @@ export class AccountChip {
     btn.addEventListener("click", () => void this.toggleMenu());
     this.element = btn;
     this.element.style.display = "none"; // 拿到数据前先藏
-    // 〔GAP1〕本窗口里任何一次取回（含会话账号刷新器的强制刷新）都经 store 订阅重画，不再只在自己 `refresh` 时画。
+    // 本窗口里任何一次取回（含会话账号刷新器的强制刷新）都经 store 订阅重画，不再只在自己 `refresh` 时画。
     appStore.accounts.subscribe(() => {
       if (this.bound) this.paint();
     });
@@ -127,7 +127,7 @@ export class AccountChip {
     //   fork 那个小窗）。⇒ 回落到本机那一份，并把「走不走 apikey 端点改写」一起问出来。
     this.local = isLocalOrigin(this.origin);
     this.apikeyRouting = null;
-    // 〔GAP1〕取回来的那一份进 store（`account-reads.ts` 取回时已写；同一份再写是空操作），`state` 读 store。
+    // 取回来的那一份进 store（`account-reads.ts` 取回时已写；同一份再写是空操作），`state` 读 store。
     putAccounts(this.origin, this.local ? await fetchLocalAccounts(force) : await fetchAccounts(this.origin, force));
     this.bound = true;
     // ★★ `D2 阻-7`：**本机那一档 not-ready 就整个隐藏** —— 与本件之前**逐字节相同**（`state` getter 回 `null`，`paint` 藏）。
@@ -191,7 +191,7 @@ export class AccountChip {
     }
     // `D1 阻-5`：**本机那一档没有 origin，但有账号** ⇒ 这道门改问「有没有状态」。
     //   ⚠ 这道门先前还替**用量探针**（`loadCurrentAccountUsage`）守着 origin ——
-    //   探针已随 `设计/50` 退役，那半个理由跟着没了；这道门今天只为「列不列得出账号」。
+    //   探针已随退役，那半个理由跟着没了；这道门今天只为「列不列得出账号」。
     //   🔴 而 [`snapshotReady`] 先前也留在 origin 那道门后面，`D4 阻-4` 查实那是个洞：
     //   **chip 显示、菜单里能切号，而 Ctrl+K 命令面板拿到 `null`** —— 同一件事两个答案，
     //   而且静默。⇒ 它已经与本行**同源**（`accountPickerState()`），别再把两处分开写。
@@ -225,7 +225,7 @@ export class AccountChip {
       menu.appendChild(this.menuAction(copyText("accountChip.menu.manage"), () => this.deps.openSettings()));
       menu.appendChild(
         this.menuAction(copyText("accountChip.menu.refresh"), () => {
-          // 〔C4b〕账号缓存的键就是 origin（本机也一样，`"__local__"` 那个第二种写法已退役）⇒ 只清这一台。
+          // 账号缓存的键就是 origin（本机也一样，`"__local__"` 那个第二种写法已退役）⇒ 只清这一台。
           invalidateAccountsCache(this.origin);
           void this.refresh(true);
         }),
@@ -350,7 +350,7 @@ export class AccountChip {
    * `!this.state`，那就又是两份判断 —— 而这一条治的正是「同一件事两处各判一次」。
    */
   private accountPickerState(): AccountsState | null {
-    // 〔C4a〕上一版这里先挡「`origin` 为 `null` 且不是本机」—— 那一档只在 `refresh` 之前出现，
+    // 上一版这里先挡「`origin` 为 `null` 且不是本机」—— 那一档只在 `refresh` 之前出现，
     //   而那时 `state` 本来就是 `null`；`origin` 不再为 `null` 之后那道门与下一行说的是同一件事。
     return this.state;
   }
@@ -361,7 +361,7 @@ export class AccountChip {
    * 🔴 `D4 阻-4`：这道门**已与 [`toggleMenu`] 同源**（[`accountPickerState`]）——
    * 本机那一档从此也回得出一份，命令面板里列得出 chip 菜单里列得出的那几个号。
    *
-   * ⚠ 快照来自**本机**那一半时 `origin` 是 `LOCAL_ORIGIN`（〔C4a〕上一版是 `null`）。
+   * ⚠ 快照来自**本机**那一半时 `origin` 是 `LOCAL_ORIGIN`（上一版是 `null`）。
    * 今天唯一的消费方 `buildAccountCommands` 只读 `accounts` / `defaultName`
    * （`account-commands.ts::AccountCommandsInput` 逐字，它连 `origin` 这个键都没有）
    * ⇒ 留着这个字段是为了让读的人看得出这份快照是哪一半的。

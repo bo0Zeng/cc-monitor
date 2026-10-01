@@ -1,6 +1,6 @@
 //! Phase 2 · F2a：Codex rollout 记录的**防御式分类器** ＋ 映射进渲染模型（`JsonlRecord`）。
 //!
-//! 〔MOD · `设计/90 §3` 判据 3〕从 monitor 的 `codex_record.rs` 搬进后端：记录解释只住后端，界面只收成品。
+//! 从 monitor 的 `codex_record.rs` 搬进后端：记录解释只住后端，界面只收成品。
 //! 信封助手（解包 · 子型 · alias 归一 · 那几个字段）只用 [`super::parse`] 那一份 —— 搬进来之前两侧各写一份、
 //! 靠注释「同语义」对齐，今天同一个模块里没有理由再留第二份。
 //!
@@ -81,7 +81,7 @@ pub fn classify(v: &Value) -> CodexRecordKind {
 /// token_count 的 `payload.info.last_token_usage`（本轮增量用量；F5 抽字段）。原样返回 Value。
 /// **实测 total_token_usage 严格单调、final == Σlast**——故 F5 按 (model,天) 累加各事件 last 增量，
 /// 与 Claude 逐 request 归桶一致（取 final total 会丢跨天/跨模型粒度）。
-#[allow(dead_code)] // staged：用量那一轴随 `设计/50` 删了，复活点就是这里（codex 专项）。
+#[allow(dead_code)] // staged：用量那一轴随删了，复活点就是这里（codex 专项）。
 pub fn token_usage_last(v: &Value) -> Option<&Value> {
     unwrap_envelope(v)?.1.get("info")?.get("last_token_usage")
 }
@@ -90,7 +90,7 @@ pub fn token_usage_last(v: &Value) -> Option<&Value> {
 // `input -= cached`。它与 backend `agents/codex/parse.rs` 的那份**逐字相同却各写一遍**
 // ——U7-2 收 Claude 口径时漏了 Codex 这半。现已收进 `token::codex_delta`
 // （唯一权威源），调用方直接拿映射好的增量。
-// 🔴 〔`设计/50`〕**钉住它「是唯一家」的那条判据没了**：它住 monitor 的用量模块，
+// 🔴 **钉住它「是唯一家」的那条判据没了**：它住 monitor 的用量模块，
 // 而用量 ②③ 两轴整轴退役、那份文件整删 ⇒ 今天没有任何东西在数这个映射有几个家。
 // ⚠ 同一刀还让**本文件对那个 crate 零调用** —— 上面这段说的是历史，别读成今天还在共用。
 
@@ -176,7 +176,7 @@ pub fn session_meta_timestamp(v: &Value) -> Option<&str> {
 
 // ─── F2b-2：Codex 记录 → 现有 `JsonlRecord`（第三条路组装。口径对齐 aterm CodexRecordParser.kt c03e46f）───
 
-/// 〔MOD〕一行 rollout 原文 ⇒ 交给通用层的那一形（注册表 `RecordFace.parse`；契约同 Claude 那一家：
+/// 一行 rollout 原文 ⇒ 交给通用层的那一形（注册表 `RecordFace.parse`；契约同 Claude 那一家：
 /// 空行 `Ok(None)` · 连 JSON 都不是 `Err`）。
 pub(crate) fn parsed_line(raw: &str) -> Result<Option<crate::agents::ParsedLine>, String> {
     let trimmed = raw.trim_start_matches('\u{feff}').trim();
@@ -298,7 +298,7 @@ fn assistant_rec(uuid: String, ts: Option<String>, role: &str, content: Value) -
         is_api_error_message: false,
         error: None,
         api_error_status: None,
-        // 〔THIN〕Codex 的工具名今天没人考据过⇒ 不带卡型；它不声明子运行 ⇒ 不带派出标签。
+        // Codex 的工具名今天没人考据过⇒ 不带卡型；它不声明子运行 ⇒ 不带派出标签。
         tool_cards: Default::default(),
         child_runs: Default::default(),
     }

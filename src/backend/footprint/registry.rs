@@ -5,7 +5,7 @@
 //! 本模块的判据**多数是声明表内部的自洽检查**：字段有没有区分力 · 落点在不在
 //! `touches` 里 · 拥有就必须装得了 · 有围栏就必须卸得掉 · 解析器有没有真看见源码。
 //! 〔`K-R63` 09-11 订正两处：① 原文写死了一个基数（「15 条」），而判据条数只有一份
-//!  住址 —— 本文件判据档里的测试函数，要数就现数〔`13b`〕；② 「**全部**是表内部自洽」
+//!  住址 —— 本文件判据档里的测试函数，要数就现数；② 「**全部**是表内部自洽」
 //!  今天不成立 —— `every_tool_declares_install_and_uninstall_as_the_implementations_really_are`
 //!  一边读字段值、一边去别的文件里钉那个装 / 卸实现的签名，它跨出了这张表。〕
 //! 两条探针实测它**确实有牙**（把 `ccm` 的落点改成 `.local/bin/ccm-x` ⇒
@@ -15,9 +15,9 @@
 //! **但它不守一件事：新增一个「会在用户机器上留下东西」的写点，没有任何东西逼它申报。**
 //! 人群是「**声明了的**工具」，不是「**真实发生的**安装动作」——
 //! 表里那几条看着是全的，而那是**人现在记得**，不是有东西钉着。
-//! （**基数不写在散文里**〔`13b`〕：要数就 `TOOLS.len()`，那是唯一一份。）
+//! （**基数不写在散文里**：要数就 `TOOLS.len()`，那是唯一一份。）
 //!
-//! ## 〔`K-R60` 09-11〕**这张表的语义扩了一格：从「装到别处的受管工具」到「app 会碰的环境项」**
+//! ## **这张表的语义扩了一格：从「装到别处的受管工具」到「app 会碰的环境项」**
 //!
 //! 原先只收「我们装到别处的东西」，于是 app **装不了、却离不开**的那些
 //! （最吃重的一项是 Claude Code 自己写的会话记录）只能靠**不进表**来表示。
@@ -34,7 +34,7 @@
 //! 真正的落点只有两三个 ⇒ **噪声压过信号**，做成判据会天天误红，
 //! 而误红最省事的消法是往豁免表里塞条目 —— 那会把这条判据变成废纸。
 //!
-//! ⇒ 登记为诚实边界（`ROADMAP §5`），**不假装覆盖**。
+//! ⇒ 登记为诚实边界，**不假装覆盖**。
 //! 解锁条件：安装动作先收敛到一个可枚举的落点（比如所有部署都过一个 `install_to()`），
 //! 那时人群才有干净的边界。
 //!
@@ -98,7 +98,7 @@
 
 use copy_core::copy_text;
 
-/// 〔CP2b · 4C〕表里给人看的那一句 —— **取文函数**，不是字面量。
+/// 表里给人看的那一句 —— **取文函数**，不是字面量。
 ///
 /// 常量表里调不了函数 ⇒ 放一个不捕获的闭包（`Text(|| copy_text("key", &[]))`），用到时才取文；
 /// 话本身住 `src/shared/copy/table.json`。包一层而不是裸放 `Text`，是为了让
@@ -146,7 +146,7 @@ impl serde::Serialize for Text {
     }
 }
 
-/// 内容的来源。**每个变体的使用者数现算**（`TOOLS` 是唯一一份），不写死在这里〔`13b`〕。
+/// 内容的来源。**每个变体的使用者数现算**（`TOOLS` 是唯一一份），不写死在这里。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub enum ToolSource {
     /// 仓内文件，编译期 `include_str!` 进二进制（`ccm`）。
@@ -165,12 +165,12 @@ pub enum ToolSource {
     NotOurs { who: Text },
 }
 
-/// 装到哪。**变体数与使用者数现算**，不写死在这里〔`13b`〕。
+/// 装到哪。**变体数与使用者数现算**，不写死在这里。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub enum ToolDestination {
     /// 远端家目录下的相对路径（`~/.local/bin/ccm`）。
     ///
-    /// # 🔴 〔`K-R81` 09-12〕**它 09-12 下午重新有使用者了，而那不是回退**
+    /// # 🔴 **它 09-12 下午重新有使用者了，而那不是回退**
     ///
     /// `K-R69`（09-12 上午）写过一段「它零使用者、`never constructed` 就是这笔债的存根」，
     /// 并把退役条件写死成「**下一件活里若仍没有「只落在远端」的工具进来**就删」。
@@ -224,7 +224,7 @@ pub enum ToolDestination {
 /// T04 第一步。它不是"为模型而模型"——不加它，`config_surface` 在**生产平台上会说假话**：
 /// `cc-bus` 的 `destination` 是 `LocalHomeRelative`，三条 touches 于是被当**本机路径**去 stat。
 /// 但 cc-monitor 的生产平台是 Windows（`ci.yml`/`release.yml` 打包 job 都是 `windows-latest`），
-/// 而 cc-bus 跑在 **Claude Code 所在的那台**——钩子诊断为此按 origin 问那台后端（〔MIG-3b〕帧命令 `hooks-diag`），
+/// 而 cc-bus 跑在 **Claude Code 所在的那台**——钩子诊断为此按 origin 问那台后端（帧命令 `hooks-diag`），
 /// `cc_bus::read_cc_bus_state(origin)` 读 `~/.cc-bus/` 更是**按 origin 远端 exec** 的。
 /// 于是 Windows 用户打开「配置面审计」会看到那三行写着**「不存在」**，
 /// 而同一个 app 的驾驶舱正从远端把 inbox 读得好好的。
@@ -270,7 +270,7 @@ pub enum HostScope {
 }
 
 /// 这个工具会碰用户的哪个文件，以及**碰它意味着什么**。
-/// 本结构是 T02 审计视图的直接输入（使用者数现算，不写死在这里〔`13b`〕）。
+/// 本结构是 T02 审计视图的直接输入（使用者数现算，不写死在这里）。
 ///
 /// ## `path` 与 `note` 为什么拆开（T02 一上手就撞到的计划≠现实）
 ///
@@ -327,21 +327,21 @@ pub enum TouchEffect {
     /// 于是审计页渲染出「只读（诊断用），我们不写」——**假话**。
     /// cc-monitor 的 cc-bus 驾驶舱有两个按钮走的是
     /// `cc_bus::cc_bus_send`（远端跑 `cc-send`）与 `cc_bus::cc_bus_spawn`（跑 `cc-spawn`）〔散文墓碑〕
-    /// （〔C4e〕今天是界面经通道直接说那台后端的 `bus-send` / `bus-spawn`，后端照旧调那两份脚本 —— 这一档的理由不变），
+    /// （今天是界面经通道直接说那台后端的 `bus-send` / `bus-spawn`，后端照旧调那两份脚本 —— 这一档的理由不变），
     /// 而 `cc-bus-lib.sh:221` 是 `printf '%s\n' "$line" >> "$inbox"`、
     /// `cc-spawn:141` 追加 `spawned.tsv`、`cc-register:25` 换掉 `agents.tsv`。
     /// 「我们只是调了别人的命令」不改变**用户的文件因为在我们这儿点了一下而变了**这件事。
     /// 这一页的全部价值是可信告知，在自己的主张上失信比不做这一页更坏。
     IndirectWrite,
-    /// 〔GP1 · 第四波〕**cc-monitor 旧版放在这儿的那一份，今天要清掉**：认出是它放的（记号见 `ccm_legacy`）就删，
+    /// **cc-monitor 旧版放在这儿的那一份，今天要清掉**：认出是它放的（记号见 `ccm_legacy`）就删，
     /// 认不出的一个字节都不动。它不是「拥有」（[`Self::OwnedFile`] 那句「部署时整体覆盖」对它是假话）——
-    /// 我们不再往这儿写，只在看见旧的那一份时收回它。`设计/01 §6.7b`「三件都要在足迹里有入口」。
+    /// 我们不再往这儿写，只在看见旧的那一份时收回它。「三件都要在足迹里有入口」。
     RetiredLegacy,
 }
 
 /// **同一个东西的一种载体** —— 「它这一份怎么产出来、落到哪、碰哪些文件」。
 ///
-/// # 🔴 〔`K-R81` 09-12〕这一层为什么非有不可（用户 09-12 逐字逼出来的）
+/// # 🔴 这一层为什么非有不可（用户 09-12 逐字逼出来的）
 ///
 /// 用户逐字：「**一个后端要两处使用 / 即远程后端就是远程本地机器的后端**」。
 /// 也就是说：**远端那台机器上跑的那一份，是「那台机器的本地后端」**，
@@ -350,7 +350,7 @@ pub enum TouchEffect {
 /// 而在这一层立起来之前，[`ToolSpec`] 是「一个源 + 一个落点 + 一串 touch」：
 /// **同一个后端有三种载体、四个落点，而闭集只表达得了一个半**（`K-R68` 现打）。
 /// 三种载体逐条是：① 这一份产物自己带着、要用时自释放的那份（`native-backend/`，
-/// `byte_table.rs` 的 `include_bytes!`，〔DP1〕按这一份产物的 `TARGET` 那一格取）·
+/// `byte_table.rs` 的 `include_bytes!`，按这一份产物的 `TARGET` 那一格取）·
 /// ② 内嵌、推给远端那台机器的那份（`embedded-backends/`）·
 /// ③ 安装包放在 app 可执行文件旁边的那份（`tauri.sidecar.conf.json` 的 `externalBin`）。
 ///
@@ -395,7 +395,7 @@ pub struct Carrier {
 /// 一个受管工具的完整声明。
 ///
 /// **所有字段必须是 `const`-可构造的声明式数据**（无函数指针、无 `dyn`、无 `String`）。
-/// 〔CP2b · 4C〕唯一的例外是给人看的那几格：[`Text`] 里包一个**不捕获的取文闭包**（话住文案表，
+/// 唯一的例外是给人看的那几格：[`Text`] 里包一个**不捕获的取文闭包**（话住文案表，
 /// 常量里调不了函数）。它不做探测、不读环境，取出来的永远是表里那一句 —— 上面那条边界没破。
 /// 这不是风格偏好，是上面那条「探测机制不进来」边界的落地形式。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
@@ -409,18 +409,18 @@ pub struct ToolSpec {
     /// ⇒ 它填错了，用户在配置面上读到的「能否装/撤」与清单上的档**同时**是假的。
     /// 守它的是 `every_tool_declares_install_and_uninstall_as_the_implementations_really_are`
     /// （读**字段值**，不是注释里的词频 —— 这一格上一次就是被词频守卫放过去的）。
-    /// 〔`K-R63` 09-11〕上一版守它的那条只服务 `cc-bus` 一个工具，**名字里带工具名**；
+    /// 上一版守它的那条只服务 `cc-bus` 一个工具，**名字里带工具名**；
     /// 今天这条是**覆盖全表**的性质，两格一起对拍，两个方向都判。
     pub installable: bool,
     /// 能不能卸。
     ///
-    /// 🔴 **它与 `installable` 是同一枚硬币，而它先前只有半边被守**〔`K-R63` 09-11〕：
+    /// 🔴 **它与 `installable` 是同一枚硬币，而它先前只有半边被守**：
     /// `fenced_block_implies_uninstallable` 守的是「有围栏 ⇒ 必须声明可卸」（少报那一向），
     /// **多报**（声明可卸而盘上根本没有卸载实现）一条都不红 —— PM 的刀 C 把
     /// `cc-acct-iso` 由 `false` 翻成 `true`，全表 1379 条一条没响。
     /// ⇒ 今天与 `installable` 同走上面那条性质：字段值 ⇔ 盘上那个符号在不在。
     pub uninstallable: bool,
-    /// 🔴 〔`K-R81` 09-12〕**同一个东西的几种载体**，头注住 [`Carrier`]。
+    /// 🔴 **同一个东西的几种载体**，头注住 [`Carrier`]。
     ///
     /// 先前这里是 `source` / `destination` / `touches` 三个平铺字段 ——
     /// 那个形状说得出「这个工具落在**一个**地方」，说不出
@@ -449,14 +449,14 @@ impl ToolSpec {
 }
 
 /// 五套既有机制 + cc-bus 的声明。**本轮只声明，不改它们任何行为**
-/// （MASTERPLAN §4 第 3 点：先用已知行为的工具验证抽象，再拿它吃新工具）。
+/// （第 3 点：先用已知行为的工具验证抽象，再拿它吃新工具）。
 pub const TOOLS: &[ToolSpec] = &[
-    // 〔MIG-3b 续〕落在 Claude 布局里的那几条（`cc-bus` · `accounts` · `skill-install` · `claude-code`）住适配层
+    // 落在 Claude 布局里的那几条（`cc-bus` · `accounts` · `skill-install` · `claude-code`）住适配层
     //   `agents/claudecode/footprint.rs::TOOLS`，经注册表（`agents::Adapter::footprint`）汇进 [`tools`]。
     ToolSpec {
         id: "ccm",
         display_name: Text(|| copy_text("rsToolRegistry.tools.ccmName", &[])),
-        // 🔴 〔`K-R48` 第二拍 09-11〕`repo_path` 原来指 `shared/ccm`（那份 1592 行 bash）。
+        // 🔴 `repo_path` 原来指 `shared/ccm`（那份 1592 行 bash）。
         //    〔用@09-11 `K33`〕「不要有什么 bash 脚本，不要有什么单独的 ccm」⇒ 那个文件删了。
         //    ⇒ 指到那个**入口**的来源：`local_backend::ccm_entry_shim` 现造的三行 `exec` 串
         //    （零实现，把 argv 转给已经部署好的后端）。
@@ -468,7 +468,7 @@ pub const TOOLS: &[ToolSpec] = &[
         //    在这一条上已经不合身了（值是**算出来的**，路径取自用户填的 `backend_path`）。
         //    本模块头注自己写着「零生产消费者、T02 接不上就该删掉本模块」⇒ **不为它改类型**，
         //    如实指到那个函数的住址，并把这一格的形状问题登记在这里。
-        // 🔴 〔`K-R81` 09-12〕**上面那段话里「一个 `source` 装不下两个来源」那一格，今天没了。**
+        // 🔴 **上面那段话里「一个 `source` 装不下两个来源」那一格，今天没了。**
         //    `K-R69` 当时逐字写的是：「本机那一半的来源不是这个 shim —— 是后端二进制自己的
         //    改名副本（`local_backend::install_local_ccm_entry`〔散文墓碑〕）。`ToolSource` 一个字段
         //    同样装不下两个来源……**不为它再开一个变体**，在这里如实写清」。
@@ -482,12 +482,12 @@ pub const TOOLS: &[ToolSpec] = &[
         carriers: &[
             Carrier {
                 what: Text(|| copy_text("rsToolRegistry.tools.ccmRemoteWhat", &[])),
-                // 〔E2 · V28〕远端 `ccm` 就是推过去的那一份后端字节（三行 shim 与它的生成器删了）。
+                // 远端 `ccm` 就是推过去的那一份后端字节（三行 shim 与它的生成器删了）。
                 source: ToolSource::EmbeddedBinary {
                     repo_path: "embedded-backends",
                 },
-                // 〔SR1b · 2026-09-24〕`.local/bin/ccm` → `.cc-monitor/bin/ccm`：远端写只许两处（V89），入口是部署物；
-                //   也正是 `设计/01 §6.7b` 的落点（本机那一条早就在那儿）。
+                // `.local/bin/ccm` → `.cc-monitor/bin/ccm`：远端写只许两处，入口是部署物；
+                //   也正是它的落点（本机那一条早就在那儿）。
                 destination: ToolDestination::RemoteHomeRelative(".cc-monitor/bin/ccm"),
                 touches: &[
                     TouchedFile {
@@ -504,7 +504,7 @@ pub const TOOLS: &[ToolSpec] = &[
                         host: HostScope::Remote,
                         effect: TouchEffect::FencedBlock,
                     },
-                    // 〔GP1 · 第四波〕`设计/01 §6.7b` 迁移 ② ③：旧版入口落在这儿（09-11 前是 bash 启动器、之后是三行 shim）。
+                    // 迁移 ② ③：旧版入口落在这儿（09-11 前是 bash 启动器、之后是三行 shim）。
                     TouchedFile {
                         path: "~/.local/bin/ccm",
                         note: Some(Text(|| {
@@ -513,8 +513,8 @@ pub const TOOLS: &[ToolSpec] = &[
                         host: HostScope::Remote,
                         effect: TouchEffect::RetiredLegacy,
                     },
-                    // 〔E2 · E-c〕旧默认 `backendPath` 落下的那份后端字节：部署时 ＋ 每次连上各扫一次，身份戳认得出才删
-                    //   （〔MIG-3b〕本机常驻后端出计划时判，`sftp.rs::apply_legacy` 照计划删）。
+                    // 旧默认 `backendPath` 落下的那份后端字节：部署时 ＋ 每次连上各扫一次，身份戳认得出才删
+                    //   （本机常驻后端出计划时判，`sftp.rs::apply_legacy` 照计划删）。
                     TouchedFile {
                         path: "~/.cc-monitor/bin/cc-monitor-backend",
                         note: Some(Text(|| {
@@ -525,7 +525,7 @@ pub const TOOLS: &[ToolSpec] = &[
                     },
                 ],
             },
-            // 🔴 〔`K-R69` 09-12〕本机那条落点是这一件建出来的。
+            // 🔴 本机那条落点是这一件建出来的。
             //    立件时现打：闭集里落点是 `…/ccm` 的只有远端那一条 ⇒ **本机 0 条**，
             //    于是用户 `K34` 逐字「装了新版后 `~/.local/bin/ccm` 可以干净退役」
             //    **没有承接方** —— 不是没验过，是本机压根没有新的那一份。
@@ -533,7 +533,7 @@ pub const TOOLS: &[ToolSpec] = &[
             //    `K34` 逐字「原本的配置**要手动删除**」。
             Carrier {
                 what: Text(|| copy_text("rsToolRegistry.tools.ccmLocalWhat", &[])),
-                // 〔E2 · V28〕本机 `ccm` 就是后端本身（逐字节副本删了）：放它的是 `extract_embedded_to`。
+                // 本机 `ccm` 就是后端本身（逐字节副本删了）：放它的是 `extract_embedded_to`。
                 source: ToolSource::EmbeddedBinary {
                     repo_path: "src/frontend/shell/src/local_backend.rs::extract_embedded_to",
                 },
@@ -541,7 +541,7 @@ pub const TOOLS: &[ToolSpec] = &[
                 touches: &[
                     TouchedFile {
                         // ⚠ **末段是 glob 而不是 `ccm`**，而且这不是偷懒：本机那份是要**被起成进程**的，
-                        // 在把扩展名当身份的平台上它叫 `ccm.exe`（名字的唯一真相源是
+                        // 在把扩展名当身份的平台上它叫 `ccm.exe`（名字的唯一源头是
                         // `local_backend::local_ccm_entry_name`，后缀由 `build.rs` 按 `TARGET` 算）。
                         // 写死 `ccm` 会让这一行在 Windows 上**恒显示「缺失」** —— 那正是本页
                         // 头注禁的「对能用的安装报假警报」。两边由
@@ -551,7 +551,7 @@ pub const TOOLS: &[ToolSpec] = &[
                         host: HostScope::Client,
                         effect: TouchEffect::OwnedFile,
                     },
-                    // 〔E2 · E-c〕旧版释放的 `cc-monitor-backend-<build_id>` 们：放好 `ccm` 之后扫一次，身份戳认得出才删。
+                    // 旧版释放的 `cc-monitor-backend-<build_id>` 们：放好 `ccm` 之后扫一次，身份戳认得出才删。
                     TouchedFile {
                         path: "~/.cc-monitor/bin/cc-monitor-backend-*",
                         host: HostScope::Client,
@@ -564,7 +564,7 @@ pub const TOOLS: &[ToolSpec] = &[
             },
         ],
     },
-    // ═══ 🔴 〔`K-R81` 09-12〕**这一条改名了，而改名不是清洁工作** ═══
+    // ═══ 🔴 **这一条改名了，而改名不是清洁工作** ═══
     //
     // 用户 09-12 逐字：「**一个后端要两处使用 / 即远程后端就是远程本地机器的后端**」。
     // 这一条先前叫 `remote-daemon` / 「远端后端」，而它说的是**假的**：
@@ -573,21 +573,21 @@ pub const TOOLS: &[ToolSpec] = &[
     //
     // 🔴 **这个名字已经花过一次真钱**：`build-linux` 没有 `Stage native backend for
     // self-extract` 那一步而 `build-windows` 有 ⇒ **Linux 裸 exe 装出来没有本机后端**
-    // （`ROADMAP#KU26`，用户已裁「那肯定带」）。★ 那正是「把它当成『远端』产物」的直接后果 ——
+    // （用户已裁「那肯定带」）。★ 那正是「把它当成『远端』产物」的直接后果 ——
     // **名字塑造了发版流水线的形状**。⚠ 发版那一步归 `K-R42`，本件只把名字与闭集说对。
     ToolSpec {
         id: "backend",
         display_name: Text(|| copy_text("rsToolRegistry.tools.backendName", &[])),
         installable: true,
-        // 🔴 〔`K-R63` 09-11〕**这一格原先是 `false`，而它是一处假申报** —— 本件那条新性质
+        // 🔴 **这一格原先是 `false`，而它是一处假申报** —— 本件那条新性质
         // 落地的当场把它逮出来的（不是人看出来的）。卸载实现一直在：
         // `sftp.rs::uninstall_remote_backend` 是**设置面板「卸载后端」按钮**背后那条命令
-        // （删后端二进制；〔E2〕落点是固定的 `~/.cc-monitor/bin/ccm`，`is_safe_remote_backend_path`〔散文墓碑〕那道守卫随之删了）。
+        // （删后端二进制；落点是固定的 `~/.cc-monitor/bin/ccm`，`is_safe_remote_backend_path`〔散文墓碑〕那道守卫随之删了）。
         // ⇒ 少报一格的后果与多报同向：配置面那一列「能否装/撤」直接印给用户看，
         //   写着「卸不掉」而按钮就在旁边。这正是 `K-R60` 在 `installable` 上治过的同一族病，
         //   只是这一次错在**少报**那一边（`K-R60` 那次是多报）。
         uninstallable: true,
-        // 🔴 〔`K-R81` 09-12〕**同一份后端，三种载体、三个落点** —— `K-R68` 摸底现打
+        // 🔴 **同一份后端，三种载体、三个落点** —— `K-R68` 摸底现打
         // （`tests/evidence/K-R68-三种载体摸底.md#§B`）。在本件之前闭集里只有中间那一条，
         // 另外两条**一格都没有**：读者分不出「没有」与「有人忘了写」。
         // ⚠ 三者是**同一份代码**的三种载体，不是三个工具（`R24` 裁定一 / `K25` / `K33` / `K36`）；
@@ -616,14 +616,14 @@ pub const TOOLS: &[ToolSpec] = &[
                     effect: TouchEffect::OwnedFile,
                 }],
             },
-            // 〔E2 · V28〕内嵌那份的本机载体并进了 `ccm` 那一条的本机载体：它放下去的就是 `~/.cc-monitor/bin/ccm`（后端本身），
+            // 内嵌那份的本机载体并进了 `ccm` 那一条的本机载体：它放下去的就是 `~/.cc-monitor/bin/ccm`（后端本身），
             //   同一个文件不在两个工具底下各记一遍（那张「本机 `ccm` 落点恰一条」的对拍要这一格）。
             Carrier {
                 what: Text(|| copy_text("rsToolRegistry.tools.backendRemoteWhat", &[])),
                 source: ToolSource::EmbeddedBinary {
                     repo_path: "embedded-backends",
                 },
-                // 〔E2 · V28〕可填的 `backendPath` 删了：落点恒是那台的 `~/.cc-monitor/bin/ccm`（它就是 `ccm`）。
+                // 可填的 `backendPath` 删了：落点恒是那台的 `~/.cc-monitor/bin/ccm`（它就是 `ccm`）。
                 destination: ToolDestination::RemoteHomeRelative(".cc-monitor/bin/ccm"),
                 touches: &[TouchedFile {
                     path: "~/.cc-monitor/bin/ccm",
@@ -636,11 +636,11 @@ pub const TOOLS: &[ToolSpec] = &[
             },
         ],
     },
-    // 〔TL1 · 4C〕**代码全景小程序**（`cc-monitor-panorama`，`src/panorama-engine`）—— RM1f 起它是**有落点的部署物**：
-    //   monitor 摘掉了内嵌引擎（V108 后半句），本机与远端的全景都由那台机器的后端经插件口起它。
+    // **代码全景小程序**（`cc-monitor-panorama`，`src/panorama-engine`）—— RM1f 起它是**有落点的部署物**：
+    //   monitor 摘掉了内嵌引擎（后半句），本机与远端的全景都由那台机器的后端经插件口起它。
     //   同 `backend` 那一形：一份代码、两个载体 —— 本机那份由 `panorama_bytes::place_local` 放、远端那份由 `panorama_bytes::push_to` 推，
-    //   都只在那台后端答「没装 / 太旧」时才放（V108「只传给开过远端全景的机器」）。
-    //   〔FIX4 · `97 §8` · 主会话 09-28 裁〕`uninstallable: true`：卸口是那台后端的 `panorama-uninstall`（认身份、只删装时放下的那一份，
+    //   都只在那台后端答「没装 / 太旧」时才放（「只传给开过远端全景的机器」）。
+    // `uninstallable: true`：卸口是那台后端的 `panorama-uninstall`（认身份、只删装时放下的那一份，
     //   机器页「工具」栏的「代码全景组件」那一格点）。〔墓碑 —— 这之前是 `false`：「今天没有卸掉全景组件这条口」。〕
     //   〔墓碑 —— 这之前它住 [`NOT_MANAGED`]，理由是「vendored 进 monitor 二进制、没有落点」；那个身份 RM1f 起没了，见那一条。〕
     ToolSpec {
@@ -704,10 +704,10 @@ pub const TOOLS: &[ToolSpec] = &[
                     effect: TouchEffect::OwnedFile,
                 }],
             },
-            // 〔AS1 · 第四波 4B〕**推 / 拉**（`设计/96` 的 B，用户 09-24 V111 · V112）：同一份文件的**第二个写入来源** ——
+            // **推 / 拉**（B，用户 09-24）：同一份文件的**第二个写入来源** ——
             //   内容不是这台机器上现场编的，是从另一台机器那份里**原样**拷来的条目（`mcp_sync.rs`）。
             //   落点、写法（经那台后端 `files-put`）与上一格同一个；单列一格是为了让「这个 app 动过你哪些文件」
-            //   那一页说得出「有些条目是从别的机器搬来的」（`96 §4`：每个写点都要在足迹里可见）。
+            //   那一页说得出「有些条目是从别的机器搬来的」（每个写点都要在足迹里可见）。
             //   远端那台的足迹栏按那台机器问（RM1a），这一格的 `host` 与上一格同是项目目录 —— 在哪台上就算哪台的。
             Carrier {
                 what: Text(|| copy_text("rsToolRegistry.tools.mcpSyncWhat", &[])),
@@ -716,14 +716,14 @@ pub const TOOLS: &[ToolSpec] = &[
                 touches: &[TouchedFile {
                     path: ".mcp.json",
                     host: HostScope::ProjectDir,
-                    // 〔AS2 · 4B〕资产目录那一块的「装到这台」（MCP）走的就是这一格（同一条命令 `mcp_sync_apply`，只勾那一条）。
+                    // 资产目录那一块的「装到这台」（MCP）走的就是这一格（同一条命令 `mcp_sync_apply`，只勾那一条）。
                     note: Some(Text(|| copy_text("rsToolRegistry.tools.mcpSyncNote", &[]))),
                     effect: TouchEffect::OwnedFile,
                 }],
             },
         ],
     },
-    // ═══ 〔`K-R62` 09-11〕**从第三档升上来的第一项** ═══
+    // ═══ **从第三档升上来的第一项** ═══
     //
     // 它昨天还住在 [`UNMANAGED_ENV`]（`app 假设它在`），`why` 那一格逐字写着
     // 「加与删两侧都只造 PowerShell 那两条 profile 路径，POSIX rc 一条都不扫」。
@@ -787,9 +787,9 @@ pub const TOOLS: &[ToolSpec] = &[
     },
 ];
 
-// 〔MIG-3b 续〕`local_ccm_bin_dir_rel` / `remote_ccm_bin_dir_rel`〔散文墓碑〕（从本表现算 `ccm` 两个载体落点的目录）搬进了判据档：
+// `local_ccm_bin_dir_rel` / `remote_ccm_bin_dir_rel`〔散文墓碑〕（从本表现算 `ccm` 两个载体落点的目录）搬进了判据档：
 //   生产上要那个目录的只有 monitor 补 PATH 那一步，它今天取共享 crate 里后端的落点（`relay_route_core::BACKEND_LANDING_REL`，
-//   本机远端同一个，V28）；本表申报的那两条与它相等由 `tests/backend/footprint/registry_tests.rs` 对拍。
+//   本机远端同一个）；本表申报的那两条与它相等由 `tests/backend/footprint/registry_tests.rs` 对拍。
 
 // ═══════════════════════════════════════════════════════════════════════════
 // `K-R60`：**环境清单的闭集** —— 「app 要的东西齐了没有」这个问题的人群
@@ -810,7 +810,7 @@ pub const TOOLS: &[ToolSpec] = &[
 /// # 🔴 「app 自带的是哪几样」这个人群的**唯一住址**就是 [`Provisioning::AppShips`]
 ///
 /// `KR65D3`：要人数就 [`environment`] 里现算（`filter(who == AppShips)`），
-/// **别处不许再手抄一张自带清单** —— 那是第二个住址〔`13b`〕。
+/// **别处不许再手抄一张自带清单** —— 那是第二个。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize)]
 pub enum Provisioning {
     /// **app 自带** —— 「和这个 app 相关的东西、独特的东西」（`K38` 逐字）。
@@ -824,7 +824,7 @@ pub enum Provisioning {
 }
 
 impl Provisioning {
-    /// 三值的**闭集**本身。现算用〔`13b`：报一个基数也是复述〕。〔MIG-3b 续〕今天只有判据用它与 [`Self::label`]。
+    /// 三值的**闭集**本身。现算用〔报一个基数也是复述〕。今天只有判据用它与 [`Self::label`]。
     #[cfg_attr(not(test), allow(dead_code))]
     pub const ALL: &'static [Provisioning] = &[
         Provisioning::AppShips,
@@ -853,7 +853,7 @@ impl Provisioning {
     /// ⚠ 这一格与 `installable` **读的不是同一个东西**：这里读 `destination`（判断），
     /// 那里读实现（`K-R63` 的对拍表）。`claude-code` 两格恰好同向，那是巧合不是同义。
     ///
-    /// # 🔴 〔`K-R81` 09-12〕多载体之后的**聚合规则**，写在这里而不是靠人记得
+    /// # 🔴 多载体之后的**聚合规则**，写在这里而不是靠人记得
     ///
     /// 一个工具现在有**一串**载体（[`Carrier`]）⇒ 「它是不是我们装的」要从一串
     /// `destination` 聚合出来。**规则：全部载体都是 `NotInstalledByUs` 才算「不是装出来的」。**
@@ -892,7 +892,7 @@ impl Provisioning {
 /// **在代码里没有住址**，只能从「表里没有」倒推 —— 用缺席表达一个判断，
 /// 正是本工作区一整天在治的那族病。〕
 ///
-/// # 🔴 〔`K-R65` 09-11〕`AppAssumesPresent` 那一档**删了 —— 这是它的墓碑**
+/// # 🔴 `AppAssumesPresent` 那一档**删了 —— 这是它的墓碑**
 ///
 /// 原文逐字：「**app 假设它在** —— 既不装也不查，用的时候直接假设它已经在。」
 /// 而 `config_surface::unmanaged_row` 把这句话实现成了「`state` 恒 `Undetermined`、
@@ -919,7 +919,7 @@ pub enum EnvTier {
 }
 
 impl EnvTier {
-    /// 四档的**闭集**本身。现算用（`len()` 就是「几档」，不许在别处写死一个基数）。〔MIG-3b 续〕今天只有判据用它与 [`Self::label`]。
+    /// 四档的**闭集**本身。现算用（`len()` 就是「几档」，不许在别处写死一个基数）。今天只有判据用它与 [`Self::label`]。
     #[cfg_attr(not(test), allow(dead_code))]
     pub const ALL: &'static [EnvTier] = &[
         EnvTier::AppInstalls,
@@ -975,7 +975,7 @@ impl EnvTier {
 pub struct UnmanagedEnv {
     pub id: &'static str,
     pub display_name: Text,
-    /// 🔴 〔`K-R65`〕**「谁该装」** —— 这一格取代了原来那个手填的 `tier`。
+    /// 🔴 **「谁该装」** —— 这一格取代了原来那个手填的 `tier`。
     ///
     /// 原文逐字：「`tier: EnvTier`／这一项属于哪一档。**必须写出来** —— 第三档就是靠这一格
     /// 存在的。」那时档是**手填**的，于是「档」这一个字段同时装着「谁该装」与
@@ -990,14 +990,14 @@ pub struct UnmanagedEnv {
     pub host: HostScope,
     /// **app 在哪儿用到它** —— 给人看的那一句（住文案表，这里放取它的函数）。
     ///
-    /// 〔CP2b · 4C〕它原先一格装两件事：给人看的话 ＋ 结尾一个 `<相对 src 的路径>.rs::<符号>` 代码住址。
-    /// 这一格会上配置面（`config_surface` 的 `note`），而界面文字不露源码住址（`设计/91 §2.1`）
+    /// 它原先一格装两件事：给人看的话 ＋ 结尾一个 `<相对 src 的路径>.rs::<符号>` 代码住址。
+    /// 这一格会上配置面（`config_surface` 的 `note`），而界面文字不露源码住址
     /// ⇒ 拆成两格：话在这里，住址在 [`Self::site`]。
     pub why: Text,
     /// **那个判断长在哪段代码上** —— 必须是一个 `<相对 src 的路径>.rs::<符号>` 形态的住址。
     /// 判据只判「**有没有**住址」；那个住址今天解析不解析得到，由 `structural_scan` 里
     /// 那条扫全仓代码住址的判据管（它会报「找不到这个符号 / 符号搬家了」）。
-    /// 〔CP2b〕从 `why` 的结尾拆出来的那一半 —— 不上界面。
+    /// 从 `why` 的结尾拆出来的那一半 —— 不上界面。
     pub site: &'static str,
 }
 
@@ -1032,11 +1032,11 @@ pub enum EnvProbe {
 
 /// 闭集里手写的那一半。
 ///
-/// 🔴 〔`K-R65` 09-11〕**这张表原来「全是第三档」，今天一条都不是** ——
+/// 🔴 **这张表原来「全是第三档」，今天一条都不是** ——
 /// `K38` 之后它分成了两群：9 项通用工具是 [`Provisioning::UserProvides`]，
 /// [`Provisioning::AppShips`] 那一群今天是空的（原先那一项是外部账号工具的本机那份；账号库改由后端自己建，它出了表）。
 pub const UNMANAGED_ENV: &[UnmanagedEnv] = &[
-    // 〔MIG-3b 续〕`claude-cli` 那一条住适配层（`agents/claudecode/footprint.rs::UNMANAGED_ENV`）。
+    // `claude-cli` 那一条住适配层（`agents/claudecode/footprint.rs::UNMANAGED_ENV`）。
     UnmanagedEnv {
         id: "tmux",
         display_name: Text(|| copy_text("rsToolRegistry.env.tmuxName", &[])),
@@ -1077,7 +1077,7 @@ pub const UNMANAGED_ENV: &[UnmanagedEnv] = &[
         why: Text(|| copy_text("rsToolRegistry.env.sshWhy", &[])),
         site: "platform/terminal.rs::ssh_client_available",
     },
-    // 〔SH1 · V136〕`pgrep` 那一行摘了：它唯一的 Rust 住址是驾驶舱 shell 读那条「超时不留孤儿」判据的数进程助手，随那条读一起退役。
+    // `pgrep` 那一行摘了：它唯一的 Rust 住址是驾驶舱 shell 读那条「超时不留孤儿」判据的数进程助手，随那条读一起退役。
     UnmanagedEnv {
         id: "xdg-open",
         display_name: Text(|| "xdg-open".to_string()),
@@ -1114,9 +1114,9 @@ pub const UNMANAGED_ENV: &[UnmanagedEnv] = &[
         why: Text(|| copy_text("rsToolRegistry.env.mcpServerWhy", &[])),
         site: "mcp_edit.rs::answer_put",
     },
-    // ═══ 🔴 〔`K-R65` 09-11〕**第三样「随产品分发的东西」—— 它此前一张表都没进** ═══
+    // ═══ 🔴 **第三样「随产品分发的东西」—— 它此前一张表都没进** ═══
     //
-    // 🔴 **〔条 67 · 2026-09-18〕`code-picture-sidecar` 这一项摘掉了。**
+    // 🔴 **〔条 67〕`code-picture-sidecar` 这一项摘掉了。**
     //
     // 它申报的是「app 随产品分发的独立进程那一份代码全景」，身份来自
     // `src/backend/sidecars/` 那一层的头注。用户逐字「**不在现在设计里的全部删掉**」
@@ -1127,10 +1127,10 @@ pub const UNMANAGED_ENV: &[UnmanagedEnv] = &[
     //   「app 自带的是哪几样」这个人群此前真的没有住址。那个教训今天仍然成立。
     // ⚠ 与 [`NOT_MANAGED`] 里那条 `code-picture` **不是同一个东西**：那条当时说的是
     //   **vendored 进 monitor 二进制的 crate**（21 条命令、14 条在用），**它当时还在，没删**。
-    //   同名两身份，删掉的是「独立进程那一份」。〔TL1 · 4C〕RM1f 起 vendored 那一身份也没了：引擎住进
+    //   同名两身份，删掉的是「独立进程那一份」。RM1f 起 vendored 那一身份也没了：引擎住进
     //   独立小程序 `cc-monitor-panorama`，由后端经插件口起 —— 那是上面 `id: "panorama"` 那一条（有落点的部署物），
     //   与这里删掉的「独立进程那一层」不是一回事（那一层是 app 随产品起的常驻侧车，这一份是按需起的一问一进程）。
-    // 🔴 〔`K-R62` 09-11〕**`posix-rc-aliases` 从这里搬走了 —— 这是它的墓碑。**
+    // 🔴 **`posix-rc-aliases` 从这里搬走了 —— 这是它的墓碑。**
     //
     // ⚠ 〔`K-R65` 09-11 补一句〕下面这段原文里那个档名**今天已经不存在了**（`K38` 删了
     // 「app 假设它在」那一档，墓碑在 `EnvTier` 的头注上）。原文照留，别改成今天的写法 ——
@@ -1160,7 +1160,7 @@ pub enum EnvBacking {
     Named {
         named: &'static str,
         host: HostScope,
-        /// 〔`K-R65`〕查法从 [`UnmanagedEnv::probe`] 原样带过来 ——
+        /// 查法从 [`UnmanagedEnv::probe`] 原样带过来 ——
         /// 这一档从此**真去查**，不再是「我们压根没去查」。
         probe: EnvProbe,
     },
@@ -1175,15 +1175,15 @@ pub struct EnvEntry {
     pub who: Provisioning,
     /// **档** —— 由 `who` ×「今天有没有装口」两格**派生**（[`EnvTier::of`]），不是手填的。
     pub tier: EnvTier,
-    /// 给人看的那一句（〔CP2b〕取过文的）。
+    /// 给人看的那一句（取过文的）。
     pub why: String,
-    /// 代码住址（〔CP2b〕从 `why` 拆出来的那一半，见 [`UnmanagedEnv::site`]）。不上界面 ⇒ 生产段零读者，只有判据核它。
+    /// 代码住址（从 `why` 拆出来的那一半，见 [`UnmanagedEnv::site`]）。不上界面 ⇒ 生产段零读者，只有判据核它。
     #[cfg_attr(not(test), allow(dead_code))]
     pub site: &'static str,
     pub backing: EnvBacking,
 }
 
-/// 〔MIG-3b 续〕受管工具的**全集**：本表 [`TOOLS`] ＋ 注册表里各家足迹面带来的那一半（落在那一家布局里的），按注册表顺序。
+/// 受管工具的**全集**：本表 [`TOOLS`] ＋ 注册表里各家足迹面带来的那一半（落在那一家布局里的），按注册表顺序。
 pub fn tools() -> Vec<&'static ToolSpec> {
     TOOLS
         .iter()
@@ -1191,7 +1191,7 @@ pub fn tools() -> Vec<&'static ToolSpec> {
         .collect()
 }
 
-/// 〔MIG-3b 续〕环境清单手写那一半的**全集**：本表 [`UNMANAGED_ENV`] ＋ 各家足迹面带来的那几条。
+/// 环境清单手写那一半的**全集**：本表 [`UNMANAGED_ENV`] ＋ 各家足迹面带来的那几条。
 pub fn unmanaged() -> Vec<&'static UnmanagedEnv> {
     UNMANAGED_ENV
         .iter()
@@ -1203,7 +1203,7 @@ pub fn unmanaged() -> Vec<&'static UnmanagedEnv> {
 ///
 /// 「app 要的东西这台机器上齐了没有」这个问题的**人群**就是它。
 /// `config_surface` 的那张表照它建（`the_view_population_is_exactly_the_closed_set` 钉住），
-/// 别处要这份名单一律调它，**不许再手抄一张**〔`13b`：闭集只许有一个住址〕。
+/// 别处要这份名单一律调它，**不许再手抄一张**〔闭集只许有一个住址〕。
 ///
 /// # 能派生的就派生，手写的只有派生不出来的那一半
 ///
@@ -1281,8 +1281,8 @@ pub const NOT_MANAGED: &[(&str, &str)] = &[
          是**用法**不是新工具。仓里今天对那个 MCP head 零实现（`mcp.rs` / `config_surface.rs` 里 `code-picture` 零命中）。\n\
          ⇒ 真要做「一键装 code-picture 的 MCP」属 **issue #51 第 1 部分**，\
          用户 08-10 明说「cc-bus 和 code-picture 后面再增强，现在先不做」。\n\
-         〔TL1 · 4C〕它的另外两个身份都不在这里了：① **vendored 进 monitor 二进制的 crate**（原先本条的主理由：\
-         「没有 `destination`、没有安装动作、卸载它等于重新编译 monitor」）—— RM1f 起 monitor 摘掉了内嵌引擎（V108 后半句），这个身份没了；\
+它的另外两个身份都不在这里了：① **vendored 进 monitor 二进制的 crate**（原先本条的主理由：\
+         「没有 `destination`、没有安装动作、卸载它等于重新编译 monitor」）—— RM1f 起 monitor 摘掉了内嵌引擎（后半句），这个身份没了；\
          它变成只装引擎的独立小程序 `cc-monitor-panorama`（`src/panorama-engine`），本机放到 `~/.cc-monitor/bin/`、远端推到那台的 \
          `~/.cc-monitor/bin/` —— 那是**有落点的部署物**，进了 [`TOOLS`]（`id: \"panorama\"`，两个载体）。\
          ② **独立进程那一层**（`src/backend/sidecars/codepicture/`，条 67 · 2026-09-18 整棵删了，环境闭集里那条 `code-picture-sidecar` 同拍摘了）。\n\

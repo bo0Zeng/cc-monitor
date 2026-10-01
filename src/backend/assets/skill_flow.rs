@@ -1,9 +1,9 @@
-//! 〔MIG-3a · D 组〕skill「装到这台」与「卸」的写那一半：帧面 `skill-install-apply`；卸由 `ext-uninstall-apply` 调 [`answer_uninstall`]。
+//! 〔D 组〕skill「装到这台」与「卸」的写那一半：帧面 `skill-install-apply`；卸由 `ext-uninstall-apply` 调 [`answer_uninstall`]。
 //!
 //! 从 monitor `skill_install.rs` 搬来（从前 monitor 请这台判「写哪几个」、再逐个经这台 `files-put` / `files-delete` 写、最后交装记录）。
 //! 今天判（`skill_install::answer_plan_with` · `answer_uninstall_plan_at`）、写（本进程文件管理面 [`Door`]）、记（`skill-install-record`，
 //! 写口由 `inbound.rs` 递进来 —— `readonly_guard` 第四层只许那一扇门）都在被写的这一台。
-//! 🔴 写**不重读重算**：用户确认的是他看到的那份差异；看过之后变了 ⇒ `stale` 就停，说清前面写了 / 删了哪几个（`96 §3.5`）。
+//! 🔴 写**不重读重算**：用户确认的是他看到的那份差异；看过之后变了 ⇒ `stale` 就停，说清前面写了 / 删了哪几个。
 
 use super::door::{self, Door, Refused};
 use crate::assets::mcp_sync::Facts;

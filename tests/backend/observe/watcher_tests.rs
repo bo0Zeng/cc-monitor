@@ -1,4 +1,4 @@
-/// ★ **事件分派不许有兜底臂**〔audit-0805 08-06〕。
+/// ★ **事件分派不许有兜底臂**。
 ///
 /// # 它钉的是一个「没人盯的前提」，不是一个缺陷
 ///
@@ -303,7 +303,7 @@ fn arm_pid_watcher_is_a_noop_without_sender() {
 /// 另一半也一起修：注释若被重排/改写，原实现会红在一个**与语义无关**的位置上
 /// （把注入挪到注释之后、真扫描之前，语义完全正确却会红）。
 /// 现在锚在 `WalkDir::new(&sessions)`（生产段唯一一处，扫描真正开始的地方）。
-/// 〔U4b〕扫描抽成 `initial_session_scan` 之后，锚点换成 `watch_loop` 里它的调用点（见函数体）。
+/// 扫描抽成 `initial_session_scan` 之后，锚点换成 `watch_loop` 里它的调用点（见函数体）。
 #[test]
 fn events_channel_is_created_before_the_initial_scan() {
     let src = crate::guard_support::production_code(include_str!(
@@ -312,7 +312,7 @@ fn events_channel_is_created_before_the_initial_scan() {
     let tx_at = src
         .find("state.events_tx = Some(events_tx.clone());")
         .expect("找不到 events_tx 注入点——守卫锚点漂了，先修锚点别改断言");
-    // 〔U4b · 第四波〕扫描那一块抽成了 `initial_session_scan`（为了「清单报完了」那一帧的位置可验），
+    // 扫描那一块抽成了 `initial_session_scan`（为了「清单报完了」那一帧的位置可验），
     //   它的**定义**住在文件后段 ⇒ 锚点从扫描本体（`WalkDir::new(&sessions)`）换到 `watch_loop` 里的**调用点**
     //   —— 那才是执行顺序上「扫描真正开始」的地方。
     let scan_at = src.find("initial_session_scan(&sessions").expect(
@@ -379,7 +379,7 @@ fn poke_shares_the_probe_arm_with_the_ticker() {
     // 「把 Poke 拆成独立臂」**没有变红**：断言那串字面量就在本测试自己的源码里，
     // `contains` 恒真 ⇒ 这条守卫是**安慰剂**。是变异（而不是审读）把它揪出来的。
     let me = include_str!("../../../src/backend/observe/watcher.rs");
-    // 🔴 〔步 7c 剖分 2026-09-19 · `设计/16 §5.1`＋`§6.2` D 类〕
+    // 🔴 〔步 7c 剖分 2026-09-19〕
     //    **手写的那条切法删了，改走唯一住址 `production_code`。**
     //    原来是 `me.find("\n#[cfg(test)]\nmod tests")` 手工截断 —— 那是剥法的**第二份**，
     //    而剖分之后 `watcher.rs` 里那三行桩中间多了一行 `#[path = "…"]`
@@ -417,7 +417,7 @@ fn poke_shares_the_probe_arm_with_the_ticker() {
 #[test]
 fn tmux_reprobe_triggers_on_sid_drift_not_on_every_json_event() {
     let me = include_str!("../../../src/backend/observe/watcher.rs");
-    // 🔴 〔步 7c 剖分 2026-09-19 · `设计/16 §5.1`＋`§6.2` D 类〕
+    // 🔴 〔步 7c 剖分 2026-09-19〕
     //    **手写的那条切法删了，改走唯一住址 `production_code`。**
     //    原来是 `me.find("\n#[cfg(test)]\nmod tests")` 手工截断 —— 那是剥法的**第二份**，
     //    而剖分之后 `watcher.rs` 里那三行桩中间多了一行 `#[path = "…"]`
@@ -502,7 +502,7 @@ fn still_exactly_one_event_channel() {
     // 现在锚 `\n#[cfg(test)]\nmod tests`：源码里这串是**转义写法**（反斜杠 + n 两个字符），
     // 与真正的换行不相等 ⇒ 不会匹配到本行自己。
     let me = include_str!("../../../src/backend/observe/watcher.rs");
-    // 🔴 〔步 7c 剖分 2026-09-19 · `设计/16 §5.1`＋`§6.2` D 类〕
+    // 🔴 〔步 7c 剖分 2026-09-19〕
     //    **手写的那条切法删了，改走唯一住址 `production_code`。**
     //    原来是 `me.find("\n#[cfg(test)]\nmod tests")` 手工截断 —— 那是剥法的**第二份**，
     //    而剖分之后 `watcher.rs` 里那三行桩中间多了一行 `#[path = "…"]`
@@ -967,7 +967,7 @@ fn imposter_by_cmdline() {
         AddTimeVerdict::Imposter("cmdline"),
         "time check passing must not mask a non-claude cmdline"
     );
-    // 〔TL1 · 4C〕并进来的样本（原 `agents/claudecode/liveness_tests.rs`，那一族退役）：
+    // 并进来的样本（原 `agents/claudecode/liveness_tests.rs`，那一族退役）：
     // 编辑器 · 登录 shell · sshd 会话 —— PID 被复用时最常见的那几种「明显不像」。
     for foreign in ["/usr/bin/vim", "bash -l", "sshd: u@pts/0"] {
         assert_eq!(
@@ -1010,7 +1010,7 @@ fn claude_like_cmdlines_pass() {
         "claude --resume abc",
         "/usr/bin/node /home/u/.local/bin/claude",
         "NODE_OPTIONS=x node cli.js",
-        // 〔TL1 · 4C〕只看得见解释器那一形（`liveness.rs` 头注：词表里有 `node` 就是为它）——
+        // 只看得见解释器那一形（`liveness.rs` 头注：词表里有 `node` 就是为它）——
         // 解释器不在行首；从前这一格没人量（「`node` 只认行首」那一刀两族都放过）。
         "/usr/bin/node cli.js",
         "node index.js",
@@ -1051,7 +1051,7 @@ fn missing_data_degrades_to_allow() {
 
 // === Batch6-F22：远端会话生命周期 ===
 
-/// ★★ `P0b-Y2`〔08-13〕：**「盯着的目录被换掉」这条路必须有人重挂 + 重扫。**
+/// ★★ `P0b-Y2`：**「盯着的目录被换掉」这条路必须有人重挂 + 重扫。**
 ///
 /// # 这条判据够得到什么、够不到什么（先说清）
 ///
@@ -1091,14 +1091,14 @@ fn the_rewatch_path_still_exists_with_its_rescan() {
         "重挂之后没有重扫 —— 「重建 → 挂上」之间那段窗口期里写进去的 pidfile 会永远丢。"
     );
     // 父目录的耳朵在（听不见子目录出现/消失，重挂就永远不会被触发）。
-    // 〔VIS2 · S3〕挂法从 `watch_loop` 里的一行搬进可重入的 `rewatch_agent_home`（针随之换）。
+    // 挂法从 `watch_loop` 里的一行搬进可重入的 `rewatch_agent_home`（针随之换）。
     assert!(
         prod.contains("watch(agent_home, RecursiveMode::NonRecursive)"),
         "没有监视 `agent_home` 本身 —— 那 `sessions/` 出现或被换掉时没有任何事件会来。"
     );
 }
 
-/// ★★★ **每一处 `.watch(` 都要回答「目录被换 inode 了怎么办」** —— 登记表〔08-13〕。
+/// ★★★ **每一处 `.watch(` 都要回答「目录被换 inode 了怎么办」** —— 登记表。
 ///
 /// # 为什么立这张表
 ///
@@ -1113,17 +1113,17 @@ fn the_rewatch_path_still_exists_with_its_rescan() {
 /// 那一路的事件**永远不来，且没有任何错误**。三次的表现分别是「永不宣告会话」
 ///「看不见新 tmux server」「会话还在但内容不动了」——**每一个都不报错**。
 ///
-/// # 今天的 8 处（〔SR1a · 09-24〕7 → 8：账号 manifest 所在目录；〔VIS2 · 09-26〕8 → 9：`agent_home` 那一处挪进可重入挂法、多一道它的上一层；
-/// 〔GAP1 · 09-26〕9 → 8：账号目录那一处删了，改走 `rewatch_agent_home`（`AccountsEar`，`设计/05 §13.6` 第 3 条）—— 少的就是它）
+/// # 今天的 8 处（7 → 8：账号 manifest 所在目录；8 → 9：`agent_home` 那一处挪进可重入挂法、多一道它的上一层；
+/// 9 → 8：账号目录那一处删了，改走 `rewatch_agent_home`（`AccountsEar`）—— 少的就是它）
 ///
 /// | 处 | 归属 | 换 inode 怎么办 |
 /// |---|---|---|
 /// | `rewatch_dir` | **可重入挂法本体** | 就是它负责 |
 /// | `watch_sock_dir_if_present` | socket 目录专用（多一条「目录没了翻记账」） | 同上 |
 /// | `rewatch_sessions` | `sessions/` 专用（多一件事：挂上顺带重扫 pidfile） | 同上 |
-/// | `rewatch_agent_home` 挂它本身那一道 | **父目录的耳朵**（`sessions/` · `projects/` 出现/消失的唯一信号源）；〔GAP1〕账号目录也走它；可重入 | 就是它负责（〔VIS2〕它自己后建 / 被换 ⇒ 由下一行那道上一层耳朵送事件来） |
-/// | `rewatch_agent_home` 挂它上一层那一道 | 〔VIS2〕`agent_home` 起来时不在 ⇒ 等它出现（与 socket 目录的父同形；挂上不摘） | 上一层被换掉 = 家目录那一级没了，**不在这一族** |
-/// | `arm_ears` 里 socket 目录的**父**（〔RESYNC〕从 `watch_loop` 挪进去，起步与「重新对齐」共用） | 等 socket 目录出现 | 同上 |
+/// | `rewatch_agent_home` 挂它本身那一道 | **父目录的耳朵**（`sessions/` · `projects/` 出现/消失的唯一信号源）；账号目录也走它；可重入 | 就是它负责（它自己后建 / 被换 ⇒ 由下一行那道上一层耳朵送事件来） |
+/// | `rewatch_agent_home` 挂它上一层那一道 | `agent_home` 起来时不在 ⇒ 等它出现（与 socket 目录的父同形；挂上不摘） | 上一层被换掉 = 家目录那一级没了，**不在这一族** |
+/// | `arm_ears` 里 socket 目录的**父**（从 `watch_loop` 挪进去，起步与「重新对齐」共用） | 等 socket 目录出现 | 同上 |
 /// | `HomeEars::arm` 里 `sessions` 起步那次 | 起步挂一次，之后归 `rewatch_sessions` | 已有 |
 /// | `watch_loop` 里 tmux socket **所在目录**（P3 复活探测） | 一次性触发器，socket 换 inode 由上面那条目录耳朵覆盖 | 已有 |
 #[test]
@@ -1160,7 +1160,7 @@ fn every_watch_site_answers_the_inode_swap_question() {
     }
 }
 
-/// ★★ socket 目录**被删掉再重建**时，watch 必须跟着换到新 inode〔08-13〕。
+/// ★★ socket 目录**被删掉再重建**时，watch 必须跟着换到新 inode。
 ///
 /// # 为什么这条是结构判据而不是 e2e
 ///
@@ -1524,7 +1524,7 @@ fn tail_only_primes_cursor_and_new_line_seq_is_line_number() {
             seq, byte_offset, ..
         }) => {
             assert_eq!(seq, 3, "残行补全行的 seq 应为初扫完整行数 L=3");
-            // 〔MOD〕帧上不再带原文 ⇒ 由末端字节认出它就是补全的那一行（`{"torn":true}\n` 收尾处）。
+            // 帧上不再带原文 ⇒ 由末端字节认出它就是补全的那一行（`{"torn":true}\n` 收尾处）。
             assert_eq!(byte_offset, 38);
         }
         other => panic!("expected Line, got {other:?}"),
@@ -1871,7 +1871,7 @@ fn parse_starttime_malformed_returns_none() {
 /// `cargo test`，这会是第一个红 —— 那正是应该有人看一眼的时刻，加门会把它藏起来。
 /// Phase D 审计的问题 9-3 已把它写进 U4b 的清单。
 ///
-/// 〔WN1 · 09-24〕`pid_alive` 有了 Windows 臂（`platform/win_proc.rs`）⇒ 上面那句「在 Windows 上会 panic」
+/// `pid_alive` 有了 Windows 臂（`platform/win_proc.rs`）⇒ 上面那句「在 Windows 上会 panic」
 /// 不再成立；本条在真 Windows 上 `cargo test` 会走 `OpenProcess` 自己那个 pid。那一趟没人跑过（没有真机读数）。
 #[test]
 fn session_alive_self_is_alive_in_existence_only_mode() {
@@ -2416,7 +2416,7 @@ fn session_alive_decision_table_linux() {
     );
 }
 
-/// 〔VIS2〕真 inotify 那两条的夹具：起一个摘掉 tmux 环境的 `sleep`，等它的环境读得到（打标那一步要读）。
+/// 真 inotify 那两条的夹具：起一个摘掉 tmux 环境的 `sleep`，等它的环境读得到（打标那一步要读）。
 #[cfg(target_os = "linux")]
 fn vis2_sleeper() -> std::process::Child {
     crate::control::identity_tag::tests::spawn_settled_sleep(|c| {
@@ -2424,7 +2424,7 @@ fn vis2_sleeper() -> std::process::Child {
     })
 }
 
-/// 〔VIS2〕写一份活进程的 pidfile（形状同上面令牌那条的夹具：真 pid ＋ 真 procStart）。
+/// 写一份活进程的 pidfile（形状同上面令牌那条的夹具：真 pid ＋ 真 procStart）。
 #[cfg(target_os = "linux")]
 fn vis2_pidfile(sessions: &Path, pid: u32, sid: &str) -> PathBuf {
     let ticks = proc_starttime(pid).expect("子进程的 starttime 读不到 —— 夹具坏了");
@@ -2439,7 +2439,7 @@ fn vis2_pidfile(sessions: &Path, pid: u32, sid: &str) -> PathBuf {
     at
 }
 
-/// ★★ 〔VIS2 · `设计/15 §4.7 S3`「判据换成真 inotify 行为（先无后建 ⇒ 补发 `session_added`）」〕真 debouncer ＋ `HomeEars`：
+/// ★★ 〔「判据换成真 inotify 行为（先无后建 ⇒ 补发 `session_added`）」〕真 debouncer ＋ `HomeEars`：
 /// `agent_home` 不在 ⇒ 挂上一层；一口气建出来并立刻写 pidfile ⇒ 恰好一帧 `session_added`（sid 手写）；再写一份 ⇒ 事件来得了。
 #[cfg(target_os = "linux")]
 #[test]
@@ -2522,7 +2522,7 @@ fn vis2_s3_an_agent_home_created_after_start_still_announces_its_session() {
     );
 }
 
-/// 〔VIS2 · `设计/15 §4.7 S3`〕接线：`watch_loop` 经 `HomeEars` 恰好 `arm` 一处、`on_path` 一处（上一条才在执行链上）；旧那句话零命中。带正控。
+/// 接线：`watch_loop` 经 `HomeEars` 恰好 `arm` 一处、`on_path` 一处（上一条才在执行链上）；旧那句话零命中。带正控。
 #[test]
 fn vis2_s3_the_watch_loop_goes_through_the_home_ears_exactly_once() {
     let prod = crate::guard_support::production_code(include_str!(
@@ -2535,7 +2535,7 @@ fn vis2_s3_the_watch_loop_goes_through_the_home_ears_exactly_once() {
         .expect("`watch_loop` 之后的 `ReaderState` 不在了 —— 切函数体的锚断了");
     let body = &prod[at..end];
     let count = |text: &str, needle: &str| text.matches(needle).count();
-    // 〔RESYNC〕挂法收进 `arm_ears`：起步一处 ＋ 「重新对齐」那一臂一处；`arm_ears` 里 `HomeEars::arm` 恰好一处。
+    // 挂法收进 `arm_ears`：起步一处 ＋ 「重新对齐」那一臂一处；`arm_ears` 里 `HomeEars::arm` 恰好一处。
     assert_eq!(
         count(body, "arm_ears("),
         2,
@@ -2574,7 +2574,7 @@ fn vis2_s3_the_watch_loop_goes_through_the_home_ears_exactly_once() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// `设计/80 §8.7` 步 2：**启动期令牌上 wire** —— `session_added.rbind_token`
+// **启动期令牌上 wire** —— `session_added.rbind_token`
 // ═══════════════════════════════════════════════════════════════════════════
 
 /// ★★ **本刀的正题（帧那一半）：一个带着 `CCM_RBIND_TOKEN` 的真进程，
@@ -2649,7 +2649,7 @@ fn the_launch_token_rides_the_session_added_frame_only_when_the_client_asked() {
         probe("yes", true, Some(GOOD)).as_deref(),
         Some(GOOD),
         "索要了、环境里也有，帧上却没有那个令牌 —— \
-         `设计/80 §8.2` 那条「后端从 `/proc/<pid>/environ` 读出来、经 wire 报回」**没接上**"
+那条「后端从 `/proc/<pid>/environ` 读出来、经 wire 报回」**没接上**"
     );
 
     // ── 阴性一：没索要 ⇒ 默认不上 wire ────────────────────────────────────
@@ -2669,7 +2669,7 @@ fn the_launch_token_rides_the_session_added_frame_only_when_the_client_asked() {
     );
 }
 
-/// 〔SR1a〕★ A1 的判定那一半：一批文件事件里**有** manifest ⇒ 真；只有无关文件（同目录里的别的文件、
+/// ★ A1 的判定那一半：一批文件事件里**有** manifest ⇒ 真；只有无关文件（同目录里的别的文件、
 /// 写 manifest 时的临时文件）⇒ 假。事件循环里每批只调一次它、真就发**恰好一帧**（结构判据见下一条）。
 /// 真进程读数（manifest 改一次 ⇒ 恰好一帧；同目录别的文件 ⇒ 零帧）见 `tests/evidence/SR1a-link-loopback.py` ⑪。
 #[test]
@@ -2689,7 +2689,7 @@ fn a_batch_counts_as_an_accounts_change_only_when_the_manifest_is_in_it() {
     assert!(!manifest_touched(std::iter::empty(), &m));
 }
 
-/// 〔SR1a〕接线：`Notify` 那一臂里**恰好一处**问 `manifest_touched`、真了发 `Frame::AccountsChanged`，
+/// 接线：`Notify` 那一臂里**恰好一处**问 `manifest_touched`、真了发 `Frame::AccountsChanged`，
 /// 而且它排在逐条处理事件的 `for` **之前**（逐条那一段里有 `continue`，放进去会被跳过）。
 #[test]
 fn the_notify_arm_asks_once_per_batch_before_the_per_event_loop() {
@@ -2697,7 +2697,7 @@ fn the_notify_arm_asks_once_per_batch_before_the_per_event_loop() {
     let prod = crate::guard_support::production_code(src);
     let ask = guard_core::find_pinned(&prod, "if manifest_touched(")
         .expect("Notify 那一臂里不是恰好一处问 manifest_touched");
-    // 〔RESYNC〕「重新对齐」那一臂也发一帧（整机时）⇒ 全文两处；这里只认 Notify 那一臂里、问完之后的那一处。
+    // 「重新对齐」那一臂也发一帧（整机时）⇒ 全文两处；这里只认 Notify 那一臂里、问完之后的那一处。
     let emit = prod[ask..]
         .find("sink.send(Frame::AccountsChanged);")
         .map(|k| ask + k)
@@ -2709,7 +2709,7 @@ fn the_notify_arm_asks_once_per_batch_before_the_per_event_loop() {
     assert!(ask < emit && emit < per_event, "问与发要排在逐条处理之前");
 }
 
-/// 〔U4b · 第四波 · B3〕**「清单报完了」那一帧的位置**：Phase 1 的每一帧 `session_added` 之后、恰好一帧。
+/// **「清单报完了」那一帧的位置**：Phase 1 的每一帧 `session_added` 之后、恰好一帧。
 ///
 /// 两趟：
 /// - 有两个活 pidfile（真起两个 `sleep`，合成 pidfile 带真 procStart —— 与令牌那条判据同一个夹具形）
@@ -2757,7 +2757,7 @@ fn sessions_replayed_follows_every_initial_session_added_exactly_once() {
     while let Ok(f) = rx.try_recv() {
         frames.push(f);
     }
-    // 〔U4b · G3〕顺带钉容器那一格的**生产接线**：两个 `sleep` 都摘了 `TMUX_PANE`、环境读得到
+    // 顺带钉容器那一格的**生产接线**：两个 `sleep` 都摘了 `TMUX_PANE`、环境读得到
     //   ⇒ 帧上 `container` == `none`（不是缺席）。结局 → 容器那张表另有一条逐格判；这一格判的是
     //   `process_session_added` 真把打标的结局接到了帧上。
     let containers: Vec<Option<crate::stream::wire::SessionContainer>> = frames
@@ -2796,7 +2796,7 @@ fn sessions_replayed_follows_every_initial_session_added_exactly_once() {
     assert_eq!(kinds(&mut rx), vec!["sessions_replayed"]);
 }
 
-/// 〔LOC1b · 第四波 4D〕`session_added.pid` 跟令牌**同一道闸**：索要了（`--with-rbind-token`）⇒ 帧上是那个进程的 pid；
+/// `session_added.pid` 跟令牌**同一道闸**：索要了（`--with-rbind-token`）⇒ 帧上是那个进程的 pid；
 /// 没索要 ⇒ 缺席（没索要的客户端 —— 包括仓外 aterm —— 收到的字节与本字段加进来之前一字不差）。
 ///
 /// 要求住址：`INVARIANTS §40` 逐字「我的目的就是把本地当成不走 ssh 的远端」—— 本机判活改由本机后端的帧来之后，
@@ -2854,15 +2854,15 @@ fn loc1b_the_pid_rides_the_session_added_frame_only_behind_the_same_gate_as_the_
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════════════
-//  〔FW1 · 第四波 4D · 2026-09-25〕活会话的 jsonl 被删 / 改名 / 截短 / 原地改写（主会话裁 D-d）
+// 活会话的 jsonl 被删 / 改名 / 截短 / 原地改写（主会话裁 D-d）
 // ═══════════════════════════════════════════════════════════════════════════════════════
 //
-// 要求住址（逐字）：题面 `4d-lanes.md`「主会话本批裁的」D-d「V119 之后活会话的 jsonl 被改 / 删 / 改名：观察侧当它是
+// 要求：「活会话的 jsonl 被改 / 删 / 改名：观察侧当它是
 // 『看的、不是管的』—— 删了 / 改名 ⇒ 出声（该 tab 说一句『记录文件不见了』），不崩、不误判结束；被截短 ⇒ 按截断重读」；
 // 主会话 09-25 补「原地整份改写且变长要堵：游标旁记末尾若干字节，每次续读前核，对不上 ⇒ 当被改写：从 0 重读并出声」。
 // 语料是结构性的假行（`{"n":…}`），不含任何真会话正文。
 
-/// 把这一趟收到的帧摊平成 `(kind, 细节)`：行帧给 `line:<行号>`（〔MOD〕帧上不再带原文），出声帧给它的 kind（重读带 why）。
+/// 把这一趟收到的帧摊平成 `(kind, 细节)`：行帧给 `line:<行号>`（帧上不再带原文），出声帧给它的 kind（重读带 why）。
 fn fw1_drain(rx: &mut tokio::sync::mpsc::Receiver<Frame>) -> Vec<String> {
     let mut out = Vec::new();
     while let Ok(f) = rx.try_recv() {
@@ -2922,7 +2922,7 @@ fn a_vanished_session_file_is_said_once_and_a_recreated_one_is_read_from_zero() 
     );
 
     // agent 按路径追加 ⇒ 同名文件重新长出来，只有新行（比读到过的短也好、长也好，都从 0 读）。
-    // 〔RENDER2 · `设计/10 §3.2`〕长回来的是另一份文件 ⇒ 先说「已从头重读」（行号从 0 重数，下游据它作废旧号）。
+    // 长回来的是另一份文件 ⇒ 先说「已从头重读」（行号从 0 重数，下游据它作废旧号）。
     std::fs::write(&path, "{\"n\":3}\n").unwrap();
     process_jsonl(&path, &mut state, &mut sink);
     assert_eq!(
@@ -2941,7 +2941,7 @@ fn a_vanished_session_file_is_said_once_and_a_recreated_one_is_read_from_zero() 
     std::fs::remove_dir_all(&dir).ok();
 }
 
-/// ★ **截短 ⇒ 先出声（why = 截短）再从头重读**；〔RENDER2〕行号从 0 重数（`watcher_lines_tests` 钉号）。
+/// ★ **截短 ⇒ 先出声（why = 截短）再从头重读**；行号从 0 重数（`watcher_lines_tests` 钉号）。
 #[test]
 fn a_truncated_session_file_is_said_and_reread_from_zero() {
     let (dir, path, mut state, mut sink, mut rx) = fw1_rig("trunc");
@@ -3013,7 +3013,7 @@ fn the_two_session_file_frames_have_exactly_these_bytes() {
     assert!(!gone.loss_is_recoverable());
 }
 
-/// ★★ 〔GAP1 · `设计/05 §13.6` 第 3 条「账号目录起步不在或被删掉重建 ⇒ 这一路失聪」〕真 debouncer ＋ `AccountsEar`：
+/// ★★ 〔「账号目录起步不在或被删掉重建 ⇒ 这一路失聪」〕真 debouncer ＋ `AccountsEar`：
 /// 起步不在 ⇒ 挂上一层；建出来 ⇒ 它自己那一格事件（`on_path` 回 true）且之后写 manifest 听得见；删掉重建 ⇒ 仍听得见。
 #[cfg(target_os = "linux")]
 #[test]
@@ -3070,7 +3070,7 @@ fn gap1_an_accounts_dir_created_or_rebuilt_after_start_is_still_heard() {
     );
 }
 
-// ═══ 〔RESYNC · `设计/15 §4.1b` · V149〕身份标签对账 ═══════════════════════════════════════════════
+// ═══ 身份标签对账 ═══════════════════════════════════════════════
 //
 // 夹具：一个有状态的假 tmux（一个会话 `$7`，`@ccm_sid` 存在一份文件里；`display-message` 读它、`set-option` 写它）＋
 // 一个带 `TMUX_PANE` 的 `sleep` 当 claude（pidfile 带它的真 procStart）。真 tmux 一次都不碰（§48.3）。
@@ -3114,8 +3114,8 @@ fn write_pidfile(sessions: &Path, pid: u32, sid: &str, status: &str) -> PathBuf 
     p
 }
 
-/// 〔RESYNC〕**标签被外部改掉之后会被纠正**：pidfile 重写（sid 没变）那一支 ＋ 对在跟会话的整批对账（tmux 探测到达时调的那一个）。
-/// 住址 `设计/15 §4.1b` 原文：「tmux 探测结果到达、pidfile 重写（sid 没变那一支）时顺手比一次标签」。
+/// **标签被外部改掉之后会被纠正**：pidfile 重写（sid 没变）那一支 ＋ 对在跟会话的整批对账（tmux 探测到达时调的那一个）。
+/// 要求：「tmux 探测结果到达、pidfile 重写（sid 没变那一支）时顺手比一次标签」。
 #[test]
 fn an_externally_changed_identity_tag_is_put_back() {
     let dir = std::env::temp_dir().join(format!("ccm-resync-retag-{}", std::process::id()));
@@ -3156,10 +3156,10 @@ fn an_externally_changed_identity_tag_is_put_back() {
     );
 }
 
-/// 〔RESYNC · `设计/15 §4.1b`〕**对齐 = 拿盘上现实对后端的表，只对差异发帧**（与起步初扫同一个 `reconcile_sessions`）。
+/// **对齐 = 拿盘上现实对后端的表，只对差异发帧**（与起步初扫同一个 `reconcile_sessions`）。
 /// 表里：A（pidfile 删了）· B（进程死了、pidfile 还在）· C（活着、标签被外部改掉）；盘上多一个没跟的 D。
 /// 整机一趟 ⇒ 移除 A、B · 宣告 D · 重打 C；只对 C 的一趟 ⇒ 只碰 C。期望全是手写的。
-/// 住址 `设计/15 §4.1b` 原文：「pidfile 目录逐个重验（多的补 `session_added`，少的补移除）· 每个在跟的 pid 重判活 · …… · 只对差异发帧」。
+/// 要求：「pidfile 目录逐个重验（多的补 `session_added`，少的补移除）· 每个在跟的 pid 重判活 · …… · 只对差异发帧」。
 #[test]
 fn resync_reconciles_the_table_against_the_disk_and_emits_only_the_difference() {
     let dir = std::env::temp_dir().join(format!("ccm-resync-recon-{}", std::process::id()));
@@ -3248,7 +3248,7 @@ fn resync_reconciles_the_table_against_the_disk_and_emits_only_the_difference() 
     );
 }
 
-/// 〔RESYNC〕`resync` 等**每一份**在跑的 watcher 做完；中途退掉的那份（丢了应答端）不会把它挂住。
+/// `resync` 等**每一份**在跑的 watcher 做完；中途退掉的那份（丢了应答端）不会把它挂住。
 #[test]
 fn resync_waits_for_every_live_watcher_and_never_hangs_on_a_gone_one() {
     let (tx1, rx1) = std::sync::mpsc::channel::<WatchEvent>();
@@ -3289,7 +3289,7 @@ fn resync_waits_for_every_live_watcher_and_never_hangs_on_a_gone_one() {
     );
 }
 
-/// 〔RESYNC〕帧面 `resync` 的成品 == 跨语言金样的形状（键集合相等、每格是计数）；`sid` 给了却不是非空字符串 ⇒ `bad_args`。
+/// 帧面 `resync` 的成品 == 跨语言金样的形状（键集合相等、每格是计数）；`sid` 给了却不是非空字符串 ⇒ `bad_args`。
 /// 界面那一侧 `tests/frontend/ui/resync.vitest.ts` 按同一份金样解。
 #[test]
 fn resync_face_reply_matches_the_cross_language_golden() {
@@ -3335,9 +3335,9 @@ fn resync_face_reply_matches_the_cross_language_golden() {
     }
 }
 
-/// 〔RESYNC · 主会话 09-27 裁 · `设计/15 §4.1b`「每个 tab『重新读取』（从游标补读 jsonl）」〕文件事件丢了一拍（这里干脆不发）：
+/// 〔「每个 tab『重新读取』（从游标补读 jsonl）」〕文件事件丢了一拍（这里干脆不发）：
 /// `resync{sid}` 那一趟从游标把漏的那一行补出来，别的会话不碰。
-/// 〔REREAD · V155〕应答的 `caught_up` == 这一趟补读出的行数：单 sid 那趟 1；随后整机那趟 a 又漏 1 行、b 漏 2 行 ⇒ 3（各会话相加）。
+/// 应答的 `caught_up` == 这一趟补读出的行数：单 sid 那趟 1；随后整机那趟 a 又漏 1 行、b 漏 2 行 ⇒ 3（各会话相加）。
 #[test]
 fn resync_for_one_sid_catches_up_its_jsonl_from_the_cursor() {
     let dir = std::env::temp_dir().join(format!("ccm-resync-catchup-{}", std::process::id()));
@@ -3396,7 +3396,7 @@ fn resync_for_one_sid_catches_up_its_jsonl_from_the_cursor() {
     assert_eq!((one, all), (1, 3), "补读行数（单 sid · 整机）不对");
 }
 
-/// 〔FIX · V138 订正〕`ccm` resume 要问「此刻哪些会话在跑」：一次性扫描与起步初扫同一条判活（pid 在 · 不是后台任务 ·
+/// `ccm` resume 要问「此刻哪些会话在跑」：一次性扫描与起步初扫同一条判活（pid 在 · 不是后台任务 ·
 /// add-time 冒名判定）。家目录放在非 ASCII 路径下（纪律 25：主树住 `~/文档/…`）。
 #[cfg(target_os = "linux")]
 #[test]
@@ -3445,7 +3445,7 @@ fn fix_the_one_shot_scan_sees_exactly_the_live_interactive_sessions() {
         .unwrap_or_else(|e| panic!("`main.rs` 注入的不是观测层那一份扫描：{e}"));
 }
 
-/// 〔MIG-3b · 要求住址 `设计/99 §2.1 ㉓②`「`session.tasks` 推送改 `chan.subscribe(origin, …)`，监视进后端，monitor 那份 notify 删」〕
+/// 〔要求住址 「`session.tasks` 推送改 `chan.subscribe(origin, …)`，监视进后端，monitor 那份 notify 删」〕
 /// 任务目录里的动静 ⇒ 按会话 sid 去重（第一段）；根目录自己 · 别处的路径不算。
 #[test]
 fn tasks_touched_names_each_session_once_per_batch() {
@@ -3464,7 +3464,7 @@ fn tasks_touched_names_each_session_once_per_batch() {
     assert!(tasks_touched(std::iter::empty(), t).is_empty());
 }
 
-/// 〔MIG-3b · ㉓②〕真 inotify：`tasks/` 起步不在、后来才建 ⇒ `agent_home` 那道耳朵把它挂上；之后往某会话目录写一份任务 ⇒
+/// 真 inotify：`tasks/` 起步不在、后来才建 ⇒ `agent_home` 那道耳朵把它挂上；之后往某会话目录写一份任务 ⇒
 /// 那一批里认得出那个 sid（`tasks_touched` 与 `watch_loop` 同一个函数）。
 #[cfg(target_os = "linux")]
 #[test]
@@ -3514,7 +3514,7 @@ fn a_task_written_after_start_is_heard_for_its_session() {
     );
 }
 
-/// 〔MIG-3b · ㉓②〕接线：`Notify` 那一臂里恰好一处问 `tasks_touched`、逐个发 `Frame::TasksChanged`，排在逐条处理事件的 `for` 之前。
+/// 接线：`Notify` 那一臂里恰好一处问 `tasks_touched`、逐个发 `Frame::TasksChanged`，排在逐条处理事件的 `for` 之前。
 #[test]
 fn the_notify_arm_reports_task_changes_before_the_per_event_loop() {
     let prod = crate::guard_support::production_code(include_str!(

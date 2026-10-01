@@ -7,7 +7,7 @@ description = "部署那一族的契约（两侧对上的形状）：表 A 的�
 
 # **只依赖同族共享 crate**（同 branch-core / relay-route-core 的约束）：backend 是 Linux-only 的静态 musl 二进制、
 # 且刻意不在 monitor 的 workspace 里；一旦引入平台相关的东西，共享就破了。
-# 〔P1〕从 `deploy-core` 拆出来的契约那一半：monitor 取字节 · 解计划 · 读字节里的戳要同一份形状；判定那一半进了后端。
+# 从 `deploy-core` 拆出来的契约那一半：monitor 取字节 · 解计划 · 读字节里的戳要同一份形状；判定那一半进了后端。
 [dependencies]
 copy-core = { path = "../copy-core" }
 shell-quote-core = { path = "../shell-quote-core" }

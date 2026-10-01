@@ -1,8 +1,8 @@
-//! ★ **`15 §5.1 A3` / `00 §1.5.2`：起子进程的唯一出口，三个策略都没有 `Default`。**
+//! ★ **：起子进程的唯一出口，三个策略都没有 `Default`。**
 //!
 //! # 它治的是什么
 //!
-//! `设计/15 §1.2` 逐字：「起子进程这件事没有唯一出口 —— 同一形状已经出现三次」。
+//! 「起子进程这件事没有唯一出口 —— 同一形状已经出现三次」。
 //! `local_backend.rs` 那一处监护 spawn **同时**犯三个错（无 `CREATE_NO_WINDOW` ·
 //! 无 job 绑定 · `stderr(Stdio::null())`），而**三样的正确做法仓里都已经有**：
 //!
@@ -31,7 +31,7 @@
 //!
 //! `backend_client_guard_tests.rs::the_backend_half_stays_platform_agnostic` 的禁针含 `#[cfg(windows)`
 //! 与 `std::os::windows` / `std::os::unix` ⇒ 写进 `backend/` 当场红；
-//! 而「加一条平台例外」被**递减棘轮**堵着（`PLATFORM_EXCEPTIONS.len() <= 1`；〔P4b〕今天 0 条，壳里平台形态另由 `platform_home_guard` 只许住 `platform/`）。
+//! 而「加一条平台例外」被**递减棘轮**堵着（`PLATFORM_EXCEPTIONS.len() <= 1`；今天 0 条，壳里平台形态另由 `platform_home_guard` 只许住 `platform/`）。
 //! ⇒ `backend/` 的两个落点（`local_backend::supervise_with_stdio` ·
 //! `local_query::run_query`）**只收注入参数**，形状照 `start_or_extract` 的
 //! `make_executable: &dyn Fn(...)` 那个先例（见 [`ManagedSpawn`]）。
@@ -40,7 +40,7 @@
 //!
 //! 1. **Windows 那一支今天没有任何机器验过。** 宿主是 Linux，`#[cfg(windows)]` 里的东西
 //!    在这里连编译都不参与。「编得过」由门禁 `winchk`（`--target x86_64-pc-windows-gnu`）买；
-//!    「**真的不弹窗了 / 真的连孙子一起收掉了**」要一台真 Windows（`99 §4.5.8` 的 `G2a`）。
+//!    「**真的不弹窗了 / 真的连孙子一起收掉了**」要一台真 Windows（`G2a`）。
 //!    ⇒ 别把绿读成验过。
 //! 2. **`Lifetime::JobKillOnClose` 在非 Windows 上是空壳。** POSIX 没有 Job Object，
 //!    而 `std::process::Child` 也没有 `kill_on_drop` —— 那一格今天由各落点自己的
@@ -62,7 +62,7 @@ pub enum ConsolePolicy {
     /// monitor 是 `windows_subsystem = "windows"` 的 GUI app ⇒ 它自己没有控制台，
     /// 不带这个 flag 时 Windows 会**给子进程新开一个控制台窗口**：桌面上凭空弹一个黑框，
     /// 而那个框是**可关的** —— 用户一关，`CTRL_CLOSE_EVENT` 打到子进程 ⇒ 它被杀。
-    /// `真相源/70` 那条 BUG 的三个症状（弹窗 · 报失败 · 本机后端不工作）是同一个 flag。
+    /// 那条 BUG 的三个症状（弹窗 · 报失败 · 本机后端不工作）是同一个 flag。
     Hidden,
     /// **开一个真的、用户看得见的终端**（Windows `CREATE_NEW_CONSOLE`）。
     ///
@@ -93,7 +93,7 @@ pub enum Lifetime {
 
 /// 它的 stderr 去哪。**没有 `Default`**。
 ///
-/// # ⚠ 这里比 `设计/00 §1.5.2` 多两个变体，理由写下来
+/// # ⚠ 这里比多两个变体，理由写下来
 ///
 /// 设计稿写的是 `{ ToLog, Null }` —— 那是**从一个落点（`local_backend.rs::supervise_with_stdio`）看出去**
 /// 得到的两格。把人群现打一遍（`write_site_registry::SPAWNS`，14 个运行期落点）之后，
@@ -121,7 +121,7 @@ pub enum StderrSink {
     Captured,
 }
 
-// 〔P4b · 阶段 H〕平台原语那一段（creation flags · Job Object · `process_group`）搬进 `platform/spawn.rs`，逐字；
+// 平台原语那一段（creation flags · Job Object · `process_group`）搬进 `platform/spawn.rs`，逐字；
 // 本文件只剩三个策略与唯一出口。收尾凭据 `LifetimeGuard` 住那边，这里用它当 `ManagedChild` 的字段。
 use crate::platform::spawn::LifetimeGuard;
 
@@ -176,7 +176,7 @@ impl ManagedChild {
     }
 }
 
-/// **唯一出口**（`00 §1.5.2` 那个签名）。三个策略都是必填参数，一个都不给 `Default`。
+/// **唯一出口**（那个签名）。三个策略都是必填参数，一个都不给 `Default`。
 ///
 /// 只起「一个二进制 ＋ 一串 argv」那种最简形态。要另设 env / cwd / stdin / stdout 的，
 /// 走 [`spawn_managed_cmd`] —— 那是**同一条路的内层**，不是旁路（本函数自己就调它）。
@@ -262,10 +262,10 @@ pub fn managed_spawner(
 
 /// 本机后端那条**被监护**的路：`local_backend::supervise_with_stdio` / `supervise` 收它。
 ///
-/// 三条答案写在这里、只写一次 —— `设计/00 §1.5.2` 点名的 `local_backend.rs::supervise_with_stdio`
+/// 三条答案写在这里、只写一次 —— 点名的 `local_backend.rs::supervise_with_stdio`
 /// **同时犯的三个错**，正好就是这三格：
 /// · `Hidden` —— 先前没带 `CREATE_NO_WINDOW`：Windows 上弹一个**可关的**黑框，
-///   用户一关就是 `CTRL_CLOSE_EVENT` 打到后端 ⇒ 后端死 ⇒ 中转不再监听（`真相源/70`）。
+///   用户一关就是 `CTRL_CLOSE_EVENT` 打到后端 ⇒ 后端死 ⇒ 中转不再监听。
 /// · `JobKillOnClose` —— 先前没有 job 绑定：monitor 崩溃 / 被强杀时后端成孤儿。
 /// · `ToLog` —— 先前是 `Stdio::null()`：后端整层 91 处 `tracing::` 的唯一出口被无条件丢弃。
 ///
@@ -281,8 +281,8 @@ pub fn local_backend_supervised() -> std::sync::Arc<ManagedSpawn> {
     )
 }
 
-// 〔LOC1a · 第四波 4D〕本机后端那条**一次性只读查询**的路（`local_backend_one_shot_query`〔散文墓碑〕，给
-// `local_query::run_query`〔散文墓碑〕用）删了：本机那几问改走 `<local>` 长连接（`设计/05 §14.6`），monitor 不再起一次性后端。
+// 本机后端那条**一次性只读查询**的路（`local_backend_one_shot_query`〔散文墓碑〕，给
+// `local_query::run_query`〔散文墓碑〕用）删了：本机那几问改走 `<local>` 长连接，monitor 不再起一次性后端。
 
 // ══════════════════════════════════════════════════════════════════════════
 // 异步那一侧（`tokio::process`）
@@ -320,8 +320,8 @@ impl std::ops::DerefMut for ManagedTokioChild {
 /// 那是 tokio 的 `Child` 才有的东西（它默认**不**因句柄被 drop 而杀子进程），
 /// 而 `cc_bus` / `ssh_source` 今天就靠它 —— 三条（Job · `kill_on_drop` · 显式 kill）
 /// 都留着：Job 没建成时另外两条至少还在。
-// 〔SH1〕今天零生产调用方（唯一那一处 —— cc-bus 驾驶舱的本机 shell 读 —— 随读面改问后端删了）；
-//   它是 `设计/00 §1.5.2` 唯一出口的 async 那一格（`spawn_managed_exit_sites` 钉着三个出口都在），下一处 tokio 起进程要走它。
+// 今天零生产调用方（唯一那一处 —— cc-bus 驾驶舱的本机 shell 读 —— 随读面改问后端删了）；
+//   它是唯一出口的 async 那一格（`spawn_managed_exit_sites` 钉着三个出口都在），下一处 tokio 起进程要走它。
 #[cfg_attr(not(test), allow(dead_code))]
 pub fn spawn_managed_tokio(
     cmd: &mut tokio::process::Command,

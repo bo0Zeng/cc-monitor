@@ -1,5 +1,5 @@
 /**
- * 〔SE2 · `设计/10 §2.2b ④` · `§6 步 6`〕会话内查找面板（搜索 / 大纲两个模式）的判据。
+ * 会话内查找面板（搜索 / 大纲两个模式）的判据。
  *
  * # 量什么
  *
@@ -29,7 +29,7 @@ vi.mock("@tauri-apps/api/core", async () => {
   const rig = await import("../../../test-support/session-viewer-rig");
   const { withSessionReads } = await import("../../../test-support/chan-fake");
   return {
-    // 〔C4b〕三问改走通道：`withSessionReads` 把一发 `chan_call` 译回「哪一问 ＋ 旧形参」、把回包译成后端成品字节。
+    // 三问改走通道：`withSessionReads` 把一发 `chan_call` 译回「哪一问 ＋ 旧形参」、把回包译成后端成品字节。
     invoke: vi.fn(withSessionReads(async (cmd: string, args: Record<string, unknown>) => {
       if (cmd === "list_user_inputs") return rig.answerListUserInputs(args as { fromOffset: number });
       if (cmd === "find_in_session") return stub.finds.shift();
@@ -38,7 +38,7 @@ vi.mock("@tauri-apps/api/core", async () => {
         return { available: true, from: 0, end: rows.length * 10, rows };
       }
       if (cmd === "read_session_range") {
-        // 〔MOD〕请求里不再带 `lineCount`（后端自己数）：这一段有几行按夹具的行边界算（o = seq × 10、n = 10）。
+        // 请求里不再带 `lineCount`（后端自己数）：这一段有几行按夹具的行边界算（o = seq × 10、n = 10）。
         const a = args as { seqBase: number; offset: number; until: number };
         return Array.from({ length: (a.until - a.offset) / 10 }, (_, k) =>
           rig.assistantLine(a.seqBase + k, `u${a.seqBase + k}`, `第 ${a.seqBase + k} 条（按偏移取回的）`),

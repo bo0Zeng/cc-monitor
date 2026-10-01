@@ -5,8 +5,8 @@
 //! 这一枚标记是**盘上那一侧**的凭据（登记那一侧在
 //! `tests/frontend/shell/comm_boundary_registry_tests.rs` 的 `REGISTERED`，两向集合相等）。
 //!
-//! **凭什么它属于通信层**：`01 §2.2` 逐字「前端只有两个动作」—— 本文件就是那两个动作
-//! 在进程外前端手里的样子（[`Client`] 实现 `05 §3.3.0` 的 `Comms`）。外部前端除了它与
+//! **凭什么它属于通信层**：「前端只有两个动作」—— 本文件就是那两个动作
+//! 在进程外前端手里的样子（[`Client`] 实现 `Comms`）。外部前端除了它与
 //! 线上类型（`super::wire`）之外**不碰 app 的任何东西**，是用户裁决「窗口变成独立前端」的落点。
 //!
 //! # 🔴 它**不做**的事
@@ -14,7 +14,7 @@
 //! - **不拨号、不找地址、不读钥匙**（`C4` / `C5`）：[`Client::open`] 收的是一条**已经连好**的流
 //!   与一把**已经交到手里**的钥匙。拨到哪、钥匙从 stdin 怎么来，归外部前端的宿主。
 //! - **不造期限**（`X2`）：每一次 `call` 都要调用者显式给 [`Budget`]（`X6`），本文件一个期限常量都没有。
-//! - **不重试、不排队**（`05 §4.5.1`）。
+//! - **不重试、不排队**。
 //!
 //! # 一次 `call` 的三段，以及每一段超时各答什么 `reach`
 //!
@@ -24,21 +24,21 @@
 //! | ② 写上连接 | 进了队列，还没写完 | `Hop{第 0 跳 write, Unknown, Overrun}` —— 可能写了一半 |
 //! | ③ 等答 | 写完了，答案没回来 | `Hop{第 0 跳 wait, Sent, Overrun}` ＋ 尽力补发一帧撤单 |
 //!
-//! 🔴 **拿不准一律 `Unknown`**（`05 §3.3.1`）：第 ② 段是唯一「分不清」的那段，它就答 `Unknown`。
+//! 🔴 **拿不准一律 `Unknown`**：第 ② 段是唯一「分不清」的那段，它就答 `Unknown`。
 //!
 //! # 买到什么
 //!
-//! - `05 §3.3` 的签名在一个真客户端上成立：`budget` 是绝对时刻、`from` 原样过线、`want` 是 credit。
+//! - 通道的签名在一个真客户端上成立：`budget` 是绝对时刻、`from` 原样过线、`want` 是 credit。
 //! - 订阅的缓冲**有上界**：它只收路由器按 credit 发来的格数；对面越过 credit ⇒ 流里原位出
-//!   `Closed{Ours(Broken)}`（`05 §3.3.4`：不许静默堆，也不许静默丢）。
+//!   `Closed{Ours(Broken)}`（不许静默堆，也不许静默丢）。
 //! - 连接断了 ⇒ 在飞的 `call` 一律 `Hop{第 0 跳 read, Unknown, Dropped}`，订阅流里原位出 `Unseen`
-//!   （**不是** `Closed`，`05 §4.5.2`）。
+//!   （**不是** `Closed`）。
 //!
 //! # 买不到什么
 //!
 //! - **不买自动重连**：它只有交给它的那一条流，断了就断了；订阅停在 `Unseen`，不会自己回来。
 //!   `§4.5.2` 要的「通信层自己重连」需要地址与钥匙，今天那两样在外部前端的宿主手里 —— 登记为欠账。
-//! - **不买「对面真的停了」**：撤单那一帧只是尽力（`05 §3.3.3`）。
+//! - **不买「对面真的停了」**：撤单那一帧只是尽力。
 
 use super::wire::{
     err_from_wire, item_from_wire, read_frame, write_frame, Body, Budget, By, CallError, Comms,
@@ -93,7 +93,7 @@ struct Shared {
     /// 为的是「断线时清空」与「新登记」不会交错出一个永远没人答的编号。
     calls: Mutex<Option<HashMap<u64, Answer>>>,
     taps: Mutex<HashMap<u64, Arc<Mutex<Tap>>>>,
-    /// 〔NET2〕问过的那几台的能力事实（[`Client::offer`] 填）：本地撤单时据此说「那台可能还在跑」。
+    /// 问过的那几台的能力事实（[`Client::offer`] 填）：本地撤单时据此说「那台可能还在跑」。
     offers: Mutex<HashMap<String, Offer>>,
 }
 
@@ -113,7 +113,7 @@ fn cancelled() -> CallError {
     OursFault::Cancelled.into()
 }
 
-/// 已发出的那条被本地撤掉：`runs_on` = 那台对这一条不认撤（`05 §3.3.3`「在结果里说明」）。
+/// 已发出的那条被本地撤掉：`runs_on` = 那台对这一条不认撤（「在结果里说明」）。
 fn withdrawn(runs_on: bool) -> CallError {
     CallError::Ours {
         why: OursFault::Cancelled,
@@ -223,7 +223,7 @@ impl Client {
         }
     }
 
-    /// 〔NET2〕问 `origin` 那台的能力事实（`Offer`：认哪些 op · 这台做不到哪几条 · 哪几条撤不动）。
+    /// 问 `origin` 那台的能力事实（`Offer`：认哪些 op · 这台做不到哪几条 · 哪几条撤不动）。
     /// `None` = 那台今天没有控制通道。问到的那份记下来，之后本地撤单据它说「那台可能还在跑」。
     ///
     /// # Errors
@@ -397,7 +397,7 @@ impl Client {
                 want,
             });
         } else {
-            // 连接已经没了：订阅照样成立（`05 §3.3.5`），流里第一格就是「看不见」。
+            // 连接已经没了：订阅照样成立，流里第一格就是「看不见」。
             lock(&tap).push(Item::Unseen {
                 at: HopId {
                     idx: 0,
@@ -505,7 +505,7 @@ fn answer(shared: &Shared, id: u64, r: Result<Body, CallError>) {
     }
 }
 
-/// 一条订阅（`05 §3.3.0` 的 `Sub`）。丢掉它等于 `stop()`。
+/// 一条订阅（`Sub`）。丢掉它等于 `stop()`。
 pub struct Subscription {
     id: u64,
     tap: Arc<Mutex<Tap>>,

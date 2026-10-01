@@ -141,15 +141,15 @@ fn every_registered_command_declares_its_run_kind() {
                 | "bus-kill"
                 | "bus-spawn"
                 | "bus-state"
-                // 〔SH1 · V136〕起一个 `cc-log` 子进程并等它退出。
+                // 起一个 `cc-log` 子进程并等它退出。
                 | "bus-inbox"
-                // 〔LOC1a · 第四波 4D〕分叉（读整份 jsonl ＋ `O_EXCL` 写）。
+                // 分叉（读整份 jsonl ＋ `O_EXCL` 写）。
                 | "session-fork"
                 | "capture-pane"
                 | "files-browse"
                 | "files-create"
                 | "files-commit-upload"
-                // 〔F9c · 第四波〕存盘的两步同档（同步文件 I/O ＋ 围栏的 `canonicalize`）。
+                // 存盘的两步同档（同步文件 I/O ＋ 围栏的 `canonicalize`）。
                 | "files-stage-chunk"
                 | "files-commit-text"
                 | "files-chmod"
@@ -158,9 +158,9 @@ fn every_registered_command_declares_its_run_kind() {
                 | "files-rename"
                 | "files-write-text"
                 | "files-copy"
-                // 〔FILES2〕解压：同步读包 ＋ 落盘，同写面一档。
+                // 解压：同步读包 ＋ 落盘，同写面一档。
                 | "files-extract"
-                // 〔RW1 · 第四波 09-24〕读改写两条 ＋ 删历史会话：同步文件 I/O（围栏的 `canonicalize`
+                // 读改写两条 ＋ 删历史会话：同步文件 I/O（围栏的 `canonicalize`
                 // ＋ 读 / 暂存旁名写满 ＋ 换名 / 删），同写面其余几条一档。
                 | "files-peek"
                 | "files-put"
@@ -170,68 +170,68 @@ fn every_registered_command_declares_its_run_kind() {
                 | "files-find"
                 | "files-index-rebuild"
                 | "files-index-status"
-                // 〔F7a · 第三波 09-24〕同族第七、第八条同档（同步文件 I/O / 读环境）。
+                // 同族第七、第八条同档（同步文件 I/O / 读环境）。
                 | "files-read-text"
                 | "files-home"
-                // 〔W5-FILES〕读族第九条（算目录大小）同档：走一整棵树的同步 I/O。
+                // 读族第九条（算目录大小）同档：走一整棵树的同步 I/O。
                 | "files-size"
-                // 〔FILES2〕读族第十条（分块读回）同档：同步文件 I/O。
+                // 读族第十条（分块读回）同档：同步文件 I/O。
                 | "files-read-chunk"
-                // 〔`C1` · 09-24〕只读查询面八条同为阻塞档：全做文件 I/O，
+                // 只读查询面八条同为阻塞档：全做文件 I/O，
                 // `history-search` 扫全库、`history-tail` 扫整份会话 —— 不许占 tokio worker。
-                // 〔C4d · 第四波 4B〕`history-projects` / `history-sessions` 出列：出成品、远端那一支要等 ⇒ 真异步
+                // `history-projects` / `history-sessions` 出列：出成品、远端那一支要等 ⇒ 真异步
                 //   （本机扫盘那段在 `history_join::blocking` 里自己挪到阻塞线程池）。
                 | "history-index"
                 | "history-user-inputs"
                 | "history-find"
-                | "backend-log" // 〔GAP1〕读一份诊断文件的尾部（同步文件 I/O），同档
-                | "history-facts" // 〔STC〕会话事实：扫一份会话（首次整份，续传只读新写的一截），同档
+                | "backend-log" // 读一份诊断文件的尾部（同步文件 I/O），同档
+                | "history-facts" // 会话事实：扫一份会话（首次整份，续传只读新写的一截），同档
                 | "history-read"
-                | "history-lines" // 〔CF2〕按行号取回：从文件头数，同档
-                | "history-record" // 〔U4b〕记录还在不在：一次目录枚举，同档
+                | "history-lines" // 按行号取回：从文件头数，同档
+                | "history-record" // 记录还在不在：一次目录枚举，同档
                 | "history-search"
                 | "history-run" // 按运行读一个子运行的记录（同步文件 I/O），同档
-                | "history-page" // 〔MOD〕按字节分页出记录行，同档
+                | "history-page" // 按字节分页出记录行，同档
                 | "history-tail"
                 | "accounts-list"
                 | "accounts-sessions"
-                | "accounts-trust" // 〔C4c〕信任预检：读 manifest ＋ `.claude.json`，同档
-                // 〔B2 · 条 66〕「退出行为」那两条：同步文件 I/O（读一份小文件 / 原子写一份），
+                | "accounts-trust" // 信任预检：读 manifest ＋ `.claude.json`，同档
+                // 〔条 66〕「退出行为」那两条：同步文件 I/O（读一份小文件 / 原子写一份），
                 // 不许占 tokio worker。开跑之后打不断 ⇒ `cancel` 命中回 `not_cancellable`。
                 | "exit-policy-read"
                 | "exit-policy-set"
-                // 〔RM1b · 第四波〕功能侧只读查询：读一个目录 ＋ 每个文件各一次（同步文件 I/O）。
+                // 功能侧只读查询：读一个目录 ＋ 每个文件各一次（同步文件 I/O）。
                 | "tasks-list"
-                // 〔SH1 · V137〕MCP 列表：读 `.claude.json` ＋ 一份 `.mcp.json`（同步文件 I/O）。
+                // MCP 列表：读 `.claude.json` ＋ 一份 `.mcp.json`（同步文件 I/O）。
                 | "mcp-read"
-                // 〔SH1〕列 tmux 会话：起一次 `sh` ＋ `tmux` 并等它退出。
+                // 列 tmux 会话：起一次 `sh` ＋ `tmux` 并等它退出。
                 | "tmux-list"
-                // 〔FIX4 · J7〕铸 tmux 名：问一次会话快照 = 起一次 `tmux` 并等它退出。
+                // 铸 tmux 名：问一次会话快照 = 起一次 `tmux` 并等它退出。
                 | "tmux-name-mint"
-                // 〔MIG-1〕`~/.ssh/config` 三条：读一份文件 ／ 起 `ssh -G` 并等它退出。
+                // `~/.ssh/config` 三条：读一份文件 ／ 起 `ssh -G` 并等它退出。
                 | "ssh-config-aliases"
                 | "ssh-config-import"
                 | "ssh-config-resolve"
-                // 〔MIG-3b〕钩子诊断：读一份 settings ＋ 几次 stat（同步文件 I/O）。
+                // 钩子诊断：读一份 settings ＋ 几次 stat（同步文件 I/O）。
                 | "hooks-diag"
-                // 〔RESYNC〕手动对齐：等每份 watcher 做完（对表 ＋ 打标起 tmux）。
+                // 手动对齐：等每份 watcher 做完（对表 ＋ 打标起 tmux）。
                 | "resync"
-                // 〔RM1f〕`panorama` 不在这里了：起进程改成异步等（`plugin::invoke::run_abortable`），
+                // `panorama` 不在这里了：起进程改成异步等（`plugin::invoke::run_abortable`），
                 //   `cancel` 打得断 ⇒ `Run::Async`。〔墓碑 —— RM1c 那一版在这一档：「起一个进程、等它退出」。〕
-                // 〔RM1a · 第四波〕上游选择那份凭据文件的两条：同步文件 I/O（读一份小文件 / 原子写一份）。
+                // 上游选择那份凭据文件的两条：同步文件 I/O（读一份小文件 / 原子写一份）。
                 | "apikey-key-set"
                 | "apikey-read"
-                // 〔US1 · 第四波 4D〕上游选择出的两份成品：读一份凭据文件 ＋ 装表 ＋ 回环上探一次中转（每发有读期限），同步阻塞。
+                // 上游选择出的两份成品：读一份凭据文件 ＋ 装表 ＋ 回环上探一次中转（每发有读期限），同步阻塞。
                 | "apikey-routing"
                 | "launch-endpoint"
-                // 〔DEL〕`relay-ensure` / `relay-status` 两条随脱离 `--relay` 一族删了。
-                // 〔RM1a · 第四波〕足迹那一条：一批 stat / 读几份小文件，同步文件 I/O。
+                // `relay-ensure` / `relay-status` 两条随脱离 `--relay` 一族删了。
+                // 足迹那一条：一批 stat / 读几份小文件，同步文件 I/O。
                 | "footprint-report"
-                // 〔W5-ALIAS〕别名预览：读账号库 manifest ＋ 问会话快照（同步 I/O），不起进程。
+                // 别名预览：读账号库 manifest ＋ 问会话快照（同步 I/O），不起进程。
                 | "ccm-print"
-                // 〔AS1 · 第四波 4B〕MCP 同步的判定：对可疑路径逐条 stat、在 PATH 上找名字（同步文件 I/O）。
+                // MCP 同步的判定：对可疑路径逐条 stat、在 PATH 上找名字（同步文件 I/O）。
                 | "mcp-sync-plan"
-                // 〔MIG-3a〕MCP 写两条 ＋ 推拉三条 ＋ skill 装卸两条：读 / 规划 / 经本进程文件管理面写（同步文件 I/O）。
+                // MCP 写两条 ＋ 推拉三条 ＋ skill 装卸两条：读 / 规划 / 经本进程文件管理面写（同步文件 I/O）。
                 | "skill-install-apply"
                 | "cc-bus-install"
                 // 账号库那一族：读账号库 ＋ 经本进程文件管理面建目录 · 建链接 · 复制 · 写清单（同步文件 I/O）。
@@ -244,7 +244,7 @@ fn every_registered_command_declares_its_run_kind() {
                 | "accounts-rollback"
                 | "accounts-verify"
                 | "accounts-login-cmd"
-                // 〔MIG-3b 续〕公钥并进这台的 `authorized_keys`：同步文件 I/O（经本进程文件管理面）。
+                // 公钥并进这台的 `authorized_keys`：同步文件 I/O（经本进程文件管理面）。
                 | "authorized-keys-add"
                 | "files-link"
                 | "cc-bus-install-state"
@@ -254,7 +254,7 @@ fn every_registered_command_declares_its_run_kind() {
                 | "aliases-block-render"
                 | "aliases-block-install"
                 | "aliases-block-remove"
-                // 〔WF1 · L〕起一次那一代 PowerShell 设执行策略再现问（同步子进程）。
+                // 起一次那一代 PowerShell 设执行策略再现问（同步子进程）。
                 | "powershell-policy-set"
                 | "ext-uninstall-apply"
                 | "mcp-server-put"
@@ -262,23 +262,23 @@ fn every_registered_command_declares_its_run_kind() {
                 | "mcp-sync-source"
                 | "mcp-sync-preview"
                 | "mcp-sync-apply"
-                // 〔AS2 · 第四波 4B〕资产目录两条：扫 skill 目录 / 读项目 `.mcp.json` ＋ 原子写目录文件，同步文件 I/O。
+                // 资产目录两条：扫 skill 目录 / 读项目 `.mcp.json` ＋ 原子写目录文件，同步文件 I/O。
                 | "assets-catalog"
                 | "assets-catalog-merge"
-                // 〔AS2〕skill「装到这台」两条：走 skill 目录、读文件原文、stat 可疑路径（同步文件 I/O）。
+                // skill「装到这台」两条：走 skill 目录、读文件原文、stat 可疑路径（同步文件 I/O）。
                 | "skill-read"
                 | "skill-install-plan"
-                // 〔SU1 · 第四波 4C〕装记录的写口 ＋ 扩展页那张表（扫盘 ＋ 原子写目录文件）＋ 卸之前那张卡（读装记录 · 逐个读盘比摘要），同步文件 I/O。
+                // 装记录的写口 ＋ 扩展页那张表（扫盘 ＋ 原子写目录文件）＋ 卸之前那张卡（读装记录 · 逐个读盘比摘要），同步文件 I/O。
                 | "skill-install-record"
                 | "ext-list"
                 | "ext-uninstall-preview"
-                // 〔C4d · 第四波 4B〕历史注解三条：读 / 原子写一份小文件（同步文件 I/O）。
+                // 历史注解三条：读 / 原子写一份小文件（同步文件 I/O）。
                 | "history-annotate"
                 | "history-forget"
                 | "history-last-accounts"
-                // 〔MIG-2〕本机起会话：探一次 `ccm`（起 `bash -lic`）＋ 读一次凭据表 ＋ 探一次中转。
+                // 本机起会话：探一次 `ccm`（起 `bash -lic`）＋ 读一次凭据表 ＋ 探一次中转。
                 | "launch-local"
-                // 〔P1〕本机那一份放不放：读一遍落点那个文件（约 10 MB，同步文件 I/O）。
+                // 本机那一份放不放：读一遍落点那个文件（约 10 MB，同步文件 I/O）。
                 | "place-verdict"
         );
         let is_blocking = matches!(spec.run, Run::Blocking(_));
@@ -288,9 +288,9 @@ fn every_registered_command_declares_its_run_kind() {
             spec.name
         );
         let is_builtin = matches!(spec.run, Run::Builtin);
-        // 〔SR1a〕链路四条也是硬臂：要碰**本连接的链路表**与应答通道（`dial/link.rs`），
+        // 链路四条也是硬臂：要碰**本连接的链路表**与应答通道（`dial/link.rs`），
         // 而且 `link-data` 必须在读循环里就地分派（保序）—— 交给独立 task 就不再保序。
-        // 〔SR1b〕传输四条也是硬臂：要碰**本连接的票表**与应答通道（进度帧走应答通道，`control/transfer.rs`）。
+        // 传输四条也是硬臂：要碰**本连接的票表**与应答通道（进度帧走应答通道，`control/transfer.rs`）。
         let expected_builtin = matches!(
             spec.name,
             "cancel"
@@ -302,7 +302,7 @@ fn every_registered_command_declares_its_run_kind() {
                 | "transfer-download"
                 | "transfer-start"
                 | "transfer-stop"
-                // 〔MIG-1 收尾〕测试连接：进度格走本连接的应答通道（不丢、与应答同序）⇒ 要拿到应答通道，只能是硬臂。
+                // 测试连接：进度格走本连接的应答通道（不丢、与应答同序）⇒ 要拿到应答通道，只能是硬臂。
                 | "remote-probe"
         );
         assert_eq!(
@@ -324,39 +324,39 @@ fn every_registered_command_declares_its_run_kind() {
         "link-open",
         "ping",
         "resolve",
-        // 〔E2〕`ccm-probe`：拼 `--ccm-probe` 那几行，纯函数 ⇒ 不进阻塞档。
+        // `ccm-probe`：拼 `--ccm-probe` 那几行，纯函数 ⇒ 不进阻塞档。
         "ccm-probe",
-        // 〔FIX4 · ⑬〕`terminal-ssh`：开终端那一串，纯函数（校验 ＋ quote，不拨号不起进程）⇒ 不进阻塞档。
+        // `terminal-ssh`：开终端那一串，纯函数（校验 ＋ quote，不拨号不起进程）⇒ 不进阻塞档。
         "terminal-ssh",
-        // 〔P5〕`terminal-local`：本机那一串接前奏，纯函数（不起进程不碰盘）⇒ 不进阻塞档。
+        // `terminal-local`：本机那一串接前奏，纯函数（不起进程不碰盘）⇒ 不进阻塞档。
         "terminal-local",
-        // 〔FIX4 · J15〕`history-search-merge`：各台结果合一份，纯计算 ⇒ 不进阻塞档。
+        // `history-search-merge`：各台结果合一份，纯计算 ⇒ 不进阻塞档。
         "history-search-merge",
-        // 〔AS2 · 第四波 4B〕资产目录的同步：真异步（拨号 / 等远端 capture），在 await 点可取消。
+        // 资产目录的同步：真异步（拨号 / 等远端 capture），在 await 点可取消。
         "assets-sync",
         // 两台之间「装」那一件的枢纽：等远端 capture（真异步，在 await 点可取消），本机那一跳挪到阻塞线程池。
         "ext-hub-preview",
         "ext-hub-apply",
-        "pubkey-push",        // 〔MIG-3b 续〕等远端（问那台后端 / 一次 exec），真异步
-        "panorama-edit", // 〔MIG-3b 续〕同 `panorama`（起小程序、等它），落盘那一步挪到阻塞线程池
-        "panorama-uninstall", // 〔FIX4〕同上：起小程序认身份、等它；读与删挪到阻塞线程池
-        "files-grep",    // 〔FILES3〕可撤：走那一趟在阻塞线程池上、看取消位，future 被丢即收手
-        // 〔MIG-3b〕部署计划：真异步（拨号 / 等远端 capture · SFTP），在 await 点可取消。
+        "pubkey-push",        // 等远端（问那台后端 / 一次 exec），真异步
+        "panorama-edit",      // 同 `panorama`（起小程序、等它），落盘那一步挪到阻塞线程池
+        "panorama-uninstall", // 同上：起小程序认身份、等它；读与删挪到阻塞线程池
+        "files-grep",         // 可撤：走那一趟在阻塞线程池上、看取消位，future 被丢即收手
+        // 部署计划：真异步（拨号 / 等远端 capture · SFTP），在 await 点可取消。
         "deploy-plan",
-        // 〔THIN〕远端常驻后端 hello 的新旧：纯判定，不碰盘不拨号。
+        // 远端常驻后端 hello 的新旧：纯判定，不碰盘不拨号。
         "resident-verdict",
-        // 〔THIN〕那台要哪一格：远端真异步（等 capture），本机纯判定。
+        // 那台要哪一格：远端真异步（等 capture），本机纯判定。
         "deploy-slot",
-        // 〔THIN〕那台旧入口的去向：真异步（SFTP stat ＋ 读回），在 await 点可取消。
+        // 那台旧入口的去向：真异步（SFTP stat ＋ 读回），在 await 点可取消。
         "deploy-retired",
-        // 〔C4d · 第四波 4B〕可达表登记：纯内存，普通 spawn。
+        // 可达表登记：纯内存，普通 spawn。
         "remote-reach",
-        // 〔MIG-1〕端口转发：起 = 真异步（查可达表 · 开链路 · 等 ack），停 / 列 = 纯内存一把锁。
+        // 端口转发：起 = 真异步（查可达表 · 开链路 · 等 ack），停 / 列 = 纯内存一把锁。
         "forward-start",
         "forward-stop",
         "forward-list",
-        "drift-report", // 〔MOD〕漂移账：纯内存一把锁
-        // 〔MIG-1 续〕测试连接：真异步（拨号 · 读 hello · 往返），在 await 点可取消。
+        "drift-report", // 漂移账：纯内存一把锁
+        // 测试连接：真异步（拨号 · 读 hello · 往返），在 await 点可取消。
         "remote-probe",
         "bus-list",
         "bus-send",
@@ -392,65 +392,65 @@ fn every_registered_command_declares_its_run_kind() {
         "history-index",
         "history-user-inputs",
         "history-find",
-        "backend-log",   // 〔GAP1〕
-        "history-facts", // 〔STC〕
+        "backend-log",   //
+        "history-facts", //
         "history-read",
-        "history-lines",  // 〔CF2〕
-        "history-record", // 〔U4b〕
+        "history-lines",  //
+        "history-record", //
         "history-search",
         "history-sessions",
         "history-run",
-        "history-page", // 〔MOD〕
+        "history-page", //
         "history-tail",
         "accounts-list",
         "accounts-sessions",
-        "accounts-trust", // 〔C4c〕
+        "accounts-trust", //
         "exit-policy-read",
         "exit-policy-set",
         "tasks-list",
         "mcp-read",
         "tmux-list",
-        "tmux-name-mint", // 〔FIX4 · J7〕
-        "hooks-diag",     // 〔MIG-3b〕
-        "resync",         // 〔RESYNC〕
+        "tmux-name-mint", //
+        "hooks-diag",     //
+        "resync",         //
         "panorama",
         "apikey-key-set",
         "apikey-read",
-        "apikey-routing",  // 〔US1〕
-        "launch-endpoint", // 〔US1〕
+        "apikey-routing",  //
+        "launch-endpoint", //
         "footprint-report",
-        // 〔W5-ALIAS〕别名预览（阻塞档，理由在上面 `expected_blocking`）。
+        // 别名预览（阻塞档，理由在上面 `expected_blocking`）。
         "ccm-print",
-        // 〔AS2 · 第四波 4B〕资产目录两条（阻塞档，理由在上面 `expected_blocking`）。
+        // 资产目录两条（阻塞档，理由在上面 `expected_blocking`）。
         "assets-catalog",
         "assets-catalog-merge",
         "skill-read",
         "skill-install-plan",
-        // 〔SU1 · 第四波 4C〕skill 卸三条（阻塞档，理由在上面 `expected_blocking`）。
+        // skill 卸三条（阻塞档，理由在上面 `expected_blocking`）。
         "skill-install-record",
         "ext-list",
         "ext-uninstall-preview",
-        // 〔C4d · 第四波 4B〕历史注解三条（阻塞档，理由在上面 `expected_blocking`）。
+        // 历史注解三条（阻塞档，理由在上面 `expected_blocking`）。
         "history-annotate",
         "history-forget",
         "history-last-accounts",
-        // 〔RW1 · 第四波 09-24〕读改写两条 ＋ 删历史会话（阻塞档，理由在上面 `expected_blocking`）。
+        // 读改写两条 ＋ 删历史会话（阻塞档，理由在上面 `expected_blocking`）。
         "files-peek",
         "files-put",
         "files-delete-session",
-        // 〔AS1 · 第四波 4B〕MCP 同步的判定（阻塞档，理由在上面 `expected_blocking`）。
+        // MCP 同步的判定（阻塞档，理由在上面 `expected_blocking`）。
         "mcp-sync-plan",
-        // 〔MIG-1〕`~/.ssh/config` 三条（阻塞档，理由在上面 `expected_blocking`）。
+        // `~/.ssh/config` 三条（阻塞档，理由在上面 `expected_blocking`）。
         "ssh-config-aliases",
         "ssh-config-import",
         "ssh-config-resolve",
-        // 〔MIG-2〕起会话的计划与渲染（本机那条阻塞档，两条渲染异步）。
+        // 起会话的计划与渲染（本机那条阻塞档，两条渲染异步）。
         "launch-local",
         "launch-render-cli",
         "launch-render-payload",
-        // 〔P1〕本机那一份放不放（阻塞档，理由在上面 `expected_blocking`）。
+        // 本机那一份放不放（阻塞档，理由在上面 `expected_blocking`）。
         "place-verdict",
-        // 〔MIG-3a〕MCP 写两条 ＋ 推拉三条 ＋ skill 装卸两条（阻塞档，理由在上面 `expected_blocking`）。
+        // MCP 写两条 ＋ 推拉三条 ＋ skill 装卸两条（阻塞档，理由在上面 `expected_blocking`）。
         "skill-install-apply",
         "cc-bus-install",
         // 账号库那一族（阻塞档，理由在上面 `expected_blocking`）。
@@ -463,7 +463,7 @@ fn every_registered_command_declares_its_run_kind() {
         "accounts-rollback",
         "accounts-verify",
         "accounts-login-cmd",
-        "authorized-keys-add", // 〔MIG-3b 续〕同步文件 I/O（经本进程文件管理面）
+        "authorized-keys-add", // 同步文件 I/O（经本进程文件管理面）
         "files-link",
         "cc-bus-install-state",
         "aliases-render",
@@ -479,7 +479,7 @@ fn every_registered_command_declares_its_run_kind() {
         "mcp-sync-source",
         "mcp-sync-preview",
         "mcp-sync-apply",
-        // 〔SR1b〕传输四条：内建（硬臂）。
+        // 传输四条：内建（硬臂）。
         "transfer-upload",
         "transfer-download",
         "transfer-start",
@@ -561,7 +561,7 @@ fn launch_fields_match_its_parser_and_output() {
     );
 }
 
-/// ★〔audit-0805 08-06〕**「声明零字段」不许成为免检开关**。
+/// ★**「声明零字段」不许成为免检开关**。
 ///
 /// # 它补的洞
 ///
@@ -582,7 +582,7 @@ fn declaring_zero_fields_needs_a_reason() {
         "resolve",
         "载荷是 `ResumeSpec` **结构体**，文档段按结构体引用记（`args:{ResumeSpec}`）\
              而不逐字段列；字段契约由那个 struct 的定义与它自己的序列化测试守。\
-             ⇒ 在这里列一份字段清单反而会造出第二个真相源（E3）。",
+             ⇒ 在这里列一份字段清单反而会造出第二个源头（E3）。",
     )];
     let mut unexplained: Vec<&str> = Vec::new();
     let mut zero_with_doc = 0usize;
@@ -628,7 +628,7 @@ fn declaring_zero_fields_needs_a_reason() {
 ///
 /// # 它治的是哪一形
 ///
-/// 这一族的能力声明住 `files::CAPABILITIES`（`设计/96 §2.9` 那张表，由
+/// 这一族的能力声明住 `files::CAPABILITIES`（那张表，由
 /// `files::tests::the_capability_names_match_the_design_registry_in_both_directions`
 /// 两向钉着），而线上那一面是**第二张表**（本文件的 `REGISTRY`）。
 /// 两张手写表之间没有判据 = 「上线少接一条」「契约面抄漏一个字段」都静默 ——
@@ -670,13 +670,13 @@ fn the_files_read_family_is_online_exactly_as_it_is_declared() {
     //   ⇒ 本条的人群必须**先把写那一面减掉**，否则它会把写那一面当成「读族漏声明了一条」
     //   （现打：不减的话逐字报 `files-create` 在 wired 里而不在 declared 里）。
     //   ⚠ 减法是**按那张表**减，不是按名字手写一份 —— 手写第二份就是下一个漂移源。
-    // 〔F7c · 第三波 09-24〕写那一侧从此是**两张表**：写面 `MANAGE_COMMANDS` ＋ 上传提交
+    // 写那一侧从此是**两张表**：写面 `MANAGE_COMMANDS` ＋ 上传提交
     //   `files_commit::COMMIT_COMMANDS`（`readonly_guard` 第三层第二个登记的模块）。减法按两张表的并。
     let write_face: std::collections::BTreeSet<String> =
         crate::control::files_write::manage_command_names()
             .into_iter()
             .chain(crate::control::files_commit::commit_command_names())
-            // 〔FILES2 · 第四波〕解压（`control/files_extract.rs`，第三层第四个模块）。
+            // 解压（`control/files_extract.rs`，第三层第四个模块）。
             .chain(crate::control::files_extract::extract_command_names())
             .map(str::to_string)
             .collect();

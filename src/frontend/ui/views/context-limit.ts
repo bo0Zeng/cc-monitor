@@ -1,7 +1,7 @@
 /**
  * F88b（#52）：模型 context 上限表 + 模型串归一化。**纯模块**（零 import，node 可测）。
  *
- * 🔴 〔`设计/50` §5 步 12 · 09-18〕**原名 `views/pricing.ts`**。费用/$ 那半早被 F88c 砍掉，
+ * 🔴 〔§5 步 12〕**原名 `views/pricing.ts`**。费用/$ 那半早被 F88c 砍掉，
  * 用量 ② 轴退役后 `RELATIVE_COST` / `equivalentInputTokens` 也一起走了 ⇒ 这份文件只剩
  * 「context 上限」这一件事，`pricing` 这个名字是名不副实的历史残留。消费者两处：
  * `tabs.ts`（会话行 ctx%）与 `usage-hud.ts`（状态栏 ctx% chip）。
@@ -18,7 +18,7 @@
  *  纠正上限，避免被默认 200k 除出**误报 ctx≥80%**。存 config.json `contextLimits` 字段。纯模块——由调用方注入。 */
 export type ContextLimitOverrides = Record<string, number>;
 
-/** 〔FIX4 · `70 §10` 第 8 条〕config.json `contextLimits` 那一格 ⇒ 覆盖表（读的唯一一份：状态栏 chip 与设置页都走它）。
+/** config.json `contextLimits` 那一格 ⇒ 覆盖表（读的唯一一份：状态栏 chip 与设置页都走它）。
  *  不是对象 ⇒ 空表；非正数 / 非数字的那几行丢掉（手改坏了的盘不许把表整个带歪）。 */
 export function readContextLimits(raw: unknown): ContextLimitOverrides {
   const out: ContextLimitOverrides = {};

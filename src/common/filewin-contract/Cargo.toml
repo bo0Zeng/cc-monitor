@@ -5,7 +5,7 @@ edition = "2021"
 workspace = "../../frontend/shell"
 description = "monitor 与文件窗口进程之间的契约：开窗种子（走 stdin 的那一份）· 就绪那一行（走 stdout）。两边编同一份形状。"
 
-# 〔P4 · 主会话 09-29 拍板 Q1〕文件窗口独立成包之后，monitor（起进程、写种子、读就绪那一行）与窗口进程（读种子、说那一行）
+# 〔主会话 09-29 拍板 Q1〕文件窗口独立成包之后，monitor（起进程、写种子、读就绪那一行）与窗口进程（读种子、说那一行）
 #   不再同属一个 crate ⇒ 两边必须对上的形状住这里（契约类）。
 [dependencies]
 serde = { version = "1", features = ["derive"] }

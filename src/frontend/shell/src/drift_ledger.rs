@@ -1,6 +1,6 @@
 //! U-CC1：**数据面漂移记账** —— 把「Claude Code 变了」从不可观测变成看一眼就知道。
 //!
-//! 〔MOD · `设计/90 §3` 判据 3〕**记录那两面（未知记录类型 · 已知类型解析失败）不在这本了**：记录解释搬进了后端，
+//! **记录那两面（未知记录类型 · 已知类型解析失败）不在这本了**：记录解释搬进了后端，
 //! 看不懂的那一刻在场的是那台机器自己的后端 ⇒ 那两面记在后端（`agents/claudecode/drift.rs`，帧命令 `drift-report`，
 //! 界面经通道按机器问）。这本只剩 monitor **天生**观测的两面：
 //!
@@ -20,13 +20,12 @@
 //!   「观测了多少次」，不是「有多少个这样的会话」。**要看的是键的集合，不是数字。**
 //! - `UnknownBackendToken`：每次收到 `hello` 一次（每条连接一次 + 重连）。
 //!
-//! # 〔ST3 · 第四波〕按机器分
+//! # 按机器分
 //!
 //! 账本的第一层键是 **origin**（`"<local>"` 或那台远端的名字），第二层才是面。
 //! 这两面都是 monitor 对某一台后端 / 某一台的会话的观测 —— 缺的只是「这是从哪台来的」没带到写点。⇒ 写入口 [`record`] **必须**说是哪台（没有缺省：
 //! 缺省记在本机名下，就是把远端的记录悄悄记成本机的，`origin·rs` 头注整篇治的那一形）。
 //! 读口 [`drift_ledger_report`] 按 origin 答，**只答那一台**。设计与逐写点读数在
-//! `调研/第四波记录/ST3.md`。
 
 use crate::copy_table::copy_text;
 use std::collections::BTreeMap;
@@ -39,7 +38,7 @@ pub const MAX_SAMPLE_BYTES: usize = 400;
 /// 键数超限之后的归并键。
 pub const OVERFLOW_KEY: &str = "<overflow>";
 
-/// monitor 天生观测的两个「降级点」（〔MOD〕记录那两面随解析进了后端：`agents/claudecode/drift.rs`，帧命令 `drift-report`）。
+/// monitor 天生观测的两个「降级点」（记录那两面随解析进了后端：`agents/claudecode/drift.rs`，帧命令 `drift-report`）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
@@ -96,7 +95,7 @@ pub struct DriftFaceReport {
     pub overflowed: bool,
 }
 
-/// 〔ST3〕读口的回包：**带回它答的是哪台**（界面按回声判，同足迹那一格）。
+/// 读口的回包：**带回它答的是哪台**（界面按回声判，同足迹那一格）。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
@@ -109,7 +108,7 @@ pub struct DriftLedgerReport {
 
 /// 一台机器的账：面 → 键 → 记账。
 type Ledger = BTreeMap<DriftFace, BTreeMap<String, DriftEntry>>;
-/// 〔ST3〕整本账：origin 线上串 → 那台的账。键用线上串（`Origin` 不带 `Ord`，也不该为这里加）。
+/// 整本账：origin 线上串 → 那台的账。键用线上串（`Origin` 不带 `Ord`，也不该为这里加）。
 type Book = BTreeMap<String, Ledger>;
 
 fn ledger() -> &'static Mutex<Book> {
@@ -136,13 +135,13 @@ fn truncate_sample(s: &str) -> String {
 
 /// 记一次。**这是本模块唯一的写入口。**
 ///
-/// `origin` = 这条看不懂的东西是从哪台机器来的（〔ST3〕没有缺省，见头注「按机器分」）。
+/// `origin` = 这条看不懂的东西是从哪台机器来的（没有缺省，见头注「按机器分」）。
 /// `key` 为空时用 `"<empty>"`（空串当键会让诊断面显示成空行，看不出是哪一类）。
 pub fn record(origin: &crate::origin::Origin, face: DriftFace, key: &str, sample: Option<&str>) {
     record_in_book(&mut lock(), origin, face, key, sample);
 }
 
-/// 〔ST3〕[`record`] 的纯形式（显式传整本账，理由同 [`record_into`]）：先按 origin 找那台的账。
+/// [`record`] 的纯形式（显式传整本账，理由同 [`record_into`]）：先按 origin 找那台的账。
 fn record_in_book(
     book: &mut Book,
     origin: &crate::origin::Origin,
@@ -193,7 +192,7 @@ pub fn snapshot(origin: &crate::origin::Origin) -> Vec<DriftFaceReport> {
     snapshot_in_book(&lock(), origin)
 }
 
-/// 〔ST3〕[`snapshot`] 的纯形式：**只取那一台**；没记过的那台 ⇒ 空。
+/// [`snapshot`] 的纯形式：**只取那一台**；没记过的那台 ⇒ 空。
 fn snapshot_in_book(book: &Book, origin: &crate::origin::Origin) -> Vec<DriftFaceReport> {
     book.get(origin.as_wire_str())
         .map(snapshot_of)
@@ -219,8 +218,8 @@ fn snapshot_of(led: &Ledger) -> Vec<DriftFaceReport> {
 
 /// U-CC1：诊断面读口。**只读、按需，不新增任何轮询。**
 ///
-/// 〔ST3〕收 `origin`，只答那一台；回包带回 `origin`（界面按回声判）。
-/// **monitor 自己的命令，不经后端**：这两面是 monitor 自己的观测（〔MOD〕记录那两面由那台后端答，`drift-report`）。
+/// 收 `origin`，只答那一台；回包带回 `origin`（界面按回声判）。
+/// **monitor 自己的命令，不经后端**：这两面是 monitor 自己的观测（记录那两面由那台后端答，`drift-report`）。
 /// 两臂读的是同一本账，`route` 在这里只做一件事 —— 空白名（「没说」）拒收，不许被当成某一台。
 #[tauri::command]
 pub async fn drift_ledger_report(

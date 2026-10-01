@@ -1,12 +1,12 @@
-//! 〔FILES2 · 第四波 · 2026-09-27〕**有损名（非 UTF-8）的下载** —— `设计/60 §7` 第 9 条 Q4 · `§6.2`「有损名全寻址」的下载那一格。
+//! **有损名（非 UTF-8）的下载** —— 「有损名全寻址」的下载那一格。
 //!
 //! 主会话按通行做法裁：「落到 Linux 本机 ⇒ 字节原样当文件名；落到 Windows 本机 ⇒ 名字按有损形替换并在结局里说一句
 //! 『名字里有认不出的字节，已改成 X』（Windows 文件名是 UTF-16，没法原样）」。
 //!
-//! # 远端那一头怎么寻址（用户 09-27 V152）
+//! # 远端那一头怎么寻址（用户 09-27）
 //!
-//! SFTP 库（`russh-sftp`）的路径是 `String`（`设计/60 §4.1`）⇒ 非 UTF-8 的字节结构上发不出去 ⇒ **经那台后端链路按字节寻址分块读回**
-//! （`files-read-chunk`，读族，远端只读 —— `设计/60 §4.4`「下载对远端只读」照旧）；本机那一头经本机后端落盘：
+//! SFTP 库（`russh-sftp`）的路径是 `String`⇒ 非 UTF-8 的字节结构上发不出去 ⇒ **经那台后端链路按字节寻址分块读回**
+//! （`files-read-chunk`，读族，远端只读 —— 「下载对远端只读」照旧）；本机那一头经本机后端落盘：
 //! 逐块 `files-stage-chunk` 进本机暂存区 → `files-commit-upload`（带 `chunks` / `bytes` / 整份摘要，`rel` 收字节）。
 //! monitor / 窗口进程对用户文件一个字节不写（`§3.8`）；不另造传输台。撤 ⇒ 下一块不读，已送的块交本机孤儿扫。
 //! V152 之前这里是「远端 `files-copy` 进暂存区 → SFTP 下 → 删暂存」，用户不认（远端要只读），整条删了。
@@ -27,7 +27,7 @@ pub fn local_dest(dest: &str, shown: &str, raw: &[u8]) -> (serde_json::Value, Op
     crate::platform::local_dest_kept(p, shown, raw)
 }
 
-// 〔P4 · 阶段 H〕`local_dest_kept` 的两个平台臂（unix 按字节拼 · 别处用有损形并说一句）住 `platform.rs`。
+// `local_dest_kept` 的两个平台臂（unix 按字节拼 · 别处用有损形并说一句）住 `platform.rs`。
 
 /// 线上那一形 → 本机路径（给「那儿已经有东西了吗」那一问用；判定本身住 `download::dest_exists_at`）。
 pub fn local_path_of(v: &serde_json::Value) -> Option<std::path::PathBuf> {

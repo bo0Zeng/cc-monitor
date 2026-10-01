@@ -36,7 +36,7 @@ vi.mock("../../../../src/frontend/ui/behavior", () => ({ getBehavior: () => ({})
 vi.mock("../../../../src/frontend/ui/format", () => ({ formatTimestampSmart: () => "时间" }));
 
 import { invoke } from "@tauri-apps/api/core";
-// 〔C4d〕历史清单改走通道（问本机常驻后端）：旧命令名照旧当「哪一问」的名字，译法住 chan-fake。
+// 历史清单改走通道（问本机常驻后端）：旧命令名照旧当「哪一问」的名字，译法住 chan-fake。
 import { withHistoryReads } from "../../../test-support/chan-fake";
 import { HistoryView } from "../../../../src/frontend/ui/views/history";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
@@ -129,7 +129,7 @@ describe("KR92D1 ④：HistoryView 不把「不知道」当 0 读", () => {
     }));
     const view = new HistoryView();
     await view.open();
-    // 〔AR1〕组头这一格原先是英文 `● live`；今天的字取自文案表 `sessionState.live.name`（`设计/30 §3.5.2`）。
+    // 组头这一格原先是英文 `● live`；今天的字取自文案表 `sessionState.live.name`。
     expect(statsOf("有星标")).toContain(`● ${copyText("sessionState.live.name")}`);
     expect(statsOf("有星标")).toContain("★ 2");
     // 不知道那一格：不许把没人查过的值说成「没有星标」「没有活会话」，也不许假装有。

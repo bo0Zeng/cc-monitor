@@ -1,5 +1,5 @@
-//! 要求住址：`设计/90 §0.5.3` ⑰「文件窗口成独立包 `src/frontend/filewin/`（V72；先把通道客户端 · `copy_table` · `spawn_managed` 抽成共享 crate）」
-//! ＋ `60 §2.3`「窗口是又一个前端：窗口 ↔ monitor 一条只绑本机回环的通道」。
+//! 要求：「文件窗口成独立包 `src/frontend/filewin/`（先把通道客户端 · `copy_table` · `spawn_managed` 抽成共享 crate）」
+//! ＋「窗口是又一个前端：窗口 ↔ monitor 一条只绑本机回环的通道」。
 //!
 //! 通道两端（monitor 里的宿主 ＋ 进程外的前端）编同一份线上词汇与帧：从前两端都编自 `monitor_lib`，
 //! 文件窗口独立成包之后改由本 crate 交给两边。住在这里的只有**搬字节**的那几份（零业务判断，`05` C1–C5）：

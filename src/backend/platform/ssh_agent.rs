@@ -1,4 +1,4 @@
-//! 〔C2 · `设计/05 §13.4`〕**连本机的 ssh-agent** —— 拨号代理（`dial/connect.rs`）没配私钥路径时用它鉴权。
+//! **连本机的 ssh-agent** —— 拨号代理（`dial/connect.rs`）没配私钥路径时用它鉴权。
 //!
 //! 两个平台两种接法，这正是本层存在的理由：
 //! - Unix：`SSH_AUTH_SOCK` 指的那个 Unix 域套接字（由 `russh` 的 `connect_env` 读那个变量）；
@@ -21,7 +21,7 @@ const OPENSSH_AGENT_PIPE: &str = r"\\.\pipe\openssh-ssh-agent";
 
 /// 连本机 ssh-agent。连不上 ⇒ `Err(人话)`，**不猜别的位置**。
 ///
-/// 〔SR1a〕`sock` = 界面进程交过来的 agent 套接字路径（Unix）。常驻后端活得比任何一个界面都长，
+/// `sock` = 界面进程交过来的 agent 套接字路径（Unix）。常驻后端活得比任何一个界面都长，
 /// 自己身上那份 `SSH_AUTH_SOCK` 可能早就不指向活的 agent 了 ⇒ 给了就用给的；没给才读本进程的环境。
 /// Windows 上 agent 是固定的命名管道，这个参数不用。
 pub(crate) async fn connect(sock: Option<&str>) -> Result<Agent, String> {

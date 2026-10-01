@@ -1,5 +1,5 @@
 /**
- * 〔MIG-3a · `设计/99 §2.1 ⑬` · 主会话 09-27 裁〕别名一族六问**走通道，那台后端出成品**：
+ * 别名一族六问**走通道，那台后端出成品**：
  *
  * | 做什么 | 帧命令 | 成品 |
  * |---|---|---|
@@ -56,10 +56,10 @@ export interface BlockState {
   manualCleanupHint: string;
 }
 
-/** 〔WF1 · L〕哪一代 PowerShell（线上名与后端 `platform::shell::PsHost` 逐字）。 */
+/** 哪一代 PowerShell（线上名与后端 `platform::shell::PsHost` 逐字）。 */
 export type PsHost = "powershell" | "pwsh";
 
-/** 〔WF1 · L〕加载这份 `$PROFILE` 的那一代 PowerShell 的执行策略（那台后端现问）。 */
+/** 加载这份 `$PROFILE` 的那一代 PowerShell 的执行策略（那台后端现问）。 */
 export interface ExecPolicy {
   host: PsHost;
   /** 生效那一档的原词；问不到 ⇒ `null`，原话在 `error`。 */
@@ -79,7 +79,7 @@ export interface StartupFile {
   block: BlockState;
   /** 在盘上、那台后端读不了它 —— 后端原话；`null` = 读得了或不在。 */
   unreadable: string | null;
-  /** 〔WF1 · L〕只有 `$PROFILE` 那几份有；POSIX 与人另指的那一份 ⇒ `null`。 */
+  /** 只有 `$PROFILE` 那几份有；POSIX 与人另指的那一份 ⇒ `null`。 */
   policy: ExecPolicy | null;
 }
 
@@ -309,7 +309,7 @@ export async function installAliasBlock(origin: Origin, rcPath: string, withCc: 
 }
 
 /**
- * 〔WF1 · L · `设计/99 §2.3`〕把那一代 PowerShell 的执行策略设成当前用户 `RemoteSigned`（后端只做这一件固定的事）。
+ * 把那一代 PowerShell 的执行策略设成当前用户 `RemoteSigned`（后端只做这一件固定的事）。
  * **只在用户点了、确认了之后调**（不代改）。
  */
 export async function allowLocalScripts(origin: Origin, host: PsHost): Promise<PolicySet> {

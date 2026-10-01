@@ -3,7 +3,7 @@
 
 import { describe, it, expect } from "vitest";
 import { UsageHud } from "../../../src/frontend/ui/usage-hud";
-// 〔UC2〕高位预警的类名来自组件自己的 CSS Module（构建时哈希）—— 断言也经同一个导入取名，不写字面量。
+// 高位预警的类名来自组件自己的 CSS Module（构建时哈希）—— 断言也经同一个导入取名，不写字面量。
 import s from "../../../src/frontend/ui/usage-hud.module.css";
 
 describe("UsageHud (F88b #52)", () => {
@@ -54,7 +54,7 @@ describe("UsageHud (F88b #52)", () => {
     expect(hud.summaryElement.textContent).toBe("ctx ?");
   });
 
-  // 〔`设计/50` 删用量〕原先这里是「`onClick` 注册的 handler 点击时触发」——
+  // 〔删用量〕原先这里是「`onClick` 注册的 handler 点击时触发」——
   // chip 点下去打开的那个跨会话聚合视图（`views/usage-view.ts`）整轴退役了，
   // `onClick` 随之从 `UsageHud` 上删掉。**这一条翻面**：钉住 chip 今天是**纯只读**的。
   // ⚠ 翻面不是放宽：它挡的是「有人顺手把点击行为加回来却没有对面」。

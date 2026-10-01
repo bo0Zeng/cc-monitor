@@ -19,9 +19,9 @@
 //!   inotify reader. This split is the single most-cited Phase-0 accident
 //!   source; keeping it real is the point.
 
-// 🔴 〔步 9 · 09-19〕模块声明、`PROTO_VERSION`、身份块（`BUILD_ID` ＋ 戳）、`SUBCOMMANDS`
+// 🔴 模块声明、`PROTO_VERSION`、身份块（`BUILD_ID` ＋ 戳）、`SUBCOMMANDS`
 //    都搬进了 `lib.rs`，理由逐字写在那份文件的头注里（一句话：**in-process 那条路没有
-//    这个 `main.rs`**，身份与模块跟着它一起消失）。**本文件只留分派**（规格 `00 §1.5.4` 逐字）。
+//    这个 `main.rs`**，身份与模块跟着它一起消失）。**本文件只留分派**（规格）。
 // ⚠ 用 glob 而不是逐项列 —— 本拍是**纯机械搬家**，逐项列会让 diff 里混进
 //    「哪些项对外可见」这个**语义**决定，那是另一件事（`4b` 定 API 面时再收窄）。
 use cc_monitor_backend::faces::read_face;
@@ -85,7 +85,7 @@ async fn main() {
     // ★★ `K-R48`（09-11）：**当 `ccm` 用的那一趟，在这里就整条分出去。**
     //
     // 〔用@09-11 `K33`〕「后端**只有一个**，**不要有什么 bash 脚本**，**不要有什么单独的 ccm**。」
-    // ⇒ 终端里敲的 `ccm` 就是本二进制（〔主会话 09-27〕分流只看 argv、不看名字）。
+    // ⇒ 终端里敲的 `ccm` 就是本二进制（分流只看 argv、不看名字）。
     //
     // 🔴 **三个「必须排在前面」，一个都不是排版**：
     //   ① 排在 `tracing_subscriber` 之前 —— 一次性模式的 stderr 是给人看的，
@@ -93,13 +93,13 @@ async fn main() {
     //   ② 排在 `split_stream_flags` 之前 —— 那一步会把 `--with-bg` / `--tail-only`
     //      从 argv **任意位置**剥掉，而 `ccm -- --tail-only` 里那个要原样透传给 agent；
     //   ③ 排在 `resolve_agent_home()` 之前 —— 一次性模式不必去解析 agent 家目录。
-    // 〔V151〕分流只经 `control::ccm::route`：当后端用时，后端认的 argv 是它交回来的那一串（去掉了打头的 `--`）。
-    // 〔MOD · `99 §2.1 ⑮`〕argv 只在这里取一次：分流看 `[1..]`，ccm 那一趟要的「我被怎么叫的」由这里交（`ccm::run` 的 `process_argv`）。
+    // 分流只经 `control::ccm::route`：当后端用时，后端认的 argv 是它交回来的那一串（去掉了打头的 `--`）。
+    // argv 只在这里取一次：分流看 `[1..]`，ccm 那一趟要的「我被怎么叫的」由这里交（`ccm::run` 的 `process_argv`）。
     let process_argv: Vec<String> = std::env::args().collect();
     let backend_args: Vec<String> = {
         let rest: Vec<String> = process_argv.iter().skip(1).cloned().collect();
         match control::ccm::route(&rest) {
-            // 〔FIX · V138 订正〕resume 判「在别处跑着」用观测层那一份扫描（control 不引用 observe ⇒ 由入口注入）。
+            // resume 判「在别处跑着」用观测层那一份扫描（control 不引用 observe ⇒ 由入口注入）。
             control::ccm::Entry::Ccm(ccm_args) => {
                 std::process::exit(control::ccm::run(&ccm_args, &process_argv, |dir| {
                     let home = agent_home(dir, false);
@@ -112,9 +112,9 @@ async fn main() {
 
     // Log to stderr so it never corrupts the stdout wire stream.
     tracing_subscriber::fmt()
-        // 〔NT2 · S1〕仍是 stderr；写每一行之前看一眼要不要滚（没被交诊断文件路径时它就是 `std::io::stderr`）。
+        // 仍是 stderr；写每一行之前看一眼要不要滚（没被交诊断文件路径时它就是 `std::io::stderr`）。
         .with_writer(stderr_log::stderr_writer)
-        // 〔HX1 · NT2 问 3 ＋ RT1 F3〕只在 stderr 是终端（人在手跑）时上色：进 monitor 日志的管子、
+        // 〔NT2 问 3 ＋ RT1 F3〕只在 stderr 是终端（人在手跑）时上色：进 monitor 日志的管子、
         //   进脱离载体那份 stderr 文件的，转义码原样落盘、而且让 monitor 那一侧认不出行首的级别字。
         .with_ansi(std::io::IsTerminal::is_terminal(&std::io::stderr()))
         .with_env_filter(
@@ -132,7 +132,7 @@ async fn main() {
     // Batch7-F24/Batch8-F25：流模式 flag 集合，先剥离再判一次性查询模式
     // （否则误入 query 分支——INVARIANT §26）。纯函数化供单测（审计 D）。
     let (args_rest, with_bg, tail_only, with_rbind_token) = split_stream_flags(args);
-    // 〔FIX · `设计/96 §3.6`〕`--<老子命令> --stdin-line` ⇒ 其余 argv 从 stdin 一行拿（远端命令行里不拼自由文本）。
+    // `--<老子命令> --stdin-line` ⇒ 其余 argv 从 stdin 一行拿（远端命令行里不拼自由文本）。
     let args = match control::cli_control::expand_stdin_argv(args_rest, std::io::stdin().lock()) {
         Ok(a) => a,
         Err((code, message)) => std::process::exit(control::cli_control::emit_err(code, message)),
@@ -153,12 +153,12 @@ async fn main() {
             // G2（branch-anywhere）：从指定消息处分叉出一个新会话文件。
             // **backend 唯一的写盘入口**，护栏白名单层单独盯着它（readonly_guard）。
             Some("--fork-session") => control::fork_write::run(&agent_home, &args),
-            // 〔DEL〕`--relay`（独立的中转进程）那一臂删了：中转只住常驻后端进程里（本机远端同形，V107 · V139）。
-            // 〔HOST · V139〕远端常驻后端的起 · 找 / 停（`control/resident.rs` 头注）。
+            // `--relay`（独立的中转进程）那一臂删了：中转只住常驻后端进程里（本机远端同形）。
+            // 远端常驻后端的起 · 找 / 停（`control/resident.rs` 头注）。
             // V139：远端中转住进远端常驻后端 —— 起它时交中转口（与本机宿主交的同一个常量）。
             Some("--resident-ensure") => control::resident::ensure(&agent_home, &args[1..]),
             Some("--resident-stop") => control::resident::run_stop(&agent_home, &args[1..]),
-            // 〔SR1a〕`--dial` 那条拨号代理臂**删了**：拨号挪进本机那一个常驻后端，经流上的链路
+            // `--dial` 那条拨号代理臂**删了**：拨号挪进本机那一个常驻后端，经流上的链路
             // （`link-*` 四条，`dial/link.rs`）做 —— 不再每条链路起一个进程。
             // ★ 这几个字面量必须与 `observe::accounts_query::run` 自己认的子命令**完全一致**。
             // v3.4.0 出过一次事故：`--account-trust-zero` 在 accounts_query 里实现完整，
@@ -190,22 +190,22 @@ async fn main() {
     // 「错误 exit2 + stderr 纯 {code,message} JSON」，客户端可整段 JSON-parse stderr）。
     tracing::info!("agent_home = {}", agent_home.display());
 
-    // 〔NT2 · S1〕**脱离常驻那条载体的 stderr 落盘**（`设计/15 §4.7 S1`）：宿主交了路径才接（monitor 只在起脱离那条时交）。
+    // **脱离常驻那条载体的 stderr 落盘**：宿主交了路径才接（monitor 只在起脱离那条时交）。
     //   放在一次性子命令全部 `exit` 之后：它们的 stderr 是给人 / 给 JSON 解析看的，不动。放在选载体之前：接上之后这一行起的
     //   每一句（中转那两句、host key 警告、panic）都落进那份文件。
     let installed = stderr_log::install_from_env(&|k| std::env::var(k).ok());
     tracing::info!("{}", installed.said());
-    // 〔GAP1〕装上了 ⇒ 告诉只读面那份文件在哪（`backend-log`，机器页「日志」经它取回来看）。
+    // 装上了 ⇒ 告诉只读面那份文件在哪（`backend-log`，机器页「日志」经它取回来看）。
     if let stderr_log::Installed::Logging(p) = &installed {
         read_face::note_backend_log(p.clone());
     }
 
-    // 〔RL1 · V107 · V139〕**中转 ＋ 上游选择住常驻后端这个进程**：宿主交了端口才开
+    // **中转 ＋ 上游选择住常驻后端这个进程**：宿主交了端口才开
     //   （monitor 起本机后端时交；远端由 `--resident-ensure` 起常驻子进程时交；测试连接探针那一趟没人交 ⇒ 不开）。
     //   放在选载体之前：两条载体（stdio / 常驻监听口）一样要。起不来只出声、不拖垮后端
     //   —— 理由与形状住 `relay::listen::host` 的头注。中转线程随本进程生、随本进程死。
     tracing::info!("{}", accounts::upstream_select::host_relay());
-    // 〔FIX · `99 §2 ㊵`〕全文搜索的常驻索引起来就后台建（两条载体都要；一次性线程，建完就退）。
+    // 全文搜索的常驻索引起来就后台建（两条载体都要；一次性线程，建完就退）。
     observe::search_query::warm_in_background(agent_home.clone());
 
     // ★★ `K-P1`：**同一个流模式，两种载体**。
@@ -220,7 +220,7 @@ async fn main() {
     // 并进 `IPC-PROTOCOL.md` 的对拍面（`build_id_guard` / `protocol_doc_guard` 各钉一半），
     // 而本件**一条子命令都没加** —— 它换的是同一个流模式的载体。
     // 判定住 [`listen::mode_from`]（**纯函数**，所以「只写了一半」那两条错误支都测得到）。
-    // 〔HOST〕`listen::resolve`：钥匙在文件里那一形（远端 `--resident-ensure` 起的）读出来再照常起。
+    // `listen::resolve`：钥匙在文件里那一形（远端 `--resident-ensure` 起的）读出来再照常起。
     let mode = match listen::mode_from(&|k| std::env::var(k).ok()).and_then(listen::resolve) {
         Ok(m) => m,
         Err(e) => {
@@ -233,13 +233,13 @@ async fn main() {
     // (b) Emit the Hello handshake FIRST, flushed, before anything else.
     let hello = build_hello(&agent_home);
 
-    // 〔HOST〕远端起的常驻后端自己记「谁在听」（起它的那一方不在场）；本机那一份仍由宿主记。
+    // 远端起的常驻后端自己记「谁在听」（起它的那一方不在场）；本机那一份仍由宿主记。
     let self_record = std::env::var(listen::ENV_TOKEN_FILE).is_ok();
     match mode {
         None => run_over_stdio(hello, agent_home, with_bg, tail_only, with_rbind_token).await,
         Some((port, token)) => {
             // 停机信号只挂**一次**（不在 accept 循环里每轮重装一个 SIGTERM 处理器）。
-            // 〔HX1〕收到之后监听口随 `serve_listening` 一起丢（不再接新连接）；已接上的那条流是独立任务，
+            // 收到之后监听口随 `serve_listening` 一起丢（不再接新连接）；已接上的那条流是独立任务，
             //   排空期间照常写应答，新来的阻塞命令回 `shutting_down`（`inbound::exit_after_drain`）。
             let stop = inbound::shutdown_listener();
             tokio::select! {
@@ -251,7 +251,7 @@ async fn main() {
                     (with_bg, tail_only, with_rbind_token),
                     self_record,
                 ) => {
-                    // 〔MOD · ⑮〕绑不上口 ⇒ 那一步交回退出码，在这里退（退出口只有 `main` 与 `exit_after_drain`）。
+                    // 绑不上口 ⇒ 那一步交回退出码，在这里退（退出口只有 `main` 与 `exit_after_drain`）。
                     if let Err(code) = served {
                         std::process::exit(code);
                     }
@@ -264,7 +264,7 @@ async fn main() {
         }
     }
 
-    // ★ **必须显式 exit，不能让 runtime 自然 drop。**〔HX1〕那一下今天住 `inbound::exit_after_drain`
+    // ★ **必须显式 exit，不能让 runtime 自然 drop。**那一下今天住 `inbound::exit_after_drain`
     //   （三个退出口共用）；下面这段理由原样留着，它说的是那一下为什么必须是 `exit`。
     //
     // `tokio::io::stdin()` 走的是**阻塞线程池**。`inbound_task.abort()` 只取消那个 async
@@ -279,7 +279,7 @@ async fn main() {
     // 爆炸半径正是生产形状：monitor 经 SSH exec 连着时 stdin 一直开着。
     // 远端手工 kill 一个卡住的后端、部署脚本替换在跑的二进制，今天都会失效。
     //
-    // 🪦〔HX1 · 4D〕原话「为什么 exit 是安全的：**流模式后端没有任何待落盘状态** —— 它只读；
+    // 🪦原话「为什么 exit 是安全的：**流模式后端没有任何待落盘状态** —— 它只读；
     // 唯一的写盘入口 `control/fork_write.rs` 在一次性查询模式，那条路早就 exit 了」—— RW1 / FW5 / F9c 之后**已假**：
     // `files-*` 写面、`files-commit-*`、`exit-policy-set`、资产目录、`apikey-key-set`、`history-annotate` 全在流模式里跑，
     // 当场 `exit` 会把正在写的那一条连线程带走（E §E2）。⇒ 今天 exit 之前先排空停不下来的那一档（`inbound::exit_after_drain`）。
@@ -294,7 +294,7 @@ fn build_hello(agent_home: &std::path::Path) -> Frame {
         v: PROTO_VERSION,
         build_id: BUILD_ID.to_string(),
         host_arch: std::env::consts::ARCH.to_string(),
-        // ⚠ **左边的字段名与右边的变量名刻意不一致**〔`S4b`〕，这不是笔误：
+        // ⚠ **左边的字段名与右边的变量名刻意不一致**，这不是笔误：
         // 左边 `claude_dir` 是 **wire 字段**，冻结兼容（真在线上、仓外 aterm 在读），
         // 登记在 `agent_boundary_guard::FROZEN_COMPAT`，带解锁条件，**不许改名**；
         // 右边 `agent_home` 是**仓内的参数名**，`S4b` 已把它从 `claude_dir` 改过来
@@ -303,7 +303,7 @@ fn build_hello(agent_home: &std::path::Path) -> Frame {
         claude_dir: agent_home.to_string_lossy().into_owned(),
         // `S4`（`D3`）：wire 面已换成通用的 `homes`（`[{agent_kind, path}]`）。
         //
-        // ★★〔`S5` 08-14〕**这一行是空表，但已经不是因为"做不到"了。**
+        // ★★**这一行是空表，但已经不是因为"做不到"了。**
         // `agents::visible_homes()` 今天就能答出这台机器看得见哪些 agent
         //（判准：home 目录存在；理由与被排除的另两条候选写在那个函数的头注里）。
         // 换过去只要改这一行 —— `S5` 的口径是 **能填不真填**：
@@ -322,14 +322,14 @@ fn build_hello(agent_home: &std::path::Path) -> Frame {
         capabilities: CAPABILITIES.iter().map(|s| s.to_string()).collect(),
         emits: EMITS.iter().map(|s| s.to_string()).collect(),
         commands: inbound::COMMANDS.iter().map(|s| s.to_string()).collect(),
-        // ★★〔`K-P4` · NET2 真填〕握手帧第四条面「我做得到什么」：这台机器上接得下却做不到的命令（tmux · unix 权限位两维，
+        // ★★〔NET2 真填〕握手帧第四条面「我做得到什么」：这台机器上接得下却做不到的命令（tmux · unix 权限位两维，
         // 表从 `inbound::REGISTRY` 的 `codes` 派生）。是**提示不是闸门**（读数是握手那一刻的，`wire.rs` 那个字段头注口径③）。
         // 仓外 aterm 不读这个字段（只读核过 `DaemonTransport.kt::parseHello`，未知字段忽略）；有 tmux 的 unix 机器上恒空 ⇒ 字节不变。
         // 钉它的：`main_fourth_face_tests::production_hello_fills_unavailable_from_this_machine`。
         unavailable: unavailable_here(),
-        // 〔HX2〕回显起我的宿主交来的那几格（名单 `wire::HOST_ECHO_ENVS`）；一格都没交 ⇒ 省略、线上字节不变。
+        // 回显起我的宿主交来的那几格（名单 `wire::HOST_ECHO_ENVS`）；一格都没交 ⇒ 省略、线上字节不变。
         host_env: wire::host_env_from(|name| std::env::var(name).ok()),
-        // 〔NET2〕撤不动的那几条（阻塞档），从命令表派生。
+        // 撤不动的那几条（阻塞档），从命令表派生。
         uncancellable: inbound::uncancellable(),
     }
 }
@@ -402,10 +402,10 @@ async fn run_over_stdio(
     let poke_task = spawn_sigusr1_task();
 
     // (d) Run the stdout writer until the channel closes or a signal fires.
-    // 〔HX1〕收信号那一支**不丢写者**：排空期间它照常把在飞命令的最终应答写回去（`inbound::exit_after_drain`）；
+    // 收信号那一支**不丢写者**：排空期间它照常把在飞命令的最终应答写回去（`inbound::exit_after_drain`）；
     //   入方向 reader 也留着 —— 新来的阻塞命令要有人回它一句 `shutting_down`。
     let stop = inbound::shutdown_listener();
-    // 〔TAP · V124〕这条流连接的 tap 接收端（中转抄出来的 SSE 事件，最低优先、可丢）。
+    // 这条流连接的 tap 接收端（中转抄出来的 SSE 事件，最低优先、可丢）。
     let tap_rx = tap::attach(book);
     let writer = writer_task(stdout, rx, reply_rx, tap_rx);
     tokio::pin!(writer);
@@ -444,8 +444,8 @@ async fn run_over_stdio(
 /// 代价是信号无载荷且会合并 —— 靠「重探 + 与上一份快照差分」天然免疫。
 #[cfg(unix)]
 ///
-/// ★ **戳的是名单，不是句柄**〔`K-P1`〕：常驻那条载体上 watcher 会**换人**（每接上一个客户端换一份新的，
-/// 理由见 [`serve_listening`]），而处理器活得比任何一个 watcher 都长。〔RESYNC〕名单只有一个家：
+/// ★ **戳的是名单，不是句柄**：常驻那条载体上 watcher 会**换人**（每接上一个客户端换一份新的，
+/// 理由见 [`serve_listening`]），而处理器活得比任何一个 watcher 都长。名单只有一个家：
 /// `observe::watcher` 的在跑名单（`spawn` 登记、退出即摘；`resync` 也按它找人）。
 fn spawn_sigusr1_task() -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
@@ -498,7 +498,7 @@ struct Attached {
     reader: tokio::io::BufReader<tokio::net::tcp::OwnedReadHalf>,
     writer: BufWriter<tokio::net::tcp::OwnedWriteHalf>,
     hello_flushed: wire::HelloFlushed,
-    /// 〔HOST〕这条连接要的流模式旗标（attach 行里的 `flags`）；`None` = 用进程起参那一份。
+    /// 这条连接要的流模式旗标（attach 行里的 `flags`）；`None` = 用进程起参那一份。
     flags: Option<(bool, bool, bool)>,
 }
 
@@ -511,7 +511,7 @@ struct Attached {
 /// 写在前面之后，那一问的答案是**读一行**，协议一个字节都不用加
 /// （`shared/ccm:1182-1185` 自陈「后者今天没有便宜的问法」，说的就是这一格）。
 ///
-/// 〔HOST · `设计/01 §3.3b ⑥`〕多客户：钥匙对上就接成流，不再有「谁拿到那一张牌」（原 `busy.swap` 那一格）。
+/// 多客户：钥匙对上就接成流，不再有「谁拿到那一张牌」（原 `busy.swap` 那一格）。
 async fn handshake_one(
     sock: tokio::net::TcpStream,
     hello: Frame,
@@ -545,7 +545,7 @@ async fn handshake_one(
             return;
         }
     };
-    // 〔HOST〕flags 写坏了与整行坏了同一格拒（`malformed-attach`）。
+    // flags 写坏了与整行坏了同一格拒（`malformed-attach`）。
     let flags = listen::attach_flags(&line);
     let verdict = match (listen::attach_verdict(&line, &token), &flags) {
         (listen::Verdict::Attach, Err(())) => listen::Verdict::Malformed,
@@ -617,14 +617,14 @@ async fn serve_listening(
             let in_use = e.kind() == std::io::ErrorKind::AddrInUse;
             // ★★ **绑不上就退出，绝不自己换端口。**
             // 换端口 = 每台机 N 个后端（中转口与全部 SSH 各 N 份）⇒ 比今天更糟。
-            // 〔HX2〕从前这里还写着「各自往 tmux server 装 `[50]` 槽位的全局 hook 互相盖」—— 今天 hook 按实例一格
+            // 从前这里还写着「各自往 tmux server 装 `[50]` 槽位的全局 hook 互相盖」—— 今天 hook 按实例一格
             // （`control/tmux_hook.rs::install_hooks`），那一条不成立了。
             tracing::error!(
                 "绑不上 {addr}（{e}）⇒ 退出。\n\
                  这个口上已经有东西了：宿主该**连上去读一行 hello 比对**，\n\
                  对不上就出声并拒绝，**不许静默复用**，更不许换个口再起一个。"
             );
-            // 〔MOD · ⑮〕退出码交回 `main` 退（一条命令都还没收，没有可排空的）。
+            // 退出码交回 `main` 退（一条命令都还没收，没有可排空的）。
             return Err(if in_use {
                 listen::EXIT_ADDR_IN_USE
             } else {
@@ -632,7 +632,7 @@ async fn serve_listening(
             });
         }
     };
-    tracing::info!("常驻监听口已就位：{addr}（〔HOST〕多条流 + 不限次「只读 hello 就走」）");
+    tracing::info!("常驻监听口已就位：{addr}（多条流 + 不限次「只读 hello 就走」）");
 
     if self_record {
         match control::resident::record_owner(port) {
@@ -657,7 +657,7 @@ async fn serve_listening(
         (Some(rx), Some(poke))
     };
 
-    // 〔HOST · `设计/01 §3.3b ⑥`〕多客户：认证通过的连接排进这里；每条自己一份 watcher / inbound / writer。
+    // 多客户：认证通过的连接排进这里；每条自己一份 watcher / inbound / writer。
     let (attached_tx, mut attached_rx) = tokio::sync::mpsc::channel::<Attached>(1);
     let (done_tx, mut done_rx) = tokio::sync::mpsc::channel::<u64>(1);
     // 此刻连着几条流（归零才按退出行为办）。
@@ -698,7 +698,7 @@ async fn serve_listening(
                 let (reply_tx, reply_rx) =
                     tokio::sync::mpsc::channel::<Frame>(inbound::REPLY_CHANNEL_CAPACITY);
                 let mut inbound_task = inbound::spawn(reader, reply_tx.clone(), hello_flushed);
-                // 〔TAP · V124〕这条流连接的 tap 接收端（〔HOST〕hub 扇出：每条连接一条）。
+                // 这条流连接的 tap 接收端（hub 扇出：每条连接一条）。
                 let tap_rx = tap::attach(book);
                 let done = done_tx.clone();
                 tracing::info!("一条流已接上（认证通过；此刻 {} 条）", clients.count());
@@ -730,14 +730,14 @@ async fn serve_listening(
                     tracing::info!("一条流结束 ⇒ 还连着 {left} 条");
                     continue;
                 }
-                // 〔B2 · 条 66 · `设计/01 §3.3b ④⑥`〕**最后一个客户走了 ⇒ 现读这台机器的值，照它办。**
+                // 〔条 66〕**最后一个客户走了 ⇒ 现读这台机器的值，照它办。**
                 //   不是「起我的那个 monitor 退了」—— 谁起的它不重要，重要的是此刻还有没有人连着。
                 //   ⚠ 这里**现读**（`exit_policy::last_client_left` 每次真去读盘）：用户可能刚在
                 //   **另一台** monitor 上改过它，不需要任何推送 / 同步协议。
                 //   ⚠ `§3.3b ⑦` 的 `lingerMs`（归零后等一下再决定）**本路没做**：那是一个会自己醒来的构件，
                 //   后端零定时器铁律（P6）不放行，理由整段在 `control/exit_policy.rs` 头注，交主会话拍板。
                 if control::exit_policy::last_client_left() {
-                    // 〔HX1〕不再当场 `exit`：刚走的那个客户可能还有停不下来的写在跑 ⇒ 先排空再退。
+                    // 不再当场 `exit`：刚走的那个客户可能还有停不下来的写在跑 ⇒ 先排空再退。
                     //   排空期间 accept 循环停着（新连接排在 backlog 里，退了之后被 RST，monitor 那头按「连不上 ⇒ 起一个」走）。
                     inbound::exit_after_drain(
                         "流结束 ⇒ 这台机器的退出策略是「结束」",
@@ -804,7 +804,7 @@ async fn writer_task<W: tokio::io::AsyncWrite + Unpin>(
     const REPLY_BURST: u32 = 8;
     let mut burst = 0u32;
     loop {
-        // 〔TAP · V124〕tap 帧**排在最后**（`biased` 按书写顺序问）：只有出方向与应答此刻都没有东西时才轮到它。
+        // tap 帧**排在最后**（`biased` 按书写顺序问）：只有出方向与应答此刻都没有东西时才轮到它。
         //   它可丢（SSE 只保快，jsonl 保对），而出方向里的 `line` 帧不许因为它晚到或被挤掉 —— tap 走自己那条
         //   有界通道（`tap::TAP_CAPACITY`），满了在中转那一侧当场丢、位置号原位说。
         //   tap 通道被换掉（又一条流连接接上了）⇒ `recv` 回 `None`，这一臂的模式不匹配、本轮不参与，不会空转。
@@ -857,7 +857,7 @@ async fn write_frame<W: tokio::io::AsyncWrite + Unpin>(
 /// ⚠ `S3` 把**怎么解析**搬进了 `agents/claudecode/paths.rs`（环境变量名与目录名是
 /// Claude 的知识）。这里只剩"去问适配层" —— 今天后端只服务一种 agent，所以是写死的一句。
 ///
-/// ⚠〔`S5` 08-14 订正〕原注这里写着「`S5` 落地时它会变成按 kind 取」——**`S5` 没有那么做，
+/// ⚠原注这里写着「`S5` 落地时它会变成按 kind 取」——**`S5` 没有那么做，
 /// 而且这条订正比原话更要紧**：本函数要的是**恒定**答得出的那个 home（流式 watcher 与
 /// 所有一次性子命令都拿它当根），而 `agents::visible_homes()` 只报**看得见**的那些
 ///（home 目录不存在就一条都不报）。两者语义不同 ——
@@ -869,14 +869,14 @@ fn resolve_agent_home() -> PathBuf {
 }
 
 /// 本机 agent 家目录：给了账号配置目录就是它；没给 ⇒ `from_env` 时照进程环境，否则默认家目录
-/// （〔FIX · V138 订正〕`ccm --base` resume 时问的那一处）。问适配层只此一处。
+/// （`ccm --base` resume 时问的那一处）。问适配层只此一处。
 fn agent_home(config_dir: Option<&std::path::Path>, from_env: bool) -> PathBuf {
     agents::claudecode::paths::home_of(config_dir, from_env)
 }
 
-// 🪦〔HX1 · 4D〕这里原有 `shutdown_signal`（等一次 SIGTERM / SIGINT，别处 Ctrl-C）—— 下沉到 `platform/signal.rs::shutdown_listener`〔散文墓碑〕：
+// 🪦这里原有 `shutdown_signal`（等一次 SIGTERM / SIGINT，别处 Ctrl-C）—— 下沉到 `platform/signal.rs::shutdown_listener`〔散文墓碑〕：
 //   平台 cfg 只许住那一层，而流模式的收场（`inbound::exit_after_drain`）也要它（排空时再来一次 ⇒ 不等了）。
 
 #[cfg(test)]
 #[path = "../../tests/backend/writer_task_tests.rs"]
-mod writer_task_tests; // 〔TAP〕写者的优先序：tap 灌满时内容帧一条不少、顺序不变
+mod writer_task_tests; // 写者的优先序：tap 灌满时内容帧一条不少、顺序不变

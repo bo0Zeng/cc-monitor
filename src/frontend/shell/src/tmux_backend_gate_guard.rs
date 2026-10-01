@@ -25,14 +25,14 @@
 //!    「先搬 Gate 2，再切 kill / send-keys」**走完了**。今天钉的是反向 ——
 //!    **两条命令都必须走后端，不许退回**
 //!    （原是 `kill_now_routes_through_the_backend` / `send_keys_now_routes_through_the_backend` 两条〔散文墓碑〕，
-//!    〔C4e〕随那两条命令迁到界面翻面了，见第 4 条）。
+//! 随那两条命令迁到界面翻面了，见第 4 条）。
 //!    ★★ **`K-R72`（09-12）：那两条又各加了一格 —— 回潮闸。**
 //!    `C7` 那条过渡期 SSH 回落**删了**（`K-R54` 裁定表第 1 · 2 处），于是这两条判据
 //!    从「主路必须走 backend **且回落必须还在**」变成「主路必须走 backend
 //!    **且盘上不许再有第二条路**」。⚠ 两次翻面的方向是相反的，别读成同一格改了措辞：
 //!    先前那半逐字要求 `connect_and_exec_cmd` **在**，今天逐字要求它**不在**。
 //!    ⚠ F04c 当年给 backend 补过一个裸键 mode `send-keys-raw`（打断当前回合的 `Escape`）；
-//!    〔RST 续 · V41〕V154 换号重启不再发 `Escape` ⇒ 无调用者，mode 已删。
+//! V154 换号重启不再发 `Escape` ⇒ 无调用者，mode 已删。
 //! 3. ~~Gate 3 的前提触发器~~ **已在 F04a 触发并改写**：backend 现在**有** Gate 3
 //!    （`control/gate.rs::admit_destructive` + `control/kill.rs`）。那条触发器
 //!    「backend 一出现 `session_windows`/`kill-session` 就红」**如设计般红了一次**
@@ -40,7 +40,7 @@
 //!    于是按它自己的要求翻面：从「不许出现」改成 [`the_backend_now_has_gate3`]（**不许消失**）。
 //!    ⚠ **它红了不是误报，是它的岗位。** 删掉它才是错的处置（铁律 13）。
 //!
-//! 4. **〔C4e · 第四波 4C〕两条命令整条迁到界面**（`src/frontend/ui/tmux-control.ts::killSession` / `sendKeys` 经通道直接说
+//! 4. **两条命令整条迁到界面**（`src/frontend/ui/tmux-control.ts::killSession` / `sendKeys` 经通道直接说
 //!    后端的 `kill` / `launch`）：monitor 里 `kill_remote_tmux` / `tmux_send_keys`〔散文墓碑〕那两个函数体不在了，
 //!    第 2 条那两格（`kill_now_routes_through_the_backend` / `send_keys_now_routes_through_the_backend`〔散文墓碑〕）
 //!    翻成 [`tests::the_monitor_has_no_second_path_that_kills_a_session`]（monitor 里一处杀会话的 shell 串都没有）

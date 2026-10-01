@@ -4,8 +4,8 @@
 //   形状（`Account` · `AccountsState` · `SessionAccount`）· 降级判定（`deriveUi`）· 可用性唯一出口（`isSelectable`）·
 //   跟随 / 显式选号的解析（`resolveAccount`）· 徽章与本机那一节的界面文案。
 //
-// 〔FE1 · 第四波 4D〕先前这一个文件（1527 行 · 61 export · 20 个生产 importer）跨账号 · 起停 · 历史三个域（审计 B §6 必须拆 4）。
-// 守的要求：`设计/01 §5` D1「一个判定只有一个家」。按域拆开之后各住各的：
+// 先前这一个文件（1527 行 · 61 export · 20 个生产 importer）跨账号 · 起停 · 历史三个域（审计 B §6 必须拆 4）。
+// 守的要求：「一个判定只有一个家」。按域拆开之后各住各的：
 //   - 经通道读 ＋ 缓存（`accounts-list` · `accounts-sessions` · `accounts-trust`）→ `account-reads.ts`
 //   - config.json 里的账号偏好（默认账号 · 每号模型）→ `account-prefs.ts`
 //   - 起会话挑哪个号（`withAccount` · 本机快照 · 载荷上的 `account` · 记 pin）→ `launch-account.ts`
@@ -13,13 +13,13 @@
 //   - 换号重启定位不到时的那句话 → `account-restart.ts`
 // 本文件从此**不 import 任何有 IO 的模块**（不碰通道、不碰 config、不碰历史注解）。
 import { isLocalOrigin, type Origin } from "./ipc/origin";
-// 〔US1〕API key 那两问的成品（`apikey-routing`）住 `apikey-reads.ts`（经通道、后端出成品）；本文件只把那份读数落到账号上。
-//   〔FE1〕先前这个类型住本文件、是 `ipc/commands.ts` 的返回类型 ⇒ 通信层在类型上依赖账号域，七模块类型环靠这一条边闭合。
+// API key 那两问的成品（`apikey-routing`）住 `apikey-reads.ts`（经通道、后端出成品）；本文件只把那份读数落到账号上。
+// 先前这个类型住本文件、是 `ipc/commands.ts` 的返回类型 ⇒ 通信层在类型上依赖账号域，七模块类型环靠这一条边闭合。
 import type { ApikeyRoutingView } from "./apikey-reads";
 import { copyText } from "./copy-table";
 import type { AuthKind } from "./generated/judgment-rules";
 
-// ---- 账号的形状：〔C4d · 第四波 4B〕从生成物改回手写，形状由后端成品 ＋ 跨语言金样定 ----
+// ---- 账号的形状：从生成物改回手写，形状由后端成品 ＋ 跨语言金样定 ----
 //
 // K-A1 起这一格是 ts-rs 生成物（`src/frontend/ui/generated/RemoteAccount.ts`，Rust 那份在 monitor 的 `accounts.rs`）。
 // C4c 起账号清单由**那台机器的后端出成品**、界面严格收（`accounts-decode.ts::decodeAccountsList`）；
@@ -27,7 +27,7 @@ import type { AuthKind } from "./generated/judgment-rules";
 // 形状今天由两样东西钉：后端 `observe/accounts_query.rs::list_product`（产）＋ 跨语言金样
 // `tests/__fixtures__/accounts.golden.json`（Rust 与 TS 两侧同读）＋ 解码器逐键核（多一格 / 缺一格 / 类型不对都抛）。
 // `AuthKind` 那两个字面量是 `acct-core` 的契约常量（`AUTH_KIND_SUBSCRIPTION` / `AUTH_KIND_API_KEY`）；
-// 〔DUP2 · `设计/90 §3` 判据 2〕类型从生成物派生（`acct_core::AUTH_KINDS` 现生成进 `src/frontend/ui/generated/judgment-rules.ts`），不再手写字面量；
+// 类型从生成物派生（`acct_core::AUTH_KINDS` 现生成进 `src/frontend/ui/generated/judgment-rules.ts`），不再手写字面量；
 // 后端改了它 ⇒ 生成物与金样跟着变 ⇒ 解码器认不出旧的 ⇒ `accounts-decode.vitest.ts` 金样那条红。
 /** 一个账号的鉴权方式（`acct-core` 的契约字面量）。 */
 export type { AuthKind };
@@ -42,7 +42,7 @@ export interface Account {
   /** `isolated`（正常）/ `in-place`（逃生口，前端应拒绝使用）/ `bare`（账号 0）。 */
   mode: string;
   exists: boolean;
-  /** 只是 stat 了 `.credentials.json` 在不在，**不代表凭据有效**；可用性走 `authReady`。〔DUP1〕前端零处读它（收成品那一格除外）。 */
+  /** 只是 stat 了 `.credentials.json` 在不在，**不代表凭据有效**；可用性走 `authReady`。前端零处读它（收成品那一格除外）。 */
   loggedIn: boolean;
   /** 后端按 `acct_core::auth_kind_from_manifest` ＋ apikey 表并出的结论（缺省落订阅那一格也在那里判，`KA6d`）。 */
   authKind: AuthKind;
@@ -52,7 +52,7 @@ export interface Account {
    * ⚠ **`KA6b`（诚实边界）**：订阅那一支只是 stat 了 `.credentials.json` 在不在 —— 凭据过期 / 被吊销看不出来；
    * api-key 那一支恒真（它不用那个文件），`true` 也不等于「真能连上」（`KA6a`，徽章那段文案说出来）。
    *
-   * 〔DUP1 · `设计/90 §3` 判据 2〕这一格与 `authKind` 原来都是**可缺**的，缺了由 `accounts.ts::authReady`〔散文墓碑〕
+   * 这一格与 `authKind` 原来都是**可缺**的，缺了由 `accounts.ts::authReady`〔散文墓碑〕
    * 回落到 `loggedIn`、`authKind` 读成订阅 —— 那是 `auth_ready` 订阅分支与 `auth_kind_from_manifest` 缺省那一格
    * 在 TS 里的第二份，而且是「旧后端」的退路（`D11`）。解码器（`accounts-decode.ts`）早就逐键要求这两格、
    * 缺了就抛 ⇒ 回落今天不可达，删了。
@@ -61,8 +61,8 @@ export interface Account {
 }
 
 /**
- * 那台机器的账号库（manifest）的概况 —— 〔C4c〕后端 `accounts-list` 成品的 `meta` 那一格，逐键照收。
- * 〔C4c〕`accountZeroAware` 那一格退役：出成品的后端按构造认得账号 0（老后端回的是旧形状，当场认出）。
+ * 那台机器的账号库（manifest）的概况 —— 后端 `accounts-list` 成品的 `meta` 那一格，逐键照收。
+ * `accountZeroAware` 那一格退役：出成品的后端按构造认得账号 0（老后端回的是旧形状，当场认出）。
  */
 export interface AccountsMeta {
   enabled: boolean;
@@ -96,7 +96,7 @@ export interface SessionAccount {
    */
   launchId?: string | null;
   /**
-   * 〔HX1 · D-f〕这条会话的上游地址是不是**本机中转**那一形（后端从 `/proc/<pid>/environ` 的 `ANTHROPIC_BASE_URL` 折出的一个布尔，
+   * 这条会话的上游地址是不是**本机中转**那一形（后端从 `/proc/<pid>/environ` 的 `ANTHROPIC_BASE_URL` 折出的一个布尔，
    * 值本身带中转钥匙、不出参）。`null` = 不知道（进程已死 / 环境这一刻取不到 / 老后端没有这个键）。
    * 读者：机器页「停」本机后端之前数几条会断（`settings/backend-section.ts::stopWarning`）。
    */
@@ -105,11 +105,11 @@ export interface SessionAccount {
 
 /** 账号功能在某台远端的整体状态（UI 直接消费）。 */
 export interface AccountsState {
-  /** 哪台机器（本机 = `LOCAL_ORIGIN`）。也是账号缓存的键 —— 〔C4b〕两者从此是同一个值。 */
+  /** 哪台机器（本机 = `LOCAL_ORIGIN`）。也是账号缓存的键 —— 两者从此是同一个值。 */
   origin: Origin;
   available: boolean;
   error: string | null;
-  /** 〔WF2 · WIN3 读数 C〕`available:false` 的那一次是不是「那台后端比这条查询老」（`chan-caller.ts::isOldBackend` 判的）；其余失败 ⇒ `false`。 */
+  /** `available:false` 的那一次是不是「那台后端比这条查询老」（`chan-caller.ts::isOldBackend` 判的）；其余失败 ⇒ `false`。 */
   oldBackend: boolean;
   meta: AccountsMeta | null;
   accounts: Account[];
@@ -129,7 +129,7 @@ export interface AccountsState {
 //（`accounts.rs::cfg_for` 那个早返回一起走）⇒ 留着就是一档**再也到不了**的 UI 状态。
 export type AccountsUi =
   | { kind: "needs-update"; reason: string } // 旧 backend（只有对端说「不认这条命令」那一形）
-  | { kind: "query-failed"; reason: string } // 〔WF2〕没问出来（够不着 / 期限到 / 对端说不行 / 形状不对）
+  | { kind: "query-failed"; reason: string } // 没问出来（够不着 / 期限到 / 对端说不行 / 形状不对）
   | { kind: "not-enabled"; manifestPath: string | null; reason: string } // 未迁移/无账号
   | { kind: "ready"; accounts: Account[]; defaultName: string | null; notice: string | null };
 
@@ -139,7 +139,7 @@ export type AccountsUi =
 export function deriveUi(state: AccountsState): AccountsUi {
   if (!state.available) {
     const e = state.error ?? "";
-    // 〔WF2 · WIN3 读数 C〕按失败的**种类**分（从前按原因串里有没有「过旧」猜，又把其余一律并进「需更新」—— 真机上远端没部署上 / 拒转发都说成要更新）。
+    // 按失败的**种类**分（从前按原因串里有没有「过旧」猜，又把其余一律并进「需更新」—— 真机上远端没部署上 / 拒转发都说成要更新）。
     if (state.oldBackend) return { kind: "needs-update", reason: e || copyText("accounts.deriveUi.needsUpdate") };
     return { kind: "query-failed", reason: e || copyText("accounts.deriveUi.unavailable") };
   }
@@ -282,7 +282,7 @@ export function accountStatusBadge(
       local != null
         ? copyText("accounts.badge.whyNoRow")
         : endpoint?.scope === "remote"
-          ? // 〔RM1a 合并〕旧句「把 key 送到远端那台机器是另一件事」半过期了：key 今天送得到那台机器上
+          ? // 旧句「把 key 送到远端那台机器是另一件事」半过期了：key 今天送得到那台机器上
             //   （设置里配 key 按页上那台机器写），差的是远端起的会话还不经中转换上它（注入归 4B RL1）。
             copyText("accounts.badge.whyRemote")
           : copyText("accounts.badge.whyUnknown");
@@ -328,7 +328,7 @@ export function isSelectable(a: Account): boolean {
   //
   // ★ **Z02 订正了 Z01 在这儿写的一句错话**。Z01 写的是「从 UI 起它需要『显式 unset』的
   // 注入路径，而 launch-plan 今天只会 export」——**不对**：那条路径早就有了，两条渲染路各一份
-  //   · CLI 路径：CLI 渲染器的 `account` 维度（〔LR1〕今天只在 Rust `ccm_invocation.rs`）对非 account 态吐 `--base`，
+  //   · CLI 路径：CLI 渲染器的 `account` 维度（今天只在 Rust `ccm_invocation.rs`）对非 account 态吐 `--base`，
   //     而 `shared/ccm` 收到 `--base` 会 `unset CLAUDE_CONFIG_DIR`（两处落点，
   //     由 `base-flag-contract-guard.vitest.ts` 钉住）
   //   · 兜底渲染路径：`ENV_RESET_DIMENSION` 推 `unset-config-dir` op
@@ -341,7 +341,7 @@ export function isSelectable(a: Account): boolean {
   //      送进 else 分支（拿 `opt.name === undefined` 去起会话）⇒ 加变体前必须先改它
   // 第 3 条卡 `tabs.ts` 红线 ⇒ 放开这条门槛要等红线松（见 features/Z02-PARTIAL.md）。
   //
-  // ★ **K-A1 把第二项从 `a.loggedIn` 换成了后端算好的 `a.authReady`**（〔DUP1〕原先经一个带「旧后端回落」的包装读，包装删了）。
+  // ★ **K-A1 把第二项从 `a.loggedIn` 换成了后端算好的 `a.authReady`**（原先经一个带「旧后端回落」的包装读，包装删了）。
   // 订阅号那一支的值与 `loggedIn` **逐字节相同**（`acct_core::auth_ready` 的订阅分支就是
   // 「凭据文件在不在」）⇒ 订阅号一格没变，包括「缺凭据 ⇒ 不可选」那道保护（`KAY3`）。
   // 变的只有 api-key 号：它压根不用那个文件，所以不再因为缺文件而被判不可用（`KAY2`）。
@@ -361,7 +361,7 @@ export function selectableAccounts(state: AccountsState): Account[] {
  *
  * **作用面只有状态栏 chip 与 tab 徽章**。设置里的账号表（U7 的横幅 + 表格行）**恒显豁免**：
  * 那是全应用唯一能让用户学到「色块 ↔ 账号 ↔ 邮箱」映射的图例面，单账号期把它也休眠掉，
- * 等加了第二个号就会突然满屏彩块。（MASTERPLAN 变更记录 2026-07-25 已拍板。）
+ * 等加了第二个号就会突然满屏彩块。（变更记录 2026-07-25 已拍板。）
  */
 export function accountColorsActive(state: AccountsState): boolean {
   return state.available && selectableAccounts(state).length >= 2;
@@ -541,7 +541,7 @@ export function shouldShowAccountBadge(
  * ⚠ **尤其不许复用** `deriveUi` 那句「该远端尚未启用多账号」（本文件 `not-enabled` 那一支）：
  * 对一台本机来说那句话有两个字是假的。
  */
-// 〔CP2b〕每一格是取值器：用到时才取文（模块顶层不留取文口调用，见 accountsOldBackend 那一句）。
+// 每一格是取值器：用到时才取文（模块顶层不留取文口调用，见 accountsOldBackend 那一句）。
 export const LOCAL_ACCOUNTS_COPY = {
   /** 这一节的题头 —— 先把「在讲哪台机器」说清楚。 */
   get heading(): string {
@@ -589,7 +589,7 @@ export const LOCAL_ACCOUNTS_COPY = {
 } as const;
 
 /**
- * F05：判别联合形态的账号解析结果——`AccountResolver` 目标（MASTERPLAN §3 账本）。取代
+ * F05：判别联合形态的账号解析结果——`AccountResolver` 目标（账本）。取代
  * "只吐 configDir、名字在解析完就被丢弃"的旧口径：`kind==="account"` 时同时带 `name` 和
  * `configDir`——线通给调用方后，`name` 才能继续往下传进 `LaunchContext`（F05 的核心交付：
  * 让 Rust `ccm_invocation.rs::DIMENSION_ORDER` 里 `account` 那一维说得出 `--account <名>`）。
@@ -624,7 +624,7 @@ export function resolveAccount(
   if (opts.follow) {
     const current = currentWorkingAccount(state)?.name ?? null;
     const priorPin = opts.follow.lastAccount ?? null;
-    // 🔴 D-h（主会话 4D 裁，照 `设计/01 §6.2`「「哪个账号」非有不可 —— 缺了 resume 会静默落到默认号，撞 `D4`」）：
+    // 🔴 D-h（主会话 4D 裁，照「「哪个账号」非有不可 —— 缺了 resume 会静默落到默认号，撞 `D4`」）：
     //   会话有 pin、而 pin 那个号选不了 ⇒ **不下沉**，回 `unavailable`（调用方不起、说清、给「用当前账号」的显式选择）。
     //   先前这里下沉到当前号 / 基座、不说一个字（E7）—— 用另一个号的订阅或 key 续了这场会话。
     //   没有 pin 的会话照旧 当前号 → 基座（没有「原账号」，谈不上换号）。
@@ -643,7 +643,7 @@ export function resolveAccount(
 }
 
 /**
- * 〔FE1 · D-h〕要的那个号选不了时，给用户的那个**显式选择**：当前账号（可选、且不是要的那个）；
+ * 要的那个号选不了时，给用户的那个**显式选择**：当前账号（可选、且不是要的那个）；
  * 没有这样的号 ⇒ `null` = 「不指定账号」（落 `~/.claude` 那一份登录）。
  */
 export function alternativeAccountOf(state: AccountsState, requested: string): string | null {

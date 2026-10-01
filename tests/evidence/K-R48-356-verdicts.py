@@ -82,7 +82,7 @@ VERDICTS = [
     (84, 86, "N", "", "夹具自检（这套环境里真的一个 daemon 都找不到 / daemon 与 manifest 刻意答不同 / 账号 f 的目录真存在）—— 夹具没了它们就没了。"),
     (87, 90, "M", "rust",
      "「账号的 configDir 来自**后端**而不是文件」＋两条反向。语义搬家之后是"
-     "「**账号表只有一处真相源**」，由 `the_account_table_has_exactly_one_source` 钉住。"
+     "「**账号表只有一处源头**」，由 `the_account_table_has_exactly_one_source` 钉住。"
      "⚠ 从前那个「daemon 与 manifest 刻意答不同」的分辨力**消失了** —— 那是 IPC 的产物，"
      "同一个进程之下两者本来就是一件事。"),
     (91, 91, "N", "", "「一趟往返答完全部问题」—— 往返没了，这条读数没有被测对象了。"),
