@@ -39,8 +39,8 @@ fn analyze_extracts_excerpt_title_cwd_count() {
     std::fs::remove_dir_all(&tmp).ok();
 }
 
-// 〔C4d〕`truncate_is_char_safe` 随被测的 `truncate_chars`〔散文墓碑〕一起退役：摘录改用 `search_rules::truncate_excerpt`，
-//   「不劈码点」由口径那一家自己的判据守（〔P1〕`tests/backend/observe/search_rules_tests.rs`）；本文件下面 C4d 那一节钉摘录的整形。
+// `truncate_is_char_safe` 随被测的 `truncate_chars`〔散文墓碑〕一起退役：摘录改用 `search_rules::truncate_excerpt`，
+//   「不劈码点」由口径那一家自己的判据守（`tests/backend/observe/search_rules_tests.rs`）；本文件下面 C4d 那一节钉摘录的整形。
 
 /// Batch11-F32：sessionKind:"bg" 探测 → isBg。
 #[test]
@@ -68,10 +68,10 @@ fn analyze_session_detects_bg_kind() {
     std::fs::remove_dir_all(&tmp).ok();
 }
 
-// 〔TL3 · 审计 F 🔴-6〕「围栏只许有一处」（audit-0805 08-06，定框 E3）那一条搬去 `fence_tests.rs`、名字照旧：
-//   它先前只数**本文件**里的 `canonicalize()`（== 2），而 `search_query.rs` 里还有一份内联的 —— `设计/15 §4.2`
+// 〔审计 F 🔴-6〕「围栏只许有一处」（audit-0805 08-06，定框 E3）那一条搬去 `fence_tests.rs`、名字照旧：
+//   它先前只数**本文件**里的 `canonicalize()`（== 2），而 `search_query.rs` 里还有一份内联的 ——
 //   「守卫范围 ≠ 性质范围」。围栏收进 `observe/fence.rs` 之后，人群换成 observe 全树。
-//   〔合并 LOC1b〕LOC1b 把那一条的锚从 `fn fence_under_projects` 换成了 `fn fence_under_root`（本体提成根是参数）；
+// LOC1b 把那一条的锚从 `fn fence_under_projects` 换成了 `fn fence_under_root`（本体提成根是参数）；
 //   那一形今天就是 `Fence::at` ＋ `admit`，锚跟着住 `fence_tests.rs`。
 
 #[test]
@@ -175,10 +175,10 @@ fn list_sessions_rejects_symlink_escape() {
 }
 
 // ════════════════════════════════════════════════════════════════════════════════════════
-// 〔C4d · 第四波 4B〕会话清单那一行从此是本机与远端共用的唯一口径 —— 补上的三格 ＋ 摘录清洗
+// 会话清单那一行从此是本机与远端共用的唯一口径 —— 补上的三格 ＋ 摘录清洗
 // ════════════════════════════════════════════════════════════════════════════════════════
 //
-// 要求住址：主会话 09-25 裁（`调研/第四波记录/C4d.md`「主会话裁」第 2 条）「本机后端 … 出成品 …（join 只一个家）」——
+// 要求住址：主会话 09-25 裁（「主会话裁」第 2 条）「本机后端 … 出成品 …（join 只一个家）」——
 // 本机会话清单从 monitor 那份（经记录解析器）换到这一行，monitor 那份有的三格这里要有，否则本机用户换读者那一刻丢 fork 树与改名后的标题。
 
 /// ★ fork 关系（首条带 `forkedFrom` 的 user / assistant）· `custom-title` 取最新 · 开始时刻取首条时间戳。
@@ -264,9 +264,9 @@ fn c4d_the_row_has_exactly_these_keys() {
     std::fs::remove_dir_all(&tmp).ok();
 }
 
-// ── 〔LOC1b · 4D〕按路径读会话的围栏也认各家合成历史面给的记录根 ─────────────────────
+// ── 按路径读会话的围栏也认各家合成历史面给的记录根 ─────────────────────
 //
-// 守的要求：`设计/00 §2.5 ①` 逐字「历史 / 账号 / tmux / MCP 四个面，本机与远端走同一条代码路径」——
+// 守的要求：「历史 / 账号 / tmux / MCP 四个面，本机与远端走同一条代码路径」——
 // 本机冷读也改走后端的 `history-read` 之后，历史清单列得出的 Codex 会话必须经同一道围栏打得开。
 
 fn loc1b_tree(tag: &str) -> (PathBuf, PathBuf, PathBuf) {
@@ -328,7 +328,7 @@ fn loc1b_the_extra_roots_take_absolute_jsonl_paths_that_stay_inside() {
     std::fs::remove_dir_all(&tmp).ok();
 }
 
-/// 〔WF2〕要求住址：`第四波记录/WIN3.md §2` 读数 H「本机没有 projects 目录 ⇒ 整页加载失败，原话 read_dir … (os error 3)」·
+/// 要求：「本机没有 projects 目录 ⇒ 整页加载失败，原话 read_dir … (os error 3)」·
 /// 题面 WF2 第 4 条。记录树根不在 ⇒ 零个项目、`Ok`（不是失败）；根在但读不了 ⇒ 说人话（期望取自文案表那一条，不含 `read_dir` / `os error`）。
 #[test]
 fn a_machine_without_a_projects_dir_lists_nothing_and_an_unreadable_one_says_so_plainly() {
@@ -346,7 +346,7 @@ fn a_machine_without_a_projects_dir_lists_nothing_and_an_unreadable_one_says_so_
     );
     assert_eq!(framed.map(|v| v["rows"].clone()), Ok(serde_json::json!([])));
     assert_eq!(run(&tmp, &["--list-projects".to_string()]), 2);
-    // 〔WF2〕CLI 那一声带结构化的码（问它的那台后端认码画空态，不认话）。
+    // CLI 那一声带结构化的码（问它的那台后端认码画空态，不认话）。
     assert_eq!(
         list_projects_to(&tmp, &mut out).map_err(|(code, _)| code),
         Err(Some(NO_RECORD_TREE))

@@ -1,8 +1,8 @@
-//! 〔RK1〕中转口的门（`relay/door.rs`）的纯判据：进门三问逐形 · 钥匙文件的住址 / 权限 / 跨重起不变 / 坏了就换。
+//! 中转口的门（`relay/door.rs`）的纯判据：进门三问逐形 · 钥匙文件的住址 / 权限 / 跨重起不变 / 坏了就换。
 //!
 //! 守的要求：`INVARIANTS §48.1a`（中转口的钥匙），逐字一句：「过了才剥掉那一段交给路由（`/s/` 与 `/t/` 一样要过）
 //! ⇒ 「钥匙对、表里没这一行」仍是 **404**，与 403 **可分**；三种拒法各带一句说得清是哪一问的话。」
-//! 设计住 `调研/第四波记录/RK1.md §1`。走真 socket 的那一半（403/421 与 404 真可分 · 对的钥匙真转发 ·
+//! 设计住。走真 socket 的那一半（403/421 与 404 真可分 · 对的钥匙真转发 ·
 //! 钥匙不出现在日志 / tee / argv / env / 上游）住 `server_tests.rs` 的 `rk1_*` 那几条。
 
 use super::*;
@@ -24,7 +24,7 @@ impl Key {
 /// 起真中转的判据都要它 —— 不给的话中转会去**用户真实的家目录**里铸钥匙。
 pub(crate) fn seed_test_home(home: &Path) -> PathBuf {
     let path = home.join(KEY_FILE_REL);
-    // 〔HX2〕那一层目录由生产段 `ensure_key` 在拿锁之前建（`write_key` 不再建）⇒ 夹具这里自己建。
+    // 那一层目录由生产段 `ensure_key` 在拿锁之前建（`write_key` 不再建）⇒ 夹具这里自己建。
     std::fs::create_dir_all(path.parent().expect("钥匙路径有父目录")).expect("建夹具目录");
     write_key(&path, &Key::for_tests()).expect("写夹具钥匙");
     home.to_path_buf()
@@ -165,7 +165,7 @@ fn the_three_refusals_are_distinct_faces() {
     assert_eq!(faces[0].0, FORBIDDEN);
     assert_eq!(faces[1].0, MISDIRECTED);
     assert_eq!(faces[2].0, FORBIDDEN);
-    // 〔FIX3 · `99 §2.2 ⑫`〕原因头的值手写：两个 403 靠它分开。
+    // 原因头的值手写：两个 403 靠它分开。
     let reasons: Vec<_> = faces.iter().map(|f| f.1).collect();
     assert_eq!(reasons, ["browser-origin", "host-not-loopback", "bad-key"]);
     let whys: std::collections::BTreeSet<_> = faces.iter().map(|f| f.2).collect();
@@ -263,7 +263,7 @@ fn a_key_never_prints_its_value() {
     assert!(!shown.contains(TEST_KEY));
 }
 
-/// ⑦ 〔US1 · 4D〕钥匙文件的相对路径与钥匙形状**只住共享 crate**（`relay_route_core::KEY_FILE_REL` · `key_shape_ok`）：
+/// ⑦ 钥匙文件的相对路径与钥匙形状**只住共享 crate**（`relay_route_core::KEY_FILE_REL` · `key_shape_ok`）：
 /// 本模块那两个名字是它的别名（先前两半各写一份字面量、本条现抠 monitor `payload.rs` 那一行对拍 —— 那条跨半边边随之出列；
 /// 「两半零字面量」由 monitor 侧 `payload_tests::us1_the_monitor_holds_no_upstream_selection_and_no_route_grammar` 两棵树一起扫）。
 /// 这里钉本模块铸的长度与共享 crate 认的形状对得上（异源：铸法是 `KEY_BYTES` 算出来的，形状闸是 crate 里写死的 64）。
@@ -274,8 +274,8 @@ fn the_key_file_and_the_key_shape_come_from_the_shared_crate() {
     assert!(key_shape_ok(TEST_KEY), "夹具钥匙过不了共享的形状闸");
 }
 
-/// 住址：`设计/05 §9` 第 11 条「门（`relay/door.rs`）的读盘那一半只从宿主调（`§4.3`）没有判据」·
-/// `05 §4.3`「读 / 铸钥匙文件那一半只由宿主调（`relay/listen.rs` 绑上口之后 `ensure_key`）…；成员 `comms/outward/server.rs` 只收宿主交进来的 `door::Key`」。
+/// 要求：「门（`relay/door.rs`）的读盘那一半只从宿主调（`§4.3`）没有判据」·
+/// 「读 / 铸钥匙文件那一半只由宿主调（`relay/listen.rs` 绑上口之后 `ensure_key`）…；成员 `comms/outward/server.rs` 只收宿主交进来的 `door::Key`」。
 ///
 /// `door` 是 `relay` 的**私有**子模块 ⇒ 编译器只让 `relay` 模块那几份够得着它（面 B 成员 `src/comms/outward/*` ＋ 宿主 `listen.rs`）。
 /// 那几份的生产段里（`door.rs` 自己除外）读盘三件的 `(文件, 名字) → 次数` == 宿主那两处（两向）；`mod door;` 仍是私有（人群的前提）。

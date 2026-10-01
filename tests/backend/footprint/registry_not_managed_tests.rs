@@ -1,6 +1,6 @@
 use super::NOT_MANAGED;
 
-/// 〔MIG-3b 续〕受管工具 / 手写环境项的**全集**（本表 ＋ 注册表里各家足迹面带来的那一半）—— 判据按全集判，与搬家前同一个人群。
+/// 受管工具 / 手写环境项的**全集**（本表 ＋ 注册表里各家足迹面带来的那一半）—— 判据按全集判，与搬家前同一个人群。
 static TOOLS: std::sync::LazyLock<Vec<crate::footprint::registry::ToolSpec>> =
     std::sync::LazyLock::new(|| {
         crate::footprint::registry::tools()

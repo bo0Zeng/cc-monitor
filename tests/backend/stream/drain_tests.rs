@@ -1,10 +1,10 @@
-//! 〔HX1 · 4D〕**退出之前先排空停不下来的那一档** —— 判据。
+//! **退出之前先排空停不下来的那一档** —— 判据。
 //!
 //! 守的要求（住址）：
 //! - 主会话 4D 裁 D-a（`4d-lanes.md`「主会话本批裁的」）逐字：「后端收 SIGTERM 先排空在飞写（有上限）再退」；
 //! - 审计 E §E2：「流模式后端 `exit(0)` 或被 SIGKILL 时，**不等正在跑的阻塞写做完**」；
-//! - `设计/05 §3.3.2`：「**值**住后端 · **执行**住通信层」—— 本件的「上限」由叫它退的那一方执行（第二次停机信号 ⇒ 立刻退）。
-//! 设计与读数住 `调研/第四波记录/HX1.md` §1。
+//! -：「**值**住后端 · **执行**住通信层」—— 本件的「上限」由叫它退的那一方执行（第二次停机信号 ⇒ 立刻退）。
+//! 设计与读数住 §1。
 //!
 //! | # | 判据 | 形状 |
 //! |---|---|---|
@@ -401,8 +401,8 @@ fn d2_a_second_sigterm_stops_waiting() {
 
 // ── D4 ────────────────────────────────────────────────────────────────────
 
-/// 〔HX1 · 主会话裁 HX1 拍板项 1〕**到期限仍没排空 ⇒ 说出哪几条没做完，然后退**（不再无限期留着）。
-/// 守的要求：主会话裁「后端自己兜一个退出排空期限 …… 到点仍未排空 ⇒ 记一行日志说哪几条没做完，然后退出」；
+/// 〔主会话裁 HX1 拍板项 1〕**到期限仍没排空 ⇒ 说出哪几条没做完，然后退**（不再无限期留着）。
+/// 守的要求：「后端自己兜一个退出排空期限 …… 到点仍未排空 ⇒ 记一行日志说哪几条没做完，然后退出」；
 /// `INVARIANTS §48.2`「脱离后不留僵尸」。形状：同 D2 的真子进程台架，期限交 800ms、gate 一直不放 ⇒
 /// 子进程自己退 0，stderr 里那一行点名 `capture-pane（id=a）`；对照：D2 那一趟（期限是生产的 30 秒）放开之前一直在。
 #[test]
@@ -468,7 +468,7 @@ fn d3_the_ticket_is_taken_once_before_the_blocking_spawn_and_every_stream_exit_d
         "取票不在 SpawnBlocking 那一支里"
     );
 
-    // 〔MOD · ⑮〕`process::exit(` 的所在函数那一格挪进 [`x15_the_process_exits_only_in_main_and_exit_after_drain`]（全树，不只 `main.rs`）。
+    // `process::exit(` 的所在函数那一格挪进 [`x15_the_process_exits_only_in_main_and_exit_after_drain`]（全树，不只 `main.rs`）。
     let main = crate::guard_support::production_code(include_str!("../../../src/backend/main.rs"));
     let mut drains: Vec<String> = call_sites(&main, "exit_after_drain")
         .into_iter()
@@ -487,7 +487,7 @@ fn d3_the_ticket_is_taken_once_before_the_blocking_spawn_and_every_stream_exit_d
         "流模式的收场口集合变了"
     );
 
-    // 〔HX1〕生产入口交给本体的期限恰是 `DRAIN_DEADLINE`（判据用短期限走的是同一个本体）。
+    // 生产入口交给本体的期限恰是 `DRAIN_DEADLINE`（判据用短期限走的是同一个本体）。
     let within: Vec<usize> = call_sites(&inbound, "exit_after_drain_within");
     assert_eq!(within.len(), 1, "本体只该被生产入口调一处：{within:?}");
     assert_eq!(enclosing_fn(&inbound, within[0]), "exit_after_drain");
@@ -501,7 +501,7 @@ fn d3_the_ticket_is_taken_once_before_the_blocking_spawn_and_every_stream_exit_d
     );
 }
 
-/// 〔MOD · `99 §2.1 ⑮`〕**退出口只有 `main` 与 `exit_after_drain`**：后端生产树里 `process::exit(` 的所在函数，全树逐处现打。
+/// **退出口只有 `main` 与 `exit_after_drain`**：后端生产树里 `process::exit(` 的所在函数，全树逐处现打。
 ///
 /// 期望（异源：取自 ⑮ 那句裁决与 `main.rs` 的分派形状，不从被扫的源码现推）：
 /// `main.rs::main` 五处（ccm 那一趟 · argv 一族的 stdin 一行读不动 · 一次性查询 · 监听口配置不成立 · 绑不上口）——
@@ -554,7 +554,7 @@ fn x15_the_process_exits_only_in_main_and_exit_after_drain() {
 
 // ── A1（同住本文件：都是 `main.rs` 流模式那几行的接线）────────────────────
 
-/// 〔HX1 · NT2 问 3 ＋ RT1 F3〕后端 `tracing` 只在 stderr 是终端时上色。
+/// 〔NT2 问 3 ＋ RT1 F3〕后端 `tracing` 只在 stderr 是终端时上色。
 /// 守的要求：主会话 4D 裁「写进文件 / monitor 日志的 stderr 关 ANSI 颜色」（`4d-lanes.md`）。
 /// 形状：`main.rs` 生产段里 `.with_ansi(` 恰好一处，参数恰是「stderr 是不是终端」；`fmt()` 恰好一处（没有第二个不设它的初始化）。
 #[test]

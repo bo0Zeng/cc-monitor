@@ -1,7 +1,7 @@
-//! # 要求住址：`设计/10 §2.2` ＋ `设计/90 §4` 阶段 C
+//! # 阶段 C
 //!
-//! 核原文：`10 §2.2`「**『这个会话到目前为止是什么样』＝ 全会话事实 ＝ 读 json** …… 后端要提供的查询都是『读一遍文件』级别：
-//! …… 改动文件集 / agent 列表 / 分叉血缘（没做）」；`90 §4` C「旁路记账员改读 json（`设计/10 §2.2` 步 5）」。
+//! 核原文：「**『这个会话到目前为止是什么样』＝ 全会话事实 ＝ 读 json** …… 后端要提供的查询都是『读一遍文件』级别：
+//! …… 改动文件集 / agent 列表 / 分叉血缘（没做）」；「旁路记账员改读 json」。
 //! 本族钉的是**口径**（逐格、从前端旧实现逐字搬来的那几条）与**续传**（接力扫 == 一次扫完）。
 //!
 //! 夹具只造**结构**（记录类型、工具名、键名、占位串），不采任何真会话正文。
@@ -308,7 +308,7 @@ fn the_two_lookups_answer_from_their_tables() {
     assert_eq!(edit_path_key("Read"), None);
 }
 
-/// 〔STC〕写类工具的口径 —— **逐条搬自前端被删的 `tests/frontend/ui/panorama/session-files.test.ts`**（七条，被测对象
+/// 写类工具的口径 —— **逐条搬自前端被删的 `tests/frontend/ui/panorama/session-files.test.ts`**（七条，被测对象
 /// `collectEditedFiles` 随搬家删了、口径住进本文件）：Edit / Write / MultiEdit 取 `file_path` · NotebookEdit 取
 /// `notebook_path` · 非写类不收 · 多个全收保序 · 非 assistant 不收 · 畸形静默跳过 · Windows 路径原样收。
 /// （单条记录内的顺序就是块序；去重 / 近因序那一格在 [`the_four_facts_follow_the_moved_rules`]。）

@@ -1,10 +1,10 @@
-//! # 要求住址：`设计/00 §1.6.2`（CLI 面从帧命令派生，几个口翻译成同一套内部调用）
+//! # （CLI 面从帧命令派生，几个口翻译成同一套内部调用）
 //!
-//! 核原文：`设计/00 §1.6.2` 逐字「帧命令会派生出同名的 CLI 面」；`设计/05 §11.2` 逐字「CLI 面从帧命令表自动派生」——
+//! 核原文：「帧命令会派生出同名的 CLI 面」；「CLI 面从帧命令表自动派生」——
 //! 闸门与分派同源、帧命令要么上 CLI 要么写明理由、CLI 入口只经注册表、探测口报的就是它能派发的，判的正是这件事。
 //! 「CLI 入口不借用帧入口的安全理由」那一条没有设计原文，守的是生产头注里那段散文。〔JA1 点址 2026-09-24〕
 
-/// ★★〔P4f 08-13〕**CLI 面的闸门与分派臂必须来自同一个源**。
+/// ★★**CLI 面的闸门与分派臂必须来自同一个源**。
 ///
 /// # 它逮的是一条实测到的静默失效
 ///
@@ -55,43 +55,43 @@ const NOT_ON_CLI: &[(&str, &str)] = &[
         "ext-hub-apply",
         "同 `ext-hub-preview`：两头都要经本进程的可达表够到 ⇒ 只上帧面（`STREAM_ONLY`）。",
     ),
-    // 〔FIX4 · `97 §8`〕卸全景小程序：机器页上点的破坏性动作。
+    // 卸全景小程序：机器页上点的破坏性动作。
     (
         "panorama-uninstall",
         "它是界面在机器页上点、二次确认过的破坏性动作（删 `~/.cc-monitor/bin` 里那份小程序）；第三方 skill 没有卸它的理由，\
          开 CLI 口只多一个不经确认就能删文件的入口 ⇒ 只上帧面（`STREAM_ONLY`）。",
     ),
-    // 〔FIX4 · `90 §3` J7〕起会话要的 tmux 名。
+    // 起会话要的 tmux 名。
     (
         "tmux-name-mint",
         "它只给界面起会话前问一个名字用；命令行那一侧 `ccm` 不给名时自己就铸（同一份 `plan::mint_tmux_name`，同一张会话快照），\
          第三方 skill 要起会话直接敲 `ccm` ⇒ 再开一个 CLI 口只是第二个入口 ⇒ 只上帧面（`STREAM_ONLY`）。",
     ),
-    // 〔FIX4 · `90 §3` J15〕各台搜索结果合成一份。
+    // 各台搜索结果合成一份。
     (
         "history-search-merge",
         "它合的是界面逐台问回来的那几份（每台常驻后端各答各的 `history-search`）；命令行那一侧 `--search` 只问这一台、没有第二份可合 \
          ⇒ 只上帧面（`STREAM_ONLY`）。",
     ),
-    // 〔FIX4 · `99 §2.1 ⑬`〕开终端那一串。
+    // 开终端那一串。
     (
         "terminal-ssh",
         "它渲的是「在用户面前这台机器上开一个 PowerShell 窗口、里面 ssh 过去」那一行，只有开窗的那一方（界面 · 文件窗口）用得着；\
          命令行本身就在终端里，要连那台直接敲 ssh ⇒ 只上帧面（`STREAM_ONLY`）。",
     ),
-    // 〔P5〕本机开终端那一串（接令牌握手前奏）。
+    // 本机开终端那一串（接令牌握手前奏）。
     (
         "terminal-local",
         "它给「在用户面前这台机器上开一个 PowerShell 窗口」那一串接上令牌握手前奏，只有开窗的那一方（界面）用得着；\
          命令行本身就在终端里 ⇒ 只上帧面（`STREAM_ONLY`）。",
     ),
-    // 〔MIG-1 收尾〕测试连接边拨边推进度：那几格走**本连接的应答通道**（`probe` 帧，界面订 `probe-progress/<票>`）。
+    // 测试连接边拨边推进度：那几格走**本连接的应答通道**（`probe` 帧，界面订 `probe-progress/<票>`）。
     (
         "remote-probe",
         "它的进度格（握手那几行 · 走完的那几段 · 结局）是往**发起它的那条流连接**的应答通道推的帧；一次性进程「1 请求 1 响应 1 退出」\
          没有那条通道，结局也在进度流里而不在应答里 ⇒ 开 CLI 口只会回一个空应答。测一台：设置页的「测试连接」（经常驻后端的帧面）。",
     ),
-    // 〔MIG-2〕本机起会话：计划里要读本进程的中转状态（`launch_relay`），一次性进程里没有中转 ⇒ 同 `launch-endpoint` 只上流面。
+    // 本机起会话：计划里要读本进程的中转状态（`launch_relay`），一次性进程里没有中转 ⇒ 同 `launch-endpoint` 只上流面。
     (
         "launch-local",
         "它经 `accounts::upstream_select::endpoint::launch_relay` 读本进程的中转监听状态（中转住常驻后端进程里）；\
@@ -103,7 +103,7 @@ const NOT_ON_CLI: &[(&str, &str)] = &[
          无 request-id」（`resolve_query` 头注逐字）⇒ 本进程里没有第二条命令可取消，\
          给它开 CLI 口只会回一条永远找不到目标的应答。要停一条 CLI 命令：杀那个进程。",
     ),
-    // 〔SR1a〕链路四条：一条链路**活在一条流连接上**（每连接一张链路表，连接没了链路一条不留），
+    // 链路四条：一条链路**活在一条流连接上**（每连接一张链路表，连接没了链路一条不留），
     // 一次性进程「1 请求 1 响应 1 退出」—— 开出来的链路在应答回去的那一刻就随进程一起没了。
     (
         "link-open",
@@ -126,7 +126,7 @@ const NOT_ON_CLI: &[(&str, &str)] = &[
         "它关**同一条连接上**某条开着的链路。一次性进程里没有开着的链路（见 `link-open`），\
          进程一退它开过的一切本来就没了 ⇒ CLI 口没有意义。",
     ),
-    // 〔SR1b〕传输四条：票表**活在一条流连接上**（每连接一张，连接没了在册的一律撤），
+    // 传输四条：票表**活在一条流连接上**（每连接一张，连接没了在册的一律撤），
     // 进度走那条连接的出方向帧 —— 一次性进程两样都没有。
     (
         "transfer-upload",
@@ -144,35 +144,35 @@ const NOT_ON_CLI: &[(&str, &str)] = &[
     ),
     (
         "ccm-probe",
-        "〔E2 · V138〕派生名 `--ccm-probe` 是 ccm 自己的诊断口（同 `ccm-print`）；CLI 上要这几行就敲 `ccm --ccm-probe`，同一个函数。",
+        "派生名 `--ccm-probe` 是 ccm 自己的诊断口（同 `ccm-print`）；CLI 上要这几行就敲 `ccm --ccm-probe`，同一个函数。",
     ),
     (
         "ccm-print",
-        "〔E2 · V138〕派生名 `--ccm-print` 是 ccm 自己的诊断口；二进制叫 `ccm` 时后端按 `SUBCOMMANDS` 分流，占了它就把 `ccm --ccm-print` 抢进后端。",
+        "派生名 `--ccm-print` 是 ccm 自己的诊断口；二进制叫 `ccm` 时后端按 `SUBCOMMANDS` 分流，占了它就把 `ccm --ccm-print` 抢进后端。",
     ),
     (
         "apikey-routing",
-        "〔DEL 续 · 主会话裁〕「中转在不在」读本进程的监听状态；一次性进程里没有中转，只能答 `running: false` —— 那是假话（`cli_control::STREAM_ONLY`）。",
+        "「中转在不在」读本进程的监听状态；一次性进程里没有中转，只能答 `running: false` —— 那是假话（`cli_control::STREAM_ONLY`）。",
     ),
     (
         "launch-endpoint",
-        "〔DEL 续 · 主会话裁〕同 `apikey-routing`：一次性进程里只能答 `listening: false`（`cli_control::STREAM_ONLY`）。",
+        "同 `apikey-routing`：一次性进程里只能答 `listening: false`（`cli_control::STREAM_ONLY`）。",
     ),
     (
         "resync",
-        "〔RESYNC · 主会话 09-27 裁〕它对齐的是本进程里在跑的 watcher；一次性进程里一份都没有，只能答 `watchers: 0` —— 那是假话（`cli_control::STREAM_ONLY`）。",
+        "它对齐的是本进程里在跑的 watcher；一次性进程里一份都没有，只能答 `watchers: 0` —— 那是假话（`cli_control::STREAM_ONLY`）。",
     ),
     (
         "forward-start",
-        "〔MIG-1〕转发账住常驻那一个进程（`cli_control::STREAM_ONLY`）：一次性进程开出来的转发随进程退出就没了 —— 口放掉、账也没了，回的 `id` 是个死号。",
+        "转发账住常驻那一个进程（`cli_control::STREAM_ONLY`）：一次性进程开出来的转发随进程退出就没了 —— 口放掉、账也没了，回的 `id` 是个死号。",
     ),
     (
         "forward-stop",
-        "〔MIG-1〕同 `forward-start`：一次性进程里的账恒空，只会回 `not_found`。",
+        "同 `forward-start`：一次性进程里的账恒空，只会回 `not_found`。",
     ),
     (
         "forward-list",
-        "〔MIG-1〕同 `forward-start`：一次性进程里的账恒空，只能答 `forwards: []` —— 那是假话。",
+        "同 `forward-start`：一次性进程里的账恒空，只能答 `forwards: []` —— 那是假话。",
     ),
     (
         "transfer-stop",
@@ -307,7 +307,7 @@ fn the_probe_reports_exactly_what_it_can_dispatch() {
 fn the_no_input_commands_are_registered_and_declared_consistently() {
     /// 不收入方向载荷的命令。**加一条就来这里写一行**。
     ///
-    /// 〔`K-R113` 09-13〕`bus-state` 是第三条：它与 `bus-list` 同族 —— **无输入、有输出字段**，
+    /// `bus-state` 是第三条：它与 `bus-list` 同族 —— **无输入、有输出字段**，
     /// 正是当年那个 `!fields.is_empty()` 代用品会判错的形状。
     ///
     /// 〔步 `24f` 第二刀 09-20〕`files-index-status` 是第四条，**同一形**：
@@ -316,17 +316,17 @@ fn the_no_input_commands_are_registered_and_declared_consistently() {
     /// 而它恰恰是「这台机器上的索引新鲜不新鲜」那条**探活式**问话。
     /// ⚠ 同族另外三条（`files-ls` / `files-stat` / `files-find`）**要**输入，不在这张表里。
     ///
-    /// 〔`C1` · 09-24〕只读查询面进来三条，**同一形**（无入参、有输出字段 `lines`）：
+    /// 只读查询面进来三条，**同一形**（无入参、有输出字段 `lines`）：
     /// `history-projects`（列全部项目）· `accounts-list` · `accounts-sessions`
     /// （账号库目录走默认解析，帧面不收 `--accts-dir`）。同族另外五条要输入，不在表里。
     ///
-    /// 〔B2 · 条 66〕`exit-policy-read` 进来，**同一形**（无入参、有输出字段 `state` / `killOnExit` …）：
+    /// 〔条 66〕`exit-policy-read` 进来，**同一形**（无入参、有输出字段 `state` / `killOnExit` …）：
     /// 它是「那台机器上的值是什么」那一问，挂住等 EOF 就是把一句问话变成一次卡死。
     /// 同族 `exit-policy-set` 要输入（`killOnExit`），不在表里。
-    /// 〔C4c · 第四波 4B〕`accounts-list` **出了这张表**：它从此收一格 `agent`（这次起会话的是哪一家，
+    /// `accounts-list` **出了这张表**：它从此收一格 `agent`（这次起会话的是哪一家，
     /// 并 apikey 表要看它）⇒ 要输入。
     const NO_INPUT_TODAY: &[&str] = &[
-        // 〔MIG-3a · 子步 3〕cc-bus 装到这台 / 查三态：落点由这台自己算（skills 根），不收任何参数。
+        // cc-bus 装到这台 / 查三态：落点由这台自己算（skills 根），不收任何参数。
         "cc-bus-install",
         "cc-bus-install-state",
         // 账号库核对：只读，问的就是「这台」的账号库，不收参数。
@@ -334,33 +334,33 @@ fn the_no_input_commands_are_registered_and_declared_consistently() {
         "accounts-sessions",
         "bus-list",
         "bus-state",
-        // 〔F7a · 第三波 09-24〕`files-home`：问这台机器的 home，无入参、有输出字段 `path`。
+        // `files-home`：问这台机器的 home，无入参、有输出字段 `path`。
         "files-home",
-        "drift-report", // 〔MOD〕这台后端的漂移账（纯读、不收输入）
+        "drift-report", // 这台后端的漂移账（纯读、不收输入）
         "exit-policy-read",
-        // 〔E2〕`ccm-probe`：无入参（CLI 面没有，但「收不收输入」按帧面声明判）。
+        // `ccm-probe`：无入参（CLI 面没有，但「收不收输入」按帧面声明判）。
         "ccm-probe",
-        // 〔RM1a · 第四波〕`apikey-read`：这台机器上那份凭据文件的状态，无入参。
+        // `apikey-read`：这台机器上那份凭据文件的状态，无入参。
         // 同族 `apikey-key-set` 要输入（`account` / `key`，key 从 stdin 进），不在表里。
         "apikey-read",
         "files-index-status",
-        // 〔C4d · 第四波 4B〕`history-projects` 出列：它从此收 `origin`（缺席 = 这台），要读 stdin。
+        // `history-projects` 出列：它从此收 `origin`（缺席 = 这台），要读 stdin。
         "ping",
-        // 〔RM1b · 第四波〕问这台机器登记了哪些插件市场：无入参，输出 `lines`。
-        // 〔AS2 · 第四波 4B〕这台现扫一次资产、记进目录、回整份：无入参。
+        // 问这台机器登记了哪些插件市场：无入参，输出 `lines`。
+        // 这台现扫一次资产、记进目录、回整份：无入参。
         "assets-catalog",
-        // 〔C4d · 第四波 4B〕sid → 上次用哪个号起：无入参（读本机那份注解文件）。
+        // sid → 上次用哪个号起：无入参（读本机那份注解文件）。
         "history-last-accounts",
-        // 〔SH1〕列这台的 tmux 会话：无入参（问的就是「这台」）。
+        // 列这台的 tmux 会话：无入参（问的就是「这台」）。
         "tmux-list",
-        // 〔MIG-1〕列转发：无入参（问的就是本进程那张账）。
+        // 列转发：无入参（问的就是本进程那张账）。
         "forward-list",
-        // 〔MIG-1〕这台 `~/.ssh/config` 的别名清单 · 批量导入预览：无入参（`ssh-config-resolve` 要 `alias`，收输入）。
+        // 这台 `~/.ssh/config` 的别名清单 · 批量导入预览：无入参（`ssh-config-resolve` 要 `alias`，收输入）。
         "ssh-config-aliases",
         "ssh-config-import",
-        // 〔MIG-3b〕这台的 cc-bus 钩子诊断：无入参（问的就是「这台」）。
+        // 这台的 cc-bus 钩子诊断：无入参（问的就是「这台」）。
         "hooks-diag",
-        // 〔FIX4〕卸这台的全景小程序：无入参（落点固定）。
+        // 卸这台的全景小程序：无入参（落点固定）。
         "panorama-uninstall",
     ];
     let declared: Vec<&str> = REGISTRY
@@ -414,9 +414,9 @@ fn the_cli_entry_does_not_borrow_the_frame_entrys_boundary_reason() {
     );
 }
 
-// ── 〔W5-AUX · `设计/96 §3.6`〕「只读一行 stdin」的入口 ─────────────────────────────
+// ── 「只读一行 stdin」的入口 ─────────────────────────────
 //
-// 要求住址：`设计/96 §3.6` 逐字「远端命令走 POSIX shell 管道 …… 远端登录 shell 是 fish 之类就不成立。
+// 要求：「远端命令走 POSIX shell 管道 …… 远端登录 shell 是 fish 之类就不成立。
 // 根治要给 CLI 面一个『只读一行 stdin』的入口」。capture 那一跳不关远端 stdin ⇒ 这个入口的全部价值是
 // **读到换行就停、不再多要一个字节**（多要一个就挂住，与 `--ping` 那次同一族病）。
 
@@ -465,7 +465,7 @@ fn the_one_line_entry_stops_at_the_newline_and_never_asks_for_another_byte() {
     );
 }
 
-/// 〔FIX · `设计/96 §3.6`〕argv 一族的一行形：恰好 `--<老子命令> --stdin-line` 才读，读到换行就停；
+/// argv 一族的一行形：恰好 `--<老子命令> --stdin-line` 才读，读到换行就停；
 /// 别的形状（没有修饰词 · 多一个词 · 帧命令自己的 `--stdin-line`）原样返回、一个字节不读。
 #[test]
 fn the_argv_family_reads_its_tail_from_one_stdin_line_and_only_in_that_shape() {

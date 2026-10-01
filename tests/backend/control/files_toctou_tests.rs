@@ -1,4 +1,4 @@
-//! 设计/99 §2.2（`60 §7` 第 7 条 TOCTOU）：「能用原子原语闭合的都闭合 —— 不覆盖改名用 `renameat2(RENAME_NOREPLACE)`、新建用 `O_EXCL`、复制先写同目录临时件再 `RENAME_NOREPLACE`、全程 `O_NOFOLLOW`」。
+//! （TOCTOU）：「能用原子原语闭合的都闭合 —— 不覆盖改名用 `renameat2(RENAME_NOREPLACE)`、新建用 `O_EXCL`、复制先写同目录临时件再 `RENAME_NOREPLACE`、全程 `O_NOFOLLOW`」。
 //!
 //! 每一条闭合各造一次竞争：在「判过」与「动手」之间插进别人的东西（同名文件 / 换成链接），断言不盖、不跟。
 //! 插的口是各函数的 `between`（生产传空）或直接喂「解析之后被换掉」的那个路径。
@@ -121,7 +121,7 @@ fn a_put_that_expects_absence_does_not_clobber_a_file_that_appears_after_the_che
     std::fs::remove_dir_all(&base).ok();
 }
 
-/// 设计/99 §2.2 ＋ 主会话 09-28 裁：盘不认 `RENAME_NOREPLACE` ⇒ 不退回先看后改 —— 普通文件 `link ＋ unlink`，目录拒并出声。
+/// ＋ 主会话 09-28 裁：盘不认 `RENAME_NOREPLACE` ⇒ 不退回先看后改 —— 普通文件 `link ＋ unlink`，目录拒并出声。
 /// `force_link` 模拟那块盘（`EINVAL`）。
 #[cfg(unix)]
 #[test]

@@ -1,8 +1,8 @@
-//! 〔步 23b · 2026-09-19〕`control/files_write.rs` 的行为判据 —— **钉住那两道围栏**。
+//! `control/files_write.rs` 的行为判据 —— **钉住那两道围栏**。
 //!
-//! # 🔴〔FN1 · 第四波 4C · 2026-09-25〕守的要求换了：用户 **V119**
+//! # 🔴守的要求换了：用户 **V119**
 //!
-//! 用户原话「**文件管理器全部都可以改. 不需要任何围栏**」（`设计/99 §1` V119）⇒ 下面凡是
+//! 用户原话「**文件管理器全部都可以改. 不需要任何围栏**」⇒ 下面凡是
 //! 「会话文件 ⇒ `refused`」的格子全部翻面成「会话文件 ⇒ **照做**，盘上逐字节核」；
 //! 仍然会拒的只剩路径解析那几形（上跳 · 绝对路径 · 空段 · 父目录不在 · 解完链接跑出根）——
 //! 那是「改的就是 `root ＋ rel` 那一格」的正确性，不是「不许改什么」。
@@ -27,7 +27,7 @@
 //!
 //! 1. 🔴 **没有真远端**。本模块与本族判据全跑在**本机**文件系统上。
 //!    「在一台真的远端机器上、经由后端跑过一次这条写路」这件事**本轮判不了** ——
-//!    盘面上没有真远端，`设计/60 §7` 那条「未实测」照旧成立。
+//!    盘面上没有真远端，那条「未实测」照旧成立。
 //! 2. ✅〔波 5 ㈢ 09-23 · **本条已假，留原话当墓碑**〕原话是
 //!    「🔴 **没有覆盖「多账号同时在盘上」那一维**。`resolve_home` 只答得出此刻被选中的
 //!    那一个配置根；另外几个账号目录靠「段以 `.claude` 开头」这条形状兜，
@@ -38,12 +38,12 @@
 //!    本族判据一格都没量。模块头注里登记的兜底（`O_EXCL` 挡住最后那一段）
 //!    这里只验了「同名第二次会失败」，**没有**验「父目录在窗里被换掉」那一形。
 //! 4. 🔴 **「这个模块该不该有写盘能力」不是这里判的**。那是政策，住
-//!    `readonly_guard::WRITE_WHITELIST_MODULES` 那张登记表（`设计/60 §6.5.2 A`）。
+//!    `readonly_guard::WRITE_WHITELIST_MODULES` 那张登记表。
 //!    本族只判「围栏在不在、拦不拦得住」。
 
 use super::*;
 
-/// 〔MOD · 子步 4〕删会话那两问今天由门递进来（[`SessionPort`]）；下面各条照旧按两参写，
+/// 删会话那两问今天由门递进来（[`SessionPort`]）；下面各条照旧按两参写，
 /// 递的就是生产那一个窄口（适配层注册表那一格）。
 const PORT: SessionPort = SessionPort {
     locate: crate::agents::locate_session_for_delete,
@@ -113,7 +113,7 @@ fn the_session_file_predicate_answers_both_ways() {
     }
 }
 
-// 〔MIG-3a〕「两份会话围栏逐字节相同」那一条退役：桥那一份（`claude_data_fence.rs`〔散文墓碑〕）随它最后一个用户进了后端，全仓只剩 `paths.rs` 这一份。
+// 「两份会话围栏逐字节相同」那一条退役：桥那一份（`claude_data_fence.rs`〔散文墓碑〕）随它最后一个用户进了后端，全仓只剩 `paths.rs` 这一份。
 
 // ── 围栏①（词法）──────────────────────────────────────────────────────
 
@@ -147,7 +147,7 @@ fn the_lexical_fence_lets_a_clean_relative_path_through() {
     assert_eq!(ok, root.join("docs/notes/a.md"), "落点算错了");
 }
 
-/// 🔴🔴 **〔波 5 ㈢ 09-23〕这一格整个翻了牌，而它是那一裁的正题。**〔FN1 · V119 再翻一次：向二也放行了〕
+/// 🔴🔴 **〔波 5 ㈢ 09-23〕这一格整个翻了牌，而它是那一裁的正题。**〔V119 再翻一次：向二也放行了〕
 ///
 /// 原来的标题逐字是「目标根**自己**落在 Claude 树里时，相对段再干净也不行」，
 /// 断言的是「把文件管理目标指到 `~/.claude` 底下 ⇒ 整个拒」。
@@ -167,9 +167,9 @@ fn a_target_root_inside_the_claude_tree_is_allowed_and_so_is_a_session_file() {
         ok,
         PathBuf::from("/home/u/.claude/skills/my-skill/SKILL.md")
     );
-    // 向二〔FN1 · V119〕：写点恰好是那份会话文件 —— 今天**也放行**（「不需要任何围栏」）。
+    // 向二：写点恰好是那份会话文件 —— 今天**也放行**（「不需要任何围栏」）。
     let ok = lexical_in_root(Path::new("/home/u/.claude/projects"), "-x/s.jsonl")
-        .expect("🔴 V119「文件管理器全部都可以改」，而会话记录那一格被拒了");
+        .expect("🔴「文件管理器全部都可以改」，而会话记录那一格被拒了");
     assert_eq!(ok, PathBuf::from("/home/u/.claude/projects/-x/s.jsonl"));
     // 向二之二：pidfile 那一形同样放行（两形从前都在判定里，只验一形等于半个判据）。
     let ok = lexical_in_root(Path::new("/home/u/.claude/sessions"), "4321.json")
@@ -179,7 +179,7 @@ fn a_target_root_inside_the_claude_tree_is_allowed_and_so_is_a_session_file() {
 
 // ── 围栏②（现打，真 symlink）──────────────────────────────────────────
 
-/// ★★〔FN1 · V119 翻面〕目标根里藏一条 symlink，解完之后写点落到一份会话文件上 ⇒ 只要它还在根里，**放行**；
+/// ★★〔V119 翻面〕目标根里藏一条 symlink，解完之后写点落到一份会话文件上 ⇒ 只要它还在根里，**放行**；
 /// 指到根外 ⇒ 拒，而理由**只能是越界**（不再有「碰了 Claude 会话数据」那一句）。
 ///
 /// 下面是 FN1 之前的原话（「本族最承重的一格」），留着说明这一格从哪来：
@@ -280,7 +280,7 @@ fn a_write_into_a_claude_tree_that_is_not_session_data_really_lands() {
         .expect("🔴 用户 09-23 裁「可以」，而这一次写被拒了");
     assert_eq!(std::fs::read(&got).expect("读回"), b"hello");
 
-    // 〔FN1 · V119〕同一棵树底下，**会话文件那一形也写得进去**（从前这里是阳性对照「照旧写不进去」）。
+    // 同一棵树底下，**会话文件那一形也写得进去**（从前这里是阳性对照「照旧写不进去」）。
     let live = base.join(".claude/projects");
     std::fs::create_dir_all(live.join("-x")).expect("建 projects 根");
     let got = create_new_file(&live, "-x/s.jsonl", b"x").expect("🔴 V119：会话记录那一格被拒了");
@@ -374,10 +374,10 @@ fn the_write_entry_point_actually_goes_through_the_fence() {
     std::fs::remove_dir_all(&base).ok();
 }
 
-/// 〔FN1 · V119 翻面〕写点**就是一份会话记录**（`projects/<proj>/<sid>.jsonl` · `sessions/<x>.json`），入口**照写**。
+/// 〔V119 翻面〕写点**就是一份会话记录**（`projects/<proj>/<sid>.jsonl` · `sessions/<x>.json`），入口**照写**。
 ///
 /// ⚠ 从前这一格断言「入口必须拒，且盘上不留东西」（再早是「落在 `.claude` 段底下就拒」）。
-/// 用户 V119「文件管理器全部都可以改. 不需要任何围栏」⇒ 两形都真落盘，逐字节读回。
+/// 用户「文件管理器全部都可以改. 不需要任何围栏」⇒ 两形都真落盘，逐字节读回。
 #[test]
 fn the_write_entry_point_writes_a_session_file_too() {
     let base = temp_root("claudewire");
@@ -457,7 +457,7 @@ fn a_clean_write_lands_once_and_never_overwrites() {
 /// 🔴 **代价如实登记**：这也意味着本格**没有**盖到另一条判定（「在配置根之下」）
 /// 在入口那条链上的情形 —— 那一维要真去切环境变量才判得了，本轮**判不了**。
 ///
-/// 〔FN1 · V119〕语料从「解完落到一份会话记录上」换成「解完落到**根外**」：前者今天放行，
+/// 语料从「解完落到一份会话记录上」换成「解完落到**根外**」：前者今天放行，
 /// 而这一格要钉的仍是「解析② 在写入口那条链上」—— 摘掉它，根外那一份就真落盘。
 #[test]
 #[cfg(unix)]
@@ -507,7 +507,7 @@ fn a_symlink_that_stays_inside_the_target_root_still_writes() {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-//  命令面 ——〔波 5 ㈠ · 2026-09-23〕`设计/60 §8.6` **第 2 步**的验收
+//  命令面 ——〔波 5 ㈠〕 **第 2 步**的验收
 // ════════════════════════════════════════════════════════════════════════════
 //
 // `§8.6` 第 2 步逐字要验两件：
@@ -590,7 +590,7 @@ fn the_command_face_reaches_the_lexical_fence() {
 }
 
 /// ★ 命令面这一侧走得到**围栏②（解完 symlink 再判）**。
-/// 〔FN1 · V119〕语料同上一族：链接指到根外（会话记录那一形今天放行）。
+/// 语料同上一族：链接指到根外（会话记录那一形今天放行）。
 #[test]
 #[cfg(unix)]
 fn the_command_face_reaches_the_resolved_fence() {
@@ -708,12 +708,12 @@ fn the_command_face_says_which_argument_is_wrong() {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-//  改动既有数据的那五件 ——〔波 5 ㈡ · 2026-09-23〕`设计/60 §8.6` **第 3 步**
+//  改动既有数据的那五件 ——〔波 5 ㈡〕 **第 3 步**
 // ════════════════════════════════════════════════════════════════════════════
 //
 // 每一件都**正控 ＋ 阴性对照同拍**：只验「该拒的拒了」，一个恒 `Err` 的实现也全绿；
 // 只验「该成的成了」，一个不解路径的实现也全绿。
-// 🔴〔FN1 · V119〕从前阴性那一侧是「那份会话文件一个字节没动」；今天会话文件那一侧翻成**正控**
+// 🔴从前阴性那一侧是「那份会话文件一个字节没动」；今天会话文件那一侧翻成**正控**
 //   （改得动、盘上逐字节核），阴性那一侧换成「链接指到根外 ⇒ 拒，根外那一份一个字节没动」。
 
 /// 在 `base` 底下铺一份根外的文件（链接指过去用），回它的路径与原始字节。
@@ -750,7 +750,7 @@ fn mkdir_builds_one_level_even_where_a_session_file_would_sit() {
     let err = make_dir(&root, "a/b/c").expect_err("父目录不在，竟然建成了");
     assert_eq!(err.code(), "refused", "{err:?}");
     assert!(!root.join("a").exists(), "中间那几层被顺手补出来了");
-    // 〔FN1 · V119〕一条长成会话文件形状的路径，建目录**也建得出来**（从前是阴性「不许」）。
+    // 一条长成会话文件形状的路径，建目录**也建得出来**（从前是阴性「不许」）。
     make_dir(&root, "projects/-x").expect("🔴 项目目录建不出来");
     make_dir(&root, "projects/-x/abc.jsonl").expect("🔴 V119：会话文件那个位置上建目录被拒了");
     assert!(root.join("projects/-x/abc.jsonl").is_dir());
@@ -780,7 +780,7 @@ fn rename_moves_inside_the_root_never_overwrites_and_moves_a_session_file_too() 
     );
     assert_eq!(std::fs::read(root.join("c.md")).expect("c"), b"A");
 
-    // 〔FN1 · V119〕from 是会话文件 ⇒ **改得走**；to 是会话文件的名字 ⇒ **改得进去**（从前两向都拒）。
+    // from 是会话文件 ⇒ **改得走**；to 是会话文件的名字 ⇒ **改得进去**（从前两向都拒）。
     let moved = rename_entry(&root, "projects/-x/abc.jsonl", "moved.jsonl")
         .expect("🔴 V119：会话文件改不走");
     assert_eq!(std::fs::read(&moved).expect("读改走的"), bytes);
@@ -833,7 +833,7 @@ fn delete_removes_files_empty_dirs_links_and_session_files_but_never_a_subtree()
     assert_eq!(err.code(), "io_failed", "{err:?}");
     assert!(root.join("full/keep.md").exists(), "非空目录里的东西没了");
 
-    // 〔FN1 · V119〕会话文件本身 ⇒ **删得掉**（从前是阴性「拒，盘上原样」）。
+    // 会话文件本身 ⇒ **删得掉**（从前是阴性「拒，盘上原样」）。
     delete_entry(&root, "projects/-x/abc.jsonl").expect("🔴 V119：会话文件删不掉");
     assert!(!live.exists(), "说删了，会话文件还在");
     std::fs::remove_dir_all(&base).ok();
@@ -863,7 +863,7 @@ fn chmod_follows_links_so_it_resolves_to_the_end_before_judging() {
         .mode();
     assert_eq!(m & 0o7777, 0o700, "说改了，盘上的权限位不对");
 
-    // 〔FN1 · V119〕名字干净（`innocent.txt`），解到底是会话文件 ⇒ **照改**，改的是那份真文件。
+    // 名字干净（`innocent.txt`），解到底是会话文件 ⇒ **照改**，改的是那份真文件。
     change_mode(&root, "innocent.txt", 0o600).expect("🔴 V119：经链接改会话文件的权限被拒了");
     let m = std::fs::metadata(&live)
         .expect("读会话元数据")
@@ -903,7 +903,7 @@ fn overwrite_replaces_an_existing_regular_file_and_nothing_else() {
     let got = overwrite_text(&root, "a.md", b"new").expect("干净的覆盖写被误拒");
     assert_eq!(std::fs::read(&got).expect("读回"), b"new");
 
-    // 〔FN1 · V119〕链接指向会话文件 ⇒ **照写**，写的是那份真文件，链接还是链接。
+    // 链接指向会话文件 ⇒ **照写**，写的是那份真文件，链接还是链接。
     overwrite_text(&root, "notes.md", b"edited\n").expect("🔴 V119：经链接覆盖会话文件被拒了");
     assert_eq!(std::fs::read(&live).expect("读会话"), b"edited\n");
     assert!(std::fs::symlink_metadata(root.join("notes.md"))
@@ -930,7 +930,7 @@ fn overwrite_replaces_an_existing_regular_file_and_nothing_else() {
     std::fs::remove_dir_all(&base).ok();
 }
 
-/// ★ 命令面这一侧五条都**够得到**，路径解析在命令面上照样咬；〔FN1 · V119〕会话文件那一侧五条全做成。
+/// ★ 命令面这一侧五条都**够得到**，路径解析在命令面上照样咬；会话文件那一侧五条全做成。
 #[test]
 fn the_five_mutating_commands_are_reachable_and_fenced_on_the_command_face() {
     let base = temp_root("cmd5");
@@ -961,7 +961,7 @@ fn the_five_mutating_commands_are_reachable_and_fenced_on_the_command_face() {
     );
     assert!(!root.join("d/b.md").exists(), "删了一圈，盘上还在");
 
-    // 〔FN1 · V119〕同样五条，对着那份会话文件 ⇒ **全部做成**（从前全部 `refused`）。
+    // 同样五条，对着那份会话文件 ⇒ **全部做成**（从前全部 `refused`）。
     assert!(!bytes.is_empty());
     ok(
         "files-mkdir",
@@ -1038,7 +1038,7 @@ fn the_five_mutating_commands_are_reachable_and_fenced_on_the_command_face() {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-//  〔F7a · 第三波 · 2026-09-24〕`files-copy` —— 同根内复制（`设计/60 §13`）
+// `files-copy` —— 同根内复制
 // ════════════════════════════════════════════════════════════════════════════
 //
 // 正控 ＋ 阴性对照同拍（同上一节那条口径）；阴性那一侧每一条都去盘上核
@@ -1087,7 +1087,7 @@ fn copy_lands_a_byte_exact_copy_and_never_overwrites_unless_asked() {
     std::fs::remove_dir_all(&base).ok();
 }
 
-/// 〔W5-FILES〕要求住址：`设计/60 §7 #11`「复制出来的新文件权限位不从源抄」（登记为开着的缺陷）。
+/// 要求：「复制出来的新文件权限位不从源抄」（登记为开着的缺陷）。
 ///
 /// 源 `0o751` / `0o600` —— 进程缺省（umask 022 ⇒ `0o644`）给不出来的两个值 ⇒ 抄没抄分得开。
 /// 不覆盖（目标本身新建）与显式覆盖（暂存旁名换名上位）两支各一格；两格目标逐位 == 源。
@@ -1125,7 +1125,7 @@ fn a_copy_carries_the_source_permission_bits_on_both_branches() {
 }
 
 /// ★ 显式覆盖：目标换成新内容，**不留暂存旁名**；目标是一条链接时顶掉的是**链接本身**，
-/// 它指着的那份会话记录一个字节没动（〔FN1〕这一条不是围栏：复制的目标作用在链接本身上，不跟过去）。
+/// 它指着的那份会话记录一个字节没动（这一条不是围栏：复制的目标作用在链接本身上，不跟过去）。
 #[test]
 #[cfg(unix)]
 fn explicit_overwrite_replaces_the_link_itself_and_leaves_no_side_file() {
@@ -1163,7 +1163,7 @@ fn explicit_overwrite_replaces_the_link_itself_and_leaves_no_side_file() {
     std::fs::remove_dir_all(&base).ok();
 }
 
-/// 〔FN1 · V119 翻面〕源是会话文件 / 源是指向会话文件的链接 / 目标是会话文件的位置 ⇒ **全部复制成**；
+/// 〔V119 翻面〕源是会话文件 / 源是指向会话文件的链接 / 目标是会话文件的位置 ⇒ **全部复制成**；
 /// 三条路径各过一遍路径解析：源经一条链接跑出根 · 目标带上跳段 ⇒ `refused`，根外一个字节不动、被拒的目标没被建出来。
 #[test]
 #[cfg(unix)]
@@ -1268,7 +1268,7 @@ fn copy_refuses_its_shapes_and_is_reachable_on_the_command_face() {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-//  〔FW5 · 第四波 · 2026-09-24〕递归删：**逐条目过围栏**（设计住 `调研/第四波记录/FW5.md` 第一节）
+// 递归删：**逐条目过围栏**（设计住第一节）
 // ════════════════════════════════════════════════════════════════════════════
 //
 // 正控 ＋ 阴性对照同拍；阴性那一侧每一条都**去盘上核**「树里每一样东西都还在」
@@ -1337,7 +1337,7 @@ fn a_recursive_delete_removes_the_whole_tree_and_counts_every_entry_but_never_fo
     std::fs::remove_dir_all(&base).ok();
 }
 
-/// 〔FN1 · V119 翻面〕FW5 那时本节的正题是「顶上那个目录干净，底下藏着一份会话文件 ⇒ **整趟拒，一个字节不动**」。
+/// 〔V119 翻面〕FW5 那时本节的正题是「顶上那个目录干净，底下藏着一份会话文件 ⇒ **整趟拒，一个字节不动**」。
 /// 用户「文件管理器全部都可以改. 不需要任何围栏」⇒ 两形今天都**整棵删掉**、条数逐一数对：
 /// 会话文件**在**树里（有人把 `projects/` 拷进了目标）· 目标就是 `~/.claude/projects/<proj>` 本身（命令面也一样）。
 #[test]
@@ -1532,11 +1532,11 @@ fn the_command_face_recurses_only_when_asked_and_says_how_many() {
     std::fs::remove_dir_all(&base).ok();
 }
 
-// ── 〔FW5〕乱码文件名（非 UTF-8）：相对段走 `{"b16": …}` ──────────────────────
+// ── 乱码文件名（非 UTF-8）：相对段走 `{"b16": …}` ──────────────────────
 
 /// 🔴 非 UTF-8 的名字**能改名、能改权限、能删** —— 此前相对段只收 UTF-8 字符串，这一族一件都做不了。
 ///
-/// 阴性对照同拍：b16 解出来的段照样逐段过路径解析（上跳段 ⇒ `refused`；〔FN1〕会话文件形状那一格今天放行）。
+/// 阴性对照同拍：b16 解出来的段照样逐段过路径解析（上跳段 ⇒ `refused`；会话文件形状那一格今天放行）。
 #[test]
 #[cfg(unix)]
 fn a_non_utf8_name_can_be_renamed_chmodded_and_deleted_through_b16() {
@@ -1602,7 +1602,7 @@ fn a_non_utf8_name_can_be_renamed_chmodded_and_deleted_through_b16() {
     )
     .expect_err("🔴 b16 那条路绕过了路径解析（上跳段）");
     assert_eq!(code, "refused", "上跳段：{msg}");
-    // 〔FN1 · V119〕会话文件形状经 b16 那条路也删得掉。
+    // 会话文件形状经 b16 那条路也删得掉。
     assert!(!bytes.is_empty());
     answer_wire(
         "files-delete",
@@ -1638,7 +1638,7 @@ fn a_recursive_delete_walks_through_non_utf8_children() {
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-//  〔RW1 · 第四波 · 2026-09-24〕用户文件的读改写（`files-peek` / `files-put`）＋ 删历史会话
+// 用户文件的读改写（`files-peek` / `files-put`）＋ 删历史会话
 // ══════════════════════════════════════════════════════════════════════════
 //
 // 买到的：全在本机临时目录上真跑 —— CAS 真的拒（盘上一个字节不动）· 相同不写 · 备份逐字节 ＋ 权限位 ·
@@ -1674,7 +1674,7 @@ fn peek_tells_absent_from_present_and_goes_through_the_same_resolution() {
     }
     std::fs::create_dir_all(root.join("cfg/projects/-p")).expect("建会话目录");
     std::fs::write(root.join("cfg/projects/-p/s1.jsonl"), "{}\n").expect("铺会话");
-    // 〔FN1 · V119〕从前「读改写的读那一半与写同一道围栏 —— 会话文件读不进来」；今天读得进来。
+    // 从前「读改写的读那一半与写同一道围栏 —— 会话文件读不进来」；今天读得进来。
     assert_eq!(
         peek_text(&root, "cfg/projects/-p/s1.jsonl")
             .expect("🔴 V119：会话文件读不进读改写")
@@ -1802,7 +1802,7 @@ fn put_through_a_link_changes_the_real_file_and_the_link_stays_a_link() {
         b"new\n"
     );
     // 链接指到根外 ⇒ 解到底之后被拒，根外那一份一个字节不动。
-    // 〔FN1 · V119〕从前这里的语料是「链接指到一份会话文件上」，今天那一形放行（见下一条）。
+    // 从前这里的语料是「链接指到一份会话文件上」，今天那一形放行（见下一条）。
     let (outside, bytes) = plant_outside(&base);
     std::os::unix::fs::symlink(&outside, root.join("sneaky.txt")).expect("建链接");
     let got = put_text(&root, "sneaky.txt", b"x", Some(&bytes), false, false);
@@ -1811,7 +1811,7 @@ fn put_through_a_link_changes_the_real_file_and_the_link_stays_a_link() {
     std::fs::remove_dir_all(&base).ok();
 }
 
-/// 〔FN1 · V119 翻面〕从前叫「put 从不直接写会话文件」；今天读改写照样写得进会话文件（CAS 照旧）。
+/// 〔V119 翻面〕从前叫「put 从不直接写会话文件」；今天读改写照样写得进会话文件（CAS 照旧）。
 #[test]
 fn put_writes_a_session_file_like_any_other_under_the_same_cas() {
     let base = temp_root("psess");
@@ -1902,7 +1902,7 @@ fn the_read_modify_write_commands_answer_with_their_declared_fields() {
     std::fs::remove_dir_all(&base).ok();
 }
 
-// ── 删历史会话：只收 sid（〔FN1〕原标题「会话文件围栏唯一的例外」，那道围栏 V119 拿掉了） ────────────────────────────────────────
+// ── 删历史会话：只收 sid（原标题「会话文件围栏唯一的例外」，那道围栏 V119 拿掉了） ────────────────────────────────────────
 
 /// 一个假的配置根：`projects/-p/<sid>.jsonl` ＋ 一份子代理那种更深的同名文件。
 fn plant_home(base: &Path, sid: &str) -> PathBuf {
@@ -1988,7 +1988,7 @@ fn a_session_that_is_a_link_out_of_the_record_tree_is_not_followed() {
     std::fs::remove_dir_all(&base).ok();
 }
 
-/// 〔RW1 · 第四波 09-24〕从 `profile_installer_tests.rs` 里那条 `install_preserves_explicit_acl_entries`〔散文墓碑〕搬来：
+/// 从 `profile_installer_tests.rs` 里那条 `install_preserves_explicit_acl_entries`〔散文墓碑〕搬来：
 /// v1.7.9 那次事故（原 profile 上的 explicit ACE 被暂存文件的继承 ACL 顶掉，用户读不了自己的 `$PROFILE`）。
 /// 写从 monitor 搬到后端之后，替换那一步在 Windows 上走**就地覆盖写**（`swap_in` 的 `cfg(windows)` 那一支）。
 /// ⚠ 本机门禁是 Linux，这一条只在 Windows 上跑（`winchk-backend` 只编不跑）—— 如实登记为「没跑过」。
@@ -2032,10 +2032,10 @@ fn put_keeps_explicit_acl_entries_on_windows() {
     std::fs::remove_dir_all(&base).ok();
 }
 
-// ── 〔RM1e · 第四波〕带 CAS 的删（`files-delete` 的 `expect`）────────────────────────
+// ── 带 CAS 的删（`files-delete` 的 `expect`）────────────────────────
 //
-// 要求住址：用户 09-24 **V110**（`设计/99 §1`）「引擎只算、文件管理来写」——全景删批注侧车是一次读改写的写那一半；
-// `调研/第四波记录/RM1d.md §6 ⑤`「删批注没有 CAS …… 要闭合得给 `files-delete` 加 `expect`」。
+// 要求住址：用户 09-24 **V110**「引擎只算、文件管理来写」——全景删批注侧车是一次读改写的写那一半；
+// 「删批注没有 CAS …… 要闭合得给 `files-delete` 加 `expect`」。
 
 /// ★ 盘上 == `expect` ⇒ 删；≠ ⇒ `stale`、一个字节不动；已经不在 ⇒ `stale`；
 /// 目录 / 链接 ⇒ `refused`、原样；会话文件 ⇒ 围栏照旧 `refused`。
@@ -2072,7 +2072,7 @@ fn a_delete_with_expect_removes_only_the_bytes_it_was_told_about() {
         std::fs::symlink_metadata(root.join("l.json")).is_ok_and(|m| m.file_type().is_symlink())
     );
     assert_eq!(std::fs::read(root.join("t.json")).expect("读"), b"planned");
-    // 〔FN1 · V119〕会话文件：expect 对得上 ⇒ 删（从前「对得上也拒，围栏在 CAS 之前」）；对不上 ⇒ stale。
+    // 会话文件：expect 对得上 ⇒ 删（从前「对得上也拒，围栏在 CAS 之前」）；对不上 ⇒ stale。
     let err = delete_file_expecting(&root, "projects/-x/abc.jsonl", b"not it")
         .expect_err("🔴 不等也删了");
     assert_eq!(err.code(), "stale", "{err:?}");
@@ -2136,11 +2136,11 @@ fn the_command_face_takes_expect_only_as_bytes_of_one_file() {
     std::fs::remove_dir_all(&base).ok();
 }
 
-/// 〔W5-VIS · E 吞错普查点名 `files_write` 那一处 `.ok();`〕**备份沿用不上原文件的权限位 ⇒ 删掉那份备份、整趟拒**（两向）：
+/// 〔E 吞错普查点名 `files_write` 那一处 `.ok();`〕**备份沿用不上原文件的权限位 ⇒ 删掉那份备份、整趟拒**（两向）：
 /// 注入一个会失败的 chmod ⇒ `Io` 拒绝、话里带原因、备份那份不在了；成功的 chmod ⇒ `Ok`、备份还在。
 /// 接线：`land_backup` 经 `keep_mode`，生产段零处 `set_permissions(…).ok()`。
 ///
-/// 要求住址：`设计/15 §4.7 S5`（逐字）「处置不是别吞，是吞了要留一行日志」—— 这一处连日志都不够：一份权限放宽了的备份要当场收回。
+/// （逐字）「处置不是别吞，是吞了要留一行日志」—— 这一处连日志都不够：一份权限放宽了的备份要当场收回。
 #[cfg(unix)]
 #[test]
 fn w5vis_a_backup_that_cannot_keep_the_original_mode_is_removed_and_refused() {
@@ -2203,10 +2203,10 @@ fn w5vis_a_backup_that_cannot_keep_the_original_mode_is_removed_and_refused() {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-//  〔W5-FILES · 第五波〕复制目录（`files-copy` 的 `recursive: true`）
-//  要求住址：`设计/60 §7 #6`「递归复制 · 复制目录 …… 递归复制要照递归删的形状逐条目过围栏」
-//  ＋ 用户 V45「我能连 ssh 对机器文件进行什么操作，后端就应该能进行什么操作」。
-//  设计全文 `调研/第四波记录/W5-FILES.md` §2.2。
+// 复制目录（`files-copy` 的 `recursive: true`）
+//  要求：「递归复制 · 复制目录 …… 递归复制要照递归删的形状逐条目过围栏」
+//  ＋ 用户「我能连 ssh 对机器文件进行什么操作，后端就应该能进行什么操作」。
+// §2.2。
 // ════════════════════════════════════════════════════════════════════════════
 
 /// 给判据用：一棵树逐条 `(相对段, 内容或 None=目录, 权限位)`，**按名字**问、不列目录
@@ -2268,7 +2268,7 @@ fn a_recursive_copy_lands_the_whole_tree_with_bytes_and_modes() {
 }
 
 /// 整趟拒的几形：树里一个管道（设备 / 套接字同档）· 目标已在 · 目标在源里面 · 超上限 —— 每一形**一个字节都没建**、已在的一个字节没动。
-/// 〔FILES2 · Q1〕第 ① 形原来是「树里一条链接」—— 主会话 09-27 裁「复制链接本身」之后链接照原样复制
+/// 第 ① 形原来是「树里一条链接」—— 「复制链接本身」之后链接照原样复制
 /// （判据挪到 `a_recursive_copy_copies_each_link_itself_with_its_target_text_verbatim`），这里换成仍整趟拒的管道。
 #[test]
 #[cfg(unix)]
@@ -2313,7 +2313,7 @@ fn a_recursive_copy_refuses_whole_and_builds_nothing() {
     std::fs::remove_dir_all(&base).ok();
 }
 
-/// ★〔FILES2 · Q1〕要求住址：`设计/60 §6.2`「目录复制遇符号链接」· `§7` 第 9 条 Q1；主会话 09-27 裁
+/// ★要求：「目录复制遇符号链接」· `§7` 第 9 条 Q1；主会话 09-27 裁
 /// 「复制**链接本身**（不跟进去，目标文本原样；= GNU `cp -R` 缺省的 `-P`）」。
 /// 三种链接（指向树里 · 指向根外的绝对路径 · 悬空）各复制成**一条链接**、目标文本逐字节相等；根外那一份一个字节没被碰；
 /// 应答的 `links` == 3、`files` 不含链接。
@@ -2448,11 +2448,11 @@ fn the_command_face_copies_a_directory_only_when_asked() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════════════
-//  〔FW1 · 第四波 4D · 2026-09-25〕编辑器存盘的 CAS（摘要形 `expect: {"sha256": …}`）
+// 编辑器存盘的 CAS（摘要形 `expect: {"sha256": …}`）
 // ═══════════════════════════════════════════════════════════════════════════════════════
 //
 // 要求住址：主会话裁 D-c「编辑器存盘带 CAS（`expect`）」（题面 `4d-lanes.md`「主会话本批裁的」）＋ 09-25 认可摘要形；
-// `设计/60 §3.3`「读的那一刻与写的那一刻之间，盘上那份被别人改了 ⇒ `stale`，一个字节不写」（原写给 `files-put`，同一条理由）。
+// 「读的那一刻与写的那一刻之间，盘上那份被别人改了 ⇒ `stale`，一个字节不写」（原写给 `files-put`，同一条理由）。
 
 /// 摘要的算法住后端一处；判据拿**另一份实现**（`sha2`，只在测试期链接）对拍 —— 异源，两侧同源恒真那一形排除。
 fn sha2_hex(bytes: &[u8]) -> String {
@@ -2573,11 +2573,11 @@ fn the_write_text_expect_is_required_and_takes_exactly_one_shape() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════════════
-//  〔FW1 · 第四波 4D · 2026-09-25〕`files-delete` 的「只删空目录」一形（主会话裁 SU1 问 2）
+// `files-delete` 的「只删空目录」一形（主会话裁 SU1 问 2）
 // ═══════════════════════════════════════════════════════════════════════════════════════
 //
 // 要求住址（逐字）：题面 `4d-lanes.md`「主会话本批裁的」「SU1 问 2：后端 `files-delete` 加显式『只删空目录』一形
-// （带 `expect: empty-dir`），卸 skill 最后删空目录」；`设计/60 §3.3` `files-delete` 那一条（`expect` 是删的 CAS）。
+// （带 `expect: empty-dir`），卸 skill 最后删空目录」； `files-delete` 那一条（`expect` 是删的 CAS）。
 
 /// ★ 空目录删掉；不空 ⇒ `stale`、里面一个字节不动；不在 ⇒ `stale`；是文件 / 指向目录的链接 ⇒ `refused`、原样留着。
 #[test]

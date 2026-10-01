@@ -1,9 +1,9 @@
-//! 要求住址：`INVARIANTS §42` → `src/doc/IPC-PROTOCOL.md` 的 `--search` 条（最近优先 · `hitsTruncated`）＋ `设计/01 §5 D1`（口径只有一个家）
+//! 要求住址：`INVARIANTS §42` → `src/doc/IPC-PROTOCOL.md` 的 `--search` 条（最近优先 · `hitsTruncated`）＋（口径只有一个家）
 //!
 //! 核原文：`--search` 条逐字「① **行序 = snippet 预算顺序 = 最近优先**（按 jsonl mtime 降序）」，并说「本会话超
 //! `PER_SESSION_CAP`(30) 条只列前 30」与「全局 `--limit` 用完」**不是一回事** —— `budget_tells_exhausted_apart_from_session_cap`
 //! 与 `sort_by_recency_is_newest_first` 判的正是这两句。其余助手（找词 · 片段 · 截断 · 标题）的单测挂在 `D1` 下。
-//! 〔P1〕随通用口径从共享 crate `search-core` 搬来（期望一字未改）；Claude 记录文本那几格在 `agents/claudecode/text_tests.rs`。
+//! 随通用口径从共享 crate `search-core` 搬来（期望一字未改）；Claude 记录文本那几格在 `agents/claudecode/text_tests.rs`。
 
 use super::*;
 
@@ -48,7 +48,7 @@ fn snippet_context_window_is_exactly_snippet_ctx() {
     );
 }
 
-/// 〔RENDER2 · J10〕合并口径（`调研/第四波记录/W5-RENDER.md §2.18` 那张差表，两边各取更对的一半）逐格：
+/// 合并口径（那张差表，两边各取更对的一半）逐格：
 
 /// 五种包装全剥（含 stderr）· 两句样板整行剥（不分大小写、句号可省、只认整行）· 中断标记只在**整条**恰是它时归零。
 
@@ -105,9 +105,9 @@ fn session_title_picks_in_order() {
     assert_eq!(session_title(None, "", "abcdefghij"), "abcdefgh");
 }
 
-// ═══ 〔K-R85 · K-R100 · P1〕搜索口径只有一个家（原 `tests/frontend/shell/search_kou_jing_guard.rs` 的 ①② 两道，随家搬进后端）══════
+// ═══ 搜索口径只有一个家（原 `tests/frontend/shell/search_kou_jing_guard.rs` 的 ①② 两道，随家搬进后端）══════
 //
-// 要求住址：`设计/01 §5 D1`「一个判定只有一个家」。〔P1〕家从共享 crate `search-core` 拆成两份：通用口径 = 本文件的被测
+// 要求：「一个判定只有一个家」。家从共享 crate `search-core` 拆成两份：通用口径 = 本文件的被测
 // `observe/search_rules.rs`，Claude 记录文本 = 适配层 `agents/claudecode/text.rs`；搜索那一侧（`observe/search_query.rs`）不许自己再有一份，
 // 且必须真的调到家里那一份。monitor 那一侧零处（③）仍住 `tests/frontend/shell/search_kou_jing_guard.rs`。
 

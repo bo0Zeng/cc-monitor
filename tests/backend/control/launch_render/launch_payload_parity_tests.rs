@@ -69,7 +69,7 @@ fn rust_payload_rendering_matches_the_typescript_golden_byte_for_byte() {
 
 /// ★ 夹具的 `nestedEnvKeys` 必须与 **后端那一份 Rust 常量**集合相等。
 ///
-/// 〔P1 · 第 4 件〕那一份今天是起会话事实的唯一住址 `agents/claudecode/resume.rs::NESTED_ENV`（ccm 经 `control/ccm/mod.rs::nested_env`
+/// 那一份今天是起会话事实的唯一住址 `agents/claudecode/resume.rs::NESTED_ENV`（ccm 经 `control/ccm/mod.rs::nested_env`
 /// 按注册表读；monitor 的起前清洗读它生成的画像表）。从前 monitor 另有一份常量，随那份适配表删了。
 ///
 /// # 为什么这条不是 `agent-profile-parity.vitest.ts` 的重复
@@ -88,7 +88,7 @@ fn rust_payload_rendering_matches_the_typescript_golden_byte_for_byte() {
 fn fixture_nested_env_keys_match_the_rust_constant_as_a_set() {
     let mut from_fixture = fixture().nested_env_keys;
     from_fixture.sort();
-    // 〔MIG-2〕后端那一份（`control/ccm/mod.rs::nested_env`，ccm 起 agent 前清的同一张）。
+    // 后端那一份（`control/ccm/mod.rs::nested_env`，ccm 起 agent 前清的同一张）。
     let mut from_rust: Vec<String> = crate::control::ccm::nested_env("claude");
     from_rust.sort();
     assert_eq!(
