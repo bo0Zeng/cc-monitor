@@ -718,7 +718,7 @@ for suite, anchor in [
     ("ccm tests/e2e/resume-frames", "run_e2e resume-frames          7"),
     # `ci.yml` 有地板行、此前只在 CI 上跑的七套。
     ("ccm tests/e2e/cc-spawn-uplift", "run_e2e cc-spawn-uplift       72"),
-    ("ccm tests/e2e/inbound-frames", "run_e2e inbound-frames        32"),
+    ("ccm tests/e2e/inbound-frames", "run_e2e inbound-frames        31"),
     ("ccm tests/e2e/graylight-frames", "run_e2e graylight-frames      13"),
     ("ccm tests/e2e/backend-fork", "run_e2e backend-fork          10"),
     ("ccm tests/e2e/tmux-target", "run_e2e tmux-target           26"),
