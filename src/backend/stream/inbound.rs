@@ -255,6 +255,8 @@ pub const COMMANDS: &[&str] = &[
     "powershell-policy-set",
     // 〔⑬「monitor 零 SSH」〕公钥一键推送：本机后端组请求、读本机那份 `.pub`，经那台后端写或一次 exec。**是新命令**。
     "pubkey-push",
+    // 直接敲的 claude 也走中转（可选）：这台那份用户级设置文件里写没写、对不对 ＋ 要贴的那一段（只读）。**是新命令** ⇒ `build_id_guard` 红是预期的。
+    "relay-optin",
     // `relay-ensure` / `relay-status` 删了：远端中转住那台的常驻后端里，不再起脱离的 `--relay`。
     // 本机后端的可达表：monitor 在每台远端流握手那一刻交「怎么够到那台」（只登记）。
     // 测试连接：界面交那台（可能没保存的）配置，这台后端组请求、拨一次、回结局（`dial/probe.rs`）。
@@ -1647,6 +1649,19 @@ pub const REGISTRY: &[CommandSpec] = &[
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::accounts::upstream_select::endpoint::answer_routing(&r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    // 直接敲的那一家也走中转（可选、用户自己贴）：读这台那份用户级设置文件（同步文件 I/O ⇒ 阻塞档），出状态 ＋ 要贴的那一段。
+    CommandSpec {
+        name: "relay-optin",
+        doc_anchor: Some("#### `relay-optin`"),
+        codes: &["failed"],
+        fields: &["listening", "missing", "note", "snippet", "source", "state"],
+        takes_input: false,
+        run: Run::Blocking(|r| {
+            crate::accounts::upstream_select::endpoint::answer_optin(&r.args)
                 .map(Some)
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
