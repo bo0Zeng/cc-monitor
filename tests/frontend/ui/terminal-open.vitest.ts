@@ -20,7 +20,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { openTerminal, decodeTerminalLine } from "../../../src/frontend/ui/terminal-open";
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
 import { chanArgsJson, chanReply, isChanCall, NO_CHANNEL, type ChanCallArgs } from "../../test-support/chan-fake";
-import { productionTsFiles } from "../../test-support/production-sources.ts";
+import { productionTsFiles, SCAN_TIMEOUT_MS } from "../../test-support/production-sources.ts";
 import { stripComments } from "../../test-support/strip-comments.ts";
 
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
@@ -104,5 +104,5 @@ describe("一个家", () => {
       .map((f) => f.file)
       .sort();
     expect(hits, "有别处自己开终端了 —— 开终端只经 `src/frontend/ui/terminal-open.ts::openTerminal`").toEqual(["src/frontend/ui/terminal-open.ts"]);
-  });
+  }, SCAN_TIMEOUT_MS);
 });

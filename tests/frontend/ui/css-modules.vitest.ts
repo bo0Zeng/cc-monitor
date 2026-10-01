@@ -154,7 +154,7 @@ describe("〔UC2〕M① 全局样式文件 == 登记表（新样式一律 .modul
         "★ 少了的：那份全局样式迁走 / 删掉了 —— 把登记表里那一条一起删（本表只许缩）。",
     ).toEqual(want);
     console.log(`  ok   UC2-M①  ${got.length} 份全局样式文件 == 登记表；module ${moduleFiles(led).length} 份`);
-  });
+  }, SCAN_TIMEOUT_MS);
 });
 
 describe("〔UC2〕M② 逐文件类型 == 类名集合（逐字）", () => {
@@ -175,7 +175,7 @@ describe("〔UC2〕M② 逐文件类型 == 类名集合（逐字）", () => {
     const orphans = led.arbitraryDecls.filter((d) => !mods.map(declOf).includes(d));
     expect(orphans, "这些 `.d.<扩展名>.ts` 没有对应的 `.module.css` —— 孤儿声明").toEqual([]);
     console.log(`  ok   UC2-M②  ${mods.length} 份 module 的逐文件类型逐字对上；孤儿 0`);
-  });
+  }, SCAN_TIMEOUT_MS);
 
   it("死值验：规范文本对类名集合敏感（多一个 / 少一个类，文本都变）", () => {
     const a = renderModuleDecl("src/x.module.css", ["chip", "high"]);

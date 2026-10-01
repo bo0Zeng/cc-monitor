@@ -9,7 +9,7 @@
 import { describe, expect, test } from "vitest";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { productionTsFiles } from "../../test-support/production-sources.ts";
+import { productionTsFiles, SCAN_TIMEOUT_MS } from "../../test-support/production-sources.ts";
 import { stripComments } from "../../test-support/strip-comments.ts";
 
 const read = (p: string) => readFileSync(resolve(__dirname, "../../..", p), "utf8");
@@ -188,5 +188,5 @@ describe("〔LR1〕TS 那份 `ccm …` 调用行渲染器不许回来", () => {
     const files = productionTsFiles();
     expect(files.length, "生产 TS 一份都没收到 —— 遍历坏了，下面的零命中不携带信息").toBeGreaterThan(100);
     expect(hits(files)).toEqual([]);
-  });
+  }, SCAN_TIMEOUT_MS);
 });

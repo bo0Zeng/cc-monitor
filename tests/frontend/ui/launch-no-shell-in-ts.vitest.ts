@@ -32,7 +32,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-import { productionTsFiles } from "../../test-support/production-sources";
+import { productionTsFiles, SCAN_TIMEOUT_MS } from "../../test-support/production-sources";
 import { REPO_ROOT } from "../../test-support/repo-root";
 import { stripComments } from "../../test-support/strip-comments";
 
@@ -187,7 +187,7 @@ describe(" 条 1：前端零 shell 串", () => {
         "改成交结构化请求给后端渲染（`render_launch_payload` / `render_ccm_launch`）；\n" +
         "若它是规格 / 夹具（不是前端），它就不该住 `src/`。\n",
     ).toEqual([]);
-  });
+  }, SCAN_TIMEOUT_MS);
 
   it("★ 正控：挪出去的那两份夹具用例表确实满是命令串 —— 同一把尺子量得到它们（否则上一条的零是尺子瞎了）", () => {
     for (const f of ["tests/test-support/launch-payload-golden.ts", "tests/test-support/launch-tmux-outer-golden.ts"]) {
@@ -222,5 +222,5 @@ describe(" 条 1：前端零 shell 串", () => {
     const probe = stripComments("export function renderFallback() {}\nconst x = posixQuote(y);", "ts");
     expect(names.filter((nm) => new RegExp(`\\b${nm}\\b`).test(probe))).toEqual(["renderFallback", "posixQuote"]);
     expect(found).toEqual([]);
-  });
+  }, SCAN_TIMEOUT_MS);
 });
