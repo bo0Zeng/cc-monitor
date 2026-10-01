@@ -106,7 +106,6 @@ const ALLOWED: &[(&str, &str, usize, Why, &str)] = &[
     ("src/backend/stream/inbound.rs", "let _ = gate_rx.await;", 1, Why::Signal, ""),
     ("src/backend/stream/inbound.rs", "let _ = gate_tx.send(());", 1, Why::Signal, ""),
     ("src/backend/stream/inbound.rs", "let _ = replies.send(frame).await;", 1, Why::PeerGone, ""),
-    ("src/backend/stream/inbound.rs", "let _ = tx.try_send(Frame::Progress { ticket: ticket.clone(), cell, });", 1, Why::Backpressure, "`Progress::push`：应答通道满了丢这一格进度（每格整份快照，下一格补上；结局在应答里）—— 不许为它堵住建索引的读流"),
     ("src/backend/stream/inbound.rs", "let _ = replies.try_send(Frame::Cancelled { id: target });", 1, Why::Backpressure, ""),
     ("src/backend/stream/inbound.rs", "let _ = replies.try_send(err(&req.id, \"not_cancellable\", &copy_text(\"beInbound.dispatch.cannotCancel\", &[])));", 1, Why::Backpressure, ""),
     ("src/backend/stream/inbound.rs", "let _ = replies.try_send(ok(&req.id));", 1, Why::Backpressure, ""),

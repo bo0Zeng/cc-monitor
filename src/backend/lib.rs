@@ -432,7 +432,7 @@ pub const PROTO_VERSION: u32 = 1;
 /// ＋ 线上：`session_added` 多一个可选字段 `container`（tmux / none）· 新出方向帧 `sessions_replayed`。
 ///
 /// ★★★ **p3c-panorama-plan**（2026-09-24）：子命令集不变，**行为**变更 ——
-/// 后端 `panorama` 的 op 表 ＋7（六个 `plan_*` 只回算好的新内容、不写盘 ＋ `refresh_doc_links`）；
+/// 后端 `panorama` 的 op 表 ＋7（六个 `plan_*` 只回算好的新内容、不写盘 ＋ `refresh_doc_links`〔散文墓碑〕）；
 /// 旧后端不认 ⇒ 写批注会回 `unsupported` ⇒ 必须判 stale。照 p1v 先例不加历史行。
 ///
 /// ★★★ **p3d-sftp-resident**（2026-09-24）：子命令 ＋4 —— `ch:transfer-upload` / `-download` / `-start` / `-stop`
