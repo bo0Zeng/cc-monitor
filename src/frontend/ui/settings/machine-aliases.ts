@@ -603,6 +603,20 @@ export function buildAliasManager(opts: {
     acctSel.appendChild(o);
   };
 
+  // 别名里写的 agent 不是注册表里的一家（手编的 / 拼错的）：**不许**让下拉框悄悄变成「不指定 = 默认那一家」——
+  //   照原样摆一项（不可选，只能改选表里的那几家），存的时候后端会拒、说出认得的几家。
+  const showAgent = (agent: string): void => {
+    for (const o of [...agentSel.options]) if (o.dataset.role === "agent-unknown") o.remove();
+    if (agent && !listAgents().includes(agent)) {
+      const o = el("option", "", copyText("machineAliases.form.agentUnknown", { agent }));
+      o.value = agent;
+      o.disabled = true;
+      o.dataset.role = "agent-unknown";
+      agentSel.appendChild(o);
+    }
+    agentSel.value = agent;
+  };
+
   const fillForm = (f: AliasForm, index: number): void => {
     editing = index;
     ensureAccountOption(f.account);
@@ -611,7 +625,7 @@ export function buildAliasManager(opts: {
     acctSel.value = f.account;
     tmuxSel.value = f.tmux;
     tmuxNameIn.value = f.tmuxName;
-    agentSel.value = f.agent;
+    showAgent(f.agent);
     modelIn.value = f.model;
     launcherIn.value = f.launcher;
     sizeIn.value = f.tmuxSize;
