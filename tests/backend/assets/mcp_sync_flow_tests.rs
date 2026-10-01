@@ -183,8 +183,9 @@ fn a_target_that_changed_after_the_preview_is_left_alone_and_user_level_is_read_
         std::fs::read_to_string(dst.join(MCP_JSON)).unwrap(),
         "{\"mcpServers\":{\"z\":{}}}"
     );
+    // 这台没建账号库（家目录是临时目录）⇒ 用户级只读。
     let (code, _) = answer_preview(
-        &LocalFiles,
+        &crate::assets::aliases::tests::HomeDoor(d.clone()),
         &NoFacts,
         &json!({ "name": "a", "at": { "level": "user" }, "def": def }),
     )

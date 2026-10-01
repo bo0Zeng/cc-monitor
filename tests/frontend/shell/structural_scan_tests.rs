@@ -2632,6 +2632,39 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
     /// `tool_registry`（→ `tool_registry_environment_tests.rs`）。
     /// 另有**真新增的一条**（退役判据留下的墓碑），挂在本表末尾、单独写了理由。
     const TOMBSTONED: &[(&str, &str, usize)] = &[
+        // cc-bus 装 / 三态那两条旧 Tauri 命令：代码里最后一处（驾驶舱判据里的替身）随驾驶舱装口删了 ⇒ 点它们的那几行墓碑从此落在死名人群上。
+        (
+            "src/frontend/shell/src/cc_bus_deploy.rs",
+            "deploy_local_cc_bus",
+            1,
+        ),
+        (
+            "src/frontend/shell/src/cc_bus_deploy.rs",
+            "cc_bus_install_state",
+            1,
+        ),
+        ("src/frontend/ui/ipc/commands.ts", "deploy_local_cc_bus", 1),
+        ("src/frontend/ui/ipc/commands.ts", "cc_bus_install_state", 1),
+        (
+            "tests/frontend/shell/frame_query_tests.rs",
+            "deploy_local_cc_bus",
+            1,
+        ),
+        (
+            "tests/frontend/shell/frame_query_tests.rs",
+            "cc_bus_install_state",
+            1,
+        ),
+        (
+            "tests/frontend/shell/parity_ledger_tests.rs",
+            "deploy_local_cc_bus",
+            1,
+        ),
+        (
+            "tests/frontend/shell/parity_ledger_tests.rs",
+            "cc_bus_install_state",
+            1,
+        ),
         // 代码全景整条摘掉：`BUILD_ID` 谱系里那一代的 op 名（它住的小程序整棵删了）。
         ("src/backend/lib.rs", "refresh_doc_links", 1),
         // gate-core 收成后端模块：零调用方的取反名删了 · monitor 转调壳那条判据翻面，原处各一块。
@@ -2702,7 +2735,7 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         (
             "tests/frontend/ui/ipc/commands.vitest.ts",
             "config_surface_report",
-            9,
+            2,
         ), // 那几行增量账里的旧命令名（同一行带墓碑标记）
         (
             "src/frontend/ui/settings/footprint-reads.ts",
@@ -2864,16 +2897,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             "tests/frontend/shell/remote_write_registry_tests.rs",
             "claude_data_fence",
             3,
-        ),
-        (
-            "tests/frontend/ui/ipc/commands.vitest.ts",
-            "read_skill_file",
-            12,
-        ),
-        (
-            "tests/frontend/ui/ipc/commands.vitest.ts",
-            "write_skill_file",
-            12,
         ),
         // 收件箱三条 Tauri 命令随那一面进后端删了：点它们的账目句挂墓碑。
         (
@@ -5116,7 +5139,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("tests/backend/footprint/registry_environment_tests.rs", 1),
         ("tests/evidence/K-R20-C-deadname-census.py", 1),
         ("tests/evidence/S29-legacy-compat-census.py", 11),
-        ("tests/frontend/ui/ipc/commands.vitest.ts", 11), // +2：计数行里点收件箱两条旧名的那两行挂墓碑 // // +1：头注计数那段点的远端 shellinit 旧名 // +2：K-R49 增量账里 `write_account_aliases` 那两行 // +1：「刻意不同」那条判据合并后改名，本机只有一个表示那一节点它旧名 ·远端会话清单那个函数随历史清单搬进本机后端删了，点它的散文挂墓碑
+        ("tests/frontend/ui/ipc/commands.vitest.ts", 10), // 11 → 10：origin 人群那一行合并时收成了只记这一拍的增量，旧的长注释（带墓碑那几处）随之没了 // +2：计数行里点收件箱两条旧名的那两行挂墓碑 // // +1：头注计数那段点的远端 shellinit 旧名 // +2：K-R49 增量账里 `write_account_aliases` 那两行 // +1：「刻意不同」那条判据合并后改名，本机只有一个表示那一节点它旧名 ·远端会话清单那个函数随历史清单搬进本机后端删了，点它的散文挂墓碑
         // `"__local__"` 合进 `LOCAL_ORIGIN`，「两个同名常量刻意不同」那条判据改成钉合了之后的形状，旧名挂一块。
         ("tests/frontend/shell/backend_policy_tests.rs", 2), // +1：「空 origin 必须拒」那条随命令退役，原处一块
         // 会话读面三条 Tauri 命令（骨架索引 · 大纲清单 · 会话内查找）退役、改走通道：

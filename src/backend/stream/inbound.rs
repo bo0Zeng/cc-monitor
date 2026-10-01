@@ -156,6 +156,8 @@ pub const COMMANDS: &[&str] = &[
     "ext-hub-apply",
     "ext-hub-preview",
     "ext-list",
+    // 扩展页上用户写的备注：记进本机目录自己那一格，随目录同步到别的后端。**是新命令** ⇒ `build_id_guard` 红是预期的。
+    "ext-note-set",
     "ext-uninstall-apply",
     "ext-uninstall-preview",
     "files-browse",
@@ -325,6 +327,8 @@ pub(crate) struct LocalFrames;
 
 /// 枢纽问得到的内层命令（来源那台读 · 被写那台判 / 写）。
 pub(crate) const HUB_INNER: &[&str] = &[
+    "cc-bus-install-state",
+    "cc-bus-install",
     "mcp-sync-source",
     "mcp-sync-preview",
     "mcp-sync-apply",
@@ -3099,12 +3103,12 @@ pub const REGISTRY: &[CommandSpec] = &[
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
-    // cc-bus 装到这台：`assets/cc_bus_install.rs`；写经 [`LocalFiles`]，装记录写口由本门递进去（第四层 ④）。
+    // cc-bus 装到这台（扩展页经枢纽问被写那台）：`assets/cc_bus_install.rs`；写经 [`LocalFiles`]，装记录写口由本门递进去（第四层 ④）。
     CommandSpec {
         name: "cc-bus-install-state",
         doc_anchor: Some("#### `cc-bus-install-state`"),
         codes: &["refused"],
-        fields: &["differing", "missing", "state"],
+        fields: &["dest", "existing", "version", "writes"],
         takes_input: false,
         run: Run::Blocking(|_r| {
             crate::assets::cc_bus_install::answer_state()
@@ -3116,7 +3120,7 @@ pub const REGISTRY: &[CommandSpec] = &[
         name: "cc-bus-install",
         doc_anchor: Some("#### `cc-bus-install`"),
         codes: &["bad_file", "refused"],
-        fields: &["backup", "dest", "recordFailed", "unchanged", "written"],
+        fields: &["backup", "dest", "recordFailed", "written"],
         takes_input: false,
         run: Run::Blocking(|_r| {
             crate::assets::cc_bus_install::answer_install(
@@ -3215,6 +3219,19 @@ pub const REGISTRY: &[CommandSpec] = &[
             )
             .map(Some)
             .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    // 用户写 / 改 / 清一个条目的备注：资产目录的写口从这扇门递进去（记进本机自己那一格，随目录同步）。
+    CommandSpec {
+        name: "ext-note-set",
+        doc_anchor: Some("#### `ext-note-set`"),
+        codes: &["bad_args", "catalog_unreadable", "io_failed"],
+        fields: &["kind", "name", "note", "text"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::assets::ext::answer_note(&r.args, &crate::assets::asset_catalog::answer_note)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
     // 从这台卸一个扩展：装记录里有 ⇒ 只撤装时写的；没有 ⇒ 先挪进 `~/.cc-monitor/backups/` 再删。判与写都在这台（写经 [`LocalFiles`]，
@@ -3640,12 +3657,10 @@ pub const REGISTRY: &[CommandSpec] = &[
             "note",
             "path",
             "session_start",
-            "snippet_bare",
-            "snippet_home",
+            "snippet",
             "source",
             "stop",
-            "text",
-            "warning",
+            "supported",
         ],
         takes_input: false,
         run: Run::Blocking(|r| {

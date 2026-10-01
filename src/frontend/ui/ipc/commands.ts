@@ -274,8 +274,8 @@ export const commands = {
   // P8a 的 marketplace 面（`list_plugin_marketplaces`〔散文墓碑〕）退役：经通道直接说帧命令
   //   `plugins-marketplaces`，后端出成品（`src/frontend/ui/settings/plugins-section.ts::fetchSurvey`）。
   // PS1 / PS2 那两条（`deploy_local_cc_bus`〔散文墓碑〕· `cc_bus_install_state`〔散文墓碑〕）退役：
-  //   cc-bus 装到本机是后端代管的资产，判 · 写 · 记在本机后端（`cc-bus-install` / `-state`，`src/frontend/ui/cc-bus-install-reads.ts`）。
-  /** 装出来的 `cc-spawn` 在这台跑不跑得起来：本机 `ccm` 够不够新（monitor 探本机 ccm；`null` = 够新）。 */
+  //   cc-bus 是后端代管的资产：装在扩展页，经本机后端的枢纽交被写那台装（`ext-hub-preview` / `-apply`）。
+  /** 装出来的 `cc-spawn` 在本机跑不跑得起来：本机 `ccm` 够不够新（monitor 探本机 ccm；`null` = 够新）。扩展页把 cc-bus 装到本机之后问一次。 */
   cc_bus_ccm_precheck: () => invoke<string | null>("cc_bus_ccm_precheck"),
   // `ccm …` 调用行 · 载荷渲染 · 本机接回那一句三条退役：那台后端的帧命令（`src/frontend/ui/launch-render.ts`）。
 

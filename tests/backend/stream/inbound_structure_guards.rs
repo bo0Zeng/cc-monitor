@@ -274,6 +274,8 @@ fn every_registered_command_declares_its_run_kind() {
                 | "skill-install-record"
                 | "ext-list"
                 | "ext-uninstall-preview"
+                // 扩展页写备注：现扫 ＋ 原子写目录文件。
+                | "ext-note-set"
                 // 历史注解三条：读 / 原子写一份小文件（同步文件 I/O）。
                 | "history-annotate"
                 | "history-forget"
@@ -427,6 +429,7 @@ fn every_registered_command_declares_its_run_kind() {
         "skill-install-record",
         "ext-list",
         "ext-uninstall-preview",
+        "ext-note-set",
         // 历史注解三条（阻塞档，理由在上面 `expected_blocking`）。
         "history-annotate",
         "history-forget",

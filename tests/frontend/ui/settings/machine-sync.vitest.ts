@@ -2,11 +2,9 @@
  * S4a：**跨分节同步**的行为测试 —— 这才是本轮要交付的东西。
  *
  * `machine-context.vitest.ts` 钉的是 store 本体；这里钉的是「四块真的接上去了」。
- * 记的病是：`accounts` / `mcp` / `cc-bus` / `cc-bus-hooks` 各维护一份
- * `this.origin`，用户在一处切了机器，另外三处还停在上一台。
+ * 记的病是：几块分节各维护一份 `this.origin`，用户在一处切了机器，另外几处还停在上一台。
  *
- * 用 cc-bus 与 cc-bus-hooks 两块做主验（它们都是朴素 `<select>`，形状可比），
- * 外加 MCP（唯一能表示「本机」的那块）验 null 分支。
+ * 用 cc-bus 驾驶舱做主验：它的下拉既能驱动共用 store，也跟着 store 走（机器详情页切页那条真实路径）。
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
@@ -21,7 +19,6 @@ vi.mock("../../../../src/frontend/ui/accounts", () => ({
 
 import { invoke } from "@tauri-apps/api/core";
 import { CcBusSection } from "../../../../src/frontend/ui/settings/cc-bus-section";
-import { CcBusHooksSection } from "../../../../src/frontend/ui/settings/cc-bus-hooks-section";
 import {
   getCurrentMachine,
   setCurrentMachine,
@@ -65,49 +62,25 @@ beforeEach(() => {
 });
 
 describe("S4a 跨分节机器同步", () => {
-  /**
-   * **E59 改写了这两条。** 原来它们用 `cc-bus-hooks` 的下拉既当驱动又当观察点，
-   * 而那个下拉**已经删了** —— 本分节只作为机器详情页上的一块存在，页头就是选择器。
-   *
-   * 要守的性质没变（「在一处切机器，别处跟着变」），变的是**谁能驱动**：
-   * - `cc-bus-section` 仍有下拉 —— 它住在**顶层 cc-bus 驾驶舱视图**里，那儿没有页上下文，
-   *   它的选择器就是上下文本身（这是 E59 只删三处、留这一处的理由）。
-   * - `cc-bus-hooks` 只**跟随**，不驱动。
-   * - 机器详情页那条真实驱动路径是**路由切页 → store**，所以下面第二条直接驱动 store，
-   *   那才是生产里的形状。
-   */
-  it("★ 在 cc-bus 驾驶舱里切机器 → cc-bus-hooks 跟着变（§5-4 记的那个病）", async () => {
+  it("★ 在 cc-bus 驾驶舱里切机器 → 共用 store 跟着变（别的分节都只跟随 store）", async () => {
     const bus = new CcBusSection();
-    const hooks = loaded(new CcBusHooksSection());
     await settle();
-
     const busSel = selOf(bus.element, "cc-bus-origin");
-    // 前置：驾驶舱那块拿到了机器清单（否则下面的同步无从谈起）
-    // P4a：驾驶舱的清单 = 远端们 + **末尾一项「本机」**（后端读面已支持 `<local>`）。
-    // 追加在末尾是刻意的：`select` 默认取第一项，放开头会顺带改掉「默认看哪台」。
+    // P4a：驾驶舱的清单 = 远端们 + **末尾一项「本机」**（追加在末尾：`select` 默认取第一项）。
     expect([...busSel.options].map((o) => o.value)).toEqual([...ORIGINS, "<local>"]);
-    // E59：hooks 那块不再有下拉，只有只读显示
-    expect(hooks.element.querySelector("select.cc-bus-hooks-origin")).toBeNull();
-
     busSel.value = "nano";
     busSel.dispatchEvent(new Event("change"));
     await settle();
-
     expect(getCurrentMachine()).toBe("nano");
-    expect(hooks.element.querySelector(".cc-bus-hooks-origin")?.textContent).toBe("nano");
   });
 
-  it("★ 直接驱动 store（= 机器详情页切页那条真实路径）→ 两块都跟上", async () => {
+  it("★ 直接驱动 store（= 机器详情页切页那条真实路径）→ 驾驶舱跟上", async () => {
     const bus = new CcBusSection();
-    const hooks = loaded(new CcBusHooksSection());
     await settle();
     const busSel = selOf(bus.element, "cc-bus-origin");
-
     setCurrentMachine("nano");
     await settle();
-
     expect(busSel.value).toBe("nano");
-    expect(hooks.element.querySelector(".cc-bus-hooks-origin")?.textContent).toBe("nano");
   });
 
   it("★ P4a：切到「本机」时，驾驶舱**跟着切**（它已经表示得了本机）", async () => {
@@ -134,24 +107,6 @@ describe("S4a 跨分节机器同步", () => {
     expect(spawn.disabled).toBe(false);
   });
 
-  it("hooks 那块切到本机时**明说这是本机页**（它早就诚实表示了本机）", async () => {
-    // ⚠ 本条第一版我写的是「hooks 仍原地不动，半截状态只补了一半」——
-    // **那个前提是我猜的，实测是假的**：它切到本机时显示「（本机页：无远端可诊断）」。
-    // 记在这里是因为教训比结论有用：**先量再写断言**，否则判据钉的是我的想象。
-    const bus = new CcBusSection();
-    const hooks = loaded(new CcBusHooksSection());
-    await settle();
-    selOf(bus.element, "cc-bus-origin").value = "nano";
-    selOf(bus.element, "cc-bus-origin").dispatchEvent(new Event("change"));
-    await settle();
-    expect(hooks.element.querySelector(".cc-bus-hooks-origin")?.textContent).toBe("nano");
-    setCurrentMachine(LOCAL_ORIGIN);
-    await settle();
-    const txt = hooks.element.querySelector(".cc-bus-hooks-origin")?.textContent ?? "";
-    expect(txt).toContain("本机");
-    expect(txt).not.toBe("nano"); // 绝不能还停在某台远端上 —— 那才是骗人
-  });
-
   it("切到清单里没有的机器 → 原地不动（清单还没加载 / 那台已被删）", async () => {
     const bus = new CcBusSection();
     await settle();
@@ -164,7 +119,6 @@ describe("S4a 跨分节机器同步", () => {
 
   it("★ 同值重复切换不重复发请求（否则四块互相激起 ssh 往返 = 变相轮询）", async () => {
     const bus = new CcBusSection();
-    loaded(new CcBusHooksSection());
     await settle();
     const busSel = selOf(bus.element, "cc-bus-origin");
 
@@ -181,10 +135,3 @@ describe("S4a 跨分节机器同步", () => {
     expect(mockInvoke.mock.calls.length).toBe(after1);
   });
 });
-
-/** ST1「延后加载」：分节构造期不再发 I/O，由宿主在机器子页第一次可见时调 `loadNow()`。
- *  本文件量的是分节**加载之后**的行为 ⇒ 构造完就当宿主那样叫醒它。 */
-function loaded<T extends { loadNow(): void }>(s: T): T {
-  s.loadNow();
-  return s;
-}

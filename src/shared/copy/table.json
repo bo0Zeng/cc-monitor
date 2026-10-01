@@ -4358,7 +4358,7 @@
     },
     "launcherDiagnostics.diagnoseRemoteLauncher.bypassesCcm": {
       "kind": "body",
-      "zh": "这条命令没经过 ccm，账号和模型偏好不会生效。要用这些，改填 ccm 或含 ccm 的自定义命令，或者在机器页「本机 → 工具 → 别名」里生成一条。",
+      "zh": "这条命令没经过 ccm，账号和模型偏好不会生效。要用这些，改填 ccm 或含 ccm 的自定义命令，或者在机器页「本机 → 终端 → 别名」里生成一条。",
       "args": []
     },
     "pasteBlock.buildPasteBlock.noClipboard": {
@@ -4812,7 +4812,7 @@
     },
     "machineAliases.userPath.notWindows": {
       "kind": "body",
-      "zh": "这一项只有 Windows 有。这台机器上让终端找到 ccm 的，是「本机 → 工具 → 别名」里那个别名块。",
+      "zh": "这一项只有 Windows 有。这台机器上让终端找到 ccm 的，是「本机 → 终端 → 别名」里那个别名块。",
       "args": []
     },
     "machineAliases.userPath.empty": {
@@ -6596,7 +6596,7 @@
     },
     "settingsPanel.machines.loading": {
       "kind": "body",
-      "zh": "正在列这台机器上的账号 / 工具…",
+      "zh": "正在列这台机器上的账号与终端设置…",
       "args": []
     },
     "settingsPanel.group.unknown": {
@@ -6607,11 +6607,6 @@
     "settingsPanel.group.footprint": {
       "kind": "title",
       "zh": "足迹",
-      "args": []
-    },
-    "settingsPanel.group.ccBusHooks": {
-      "kind": "title",
-      "zh": "cc-bus 钩子",
       "args": []
     },
     "settingsPanel.group.aliases": {
@@ -6679,9 +6674,9 @@
       "zh": "足迹",
       "args": []
     },
-    "settingsPanel.machineTab.tools": {
+    "settingsPanel.machineTab.terminal": {
       "kind": "title",
-      "zh": "工具",
+      "zh": "终端",
       "args": []
     },
     "settingsPanel.machineTab.accounts": {
@@ -7158,79 +7153,9 @@
       "zh": "派生新 agent",
       "args": []
     },
-    "ccBus.deploy.failed": {
-      "kind": "error",
-      "zh": "装到本机失败",
-      "args": []
-    },
-    "ccBus.deploy.done": {
-      "kind": "body",
-      "zh": "已装到 {dest}（写了 {written} 个文件{bak}）",
-      "args": ["dest", "written", "bak"]
-    },
-    "ccBus.deploy.backup": {
-      "kind": "body",
-      "zh": "；旧的已备份到 {backup}",
-      "args": ["backup"]
-    },
-    "ccBus.deploy.unchanged": {
-      "kind": "body",
-      "zh": "已是最新：{dest}（{unchanged} 个文件都一致，未写盘）",
-      "args": ["dest", "unchanged"]
-    },
-    "ccBus.deploy.running": {
-      "kind": "action",
-      "zh": "装…",
-      "args": []
-    },
-    "ccBus.install.unknown": {
-      "kind": "error",
-      "zh": "读不到本机安装状态：{e}（这不等于「没装」）",
-      "args": ["e"]
-    },
-    "ccBus.refreshInstallState.install": {
-      "kind": "action",
-      "zh": "装到本机",
-      "args": []
-    },
-    "ccBus.install.stale": {
-      "kind": "body",
-      "zh": "本机装的不是这一版：{differing} 个内容不同、{missing} 个缺失。点一下更新（覆盖前自动留备份）",
-      "args": ["differing", "missing"]
-    },
-    "ccBus.install.update": {
-      "kind": "action",
-      "zh": "更新 · 差 {n} 个文件",
-      "args": ["n"]
-    },
-    "ccBus.install.upToDateHint": {
-      "kind": "body",
-      "zh": "本机装的就是这一版（点了也不会写盘）",
-      "args": []
-    },
-    "ccBus.install.upToDate": {
-      "kind": "action",
-      "zh": "已是最新",
-      "args": []
-    },
-    "ccBus.install.missing": {
-      "kind": "body",
-      "zh": "本机还没装 cc-bus（装到 ~/.claude/skills/cc-bus/）",
-      "args": []
-    },
     "ccBus.build.notRead": {
       "kind": "body",
       "zh": "尚未读取。",
-      "args": []
-    },
-    "ccBus.build.installHint": {
-      "kind": "body",
-      "zh": "把 cc-monitor 自带的那份 cc-bus 装到 ~/.claude/skills/cc-bus/（覆盖前自动留备份）",
-      "args": []
-    },
-    "ccBus.build.install": {
-      "kind": "action",
-      "zh": "装到本机",
       "args": []
     },
     "ccBus.build.read": {
@@ -7258,61 +7183,6 @@
       "zh": "只读查看远端 cc-bus 上登记过的 agent。可以给某个 agent 发消息、看它的收件箱。「登记」不等于「在线」：名单只说明它曾经登记过，要确认某个还活着请点那一行的「检查」。本面板不做后台轮询，只在你点「读取」时发一次请求。",
       "args": []
     },
-    "ccBusHooks.diag.bare": {
-      "kind": "body",
-      "zh": "裸命令形态",
-      "args": []
-    },
-    "ccBusHooks.diag.explicit": {
-      "kind": "body",
-      "zh": "$HOME 显式路径形态",
-      "args": []
-    },
-    "ccBusHooks.diag.source": {
-      "kind": "body",
-      "zh": "诊断对象：{source}",
-      "args": ["source"]
-    },
-    "ccBusHooks.remote.failed": {
-      "kind": "error",
-      "zh": "远端诊断失败：{e}",
-      "args": ["e"]
-    },
-    "ccBusHooks.checkRemote.checking": {
-      "kind": "body",
-      "zh": "检查中…",
-      "args": []
-    },
-    "ccBusHooks.local.failed": {
-      "kind": "error",
-      "zh": "本机诊断失败：{e}",
-      "args": ["e"]
-    },
-    "ccBusHooks.origin.unknown": {
-      "kind": "body",
-      "zh": "{machine}：不在已配置的远端里",
-      "args": ["machine"]
-    },
-    "ccBusHooks.origin.localPage": {
-      "kind": "body",
-      "zh": "本机页：没有远端可诊断",
-      "args": []
-    },
-    "ccBusHooks.origins.none": {
-      "kind": "body",
-      "zh": "未配置远端。",
-      "args": []
-    },
-    "ccBusHooks.origins.noneOption": {
-      "kind": "control",
-      "zh": "未配置远端",
-      "args": []
-    },
-    "ccBusHooks.snippet.notReady": {
-      "kind": "body",
-      "zh": "先等诊断读完。",
-      "args": []
-    },
     "ccBusHooks.snippet.activation": {
       "kind": "body",
       "zh": "改完新开一个会话才生效（当前会话不会重读它）。",
@@ -7322,66 +7192,6 @@
       "kind": "body",
       "zh": "要合并进去，不是整份覆盖。那里可能还有别的工具的钩子，覆盖会把它们删掉。",
       "args": []
-    },
-    "ccBusHooks.snippet.target": {
-      "kind": "body",
-      "zh": "~/.claude/settings.json 的 hooks 段",
-      "args": []
-    },
-    "ccBusHooks.snippet.bare": {
-      "kind": "control",
-      "zh": "裸命令：简洁，要求它在 PATH 上",
-      "args": []
-    },
-    "ccBusHooks.snippet.explicit": {
-      "kind": "control",
-      "zh": "$HOME 显式路径：不依赖 PATH，要求它确实装在那儿",
-      "args": []
-    },
-    "ccBusHooks.snippet.title": {
-      "kind": "title",
-      "zh": "待贴片段 · 按本机现状生成",
-      "args": []
-    },
-    "ccBusHooks.build.notChecked": {
-      "kind": "body",
-      "zh": "尚未检查。",
-      "args": []
-    },
-    "ccBusHooks.build.checkRemote": {
-      "kind": "action",
-      "zh": "检查远端",
-      "args": []
-    },
-    "ccBusHooks.build.remote": {
-      "kind": "title",
-      "zh": "远端",
-      "args": []
-    },
-    "ccBusHooks.build.checking": {
-      "kind": "body",
-      "zh": "检查中…",
-      "args": []
-    },
-    "ccBusHooks.build.local": {
-      "kind": "title",
-      "zh": "本机",
-      "args": []
-    },
-    "ccBusHooks.build.whyNotWrite": {
-      "kind": "body",
-      "zh": "为什么不替你写：~/.claude/settings.json 是共享的全局配置。你的编辑器、别的工具和 skill 都可能在改它，cc-monitor 改它可能覆盖掉别人的改动；cc-bus 自己的安装脚本也不碰它，只把钩子片段打印出来让你贴。所以这里只给诊断结果和现成片段，最后一步由你来做。",
-      "args": []
-    },
-    "ccBusHooks.build.intro": {
-      "kind": "body",
-      "zh": "cc-bus 要两个钩子才能自动收信：SessionStart → cc-register 上总线，Stop → cc-bus-stop-hook 兜底收信。这里只做诊断，并生成一段待贴文本。",
-      "args": []
-    },
-    "ccBusHooks.state.unknown": {
-      "kind": "body",
-      "zh": "未知状态（{unknownKind}）",
-      "args": ["unknownKind"]
     },
     "ccBusHooks.state.indirect": {
       "kind": "body",
@@ -11011,7 +10821,7 @@
     },
     "rsConfigSurface.observe.profileWindows": {
       "kind": "error",
-      "zh": "路径由 PowerShell 决定；准确状态见「本机 → 工具 → 别名」（那里会读 $PROFILE 并查 cc-monitor 加的那一段）",
+      "zh": "路径由 PowerShell 决定；准确状态见「本机 → 终端 → 别名」（那里会读 $PROFILE 并查 cc-monitor 加的那一段）",
       "args": []
     },
     "rsConfigSurface.observe.projectDir": {
@@ -11123,16 +10933,6 @@
       "kind": "error",
       "zh": "读 {path} 失败：{e}",
       "args": ["path", "e"]
-    },
-    "rsHooksDiag.snippet.bareMissing": {
-      "kind": "body",
-      "zh": "这两个命令不在 PATH 上，照这段贴会用不了。改选「$HOME 显式路径」，或把它们所在目录加进 PATH。",
-      "args": []
-    },
-    "rsHooksDiag.snippet.homeMissing": {
-      "kind": "body",
-      "zh": "$HOME/.local/bin/ 下没有 cc-bus 的两个命令，照这段贴会用不了。改选「裸命令」，或先装 cc-bus。",
-      "args": []
     },
     "rsHooksDiag.diagnose.notObject": {
       "kind": "body",
@@ -17307,11 +17107,6 @@
       "zh": "装好了，但没记进装记录：{e}（这一趟装的卸不掉）",
       "args": ["e"]
     },
-    "ccBusInstallReads.reply.badShape": {
-      "kind": "error",
-      "zh": "读不懂本机后端回的 cc-bus 安装结果，多半是后端版本不对。",
-      "args": []
-    },
     "rsFilewinProc.spawn.noStdout": {
       "kind": "error",
       "zh": "文件窗口进程起来了，但收不到它的回话（程序内部出错）",
@@ -17462,11 +17257,6 @@
       "zh": "○",
       "args": []
     },
-    "extPage.button.install": {
-      "kind": "action",
-      "zh": "装上",
-      "args": []
-    },
     "beExt.suspect.commandUnknown": {
       "kind": "body",
       "zh": "查不了 {machine} 上有没有 {value}：它的后端没有 PATH。",
@@ -17589,7 +17379,7 @@
     },
     "beExt.note.userMcpReadOnly": {
       "kind": "body",
-      "zh": "这台的用户级 MCP 由 Claude 自己管，这里只读。可以把它装进别的机器的项目里。",
+      "zh": "这台没建账号库：全局的 MCP 由 Claude 自己管，这里只读。",
       "args": []
     },
     "extReads.backend.tooOld": {
@@ -17606,11 +17396,6 @@
       "kind": "error",
       "zh": "找不到{machine}的连接设置，打不开文件窗口。到「机器」里看看这台还在不在。",
       "args": ["machine"]
-    },
-    "extPage.card.project": {
-      "kind": "control",
-      "zh": "装进哪个项目",
-      "args": []
     },
     "extPage.list.sep": {
       "kind": "body",
@@ -17731,11 +17516,6 @@
       "kind": "body",
       "zh": "卸掉了，删了 {n} 个。",
       "args": ["n"]
-    },
-    "extPage.card.projectAria": {
-      "kind": "aria",
-      "zh": "装进哪个项目",
-      "args": []
     },
     "beExt.detail.binary": {
       "kind": "body",
@@ -17887,11 +17667,6 @@
       "zh": "Skill",
       "args": []
     },
-    "extPage.button.replace": {
-      "kind": "action",
-      "zh": "换成{machine}那一版",
-      "args": ["machine"]
-    },
     "beExt.detail.filesValue": {
       "kind": "body",
       "zh": "{files} 个，共 {bytes} 字节",
@@ -18016,6 +17791,146 @@
       "kind": "error",
       "zh": "还不知道这次调用派出的是哪个子 agent。前台派出的要等它跑完才知道",
       "args": []
+    },
+    "extPage.row.noteMark": {
+      "kind": "body",
+      "zh": "✎",
+      "args": []
+    },
+    "extPage.row.noteMarkTitle": {
+      "kind": "body",
+      "zh": "有备注",
+      "args": []
+    },
+    "extPage.loc.user": {
+      "kind": "body",
+      "zh": "全局（这台所有项目都能用）",
+      "args": []
+    },
+    "extPage.loc.project": {
+      "kind": "body",
+      "zh": "项目 {dir}",
+      "args": ["dir"]
+    },
+    "extPage.button.bring": {
+      "kind": "action",
+      "zh": "装到…",
+      "args": []
+    },
+    "extPage.card.where": {
+      "kind": "control",
+      "zh": "装到哪",
+      "args": []
+    },
+    "extPage.note.aria": {
+      "kind": "aria",
+      "zh": "备注",
+      "args": []
+    },
+    "extPage.note.save": {
+      "kind": "action",
+      "zh": "保存备注",
+      "args": []
+    },
+    "extPage.note.write": {
+      "kind": "action",
+      "zh": "写备注",
+      "args": []
+    },
+    "extPage.note.edit": {
+      "kind": "action",
+      "zh": "改备注",
+      "args": []
+    },
+    "extPage.note.failed": {
+      "kind": "error",
+      "zh": "备注没存上：{said}",
+      "args": ["said"]
+    },
+    "extPage.hooks.title": {
+      "kind": "title",
+      "zh": "各台的钩子",
+      "args": []
+    },
+    "extPage.hooks.offline": {
+      "kind": "body",
+      "zh": "这台现在没连上，连上之后再来看。",
+      "args": []
+    },
+    "extPage.hooks.loading": {
+      "kind": "body",
+      "zh": "正在看这台的钩子…",
+      "args": []
+    },
+    "extPage.hooks.failed": {
+      "kind": "error",
+      "zh": "读不到这台的钩子：{said}",
+      "args": ["said"]
+    },
+    "extPage.hooks.sessionStart": {
+      "kind": "body",
+      "zh": "SessionStart → cc-register",
+      "args": []
+    },
+    "extPage.hooks.stop": {
+      "kind": "body",
+      "zh": "Stop → cc-bus-stop-hook",
+      "args": []
+    },
+    "extPage.hooks.stateLine": {
+      "kind": "body",
+      "zh": "{hook}：{state}",
+      "args": ["hook", "state"]
+    },
+    "extPage.hooks.installFirst": {
+      "kind": "body",
+      "zh": "这台还没装 cc-bus。先在下面这台那一行点「装到…」装上，再来加钩子。",
+      "args": []
+    },
+    "extPage.hooks.copy": {
+      "kind": "action",
+      "zh": "复制要加的内容",
+      "args": []
+    },
+    "extPage.hooks.target": {
+      "kind": "body",
+      "zh": "{source} 的 hooks 段",
+      "args": ["source"]
+    },
+    "extPage.done.warn": {
+      "kind": "body",
+      "zh": "⚠ {said}",
+      "args": ["said"]
+    },
+    "beExt.target.builtinUserOnly": {
+      "kind": "body",
+      "zh": "cc-bus 只装到全局：钩子要指向这台全局那一份。",
+      "args": []
+    },
+    "beExt.from.builtin": {
+      "kind": "body",
+      "zh": "cc-monitor 自带的那一份",
+      "args": []
+    },
+    "beExt.builtin.ccBus": {
+      "kind": "body",
+      "zh": "cc-bus 让几个 Claude Code 实例互发消息、接力协作。装上之后，要在那台的 ~/.claude/settings.json 里加两条钩子才能自动收信；cc-monitor 不替你改那份文件。下面每台一行：钩子装了没有，以及要加的内容。",
+      "args": []
+    },
+    "beExt.card.builtinBackup": {
+      "kind": "body",
+      "zh": "那台现有的 cc-bus 目录会先整个改名留作备份，再写这一版。",
+      "args": []
+    },
+    "beExt.done.builtinBackup": {
+      "kind": "body",
+      "zh": "原来的目录留作备份：{path}",
+      "args": ["path"]
+    },
+    "beExt.note.tooLong": {
+      "kind": "error",
+      "zh": "备注最长 {max} 个字，删短一点再存。",
+      "args": ["max"]
     },
     "beAcctJsonKey.parse.notObject": {
       "kind": "error",
@@ -18245,6 +18160,26 @@
     "beAcctFace.mcp.listSep": {
       "kind": "body",
       "zh": "、",
+      "args": []
+    },
+    "beExt.card.sharedDeleteHere": {
+      "kind": "body",
+      "zh": "装到全局 = 写进这台各账号共用的那一份、同步到所有号。删除只在 cc-monitor 里做：在某个号里删掉不算数，会被补回去。",
+      "args": []
+    },
+    "beExt.card.sharedNewSessions": {
+      "kind": "body",
+      "zh": "已经在跑的会话不会重读，新开的会话才用上。",
+      "args": []
+    },
+    "beExt.uninstall.mcpShared": {
+      "kind": "body",
+      "zh": "从这台所有号里删掉 {name}。删除只在 cc-monitor 里做；已经在跑的会话不受影响，新开的会话里就没有它了。",
+      "args": ["name"]
+    },
+    "extPage.hooks.unsupported": {
+      "kind": "body",
+      "zh": "这台不支持自动收信：cc-bus 要 tmux。",
       "args": []
     }
   }

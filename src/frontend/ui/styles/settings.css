@@ -2380,17 +2380,6 @@ body.settings-window-mode .settings-panel {
   font-family: var(--font-mono, monospace);
 }
 
-/* T03 审计闭环：钩子形态警示（待贴块旁那条 + 远端诊断里那两条）。
-   用 warn 色——它说的是"你选的形态与那一端的盘面冲突"，需要看见但不是错误。 */
-.cc-bus-hooks-form-warning,
-.cc-bus-hooks-diag-warning {
-  border-left: 3px solid var(--warn);
-  padding: 4px 8px;
-  margin: 4px 0;
-  font-size: 12px;
-  color: var(--warn);
-}
-
 /* T04：位置徽章（挂在路径行上，不占独立一行——审计核实 10 行里 9 行的"位置"
    在「现状」那列已经说过了）。 */
 .config-surface-host {
@@ -2421,22 +2410,6 @@ body.settings-window-mode .settings-panel {
   font-family: var(--font-mono, monospace);
   font-size: 11px;
   width: 100%;
-}
-
-/* B03/B04 的欠账（T02/T03 只补了自己那几段） */
-.cc-bus-hooks-source,
-.cc-bus-hooks-note {
-  font-size: 12px;
-  color: var(--text-faint);
-}
-
-.cc-bus-hooks-form {
-  width: 100%;
-}
-
-.cc-bus-hooks-why {
-  border-left: 3px solid var(--border-strong);
-  padding-left: 8px;
 }
 
   /* 设置「扩展」页：一张表 ＋ 一个抽屉（右侧）＋ 抽屉里每台一行的确认卡。 */
@@ -2582,6 +2555,86 @@ body.settings-window-mode .settings-panel {
     color: var(--text-2);
     font-size: var(--font-size-small);
   }
+  /* 那台上的各处：全局一行 ＋ 每个装着它的项目一行。 */
+  .ext-places {
+    margin: 4px 0 0 1.4em;
+  }
+  .ext-place {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+    margin: 2px 0;
+  }
+  .ext-place-at {
+    font-family: var(--font-mono);
+    font-size: var(--font-size-mono);
+  }
+  /* 备注：内置的（自带的扩展）＋ 用户写的；表上那一行一个小记号。 */
+  .ext-note-mark {
+    margin-left: 6px;
+    color: var(--text-faint);
+    font-size: var(--font-size-small);
+  }
+  .ext-notes {
+    margin: 6px 0;
+  }
+  .ext-note-builtin,
+  .ext-note-user {
+    margin: 4px 0;
+    padding-left: 8px;
+    border-left: 3px solid var(--border-strong);
+    white-space: pre-wrap;
+  }
+  .ext-note-input {
+    width: 100%;
+  }
+  /* 各台的钩子状态（要加钩子的那一个才有）。 */
+  .ext-hooks {
+    margin: 6px 0;
+  }
+  .ext-hook {
+    margin: 4px 0;
+    padding-bottom: 4px;
+    border-bottom: 1px solid var(--border-medium);
+  }
+  .ext-hook-state {
+    font-size: var(--font-size-small);
+  }
+  .ext-hook-state.is-ok {
+    color: var(--success);
+  }
+  .ext-hook-state.is-bad {
+    color: var(--error);
+  }
+  .ext-hook-state.is-unknown {
+    color: var(--warn);
+  }
+  .ext-hook-install-first {
+    color: var(--warn);
+  }
+  .ext-hook-snippet {
+    margin-top: 4px;
+  }
+  /* 确认卡上「装到哪」：不能选的那几项置灰、旁注为什么。 */
+  .ext-targets {
+    margin: 6px 0;
+    border: 1px solid var(--border-medium);
+    border-radius: 4px;
+  }
+  .ext-target {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    flex-wrap: wrap;
+    font-size: var(--font-size-small);
+  }
+  .ext-target.is-off {
+    color: var(--text-faint);
+  }
+  .ext-target-note {
+    color: var(--text-faint);
+  }
   .ext-done {
     color: var(--success);
   }
@@ -2627,7 +2680,6 @@ body.settings-window-mode .settings-panel {
     margin: 4px 0;
     font-size: var(--font-size-small);
   }
-  .ext-card-project,
   .ext-card-secret {
     flex: 1;
     min-width: 0;

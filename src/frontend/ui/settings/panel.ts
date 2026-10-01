@@ -26,7 +26,6 @@ import { claudeDirIn, setClaudeDirOverride } from "../paths";
 import { loadConfig } from "../config";
 import { AccountsSection } from "./accounts-section";
 import { ExtSection } from "./ext-section"; // 顶层「扩展」：跨机器的 skill / MCP，一张表 ＋ 一个抽屉
-import { CcBusHooksSection } from "./cc-bus-hooks-section"; // B04：钩子只读诊断 + 生成待贴文本（绝不写入）
 import { ConfigSurfaceSection } from "./config-surface-section"; // T02：配置面审计（只读、按需一次、不轮询）
 import { DriftLedgerSection } from "./drift-ledger-section"; // U-CC1：数据面漂移记账（只读、按需一次、不轮询）
 import { DiagnosticsSection } from "./diagnostics-section";
@@ -221,7 +220,7 @@ export class SettingsPanel {
   private perMachineBlocks: {
     appliesTo: "local" | "remote" | "both";
     /** S4b-3b-2：这块归详情页的哪一栏。`footprint` 是新增的第五栏。 */
-    tab: "acct" | "tools" | "footprint";
+    tab: "acct" | "term" | "footprint";
     el: HTMLElement;
     /**
      * ST1「延后加载」：这一块的第一发 I/O。**某台机器的子页第一次可见时**才调。
@@ -256,10 +255,10 @@ export class SettingsPanel {
   private readonly pageLoaders = new Map<string, Array<() => void>>();
   /** 本次打开以来，哪几页已经放过 I/O 了。`open()` 会清空它（重开要看新读数）。 */
   private readonly pagesLoaded = new Set<string>();
-  /** S4b-3b-2：pageId → 该页「账号 / 工具 / 足迹」三栏的容器。 */
+  /** S4b-3b-2：pageId → 该页「账号 / 终端 / 足迹」三栏的容器。 */
   private machineTabSlots = new Map<
     string,
-    { acct: HTMLElement; tools: HTMLElement; footprint: HTMLElement }
+    { acct: HTMLElement; term: HTMLElement; footprint: HTMLElement }
   >();
   /** 当前编辑中的 theme（实时预览用） */
   private current: ThemeConfig = {};
@@ -824,7 +823,7 @@ export class SettingsPanel {
     }
     const slots = pageId ? this.machineTabSlots.get(pageId) : undefined;
     if (slots) {
-      // S4b-3b-2：分栏页 —— 每块按 `tab` 归到「账号 / 工具 / 足迹」栏里。
+      // S4b-3b-2：分栏页 —— 每块按 `tab` 归到「账号 / 终端 / 足迹」栏里。
       for (const b of this.perMachineBlocks) slots[b.tab].appendChild(b.el);
       return;
     }
@@ -836,7 +835,7 @@ export class SettingsPanel {
   /**
    * S4b-3b-2：一台远端机器的四栏页。
    *
-   * 「连接 / 组件」来自 `MachineCard` 拆出的两块；「账号 / 工具」是 per-machine 那几块
+   * 「连接 / 组件」来自 `MachineCard` 拆出的两块；「账号 / 终端 / 足迹」是 per-machine 那几块
    * 分节的落点 —— 它们是**单例**，由 `movePerMachineTo` 在切页时搬进当前这一页的对应栏。
    */
   private buildMachineTabs(
@@ -851,17 +850,16 @@ export class SettingsPanel {
     tabs.addRoute({ id: `${pageId}#conn`, title: copyText("settingsPanel.machineTab.connection"), element: parts.connection });
     tabs.addRoute({ id: `${pageId}#comp`, title: copyText("settingsPanel.machineTab.components"), element: parts.components });
     const acct = document.createElement("div");
-    const tools = document.createElement("div");
-    // 〔协调方转主会话裁：别名统一放「工具」栏〕这台机器的别名那一块排在「工具」栏最前面，
-    //   与本机页「工具 → 别名」同一个位置（per-machine 那几块由 `movePerMachineTo` 接在它后面）。
-    tools.appendChild(parts.tools);
+    const term = document.createElement("div");
+    // 「终端」栏：这台终端认识的命令（别名块）排在最前面，本机远端同一个位置（per-machine 那几块由 `movePerMachineTo` 接在它后面）。
+    term.appendChild(parts.terminal);
     const footprint = document.createElement("div");
     tabs.addRoute({ id: `${pageId}#acct`, title: copyText("settingsPanel.machineTab.accounts"), element: acct });
-    tabs.addRoute({ id: `${pageId}#tools`, title: copyText("settingsPanel.machineTab.tools"), element: tools });
+    tabs.addRoute({ id: `${pageId}#term`, title: copyText("settingsPanel.machineTab.terminal"), element: term });
     // 步 14a（那张图 · `§10.1`）：**第五栏「足迹」**。
     // ⚠ 它是**新增一栏**，不是把已有的某一栏搬个位置 —— 所以 `§10.4` 把它单列成 `14a`。
     tabs.addRoute({ id: `${pageId}#footprint`, title: copyText("settingsPanel.machineTab.footprint"), element: footprint });
-    this.machineTabSlots.set(pageId, { acct, tools, footprint });
+    this.machineTabSlots.set(pageId, { acct, term, footprint });
     return tabs.element;
   }
 
@@ -1112,7 +1110,7 @@ export class SettingsPanel {
       // 构造零 I/O：它是个 `<details>`，第一次展开才读盘。
       {
         appliesTo: "local",
-        tab: "tools",
+        tab: "term",
         el: this.safeBlock(copyText("settingsPanel.group.aliases"), () => {
           // 认不出本机系统 ⇒ 不猜方言：明说、安装入口置灰。
           const shell = localShell();
@@ -1126,13 +1124,7 @@ export class SettingsPanel {
       },
       // 〔资产目录 · 插件〕三块搬走了：skill / MCP 是跨机器的一类对象，住顶层「扩展」页（一张表 ＋ 一个抽屉）；
       //   插件只读列表没有可做的事，先拿掉。
-      // B04：钩子诊断。**只读**——不替用户改 ~/.claude/settings.json（共享全局配置）。
-      // 本机与远端都要诊断（§2.4 表里这一行两栏都写着「诊断 + 待贴片段」）。
-      {
-        appliesTo: "both",
-        tab: "tools",
-        ...this.loadableBlock(copyText("settingsPanel.group.ccBusHooks"), () => new CcBusHooksSection()),
-      },
+      // cc-bus 钩子那一块拿掉了：cc-bus 是扩展页里的一行，它的内置备注下面每台一行钩子状态与要加的内容。
       // 🔴 步 14a（那张图的第五栏）：**「足迹」**。
       //
       // 它原来住顶层「改动足迹」页，名字叫「配置面审计」。两条都改：
@@ -1485,7 +1477,7 @@ export class SettingsPanel {
       this.updateRemoteLauncherWarning(),
     );
     // 这里原来挂着两块别名（「按账号生成命令」·「生成自定义别名」）。
-    // 它们合成一类、搬去了机器页「本机 → 工具 → 别名」：
+    // 它们合成一类、搬去了机器页「本机 → 终端 → 别名」：
     // 别名是**每台机器一份**的东西，按本面板那条顶层判据（它改的是谁的状态）归机器页，不归「应用」。
     // 上面那条越层诊断的提示文案跟着指过去了。
 
