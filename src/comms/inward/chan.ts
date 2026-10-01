@@ -22,7 +22,7 @@
  *   第 1 跳的上界由 monitor 那一侧执行（`chan/webview.rs` → `router::settle`）⇒ **本文件零定时器**。
  * - **撤单**：`Budget.cancel`（`AbortSignal`）拨下 ⇒ 立即 `Ours{Cancelled}`（本地撤单，`§3.3.3`）。
  *   〔MIG-3b 续 · 主会话 09-28 裁「撤单不许回退」〕同时带着这一问的编号发 `chan_cancel` ⇒ monitor 那一侧丢掉那次调用、补发 `cancel`
- *   给后端 ⇒ 可取消档真停下（全景：小程序那一组子进程被杀）。那台对这一条不认撤（`Offer.stoppable` 里没有）⇒ 仍是 `runsOn`。
+ *   给后端 ⇒ 可取消档真停下。那台对这一条不认撤（`Offer.stoppable` 里没有）⇒ 仍是 `runsOn`。
  *   〔墓碑 —— 上一版这里写着「⚠ 不买对端撤活：monitor 那一侧照跑到「还剩多少」为止」。〕
  * - **错误三层**（`§3.3.1`）：`hop`（传输错，带跳号 ＋ `reach`）· `peer`（对端说不认 / 说不行，后者带不透明体）·
  *   `ours`（我们自己错）。monitor 交回来的是回环那条同一份线上形状（`wire::err_to_wire`），这里解回三层；

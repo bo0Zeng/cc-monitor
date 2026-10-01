@@ -216,7 +216,6 @@ fn backend_rows_point_where_the_backend_itself_writes() {
                 .to_path_buf(),
             "dir",
         ),
-        row("panorama/", h.join(rr::PANORAMA_INDEX_REL), "dir"),
         row("backups/", h.join(rr::EXT_BACKUPS_DIR_REL), "dir"),
     ];
     assert_eq!(got, want);

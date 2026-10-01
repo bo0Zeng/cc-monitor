@@ -260,7 +260,6 @@ export class TabManager {
       },
       pinnedLoaded: () => this.prefs.pinnedLoaded,
       togglePin: (sid) => this.togglePin(sid),
-      requestPanoramaHighlight: (sid) => this.requestPanoramaHighlight?.(sid),
     },
     this.actions,
   );
@@ -422,30 +421,6 @@ export class TabManager {
   }
 
   /**
-   * Batch15-P2：活跃 tab 的仓信息（cwd + origin），供全景视图判断索引哪个本地仓。
-   * 无活跃 tab / 活跃 tab 无 cwd → 返 null。origin 是远端 = 远端会话（代码在远端机，
-   * 本地 code-picture 索引不到，全景侧据此显式提示不索引）。**additive getter，只读，不改既有逻辑。**
-   */
-  activeRepoInfo(): { cwd: string; origin: Origin } | null {
-    const tab = this.store.activeId !== null ? this.store.tabs.get(this.store.activeId) : undefined;
-    if (!tab || !tab.cwd) return null;
-    return { cwd: tab.cwd, origin: tab.origin };
-  }
-
-  /**
-   * F70：某会话在全景图上可高亮的「改动集」——cwd（定仓）+ 它写类工具碰过的文件。
-   * **本地会话专属**：origin 是远端 / 无 cwd → 返 null（远端代码不在本机、code-picture
-   * 索引不到，高亮不可用——门控就地做，呼应 activeRepoInfo）。**只读 getter，不落盘。**
-   */
-  touchedFilesFor(
-    sid: string,
-  ): { cwd: string; origin: Origin; files: string[] } | null {
-    const tab = this.store.tabs.get(sid);
-    if (!tab || !tab.cwd || isRemoteOrigin(tab.origin)) return null;
-    return { cwd: tab.cwd, origin: LOCAL_ORIGIN, files: [...tab.touchedFiles] };
-  }
-
-  /**
    * F91（#27）：跨会话监控快照——`GridMonitorView` 消费的**只读派生 DTO 列表**（本地 + 所有远端会话）。
    * 纯派生：不外泄任何内部 DOM / Map 引用（防外部改到 TabManager 内部状态）。插入序（同 tab-bar）。
    * context% 复用 pricing.ts `contextPercent`（上限未知 / 无 usage → null）。
@@ -554,10 +529,6 @@ export class TabManager {
   set onManualSwitch(fn: (() => void) | null) {
     this.router.onManualSwitch = fn;
   }
-
-  /** F70：右键「在全景高亮本会话改动」回调——main.ts 注入（TabManager 不直接持有
-   *  PanoramaView，走注入回调，同 onManualSwitch 范式）。仅本地会话菜单出现该项。 */
-  requestPanoramaHighlight: ((sid: string) => void) | null = null;
 
   /**
    * 〔GAP1 · `设计/01 §1.5`〕「当前 tab 变了」改订阅 store（原先是 `onActiveUsageChanged` / `onActiveFactsAvailability`
@@ -700,7 +671,7 @@ export class TabManager {
       // issue #23：红绿灯信号若先于建 Tab 到达，从暂存取（否则 null=未知→绿）
       activity: this.store.pendingActivity.get(sessionId) ?? null,
       // 〔STC〕下面三样只经 `facts` 落下来（后端 `history-facts` 出成品，`onSessionFacts`）。
-      touchedFiles: new Set(), // F70：会话改动集
+      touchedFiles: new Set(), // 会话改动集
       latestPromptTokens: null, // F88b：HUD context% 数据
       latestModel: null,
       facts: new FactsSource(
@@ -1090,7 +1061,7 @@ export class TabManager {
   /**
    * 〔STC · `设计/90 §4` 阶段 C〕后端的一份会话事实到了（`views/facts-source.ts`）⇒ 落到 tab 上（`applyFacts`，纯投影），
    * 只刷变了的那几块：分叉 ⇒ 标题 `↳`（issue #63①）· usage ⇒ HUD（F88b，只 active）。
-   * 改动文件集没有推的去处（全景高亮 / 右键菜单 / 监控板 peek 都是现取）。
+   * 改动文件集没有推的去处（监控板 peek 是现取）。
    */
   private onSessionFacts(sid: string, f: SessionFacts): void {
     const tab = this.store.tabs.get(sid);

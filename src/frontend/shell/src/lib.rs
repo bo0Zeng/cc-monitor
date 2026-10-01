@@ -106,13 +106,8 @@ mod local_backend_host; // P2s（C8）：本机后端的生命周期（起/停/�
 mod local_origin_registry;
 mod logging;
 // 〔STOP〕`stop_grace`〔散文墓碑〕删：「请它收尾 → 等 → 强杀」搬进那台机器上的一次性子命令 `--resident-stop`（后端 `control/resident.rs`）。
-// 〔RM1f · V108 后半句〕`mod panorama;`（进程内 per-repo 引擎池 ＋ 17 条本机全景命令）删了：本机也走本机后端 → 全景小程序（`panorama_call`），monitor 不再链 vendored 引擎。
-mod panorama_bytes; // 〔RM1c · 第四波〕全景小程序：推上去 · 本机放一份（〔DP1〕字节本身从 `byte_table` 取）
-                    // 〔MIG-3b 续 · 主会话 09-28 裁〕`panorama_call`〔散文墓碑〕（全景问 · 写 · 撤经 monitor 那一跳转）整份删了：界面经通道直问那台后端 `panorama` / `panorama-edit`，
-                    //   撤单过通道那一跳；放字节那一半（`panorama_place`）住 `panorama_bytes.rs`。
-mod panorama_seam_registry; // P7c-2 第一刀：引擎住哪一侧要可换（整体 #[cfg(test)]）
-                            // 〔MOD · `设计/90 §3` 判据 3〕`mod messages;` · `mod parser;` · `mod codex_record;`〔散文墓碑〕（记录解析）整族搬进了后端
-                            //   `agents/claudecode/`（`schema` · `parse`）与 `agents/codex/record.rs`：monitor 只把后端给的成品原样转交。
+// 〔MOD · `设计/90 §3` 判据 3〕`mod messages;` · `mod parser;` · `mod codex_record;`〔散文墓碑〕（记录解析）整族搬进了后端
+//   `agents/claudecode/`（`schema` · `parse`）与 `agents/codex/record.rs`：monitor 只把后端给的成品原样转交。
 mod platform; // C10：平台相关的 fs 原语的唯一住址，注入给平台无关的 backend
               // 〔C4b · 第四波 4B〕`plugins` 模块（P8a 的 marketplace 只读枚举，`list_plugin_marketplaces`〔散文墓碑〕）删了：
               //   后端 `plugins-marketplaces` 直接出成品，界面经通道问（`src/frontend/ui/settings/plugins-section.ts::fetchSurvey`）。
@@ -993,13 +988,10 @@ pub fn run() {
             // 〔MIG-2〕`probe_ccm_cli` 退役：渲染进了那台后端，能力问它自己。
             // 🔴 `K-R69` / `KR69D2`：本机 `ccm` 这一格（我们那一份 · PATH 上那一份 · 判词）。
             ccm_probe::local_ccm_entry_status,
-            // 〔RM1f〕Batch15-P1 那一族本机全景命令（per-repo Engine 池）删了：本机远端同一条（〔MIG-3b 续〕今天是通道上的 `panorama`）。
             // 〔MIG-3a · `99 §2.1 ⑬`〕skill 接入面三条（收件箱的列 / 读 / 写）退役：界面经通道直问那台后端
             //   （`skill-host-list` / `-read` / `-write`，声明与围栏住后端 `agents/claudecode/skill_host.rs`）。
             // 〔MIG-3a · 子步 3〕cc-bus 装 / 三态进了本机后端（`cc-bus-install` / `-state`）；留下装前那道本机 `ccm` 预检。
             cc_bus_deploy::cc_bus_ccm_precheck,
-            // 〔MIG-3b 续〕全景问 · 写 · 撤三条退役（界面经通道直问那台后端）；那台没装 / 太旧时 monitor 放字节这一条留下。
-            panorama_bytes::panorama_place,
             // 〔C4a · 第四波〕**主界面说 `call` 的那一跳**（`设计/05 §3.3`）：webview ⇒ 通道 ⇒ 注入的后端句柄。
             chan::webview::chan_call,
             // 〔MIG-3b 续 · 主会话 09-28 裁「撤单不许回退」〕撤单过 webview 那一跳（带编号撤那一问）。

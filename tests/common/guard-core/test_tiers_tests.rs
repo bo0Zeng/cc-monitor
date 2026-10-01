@@ -176,11 +176,6 @@ const UNIT: &[&str] = &[
     "tests/frontend/ui/launch-requests.vitest.ts",
     "tests/frontend/ui/launcher-diagnostics.vitest.ts",
     "tests/frontend/ui/live-window.vitest.ts",
-    "tests/frontend/ui/panorama/agent-clip.vitest.ts",
-    "tests/frontend/ui/panorama/d20-gate.vitest.ts",
-    "tests/frontend/ui/panorama/layout.vitest.ts",
-    // 〔STC〕`tests/frontend/ui/panorama/session-files.test.ts` 出列：被测对象（写类工具口径）搬进后端，七条搬成 `tests/backend/observe/facts_query_tests.rs` 里一条。
-    "tests/frontend/ui/panorama/subgraph-layers.vitest.ts",
     "tests/frontend/ui/reconcile-shell.vitest.ts",
     "tests/frontend/ui/record-timeline.vitest.ts",
     "tests/frontend/ui/remote-health.test.ts",
@@ -208,7 +203,6 @@ const UNIT: &[&str] = &[
     "tests/frontend/ui/settings/panel-block-isolation.vitest.ts",
     "tests/frontend/ui/settings/panel-deferred-io.vitest.ts",
     "tests/frontend/ui/settings/panel-groups.vitest.ts",
-    "tests/frontend/ui/settings/panorama-section.vitest.ts", // 〔FIX4〕全景小程序卸口（假通道）
     "tests/frontend/ui/settings/panel-machine-page-visibility.vitest.ts",
     "tests/frontend/ui/settings/panel-per-machine-deferred-io.vitest.ts",
     "tests/frontend/ui/settings/panel-window-lifecycle.vitest.ts",
@@ -247,16 +241,6 @@ const UNIT: &[&str] = &[
     "tests/frontend/ui/views/history-search.vitest.ts",
     "tests/frontend/ui/views/history-source-cache.vitest.ts",
     "tests/frontend/ui/views/pane-preview.vitest.ts",
-    "tests/frontend/ui/views/panorama-ann-queue.vitest.ts",
-    "tests/frontend/ui/views/panorama-copy-agent.vitest.ts",
-    "tests/frontend/ui/views/panorama-d20.vitest.ts",
-    "tests/frontend/ui/views/panorama-diagram.vitest.ts",
-    "tests/frontend/ui/views/panorama-f71.vitest.ts",
-    "tests/frontend/ui/views/panorama-f72.vitest.ts",
-    "tests/frontend/ui/views/panorama-highlight.vitest.ts",
-    "tests/frontend/ui/views/panorama-p7b.vitest.ts",
-    "tests/frontend/ui/views/panorama-pick-repo.vitest.ts",
-    "tests/frontend/ui/views/panorama-remote.vitest.ts",
     "tests/frontend/ui/views/session-find.vitest.ts",
     "tests/frontend/ui/views/session-viewer-scroll.vitest.ts",
     "tests/frontend/ui/views/session-viewer-skeleton.vitest.ts",
@@ -335,7 +319,6 @@ const SCAN: &[&str] = &[
     "tests/backend/main_window_raise_guard.rs",
     "tests/backend/no_timer_guard.rs",
     // 〔STC〕会话事实的口径与续传（纯字节）＋ 一条异源对拍读生成物 `src/frontend/ui/generated/agent-profile-table.ts` ⇒ 判别器判扫描层。
-    "tests/backend/panorama_locus_guard.rs",
     "tests/backend/platform/cfgless_guard.rs",
     "tests/backend/platform/fallback_guard.rs",
     "tests/backend/platform/pidwatch/linux_tests.rs",
@@ -430,8 +413,6 @@ const SCAN: &[&str] = &[
     "tests/frontend/shell/lockfile_conflict_guard_tests.rs",
     "tests/frontend/shell/needle_anchor_registry_tests.rs",
     "tests/comms/inward/origin_tests.rs",
-    "tests/frontend/shell/panorama_seam_registry_engine_port_scope.rs",
-    "tests/frontend/shell/panorama_seam_registry_tests.rs",
     "tests/frontend/shell/parity_ledger_tests.rs",
     "tests/frontend/shell/paths_tests.rs",
     "tests/frontend/shell/plugin_class_registry_tests.rs",
@@ -498,8 +479,6 @@ const SCAN: &[&str] = &[
     "tests/frontend/ui/origin-single-home.vitest.ts",
     // 〔GAP1 · `设计/01 §1.5`〕overlay 路由的语义 ＋ `main.ts` 零处自判开没开（源码扫描）。
     "tests/frontend/ui/overlay-router.vitest.ts",
-    "tests/frontend/ui/panorama/api-remote.vitest.ts",
-    "tests/frontend/ui/panorama/diagram-guards.vitest.ts",
     "tests/frontend/ui/paste-block-guard.vitest.ts",
     "tests/frontend/ui/paste-block.vitest.ts",
     "tests/frontend/ui/remote-config.vitest.ts",
@@ -601,7 +580,6 @@ const INTEGRATION: &[&str] = &[
     "tests/backend/control/fork_write_tests.rs",
     "tests/backend/control/identity_tag_tests.rs",
     "tests/backend/control/launch_tests.rs", // 〔W5-VIS〕由扫描层挪来：S4 那条判据真起一个假 tmux 子进程（`ran` 收 stderr）
-    "tests/backend/control/panorama_tests.rs",
     "tests/backend/control/resident_tests.rs", // 〔HOST〕临时目录上真铸钥匙、读钥匙文件 ·〔STOP〕真 sh 子进程 ＋ 真信号：graceful / killed / not_running
     "tests/backend/control/transfer_tests.rs",
     "tests/backend/dial_compress_tests.rs",
@@ -692,13 +670,8 @@ const INTEGRATION: &[&str] = &[
     "tests/frontend/shell/local_lines_tests.rs",
     "tests/frontend/shell/logging_tests.rs",
     // 〔AS2〕
-    // 〔RM1f〕SCAN → 集成：本机那一份小程序的放法（临时目录真写 · 逐字节相等零写 · 字节变了重写）
-    "tests/frontend/shell/panorama_bytes_tests.rs",
-    // 〔MIG-3b 续〕`tests/frontend/shell/panorama_call_tests.rs` 删了：问 · 交那一环随实现搬进后端（`tests/backend/control/panorama_edit_tests.rs`）。
-    // 〔RM1f〕`tests/frontend/shell/panorama_tests.rs` 删了（monitor 的内嵌引擎连同它的判据一起删了）。
     "tests/frontend/shell/profile_installer_tests.rs",
     "tests/frontend/shell/platform/console_text_tests.rs", // 〔P2〕控制台字节按 OEM 代码页解（Windows 臂 ＋ PowerShell 读数起进程）
-    "tests/backend/control/panorama_edit_tests.rs", // 〔MIG-3b 续〕全景写：问 · 交那一环（原 `tests/frontend/shell/panorama_call_tests.rs`）随实现搬来，临时目录当仓
     "tests/backend/assets/pubkey_tests.rs", // 〔MIG-3b 续〕原 `tests/frontend/shell/pubkey_tests.rs` 随实现搬来（真 `sh` 上跑那一串 · 临时目录当家）
     "tests/frontend/shell/scanning_guard_registry_tests.rs",
     // 〔LOC1b · 4D〕`search_tests.rs` 随 monitor 内存索引删了；`session_map_linux_liveness.rs` 随本机判活删了；`session_map_tests.rs` 挪进 SCAN（判据里多了读源码的那两条）。

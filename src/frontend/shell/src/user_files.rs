@@ -4,7 +4,6 @@
 //! ⇒ rc 里的别名块 · PowerShell `$PROFILE` · 项目 `.mcp.json` · skill 收件箱 · `~/.claude/skills/cc-bus/`，
 //! 这些改动从此都经**那台机器上的后端**（当年 `files-peek` / `files-put` / `files-rename` /
 //! `files-chmod`；〔THIN〕今天这扇门只剩 `files-home` ＋ 带期望值的 `files-delete`），本机与远端**同一条路**，只差 origin。〔MIG-3b〕删历史会话不经这扇门了：界面经通道直说那台后端。
-//! 〔RM1d → MIG-3b 续〕代码全景的批注 / 文档关联不经这扇门了：算与写都在那台后端（`panorama-edit`，界面经通道直问）。
 //!
 //! # 分工
 //!
@@ -57,9 +56,8 @@ pub(crate) trait Door {
     fn machine(&self) -> String;
     /// 后端这个进程的 home（绝对路径）。
     async fn home(&self) -> Result<String, String>;
-    // 〔MIG-3b 续〕交写那一形（`put`，最后一个用户是全景的批注 / 文档关联）随全景写进那台后端（`panorama-edit`）删了。
     // 〔MIG-3a · 子步 3〕改名那一形（`rename`〔散文墓碑〕，唯一用户是 cc-bus 装前的整目录备份）随装 cc-bus 进后端删了。
-    /// 〔RM1d〕删**一个文件**（`files-delete`，非递归；落点同一道围栏）。〔MIG-3b 续〕今天唯一的用户：`ccm_legacy.rs` 删旧入口（全景删批注那一处随全景写进了那台后端）。
+    /// 〔RM1d〕删**一个文件**（`files-delete`，非递归；落点同一道围栏）。〔MIG-3b 续〕今天唯一的用户：`ccm_legacy.rs` 删旧入口。
     /// 〔RM1e〕带 CAS：`expect` = 读到的那一份，盘上逐字节等于它才删；不等 / 已经不在 ⇒ [`Refused::Stale`]，一个字节不动。
     /// 〔墓碑 —— RM1d 那一版这里写着「没有 CAS（后端这条命令不收 `expect`），调用方先 `peek` 核一遍」。〕
     async fn delete(&self, root: &str, rel: &str, expect: &str) -> Result<(), Refused>;

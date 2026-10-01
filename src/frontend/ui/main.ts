@@ -29,7 +29,6 @@ import { SETTINGS_APPLIED_EVENT } from "./settings";
 import { RESYNC_DONE_EVENT } from "./settings/events";
 import { listen } from "@tauri-apps/api/event";
 import { HistoryView } from "./views/history";
-import { PanoramaView } from "./views/panorama";
 import { CcBusView } from "./views/cc-bus-view";
 import { GridMonitorView } from "./views/grid-monitor";
 import { CommandBarView, type Command } from "./views/command-bar";
@@ -357,29 +356,6 @@ window.addEventListener("DOMContentLoaded", async () => {
   historyTrigger.addEventListener("click", () => overlays.toggle("history"));
   document.getElementById("app")?.appendChild(historyTrigger);
 
-  // Batch15-P2：代码全景入口 —— 顶栏右侧，紧邻历史按钮左边。自挂 body 作 fixed overlay
-  // （照 HistoryView），对活跃**本地**会话的 cwd 建 code-picture 索引画代码库地图。
-  const panoramaView = new PanoramaView(() => tabs.activeRepoInfo());
-  overlays.register("panorama", panoramaView);
-  // F70（护城河）：右键 tab「在全景高亮本会话改动」→ 切到该会话 → 打开全景 → 高亮它改过的
-  // 节点。TabManager 不直接持有 PanoramaView，走注入回调（同 onManualSwitch 范式）。
-  tabs.requestPanoramaHighlight = (sid) => {
-    const info = tabs.touchedFilesFor(sid); // 远端/无 cwd 已被 getter 挡掉（返 null）
-    if (!info) return;
-    tabs.switchTo(sid); // 置活跃 → activeRepoInfo=该仓 → 全景加载该仓
-    void (async () => {
-      await overlays.show("panorama"); // 同仓复用；异仓重索引/加载
-      await panoramaView.highlightSession(info.files);
-    })();
-  };
-  const panoramaTrigger = document.createElement("button");
-  panoramaTrigger.type = "button";
-  panoramaTrigger.className = "panorama-trigger";
-  panoramaTrigger.title = copyText("main.topbar.panoramaHint");
-  panoramaTrigger.setAttribute("aria-label", copyText("main.cmd.openPanorama"));
-  panoramaTrigger.addEventListener("click", () => overlays.toggle("panorama"));
-  document.getElementById("app")?.appendChild(panoramaTrigger);
-
   // F91（#27）：多 agent 并排监控入口 —— 顶栏右侧一排（🗂 左边，right:168px）。跨机器只读
   // mission-control 状态板（一屏看所有会话实时状态，点卡片跳会话；只读——不派发/不驱动 agent）。
   const gridMonitorView = new GridMonitorView(tabs);
@@ -423,7 +399,6 @@ window.addEventListener("DOMContentLoaded", async () => {
     };
     const cmds: Command[] = [
       { id: "open-history", title: copyText("main.cmd.openHistory"), keywords: copyText("main.cmd.historyKeywords"), hint: chordHint("app.toggle-history"), run: () => overlays.open("history") },
-      { id: "open-panorama", title: copyText("main.cmd.openPanorama"), keywords: copyText("main.cmd.panoramaKeywords"), hint: chordHint("app.toggle-panorama"), run: () => overlays.open("panorama") },
       { id: "open-cc-bus", title: copyText("main.cmd.openCcBus"), keywords: copyText("main.cmd.ccBusKeywords"), run: () => overlays.open("cc-bus") },
       { id: "open-grid", title: copyText("main.cmd.openGrid"), keywords: copyText("main.cmd.gridKeywords"), run: () => overlays.open("grid") },
       { id: "open-settings", title: copyText("main.cmd.openSettings"), keywords: copyText("main.cmd.settingsKeywords"), hint: chordHint("app.open-settings"), run: () => void openSettingsWindow() },
@@ -572,7 +547,6 @@ window.addEventListener("DOMContentLoaded", async () => {
   dispatcher.bind("terminal.bring-front", () => tabs.bringActiveTerminalToFront());
   dispatcher.bind("app.open-settings", () => void openSettingsWindow()); // F82a：开独立设置窗口
   dispatcher.bind("app.toggle-history", () => overlays.toggle("history"));
-  dispatcher.bind("app.toggle-panorama", () => overlays.toggle("panorama"));
   dispatcher.bind("app.open-command-bar", () => commandBar.toggle()); // F84（#57）Ctrl+K 命令栏
   dispatcher.bind("app.minimize", () => void getCurrentWindow().minimize());
   dispatcher.bind("app.toggle-fullscreen", () => {

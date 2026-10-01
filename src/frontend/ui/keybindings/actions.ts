@@ -94,7 +94,6 @@ export const ACTIONS: ReadonlyArray<Action> = [
   // ===== App =====
   { id: "app.open-settings", label: copyText("keybindingActions.app.settings"), category: "App", default: "Comma", available: true },
   { id: "app.toggle-history", label: copyText("keybindingActions.app.history"), category: "App", default: "KeyH", available: true },
-  { id: "app.toggle-panorama", label: copyText("keybindingActions.app.panorama"), category: "App", default: "KeyG", available: true },
   // F84（#57）：命令栏。唯一默认带 Ctrl 的 chord（palette 惯例；单键 K 会在只读主视图误触发，
   // 且 palette 要在任意上下文唤起，故用组合键——经核实 Ctrl+KeyK 全表空闲、零冲突）。
   { id: "app.open-command-bar", label: copyText("keybindingActions.app.commandBar"), category: "App", default: "Ctrl+KeyK", available: true },
