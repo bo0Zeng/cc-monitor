@@ -241,7 +241,7 @@
     },
     "rsToolRegistry.tools.accountsVaultNote": {
       "kind": "body",
-      "zh": "账号库：清单 accounts.json、每个号的目录和改动前的备份都在这里。启用多账号时，这台现在登录的身份文件（~/.claude/.credentials.json、~/.claude.json）会搬进默认号的目录。之后各号的 .claude.json 里只有用户级 MCP 那一段会被同步改写（各号共用一份），别的内容一个字节不碰。",
+      "zh": "账号库：清单 accounts.json、每个号的目录和改动前的备份都在这里。启用多账号时，这台现在登录的身份文件（~/.claude/.credentials.json、~/.claude.json）会搬进默认号的目录。之后各号的 .claude.json 里只有用户级 MCP 那一段会被同步改写，各号共用一份，别的内容一个字节不碰。",
       "args": []
     },
     "beAcctExec.apply.stopped": {
@@ -19510,7 +19510,7 @@
     },
     "beAcctJsonKey.parse.duplicate": {
       "kind": "error",
-      "zh": "这份配置文件里要改的那一段出现了不止一次，分不清以哪一个为准，这一次不改它。",
+      "zh": "要改的那一段出现了不止一次。分不清以哪一个为准，这一次不改它。",
       "args": []
     },
     "beAcctJsonKey.render.failed": {
@@ -19520,7 +19520,7 @@
     },
     "beAcctJsonKey.verify.failed": {
       "kind": "error",
-      "zh": "改完之后核对没通过（要改的那一段之外的内容变了，或那一段不是要写的那一版），这一次不写。",
+      "zh": "改完之后核对没通过，这一次不写。要改的那一段之外的内容变了，或那一段不是要写的那一版。",
       "args": []
     },
     "beAcctMcpShare.store.badShape": {
@@ -19625,7 +19625,7 @@
     },
     "rsToolRegistry.tools.accountsMcpBackupNote": {
       "kind": "body",
-      "zh": "同步改写某个号的 .claude.json 之前，那份原文放在这里（每个号一份，下一次改写前换成新的）。要找回就从这里拿。",
+      "zh": "同步改写之前的原文放在这里。改写某个号的 .claude.json 之前留一份，每个号一份，下一次改写前换成新的；要找回就从这里拿。",
       "args": []
     },
     "rsDataPaths.backend.accountsMcp": {
@@ -19640,7 +19640,7 @@
     },
     "accountsMcp.block.shared": {
       "kind": "body",
-      "zh": "这台的各个号共用一份用户级 MCP：在任一个号里加或改的，会同步到所有号。",
+      "zh": "这台的各个号共用一份用户级 MCP。在任一个号里加或改的，会同步到所有号。",
       "args": []
     },
     "accountsMcp.block.deleteHere": {
