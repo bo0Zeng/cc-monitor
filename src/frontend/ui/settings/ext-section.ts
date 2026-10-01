@@ -425,6 +425,10 @@ export class ExtSection {
   }
 
   private hookReport(line: HTMLElement, rep: HooksReport): void {
+    if (!rep.supported) {
+      line.appendChild(el("div", "settings-hint ext-hook-unsupported", copyText("extPage.hooks.unsupported")));
+      return;
+    }
     for (const [label, st] of [
       [copyText("extPage.hooks.sessionStart"), rep.diagnosis.session_start],
       [copyText("extPage.hooks.stop"), rep.diagnosis.stop],

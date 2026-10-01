@@ -44,6 +44,7 @@ fn snap(gen: u64, names: &[&str]) -> Snapshot {
             .collect(),
         project_dirs: vec![],
         notes: Default::default(),
+        shared_mcp: false,
     }
 }
 
@@ -165,6 +166,7 @@ fn rows_judge_missing_differs_same_per_kind_and_name() {
         ],
         project_dirs: vec![],
         notes: Default::default(),
+        shared_mcp: false,
     };
     let there = Snapshot {
         label: "r".into(),
@@ -181,6 +183,7 @@ fn rows_judge_missing_differs_same_per_kind_and_name() {
         ],
         project_dirs: vec![],
         notes: Default::default(),
+        shared_mcp: false,
     };
     let c = cat_with("me", &[("me", me), ("r", there)]);
     let got: Vec<(String, String, String)> = rows(&c)

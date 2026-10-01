@@ -3660,6 +3660,7 @@ pub const REGISTRY: &[CommandSpec] = &[
             "snippet",
             "source",
             "stop",
+            "supported",
         ],
         takes_input: false,
         run: Run::Blocking(|r| {

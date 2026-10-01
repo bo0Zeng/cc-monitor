@@ -330,7 +330,7 @@ fn the_product_is_the_golden_the_ui_decodes() {
     .unwrap();
     let skills = agent.join("skills");
     put_scripts(&skills);
-    let rep = answer_at(Some(&home), &agent, Some(&skills));
+    let rep = answer_at(Some(&home), &agent, Some(&skills), true);
     let got = serde_json::to_string_pretty(&rep)
         .unwrap()
         .replace(&home.display().to_string(), HOME_MARK);
@@ -348,10 +348,29 @@ fn the_product_is_the_golden_the_ui_decodes() {
 fn a_machine_without_settings_says_so() {
     let home = scratch("none");
     let agent = home.join(".claude");
-    let rep = answer_at(Some(&home), &agent, Some(&agent.join("skills")));
+    let rep = answer_at(Some(&home), &agent, Some(&agent.join("skills")), true);
     assert!(rep.diagnosis.note.contains("没读到"), "{:?}", rep.diagnosis);
     assert_eq!(rep.diagnosis.session_start, HookState::NotInstalled);
     assert!(rep.source.ends_with("settings.json"));
     assert_eq!(rep.snippet, None, "cc-bus 没装 ⇒ 不给要加的内容");
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+/// 跑不了 cc-bus 的那台（没有原生 tmux）：成品说「不支持」、不给要加的内容 —— 哪怕 skill 目录里那两个脚本都在。
+#[test]
+fn a_machine_without_tmux_says_it_cannot_receive() {
+    let home = scratch("no-tmux");
+    let agent = home.join(".claude");
+    let skills = agent.join("skills");
+    put_scripts(&skills);
+    let rep = answer_at(Some(&home), &agent, Some(&skills), false);
+    assert!(!rep.supported);
+    assert_eq!(rep.snippet, None, "跑不了还给了要加的内容");
+    assert!(
+        answer_at(Some(&home), &agent, Some(&skills), true)
+            .snippet
+            .is_some(),
+        "正控：同一台换成跑得了就给"
+    );
     let _ = std::fs::remove_dir_all(&home);
 }

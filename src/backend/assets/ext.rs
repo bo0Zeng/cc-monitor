@@ -350,6 +350,8 @@ impl ExtKind {
 struct Column<'a> {
     id: &'a str,
     m: ExtMachine,
+    /// 那台有账号库（用户级 MCP 是各账号共用的那一份）。
+    shared: bool,
 }
 
 fn columns<'a>(cat: &'a Catalog, reach: &[(String, Option<String>)]) -> Vec<Column<'a>> {
@@ -375,6 +377,7 @@ fn columns<'a>(cat: &'a Catalog, reach: &[(String, Option<String>)]) -> Vec<Colu
                     here,
                     projects: snap.project_dirs.clone(),
                 },
+                shared: snap.shared_mcp,
             }
         })
         .collect();
@@ -477,18 +480,44 @@ fn detail_of(a: &Asset) -> Vec<ExtDetail> {
 
 // ───────────────────────── 哪一处能写（全仓只此一处判） ─────────────────────────
 
-/// 这一级能不能往里写 / 从里删：用户级 MCP 住 agent 自己的热状态文件（它自己一直在重写）⇒ 只读。
-pub(crate) fn writable(kind: ExtKind, at: &ExtLoc) -> Result<(), String> {
+/// 这一级能不能往里写 / 从里删。用户级 MCP：那台有账号库（`shared` = 各账号共用一份）⇒ 写进共用的那一份、同步到所有号；
+/// 没有 ⇒ 它住 agent 自己的热状态文件（agent 自己一直在重写）⇒ 只读。
+pub(crate) fn writable(kind: ExtKind, at: &ExtLoc, shared: bool) -> Result<(), String> {
     match (kind, at) {
-        (ExtKind::Mcp, ExtLoc::User) => Err(copy_text("beExt.note.userMcpReadOnly", &[])),
+        (ExtKind::Mcp, ExtLoc::User) if !shared => {
+            Err(copy_text("beExt.note.userMcpReadOnly", &[]))
+        }
         _ => Ok(()),
     }
 }
 
-/// MCP 那一处的项目目录；用户级 ⇒ 按 [`writable`] 拒。
-pub(crate) fn mcp_dir(at: &ExtLoc) -> Result<&str, (&'static str, String)> {
-    writable(ExtKind::Mcp, at).map_err(|why| ("refused", why))?;
-    Ok(at.project().unwrap_or_default())
+/// 这一处的 MCP 配置文件在这台上的（根, 相对段）：项目 = `<项目>/.mcp.json`；用户级 = 各账号共用的那一份（没有账号库 ⇒ 拒）。
+pub(crate) fn mcp_file(
+    d: &dyn Door,
+    at: &ExtLoc,
+) -> Result<(String, String), (&'static str, String)> {
+    match at {
+        ExtLoc::Project { dir } => Ok((dir.clone(), super::mcp_edit::MCP_JSON.to_string())),
+        ExtLoc::User => {
+            let store = shared_mcp_file(d)?;
+            let p = Path::new(&store);
+            let (Some(dir), Some(file)) = (p.parent(), p.file_name()) else {
+                return Err(("io_failed", copy_text("beExt.uninstall.noHome", &[])));
+            };
+            Ok((
+                dir.display().to_string(),
+                file.to_string_lossy().into_owned(),
+            ))
+        }
+    }
+}
+
+/// 这台的用户级 MCP 落在哪（被写的那一台自己判）：各账号共用的那一份（有账号库）；没有 ⇒ 按 [`writable`] 拒。
+pub(crate) fn shared_mcp_file(d: &dyn Door) -> Result<String, (&'static str, String)> {
+    let home = door::home(d).map_err(|e| ("io_failed", e))?;
+    let store = crate::accounts::manage::mcp_share_exec::store_file_in(&home);
+    writable(ExtKind::Mcp, &ExtLoc::User, store.is_some()).map_err(|why| ("refused", why))?;
+    Ok(store.unwrap_or_default())
 }
 
 /// cc-monitor 自带的扩展：（种类, 名字, 内置备注, 要不要列各台的钩子状态）。
@@ -508,13 +537,22 @@ pub(crate) fn is_builtin(kind: ExtKind, name: &str) -> bool {
     BUILTIN.iter().any(|(k, n, _, _)| *k == kind && *n == name)
 }
 
-/// 装到这一处行不行（表上「装到哪」的选项与枢纽收到的落点只问这里）：不能写的那一级 · 自带的只装全局。行 ⇒ `None`。
-pub(crate) fn target_refused(kind: ExtKind, name: &str, at: &ExtLoc) -> Option<String> {
-    if let Err(why) = writable(kind, at) {
-        return Some(why);
-    }
+/// 自带的只装全局（枢纽收到的落点先过这一道；用户级 MCP 能不能写由被写那台自己判，见 [`shared_mcp_file`]）。
+pub(crate) fn builtin_refused(kind: ExtKind, name: &str, at: &ExtLoc) -> Option<String> {
     (is_builtin(kind, name) && *at != ExtLoc::User)
         .then(|| copy_text("beExt.target.builtinUserOnly", &[]))
+}
+
+/// 装到这一处行不行（表上「装到哪」的选项）：不能写的那一级 · 自带的只装全局。行 ⇒ `None`。
+pub(crate) fn target_refused(
+    kind: ExtKind,
+    name: &str,
+    at: &ExtLoc,
+    shared: bool,
+) -> Option<String> {
+    writable(kind, at, shared)
+        .err()
+        .or_else(|| builtin_refused(kind, name, at))
 }
 
 /// 来源与目标是同一台的同一处（枢纽拒、表上那一项不可选）。
@@ -661,6 +699,7 @@ fn cell(
         user,
         user.map_or(ExtState::Missing, |a| is_this(a, canon)),
         live,
+        c.shared,
     )];
     let mut in_projects: Vec<&Asset> = mine
         .iter()
@@ -675,6 +714,7 @@ fn cell(
             Some(a),
             is_this(a, reference),
             live,
+            c.shared,
         ));
     }
     let (bring, note) = if !live {
@@ -694,12 +734,19 @@ fn cell(
 }
 
 /// 一处：有它 ⇒ 能写的那一级给「卸载」（那台连着才给），不能写的说为什么；没有 ⇒ 只给态。
-fn place(kind: ExtKind, at: ExtLoc, held: Option<&Asset>, state: ExtState, live: bool) -> ExtPlace {
+fn place(
+    kind: ExtKind,
+    at: ExtLoc,
+    held: Option<&Asset>,
+    state: ExtState,
+    live: bool,
+    shared: bool,
+) -> ExtPlace {
     let dir = match kind {
         ExtKind::Mcp => None,
         ExtKind::Skill => held.and_then(|a| a.dir.clone()),
     };
-    let (uninstall, note) = match (held, writable(kind, &at)) {
+    let (uninstall, note) = match (held, writable(kind, &at, shared)) {
         (None, _) => (false, None),
         (Some(_), Ok(())) => (live, None),
         (Some(_), Err(why)) => (false, Some(why)),
@@ -740,7 +787,7 @@ fn bring_for(
                 .map(|d| ExtLoc::Project { dir: d.clone() }),
         )
         .map(|at| {
-            let why = target_refused(kind, name, &at).or_else(|| {
+            let why = target_refused(kind, name, &at, c.shared).or_else(|| {
                 (from_machine && same_place(from.as_deref(), &from_loc, c.m.key.as_deref(), &at))
                     .then(|| copy_text("beExt.card.sameMachine", &[]))
             });
@@ -1009,8 +1056,8 @@ fn mcp_here(
     name: &str,
     at: &ExtLoc,
 ) -> Result<McpHere, (&'static str, String)> {
-    let dir = mcp_dir(at)?;
-    let got = door::peek(d, dir, super::mcp_edit::MCP_JSON).map_err(|m| ("refused", m))?;
+    let (root, rel) = mcp_file(d, at)?;
+    let got = door::peek(d, &root, &rel).map_err(|m| ("refused", m))?;
     let text = got.text.ok_or((
         "not_found",
         copy_text("beExt.uninstall.notThere", &[("path", &got.path)]),
@@ -1026,14 +1073,20 @@ fn mcp_here(
             &[("name", name), ("path", &got.path)],
         ),
     ))?;
-    let ledger = need(env.ledger.clone())?;
-    let recorded = super::skill_ledger::load_at(&ledger)?
-        .mcp
-        .get(&got.path)
-        .and_then(|m| m.get(name))
-        .cloned();
+    // 全局那一份不记装记录：从它删只有一条路（各账号一起撤）。
+    let recorded = match at {
+        ExtLoc::User => None,
+        ExtLoc::Project { .. } => {
+            let ledger = need(env.ledger.clone())?;
+            super::skill_ledger::load_at(&ledger)?
+                .mcp
+                .get(&got.path)
+                .and_then(|m| m.get(name))
+                .cloned()
+        }
+    };
     Ok(McpHere {
-        root: dir.to_string(),
+        root,
         path: got.path,
         text,
         def,
@@ -1094,6 +1147,19 @@ pub(crate) fn answer_uninstall_preview(d: &dyn Door, env: &Env, args: &Value) ->
                         token: digest,
                     }
                 }
+            }
+        }
+        ExtKind::Mcp if at == ExtLoc::User => {
+            let m = mcp_here(d, env, name, &at)?;
+            ExtUninstallCard {
+                kind,
+                name: name.to_string(),
+                path: m.path.clone(),
+                recorded: false,
+                files: vec![name.to_string()],
+                backup: None,
+                said: copy_text("beExt.uninstall.mcpShared", &[("name", name)]),
+                token: super::skill_ledger::digest_of(&m.text),
             }
         }
         ExtKind::Mcp => {
@@ -1215,6 +1281,18 @@ pub(crate) fn answer_uninstall_apply(
                         note: Some(copy_text("beExt.uninstall.movedTo", &[("path", &abs)])),
                     }
                 }
+            }
+        }
+        ExtKind::Mcp if at == ExtLoc::User => {
+            let m = mcp_here(d, env, name, &at)?;
+            if super::skill_ledger::digest_of(&m.text) != token {
+                return Err(stale());
+            }
+            let view = crate::accounts::manage::mcp_share_exec::remove(d, name)?;
+            ExtDone {
+                path: m.path,
+                changed: vec![name.to_string()],
+                note: (!view.notes.is_empty()).then(|| view.notes.join(" ")),
             }
         }
         ExtKind::Mcp => {

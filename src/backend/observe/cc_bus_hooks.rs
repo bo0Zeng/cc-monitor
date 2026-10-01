@@ -62,6 +62,8 @@ pub(crate) struct HooksDiagnosis {
 /// 成品（形状与界面 `HooksReport` 逐字同；跨语言金样 `tests/__fixtures__/hooks-diag.golden.json`）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub(crate) struct HooksReport {
+    /// 这台跑得了 cc-bus（它要 tmux）；跑不了 ⇒ 不给要加的内容，界面只说这台不支持自动收信。
+    pub(crate) supported: bool,
     pub(crate) diagnosis: HooksDiagnosis,
     /// 要合并进那份 `settings.json` 的内容；这台的 cc-bus 没装（那两个脚本不在）⇒ `None`。
     pub(crate) snippet: Option<String>,
@@ -241,21 +243,26 @@ fn expand(s: &str, home: Option<&Path>) -> PathBuf {
     }
 }
 
-/// 帧面入口：这台后端进程的家目录 · agent 配置根 · skills 根。
+/// 帧面入口：这台后端进程的家目录 · agent 配置根 · skills 根 · 这份二进制所在平台有没有原生 tmux。
 pub(crate) fn answer() -> HooksReport {
     let home = crate::platform::paths::home_dir();
     answer_at(
         home.as_deref(),
         &crate::observe::history_query::agent_home(),
         crate::agents::skills_root().as_deref(),
+        !matches!(
+            crate::TMUX_PLATFORM,
+            crate::TmuxPlatform::AbsentUnlessExeOnPath
+        ),
     )
 }
 
-/// [`answer`] 的本体（家目录 · agent 配置根 · skills 根是参数，判据拿夹具喂）。
+/// [`answer`] 的本体（家目录 · agent 配置根 · skills 根 · 跑不跑得了 cc-bus 是参数，判据拿夹具喂）。
 pub(crate) fn answer_at(
     home: Option<&Path>,
     agent_home: &Path,
     skills: Option<&Path>,
+    supported: bool,
 ) -> HooksReport {
     let settings = agent_home.join("settings.json");
     // 超上限 / 不是普通文件 / 读不了 ⇒ 按「没读到」降级，`note` 说出来（`diagnose(None)`）。
@@ -267,8 +274,9 @@ pub(crate) fn answer_at(
     };
     let exists = |s: &str| expand(s, home).exists();
     HooksReport {
+        supported,
         diagnosis: diagnose(raw.as_deref(), &exists),
-        snippet: skills.and_then(|k| snippet(k, home)),
+        snippet: skills.filter(|_| supported).and_then(|k| snippet(k, home)),
         source: settings.display().to_string(),
     }
 }
