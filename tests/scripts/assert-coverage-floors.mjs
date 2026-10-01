@@ -64,7 +64,9 @@ const PER_FILE_FLOORS = [
   ["src/frontend/ui/settings/panel.ts", 75, 80.6, 50, 55.6],
   ["src/frontend/ui/settings/accounts-section.ts", 75, 80.7, 49, 54.2],
   ["src/frontend/ui/settings/remote-section.ts", 60, 65.6, 40, 45.1],
-  ["src/frontend/ui/settings/mcp-section.ts", 58, 63.5, 49, 54.5],
+  // 〔墓碑〕`src/frontend/ui/settings/mcp-section.ts` —— MCP 并进顶层「扩展」页、整份删除（原地板 58/63.5 · 49/54.5）；
+  //   接它那一格的是扩展页本身（同一套纪律：当前值下方 ~5 点，实测一起写下）。
+  ["src/frontend/ui/settings/ext-section.ts", 69, 74.6, 61, 66.4],
   ["src/frontend/ui/settings/cc-bus-section.ts", 90, 95.7, 70, 75.0],
   ["src/frontend/ui/views/grid-monitor.ts", 89, 94.7, 84, 89.3],
   // 〔墓碑〕`src/frontend/ui/views/usage-view.ts` —— 随用量 ②③ 两轴整轴退役而整删（`设计/50`，2026-09-18）。
