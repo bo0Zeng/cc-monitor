@@ -331,6 +331,8 @@ fn the_no_input_commands_are_registered_and_declared_consistently() {
         "cc-bus-install-state",
         // 账号库核对：只读，问的就是「这台」的账号库，不收参数。
         "accounts-verify",
+        // 各账号共用的用户级 MCP 此刻的样子：同上，问的就是「这台」，不收参数。
+        "accounts-mcp-read",
         "accounts-sessions",
         "bus-list",
         "bus-state",

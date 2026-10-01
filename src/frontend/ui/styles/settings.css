@@ -1961,6 +1961,46 @@ body.settings-window-mode .settings-panel {
   margin-top: 4px;
 }
 
+/* 各账号共用的 MCP：一块说明 ＋ 名字一行一个（右侧「删除」）＋ 两边都改了的那几条（各版一个按钮）。 */
+.accounts-mcp {
+  margin-top: 12px;
+}
+
+.accounts-mcp-title {
+  font-weight: 600;
+}
+
+.accounts-mcp-shared,
+.accounts-mcp-delete-here,
+.accounts-mcp-new-sessions,
+.accounts-mcp-note {
+  margin-top: 2px;
+}
+
+.accounts-mcp-body {
+  margin-top: 6px;
+}
+
+.accounts-mcp-row,
+.accounts-mcp-conflict {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 3px 0;
+}
+
+.accounts-mcp-name {
+  flex: 1;
+  font-family: var(--font-mono, monospace);
+}
+
+.accounts-mcp-empty,
+.accounts-mcp-reading,
+.accounts-mcp-fail {
+  margin-top: 0;
+}
+
 /* U7：维护区收进 <details> 默认折叠——加账号 / 自检 / 补链都低频且带 danger，不该常驻占版面。 */
 .accounts-maint-wrap {
   margin-top: 10px;

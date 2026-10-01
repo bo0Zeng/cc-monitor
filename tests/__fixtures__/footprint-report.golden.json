@@ -206,13 +206,47 @@
       "effect_label": "整个文件由 cc-monitor 拥有，部署时整体覆盖",
       "host_label": "本机或远端",
       "installable": true,
-      "note": "账号库：清单 accounts.json、每个号的目录和改动前的备份都在这里。启用多账号时，这台现在登录的身份文件（~/.claude/.credentials.json、~/.claude.json）会搬进默认号的目录。",
+      "note": "账号库：清单 accounts.json、每个号的目录和改动前的备份都在这里。启用多账号时，这台现在登录的身份文件（~/.claude/.credentials.json、~/.claude.json）会搬进默认号的目录。之后各号的 .claude.json 里只有用户级 MCP 那一段会被同步改写，各号共用一份，别的内容一个字节不碰。",
       "path_declared": "~/.claude-accts/",
       "path_resolved": "/nonexistent-footprint-golden/.claude-accts",
       "source_label": "由 cc-monitor 现场生成的文本",
       "state": {
         "kind": "undetermined",
         "why": "本机没找到（/nonexistent-footprint-golden/.claude-accts）。这套东西装在 Claude Code 跑的那台上，很可能是某个远端；本页不连 SSH，远端状态请到对应页面查。"
+      },
+      "tier": "AppInstalls",
+      "tool_id": "accounts",
+      "tool_name": "多账号账号库",
+      "uninstallable": false
+    },
+    {
+      "effect_label": "整个文件由 cc-monitor 拥有，部署时整体覆盖",
+      "host_label": "本机或远端",
+      "installable": true,
+      "note": "这台各账号共用的用户级 MCP，以及上次同步时每个号的样子。在任一个号里加或改的 MCP 会进这里、再同步到所有号；里面带着 MCP 的密钥，只有你自己读得了。",
+      "path_declared": "~/.cc-monitor/accounts-mcp.json",
+      "path_resolved": "/nonexistent-footprint-golden/.cc-monitor/accounts-mcp.json",
+      "source_label": "由 cc-monitor 现场生成的文本",
+      "state": {
+        "kind": "undetermined",
+        "why": "本机没找到（/nonexistent-footprint-golden/.cc-monitor/accounts-mcp.json）。这套东西装在 Claude Code 跑的那台上，很可能是某个远端；本页不连 SSH，远端状态请到对应页面查。"
+      },
+      "tier": "AppInstalls",
+      "tool_id": "accounts",
+      "tool_name": "多账号账号库",
+      "uninstallable": false
+    },
+    {
+      "effect_label": "整个文件由 cc-monitor 拥有，部署时整体覆盖",
+      "host_label": "本机或远端",
+      "installable": true,
+      "note": "同步改写之前的原文放在这里。改写某个号的 .claude.json 之前留一份，每个号一份，下一次改写前换成新的；要找回就从这里拿。",
+      "path_declared": "~/.cc-monitor/backups/accounts-mcp",
+      "path_resolved": "/nonexistent-footprint-golden/.cc-monitor/backups/accounts-mcp",
+      "source_label": "由 cc-monitor 现场生成的文本",
+      "state": {
+        "kind": "undetermined",
+        "why": "本机没找到（/nonexistent-footprint-golden/.cc-monitor/backups/accounts-mcp）。这套东西装在 Claude Code 跑的那台上，很可能是某个远端；本页不连 SSH，远端状态请到对应页面查。"
       },
       "tier": "AppInstalls",
       "tool_id": "accounts",
