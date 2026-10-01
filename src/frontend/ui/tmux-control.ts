@@ -76,7 +76,8 @@ function captureRefusals(target: string): Refusals {
         case "capture_failed":
           return copyText("tmuxControl.capture.failed", { target, detail });
         default:
-          return copyText("tmuxControl.capture.otherCode", { target, code, detail });
+          // 认不出的码：只说那台的原话（码不上屏，留在诊断里）；原话是空的 ⇒ 说没给原因。
+          return detail.trim() !== "" ? copyText("tmuxControl.capture.otherCode", { target, detail }) : copyText("tmuxControl.capture.noReason", { target });
       }
     },
     noReason: () => copyText("tmuxControl.capture.noReason", { target }),
@@ -122,7 +123,7 @@ function killRefusals(target: string): Refusals {
         case "kill_failed":
           return copyText("tmuxControl.kill.failed", { target, detail });
         default:
-          return copyText("tmuxControl.kill.otherCode", { target, code, detail });
+          return detail.trim() !== "" ? copyText("tmuxControl.kill.otherCode", { target, detail }) : copyText("tmuxControl.kill.noReason", { target });
       }
     },
     noReason: () => copyText("tmuxControl.kill.noReason", { target }),
@@ -194,7 +195,7 @@ function keysRefusals(target: string): Refusals {
         case "wrong_owner":
           return copyText("tmuxControl.keys.wrongOwner", { target, detail });
         default:
-          return copyText("tmuxControl.keys.otherCode", { target, code, detail });
+          return detail.trim() !== "" ? copyText("tmuxControl.keys.otherCode", { target, detail }) : copyText("tmuxControl.keys.noReason", { target });
       }
     },
     noReason: () => copyText("tmuxControl.keys.noReason", { target }),

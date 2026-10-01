@@ -506,7 +506,7 @@ fn the_collapse_to_three_states_is_byte_identical_to_the_table_before_layering()
             },
             Routed::Refused(format!(
                 "no_tmux/{}",
-                copy_text("rsInboundClient.error.unavailable", &[("code", "no_tmux")])
+                copy_text("rsInboundClient.error.unavailable", &[])
             )),
         ),
     ];
