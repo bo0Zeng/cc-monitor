@@ -3,19 +3,15 @@
     "agents": [
       {
         "agentType": "Explore",
-        "desc": "scan",
         "id": "tu-2",
         "label": "scan",
-        "status": "done",
-        "timestamp": "t3"
+        "status": "done"
       },
       {
         "agentType": null,
-        "desc": "",
         "id": "tu-3",
         "label": "p1",
-        "status": "running",
-        "timestamp": "t4"
+        "status": "running"
       }
     ],
     "end": 729,

@@ -1,12 +1,12 @@
 /**
  * 〔MOD · `设计/90 §3` 判据 3 · `设计/05 §14.3` C 组〕**会话正文经通道直接问那台机器的后端、按形状收成品**：
- * 查看器整份读 · 骨架按偏移取一段（`history-page`）· 按行号取一段（`history-lines`）· 子 agent 那一份（`history-subagent`）·
+ * 查看器整份读 · 骨架按偏移取一段（`history-page`）· 按行号取一段（`history-lines`）· 一个子运行的记录（`history-run`，按运行读）·
  * 那台后端的漂移账（`drift-report`）。
  *
  * # 它顶掉了什么
  *
  * 此前是 monitor 的四条 Tauri 命令（`stream_read_session_jsonl` · `read_session_range` · `read_session_lines` ·
- * `load_subagent`〔散文墓碑〕）：monitor 从那台后端取原文、自己解析记录（`messages.rs` / `parser.rs` / `codex_record.rs`）、
+ * 按目录读子 agent 的那一条）：monitor 从那台后端取原文、自己解析记录（`messages.rs` / `parser.rs` / `codex_record.rs`）、
  * 编号、组载荷。记录解释搬进后端之后（`src/backend/agents/claudecode/`），后端的帧应答**就是成品** —— 每一行在渲染模型里
  * 是什么（`JsonlRecord`，ts-rs 从后端导出）、行号、`cwd`、进不进界面，都是后端给的；monitor 那一跳只搬字节。
  * **本机与远端同一条路**（本机那台由 `<local>` 那条长连接答）。
@@ -24,14 +24,23 @@ import type { JsonlLinePayload } from "./generated/JsonlLinePayload";
 import type { JsonlRecord } from "./generated/JsonlRecord";
 import { copyText } from "./copy-table";
 
-/** 子 agent 那一份的成品（后端 `read_face.rs` 的 `history-subagent`，键名一字不差）。 */
-export interface SubagentLoadResult {
-  /** 挑中的那份记录（给前端 debug / 状态栏显示）。 */
+/** 一个子运行记录里的一条：渲染模型里的样子 ＋ 它的对账键（撤那个子运行的活卡用）。 */
+export interface RunRecordRow {
+  message: JsonlRecord;
+  rid?: string;
+}
+
+/** 一页子运行记录（后端 `read_face.rs` 的 `history-run`，键名一字不差）。 */
+export interface RunPage {
+  /** 读的是哪个子运行。 */
+  run: string;
+  /** 那份记录（不透明，给查看器整份打开用）。 */
   path: string;
-  /** 文件名 `agent-<id>.jsonl` 里的 `<id>`。 */
-  agent_id: string;
-  /** 每一条认得出的记录在渲染模型里的样子。 */
-  records: JsonlRecord[];
+  rows: RunRecordRow[];
+  /** 读到哪了（下次从这里续）。 */
+  end: number;
+  /** 这一页没读到头。 */
+  more: boolean;
 }
 
 /** 按行号取回的那一段（后端 `history-lines`）：`[from, next)` 里进界面的那些（不进界面的照占号、不出现）。 */
@@ -119,13 +128,26 @@ export function decodeLines(origin: Origin, v: unknown): SessionLinesPage {
   return { from: v.from, next: v.next, eof: v.eof, payloads: v.lines.map((l) => payloadOf("history-lines", origin, l)) };
 }
 
-/** `history-subagent` 的成品 ⇒ [`SubagentLoadResult`]（记录本身不解释，只验是对象）。 */
-export function decodeSubagent(v: unknown): SubagentLoadResult {
-  if (!isObj(v) || !exactKeys(v, ["path", "agent_id", "records"]) || !isStr(v.path) || !isStr(v.agent_id)) {
-    return badShape("history-subagent");
+/** `history-run` 的成品 ⇒ [`RunPage`]（记录本身不解释，只验是对象）。 */
+export function decodeRun(v: unknown): RunPage {
+  if (
+    !isObj(v) ||
+    !exactKeys(v, ["run", "path", "rows", "end", "more"]) ||
+    !isStr(v.run) ||
+    !isStr(v.path) ||
+    typeof v.end !== "number" ||
+    typeof v.more !== "boolean" ||
+    !Array.isArray(v.rows)
+  ) {
+    return badShape("history-run");
   }
-  if (!Array.isArray(v.records) || !v.records.every(isObj)) return badShape("history-subagent");
-  return { path: v.path, agent_id: v.agent_id, records: v.records as unknown as JsonlRecord[] };
+  const rows = v.rows.map((r): RunRecordRow => {
+    if (!isObj(r) || !isObj(r.message) || !(r.rid === undefined || isStr(r.rid))) return badShape("history-run");
+    return r.rid === undefined
+      ? { message: r.message as unknown as JsonlRecord }
+      : { message: r.message as unknown as JsonlRecord, rid: r.rid };
+  });
+  return { run: v.run, path: v.path, rows, end: v.end, more: v.more };
 }
 
 /** `drift-report` 的成品 ⇒ 各面。 */
@@ -230,17 +252,14 @@ export async function readLines(
   return decodeLines(origin, await answered(chan.call(origin, "history-lines", body, budget)));
 }
 
-/** **子 agent 那一份**：按那条 agent 工具调用的 `description`（精确串等）＋ 时间戳（多个候选时挑最近）。 */
-export async function loadSubagent(
-  origin: Origin,
-  parentJsonlPath: string,
-  description: string,
-  toolUseTimestamp: string,
-): Promise<SubagentLoadResult> {
-  const args = { parent: parentJsonlPath, description, timestamp: toolUseTimestamp };
-  const body = jsonBody(args);
+/** 一个子运行要读哪一个：子运行本身（运行表里那一格）‖ 派出它的那次工具调用（后端在父记录里找派出链接）。 */
+export type RunWhich = { run: string; tool?: string } | { run?: string; tool: string };
+
+/** **一个子运行的记录，一页**（按运行读，通用命令 `history-run`）：父记录 ＋ 哪一个 ＋ 从哪个字节起。 */
+export async function loadRunPage(origin: Origin, parentJsonlPath: string, which: RunWhich, from = 0): Promise<RunPage> {
+  const body = jsonBody({ parent: parentJsonlPath, ...which, from });
   const budget = budgetWithin(PIECE_BUDGET_MS);
-  return decodeSubagent(await answered(chan.call(origin, "history-subagent", body, budget)));
+  return decodeRun(await answered(chan.call(origin, "history-run", body, budget)));
 }
 
 /** **那台后端的漂移账**（看不懂的记录类型）。 */

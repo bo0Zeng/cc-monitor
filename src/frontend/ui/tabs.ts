@@ -5,7 +5,7 @@
  *
  * | # | 这件事 | 谁在调（生产） | 拆到 |
  * |---|---|---|---|
- * | ① | **会话状态账**：tab 集合 · 顺序 · 当前 tab · 早于 tab 到达的信号暂存（已结束/可重连/红绿灯）· 账号快照 · 任务快照 · 「变了」那一份订阅 | `main.ts` / `entry-viewer.ts` 把 `events.ts` 的事件喂进来（`onLine` · `archiveTab` · `reviveTab` · `markTmuxIdle` · `updateActivity` · `updateTasks` · `createSkeletonTab` · `setSessionAccounts`）；`main.ts` 读投影（`snapshotSessions` · `peekSession` · `hasTab` · `activeRepoInfo` · `touchedFilesFor` · `getActiveSubagentContext` · `activeSessionId`） | `tab-store.ts`（store）· `tab-model.ts`（`Tab` 形状与标题）· `tab-session-facts.ts`（〔STC〕把后端给的会话事实落到 tab 上；数据源 `views/facts-source.ts`）· `tab-session-state.ts`（〔U4〕会话状态的两个轴：活性 × 可恢复性，转移与谓词） |
+ * | ① | **会话状态账**：tab 集合 · 顺序 · 当前 tab · 早于 tab 到达的信号暂存（已结束/可重连/红绿灯）· 账号快照 · 任务快照 · 「变了」那一份订阅 | `main.ts` / `entry-viewer.ts` 把 `events.ts` 的事件喂进来（`onLine` · `archiveTab` · `reviveTab` · `markTmuxIdle` · `updateActivity` · `updateTasks` · `createSkeletonTab` · `setSessionAccounts`）；`main.ts` 读投影（`snapshotSessions` · `peekSession` · `hasTab` · `activeRepoInfo` · `touchedFilesFor` · `getActiveRunContext` · `activeSessionId`） | `tab-store.ts`（store）· `tab-model.ts`（`Tab` 形状与标题）· `tab-session-facts.ts`（〔STC〕把后端给的会话事实落到 tab 上；数据源 `views/facts-source.ts`）· `tab-session-state.ts`（〔U4〕会话状态的两个轴：活性 × 可恢复性，转移与谓词） |
  * | ② | **路由**：切到哪个 tab、谁有权切（手动 5s 保护 · 自动跟随）、记住上次的 tab | `main.ts` 快捷键 / 命令面板 / 启动选 active（`switchTo` · `cycleActive` · `jumpToIndex` · `applyBehavior` · `persistLastActive` · `onManualSwitch`）；`onLine` 里真用户输入（`userActive`） | `tab-router.ts` |
  * | ③ | **实时流视图**：每个 tab 的流 DOM、按 seq 门控建卡、尾部窗口 / 骨架 / 上翻补批 / 哨兵 / 大纲、重放批 | `events.ts` → `onBatchStart` · `onLine` · `onBatchEnd`；`main.ts` DEV 探针 `debugSnapshot` | `tab-stream-view.ts` |
  * | ④ | **tab 栏视图**：按钮 · 徽章 · 分组 · 拖动排序与成组 · 固定 · 顺序落盘 | 用户手势；`main.ts` 启动 `loadCollections` · `loadPinned` · `loadOrder` | `tab-bar-view.ts` · `tab-bar-drag.ts` · `tab-drop.ts`（纯落点算术）· `tab-bar-prefs.ts`（集合 / 固定 / 顺序三份落盘） |
@@ -14,7 +14,10 @@
  * 本文件拆完只剩 `TabManager` 这个**组装根**：对外 API（`main.ts` / `entry-viewer.ts` 调的那些）
  * 逐字不变，事件怎么在上面几份之间流转写在这里。拆分逐子步提交，每一步 `tabs.vitest` 全绿、断言不动。
  */
-import { isCompactRecord } from "./cards";
+import { isCompactRecord, renderMessage, type RenderContext } from "./cards";
+import { markRunCard } from "./cards/subagent";
+import { RunTimeline } from "./run-timeline";
+import type { SessionRunsPayload } from "./generated/SessionRunsPayload";
 import { runForkFlow } from "./fork-flow"; // G6：分叉完把新会话起起来（E78 起连反馈也在里面）
 import type { BranchResult } from "./session-writes";
 import { fetchSessionTasks, type TaskEntry, type TasksPanel } from "./tasks-panel";
@@ -117,6 +120,11 @@ export class TabManager {
     /** issue #23: 全局 AgentsPanel（subagent 列表 + 各自状态灯），喂数方式同 tasksPanel */
     private agentsPanel?: AgentsPanel,
   ) {
+    // 子运行的流有动静 ⇒ 它开着的时间线尾巴上那一截活卡重画。
+    this.live.onRunLive = (sid, run) => {
+      const t = this.runTimelines.get(`${sid}\u0000${run}`);
+      if (t) this.live.paintCards(t.live, sid, run);
+    };
     if (onTabsChanged) this.store.subscribe(onTabsChanged);
     // 〔GAP1 · `设计/01 §1.5`〕「账号快照变了」改订阅 store：宿主整份换快照，这里同一拍应用（原先宿主直调 `setSessionAccounts`）。
     appStore.sessionAccounts.subscribe((snap) => {
@@ -159,6 +167,7 @@ export class TabManager {
     },
     (sid) => this.store.tabs.get(sid)?.stream.trailerElement ?? null,
   );
+
 
   /**
    * 〔U2 · ④〕tab 栏的三份落盘偏好（集合 · 固定 · 顺序）住 `tab-bar-prefs.ts`。
@@ -343,7 +352,7 @@ export class TabManager {
 
     // 〔TAP · V124〕jsonl 那一轮到了 ⇒ 同 `message.id` 的活卡整轮覆盖（撤掉）；挂在去重**之后**：
     //   `设计/20 §8`「前端现有的去重层就是吸收层」—— 重投 / 快照重叠区的重复记录不会重复触发。
-    this.live.onRecord(tab.sessionId, payload.message);
+    this.live.onRecord(tab.sessionId, payload.rid);
 
     // 〔SE1〕大纲：只记一笔「这份会话又长了」（清单问后端要，这里不判、不攒）。
     this.view.noteGrew(tab); // 〔STC〕会话事实同一笔（分叉 · agent · 改动文件 · usage 问后端要，`设计/10 §2.2`）
@@ -669,6 +678,7 @@ export class TabManager {
       timeline,
       toolUseNames: new Map(),
       toolUseElements: new Map(),
+      runCards: new Map(),
       branchFolder,
       pendingToolResults: new Map(),
       seenSeqs: new SeqSet(),
@@ -856,9 +866,61 @@ export class TabManager {
     this.emitTabStateProbe(tab); // F-E1:可重连(claude 退但 tmux 在)
   }
 
-  /** 〔TAP · V124〕`session-tap`：中转抄出来的一个 SSE 事件（`events.ts` 直派）。 */
+  /** 〔TAP · V124〕`session-tap`：中转抄出来的一件归一事件（`events.ts` 直派）。 */
   onSessionTap(p: TapPayload): void {
     this.live.onTap(p);
+  }
+
+  /** 每个 tab 里开着的子运行时间线（主 tab 那一行点开的）：`sid\0run` ⇒ 它。 */
+  private readonly runTimelines = new Map<string, RunTimeline>();
+
+  /**
+   * 一个会话的运行表到了（会话流里的 `runs` 格）：主 tab 上的行跟着变；派出它们的那几张工具卡记上是哪个子运行、什么状态；
+   * 开着的时间线续读一次。
+   */
+  onSessionRuns(p: SessionRunsPayload): void {
+    const tab = this.store.tabs.get(p.session_id);
+    if (!tab) return;
+    this.live.onRuns(tab.sessionId, p.runs);
+    for (const r of p.runs) {
+      if (r.tool === undefined) continue;
+      const card = tab.runCards.get(r.tool);
+      if (card) markRunCard(card, r.run, r.state);
+    }
+    for (const [k, t] of this.runTimelines) if (k.startsWith(`${tab.sessionId}\u0000`)) void t.refresh();
+  }
+
+  /** 主 tab 上某一行点开：那个子运行的时间线（第一次建、之后留着续读）。 */
+  runTimeline(sid: string, run: string): HTMLElement {
+    const k = `${sid}\u0000${run}`;
+    let t = this.runTimelines.get(k);
+    const tab = this.store.tabs.get(sid);
+    if (!t && tab) {
+      const ctx: RenderContext = {
+        parentPath: tab.parentPath,
+        origin: tab.origin,
+        toolUseNames: new Map(),
+        toolUseElements: new Map(),
+        pendingToolResults: new Map(),
+      };
+      t = new RunTimeline({
+        origin: tab.origin,
+        parent: tab.parentPath,
+        which: { run },
+        render: (rec) => renderMessage(rec, ctx),
+        onRecord: (rid) => this.live.onRecord(sid, rid, run),
+      });
+      this.runTimelines.set(k, t);
+      void t.refresh();
+    }
+    if (!t) return document.createElement("div");
+    this.live.paintCards(t.live, sid, run);
+    return t.element;
+  }
+
+  /** 那一行收起了 / 那个子运行收场了：它的时间线不再留。 */
+  closeRunTimeline(sid: string, run: string): void {
+    this.runTimelines.delete(`${sid}\u0000${run}`);
   }
 
   /** 〔TAP〕装活卡的画法（主窗口入口装；独立查看器不装 ⇒ 只记账不画，见 `live-card.ts::LivePainter`）。 */
@@ -1242,9 +1304,9 @@ export class TabManager {
     void this.openTabCwd(this.store.activeId);
   }
 
-  /** F77：活跃 tab 的子 agent 加载上下文（parentPath + origin）——main.ts 点 agent 行时用它
-   *  调 `load_subagent`。无活跃 tab / 无 parentPath → null。 */
-  getActiveSubagentContext(): { parentPath: string; origin: Origin } | null {
+  /** F77：活跃 tab 的子运行读取上下文（parentPath + origin）——main.ts 点 agent 行时按它读那个子运行（`history-run`）。
+   *  无活跃 tab / 无 parentPath → null。 */
+  getActiveRunContext(): { parentPath: string; origin: Origin } | null {
     const tab = this.store.activeId !== null ? this.store.tabs.get(this.store.activeId) : undefined;
     if (!tab || !tab.parentPath) return null;
     return { parentPath: tab.parentPath, origin: tab.origin };

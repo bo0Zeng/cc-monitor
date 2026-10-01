@@ -11,6 +11,7 @@ fn payload(sid: &str, idx: usize) -> JsonlLinePayload {
         origin: None,
         message: crate::ui_contract::RecordBody::from_json("{}".into()).unwrap(),
         skipped_from: None,
+        rid: None,
     }
 }
 
@@ -766,9 +767,12 @@ fn tap(origin: &str, n: u64) -> crate::ui_contract::SessionTapPayload {
     crate::ui_contract::SessionTapPayload {
         origin: crate::origin::Origin(origin.to_string()),
         stream: "sid-t".into(),
+        run: None,
         resp: 0,
         n,
-        data: Some(format!("{{\"i\":{n}}}")),
+        ev: crate::ui_contract::RecordBody::from_json(format!(
+            "{{\"t\":\"text\",\"i\":{n},\"s\":\"x\"}}"
+        )),
         end: None,
     }
 }
@@ -1030,6 +1034,10 @@ fn mig1_the_credit_exemption_is_exactly_the_registered_lifecycle_frames() {
             origin: crate::origin::Origin::local(),
         }),
         F::SnapshotInflight(b::SnapshotInflightPayload { count: 1 }),
+        F::Runs(b::SessionRunsPayload {
+            session_id: "s".into(),
+            runs: b::RecordBody::from_json("[]".into()).unwrap(),
+        }),
     ];
     let key = |f: &F| -> String {
         let v = serde_json::to_value(f).unwrap();

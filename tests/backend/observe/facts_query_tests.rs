@@ -75,16 +75,12 @@ fn the_four_facts_follow_the_moved_rules() {
                 label: "look around".into(),
                 agent_type: Some("Explore".into()),
                 status: AgentStatus::Done,
-                timestamp: "t-a".into(),
-                desc: "look around".into(),
             },
             AgentFact {
                 id: "g2".into(),
                 label: "first line".into(),
                 agent_type: None,
                 status: AgentStatus::Running,
-                timestamp: "t-a".into(),
-                desc: String::new(),
             },
         ]
     );
@@ -120,7 +116,7 @@ fn label_falls_back_and_a_repeated_id_is_replaced_in_place() {
         .iter()
         .map(|a| (a.id.as_str(), a.label.as_str(), a.status))
         .collect();
-    let eighty: String = "字".repeat(LABEL_PROMPT_CHARS);
+    let eighty: String = "字".repeat(crate::agents::claudecode::runs::LABEL_PROMPT_CHARS);
     assert_eq!(
         labels,
         vec![
@@ -289,22 +285,23 @@ fn a_prior_of_the_wrong_shape_is_refused() {
     }
 }
 
-// 〔DUP2 · 主会话 09-26 裁 J19〕这里原来有一条异源对拍（后端的 agent 工具名 == 生成物 `agent-profile-table.ts` 里 claude 那一行）
-// ＋ 它的取数助手与取数正控。〔THIN〕agent 工具名今天住适配层 `agents/claudecode/cards.rs`（判定本身的正反两格住它的
-// `cards_tests.rs`），本文件经注册表那一格够它（`agents::tool_card_of`）；下面钉「经注册表够到的就是那一张」。
+// 派出子运行的那几次调用由适配层认（`RecordFace::child_link`；判定本身的正反两格住 `claudecode/runs_tests.rs`），
+// 会话事实经注册表那一格够它（`agents::child_links_of`）；下面钉「经注册表够到的就是那一张」与写类工具表。
 
 #[test]
 fn the_two_lookups_answer_from_their_tables() {
-    use crate::agents::{tool_card_of, ToolCard};
+    let links = |name: &str| {
+        crate::agents::child_links_of(&assistant(vec![tool_use(
+            "x",
+            name,
+            json!({"description": "d"}),
+        )]))
+    };
     for t in ["Agent", "Task"] {
-        assert_eq!(tool_card_of(t), Some(ToolCard::Agent), "{t}");
+        assert_eq!(links(t).len(), 1, "{t}");
     }
-    assert_ne!(tool_card_of("Bash"), Some(ToolCard::Agent));
-    assert_ne!(
-        tool_card_of("task"),
-        Some(ToolCard::Agent),
-        "大小写敏感：工具名原样比对"
-    );
+    assert!(links("Bash").is_empty());
+    assert!(links("task").is_empty(), "大小写敏感：工具名原样比对");
     for (name, key) in EDIT_TOOL_PATH_KEYS {
         assert_eq!(edit_path_key(name), Some(*key));
     }

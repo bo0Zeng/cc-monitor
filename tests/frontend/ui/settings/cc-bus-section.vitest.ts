@@ -478,7 +478,7 @@ describe("B03 审计修复：驾驶舱如实呈现 + 两步确认不可绕过", 
   it("【阻塞-1】spawn 过但未登记的 agent 必须**渲染出来**，不能只计数不显示", async () => {
     const s = await load(SKEWED);
     const ids = [...s.element.querySelectorAll<HTMLElement>(".cc-bus-row")].map(
-      (r) => r.dataset.agentId,
+      (r) => r.dataset.busAgent,
     );
     expect(ids).toContain("ghost_cc");
     expect(ids).toContain("ghost2_cc");
@@ -497,7 +497,7 @@ describe("B03 审计修复：驾驶舱如实呈现 + 两步确认不可绕过", 
   it("【阻塞-1】未登记的行要标注出来，别让人以为它在总线上", async () => {
     const s = await load(SKEWED);
     const ghost = [...s.element.querySelectorAll<HTMLElement>(".cc-bus-row")].find(
-      (r) => r.dataset.agentId === "ghost_cc",
+      (r) => r.dataset.busAgent === "ghost_cc",
     )!;
     expect(ghost.querySelector(".cc-bus-meta")?.textContent).toContain("未登记");
     expect(ghost.querySelector(".cc-bus-meta")?.textContent).toContain("/d/ghost");

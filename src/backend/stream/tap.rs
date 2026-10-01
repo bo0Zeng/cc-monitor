@@ -6,7 +6,7 @@
 //! ```text
 //! 中转转发线程 ── TeeSink(tap 口) ── TapHub::offer ── try_send ──▶ 有界通道（每条流连接一条）
 //!                                                                    │
-//!                     main.rs::writer_task：出方向 ＞ 应答 ＞ tap（最低优先）──▶ wire
+//!          TapRx：流归位（折成归一事件 · 定归哪个运行）──▶ main.rs::writer_task：出方向 ＞ 应答 ＞ tap（最低优先）──▶ wire
 //! ```
 //!
 //! - **一个进程一个 hub**（[`hub`]），装着「此刻那条流连接」的发送端。流连接接上 ⇒ [`TapHub::attach`] 新建一条通道、
@@ -20,8 +20,8 @@
 //!
 //! [`TAP_CAPACITY`] 件 × 每件原文 ≤ `relay::TAP_DATA_CAP` ⇒ 这一跳最坏 4 MiB。满了落级 2（丢，位置号原位说）。
 
-use crate::relay::{TapBody, TapEvent, TapPort};
-use crate::stream::wire::{Frame, TapEnd};
+use crate::relay::{TapEvent, TapPort};
+use crate::stream::wire::Frame;
 
 /// tap 通道能排多少**件**（每条流连接一条）。
 ///
@@ -74,24 +74,6 @@ pub(crate) fn hub() -> std::sync::Arc<TapHub> {
     std::sync::Arc::clone(HUB.get_or_init(Default::default))
 }
 
-/// 一件 tee 事件 → 一个 `tap` 帧（字段一一照搬，不解释 `data` 的内容）。
-pub(crate) fn to_frame(ev: TapEvent) -> Frame {
-    let (data, end) = match ev.body {
-        TapBody::Data(d) => (Some(d), None),
-        TapBody::End { broken } => (
-            None,
-            Some(if broken { TapEnd::Broken } else { TapEnd::Done }),
-        ),
-    };
-    Frame::Tap {
-        stream: ev.stream,
-        resp: ev.resp,
-        n: ev.n,
-        data,
-        end,
-    }
-}
-
 /// 中转（`relay::host`）要的那个 tap 口：就是进程级那一个 hub。
 pub(crate) fn port() -> std::sync::Arc<dyn TapPort> {
     hub()
@@ -104,18 +86,56 @@ pub trait TapSource {
     fn next(&mut self) -> impl std::future::Future<Output = Option<Frame>> + Send;
 }
 
-/// 一条流连接的 tap 接收端（写者那一侧拿它）。只交出**帧** —— tee 的事件类型不出本 crate。
-pub struct TapRx(tokio::sync::mpsc::Receiver<TapEvent>);
+/// 一条流连接的 tap 接收端（写者那一侧拿它）：hub 那条通道 ＋ 这条连接的流归位（折成归一事件、定归哪个运行）。
+/// 只交出**帧** —— tee 的事件类型不出本 crate。
+pub struct TapRx {
+    rx: tokio::sync::mpsc::Receiver<TapEvent>,
+    book: std::sync::Arc<crate::observe::runs::RunBook>,
+    router: super::run_route::RunRouter,
+    out: std::collections::VecDeque<Frame>,
+}
 
 impl TapSource for TapRx {
+    /// 取消安全：收到的那一件在同一次 poll 里折完、进 `out`，被别的分支抢先时什么都不丢。
     async fn next(&mut self) -> Option<Frame> {
-        self.0.recv().await.map(to_frame)
+        loop {
+            if let Some(f) = self.out.pop_front() {
+                return Some(f);
+            }
+            tokio::select! {
+                ev = self.rx.recv() => match ev {
+                    Some(ev) => {
+                        let fs = self.router.on_tap(ev);
+                        self.out.extend(fs);
+                    }
+                    None => return None,
+                },
+                () = self.book.learned() => {
+                    let fs = self.router.on_learned();
+                    self.out.extend(fs);
+                }
+            }
+        }
     }
 }
 
 /// 一条流连接接上了 ⇒ 从进程级 hub 拿一条新的 tap 接收端（两条载体各在「流开始」那一处调一次）。
-pub fn attach() -> TapRx {
-    TapRx(hub().attach())
+/// `book` 是这条连接的 watcher 写的那一本运行簿（流归位按它定归哪个运行）。
+pub fn attach(book: std::sync::Arc<crate::observe::runs::RunBook>) -> TapRx {
+    attach_rx(hub().attach(), book)
+}
+
+/// [`attach`] 的可喂那一半：接收端由调用方给（判据拿小容量通道）。
+pub(crate) fn attach_rx(
+    rx: tokio::sync::mpsc::Receiver<TapEvent>,
+    book: std::sync::Arc<crate::observe::runs::RunBook>,
+) -> TapRx {
+    TapRx {
+        rx,
+        router: super::run_route::RunRouter::new(book.clone(), crate::agents::stream_families()),
+        book,
+        out: std::collections::VecDeque::new(),
+    }
 }
 
 #[cfg(test)]

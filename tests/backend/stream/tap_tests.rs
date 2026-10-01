@@ -1,4 +1,4 @@
-//! 〔TAP · V124〕`tap.rs` 的 hub 与帧转换（设计住仓外 `调研/第四波记录/TAP.md §1.1 · §3`；出处 `设计/20 §8`）。
+//! 〔TAP · V124〕`tap.rs` 的 hub（帧怎么折、归哪个运行住 `run_route_tests.rs`；设计住仓外 `调研/第四波记录/TAP.md §1.1 · §3`；出处 `设计/20 §8`）。
 //!
 //! 经真中转走一遍的那几条（T1 / T2）住 `relay/host_tests.rs`（它们要中转的门与夹具）；本文件只管 hub 自己。
 
@@ -8,6 +8,7 @@ use crate::relay::{TapBody, TapEvent, TapPort};
 fn ev(n: u64) -> TapEvent {
     TapEvent {
         stream: "s".into(),
+        owner: String::new(),
         resp: 7,
         n,
         body: TapBody::Data(format!("{{\"i\":{n}}}")),
@@ -56,43 +57,4 @@ fn a_full_channel_refuses_without_blocking_at_exactly_the_capacity() {
         assert!(hub.offer(ev(i)), "第 {i} 件就被拒了");
     }
     assert!(!hub.offer(ev(TAP_CAPACITY as u64)), "超过容量还答收了");
-}
-
-/// 事件 → 帧：字段一一照搬（期望是手写的帧值）。
-#[test]
-fn to_frame_copies_every_field_and_maps_the_end() {
-    assert_eq!(
-        format!("{:?}", to_frame(ev(3))),
-        format!(
-            "{:?}",
-            Frame::Tap {
-                stream: "s".into(),
-                resp: 7,
-                n: 3,
-                data: Some("{\"i\":3}".into()),
-                end: None
-            }
-        )
-    );
-    for (broken, want) in [(false, TapEnd::Done), (true, TapEnd::Broken)] {
-        let f = to_frame(TapEvent {
-            stream: "s".into(),
-            resp: 1,
-            n: 9,
-            body: TapBody::End { broken },
-        });
-        assert_eq!(
-            format!("{f:?}"),
-            format!(
-                "{:?}",
-                Frame::Tap {
-                    stream: "s".into(),
-                    resp: 1,
-                    n: 9,
-                    data: None,
-                    end: Some(want)
-                }
-            )
-        );
-    }
 }

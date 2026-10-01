@@ -16,7 +16,8 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::agents::ToolCard;
+use crate::agents::{ChildRunTag, ToolCard};
+use std::collections::BTreeMap;
 
 /// 〔RENDER2 · J10 · `设计/10 §2.2b ⑤` 那条不等价的根〕一条 user 正文按注入噪声规则判过的成品。
 #[derive(Debug, Serialize, Clone, Default, PartialEq, Eq)]
@@ -37,14 +38,27 @@ impl UserText {
 }
 
 impl JsonlRecord {
-    /// 〔THIN〕assistant 记录填上 `toolCards`（`content` 里每个 `tool_use` 按本家工具词表判一次；别的类型原样）。
+    /// 〔THIN〕assistant 记录填上 `toolCards`（`content` 里每个 `tool_use` 按本家工具词表判一次）与 `childRuns`（派出子运行的那几次）；别的类型原样。
     pub(crate) fn with_tool_cards(mut self) -> Self {
         if let Self::Assistant {
             message,
             tool_cards,
+            child_runs,
             ..
         } = &mut self
         {
+            *child_runs = super::runs::links_in_content(&message.content)
+                .into_iter()
+                .map(|l| {
+                    (
+                        l.tool,
+                        ChildRunTag {
+                            label: l.label.unwrap_or_default(),
+                            kind: l.kind,
+                        },
+                    )
+                })
+                .collect();
             *tool_cards = message
                 .content
                 .as_array()
@@ -105,7 +119,9 @@ pub enum JsonlRecord {
         cwd: Option<String>,
         #[serde(rename = "sessionId", default)]
         session_id: Option<String>,
-        #[serde(rename = "isSidechain", default)]
+        // 子运行归属由适配层的 `run_of` 判、经运行表与 `history-run` 给界面；记录成品不带这一格（界面不认它）。
+        #[serde(rename = "isSidechain", default, skip_serializing)]
+        #[cfg_attr(test, ts(skip))]
         is_sidechain: bool,
         // Claude Code 注入的 meta 消息（skill/command 展开的 prompt、system-reminder、
         // caveat 等）带 isMeta:true —— 不是用户真正输入。仍 emit（它含 uuid+parentUuid，
@@ -130,7 +146,9 @@ pub enum JsonlRecord {
         message: ApiMessage,
         #[serde(rename = "sessionId", default)]
         session_id: Option<String>,
-        #[serde(rename = "isSidechain", default)]
+        // 子运行归属由适配层的 `run_of` 判、经运行表与 `history-run` 给界面；记录成品不带这一格（界面不认它）。
+        #[serde(rename = "isSidechain", default, skip_serializing)]
+        #[cfg_attr(test, ts(skip))]
         is_sidechain: bool,
         #[serde(rename = "requestId", default)]
         request_id: Option<String>,
@@ -170,6 +188,16 @@ pub enum JsonlRecord {
             ts(optional, as = "Option<std::collections::BTreeMap<String, ToolCard>>")
         )]
         tool_cards: std::collections::BTreeMap<String, ToolCard>,
+        /// 这条消息里派出子运行的那几次工具调用：`tool_use.id` ⇒ 标签与类别（通用形，界面按它给卡起名，不读工具入参）。
+        /// 原文里没有这一格：解析完由 [`JsonlRecord::with_tool_cards`] 按本家的派出链接（`runs::links_in_content`）填。
+        #[serde(
+            rename = "childRuns",
+            skip_deserializing,
+            default,
+            skip_serializing_if = "std::collections::BTreeMap::is_empty"
+        )]
+        #[cfg_attr(test, ts(optional, as = "Option<BTreeMap<String, ChildRunTag>>"))]
+        child_runs: BTreeMap<String, ChildRunTag>,
     },
 
     #[serde(rename = "ai-title")]

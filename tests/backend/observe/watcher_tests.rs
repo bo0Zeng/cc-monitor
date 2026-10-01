@@ -849,19 +849,6 @@ fn empty_lines_are_skipped_and_do_not_consume_seq() {
 }
 
 #[test]
-fn subagents_path_is_excluded() {
-    // A path containing a `subagents` segment must be filtered.
-    let p = Path::new("/home/u/.claude/projects/foo/subagents/bar.jsonl");
-    assert!(is_subagent_path(p));
-    // Case-insensitive, mirrors watcher.rs.
-    let p2 = Path::new("/home/u/.claude/projects/foo/SubAgents/bar.jsonl");
-    assert!(is_subagent_path(p2));
-    // A normal session file is not excluded.
-    let p3 = Path::new("/home/u/.claude/projects/foo/abc-123.jsonl");
-    assert!(!is_subagent_path(p3));
-}
-
-#[test]
 fn is_jsonl_and_is_session_json_classify_correctly() {
     assert!(is_jsonl(Path::new("/x/abc.jsonl")));
     assert!(!is_jsonl(Path::new("/x/abc.json")));
@@ -2284,6 +2271,7 @@ fn dropping_an_unrecoverable_frame_puts_its_identity_in_the_overflow() {
         message: None,
         cwd: None,
         byte_offset: 0,
+        rid: None,
     });
     // 丢一条内容帧（可恢复 ⇒ 只计数、不留身份）与一条状态增量帧（不可恢复 ⇒ 留身份）。
     sink.send(Frame::Line {
@@ -2293,6 +2281,7 @@ fn dropping_an_unrecoverable_frame_puts_its_identity_in_the_overflow() {
         message: None,
         cwd: None,
         byte_offset: 1,
+        rid: None,
     });
     sink.send(Frame::SessionRemoved {
         sid: "sid-gone".into(),
@@ -2341,6 +2330,7 @@ fn the_identity_list_is_bounded_and_says_so_when_it_truncates() {
         message: None,
         cwd: None,
         byte_offset: 0,
+        rid: None,
     });
     let over = LOST_IDENTITY_CAP + 5;
     for i in 0..over {
@@ -3544,4 +3534,32 @@ fn the_notify_arm_reports_task_changes_before_the_per_event_loop() {
         ask < emit && emit < per_event,
         "问与发要排在逐条处理之前（逐条那一段里有 continue）"
     );
+}
+
+/// 子运行那一条（适配层 `run_of` 答得出）一轮收尾 ≠ 主运行一轮结束：主运行那条发 `TurnEnd`，子运行那条不发；
+/// 两条的 `line` 都带上对账键（`RecordFace::response_id`）。守的要求：子 agent 的事归它自己的运行，不进主运行。
+#[test]
+fn a_sub_runs_turn_end_is_not_the_main_runs() {
+    let (tx, mut rx) = mpsc::channel::<Frame>(16);
+    let mut sink = FrameSink::new(tx);
+    let state = ReaderState::new(PathBuf::from("/nonexistent-projects"), false, false);
+    let main = r#"{"type":"assistant","uuid":"u-main","message":{"id":"m1","role":"assistant","stop_reason":"end_turn","content":[{"type":"text","text":"x"}]}}"#;
+    let sub = r#"{"type":"assistant","uuid":"u-sub","isSidechain":true,"agentId":"a1","message":{"id":"m2","role":"assistant","stop_reason":"end_turn","content":[{"type":"text","text":"x"}]}}"#;
+    for (i, raw) in [main, sub].into_iter().enumerate() {
+        let line = ReadLine {
+            seq: i as u64,
+            raw: raw.to_string(),
+            byte_offset: 0,
+        };
+        send_line("s", "/p/s.jsonl", line, &state.runs, &mut sink);
+    }
+    let mut got = Vec::new();
+    while let Ok(f) = rx.try_recv() {
+        got.push(match f {
+            Frame::Line { rid, .. } => format!("line {}", rid.unwrap_or_default()),
+            Frame::TurnEnd { uuid, .. } => format!("turn_end {uuid}"),
+            other => format!("{other:?}"),
+        });
+    }
+    assert_eq!(got, vec!["line m1", "turn_end u-main", "line m2"]);
 }

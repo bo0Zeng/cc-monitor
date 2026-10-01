@@ -75,6 +75,8 @@ pub struct JsonlLine {
     /// 〔RENDER2 · `99 §2.1` ㊱②〕这一行之后（含它的 `\n`）那一个字节的偏移 = 下一行的起点（后端 `line.byte_offset` ·
     /// 快照的行区间末端）；说不准 ⇒ `None`。续点据它记「从哪个字节接着读」。
     pub end: Option<u64>,
+    /// 这一行的对账键（后端 `line.rid`，原样转交；快照那一路没有 ⇒ `None`）。
+    pub rid: Option<String>,
 }
 
 /// 重连退避下界：每次连接掉线后至少等这么久再重连（也是连上过之后的快速重连值）。
@@ -831,6 +833,7 @@ async fn fetch_snapshot(
                     message: row.message,
                     cwd: row.cwd,
                     end: span.map(|(_, e)| e),
+                    rid: None,
                 });
                 if chunk.len() >= SNAPSHOT_CHUNK_LINES {
                     if q.is_cancelled(sid) {
@@ -1160,6 +1163,8 @@ pub enum InboundFrame {
         cwd: Option<String>,
         /// 〔RENDER2 · ㊱②〕后端的 `byte_offset`（这一行末尾含 `\n` 的累计字节）；老后端不带 ⇒ `None`。
         end: Option<u64>,
+        /// 对账键（后端 `rid`，原样转交）。
+        rid: Option<String>,
     },
     /// 远端新出现一个 session 文件。Batch7-F24：p1e backend 附带 pidfile 元信息
     /// （additive）；旧后端缺字段 → None（保守视为交互）。
@@ -1224,6 +1229,11 @@ pub enum InboundFrame {
     SessionRemoved { sid: String },
     /// 〔MIG-1 · `99 §2.1 ⑬`〕后端会话账本的成品：这条会话离开「活」之后是什么（`session_state`）。
     SessionState { sid: String, state: Fate },
+    /// 一个会话的运行表（`session_runs`；`runs` 是 JSON 数组原文，不解释）。
+    SessionRuns {
+        sid: String,
+        runs: crate::ui_contract::RecordBody,
+    },
     /// issue #32：远端后端发送通道拥塞、丢了 `dropped` 帧（慢 SSH 管道）。
     /// monitor 收到后经 SS-F remote-health 通道提示用户。
     ///
@@ -1354,6 +1364,8 @@ pub fn parse_frame(line: &str) -> Option<InboundFrame> {
             cwd: Option<String>,
             #[serde(default)]
             byte_offset: Option<u64>,
+            #[serde(default)]
+            rid: Option<String>,
         }
         if let Ok(f) = serde_json::from_str::<LineFrame>(line) {
             return Some(InboundFrame::Line {
@@ -1363,6 +1375,7 @@ pub fn parse_frame(line: &str) -> Option<InboundFrame> {
                 message: f.message.map(crate::ui_contract::RecordBody),
                 cwd: f.cwd,
                 end: f.byte_offset,
+                rid: f.rid,
             });
         }
     }
@@ -1444,6 +1457,7 @@ pub fn parse_frame(line: &str) -> Option<InboundFrame> {
             };
             let cwd = obj.get("cwd").and_then(|v| v.as_str()).map(str::to_string);
             let end = obj.get("byte_offset").and_then(serde_json::Value::as_u64);
+            let rid = obj.get("rid").and_then(|v| v.as_str()).map(str::to_string);
             Some(InboundFrame::Line {
                 session_id,
                 path,
@@ -1451,6 +1465,7 @@ pub fn parse_frame(line: &str) -> Option<InboundFrame> {
                 message,
                 cwd,
                 end,
+                rid,
             })
         }
         "session_added" => {
@@ -1512,6 +1527,12 @@ pub fn parse_frame(line: &str) -> Option<InboundFrame> {
                 waiting_for: opt("waiting_for"),
             })
         }
+        "session_runs" => Some(InboundFrame::SessionRuns {
+            sid: obj.get("sid")?.as_str()?.to_string(),
+            runs: crate::ui_contract::RecordBody::from_json(
+                obj.get("runs").filter(|r| r.is_array())?.to_string(),
+            )?,
+        }),
         "session_removed" => Some(InboundFrame::SessionRemoved {
             sid: obj.get("sid")?.as_str()?.to_string(),
         }),
@@ -1625,19 +1646,29 @@ pub fn parse_frame(line: &str) -> Option<InboundFrame> {
             Some(InboundFrame::Probe { ticket, cell })
         }
 
-        // 〔TAP · V124〕中转抄出来的 SSE 事件。`data` 与 `end` 恰有一个：先认 `data`（原样，一个串），没有就必须是认得的 `end`。
+        // 〔TAP · V124〕一件归一事件（后端已按上游协议折过、归过位）。`ev` 与 `end` 恰有一个：先认 `ev`（必须是对象，原样转交），
+        //   没有就必须是认得的 `end`。`run` 缺 ＝ 主运行。
         "tap" => {
             let stream = obj.get("stream")?.as_str()?.to_string();
+            let run = match obj.get("run") {
+                None => None,
+                Some(r) => Some(r.as_str()?.to_string()),
+            };
             let resp = obj.get("resp")?.as_u64()?;
             let n = obj.get("n")?.as_u64()?;
-            let body = match obj.get("data") {
-                Some(d) => crate::session_tap::TapBody::Data(d.as_str()?.to_string()),
+            let body = match obj.get("ev") {
+                Some(e) => {
+                    crate::session_tap::TapBody::Ev(crate::ui_contract::RecordBody::from_json(
+                        e.as_object().map(|_| e.to_string())?,
+                    )?)
+                }
                 None => crate::session_tap::TapBody::End(crate::session_tap::TapEnd::from_wire(
                     obj.get("end")?.as_str()?,
                 )?),
             };
             Some(InboundFrame::Tap(crate::session_tap::Tap {
                 stream,
+                run,
                 resp,
                 n,
                 body,
@@ -1683,6 +1714,7 @@ const KNOWN_FRAME_KINDS: &[&str] = &[
     "session_file_gone",
     "session_file_reread",
     "session_removed",
+    "session_runs",
     "session_state",
     "session_status",
     "sessions_replayed",
@@ -2294,6 +2326,7 @@ pub(crate) enum LocalStep {
         message: Option<crate::ui_contract::RecordBody>,
         cwd: Option<String>,
         end: Option<u64>,
+        rid: Option<String>,
     },
     /// 进 [`LineIntake::announced`]。
     Announce {
@@ -2385,6 +2418,13 @@ pub(crate) fn local_product(
         LocalItem::Frame(InboundFrame::SessionsReplayed) => {
             Some(BookIn::Listed { origin: origin() })
         }
+        LocalItem::Frame(InboundFrame::SessionRuns { sid, runs }) => {
+            (!hidden.contains(sid)).then(|| BookIn::Runs {
+                origin: origin(),
+                sid: sid.clone(),
+                runs: runs.clone(),
+            })
+        }
         LocalItem::Frame(_) => None,
     }
 }
@@ -2433,6 +2473,7 @@ pub(crate) fn local_step(
             message,
             cwd,
             end,
+            rid,
         }) => {
             if hidden.contains(&session_id) {
                 LocalStep::Skip
@@ -2444,6 +2485,7 @@ pub(crate) fn local_step(
                     message,
                     cwd,
                     end,
+                    rid,
                 }
             }
         }
@@ -2542,6 +2584,7 @@ pub(crate) async fn consume_local(
                     message,
                     cwd,
                     end,
+                    rid,
                 } => {
                     intake
                         .line(JsonlLine {
@@ -2551,6 +2594,7 @@ pub(crate) async fn consume_local(
                             message,
                             cwd,
                             end,
+                            rid,
                         })
                         .await
                 }
@@ -2958,6 +3002,7 @@ async fn stream_loop(
                 message,
                 cwd,
                 end,
+                rid,
             }) => {
                 // Batch5-F17：进攒批缓冲（达 cap/批龄立即整批出）；静默窗口/
                 // SessionRemoved 边界触发的 flush 在循环头。
@@ -2969,6 +3014,7 @@ async fn stream_loop(
                         message,
                         cwd,
                         end,
+                        rid,
                     })
                     .await;
             }
@@ -3033,6 +3079,13 @@ async fn stream_loop(
                     sid,
                     status,
                     waiting_for,
+                });
+            }
+            Some(InboundFrame::SessionRuns { sid, runs }) => {
+                crate::session_book::feed(BookIn::Runs {
+                    origin: host_label.clone(),
+                    sid,
+                    runs,
                 });
             }
             Some(InboundFrame::SessionRemoved { sid }) => {

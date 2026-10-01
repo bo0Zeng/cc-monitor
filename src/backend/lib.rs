@@ -69,6 +69,9 @@ mod readonly_guard; // F08a：backend 只读机器护栏（内部整体 #[cfg(te
 #[path = "../comms/outward/mod.rs"]
 pub mod relay; // K-H1：HTTP 中转（搬字节那半）——只听回环、按路径前缀分流、逐块透传 + tee
 #[cfg(test)]
+#[path = "../../tests/backend/runs_guard.rs"]
+mod runs_guard; // 子运行：通用层只认「运行」（扫描 ＋ 假适配层与 Claude Code 两套形状跑同一批判据）
+#[cfg(test)]
 #[path = "../../tests/backend/single_stream_guard.rs"]
 mod single_stream_guard; // K-P1 KPY8：「多客户端的流」明确不做 —— 三处「恰好一个客户端」的触发器（整体 #[cfg(test)]）
 pub mod stderr_log; // 〔NT2 · S1〕脱离常驻那条载体的 stderr 落进一份有上限、滚动的文件（宿主交 `CCM_BACKEND_STDERR_LOG` 才接；第四层自有状态，写口只从 main.rs 进）
@@ -699,7 +702,9 @@ pub const PROTO_VERSION: u32 = 1;
 /// p6e-accounts-native：账号库由后端直接管理（建库 · 加号 · 删号 · 设默认 · 核对 · 修复 · 隔离 · 回滚 · 别名），不再调外部工具。
 ///
 /// p6f-ext-page：skill 与 MCP 收成一张跨机器的表，一套「装到 / 卸载」；密钥不出来源机。
-pub const BUILD_ID: &str = "p6f-ext-page";
+///
+/// p6g-child-runs：子 agent 的流归各自的运行，主 tab 上每个在跑的子运行一行；通用层只认运行，各家的形状住适配层。
+pub const BUILD_ID: &str = "p6g-child-runs";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src/frontend/shell/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），
@@ -985,10 +990,10 @@ pub const SUBCOMMANDS: &[&str] = &[
     // 〔U4b · 第四波〕`history-record` 的 CLI 面（CLI 面从 `REGISTRY` 派生，`is_query_mode` 那道闸门读本表）。
     // **是新子命令** ⇒ `build_id_guard` 红是预期的，BUILD_ID 由合并那一拍统一 bump（本路不 bump）。
     "--history-record",
+    // 按运行读一个子运行的记录（替掉按目录与描述挑的那一条）。**子命令换了** ⇒ `build_id_guard` 红是预期的（本路不 bump）。
+    "--history-run",
     "--history-search",
     "--history-sessions",
-    // 〔MOD〕`history-subagents`（只列候选）换成 `history-subagent`（出成品）。⇒ `build_id_guard` 红是预期的（本路不 bump）。
-    "--history-subagent",
     "--history-tail",
     "--history-user-inputs",
     // 〔MIG-3b〕帧面 `hooks-diag` 自动派生的 CLI 面。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
@@ -996,7 +1001,6 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--kill",
     "--launch",
     "--list-accounts",
-    "--list-subagents",
     // 〔`设计/10 §2.2b ⑥` · SE1〕大纲的数据源：「你说过的话」清单。**是新子命令** ⇒
     // `build_id_guard` 红是预期的，BUILD_ID 由合并那一拍统一 bump（本路不 bump）。
     "--list-user-inputs",
@@ -1894,6 +1898,8 @@ pub const EMITS: &[&str] = &[
     // 〔TAP · V124〕中转抄出来的 SSE 事件（`tap::attach` 的接收端经 `writer_task` 真发，登记 = 承诺真发）。
     // 只有进程里住着中转的那个后端（本机常驻）才会有；旧客户端不认 ⇒ 忽略（additive）。
     "tap",
+    // 一个会话的运行表（watcher 读子运行记录、表变了真发，登记 = 承诺真发）。⚠ hello 字节变了 ⇒ 合并那一拍 bump `BUILD_ID`。
+    "session_runs",
 ];
 
 /// 〔E2 · V28 · `设计/01 §6.7b`〕`--stream`：「我是流模式后端」的**显式词**。二进制叫 `ccm` 时零参数是「起会话」，

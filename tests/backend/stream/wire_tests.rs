@@ -259,8 +259,16 @@ fn each_variant_serializes_to_single_line_with_expected_kind() {
                 message: None,
                 cwd: None,
                 byte_offset: 0,
+                rid: None,
             },
             "line",
+        ),
+        (
+            Frame::SessionRuns {
+                sid: "s".into(),
+                runs: vec![],
+            },
+            "session_runs",
         ),
         (
             Frame::SessionAdded {
@@ -384,9 +392,10 @@ fn each_variant_serializes_to_single_line_with_expected_kind() {
         (
             Frame::Tap {
                 stream: "s".into(),
+                run: None,
                 resp: 0,
                 n: 0,
-                data: Some("{}".into()),
+                ev: Some(crate::agents::StreamEv::Stop { ok: true }),
                 end: None,
             },
             "tap",
@@ -540,39 +549,50 @@ fn transfer_frames_have_exactly_these_bytes() {
     }
 }
 
-/// 〔TAP · V124〕`tap` 两形的逐字节线上形状（期望是手写字面量；monitor 侧 `parse_frame` 拿同样的串核自己）。
-/// `data` 是**一个 JSON 串**（上游字节敌手可控，不参与帧结构）；`data` 与 `end` 恰有一个。可丢（SSE 只保快，V24）。
+/// 〔TAP · V124〕`tap` 的逐字节线上形状（期望是手写字面量；monitor 侧 `parse_frame` 拿同样的串核自己）。
+/// `ev` 是归一事件（后端按上游协议折好的，界面不认任何一家的事件名）；`ev` 与 `end` 恰有一个；`run` 缺 ＝ 主运行。可丢（SSE 只保快，V24）。
 #[test]
 fn tap_frames_have_exactly_these_bytes() {
+    use crate::agents::{BlockKind, StreamEv};
+    let tap = |run: Option<&str>,
+               n: u64,
+               ev: Option<StreamEv>,
+               end: Option<crate::stream::wire::TapEnd>| Frame::Tap {
+        stream: "0b6c1f7e-sid".into(),
+        run: run.map(str::to_string),
+        resp: 12,
+        n,
+        ev,
+        end,
+    };
     let cases = [
         (
-            Frame::Tap {
-                stream: "0b6c1f7e-sid".into(),
-                resp: 12,
-                n: 3,
-                data: Some("{\"type\":\"ping\"}".into()),
-                end: None,
-            },
-            "{\"kind\":\"tap\",\"stream\":\"0b6c1f7e-sid\",\"resp\":12,\"n\":3,\"data\":\"{\\\"type\\\":\\\"ping\\\"}\"}\n",
+            tap(None, 0, Some(StreamEv::Start { rid: "r-1".into() }), None),
+            "{\"kind\":\"tap\",\"stream\":\"0b6c1f7e-sid\",\"resp\":12,\"n\":0,\"ev\":{\"t\":\"start\",\"rid\":\"r-1\"}}\n",
         ),
         (
-            Frame::Tap {
-                stream: "0b6c1f7e-sid".into(),
-                resp: 12,
-                n: 9,
-                data: None,
-                end: Some(crate::stream::wire::TapEnd::Done),
-            },
+            tap(
+                Some("a1"),
+                1,
+                Some(StreamEv::Block { i: 0, kind: BlockKind::Tool, tool: Some("Bash".into()) }),
+                None,
+            ),
+            "{\"kind\":\"tap\",\"stream\":\"0b6c1f7e-sid\",\"run\":\"a1\",\"resp\":12,\"n\":1,\"ev\":{\"t\":\"block\",\"i\":0,\"kind\":\"tool\",\"tool\":\"Bash\"}}\n",
+        ),
+        (
+            tap(None, 2, Some(StreamEv::Text { i: 0, s: "hi".into() }), None),
+            "{\"kind\":\"tap\",\"stream\":\"0b6c1f7e-sid\",\"resp\":12,\"n\":2,\"ev\":{\"t\":\"text\",\"i\":0,\"s\":\"hi\"}}\n",
+        ),
+        (
+            tap(None, 3, Some(StreamEv::Stop { ok: false }), None),
+            "{\"kind\":\"tap\",\"stream\":\"0b6c1f7e-sid\",\"resp\":12,\"n\":3,\"ev\":{\"t\":\"stop\",\"ok\":false}}\n",
+        ),
+        (
+            tap(None, 9, None, Some(crate::stream::wire::TapEnd::Done)),
             "{\"kind\":\"tap\",\"stream\":\"0b6c1f7e-sid\",\"resp\":12,\"n\":9,\"end\":\"done\"}\n",
         ),
         (
-            Frame::Tap {
-                stream: "0b6c1f7e-sid".into(),
-                resp: 12,
-                n: 9,
-                data: None,
-                end: Some(crate::stream::wire::TapEnd::Broken),
-            },
+            tap(None, 9, None, Some(crate::stream::wire::TapEnd::Broken)),
             "{\"kind\":\"tap\",\"stream\":\"0b6c1f7e-sid\",\"resp\":12,\"n\":9,\"end\":\"broken\"}\n",
         ),
     ];
@@ -583,6 +603,44 @@ fn tap_frames_have_exactly_these_bytes() {
             "tap 帧可丢（jsonl 保对），却被判成不可恢复"
         );
     }
+}
+
+/// 运行表那一帧的逐字节线上形状（monitor 侧 `parse_frame` 拿同样的串核自己）。
+#[test]
+fn session_runs_frames_have_exactly_these_bytes() {
+    use crate::agents::RunDid;
+    use crate::stream::wire::{RunInfo, RunState};
+    let f = Frame::SessionRuns {
+        sid: "s1".into(),
+        runs: vec![
+            RunInfo {
+                run: "a1".into(),
+                label: Some("scan".into()),
+                kind: Some("Explore".into()),
+                tool: Some("t1".into()),
+                state: RunState::Running,
+                last: Some(RunDid::Tool {
+                    name: "Bash".into(),
+                }),
+            },
+            RunInfo {
+                run: "a2".into(),
+                label: None,
+                kind: None,
+                tool: None,
+                state: RunState::Done,
+                last: Some(RunDid::Say),
+            },
+        ],
+    };
+    assert_eq!(
+        to_line(&f).unwrap(),
+        "{\"kind\":\"session_runs\",\"sid\":\"s1\",\"runs\":[{\"run\":\"a1\",\"label\":\"scan\",\"kind\":\"Explore\",\"tool\":\"t1\",\"state\":\"running\",\"last\":{\"t\":\"tool\",\"name\":\"Bash\"}},{\"run\":\"a2\",\"state\":\"done\",\"last\":{\"t\":\"say\"}}]}\n"
+    );
+    assert!(
+        !f.loss_is_recoverable(),
+        "运行表丢了别处补不回来（要等下一次变）"
+    );
 }
 
 /// 〔SR1a〕base64 编解码对 **RFC 4648 §10** 的七条标准向量（异源 = RFC；monitor 侧那一份拿同一组向量核自己）。
@@ -741,6 +799,7 @@ fn line_with_quotes_backslashes_and_newline_roundtrips() {
         message: Some(serde_json::json!({ "text": raw })),
         cwd: None,
         byte_offset: 99,
+        rid: None,
     };
 
     let line = to_line(&frame).expect("serialize");

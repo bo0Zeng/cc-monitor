@@ -213,6 +213,8 @@ pub(crate) struct Relay {
     tee: TeeSink,
     /// 〔V141〕给流打标签的请求头名单（构造时向上游选择要一次，[`Destinations::stream_label_headers`]）。
     stream_headers: Vec<&'static str>,
+    /// 给流打第二个标签的请求头名单（[`Destinations::stream_owner_headers`]）。
+    owner_headers: Vec<&'static str>,
     /// 下游那条 socket 的读写期限。**由后端交下来**（`C4`：值归后端 · 执行归本层）。
     ///
     /// ⚠ 它是**一个字段**而不是两处各写一次 —— [`apply_downstream_deadline`] 有两个
@@ -252,6 +254,7 @@ impl Relay {
     ) -> Self {
         Self {
             stream_headers: dest.stream_label_headers(),
+            owner_headers: dest.stream_owner_headers(),
             dest,
             door,
             tee,
@@ -782,6 +785,7 @@ pub(super) fn handle(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
     //   〔V141〕流标签取自请求自己带的头（会话 id 归 agent），不是路径段。
     let id = StreamId {
         stream: stream_label(&head, &relay.stream_headers),
+        owner: stream_label(&head, &relay.owner_headers),
     };
     // 〔TAP〕`open` 发一个这一响应自己的游标（位置号 `n` 从 0 起），`event` / `note_dropped_bytes` / `close` 都拿它。
     let mut at = relay.tee.open();

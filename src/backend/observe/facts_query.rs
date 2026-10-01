@@ -21,7 +21,7 @@
 //! |---|---|
 //! | `forkedFrom` | `history_query::fork_origin`（与历史会话行同一个函数）；首条命中即锁定 |
 //! | `touchedFiles` | `assistant` 记录里写类工具（[`EDIT_TOOL_PATH_KEYS`]）的路径，去重、**近因序**（再碰一次移到末尾），至多 [`TOUCHED_FILES_KEEP`] 条 |
-//! | `agents` | `assistant` 里 agent 工具（〔THIN〕注册表 `RecordFace.tool_card` 答 `Agent` 的，`agents::tool_card_of`）的 `tool_use` ⇒ `running`；`user` 里命中的 `tool_result` ⇒ `done`；超 [`AGENTS_SOFT_KEEP`] 从最老删非 running，再超 [`AGENTS_HARD_KEEP`] 删最老 |
+//! | `agents` | `assistant` 里派出子运行的那几次调用（适配层 `RecordFace::child_link` 认，`agents::child_links_of`）⇒ `running`；`user` 里命中的 `tool_result` ⇒ `done`；超 [`AGENTS_SOFT_KEEP`] 从最老删非 running，再超 [`AGENTS_HARD_KEEP`] 删最老 |
 //! | `usage` | `assistant` 记录的 `message.usage` 三项 prompt token 之和 > 0 ⇒ `{promptTokens, model}`，文件序最后一条胜 |
 //!
 //! 「中止」不在这里：它是「会话落到不忙那一刻」这个**事件**的反应（`10 §2.2`「刚刚发生了什么留在流上」），住前端。
@@ -44,7 +44,7 @@ use serde_json::Value;
 // 而那是只许降的棘轮 ⇒ 不抬。收进接口（`L2`/`S6`）时这两张随本文件一起走。
 //
 // 〔DUP2 · 主会话 09-26 裁 J19〕agent 工具名**只有一份**。〔THIN〕界面不再认工具名（卡型随记录成品带出）⇒ 那一份只剩后端用，
-//   从共享 crate `agent-tools-core` 收进适配层 `agents/claudecode/cards.rs`；本文件经注册表那一格够它（`agents::tool_card_of`，
+//   从共享 crate `agent-tools-core` 收进适配层 `agents/claudecode/cards.rs`；会话事实经注册表的派出链接那一格够它（`agents::child_links_of`，
 //   不直呼 `agents::claudecode::`，`agent_locality_guard` 判据④的读数不涨）。
 // 写类工具表**只有这一份**（前端 `panorama/session-files.ts` 整份随搬家删了）。
 
@@ -77,9 +77,6 @@ pub(crate) const AGENTS_SOFT_KEEP: usize = 30;
 /// agent 列表的硬上界：全是 running 仍超过 ⇒ 删最老的（同上，为回传那 1 MiB）。旧口径没有这一道。
 pub(crate) const AGENTS_HARD_KEEP: usize = 200;
 
-/// `label` 在没有 `description` 时取 `prompt` 首行的前多少个字（Unicode 标量）。
-pub(crate) const LABEL_PROMPT_CHARS: usize = 80;
-
 /// 一份会话的事实（**帧面成品的形状，键名一字不差**；跨语言金样 `tests/__fixtures__/session-reads.golden.json`）。
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -102,15 +99,11 @@ pub(crate) struct SessionFacts {
 pub(crate) struct AgentFact {
     /// `tool_use` 的 id（配对 `tool_result` 用）。
     pub(crate) id: String,
-    /// 显示用：`description` ‖ `prompt` 首行前 [`LABEL_PROMPT_CHARS`] 字 ‖ 工具名。
+    /// 显示用的标签（适配层 `RecordFace::child_link` 给；没有 ⇒ 空串）。
     pub(crate) label: String,
-    /// `subagent_type`；没有 ⇒ `null`。
+    /// 这一类子运行叫什么（同上，适配层给）；没有 ⇒ `null`。
     pub(crate) agent_type: Option<String>,
     pub(crate) status: AgentStatus,
-    /// 产出这次调用的那条记录的 `timestamp`（点进去看子 agent 记录时定位用）；没有 ⇒ 空串。
-    pub(crate) timestamp: String,
-    /// trim 后的 `description`（按它**精确串等**找子 agent 记录，所以不能用 `label`）。
-    pub(crate) desc: String,
 }
 
 /// jsonl 看得出来的两态。「中止」是前端对事件的反应，不在这里（见头注）。
@@ -134,7 +127,7 @@ pub(crate) struct UsageFact {
 /// （serde 对 `Option` 缺格默认读成 `None`，所以键集合先逐层核一遍 —— 不猜）。
 pub(crate) fn prior_from(v: &Value) -> Result<SessionFacts, String> {
     const TOP: &[&str] = &["agents", "end", "forkedFrom", "touchedFiles", "usage"];
-    const AGENT: &[&str] = &["agentType", "desc", "id", "label", "status", "timestamp"];
+    const AGENT: &[&str] = &["agentType", "id", "label", "status"];
     const USAGE: &[&str] = &["model", "promptTokens"];
     exact_keys(v, TOP, "prior")?;
     for a in v["agents"]
@@ -221,7 +214,6 @@ fn note_record(f: &mut SessionFacts, v: &Value) {
     match v.get("type").and_then(Value::as_str) {
         Some("assistant") => {
             if let Some(blocks) = blocks {
-                let timestamp = v.get("timestamp").and_then(Value::as_str).unwrap_or("");
                 for b in blocks {
                     if b.get("type").and_then(Value::as_str) != Some("tool_use") {
                         continue;
@@ -239,10 +231,19 @@ fn note_record(f: &mut SessionFacts, v: &Value) {
                             touch(f, p);
                         }
                     }
-                    if crate::agents::tool_card_of(name) == Some(crate::agents::ToolCard::Agent) {
-                        if let Some(id) = b.get("id").and_then(Value::as_str) {
-                            upsert_agent(f, agent_of(id, name, b.get("input"), timestamp));
-                        }
+                }
+                // 派出子运行的那几次调用：哪条算、标签与类别是什么，问适配层（`child_link`）。
+                for l in crate::agents::child_links_of(v) {
+                    if l.run.is_none() {
+                        upsert_agent(
+                            f,
+                            AgentFact {
+                                id: l.tool,
+                                label: l.label.unwrap_or_default(),
+                                agent_type: l.kind,
+                                status: AgentStatus::Running,
+                            },
+                        );
                     }
                 }
                 cap_agents(f);
@@ -278,39 +279,6 @@ fn touch(f: &mut SessionFacts, p: &str) {
     f.touched_files.push(p.to_string());
     if f.touched_files.len() > TOUCHED_FILES_KEEP {
         f.touched_files.remove(0);
-    }
-}
-
-/// trim：Unicode 空白 ＋ BOM（旧口径是 JS `String.prototype.trim`；两个集合只差 U+0085，那个字不会出现在工具描述里）。
-fn js_trim(s: &str) -> &str {
-    s.trim_matches(|c: char| c.is_whitespace() || c == '\u{feff}')
-}
-
-fn agent_of(id: &str, name: &str, input: Option<&Value>, timestamp: &str) -> AgentFact {
-    let field = |k: &str| input.and_then(|i| i.get(k)).and_then(Value::as_str);
-    let desc = js_trim(field("description").unwrap_or("")).to_string();
-    let prompt_head: String = field("prompt")
-        .unwrap_or("")
-        .split('\n')
-        .next()
-        .unwrap_or("")
-        .chars()
-        .take(LABEL_PROMPT_CHARS)
-        .collect();
-    let label = if !desc.is_empty() {
-        desc.clone()
-    } else if !prompt_head.is_empty() {
-        prompt_head
-    } else {
-        name.to_string()
-    };
-    AgentFact {
-        id: id.to_string(),
-        label,
-        agent_type: field("subagent_type").map(str::to_string),
-        status: AgentStatus::Running,
-        timestamp: timestamp.to_string(),
-        desc,
     }
 }
 

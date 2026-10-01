@@ -149,8 +149,6 @@ async fn main() {
             // `K-R87`：起一个到点自己会死的一次性会话。看门狗是**外部进程**，
             // 不在本 crate 的源码文本里 —— 零定时器铁律的人群逐字排除「被起进程的行为」。
             Some("--search") => observe::search_query::run(&agent_home, &args),
-            // P7c-1：列一个父会话的 subagent 候选。**只列不挑**（匹配与排序留在 monitor）。
-            Some("--list-subagents") => observe::history_query::list_subagents(&agent_home, &args),
             Some("--resolve") => control::resolve_query::run(&agent_home, &args),
             // G2（branch-anywhere）：从指定消息处分叉出一个新会话文件。
             // **backend 唯一的写盘入口**，护栏白名单层单独盯着它（readonly_guard）。
@@ -378,7 +376,15 @@ async fn run_over_stdio(
 
     // (c) Start the watcher reader; it returns the receiving half of the
     // bounded frame channel.
-    let (rx, poke) = observe::watcher::spawn(agent_home, with_bg, tail_only, with_rbind_token);
+    // 运行簿：这条连接的 watcher 写、tap 那一路的流归位读（一条连接一本）。
+    let book = std::sync::Arc::new(observe::runs::RunBook::default());
+    let (rx, poke) = observe::watcher::spawn(
+        agent_home,
+        with_bg,
+        tail_only,
+        with_rbind_token,
+        book.clone(),
+    );
 
     // (c2) **P4：SIGUSR1 = 「tmux 那边有事，赶紧重探一次」。**
     //
@@ -400,7 +406,7 @@ async fn run_over_stdio(
     //   入方向 reader 也留着 —— 新来的阻塞命令要有人回它一句 `shutting_down`。
     let stop = inbound::shutdown_listener();
     // 〔TAP · V124〕这条流连接的 tap 接收端（中转抄出来的 SSE 事件，最低优先、可丢）。
-    let tap_rx = tap::attach();
+    let tap_rx = tap::attach(book);
     let writer = writer_task(stdout, rx, reply_rx, tap_rx);
     tokio::pin!(writer);
     let signalled = tokio::select! {
@@ -641,8 +647,13 @@ async fn serve_listening(
     let _poke_task = spawn_sigusr1_task();
 
     let (mut idle_rx, mut idle_poke) = {
-        let (rx, poke) =
-            observe::watcher::spawn(agent_home.clone(), with_bg, tail_only, with_rbind_token);
+        let (rx, poke) = observe::watcher::spawn(
+            agent_home.clone(),
+            with_bg,
+            tail_only,
+            with_rbind_token,
+            std::sync::Arc::default(),
+        );
         (Some(rx), Some(poke))
     };
 
@@ -680,13 +691,15 @@ async fn serve_listening(
                 let id = clients.join();
                 let Attached { reader, writer, hello_flushed, flags } = att;
                 let (bg, tail, rbind) = flags.unwrap_or(defaults);
-                let (rx, poke) = observe::watcher::spawn(agent_home.clone(), bg, tail, rbind);
+                let book = std::sync::Arc::new(observe::runs::RunBook::default());
+                let (rx, poke) =
+                    observe::watcher::spawn(agent_home.clone(), bg, tail, rbind, book.clone());
                 // 应答走**独立通道**：出方向丢一条内容帧可恢复，丢一条应答会让客户端永远等下去。
                 let (reply_tx, reply_rx) =
                     tokio::sync::mpsc::channel::<Frame>(inbound::REPLY_CHANNEL_CAPACITY);
                 let mut inbound_task = inbound::spawn(reader, reply_tx.clone(), hello_flushed);
                 // 〔TAP · V124〕这条流连接的 tap 接收端（〔HOST〕hub 扇出：每条连接一条）。
-                let tap_rx = tap::attach();
+                let tap_rx = tap::attach(book);
                 let done = done_tx.clone();
                 tracing::info!("一条流已接上（认证通过；此刻 {} 条）", clients.count());
                 tokio::spawn(async move {
@@ -733,7 +746,13 @@ async fn serve_listening(
                     .await
                 }
                 tracing::info!("流结束 ⇒ 回到空转：口仍在听，sessions/ 仍在看");
-                let (rx, poke) = observe::watcher::spawn(agent_home.clone(), with_bg, tail_only, with_rbind_token);
+                let (rx, poke) = observe::watcher::spawn(
+                    agent_home.clone(),
+                    with_bg,
+                    tail_only,
+                    with_rbind_token,
+                    std::sync::Arc::default(),
+                );
                 idle_rx = Some(rx);
                 idle_poke = Some(poke);
             }

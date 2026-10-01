@@ -322,8 +322,9 @@ mod tests {
         ),
         (
             "observe/history_query.rs",
-            6,
-            "会话记录根 + 「这个文件是不是会话记录」×4 ＋ 〔`C1` · 09-24〕解析本机 home ×1 \
+            5,
+            "会话记录根 + 「这个文件是不是会话记录」×3 ＋ 〔`C1` · 09-24〕解析本机 home ×1 \
+             （6 → 5：子 agent 那份按目录列、按 `<stem>.jsonl` 找旁文件的那一处随「按运行读」删了，子运行住哪改问注册表 `RecordFace.children`）\
              （帧面那八条要一个根；与 `main.rs` 那一句**同一个出处**，但 `main.rs` 在 bin 里、\
              lib 够不着 ⇒ 多一处。**长了是坏事，如实登记**：它与 `main.rs` 那处是同一个欠账的两个住址，\
              `L2`/`S6` 收接口那轮一起收）",
@@ -394,7 +395,6 @@ mod tests {
         ("会话文件判定", "observe/search_query.rs", 1, "同上，**静默**"),
         ("会话文件判定", "observe/watcher.rs", 1, "同上，**静默**（连 inotify 事件都会被过滤掉）"),
         ("会话文件命名", "control/fork_write.rs", 1, "按 `<sid>.jsonl` 造**新**文件 ⇒ 造出来的文件这家自己认不出来。〔`K-R88` 09-13〕2 → 1：**找**那一步的命名随「找文件」进了共享 crate，只剩落盘这一处"),
-        ("会话文件命名", "observe/history_query.rs", 1, "`--list-subagents` 拿 `<stem>.jsonl` 找旁文件 ⇒ 找不到，**静默**返回空"),
         ("pidfile 目录", "observe/accounts_query.rs", 1, "`--session-accounts` 读 `<home>/sessions` ⇒ 读不到就 **静默**返回零行"),
         ("pidfile 目录", "observe/watcher.rs", 1, "判活只看 Claude 的 pidfile 目录 ⇒ 这家的会话恒判死"),
         ("账号环境变量名", "observe/accounts_query.rs", 1, "按 `CLAUDE_CONFIG_DIR` 去读别人进程的环境 ⇒ 这家的账号维度**无法表达**；〔HX1 · D-f〕同一处还要上游地址那个键（`ANTHROPIC_BASE_URL`）⇒ 这家的会话 `viaRelay` 恒 `false`（停后端前那句「几条会断」会少数它）"),
@@ -417,7 +417,10 @@ mod tests {
     /// 从此不由本 crate 问适配层。⚠ 这不是「收进接口了」，是**搬去了两侧共用的那一份**。
     ///
     /// **26 → 25**：插件市场只读列表整块拿掉（界面上没有可做的事），清单住址那一处随之没了。
-    const NEW_AGENT_GAP_BASELINE: usize = 25;
+    ///
+    /// **25 → 24**：`observe/history_query.rs` 那一处「会话文件命名」（按目录列子 agent、按 `<stem>.jsonl` 找旁文件）随按运行读删了 ——
+    /// 子运行的记录住哪、哪条记录属于谁，改问注册表（`RecordFace.children` · `run_of`）。
+    const NEW_AGENT_GAP_BASELINE: usize = 24;
 
     /// 判据③的针：`<agent 名>_dir` 这一形的**标识符**。**运行时拼**（本文件散文里就有这些词）。
     ///

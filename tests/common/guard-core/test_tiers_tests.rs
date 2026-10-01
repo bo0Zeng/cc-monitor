@@ -101,7 +101,9 @@ const UNIT: &[&str] = &[
     "tests/comms/outward/route_tests.rs", // 〔US1〕跨半边抠 monitor 源码那几条退役 ⇒ 只剩纯解析 ＋ 成品→决策表（SCAN → UNIT）
     "tests/comms/outward/tee_tests.rs",
     "tests/comms/outward/upstream_tests.rs",
-    "tests/backend/stream/tap_tests.rs",  // 〔TAP〕hub 与帧转换
+    "tests/backend/stream/tap_tests.rs",     // 〔TAP〕hub
+    "tests/frontend/ui/live-card.vitest.ts", // 〔TAP〕活卡：状态机 · 真 TabManager 三向相等（台架夹具那一条随折法搬进后端）
+    "tests/frontend/ui/runs.vitest.ts", // 子运行：主 tab 上每个在跑的子运行一行、主活卡只有主运行那段、收场收到那张卡上
     "tests/backend/writer_task_tests.rs", // 〔TAP〕写者优先序（tap 最低）
     "tests/frontend/ui/branch-button.vitest.ts",
     "tests/frontend/ui/branch-fold-batching.vitest.ts",
@@ -487,7 +489,7 @@ const SCAN: &[&str] = &[
     "tests/frontend/ui/launch-orchestration-single-home.vitest.ts",
     "tests/frontend/ui/launch-payload-golden.vitest.ts",
     "tests/frontend/ui/launch-tmux-outer-golden.vitest.ts",
-    "tests/frontend/ui/live-card.vitest.ts", // 〔TAP〕活卡：状态机 · 真 TabManager 三向相等 · 台架夹具（读 `tests/__fixtures__/tap-bench.json`）
+    "tests/backend/agents/sse_anthropic_tests.rs", // Anthropic 流的折法 ＋ 台架那一轮（读 `tests/__fixtures__/tap-bench.json`，随折法从界面那一侧搬来）
     // 〔THIN〕`tests/frontend/ui/liveness-process-names-parity.vitest.ts` 删：判活进程名的前端那一份随判定进了后端，
     //   后端两处（tmux 那一格 · cmdline 判活）今天读同一张 `agents/claudecode/cards.rs::PROCESS_NAMES`，对拍无对象。
     // 〔STC〕`设计/90 §3` 判据 3：`onLine` 调用人群 ＋ 事实字段写者（读 `src/frontend/ui/tabs.ts` 与 `src/**/*.ts` 的 AST）。
@@ -555,6 +557,8 @@ const SCAN: &[&str] = &[
 
 /// 集成层：碰 OS（起进程 · 套接字 · 真文件系统写 · 临时目录）。
 const INTEGRATION: &[&str] = &[
+    "tests/backend/runs_guard.rs", // 子运行：扫描 ＋ 两套形状跑同一批运行判据（临时目录里造夹具）
+    "tests/backend/agents/claudecode/runs_tests.rs", // Claude Code 的子运行形状（子运行记录住址那一条碰临时目录）
     // 〔P1〕SCAN → INTEGRATION：部署计划的编排（替身对面）＋ 读金样与后端历史表之外，`place-verdict` 帧面那一条真读写临时目录里的落点文件。
     "tests/backend/control/deploy_plan_tests.rs",
     // 〔E2 尾 · 09-27〕扫描层 → 集成层：多了「门禁那一行的判法与 CI 那一行的数由判据现算」—— 读 gate.sh ＋ ci.yml 两份外部件。

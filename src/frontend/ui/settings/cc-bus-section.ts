@@ -475,7 +475,7 @@ export class CcBusSection {
   ): HTMLElement {
     const row = document.createElement("div");
     row.className = "cc-bus-row";
-    row.dataset.agentId = a.id; // 靠 dataset 认身份，不靠 textContent
+    row.dataset.busAgent = a.id; // 靠 dataset 认身份，不靠 textContent
 
     const idEl = document.createElement("span");
     idEl.className = "cc-bus-id";

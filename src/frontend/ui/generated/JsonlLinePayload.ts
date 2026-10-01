@@ -28,4 +28,8 @@ message: import("./JsonlRecord").JsonlRecord,
  * 〔RENDER2 · `设计/10 §3.2`〕`[skipped_from, seq)` 这些行号 monitor **连着见过、都不可显示**（照占号、不出 payload）⇒
  * 前端可以把它们记成见过，去重集合成区间、段数不再随会话长度涨（`真相源/130 §3`）。缺 = 没有这一段或不确知（不猜）。
  */
-skipped_from?: number, };
+skipped_from?: number, 
+/**
+ * 这一行的对账键（那台后端给，原样转交）：活卡按它把同一次应答的那段流整轮撤掉。没有 ⇒ 省略。
+ */
+rid?: string, };

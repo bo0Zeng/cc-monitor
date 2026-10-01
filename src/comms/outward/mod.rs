@@ -313,6 +313,8 @@ pub(crate) struct RouteKey {
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct StreamId<'a> {
     pub(crate) stream: &'a str,
+    /// 第二个标签：名单（[`Destinations::stream_owner_headers`]）里第一个出现在请求里、值过段闸的头的值；没有 ⇒ 空串。中转不解释它。
+    pub(crate) owner: &'a str,
 }
 
 /// 上游选择算好的**换头材料**。中转拿到只做两件事：**照丢 ＋ 照写**。
@@ -415,6 +417,9 @@ pub(crate) trait Destinations: Send + Sync {
     /// 〔V141〕哪几个请求头给流打标签（第一个在请求里、值过段闸的那个）。中转不知道它们是谁的什么头，
     /// 只照这份名单取 —— 会话 id 归 agent 自己，启动器不往地址里塞（路由第 3 段随之退役）。
     fn stream_label_headers(&self) -> Vec<&'static str>;
+
+    /// 哪几个请求头给流打第二个标签（同上一条的取法；中转同样不知道它们是谁的什么头）。
+    fn stream_owner_headers(&self) -> Vec<&'static str>;
 }
 
 /// 中转起来那一刻，上游选择交给中转的**另一只手**（`host` 的启动路径）。

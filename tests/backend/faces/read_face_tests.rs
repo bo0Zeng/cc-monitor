@@ -32,8 +32,9 @@ const FAMILY: &[&str] = &[
     "history-search",
     // 〔FIX4 · `90 §3` J15〕各台搜索结果合一份（异源是题面 FIX4 第 3 件 ＋ 主会话 09-28 裁 B，不是 `inbound.rs`）。
     "history-search-merge",
-    // 〔MOD · `05 §14.3` C 组〕子 agent 那一份出成品 · 按字节分页出记录行 · 漂移账（异源是题面 MOD 第 1 件，不是 `inbound.rs`）。
-    "history-subagent",
+    // 〔MOD · `05 §14.3` C 组〕按字节分页出记录行 · 漂移账（异源是题面 MOD 第 1 件，不是 `inbound.rs`）。
+    // 按运行读一个子运行的记录（异源是「子 agent 的流归各自的运行、通用层按运行读」那条要求，不是 `inbound.rs`）。
+    "history-run",
     "history-page",
     "drift-report",
     "history-tail",
@@ -987,11 +988,12 @@ fn golden_record_session(home: &Path) -> PathBuf {
     std::fs::write(&p, body).unwrap();
     let sub = dir.join("r").join("subagents");
     std::fs::create_dir_all(&sub).unwrap();
-    std::fs::write(sub.join("agent-a1.meta.json"), r#"{"description":"scan"}"#).unwrap();
     std::fs::write(
         sub.join("agent-a1.jsonl"),
         concat!(
-            r#"{"type":"user","uuid":"s-1","timestamp":"t3","message":{"role":"user","content":"go"}}"#,
+            r#"{"type":"user","uuid":"s-1","timestamp":"t3","isSidechain":true,"agentId":"a1","message":{"role":"user","content":"go"}}"#,
+            "\n",
+            r#"{"type":"assistant","uuid":"s-2","timestamp":"t4","isSidechain":true,"agentId":"a1","message":{"id":"m-s2","role":"assistant","content":[{"type":"text","text":"ok"}]}}"#,
             "\n"
         ),
     )
@@ -999,7 +1001,7 @@ fn golden_record_session(home: &Path) -> PathBuf {
     p
 }
 
-/// ★★〔MOD〕**跨语言金样**：`history-read`（monitor 旁路快照收）· `history-page` · `history-lines` · `history-subagent`
+/// ★★〔MOD〕**跨语言金样**：`history-read`（monitor 旁路快照收）· `history-page` · `history-lines` · `history-run`
 /// （界面收）对同一份夹具的成品 == `tests/__fixtures__/record-reads.golden.json`（路径里夹具那一截换成 `<home>`）。
 ///
 /// 另两个读者读同一份：monitor `frame_query::row_of`（`tests/frontend/shell/frame_query_tests.rs`）·
@@ -1013,10 +1015,10 @@ fn the_record_products_match_the_cross_language_golden() {
         "history-read": answer_at(&home, "history-read", &serde_json::json!({"path": path})).unwrap(),
         "history-page": answer_at(&home, "history-page", &serde_json::json!({"path": path, "whole": true})).unwrap(),
         "history-lines": answer_at(&home, "history-lines", &serde_json::json!({"path": path, "from": 1})).unwrap(),
-        "history-subagent": answer_at(
+        "history-run": answer_at(
             &home,
-            "history-subagent",
-            &serde_json::json!({"parent": path, "description": "scan", "timestamp": "t3"}),
+            "history-run",
+            &serde_json::json!({"parent": path, "run": "a1"}),
         )
         .unwrap(),
     });
