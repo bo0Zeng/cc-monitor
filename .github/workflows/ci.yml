@@ -1089,9 +1089,8 @@ jobs:
       # 而用量整条产品面（含那份套件文件）本拍删干净 ⇒ 步骤留着就会红在「文件不存在」上。
       # 同拍摘掉的还有：上面 `for pair` 那张地板清单里的那一条（20 → 19）。
       # ⚠ `shared_crate_registry.rs` 的 `STEPS` 里**没有**它的登记，删它也不必动那张表 ——
-      #   本 job（`e2e-tmux-rust`）整个吃 `BLANKET` 豁免（红线：真 tmux server），
-      #   BLANKET 里的 job 的步骤按设计就不逐条登记 ⇒ 这一步从来没进过 `STEPS`，
-      #   `stale` 那半也就无从变红。（现打验过：删前删后那条判据都是绿的。）
+      #   `assert-pass-floor.sh <套件>` 那批步骤不在 `STEPS` 里逐条登记（按套件名与 `gate.sh` 的 `run_e2e` 对拍）
+      #   ⇒ 删这一步不必动 `STEPS`。
       # 它原先带的那段 `K-R122` 步骤次序散文（「必须排在 `build debug backend` 之后」）随步走 ——
       # 同一条次序约束今天由下面四步顶上那段继续管着。
 
