@@ -166,7 +166,7 @@ const ALLOWED_PREFIXES: readonly { prefix: string; why: string }[] = [
   },
   {
     prefix: "agent-",
-    why: "`src/frontend/ui/agents-panel.ts:139` 把 agent 的运行态直接拼成类名（running/done/aborted）。态值来自后端。",
+    why: "`src/frontend/ui/agents-panel.ts::AgentsPanel.row` 把子运行的态直接拼成类名（running/done/failed/stopped/unknown）。态值来自后端的运行表。",
   },
   {
     prefix: "block-diff-",

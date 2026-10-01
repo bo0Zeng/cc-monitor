@@ -10,6 +10,7 @@
 
 import type { Origin } from "./generated/Origin";
 import type { SessionState } from "./tab-session-state";
+import type { RunState } from "./generated/RunState";
 
 /** tab/cell 上叠的活动灯类名。空串 = 不叠类（维持默认绿点：busy 或未知 activity）。 */
 export type ActivityLightClass = "" | "act-idle" | "act-waiting";
@@ -72,5 +73,5 @@ export interface SessionPeek {
   /** 本会话写类工具（Edit/Write/…）碰过的文件路径（首触序）——「谁跑偏」关键信号。 */
   recentFiles: string[];
   /** 本会话 subagent 名单（运行中优先），供 peek 显示「在跑什么」。 */
-  agents: { label: string; status: "running" | "done" | "aborted" }[];
+  agents: { label: string; status: RunState }[];
 }

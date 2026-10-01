@@ -6,14 +6,14 @@
  *
  * 两层：
  * - {@link LiveCore}：**纯状态机**（无 DOM、无定时器）。吃 tap 事件与「一条记录过了去重」，产出每个 tab 此刻该显示的活卡；
- *   归到子运行的那几段（`run` 有值）不进主 tab 的活卡，只给那个子运行的行与它的时间线。
+ *   归到子运行的那几段（`run` 有值）不进主 tab 的活卡，只给 agent 面板里它那一行与它的时间线。
  * - {@link LiveCards}：把状态画到每个 tab 流尾巴上的那一块（`MessageStream.trailerElement`）。活卡**不进时间线**：
  *   不占 seq、不进去重集、不进大纲 / 查找 / 改动集 —— 全会话事实只读 json。
  */
 import { copyText } from "./copy-table";
 import type { StreamEv } from "./generated/StreamEv";
 import type { RunInfo } from "./generated/RunInfo";
-import { RunBoard, runRowText, type RunRow } from "./runs";
+import { RunBoard } from "./runs";
 
 /** `session-tap` 的载荷（与 `src/frontend/ui/generated/SessionTapPayload.ts` 同形；这里只取要用的几格）。 */
 export interface TapPayload {
@@ -348,9 +348,7 @@ export type TrailerOf = (sid: string) => HTMLElement | null;
  * （只有它订 `session-tap`），所以样式跟着画法住主窗口独有的那一块。
  */
 export interface LivePainter {
-  /** 流尾巴那一整块：子运行的行 ＋ 主运行的活卡。 */
-  trailer(host: HTMLElement, sid: string, cards: LiveCardState[], rows: RunRow[]): void;
-  /** 只画几张活卡（子运行时间线尾巴上那一截）。 */
+  /** 画几张活卡：主 tab 流尾巴那一块（只有主运行的）· 子运行时间线尾巴上那一截。 */
   cards(host: HTMLElement, cards: LiveCardState[]): void;
 }
 
@@ -381,22 +379,16 @@ export class LiveCards {
     if (p.run !== undefined) for (const sid of touched) this.onRunLive?.(sid, p.run);
   }
 
-  /** 一个会话的运行表到了：主 tab 上的行跟着变；收场的子运行撤掉它在攒的那几段。回：这一次收场的那几个。 */
+  /** 一个会话的运行表到了：收场的子运行撤掉它在攒的那几段（主 tab 的活卡只画主运行，不受影响）。回：这一次收场的那几个。 */
   onRuns(sid: string, runs: RunInfo[]): RunInfo[] {
     const finished = this.board.set(sid, runs);
     for (const r of finished) this.core.dropRun(sid, r.run);
-    this.paint(new Set([sid]));
     return finished;
   }
 
   /** 把某个子运行此刻的活卡画进 `host`（没装画法 ⇒ 不画）。 */
   paintCards(host: HTMLElement, sid: string, run: string): void {
     this.painter?.cards(host, this.core.cardsOf(sid, run));
-  }
-
-  /** 主 tab 上此刻每个在跑的子运行那一行。 */
-  rowsOf(sid: string): RunRow[] {
-    return this.board.running(sid).map((r) => ({ run: r.run, text: runRowText(r, this.core.liveBlockOf(sid, r.run)) }));
   }
 
   /** 某个子运行的流有动静（它的时间线开着的话要重画活卡那一截）。宿主装。 */
@@ -424,7 +416,7 @@ export class LiveCards {
     if (!painter) return;
     for (const sid of touched) {
       const host = this.trailerOf(sid);
-      if (host) painter.trailer(host, sid, this.core.cardsOf(sid), this.rowsOf(sid));
+      if (host) painter.cards(host, this.core.cardsOf(sid));
     }
   }
 }

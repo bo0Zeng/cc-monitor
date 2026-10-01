@@ -309,8 +309,8 @@ const HIDDEN_UNRESOLVED: Readonly<Record<string, string>> = {
     "`this.outline.panel` —— 大纲清单那块，由 `UserInputPanel` 建（类 `.user-inputs`；`styles.css` 里那条规则头注逐字「绝不许出现 display」）",
   // 扩展页的抽屉：`this.drawer` 在构造器里由本文件的 `el()` 小工具建（类 `ext-drawer`，经一层参数传进去 ⇒ 推不出；行号按文件现数）；
   //   `.ext-drawer` 在 `styles/settings.css` 里**没有 display 规则** ⇒ UA 的 `[hidden]` 不会被压过（人工核过）。
-  "src/frontend/ui/settings/ext-section.ts:184": "`this.drawer` —— 构造时收起",
-  "src/frontend/ui/settings/ext-section.ts:268": "`this.drawer` —— 点开一行才拉出来",
+  "src/frontend/ui/settings/ext-section.ts:197": "`this.drawer` —— 构造时收起",
+  "src/frontend/ui/settings/ext-section.ts:281": "`this.drawer` —— 点开一行才拉出来",
   "src/frontend/ui/error-toast.ts:136": // +1：加了 copyText 的 import
     "`existing.countEl` —— `existing` 是从一张 Map 里取回来的旧 toast，它的 countEl 在别处建的",
   // ⚠ `606 → 614`：我在这份文件上方加了一段注释，**行号就漂了**。

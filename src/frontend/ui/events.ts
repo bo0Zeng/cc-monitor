@@ -88,7 +88,7 @@ export interface EventHandlers {
    */
   onSessionContainer?: (sessionId: string, container: string) => void;
   /**
-   * 一个会话的运行表（会话流里的 `runs` 格，那台后端的成品）：主 tab 上每个在跑的子运行一行、跑完收进派出它的那张工具卡。
+   * 一个会话的运行表（会话流里的 `runs` 格，那台后端的成品）：列在 agent 面板里，状态标到派出它的那张工具卡上（不进主 tab 的消息流）。
    * 进 queue：排在那个会话的宣告之后（处理它时 tab 已在）。
    */
   onSessionRuns?: (p: SessionRunsPayload) => void;

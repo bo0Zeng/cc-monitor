@@ -107,13 +107,14 @@ fn machine_name(m: Option<&str>) -> String {
         .unwrap_or_else(|| copy_text("beExt.machine.here", &[]))
 }
 
-/// `scope` 的两头。
+/// `scope` 的两头：只认形状。项目目录是不是绝对路径由它所属的那台判（来源 / 被写那台的内层命令各判各的），
+/// 枢纽按自己这台的写法判会把别台的路径错拒（Windows 上的枢纽不认 `/home/…`）。
 fn scope_of(args: &Value) -> Result<(ExtLoc, ExtLoc), (String, String)> {
     let s = args.get("scope");
     let own = |e: (&'static str, String)| (e.0.to_string(), e.1);
     Ok((
-        ExtLoc::from_arg(s.and_then(|s| s.get("from")), "scope.from").map_err(own)?,
-        ExtLoc::from_arg(s.and_then(|s| s.get("to")), "scope.to").map_err(own)?,
+        ExtLoc::shape_of(s.and_then(|s| s.get("from")), "scope.from").map_err(own)?,
+        ExtLoc::shape_of(s.and_then(|s| s.get("to")), "scope.to").map_err(own)?,
     ))
 }
 

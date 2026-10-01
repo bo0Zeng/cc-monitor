@@ -334,7 +334,7 @@ fn run_of_tool(parent: &Path, faces: &crate::agents::RunFaces, tool: &str) -> Op
         if let Some(r) = faces
             .child_links(&v)
             .into_iter()
-            .find(|l| l.tool == tool)
+            .find(|l| l.tool.as_deref() == Some(tool))
             .and_then(|l| l.run)
         {
             return Some(r);

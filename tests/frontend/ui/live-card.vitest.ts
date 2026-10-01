@@ -235,7 +235,7 @@ describe("T8 SSE 断 / 丢不碰 jsonl 那条对的路（抄流可以有缺口�
     const streamRootEl = document.createElement("div");
     document.body.append(barEl, streamRootEl);
     const tm = new TabManager(barEl, streamRootEl);
-    tm.setLivePainter(livePainter({ timeline: () => document.createElement("div"), closed: () => {} }));
+    tm.setLivePainter(livePainter);
     tm.onLine(jsonl[0] as never);
     for (const t of tapSeq) tm.onSessionTap(t);
     const trailer = (): string =>

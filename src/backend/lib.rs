@@ -704,7 +704,9 @@ pub const PROTO_VERSION: u32 = 1;
 /// p6f-ext-page：skill 与 MCP 收成一张跨机器的表，一套「装到 / 卸载」；密钥不出来源机。
 ///
 /// p6g-child-runs：子 agent 的流归各自的运行，主 tab 上每个在跑的子运行一行；通用层只认运行，各家的形状住适配层。
-pub const BUILD_ID: &str = "p6g-child-runs";
+///
+/// p6h-runs-panel：子 agent 不进主 tab，只在 agent 面板里列；收场以派出它的那一方为准；扩展页的项目目录由它所属的那台判。
+pub const BUILD_ID: &str = "p6h-runs-panel";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src/frontend/shell/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），
