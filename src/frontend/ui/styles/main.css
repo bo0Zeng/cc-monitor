@@ -4,8 +4,8 @@
  * 加载它的窗口：**只有主窗**（住址：各窗口 html 的 `<link rel="stylesheet">` 列表 ——
  * `index.html` / `settings.html` / `viewer.html`，那就是每个窗口的 CSS 清单，没有第二份）。
  *
- * 〔三入口拆分 · `设计/41 §9`〕本文件由基线 `src/frontend/ui/styles.css` 按「哪几个窗口的模块图里有它的建元素处」
- * 逐块切出来，**块内容逐字搬、块间保持原序**。切法与判据见 `设计/41` 末尾追加的那一节。
+ * 〔三入口拆分〕本文件由基线 `src/frontend/ui/styles.css` 按「哪几个窗口的模块图里有它的建元素处」
+ * 逐块切出来，**块内容逐字搬、块间保持原序**。
  */
 
 @layer components {
@@ -229,8 +229,8 @@
 }
 
 /* F91（#27）：多 agent 监控 —— 全屏 overlay。
-   〔墓碑 2026-09-18〕原文写「照 usage-view 范式」，而 `.usage-view` 已随用量 ②③ 两轴整轴退役
-   （`设计/50`）。那个范式指的是「全屏 overlay ＋ 表格」这一套；今天同形的活体是 `.panorama-*`。 */
+   〔墓碑 2026-09-18〕原文写「照 usage-view 范式」，而 `.usage-view` 已随用量 ②③ 两轴整轴退役。
+  那个范式指的是「全屏 overlay ＋ 表格」这一套；今天同形的活体是 `.panorama-*`。 */
 .grid-monitor {
   position: fixed;
   inset: 0;
@@ -710,7 +710,7 @@
   padding: 12px;
 }
 
-/* F88b（#52）context% HUD chip 的样式〔UC2 · 设计/41 件 10〕迁成 CSS Modules：住 `src/frontend/ui/usage-hud.module.css`。 */
+/* F88b（#52）context% HUD chip 的样式迁成 CSS Modules：住 `src/frontend/ui/usage-hud.module.css`。 */
 
 /* === History 视图（接管 #message-stream 区域） === */
 
@@ -1874,7 +1874,7 @@
   border-color: var(--border-strong);
 }
 
-/* PN1b 选图（设计/97 §7）：选择器 · 旋钮行 · 盖在气泡画布上的图层。
+/* PN1b 选图：选择器 · 旋钮行 · 盖在气泡画布上的图层。
    图里的线型按 data-conf 画（CP3：确定 / 派发 / 按名字凑 / 混合 看起来必须不同）。 */
 .panorama-diagram-select {
   padding: 4px 6px;

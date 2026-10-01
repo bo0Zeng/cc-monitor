@@ -3,7 +3,7 @@
  *
  * # 要治的病
  *
- * 主计划 §5-4 逐字记录：`accounts` / `mcp` / `cc-bus` / `cc-bus-hooks`
+ * 记录：`accounts` / `mcp` / `cc-bus` / `cc-bus-hooks`
  * **各自维护 `this.origin`，`events.ts` 无任何 origin 广播** ⇒ 四份不同步。
  * 用户在「账号」里切到 aya，转头看「MCP」还停在上一台 —— 而这两块讲的是**同一台机器**。
  *
@@ -15,7 +15,7 @@
  * 值是一个 origin：本机 = `LOCAL_ORIGIN`（`"<local>"`）；其余 = 某台远端的 origin（`label || host`，与
  * `remote-config.ts::hostKey` 同口径）。
  *
- * 〔C4a · `设计/05 §8` 步 2〕上一版是「`null` = 本机」，于是四个订阅者各自写一遍
+ * 上一版是「`null` = 本机」，于是四个订阅者各自写一遍
  * `origin === null ? LOCAL_ORIGIN : origin` 把它换成后端认的那个串（`cc-bus-section.ts` 那句注释逐字：
  * 「两套表示各有各的理由，**换算只准在这一处发生**」）。现在只有一套表示，换算没有了。
  * 空白名**不是任何一台机器** ⇒ `set` 收到它什么都不做（上一版把它归一成「本机」——
@@ -27,11 +27,11 @@
  *   设置停在一台可能已经被删掉的机器上。
  * - **同值不通知**。四个订阅者收到通知就会 reload，而每次 reload 是一次 ssh 往返。
  *   同值重复 `set` 也广播的话，四块之间会互相激起一串无意义的往返 —— 那就是变相轮询，
- *   撞主计划 §1-2 的红线。
+ *   撞红线。
  */
 
 import { LOCAL_ORIGIN, type Origin } from "../ipc/origin";
-// 〔GAP1 · `设计/01 §1.5`〕值与订阅住 `app-store.ts` 那一格（唯一的 pub-sub）；本文件只剩「空白名不是任何一台」这道门。
+// 值与订阅住 `app-store.ts` 那一格（唯一的 pub-sub）；本文件只剩「空白名不是任何一台」这道门。
 import { appStore } from "../app-store";
 
 type Listener = (origin: Origin) => void;

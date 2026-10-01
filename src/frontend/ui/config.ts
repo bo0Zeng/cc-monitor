@@ -1,13 +1,13 @@
 // config.json 读写桥：读直通 Rust `load_config`；写只有 `patch_config` 一个口（schema-agnostic，
 // 后端按 serde_json::Value 透传，所有字段语义收敛在前端各模块）。
 //
-// 🔴 〔CFG1 · 4D〕**写只交「改哪几条路径」，不交整份。** 从前 9 个模块各自「读整份 → 改自己的键 →
+// 🔴 **写只交「改哪几条路径」，不交整份。** 从前 9 个模块各自「读整份 → 改自己的键 →
 // `saveConfig(整份)`」，主窗（tab 栏）与设置窗是两个 realm，两次读-改-写一交错，后写的整份就把先写的键 〔散文墓碑〕
 // 盖掉（E §E1：拖放同拍发分组 ＋ 顺序，分组那次没落盘）。现在 [`patchConfig`] 只交 [`ConfigEdit`]，
 // Rust `config.rs::patch_config_at` 在一把进程级锁里现读盘、逐条应用 ⇒ 谁写的键谁的值留在盘上
-// （`设计/30 §4`「各自只写自己那个键」）。判据：`tests/frontend/ui/config-lost-update.vitest.ts` · `tests/frontend/shell/config_tests.rs`。
+// （「各自只写自己那个键」）。判据：`tests/frontend/ui/config-lost-update.vitest.ts` · `tests/frontend/shell/config_tests.rs`。
 //
-// 🔴 〔`设计/99 §2.5 P12` 2026-09-21〕**「未知键静默忽略」在这里止住。**
+// 🔴 **「未知键静默忽略」在这里止住。**
 //
 // 本仓的头号病形逐字是「『关掉了』与『过了』在终端上一模一样」。config.json 上它长这样：
 // 用户手写一个键 → 各模块只按自己认得的键名取值 → 认不出的**一个字都不说**
@@ -45,8 +45,8 @@ export const CONFIG_KEY_OWNERS = {
   keybindings: "src/frontend/ui/keybindings/store.ts",
   // src/frontend/ui/accounts.ts
   accounts: "src/frontend/ui/accounts.ts",
-  // 〔B2 · 条 66〕原来这里有 `backendPolicy`（src/frontend/ui/backend-policy.ts）—— 「退出行为」那个值
-  //   搬到了后端所在那台机器上（`设计/01 §3.3b ②`「monitor 的 config 里不许再留一份」）⇒ 这一键退役。
+  // 〔条 66〕原来这里有 `backendPolicy`（src/frontend/ui/backend-policy.ts）—— 「退出行为」那个值
+  //   搬到了后端所在那台机器上（「monitor 的 config 里不许再留一份」）⇒ 这一键退役。
   //   盘上还留着它的旧 config.json 会被下面那条「不认识的键」提示条点名 —— 那是对的：它确实没人读了。
   // src/frontend/ui/remote-config.ts（Rust 侧 `lib.rs::load_remote_configs` 也读它，只读）
   remote: "src/frontend/ui/remote-config.ts",
@@ -54,7 +54,7 @@ export const CONFIG_KEY_OWNERS = {
   tabBar: "src/frontend/ui/tab-bar-state.ts",
   // src/frontend/ui/tab-collections.ts
   tabCollections: "src/frontend/ui/tab-collections.ts",
-  // src/frontend/ui/usage-hud.ts 读（经 `views/context-limit.ts::readContextLimits`）；〔FIX4 · `70 §10` 第 8 条〕设置页「外观 → 高级」写
+  // src/frontend/ui/usage-hud.ts 读（经 `views/context-limit.ts::readContextLimits`）；设置页「外观 → 高级」写
   //   （`settings/context-limits-section.ts`），不再只能手改 config.json。
   contextLimits: "src/frontend/ui/usage-hud.ts",
   // ── src/frontend/ui/behavior.ts 那一族 ─────────────────────────────────────────────
@@ -66,9 +66,9 @@ export const CONFIG_KEY_OWNERS = {
   resumeCommandLocalPresets: "src/frontend/ui/behavior.ts",
   resumeCommandRemotePresets: "src/frontend/ui/behavior.ts",
   notifyTurnEnd: "src/frontend/ui/behavior.ts",
-  // 〔LR2〕`forceLaunchPayloadRenderer` 退役（`src/frontend/ui/behavior.ts` 那段注释写了为什么）⇒ 这一键删掉，盘上还写着它就当未知键点名。
+  // `forceLaunchPayloadRenderer` 退役（`src/frontend/ui/behavior.ts` 那段注释写了为什么）⇒ 这一键删掉，盘上还写着它就当未知键点名。
   // src/frontend/shell/src/logging.rs —— **Rust 写的**顶层键（设置页「诊断」经 `set_diagnostics_config`）。
-  // 〔CFG1〕从前漏登记：用户存过一次诊断设置，「认不出的键」提示条就把 `diagnostics` 点名（假警报）。
+  // 从前漏登记：用户存过一次诊断设置，「认不出的键」提示条就把 `diagnostics` 点名（假警报）。
   diagnostics: "src/frontend/shell/src/logging.rs",
 } as const satisfies Readonly<Record<string, string>>;
 

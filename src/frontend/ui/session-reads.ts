@@ -1,5 +1,5 @@
 /**
- * 〔C4b · 第四波 4B · `设计/05 §8` 步 5〕**会话读面上的三条一次性查询，经通道直接问那台机器的后端**：
+ * **会话读面上的三条一次性查询，经通道直接问那台机器的后端**：
  * 骨架索引（`history-index`）· 大纲清单（`history-user-inputs`）· 会话内查找（`history-find`）。
  *
  * # 它顶掉了什么
@@ -22,10 +22,10 @@
  * 每一问 30 秒（`X6`：调用点显式给）—— 与它们上一个住址（monitor `frame_query::LINES_BUDGET`）同值；
  * 盖的是「那台后端扫一遍会话 ＋ 回程」，不含握手（长连接早就连着）。
  *
- * # 〔STC · `设计/90 §4` 阶段 C〕第五问：会话事实（`history-facts`）
+ * # 第五问：会话事实（`history-facts`）
  *
  * 分叉血缘 · 改动文件集 · agent 列表 · 最新 usage 四样由后端读一遍文件出成品（`observe/facts_query.rs`），
- * 此前是活 tab 在 `onLine` 旁路上一条一条攒的（`设计/10 §2.2`）。续传令牌就是**上一份成品原样**
+ * 此前是活 tab 在 `onLine` 旁路上一条一条攒的。续传令牌就是**上一份成品原样**
  * （[`readSessionFacts`] 的 `prior`）—— 本文件与调用方都不读它、不改它、不合并它，只原样交回去。
  */
 import { chan, ChanError, type CallError } from "../../comms/inward/chan";
@@ -100,12 +100,12 @@ export interface SessionIndexResult {
   end: number;
   /** 每个可计行一条（形状 = 后端 `IndexRow`，`IPC-PROTOCOL.md §10.3`）。本文件**不解释**这些行。 */
   rows: SkeletonFacts[];
-  /** 要不到的种类（分档同大纲：`oldBackend` 结构性 / 其余瞬时 ⇒ 下一次触发点再问一次，`设计/10 §7` 第 5 条）。 */
+  /** 要不到的种类（分档同大纲：`oldBackend` 结构性 / 其余瞬时 ⇒ 下一次触发点再问一次）。 */
   failure?: OutlineFailure;
 }
 
 /**
- * 〔STC〕一次 agent 调用（后端 `facts_query::AgentFact`，键名一字不差）。`status` 只有 jsonl 看得出来的两态；
+ * 一次 agent 调用（后端 `facts_query::AgentFact`，键名一字不差）。`status` 只有 jsonl 看得出来的两态；
  * 「中止」是界面对「会话落到不忙」这个事件的反应，不在成品里（`tab-session-facts.ts`）。
  */
 export interface AgentFact {
@@ -115,14 +115,14 @@ export interface AgentFact {
   status: "running" | "done";
 }
 
-/** 〔STC〕最新 usage（后端 `facts_query::UsageFact`）：context 占用的原料，上限与百分比是排版（`views/context-limit.ts`）。 */
+/** 最新 usage（后端 `facts_query::UsageFact`）：context 占用的原料，上限与百分比是排版（`views/context-limit.ts`）。 */
 export interface UsageFact {
   promptTokens: number;
   model: string | null;
 }
 
 /**
- * 〔STC〕一份会话的事实（后端 `facts_query::SessionFacts`，**帧面成品的形状**；跨语言金样
+ * 一份会话的事实（后端 `facts_query::SessionFacts`，**帧面成品的形状**；跨语言金样
  * `tests/__fixtures__/session-reads.golden.json` 的 `history-facts` 一格）。它同时就是下一次的续传令牌。
  */
 export interface SessionFacts {
@@ -137,7 +137,7 @@ export interface SessionFacts {
   usage: UsageFact | null;
 }
 
-/** 〔STC〕会话事实的回包。`available == false` 时 `facts` 缺席、`failure` 是种类、`reason` 是给人看的原因（**不是错误**）。 */
+/** 会话事实的回包。`available == false` 时 `facts` 缺席、`failure` 是种类、`reason` 是给人看的原因（**不是错误**）。 */
 export type FactsResult =
   | { available: true; facts: SessionFacts }
   | { available: false; reason: string; failure: OutlineFailure };
@@ -211,7 +211,7 @@ const exactKeys = (v: Record<string, unknown>, keys: readonly string[]): boolean
 };
 
 /**
- * 〔STC〕`history-facts` 的成品 ⇒ [`SessionFacts`]。**每一层键集合恰好是后端出的那一形**（多一格 / 缺一格 / 类型不对 ⇒ 抛
+ * `history-facts` 的成品 ⇒ [`SessionFacts`]。**每一层键集合恰好是后端出的那一形**（多一格 / 缺一格 / 类型不对 ⇒ 抛
  * 「两端契约对不上」）—— 这份成品要原样当续传令牌交回去，后端那一侧收它时同样按恰好的键集合拒（`prior_from`）。
  */
 export function decodeFacts(v: unknown): SessionFacts {
@@ -325,7 +325,7 @@ export async function readSessionIndex(origin: Origin, jsonlPath: string, fromOf
 }
 
 /**
- * 〔STC〕**会话事实**：`prior` = 上一次拿到的那份成品**原样**（续传令牌；`null` ⇒ 从字节 0 扫）。
+ * **会话事实**：`prior` = 上一次拿到的那份成品**原样**（续传令牌；`null` ⇒ 从字节 0 扫）。
  * 要不到 ⇒ `available:false` ＋ 种类（分档同大纲：`oldBackend` 结构性 / 其余瞬时）＋ 一句人话。
  */
 export async function readSessionFacts(
@@ -344,11 +344,11 @@ export async function readSessionFacts(
   }
 }
 
-// ─── 〔C4c · 第四波 4B〕第四问：这条会话的记录还在不在（resume 一跳先问）───
+// ─── 第四问：这条会话的记录还在不在（resume 一跳先问）───
 
 /**
  * 那台机器的后端对「这条会话的记录还在不在」的答案（后端 `read_face.rs` 的 `history-record`，成品 `{present, root}`）。
- * `root` = 查的那棵记录树的根（答「不在」时要说清查的是哪里，`设计/01 §6.9`）。
+ * `root` = 查的那棵记录树的根（答「不在」时要说清查的是哪里）。
  */
 export interface RecordProbe {
   present: boolean;
@@ -364,9 +364,9 @@ export function decodeRecord(v: unknown): RecordProbe {
 }
 
 /**
- * **resume 之前问那台机器：这条会话的记录还在不在**（`设计/01 §6.2` 最后一条）。本机与远端同一条路。
+ * **resume 之前问那台机器：这条会话的记录还在不在**（最后一条）。本机与远端同一条路。
  *
- * 〔C4c〕此前是 Tauri 命令 `probe_session_record`〔散文墓碑〕：它在 monitor 里只做「转一条 `history-record`、核两格」
+ * 此前是 Tauri 命令 `probe_session_record`〔散文墓碑〕：它在 monitor 里只做「转一条 `history-record`、核两格」
  * （`frame_query::record` / `parse_record`〔散文墓碑〕）—— 后端早已出成品，那一跳一行解释都不该有 ⇒ 改成界面经通道直接问。
  *
  * **失败就抛**（不折成一个答案）：调用方（`tab-session-actions.ts::recordStillThere`）把「问不到」当「不知道」，
@@ -377,8 +377,8 @@ export async function probeSessionRecord(
   sid: string,
   configDir?: string,
 ): Promise<RecordProbe> {
-  // 〔GP1 · 第四波〕带上这次 resume 要用的账号配置目录（`CLAUDE_CONFIG_DIR`）：会话起在那个账号根下时，
-  //   只查那台后端自己的家目录会答「不在」、误拦 resume（`设计/30 §8` 第 4 条）。基座（没有账号）⇒ 不带。
+  // 带上这次 resume 要用的账号配置目录（`CLAUDE_CONFIG_DIR`）：会话起在那个账号根下时，
+  //   只查那台后端自己的家目录会答「不在」、误拦 resume。基座（没有账号）⇒ 不带。
   const body = jsonBody(configDir ? { sid, configDir } : { sid });
   const budget = budgetWithin(READ_BUDGET_MS);
   const reply = await chan.call(origin, "history-record", body, budget);

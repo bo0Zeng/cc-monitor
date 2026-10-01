@@ -5,7 +5,7 @@
  *
  * 钩子 `onCardRendered` 本来就在**共享**的 `render-stream-record.ts` 里，
  * 只是此前**只有 `session-viewer` 传了它** ⇒ 实时会话上没有入口。
- * 把按钮抽出来之后，两边传同一个东西（主计划 §3 账本第 3 行）。
+ * 把按钮抽出来之后，两边传同一个东西（账本第 3 行）。
  *
  * # G5：被 ESC 回退掉的那些消息 —— **保留入口，但呈现要区分**
  *
@@ -30,7 +30,7 @@
  */
 
 import { forkSession, type BranchResult } from "./session-writes";
-// 〔C4a〕本机 = `LOCAL_ORIGIN`（`"<local>"`，Rust 侧 `origin.rs::LOCAL`，跨语言对拍）。
+// 本机 = `LOCAL_ORIGIN`（`"<local>"`，Rust 侧 `origin.rs::LOCAL`，跨语言对拍）。
 import type { Origin } from "./ipc/origin";
 import { showActionFailureToast } from "./error-toast";
 import { copyText } from "./copy-table";
@@ -53,10 +53,10 @@ export interface BranchButtonOptions {
   uuid: string;
   /**
    * 源会话 sid。**两条路都用它** —— 后端只认 sid 不认路径（见 `remote_branch.ts` 对面那份
-   * Rust 头注）。〔`K-R88` 09-13〕本机那条原先收路径，收成 sid 之后这里少了一个字段。
+   * Rust 头注）。本机那条原先收路径，收成 sid 之后这里少了一个字段。
    */
   sourceSessionId: string;
-  /** 哪台机器（本机 = `LOCAL_ORIGIN`）。G6 起远端也能分叉。〔C4a〕必填：「没说」不再被当成本机。 */
+  /** 哪台机器（本机 = `LOCAL_ORIGIN`）。G6 起远端也能分叉。必填：「没说」不再被当成本机。 */
   origin: Origin;
   /** 新会话的工作目录（起会话用）。 */
   cwd?: string;
@@ -97,16 +97,16 @@ export function attachBranchButton(
     btn.dataset.busy = "1";
     void (async () => {
       try {
-        // 🔴 **〔步 12·C 2026-09-20〕本机与远端不再是两条 IPC。**
+        // 🔴 **本机与远端不再是两条 IPC。**
         // 这里原先逐字写着「本机与远端仍是**两条不同的 IPC**（活儿在哪台机器上干不一样，
-        // 远端那条还要一个 origin）」——`设计/00 §2.5 ①` 要治的正是那个「还要一个 origin」：
+        // 远端那条还要一个 origin）」—— 要治的正是那个「还要一个 origin」：
         // 那不该是**另一条命令**，那该是**同一条命令的一个参数**。
-        // 〔`K-R88` 09-13〕入参形状两侧早已一致（都收 sid、都不收路径），所以这一步只剩
+        // 入参形状两侧早已一致（都收 sid、都不收路径），所以这一步只剩
         // 把「哪台机器」从命令名里搬到参数里。
         // ⚠ **本机是 `LOCAL_ORIGIN`（`"<local>"`），不是 `undefined`、不是 `null`** ——
         //   `INVARIANTS §40` 逐字「本地 ＝ 不走 ssh 的远端」，它是一个**具名**的 origin。
-        //   〔C4a〕`opts.origin` 本来就是这个表示，原样过线。
-        //   〔MIG-3b〕今天界面经通道直说那台后端 `session-fork`（`session-writes.ts::forkSession`），monitor 那条转交删了。
+        // `opts.origin` 本来就是这个表示，原样过线。
+        // 今天界面经通道直说那台后端 `session-fork`（`session-writes.ts::forkSession`），monitor 那条转交删了。
         const res = await forkSession(opts.origin, opts.sourceSessionId, opts.uuid);
         btn.textContent = copyText("branchButton.attachBranchButton.done");
         window.setTimeout(() => (btn.textContent = copyText("branchButton.attachBranchButton.icon")), 2000);

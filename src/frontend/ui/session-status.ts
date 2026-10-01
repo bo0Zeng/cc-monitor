@@ -34,12 +34,12 @@ export interface GridSessionSnapshot {
   sessionId: string;
   /** Tab 标题（[项目] aiTitle > 项目名 > sid 前 8）。 */
   title: string;
-  /** 哪台机器：本机 = `LOCAL_ORIGIN`；其余 = 远端主机 label。〔C4a〕不再用 `null` 表示本机。 */
+  /** 哪台机器：本机 = `LOCAL_ORIGIN`；其余 = 远端主机 label。不再用 `null` 表示本机。 */
   origin: Origin;
   /** 项目根 / 启动目录（最早记录的 cwd）；null = 尚未拿到。 */
   cwd: string | null;
   /**
-   * 〔U4〕会话状态的两个轴（活性 × 可恢复性），与 tab 栏**同一份**（`Tab.state` 原样交出）；
+   * 会话状态的两个轴（活性 × 可恢复性），与 tab 栏**同一份**（`Tab.state` 原样交出）；
    * cell 的类 / 灯 / 排序 / 摘要都经 `tab-session-state.ts` 的谓词读，不在这里另判。
    * 原先是 `status: "live" | "archived"` ＋ `tmuxIdle: boolean`（可重连的会话在前者里是 live）。
    */

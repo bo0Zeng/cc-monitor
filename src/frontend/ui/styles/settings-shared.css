@@ -4,8 +4,8 @@
  * 加载它的窗口：**主窗 ＋ 设置窗**（住址：各窗口 html 的 `<link rel="stylesheet">` 列表 ——
  * `index.html` / `settings.html` / `viewer.html`，那就是每个窗口的 CSS 清单，没有第二份）。
  *
- * 〔三入口拆分 · `设计/41 §9`〕本文件由基线 `src/frontend/ui/styles.css` 按「哪几个窗口的模块图里有它的建元素处」
- * 逐块切出来，**块内容逐字搬、块间保持原序**。切法与判据见 `设计/41` 末尾追加的那一节。
+ * 〔三入口拆分〕本文件由基线 `src/frontend/ui/styles.css` 按「哪几个窗口的模块图里有它的建元素处」
+ * 逐块切出来，**块内容逐字搬、块间保持原序**。
  */
 
 @layer components {

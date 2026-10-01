@@ -79,7 +79,7 @@ export interface ForkStartDeps {
     tmuxName: string | null;
   }) => Promise<boolean>;
   /**
-   * 〔FIX4 · `90 §3` J7〕问那台后端给分叉会话铸 tmux 名（`tmux-name-mint {forkOf}`：`<源名>-fork-cc`，必与源名不同、按那台的会话快照避让）。
+   * 问那台后端给分叉会话铸 tmux 名（`tmux-name-mint {forkOf}`：`<源名>-fork-cc`，必与源名不同、按那台的会话快照避让）。
    * 问不到 ⇒ `ok:false` 带原因 ⇒ 选了 tmux 就不起（抛，由 `runForkFlow` 出声）—— 拿空集自己拼一个就是「不避让」，#76 的形状。
    */
   mintForkName: (origin: Origin, source: string) => Promise<MintOutcome>;
@@ -94,7 +94,7 @@ export interface ForkStartInput {
   source: ForkLaunchInput;
   /** 源会话所在的 tmux 名（用来取一个**不同**的新名；源已退出 ⇒ 缺席，拿 cwd 当源）。 */
   sourceTmuxName?: string | null;
-  // 〔FIX4 · J7〕`takenTmuxNames`（已占用名，前端自己避让用）删了：避让在那台后端（[`ForkStartDeps.mintForkName`]）。
+  // `takenTmuxNames`（已占用名，前端自己避让用）删了：避让在那台后端（[`ForkStartDeps.mintForkName`]）。
 }
 
 /** `failed` 与 `cancelled` 必须分开：前者要报错，后者是用户自己收手、不该再弹任何东西。 */
@@ -125,7 +125,7 @@ export async function startForkedSession(
   // 「windows不要tmux」）。所以下面那句「把 tmux 这格从追问清单里摘掉」**还没到该删的时候，
   // 但它的理由已经换了**：不是「答案会被忽略」，而是**名字还传不下去** ——
   // `resume_history_session` 的 `tmuxName` 今天没有调用点在传，
-  // 因为本机的「已占用名字」集合还不存在（ROADMAP `U11`），
+  // 因为本机的「已占用名字」集合还不存在（`U11`），
   // 而名字只许由 `mintTmuxName` 铸（全仓唯一带撞名避让的铸造口）。
   // ⇒ P3t-Y2b 把名字接上之后，这一格要**按平台**决定摘不摘，不再是一律摘。
   // 所以本机分叉时把 tmux 这格从追问清单里摘掉：**问一个答案会被忽略的问题，
@@ -158,7 +158,7 @@ export async function startForkedSession(
   if (isLocalOrigin(input.origin)) {
     // 本机：G3b-1 给 `resume_history_session` 加的 `configDir` 走这里。
     // 本机路径不管 tmux（那是 PowerShell/POSIX 拉起器自己的事）。
-    // 〔FE1〕与远端同形：失败时它已经出过声、回 `false` ⇒ `failed`（调用方不再叠成功提示）。
+    // 与远端同形：失败时它已经出过声、回 `false` ⇒ `failed`（调用方不再叠成功提示）。
     const launched = await deps.startLocal({
       sessionId: input.newSessionId,
       cwd,
@@ -169,7 +169,7 @@ export async function startForkedSession(
   }
 
   // 远端：tmux 名**必须与原会话不同**，否则 ccm 会 attach 进原窗口。
-  //   〔FIX4 · J7〕名字问那台后端铸；问不到 ⇒ 不起（抛，由 `runForkFlow` 出声），不自己拼一个顶上。
+  // 名字问那台后端铸；问不到 ⇒ 不起（抛，由 `runForkFlow` 出声），不自己拼一个顶上。
   let tmuxName: string | null = null;
   if (useTmux) {
     const minted = await deps.mintForkName(input.origin, input.sourceTmuxName ?? cwd ?? "fork");

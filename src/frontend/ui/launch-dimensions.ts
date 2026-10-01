@@ -1,10 +1,10 @@
 /**
  * F03（unify-launch）：environment 轴的维度注册表。
  *
- * 只治理**第三条正交轴**（MASTERPLAN §2.4 的 environment 轴）——agent（哪个 AI）与 container
+ * 只治理**第三条正交轴**（environment 轴）——agent（哪个 AI）与 container
  * （哪个容器）已经是 `LaunchPlan` 的一等字段，不注册成维度。加一个新维度（如 F07 的 `model`）=
  * 往 `LAUNCH_DIMENSIONS` 数组追加一条注册 + `LaunchContext` 加一个可选字段，零改
- * `buildLaunchPlan`、零改两个渲染器主体结构（MASTERPLAN §0.1 成功标准②的落点）。
+ * `buildLaunchPlan`、零改两个渲染器主体结构（成功标准②的落点）。
  *
  * **顺序即契约**：`env-reset`(10) < `account`(20) < `nested-env-reset`(30)。这条顺序对应
  * 今天代码里"账号前缀在 unset 之前"的既有事实（`buildResumePayload` 逐字如此）——错序的后果
@@ -21,7 +21,7 @@ export const IDENTITY_DIMENSION: LaunchDimension = {
   order: 5,
   applies: (ctx) => ctx.ccmSid !== undefined,
   apply: (plan, ctx) => {
-    // 〔DUP1 · `设计/90 §3` 判据 2〕这里原来先过 TS 的 `isValidSessionId`〔散文墓碑〕—— 今天原样推：
+    // 这里原来先过 TS 的 `isValidSessionId`〔散文墓碑〕—— 今天原样推：
     // 渲染侧判（外层 `@ccm_sid` · `--ccm-sid=` 都过 `shell_quote_core::session_id_ok`，判不过拒并说清）。
     plan.identity = { ccmSid: ctx.ccmSid! };
   },
@@ -52,7 +52,7 @@ export const ENV_RESET_DIMENSION: LaunchDimension = {
  *  渲染条件，就会被 CLI 渲染器吐成一条**既不带 `--account` 也不带 `--base` 的 `ccm resume …`**，
  *  R11 的病灶原样复现（远端 shell 若没有继承 `CLAUDE_CONFIG_DIR`，`ccm` 会静默落 manifest 默认
  *  账号，可能不是用户想要的那个）。`apply()` 内部逻辑不变（`base` 态仍无 env op，字节不变）。
- *  〔LR1〕这条教训今天由 Rust `ccm_invocation.rs` 的 `account` 维度（`applies` 恒真）承接；
+ * 这条教训今天由 Rust `ccm_invocation.rs` 的 `account` 维度（`applies` 恒真）承接；
  *  本维度的 `applies` 恒真仍承重 —— 它决定 `apply()` 在 base 态也被问到。 */
 export const ACCOUNT_DIMENSION: LaunchDimension = {
   id: "account",
@@ -60,12 +60,12 @@ export const ACCOUNT_DIMENSION: LaunchDimension = {
   applies: () => true,
   apply: (plan, ctx) => {
     if (ctx.account.kind !== "account") return;
-    // 〔DUP1 · `设计/90 §3` 判据 2〕这里原来先过一遍 TS 的 `isValidConfigDir`〔散文墓碑〕再推 —— 那是
+    // 这里原来先过一遍 TS 的 `isValidConfigDir`〔散文墓碑〕再推 —— 那是
     // `payload.rs::config_dir_command_safe` 的逐项手抄。今天原样推：拼进命令的那一侧（Rust 载荷渲染
     // `render_env_ops`）自己判，判不过带 `REFUSE:` 标拒、前端照拒说出来；`ccm` 那条路只带账号**名**，configDir 不上线。
     plan.env.push({ kind: "export-config-dir", value: ctx.account.configDir });
   },
-  // 〔LR1 · U8c-3〕这里原来还有 `cliFlags`（`--base` / `--account <名>` / 名字缺失 ⇒ `null`）与
+  // 这里原来还有 `cliFlags`（`--base` / `--account <名>` / 名字缺失 ⇒ `null`）与
   // `requiredCaps`（`["account"]`）两格 —— 它们唯一的读者是 TS 那份 `ccm …` 渲染器，随它删了。
   // 同一件事今天只有一份：`src/backend/control/launch_render/ccm_invocation.rs` 的 `account` 维度
   // （三形与 attach 豁免由 `ccm_invocation_tests.rs` 钉，`--base` 的跨语言契约由
@@ -74,7 +74,7 @@ export const ACCOUNT_DIMENSION: LaunchDimension = {
 
 /** model（F07）：注入该账号配置的默认模型偏好（`ANTHROPIC_MODEL`）——**架构验收**：第一个真实
  *  新维度，验证「加一个新维度 = 注册一条 + `LaunchContext` 加一个可选字段，零改 `buildLaunchPlan`/
- *  两个渲染器主体结构」这条 MASTERPLAN §0.1 成功标准②的承诺。order 卡在 `account`(20) 与
+ *  两个渲染器主体结构」这条成功标准②的承诺。order 卡在 `account`(20) 与
  *  `nested-env-reset`(30) 之间——语义上"模型是账号的一个细化"，导出顺序上"账号目录先、模型
  *  偏好次、嵌套清理最后"。
  *
@@ -91,11 +91,11 @@ export const MODEL_DIMENSION: LaunchDimension = {
   applies: (ctx) => !!ctx.modelOverride,
   apply: (plan, ctx) => {
     if (!ctx.modelOverride) return;
-    // 〔DUP1 · `设计/90 §3` 判据 2〕这里原来先过 TS 的 `isValidModelName`〔散文墓碑〕（它还会拒 `sonnet[1m]`、Bedrock / Vertex 名）。
+    // 这里原来先过 TS 的 `isValidModelName`〔散文墓碑〕（它还会拒 `sonnet[1m]`、Bedrock / Vertex 名）。
     // 今天原样推：规则只有一份（`shell_quote_core::model_name_ok`），渲染侧与后端 ccm 在拼进命令之前判。
     plan.env.push({ kind: "export-model", value: ctx.modelOverride });
   },
-  // 〔LR1 · U8c-3〕`cliFlags`（`--model <名>`）与 `requiredCaps`（`["model"]`）两格随 TS 渲染器删了；
+  // `cliFlags`（`--model <名>`）与 `requiredCaps`（`["model"]`）两格随 TS 渲染器删了；
   // 「条件式维度只在触发时才要能力」今天住 `ccm_invocation.rs` 的 `model` 维度。
 };
 
@@ -113,12 +113,12 @@ export const NESTED_ENV_RESET_DIMENSION: LaunchDimension = {
   },
 };
 
-// 〔DUP2 · `设计/90 §3` 判据 2〕这里原来有 `isValidRbindToken`〔散文墓碑〕—— 令牌形状的 TS 副本（32 个小写十六进制，与 Rust 逐字同），
+// 这里原来有 `isValidRbindToken`〔散文墓碑〕—— 令牌形状的 TS 副本（32 个小写十六进制，与 Rust 逐字同），
 // 维度 `apply` 与铸币口各过它一遍。今天铸币口按生成物（字母表 × 长度）**造**、构造上造不出别的形状，形状只剩 Rust 一份
 // （`payload.rs::rbind_token_shape_ok`，渲染前那道闸）⇒ 副本与两遍自检都删了。
 
 /**
- * 🔴 **rbind-token（`设计/80 §8` 步 1，2026-09-23）：启动期令牌 `CCM_RBIND_TOKEN`。**
+ * 🔴 **rbind-token（2026-09-23）：启动期令牌 `CCM_RBIND_TOKEN`。**
  *
  * 「买到什么 / **买不到什么**」逐字住 `launch-types.ts::EnvOp` 那一段
  * （要害一句：**令牌不许承载任何权限语义** —— 它会进 `/proc/<pid>/environ`、
@@ -146,7 +146,7 @@ export const NESTED_ENV_RESET_DIMENSION: LaunchDimension = {
  * CLI 那条路），判据在 `tests/frontend/ui/remote-launch-run.vitest.ts`。生产的 CLI 渲染在 Rust 的
  * `backend::control::ccm_invocation`，它的 `CliSpec` 里没有这个维度 —— 等 `ccm` 学会了，
  * 那边加一个维度、这里的闸跟着撤。
- * 〔LR1 · U8c-3〕原来本维度还有一格 `cliFlags: () => null`（TS 渲染器那一侧的第二道闸），
+ * 原来本维度还有一格 `cliFlags: () => null`（TS 渲染器那一侧的第二道闸），
  * 它唯一的读者是 TS 那份 `ccm …` 渲染器、本来就不在生产路上，随它删了 ⇒ **今天只有上面那一道**。
  */
 export const RBIND_TOKEN_DIMENSION: LaunchDimension = {
@@ -161,7 +161,7 @@ export const RBIND_TOKEN_DIMENSION: LaunchDimension = {
     ctx.rbindToken !== undefined && (ctx.action.kind === "new" || ctx.action.kind === "resume"),
   apply: (plan, ctx) => {
     if (ctx.rbindToken === undefined) return;
-    // 〔DUP2〕形状不在这里判（规则只有 Rust 一份）：原样推出去，坏串（含 `""`）由渲染侧 `payload.rs` 那道闸拒 ——
+    // 形状不在这里判（规则只有 Rust 一份）：原样推出去，坏串（含 `""`）由渲染侧 `payload.rs` 那道闸拒 ——
     // 仍然**不会降级成"这次不带令牌"**（`applies` 那条 `!== undefined` 照旧），只是「拒」的那一刻从这里挪到了渲染那一跳。
     plan.env.push({ kind: "export-rbind-token", value: ctx.rbindToken });
   },
@@ -181,7 +181,7 @@ export const LAUNCH_DIMENSIONS: LaunchDimension[] = [
 function assertDimensionOrderInvariants(dims: LaunchDimension[]): void {
   const seen = new Set<number>();
   for (const d of dims) {
-    if (seen.has(d.order)) throw new Error(`bug: LaunchDimension order clash: ${d.id} order=${d.order}`); // 〔CP2b〕程序员错误，刻意英文（不是对外文案）
+    if (seen.has(d.order)) throw new Error(`bug: LaunchDimension order clash: ${d.id} order=${d.order}`); // 程序员错误，刻意英文（不是对外文案）
     seen.add(d.order);
   }
   const idx = (id: string): number => dims.findIndex((d) => d.id === id);
@@ -198,7 +198,7 @@ function assertDimensionOrderInvariants(dims: LaunchDimension[]): void {
   if (idx("model") >= idx("nested-env-reset")) {
     throw new Error("invariant: model must come before nested-env-reset");
   }
-  // `设计/80 §8` 步 1：rbind-token 排在**全部 unset 之后**（`nested-env-reset` 是今天最后
+  // rbind-token 排在**全部 unset 之后**（`nested-env-reset` 是今天最后
   // 那个 unset）。理由见 `RBIND_TOKEN_DIMENSION` 头注 ①：防「明天多一个 unset 变体，
   // 把刚 export 的令牌抹掉」。⚠ 同上面四条：本函数只对**完整注册表**有意义
   // （缺项时 `findIndex` 回 -1，会报一条与真实病因无关的不变式违反）。

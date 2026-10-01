@@ -1,5 +1,5 @@
 /**
- * **独立只读窗**的入口（`viewer.html?viewer=<sid>&origin=<机器>` 加载它）。`设计/01 §1.2`：只含 tab 管理 ＋ 渲染栈。
+ * **独立只读窗**的入口（`viewer.html?viewer=<sid>&origin=<机器>` 加载它）。：只含 tab 管理 ＋ 渲染栈。
  *
  * 🔴 本窗的模块图里**没有**设置面板 / 历史 / 全景 / SFTP / 命令栏 —— 判据是
  * `tests/frontend/ui/entry-graphs.vitest.ts`（真跑 `vite build`，对本入口 chunk 的传递闭包做零命中断言），
@@ -11,7 +11,7 @@ import "./entry-common"; // 全局错误捕获（模块副作用）
 import { installGlobalClickDelegation } from "./entry-render-common";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "./ipc/origin";
-import { basename } from "./format"; // F09：复用已测纯函数（去 main.ts 内联 basename 盲区；〔F7b〕随老面板退役从 sftp/paths 搬来）
+import { basename } from "./format"; // F09：复用已测纯函数（去 main.ts 内联 basename 盲区；随老面板退役从 sftp/paths 搬来）
 import { bindEvents } from "./events";
 import { TabManager } from "./tabs";
 import { terminalFrontAvailable } from "./terminal-front";
@@ -40,7 +40,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     if (status) status.textContent = copyText("entryViewer.module.missingParam");
     return;
   }
-  // 〔CF2〕这个会话在哪台机器上（会话流 `subscribe(origin, kind)` 的寻址键）。缺 ⇒ 本机（旧的开窗 URL 只带 sid）。
+  // 这个会话在哪台机器上（会话流 `subscribe(origin, kind)` 的寻址键）。缺 ⇒ 本机（旧的开窗 URL 只带 sid）。
   const rawOrigin = new URLSearchParams(location.search).get("origin");
   const origin: Origin = rawOrigin === null || rawOrigin === "" || isLocalOrigin(rawOrigin) ? LOCAL_ORIGIN : rawOrigin;
   await bootstrapViewer(sid, origin);
@@ -53,7 +53,7 @@ window.addEventListener("DOMContentLoaded", async () => {
  * （tab 栏 / 设置 / 历史，由 `body.viewer-mode` CSS 控制）→ 自动继承分支折叠 /
  * 启动滚动消抖 / tool-group 合并 等全部渲染能力。
  *
- * 数据：〔CF2 · 第四波 4B〕订一条会话流 `session-lines/<sid>`（通道 `subscribe`，只要这一个会话）——
+ * 数据：订一条会话流 `session-lines/<sid>`（通道 `subscribe`，只要这一个会话）——
  * 留存由这条订阅当场交、之后的实时行接着交（与主窗口同一个 seq 空间）。原来的定向重放命令
  * （`replay_session_to_window`〔散文墓碑〕）与实时广播事件一起退役。重叠由 `seen` set 按 seq 去重。
  * **不发 `frontend-ready`** —— 那是主窗口那几条整台机器的订阅的就绪点。
@@ -103,7 +103,7 @@ async function bootstrapViewer(sid: string, origin: Origin): Promise<void> {
   termBtn.textContent = copyText("entryViewer.bootstrapViewer.terminal");
   termBtn.title = copyText("entryViewer.bootstrapViewer.terminalHint");
   termBtn.addEventListener("click", () => tabs.bringActiveTerminalToFront());
-  // 〔S4 · 第四波〕↗ 与 tab 上那颗同一道门（`terminal-front.ts`）：非 Windows 上最后一跳是桩、每点必败 ⇒ 不渲。
+  // ↗ 与 tab 上那颗同一道门（`terminal-front.ts`）：非 Windows 上最后一跳是桩、每点必败 ⇒ 不渲。
   //   快捷键（下面的 `terminal.bring-front`）还够得到 `bringActiveTerminalToFront`，那里会说一句实话。
   if (terminalFrontAvailable()) topbar.appendChild(termBtn);
   const cwdBtn = document.createElement("button");
@@ -129,7 +129,7 @@ async function bootstrapViewer(sid: string, origin: Origin): Promise<void> {
   });
   dispatcher.bind("terminal.bring-front", () => tabs.bringActiveTerminalToFront());
   dispatcher.bind("tab.open-cwd", () => tabs.openActiveTabCwd());
-  dispatcher.bind("session.find", () => tabs.openFind()); // 〔SE2〕独立窗口里的那一个 tab 也能 Ctrl+F
+  dispatcher.bind("session.find", () => tabs.openFind()); // 独立窗口里的那一个 tab 也能 Ctrl+F
   dispatcher.applyOverrides(await getKeybindings());
   dispatcher.start();
 
@@ -137,7 +137,7 @@ async function bootstrapViewer(sid: string, origin: Origin): Promise<void> {
   const seen = new Set<number>();
   let titleCwdSeq = Number.POSITIVE_INFINITY; // 顶栏标题取最早 cwd（项目根），同 tab.cwd 口径
   // **必须 await**：会话流订阅登记好再往下走。
-  // 会话流的格由通道按窗口定向交（`chan.ts`）。〔MIG-1 收尾 · V41〕原先那一项按窗口作用域监听的选项随 `bindEvents` 里最后的 Tauri 监听一起删了。
+  // 会话流的格由通道按窗口定向交（`chan.ts`）。原先那一项按窗口作用域监听的选项随 `bindEvents` 里最后的 Tauri 监听一起删了。
   await bindEvents(
     {
       onLine: (e) => {
@@ -162,7 +162,7 @@ async function bootstrapViewer(sid: string, origin: Origin): Promise<void> {
       onSessionStarted: (s) => {
         if (s === sid) tabs.reviveTab(s);
       },
-      // 〔GP1 · 第四波〕那台机器看不见了 ⇒ 说不清（与主窗一致，免视图窗停在陈旧的「活」）。〔MIG-1 续〕机器级：落这台上的那一条。
+      // 那台机器看不见了 ⇒ 说不清（与主窗一致，免视图窗停在陈旧的「活」）。机器级：落这台上的那一条。
       onOriginUnseen: (o) => tabs.markOriginUnseen(o),
       onBatchStart: () => tabs.onBatchStart(),
       onBatchEnd: () => tabs.onBatchEnd(),

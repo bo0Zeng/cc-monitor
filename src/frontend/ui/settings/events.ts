@@ -5,5 +5,5 @@
  */
 export const SETTINGS_APPLIED_EVENT = "settings-applied";
 
-/** 〔RESYNC · V149〕设置窗「重新对齐」做完 → 主窗口（载荷 `{ origin }`）：标出那台上记录没了的固定条（`99 §2.1` ㉟①）。 */
+/** 设置窗「重新对齐」做完 → 主窗口（载荷 `{ origin }`）：标出那台上记录没了的固定条。 */
 export const RESYNC_DONE_EVENT = "resync-done";

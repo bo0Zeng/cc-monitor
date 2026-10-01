@@ -5,12 +5,12 @@
 // 关系（自带并装 / 该自带而还没装口 / 你自己装我提示 / 只查）、碰哪些文件、对它做什么、
 // 现在是什么状态、还能不能撤。
 //
-// 🔴 〔`K-R65` 09-11〕**「app 假设它在」那一档没有了。** 上一行原文逐字是
+// 🔴 **「app 假设它在」那一档没有了。** 上一行原文逐字是
 // 「装 / 只查 / **假设它在**」——`K38` 裁掉了最后那一档：通用工具不是「我不看」，
 // 是「**你自己装，而我会看、缺了我要说**」。⇒ 这一页对那一族**真去查**，
 // 而「查了、确认没有」与「查不动」在屏幕上是两句不同的话（`promptToInstall`）。
 //
-// 🔴 〔`K-R60` 09-11〕**人群从 `TOOLS` 换成了那个闭集。** 原来只遍历 `TOOLS`，
+// 🔴 **人群从 `TOOLS` 换成了那个闭集。** 原来只遍历 `TOOLS`，
 // 于是 app **装不了却离不开**的那一整档（`claude` / `tmux` / 终端出口 / `git` / `ssh` …）
 // 在这一页上**一行都没有** —— 而用户问「我这台机器齐了没有」时看的正是这一页。
 // 表小，视图就瞎；那一档靠「不出现」表示，读者分不出「没有这种东西」与「有人忘了写」。
@@ -20,7 +20,7 @@
 // 本机都查不到，把它们画成红叉就是对能用的安装报假警报——B04 审计已经抓过一次同型病。
 import { showActionFailureToast } from "../error-toast";
 
-// 〔MIG-3b 续〕线上类型改住读者 `footprint-reads.ts`（成品由那台后端出，解码器按金样严格收；原 ts-rs 生成物随判定进后端删了）。
+// 线上类型改住读者 `footprint-reads.ts`（成品由那台后端出，解码器按金样严格收；原 ts-rs 生成物随判定进后端删了）。
 // 本文件内部与 `.vitest.ts` 都用这些名字，所以 **import + 单独 re-export 都要有**：
 // 只写 `export type { … } from` 不会把名字带进本地作用域（C02 栽两次、C04c 第三次）。
 import {
@@ -35,7 +35,7 @@ import {
 
 export type { ConfigSurfaceReport, EnvTier, SettingsScope, SurfaceRow, SurfaceState };
 
-// 🔴 〔`K-R65`〕**「缺」与「未测过」这两个字从 `readiness.ts` 来，本文件不另写一对。**
+// 🔴 **「缺」与「未测过」这两个字从 `readiness.ts` 来，本文件不另写一对。**
 // 件计划 `KR65D1` 逐字：「`readiness.ts` 那条 `missing` vs `unknown` 的分法**是现成的，
 // 别再造一套**」。⇒ 这一页把 `absent`／`undetermined` 映到那两个 kind 上，措辞跟着它走。
 import { GAP_HEAD, type GapKind } from "./readiness";
@@ -87,15 +87,15 @@ export function promptToInstall(row: SurfaceRow): string | null {
     return copyText("configSurface.install.prompt", { missing: GAP_HEAD.missing, path: row.path_declared });
   }
   // **查不动**：说「缺」就是替用户下一个他没做过的结论（`readiness.ts` 头注逐字）。
-  // 〔ST2 · `70 §11.4` #3〕原文后半「别当成它不在」是**开发者的认识论对冲**（`§2.1` 第 ④ 种）——
+  // 原文后半「别当成它不在」是**开发者的认识论对冲**（`§2.1` 第 ④ 种）——
   //   区分本身是对的（`§2.2`：不许扫掉），只换位置：前半留在行上，后半进 ⓘ（`UNKNOWN_IS_NOT_ABSENT`）。
   return copyText("configSurface.install.unknown", { unknown: GAP_HEAD.unknown });
 }
 
 /**
- * 〔ST2 · `70 §11.3.1`〕「查不动」那一句的后半，挪进 ⓘ 的那一段 —— **那条区分的全部内容住这里**。
+ * 「查不动」那一句的后半，挪进 ⓘ 的那一段 —— **那条区分的全部内容住这里**。
  */
-// 〔CP2b〕做成函数、用到时才取文（顶层不留取文口调用，同 remote-section）。
+// 做成函数、用到时才取文（顶层不留取文口调用，同 remote-section）。
 export const UNKNOWN_IS_NOT_ABSENT = (): string => copyText("configSurface.gap.unknownIsNotAbsent");
 
 /** 一态 → 文案 + 三档语气。**`undetermined` 必须中性且带出理由**，不能借"缺失"的红。 */
@@ -106,7 +106,7 @@ export function describeSurfaceState(st: SurfaceState): {
   switch (st?.kind) {
     case "present":
       return { text: st.detail, tone: "ok" };
-    // 〔SHOTS 09-29〕该不在、确实不在：那一句是后端的成品，照档画成正常 —— 不借「不存在」的红
+    // 该不在、确实不在：那一句是后端的成品，照档画成正常 —— 不借「不存在」的红
     case "expected_absent":
       return { text: st.detail, tone: "ok" };
     case "absent":
@@ -125,12 +125,12 @@ export function describeSurfaceState(st: SurfaceState): {
 /**
  * 「能否撤」列。`uninstallable=false` 时**不给按钮**——本工作区不做点了没反应的按钮。
  *
- * 〔`K-R60` 09-11〕第二档的措辞改了半句：这一页的人群扩到闭集之后，
+ * 第二档的措辞改了半句：这一页的人群扩到闭集之后，
  * `installable=false` 里**多了一类本来就不该由 cc-monitor 装的东西**
  * （`claude` / `tmux` / Claude Code 的会话记录…）。原文逐字是「尚未支持部署」——
  * 对那一类是句**误导**（「尚未」听起来像排期问题，而那是设计判断）。
  *
- * 🔴 〔`K-R65` 09-11〕**上一版那条 ⚠ 兑现了，删掉它的前提今天成立。**
+ * 🔴 **上一版那条 ⚠ 兑现了，删掉它的前提今天成立。**
  * 原文逐字：「⚠ 两类**今天在行上分不开**：`SurfaceRow` 的线上形状里没有档这一格，
  * 而那份形状是 `ts-rs` 生成物、不在本轮写区里。⇒ 措辞把两类都涵盖住」——
  * 那句「涵盖住」的措辞（「尚未支持部署，**或**本来就不该由它装」）是一句
@@ -143,7 +143,7 @@ export function describeUndo(row: SurfaceRow): string {
     case "AppInstalls":
       return copyText("configSurface.undo.manual");
     // **我们欠的实现** —— 不许说成「不该由它装」（`KR65D2` 逐字）。
-    // 〔ST2 · `70 §11.4` #1 · `§11.3.1`〕原文「这一项该由 cc-monitor 自带，而安装入口还没写 —— 撤销也一样还没有」
+    // 原文「这一项该由 cc-monitor 自带，而安装入口还没写 —— 撤销也一样还没有」
     //   是**我们欠的实现写成产品文案**。改成一格状态；⚠ 「还没有」这个语义必须留（`KR65D2`：不许说成「不该由它装」）。
     case "AppShipsNoInstallerYet":
       return copyText("configSurface.undo.noInstaller");
@@ -166,7 +166,7 @@ export function describeUndo(row: SurfaceRow): string {
  * **必须能被数出来**（不是红，是**能报出来**）」——**报出来的地方就是这里**，
  * 用户在这一页上看得见这个数，不用去读判据。
  *
- * 〔ST2 · `70 §11.4` #2 · `§11.3.1`〕原文「其中 N 项该由 cc-monitor 自带、而安装入口还没写：…」
+ * 原文「其中 N 项该由 cc-monitor 自带、而安装入口还没写：…」
  * 是「谁欠谁」的话。改成**一格状态 ＋ 展开看哪几项**：数照旧数得出来（`KR65D2` **不许删这一行**），
  * 名单挪进 `[哪 N 项]`（`owedInstallerNames`）。
  *
@@ -178,7 +178,7 @@ export function summarizeOwedInstallers(rows: SurfaceRow[]): string | null {
   return copyText("configSurface.summarizeOwedInstallers.owed", { namesCount: names.length });
 }
 
-/** 〔ST2〕`[哪 N 项]` 里那张名单（去重、按出现顺序）。 */
+/** `[哪 N 项]` 里那张名单（去重、按出现顺序）。 */
 export function owedInstallerNames(rows: SurfaceRow[]): string[] {
   return [...new Set(rows.filter((r) => r.tier === "AppShipsNoInstallerYet").map((r) => r.tool_name))];
 }
@@ -186,7 +186,7 @@ export function owedInstallerNames(rows: SurfaceRow[]): string[] {
 /** 生成一段可复制的纯文本诊断，便于用户贴给我或存档。 */
 export function formatReportText(r: ConfigSurfaceReport): string {
   const lines: string[] = [];
-  // 〔ST2 · 用户 09-24 裁「一起改」· `70 §11.6` #4〕跟块名统一：「配置面审计」→「足迹」。
+  // 〔用户 09-24 裁「一起改」〕跟块名统一：「配置面审计」→「足迹」。
   lines.push(copyText("configSurface.report.head"));
   lines.push(`HOME=${r.home}`);
   lines.push(copyText("configSurface.report.claudeDir", { claudeConfigDir: r.claude_config_dir }));
@@ -229,13 +229,13 @@ export function formatReportText(r: ConfigSurfaceReport): string {
   return lines.join("\n");
 }
 
-// 〔MIG-3b 续〕按机器问足迹的那一口（`readFootprint`）搬进 `footprint-reads.ts`（经通道直问那台后端）；
+// 按机器问足迹的那一口（`readFootprint`）搬进 `footprint-reads.ts`（经通道直问那台后端）；
 //   回声校验 `answersFor`〔散文墓碑〕删了：它防的是旧 Tauri 命令静默丢掉 `origin` 参数，通道按 origin 路由、那一形不存在了
 //   （留着就是两侧同源的恒真）。远端那台答不了（后端太旧）⇒ 读者抛 `FootprintUnanswered`，这里说「这台还答不了」。
 export { readFootprint };
 
 /** 远端那一台答不了时那一句的 ⓘ —— 区分（答不出来 ≠ 没动过）只换位置（`§11.4` #4）。 */
-// 〔CP2b〕做成函数、用到时才取文（顶层不留取文口调用，同 remote-section）。
+// 做成函数、用到时才取文（顶层不留取文口调用，同 remote-section）。
 export const REMOTE_UNANSWERED_WHY = (): string => copyText("configSurface.remote.unansweredWhy");
 
 export class ConfigSurfaceSection {
@@ -247,7 +247,7 @@ export class ConfigSurfaceSection {
   private owed!: HTMLElement;
   private copyBtn!: HTMLButtonElement;
   /**
-   * 那一整套（工具栏 / 概览 / 表 / 作用域）的包装 ——〔ST2〕本机与远端都用它；远端答不了时收起来。
+   * 那一整套（工具栏 / 概览 / 表 / 作用域）的包装 ——本机与远端都用它；远端答不了时收起来。
    * **刻意不挂类名**：它只负责显隐，不需要任何样式；挂了类就得在 CSS 里给它写规则，
    * 而 `css-ledger` 会要求每个类说得出谁在用它、每处类引用都有规则。
    */
@@ -256,21 +256,21 @@ export class ConfigSurfaceSection {
   private notForThisMachine!: HTMLElement;
   private last: ConfigSurfaceReport | null = null;
   private unsubscribeMachine?: () => void;
-  /** 〔ST2〕宿主放过第一发没有（放过之后切机器才由订阅重读）。 */
+  /** 宿主放过第一发没有（放过之后切机器才由订阅重读）。 */
   private started = false;
-  /** 〔ST2〕第几趟读 —— 晚到的旧答复认得出来。 */
+  /** 第几趟读 —— 晚到的旧答复认得出来。 */
   private seq = 0;
-  /** 〔ST2〕本机那一套里最后一格：装终端集成时留下的 `$PROFILE` 备份在哪。 */
+  /** 本机那一套里最后一格：装终端集成时留下的 `$PROFILE` 备份在哪。 */
   private backups!: HTMLElement;
 
   constructor() {
     this.element = this.build();
-    // 🔴 步 2（`70 §1.3 B` · `§10.4`）：**构造期不再发 I/O。**
+    // 🔴 步 2：**构造期不再发 I/O。**
     // 原来这里是 `void this.refresh()`，而这一块住的页**不是落地页**
     //（落地页是 `machines`）⇒ 每次打开设置都白发一趟 `config_surface_report`〔散文墓碑〕（今天是 `readFootprint`）。
     // 现在由宿主（`panel.ts`）在这一块**真正被搬到用户正在看的那一页上**时调 `loadNow()`。
     //
-    // 🔴 步 14a（`70 §10.1`）：这一块已从顶层「改动足迹」页搬进**机器子页的第五栏「足迹」**。
+    // 🔴 步 14a：这一块已从顶层「改动足迹」页搬进**机器子页的第五栏「足迹」**。
     // ⇒ 「哪台机器」这件事从此由页面上下文回答，所以这里订阅 `machine-context`。
     this.unsubscribeMachine = subscribeMachine((origin) => this.onMachineChanged(origin));
     this.applyOriginGate();
@@ -280,7 +280,7 @@ export class ConfigSurfaceSection {
     const root = document.createElement("div");
     root.className = "settings-group settings-headless config-surface-section";
 
-    // 🔴 `70 §10.1` 差项 3：原来这里第二句逐字是「这一页只读：不会写任何东西，
+    // 🔴 差项 3：原来这里第二句逐字是「这一页只读：不会写任何东西，
     //    也不后台轮询——每次打开或点「重新扫描」才读一次」——那是**我们的设计承诺**，
     //    写给评审看的，不是用户要的信息（用户不需要知道我们承诺了不轮询）。
     // ⇒ 只留「这一页是什么」，承诺收进 ⓘ。
@@ -294,7 +294,7 @@ export class ConfigSurfaceSection {
     );
     root.appendChild(hint);
 
-    // 🔴 `70 §10.1` 那条 ⚠ 逐字：**这一段不许跟着一起扫掉。**
+    // 🔴 那条 ⚠ 逐字：**这一段不许跟着一起扫掉。**
     // 它属于 `§2.2` 那一档 ——「查不了」与「没有」的**区分本身是对的**
     //（`readiness.ts` 的 `GAP_HEAD` 是这对词的唯一住址，本页是它的第二个读者）。
     // ⇒ 按 `§2.3` 的形状办：**区分保留，换成界面状态** —— 每一行今天各自已经带着
@@ -327,7 +327,7 @@ export class ConfigSurfaceSection {
     rescan.type = "button";
     rescan.className = "btn";
     rescan.textContent = copyText("configSurface.build.rescan");
-    // 步 4·E（`70 §1.3 E`）：扫一趟是一次真往返 —— 期间按住这个按钮，
+    // 步 4·E：扫一趟是一次真往返 —— 期间按住这个按钮，
     // 否则连点两下就是两趟，而第二趟的结果会盖掉第一趟、屏幕上看不出来。
     rescan.addEventListener("click", () => void withPending(rescan, copyText("configSurface.build.scanning"), () => this.refresh()));
     bar.appendChild(rescan);
@@ -354,7 +354,7 @@ export class ConfigSurfaceSection {
 
     this.body = document.createElement("div");
     this.body.className = "config-surface-body";
-    // 步 1（`70 §10.1` 差项 2）：加载态原来是**会长高**的一行字（「扫描中…」→ 整张表）
+    // 步 1（差项 2）：加载态原来是**会长高**的一行字（「扫描中…」→ 整张表）
     // ⇒ 数据回来时这一页往下窜一屏。现在容器与骨架钉在同一个高度下限上。
     holdSkeletonHeight(this.body, "footprint");
     host.appendChild(this.body);
@@ -372,7 +372,7 @@ export class ConfigSurfaceSection {
     this.scopesBox.className = "config-surface-scopes";
     host.appendChild(this.scopesBox);
 
-    // 〔ST2 · `70 §10.2` / `§11.3.2`〕「PowerShell profile 备份」从「数据位置」搬到这里：
+    // 「PowerShell profile 备份」从「数据位置」搬到这里：
     //   它和上面那张表里的 `$PROFILE` 行讲的是同一件事（cc-monitor 动过你哪些文件），
     //   原来住在两个不同的顶层页。没备份过就整块不出现。
     this.backups = document.createElement("div");
@@ -392,7 +392,7 @@ export class ConfigSurfaceSection {
    * 步 2：宿主在「per-machine 那几块第一次放 I/O」时调它（一次打开里一次，`panel.ts::loadPerMachineOnce`）。
    * 之后切机器由这一块自己的 `machine-context` 订阅重读（与账号 / MCP 那几块同一个形状）。
    *
-   * 〔ST2〕原来它在远端页上**直接不读**（读口不收 origin）。今天远端页照样去问 —— 答没答对由回声判。
+   * 原来它在远端页上**直接不读**（读口不收 origin）。今天远端页照样去问 —— 答没答对由回声判。
    */
   loadNow(): void {
     this.started = true;
@@ -402,7 +402,7 @@ export class ConfigSurfaceSection {
   /**
    * 这一页现在该长什么样：本机 / 远端都先摆那张表（骨架）；远端答不了时换成一句为什么。
    *
-   * 〔ST2〕今天它只管**切到哪台时先长什么样**；「这台答不了」那一格由 `refresh` 看回声之后定
+   * 今天它只管**切到哪台时先长什么样**；「这台答不了」那一格由 `refresh` 看回声之后定
    * （`showUnanswered`）。⚠ 这一格**不许**被读成「判据 #12 绿了」—— 只有回声对上、表真画出来才算。
    */
   private applyOriginGate(): void {
@@ -433,7 +433,7 @@ export class ConfigSurfaceSection {
 
   private onMachineChanged(_origin: Origin): void {
     this.applyOriginGate();
-    // 〔ST2〕切了机器 ⇒ 这一块讲的是另一台了 ⇒ 重读（只在已经放过第一发之后；第一发归宿主）。
+    // 切了机器 ⇒ 这一块讲的是另一台了 ⇒ 重读（只在已经放过第一发之后；第一发归宿主）。
     if (this.started) void this.refresh();
   }
 
@@ -473,7 +473,7 @@ export class ConfigSurfaceSection {
   }
 
   /**
-   * 〔ST2〕`$PROFILE` 备份那一格。〔OSA · 主会话 09-28 裁〕经通道直接问本机后端（`profile-backups.ts`：`$PROFILE` 在哪只有后端方言答），
+   * `$PROFILE` 备份那一格。经通道直接问本机后端（`profile-backups.ts`：`$PROFILE` 在哪只有后端方言答），
    * 不再从 `get_data_paths` 带（那一条仍是 monitor 自己落盘位置的唯一权威枚举点）。
    * 读不到 ⇒ 说读不到（不许拿「没有备份」糊过去 —— 那是替用户下一个没做过的结论）；
    * 一个备份都没有 ⇒ 整块不出现。
@@ -509,7 +509,7 @@ export class ConfigSurfaceSection {
   private render(r: ConfigSurfaceReport): void {
     this.meta.textContent = copyText("configSurface.render.home", { home: r.home, claudeConfigDir: r.claude_config_dir });
     // `KR65D2`：「app 该自带而还没有装口」那一格**在屏幕上数得出来**。
-    // 〔ST2 · `§11.3.1`〕一格状态 ＋ `[哪 N 项]` 展开看名单。
+    // 〔`§11.3.1`〕一格状态 ＋ `[哪 N 项]` 展开看名单。
     const owed = summarizeOwedInstallers(r.rows);
     this.owed.replaceChildren();
     if (owed !== null) {
@@ -618,7 +618,7 @@ export class ConfigSurfaceSection {
       p.className = "config-surface-prompt";
       p.dataset.gap = gapKindOfState(row.state) ?? "";
       p.textContent = prompt;
-      // 〔ST2 · `§11.4` #3〕「查不动」那一档：区分的后半在 ⓘ 里（只换位置，不删义）。
+      // 〔`§11.4` #3〕「查不动」那一档：区分的后半在 ⓘ 里（只换位置，不删义）。
       if (p.dataset.gap === "unknown") p.appendChild(makeInfoIcon(UNKNOWN_IS_NOT_ABSENT()));
       el.appendChild(p);
     }
