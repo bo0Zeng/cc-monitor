@@ -54,9 +54,11 @@ export function renderSharedMcp(origin: Origin): HTMLElement {
       line(row, "accounts-info warn", copyText("accountsMcp.conflict.head", { name: c.name }));
       for (const ch of c.choices) {
         const label =
-          ch.from === null
-            ? copyText(ch.gone ? "accountsMcp.conflict.gone" : "accountsMcp.conflict.shared")
-            : copyText("accountsMcp.conflict.from", { holders: ch.holders.join(copyText("accountsMcp.list.sep")) });
+          ch.from !== null
+            ? copyText("accountsMcp.conflict.from", { holders: ch.holders.join(copyText("accountsMcp.list.sep")) })
+            : ch.gone
+              ? copyText("accountsMcp.conflict.gone")
+              : copyText("accountsMcp.conflict.shared");
         const b = button(label);
         b.addEventListener("click", () => void pick(c.name, ch.from, b));
         row.appendChild(b);
