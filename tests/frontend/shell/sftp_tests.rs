@@ -405,9 +405,9 @@ fn the_release_pipeline_stages_every_arch_that_build_rs_embeds() {
 
 // `deploy_decision_truth_table`〔散文墓碑〕随 `deploy_decision` 删了（旁挂标记那条路整条退役）。
 
-// ═══ 〔4d-lanes 子步 1〕部署决策进本机常驻后端，本模块只放字节 ═══════════════════════
+// ═══ 部署决策进本机常驻后端，本模块只放字节 ═══════════════════════
 //
-// 要求住址：`4d-lanes.md` MIG-3b 第 1 条「`sftp.rs` 部署决策（该不该换 · 换成什么 · 身份判定）进后端；monitor 只放字节」。
+// 要求：「`sftp.rs` 部署决策（该不该换 · 换成什么 · 身份判定）进后端；monitor 只放字节」。
 // 〔墓碑 —— 这里原来是两条部署路「读字节自报的身份、不读旁挂标记」与取样壳「真走纯解释函数」两格源码判据，
 //  以及身份判定那几格纯函数判据：判定整个搬去了共享 crate（今天判定住后端 `control/deploy_plan.rs`、形状住 `deploy-contract`；纯判据跟着搬，期望一字未改）。〕
 

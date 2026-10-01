@@ -1,5 +1,5 @@
 //! 要求：「共享 crate 只放两边必须对上的契约（路径 · 端口 · 文件格式 · 文案表 · 令牌形状 · 字节表键），不放判定；判定只在后端」＋ THIN 第 5 件「monitor 生产段只许依赖契约类 crate」
-//! ＋ `4d-lanes.md ## 发版后四路 ### P1` 第 1 件「`contract_crate_guard_tests.rs` ③ 由『按符号』改成 crate 级」。
+//! ＋「`contract_crate_guard_tests.rs` ③ 由『按符号』改成 crate 级」。
 //!
 //! 三道：
 //! ① `src/common/` 下每个 crate 恰好登记一类、逐个写理由（两向：目录 == [`CRATES`]）；

@@ -1,4 +1,4 @@
-//! 要求住址：`4d-lanes.md ## 发版后四路 ### P1` 第 2 件「Claude 记录文本知识 → `agents/claudecode/text.rs`（通用层经 `RecordFace` 够）」·
+//! 要求：「Claude 记录文本知识 → `agents/claudecode/text.rs`（通用层经 `RecordFace` 够）」·
 //! `INVARIANTS §20`（CLI 注入的非真用户输入不算用户说的话）· 注入噪声那条规则只有一份。
 //!
 //! 原共享 crate `search-core` 的**Claude 记录文本那一半**：`message.content` 里正文块 / 工具内容怎么抽 ·

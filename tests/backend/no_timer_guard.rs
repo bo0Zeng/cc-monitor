@@ -1135,7 +1135,7 @@ mod tests {
     }
 
     /// **带期限的内核等待 == 一次性 CLI 例外表**（两向相等），且走得到它们的只有一次性子命令那一份文件。
-    /// 守的要求：`4d-lanes.md` `### STOP`逐字「等待住一次性 CLI（不是常驻后端的事件循环）⇒ 不碰『常驻后端零定时器』；
+    /// 要求：「等待住一次性 CLI（不是常驻后端的事件循环）⇒ 不碰『常驻后端零定时器』；
     /// 登记进 `no_timer_guard` 的一次性 CLI 例外表并写理由」· `INVARIANTS §41`（后端零定时器）。
     #[test]
     fn bounded_kernel_waits_are_exactly_the_one_shot_cli_exceptions() {

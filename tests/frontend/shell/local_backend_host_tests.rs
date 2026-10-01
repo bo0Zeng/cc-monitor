@@ -614,7 +614,7 @@ fn the_stop_command_really_calls_this_module() {
 
 /// T5 **本机「停」走同一条一次性子命令**：`stop_detached_locked` 恰好调一次 `run_resident_stop`，自己不发信号、不强杀、不等；
 /// 整份生产段里没有发 `-TERM` / `-KILL` 的路（HX1 那套 SIGTERM → 等 → SIGKILL 删干净）；`run_resident_stop` 起的是那个二进制 ＋ `--resident-stop`。
-/// 守的要求：`4d-lanes.md` `### STOP`逐字「本机那一格也改走同一条 `--resident-stop`（本机远端同形），
+/// 要求：「本机那一格也改走同一条 `--resident-stop`（本机远端同形），
 /// monitor 侧 `local_backend_host.rs` 那套 SIGTERM → 等 → SIGKILL 删掉」。
 #[test]
 fn the_local_stop_rides_the_same_one_shot_supervisor() {
@@ -4328,7 +4328,7 @@ fn hx1_the_token_comes_from_the_kernel_csprng_not_from_clock_pid_or_counter() {
 }
 
 /// 〔RK1 小尾巴〕`~/.cc-monitor` 这一层**建的那一下**就是 0700；**已在的**不动（两向）。
-/// 守的要求：`4d-lanes.md` HX1 出处「RK1 小尾巴（`~/.cc-monitor` 首建权限按 umask ⇒ 0700）」。
+/// 要求：「RK1 小尾巴（`~/.cc-monitor` 首建权限按 umask ⇒ 0700）」。
 #[test]
 #[cfg(unix)]
 fn hx1_the_monitor_home_dir_is_born_private_and_an_existing_one_is_left_alone() {

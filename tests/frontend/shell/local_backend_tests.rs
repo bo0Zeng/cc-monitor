@@ -1001,7 +1001,7 @@ fn place() -> Result<serde_json::Value, crate::ccm_probe::OnceErr> {
     Ok(serde_json::json!({ "action": "place", "why": "那台上是 p4z-old，这一版是 p5a-mine" }))
 }
 
-/// 要求：「落点 `~/.cc-monitor/bin/ccm` —— 本机与远端同一个」· `4d-lanes.md ## 发版后四路 ### P1` 第 1 件
+/// 要求：「落点 `~/.cc-monitor/bin/ccm` —— 本机与远端同一个」
 /// （主会话 09-29 拍板形状 A：放不放问手上那份字节自己，判定只住后端 `deploy_plan::place_verdict`；那张真值表住后端 `deploy_plan_tests`）。
 ///
 /// 真跑 [`extract_embedded_to`]、替身答话，逐格比盘上那份字节与目录（不读源码）：缺 ⇒ 问（问时暂存件里恰是手上那份、入参是落点与「本机」）⇒
@@ -3002,7 +3002,7 @@ fn a_refusal_from_the_byte_table_reaches_the_missing_reason_and_writes_nothing()
 }
 
 /// 〔NT2 问 3 ＋ RT1 F3〕后端 stderr 进 monitor 日志**按行首级别映射**（`ERROR` 封顶 `WARN`，认不出 ⇒ `WARN`）。
-/// 守的要求：主会话 4D 裁「后端 stderr 进 monitor 日志按级别映射，不一律 WARN」（`4d-lanes.md`）；封顶的理由见
+/// 守的要求：「后端 stderr 进 monitor 日志按级别映射，不一律 WARN」；封顶的理由见
 /// `drain_child_stderr_into_log` 头注约束 3（`ERROR` 会弹红色 toast）。
 /// 形状：纯函数逐格相等（后端 fmt 缺省格式的五个级别 ＋ 认不出的三形）；再喂一个真子进程的 stderr 给生产那一个搬运函数，
 /// 收下来的 (级别, 正文) 两向相等。

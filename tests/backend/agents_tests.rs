@@ -147,7 +147,7 @@ fn each_registry_entry_asks_its_own_adapter_for_the_home() {
 
 // 要求：「同一个数写在两处，其中一处一定先腐」· 「加第三种 agent ＝ 在 `agents/` 下加一个目录 ＋ 在注册表里加一行，**不改主程序**」。
 // ═══ 起会话事实只有一个家（`agents/<名>/resume.rs` 经注册表 `Adapter.launch`）════════════════
-// 题面：`4d-lanes.md ### P1` 第 4 件「起会话那几格事实在 monitor `adapter.rs` 与后端 `control/ccm/` 各一份（靠金样对着）→
+// 要求：「起会话那几格事实在 monitor `adapter.rs` 与后端 `control/ccm/` 各一份（靠金样对着）→
 // 收成后端一个家，monitor 经帧或生成物取」。`ccm --agent` 的闭集也从这张注册表派生（`agents::launchable_kinds`）。
 // 从前住 monitor `tests/frontend/shell/agent_profile_parity_tests.rs` 与 `adapter_tests.rs` 那几条随家搬来（金样的期望一字未改）。
 

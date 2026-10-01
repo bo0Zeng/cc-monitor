@@ -525,7 +525,7 @@ fn every_powershell_literal_reads_back_as_exactly_its_value() {
     assert_eq!(model_read_ps_literal(&old), None);
 }
 
-/// ★ 住址：`4d-lanes` P5（主会话裁：整段前奏由后端渲，PowerShell 字面量只走 `ps_literal`）· 报备 ①（本机数据目录带弯引号时握手前奏会断）。
+/// ★ 要求：整段前奏由后端渲，PowerShell 字面量只走 `ps_literal`（本机数据目录带弯引号时握手前奏会断）。
 /// 开终端前奏（生产那一条 `dial/terminal.rs::with_bind_prelude`）里数据目录那一格按上面同一个模型读回 == `<数据目录>/ps-await`、
 /// marker 那一格读回 == `ccm-rbind-token-<令牌>`：数据目录取 {字母 · 五个引号 · 空格 · `$`} 上长度 ≤ 3 的全部串（引号单个 · 连写 · 混排 · 打头）。
 #[test]

@@ -26,7 +26,7 @@
 //!
 //! 用户「SFTP 进本机常驻后端，只写暂存区」：SFTP 客户端住本机常驻后端（`src/backend/dial/sftp.rs`，
 //! 与其它 SSH 同一条连接），**远端写只许两处**（`~/.cc-monitor/staging/` · `~/.cc-monitor/bin/`）。
-//! 〔4d-lanes 子步 1〕**部署判定也不在本模块了**：该不该换 · 换成哪一格 · 落点那一份是谁由本机常驻后端出计划
+//! **部署判定也不在本模块了**：该不该换 · 换成哪一格 · 落点那一份是谁由本机常驻后端出计划
 //! （帧命令 `deploy-plan`，本体 `src/backend/control/deploy_plan.rs`，判定住后端那一份、两侧对上的形状住契约 crate `deploy-contract`）；
 //! 本模块只**照计划放字节**（取这一版带着的那一格 · 身份戳自检 · mkdir · 原子上传 ＋ 读回判定 · 删旧落点），
 //! 执行经 [`crate::dial_host::RemoteFs`]（本机后端那条 `files` 链路的一问一答）。〔墓碑 —— 从前本模块自己开 SFTP：`connect_sftp`〔散文墓碑〕在一条
@@ -147,7 +147,7 @@ pub use deploy_contract::DeployAction;
 // `deploy_decision`〔散文墓碑〕（比旁挂版本标记）删了：它只留给 `acct_iso_deploy` 那条按目录取标记的路，那条路整条退役
 //   （账号库今天由那台后端自己建，不再部署外部工具）。后端那条路的判定住 `deploy_contract::identity_decision`。
 
-/// 〔4d-lanes 子步 1〕**本机常驻后端出的部署计划**（帧命令 `deploy-plan`，线上形状 `tests/__fixtures__/deploy-plan.golden.json`）。
+/// **本机常驻后端出的部署计划**（帧命令 `deploy-plan`，线上形状 `tests/__fixtures__/deploy-plan.golden.json`）。
 /// 该不该换 · 换成哪一格 · 落点那一份是谁 · 旧落点那份删不删 —— 全是后端判的；本模块只照它放字节。
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct Plan {

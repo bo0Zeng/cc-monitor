@@ -252,7 +252,7 @@ fn the_cockpit_read_products_match_the_cross_language_golden() {
 }
 
 /// 杀会话顺手注销：只认名册第 4 列 pane pid 落在那个会话 pane 上的 id（主会话裁 TL2 A：不按会话名猜）。
-/// 要求住址：`4d-lanes.md` AL3「〔09-26 追加进 SH1〕D-g …… 认人核 `agents.tsv` 第 4 列的 pane pid（不按会话名猜）」。
+/// 要求：「认人核 `agents.tsv` 第 4 列的 pane pid（不按会话名猜）」。
 #[test]
 fn only_ids_registered_on_the_killed_panes_are_unregistered() {
     let row = |id: &str, target: &str, pid: Option<u32>| RosterRow {

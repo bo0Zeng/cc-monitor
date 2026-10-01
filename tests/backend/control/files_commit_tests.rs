@@ -770,7 +770,7 @@ fn the_commit_checks_the_whole_staged_file_against_the_digest_it_is_given() {
 
 /// 〔RK1 小尾巴〕后端**这一趟建出来的** `~/.cc-monitor` 与暂存区是 0700（不按 umask）；**已在的**不动。
 /// 守的要求：RK1 报备 §5.4 最后一条「`~/.cc-monitor` 这一层目录若由中转第一个建出来，权限是 umask 默认（本机现打 0775）」，
-/// `4d-lanes.md` HX1 出处「RK1 小尾巴（`~/.cc-monitor` 首建权限按 umask ⇒ 0700）」。形状：两向（新建 ⇒ 0700 · 已在 0755 ⇒ 仍 0755）。
+/// 要求：「`~/.cc-monitor` 首建权限按 umask ⇒ 0700」。形状：两向（新建 ⇒ 0700 · 已在 0755 ⇒ 仍 0755）。
 #[test]
 #[cfg(unix)]
 fn hx1_the_staging_dirs_are_born_private_and_an_existing_one_is_left_alone() {

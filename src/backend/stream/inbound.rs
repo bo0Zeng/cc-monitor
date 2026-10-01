@@ -1397,7 +1397,7 @@ pub const REGISTRY: &[CommandSpec] = &[
             Box::pin(async move { Ok(Some(crate::control::ccm::answer_probe())) })
         }),
     },
-    // 〔4d-lanes 子步 1〕**部署计划**：`{dial, carried, machine}` → 换成哪一格 · 落点那一份是谁 · 该不该换 · 旧落点那份删不删。
+    // **部署计划**：`{dial, carried, machine}` → 换成哪一格 · 落点那一份是谁 · 该不该换 · 旧落点那份删不删。
     //   真异步（拨号 / 等远端）；一个字节都不写（放字节是 monitor 经 `files` 链路的事）。本体 `control/deploy_plan.rs`。
     CommandSpec {
         name: "deploy-plan",

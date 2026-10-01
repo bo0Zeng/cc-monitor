@@ -180,7 +180,7 @@ fn the_resident_log_lives_under_logs_backend_and_its_dirs_are_made() {
 }
 
 /// T1 **宽限期 > 退出排空上限**：默认值与 `--grace` 的下限两格都比 `inbound::DRAIN_DEADLINE` 长。
-/// 守的要求：`4d-lanes.md` `### STOP`逐字「常驻后端自己收 SIGTERM 排空在飞写的上限（HX1）必须 < 宽限期（判据钉两者关系）」。
+/// 要求：「常驻后端自己收 SIGTERM 排空在飞写的上限（HX1）必须 < 宽限期（判据钉两者关系）」。
 /// 等得比排空短 ⇒ 后端那句「哪几条没做完」永远被 SIGKILL 截断，而且不会报错。
 #[test]
 fn the_grace_period_outlasts_the_backend_drain_cap() {
@@ -242,7 +242,7 @@ impl Drop for Reap {
 
 /// T2 **同机监督者三态，真进程 ＋ 真信号**：听话的（收 SIGTERM 就退）⇒ `graceful`；聋的（忽略 SIGTERM）⇒ 宽限期满强杀、
 /// `killed`、它真没了（收尸后 `/proc` 里没有）；不在的 ⇒ `not_running`；记下的程序对不上 ⇒ 拒、不发信号。
-/// 守的要求：`4d-lanes.md` `### STOP` 逐字「读 pid → SIGTERM → 在本机按 pidfd 等到退出或宽限期到 → 到点 SIGKILL → 回结局」。
+/// 要求：「读 pid → SIGTERM → 在本机按 pidfd 等到退出或宽限期到 → 到点 SIGKILL → 回结局」。
 #[test]
 #[cfg(target_os = "linux")]
 fn the_one_shot_supervisor_stops_politely_then_by_force() {
