@@ -1013,6 +1013,7 @@ fn mig1_the_credit_exemption_is_exactly_the_registered_lifecycle_frames() {
             kind: None,
             attachable: None,
             cwd: None,
+            project_dir: None,
             name: None,
             rbind_token: None,
         }),

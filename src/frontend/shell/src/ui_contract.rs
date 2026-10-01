@@ -286,8 +286,11 @@ pub struct SessionLivePayload {
     /// 但 `stdin=DEVNULL`。`false` ⇒ 前端不给 attach / ↗ / 「杀死空 tmux」。
     /// **None = true**（存量会话与旧后端一律照旧）。
     pub attachable: Option<bool>,
-    /// 骨架标题不再等首行——cwd 直接可用（偿还 F18 backlog）。
+    /// pidfile 记的起会话目录：前端认「我刚起的那条起来了」用（`launch-arrival.ts`）。
     pub cwd: Option<String>,
+    /// 会话的项目目录（会话起在哪个目录）：那台后端读记录开头给的。tab 标题 · 打开工作目录 · 分组只认这一格；
+    /// 老后端不带 ⇒ `null`，标题退到 aiTitle / sid。
+    pub project_dir: Option<String>,
     pub name: Option<String>,
     /// 启动期令牌：前端起新会话时铸的那一个，据它认出「我刚起的那条起来了」。
     /// 那台后端读不到 / 没索要 ⇒ 缺席。

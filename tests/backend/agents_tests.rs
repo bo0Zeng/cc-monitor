@@ -540,3 +540,48 @@ fn ccm_makes_no_resume_decision_since_it_became_a_shell() {
         "`control/ccm/` 又长出了 resume 的决定 —— V138 之后 ccm 只看不吃 `--resume`，回 F06 重裁。"
     );
 }
+
+/// 会话的项目目录 ＝ 记录开头第一条带 `cwd` 的那一条：后面的记录进了子目录也不跟着漂；只读开头，大文件不整读。
+#[test]
+fn project_dir_is_the_first_cwd_in_the_head_and_reading_is_bounded() {
+    let dir = std::env::temp_dir().join(format!("ccm-projdir-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let rec = |cwd: &str| {
+        format!(r#"{{"type":"user","cwd":"{cwd}","message":{{"role":"user","content":"q"}}}}"#)
+    };
+    // 开头一条 /a/proj，后面若干条 /a/proj/sub（shell 进了子目录）。
+    let drift = dir.join("drift.jsonl");
+    let mut body = String::from("{\"type\":\"mode\",\"mode\":\"normal\"}\n");
+    body += &(rec("/a/proj") + "\n");
+    for _ in 0..5 {
+        body += &(rec("/a/proj/sub") + "\n");
+    }
+    std::fs::write(&drift, &body).unwrap();
+    assert_eq!(
+        crate::agents::claudecode::parse::project_dir(&drift).as_deref(),
+        Some("/a/proj")
+    );
+
+    // 上界：带 cwd 的那一条排在上界之后 ⇒ 读不到（没有越过上界去读）。上界之内 ⇒ 读得到（正控）。
+    let pad = |n: u64| {
+        format!(
+            "{{\"type\":\"mode\",\"pad\":\"{}\"}}\n",
+            "x".repeat(n as usize)
+        )
+    };
+    let cap = crate::agents::HEAD_CAP;
+    let far = dir.join("far.jsonl");
+    std::fs::write(&far, pad(cap) + &rec("/a/proj") + "\n").unwrap();
+    assert_eq!(
+        crate::agents::claudecode::parse::project_dir(&far),
+        None,
+        "上界之后的那一条也被读到了 —— 头部没有上界"
+    );
+    let near = dir.join("near.jsonl");
+    std::fs::write(&near, pad(cap / 2) + &rec("/a/proj") + "\n").unwrap();
+    assert_eq!(
+        crate::agents::claudecode::parse::project_dir(&near).as_deref(),
+        Some("/a/proj")
+    );
+    std::fs::remove_dir_all(&dir).ok();
+}

@@ -198,7 +198,7 @@ fn the_passthrough_url_the_launch_answer_builds_parses_as_passthrough() {
         true,
         relay_route_core::PORT,
         &[],
-        &|_| true,
+        &|_, _| true,
     )
     .expect("成品");
     let url = answer.as_deref().expect("开关开、没行 ⇒ 该注入 `/t/`");

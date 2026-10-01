@@ -2001,8 +2001,8 @@ async fn a_refused_save_shows_the_reason_and_keeps_the_text() {
     let p = w.editing().expect("存失败之后编辑面不见了");
     match p.last_save.clone() {
         Some(Err(why)) => assert!(
-            why.contains("refused") && why.contains("refuse write"),
-            "拒的不是后端那一句：{why}"
+            why.contains("refuse write") && !why.contains("refused"),
+            "拒的不是后端那一句，或错误码上了屏：{why}"
         ),
         other => panic!("往一条受保护路径上存，结局却是 {other:?}"),
     }

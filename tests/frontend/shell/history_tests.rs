@@ -45,6 +45,7 @@ impl Drop for TmpDir {
 /// 问题只剩一个实现，也就无从不一致。
 ///
 /// ⇒ 本条换成后继形态：**钉住 monitor 侧不许再长出第二份**，并核后端那一份还在。
+/// 后端那一份今天住适配层 `agents::first_in_head`（按字节有上界），历史清单 · 会话宣告 · 会话事实的项目目录都问它。
 /// ⚠ **这不是降强度**：原形钉的是两个数的差（谁改了都红），后继钉的是「只剩一处」
 /// （谁把第二份写回来都红），而后者恰恰是 `K33`「所有命令只许有一处」的形状。
 #[test]
@@ -59,30 +60,36 @@ fn extracting_cwd_from_a_jsonl_head_now_lives_in_exactly_one_place() {
     assert!(
         local.is_empty(),
         "monitor 侧又长出了一份 jsonl 头部读法：\n{}\n\n\
-             ⇒ `K-R97` 之后这件事的家在后端（`observe/history_query.rs`）。\n\
+             ⇒ 这件事的家在后端适配层（`agents::first_in_head`）。\n\
              真要在 monitor 侧读，先回答「为什么这条路问不了后端」，再连同本条一起改。",
         local.join("\n")
     );
 
-    // ② 后端那一份还在，且窗口是个说得出的数 —— 否则上面那条会零命中地绿
-    //    （「两边都没有」与「只剩一处」在断言上长得一样，这一格就是分开它们的那个）。
-    let backend_src = std::fs::read_to_string(
-        crate::guard_support::repo_root().join("src/backend/observe/history_query.rs"),
-    )
-    .expect("读不到后端的 history_query.rs");
-    let remote: Vec<usize> = guard_core::production_code(&backend_src)
-        .lines()
-        .filter(|l| l.contains("reader.lines().map_while(Result::ok).take("))
-        .filter_map(|l| l.split(".take(").nth(1))
-        .filter_map(|s| s.split(')').next())
-        .filter_map(|s| s.trim().parse::<usize>().ok())
-        .collect();
+    // ② 后端那一份还在、恰好一处：适配层的 `agents::first_in_head`（窗口按字节，`HEAD_CAP`），
+    //    历史查询（`observe/history_query.rs`）自己一份头部窗口都没有，只问适配层 —— 否则上面那条会零命中地绿。
+    let read = |rel: &str| {
+        guard_core::production_code(
+            &std::fs::read_to_string(crate::guard_support::repo_root().join(rel))
+                .unwrap_or_else(|_| panic!("读不到 {rel}")),
+        )
+    };
+    let agents = read("src/backend/agents/mod.rs");
     assert_eq!(
-        remote,
-        vec![40],
-        "后端那一份不是「恰好一处、窗口 40 行」了（实得 {remote:?}）。\n\
-             ① 变成 0 处 ⇒ 那件事没人做了，而 monitor 这侧已经不做了；\n\
-             ② 变成 2 处 ⇒ 两份实现在后端里面又长了一次。"
+        (
+            agents.matches("fn first_in_head(").count(),
+            agents.matches("file.take(HEAD_CAP)").count()
+        ),
+        (1, 1),
+        "后端那一份不是「恰好一处、按字节有上界」了"
+    );
+    let history = read("src/backend/observe/history_query.rs");
+    assert_eq!(
+        history
+            .lines()
+            .filter(|l| l.contains("reader.lines().map_while(Result::ok).take("))
+            .count(),
+        0,
+        "历史查询里又长出了一份自己的头部窗口（项目目录只问适配层）"
     );
 }
 

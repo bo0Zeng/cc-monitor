@@ -2044,6 +2044,10 @@ fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameS
             .and_then(|v| v.get("attachable"))
             .and_then(|x| x.as_bool()),
         cwd: meta_str("cwd"),
+        project_dir: jsonls
+            .first()
+            .and_then(|p| crate::agents::project_dir_of(p))
+            .or_else(|| meta_str("cwd")),
         name: meta_str("name"),
         path: jsonls.first().map(|p| p.to_string_lossy().into_owned()),
         lines: first_lines,

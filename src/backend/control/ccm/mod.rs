@@ -742,9 +742,9 @@ fn exec_direct(d: &plan::Direct) -> i32 {
     }
     if let Some(url) = &d.relay {
         // 钥匙从这台的钥匙文件读进 agent 进程环境（不进 argv、不进打印出来的命令）。读不到 ⇒ 不起（注进去每一发都被中转拒）。
-        match crate::accounts::upstream_select::endpoint::relay_key(&|k| std::env::var(k).ok())
-            .and_then(|k| crate::accounts::upstream_select::endpoint::keyed_base_url(url, &k))
-        {
+        match crate::accounts::upstream_select::endpoint::keyed_for_exec(url, &|k| {
+            std::env::var(k).ok()
+        }) {
             Some(keyed) => std::env::set_var(plan::BASE_URL_ENV, keyed),
             None => return die(&copy_text("beCcm.relay.noKey", &[])),
         }

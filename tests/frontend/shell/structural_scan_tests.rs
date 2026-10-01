@@ -4457,7 +4457,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         ), // ⑬ 会话生命周期并进会话流后退役
         ("src/frontend/ui/account-reads.ts", "launch_agent_id", 1), // 起会话的计划与渲染搬进后端：墓碑随搬家换住址 / 点已删命令名的散文挂墓碑
         ("src/frontend/ui/accounts.ts", "apikey_account_id", 1), // 起会话的计划与渲染搬进后端：墓碑随搬家换住址 / 点已删命令名的散文挂墓碑
-        ("src/frontend/ui/agent-profile.ts", "launch_agent_id", 1), // 起会话的计划与渲染搬进后端：墓碑随搬家换住址 / 点已删命令名的散文挂墓碑
         ("src/frontend/shell/README.md", "build_resume_ps_command", 1), // 起会话的计划与渲染搬进后端：墓碑随搬家换住址 / 点已删命令名的散文挂墓碑
         (
             "src/frontend/shell/src/ccm_probe.rs",
@@ -5303,7 +5302,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("tests/frontend/ui/branch-button.vitest.ts", 1), // 新贴：删会话 / 分叉 / 钩子诊断的转交退役，点旧名的散文挂墓碑
         ("tests/frontend/ui/views/history-actions.vitest.ts", 1), // 新贴：删会话 / 分叉 / 钩子诊断的转交退役，点旧名的散文挂墓碑
         ("src/frontend/ui/account-reads.ts", 1), // 起会话的计划与渲染搬进后端：墓碑随搬家换住址 / 点已删命令名的散文挂墓碑
-        ("src/frontend/ui/agent-profile.ts", 1), // 起会话的计划与渲染搬进后端：墓碑随搬家换住址 / 点已删命令名的散文挂墓碑
+        // `agent-profile.ts` 那一行摘了：适配器 id 那个导出零消费者、随起会话只交一行 `ccm …` 删了，它头注那块墓碑跟着走。
         ("src/frontend/ui/backend-policy.ts", 1), // 起会话的计划与渲染搬进后端：墓碑随搬家换住址 / 点已删命令名的散文挂墓碑
         // `upstream_select/endpoint.rs` 那一行摘了：头注重写成「中转地址只在 `ccm` 最终 exec 那一处定」，点旧命令名的那块随之走了。
         // `observe/accounts_query.rs` 那一行摘了：身份 token 双写点那段头注改写成今天的两侧（写侧是 `ccm`），点旧判据名的那块随之走了。

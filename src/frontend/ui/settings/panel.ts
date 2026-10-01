@@ -28,6 +28,7 @@ import { AccountsSection } from "./accounts-section";
 import { ExtSection } from "./ext-section"; // 顶层「扩展」：跨机器的 skill / MCP，一张表 ＋ 一个抽屉
 import { ConfigSurfaceSection } from "./config-surface-section"; // T02：配置面审计（只读、按需一次、不轮询）
 import { DriftLedgerSection } from "./drift-ledger-section"; // U-CC1：数据面漂移记账（只读、按需一次、不轮询）
+import { RelayOptinSection } from "./relay-optin-section"; // 「终端」栏：直接敲的 claude 也走中转（可选、生成让你贴）
 import { DiagnosticsSection } from "./diagnostics-section";
 import { makeSkeleton } from "./skeleton";
 import { SettingsRouter } from "./router";
@@ -1121,6 +1122,13 @@ export class SettingsPanel {
                 origin: () => LOCAL_ORIGIN,
               });
         }),
+      },
+      // 机器页「终端」栏：让直接敲的 claude 也走中转（可选、生成让你贴）。本机远端同一块，跟当前机器走；
+      //   构造零 I/O，第一次展开才问那台（要贴的那一段带着中转钥匙，不展开不进界面）。
+      {
+        appliesTo: "both",
+        tab: "term",
+        el: this.safeBlock(copyText("relayOptin.section.title"), () => new RelayOptinSection().element, { untitled: true }),
       },
       // 〔资产目录 · 插件〕三块搬走了：skill / MCP 是跨机器的一类对象，住顶层「扩展」页（一张表 ＋ 一个抽屉）；
       //   插件只读列表没有可做的事，先拿掉。

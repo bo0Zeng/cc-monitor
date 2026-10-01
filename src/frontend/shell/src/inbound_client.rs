@@ -91,11 +91,10 @@ impl std::fmt::Display for CallError {
             CallError::Unsupported { .. } => {
                 write!(f, "{}", copy_text("rsInboundClient.error.unsupported", &[]))
             }
-            CallError::Unavailable { code, .. } => write!(
-                f,
-                "{}",
-                copy_text("rsInboundClient.error.unavailable", &[("code", code)])
-            ),
+            // 码不上屏（调用方要按码分支的读 `code` 本身）。
+            CallError::Unavailable { .. } => {
+                write!(f, "{}", copy_text("rsInboundClient.error.unavailable", &[]))
+            }
             CallError::TooManyPending => write!(
                 f,
                 "{}",
@@ -123,15 +122,18 @@ impl std::fmt::Display for CallError {
                 };
                 write!(f, "{said}")
             }
-            CallError::Remote { code, message } => write!(
+            // 那台的原话；码不上屏（调用方要按码分支的读 `code` 本身）。
+            CallError::Remote { message, .. } if message.trim().is_empty() => write!(
+                f,
+                "{}",
+                copy_text("rsInboundClient.error.refusedNoReason", &[])
+            ),
+            CallError::Remote { message, .. } => write!(
                 f,
                 "{}",
                 copy_text(
                     "rsInboundClient.error.refused",
-                    &[
-                        ("code", &code.to_string()),
-                        ("message", &message.to_string())
-                    ]
+                    &[("message", &message.to_string())]
                 )
             ),
         }

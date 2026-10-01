@@ -611,7 +611,14 @@ fn us1_what_the_write_side_wrote_is_exactly_the_row_the_launch_answer_uses() {
         config_dir: d.to_string(),
     };
     let launch_relay_with = |a: &LaunchAccount, rows: &[String], l: &dyn Fn(u16) -> bool| {
-        relay_with("claude-code", a, false, relay_route_core::PORT, rows, l)
+        relay_with(
+            "claude-code",
+            a,
+            false,
+            relay_route_core::PORT,
+            rows,
+            &|p, _| l(p),
+        )
     };
     // 非空对照排最前：还没写的时候，成品说「不注入」。
     assert!(launch_relay_with(

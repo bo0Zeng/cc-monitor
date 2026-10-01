@@ -58,7 +58,7 @@ export interface TabBarPrefsHost {
   /** 复活固定 tab 用（与活跃清单一到就建的骨架 tab 是同一条路）。 */
   createSkeletonTab(
     sessionId: string,
-    cwd: string | null,
+    projectDir: string | null,
     origin: Origin,
     kind: string | null,
     name: string | null,
@@ -388,7 +388,7 @@ export class TabBarPrefs {
     return {
       sid: tab.sessionId,
       jsonlPath: tab.parentPath,
-      cwd: tab.cwd,
+      cwd: tab.projectDir,
       origin: tab.origin,
       // `§3.5.7`：缺了 resume 会静默落到默认号。两个源都读不到 ⇒ `null`＝没记到，不是默认号。
       account:

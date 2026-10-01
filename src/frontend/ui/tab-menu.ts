@@ -170,7 +170,7 @@ export class TabMenu {
     // 缓存命中同步定夺(无占位闪烁);未命中先禁用占位「检测中」+ 异步查询就绪。
     // 下面这一段只对**远端** tab：`remote` = 那台远端的名字；本机 tab / 没有这个 tab ⇒ `null`。
     const remote = t !== undefined && isRemoteOrigin(t.origin) ? t.origin : null;
-    const cwd = t?.cwd ?? null;
+    const cwd = t?.projectDir ?? null;
     let needAsyncAttach = false;
     if (remote !== null && cwd) {
       const cached = this.actions.tmuxCache.get(remote);

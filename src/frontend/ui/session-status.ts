@@ -37,7 +37,7 @@ export interface GridSessionSnapshot {
   title: string;
   /** 哪台机器：本机 = `LOCAL_ORIGIN`；其余 = 远端主机 label。不再用 `null` 表示本机。 */
   origin: Origin;
-  /** 项目根 / 启动目录（最早记录的 cwd）；null = 尚未拿到。 */
+  /** 会话的项目目录（`Tab.projectDir`，后端给的那一格）；null = 后端没给。 */
   cwd: string | null;
   /**
    * 会话状态的两个轴（活性 × 可恢复性），与 tab 栏**同一份**（`Tab.state` 原样交出）；

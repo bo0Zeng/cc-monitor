@@ -15,7 +15,7 @@
  * | 空正文 / 坏派生形状（tool · 目录）就地拒，一个字节都不发；好的发得出去 | 「发出去之前」 |
  * | 查在线只回确定的答案，问不到一律抛（结构上造不出灭灯） | 「查在线」 |
  * | 回值几态逐态一句、两两不同；破坏性的形状不认识 ⇒「不知道动没动」 | 「发消息」「收掉」「派生」「广播」 |
- * | 拒绝码（取自金样）逐码一句、两两不同、带后端原话；认不出的码原样带出去 | 「拒绝码」 |
+ * | 拒绝码（取自金样）逐码一句、两两不同、带后端原话；认不出的码不上屏（只说原话，码在诊断里） | 「拒绝码」 |
  * | 本机与远端同一条路，通道不在时两句话不同 | 「本机」 |
  *
  * 买不到：真 Tauri IPC 与真后端（后端那一侧在 Rust 里，`tests/e2e/backend-cc-bus.sh` 真起过假 agent）；真机上的驾驶舱。
@@ -95,6 +95,17 @@ async function saidOf(act: () => Promise<unknown>): Promise<string> {
   } catch (e) {
     expect(e, "抛的不是 ControlError —— 调用方拿不到那一句").toBeInstanceOf(ControlError);
     return (e as ControlError).message;
+  }
+  throw new Error("本该失败却成功了");
+}
+
+/** 失败那一下的诊断（可复制的那一份）：错误码在这里，不在给人看的那一句里。 */
+async function detailOf(act: () => Promise<unknown>): Promise<string> {
+  try {
+    await act();
+  } catch (e) {
+    expect(e).toBeInstanceOf(ControlError);
+    return (e as ControlError).detail;
   }
   throw new Error("本该失败却成功了");
 }
@@ -292,7 +303,7 @@ describe("〔C4e〕回值几态逐态一句", () => {
 });
 
 describe("〔C4e〕失败怎么说", () => {
-  it("★★ 拒绝码（取自金样）逐码一句、两两不同、带后端原话；认不出的码原样带出去", async () => {
+  it("★★ 拒绝码（取自金样）逐码一句、两两不同、带后端原话；认不出的码不上屏（只说原话，码在诊断里）", async () => {
     const drives: [string, GoldenOp, () => Promise<unknown>][] = [
       ["bus-list", LIST, () => agentOnline("devbox", "alpha_cc")],
       ["bus-send", SEND, () => sendMessage("devbox", "alpha_cc", "hi")],
@@ -311,8 +322,12 @@ describe("〔C4e〕失败怎么说", () => {
       for (const s of said) expect(s, `${op}：后端的原话被吃掉了`).toContain("RAW-WORDS");
       answer({ fail: refusedReply("zzz_new_code", "RAW-WORDS") });
       const unknown = await saidOf(act);
-      expect(unknown, op).toContain("zzz_new_code");
-      expect(said, op).not.toContain(unknown);
+      expect(unknown, op).toContain("RAW-WORDS");
+      expect(unknown, `${op}：错误码上了屏`).not.toContain("zzz_new_code");
+      // 码不上屏 ⇒ 认不出的码落在通用那一句；与它同句的只许是通用失败码 `failed`，不许是哪个专门档（没被猜成已知档）。
+      expect(g.codes.filter((_, i) => said[i] === unknown), op).toEqual(g.codes.filter((c) => c === "failed"));
+      answer({ fail: refusedReply("zzz_new_code", "RAW-WORDS") });
+      expect(await detailOf(act), `${op}：诊断里没有码`).toContain("zzz_new_code");
       answer({ fail: { err: "Refused", body: [0xff] } });
       expect(await saidOf(act), `${op}：拒绝体读不出来时没说出一句`).not.toBe("");
     }

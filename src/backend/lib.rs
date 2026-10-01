@@ -711,7 +711,11 @@ pub const PROTO_VERSION: u32 = 1;
 /// p6k-ext-targets：扩展页装到哪由用户选、扩展可带备注、cc-bus 归扩展、有账号库时 MCP 能装到全局；机器页「工具」栏改为「终端」。
 ///
 /// p6l-agent-strict：没写或写空用默认那一家，写错直接报错并列出认得的几家；cc-spawn 不再按启动器名猜。
-pub const BUILD_ID: &str = "p6l-agent-strict";
+///
+/// p6m-project-dir：tab 标题取会话启动时的项目目录；报错不再露出内部错误码。
+///
+/// p6n-relay-optin：机器页「终端」栏给出让用户自己贴进 settings.json 的 env 片段，cc-monitor 只读这份文件。
+pub const BUILD_ID: &str = "p6n-relay-optin";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src/frontend/shell/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），
