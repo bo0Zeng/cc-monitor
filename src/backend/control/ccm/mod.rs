@@ -89,8 +89,8 @@ pub(crate) fn agents() -> Vec<&'static str> {
 /// 在边界上会被整个吃掉（`plan.rs` 那段注释逐字「账号注入 100% 失效，**实测过**」）。
 ///
 /// 🔴 **这件事我们早就做到了，只是一直没说**：`plan.rs` 的容器分支把它显式化进载荷内侧。
-/// 于是本机起会话那边 `local.rs::RELAY_KEEPS_THE_OLD_PATH`（原在 monitor） 按「探不到就不放行」照旧挡着，
-/// **挡的却是一件我们自己已经做到的事** —— 「实现与申报不一致，而守它的东西看不见那个字段」。
+/// 当时本机起会话那边按「探不到就不放行」照旧挡着，**挡的却是一件我们自己已经做到的事** ——
+/// 「实现与申报不一致，而守它的东西看不见那个字段」（那道挡板随起会话只交一行 `ccm …` 删了）。
 /// 本 token 补的就是**申报**那一半；驱动它的判据是
 /// [`tests::the_base_url_token_is_declared_because_the_tmux_path_really_forwards_it`]。
 pub(crate) const CAPABILITIES: &[&str] = &[
@@ -479,7 +479,7 @@ fn needs_account_table(o: &argv::Opts, env: &Env) -> bool {
     if !o.account.is_empty() {
         return true;
     }
-    if o.use_base {
+    if o.use_base || !o.account_dir.is_empty() {
         return false;
     }
     env.inherited_config_dir.is_none()
@@ -712,6 +712,9 @@ fn exec_direct(d: &plan::Direct) -> i32 {
     if let Some(note) = direct_identity_note(d) {
         eprintln!("{note}");
     }
+    if d.keeps_user_base_url {
+        eprintln!("{}", copy_text("beCcm.relay.userBaseUrl", &[]));
+    }
     // 非得要 shell 的那几趟（判定与归因都只住 `needs_shell` 一处）⇒ 整条走 `sh -c`。
     if let Some(why) = needs_shell(d) {
         return exec_shell(&plan::render(&Plan::Direct(d.clone())), why);
@@ -725,6 +728,26 @@ fn exec_direct(d: &plan::Direct) -> i32 {
     }
     if d.unset_config_dir {
         std::env::remove_var(cfg_env);
+    }
+    for (var, v) in [
+        (
+            crate::control::identity_tag::rbind_token_env(),
+            &d.rbind_token,
+        ),
+        (plan::LAUNCH_ID_ENV, &d.launch_id),
+    ] {
+        if !v.is_empty() {
+            std::env::set_var(var, v);
+        }
+    }
+    if let Some(url) = &d.relay {
+        // 钥匙从这台的钥匙文件读进 agent 进程环境（不进 argv、不进打印出来的命令）。读不到 ⇒ 不起（注进去每一发都被中转拒）。
+        match crate::accounts::upstream_select::endpoint::keyed_for_exec(url, &|k| {
+            std::env::var(k).ok()
+        }) {
+            Some(keyed) => std::env::set_var(plan::BASE_URL_ENV, keyed),
+            None => return die(&copy_text("beCcm.relay.noKey", &[])),
+        }
     }
     if !d.cwd.is_empty() && std::env::set_current_dir(&d.cwd).is_err() {
         return die(&copy_text(

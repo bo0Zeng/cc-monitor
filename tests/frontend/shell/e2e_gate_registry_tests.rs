@@ -13,7 +13,7 @@ const EXEMPT: &[(&str, &str)] = &[
     (
         "rbind-token-endtoend",
         "同上一条：**进的是本机门禁 `tests/scripts/gate.sh`**\
-             （`run_e2e rbind-token-endtoend 9`，exact）。`ci.yml` 计数地板那一行是 `§8.7` 步 3 落地时\
+             （`run_e2e rbind-token-endtoend 10`，exact）。`ci.yml` 计数地板那一行是 `§8.7` 步 3 落地时\
              报备待拍板的（`ci.yml` 同段注释逐字）。拍了加进 `ci.yml` 的那一拍，本行删掉",
     ),
     (
@@ -1071,4 +1071,101 @@ fn no_e2e_script_kills_by_pattern() {
         bad.is_empty(),
         "这几份 e2e 的可执行段里有模式杀（`pkill` / `killall`）—— 改成按自己起的 pid 收：{bad:?}"
     );
+}
+
+/// 写路径之前「继承开发机默认值」的那几个变量：开发者的 shell rc 里常 export 着它们、指向真家目录 / 真账号目录 / 真 cc-bus /
+/// 真凭据表 / 真数据目录。`${VAR:-沙箱}` 这种写法在那台机器上会照用真值、再往里写测试数据（10-01 实发过一次：
+/// 当时另指账号库位置的那个变量指着真清单，真账号清单被改写成两个测试号；那个变量今天整个删了，账号库只跟着家走）。
+const INHERITED_PATH_VARS: &[&str] = &[
+    "HOME",
+    "CLAUDE_CONFIG_DIR",
+    "CC_BUS_HOME",
+    "CCM_APIKEY_CREDENTIALS",
+    "CCM_DATA_DIR",
+];
+
+/// 留着这种写法的那几处（`文件 · 变量 · 为什么不是往真路径里写`）。每一条都要是**只读**，或者另有一道闸挡住写。
+const INHERITED_PATH_ALLOWED: &[(&str, &str, &str)] = &[
+    (
+        "tests/e2e/fake-claude",
+        "CLAUDE_CONFIG_DIR",
+        "假启动器扮的就是 claude：账号目录由起它的那一方交（ccm 按账号设）；没交才落 /tmp，交来的不在 /tmp 下就拒写",
+    ),
+    (
+        "tests/e2e/gen-idle-tmux.sh",
+        "CLAUDE_CONFIG_DIR",
+        "只读：把调用方交来的那个目录原样转给 pane 里的假启动器（落点由假启动器那道 /tmp 闸兜着）",
+    ),
+    (
+        "tests/e2e/p3t-local-tmux.sh",
+        "CLAUDE_CONFIG_DIR",
+        "只读：假启动器把自己拿到的那个值记进本趟日志，不往那里写",
+    ),
+    (
+        "tests/e2e/cc-bus-queue-drain.sh",
+        "CC_BUS_HOME",
+        "只读：按 cc-send 同一个取法算出脚本眼里的 bus，断言它落在沙箱里（落不进 ⇒ 拒跑）",
+    ),
+];
+
+/// 一段脚本（剥掉整行注释）里 `${VAR:-` 形的命中：`(变量, 次数)`。`\${VAR:-`（写进另一份脚本里的）同样算。
+fn inherited_path_defaults(text: &str) -> Vec<(String, usize)> {
+    let code = guard_core::strip_comment_lines(&guard_core::strip_hash_comment_lines(text));
+    INHERITED_PATH_VARS
+        .iter()
+        .filter_map(|v| {
+            let n = code.matches(&format!("${{{v}:-")).count();
+            (n > 0).then(|| (v.to_string(), n))
+        })
+        .collect()
+}
+
+/// ★★ **`tests/e2e/` 下不许写「先继承开发机的值、没有才用沙箱」的路径**（`${HOME:-` · `${CLAUDE_CONFIG_DIR:-` ·
+/// `${CC_BUS_HOME:-` · …，见 [`INHERITED_PATH_VARS`]）：沙箱路径一律无条件给。只读透传的那几处登记理由（[`INHERITED_PATH_ALLOWED`]），两向相等。
+#[test]
+fn no_e2e_script_inherits_a_dev_machine_path_it_may_write_to() {
+    // 正控：现造的语料里该中的中（含写进另一份脚本里的 `\${`），注释行不中，无条件的写法不中。
+    let corpus = "export HOME=\"${HOME:-/tmp/x}\"\n\
+                  # ${CLAUDE_CONFIG_DIR:-只在注释里}\n\
+                  printf '%s' \"\\${CC_BUS_HOME:-}\"\n\
+                  export CLAUDE_CONFIG_DIR=\"$SBX/claude\"\n";
+    assert_eq!(
+        inherited_path_defaults(corpus),
+        [("HOME".to_string(), 1), ("CC_BUS_HOME".to_string(), 1)],
+        "针在现造语料上失准"
+    );
+    let root = crate::guard_support::repo_root();
+    let dir = root.join("tests").join("e2e");
+    let files = guard_core::files_under(&dir);
+    assert!(
+        files.len() > 30,
+        "tests/e2e/ 下只看到 {} 份 —— 扫描面塌了",
+        files.len()
+    );
+    let mut found: Vec<(String, String)> = Vec::new();
+    for f in &files {
+        let Ok(text) = std::fs::read_to_string(dir.join(f)) else {
+            continue; // 非文本（二进制夹具）
+        };
+        for (v, _) in inherited_path_defaults(&text) {
+            found.push((format!("tests/e2e/{f}"), v));
+        }
+    }
+    found.sort();
+    let mut want: Vec<(String, String)> = INHERITED_PATH_ALLOWED
+        .iter()
+        .map(|(f, v, _)| (f.to_string(), v.to_string()))
+        .collect();
+    want.sort();
+    assert_eq!(
+        found, want,
+        "tests/e2e/ 里「先继承开发机的值」的路径写法与登记表对不上。多出来的 ⇒ 改成无条件指向沙箱（开发机 rc 里的真值会被照用、再被写坏）；\
+         少了的 ⇒ 那一处改掉了，同拍把登记摘掉"
+    );
+    for (f, _, why) in INHERITED_PATH_ALLOWED {
+        assert!(
+            why.chars().count() >= 15,
+            "`{f}` 没写清为什么它不是往真路径里写"
+        );
+    }
 }

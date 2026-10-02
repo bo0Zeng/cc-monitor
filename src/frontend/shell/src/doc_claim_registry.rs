@@ -39,7 +39,7 @@
 /// ⇒ 状态**只从文档里读**，这里只留「怎么量」。判据 = 文档说的 ↔ 现场量的。
 #[cfg(test)]
 const STATUS_CELLS: &[(&str, &str)] = &[
-    ("U8c-1", "payload-kernel-exists"),
+    ("U8c-1", "payload-layer-gone"),
     ("U8c-2b-0", "posix-quote-has-one-home"),
     ("U8c-2c-1", "ccm-invocation-kernel-exists"),
     ("U8c-2c-2", "production-ts-calls-the-rust-renderers"),
@@ -114,10 +114,12 @@ enum Verdict {
 #[cfg(test)]
 const MEASURE_CENSUS: &[(&str, MeasureShape, Verdict, &str)] = &[
     (
-        "payload-kernel-exists",
-        MeasureShape::ProdNeedle,
-        Verdict::FallsShort,
-        "声称「载荷内核在 `backend/control/payload.rs`」，量的是生产段里有没有子串          `fn render_payload` ⇒ **`fn render_payload_v2` 之类以它打头的名字照样命中**         （`needle_anchor_registry` 治的那一族）。另**没有断言那份文件存在** ——          读不到只会静默返回空串",
+        "payload-layer-gone",
+        MeasureShape::AbsenceIsTheClaim,
+        Verdict::Holds,
+        "反向量法：那一格的状态列今天说「交付过、后来整层删了」（起会话只交一行 `ccm …`），\
+         量的是载荷那份源码**不在** —— 与那句话对得上。先前那一形（`payload-kernel-exists`，\
+         裸子串 `fn render_payload` ＋ 无存在性断言，判「对不上」）随那份源码一起没了",
     ),
     (
         "posix-quote-has-one-home",
@@ -129,7 +131,8 @@ const MEASURE_CENSUS: &[(&str, MeasureShape, Verdict, &str)] = &[
         "ccm-invocation-kernel-exists",
         MeasureShape::ProdNeedle,
         Verdict::FallsShort,
-        "与 `payload-kernel-exists` 逐字同形：裸子串 `fn render_ccm_invocation` ＋          无存在性断言。**同一个形状在本表里出现三次**，说明它不是某一格的疏忽",
+        "裸子串 `fn render_ccm_invocation` ＋ 无存在性断言（`posix-quote-has-one-home` 那一格补过的存在性，\
+         这一格没补）⇒ 以它打头的名字照样命中，读不到只会静默返回空串",
     ),
     (
         "production-ts-calls-the-rust-renderers",
@@ -139,11 +142,9 @@ const MEASURE_CENSUS: &[(&str, MeasureShape, Verdict, &str)] = &[
          渲染命令」，而量法用的是 `read()` 而不是 `prod()` ⇒ **没剥注释**。\
          09-12 现打：把 `src/frontend/ui/remote-launch-run.ts` 里那 3 行调用**整行注释掉**，\
          本模块 19 条判据 **一条不红**。\
-         ⚠ **别把这条读成「那个性质没人守」** —— 真正接住它的是 \
-         `backend/control/launch_wire.rs` 里那条生产接线钉（同一刀下它**当场红**，\
-         最小面 1）：那一条走 `production_ts()`，行首与行尾注释都剥，\
-         头注逐字写着「行尾注释里的提及不算数」。\
-         ⇒ 本模块这一格是**同一个事实的第二份、而且更弱的那一份**，\
+         ⚠ 当时真正接住它的那条生产接线钉（剥行首与行尾注释的那一条）随载荷那一层删了；\
+         今天「每条路径问的是 `renderCli`」由 `tests/frontend/ui/remote-launch-run.vitest.ts` 真跑执行器判\
+         （这句没打刀）。⇒ 本模块这一格仍是**同一个事实更弱的那一份**，\
          它的害处不是漏守，是**让人以为这一格自己有牙**。\
          ⚠ 修法不是「TS 也走 `production_code`」（那份剥法是按 Rust 的 `#[cfg(test)]` 写的），\
          要么复用那条已有的 TS 剥法，要么把这一格摘掉、指向那条判据 —— 两条都要论证，另开一件",
@@ -213,13 +214,13 @@ const THIRTY_THREE_B_QUESTIONS: &[(&str, &[&str])] = &[
     //    量法③ 那三格连同三条 `carriers` 一起收掉。
 ];
 
-/// **对不上那一栏的递减棘轮**（09-12 现打 **5** 条，全部是「读文件找针」那一支）。
+/// **对不上那一栏的递减棘轮**（09-12 现打 **5** 条；载荷那一格改成反向量法后 **4** 条，全部是「读文件找针」那一支）。
 ///
 /// 🔴 **只许降。** 修好一条就把这个数调下来，**不许调上去让今天好过**。
-/// ⚠ 它只挡「别再长」，**不代表这 5 条已经排期** —— 排期是另一件事，
+/// ⚠ 它只挡「别再长」，**不代表这 4 条已经排期** —— 排期是另一件事，
 /// 而把「已知的欠账」和「有人在还」混成一句话，正是本模块治的那个病。
 #[cfg(test)]
-const FALLS_SHORT_CEILING: usize = 5;
+const FALLS_SHORT_CEILING: usize = 4;
 
 // ═════════════════════════════════════════════════════════════════════════════
 // `K-P5g` `KP5GD3`：**一句话散在好几处** —— 本模块头注那个病的第三次发作

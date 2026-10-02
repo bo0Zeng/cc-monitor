@@ -153,7 +153,7 @@ export const commands = {
   /** 设置面板「数据」区：枚举 monitor 写到磁盘的所有路径。返回值字段被真消费 ⇒ 用生成物（桶③）。 */
   get_data_paths: () => invoke<DataPathsResponse>("get_data_paths"),
 
-  // `probe_ccm_cli` 退役：渲染进了那台后端，能力问它自己，界面不再先探一遍。
+  // 远端 `ccm` 探针那条命令退役：渲染进了那台后端，能力问它自己，界面不再先探一遍。
 
   /**
    * 写配置：只交「改哪几条路径」（整份替换的 `save_config` 删了）。Rust 返回 `Result<(), String>` ⇒ **桶①**。 〔散文墓碑〕
@@ -200,11 +200,7 @@ export const commands = {
   // `read_apikey_credentials_status` / `apikey_routing_for` 退役：界面经通道直接问那台后端
   //   `apikey-read` / `apikey-routing`（`src/frontend/ui/apikey-reads.ts`）。
 
-  // 「这次拉起写哪个中转地址」那一问退役成那台后端的成品（界面经通道直接问 `launch-endpoint`，
-  //   `src/frontend/ui/launch-render.ts::launchEndpoint`）。monitor 这边只剩那个开关自己的值（下一条）。
-
-  /** 全量注入开关：monitor 进程环境 `CCM_RELAY_ALL_SESSIONS`（默认开，`=0` 才关）。monitor 自己的配置，界面带给那台后端。 */
-  relay_all_sessions_switch: () => invoke<boolean>("relay_all_sessions_switch"),
+  // 「这次拉起写哪个中转地址」与全量注入开关都归起 agent 那台的 `ccm` 自己定（读全量注入开关那条命令退役）。
 
   // 独立窗口的定向重放（`replay_session_to_window`〔散文墓碑〕）退役：独立窗口自己订
   //   `session-lines/<sid>`（`chan.subscribe`），留存由那条订阅当场交。

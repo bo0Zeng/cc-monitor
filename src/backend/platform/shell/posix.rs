@@ -1,6 +1,4 @@
-//! **POSIX sh 那几句写法** —— 起会话载荷 · 中转前缀 · `ccm` 直路 · 观测探针，
-//! 都只调这里（原各自在 `control/launch_render/payload.rs` · `local.rs` · `control/ccm/{mod,plan}.rs` ·
-//! `observe/watcher.rs` 里手写，逐字搬来，产出逐字节不变）。
+//! **POSIX sh 那几句写法** —— `ccm`（直路 · 容器路）· 观测探针 · 几条一次性 exec，都只调这里。
 //!
 //! 只管「这句怎么写」：值合不合格、要不要引号由调用方先办（引号器是 `shell_quote_core::posix_quote`，
 //! `INVARIANTS §2.1` 的唯一一份 —— 这里收的 `word` 一律是**已经成词**的那一串）。
@@ -37,11 +35,6 @@ pub(crate) fn cd_then_login_shell(quoted_dir: Option<&str>) -> String {
     }
 }
 
-/// `( <前一段>; exec <里面那条> )`：子 shell 里先跑一段、再把自己换成里面那条（起会话载荷外包的那一层）。
-pub(crate) fn wrap_exec(prelude: &str, inner: &str) -> String {
-    format!("( {prelude}; {} )", exec(&[inner]))
-}
-
 /// 「这台有没有这条命令」：`command -v <名> >/dev/null 2>&1`（退出码答）。
 pub(crate) fn has_command(name: &str) -> String {
     format!("command -v {name} >/dev/null 2>&1")
@@ -52,16 +45,6 @@ pub(crate) fn if_command(name: &str, then: &str, otherwise: &str) -> String {
     format!(
         "if {}; then {then}; else {otherwise}; fi",
         has_command(name)
-    )
-}
-
-/// `VAR` 在这个 shell 里已经有值 ⇒ 说一句 `say`（已成词）、不动它；否则 `export VAR=<词>`。
-/// 判空写成 `[ ${VAR:+x} ]`（有值 ⇒ 一个词 `x`；没有 ⇒ 零个词、`[ ]` 为假），不带双引号：
-/// 这一段会流进 Windows 那条开终端的路（`dial/terminal.rs`），PowerShell 5.1 向原生程序传参会改坏内嵌的 `"`。
-pub(crate) fn export_unless_set(var: &str, word: &str, say: &str) -> String {
-    format!(
-        "[ ${{{var}:+x}} ] && printf '%s\\n' {say} || {}",
-        export(var, word)
     )
 }
 
@@ -83,7 +66,8 @@ pub(crate) fn add_line_once(
 }
 
 /// 一个词：`<head>` ＋ 家目录底下 `rel` 那份文件的内容（**现读**，钥匙不进 argv）＋ `<tail>`（head / tail 已成词）。
-/// 不带双引号（理由同 [`export_unless_set`]）：`~/` 展开的结果不分词；文件内容是十六进制钥匙，不含空白与通配符。
+/// 不带双引号：这一段可能流进 Windows 那条开终端的路（PowerShell 5.1 向原生程序传参会改坏内嵌的 `"`）；`~/` 展开的结果不分词，
+/// 文件内容是十六进制钥匙，不含空白与通配符。
 pub(crate) fn home_file_between(head: &str, rel: &str, tail: &str) -> String {
     format!("{head}$(cat ~/{rel}){tail}")
 }

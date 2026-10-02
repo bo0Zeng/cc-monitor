@@ -98,6 +98,8 @@ pub(super) mod tests {
         "Base",
         "Destination",
         "Destinations",
+        // `ccm` 在最终 exec 那一处问「这一发注入哪个口」：交了 `CCM_RELAY_PORT` 就是那个口（与常驻后端起中转读的同一个变量名）。
+        "ENV_PORT",
         "Mode",
         "Ready",
         "RouteKey",
@@ -106,7 +108,7 @@ pub(super) mod tests {
         "host",
         // 出「直接敲的也走中转」那一段（`relay-optin`）时把这台的钥匙插进地址（只交插好的地址）。
         "keyed_with_key_on_disk",
-        // 出成品时问「这台机器上我们的中转在不在听」（`launch-endpoint` 的 `listening` · `apikey-routing` 的 `running`）。
+        // 出成品时问「这台机器上我们的中转在不在听」（`apikey-routing` 的 `running` · 别名预览那一面）。
         "our_relay_listening",
         // `run`（`--relay` 进程的中转入口）随那一形删了。
         "segment_is_safe",

@@ -320,8 +320,8 @@ const TMUX_PANE_ENV: &str = "TMUX_PANE";
 /// 是**合法值**（「这条会话没有令牌」）⇒ **不会有任何东西报错**，↗ 只是永远降级。
 /// 那正是 `K-P5f` 在 `CCM_LAUNCH_ID` 上栽过的同一个坑
 /// （`accounts_query_tests.rs` 那条双写点判据的诊断逐字记着）。
-/// ⇒ 〔令牌步 3〕那条同型的双写点判据**已补**：
-/// `payload_tests.rs::the_launch_token_env_var_has_the_same_name_on_both_halves`（两侧异源：读侧抠本行、写侧真跑渲染器）。
+/// ⇒ 今天没有双写点了：写侧（`ccm` 在最终 exec 那一处放进 agent 进程环境）借的就是本行（[`rbind_token_env`]），
+/// 变量名全仓只住这一行。
 const RBIND_TOKEN_ENV: &str = "CCM_RBIND_TOKEN";
 
 /// 令牌的形状：**恰好** 32 个小写十六进制字符（`[0-9a-f]{32}`）。两路共用的契约。
@@ -337,16 +337,14 @@ const RBIND_TOKEN_ENV: &str = "CCM_RBIND_TOKEN";
 /// ⚠ 与 [`pane_of`] 的 `trim` 刻意不同：pane id 是 tmux 注的、历史上见过带空白的读法；
 /// 令牌是**我们自己注的**，我们知道它长什么样，没有任何理由去宽容它。
 ///
-/// 判定本体不在这里：写侧（monitor 渲 `export CCM_RBIND_TOKEN=…`）与本读侧
+/// 判定本体不在这里：写侧（`ccm` 收 `--ccm-rbind-token`、放进 agent 进程环境）与本读侧
 /// 核的是**同一个令牌**，形状全仓只有一份 —— `shell_quote_core::rbind_token_ok`（先前这里手写一份 `[0-9a-f]{32}`，
 /// 与 monitor `payload.rs` 那份逐字同、各自为政）。`token_is_safe` 这个名字是它的再导出（`ccm/plan.rs` 的调用点一个不动）。
 pub(crate) use shell_quote_core::rbind_token_ok as token_is_safe;
 
 /// 令牌那个变量名，给 `ccm` 直路读**自己**的环境用（`control/ccm/plan.rs::Env::from_process`）。
 ///
-/// ⚠ 刻意是一个函数、不把上面那行 `const` 改成 `pub(crate)`：那一行的写法被桥侧
-/// `payload_tests.rs::the_launch_token_env_var_has_the_same_name_on_both_halves` 按行首逐字认。
-/// 名字仍然只住那一行 —— 这里只是把它借出去，不是第二份。
+/// 名字只住上面那一行 —— 这里只是把它借出去（`ccm` 读自己的环境、写 agent 的环境都经这里），不是第二份。
 pub(crate) fn rbind_token_env() -> &'static str {
     RBIND_TOKEN_ENV
 }

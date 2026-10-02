@@ -104,6 +104,12 @@ export CCM_CONFIG="$TMP/ccm-config"
 export CCM_WORKSPACE="$TMP/ws"
 export CCM_CLAUDEJSON="$TMP/claude.json" CCM_CODEXTOML="$TMP/config.toml"
 export CLAUDE_CONFIG_DIR="$TMP/fakehome"
+# 家目录 / 凭据表也换成本趟沙箱（无条件）：ccm 在最终 exec 那一处会读家目录下的中转钥匙与凭据表，不许碰这台机器的真那一份；
+#   登录 shell（`bash -lic`）读的也就是沙箱里的 profile（没有）。全量注入关掉，这一套不验中转。
+mkdir -p "$TMP/home"
+export CARGO_HOME="${CARGO_HOME:-$HOME/.cargo}" RUSTUP_HOME="${RUSTUP_HOME:-$HOME/.rustup}"  # 取串那一跳要跑 cargo：工具链在换家目录前钉住
+export HOME="$TMP/home"
+export CCM_APIKEY_CREDENTIALS="$TMP/apikey-credentials.json" CCM_RELAY_ALL_SESSIONS=0
 export CCM_FAKE_CWD="$TMP/proj" CCM_FAKE_SLEEP=120
 unset CLAUDECODE CLAUDE_CODE_SESSION_ID
 # ccm 在 tmux 内会退化成「就地起」（见 shared/ccm）—— 那时要验的容器行为根本不发生。

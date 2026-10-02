@@ -342,7 +342,7 @@ fn the_outer_layer_producers_are_in_the_state_the_doc_claims() {
     let checks: &[(&str, bool)] = &[
         (
             // 🔴 **「必须在」翻成「必须不在」**（同 `K-R104` 那一格的处置）：
-            //    TS 座按删了（外层三格只剩 `payload::render_tmux_outer` 一个家），
+            //    TS 座按删了（外层三格当时只剩后端载荷那一层一个家，那一层后来也删了），
             //    `INVARIANTS §33b` 产出方表那一行同拍改记「已删」。长回来 ⇒ 红。
             "session-backend.ts（TS 座，LR2 已删 —— 必须不在）",
             !root.join("src/session-backend.ts").is_file(),
@@ -594,7 +594,7 @@ fn every_status_cell_measure_is_in_the_census() {
         .collect::<Vec<_>>();
     assert!(
         falls_short.len() <= FALLS_SHORT_CEILING,
-        "「量法与它声称的性质对不上」涨到 {} 条了 > 棘轮上限 {FALLS_SHORT_CEILING}（09-12 现打 5）。\n\
+        "「量法与它声称的性质对不上」涨到 {} 条了 > 棘轮上限 {FALLS_SHORT_CEILING}（09-12 现打 5，载荷那一格改反向量法后 4）。\n\
              逐条：{falls_short:?}\n\
              ⚠ **不许把上限调上去让今天好过** —— 这是递减棘轮。",
         falls_short.len()
@@ -627,10 +627,12 @@ fn each_registered_status_still_matches_reality() {
         .collect();
     for (item, how) in STATUS_CELLS {
         let (delivered, why) = match *how {
-            "payload-kernel-exists" => (
-                // 内核搬进后端，量法跟着换住址。
-                prod("src/backend/control/launch_render/payload.rs").contains("fn render_payload"),
-                "载荷内核在后端 `control/launch_render/payload.rs`",
+            // 反向：载荷那一层整层删了（起会话只交一行 `ccm …`）⇒ 那份源码不在才对得上「交付过、后来删了」。
+            "payload-layer-gone" => (
+                !root
+                    .join("src/backend/control/launch_render/payload.rs")
+                    .is_file(),
+                "载荷那一层整层删了（起会话只交一行 `ccm …`）",
             ),
             // ⚠ **F12 订正**：第一版左支读的是 `src/frontend/shell/src/shell_quote.rs` —— **那个文件不存在**
             // ⇒ 左支恒 false，整条判据只靠右支撑着（`/full-audit` 逮到的）。
@@ -656,14 +658,11 @@ fn each_registered_status_still_matches_reality() {
                 "ccm 调用行内核在后端 `control/launch_render/ccm_invocation.rs`",
             ),
             "production-ts-calls-the-rust-renderers" => (
-                // 两条渲染今天是那台后端的帧命令，主路经 `src/frontend/ui/launch-render.ts` 问。
+                // 渲染今天只剩那台后端的一条帧命令（那一行 `ccm …`），主路经 `src/frontend/ui/launch-render.ts` 问。
                 read("src/frontend/ui/launch-render.ts")
                     .contains("chan.call(origin, \"launch-render-cli\"")
-                    && read("src/frontend/ui/launch-render.ts")
-                        .contains("chan.call(origin, \"launch-render-payload\"")
-                    && read("src/frontend/ui/remote-launch-run.ts").contains("renderCli(")
-                    && read("src/frontend/ui/remote-launch-run.ts").contains("renderPayload("),
-                "生产 TS 主路在问那台后端的两条渲染帧命令",
+                    && read("src/frontend/ui/remote-launch-run.ts").contains("renderCli("),
+                "生产 TS 主路在问那台后端的渲染帧命令（那一行 `ccm …`）",
             ),
             // 「待做」那一格：**反向**量法 —— TS 渲染器还在，就说明确实还没删。
             "ts-renderer-still-there" => (
@@ -1100,6 +1099,29 @@ fn every_repo_path_named_in_the_docs_still_resolves() {
         (
             "src/launch-render-fallback.ts",
             "**历史句**：TS 兜底渲染器，已删",
+        ),
+        // 下面五条：载荷那一层（裸载荷 · 外层 tmux 三格）与前端那份 IR 随「起会话只交一行 `ccm …`」删了。
+        //   `INVARIANTS §33 / §33b / §39` 与只绑 Windows 的 §36 点它们的句子都是**沿革**（当时那条规矩对着哪一份立、当时由哪套测试钉），
+        //   每处旁边都补了今天的住址（§33 末尾「今天」那一段 · 只绑 Windows 的 §36 末尾「今天」那一段）。
+        (
+            "src/frontend/ui/launch-plan.ts",
+            "**历史句**：`LaunchPlan` IR 当年的家（§33 背景 · §39 · 本机走 IR 那一节），已删",
+        ),
+        (
+            "src/frontend/ui/launch-dimensions.ts",
+            "**历史句**：维度注册表当年的家（§33 背景），已删",
+        ),
+        (
+            "tests/test-support/launch-payload-golden.ts",
+            "**历史句**：载荷那一份夹具的用例表（§33 LR2 更新 · U8c-3 后一半），已删",
+        ),
+        (
+            "tests/test-support/launch-tmux-outer-golden.ts",
+            "**历史句**：外层 tmux 三格那一份夹具的用例表（§33 LR2 更新 · U8c-3 后一半），已删",
+        ),
+        (
+            "tests/frontend/ui/launch-requests.vitest.ts",
+            "**历史句**：只绑 Windows 的 §36 当时那几格的验证住址（维度注册表在本机下的行为），随 IR 删了；今天的验证写在那一节末尾「今天」那一段",
         ),
         (
             "tests/session-backend-gate.vitest.ts",

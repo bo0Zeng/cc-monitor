@@ -170,16 +170,11 @@ const MONITOR_OWN: &[(&str, Own, &str)] = &[
         Own::Channel,
         "通信层面 A：撤掉 webview 那一跳上带编号的一问（撤单过这一跳）",
     ),
-    // 起会话的计划与渲染进了后端之后，monitor 在这件事上只剩下面两格。
+    // 起会话的那一行进了后端之后，monitor 在这件事上只剩开窗这一格。
     (
         "open_local_terminal",
         Own::Window,
-        "开一个本机终端窗口跑那一串（串由本机后端 `launch-local` 出成品；这里不判不拼，只开窗）",
-    ),
-    (
-        "relay_all_sessions_switch",
-        Own::Config,
-        "全量注入开关 = monitor 进程环境 `CCM_RELAY_ALL_SESSIONS`（monitor 自己的配置，界面带给那台后端）",
+        "开一个本机终端窗口跑那一行（`ccm …` 由本机后端 `launch-local` 出成品；这里不判不拼，只开窗）",
     ),
     // 放字节：判定（该不该换 · 换成哪一格 · 落点那一份是谁）住本机常驻后端 `deploy-plan`。
     (
@@ -207,7 +202,7 @@ const PENDING: &[(&str, &str)] = &[
     // 本机活会话表那两条（红绿灯快照 · 骨架清单）迁走了：会话账本进后端，骨架与灯是会话流里的 `live` / `activity` 成品（⑬）。
     // 列 tmux 会话两条（本机 · 远端）迁走了：那台后端的 `tmux-list` 出成品，界面经通道直问（`src/frontend/ui/tmux-reads.ts`）。
     // MIG-2：本机起会话 ＋ 载荷渲染 ＋ 历史查看器。迁走七条：`new_local_session` · `resume_history_session` ·
-    //   `render_local_attach` · `render_ccm_launch` · `render_launch_payload` · `relay_endpoint_for_launch` · `probe_ccm_cli`。
+    //   `render_local_attach` · `render_ccm_launch` · `render_launch_payload` · `relay_endpoint_for_launch` · 远端 `ccm` 探针。
     // `launch_remote_terminal`〔散文墓碑〕迁走了：远端那一行（`ssh -t -J … host '<串>'` · PowerShell 窗口载荷）由本机后端
     //   `terminal-ssh` 渲（组请求走 `dial/machine.rs::resolve`），monitor 剩开窗 `open_terminal_window` 与交机器事实 `terminal_dial`
     //   两条，进「monitor 自己的事」。「待迁」从此为空。

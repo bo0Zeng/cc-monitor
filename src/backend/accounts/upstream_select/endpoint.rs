@@ -1,22 +1,17 @@
-//! **起会话那一发走哪、注入什么** —— 上游选择在帧面上出的两份成品。
+//! **起会话那一发走哪、注入什么** —— 上游选择出的两份成品。
 //!
-//! | 帧命令 | 答什么 | 谁问 |
+//! | 口 | 答什么 | 谁问 |
 //! |---|---|---|
-//! | `launch-endpoint` | 这个号这一发往 `ANTHROPIC_BASE_URL` 里写哪个中转地址（或不写；地址不随会话变，不带会话段）· 这台的中转在不在 · 不在时拒还是直连 | monitor 起会话那一侧（本机与远端同一条：`history::relay_endpoint_on`） |
+//! | [`relay_for_exec`] | 这个号这一发往 `ANTHROPIC_BASE_URL` 里写哪个中转地址（或不写；地址不随会话变，不带会话段）· 不在时拒还是直连 | `ccm` 在最终 exec 那一处（`control/ccm/plan.rs`）；别名预览走 [`relay_for_preview`] |
 //! | `apikey-routing` | 这几个号在这台的表里有没有行 · 这台的中转在不在 | 界面经 `chan.call` 直接问（账号页徽章） |
 //! | `relay-optin` | 直接敲的那一家也走中转：这台那份用户级设置文件里写没写、对不对 ＋ 要贴的那一段（后端只读、不写那份文件） | 界面经 `chan.call` 直接问（机器页「终端」栏） |
 //!
-//! # 为什么搬到这里（必须拆 1）
-//!
-//! 先前那张「注入什么」的表住 monitor（`payload::relay_endpoint_for`），它要的两样事实
-//! （表里有哪几行 · 中转在不在）monitor 自己读凭据文件、自己连回环口去拿 —— 人群与后端装表那一步**各算一份**
-//! （头注自认的残留：`base_url` 写坏的那一行，界面说「经本机中转」，中转 404）。今天两样事实都在这台后端手里，
-//! 表也就搬来：monitor 只转交入参、执行成品（远端「不在就起、有界等」那一截要定时器，后端零定时器 ⇒ 留 monitor）。
+//! 起会话只有 `ccm` 一处：环境、中转地址由那台机器上的 `ccm` 自己定，界面只交一行 `ccm …`。
 //!
 //! # 人群只有一份：[`super::file_face::rows_at`]
 //!
 //! 「表里有哪几行」= `table::build` 真收进表的那几行（与中转装表同一个函数）。`accounts-list` 并表、
-//! `apikey-routing`、`launch-endpoint` 三处读的都是它。
+//! `apikey-routing`、`ccm` 起会话三处读的都是它。
 //!
 //! # 决策表（逐行搬来；F5 那一行是主会话 4D 新裁）
 //!
@@ -31,7 +26,7 @@
 //!
 //! 地址里没有会话段：会话 id 归 claude 自己，中转从它请求里自带的头认会话（`relay::Destinations::stream_label_headers`）。
 //!
-//! ⚠ ① 与 ⑥ 的降级**刻意不同**，而且从此写在线上（`whenDown`）—— 「把这两种降级写成一样是最容易犯的错」。
+//! ⚠ ① 与 ⑥ 的降级**刻意不同**（`whenDown`）—— 「把这两种降级写成一样是最容易犯的错」。
 
 use super::CREDENTIALS_FILE_AGENT;
 use crate::agents::{SettingsBaseUrl, SettingsEnvFace, SettingsUnreadable};
@@ -71,7 +66,7 @@ pub(crate) enum WhenDown {
     Direct,
 }
 
-/// 决策表的结局（不含「中转在不在」—— 那是另一件事实，[`answer_launch`] 另探）。
+/// 决策表的结局（不含「中转在不在」—— 那是另一件事实，[`relay_with`] 另探）。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Endpoint {
     /// 不注入。
@@ -91,6 +86,7 @@ pub(crate) fn decide_launch(
     agent: &str,
     account: &LaunchAccount,
     all_sessions: bool,
+    port: u16,
     routed: &[String],
     registered: bool,
 ) -> Endpoint {
@@ -101,7 +97,7 @@ pub(crate) fn decide_launch(
     };
     // ①
     if let Some(id) = id.as_deref().filter(|id| has_row(id)) {
-        return match base_url(PORT, RouteMode::Substitute, agent, id) {
+        return match base_url(port, RouteMode::Substitute, agent, id) {
             Some(url) => Endpoint::Inject {
                 url,
                 when_down: WhenDown::Refuse,
@@ -129,7 +125,7 @@ pub(crate) fn decide_launch(
         return Endpoint::None;
     }
     // ⑥（标签当不了路由段 ⇒ 拼不出 ⇒ 不注入：「有它更好」不为它拒绝起会话）
-    match base_url(PORT, RouteMode::Passthrough, agent, label) {
+    match base_url(port, RouteMode::Passthrough, agent, label) {
         Some(url) => Endpoint::Inject {
             url,
             when_down: WhenDown::Direct,
@@ -139,78 +135,121 @@ pub(crate) fn decide_launch(
     }
 }
 
-/// `launch-endpoint`：入参 `{agent, account?, allSessions}` → 成品 `{baseUrl}`（`null` = 不注入）。
-/// 「中转不在时拒还是直连」也在这里判完（原先 monitor 的 `relay_endpoint_on`〔散文墓碑〕 拿四格再判一遍）：
-/// 非它不可（API 号代入）而没在听 ⇒ 码 `relay_down` ＋ 一句；有它更好（`/t/` 直通）而没在听 ⇒ 这一发直连。
-pub(crate) fn answer_launch(args: &Value) -> EndpointAnswer {
-    launch_relay(args).map(|u| json!({ "baseUrl": u }))
+/// 全量注入开关的环境变量（`/t/` 那几格）：默认开，`=0` 才关。读的是**起 agent 那个进程**（`ccm`）自己的环境。
+pub(crate) const ALL_SESSIONS_ENV: &str = "CCM_RELAY_ALL_SESSIONS";
+
+/// [`ALL_SESSIONS_ENV`] 的值 ⇒ 开没开（缺席 / 其余任何值 ⇒ 开）。
+pub(crate) fn all_sessions_on(get: &dyn Fn(&str) -> Option<String>) -> bool {
+    get(ALL_SESSIONS_ENV).map_or(true, |v| v != "0")
 }
 
-/// [`answer_launch`] 的成品本身（本机起会话 `control/launch_render/local.rs` 进程内直接问它，不绕帧）。
-pub(crate) fn launch_relay(args: &Value) -> Result<Option<String>, (&'static str, String)> {
-    launch_relay_with(
-        args,
+/// 同机中转住的口：常驻后端被交的那个（`crate::relay::ENV_PORT`）；没交 / 认不出 ⇒ 默认口。
+pub(crate) fn relay_port(get: &dyn Fn(&str) -> Option<String>) -> u16 {
+    get(crate::relay::ENV_PORT)
+        .and_then(|v| v.trim().parse::<u16>().ok())
+        .filter(|p| *p != 0)
+        .unwrap_or(PORT)
+}
+
+/// **ccm 在最终 exec 那一处问的那一句**：这一发往 `ANTHROPIC_BASE_URL` 里写哪个地址（不带钥匙；`None` = 不注入）。
+/// ccm 是一次性进程，中转住同机的常驻后端里 ⇒「在不在」= 这台家目录下的钥匙读得到，且回环口连得上（连不上立刻被拒，不等）。
+/// 钥匙那一格先判：口上的是别人（同机另一个用户）的中转时，这个用户没有那一把，当它不在。
+pub(crate) fn relay_for_exec(
+    agent: &str,
+    account: &LaunchAccount,
+) -> Result<Option<String>, String> {
+    let get = |k: &str| std::env::var(k).ok();
+    relay_with(
+        agent,
+        account,
+        all_sessions_on(&get),
+        relay_port(&get),
         &super::file_face::machine_rows(),
-        &crate::relay::our_relay_listening,
+        &|port, url| {
+            keyed_for_exec(url, &get).is_some()
+                && std::net::TcpStream::connect(("127.0.0.1", port)).is_ok()
+        },
     )
 }
 
-/// [`launch_relay`] 的本体：人群与「中转在不在」注入（判据喂夹具，不碰真家目录、不连真口）。
-pub(crate) fn launch_relay_with(
-    args: &Value,
+/// 一条不带钥匙的中转地址 ⇒ 插上这台盘上那把钥匙的那一形（agent 进程环境里要的就是它）。
+/// 插钥匙只经中转那一处（`relay::keyed_with_key_on_disk`）；没有家目录 / 钥匙不在 / 地址不是构造口的产物 ⇒ `None`。只读。
+pub(crate) fn keyed_for_exec(url: &str, get: &dyn Fn(&str) -> Option<String>) -> Option<String> {
+    let home = crate::platform::paths::home_dir_from(&|k| get(k).map(Into::into))?;
+    crate::relay::keyed_with_key_on_disk(&home, url)
+}
+
+/// 同上，答的是常驻后端自己（别名预览 `ccm-print`）：中转就在本进程里，读本进程的监听状态。
+pub(crate) fn relay_for_preview(
+    agent: &str,
+    account: &LaunchAccount,
+) -> Result<Option<String>, String> {
+    let get = |k: &str| std::env::var(k).ok();
+    relay_with(
+        agent,
+        account,
+        all_sessions_on(&get),
+        relay_port(&get),
+        &super::file_face::machine_rows(),
+        &|port, _| crate::relay::our_relay_listening(port),
+    )
+}
+
+/// 上两条的本体：人群与「中转在不在」注入（判据喂夹具，不碰真家目录、不连真口）。
+/// 非它不可（API 号代入 `/s/`）而没在听 ⇒ `Err(那一句)`；有它更好（`/t/`）而没在听 ⇒ 这一发直连（`None`）。
+pub(crate) fn relay_with(
+    agent: &str,
+    account: &LaunchAccount,
+    all_sessions: bool,
+    port: u16,
     routed: &[String],
-    listening: &dyn Fn(u16) -> bool,
-) -> Result<Option<String>, (&'static str, String)> {
-    let agent = agent_arg(args)?;
-    let all_sessions = args.get("allSessions").and_then(Value::as_bool).ok_or((
-        "bad_args",
-        copy_text(
-            "beUpstreamEndpoint.args.missingBool",
-            &[("k", "allSessions")],
-        ),
-    ))?;
-    let account = account_arg(args)?;
+    listening: &dyn Fn(u16, &str) -> bool,
+) -> Result<Option<String>, String> {
     let registered = super::Upstreams::from_env(&|k| std::env::var(k).ok())
         .is_some_and(|u| u.of(agent).is_some());
-    match decide_launch(agent, &account, all_sessions, routed, registered) {
+    match decide_launch(agent, account, all_sessions, port, routed, registered) {
         Endpoint::None => Ok(None),
-        Endpoint::Inject { url, .. } if listening(PORT) => Ok(Some(url)),
+        Endpoint::Inject { url, .. } if listening(port, &url) => Ok(Some(url)),
         Endpoint::Inject {
             when_down: WhenDown::Refuse,
             account,
             ..
-        } => Err((
-            "relay_down",
-            copy_text(
-                "rsHistory.relay.downRefused",
-                &[
-                    ("account", &format!("{account:?}")),
-                    (
-                        "where",
-                        &copy_text("beUpstreamEndpoint.relay.thisMachine", &[]),
-                    ),
-                    (
-                        "why",
-                        &copy_text("beUpstreamEndpoint.relay.notListening", &[]),
-                    ),
-                ],
-            ),
+        } => Err(copy_text(
+            "rsHistory.relay.downRefused",
+            &[
+                ("account", &format!("{account:?}")),
+                (
+                    "where",
+                    &copy_text("beUpstreamEndpoint.relay.thisMachine", &[]),
+                ),
+                (
+                    "why",
+                    &copy_text("beUpstreamEndpoint.relay.notListening", &[]),
+                ),
+            ],
         )),
         Endpoint::Inject {
             when_down: WhenDown::Direct,
             ..
-        } => {
-            tracing::info!("中转没在听 ⇒ 这一发照旧直连（`/t/` 那一格是「有它更好」）");
-            Ok(None)
-        }
+        } => Ok(None),
     }
+}
+
+/// 中转地址拆成「`http://主机:口/`」与「`/s/…` 那一截」两半（钥匙段插在中间）。不是构造口的产物 ⇒ `None`。
+pub(crate) fn base_url_halves(base_url: &str) -> Option<(&str, &str)> {
+    if !relay_route_core::base_url_shape_ok(base_url) {
+        return None;
+    }
+    let rest = base_url.strip_prefix("http://")?;
+    let at = "http://".len() + rest.find('/')?;
+    Some((&base_url[..=at], &base_url[at..]))
 }
 
 /// `apikey-routing`：入参 `{agent, configDirs}` → `{routed, running}`（界面账号页那两格事实）。
 ///
 /// - `routed`：传进来的那些 configDir 里，这台表里**有对应行**的那几个（原样回，规则住 `acct-core`）。
 ///   ⚠ 它答「表里有这一行」，不答「那把 key 能不能用」。
-/// - `running`：这个进程里**我们的**中转在不在听（读宿主自己的监听状态 `relay::our_relay_listening`，与 `launch-endpoint` 同一个判准）。
+/// - `running`：这个进程里**我们的**中转在不在听（读宿主自己的监听状态 `relay::our_relay_listening`，与别名预览同一个判准）。
 pub(crate) fn answer_routing(args: &Value) -> EndpointAnswer {
     answer_routing_with(
         args,
@@ -322,8 +361,14 @@ pub(crate) fn optin_at(
     listening: &dyn Fn(u16) -> bool,
 ) -> Value {
     let (file, found) = (face.read)(home);
-    let expected = match decide_launch(agent, &LaunchAccount::Undeclared, true, routed, registered)
-    {
+    let expected = match decide_launch(
+        agent,
+        &LaunchAccount::Undeclared,
+        true,
+        PORT,
+        routed,
+        registered,
+    ) {
         Endpoint::Inject { url, .. } => Some(
             crate::relay::keyed_with_key_on_disk(home, &url)
                 .ok_or(copy_text("beUpstreamEndpoint.optin.noKey", &[])),
@@ -383,45 +428,6 @@ pub(crate) fn agent_arg(args: &Value) -> Result<&'static str, (&'static str, Str
         copy_text("beUpstreamEndpoint.args.missingString", &[("k", "agent")]),
     ))?;
     crate::agents::pick_adapter(Some(name)).map_err(|say| ("bad_args", say))
-}
-
-/// 线上 `account` → [`LaunchAccount`]。认不出的形 ⇒ `bad_args`（不猜成「没表态」）。
-fn account_arg(args: &Value) -> Result<LaunchAccount, (&'static str, String)> {
-    match args.get("account") {
-        None | Some(Value::Null) => Ok(LaunchAccount::Undeclared),
-        Some(Value::Object(o)) => match o.get("kind").and_then(Value::as_str) {
-            Some("base") => Ok(LaunchAccount::Base),
-            Some("named") => o
-                .get("configDir")
-                .and_then(Value::as_str)
-                .map(|d| LaunchAccount::Named {
-                    config_dir: d.to_string(),
-                })
-                .ok_or_else(|| {
-                    (
-                        "bad_args",
-                        copy_text(
-                            "beUpstreamEndpoint.account.namedNoDir",
-                            &[("field", "account")],
-                        ),
-                    )
-                }),
-            _ => Err((
-                "bad_args",
-                copy_text(
-                    "beUpstreamEndpoint.account.badKind",
-                    &[("field", "account")],
-                ),
-            )),
-        },
-        Some(_) => Err((
-            "bad_args",
-            copy_text(
-                "beUpstreamEndpoint.account.badShape",
-                &[("field", "account")],
-            ),
-        )),
-    }
 }
 
 #[cfg(test)]

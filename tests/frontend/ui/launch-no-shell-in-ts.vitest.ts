@@ -189,11 +189,11 @@ describe(" 条 1：前端零 shell 串", () => {
     ).toEqual([]);
   }, SCAN_TIMEOUT_MS);
 
-  it("★ 正控：挪出去的那两份夹具用例表确实满是命令串 —— 同一把尺子量得到它们（否则上一条的零是尺子瞎了）", () => {
-    for (const f of ["tests/test-support/launch-payload-golden.ts", "tests/test-support/launch-tmux-outer-golden.ts"]) {
-      const text = readFileSync(resolve(REPO_ROOT, f), "utf8");
-      expect(hitsIn(text).length, `${f} 用同一把尺子量不出命中`).toBeGreaterThan(5);
-    }
+  it("★ 正控：挪出去的那份夹具用例表里的命令串，同一把尺子量得到（否则上一条的零是尺子瞎了）", () => {
+    const f = "tests/test-support/launch-cli-golden.ts";
+    const text = readFileSync(resolve(REPO_ROOT, f), "utf8");
+    // 就地 resume 那一格外层包的那一层（`tmux send-keys -t …  Enter; tmux attach -t …`），用例表里两条：手写形状那条 ＋ `path:` 那条。
+    expect(hitsIn(text), `${f} 用同一把尺子量不出命中`).toEqual(["tmux send-keys -", "tmux attach -", "tmux send-keys -", "tmux attach -"]);
   });
 
   it("★ TS 兜底一族不许回来：文件不在盘上、导出名在 src/ 生产段零命中", () => {

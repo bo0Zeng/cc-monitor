@@ -116,8 +116,6 @@ const UNIT: &[&str] = &[
     // `tests/frontend/shell/adapter/claude_code_tests.rs` 删了（monitor 那份适配表退役，对拍与生成器随家进了后端 `tests/backend/agents_tests.rs`）。
     // `tests/frontend/shell/adapter/codex_tests.rs` 删了（monitor 那份适配表退役，对拍与生成器随家进了后端 `tests/backend/agents_tests.rs`）。
     "tests/backend/control/launch_render/launch_cli_parity_tests.rs",
-    "tests/backend/control/launch_render/launch_payload_parity_tests.rs",
-    "tests/backend/control/launch_render/launch_tmux_outer_parity_tests.rs",
     "tests/frontend/shell/chan/transfer_stream_tests.rs",
     "tests/backend/agents/claudecode/branch_tests.rs", // 原 `tests/common/branch-core/lib_tests.rs`：分叉变换收进后端适配层
     "tests/backend/control/gate_rules_tests.rs", // 原 `tests/common/gate-core/lib_tests.rs`：gate-core 收成后端模块
@@ -175,9 +173,7 @@ const UNIT: &[&str] = &[
     "tests/frontend/ui/invariants-frontend-guard.vitest.ts",
     "tests/frontend/ui/keybindings/actions.vitest.ts",
     "tests/frontend/ui/launch-arrival.vitest.ts", // 起会话的真成功正信号（纯函数 ＋ 假定时器，不碰真窗口）
-    "tests/frontend/ui/launch-dimensions.test.ts",
     "tests/frontend/ui/launch-menu.vitest.ts",
-    "tests/frontend/ui/launch-requests.vitest.ts",
     "tests/frontend/ui/launcher-diagnostics.vitest.ts",
     "tests/frontend/ui/live-window.vitest.ts",
     "tests/frontend/ui/reconcile-shell.vitest.ts",
@@ -255,6 +251,8 @@ const UNIT: &[&str] = &[
     "tests/backend/control/launch_render/answers_tests.rs",
     // 基数 → 增量 +1：`$PROFILE` 备份那一格问本机后端（假通道）。
     "tests/frontend/ui/settings/profile-backups.vitest.ts",
+    // 从 SCAN 挪来：本机起会话那一行（`control/launch_render/local.rs::plan` 纯函数，喂确定的事实）。
+    "tests/backend/control/launch_render/local_tests.rs",
 ];
 
 /// 源码扫描层：读仓内文本（`include_str!` · `repo_root()` 一族 · `readFileSync` 一族）、不碰 OS。
@@ -312,7 +310,7 @@ const SCAN: &[&str] = &[
     "tests/backend/dial_forwards_tests.rs", // 转发账判据 ＋ 写跨语言金样（`include_str!` 读 `forward-list.golden.json`）
     "tests/backend/dial_ssh_config_tests.rs", // 规则判据 ＋ 写跨语言金样（`include_str!` 读 `ssh-config.golden.json`）
     "tests/common/creds-core/store_tests.rs", // UNIT → SCAN：多一条「两侧读家目录同一个函数」（读两棵生产树的源码现扫调用点）
-    "tests/backend/dial_terminal_tests.rs", // UNIT → SCAN：开终端那一行的渲染规则 ＋ 三份起会话夹具的全部请求都过守卫（`include_str!` 读 `launch_render/fixtures/*.json`）
+    "tests/backend/dial_terminal_tests.rs", // UNIT → SCAN：开终端那一行的渲染规则 ＋ 起会话夹具的全部请求都过守卫（`include_str!` 读 `launch_render/fixtures/cli-golden.json`）
     "tests/backend/dial_tests.rs",
     "tests/backend/files/module_boundary_guard.rs",
     "tests/backend/guard_support_tests.rs",
@@ -355,7 +353,6 @@ const SCAN: &[&str] = &[
     "tests/backend/control/launch_render/ccm_invocation_tests.rs",
     "tests/frontend/shell/frame_query_tests.rs",
     "tests/frontend/shell/inbound_client_tests.rs",
-    "tests/backend/control/launch_render/launch_wire_f07_main_path_tests.rs",
     "tests/frontend/shell/backend_policy_tests.rs",
     "tests/frontend/shell/backend_client_guard_tests.rs", // 原 `backend_tests.rs`：`backend/` 目录没了，两道判据改看逐个点名的那一组
     "tests/frontend/shell/platform/platform_home_guard.rs", // 壳里平台形态只许住 `platform/`（与 host-core）＋ 待收名单
@@ -474,8 +471,6 @@ const SCAN: &[&str] = &[
     "tests/frontend/ui/launch-no-shell-in-ts.vitest.ts", // 条 1（接替 session-backend-gate）
     // 铸名 / 本机 resume 编排各只有一个家（读生产段全集 ⇒ 扫描层）。
     "tests/frontend/ui/launch-orchestration-single-home.vitest.ts",
-    "tests/frontend/ui/launch-payload-golden.vitest.ts",
-    "tests/frontend/ui/launch-tmux-outer-golden.vitest.ts",
     "tests/backend/agents/sse_anthropic_tests.rs", // Anthropic 流的折法 ＋ 台架那一轮（读 `tests/__fixtures__/tap-bench.json`，随折法从界面那一侧搬来）
     // `tests/frontend/ui/liveness-process-names-parity.vitest.ts` 删：判活进程名的前端那一份随判定进了后端，
     //   后端两处（tmux 那一格 · cmdline 判活）今天读同一张 `agents/claudecode/cards.rs::PROCESS_NAMES`，对拍无对象。
@@ -535,8 +530,7 @@ const SCAN: &[&str] = &[
     "tests/frontend/shell/cc_bus_tests.rs", // INTEGRATION → SCAN：起进程的那几条（本机 shell 读 · 超时不留孤儿）随驾驶舱 shell 读退役
     // 从 INTEGRATION 挪来（候选那一条不再建临时目录）。
     // `tests/frontend/shell/shell_dialect_tests.rs` 随别名那一族进了那台后端（`tests/backend/assets/aliases/`）。
-    // 基数 → 增量 +1：本机起会话的计划与渲染（`control/launch_render/local.rs`，从 monitor `history.rs` 搬来）。
-    "tests/backend/control/launch_render/local_tests.rs",
+    // `tests/backend/control/launch_render/local_tests.rs` 挪去 UNIT：重写成喂确定事实驱动纯函数 `plan`，不再读源码文本。
     // 基数 → 增量 +1：方言专属语法字面量只住 `platform/shell/`（扫后端生产树的字符串字面量）。
     "tests/backend/platform/shell_home_guard.rs",
 ];
@@ -642,9 +636,6 @@ const INTEGRATION: &[&str] = &[
     "tests/frontend/shell/auto_launch_tests.rs",
     "tests/backend/control/launch_render/launch_wire_k_r95_launch_render_facts.rs",
     "tests/frontend/shell/local_backend_tests.rs",
-    // 〔MG1 合 RK1〕SCAN → INTEGRATION：RK1 加的 `the_rendered_relay_export_carries_no_key_and_a_real_shell_expands_it_from_home`
-    // 铺夹具家目录、起真 `sh` 展开 `$(cat …)` ⇒ 判别器判集成层，照挪。
-    "tests/backend/control/launch_render/payload_tests.rs",
     // 标识符放行判定的生成物（写 `src/frontend/ui/generated/judgment-rules.ts`）＋ 共用金样 ⇒ 写真文件 ⇒ 集成层。
     "tests/frontend/shell/payload_judgment_rules.rs",
     // `tests/frontend/shell/backend_layering.rs` 删：它判 monitor 侧 `backend/` 里 `observe/` ↔ `control/` 两条线的方向，目录没了。
@@ -751,6 +742,7 @@ const E2E: &[&str] = &[
 const E2E_SUPPORT: &[&str] = &[
     "tests/e2e/assert-pass-floor.sh",
     "tests/e2e/backend-wrapper.sh",
+    "tests/e2e/ccm-shim.sh", // 把编出来的后端二进制以 `ccm` 之名放上 PATH ＋ 沙箱 HOME（真跑那一行 `ccm …` 的几套 source 它）
     "tests/e2e/fake-backend.sh",
     "tests/e2e/fake-claude",
     "tests/e2e/gen-idle-tmux.sh",
@@ -899,9 +891,9 @@ const REAL_MACHINE: &[(&str, &str, Trigger)] = &[
         Trigger::Filter { by: "tests/frontend/filewin/shell_tests.rs", needle: "shell::tests::xvfb_worker_opens_with_no_x_server_at_all" },
     ),
     (
-        // 生产命令 `render_launch_payload` 给 e2e 的数据出口（`resume-suite` · `resume-backend-frames` ·
-        //   `tmux-target-acceptance` 三套经这个驱动取「app 真正会跑的那一串」）。
-        "tests/backend/control/launch_render/launch_tmux_outer_parity_tests.rs",
+        // 生产命令 `launch-render-cli` 给 e2e 的数据出口（`resume-suite` · `resume-backend-frames` ·
+        //   `tmux-target-acceptance` 几套经这个驱动取「app 真正会交给终端的那一行 `ccm …`」）。
+        "tests/backend/control/launch_render/launch_cli_parity_tests.rs",
         "emit_launch_render_for_e2e",
         Trigger::Filter { by: "tests/e2e/launch-render-emit.sh", needle: "emit_launch_render_for_e2e" },
     ),

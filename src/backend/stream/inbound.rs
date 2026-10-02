@@ -225,13 +225,10 @@ pub const COMMANDS: &[&str] = &[
     "hooks-diag",
     "kill",
     "launch",
-    // 「这个号这一发走哪、注入什么」（上游选择出成品，那张表搬进后端）。
-    "launch-endpoint",
     // 起会话的计划与渲染进了那台后端（原 monitor `history.rs` / `launch_wire.rs`）：
-    //   本机起会话一整条 · `ccm …` 调用行 · 裸载荷 / 外层 tmux 三格。**是新命令** ⇒ `build_id_guard` 红是预期的。
+    //   本机起会话一整条 · `ccm …` 那一行（起会话只有 ccm 一处；载荷那条删了 ⇒ `build_id_guard` 红是预期的）。
     "launch-local",
     "launch-render-cli",
-    "launch-render-payload",
     // 链路四条（`dial/link.rs`）：本机常驻后端替 monitor 持有并复用到各远端的 SSH 连接。
     "link-close",
     "link-credit",
@@ -1549,25 +1546,8 @@ pub const REGISTRY: &[CommandSpec] = &[
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
-    // 上游选择出的两份成品（`accounts/upstream_select/endpoint.rs`）。
-    //   阻塞档：读一次凭据文件、装一次表；「中转在不在」读本进程的监听状态（中转住这里）。
-    // 只上流面（`cli_control::STREAM_ONLY`）：一次性进程里没有中转，答 `listening:false` 是假话。
-    // 成品只剩 `baseUrl`：「中转不在时拒还是直连」也在这里判完（非它不可 ⇒ `relay_down`）。
-    CommandSpec {
-        name: "launch-endpoint",
-        doc_anchor: Some("#### `launch-endpoint`"),
-        codes: &["bad_args", "relay_down"],
-        fields: &["account", "agent", "allSessions", "baseUrl"],
-        takes_input: true,
-        run: Run::Blocking(|r| {
-            crate::accounts::upstream_select::endpoint::answer_launch(&r.args)
-                .map(Some)
-                .map_err(|(c, m)| (c.to_string(), m))
-        }),
-    },
-    // 起会话的计划与渲染（`control/launch_render/`）。
-    //   `launch-local`：本机起会话整条（阻塞档：探一次 `ccm`、读一次凭据表、探一次中转）；
-    //   两条渲染是纯函数（不碰盘、不起进程）。
+    // 起会话那一行 `ccm …`（`control/launch_render/`）：交给终端的只有这一行，环境与中转地址归那台的 `ccm`。
+    //   `launch-local`：本机那几形（阻塞档：核一次「新起」的目录在不在）；`launch-render-cli`：远端那几形（纯函数）。
     CommandSpec {
         name: "launch-local",
         doc_anchor: Some("#### `launch-local`"),
@@ -1575,10 +1555,9 @@ pub const REGISTRY: &[CommandSpec] = &[
         fields: &[
             "account",
             "action",
-            "agent",
-            "allSessions",
             "cmd",
             "cwd",
+            "defaultLauncher",
             "launchId",
             "launcher",
             "tmuxName",
@@ -1593,7 +1572,7 @@ pub const REGISTRY: &[CommandSpec] = &[
     CommandSpec {
         name: "launch-render-cli",
         doc_anchor: Some("#### `launch-render-cli`"),
-        codes: &["bad_args"],
+        codes: &["bad_args", "refused"],
         fields: &[
             "account",
             "action",
@@ -1602,40 +1581,14 @@ pub const REGISTRY: &[CommandSpec] = &[
             "container",
             "cwd",
             "defaultLauncher",
-            "isSsh",
             "launcher",
             "model",
-            "ok",
-            "reason",
+            "rbindToken",
         ],
         takes_input: true,
         run: Run::Async(|r| {
             Box::pin(async move {
                 crate::control::launch_render::answer_cli(&r.args)
-                    .map(Some)
-                    .map_err(|(c, m)| (c.to_string(), m))
-            })
-        }),
-    },
-    CommandSpec {
-        name: "launch-render-payload",
-        doc_anchor: Some("#### `launch-render-payload`"),
-        codes: &["bad_args", "refused"],
-        fields: &[
-            "args",
-            "cmd",
-            "cwd",
-            "env",
-            "launcher",
-            "nestedEnv",
-            "outer",
-            "resumeSid",
-            "wrap",
-        ],
-        takes_input: true,
-        run: Run::Async(|r| {
-            Box::pin(async move {
-                crate::control::launch_render::answer_payload(&r.args)
                     .map(Some)
                     .map_err(|(c, m)| (c.to_string(), m))
             })

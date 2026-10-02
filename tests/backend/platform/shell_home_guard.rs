@@ -15,16 +15,13 @@ use std::collections::{BTreeMap, BTreeSet};
 
 /// 方言专属语法字面量（解开转义后的样子）。每一根都是「只有那一种 shell 这么写」的那几个字。
 const NEEDLES: &[&str] = &[
-    // PowerShell
-    "$env:",
-    "$null",
+    // PowerShell（`$env:` · `$null` 两根摘了，理由同下面那三根）
     "[char]",
     "Test-Path",
     "Get-Alias",
     "Get-Command",
-    "Get-Content",
-    "Write-Host",
-    "Join-Path",
+    // `Get-Content` · `Write-Host` · `Join-Path` 三根摘了：只有本机起会话那一行的 PowerShell 中转前缀用它们，
+    //   那一层随起会话只交一行 `ccm …` 删了（中转地址由 `ccm` 在进程里定，不再渲 PowerShell）。
     "CmdletBinding",
     "RemainingArgs",
     "powershell.exe",
@@ -270,10 +267,10 @@ fn the_literal_census_sees_planted_syntax_and_ignores_comments() {
     assert_eq!(census_of(&planted), BTreeMap::from([("export ", 1)]));
     let real = include_str!("../../../src/backend/control/launch_render/local.rs");
     let planted_real =
-        format!("{real}\nfn planted() -> String {{ format!(\"$env:X=$null; \") }}\n");
+        format!("{real}\nfn planted() -> String {{ String::from(\"Test-Path x; [char]9\") }}\n");
     assert_eq!(
         census_of(&planted_real),
-        BTreeMap::from([("$env:", 1), ("$null", 1)]),
+        BTreeMap::from([("Test-Path", 1), ("[char]", 1)]),
         "往真消费者的副本里塞一行 PowerShell 渲染，尺子该只数出塞进去的那两根"
     );
 }
@@ -285,8 +282,6 @@ const SQ_NEEDLES: &[&str] = &["'{", "''"];
 const SQ_ELSEWHERE: &[(&str, &str, usize)] = &[
     // 报错句里「起不来的是哪个程序」那个主语，不进 shell。
     ("control/ccm/mod.rs", "'{", 1),
-    // POSIX：值先过 `config_dir_command_safe` 白名单（不含 `'`）再进单引号。
-    ("control/launch_render/payload.rs", "'{", 1),
     // POSIX：tmux 的 `-F` 格式串是常量。
     ("observe/tmux_observe.rs", "'{", 2),
 ];

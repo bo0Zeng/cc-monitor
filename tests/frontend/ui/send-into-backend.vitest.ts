@@ -8,7 +8,7 @@
  * 盯三件事：
  *  ① backend 说键入了 ⇒ 终端那条命令**只 attach**（还带 send-keys 就会把载荷键两遍）；
  *  ② 拿不到通道 / backend 说没键入 / IPC 抛了 ⇒ **逐字回落**到今天那条整串（零行为变化的判据）；
- *  ③ 发给后端的是 `render_launch_payload` 的产物 + **裸会话名**
+ *  ③ 发给后端的是那台渲的直路那一行 `ccm …` + **裸会话名**
  *     （`=name:` 的精确匹配形态由后端侧加，两侧各加一次就成了 `==name::`）。
  *
  * 桩法照 `remote-launch-run.vitest.ts`：mock `@tauri-apps/api/core::invoke` 按 cmd 路由 ——
@@ -31,13 +31,13 @@ vi.mock("../../../src/frontend/ui/error-toast", () => ({ showActionFailureToast:
 
 import { runRemoteResumeIntoExistingTmux } from "../../../src/frontend/ui/remote-launch-run";
 import { showActionFailureToast } from "../../../src/frontend/ui/error-toast";
-import { renderLaunchPayloadStub } from "../../test-support/launch-render-ipc-stub.ts";
-import type { PayloadRenderRequest } from "../../../src/frontend/ui/launch-cli-wire.ts";
+import type { CliRenderRequest } from "../../../src/frontend/ui/launch-cli-wire.ts";
 
 
 const SID = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
 const NAME = "aaaaaaaa-cc";
-const PAYLOAD = "unset CLAUDE_CODE_ENTRYPOINT; claude --resume s-1";
+/** 那台后端渲的直路那一行的替身（判的是「键进去的就是它」，不是渲得对不对）。 */
+const PAYLOAD = "ccm --resume s-1 -- --base";
 
 let seen: { cmd: string; args: unknown }[] = [];
 let sendIntoReply: unknown = { typed: true, reason: null };
@@ -59,10 +59,13 @@ function route(): void {
       // ⚠ **不带 `outer` 的那一格仍然恒返回 `PAYLOAD`** —— ③ 那条
       //   「发给后端的载荷 == `render_launch_payload` 的产物」拿它当期望值，
       //   换成现渲的串就变成「桩自己和桩自己比」，那条当场失去意义。
-      case "render_launch_payload": {
-        const req = (args as { req: PayloadRenderRequest }).req;
+      case "render_ccm_launch": {
+        const req = (args as { req: CliRenderRequest }).req;
+        if (req.action.kind === "attach") return Promise.resolve(`ccm -- --attach ${req.action.name}`);
         return Promise.resolve(
-          req.outer === undefined ? PAYLOAD : renderLaunchPayloadStub(req),
+          req.container.kind === "tmux" && req.container.send_into
+            ? `tmux send-keys -t '=${req.container.name}:' '${PAYLOAD}' Enter; tmux attach -t '=${req.container.name}:'`
+            : PAYLOAD,
         );
       }
       case "backend_send_into":
@@ -71,8 +74,6 @@ function route(): void {
           : Promise.resolve(sendIntoReply);
       // CLI 渲染器对 send-into 恒诚实降级（#76 防线）—— 给一个形状对的应答，
       // 免得桩返回 null 时把噪音混进来。
-      case "render_ccm_launch":
-        return Promise.resolve({ ok: false, cmd: null, reason: "send-into 无 CLI 等价语法" });
       case "launch_remote_terminal":
         return Promise.resolve();
       default:
@@ -172,7 +173,7 @@ describe("U8a-2c-1 send-into：send-keys 半边走 backend", () => {
     expect(seen.map((x) => x.cmd)).not.toContain("launch_remote_terminal");
   });
 
-  it("③ 发给后端的载荷 == render_launch_payload 的产物；会话名是裸名", async () => {
+  it("③ 键进去的 == 那台后端渲的直路那一行（`ccm …`）；会话名是裸名", async () => {
     await runRemoteResumeIntoExistingTmux("h1", SID, NAME, "claude");
     const sent = seen.find((s) => s.cmd === "backend_send_into") as
       | { args: { req: { origin: string; name: string; payload: string } } }
@@ -183,7 +184,7 @@ describe("U8a-2c-1 send-into：send-keys 半边走 backend", () => {
     expect(sent!.args.req.name).toBe(NAME);
     // 载荷必须先渲染出来再发 —— 否则就是拿着空载荷去 send-into。
     const order = seen.filter((s) => !isChanCall(s.cmd, s.args, "ccm-probe")).map((s) => s.cmd);
-    expect(order.indexOf("render_launch_payload")).toBeLessThan(
+    expect(order.indexOf("render_ccm_launch")).toBeLessThan(
       order.indexOf("backend_send_into"),
     );
   });

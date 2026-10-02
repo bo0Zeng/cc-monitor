@@ -214,9 +214,8 @@ fn the_base_url_token_is_declared_because_the_tmux_path_really_forwards_it() {
     // ① 申报这一半。
     assert!(
         CAPABILITIES.contains(&"base-url-across-tmux"),
-        "`base-url-across-tmux` 不在 CAPABILITIES 里了 —— 那么 monitor 侧\n\
-             `local.rs::RELAY_KEEPS_THE_OLD_PATH` 的退役条件就**又没有落点了**，\n\
-             而它正是 `K-R61` 立件的原因（前提指着一个已经被删掉的文件）。"
+        "`base-url-across-tmux` 不在 CAPABILITIES 里了 —— 容器路把继承来的中转地址带过 tmux 边界那件事\n\
+             就**又没有申报了**，而它正是 `K-R61` 立件的原因（前提指着一个已经被删掉的文件）。"
     );
 
     // ② 实现这一半 —— 真算一遍，只喂替身环境，一个字节不碰这台机器（`K31`）。
@@ -1076,4 +1075,156 @@ fn the_mint_frame_derives_here_and_steps_aside_on_this_machines_snapshot() {
     ] {
         assert_eq!(mint(bad).unwrap_err().0, "invalid_args");
     }
+}
+
+// ── 起会话只有 ccm 一处（用户原话「所有的起会话都是一处ccm」）──────────────────────────────
+
+/// 一段生产代码里「直接起 agent 的命令」的痕迹（名字从注册表取，不写死）：
+/// ① 串字面量以某一家的默认启动器打头（`"claude"` · `"claude …"`）；② 串字面量里带「启动器 ＋ 这一家的 resume 词」
+/// （`claude --resume` · `codex resume`）；③ 调这一家的 resume 命令形（`.resume_command)(`，拼出来的就是 `<启动器> <resume 词> <sid>`）。
+fn direct_agent_launch_hits(code: &str, launchers: &[&str], resume_tokens: &[&str]) -> Vec<String> {
+    let mut hits = Vec::new();
+    for lit in string_literals(code) {
+        let t = lit.trim_start();
+        for l in launchers {
+            let at_head = t
+                .strip_prefix(l)
+                .is_some_and(|rest| rest.is_empty() || rest.starts_with(' '));
+            if at_head {
+                hits.push(format!("行首是 agent 命令名：{lit:?}"));
+            }
+            for r in resume_tokens {
+                if lit.contains(&format!("{l} {r}")) && !at_head {
+                    hits.push(format!("带 `{l} {r}`：{lit:?}"));
+                }
+            }
+        }
+    }
+    hits.extend(
+        code.matches(".resume_command)(")
+            .map(|_| "调了这一家的 resume 命令形".to_string()),
+    );
+    hits
+}
+
+/// Rust 源码里的串字面量内容（普通串认 `\` 转义；`r"…"` / `r#"…"#` 认原样；`'x'` 字符字面量跳过、生命周期不当成引号）。
+fn string_literals(code: &str) -> Vec<String> {
+    let b: Vec<char> = code.chars().collect();
+    let (mut out, mut i) = (Vec::new(), 0);
+    while i < b.len() {
+        match b[i] {
+            'r' if b.get(i + 1).is_some_and(|c| *c == '"' || *c == '#')
+                && !b
+                    .get(i.wrapping_sub(1))
+                    .is_some_and(|c| c.is_alphanumeric() || *c == '_') =>
+            {
+                let mut j = i + 1;
+                let mut hashes = 0;
+                while b.get(j) == Some(&'#') {
+                    hashes += 1;
+                    j += 1;
+                }
+                if b.get(j) != Some(&'"') {
+                    i += 1;
+                    continue;
+                }
+                let close: String = std::iter::once('"')
+                    .chain(std::iter::repeat('#').take(hashes))
+                    .collect();
+                let rest: String = b[j + 1..].iter().collect();
+                let end = rest.find(&close).unwrap_or(rest.len());
+                out.push(rest[..end].to_string());
+                i = j + 1 + rest[..end].chars().count() + close.chars().count();
+            }
+            '\'' if b.get(i + 2) == Some(&'\'')
+                || (b.get(i + 1) == Some(&'\\') && b.get(i + 3) == Some(&'\'')) =>
+            {
+                i += if b.get(i + 1) == Some(&'\\') { 4 } else { 3 };
+            }
+            '"' => {
+                let mut s = String::new();
+                let mut j = i + 1;
+                while j < b.len() && b[j] != '"' {
+                    if b[j] == '\\' {
+                        j += 1;
+                    }
+                    if let Some(c) = b.get(j) {
+                        s.push(*c);
+                    }
+                    j += 1;
+                }
+                out.push(s);
+                i = j + 1;
+            }
+            _ => i += 1,
+        }
+    }
+    out
+}
+
+/// ★★ **后端生产段里，除 `ccm` 自己（`control/ccm/`，最终 exec 那一处）与 agent 注册表（`agents/`，起会话事实声明的地方）之外，
+/// 零处渲染出直接起 agent 的命令**。名字从注册表取（每一家的默认启动器 ＋ resume 词）。
+///
+/// 两向相等：命中 == 登记的那一处（`control/resolve_query.rs`：给仓外终端客户端的那份冻结契约 `--resolve`，
+/// 它的 `command` 今天仍是 `<启动器> --resume <sid>`，改成 `ccm …` 是一次跨仓契约变更 —— 待定，不在这里悄悄改）。
+/// 正控：同一个针在注册表那一侧量得到默认启动器的字面量；一段现造的语料里该中的中、`ccm …` 不中。
+#[test]
+fn nothing_but_ccm_renders_a_command_that_starts_an_agent() {
+    let faces: Vec<crate::agents::LaunchFace> = crate::agents::REGISTRY
+        .iter()
+        .filter_map(|a| a.launch)
+        .collect();
+    let launchers: Vec<&str> = faces.iter().map(|f| f.default_launcher).collect();
+    let tokens: Vec<&str> = faces.iter().map(|f| f.resume_token).collect();
+    assert!(
+        launchers.len() >= 2,
+        "注册表里由我们起的那几家只抠到 {launchers:?}"
+    );
+
+    // 正控 ①：现造的语料。
+    let corpus = format!(
+        "let a = \"{l} --resume x\"; let b = \"{l}\"; let c = \"ccm --resume x -- --base\"; \
+         let d = '\"'; let e = r#\"{l} {r} s\"#; let f = (face.resume_command)(&base, sid);",
+        l = launchers[0],
+        r = tokens[0]
+    );
+    assert_eq!(
+        direct_agent_launch_hits(&corpus, &launchers, &tokens).len(),
+        4,
+        "针在现造语料上失准"
+    );
+
+    let root = crate::guard_support::src_root();
+    let mut outside: Vec<String> = Vec::new();
+    let mut registry_hits = 0;
+    for (path, src) in guard_core::scan_tree_excluding(&root, &["rs"], &[]) {
+        let under = path.strip_prefix(&root).unwrap_or(&path);
+        let rel = under.to_string_lossy().replace('\\', "/");
+        let code = guard_core::strip_comment_lines(&crate::guard_support::production_code(&src));
+        let hits = direct_agent_launch_hits(&code, &launchers, &tokens);
+        // 按路径分量认住址（逐段相等，不是拿串的前缀比）：注册表那一侧 = `agents/` 整棵；`ccm` 自己 = `control/ccm/` 整棵。
+        let seg: Vec<String> = under
+            .iter()
+            .map(|c| c.to_string_lossy().into_owned())
+            .collect();
+        let top = (
+            seg.first().map(String::as_str),
+            seg.get(1).map(String::as_str),
+        );
+        if top.0 == Some("agents") {
+            registry_hits += hits.len();
+        } else if top != (Some("control"), Some("ccm")) {
+            outside.extend(hits.into_iter().map(|h| format!("{rel}：{h}")));
+        }
+    }
+    // 正控 ②：注册表那一侧声明默认启动器的那几个字面量量得到（扫描面是真树，针也真认得注册表里的名字）。
+    assert!(
+        registry_hits >= launchers.len(),
+        "注册表那一侧只量到 {registry_hits} 处 —— 扫描面或针坏了"
+    );
+    assert_eq!(
+        outside,
+        ["control/resolve_query.rs：调了这一家的 resume 命令形"],
+        "ccm 以外又有地方渲出了直接起 agent 的命令 —— 起会话只交一行 `ccm …`，环境 / 中转地址 / 身份由那台的 ccm 做"
+    );
 }

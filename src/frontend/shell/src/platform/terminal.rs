@@ -307,8 +307,8 @@ pub fn launch_local_posix(_cmd: &str, _cwd: Option<&str>) -> Result<(), String> 
 /// 把本函数体里 Plan B 那个 `if let Some((k, v)) = backend_env { builder.env(k, v); }`
 /// 换成 `let _ = backend_env;`（＝真实缺陷形状「开窗点漏了带 env」；锚点是那三行，**全文命中 1**）
 /// ⇒ **`1243 passed; 2 failed`**（同树干净分母 **`1245 passed; 0 failed`**），红名单**恰好两条**：
-/// `launch_tests.rs::every_terminal_window_backend_opens_carries_the_backend_path` 与
-/// `payload_tests.rs::the_population_that_renders_env_prefixes_for_the_agent_process_is_enumerated`。
+/// `launch_tests.rs::every_terminal_window_backend_opens_carries_the_backend_path` 与当时那张「谁给 agent 进程定 env」的
+/// 两半人群闭表（那张表数的串级几处随起会话只交一行 `ccm …` 一起没了，表也删了；开窗这一跳的 `.env(k, v)` 由上面那条照旧钉着）。
 ///
 /// ⚠ **分母话**：那是**一刀打出来的红名单**，不是「全部判据」的枚举 ——
 /// 我没有逐条去数还有几条判据碰得到这个函数体。⇒ 只能写「**我这一刀量到的是这两条**」。
@@ -322,8 +322,10 @@ pub fn launch_local_posix(_cmd: &str, _cwd: Option<&str>) -> Result<(), String> 
 ///
 /// **实打（刀 `R10M2`，`D8P35` 同形，第九轮 `R9M9` 的复打，09-02）**：在
 /// `let encoded = crate::utils::powershell_encoded_command(ps_command);`
-/// 之前把 `$env:ANTHROPIC_BASE_URL=…; ` 前缀剥掉（锚点是那一行，**全文命中 1**）
+/// 之前把当时交进来那一行前面的中转前缀剥掉（锚点是那一行，**全文命中 1**）
 /// ⇒ 🔴 **`1245 passed; 0 failed`**，与同树干净分母逐字相同 —— **零感知**。
+/// 今天交进这个窗口的只是一行 `ccm …`（中转地址由 `ccm` 在最终 exec 那一处定），那段前缀不在了；
+/// 「量行为的判据在本机造不出来」这一半照旧。
 ///
 /// ⇒ 买**这一半**要 CI 上一条 Windows job（或交叉编译 ＋ `cargo test --target`），
 /// 落点 `.github/workflows/ci.yml`，**不在 `K-H2b` 的写区** ⇒ 归 PM 立跟进件。
@@ -347,8 +349,8 @@ pub fn launch_local_posix(_cmd: &str, _cwd: Option<&str>) -> Result<(), String> 
 ///   `utils_tests.rs::the_relay_prefix_survives_the_powershell_encoding_byte_for_byte`。
 /// - 原 `history.rs` 的 `PRODUCTION_LAUNCH_SINK`〔散文墓碑〕（今天是 `launch.rs::open_local_terminal`） 的 `#[cfg(windows)]` 那一支（`D8` 表里的 `F3`，
 ///   `D8` **没打**、标着「推的」）第九轮打了、**是红的**；`C` 第十轮刀 `R10M8` 复打，
-///   读数一致：**`1244 passed; 1 failed`**，红的是
-///   `payload_tests.rs` 的 `nobody_reaches_the_relay_take_points_without_going_through_the_seam`〔散文墓碑〕。
+///   读数一致：**`1244 passed; 1 failed`**，红的是当时那条「中转取点只经接缝」的判据
+///   （随起会话只交一行 `ccm …` 一起删了：中转地址今天只在 `ccm` 里定）。
 #[cfg(windows)]
 pub fn launch_powershell_window(ps_command: &str, local_cwd: Option<&str>) -> Result<(), String> {
     use crate::spawn_managed::{spawn_managed_cmd, ConsolePolicy, Lifetime, StderrSink};

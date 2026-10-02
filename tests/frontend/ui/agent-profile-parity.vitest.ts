@@ -379,9 +379,8 @@ describe("K-R93 前端那份 agent 画像：值来自后端", () => {
 // ── 让用户选 agent 的地方只给注册表里的那几家 ──────────────────────────────
 
 /** 写死了 agent 名字也算对的那几份（`文件` → 为什么）。 */
-const NAMES_ALLOWED_IN: Record<string, string> = {
-  "src/frontend/ui/launch-cli-golden.ts": "对拍夹具：`launcherOverride` 那一格是启动器命令（恰好与 agent 同名），不是在挑哪一家",
-};
+// 起会话那份对拍夹具（`launcherOverride` 那一格恰好与 agent 同名）挪去了 `tests/test-support/`，不在界面生产段里了 ⇒ 今天一份都没有。
+const NAMES_ALLOWED_IN: Record<string, string> = {};
 
 describe("界面上的 agent 名单只从后端注册表来", () => {
   it(

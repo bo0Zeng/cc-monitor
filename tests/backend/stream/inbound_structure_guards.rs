@@ -219,9 +219,8 @@ fn every_registered_command_declares_its_run_kind() {
                 // 上游选择那份凭据文件的两条：同步文件 I/O（读一份小文件 / 原子写一份）。
                 | "apikey-key-set"
                 | "apikey-read"
-                // 上游选择出的两份成品：读一份凭据文件 ＋ 装表 ＋ 回环上探一次中转（每发有读期限），同步阻塞。
+                // 上游选择出的成品：读一份凭据文件 ＋ 装表，同步阻塞。
                 | "apikey-routing"
-                | "launch-endpoint"
                 // 直接敲的也走中转：读一份用户级设置文件 ＋ 一份钥匙文件（同步文件 I/O）。
                 | "relay-optin"
                 // `relay-ensure` / `relay-status` 两条随脱离 `--relay` 一族删了。
@@ -282,7 +281,7 @@ fn every_registered_command_declares_its_run_kind() {
                 | "history-annotate"
                 | "history-forget"
                 | "history-last-accounts"
-                // 本机起会话：探一次 `ccm`（起 `bash -lic`）＋ 读一次凭据表 ＋ 探一次中转。
+                // 本机起会话那一行：核一次「新起」的目录在不在（stat）。
                 | "launch-local"
                 // 本机那一份放不放：读一遍落点那个文件（约 10 MB，同步文件 I/O）。
                 | "place-verdict"
@@ -417,9 +416,8 @@ fn every_registered_command_declares_its_run_kind() {
         "resync",         //
         "apikey-key-set",
         "apikey-read",
-        "apikey-routing",  //
-        "launch-endpoint", //
-        "relay-optin",     //
+        "apikey-routing", //
+        "relay-optin",    //
         "footprint-report",
         // 别名预览（阻塞档，理由在上面 `expected_blocking`）。
         "ccm-print",

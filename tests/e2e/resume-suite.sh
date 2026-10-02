@@ -29,7 +29,10 @@ set -euo pipefail
 #   （08-11 一条同形态的探针把用户 **9 个真实会话**打没了）。
 # shellcheck source=tests/e2e/tmux-shim.sh
 . "$(cd "$(dirname "$0")" && pwd)/tmux-shim.sh" e2eResume
-_gc_sock_cleanup() { tmux_shim_cleanup; }
+# resume 交给终端的是一行 `ccm …` ⇒ 后端二进制以 `ccm` 之名上 PATH（要先 build：.build/backend/debug/cc-monitor-backend），沙箱无条件给。
+# shellcheck source=tests/e2e/ccm-shim.sh
+. "$(cd "$(dirname "$0")" && pwd)/ccm-shim.sh"
+_gc_sock_cleanup() { tmux_shim_cleanup; ccm_shim_cleanup; }
 # ─────────────────────────────────────────────────────────────────────────────
 
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -124,7 +127,7 @@ SID1="$(cat /proc/sys/kernel/random/uuid)"; S1="cc-${SID1:0:8}"
 make_idle "$SID1" "$REMOTE_DIR" >/dev/null
 CMD1="$(drv into-existing "$SID1" "$S1" "$FAKE" -)"
 echo "   cmd: $CMD1"
-if echo "$CMD1" | grep -q "send-keys -t =$S1: " && ! echo "$CMD1" | grep -q "new-session"; then
+if echo "$CMD1" | grep -qF "send-keys -t '=$S1:' 'ccm --resume $SID1 " && ! echo "$CMD1" | grep -q "new-session\|--ccm-tmux"; then
   ok "B1 命令复用原名 $S1、无 new-session(就地 resume,治 #76 根因)"
 else bad "B1 命令未就地复用(含 new-session 或名不符)"; fi
 BEFORE1="$(session_exists "$S1")"
@@ -142,12 +145,12 @@ SID2="$(cat /proc/sys/kernel/random/uuid)"; S2="cc-${SID2:0:8}"
 # 执行验证交给下面非阻塞的 tmux-new 形态,两者共用同一个 Rust 载荷渲染,注入语义一致)。
 CMD2D="$(drv direct "$SID2" "$CWD_DIR" "$FAKE" "$ACCT_A")"
 echo "   direct: $CMD2D"
-echo "$CMD2D" | grep -q "export CLAUDE_CONFIG_DIR='$ACCT_A'" && ok "B2 直连命令含 CLAUDE_CONFIG_DIR=$ACCT_A" || bad "B2 直连命令缺账号 A 前缀"
+echo "$CMD2D" | grep -q "^ccm --resume $SID2 -- --account-dir $ACCT_A " && ok "B2 直连命令是一行 ccm、带账号 A 目录（--account-dir $ACCT_A）" || bad "B2 直连命令缺账号 A"
 # tmux-new 形态(resumeTabTmux 归档分支):新建 cc-<sid8> 会话 + @ccm_sid,真执行 → argv 落 A。
 CMD2T="$(drv tmux-new "$SID2" "$CWD_DIR" "$FAKE" "$S2" "$ACCT_A")"
 echo "   tmux-new: $CMD2T"
 SESSIONS+=("$S2")
-echo "$CMD2T" | grep -q "new-session -d -s $S2" && echo "$CMD2T" | grep -q "@ccm_sid $SID2" && ok "B2 tmux-new 建 $S2 并设 @ccm_sid" || bad "B2 tmux-new 命令形状不符"
+echo "$CMD2T" | grep -q "^ccm --resume $SID2 -- --ccm-tmux=$S2 --ccm-sid=$SID2 " && ok "B2 tmux-new 是一行 ccm：建 $S2 并带身份标记" || bad "B2 tmux-new 命令形状不符"
 fire_resume "$CMD2T"
 if AL="$(wait_argv_resume "$ACCT_A" "$SID2" 12)"; then
   echo "   argv(A): $AL"
@@ -163,8 +166,8 @@ CMD3="$(drv into-existing "$SID3" "$S3" "$FAKE" "$ACCT_B")"
 echo "   cmd: $CMD3"
 # idle 复用是 send-keys 形态:整个载荷再被 posixQuote 包一层,内层 ' → '\''(故不按裸引号 grep);
 # 断言 export 前缀 + B 目录路径同时出现即可,真正的路由证据是下面 argv 落 B 目录。
-if echo "$CMD3" | grep -q "export CLAUDE_CONFIG_DIR=" && echo "$CMD3" | grep -qF "$ACCT_B"; then
-  ok "B3 pin 命令含 export CLAUDE_CONFIG_DIR + $ACCT_B"
+if echo "$CMD3" | grep -qF -- "--account-dir $ACCT_B"; then
+  ok "B3 pin 命令带账号 B 目录（--account-dir $ACCT_B）"
 else bad "B3 pin 命令缺 B 前缀"; fi
 fire_resume "$CMD3"
 if AL="$(wait_argv_resume "$ACCT_B" "$SID3" 12)"; then
@@ -180,7 +183,7 @@ SID4="$(cat /proc/sys/kernel/random/uuid)"; S4="cc-${SID4:0:8}"
 make_idle "$SID4" "$REMOTE_DIR" >/dev/null
 CMD4="$(drv into-existing "$SID4" "$S4" "$FAKE" -)"
 echo "   cmd: $CMD4"
-echo "$CMD4" | grep -q "unset CLAUDE_CONFIG_DIR;" && ok "B4 基座命令前置 unset CLAUDE_CONFIG_DIR(清空 shell 残留旧号,#75 复用变体逃生口)" || bad "B4 基座命令缺 unset CLAUDE_CONFIG_DIR"
+echo "$CMD4" | grep -qF -- " -- --base " && ok "B4 基座命令带 --base（ccm 清掉 shell 残留旧号,#75 复用变体逃生口）" || bad "B4 基座命令缺 --base"
 # #75 主因:不带 pin 时的跟随解析——lastAccount 无 → 当前工作账号 current(真源 resolveFollowAccount)。
 STATE_B4='{"accounts":[{"name":"work","email":"","configDir":"'"$ACCT_A"'","isDefault":true,"mode":"isolated","exists":true,"loggedIn":true,"authKind":"subscription","authReady":true}]}'
 FOL="$(drv follow - work "$STATE_B4")"

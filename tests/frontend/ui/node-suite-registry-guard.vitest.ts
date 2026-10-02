@@ -84,7 +84,7 @@ const NODE_SUITES: readonly (readonly [string, string, number])[] = [
   // **39 → 38**（被测对象没了）：`sanitizeRemoteLauncher` 一条 · `isValidConfigDir` 一条随函数删；
   //    加一条「launcher 空白 ⇒ 默认、注入字符原样上线」（前端只剩缺省那一格）；「非法 configDir 拒」那条改测「前端不判、原样上线」（条数不变）。
   // **38 → 37**：`isValidSessionId` 那条随函数删；三条「非法 sid ⇒ throw」改测「前端不判、resumeSid 单报」（条数不变）。
-  ["test:remote-launch", "tests/frontend/ui/remote-launch.test.ts", 28], // −6：TS 铸名口（`mintTmuxName` · `mintSessionTmuxName` · `deriveTmuxName`）随派生 ＋ 避让搬进后端，七条删、一条「请求逐字用传进来的名」留下（逐格归 `plan_tests.rs`） // −3：TS 两个 tmux 名谓词的三条逐格搬进 gate-core
+  ["test:remote-launch", "tests/frontend/ui/remote-launch.test.ts", 10], // 28 → 10：起会话只剩那一行 `ccm …`，请求形状收成每条路径一条（载荷 / 外层 / 嵌套 env 那几格随载荷渲染删了） // −6：TS 铸名口（`mintTmuxName` · `mintSessionTmuxName` · `deriveTmuxName`）随派生 ＋ 避让搬进后端，七条删、一条「请求逐字用传进来的名」留下（逐格归 `plan_tests.rs`） // −3：TS 两个 tmux 名谓词的三条逐格搬进 gate-core
   ["test:format", "tests/frontend/ui/format.test.ts", 11], // +1：basename 随老 SFTP 面板退役从 sftp/paths 搬进 format.ts，判据一起搬来
   ["test:history-cache", "tests/frontend/ui/views/history-cache.test.ts", 8],
   ["test:history-prefs", "tests/frontend/ui/views/history-prefs.test.ts", 18],
@@ -105,14 +105,8 @@ const NODE_SUITES: readonly (readonly [string, string, number])[] = [
   // 🔴 原先这里有 `["test:panorama-session-files", "tests/frontend/ui/panorama/session-files.test.ts", 7]`。
   // 写类工具那张表与它的口径搬进了后端（会话事实由后端出成品）⇒ 被测对象 `collectEditedFiles` 删了、套件整删
   // （**被测对象没了**，不是把测试删光了）；七条逐条搬进 `tests/backend/observe/facts_query_tests.rs::edit_tools_rules_moved_from_the_frontend_suite`。
-  // 🔴 **28 → 38**：启动期令牌那一族 +10
-  //    （形状闸逐格 · `""` 是坏数据不是「没有」· attach 不带 · cliFlags 恒 null ·
-  //     两条顺序不变量 · buildLaunchPlan 数组顺序 · renderFallback 逐字节 · applies 两态）。
-  // 🔴 **38 → 33**：`cliFlags` / `requiredCaps` 两格随 TS 渲染器从维度上删了
-  //    （−5：account 两条 · model 两条 · rbind-token 一条；identity 那条只删了 cliFlags 那一行断言）。
-  // 🔴 **33 → 32**：wrap 折叠那条（比的是 TS 兜底渲染器的字节）删了 —— 折叠只在 Rust，
-  //    由 `payload-golden.json`「wrap 折叠」钉着；另四条比字节的改比 `EnvOp` 序列（条数不变）。
-  ["test:launch-dimensions", "tests/frontend/ui/launch-dimensions.test.ts", 31], // −1：令牌形状闸逐格那条随 TS 副本删
+  // 🔴 原先这里有 `["test:launch-dimensions", "tests/frontend/ui/launch-dimensions.test.ts", 31]`。
+  // 维度表只为载荷渲染那条存在，起会话只剩那一行 `ccm …` ⇒ 维度表与套件整删（**被测对象没了**）。
   // 🔴 原先这里有 `["test:launch-render-cli", "tests/launch-render-cli.test.ts", 30]`。
   // TS 那份 `ccm …` 调用行渲染器删了 ⇒ 套件整删（**被测对象没了**）；它测的行为逐条由
   // Rust `ccm_invocation_tests.rs` 与入库夹具 `cli-golden.json` 接着（对照见）。
@@ -151,7 +145,9 @@ const NODE_SUITES: readonly (readonly [string, string, number])[] = [
 // ——attach 拒绝面 · F01 新建禁 glob · F04b 新建禁 `=`——原样搬进 `tests/common/gate-core/lib_tests.rs`）。删后现打 187 ⇒ 棘到现打值。
 // **187 → 181**，同上（**被测对象没了**）：`remote-launch.test.ts` −6（TS 铸名口删了；派生 · 避让 · 分叉基名的逐格
 // 归 Rust `tests/backend/control/ccm/plan_tests.rs` ＋ 帧那一格 `ccm_tests.rs`）。删后现打 181 ⇒ 棘到现打值。
-const TOTAL_FLOOR = 181;
+// **181 → 132**，同上（**被测对象没了**）：`launch-dimensions.test.ts` 整份删除（31 条，维度表随载荷渲染删了）·
+// `remote-launch.test.ts` 28 → 10（载荷 / 外层 / 嵌套 env 那几格随载荷渲染删了，每条路径的请求留一条）。删后现打 132 ⇒ 棘到现打值。
+const TOTAL_FLOOR = 132;
 
 /** 判定一条 npm 命令是不是「用 tsx 跑某个 `.test.ts`」。`tsx …` 与 `npx tsx …` 都算。 */
 const TSX_SUITE_CMD = /(^|\s)(npx\s+)?tsx\s+(--\S+\s+)*(\S+\.test\.ts)\s*$/;
