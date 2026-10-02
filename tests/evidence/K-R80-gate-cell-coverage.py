@@ -701,14 +701,14 @@ for suite, anchor in [
     # 令牌那两套—— 此前只被 shellcheck、不被执行。
     #   被测对象同是那个后端二进制（`ccm` 即 `cc-monitor-backend`），读法与上面四格一字不差。
     ("ccm tests/e2e/backend-rbind-token", "run_e2e backend-rbind-token   11"),
-    ("ccm tests/e2e/rbind-token-endtoend", "run_e2e rbind-token-endtoend   9"),
+    ("ccm tests/e2e/rbind-token-endtoend", "run_e2e rbind-token-endtoend  10"),
     # 后端的 cc-bus 基础命令（真跑 cc-bus 脚本 ＋ 隔离 tmux socket）—— 此前只挂在不通电的 `ci.yml` 上。
     ("ccm tests/e2e/backend-cc-bus", "run_e2e backend-cc-bus        97"),
     # 同样只挂在不通电的 `ci.yml` 上、各红了几天没人看见的那四套（gate2 · 本机后端监护 · 换号两套）。
     ("ccm tests/e2e/backend-gate2", "run_e2e backend-gate2         34 exact-with-skip"),
     ("ccm tests/e2e/local-backend", "run_e2e local-backend         24 exact-with-skip"),
     ("ccm tests/e2e/restart-frames", "run_e2e restart-frames         6"),
-    ("ccm tests/e2e/restart", "run_e2e restart               24"),
+    ("ccm tests/e2e/restart", "run_e2e restart               25"),
     # 〔MIG-1 续四〕#60 那一族的两套（迟到的 tmux server · sessions 重挂），同样只挂在不通电的 `ci.yml` 上。
     ("ccm tests/e2e/backend-tmux-late-server", "run_e2e backend-tmux-late-server 2"),
     ("ccm tests/e2e/backend-sessions-rewatch", "run_e2e backend-sessions-rewatch 5"),

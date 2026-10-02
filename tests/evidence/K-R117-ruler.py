@@ -184,10 +184,8 @@ CAP_ARCHIVE: "OrderedDict[str, tuple]" = OrderedDict([
     # 〔墓碑〕`creds.apikey` 随本机写 key 改由界面经通道直发后端 `apikey-key-set`（`apikey-reads.ts::writeApikeyKey`）、monitor 那条 Tauri 命令与 `apikey_remote` 写臂删了而退役；理由同上面几条墓碑。
     ("backend.lifecycle", (NA, "—", "起 / 停 / 列后端进程 —— 是**跑**它，不是**装**它")),
     ("backend.status", (NA, "—", "问后端活没活 —— 同上，不是查装态")),
-    # `relay.machine`（`relay_ensure`）退役，换成 `relay.launch-endpoint`：
-    ("relay.launch-endpoint", (NA, "—",
-                               "起会话前问「这一条要不要注入中转地址、注哪个」，远端用到才起那台的中转"
-                               "（`relay_endpoint_for_launch`）—— 是**跑**它、拼一条命令的前缀，不往用户环境里落任何东西")),
+    # 〔墓碑〕`relay.launch-endpoint` 随它唯一那条命令（读全量注入开关）退役：中转地址与开关都由起 agent 那台的 `ccm`
+    #   在最终 exec 那一处自己定 ⇒ 能力 id 已不在 `LEDGER` 里；理由同上面几条墓碑。
     ("comm.face-a.call", (NA, "—",
                           "通信层面 A 在 Tauri IPC 那一跳的命令（`chan_call`）—— 只搬不透明字节，"
                           "装什么、查什么装态都不是它的事")),
