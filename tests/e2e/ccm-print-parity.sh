@@ -38,7 +38,7 @@ CCM_NATIVE="${CARGO_TARGET_DIR:-$REPO/.build/backend}/debug/cc-monitor-backend"
   echo "::error::找不到原生入口 $CCM_NATIVE —— 先 \`cd src/backend && cargo build --bin cc-monitor-backend\`" >&2
   exit 2
 }
-BIN="$(mktemp -d)"; trap 'rm -rf "$BIN"' EXIT
+BIN="$(mktemp -d)"; NOHOME="$(mktemp -d)"; trap 'rm -rf "$BIN" "$NOHOME"' EXIT
 ln -s "$CCM_NATIVE" "$BIN/ccm"
 export PATH="$BIN:$PATH"
 
@@ -60,17 +60,13 @@ get_line() { echo "$TSV" | awk -F'\t' -v k="$1" '$1==k{print $2}'; }
 #     照它自己头注那条纪律（「不显式隔离，开发者本机状态就会污染测试断言」）：
 #     从前它靠「没有后端 ⇒ 走本地那条」把这个变量拿掉，今天靠**自带一份后端**拿掉。
 #
-#  ② `CCM_ACCTS_MANIFEST` 从 `/nonexistent` 换成 `/nonexistent/accounts.json`。
-#     语义**一个字没变**（都是「这台机器没有账号库」，那个目录照旧不存在），
-#     变的是**形态**：`shared/ccm` 现在要把它拆成 `--accts-dir <目录>` 发给后端，
-#     而裸 `/nonexistent` 拆不出目录 ⇒ 那是**调用方给错了环境变量**（`die`，码 2），
-#     与「后端不可达」（码 4）是两类。生产上这个值恒是 `<目录>/accounts.json`
-#     （`shared/ccm` 的默认值逐字如此）⇒ 换成带目录的形态**更贴生产**，不是迁就判据。
+#  ② `HOME` 换成一个空的临时目录：账号库跟着家目录走（`<家>/.cc-monitor/accounts/`），
+#     空家目录 = 「这台机器没有账号库」，开发者本机的账号库不会被注入断言。
 FAKE_BACKEND="$REPO/tests/e2e/fake-backend.sh"
 run_print() {
   env -u TMUX -u CLAUDE_CONFIG_DIR CCM_CONFIG=/nonexistent \
     CCM_BACKEND_BIN="$FAKE_BACKEND" \
-    CCM_ACCTS_MANIFEST=/nonexistent/accounts.json bash -c "$1 --ccm-print"
+    HOME="$NOHOME" bash -c "$1 --ccm-print"
 }
 
 echo

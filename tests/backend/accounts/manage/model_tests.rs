@@ -2,7 +2,7 @@
 use super::*;
 use serde_json::json;
 
-const DIR: &str = "/h/.claude-alt";
+const DIR: &str = "/h/.cc-monitor/accounts";
 
 fn acct(name: &str, default: bool) -> Account {
     Account {
@@ -16,13 +16,8 @@ fn acct(name: &str, default: bool) -> Account {
 }
 
 fn render(m: &Manifest) -> serde_json::Value {
-    serde_json::from_str(&m.render(
-        DIR,
-        "/h/.claude",
-        "zero@example.test",
-        "2026-01-01T00:00:00Z",
-    ))
-    .unwrap()
+    serde_json::from_str(&m.render("/h/.claude", "zero@example.test", "2026-01-01T00:00:00Z"))
+        .unwrap()
 }
 
 #[test]
@@ -31,9 +26,9 @@ fn render_writes_the_v1_shape_and_appends_account_zero() {
     assert_eq!(
         render(&m),
         json!({
-            "version": 1, "updatedAt": "2026-01-01T00:00:00Z", "sharedStore": "/h/.claude", "acctsDir": DIR,
+            "version": 1, "updatedAt": "2026-01-01T00:00:00Z", "sharedStore": "/h/.claude",
             "accounts": [
-                { "name": "z", "email": "", "configDir": "/h/.claude-alt/z", "isDefault": true, "mode": "isolated" },
+                { "name": "z", "email": "", "configDir": "/h/.cc-monitor/accounts/z", "isDefault": true, "mode": "isolated" },
                 { "name": "0", "email": "zero@example.test", "isDefault": false, "mode": "bare" }
             ]
         })
@@ -47,9 +42,9 @@ fn parse_keeps_unknown_keys_and_odd_entries_and_drops_account_zero() {
         json!({
             "version": 1, "sharedStore": "/h/.claude", "claudeVersionPinned": "2.1.0",
             "accounts": [
-                { "name": "z", "email": "a@x.test", "configDir": "/h/.claude-alt/z/", "isDefault": true, "mode": "isolated", "note": 1 },
-                { "name": "bad name", "configDir": "/h/.claude-alt/b" },
-                { "name": "k", "configDir": "/h/.claude-alt/k", "authKind": "api-key" },
+                { "name": "z", "email": "a@x.test", "configDir": "/h/.cc-monitor/accounts/z/", "isDefault": true, "mode": "isolated", "note": 1 },
+                { "name": "bad name", "configDir": "/h/.cc-monitor/accounts/b" },
+                { "name": "k", "configDir": "/h/.cc-monitor/accounts/k", "authKind": "api-key" },
                 { "name": "0", "email": "", "isDefault": false, "mode": "bare" }
             ]
         })
@@ -57,7 +52,7 @@ fn parse_keeps_unknown_keys_and_odd_entries_and_drops_account_zero() {
     let m = Manifest::parse(&text).unwrap();
     assert_eq!(m.entries.len(), 3);
     let z = m.find("z").unwrap();
-    assert_eq!(z.config_dir, "/h/.claude-alt/z");
+    assert_eq!(z.config_dir, "/h/.cc-monitor/accounts/z");
     assert_eq!(z.extra.get("note"), Some(&json!(1)));
     assert!(m.find("k").unwrap().is_api_key());
     assert!(m.name_taken("bad name"));
@@ -65,12 +60,12 @@ fn parse_keeps_unknown_keys_and_odd_entries_and_drops_account_zero() {
     assert_eq!(out["claudeVersionPinned"], "2.1.0");
     assert_eq!(
         out["accounts"][1],
-        json!({ "name": "bad name", "configDir": "/h/.claude-alt/b" })
+        json!({ "name": "bad name", "configDir": "/h/.cc-monitor/accounts/b" })
     );
     assert_eq!(out["accounts"][2]["authKind"], "api-key");
     assert_eq!(out["accounts"].as_array().unwrap().len(), 4);
     assert_eq!(
-        Manifest::parse(&m.render(DIR, "/h/.claude", "", "t"))
+        Manifest::parse(&m.render("/h/.claude", "", "t"))
             .unwrap()
             .entries,
         m.entries

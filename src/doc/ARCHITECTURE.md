@@ -80,7 +80,7 @@ cc-monitor 是 Claude Code 会话的**观察者和启动器**：`claude` 跑在�
 | 流量 | HTTP 请求本身（中转看得见的那一份） |
 | 起会话 · 控制 | 用户意图 |
 | 窗口绑定 · 拉前 | 启动期令牌（Windows 本机另有 `cc` 集成的 marker 握手） |
-| 账号 · 上游 | `~/.claude-alt/accounts.json` ＋ 每台机器一份 API 号凭据表 |
+| 账号 · 上游 | `~/.cc-monitor/accounts/accounts.json` ＋ 每台机器一份 API 号凭据表 |
 | 配置 | 各自的配置文件（monitor 的 `config.json` · 每台后端的 `backend.json`） |
 
 ### 1.4 界面对后端只有两个动作

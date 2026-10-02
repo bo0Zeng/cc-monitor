@@ -305,15 +305,14 @@ fails=()
 #   · tmux 窗格：`TMUX` `TMUX_PANE`
 #   · Claude Code 会话：`CLAUDECODE` `CLAUDE_CONFIG_DIR`，以及 `CLAUDE_CODE_` 打头的整族（按前缀现取）
 #   · 上游与中转：`ANTHROPIC_BASE_URL` `ANTHROPIC_MODEL` `ANTHROPIC_API_KEY` `ANTHROPIC_AUTH_TOKEN`
-#   · cc-monitor 起会话时注入的：`CCM_RBIND_TOKEN` `CCM_LAUNCH_ID` `CCM_CLAUDEJSON` `CCM_CODEXTOML`，
-#     与指向本机账号清单的 `CCM_ACCTS_MANIFEST`
+#   · cc-monitor 起会话时注入的：`CCM_RBIND_TOKEN` `CCM_LAUNCH_ID` `CCM_CLAUDEJSON` `CCM_CODEXTOML`
 #   · cc-bus 身份：`CC_BUS_ID` `CC_BUS_HOME`
 # ⚠ 要这些变量的测试一律自己设（e2e 各自的 `base_env`、Rust 判据里的 `Command::env`），不靠继承；
 #   `CCM_PWSH` 这类「开发者显式打开一组测试」的开关不在名单里，刻意不摘。只印名字，不印值（里面有令牌）。
 gate_scrubbed=()
 for gate_v in TMUX TMUX_PANE CLAUDECODE CLAUDE_CONFIG_DIR \
               ANTHROPIC_BASE_URL ANTHROPIC_MODEL ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN \
-              CCM_RBIND_TOKEN CCM_LAUNCH_ID CCM_CLAUDEJSON CCM_CODEXTOML CCM_ACCTS_MANIFEST \
+              CCM_RBIND_TOKEN CCM_LAUNCH_ID CCM_CLAUDEJSON CCM_CODEXTOML \
               CC_BUS_ID CC_BUS_HOME $(compgen -e | grep -E '^CLAUDE_CODE_' || true); do
   if [ -n "${!gate_v+x}" ]; then
     gate_scrubbed+=("$gate_v")
@@ -1996,7 +1995,8 @@ run_e2e ccm-rbind-title  8
 # ⚠ **新增判据落在别处，不在这四格里**：backend 那格 676 → 677（容器路三条转发那条）。
 # 46 → 48：新增两格「设了 CCM_SELF 也不被读」＋ 正控（后端只认 self_invocation）。
 # 〔V138 / V142–〕48 → 53：`--cwd ../x` 补绝对 · `new` 保留 · 位置词 `attach` 交 claude · `--ccm-tmux` / `--ccm-agent` 让名 · 启动器拆词各一格（现打 53）。
-run_e2e ccm-cli               58
+# 58 → 70：账号库住进 `~/.cc-monitor/accounts/` 那一组 12 格（临时家目录里建库 → 起会话 → 列账号；旧位置的清单不读不写）。
+run_e2e ccm-cli               70
 # 🔴 39 → **42**：C 组加了三格（`capabilities=` 声明
 #    `base-url-across-tmux` · 容器载荷真带 `export ANTHROPIC_BASE_URL=` · 反空真）。
 #    判法是 `exact` ⇒ 这个数不改，涨了照样红。**同一拍要改三处**（本行 + `ci.yml` 的

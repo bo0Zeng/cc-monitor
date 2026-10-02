@@ -24,13 +24,13 @@ static LIVE: Mutex<Option<Live>> = Mutex::new(None);
 /// 这个路径的最后一段是不是值得同步一趟的那两个名字之一。
 fn relevant(p: &std::path::Path) -> bool {
     p.file_name().and_then(|n| n.to_str()).is_some_and(|n| {
-        n == super::layout::identity_config_file() || n == acct_core::MANIFEST_NAME
+        n == super::layout::identity_config_file() || n == super::scan::MANIFEST_FILE
     })
 }
 
 /// 此刻该盯的目录：账号库目录 ＋ 清单里每个号的目录（在的那几个）。
 fn wanted(home: &str) -> Vec<PathBuf> {
-    let accts = super::scan::join(home, acct_core::ACCTS_DIR_NAME);
+    let accts = super::scan::accts_root(home);
     let mut out = vec![PathBuf::from(&accts)];
     if let Ok(Some(list)) = super::mcp_share_exec::accounts_in(home) {
         out.extend(list.into_iter().map(|(_, dir)| PathBuf::from(dir)));

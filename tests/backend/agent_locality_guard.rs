@@ -172,14 +172,7 @@ mod tests {
              cc-bus 恰好装在那个目录下而已。`cc_bus_boundary_guard` 的头注逐字写着这条分界：\
              「允许**命令的地址**，禁**数据布局**」。同 `S1` 的 `@ccm_sid`、`S2` 的 `sessions/` 那一族。",
         ),
-        (
-            "control/ccm/argv.rs",
-            ".claude",
-            "这是**账号库**的门牌号（`~/.claude-alt/accounts.json`），\
-             不是 Claude 的目录布局 —— `agents/claudecode/accounts.rs` 的头注写着\
-             账号清单（manifest）与配置目录白名单不在它那里，那是账号库的格式。同上一条（允许**库的地址**，禁**数据布局**）：\
-             这里只有一个路径，账号对象的形状由 `serde` 的字段名说了算，不在这张针底下。",
-        ),
+        // `control/ccm/argv.rs` 那一条摘了：账号库的门牌号搬进后端的家（契约 crate 的 `ACCOUNTS_DIR_REL`），那里不再有 `.claude` 字样。
         (
             "observe/tmux_list.rs",
             "\"sessions\"",
@@ -589,7 +582,7 @@ mod tests {
             );
         }
         for good in [
-            "let m = under_home(&home, \".claude-alt/accounts.json\");",
+            "let m = under_home(&home, \".cc-monitor/accounts/accounts.json\");",
             "if face.is_some_and(|f| f.needs_bus_id) {}",
         ] {
             assert!(

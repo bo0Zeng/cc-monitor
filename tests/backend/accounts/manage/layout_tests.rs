@@ -29,14 +29,14 @@ fn dir(mode: u32, entries: &[(&str, Item)]) -> DirState {
 
 /// `/h` 家；共享库有 skills · settings.json · accounts（排除）· x.bak（排除）；清单里一个号 z。
 fn snap(z: DirState) -> Snapshot {
-    let text = r#"{"version":1,"sharedStore":"/h/.claude","accounts":[{"name":"z","email":"","configDir":"/h/.claude-alt/z","isDefault":true}]}"#;
+    let text = r#"{"version":1,"sharedStore":"/h/.claude","accounts":[{"name":"z","email":"","configDir":"/h/.cc-monitor/accounts/z","isDefault":true}]}"#;
     let mut dirs = BTreeMap::new();
-    dirs.insert("/h/.claude-alt/z".to_string(), z);
+    dirs.insert("/h/.cc-monitor/accounts/z".to_string(), z);
     Snapshot {
         roots: Some(Roots {
             home: "/h".into(),
             shared: "/h/.claude".into(),
-            accts: "/h/.claude-alt".into(),
+            accts: "/h/.cc-monitor/accounts".into(),
         }),
         manifest_text: Some(text.into()),
         manifest: Some(Manifest::parse(text)),
@@ -91,13 +91,13 @@ fn repair_plans_exactly_the_fixes() {
         ],
     );
     let p = plan_repair(&snap(broken)).unwrap();
-    let z = |n: &str| format!("/h/.claude-alt/z/{n}");
+    let z = |n: &str| format!("/h/.cc-monitor/accounts/z/{n}");
     assert_eq!(
         p.ops,
         vec![
             Op::Chmod {
                 mode: 0o700,
-                at: "/h/.claude-alt/z".into()
+                at: "/h/.cc-monitor/accounts/z".into()
             },
             Op::Chmod {
                 mode: 0o600,
@@ -127,7 +127,10 @@ fn add_plans_dir_links_and_manifest_and_refuses_duplicates() {
         make_default: false,
     };
     let p = plan_add(&s, &want).unwrap();
-    assert_eq!(p.ops.first(), Some(&Op::MkDir("/h/.claude-alt/b".into())));
+    assert_eq!(
+        p.ops.first(),
+        Some(&Op::MkDir("/h/.cc-monitor/accounts/b".into()))
+    );
     assert_eq!(p.ops.last(), Some(&Op::WriteManifest));
     let m = p.manifest.unwrap();
     assert_eq!(m.find("b").unwrap().auth_kind.as_deref(), Some("api-key"));

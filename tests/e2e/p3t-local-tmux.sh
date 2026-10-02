@@ -87,18 +87,20 @@ export PATH="$BIN:$PATH"
 # 这里从前 `export CCM_SELF="$BIN/ccm"`：那个环境变量删了——
 # 经 `$BIN/ccm` 这条软链进来，`argv[0]` 本来就是它（入口①），内层载荷取的就是这个名字。
 # ⚠ 下面那份 `$TMP/ccm-config` **原生实现不读**（旧版是 source 一段 bash，
-#   没有等价物；它发现那个文件在会往 stderr 说一句然后照常跑）⇒ 那两个值改走环境变量。
+#   没有等价物；它发现那个文件在会往 stderr 说一句然后照常跑）⇒ 那个值改走环境变量。
 #   留着 `CCM_CONFIG` 指过去是有意的：它同时验「发现它存在会出声」这条行为没丢。
-# 隔离账号库 / 工作区 / 预信任写入点，绝不碰用户真实文件（同 ccm-acceptance.sh 的手法）
-ACCTS="$TMP/accts"; mkdir -p "$ACCTS/z"
+# 隔离账号库 / 工作区 / 预信任写入点，绝不碰用户真实文件：账号库跟着家目录走 ⇒ 家目录换成临时目录。
+# 工具链的位置先钉住（下面要 `cargo test` 取渲染器输出；它们默认跟着家目录走，换了家就找不到工具链）。
+export CARGO_HOME="${CARGO_HOME:-$HOME/.cargo}" RUSTUP_HOME="${RUSTUP_HOME:-$HOME/.rustup}"
+export HOME="$TMP/home"
+ACCTS="$HOME/.cc-monitor/accounts"; mkdir -p "$ACCTS/z"
 cat > "$ACCTS/accounts.json" <<JSON
 { "version": 1, "accounts": [
   { "name": "z", "configDir": "$ACCTS/z", "isDefault": true, "mode": "isolated" } ] }
 JSON
-printf 'CCM_ACCTS_MANIFEST=%s\nCCM_WORKSPACE=%s\n' "$ACCTS/accounts.json" "$TMP/ws" > "$TMP/ccm-config"
+printf 'CCM_WORKSPACE=%s\n' "$TMP/ws" > "$TMP/ccm-config"
 mkdir -p "$TMP/ws" "$TMP/proj"
 export CCM_CONFIG="$TMP/ccm-config"
-export CCM_ACCTS_MANIFEST="$ACCTS/accounts.json"
 export CCM_WORKSPACE="$TMP/ws"
 export CCM_CLAUDEJSON="$TMP/claude.json" CCM_CODEXTOML="$TMP/config.toml"
 export CLAUDE_CONFIG_DIR="$TMP/fakehome"

@@ -682,10 +682,7 @@ fn the_alias_preview_is_the_same_plan_as_ccm_print() {
         let e = Env {
             home: home.clone(),
             pwd: home.clone(),
-            accts_manifest: pick(
-                "CCM_ACCTS_MANIFEST",
-                format!("{home}/{}", argv::Defaults::ACCTS_MANIFEST_REL),
-            ),
+            accts_manifest: plan::accts_manifest_under(&home),
             ccm_env: pick("CCM_ENV", argv::Defaults::ENV.to_string()),
             account_env: crate::agents::account_env_of(&o.agent)
                 .unwrap_or_default()
