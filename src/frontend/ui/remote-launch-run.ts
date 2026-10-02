@@ -8,14 +8,12 @@
  * 失败回退：复制命令 ＋ 提示（开不了终端窗口时用户仍拿得到可粘贴的那一行，功能永不变砖）。
  */
 // 本机 origin（`"<local>"`，与 Rust `inbound_client::LOCAL_ORIGIN` 逐字节相同、有跨语言判据钉着）。
-import { LOCAL_ORIGIN } from "./backend-policy";
 import { openTerminal } from "./terminal-open";
 // 「是不是本机」只经 `ipc/origin.ts` 判。
 import { isLocalOrigin } from "./ipc/origin";
 import {
   planResumeDirect,
   planResumeTmux,
-  planResumeIntoExistingTmux,
   planLauncher,
   planAttach,
 } from "./launch-requests";
@@ -23,11 +21,8 @@ import type { LaunchContext, LaunchModifiers } from "./launch-types";
 // 令牌的字母表与长度只有一份（共享 crate 那两个常量），这里读它现生成的那份、按它**造**。
 import { RBIND_TOKEN_ALPHABET, RBIND_TOKEN_LEN } from "./generated/judgment-rules";
 import type { CliRenderRequest } from "./launch-cli-wire.ts";
-import { isRefusal, planLocalLaunch, renderCli } from "./launch-render";
-import { saidOfControl } from "./control-said";
+import { renderCli } from "./launch-render";
 import { showActionFailureToast } from "./error-toast";
-import { sendInto, type SendIntoOutcome } from "./tmux-control";
-import { offerResyncRetry } from "./resync";
 import { AGENT_PROFILE } from "./agent-profile";
 // 起新会话的名字只从一个家取：`tmux-name-mint.ts`（列名单 ＋ 铸名 ＋ 「列不出 ⇒ 不起」）。
 import { mintFreshTmuxName, refuseUnmintable } from "./tmux-name-mint";
@@ -248,27 +243,6 @@ async function resumeDirectCore(
   }, token, { kind: wait, match: { sid }, tmuxName: null });
 }
 
-/** F52：tmux 版 resume——在远端 tmux 会话 `<sid8>-cc` 里幂等 resume Claude;失败回退复制命令。
- *
- *  @returns 是否**真的把终端拉起来了**。false = 命令构造失败 / 开终端（`openTerminal`）失败
- *  （此时已走剪贴板回退，需用户手动粘贴）。
- *  account-ux Phase G 审计:此前返回 void 且两条失败路径都自己吞掉,于是 `restartWithAccount`
- *  把"走到了第⑤步"当成"已 resume"——会话被 kill、没起来,却照样记 pin、照样弹「已用新账号重启」、
- *  照样 return true,批量对齐还把它计成成功。而失败是**确定性**的（如 F34 launcher 含双引号被
- *  launch.rs 拒、tmux 名不合白名单、缺 OpenSSH），不是概率事件。 */
-export async function runRemoteResumeTmux(
-  origin: string,
-  sid: string,
-  cwd: string,
-  launcher: string,
-  // F13：`name` 改必填（原为 `name?`）。生产三个调用点本来都传，但类型允许省略 ——
-  // 而省略就意味着走一个**不做撞名避让**的默认值。让 `tsc` 把「碰巧没人省略」变成「不可能省略」。
-  name: string,
-  mods: LaunchModifiers = {}, // 正交修饰（configDir/accountName/modelOverride/rbindToken），见 launch-types.ts
-): Promise<boolean> {
-  return sent(await resumeTmuxCore(origin, sid, cwd, launcher, name, mods, "expect"));
-}
-
 /** 同 [`runRemoteResumeTmux`]，但等那台报出会话 ⇒ 交回「等到了没有」（换号重启 · 分叉据它才说成了、才记账）。 */
 export async function runRemoteResumeTmuxAndWait(
   origin: string,
@@ -306,148 +280,6 @@ async function resumeTmuxCore(
     failureCopied: copyText("remoteLaunchRun.resumeTmux.failedCopied"),
     failureNotCopied: copyText("remoteLaunchRun.copyFallback.failedManual"),
   }, token, { kind: wait, match: { sid }, tmuxName: name });
-}
-
-/**
- * 就地 resume 的键入那一半交给那台后端（`launch{mode:"send-into"}`）：键进那个 pane 的是**直路**那一行 `ccm …`
- * （pane 里已经有 shell，不再建容器）。三态：`typed` = 真的键入了 ⇒ 终端只需接进去；
- * `fallback` = **能证明什么都没发出去** ⇒ 可以照整串（外层包一层 tmux）走；`refused` = 后端说过话了 / 拿不准执行没有 ⇒ **绝不许回落**
- * （回落那条整串没有身份门：把「被门拒」或「已键入但应答超时」重做一遍，会把那一行第二次提交给正在跑的 agent）。
- * 「能不能回落」的判定住 `ipc/chan-caller.ts::provablyNotSent`（`tmux-control.ts::sendInto` 调它）。
- */
-async function sendIntoViaBackend(origin: string, name: string, ctx: LaunchContext): Promise<SendIntoOutcome> {
-  let line: string;
-  try {
-    line = await renderLaunchCommand(origin, { ...ctx, container: { kind: "none" } });
-  } catch (e) {
-    // 拒了 ⇒ 坏输入，重做只会被同一道闸再拒一次（不回落）；不是拒 ⇒ 还没到后端那一跳 ⇒ 可以回落。
-    const raw = saidOfControl(e);
-    if (isRefusal(e)) return { verdict: "refused", reason: raw };
-    return { verdict: "fallback", reason: raw };
-  }
-  const sent = await sendInto(origin, name, line);
-  if (sent.verdict === "fallback") console.debug(`[send-into] 回落到整串（证明没发出去）：${sent.reason}`);
-  if (sent.verdict === "refused") console.debug(`[send-into] 被拒，**不回落**：${sent.reason}`);
-  return sent;
-}
-
-/** 往一个**已存在的空 tmux**（agent 已退、只剩交互 shell 的那个会话）就地 resume：键入那一行 ＋ 接进去，复用原会话名（不产孤儿）。
- *  true = 真拉起来了；false = 构造失败 / 拉起失败（已回退剪贴板）/ 被拒。 */
-export async function runRemoteResumeIntoExistingTmux(
-  origin: string,
-  sid: string,
-  name: string,
-  launcher: string,
-  mods: LaunchModifiers = {}, // 正交修饰（configDir/accountName/modelOverride/rbindToken），见 launch-types.ts
-): Promise<boolean> {
-  let cmd: string;
-  let viaBackend = false;
-  let token: string | null;
-  try {
-    const ctx = planResumeIntoExistingTmux(sid, name, launcher, withMintedRbindToken(mods));
-    // 两条出路都用这一个令牌：`typed` 那条开的窗口只跑接回，接上的正是刚被键入、环境里带着它的那个 agent。
-    token = ctx.rbindToken ?? null;
-    // 先让那台后端键入（`send-keys` 归那台，接回必须留在用户自己的终端）；证明没发出去 ⇒ 照整串走。
-    const sent = await sendIntoViaBackend(origin, name, ctx);
-    if (sent.verdict === "refused") {
-      // 不许回落（理由见 `sendIntoViaBackend` 头注）⇒ 就地失败，并且要让用户看见。
-      // 关卡 2 拒的 ⇒ 提示带「对齐后重试」（与结束会话那颗同一个动作）。
-      const said = sent.reason ?? copyText("remoteLaunchRun.inPlace.refusedUnsure");
-      if (sent.gate2) {
-        offerResyncRetry(origin, sid, copyText("remoteLaunchRun.inPlace.notRun"), said, async () => {
-          await runRemoteResumeIntoExistingTmux(origin, sid, name, launcher, mods);
-        });
-      } else {
-        showActionFailureToast(copyText("remoteLaunchRun.inPlace.notRun"), said);
-      }
-      return false;
-    }
-    if (sent.verdict === "typed") {
-      // 载荷已经键进那个 pane ⇒ 从这一刻起等那台报出它（接终端的窗口开不开得了不改变这件事）。
-      expectArrival({
-        origin,
-        match: { sid },
-        tmuxName: name,
-        arrived: { title: copyText("remoteLaunchRun.inPlace.done"), body: arrivedBody(origin) },
-      });
-      cmd = await renderLaunchCommand(origin, planAttach(name));
-      viaBackend = true;
-    } else {
-      cmd = await renderLaunchCommand(origin, ctx);
-    }
-  } catch (err) {
-    showActionFailureToast(copyText("remoteLaunchRun.inPlace.buildFailed"), String(err));
-    return false;
-  }
-  return sent(await invokeLaunchOrCopyFallback(origin, cmd, {
-    success: copyText("remoteLaunchRun.inPlace.done"),
-    failureCopied: copyText("remoteLaunchRun.inPlace.failedCopied"),
-    failureNotCopied: copyText("remoteLaunchRun.copyFallback.failedManual"),
-  }, token, viaBackend ? { kind: "silent" } : { kind: "expect", match: { sid }, tmuxName: name }));
-}
-
-/**
- * **本机**就地 resume —— 往一个已存在的空 tmux 键入那一行，不新建会话（不复用就会产 `<名>-2` 孤儿）。
- * 与远端那条共用 `planResumeIntoExistingTmux` ＋ `sendIntoViaBackend`；差别只有两处：
- * ① 本机没有回落那条路（造一条就是「给本地单写一套控制逻辑」）⇒ 不是 `typed` 就诚实失败；
- * ② 接回那一句也问本机后端（`launch-local` 的 attach 那一格），Linux 上不开终端窗口 ⇒ 交给用户自己跑。
- */
-export async function runLocalResumeIntoExistingTmux(
-  sid: string,
-  name: string,
-  launcher: string,
-  mods: LaunchModifiers = {},
-): Promise<boolean> {
-  let ctx: LaunchContext;
-  try {
-    ctx = planResumeIntoExistingTmux(sid, name, launcher, withMintedRbindToken(mods));
-  } catch (err) {
-    showActionFailureToast(copyText("remoteLaunchRun.inPlace.buildFailed"), String(err));
-    return false;
-  }
-  const sent = await sendIntoViaBackend(LOCAL_ORIGIN, name, ctx);
-  if (sent.verdict !== "typed") {
-    // `fallback` 与 `refused` 在本机是**同一种处置** —— 见头注：本机没有第二条路，
-    // 而造一条就是 `C1` 排除的那件事。两者的 `reason` 都原样交给用户。
-    const said = sent.reason ?? copyText("remoteLaunchRun.inPlaceLocal.noBackend");
-    // 关卡 2 拒的 ⇒ 提示带「对齐后重试」。
-    if (sent.verdict === "refused" && sent.gate2) {
-      offerResyncRetry(LOCAL_ORIGIN, sid, copyText("remoteLaunchRun.inPlace.notRun"), said, async () => {
-        await runLocalResumeIntoExistingTmux(sid, name, launcher, mods);
-      });
-    } else {
-      showActionFailureToast(copyText("remoteLaunchRun.inPlace.notRun"), said);
-    }
-    return false;
-  }
-  // 载荷已经键进那个 pane ⇒ 从这一刻起等本机后端报出它。
-  expectArrival({
-    origin: LOCAL_ORIGIN,
-    match: { sid },
-    tmuxName: name,
-    arrived: { title: copyText("remoteLaunchRun.inPlaceLocal.done"), body: arrivedBody(LOCAL_ORIGIN) },
-  });
-  // 接回那一句也问本机后端（`ccm -- --attach <名>`）；开窗那一跳与远端共用（Windows 开 PowerShell 窗口，Linux 复制给用户）。
-  // 渲不出来就诚实失败，不在前端自己拼一条。
-  let attachCmd: string;
-  try {
-    attachCmd = (await planLocalLaunch({ action: { kind: "attach" }, cwd: null, launcher: null, tmuxName: name })).cmd;
-  } catch (err) {
-    showActionFailureToast(
-      copyText("remoteLaunchRun.inPlaceLocal.attachFailed"),
-      copyText("remoteLaunchRun.inPlaceLocal.attachFailedBody", { err: String(err) }),
-    );
-    // ★ 与下面那条同一个道理：**就地 resume 已经成了**，attach 这一跳的成败不改变它。
-    return true;
-  }
-  await invokeLaunchOrCopyFallback(LOCAL_ORIGIN, attachCmd, {
-    success: copyText("remoteLaunchRun.inPlaceLocal.done"),
-    failureCopied: copyText("remoteLaunchRun.inPlaceLocal.copied"),
-    failureNotCopied: copyText("remoteLaunchRun.inPlaceLocal.manual"),
-  }, ctx.rbindToken ?? null, { kind: "silent" });
-  // ★ 就地 resume 本身已经成了（`typed`）——**attach 开不开得了窗口不改变这个结论**。
-  //   返回 `false` 会让调用方以为这次 resume 没做成，那是把两件事混成一件。
-  return true;
 }
 
 /**

@@ -85,6 +85,7 @@ pub(crate) mod launch;
 pub mod launch_render;
 pub mod resident;
 pub mod resolve_query;
+pub(crate) mod session_batch;
 pub mod tmux_hook;
 // 传输台住本机常驻后端（第三层成员：本机下载落点的写 · 票表 · 进度帧）。
 pub mod transfer;

@@ -54,6 +54,8 @@ export {
 } from "./tab-drop";
 export type { DropTarget, GroupMove, TabRect } from "./tab-drop";
 import { TabMenu } from "./tab-menu";
+import { TabSelection } from "./tab-selection";
+import { openBatchMenu, type TabBatchHost } from "./tab-batch-menu";
 import { TabStore, type ActiveView } from "./tab-store";
 import { appStore, type Slice } from "./app-store";
 import { TabStreamView } from "./tab-stream-view";
@@ -74,22 +76,6 @@ import {
   forgetSession,
 } from "./tab-session-actions";
 
-import {
-  findClaudeTmuxMatches,
-  findClaudeTmux,
-  findIdleTmux,
-  isCwdFallbackMatch,
-  type TmuxSession,
-} from "./tmux-sessions";
-// G6：tmux↔sid 判据搬进叶子模块 `tmux-sessions.ts`（`fork-flow.ts` 也要用，而它被本文件
-// import ⇒ 留在这里会成环）。**原样 re-export**，既有 import 面零改动。
-export {
-  findClaudeTmuxMatches,
-  findClaudeTmux,
-  findIdleTmux,
-  isCwdFallbackMatch,
-};
-export type { TmuxSession };
 
 export class TabManager {
   /**
@@ -146,9 +132,11 @@ export class TabManager {
       bringRemoteTerminalToFront: (sid) => bringRemoteTerminalToFront(sid),
       closeTab: (sid) => this.closeTab(sid),
       switchTo: (sid) => this.switchTo(sid),
+      pick: (sid, how) => this.pick(sid, how),
+      isSelected: (sid) => this.selection.has(sid),
       beginDrag: (e, sid, root) => this.dragger.begin(e, sid, root),
       takeSuppressedClick: (sid) => this.dragger.takeSuppressedClick(sid),
-      openMenu: (e, sid) => this.menu.open(e, sid),
+      openMenu: (e, sid) => this.openMenu(e, sid),
       rereadAll: () => this.rereadAll(),
     });
     this.dragger = new TabBarDrag(this.store, this.prefs, barEl, this.bar.tabButtons, {
@@ -263,6 +251,58 @@ export class TabManager {
     },
     this.actions,
   );
+
+  /** tab 栏的多选（纯界面状态，`tab-selection.ts`）。选中集合一变就重画（`.selected`）。 */
+  private readonly selection = new TabSelection(() => this.refreshTabBar());
+
+  /** 点 tab 按钮时的多选：单击清多选 · Ctrl 加减 · Shift 按条上看得到的顺序连选 · 点空白清掉。 */
+  private pick(sid: string | null, how: "plain" | "toggle" | "range" | "clear"): void {
+    const had = this.selection.size;
+    if (how === "clear" || sid === null) this.selection.clear();
+    else if (how === "plain") this.selection.plain(sid);
+    else if (how === "toggle") this.selection.toggle(sid, this.store.activeId);
+    else this.selection.range(sid, this.bar.visibleOrder(), this.store.activeId);
+    // 单击且本来就没有多选 ⇒ 什么都没变，不白刷一遍（切 tab 那一刷随后自己来）。
+    if (had > 0 || this.selection.size > 0) this.refreshTabBar();
+  }
+
+  /** 右键一个选中的 tab（多选 ≥ 2）⇒ 批量菜单；右键一个没选中的 ⇒ 清掉多选，照旧单个菜单。 */
+  private openMenu(e: MouseEvent, sid: string): void {
+    if (this.selection.size >= 2 && this.selection.has(sid)) {
+      openBatchMenu(e, this.selection.inOrder(this.bar.visibleOrder()), this.batchHost);
+      return;
+    }
+    if (!this.selection.has(sid) && this.selection.size > 0) {
+      this.selection.clear();
+      this.refreshTabBar();
+    }
+    this.menu.open(e, sid);
+  }
+
+  /** 批量菜单里只经 monitor 的那几项：每一个同单个那一项（固定 · 集合 · ×），落盘各一次。 */
+  private readonly batchHost: TabBatchHost = {
+    tab: (sid) => this.store.tabs.get(sid),
+    collectionsLoaded: () => this.prefs.collectionsLoaded,
+    collections: () => this.prefs.collections,
+    pinnedLoaded: () => this.prefs.pinnedLoaded,
+    setPinned: (sids, on) => this.prefs.setPinnedMany(sids, on),
+    joinGroup: (sids, gid) => {
+      void this.prefs.joinGroupMany(sids, gid);
+      this.refreshTabBar();
+    },
+    foundGroup: (sids, name, id) => {
+      const why = this.prefs.foundGroup(sids, name, id);
+      this.refreshTabBar();
+      return why;
+    },
+    leaveGroup: (sids) => {
+      void this.prefs.leaveGroupMany(sids);
+      this.refreshTabBar();
+    },
+    closeTabs: (sids) => {
+      for (const sid of sids) this.closeTab(sid);
+    },
+  };
 
   private openTabCwd(sid: string): Promise<void> {
     return this.actions.openTabCwd(sid);
@@ -1329,6 +1369,8 @@ export class TabManager {
     // 那一段也为真，那段本来就该照常刷新（它与点击没有区别）。
     // ⚠ 不是丢掉这次刷新：记一笔脏，`teardownDrag` 收尾时补一次（见那里）。
     if (this.dragger.deferRefresh()) return;
+    // tab 没了就从多选里掉出去（与整刷删按钮同一拍）。
+    this.selection.retain((sid) => this.store.tabs.has(sid));
     this.bar.refresh();
   }
 

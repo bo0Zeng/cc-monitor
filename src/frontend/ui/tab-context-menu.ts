@@ -39,6 +39,11 @@ let tabMenuGeneration = 0;
 export function menuGeneration(): number {
   return tabMenuGeneration;
 }
+
+/** 菜单此刻开着没有（一次 Esc 只关最上面那一层：tab 栏多选那一层见菜单开着就让给它）。 */
+export function tabContextMenuOpen(): boolean {
+  return activeTabMenu !== null;
+}
 /** F09 Phase D 审计（后端架构，重要）：本代菜单存活期间所有 submenu 的展开/收起定时器——
  *  `closeTabContextMenu` 统一清空，防止用户点外部/Esc 关掉整个菜单后，某个 pending 定时器
  *  仍在 150-250ms 后对已从文档树摘除的 wrap 执行 `classList` 操作（功能上是良性 no-op，

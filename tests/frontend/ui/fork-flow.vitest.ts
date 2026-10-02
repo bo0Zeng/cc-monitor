@@ -36,29 +36,14 @@ import { showActionFailureToast } from "../../../src/frontend/ui/error-toast";
 import { deriveForkSource, runForkFlow } from "../../../src/frontend/ui/fork-flow";
 import { askForkLaunch } from "../../../src/frontend/ui/fork-ask";
 import type { SessionAccount } from "../../../src/frontend/ui/accounts";
+import type { Standing } from "../../../src/frontend/ui/tmux-sessions";
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
 import { isChanCall, launchRenderShim, linesReply, localLaunchCalls } from "../../test-support/chan-fake";
 import { copyTableTextsIn } from "../../test-support/copy-refs.ts";
 
-type TmuxRow = {
-  name: string;
-  path: string;
-  command: string;
-  attached: boolean;
-  windows: number;
-  sid: string | null;
-  agent: boolean;
-};
-// `agent` 那一格是那台后端判的（Claude 是 `claude` / `node`）；夹具照那条规则手写。
-const T = (name: string, sid: string | null, command = "claude"): TmuxRow => ({
-  name,
-  path: "/p",
-  command,
-  attached: false,
-  windows: 1,
-  sid,
-  agent: command === "claude" || command === "node",
-});
+/** 那台答的样子（`sessions-tmux`）。 */
+const RUN = (name: string): Standing => ({ kind: "running", names: [name] });
+const NONE: Standing = { kind: "none", names: [] };
 const A = (sessionId: string, configDir: string | null, alive = true): SessionAccount => ({
   pid: 1,
   sessionId,
@@ -71,7 +56,7 @@ const A = (sessionId: string, configDir: string | null, alive = true): SessionAc
 
 describe("deriveForkSource", () => {
   it("两个信号都在 → 活着、账号已知、tmux 名已知", () => {
-    const f = deriveForkSource([A("s1", "/acct/z")], [T("p-cc", "s1")], "s1", "/p");
+    const f = deriveForkSource([A("s1", "/acct/z")], RUN("p-cc"), "s1", "/p");
     expect(f.source.sourceIsLive).toBe(true);
     expect(f.source.liveConfigDir).toBe("/acct/z");
     expect(f.source.liveTmuxName).toBe("p-cc");
@@ -84,7 +69,7 @@ describe("deriveForkSource", () => {
    * 落成 `null` 就等于宣称「确认是账号 0」—— 分叉会静默起在账号 0 上。
    */
   it("★★ tmux 里找到了但账号查不到 → 账号是 undefined，**不是 null**", () => {
-    const f = deriveForkSource([], [T("p-cc", "s1")], "s1", "/p");
+    const f = deriveForkSource([], RUN("p-cc"), "s1", "/p");
     expect(f.source.sourceIsLive, "tmux 命中即证明它活着").toBe(true);
     expect(
       f.source.liveConfigDir,
@@ -93,25 +78,25 @@ describe("deriveForkSource", () => {
   });
 
   it("账号确实是账号 0（pidfile 说 configDir=null）→ 落 null（这次是真的知道）", () => {
-    const f = deriveForkSource([A("s1", null)], [T("p-cc", "s1")], "s1", "/p");
+    const f = deriveForkSource([A("s1", null)], RUN("p-cc"), "s1", "/p");
     expect(f.source.liveConfigDir).toBeNull();
   });
 
   it("★ pidfile 说该会话已死 → 那行不算数（`alive:false` 不能当活的用）", () => {
-    const f = deriveForkSource([A("s1", "/acct/z", false)], [], "s1", "/p");
+    const f = deriveForkSource([A("s1", "/acct/z", false)], NONE, "s1", "/p");
     expect(f.source.sourceIsLive).toBe(false);
     expect(f.source.liveConfigDir).toBeUndefined();
   });
 
   it("★ tmux 里那条前台不是 claude（idle-tmux）→ 不算活着", () => {
-    // 判据来自 `findClaudeTmuxMatches`（INVARIANTS §30），这里不另算一份。
-    const f = deriveForkSource([], [T("p-cc", "s1", "zsh")], "s1", "/p");
+    // 「前台是不是 agent」那台后端判（`sessions-tmux` 答 idle），这里不另算一份。
+    const f = deriveForkSource([], { kind: "idle", names: ["p-cc"] }, "s1", "/p");
     expect(f.source.sourceIsLive).toBe(false);
     expect(f.sourceTmuxName).toBeNull();
   });
 
   it("★ 同目录别的 claude（sid 不同）不许被认成本会话", () => {
-    const f = deriveForkSource([], [T("other-cc", "别的-sid")], "s1", "/p");
+    const f = deriveForkSource([], NONE, "s1", "/p");
     expect(f.source.sourceIsLive).toBe(false);
     expect(f.sourceTmuxName).toBeNull();
     // 「它的名字仍要进已占用」那一格随避让搬进后端（`tmux-name-mint` 问那台自己的会话快照）。

@@ -28,20 +28,13 @@ import { restartLocateFailureMessage } from "./account-restart";
 import { resumeLocalSession } from "./local-resume";
 import { restartWithAccount } from "./account-restart";
 import { showActionFailureToast } from "./error-toast";
-import {
-  runRemoteResume,
-  runRemoteResumeTmux,
-  runRemoteResumeIntoExistingTmux,
-  runRemoteAttach,
-} from "./remote-launch-run";
+import { runRemoteResume, runRemoteAttach } from "./remote-launch-run";
 // 本机 = `LOCAL_ORIGIN`（`"<local>"`，与 Rust `origin.rs::LOCAL` 跨语言对拍）；
 // 「是不是本机」只经 `ipc/origin.ts` 判。`accounts.ts` 那个同名的 `"__local__"` 已退役 —— 全仓只剩一个本机表示。
 import { isLocalOrigin, isRemoteOrigin } from "./ipc/origin";
 import { commands } from "./ipc/commands";
 import { probeSessionRecord, reasonOf, type RecordProbe } from "./session-reads";
 import { lastAccounts } from "./history-reads";
-import { mintFreshTmuxName, refuseUnmintable } from "./tmux-name-mint";
-import { listTmux } from "./tmux-reads";
 import { getBehavior } from "./behavior";
 // F78：远端会话「打开工作目录」→ 用该机配置开文件窗口进入远端 cwd（而非只提示打不开）。老 SFTP 面板删了。
 import { openFileWindow } from "./file-window";
@@ -50,15 +43,13 @@ import {
   findHostByOrigin,
   resolveResumeCommand,
 } from "./remote-config";
-import {
-  findClaudeTmuxMatches,
-  findIdleTmux,
-  type TmuxSession,
-} from "./tmux-sessions";
+import { standingOf } from "./tmux-sessions";
+import { callStart, callStop, planStarts, sayReply, type Reply, type StartItem } from "./tab-batch-run";
+import { AGENT_PROFILE } from "./agent-profile";
 import type { Tab } from "./tab-model";
 import { copyText } from "./copy-table";
-import { killSession, saidOfControl } from "./tmux-control";
-import { isIdentityRefusal, offerResyncRetry, resyncMachines, resyncMachinesSaid } from "./resync";
+import { decodeKilled, saidOfControl } from "./tmux-control";
+import { offerResyncRetry, resyncMachines, resyncMachinesSaid } from "./resync";
 
 /**
  * auto-e2e F-E0:DEV-only 断言出口。同 e2e-probe.ts 的 `log()`——把状态转移写成可 grep 的
@@ -71,9 +62,6 @@ export function e2eLog(line: string): void {
     void commands.frontend_perf_log({ lines: line }).catch(() => {});
   }
 }
-
-/** tmux 反查缓存 TTL:菜单打开按需查,短缓存避免重复右键狂拉 ssh。 */
-export const TMUX_CACHE_TTL_MS = 8000;
 
 /** 会话动作要宿主给的四样东西（全是读数或回调，动作本身不持有 tab 集合）。 */
 export interface TabSessionHost {
@@ -90,8 +78,6 @@ export interface TabSessionHost {
 }
 
 export class TabSessionActions {
-  /** F51：per-origin tmux 会话短缓存(反查 attach)。null=该 origin 无 tmux。 */
-  readonly tmuxCache = new Map<string, { ts: number; sessions: TmuxSession[] | null }>();
   /** account-ux U6：正在换号重启中的 sid（防同一会话并发重启：新起的进程被后一条编排杀掉）。 */
   readonly restartingSids = new Set<string>();
   /** F04：正在 resumeTabTmux 中的 sid（对称 `restartingSids`）——双击"Resume（tmux）"之间没有
@@ -358,141 +344,85 @@ export class TabSessionActions {
     if (!tab || isLocalOrigin(tab.origin)) return;
     const behavior = await getBehavior();
     const origin = tab.origin;
-    const cwd = tab.projectDir ?? "";
-    // F74：先查该 origin 的 tmux 列表，据 @ccm_sid 分两路。**attach 决策对新鲜度最敏感**——
-    // 8s 缓存里的 @ccm_sid 可能已被 /branch 漂移（快照记 N=A，N 此刻跑 B）→ 据陈旧快照 attach
-    // 又会撞进漂移会话，正是本刀要修的 bug。故这里**总是新查、不读缓存**（用户主动 resume，一次
-    // ssh 可接受；与 resolveAttachMenuItem 的 attach 一律新查对齐），查回来仍写缓存惠及其它路径。
-    // 查询失败（undefined）→ 找不到活的那一个，走到下面 fresh 分支；那一支要铸名，
-    //   而「没问到」不是「零会话」⇒ 在那里拒、说清（先前这里 `?? null` 把两者压成一个，空集铸名 = #76）。
-    const fetched = await this.fetchTmuxFresh(origin);
-    const sessions = fetched ?? null;
-    // ① 目标 sid 正活在某 tmux（@ccm_sid 命中）→ 直接 attach 它，回到活的后端，别重开一个。
-    // F04（R10）：命中 ≥2 个时**仍 attach 到第一个**（resume 非破坏性、可撤销：重新点一次就能换
-    // 目标，不像 kill 一旦选错代价不可逆），但诚实告知——不静默假装只有一个。分级理由见 F04
-    // 计划 §2 取舍④。
-    const matches = findClaudeTmuxMatches(sessions, sid);
-    if (matches.length > 0) {
-      if (matches.length > 1) {
-        showActionFailureToast(
-          copyText("tabSessionActions.dupes.title"),
-          copyText("tabSessionActions.dupes.body", { n: matches.length, name: matches[0].name }),
-          { level: "info", durationMs: 8000 },
-        );
-      }
-      await runRemoteAttach(origin, matches[0].name);
-      return;
-    }
-    // ①.5 audit-fixes F03（idle-tmux 就地复用）：目标 sid 的 tmux 还在（@ccm_sid 精确命中）但
-    // command≠claude —— 即 claude 已退、只剩交互 shell 的**空 cc-<sid8>**。往它**就地** resume
-    // （复用原会话名，不 new-session）→ 不产 `cc-<sid8>-N` 孤儿（治 #76 根因）+ 空 shell 起得了 claude
-    // （治 create-gate 短路只 attach 空 shell 的 #75 一条）。仅 @ccm_sid 精确命中才复用（不按 cwd 猜，
-    // 免撞同目录漂移会话）。
-    // E73：明说不可 attach 的会话**不算 idle-tmux** —— 它那个「前台不是 claude」
-    // 恰恰是因为里面跑着别的东西（SDK bridge 之类），不是空壳。
-    const idle = this.host.isAttachable(sid) ? findIdleTmux(sessions, sid) : undefined;
-    // 下面两支（就地 resume · 全新 resume）都要起一个新 claude 接那份记录 ⇒ 先问记录还在不在。
-    //   上面那一支（attach 活会话）不问：它不起新进程。
-    // 问在各自 `withAccount` 解析出账号之后（`mods.configDir` 就是这次 resume 用的那棵树）。
-    if (idle) {
-      await withAccount(
-        origin,
-        accountName ?? null,
-        async (mods) => {
-          if (!(await this.recordStillThere(tab, mods.configDir))) return false; // 拦下 ⇒ 不记上次的账号
-          await runRemoteResumeIntoExistingTmux(
-            origin,
-            sid,
-            idle.name,
-            await resolveResumeCommand(origin, behavior.resumeCommandRemote),
-            mods,
-          );
-        },
-        {
-          sessionId: sid,
-          // F04:useBase/显式选号 = 不跟随、不注入（与直连版 resumeTab 的基座逃生口对称，两后端
-          // 一致；老会话住基座、别被 follow 注入全局账号 → #75）。
-          follow: accountName || useBase ? undefined : { lastAccount: await this.readSessionPin(sid) },
-        },
-      );
-      return;
-    }
-    // ② 目标会话不在任何 tmux（已结束 / 已漂移到别的 sid）→ 起**全新** resume。tmux 名从现有
-    // 名里挑一个不撞的，避免复用被 /branch 漂移占着的 `<项目名>-cc`（那正是「resume 进 branch」老 bug）。
-    // 🔴 `K-R96`：基名从 cwd 派生（可读），不再是 `<sid8>-cc`。
-    // 铸名只经 `tmux-name-mint.ts`；名字问那台后端铸（派生 ＋ 按它的会话快照避让）。
-    //   问不到 ⇒ 不铸、不起、说清（不拿空集去避让）。
-    const minted = await mintFreshTmuxName(origin, cwd);
-    if (!minted.ok) {
-      refuseUnmintable(origin, minted.why);
-      return;
-    }
-    const name = minted.name;
-    // account-ux U3:tmux 版归档 resume 也跟随账号(注入 configDir)。① attach 活会话分支不动(账号焊死)。
+    const launcher = (await resolveResumeCommand(origin, behavior.resumeCommandRemote)).trim() || AGENT_PROFILE.defaultLauncher;
+    // 起法与批量「在 tmux 里后台起」同一条（那台判在不在跑 · 空 tmux 就地键入 · 铸名交一行 ccm，建完不接进去），
+    //   单个只多一步：起好之后开一个终端接进去。账号照旧经 `withAccount`（显式点的号 / 跟随上次的号）。
     await withAccount(
       origin,
       accountName ?? null,
-      // runRemoteResumeTmux 现在返回 boolean（Phase G）；withAccount 的 run 要 Promise<void>，
-      // 这条归档 resume 路径不消费成败（失败已由它自己 toast + 剪贴板回退），故丢弃返回值。
       async (mods) => {
-        if (!(await this.recordStillThere(tab, mods.configDir))) return false; // 拦下 ⇒ 不记上次的账号
-        await runRemoteResumeTmux(
-          origin,
+        const item: StartItem = {
           sid,
-          cwd,
-          await resolveResumeCommand(origin, behavior.resumeCommandRemote),
-          name,
-          mods,
-        );
+          cwd: tab.projectDir ?? "",
+          account: mods.configDir ? { kind: "named", name: mods.accountName ?? null, configDir: mods.configDir } : { kind: "base" },
+          model: mods.modelOverride ?? null,
+          launcher,
+          defaultLauncher: AGENT_PROFILE.defaultLauncher,
+        };
+        return this.startInTmuxThenAttach(tab, item, () => this.resumeTabTmuxInner(sid, accountName, useBase));
       },
       {
         sessionId: sid,
-        // audit-fixes F01(修 B1):pin 现读磁盘,不读内存镜像 accountLastByS（见 readSessionPin）。
-        // F04:useBase/显式选号 = 不跟随、不注入（与直连版 resumeTab 的基座逃生口对称，两后端
-        // 一致；老会话住基座、别被 follow 注入全局账号 → #75）。
+        // useBase / 显式选号 = 不跟随、不注入（老会话住基座，别被跟随注入全局账号）。pin 现读磁盘（见 readSessionPin）。
         follow: accountName || useBase ? undefined : { lastAccount: await this.readSessionPin(sid) },
       },
     );
   }
 
   /**
-   * ★ **tmux 名单在 TabManager 里的唯一取数点**〔audit-0805 F14 第五刀，报告 I9′〕（问那台后端的 `tmux-list`，`tmux-reads.ts::listTmux`）。
-   *
-   * # 为什么要收成一个
-   *
-   * 此前类内有**四处**各自 `invoke("list_remote_tmux")`，其中**三处顺手写了缓存、一处没写**
-   * （`awaitExitFor` 的轮询 tick）—— 而那一处恰好是**唯一会反复取数的**：
-   * 它每秒查一遍同一个 origin，却一次都不喂缓存。
-   * ⇒ 报告 I9′ 说的「3 写 1 读」，真正的毛病不是读少，是**取数点与写缓存点没有绑在一起**：
-   * 只要还能「取而不写」，下一个新增的取数点就会再漏一次。
-   *
-   * 收成一个之后，「取数」与「写缓存」**在语法上就是同一件事**，漏不了。
-   * 判据 `tmux-cache-single-writer.vitest.ts` 钉住这一点（定框 **E3**：权威源恰好一个）。
-   *
-   * # 返回值三态，不许压成两态
-   *
-   * - `TmuxSession[]` —— 查到了，有会话
-   * - `null` —— 查到了，**那台没装 tmux**
-   * - `undefined` —— **查询本身失败**（那台后端不在 / 观测无效）
-   *
-   * ⚠ 后两者必须分开：`null` 是**确定的答案**（会写进缓存），`undefined` 是**没有答案**
-   * （不写缓存 —— 免得一次 ssh 抖动把 8s 内的重试全抑制掉，D-Sug3）。
-   * 把它们压成一个 `null` 会让「远端确实没有会话」和「我没问到」变得无法区分。
+   * 交那台在 tmux 里起这一个（`sessions-start`，与批量同一条），起好了（或本来就在跑）开一个终端接进去。
+   * 回 `false` = 没起（记录没了 / 起不了）⇒ 调用方不记「上次用的号」。
    */
-  async fetchTmuxFresh(
-    origin: string,
-  ): Promise<TmuxSession[] | null | undefined> {
+  private async startInTmuxThenAttach(tab: Tab, item: StartItem, again: () => Promise<void>): Promise<void | false> {
+    const origin = tab.origin;
+    let r: Reply;
     try {
-      // ★ P3 刀 2 UI：本机走自己的读口 —— 它读的是后端推来的快照，不走 SSH
-      //（`<local>` 拿去查远端配置只会报「未找到远端配置」，与真实原因毫无关系）。
-      // 这就是 `C1`「差别只允许出现在传输这一跳」在读面上的样子：同一个返回类型、同一批消费者。
-      // 本机远端同一问：那台后端的 `tmux-list` 成品（`tmux-reads.ts`）。
-      const sessions = await listTmux(origin);
-      // 只缓存确定结果（成功列表 / NO_TMUX=null）；瞬时 ssh 失败不缓存，免 8s 内抑制重试（D-Sug3）。
-      this.tmuxCache.set(origin, { ts: Date.now(), sessions });
-      return sessions;
-    } catch {
-      return undefined;
+      [r] = await callStart(origin, "tmux", [item]);
+    } catch (e) {
+      showActionFailureToast(copyText("remoteLaunchRun.inPlace.notRun"), saidOfControl(e));
+      return false;
+    }
+    if (r.why === "record_gone") {
+      this.host.markRecord(tab.sessionId, false);
+      showActionFailureToast(
+        copyText("sessionState.recordGone.title"),
+        copyText("sessionState.recordGone.body", {
+          who: isLocalOrigin(origin) ? copyText("tabSessionActions.who.local") : copyText("tabSessionActions.who.remote", { machine: origin }),
+          root: r.detail,
+          sid: tab.sessionId,
+        }),
+      );
+      return false;
+    }
+    if (r.outcome === "failed" || r.session === null) {
+      const said = sayReply(origin, "start", r);
+      if (r.why === "wrong_owner") offerResyncRetry(origin, tab.sessionId, copyText("remoteLaunchRun.inPlace.notRun"), said, again);
+      else showActionFailureToast(copyText("remoteLaunchRun.inPlace.notRun"), said);
+      return false;
+    }
+    if (r.outcome === "done") this.host.markRecord(tab.sessionId, true);
+    // 在跑的不止一个 ⇒ 接第一个（接回可撤销），但说出来。
+    if (r.why === "ambiguous") {
+      showActionFailureToast(
+        copyText("tabSessionActions.dupes.title"),
+        copyText("tabSessionActions.dupes.body", { n: r.detail.split(", ").length, name: r.session }),
+        { level: "info", durationMs: 8000 },
+      );
+    }
+    await runRemoteAttach(origin, r.session);
+  }
+
+  /** 本机：在那个空 tmux 里就地 resume，再开一个终端接进去（与批量同一条；账号跟随同本机 Resume）。 */
+  async resumeLocalInTmux(sid: string): Promise<void> {
+    const tab = this.host.tab(sid);
+    if (!tab) return;
+    const plan = await planStarts(tab.origin, [tab]);
+    if (plan.items.length === 0) {
+      showActionFailureToast(copyText("remoteLaunchRun.inPlace.notRun"), plan.skipped[0]?.why ?? "");
+      return;
+    }
+    if ((await this.startInTmuxThenAttach(tab, plan.items[0], () => this.resumeLocalInTmux(sid))) !== false) {
+      plan.record.get(sid)?.();
     }
   }
 
@@ -564,26 +494,18 @@ export class TabSessionActions {
     const origin = tab.origin;
     const cwd = tab.projectDir ?? "";
     const behavior = await getBehavior();
-    // 解析该会话当前 tmux 名，一律新查（对齐 resumeTabTmux：attach/重启对新鲜度最敏感，防据陈旧快照误伤）。
-    const sessions = (await this.fetchTmuxFresh(origin)) ?? null;
-    // F04（R10）：破坏性重启必须精确命中**恰好一个**同 sid 的活会话——`findClaudeTmuxMatches`
-    // 不折叠成第一个。`matches.length===0` 沿用旧"无法定位"文案；`matches.length>1` 是新增的
-    // 拒绝分支：错误的那次操作代价不可逆（可能杀掉了对的那个、留下错的那个继续跑），与
-    // resumeTabTmux"警告+继续"的分级不同——分级理由见 F04 计划 §2 取舍④。
-    const matches = findClaudeTmuxMatches(sessions, sid);
-    if (matches.length > 1) {
+    // 这个会话在哪个 tmux 会话里：问那台（判定只在后端），一律现问。
+    // 破坏性重启必须恰好命中一个在跑的（不按目录猜）；命中多个 ⇒ 拒（选错了不可逆）。
+    const standing = await standingOf(origin, sid);
+    if (standing?.kind === "ambiguous") {
       showActionFailureToast(
         copyText("tabSessionActions.restart.refusedTitle"),
-        copyText("tabSessionActions.restart.dupes", { n: matches.length }),
+        copyText("tabSessionActions.restart.dupes", { n: standing.names.length }),
         { level: "info", durationMs: 8000 },
       );
       return false;
     }
-    const live = matches[0];
-    // A5 阻塞修（D 审计）：破坏性重启**必须**精确命中 @ccm_sid。无 @ccm_sid 的降级远端此前会走
-    // `findClaudeTmux` 的 cwd 回退（可能抓到同目录**别的** claude）→ kill 错会话 + 对目标 sid 起
-    // 新进程 = 双进程 / jsonl 双写（§5.2 要防的严重态）。`findClaudeTmuxMatches` 只精确匹配、
-    // 不含 cwd 回退，故 `matches` 为空即代表"未精确命中"，天然对齐这条守卫（不猜）。
+    const live = standing?.kind === "running" ? { name: standing.names[0] } : undefined;
     if (!live) {
       // `K-P5g`：这句话原来把**两条成因**并排摆着（「不在本工具 tmux 里」**或**「不是本工具
       // 起的」），而当时没有任何东西分得开它们。现在分得开了——`--session-accounts` 读回来的
@@ -615,42 +537,45 @@ export class TabSessionActions {
     });
   }
 
-  /** F79(#38)：杀死远端 tmux 会话——二次确认后 kill-session。变灰由 #60-A 对账兜（不主动 archive，守 §24）。
-   *  @param viaCwd findClaudeTmux 是否走了 cwd 回退命中（无 @ccm_sid）——此时会话名是按目录猜的、可能
-   *  不是本 tab 的会话（可能杀到同目录别的 Claude）。破坏性操作，回退命中时在确认框里加强 caveat
-   *  （比 attach 的 toast 更强，因为在用户必须点的确认里）。守 F74c「保留回退+显式提示」的取舍。 */
-  killRemoteTmux(
-    origin: string,
-    tmuxName: string,
-    viaCwd: boolean,
-    opts?: { confirm?: ConfirmFn; idle?: boolean; sid?: string },
-  ): void {
-    const caveat = viaCwd
-      ? // 〔按 `terms.json` ＋ CP1 台账改词〕不说标记、不派「重装 ccm 助手」；「可能杀到别的 Claude」这条后果必须留着。
-        copyText("tabSessionActions.kill.cwdCaveat", { name: tmuxName })
-      : "";
-    // 可重连的 tab：claude 已退、只剩空 shell，文案别再说"正在运行的 Claude"；
-    // 杀掉这个残留 tmux → tab 变成已结束 → 即可 Resume（给可重连一个出口，治 UX 审计 #1）。
-    // 说到会话状态的句子住文案表 `sessionState.*`（原句说「转归档」「变灰」）。
-    // ★ P3 刀 2 UI：本机也会走到这里 ⇒ 文案不能再写死「远端」。
-    // 这不是措辞洁癖：一个说「将终止**远端**……」的确认框，用在本机会话上是**在说假话**，
-    // 而它恰好是个不可恢复的破坏性动作的最后一道人工闸。
+  /**
+   * 杀死这个会话所在的 tmux 会话：二次确认后交那台（`sessions-stop`，与批量同一条：那台按 sid 认出是哪个、过三道门、杀句柄）。
+   * `name` 只用来在确认框里说清是哪个（菜单就绪时那台答的）。变已结束由会话流兜（不主动改状态）。
+   * `idle` = 只剩空 shell 的那个（文案别说「正在运行的 Claude」；杀掉它 ⇒ tab 变已结束 ⇒ 可 Resume）。
+   */
+  killInTmux(origin: string, sid: string, name: string, opts?: { confirm?: ConfirmFn; idle?: boolean }): void {
     const isLocal = isLocalOrigin(origin);
     const where = isLocal ? copyText("tabSessionActions.who.local") : copyText("tabSessionActions.who.remoteShort");
-    const body = opts?.idle
-      ? copyText("sessionState.killIdle.confirm")
-      : copyText("tabSessionActions.kill.body", { where });
-    // auto-e2e F-E4：可注入 confirm seam（对齐 account-restart.ts 的 `opts.confirm ?? askConfirm`）。
-    // 默认走应用内对话框（真 app 里 `window.confirm` 返回 Promise、恒真值 ⇒ 从前这里根本没问）。
+    const body = opts?.idle ? copyText("sessionState.killIdle.confirm") : copyText("tabSessionActions.kill.body", { where });
     const confirmFn: ConfirmFn = opts?.confirm ?? askConfirm;
-    const message = copyText("tabSessionActions.kill.confirm", { name: tmuxName, machine: isLocal ? copyText("tabSessionActions.who.local") : origin, body, caveat });
+    const machine = isLocal ? copyText("tabSessionActions.who.local") : origin;
+    const message = copyText("tabSessionActions.kill.confirm", { name, machine, body, caveat: "" });
     const kill = async (): Promise<void> => {
-      const bus = await killSession(origin, tmuxName);
+      let r: Reply;
+      try {
+        [r] = await callStop(origin, [sid]);
+      } catch (e) {
+        showActionFailureToast(copyText("tabSessionActions.kill.failed"), saidOfControl(e));
+        return;
+      }
+      if (r.outcome !== "done") {
+        const said = sayReply(origin, "stop", r);
+        // 关卡 2 拒的 ⇒ 提示带「对齐后重试」（只对这个会话重验 ＋ 重打，再过一次关卡）。
+        if (r.why === "wrong_owner") offerResyncRetry(origin, sid, copyText("tabSessionActions.kill.failed"), said, kill);
+        else showActionFailureToast(copyText("tabSessionActions.kill.failed"), said);
+        return;
+      }
+      const killed = r.session ?? name;
       const who = isLocal ? copyText("tabSessionActions.who.local") : copyText("tabSessionActions.who.remote", { machine: origin });
       const done = opts?.idle
-        ? copyText("sessionState.killIdle.done", { who, name: tmuxName })
-        : copyText("sessionState.killLive.done", { who, name: tmuxName });
-      // 顺手从 cc-bus 名册注销的结局说一句（没有要说的就不说）。
+        ? copyText("sessionState.killIdle.done", { who, name: killed })
+        : copyText("sessionState.killLive.done", { who, name: killed });
+      // 顺手从 cc-bus 名册注销的结局说一句（没有要说的就不说；说法同单个 `kill` 那一份）。
+      let bus: string | null = null;
+      try {
+        bus = decodeKilled(origin, killed, { session: killed, killed: true, bus: r.bus });
+      } catch {
+        bus = null;
+      }
       showActionFailureToast(copyText("tabSessionActions.kill.done"), bus === null ? done : `${done}\n${bus}`, {
         level: "info",
         durationMs: 6000,
@@ -658,16 +583,7 @@ export class TabSessionActions {
     };
     void (async () => {
       if (!(await confirmFn(message))) return;
-      try {
-        await kill();
-      } catch (err) {
-        // 关卡 2 拒的 ⇒ 提示带「对齐后重试」（只对这个会话重验 ＋ 重打，再过一次关卡）。
-        if (isIdentityRefusal(err)) {
-          offerResyncRetry(origin, opts?.sid, copyText("tabSessionActions.kill.failed"), saidOfControl(err), kill);
-        } else {
-          showActionFailureToast(copyText("tabSessionActions.kill.failed"), saidOfControl(err));
-        }
-      }
+      await kill();
     })();
   }
 

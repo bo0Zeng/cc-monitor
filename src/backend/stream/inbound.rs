@@ -266,6 +266,10 @@ pub const COMMANDS: &[&str] = &[
     "resync",
     // 分叉（`fork_write`，本 crate 唯一的 `O_EXCL` 新建写口）：本机远端同一条长连接。
     "session-fork",
+    // tab 栏多选的批量停 / 起：同一台的那几个一次交过来，逐个答（`control/session_batch.rs`）。**是新命令** ⇒ `build_id_guard` 红是预期的。
+    "sessions-start",
+    "sessions-stop",
+    "sessions-tmux",
     // skill 装 / 卸的写那一半进了被写那台（判 · 写 · 记同一台）。**是新命令** ⇒ `build_id_guard` 红是预期的。
     "skill-install-apply",
     // skill「装到这台」：来源那台读 · 要被写的那一台判（都只读；写经 `files-put`）。
@@ -3690,6 +3694,65 @@ pub const REGISTRY: &[CommandSpec] = &[
         fields: &["bus", "killed", "name", "session"],
         takes_input: true,
         run: Run::Blocking(|r| crate::control::kill::kill_for_inbound(&r.args).map(Some)),
+    },
+    // 一批会话的停 / 起：每一个同单个那一条（`kill` · `launch` · `launch-render-cli` · `launch-local`），逐个答结局。
+    //   阻塞档（逐个起 tmux）；要动 tmux / 读记录的几样由帧面那层壳交进去（`faces/session_batch_face.rs`）。
+    CommandSpec {
+        name: "sessions-stop",
+        doc_anchor: Some("#### `sessions-tmux` / `sessions-stop` / `sessions-start`"),
+        codes: &["invalid_args", "unobservable"],
+        fields: &[
+            "bus", "cmd", "detail", "outcome", "results", "session", "sid", "sids", "why",
+        ],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::faces::session_batch_face::stop(&r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    CommandSpec {
+        name: "sessions-tmux",
+        doc_anchor: Some("#### `sessions-tmux` / `sessions-stop` / `sessions-start`"),
+        codes: &["invalid_args", "unobservable"],
+        fields: &["names", "results", "sid", "sids", "standing"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::faces::session_batch_face::where_(&r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    CommandSpec {
+        name: "sessions-start",
+        doc_anchor: Some("#### `sessions-tmux` / `sessions-stop` / `sessions-start`"),
+        codes: &["invalid_args", "unobservable"],
+        fields: &[
+            "account",
+            "cmd",
+            "configDir",
+            "cwd",
+            "defaultLauncher",
+            "detail",
+            "items",
+            "kind",
+            "launcher",
+            "local",
+            "mode",
+            "model",
+            "name",
+            "outcome",
+            "results",
+            "session",
+            "sid",
+            "why",
+        ],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::faces::session_batch_face::start(&r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
     },
     CommandSpec {
         name: "launch",

@@ -2,7 +2,7 @@
  * 〔拆 `tabs.ts` ⑤〕**右键一个 tab，菜单里放哪几项** —— 以及那几格要异步就绪的项怎么就绪。
  *
  * 在新窗口打开 · 加入 / 移出集合 · 固定 · Resume（容器 × 账号 flyout）· Attach · 预览 ·
- * 杀死会话 · 就地 resume · 换号重启。项怎么画、菜单怎么开关住 `tab-context-menu.ts`；
+ * 杀死会话 · 就地 resume · 换号重启。在 tmux 里那几项（Attach · 预览 · 杀死 · 就地 resume）亮不亮、写哪个名字问那台后端（`sessions-tmux`）。项怎么画、菜单怎么开关住 `tab-context-menu.ts`；
  * 点下去真正做事的住 `tab-session-actions.ts`（本文件直接调它，不经 `TabManager` 转一手）。
  *
  * 方法体逐字从 `tabs.ts` 搬来（右键处理器的函数体缩进少了两格，其余一字不差），
@@ -25,18 +25,11 @@ import {
   type AccountModifierOption,
   type NamedAccountModifier,
 } from "./launch-menu";
-import { runLocalResumeIntoExistingTmux, runRemoteAttach } from "./remote-launch-run";
-import { AGENT_PROFILE } from "./agent-profile";
+import { runRemoteAttach } from "./remote-launch-run";
 // 本机 = `LOCAL_ORIGIN`（`"<local>"`）；「是不是本机」只经 `ipc/origin.ts` 判。
 import { isLocalOrigin, isRemoteOrigin, LOCAL_ORIGIN, type Origin } from "./ipc/origin";
 import { openPanePreview } from "./views/pane-preview";
-import { getBehavior } from "./behavior";
-import {
-  findClaudeTmuxMatches,
-  findClaudeTmux,
-  findIdleTmux,
-  isCwdFallbackMatch,
-} from "./tmux-sessions";
+import { standingOf } from "./tmux-sessions";
 import {
   appendTabContextMenuItem,
   menuGeneration,
@@ -45,7 +38,7 @@ import {
   updateTabContextMenuItem,
   type TabMenuItem,
 } from "./tab-context-menu";
-import { TMUX_CACHE_TTL_MS, type TabSessionActions } from "./tab-session-actions";
+import type { TabSessionActions } from "./tab-session-actions";
 import { unavailableSaid } from "./control-said";
 
 /** 菜单项 id ⇒ 它要那台后端做的那条命令（那台握手时说过做不到 ⇒ 置灰并说为什么）。 */
@@ -60,17 +53,6 @@ export function gateByOffer(origin: Origin, item: TabMenuItem): TabMenuItem {
   return { ...item, enabled: false, title: why, label: copyText("tabMenu.item.greyed", { label: item.label, why }), onClick: () => {} };
 }
 import { askText } from "./ask-dialog";
-
-/** F74c(#60-B)：cwd 回退串味风险提示（attach 到可能是同目录别的会话前）。 */
-function warnCwdFallbackAttach(): void {
-  showActionFailureToast(
-    // 〔按 `terms.json` 改词〕不说标记（`@ccm_sid` 禁：说后果「认不出是哪个会话」），
-    //   不派「重装 ccm 助手」这件用户做了也未必好的活（「ccm 助手」禁；CP1 口径 §2.3）。
-    copyText("tabMenu.cwdFallback.title"),
-    copyText("tabMenu.cwdFallback.body"),
-    { level: "info", durationMs: 8000 },
-  );
-}
 
 /** 菜单要宿主给的读数 / 回调。全是**现读**：菜单项的 `onClick` 在点下去那一刻才调它们。 */
 export interface TabMenuHost {
@@ -166,313 +148,115 @@ export class TabMenu {
         });
       }
     }
-    // F51：远端 tab（有 cwd）——反查该 cwd 正跑 claude 的 tmux 会话 → Attach。
-    // 缓存命中同步定夺(无占位闪烁);未命中先禁用占位「检测中」+ 异步查询就绪。
-    // 下面这一段只对**远端** tab：`remote` = 那台远端的名字；本机 tab / 没有这个 tab ⇒ `null`。
+    // 这个会话在那台哪个 tmux 会话里（Attach · 预览 · 杀死 · 就地 resume 亮不亮、写哪个名字）：问那台后端（`sessions-tmux`），
+    //   界面不判。先放「检测中」占位，答回来再换成可点的那几项（同一代菜单才换）。
     const remote = t !== undefined && isRemoteOrigin(t.origin) ? t.origin : null;
-    const cwd = t?.projectDir ?? null;
-    let needAsyncAttach = false;
-    if (remote !== null && cwd) {
-      const cached = this.actions.tmuxCache.get(remote);
-      if (cached && Date.now() - cached.ts < TMUX_CACHE_TTL_MS) {
-        const m = findClaudeTmux(cached.sessions, sid, cwd);
-        const viaCwd = isCwdFallbackMatch(cached.sessions, sid); // F74c：回退命中提示串味
-        // F04（R10）：同 `resolveAttachMenuItem` 的分级——attach/preview 警告+继续，kill 拒绝。
-        const cachedMatches = findClaudeTmuxMatches(cached.sessions, sid);
-        const cachedAmbiguous = cachedMatches.length > 1;
-        if (m) {
-          items.push({
-            id: "attach",
-            label: cachedAmbiguous
-              ? copyText("tabMenu.attach.dupes", { name: m.name, others: cachedMatches.length - 1 })
-              : `Attach（tmux: ${m.name}）`,
-            onClick: () => {
-              if (viaCwd) warnCwdFallbackAttach();
-              if (cachedAmbiguous) {
-                showActionFailureToast(
-                  copyText("tabMenu.dupes.title"),
-                  copyText("tabMenu.dupes.body", { n: cachedMatches.length, name: m.name }),
-                  { level: "info", durationMs: 8000 },
-                );
-              }
-              void runRemoteAttach(remote, m.name);
-            },
-          });
-          // F60：同一 tmux 会话可只读预览画面（capture-pane 快照，不 attach）——只读，不受影响。
-          items.push({
-            id: "preview",
-            label: copyText("tabMenu.open.preview"),
-            onClick: () => void openPanePreview(remote, m.name),
-          });
-          // F79：杀死会话——命中 ≥2 个时拒绝提供（破坏性，选错代价不可逆）。
-          if (cachedAmbiguous) {
-            items.push({
-              id: "kill",
-              label: copyText("tabMenu.kill.dupes", { n: cachedMatches.length }),
-              danger: true,
-              enabled: false,
-              onClick: () => {},
-            });
-          } else {
-            items.push({
-              id: "kill",
-              label: copyText("tabMenu.kill.plain"),
-              danger: true,
-              onClick: () => this.actions.killRemoteTmux(remote, m.name, viaCwd, { sid }),
-            });
-          }
-        } else {
-          // audit-fixes F03.3：缓存命中、无活 claude，但有目标 sid 的空 tmux（idle-tmux）→ 同步给 attach。
-          // E73：同上——不可 attach 的不算空壳。
-          const idle = this.host.isAttachable(sid)
-            ? findIdleTmux(cached.sessions, sid)
-            : undefined;
-          if (idle) {
-            items.push({
-              id: "attach",
-              label: copyText("tabMenu.attach.idle", { name: idle.name }),
-              onClick: () => void runRemoteAttach(remote, idle.name),
-            });
-            // UX 审计 #1：灰态(idle-tmux)也给 kill——杀空 tmux → tab 转归档 → 可 Resume（给死角一个出口）。
-            items.push({
-              id: "kill",
-              label: copyText("tabMenu.kill.idle", { name: idle.name }),
-              danger: true,
-              onClick: () => this.actions.killRemoteTmux(remote, idle.name, false, { idle: true, sid }),
-            });
-          }
-        }
-      } else {
-        items.push({
-          id: "attach",
-          label: copyText("tabMenu.attach.probing"),
-          enabled: false,
-          onClick: () => {},
-        });
-        items.push({
-          id: "preview",
-          label: copyText("tabMenu.preview.probing"),
-          enabled: false,
-          onClick: () => {},
-        });
-        items.push({
-          id: "kill",
-          label: copyText("tabMenu.kill.probing"),
-          enabled: false,
-          danger: true,
-          onClick: () => {},
-        });
-        needAsyncAttach = true;
-      }
+    if (remote !== null && t?.projectDir) {
+      items.push(
+        { id: "attach", label: copyText("tabMenu.attach.probing"), enabled: false, onClick: () => {} },
+        { id: "preview", label: copyText("tabMenu.preview.probing"), enabled: false, onClick: () => {} },
+        { id: "kill", label: copyText("tabMenu.kill.probing"), enabled: false, danger: true, onClick: () => {} },
+      );
     }
-    // ★ P3 刀 2 的 UI 半：**本机 tab 也给「杀死会话」**。
-    //
-    // 只加 kill 这一格 —— attach / 预览那两格本机今天还没有对象可接
-    //（前者要本机 attach 路径、后者要 `capture_remote_pane` 的本机对侧），归后面的刀。
-    // 一次只开一格，是为了让「哪一格已经通了」这件事在菜单上就是可见的。
-    let needAsyncLocalKill = false;
-    if (t !== undefined && isLocalOrigin(t.origin) && hasTerminal(t.state)) {
-      items.push({
-        id: "kill",
-        label: copyText("tabMenu.kill.probing"),
-        enabled: false,
-        danger: true,
-        onClick: () => {},
-      });
-      // P3 刀 3 的占位：查回来是空 tmux 才留下，否则移除。
-      items.push({
-        id: "resume-into",
-        label: copyText("tabMenu.inPlace.probing"),
-        enabled: false,
-        onClick: () => {},
-      });
-      needAsyncLocalKill = true;
+    const local = t !== undefined && isLocalOrigin(t.origin) && hasTerminal(t.state);
+    if (local) {
+      items.push(
+        { id: "kill", label: copyText("tabMenu.kill.probing"), enabled: false, danger: true, onClick: () => {} },
+        { id: "resume-into", label: copyText("tabMenu.inPlace.probing"), enabled: false, onClick: () => {} },
+      );
     }
     // 那台握手时说过做不到的那几项置灰（事实住 monitor 那份 `Offer`）。
     showTabContextMenu(e.clientX, e.clientY, t ? items.map((i) => gateByOffer(t.origin, i)) : items);
-    if (needAsyncAttach && remote !== null && cwd) {
-      void this.resolveAttachMenuItem(remote, cwd, sid);
-    }
-    if (needAsyncLocalKill) {
-      void this.resolveLocalKillMenuItem(sid);
-    }
+    if (remote !== null && t?.projectDir) void this.resolveRemoteTmuxItems(remote, sid);
+    if (local) void this.resolveLocalTmuxItems(sid);
     // A4/A5：远端 tab → 异步追加账号项（归档=「把此会话切到账号 X（resume）」/ 活=「…（重启）」）。
     // 本机 tab 也进来（`<local>`）—— 只拿「换号重启」那一项，见 appendAccountMenuItems。
     if (t) void this.appendAccountMenuItems(t.origin, sid, t.state);
   }
 
-  /**
-   * F51：菜单打开后异步反查 tmux——查该 origin 的会话列表(短缓存),按 `path===cwd &&
-   * command==="claude"` 反查该 tab 的 Claude 所在 tmux 会话。命中 → 把禁用占位「检测中」
-   * 换成可点的 Attach;无 tmux / 无匹配 / 查询失败 → 移除占位。菜单已关则 update/remove no-op。
-   */
-  /** ★ P3 刀 2 的 UI 半：本机 tab 的「杀死会话」。
-   *
-   *  与远端那条（`resolveAttachMenuItem`）**共用同一批判定函数**（`findClaudeTmuxMatches`）——
-   *  这就是 `C1`「差别只允许出现在传输这一跳」：读口不同（backend 快照 vs 一次性 SSH），
-   *  之后的一切逐字相同。
-   *
-   *  ⚠ **按 `@ccm_sid` 认，不按名字前缀猜。** 本机会话名今天确实长成 `<sid8>-cc`，
-   *  但拿那个去匹配就是「用命名巧合当身份」—— `INVARIANTS §30` 逐字禁的正是这一类
-   *  （它禁的是按 cwd 猜，同一个错的另一种写法）。名字会被 `/branch` 漂移、会被用户改名。
-   */
-  private async resolveLocalKillMenuItem(sid: string): Promise<void> {
+  /** 远端：那台答回这个会话的样子 ⇒ Attach · 预览 · 杀死三格就位（菜单已换 / 已关 ⇒ 不动）。 */
+  private async resolveRemoteTmuxItems(origin: string, sid: string): Promise<void> {
     const gen = menuGeneration();
-    const got = await this.actions.fetchTmuxFresh(LOCAL_ORIGIN);
+    const s = await standingOf(origin, sid);
     if (gen !== menuGeneration()) return;
-    // `undefined` = 读口抛了；`null` = **本机后端通道不在**（不知道，不是「没有」）。
-    // 两种都不该留一个假装能用的菜单项 —— 移除它，别让用户点一个必失败的破坏性动作。
-    if (got === undefined || got === null) {
+    const drop = (...ids: string[]): void => ids.forEach((id) => removeTabContextMenuItem(id));
+    if (s === undefined || s.kind === "none" || s.kind === "no_tmux") return drop("attach", "preview", "kill");
+    const name = s.names[0];
+    if (s.kind === "idle") {
+      // 明说不可 attach 的会话不算空壳（前台不是 agent 是因为里面跑着别的东西）。
+      if (!this.host.isAttachable(sid)) return drop("attach", "preview", "kill");
+      updateTabContextMenuItem("attach", {
+        id: "attach",
+        label: copyText("tabMenu.attach.idle", { name }),
+        onClick: () => void runRemoteAttach(origin, name),
+      });
+      removeTabContextMenuItem("preview"); // 空 shell 没有 agent 画面可看
+      updateTabContextMenuItem("kill", gateByOffer(origin, {
+        id: "kill",
+        label: copyText("tabMenu.kill.idle", { name }),
+        danger: true,
+        onClick: () => this.actions.killInTmux(origin, sid, name, { idle: true }),
+      }));
+      return;
+    }
+    const ambiguous = s.kind === "ambiguous";
+    updateTabContextMenuItem("attach", {
+      id: "attach",
+      label: ambiguous ? copyText("tabMenu.attach.dupes", { name, others: s.names.length - 1 }) : `Attach（tmux: ${name}）`,
+      onClick: () => {
+        // 命中多个 ⇒ 接第一个（接回可撤销），但说出来。
+        if (ambiguous) {
+          showActionFailureToast(
+            copyText("tabMenu.dupes.title"),
+            copyText("tabMenu.dupes.body", { n: s.names.length, name }),
+            { level: "info", durationMs: 8000 },
+          );
+        }
+        void runRemoteAttach(origin, name);
+      },
+    });
+    updateTabContextMenuItem("preview", gateByOffer(origin, {
+      id: "preview",
+      label: copyText("tabMenu.resolveAttachMenuItem.preview"),
+      onClick: () => void openPanePreview(origin, name),
+    }));
+    // 命中多个 ⇒ 不给杀（破坏性，选错了不可逆）。
+    updateTabContextMenuItem("kill", gateByOffer(origin, ambiguous
+      ? { id: "kill", label: copyText("tabMenu.kill.dupes", { n: s.names.length }), danger: true, enabled: false, onClick: () => {} }
+      : { id: "kill", label: copyText("tabMenu.kill.plain"), danger: true, onClick: () => this.actions.killInTmux(origin, sid, name) }));
+  }
+
+  /** 本机：那台答回这个会话的样子 ⇒ 杀死 · 就地 resume 两格就位（菜单已换 / 已关 ⇒ 不动）。 */
+  private async resolveLocalTmuxItems(sid: string): Promise<void> {
+    const gen = menuGeneration();
+    const s = await standingOf(LOCAL_ORIGIN, sid);
+    if (gen !== menuGeneration()) return;
+    // 问不到（本机后端通道不在）/ 不在 tmux 里 ⇒ 不留一个假装能用的破坏性项。
+    if (s === undefined || s.kind === "none" || s.kind === "no_tmux" || (s.kind === "idle" && !this.host.isAttachable(sid))) {
       removeTabContextMenuItem("kill");
       removeTabContextMenuItem("resume-into");
       return;
     }
-    // ★★ P3 刀 3：**空 tmux（claude 已退、只剩交互 shell）→ 就地 resume**。
-    //
-    // 先判这一格，因为它与下面那格互斥：有活 claude 就不是空壳。
-    // E73 同款前提：明说不可 attach 的会话**不算空壳** —— 它前台不是 claude 恰恰是因为
-    // 里面跑着别的东西，不是没人。
-    const idle = this.host.isAttachable(sid) ? findIdleTmux(got, sid) : undefined;
-    if (idle) {
-      const behavior = await getBehavior();
+    const name = s.names[0];
+    if (s.kind === "idle") {
       updateTabContextMenuItem("kill", gateByOffer(LOCAL_ORIGIN, {
         id: "kill",
-        label: copyText("tabMenu.kill.idle", { name: idle.name }),
+        label: copyText("tabMenu.kill.idle", { name }),
         danger: true,
-        onClick: () => this.actions.killRemoteTmux(LOCAL_ORIGIN, idle.name, false, { idle: true, sid }),
+        onClick: () => this.actions.killInTmux(LOCAL_ORIGIN, sid, name, { idle: true }),
       }));
-      // 就地 resume 是**非破坏性**的，与 kill 并列给出（远端那侧同样两格并列）。
+      // 就地 resume 是非破坏性的，与杀并列。
       updateTabContextMenuItem("resume-into", gateByOffer(LOCAL_ORIGIN, {
         id: "resume-into",
-        label: copyText("tabMenu.inPlace.idle", { name: idle.name }),
-        onClick: () =>
-          void runLocalResumeIntoExistingTmux(
-            sid,
-            idle.name,
-            behavior.resumeCommandLocal || AGENT_PROFILE.defaultLauncher,
-          ),
+        label: copyText("tabMenu.inPlace.idle", { name }),
+        onClick: () => void this.actions.resumeLocalInTmux(sid),
       }));
-      return;
-    }
-    const matches = findClaudeTmuxMatches(got, sid);
-    if (matches.length === 0) {
-      removeTabContextMenuItem("kill");
-      removeTabContextMenuItem("resume-into");
       return;
     }
     removeTabContextMenuItem("resume-into");
-    // F04（R10）同款分级：破坏性动作命中 ≥2 个就**拒绝**，不折叠成第一个。
-    if (matches.length > 1) {
-      updateTabContextMenuItem("kill", gateByOffer(LOCAL_ORIGIN, {
-        id: "kill",
-        label: copyText("tabMenu.kill.dupesRefused", { n: matches.length }),
-        enabled: false,
-        danger: true,
-        onClick: () => {},
-      }));
-      return;
-    }
-    const name = matches[0].name;
-    updateTabContextMenuItem("kill", gateByOffer(LOCAL_ORIGIN, {
-      id: "kill",
-      label: copyText("tabMenu.kill.named", { name }),
-      danger: true,
-      onClick: () => this.actions.killRemoteTmux(LOCAL_ORIGIN, name, false, { sid }),
-    }));
-  }
-
-  private async resolveAttachMenuItem(
-    origin: string,
-    cwd: string,
-    sid: string,
-  ): Promise<void> {
-    const gen = menuGeneration(); // 捕获发起查询的那一代菜单(R-1 守卫)
-    const got = await this.actions.fetchTmuxFresh(origin);
-    if (got === undefined) {
-      // 查询失败(纯 ssh exec 抖动)→ 移除占位,不缓存。
-      if (gen === menuGeneration()) {
-        removeTabContextMenuItem("attach");
-        removeTabContextMenuItem("preview"); // F60：预览占位一并移除
-        removeTabContextMenuItem("kill"); // F79：杀会话占位一并移除
-      }
-      return;
-    }
-    const sessions = got;
-    // 菜单已换/已关(新代次)→ 别动别的菜单(R-1 跨 tab 串味)。
-    if (gen !== menuGeneration()) return;
-    const match = findClaudeTmux(sessions, sid, cwd);
-    const viaCwd = isCwdFallbackMatch(sessions, sid); // F74c：回退命中 attach 前提示串味风险
-    // F04（R10）：命中 ≥2 个精确同 sid 的活会话时——`matches.length>1` 与 `viaCwd` 互斥（后者只在
-    // "整张列表无任何会话带 sid"时才可能真，见 `findClaudeTmux`/`isCwdFallbackMatch` 判据），
-    // 故两条 caveat 不会同时触发。attach/preview 沿用 resume 的"警告+继续"（非破坏性、可撤销）；
-    // kill 沿用 restart 的"拒绝"（破坏性、代价不可逆）——分级理由见 F04 计划 §2 取舍④。
-    const matches = findClaudeTmuxMatches(sessions, sid);
-    const ambiguous = matches.length > 1;
-    if (match) {
-      updateTabContextMenuItem("attach", {
-        id: "attach",
-        label: ambiguous ? copyText("tabMenu.attach.dupes", { name: match.name, others: matches.length - 1 }) : `Attach（tmux: ${match.name}）`,
-        onClick: () => {
-          if (viaCwd) warnCwdFallbackAttach();
-          if (ambiguous) {
-            showActionFailureToast(
-              copyText("tabMenu.dupes.title"),
-              copyText("tabMenu.dupes.body", { n: matches.length, name: match.name }),
-              { level: "info", durationMs: 8000 },
-            );
-          }
-          void runRemoteAttach(origin, match.name);
-        },
-      });
-      // F60：预览项与 attach 同门(同一 tmux 会话),一并就绪——只读，不受"命中多个"影响。
-      updateTabContextMenuItem("preview", gateByOffer(origin, {
-        id: "preview",
-        label: copyText("tabMenu.resolveAttachMenuItem.preview"),
-        onClick: () => void openPanePreview(origin, match.name),
-      }));
-      // F79：杀死会话——命中 ≥2 个时拒绝提供（破坏性操作，选错的代价不可逆，不像 attach 可撤销）。
-      if (ambiguous) {
-        updateTabContextMenuItem("kill", gateByOffer(origin, {
-          id: "kill",
-          label: copyText("tabMenu.kill.dupes", { n: matches.length }),
-          danger: true,
-          enabled: false,
-          onClick: () => {},
-        }));
-      } else {
-        updateTabContextMenuItem("kill", gateByOffer(origin, {
-          id: "kill",
-          label: copyText("tabMenu.kill.plain"),
-          danger: true,
-          onClick: () => this.actions.killRemoteTmux(origin, match.name, viaCwd, { sid }),
-        }));
-      }
-    } else {
-      // audit-fixes F03.3（attach-into-idle）：无活 claude，但目标 sid 的**空 tmux**（@ccm_sid 命中、
-      // command≠claude）还在 → 提供 attach 进那个空 shell（用户可在里面自己敲/看，或就地 resume）。
-      // E73：明说不可 attach 的会话**不算 idle-tmux** —— 它那个「前台不是 claude」
-    // 恰恰是因为里面跑着别的东西（SDK bridge 之类），不是空壳。
-    const idle = this.host.isAttachable(sid) ? findIdleTmux(sessions, sid) : undefined;
-      if (idle) {
-        updateTabContextMenuItem("attach", {
-          id: "attach",
-          label: copyText("tabMenu.attach.idle", { name: idle.name }),
-          onClick: () => void runRemoteAttach(origin, idle.name),
-        });
-        removeTabContextMenuItem("preview"); // 空 shell 无 claude 画面可预览
-        // UX 审计 #1：灰态(idle-tmux)也给 kill——杀空 tmux → tab 转归档 → 可 Resume（给死角一个出口）。
-        updateTabContextMenuItem("kill", gateByOffer(origin, {
-          id: "kill",
-          label: copyText("tabMenu.kill.idle", { name: idle.name }),
-          danger: true,
-          onClick: () => this.actions.killRemoteTmux(origin, idle.name, false, { idle: true, sid }),
-        }));
-      } else {
-        removeTabContextMenuItem("attach");
-        removeTabContextMenuItem("preview");
-        removeTabContextMenuItem("kill");
-      }
-    }
+    updateTabContextMenuItem("kill", gateByOffer(LOCAL_ORIGIN, s.kind === "ambiguous"
+      ? { id: "kill", label: copyText("tabMenu.kill.dupesRefused", { n: s.names.length }), enabled: false, danger: true, onClick: () => {} }
+      : { id: "kill", label: copyText("tabMenu.kill.named", { name }), danger: true, onClick: () => this.actions.killInTmux(LOCAL_ORIGIN, sid, name) }));
   }
 
   /**

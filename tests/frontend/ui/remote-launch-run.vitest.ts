@@ -30,10 +30,7 @@ import { showActionFailureToast } from "../../../src/frontend/ui/error-toast";
 import { expectArrival } from "../../../src/frontend/ui/launch-arrival";
 import {
   runRemoteResume,
-  runRemoteResumeTmux,
   runRemoteResumeTmuxAndWait,
-  runRemoteResumeIntoExistingTmux,
-  runLocalResumeIntoExistingTmux,
   runNewSessionRemote,
   runRemoteLauncher,
   runRemoteAttach,
@@ -117,61 +114,15 @@ describe("每条远端起会话路径：问那台要那一行，原样交给终�
   });
 });
 
-describe("就地 resume：键进 pane 的是直路那一行；回落只在能证明没发出去时", () => {
-  it("远端 typed ⇒ 键进去的是直路（容器 none）那一行，终端只接回", async () => {
-    expect(await runRemoteResumeIntoExistingTmux("aya", "sid-1", "cc-sid1", "claude")).toBe(true);
-    const [typedReq, attachReq] = requests();
-    expect(typedReq.container).toEqual({ kind: "none" });
-    expect(tmux.sendInto).toHaveBeenCalledWith("aya", "cc-sid1", lineFor(typedReq));
-    expect(attachReq.action).toEqual({ kind: "attach", name: "cc-sid1" });
-    expect(term.openTerminal).toHaveBeenCalledWith("aya", lineFor(attachReq), typedReq.rbindToken);
-  });
-
-  it("远端 fallback ⇒ 整串那一形（外层包一层 tmux 的那一行）", async () => {
-    tmux.sendInto.mockResolvedValue({ verdict: "fallback", reason: "没有控制通道" });
-    expect(await runRemoteResumeIntoExistingTmux("aya", "sid-1", "cc-sid1", "claude")).toBe(true);
-    const reqs = requests();
-    const outer = reqs[reqs.length - 1];
-    expect(outer.container).toEqual({ kind: "tmux", name: "cc-sid1", send_into: true });
-    expect(term.openTerminal).toHaveBeenCalledWith("aya", lineFor(outer), outer.rbindToken);
-  });
-
-  it("远端 refused ⇒ 绝不回落、出声", async () => {
-    tmux.sendInto.mockResolvedValue({ verdict: "refused", reason: "不是本工具的会话" });
-    expect(await runRemoteResumeIntoExistingTmux("aya", "sid-1", "cc-sid1", "claude")).toBe(false);
-    expect(term.openTerminal).not.toHaveBeenCalled();
-    expect(toastMock).toHaveBeenCalledTimes(1);
-  });
-
-  it("那一行渲不出来（那台拒）⇒ refused，不回落", async () => {
-    render.renderCli.mockRejectedValue({ refused: true, message: "坏 sid" });
-    expect(await runRemoteResumeIntoExistingTmux("aya", "-x", "cc-sid1", "claude")).toBe(false);
-    expect(tmux.sendInto).not.toHaveBeenCalled();
-    expect(term.openTerminal).not.toHaveBeenCalled();
-  });
-
-  it("本机 typed ⇒ 键进去的是本机后端渲的直路那一行；接回那一句也问本机后端", async () => {
-    expect(await runLocalResumeIntoExistingTmux("sid-1", "n-cc", "claude")).toBe(true);
-    const [typedReq] = requests();
-    expect(render.renderCli.mock.calls[0][0]).toBe("<local>");
-    expect(tmux.sendInto).toHaveBeenCalledWith("<local>", "n-cc", lineFor(typedReq));
-    expect(render.planLocalLaunch).toHaveBeenCalledWith({ action: { kind: "attach" }, cwd: null, launcher: null, tmuxName: "n-cc" });
-    expect(term.openTerminal).toHaveBeenCalledWith("<local>", "ccm -- --attach n-cc", typedReq.rbindToken);
-  });
-
-  it("本机不是 typed ⇒ 诚实失败，没有第二条路", async () => {
-    tmux.sendInto.mockResolvedValue({ verdict: "fallback", reason: "本机后端不在" });
-    expect(await runLocalResumeIntoExistingTmux("sid-1", "n-cc", "claude")).toBe(false);
-    expect(term.openTerminal).not.toHaveBeenCalled();
-  });
-});
+// 〔散文墓碑〕「就地 resume」那组（远端 · 本机各一条编排，键入 ＋ 回落规则）删了：在 tmux 里起与批量收成一条，
+//   空 tmux 就地键入由那台后端做（`control/session_batch.rs`，键的仍是直路那一行），界面只交一个 sid、照回答接进去。
 
 describe("失败怎么说", () => {
   it("那台拒了 ⇒ 构造失败提示、不起终端、不往剪贴板塞东西", async () => {
     render.renderCli.mockRejectedValue(new Error("那台说：会话 ID 不合法"));
     const writeText = vi.fn().mockResolvedValue(undefined);
     stubClipboard(writeText);
-    expect(await runRemoteResumeTmux("aya", "-x", "/p", "claude", "cc-x")).toBe(false);
+    expect(await runRemoteResumeTmuxAndWait("aya", "-x", "/p", "claude", "cc-x")).toBe("unsent");
     expect(term.openTerminal).not.toHaveBeenCalled();
     expect(writeText).not.toHaveBeenCalled();
     expect(toastMock).toHaveBeenCalledWith(expect.any(String), expect.stringContaining("会话 ID 不合法"));
@@ -240,15 +191,14 @@ describe("启动期令牌的铸币口", () => {
     expect(seen.size).toBe(1000);
   });
 
-  it("★★ 起 agent 进程的四条远端路各铸一个新令牌；交给窗口登记的 == 交给那台 ccm 的", async () => {
+  it("★★ 起 agent 进程的三条远端路各铸一个新令牌；交给窗口登记的 == 交给那台 ccm 的", async () => {
     await runRemoteResume("aya", "s1", "/p", "");
-    await runRemoteResumeTmux("aya", "s1", "/p", "claude", "cc-s1");
+    await runRemoteResumeTmuxAndWait("aya", "s1", "/p", "claude", "cc-s1");
     await runRemoteLauncher("aya", "/p", "w-cc", "claude");
-    await runRemoteResumeIntoExistingTmux("aya", "s1", "cc-s1", "claude");
     const startReqs = requests().filter((r) => r.action.kind !== "attach");
     const tokens = startReqs.map((r) => r.rbindToken);
     expect(tokens.every((t) => typeof t === "string" && /^[0-9a-f]{32}$/.test(t))).toBe(true);
-    expect(new Set(tokens).size).toBe(4);
+    expect(new Set(tokens).size).toBe(3);
     const handed = term.openTerminal.mock.calls.map((c) => c[2]);
     expect(handed).toEqual(tokens);
   });

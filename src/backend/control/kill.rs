@@ -81,11 +81,20 @@ pub(crate) fn admit_existing_name(name: &str) -> Result<(), CmdErr> {
 
 /// 真做事：过三道门 → 对**句柄**下 `kill-session`。
 pub(crate) fn run(name: &str) -> Result<super::cc_bus::BusCleanup, CmdErr> {
+    run_expecting(name, None)
+}
+
+/// 同 [`run`]，另要求句柄上此刻的 `@ccm_sid` 就是 `sid`（批量停按 sid 认出这个名字，认完名字换了人 ⇒ 不杀）。
+pub(crate) fn run_as(name: &str, sid: &str) -> Result<super::cc_bus::BusCleanup, CmdErr> {
+    run_expecting(name, Some(sid))
+}
+
+fn run_expecting(name: &str, sid: Option<&str>) -> Result<super::cc_bus::BusCleanup, CmdErr> {
     let target = super::launch::exact_target(name);
     // ★ Gate 1（`=name:` 精确匹配，`exact_target` 内部）· Gate 2（身份）· Gate 3（windows==1）
     //   ⇒ 通过后拿到句柄。**顺序不可反**：门在 kill 之前，由
     //   `the_kill_path_admits_before_it_kills` 钉住。
-    let handle = super::gate::admit_destructive(name, &target)?;
+    let handle = super::gate::admit_destructive(name, &target, sid)?;
     // 杀之前记下这个会话全部 pane 的根进程 pid：杀完按它认 cc-bus 名册里登记在这里的 id（不按会话名猜）。
     let panes = pane_pids(&handle);
     let out = Command::new("tmux")

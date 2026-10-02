@@ -42,6 +42,19 @@ use super::*;
 /// 形状抄 `readonly_guard::spawn_registry::ALLOWED`：把「为什么这条不上」写成**数据**，
 /// 好让机检对着它比 —— 散文里说一遍，下一个人加命令时看不见。
 const NOT_ON_CLI: &[(&str, &str)] = &[
+    // tab 栏多选的批量停 / 起。
+    (
+        "sessions-stop",
+        "它是界面「一批会话一次问」的那一形；命令行那一侧逐个 `--kill` 就是它，再上一条只是同一件事的第二个入口 ⇒ 只上帧面（`STREAM_ONLY`）。",
+    ),
+    (
+        "sessions-tmux",
+        "同上：它答的是界面菜单要的那一格（这个会话在哪个 tmux 会话里、亮哪几项）；命令行那一侧 `--tmux-list` 就是它的原料 ⇒ 只上帧面（`STREAM_ONLY`）。",
+    ),
+    (
+        "sessions-start",
+        "同上：命令行那一侧直接敲 `ccm --resume …` 就是它（开终端那一形回的那一行本来就是给 monitor 开窗用的）⇒ 只上帧面（`STREAM_ONLY`）。",
+    ),
     // 扩展页那张表与「装」的枢纽。
     (
         "ext-list",

@@ -107,10 +107,9 @@ describe("〔U2〕tab 层的界面文字：拉前 / @ccm_sid / ccm 助手 /〔S4
     const all = TAB_LAYER.flatMap((f) => spokenIn(readFileSync(resolve(REPO_ROOT, f), "utf8")));
     expect(all.length, "一个字面量都没抽到 —— 抽取器坏了").toBeGreaterThan(200);
     expect(all).toContain("切到终端窗口失败");
-    expect(all).toContain("认不出这是哪个会话");
     expect(all.filter((s) => s === "切到终端窗口超时").length, "两处拉前超时的新正文").toBe(2);
-    // 模板字面量也要抽得到（杀会话确认框那句就是模板）。
-    expect(all.some((s) => s.startsWith("\n\n⚠ 认不出这是哪个会话：「"))).toBe(true);
+    // 模板字面量也要抽得到（Attach 那一项的名字就是模板；按目录猜那句串味警告随那一支删了）。
+    expect(all).toContain("Attach（tmux: ）");
   });
 
   it("★ 零命中：13 份的字符串字面量里一处都没有", () => {

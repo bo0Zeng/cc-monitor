@@ -17,6 +17,7 @@ fn base_spec() -> CliSpec<'static> {
         rbind_token: None,
         launch_id: None,
         ccm_path: "ccm",
+        detach: false,
     }
 }
 
@@ -213,6 +214,7 @@ fn a_fully_loaded_invocation_emits_every_part_in_registry_order() {
         rbind_token: Some(TOKEN),
         launch_id: Some("s1"),
         ccm_path: "ccm",
+        detach: false,
     };
     assert_eq!(
         render(&spec).unwrap(),

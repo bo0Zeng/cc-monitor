@@ -19,31 +19,13 @@
  * 「不铸名」之后怎么办归调用方：本机把 `null` 交给后端（它有一条如实的「不进容器」旧路）；
  * 远端**没有**不进 tmux 的起法 ⇒ [`refuseUnmintable`]：不起，说清是哪台、为什么。
  *
- * 分叉那条要知道源会话此刻在哪个 tmux 里（`fork-flow.ts`），那是另一问 —— 名单读口 [`readTmuxListing`] 也住这里
- * （`tmux-reads.ts::listTmux` 的三态：列表 = 知道 · `null` = 那台没装 tmux · 抛 = 不知道）。
+ * 分叉那条要知道源会话此刻在哪个 tmux 里，那是另一问（问那台后端 `sessions-tmux`，`tmux-sessions.ts::standingOf`）。
  */
-import { listTmux } from "./tmux-reads";
 import type { Origin } from "./ipc/origin";
-import type { TmuxSession } from "./tmux-sessions";
 import { chan } from "../../comms/inward/chan";
 import { budgetWithin, jsonBody, readJson, saidOf } from "./ipc/chan-caller";
 import { showActionFailureToast } from "./error-toast";
 import { copyText } from "./copy-table";
-
-/** 那台机器此刻有哪些 tmux 会话 —— 知道，或者说得出为什么不知道。 */
-export type TmuxListing =
-  | { kind: "known"; sessions: readonly TmuxSession[] }
-  | { kind: "unknown"; why: string };
-
-/** 问一次那台机器的 tmux 名单。**不抛**：问不到就是 `unknown`，带着原因；没装 tmux ⇒ 一张确定的空表。 */
-export async function readTmuxListing(origin: Origin): Promise<TmuxListing> {
-  try {
-    const sessions = await listTmux(origin);
-    return { kind: "known", sessions: sessions ?? [] };
-  } catch (e) {
-    return { kind: "unknown", why: String(e) };
-  }
-}
 
 export type MintOutcome = { ok: true; name: string } | { ok: false; why: string };
 

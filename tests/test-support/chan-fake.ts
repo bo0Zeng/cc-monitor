@@ -559,6 +559,8 @@ export function withHistoryReads(
     // 列 tmux 会话那一发也在这里译回旧名字（本判据族大多经这一层，免逐条改）。
     const tmux = tmuxReadOf(cmd, args);
     if (tmux) return tmuxProduct(tmux[0], answer(tmux[0], tmux[1]));
+    const st = standingAsked(cmd, args, answer);
+    if (st) return st;
     const mint = tmuxMintOf(cmd, args);
     if (mint) return tmuxMintProduct(answer(mint[0], mint[1]));
     if (cmd === "list_remote_mcp_origins") {
@@ -944,6 +946,42 @@ async function tmuxProduct(name: string, got: Promise<unknown> | unknown): Promi
   return chanReply({ installed: true, sessions: rows });
 }
 
+/**
+ * `sessions-tmux`（这几个会话各在哪个 tmux 会话里）：替身扮那台后端答 —— 从判据手里那份 tmux 名单（同上一节的旧名字）现算，
+ * 规则照后端 `control/session_batch.rs::standing`（带着它的 sid、前台是不是 agent；在跑恰一个 / 多个 / 空 tmux / 没有），不是界面的判定。
+ * 名单答不出（`undefined` / 抛）⇒ 那台问不到；远端 `null` ⇒ 那台没装 tmux。
+ */
+async function standingProduct(origin: string, sids: string[], got: Promise<unknown> | unknown): Promise<ArrayBuffer> {
+  let v: unknown;
+  try {
+    v = await got;
+  } catch (e) {
+    throw refusedReply("unobservable", wordsOf(e));
+  }
+  if (v === undefined || (v === null && origin === "<local>")) throw NO_CHANNEL;
+  const rows = (v ?? []) as Record<string, unknown>[];
+  const results = sids.map((sid) => {
+    if (v === null) return { sid, standing: "no_tmux", names: [] };
+    const agentOf = (r: Record<string, unknown>) => r.agent ?? (r.command === "claude" || r.command === "node");
+    const live = rows.filter((r) => r.sid === sid && agentOf(r)).map((r) => r.name as string);
+    const idle = rows.filter((r) => r.sid === sid && !agentOf(r)).map((r) => r.name as string);
+    if (live.length === 1) return { sid, standing: "running", names: live };
+    if (live.length > 1) return { sid, standing: "ambiguous", names: live };
+    if (idle.length > 0) return { sid, standing: "idle", names: [idle[0]] };
+    return { sid, standing: "none", names: [] };
+  });
+  return chanReply({ results });
+}
+
+/** 一发 `chan_call` 若是 `sessions-tmux` ⇒ 替身扮那台答（名单向判据手里的替身要）；否则 `null`。 */
+function standingAsked(cmd: string, args: unknown, inner: (cmd: string, args: Record<string, unknown>) => unknown): Promise<ArrayBuffer> | null {
+  if (!isChanCall(cmd, args, "sessions-tmux")) return null;
+  const origin = args.origin;
+  const { sids } = chanArgsJson(args) as { sids: string[] };
+  const list = origin === "<local>" ? inner("list_local_tmux", {}) : inner("list_remote_tmux", { origin });
+  return standingProduct(origin, sids, list);
+}
+
 /** 判据手里那个替身外面包一层：列 tmux 会话那一发译回旧名字（见本节头注）；别的原样交进去。 */
 export function withTmuxReads(
   inner: (cmd: string, args?: unknown) => unknown,
@@ -951,6 +989,8 @@ export function withTmuxReads(
   return async (cmd, args) => {
     const t = tmuxReadOf(cmd, args);
     if (t) return tmuxProduct(t[0], inner(t[0], t[1]));
+    const st = standingAsked(cmd, args, inner);
+    if (st) return st;
     const m = tmuxMintOf(cmd, args);
     if (m) return tmuxMintProduct(inner(m[0], m[1]));
     return inner(cmd, args);

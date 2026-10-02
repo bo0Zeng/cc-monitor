@@ -188,6 +188,19 @@ const CHANNELED: &[(&str, &str)] = &[
 /// 操作名集合要把它们算进来：下面那条两向判据的「前端那一侧」== [`CHANNELED`] ⊔ 本表。
 /// 每一条还要**真的**是后端登记的帧命令（从后端 `inbound.rs` 生产段数，异源）、monitor 生产段里**零**字面量。
 const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
+    // tab 栏多选的批量停 / 起（`src/frontend/ui/tab-batch-run.ts`）：一台一次、那台逐个判逐个答，monitor 从没有过这条命令。
+    (
+        "sessions-start",
+        "新帧命令：每一个同单个那一条（记录在不在 · 在跑不另起 · 空 tmux 就地键入 · 铸名建会话 / 渲那一行），判在那台后端",
+    ),
+    (
+        "sessions-tmux",
+        "新帧命令：这几个会话各在哪个 tmux 会话里（单个菜单亮哪几项 · 换号重启 · 分叉都问它），判在那台后端",
+    ),
+    (
+        "sessions-stop",
+        "新帧命令：每一个同单个「杀死会话」（恰一个带着它的 tmux 会话才杀，门在那台后端），判在那台后端",
+    ),
     // 设置「扩展」页（`src/frontend/ui/ext-reads.ts`）：表 · 装（本机后端当枢纽）· 卸（问被卸那台），判定全在后端。
     (
         "ext-note-set",

@@ -5217,9 +5217,10 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/backend/control/cc_bus.rs", 2), // +1：`bus-state` 头注点的 monitor 驾驶舱读名册命令删了
         //   几份 vitest 的 invoke 替身换成通道那一跳的翻译（`chan-fake.ts::tmuxControlShim`），头注点旧命令名。
         ("tests/frontend/ui/account-restart.vitest.ts", 1),
-        // `remote-launch-run.vitest.ts` 那一行摘了：套件重写成「每条路径问那台要那一行、原样交出去」，旧墓碑随之走了。
-        ("tests/frontend/ui/send-into-backend.vitest.ts", 2),
-        ("tests/frontend/ui/tabs.vitest.ts", 3), // 1 → 3：⑬ 退役的会话清单/活动命令与 buffered_* 旧名挂墓碑
+        // `send-into-backend.vitest.ts` 那一行摘了：那份随就地 resume 的前端编排一起删了（起在 tmux 里与批量收成一条、在那台后端做）。
+        ("tests/frontend/ui/remote-launch-run.vitest.ts", 1), // 就地 resume 那组删了，点它的那一块
+        ("tests/frontend/ui/tabs-split-graph.vitest.ts", 1), // tabs.ts 那几个 tmux 过滤的 re-export 删了
+        ("tests/frontend/ui/tabs.vitest.ts", 4), // 3 → 4：tmux↔sid 前端过滤那几组 · F74 tmux 叶子三条删了各一块（＋2），点 `fetchTmuxFresh` 那一组随取数点删了（−1）// 1 → 3：⑬ 退役的会话清单/活动命令与 buffered_* 旧名挂墓碑
         ("tests/frontend/ui/views/pane-preview.vitest.ts", 1),
         ("tests/backend/history/history_join_tests.rs", 1), // 历史清单与注解搬进本机常驻后端，点旧名的散文挂墓碑
         // `tests/frontend/shell/history_title_coverage.rs` 出表：那份文件随记录解释进后端删了（或墓碑随被守的东西整轴退役）
@@ -5315,7 +5316,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/backend/observe/tmux_list.rs", 2), // 1 → 2：界面认 tmux 会话那个谓词（`isClaudeTmuxCommand`）进了后端，`agent` 那一格点旧名 // 列 tmux 会话那一族搬进后端（tmux-list 出成品），旧名挂墓碑
         ("src/frontend/ui/tmux-reads.ts", 1), // 列 tmux 会话那一族搬进后端（tmux-list 出成品），旧名挂墓碑
         ("tests/backend/observe/tmux_list_tests.rs", 1), // 列 tmux 会话那一族搬进后端（tmux-list 出成品），旧名挂墓碑
-        ("tests/frontend/ui/tmux-cache-single-writer.vitest.ts", 1), // 列 tmux 会话改走通道，旧命令名挂墓碑
+        // `tmux-cache-single-writer.vitest.ts` 那一行摘了：tmux 名单短缓存与它的取数点随「在哪个 tmux 会话里」问那台后端删了。
         ("tests/frontend/ui/tmux-reads.vitest.ts", 1), // 列 tmux 会话改走通道，旧命令名挂墓碑
         ("tests/backend/dial_probe_tests.rs", 1),      // 测试连接搬进本机后端，旧名挂墓碑
         // 基数 → 增量 +1 行：`apikey_remote`整删，「形状照它」那句挂墓碑。

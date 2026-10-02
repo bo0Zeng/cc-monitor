@@ -63,6 +63,13 @@ export interface TabBarViewHost {
   closeTab(sid: string): void;
   /** 点按钮：手动切 tab。 */
   switchTo(sid: string): void;
+  /**
+   * 点按钮时的多选（`tab-selection.ts`）：`plain` 单击（清多选、随后切 tab）· `toggle` Ctrl 单击 · `range` Shift 单击 ·
+   * `clear` 单击条上空白。
+   */
+  pick(sid: string | null, how: "plain" | "toggle" | "range" | "clear"): void;
+  /** 这个 tab 在不在多选里（画 `.selected`）。 */
+  isSelected(sid: string): boolean;
   /** 左键按下：候选拖拽。 */
   beginDrag(e: MouseEvent, sid: string, root: HTMLElement): void;
   /** 拖完那一下的 click 不切 tab（一次性消费）。 */
@@ -158,7 +165,12 @@ export class TabBarView {
       return;
     }
     const hit = this.hitOf(e);
-    if (!hit) return;
+    if (!hit) {
+      // 条上空白（不是 tab、不是组头）⇒ 清掉多选。
+      const t = e.target as Element | null;
+      if (!(t && typeof t.closest === "function" && t.closest(".tab-group-head"))) this.host.pick(null, "clear");
+      return;
+    }
     const { sid, sub } = hit;
     if (sub) {
       e.stopPropagation();
@@ -183,7 +195,26 @@ export class TabBarView {
     }
     // 拖拽刚结束的那次 click 不切 Tab（drag-then-release ≠ 选中）。一次性消费。
     if (this.host.takeSuppressedClick(sid)) return;
+    if (e.ctrlKey || e.metaKey) {
+      this.host.pick(sid, "toggle");
+      return;
+    }
+    if (e.shiftKey) {
+      this.host.pick(sid, "range");
+      return;
+    }
+    this.host.pick(sid, "plain");
     this.host.switchTo(sid);
+  }
+
+  /** 条上看得到的顺序：tab 按钮在 DOM 里的先后（整刷摆出来的就是它 —— 组在前、组内按条上位置、散 tab 在后）。 */
+  visibleOrder(): string[] {
+    const out: string[] = [];
+    for (const el of Array.from(this.barEl.querySelectorAll(".tab"))) {
+      const sid = this.sidOf.get(el);
+      if (sid !== undefined) out.push(sid);
+    }
+    return out;
   }
 
   private onBarMouseDown(e: MouseEvent): void {
@@ -541,6 +572,8 @@ export class TabBarView {
     //   直接返回，不跑 update steps、不排 mutation record）；**真在每次整刷里写 DOM 的是 `title`**
     //   （属性赋值不管值变没变都写）。这一段早退省下的是那次写 ＋ 这一堆字符串拼接。
     const active = sid === this.store.activeId;
+    // 多选里的样子（`.selected`）与「当前 tab」（`.active`）是两件事，两个类各画各的。
+    const selected = this.host.isSelected(sid);
     // 两个轴怎么画（类 · 提示句）只从 `stateView` 取：已结束（只能 resume）· 可重连（死了、容器还在）。
     const view = stateView(tab.state);
     const ended = view.ended;
@@ -579,6 +612,7 @@ export class TabBarView {
 
     const flags = [
       active,
+      selected,
       ended,
       pinned,
       hasCwd,
@@ -594,6 +628,7 @@ export class TabBarView {
     if (refs.drawn !== drawn) {
       refs.drawn = drawn;
       refs.root.classList.toggle("active", active);
+      refs.root.classList.toggle("selected", selected);
       refs.root.classList.toggle("ended", ended);
       refs.root.classList.toggle("pinned", pinned);
       refs.root.classList.toggle("has-cwd", hasCwd);

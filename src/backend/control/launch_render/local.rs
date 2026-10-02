@@ -84,6 +84,29 @@ pub(crate) struct Planned {
 
 /// 整条计划。拒 ⇒ `Err(那一句)`。
 pub(crate) fn plan(req: &LocalLaunchRequest, facts: &Facts) -> Result<Planned, String> {
+    plan_with(req, facts, false, |spec, caps| {
+        ci::render_ccm_invocation(spec, caps)
+    })
+    .map(|(cmd, launch_id)| Planned { cmd, launch_id })
+}
+
+/// 本机那一行的 argv 形（同 [`plan`]：同一份计划、同一个渲染器），`detach` ⇒ 建进 tmux 之后不接进去。
+/// 这台后端替人在 tmux 里起会话时用（tab 栏在 tmux 里起）；名字是调用方铸好的。
+pub(crate) fn plan_argv(
+    req: &LocalLaunchRequest,
+    facts: &Facts,
+    detach: bool,
+) -> Result<Vec<String>, String> {
+    plan_with(req, facts, detach, |spec, caps| ci::ccm_argv(spec, caps)).map(|(argv, _)| argv)
+}
+
+/// 整条计划，渲成什么形由 `out` 定（一行字 · argv）。回 `(成品, 身份 token)`。
+fn plan_with<T>(
+    req: &LocalLaunchRequest,
+    facts: &Facts,
+    detach: bool,
+    out: impl Fn(&ci::CliSpec, &BTreeSet<String>) -> Result<T, ci::Refusal>,
+) -> Result<(T, Option<String>), String> {
     let name = req.tmux_name.as_deref().filter(|n| !n.is_empty());
     if let LocalAction::Attach = req.action {
         if facts.windows {
@@ -92,11 +115,15 @@ pub(crate) fn plan(req: &LocalLaunchRequest, facts: &Facts) -> Result<Planned, S
         let Some(name) = name else {
             return Err(copy_text("rsHistory.launch.noSessionName", &[]));
         };
-        let cmd = render(req, ci::Action::Attach { name }, Some(name), None)?;
-        return Ok(Planned {
-            cmd,
-            launch_id: None,
-        });
+        let cmd = with_spec(
+            req,
+            ci::Action::Attach { name },
+            Some(name),
+            None,
+            detach,
+            &out,
+        )?;
+        return Ok((cmd, None));
     }
     if let (LocalAction::New, Some(dir)) = (&req.action, req.cwd.as_deref()) {
         if !dir.is_empty() && !(facts.is_dir)(dir) {
@@ -111,19 +138,19 @@ pub(crate) fn plan(req: &LocalLaunchRequest, facts: &Facts) -> Result<Planned, S
     // Windows 上没有 tmux ⇒ 直路（ccm 在那个 PowerShell 窗口里起 agent、等它退）。
     // §36（只绑 Windows）：Windows 这一行里不渲清嵌套会话变量的那一段 —— 清它们是 `ccm` 在最终 exec 那一处做的。
     let container = if facts.windows { None } else { name };
-    let cmd = render(req, action, container, Some(&token))?;
-    Ok(Planned {
-        cmd,
-        launch_id: Some(token),
-    })
+    let cmd = with_spec(req, action, container, Some(&token), detach, &out)?;
+    Ok((cmd, Some(token)))
 }
 
-fn render(
+/// 本机那一形的入参 ⇒ 渲染器那份 spec（唯一的映射）。
+fn with_spec<T>(
     req: &LocalLaunchRequest,
     action: ci::Action,
     tmux: Option<&str>,
     launch_id: Option<&str>,
-) -> Result<String, String> {
+    detach: bool,
+    f: impl Fn(&ci::CliSpec, &BTreeSet<String>) -> Result<T, ci::Refusal>,
+) -> Result<T, String> {
     let launcher = checked_launcher(req.launcher.as_deref())?;
     // 账号三态逐态对：`base` ⇒ `--base`；具名 ⇒ `--account <名>` / `--account-dir <目录>`；缺席 ⇒ 继承（不吐）。
     let account = match req.account.as_ref() {
@@ -158,13 +185,14 @@ fn render(
         rbind_token: None,
         launch_id,
         ccm_path: "ccm",
+        detach,
     };
     // 能力是这台 ccm 自己的（渲染就在这台后端里）。
     let caps: BTreeSet<String> = crate::ccm_launcher_with(crate::TMUX_PLATFORM)
         .into_iter()
         .map(str::to_string)
         .collect();
-    ci::render_ccm_invocation(&spec, &caps).map_err(|r| r.reason())
+    f(&spec, &caps).map_err(|r| r.reason())
 }
 
 /// 身份 token：resume 用那个 sid（过得了段闸时），否则现铸一个 UUID v4 形的 nonce。

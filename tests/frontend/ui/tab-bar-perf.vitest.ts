@@ -88,6 +88,8 @@ function rig(n: number, grouped = 0): Rig {
     bringRemoteTerminalToFront: vi.fn().mockResolvedValue(undefined),
     closeTab: vi.fn(),
     switchTo: vi.fn(),
+    pick: vi.fn(),
+    isSelected: vi.fn().mockReturnValue(false),
     beginDrag: vi.fn(),
     takeSuppressedClick: vi.fn().mockReturnValue(false),
     openMenu: vi.fn(),
@@ -169,9 +171,10 @@ describe("P2 ＋ P7 ＋ P1：整刷改成差量刷", () => {
       expect(spy).toHaveBeenCalledTimes(0);
       // 正控：一颗按钮真变了 ⇒ 那一颗的 9 个开关各调一次（别的按钮仍然 0）。
       // 〔「删掉树」〕10 → 9：少了 `.tab-bg` 那一个开关（bg tab 不再有自己的样式）。
+      // 9 → 10：多选里的样子 `.selected` 那一个开关。
       (r.store.tabs.get("s5") as { pinned: boolean }).pinned = true;
       r.view.refresh();
-      expect(spy).toHaveBeenCalledTimes(9);
+      expect(spy).toHaveBeenCalledTimes(10);
     } finally {
       spy.mockRestore();
     }

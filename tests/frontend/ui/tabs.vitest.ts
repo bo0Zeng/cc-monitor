@@ -173,10 +173,14 @@ vi.mock("../../../src/frontend/ui/error-toast", () => ({ showActionFailureToast:
 // Batch14-F41：resumeTab 远端分支改走一键拉起 runner；behavior 提供 launcher 配置。
 vi.mock("../../../src/frontend/ui/remote-launch-run", () => ({
   runRemoteResume: vi.fn().mockResolvedValue(undefined),
-  runRemoteResumeTmux: vi.fn().mockResolvedValue(undefined),
-  runRemoteResumeIntoExistingTmux: vi.fn().mockResolvedValue(true),
   runRemoteAttach: vi.fn().mockResolvedValue(undefined),
 }));
+// 单个菜单的「杀」与「在 tmux 里 Resume」交那台（`sessions-stop` / `sessions-start`，与批量同一条）：这里换成 spy，
+//   判的是单个那一侧交了什么、拿到回答之后做什么；那台怎么判住后端判据（`session_batch_tests.rs`），交法住 `tab-batch-run.vitest.ts`。
+vi.mock("../../../src/frontend/ui/tab-batch-run", async (orig) => {
+  const real = await orig<typeof import("../../../src/frontend/ui/tab-batch-run")>();
+  return { ...real, callStart: vi.fn(), callStop: vi.fn() };
+});
 // Batch14-F42：turn-end 通知与渲染独立,tabs 测试里 mock 成空壳(单独在 turn-notify.vitest 测)。
 vi.mock("../../../src/frontend/ui/turn-notify", () => ({
   turnEndNotifier: { observe: vi.fn() },
@@ -202,12 +206,10 @@ import {
   chanReply,
   historyCalls,
   isChanCall,
-  killCallsOf,
   launchRenderShim,
   localLaunchCalls,
   sessionReadCalls,
   tmuxMintCalls,
-  tmuxReadOf,
   UNSUPPORTED,
   withAccountReads,
   withHistoryReads,
@@ -223,16 +225,12 @@ import { showActionFailureToast } from "../../../src/frontend/ui/error-toast";
 import { __setHostOsForTests, type HostOs } from "../../../src/frontend/ui/settings/host-os";
 import {
   runRemoteResume,
-  runRemoteResumeTmux,
-  runRemoteResumeIntoExistingTmux,
   runRemoteAttach,
 } from "../../../src/frontend/ui/remote-launch-run";
+import { callStart, callStop } from "../../../src/frontend/ui/tab-batch-run";
+import { AGENT_PROFILE } from "../../../src/frontend/ui/agent-profile";
 import {
   TabManager,
-  findClaudeTmux,
-  findClaudeTmuxMatches,
-  findIdleTmux,
-  isCwdFallbackMatch,
   moveTab,
   groupMoveForDrop,
   commonDirName,
@@ -261,6 +259,7 @@ import { appStore } from "../../../src/frontend/ui/app-store";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import { recordFileWiring } from "../../../src/frontend/ui/record-file-notice";
 import { applyConfigEdits, type Edit } from "./config-patch-fake";
+import { dispatcher } from "../../../src/frontend/ui/keybindings/registry";
 
 // `TabManager` 拆开之后各样东西住各自的家（store · tab 栏视图 · 拖拽 · 落盘偏好 · 流视图 · 会话动作）。
 // 判据**直接指向新家**；`TabManager` 上不再为旧判据留同名转交。TS 的 `private` 只在编译期，运行时这几个字段就在实例上。仅测试用。
@@ -1276,152 +1275,58 @@ describe("audit-fixes F01 follow-resume pin 现读磁盘（修 B1 内存脏读�
     expect(historyCalls(vi.mocked(invoke).mock.calls, "list_last_accounts")).toHaveLength(0);
     expect(runRemoteResume).toHaveBeenCalledWith("aya", "r1", "/home/pi/proj", "cct", { configDir: undefined, accountName: undefined, modelOverride: undefined });
   });
-
-  // F04：tmux 后端的基座逃生口，与直连对称（两后端一致）。useBase → 不跟随、不读 pin、不注入。
-  // 变异锚点：resumeTabTmux 的 follow 去掉 `useBase ?` → 又读 pin → list_last_accounts 被 invoke → 红。
-  // 全新 resume 那一支要铸名，而 tmux 名单**没问到**（`list_remote_tmux` reject）
-  //   不是「零会话」—— 先前 `?? null` 把两者压成一个、空集铸名（#76 的形状）。⇒ 不起、出声。
-  //   正控就是上下那两条：名单回空表 ⇒ 照起、名字 = 基名 `proj-cc`。
-  it("★ 〔FE1〕tmux 全新 resume：名单没问到 ⇒ 不起、出声（不拿空集铸名）", async () => {
-    // 名单与名字都没问到（`tmux_name_mint` 不答 = 那台没有控制通道）⇒ 铸不出名字 ⇒ 不起。
-    vi.mocked(invoke).mockImplementation(withHistoryReads((cmd: string) =>
-      cmd === "list_remote_tmux" ? Promise.reject(new Error("ssh 抖动")) : Promise.resolve(undefined),
-    ));
-    tm.ensureTab("r1", "/home/pi/proj", "/p/r1.jsonl", "aya");
-    tm.archiveTab("r1");
-    await home(tm).actions.resumeTabTmux("r1", undefined, true);
-    expect(runRemoteResumeTmux, "名单没问到还起了 —— 名字没避让").not.toHaveBeenCalled();
-    expect(vi.mocked(showActionFailureToast).mock.calls.map((c) => c[0])).toContain("没有起会话");
-  });
-
-  it("用基座 resume（tmux，useBase）→ 不读 pin、不注入（起全新 tmux resume，cd undefined）", async () => {
-    // list_remote_tmux 回空表 → 无活会话/无 idle → 走 ② 全新 resume。
-    tm.ensureTab("r1", "/home/pi/proj", "/p/r1.jsonl", "aya");
-    tm.archiveTab("r1");
-    await home(tm).actions.resumeTabTmux("r1", undefined, true);
-    expect(historyCalls(vi.mocked(invoke).mock.calls, "list_last_accounts")).toHaveLength(0);
-    expect(runRemoteResumeTmux).toHaveBeenCalledWith("aya", "r1", "/home/pi/proj", "cct", "proj-cc", {
-      configDir: undefined,
-      accountName: undefined,
-      modelOverride: undefined,
-    });
-  });
 });
 
 // audit-fixes F03 步骤1（idle-tmux 就地复用，治 #76 根因 + #75 一条）：
-// 目标 sid 的 tmux 还在（@ccm_sid 命中）但 command≠claude（空 shell）→ resumeTabTmux 应**复用原会话名**
-// 就地 resume（runRemoteResumeIntoExistingTmux），而不是铸名口起 `<项目名>-cc-N` 新会话。
-// 变异锚点：删掉 ①.5 idle 分支 → 回落 ② 起新会话 → runRemoteResumeTmux 被调、reuse 没被调 → 红。
-describe("audit-fixes F03 resumeTabTmux idle-tmux 就地复用", () => {
+// 单个「在 tmux 里 Resume」与批量「在 tmux 里后台起」同一条：交那台一个 sid 的一批（`sessions-start`，那台判在不在跑 · 空 tmux 就地键入 ·
+//   铸名交一行 ccm），单个只多一步：起好之后开一个终端接进去。那台怎么判住后端判据；这里判单个这一侧交了什么、拿到回答之后做什么。
+describe("单个「在 tmux 里 Resume」交那台（与批量同一条，只差 sid 的个数）", () => {
   let tm: TabManager;
+  const reply = (outcome: string, why: string | null, session: string | null, detail = "") => ({
+    sid: "r1", outcome, why, detail, session, bus: null, cmd: null,
+  });
   beforeEach(() => {
     vi.clearAllMocks();
     tm = makeTM();
-  });
-
-  it("sid 的空 tmux（@ccm_sid 命中、command=bash）→ 就地复用原名 resume，不起新会话", async () => {
-    vi.mocked(invoke).mockImplementation(withHistoryReads((cmd: string) =>
-      cmd === "list_remote_tmux"
-        ? Promise.resolve([
-            // claude 已退,只剩交互 shell 的 cc-<sid8>:sid 命中但 command=bash。
-            { name: "cc-r1abcd", path: "/home/pi/proj", command: "bash", attached: false, windows: 1, sid: "r1", agent: false },
-          ])
-        : Promise.resolve(undefined),
-    ));
     tm.ensureTab("r1", "/home/pi/proj", "/p/r1.jsonl", "aya");
     tm.archiveTab("r1");
-    await home(tm).actions.resumeTabTmux("r1");
-    // 就地复用原名(cc-r1abcd),不 attach(不是 live)、不起新会话。
-    expect(runRemoteResumeIntoExistingTmux).toHaveBeenCalledWith("aya", "r1", "cc-r1abcd", "cct", {
-      configDir: undefined,
-      accountName: undefined,
-      modelOverride: undefined,
-    });
-    expect(runRemoteResumeTmux).not.toHaveBeenCalled();
+  });
+
+  it("基座（useBase）：交的是这一个、不读 pin 不注入；起好了 ⇒ 接进那台答的那个会话", async () => {
+    vi.mocked(callStart).mockResolvedValue([reply("done", null, "proj-cc")] as never);
+    await home(tm).actions.resumeTabTmux("r1", undefined, true);
+    expect(historyCalls(vi.mocked(invoke).mock.calls, "list_last_accounts")).toHaveLength(0);
+    expect(vi.mocked(callStart).mock.calls).toEqual([
+      ["aya", "tmux", [{ sid: "r1", cwd: "/home/pi/proj", account: { kind: "base" }, model: null, launcher: "cct", defaultLauncher: AGENT_PROFILE.defaultLauncher }]],
+    ]);
+    expect(runRemoteAttach).toHaveBeenCalledWith("aya", "proj-cc");
+  });
+
+  it("那台答「已经在跑」⇒ 不另起，接进去；在跑的不止一个 ⇒ 接第一个 ＋ 说出来", async () => {
+    vi.mocked(callStart).mockResolvedValue([reply("skipped", "running", "cc-r1abcd", "cc-r1abcd")] as never);
+    await home(tm).actions.resumeTabTmux("r1", undefined, true);
+    expect(runRemoteAttach).toHaveBeenLastCalledWith("aya", "cc-r1abcd");
+    vi.mocked(callStart).mockResolvedValue([reply("skipped", "ambiguous", "cc-r1abcd", "cc-r1abcd, cc-r1efgh")] as never);
+    await home(tm).actions.resumeTabTmux("r1", undefined, true);
+    expect(runRemoteAttach).toHaveBeenLastCalledWith("aya", "cc-r1abcd");
+    expect(showActionFailureToast).toHaveBeenCalledWith("检测到多个同身份会话", expect.stringContaining("2"), expect.objectContaining({ level: "info" }));
+  });
+
+  it("记录已不在 / 那台没起成 / 问不到那台 ⇒ 不开终端、出声", async () => {
+    vi.mocked(callStart).mockResolvedValue([reply("skipped", "record_gone", null, "/home/pi/.claude/projects")] as never);
+    await home(tm).actions.resumeTabTmux("r1", undefined, true);
+    expect(vi.mocked(showActionFailureToast).mock.calls.map((c) => c[0])).toContain(copyText("sessionState.recordGone.title"));
+    vi.mocked(callStart).mockResolvedValue([reply("failed", "start_failed", "proj-cc", "ccm: 起不来")] as never);
+    await home(tm).actions.resumeTabTmux("r1", undefined, true);
+    vi.mocked(callStart).mockRejectedValue(new Error("通道不在"));
+    await home(tm).actions.resumeTabTmux("r1", undefined, true);
     expect(runRemoteAttach).not.toHaveBeenCalled();
+    expect(vi.mocked(showActionFailureToast).mock.calls.length).toBe(3);
   });
 
-  it("sid 的 tmux 里 command=claude（活）→ 走 attach，不走就地复用", async () => {
-    vi.mocked(invoke).mockImplementation(withHistoryReads((cmd: string) =>
-      cmd === "list_remote_tmux"
-        ? Promise.resolve([
-            { name: "cc-r1abcd", path: "/home/pi/proj", command: "claude", attached: true, windows: 1, sid: "r1", agent: true },
-          ])
-        : Promise.resolve(undefined),
-    ));
-    tm.ensureTab("r1", "/home/pi/proj", "/p/r1.jsonl", "aya");
-    tm.archiveTab("r1");
-    await home(tm).actions.resumeTabTmux("r1");
-    expect(runRemoteAttach).toHaveBeenCalledWith("aya", "cc-r1abcd");
-    expect(runRemoteResumeIntoExistingTmux).not.toHaveBeenCalled();
-  });
-
-  it("sid 无对应 tmux（全新/漂移占名）→ 起全新 resume，不就地复用", async () => {
-    // 列表里只有别的 sid 的会话 → 目标 sid 既非 live 也无 idle → 问那台后端铸名、新起。
-    vi.mocked(invoke).mockImplementation(withHistoryReads((cmd: string) =>
-      // 名字问那台后端铸（派生 ＋ 避让在它那边）：替身写死它铸了什么。
-      cmd === "tmux_name_mint"
-        ? Promise.resolve("proj-cc")
-        : cmd === "list_remote_tmux"
-        ? Promise.resolve([
-            { name: "cc-other12", path: "/home/pi/proj", command: "bash", attached: false, windows: 1, sid: "other", agent: false },
-          ])
-        : Promise.resolve(undefined),
-    ));
-    tm.ensureTab("r1", "/home/pi/proj", "/p/r1.jsonl", "aya");
-    tm.archiveTab("r1");
-    await home(tm).actions.resumeTabTmux("r1");
-    expect(runRemoteResumeTmux).toHaveBeenCalled();
-    expect(runRemoteResumeIntoExistingTmux).not.toHaveBeenCalled();
-  });
-
-  // F05 Phase D 审计：resumeTabTmux 走的是 follow 解析（不是显式 accountName 参数），接线是
-  // `(cd, an) => runRemoteResumeTmux(..., cd, an)`——补一条"跟随解析真命中账号"的集成测试，
-  // 证明 an 真的被转传，不只是 accounts.vitest 单独测过 resolveAccount 自己的决策逻辑。
-  it("跟随解析命中当前账号 → runRemoteResumeTmux 收到真实 configDir + accountName", async () => {
-    invalidateAccountsCache(); // 同上：防陈旧缓存命中挡住下面的自定义 mock
-    vi.mocked(invoke).mockImplementation(withHistoryReads(withAccountReads((cmd: string) => {
-      if (cmd === "tmux_name_mint") return Promise.resolve("proj-cc"); // 名字问那台后端铸
-      if (cmd === "list_remote_tmux") {
-        return Promise.resolve([
-          { name: "cc-other12", path: "/home/pi/proj", command: "bash", attached: false, windows: 1, sid: "other", agent: false },
-        ]);
-      }
-      if (cmd === "list_remote_accounts") {
-        return Promise.resolve({
-          available: true,
-          error: null,
-          meta: { enabled: true, acctsDir: "/h/.claude-accts", manifestPath: "/h/.claude-accts/accounts.json", updatedAt: null, sharedStore: null, count: 1, error: null },
-          accounts: [{ name: "z", email: "z@x.edu", configDir: "/h/.claude-accts/z", isDefault: true, mode: "isolated", exists: true, loggedIn: true, authKind: "subscription", authReady: true }],
-        });
-      }
-      if (cmd === "list_last_accounts") return Promise.resolve({}); // 无既有 pin → 落 current
-      return Promise.resolve(undefined);
-    })));
-    tm.ensureTab("r1", "/home/pi/proj", "/p/r1.jsonl", "aya");
-    tm.archiveTab("r1");
-    await home(tm).actions.resumeTabTmux("r1");
-    expect(runRemoteResumeTmux).toHaveBeenCalledWith("aya", "r1", "/home/pi/proj", "cct", "proj-cc", {
-      configDir: "/h/.claude-accts/z",
-      accountName: "z",
-      modelOverride: undefined,
-    });
-    invalidateAccountsCache(); // 同上：清掉本测试填充的账号缓存，别泄漏进后续测试
-  });
-
-  // F07 Phase D 审计：此前所有涉及 executor 的断言里 modelOverride 尾参恒为 undefined
-  // （测试用的 invoke mock 从未给 "load_config" 配过 modelByAccount 数据）——接线代码本身
-  // （withAccount 内部 getModelForAccount 查询 → run(cd, an, mo) → runRemoteResumeTmux(...,mo)）
-  // 从未被真实模型字符串验证过。补一条同上但账号 z 配了模型偏好的集成测试。
-  it("F07：跟随解析命中当前账号且该账号配了模型偏好 → runRemoteResumeTmux 收到真实 modelOverride", async () => {
+  it("跟随：上次 / 当前的号与它的模型偏好都进这一个起会话项（`withAccount` 解析，单个与批量同一份）", async () => {
     invalidateAccountsCache();
     vi.mocked(invoke).mockImplementation(withHistoryReads(withAccountReads((cmd: string) => {
-      if (cmd === "tmux_name_mint") return Promise.resolve("proj-cc"); // 名字问那台后端铸
-      if (cmd === "list_remote_tmux") {
-        return Promise.resolve([
-          { name: "cc-other12", path: "/home/pi/proj", command: "bash", attached: false, windows: 1, sid: "other", agent: false },
-        ]);
-      }
       if (cmd === "list_remote_accounts") {
         return Promise.resolve({
           available: true,
@@ -1430,41 +1335,16 @@ describe("audit-fixes F03 resumeTabTmux idle-tmux 就地复用", () => {
           accounts: [{ name: "z", email: "z@x.edu", configDir: "/h/.claude-accts/z", isDefault: true, mode: "isolated", exists: true, loggedIn: true, authKind: "subscription", authReady: true }],
         });
       }
-      if (cmd === "list_last_accounts") return Promise.resolve({}); // 无既有 pin → 落 current
+      if (cmd === "list_last_accounts") return Promise.resolve({});
       if (cmd === "load_config") return Promise.resolve({ accounts: { modelByAccount: { z: "opus" } } });
       return Promise.resolve(undefined);
     })));
-    tm.ensureTab("r1", "/home/pi/proj", "/p/r1.jsonl", "aya");
-    tm.archiveTab("r1");
+    vi.mocked(callStart).mockResolvedValue([reply("done", null, "proj-cc")] as never);
     await home(tm).actions.resumeTabTmux("r1");
-    expect(runRemoteResumeTmux).toHaveBeenCalledWith("aya", "r1", "/home/pi/proj", "cct", "proj-cc", {
-      configDir: "/h/.claude-accts/z",
-      accountName: "z",
-      modelOverride: "opus",
-    });
+    expect(vi.mocked(callStart).mock.calls[0][2]).toEqual([
+      { sid: "r1", cwd: "/home/pi/proj", account: { kind: "named", name: "z", configDir: "/h/.claude-accts/z" }, model: "opus", launcher: "cct", defaultLauncher: AGENT_PROFILE.defaultLauncher },
+    ]);
     invalidateAccountsCache();
-  });
-
-  // F04（R10）：命中 ≥2 个精确同 sid 的活会话——attach 非破坏性、可撤销，故"警告+继续"而非拒绝
-  // （与破坏性的 restartTabWithAccount 分级不同，见 F04 计划 §2 取舍④）。
-  it("sid 同时活在 2 个 tmux（命中 ≥2 个）→ 仍 attach 到第一个 + 警告 toast，不静默假装只有一个", async () => {
-    vi.mocked(invoke).mockImplementation(withHistoryReads((cmd: string) =>
-      cmd === "list_remote_tmux"
-        ? Promise.resolve([
-            { name: "cc-r1abcd", path: "/home/pi/proj", command: "claude", attached: true, windows: 1, sid: "r1", agent: true },
-            { name: "cc-r1efgh", path: "/other", command: "claude", attached: false, windows: 1, sid: "r1", agent: true },
-          ])
-        : Promise.resolve(undefined),
-    ));
-    tm.ensureTab("r1", "/home/pi/proj", "/p/r1.jsonl", "aya");
-    tm.archiveTab("r1");
-    await home(tm).actions.resumeTabTmux("r1");
-    expect(runRemoteAttach).toHaveBeenCalledWith("aya", "cc-r1abcd"); // 仍接入第一个，不拒绝
-    expect(showActionFailureToast).toHaveBeenCalledWith(
-      "检测到多个同身份会话",
-      expect.stringContaining("2"),
-      expect.objectContaining({ level: "info" }),
-    );
   });
 });
 
@@ -1659,7 +1539,7 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
     vi.mocked(invoke).mockImplementation(withHistoryReads((cmd: string) =>
       cmd === "list_remote_tmux"
         ? Promise.resolve([
-            { name: "cc-abc", path: "/a", command: "claude", attached: false, windows: 1, agent: true },
+            { name: "cc-abc", path: "/a", command: "claude", attached: false, windows: 1, sid: "A", agent: true },
           ])
         : Promise.resolve(undefined),
     ));
@@ -1675,7 +1555,7 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
     vi.mocked(invoke).mockImplementation(withHistoryReads((cmd: string) =>
       cmd === "list_remote_tmux"
         ? Promise.resolve([
-            { name: "sess", path: "/a", command: "node", attached: true, windows: 2, agent: true },
+            { name: "sess", path: "/a", command: "node", attached: true, windows: 2, sid: "A", agent: true },
           ])
         : Promise.resolve(undefined),
     ));
@@ -1745,7 +1625,7 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
       const origin = (args as { origin: string }).origin;
       if (origin === "hostA") return aPending; // 在飞
       return Promise.resolve([
-        { name: "B-sess", path: "/b", command: "claude", attached: false, windows: 1, agent: true },
+        { name: "B-sess", path: "/b", command: "claude", attached: false, windows: 1, sid: "B", agent: true },
       ]);
     }));
     tm.ensureTab("A", "/a", "p", "hostA");
@@ -1757,7 +1637,7 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
     expect(attachBtn()?.textContent).toContain("B-sess"); // B 自身反查就绪
 
     resolveA([
-      { name: "A-sess", path: "/a", command: "claude", attached: false, windows: 1, agent: true },
+      { name: "A-sess", path: "/a", command: "claude", attached: false, windows: 1, sid: "A", agent: true },
     ]);
     await flush(); // A 迟到:代次不符 → 整体 no-op,不动 B 菜单
     expect(attachBtn()?.textContent).toContain("B-sess");
@@ -1808,17 +1688,14 @@ describe("F09/F52 归档远端 tab 右键：Resume 一级项 + 二级 flyout（t
     expect(labels).toContain("直连 · 不建 tmux 会话");
     expect(labels).not.toContain("Resume（直连）");
     expect(labels).not.toContain("Resume（tmux）");
-    // tmux 叶子 → 先查 list_remote_tmux(默认 mock 返 undefined = 无活会话)→ 起全新 resume,
-    // 带第 5 个不撞名 name="cc-r1"(F74:灰会话 resume 不复用可能漂移的名)。
+    // tmux 叶子 → 交那台这一个（在不在跑 · 铸名都在那台）；账号跟随（空 mock ⇒ 账号 0）。
+    vi.mocked(callStart).mockResolvedValue([{ sid: "r1", outcome: "done", why: null, detail: "", session: "proj-cc", bus: null, cmd: null }] as never);
     clickItem("tmux");
     await flushMicro();
     await flushMicro();
-    // account-ux U3：归档 tmux resume 也走 withAccount follow → 第 6 参 configDir（空 mock → undefined）。
-    expect(runRemoteResumeTmux).toHaveBeenCalledWith("aya", "r1", "/home/pi/proj", "cct", "proj-cc", {
-      configDir: undefined,
-      accountName: undefined,
-      modelOverride: undefined,
-    });
+    expect(vi.mocked(callStart).mock.calls[0].slice(0, 2)).toEqual(["aya", "tmux"]);
+    expect(vi.mocked(callStart).mock.calls[0][2]).toEqual([expect.objectContaining({ sid: "r1", cwd: "/home/pi/proj", account: { kind: "base" }, launcher: "cct" })]);
+    expect(runRemoteAttach).toHaveBeenCalledWith("aya", "proj-cc");
     // 直连叶子 → runRemoteResume
     rightClick("r1");
     clickItem("直连 · 不建 tmux 会话");
@@ -1827,72 +1704,8 @@ describe("F09/F52 归档远端 tab 右键：Resume 一级项 + 二级 flyout（t
     expect(runRemoteResume).toHaveBeenCalledWith("aya", "r1", "/home/pi/proj", "cct", { configDir: undefined, accountName: undefined, modelOverride: undefined });
   });
 
-  it("F74 tmux 叶子:@ccm_sid 命中活会话 → 精确 attach 它(不撞同目录漂移分支),不重开", async () => {
-    vi.mocked(invoke).mockImplementation(withHistoryReads((cmd: string) =>
-      cmd === "list_remote_tmux"
-        ? Promise.resolve([
-            // 同目录两个 claude:漂移分支(sid 不符,且列在前)+ 目标原会话(sid 命中)。
-            { name: "proj_cc-2", path: "/home/pi/proj", command: "claude", attached: false, windows: 1, sid: "branch99", agent: true },
-            { name: "proj_cc", path: "/home/pi/proj", command: "claude", attached: true, windows: 1, sid: "r1", agent: true },
-          ])
-        : Promise.resolve(undefined),
-    ));
-    tm.ensureTab("r1", "/home/pi/proj", "p", "aya");
-    tm.archiveTab("r1");
-    rightClick("r1");
-    clickItem("tmux");
-    await flushMicro();
-    await flushMicro();
-    // 精确 attach 到 sid 命中的 proj_cc——不是列在前面的漂移分支 proj_cc-2;且不走 resume。
-    expect(runRemoteAttach).toHaveBeenCalledWith("aya", "proj_cc");
-    expect(runRemoteResumeTmux).not.toHaveBeenCalled();
-  });
-
-  it("F74 tmux 叶子:@ccm_sid 已知但无一命中(原名被漂移会话占着)→ 起全新 resume 挑不撞名", async () => {
-    vi.mocked(invoke).mockImplementation(withHistoryReads((cmd: string) =>
-      // 名字问那台后端铸（派生 ＋ 避让在它那边）：替身写死它铸了什么。
-      cmd === "tmux_name_mint"
-        ? Promise.resolve("proj-cc-2")
-        : cmd === "list_remote_tmux"
-        ? Promise.resolve([
-            { name: "proj-cc", path: "/home/pi/proj", command: "claude", attached: true, windows: 1, sid: "drift77", agent: true },
-          ])
-        : Promise.resolve(undefined),
-    ));
-    tm.ensureTab("r1", "/home/pi/proj", "p", "aya");
-    tm.archiveTab("r1");
-    rightClick("r1");
-    clickItem("tmux");
-    await flushMicro();
-    await flushMicro();
-    expect(runRemoteAttach).not.toHaveBeenCalled();
-    // proj-cc 被漂移会话占着 → 挑 proj-cc-2 新建,保证 --resume r1 落进原会话。
-    expect(runRemoteResumeTmux).toHaveBeenCalledWith("aya", "r1", "/home/pi/proj", "cct", "proj-cc-2", { configDir: undefined, accountName: undefined, modelOverride: undefined });
-  });
-
-  it("F74 tmux 叶子:老 wrapper(整表无 @ccm_sid)→ 起全新 fresh resume,不 attach 不确定会话", async () => {
-    vi.mocked(invoke).mockImplementation(withHistoryReads((cmd: string) =>
-      // 名字问那台后端铸（派生 ＋ 避让在它那边）：替身写死它铸了什么。
-      cmd === "tmux_name_mint"
-        ? Promise.resolve("proj-cc")
-        : cmd === "list_remote_tmux"
-        ? Promise.resolve([
-            // 老 wrapper:同 cwd 有 claude 但无 sid 信息(sid:null)。
-            { name: "proj_cc", path: "/home/pi/proj", command: "claude", attached: true, windows: 1, sid: null, agent: true },
-          ])
-        : Promise.resolve(undefined),
-    ));
-    tm.ensureTab("r1", "/home/pi/proj", "p", "aya");
-    tm.archiveTab("r1");
-    rightClick("r1");
-    clickItem("tmux");
-    await flushMicro();
-    await flushMicro();
-    // findClaudeTmux 按 cwd 兜底命中 proj_cc,但 live.sid(null)!==sid → **不 attach 不确定的会话**,
-    // 起 fresh resume(cc-r1 未被占 → 基名);--resume r1 恒落对会话(§30「找不到就别静默换」)。
-    expect(runRemoteAttach).not.toHaveBeenCalled();
-    expect(runRemoteResumeTmux).toHaveBeenCalledWith("aya", "r1", "/home/pi/proj", "cct", "proj-cc", { configDir: undefined, accountName: undefined, modelOverride: undefined });
-  });
+  // 〔散文墓碑〕F74 tmux 叶子那三条（命中活会话 attach · 原名被占挑不撞名 · 老 wrapper 不按目录猜）：判定挪进那台后端
+  //   （`session_batch_tests.rs` 的 standing 一族 ＋ 起在 tmux 里那条），单个这一侧只交一个 sid、照回答接进去（上面那个 describe）。
 
   it("归档本地 tab → 仍单「Resume」(无 flyout，无 tmux/直连叶子)", () => {
     tm.ensureTab("l1", "/home/u/p", "p", LOCAL_ORIGIN);
@@ -1927,7 +1740,7 @@ describe("F09/F52 归档远端 tab 右键：Resume 一级项 + 二级 flyout（t
     expect(labels).not.toContain("z");
     clickItem("不指定账号 · 用远端 ~/.claude 那套凭据");
     // 基座项本身也带 submenu（tmux/直连），点它只展开/切换，不直接执行——不该调用任何 resume。
-    expect(runRemoteResumeTmux).not.toHaveBeenCalled();
+    expect(callStart).not.toHaveBeenCalled();
     expect(runRemoteResume).not.toHaveBeenCalled();
     invalidateAccountsCache(); // 别泄漏进后续测试
   });
@@ -2044,10 +1857,10 @@ describe("F09/F52 归档远端 tab 右键：Resume 一级项 + 二级 flyout（t
     await openArchivedMenu();
     clickLeafUnder("z", "tmux");
     await flushMicro();
-    expect(runRemoteResumeTmux).toHaveBeenCalledWith(
-      "aya", "r1", "/home/pi/proj", "cct", expect.any(String),
-      expect.objectContaining({ configDir: "/h/z", accountName: "z" }),
-    );
+    await flushMicro();
+    expect(vi.mocked(callStart).mock.calls[0][2]).toEqual([
+      expect.objectContaining({ sid: "r1", account: { kind: "named", name: "z", configDir: "/h/z" } }),
+    ]);
     invalidateAccountsCache();
   });
 
@@ -2399,114 +2212,10 @@ describe("K-P5g：tmux 定位不到时，那句提示真的由读回来的身份
 
 const flushMicro = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
 
-describe("F74 findClaudeTmux（精确 tmux↔sid 映射）", () => {
-  // `agent` 那一格是那台后端判的（Claude 是 `claude` / `node`）；夹具照那条规则手写，界面不再按命令名自己判。
-  const S = (name: string, path: string, command: string, sid: string | null) => ({
-    name,
-    path,
-    command,
-    attached: false,
-    windows: 1,
-    sid,
-    agent: command === "claude" || command === "node",
-  });
-  it("优先 @ccm_sid 精确匹配（同目录多 claude，命中 sid 的那个，无关列出顺序）", () => {
-    const list = [S("a", "/p", "claude", "branch9"), S("b", "/p", "claude", "target")];
-    expect(findClaudeTmux(list, "target", "/p")?.name).toBe("b");
-  });
-  it("sid 已知但无一命中 → undefined（绝不按 cwd 抓同目录别的 claude，SS-5/SS-9）", () => {
-    const list = [S("a", "/p", "claude", "other")];
-    expect(findClaudeTmux(list, "target", "/p")).toBeUndefined();
-  });
-  it("整张列表无 @ccm_sid（老 wrapper / 未装）→ 回退 path===cwd 匹配（向后兼容）", () => {
-    const list = [S("a", "/p", "claude", null)];
-    expect(findClaudeTmux(list, "target", "/p")?.name).toBe("a");
-  });
-  it("回退分支仍要 claude 命令 + cwd 非空", () => {
-    expect(findClaudeTmux([S("a", "/p", "zsh", null)], "t", "/p")).toBeUndefined();
-    expect(findClaudeTmux([S("a", "/p", "claude", null)], "t", "")).toBeUndefined();
-  });
-  it("null / 空列表 → undefined", () => {
-    expect(findClaudeTmux(null, "t", "/p")).toBeUndefined();
-    expect(findClaudeTmux([], "t", "/p")).toBeUndefined();
-  });
-});
+// 〔散文墓碑〕tmux↔sid 那几个前端过滤（findClaudeTmux · findClaudeTmuxMatches · findIdleTmux · isCwdFallbackMatch）与 tmux 名单短缓存的判据删了：
+//   「这个 sid 由哪个 tmux 会话在跑」只在后端判（`control/session_batch.rs::standing`，判据住 `session_batch_tests.rs`），按目录猜那一支删了。
 
-// F04（R10 根治）：findClaudeTmuxMatches 不折叠成第一个——findClaudeTmux 用它重实现，
-// 这组测试锁住"两者在单/零命中场景下逐字节同结果"这条 F04 步骤4 的核心不变量，并新增
-// 之前完全没有覆盖过的"命中 ≥2 个"场景（R10 的字面定义）。
-describe("F04 findClaudeTmuxMatches（不折叠成第一个，R10 根治的类型基础）", () => {
-  // `agent` 那一格是那台后端判的（Claude 是 `claude` / `node`）；夹具照那条规则手写，界面不再按命令名自己判。
-  const S = (name: string, path: string, command: string, sid: string | null) => ({
-    name,
-    path,
-    command,
-    attached: false,
-    windows: 1,
-    sid,
-    agent: command === "claude" || command === "node",
-  });
-  it("同一 sid 命中 2 个活 claude 会话 → 返回全部 2 个，不丢任何一个（R10 的字面场景）", () => {
-    const list = [S("cc-a", "/p", "claude", "target"), S("cc-b", "/q", "claude", "target")];
-    const matches = findClaudeTmuxMatches(list, "target");
-    expect(matches.length).toBe(2);
-    expect(matches.map((m) => m.name).sort()).toEqual(["cc-a", "cc-b"]);
-  });
-  it("findClaudeTmux 在命中 2 个时只返回 matches[0]（.find 与 .filter[0] 同一遍历顺序，逐字节同结果）", () => {
-    const list = [S("cc-a", "/p", "claude", "target"), S("cc-b", "/q", "claude", "target")];
-    expect(findClaudeTmux(list, "target", "/p")?.name).toBe(
-      findClaudeTmuxMatches(list, "target")[0].name,
-    );
-  });
-  it("恰好 1 个命中 → 数组长度 1（对齐 findClaudeTmux 的单值语义）", () => {
-    const list = [S("cc-a", "/p", "claude", "target")];
-    expect(findClaudeTmuxMatches(list, "target").length).toBe(1);
-  });
-  it("0 个命中 → 空数组（不是 undefined）", () => {
-    expect(findClaudeTmuxMatches([S("cc-a", "/p", "claude", "other")], "target")).toEqual([]);
-    expect(findClaudeTmuxMatches(null, "target")).toEqual([]);
-  });
-  it("command≠claude 的不算命中（与 findClaudeTmux 的 command 门槛一致）", () => {
-    expect(findClaudeTmuxMatches([S("cc-a", "/p", "bash", "target")], "target")).toEqual([]);
-  });
-});
-
-// audit-fixes F03（idle-tmux）：findIdleTmux 与 findClaudeTmux 互斥——前者要 @ccm_sid 命中且
-// command≠claude（空 shell），后者要 command=claude。F03.1 就地复用 + F03.3 attach-idle 共用。
-describe("audit-fixes F03 findIdleTmux（sid 命中但 command≠claude 的空 tmux）", () => {
-  // `agent` 那一格是那台后端判的（Claude 是 `claude` / `node`）；夹具照那条规则手写。
-  const S = (name: string, command: string, sid: string | null) => ({
-    name,
-    path: "/p",
-    command,
-    attached: false,
-    windows: 1,
-    sid,
-    agent: command === "claude" || command === "node",
-  });
-  it("@ccm_sid 命中 + command≠claude（bash）→ 命中该空 tmux", () => {
-    expect(findIdleTmux([S("cc-t1", "bash", "target")], "target")?.name).toBe("cc-t1");
-  });
-  it("@ccm_sid 命中但 command=claude（活会话）→ 不算 idle（互斥 findClaudeTmux）", () => {
-    expect(findIdleTmux([S("cc-t1", "claude", "target")], "target")).toBeUndefined();
-  });
-  it("command=node（claude 是 Node CLI）也算活、不算 idle", () => {
-    expect(findIdleTmux([S("cc-t1", "node", "target")], "target")).toBeUndefined();
-  });
-  it("只按 @ccm_sid 精确命中，绝不按 cwd 猜（sid 不符 → 不命中）", () => {
-    expect(findIdleTmux([S("cc-x", "bash", "other")], "target")).toBeUndefined();
-    expect(findIdleTmux([S("cc-x", "bash", null)], "target")).toBeUndefined();
-  });
-  it("null / 空列表 → undefined", () => {
-    expect(findIdleTmux(null, "t")).toBeUndefined();
-    expect(findIdleTmux([], "t")).toBeUndefined();
-  });
-});
-
-// auto-e2e F-E4：可注入 confirm seam（killRemoteTmux）。默认（不传 opts）走应用内对话框
-// （真 app 里 `window.confirm` 是插件注入的 async 替身、恒真值 ⇒ 原先这里从来没问过）；
-// 注入 confirm 才旁路（headless e2e / DEV）。DOM(jsdom) 层是该 TabManager 方法的诚实天花板。
-describe("auto-e2e F-E4 可注入 confirm seam（killRemoteTmux 行为等价）", () => {
+describe("auto-e2e F-E4 可注入 confirm seam（killInTmux：交那台 sessions-stop，与批量同一条）", () => {
   let tm: TabManager;
   beforeEach(() => {
     vi.clearAllMocks();
@@ -2516,13 +2225,12 @@ describe("auto-e2e F-E4 可注入 confirm seam（killRemoteTmux 行为等价）"
     await Promise.resolve();
     await Promise.resolve();
   };
-  // 杀会话从 Tauri 命令 `kill_remote_tmux`〔散文墓碑〕改成界面经通道直接说后端的 `kill`
-  //   （`src/frontend/ui/tmux-control.ts::killSession`）⇒ 这里数的是那一发 `chan_call`，译回旧形参 `[旧名, {origin, target}]`。
-  const killCalls = (): unknown[] => killCallsOf(vi.mocked(invoke).mock.calls);
+  // 单个杀交那台一个 sid 的一批（`sessions-stop`；那台按 sid 认出是哪个、过三道门）⇒ 这里数交了几发、交的是哪个 sid。
+  const killCalls = (): unknown[] => vi.mocked(callStop).mock.calls;
 
-  it("killRemoteTmux 默认（不传 opts）→ 弹应用内对话框；答之前不杀，答「取消」⇒ 不杀", async () => {
+  it("killInTmux 默认（不传 opts）→ 弹应用内对话框；答之前不杀，答「取消」⇒ 不杀", async () => {
     const confirmSpy = vi.spyOn(window, "confirm");
-    home(tm).actions.killRemoteTmux("hostA", "cc-abc", false);
+    home(tm).actions.killInTmux("hostA", "s1", "cc-abc");
     await microFlush();
     expect(askDialogText(), "没弹应用内对话框").toContain("杀死会话「cc-abc」");
     expect(killCalls(), "还没答就杀了").toHaveLength(0);
@@ -2532,19 +2240,19 @@ describe("auto-e2e F-E4 可注入 confirm seam（killRemoteTmux 行为等价）"
     confirmSpy.mockRestore();
   });
 
-  it("killRemoteTmux 注入 confirm=()=>true → 不碰 window.confirm、invoke kill_remote_tmux", async () => {
+  it("killInTmux 注入 confirm=()=>true → 不碰 window.confirm、交那台这一个 sid", async () => {
     const confirmSpy = vi.spyOn(window, "confirm");
-    home(tm).actions.killRemoteTmux("hostA", "cc-abc", false, { confirm: () => true });
+    home(tm).actions.killInTmux("hostA", "s1", "cc-abc", { confirm: () => true });
     await microFlush();
     expect(confirmSpy).not.toHaveBeenCalled();
     expect(killCalls()).toHaveLength(1);
-    expect((killCalls()[0] as unknown[])[1]).toMatchObject({ origin: "hostA", target: "cc-abc" });
+    expect(killCalls()[0]).toEqual(["hostA", ["s1"]]);
     confirmSpy.mockRestore();
   });
 
-  it("killRemoteTmux 注入 confirm=()=>false → no-op，不 invoke", async () => {
+  it("killInTmux 注入 confirm=()=>false → no-op，不 invoke", async () => {
     const confirmSpy = vi.spyOn(window, "confirm");
-    home(tm).actions.killRemoteTmux("hostA", "cc-abc", false, { confirm: () => false });
+    home(tm).actions.killInTmux("hostA", "s1", "cc-abc", { confirm: () => false });
     await microFlush();
     expect(confirmSpy).not.toHaveBeenCalled();
     expect(killCalls()).toHaveLength(0);
@@ -2552,9 +2260,9 @@ describe("auto-e2e F-E4 可注入 confirm seam（killRemoteTmux 行为等价）"
   });
 
   // UX 审计 #1：灰态(idle-tmux) tab 也能 kill——opts.idle 走"Claude 已退出"文案（非"正在运行"），照常 kill。
-  it("killRemoteTmux { idle:true } → 文案说 Claude 已退出、非'正在运行'，仍 kill 空 tmux", async () => {
+  it("killInTmux { idle:true } → 文案说 Claude 已退出、非'正在运行'，仍 kill 空 tmux", async () => {
     const msgs: string[] = [];
-    home(tm).actions.killRemoteTmux("hostA", "cc-idle1234", false, {
+    home(tm).actions.killInTmux("hostA", "s1", "cc-idle1234", {
       idle: true,
       confirm: (m: string) => {
         msgs.push(m);
@@ -2566,13 +2274,13 @@ describe("auto-e2e F-E4 可注入 confirm seam（killRemoteTmux 行为等价）"
     expect(msgs[0]).toContain("Claude 已退出");
     expect(msgs[0]).not.toContain("正在运行的 Claude");
     expect(killCalls()).toHaveLength(1);
-    expect((killCalls()[0] as unknown[])[1]).toMatchObject({ origin: "hostA", target: "cc-idle1234" });
+    expect(killCalls()[0]).toEqual(["hostA", ["s1"]]);
   });
 
   // 护栏：live（非 idle）文案必须仍含"正在运行的 Claude"——防日后误改 live 文案不被测出。
-  it("killRemoteTmux 非 idle → 文案含'正在运行的 Claude'（live 路径护栏）", async () => {
+  it("killInTmux 非 idle → 文案含'正在运行的 Claude'（live 路径护栏）", async () => {
     const msgs: string[] = [];
-    home(tm).actions.killRemoteTmux("hostA", "cc-live1234", false, {
+    home(tm).actions.killInTmux("hostA", "s1", "cc-live1234", {
       confirm: (m: string) => {
         msgs.push(m);
         return false;
@@ -2584,77 +2292,31 @@ describe("auto-e2e F-E4 可注入 confirm seam（killRemoteTmux 行为等价）"
   });
 });
 
-describe("F74c(#60-B) isCwdFallbackMatch（cwd 回退串味提示判定）", () => {
-  // `agent` 那一格是那台后端判的（Claude 是 `claude` / `node`）；夹具照那条规则手写，界面不再按命令名自己判。
-  const S = (name: string, path: string, command: string, sid: string | null) => ({
-    name,
-    path,
-    command,
-    attached: false,
-    windows: 1,
-    sid,
-    agent: command === "claude" || command === "node",
-  });
-  it("精确 @ccm_sid 命中 → false（非回退，不提示）", () => {
-    expect(isCwdFallbackMatch([S("b", "/p", "claude", "target")], "target")).toBe(false);
-  });
-  it("有会话带 sid 但无一命中 → false（findClaudeTmux 返 undefined、不 attach、无串味）", () => {
-    expect(isCwdFallbackMatch([S("a", "/p", "claude", "other")], "target")).toBe(false);
-  });
-  it("整张列表无 @ccm_sid（老 wrapper/未装）→ true（会走 cwd 回退，attach 前提示）", () => {
-    expect(isCwdFallbackMatch([S("a", "/p", "claude", null)], "target")).toBe(true);
-  });
-  it("null / 空列表 → true（无 sid 可依，回退语义）", () => {
-    expect(isCwdFallbackMatch(null, "t")).toBe(true);
-    expect(isCwdFallbackMatch([], "t")).toBe(true);
-  });
-
-  // F04 Phase D 审计：`resolveAttachMenuItem`/缓存菜单构建的代码注释断言"matches.length>1"
-  // （F04 的多命中告警）与 `viaCwd`（F74c 的 cwd 回退告警）互斥、不会同时触发——此前只靠人工
-  // 读代码证明（`viaCwd` 要求"整张列表无任何 @ccm_sid"，`matches.length>1` 要求至少两条精确
-  // sid 命中，两个前提不可能同时满足）。这条测试把该不变量钉死，未来重构悄悄破坏它会立刻转红。
-  it("F04：matches.length>1（多命中告警）与 viaCwd（cwd 回退告警）不会同时为真", () => {
-    const scenarios: Array<{ label: string; sessions: ReturnType<typeof S>[] }> = [
-      { label: "整张列表无 sid（走 cwd 回退）", sessions: [S("a", "/p", "claude", null)] },
-      {
-        label: "恰好 2 个精确命中同 sid",
-        sessions: [S("a", "/p", "claude", "target"), S("b", "/q", "claude", "target")],
-      },
-      { label: "混合：部分会话有 sid 但都不是目标", sessions: [S("a", "/p", "claude", "other")] },
-    ];
-    for (const { label, sessions } of scenarios) {
-      const ambiguous = findClaudeTmuxMatches(sessions, "target").length > 1;
-      const viaCwd = isCwdFallbackMatch(sessions, "target");
-      expect(ambiguous && viaCwd, label).toBe(false);
-    }
-  });
-});
-
-describe("F79 杀死远端 tmux 会话（二次确认 + kill_remote_tmux）", () => {
+describe("F79 杀死会话（二次确认 ＋ 交那台 sessions-stop）", () => {
   beforeEach(() => vi.clearAllMocks());
-  it("二次确认通过 → invoke kill_remote_tmux（origin/target 正确，变灰由 #60-A 兜、不主动 archive）", async () => {
+  it("二次确认通过 → 交那台这一个 sid（变已结束由会话流兜、不主动 archive）；杀成了说杀的是哪个", async () => {
+    vi.mocked(callStop).mockResolvedValue([{ sid: "s1", outcome: "done", why: null, detail: "", session: "cc-abc", bus: { removed: [], failed: [], unread: null }, cmd: null }] as never);
     const tm = home(makeTM()).actions;
-    tm.killRemoteTmux("hostA", "cc-abc", false);
+    tm.killInTmux("hostA", "s1", "cc-abc");
     await answerAskDialog(true);
-    const call = killCallsOf(vi.mocked(invoke).mock.calls)[0];
-    expect(call).toBeTruthy();
-    expect(call![1]).toMatchObject({ origin: "hostA", target: "cc-abc" });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(vi.mocked(callStop).mock.calls).toEqual([["hostA", ["s1"]]]);
+    expect(vi.mocked(showActionFailureToast).mock.calls.at(-1)?.[1]).toContain("cc-abc");
   });
-  it("二次确认取消 → 不 invoke", async () => {
+  it("二次确认取消 → 不交", async () => {
     const tm = home(makeTM()).actions;
-    tm.killRemoteTmux("hostA", "cc-abc", false);
+    tm.killInTmux("hostA", "s1", "cc-abc");
     await answerAskDialog(false);
-    expect(killCallsOf(vi.mocked(invoke).mock.calls)).toHaveLength(0);
+    expect(callStop).not.toHaveBeenCalled();
   });
-  it("F79 审计修复：cwd 回退命中（viaCwd）→ 二次确认加强 caveat（可能杀同目录别的会话）", async () => {
+  it("那台没杀（关卡拒 / 不在 tmux 里）⇒ 说那台的原因；关卡 2 拒的 ⇒ 提示带「对齐后重试」", async () => {
+    vi.mocked(callStop).mockResolvedValue([{ sid: "s1", outcome: "failed", why: "wrong_owner", detail: "x", session: "cc-abc", bus: null, cmd: null }] as never);
     const tm = home(makeTM()).actions;
-    tm.killRemoteTmux("hostA", "cc-abc", true);
-    const msg = askDialogText();
-    await answerAskDialog(false);
-    // 按术语表改词：`@ccm_sid` 是禁词（say：不说标记，说后果「认不出是哪个会话」），
-    //   这一格随改词同拍改 —— 钉的仍是同一件事（回退命中 ⇒ 确认框里有串味警告）。
-    expect(msg).toContain("认不出这是哪个会话"); // 未检测到身份标记
-    expect(msg).toContain("同目录"); // 可能杀同目录别的 Claude
+    tm.killInTmux("hostA", "s1", "cc-abc", { confirm: () => true });
+    await new Promise((r) => setTimeout(r, 0));
+    const [title, body] = vi.mocked(showActionFailureToast).mock.calls.at(-1)!;
+    expect(title).toBe(copyText("tabSessionActions.kill.failed"));
+    expect(body).toContain(copyText("resync.retry.hint"));
   });
 });
 
@@ -2854,10 +2516,11 @@ describe("A3 本机换号重启：菜单与入口都认本机 tab", () => {
     expect(arg.tmuxName).toBe("proj-cc");
     expect(arg.accountName).toBe("b");
     expect(arg.launcher).toBe(""); // getBehavior 的 mock：resumeCommandLocal = ""（远端那条是 "cct"）
-    // 问名单是一发 `chan_call`（op `tmux-list`），`tmuxReadOf` 译回旧叫法：问的是本机那一台。
-    const asked = (invoke as unknown as ReturnType<typeof vi.fn>).mock.calls.map(([c, a]) => tmuxReadOf(String(c), a)?.[0]);
-    expect(asked).toContain("list_local_tmux");
-    expect(asked).not.toContain("list_remote_tmux");
+    // 「在哪个 tmux 会话里」问的是本机那一台（`sessions-tmux`）。
+    const asked = (invoke as unknown as ReturnType<typeof vi.fn>).mock.calls
+      .filter(([c, a]) => c === "chan_call" && (a as { op?: string }).op === "sessions-tmux")
+      .map(([, a]) => (a as { origin: string }).origin);
+    expect(asked).toEqual(["<local>"]);
   });
 
   it("本机会话不在本工具 tmux 里 → 拒重启，提示**不指**本机不存在的那条补救路", async () => {
@@ -3203,66 +2866,6 @@ describe("E73：attachable 门控", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// audit-0805 F14 第五刀（报告 I9′）：`fetchTmuxFresh` 是类内唯一取数点，
-// 「取数」与「写缓存」在语法上是同一件事。这里钉它的**三态契约** ——
-// 结构守卫（`tmux-cache-single-writer.vitest.ts`）只能证明「只剩一个取数点」，
-// 证不了「那一个取数点做对了」。
-// ---------------------------------------------------------------------------
-describe("tmux 取数点的三态契约（audit-0805 F14 第五刀）", () => {
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
-  it("查到会话 → 返回列表，并把它写进缓存", async () => {
-    const tm = makeTM();
-    // 那台后端 `tmux-list` 的成品（经通道一问）。
-    const list = [{ name: "cc-a", path: "/w", command: "claude", attached: false, windows: 1, sid: "s1", agent: true }];
-    vi.mocked(invoke).mockResolvedValueOnce(chanReply({ installed: true, sessions: list }));
-    const got = await home(tm).actions.fetchTmuxFresh("box1");
-    expect(got).toEqual(list);
-    expect(
-      home(tm).actions.tmuxCache.get("box1")?.sessions,
-      "取了数却没写缓存 —— 报告 I9′ 那条毛病就是这么来的",
-    ).toEqual(list);
-  });
-
-  it("★ NO_TMUX（null）是**确定答案**，照样写缓存", async () => {
-    const tm = makeTM();
-    vi.mocked(invoke).mockResolvedValueOnce(chanReply({ installed: false, sessions: [] }));
-    const got = await home(tm).actions.fetchTmuxFresh("box1");
-    expect(got).toBeNull();
-    expect(
-      home(tm).actions.tmuxCache.has("box1"),
-      "「远端确实没有 tmux」是查到了的结果，不写缓存等于每次都要重问一遍",
-    ).toBe(true);
-  });
-
-  it("★ 查询失败 → undefined 且**不写缓存**（三态不许压成两态）", async () => {
-    const tm = makeTM();
-    vi.mocked(invoke).mockRejectedValueOnce(new Error("ssh 抖了一下"));
-    const got = await home(tm).actions.fetchTmuxFresh("box1");
-    expect(
-      got,
-      "把失败压成 null 会让「远端确实没有会话」和「我没问到」变得无法区分",
-    ).toBeUndefined();
-    expect(
-      home(tm).actions.tmuxCache.has("box1"),
-      "★ 一次 ssh 抖动被写进缓存 ⇒ 之后 8s 内的重试全被抑制（D-Sug3 就是防这个）",
-    ).toBe(false);
-  });
-});
-
-// ═══ audit-0805 F15：每来一行，到底调了几次 ═══════════════════════════════
-//
-// 这一组是**现状基线**（characterization）：它先把「每行的代价」变成一个**可判定的数**，
-// 合批本体改完之后再把这些数收紧。没有它，V5 那句话就成立 ——
-// 「行为上与不改完全等价（同样的行、同样的结果），**慢不会让任何测试变红**」。
-//
-// ⚠ 上一轮建不起来，不是因为没人写，是因为**三处 mock 叠在一起把它测没了**：
-//   ① `routeMetaAndBranch` 不调 `sink.onBranchRecord` ② `renderContentRecord` 不塞 timeline
-//   ③ `RecordTimeline.size` 恒 0。三处少改一处，下面每条都会零命中地绿。
 describe("F15 每行代价的现状基线", () => {
   let tm: TabManager;
   beforeEach(() => {
@@ -5112,14 +4715,13 @@ describe("〔U4b〕容器 · 说不清 · 记录没了 —— TabManager 真走"
     expect(resumed()).toContainEqual(expect.objectContaining({ sessionId: "g1" }));
   });
 
-  it("★ G1：远端两条路（直连 · tmux 全新）同样先问；问不到 ⇒ 当不知道、照今天的路走（不当「不在」）", async () => {
+  // 在 tmux 里那一条的「记录还在不在」由那台在起之前自己问（`sessions-start` 的 `record_gone`，见「单个在 tmux 里 Resume」那组）。
+  it("★ G1：远端直连同样先问；问不到 ⇒ 当不知道、照今天的路走（不当「不在」）", async () => {
     tm.ensureTab("g2", "/home/pi/proj", "/p/g2.jsonl", "aya");
     tm.archiveTab("g2");
     probe = { present: false, root: "/home/pi/.claude/projects" };
     await home(tm).actions.resumeTab("g2");
-    await home(tm).actions.resumeTabTmux("g2");
     expect(runRemoteResume).not.toHaveBeenCalled();
-    expect(runRemoteResumeTmux).not.toHaveBeenCalled();
     expect(tabOf("g2").state).toEqual(GONE);
     probe = undefined; // 问不到
     await home(tm).actions.resumeTab("g2");
@@ -5274,15 +4876,13 @@ describe("〔GP1〕记录那一问带上这次 resume 的账号根", () => {
     tm = makeTM();
   });
 
-  it("★ 远端三支（直连 · tmux 就地 · tmux 全新）：带的是 withAccount 解析出的那个目录；基座 ⇒ 不带", async () => {
+  it("★ 远端两条路（直连 · 在 tmux 里）：带的是 withAccount 解析出的那个目录；基座 ⇒ 不带", async () => {
     let accounts: unknown[] = [
       { name: "z", email: "z@x.edu", configDir: "/h/.claude-accts/z", isDefault: true, mode: "isolated", exists: true, loggedIn: true, authKind: "subscription", authReady: true },
     ];
-    let tmux: unknown[] = [];
     vi.mocked(invoke).mockImplementation(withHistoryReads(withSessionReads(withAccountReads((cmd: string) => {
       if (cmd === "list_remote_accounts") return Promise.resolve(remoteAccounts(accounts));
       if (cmd === "list_last_accounts") return Promise.resolve({});
-      if (cmd === "list_remote_tmux") return Promise.resolve(tmux);
       if (cmd === "tmux_name_mint") return Promise.resolve("proj-cc"); // 名字问那台后端铸
       if (cmd === "probe_session_record") return Promise.resolve({ present: true, root: "/h/.claude-accts/z/projects" });
       return Promise.resolve(undefined);
@@ -5290,13 +4890,11 @@ describe("〔GP1〕记录那一问带上这次 resume 的账号根", () => {
     tm.ensureTab("k1", "/home/pi/proj", "/p/k1.jsonl", "aya");
     tm.archiveTab("k1");
     await home(tm).actions.resumeTab("k1"); // 直连
-    await home(tm).actions.resumeTabTmux("k1"); // tmux 全新（没有空壳）
-    tmux = [{ name: "proj-cc", path: "/home/pi/proj", command: "bash", attached: false, windows: 1, sid: "k1", agent: false }];
-    await home(tm).actions.resumeTabTmux("k1"); // tmux 就地（空壳还在）
-    expect(probes().map((p) => p.configDir)).toEqual([
-      "/h/.claude-accts/z",
-      "/h/.claude-accts/z",
-      "/h/.claude-accts/z",
+    // 在 tmux 里：那台在起之前自己问记录（查这一项带去的那棵账号树）。
+    await home(tm).actions.resumeTabTmux("k1");
+    expect(probes().map((p) => p.configDir)).toEqual(["/h/.claude-accts/z"]);
+    expect(vi.mocked(callStart).mock.calls[0][2]).toEqual([
+      expect.objectContaining({ account: { kind: "named", name: "z", configDir: "/h/.claude-accts/z" } }),
     ]);
     // 同一次解析：交给起会话那一格的也是这个目录（异源：一边是记录那一问的请求体，一边是执行器的入参）。
     expect(vi.mocked(runRemoteResume).mock.calls[0][4]).toMatchObject({ configDir: "/h/.claude-accts/z" });
@@ -6259,5 +5857,81 @@ describe("〔RENDER2〕物化一批按正文字符截", () => {
     tm.switchTo("bgB");
     const order = spy.mock.calls.map((c) => (c[0] as { seq: number }).seq);
     expect(order).toEqual([149, ...Array.from({ length: 149 }, (_, i) => i)]);
+  });
+});
+
+describe("tab 多选与批量菜单", () => {
+  let tm: TabManager;
+  const btn = (sid: string): HTMLElement => home(tm).bar.tabButtons.get(sid)!.root;
+  const click = (sid: string, mods: MouseEventInit = {}): void => {
+    btn(sid).dispatchEvent(new MouseEvent("click", { bubbles: true, ...mods }));
+  };
+  /** 画出来带 `.selected` 的那几个（读 DOM，不读选中集合本身）。 */
+  const drawnSelected = (): string[] =>
+    home(tm).store.orderedIds.filter((sid) => btn(sid).classList.contains("selected")).sort();
+  const rightClick = (sid: string): void => {
+    btn(sid).dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 5, clientY: 5 }));
+  };
+  const menuLabels = (): string[] =>
+    [...(document.body.querySelector(".tab-context-menu")?.querySelectorAll(".tab-context-menu-item") ?? [])].map(
+      (b) => b.textContent ?? "",
+    );
+  beforeEach(() => {
+    vi.clearAllMocks();
+    document.body.querySelectorAll(".tab-context-menu").forEach((n) => n.remove());
+    tm = makeTM();
+    for (const sid of ["a", "b", "c", "d", "e"]) tm.ensureTab(sid, `/w/${sid}`, "p", LOCAL_ORIGIN);
+    // c、d 在组里 ⇒ 条上看得到的顺序是 c d（组）· a b e（散），不是到达的顺序。
+    setGroups(tm, [{ id: "g", name: "组", tabs: ["c", "d"] }]);
+    tm.switchTo("a");
+    home(tm).bar.refresh();
+  });
+
+  it("S1 · Ctrl 加减（第一次把当前 tab 带上、不切 tab）· Shift 按条上的顺序连选 · 单击 / 空白 / Esc 清掉", () => {
+    expect(home(tm).bar.visibleOrder(), "正控：组在前、散 tab 在后").toEqual(["c", "d", "a", "b", "e"]);
+    click("b", { ctrlKey: true });
+    expect(drawnSelected()).toEqual(["a", "b"]);
+    expect(home(tm).store.activeId, "Ctrl 单击不切 tab").toBe("a");
+    click("a", { ctrlKey: true });
+    expect(drawnSelected()).toEqual(["b"]);
+    click("a");
+    expect(drawnSelected(), "单击清掉多选").toEqual([]);
+    click("d", { shiftKey: true });
+    // 锚点 a（上一次单击）到 d：条上是 d · a 相邻 —— 按到达顺序会是 a b c d。
+    expect(drawnSelected()).toEqual(["a", "d"]);
+    click("e", { shiftKey: true });
+    expect(drawnSelected(), "锚点不动，换一头").toEqual(["a", "b", "e"]);
+    const bar = document.body.firstElementChild as HTMLElement;
+    bar.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(drawnSelected(), "点空白清掉").toEqual([]);
+    click("b", { ctrlKey: true });
+    dispatcher.applyOverrides({}); // 主窗口启动时那两下（键位表 ＋ 挂监听；Esc → 栈顶 overlay）
+    dispatcher.start();
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", code: "Escape", bubbles: true }));
+    expect(drawnSelected(), "Esc 清掉").toEqual([]);
+  });
+
+  it("S2 · tab 没了自动掉出多选；右键没选中的 ⇒ 清掉多选、开单个菜单；右键选中的（≥2）⇒ 批量菜单带个数", () => {
+    const head = (n: number): string => copyText("tabBatch.menu.head", { n });
+    click("e", { ctrlKey: true });
+    tm.archiveTab("e");
+    tm.closeTab("e");
+    expect(drawnSelected()).toEqual(["a"]);
+    rightClick("a");
+    expect(menuLabels()[0], "e 没了 ⇒ 多选只剩 a ⇒ 单个菜单").not.toBe(head(1));
+    expect(menuLabels()[0]).not.toBe(head(2));
+    click("b", { ctrlKey: true });
+    rightClick("c");
+    expect(drawnSelected(), "右键没选中的 ⇒ 清掉多选").toEqual([]);
+    expect(menuLabels()[0], "单个菜单").not.toBe(head(2));
+    click("b", { ctrlKey: true });
+    tm.archiveTab("b");
+    rightClick("b");
+    const labels = menuLabels();
+    expect(labels[0]).toBe(copyText("tabBatch.menu.head", { n: 2 }));
+    expect(labels).toContain(copyText("tabBatch.menu.stop", { n: 1 }));
+    expect(labels).toContain(copyText("tabBatch.menu.startTmux", { n: 1 }));
+    expect(labels).toContain(copyText("tabBatch.menu.close", { n: 1 }));
+    expect(drawnSelected(), "开批量菜单不动多选").toEqual(["a", "b"]);
   });
 });

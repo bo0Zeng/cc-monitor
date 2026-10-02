@@ -323,6 +323,34 @@ export async function recordLastAccount(sessionId: string, account: string): Pro
 }
 
 /**
+ * 这次起会话用哪个号：账号清单（读不到 ⇒ `undefined`）＋ 显式点的号 / 跟随（这条会话上次的号）⇒ 解析结局。
+ * `withAccount` 与 tab 栏批量起共用这一份（批量那边每台只取一次账号清单）。
+ */
+export function resolveLaunchAccount(
+  state: AccountsState | undefined,
+  accountName: string | null,
+  follow?: { lastAccount?: string | null },
+): AccountResolution {
+  const priorPin = follow?.lastAccount ?? null;
+  return state
+    ? resolveAccount(state, { explicit: accountName, follow })
+    : accountName
+      ? { kind: "unavailable", requestedName: accountName }
+      : priorPin
+        ? { kind: "unavailable", requestedName: priorPin, pinned: true }
+        : { kind: "base" };
+}
+
+/**
+ * 跟随解析命中之后记不记「上次用的号」—— U3 审计 重要-1：不 clobber 既有 pin。仅当**无既有 pin**（变 sticky）、
+ * 或**解析结果 == 既有 pin**（no-op）时才记；既有 pin 存在但不可选、下沉到当前号 ⇒ **不记**，保住原 pin
+ * （守「粘性优先」，避免默认 resume 把会话账号悄悄翻成当前账号）。
+ */
+export function followRecordName(priorPin: string | null, resolution: { name: string }): string | null {
+  return !priorPin || resolution.name === priorPin ? resolution.name : null;
+}
+
+/**
  * A4：**统一「带账号起会话」编排**——history resume / tabs resume / 「开新 Claude」对话框
  * 三站点共用，消除各写一遍 `resolve configDir + record lastAccount` 的漂移（DESIGN §4）。
  * A5「换号重启」是本编排的超集（在 run 前插 checkTrust/compact、run 后同样 record），届时在此扩展。
@@ -370,13 +398,7 @@ export async function withAccount(
     }
   }
   const priorPin = opts.follow?.lastAccount ?? null;
-  const resolution: AccountResolution = state
-    ? resolveAccount(state, { explicit: accountName, follow: opts.follow })
-    : accountName
-      ? { kind: "unavailable", requestedName: accountName }
-      : priorPin
-        ? { kind: "unavailable", requestedName: priorPin, pinned: true }
-        : { kind: "base" };
+  const resolution = resolveLaunchAccount(state, accountName, opts.follow);
   // 🔴 D-h：要的那个号选不了 ⇒ **不起**，说清是哪个号、给一个显式选择（点了就以显式选号再走一次，A4 语义记 pin）。
   //   先前：显式点号 ⇒ 提示后按基座起（提示说的「改用上次的账号 / 当前账号」与做的也不一致）；
   //   跟随 ⇒ 下沉、不说（E7）。两形都是「不静默换号」要拦的（＋ D4）。
@@ -401,11 +423,7 @@ export async function withAccount(
       // 显式选号(A4 语义不变)
       recordName = resolution.name;
     } else {
-      // 跟随解析命中——U3 审计 重要-1:不 clobber 既有 pin。仅当**无既有 pin**(no-owner → 变
-      // sticky)、或**解析结果==既有 pin**(no-op)时才记账;既有 pin 存在但不可选、下沉到
-      // current → **不记账**,保住原 pin(守「粘性优先」不变量,避免 history/tab 默认 resume
-      // 把会话账号悄悄翻成当前账号)。
-      recordName = !priorPin || resolution.name === priorPin ? resolution.name : null;
+      recordName = followRecordName(priorPin, resolution);
     }
   }
   const modelOverride =

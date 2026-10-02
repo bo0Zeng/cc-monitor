@@ -164,8 +164,9 @@ const WITH_ACCOUNT_SITES: ReadonlyArray<
   [
     // 住址从 `src/frontend/ui/tabs.ts` 换到这里：tab 上的会话动作整块搬进了 `tab-session-actions.ts`，
     //   三处 `withAccount(` 逐字随行（resume 直连 · tmux 就地 · tmux 新起），派别不变。
+    //   3 → 2：tmux 就地与新起收成一处（在 tmux 里起交那台一个 sid，就地还是新起由那台判），派别不变。
     "src/frontend/ui/tab-session-actions.ts",
-    3,
+    2,
     true,
     "tab 上的 resume/重启：有 sid，能读到 lastAccount ⇒ 跟随（上次用哪个号就还用哪个）。",
   ],

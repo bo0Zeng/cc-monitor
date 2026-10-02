@@ -184,6 +184,8 @@ pub struct CliSpec<'a> {
     /// 本机回填 sid 用的身份 token（`--ccm-launch-id`）。
     pub launch_id: Option<&'a str>,
     pub ccm_path: &'a str,
+    /// 建进 tmux 之后不接进去（`--detach`，只对新建 tmux 容器那一形有意义）：后端自己替人起会话时用（tab 栏批量在 tmux 里起）。
+    pub detach: bool,
 }
 
 /// argv token 的 quote：只在含 ccm 允许字符集之外的东西时才包单引号。
@@ -312,6 +314,28 @@ const DIMENSION_ORDER: &[Dim] = &[
 
 /// `spec → ccm 调用行`。`caps` = 这台 ccm 会哪些（渲染就在那台后端里，问的是它自己）。
 pub fn render_ccm_invocation(spec: &CliSpec, caps: &BTreeSet<String>) -> Result<String, Refusal> {
+    match render_parts(spec, caps)? {
+        Parts::Argv(tokens) => Ok(tokens.iter().map(|t| argv(t)).collect::<Vec<_>>().join(" ")),
+        Parts::Shell(line) => Ok(line),
+    }
+}
+
+/// 同一行的 argv 形（不过 shell，`argv[0]` 是 `ccm_path`）：后端自己起这一趟时用它（[`render_ccm_invocation`] 就是把它逐个引号化连起来）。
+/// 就地 resume 那一形本来就是一串 shell（`tmux send-keys …`），没有 argv 形 ⇒ 拒。
+pub fn ccm_argv(spec: &CliSpec, caps: &BTreeSet<String>) -> Result<Vec<String>, Refusal> {
+    match render_parts(spec, caps)? {
+        Parts::Argv(tokens) => Ok(tokens),
+        Parts::Shell(_) => Err(Refusal::AttachNeedsTmux),
+    }
+}
+
+/// 渲染的两种成品：一条 ccm 的 argv · 一串 shell（就地 resume 那一形）。
+enum Parts {
+    Argv(Vec<String>),
+    Shell(String),
+}
+
+fn render_parts(spec: &CliSpec, caps: &BTreeSet<String>) -> Result<Parts, Refusal> {
     for c in CLI_REQUIRED_CAPS {
         if !caps.contains(*c) {
             return Err(Refusal::MissingCap((*c).to_string()));
@@ -338,7 +362,7 @@ pub fn render_ccm_invocation(spec: &CliSpec, caps: &BTreeSet<String>) -> Result<
         existing_name_ok(name)?;
         ours.push("--attach".into());
         ours.push(name.to_string());
-        return Ok(join_halves(tokens, ours));
+        return Ok(Parts::Argv(join_halves(tokens, ours)));
     }
 
     // 就地 resume：键进那个 pane 的是**直路**那一行（pane 里已经有 shell，不再建容器），外层只包这一行。
@@ -357,10 +381,10 @@ pub fn render_ccm_invocation(spec: &CliSpec, caps: &BTreeSet<String>) -> Result<
             caps,
         )?;
         let t = shell_quote_core::posix_quote(&format!("={name}:"));
-        return Ok(format!(
+        return Ok(Parts::Shell(format!(
             "tmux send-keys -t {t} {} Enter; tmux attach -t {t}",
             shell_quote_core::posix_quote(&inner)
-        ));
+        )));
     }
 
     match spec.action {
@@ -389,6 +413,9 @@ pub fn render_ccm_invocation(spec: &CliSpec, caps: &BTreeSet<String>) -> Result<
             });
         }
         ours.push(format!("--ccm-tmux={name}"));
+        if spec.detach {
+            ours.push("--detach".into());
+        }
     }
 
     // 维度吐的旗标分两半：`--model` 是 agent 的，其余是 ccm 的。
@@ -425,7 +452,7 @@ pub fn render_ccm_invocation(spec: &CliSpec, caps: &BTreeSet<String>) -> Result<
         });
     }
     tokens.extend(spec.args.iter().map(|a| (*a).to_string()));
-    Ok(join_halves(tokens, ours))
+    Ok(Parts::Argv(join_halves(tokens, ours)))
 }
 
 /// 一个**已有**会话的名字：拒绝集（控制符 · 欺骗字符）＋ 非空（`control/gate_rules.rs`，全仓唯一一份）。
@@ -485,12 +512,12 @@ fn identifiers_ok(spec: &CliSpec) -> Result<(), Refusal> {
 
 /// `<ccm> <交给 agent 的…> -- <ccm 自己的…>`：ccm 那一半空、而 agent 那一半里没有 `--` ⇒ 不写 `--`；
 /// agent 那一半里有它自己的 `--` ⇒ 末尾照样补一个（按最后一个 `--` 切，空的 ccm 部分也得标出来）。
-fn join_halves(mut agent: Vec<String>, ours: Vec<String>) -> String {
+fn join_halves(mut agent: Vec<String>, ours: Vec<String>) -> Vec<String> {
     if !ours.is_empty() || agent.iter().skip(1).any(|a| a == "--") {
         agent.push("--".into());
         agent.extend(ours);
     }
-    agent.iter().map(|t| argv(t)).collect::<Vec<_>>().join(" ")
+    agent
 }
 
 #[cfg(test)]

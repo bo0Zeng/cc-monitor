@@ -1269,6 +1269,11 @@
       "zh": "会话 {name} 不是 cc-monitor 起的，没有结束它。",
       "args": ["name"]
     },
+    "beGate.admitDestructive.otherSession": {
+      "kind": "error",
+      "zh": "tmux 会话 {name} 此刻跑的已经不是这条会话，没有结束它。",
+      "args": ["name"]
+    },
     "beGate.admitDestructive.manyWindows": {
       "kind": "error",
       "zh": "会话 {name} 有 {n} 个窗口，没有结束它。里面可能开着别的东西，到那个 tmux 会话里自己处理。",
@@ -3216,59 +3221,9 @@
       "zh": "生成不了启动命令",
       "args": []
     },
-    "remoteLaunchRun.inPlaceLocal.manual": {
-      "kind": "body",
-      "zh": "已就地 resume，请手动复制 attach 命令",
-      "args": []
-    },
-    "remoteLaunchRun.inPlaceLocal.copied": {
-      "kind": "body",
-      "zh": "已就地 resume，attach 命令已复制",
-      "args": []
-    },
-    "remoteLaunchRun.inPlaceLocal.done": {
-      "kind": "body",
-      "zh": "已就地 resume",
-      "args": []
-    },
-    "remoteLaunchRun.inPlaceLocal.attachFailedBody": {
-      "kind": "error",
-      "zh": "{err}\n会话已经 resume 了，只是终端没接上。",
-      "args": ["err"]
-    },
-    "remoteLaunchRun.inPlaceLocal.attachFailed": {
-      "kind": "error",
-      "zh": "已就地 resume，但生成不了接终端的命令",
-      "args": []
-    },
-    "remoteLaunchRun.inPlaceLocal.noBackend": {
-      "kind": "error",
-      "zh": "本机后端不在，确认不了有没有执行",
-      "args": []
-    },
     "remoteLaunchRun.inPlace.notRun": {
       "kind": "error",
       "zh": "就地 resume 未执行",
-      "args": []
-    },
-    "remoteLaunchRun.inPlace.buildFailed": {
-      "kind": "error",
-      "zh": "生成不了就地 resume 命令",
-      "args": []
-    },
-    "remoteLaunchRun.inPlace.failedCopied": {
-      "kind": "error",
-      "zh": "拉起失败，已复制就地 resume 命令",
-      "args": []
-    },
-    "remoteLaunchRun.inPlace.done": {
-      "kind": "body",
-      "zh": "已在原来的 tmux 里就地 resume",
-      "args": []
-    },
-    "remoteLaunchRun.inPlace.refusedUnsure": {
-      "kind": "error",
-      "zh": "远端拒绝了，也确认不了有没有执行",
       "args": []
     },
     "remoteLaunchRun.resumeTmux.failedCopied": {
@@ -3571,6 +3526,216 @@
       "zh": "Attach · 空的 tmux 会话 {name}",
       "args": ["name"]
     },
+    "tabBatch.menu.head": {
+      "kind": "body",
+      "zh": "已选 {n} 个标签",
+      "args": ["n"]
+    },
+    "tabBatch.menu.stop": {
+      "kind": "action",
+      "zh": "杀死会话（{n}）",
+      "args": ["n"]
+    },
+    "tabBatch.menu.startTmux": {
+      "kind": "action",
+      "zh": "Resume · 在 tmux 里后台起（{n}）",
+      "args": ["n"]
+    },
+    "tabBatch.menu.startWindow": {
+      "kind": "action",
+      "zh": "Resume · 各开一个终端（{n}）",
+      "args": ["n"]
+    },
+    "tabBatch.menu.pin": {
+      "kind": "action",
+      "zh": "📌 固定（{n}）",
+      "args": ["n"]
+    },
+    "tabBatch.menu.unpin": {
+      "kind": "action",
+      "zh": "取消固定（{n}）",
+      "args": ["n"]
+    },
+    "tabBatch.menu.joinOne": {
+      "kind": "action",
+      "zh": "{name}（{n}）",
+      "args": ["name", "n"]
+    },
+    "tabBatch.menu.found": {
+      "kind": "action",
+      "zh": "新建集合…（{n}）",
+      "args": ["n"]
+    },
+    "tabBatch.menu.leave": {
+      "kind": "action",
+      "zh": "移出集合（{n}）",
+      "args": ["n"]
+    },
+    "tabBatch.menu.close": {
+      "kind": "action",
+      "zh": "关闭标签（{n}）",
+      "args": ["n"]
+    },
+    "tabBatch.stop.confirm": {
+      "kind": "body",
+      "zh": "杀死这 {n} 个会话？\n\n{list}\n\n会终止它们 tmux 会话里正在运行的 Claude，没保存的交互会中断。此操作不可恢复。",
+      "args": ["n", "list"]
+    },
+    "tabBatch.stop.line": {
+      "kind": "body",
+      "zh": "· {title}（{machine}）",
+      "args": ["title", "machine"]
+    },
+    "tabBatch.action.stop": {
+      "kind": "body",
+      "zh": "杀死会话",
+      "args": []
+    },
+    "tabBatch.action.startTmux": {
+      "kind": "body",
+      "zh": "在 tmux 里后台 Resume",
+      "args": []
+    },
+    "tabBatch.action.startWindow": {
+      "kind": "body",
+      "zh": "各开一个终端 Resume",
+      "args": []
+    },
+    "tabBatch.action.pin": {
+      "kind": "body",
+      "zh": "固定",
+      "args": []
+    },
+    "tabBatch.action.unpin": {
+      "kind": "body",
+      "zh": "取消固定",
+      "args": []
+    },
+    "tabBatch.action.join": {
+      "kind": "body",
+      "zh": "加入集合「{name}」",
+      "args": ["name"]
+    },
+    "tabBatch.action.found": {
+      "kind": "body",
+      "zh": "新建集合「{name}」",
+      "args": ["name"]
+    },
+    "tabBatch.action.leave": {
+      "kind": "body",
+      "zh": "移出集合",
+      "args": []
+    },
+    "tabBatch.action.close": {
+      "kind": "body",
+      "zh": "关闭标签",
+      "args": []
+    },
+    "tabBatch.result.title": {
+      "kind": "title",
+      "zh": "批量操作：{action}",
+      "args": ["action"]
+    },
+    "tabBatch.result.counts": {
+      "kind": "body",
+      "zh": "做了 {done} 个 · 跳过 {skipped} 个 · 失败 {failed} 个",
+      "args": ["done", "skipped", "failed"]
+    },
+    "tabBatch.result.skippedLine": {
+      "kind": "body",
+      "zh": "跳过 · {title}：{why}",
+      "args": ["title", "why"]
+    },
+    "tabBatch.result.failedLine": {
+      "kind": "body",
+      "zh": "失败 · {title}：{why}",
+      "args": ["title", "why"]
+    },
+    "tabBatch.why.ended": {
+      "kind": "body",
+      "zh": "会话已经结束了",
+      "args": []
+    },
+    "tabBatch.why.live": {
+      "kind": "body",
+      "zh": "会话还在运行",
+      "args": []
+    },
+    "tabBatch.why.pinned": {
+      "kind": "body",
+      "zh": "已经固定了",
+      "args": []
+    },
+    "tabBatch.why.notPinned": {
+      "kind": "body",
+      "zh": "没有固定",
+      "args": []
+    },
+    "tabBatch.why.inThatGroup": {
+      "kind": "body",
+      "zh": "已经在这个集合里",
+      "args": []
+    },
+    "tabBatch.why.notInGroup": {
+      "kind": "body",
+      "zh": "不在任何集合里",
+      "args": []
+    },
+    "tabBatch.why.noTmux": {
+      "kind": "error",
+      "zh": "{machine} 上没有 tmux",
+      "args": ["machine"]
+    },
+    "tabBatch.why.notInTmux": {
+      "kind": "error",
+      "zh": "在 {machine} 上找不到跑着它的 tmux 会话",
+      "args": ["machine"]
+    },
+    "tabBatch.why.ambiguous": {
+      "kind": "error",
+      "zh": "{machine} 上有好几个 tmux 会话都在跑它（{names}），为了不杀错，没有动",
+      "args": ["machine", "names"]
+    },
+    "tabBatch.why.running": {
+      "kind": "body",
+      "zh": "已经在 tmux 会话「{name}」里跑着",
+      "args": ["name"]
+    },
+    "tabBatch.why.recordGone": {
+      "kind": "error",
+      "zh": "{machine} 的 {root} 里找不到它的记录，Resume 接不上",
+      "args": ["machine", "root"]
+    },
+    "tabBatch.why.nameTaken": {
+      "kind": "error",
+      "zh": "{machine} 上 tmux 会话名「{name}」已经被占了，没有起",
+      "args": ["machine", "name"]
+    },
+    "tabBatch.why.startFailed": {
+      "kind": "error",
+      "zh": "{machine} 上没起成：{detail}",
+      "args": ["machine", "detail"]
+    },
+    "tabBatch.why.windowFailed": {
+      "kind": "error",
+      "zh": "终端窗口没开出来：{detail}",
+      "args": ["detail"]
+    },
+    "tabBatch.why.batchRefused": {
+      "kind": "error",
+      "zh": "{machine} 的后端没接这一批：{detail}",
+      "args": ["machine", "detail"]
+    },
+    "tabBatch.why.accountGone": {
+      "kind": "error",
+      "zh": "上次用的账号「{name}」现在选不了。单独右键这个标签点 Resume，可以改用当前账号。",
+      "args": ["name"]
+    },
+    "tabBatch.why.accountList": {
+      "kind": "error",
+      "zh": "读不到 {machine} 的账号清单。说不清上次用的账号「{name}」还能不能用。",
+      "args": ["machine", "name"]
+    },
     "tabMenu.kill.plain": {
       "kind": "action",
       "zh": "杀死会话",
@@ -3636,11 +3801,6 @@
       "zh": "Attach · 正在找 tmux 会话…",
       "args": []
     },
-    "tabMenu.open.preview": {
-      "kind": "action",
-      "zh": "预览画面",
-      "args": []
-    },
     "tabMenu.collection.remove": {
       "kind": "action",
       "zh": "移出「{name}」",
@@ -3674,16 +3834,6 @@
     "tabMenu.open.openInWindow": {
       "kind": "action",
       "zh": "在新窗口打开",
-      "args": []
-    },
-    "tabMenu.cwdFallback.body": {
-      "kind": "error",
-      "zh": "这个 tmux 会话是按工作目录认出来的。可能是同目录里的另一个会话。",
-      "args": []
-    },
-    "tabMenu.cwdFallback.title": {
-      "kind": "error",
-      "zh": "认不出这是哪个会话",
       "args": []
     },
     "tabSessionActions.front.failed": {
@@ -3760,11 +3910,6 @@
       "kind": "body",
       "zh": "远端",
       "args": []
-    },
-    "tabSessionActions.kill.cwdCaveat": {
-      "kind": "body",
-      "zh": "\n\n⚠ 认不出这是哪个会话：「{name}」是按工作目录认出来的，可能是同目录里另一个正在运行的 Claude。",
-      "args": ["name"]
     },
     "tabSessionActions.restart.dupes": {
       "kind": "error",
