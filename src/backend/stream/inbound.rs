@@ -266,6 +266,8 @@ pub const COMMANDS: &[&str] = &[
     "resync",
     // 分叉（`fork_write`，本 crate 唯一的 `O_EXCL` 新建写口）：本机远端同一条长连接。
     "session-fork",
+    // 此刻是哪个终端在显示这个会话（点 ↗ 时问一次：读那个进程 / 连着它的 tmux 客户端的环境）。**是新命令** ⇒ `build_id_guard` 红是预期的。
+    "session-terminals",
     // tab 栏多选的批量停 / 起：同一台的那几个一次交过来，逐个答（`control/session_batch.rs`）。**是新命令** ⇒ `build_id_guard` 红是预期的。
     "sessions-start",
     "sessions-stop",
@@ -282,8 +284,8 @@ pub const COMMANDS: &[&str] = &[
     "ssh-config-import",
     "ssh-config-resolve",
     "tasks-list",
-    // 〔本地半〕本机开终端那一串接上令牌握手前奏（同 `terminal-ssh` 那一形：后端出成品、monitor 只开窗）。**是新命令** ⇒ `build_id_guard` 红是预期的。
-    "terminal-local",
+    // ↗ 那一问的本机一半：那台报来的终端连接是这台电脑上哪个进程开的、往上的进程链（只读的系统查询）。**是新命令** ⇒ `build_id_guard` 红是预期的。
+    "terminal-processes",
     // 〔「待迁」最后一行〕给一台远端开终端要跑的那一串（`ssh -t …` 外壳 ＋ PowerShell 窗口载荷），本机后端渲、monitor 只开窗。**是新命令** ⇒ `build_id_guard` 红是预期的。
     "terminal-ssh",
     // 列这台的 tmux 会话（原样行；monitor `list_remote_tmux` 那条拨号 shell 退役）。
@@ -1587,7 +1589,6 @@ pub const REGISTRY: &[CommandSpec] = &[
             "defaultLauncher",
             "launcher",
             "model",
-            "rbindToken",
         ],
         takes_input: true,
         run: Run::Async(|r| {
@@ -3565,24 +3566,8 @@ pub const REGISTRY: &[CommandSpec] = &[
         takes_input: false,
         run: Run::Blocking(|_r| Ok(Some(crate::dial::ssh_config::answer_import()))),
     },
-    // 〔本地半〕**本机开终端那一串**：`{command, rbindToken?}` ⇒ `{command}`（有令牌 ⇒ 前奏在前、原串逐字节在后）。
-    //   纯函数：不起进程、不碰盘（数据目录只算路径）⇒ 不进阻塞档，同 `terminal-ssh`。
-    CommandSpec {
-        name: "terminal-local",
-        doc_anchor: Some("#### `terminal-local`"),
-        codes: &["invalid_args", "refused"],
-        fields: &["command"],
-        takes_input: true,
-        run: Run::Async(|r| {
-            Box::pin(async move {
-                crate::dial::terminal::answer_local(&r.args)
-                    .map(Some)
-                    .map_err(|(c, m)| (c.to_string(), m))
-            })
-        }),
-    },
-    // 〔「待迁」最后一行〕**开终端那一串**：`{machine, saved?, jump?, prefer?, command, rbindToken?}` ⇒ `{command}`（一行 PowerShell：
-    //   `& ssh -t[ -J …] -p … [-i …] user@host -- '<bash -lic …>'`；带令牌 ⇒ 前面接令牌握手前奏）。组请求走 `dial/machine.rs::resolve`，本体 `dial/terminal.rs`。
+    // 〔「待迁」最后一行〕**开终端那一串**：`{machine, saved?, jump?, prefer?, command}` ⇒ `{command}`（一行 PowerShell：
+    //   `& ssh -t[ -J …] -p … [-i …] user@host -- '<bash -lic …>'`）。组请求走 `dial/machine.rs::resolve`，本体 `dial/terminal.rs`。
     //   纯函数：校验 ＋ quote，不拨号、不起进程、不碰盘 ⇒ 不进阻塞档（同 `ping` 那一形）。
     CommandSpec {
         name: "terminal-ssh",
@@ -3596,6 +3581,43 @@ pub const REGISTRY: &[CommandSpec] = &[
                     .map(Some)
                     .map_err(|(c, m)| (c.to_string(), m))
             })
+        }),
+    },
+    // 那台报来的终端 ⇒ 这台电脑上开着那条连接的进程链：`{terminals}` ⇒ `{chain:[{pid, name, start}…], why?, addr?}`
+    //   （`dial/terminal_processes.rs`）。阻塞档：起一趟 PowerShell（连接表 ＋ 进程表四格）并等它退出。只在被问时答。
+    CommandSpec {
+        name: "terminal-processes",
+        doc_anchor: Some("#### `terminal-processes`"),
+        codes: &["bad_args"],
+        fields: &["addr", "chain", "name", "pid", "start", "why"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::dial::terminal_processes::answer(&r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    // 此刻是哪个终端在显示这个会话：`{sid}` ⇒ `{terminals:[{ssh, activity}…], why?}`（`observe/session_terminals.rs`）。
+    //   阻塞档：读 `/proc` ＋ 在 tmux 里时起一次 `tmux list-clients`。零定时器，只在被问时答。
+    CommandSpec {
+        name: "session-terminals",
+        doc_anchor: Some("#### `session-terminals`"),
+        codes: &["bad_args", "no_such_session", "failed"],
+        fields: &[
+            "activity",
+            "clientAddr",
+            "clientPort",
+            "serverAddr",
+            "serverPort",
+            "ssh",
+            "terminals",
+            "why",
+        ],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::faces::feature_face::answer(&r.cmd, &r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
     // 列这台的 tmux 会话。成品 `{installed, sessions}`（`observe/tmux_list.rs`；原先是原样行、解析在 monitor）。阻塞档（起一次 `sh` ＋ `tmux`）。

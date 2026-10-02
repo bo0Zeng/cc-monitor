@@ -182,7 +182,6 @@ fn with_spec<T>(
         launcher: launcher.as_deref().unwrap_or(&req.default_launcher),
         default_launcher: &req.default_launcher,
         args: &[],
-        rbind_token: None,
         launch_id,
         ccm_path: "ccm",
         detach,

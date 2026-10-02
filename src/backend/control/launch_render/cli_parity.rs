@@ -12,7 +12,8 @@ const FIXTURE: &str = include_str!("fixtures/cli-golden.json");
 /// 20 → 29：删「未装」「本地 transport」「send-into 无 CLI 形」三条拒（那三形今天都渲得出 / 产不出来了），
 /// 加「只有目录」「启动期令牌」「就地 resume」三条 ok 与「缺 cwd 能力」「坏 sid」两条拒（tmux 那条拒换成「容器要 tmux」），
 /// 再加 `path:` 七条（monitor 每条远端起会话路径真发出去的那一形）。
-const EXPECT_CASES: usize = 29;
+/// 29 → 27：「启动期令牌」那条 ok 与「坏令牌」那条拒随起会话时注的令牌删了。
+const EXPECT_CASES: usize = 27;
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]

@@ -18,7 +18,7 @@
 | `Arc<bind::SidHwndCache>` | `lib.rs::setup()` `app.manage(sid_hwnd_cache.clone())` | `SidHwndCache::load()` | 共享：setup 局部 + `session-book-emitter` 线程 + State |
 | `Arc<logging::LoggingState>` | `lib.rs::setup()` `app.manage(logging_state.clone())` | `logging::init(monitor_data_dir)`（在 `tauri::Builder` 之前） | 共享：`lib.rs::run()` 局部（持有 WorkerGuard 到 setup 结束）+ setup 闭包内 `install_error_emitter` 注入 closure + State |
 | ~~`Arc<search::SearchIndex>`~~ (issue #6) 已删 | — | — | 本机全文搜索改问本机后端（`history-search`），monitor 不再建索引 |
-| `Arc<bind::RemoteHwndCache>` (issue #18) | `lib.rs::setup()` `app.manage(remote_hwnd_cache.clone())` | `RemoteHwndCache::new()` | 共享：setup 局部 + `session-book-emitter` 线程（`remote_cache_for_emitter` → `lib.rs::session_side_effects`：远端活会话没令牌时起 `remote-bind-scan` 子线程 `try_bind`；离开时 `apply_remote_disposition`，已结束才 `forget`）+ State |
+| ~~远端会话的窗口缓存~~ (issue #18) 已删 | — | — | 远端 ↗ 点那一刻现查（那台答「此刻谁在显示它」、本机后端对到窗口），monitor 不再为远端会话记窗口 |
 
 ---
 
@@ -36,13 +36,12 @@
 
 ### `Arc<BindRegistry>`
 - `lib.rs::bound_terminal_count(bind_state: State<'_, Arc<BindRegistry>>)`（握手终端数单独一问；从前夹在别名读回口里 —— 别名那一族进了那台后端，`aliases-read`）
-- `lib.rs::bring_remote_terminal_to_front(session_id, cache: State<'_, Arc<RemoteHwndCache>>, registry: State<'_, Arc<BindRegistry>>)`
 
 ### `Arc<SidHwndCache>`
 - `lib.rs::bring_terminal_to_front(session_id, cache: State<'_, Arc<SidHwndCache>>)`
 
-### `Arc<RemoteHwndCache>` (issue #18)
-- `lib.rs::bring_remote_terminal_to_front(session_id, cache: State<'_, Arc<RemoteHwndCache>>)`
+### 远端 ↗ (issue #18)
+- `lib.rs::bring_remote_terminal_to_front(window)`：不接 `State`，交来的是本机后端对上的窗口（`bind::FoundWindow`）。
 
 ### `Arc<LoggingState>`
 - `lib.rs::get_diagnostics_config(state: State<'_, Arc<logging::LoggingState>>)`

@@ -1077,31 +1077,9 @@ pub const SUBCOMMANDS: &[&str] = &[
 /// （monitor 发对应 flag → 本后端不剥 → 当查询退出 → 无 hello → 重连死循环）。
 /// **此硬约束由 `every_capability_token_is_strippable` 测试代码强制**（不再只是约定）。
 ///
-/// # 🔴 `rbind-token`—— 它为什么住**这一张**表
-///
-/// 方案 E 要把「会话身份」从 tmux 上解绑：起会话的那一方注一个
-/// `CCM_RBIND_TOKEN`，后端从 `/proc/<pid>/environ` 读出来、随 `session_added` 报回去。
-/// `§8.6 ④` 逐字要求「**能力协商** ＋ 老后端诚实降级」。
-///
-/// **为什么「字段在不在」自己不够**：`session_added` 上**没有** `rbind_token`
-/// 会同时表达两件相反的事 ——「**这台后端不报令牌**」（老后端）与
-/// 「**这条会话真的没有令牌**」（不是 monitor 起的，`§8.5 ②` 那个布尔）。
-/// 一个缺席的字段分不开它们，而它们要的动作不同（降级回标题路 / 说一句准确的话）。
-/// ⇒ 协商必须在**握手**那一层。
-///
-/// **为什么落在 `capabilities` 而不是 `emits`**：`rbind_token` 是**既有帧上的一个字段**，
-/// 不是一个新帧 kind —— 而 `emits` 的取值空间是帧 kind（`wire.rs` 那个字段的头注逐字），
-/// 把一个字段名塞进去是在那张表上说假话。
-///
-/// **它的 flag 是真的，不是为了喂饱护栏编出来的**（`wire.rs` 里 hello 那个
-/// 「我做得到什么」面的头注逐字警告过「被迫编一个假 flag（更坏）」）：`--with-rbind-token` 让报令牌这件事
-/// **默认关、由客户端显式索要**。依据是 `§8.6 ③` —— 令牌是**敏感数据**，
-/// 默认不往 wire 上放，只有真要做 ↗ 关联的那个客户端才请它。
-/// 它与 `--with-bg` 是同一族语义（「这条流多报一样东西」），`split_stream_flags` 照样剥它
-/// ⇒ `every_capability_token_is_strippable` 拿到的是一条**真** flag。
 // ⚠ **排序照字典序**（不是按加入时间）：`capability_ledger_guard::the_stream_flag_list_keeps_its_own_narrow_semantics`
 // 拿汇总那侧（排过序）与本表**逐项相等**。
-pub const CAPABILITIES: &[&str] = &["bg", "rbind-token", "tail-only"];
+pub const CAPABILITIES: &[&str] = &["bg", "tail-only"];
 
 // ══════════════════ 步 `8a`：能力清单的**汇总** —— 第 2 层 ══════════════════
 //
@@ -1457,17 +1435,9 @@ pub const TARGET_GAPS: &[TargetGap] = &[
         capability: "ccm-sid",
         target: Target::Windows,
         kind: GapKind::Owed,
-        rationale: "**直路语义已定，Windows 上仍欠在读侧。** \
-              从前：`--ccm-sid` 只在容器（tmux）那条路上被消费（`Container.ccm_sid` → \
-              `tmux set-option @ccm_sid_expect`），直路上被接受、零效果、不出声。\
-              主会话裁：**不报错**（报错 ＝ 让它依赖 tmux，撞），直路语义走启动期令牌 \
-              （`control/ccm/plan.rs::DirectIdentity`：有合格的 `CCM_RBIND_TOKEN` ⇒ 由它承载；\
-              没有 ⇒ 说一句、照常起）。\
-              🔴 **而令牌那条路的读侧在 Windows 上不通**：后端从 agent 进程的环境里读令牌 \
-              （`identity_tag::rbind_token_of` → `platform::proc::proc_env_var`），非 Linux 恒 `Unreadable` \
-              （`WN1.md §1` 件 E：要读对方 PEB，未做）⇒ 令牌注进去了也读不回来 ⇒ 这一格在 Windows 上仍是欠账。\
-              **将来**：件 E（Windows 上读别的进程的环境）落地那一拍，这一行跟着删；件 E 随 V109 \
-              「先不做 Windows 这一族」挂着，在那之前暂时不做。",
+        rationale: "`--ccm-sid` 写的是 tmux 会话上的意图标（`@ccm_sid_expect`，kill / 送键的身份门据它确认事实）。\
+              Windows 上没有 tmux ⇒ 没有可写的地方；直路上它不起作用，拉前终端也不靠它（点 ↗ 时现查连着的终端）。\
+              等 V109 那一族选定机制（未定）时一并回答，**暂时不做**。",
     },
     // ── 🔴 〔散文墓碑〕**`agent` 那一条豁免删了，原话留在这里** ──────
     //
@@ -1917,14 +1887,13 @@ pub const STREAM_FLAG_EXPLICIT: &str = "--stream";
 
 /// ① 流模式 flag：出现即剥离并置位，**不影响模式判定**。
 ///
-/// `--with-rbind-token`：客户端**显式索要**
-/// `session_added` 上的 `rbind_token`（`CCM_RBIND_TOKEN`）。默认关的理由是
-/// 「令牌是敏感数据」（`§8.6 ③`），整段论证住 [`CAPABILITIES`] 的头注。
+/// `--with-pid`：客户端显式索要 `session_added` 上的 `pid`（本机 ↗ 按它找父 PowerShell）。
+/// 只有本机那条流发它（本机后端与 monitor 同一份构建），不对应能力 token；默认关 ⇒ 别的客户端收到的字节不变。
 pub const STREAM_FLAGS: &[&str] = &[
     STREAM_FLAG_EXPLICIT,
     "--with-bg",
     "--tail-only",
-    "--with-rbind-token",
+    "--with-pid",
 ];
 
 /// **「只读一行 stdin」的入口**：跟在子命令后面（`--assets-catalog-merge --stdin-line`）。
@@ -1969,7 +1938,7 @@ pub const SUBCOMMAND_OPTIONS: &[&str] = &[
     "--until",
 ];
 
-/// 从 argv 剥离流模式 flag，返回（剩余参数, with_bg, tail_only, with_rbind_token）。
+/// 从 argv 剥离流模式 flag，返回（剩余参数, with_bg, tail_only, with_pid）。
 ///
 /// **必须在一次性查询模式判定之前调用**（INVARIANT §26）。
 ///
@@ -1980,9 +1949,9 @@ pub const SUBCOMMAND_OPTIONS: &[&str] = &[
 pub fn split_stream_flags(mut args: Vec<String>) -> (Vec<String>, bool, bool, bool) {
     let with_bg = args.iter().any(|a| a == "--with-bg");
     let tail_only = args.iter().any(|a| a == "--tail-only");
-    let with_rbind_token = args.iter().any(|a| a == "--with-rbind-token");
+    let with_pid = args.iter().any(|a| a == "--with-pid");
     args.retain(|a| !STREAM_FLAGS.contains(&a.as_str()));
-    (args, with_bg, tail_only, with_rbind_token)
+    (args, with_bg, tail_only, with_pid)
 }
 
 /// 剥完流 flag 之后：这些参数该进查询模式，还是该进流模式？

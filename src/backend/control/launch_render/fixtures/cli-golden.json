@@ -33,8 +33,7 @@
         "ccmSid": null,
         "model": null,
         "launcher": "claude",
-        "defaultLauncher": "claude",
-        "rbindToken": null
+        "defaultLauncher": "claude"
       },
       "ok": true,
       "out": "ccm -- new --base"
@@ -72,8 +71,7 @@
         "ccmSid": null,
         "model": null,
         "launcher": "claude",
-        "defaultLauncher": "claude",
-        "rbindToken": null
+        "defaultLauncher": "claude"
       },
       "ok": true,
       "out": "ccm -- new --account z"
@@ -111,8 +109,7 @@
         "ccmSid": null,
         "model": null,
         "launcher": "claude",
-        "defaultLauncher": "claude",
-        "rbindToken": null
+        "defaultLauncher": "claude"
       },
       "ok": true,
       "out": "ccm -- new --account-dir /home/u/.cc-monitor/accounts/z"
@@ -153,8 +150,7 @@
         "ccmSid": null,
         "model": null,
         "launcher": "claude",
-        "defaultLauncher": "claude",
-        "rbindToken": null
+        "defaultLauncher": "claude"
       },
       "ok": true,
       "out": "ccm --resume abc-123 -- --ccm-tmux=cc-abc123 --account z"
@@ -191,49 +187,10 @@
         "ccmSid": null,
         "model": "opus",
         "launcher": "claude",
-        "defaultLauncher": "claude",
-        "rbindToken": null
+        "defaultLauncher": "claude"
       },
       "ok": true,
       "out": "ccm --resume s1 --model opus -- --base --cwd /w"
-    },
-    {
-      "name": "启动期令牌",
-      "caps": [
-        "new",
-        "resume",
-        "attach",
-        "tmux",
-        "account",
-        "model",
-        "cwd",
-        "agent",
-        "launcher",
-        "ccm-sid",
-        "print",
-        "detach",
-        "tmux-size"
-      ],
-      "req": {
-        "action": {
-          "kind": "resume",
-          "sid": "s1"
-        },
-        "container": {
-          "kind": "none"
-        },
-        "cwd": null,
-        "account": {
-          "kind": "base"
-        },
-        "ccmSid": null,
-        "model": null,
-        "launcher": "claude",
-        "defaultLauncher": "claude",
-        "rbindToken": "0123456789abcdef0123456789abcdef"
-      },
-      "ok": true,
-      "out": "ccm --resume s1 -- --base --ccm-rbind-token 0123456789abcdef0123456789abcdef"
     },
     {
       "name": "就地 resume：外层只包那一行直路",
@@ -269,8 +226,7 @@
         "ccmSid": null,
         "model": null,
         "launcher": "claude",
-        "defaultLauncher": "claude",
-        "rbindToken": null
+        "defaultLauncher": "claude"
       },
       "ok": true,
       "out": "tmux send-keys -t '=cc-x:' 'ccm --resume s1 -- --base' Enter; tmux attach -t '=cc-x:'"
@@ -306,8 +262,7 @@
         "ccmSid": "sid-1",
         "model": null,
         "launcher": "claude",
-        "defaultLauncher": "claude",
-        "rbindToken": null
+        "defaultLauncher": "claude"
       },
       "ok": true,
       "out": "ccm -- new --ccm-sid=sid-1 --base"
@@ -343,8 +298,7 @@
         "ccmSid": null,
         "model": null,
         "launcher": "mycc",
-        "defaultLauncher": "claude",
-        "rbindToken": null
+        "defaultLauncher": "claude"
       },
       "ok": true,
       "out": "ccm -- new --base --launcher mycc"
@@ -380,8 +334,7 @@
         "ccmSid": null,
         "model": null,
         "launcher": "claude",
-        "defaultLauncher": "claude",
-        "rbindToken": null
+        "defaultLauncher": "claude"
       },
       "ok": true,
       "out": "ccm -- new --base"
@@ -420,8 +373,7 @@
         "ccmSid": null,
         "model": null,
         "launcher": "claude",
-        "defaultLauncher": "claude",
-        "rbindToken": null
+        "defaultLauncher": "claude"
       },
       "ok": true,
       "out": "ccm -- --attach cc-foo"
@@ -457,8 +409,7 @@
         "ccmSid": null,
         "model": null,
         "launcher": "claude",
-        "defaultLauncher": "claude",
-        "rbindToken": null
+        "defaultLauncher": "claude"
       },
       "ok": true,
       "out": "ccm -- new --base --cwd '/home/用户/带 空格'"
@@ -493,8 +444,7 @@
         "ccmSid": null,
         "model": null,
         "launcher": "claude",
-        "defaultLauncher": "claude",
-        "rbindToken": null
+        "defaultLauncher": "claude"
       },
       "ok": false,
       "out": "这台机器上的 ccm 做不到这样起会话（缺 cwd）"
@@ -531,8 +481,7 @@
         "ccmSid": null,
         "model": null,
         "launcher": "claude",
-        "defaultLauncher": "claude",
-        "rbindToken": null
+        "defaultLauncher": "claude"
       },
       "ok": false,
       "out": "这台机器上的 ccm 做不到这样起会话（缺 tmux）"
@@ -567,8 +516,7 @@
         "ccmSid": null,
         "model": "opus",
         "launcher": "claude",
-        "defaultLauncher": "claude",
-        "rbindToken": null
+        "defaultLauncher": "claude"
       },
       "ok": false,
       "out": "这台机器上的 ccm 不认 model 这一项设置（缺 model）"
@@ -603,8 +551,7 @@
         "ccmSid": null,
         "model": null,
         "launcher": "claude",
-        "defaultLauncher": "claude",
-        "rbindToken": null
+        "defaultLauncher": "claude"
       },
       "ok": false,
       "out": "这台机器上的 ccm 不认 account 这一项设置（缺 account）"
@@ -641,48 +588,10 @@
         "ccmSid": null,
         "model": null,
         "launcher": "claude",
-        "defaultLauncher": "claude",
-        "rbindToken": null
+        "defaultLauncher": "claude"
       },
       "ok": false,
       "out": "会话 ID \"-x\" 不合法（1 到 64 位，只许 A-Z a-z 0-9 与 -，不以 - 开头）"
-    },
-    {
-      "name": "坏令牌",
-      "caps": [
-        "new",
-        "resume",
-        "attach",
-        "tmux",
-        "account",
-        "model",
-        "cwd",
-        "agent",
-        "launcher",
-        "ccm-sid",
-        "print",
-        "detach",
-        "tmux-size"
-      ],
-      "req": {
-        "action": {
-          "kind": "new"
-        },
-        "container": {
-          "kind": "none"
-        },
-        "cwd": null,
-        "account": {
-          "kind": "base"
-        },
-        "ccmSid": null,
-        "model": null,
-        "launcher": "claude",
-        "defaultLauncher": "claude",
-        "rbindToken": "XYZ"
-      },
-      "ok": false,
-      "out": "启动期令牌 \"XYZ\" 不合法（要 32 位小写十六进制）"
     },
     {
       "name": "path:远端直连 resume",
@@ -718,11 +627,10 @@
         "ccmSid": null,
         "model": null,
         "launcher": "claude",
-        "defaultLauncher": "claude",
-        "rbindToken": "0123456789abcdef0123456789abcdef"
+        "defaultLauncher": "claude"
       },
       "ok": true,
-      "out": "ccm --resume s1 -- --account z --ccm-rbind-token 0123456789abcdef0123456789abcdef --cwd /p"
+      "out": "ccm --resume s1 -- --account z --cwd /p"
     },
     {
       "name": "path:远端 tmux 建会话 resume（换号重启 · 分叉）",
@@ -760,11 +668,10 @@
         "ccmSid": "s1",
         "model": null,
         "launcher": "claude",
-        "defaultLauncher": "claude",
-        "rbindToken": "0123456789abcdef0123456789abcdef"
+        "defaultLauncher": "claude"
       },
       "ok": true,
-      "out": "ccm --resume s1 -- --ccm-tmux=cc-s1 --ccm-sid=s1 --account z --ccm-rbind-token 0123456789abcdef0123456789abcdef --cwd /p"
+      "out": "ccm --resume s1 -- --ccm-tmux=cc-s1 --ccm-sid=s1 --account z --cwd /p"
     },
     {
       "name": "path:分叉继承源会话的目录（说不出名字）",
@@ -802,11 +709,10 @@
         "ccmSid": "s1",
         "model": null,
         "launcher": "claude",
-        "defaultLauncher": "claude",
-        "rbindToken": "0123456789abcdef0123456789abcdef"
+        "defaultLauncher": "claude"
       },
       "ok": true,
-      "out": "ccm --resume s1 -- --ccm-tmux=p-fork-cc --ccm-sid=s1 --account-dir /home/u/.cc-monitor/accounts/z --ccm-rbind-token 0123456789abcdef0123456789abcdef --cwd /p"
+      "out": "ccm --resume s1 -- --ccm-tmux=p-fork-cc --ccm-sid=s1 --account-dir /home/u/.cc-monitor/accounts/z --cwd /p"
     },
     {
       "name": "path:就地 resume 键进 pane 的那一行",
@@ -840,11 +746,10 @@
         "ccmSid": null,
         "model": null,
         "launcher": "claude",
-        "defaultLauncher": "claude",
-        "rbindToken": "0123456789abcdef0123456789abcdef"
+        "defaultLauncher": "claude"
       },
       "ok": true,
-      "out": "ccm --resume s1 -- --base --ccm-rbind-token 0123456789abcdef0123456789abcdef"
+      "out": "ccm --resume s1 -- --base"
     },
     {
       "name": "path:就地 resume 回落那一整串（外层只包那一行）",
@@ -880,11 +785,10 @@
         "ccmSid": null,
         "model": null,
         "launcher": "claude",
-        "defaultLauncher": "claude",
-        "rbindToken": "0123456789abcdef0123456789abcdef"
+        "defaultLauncher": "claude"
       },
       "ok": true,
-      "out": "tmux send-keys -t '=cc-s1:' 'ccm --resume s1 -- --base --ccm-rbind-token 0123456789abcdef0123456789abcdef' Enter; tmux attach -t '=cc-s1:'"
+      "out": "tmux send-keys -t '=cc-s1:' 'ccm --resume s1 -- --base' Enter; tmux attach -t '=cc-s1:'"
     },
     {
       "name": "path:远端开新会话",
@@ -919,11 +823,10 @@
         "ccmSid": null,
         "model": null,
         "launcher": "claude",
-        "defaultLauncher": "claude",
-        "rbindToken": "0123456789abcdef0123456789abcdef"
+        "defaultLauncher": "claude"
       },
       "ok": true,
-      "out": "ccm -- new --ccm-tmux=w-cc --base --ccm-rbind-token 0123456789abcdef0123456789abcdef --cwd /p"
+      "out": "ccm -- new --ccm-tmux=w-cc --base --cwd /p"
     },
     {
       "name": "path:远端接回",
@@ -959,8 +862,7 @@
         "ccmSid": null,
         "model": null,
         "launcher": "claude",
-        "defaultLauncher": "claude",
-        "rbindToken": null
+        "defaultLauncher": "claude"
       },
       "ok": true,
       "out": "ccm -- --attach cc-s1"
@@ -999,8 +901,7 @@
         "ccmSid": "p1",
         "model": null,
         "launcher": "claude",
-        "defaultLauncher": "claude",
-        "rbindToken": null
+        "defaultLauncher": "claude"
       },
       "ok": true,
       "out": "ccm --resume p1 -- --ccm-tmux=cc-p1 --ccm-sid=p1 --base --cwd /tmp"
@@ -1038,8 +939,7 @@
         "ccmSid": null,
         "model": null,
         "launcher": "CCMPROBE",
-        "defaultLauncher": "claude",
-        "rbindToken": null
+        "defaultLauncher": "claude"
       },
       "ok": true,
       "out": "ccm -- new --ccm-tmux=cc-proj --base --cwd '/home/pi/my proj' --launcher CCMPROBE"
@@ -1078,8 +978,7 @@
         "ccmSid": null,
         "model": null,
         "launcher": "claude",
-        "defaultLauncher": "claude",
-        "rbindToken": null
+        "defaultLauncher": "claude"
       },
       "ok": true,
       "out": "ccm -- --attach cc-p1"
@@ -1118,8 +1017,7 @@
         "ccmSid": "p1",
         "model": "opus",
         "launcher": "claude",
-        "defaultLauncher": "claude",
-        "rbindToken": null
+        "defaultLauncher": "claude"
       },
       "ok": true,
       "out": "ccm --resume p1 --model opus -- --ccm-tmux=cc-p1 --ccm-sid=p1 --base --cwd /tmp"

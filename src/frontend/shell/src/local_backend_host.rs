@@ -656,7 +656,7 @@ fn spawn_detached(
         cmd.env(k, v);
     }
     // 流模式起参与 stdio 那条载体共用一份（`local_backend::LOCAL_STREAM_ARGS`：`--tail-only --with-bg`；
-    // ＋ `--with-rbind-token`，让 `session_added` 带 pid）。
+    // ＋ `--with-pid`，让 `session_added` 带 pid）。
     cmd.args(local_backend::LOCAL_STREAM_ARGS)
         // ★★ **`TMUX` 一律不继承**〔08-11 事故订正，与 `supervise_with_stdio` 同一条〕：
         //   tmux 客户端在 `TMUX` 有值时按它给的 socket 走，`TMUX_TMPDIR` 完全不起作用。

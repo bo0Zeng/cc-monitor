@@ -728,7 +728,7 @@ fn the_local_product_core_matches_the_hand_written_table() {
     use crate::session_book::{Fate, In, LiveMeta};
     use crate::ssh_source::local_product;
     // 带启动期令牌：成品要把它原样交给前端（`launch-arrival.ts` 认「我刚起的那条」）。
-    const ADD_A: &str = r#"{"kind":"session_added","sid":"a","session_kind":"interactive","cwd":"/w","project_dir":"/w/p","name":"n","status":"busy","pid":42,"container":"tmux","rbind_token":"0123456789abcdef0123456789abcdef"}"#;
+    const ADD_A: &str = r#"{"kind":"session_added","sid":"a","session_kind":"interactive","cwd":"/w","project_dir":"/w/p","name":"n","status":"busy","pid":42,"container":"tmux"}"#;
     const ADD_B_BG: &str = r#"{"kind":"session_added","sid":"b","session_kind":"bg"}"#;
     const STATUS_A: &str = r#"{"kind":"session_status","sid":"a","status":"idle"}"#;
     const STATUS_B: &str = r#"{"kind":"session_status","sid":"b","status":"idle"}"#;
@@ -753,7 +753,6 @@ fn the_local_product_core_matches_the_hand_written_table() {
                 status: Some("busy".into()),
                 container: Some(crate::session_book::Container::Tmux),
                 pid: Some(42),
-                rbind_token: Some("0123456789abcdef0123456789abcdef".into()),
                 ..Default::default()
             }
         })

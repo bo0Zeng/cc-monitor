@@ -128,11 +128,11 @@ pub(crate) const CCM_TMUX_CARRIED: &[&str] = &[
     "attach",               // 实现就是 `tmux attach`
     "base-url-across-tmux", // 名字就是「跨 tmux 的边界」
     "bus-register",         // `argv.rs`：要 `--detach`，而 `--detach` 要 `--tmux`
-    "ccm-sid", // 直路上由启动期令牌承载（`plan::DirectIdentity`），而 Windows 上后端读不到别的进程的环境
-    "detach",  // 实现就是 `tmux detach`
-    "tmux",    // 它本身
-    "tmux-base", // tmux 的 `base-index`
-    "tmux-size", // tmux 窗格尺寸
+    "ccm-sid",              // 写的是 tmux 会话上的意图标（`@ccm_sid_expect`）；直路上没有可写的地方
+    "detach",               // 实现就是 `tmux detach`
+    "tmux",                 // 它本身
+    "tmux-base",            // tmux 的 `base-index`
+    "tmux-size",            // tmux 窗格尺寸
 ];
 
 /// 撞名时那句话的**唯一格式串**。
@@ -151,23 +151,6 @@ pub(crate) static NAME_TAKEN_FMT: std::sync::LazyLock<String> =
 /// 有它自己的三道门（`§34`），不在这条路上顺手做。
 pub(crate) static SELF_CHECK_FAILED_FMT: std::sync::LazyLock<String> =
     std::sync::LazyLock::new(|| copy_text("beCcm.selfCheckFailed.say", &[("name", "%s")]) + "\\n");
-
-/// 窗口标题的合成式 —— **让 tmux 自己从 `@ccm_sid` 合成**，与 pane 标题彻底分开。
-///
-/// monitor 靠扫窗口标题里的 `ccm-rbind-<sid>` 绑定终端窗口（`bind.rs`）。
-///
-/// 🔴 **`rbind` ＝ remote bind（远端终端窗口绑定）**。
-/// 这个缩写不自明，`§1.2` 给了两条出路：「改成 `terminal_bind`」或「保留但每处加一句展开」。
-/// ⇒ **这一拍走第二条，而且是被迫的**：`ccm-rbind-<sid>`（窗口标题 marker）与
-/// `__ccm_rbind`（用户 shell profile 里那个注册原语）**都在 `ccm` 的对外面上** ——
-/// 前者是 monitor↔远端 wrapper 之间已经在线的约定，后者已经装在用户机器上。
-/// `ccm` 是「用户在终端里敲的命令名，属于产品对外接口」，**不许改**。
-/// ⇒ 改的只有**内部标识符**（本常量 `RBIND_TITLE_FORMAT` → `TERMINAL_BIND_TITLE_FORMAT`）；
-/// 线上那两个拼写一个字节没动。
-/// 从前这里是 `#T`（窗口标题 = pane 标题），而 **claude 也在往 pane 标题写自己的状态**
-/// ⇒ 两者抢同一个位置，真机实测忙碌那个会话的 marker 被冲成「⠐ 理解…」，
-/// 点 ↗ 必弹「未绑定窗口」。⚠ 改它之前先读 `e2e` 那条已经删掉的套件在件文件 `§8` 里的登记。
-pub(crate) const TERMINAL_BIND_TITLE_FORMAT: &str = "#{?@ccm_sid,ccm-rbind-#{@ccm_sid},#T}";
 
 /// codex 的 cc-bus 身份配方。**输出的是配方不是值** —— 这样 `--ccm-print` 仍然不查实时 tmux 状态。
 ///
@@ -699,19 +682,7 @@ pub(crate) const NO_SHELL: &str = "no_shell";
 ///
 /// 🔴 这几步必须发生在**调用者那个进程**里：env 要落在最终 `exec` 的那个 shell 上，
 /// 否则穿不过 tmux 的进程边界（旧 `cct` 正是死在这一步）。
-/// 直路上给了 `--ccm-sid` 却没有令牌时那一句（stderr，**不报错、照常起**）。
-pub(crate) static DIRECT_SID_NO_CARRIER: std::sync::LazyLock<String> =
-    std::sync::LazyLock::new(|| copy_text("beCcm.directSidNoCarrier.say", &[]));
-
-/// 直路上 `--ccm-sid` 那一格要不要出声（[`plan::DirectIdentity`]）。只有「无载体」出声。
-pub(crate) fn direct_identity_note(d: &plan::Direct) -> Option<&'static str> {
-    (d.identity == plan::DirectIdentity::NoCarrier).then_some(DIRECT_SID_NO_CARRIER.as_str())
-}
-
 fn exec_direct(d: &plan::Direct) -> i32 {
-    if let Some(note) = direct_identity_note(d) {
-        eprintln!("{note}");
-    }
     if d.keeps_user_base_url {
         eprintln!("{}", copy_text("beCcm.relay.userBaseUrl", &[]));
     }
@@ -729,16 +700,8 @@ fn exec_direct(d: &plan::Direct) -> i32 {
     if d.unset_config_dir {
         std::env::remove_var(cfg_env);
     }
-    for (var, v) in [
-        (
-            crate::control::identity_tag::rbind_token_env(),
-            &d.rbind_token,
-        ),
-        (plan::LAUNCH_ID_ENV, &d.launch_id),
-    ] {
-        if !v.is_empty() {
-            std::env::set_var(var, v);
-        }
+    if !d.launch_id.is_empty() {
+        std::env::set_var(plan::LAUNCH_ID_ENV, &d.launch_id);
     }
     if let Some(url) = &d.relay {
         // 钥匙从这台的钥匙文件读进 agent 进程环境（不进 argv、不进打印出来的命令）。读不到 ⇒ 不起（注进去每一发都被中转拒）。

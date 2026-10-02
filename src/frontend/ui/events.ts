@@ -72,7 +72,6 @@ export interface EventHandlers {
       projectDir: string | null;
       kind: string | null;
       name: string | null;
-      rbindToken: string | null;
     },
   ) => void;
   /** Batch5-F18：远端会话宣告 → 建骨架 Tab（不等首行）。Batch7-F24：附 pidfile
@@ -89,8 +88,6 @@ export interface EventHandlers {
       /** 会话的项目目录（后端给的那一格；标题只认它）。 */
       projectDir: string | null;
       name: string | null;
-      /** 启动期令牌（那台读回的；缺席 ⇒ `null`）：`launch-arrival.ts` 认「我刚起的那条」。 */
-      rbindToken: string | null;
     },
   ) => void;
   /**
@@ -227,7 +224,6 @@ type QueueItem =
       projectDir: string | null;
       sessionKind: string | null;
       name: string | null;
-      rbindToken: string | null;
     }
   // Batch5-F18：远端会话宣告（backend session_added 透传）——骨架 Tab 入口。
   // 走同一 queue 与 ended/started/行保序（INVARIANT § 20 / issue #20 教训）。
@@ -241,7 +237,6 @@ type QueueItem =
       cwd: string | null;
       projectDir: string | null;
       name: string | null;
-      rbindToken: string | null;
     }
   // 容器事实 / 某台清单报完了 —— 同一 queue 保序（见 EventHandlers 里两条的注释）。
   | { kind: "container"; sessionId: string; container: string }
@@ -521,7 +516,6 @@ export async function bindEvents(
           projectDir: item.projectDir,
           kind: item.sessionKind,
           name: item.name,
-          rbindToken: item.rbindToken,
         });
       } else if (item.kind === "remote-added") {
         handlers.onRemoteSessionAdded?.(item.sessionId, item.origin, {
@@ -530,7 +524,6 @@ export async function bindEvents(
           cwd: item.cwd,
           projectDir: item.projectDir,
           name: item.name,
-          rbindToken: item.rbindToken,
         });
       } else if (item.kind === "container") {
         handlers.onSessionContainer?.(item.sessionId, item.container);
@@ -650,7 +643,6 @@ export async function bindEvents(
               projectDir: p.project_dir ?? null,
               sessionKind: p.kind ?? null,
               name: p.name ?? null,
-              rbindToken: p.rbind_token ?? null,
             });
           } else {
             queue.push({
@@ -662,7 +654,6 @@ export async function bindEvents(
               cwd: p.cwd ?? null,
               projectDir: p.project_dir ?? null,
               name: p.name ?? null,
-              rbindToken: p.rbind_token ?? null,
             });
           }
         } else if (f !== null && typeof f === "object" && "activity" in f) {

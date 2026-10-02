@@ -17,32 +17,19 @@ fn known_capability_tokens_match_decide_stream_flags() {
         let one = vec![t.to_string()];
         assert_ne!(
             super::decide_stream_flags(&one, true),
-            (false, false, false),
+            (false, false),
             "`{t}` 在名单里，但 decide_stream_flags 根本不看它 —— 两份事实漂了"
         );
     }
     for junk in ["nope", "future-thing", ""] {
         assert_eq!(
             super::decide_stream_flags(&[junk.to_string()], true),
-            (false, false, false),
+            (false, false),
             "`{junk}` 不在名单里却影响了 flag —— 名单漏登记了一个真能力"
         );
     }
-    // 🔴 地板从 2 抬到 3。步 2 那一路的交接逐字：后端已经在
-    // hello 里声明 `rbind-token`，而本名单当时还是两个 ⇒ 每次握手都往 drift_ledger
-    // 记一条 `UnknownBackendToken`。抬这个数是为了**下一次漏登记时本条会响**。
-    assert!(
-        super::KNOWN_CAPABILITY_TOKENS.len() >= 3,
-        "名单只剩 {} 个 —— 维护坏了，本断言在空转",
-        super::KNOWN_CAPABILITY_TOKENS.len()
-    );
-    // ★ 名单里必须**有** `rbind-token` 那一条：只靠上面那个循环的话，
-    //   「把它从名单里摘掉」这个变异会让循环少跑一圈而**照样绿**（分母变小的方向瞎）。
-    assert!(
-        super::KNOWN_CAPABILITY_TOKENS.contains(&"rbind-token"),
-        "`rbind-token` 不在 monitor 认识的名单里 —— 每次握手都会记一条假的漂移账：{:?}",
-        super::KNOWN_CAPABILITY_TOKENS
-    );
+    // 名单与门控两向都对上：名单恰好是这两个（分母变小的方向也看得见）。
+    assert_eq!(super::KNOWN_CAPABILITY_TOKENS, ["bg", "tail-only"]);
 }
 
 /// 🔴 ★ **跨进程双写点：monitor 发的每一条流模式 flag，
@@ -106,60 +93,45 @@ fn the_stream_flags_monitor_sends_are_all_strippable() {
         line.contains(&format!("\"{word}\"")),
         "后端 STREAM_FLAGS 不认 `{word}`：{line}"
     );
-    // 反向自检：抠出来的就是那三条（相等；防「抠出来是空的也全绿」）。
+    // 反向自检：抠出来的就是那两条（相等；防「抠出来是空的也全绿」）。
     assert_eq!(
         sent,
-        ["--with-bg", "--tail-only", "--with-rbind-token"],
-        "`attach_line` 发的旗标抠出来不是那三条 —— 抽取坏了或步 3 的接线断了"
+        ["--with-bg", "--tail-only"],
+        "`attach_line` 发的旗标抠出来不是那两条 —— 抽取坏了"
     );
 }
 
 #[test]
 fn capability_gate_matrix() {
     // 空集 = 旧 backend / 尚未收到 hello → 全降级
-    assert_eq!(decide_stream_flags(&caps(&[]), true), (false, false, false));
-    assert_eq!(
-        decide_stream_flags(&caps(&[]), false),
-        (false, false, false)
-    );
+    assert_eq!(decide_stream_flags(&caps(&[]), true), (false, false));
+    assert_eq!(decide_stream_flags(&caps(&[]), false), (false, false));
     // 全能力声明
     assert_eq!(
-        decide_stream_flags(&caps(&["bg", "tail-only", "rbind-token"]), true),
-        (true, true, true)
+        decide_stream_flags(&caps(&["bg", "tail-only"]), true),
+        (true, true)
     );
     assert_eq!(
-        decide_stream_flags(&caps(&["bg", "tail-only", "rbind-token"]), false),
-        (false, true, true),
-        "关 showBgSessions 只关 with_bg，tail-only / rbind-token 照开"
+        decide_stream_flags(&caps(&["bg", "tail-only"]), false),
+        (false, true),
+        "关 showBgSessions 只关 with_bg，tail-only 照开"
     );
     // 部分声明：只有 tail-only → with_bg 恒 false（即便 show_bg）
     assert_eq!(
         decide_stream_flags(&caps(&["tail-only"]), true),
-        (false, true, false),
+        (false, true),
         "backend 没声明 bg → 即便用户想看也不发 --with-bg"
     );
     // 部分声明：只有 bg
     assert_eq!(
         decide_stream_flags(&caps(&["bg"]), true),
-        (true, false, false),
+        (true, false),
         "backend 没声明 tail-only → 不发 --tail-only（历史走全量推流）"
-    );
-    // 🔴 只有 rbind-token：**这一位与另两位正交**，而且
-    //    **没有用户开关**（它不是偏好，是「这台后端报不报得出令牌」）。
-    assert_eq!(
-        decide_stream_flags(&caps(&["rbind-token"]), true),
-        (false, false, true),
-        "只声明 rbind-token 时这一位没开 —— 令牌永远到不了 monitor"
-    );
-    assert_eq!(
-        decide_stream_flags(&caps(&["rbind-token"]), false),
-        (false, false, true),
-        "showBgSessions 关了却把 rbind-token 这一位也一起关了 —— 那是把两件事绑在一起"
     );
     // 未知 token 忽略（加法式向前兼容：未来后端声明我们还不认识的能力）
     assert_eq!(
-        decide_stream_flags(&caps(&["bg", "tail-only", "rbind-token", "future-x"]), true),
-        (true, true, true),
+        decide_stream_flags(&caps(&["bg", "tail-only", "future-x"]), true),
+        (true, true),
         "未知能力 token 不影响已知门控"
     );
 }
@@ -167,21 +139,14 @@ fn capability_gate_matrix() {
 use super::should_upgrade_reconnect as up;
 
 /// F66 ★ 防无限重连：`should_upgrade_reconnect` 只在「下一轮严格增开一个本轮关着的
-/// flag」时才 true——保证收敛。这条测试是收 hello 自愈升级那段的回归护栏
-/// （审计阻塞：那段防死循环逻辑此前零测试；抽成纯函数后在此穷举）。
-///
-/// 🔴 元组 2 → 3 位。收敛上界随之 2 → 3 轮。
-/// **本条改成真穷举**（2³ × 2³ = 64 格全跑）：三位之后手挑边角会漏，
-/// 而漏掉的那一格的症状是**无限重连**（本仓 v2.22.1 栽过一次）。
+/// flag」时才 true——保证收敛。真穷举（2² × 2² = 16 格）。
 #[test]
 fn upgrade_reconnect_converges() {
-    let all: Vec<(bool, bool, bool)> = (0..8)
-        .map(|m| (m & 1 != 0, m & 2 != 0, m & 4 != 0))
-        .collect();
+    let all: Vec<(bool, bool)> = (0..4).map(|m| (m & 1 != 0, m & 2 != 0)).collect();
     // ① 定义：恰好在「某一位 next 开着而 cur 关着」时为真。
     for &cur in &all {
         for &next in &all {
-            let strictly_more = (next.0 && !cur.0) || (next.1 && !cur.1) || (next.2 && !cur.2);
+            let strictly_more = (next.0 && !cur.0) || (next.1 && !cur.1);
             assert_eq!(
                 up(cur, next),
                 strictly_more,
@@ -190,20 +155,11 @@ fn upgrade_reconnect_converges() {
         }
     }
     // ② ★ 关键收敛点（记账之后 `caps` 就是声明集 ⇒ `next == cur`）：**恒不再重连**。
-    //    这一条是「绝不无限重连」的全部内容，单独写出来是为了让它红的时候说得清。
     for &cur in &all {
         assert!(!up(cur, cur), "next==cur 时还要重连 ⇒ 无限重连：{cur:?}");
     }
     // ③ 下一轮更弱（不该发生，但函数必须安全）→ 不重连。
-    assert!(!up((true, true, true), (false, false, false)));
-    // ④ 点名钉住新那一位：本轮 bg+tail 已开、后端又声明了 rbind-token ⇒ 该升级。
-    //    （只有 ① 那个循环的话，把第三项整个删掉会让 `strictly_more` 跟着变 ——
-    //     那是**两侧同源恒真**。这一条写字面量，删第三项它会红。）
-    assert!(
-        up((true, true, false), (true, true, true)),
-        "本轮没开 rbind-token、后端声明了，却不升级 ⇒ 令牌永远到不了 monitor"
-    );
-    assert!(!up((true, true, true), (true, true, false)));
+    assert!(!up((true, true), (false, false)));
 }
 
 /// F66：确认 `build.rs::emit_backend_capabilities` 那条单源管道真的通（非空、含当前
@@ -265,11 +221,8 @@ fn embedded_build_id_single_source_wired() {
     );
 }
 
-/// 🔴 ★ **升级判定不许再被 `if !tail_only` 包住。**
-///
-/// 两位的世界里那道外层 guard 等价于「本轮跑在降级模式」；三位之后它当场为假 ——
-/// `tail_only` 已开、`rbind-token` 这一位没开是真实可达的状态。那时 guard 会把升级整个
-/// 跳过 ⇒ `--with-rbind-token` 永远发不出去 ⇒ 令牌字段恒缺席 = 一个**合法值** ⇒ 极安静。
+/// 🔴 ★ **升级判定不许被 `if !tail_only` 包住**：`tail_only` 已开、`bg` 没开（用户后来打开了 showBgSessions）
+/// 是真实可达的状态 —— guard 会把升级整个跳过 ⇒ `--with-bg` 永远发不出去。
 ///
 /// 纯函数那两条（`upgrade_reconnect_converges` / `capability_gate_matrix`）**结构上看不见
 /// 调用点**，这一条按源文本钉：`if should_upgrade_reconnect(` 那一行的缩进，必须与同一个
@@ -300,7 +253,7 @@ fn the_upgrade_check_is_not_hidden_behind_the_tail_only_guard() {
     assert_eq!(
         call, anchor,
         "升级判定被包进了某个 `if` 里（缩进 {call} ≠ 锚点 {anchor}）—— \
-         若那是 `if !tail_only`，`--with-rbind-token` 在 tail_only 已开的连接上永远发不出去"
+         若那是 `if !tail_only`，`--with-bg` 在 tail_only 已开的连接上永远发不出去"
     );
     let line = prod
         .lines()
@@ -428,15 +381,15 @@ fn both_carriers_start_the_backend_with_the_same_stream_flags_the_backend_strips
     );
 }
 
-/// 本机起参要带 `--with-rbind-token`：`session_added.pid` 跟令牌同一道闸
+/// 本机起参要带 `--with-pid`：`session_added.pid` 只给索要了的客户端
 /// （后端 `wire::Frame::SessionAdded::pid`），本机 ↗ 绑窗口只能从那一格拿 pid（monitor 不再自己读 pidfile）。
 /// 异源：旗标字面量从后端 `STREAM_FLAGS` 源码里摘，确认后端真剥它。
 #[test]
 fn loc1b_the_local_stream_asks_for_the_binding_material() {
     use crate::local_backend::LOCAL_STREAM_ARGS;
     assert!(
-        LOCAL_STREAM_ARGS.contains(&"--with-rbind-token"),
-        "本机起参少了 `--with-rbind-token` ⇒ 本机 `session_added` 不带 pid ⇒ 本机 ↗ 按 PowerShell 父进程绑窗口那一跳没有 pid"
+        LOCAL_STREAM_ARGS.contains(&"--with-pid"),
+        "本机起参少了 `--with-pid` ⇒ 本机 `session_added` 不带 pid ⇒ 本机 ↗ 按 PowerShell 父进程绑窗口那一跳没有 pid"
     );
-    assert!(backend_stream_flags_cf1().contains("--with-rbind-token"));
+    assert!(backend_stream_flags_cf1().contains("--with-pid"));
 }

@@ -79,7 +79,7 @@ fn both_present_gives_listen_mode() {
 fn attach_flags_are_optional_closed_and_per_connection() {
     assert_eq!(attach_flags(r#"{"attach":"t"}"#), Ok(None));
     assert_eq!(
-        attach_flags(r#"{"attach":"t","flags":["--tail-only","--with-rbind-token"]}"#),
+        attach_flags(r#"{"attach":"t","flags":["--tail-only","--with-pid"]}"#),
         Ok(Some((false, true, true)))
     );
     assert_eq!(

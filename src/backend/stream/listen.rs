@@ -289,7 +289,7 @@ pub fn attach_verdict(line: &str, expected: &str) -> Verdict {
 
 /// attach 行里这条连接要的流模式旗标（`{"attach":…,"flags":["--tail-only",…]}`）。
 /// 缺 ⇒ `Ok(None)`（用进程起参那一份）；有但不是串数组、或含 `lib::STREAM_FLAGS` 以外的 ⇒ `Err`（当 malformed 拒）。
-/// 回 `(with_bg, tail_only, with_rbind_token)`：每个客户各按自己的能力协商（monitor `decide_stream_flags`）。
+/// 回 `(with_bg, tail_only, with_pid)`：每个客户各按自己的能力协商（monitor `decide_stream_flags`）。
 pub fn attach_flags(line: &str) -> Result<Option<(bool, bool, bool)>, ()> {
     let v: serde_json::Value = serde_json::from_str(line.trim()).map_err(|_| ())?;
     let Some(raw) = v.get("flags") else {
@@ -304,8 +304,8 @@ pub fn attach_flags(line: &str) -> Result<Option<(bool, bool, bool)>, ()> {
         }
         words.push(w.to_string());
     }
-    let (_, with_bg, tail_only, with_rbind_token) = crate::split_stream_flags(words);
-    Ok(Some((with_bg, tail_only, with_rbind_token)))
+    let (_, with_bg, tail_only, with_pid) = crate::split_stream_flags(words);
+    Ok(Some((with_bg, tail_only, with_pid)))
 }
 
 /// 定长时间的字节比对：**跑完全部**，不提前返回。

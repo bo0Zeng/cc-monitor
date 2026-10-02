@@ -73,9 +73,6 @@ pub(crate) struct Env {
     pub(crate) inherited_config_dir: Option<String>,
     pub(crate) anthropic_base_url: Option<String>,
     pub(crate) ccm_launch_id: Option<String>,
-    /// 本进程环境里的启动期令牌（`CCM_RBIND_TOKEN`，变量名借自 `identity_tag`）。
-    /// 只有直路上 `--ccm-sid` 那一格看它（[`DirectIdentity`]）；形状不在这里判，原样装着。
-    pub(crate) launch_token: Option<String>,
     /// 起 agent 前要 eval 的机器级 env 串。
     pub(crate) ccm_env: String,
     // 🔴 `K-R58`：这里原来有一个 `workspace: String`（`$CCM_WORKSPACE`，`$HOME` 下裸敲时
@@ -148,7 +145,6 @@ impl Env {
             tmux: get("TMUX"),
             anthropic_base_url: get("ANTHROPIC_BASE_URL"),
             ccm_launch_id: get(LAUNCH_ID_ENV),
-            launch_token: get(crate::control::identity_tag::rbind_token_env()),
             ccm_env: pick("CCM_ENV", Defaults::ENV.to_string()),
             accts_manifest: accts_manifest_under(&home),
             // 继承值与载体名一样，要等**解析完 argv 知道是哪一家**才填得了 ⇒ 由 `mod.rs` 补。
@@ -194,7 +190,6 @@ impl Env {
             tmux: None,
             anthropic_base_url: None,
             ccm_launch_id: None,
-            launch_token: None,
             ccm_env: pick("CCM_ENV", Defaults::ENV.to_string()),
             accts_manifest: accts_manifest_under(&home),
             inherited_config_dir: None,
@@ -535,50 +530,12 @@ pub(crate) struct Direct {
     pub(crate) argv: Vec<String>,
     /// 这一趟有没有身份面（claude 有、codex 没有）。
     pub(crate) has_identity: bool,
-    /// `--ccm-sid` 在直路上交给谁 —— 见 [`DirectIdentity`]。
-    pub(crate) identity: DirectIdentity,
-    /// `--ccm-rbind-token` / `--ccm-launch-id` 交来的值（空 = 没给）：exec 之前放进 agent 进程环境。
-    pub(crate) rbind_token: String,
+    /// `--ccm-launch-id` 交来的值（空 = 没给）：exec 之前放进 agent 进程环境。
     pub(crate) launch_id: String,
     /// 要注入的中转地址（不带钥匙；钥匙在 exec 那一刻从那台的钥匙文件读）。`None` = 不注入。
     pub(crate) relay: Option<String>,
     /// 环境里本来就有一个不是我们注入的 `ANTHROPIC_BASE_URL`（用户自己的端点）⇒ 不动它，说一句。
     pub(crate) keeps_user_base_url: bool,
-}
-
-/// 〔那一行 · `WN1.md §3`〕**直路上 `--ccm-sid` 的语义 = 启动期令牌。**
-///
-/// 从前 `--ccm-sid` 进了 `Opts` 之后只有容器路消费（写 `@ccm_sid_expect`），直路上**被接受、零效果、不出声**
-/// （`lib.rs::TARGET_GAPS` 那一行逐字）。主会话裁：**不报错**（报错 ＝ 让它依赖 tmux，撞
-/// 「`--ccm-sid` 不要依赖 tmux」），直路语义走已落地的启动期令牌那条路。
-///
-/// 为什么是令牌、不是再造一个变量：`--ccm-sid` 要的是「让拉前认得这个会话」，V63 之后这件事的载体
-/// 就是 `CCM_RBIND_TOKEN` —— 它在起 agent 的进程环境里 ⇒ `exec` 原样继承 ⇒ 后端从 agent 进程的
-/// environ 读回、连同 pidfile 里的**真** sid 报上 wire（`identity_tag.rs` 第二张面）。令牌那条路
-/// **不需要**调用方预告 sid。而「把 sid `export` 成一个新变量」没有任何读者（后端读别的进程环境的
-/// 只有两族、各两个键，`identity_tag_tests` / `accounts_query_tests` 钉着）⇒ 不造。
-///
-/// ⇒ 直路要做的只是**看一眼载体在不在**，不在就说一句（不报错、照常起）。`--ccm-print` 不看它
-/// （`INVARIANTS §33a` 铁律 2：不看宿主环境；令牌是继承的环境，不是命令文本）。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum DirectIdentity {
-    /// 没给 `--ccm-sid`。
-    NotAsked,
-    /// 给了，而且环境里有形状合格的令牌 ⇒ `exec` 会把它交给 agent，身份由它承载。
-    ByLaunchToken,
-    /// 给了，但环境里没有令牌（或形状过不了 `identity_tag::token_is_safe`）⇒ 拉前认不出这个会话。
-    NoCarrier,
-}
-
-/// 直路上 `--ccm-sid` 交给谁。形状判定只有一份（`shell_quote_core::rbind_token_ok`，这里经 `identity_tag::token_is_safe` 那个再导出名调它）。
-pub(crate) fn direct_identity(ccm_sid: &str, launch_token: Option<&str>) -> DirectIdentity {
-    if ccm_sid.is_empty() {
-        return DirectIdentity::NotAsked;
-    }
-    match launch_token {
-        Some(t) if crate::control::identity_tag::token_is_safe(t) => DirectIdentity::ByLaunchToken,
-        _ => DirectIdentity::NoCarrier,
-    }
 }
 
 /// POSIX argv 元素的**最省引号**写法：能裸写就裸写。
@@ -1097,15 +1054,10 @@ pub(crate) fn build_among(
             opts.push(flag::CCM_SID.into());
             opts.push(o.ccm_sid.clone());
         }
-        // 两个身份 token 原样交给 pane 里那一趟（它在最终 exec 那一处放进 agent 进程环境；tmux 边界吃掉的环境不靠它）。
-        for (f, v) in [
-            (flag::RBIND_TOKEN, &o.rbind_token),
-            (flag::LAUNCH_ID, &o.launch_id),
-        ] {
-            if !v.is_empty() {
-                opts.push(f.into());
-                opts.push(v.clone());
-            }
+        // 身份 token 原样交给 pane 里那一趟（它在最终 exec 那一处放进 agent 进程环境；tmux 边界吃掉的环境不靠它）。
+        if !o.launch_id.is_empty() {
+            opts.push(flag::LAUNCH_ID.into());
+            opts.push(o.launch_id.clone());
         }
         let mut inner: Vec<String> = env.self_argv.clone();
         inner.extend(o.passthru.iter().cloned());
@@ -1253,13 +1205,6 @@ pub(crate) fn build_among(
         cwd,
         argv,
         has_identity: face.is_some_and(|f| f.has_identity),
-        identity: direct_identity(
-            &o.ccm_sid,
-            Some(o.rbind_token.as_str())
-                .filter(|t| !t.is_empty())
-                .or(env.launch_token.as_deref()),
-        ),
-        rbind_token: o.rbind_token.clone(),
         launch_id: o.launch_id.clone(),
         relay,
         keeps_user_base_url,
@@ -1412,16 +1357,8 @@ fn render_direct(d: &Direct) -> String {
     if !d.nested.is_empty() {
         line.push_str(&posix::unset(&d.nested));
     }
-    for (var, v) in [
-        (
-            crate::control::identity_tag::rbind_token_env(),
-            &d.rbind_token,
-        ),
-        (LAUNCH_ID_ENV, &d.launch_id),
-    ] {
-        if !v.is_empty() {
-            line.push_str(&posix::export(var, &sq(v)));
-        }
+    if !d.launch_id.is_empty() {
+        line.push_str(&posix::export(LAUNCH_ID_ENV, &sq(&d.launch_id)));
     }
     if let Some(url) = &d.relay {
         line.push_str(&relay_export(url));

@@ -772,9 +772,7 @@ tmux user option **`@ccm_sid`** 记「这个 tmux 此刻在跑哪个 sid」（�
 - **前置**：没有后端时 `ccm` **响亮失败**（在 tmux 里起有身份的 agent ⇒ exit 2），
   逃生口 `CCM_NO_BACKEND=1` 明示放弃身份、**照样往 stderr 说一句**。不许静默降级 ——
   静默的后果是「会话起来了、monitor 绑不上、点 ↗ 弹『未绑定窗口』而没人知道为什么」。
-- **窗口标题**：`ccm` 把 `set-titles-string` 设成 `#{?@ccm_sid,ccm-rbind-#{@ccm_sid},#T}`，
-  标题由 **tmux 自己按 `@ccm_sid` 合成** ⇒ 打标者是不是那个会话自己无关紧要，
-  也不需要谁周期性重打（旧 poller 里那句「每 20 秒自愈」随它一起删）。
+- **不碰窗口标题**：`@ccm_sid` 只给 kill / 送键的身份门与可重连那一格用；↗ 不靠它（点那一刻现查「此刻谁连着这个会话」，`IPC-PROTOCOL.md` §11）。
 
 **铁律**（守 SS-5/SS-9「tab 身份钉在会话身份，找不到就报『不存在』，绝不静默换一个」）：
 - **attach / resume 定位后端，一律先按 `sid===@ccm_sid` 精确匹配**（`tabs.ts::findClaudeTmux`）。

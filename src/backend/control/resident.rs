@@ -25,7 +25,7 @@ pub(crate) const DEFAULT_STREAM_ARGS: &[&str] = &[
     crate::STREAM_FLAG_EXPLICIT,
     "--tail-only",
     "--with-bg",
-    "--with-rbind-token",
+    "--with-pid",
 ];
 
 /// 宽限期默认值（毫秒）。**必须大于**常驻后端自己的退出排空上限（`inbound::DRAIN_DEADLINE`）：

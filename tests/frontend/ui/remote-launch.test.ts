@@ -38,10 +38,9 @@ function eq(actual: unknown, expected: unknown, msg?: string): void {
 console.log("remote-launch.test.ts");
 
 const req = buildCliRenderRequest;
-const TOKEN = "0123456789abcdef0123456789abcdef";
-const ACCT = { configDir: "/h/.claude-accts/w", accountName: "w", rbindToken: TOKEN };
+const ACCT = { configDir: "/h/.claude-accts/w", accountName: "w" };
 
-test("直连 resume：没有容器、cwd 原样、具名账号带名字与目录、令牌上线", () => {
+test("直连 resume：没有容器、cwd 原样、具名账号带名字与目录", () => {
   eq(req(planResumeDirect("abc-123", "/home/pi/a'b", "claude", ACCT)), {
     action: { kind: "resume", sid: "abc-123" },
     container: { kind: "none" },
@@ -51,7 +50,6 @@ test("直连 resume：没有容器、cwd 原样、具名账号带名字与目录
     model: null,
     launcher: "claude",
     defaultLauncher: AGENT_PROFILE.defaultLauncher,
-    rbindToken: TOKEN,
   });
   eq(req(planResumeDirect("abc-123", "   ", "claude")).cwd, null, "cwd 空白 ⇒ 不带");
 });
@@ -60,7 +58,6 @@ test("tmux 建会话 resume：容器 create、身份标记是完整 sid、名字
   const r = req(planResumeTmux("abc-123", "/p", "claude", "abc-123-cc", ACCT));
   eq(r.container, { kind: "tmux", name: "abc-123-cc", send_into: false });
   eq(r.ccmSid, "abc-123");
-  eq(r.rbindToken, TOKEN);
 });
 
 test("就地 resume：容器 send-into、不重打身份标记、没有 cwd", () => {
@@ -77,10 +74,9 @@ test("开新会话：动作 new、容器 create、没选账号 ⇒ 账号 0", ()
   eq(r.account, { kind: "base" });
 });
 
-test("接回：不起 agent ⇒ 不带令牌、不带账号修饰", () => {
-  const r = req({ ...planAttach("cc-x"), rbindToken: TOKEN });
+test("接回：不起 agent ⇒ 不带账号修饰", () => {
+  const r = req(planAttach("cc-x"));
   eq(r.action, { kind: "attach", name: "cc-x" });
-  eq(r.rbindToken, null, "接回带了令牌");
   eq(r.account, { kind: "base" });
 });
 

@@ -292,11 +292,6 @@ pub struct SessionLivePayload {
     /// 老后端不带 ⇒ `null`，标题退到 aiTitle / sid。
     pub project_dir: Option<String>,
     pub name: Option<String>,
-    /// 启动期令牌：前端起新会话时铸的那一个，据它认出「我刚起的那条起来了」。
-    /// 那台后端读不到 / 没索要 ⇒ 缺席。
-    #[cfg_attr(test, ts(optional))]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub rbind_token: Option<String>,
 }
 
 /// `container` 格 的 payload。`container` 只有两个值：`"tmux"` / `"none"`

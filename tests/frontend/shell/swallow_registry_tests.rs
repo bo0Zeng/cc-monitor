@@ -172,6 +172,8 @@ const ALLOWED: &[(&str, &str, usize, Why, &str)] = &[
     ("src/frontend/shell/src/bind.rs", "let _ = std::fs::remove_file(&p);", 1, Why::CleanupAfterFailure, "撤死进程留下的登记文件；删不掉下次重扫再撤"),
     ("src/frontend/shell/src/bind.rs", "let _ = std::fs::remove_file(await_file);", 3, Why::CleanupAfterFailure, "等待文件用完就删；删不掉只剩一份无主的等待文件，下次按身份再核"),
     ("src/frontend/shell/src/platform/hwnd.rs", "let _ = unsafe { GetWindowThreadProcessId(hwnd, Some(&mut owner_pid)) };", 1, Why::NotAnError, "要的是出参里的属主 pid，返回值（线程 id）用不上"),
+    ("src/frontend/shell/src/platform/hwnd.rs", "let _ = unsafe { GetWindowThreadProcessId(hwnd, Some(&mut owner)) };", 1, Why::NotAnError, "按属主筛的那一遍：同上，要的是出参里的属主 pid"),
+    ("src/frontend/shell/src/platform/hwnd.rs", "let _ = EnumWindows(Some(cb), LPARAM(pid as isize));", 1, Why::NotAnError, "回调里自己收结果、从不提前停；枚举失败 ⇒ 收到的是空表，调用方照「没有窗口」说"),
     ("src/frontend/shell/src/ccm_probe.rs", "let _ = child.kill();", 1, Why::Reap, ""),
     ("src/frontend/shell/src/ccm_probe.rs", "let _ = child.wait();", 1, Why::Reap, ""),
     // `capture_full` 交入参那条写线程：对面不读 stdin 就退了 ⇒ 写端断，结局由它的退出码与 stderr 说；等那条线程收尾同理。

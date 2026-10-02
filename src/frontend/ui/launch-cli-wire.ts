@@ -24,6 +24,4 @@ export interface CliRenderRequest {
   model: string | null;
   launcher: string;
   defaultLauncher: string;
-  /** 启动期令牌（渲成 `--ccm-rbind-token`）；`attach` 那一格 `null`。 */
-  rbindToken: string | null;
 }

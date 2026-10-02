@@ -4,8 +4,7 @@
 //! 1. [`launch_powershell_window`](crate::platform::terminal::launch_powershell_window) —— 通用「新终端窗口跑一条 PowerShell 命令」机械（wt.exe Plan A →
 //!    CREATE_NEW_CONSOLE Plan B，`-NoExit -EncodedCommand`、**不带 `-NoProfile`**）。本地与远端共用此单一入口。
 //! 2. [`open_terminal_window`] —— 开窗那一条 Tauri 命令：**只开窗**。交来的是本机后端的成品 —— 远端那一行
-//!    （`& ssh -t[ -J …] … -- '<bash -lic ''…''>'`）由帧命令 `terminal-ssh` 渲、本机那一串由 `terminal-local` 出；
-//! 令牌握手前奏（窗口要登记进 monitor 自己那张 `bind.rs` 表）也由它们接好（`src/backend/dial/terminal.rs::with_bind_prelude`）。
+//!    （`& ssh -t[ -J …] … -- '<bash -lic ''…''>'`）由帧命令 `terminal-ssh` 渲、本机那一串由本机后端起会话那一问交回。
 //!    原先住这里的 `build_remote_ssh_ps_command`〔散文墓碑〕与它那几道白名单（用户名 · 地址 · 跳板 · 双引号）随之搬走。
 //! 3. [`terminal_dial`] —— 给那一问交机器事实（`{machine, saved, jump, prefer}`：monitor 自己的机器表 ＋ 上次赢的那条，
 //!    `dial_host::machine_facts`）。

@@ -840,7 +840,7 @@ fn w5vis_s4_s5_the_create_arm_carries_tmux_reasons_and_is_not_blocked_by_seconda
     let o = run_with(&req, &|a| f.call(a)).expect("已存在是幂等成功");
     assert_eq!((o.created, o.typed), (false, false));
     assert_eq!(f.verbs(), ["new-session", "has-session"]);
-    // ③ 建出来了、四步次要动作全失败 ⇒ 不阻断：照样键入、回成功；四步都真的被调过、键入排在它们之后。
+    // ③ 建出来了、两步次要动作全失败 ⇒ 不阻断：照样键入、回成功；两步都真的被调过、键入排在它们之后。
     let f = FakeTmux::new(|verb| said(verb != "set-option", "invalid option: w5vis"));
     let o = run_with(&req, &|a| f.call(a)).expect("次要动作失败不许阻断");
     assert_eq!((o.created, o.typed), (true, true));
@@ -850,8 +850,6 @@ fn w5vis_s4_s5_the_create_arm_carries_tmux_reasons_and_is_not_blocked_by_seconda
             "new-session",
             "set-option @ccm_agent",
             "set-option @ccm_sid_expect",
-            "set-option set-titles",
-            "set-option set-titles-string",
             "send-keys",
         ]
     );
@@ -865,15 +863,10 @@ fn w5vis_s4_s5_the_create_arm_carries_tmux_reasons_and_is_not_blocked_by_seconda
     assert!(e.1.contains("can't find pane: %9"), "{}", e.1);
 }
 
-/// ★ S5 的话：做成了不说；没做成 ⇒ 说哪一步、tmux 说的、后果（四步逐格，两向）。起不来 tmux 那一形同样要说。
+/// ★ S5 的话：做成了不说；没做成 ⇒ 说哪一步、tmux 说的、后果（两步逐格，两向）。起不来 tmux 那一形同样要说。
 #[test]
 fn w5vis_s5_the_secondary_note_speaks_only_when_the_step_failed() {
-    for step in [
-        Secondary::AgentTag,
-        Secondary::IntentTag,
-        Secondary::TitlesOn,
-        Secondary::TitleFormat,
-    ] {
+    for step in [Secondary::AgentTag, Secondary::IntentTag] {
         assert_eq!(
             secondary_note("cc-x", step, &said(true, "")),
             None,

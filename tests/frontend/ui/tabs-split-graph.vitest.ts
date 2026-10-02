@@ -236,6 +236,7 @@ const DEPS: Record<string, readonly string[]> = {
     "src/frontend/ui/local-resume.ts",
     "src/frontend/ui/remote-config.ts",
     "src/frontend/ui/remote-launch-run.ts",
+    "src/frontend/ui/remote-terminal-front.ts", // 远端 ↗ 的前两问（那台谁在显示它 · 本机哪串进程开着那条连接）
     "src/frontend/ui/resync.ts", // 关卡 2 拒了结束会话 ⇒ 提示带「对齐后重试」（认拒绝码 ＋ 对齐 ＋ 再做一次，都在那一个口）
     "src/frontend/ui/session-reads.ts", // resume 之前问记录还在不在（经通道问 `history-record`）
     "src/frontend/ui/tab-batch-run.ts", // 杀 / 在 tmux 里 Resume 交那台（`sessions-stop` / `sessions-start`，与批量同一条）

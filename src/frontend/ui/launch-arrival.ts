@@ -8,8 +8,8 @@
  * [`bindLaunchArrivals`] 里收下、在 [`noteLive`] 里对那台报上来的活会话（`live` 格）。预算到了还没见到 ⇒ 说没见到：
  * 起在 tmux 里的顺手抓那一屏当原话（`tmux-control.ts::capturePane`），直接开窗的说原话在那个窗口里。
  *
- * 认「是不是它」只看那台报上来的事实：resume 按 sid；新开的远端会话按启动期令牌（那台从进程环境读回）；
- * 本机起新会话与 cc-bus 派生按「预期之后第一次出现、工作目录相同的新 sid」（身份 token 在 Windows 上读不回来）。
+ * 认「是不是它」只看那台报上来的事实：resume 按 sid；新开的会话（本机远端 · cc-bus 派生）按「预期之后第一次出现、
+ * 工作目录相同的新 sid」。
  */
 import { emit, listen } from "@tauri-apps/api/event";
 import { copyText } from "./copy-table";
@@ -33,7 +33,7 @@ const AWAIT_CAP_MS = ARRIVAL_BUDGET_MS + 15_000;
 export type LaunchWait = "arrived" | "missed" | "unsent";
 
 /** 认它用的那一格。 */
-export type ArrivalMatch = { sid: string } | { token: string } | { cwd: string };
+export type ArrivalMatch = { sid: string } | { cwd: string };
 
 export interface ArrivalSpec {
   origin: Origin;
@@ -46,10 +46,9 @@ export interface ArrivalSpec {
   ticket?: string;
 }
 
-/** 那台报上来的一条活会话里认它要用的两样。 */
+/** 那台报上来的一条活会话里认它要用的那一样。 */
 export interface LiveSeen {
   cwd: string | null;
-  rbindToken: string | null;
 }
 
 interface Pending extends ArrivalSpec {
@@ -68,7 +67,6 @@ const trimSlash = (p: string): string => (p.length > 1 ? p.replace(/\/+$/, "") :
 /** 纯函数：这条活会话是不是那件预期要等的。 */
 export function arrivalMatches(match: ArrivalMatch, sid: string, seen: LiveSeen, before: ReadonlySet<string>): boolean {
   if ("sid" in match) return match.sid === sid;
-  if ("token" in match) return match.token !== "" && seen.rbindToken === match.token;
   return !before.has(sid) && seen.cwd !== null && trimSlash(seen.cwd) === trimSlash(match.cwd);
 }
 

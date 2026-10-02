@@ -110,16 +110,6 @@ const ROSTER: &[(&str, &str)] = &[
     ("files-read", "files.stat"),
     // ── `stream-flags`（`lib.rs`，射程：**协议**轴）────────────────────
     ("stream-flags", "bg"),
-    // **启动期令牌**（`CCM_RBIND_TOKEN`）。
-    // 补这一行的意思是「我看过这条能力，它该在清单里」，逐条如下：
-    // · 它是**协议轴**的（`CapabilityKind::Protocol`）—— 说的是「我认不认
-    //   `--with-rbind-token` 这条流 flag」，与 `bg` / `tail-only` 同型；
-    // · 它有一条**真**的可剥离 flag（`split_stream_flags` 剥它，
-    //   `every_capability_token_is_strippable` 当场验），不是为了进这张表编的；
-    // · 它为何非得是一条**能力**而不是“字段在不在”：`§8.6 ④` 逐字要「能力协商
-    //   ＋老后端诚实降级」，而一个缺席的字段分不开「这台后端不报令牌」
-    //   与「这条会话真的没令牌」（`lib.rs::CAPABILITIES` 头注的整段论证）。
-    ("stream-flags", "rbind-token"),
     ("stream-flags", "tail-only"),
 ];
 

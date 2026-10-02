@@ -1015,7 +1015,6 @@ fn mig1_the_credit_exemption_is_exactly_the_registered_lifecycle_frames() {
             cwd: None,
             project_dir: None,
             name: None,
-            rbind_token: None,
         }),
         F::Activity(b::SessionActivityPayload {
             session_id: sid(),

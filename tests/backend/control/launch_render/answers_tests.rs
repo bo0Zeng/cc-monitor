@@ -8,7 +8,7 @@ fn attach_req() -> Value {
         "action": {"kind": "attach", "name": "cc-foo"},
         "container": {"kind": "tmux", "name": "cc-foo", "send_into": false},
         "cwd": null, "account": {"kind": "base"}, "ccmSid": null, "model": null,
-        "launcher": "claude", "defaultLauncher": "claude", "rbindToken": null,
+        "launcher": "claude", "defaultLauncher": "claude",
     })
 }
 

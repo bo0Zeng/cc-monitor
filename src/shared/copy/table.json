@@ -3296,11 +3296,6 @@
       "zh": "后端没说明原因",
       "args": []
     },
-    "remoteLaunchRun.token.noRandom": {
-      "kind": "error",
-      "zh": "生成不了启动令牌：这个环境没有安全随机数。",
-      "args": []
-    },
     "main.sftp.noMachineHint": {
       "kind": "error",
       "zh": "先在设置 → 连接 配好 host / user，再打开文件窗口。",
@@ -3854,6 +3849,51 @@
     "tabSessionActions.front.timeout": {
       "kind": "error",
       "zh": "切到终端窗口超时",
+      "args": []
+    },
+    "tabSessionActions.remoteFront.detached": {
+      "kind": "error",
+      "zh": "这个会话在 tmux 里放在后台，现在没有终端连着它。点这里在新终端里接回",
+      "args": []
+    },
+    "tabSessionActions.remoteFront.noTerminal": {
+      "kind": "error",
+      "zh": "这个会话现在没有终端在显示它，它在后台跑",
+      "args": []
+    },
+    "tabSessionActions.remoteFront.unreadable": {
+      "kind": "error",
+      "zh": "那台机器读不了连着这个会话的终端。它可能属于别的用户，或权限不够",
+      "args": []
+    },
+    "tabSessionActions.remoteFront.notSsh": {
+      "kind": "error",
+      "zh": "这个会话的终端在那台机器自己的屏幕上，不是经 ssh 连的",
+      "args": []
+    },
+    "tabSessionActions.remoteFront.elsewhere": {
+      "kind": "error",
+      "zh": "连着这个会话的终端不在这台电脑上。那台机器看到它来自 {addr}",
+      "args": ["addr"]
+    },
+    "tabSessionActions.remoteFront.mismatch": {
+      "kind": "error",
+      "zh": "终端是经跳板机或端口转换连过去的，这台电脑对不上",
+      "args": []
+    },
+    "tabSessionActions.remoteFront.queryFailed": {
+      "kind": "error",
+      "zh": "这一次没查成是哪个程序开着那条连接。再点一次试试",
+      "args": []
+    },
+    "tabSessionActions.remoteFront.badShape": {
+      "kind": "error",
+      "zh": "读不懂后端回的终端信息，多半是两端版本对不上",
+      "args": []
+    },
+    "tabSessionActions.remoteFront.tooOld": {
+      "kind": "error",
+      "zh": "后端太旧，查不了此刻是哪个终端在显示这个会话。重启 cc-monitor 换上新后端再试",
       "args": []
     },
     "tabSessionActions.openCwd.body": {
@@ -11762,31 +11802,6 @@
       "zh": "本机后端拒绝了这次连接：{message}",
       "args": ["message"]
     },
-    "rsBind.remote.titleStale": {
-      "kind": "error",
-      "zh": "按 tmux 窗口标题找到的窗口已经不能用了：{titleErr}。",
-      "args": ["titleErr"]
-    },
-    "rsBind.remote.titleNotFound": {
-      "kind": "error",
-      "zh": "按 tmux 窗口标题也没找到。",
-      "args": []
-    },
-    "rsBind.remote.mayBeClosed": {
-      "kind": "error",
-      "zh": "{fail}，它可能已经关了。",
-      "args": ["fail"]
-    },
-    "rsBind.front.failWithoutToken": {
-      "kind": "error",
-      "zh": "这个会话不是 cc-monitor 启动的，找不到它的终端窗口",
-      "args": []
-    },
-    "rsBind.front.failWithToken": {
-      "kind": "error",
-      "zh": "这个会话是 cc-monitor 启动的，但找不到它的终端窗口",
-      "args": []
-    },
     "rsBind.activate.refused": {
       "kind": "error",
       "zh": "没能把窗口切到前台（它可能在任务栏闪烁；先点一下 monitor 窗口再试）",
@@ -11806,6 +11821,16 @@
       "kind": "error",
       "zh": "窗口已不存在，可能已被关闭",
       "args": []
+    },
+    "rsBind.front.noWindow": {
+      "kind": "error",
+      "zh": "开着那条连接的程序（{name}）没有窗口。它是在后台跑的",
+      "args": ["name"]
+    },
+    "rsBind.front.severalWindows": {
+      "kind": "error",
+      "zh": "{name} 开着好几个窗口，分不清是哪一个",
+      "args": ["name"]
     },
     "rsSftpPool.watch.lost": {
       "kind": "error",
@@ -12099,11 +12124,6 @@
       "kind": "error",
       "zh": "拒绝启动：跳板 host 含非法字符：{jumpHost}",
       "args": ["jumpHost"]
-    },
-    "beTerminal.refuse.badToken": {
-      "kind": "error",
-      "zh": "拒绝启动：启动令牌格式不对（应为 32 个小写十六进制字符）",
-      "args": []
     },
     "rsLaunch.local.notOnWindows": {
       "kind": "error",
@@ -12603,11 +12623,6 @@
     "rsCcmInvocation.refusal.freeTextAttach": {
       "kind": "error",
       "zh": "要接回的会话名 {value} 用不了。里面不能有控制字符或看不见的字符",
-      "args": ["value"]
-    },
-    "rsCcmInvocation.refusal.idRbindToken": {
-      "kind": "error",
-      "zh": "启动期令牌 {value} 不合法（要 32 位小写十六进制）",
       "args": ["value"]
     },
     "rsCcmInvocation.refusal.idLaunchId": {
@@ -14366,11 +14381,6 @@
       "zh": "--account-dir 与 --account / --base 互斥",
       "args": []
     },
-    "beArgv.validate.badRbindToken": {
-      "kind": "error",
-      "zh": "--ccm-rbind-token 的值 {token} 不合法（要 32 位小写十六进制）",
-      "args": ["token"]
-    },
     "beArgv.validate.badLaunchId": {
       "kind": "error",
       "zh": "--ccm-launch-id 的值 {id} 不合法（1 到 128 位，只许字母数字与 - _）",
@@ -14498,7 +14508,7 @@
     },
     "beCcm.usage.body": {
       "kind": "body",
-      "zh": "用法：ccm [交给 claude 的参数…] -- [new] [ccm 自己的选项…]\n\nccm 是 claude 的壳。没有 -- 时整行原样交给 claude（--ccm-agent codex 时交给 codex）；\n有 -- 时按最后一个 -- 切开：左边原样交给 claude，右边只放下面这些 ccm 自己的选项，认不得就报错。\n要给 claude 它自己的 -- 又没有 ccm 选项时，末尾补一个空的 --（如 ccm -p -- -x --）。\n\n选项\n  new                起新会话（缺省就是它；只许是 -- 右边第一个词。ccm new 没有 -- 时交给 claude）\n  --ccm-tmux[=<名>]  在一个 tmux 会话里跑；给名就用那个名\n  --tmux-base <基名> 以这个为底取名，撞了就换一个（与 --ccm-tmux=<名> 互斥）\n  --tmux-size <W>xH  新建 tmux 会话的宽高（要带 --ccm-tmux）\n  --detach           建完就返回，不接进去（要带 --ccm-tmux）\n  --bus-register     把新会话登记上 cc-bus（要带 --detach）\n  --bus-note <备注>  给上面那条登记带一行备注\n  --account <名>     用这个账号起（与 --base 互斥）\n  --account-dir <目录> 用这个账号配置目录起（说不出账号名时用；与 --account / --base 互斥）\n  --base             不用任何账号，按 agent 自己的默认配置起\n  --cwd <目录>       工作目录；不给就是当前目录，开头的 ~ 是家目录，相对路径按当前目录补全\n  --cwd-if <在哪> <进哪> 正好在「在哪」这个目录里敲时进「进哪」（可写多次，按顺序第一条对上的算；\n                     两边都可用 ~，链接解开再比；都没对上才看 --cwd）\n  --ccm-agent <名>   claude | codex\n  --launcher <命令>  换掉默认的启动命令（可带参数，如 'ccr code'；开头的 ~/ 是家目录）\n  --attach <会话名>  不起 agent，直接接回一个 tmux 会话\n  --ccm-sid <会话ID> 给会话标上会话ID，cc-monitor 靠它找到终端窗口\n  --ccm-rbind-token <令牌> cc-monitor 起会话时带上，靠它认出这条会话的终端窗口\n  --ccm-launch-id <标识>   cc-monitor 起新会话时带上，靠它认出刚起的是哪条会话\n  --ccm-print        不跑，印出等价的一行 shell 命令\n  --ccm-probe        印出这台机器上 ccm 的身份信息（六行）\n  --ccm-version      印版本号\n  --ccm-help         这一段\n\n左边交给 claude 的参数里，ccm 只看一个（照样交给 claude）\n  --resume <会话ID>  这条会话已经在某个 tmux 会话里跑时，接上它、不另起（-r 同）\n\n中转\n  这台机器上 cc-monitor 的中转在听时，ccm 起 agent 前把 ANTHROPIC_BASE_URL 指向它（你自己设了就不动）；\n  环境变量 CCM_RELAY_ALL_SESSIONS=0 时只有要经中转换 key 的账号才指过去\n",
+      "zh": "用法：ccm [交给 claude 的参数…] -- [new] [ccm 自己的选项…]\n\nccm 是 claude 的壳。没有 -- 时整行原样交给 claude（--ccm-agent codex 时交给 codex）；\n有 -- 时按最后一个 -- 切开：左边原样交给 claude，右边只放下面这些 ccm 自己的选项，认不得就报错。\n要给 claude 它自己的 -- 又没有 ccm 选项时，末尾补一个空的 --（如 ccm -p -- -x --）。\n\n选项\n  new                起新会话（缺省就是它；只许是 -- 右边第一个词。ccm new 没有 -- 时交给 claude）\n  --ccm-tmux[=<名>]  在一个 tmux 会话里跑；给名就用那个名\n  --tmux-base <基名> 以这个为底取名，撞了就换一个（与 --ccm-tmux=<名> 互斥）\n  --tmux-size <W>xH  新建 tmux 会话的宽高（要带 --ccm-tmux）\n  --detach           建完就返回，不接进去（要带 --ccm-tmux）\n  --bus-register     把新会话登记上 cc-bus（要带 --detach）\n  --bus-note <备注>  给上面那条登记带一行备注\n  --account <名>     用这个账号起（与 --base 互斥）\n  --account-dir <目录> 用这个账号配置目录起（说不出账号名时用；与 --account / --base 互斥）\n  --base             不用任何账号，按 agent 自己的默认配置起\n  --cwd <目录>       工作目录；不给就是当前目录，开头的 ~ 是家目录，相对路径按当前目录补全\n  --cwd-if <在哪> <进哪> 正好在「在哪」这个目录里敲时进「进哪」（可写多次，按顺序第一条对上的算；\n                     两边都可用 ~，链接解开再比；都没对上才看 --cwd）\n  --ccm-agent <名>   claude | codex\n  --launcher <命令>  换掉默认的启动命令（可带参数，如 'ccr code'；开头的 ~/ 是家目录）\n  --attach <会话名>  不起 agent，直接接回一个 tmux 会话\n  --ccm-sid <会话ID> 给会话标上会话ID，cc-monitor 靠它找到终端窗口\n  --ccm-launch-id <标识>   cc-monitor 起新会话时带上，靠它认出刚起的是哪条会话\n  --ccm-print        不跑，印出等价的一行 shell 命令\n  --ccm-probe        印出这台机器上 ccm 的身份信息（六行）\n  --ccm-version      印版本号\n  --ccm-help         这一段\n\n左边交给 claude 的参数里，ccm 只看一个（照样交给 claude）\n  --resume <会话ID>  这条会话已经在某个 tmux 会话里跑时，接上它、不另起（-r 同）\n\n中转\n  这台机器上 cc-monitor 的中转在听时，ccm 起 agent 前把 ANTHROPIC_BASE_URL 指向它（你自己设了就不动）；\n  环境变量 CCM_RELAY_ALL_SESSIONS=0 时只有要经中转换 key 的账号才指过去\n",
       "args": [],
       "waive": {
         "C-L3": "--help 正文是逐行的选项表，每行一处括号是那一行的补充",
@@ -14529,14 +14539,6 @@
       "kind": "error",
       "zh": "这次要用 sh 执行（{why}）",
       "args": ["why"]
-    },
-    "beCcm.directSidNoCarrier.say": {
-      "kind": "body",
-      "zh": "ccm: 没带 --ccm-tmux 时 --ccm-sid 不生效，要靠环境变量 CCM_RBIND_TOKEN，而现在没有它。会话照常起，但 cc-monitor 切不到它的终端窗口。",
-      "args": [],
-      "waive": {
-        "C-T1": "--ccm-sid 是用户在终端里敲的真实旗标名"
-      }
     },
     "beCcm.execOrSpawn.failed": {
       "kind": "error",

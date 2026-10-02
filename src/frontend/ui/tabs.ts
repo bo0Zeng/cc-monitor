@@ -129,7 +129,7 @@ export class TabManager {
       refreshTabBar: () => this.refreshTabBar(),
       openTabCwd: (sid) => this.openTabCwd(sid),
       bringTerminalToFront: (sid) => bringTerminalToFront(sid),
-      bringRemoteTerminalToFront: (sid) => bringRemoteTerminalToFront(sid),
+      bringRemoteTerminalToFront: (sid) => this.bringRemoteFront(sid),
       closeTab: (sid) => this.closeTab(sid),
       switchTo: (sid) => this.switchTo(sid),
       pick: (sid, how) => this.pick(sid, how),
@@ -1269,12 +1269,19 @@ export class TabManager {
     const tab = this.store.tabs.get(this.store.activeId);
     // 还有终端可去（活着，或可重连：登录 shell 的 ssh 窗还在）才拉。
     if (!tab || !hasTerminal(tab.state)) return;
-    // Feature ②：远端 Tab → 后端唯一分派点（先启动令牌、后 ccm-rbind 标题退路）；本地 Tab → 原 sid_hwnd_cache 路径。
+    // 远端 Tab → 点那一刻现查此刻显示它的本机终端；本地 Tab → 原 sid_hwnd_cache 路径。
     if (isRemoteOrigin(tab.origin)) {
-      void bringRemoteTerminalToFront(this.store.activeId);
+      void this.bringRemoteFront(this.store.activeId);
     } else {
       void bringTerminalToFront(this.store.activeId);
     }
+  }
+
+  /** 远端 tab 的 ↗：没有终端连着时，提示里点一下就在新终端里接回（同「在 tmux 里接着用」那一项）。 */
+  private bringRemoteFront(sid: string): Promise<void> {
+    const tab = this.store.tabs.get(sid);
+    if (!tab) return Promise.resolve();
+    return bringRemoteTerminalToFront(tab.origin, sid, () => void this.actions.resumeTabTmux(sid));
   }
 
   /** 快捷键 Ctrl+F（`session.find`）：当前 tab 的查找面板打开到「搜索」。实现在流视图。 */

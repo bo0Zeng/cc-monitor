@@ -1885,8 +1885,7 @@ describe("S3：本机页新建账号", () => {
     await submit(el, "b");
     expect(new Set(accountOps(calls).map(([, o]) => o))).toEqual(new Set([LOCAL_ORIGIN]));
     const launches = calls.filter(([c]) => c === "launch_remote_terminal");
-    // 开终端那一口（`openTerminal`）恒交 `rbindToken`（登录那一行不需要 ⇒ `null`）。
-    expect(launches.map(([, a]) => a)).toEqual([{ origin: LOCAL_ORIGIN, remoteCmd: fakeLoginCmd("b"), rbindToken: null }]);
+    expect(launches.map(([, a]) => a)).toEqual([{ origin: LOCAL_ORIGIN, remoteCmd: fakeLoginCmd("b") }]);
   });
 
   it("★ Linux（后端说「刻意不开窗口」）⇒ 登录那一行复制给用户，提示是 info", async () => {

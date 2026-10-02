@@ -85,22 +85,8 @@ const REMOTE_INFO_TEXT = (): string =>
   copyText("remote.info.remote");
 
 /**
- * Feature ②：远端 ↗ 拉前的 bashrc 块——**注册原语与启动器分离**（镜像本地
- * `__ccm_bind` + 可选 `cc` wrapper 的设计；用户设计评审指正：注册不该耦合启动）：
- *
- * - `__ccm_rbind`（注册原语）：只做注册——tmux 内对当前 session 开标题直通 +
- *   **F02 起这些实现搬进了 `~/.local/bin/ccm`（可执行文件）**，本文件只 import 别名块。
- *   为什么不再装成 shell 函数：函数**优先于 PATH**，与用户已有同名函数硬冲突且必然遮蔽
- *   （实测：共存时新 CLI 一次都跑不到，且是静默的）；且远端是 zsh/fish 时 `.bashrc`
- *   根本不被 source，函数形态拿不到。别名块只做**组合**（`cct() { ccm --tmux "$@"; }`），
- *   不含任何实现——自定义在组合层，不在实现层。
- *
- * `ccm-rbind-%s` 标记必须与后端 `bind.rs` 的 `format!("ccm-rbind-{sid}")` 完全一致。
- *
- * tmux 自适配（Batch7 真机排查实证）：tmux 默认 `set-titles off`——OSC 标题转义
- * 只落到 pane title、到不了外层 ssh 终端窗口标题，marker 被截住导致绑定必然
- * 失败，而 tmux 恰是远端最常见形态。原语内自动对**当前 session** 开直通
- * （session 级选项，不写 tmux.conf、不影响其它 session）。
+ * 远端的别名块：只做**组合**（`cct() { ccm --tmux "$@"; }`），不含任何实现 —— 实现都在 `ccm` 里。
+ * 不装成 shell 函数的理由：函数**优先于 PATH**，与用户已有同名函数硬冲突且必然遮蔽；远端是 zsh/fish 时 `.bashrc` 根本不被 source。
  */
 // 单一来源：src/shared/ccm-aliases.sh（后端 sftp.rs include_str! 同一文件，杜绝漂移）
 import CCM_WRAPPER_SNIPPET from "../../../shared/ccm-aliases.sh?raw";

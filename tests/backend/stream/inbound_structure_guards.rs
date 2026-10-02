@@ -206,6 +206,10 @@ fn every_registered_command_declares_its_run_kind() {
                 | "mcp-read"
                 // 列 tmux 会话：起一次 `sh` ＋ `tmux` 并等它退出。
                 | "tmux-list"
+                // 谁在显示这个会话：读 `/proc` ＋ 在 tmux 里时起一次 `tmux list-clients` 并等它退出。
+                | "session-terminals"
+                // 认终端进程：起一趟 PowerShell（连接表 ＋ 进程表）并等它退出。
+                | "terminal-processes"
                 // 铸 tmux 名：问一次会话快照 = 起一次 `tmux` 并等它退出。
                 | "tmux-name-mint"
                 // `~/.ssh/config` 三条：读一份文件 ／ 起 `ssh -G` 并等它退出。
@@ -337,8 +341,6 @@ fn every_registered_command_declares_its_run_kind() {
         "ccm-probe",
         // `terminal-ssh`：开终端那一串，纯函数（校验 ＋ quote，不拨号不起进程）⇒ 不进阻塞档。
         "terminal-ssh",
-        // `terminal-local`：本机那一串接前奏，纯函数（不起进程不碰盘）⇒ 不进阻塞档。
-        "terminal-local",
         // `history-search-merge`：各台结果合一份，纯计算 ⇒ 不进阻塞档。
         "history-search-merge",
         // 资产目录的同步：真异步（拨号 / 等远端 capture），在 await 点可取消。
@@ -415,6 +417,8 @@ fn every_registered_command_declares_its_run_kind() {
         "tasks-list",
         "mcp-read",
         "tmux-list",
+        "session-terminals",
+        "terminal-processes",
         "tmux-name-mint", //
         "hooks-diag",     //
         "resync",         //

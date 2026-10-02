@@ -339,7 +339,6 @@ fn wire_req(it: &Item, tmux: Option<&str>, cwd: bool) -> wire::CliRenderRequest 
         model: it.model.clone(),
         launcher: it.launcher.clone(),
         default_launcher: it.default_launcher.clone(),
-        rbind_token: None,
     }
 }
 

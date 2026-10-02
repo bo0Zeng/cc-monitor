@@ -378,8 +378,8 @@ const QUOTE_SITES: &[QuoteRow] = &[
     // 30 → 31：信任框轮询认的那句话从串里的字面量换成适配层那一格（`LaunchFace::trust_prompt`），拼进去时 quote 一次
     //   （值是适配层的常量，不是外部输入；产出的字节与从前写死的 `'…'` 逐字相同）。
     // 31 → 35：直路自己定中转地址与身份那几格（起会话只交一行 `ccm …`，env 归 `ccm` 在最终 exec 那一处定）——
-    //   中转地址那一词的两段常量与「拿不到钥匙时整串」三处 · 启动期令牌 / 身份 token 那两句 `export` 共用的一处。
-    //   令牌与 token 在 `argv.rs::validate` 进门判（`rbind_token_ok` · 段闸 `segment_is_safe`）；中转地址是本侧上游选择出的。
+    //   中转地址那一词的两段常量与「拿不到钥匙时整串」三处 · 身份 token 那一句 `export`。
+    //   token 在 `argv.rs::validate` 进门判（段闸 `segment_is_safe`）；中转地址是本侧上游选择出的。
     (
         "src/backend/control/ccm/plan.rs",
         35,
@@ -402,10 +402,6 @@ const QUOTE_SITES: &[QuoteRow] = &[
             ), // `--account`
             // 〔§47 ②〕账号配置目录走全表：全表整份搬进共享 crate（`control → observe` 那条禁止边不用破）。
             ("src/common/acct-core/src/lib.rs", "config_dir_ok"),
-            (
-                "src/common/shell-quote-core/src/lib.rs",
-                "rbind_token_ok",
-            ), // `--ccm-rbind-token`
             (
                 "src/common/relay-route-core/src/lib.rs",
                 "segment_is_safe",
@@ -464,10 +460,6 @@ const QUOTE_SITES: &[QuoteRow] = &[
             ),
             ("src/common/acct-core/src/lib.rs", "config_dir_ok"), // `--account-dir`
             ("src/backend/control/gate_rules.rs", "existing_tmux_name_issue"), // 就地 resume 的目标
-            (
-                "src/common/shell-quote-core/src/lib.rs",
-                "rbind_token_ok",
-            ), // `--ccm-rbind-token`
             (
                 "src/common/relay-route-core/src/lib.rs",
                 "segment_is_safe",

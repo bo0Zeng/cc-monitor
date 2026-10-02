@@ -2866,6 +2866,14 @@ mod spawn_registry {
              ⚠ 那一件要来动本护栏时，先读 `K-G6` 立的这套做法，别顺手加白名单。",
         ),
         (
+            "observe/session_terminals.rs",
+            "tmux",
+            "点 ↗ 时答「此刻谁在显示这个会话」：`list-clients -t <pane> -F '#{client_pid} #{client_activity}'`（argv 直传，\
+             socket 取自那个进程自己的 `TMUX`）。**只读 tmux**，不改任何状态、不读不设标题；只在被问时起一次。",
+            "缩性质",
+            "「谁连着这个会话」改由别的事实源答（不再问 tmux）的那天。",
+        ),
+        (
             "plugin/invoke.rs",
             "<非字面量>",
             "`K-W1A`（08-26）：**插件通用调用口**里唯一一处起进程 —— argv 直传不过 shell，\
@@ -2951,7 +2959,9 @@ mod spawn_registry {
 同一处口（`platform/shell/mod.rs::powershell_command`）又多两种**固定脚本**的用途：\
              ① 现问执行策略（`Get-ExecutionPolicy` 三行，只读；`aliases-read` 每份 5.1 的 `$PROFILE` 候选）；\
              ② **写一格用户设置**：`Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned`（HKCU 那一档，值写死），\
-             只由 `powershell-policy-set` 跑 —— 界面在用户点了、确认了之后才发（「只在用户点击并确认后执行，不代改」）。",
+             只由 `powershell-policy-set` 跑 —— 界面在用户点了、确认了之后才发（「只在用户点击并确认后执行，不代改」）；\
+             ③ 现问连接表与进程表（`Get-NetTCPConnection -State Established` ＋ `Win32_Process` 只取进程号 · 父进程号 · 名字 · 启动时刻四格，\
+             只读、不吃入参；`terminal-processes`，点 ↗ 时问一次）。",
             "缩性质",
             "有别的办法读到那台 PowerShell 的内建别名表与执行策略（不起进程）的那天摘掉只读那两种。\
              ⚠ 写的那一种只许是上面那一句固定脚本，不许收界面给的策略值。",
@@ -3104,8 +3114,10 @@ mod spawn_registry {
         // 基数 14 − DEL 1 ＋ MIG-1 1 ⇒ 14。
         // 主线 14（含 MIG-3a 的 `powershell.exe`）＋ MIG-1 1（`dial/ssh_config.rs`）⇒ 15（现打核过）。
         // **15 → 16**：`platform/shell/mod.rs` 按代起 PowerShell，程序名写成两个字面量（`powershell.exe` · `pwsh.exe`，后者是新面）。
+        // **16 → 17**：`observe/session_terminals.rs` 一处只读的 `tmux list-clients`（点 ↗ 时问谁连着这个会话）。
         // 16 → 17：`control/session_batch.rs` 当 ccm 起自己（tab 栏在 tmux 里后台起，`ALLOWED` 里写明）。
-        const SPAWN_SITES_TODAY: usize = 17;
+        // **17 → 18**（合并）：上面两行是两边各自的 16 → 17，各加一处，相加。
+        const SPAWN_SITES_TODAY: usize = 18;
         assert_eq!(
             found.len(),
             SPAWN_SITES_TODAY,

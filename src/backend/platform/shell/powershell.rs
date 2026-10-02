@@ -1,25 +1,8 @@
-//! **PowerShell 那几句写法** —— 开终端那一跳的令牌握手前奏 · 执行策略的读与设，只调这里。
+//! **PowerShell 那几句写法** —— 执行策略的读与设 · 连接表与进程表的现问，只调这里。
 //!
 //! ⚠ 这一臂只到「编得过」：本机没有 PowerShell，这几句一次都没被 PowerShell 解析过。
-//! 〔M/N〕值进单引号一律经 [`ps_literal`]（唯一出口，认全 PowerShell 的五个引号字符）。
 
-use super::dialect::ps_literal;
 use super::PsHost;
-
-/// 〔本地半〕令牌握手前奏的模板（Era 2 那条握手，marker = 令牌）。
-const RBIND_BIND_PRELUDE_TPL: &str = include_str!("rbind-token-bind.ps1.tpl");
-
-/// 令牌握手前奏：剥掉模板的整行注释（`-EncodedCommand` 额度），`marker` 与 `await_dir` 经 [`ps_literal`] 填进去。
-/// 通用层交成品参数进来（marker 怎么拼、目录在哪不归方言，`dial/terminal.rs::with_bind_prelude`）。
-pub(crate) fn rbind_bind_prelude(marker: &str, await_dir: &str) -> String {
-    let body: String = RBIND_BIND_PRELUDE_TPL
-        .lines()
-        .filter(|l| !l.trim_start().starts_with('#'))
-        .map(|l| format!("{l}\n"))
-        .collect();
-    body.replace("{{MARKER}}", &ps_literal(marker))
-        .replace("{{AWAIT_DIR}}", &ps_literal(await_dir))
-}
 
 // ─── 执行策略：块装进 `$PROFILE` 之前先问这一代 PowerShell 会不会加载它 ───
 
@@ -90,6 +73,20 @@ fn policy_unknown(host: PsHost, error: String) -> ExecPolicy {
         group_policy: false,
         error: Some(error),
     }
+}
+
+// ─── 连接表 ＋ 进程表：↗ 那一问「这条连接是这台电脑上哪个进程开的、它往上是谁」───
+
+/// 一趟固定脚本、不吃任何输入：已建立的 TCP 连接（两端地址与端口 ＋ 拥有者进程号）＋ 进程表**只取四格**
+/// （进程号 · 父进程号 · 名字 · 启动时刻，后者换成 FILETIME；`-Property` 只向系统要这四格）。打成一行 JSON。
+const CONN_PROC_QUERY: &str = "$ErrorActionPreference = 'Stop'; \
+$t = @(Get-NetTCPConnection -State Established | ForEach-Object { [pscustomobject]@{ la = $_.LocalAddress; lp = $_.LocalPort; ra = $_.RemoteAddress; rp = $_.RemotePort; pid = $_.OwningProcess } }); \
+$p = @(Get-CimInstance -ClassName Win32_Process -Property ProcessId, ParentProcessId, Name, CreationDate | ForEach-Object { [pscustomobject]@{ pid = $_.ProcessId; ppid = $_.ParentProcessId; name = $_.Name; start = $(if ($_.CreationDate) { $_.CreationDate.ToFileTimeUtc() } else { 0 }) } }); \
+[pscustomobject]@{ tcp = $t; proc = $p } | ConvertTo-Json -Depth 3 -Compress";
+
+/// 现问一次连接表与进程表（只读，5.1 那一代）：`Ok(那一行 JSON)`；这台没有 PowerShell / 起不来 / 报错 ⇒ `Err(原话)`。
+pub(crate) fn connection_and_process_tables() -> Result<String, String> {
+    run_fixed(PsHost::Desktop, CONN_PROC_QUERY)
 }
 
 /// 起那一代跑一段固定脚本：`Ok(stdout)`；起不来 / 非零退出 ⇒ `Err(原话)`。这台不说 PowerShell ⇒ `Err`。

@@ -14,7 +14,6 @@ fn base_spec() -> CliSpec<'static> {
         launcher: "claude",
         default_launcher: "claude",
         args: &[],
-        rbind_token: None,
         launch_id: None,
         ccm_path: "ccm",
         detach: false,
@@ -46,8 +45,6 @@ fn caps_without(missing: &str) -> BTreeSet<String> {
 fn render(spec: &CliSpec) -> Result<String, Refusal> {
     render_ccm_invocation(spec, &caps_all())
 }
-
-const TOKEN: &str = "0123456789abcdef0123456789abcdef";
 
 /// 无条件那几条每一条都单独被要；用到才要的那几条只在用到时要（Windows 那台没有 tmux 也照样起得了直路）。
 #[test]
@@ -126,10 +123,10 @@ fn every_refusal_reason_is_pinned_byte_for_byte() {
         ),
         (
             Refusal::IdentifierRefused {
-                slot: IdentifierSlot::RbindToken,
-                value: q("XYZ"),
+                slot: IdentifierSlot::LaunchId,
+                value: q("a/b"),
             },
-            "启动期令牌 \"XYZ\" 不合法（要 32 位小写十六进制）".into(),
+            "会话标识 \"a/b\" 不合法（1 到 128 位，只许字母数字与 - _）".into(),
         ),
     ];
     for (r, want) in &pairs {
@@ -211,7 +208,6 @@ fn a_fully_loaded_invocation_emits_every_part_in_registry_order() {
         launcher: "ccr code",
         default_launcher: "claude",
         args: &["--verbose"],
-        rbind_token: Some(TOKEN),
         launch_id: Some("s1"),
         ccm_path: "ccm",
         detach: false,
@@ -220,20 +216,19 @@ fn a_fully_loaded_invocation_emits_every_part_in_registry_order() {
         render(&spec).unwrap(),
         format!(
             "ccm --resume s1 --model opus --verbose -- --ccm-tmux=cc-s1 --ccm-sid=s1 --account z \
-             --ccm-rbind-token {TOKEN} --ccm-launch-id s1 --cwd '/w d' --launcher 'ccr code'"
+             --ccm-launch-id s1 --cwd '/w d' --launcher 'ccr code'"
         )
     );
 }
 
-/// 两个身份 token 只在起 agent 时带（接回不起进程，令牌没有读者）。
+/// 身份 token 只在起 agent 时带（接回不起进程，它没有读者）。
 #[test]
 fn identity_tokens_ride_only_when_an_agent_starts() {
     let mut s = base_spec();
-    s.rbind_token = Some(TOKEN);
     s.launch_id = Some("id-1");
     assert_eq!(
         render(&s).unwrap(),
-        format!("ccm -- new --base --ccm-rbind-token {TOKEN} --ccm-launch-id id-1")
+        "ccm -- new --base --ccm-launch-id id-1"
     );
     s.action = Action::Attach { name: "cc-x" };
     s.container = Container::Tmux {
@@ -248,7 +243,6 @@ fn identity_tokens_ride_only_when_an_agent_starts() {
 fn send_into_wraps_exactly_the_direct_line() {
     let mut s = base_spec();
     s.action = Action::Resume { sid: "s1" };
-    s.rbind_token = Some(TOKEN);
     let direct = render(&s).unwrap();
     s.container = Container::Tmux {
         name: "cc x",
@@ -261,7 +255,7 @@ fn send_into_wraps_exactly_the_direct_line() {
     assert!(direct.starts_with("ccm --resume s1 -- "), "{direct}");
 }
 
-/// 拼进命令之前每一格各过各的那一条：sid · 身份标记 · 模型 · 账号名 · 账号目录 · 令牌 · 身份 token · 会话名 · cwd · 透传参数 · 接回目标。
+/// 拼进命令之前每一格各过各的那一条：sid · 身份标记 · 模型 · 账号名 · 账号目录 · 身份 token · 会话名 · cwd · 透传参数 · 接回目标。
 #[test]
 fn every_value_is_judged_before_it_becomes_a_ccm_argument() {
     let cases: Vec<(CliSpec, &str)> = vec![
@@ -305,13 +299,6 @@ fn every_value_is_judged_before_it_becomes_a_ccm_argument() {
                 ..base_spec()
             },
             "FreeTextRefused { slot: AccountDir",
-        ),
-        (
-            CliSpec {
-                rbind_token: Some("XYZ"),
-                ..base_spec()
-            },
-            "IdentifierRefused { slot: RbindToken",
         ),
         (
             CliSpec {

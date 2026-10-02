@@ -249,6 +249,34 @@ pub(crate) fn proc_starttime(pid: u32) -> Option<u64> {
     }
 }
 
+/// 这个进程**此刻**有没有控制终端（`/proc/<pid>/stat` 第 7 栏 `tty_nr` 非零）。`None` = 读不到 / 这个平台不知道。
+///
+/// 会话首领退出、终端被挂断时内核把整组进程的控制终端清掉 ⇒ 这一格从此是 0。
+pub(crate) fn has_controlling_tty(pid: u32) -> Option<bool> {
+    #[cfg(target_os = "linux")]
+    {
+        let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
+        parse_tty_nr_from_stat(&stat).map(|n| n != 0)
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = pid;
+        None
+    }
+}
+
+/// `tty_nr`（第 7 栏）—— 与 [`parse_starttime_from_stat`] 同一个切法：从**最后一个** `)` 之后数（`comm` 里可以有空格与括号）。
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+pub(crate) fn parse_tty_nr_from_stat(stat: &str) -> Option<i64> {
+    const TTY_NR_IDX_AFTER_COMM: usize = 7 - 3;
+    let after_comm = &stat[stat.rfind(')')? + 1..];
+    after_comm
+        .split_whitespace()
+        .nth(TTY_NR_IDX_AFTER_COMM)?
+        .parse::<i64>()
+        .ok()
+}
+
 /// Parse the boot time (`btime <epoch-secs>` line) out of `/proc/stat` content.
 #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 pub(crate) fn parse_btime(proc_stat: &str) -> Option<u64> {

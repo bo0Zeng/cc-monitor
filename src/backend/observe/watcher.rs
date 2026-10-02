@@ -697,7 +697,7 @@ pub fn spawn(
     agent_home: PathBuf,
     with_bg: bool,
     tail_only: bool,
-    with_rbind_token: bool,
+    with_pid: bool,
     book: std::sync::Arc<crate::observe::runs::RunBook>,
 ) -> (mpsc::Receiver<Frame>, WatcherPoke) {
     let (tx, rx) = mpsc::channel::<Frame>(CHANNEL_CAPACITY);
@@ -714,7 +714,7 @@ pub fn spawn(
             watch_loop(
                 agent_home,
                 tx,
-                (with_bg, tail_only, with_rbind_token),
+                (with_bg, tail_only, with_pid),
                 book,
                 events_tx,
                 events_rx,
@@ -824,8 +824,8 @@ fn arm_ears(
 fn watch_loop(
     agent_home: PathBuf,
     tx: mpsc::Sender<Frame>,
-    // （带 bg 会话, 只跟尾巴, 索要启动期令牌）—— 三个开关收成一格，与 `spawn` 收到的同一组。
-    (with_bg, tail_only, with_rbind_token): (bool, bool, bool),
+    // （带 bg 会话, 只跟尾巴, 索要 pid）—— 三个开关收成一格，与 `spawn` 收到的同一组。
+    (with_bg, tail_only, with_pid): (bool, bool, bool),
     book: std::sync::Arc<crate::observe::runs::RunBook>,
     events_tx: std::sync::mpsc::Sender<WatchEvent>,
     events_rx: std::sync::mpsc::Receiver<WatchEvent>,
@@ -839,9 +839,8 @@ fn watch_loop(
     let accounts_manifest = crate::observe::accounts_query::default_manifest_path();
 
     let mut state = ReaderState::new(projects.clone(), with_bg, tail_only);
-    // 注入「客户端索要了启动期令牌」这一位。**不进 `new` 的签名**
-    // 的理由写在那个字段的头注里（同 `events_tx` 那条既有纪律）。
-    state.with_rbind_token = with_rbind_token;
+    // 注入「客户端索要了 pid」这一位（不进 `new` 的签名，理由在那个字段的头注里）。
+    state.with_pid = with_pid;
     // 运行簿：与这条连接的流归位共用一本（流按它定归哪个运行）。
     state.runs.book = book;
     // All frames go out through a FrameSink: a bounded-channel sender that counts
@@ -1202,16 +1201,9 @@ struct ReaderState {
     /// 历史由 monitor 经 `--read-session` 旁路快照拉取（0..L'-1 由 monitor 编号，
     /// 重叠区被 (sid,seq) 去重吸收）。默认 false = 全量重放（旧 monitor 兼容）。
     tail_only: bool,
-    /// `--with-rbind-token`：客户端**显式索要**
-    /// `session_added` 上的 `rbind_token`（启动期令牌）。
-    ///
-    /// **默认 false，而且刻意不进 [`ReaderState::new`] 的签名** —— 两个理由：
-    /// ① 与 `events_tx` 同一条既有纪律（那条头注逐字：「11 处 `ReaderState::new`
-    ///    因此无需改签名」）；
-    /// ② 语义上 false 才是对的默认：令牌是敏感数据，**没人索要就不读**
-    ///    （论证住 `wire.rs` 那个字段的头注）。
-    /// 生产路由 [`watch_loop`] 注入；夹具直接置字段。
-    with_rbind_token: bool,
+    /// `--with-pid`：客户端显式索要 `session_added` 上的 `pid`（本机 ↗ 按它找窗口）。
+    /// 默认 false、不进 [`ReaderState::new`] 的签名（与 `events_tx` 同一条纪律）；生产路由 [`watch_loop`] 注入，夹具直接置字段。
+    with_pid: bool,
     /// 子运行：运行面 ＋ 这条连接的运行簿（[`watch_loop`] 换成 `spawn` 交进来的那一本；夹具用自带的一本）＋ 子运行记录的游标。
     runs: crate::observe::runs::RunTrack,
 }
@@ -1230,7 +1222,7 @@ impl ReaderState {
             active_sids: HashSet::new(),
             with_bg,
             tail_only,
-            with_rbind_token: false,
+            with_pid: false,
             runs: crate::observe::runs::RunTrack::new(
                 crate::agents::stream_run_faces(),
                 std::sync::Arc::default(),
@@ -2053,28 +2045,10 @@ fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameS
         lines: first_lines,
         status: meta_str("status"),
         waiting_for: meta_str("waitingFor"),
-        // 🔴 **启动期令牌** —— 把「会话身份」从 tmux 上解绑的那个键。
-        //
-        // ★ **零新节拍**：读它的那一刻就是这一刻。`§8.3` 那一栏逐字「后端**已经在**
-        //   inotify `sessions/`……看到 `<PID>.json` 的那一刻，**pid 与 sid 同时在手**」——
-        //   本行只是在同一刻多读一个环境变量，没有新循环、没有新通道、没有新平台原语。
-        //
-        // ★ **位置与上面 `identity_tag::tag(pid, &sid)` 同理**：也在 `pid_alive` +
-        //   `add_time_verdict`（procStart 冒名检查）之后 ⇒ 报出去之前已经证过
-        //   「这个 pid 真的是写那份 pidfile 的那个 claude」，令牌不会张冠李戴。
-        //
-        // ★ **默认不读**（`state.with_rbind_token`）：令牌是敏感数据（`§8.6 ③`），
-        //   只有显式发了 `--with-rbind-token` 的客户端才拿得到。没索要 ⇒ `None`
-        //   ⇒ `skip_serializing_if` ⇒ 这一帧的字节与本字段加进来之前一字不差。
-        rbind_token: if state.with_rbind_token {
-            crate::control::identity_tag::rbind_token_of(pid)
-        } else {
-            None
-        },
         // 判不了 ⇒ `None` ⇒ 不上线（与本字段加进来之前逐字节相同）。
         container,
-        // 与令牌同一道闸（见 `wire::Frame::SessionAdded::pid`）。pid 与 verdict 核过的是同一个进程。
-        pid: state.with_rbind_token.then_some(pid),
+        // 只给索要了的客户端（见 `wire::Frame::SessionAdded::pid`）。pid 与 verdict 核过的是同一个进程。
+        pid: state.with_pid.then_some(pid),
     });
     if !state.tail_only {
         for p in &jsonls {

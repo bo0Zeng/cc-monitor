@@ -39,8 +39,6 @@ const EXEMPT: &[(&str, &str, &str)] = &[
     //    ⇒ **账不许挂空号**：这六条今天在盘上都命中 0 次，留着就是六条空转的放行。
     ("src/doc/INVARIANTS.md", "「**ccm做到必须走daemon**」",
      "用户 08-14 逐字裁定的原话 —— 引文改了就不是引文了"),
-    ("src/doc/IPC-PROTOCOL.md", "「ccm 做到必须走 daemon」",
-     "同上，用户 08-14 逐字裁定在本文件里的第二处引用"),
     ("src/doc/INVARIANTS.md", "**原措辞**：「daemon 对被观测文件系统必须只读，绝不写。」",
      "§41.6 的**原措辞留档**（2026-07-31 收窄前那句）—— 历史句，改它等于篡改沿革；而它旁边那句「现措辞」正是本轮改的那一处"),
     ("src/doc/INVARIANTS.md", "「daemonless 降级读取（无需 daemon）」",
@@ -69,7 +67,8 @@ const CORPUS_FLOOR_BYTES: usize = 300_000;
 /// 〔步 8 改名一刀 2026-09-19〕**14 → 8**：六条例外的前提（「那一处在本轮写区之外」）
 /// 被全仓冻结窗口整个取消了 ⇒ 那六处真的改成「后端」了，例外随之作废。
 /// 逐条理由见 [`EXEMPT`] 表头那段注释。**又一次是例外表变短，不是放宽。**
-const EXEMPT_HITS: usize = 8;
+// 8 → 7：`IPC-PROTOCOL.md` §11 按点 ↗ 时现查重写，那一处引文随旧链路的沿革一起删了。
+const EXEMPT_HITS: usize = 7;
 
 /// ASCII 标识符字符 —— **汉字不算**，这一条就是「两个数」的分水岭。
 fn is_ident(c: u8) -> bool {

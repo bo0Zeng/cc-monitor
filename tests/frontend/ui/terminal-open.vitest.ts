@@ -5,8 +5,7 @@
  * | 性质 | 判据 |
  * |---|---|
  * | 远端三步：monitor 交机器事实 → 本机后端 `terminal-ssh` 渲 → monitor 开窗（交的是后端渲的那一行，`ssh: true`） | 「远端」 |
- * | 本机同形：本机后端 `terminal-local` 交回那一串 → monitor 开窗（`ssh: false`），不问机器事实 | 「本机」 |
- * | 〔本地半〕令牌只交给本机后端（两条都是）、开窗那一跳不带令牌 | 「远端」「本机」 |
+ * | 本机：交来的已是后端渲好的成品 ⇒ monitor 直接开窗（`ssh: false`），不问机器事实、不问后端 | 「本机」 |
  * | 后端回的形状不认 / 问不到 ⇒ 抛，一个窗口都不开（不拿原串顶上） | 「问不到」 |
  * | 开窗只有一个家：生产段调 `commands.open_terminal_window(` / `commands.terminal_dial(` 的文件 == {terminal-open.ts} | 「一个家」 |
  *
@@ -27,11 +26,11 @@ const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
 const FACTS = { machine: { host: "10.0.0.2", user: "u", port: 22, label: "aya" }, saved: null, jump: null, prefer: null };
 const LINE = "& ssh -t -p 22 u@10.0.0.2 -- 'bash -lic ''claude --resume s1'''";
 
-/** 替身：机器事实 · 后端渲的那一行（两条帧命令同答；`render` 回 `undefined` ⇒ 通道那一层失败）· 开窗照单全收。 */
+/** 替身：机器事实 · 后端渲的那一行（`render` 回 `undefined` ⇒ 通道那一层失败）· 开窗照单全收。 */
 function serve(render: () => unknown): void {
   invokeMock.mockImplementation((cmd: string, args: unknown) => {
     if (cmd === "terminal_dial") return Promise.resolve(FACTS);
-    if (isChanCall(cmd, args, "terminal-ssh") || isChanCall(cmd, args, "terminal-local")) {
+    if (isChanCall(cmd, args, "terminal-ssh")) {
       const r = render();
       return r === undefined ? Promise.reject(NO_CHANNEL) : Promise.resolve(chanReply(r));
     }
@@ -41,46 +40,29 @@ function serve(render: () => unknown): void {
 const calls = (name: string): unknown[] => invokeMock.mock.calls.filter(([c]) => c === name).map(([, a]) => a);
 const asked = (frame: string): ChanCallArgs[] =>
   invokeMock.mock.calls.filter(([c, a]) => isChanCall(String(c), a, frame)).map(([, a]) => a as ChanCallArgs);
-const TOK = "0123456789abcdef0123456789abcdef";
 
 beforeEach(() => invokeMock.mockReset());
 
 describe("远端", () => {
-  it("★ 三步：交机器事实 ＋ 命令 ＋ 令牌给本机后端，开窗交的是后端渲的那一行（`ssh: true`，不带令牌）", async () => {
+  it("★ 三步：交机器事实 ＋ 命令给本机后端，开窗交的是后端渲的那一行（`ssh: true`）", async () => {
     serve(() => ({ command: LINE }));
-    await openTerminal("aya", "claude --resume s1", TOK);
+    await openTerminal("aya", "claude --resume s1");
     expect(calls("terminal_dial")).toEqual([{ origin: "aya" }]);
     const ssh = asked("terminal-ssh");
     expect(ssh).toHaveLength(1);
     expect(ssh[0].origin).toBe(LOCAL_ORIGIN);
-    expect(chanArgsJson(ssh[0])).toEqual({ ...FACTS, command: "claude --resume s1", rbindToken: TOK });
-    expect(asked("terminal-local")).toEqual([]);
+    expect(chanArgsJson(ssh[0])).toEqual({ ...FACTS, command: "claude --resume s1" });
     expect(calls("open_terminal_window")).toEqual([{ command: LINE, ssh: true }]);
   });
 });
 
 describe("本机", () => {
-  it("★ 同形：命令 ＋ 令牌交本机后端 `terminal-local`，开窗交它回的那一串（`ssh: false`），不问机器事实", async () => {
-    const BACK = "& { $m = 'ccm-rbind-token-…' }\nclaude --resume s1";
-    serve(() => ({ command: BACK }));
-    await openTerminal(LOCAL_ORIGIN, "claude --resume s1", TOK);
+  it("★ 交来的就是成品：直接开窗（`ssh: false`），不问机器事实、不问后端", async () => {
+    serve(() => ({ command: "不该被问到" }));
+    await openTerminal(LOCAL_ORIGIN, "claude --resume s1");
     expect(calls("terminal_dial")).toEqual([]);
     expect(asked("terminal-ssh")).toEqual([]);
-    const local = asked("terminal-local");
-    expect(local).toHaveLength(1);
-    expect(local[0].origin).toBe(LOCAL_ORIGIN);
-    expect(chanArgsJson(local[0])).toEqual({ command: "claude --resume s1", rbindToken: TOK });
-    expect(calls("open_terminal_window")).toEqual([{ command: BACK, ssh: false }]);
-  });
-  it("没令牌照样问后端（交 `null`），问不到 ⇒ 抛、不开窗", async () => {
-    serve(() => ({ command: "claude --resume s1" }));
-    await openTerminal(LOCAL_ORIGIN, "claude --resume s1");
-    expect(chanArgsJson(asked("terminal-local")[0])).toEqual({ command: "claude --resume s1", rbindToken: null });
     expect(calls("open_terminal_window")).toEqual([{ command: "claude --resume s1", ssh: false }]);
-    invokeMock.mockReset();
-    serve(() => undefined);
-    await expect(openTerminal(LOCAL_ORIGIN, "x", TOK)).rejects.toThrow();
-    expect(calls("open_terminal_window")).toEqual([]);
   });
 });
 

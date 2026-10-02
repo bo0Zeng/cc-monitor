@@ -20,8 +20,6 @@ pub struct CliRenderRequest {
     pub model: Option<String>,
     pub launcher: String,
     pub default_launcher: String,
-    /// 启动期令牌（界面铸的；渲成 `--ccm-rbind-token`）。接回那一格 `null`。
-    pub rbind_token: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -113,7 +111,6 @@ fn with_spec<T>(
         launcher: &req.launcher,
         default_launcher: &req.default_launcher,
         args: &[],
-        rbind_token: req.rbind_token.as_deref(),
         launch_id: None,
         ccm_path: "ccm",
         detach,

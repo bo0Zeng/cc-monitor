@@ -33,7 +33,8 @@ pub mod search_query;
 pub(crate) mod search_rules;
 // 会话账本：可重连 / 已结束由这台后端裁、发成品帧（挂在 watcher 发帧的出口上）。
 pub(crate) mod session_ledger;
-// 会话的任务列表（`tasks-list` 帧命令的本体；帧面宿主在顶层 `feature_face`）。
+pub(crate) mod session_terminals; // `session-terminals`：此刻是哪个终端在显示这个会话（点 ↗ 时问一次）
+                                  // 会话的任务列表（`tasks-list` 帧命令的本体；帧面宿主在顶层 `feature_face`）。
 pub(crate) mod tasks_query;
 pub(crate) mod tmux_list; // `tmux-list` 出成品（解析从 monitor `parse_tmux_ls`〔散文墓碑〕 搬来）
                           // 「你说过的话」清单的纯核（四条口径的唯一住址）；argv 与分派在 `history_query`。

@@ -430,7 +430,6 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "resolve",
         "ccm-probe",            // 纯函数，普通 spawn
         "terminal-ssh",         // 纯函数（校验 ＋ quote），普通 spawn
-        "terminal-local",       // 纯函数（接前奏），普通 spawn
         "history-search-merge", // 纯计算（合并排序），普通 spawn
         "assets-sync",
         // 两台之间「装」那一件的枢纽：等远端 capture（真异步），本机那一跳自己挪到阻塞线程池。
@@ -556,7 +555,9 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "tasks-list",
         "mcp-read",
         "tmux-list",
-        "tmux-name-mint", // 问一次会话快照 = 起一次 `tmux`
+        "session-terminals",  // 读 `/proc` ＋ 起一次 `tmux list-clients`
+        "terminal-processes", // 起一趟 PowerShell（连接表 ＋ 进程表）
+        "tmux-name-mint",     // 问一次会话快照 = 起一次 `tmux`
         // 钩子诊断：读一份 settings ＋ 几次 stat（同步文件 I/O），阻塞档。
         "hooks-diag",
         // 手动对齐：等每份 watcher 做完（对表 ＋ 打标起 tmux），阻塞档。
@@ -644,8 +645,6 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "ccm-probe",
         // `terminal-ssh`：纯函数，普通 spawn。
         "terminal-ssh",
-        // `terminal-local`：纯函数，普通 spawn。
-        "terminal-local",
         // `history-search-merge`：纯计算，普通 spawn。
         "history-search-merge",
         "assets-sync",
@@ -727,6 +726,8 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "tasks-list",
         "mcp-read",
         "tmux-list",
+        "session-terminals",  // 读 `/proc` ＋ 起一次 `tmux list-clients`
+        "terminal-processes", // 起一趟 PowerShell（连接表 ＋ 进程表）
         "tmux-name-mint",     // 问一次会话快照 = 起一次 `tmux`
         "ssh-config-aliases", // 读一份文件
         "ssh-config-import",  // 逐个起 `ssh -G`

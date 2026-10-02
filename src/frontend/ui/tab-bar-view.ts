@@ -181,7 +181,7 @@ export class TabBarView {
         // ↗ 拉对应终端窗口。非 Windows 不渲（`terminal-front.ts`）——不渲就点不到。
         const t = this.store.tabs.get(sid);
         if (!t || !hasTerminal(t.state)) return; // 活着，或可重连（ssh 窗还在）才拉
-        // Feature ②：远端 Tab → 后端唯一分派点（先启动令牌、后 ccm-rbind 标题退路）；
+        // 远端 Tab → 点那一刻现查此刻显示它的本机终端；
         // 本地 Tab → 走原 sid_hwnd_cache 路径。
         if (isRemoteOrigin(t.origin)) {
           void this.host.bringRemoteTerminalToFront(sid);
@@ -583,7 +583,7 @@ export class TabBarView {
     const hasCwd = !!tab.projectDir;
     // FIX 5 / Feature ②（issue #15）：远端 Tab 的 cwd 是 Pi 上的路径，
     // 本地不存在，故 .remote 类只隐藏「打开工作目录」📂（CSS）。「调出终端」↗ 现在保留
-    // 给远端 —— 点击走 bringRemoteTerminalToFront（后端按 ccm-rbind 拉本地 ssh 窗口）。
+    // 给远端 —— 点击走 bringRemoteTerminalToFront（点那一刻现查此刻显示它的本机终端）。
     const remote = isRemoteOrigin(tab.origin);
     // issue #23 红绿灯：busy=绿（.live-dot 默认色）/ idle·shell=红 / waiting=黄。
     // activity 为 null（旧版 CC / 远端 v1）不加类 → 维持现状绿点。

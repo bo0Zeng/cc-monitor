@@ -215,8 +215,7 @@ pub(crate) fn parse_request(args: &serde_json::Value) -> Result<LaunchRequest, C
     let ccm_sid = get_str("ccm_sid").map(str::to_string);
     if let Some(s) = &ccm_sid {
         check_field("ccm_sid", s)?;
-        // 它最终会被 tmux 的格式串展开（窗口标题 `#{?@ccm_sid,ccm-rbind-#{@ccm_sid},#T}`），
-        // 收紧到确定安全的字符集。⚠ 本命令自己写的是**意图**键 `@ccm_sid_expect`
+        // 它会被写进 tmux 会话级 option，收紧到确定安全的字符集。⚠ 本命令自己写的是**意图**键 `@ccm_sid_expect`
         //（见 `run` 里那段头注）；这个值要经 `identity_tag` 过检提升之后才进 `@ccm_sid`，
         // 而那一侧有它自己的 `sid_is_safe` —— **两道各自成立，不许因为「上游已经查过」而拆掉任一道**。
         if !s
@@ -428,10 +427,6 @@ pub(crate) enum Secondary {
     AgentTag,
     /// 身份**意图**键（建会话的人声明「打算跑这个 sid」）。
     IntentTag,
-    /// 打开窗口标题。
-    TitlesOn,
-    /// 窗口标题的格式串。
-    TitleFormat,
 }
 
 impl Secondary {
@@ -442,17 +437,12 @@ impl Secondary {
             Secondary::IntentTag => {
                 "身份意图没写上：之后对这个会话的 kill / 送键可能被身份门拒（wrong_owner）"
             }
-            Secondary::TitlesOn | Secondary::TitleFormat => {
-                "窗口标题没设上：拉前终端按标题找窗口的那条退路失效（启动期令牌那条主路不受影响）"
-            }
         }
     }
     fn what(self) -> &'static str {
         match self {
             Secondary::AgentTag => "打 agent 标",
             Secondary::IntentTag => "写身份意图",
-            Secondary::TitlesOn => "打开窗口标题",
-            Secondary::TitleFormat => "设窗口标题格式",
         }
     }
 }
@@ -623,16 +613,10 @@ fn run_with(
             //   `create-or-attach`」。⇒ 本改动今天不改变任何一条在跑的路径的行为，
             //   它是把「接线那一拍会踩的那颗雷」在接线之前拆掉。
             //
-            // ⚠ **标题格式串同拍换成带回退的那一份**：`@ccm_sid` 在建会话这一刻起不再有值，
-            //   而旧的 `ccm-rbind-#{@ccm_sid}` 会把窗口标题渲成一个**空的 `ccm-rbind-`**
-            //   （提升发生之前）。`shared/ccm:1247` 早就为同一件事用了
-            //   `#{?@ccm_sid,…,#T}`（那份文件逐字：「sid 还没回填时回退 `#T`，
-            //   不产出一个空的 `ccm-rbind-`」）—— 两侧同一条性质，不留两种写法。
-            //   ⇒ 提升一发生，tmux 自己就把新标题推给 client（`identity_tag` 头注实测过）。
             // `@ccm_agent`：与 `shared/ccm` 那条本地编排**同一个顺序**
             // （`new-session` → `@ccm_agent` → `@ccm_sid_expect` → `send-keys`）。
             // 同样是**次要动作**：失败不阻断键入载荷（`shared/ccm` 那边写的是 `|| true`）。
-            // 四步都是次要动作：没做成 ⇒ [`secondary`] 留一行日志（哪一步 · tmux 说的 · 后果），不阻断。
+            // 两步都是次要动作：没做成 ⇒ [`secondary`] 留一行日志（哪一步 · tmux 说的 · 后果），不阻断。
             if let Some(agent) = &req.agent {
                 secondary(
                     tmux,
@@ -647,32 +631,6 @@ fn run_with(
                     &req.name,
                     Secondary::IntentTag,
                     &["set-option", "-t", &t, "@ccm_sid_expect", sid],
-                );
-                secondary(
-                    tmux,
-                    &req.name,
-                    Secondary::TitlesOn,
-                    &["set-option", "-t", &t, "set-titles", "on"],
-                );
-                // ⚠ **这一行刻意保持字面量，别「顺手收口」成
-                // `super::ccm::TERMINAL_BIND_TITLE_FORMAT`。** 试过一次，代价是 monitor 侧
-                // `ccm_cli_contract::the_intent_tag_and_the_fact_tag_are_not_merged_by_the_move`
-                // 当场红：那条判据数的是**本文件生产段里「事实标记读点」的处数**（登记 2 处，
-                // 就是这一行里的条件头与取值），收口之后它读到 0 —— 而 0 的含义逐字是
-                // 「标题回填没了」。⇒ 收口会把一条真判据变瞎。
-                // 两份不漂由 `control::ccm::tests::the_window_title_format_has_the_same_text_on_both_sides`
-                // 钉住（它拿常量去本文件的生产段里找），比收口买到的更多。
-                secondary(
-                    tmux,
-                    &req.name,
-                    Secondary::TitleFormat,
-                    &[
-                        "set-option",
-                        "-t",
-                        &t,
-                        "set-titles-string",
-                        "#{?@ccm_sid,ccm-rbind-#{@ccm_sid},#T}",
-                    ],
                 );
             }
             type_payload(&t, &req.payload, tmux)?;

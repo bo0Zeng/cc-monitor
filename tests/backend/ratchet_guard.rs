@@ -65,9 +65,9 @@ mod tests {
     const PINS: &[(&str, &str, usize, &str)] = &[
         (
             "readonly_guard.rs",
-            "const SPAWN_SITES_TODAY: usize = 17;",
+            "const SPAWN_SITES_TODAY: usize = 18;",
             1,
-            "backend 侧起进程登记表的**相等断言**（不是地板）。〔WF1 · L：`15` → **16**，往**上**走一格：`platform/shell/mod.rs` 按代起 PowerShell，\
+            "backend 侧起进程登记表的**相等断言**（不是地板）。〔合并：`17` → **18**，两边各从 16 加到 17 —— 这边 `observe/session_terminals.rs` 的 `tmux list-clients`，主线 `control/session_batch.rs` 当 ccm 起自己 —— 相加。〕〔`16` → **17**，往**上**走一格：`observe/session_terminals.rs` 一处只读的 `tmux list-clients`（点 ↗ 时问谁连着这个会话），`ALLOWED` 里已写明；`readonly_guard` 那条 `assert_eq!` 自己先红了，本针跟着记新值。〕〔WF1 · L：`15` → **16**，往**上**走一格：`platform/shell/mod.rs` 按代起 PowerShell，\
              多一个 `pwsh.exe` 字面量（PowerShell 7 的执行策略，`ALLOWED` 里已写明）；`readonly_guard` 那条 `assert_eq!` 自己先红了，本针跟着记新值。〕〔合并 MIG-1 × 主线 8c6cdc0e：`14` → **15**，往**上**走一格：主线 MIG-3a 的 `platform/shell.rs` `powershell.exe` 与 MIG-1 的 `dial/ssh_config.rs` `ssh -G` 两边各一处相加（都已在 `ALLOWED` 里写明）；`readonly_guard` 那条 `assert_eq!` 自己先红了，本针跟着记新值。〕〔合并 MIG-1 × 主线 b9818369：基数 14 − DEL 1 ＋ MIG-1 1（`dial/ssh_config.rs` 那一处 `ssh -G`，从 monitor 搬来）⇒ **14**。〕〔`14` → **13**，往**下**走一格：`relay/machine.rs` 那一处（起脱离的 `--relay`）随那一族删了——真的少了一个面，不是抽取坏了；`readonly_guard` 那条 `assert_eq!` 实数跟着改。〕〔`13` → **14**，往**上**走一格：`control/resident.rs` 那一处（远端那台上起一个脱离的常驻后端）——真的新面，`ALLOWED` 里已写明；`readonly_guard` 那条 `assert_eq!` 自己先红了，本针跟着记新值。〕\
              〔SH1 · D-g：`12` → **13**，往**上**走一格：`control/kill.rs` 多一处只读 `tmux list-panes`（杀之前读 pane 根进程 pid）；\
              `readonly_guard` 那条 `assert_eq!` 自己先红了，本针跟着记新值。〕\

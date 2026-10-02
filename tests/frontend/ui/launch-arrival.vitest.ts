@@ -29,7 +29,7 @@ import {
 const toast = showActionFailureToast as unknown as ReturnType<typeof vi.fn>;
 const capture = capturePane as unknown as ReturnType<typeof vi.fn>;
 const none = new Set<string>();
-const seen = (cwd: string | null, rbindToken: string | null = null) => ({ cwd, rbindToken });
+const seen = (cwd: string | null) => ({ cwd });
 const spec = (over: Partial<ArrivalSpec>): ArrivalSpec => ({
   origin: "aya",
   match: { sid: "s1" },
@@ -39,12 +39,9 @@ const spec = (over: Partial<ArrivalSpec>): ArrivalSpec => ({
 });
 
 describe("认它", () => {
-  it("sid · 令牌 · 同目录的新 sid 各认对、不认错", () => {
+  it("sid · 同目录的新 sid 各认对、不认错", () => {
     expect(arrivalMatches({ sid: "s1" }, "s1", seen(null), none)).toBe(true);
     expect(arrivalMatches({ sid: "s1" }, "s2", seen(null), none)).toBe(false);
-    expect(arrivalMatches({ token: "t1" }, "sx", seen("/w", "t1"), none)).toBe(true);
-    expect(arrivalMatches({ token: "t1" }, "sx", seen("/w", "t2"), none)).toBe(false);
-    expect(arrivalMatches({ token: "" }, "sx", seen("/w", ""), none), "空令牌不是通配").toBe(false);
     expect(arrivalMatches({ cwd: "/w/p/" }, "n1", seen("/w/p"), none)).toBe(true);
     expect(arrivalMatches({ cwd: "/w/p" }, "n1", seen("/w/q"), none)).toBe(false);
     expect(arrivalMatches({ cwd: "/w/p" }, "old", seen("/w/p"), new Set(["old"])), "预期之前就报过的不算新起的").toBe(false);

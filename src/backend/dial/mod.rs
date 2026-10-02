@@ -63,6 +63,7 @@ pub(crate) mod probe; // 测试连接（`remote-probe`）
 pub(crate) mod sftp;
 pub(crate) mod ssh_config;
 pub(crate) mod terminal; // 开终端那一串（`ssh -t …` 外壳 ＋ PowerShell 窗口载荷）在这里渲
+pub(crate) mod terminal_processes; // ↗ 那一问：那台报来的终端连接是这台电脑上哪个进程开的、它往上的进程链
 pub(crate) mod uses;
 
 /// ack 里的协议版本。**v1** = 只有长流、只有一个地址、只会私钥文件（`K-P6b` 那一版）；

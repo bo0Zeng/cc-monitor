@@ -138,8 +138,6 @@ case "$_sub" in
       #   —— 那一格由 `ccm_cli_contract::the_intent_tag_and_the_fact_tag_are_not_merged_by_the_move`
       #   在**真** backend 那侧钉着；这份假货照它的形状走，别在这里发明第二套。
       _tmux set-option -t "$t" @ccm_sid_expect "$sid" 2>/dev/null
-      _tmux set-option -t "$t" set-titles on 2>/dev/null
-      _tmux set-option -t "$t" set-titles-string '#{?@ccm_sid,ccm-rbind-#{@ccm_sid},#T}' 2>/dev/null
     fi
     _tmux send-keys -t "$t" "$payload" Enter 2>/dev/null
     printf '{"session":"%s","created":true,"typed":true}\n' "$name"

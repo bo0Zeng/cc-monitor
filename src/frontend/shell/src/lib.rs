@@ -328,32 +328,16 @@ pub(crate) fn nudge_should_skip(last_nudged: u64, packed: u64) -> bool {
     last_nudged != 0 && last_nudged == packed
 }
 
-/// 远端会话一宣告就起的那条 `remote-bind-scan` 线程（每 ~0.6s 扫一次
-/// `ccm-rbind-<sid>` 标题、最多 ~9s）**要不要起**。带启动令牌的会话**不起**：
-///
-/// - ↗ 对它先走 `令牌 → HWND`（`bind::resolve_remote_front` 的第一条路），用不着标题；
-/// - 不在 tmux 里的令牌会话**根本没有谁去设** `ccm-rbind-<sid>` 这个标题
-///   （设它的是 tmux 外层的 `set-titles-string`）⇒ 那 15 次扫描注定白跑 9 秒；
-/// - 在 tmux 里的令牌会话也不必预扫：令牌那扇窗关了、退到标题路时，点 ↗ 那一刻
-///   `try_bind_with_retry` 会现扫（`ON_DEMAND_BIND_*`，最多 4s）—— 预扫只省那一次现扫的等待。
-///
-/// 没令牌（老后端 / 不是 cc-monitor 启动的）⇒ 照旧预扫：标题路是它唯一的路。
-pub(crate) fn wants_title_prescan(rbind_token: Option<&str>) -> bool {
-    rbind_token.is_none()
-}
-
 /// 会话成品到达时 monitor **自己的事**（拉前终端的绑定）—— 不是裁决，是这台界面进程要记的窗口账。
 ///
 /// - 本机活会话：按 pid 找父 PowerShell 绑窗口（Windows 本机 ↗；老后端不带 pid 就不绑）；
-/// - 远端活会话：没令牌的起一条标题预扫线程（`wants_title_prescan`）；
-/// - 离开：本机一律忘（旧 sid 连 attach 都接不上）；远端只在已结束时忘（可重连 / 说不清：本地那个 ssh 窗口可能还开着）。
+/// - 本机离开：一律忘（旧 sid 连 attach 都接不上）。远端会话没有要记的：↗ 点那一刻现查。
 fn session_side_effects(
     out: &session_book::Out,
     local_cache: &Arc<bind::SidHwndCache>,
     bind_registry: &bind::BindRegistry,
-    remote_cache: &Arc<bind::RemoteHwndCache>,
 ) {
-    use session_book::{Fate, Out};
+    use session_book::Out;
     let local = |o: &str| o == crate::origin::LOCAL;
     match out {
         Out::Live { origin, sid, meta } if local(origin) => {
@@ -361,42 +345,18 @@ fn session_side_effects(
                 let _ = local_cache.record(sid, pid, bind_registry);
             }
         }
-        Out::Live { sid, .. } => {
-            // 带启动令牌的会话不预扫标题（理由见 `wants_title_prescan`）；令牌账本先于这条成品记好（`ssh_source` 收宣告时先 `note`）。
-            let token = bind::remote_rbind_tokens().token_of(sid);
-            if !wants_title_prescan(token.as_deref()) {
-                return;
-            }
-            let cache = remote_cache.clone();
-            let sid = sid.clone();
-            let spawn_res = std::thread::Builder::new()
-                .name("remote-bind-scan".into())
-                .spawn(move || {
-                    // 每 ~0.6s 扫一次、最多 ~9s，命中即停（wrapper 每 0.3s 重刷标题，覆盖 claude 自己设标题的那一瞬）。
-                    for _ in 0u32..15 {
-                        std::thread::sleep(std::time::Duration::from_millis(600));
-                        if cache.try_bind(&sid) {
-                            tracing::info!("remote bind: sid={sid} → hwnd bound");
-                            break;
-                        }
-                    }
-                });
-            if let Err(e) = spawn_res {
-                tracing::warn!(
-                    "failed to spawn remote-bind-scan thread: {e}; 远端 Tab ↗ 拉前将不可用"
-                );
-            }
-        }
         Out::Left { origin, sid, .. } if local(origin) => local_cache.apply_local_removal(sid),
-        Out::Left { sid, fate, .. } => {
-            remote_cache.apply_remote_disposition(sid, *fate == Fate::Ended)
-        }
         Out::Unseen { origin, sids } if local(origin) => {
             for sid in sids {
                 local_cache.apply_local_removal(sid);
             }
         }
-        Out::Unseen { .. } | Out::Status { .. } | Out::Listed { .. } | Out::Runs { .. } => {}
+        Out::Live { .. }
+        | Out::Left { .. }
+        | Out::Unseen { .. }
+        | Out::Status { .. }
+        | Out::Listed { .. }
+        | Out::Runs { .. } => {}
     }
 }
 
@@ -705,12 +665,6 @@ pub fn run() {
             let sid_hwnd_cache =
                 bind::SidHwndCache::load(monitor_data_dir.join("sid-hwnd-cache.json"));
 
-            // Feature ②（远端 Tab ↗ 拉前）：纯内存的 sid → hwnd 缓存。远端 session
-            // 加入时扫本地窗口找 `ccm-rbind-<sid>` 标题（wrapper 在远端设的 OSC 标题，
-            // 经 ssh 透传到本地 Windows Terminal）并绑定。bring_remote_terminal_to_front
-            // IPC 取 State<Arc<RemoteHwndCache>>（INVARIANT § 8：必须 manage，见下方）。
-            let remote_hwnd_cache = bind::RemoteHwndCache::new();
-
             // 会话起停的成品（后端裁：活 / 状态灯 / 可重连 / 已结束 / 清单报完了）由两条流交 `session_book`，
             //   这里装它的出口：一条有序通道，下面那**一个** emitter 收（本机远端同一个）。
             //   〔LOC1b 之前这里起 monitor 自己的判活（`SessionMap::load_with_changes`〔散文墓碑〕）；MIG-1 之前是两个 emitter 各自裁。〕
@@ -753,17 +707,11 @@ pub fn run() {
                 let replay = replay.clone();
                 let bind_for_emitter = bind_registry.clone();
                 let cache_for_emitter = sid_hwnd_cache.clone();
-                let remote_cache_for_emitter = remote_hwnd_cache.clone();
                 let spawned = std::thread::Builder::new()
                     .name("session-book-emitter".into())
                     .spawn(move || {
                         while let Ok(out) = book_rx.recv() {
-                            session_side_effects(
-                                &out,
-                                &cache_for_emitter,
-                                &bind_for_emitter,
-                                &remote_cache_for_emitter,
-                            );
+                            session_side_effects(&out, &cache_for_emitter, &bind_for_emitter);
                             replay.on_lifecycle(out.origin(), out.frames());
                         }
                     });
@@ -884,8 +832,6 @@ pub fn run() {
             app.manage(replay.clone());
             app.manage(bind_registry.clone());
             app.manage(sid_hwnd_cache.clone());
-            // Feature ②：远端 sid → hwnd 缓存。bring_remote_terminal_to_front 取此 State。
-            app.manage(remote_hwnd_cache.clone());
             // v2.0.0 (issue #4)：logging state 也要 manage，IPC handler 才能拿到
             app.manage(logging_state.clone());
 
@@ -929,7 +875,7 @@ pub fn run() {
             // F82a(#56+#47): 设置独立窗口
             open_settings_window,
             bring_terminal_to_front,
-            // Feature ②: 远端 Tab ↗ 拉前对应本地终端窗口（ccm wrapper 设标题绑定）
+            // 远端 Tab ↗ 拉前对应本地终端窗口（界面问过那台与本机后端，交来对上的窗口）
             bring_remote_terminal_to_front,
             // issue #23: 红绿灯快照（启动/F5 初始收敛；增量走 activity 格 事件）
             // v2.4 issue #2: 用户在终端输入时可选拉前 monitor 自身
@@ -1482,21 +1428,12 @@ async fn bring_terminal_to_front(
     .map_err(|e| format!("spawn_blocking join error: {e}"))?
 }
 
-/// Feature ②：拉对应**远端** Tab 的本地终端窗口。
-///
-/// 分派整条搬进 `bind::bring_remote_front`
-/// （**唯一分派点**：先令牌 `sid → token → HWND`、后标题 `ccm-rbind-<sid>` 退路；
-/// 失败说的话只由「这个 sid 有没有启动令牌」一个布尔决定）。本命令只剩「拿两份 State、
-/// 挪到阻塞线程池」—— **必须 async + spawn_blocking** 隔离 Win32 sync 调用（INVARIANT § 10）。
+/// 拉对应**远端** Tab 的本地终端窗口：界面先问那台「此刻谁在显示它」、再问本机后端那条连接的进程链，
+/// 交来的就是本机后端那一格成品 `chain`；这里沿链找属主的窗口、校验、拉前（`bind::bring_chain_window`）。
+/// **必须 async + spawn_blocking** 隔离 Win32 sync 调用（INVARIANT § 10）。
 #[tauri::command]
-async fn bring_remote_terminal_to_front(
-    session_id: String,
-    cache: tauri::State<'_, Arc<bind::RemoteHwndCache>>,
-    registry: tauri::State<'_, Arc<bind::BindRegistry>>,
-) -> Result<(), String> {
-    let cache = cache.inner().clone();
-    let registry = registry.inner().clone();
-    tokio::task::spawn_blocking(move || bind::bring_remote_front(&session_id, &registry, &cache))
+async fn bring_remote_terminal_to_front(chain: Vec<bind::ChainLink>) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || bind::bring_chain_window(&chain))
         .await
         .map_err(|e| format!("spawn_blocking join error: {e}"))?
 }
@@ -1689,10 +1626,6 @@ mod remote_config_tests;
 #[cfg(test)]
 #[path = "../../../../tests/frontend/shell/lib_window_lifecycle_tests.rs"]
 mod window_lifecycle_tests;
-
-#[cfg(test)]
-#[path = "../../../../tests/frontend/shell/lib_remote_bind_prescan_tests.rs"]
-mod remote_bind_prescan_tests;
 
 // `INVARIANTS §47` / `§49` 的人群判据（盘上全集派生，与登记表两向相等）。
 #[cfg(test)]
