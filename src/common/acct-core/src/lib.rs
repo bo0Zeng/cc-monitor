@@ -14,10 +14,7 @@
 
 pub mod wire;
 
-/// 账号库目录名（`$HOME` 下）。
-pub const ACCTS_DIR_NAME: &str = ".claude-alt";
-/// manifest 文件名（账号库目录下）。
-pub const MANIFEST_NAME: &str = "accounts.json";
+// 账号库与清单住哪（相对家目录）是后端的家那一族，住 `relay_route_core::ACCOUNTS_DIR_REL` / `ACCOUNTS_MANIFEST_NAME`。
 /// 凭据文件名（每个账号的 config dir 下）；只 stat 存在性，**绝不读内容**。
 pub const CREDENTIALS_NAME: &str = ".credentials.json";
 /// 本仓支持的 manifest schema 版本。**不支持的版本不是错误**，是「未启用多账号」。
@@ -322,7 +319,7 @@ pub fn is_deceptive_char(c: char) -> bool {
 
 /// 两种 shell 共用的元字符黑名单（POSIX `'…'` 与 PowerShell `'…'` 里能提前闭合引号或另起命令的那几个）。
 ///
-/// **`\` 不在里面**：Windows 的账号目录长成 `C:\Users\z\.claude-alt\z`，把 `\` 一律禁掉等于禁掉整个平台；
+/// **`\` 不在里面**：Windows 的账号目录长成 `C:\Users\z\.cc-monitor\accounts\z`，把 `\` 一律禁掉等于禁掉整个平台；
 /// POSIX 形那一条（[`config_dir_posix_ok`]）自己额外拒它。
 pub const CONFIG_DIR_SHELL_META: &str = "'\"`$;|&<>*?()!";
 

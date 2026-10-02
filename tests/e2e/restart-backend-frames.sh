@@ -84,11 +84,11 @@ OLD_FR="$WORK/old.frames.jsonl"; NEW_FR="$WORK/new.frames.jsonl"
 mkdir -p "$OLD/sessions" "$OLD/projects" "$NEW/sessions" "$NEW/projects" /tmp/e2e-remote
 KEEP="cc-e2ekeep-$$"
 # 换号目标给 ccm 自己的账号库（`--account znew` 由 ccm 按它解析）；写之前核它在本趟沙箱里。
-case "$CCM_ACCTS_MANIFEST" in
+case "$CCM_SHIM_ACCOUNTS" in
   "$CCM_SHIM_DIR"/*) ;;
-  *) echo "账号库 $CCM_ACCTS_MANIFEST 不在本趟沙箱里 —— 拒绝往里写" >&2; exit 9 ;;
+  *) echo "账号库 $CCM_SHIM_ACCOUNTS 不在本趟沙箱里 —— 拒绝往里写" >&2; exit 9 ;;
 esac
-printf '{"accounts":[{"name":"znew","configDir":"%s","isDefault":true}]}\n' "$NEW" >"$CCM_ACCTS_MANIFEST"
+printf '{"accounts":[{"name":"znew","configDir":"%s","isDefault":true}]}\n' "$NEW" >"$CCM_SHIM_ACCOUNTS/accounts.json"
 
 pass=0; fail=0
 ok()  { echo "  PASS $1"; pass=$((pass+1)); }

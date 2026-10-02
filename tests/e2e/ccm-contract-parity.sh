@@ -91,10 +91,11 @@ chmod +x "$W/bin/tmux"
 #   它存在的理由逐字是「本套件必须让 ccm『查得到 backend』，否则每一条真跑都会被身份前置检查挡下」
 #   （`U-NP④` 08-14）＋「账号解析改成问后端之后，每一条真跑都会先问它一次」（`K-C1` 08-24）。
 #   **这两条今天都没有指称对象了**：敲的那个命令**就是**后端 ——「查得到后端」不是一个问题，
-#   账号表由它自己读（`CCM_ACCTS_MANIFEST` 那份 manifest 仍是唯一事实源，只是不再经一次 argv 往返）。
+#   账号表由它自己在家目录下读（`<家>/.cc-monitor/accounts/accounts.json` 是唯一事实源，不再经一次 argv 往返）。
 #   现打验过：`TMUX` 有值 · agent=claude · `HOME` 是空沙箱 —— 一个后端都没有，照样 rc=0。
 
-cat > "$W/accounts.json" <<JSON
+mkdir -p "$W/home/.cc-monitor/accounts"
+cat > "$W/home/.cc-monitor/accounts/accounts.json" <<JSON
 { "version": 1, "accounts": [
   { "name": "z", "configDir": "$W/acct-z", "isDefault": true },
   { "name": "b", "configDir": "$W/acct-b", "isDefault": false } ] }
@@ -117,7 +118,7 @@ base_env() {
       CLAUDECODE=1 CLAUDE_CODE_ENTRYPOINT=cli \
       CLAUDE_CODE_SESSION_ID=fake-sid CLAUDE_CODE_CHILD_SESSION=1 \
       TMUX=/faux/socket,1,0 PATH="$W/bin:$PATH" HOME="$W/home" \
-      CCM_CONFIG=/nonexistent CCM_ACCTS_MANIFEST="$W/accounts.json" \
+      CCM_CONFIG=/nonexistent \
       "${BASE_EXTRA[@]}" "$@"
 }
 

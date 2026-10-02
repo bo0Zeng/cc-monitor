@@ -36,7 +36,7 @@ export interface CliGoldenCase {
   out: string;
 }
 
-const ACCT = "/home/u/.claude-alt/z";
+const ACCT = "/home/u/.cc-monitor/accounts/z";
 const TOKEN = "0123456789abcdef0123456789abcdef";
 const base = (over: Partial<LaunchContext> = {}): LaunchContext => ({
   action: { kind: "new" },
@@ -55,7 +55,7 @@ export const CLI_GOLDEN_CASES: readonly CliGoldenCase[] = [
   { name: "new + 具名账号", caps: ALL_CAPS, ctx: base({ account: { kind: "account", name: "z", configDir: ACCT } }),
     ok: true, out: "ccm -- new --account z" },
   { name: "只有目录没有名字 ⇒ --account-dir", caps: ALL_CAPS, ctx: base({ account: { kind: "account", configDir: ACCT } }),
-    ok: true, out: "ccm -- new --account-dir /home/u/.claude-alt/z" },
+    ok: true, out: "ccm -- new --account-dir /home/u/.cc-monitor/accounts/z" },
   { name: "resume + tmux + 具名账号", caps: ALL_CAPS, ctx: base({
       action: { kind: "resume", sid: "abc-123" },
       container: { kind: "tmux", name: "cc-abc123", mode: "create" },
@@ -107,7 +107,7 @@ export const CLI_GOLDEN_CASES: readonly CliGoldenCase[] = [
     ok: true, out: `ccm --resume s1 -- --ccm-tmux=cc-s1 --ccm-sid=s1 --account z --ccm-rbind-token ${TOKEN} --cwd /p` },
   { name: "path:分叉继承源会话的目录（说不出名字）", caps: ALL_CAPS,
     ctx: planResumeTmux("s1", "/p", "claude", "p-fork-cc", { configDir: ACCT, rbindToken: TOKEN }),
-    ok: true, out: `ccm --resume s1 -- --ccm-tmux=p-fork-cc --ccm-sid=s1 --account-dir /home/u/.claude-alt/z --ccm-rbind-token ${TOKEN} --cwd /p` },
+    ok: true, out: `ccm --resume s1 -- --ccm-tmux=p-fork-cc --ccm-sid=s1 --account-dir /home/u/.cc-monitor/accounts/z --ccm-rbind-token ${TOKEN} --cwd /p` },
   { name: "path:就地 resume 键进 pane 的那一行", caps: ALL_CAPS,
     ctx: { ...planResumeIntoExistingTmux("s1", "cc-s1", "claude", { rbindToken: TOKEN }), container: { kind: "none" } },
     ok: true, out: `ccm --resume s1 -- --base --ccm-rbind-token ${TOKEN}` },

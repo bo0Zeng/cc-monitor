@@ -287,7 +287,7 @@ const ENV_KEY_CLAIM_SITES: &[(&str, &str, EnvKeyClaim)] = &[
     ),
     (
         "src/doc/IPC-PROTOCOL.md",
-        "`--session-accounts [--accts-dir <p>]`",
+        "`--session-accounts`（A2；",
         EnvKeyClaim::Asserts,
     ),
     (

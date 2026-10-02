@@ -6,7 +6,8 @@
 //! - **门牌**：中转口 [`PORT`] · 常驻监听口 [`listen_port_for`] · 两把钥匙 [`KEY_FILE_REL`] / [`LISTEN_TOKEN_FILE_REL`] ·
 //!   路由路径的语法（两个前缀 · 段闸 · 拼 · 拆）。
 //! - **家**（相对家目录，`.cc-monitor/` 开头的每一个常量）：后端落点 [`BACKEND_LANDING_REL`] · 暂存区 ·
-//!   退出行为设置 · 两份别名文件 · skill 装记录 · 资产目录 · 监听口的进程记录 [`listen_pid_file_name`]。
+//!   退出行为设置 · 两份别名文件 · skill 装记录 · 资产目录 · 账号库 [`ACCOUNTS_DIR_REL`] 与它的清单 ·
+//!   监听口的进程记录 [`listen_pid_file_name`]。
 //!   后端各写者引它们落盘；monitor 的数据位置页（`data_paths.rs::backend_entries`）按它们列出，判据两向对着这一族。
 //! - crate 名还是「relay-route」—— 它最早只装中转门牌；改名发版后另议。
 //!
@@ -37,7 +38,8 @@
 //! - monitor：起本机后端时交的端口（[`PORT`]）· 常驻监听口（[`listen_port_for`]）· 后端落点（[`BACKEND_LANDING_REL`]）·
 //!   监听口的进程记录（`local_backend_host::pid_path`，[`listen_pid_file_name`]）· 数据位置页列家那一族（`data_paths.rs::backend_entries`）。
 //! - 后端按家那一族落盘：`control/exit_policy` · `control/files_commit` · `control/resident` ·
-//!   `assets/skill_ledger` · `assets/asset_catalog` · `platform/shell/dialect`（两份别名文件）。
+//!   `assets/skill_ledger` · `assets/asset_catalog` · `platform/shell/dialect`（两份别名文件）·
+//!   `accounts/manage`（账号库）；读账号库清单的还有 `observe/accounts_query` · `control/ccm`。
 
 /// 〔两个端口〕**常驻监听口**的门牌也住这里（它与中转口是这台机器上后端的两个门）：
 /// 这台机器 ＋ 这个 agent 家目录 ⇒ 那一个口。本机宿主（monitor `local_backend_host`）与远端 `--resident-ensure` 同一个函数
@@ -95,6 +97,22 @@ pub const EXT_BACKUPS_DIR_REL: &str = ".cc-monitor/backups";
 
 /// 这台账号库里各号共用的用户级 MCP（共享集合 ＋ 上次同步时各号的样子；后端 `accounts/manage/mcp_share_exec.rs` 写，0600）。
 pub const ACCOUNTS_MCP_REL: &str = ".cc-monitor/accounts-mcp.json";
+
+/// 账号库目录（相对家目录）那一段字面量，**全仓只写在这里**。宏而不是常量：足迹那张静态表要
+/// `concat!` 出带 `~/` 的那一形，`concat!` 只认字面量。别处一律用 [`ACCOUNTS_DIR_REL`]。
+#[macro_export]
+macro_rules! accounts_dir_rel {
+    () => {
+        ".cc-monitor/accounts"
+    };
+}
+
+/// 〔「一台机器一个家」〕**账号库**（后端 `accounts/manage/` 建和维护）：清单 [`ACCOUNTS_MANIFEST_NAME`] ＋
+/// 每个号一个配置目录 `<本目录>/<号>/`（就是那个号的 `CLAUDE_CONFIG_DIR`）。位置只跟着家走，没有另指位置的变量或选项。
+pub const ACCOUNTS_DIR_REL: &str = accounts_dir_rel!();
+
+/// 账号库清单在 [`ACCOUNTS_DIR_REL`] 下的文件名（后端写；ccm 起会话 · 账号查询 · 账号之间同步 MCP 都读它）。
+pub const ACCOUNTS_MANIFEST_NAME: &str = "accounts.json";
 
 /// 〔同上〕常驻监听口的进程记录的文件名（与 [`LISTEN_TOKEN_FILE_REL`] 同一个目录）：本机宿主与远端
 /// `--resident-ensure` 按同一个口（[`listen_port_for`]）找同一份。

@@ -1073,9 +1073,16 @@ fn no_e2e_script_kills_by_pattern() {
     );
 }
 
-/// 写路径之前「继承开发机默认值」的那几个变量：开发者的 shell rc 里常 export 着它们、指向真账号库 / 真账号目录 / 真 cc-bus。
-/// `${CCM_ACCTS_MANIFEST:-沙箱}` 这种写法在那台机器上会照用真值、再往里写测试数据（10-01 实发过一次：真账号清单被改写成两个测试号）。
-const INHERITED_PATH_VARS: &[&str] = &["CCM_ACCTS_MANIFEST", "CLAUDE_CONFIG_DIR", "CC_BUS_HOME"];
+/// 写路径之前「继承开发机默认值」的那几个变量：开发者的 shell rc 里常 export 着它们、指向真家目录 / 真账号目录 / 真 cc-bus /
+/// 真凭据表 / 真数据目录。`${VAR:-沙箱}` 这种写法在那台机器上会照用真值、再往里写测试数据（10-01 实发过一次：
+/// 当时另指账号库位置的那个变量指着真清单，真账号清单被改写成两个测试号；那个变量今天整个删了，账号库只跟着家走）。
+const INHERITED_PATH_VARS: &[&str] = &[
+    "HOME",
+    "CLAUDE_CONFIG_DIR",
+    "CC_BUS_HOME",
+    "CCM_APIKEY_CREDENTIALS",
+    "CCM_DATA_DIR",
+];
 
 /// 留着这种写法的那几处（`文件 · 变量 · 为什么不是往真路径里写`）。每一条都要是**只读**，或者另有一道闸挡住写。
 const INHERITED_PATH_ALLOWED: &[(&str, &str, &str)] = &[
@@ -1113,21 +1120,18 @@ fn inherited_path_defaults(text: &str) -> Vec<(String, usize)> {
         .collect()
 }
 
-/// ★★ **`tests/e2e/` 下不许写「先继承开发机的值、没有才用沙箱」的路径**（`${CCM_ACCTS_MANIFEST:-` · `${CLAUDE_CONFIG_DIR:-` ·
-/// `${CC_BUS_HOME:-`）：沙箱路径一律无条件给。只读透传的那几处登记理由（[`INHERITED_PATH_ALLOWED`]），两向相等。
+/// ★★ **`tests/e2e/` 下不许写「先继承开发机的值、没有才用沙箱」的路径**（`${HOME:-` · `${CLAUDE_CONFIG_DIR:-` ·
+/// `${CC_BUS_HOME:-` · …，见 [`INHERITED_PATH_VARS`]）：沙箱路径一律无条件给。只读透传的那几处登记理由（[`INHERITED_PATH_ALLOWED`]），两向相等。
 #[test]
 fn no_e2e_script_inherits_a_dev_machine_path_it_may_write_to() {
     // 正控：现造的语料里该中的中（含写进另一份脚本里的 `\${`），注释行不中，无条件的写法不中。
-    let corpus = "export CCM_ACCTS_MANIFEST=\"${CCM_ACCTS_MANIFEST:-/tmp/x}\"\n\
+    let corpus = "export HOME=\"${HOME:-/tmp/x}\"\n\
                   # ${CLAUDE_CONFIG_DIR:-只在注释里}\n\
                   printf '%s' \"\\${CC_BUS_HOME:-}\"\n\
                   export CLAUDE_CONFIG_DIR=\"$SBX/claude\"\n";
     assert_eq!(
         inherited_path_defaults(corpus),
-        [
-            ("CCM_ACCTS_MANIFEST".to_string(), 1),
-            ("CC_BUS_HOME".to_string(), 1)
-        ],
+        [("HOME".to_string(), 1), ("CC_BUS_HOME".to_string(), 1)],
         "针在现造语料上失准"
     );
     let root = crate::guard_support::repo_root();

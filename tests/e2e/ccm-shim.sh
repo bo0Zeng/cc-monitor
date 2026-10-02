@@ -7,9 +7,9 @@
 #
 # 只链不编：二进制由门禁 / CI 先 `cargo build`（`src/backend` 下）。找不到 ⇒ 响亮退出，不回落到 PATH 上碰巧有的那一份。
 #
-# 🔴 隔离一律**无条件**指向本趟沙箱，不继承开发机上的值：开发者的 shell rc 里常 export 着指向真账号库的
-#   `CCM_ACCTS_MANIFEST`，`${…:-沙箱}` 那种写法会照用它、再往里写测试号 ⇒ 真账号清单被改写（实发过一次）。
-#   ccm 会读 / 写的家目录、账号库、凭据表、cc-bus 目录都换成沙箱；开发机的账号目录变量摘掉。
+# 🔴 隔离一律**无条件**指向本趟沙箱，不继承开发机上的值：`${…:-沙箱}` 那种写法在开发机上会照用 shell rc 里的真值、
+#   再往里写测试数据（实发过一次：真账号清单被改写）。ccm 会读 / 写的家目录（账号库就在它底下
+#   `~/.cc-monitor/accounts/`）、凭据表、cc-bus 目录都换成沙箱；开发机的账号目录变量摘掉。
 
 _ccm_shim_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)" || exit 2
 CCM_E2E_BIN="${CARGO_TARGET_DIR:-$_ccm_shim_root/.build/backend}/debug/cc-monitor-backend"
@@ -24,8 +24,9 @@ export PATH="$CCM_SHIM_DIR:$PATH"
 export CARGO_HOME="${CARGO_HOME:-$HOME/.cargo}"
 export RUSTUP_HOME="${RUSTUP_HOME:-$HOME/.rustup}"
 export HOME="$CCM_SHIM_DIR/home"
-mkdir -p "$HOME"
-export CCM_ACCTS_MANIFEST="$CCM_SHIM_DIR/accounts.json"
+# 账号库只跟着家走：本趟的那一份就是沙箱家目录底下这一份（写它的套件先核它在沙箱里）。
+CCM_SHIM_ACCOUNTS="$HOME/.cc-monitor/accounts"
+mkdir -p "$CCM_SHIM_ACCOUNTS"
 export CCM_APIKEY_CREDENTIALS="$CCM_SHIM_DIR/apikey-credentials.json"
 export CC_BUS_HOME="$CCM_SHIM_DIR/cc-bus"
 export CCM_NO_PRETRUST=1

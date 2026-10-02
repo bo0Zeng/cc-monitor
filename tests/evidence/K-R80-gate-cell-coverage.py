@@ -696,7 +696,7 @@ E2E_NOTE = ("`gate.sh` 里 `run_e2e` 那一批之一：`ci.yml` 里每一套带 
 for suite, anchor in [
     ("ccm tests/e2e/ccm-print-parity", "run_e2e ccm-print-parity 12"),
     ("ccm tests/e2e/ccm-rbind-title", "run_e2e ccm-rbind-title  8"),
-    ("ccm tests/e2e/ccm-cli", "run_e2e ccm-cli               58"),
+    ("ccm tests/e2e/ccm-cli", "run_e2e ccm-cli               70"),
     ("ccm tests/e2e/ccm-contract-parity", "run_e2e ccm-contract-parity   45"),
     # 令牌那两套—— 此前只被 shellcheck、不被执行。
     #   被测对象同是那个后端二进制（`ccm` 即 `cc-monitor-backend`），读法与上面四格一字不差。

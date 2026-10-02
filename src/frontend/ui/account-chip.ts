@@ -122,7 +122,7 @@ export class AccountChip {
     } catch {
       this.origin = LOCAL_ORIGIN;
     }
-    // ★ `D1 阻-5`：**没有远端不等于没有账号** —— 本机 `~/.claude-alt/` 那份 manifest
+    // ★ `D1 阻-5`：**没有远端不等于没有账号** —— 本机那份账号清单
     //   一直在，只是此前没有任何界面渲染它（`fetchLocalAccounts` 全仓生产调用方只有
     //   fork 那个小窗）。⇒ 回落到本机那一份，并把「走不走 apikey 端点改写」一起问出来。
     this.local = isLocalOrigin(this.origin);

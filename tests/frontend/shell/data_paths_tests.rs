@@ -203,6 +203,7 @@ fn backend_rows_point_where_the_backend_itself_writes() {
         row("aliases.ps1", h.join(rr::PS_ALIASES_REL), "file"),
         row("skill-installs.json", h.join(rr::SKILL_LEDGER_REL), "file"),
         row("assets-catalog.json", h.join(rr::ASSET_CATALOG_REL), "file"),
+        row("accounts/", h.join(rr::ACCOUNTS_DIR_REL), "dir"),
         row("accounts-mcp.json", h.join(rr::ACCOUNTS_MCP_REL), "file"),
         row(
             "apikey-credentials.json",
@@ -236,14 +237,24 @@ fn every_home_path_in_the_contract_has_a_row() {
     let src = guard_core::production_code(include_str!(
         "../../../src/common/relay-route-core/src/lib.rs"
     ));
+    // 账号库那一段的字面量住一个宏里（足迹表要 `concat!` 它）⇒ `X!()` 形的常量按宏体里那个字面量算。
+    let macro_lit = |name: &str| -> Option<String> {
+        let body = &src[src.find(&format!("macro_rules! {name} {{"))?..];
+        let q = body.find('"')? + 1;
+        Some(body[q..q + body[q..].find('"')?].to_string())
+    };
     let mut declared: std::collections::BTreeSet<String> = Default::default();
     for line in src.lines() {
         let l = line.trim();
         if let Some(rest) = l.strip_prefix("pub const ") {
-            if let Some((_, v)) = rest.split_once("&str = \"") {
-                let v = v.trim_end_matches("\";");
-                if v.starts_with(".cc-monitor/") {
-                    declared.insert(v.to_string());
+            if let Some((_, v)) = rest.split_once("&str = ") {
+                let v = v.trim_end_matches(';');
+                let lit = match v.strip_prefix('"') {
+                    Some(q) => Some(q.trim_end_matches('"').to_string()),
+                    None => v.strip_suffix("!()").and_then(macro_lit),
+                };
+                if let Some(v) = lit.filter(|v| v.starts_with(".cc-monitor/")) {
+                    declared.insert(v);
                 }
             }
         }

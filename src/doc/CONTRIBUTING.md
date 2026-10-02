@@ -104,7 +104,7 @@
 1. 改后端那一份渲染（缺的选项先在 `ccm` 里加：`control/ccm/argv.rs` 那张表）；
 2. 改用例表里的手写期望：`tests/test-support/launch-cli-golden.ts`；
 3. `npm run gen:cli-golden` 重生成入库夹具 `src/backend/control/launch_render/fixtures/cli-golden.json` —— 不重生成会红，那是设计：`launch_cli_parity_tests.rs` 断「Rust 渲染的 == 入库的」，`every_monitor_launch_path_hands_over_one_ccm_line` 断每条路径都以 `ccm ` 开头；
-4. 回归：`npx vitest run tests/frontend/ui/remote-launch-run.vitest.ts tests/frontend/ui/remote-launch.test.ts` ＋ 后端 `cargo test --lib launch_render ccm`（在 `src/backend`）＋ 改了 `ccm` 的行为就跑 `tests/e2e/restart-suite.sh` · `resume-suite.sh` · `tmux-target-acceptance.sh`（单跑前缀 `env -u CCM_ACCTS_MANIFEST -u CLAUDE_CONFIG_DIR -u TMUX -u TMUX_PANE`；这几套用真后端二进制当 `ccm`，先 `cargo build`）。
+4. 回归：`npx vitest run tests/frontend/ui/remote-launch-run.vitest.ts tests/frontend/ui/remote-launch.test.ts` ＋ 后端 `cargo test --lib launch_render ccm`（在 `src/backend`）＋ 改了 `ccm` 的行为就跑 `tests/e2e/restart-suite.sh` · `resume-suite.sh` · `tmux-target-acceptance.sh`（单跑前缀 `env -u CLAUDE_CONFIG_DIR -u TMUX -u TMUX_PANE`；这几套用真后端二进制当 `ccm`，先 `cargo build`）。
 
 ### 2.8 界面文字
 

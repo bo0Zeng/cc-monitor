@@ -82,7 +82,8 @@ pub(crate) struct Env {
     //    的落点）。它**唯一的消费者**就是 [`resolve_cwd`] 里那一档「站在 $HOME 就跳工作区」，
     //    那一档按 `K37` 删了 ⇒ 这个字段跟着删，`CCM_WORKSPACE` 这个环境变量**不再被读**。
     //    留着它会变成「猜」的一个待命开关，而 `KR58D3` 的失效方向逐字就是「把猜挪进别处」。
-    /// 账号库 manifest 的**完整路径**。
+    /// 账号库 manifest 的**完整路径**：`<家目录>/.cc-monitor/accounts/accounts.json`，只跟着家走
+    /// （没有另指位置的环境变量；判据夹具直接填这一格）。
     pub(crate) accts_manifest: String,
     /// **账号维度的载体**：切账号靠改哪个环境变量。由 `mod.rs` 从
     /// `agents::account_env_of(<这一趟的 agent>)` 取来 —— 本文件不认识任何 agent 的名字。
@@ -122,7 +123,7 @@ impl Env {
         use super::argv::Defaults;
         // 家目录：`HOME`，没有再退 `USERPROFILE` —— 与本 crate 其余各处同一个口径
         //   （`exit_policy::policy_path` · `asset_catalog`）。从前只认 `HOME`：Windows 上
-        //   默认没有它 ⇒ 账号库落成 `/.claude-alt/accounts.json`（当前盘的根），找不到号还说「不在那个文件里」。
+        //   默认没有它 ⇒ 账号库落到当前盘的根上，找不到号还说「不在那个文件里」。
         let home = home_of(|k| std::env::var(k).ok());
         let get = |k: &str| std::env::var(k).ok().filter(|v| !v.is_empty());
         // 🔴 **`$CCM_CONFIG` 这一层本实现不认，而且不许静默不认。**
@@ -149,10 +150,7 @@ impl Env {
             ccm_launch_id: get(LAUNCH_ID_ENV),
             launch_token: get(crate::control::identity_tag::rbind_token_env()),
             ccm_env: pick("CCM_ENV", Defaults::ENV.to_string()),
-            accts_manifest: pick(
-                "CCM_ACCTS_MANIFEST",
-                under_home(&home, Defaults::ACCTS_MANIFEST_REL),
-            ),
+            accts_manifest: accts_manifest_under(&home),
             // 继承值与载体名一样，要等**解析完 argv 知道是哪一家**才填得了 ⇒ 由 `mod.rs` 补。
             inherited_config_dir: None,
             account_env: String::new(),
@@ -198,10 +196,7 @@ impl Env {
             ccm_launch_id: None,
             launch_token: None,
             ccm_env: pick("CCM_ENV", Defaults::ENV.to_string()),
-            accts_manifest: pick(
-                "CCM_ACCTS_MANIFEST",
-                under_home(&home, Defaults::ACCTS_MANIFEST_REL),
-            ),
+            accts_manifest: accts_manifest_under(&home),
             inherited_config_dir: None,
             account_env: String::new(),
             self_argv: vec![super::SUBCOMMAND_WORD.to_string()],
@@ -271,6 +266,18 @@ pub(crate) fn home_of(get: impl Fn(&str) -> Option<String>) -> String {
         .unwrap_or_default()
 }
 
+/// 这台的账号库清单：`<家目录>/.cc-monitor/accounts/accounts.json`（两段都住契约 crate；没有另指位置的变量）。
+pub(crate) fn accts_manifest_under(home: &str) -> String {
+    under_home(
+        home,
+        &format!(
+            "{}/{}",
+            relay_route_core::ACCOUNTS_DIR_REL,
+            relay_route_core::ACCOUNTS_MANIFEST_NAME
+        ),
+    )
+}
+
 /// 家目录下一个 `/` 分隔的相对路径 → 本平台的完整路径（逐段 `join`，Windows 上不再 `\` 与 `/` 混拼）。
 /// 家目录为空时照旧拼成 `/<rel>`（与改之前逐字相同 —— 这一格不是本件要改的行为）。
 pub(crate) fn under_home(home: &str, rel: &str) -> String {
@@ -332,7 +339,7 @@ struct Manifest {
 }
 
 /// 账号表。**唯一源头是那份 manifest** —— 从前 `shared/ccm` 要跨一次进程去问 backend
-/// 才拿得到它（`--list-accounts --accts-dir`），那一整段是 bash 与后端说话的**税**，
+/// 才拿得到它（`--list-accounts`），那一整段是 bash 与后端说话的**税**，
 /// 不是功能。同一个二进制之下它整块消失。
 #[derive(Debug, Clone, Default)]
 pub(crate) struct AccountTable {
