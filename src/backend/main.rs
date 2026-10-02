@@ -155,7 +155,7 @@ async fn main() {
             Some("--fork-session") => control::fork_write::run(&agent_home, &args),
             // `--relay`（独立的中转进程）那一臂删了：中转只住常驻后端进程里（本机远端同形）。
             // 远端常驻后端的起 · 找 / 停（`control/resident.rs` 头注）。
-            // V139：远端中转住进远端常驻后端 —— 起它时交中转口（与本机宿主交的同一个常量）。
+            // 远端中转住进远端常驻后端 —— 起它时交中转口（与本机宿主交的同一个常量）。
             Some("--resident-ensure") => control::resident::ensure(&agent_home, &args[1..]),
             Some("--resident-stop") => control::resident::run_stop(&agent_home, &args[1..]),
             // `--dial` 那条拨号代理臂**删了**：拨号挪进本机那一个常驻后端，经流上的链路
@@ -732,7 +732,7 @@ async fn serve_listening(
                 //   ⚠ 这里**现读**（`exit_policy::last_client_left` 每次真去读盘）：用户可能刚在
                 //   **另一台** monitor 上改过它，不需要任何推送 / 同步协议。
                 //   ⚠ `§3.3b ⑦` 的 `lingerMs`（归零后等一下再决定）**本路没做**：那是一个会自己醒来的构件，
-                //   后端零定时器铁律（P6）不放行，理由整段在 `control/exit_policy.rs` 头注，交主会话拍板。
+                //   后端零定时器铁律（P6）不放行，理由整段在 `control/exit_policy.rs` 头注，待定。
                 if control::exit_policy::last_client_left() {
                     // 不再当场 `exit`：刚走的那个客户可能还有停不下来的写在跑 ⇒ 先排空再退。
                     //   排空期间 accept 循环停着（新连接排在 backlog 里，退了之后被 RST，monitor 那头按「连不上 ⇒ 起一个」走）。

@@ -1,4 +1,4 @@
-# claude --help 快照（AL3 · V138 判据用）：2.1.283 (Claude Code)，2026-09-26 现取
+# claude --help 快照（撞名判据用）：2.1.283 (Claude Code)，2026-09-26 现取
 Usage: claude [options] [command] [prompt]
 
 Claude Code - starts an interactive session by default, use -p/--print for

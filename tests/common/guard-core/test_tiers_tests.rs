@@ -284,7 +284,7 @@ const SCAN: &[&str] = &[
     "tests/frontend/ui/config-patch-fake.vitest.ts",  // 假盘对跨语言金样 config-patch.golden.json
     "tests/frontend/ui/tab-bar-width.vitest.ts", // J7 tab 栏宽度走存储接入层、零裸 localStorage
     "tests/frontend/ui/ask-dialog.vitest.ts", // D1 生产 TS 零原生 confirm/prompt（AST 扫）· D1b askConfirm/askText 必 await ＋ 调用方清单
-    "tests/frontend/ui/bg-flat.vitest.ts", // V125：tab 栏通用代码零 bg 分叉（扫 `src/frontend/ui/tabs.ts` ＋ `src/tab-*.ts`）· CSS 零 `.tab-bg`
+    "tests/frontend/ui/bg-flat.vitest.ts", // tab 栏通用代码零 bg 分叉（扫 `src/frontend/ui/tabs.ts` ＋ `src/tab-*.ts`）· CSS 零 `.tab-bg`
     "tests/frontend/ui/account-availability-guard.vitest.ts",
     "tests/frontend/ui/account-base-semantics.vitest.ts",
     "tests/frontend/ui/account-chip.vitest.ts",
@@ -397,7 +397,7 @@ const SCAN: &[&str] = &[
     "tests/frontend/shell/filewin/boundary_tests.rs",
     "tests/frontend/filewin/copy_tests.rs",
     "tests/frontend/filewin/download_tests.rs",
-    "tests/frontend/shell/filewin/entry_tests.rs", // INTEGRATION → SCAN：落盘那条（书签旧键搬家）随 V41 退役删了
+    "tests/frontend/shell/filewin/entry_tests.rs", // INTEGRATION → SCAN：落盘那条（书签旧键搬家）退役删了
     "tests/frontend/filewin/find_tests.rs",
     "tests/frontend/filewin/grep_tests.rs", // 按内容搜：真通道上的合成后端 ＋ 跨半边金样
     "tests/frontend/filewin/lossy_pull_tests.rs", // 有损名下载：合成对端 ＋ 读后端源码钉暂存区常量相等
@@ -765,7 +765,7 @@ const E2E_SUPPORT: &[&str] = &[
 ];
 
 /// `tests/e2e/` 下**没有任何一份脚本 / 配置 / 测试引用**的 shell（剥注释后按文件名找）——
-/// **报备、不处置**（删还是接回执行链，是主会话 / 用户的裁定）：
+/// **报备、不处置**（删还是接回执行链，待定）：
 /// `(文件, 为什么还留着 / 现状)`。每一行必须真的仍是孤儿（有人引用了 ⇒ 死行 ⇒ 红）。
 ///
 /// TQ1 落地时报备的两份都裁了，表清空：`p3t-local-tmux.sh` 现打 10 过 / 0 败 ⇒ 接回执行链（进了 `E2E`）；

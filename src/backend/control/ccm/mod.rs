@@ -213,7 +213,7 @@ pub(crate) fn is_backend_word(w: &str) -> bool {
 ///
 /// 🔴 **它必须排在 `split_stream_flags` 之前**：那一步会把 `--with-bg` / `--tail-only`
 /// 从 argv 里**任意位置**剥掉，而 `ccm --tail-only` 里那个是要原样交给 agent 的。
-/// 〔墓碑 —— E2 第一版按「名字是 `ccm` 时 `args[0]` ∈ 后端词」分流（`routes_to_backend`〔散文墓碑〕）；V151 那一版还按名字分两支
+/// 〔墓碑 —— E2 第一版按「名字是 `ccm` 时 `args[0]` ∈ 后端词」分流（`routes_to_backend`〔散文墓碑〕）；后来一版还按名字分两支
 /// （名字不是 `ccm` 时裸词进后端、首词 `ccm` 进 ccm）。今天都不在了。〕
 pub fn route(args: &[String]) -> Entry {
     if args.first().map(String::as_str) == Some(argv::flag::END)

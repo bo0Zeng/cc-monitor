@@ -1657,7 +1657,7 @@ fn an_inherited_launch_id_is_never_reported_as_the_childs_own_identity() {
 // ============================================================================
 //
 // 要求：「一次性请求那半收口成 `call` —— 按能力分批」· 「一个判定只有一个家」·
-// 「中转 ＋ 上游选择住本机常驻后端进程」—— 主会话据此裁「账号域读自己那台的 apikey 表、
+// 「中转 ＋ 上游选择住本机常驻后端进程」⇒「账号域读自己那台的 apikey 表、
 // 两条规则搬进 `acct-core`、agent 随请求带」。夹具只造结构（目录名 ＋ 占位 manifest），不采真账号数据。
 
 /// 夹具：账号库（一个账号 0 ＋ 两个隔离号，`acct-a` 有订阅凭据、`acct-b` 没有）。回 `(root, accts)`。
@@ -1916,7 +1916,7 @@ fn both_readers_of_the_manifest_see_the_same_accounts() {
 // monitor 那份本机 manifest 参照实现删了 —— 挂在它身上的三个锚点改指这里（现存实现）
 // ════════════════════════════════════════════════════════════════════════════════════════
 //
-// 要求住址：主会话 09-25 裁（「主会话裁」第 3 条，逐字）「`local_accounts.rs` 的 `list_from_dir`〔散文墓碑〕
+// 要求：「`local_accounts.rs` 的 `list_from_dir`〔散文墓碑〕
 // （零生产调用方的本机参照实现）删，**挂着的判据锚点改指现存实现**」。下面三条的断言逐字搬自 monitor
 // `tests/frontend/shell/local_accounts_tests.rs` 那三条（U7-4 / audit-0805），被测对象从那份参照实现换成后端这份真在答账号清单的。
 
@@ -2095,7 +2095,7 @@ fn nothing_in_the_product_still_points_at_the_old_account_library() {
 
 /// ★**本机判活源头**（历史跨机 join 用）：pidfile 里的会话 id ＋ 那个进程还在（同 watcher 那一道平台原语）。
 ///
-/// 要求住址：主会话 09-25 裁（「主会话裁」第 2 条）「本机后端 … 并上注解、出成品」—— 本机那一支的
+/// 要求：「本机后端 … 并上注解、出成品」—— 本机那一支的
 /// 「活没活」从 monitor 的 `SessionMap` 换到这台后端自己答，答错就是历史列表上一个活会话不亮 / 一个死会话亮着。
 /// 夹具：本测试进程自己的 pid（活）· 一个超出 pid 上限的 pid（死）· 没有 `sessionId` 的（不算）· 文件名不是 pid 的（不看）。
 #[cfg(unix)]
@@ -2132,7 +2132,7 @@ fn live_session_ids_are_the_pidfiles_whose_process_is_still_there() {
     let _ = fs::remove_dir_all(&home);
 }
 
-/// 〔主会话裁 HX1 拍板项 3〕**`viaRelay` 答的是「这条活会话的进程环境里，上游地址是不是本机中转那一形」**：
+/// **`viaRelay` 答的是「这条活会话的进程环境里，上游地址是不是本机中转那一形」**：
 /// 带钥匙段的回环中转地址 ⇒ `true`；别的地址（直连 / 没带钥匙的旧形状）⇒ `false`；没设 ⇒ `false`；进程已死 ⇒ `null`。
 /// 而且**值本身不出参**（它带着中转钥匙）。守的要求：「`session_accounts` 多读 `ANTHROPIC_BASE_URL` ·
 /// `accounts-sessions` 每行加 `viaRelay: true|false|null`」；`INVARIANTS §48.1a`「钥匙 …… `relay-status` 应答里也没有它」同族。

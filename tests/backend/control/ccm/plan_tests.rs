@@ -9,9 +9,9 @@
 use super::*;
 use crate::control::ccm::argv::Parsed;
 
-/// 本文件的夹具沿用 V138 写法（ccm 选项在前）⇒ 喂解析器之前换成 V151 排列（意图逐词不变）。
+/// 本文件的夹具把 ccm 选项写在前 ⇒ 喂解析器之前换成 `--` 切分的排列（意图逐词不变）。
 fn parse(a: &[String]) -> Result<Parsed, crate::control::ccm::argv::Die> {
-    crate::control::ccm::argv::parse(&crate::control::ccm::argv::tests::v138_to_v151(a))
+    crate::control::ccm::argv::parse(&crate::control::ccm::argv::tests::mixed_to_split(a))
 }
 
 fn env() -> Env {
@@ -95,7 +95,7 @@ fn the_shape_of_one_launch_command_line() {
         printed(&["--cwd", "/p", "--", "-p", "hi there"]),
         format!("{nested}; cd '/p' && exec claude -p 'hi there'")
     );
-    // V138：不写 `--` 也一样交出去。
+    // 不写 `--` 也一样交出去。
     assert_eq!(
         printed(&["-p", "hi there", "--cwd", "/p"]),
         format!("{nested}; cd '/p' && exec claude -p 'hi there'")
@@ -111,7 +111,7 @@ fn only_codex_gets_the_bus_id_recipe() {
 
 /// 〔搬自 `ccm-cli` 账号那一族：显式 / 继承 / 默认号 / --base 四条路〕
 ///
-/// ✅ 最后那条（裸终端落默认号）**是用户 09-12 裁定要的行为**（`DECISIONS.md#R28`），
+/// ✅ 最后那条（裸终端落默认号）**是要的行为**，
 /// 不是病灶；③ 那条（不许覆盖继承）是同一裁的另一半。见 [`resolve_account`] 头注。
 #[test]
 fn the_four_ways_an_account_gets_picked() {
@@ -417,7 +417,7 @@ fn the_container_path_carries_every_intent_inward() {
         "不许写**事实**标记 @ccm_sid（那是通道 B 的，破坏性动作只认它）：{out}"
     );
     // 内层载荷：按 argv 元素逐个 quote 过一层，所以判的是 payload 本身
-    // V138：`--resume` 是透传，内层放在 `--` 后面原样交出去。
+    // `--resume` 是透传，内层放在 `--` 后面原样交出去。
     assert!(
         // 内层 `self <交给 claude 的…> -- <ccm 的…>`：`--resume` 在 `--` 左边。
         c.payload.contains("/ccm' '--resume' 'p1' '--' '--cwd'"),
@@ -683,7 +683,7 @@ fn every_value_that_reaches_a_shell_is_quoted() {
 /// 〔搬自 `ccm-print-parity`「attach 到 cc-p1」〕—— `=名:` 是 tmux 的**精确匹配**形。
 #[test]
 fn attach_uses_the_exact_match_target() {
-    assert_eq!(printed(&["--attach", "cc-p1"]), "tmux attach -t '=cc-p1:'"); // V138：`attach <名>` → `--attach <名>`
+    assert_eq!(printed(&["--attach", "cc-p1"]), "tmux attach -t '=cc-p1:'"); // `attach <名>` 写作 `--attach <名>`
 }
 
 /// 🔴 `KR58D3` —— 不给 `--cwd` 的默认是**恒等**：就是调用方自己的 cwd，一层都不跳。
@@ -1319,9 +1319,8 @@ fn us1_an_inherited_keyed_relay_url_goes_inward_as_a_file_read_not_as_the_key() 
 
 /// 〔`INVARIANTS §47` ②〕自由文本那几格拼进 shell 之前的放行判定 —— **正反各一格**（§47「拒过头也算违反」）。
 ///
-/// 要求住址：`INVARIANTS §47` ②「走唯一的 quote ＋ 这一种值的形式判定 ＋ 拒绝集」；主会话 09-26 按 V131 裁
-/// 「自由文本路径的拒绝集只收控制字符（NUL / CR / LF）、形式判定按各自语境（cwd / 目录要绝对路径等）、然后唯一一处 quote ——
-/// 不拒 shell 元字符」。模型名与 `--ccm-sid` 不在本条（交 DUP1）。
+/// 要求：`INVARIANTS §47` ②「走唯一的 quote ＋ 这一种值的形式判定 ＋ 拒绝集」：自由文本路径的拒绝集只收控制字符
+/// （NUL / CR / LF）、形式判定按各自语境（cwd / 目录要绝对路径等）、然后唯一一处 quote —— 不拒 shell 元字符。模型名与 `--ccm-sid` 不在本条（交 DUP1）。
 /// 交给 agent 的参数与登记备注可以跨行（`shell_quote_core::arg_text_ok`，「位置参数原样交给 claude」）：
 /// 多行初始任务那一格正着放、原样进载荷；CR / NUL 照拒。
 #[test]
@@ -1509,7 +1508,7 @@ fn a_launcher_is_one_command_fragment_from_the_shared_whitelist() {
 }
 
 // ───────── 〔「ccm 只看不吃 `--resume` 以复用 tmux 名」〕resume 先查是否已在跑 ─────────
-// 守的要求：「ccm 只「看」不「吃」`--resume` / `--continue` 以复用 tmux 名」；主会话裁：在跑 ⇒ 接上它，不另起。
+// 守的要求：「ccm 只「看」不「吃」`--resume` / `--continue` 以复用 tmux 名」；在跑 ⇒ 接上它，不另起。
 
 fn snapshot_rows(rows: &[(&str, &str)]) -> TakenNames {
     let rows: Vec<crate::common::session_snapshot::SessionRow> = rows
@@ -1538,7 +1537,7 @@ fn fix_a_resume_of_a_session_already_running_in_tmux_rejoins_it() {
         (&["--resume", "sid-1"][..], Some(rejoin(false))),
         (&["-r", "sid-1", "--model", "x"][..], Some(rejoin(false))),
         (&["--resume=sid-1"][..], Some(rejoin(false))),
-        // 这一族的参数按 V138 形写、由 `parse` 那层换成 V151 形（`v138_to_v151`）。
+        // 这一族的参数按旧写法写、由 `parse` 那层换排列（`mixed_to_split`）。
         (
             &["--ccm-tmux", "--resume", "sid-1"][..],
             Some(rejoin(false)),
@@ -1633,8 +1632,8 @@ fn fix_a_resume_of_a_session_running_outside_tmux_is_refused_and_says_where() {
 
 // ── 起会话只有 ccm 一处：monitor 交来的三个选项 ＋ 中转地址在最终 exec 那一处定 ──
 
-/// V151 排列直接喂解析器（新选项不走上面那个换排列的夹具）。
-fn plan_v151(args: &[&str], env: &Env) -> Result<Plan, crate::control::ccm::argv::Die> {
+/// 原排列直接喂解析器（新选项不走上面那个换排列的夹具）。
+fn plan_split(args: &[&str], env: &Env) -> Result<Plan, crate::control::ccm::argv::Die> {
     let a: Vec<String> = args.iter().map(|s| s.to_string()).collect();
     match crate::control::ccm::argv::parse(&a)? {
         Parsed::Opts(o) => build(&o, env, &AccountTable::default(), None),
@@ -1647,7 +1646,7 @@ fn plan_v151(args: &[&str], env: &Env) -> Result<Plan, crate::control::ccm::argv
 #[test]
 fn the_three_options_monitor_hands_over_reach_the_agent_on_both_paths() {
     let e = env();
-    let Plan::Direct(d) = plan_v151(
+    let Plan::Direct(d) = plan_split(
         &[
             "--resume",
             "s1",
@@ -1676,7 +1675,7 @@ fn the_three_options_monitor_hands_over_reach_the_agent_on_both_paths() {
         "{line}"
     );
 
-    let Plan::Container(c) = plan_v151(
+    let Plan::Container(c) = plan_split(
         &[
             "--resume",
             "s1",
@@ -1762,7 +1761,7 @@ fn the_relay_address_is_decided_at_the_final_exec_and_only_there() {
     ];
     let mut e = env();
     e.relay = Some(inject);
-    let Plan::Direct(d) = plan_v151(&args, &e).unwrap() else {
+    let Plan::Direct(d) = plan_split(&args, &e).unwrap() else {
         panic!()
     };
     assert_eq!(
@@ -1777,7 +1776,7 @@ fn the_relay_address_is_decided_at_the_final_exec_and_only_there() {
     );
     e.relay = Some(never);
     e.anthropic_base_url = Some("https://my.gateway/v1".into());
-    let Plan::Direct(d) = plan_v151(&args, &e).unwrap() else {
+    let Plan::Direct(d) = plan_split(&args, &e).unwrap() else {
         panic!()
     };
     assert_eq!(d.relay, None);
@@ -1786,7 +1785,7 @@ fn the_relay_address_is_decided_at_the_final_exec_and_only_there() {
         "http://127.0.0.1:8788/{}/t/claude-code/w",
         "a".repeat(64)
     ));
-    let Plan::Direct(d) = plan_v151(&args, &e).unwrap() else {
+    let Plan::Direct(d) = plan_split(&args, &e).unwrap() else {
         panic!()
     };
     assert!(
@@ -1795,11 +1794,11 @@ fn the_relay_address_is_decided_at_the_final_exec_and_only_there() {
     );
     e.anthropic_base_url = None;
     e.relay = Some(refuse);
-    assert_eq!(plan_v151(&args, &e).unwrap_err().0, "中转没在听");
+    assert_eq!(plan_split(&args, &e).unwrap_err().0, "中转没在听");
     // 容器路不问（pane 里那一趟走直路时自己问）。
     e.relay = Some(never);
     assert!(matches!(
-        plan_v151(&["--resume", "s1", "--", "--ccm-tmux=p-cc"], &e).unwrap(),
+        plan_split(&["--resume", "s1", "--", "--ccm-tmux=p-cc"], &e).unwrap(),
         Plan::Container(_)
     ));
 }

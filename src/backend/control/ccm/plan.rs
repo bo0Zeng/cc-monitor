@@ -748,7 +748,7 @@ fn lexical_join(base: &str, rel: &str) -> String {
 }
 
 /// 启动器按空格拆成词（`ccr code` ⇒ `ccr` `code`），打头的 `~/` 换成家目录 —— 与载荷那条路交给 shell 拆词、展开 `~` 同一个结果
-/// （用户 09-26 选拆词）。字符白名单在 [`free_text_gate`] 对整串判过（`launcher_refused_char`）。
+/// （拆词）。字符白名单在 [`free_text_gate`] 对整串判过（`launcher_refused_char`）。
 fn launcher_words(launcher: &str, home: &str) -> Vec<String> {
     let mut words: Vec<String> = launcher
         .split(' ')
@@ -840,7 +840,7 @@ pub(crate) fn resolve_account(
 /// 先前这一格只拒 NUL / CR / LF）。空 = 没给（下面用这个 agent 的默认启动器）。
 ///
 /// **不拒 shell 元字符**（`Bob's` · `(2019)` 照放，交给唯一的 quote）。拒绝集住 `shell_quote_core::free_text_ok` / `arg_text_ok`。
-/// ⚠ 模型名与 `--ccm-sid` **不在这里**：主会话裁交 DUP1（判定唯一住址那一路）统一定规则。
+/// ⚠ 模型名与 `--ccm-sid` **不在这里**：它们的规则在判定的唯一住址里统一定。
 /// ⚠ 继承来的那三个只在它们真会被拼进去的时候才判（容器路把它们显式化进载荷，[`inherited_gate`]）：
 ///   环境里一个用不上的怪值不该挡住起会话（拒过头）。
 fn free_text_gate(cwd: &str, o: &Opts) -> Result<(), Die> {

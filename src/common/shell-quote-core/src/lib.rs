@@ -87,7 +87,7 @@ pub const SESSION_ID_MAX: usize = 64;
 /// 取的是今天各处规则的**交集**（原 `branch_core::is_plain_sid` 的字符集与上界 ＋ 原 TS `isValidSessionId` 的「不许 `-` 开头」）⇒
 /// 没有一处因此放宽；真实 sid 是 UUID（Claude / Codex 同形，36 位），全过。
 /// 它挡掉 `..` `/` `\` 与任何能拼出别处路径的字符（`INVARIANTS §41.6` 收窄第 3 条），也挡掉选项注入。
-/// ⚠ 后端 `resolve` 那条（`resolve_query.rs`）**刻意不接**：它的行为冻结给仓外 aterm（`V126`，改一格 = 跨仓契约变更）。
+/// ⚠ 后端 `resolve` 那条（`resolve_query.rs`）**刻意不接**：它的行为冻结给仓外 aterm（改一格 = 跨仓契约变更）。
 pub fn session_id_ok(s: &str) -> bool {
     let mut cs = s.chars();
     matches!(cs.next(), Some(c) if c.is_ascii_alphanumeric())
@@ -147,7 +147,7 @@ pub fn bus_id_ok(s: &str) -> bool {
 pub const AWAIT_SUBDIR: &str = "ps-await";
 
 // ═══════════════════════════════════════════════════════════════════════════
-// 〔主会话 09-26 裁（乙；主会话代用户裁，用户可推翻）· `INVARIANTS §47` ③〕**命令片段类**：启动器。
+// 〔`INVARIANTS §47` ③〕**命令片段类**：启动器。
 //
 // 启动器**不是一个词**：`ccr code`（带参数）· `claude --dangerously-skip-permissions` · `cct`（alias）· `/usr/local/bin/claude`（带路径）·
 // `~/bin/claude`（家目录下）都是真实用法 —— 它要被 shell **拆成词、按 alias / PATH 解析**，所以**不 quote**（quote 起来

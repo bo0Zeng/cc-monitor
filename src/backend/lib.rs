@@ -382,7 +382,7 @@ pub const PROTO_VERSION: u32 = 1;
 /// ★★★ **p2r-apikey-naming**（2026-09-24）：**子命令集一个没变，是行为变了** ——
 /// 上游选择读的凭据文件改叫 `apikey-credentials.json`、环境变量改叫 `CCM_APIKEY_CREDENTIALS` /
 /// `CCM_AGENT_UPSTREAM_CLAUDE_CODE`（旧名逐条登记在 `tests/naming/account-vs-relay-naming.vitest.ts` 那张表里，
-/// 这里**刻意不复写**，否则那条判据当场红）。用户裁「不要把账号和中转混为一谈」，不留兼容读旧名。
+/// 这里**刻意不复写**，否则那条判据当场红）。账号和中转不混为一谈，不留兼容读旧名。
 /// ⚠ 新 monitor 递新变量名、旧后端不认 ⇒ 回头读旧文件名 ⇒ 界面配好了、请求静默 404 ⇒ **必须**让已部署的后端被判 stale。
 /// 线上字节不变（`wire_golden` 未动）。照 p1v 先例不往 `SUBCOMMAND_HISTORY` 加行。
 ///
@@ -412,7 +412,7 @@ pub const PROTO_VERSION: u32 = 1;
 ///
 /// ★★★ **p2x-user-files-put**（2026-09-24）：子命令 ＋3 ——
 /// `files-peek` / `files-put`（读改写，CAS）· `files-delete-session`（只收 sid 的会话文件围栏例外 —— 当时的说法；
-/// V119（FN1）之后写面已无会话文件围栏，它只剩自己「只许删会话形状」那道限制），两个命令面都动。
+/// 今天写面已无会话文件围栏，它只剩自己「只许删会话形状」那道限制），两个命令面都动。
 /// ＋ 行为：后端开始写**用户**文件（别名 / `$PROFILE` / `.mcp.json` / skill `INBOX.txt` / cc-bus skill 部署），
 /// 本机分叉与删历史会话改走后端 —— 旧后端不认这三条 ⇒ 这些按钮在旧后端上会明确报错，所以必须判 stale。
 ///
@@ -535,7 +535,7 @@ pub const PROTO_VERSION: u32 = 1;
 ///
 /// ★★★ **p4b-single-home-judgments**（2026-09-26）：行为 —— `ccm` 拒不合规的 sid（`resume` / `--resume` / `--ccm-sid`，
 /// `shell-quote-core::session_id_ok`）· `--model`（`model_name_ok`）· `--account`（`account_name_ok`，与 cc-acct-iso 同）；配置目录走 `acct-core` 全表
-/// （`config_dir_posix_ok` / `config_dir_ok`）。`resolve_query::is_valid_session_id` 照 V126 冻结给仓外 aterm、没收。子命令没变，照 p1v 先例不加历史行。
+/// （`config_dir_posix_ok` / `config_dir_ok`）。`resolve_query::is_valid_session_id` 冻结给仓外 aterm、没收。子命令没变，照 p1v 先例不加历史行。
 ///
 /// ★★★ **p4c-history-facts**（2026-09-26）：子命令 ＋1 `--history-facts`、帧命令 ＋1 `history-facts`（`90` 阶段 C：
 /// 后端出会话事实成品 `{end, forkedFrom, touchedFiles, agents, usage}`，续传令牌 = 上一份成品原样交回、后端零状态；分叉判定抽成 `history_query::fork_origin`
@@ -561,15 +561,15 @@ pub const PROTO_VERSION: u32 = 1;
 /// ★★★ **p4i-bus-mcp-tmux-reads**（2026-09-26）：子命令 ＋3 `--bus-inbox` · `--mcp-read` · `--tmux-list`（帧命令同名 ＋3）。
 /// ＋ 行为：`bus-state` 读 `cc-list --tsv`（应答形状变）· `kill` 成功后按 pane pid `cc-kill` 注销 · `BUS_ID_RECIPE` 读会话名走 UTF-8 客户端（`-u`）。
 ///
-/// ★★★ **p4j-relay-all-sid-from-claude**（2026-09-26，RELAY 合并那一拍）：行为 / 协议 —— 全量中转默认开（`CCM_RELAY_ALL_SESSIONS=0` 才关，V135 真跑一次过了）·
-/// V141：注入地址不带会话段，路由 `/s|t/<agent>/<账号>` 两段（`relay_route_core`）· `launch-endpoint` 入参去掉 `key` · 中转从 claude 自己的请求头取流标签
+/// ★★★ **p4j-relay-all-sid-from-claude**（2026-09-26，RELAY 合并那一拍）：行为 / 协议 —— 全量中转默认开（`CCM_RELAY_ALL_SESSIONS=0` 才关）·
+/// 注入地址不带会话段，路由 `/s|t/<agent>/<账号>` 两段（`relay_route_core`）· `launch-endpoint` 入参去掉 `key` · 中转从 claude 自己的请求头取流标签
 /// （头名登记在适配层 `DefaultUpstream::session_header`）。升级那一刻带旧三段地址的在飞会话会断（不留兼容）。子命令没变，照 p1v 先例不加历史行。
 ///
 /// ★★★ **p4k-remote-resident**（2026-09-26，HOST 合并那一拍）：子命令 ＋2 `--resident-ensure [--replace]` / `--resident-stop`（远端后端常驻，与本机同形）。
 /// ＋ 协议：链路新用法 `tunnel`（池里那条 SSH 上开 direct-tcpip 到远端回环口）· 常驻后端多客户（每条连接各一份 watcher / inbound / writer，tap 扇出）·
-/// attach 行可带 `flags` · V139 远端中转在远端常驻后端进程内起、远端 Tap 回 monitor。
+/// attach 行可带 `flags` · 远端中转在远端常驻后端进程内起、远端 Tap 回 monitor。
 ///
-/// ★★★ **p4l-ccm-shell**（2026-09-26，AL3 合并那一拍）：行为 —— V138 / V142–V145：ccm 是 claude 的壳，壳层选项不加前缀、其余原样交 claude；
+/// ★★★ **p4l-ccm-shell**（2026-09-26，AL3 合并那一拍）：行为 —— ccm 是 claude 的壳，壳层选项不加前缀、其余原样交 claude；
 /// `--tmux` / `--agent` 让给 claude、ccm 自己的改 `--ccm-tmux` / `--ccm-agent`；`ccm new` 保留、位置词 `attach` 交 claude、接 tmux 用 `--attach`；
 /// 启动器按空格拆词 ＋ 打头 `~/` 展开；相对 `--cwd` 补绝对再过 §47；诊断口 `--ccm-print` / `--ccm-help` / `--ccm-version`；`CCM_VERSION` 6。子命令没变，照 p1v 先例不加历史行。
 ///
@@ -591,15 +591,15 @@ pub const PROTO_VERSION: u32 = 1;
 /// 中转在飞上界挪到宿主 `relay/listen.rs`。子命令没变，照 p1v 先例不加历史行。
 ///
 /// ★★★ **p4r-ccm-is-backend**（2026-09-27，E2 合并那一拍）：`ccm` 就是后端本体（本机远端各一个文件 `~/.cc-monitor/bin/ccm`，shim / 副本 / `backendPath` 删）·
-/// V151 `ccm [交给 claude 的…] -- [ccm 自己的…]`（按最后一个 `--` 切，后端词只紧跟打头的 `--`；后端调自己一律带 `--`）· `--ccm-print` 归 ccm、帧命令 ＋1 `ccm-probe` ·
-/// V146 载荷先看用户自设的 `ANTHROPIC_BASE_URL`。
+/// `ccm [交给 claude 的…] -- [ccm 自己的…]`（按最后一个 `--` 切，后端词只紧跟打头的 `--`；后端调自己一律带 `--`）· `--ccm-print` 归 ccm、帧命令 ＋1 `ccm-probe` ·
+/// 载荷先看用户自设的 `ANTHROPIC_BASE_URL`。
 ///
 /// ★★★ **p4s-wave-b-train**（2026-09-27，B 段合并列车）：子命令 ＋3 `--files-extract`（解压，挡 zip-slip）· `--files-read-chunk`（按字节寻址分块读）·
 /// `--resync`（对齐：与起步初扫同一个 `reconcile_sessions`）。＋ 行为 / 协议：hello additive `uncancellable` · 身份标签在 pidfile 重写与 tmux 探测到达时对账 ·
 /// seq 跨截断换代（`session_file_reread` ＋ `SeqCounter::restart`）· `Gap.to_seq` 可缺 · A6 退休前补读 · 注入噪声规则一份（`search-core::user_text`）·
 /// 搜索索引起来就后台建、常驻 64 MiB 上界 · `--stdin-line` 扩到 argv 一族 · ack 带 `jump_fingerprints` · ccm resume 在跑就接上 · 全景 `--probe` 形状代号 · 凭据模板说明进文案表。
 ///
-/// ★★★ **p4t-ccm-new-right**（2026-09-27，E2 续合并那一拍）：行为 —— V153 `new` 只能写在 `--` 右边第一个（`ccm new` 整行交 claude）·
+/// ★★★ **p4t-ccm-new-right**（2026-09-27，E2 续合并那一拍）：行为 —— `new` 只能写在 `--` 右边第一个（`ccm new` 整行交 claude）·
 /// 路由不看 argv0（只有「打头 `--` ＋ 后端词」进后端，其余走 ccm；入口②「`<bin> ccm …`」删）。子命令没变，照 p1v 先例不加历史行。
 ///
 /// ★★★ **p4u-resync-offer**（2026-09-27，RESYNC 续合并那一拍）：子命令 −1 `--resync`（CLI 面摘，只留帧面）· `resync` 应答带当下的
@@ -1142,16 +1142,16 @@ pub enum CapabilityKind {
 /// 就不止一个 ⇒ 轴留在任何**一个**面里，其余的面都得从一个兄弟那里引它。
 /// ⇒ 轴住汇总这一层，`files` 再导出（`files::Target` 原样可用，那一族一个字没改）。
 ///
-/// # 🔴 **本轴判「做得到」，不判「编得过」**〔用户 2026-09-21 拍板，逐字「**做得到**」〕
+/// # 🔴 **本轴判「做得到」，不判「编得过」**
 ///
 /// 上一版本轴判的是「编不编得过」，并逐字论证过「ccm 声明了 `tmux` 却在 Windows 上
 /// 做不到」**不算假声明**，因为它编得过。**用户把这条判法推翻了。**
 ///
 /// 他那一拍是三句，合起来是一条完整裁决：
 /// ① 判「**做得到**」；② 「**除非暂时不做**」；③ 「**Windows 用 Windows 自己的后台服务，后面再做**」。
-/// 〔审计 F 🔴-11〕③ 的**机制**那半被 09-24 的 V109 收回：Windows 上「会话活在前端之外」用哪种机制
-/// （甲 · 控制台窗口本身就是容器 / 乙 · 常驻后端用 ConPTY 托管 / 丙 · 真 Windows 服务）用户裁「都先不做」、**机制未定**
-/// ⇒ [`TARGET_GAPS`] 的理由串不许替他选（「以 V109 为准」）；①② 两句照旧。
+/// ③ 的**机制**那半已收回：Windows 上「会话活在前端之外」用哪种机制
+/// （甲 · 控制台窗口本身就是容器 / 乙 · 常驻后端用 ConPTY 托管 / 丙 · 真 Windows 服务）都先不做、**机制未定**
+/// ⇒ [`TARGET_GAPS`] 的理由串不许替用户选；①② 两句照旧。
 ///
 /// ⇒ 于是本轴的形状变了三处：
 /// 1. `targets` 那一栏的意思从「编得过」变成「**这一面在这个 target 上真的做得到**」；
@@ -1312,7 +1312,7 @@ pub enum GapKind {
 ///
 /// # 🔴 它为什么必须存在（而上一版没有它）
 ///
-/// 本轴一旦从「编得过」改成「**做得到**」（用户 2026-09-21 拍板），
+/// 本轴一旦从「编得过」改成「**做得到**」，
 /// `ccm-launcher` 那一面就**不可能**再对四个 target 整面成立 —— Windows 上没有 tmux。
 /// ⇒ 要么把整面从 Windows 上摘掉（**那会连 12 条真做得到的一起摘掉，是假的**），
 /// 要么逐条登记豁免。**只有后者说的是真话。**
@@ -1320,7 +1320,7 @@ pub enum GapKind {
 /// ⚠ **「暂时不做」是一种合法答复，但必须写出来** —— 用户那一拍逐字
 /// 「**做得到. 除非暂时不做. windows用windows自己的后台服务. 后面在做**」。
 /// ⇒ [`TargetGap::rationale`] 要同时答两件：**今天为什么做不到** ＋ **将来怎么办**。
-/// 「将来怎么办」那一半**不许预设机制**：09-24 V109 把「用哪种机制」收回成未定（见 [`Target`] 头注）。
+/// 「将来怎么办」那一半**不许预设机制**：「用哪种机制」未定（见 [`Target`] 头注）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TargetGap {
     /// 哪一面。必须是 [`CAPABILITY_FACES`] 或 [`COMMAND_FACES`] 里真有的族名。
@@ -1361,19 +1361,16 @@ pub struct TargetGap {
 pub const TARGET_GAPS: &[TargetGap] = &[
     // ── `ccm-launcher` × Windows：tmux 那一族 6 条 ─────────────────
     //
-    // 🔴 **将来的答复是用户给的，不是我们挑的**：他 2026-09-21 逐字
-    //    「**windows用windows自己的后台服务. 后面在做**」
-    //    ⇒ 当时读成「方向已定」（**不是**去 Windows 上装个 tmux，也**不是**自己写一个终端复用器），落地时间推后。
-    // 〔审计 F 🔴-11 订正〕09-24 用户又裁 **V109**〔选〕「先不做 Windows 这一族」：甲 · 乙 · 丙三种机制都先不做，
-    //    **机制未定** ⇒ 上面那句「方向已定」以 V109 为准不再成立。下面各行的理由只说「等 V109 那一族」，
-    //    不替用户选机制；判据 `target_parity_guard::no_gap_rationale_picks_the_windows_mechanism`。
+    // 🔴 **将来的答复是用户给的，不是我们挑的**：Windows 上会话放后台用哪种机制（甲 · 乙 · 丙）都先不做，
+    //    **机制未定**（**不是**去 Windows 上装个 tmux，也**不是**自己写一个终端复用器）。
+    //    下面各行的理由只说「等 Windows 后台机制」，不替用户选机制；判据 `target_parity_guard::no_gap_rationale_picks_the_windows_mechanism`。
     TargetGap {
         family: "ccm-launcher",
         capability: "tmux",
         target: Target::Windows,
         kind: GapKind::Owed,
         rationale: "Windows 上没有 tmux（也不打算装）。「会话活在前端之外」在 Windows 上用哪种机制，\
-              用户 09-24 裁「先不做 Windows 这一族」、机制未定（V109）⇒ **暂时不做**；\
+              Windows 后台机制未定 ⇒ **暂时不做**；\
               将来选定机制的那一拍一并给出等价物。",
     },
     TargetGap {
@@ -1382,21 +1379,21 @@ pub const TARGET_GAPS: &[TargetGap] = &[
         target: Target::Windows,
         kind: GapKind::Owed,
         rationale: "「接回一个还活着的会话」今天的实现是 `tmux attach`。Windows 上那条路不存在 \
-              ⇒ 等 V109 那一族选定机制（未定）时一并给出等价物，**暂时不做**。",
+              ⇒ 等 Windows 后台机制选定（未定）时一并给出等价物，**暂时不做**。",
     },
     TargetGap {
         family: "ccm-launcher",
         capability: "detach",
         target: Target::Windows,
         kind: GapKind::Owed,
-        rationale: "「把会话留在后台」今天是 `tmux detach`。同 `attach`，等 V109 那一族选定机制，**暂时不做**。",
+        rationale: "「把会话留在后台」今天是 `tmux detach`。同 `attach`，等 Windows 后台机制选定，**暂时不做**。",
     },
     TargetGap {
         family: "ccm-launcher",
         capability: "tmux-size",
         target: Target::Windows,
         kind: GapKind::Structural,
-        rationale: "给 tmux 那个窗格定尺寸。没有 tmux 就没有这一格；V109 那一族将来不论选哪种机制，\
+        rationale: "给 tmux 那个窗格定尺寸。没有 tmux 就没有这一格；Windows 后台机制将来不论选哪种，\
               「会话的终端多大」都是另一种形状，**不照搬这一条** ⇒ 这一条本身不跨过去；\
               那边的尺寸若要有，是**另一条**能力、另立一行〔PR1 分档：结构〕。",
     },
@@ -1406,7 +1403,7 @@ pub const TARGET_GAPS: &[TargetGap] = &[
         target: Target::Windows,
         kind: GapKind::Structural,
         rationale: "tmux 的窗格编号基数（`base-index`）。它是 tmux 自己的配置面，\
-              Windows 上连对应概念都没有 ⇒ **不是推后，是这一条本身不该跨过去**（V109 那一族选哪种机制都一样）。",
+              Windows 上连对应概念都没有 ⇒ **不是推后，是这一条本身不该跨过去**（Windows 后台机制选哪种都一样）。",
     },
     // ── `ccm-launcher` × Windows：**真机现打补上的三条** ───────
     //
@@ -1427,7 +1424,7 @@ pub const TARGET_GAPS: &[TargetGap] = &[
               `--bus-register` 要 `--detach`，而 `--detach` 要 `--tmux`。\
               真机现打（Win11）把两个 bus 脚本都种齐、排掉「脚本缺失」这个变量之后，\
               仍然 `EXIT=4 no_tmux` ⇒ **唯一闸门就是 tmux**。\
-              ⇒ 等 V109 那一族选定机制（未定）时，「把会话登记到总线上」要重新回答一次，\
+              ⇒ 等 Windows 后台机制选定（未定）时，「把会话登记到总线上」要重新回答一次，\
               **暂时不做**。",
     },
     TargetGap {
@@ -1437,7 +1434,7 @@ pub const TARGET_GAPS: &[TargetGap] = &[
         kind: GapKind::Owed,
         rationale: "`--ccm-sid` 写的是 tmux 会话上的意图标（`@ccm_sid_expect`，kill / 送键的身份门据它确认事实）。\
               Windows 上没有 tmux ⇒ 没有可写的地方；直路上它不起作用，拉前终端也不靠它（点 ↗ 时现查连着的终端）。\
-              等 V109 那一族选定机制（未定）时一并回答，**暂时不做**。",
+              等 Windows 后台机制选定（未定）时一并回答，**暂时不做**。",
     },
     // ── 🔴 〔散文墓碑〕**`agent` 那一条豁免删了，原话留在这里** ──────
     //
@@ -1476,7 +1473,7 @@ pub const TARGET_GAPS: &[TargetGap] = &[
         target: Target::Windows,
         kind: GapKind::Owed,
         rationale: "把中转地址跨 tmux 会话传下去。载体没了这一条就没了；\
-              将来 V109 那一族选定机制时要自己回答「地址怎么传给它起的会话」，**暂时不做**。",
+              将来 Windows 后台机制选定时要自己回答「地址怎么传给它起的会话」，**暂时不做**。",
     },    // ── 命令面 × Windows：**不是新裁的，是第一次被看见** ────────────
     //
     // 这六行在 PR1 之前就是真的（`K-P4` 那一拍 `unavailable_from` 在 Windows 上就会列出这三条），
@@ -1484,15 +1481,14 @@ pub const TARGET_GAPS: &[TargetGap] = &[
     // 那条两向相等当场点出它们，于是逐条登记。**差异是现推出来的**（命令自己声明的 `no_tmux` 码 ×
     // Windows 平台档），这里只补理由与档。
     // 档：六条都是**欠着** —— 「起会话 / 杀会话 / 看一眼画面」与 tmux 无关，是 Windows 该有的；
-    // 谁来还：挂在 V109（09-24「先不做 Windows 这一族」，机制未定）。先前这里写「用户 09-21 那一句
-    //   （Windows 用 Windows 自己的后台服务，后面再做）」—— 那句的机制那半以 V109 为准。
+    // 谁来还：挂在 Windows 后台机制上（机制未定）。
     TargetGap {
         family: "wire-commands",
         capability: "capture-pane",
         target: Target::Windows,
         kind: GapKind::Owed,
         rationale: "抓一屏今天就是起一次 `tmux capture-pane`（命令自己声明了 `no_tmux` 码）。\
-              Windows 上没有 tmux ⇒ 平台默认做不到。将来 V109 那一族选定机制（未定）时给出\
+              Windows 上没有 tmux ⇒ 平台默认做不到。将来 Windows 后台机制选定（未定）时给出\
               「看一眼会话画面」的等价物，**暂时不做**。",
     },
     TargetGap {
@@ -1501,7 +1497,7 @@ pub const TARGET_GAPS: &[TargetGap] = &[
         target: Target::Windows,
         kind: GapKind::Owed,
         rationale: "结束会话今天是起一次 `tmux kill-session`（命令自己声明了 `no_tmux` 码）。\
-              Windows 上没有 tmux ⇒ 平台默认做不到。将来 V109 那一族选定机制（未定）时\
+              Windows 上没有 tmux ⇒ 平台默认做不到。将来 Windows 后台机制选定（未定）时\
               一并管会话的生死，**暂时不做**。",
     },
     TargetGap {
@@ -1510,8 +1506,8 @@ pub const TARGET_GAPS: &[TargetGap] = &[
         target: Target::Windows,
         kind: GapKind::Owed,
         rationale: "起会话今天是在 tmux 里开一个新会话（命令自己声明了 `no_tmux` 码）。\
-              Windows 上没有 tmux ⇒ 平台默认做不到。「会话活在前端之外」在 Windows 上的机制\
-              未定（V109），**暂时不做**。",
+              Windows 上没有 tmux ⇒ 平台默认做不到。「会话活在前端之外」用的 Windows 后台机制\
+              未定，**暂时不做**。",
     },
     TargetGap {
         family: "cli-subcommands",
@@ -1519,7 +1515,7 @@ pub const TARGET_GAPS: &[TargetGap] = &[
         target: Target::Windows,
         kind: GapKind::Owed,
         rationale: "与帧面 `capture-pane` 那一行是**同一条实现**（CLI 面经 `cli_control::spec_for` \
-              派生到同一条登记）⇒ 同一个理由（V109），将来与帧面那一行同拍还，**暂时不做**。",
+              派生到同一条登记）⇒ 同一个理由（Windows 后台机制未定），将来与帧面那一行同拍还，**暂时不做**。",
     },
     TargetGap {
         family: "cli-subcommands",
@@ -1527,7 +1523,7 @@ pub const TARGET_GAPS: &[TargetGap] = &[
         target: Target::Windows,
         kind: GapKind::Owed,
         rationale: "与帧面 `kill` 那一行是**同一条实现**（CLI 面经 `cli_control::spec_for` \
-              派生到同一条登记）⇒ 同一个理由（V109），将来与帧面那一行同拍还，**暂时不做**。",
+              派生到同一条登记）⇒ 同一个理由（Windows 后台机制未定），将来与帧面那一行同拍还，**暂时不做**。",
     },
     TargetGap {
         family: "cli-subcommands",
@@ -1535,7 +1531,7 @@ pub const TARGET_GAPS: &[TargetGap] = &[
         target: Target::Windows,
         kind: GapKind::Owed,
         rationale: "与帧面 `launch` 那一行是**同一条实现**（CLI 面经 `cli_control::spec_for` \
-              派生到同一条登记）⇒ 同一个理由（V109），将来与帧面那一行同拍还，**暂时不做**。",
+              派生到同一条登记）⇒ 同一个理由（Windows 后台机制未定），将来与帧面那一行同拍还，**暂时不做**。",
     },
     // ── `files-chmod` × Windows：待拍 3 ────────────
     //

@@ -88,7 +88,7 @@ pub trait Facing: Send + Sync {
 ///
 /// 用户原话「不承诺. 适配部分, 即os适配部分后面单独写单独做.」⇒ **本机 (Linux, aarch64) 不承诺**
 /// （那句「建议本机 Linux 限定 x86_64、本机侧走「不承诺」那一形」，即 [`Refusal::NotPromisedHere`]）。于是本表不再只按 OS 分：
-/// 本机那两行都钉到 x86_64（本机 Windows arm64 本来就不在产线里，`V31`），远端 Linux 两个 arch 照旧。
+/// 本机那两行都钉到 x86_64（本机 Windows arm64 本来就不在产线里），远端 Linux 两个 arch 照旧。
 /// 承诺面的唯一住址是 `tests/evidence/K-G4-platform-ledger.py` 的 `PROMISE_FACE`；本函数与它两向相等
 /// 由 `deploy_plan_tests.rs::the_promise_face_in_the_ledger_equals_the_code` 钉着。
 pub fn promised(route: Route, key: Key) -> bool {
@@ -694,7 +694,7 @@ pub fn answer_resident_verdict(args: &Value) -> Result<Value, (&'static str, Str
 // 本机常驻后端放下去之前没有后端可问 —— 可「`ccm` 就是后端本体」：monitor 手上那份字节就是一个后端。
 // monitor 把它写成暂存件、跑 `<暂存件> -- --place-verdict` 问一次（CLI 面自动派生），照答放或不放（`local_backend::extract_embedded_to`）；
 // 判定（表 B 本机那一行 · 落点那一份 vs 自己的 `BUILD_ID`，只升不降）只在这里。
-// 〔主会话 09-29 认的偏离〕本机 (Linux, aarch64) 的「不承诺」落在写暂存件之后（字面是写第一个字节之前）：问完即删、净足迹零。
+// 〔已知偏离〕本机 (Linux, aarch64) 的「不承诺」落在写暂存件之后（字面是写第一个字节之前）：问完即删、净足迹零。
 
 /// 本机那一份的去向。
 #[derive(Debug, PartialEq, Eq)]

@@ -163,7 +163,7 @@ fn commit_goes_through_the_fence_and_leaves_the_disk_alone_when_refused() {
         false,
         &staged_sha(&home, KEY),
     )
-    .expect("🔴 V119：提交到会话文件的位置被拒了");
+    .expect("🔴 提交到会话文件的位置被拒了");
     assert_eq!(
         std::fs::read(proj.join("abc.jsonl")).unwrap(),
         b"would clobber a session"
@@ -633,8 +633,7 @@ fn a_text_commit_goes_through_the_write_fence() {
     }
     let key = format!("{:032x}", 0xaf);
     send_chunk(&home, &key, 0, b"payload").unwrap();
-    send_commit(&home, &key, 1, 7, &root, "projects/-x/s.jsonl")
-        .expect("🔴 V119：存盘改不动会话文件");
+    send_commit(&home, &key, 1, 7, &root, "projects/-x/s.jsonl").expect("🔴 存盘改不动会话文件");
     assert!(chunks_left(&home, &key).is_empty(), "块没删");
     assert_eq!(std::fs::read(&session).unwrap(), b"payload");
     assert!(
@@ -697,7 +696,7 @@ fn the_sweep_also_collects_stale_chunks() {
     }
 }
 
-/// **分块那一支同一道 CAS**（主会话裁 D-c；两支存盘同一种结果）：盘上那份在读之后被改了 ⇒ `stale`，
+/// **分块那一支同一道 CAS**（两支存盘同一种结果）：盘上那份在读之后被改了 ⇒ `stale`，
 /// 目标一个字节没动、块照样删掉；拿「此刻那一份」的摘要 ⇒ 写成，应答交新摘要 == 写进去那份的。
 #[test]
 fn a_chunked_save_over_a_changed_file_is_stale_like_the_one_line_save() {
@@ -741,7 +740,7 @@ fn a_chunked_save_over_a_changed_file_is_stale_like_the_one_line_save() {
 }
 
 /// 提交的整份摘要：**必给**（缺 ⇒ `bad_args`）；对不上 ⇒ `stale`、目标一个字节没动、坏暂存件删掉；
-/// 对得上 ⇒ 照旧上位。要求住址：主会话裁 09-25「`files-commit-upload` 必给 `expect:{sha256}` → 远端后端改名上位前核，
+/// 对得上 ⇒ 照旧上位。要求：「`files-commit-upload` 必给 `expect:{sha256}` → 远端后端改名上位前核，
 /// 不等 ⇒ stale、删坏暂存件」。
 #[test]
 fn the_commit_checks_the_whole_staged_file_against_the_digest_it_is_given() {

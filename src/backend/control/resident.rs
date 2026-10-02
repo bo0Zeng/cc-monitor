@@ -62,7 +62,7 @@ fn fail(code: &str, message: String) -> i32 {
     super::cli_control::emit_err(code, message)
 }
 
-/// `--resident-ensure [--replace]`。`hosted`：宿主层（`main.rs`）交的额外环境 —— V139 的中转口那一格
+/// `--resident-ensure [--replace]`。`hosted`：宿主层（`main.rs`）交的额外环境 —— 中转口那一格
 /// （本层不许伸手进 `relay/`，`layering_guard`）。
 pub fn run_ensure(agent_home: &Path, args: &[String], hosted: &[(&str, String)]) -> i32 {
     let Some(home) = home() else {

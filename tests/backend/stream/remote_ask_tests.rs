@@ -2,7 +2,7 @@
 //!
 //! # 守的要求（住址）
 //!
-//! - 主会话 09-25 裁（「主会话裁」第 1 条，逐字）：「**口收成一份**：把 `DialRemote` ＋ 可达表从
+//! - 要求：「**口收成一份**：把 `DialRemote` ＋ 可达表从
 //!   `asset_sync.rs` 提到中立住址 `src/backend/stream/remote_ask.rs`（逻辑一字不改），`asset_sync` 改调它；判据钉
 //!   「**后端生产树里开远端一次性 exec 的只有这一处**」」。
 //! - （逐字）：「观测方沿它本来就拥有的那条连接去拉被观测方。」
@@ -331,8 +331,7 @@ async fn an_abandoned_ask_takes_its_inner_task_down_with_it() {
 }
 
 /// ★ 〔`INVARIANTS §47` ②〕一次性子命令的 argv 是自由文本：拒绝集只收 NUL / CR / LF（**不拒 shell 元字符**），
-/// 判不过一次都不拨；真实名字（带 `'` `(` `&` 的目录名 · 中文 · 空格）照发。要求住址：`INVARIANTS §47` ②；
-/// 主会话 09-26 按 V131 裁「自由文本路径……拒绝集只收控制字符（NUL / CR / LF）……不拒 shell 元字符（拒过头同样违反 §47）」。
+/// 判不过一次都不拨；真实名字（带 `'` `(` `&` 的目录名 · 中文 · 空格）照发（拒过头同样违反 §47）。
 #[tokio::test]
 async fn one_shot_argv_refuses_only_what_the_quote_cannot_hold() {
     let table = Table::default();

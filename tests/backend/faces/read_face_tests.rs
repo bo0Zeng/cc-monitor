@@ -5,40 +5,40 @@
 use super::*;
 use std::path::{Path, PathBuf};
 
-/// 本族的八条帧命令 —— **题面给的那八条**（那一串 ＋），
+/// 本族的八条帧命令 —— **要求点名的那八条**，
 /// 写成帧面名。它是判据的**异源**那一侧：下面那条从 `inbound.rs` 源码里数「谁把活交给了
 /// `read_face::answer`」，两边必须相等。
-/// +2：`history-index` / `history-user-inputs`（题面「`--list-user-inputs` 与骨架
-/// `--read-session-from-offset --index` 上帧面」那一句 —— 异源仍是题面，不是 `inbound.rs`）。
+/// +2：`history-index` / `history-user-inputs`（要求「`--list-user-inputs` 与骨架
+/// `--read-session-from-offset --index` 上帧面」那一句 —— 异源仍是手抄的要求，不是 `inbound.rs`）。
 /// +1：`accounts-trust`（「仍在拨号的 `--account-trust` / `--account-trust-zero`」
-/// 随账号域一起上帧面 —— 异源是题面 `C4c` 那一句，不是 `inbound.rs`）。
+/// 随账号域一起上帧面 —— 异源是手抄的要求，不是 `inbound.rs`）。
 const FAMILY: &[&str] = &[
     "accounts-list",
     "accounts-sessions",
     "accounts-trust",
     "history-index",
     "history-user-inputs",
-    // 按行号取回（异源是题面 CF2「后端给『从第 N 行起 k 行』的读口」，不是 `inbound.rs`）。
+    // 按行号取回（异源是手抄的要求「后端给『从第 N 行起 k 行』的读口」，不是 `inbound.rs`）。
     "history-lines",
     // 会话内查找。
     "history-find",
-    // 会话事实出成品（异源是题面 STC「三样由后端出成品」＋阶段 C，不是 `inbound.rs`）。
+    // 会话事实出成品（异源是手抄的要求「三样由后端出成品」，不是 `inbound.rs`）。
     "history-facts",
     // `history-projects` / `history-sessions` 出列：它们出成品（并注解 ＋ 判活 ＋ 远端那一跳），
-    //   交给 `history_join`（历史跨机 join 的唯一的家；异源仍是题面 —— 主会话 09-25 裁 C4d 第 2 条）。
+    //   交给 `history_join`（历史跨机 join 的唯一的家；异源仍是手抄的要求）。
     "history-read",
-    // 记录还在不在（resume 一跳先问；异源是题面 `U4b` G1，不是 `inbound.rs`）。
+    // 记录还在不在（resume 一跳先问；异源是手抄的要求，不是 `inbound.rs`）。
     "history-record",
     "history-search",
-    // 各台搜索结果合一份（异源是题面 FIX4 第 3 件 ＋ 主会话 09-28 裁 B，不是 `inbound.rs`）。
+    // 各台搜索结果合一份（异源是手抄的要求，不是 `inbound.rs`）。
     "history-search-merge",
-    // 按字节分页出记录行 · 漂移账（异源是题面 MOD 第 1 件，不是 `inbound.rs`）。
+    // 按字节分页出记录行 · 漂移账（异源是手抄的要求，不是 `inbound.rs`）。
     // 按运行读一个子运行的记录（异源是「子 agent 的流归各自的运行、通用层按运行读」那条要求，不是 `inbound.rs`）。
     "history-run",
     "history-page",
     "drift-report",
     "history-tail",
-    // 这台后端的 stderr 诊断文件尾部（异源是题面 GAP1 第 2 件「经那台后端的只读面」，不是 `inbound.rs`）。
+    // 这台后端的 stderr 诊断文件尾部（异源是手抄的要求「经那台后端的只读面」，不是 `inbound.rs`）。
     "backend-log",
 ];
 
@@ -87,7 +87,7 @@ fn the_registry_hands_exactly_the_eight_to_this_host() {
     want.sort();
     assert_eq!(
         got, want,
-        "交给 `read_face::answer` 的帧命令与题面那几条不相等"
+        "交给 `read_face::answer` 的帧命令与要求点名的那几条不相等"
     );
     // 那八条也都真在帧面的镜子里（`hello.commands` 从它出）。
     for n in FAMILY {

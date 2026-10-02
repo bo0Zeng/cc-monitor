@@ -132,7 +132,7 @@ impl Backends for InboundBackends {
         // 🔴**传输台那两条开单命令不按 `origin` 去那台机器的后端**：
         // 传输台住**本机**常驻后端（SFTP 与其它 SSH 同一条连接），由中继 `sftp_pool.rs` 转过去；
         //    其余一切照旧按 `origin` 去 `inbound_client`。
-        // 〔主会话 09-29 拍板 Q2 A〕通道上由 monitor 自己接的那几条（[`HOST_OPS`]，两向登记在 `command_home_registry_tests::CHANNEL_OWN`）。
+        // 通道上由 monitor 自己接的那几条（[`HOST_OPS`]，两向登记在 `command_home_registry_tests::CHANNEL_OWN`）。
         if HOST_OPS.contains(&op.0.as_str()) {
             if crate::sftp_pool::is_transfer_op(&op.0) {
                 return Box::pin(transfer_open(origin, op, payload));
@@ -243,7 +243,7 @@ async fn transfer_open(origin: Origin, op: Op, payload: Body) -> Result<Body, Ca
     }
 }
 
-/// 〔主会话 09-29 拍板 Q2 A〕**文件窗口「在此打开终端」**：窗口只交意图（寻址 ＝ 那台 · 参数 `{cwd}`），这里补那台的机器事实
+/// **文件窗口「在此打开终端」**：窗口只交意图（寻址 ＝ 那台 · 参数 `{cwd}`），这里补那台的机器事实
 /// （monitor 的机器表 ＋ 上次赢的那条，`dial_host::machine_facts`）、问本机后端 `terminal-ssh` 渲那一行、交 `open_terminal_window` 开窗 ——
 /// 与主界面开终端同一条路（`src/frontend/ui/terminal-open.ts`：`terminal_dial` → `terminal-ssh` → `open_terminal_window`）。
 /// 窗口不拼命令、不认识 monitor 的配置；成败作为这一次 `call` 的应答回去，那句话照旧画在窗口上。

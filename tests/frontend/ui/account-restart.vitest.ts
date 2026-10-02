@@ -106,7 +106,7 @@ describe("restartWithAccount（A5 换号重启编排 · §5）", () => {
     expect(resumeTmux).not.toHaveBeenCalled();
   });
 
-  it("happy（不 compact）→ 〔V154〕直接 kill（不发 Esc / /exit、不等它退）→ resume(注入 configDir) → 记 lastAccount", async () => {
+  it("happy（不 compact）→ 直接 kill（不发 Esc / /exit、不等它退）→ resume(注入 configDir) → 记 lastAccount", async () => {
     await restartWithAccount(baseOpts());
     // 编排发出的控制调用恰好只有 kill 一发：再敲回 `Escape` / `/exit`（或任何按键）这里就红。
     const control = invokeMock.mock.calls.filter((c) => c[0] === "tmux_send_keys" || c[0] === "kill_remote_tmux");
@@ -265,7 +265,7 @@ describe("A3 本机换号重启（origin = <local>）", () => {
 });
 
 /**
- * 主会话 09-28 裁 FIX4 ④：「换号的 lastAccount / pin 只在等到之后才记（kill ＋ resume 全成才记，全成的定义换成『看见会话起来』）」。
+ * 要求：「换号的 lastAccount / pin 只在等到之后才记（kill ＋ resume 全成才记，全成的定义换成『看见会话起来』）」。
  */
 describe("FIX4 ④：换号重启等到会话起来才算成", () => {
   it("远端发出去了但没看到会话起来 ⇒ false、不记账、不说「已用新账号重启」、也不另说失败（主窗口说过了）", async () => {

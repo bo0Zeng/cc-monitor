@@ -1,4 +1,4 @@
-//! # 要求住址：`INVARIANTS §48.1`（本机常驻后端的监听口要钥匙；，用户 2026-09-25 拍板）
+//! # 要求住址：`INVARIANTS §48.1`（本机常驻后端的监听口要钥匙）
 //!
 //! 核原文：`§48.1` 逐字「「有口没钥匙」⇒ **拒绝起**；空钥匙 ⇒ 按「没设」算；钥匙逐字节全等才算对」「三种拒法**出声且彼此可分**」——
 //! 本族 `a_port_without_a_token_is_refused` · `empty_strings_count_as_unset` · `an_empty_token_never_matches` · `tokens_match_is_exact` ·

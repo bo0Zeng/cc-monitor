@@ -1097,7 +1097,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     document.body.innerHTML = "";
   });
 
-  // 认形状 ＋ 主会话 09-28 裁：机器页「测试连接」那一格不露 `v=… caps=[…]` 日志行；做不到的那几类点开看。
+  // 认形状 ＋ 机器页「测试连接」那一格不露 `v=… caps=[…]` 日志行；做不到的那几类点开看。
   it("★〔FIX5 续〕测试连接那一格是人话：不含「=」「[」；这台做不到的那几类在一个点开看的格里", async () => {
     localStorage.clear();
     const noTmux = copyText("machineCard.test.gapRow", { reason: copyText("control.unavailable.noTmux", { machine: "a" }), n: "3" });
@@ -1183,9 +1183,9 @@ describe("ST1：「启用远端模式」读回来之前不可点", () => {
   });
 });
 
-// 要求：「不为旧配置留兼容」；主会话 09-24 裁
+// 要求：「不为旧配置留兼容」
 // 「认不出就不显示那台、在机器页顶上一句『远端配置认不出：…』」。
-describe("〔S5 · V41〕remote 段认不出 ⇒ 机器列表顶上说一句、一台都不显示", () => {
+describe("remote 段认不出 ⇒ 机器列表顶上说一句、一台都不显示", () => {
   beforeEach(() => vi.resetAllMocks());
 
   it("★ 旧的单台写法：那一句常驻显示，机器卡片零张；认得出的那份不显示它", async () => {

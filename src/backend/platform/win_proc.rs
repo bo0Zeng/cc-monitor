@@ -4,7 +4,7 @@
 //!
 //! `proc.rs` 的判活三件（`pid_alive` / `proc_starttime` / `start_epoch_from_ticks`）与
 //! `pidwatch` 的看守，在非 Linux 上从 U4a 起就是空壳（`pid_alive` 甚至是 `unimplemented!()`）。
-//! 而 V105 之后 Windows 本机**一定**有一个后端进程在跑 ⇒ 它的 `watcher` 每见一份
+//! 而 Windows 本机**一定**有一个后端进程在跑 ⇒ 它的 `watcher` 每见一份
 //! `sessions/<PID>.json` 就调一次 `pid_alive` ⇒ **见到第一个 claude 会话就 panic**。
 //! 这份文件把那几件的 Windows 读法补上；**判定规则一条都不在这里**（翻译官只翻译读法）
 //! —— 「exists / captured / current 三者怎么组合成存活」仍只住 `liveness.rs`。

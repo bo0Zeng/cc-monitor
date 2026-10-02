@@ -51,7 +51,7 @@ fn the_name_avoidance_has_exactly_one_source_and_the_plan_settles_it() {
 
 // `under_the_name_ccm_only_backend_first_words_reach_the_backend`〔散文墓碑〕并进 `claude_flags_tests` 那一条（切法 ＋ 撞名收成一刀）。
 
-/// 〔「路由不看 argv0」〕要求：「没有 `--` ⇒ 整行原样交 claude」＋ 本路题面「删 route 里 base ≠ ccm 那一支」。
+/// 〔「路由不看 argv0」〕要求：「没有 `--` ⇒ 整行原样交 claude」＋「route 里没有 base ≠ ccm 那一支」。
 /// 分流只看 argv：同一串 argv 不论二进制叫什么都进同一边；零参数是「起一个 claude」；打头的 `--` 紧跟后端词才进后端。
 /// 回环：pane 里把自己再叫一次（[`self_invocation`] ＋ 内层参数）叫得回 ccm、参数一个不多一个不少。
 #[test]
@@ -232,7 +232,7 @@ fn the_base_url_token_is_declared_because_the_tmux_path_really_forwards_it() {
             .iter()
             .map(|s| s.to_string())
             .collect();
-        let Parsed::Opts(o) = argv::parse(&argv::tests::v138_to_v151(&args)).expect("该解析得动")
+        let Parsed::Opts(o) = argv::parse(&argv::tests::mixed_to_split(&args)).expect("该解析得动")
         else {
             panic!("`--tmux=n1` 不该被解析成 Early")
         };
@@ -367,7 +367,7 @@ fn the_name_taken_message_says_which_name() {
 
 // ═══════════════════════════════════════════════════════════════════════
 // `P19`（09-22）· codex 那一支不经 shell 的那条路
-// 题面：`--agent codex` 在 Windows 上不再 `program not found`。
+// 要求：`--agent codex` 在 Windows 上不再 `program not found`。
 // 真机读数（那一跳到底在哪）住。
 // ═══════════════════════════════════════════════════════════════════════
 
@@ -384,7 +384,7 @@ fn direct_of(args: &[&str], tmux: Option<&str>) -> plan::Direct {
         ..Default::default()
     };
     let a: Vec<String> = args.iter().map(|s| s.to_string()).collect();
-    let o = match argv::parse(&argv::tests::v138_to_v151(&a)).expect("该解析得动") {
+    let o = match argv::parse(&argv::tests::mixed_to_split(&a)).expect("该解析得动") {
         Parsed::Opts(o) => o,
         other => panic!("{other:?}"),
     };
@@ -575,7 +575,7 @@ fn the_alias_preview_is_the_same_plan_as_ccm_print() {
     }
     let home = std::env::var("HOME").unwrap_or_default();
     for args in [
-        // 别名的预置参数就是一条 V151 argv（`<交给 claude 的…> -- <ccm 的…>`）。
+        // 别名的预置参数就是一条 argv（`<交给 claude 的…> -- <ccm 的…>`）。
         vec!["--", "--cwd", "/p", "--ccm-agent", "claude"],
         vec!["--", "--ccm-tmux=w5alias-preview-probe", "--cwd", "/p"],
         vec!["--model", "m", "--", "--base", "--cwd", "/q"],
@@ -667,7 +667,7 @@ fn the_alias_preview_refuses_in_the_words_of_ccm() {
         code(serde_json::json!({ "args": ["--", "--ccm-help"] })),
         "refused"
     );
-    // V138：未知旗标交给 claude、不再拒 ⇒ 拿一条 ccm 自己的组合规则当「拒」的样本。
+    // 未知旗标交给 claude、不拒 ⇒ 拿一条 ccm 自己的组合规则当「拒」的样本。
     let (c, said) = answer_print(&serde_json::json!({ "args": ["--", "--detach"] }))
         .expect_err("--detach 不带 --tmux 该被拒");
     assert_eq!(c, "refused");
@@ -942,7 +942,7 @@ fn the_probe_frame_answers_the_same_card_as_the_cli_flag() {
     );
 }
 
-/// 要求：「tmux 名派生 ＋ 撞名避让只留后端，前端要名字就问后端」（FIX4 题面）。
+/// 要求：「tmux 名派生 ＋ 撞名避让只留后端，前端要名字就问后端」。
 /// 帧命令 `tmux-name-mint` 两形各一格 == 手写期望；避让问的是**交进来那张快照**（被占 ⇒ 往后排）；没装 tmux ⇒ 基名；入参不恰一格 ⇒ `invalid_args`。
 #[test]
 fn the_mint_frame_derives_here_and_steps_aside_on_this_machines_snapshot() {

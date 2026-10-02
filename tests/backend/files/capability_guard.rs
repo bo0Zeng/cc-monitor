@@ -53,8 +53,7 @@ use crate::files::index::tests::resident_lock;
 /// 「设计里从来没有那条能力」，而那正是本条两向对拍要挡的另一向。
 ///
 /// ⚠末尾两条（`files.home` · `files.read.text`）的出处是
-/// （窗口换走通道的那两问），** 那张表还没跟上** —— 那一篇不在 F7a 的写区，
-/// 已报备主会话同拍补表。在补上之前，这两条的「设计那一侧」住。
+/// （窗口换走通道的那两问），** 那张表还没跟上**。
 const REGISTERED: &[&str] = &[
     "files.browse",
     "files.find",
@@ -1396,7 +1395,7 @@ fn the_rewalk_interval_is_part_of_the_declared_surface_and_is_really_queryable()
 
 /// **冷启动首建那个数**与重走周期**分开钉**，而且同样可查询。
 ///
-/// 用户裁「单列一个数并在搜索界面显示」⇒ 它必须在 `files.index.status` 的**声明**字段表里、
+/// 要求「单列一个数并在搜索界面显示」⇒ 它必须在 `files.index.status` 的**声明**字段表里、
 /// 真的回出去、等于那个常量；而且它不能被周期那一格顶替（两个数各是各的）。
 #[test]
 fn the_cold_first_build_estimate_is_its_own_declared_and_queryable_number() {

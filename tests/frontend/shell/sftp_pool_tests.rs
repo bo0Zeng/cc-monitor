@@ -319,7 +319,7 @@ async fn without_a_local_backend_the_transfer_is_refused_out_loud() {
     assert!(e.contains("本机后端不在"), "{e}");
 }
 
-/// 🔴〔V119 翻面〕本机落点是一份会话记录的形状 ⇒ **照样转给本机后端开单**，落点原样带过去。
+/// 🔴 本机落点是一份会话记录的形状 ⇒ **照样转给本机后端开单**，落点原样带过去。
 ///
 /// 从前这一条是「踩线的本机落点 ⇒ 回围栏那句话，而且在转给后端之前（一条请求都不发）」。
 /// 用户「文件管理器全部都可以改. 不需要任何围栏」⇒ monitor 这一侧开单时那一判删了。
@@ -344,7 +344,7 @@ async fn a_download_onto_a_session_file_is_forwarded_like_any_other() {
         &serde_json::json!({ "remote_path": "/srv/whatever.txt", "local_path": session }),
     )
     .await
-    .expect("🔴 V119：往会话文件那个位置上下载，开不出单");
+    .expect("🔴 往会话文件那个位置上下载，开不出单");
     let sent = rig.next("transfer-download").await;
     assert_eq!(sent["args"]["local_path"], session, "落点没有原样转给后端");
 }

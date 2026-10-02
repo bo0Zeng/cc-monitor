@@ -126,7 +126,7 @@ const SENDERS: &[(&str, Verdict)] = &[
     //   ⇒ 两份新发现的 `.call(` 都**不做回落决策、也碰不到 inbound**，牙与纯路由器那一档同一套：
     // · `source.rs` —— 窗口进程里说 `Comms::call` 的唯一一处（`filewin/source.rs::ask`）。
     ("source.rs", Verdict::PureRouterNoFallbackDecision),
-    // · 〔主会话 09-28 裁 3〕`entry.rs` 那一行删了：monitor 开窗前替窗口列第一屏那一问进了窗口进程
+    // · `entry.rs` 那一行删了：monitor 开窗前替窗口列第一屏那一问进了窗口进程
     //   （`filewin/proc.rs::first_screen` → 上面 `source.rs` 那一处），`entry.rs` 生产段里一个 `.call(` 都没有了。
     // ★ 〔面 A 通道，2026-09-24〕**不是发送端，是纯路由器**（`chan/router.rs`）。
     //   发现阶段看见它，是因为它生产段里有 `.call(` —— 那是**注入的** `Backends` 句柄的
@@ -171,7 +171,7 @@ const SENDERS: &[(&str, Verdict)] = &[
     // skill「装到这台」那一行（原住 `skill_install.rs`）摘了：装 / 卸的编排进了被写那台后端，界面经通道直问。
     // ★ **第十一个发送端** —— 用户文件的读改写 ＋ 删历史会话
     //   （`user_files.rs::BackendDoor`：`files-home` / `files-peek` / `files-put` / `files-rename` /
-    //   `files-chmod` / `files-delete-session`）。用户裁「只允许后端的文件管理部分写文件」也管本机
+    //   `files-chmod` / `files-delete-session`）。只有后端的文件管理部分写文件，本机也算
     //   ⇒ **没有第二条路可回落**（直写正是被裁掉的那一形，`D11`）；长连接不在时明说「后端没连上」。
     //   **照样走分流器**（`route_call_error` ＋ `no_channel`），理由与 `frame_query.rs` 那条逐字相同；
     //   它要的 `stale` 那一档是从分流器递回来的 `(code, message)` 里认的，不自己 match 错误枚举。

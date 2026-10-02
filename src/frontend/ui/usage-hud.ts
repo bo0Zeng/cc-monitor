@@ -6,7 +6,7 @@
  * 经 `TabManager.onActiveUsageChanged` 喂进来；上限表与百分比仍在前端（`views/context-limit.ts`，那是排版）。
  * 从前它由 `onLine` 旁路一条一条攒（那格写的「纯前端、零后端」指的是那时候），F5 之后只看得见重放那一截。
  * 事实要不到 ⇒ `setUnavailable(原因)`：chip 显示 `ctx —`、提示里说原因（「不可用，不是空表」）。
- * **只 token 不 $**（用户 2026-07-17 拍板）。模型上限表在 `views/context-limit.ts`（未知模型显 `?`，不显错%）。
+ * **只 token 不 $**。模型上限表在 `views/context-limit.ts`（未知模型显 `?`，不显错%）。
  *
  * 「今日 token」= 后续项（需跨会话聚合，非纯前端；本刀先聚焦 context% 这个最高价值信号）。
  */

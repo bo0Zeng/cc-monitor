@@ -82,9 +82,9 @@ fn every_gap_speaks_in_the_voice_of_its_own_tier() {
     );
 }
 
-/// 〔审计 F 🔴-11〕V109 点名的那 14 行：`ccm-launcher × Windows` 8 行 ＋ 命令面 × Windows 6 行
-/// （**手抄自 V109 原文**「`TARGET_GAPS` 里 `ccm-launcher × Windows` 那 8 行 ＋ 命令面 6 行继续记欠账」，与理由串异源）。
-const V109_ROWS: &[(&str, &str)] = &[
+/// 等 Windows 后台机制的那 14 行：`ccm-launcher × Windows` 8 行 ＋ 命令面 × Windows 6 行
+/// （**手抄**「`TARGET_GAPS` 里 `ccm-launcher × Windows` 那 8 行 ＋ 命令面 6 行继续记欠账」，与理由串异源）。
+const WAITING_ROWS: &[(&str, &str)] = &[
     ("ccm-launcher", "tmux"),
     ("ccm-launcher", "attach"),
     ("ccm-launcher", "detach"),
@@ -101,35 +101,34 @@ const V109_ROWS: &[(&str, &str)] = &[
     ("cli-subcommands", "--launch"),
 ];
 
-/// 理由串里一旦出现就等于替用户选了 V109 三选一里的某一种（丙 · 乙 · 甲）。
+/// 理由串里一旦出现就等于替用户选了三种机制里的某一种（丙 · 乙 · 甲）。
 const MECHANISM_WORDS: &[&str] = &["后台服务", "ConPTY", "控制台窗口本身"];
 
-/// 🔴 〔审计 F 🔴-11〕**理由串不替用户选 Windows 那一族的机制。**
+/// 🔴 **理由串不替用户选 Windows 那一族的机制。**
 ///
-/// # 守的要求（住址）
+/// # 守的要求
 ///
-/// **V109**〔选〕「先不做 Windows 这一族」—— 题：Windows 上会话要能放后台 / 接回 / 看一眼画面 / 往里送字，
-/// 用哪种机制（甲 · 控制台窗口本身就是容器 / 乙 · 常驻后端用 ConPTY 托管 / 丙 · 真 Windows 服务）⇒ 都先不做。
-/// 「`TARGET_GAPS` 里各行 `why` 的原文仍引 09-21 那句，以 V109 为准」。
-/// 出处：审计 F 🔴-11 —— 9 行理由串写着「将来由 **Windows 自己的后台服务** 承担」，等于替用户选了丙。
+/// Windows 上会话要能放后台 / 接回 / 看一眼画面 / 往里送字，用哪种机制
+/// （甲 · 控制台窗口本身就是容器 / 乙 · 常驻后端用 ConPTY 托管 / 丙 · 真 Windows 服务）⇒ 都先不做、机制未定。
+/// 理由串写「将来由 **Windows 自己的后台服务** 承担」就等于替用户选了丙。
 ///
 /// # 判（两向相等）
 ///
-/// - 理由串里引 `V109` 的行集合 == [`V109_ROWS`]（原文点名的 14 行）—— 同时是正控：扫描器读得到理由串、认得出子串。
+/// - 理由串里写「Windows 后台机制」的行集合 == [`WAITING_ROWS`]（点名的 14 行）—— 同时是正控：扫描器读得到理由串、认得出子串。
 /// - 理由串里点名任一机制（[`MECHANISM_WORDS`]）的行 == ∅。
 ///
-/// 买不到：换一个没登记的说法预设机制（新词）看不见；V109 裁定之后这张表要跟着改（选了哪种，哪一格就能写它）。
+/// 买不到：换一个没登记的说法预设机制（新词）看不见；机制定了之后这张表要跟着改（选了哪种，哪一格就能写它）。
 #[test]
 fn no_gap_rationale_picks_the_windows_mechanism() {
     let cites: BTreeSet<(&str, &str)> = TARGET_GAPS
         .iter()
-        .filter(|g| g.target == Target::Windows && g.rationale.contains("V109"))
+        .filter(|g| g.target == Target::Windows && g.rationale.contains("Windows 后台机制"))
         .map(|g| (g.family, g.capability))
         .collect();
-    let want: BTreeSet<(&str, &str)> = V109_ROWS.iter().copied().collect();
+    let want: BTreeSet<(&str, &str)> = WAITING_ROWS.iter().copied().collect();
     assert_eq!(
         cites, want,
-        "引 V109 的理由串那几行 ≠ V109 原文点名的那 14 行（`ccm-launcher × Windows` 8 ＋ 命令面 6）"
+        "写「Windows 后台机制」的理由串那几行 ≠ 点名的那 14 行（`ccm-launcher × Windows` 8 ＋ 命令面 6）"
     );
     let picks: Vec<String> = TARGET_GAPS
         .iter()
@@ -143,7 +142,7 @@ fn no_gap_rationale_picks_the_windows_mechanism() {
     assert!(
         picks.is_empty(),
         "\n🔴 理由串替用户选了 Windows 那一族的机制（甲 · 乙 · 丙都先不做，**机制未定**）：\n{}\n\
-         ⇒ 改成「等 V109 那一族选定机制」这一类不预设的说法；用户真裁了哪一种，先改本条的 `MECHANISM_WORDS`。",
+         ⇒ 改成「等 Windows 后台机制选定」这一类不预设的说法；用户真裁了哪一种，先改本条的 `MECHANISM_WORDS`。",
         picks.join("\n")
     );
 }
@@ -157,7 +156,7 @@ fn no_gap_rationale_picks_the_windows_mechanism() {
 /// - **结构 2**：`ccm-launcher` × Windows 的 `tmux-base`（原文逐字「不是推后，是这一条本身不该跨过去」）·
 ///   `tmux-size`（原文逐字「不照搬这一条」；PR1 把它句尾那个自相矛盾的「暂时不做」摘了，改写成「另立一行」）；
 /// - **欠着 12**：同一格的 `tmux` · `attach` · `detach` · `bus-register` · `ccm-sid` · `base-url-across-tmux`
-///   （原文都答了「暂时不做 / 将来」—— 用户 09-21 裁「Windows 用 Windows 自己的后台服务，后面再做」）；
+///   （原文都答了「暂时不做 / 将来」）；
 ///   ＋ 命令面 × Windows 6 条（帧面 `capture-pane` / `kill` / `launch` ＋ CLI 面同名 3 条，子步 3 被横向对等现推出来）。
 /// - **结构 2 → 4**：多了帧面 `files-chmod` 与 CLI 面 `--files-chmod`（× Windows）。
 ///   它们不是新裁的差异：`change_mode` 在非 unix 上从来就改不了；FW5 给那条命令声明了 `no_unix_mode` 码，
@@ -1079,10 +1078,10 @@ const CCM_PROBES: &[(&str, &[&str], &[&str])] = &[
     ("account", &["--account", "acct-x"], &[]),
     ("account-via-backend", &["--account", "acct-x"], &[]),
     ("agent", &["--ccm-agent", "codex"], &[]),
-    ("attach", &["--attach", "foo"], &[]), // V138：位置动作改成 `--attach`
+    ("attach", &["--attach", "foo"], &[]), // 位置动作是 `--attach`
     (
         "backend-discover",
-        &["--resume", "11111111-2222-3333-4444-555555555555"], // V138：交给 claude 的那一形
+        &["--resume", "11111111-2222-3333-4444-555555555555"], // 交给 claude 的那一形
         &[],
     ),
     (
@@ -1096,7 +1095,7 @@ const CCM_PROBES: &[(&str, &[&str], &[&str])] = &[
     ("model", &["--model", "opus"], &[]),
     (
         "resume",
-        &["--resume", "11111111-2222-3333-4444-555555555555"], // V138：交给 claude 的那一形
+        &["--resume", "11111111-2222-3333-4444-555555555555"], // 交给 claude 的那一形
         &[],
     ),
     ("tmux", &["--ccm-tmux"], &[]),
@@ -1148,8 +1147,8 @@ fn every_ccm_capability_that_rides_tmux_is_declared_tmux_carried() {
     }]);
     let plan_of = |args: &[&str]| -> Result<Plan, String> {
         let a: Vec<String> = args.iter().map(|s| s.to_string()).collect();
-        // 探针沿用 V138 写法（ccm 选项在前）⇒ 喂解析器前换成 V151 排列。
-        match parse(&crate::control::ccm::argv::tests::v138_to_v151(&a)) {
+        // 探针把 ccm 选项写在前 ⇒ 喂解析器前换成 `--` 切分的排列。
+        match parse(&crate::control::ccm::argv::tests::mixed_to_split(&a)) {
             Ok(Parsed::Opts(o)) => build(&o, &env, &table, None).map_err(|d| d.0),
             Ok(Parsed::Early(e)) => Err(format!("落进了立即结束那一支：{e:?}")),
             Err(d) => Err(d.0),

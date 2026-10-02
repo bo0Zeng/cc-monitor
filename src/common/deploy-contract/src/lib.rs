@@ -395,7 +395,7 @@ pub enum DeployAction {
     Keep { theirs: String, why: String },
 }
 
-/// 〔主会话 D-b「部署只在『我的比盘上的新』时才换（BUILD_ID 可比序）」〕**`BUILD_ID` 的序键** —— 唯一实现。
+/// 〔部署只在「我的比盘上的新」时才换（BUILD_ID 可比序）〕**`BUILD_ID` 的序键** —— 唯一实现。
 ///
 /// 形状 `p<代号>` ＋ `<一个小写字母>` ＋ `-<名>`（`p1a-history` … `p3m-ssh-zlib`）⇒ 序键 `(代号, 字母)`。
 /// 解不出 ⇒ `None`（**不可比**，不是「最旧」也不是「最新」）。下一次 bump 写出解不出的形状由

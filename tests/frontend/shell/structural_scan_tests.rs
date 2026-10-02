@@ -3247,7 +3247,7 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             "the_write_side_no_longer_targets_the_legacy_top_level_slot",
             1,
         ),
-        // 🔴 〔V108 后半句〕monitor 摘掉内嵌引擎：`panorama.rs` 与它的判据文件删了，散文里的旧名挂墓碑。
+        // 🔴 monitor 摘掉内嵌引擎：`panorama.rs` 与它的判据文件删了，散文里的旧名挂墓碑。
         //   代码全景整条摘掉：挂墓碑的那几份文件大多随之删了，只剩增量账里那一行。
         (
             "tests/frontend/shell/parity_ledger_tests.rs",
@@ -3259,7 +3259,7 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         (
             "tests/frontend/shell/lib_remote_config_tests.rs",
             "legacy_single_object_one_host",
-            2, // +1：JA1 点址那一行（它当时登记「待主会话裁」，本路裁完挂墓碑）
+            2, // +1：JA1 点址那一行（当时待定，后来挂了墓碑）
         ),
         // 插件只读列表整块删了：点 monitor 那条旧命令名的散文在账本里留一块墓碑（`list_plugin_marketplaces`）。
         (
@@ -3394,7 +3394,7 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         //    不在入口里猜），于是它改名成 `..._asks_the_remote_for_home_and_opens_nothing_when_it_cannot`，
         //    断的换成更强的一件。**旧名逐字留着**是为了说清「那条理由被满足了，不是被推翻了」
         //    ⇒ 按第②条出路：贴 `PROSE_NAME_TOMBSTONE` ＋ 在这里记一笔账。
-        // 〔主会话 09-28 裁 3〕上面那条（`an_empty_path_is_refused…` 的旧名）连同改名后的判据一起退役：开窗前那两问进了窗口进程，
+        // 上面那条（`an_empty_path_is_refused…` 的旧名）连同改名后的判据一起退役：开窗前那两问进了窗口进程，
         //   两条行为判据搬去 `proc_tests`；原处留一块墓碑点两个旧名。`entry.rs` 那三个 monitor 侧函数同理。
         (
             "tests/frontend/shell/filewin/entry_tests.rs",
@@ -3468,7 +3468,7 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             "safe_managed_path_requires_a_marker",
             1,
         ),
-        // 🔴〔本机侧退役 2026-09-23〕用户裁「本地不需要文件管理器」，而那条裁决与
+        // 🔴〔本机侧退役 2026-09-23〕要求「本地不需要文件管理器」，这与
         //    `INVARIANTS §40 追加` 的「天然不对称白名单」第一条逐字一致
         //    ⇒ 文件管理器的本机侧整条删了。下面**三条判据随它一起走**，
         //    墓碑正文（存在过什么 · 谁裁的 · 白名单原文 · 买不到什么）住
@@ -5065,7 +5065,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/frontend/ui/apikey-reads.ts", 2), // +1：`apikey_remote`整删，点它的那一处挂墓碑 // 写 key 改走通道：头注点旧命令名
         ("tests/backend/control/gate_tests.rs", 1),
         ("tests/backend/no_timer_guard.rs", 1),
-        // 2 → 3：远端写那一层「今天一处远端写都没有」那条判据随 V89 改写成
+        // 2 → 3：远端写那一层「今天一处远端写都没有」那条判据改写成
         //   「只住一份文件、只许两处」，旧名留一块墓碑（`TOMBSTONED` 同拍登记）。
         ("tests/backend/readonly_guard.rs", 3),
         ("tests/frontend/shell/backend_kill_tests.rs", 2), // 3 → 2：`@ccm_sid` 那份旧白名单的墓碑住在载荷那条建会话路径的理由里，那一条随载荷那一层删了 // +1：`@ccm_sid` 原先那份白名单 // +1：头注点删掉的发送端 ＋ 拒绝文案那条退役的墓碑（原那一块换成它）
@@ -5170,7 +5170,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/frontend/shell/src/backend_policy.rs", 2),
         ("src/frontend/ui/settings/backend-section.ts", 2), // 1 → 2
         // 改名「上游选择」、模块 `apikey` → `upstream`：两处讲旧叫法来历的注释各挂一块
-        //   （旧叫法本身不是 snake_case 死名，不进 `TOMBSTONED`；命名判据 `account-vs-relay-naming` 的 V114 那张表按这块标记放行这两行）。
+        //   （旧叫法本身不是 snake_case 死名，不进 `TOMBSTONED`；命名判据 `account-vs-relay-naming` 的「上游选择」改名那张表按这块标记放行这两行）。
         // +1：上游选择自己那张每 agent 默认上游表（`AGENT_UPSTREAMS`）搬回适配层，原处留一块说去向。
         ("src/backend/accounts/upstream_select/mod.rs", 3), // 4 → 3：点载荷那一层旧决策表住址的那块随起会话只交一行 `ccm …`（载荷那一层与它的判据整层删了）走了
         ("src/comms/outward/mod.rs", 1),

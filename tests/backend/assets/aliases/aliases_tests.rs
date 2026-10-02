@@ -270,8 +270,8 @@ fn the_generated_file_is_byte_stable() {
 // 一类别名 · 两跳（渲染纯 / 写入唯一副作用）· 读回口
 // ═══════════════════════════════════════════════════════════════════════
 
-/// 本文件的夹具沿用 V138 写法（ccm 选项与 claude 的词混写、`--` 之后全交 claude）⇒ 换成 V151 排列
-/// （`<交给 claude 的…> -- <ccm 自己的…>`），意图逐词不变。ccm 的词 = [`ALIAS_FLAGS`] ∪ [`NOT_IN_ALIASES`] ∪ `--ccm-tmux=…`。
+/// 本文件的夹具把 ccm 选项与 claude 的词混写 ⇒ 这里换成 `<交给 claude 的…> -- <ccm 自己的…>` 排列，
+/// 意图逐词不变。ccm 的词 = [`ALIAS_FLAGS`] ∪ [`NOT_IN_ALIASES`] ∪ `--ccm-tmux=…`。
 fn al(name: &str, args: &[&str]) -> Alias {
     let (mut left, mut right) = (Vec::new(), Vec::new());
     let mut i = 0;
@@ -441,7 +441,7 @@ fn the_reader_takes_the_old_file_and_names_what_it_cannot_parse() {
         "{:?}",
         back.unparsed
     );
-    // V138：`--print` 是 claude 的了，拿 ccm 的诊断口 `--ccm-print` 当认不出的那一行。
+    // `--print` 是 claude 的，拿 ccm 的诊断口 `--ccm-print` 当认不出的那一行。
     assert!(
         back.unparsed[1].contains("--ccm-print"),
         "{:?}",
@@ -453,7 +453,7 @@ fn the_reader_takes_the_old_file_and_names_what_it_cannot_parse() {
     assert!(!l.exists && l.aliases == first_aliases(P) && l.fingerprint.is_none());
 }
 
-/// V1–V5：每一条规则各有一个会被拦下的例子；有一条不合格 ⇒ **整批不写**。
+/// 组合规则：每一条各有一个会被拦下的例子；有一条不合格 ⇒ **整批不写**。
 #[test]
 fn every_combination_rule_stops_a_bad_alias_and_nothing_is_written() {
     let bad = [
@@ -463,7 +463,7 @@ fn every_combination_rule_stops_a_bad_alias_and_nothing_is_written() {
         al("c", &["--ccm-tmux", "--bus-register"]),
         al("d", &["--detach"]),
         al("e", &["--tmux-size", "80x24"]),
-        // V138：第三档改名后的样子（诊断口 · `--attach`）；相对 / 带 `..` 的 `--cwd`。
+        // 第三档（诊断口 · `--attach`）；相对 / 带 `..` 的 `--cwd`。
         al("f", &["--ccm-print"]),
         al("g", &["--attach", "abc"]),
         al("j", &["--cwd", "rel/dir"]),
@@ -493,7 +493,7 @@ fn every_combination_rule_stops_a_bad_alias_and_nothing_is_written() {
         ),
         al("ok2", &["--ccm-tmux=w", "--tmux-size", "80x24"]),
         al("ok3", &["--base", "--ccm-agent", "codex"]),
-        // V138：交给 claude 的词原样放行；绝对 `--cwd` 放行（正控）。
+        // 交给 claude 的词原样放行；绝对 `--cwd` 放行（正控）。
         al("ok4", &["--model", "opus", "--continue"]),
         al("ok5", &["--cwd", "/srv/my proj"]),
         // 写空的 agent ⇒ 默认那一家（与 ccm 运行时同一条）。

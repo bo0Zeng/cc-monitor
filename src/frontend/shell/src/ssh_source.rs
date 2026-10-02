@@ -189,7 +189,7 @@ pub(crate) enum AfterRound {
     Stop(String),
 }
 
-/// 纯函数：这一轮记下了「永久不支持」⇒ 停；否则按当前退避再连（主会话裁：非 unix 不按退避空转）。
+/// 纯函数：这一轮记下了「永久不支持」⇒ 停；否则按当前退避再连（非 unix 不按退避空转）。
 pub(crate) fn after_round(unsupported: Option<String>, backoff: Duration) -> AfterRound {
     match unsupported {
         Some(why) => AfterRound::Stop(why),
@@ -3097,7 +3097,7 @@ async fn stream_loop(
                 );
             }
             // 远端中转住进远端常驻后端（进程内），它抄出来的 SSE 事件沿这条流回来 ⇒ 与本机那条流同一个口转前端
-            //   （origin = 这台；V141 之后标签就是 claude 自己的 sid，不用对账）。从不阻塞、不进内容通道。
+            //   （origin = 这台；标签就是 claude 自己的 sid，不用对账）。从不阻塞、不进内容通道。
             Some(InboundFrame::Tap(t)) => crate::session_tap::deliver(&host_label, t),
             None => {
                 // 未知 kind / 坏帧 / 非 JSON：跳过，绝不 panic、绝不中断流。

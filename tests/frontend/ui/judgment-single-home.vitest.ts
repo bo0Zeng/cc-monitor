@@ -193,7 +193,7 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
   },
   J5: {
     what: "session id 形状",
-    // 〔主会话 09-26 交「J5 那一族统一」〕唯一住址 `shell-quote-core::session_id_ok`（今天各处规则的交集）：
+    // 唯一住址 `shell-quote-core::session_id_ok`（今天各处规则的交集）：
     //   `branch_core::is_plain_sid` 成它的再导出（那个再导出随 branch-core 收进后端删了，调用方直呼这一条）；monitor 载荷 `@ccm_sid` · 载荷线 `resumeSid` · `ccm …` 调用行 · 本机拉起 ·
     //   分叉 id，后端 ccm argv 都调它。⚠ 后端 `resolve_query.rs::is_valid_session_id` 刻意没收：行为冻结给仓外 aterm。
     //   TS：`isValidSessionId` 与只剩那一格的 `validateLocalLaunch` 删。
@@ -205,7 +205,7 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
   J6: {
     what: "tmux 会话名形状",
     // 唯一一份进 `gate-core`：**新建**（本工具铸的名，`§47` ①）· **已有会话**（attach / 送进已在的，
-    //   V131 ②：拒绝集 ＋ 非空，寻址恒 `=<名>:`）。monitor 载荷外层（`payload.rs::check`）· `ccm …` 调用行 · 后端
+    //   `§47` ②：拒绝集 ＋ 非空，寻址恒 `=<名>:`）。monitor 载荷外层（`payload.rs::check`）· `ccm …` 调用行 · 后端
     //   `ccm/plan.rs::validate_tmux_name`（成只管「说哪一句」的薄壳）都调它；TS 两个谓词与两处内联式子删。
     // 共享 crate `gate-core` 收成后端模块 `control/gate_rules.rs`（monitor 那一侧的门删了）⇒ homes 换成路径形。
     homes: ["src/backend/control/gate_rules.rs::new_tmux_name_issue", "src/backend/control/gate_rules.rs::existing_tmux_name_issue"],
@@ -249,7 +249,7 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
   },
   J9: {
     what: "上游 base URL 能不能用（形状 ＋ 协议闭集 ＋ 明文只许回环）",
-    // 〔主会话 09-26 裁 J9 → 甲〕三截（写口 creds-core 形状关 · 中转 `Base::parse` · 装表的回环判定）收成一份进新 crate
+    // 三截（写口 creds-core 形状关 · 中转 `Base::parse` · 装表的回环判定）收成一份进新 crate
     //   `upstream-url-core`；界面 `checkBaseUrl` 成读生成物的薄壳（只剩「空 ⇒ 默认」与「按理由挑一句」）。
     homes: ["upstream-url-core::usable", "upstream-url-core::parse", "upstream-url-core::upstream_is_loopback"],
     status: "generated",
@@ -277,7 +277,7 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
   J10: {
     what: "用户消息里的 CLI 注入噪声",
     // 规则合成一份住 `user_text`（`clean_user_text` 取它的 `clean`）；后端读者（搜索 · 历史摘要 · 大纲）都走它。
-    //   前端（主会话 09-27 裁乙）：monitor 解析 user 记录时调同一个 `user_text` 填 `userText`（`messages.rs::UserText::of`），
+    //   前端：monitor 解析 user 记录时调同一个 `user_text` 填 `userText`（`messages.rs::UserText::of`），
     //   渲染 / compact 检测 / 分叉折叠只读成品；TS 那份 `stripInternalNoise` 与 `branching.ts` 的前缀判断删了。
     // `search-core` 拆进后端：这条规则是 Claude 记录格式的知识 ⇒ 住适配层（通用层经注册表 `agents::clean_user_text` 够）。
     homes: ["src/backend/agents/claudecode/text.rs::user_text", "src/backend/agents/claudecode/text.rs::clean_user_text"],
@@ -291,7 +291,7 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
   J11: {
     what: "文案表取文 ＋ 插值",
     homes: ["copy-core::copy_text"],
-    // 〔主会话 09-26 裁 J11 → 甲〕设计认可的双读口：登记为镜像 ＋ 插值对拍（只对拍合法插值）。
+    // 认可的双读口：登记为镜像 ＋ 插值对拍（只对拍合法插值）。
     //   两侧有意不同的几形（缺键 TS 抛 / Rust 回 `` · 参数对不上）照现状登记在金样 `_differences`。
     // 「值里含别的占位符」那一形不再不同：Rust 读口改成单趟（值不再被扫），金样 `cases` 多一条钉它。
     status: "mirror",
@@ -305,7 +305,7 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
   },
   J12: {
     what: "cc-bus agent id 形状",
-    // 〔主会话 09-26 裁 J12 → 乙「挪进后端」〕唯一一份进共享 crate（`shell_quote_core::bus_id_ok`，规则逐字不变）：
+    // 唯一一份进共享 crate（`shell_quote_core::bus_id_ok`，规则逐字不变）：
     //   monitor 读收件箱（`cc_bus.rs::is_valid_bus_id` 是它的再导出）· 后端 `bus-send` / `bus-kill` / `bus-spawn` 入口
     //   在交给 `cc-send` / `cc-kill` / `cc-spawn` 之前判（拒码 `bad_id`）。界面那一份（发 / 收 / 查在线 / 派生账号名）删了；
     //   `INVARIANTS §47` 那两格改写成「后端交给 cc-bus 之前」（报用户，用户可推翻）。
@@ -359,7 +359,7 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
   },
   J17: {
     what: "模型名能不能交出去（`ANTHROPIC_MODEL` · `--model`）",
-    // 〔主会话 09-26「两侧同一份、住共享 crate，真实模型名都放行」〕唯一住址 `shell-quote-core::model_name_ok`；
+    // 两侧同一份、住共享 crate，真实模型名都放行：唯一住址 `shell-quote-core::model_name_ok`；
     //   monitor 载荷 `ExportModel` · `ccm …` 的 `--model` · 后端 ccm argv 调它。TS 手写那份删：设置里写入点那一句读
     //   **生成物** `src/frontend/ui/generated/judgment-rules.ts`（生成物目录不在本判据的扫描面里 —— 它是规则的投影，不是孪生），
     //   两侧由共用金样 `identifier-rules.golden.json` 逐条对。
@@ -383,7 +383,7 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     what: "账号名（`--account <名>`）",
     // Rust 侧接上：`ccm …` 的 `--account` · 后端 ccm argv（此前只靠 quote ＋ 名单成员检查）。
     homes: ["shell-quote-core::account_name_ok"],
-    // 〔主会话 09-26 裁 J18 → 甲〕新建账号表单那一句读生成物（`validateAcctName` 成薄壳：只多说一句「空」）；
+    // 新建账号表单那一句读生成物（`validateAcctName` 成薄壳：只多说一句「空」）；
     //   顺带修掉「比 cc-acct-iso 宽」—— 旧的手写规则放行 `.` 与 33–64 位，两根指纹钉它不许回来。
     status: "generated",
     defs: ["validateAcctName"],
@@ -428,7 +428,7 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
   J16: {
     what: "账号种类的取值集",
     homes: ["acct-core::AUTH_KINDS"],
-    // 〔主会话 09-26 裁 J16 → 甲〕解码白名单与 `AuthKind` 类型都读生成物（`acct_core::AUTH_KINDS` 现生成）；手写字面量两形钉零。
+    // 解码白名单与 `AuthKind` 类型都读生成物（`acct_core::AUTH_KINDS` 现生成）；手写字面量两形钉零。
     status: "generated",
     defs: [],
     gone: ["AUTH_KINDS"],
@@ -448,7 +448,7 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
   },
   J20: {
     what: "中转进门请求的 Host 头是不是回环字面量（防 DNS 重绑）",
-    // 〔主会话 09-26 裁（丙）〕与 J9 里上游那条回环判定是两个判定：这里只认三个字面量是设计，改名说清、分两行登记，不许并。
+    // 与 J9 里上游那条回环判定是两个判定：这里只认三个字面量是设计，改名说清、分两行登记，不许并。
     homes: ["src/backend/relay/door.rs::host_header_is_loopback_literal"],
     status: "zero",
     defs: [],

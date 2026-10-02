@@ -38,7 +38,7 @@
 //! - **针只认两样**。`§10` 同样点名的「同步命令里起进程（`Command::spawn` / `output` / `wait`）· 读写文件」
 //!   **不在射程**：TL3 现打（名字级闭包原型）今天这一类还有 `list_local_tmux`（`tmux ls`）·
 //!   `local_ccm_entry_status`（跑 `ccm --ccm-probe`）· `backend_stop`（`kill` ＋ `wait`）·
-//!   `load_config` / `save_config` 等 —— 列在，交主会话裁。
+//!   `load_config` / `save_config` 等 —— 列在，待定。
 //! - 只看 monitor 这一个 crate（`#[tauri::command]` 全在这里）；共享 crate 里的阻塞看不见（今天零处）。
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -48,7 +48,7 @@ const NEEDLES: &[&str] = &["block_on(", "TcpStream::connect"];
 
 /// 🔴 **例外表**：`(同步命令, 它的闭包里够得着的针所在 fn, 为什么)`。键形 `相对 src/frontend/shell/src 的路径::fn 名`。
 ///
-/// ⚠ **登记 ≠ 认可**。这里每一行都是**偏离 `INVARIANTS §10`**、由 TL3 报备、等主会话裁（改 `async` ＋
+/// ⚠ **登记 ≠ 认可**。这里每一行都是**偏离 `INVARIANTS §10`**、由 TL3 报备、待定（改 `async` ＋
 /// `spawn_blocking`，或在 `§10` 登记例外）。裁掉一行 ⇒ 从这里删那一行（本条两向相等，删了不改代码会红）。
 ///
 /// 今天**空**：原先那一行 `backend_control::backend_start`（机器页「起」：同步命令一路
@@ -482,7 +482,7 @@ fn no_sync_command_waits_on_the_outside_except_the_registered_deviations() {
          例外表里有、盘上已经没有（或针集合不同）：{stale:#?}\n\n\
          ⇒ 前一种：那条命令会在 IPC 派发线程上等（`block_on` / 同步连口），期间别的 IPC 全排队 ——\n\
             改 `pub async fn` ＋ 同步那一截包 `spawn_blocking`（`§10` 实施口诀；先例 `launch.rs::open_local_terminal`），\n\
-            别往例外表里加一行了事（加一行 = 偏离设计，要主会话裁）。\n\
+            别往例外表里加一行了事（加一行 = 偏离设计）。\n\
          ⇒ 后一种：修好了 ⇒ 从 `PENDING` 删掉那一行；只是换了针所在的 fn ⇒ 按实数改并写清为什么。"
     );
 }

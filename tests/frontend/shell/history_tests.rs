@@ -93,7 +93,7 @@ fn extracting_cwd_from_a_jsonl_head_now_lives_in_exactly_one_place() {
     );
 }
 
-// 历史清单与注解搬进本机常驻后端（主会话 09-25 裁：join 只一个家、注解读写者换成本机后端）——
+// 历史清单与注解搬进本机常驻后端（join 只一个家、注解读写者是本机后端）——
 //   这里原先驱动 monitor 那一份实现的几组判据随被测函数一起退役，它们钉的性质各自在新家有判据（逐条对应）：
 //   - `K-R97` 本机项目清单来自后端那一行 · 行里的「不知道」不被压平 · 本机判活答真值 · 一次列举只问一次
 //     （`the_local_project_list_is_whatever_the_backend_said` 那一组〔散文墓碑〕）⇒ 后端 `tests/backend/history/history_join_tests.rs`
@@ -169,7 +169,7 @@ fn finding_a_session_file_by_sid_now_lives_in_exactly_one_place() {
     // ② **monitor 那一侧零处、后端那一侧恰好一处**。
     //    从前两侧各有一处（本机分叉在 monitor 进程里找、写）；本机分叉改成 exec 本机后端的
     //    `--fork-session` 之后，「按 sid 找那份」只剩后端那一处在问 —— monitor 这一侧再出现一处，
-    //    就是有人又在本进程里做分叉了（那正是用户裁掉的那一形：monitor 不直接写用户文件）。
+    //    就是有人又在本进程里做分叉了（那正是删掉的那一形：monitor 不直接写用户文件）。
     let mine =
         guard_core::production_code(include_str!("../../../src/frontend/shell/src/history.rs"));
     // monitor 分叉那一侧的模块删了（界面经通道直说 `session-fork`），人群只剩 `history.rs` 与后端。

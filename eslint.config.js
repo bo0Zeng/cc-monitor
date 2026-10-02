@@ -106,7 +106,7 @@ export default tseslint.config(
     },
   },
   {
-    // V7-3（2026-08-09 `/full-audit`）：`scripts/` 下的 `.mjs` **掉进了 E83 修过的同一个洞**。
+    // `scripts/` 下的 `.mjs` **掉进了 E83 修过的同一个洞**。
     //
     // ⚠ 时间线是这条的全部要害（`git log` 实测，不是推的）：
     // E83 在 **07-31**（`a02f340`）把 `npm run lint` 从 `eslint src` 放开到 `eslint .`，
@@ -130,7 +130,7 @@ export default tseslint.config(
   },
   {
     // `tests/evidence/RT1-cdp.mjs`（经 WebView2 远程调试口在真页里求值的台架）
-    // 是 `tests/evidence/` 下第一份 `.mjs` —— V7-3 那个洞的第三次复发形态（新目录、没有 globals 块，
+    // 是 `tests/evidence/` 下第一份 `.mjs` —— 上面那个洞的第三次复发形态（新目录、没有 globals 块，
     // 11 条 `no-undef: process/console/fetch/WebSocket` 一次性把基线 3 顶成 14）。照上一块止血。
     files: ["tests/evidence/**/*.mjs"],
     languageOptions: {

@@ -2,7 +2,7 @@
 //!
 //! # 守的要求（住址）
 //!
-//! 主会话 09-25 裁（「主会话裁」第 2 条，逐字）：「本机后端经 `remote_ask` 问远端那台的项目 / 会话清单、
+//! 要求：「本机后端经 `remote_ask` 问远端那台的项目 / 会话清单、
 //! 并上注解、出成品；前端经 `chan.call`。codex 合成的项目与会话一起进后端（join 只一个家）」。
 //! `K-R83` / `K-R92`（从 monitor `remote_history_kr83_tests.rs` 搬来的那几条性质）：「不知道」不许与「真的是 0」长成一个样。
 //!
@@ -246,7 +246,7 @@ impl Remote for Far {
     }
 }
 
-/// 要求住址：主会话 09-29 拍板 ④(a)「远端没起过会话 ⇒ 那台落『这台还没有会话记录』空态，不并进『部分远端没加载上』」。
+/// 要求：「远端没起过会话 ⇒ 那台落『这台还没有会话记录』空态，不并进『部分远端没加载上』」。
 /// 那台 CLI 回 `no_record_tree` ⇒ 零个项目、`Ok`；别的码 / 无码的失败照旧是 `unreachable`（正控：同一台、码换掉就红回去）。
 #[tokio::test]
 async fn a_remote_without_a_record_tree_is_zero_projects_not_a_failure() {

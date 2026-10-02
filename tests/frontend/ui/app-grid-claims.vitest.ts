@@ -180,7 +180,7 @@ const INSERTED_CHILDREN: readonly AppChild[] = [
     why: "只有 bootstrapViewer 建它，而它第一件事就是挂 body.viewer-mode",
   },
   // 🔴 `.tab-archive` 这条**摘掉** —— 那个插入点没了。
-  //    归档抽屉随用户裁定整个删除（「已定：删归档抽屉」），
+  //    归档抽屉整个删除，
   //    `ensureArchiveUi()` 与 `#app` 模板里的 `archive` 那一行一并消失。
   //    ⇒ 留着它，尺 A（源码里的插入点 ↔ 本表）会报「表上有而源码没有」。
 ];

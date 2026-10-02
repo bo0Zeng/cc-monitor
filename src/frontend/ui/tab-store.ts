@@ -169,7 +169,7 @@ export class TabStore {
    * ⚠ 这里**只动 `orderedIds`、不碰 DOM** —— 拖拽期间的重画抑制（★ 6d）由
    *   `refreshTabBar` 那道守卫管，与本函数无关。
    * 〔「删掉树」〕bg 会话与普通 tab 走**同一条**落位：原先这里先把 bg 挂到同
-   *   `(cwd, origin)` 交互宿主之后排成树（Batch7-F24），用户裁删 —— 与
+   *   `(cwd, origin)` 交互宿主之后排成树（Batch7-F24），已删 —— 与
    *   「不做自动归组、集合是唯一分类维」一致。本函数里零处按 kind 分叉（`tests/frontend/ui/bg-flat.vitest.ts` 钉着）。
    */
   placeInOrder(tab: Tab): void {

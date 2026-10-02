@@ -77,7 +77,7 @@ pub(crate) const WRITE_SITES: &[(&str, &str, Option<&str>, &str)] = &[
           （挪开的那份由 `sweep_moved_aside` 下次收）。写的只是我们自己刚放的那一份与我们自己的旧版。"),
     // ── 这里原来有 `cc_bus_deploy.rs` 的三行（`deploy_into` 装 17 个文件 ·
     //    `fenced_dest` 先 `mkdir -p skills` · `backup_existing` 整目录改名成 `.bak-<ts>`，`U10b` 第 7 条例外那四个配套的落点）。
-    //    用户裁「只允许后端的文件管理部分写文件」也管本机 ⇒ 三件都改经本机后端（`files-put` 带 `parents` /
+    //    只有后端的文件管理部分写文件，本机也算 ⇒ 三件都改经本机后端（`files-put` 带 `parents` /
     //    `files-rename` / `files-chmod`），本进程一个字节不落 ⇒ 三行摘掉。四个配套一条没省：
     //    显式动作（只由那个按钮调）· realpath 围栏（`fenced_dest` 只读判 ＋ 后端围栏再判）· 幂等（逐文件经后端读回比）·
     //    可撤销（整目录改名，经后端）。
@@ -91,12 +91,12 @@ pub(crate) const WRITE_SITES: &[(&str, &str, Option<&str>, &str)] = &[
           身份改从二进制字节里扫（`CC_MONITOR_BUILD_STAMP`），\
           由 `sftp_tests.rs::the_embedded_identity_comes_from_the_bytes_not_from_a_label` 守着"),
     // ── 这里原来有收件箱写（`write_skill_file`〔散文墓碑〕）一行（项目里的
-    //    `.claude/planned-build/INBOX.txt`，本进程 `fs::write` ＋ `verified_write` 回读回滚）。用户裁「远端（和本机，
+    //    `.claude/planned-build/INBOX.txt`，本进程 `fs::write` ＋ `verified_write` 回读回滚）。要求「远端（和本机，
     //    同一条路）的 `INBOX.txt` 能编辑、经那台机器后端的文件管理那一面写」⇒ 读写都改经后端（`files-peek` /
     //    `files-put`，带 CAS 期望），本进程一个字节不落 ⇒ 摘行。三道围栏也进了那台后端；收件箱编辑面整块删了，那三道随之没了。
     // ── 🔴 这里原来有三行 `fenced_block.rs` 的本机原语
     //    （`put_atomic` / `save_backup` / `delete_created`，那时是本机 rc · `$PROFILE` · 别名文件 · rc 里那一行
-    //    source 的唯一落盘漏斗）。用户裁「只允许后端的文件管理部分写文件」**也管本机** ⇒ 那几件改经本机后端
+    //    source 的唯一落盘漏斗）。只有后端的文件管理部分写文件，**本机也算** ⇒ 那几件改经本机后端
     //    （`user_files::edit` → `files-peek` / `files-put`），本进程**一个字节都不落** ⇒ 三行随原语一起走了。
     //    写的规则（备份 · 原子替换 · 回读 · 回滚）从此只住后端 `control/files_write.rs::put_text`。
     // ── 这里原来还有三行：`profile_installer.rs` 的 `atomic_write_string`〔散文墓碑〕 /
@@ -146,7 +146,7 @@ pub(crate) const WRITE_SITES: &[(&str, &str, Option<&str>, &str)] = &[
      "建 `<monitor 数据目录>/logs/backend/`（`create_dir_all`，只建目录）—— 脱离常驻的本机后端把自己的 stderr 落在\
           这一层里（后端只 `O_EXCL` 新建文件、不建目录，`src/backend/stderr_log.rs`）。写的是 monitor 自己的日志目录"),
     // ── 这里原来有 `history.rs` 的 `delete_history_session` 一行（**删用户数据**：〔散文墓碑〕
-    //    本进程 `fs::remove_file` 删 `~/.claude/projects/**` 下的会话文件）。用户裁「只允许后端的文件管理部分写文件」
+    //    本进程 `fs::remove_file` 删 `~/.claude/projects/**` 下的会话文件）。只有后端的文件管理部分写文件
     //    也管本机 ⇒ 删历史会话改成后端一条只收 sid 的命令（`files-delete-session`；当时说「会话文件围栏唯一的例外」，
     // FN1 之后写面已无那道围栏），
     //    本进程一个字节不删 ⇒ 摘行。那条「入口真的过了围栏」的端到端判据随之换成后端那一族与本侧的一致性闸判据。
@@ -572,7 +572,7 @@ fn moved_out_needles() -> Vec<String> {
 /// ② 里**逐行登记的例外**：搬走写盘的那几份文件里，还在写 **monitor 自己的**状态文件的那几行。
 /// `(文件, 那一行逐字, 写的是什么)`。整行相等，不是子串；每一行必须恰好出现一次（幽灵检查）。
 /// **今天是空表**：唯一那一行（`history.rs` 写 `history-metadata.json` —— 标星 / 改名 / 隐藏这些注解）摘了：
-/// 主会话 09-25 裁注解的读写者换成本机常驻后端（`src/backend/history/history_annotations.rs`，第四层；文件原地不动）⇒
+/// 注解的读写者换成本机常驻后端（`src/backend/history/history_annotations.rs`，第四层；文件原地不动）⇒
 /// 搬走写盘的这几份文件里，连 monitor 自己的状态也一行都不写了。表留着：新长一处「写自己的状态」时第一个要表态的地方。
 const OWN_STATE_LINES: &[(&str, &str, &str)] = &[];
 

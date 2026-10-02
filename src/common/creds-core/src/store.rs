@@ -165,7 +165,7 @@ pub fn credentials_path(data_dir: &std::path::Path) -> std::path::PathBuf {
 /// JSON 没有注释语法，所以说明写成一个**未知键**（`_note`），而
 /// 「未知键原样保留」正是 [`merge_key`] 的性质 ⇒ 这份模板**自己就是那条性质的用例**。
 ///
-/// 〔FIX · COPY ④ · 主会话按 CP1 `[对外]` 裁〕三句说明是用户读的话 ⇒ 住文案表（`credsStore.template.*`）；
+/// 三句说明是用户读的话 ⇒ 住文案表（`credsStore.template.*`）；
 /// JSON 骨架（键与结构）留这里，运行期拼出来（键序与 [`to_pretty_json`] 同一个排法）。
 ///
 /// # ⚠ 它刻意**不列举** `auth_style` 的合法值〔`K-R1`，`brief` 13b〕

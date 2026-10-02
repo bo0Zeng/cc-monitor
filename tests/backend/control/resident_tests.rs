@@ -118,7 +118,7 @@ fn a_token_file_gives_listen_mode_and_an_empty_one_is_refused() {
 }
 
 /// 〔HOST 余项〕远端起的常驻后端也带上数据目录那两格（与那台自己的 monitor 交的同一对值）⇒ 那台 monitor 收养它、HX2 不拒。
-/// 守的要求：主会话裁 HOST 待拍 1「后端自己按默认推出这两格路径（谁起都一样）」。期望路径手写。
+/// 守的要求：「后端自己按默认推出这两格路径（谁起都一样）」。期望路径手写。
 #[test]
 fn the_resident_derives_the_same_data_dir_pair_whoever_starts_it() {
     let names = ("CCM_APIKEY_CREDENTIALS", "CCM_HISTORY_METADATA");

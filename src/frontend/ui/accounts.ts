@@ -23,7 +23,7 @@ import type { AuthKind } from "./generated/judgment-rules";
 //
 // K-A1 起这一格是 ts-rs 生成物（`src/frontend/ui/generated/RemoteAccount.ts`，Rust 那份在 monitor 的 `accounts.rs`）。
 // C4c 起账号清单由**那台机器的后端出成品**、界面严格收（`accounts-decode.ts::decodeAccountsList`）；
-// monitor 里最后一个产出那份 Rust 结构的是一份零生产调用方的本机参照实现，主会话 09-25 裁删（C4d）⇒ 生成源没了。
+// monitor 里最后一个产出那份 Rust 结构的是一份零生产调用方的本机参照实现，已删 ⇒ 生成源没了。
 // 形状今天由两样东西钉：后端 `observe/accounts_query.rs::list_product`（产）＋ 跨语言金样
 // `tests/__fixtures__/accounts.golden.json`（Rust 与 TS 两侧同读）＋ 解码器逐键核（多一格 / 缺一格 / 类型不对都抛）。
 // `AuthKind` 那两个字面量是 `acct-core` 的契约常量（`AUTH_KIND_SUBSCRIPTION` / `AUTH_KIND_API_KEY`）；
@@ -361,7 +361,7 @@ export function selectableAccounts(state: AccountsState): Account[] {
  *
  * **作用面只有状态栏 chip 与 tab 徽章**。设置里的账号表（U7 的横幅 + 表格行）**恒显豁免**：
  * 那是全应用唯一能让用户学到「色块 ↔ 账号 ↔ 邮箱」映射的图例面，单账号期把它也休眠掉，
- * 等加了第二个号就会突然满屏彩块。（变更记录 2026-07-25 已拍板。）
+ * 等加了第二个号就会突然满屏彩块。
  */
 export function accountColorsActive(state: AccountsState): boolean {
   return state.available && selectableAccounts(state).length >= 2;
@@ -383,7 +383,7 @@ export function currentAccountForBadge(state: AccountsState): Account | null {
 
 /**
  * account-ux U1:普通 resume 的**跟随账号**解析器(纯函数,vitest 锁死)。
- * 优先级(用户拍板:粘性优先):`会话 lastAccount → 当前账号 → null(基座)`。
+ * 优先级(粘性优先):`会话 lastAccount → 当前账号 → null(基座)`。
  * 每级候选必须 `isSelectable`(isolated + **鉴权前提就绪** + 目录在)否则**下沉**下一级;
  * (K-A1 起第二项不再是「已登录」——订阅号那一支等价，api-key 号不看凭据文件)
  * 都不可选 → null(=不注入、落基座、逐字节旧行为)。
@@ -624,7 +624,7 @@ export function resolveAccount(
   if (opts.follow) {
     const current = currentWorkingAccount(state)?.name ?? null;
     const priorPin = opts.follow.lastAccount ?? null;
-    // 🔴 D-h（主会话 4D 裁，照「「哪个账号」非有不可 —— 缺了 resume 会静默落到默认号，撞 `D4`」）：
+    // 🔴 D-h（「「哪个账号」非有不可 —— 缺了 resume 会静默落到默认号，撞 `D4`」）：
     //   会话有 pin、而 pin 那个号选不了 ⇒ **不下沉**，回 `unavailable`（调用方不起、说清、给「用当前账号」的显式选择）。
     //   先前这里下沉到当前号 / 基座、不说一个字（E7）—— 用另一个号的订阅或 key 续了这场会话。
     //   没有 pin 的会话照旧 当前号 → 基座（没有「原账号」，谈不上换号）。

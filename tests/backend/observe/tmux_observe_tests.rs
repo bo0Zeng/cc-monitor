@@ -690,7 +690,7 @@ fn the_tmux_probe_is_bounded_and_degrades_honestly() {
 }
 
 /// `tmux-list` 的四态折叠：没装 ≠ 零会话 ≠ 看不清（`list_remote_tmux` 头注那三档，搬到这一侧）。
-/// 要求住址：`INVARIANTS §49`「下溢必须出声 ＋ 这一行不许当好数据」· 题面「`list_remote_tmux` 改后端新帧命令 `tmux-list`」。
+/// 要求：`INVARIANTS §49`「下溢必须出声 ＋ 这一行不许当好数据」·「`list_remote_tmux` 改后端新帧命令 `tmux-list`」。
 #[test]
 fn the_tmux_list_query_keeps_not_installed_empty_and_unobservable_apart() {
     assert_eq!(query_reply(TmuxObservation::NoTmux), Ok((false, vec![])));

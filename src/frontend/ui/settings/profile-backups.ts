@@ -1,5 +1,5 @@
 /**
- * 〔主会话 09-28 裁子步 4「拆」〕`$PROFILE` 备份在哪 —— **经通道直接问本机后端**。
+ * `$PROFILE` 备份在哪 —— **经通道直接问本机后端**。
  *
  * 从前是 monitor `data_paths.rs` 自己探 `$PROFILE` 的两个目录名（`$PROFILE` 在哪的第二个读者）。今天：
  * ① 候选启动文件由本机后端的方言答（`aliases-read`，PowerShell 那一臂 —— 全仓唯一答「`$PROFILE` 在哪」的地方）；

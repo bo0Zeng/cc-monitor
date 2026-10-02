@@ -452,7 +452,7 @@ export class BackendSection {
     btn.disabled = true;
     try {
       const r = await resync(origin);
-      // 〔V149 手动兜底〕本机那一行对齐 ⇒ 顺手作废「PATH 上的 ccm」那份 5 分钟缓存、重记那一格（Windows 不适用）。
+      // 手动兜底：本机那一行对齐 ⇒ 顺手作废「PATH 上的 ccm」那份 5 分钟缓存、重记那一格（Windows 不适用）。
       if (isLocalOrigin(origin) && hostOs() !== "windows") {
         noteLocalCcm(true).catch((e: unknown) => console.warn("[resync] 本机 ccm 那一格没重问：", e));
       }
@@ -546,7 +546,7 @@ export class BackendSection {
    * 拼（远端恒 `null` ⇒ 远端常驻也被说成「很快自行退出」），那一格不再参与。
    *
    * `answer` 是**后端答的**那一份；`null` = 问不到 ⇒ 勾禁用、那一行不说话。
-   * 〔V105 清账〕原来还有「不适用」一臂（折进前端那一档：勾、那一行、[起][停] 整个拿掉，E4）——
+   * 原来还有「不适用」一臂（折进前端那一档：勾、那一行、[起][停] 整个拿掉，E4）——
    * 那一档已放弃，这一臂随之删了。
    */
   private paintExit(origin: string, answer: ExitAnswer | null): void {
@@ -659,7 +659,7 @@ export class BackendSection {
     const btns = cells ? [...cells.querySelectorAll("button")] : [];
     for (const b of btns) b.disabled = true;
     // 停后端之前：有走那台中转的活会话 ⇒ 先问一句、说几条会断。
-    // 〔HOST 余项〕远端也问：V139 之后远端中转住在那台的常驻后端里，停它就停了中转。
+    // 远端也问：远端中转住在那台的常驻后端里，停它就停了中转。
     if (what === "stop") {
       const warn = stopWarning(await this.sessions(origin));
       if (warn !== null && !(await this.confirm(warn))) {

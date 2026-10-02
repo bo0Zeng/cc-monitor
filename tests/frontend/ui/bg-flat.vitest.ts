@@ -3,7 +3,7 @@
  *
  * ## 守的要求（住址）
  *
- * - 用户裁决 **V125**〔选〕「删掉树」，原话：「后台（bg）会话不再自动挂到宿主下排成树：
+ * - 用户原话：「后台（bg）会话不再自动挂到宿主下排成树：
  *   删 `placeInTree` 树状挂载、`dragBlockOf` 拖拽例外、`.tab-bg` 那套；bg 会话就是普通 tab、平铺，
  *   只留「显示 bg 会话」开关 —— 与「不做自动归组、集合是唯一分类维」一致」。
  * -：「自动归组 / 自动固定 | 同一条先例：『手动建，不要自动，纯手动』」。
@@ -41,7 +41,7 @@ const REGISTERED: ReadonlyArray<readonly [string, string, string]> = [
   [
     "src/frontend/ui/tab-model.ts",
     "computeTitleFor",
-    "标题 `⚙ 任务名` —— V125 没点名删它（BG1.md §5 问 1 待主会话拍）；拍删就删这一行",
+    "标题 `⚙ 任务名` —— 没要求删它；要删就删这一行",
   ],
   ["src/frontend/ui/tabs.ts", "TabManager.ensureTab", "同 sid 两份身份（bg-spare 谎报父 sid）⇒ interactive 恒压过 bg 的升格；建 tab 时带上任务名"],
   ["src/frontend/ui/tabs.ts", "TabManager.computeTitle", "搬运：把任务名交给 `computeTitleFor`"],
@@ -101,7 +101,7 @@ export function cssFilesWithClass(files: ReadonlyArray<readonly [string, string]
   return files.filter(([, text]) => re.test(text.replace(/\/\*[\s\S]*?\*\//g, ""))).map(([f]) => f);
 }
 
-describe("〔BG1 · V125〕tab 代码里按 bg 分叉只住登记的那几处", () => {
+describe("tab 代码里按 bg 分叉只住登记的那几处", () => {
   it("正控：原树状落位那一行式子与 `.tab-bg` 开关各被逮到；注释里的同样字样不算", () => {
     const old = [
       "class TabStore {",
@@ -118,7 +118,7 @@ describe("〔BG1 · V125〕tab 代码里按 bg 分叉只住登记的那几处", 
     expect([...bgSitesOf("x.ts", old)].sort()).toEqual(["TabStore.placeInTree", "paint"]);
   });
 
-  it("人群从盘上派生，题面点名的五份 tab 栏通用代码都在里面", () => {
+  it("人群从盘上派生，点名的五份 tab 栏通用代码都在里面", () => {
     const files = tabSources().map((s) => s.file);
     for (const f of [
       "src/frontend/ui/tab-store.ts",

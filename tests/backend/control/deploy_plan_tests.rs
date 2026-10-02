@@ -268,7 +268,7 @@ async fn a_stamped_legacy_backend_is_marked_for_removal_and_an_unasked_one_is_un
     );
 }
 
-/// 要求：「部署失败留下半截 ~/.cc-monitor/bin/ccm.…tmp，之后连上也不清」· 题面 WF2 第 2 条「下次连上清旧的」。
+/// 要求：「部署失败留下半截 ~/.cc-monitor/bin/ccm.…tmp，之后连上也不清」⇒「下次连上清旧的」。
 /// 落点目录里陈旧的临时件 · 备份件 ⇒ 进计划；新的（另一个部署者正在写）· 恰在门槛上 · 修改时间缺 · 不是 `put_atomic` 那个形状（陈旧也不碰）
 /// · 落点本身 ⇒ 不进（两向相等）。目录列不出 ⇒ 空、计划照出。
 #[tokio::test]
@@ -978,7 +978,7 @@ fn the_place_frame_reads_the_one_file_and_answers_two_keys() {
 
 /// 承诺面的唯一住址是 `tests/evidence/K-G4-platform-ledger.py`（`PROMISE_FACE` · `NOT_PROMISED`），代码那一份是 [`promised`]。
 ///
-/// 要求住址：用户裁决 **`V132`**原话「不承诺. 适配部分, 即os适配部分后面单独写单独做.」· 「承诺是 (键 × origin) 的属性」。
+/// 要求：用户原话「不承诺. 适配部分, 即os适配部分后面单独写单独做.」；承诺是 (键 × origin) 的属性。
 /// 人群 = 表 A 里有后端产线的每个键（`LINES`）× 两个 origin；每一格恰好落在账本两表之一，且落在 `PROMISE_FACE` ⇔ `promised(route, key)`。
 /// 异源：账本是 Python 源码里的字面量，代码是 Rust 的 `matches!`。
 #[test]
@@ -1046,6 +1046,6 @@ fn the_promise_face_in_the_ledger_equals_the_code() {
     );
     assert!(
         not.contains(&("Local".into(), "Linux".into(), "aarch64".into())),
-        "V132：本机 (Linux, aarch64) 不在「不承诺」里"
+        "本机 (Linux, aarch64) 不在「不承诺」里"
     );
 }

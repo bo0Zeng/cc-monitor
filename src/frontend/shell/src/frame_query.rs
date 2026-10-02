@@ -21,7 +21,7 @@
 //!
 //! 不在帧面上的一次性查询从前落到 `remote_history.rs` 的逐次拨号那条路（`run_list_query`〔散文墓碑〕），
 //! 而那条路只放行一张「仍拨号」的表 —— C4c 起那张表就是空的（最后两条随账号域上了帧面）。
-//! 主会话 09-25 裁删：那条路、那张表与那道闸门一起没了。认不出帧命令的查询**当场说**（`subagent·rs::Backend::query`），
+//! 那条路、那张表与那道闸门一起删了。认不出帧命令的查询**当场说**（`subagent·rs::Backend::query`），
 //! 不拨号、不回落；「新长一条逐次拨号的查询」从此在代码里无处可落（判据在 `frame_query_tests.rs`）。
 //!
 //! # 期限：一件事一个绝对时刻
@@ -31,7 +31,7 @@
 //! 都拿**同一个**时刻去等（`InboundClient::call_until`）—— 越往后剩得越少，没有一页会重新拿一整份。
 //! 〔墓碑 —— DL1 之前每一问各自 `now + LINES_BUDGET / PAGE_BUDGET`：分页读（`read_lines` · 快照 · 读整份）每页重新计时、
 //!  没有总时限，病 2「每 59 s 吐一个字节的对端能拖到无限」。〕
-//! 期限的**值**暂住下面那几个常量：「期限的值归谁」待主会话定稿，定了按定稿搬。
+//! 期限的**值**暂住下面那几个常量：「期限的值归谁」待定，定了再搬。
 
 use crate::backend_route::{no_channel, route_call_error, Routed};
 use crate::copy_table::copy_text;
@@ -40,7 +40,7 @@ use crate::origin::Origin;
 use serde_json::{json, Value};
 use std::time::Duration;
 
-/// 题面那八条 ＋两条：CLI 子命令 → 帧命令。**判据的一侧**（另一侧从后端源码数，见测试）。
+/// 那八条 ＋两条：CLI 子命令 → 帧命令。**判据的一侧**（另一侧从后端源码数，见测试）。
 /// 生产段不读它 —— 它是判据的一侧（与 `inbound::CommandSpec` 那几栏同理），故精确 allow。
 #[cfg_attr(not(test), allow(dead_code))]
 pub(crate) const MOVED: &[(&str, &str)] = &[
@@ -58,7 +58,7 @@ pub(crate) const MOVED: &[(&str, &str)] = &[
     ("--list-user-inputs", "history-user-inputs"),
     // 会话内查找（Ctrl+F）：同一个处境（新子命令、此前在远端逐次拨号），一起上帧面。
     ("--find-in-session", "history-find"),
-    // 换号前的信任预检（主会话裁：随账号域一起上帧面）。两形合进**一条**帧命令
+    // 换号前的信任预检（随账号域一起上帧面）。两形合进**一条**帧命令
     //   （`configDir` 缺席 / null = 账号 0）⇒ 右列 `accounts-trust` 出现两次，判据按集合比。
     ("--account-trust", "accounts-trust"),
     ("--account-trust-zero", "accounts-trust"),

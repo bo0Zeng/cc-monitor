@@ -9,7 +9,7 @@
  * → `events.ts` → `main.ts` 装的 `recordFileWiring`（查法是 `TabManager.streamElOf`）。这里只管那一句话画在哪、什么时候收：
  * - 画在流容器的第一个孩子（贴顶），不进记录那一层；同一个 tab 只有一句，新的盖旧的。
  * - 「不见了」那句：之后这个会话又来了一行（文件回来了）⇒ 收掉。「已从头重读」那句留着（它说的是已经发生的事）。
- * - ⚠ 不进留存：F5 之后那句话没了（主会话 09-25 认的已知缺口）。
+ * - ⚠ 不进留存：那句话没了（已知缺口）。
  * 字全住文案表 `sessionState.recordFile.*`（说到会话状态的字只住 `sessionState.*`，U4 判据 S5）。
  */
 import { copyText } from "./copy-table";

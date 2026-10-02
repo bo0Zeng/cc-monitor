@@ -1,6 +1,6 @@
 # vendored: russh 0.61.1（补过 zlib 解压与压缩的一份）
 
-用户裁决 **V118**〔选〕「打补丁版 russh，现在就开」：vendor 一份修好 zlib 解压的 russh（`[patch.crates-io]`），
+仓内一份修好 zlib 解压的 russh（`[patch.crates-io]`），
 SSH 压缩按已写好的判准开。
 
 ## 来源
@@ -77,19 +77,19 @@ loop {
 | 判据 | 判什么 |
 |---|---|
 | `the_gate_matches_what_russh_really_does`（Z5） | 闸 == russh 自己的 zlib 一来一回对不对（两向）；单包 ＋ 同一对压 / 解器连走三包 ＋〔CZ2〕生产那个 `compress_into` 连压四包（含不可压的 32 777 · 70 000 字节）、另一只解压器逐包解回 |
-| `the_vendored_russh_differs_from_the_crate_only_where_registered`（V1） | 盘上文件集合 == 下面三张表（两向）；每一份的 sha256 == 登记；改过的恰好 `{src/compression.rs}` |
-| `the_russh_patch_is_really_wired`（V2） | `[patch.crates-io]` 恰好这一条 · 声明 / 副本 / lock 三处版本相等 · lock 那一块没有 `source` |
+| `the_vendored_russh_differs_from_the_crate_only_where_registered`（VR1） | 盘上文件集合 == 下面三张表（两向）；每一份的 sha256 == 登记；改过的恰好 `{src/compression.rs}` |
+| `the_russh_patch_is_really_wired`（VR2） | `[patch.crates-io]` 恰好这一条 · 声明 / 副本 / lock 三处版本相等 · lock 那一块没有 `source` |
 | `zr_real_sshd_…`（ZR，`#[ignore]`，`tests/evidence/NT1-net-loopback.py --compress` 触发） | 真 sshd 上强开压缩：载荷逐字节同、线上字节 < 不压那趟的一半 |
 | `zr_real_sshd_takes_incompressible_puts_when_forced`（ZR2，`#[ignore]`，`tests/evidence/WF2-zlib-container.py` 触发） | 〔CZ2〕一次性容器 sshd 上强开压缩，经 `sftp::put_atomic` 放 33 000 字节与 1 MiB 不可压字节、读回逐字节同 |
 
-改补丁 ⇒ 同拍改下面「改过的文件」那一行的补后指纹（`sha256sum src/compression.rs`），否则 V1 红。
+改补丁 ⇒ 同拍改下面「改过的文件」那一行的补后指纹（`sha256sum src/compression.rs`），否则 VR1 红。
 
 ## 上游修好之后怎么撤
 
 1. 核上游新版的 `Decompress::decompress` 与 `Compress::compress_into` 都真修了：先把后端清单的 russh 升到那一版、**暂不删补丁**，
    把 `[patch.crates-io]` 两行注释掉跑 Z5 —— 绿（闸开 == 解压对）才算上游修好；红就是没修，别撤。
 2. 删 `[patch.crates-io]` 那两行（连同块头注释）与本目录 `src/vendor/russh/`；lock 跟着升级落回 registry 来源。
-3. 删 V1 / V2 两条判据与后端 `[dev-dependencies]` 里只为 V1 加的 `sha2`（`readonly_guard` 签字表那一行同拍摘）。
+3. 删 VR1 / VR2 两条判据与后端 `[dev-dependencies]` 里只为 VR1 加的 `sha2`（`readonly_guard` 签字表那一行同拍摘）。
 4. Z5 与闸原样留着（它们守的是「闸 == russh 实况」，与 russh 从哪来无关）。
 
 ## 原样文件清单（sha256，逐份取自 `.crate`）

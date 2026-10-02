@@ -5,7 +5,7 @@ edition = "2021"
 workspace = "../../frontend/shell"
 description = "前端宿主原语：两个前端（monitor 主界面 · 文件窗口进程）共用、后端不链的那几件 —— 自有状态文件的原子写 · 窗口夹进工作区。"
 
-# 〔主会话 09-29 拍板 Q2〕「前端宿主原语」这一类只许 monitor 与文件窗口（`src/frontend/filewin`）链，后端不许
+# 「前端宿主原语」这一类只许 monitor 与文件窗口（`src/frontend/filewin`）链，后端不许
 #   （`tests/frontend/shell/contract_crate_guard_tests.rs` 钉）。它不是契约：是两个前端都要、只该有一份的宿主那几件。
 [dependencies]
 serde = { version = "1", features = ["derive"] }

@@ -122,7 +122,7 @@ export function decodeCell(v: unknown): ProbeCell {
 }
 
 /**
- * 期限（主会话裁：值归发起方，DL1）：原来 monitor 那两段等待（hello 8 s ＋ ping 5 s）的量级 ⇒ 15 s；后端零定时器，到点由宿主那侧撤单。
+ * 期限（值归发起方）：原来 monitor 那两段等待（hello 8 s ＋ ping 5 s）的量级 ⇒ 15 s；后端零定时器，到点由宿主那侧撤单。
  * 到点时说得出停在哪一段：进度格边拨边推，最后收到的那一格就是答案。
  */
 const PROBE_BUDGET_MS = 15_000;

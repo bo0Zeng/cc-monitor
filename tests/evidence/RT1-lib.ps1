@@ -1,5 +1,5 @@
 # RT1 · 虚拟机侧的读数小工具（由 RT1-vm.py 拷进 rt1\ 后在 job 里 dot-source）。
-# 守的要求：用户裁决 V115（虚拟机当真机测试资源；session 1 里跑真窗口）。只读：枚举窗口、读 DPI 感知、
+# 守的要求：虚拟机当真机测试资源（session 1 里跑真窗口）。只读：枚举窗口、读 DPI 感知、
 # 给窗口发 WM_CLOSE（关我们自己起的那个终端窗口）—— 不改系统任何设置。
 $ErrorActionPreference = 'Continue'
 $global:RT1 = "C:\Users\zbl\AppData\Local\Temp\rt1"

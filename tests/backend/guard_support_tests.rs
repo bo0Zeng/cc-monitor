@@ -136,7 +136,7 @@ fn the_reexported_leak_check_still_bites() {
 
 /// 🔴 `K-R115` `KR115D3`：**「两个住址、同一句话」不许再各说各话。**
 ///
-/// # 题面
+/// # 问题
 ///
 /// 本文件的 `every_backend_file_strips_clean` 与 monitor 那一侧的同名判据
 /// （住 `src/frontend/shell/src/structural_scan.rs`，扫的是另一棵树）头上挂着**同一段散文**。

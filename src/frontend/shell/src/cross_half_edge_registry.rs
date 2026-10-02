@@ -280,7 +280,7 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
         "monitor→backend",
         "tests/frontend/filewin/lossy_pull_tests.rs",
         "src/backend/files/mod.rs",
-        "★〔V152 新增〕**窗口一块读多少 == 后端 `files-read-chunk` 的上限** —— \
+        "★ **窗口一块读多少 == 后端 `files-read-chunk` 的上限** —— \
          `lossy_pull_tests.rs::the_chunk_is_the_backend_cap`。两侧各写一个数；失效方向：窗口的块比后端的上限大 ⇒ \
          每一块都被 `bad_args` 拒，非 UTF-8 名永远下不下来。",
     ),

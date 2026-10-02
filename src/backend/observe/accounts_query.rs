@@ -314,7 +314,7 @@ struct SessionRow {
     launch_id: Option<String>,
     /// 这条会话的 `ANTHROPIC_BASE_URL` 是不是**本机中转那一形**（回环 ＋ 钥匙段 ＋ 路由，
     /// `relay_route_core::split_keyed_base_url` 认得出）。`None` = 不知道（进程已死 / 环境这一刻取不到）。
-    /// 用途：机器页「停」本机后端之前数一数有几条会话会断（主会话 D-f）。
+    /// 用途：机器页「停」本机后端之前数一数有几条会话会断。
     via_relay: Option<bool>,
 }
 
@@ -522,7 +522,7 @@ fn scan_accounts(
     }
 }
 
-/// 帧面 `accounts-list` 的**成品**（主会话裁：账号域读自己那台的 apikey 表，agent 随请求带）。
+/// 帧面 `accounts-list` 的**成品**（账号域读自己那台的 apikey 表，agent 随请求带）。
 ///
 /// `{meta, accounts, notice}`：清单同 CLI 那一臂同一个扫描（[`scan_accounts`]），并上**这台机器自己**那份 apikey 表
 /// （`rows`：表里有哪几条账号 id，调用方从 `accounts::upstream_select::file_face` 读来 —— 与中转里的上游选择同一个出处）；

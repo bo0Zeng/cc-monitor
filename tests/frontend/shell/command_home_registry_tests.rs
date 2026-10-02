@@ -224,11 +224,11 @@ const PENDING: &[(&str, &str)] = &[
     // 公钥推送那一条已迁（界面经通道问本机后端 `pubkey-push`），行删了。
     // 端口转发三条（起 · 停 · 列）迁走：账住本机常驻后端（`dial/forwards.rs`），界面经通道问 `forward-*`。
     // 撤单那一条（`chan_cancel`）进 `Channel`。
-    // 〔主会话 09-28 裁 3〕`open_file_window` 已迁：开窗前那一屏（`files-home` / `files-ls`）进了窗口进程自己问，
+    // `open_file_window` 已迁：开窗前那一屏（`files-home` / `files-ls`）进了窗口进程自己问，
     //   monitor 只起进程、读它那一行（`filewin/proc.rs::first_screen` · `Ready`）⇒ 从本表删，进 `MONITOR_OWN`（开窗）。
 ];
 
-/// 〔主会话 09-29 拍板 Q2 A〕通道上**由 monitor 自己接**、不按 `origin` 转给那台后端的 op（`chan/host.rs::HOST_OPS`）：
+/// 通道上**由 monitor 自己接**、不按 `origin` 转给那台后端的 op（`chan/host.rs::HOST_OPS`）：
 /// op · 哪一类 · 理由。它们不是 Tauri 命令，却是同一个问题（「monitor 自己的事」还是「待迁」），照 `MONITOR_OWN` 的写法两向登记。
 const CHANNEL_OWN: &[(&str, Own, &str)] = &[
     (

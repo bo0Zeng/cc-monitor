@@ -1,5 +1,4 @@
 //! 要求：「种子与钥匙走 stdin，不走 argv / env」· `§2.3`「窗口进程拨回通道之后……在 stdout 上说一行「列到 N 行」或「列不出来：原话」」
-//! ＋ 主会话 09-29 拍板 Q1 · Q2（一）。
 //!
 //! monitor 与文件窗口进程之间**两边必须对上**的那几样（契约类）：
 //! - [`OpenRequest`] —— 开窗种子，整份走窗口进程的 stdin（一份 JSON，写完关掉 = EOF = 给完了）；
@@ -124,7 +123,7 @@ pub fn decode_ready(line: &str) -> Result<Ready, String> {
         .map_err(|e| copy_text("rsFilewinProc.ready.unreadable", &[("e", &e.to_string())]))
 }
 
-/// 〔主会话 09-29 拍板 Q2 A〕「在此打开终端」：窗口在它那条通道上 `call`（寻址 ＝ 那台机器的 `origin`）、
+/// 「在此打开终端」：窗口在它那条通道上 `call`（寻址 ＝ 那台机器的 `origin`）、
 /// **monitor 自己接下来**的那一条（不按 `origin` 转给后端；先例是传输台的 `transfer-upload` / `-download`）。
 /// 参数只带意图 `{cwd}`（当前目录的线上形：字符串或 `{"b16": …}`）—— 那一串命令由后端渲（`terminal-ssh`），窗口不拼命令；
 /// 机器事实由 monitor 从它自己的机器表取；开窗是 monitor 的事（`launch::open_terminal_window`，与主界面开终端同一条路）。

@@ -45,7 +45,7 @@ export interface RestartWithAccountOpts {
   accountName: string;
   /** F34 远端 resume 命令（空 → 后端默认）。 */
   launcher: string;
-  /** ③ 是否先在【旧账号】上 /compact（默认 false，用户拍板）。 */
+  /** ③ 是否先在【旧账号】上 /compact（默认 false）。 */
   compactFirst: boolean;
   // —— 可注入点（默认走真实实现；测试注入 mock）——
   confirm?: ConfirmFn;

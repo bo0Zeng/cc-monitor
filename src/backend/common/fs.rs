@@ -36,7 +36,7 @@ pub(crate) fn read_regular_capped(path: &Path, cap: u64) -> Result<Vec<u8>, Stri
     // ⚠ 早退**不取代**下面那道 `take(cap + 1)`：`metadata` 与 `read_to_end` 之间文件还会长
     //   （TOCTOU），长过头时仍要靠 `take` 兜住。两道一起才完整。
     // ★ 顺带把一个**测不出来的问题整个绕开**了：报告怀疑「拒绝路径上 `Vec` 倍增会瞬时
-    //   同时持有 1×+2×」，V1 在 glibc 上实测不成立，但后端是 **musl** 交叉编译的、
+    //   同时持有 1×+2×」，在 glibc 上实测不成立，但后端是 **musl** 交叉编译的、
     //   musl 的 realloc 行为没测出来。走这条早退就根本不分配。
     if meta.len() > cap {
         return Err(copy_text(

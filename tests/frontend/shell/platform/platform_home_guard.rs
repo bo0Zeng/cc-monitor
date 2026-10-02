@@ -15,7 +15,7 @@ const HOMES: &[&str] = &[
     "platform/",
     // 前端宿主原语（两个前端共用）。
     "host-core/",
-    // 文件窗口包自己的平台层（主会话 09-30 认）。
+    // 文件窗口包自己的平台层。
     "cc-monitor-filewin/platform.rs",
 ];
 

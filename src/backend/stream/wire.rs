@@ -265,7 +265,7 @@ pub enum Frame {
         ///
         /// `main.rs::build_hello` 填 `unavailable_here()`（tmux · unix 权限位两维）。仓外 aterm 不读这个字段
         /// （只读核过它的 `parseHello`：通用 map、未知字段忽略）；有 tmux 的 unix 机器上表为空 ⇒ 字节不变，
-        /// 没 tmux / Windows 上字节变了 ⇒ 要 bump `BUILD_ID`（主会话合并那一拍）。
+        /// 没 tmux / Windows 上字节变了 ⇒ 要 bump `BUILD_ID`。
         /// 钉它的：`main_fourth_face_tests::production_hello_fills_unavailable_from_this_machine` ·
         /// `hello_unavailable_is_additive_present_and_absent`（两形字节）。
         #[serde(skip_serializing_if = "Vec::is_empty")]
@@ -508,7 +508,7 @@ pub enum Frame {
 
     /// **活会话的记录文件不见了**（被删 / 被改名走了）。
     ///
-    /// V119 之后文件管理器改得动活会话的 jsonl；观察侧当它是「看的、不是管的」：不崩、不误判结束（判活不看 jsonl），
+    /// 文件管理器改得动活会话的 jsonl；观察侧当它是「看的、不是管的」：不崩、不误判结束（判活不看 jsonl），
     /// 出声一次 —— 每次「在 → 不在」只发一帧；同名文件再出现（agent 按路径追加重建）从 0 读，当改写办：先发 [`Frame::SessionFileReread`]、行号从 0 重数；之后再不见才再发。
     /// 旧 monitor / 仓外 aterm 不认这个 kind ⇒ 忽略（additive）。
     SessionFileGone { session_id: String, path: String },
@@ -526,7 +526,7 @@ pub enum Frame {
 
     /// **一条链路的下行字节**（`dial/link.rs`）。
     ///
-    /// 用户裁「改成单一常驻后端」：本机只常驻一个后端，到各远端的 SSH 连接由它持有并复用；
+    /// 本机只常驻一个后端，到各远端的 SSH 连接由它持有并复用；
     /// monitor 经**这条已有的流**向它开「链路」（`link-open`），链路上的字节就是 C2 那个
     /// `--dial` 子进程原来写在自己 stdout 上的那一串（阶段行 → 一行 ack → 按用法的字节），
     /// 一个字节的形状都没改 —— 变的只是载体：子进程的管子 → 本帧。

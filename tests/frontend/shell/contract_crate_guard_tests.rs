@@ -8,7 +8,7 @@
 //! ③ crate 级：部署判定（[`DEPLOY_DECISIONS`]）只有一个家 —— 后端 `control/deploy_plan.rs` 恰一处定义；契约 crate `deploy-contract` 与
 //!    monitor 生产源码里用着部署契约的每一份（壳 `src/**` ＋ 它经 `#[path]` 收进来的通信层文件）零处定义。
 //! ④「前端宿主原语」类（`host-core`）只许两个前端链：后端生产段闭包里出现即红。
-//! ⑤〔主会话 09-29 拍板 Q1〕「前端包」（[`FRONTEND_PACKAGES`]：文件窗口）不住 `src/common/`：monitor 链它**只为**那个 `[[bin]]`
+//! ⑤「前端包」（[`FRONTEND_PACKAGES`]：文件窗口）不住 `src/common/`：monitor 链它**只为**那个 `[[bin]]`
 //!    （生产源码里提到它的恰好是 `filewin/win_main.rs` 一份），它自己的闭包照 ② 判；monitor 的源码人群声明
 //!    （`[package.metadata.guard] population`）== monitor 生产闭包 − 后端生产闭包（两向）。
 //!
@@ -26,7 +26,7 @@ enum Class {
     Decision,
     /// 判据原语：两侧只在 dev 侧。
     TestInfra,
-    /// 〔主会话 09-29 拍板 Q2〕前端宿主原语：两个前端（monitor · 文件窗口）都要、只该有一份的宿主那几件；后端不许链。
+    /// 前端宿主原语：两个前端（monitor · 文件窗口）都要、只该有一份的宿主那几件；后端不许链。
     HostPrimitive,
 }
 

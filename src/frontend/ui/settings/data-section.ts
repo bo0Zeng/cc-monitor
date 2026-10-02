@@ -4,7 +4,7 @@
  * 列出 monitor 所有持久化数据的位置 + WebView2 用户数据目录 + localStorage keys，
  * 每项配 [打开]（默认程序打开它本身）与「在文件夹中显示」（系统文件管理器打开所在文件夹并选中它）。
  * **纯展示，不做删除 / 清空操作**——避免误点。
- * 〔用户 09-24 裁，答〕「数据位置那一页要不要（删 / 清空），不要，给路径」
+ * 用户原话「数据位置那一页要不要（删 / 清空），不要，给路径」
  * ⇒ 这条红线由 `tests/frontend/ui/settings/data-section.vitest.ts` 钉着：效应面两向相等（只读 `get_data_paths`、
  *   只会 `openPath` 与「在文件夹中显示」、`localStorage` 零写）＋ 每一条路径以纯文本上屏。
  *
@@ -42,7 +42,7 @@ import type { DataPathsResponse } from "../generated/DataPathsResponse";
 import { copyText } from "../copy-table";
 
 /**
- * 〔用户 09-24 裁「真相 / 缓存列提前做」〕每一行那一格「删了会怎样」。
+ * 每一行那一格「删了会怎样」。
  *
  * 值来自后端 `data_paths.rs::DataPathInfo.class`（非可选枚举，`INVARIANTS §2.1` 那两类）。
  * 它治的是写下的那笔代价：用户**看得见每个文件多大，却看不出哪个删了会丢东西**

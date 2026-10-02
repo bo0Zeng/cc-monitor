@@ -80,7 +80,7 @@ export class TabBarPrefs {
    * 「已经没了的会话」与「还没宣告到的会话」长得一模一样。
    * tab 到达（[`adoptGroup`]）⇒ 它的组 id 从这里**挪到** `Tab.group`（此后真相只在 tab 身上一处）；
    * 组没了（× 掉最后一个 · 解散）⇒ 指向它的条目从这里连同盘上一起摘。
-   * ⚠ 从没到过的 tab 的条目**留着**（盘上也留着）—— 主会话裁 Q2 取乙（真关窗时摘），但 monitor 主窗今天没有关窗钩子，
+   * ⚠ 从没到过的 tab 的条目**留着**（盘上也留着）—— 真关窗时摘，但 monitor 主窗今天没有关窗钩子，
    *   加一个就改了退出次序 ⇒ 按裁定退回丙（维持），`GRP1.md` 记着。
    */
   savedGroupOf = new Map<string, string>();
@@ -226,7 +226,7 @@ export class TabBarPrefs {
     return this.writeGroups(edits);
   }
 
-  /** 右键「移出」/ 拖出组：`sid` 回到散 tab；组里因此一个在栏里的都不剩 ⇒ 组没（主会话裁 Q1，与 × 同一判定）。 */
+  /** 右键「移出」/ 拖出组：`sid` 回到散 tab；组里因此一个在栏里的都不剩 ⇒ 组没（与 × 同一判定）。 */
   leaveGroup(sid: string): Promise<void> {
     const t = this.store.tabs.get(sid);
     if (!t || t.group === null) return Promise.resolve();
@@ -297,7 +297,7 @@ export class TabBarPrefs {
   /**
    * 分组落盘的唯一出口：这一次改动的全部补丁**一次** `patchConfig`（Rust 一把锁里一起落，不会只落一半）。
    * 从前落盘失败只记日志（原话）——重启后分组没了、当时一句话都没有（E §3.3）。
-   * 主会话 09-25 按 `INVARIANTS §12`（关键失败要出声）认可改成：内存照旧先改 · 落盘失败弹一条 toast · 日志照留。
+   * 按 `INVARIANTS §12`（关键失败要出声）：内存照旧先改 · 落盘失败弹一条 toast · 日志照留。
    */
   private async writeGroups(edits: readonly ConfigEdit[]): Promise<void> {
     if (edits.length === 0) return;

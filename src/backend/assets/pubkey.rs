@@ -1,4 +1,4 @@
-//! 要求住址：主会话 09-28 裁 MIG-3b 报备 2 ——「`push_public_key`〔散文墓碑〕：本机后端帧命令 `pubkey-push {machine}`（组请求照 `dial/machine.rs::resolve`，
+//! 要求：「`push_public_key`〔散文墓碑〕：本机后端帧命令 `pubkey-push {machine}`（组请求照 `dial/machine.rs::resolve`，
 //! 与 `remote-probe` 同形），写 `authorized_keys` 经那台（后端不在就经 SSH exec 那一次、只写这一件）」；「monitor 零 SSH」。
 //!
 //! # 两条帧命令，两台各一条

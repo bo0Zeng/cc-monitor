@@ -1625,12 +1625,12 @@ mod tests {
     ///    [`a_plugin_started_here_never_sees_the_listen_port_or_token`]
     ///    （它要一个**父进程环境里真有那两个键**的进程，本格给不出）。
     ///
-    /// ⇒ **正门仍然没开**（`KR26D4` 只写题面，不写代码）：真要给插件一条回调口，它该是
+    /// ⇒ **正门仍然没开**（只记下了问题，没写代码）：真要给插件一条回调口，它该是
     ///    `invoke::run` 的**第五个入参**（一份「这次调用允许回调哪几条基础命令」的显式清单），
     ///    落地形态是把常驻口的地址与一枚**一次性、按调用发的、只授这几条命令**的短票
     ///    显式塞进子进程环境；ⓐ（清环境）已经做掉了，剩下的是
     ///    ⓑ 那份清单的取值空间钉在 `inbound::COMMANDS` 上（同 `Hello.unavailable` 的口径，
-    ///    不许自造第二套词）。题面住计划仓 `features/K-R26-…md` 的 `§4`。
+    ///    不许自造第二套词）。
     #[test]
     fn nothing_here_hands_the_plugin_a_designed_way_back_into_the_host_commands() {
         // ① 通用调用口**说不出**宿主命令的名字。

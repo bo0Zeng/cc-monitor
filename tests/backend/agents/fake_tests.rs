@@ -455,7 +455,7 @@ fn the_ccm_plan_and_resume_read_only_the_launch_face_for_every_family() {
     }
     let opts = |agent: &str, args: &[&str]| -> argv::Opts {
         let a: Vec<String> = args.iter().map(|s| s.to_string()).collect();
-        let Parsed::Opts(mut o) = argv::parse(&argv::tests::v138_to_v151(&a)).expect("解析得动")
+        let Parsed::Opts(mut o) = argv::parse(&argv::tests::mixed_to_split(&a)).expect("解析得动")
         else {
             panic!("该是一趟起会话")
         };

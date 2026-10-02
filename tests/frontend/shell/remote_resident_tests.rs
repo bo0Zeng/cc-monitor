@@ -58,7 +58,7 @@ fn exec(stdout: &str, stderr: &str, code: Option<u32>) -> crate::ssh_source::Rem
 /// D2 `--resident-ensure` 的答：成了 ⇒ 端口；那台脱离不了（`unsupported`，非 unix）⇒ **明说**「远端只支持 Unix」、
 /// 带上那台原话，并归成 `Unsupported`（`run` 据此不再自动重连）；别的失败 ⇒ 那台原话原样；
 /// 老后端掉进流模式发 hello ⇒ 「太旧」（`Failed`：部署会把它换掉，照常重连）。四样都是失败，没有「回落」那一格。
-/// 要求：「非 unix 远端（Windows 远端，V29 / V132 不承诺）连不上常驻时**明说**不支持，不静默」。
+/// 要求：「非 unix 远端（Windows 远端，不承诺）连不上常驻时**明说**不支持，不静默」。
 #[test]
 fn the_ensure_answer_names_a_non_unix_remote_as_unsupported_and_never_falls_back() {
     let ok = parse_answer(&exec(r#"{"port":51000,"token":"ab","pid":7}"#, "", Some(0))).unwrap();
@@ -190,7 +190,7 @@ fn the_one_shot_deadline_outlasts_the_remote_stop() {
 }
 
 /// （`AllowTcpForwarding no` ⇒ 控制隧道被回拒、每分钟新拨 33 条 SSH）·
-/// 题面 WF2 第 3 条「认出这个拒绝、停止重试、界面明说」。替身开隧道：
+/// 要求「认出这个拒绝、停止重试、界面明说」。替身开隧道：
 /// ① 回拒码是「不许端口转发」⇒ **恰好开 1 次**就停、回 `Unsupported`（`after_round` 据它不再重连）、话是那一句；
 /// ② 正控：口上还没人（`connect_failed`）两次、第三次通 ⇒ 照旧等着再开，恰好 3 次、接成。
 #[tokio::test]

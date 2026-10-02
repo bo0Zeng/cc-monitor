@@ -310,7 +310,7 @@ describe("K-R65：「提示用户装」那一档真的会出声", () => {
     expect(txt).toContain(`${OWED_1}：示例工具本机那份`);
   });
 
-  it("〔ST2 · 用户 09-24 裁「一起改」〕可复制诊断文本的首行跟块名一致：「足迹」，不再是「配置面审计」", () => {
+  it("可复制诊断文本的首行跟块名一致：「足迹」，不再是「配置面审计」", () => {
     const txt = formatReportText(report());
     expect(txt.split("\n")[0]).toBe("== cc-monitor 足迹 ==");
     expect(txt).not.toContain("配置面审计");
@@ -563,7 +563,7 @@ describe("〔ST2 · 步 15〕「PowerShell profile 备份」搬进本机「足�
   });
 });
 
-describe("〔ST2 · 用户 09-24 裁「远端也有真栏」 · MIG-3b 续〕足迹按机器经通道问那台后端", () => {
+describe("足迹按机器经通道问那台后端", () => {
   afterEach(() => __resetMachineContextForTests());
   const flush = async () => {
     for (let i = 0; i < 6; i++) await new Promise((r) => setTimeout(r, 0));

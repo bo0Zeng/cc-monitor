@@ -22,7 +22,7 @@
 //!   [`Read::Unreadable`] 与 [`Read::Absent`]（没人选过）是两个不同的状态，线上也分开报
 //!   （`state` 一格），界面据此说不同的话。
 //!
-//! # ⚠ `§3.3b ⑦` 的 `lingerMs` **本路没做**（如实登记，交主会话拍板）
+//! # ⚠ `lingerMs` **没做**（如实登记，待定）
 //!
 //! 「归零后等 `lingerMs` 再决定」= 一个会自己醒来的一次性构件，而后端零定时器铁律
 //! （`no_timer_guard::backend_production_code_has_no_periodic_wakeups`，按**调用形态**禁 `sleep(` 等八个名字、
@@ -52,7 +52,7 @@ pub const KEY_KILL_ON_EXIT: &str = "killOnExit";
 /// 缺省：**不结束**（`C8③` 的前半句，`§3.3b ⑤` 逐字「本条不推翻」）。
 pub const DEFAULT_KILL_ON_EXIT: bool = false;
 
-// 〔V105 清账〕这里原来有 `pub const SHELL: &str = "standalone"`，
+// 这里原来有 `pub const SHELL: &str = "standalone"`，
 //   随线上 `shell` 那一格一起删了：「折进前端进程」那一档已放弃，壳只剩独立进程，
 //   这一格恒为同一个值、唯一的读者是界面那条永远走不到的「不适用」臂（E4，同拍删）。
 //   线上形状由 `tests::the_wire_shape_is_exactly_the_registered_fields` 按键集相等钉住（四格 ＋ 成品 `said`）。

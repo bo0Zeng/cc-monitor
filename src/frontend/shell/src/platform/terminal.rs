@@ -469,7 +469,7 @@ pub fn launch_powershell_window(_ps_command: &str, _local_cwd: Option<&str>) -> 
 /// ⚠ **「刻意不替你挑终端模拟器」这半句是跨语言标记，不许换措辞**：
 /// 前端 `POSIX_NO_WINDOW_MARKER` 按它判「这是既定设计」，换了用户会退回去看到「拉起失败」
 /// （`the_posix_marker_is_the_one_the_frontend_matches_on` 当场判红 —— 08-12 实测撞过）。
-/// 08-12 用户裁定「attach 暂时就用纯 linux bash」⇒ 只把「你自己的终端」**说实成**
+/// 要求「attach 暂时就用纯 linux bash」⇒ 只把「你自己的终端」**说实成**
 /// 「你自己的 bash」，标记那半句原样保留。**不挑终端模拟器**与**shell 用 bash**
 /// 是两件事，不冲突。
 #[cfg(any(not(windows), test))]

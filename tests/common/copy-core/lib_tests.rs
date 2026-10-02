@@ -85,7 +85,7 @@ fn the_shared_interpolation_golden_agrees_with_this_reader() {
     assert_eq!(wrong, Vec::<String>::new(), "Rust 读口与插值金样对不上");
 }
 
-/// 〔主会话 09-26 裁：插值不该重新解释值〕**单趟**：值里带的 `{名}` 不再被扫；没给的占位符原样留；
+/// 〔插值不该重新解释值〕**单趟**：值里带的 `{名}` 不再被扫；没给的占位符原样留；
 /// 一个不成对 / 不是给了值的 `{` 原样留着、后面的占位符照认。正反各一格（只断「不重扫」的话，把插值焊成「一个都不换」也能绿）。
 #[test]
 fn the_interpolation_is_one_pass_and_never_rescans_a_value() {

@@ -89,7 +89,7 @@ fn the_two_orderings_agree_on_a_synthetic_set() {
 
 /// 🔴 **整棵 `filewin/` 上「列一个远端目录」恰好一处，是问后端 `files-ls`；池子那条列目录命令零处。**
 ///
-/// 〔主会话 09-28 裁 3〕两处 → 一处：`entry.rs` 那一处（monitor 开窗前替窗口列第一屏）退役，
+/// 两处 → 一处：`entry.rs` 那一处（monitor 开窗前替窗口列第一屏）退役，
 /// 第一屏由窗口进程自己列（`proc::first_screen` → `source::list_dir`，落在 `source.rs` 那一处上）。下面「恰好两处」那段是历史。
 ///
 /// 上一版这里是两条：「`list_remote` 调的是共用池」＋「池子那条列目录命令
@@ -163,7 +163,7 @@ fn the_whole_filewin_tree_lists_a_remote_directory_only_by_asking_the_backend() 
     asking.sort();
     assert_eq!(
         asking,
-        // 〔主会话 09-28 裁 3〕`entry.rs` 那一处（monitor 开窗前替窗口列第一屏）退役：第一屏由窗口进程经 `source::list_dir` 列。
+        // `entry.rs` 那一处（monitor 开窗前替窗口列第一屏）退役：第一屏由窗口进程经 `source::list_dir` 列。
         vec![("source.rs".to_string(), true)],
         "问后端列目录的地方不再是「`source.rs` 一处」"
     );

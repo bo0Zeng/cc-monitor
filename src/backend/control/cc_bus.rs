@@ -837,7 +837,7 @@ fn kill_id(id: &str) -> Result<serde_json::Value, (String, String)> {
 }
 
 /// 名册里**登记在这组 pane 上**的 id —— 纯函数。认人核第 4 列 pane pid（登记那一刻 pane 根进程的 pid），
-/// 不按会话名猜（主会话裁 TL2 A）；第 4 列空的老格式行核不了 ⇒ 不挑；id 形状不过 `bus_id_ok` 的不挑（`§47`）。
+/// 不按会话名猜；第 4 列空的老格式行核不了 ⇒ 不挑；id 形状不过 `bus_id_ok` 的不挑（`§47`）。
 pub(crate) fn ids_on_panes(rows: &[RosterRow], pane_pids: &[u32]) -> Vec<String> {
     rows.iter()
         .filter(|r| r.pane_pid.is_some_and(|p| pane_pids.contains(&p)))
@@ -1138,8 +1138,7 @@ pub(crate) fn broadcast_for_inbound(
 //
 // 登记 = `inbound::COMMANDS` / `REGISTRY` 各一行 ＋ `SUBCOMMANDS` 一行 `--bus-spawn`
 // ⇒ 子命令集指纹变了 ⇒ `build_id_guard::adding_a_subcommand_forces_a_build_id_bump` 红。
-// 那一条红是**预期的**：本波各路的新命令由主会话合并那一拍**合成一次** bump（各路各 bump
-// 会在合并时撞成一串互相覆盖的身份）。
+// 那一条红是**预期的**：加了命令就该 bump。
 //
 // # 它**不**做的
 //

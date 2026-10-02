@@ -113,7 +113,7 @@ describe("F42 TurnEndNotifier", () => {
   // backend 侧 `agents/claudecode/turn.rs` 的四条件里有 `!isApiErrorMessage`，TS 这份**少了一条** ——
   // 而那个字段在生成物 `generated/JsonlRecord.ts` 的 assistant 变体里一直存在：**数据在线上、没人看**。
   //
-  // ⚠ V3 复核订正过报告的因果：monitor **不消费** backend 的 TurnEnd 帧（全仓零帧消费点），
+  // ⚠ 复核订正过报告的因果：monitor **不消费** backend 的 TurnEnd 帧（全仓零帧消费点），
   //   通知是前端自己逐行算的 ⇒ 两者是**互不相通的两个探测器**，不是「一个不发另一个弹」。
   //   而且本机语料 107 条 isApiErrorMessage 记录里 end_turn **0 条** ⇒ 这是**潜伏缺口不是冒烟 bug**。
   //   修它是因为「哪天某个 CC 版本在错误记录上写 end_turn，就直接弹」，不是因为它现在在响。

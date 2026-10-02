@@ -205,7 +205,7 @@ fn the_gate_package_count_tracks_the_number_of_shared_crates() {
 ///
 /// ⚠ **必须先切出 `[workspace]` 段再找** —— 直接全文 `contains("crates/gate-core")`
 /// 会匹配到**依赖声明行**（`gate-core = { path = "crates/gate-core" }`），
-/// 于是「从 members 里删掉一个」这种变异**照样绿**（G2 实测，变异 V1 第一版就这么活的）。
+/// 于是「从 members 里删掉一个」这种变异**照样绿**（变异实测：第一版就这么活的）。
 /// ★ 判据覆盖面**第④格·性质面**：它比的必须是它声称的那个性质。
 #[test]
 fn every_shared_crate_is_a_workspace_member() {

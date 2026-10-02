@@ -35,7 +35,7 @@ const REGISTERED: &[(&str, &str, &str)] = &[
              没有内核事件源，只能看屏）。\
              ⚠ **`U-NP④`（2026-08-14）**：本条原来还有「② 1s 身份轮询（`sleep 1`）」，\
              那是本仓唯一一条**与会话同寿、每会话一条、跑在远端**的每秒循环。\
-             用户裁定「不要轮询」＋「ccm 做到必须走后端」⇒ **整条删掉，没留轮询退路**。\
+             要求「不要轮询」＋「ccm 做到必须走后端」⇒ **整条删掉，没留轮询退路**。\
              接班的是后端的 `control/identity_tag.rs`（由 `sessions/` 的 pidfile inotify \
              驱动，零新增节拍）。所以本文件今天**不再是两类**，是一类。\
              钉住「它真的没了」的是本模块的 `the_identity_poller_is_gone_for_good`。",
@@ -632,7 +632,7 @@ fn every_scheduling_call_site_is_classified() {
 /// 「本条钉的是**每次醒来的代价**，不是醒不醒；『别每秒醒』要 inotify，
 /// 得动 ccm 的进程模型 —— 如实登记为未做」。
 ///
-/// 用户 08-14 裁定「**可以动ccm. 不要轮询**」＋「**ccm做到必须走backend**」
+/// 用户原话「**可以动ccm. 不要轮询**」＋「**ccm做到必须走backend**」
 /// ⇒ 那件「未做」被做掉了，做法不是给 ccm 上 inotify（破「纯 POSIX shell、零第三方」，
 /// 而 ccm 要经 `include_str!` 部署到任意远端），而是**把通道 B 整条搬去 backend**
 ///（`src/backend/control/identity_tag.rs`，由它已有的 pidfile inotify 驱动）。
@@ -687,7 +687,7 @@ fn the_identity_poller_is_gone_for_good() {
             !prod.contains(shape),
             "`control/ccm/` 渲出去的 shell 里又出现了 `{shape}` —— 那是一条**与会话同寿**的循环。\n\
                  `U-NP④` 把身份通道 B 整条搬去了后端（`control/identity_tag.rs`），\n\
-                 用户裁定逐字：「不要轮询」「ccm 做到必须走后端」。\n\
+                 用户原话：「不要轮询」「ccm 做到必须走后端」。\n\
                  ⚠ 别把它当成「加个 sleep 兜一下更稳」——那正是本件要根除的东西：\n\
                  每会话一条、跑在**远端**机器上、与会话同寿。\n\
                  真需要一个新的等待，先回答「它的内核事件源是什么、为什么后端接不了」。"

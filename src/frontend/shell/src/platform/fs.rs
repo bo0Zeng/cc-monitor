@@ -41,7 +41,7 @@ pub fn make_executable(p: &Path) -> Result<(), String> {
     Ok(())
 }
 
-/// 〔主会话裁 HX1 拍板项 4〕**monitor 建后端自家目录（`~/.cc-monitor` 与它底下几层）的那一个函数**：
+/// **monitor 建后端自家目录（`~/.cc-monitor` 与它底下几层）的那一个函数**：
 /// 建的那一下就是只给本人（unix：`DirBuilder` 的 mode 在创建时生效，没有「先按 umask 建出来、再收窄」的那一段），
 /// 缺的中间几层一并这样建；**已在的不动**（那可能是用户自己设的）。别的平台照常建（那边不是 unix 权限位这一问）。
 ///
@@ -83,7 +83,7 @@ pub fn only_me_on_create(opts: &mut std::fs::OpenOptions) {
 
 /// **monitor 自有状态文件的跨进程锁**：锁那份文件所在的**目录**（不是文件：文件每写一次就被原子挪换成新 inode）。
 ///
-/// 守的要求：主会话 4D 追加「CFG1 把 `config.json` 收成单一写口 …… 两个 monitor 进程同写没有跨进程锁 —— 用你那一族同一套 `flock`
+/// 守的要求：「CFG1 把 `config.json` 收成单一写口 …… 两个 monitor 进程同写没有跨进程锁 —— 用你那一族同一套 `flock`
 /// （Windows 对应）把它也包上」。与后端那一份（`src/backend/platform/lock.rs::hold`）是**同一种锁**、两个 crate 各一份
 /// （理由同 [`ensure_private_dir`]：没有能放平台原语的共享落点）：
 /// - unix：只读打开目录 ＋ std `File::lock`（Linux 上就是 `flock(LOCK_EX)`，与后端 `libc::flock` 进内核同一张表 ⇒ 两边互斥）；

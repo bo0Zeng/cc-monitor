@@ -1,7 +1,7 @@
 //! # （开窗前那一屏：列不出来就报错、不开窗）＋（入口与三种落点）
 //!
 //! 核原文：「开窗前那一屏：monitor 侧经宿主注入的同一个句柄问 `files-home`（不给落点时）与 `files-ls`；
-//! 列不出来就带原文报错」（〔主会话 09-28 裁 3〕「谁去问」改成窗口进程自己，那句待设计侧改写）；「三种落点与 `filewin/entry.rs::plan_target` 三支一一对应」·
+//! 列不出来就带原文报错」（「谁去问」改成窗口进程自己，那句待设计侧改写）；「三种落点与 `filewin/entry.rs::plan_target` 三支一一对应」·
 //! 「判据：入口人群两向相等、`open_file_window` 在包装层外恰好一处」—— 本族判的正是先问后开、三支落点、命令真接到前端。
 
 #[path = "../../filewin/theme_testing.rs"]
@@ -22,7 +22,7 @@ fn synth_cfg() -> RemoteConfig {
     }
 }
 
-// 〔主会话 09-28 裁 3〕上一版这里两条行为判据判的是 monitor 这一侧先问 home / 先列一屏：
+// 上一版这里两条行为判据判的是 monitor 这一侧先问 home / 先列一屏：
 //   `an_empty_path_asks_the_remote_for_home_and_opens_nothing_when_it_cannot`〔散文墓碑〕
 //   `a_directory_we_cannot_list_is_an_error_not_a_blank_window`〔散文墓碑〕
 //   那两问进了窗口进程，性质（没给目录才问 home · 列不出来带原话、不开窗）搬到
@@ -180,7 +180,7 @@ fn some_ui_file_other_than_the_wrapper_actually_calls_it() {
 
 /// 🔴 **空路径那一支真的去问 home，而且排在列目录前面；monitor 这一侧一问都不问。**
 ///
-/// 〔主会话 09-28 裁 3〕射程从 `entry.rs` 换到 `proc.rs::first_screen`：那两问进了窗口进程。
+/// 射程从 `entry.rs` 换到 `proc.rs::first_screen`：那两问进了窗口进程。
 /// 窗口独立成包：`first_screen` 随窗口进程那一半住窗口包的 `proc.rs`；monitor 那一侧的 `proc.rs`（起进程）同 `entry.rs` 一起判零 SFTP。
 /// 行为那一半（没给目录才问 · 问的顺序）住 `proc_tests::the_first_screen_asks_home_only_when_told_nothing`；
 /// 本条钉结构：① `first_screen` 里 home 那一问排在列目录前面、用的是 `files-home` 那个常量；

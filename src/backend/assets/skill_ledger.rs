@@ -1,9 +1,9 @@
 //! **skill 装记录** —— 从别的机器「装到这台」的 skill，装时写进了哪几个文件（第四层，后端自有状态）。
 //!
-//! # 用户裁决（逐字）
+//! # 要求
 //!
-//! V116〔选〕「**要，只删装时写进去的文件**」：从别的机器「装到这台」的 skill 要能卸 —— 装的时候记下写了哪些文件，
-//! 卸只删这些（装完用户自己改过的先问），足迹里看得见。。
+//! 从别的机器「装到这台」的 skill 要能卸 —— 装的时候记下写了哪些文件，
+//! 卸只删这些（装完用户自己改过的先问），足迹里看得见。
 //!
 //! # 文件（`~/.cc-monitor/skill-installs.json`，与资产目录同一个家、同一族写法）
 //!
@@ -370,7 +370,7 @@ pub fn record_at(path: &Path, skills_root: Option<&Path>, args: &Value) -> Answe
             // 目录自己算：与 `skill-install-plan` 答 `dir` 的是同一个根（不收调用方给的路径）。
             // `at: "home"`（闭集，只此一个值）：装的东西落在家目录底下、不在 skill 根下
             //   ⇒ 键 = 本记录自己所在的那个家（`<家>/.cc-monitor/<本文件>` 的上两层），
-            //   `files` 的路径相对它。同一份账、同一个形（主会话：不另立第二份账）。
+            //   `files` 的路径相对它。同一份账、同一个形（不另立第二份账）。
             let project = args.get("project").and_then(Value::as_str);
             let dir = match args.get("at").and_then(Value::as_str) {
                 // 项目级 skill：根由适配层按那个项目算（同 `skill-install-plan` 答 `dir` 的那一处）。

@@ -190,8 +190,8 @@ fn tmux_print_sites() -> BTreeMap<(String, String, Carry), usize> {
 /// `Carry::None` 的每一行都是**人群外的真实调用点**：`§49` 字面上它们都算违反。按它读的是什么分两类写清 ——
 /// 读出来的字段只可能是 ASCII（pid · 窗口数 · `%N` 形 pane id）⇒ 改写成 `_` 也不改一个字节，今天无害；
 /// 读的是**会话名 / 地址**（用户起的会话名可以是中文）⇒ 非 UTF-8 客户端下会被改写成 `_`，**是真违反，待裁**
-/// （改它们是后端载荷字节 / 随部署脚本字节的变更，不在本件写区，报主会话）。
-/// 那五处（`BUS_ID_RECIPE` · `cc-register` 登记地址 · `cc-whoami` ×3）按 V121 加了旗、翻成 `Flag`；
+/// （改它们是后端载荷字节 / 随部署脚本字节的变更，另做）。
+/// 那五处（`BUS_ID_RECIPE` · `cc-register` 登记地址 · `cc-whoami` ×3）加了旗、翻成 `Flag`；
 /// 今天 `Carry::None` 只剩读 ASCII 的那几处。
 const TMUX_PRINT_SITES: &[(&str, &str, Carry, usize, &str)] = &[
     ("src/backend/common/session_snapshot.rs", "list-sessions", Carry::Flag, 1, "argv；`session_snapshot_tests.rs` 钉旗在子命令前"),
@@ -417,7 +417,7 @@ const QUOTE_SITES: &[QuoteRow] = &[
         "",
         "本进程自己的可执行文件路径 · 本侧拼的 hook 命令",
     ),
-    // 〔§47〕路径那一格在 `register` 进门判；argv（自由文本）在 `ask_with` 拼之前过拒绝集（只收 NUL / CR / LF，主会话 09-26 按 V131 裁）。
+    // 〔§47〕路径那一格在 `register` 进门判；argv（自由文本）在 `ask_with` 拼之前过拒绝集（只收 NUL / CR / LF）。
     // 2 → 1：那台后端的路径不再登记（固定落点常量打头，不 quote）⇒ 只剩 argv 那一格。
     (
         "src/backend/stream/remote_ask.rs",
@@ -504,7 +504,7 @@ const QUOTE_SITES: &[QuoteRow] = &[
         "身份戳正则（构建期常量拼的）",
     ),
     // 〔§47〕订正：词本身**是判了的** —— 渲染只经 `account_aliases::render`，它先过 `check_alias`（拒控制字符 · `arg_is_passable` · 旗表闭集），
-    //   不过的那一条进 `problems`、不渲。那道拒绝集收的是全部控制字符（比主会话 09-26 裁的 NUL / CR / LF 宽一点，既有、没放松）。
+    //   不过的那一条进 `problems`、不渲。那道拒绝集收的是全部控制字符（比 NUL / CR / LF 宽一点，既有、没放松）。
     // 别名那一族进了那台后端（`assets/aliases/`），这一行跟着换住址，判法一字没变。
     // 方言再搬一次：进后端 OS 适配层（`platform/shell/`），判法一字没变。
     (

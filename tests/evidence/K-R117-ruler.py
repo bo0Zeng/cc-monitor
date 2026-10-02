@@ -247,7 +247,7 @@ SITE_ARCHIVE = {
         B1, "K33", "把内嵌后端复制进 `OUT_DIR` —— 装后端那条链的构建期一环"),
     # 〔墓碑〕`fenced_block.rs::put_atomic` · `profile_installer.rs::atomic_write_string` /
     #   `atomic_replace_path` · `cc_bus_deploy.rs::deploy_into` · `mcp.rs::write_json_atomic` 五行走了：
-    #   用户裁「只允许后端的文件管理部分写用户文件，也管本机」⇒ 别名块 / $PROFILE / 那一行 source · cc-bus skill 部署 ·
+    #   只有后端的文件管理部分写用户文件，本机也算 ⇒ 别名块 / $PROFILE / 那一行 source · cc-bus skill 部署 ·
     #   项目 .mcp.json 的落盘全改成经那台机器的后端（`files-put` / `files-peek`，monitor 只剩 `user_files.rs` 一个开口、
     #   它自己一个 `fs::` 写都没有）⇒ 这五处在 monitor 侧 `WRITE_SITES` 里已不存在。归处（② / ③）不变，
     #   只是真落点换到了后端写面（`control/files_write.rs`），不在本表人群里。

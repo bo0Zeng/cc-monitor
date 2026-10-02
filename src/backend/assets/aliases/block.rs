@@ -668,7 +668,7 @@ fn strip_block(existing: &str, what: &str) -> Result<String, String> {
 
 // 这里原来是本机用户文件的原子写原语 `atomic_write_string`〔散文墓碑〕与它的
 // 两份平台副本 `atomic_replace_path`〔散文墓碑〕（Windows `ReplaceFileW` 保 ACL · POSIX `rename`）。
-// 用户裁「只允许后端的文件管理部分写文件」也管本机 ⇒ `$PROFILE` / rc / 别名文件 / 项目 `.mcp.json`
+// 只有后端的文件管理部分写文件（本机也算）⇒ `$PROFILE` / rc / 别名文件 / 项目 `.mcp.json`
 // 全改经后端写（`user_files`），三件零调用方 ⇒ 走。「Windows 上替换要保住 explicit ACE」那条性质
 // 跟着写搬到了后端（`control/files_write.rs::swap_in` 的 `cfg(windows)` 那一支）。
 

@@ -96,7 +96,7 @@
 //!   [`FileWindow::apply_keys`] / [`FileWindow::apply_pick_click`] /
 //!   [`FileWindow::apply_menu_click`] / [`FileWindow::perform`]。
 //!   🔴 **写操作一条新路都没长**：键盘与菜单做的每一件，都落回行上那几颗按钮已经在走的
-//!   那几个 `begin_*`（以及删除那一摞的 `start_writes`）⇒ 一次问完 · 只经通道说 `call`（围栏那一道 V119 拿掉了）
+//!   那几个 `begin_*`（以及删除那一摞的 `start_writes`）⇒ 一次问完 · 只经通道说 `call`
 //!   这几道闸一道都没绕开。
 //!   ⚠ **拖放从这一条里划出去了**：第二刀做了「拖入本机文件 → 上传到当前远端目录」
 //!   那一半（见 [`FileWindow::start_drop`] 与 [`super::transfer`]）；
@@ -418,7 +418,7 @@ pub struct FileWindow {
     grep_query: String,
     /// 命中那一摞这一帧交出来的东西（被点了哪一条 —— **命中这一摞**的下标）。
     pub grep_tally: GrepTally,
-    /// 🔴：那四条写操作的状态机（**一次问完 · 结果**；围栏那一段 V119 拿掉了）。
+    /// 🔴：那四条写操作的状态机（**一次问完 · 结果**）。
     pub write_board: WriteBoard,
     /// 「叫什么名字 / 改成什么权限」那个框。`None` = 没在问。
     /// **UI 线程自己的**（理由见 [`WritePrompt`]）。
@@ -859,7 +859,7 @@ impl FileWindow {
 
     /// 在**当前这个目录**里给用户开一个真终端。回值 = 真的发出去了。
     ///
-    /// 〔主会话 09-29 拍板 Q2 A〕窗口只交**意图**：经它那条通道 `call` 一条 monitor 自己接的
+    /// 窗口只交**意图**：经它那条通道 `call` 一条 monitor 自己接的
     /// [`filewin_contract::TERMINAL_OPEN_OP`]（寻址 ＝ 这台 · 参数 `{cwd}`）。之后三步都在 monitor 那一侧
     /// （`chan/host.rs::terminal_open`）：补这台的机器事实 → 问本机后端 `terminal-ssh` 渲那一行（`cd` 那一串也在那里拼，
     /// `src/backend/dial/terminal.rs::command_for_cwd`）→ `launch::open_terminal_window` 开窗 —— 与主界面开终端同一条路。
@@ -1772,7 +1772,7 @@ impl FileWindow {
         true
     }
 
-    /// 起一摞 `§4.6.4`：**一次问完，才动手。**（原来是「先过围栏，再……」，围栏 V119 拿掉了）
+    /// 起一摞 `§4.6.4`：**一次问完，才动手。**（不再先过围栏）
     ///
     /// 🔴 三段的顺序不在这里，在 [`super::writeops::run_writes`] 的结构里 ——
     /// 这里只负责把「怎么问 · 怎么做」两个口接上去（同 [`Self::start_drop`]）。
@@ -1916,7 +1916,7 @@ impl FileWindow {
     /// 摆出第一问（「存到哪儿」，缺省填 `<本机 home>/<原名>`）。回值 = 真的摆出来了。
     ///
     /// ⚠ **缺省值里那个「本机 home」不是本机文件管理器**（[`local_home`] 头注那条）：
-    /// 往外拖就是往本机盘上写一份，落点当然在本机。用户裁的是「本地不需要**文件管理器**」。
+    /// 往外拖就是往本机盘上写一份，落点当然在本机。要求的是「本地不需要**文件管理器**」。
     /// 🔴〔2026-09-23 本机侧退役〕开头那道「本机源出声拒」的闸删了 —— 同 [`Self::begin_copy`]。
     pub fn begin_pull(&mut self, i: usize) -> bool {
         let (row, full) = {

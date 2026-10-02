@@ -620,7 +620,7 @@ const STDERR_CUT_MARK: &str = " …〔这一行超过单行上界，在此切开
 /// 3. **级别按行首映射，但封顶 `warn`、绝不 `error`。** `logging.rs` 的 `ErrorEmitterLayer` 只拦
 ///    `Level::ERROR`，拦到就 emit `monitor-error` → 前端弹红色 toast。而这里搬的是
 ///    **子进程说的话**，它自己的级别在文本里（后端那侧 `tracing_subscriber` 的 fmt 前缀）。
-/// 主会话裁（NT2 问 3 ＋ RT1 F3）「后端 stderr 进 monitor 日志按级别映射，不一律 WARN」⇒
+/// 后端 stderr 进 monitor 日志按级别映射，不一律 WARN ⇒
 ///    [`backend_stderr_level`] 认行首那个级别字：`INFO` / `DEBUG` / `TRACE` 照原级记，`WARN` 与 `ERROR` 记 `warn`，
 ///    认不出（panic 信息、继承 stderr 的子进程的裸输出）记 `warn`（它们本来就是异常路径）。
 ///    ⚠ `ERROR` 封顶在 `warn` 是**刻意的**（本条原话的理由不变）：拿不准就别替用户决定「这值得弹一个红框」
@@ -1085,7 +1085,7 @@ pub enum Unplaced {
     Said(String),
 }
 
-/// 暂存件任何结局下都清（主会话 09-29 拍板形状 A 的要求 ②）；清不掉出声（超过一天的那份由下一次放置的 [`sweep_stale_partials`] 收）。
+/// 暂存件任何结局下都清（形状 A 的要求 ②）；清不掉出声（超过一天的那份由下一次放置的 [`sweep_stale_partials`] 收）。
 fn drop_partial(tmp: &Path) {
     match std::fs::remove_file(tmp) {
         Ok(()) => {}
@@ -1155,7 +1155,7 @@ pub fn extract_embedded_to(
     build_id: &str,
     bytes: &[u8],
     make_executable: &dyn Fn(&Path) -> Result<(), String>,
-    // 〔拍板项 4〕建落点目录（`~/.cc-monitor/bin` 一族）也是宿主知识：建的那一下就只给本人（`platform::fs::ensure_private_dir`）。
+    // 建落点目录（`~/.cc-monitor/bin` 一族）也是宿主知识：建的那一下就只给本人（`platform::fs::ensure_private_dir`）。
     ensure_dir: &dyn Fn(&Path) -> Result<(), String>,
     ask: PlaceAsk<'_>,
 ) -> Result<PathBuf, Unplaced> {
@@ -1234,7 +1234,7 @@ pub fn place_local_program(
     file: &str,
     bytes: &[u8],
     make_executable: &dyn Fn(&Path) -> Result<(), String>,
-    // 〔拍板项 4〕建落点目录（`~/.cc-monitor/bin` 一族）也是宿主知识：建的那一下就只给本人（`platform::fs::ensure_private_dir`）。
+    // 建落点目录（`~/.cc-monitor/bin` 一族）也是宿主知识：建的那一下就只给本人（`platform::fs::ensure_private_dir`）。
     ensure_dir: &dyn Fn(&Path) -> Result<(), String>,
 ) -> Result<PathBuf, String> {
     let dest = dir.join(file);
@@ -1871,7 +1871,7 @@ pub fn resolve_or_extract(
     extract_dir: &Path,
     embedded: Result<(&str, &[u8]), String>,
     make_executable: &dyn Fn(&Path) -> Result<(), String>,
-    // 〔拍板项 4〕建落点目录（`~/.cc-monitor/bin` 一族）也是宿主知识：建的那一下就只给本人（`platform::fs::ensure_private_dir`）。
+    // 建落点目录（`~/.cc-monitor/bin` 一族）也是宿主知识：建的那一下就只给本人（`platform::fs::ensure_private_dir`）。
     ensure_dir: &dyn Fn(&Path) -> Result<(), String>,
     // 放不放问手上那份字节自己（[`PlaceAsk`]，宿主注入）。
     ask: PlaceAsk<'_>,
@@ -1972,7 +1972,7 @@ pub fn start_or_extract(
     extract_dir: &Path,
     embedded: Result<(&str, &[u8]), String>,
     make_executable: &dyn Fn(&Path) -> Result<(), String>,
-    // 〔拍板项 4〕建落点目录（`~/.cc-monitor/bin` 一族）也是宿主知识：建的那一下就只给本人（`platform::fs::ensure_private_dir`）。
+    // 建落点目录（`~/.cc-monitor/bin` 一族）也是宿主知识：建的那一下就只给本人（`platform::fs::ensure_private_dir`）。
     ensure_dir: &dyn Fn(&Path) -> Result<(), String>,
     on_event: Arc<dyn Fn(SuperviseEvent) + Send + Sync>,
     spawn: Arc<crate::spawn_managed::ManagedSpawn>,

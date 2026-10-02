@@ -537,7 +537,7 @@ fn ccm_makes_no_resume_decision_since_it_became_a_shell() {
     );
     assert!(
         !ccm.contains("fn resume_flag(") && !ccm.contains("beArgv.validate.noResume"),
-        "`control/ccm/` 又长出了 resume 的决定 —— V138 之后 ccm 只看不吃 `--resume`，回 F06 重裁。"
+        "`control/ccm/` 又长出了 resume 的决定 —— ccm 只看不吃 `--resume`。"
     );
 }
 

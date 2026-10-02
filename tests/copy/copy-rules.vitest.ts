@@ -48,7 +48,7 @@ interface Rule {
   imperative?: string[];
   /** C-Y3：问号与口语词那一条管哪几档（title ＋ aria）。 */
   kinds?: string[];
-  /** C-Y3：祈使动词那一条管哪几档（用户 09-24 裁：control 档许以动词开头）。 */
+  /** C-Y3：祈使动词那一条管哪几档（control 档许以动词开头）。 */
   imperativeKinds?: string[];
   /** C-Y3：control 档的正例 —— 以动词开头、按 control 档查必须放过。 */
   controlGood?: string[];
@@ -98,14 +98,14 @@ export const CHECKS: Record<string, Check> = {
     if (/[？?]/.test(s)) return `${e.kind} 档里有问号`;
     const c = ctx.colloquial.find((w) => s.indexOf(w) >= 0);
     if (c) return `${e.kind} 档里有口语词「${c}」`;
-    // 〔用户 09-24 裁〕祈使词只查 `imperativeKinds` 那几档（今天只有 title）。
+    // 祈使词只查 `imperativeKinds` 那几档（今天只有 title）。
     //   ⚠ 上面那一句 `labelKinds` 管的是问号与口语词，这一句管的是动词开头 —— 两件事，
     //   后者的射程住 `rules.json`，改规矩就是改那一格，检法跟着走。
     if (!ctx.imperativeKinds.includes(e.kind)) return null;
     const v = ctx.imperative.find((w) => s.trimStart().startsWith(w));
     return v ? `${e.kind} 档以祈使动词「${v}」开头` : null;
   },
-  // 〔用户 09-24 裁「允许动词开头（问句仍禁）」〕control 档不许问句。
+  // 允许动词开头（问句仍禁）：control 档不许问句。
   "C-Y4": (e) => (e.kind === "control" && /[？?]/.test(speech(e.zh)) ? "control 档是问句" : null),
   // 错误码不上屏：占位名是 code（或以 code / Code 结尾）的一律不许 —— 码留在日志与诊断里。
   "C-Y5": (e) => {
@@ -238,7 +238,7 @@ describe("CP2a · 文案规范", () => {
   });
 });
 
-describe("〔ST2 · 用户 09-24 裁〕复选框 / 开关标签允许动词开头 —— 规矩与检法同拍", () => {
+describe("复选框 / 开关标签允许动词开头 —— 规矩与检法同拍", () => {
   const rules = loadRules();
   const ctx = y3Ctx(rules, loadTerms());
   const y3 = rules.find((r) => r.id === "C-Y3")!;
@@ -247,7 +247,7 @@ describe("〔ST2 · 用户 09-24 裁〕复选框 / 开关标签允许动词开�
     expect(y3.imperativeKinds, "C-Y3 没有 imperativeKinds —— 检法会退回写死的那一份").toBeDefined();
     expect(ctx.imperativeKinds).toEqual(y3.imperativeKinds);
     expect(ctx.imperativeKinds).toContain("title");
-    expect(ctx.imperativeKinds, "用户裁 control 档许以动词开头，射程里却还有它").not.toContain("control");
+    expect(ctx.imperativeKinds, "control 档许以动词开头，射程里却还有它").not.toContain("control");
     expect(y3.rule, "规矩文字没写这条裁决 —— 规范与检法又会各说各的").toMatch(/control 档.*许以动词开头/);
   });
 

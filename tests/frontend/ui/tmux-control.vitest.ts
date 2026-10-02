@@ -225,7 +225,7 @@ describe("〔C4e〕结束会话 · 发按键：按形状收", () => {
     ]);
   });
 
-  it("★★ 发按键只有 `send-into` 一形（键入 ＋ 回车；〔RST 续 · V41〕裸键 mode 已删）", async () => {
+  it("★★ 发按键只有 `send-into` 一形（键入 ＋ 回车；裸键 mode 已删）", async () => {
     answer({ ok: LAUNCH.reply });
     await sendKeys("aya", "demo-cc", "/compact");
     const bodies = sentCalls().map(([, , b]) => b as Record<string, unknown>);
@@ -368,7 +368,7 @@ describe("〔C4e〕就地 resume（F14：只有能证明没发出去才许回落
 });
 
 
-describe("〔NET2 · 主会话 09-27 裁 A〕那台握手时说过做不到的，菜单置灰并说为什么", () => {
+describe("那台握手时说过做不到的，菜单置灰并说为什么", () => {
   it("kill 在「没有 tmux」的那台上不可点、字后面带原因；那台没说的项与没问过的机器照常", async () => {
     const { gateByOffer } = await import("../../../src/frontend/ui/tab-menu");
     const { chan } = await import("../../../src/comms/inward/chan");

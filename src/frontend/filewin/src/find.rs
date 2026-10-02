@@ -196,7 +196,7 @@ pub struct IndexStatus {
     pub truncated: bool,
     pub age_secs: u64,
     /// 🔴 **后端声明的重走周期。** 这一侧**只显示它**，不定它、不校验它
-    /// （那个数还没拍板）。
+    /// （那个数还没定）。
     pub rewalk_interval_secs: u64,
     /// `age_secs > rewalk_interval_secs` —— 后端自己算的那句判断。
     pub stale: bool,

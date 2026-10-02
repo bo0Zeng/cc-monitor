@@ -282,7 +282,7 @@ fn fresh_token() -> Result<String, String> {
     Ok(buf.iter().map(|b| format!("{b:02x}")).collect())
 }
 
-// 〔拍板项 4〕`~/.cc-monitor` 这一层建的那一下就只给本人：那个函数住 `platform::fs::ensure_private_dir`，
+// `~/.cc-monitor` 这一层建的那一下就只给本人：那个函数住 `platform::fs::ensure_private_dir`，
 //   与释放后端二进制那几处（`local_backend.rs`，经注入）共用一份。
 
 /// 记下「谁在听那个口」。**只有起它的那个宿主写**。
@@ -1675,7 +1675,7 @@ pub fn local_pid_and_attempts() -> Result<(Option<u32>, Option<u32>), String> {
 // 先前这里是 `K-H2b` 那一族：monitor 起本机后端那一刻**另监护一个** `--relay` 子进程（第三个进程），
 // 「停」按钮与退出臂各收它一次，「中转在不在」问的是 monitor 自己内存里那张句柄表
 // （跨 monitor 重启认不出上一次那一个 ⇒ 孤儿必然，「孤儿总是中转」）。
-// 用户 2026-09-24 裁「中转 ＋ 上游选择住本机常驻后端进程，对外端口由它绑；
+// 「中转 ＋ 上游选择住本机常驻后端进程，对外端口由它绑；
 // monitor 不再单独起 / 收中转（本机固定两个进程）」⇒ 那一族整个删掉：
 // - 起：后端流模式进程被交了端口就在本进程里起（`src/backend/relay/listen.rs::host`）；
 // - 收：随常驻后端按「退出行为」留或退，monitor 一行都不管；
@@ -1701,7 +1701,7 @@ pub(crate) fn relay_host_envs() -> Vec<(String, String)> {
     if let Some(p) = crate::creds_store::resolve_path() {
         envs.push((creds_env.into(), p.display().to_string()));
     }
-    // 历史注解的读写者换成本机常驻后端（主会话 09-25 裁：文件留在原处、同一路径）——
+    // 历史注解的读写者换成本机常驻后端（文件留在原处、同一路径）——
     //   同上一格的理由：由知道那份文件在哪的那一侧把路径说出来（值就是 monitor 从前读写它的那一个函数算的）。
     //   拿不到数据目录时这一格缺席 ⇒ 后端那一侧明说「不知道注解文件在哪」，不猜。
     if let Some(p) = crate::history::metadata_path() {

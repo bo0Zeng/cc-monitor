@@ -296,7 +296,7 @@ describe("HistoryView 来源列表 TTL 缓存 (F76 #46)", () => {
     expect(calls[0].origin).toBe("<local>");
   });
 
-  // 要求：「历史页整页『加载失败』，lx 的历史也不显示」· 题面 WF2 第 4 条「不整页失败、不拖别的机器」。
+  // 要求：「历史页整页『加载失败』，lx 的历史也不显示」⇒「不整页失败、不拖别的机器」。
   it("本机那一问失败：出声一次，远端项目照常进列表（不整页失败）", async () => {
     invokeMock.mockReset();
     invokeMock.mockImplementation(withHistoryReads((cmd: string) => {
@@ -313,7 +313,7 @@ describe("HistoryView 来源列表 TTL 缓存 (F76 #46)", () => {
     expect(toast.mock.calls.map((c) => c[0])).toEqual([copyText("history.refresh.localFailed")]);
   });
 
-  // 要求住址：主会话 09-29 拍板 ④(b)「历史页按机器分组时，某台零项目画一行『这台还没有会话记录』（不是整页空态）」。
+  // 要求：「历史页按机器分组时，某台零项目画一行『这台还没有会话记录』（不是整页空态）」。
   it("按机器分组时，零项目的那几台（本机 · 远端）各画一行「这台还没有会话记录」，有项目的那台照常", async () => {
     invokeMock.mockReset();
     invokeMock.mockImplementation(withHistoryReads((cmd: string) => {

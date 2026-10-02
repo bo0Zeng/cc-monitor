@@ -1,6 +1,6 @@
 //! 中转口的**门**〔`INVARIANTS §48.1a` 中转口的钥匙〕：钥匙住哪 · 谁铸 · 进门三问。
 //!
-//! # 为什么要有这扇门（主会话判「缺口，不是取舍」）
+//! # 为什么要有这扇门（缺口，不是取舍）
 //!
 //! 中转听的是回环 TCP，而回环 TCP **没有权限位**：同机任何进程 —— 别的 OS 用户、
 //! 浏览器里一张网页向 `127.0.0.1` 发的请求 —— 连得上它。门开着的时候，谁走 `/s/<agent>/<账号>/…`
@@ -45,7 +45,7 @@ use std::path::{Path, PathBuf};
 /// `ccm` 读钥匙 / 渲 `$(cat ~/…)` 用的也是同一个 const。
 pub(crate) const KEY_FILE_REL: &str = relay_route_core::KEY_FILE_REL;
 
-/// 钥匙的熵：32 字节 = 256 位（题面要 ≥128 位）。落盘是 64 个小写十六进制字符。
+/// 钥匙的熵：32 字节 = 256 位（要求 ≥128 位）。落盘是 64 个小写十六进制字符。
 const KEY_BYTES: usize = 32;
 
 /// 门拒绝时回的两个状态行。
@@ -258,7 +258,7 @@ pub(crate) fn admit(head: &RequestHead, key: &Key) -> Verdict {
 }
 
 /// `Host` 那一格是不是回环字面量：`127.0.0.1` · `localhost` · `[::1]`，可带 `:<十进制口>`。大小写不敏感。
-/// 〔主会话 09-26 裁（丙）〕防 DNS 重绑，只认三个字面量是设计；与上游那条「这个地址在不在本机」
+/// 防 DNS 重绑，只认三个字面量是设计；与上游那条「这个地址在不在本机」
 /// （`upstream_url_core::upstream_is_loopback`，整个 `127/8`）是两个判定，不许并。
 pub(crate) fn host_header_is_loopback_literal(raw: &str) -> bool {
     let h = raw.trim().to_ascii_lowercase();

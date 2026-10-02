@@ -6,7 +6,7 @@ workspace = "../shell"
 description = "cc-monitor 的文件管理窗口（又一个前端：egui 原生窗口，一窗一进程，只经通道说 call / subscribe）。"
 license = "MIT"
 
-# 〔「文件窗口成独立包 `src/frontend/filewin/`」· 主会话 09-29 拍板 Q1〕
+# 〔文件窗口成独立包 `src/frontend/filewin/`〕
 #   本包只有 lib：打包路线不变 —— 二进制仍是 monitor 包里的第二个 `[[bin]] cc-monitor-filewin`（一行转调 [`run`]），
 #   tauri-cli 按「包里每个 [[bin]]」把它装到主程序旁（`tests/evidence/K-R124-ruler.py` ⑭）。
 #   依赖只许契约类 ＋ 前端宿主原语 ＋ 自己的界面库；不链 monitor、不链判定类 crate（`contract_crate_guard_tests.rs` 钉）。
@@ -91,7 +91,7 @@ egui = "0.36"
 #      纯构建期、零运行时面）——**改的是 `src/backend/`**；
 #   ② 不用 `eframe`，自己拼 `egui-winit` ＋ `egui_glow` ＋ `glutin`（scratchpad 现打：
 #      那样 `wgpu` 从 lock 里彻底消失、`cfg_aliases` 钉得回 0.2.1、总包数 308）——
-#      但那是为了躲一行 lockfile 自己重写一遍 eframe 的集成层，是「硬绕」，得先有人拍板。
+#      但那是为了躲一行 lockfile 自己重写一遍 eframe 的集成层，是「硬绕」，先不做。
 eframe = { version = "0.36", default-features = false, features = [
     "accesskit",
     "default_fonts",

@@ -66,7 +66,7 @@
  * - **（变量对账）没装**：它要 `npm i -D stylelint-value-no-unknown-custom-properties`，
  *   而装包要改 `package-lock.json`，不在本轮写区。而且它今天**装上就红** ——
  *   `S21` 步 2 现打剩 1 个未定义变量（`--bg-1`，6 处），那一处正等用户在
- *   `--bg` / `--field-bg` 之间拍板（`S21 §6 ①`）。⇒ 不装，登记在此。
+ *   `--bg` / `--field-bg` 之间定（`S21 §6 ①`）。⇒ 不装，登记在此。
  * - ④ 跑的是**真 stylelint**（本仓少数几条在判据里起外部工具的，先例：`eslint-baseline.vitest.ts`）。
  *   走 node API 而不是 spawn `npx`，顺带躲开 `eslint-baseline` 头注记的那个
  *   「Windows 上 `npx` 真身是 `npx.cmd`、`execFile*` 不套 PATHEXT ⇒ 恒 ENOENT」的坑。
@@ -238,7 +238,7 @@ const STYLELINT_CEILING = 35;
  * `kind`：
  * - `list`：同一条规则的选择器列表内部（声明一模一样，谁赢都一样）；
  * - `harmless`：逐条看过，结构上打不到同一个元素，或打到了也是作者要的结果（理由写在 `why`）；
- * - `defect?`：**真冲突，缺陷候选**，交主会话拍（改了会改变可见样式，本机无图形会话不能目视）；
+ * - `defect?`：**真冲突，缺陷候选**，待定（改了会改变可见样式，本机无图形会话不能目视）；
  * - 〔历史〕`U4` / `ST3` 两档：当时在同波别的路的写区里、没逐条判的「未判」。U4 那 10 条 U4 自己判了，
  *   ST3 那 15 条逐条判完（全是 `harmless`），这两档从类型里删了 —— 今天没有「未判」。
  *
@@ -457,7 +457,7 @@ const PREFIX_COVERAGE_CEILING = 35;
 //   从没有过规则的类名（`cc-bus-online-unknown` / `-checking` / `-error`）按约定 3 改成 `data-state`
 //   ⇒ 现打 147（少的就是这三个；`-yes` / `-no` 由模板拼、本来就不进这一数）。
 //   `.settings-btn-secondary`（53 处挂、git 史里从没有过规则、外观即 `.settings-btn` 默认）仍在这 147 里，理由见 `AR1.md §2`。
-// 〔AR1 拍板 3 · 09-25 棘 147 → 146〕「删类名」：`.settings-btn-secondary` 从 `src/` 12 份文件里摘掉
+// 〔棘 147 → 146〕「删类名」：`.settings-btn-secondary` 从 `src/` 12 份文件里摘掉
 //   （现打 55 处字面量 ＋ `panel.ts::makeBtn` 那一处模板拼接；三个按钮助手的 `variant` 空串 = 默认那一种）⇒ 少的就是它这一个。
 //   外观不变：它从来没有规则，挂与不挂算出来的样式一样。
 // 〔09-29 棘 146 → 141〕设置 → 机器那一行的后端四格补了样式（`settings.css`）⇒
