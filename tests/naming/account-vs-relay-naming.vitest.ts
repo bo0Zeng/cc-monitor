@@ -246,15 +246,6 @@ export const ACCOUNT_NAMES: AccountName[] = [
   },
   // ── 判据名 ─────────────────────────────────────────────────────────────────
   {
-    old: "only_an_account_that_has_a_row_in_the_relay_table_gets_the_base_url_prefix",
-    re: ident("only_an_account_that_has_a_row_in_the_relay_table_gets_the_base_url_prefix"),
-    fresh: "only_an_account_that_has_a_row_in_the_apikey_table_gets_the_base_url_prefix",
-    freshRe: ident("only_an_account_that_has_a_row_in_the_apikey_table_gets_the_base_url_prefix"),
-    kind: "判据名",
-    why: "「那张表」是 apikey 表",
-    state: "done",
-  },
-  {
     old: "a_relay_started_with_only_a_file_on_disk_gets_the_key",
     re: ident("a_relay_started_with_only_a_file_on_disk_gets_the_key"),
     fresh: "upstream_selection_loads_the_key_from_a_hand_written_file_alone",
@@ -329,7 +320,8 @@ export const RELAY_NAMES: { name: string; re: RegExp; why: string }[] = [
   { name: "relay_endpoint_for", re: ident("relay_endpoint_for"), why: "「往 ANTHROPIC_BASE_URL 里写哪个中转地址」的唯一判断口（有行时它把那一格交给 `apikey_endpoint_for`）" },
   { name: "relay_route_path_in", re: ident("relay_route_path_in"), why: "拼中转路由键（中转的线格式）" },
   { name: "relay_base_url_in", re: ident("relay_base_url_in"), why: "拼中转地址" },
-  { name: "relay_env_prefix_posix", re: ident("relay_env_prefix_posix"), why: "把中转地址拼成命令前缀" },
+  // 载荷那一层拼中转前缀的那一个随起会话只交一行 `ccm …` 删了；接替它的是 `ccm` 那一句。
+  { name: "relay_export", re: ident("relay_export"), why: "`ccm` 非得经 shell 那一趟把中转地址渲成 export 那一句" },
   { name: "relay_prefix_for_launch", re: ident("relay_prefix_for_launch"), why: "起会话那一刻挑中转前缀的接线口" },
   { name: "relay_running", re: ident("relay_running"), why: "本机中转进程在不在跑" },
   // `start_local_relay` / `LOCAL_RELAY` 两条随「monitor 另起中转」那一族删掉，换成接替它们的两个中转名字。〔散文墓碑〕
@@ -467,7 +459,7 @@ export function notScanned(path: string): boolean {
 const ANCHORS = [
   "src/comms/outward/mod.rs",
   "src/backend/accounts/upstream_select/mod.rs",
-  "src/backend/control/launch_render/payload.rs", // 随载荷渲染搬进后端
+  "src/backend/control/launch_render/ccm_invocation.rs", // 起会话那一行（载荷那份删了）
   "src/frontend/ui/accounts.ts",
   "src/doc/IPC-PROTOCOL.md",
   "tests/evidence/K-R117-ruler.py",

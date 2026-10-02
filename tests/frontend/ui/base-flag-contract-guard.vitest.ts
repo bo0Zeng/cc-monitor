@@ -51,7 +51,7 @@ const ccm = `${ccmArgv}\n${ccmPlan}`;
 // `account` 维度）—— TS 维度上的 `cliFlags` 随 TS 渲染器删了。这里原来调
 // `ACCOUNT_DIMENSION.cliFlags` 断言它的返回值，那时判的已经是一个不在执行链上的值
 // （生产从 U8c-2c-2 起就走 Rust）；改读生产那一份的源码锚，与本文件读 `ccm/argv.rs` /
-// `plan.rs` 那几条同一做法。行为那一半由 `ccm_invocation_tests.rs::account_dimension_always_speaks_up_and_has_three_shapes` 管。
+// `plan.rs` 那几条同一做法。行为那一半由 `ccm_invocation_tests.rs::the_account_dimension_has_its_five_shapes` 管。
 /** monitor 侧 CLI 渲染器（生产那一份）。**只读，不改**。 */
 const MONITOR_CLI = readFileSync(resolve(ROOT, "src/backend/control/launch_render/ccm_invocation.rs"), "utf8");
 /** 锚串在生产那一份里恰好出现一次（0 = 那一臂没了；≥2 = 有第二个家，本条会比到别处去）。 */
@@ -108,7 +108,7 @@ describe("Z02：`--base` 跨语言契约（monitor ↔ shared/ccm）", () => {
    */
   it("account 态照旧走 --account（--base 只留给「不注入」）", () => {
     expect(
-      countIn(MONITOR_CLI, 'CliAccount::Named { name: Some(n) } => Some(vec!["--account".into(), n.to_string()]),'),
+      countIn(MONITOR_CLI, 'CliAccount::Named { name: Some(n), .. } => {\n                Some(vec!["--account".into(), n.to_string()])'),
     ).toBe(1);
   });
 

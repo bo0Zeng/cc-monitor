@@ -260,7 +260,7 @@ pub(crate) use listen::{host, ENV_PORT};
 /// 字段语义与「位置号原位说缺口」住 `tee.rs` 头注「第二个落点」。
 pub(crate) use tee::{TapBody, TapEvent, TapPort};
 
-/// 「这台机器上我们的中转在不在听」—— 上游选择出成品时问它（`launch-endpoint` · `apikey-routing`）。
+/// 「这台机器上我们的中转在不在听」—— 上游选择出成品时问它（`apikey-routing` · `relay-optin` · 别名预览）。
 /// 只收端口、只回布尔。对外口的全集由 `layering_guard` 那张登记表两向钉着。
 pub(crate) use listen::our_relay_listening;
 

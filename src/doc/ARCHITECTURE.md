@@ -151,7 +151,7 @@ monitor 里仍直读本机 agent 目录的地方逐处登记，条数以 `local_
 
 **搬不走的那条边界**：最后那次 exec 必须发生在用户自己的终端进程里——pid 要等于 pidfile 名，tty 与 Ctrl-C 要落在 agent 上，`tmux attach` 要占住调用者的终端。所以起一个会话拆成三个平面：
 
-1. 计划面「跑什么命令」→ 那台后端出成品（本机起会话帧命令 `launch-local`，远端载荷渲染 `launch-render-payload`，开终端那一行 `terminal-ssh`）；
+1. 计划面「跑什么命令」→ 那台后端出成品，**永远只是一行 `ccm …`**（本机帧命令 `launch-local`，远端 `launch-render-cli`；开终端那一行 `terminal-ssh` 只包它）。环境、中转地址、身份标记、预信任由那台的 `ccm` 在最终 exec 那一处定；
 2. 执行面「在那台真的建 tmux」→ 后端 `control/launch`，argv 直传、不过 shell；
 3. 开窗面 → 只能是 monitor（`open_terminal_window`）：后端在远端，开不了你面前的窗。平面 ③ 永远搬不走。
 
@@ -186,7 +186,7 @@ monitor 里仍直读本机 agent 目录的地方逐处登记，条数以 `local_
 
 ### 2.8 其余几块
 
-- **中转**（通信层面 B）：本机远端同形，是那台常驻后端进程里的一条线程，对外端口由它绑，进门要钥匙。凡经我们的启动器起的会话都注入中转地址；用户自己设了 `ANTHROPIC_BASE_URL` 时不注入并说一句。中转只切流，这一发走哪个上游、注入什么凭据由账号域的上游选择出成品（帧命令 `launch-endpoint`），monitor 对凭据文件零读零写。
+- **中转**（通信层面 B）：本机远端同形，是那台常驻后端进程里的一条线程，对外端口由它绑，进门要钥匙。凡经 `ccm` 起的会话都注入中转地址（`ccm` 在最终 exec 那一处问上游选择，开关读 `CCM_RELAY_ALL_SESSIONS`）；用户自己设了 `ANTHROPIC_BASE_URL` 时不注入并说一句。中转只切流，这一发走哪个上游、注入什么凭据由账号域的上游选择定，monitor 对凭据文件零读零写。
 - **文件管理**：`cc-monitor-filewin` 是独立前端，经回环通道 ＋ 钥匙只说 `call` / `subscribe`。写用户的文件只经那台后端的文件管理面（`files-peek` · `files-put` 带期望值 · `files-delete` …），本机远端同一条路；monitor 碰用户文件只有一个开口，只差 `origin`。
 - **部署**：后端的字节随 monitor 内嵌，全仓只有壳的字节表一个取字节口，按目标机器的 (OS, arch) 选，没覆盖的格子写第一个字节前拒绝。「换不换、换成什么」由后端帧命令 `deploy-plan` 出计划（只升不降，身份读字节里的戳、不跑它），monitor 只按计划放字节。
 - **资产**：每台后端一份资产目录，本机后端按事件在各后端之间拉 / 合 / 推；装到别的机器要用户点，先看差异。

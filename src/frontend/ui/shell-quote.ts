@@ -9,7 +9,7 @@
  * 留下的只做**校验**（拒绝拼入命令），真正拼进命令的那一步不在这里。
  *
  * 这里原来还有两个校验器，Rust 渲染侧各有一份同一条规则、渲染时自己判：
- * `isValidConfigDir`〔散文墓碑〕（＝ `payload.rs::config_dir_command_safe`，字符集逐项同）与
+ * `isValidConfigDir`〔散文墓碑〕（＝ 当时载荷那一层的配置目录判定，字符集逐项同；今天那道判定住 `acct-core`）与
  * `sanitizeRemoteLauncher`〔散文墓碑〕（同 `payload.rs::render_payload` 那道闸的字符集，但它**静默换成 `claude`**，
  * 撞）。两份删了：线上校验交渲染那一侧判，判不过带 `REFUSE:` 标拒、前端说出来，不回落。
  * 登记表 `tests/frontend/ui/judgment-single-home.vitest.ts`（J2 · J3）。

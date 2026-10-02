@@ -310,7 +310,7 @@ pub fn is_deceptive_char(c: char) -> bool {
 //
 // 配置目录是本仓自管的路径（manifest 里来的），拼进命令之前走**全表**：形式（绝对 · 无 `..` 段）＋ 拒绝集
 // （控制符 · 元字符 · 视觉欺骗字符），不是自由文本那一层的「只拒 NUL / CR / LF」。
-// 它原来住两处、各一份：monitor `payload.rs::config_dir_command_safe`（POSIX 形 ＋ 拒 `\`）与后端
+// 它原来住两处、各一份：monitor 载荷那一层那一份（POSIX 形 ＋ 拒 `\`；那一层后来随起会话只交一行 `ccm …` 删了）与后端
 // `observe/accounts_query.rs::is_safe_config_dir`（任一平台形）；而后端 ccm 起会话那一侧（`control/`）要全表却够不着
 // （`control → observe` 是禁止方向，TL3 交接的那一格）。⇒ 两份与它们共用的元字符表都搬到这里，
 // 两个旧名字各留一个转手的薄壳（调用方与既有判据一个不动），`control` 直接用这里。
@@ -329,7 +329,7 @@ pub fn config_dir_char_unsafe(c: char) -> bool {
 }
 
 /// **POSIX 命令面**的配置目录：`/` 开头 · 不是 `/` 本身 · 无 `..` 段 · 无 `\` · 无 [`config_dir_char_unsafe`] 的字符。
-/// fail-closed：稍有可疑即判非法，**绝不拼进命令**。（原 monitor `payload.rs::config_dir_command_safe`。）
+/// fail-closed：稍有可疑即判非法，**绝不拼进命令**。（原 monitor 载荷那一层那一份。）
 pub fn config_dir_posix_ok(dir: &str) -> bool {
     if !dir.starts_with('/') || dir == "/" || dir.contains("/../") || dir.ends_with("/..") {
         return false;

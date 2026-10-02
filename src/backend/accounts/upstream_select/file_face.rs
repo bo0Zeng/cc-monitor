@@ -253,7 +253,7 @@ pub(crate) fn answer_read() -> FileFaceAnswer {
 /// `configured` / `masked` 说的是**顶层那一把**（`KH2C3`）。界面经 `chan.call` 直接问它、按形状收
 /// （monitor 那一份状态读者 `creds_store::read_status`〔散文墓碑〕与转发的 Tauri 命令退役）。
 /// 先前还回一格 `rows`（表里有哪几行，只给 monitor 起会话那一侧用）：「表里有哪几行」从此只有 [`rows_at`] 一份、
-/// 只在这台后端里用（`launch-endpoint` · `apikey-routing` · `accounts-list`），不再出线。
+/// 只在这台后端里用（`ccm` 起会话 · `apikey-routing` · `accounts-list`），不再出线。
 pub(crate) fn read_at(path: &Path) -> Value {
     let verdict = perm::judge(&perm::probe(path));
     let (doc, problem) = match read_doc(path) {
@@ -282,7 +282,7 @@ pub(crate) fn read_at(path: &Path) -> Value {
 /// 先前这里（与 monitor `history::apikey_rows_at`〔散文墓碑〕）只筛「id 当不当得了路由段」，而装表还会因为
 /// `base_url` 解析不了 · 明文非回环 · `auth_style` 认不出 · 「不发头」却配了 key 把一行丢出表 ⇒
 /// 那一行界面说「经本机中转」、起会话注入 `/s/`，中转却 404（头注自认的残留）。今天三处读者
-/// （`accounts-list` 并表 · `apikey-routing` · `launch-endpoint`）都读这一份 ⇒ 与中转同答。
+/// （`accounts-list` 并表 · `apikey-routing` · `ccm` 起会话）都读这一份 ⇒ 与中转同答。
 ///
 /// **读不动 / 解析不了 ⇒ 零条**：零条的正确行为就是「谁都不按 apikey 号算」，把一份坏文件变成一次清单失败，
 /// 是拿一个能用的状态去换一条报错。坏文件自己的那句话由 `apikey-read` 的 `problem` 说。

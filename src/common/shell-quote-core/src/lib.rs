@@ -15,7 +15,7 @@
 //! | 项 | backend 用量 | 结论 |
 //! |---|---|---|
 //! | `posix_quote` | `control/tmux_hook.rs::sq` 一处 | **留** |
-//! | `config_dir_command_safe` / `UNSET_CONFIG_DIR_PREFIX` / 载荷一族 / `cli` 决策内核 | **零** | 搬进 `backend/control/`（P4b） |
+//! | 配置目录那道判定 / `UNSET_CONFIG_DIR_PREFIX` / 载荷一族 / `cli` 决策内核 | **零** | 搬进 `backend/control/`（P4b）；载荷一族后来整层删了，配置目录判定收进 `acct-core` |
 //!
 //! ⚠ **「渲染一条 shell 命令串」永远属于开终端的那一侧**：§1.3 把最终 exec 钉在用户自己的
 //! 终端进程里，而 U8a-2b 把后端的执行面定成 **argv 直传、不过 shell**。
@@ -41,7 +41,7 @@
 /// 元字符交给 [`posix_quote`]（单引号里没有一个会被解释）；拒它们就是 §47 自己写的「拒过头也算违反」。
 /// 而这三个字符 quote 挡不住它们的后果：NUL 截断参数、CR / LF 在交互 shell 里（`tmux send-keys` 那一跳）等于按了回车。
 /// 形式判定（绝对路径 · 无 `..` 段 …）**按各自语境**写在调用处（本机 / 远端、POSIX / Windows 的「绝对」不是同一件事）。
-/// 本仓自管的值（配置目录 · 后端落点）不走这一条，走全表（`payload.rs::config_dir_command_safe` 那一族）。
+/// 本仓自管的值（配置目录 · 后端落点）不走这一条，走全表（`acct-core` 的 `config_dir_ok` 那一族）。
 /// 交给 agent 的参数 · 登记备注也不走这一条：它们可以跨行，走 [`ARG_TEXT_REFUSED`]。
 pub const FREE_TEXT_REFUSED: [char; 3] = ['\0', '\r', '\n'];
 

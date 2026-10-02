@@ -604,10 +604,22 @@ fn us1_a_broken_file_is_surfaced_instead_of_looking_unconfigured() {
 /// 两侧异源：写的是写口，读的是上游选择装表那一条 ＋ 决策表。只配了一个号 ⇒ 另一个号不许被顺带配上；不落 `default` 那一行。
 #[test]
 fn us1_what_the_write_side_wrote_is_exactly_the_row_the_launch_answer_uses() {
-    use super::super::endpoint::{answer_routing_with, launch_relay_with};
+    use super::super::endpoint::{answer_routing_with, relay_with, LaunchAccount};
     let dir = temp_dir("us1-same-source");
     let p = dir.join("apikey-credentials.json");
-    let ask = |d: &str| json!({"agent":"claude-code","account":{"kind":"named","configDir":d},"key":"k-1","allSessions":false});
+    let ask = |d: &str| LaunchAccount::Named {
+        config_dir: d.to_string(),
+    };
+    let launch_relay_with = |a: &LaunchAccount, rows: &[String], l: &dyn Fn(u16) -> bool| {
+        relay_with(
+            "claude-code",
+            a,
+            false,
+            relay_route_core::PORT,
+            rows,
+            &|p, _| l(p),
+        )
+    };
     // 非空对照排最前：还没写的时候，成品说「不注入」。
     assert!(launch_relay_with(
         &ask("/h/.claude-alt/acct-one"),

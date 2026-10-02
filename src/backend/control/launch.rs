@@ -592,8 +592,8 @@ fn run_with(
                 ));
             }
             // 身份标记与标题是**次要**动作：失败绝不阻断主要动作（键入载荷）。
-            // 与 monitor 侧 `payload.rs::render_tmux_outer` 里 `(… 2>/dev/null || true) &&` 同一条纪律
-            // （原来点的是 TS 座 `session-backend.ts`，那一份删了）。
+            // 与 `ccm` 容器路字符串形（`control/ccm/plan.rs::render_container`）里 `(… 2>/dev/null || true) &&` 同一条纪律
+            // （原来点的是 TS 座 `session-backend.ts` 与后端载荷那一层，两份都删了）。
             //
             // ★★ **建会话这一刻写的是「意图」，不是「事实」**〔`K-P2` C 第五拍，09-03；
             //    PM `§13 裁三` 裁「候选丙」〕。

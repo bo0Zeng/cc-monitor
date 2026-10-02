@@ -15,16 +15,37 @@
 use super::argv::{flag, parse_size, CwdSpec, Die, Opts};
 use copy_core::copy_text;
 // `K-R96`：铸名避让那张 hash 表的**唯一**来源（字段模块私有 ⇒ 这里造不出第二份）。
+use crate::accounts::upstream_select::endpoint::LaunchAccount;
 use crate::common::session_snapshot::TakenNames;
 use crate::platform::shell::posix;
 use shell_quote_core::posix_quote as sq;
+
+/// 中转地址那个环境变量。
+pub(crate) const BASE_URL_ENV: &str = "ANTHROPIC_BASE_URL";
+/// 本机起新会话回填 sid 用的身份 token 那个环境变量（读侧 `observe/accounts_query.rs` 的同名常量）。
+pub(crate) const LAUNCH_ID_ENV: &str = "CCM_LAUNCH_ID";
+
+/// 直路注入中转地址那一句（`--ccm-print` 与非得经 shell 那一趟同一份）。
+pub(crate) fn relay_export(url: &str) -> String {
+    posix::export(BASE_URL_ENV, &relay_word(url))
+}
+
+/// 一条不带钥匙的中转地址 ⇒ `--ccm-print` 里那个 shell 词：钥匙段写成读那台钥匙文件的命令替换（钥匙不进打印出来的命令）。
+fn relay_word(url: &str) -> String {
+    match crate::accounts::upstream_select::endpoint::base_url_halves(url) {
+        Some((head, tail)) => {
+            posix::home_file_between(&sq(head), relay_route_core::KEY_FILE_REL, &sq(tail))
+        }
+        None => sq(url),
+    }
+}
 
 /// 〔RK1 报 2〕把继承来的 `ANTHROPIC_BASE_URL` 显式化进新 pane 载荷时，`export … =` 右边那个 shell 词。
 ///
 /// 继承来的值是上一个 pane 的 shell **展开过**的：我们注入的中转地址里那一段 `$(cat ~/<钥匙文件>)`
 /// 已经变成了 64 位钥匙本身。原样 `export` ⇒ 钥匙进这一次 `tmux send-keys` 的 **argv**（同机别的用户 `ps` 看得见）、
 /// 进 pane 的 shell 历史与回滚。⇒ 认得出是我们注入的那一形（`relay_route_core::split_keyed_base_url`：回环字面量 ＋ 口 ＋
-/// 形状对的钥匙段 ＋ 构造口产得出的路由）就渲回与起会话那一侧（monitor `payload::relay_env_prefix_posix`）同形的
+/// 形状对的钥匙段 ＋ 构造口产得出的路由）就渲回与直路注入（[`relay_word`]）同形的
 /// `'<钥匙之前>'$(cat ~/<钥匙文件>)'<钥匙之后>'`，在新 pane 里现读；认不出（用户自己的端点）⇒ 原样。
 fn base_url_word(v: &str) -> String {
     match relay_route_core::split_keyed_base_url(v) {
@@ -79,7 +100,15 @@ pub(crate) struct Env {
     /// 问「此刻哪些会话在跑」的那一次扫描（观测层的，由入口注入 —— control 不引用 observe）。
     /// 入参 = 这一趟要用的账号配置目录（`None` = agent 自己的默认家目录）。`None` = 这一趟不问（预览 / 不是 resume）。
     pub(crate) running_sessions: Option<super::RunningScan>,
+    /// 这一发往 `ANTHROPIC_BASE_URL` 里写什么（上游选择那张决策表，入口注入）。`None` = 不问（判据 / 不起 agent）。
+    pub(crate) relay: Option<RelayAsk>,
 }
+
+/// 问中转地址的那一只手：`(适配器 id, 这一发用哪个号)` ⇒ 不带钥匙的地址（`None` = 不注入）或拒的那一句。
+pub(crate) type RelayAsk = fn(
+    &str,
+    &crate::accounts::upstream_select::endpoint::LaunchAccount,
+) -> Result<Option<String>, String>;
 
 impl Env {
     /// 从真实进程取一份。**只读环境与那一个配置文件**，不写任何东西。
@@ -118,7 +147,7 @@ impl Env {
                 .unwrap_or_default(),
             tmux: get("TMUX"),
             anthropic_base_url: get("ANTHROPIC_BASE_URL"),
-            ccm_launch_id: get("CCM_LAUNCH_ID"),
+            ccm_launch_id: get(LAUNCH_ID_ENV),
             launch_token: get(crate::control::identity_tag::rbind_token_env()),
             ccm_env: pick("CCM_ENV", Defaults::ENV.to_string()),
             accts_manifest: accts_manifest_under(&home),
@@ -137,6 +166,7 @@ impl Env {
             no_pretrust: std::env::var("CCM_NO_PRETRUST").as_deref() == Ok("1"),
             bus_scripts: discover_bus_scripts(),
             running_sessions: None,
+            relay: Some(crate::accounts::upstream_select::endpoint::relay_for_exec),
             home,
         }
     }
@@ -173,6 +203,7 @@ impl Env {
             no_pretrust: std::env::var("CCM_NO_PRETRUST").as_deref() == Ok("1"),
             bus_scripts: discover_bus_scripts(),
             running_sessions: None,
+            relay: Some(crate::accounts::upstream_select::endpoint::relay_for_preview),
             home,
         }
     }
@@ -506,6 +537,13 @@ pub(crate) struct Direct {
     pub(crate) has_identity: bool,
     /// `--ccm-sid` 在直路上交给谁 —— 见 [`DirectIdentity`]。
     pub(crate) identity: DirectIdentity,
+    /// `--ccm-rbind-token` / `--ccm-launch-id` 交来的值（空 = 没给）：exec 之前放进 agent 进程环境。
+    pub(crate) rbind_token: String,
+    pub(crate) launch_id: String,
+    /// 要注入的中转地址（不带钥匙；钥匙在 exec 那一刻从那台的钥匙文件读）。`None` = 不注入。
+    pub(crate) relay: Option<String>,
+    /// 环境里本来就有一个不是我们注入的 `ANTHROPIC_BASE_URL`（用户自己的端点）⇒ 不动它，说一句。
+    pub(crate) keeps_user_base_url: bool,
 }
 
 /// 〔那一行 · `WN1.md §3`〕**直路上 `--ccm-sid` 的语义 = 启动期令牌。**
@@ -765,6 +803,10 @@ pub(crate) fn resolve_account(
             ))),
         };
     }
+    if !o.account_dir.is_empty() {
+        // 直接给了目录（说不出名字的那一形）⇒ 就用它，不查账号库、不换成别的号。
+        return Ok((o.account_dir.clone(), String::new()));
+    }
     if o.use_base {
         return Ok((String::new(), String::new()));
     }
@@ -844,7 +886,7 @@ fn inherited_gate(env: &Env) -> Result<(), Die> {
             env.inherited_config_dir.as_deref(),
         ),
         ("ANTHROPIC_BASE_URL", env.anthropic_base_url.as_deref()),
-        ("CCM_LAUNCH_ID", env.ccm_launch_id.as_deref()),
+        (LAUNCH_ID_ENV, env.ccm_launch_id.as_deref()),
     ] {
         if let Some(v) = v.filter(|v| !shell_quote_core::free_text_ok(v)) {
             return Err(refuse(what, v));
@@ -905,50 +947,54 @@ pub(crate) fn build_among(
         });
     }
 
-    // ── resume 先查是否已在跑（「只看不吃 `--resume` 以复用 tmux 名」）──
-    //    在跑 ⇒ 接上它，不另起第二份（两份 claude 同写一份记录）。判「在跑」只问避让那同一份快照。
-    if let Some((sid, name)) = o
-        .resumes
-        .as_deref()
-        .and_then(|sid| taken.and_then(|t| t.running(sid)).map(|n| (sid, n)))
-    {
-        return Ok(Plan::Rejoin {
-            name: name.to_string(),
-            sid: sid.to_string(),
-            detach: o.detach,
-        });
-    }
-
     let cwd = resolve_cwd(o, env);
     free_text_gate(&cwd, o)?;
     let (config_dir, account) = resolve_account(o, env, table)?;
-    // 〔§47〕账号配置目录（manifest 里来的）是本仓自管的路径，该走全表。
-    // 全表原先住 `observe/accounts_query.rs`（`control → observe` 是禁止方向，TL3 在这里先只过了自由文本那一层）；
-    //   今天整份搬进共享 crate（`acct_core::config_dir_ok`，全仓唯一一份），这里直接用。空串 = 账号 0 / 继承，不注入、不判。
+    // 〔§47〕账号配置目录（manifest 里来的）是本仓自管的路径，该走全表（`acct_core::config_dir_ok`，全仓唯一一份）。
+    //   空串 = 账号 0 / 继承，不注入、不判。
     if !config_dir.is_empty() && !acct_core::config_dir_ok(&config_dir) {
         return Err(refuse(&env.account_env, &config_dir));
     }
-    // 在跑、却不在 ccm 认得的 tmux 会话里（上面那一格没接上）⇒ 接不上，也不另起第二份：明说。
-    //   判活是观测层起步初扫那一份（`observe::watcher::running_sessions`，入口注入），只对留 pidfile 的那几家问。
-    let scan = env
-        .running_sessions
-        .filter(|_| face.is_some_and(|f| f.has_pidfiles));
-    if let (Some(sid), Some(scan)) = (o.resumes.as_deref(), scan) {
-        let dir = if !config_dir.is_empty() {
-            Some(config_dir.as_str())
-        } else if o.use_base {
-            None
-        } else {
-            env.inherited_config_dir.as_deref()
-        };
-        if let Some((_, pid)) = scan(dir.map(std::path::Path::new))
-            .into_iter()
-            .find(|(s, _)| s == sid)
-        {
-            return Err(Die(copy_text(
-                "bePlan.build.runningElsewhere",
-                &[("sid", sid), ("pid", &pid.to_string())],
-            )));
+    // ── resume 先查是否已在跑（「只看不吃 `--resume` 以复用 tmux 名」）──
+    //    判活是观测层起步初扫那一份（`observe::watcher::running_sessions`，入口注入），只对留 pidfile 的那几家问；
+    //    `None` = 问不了（预览 / 不留 pidfile 的那一家）。
+    let alive = match (o.resumes.as_deref(), env.running_sessions) {
+        (Some(sid), Some(scan)) if face.is_some_and(|f| f.has_pidfiles) => {
+            let dir = if !config_dir.is_empty() {
+                Some(config_dir.as_str())
+            } else if o.use_base {
+                None
+            } else {
+                env.inherited_config_dir.as_deref()
+            };
+            Some(
+                scan(dir.map(std::path::Path::new))
+                    .into_iter()
+                    .find(|(s, _)| s == sid)
+                    .map(|(_, pid)| pid),
+            )
+        }
+        _ => None,
+    };
+    if let Some(sid) = o.resumes.as_deref() {
+        match (taken.and_then(|t| t.running(sid)), alive) {
+            // 标记说它在那个 tmux 会话里，进程也真在（或问不了）⇒ 接上它，不另起第二份（两份 agent 同写一份记录）。
+            //   标记在、进程已经没了（agent 退了、只剩 shell 的那个会话）⇒ 不是在跑：照常起（就地 resume 键进的正是那个 pane）。
+            (Some(name), Some(Some(_)) | None) => {
+                return Ok(Plan::Rejoin {
+                    name: name.to_string(),
+                    sid: sid.to_string(),
+                    detach: o.detach,
+                });
+            }
+            // 在跑、却不在 ccm 认得的 tmux 会话里 ⇒ 接不上，也不另起第二份：明说。
+            (None, Some(Some(pid))) => {
+                return Err(Die(copy_text(
+                    "bePlan.build.runningElsewhere",
+                    &[("sid", sid), ("pid", &pid.to_string())],
+                )));
+            }
+            _ => {}
         }
     }
     // 认不出这一家 ⇒ 空串（exec 当场说起不来，不猜成别的哪一家）。
@@ -997,6 +1043,9 @@ pub(crate) fn build_among(
         if !account.is_empty() {
             opts.push(flag::ACCOUNT.into());
             opts.push(account.clone());
+        } else if !o.account_dir.is_empty() {
+            opts.push(flag::ACCOUNT_DIR.into());
+            opts.push(o.account_dir.clone());
         }
         if o.use_base {
             opts.push(flag::BASE.into());
@@ -1008,6 +1057,16 @@ pub(crate) fn build_among(
         if !o.ccm_sid.is_empty() {
             opts.push(flag::CCM_SID.into());
             opts.push(o.ccm_sid.clone());
+        }
+        // 两个身份 token 原样交给 pane 里那一趟（它在最终 exec 那一处放进 agent 进程环境；tmux 边界吃掉的环境不靠它）。
+        for (f, v) in [
+            (flag::RBIND_TOKEN, &o.rbind_token),
+            (flag::LAUNCH_ID, &o.launch_id),
+        ] {
+            if !v.is_empty() {
+                opts.push(f.into());
+                opts.push(v.clone());
+            }
         }
         let mut inner: Vec<String> = env.self_argv.clone();
         inner.extend(o.passthru.iter().cloned());
@@ -1024,7 +1083,7 @@ pub(crate) fn build_among(
         // ⚠ 这几行的形状（`payload = format!("export <VAR>={}; {payload}", sq(v));`）有人在逐行认：
         //   壳那一侧（`src/frontend/shell`）的 `KP5ED1`（`payload_tests·rs::forwarded_by_container_path`）从起点
         //   `let mut payload = inner.iter()` 数到登记那段注释，改形状它会红。
-        if account.is_empty() && !o.use_base {
+        if account.is_empty() && !o.use_base && o.account_dir.is_empty() {
             if let Some(v) = env
                 .inherited_config_dir
                 .as_deref()
@@ -1040,7 +1099,7 @@ pub(crate) fn build_among(
             );
         }
         if let Some(v) = env.ccm_launch_id.as_deref().filter(|v| !v.is_empty()) {
-            payload = format!("{}{payload}", posix::export("CCM_LAUNCH_ID", &sq(v)));
+            payload = format!("{}{payload}", posix::export(LAUNCH_ID_ENV, &sq(v)));
         }
         // 自检**共用载荷那一段 export 前缀**（它要在 pane 那份环境里跑）：上面只往前面加，
         // ⇒ 前缀 = 载荷去掉末尾那段裸命令。
@@ -1108,9 +1167,37 @@ pub(crate) fn build_among(
         }));
     }
 
-    // ── 非容器路 ────────────────────────────────────────────────────────
+    // ── 非容器路（最终 exec 的那一处）────────────────────────────────────
     let mut argv = launcher_words(&launcher, &env.home);
     argv.extend(o.passthru.iter().cloned());
+    // 中转地址只在这里定：环境里已经有一个（用户自己设的 / 外层 ccm 带进来的）⇒ 不动；否则问上游选择那张表。
+    let inherited_base_url = env.anthropic_base_url.as_deref().filter(|v| !v.is_empty());
+    let relay = match (inherited_base_url, env.relay, face) {
+        (None, Some(ask), Some(f)) => {
+            let account = if !config_dir.is_empty() {
+                LaunchAccount::Named {
+                    config_dir: config_dir.clone(),
+                }
+            } else if o.use_base {
+                LaunchAccount::Base
+            } else {
+                match env
+                    .inherited_config_dir
+                    .as_deref()
+                    .filter(|v| !v.is_empty())
+                {
+                    Some(d) => LaunchAccount::Named {
+                        config_dir: d.to_string(),
+                    },
+                    None => LaunchAccount::Undeclared,
+                }
+            };
+            ask(f.adapter_id, &account).map_err(Die)?
+        }
+        _ => None,
+    };
+    let keeps_user_base_url =
+        inherited_base_url.is_some_and(|v| relay_route_core::split_keyed_base_url(v).is_none());
 
     Ok(Plan::Direct(Direct {
         ccm_env: env.ccm_env.clone(),
@@ -1127,7 +1214,16 @@ pub(crate) fn build_among(
         cwd,
         argv,
         has_identity: face.is_some_and(|f| f.has_identity),
-        identity: direct_identity(&o.ccm_sid, env.launch_token.as_deref()),
+        identity: direct_identity(
+            &o.ccm_sid,
+            Some(o.rbind_token.as_str())
+                .filter(|t| !t.is_empty())
+                .or(env.launch_token.as_deref()),
+        ),
+        rbind_token: o.rbind_token.clone(),
+        launch_id: o.launch_id.clone(),
+        relay,
+        keeps_user_base_url,
     }))
 }
 
@@ -1276,6 +1372,20 @@ fn render_direct(d: &Direct) -> String {
     }
     if !d.nested.is_empty() {
         line.push_str(&posix::unset(&d.nested));
+    }
+    for (var, v) in [
+        (
+            crate::control::identity_tag::rbind_token_env(),
+            &d.rbind_token,
+        ),
+        (LAUNCH_ID_ENV, &d.launch_id),
+    ] {
+        if !v.is_empty() {
+            line.push_str(&posix::export(var, &sq(v)));
+        }
+    }
+    if let Some(url) = &d.relay {
+        line.push_str(&relay_export(url));
     }
     if !d.cwd.is_empty() {
         line.push_str(&format!("cd {} && ", sq(&d.cwd)));

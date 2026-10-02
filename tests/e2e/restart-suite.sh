@@ -33,7 +33,10 @@ set -euo pipefail
 #   （08-11 一条同形态的探针把用户 **9 个真实会话**打没了）。
 # shellcheck source=tests/e2e/tmux-shim.sh
 . "$(cd "$(dirname "$0")" && pwd)/tmux-shim.sh" e2eRestart
-_gc_sock_cleanup() { tmux_shim_cleanup; }
+# 换号重启交给终端的是一行 `ccm …` ⇒ 后端二进制以 `ccm` 之名上 PATH（要先 build：二进制在 .build/backend/debug/cc-monitor-backend）。
+# shellcheck source=tests/e2e/ccm-shim.sh
+. "$(cd "$(dirname "$0")" && pwd)/ccm-shim.sh"
+_gc_sock_cleanup() { tmux_shim_cleanup; ccm_shim_cleanup; }
 # ─────────────────────────────────────────────────────────────────────────────
 
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -53,6 +56,28 @@ mkdir -p "$OLD/sessions" "$OLD/projects" "$NEW/sessions" "$NEW/projects" "$CWD_D
 # 两账号 fixture（都可选:isolated + loggedIn + exists）。znew=换号目标、bold=旧号。
 ACCTS='{"available":true,"error":null,"meta":null,"accounts":[{"name":"bold","email":"","configDir":"'"$OLD"'","isDefault":false,"mode":"isolated","exists":true,"loggedIn":true,"authKind":"subscription","authReady":true},{"name":"znew","email":"","configDir":"'"$NEW"'","isDefault":true,"mode":"isolated","exists":true,"loggedIn":true,"authKind":"subscription","authReady":true}]}'
 export CCM_ACCOUNTS_JSON="$ACCTS"
+# 同两个号给 ccm 自己的账号库（`--account znew` 由那台的 ccm 按它解析）。
+case "$CCM_SHIM_ACCOUNTS" in
+  "$CCM_SHIM_DIR"/*) ;;
+  *) echo "账号库 $CCM_SHIM_ACCOUNTS 不在本趟沙箱里 —— 拒绝往里写" >&2; exit 9 ;;
+esac
+printf '{"accounts":[{"name":"bold","configDir":"%s"},{"name":"znew","configDir":"%s","isDefault":true}]}\n' "$OLD" "$NEW" >"$CCM_SHIM_ACCOUNTS/accounts.json"
+
+# 中转：本趟自己的「中转口」（只是一个在听的回环口）＋ 一把假钥匙，落在沙箱家目录里（ccm-shim.sh 已把 HOME 换成沙箱）。
+#   pane 里那一趟 ccm 在最终 exec 那一处判注入；私有 tmux server 带的 HOME 就是这一个。
+mkdir -p "$HOME/.cc-monitor"
+python3 -c 'import secrets;print(secrets.token_hex(32))' >"$HOME/.cc-monitor/relay-key"
+RELAY_PORT_FILE="$WORK/relay-port"
+python3 -c '
+import socket,sys
+s=socket.socket();s.bind(("127.0.0.1",0));s.listen(64)
+open(sys.argv[1],"w").write(str(s.getsockname()[1]))
+while True:
+    c,_=s.accept();c.close()
+' "$RELAY_PORT_FILE" &
+RELAY_PID=$!
+for _ in $(seq 1 50); do [ -s "$RELAY_PORT_FILE" ] && break; sleep 0.1; done
+export CCM_RELAY_PORT="$(cat "$RELAY_PORT_FILE")"
 
 pass=0; fail=0
 ok()  { echo "  PASS $1"; pass=$((pass+1)); }
@@ -61,6 +86,7 @@ SESSIONS=()
 
 cleanup() {
   set +e
+  [ -n "${RELAY_PID:-}" ] && kill "$RELAY_PID" 2>/dev/null
   for s in "${SESSIONS[@]:-}"; do [ -n "$s" ] && tmux kill-session -t "=$s:" 2>/dev/null; done
   for d in "$OLD" "$NEW"; do
     for pf in "$d"/sessions/*.json; do
@@ -135,6 +161,8 @@ echo "$OUT1" | grep -q "^CONFIGDIR $NEW$" && ok "B1 真 accountConfigDir 解析 
 if AL="$(wait_argv "$NEW" "$SID1" 12)"; then
   echo "   argv(new): $AL"
   echo "$AL" | grep -q "CLAUDE_CONFIG_DIR=$NEW " && ok "B1 resume argv 落**新账号** CLAUDE_CONFIG_DIR=$NEW" || bad "B1 resume argv 目录≠新账号"
+  # 起会话只经 ccm：换号重启那一行是 `ccm …`，起出来的进程环境里有中转地址（只看变量在不在，不看值）。
+  echo "$AL" | grep -q " relay=set " && ok "B1 经 ccm 起出来的进程环境里有中转地址（ANTHROPIC_BASE_URL）" || bad "B1 起出来的进程环境里没有中转地址：$AL"
 else bad "B1 12s 内新账号目录 argv.log 无 resume 行"; fi
 if grep -qE "sid=$SID1 .*argv=--resume" "$OLD/argv.log" 2>/dev/null; then bad "B1 串号:resume 泄漏到**旧账号**目录($OLD)"; else ok "B1 隔离:旧账号目录无该 sid 的 resume（换号未落回旧号）"; fi
 

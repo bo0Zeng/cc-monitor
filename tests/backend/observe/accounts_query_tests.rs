@@ -151,7 +151,7 @@ fn safe_config_dir_predicate() {
     // 拒掉它就等于拒掉每一个 Windows 账号目录。本行是那一格改动的**正面记录**：
     // 从前这里逐字断言 `!is_safe_config_dir("/a\\b")`。
     // 放行它安全的理由不是「没人拼命令」，是**下游那一层自己会拒**
-    // （monitor 的 `config_dir_command_safe` 明确把 `\` 列进拒绝集）——**分层校验**。
+    // （`acct-core` 的 `config_dir_posix_ok` 明确把 `\` 列进拒绝集）——**分层校验**。
     assert!(
         is_safe_config_dir("/a\\b"),
         "`\\` 已经从元字符表里拿掉了（它是 Windows 的分隔符）"
@@ -1203,7 +1203,18 @@ fn production_text() -> String {
 }
 
 // 🪦这里原有 `the_launch_id_env_var_matches_the_monitor_side_home`（读 monitor `history.rs` 的写侧常量）：写侧随本机起会话 〔散文墓碑〕
-//   搬进本 crate（`control/launch_render/local.rs::LAUNCH_ID_VAR`），两侧对拍改住 `local_tests.rs::the_launch_id_var_is_one_name_on_both_halves`。
+//   搬进本 crate；今天写侧是 `ccm` 自己（最终 exec 那一处），两侧对拍就是下面这一条。
+
+/// 身份 token 那个变量名两侧同一个：读侧本文件的常量 == 写侧 `control/ccm/plan.rs::LAUNCH_ID_ENV`。
+/// 外加一个手写锚：两侧同时改名也逃不过。
+#[test]
+fn the_launch_id_var_is_one_name_on_both_halves() {
+    assert_eq!(LAUNCH_ID_ENV, crate::control::ccm::plan::LAUNCH_ID_ENV);
+    assert_eq!(
+        LAUNCH_ID_ENV, "CCM_LAUNCH_ID",
+        "手写锚：两侧同时改名也逃不过"
+    );
+}
 
 /// ★★ **本文件读环境这件事的射程不许悄悄变大**〔本文件头注那条「两个写死的键」的判据〕。
 ///

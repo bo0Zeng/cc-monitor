@@ -142,13 +142,3 @@ export function fullAgentProfile(
  * 不是这里挑的；表里没有它 ⇒ **模块加载当场抛**，不静默给一份空画像。
  */
 export const AGENT_PROFILE = fullAgentProfile(ACTIVE_AGENT);
-
-/**
- * 当前 agent 的**适配器 id**（上游选择按它挑那一行，`launch-endpoint` / `launch-local` 的 `agent`）。
- * 取生成物那张表的 `adapterId`（原先是 monitor `history.rs::launch_agent_id`〔散文墓碑〕在 Rust 里取），不另写一份。
- */
-export const AGENT_ADAPTER_ID: string = (() => {
-  const got = lookupAgentProfile(ACTIVE_AGENT);
-  if (!got.known) throw new Error(got.message);
-  return got.facts.adapterId;
-})();

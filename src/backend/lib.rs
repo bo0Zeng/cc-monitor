@@ -717,7 +717,9 @@ pub const PROTO_VERSION: u32 = 1;
 /// p6n-relay-optin：机器页「终端」栏给出让用户自己贴进 settings.json 的 env 片段，cc-monitor 只读这份文件。
 ///
 /// p6o-accounts-home：账号库住进 ~/.cc-monitor/accounts/，后端只在这里读写；去掉另指账号库位置的环境变量与 --accts-dir。
-pub const BUILD_ID: &str = "p6o-accounts-home";
+///
+/// p6p-launch-one：monitor 的每条起会话路径只交一行 ccm；环境、中转地址、身份标记由那台的 ccm 在启动那一刻定。
+pub const BUILD_ID: &str = "p6p-launch-one";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src/frontend/shell/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），
@@ -865,10 +867,9 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--apikey-read",
     // `--apikey-routing` / `--launch-endpoint` 摘了（`cli_control::STREAM_ONLY`：一次性进程里没有中转，答「不在」是假话）。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
     // `--relay-ensure` / `--relay-status` 随帧面那两条删了。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
-    // 起会话的两条渲染（`inbound::REGISTRY` 的 `launch-render-*`，纯函数）自动派生的 CLI 面，入参从 stdin 读。
-    //   `launch-local` 不上 CLI 面（`STREAM_ONLY`：要读本进程的中转状态，同 `launch-endpoint`）。加这两行会逼出一次 `BUILD_ID` bump，本路不 bump。
+    // 起会话那一行 `ccm …` 的渲染（`inbound::REGISTRY` 的 `launch-render-cli`，纯函数）自动派生的 CLI 面，入参从 stdin 读。
+    //   `launch-local` 不上 CLI 面（`STREAM_ONLY`）。`--launch-render-payload` 随载荷那条删了 ⇒ 逼出 `BUILD_ID` bump，本路不 bump。
     "--launch-render-cli",
-    "--launch-render-payload",
     // 「足迹」出成品（`inbound::REGISTRY` 的 `footprint-report`，替掉 `--footprint-probe`）派生的 CLI 面。只读。
     "--footprint-report",
     // 帧命令 `ccm-print` 的 CLI 面删了：`--ccm-*` 这族名字归 ccm 的诊断口，二进制叫 `ccm` 时

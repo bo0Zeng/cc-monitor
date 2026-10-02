@@ -43,7 +43,10 @@ set -euo pipefail
 #   **不再是隔离手段** —— 隔离由 shim 独自负责。
 # shellcheck source=tests/e2e/tmux-shim.sh
 . "$(cd "$(dirname "$0")" && pwd)/tmux-shim.sh" e2eRestartFrames
-_gc_sock_cleanup() { tmux_shim_cleanup; }
+# 换号重启交给终端的是一行 `ccm …` ⇒ 后端二进制以 `ccm` 之名上 PATH；家目录 / 账号库等沙箱无条件给（后端也在这份沙箱里起）。
+# shellcheck source=tests/e2e/ccm-shim.sh
+. "$(cd "$(dirname "$0")" && pwd)/ccm-shim.sh"
+_gc_sock_cleanup() { tmux_shim_cleanup; ccm_shim_cleanup; }
 # ─────────────────────────────────────────────────────────────────────────────
 
 E2E="$(cd "$(dirname "$0")" && pwd)"
@@ -80,6 +83,12 @@ OLD="$WORK/acct-old"; NEW="$WORK/acct-new"
 OLD_FR="$WORK/old.frames.jsonl"; NEW_FR="$WORK/new.frames.jsonl"
 mkdir -p "$OLD/sessions" "$OLD/projects" "$NEW/sessions" "$NEW/projects" /tmp/e2e-remote
 KEEP="cc-e2ekeep-$$"
+# 换号目标给 ccm 自己的账号库（`--account znew` 由 ccm 按它解析）；写之前核它在本趟沙箱里。
+case "$CCM_SHIM_ACCOUNTS" in
+  "$CCM_SHIM_DIR"/*) ;;
+  *) echo "账号库 $CCM_SHIM_ACCOUNTS 不在本趟沙箱里 —— 拒绝往里写" >&2; exit 9 ;;
+esac
+printf '{"accounts":[{"name":"znew","configDir":"%s","isDefault":true}]}\n' "$NEW" >"$CCM_SHIM_ACCOUNTS/accounts.json"
 
 pass=0; fail=0
 ok()  { echo "  PASS $1"; pass=$((pass+1)); }

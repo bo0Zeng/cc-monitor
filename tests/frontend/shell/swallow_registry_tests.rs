@@ -161,8 +161,8 @@ const ALLOWED: &[(&str, &str, usize, Why, &str)] = &[
     // 1 → 2：+1 收换版时挪开的旧 `ccm`（`.old`，Windows 上正在跑的删不掉）；删不掉下次放置时再清。
     ("src/frontend/shell/src/local_backend.rs", "let _ = std::fs::remove_file(ent.path());", 2, Why::CleanupAfterFailure, "清过期的释放半成品（`STALE_PARTIAL_AGE`）· 换版时挪开的旧 `ccm`；删不掉下次再清"),
     ("src/frontend/shell/src/local_backend.rs", "let _ = std::io::copy(&mut o, &mut std::io::sink());", 1, Why::Drain, ""),
-    // `launch_render/payload.rs::render_env_ops` 那四行 `let _ = write!(out, "export …")` 摘了：
-    //   `export` / `unset` 的写法搬进 `platform::shell::posix`，那里返回 `String`，调用处 `push_str`，不再有吞。
+    // 载荷那一层渲 env 那四行 `let _ = write!(out, "export …")` 摘了：`export` / `unset` 的写法搬进 `platform::shell::posix`
+    //   （返回 `String`、调用处 `push_str`，不再有吞）；载荷那一层后来整层删了。
     // 下面六行随 `bind.rs` 的 Win32 读法搬进 `platform/{pid,hwnd}.rs`（处数不变）。
     ("src/frontend/shell/src/platform/pid.rs", "let _ = CloseHandle(handle);", 2, Why::Reap, "Windows 句柄 / 内存释放"),
     ("src/frontend/shell/src/platform/pid.rs", "let _ = CloseHandle(snap);", 1, Why::Reap, "Windows 句柄 / 内存释放"),

@@ -37,12 +37,11 @@
 #   只命中 ccm 自己与计划文档）。它是「真正非 shell 不可」的那一条，U9b 之后也必须还在。
 # - **C 组 `--ccm-probe` 契约**：`src/frontend/shell/src/ccm_probe.rs::parse_probe_output` 靠**字面** `name=ccm`
 #   判「装没装」，`src/backend/control/launch_render/ccm_invocation.rs::CLI_REQUIRED_CAPS` 靠 `capabilities=` 决定
-#   走 CLI 渲染器还是兜底（TS 那份随 TS 渲染器删了，清单只剩 Rust 这一份）。两处都只对**手写 fixture** 测过。
+#   渲不渲得出那一行 `ccm …`（渲不出来就拒，没有第二条路）。两处都只对**手写 fixture** 测过。
 #   ⚠ 精确说法（审计订正）：真脚本的 probe 输出**并非全无覆盖** —— `cc-spawn-uplift` 主流程
 #   不设 `CCM_BIN`，于是 `cc-spawn` 解析到真 `ccm` 并对 `detach`/`tmux-size` 两项
 #   fail-closed，那 21 条间接盖住了这两项。**零覆盖的是**：首行 `name=ccm` · `version=` ·
-#   `agents=` · 渲染器那 7 项 `CLI_REQUIRED_CAPS`。少一项能力 ⇒ app 静默退到兜底渲染器
-#   （丢账号保真度），用户看不见。
+#   `agents=` · 渲染器那 4 项无条件要的 `CLI_REQUIRED_CAPS`。少一项能力 ⇒ 那一行渲不出来、起会话被拒。
 #
 # ## 差分不能单独用（血泪 10 的形状）
 #
@@ -295,14 +294,15 @@ CAPS="$(printf '%s\n' "$PROBE" | sed -n 's/^capabilities=//p' | tr ',' '\n')"
 # 渲染器要求的能力从**源码里抽**，不手抄——手抄一份等于又造一个双写点。
 # 源从 TS `src/launch-render-cli.ts`（已删）换成生产那一份 Rust
 # `ccm_invocation.rs`：从 `pub const CLI_REQUIRED_CAPS` 那一行抽到 `];`，收引号串 ——
-# 不认行形（`rustfmt` 折不折行都抽得到）。
-REQ_CAPS="$(sed -n '/^pub const CLI_REQUIRED_CAPS: /,/\];/p' "$REPO/src/backend/control/launch_render/ccm_invocation.rs" \
+# 不认行形（`rustfmt` 折不折行都抽得到；整行一行写完的那一形也认 —— `sed` 的范围不在起始行上找终点，
+# 一行写完时会一直抽到下一个 `];`，所以用 awk 在起始行上也看终点）。
+REQ_CAPS="$(awk '/^pub const CLI_REQUIRED_CAPS: /{on=1} on{print} on&&/\];/{exit}' "$REPO/src/backend/control/launch_render/ccm_invocation.rs" \
            | grep -o '"[^"]*"' | tr -d '"')"
 REQ_N="$(printf '%s\n' "$REQ_CAPS" | grep -c .)"
 # ★ 抽取器自检：抽空了的话下面那条"逐个都在"会**零命中零失败**地变绿。
 # 由「≥5」改成**相等**：Rust 那份清单增删一项 ⇒ 这里红，回来改数（强制触碰）；
 # 抽法坏了（抽成 0 或把别的引号串也收进来）同样红。
-ck "抽取器自检：CLI_REQUIRED_CAPS 抽到恰好 7 项（实得 $REQ_N）" "7" "$REQ_N"
+ck "抽取器自检：CLI_REQUIRED_CAPS 抽到恰好 4 项（实得 $REQ_N）" "4" "$REQ_N"
 MISSING=""
 for c in $REQ_CAPS; do
   printf '%s\n' "$CAPS" | grep -qx "$c" || MISSING="$MISSING $c"

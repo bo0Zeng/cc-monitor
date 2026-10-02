@@ -1,52 +1,25 @@
-//! **线上形状 → 渲染器**：`launch-render-cli`（`ccm …` 调用行）与 `launch-render-payload`（裸载荷 / 外层 tmux 三格）
-//! 两条帧命令的入参与映射（原 monitor `launch_wire.rs` 两条 Tauri 命令，搬进后端后形状只少了 `ccm` 那一格）。
+//! **线上形状 → 渲染器**：帧命令 `launch-render-cli`（那台机器要跑的那一行 `ccm …`）的入参与映射。
 //!
-//! `ccm …` 调用行渲不出来**不是错误**，是诚实降级（§33）：回 `ok:false` ＋ 理由，调用方换载荷那条；
-//! 载荷那条渲不出来是拒（带 `REFUSE:` 标，`mod.rs::refused` 转成码）。
-//! 🪦原先这里有两段沿革（U8c-2c-2 只切 CLI 支 · 返回值为什么 tagged）—— 结论仍成立，考据删了。
+//! 渲不出来是拒（码 `refused` ＋ 理由）：起会话只有这一条路，没有别的路可换。
 
 use super::ccm_invocation::{render_ccm_invocation, Action, CliAccount, CliSpec, Container};
-use copy_core::copy_text;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use std::collections::BTreeSet;
 
-/// `ccm 调用行`的上线入参。字段与 TS `LaunchContext` + 探测结果一一对应。
-///
-/// ⚠ `deny_unknown_fields`：前端多送一个字段 ⇒ **拒**，不静默吞（同夹具那两份的纪律）。
+/// `launch-render-cli` 的上线入参（`deny_unknown_fields`：前端多送一个字段 ⇒ 拒，不静默吞）。
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct CliRenderRequest {
-    /// `false` = 本机路径。
-    ///
-    /// ★★ **P3t-Y4 订正**：这里原本写「本机不走 CLI 渲染器（§36 —— 而它只绑 Windows），
-    /// Rust 侧也照样拒」——**两半都不准**。
-    ///
-    /// ① §36 逐字管的是别的事，而且它整节只绑 Windows。它的标题后半句就是它的全部内容：
-    ///    「**嵌套 env 污染保护已在进程启动期做完，别在本地渲染器里重复实现**」，
-    ///    铁律那段逐字禁的是「给本地渲染器补一段读 `plan.env`、把 `unset` 翻成 PowerShell
-    ///    `Remove-Item Env:\X` 的代码」。它**从来不是**一条「本机不许用 CLI 渲染器」的禁令，
-    ///    而且它整节讲的是 **Windows**（`config_dir_prefix_ps` / `validate_config_dir_ps`）。
-    ///    ⇒ 拿它当「一律拒本机」的依据是**把一条窄铁律读宽了**。
-    ///
-    /// ② 「Rust 侧也照样拒」自 P3t（`C12`）起就不成立：`render_ccm_invocation` 对
-    ///    **POSIX 本机放行**（`CliSpec::local_posix`），只有 Windows 本机仍拒。
-    ///
-    /// 那么**本条上线路今天为什么仍然只见 `is_ssh: true`**？不是因为 §36 禁了（它只绑 Windows），
-    /// 是因为**前端只在 `transport.kind === "ssh"` 时才调这条 IPC** ——
-    /// POSIX 本机那条路住在 Rust 里（`local.rs::render_ccm`），
-    /// 不必绕一圈 IPC 问自己。⇒ 这是**路由事实**，不是禁令。
-    pub is_ssh: bool,
-    // 原先这里是 `ccm`（界面探了那台 `ccm-probe` 再带过来，三态，R95b）。渲染进了那台后端 ⇒ 能力问它自己
-    //   （[`render_ccm_launch`] 里 `ccm_launcher_with`，与 `--ccm-probe` 同一份），这一格删了。
     pub action: WireAction,
     pub container: WireContainer,
     pub cwd: Option<String>,
     pub account: WireAccount,
     pub ccm_sid: Option<String>,
     pub model: Option<String>,
-    /// 已 sanitize 的 launcher（sanitize 仍在 TS，见 `super::payload` 头注）。
     pub launcher: String,
     pub default_launcher: String,
+    /// 启动期令牌（界面铸的；渲成 `--ccm-rbind-token`）。接回那一格 `null`。
+    pub rbind_token: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -64,53 +37,33 @@ pub enum WireContainer {
     Tmux { name: String, send_into: bool },
 }
 
-/// 🔴 **它比 [`CliAccount`] 少一态，那不是漏，是边界**。
-///
-/// `CliAccount` 09-13 起有第三态 `Inherit`（省略 `--account`，语义由
-/// `DECISIONS.md#R28` 定、由 `src/backend/control/ccm/plan.rs::resolve_account`
-/// 落地）。**本 wire 刻意没有对应变体** ——
-/// 这条 IPC **只有远端会走**（前端的闸是 `ctx.transport.kind === "ssh"`），
-/// 而远端是 ssh 过去，**那台机器上的继承态不是 monitor 的环境**（`R28` 裁定四逐字：
-/// 「远端的继承怎么表达是另一回事，**不算已解**」）。
-///
-/// ⇒ 要给远端加这一态，落点是 `K-R90`，同拍要动的至少有三样：本枚举 ·
-/// `src/frontend/ui/launch-cli-wire.ts`（TS 那份手写镜像，由 `launch-cli-wire.vitest.ts` 的
-/// 「字段集相等」钉着）· `remote-launch-run.ts::buildCliRenderRequest`（真正填它的地方）。
-/// **别在这里顺手加一个变体就当远端也通了。**
+/// 远端只有两态：远端是 ssh 过去，那台机器上的继承态不是 monitor 的环境 ⇒ 没有「继承」那一态。
 #[derive(Debug, Deserialize)]
 #[serde(tag = "kind", rename_all = "lowercase", deny_unknown_fields)]
 pub enum WireAccount {
     Base,
-    /// `name: None` = 只有 configDir 没有名字 ⇒ 说不出 `--account` ⇒ §35 短路。
+    /// `name` 说得出 ⇒ `--account`；只有 `configDir` ⇒ `--account-dir`；都没有 ⇒ 拒。
     Account {
         name: Option<String>,
+        #[serde(rename = "configDir")]
+        config_dir: Option<String>,
     },
 }
 
-/// 与 TS `CliRenderResult` 同构：`ok:true` 带命令，`ok:false` 带**降级理由**。
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CliRenderResponse {
-    pub ok: bool,
-    pub cmd: Option<String>,
-    pub reason: Option<String>,
-}
-
-pub fn render_ccm_launch(req: CliRenderRequest) -> CliRenderResponse {
-    // `ccm` 就是这台后端本身⇒ 装着、能力是它自己的（`--ccm-probe` 那一行同一份）。
+/// 渲成那一行；拒 ⇒ 理由。能力问这台后端自己（`ccm` 就是它，与 `--ccm-probe` 同一份）。
+pub fn render_ccm_launch(req: &CliRenderRequest) -> Result<String, String> {
     let caps: BTreeSet<String> = crate::ccm_launcher_with(crate::TMUX_PLATFORM)
         .into_iter()
         .map(str::to_string)
         .collect();
-    render_ccm_launch_with(req, &caps, true)
+    render_ccm_launch_with(req, &caps)
 }
 
-/// 同上，能力集与「装没装」由调用方给（夹具对拍用固定的一份，不随这台后端的平台变）。
+/// 同上，能力集由调用方给（夹具对拍用固定的一份，不随这台后端的平台变）。
 pub(crate) fn render_ccm_launch_with(
-    req: CliRenderRequest,
+    req: &CliRenderRequest,
     caps: &BTreeSet<String>,
-    installed: bool,
-) -> CliRenderResponse {
+) -> Result<String, String> {
     let action = match &req.action {
         WireAction::New => Action::New,
         WireAction::Resume { sid } => Action::Resume { sid },
@@ -125,28 +78,12 @@ pub(crate) fn render_ccm_launch_with(
     };
     let account = match &req.account {
         WireAccount::Base => CliAccount::Base,
-        WireAccount::Account { name } => CliAccount::Named {
+        WireAccount::Account { name, config_dir } => CliAccount::Named {
             name: name.as_deref(),
+            config_dir: config_dir.as_deref(),
         },
     };
     let spec = CliSpec {
-        is_ssh: req.is_ssh,
-        // ★★ **P3t-Y3：这条上线路恒为 `false`，而这是路由事实，不是平台判断。**
-        //
-        // 本条 IPC **只有远端会走**：前端的闸是 `ctx.transport.kind === "ssh"`
-        //（`remote-launch-run.ts::renderLaunchCommand`），POSIX 本机那条路住在 Rust 里
-        //（`local.rs::render_ccm` 直接调渲染器），**不必绕一圈 IPC 问自己**。
-        // ⇒ 这里没有「本机是什么平台」这个问题要答。
-        //
-        // Y1 原本在这里读一个进程内全局量（`host_facts::local_is_posix()`），**那是错的**：
-        // 它让**夹具对拍变成环境依赖** —— 金串里那条 `isSsh:false` 的用例之所以绿，
-        // 靠的是「单元测试进程从不跑 `lib.rs` 的启动段，所以全局量恰好是 `false`」。
-        // 谁要是在同进程里先设了一次 `true`，那条对拍就翻，而翻的原因与被测的事毫无关系。
-        // 本会话第三次撞上同族干扰（前两次：`<local>` 注册键、`host_facts` 自己）。
-        //
-        // 写死 `false` 是**fail-closed**：将来真要让本机走这条 IPC，它会先拒、
-        // 而不是悄悄按某个没人设过的全局量放行。
-        local_posix: false,
         action,
         container,
         cwd: req.cwd.as_deref(),
@@ -156,277 +93,14 @@ pub(crate) fn render_ccm_launch_with(
         launcher: &req.launcher,
         default_launcher: &req.default_launcher,
         args: &[],
+        rbind_token: req.rbind_token.as_deref(),
+        launch_id: None,
         ccm_path: "ccm",
     };
-    match render_ccm_invocation(&spec, caps, installed) {
-        Ok(cmd) => CliRenderResponse {
-            ok: true,
-            cmd: Some(cmd),
-            reason: None,
-        },
-        Err(r) => CliRenderResponse {
-            ok: false,
-            cmd: None,
-            reason: Some(r.reason()),
-        },
-    }
+    render_ccm_invocation(&spec, caps).map_err(|r| r.reason())
 }
 
-/// U8a-2c-pre / S28：**兜底那支的 `container:"none"` 形态**改由 Rust 渲染载荷。
-///
-/// # 只有 none 那一格
-///
-/// `renderFallback` 分两格：`container:"none"` 是 `env → cd → argv`（就是
-/// [`super::payload::render_payload`]）；`container:"tmux"` 还要外层 tmux 命令
-/// （`session-backend.ts`）——那半归 U8c-3。⚠ §33b 那三问**今天不是三问全未答**
-/// （`K-R105` 09-13：③ 已退役、① 变过一次）；今天版逐问住 §33b 那张表，别在这儿复述。
-///
-/// ⇒ 本命令**只收 none 那一格**。容器形态由调用方判断后决定调不调它。
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields, rename_all = "camelCase")]
-pub struct PayloadRenderRequest {
-    /// 有序的 env 操作（与 TS `LaunchPlan.env` 同构）。
-    pub env: Vec<WireEnvOp>,
-    pub cwd: Option<String>,
-    /// 已 sanitize 的 launcher。
-    pub launcher: String,
-    pub args: Vec<String>,
-    /// 嵌套 env 键表（TS `AGENT_PROFILE.nestedEnvVars`）—— `unset-nested-env` 用。
-    pub nested_env: Vec<String>,
-    /// **外层容器那一层**。`None` = `container:"none"` 那一格
-    /// （本命令 U8a-2c-pre 交付时的唯一形态，字节一个都没变）。
-    ///
-    /// # 为什么是加一个字段，而不是加一条新命令
-    ///
-    /// 要的是「5 个渲染实现 → **2 个**」—— **消灭副本**。
-    /// 「起一个会话的那条串」在 Rust 这侧只该有一个入口；给外层单开一条 IPC
-    /// 等于在同一件事上再开一个家（而且会连带动 `parity_ledger` 的命令底账与
-    /// `installface` 的装卸分组 —— 那两处要动的理由应该是「多了一项能力」，
-    /// 不是「同一项能力换了个拼法」）。
-    ///
-    /// ⚠ **`#[serde(default)]` 是承重的**：入库夹具 `payload-golden.json` 的 10 条用例
-    /// 一个字都没改，靠的就是它 —— 而 `deny_unknown_fields` 仍然拒多送的字段。
-    #[serde(default)]
-    pub outer: Option<WireTmuxOuter>,
-    /// `( <prelude>; exec <inner> )` 包裹（§39 给 F04 rbind 留的槽）。
-    ///
-    /// ⚠ **这个字段是复盘补的。** 初版 wire 里根本没有它，`render_launch_payload` 硬写
-    /// `wrap: &[]` ⇒ **静默丢**。两个审计各自独立点名（「内核为未来功能建好了，wire 却把它
-    /// 挡在门外 —— 将来接上时不会有任何东西红」），而**新的生产命令对拍第一次跑就红了**：
-    /// 夹具里那条 wrap 折叠用例的 TS 产物带包裹、Rust 产物没有。
-    /// 今天 `plan.wrap` 恒空所以无生产影响；补上之后那条用例才真的在验生产路径。
-    #[serde(default)]
-    pub wrap: Vec<WireWrap>,
-    /// 〔`INVARIANTS §47` ①〕**resume 的那个 sid**（`args` 里 `[resume 旗, sid, …]` 那一格的同一个值，单独再报一次）。
-    ///
-    /// 为什么要单报：这条线上 sid 住在 `args` 里，渲染侧认不出哪一格是 sid（旗随 agent 变，而 monitor 的
-    /// `backend/` 这一半不许去问 agent 画像）；前端那份 `isValidSessionId`〔散文墓碑〕按删了之后，
-    /// 「resume 的 sid 不许 `-` 开头」（`--dangerously-skip-permissions` 当 sid 会被 agent 吃成参数）得有人在拼进载荷之前判 ——
-    /// 单报一次、这里判、再核它确实就是 `args` 第二格（报了一个、渲了另一个 ⇒ 拒），比按位置猜稳。
-    /// `None` = 不是 resume（`#[serde(default)]`：入库夹具里那些非 resume 的请求一个字不用动）。
-    #[serde(default)]
-    pub resume_sid: Option<String>,
-}
-
-/// 与 TS `WrapSpec` 同构（`id` 只用于 TS 侧排错，不参与渲染）。
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct WireWrap {
-    pub order: i64,
-    pub prelude: String,
-}
-
-/// tmux 名字来自哪条校验路径 —— 与 TS `session-backend.ts::TmuxTarget["kind"]` 同名同义。
-///
-/// **它不是「要不要加引号」这个问题的答案，是「这个名字过的是哪道校验」**：
-/// 渲染时怎么拼由 Rust 那侧按变体决定，前端不许替它决定
-/// （那正是 F03 在 TS 侧消灭掉的「按首尾是不是引号猜」的嗅探写法）。
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum WireQuoting {
-    Raw,
-    Quoted,
-}
-
-/// 外层容器那一层的三格。与 TS `launch-render-fallback.ts` 的三个分支一一对应。
-///
-/// ⚠ **`attach` 那一格刻意不收载荷字段**：它只把终端接进一个已经在跑的会话，
-/// 一个 agent 进程都不出生。请求里 `env` / `args` / `launcher` 必须是空的，
-/// 由 [`render_launch_payload`] fail-closed 拒 —— 让「格搞错了」当场响，
-/// 而不是渲染出一条看起来对、实际把载荷丢了的命令。
-#[derive(Debug, Deserialize)]
-// ⚠ `rename_all` 管的是**变体名**（`create` / `send-into` / `attach`），字段名要单独用
-// `rename_all_fields` —— 少这一条，`ccm_sid` 就与前端送的 `ccmSid` 对不上，
-// 而 `deny_unknown_fields` 会把它当未知字段拒（本件第一次跑就是这么红的，那证明这道闸是活的）。
-#[serde(
-    tag = "mode",
-    rename_all = "kebab-case",
-    rename_all_fields = "camelCase",
-    deny_unknown_fields
-)]
-pub enum WireTmuxOuter {
-    Create {
-        name: String,
-        quoting: WireQuoting,
-        /// `new-session -c <目录>` 的实参。⚠ 这一格的 cwd **不进载荷**
-        /// （tmux 那两格的内层没有 `cd`）⇒ 它与顶层 `cwd` 只许有一个非空，
-        /// 两个都送会被拒（那说明调用方把两层的 cwd 搞混了）。
-        cwd: Option<String>,
-        ccm_sid: Option<String>,
-    },
-    SendInto {
-        name: String,
-        quoting: WireQuoting,
-    },
-    Attach {
-        name: String,
-        quoting: WireQuoting,
-    },
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(tag = "kind", rename_all = "kebab-case", deny_unknown_fields)]
-pub enum WireEnvOp {
-    ExportConfigDir {
-        value: String,
-    },
-    ExportModel {
-        value: String,
-    },
-    /// 启动期令牌。与 TS `launch-cli-wire.ts::WireEnvOp` 同名同序。
-    /// 形状不对由 [`super::payload::render_env_ops`] fail-closed 拒（不在 wire 这一层拒 ——
-    /// 拒绝理由要带 `REFUSE:` 标才走得到前端那条按标分流的逻辑）。
-    ExportRbindToken {
-        value: String,
-    },
-    /// 中转地址。与 TS `launch-cli-wire.ts::WireEnvOp` 同名同序；形状由
-    /// [`super::payload::render_env_ops`] fail-closed 拒（带 `REFUSE:` 标）。
-    ExportRelayBaseUrl {
-        value: String,
-    },
-    UnsetConfigDir,
-    UnsetNestedEnv,
-}
-
-/// 会话名 + 「它过的是哪道校验」 → 渲染器认的判别式。
-fn wire_target<'a>(name: &'a str, q: &WireQuoting) -> super::payload::TmuxTarget<'a> {
-    match q {
-        WireQuoting::Raw => super::payload::TmuxTarget::Raw(name),
-        WireQuoting::Quoted => super::payload::TmuxTarget::Quoted(name),
-    }
-}
-
-/// wire 形状 → 渲染器形状。借 `req` 里的串，不复制。
-fn wire_outer(o: &WireTmuxOuter) -> super::payload::TmuxOuter<'_> {
-    match o {
-        WireTmuxOuter::Create {
-            name,
-            quoting,
-            cwd,
-            ccm_sid,
-        } => super::payload::TmuxOuter::Create {
-            target: wire_target(name, quoting),
-            cwd: cwd.as_deref(),
-            ccm_sid: ccm_sid.as_deref(),
-        },
-        WireTmuxOuter::SendInto { name, quoting } => super::payload::TmuxOuter::SendInto {
-            target: wire_target(name, quoting),
-        },
-        WireTmuxOuter::Attach { name, quoting } => super::payload::TmuxOuter::Attach {
-            target: wire_target(name, quoting),
-        },
-    }
-}
-
-pub fn render_launch_payload(req: PayloadRenderRequest) -> Result<String, String> {
-    let outer = req.outer.as_ref().map(wire_outer);
-    // `attach` 先走，因为它**根本不渲染载荷** —— 与 TS `renderFallback` 的分支序同形
-    // （那边也是 `action.kind === "attach"` 第一个判）。
-    if let Some(o @ super::payload::TmuxOuter::Attach { .. }) = &outer {
-        if !req.env.is_empty() || !req.args.is_empty() || !req.launcher.is_empty() {
-            return Err(super::payload::refuse(&copy_text(
-                "rsLaunchWire.attach.withPayload",
-                &[],
-            )));
-        }
-        return super::payload::render_tmux_outer(o, None);
-    }
-    let nested: Vec<&str> = req.nested_env.iter().map(String::as_str).collect();
-    let env: Vec<super::payload::EnvOp> = req
-        .env
-        .iter()
-        .map(|op| match op {
-            WireEnvOp::ExportConfigDir { value } => {
-                super::payload::EnvOp::ExportConfigDir { value }
-            }
-            WireEnvOp::ExportModel { value } => super::payload::EnvOp::ExportModel { value },
-            WireEnvOp::ExportRbindToken { value } => {
-                super::payload::EnvOp::ExportRbindToken { value }
-            }
-            WireEnvOp::ExportRelayBaseUrl { value } => {
-                super::payload::EnvOp::ExportRelayBaseUrl { value }
-            }
-            WireEnvOp::UnsetConfigDir => super::payload::EnvOp::UnsetConfigDir,
-            WireEnvOp::UnsetNestedEnv => super::payload::EnvOp::UnsetNestedEnv { keys: &nested },
-        })
-        .collect();
-    let args: Vec<&str> = req.args.iter().map(String::as_str).collect();
-    // 〔`INVARIANTS §47` ①〕resume 的 sid：共享那一份判（`shell_quote_core::session_id_ok`），且必须就是 `args` 第二格。
-    if let Some(sid) = req.resume_sid.as_deref() {
-        if !shell_quote_core::session_id_ok(sid) {
-            return Err(super::payload::refuse(copy_text(
-                "rsLaunchWire.resumeSid.bad",
-                &[("value", &format!("{sid:?}"))],
-            )));
-        }
-        if args.get(1) != Some(&sid) {
-            return Err(super::payload::refuse(copy_text(
-                "rsLaunchWire.resumeSid.notInArgs",
-                &[("value", &format!("{sid:?}"))],
-            )));
-        }
-    }
-    let wrap: Vec<super::payload::WrapSpec> = req
-        .wrap
-        .iter()
-        .map(|w| super::payload::WrapSpec {
-            order: w.order,
-            prelude: &w.prelude,
-        })
-        .collect();
-    // ⚠ **tmux 那两格的内层没有 `cd`** —— cwd 交给外层的 `new-session -c`。
-    //   `payload.rs::render_payload` 头注逐字写过这一条：「U8c-2 接 tmux 路径时
-    //   **必须传 `cwd: None`**，否则会多出一段 `cd`」。这里就是那个落点。
-    if outer.is_some() && req.cwd.is_some() {
-        return Err(super::payload::refuse(&copy_text(
-            "rsLaunchWire.cwd.both",
-            &[],
-        )));
-    }
-    let payload = super::payload::render_payload(&super::payload::PayloadSpec {
-        env: &env,
-        cwd: if outer.is_some() {
-            None
-        } else {
-            req.cwd.as_deref()
-        },
-        launcher: &req.launcher,
-        args: &args,
-        wrap: &wrap,
-    })?;
-    match &outer {
-        None => Ok(payload),
-        Some(o) => super::payload::render_tmux_outer(o, Some(&payload)),
-    }
-}
-
-#[cfg(test)]
-#[path = "../../../../tests/backend/control/launch_render/launch_wire_f07_main_path_tests.rs"]
-mod f07_main_path_tests;
-
-// ────────────────────────────────────────────────────────────────────────────
-// `K-R95`：**前端不再自己写一份「要跑什么」** —— 生成物 ＋ 它的判据。
-// ────────────────────────────────────────────────────────────────────────────
+// `K-R95`：本机拉起载荷里「哪个号」那一格的键名由后端那一份生成给前端（生成物 ＋ 它的判据）。
 #[cfg(test)]
 #[path = "../../../../tests/backend/control/launch_render/launch_wire_k_r95_launch_render_facts.rs"]
 mod k_r95_launch_render_facts;

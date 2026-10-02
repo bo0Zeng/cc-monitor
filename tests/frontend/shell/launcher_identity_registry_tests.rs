@@ -43,25 +43,19 @@ const REGISTERED: &[Launcher] = &[
         //   monitor 只剩开终端窗口那一条 Tauri 命令（`open_local_terminal`）⇒ 账本那半是它，锚点那半指后端那一处。
         label: "L1 · 本机 UI 起（本机后端 `launch-local` → monitor `open_local_terminal`）",
         ledger_cmds: &["open_local_terminal"],
-        anchors: &[("src/backend/control/launch_render/local.rs", "let prefix = identity_prefix(&token, facts.windows);", 1)],
+        anchors: &[("src/backend/control/launch_render/local.rs", "let token = identity_token(sid)?;", 1)],
         plants: true,
-        why: "★ **本拍落的就是这一处**：本机后端 `local.rs::plan` 在拼装那一行把 \
-                  `launch_identity` 算出来的那句前缀拼进真正交出去的那一串，token 由 \
-                  `payload::route_key_for_session` 铸（**共用那一份，不是第二份**）。\
+        why: "★ **落的就是这一处**：本机后端 `local.rs::plan` 铸出 token（`identity_token`，resume 用 sid、新起用 nonce，\
+                  **全仓唯一一份铸法**），作为 `--ccm-launch-id <token>` 写进交出去的那一行 `ccm …`；\
+                  `ccm` 在最终 exec 那一处把它放进 agent 进程环境（`CCM_LAUNCH_ID`）。\
                   行为判据见 `PLANTED_JUDGE`。\
                   ★**同一处今天还多买到一格**：那个铸出来的 token \
-                  不再被扔掉，而是经 `launch_local` → `new_local_session` 交回给调用方 \
-                  （判据 `the_minted_identity_token_is_handed_back_to_the_caller`）—— \
+                  不再被扔掉，而是经 `launch-local` 的成品 `launchId` 交回给调用方 \
+                  （同一条 `PLANTED_JUDGE` 一起判）—— \
                   `K-P5g` 现打的卡点「写侧把 token 铸完就扔」在这一处收掉了。\
                   ⚠ 那**没有**改这一行的 `plants`：塞不塞进环境与交不交出来是两件事。\
-                  ⚠ **它有一个今天补不上的洞，别读成全覆盖**：走 ccm 容器那一支时，\
-                  外侧这句 `export` 会在 tmux 边界被吃掉（tmux server 的 `update-environment` \
-                  默认列表不含它）—— 与 `K-H2b` 给 `ANTHROPIC_BASE_URL` 踩过的**同一个坑**，\
-                  那一次的修法是在容器载荷**内侧**补一句转发。\
-                  ★**那个洞今天补上了**：容器路三条转发\
-                  （`CLAUDE_CONFIG_DIR` / `ANTHROPIC_BASE_URL` / `CCM_LAUNCH_ID`）都在，\
-                  由 `control::ccm::plan::tests::the_container_path_forwards_every_inherited_variable_inward` \
-                  逐条钉。⚠ 补的是**转发**那一格，不是本行的 `plants` —— 塞不塞进环境与转不转发是两件事。",
+                  ⚠ 走 tmux 容器那一支时，token 作为 `--ccm-launch-id` 随 pane 里那一行内层 `ccm` 一起过 tmux 边界\
+                  （不靠环境继承，tmux server 的 `update-environment` 吃不掉它）。",
     },
     Launcher {
         // 住址换了：ssh 外壳进本机后端（`terminal-ssh`），monitor 只剩开窗那一条（`open_terminal_window`）。
@@ -217,7 +211,7 @@ fn the_ledger_half_of_the_launcher_population_matches_the_registry() {
     // 地板 73 → 70：收件箱三条退役（现打 70）。
     // 地板 70 → 65：别名六条退役 −6、`bound_terminal_count` ＋1（现打 65）。
     assert!(
-        rows.len() >= 43, // 47 → 43：会话正文四条退役（现打 43）// 48 → 47：全景问 · 写 · 撤三行退役、`panorama_place` · `chan_cancel` 两行进（现打 47）// 49 → 48：公钥推送那一行退役（现打 48）// 50 → 49：`deploy_remote_acct_iso`〔散文墓碑〕 退役（现打 49）// 主线 57 ＋ MIG-1 本路退役的单行三元组（列 tmux 两条 · 测试连接 · 端口转发 · 活会话等）⇒ 现打 50 // 主线 60 ＋ MIG-3b −3（钩子诊断本机那一行 · 删会话 · 分叉三条单行三元组退役）// 基数 75 ＋ MIG-3a −11（acct-iso −2 · 收件箱 −3 · 别名 −5 · cc-bus −1）＋ MIG-2 −4 ⇒ 60（现打；MIG-2 那一侧的读数写的是 −3，合并后实数 −4） // 75 → 72：本机起会话 ＋ 渲染 ＋ 探针那几条单行命令退役 −5、`open_local_terminal` / `relay_all_sessions_switch` 进 +2（现打 72）// 基于 99b8adb6：LOC1b −3 ＋ HX2 −1 ⇒ 88。−2 ⇒ 86。
+        rows.len() >= 42, // 43 → 42：`relay_all_sessions_switch` 那一行退役（全量注入开关改由起 agent 那台的 `ccm` 读自己的环境；现打 42）// 47 → 43：会话正文四条退役（现打 43）// 48 → 47：全景问 · 写 · 撤三行退役、`panorama_place` · `chan_cancel` 两行进（现打 47）// 49 → 48：公钥推送那一行退役（现打 48）// 50 → 49：`deploy_remote_acct_iso`〔散文墓碑〕 退役（现打 49）// 主线 57 ＋ MIG-1 本路退役的单行三元组（列 tmux 两条 · 测试连接 · 端口转发 · 活会话等）⇒ 现打 50 // 主线 60 ＋ MIG-3b −3（钩子诊断本机那一行 · 删会话 · 分叉三条单行三元组退役）// 基数 75 ＋ MIG-3a −11（acct-iso −2 · 收件箱 −3 · 别名 −5 · cc-bus −1）＋ MIG-2 −4 ⇒ 60（现打；MIG-2 那一侧的读数写的是 −3，合并后实数 −4） // 75 → 72：本机起会话 ＋ 渲染 ＋ 探针那几条单行命令退役 −5、`open_local_terminal` / `relay_all_sessions_switch` 进 +2（现打 72）// 基于 99b8adb6：LOC1b −3 ＋ HX2 −1 ⇒ 88。−2 ⇒ 86。
         "只从账本里抠到 {} 行单行三元组（09-02 现打 116）—— 抽取器坏了，本条会零命中地绿",
         rows.len()
     );
@@ -386,15 +380,15 @@ fn the_identity_token_has_exactly_one_mint_and_one_env_var_name() {
     let probes: [(&str, usize, &str); 2] = [
         (
             "\"CCM_LAUNCH_ID\"",
-            // 4 → 5：容器路「往里转」那一处从格式串 `"export CCM_LAUNCH_ID={}; …"` 换成 `posix::export("CCM_LAUNCH_ID", …)`
-            //   （`export` 的写法搬进 `platform::shell::posix`），同一处、变量名成了独立字面量 —— 家没多。
-            5,
-            "写侧 `launch_render/local.rs::LAUNCH_ID_VAR` 1 ＋ 读侧 `observe/accounts_query.rs::LAUNCH_ID_ENV` 1 ＋ `ccm/plan.rs` 容器路三处（读继承的 · 判继承值 · 往里转）",
+            // 5 → 2：写侧搬进 `ccm`（最终 exec 那一处放进 agent 进程环境），`ccm/plan.rs` 里读继承的 · 判继承值 · 往里转三处
+            //   都改用它那一个常量；本机起会话那一侧不再写变量名（交的是 `--ccm-launch-id`）。
+            2,
+            "写侧 `control/ccm/plan.rs::LAUNCH_ID_ENV` 1 ＋ 读侧 `observe/accounts_query.rs::LAUNCH_ID_ENV` 1",
         ),
         (
-            "route_key_for_session(",
+            "identity_token(",
             2,
-            "`launch_render/payload.rs` 的定义 1 ＋ `launch_render/local.rs` 身份那一处 1",
+            "`launch_render/local.rs` 里铸法的定义 1 ＋ `plan` 里铸那一处 1",
         ),
     ];
     let mut counts = [0usize; 2];
