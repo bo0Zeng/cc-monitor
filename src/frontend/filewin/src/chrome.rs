@@ -159,6 +159,8 @@ impl FileWindow {
                             }
                         }
                         ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                            // 路径再长也只占星左边那一块：画和点都裁在这里，长名字盖不到星、抢不走它的点击。
+                            ui.set_clip_rect(ui.max_rect().intersect(ui.clip_rect()));
                             ui.spacing_mut().item_spacing.x = 2.0;
                             ui.label(egui::RichText::new(ph::HARD_DRIVES).color(p.text2));
                             ui.label(egui::RichText::new(self.source.label()).color(p.text2));
@@ -172,7 +174,11 @@ impl FileWindow {
                                 ui.label(egui::RichText::new(ph::CARET_RIGHT).color(p.faint));
                                 // 当前这一级不画成按钮（点了什么都不会发生）；有损目录里只画不点（那一摞前缀寻址不到）。
                                 if full == self.cwd || lossy {
-                                    ui.label(egui::RichText::new(seg).color(p.text));
+                                    ui.add(
+                                        egui::Label::new(egui::RichText::new(seg).color(p.text))
+                                            .selectable(false)
+                                            .truncate(),
+                                    );
                                 } else if ui.add(flat(seg)).clicked() {
                                     nav = Some(Nav::Go(full));
                                 }
