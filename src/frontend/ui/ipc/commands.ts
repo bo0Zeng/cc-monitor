@@ -227,8 +227,7 @@ export const commands = {
   // 某会话的任务快照那一条退役：界面经通道直接问那台机器的后端 `tasks-list`
   //   （后端出成品，`tasks-panel.ts::fetchSessionTasks` / `decodeTasks`）。
 
-  /** 开一个终端窗口跑 `command`（**成品**：远端那一行由本机后端 `terminal-ssh` 渲好、本机那一串由 `terminal-local` 交回；
-   * 这次拉起带令牌时，两条都已接好令牌握手前奏 —— monitor 只开窗）。
+  /** 开一个终端窗口跑 `command`（**成品**：远端那一行由本机后端 `terminal-ssh` 渲好、本机那一串由本机后端起会话那一问交回 —— monitor 只开窗）。
    *  Rust 返回 `Result<(), String>` ⇒ **桶①**。`ssh`：这一行要跑本机的 ssh（Windows 上先查 ssh.exe 在不在）。
    *  只经 `src/frontend/ui/terminal-open.ts::openTerminal` 调（开终端只有一个家）。 */
   open_terminal_window: (args: { command: string; ssh: boolean }) =>
@@ -398,7 +397,7 @@ export const commands = {
     invoke<void>("bring_terminal_to_front", args),
 
   /** 远端会话拉前（后端唯一分派点：先启动令牌、后标题退路）。**桶①**。 */
-  bring_remote_terminal_to_front: (args: { sessionId: string }) =>
+  bring_remote_terminal_to_front: (args: { chain: unknown[] }) =>
     invoke<void>("bring_remote_terminal_to_front", args),
 
   /** 关 tab 时让事件重放忘掉这个会话。**桶①**。 */

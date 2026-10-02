@@ -189,7 +189,6 @@ fn single_line(sid: &str, cwd: Option<&str>, account: Value) -> String {
         "model": null,
         "launcher": "claude",
         "defaultLauncher": "claude",
-        "rbindToken": null,
     });
     super::super::launch_render::answer_cli(&req).unwrap()["cmd"]
         .as_str()
@@ -208,7 +207,6 @@ fn single_tmux_line(sid: &str, name: &str, account: Value) -> String {
         "model": null,
         "launcher": "claude",
         "defaultLauncher": "claude",
-        "rbindToken": null,
     });
     super::super::launch_render::answer_cli(&req).unwrap()["cmd"]
         .as_str()

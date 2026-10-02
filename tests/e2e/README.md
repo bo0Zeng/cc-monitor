@@ -81,8 +81,6 @@ tmux server（跑前跑后 `tmux -L default ls` 逐字对比，**9 个会话，�
 | `backend-cc-bus` | 50 过 / 0 败 | ★ 08-13 新增（`P4f`）：后端的 `--bus-list` / `--bus-send` 真跑（含身份空间对账三态）。`CLAUDE_CONFIG_DIR` 与 `CC_BUS_HOME` 双沙箱；用到 tmux 的那格经 shim 强制 `-L` |
 | **`graylight-suite`** | **3 过 / 0 败**（08-13） | ★★ 它**不再是「跑不了」的** —— 跑法见下方 `§ 全链套件怎么跑` |
 
-**跑不了的（本机缺条件，不是没跑）**：`ccm-rbind-title`（要 Windows 的 `wt.exe`）。
-
 🔴 **2026-09-18 更新：台架有脚本了 —— `tests/e2e/tier2-rig.sh`。**
 下面那份散文配方仍留着当说明，但**不要照着手搓** —— 手搓会踩它自己列的第 2 条坑
 （`.build_id` 名字写错 ⇒ 后端用**真** `~/.claude` 起来）。本仓定框 E12：散文纪律等于没有纪律。
@@ -168,7 +166,7 @@ DISPLAY=:80 CCM_NO_DEVTOOLS=1 npx tauri dev &   # 等编译完、窗口出现
 
 | job | 套件 |
 |---|---|
-| `e2e-tmux` | tmux-target · ccm-cli · ccm-print-parity · ccm-contract-parity · cc-spawn-uplift · cc-bus-queue-drain · restart · resume · ccm-rbind-title |
+| `e2e-tmux` | tmux-target · ccm-cli · ccm-print-parity · ccm-contract-parity · cc-spawn-uplift · cc-bus-queue-drain · restart · resume |
 | `e2e-tmux-rust` | inbound-frames · backend-gate2 · local-backend · graylight-frames · restart-frames · resume-frames · backend-fork · backend-sessions-rewatch · backend-tmux-late-server · backend-cc-bus · p3t-local-tmux |
 
 > `tmux-guarded-acceptance.sh` **整套删了**：它的输入源是 `tmux.rs` 那两条

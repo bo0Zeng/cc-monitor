@@ -293,57 +293,6 @@ fn the_agent_set_has_one_address_and_every_member_is_wired() {
     assert_eq!(face("codex").trust_prompt, None);
 }
 
-/// 〔搬自 `ccm-rbind-title` 的 format 那一格〕
-///
-/// ⚠ **如实边界**：那套 e2e 是**真起一个私有 socket 的 tmux**、把 pane 标题冲成
-/// 「⠐ 理解…」再读窗口标题的。这里只钉**那个格式串本身**，
-/// 「tmux 真的这么解释它」那一半**没有判据了** —— 登记在件文件 `§8`，别读成等价。
-#[test]
-fn the_window_title_is_synthesised_from_the_identity_tag_not_the_pane_title() {
-    assert_eq!(
-        TERMINAL_BIND_TITLE_FORMAT,
-        "#{?@ccm_sid,ccm-rbind-#{@ccm_sid},#T}"
-    );
-    assert!(
-        TERMINAL_BIND_TITLE_FORMAT.starts_with("#{?@ccm_sid,"),
-        "它必须是**条件式**：有 @ccm_sid 才出 marker，没有才回退 #T"
-    );
-    assert!(
-        TERMINAL_BIND_TITLE_FORMAT.contains("ccm-rbind-#{@ccm_sid}"),
-        "marker 必须逐字是 monitor 侧 bind.rs 要扫的那个前缀 + sid"
-    );
-    assert!(
-        TERMINAL_BIND_TITLE_FORMAT.ends_with(",#T}"),
-        "sid 还没回填时要回退 pane 标题，而不是产出一个空的 `ccm-rbind-`"
-    );
-}
-
-/// 🔴 这个格式串**盘上有两份**（本常量 ＋ `control/launch.rs` 那一行的字面量），
-/// 而两份不许漂开。
-///
-/// # 为什么不干脆收口成一份
-///
-/// 试过。收口之后 monitor 侧
-/// `ccm_cli_contract::the_intent_tag_and_the_fact_tag_are_not_merged_by_the_move`
-/// 当场红：那条判据数的是 `control/launch.rs` **生产段里**「事实标记读点」的处数
-/// （登记 2 处 = 这一行里的条件头 `@ccm_sid` 与取值 `#{@ccm_sid}`），
-/// 收口成一个标识符之后它读到 **0**，而 0 的含义逐字是「标题回填没了」。
-/// ⇒ 收口会把一条真判据变瞎。**留两份 + 本条钉住它们逐字相同**，买到的比收口多。
-#[test]
-fn the_window_title_format_has_the_same_text_on_both_sides() {
-    let launch = crate::guard_support::production_code(include_str!(
-        "../../../src/backend/control/launch.rs"
-    ));
-    assert!(
-        launch.contains(TERMINAL_BIND_TITLE_FORMAT),
-        "`control/launch.rs` 的生产段里找不到这个格式串的逐字副本：\n  {TERMINAL_BIND_TITLE_FORMAT}\n             两份已经漂开了（或者那一行被收口成了标识符 —— 别那么做，理由见本条头注）。"
-    );
-    assert!(
-        launch.contains("set-titles-string"),
-        "`launch.rs` 不再设 `set-titles-string` 了 —— 那是标题回填的落点"
-    );
-}
-
 /// 〔搬自 `ccm-cli` WIRE/launch「发对了①–⑤」「缺省尺寸①②」「控制字符①–④」那几族〕
 ///
 /// 从前那几条测的是「`ccm` 编出来的那段 JSON 上线之后逐字节对不对」。同一个进程之下
@@ -599,44 +548,6 @@ fn every_reason_for_needing_a_shell_is_declared_once_and_used_once() {
     );
 }
 
-// ════════════════════════════════════════════════════════════════════════════════════════
-// 直路上 `--ccm-sid` 没有载体时**说一句**（不报错、照常起）
-// 那一行（「不报错 … 直路语义走已落地的启动期令牌那条路」）·
-// `lib.rs::TARGET_GAPS` 旧话逐字「被接受、零效果、而且不出声」。
-// ════════════════════════════════════════════════════════════════════════════════════════
-
-/// 出声的只有「无载体」那一格；没给 `--ccm-sid` 的一趟一个字不多。
-#[test]
-fn a_direct_ccm_sid_without_a_carrier_says_so() {
-    assert_eq!(
-        direct_identity_note(&direct_of(&["--ccm-sid", "s-1"], None)),
-        Some(DIRECT_SID_NO_CARRIER.as_str())
-    );
-    assert_eq!(direct_identity_note(&direct_of(&[], None)), None);
-    assert!(
-        DIRECT_SID_NO_CARRIER.contains("CCM_RBIND_TOKEN")
-            && DIRECT_SID_NO_CARRIER.contains("照常起"),
-        "那句话得说清靠什么认、以及这一趟照常起：{}",
-        *DIRECT_SID_NO_CARRIER
-    );
-}
-
-/// 真跑那一侧真的读这一格 —— 防「字段有了、没人读」（那正是本件的原病：进了 `Opts`、零效果）。
-/// 整行相等：撑大成别的表达式时那一行就不见了。
-#[test]
-fn exec_direct_really_reads_the_identity_cell() {
-    let prod = crate::guard_support::production_code(own_source());
-    let at = guard_core::pin_line(&prod, "if let Some(note) = direct_identity_note(d) {")
-        .unwrap_or_else(|e| panic!("`exec_direct` 不再读直路身份那一格：{e}"));
-    let fn_at = guard_core::pin_line(&prod, "fn exec_direct(d: &plan::Direct) -> i32 {")
-        .expect("`exec_direct` 的签名变了");
-    assert_eq!(
-        at,
-        fn_at + 1,
-        "那一句不在 `exec_direct` 的第一行 —— 要在走 `sh -c` 那条岔路之前说（两条路都得出声）"
-    );
-}
-
 // ═══════════════════════════════════════════════════════════════════════
 // 帧命令 `ccm-print`：别名预览
 // 要求：「`ccm --print` 不跑、吐出等价的一行 shell ⇒ 生成器旁边显示**这条别名实际会执行什么**，
@@ -707,7 +618,7 @@ fn the_alias_preview_is_the_same_plan_as_ccm_print() {
 }
 
 /// **C2：预览的语境逐格写死**（「从这台机器家目录里的一个新终端敲这条别名」）。各格一刀：
-/// 叫的是 `ccm` · cwd = home · 不在 tmux 里 · 没有继承来的中转地址 / 启动号 / 令牌 / 账号目录。
+/// 叫的是 `ccm` · cwd = home · 不在 tmux 里 · 没有继承来的中转地址 / 启动号 / 账号目录。
 #[test]
 fn the_alias_preview_speaks_for_a_fresh_terminal_at_home() {
     let e = Env::for_preview();
@@ -720,8 +631,8 @@ fn the_alias_preview_speaks_for_a_fresh_terminal_at_home() {
     assert!(e.tmux.is_none(), "新终端不在 tmux 里");
     assert!(e.inherited_config_dir.is_none(), "账号目录变量不继承");
     assert!(
-        e.anthropic_base_url.is_none() && e.ccm_launch_id.is_none() && e.launch_token.is_none(),
-        "常驻后端进程身上的中转地址 / 启动号 / 令牌不是那个终端的"
+        e.anthropic_base_url.is_none() && e.ccm_launch_id.is_none(),
+        "常驻后端进程身上的中转地址 / 启动号不是那个终端的"
     );
     // 行为：不给 --cwd ⇒ 落在家目录；容器路内层叫回的是 `ccm`。
     let line = |args: &[&str]| -> String {

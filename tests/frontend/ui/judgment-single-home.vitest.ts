@@ -63,7 +63,7 @@ import { REPO_ROOT } from "../../test-support/repo-root.ts";
 import { stripComments } from "../../test-support/strip-comments.ts";
 
 type JudgmentId =
-  | "J1" | "J2" | "J3" | "J4" | "J5" | "J6" | "J7" | "J8"
+  | "J1" | "J2" | "J3" | "J4" | "J5" | "J6" | "J7"
   | "J9" | "J10" | "J11" | "J12" | "J13" | "J14" | "J15" | "J16"
   | "J17" | "J18" | "J19" | "J20" | "J21";
 
@@ -245,37 +245,6 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     needles: [
       { text: "session-cc", count: 0 },
       { text: "-fork-cc", count: 0 },
-    ],
-  },
-  J8: {
-    what: "启动期令牌形状",
-    // 〔主会话 09-26 裁 J8 → 甲〕唯一住址 `payload.rs::rbind_token_shape_ok`（字母表 ＋ 长度两个常量同住）；
-    //   `bind.rs` 那份逐字同的副本并进来（那边是再导出，`rustGone` 钉它不许长回来）。
-    //   铸币口按生成物（字母表 × 长度）**造**，构造上造不错 ⇒ 界面两处自检（维度 `apply` · 铸币口）与 TS 副本删。
-    // 后端 `control/identity_tag.rs::token_is_safe` 是**同一个令牌**（`CCM_RBIND_TOKEN`）的第三份（读侧、跨半边）⇒
-    //   三份收成一份进共享 crate `shell_quote_core::rbind_token_ok`（§47 ① 标识符那一层；两半都要）；monitor `payload.rs`（`bind.rs` 再转）
-    //   与后端 `identity_tag.rs` 都成它的再导出，`rustGone` 钉三处都不许再长出自己的 `fn`。
-    homes: ["shell-quote-core::rbind_token_ok"],
-    status: "generated",
-    defs: [],
-    gone: ["isValidRbindToken"],
-    needles: [{ text: "[0-9a-f]{32}", count: 0 }],
-    gen: {
-      file: "src/frontend/ui/generated/judgment-rules.ts",
-      exports: ["RBIND_TOKEN_ALPHABET", "RBIND_TOKEN_LEN"],
-      importers: ["src/frontend/ui/remote-launch-run.ts"],
-    },
-    parity: { via: "src/common/shell-quote-core/src/lib.rs", tests: ["tests/frontend/ui/rbind-token-shape-parity.vitest.ts"] },
-    rustGone: [
-      "src/frontend/shell/src/bind.rs::rbind_token_shape_ok",
-      `${LAUNCH_RS}::rbind_token_shape_ok`,
-      "src/backend/control/identity_tag.rs::token_is_safe",
-    ],
-    // 字母表字面量只住共享 crate 一处；两半各自的写法不许长回来。
-    rustNeedles: [
-      { file: "src/common/shell-quote-core/src/lib.rs", text: '"0123456789abcdef"', count: 1 },
-      { file: LAUNCH_RS, text: '"0123456789abcdef"', count: 0 },
-      { file: "src/backend/control/identity_tag.rs", text: "(b'a'..=b'f')", count: 0 },
     ],
   },
   J9: {
@@ -677,15 +646,8 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     account_name_ok: "J18",
     // cc-bus agent id（从 monitor `cc_bus.rs` 搬来，两半共用）。
     bus_id_ok: "J12",
-    // 启动期令牌形状（两半三份收成一份）；两个常量现生成进 `judgment-rules.ts`（生成物不是孪生）⇒ NONE。
-    rbind_token_ok: "J8",
-    RBIND_TOKEN_LEN: NONE,
-    RBIND_TOKEN_ALPHABET: NONE,
-    // 令牌握手的 marker 与目录名（写侧后端前奏 · 读侧 monitor `bind.rs` 共用的契约）：TS 侧零处拼 marker、零处写握手文件 ⇒ NONE。
-    RBIND_TOKEN_MARKER_PREFIX: NONE,
+    // 握手目录名（PowerShell 别名块的 `__ccm_bind` 写、monitor `bind.rs` 读的契约）：TS 侧零处写握手文件 ⇒ NONE。
     AWAIT_SUBDIR: NONE,
-    rbind_token_marker: NONE,
-    rbind_token_from_marker: NONE,
     // 启动器命令片段白名单（§47 ③）；两个常量是规则的一部分，TS 不抄 ⇒ NONE。
     launcher_refused_char: "J3",
     LAUNCHER_EXTRA: NONE,

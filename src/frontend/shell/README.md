@@ -117,7 +117,7 @@ src/frontend/shell/
 | 删会话 · 分叉（F62）那两条已删 | — | — | 界面经通道直说那台后端 `files-delete-session`（只收 sid）· `session-fork`（`src/frontend/ui/session-writes.ts`；分叉成品由金样 `session-fork.golden.json` 钉） |
 | 改注解 / 上次账号表那两条已删 | — | — | 注解的读写者是本机常驻后端：`history-annotate` / `history-last-accounts`（删会话之后界面另交 `history-forget`） |
 | `resume_history_session` | `{ sessionId, cwd, launcher? }` | `()` | ↺ 按钮（v2.8.1：拉起 wt.exe / powershell.exe，读 profile + `cc` 优先回退 `claude`；F34 起 `launcher` 自定义启动命令）。F62 建分支后一键 resume 复用此命令 |
-| `open_terminal_window` (B14-F41) | `{ command, rbindToken, ssh }` | `()` | 开一个终端窗口跑交来的成品（远端那一行由本机后端 `terminal-ssh` 渲）：接令牌握手前奏 → wt.exe/PowerShell；`ssh` ⇒ Windows 上先查 ssh.exe（缺 ⇒ Err，前端回退复制命令）。只经 `src/frontend/ui/terminal-open.ts` 调 |
+| `open_terminal_window` (B14-F41) | `{ command, ssh }` | `()` | 开一个终端窗口跑交来的成品（远端那一行由本机后端 `terminal-ssh` 渲）→ wt.exe/PowerShell；`ssh` ⇒ Windows 上先查 ssh.exe（缺 ⇒ Err，前端回退复制命令）。只经 `src/frontend/ui/terminal-open.ts` 调 |
 | `terminal_dial` | `{ origin }` | 机器事实 `{machine, saved, jump, prefer}` | 开终端那一问要的那一台（monitor 的机器表 ＋ 上次赢的那条，`dial_host::machine_facts`）；`<local>` ⇒ Err（本机不经 ssh） |
 | 池子那十二条（`sftp_realpath` · `sftp_list_dir` · `sftp_stat` · `sftp_download` · `sftp_upload` · `sftp_cancel_transfer`〔散文墓碑〕 · `sftp_mkdir` · `sftp_rename` · `sftp_delete` · `sftp_read_text_for_edit`〔散文墓碑〕 · `sftp_write_text` · `sftp_chmod`）已删 | — | — | 老面板删了；文件窗口的浏览 / 写 / 读文本走后端 `files-*`，上传 / 下载经通道开单（`transfer-upload` / `transfer-download`）、订阅 `transfer/<id>` 进度。池子的 Tauri 命令只剩 `sftp_copy`；它也随门禁 `f3-copy` 那一格退役删了 ⇒ 零条 |
 | 列 tmux 会话两条命令（远端 · 本机）删了 | — | — | 界面经通道问那台后端 `tmux-list`（成品 `{installed, sessions}`，本机远端同一形） |
@@ -126,7 +126,7 @@ src/frontend/shell/
 | 端口转发那三条命令（起 · 停 · 列）删了 | — | — | 界面经通道问本机常驻后端 `forward-*`（`IPC-PROTOCOL.md` 那三节） |
 | 历史全文搜索那三条命令（搜索 · 查索引状态 · 重建索引，issue #6）删了 | — | — | 本机搜索也经通道问本机后端 `history-search`（与远端同一条路，界面 `src/frontend/ui/views/history-search.ts`）；monitor 进程内那份索引一起没了 |
 | `bring_terminal_to_front` | `{ sessionId }` | `()` | Tab ↗ / `Ctrl+\`` 跳焦 |
-| `bring_remote_terminal_to_front` (issue #18) | `{ sessionId }` | `()` | 远端 Tab ↗（按 ccm-rbind 标题缓存的 HWND 拉本地 ssh 窗口；未绑定则现扫一次兜底） |
+| `bring_remote_terminal_to_front` (issue #18) | `{ chain: [{ pid, name, start }] }` | `()` | 远端 Tab ↗ 的最后一跳：界面先问那台 `session-terminals`、再问本机后端 `terminal-processes`，交来那条连接的进程链；这里沿链找属主的可见顶层窗口（恰好一个才认）、校验三重指纹后拉到前台 |
 | `list_session_activity`〔散文墓碑〕 (issue #23) | — | `SessionActivityPayload[]` | 启动/F5 后拉一次红绿灯快照（增量走 `session-activity` 事件，双路收敛） |
 | `list_active_sessions`〔散文墓碑〕 (Batch5-F18) | — | `ActiveSessionPayload[] {session_id, cwd}` | frontend-ready 前拉一次本地活跃清单建骨架 Tab（按 (cwd,sid) 排序防 tab 栏洗牌；远端骨架走 `remote-session-added` 事件） |
 | `bring_monitor_to_front` (v2.4.0 issue #2) | — | `()` | watcher 反推用户在终端输入时，可选拉前 monitor 自身窗口（unminimize + show + set_focus） |

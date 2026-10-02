@@ -326,10 +326,6 @@ pub(crate) fn record_last_good(cfg: &RemoteConfig, ep: &Endpoint) {
 ///   连接正常。
 /// - `tail_only`（历史改走旁路快照，拥塞根除）需后端声明 `"tail-only"`。
 /// - `with_bg`（放行 bg 会话）需后端声明 `"bg"` **且**用户开了 `show_bg`。
-/// - `with_rbind_token`需后端声明 `"rbind-token"`。
-///   **没有用户开关**：这一位不是偏好，是「这台后端报不报得出启动期令牌」。
-///   令牌默认不上 wire（`§8.6 ③`，敏感数据）⇒ 只有索要的客户端才拿得到，
-///   而 monitor **就是**那个要拿它来做 `sid → token → HWND` join 的客户端。
 ///
 /// **§26 死循环护栏靠声明本身保住**：旧后端把未知 flag 当一次性查询 → 退出 → 无
 /// hello → 重连死循环。而只有**会先剥离该 flag** 的后端才声明对应能力（见 backend
@@ -341,13 +337,7 @@ pub(crate) fn record_last_good(cfg: &RemoteConfig, ep: &Endpoint) {
 /// `known_capability_tokens_match_decide_stream_flags` 钉住。
 /// 有它才能回答「backend 声明了一个我们不认识的能力」这个问题（漂移记账的第四个面）。
 ///
-/// 🔴 **`"rbind-token"` 登记进来了。**
-/// 步 2 那一路留下的交接逐字：那一刀之后后端开始在 hello 里声明这个 token，
-/// 而本名单还是 `["bg","tail-only"]` ⇒ monitor 每次握手都往 `drift_ledger`
-/// 记一条 `UnknownBackendToken capabilities:rbind-token`（只记账、行为不变）。
-/// 本刀同拍把它登记进来 **并** 扩了 [`decide_stream_flags`] —— 两件必须同拍：
-/// 只登记不扩，上面那条恒等判据会当场红（名单里有、门控不看它）。
-const KNOWN_CAPABILITY_TOKENS: &[&str] = &["bg", "rbind-token", "tail-only"];
+const KNOWN_CAPABILITY_TOKENS: &[&str] = &["bg", "tail-only"];
 
 /// U-CC1 第四个面的写点：hello 里**不认识的**能力 token 记一笔。记在 `origin`（那台远端）名下。
 /// 只记账，行为一字不改（不认识的 token 本来就按保守缺省忽略）。
@@ -368,14 +358,10 @@ fn note_unknown_capabilities(
     }
 }
 
-/// 三位流模式 flag：`(with_bg, tail_only, with_rbind_token)`。
-///
-/// 🔴 元组从 2 元扩成 3 元。**扩它会连带 [`should_upgrade_reconnect`]** ——
-/// 那个函数吃的就是这个元组，而它是「防无限重连」的收敛判据。两处一起改、
-/// 一起补穷举（`ssh_source_stream_flag_gate_tests.rs`），不许只改一边。
-fn decide_stream_flags(capabilities: &[String], show_bg: bool) -> (bool, bool, bool) {
+/// 两位流模式 flag：`(with_bg, tail_only)`。改它会连带 [`should_upgrade_reconnect`]（防无限重连的收敛判据）。
+fn decide_stream_flags(capabilities: &[String], show_bg: bool) -> (bool, bool) {
     let has = |c: &str| capabilities.iter().any(|t| t == c);
-    (show_bg && has("bg"), has("tail-only"), has("rbind-token"))
+    (show_bg && has("bg"), has("tail-only"))
 }
 
 /// F66（#58③）★ 防无限重连的收敛判据（纯函数，穷举单测）：收到后端能力声明后，
@@ -383,24 +369,16 @@ fn decide_stream_flags(capabilities: &[String], show_bg: bool) -> (bool, bool, b
 /// 据后端自报能力算出的下一轮 flag。
 ///
 /// **仅当下一轮会开一个本轮关着的 flag** 才重连——每次重连严格增开 flag，flag 数有限
-/// （**2 → 3**）⟹ 最多 3 轮收敛，绝不无限重连。**关键定理**：一旦记账
-/// `hello_confirmed=Some(D)`，下一轮 `caps=D` ⟹ `next==cur` ⟹ 本函数三项皆自相矛盾
+/// ⟹ 最多 2 轮收敛，绝不无限重连。**关键定理**：一旦记账
+/// `hello_confirmed=Some(D)`，下一轮 `caps=D` ⟹ `next==cur` ⟹ 本函数两项皆自相矛盾
 /// （`next_x && !cur_x` 在 next==cur 时恒 false）⟹ 恒 `false`，不再重连。
 ///
-/// 三项都写全 `&& !cur_*`（不靠调用点的外层 guard），使收敛不变式在函数内自洽、
+/// 两项都写全 `&& !cur_*`（不靠调用点的外层 guard），使收敛不变式在函数内自洽、
 /// 可独立穷举测试（审计：原 `next_tail` 裸项隐含依赖外层 guard，读者需回连才懂）。
 ///
-/// 🔴 **调用点那道 `if !tail_only` 外层 guard 也跟着搬走了，那不是顺手改的。**
-/// 它原本的语义是「本轮若跑在降级模式」，而那句话在**两位**的世界里才成立
-/// （`tail_only` 开着 ⇒ 后端至少声明过 `tail-only` ⇒ 不算旧后端）。三位之后它当场为假：
-/// 一台后端完全可能 `tail_only` 已开、而 `rbind-token` 这一位**本轮没开**
-/// （例：`hello_confirmed` 记的是上一版只声明了 `tail-only` 的能力集）。
-/// 那时外层 guard 会把本函数整个跳过 ⇒ `--with-rbind-token` **永远发不出去**，
-/// 而表现是「令牌字段恒缺席」—— 而缺席是合法值（`§8.5 ②` 那个布尔会读成
-/// 「这条会话没有令牌」）⇒ **极安静**。⇒ 升级判定必须无条件问本函数。
-fn should_upgrade_reconnect(cur: (bool, bool, bool), next: (bool, bool, bool)) -> bool {
-    let ((cur_bg, cur_tail, cur_tok), (next_bg, next_tail, next_tok)) = (cur, next);
-    (next_tail && !cur_tail) || (next_bg && !cur_bg) || (next_tok && !cur_tok)
+fn should_upgrade_reconnect(cur: (bool, bool), next: (bool, bool)) -> bool {
+    let ((cur_bg, cur_tail), (next_bg, next_tail)) = (cur, next);
+    (next_tail && !cur_tail) || (next_bg && !cur_bg)
 }
 
 #[cfg(test)]
@@ -1186,24 +1164,6 @@ pub enum InboundFrame {
         /// Batch9-F27：宣告时的初始 status/waitingFor（连接建立灯就对）。
         status: Option<String>,
         waiting_for: Option<String>,
-        /// 🔴 〔/4，2026-09-23，additive〕这条会话的**启动期令牌**
-        /// （环境变量 `CCM_RBIND_TOKEN`，形状 `[0-9a-f]{32}`）。
-        ///
-        /// 它是 `↗ 拉前终端` 那个 join 的**远端那一半**：`sid ──wire──→ token`，
-        /// 再经本地那张表 `token ──→ HWND`（`bind.rs::lookup_hwnd_for_token`）。
-        /// 完整论证住 `src/backend/stream/wire.rs` 的同名字段与 `src/doc/IPC-PROTOCOL.md` §9.3。
-        ///
-        /// **缺席的三种来历，消费侧必须分得开**（`IPC-PROTOCOL.md` 那三句的 monitor 侧版本）：
-        /// ① 后端没声明 `rbind-token` 能力 ⇒ monitor 压根没发 `--with-rbind-token`
-        ///    ⇒ **诚实降级**回今天的标题路，不是「这条会话没令牌」；
-        /// ② 发了 flag 而字段仍缺席 ⇒ **这条会话真的没有令牌**（用户自己裸 `ssh`
-        ///    进去敲 `claude` 那一档，`§8.6 ①`）—— 这就是 `§8.5 ②` 要的那个布尔；
-        /// ③ 形状不对 ⇒ 本解析器**当没有**（fail closed，见 `parse_frame`）。
-        ///
-        /// ⚠ **今天没有任何分派读它**：`↗` 改走 join 是 `§8.7` 的**步 4**，
-        /// 而 `§8.7` 逐字警告「**不要先做 4**」—— 先改 UI 分派会造出一段
-        /// 「令牌还没有、判断已经改」的窗口期。本字段今天买到的是「**键到手了**」。
-        rbind_token: Option<String>,
         /// 〔additive〕这条活会话住在什么容器里（`tmux` / `none`）。
         /// 缺席 / 不认识的取值 ⇒ `None` = 不知道（**不是**「不在 tmux 里」）。
         /// 进 `session_book` 的活会话成品（本机那条流同一个口）。
@@ -1485,16 +1445,6 @@ pub fn parse_frame(line: &str) -> Option<InboundFrame> {
                 lines: obj.get("lines").and_then(|v| v.as_u64()),
                 status: opt("status"),
                 waiting_for: opt("waiting_for"),
-                // 🔴 读侧。**形状 fail closed**：不 `trim`、
-                // 不认大写、长度必须恰好 32 —— 任何偏离一律当**没有**，而不是当
-                // 「大概是它」。理由与后端读侧（`control::identity_tag::rbind_token_of`）
-                // 逐字同一条：`§8.5 ②` 买的那个布尔（「这个会话有没有令牌」）
-                // 只有在「有 ⇒ 形状确定对」时才说得准。
-                //
-                // ⚠ 形状那一条**不在这里重写一遍** —— 过 `bind::rbind_token_shape_ok`，
-                // 即**本地那张 `token → HWND` 表用的同一条**。两处各写一遍的后果是
-                // join 在某些取值上静默失配，而失配与「没有令牌」在界面上同形。
-                rbind_token: opt("rbind_token").filter(|t| crate::bind::rbind_token_shape_ok(t)),
                 // 两个字面量之外一律当不知道（`Container::from_wire`）。
                 container: opt("container")
                     .as_deref()
@@ -2374,7 +2324,6 @@ pub(crate) fn local_product(
             waiting_for,
             container,
             pid,
-            rbind_token,
             ..
         }) => (!local_hides(session_kind.as_deref(), show_bg)).then(|| BookIn::Live {
             origin: origin(),
@@ -2389,7 +2338,6 @@ pub(crate) fn local_product(
                 waiting_for: waiting_for.clone(),
                 container: *container,
                 pid: *pid,
-                rbind_token: rbind_token.clone(),
             },
         }),
         LocalItem::Frame(InboundFrame::SessionStatus {
@@ -2694,15 +2642,14 @@ async fn stream_loop(
             Vec::new()
         }
     });
-    let (with_bg, tail_only, with_rbind_token) =
-        decide_stream_flags(&caps, crate::load_show_bg_sessions());
+    let (with_bg, tail_only) = decide_stream_flags(&caps, crate::load_show_bg_sessions());
     let t_exec = std::time::Instant::now();
     // ★ F05 下半：起流失败就抹掉自证记忆 —— 否则一台后端被删/被换旧的机器会
     // **每一轮都跳预检、每一轮都失败**，永远等不到重新部署。代价是多一次重连，
     // 那正是 `VERIFIED_BUILD` 头注里如实写下的那个退化。
     // 接那台的**常驻后端**（没有就起一个；与本机同形）。这是远端唯一的一形：
     //   起不了常驻（非 unix / 太旧）就是一次失败、说清为什么，不回落到随 SSH 生死的流模式。
-    let flags = (with_bg, tail_only, with_rbind_token);
+    let flags = (with_bg, tail_only);
     let stream: crate::remote_resident::Replayed = match crate::remote_resident::attach(cfg, flags)
         .await
     {
@@ -2724,7 +2671,7 @@ async fn stream_loop(
     };
     tracing::info!(
         "[perf] ssh_source [{host_label}] 起流 {}ms（SSH 登录 + exec backend；\
-         with_bg={with_bg} tail_only={tail_only} with_rbind_token={with_rbind_token}）\
+         with_bg={with_bg} tail_only={tail_only}）\
          · 自本轮连接开始 T+{}ms",
         t_exec.elapsed().as_millis(),
         t_connect_start.elapsed().as_millis()
@@ -2946,18 +2893,10 @@ async fn stream_loop(
                 } else {
                     forget_verified_build(&host_label);
                 }
-                // 🔴 **升级判定从 `if !tail_only` 里搬出来了。**
-                // 那道外层 guard 的语义是「本轮若跑在降级模式」，在**两位**的世界里
-                // 它等价于 `!tail_only`；三位之后**当场为假** —— `tail_only` 已开、
-                // 而 `rbind-token` 这一位本轮没开，是一个真实可达的状态
-                // （`hello_confirmed` 记的是上一版只声明了 `tail-only` 的能力集）。
-                // 那时 guard 会把升级整个跳过 ⇒ `--with-rbind-token` 永远发不出去，
-                // 而症状只是「令牌字段恒缺席」= 一个**合法值** ⇒ 极安静。
-                // 收敛性不依赖这道 guard（见 `should_upgrade_reconnect` 头注：三项都
-                // 写全 `&& !cur_*`，记账后 `next==cur` ⇒ 恒 false，最多 3 轮）。
+                // 升级判定无条件问 `should_upgrade_reconnect`（两项都写全 `&& !cur_*`，记账后 `next==cur` ⇒ 恒 false）。
                 let show_bg = crate::load_show_bg_sessions();
                 let next = decide_stream_flags(&capabilities, show_bg);
-                if should_upgrade_reconnect((with_bg, tail_only, with_rbind_token), next) {
+                if should_upgrade_reconnect((with_bg, tail_only), next) {
                     *hello_confirmed = Some(capabilities.clone());
                     return Err(copy_text("rsSshSource.upgrade.reconnect", &[]));
                 }
@@ -3016,19 +2955,10 @@ async fn stream_loop(
                 lines,
                 status,
                 waiting_for,
-                rbind_token,
                 container,
                 // pid 只给本机那条流用（本机 ↗ 绑窗口）；远端这一支不读。
                 pid: _,
             }) => {
-                // 🔴 **记进令牌账本 —— ↗ 从此按它分派**（monitor 自己的事：拉前终端）。
-                // `None` 也要记（= 删掉旧值）：重新宣告成「没令牌」时，上一次的令牌不许粘着。
-                // ⚠ **只打布尔，不打值**（`§8.6 ③`：令牌是敏感数据；`ssh_source_parse_frame_tests.rs::the_token_value_never_reaches_a_log_macro` 钉）。
-                crate::bind::remote_rbind_tokens().note(&sid, rbind_token.as_deref());
-                tracing::debug!(
-                    "ssh_source [{host_label}] session_added sid={sid} has_rbind_token={}",
-                    rbind_token.is_some()
-                );
                 // ★★ 这一跳要看得见（「帧到 monitor 了吗」）；每个会话一次，不淹日志。
                 tracing::info!("session-added: [{host_label}] sid={sid} → 成品交出口");
                 // 活会话的成品（元信息 ＋ 初始灯 ＋ 容器）原样交 `session_book`（本机那条流同一个口）。
@@ -3045,7 +2975,6 @@ async fn stream_loop(
                         waiting_for,
                         container,
                         pid: None,
-                        rbind_token,
                     },
                 });
                 // Batch8-F26：tail-only 下历史改走旁路快照——宣告带 path 即入队

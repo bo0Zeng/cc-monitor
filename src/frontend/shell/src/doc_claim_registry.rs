@@ -364,6 +364,12 @@ const ENV_KEY_CLAIM_SITES: &[(&str, &str, EnvKeyClaim)] = &[
         "从出参 `json!`",
         EnvKeyClaim::OtherSubject,
     ),
+    // 「此刻谁在显示这个会话」那条查询自己读的那几个键（主语是那一条，不是账号归属那条查询）。
+    (
+        "src/backend/observe/session_terminals.rs",
+        "写死的那几个键（`TMUX` · `TMUX_PANE`",
+        EnvKeyClaim::OtherSubject,
+    ),
 ];
 
 #[cfg(test)]

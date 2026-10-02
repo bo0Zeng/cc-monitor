@@ -1045,72 +1045,19 @@ fn the_self_check_is_the_payload_itself_plus_print_and_it_runs_before_registerin
     }
 }
 
-// ════════════════════════════════════════════════════════════════════════════════════════
-// 直路上的 `--ccm-sid` —— 交给启动期令牌那条路
-// ════════════════════════════════════════════════════════════════════════════════════════
-//
-// 那一行，逐字「主会话判：**不报错**（报错 ＝ 让它依赖 tmux，撞
-// 「`--ccm-sid` 不要依赖 tmux」），直路语义走已落地的启动期令牌那条路」· `WN1.md §3`。
-// 原病（`lib.rs::TARGET_GAPS` 那一行逐字）：「被接受、零效果、而且不出声」——
-// `Plan::Direct` 里根本没有这一格。
-
-/// 32 个小写十六进制 —— 令牌的合格形状（`identity_tag::token_is_safe`）。字面量，不从实现推。
-const GOOD_LAUNCH_TOKEN: &str = "0123456789abcdef0123456789abcdef";
-
-fn direct_with(args: &[&str], launch_token: Option<&str>) -> Direct {
-    let e = Env {
-        launch_token: launch_token.map(str::to_string),
-        ..env()
-    };
-    match plan_of(args, &e, &AccountTable::default()) {
+/// `--print` 不看宿主环境（`INVARIANTS §33a` 铁律 2）：直路上带不带 `--ccm-sid`，吐的那一行**逐字节相等**
+/// （它只写 tmux 会话上的意图标，直路上没有可写的地方）。
+#[test]
+fn the_direct_print_does_not_change_with_ccm_sid() {
+    let direct = |args: &[&str]| match plan_of(args, &env(), &AccountTable::default()) {
         Plan::Direct(d) => d,
         other => panic!("直路测试却算出 {other:?}"),
-    }
-}
-
-/// 四格逐格相等：没给 / 给了＋合格令牌 / 给了＋形状不对的令牌 / 给了＋没令牌。
-#[test]
-fn on_the_direct_path_ccm_sid_is_carried_by_the_launch_token() {
-    let cells = [
-        (&[][..], Some(GOOD_LAUNCH_TOKEN), DirectIdentity::NotAsked),
-        (
-            &["--ccm-sid", "s-1"][..],
-            Some(GOOD_LAUNCH_TOKEN),
-            DirectIdentity::ByLaunchToken,
-        ),
-        // 大写 —— 差一点对的串一律当没有（`token_is_safe` 头注：fail closed）。
-        (
-            &["--ccm-sid", "s-1"][..],
-            Some("0123456789ABCDEF0123456789ABCDEF"),
-            DirectIdentity::NoCarrier,
-        ),
-        (&["--ccm-sid", "s-1"][..], None, DirectIdentity::NoCarrier),
-    ];
-    for (args, tok, want) in cells {
-        assert_eq!(
-            direct_with(args, tok).identity,
-            want,
-            "直路 {args:?}（令牌 {tok:?}）交错了人"
-        );
-    }
-}
-
-/// `--print` 不看宿主环境（`INVARIANTS §33a` 铁律 2）：带不带 `--ccm-sid`、有没有令牌，
-/// 直路吐的那一行**逐字节相等** —— 令牌是继承的环境，不是命令文本。
-#[test]
-fn the_direct_print_does_not_change_with_ccm_sid_or_the_token() {
-    let bare = render(&Plan::Direct(direct_with(&[], None)));
-    for (args, tok) in [
-        (&["--ccm-sid", "s-1"][..], None),
-        (&["--ccm-sid", "s-1"][..], Some(GOOD_LAUNCH_TOKEN)),
-        (&[][..], Some(GOOD_LAUNCH_TOKEN)),
-    ] {
-        assert_eq!(
-            render(&Plan::Direct(direct_with(args, tok))),
-            bare,
-            "直路 `--print` 随 {args:?} / 令牌 {tok:?} 变了"
-        );
-    }
+    };
+    assert_eq!(
+        render(&Plan::Direct(direct(&["--ccm-sid", "s-1"]))),
+        render(&Plan::Direct(direct(&[]))),
+        "直路 `--print` 随 `--ccm-sid` 变了"
+    );
 }
 
 // ── Windows 本机那一格：`is_exec` · 家目录 · 路径分隔符 ──────────────
@@ -1695,9 +1642,7 @@ fn plan_v151(args: &[&str], env: &Env) -> Result<Plan, crate::control::ccm::argv
     }
 }
 
-const TOKEN: &str = "0123456789abcdef0123456789abcdef";
-
-/// `--account-dir` 就用那个目录（不查账号库）；两个身份 token 在直路上进 agent 进程环境（`--ccm-print` 说出来），
+/// `--account-dir` 就用那个目录（不查账号库）；身份 token 在直路上进 agent 进程环境（`--ccm-print` 说出来），
 /// 在容器路上原样交给 pane 里那一趟（tmux 边界吃掉的环境不靠它）。
 #[test]
 fn the_three_options_monitor_hands_over_reach_the_agent_on_both_paths() {
@@ -1709,8 +1654,6 @@ fn the_three_options_monitor_hands_over_reach_the_agent_on_both_paths() {
             "--",
             "--account-dir",
             "/h/.claude-alt/w",
-            "--ccm-rbind-token",
-            TOKEN,
             "--ccm-launch-id",
             "s1",
             "--cwd",
@@ -1727,10 +1670,6 @@ fn the_three_options_monitor_hands_over_reach_the_agent_on_both_paths() {
         line.contains("export CLAUDE_CONFIG_DIR='/h/.claude-alt/w'; "),
         "{line}"
     );
-    assert!(
-        line.contains(&format!("export CCM_RBIND_TOKEN='{TOKEN}'; ")),
-        "{line}"
-    );
     assert!(line.contains("export CCM_LAUNCH_ID='s1'; "), "{line}");
     assert!(
         line.ends_with("cd '/p' && exec claude --resume s1"),
@@ -1745,8 +1684,6 @@ fn the_three_options_monitor_hands_over_reach_the_agent_on_both_paths() {
             "--ccm-tmux=p-cc",
             "--account-dir",
             "/h/.claude-alt/w",
-            "--ccm-rbind-token",
-            TOKEN,
             "--ccm-launch-id",
             "s1",
             "--cwd",
@@ -1759,7 +1696,6 @@ fn the_three_options_monitor_hands_over_reach_the_agent_on_both_paths() {
     };
     for want in [
         "'--account-dir' '/h/.claude-alt/w'".to_string(),
-        format!("'--ccm-rbind-token' '{TOKEN}'"),
         "'--ccm-launch-id' 's1'".to_string(),
     ] {
         assert!(
@@ -1774,7 +1710,6 @@ fn the_three_options_monitor_hands_over_reach_the_agent_on_both_paths() {
 #[test]
 fn the_three_options_are_judged_and_account_dir_excludes_the_other_account_forms() {
     for bad in [
-        vec!["--", "--ccm-rbind-token", "XYZ"],
         vec!["--", "--ccm-launch-id", "a/b"],
         vec!["--", "--account-dir", "rel/x"],
         vec!["--", "--account-dir", "/h/x", "--account", "w"],

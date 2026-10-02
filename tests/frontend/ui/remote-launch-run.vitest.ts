@@ -1,5 +1,5 @@
 // 起会话执行器（`remote-launch-run.ts`）：每条起会话路径问那台后端要那一行 `ccm …`、原样交给终端（或键进 pane），
-// 失败怎么说、令牌从哪来。渲得对不对归 Rust（`cli-golden.json` 逐字节 ＋ 每条路径都以 `ccm ` 开头那条判据）；
+// 失败怎么说。渲得对不对归 Rust（`cli-golden.json` 逐字节 ＋ 每条路径都以 `ccm ` 开头那条判据）；
 // 这里判的是「前端交出去的就是后端那一行，一个字不加、不拼」与「每条路径问的是哪一形」。
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
@@ -34,7 +34,6 @@ import {
   runNewSessionRemote,
   runRemoteLauncher,
   runRemoteAttach,
-  mintRbindToken,
   POSIX_NO_WINDOW_MARKER,
 } from "../../../src/frontend/ui/remote-launch-run";
 import type { CliRenderRequest } from "../../../src/frontend/ui/launch-cli-wire";
@@ -64,13 +63,12 @@ beforeEach(() => {
 });
 
 describe("每条远端起会话路径：问那台要那一行，原样交给终端", () => {
-  it("直连 resume：容器 none · 带令牌；交给终端的就是那一行、令牌同一个", async () => {
+  it("直连 resume：容器 none；交给终端的就是那一行", async () => {
     expect(await runRemoteResume("devbox", "sid-1", "/p", "")).toBe(true);
     const [req] = requests();
     expect(req.container).toEqual({ kind: "none" });
     expect(req.action).toEqual({ kind: "resume", sid: "sid-1" });
-    expect(req.rbindToken).toMatch(/^[0-9a-f]{32}$/);
-    expect(term.openTerminal).toHaveBeenCalledWith("devbox", lineFor(req), req.rbindToken);
+    expect(term.openTerminal).toHaveBeenCalledWith("devbox", lineFor(req));
     expect(arrivalMock).toHaveBeenCalledWith(expect.objectContaining({ origin: "devbox", match: { sid: "sid-1" }, tmuxName: null }));
   });
 
@@ -84,17 +82,17 @@ describe("每条远端起会话路径：问那台要那一行，原样交给终�
     expect(req.container).toEqual({ kind: "tmux", name: "cc-sid1", send_into: false });
     expect(req.ccmSid).toBe("sid-1");
     expect(req.account).toEqual({ kind: "account", name: "z", configDir: "/h/.claude-alt/z" });
-    expect(term.openTerminal).toHaveBeenCalledWith("devbox", lineFor(req), req.rbindToken);
+    expect(term.openTerminal).toHaveBeenCalledWith("devbox", lineFor(req));
   });
 
-  it("开新会话（机器卡片 · 历史页）：名字问那台铸、动作 new、按令牌认", async () => {
+  it("开新会话（机器卡片 · 历史页）：名字问那台铸、动作 new、按工作目录认", async () => {
     await runNewSessionRemote("devbox", "/p", "");
     expect(mint.mintFreshTmuxName).toHaveBeenCalledWith("devbox", "/p");
     const [req] = requests();
     expect(req.action).toEqual({ kind: "new" });
     expect(req.container).toEqual({ kind: "tmux", name: "w-cc", send_into: false });
-    expect(term.openTerminal).toHaveBeenCalledWith("devbox", lineFor(req), req.rbindToken);
-    expect(arrivalMock).toHaveBeenCalledWith(expect.objectContaining({ match: { token: req.rbindToken } }));
+    expect(term.openTerminal).toHaveBeenCalledWith("devbox", lineFor(req));
+    expect(arrivalMock).toHaveBeenCalledWith(expect.objectContaining({ match: { cwd: "/p" } }));
   });
 
   it("铸不出名字 ⇒ 不起、出声，不自己拼一个", async () => {
@@ -105,12 +103,11 @@ describe("每条远端起会话路径：问那台要那一行，原样交给终�
     expect(term.openTerminal).not.toHaveBeenCalled();
   });
 
-  it("接回：动作 attach · 不带令牌 · 窗口不做令牌握手", async () => {
+  it("接回：动作 attach，交给终端的就是那一行", async () => {
     await runRemoteAttach("devbox", "cc-x");
     const [req] = requests();
     expect(req.action).toEqual({ kind: "attach", name: "cc-x" });
-    expect(req.rbindToken).toBeNull();
-    expect(term.openTerminal).toHaveBeenCalledWith("devbox", lineFor(req), null);
+    expect(term.openTerminal).toHaveBeenCalledWith("devbox", lineFor(req));
   });
 });
 
@@ -142,71 +139,5 @@ describe("失败怎么说", () => {
     term.openTerminal.mockRejectedValue(new Error(`${POSIX_NO_WINDOW_MARKER}，命令交给你`));
     await runRemoteLauncher("<local>", "/p", "w-cc", "claude");
     expect(String(toastMock.mock.calls[0][0])).not.toMatch(/失败/);
-  });
-});
-
-describe("启动期令牌的铸币口", () => {
-  it("★ 铸出来的令牌是 32 个小写十六进制字符（形状是手写字面量）", () => {
-    for (let i = 0; i < 64; i += 1) expect(mintRbindToken()).toMatch(/^[0-9a-f]{32}$/);
-  });
-
-  it("★★ 熵真的来自平台 CSPRNG（桩掉 getRandomValues，看产物随它变）", () => {
-    const real = globalThis.crypto.getRandomValues.bind(globalThis.crypto);
-    try {
-      Object.defineProperty(globalThis.crypto, "getRandomValues", {
-        value: (b: Uint8Array) => b.fill(0xab),
-        configurable: true,
-      });
-      expect(mintRbindToken()).toBe("b".repeat(32));
-      Object.defineProperty(globalThis.crypto, "getRandomValues", {
-        value: (b: Uint8Array) => {
-          b.forEach((_, i) => {
-            b[i] = i;
-          });
-          return b;
-        },
-        configurable: true,
-      });
-      expect(mintRbindToken()).toBe("0123456789abcdef0123456789abcdef");
-    } finally {
-      Object.defineProperty(globalThis.crypto, "getRandomValues", { value: real, configurable: true });
-    }
-  });
-
-  it("★★ 拿不到 CSPRNG ⇒ throw，绝不回落 Math.random", () => {
-    const real = globalThis.crypto;
-    try {
-      Object.defineProperty(globalThis, "crypto", { value: undefined, configurable: true });
-      expect(() => mintRbindToken()).toThrow(/安全随机数/);
-      Object.defineProperty(globalThis, "crypto", { value: {}, configurable: true });
-      expect(() => mintRbindToken()).toThrow(/安全随机数/);
-    } finally {
-      Object.defineProperty(globalThis, "crypto", { value: real, configurable: true });
-    }
-  });
-
-  it("★ 1000 次铸币零重复", () => {
-    const seen = new Set<string>();
-    for (let i = 0; i < 1000; i += 1) seen.add(mintRbindToken());
-    expect(seen.size).toBe(1000);
-  });
-
-  it("★★ 起 agent 进程的三条远端路各铸一个新令牌；交给窗口登记的 == 交给那台 ccm 的", async () => {
-    await runRemoteResume("devbox", "s1", "/p", "");
-    await runRemoteResumeTmuxAndWait("devbox", "s1", "/p", "claude", "cc-s1");
-    await runRemoteLauncher("devbox", "/p", "w-cc", "claude");
-    const startReqs = requests().filter((r) => r.action.kind !== "attach");
-    const tokens = startReqs.map((r) => r.rbindToken);
-    expect(tokens.every((t) => typeof t === "string" && /^[0-9a-f]{32}$/.test(t))).toBe(true);
-    expect(new Set(tokens).size).toBe(3);
-    const handed = term.openTerminal.mock.calls.map((c) => c[2]);
-    expect(handed).toEqual(tokens);
-  });
-
-  it("★ 调用方显式传的令牌优先；空令牌 ≠ 没有令牌（原样交给那台，由它拒）", async () => {
-    await runRemoteResume("devbox", "s1", "/p", "", { rbindToken: "f".repeat(32) });
-    expect(requests()[0].rbindToken).toBe("f".repeat(32));
-    await runRemoteResume("devbox", "s1", "/p", "", { rbindToken: "" });
-    expect(requests()[1].rbindToken).toBe("");
   });
 });

@@ -35,7 +35,6 @@ fn added(sid: &str) -> Ev {
         lines: None,
         status: None,
         waiting_for: None,
-        rbind_token: None,
         container: None,
         pid: None,
     }

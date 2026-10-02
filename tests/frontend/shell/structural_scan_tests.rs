@@ -804,12 +804,6 @@ fn every_comment_stripping_transformer_is_registered() {
         // 搬家当场被本条逮住（多出 `job_block`、少了那两个）—— 这正是默认拒绝该有的样子。
         ("shared_crate_registry_ci_yaml.rs::job_block", "不是剥法：抽某个 job 的段落"),
         ("ssh_config.rs::parse_host_aliases", "不是剥法：解析 ssh config 的 Host 别名（随导入搬进后端 `dial/`）"),
-        (
-            // 开终端的令牌握手前奏随渲染从 monitor `launch.rs` 搬进后端方言层（monitor 那一份当年没被这把尺子认出来：它回 `Result`）。
-            "powershell.rs::rbind_bind_prelude",
-            "**生产渲染、不是判据剥法**：剥的是我们自己那份 PowerShell 模板的 `#` 整行注释（产物进 `-EncodedCommand`，\
-                 命令行 32767 字符的额度），后端生产段链不到 `guard_core`；与 `dialect.rs::parse_file` 同一个缺口（共享原语没有「注释前缀」参数）",
-        ),
         ("registry_tests.rs::declared_fields_of", "不是剥法：解析结构体字段声明"),
         // **方向恰好相反的一条**：它不剥注释，它**把注释留下来并指名**。
         // 那一格的正题是「你 rc 里这几行是旧的」——`#` 打头的行照样进结果，只是分类成
@@ -1718,9 +1712,6 @@ fn line_number_addresses_stay_in_range_and_never_grow() {
     /// ⚠ 加行之前先问一遍：**能不能点符号**？答得出来就别加。
     const INVENTORY: &[(&str, &str, usize)] = &[
         ("atomic_replace_registry.rs", "fenced_block.rs", 5),
-        ("bind.rs", "bind.rs", 225),
-        // 〔搬树 2026-09-18〕引用方随测试段搬家，被引地址一个字没变。
-        ("bind_tests.rs", "bind.rs", 319),
         ("ui_contract.rs", "tauri-2.11.2/src/ipc/mod.rs", 181),
         ("data_paths.rs", "tauri-2.11.2/src/ipc/mod.rs", 181),
         ("inbound_client.rs", "ui_contract.rs", 95),
@@ -2445,7 +2436,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         ),
         // `payload.rs` 点 `the_sample_the_monitor_side_builds_parses_into_the_slots_we_expect` 那一行摘了：
         //   那段散文随路由构造口（与它的跨半边样例）一起走了 —— 路由语法进了共享 crate `relay-route-core`。
-        ("src/frontend/shell/src/bind.rs", "handle_await_files", 1),
         (
             // 〔步 7c 剖分 2026-09-19〕散文随测试段搬家，处数一格没变。
             "tests/frontend/shell/byte_cap_registry_tests.rs",

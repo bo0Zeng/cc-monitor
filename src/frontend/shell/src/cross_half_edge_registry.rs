@@ -122,13 +122,6 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     ),
     (
         "monitor→backend",
-        "tests/frontend/shell/bind_tests.rs",
-        "src/backend/platform/shell/rbind-token-bind.ps1.tpl",
-        "令牌握手的写侧（本机后端的开终端前奏模板）写进 await 文件的三个键 == 读侧 `bind.rs::AwaitRequest` 认的：\
-         键名只在模板里、结构体只在 monitor（读侧的形状不进共享 crate），两侧对上只能读模板那份文字",
-    ),
-    (
-        "monitor→backend",
         "tests/frontend/shell/quote_singleton_guard_tests.rs",
         "src/backend/platform/shell/dialect.rs",
         "「monitor 零 PowerShell 引号器」那把零命中尺子的正控：同一把尺子量后端那唯一的出口（`ps_literal`）要恰好量出四个引号字符，量不出 ⇒ 尺子瞎了",

@@ -928,6 +928,11 @@ const REACHES_TMUX_WITHOUT_NO_TMUX: &[(&str, &str)] = &[
     ("tmux-name-mint", "铸名只拿会话快照避让：这台没装 tmux ⇒ 一个名字都没占 ⇒ 交基名，命令照答，不回 `no_tmux`（起不起得来归起会话那一步说）"),
     ("mcp-read", "与 `tmux-list` 同一个宿主 `feature_face::answer`（引用图按文件算，因此连带）；读 MCP 本身不碰 tmux"),
     ("tasks-list", "同 `mcp-read`：只因与 `tmux-list` 同住 `feature_face.rs` 被连带；本身不碰 tmux"),
+    (
+        "session-terminals",
+        "tmux 只在那个会话本来就在 tmux 里时被问（`list-clients`，socket 取自那个进程自己的 `TMUX`）；\
+         不在 tmux 里的会话读进程自己的环境，整条链上没有 tmux ⇒ 不是必需品，不声明 `no_tmux`",
+    ),
 ];
 
 /// `run:` 里没有 `crate::…` 路径的命令（`Run::Builtin` 与就地应答）—— 不在射程，逐条登记。

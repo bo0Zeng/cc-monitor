@@ -243,7 +243,7 @@ export async function planStarts(origin: Origin, list: readonly Tab[]): Promise<
 async function openWindow(origin: Origin, cmd: string, cwd: string): Promise<string | null> {
   try {
     if (isLocalOrigin(origin)) await commands.open_local_terminal({ cmd, cwd });
-    else await openTerminal(origin, cmd, null);
+    else await openTerminal(origin, cmd);
     return null;
   } catch (e) {
     return copyText("tabBatch.why.windowFailed", { detail: String(e) });

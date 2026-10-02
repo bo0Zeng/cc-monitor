@@ -2715,18 +2715,26 @@ describe("account-ux U5 tab 徽章「信息才显」", () => {
 });
 
 /**
- * ★★ ↗ 远端那一格：**前端不再猜，tmux 不在前提链上**。
- *
- * 这里原先是 E73 那组「↗ 失败之后再打一次 `list_remote_tmux` 分四档归因」的判据。
- * 步 4 把「有没有终端」的四套判断（`attachable` 布尔 · `findClaudeTmuxMatches` · 后端 HWND 校验 ·
- * E73 那次远端 RPC）收成后端一句 ——「这个会话是不是 cc-monitor 启动的」（有没有启动令牌），
- * 归因的判据住 `bind_tests.rs` 那张 64 格真值表。前端这一侧只钉三件事：
- * ① 失败时**一次 tmux 查询都不发**（用户逐字「不能依赖 tmux」）；② 后端那句话**原样**给用户；
- * ③ `attachable:false` 不再在前端短路 ↗（那是被收掉的四套之一）。
+ * ★★ ↗ 远端那一格：点那一刻按顺序问三方，**前端不解析、不猜，tmux 不在前提链上**。
+ * ① 问会话所在那台 `session-terminals`；② 那台回话里的 `terminals` **原样**交本机后端 `terminal-processes`；
+ * ③ 本机后端的 `chain` **原样**交 monitor 拉前。每一方说的原因都照原样落成一句话；没有终端连着 ⇒ 提示可点（在新终端里接回）。
  */
-describe("：↗ 远端那一格只问后端一次", () => {
+describe("：↗ 远端那一格按顺序问三方", () => {
   const mockInvoke = invoke as unknown as ReturnType<typeof vi.fn>;
-  const BACKEND_SAYS = "<后端归因原文>";
+  const MONITOR_SAYS = "<monitor 找窗口那一句>";
+  const TERMINALS = [
+    { ssh: { clientAddr: "10.0.0.5", clientPort: 62414, serverAddr: "10.0.0.9", serverPort: 22 }, activity: 9 },
+  ];
+  const CHAIN = [{ pid: 700, name: "ssh.exe", start: 4000 }];
+  /** 那台 / 本机各回什么；monitor 那一跳成或不成。 */
+  function answer(shown: unknown, found: unknown, front: () => Promise<unknown>): void {
+    mockInvoke.mockImplementation((cmd: string, args: unknown) => {
+      if (isChanCall(cmd, args, "session-terminals")) return Promise.resolve(chanReply(shown));
+      if (isChanCall(cmd, args, "terminal-processes")) return Promise.resolve(chanReply(found));
+      if (cmd === "bring_remote_terminal_to_front") return front();
+      return Promise.resolve([]);
+    });
+  }
   beforeEach(() => {
     vi.clearAllMocks();
     mockInvoke.mockReset();
@@ -2738,29 +2746,59 @@ describe("：↗ 远端那一格只问后端一次", () => {
     const btn = home(tm).bar.tabButtons.get(sid)?.root.querySelector(".tab-focus") as HTMLElement | null;
     expect(btn, "量具自检：Windows 上应当渲出 ↗").not.toBeNull();
     btn!.click();
-    await new Promise((r) => setTimeout(r, 0));
-    await new Promise((r) => setTimeout(r, 0));
+    for (let i = 0; i < 8; i++) await new Promise((r) => setTimeout(r, 0));
   }
 
-  it("★★ 失败 ⇒ 后端那句话原样给用户，而且**一次 tmux 查询都不发**", async () => {
-    mockInvoke.mockImplementation((cmd: string) =>
-      cmd === "bring_remote_terminal_to_front" ? Promise.reject(new Error(BACKEND_SAYS)) : Promise.resolve([]),
-    );
+  it("★★ 两跳都是原样交：那台的 `terminals` ⇒ 本机后端，本机后端的 `chain` ⇒ monitor；monitor 那句话原样给用户，一次 tmux 都不问", async () => {
+    answer({ terminals: TERMINALS }, { chain: CHAIN }, () => Promise.reject(new Error(MONITOR_SAYS)));
     const tm = makeTM();
     tm.createSkeletonTab("r1", "/p", "devbox", "interactive", null);
     await clickFront(tm, "r1");
-    const cmds = mockInvoke.mock.calls.map((c) => c[0]);
-    expect(cmds, "量具自检：↗ 真的发到了后端").toContain("bring_remote_terminal_to_front");
+    const calls = mockInvoke.mock.calls as [string, unknown][];
+    const asked = calls.filter(([c, a]) => isChanCall(c, a, "session-terminals"));
+    expect(asked.map(([, a]) => [(a as { origin: string }).origin, chanArgsJson(a as never)])).toEqual([
+      ["devbox", { sid: "r1" }],
+    ]);
+    const local = calls.filter(([c, a]) => isChanCall(c, a, "terminal-processes"));
+    expect(local.map(([, a]) => chanArgsJson(a as never))).toEqual([{ terminals: TERMINALS }]);
+    expect(calls.filter(([c]) => c === "bring_remote_terminal_to_front").map(([, a]) => a)).toEqual([{ chain: CHAIN }]);
     expect(
-      cmds.filter((c) => c === "list_remote_tmux" || c === "list_local_tmux"),
-      "↗ 失败之后又去查了一次 tmux —— tmux 回到了 ↗ 的前提链上（E73 那次 RPC 是步 4 要收的四套之一）",
+      calls.filter(([c, a]) => c === "list_remote_tmux" || c === "list_local_tmux" || isChanCall(c, a, "tmux-list")),
+      "↗ 又去查了 tmux —— tmux 回到了 ↗ 的前提链上",
     ).toEqual([]);
-    // 「拉前」是术语表的禁词（say：「切到终端窗口」），这一格随改词同拍改（行为变更是题面要的，不是迁就）。
-    expect(showActionFailureToast).toHaveBeenCalledWith("切到终端窗口失败", BACKEND_SAYS);
+    // 「拉前」是术语表的禁词（say：「切到终端窗口」）。
+    expect(showActionFailureToast).toHaveBeenCalledWith("切到终端窗口失败", MONITOR_SAYS);
   });
 
-  it("★ `attachable:false` 不再在前端短路 ↗ —— 照样问后端（归因是后端那一个布尔的事）", async () => {
-    mockInvoke.mockResolvedValue(undefined);
+  it("★ 每一方的原因各落成一句话；只有「没有终端连着」那句可点（在新终端里接回），本机后端说了原因就不去找窗口", async () => {
+    const cases: [unknown, unknown, string, boolean][] = [
+      [{ terminals: [], why: "detached" }, null, "后台", true],
+      [{ terminals: [], why: "no-terminal" }, null, "没有终端在显示它", false],
+      [{ terminals: [], why: "unreadable" }, null, "读不了", false],
+      [{ terminals: TERMINALS }, { chain: [], why: "not-ssh" }, "不是经 ssh 连的", false],
+      [{ terminals: TERMINALS }, { chain: [], why: "elsewhere", addr: "203.0.113.8" }, "203.0.113.8", false],
+      [{ terminals: TERMINALS }, { chain: [], why: "mismatch" }, "跳板机或端口转换", false],
+      [{ terminals: TERMINALS }, { chain: [], why: "query-failed" }, "没查成", false],
+    ];
+    for (const [shown, found, says, clickable] of cases) {
+      vi.mocked(showActionFailureToast).mockClear();
+      mockInvoke.mockReset();
+      answer(shown, found, () => Promise.resolve(undefined));
+      const tm = makeTM();
+      tm.createSkeletonTab("r1", "/p", "devbox", "interactive", null);
+      await clickFront(tm, "r1");
+      const calls = mockInvoke.mock.calls as [string, unknown][];
+      expect(calls.some(([c]) => c === "bring_remote_terminal_to_front"), `${says}：说了原因还去找了窗口`).toBe(false);
+      expect(calls.some(([c, a]) => isChanCall(c, a, "terminal-processes")), `${says}：本机后端问没问`).toBe(found !== null);
+      const toasts = vi.mocked(showActionFailureToast).mock.calls;
+      expect(toasts.length, says).toBe(1);
+      expect(toasts[0][1], says).toContain(says);
+      expect(typeof (toasts[0][2] as { onClick?: unknown } | undefined)?.onClick === "function", says).toBe(clickable);
+    }
+  });
+
+  it("★ `attachable:false` 不在前端短路 ↗ —— 照样按顺序问，成了不弹 toast", async () => {
+    answer({ terminals: TERMINALS }, { chain: CHAIN }, () => Promise.resolve(undefined));
     const tm = makeTM();
     tm.createSkeletonTab("r2", "/p", "devbox", "interactive", null, false);
     expect(tm.isAttachable("r2"), "量具自检：这个会话确实被宣告成不可 attach").toBe(false);
@@ -2806,15 +2844,19 @@ describe("LF1：↗ 只在 Windows 上出现", () => {
     }
   });
 
-  it("★ 快捷键 / 命令面板在 linux 上走到 ↗ ⇒ 说实话、**不发 IPC**", () => {
+  it("★ 快捷键 / 命令面板在 linux 上走到 ↗ ⇒ 说实话、**不发 IPC**", async () => {
     __setHostOsForTests("linux");
     const tm = makeTM();
     tm.createSkeletonTab("r1", "/p", "devbox", "interactive", null);
     tm.switchTo("r1");
     tm.bringActiveTerminalToFront();
-    const sent = mockInvoke.mock.calls
-      .map((c) => c[0])
-      .filter((c) => c === "bring_remote_terminal_to_front" || c === "bring_terminal_to_front");
+    for (let i = 0; i < 4; i++) await new Promise((r) => setTimeout(r, 0));
+    const sent = (mockInvoke.mock.calls as [string, unknown][])
+      .filter(
+        ([c, a]) =>
+          c === "bring_remote_terminal_to_front" || c === "bring_terminal_to_front" || isChanCall(c, a, "session-terminals"),
+      )
+      .map(([c]) => c);
     expect(sent, "linux 上照样发了 ↗ 的 IPC —— 那是装作试过").toEqual([]);
     expect(showActionFailureToast).toHaveBeenCalledWith(
       "本机不能切到终端窗口",
@@ -2823,13 +2865,14 @@ describe("LF1：↗ 只在 Windows 上出现", () => {
     );
   });
 
-  it("★ 对照：windows 上快捷键照常发 IPC（上一条不是因为别的原因没发）", () => {
+  it("★ 对照：windows 上快捷键照常发 IPC（上一条不是因为别的原因没发）", async () => {
     __setHostOsForTests("windows");
     const tm = makeTM();
     tm.createSkeletonTab("r1", "/p", "devbox", "interactive", null);
     tm.switchTo("r1");
     tm.bringActiveTerminalToFront();
-    expect(mockInvoke.mock.calls.map((c) => c[0])).toContain("bring_remote_terminal_to_front");
+    for (let i = 0; i < 4; i++) await new Promise((r) => setTimeout(r, 0));
+    expect((mockInvoke.mock.calls as [string, unknown][]).some(([c, a]) => isChanCall(c, a, "session-terminals"))).toBe(true);
   });
 });
 

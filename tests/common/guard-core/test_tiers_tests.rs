@@ -64,6 +64,7 @@ const UNIT: &[&str] = &[
     "tests/frontend/ui/startup-active.vitest.ts", // F19 启动时记住的那一格（按事件判的真值表）
     "tests/backend/dial_machine_tests.rs",        // 机器配置 → 拨号请求的规则
     "tests/backend/dial_probe_tests.rs",          // 测试连接三步的结局（链路替身）
+    "tests/backend/dial_terminal_processes_tests.rs", // 认终端进程：系统那一趟换成合成 JSON
     "tests/backend/files/query_tests.rs", // Everything 式搜索词：手写语料上的解析与匹配（纯函数）
     // `tests/frontend/ui/remote-probe.vitest.ts` 挪进 SCAN：它多读一份 Rust 源码对拍进度流名（`event_replay.rs::PROBE_PROGRESS_KIND`）。
     "tests/frontend/ui/session-writes.vitest.ts", // 删会话 · 分叉经通道直说那台后端：解码器读金样 ＋ 替身数请求
@@ -411,7 +412,6 @@ const SCAN: &[&str] = &[
     "tests/frontend/shell/launcher_identity_registry_tests.rs",
     "tests/frontend/shell/lib_invariant_population_tests.rs", // §47 / §49 人群判据（读仓内源码）
     "tests/frontend/shell/lib_mod_decl_hygiene_tests.rs",
-    "tests/frontend/shell/lib_remote_bind_prescan_tests.rs",
     "tests/frontend/shell/lib_window_lifecycle_tests.rs",
     "tests/frontend/shell/link_mux_tests.rs",
     "tests/frontend/shell/local_origin_registry_tests.rs",
@@ -487,7 +487,6 @@ const SCAN: &[&str] = &[
     "tests/frontend/ui/cc-bus-hooks-reads.vitest.ts", // cc-bus 钩子状态：严格收（金样）＋ 四态不误说 ＋ 读口源码只问 hooks-diag（读源码 ⇒ 扫描层）
     "tests/frontend/ui/paste-block.vitest.ts",
     "tests/frontend/ui/remote-config.vitest.ts",
-    "tests/frontend/ui/rbind-token-shape-parity.vitest.ts", // 从 launch-render-fallback.vitest.ts 搬来（读 Rust `payload.rs`）
     "tests/frontend/ui/replay-tail-keep.vitest.ts",
     "tests/frontend/ui/render.vitest.ts", // 由 UNIT 挪来：D3 那一格读 `src/frontend/ui/render.ts` 源码（顶层零 `let`）
     "tests/frontend/ui/scale1-render-cost.vitest.ts",
@@ -620,6 +619,7 @@ const INTEGRATION: &[&str] = &[
     "tests/backend/observe/tasks_query_tests.rs",
     "tests/backend/observe/tmux_observe_tests.rs",
     "tests/backend/observe/watcher_tests.rs",
+    "tests/backend/observe/session_terminals_tests.rs",
     "tests/backend/plugin/discover_tests.rs",
     "tests/backend/plugin_walk_fixture.rs",
     "tests/backend/faces/read_face_tests.rs",
@@ -716,7 +716,6 @@ const E2E: &[&str] = &[
     "tests/e2e/backend-cc-bus.sh",
     "tests/e2e/backend-fork-session.sh",
     "tests/e2e/backend-gate2-acceptance.sh",
-    "tests/e2e/backend-rbind-token.sh",
     "tests/e2e/backend-sessions-rewatch.sh",
     "tests/e2e/backend-tmux-late-server.sh",
     "tests/e2e/cc-bus-queue-drain.sh",
@@ -724,7 +723,6 @@ const E2E: &[&str] = &[
     "tests/e2e/ccm-cli.test.sh",
     "tests/e2e/ccm-contract-parity.sh",
     "tests/e2e/ccm-print-parity.sh",
-    "tests/e2e/ccm-rbind-title.sh",
     "tests/e2e/exec-bit-guard.sh",
     "tests/e2e/f40-suite.sh",
     "tests/e2e/graylight-backend-frames.sh",
@@ -732,7 +730,6 @@ const E2E: &[&str] = &[
     "tests/e2e/inbound-backend-frames.sh",
     "tests/e2e/local-backend-supervise.sh",
     "tests/e2e/p3t-local-tmux.sh", // 接回执行链（`package.json` ＋ `ci.yml` 地板）
-    "tests/e2e/rbind-token-endtoend.sh",
     "tests/e2e/restart-backend-frames.sh",
     "tests/e2e/restart-suite.sh",
     "tests/e2e/resume-backend-frames.sh",

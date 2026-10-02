@@ -33,7 +33,7 @@
 # │ ⚠ **自述句只许住在这一段里。** `C5b` 会把这一段之外、头注里任何一句「本脚本跑 N 格 /
 # │   N 道门」判红；历史读数的唯一豁免是**在那一行**逐字带上 `〔量于 …〕`。
 # │
-# │ 〔自述·格数〕53 格
+# │ 〔自述·格数〕50 格
 # │ 〔自述·点名〕worktree-clean · hooks · copy2 · shellcheck · ci-e2e-prereq · release-gate · gate-selfdesc ·
 # │   ccbus-twophase · e2e-smoke ·
 # │   platform · muslbuild ·
@@ -41,17 +41,17 @@
 # │   fmt · fmt-backend ·
 # │   winchk · winchk-backend · winlink · cargo · comm-boundary · test-tiers · deadcode · clippy · appbuild · generated · backend · clippy-backend · tsc · npm ·
 # │   coverage · audit · weak-net ·
-# │   ccm tests/e2e/ccm-print-parity · ccm tests/e2e/ccm-rbind-title · ccm tests/e2e/ccm-cli ·
+# │   ccm tests/e2e/ccm-print-parity · ccm tests/e2e/ccm-cli ·
 # │   ccm tests/e2e/ccm-contract-parity ·
-# │   ccm tests/e2e/backend-rbind-token · ccm tests/e2e/rbind-token-endtoend · ccm tests/e2e/backend-cc-bus ·
+# │   ccm tests/e2e/backend-cc-bus ·
 # │   ccm tests/e2e/backend-gate2 · ccm tests/e2e/local-backend · ccm tests/e2e/restart-frames · ccm tests/e2e/restart ·
 # │   ccm tests/e2e/backend-tmux-late-server · ccm tests/e2e/backend-sessions-rewatch · ccm tests/e2e/p3t-local-tmux ·
 # │   ccm tests/e2e/resume-frames · ccm tests/e2e/cc-spawn-uplift · ccm tests/e2e/inbound-frames ·
 # │   ccm tests/e2e/graylight-frames · ccm tests/e2e/backend-fork · ccm tests/e2e/tmux-target ·
 # │   ccm tests/e2e/cc-bus-queue-drain · ccm tests/e2e/resume
-# │ 〔自述·现物〕二十二套 e2e 的被测文件：`tests/e2e/ccm-print-parity.sh` · `tests/e2e/ccm-rbind-title.sh` ·
+# │ 〔自述·现物〕十九套 e2e 的被测文件：`tests/e2e/ccm-print-parity.sh` ·
 # │   `tests/e2e/ccm-cli.test.sh` · `tests/e2e/ccm-contract-parity.sh` ·
-# │   `tests/e2e/backend-rbind-token.sh` · `tests/e2e/rbind-token-endtoend.sh` · `tests/e2e/backend-cc-bus.sh` ·
+# │   `tests/e2e/backend-cc-bus.sh` ·
 # │   `tests/e2e/backend-gate2-acceptance.sh` · `tests/e2e/local-backend-supervise.sh` ·
 # │   `tests/e2e/restart-backend-frames.sh` · `tests/e2e/restart-suite.sh` ·
 # │   `tests/e2e/backend-tmux-late-server.sh` · `tests/e2e/backend-sessions-rewatch.sh` · `tests/e2e/p3t-local-tmux.sh` ·
@@ -1918,7 +1918,7 @@ gate_selftest_e2e
 gate_e2e_wanted() {
   if [ -z "$GATE_ONLY" ]; then return 0; fi
   local suite
-  for suite in ccm-print-parity ccm-rbind-title ccm-cli ccm-contract-parity backend-rbind-token rbind-token-endtoend backend-cc-bus backend-gate2 local-backend restart-frames restart backend-tmux-late-server backend-sessions-rewatch p3t-local-tmux resume-frames cc-spawn-uplift inbound-frames graylight-frames backend-fork tmux-target cc-bus-queue-drain resume; do
+  for suite in ccm-print-parity ccm-cli ccm-contract-parity backend-cc-bus backend-gate2 local-backend restart-frames restart backend-tmux-late-server backend-sessions-rewatch p3t-local-tmux resume-frames cc-spawn-uplift inbound-frames graylight-frames backend-fork tmux-target cc-bus-queue-drain resume; do
     case " $GATE_ONLY " in *" $suite "*) return 0 ;; esac
   done
   return 1
@@ -1931,7 +1931,6 @@ printf '  ·    %-14s %s\n' "e2e 前置" "跳过（GATE_ONLY 一套 e2e 都没�
 fi
 
 run_e2e ccm-print-parity 12
-run_e2e ccm-rbind-title  8
 # ── `K-G7`（09-03）新挂的两套 ─────────────────────────────────────────────────
 # 地板量于 `b8a6ecd`、镜像 `644ea0ce5c3d`，连打两趟同值（126 / 68，各 0 FAIL 0 SKIP）；
 # 与 `ci.yml` 的调用行同值 —— 详见本文件头注那一节，改地板要三处一起改。
@@ -2009,35 +2008,6 @@ run_e2e ccm-cli               70
 #    逐字 diff 已交回 PM（头注那条「三处一起改」的纪律照旧）。
 run_e2e ccm-contract-parity   45
 
-# ── 令牌那两套（2026-09-24）：**只被 shellcheck、不被执行**的那一格接进执行链 ──
-#
-# 🔴 题面：立了 `tests/e2e/backend-rbind-token.sh`（真后端报不报得出令牌），
-#   步 3 立了 `tests/e2e/rbind-token-endtoend.sh`（生产载荷字节 → 真 bash → 进程环境 → 真后端 → wire）。
-#   两套落地那天都**只进了 `ci.yml` 的 shellcheck 人群**，没有任何一条执行链跑它们 ——
-#   `ci.yml` 两段注释逐字「也没有加 `assert-pass-floor` 那一行 …… **待拍板**」。
-#   ⇒ 步 4（↗ 改走令牌 join）一落地，「令牌真的活到 wire 上」这一格就是它的前提，
-#   而那个前提**没人在验**。判据不在执行链上就等于不存在。
-#
-# ★ 形状与上面四格**逐字同一条**：`run_e2e`（`assert-pass-floor.sh … exact`）⇒
-#   PASS 数**恒等**（多了少了都红）＋ 抓不到「合计 PASS=」红 ＋ 退出码非零红。
-#   ⚠ 格名前缀沿用 `ccm`：`K-R48` 之后 `ccm` 就是 `cc-monitor-backend` 这个二进制
-#   （`argv[0]` 叫 `ccm` 就进一次性模式），而这两套的被测对象**正是这个二进制** ⇒ 名实相符，
-#   不为它另开一个前缀（另开 ⇒ `found_cells()` / `K-G4C` 收据那几条正则都要跟着分叉）。
-#
-# ★ **反空真锚**不是这个数，是每套自带的「量具自检」格：`session_added` 真的到了
-#   （`added_count == 1`）才判帧上有没有令牌；阴性组（不跑载荷前缀 / 没索要 / 形状不对）
-#   与正题组**同一形态**，只差被测的那一个变量 ⇒ 「帧根本没到」读不成「令牌不在」。
-#   端到端那套跑的是生产渲染链现产的那一行 `ccm …`（令牌由 ccm 放进进程环境）。
-#
-# 〔量于 2026-09-24，本工作树 `w2/t4`，本机非沙箱〕`backend-rbind-token` **11 PASS / 0 FAIL** ·
-#   `rbind-token-endtoend` **9 PASS / 0 FAIL**，两套连打两趟同值。
-#   ⚠ **不在 `ci.yml` 的计数地板里** —— 那一行是 T3/步 2 报备「待拍板」的另一件事，本拍不替它拍；
-#   `tests/frontend/shell/e2e_gate_registry_tests.rs` 的 `EXEMPT` 为此各登记了一条（理由写在那里）。
-# ⚠ 它**买不到**什么：两套都不经 ssh、不经 Windows、不开窗 ⇒ 「↗ 真的把那个窗口拉到前台」
-#   这一维仍是零格（/ §11 同一句）。
-run_e2e backend-rbind-token   11
-# 9 → 10：起会话只交一行 `ccm …` 之后，那一行由生产渲染链现产、令牌由 ccm 放进环境 ⇒ [0] 那一组换成三格（打头是 ccm · 带令牌 · 没有 export）。
-run_e2e rbind-token-endtoend  10
 # `backend-cc-bus`：DUP2 把拒码改成 `bad_id` 之后它红了 3 条、一整天没人看见 ——
 #   它只挂在 `ci.yml` 那条不通电的流水线上。接进本机执行链（isolated tmux socket ＋ jq，fail-closed）。
 #   〔量于 2026-09-26，本工作树 `w4/tail`〕**96 PASS / 0 FAIL**。
@@ -2338,12 +2308,12 @@ if [ "${#fails[@]}" -eq 0 ]; then
   #   `K-R80` 不在本脚本的执行链上，且它默认找的是重构前的 `scripts/gate.sh`（现打直接
   #   `FileNotFoundError`）。**两头坏叠在一起 ⇒ 假账在裁决行上挂了一天。**
   #   ⇒ 本拍把它接成真的一格（见下面 `run_gate gate-selfdesc`），不再靠人记得手跑。
-    # 🔴 （09-24）：**27 → 29**，加的是令牌那两套 e2e（`backend-rbind-token` ·
-  #   `rbind-token-endtoend`，见上面 `run_e2e` 那一段）—— 它们此前只被 shellcheck、不被执行。
+    # 🔴 （09-24）：**27 → 29**，加的是两套 e2e（它们此前只被 shellcheck、不被执行）。
   # **30 → 31**，加的是 `backend-cc-bus`（见上面 `run_e2e` 那一段）；
   #   **31 → 32**，加的是全景小程序自己的测试那一格。
   # **55 → 53**：代码全景整条摘掉，`panorama-engine` 与 `code-picture-core` 两格随被测的那两棵树一起删了。
-  echo "GATE: OK —— 53 格全绿（worktree-clean · hooks · copy2 · shellcheck · ci-e2e-prereq · release-gate · gate-selfdesc · ccbus-twophase · e2e-smoke · platform · installface · fmt · fmt-backend · winchk · winchk-backend · winlink · muslbuild · cargo · comm-boundary · test-tiers · deadcode · clippy · appbuild · generated · backend · clippy-backend · tsc · npm · coverage · audit · ccm-print-parity · ccm-rbind-title · ccm-cli · ccm-contract-parity · backend-rbind-token · rbind-token-endtoend · backend-cc-bus · backend-gate2 · local-backend · restart-frames · restart · backend-tmux-late-server · backend-sessions-rewatch · p3t-local-tmux · resume-frames · cc-spawn-uplift · inbound-frames · graylight-frames · backend-fork · tmux-target · cc-bus-queue-drain · resume · weak-net），可以出货"
+  # **53 → 50**：拉前终端改成点 ↗ 时现查（不再靠窗口标题与起会话时注的令牌）⇒ 标题与令牌那三套 e2e 随被测的东西一起删了。
+  echo "GATE: OK —— 50 格全绿（worktree-clean · hooks · copy2 · shellcheck · ci-e2e-prereq · release-gate · gate-selfdesc · ccbus-twophase · e2e-smoke · platform · installface · fmt · fmt-backend · winchk · winchk-backend · winlink · muslbuild · cargo · comm-boundary · test-tiers · deadcode · clippy · appbuild · generated · backend · clippy-backend · tsc · npm · coverage · audit · ccm-print-parity · ccm-cli · ccm-contract-parity · backend-cc-bus · backend-gate2 · local-backend · restart-frames · restart · backend-tmux-late-server · backend-sessions-rewatch · p3t-local-tmux · resume-frames · cc-spawn-uplift · inbound-frames · graylight-frames · backend-fork · tmux-target · cc-bus-queue-drain · resume · weak-net），可以出货"
   gate_print_blind
   exit 0
 fi

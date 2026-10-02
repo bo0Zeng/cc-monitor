@@ -154,8 +154,8 @@ describe("批量起：账号跟随同单个那条、每台只取一次清单", (
     });
     const out = await startMany([tab("x", "r1"), tab("y", "r1")], "window");
     expect(vi.mocked(openTerminal).mock.calls).toEqual([
-      ["r1", "ccm --resume x", null],
-      ["r1", "ccm --resume y", null],
+      ["r1", "ccm --resume x"],
+      ["r1", "ccm --resume y"],
     ]);
     expect(out).toEqual([
       { sid: "x", outcome: "done", why: "" },

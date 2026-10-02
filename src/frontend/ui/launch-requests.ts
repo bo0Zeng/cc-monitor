@@ -25,7 +25,6 @@ export function planResumeDirect(
     launcherOverride: launcher,
     ccmSid: undefined,
     modelOverride: mods.modelOverride,
-    rbindToken: mods.rbindToken,
   };
 }
 
@@ -45,7 +44,6 @@ export function planResumeTmux(
     launcherOverride: launcher,
     ccmSid: sid, // 自建 resume 会话打完整 sid，供精确找回那个会话
     modelOverride: mods.modelOverride,
-    rbindToken: mods.rbindToken,
   };
 }
 
@@ -64,7 +62,6 @@ export function planResumeIntoExistingTmux(
     launcherOverride: launcher,
     ccmSid: undefined, // 复用的会话建时已打过标，不重设
     modelOverride: mods.modelOverride,
-    rbindToken: mods.rbindToken,
   };
 }
 
@@ -83,7 +80,6 @@ export function planLauncher(
     launcherOverride: command,
     ccmSid: undefined,
     modelOverride: mods.modelOverride,
-    rbindToken: mods.rbindToken,
   };
 }
 

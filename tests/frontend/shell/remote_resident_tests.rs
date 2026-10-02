@@ -99,14 +99,11 @@ fn the_ensure_answer_names_a_non_unix_remote_as_unsupported_and_never_falls_back
 /// attach 行是远端 `listen::attach_flags` 读得懂的形状：钥匙 ＋ 这条连接的旗标。
 #[test]
 fn the_attach_line_carries_the_token_and_exactly_the_negotiated_flags() {
-    let l = attach_line("t0k", (false, true, true));
+    let l = attach_line("t0k", (false, true));
     assert!(l.ends_with('\n'));
     let v: serde_json::Value = serde_json::from_str(l.trim()).unwrap();
     assert_eq!(v["attach"], "t0k");
-    assert_eq!(
-        v["flags"],
-        serde_json::json!(["--tail-only", "--with-rbind-token"])
-    );
+    assert_eq!(v["flags"], serde_json::json!(["--tail-only"]));
 }
 
 /// T4 **停的结局只认三个词**（本机远端同一个读法）：`graceful` · `killed` · `not_running` 各落一格、pid 原样；

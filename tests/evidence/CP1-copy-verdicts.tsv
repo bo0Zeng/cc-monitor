@@ -13,11 +13,8 @@ src/backend/control/identity_tag.rs:192	会话身份标没打上（pid {pid} · 
 src/backend/control/identity_tag.rs:416	tmux set-option 退出码 {}：{}	保留	[不对外] Outcome::Failed 的载荷（带 tmux 原话），经 failure_note 只进后端 tracing 日志
 src/backend/control/launch.rs:432	agent 标没打上，这个会话在列表里认不出是哪个 agent	保留	[不对外] S5：次要动作没做成时那一行 tracing::warn! 的后果半句，只进后端日志
 src/backend/control/launch.rs:434	身份意图没写上：之后对这个会话的 kill / 送键可能被身份门拒（wrong_owner）	保留	[不对外] 同上，只进后端日志
-src/backend/control/launch.rs:437	窗口标题没设上：拉前终端按标题找窗口的那条退路失效（启动期令牌那条主路不受影响）	保留	[不对外] 同上，只进后端日志
 src/backend/control/launch.rs:443	打 agent 标	保留	[不对外] 同上（哪一步），只进后端日志
 src/backend/control/launch.rs:444	写身份意图	保留	[不对外] 同上（哪一步），只进后端日志
-src/backend/control/launch.rs:445	打开窗口标题	保留	[不对外] 同上（哪一步），只进后端日志
-src/backend/control/launch.rs:446	设窗口标题格式	保留	[不对外] 同上（哪一步），只进后端日志
 src/backend/control/launch.rs:466	会话 {session:?} 建好了，但{}没做成：{why} —— {}	保留	[不对外] S5：secondary_note 拼出的那一行，只经 tracing::warn! 进后端日志
 src/backend/files/mod.rs:344	定期重走（周期由调用方出节拍）＋ 浏览目录挂 inotify，一个 watch 一个目录	保留	[不对外] FRESHNESS 登记表的 how/gap 字段，生产段无读者（全仓只在声明处出现），是给判据与文档看的论证；若将来要上界面须整段重写（满纸 §2.2 与 markdown）
 src/backend/files/mod.rs:347	**不是实时**。要全文件系统监听就得 root：`man 2 fanotify_init` 一手逐字 —— \n              非特权不许 `FAN_MARK_MOUNT` / `FAN_MARK_FILESYSTEM`。\n              而 watch 上限本机现打 262144、home 下 640413 条目⇒ 全挂挂不住。\n              另：**冷缓存下走一遍要多久没量过**（`drop_caches` 要 root）。	保留	[不对外] FRESHNESS 登记表的 how/gap 字段，生产段无读者（全仓只在声明处出现），是给判据与文档看的论证；若将来要上界面须整段重写（满纸 §2.2 与 markdown）
@@ -82,8 +79,6 @@ src/comms/inward/chan.ts:77	对端答「不行」	保留	[不对外] 同上（`p
 src/comms/inward/chan.ts:79	本侧：{…}	保留	[不对外] 同上（`ours` 那一档的日志句）
 src/frontend/ui/remote-launch-run.ts:338	刻意不替你挑终端模拟器	保留	[不对外] 对后端错误串做 includes 的匹配锚点（那句话本身由后端产、另行裁）
 src/frontend/ui/settings/machine-status.ts:33	（本机）	保留	[不对外] LOCAL_MACHINE_KEY 是本机那一行的存储键（头注：刻意取一个用户填不出的名字防撞车），显示时 describeGap 等处换成「本机」
-src/frontend/shell/src/bind.rs:300	{RBIND_TOKEN_MARKER_PREFIX}<32hex 已隐去>	保留	[不对外] 日志里 marker 的脱敏形
-src/frontend/shell/src/bind.rs:304	{}{RBIND_TOKEN_MARKER_PREFIX}<已隐去>	保留	[不对外] 日志里窗口标题的脱敏形
 src/comms/inward/chan/router.rs:146	回 Welcome 写不出去：{e}	保留	[不对外] 只进日志（host.rs 的 tracing::warn），连接结束原因
 src/comms/inward/chan/router.rs:171	读出错：{e}	保留	[不对外] 只进日志（host.rs 的 tracing::warn），连接结束原因
 src/comms/inward/chan/router.rs:182	编号 {id} 还在飞，又来了一次	保留	[不对外] 只进日志（host.rs 的 tracing::warn），客户端违约
@@ -125,7 +120,6 @@ src/backend/lib.rs:1169	「把会话留在后台」今天是 `tmux detach`。同
 src/backend/lib.rs:1176	给 tmux 那个窗格定尺寸。没有 tmux 就没有这一格；V109 那一族将来不论选哪种机制，\n              「会话的终端多大」都是另一种形状，**不照搬这一条** ⇒ 这一条本身不跨过去；\n              那边的尺寸若要有，是**另一条**能力、另立一行〔PR1 分档：结构〕。	保留	[不对外] 设计登记表 TARGET_GAPS 的理由散文（字段已由 why 改名 rationale）：只给判据读，不上界面
 src/backend/lib.rs:1418	tmux 的窗格编号基数（`base-index`）。它是 tmux 自己的配置面，\n              Windows 上连对应概念都没有 ⇒ **不是推后，是这一条本身不该跨过去**（V109 那一族选哪种机制都一样）。	保留	[不对外] 设计登记表 TARGET_GAPS 的理由散文（字段已由 why 改名 rationale）：只给判据读，不上界面
 src/backend/lib.rs:1203	**硬链在 tmux 上，不是自己做不到**：`argv.rs` 两道闸串着 —— \n              `--bus-register` 要 `--detach`，而 `--detach` 要 `--tmux`。\n              真机现打（Win11）把两个 bus 脚本都种齐、排掉「脚本缺失」这个变量之后，\n              仍然 `EXIT=4 no_tmux` ⇒ **唯一闸门就是 tmux**。\n              ⇒ 等 V109 那一族选定机制（未定）时，「把会话登记到总线上」要重新回答一次，\n              **暂时不做**。	保留	[不对外] 设计登记表 TARGET_GAPS 的理由散文（字段已由 why 改名 rationale）：只给判据读，不上界面
-src/backend/lib.rs:1215	**直路语义已定，Windows 上仍欠在读侧。** \n              从前：`--ccm-sid` 只在容器（tmux）那条路上被消费（`Container.ccm_sid` → \n              `tmux set-option @ccm_sid_expect`），直路上被接受、零效果、不出声。\n              主会话裁：**不报错**（报错 ＝ 让它依赖 tmux，撞），直路语义走启动期令牌 \n              （`control/ccm/plan.rs::DirectIdentity`：有合格的 `CCM_RBIND_TOKEN` ⇒ 由它承载；\n              没有 ⇒ 说一句、照常起）。\n              🔴 **而令牌那条路的读侧在 Windows 上不通**：后端从 agent 进程的环境里读令牌 \n              （`identity_tag::rbind_token_of` → `platform::proc::proc_env_var`），非 Linux 恒 `Unreadable` \n              （`WN1.md §1` 件 E：要读对方 PEB，未做）⇒ 令牌注进去了也读不回来 ⇒ 这一格在 Windows 上仍是欠账。\n              **将来**：件 E（Windows 上读别的进程的环境）落地那一拍，这一行跟着删；件 E 随 V109 \n              「先不做 Windows 这一族」挂着，在那之前暂时不做。	保留	[不对外] 设计登记表 TARGET_GAPS 的理由散文（字段已由 why 改名 rationale）：只给判据读，不上界面
 src/backend/lib.rs:1263	把中转地址跨 tmux 会话传下去。载体没了这一条就没了；\n              将来 V109 那一族选定机制时要自己回答「地址怎么传给它起的会话」，**暂时不做**。	保留	[不对外] 设计登记表 TARGET_GAPS 的理由散文（字段已由 why 改名 rationale）：只给判据读，不上界面
 src/backend/lib.rs:1279	抓一屏今天就是起一次 `tmux capture-pane`（命令自己声明了 `no_tmux` 码）。\n              Windows 上没有 tmux ⇒ 平台默认做不到。将来 V109 那一族选定机制（未定）时给出\n              「看一眼会话画面」的等价物，**暂时不做**。	保留	[不对外] 设计登记表 TARGET_GAPS 的理由散文（字段已由 why 改名 rationale）：只给判据读，不上界面
 src/backend/lib.rs:1288	结束会话今天是起一次 `tmux kill-session`（命令自己声明了 `no_tmux` 码）。\n              Windows 上没有 tmux ⇒ 平台默认做不到。将来 V109 那一族选定机制（未定）时\n              一并管会话的生死，**暂时不做**。	保留	[不对外] 设计登记表 TARGET_GAPS 的理由散文（字段已由 why 改名 rationale）：只给判据读，不上界面
@@ -135,6 +129,7 @@ src/backend/lib.rs:1314	与帧面 `kill` 那一行是**同一条实现**（CLI �
 src/backend/lib.rs:1322	与帧面 `launch` 那一行是**同一条实现**（CLI 面经 `cli_control::spec_for` \n              派生到同一条登记）⇒ 同一个理由（V109），将来与帧面那一行同拍还，**暂时不做**。	保留	[不对外] 设计登记表 TARGET_GAPS 的理由散文（字段已由 why 改名 rationale）：只给判据读，不上界面
 src/backend/lib.rs:1242	改的是 **unix 权限位**（低 12 位），命令自己声明了 `no_unix_mode` 码。Windows 上没有这套位\n              （那边是 ACL ＋ 只读属性），`change_mode` 在那里回 `no_unix_mode`、一个字节不动。\n              ⇒ 这一条本身**不该跨过去**；Windows 那边若要「改访问权限」，是另一条能力、另立一行〔FW5 分档：结构〕。	保留	[不对外] 设计登记表 TARGET_GAPS 的理由散文（字段已由 why 改名 rationale）：只给判据读，不上界面
 src/backend/lib.rs:1251	与帧面 `files-chmod` 那一行是**同一条实现**（CLI 面经 `cli_control::spec_for` \n              派生到同一条登记）⇒ 同一个理由：unix 权限位这一条**不该跨过去**。	保留	[不对外] 设计登记表 TARGET_GAPS 的理由散文（字段已由 why 改名 rationale）：只给判据读，不上界面
+src/backend/lib.rs:1438	`--ccm-sid` 写的是 tmux 会话上的意图标（`@ccm_sid_expect`，kill / 送键的身份门据它确认事实）。\n              Windows 上没有 tmux ⇒ 没有可写的地方；直路上它不起作用，拉前终端也不靠它（点 ↗ 时现查连着的终端）。\n              等 V109 那一族选定机制（未定）时一并回答，**暂时不做**。	保留	[不对外] 设计登记表 TARGET_GAPS 的理由散文：只给判据读，不上界面
 src/backend/observe/search_query.rs:146	全文搜索：{n} 个会话文件读不动，这一趟没搜到它们（逐份原因见上面几行）	保留	[不对外] search_counting 扫完那一行总账，只经 tracing::warn! 进后端日志
 src/frontend/shell/src/frame_tally.rs:47	[{}] 跳过一帧认不出的（未知 kind / 坏帧），这条流上累计 {} 帧；这一帧开头：{}	保留	[不对外] 丢帧账：只经 tracing::warn! 进 monitor 日志
 src/frontend/shell/src/frame_tally.rs:60	[{}] 一行含非 UTF-8 字节（这条流上累计 {} 行）；这一行开头：{}	保留	[不对外] 同上

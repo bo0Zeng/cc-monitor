@@ -47,6 +47,8 @@ fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answer {
         }
         // 列这台的 tmux 会话：同 watcher 那一趟 `tmux ls`。出成品（`observe/tmux_list.rs`，解析从 monitor 搬来）。
         "tmux-list" => capped(crate::observe::tmux_list::answer()?),
+        // 此刻是哪个终端在显示这个会话（↗ 点那一刻问一次）：那台读那个进程 / 连着它的 tmux 客户端的环境。
+        "session-terminals" => crate::observe::session_terminals::answer_at(home, args),
         // cc-bus 钩子诊断出成品：这台自己的 `settings.json` ＋ stat（本机远端同一条，monitor 那两条 Tauri 命令删了）。
         "hooks-diag" => {
             let v = serde_json::to_value(crate::observe::cc_bus_hooks::answer()).map_err(|e| {

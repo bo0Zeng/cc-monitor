@@ -661,7 +661,7 @@ window.addEventListener("DOMContentLoaded", async () => {
       void resolvePendingLocalLaunches();
       // 本机骨架也在就绪点才到（与远端同一条路）⇒ 上次所在 tab 是本机会话时同样在这里补切。
       startup?.onAppeared(sessionId);
-      noteLive(LOCAL_ORIGIN, sessionId, { cwd: meta.cwd, rbindToken: meta.rbindToken }); // 起会话的真成功正信号
+      noteLive(LOCAL_ORIGIN, sessionId, { cwd: meta.cwd }); // 起会话的真成功正信号
     },
     // 启动重放（jsonl-batch）期间走 batch 模式（lazy hljs + BranchFolder.batchMode），
     // 结束时 flush。onChunk 已删 —— B 重构后 chunk 切边界对前端不可见。
@@ -683,7 +683,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     // Batch5-F18：远端会话宣告 → 骨架 Tab。附项目目录 / kind / name
     // ——骨架标题即时完整（bg → ⚙ ＋ 任务名；不再挂宿主排成树）；旧后端不给项目目录 ⇒ 标题退到 aiTitle / sid。
     onRemoteSessionAdded: (sessionId, origin, meta) => {
-      noteLive(origin, sessionId, { cwd: meta.cwd, rbindToken: meta.rbindToken }); // 起会话的真成功正信号
+      noteLive(origin, sessionId, { cwd: meta.cwd }); // 起会话的真成功正信号
       tabs.createSkeletonTab(
         sessionId,
         meta.projectDir || null,

@@ -32,9 +32,4 @@ cwd: string | null,
  * 会话的项目目录（会话起在哪个目录）：那台后端读记录开头给的。tab 标题 · 打开工作目录 · 分组只认这一格；
  * 老后端不带 ⇒ `null`，标题退到 aiTitle / sid。
  */
-project_dir: string | null, name: string | null, 
-/**
- * 启动期令牌：前端起新会话时铸的那一个，据它认出「我刚起的那条起来了」。
- * 那台后端读不到 / 没索要 ⇒ 缺席。
- */
-rbind_token?: string, };
+project_dir: string | null, name: string | null, };

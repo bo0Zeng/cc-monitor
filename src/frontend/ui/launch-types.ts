@@ -32,8 +32,6 @@ export interface LaunchModifiers {
   accountName?: string;
   /** 该账号配置的默认模型偏好（本机 `config.json`）。 */
   modelOverride?: string;
-  /** 启动期令牌（`[0-9a-f]{32}`）。不传 ⇒ 起 agent 进程的执行器在铸币口补一个；`attach` 不带。 */
-  rbindToken?: string;
 }
 
 /** 调用方已解析好的具体意图。 */
@@ -46,6 +44,4 @@ export interface LaunchContext {
   /** 身份标记：建出来的 tmux 会话打上这个 sid（只有 tmux 建会话 resume 那一形设）。 */
   ccmSid: string | undefined;
   modelOverride?: string;
-  /** 这次拉起的启动期令牌；`undefined` = 这次不带（`attach`）。 */
-  rbindToken?: string;
 }

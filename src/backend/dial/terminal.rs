@@ -14,16 +14,12 @@
 //! 拒（`refused`，说清哪一格）：命令空 / 超长 / 含控制符 / 含双引号（PowerShell 5.1 向原生程序传参对内嵌 `"` 有历史畸变，
 //! 那是**这条送法**的约束）· 用户名 / 地址 / 跳板用户 / 跳板地址出了白名单（它们是拼进命令体的裸词）。
 //! 只算不起：不拨号、不开窗（开窗是 monitor 的事，它只开窗）。
-//!
-//! 〔本地半〕**令牌握手前奏也在这里接**（原在 monitor `launch.rs`）：`terminal-ssh` 带 `rbindToken` ⇒
-//! 成品 = 前奏 ＋ 那一行；本机那一串走 `terminal-local`（同形：后端出成品，monitor 只开窗）。见 [`with_bind_prelude`]。
 
 use copy_core::copy_text;
 use serde_json::{json, Value};
 
 use crate::platform::shell::dialect::ps_literal;
 use crate::platform::shell::posix;
-use crate::platform::shell::powershell;
 
 /// 远端命令长度上限（防异常输入；正常 resume 命令 < 300 字节）。与 monitor 本机那条送法的上限同值。
 pub(crate) const MAX_COMMAND: usize = 4096;
@@ -138,53 +134,6 @@ pub(crate) fn render(req: &super::DialRequest) -> Result<String, CmdErr> {
     ))
 }
 
-/// 给一条要在新窗口里跑的 PowerShell 命令接上令牌握手前奏（本地半：窗口以 `ccm-rbind-token-<令牌>` 登记进 monitor 那张表）。
-///
-/// - `token = None` ⇒ **逐字节原样**（`attach` · 部署那几条不起 agent 进程的）。
-/// - 令牌形状不对 ⇒ `refused`（有没有数据目录都拒：铸币口与载荷渲染器各有一道同形闸，走到这里是编程错误）。
-/// - `data_dir = None`（推不出 monitor 数据目录）⇒ **不接前奏、照常开**：这一段只为 ↗ 服务，不许挡住用户的命令。
-pub(crate) fn with_bind_prelude(
-    command: String,
-    token: Option<&str>,
-    data_dir: Option<&std::path::Path>,
-) -> Result<String, CmdErr> {
-    let Some(tok) = token else {
-        return Ok(command);
-    };
-    let marker = shell_quote_core::rbind_token_marker(tok)
-        .ok_or_else(|| refused(copy_text("beTerminal.refuse.badToken", &[])))?;
-    let Some(dir) = data_dir else {
-        tracing::warn!("terminal: 推不出 monitor 数据目录 —— 这次开终端不接令牌握手前奏");
-        return Ok(command);
-    };
-    let await_dir = dir.join(shell_quote_core::AWAIT_SUBDIR);
-    Ok(format!(
-        "{}{command}",
-        powershell::rbind_bind_prelude(&marker, &await_dir.to_string_lossy())
-    ))
-}
-
-/// 这台机器上 monitor 的数据目录（规则唯一一份在 `creds_core`：`CCM_DATA_DIR` 优先，其次 `<家目录>/.cc-monitor`）。
-fn monitor_data_dir() -> Option<std::path::PathBuf> {
-    use creds_core::store::{monitor_data_dir, DATA_DIR_ENV};
-    monitor_data_dir(
-        std::env::var(DATA_DIR_ENV).ok().as_deref(),
-        crate::platform::paths::home_dir(),
-    )
-}
-
-/// 入参里可空的 `rbindToken`：缺席 / `null` ⇒ 没令牌；是串 ⇒ 那个串（形状由 [`with_bind_prelude`] 判）；别的 ⇒ `invalid_args`。
-fn token_arg(args: &Value) -> Result<Option<&str>, CmdErr> {
-    match args.get("rbindToken") {
-        None | Some(Value::Null) => Ok(None),
-        Some(Value::String(t)) => Ok(Some(t.as_str())),
-        Some(_) => Err((
-            "invalid_args",
-            crate::common::contract::malformed("`rbindToken` is neither a string nor null"),
-        )),
-    }
-}
-
 fn command_arg(args: &Value) -> Result<&str, CmdErr> {
     args.get("command").and_then(Value::as_str).ok_or_else(|| {
         (
@@ -236,13 +185,11 @@ pub(crate) fn command_for_cwd(cwd: &Value) -> Result<String, CmdErr> {
     }
 }
 
-/// 帧命令 `terminal-ssh`：`{machine, saved?, jump?, prefer?, command | cwd, rbindToken?}` ⇒ `{command: "<前奏？＋那一行 PowerShell>"}`。
+/// 帧命令 `terminal-ssh`：`{machine, saved?, jump?, prefer?, command | cwd}` ⇒ `{command: "<那一行 PowerShell>"}`。
 /// `command`（主界面交成品命令）与 `cwd`（文件窗口「在此打开终端」只交意图，命令由 [`command_for_cwd`] 拼）**恰好给一个**。
 pub(crate) fn answer(args: &Value) -> Result<Value, CmdErr> {
-    let token = token_arg(args)?;
     let req = super::machine::resolve(&dial_args(args)?)?;
-    let line = with_bind_prelude(render(&req)?, token, monitor_data_dir().as_deref())?;
-    Ok(json!({ "command": line }))
+    Ok(json!({ "command": render(&req)? }))
 }
 
 /// `command` 与 `cwd` 恰好给一个；给的是 `cwd` ⇒ 由 [`command_for_cwd`] 拼好放进 `command`（拨号请求只认 `command`）。
@@ -263,20 +210,6 @@ fn dial_args(args: &Value) -> Result<Value, CmdErr> {
         }
         _ => command_arg(args).map(|_| args.clone()),
     }
-}
-
-/// 帧命令 `terminal-local`：`{command, rbindToken?}` ⇒ `{command: "<前奏？＋原串>"}`。本机那一串是后端渲好的成品，这里不判、不拼，只接前奏。
-pub(crate) fn answer_local(args: &Value) -> Result<Value, CmdErr> {
-    let command = command_arg(args)?;
-    if command.is_empty() {
-        return Err((
-            "invalid_args",
-            crate::common::contract::malformed("`command` is empty"),
-        ));
-    }
-    let token = token_arg(args)?;
-    let line = with_bind_prelude(command.to_string(), token, monitor_data_dir().as_deref())?;
-    Ok(json!({ "command": line }))
 }
 
 #[cfg(test)]

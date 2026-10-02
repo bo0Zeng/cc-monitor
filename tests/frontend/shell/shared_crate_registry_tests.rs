@@ -591,7 +591,7 @@ const STEPS: &[(&str, Local, &str)] = &[
     ("shellcheck (errors only)", Gate(&["shellcheck"]), "人群与地板都从 `ci.yml` 那一步现读"),
     ("python syntax compile", Gate(&["e2e-smoke"]), "照 `ci.yml` 原样跑"),
     // 标题里那个数 19 → 20（接回 p3t-local-tmux）。
-    ("G-A/G-C 覆盖面地板（20 套真机套件都必须带断言数地板）", Gate(&["e2e-smoke"]), "照 `ci.yml` 原样跑"),
+    ("G-A/G-C 覆盖面地板（19 套真机套件都必须带断言数地板）", Gate(&["e2e-smoke"]), "照 `ci.yml` 原样跑"),
     ("exec-bit guard (src/shared/** shebang files must be 100755 in git)", Gate(&["e2e-smoke"]), "照 `ci.yml` 原样跑"),
     (
         "release.yml 发版守卫（KR114D1 ＋ KR124D2）",
@@ -648,8 +648,6 @@ const LOCAL_ONLY_CELLS: &[(&str, &str)] = &[
     ("comm-boundary", "通信层那一族的三方对拍（条数同时算在 `cargo` 里）；`ci.yml` 只有 workspace test 的合计"),
     ("test-tiers", "测试层分级那一族的三方对拍；同 comm-boundary"),
     ("deadcode", "monitor 非 test 构建里 `never used` 的恒等棘轮；`ci.yml` 的 clippy 跑 `--all-targets`，量的不是同一个数"),
-    ("backend-rbind-token", "`ci.yml` 没有它的地板行（`e2e_gate_registry` 的 `EXEMPT` 登记着为什么）"),
-    ("rbind-token-endtoend", "同 backend-rbind-token"),
 ];
 
 /// `ci.yml` 带 `assert-pass-floor.sh` 地板、而本地门禁**确实跑不了**的 e2e 套：`(套件名, 结构性理由)`。
@@ -992,8 +990,7 @@ fn every_test_script_is_either_run_by_ci_or_registered_as_manual() {
         // ① `assert-pass-floor.sh <后缀>`；② CI 直接 `bash tests/e2e/xxx.sh`（`exec-bits` 就是这样）。
         // ③ 本机门禁 `tests/scripts/gate.sh` 的 `run_e2e <后缀> `（`find_pinned`：恰好一处）。
         //   那是每趟出货都跑的闸 —— 登记成「手测」会是假话（`MANUAL` 的语义是「没有自动触发器」，
-        //   本文件下面那段第三档的头注逐字同一条理由）。令牌那两套（`backend-rbind-token` ·
-        //   `rbind-token-endtoend`）走的就是这一条：`ci.yml` 的计数地板那一行待拍板，本机门禁先接上。
+        //   本文件下面那段第三档的头注逐字同一条理由）。
         if let Some(suffix) = name.strip_prefix("test:") {
             if ci.contains(&format!("assert-pass-floor.sh {suffix} ")) {
                 return true;
@@ -1662,7 +1659,6 @@ fn dormant_e2e_suites_keep_their_assertions() {
     /// 静态计数不是那个量的代理的套件 —— `(脚本名, 助手, 当日静态数, CI 地板)`。
     const NO_STATIC_SIGNAL: &[(&str, &str, usize, usize)] = &[
         ("cc-spawn-uplift.sh", "-", 0, 51),
-        ("ccm-rbind-title.sh", "ok", 0, 8),
         ("backend-gate2-acceptance.sh", "ok", 3, 36),
         ("graylight-backend-frames.sh", "ok", 9, 12),
         ("inbound-backend-frames.sh", "ok", 12, 32),

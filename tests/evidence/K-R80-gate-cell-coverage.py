@@ -691,17 +691,12 @@ cell(
 )
 
 E2E_NOTE = ("`gate.sh` 里 `run_e2e` 那一批之一：`ci.yml` 里每一套带 `assert-pass-floor.sh` 地板的 e2e 都在这里"
-            "（两向由 `shared_crate_registry` 那条映射判据钉着），另加 `ci.yml` 没有地板行的令牌两套。"
+            "（两向由 `shared_crate_registry` 那条映射判据钉着）。"
             "⚠ `package.json` 里不带地板的那几套（`graylight` · `f40` 全链级）不在这道门里，理由登记在 `e2e_gate_registry` 的 `EXEMPT`")
 for suite, anchor in [
     ("ccm tests/e2e/ccm-print-parity", "run_e2e ccm-print-parity 12"),
-    ("ccm tests/e2e/ccm-rbind-title", "run_e2e ccm-rbind-title  8"),
     ("ccm tests/e2e/ccm-cli", "run_e2e ccm-cli               70"),
     ("ccm tests/e2e/ccm-contract-parity", "run_e2e ccm-contract-parity   45"),
-    # 令牌那两套—— 此前只被 shellcheck、不被执行。
-    #   被测对象同是那个后端二进制（`ccm` 即 `cc-monitor-backend`），读法与上面四格一字不差。
-    ("ccm tests/e2e/backend-rbind-token", "run_e2e backend-rbind-token   11"),
-    ("ccm tests/e2e/rbind-token-endtoend", "run_e2e rbind-token-endtoend  10"),
     # 后端的 cc-bus 基础命令（真跑 cc-bus 脚本 ＋ 隔离 tmux socket）—— 此前只挂在不通电的 `ci.yml` 上。
     ("ccm tests/e2e/backend-cc-bus", "run_e2e backend-cc-bus        97"),
     # 同样只挂在不通电的 `ci.yml` 上、各红了几天没人看见的那四套（gate2 · 本机后端监护 · 换号两套）。
@@ -1506,12 +1501,7 @@ invoke("winlink", NOWHERE,
        "`ci.yml` 的 Windows 那个 job（`rust`，`windows-latest`）只跑 clippy 与 `cargo test`（链的是测试二进制，"
        "不链 `cc-monitor.exe`）；真产 exe 的是 `release.yml`（`-msvc` 原生，不在 CI 上）⇒ "
        "「`-gnu` 上两个二进制链得起来」这一维云端零覆盖，只有本机这一格")
-for _s in ("backend-rbind-token", "rbind-token-endtoend"):
-    invoke("ccm tests/e2e/" + _s, NOWHERE,
-           "`ci.yml` 里这一套**只在 shellcheck 人群里**，没有 `assert-pass-floor.sh` 调用行 —— "
-           "`ci.yml` 步 2 / 步 3 那两段注释逐字「也没有加 `assert-pass-floor` 那一行 …… 待拍板」。"
-           "⇒ 云端这一格零覆盖。本格只把它接进**本机**执行链，不替那件待拍板的事拍板")
-for _s in ("ccm-print-parity", "ccm-rbind-title", "ccm-cli", "ccm-contract-parity", "backend-cc-bus",
+for _s in ("ccm-print-parity", "ccm-cli", "ccm-contract-parity", "backend-cc-bus",
            "backend-gate2", "local-backend", "restart-frames", "restart",
            "backend-tmux-late-server", "backend-sessions-rewatch", "p3t-local-tmux", "resume-frames",
            "cc-spawn-uplift", "inbound-frames", "graylight-frames", "backend-fork", "tmux-target",

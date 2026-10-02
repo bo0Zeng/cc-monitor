@@ -1478,8 +1478,7 @@ fn decode_line(buf: Vec<u8>) -> (String, bool) {
 /// - `--with-bg`：bg 会话也宣告、也发行 —— 本机会话内容从这条流来之后，少了它 bg 会话的内容就静默没了
 ///   （monitor 的 `showBgSessions` 缺省是开的）。显示与否在 monitor 那一侧按 `session_kind` 定。
 ///
-/// - `--with-rbind-token`：索要给 ↗ 绑窗口的材料 —— `session_added` 带上 `pid`（与令牌同一道闸，
-///   `wire::Frame::SessionAdded::pid`）。本机判活改由本机后端的帧来之后，monitor 不再自己读 pidfile，
+/// - `--with-pid`：`session_added` 带上 `pid`（`wire::Frame::SessionAdded::pid`）。本机判活改由本机后端的帧来之后，monitor 不再自己读 pidfile，
 ///   本机 ↗ 按 pid 找父 PowerShell 绑窗口（`bind::SidHwndCache::record`）只能从这一格拿 pid。
 ///
 /// 几个字面量都必须是后端 `lib.rs::STREAM_FLAGS` 的成员（后端据它剥旗标；不认的会被当成一次性查询跑完就退）——
@@ -1491,7 +1490,7 @@ pub(crate) const LOCAL_STREAM_ARGS: &[&str] = &[
     STREAM_WORD,
     "--tail-only",
     "--with-bg",
-    "--with-rbind-token",
+    "--with-pid",
 ];
 
 /// 「我是流模式后端」的显式词（后端 `lib.rs::STREAM_FLAG_EXPLICIT`，由判据对拍后端源码）。

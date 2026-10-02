@@ -394,7 +394,7 @@ monitor 记进一张 sid 表，用它 ① 拦掉 `↗` 并给出正确说法 ②
 | `--stream` | | **「我是流模式后端」的显式词**，不对应能力、不改行为。后端二进制就叫 `ccm`（`~/.cc-monitor/bin/ccm`）时零参数是「起会话」⇒ 起流一律写成 `ccm -- --stream …`（打头的 `--` 紧跟查询子命令 / 流模式 flag 才进后端，其余进 ccm：`<交给 claude 的…> -- <ccm 自己的…>`） |
 | `--with-bg` | p1e (F24) | 放行 kind:"bg" 后台任务会话（宣告+流行，帧带元信息） |
 | `--tail-only` | p1f (F25) | 不重放历史：连接时各文件 seq 计数器初始化为当前完整行数（seq=行号），只尾随新行；历史由 monitor 旁路 `--read-session` 快照拉取 |
-| `--with-rbind-token` | | **索要启动期令牌**：`session_added` 帧附 `rbind_token`（见下面帧表那一格）；同一道闸也带 `pid`（给 ↗ 绑窗口的另一半材料）。**默认关**，因为令牌是敏感数据——没发这条 flag 的客户端收到的 `session_added` 字节与本字段加进来之前**一字不差**。能力 token 是 `rbind-token`；老后端不声明它 ⇒ monitor **不发**这条 flag、**诚实降级**回今天的 `@ccm_sid` 标题路，不许假装有 |
+| `--with-pid` | | `session_added` 帧附 `pid`（本机 ↗ 按它找父 PowerShell 绑窗口）。只有本机那条流发它（本机后端与 monitor 同一份构建），不对应能力 token；**默认关** ⇒ 没发这条 flag 的客户端收到的 `session_added` 字节与本字段加进来之前**一字不差** |
 
 线约束：**每行恰好一个 UTF-8 JSON 对象，`\n` 结尾，对象内无裸 `\n`/`\r`**（`serde_json` 紧凑输出把内部换行转义成 `\n` 两字符）。帧用外部 `kind` tag（snake_case）：
 
@@ -402,7 +402,7 @@ monitor 记进一张 sid 表，用它 ① 拦掉 `↗` 并给出正确说法 ②
 |---|---|---|
 | `hello` | `v, build_id, host_arch, claude_dir, capabilities, homes?, emits?, commands?, unavailable?, host_env?, uncancellable?`<br>⚠ **本表的列举顺序不是线上字节序**。线上按 `wire.rs` 声明序：`v, build_id, host_arch, claude_dir, homes, capabilities, emits, commands, unavailable, host_env, uncancellable`。`dg3_codex_fields_serialize_when_present` 用**精确字节串**钉住它（aterm 拿来做 fixture 真值）—— 要对字节就以 `wire.rs` 为准。⚠ 那个测试名里的 `codex_fields` 是历史名：`S4` 把它钉的两个字段换成了 `homes`，**名字刻意没改**（本文档与仓外 aterm 都按这个名字引用它当 fixture 真值） | 连接建立时**首帧**发一次（握手）。**三轴正交（§26/§28）**：`v`（proto 版本，只留破坏性变更、F66 **绝不 bump**，不符=不兼容）；`build_id`（**身份**，单源自后端源码/编译期 env，管 staleness/重部署提示，不符=偏旧、经 `remote-health` 提示但不 hard-disconnect）；**`capabilities`（能力 token 集，加法式）——monitor 按声明发流模式 flag**（F66/#58③，`decide_stream_flags`；缺该字段=空集=最保守、不发任何 flag，§27）。**绝不用身份（build_id）匹配代理能力声明**（那正是 2026-07-09 事故根因）。**backend-split `S4`（additive）`homes`**：本机上**各 agent 的 home 目录**表 —— `[{agent_kind, path}]`，如 `[{"agent_kind":"claude","path":"/home/u/.claude"},{"agent_kind":"codex","path":"/home/u/.codex"}]`。它一次替掉了 DG3 那两个字段：`codex_dir`（并列的 `<名>_dir`）与 `kinds`（服务的 agent 集 —— 现在由本表的 `agent_kind` 直接读出，不必并列第二个来源）。**为什么换**：`backend-split` 的 `D3` 逐字裁定「agent 维度只许出现在**值**里（`agent_kind`），不许出现在**字段名**里」——并列 `<名>_dir` 那条路的终点是 hello 里五个并列的目录字段，而客户端要靠 `if/else` 猜哪个有值。⇒ 接第三个 agent 是**多一个元素**，不是多一个字段。**为什么可以直接换而不是 bump**：`codex_dir`/`kinds` **从来没上过线**（后端一直硬写 `None`/空 ⇒ `skip_serializing_if` 省略），换掉对任何已部署的消费方都是零影响。**消费侧口径**：空/缺 = 这台后端没声明任何 home ⇒ **回退 `claude_dir`**（monitor 的 `claude_home_from_hello` 就是这条，`parses_hello_homes_and_falls_back_to_claude_dir` 钉住）；坏项（元素非对象 / 缺 `agent_kind` 或 `path` / 类型不对）**逐项丢掉**，不让整帧变 garbage。**今天恒空**——`main.rs` 硬写 `Vec::new()`（`production_hello_leaves_homes_empty_so_claude_bytes_stay_frozen` 钉住）⇒ **hello 帧对 Claude 的线上字节与 `S4` 之前逐字节相同**。⚠ **`backend-split S5`（08-14）订正了"为什么恒空"**：不再是"发现做不出来"——后端已经**有能力**答出本机看得见哪些 agent（`agents::visible_homes()`，判准 = **该 agent 的 home 目录存在**；`the_backend_can_already_discover_homes_it_just_does_not_send_them` 钉住这半），**恒空是一次刻意的排期决定**：填 = 一次跨仓契约变更（aterm 的 fixture 按精确字节对），⇒ 留成一次**纯发布决策**。真填那天要**同轮**做三件事：① 改 `main.rs` 那一行；② 更新 `dg3_codex_fields_skipped_when_absent_claude_byte_equivalent` 的期望串；③ **bump `BUILD_ID`**（那天线上字节真的变了，已部署的远端得被判 stale 重装）。⚠ 与"会话级发现"（DG1：有哪些会话、活没活）**别混**：那一格仍未接线。**`claude_dir` 为什么留着**：它是 hello 里**今天真在线上、且有仓外消费方**（aterm，契约冻结 2026-07-18）的那个目录字段，改名是破坏性变更 ⇒ 走 additive 迁移，原地冻结；解锁条件（monitor 与 aterm 都改读 `homes`）登记在后端的 `agent_boundary_guard::FROZEN_COMPAT`，monitor 那半已经做完。**backend-08（additive）`emits`**：本后端 **需要消费侧门控的帧 kind 集**（snake_case）——含该 kind → 依赖它；不含 → 回退 β/watchdog。⚠**这里原本写的是「会发射的帧 kind 集」，那与它的值对不上**：`EMITS` 8 项**不含** `hello`/`reply`/`cancelled`，而这三个后端 **确实会发**。按字面读它是错的；按意图读它是「门控用」帧集 —— 握手与应答不需要门控（`hello` 是首帧、必然收到；`reply`/`cancelled` 只在你发过命令之后才来，由 `commands` 那一轴管）。**这三个缺席者今天由 `emits_is_a_subset_of_frame_kinds_with_named_exemptions` 逐个点名钉住**，新增帧种漏进 `EMITS` 会红。⚠ `emits` 与 `capabilities` **正交、别混**：`capabilities` 是**流 flag 的可剥离能力**（受 §26 死循环护栏 + `every_capability_token_is_strippable` 强制每 token 有对应 flag），`emits` 是**纯发射声明、无对应 flag、不受 §26**。**U6b-2（additive）`commands`**：本后端 **接受的入方向命令集**（见下「入方向」小节）。能力协商此前只有出方向那一半（`capabilities` 说「我认识哪些流 flag」）；客户端还得知道**发什么过去有人接**，否则只能试错。**空/缺 = 这个后端不读 stdin**（U6b-1 之前的所有版本），别发命令。**`K-P4`（09-04，additive）`unavailable`**：本后端 **接得下、但在这台机器上做不到**的命令及原因 —— `[{command, code}]`，如 `[{"command":"kill","code":"no_tmux"}]`。**它买的是「事前」那一半**：`commands` 说的是「我**接**这条命令」，不是「我**做得到**这件事」；差额今天只有**调用之后**才知道（Windows 上没有 tmux，握手帧照样宣称接 `kill`/`launch`，前端照样画按钮，点了才收到 `no_tmux`）。用户 09-04 逐字裁「**事前协商是要的**」。**为什么是第四条面而不是塞进前三条**：`capabilities` 受 §26 死循环护栏 + `every_capability_token_is_strippable` 约束（每个 token 必须有一条能被 `split_stream_flags` 剥掉的流 flag，而「做得到 kill」没有），且它的默认方向相反（缺=最小能力集，往下降级安全；本字段缺=**没有把握**，往下降级会让能用的功能消失）；`emits` 的取值空间是**帧 kind**；`commands` 的取值空间是**命令名**，而且把做不到的从里面摘掉是错的（客户端 `accepts()` 会直接拒发，连「点了告诉你为什么」这条兜底路都没了，`COMMANDS`/`REGISTRY` 双向相等那条判据也要被迫按平台分叉）。⇒ 本字段的键是 **(命令名 × 命令级 code)** 这个**对**，前三条面没有一条是这个形状。**消费侧口径三句，缺一句就会读错**：① **空/缺 = 这台后端没有任何「做不到」的把握**，不是「全都做得到」—— 客户端照今天的样子办（照发、点了看 code），旧后端天然落这一格；② 列出来的那条 = 别画那个按钮（或画成灰的，配 `code` 那句人话 —— 那张翻译表今天住界面 `src/frontend/ui/tmux-control.ts`（文案表 `tmuxControl.*`），此前是 monitor 的三个发送端各一份）；③ 🔴 **它是提示，不是闸门**：后端自己**绝不**拿这张表拒命令（读数是握手那一刻的，之后世界会变；真去拒 = 把一份会过期的读数变成一次真停机），客户端硬发照样走真路，成不成由 `no_tmux` 那条老路回答。**判准与真调用同源**：`tmux` 在不在 `PATH` 上（`control/kill.rs` 等三处走 `Command::new("tmux")`，unix 上就是 `execvp` 的 `PATH` 查找）；表本身**从 `inbound::REGISTRY` 的 `codes` 派生**（谁登记了 `no_tmux` 谁就依赖 tmux），不是手写的第二份真相。**「判不出来」不倒向「做不到」**：`PATH` 没设、或**非 unix**（那儿 `CreateProcess` 还看进程自身目录与当前目录，且真装了叫 `tmux.exe`）⇒ **不列进表**，退回今天的行为 —— 把「不知道」压成「做不到」会让能用的功能从界面上消失，而那种消失没有回音。（〔K-P4 下一拍〕Windows 那一档已改成平台默认「确证没有」，不再落「判不出来」。）**已真填**：`main.rs` 填 `unavailable_here()`（`production_hello_fills_unavailable_from_this_machine` 钉住），两维 —— tmux（上文判准）· unix 权限位（非 unix ⇒ `files-chmod` 列 `no_unix_mode`）。有 tmux 的 unix 机器上表为空 ⇒ 字节不变；没 tmux / Windows 上字节变了 ⇒ 该拍 bump `BUILD_ID`。仓外 aterm 只读核过：它的 `parseHello` 按通用 map 解、**不读本字段**、未知字段忽略 ⇒ 不受影响。monitor 读它：进那台机器的 `chan::wire::Offer`（能力事实的一个家），调用侧据此**事前拒**（`inbound_client::CallError::Unavailable`，body 里的 code 与事后回的同一个），界面据此置灰（主会话 09-27 裁，改了上面口径③的「客户端硬发」）。<br>★ **`uncancellable`**：`commands` 里**撤不动**的那几条（阻塞档，`cancel` 命中回 `not_cancellable`），从 `inbound::REGISTRY` 的 `Run::Blocking` 派生（`inbound::uncancellable`）；空表省略，落在最末（`wire_tests::net2_uncancellable_is_additive_and_last`）。客户端本地撤单时据此说「那台停不了它、可能还在跑」、不为它补发撤单；空/缺 = 没把握（旧后端），照旧补发、看回话。<br>★ **〔additive〕`host_env`**：起这个后端的宿主交给它的那几格环境，**原样回显**（`{名: 值}`，名单 `wire::HOST_ECHO_ENVS` 三格：`CCM_RELAY_PORT` · `CCM_APIKEY_CREDENTIALS` · `CCM_HISTORY_METADATA`；监听口 token **永不**在内）。它回答「这个后端替哪个数据目录干活」：本机常驻后端按 Claude 家目录分口、不按数据目录分 ⇒ `CCM_DATA_DIR` 隔离跑的 monitor 读完 hello 拿这一格与自己要交的那份两向比，不等就拒、出声（`local_backend_host.rs::hello_verdict`），不接一个会把写落进别的数据目录的后端。**一格都没被交 ⇒ 省略** ⇒ 远端 / 被 ssh exec 起的 / aterm 连的那些 hello 线上字节**逐字节不变**（`wire_tests::hx2_production_hello_bytes_do_not_change_when_nothing_was_handed`）。 |
 | `line` | `session_id, path, seq, message?, cwd?, byte_offset, rid?` | tail 到的一行 jsonl 的**成品**（`message` ＝ 它在渲染模型里的样子，缺 ＝ 不进界面、照占号；`cwd` ＝ 这条记录自己的；原先这一格是原文 `raw`、由 monitor 解析）（`seq` = per-file 单调，口径同本地 watcher）。**`byte_offset`**：该行**末尾**的字节偏移，语义**逐字节对齐 aterm `LineFramer.endOffset`**——计 CRLF 的 `\r`、含 `\n`、残行不计；resume 到 N ⇒ `tail -c +(N+1)`。给 offset 续拉 / 截断检测用（**`seq` 是 per-stream 序数、不是 resume 键**，别拿它续）。**只 `line` 帧带**——`turn_end` 明确不带（`backend-09` 钉住）。**`rid`**：这一行的对账键（适配层 `RecordFace::response_id` 给，同一次上游应答写出的几行共用；`tap` 帧的归一事件 `start` 带同一个值）；没有 ⇒ 省略。只有主运行的记录走 `line`：子运行的记录进运行簿、经 `session_runs` 与 `history-run` 给出 |
-| `session_added` | `sid`, `session_kind?`, `cwd?`, `project_dir?`, `name?`, `path?`, `lines?`, `status?`, `waiting_for?`, `agent_kind?`, `liveness_confidence?`, `attachable?`, `rbind_token?`, `container?`, `pid?` | 远端新会话文件出现（Batch5-F18 起 ssh_source 收到即同步透传前端 `remote-session-added {session_id, origin, kind, cwd, name}` 事件建骨架 Tab，先于该会话的任何行）。Batch7-F24（p1e）：附加 pidfile 元信息——wire 帧字段叫 `session_kind`（避开帧 tag `kind`），bridge 事件 payload 统一叫 `kind`（与本地 `list_active_sessions`〔散文墓碑〕/`session-started` 一致）；**additive 兼容**：None 不序列化（旧行为字节不变）、旧 monitor 忽略未知字段、旧后端缺字段前端视为交互。后端默认不宣告 bg（F21）；monitor 仅对 hello **声明了 `bg` 能力**的后端且 `showBgSessions` 开（默认）时传 `--with-bg`（F66/#58③；旧后端不声明该能力→不传，且它会把未知参数当一次性查询→无 hello，护栏「声明 ⟹ 会剥离该 flag」保成立）。本地对称通道：`session-started` payload 扩为 `{session_id, cwd, kind, name}`——前端无 Tab 则建骨架（中途出现的本地 bg 会话由此获得 ⚙ 标识；树状归属已删，bg 会话与普通 tab 平铺）。**Batch8-F25/26（p1f）**：帧再附 `path`（远端 jsonl 绝对路径）；monitor 见后端声明 `tail-only` 能力后 exec 追加 `--tail-only`（Batch9 起快照换 `--read-session-tail` 尾部优先，见查询表）——后端不再重放历史（连接时把各文件 seq 计数器初始化为当前完整行数 L，之后新行 seq=行号），历史由 monitor 按 path 经**独立连接**跑 `--read-session` 旁路快照拉回（0..L'-1 行号编 seq、并发 ≤2、F19 priority 先拉、完就断、失败重试 1 次后 remote-health 提示）；两路 seq 同处行号空间，重叠区被 (sid,seq) 去重精确吸收。旧后端不声明能力 → 不传 flag → 全量推流（=2.18.0）；session_added 无 path（会话尚无 jsonl）→ 不拉快照，后续行从 tail 全量到达。**DG3（#2D，additive）`agent_kind`**：本会话属哪个 agent——`"codex"`；Claude 会话**省略** ⇒ **缺 = claude**。**DG3 `liveness_confidence`**：判活置信度——`"heuristic"`（Codex 无 pidfile，靠 mtime/proc 启发）；Claude 走 pidfile 权威故**省略** ⇒ **缺 = authoritative**。两者都是「缺字段有确定含义」，消费侧别把缺当未知。⚠ **今天的消费方是仓外 aterm，不是 cc-monitor** —— monitor 的 `ssh_source::parse_frame` 把这两个字段（以及 `emits`）**整个丢掉**（`byte_offset` 例外：monitor 读它，续点记第 `next` 行从哪个字节起，`snapshot_resume` 头注）。缺省值碰巧等于丢弃行为，不等于 monitor 实现了默认值：真发 `agent_kind:"codex"` monitor 一样当 claude。（后端今天也还没产出它们 —— DG1 未接线，`homes`/`agent_kind`/`liveness_confidence` 硬写空/None。）⚠ `S4` 起 **`hello.homes` 是个例外：monitor 真的解析它了**（`claude_home_from_hello`，优先 `homes`、回退 `claude_dir`）——别把它算进"整个丢掉"那一族。<br>★★ **〔，09-22，additive〕`rbind_token`：**这条会话的**启动期令牌**（环境变量 `CCM_RBIND_TOKEN`，形状 `[0-9a-f]{32}`）。**它是干什么的**：「↗ 拉前终端」需要的全部东西是一个映射 `(sid) → (本地 HWND)`，而今天那个映射靠 tmux 会话级 option `@ccm_sid` ＋ `set-titles-string` 合成的窗口标题，**跳五次、无回执**。的判断逐字：「tmux 不是在做**发现身份**，是在做**把身份广播到本地**」—— 而广播这件事本协议就是一条正经的、有分帧的、双向的通道。⇒ 起会话的那一方注一个随机令牌，**本地**用它绑 HWND，**远端**后端从 `/proc/<pid>/environ` 读出来经本字段报回，↗ 做一次 join。读侧住 `control::identity_tag::rbind_token_of`（那份头注是这条路的论证正文）。<br>**消费侧口径三句，缺一句就会读错**：① **缺席 ≠ 「这台后端不报令牌」**。这两件事由**握手**分开：hello 的 `capabilities` 含 `rbind-token` ⇒ 这台后端报得出；不含（老后端）⇒ **诚实降级**回今天的标题路，**不能假装有**。② 声明了能力、客户端也发了 `--with-rbind-token`，而本字段仍然缺席 ⇒ 「**这条会话真的没有令牌**」= 它不是 monitor 起的（用户自己裸 `ssh` 进去敲 `claude` 那一档，`§8.6 ①`）。这一句就是 `§8.5 ②` 要的那个布尔 —— 归因从「四档猜」收成一句准确的话，**不需要往远端打 RPC 去猜**。③ 🔴 **它不承载任何权限语义**（`§8.6 ③` 逐字）：只是一个不可猜的关联 id。拿到它顶多能让某人的 ↗ 拉错窗口，**不能越权**。别拿它当鉴权材料。<br>**读得不陈旧的理由**：那个值属于**这个进程自己**（起它时注进环境、`exec` 原样继承）—— 与 `identity_tag` 拿 `TMUX_PANE` 那条是同一条自指性质。**零新节拍**：读它的那一刻就是 `sessions/` inotify 看到 `<PID>.json` 的那一刻（pid 与 sid 同时在手），没有新循环、新通道、新平台原语。<br>**形状 fail closed**：不 `trim`、不认大写、长度必须恰好 32 —— 任何偏离一律当**没有**（而不是当「大概是它」）：`§8.5 ②` 那个布尔只有在「有 = 形状确定对」时才说得准。<br>〔令牌步 3〕**已到 monitor**：步 1（启动命令注这个变量）与步 3（铸币口 ＋ 本地半认这个 marker）已落，monitor 协商到 `rbind-token` 时发 `--with-rbind-token`，`ssh_source::parse_frame` 读出本字段（形状 fail closed）。⚠ 仍**不是**「↗ 已经不依赖 tmux 了」：本地表今天还没有生产写入方往 `ps-await` 写带令牌的 marker，消费点也还不改分派（步 4）。别把这两句读成一句。<br>★ **〔additive〕`container`：这条活着的会话住在什么容器里** —— `"tmux"` / `"none"`，**判不了就缺席**（缺席 = 不知道，**不是** `none`）。：可恢复性由容器类型决定（在 tmux 里的，claude 退了终端还在 ⇒ 可重连；不在的只能 resume），而活着时这一格此前没人报。判定住 `control::identity_tag::Outcome::container`，喂它的是 `process_session_added` 里打标（`@ccm_sid`）那一次探测的结局 —— **零新进程、零新节拍**：`Tagged` / `AlreadyCurrent` ⇒ `tmux`；环境读得到、`TMUX_PANE` 没设 ⇒ `none`；环境读不到（exec 窗口 / 僵尸 / 非 Linux）· pane id 形状不对 · 默认 socket 上的 tmux 不认那个 pane（私有 `-S`）· sid 形状不对 · tmux 报错 ⇒ 缺席。monitor：`ssh_source::parse_frame` 读它（未知取值当缺席），经 `session_facts` 发前端 `session-container` 事件（本机那条流同一个口）。<br>★ **〔additive〕`pid`：那个 claude 进程的 pid**，与 `rbind_token` **同一道闸**（只在客户端发了 `--with-rbind-token` 时带；没索要的客户端收到的字节与本字段加进来之前一字不差，仓外 aterm 不受影响）。给谁：本机 monitor —— 本机判活改由本机后端的这组帧来之后（`session_map` 的本机活会话表），本机 ↗ 按 pid 找父 PowerShell 绑窗口（`bind::SidHwndCache::record`）只能从这一格拿 pid。monitor 本机那条流因此恒带 `--with-rbind-token`（`local_backend::LOCAL_STREAM_ARGS`）；monitor 只认装得进 u32 的非负整数。<br>★ **`project_dir`：会话的项目目录**（会话起在哪个目录）。`cwd` 是 pidfile 记的那一格（客户端认「刚起的那条」用）；`project_dir` 由后端读记录开头给出（适配层 `RecordFace.project_dir`：Claude 是第一条带 `cwd` 的记录，Codex 是开头那条 `session_meta` 的 `cwd`；只读开头、有上界），之后 shell 进了子目录也不漂；记录还没写出来 ⇒ 取 pidfile 那一格。monitor 原样放进会话流 `live` 那一格，前端 tab 标题 · 打开工作目录 · 分组只认它。缺席 ⇒ 标题退到 aiTitle / sid，前端不从行里猜。 |
+| `session_added` | `sid`, `session_kind?`, `cwd?`, `project_dir?`, `name?`, `path?`, `lines?`, `status?`, `waiting_for?`, `agent_kind?`, `liveness_confidence?`, `attachable?`, `container?`, `pid?` | 远端新会话文件出现（Batch5-F18 起 ssh_source 收到即同步透传前端 `remote-session-added {session_id, origin, kind, cwd, name}` 事件建骨架 Tab，先于该会话的任何行）。Batch7-F24（p1e）：附加 pidfile 元信息——wire 帧字段叫 `session_kind`（避开帧 tag `kind`），bridge 事件 payload 统一叫 `kind`（与本地 `list_active_sessions`〔散文墓碑〕/`session-started` 一致）；**additive 兼容**：None 不序列化（旧行为字节不变）、旧 monitor 忽略未知字段、旧后端缺字段前端视为交互。后端默认不宣告 bg（F21）；monitor 仅对 hello **声明了 `bg` 能力**的后端且 `showBgSessions` 开（默认）时传 `--with-bg`（F66/#58③；旧后端不声明该能力→不传，且它会把未知参数当一次性查询→无 hello，护栏「声明 ⟹ 会剥离该 flag」保成立）。本地对称通道：`session-started` payload 扩为 `{session_id, cwd, kind, name}`——前端无 Tab 则建骨架（中途出现的本地 bg 会话由此获得 ⚙ 标识；树状归属已删，bg 会话与普通 tab 平铺）。**Batch8-F25/26（p1f）**：帧再附 `path`（远端 jsonl 绝对路径）；monitor 见后端声明 `tail-only` 能力后 exec 追加 `--tail-only`（Batch9 起快照换 `--read-session-tail` 尾部优先，见查询表）——后端不再重放历史（连接时把各文件 seq 计数器初始化为当前完整行数 L，之后新行 seq=行号），历史由 monitor 按 path 经**独立连接**跑 `--read-session` 旁路快照拉回（0..L'-1 行号编 seq、并发 ≤2、F19 priority 先拉、完就断、失败重试 1 次后 remote-health 提示）；两路 seq 同处行号空间，重叠区被 (sid,seq) 去重精确吸收。旧后端不声明能力 → 不传 flag → 全量推流（=2.18.0）；session_added 无 path（会话尚无 jsonl）→ 不拉快照，后续行从 tail 全量到达。**DG3（#2D，additive）`agent_kind`**：本会话属哪个 agent——`"codex"`；Claude 会话**省略** ⇒ **缺 = claude**。**DG3 `liveness_confidence`**：判活置信度——`"heuristic"`（Codex 无 pidfile，靠 mtime/proc 启发）；Claude 走 pidfile 权威故**省略** ⇒ **缺 = authoritative**。两者都是「缺字段有确定含义」，消费侧别把缺当未知。⚠ **今天的消费方是仓外 aterm，不是 cc-monitor** —— monitor 的 `ssh_source::parse_frame` 把这两个字段（以及 `emits`）**整个丢掉**（`byte_offset` 例外：monitor 读它，续点记第 `next` 行从哪个字节起，`snapshot_resume` 头注）。缺省值碰巧等于丢弃行为，不等于 monitor 实现了默认值：真发 `agent_kind:"codex"` monitor 一样当 claude。（后端今天也还没产出它们 —— DG1 未接线，`homes`/`agent_kind`/`liveness_confidence` 硬写空/None。）⚠ `S4` 起 **`hello.homes` 是个例外：monitor 真的解析它了**（`claude_home_from_hello`，优先 `homes`、回退 `claude_dir`）——别把它算进"整个丢掉"那一族。<br>★ **〔additive〕`container`：这条活着的会话住在什么容器里** —— `"tmux"` / `"none"`，**判不了就缺席**（缺席 = 不知道，**不是** `none`）。：可恢复性由容器类型决定（在 tmux 里的，claude 退了终端还在 ⇒ 可重连；不在的只能 resume），而活着时这一格此前没人报。判定住 `control::identity_tag::Outcome::container`，喂它的是 `process_session_added` 里打标（`@ccm_sid`）那一次探测的结局 —— **零新进程、零新节拍**：`Tagged` / `AlreadyCurrent` ⇒ `tmux`；环境读得到、`TMUX_PANE` 没设 ⇒ `none`；环境读不到（exec 窗口 / 僵尸 / 非 Linux）· pane id 形状不对 · 默认 socket 上的 tmux 不认那个 pane（私有 `-S`）· sid 形状不对 · tmux 报错 ⇒ 缺席。monitor：`ssh_source::parse_frame` 读它（未知取值当缺席），经 `session_facts` 发前端 `session-container` 事件（本机那条流同一个口）。<br>★ **〔additive〕`pid`：那个 claude 进程的 pid**，只在客户端发了 `--with-pid` 时带（没索要的客户端收到的字节与本字段加进来之前一字不差，仓外 aterm 不受影响）。给谁：本机 monitor —— 本机判活改由本机后端的这组帧来之后（`session_map` 的本机活会话表），本机 ↗ 按 pid 找父 PowerShell 绑窗口（`bind::SidHwndCache::record`）只能从这一格拿 pid。monitor 本机那条流因此恒带 `--with-pid`（`local_backend::LOCAL_STREAM_ARGS`）；monitor 只认装得进 u32 的非负整数。<br>★ **`project_dir`：会话的项目目录**（会话起在哪个目录）。`cwd` 是 pidfile 记的那一格（客户端认「刚起的那条」用）；`project_dir` 由后端读记录开头给出（适配层 `RecordFace.project_dir`：Claude 是第一条带 `cwd` 的记录，Codex 是开头那条 `session_meta` 的 `cwd`；只读开头、有上界），之后 shell 进了子目录也不漂；记录还没写出来 ⇒ 取 pidfile 那一格。monitor 原样放进会话流 `live` 那一格，前端 tab 标题 · 打开工作目录 · 分组只认它。缺席 ⇒ 标题退到 aiTitle / sid，前端不从行里猜。 |
 | `session_status` | `sid`, `status?`, `waiting_for?`, `liveness_confidence?` | Batch9-F27（p1g）：会话红绿灯状态变化（后端对 pidfile modify 做 diff，CC 仅状态转换时重写故天然稀疏）。monitor 转发进 `SessionChange.status_changed` → `session-activity` 事件——**远端灯与本地共用前端链路**。宣告帧另带初始 `status`（连接建立灯就对）。旧 monitor 未知 kind 忽略。**DG3 `liveness_confidence`** 同 `session_added`（状态变化时带；Claude 省略 ⇒ 缺 = authoritative） |
 | `session_removed` | `sid`, `cause?` | 远端会话文件消失。**S0（additive）`cause`**：`"gone"`（真没了：pidfile 被删 / 进程退出 / 原地翻成非交互 kind）/ `"superseded"`（同一个 pidfile **原地换了 sid**，即 `/branch`、`/clear`）。`gone` 是默认值且**不序列化** ⇒ 缺字段 = `gone`，旧后端 × 新 monitor 行为一字不变。**monitor 收到 `superseded` 必须直接归档、不许再去查 tmux 快照**（那份快照对这个场景恒错——这正是「branch 之后原 tab 永久灰点」的成因）。字面量与 `ssh_source.rs` 的解析处由 `removal_cause_wire_literal_stays_in_sync`〔散文墓碑〕 钉住 |
 | `turn_end` | `session_id`, `uuid` | 一轮对话结束（monitor 用它对齐轮次边界） |
@@ -1862,8 +1862,8 @@ monitor 每一条远端起会话路径（直连 resume · 建 tmux 会话 resume
 （原 monitor 的 Tauri 命令 `render_ccm_launch`〔散文墓碑〕搬进那台后端；载荷那一条随起会话只交一行 `ccm …` 删了。）
 
 ```text
-→ {"id":"c1","cmd":"launch-render-cli","args":{"action":{"kind":"resume","sid":"s1"},"container":{"kind":"tmux","name":"cc-s1","send_into":false},"cwd":"/p","account":{"kind":"account","name":"z","configDir":"/home/u/.cc-monitor/accounts/z"},"ccmSid":"s1","model":null,"launcher":"claude","defaultLauncher":"claude","rbindToken":"0123456789abcdef0123456789abcdef"}}
-← {"kind":"reply","id":"c1","ok":true,"data":{"cmd":"ccm --resume s1 -- --ccm-tmux=cc-s1 --ccm-sid=s1 --account z --ccm-rbind-token 0123456789abcdef0123456789abcdef --cwd /p"}}
+→ {"id":"c1","cmd":"launch-render-cli","args":{"action":{"kind":"resume","sid":"s1"},"container":{"kind":"tmux","name":"cc-s1","send_into":false},"cwd":"/p","account":{"kind":"account","name":"z","configDir":"/home/u/.cc-monitor/accounts/z"},"ccmSid":"s1","model":null,"launcher":"claude","defaultLauncher":"claude"}}
+← {"kind":"reply","id":"c1","ok":true,"data":{"cmd":"ccm --resume s1 -- --ccm-tmux=cc-s1 --ccm-sid=s1 --account z --cwd /p"}}
 ```
 
 | 字段 | 向 | 说明 |
@@ -1872,7 +1872,6 @@ monitor 每一条远端起会话路径（直连 resume · 建 tmux 会话 resume
 | `container` | → | `{"kind":"none"}`（直路）· `{"kind":"tmux","name":…,"send_into":bool}`（建会话 / 键进已有 pane）|
 | `cwd` · `ccmSid` · `model` · `launcher` · `defaultLauncher` | → | 这次拉起的修饰（`deny_unknown_fields`：多送一格就拒）|
 | `account` | → | `{"kind":"base"}` · `{"kind":"account","name"?:…,"configDir"?:…}`（说得出名字 ⇒ `--account`；只有目录 ⇒ `--account-dir`）|
-| `rbindToken` | → | 界面铸的启动期令牌（渲成 `--ccm-rbind-token`）；接回那一格 `null` |
 | `cmd` | ← | 那一行 `ccm …` |
 
 **错误码**：`bad_args`（入参形状不对）· `refused`（渲不出来：缺能力 · 说不出的修饰 · 坏值，理由原样；调用方**不回落、不拼第二条**）。
@@ -1910,7 +1909,7 @@ POSIX 上有会话名 ⇒ `--ccm-tmux=`（建进 tmux）；Windows 没有 tmux �
   「这台的中转在不在听」= 钥匙文件读得到 ＋ 回环口连得上（`ccm` 是一次性进程，读不到常驻后端的监听状态 —— 口被别人占着时会被认成在听）。
   非它不可（API 号代入 `/s/`）而没在听 ⇒ **拒绝起会话**、一句话说清；`/t/` 那一格没在听 ⇒ 这一发直连。
   钥匙在 `ccm` 进程里拼进 agent 的环境，不进 argv、不进 shell；用户自己设了 `ANTHROPIC_BASE_URL` ⇒ 不注入、说一句。
-- **身份**：`--ccm-launch-id` ⇒ `CCM_LAUNCH_ID`；`--ccm-rbind-token` ⇒ `CCM_RBIND_TOKEN`；`--ccm-sid=` ⇒ tmux 会话上的 `@ccm_sid`。
+- **身份**：`--ccm-launch-id` ⇒ `CCM_LAUNCH_ID`；`--ccm-sid=` ⇒ tmux 会话上的 `@ccm_sid`。
 - **账号**：`--account <名>` · `--account-dir <目录>`（说不出名字时）· `--base`。
 - 同号会话**有活着的 agent 进程**才回接那个窗口；只剩窗口上的标记（进程已退）⇒ 原地续上。
 
@@ -3338,18 +3337,45 @@ cc-monitor 装的：skill 按装记录逐文件删（带逐字节 `expect`），
 错误码：`unobservable`（输出被改写 —— 段数下溢 ——、超时或起不来：**不是零会话**）· `too_large`。
 ⚠ **CLI 面也有它**（`--tmux-list`，不读 stdin）。
 
-#### `terminal-local`：本机开终端要跑的那一串（09-29；本地半：令牌握手前奏由本机后端渲，monitor 只开终端）
+#### `session-terminals`：此刻是哪个终端在显示这个会话（10-01，**只读**；点 ↗ 时问那台一次）
 
 ```text
-→ {"id":"tl1","cmd":"terminal-local","args":{"command":"claude --resume s1","rbindToken":"0f1e2d3c4b5a69788796a5b4c3d2e1f0"}}
-← {"kind":"reply","id":"tl1","ok":true,"data":{"command":"& {\n    $m = 'ccm-rbind-token-0f1e2d3c4b5a69788796a5b4c3d2e1f0'\n    …\n}\nclaude --resume s1"}}
+→ {"id":"st1","cmd":"session-terminals","args":{"sid":"9d66c46d-bf88-4f99-877e-455555555555"}}
+← {"kind":"reply","id":"st1","ok":true,"data":{"terminals":[{"ssh":{"clientAddr":"10.0.0.5","clientPort":62414,"serverAddr":"10.0.0.9","serverPort":22},"activity":1790916735}]}}
+← {"kind":"reply","id":"st2","ok":true,"data":{"terminals":[],"why":"detached"}}
 ```
 
-入参：要在本机新窗口里跑的 `command`（非空串，原样用）＋ 可空 `rbindToken`（这次拉起的启动期令牌）。出：`rbindToken` 缺席 / `null` ⇒ `command` **逐字节原样**；
-有令牌 ⇒ 令牌握手前奏在前、原串逐字节在后。前奏与 `__ccm_bind` 同一条握手（先设窗口标题、再写 `<monitor 数据目录>/ps-await/<PID>.json`、等 monitor 删），
-marker = `ccm-rbind-token-<令牌>`；marker 前缀与目录名是共享契约（`shell_quote_core`），值进 PowerShell 单引号只经 `dialect::ps_literal`。
-数据目录按 `CCM_DATA_DIR` → `<家目录>/.cc-monitor` 推；推不出 ⇒ 不接前奏、原样回。码：`invalid_args`（缺 `command` / 空串 / `rbindToken` 不是串也不是 `null`）·
-`refused`（令牌形状不对：不是 32 个小写十六进制）。只上帧面（`STREAM_ONLY`）。
+入参：`sid`（会话 id 的形状）。这台按起步初扫那一份找到那个 claude 进程，然后：
+- **不在 tmux 里**（它的环境里没有 `TMUX`）：它自己的环境就是答案（从那个终端的登录 shell 继承来）；进程已经没有控制终端 ⇒ `why: "no-terminal"`。
+- **在 tmux 里**：问 `TMUX` 里那个 socket「现在有哪些客户端连着 `TMUX_PANE` 所在的会话」（`tmux -u -S <socket> list-clients -t <pane>`），
+  逐个读那些客户端进程的环境，**最近动静在前**（tmux 的 `client_activity`）。一个都没有 ⇒ `why: "detached"`。tmux 只被问「谁连着」，不读也不设标题。
+
+出：`terminals` 每格 `{ssh, activity}` —— `ssh` 是那个终端环境里 `SSH_CONNECTION` 的四段（对面地址 · 对面端口 · 本机地址 · 本机端口；
+没有 / 认不出 ⇒ `null`，那个终端不是经 ssh 连的）·
+`activity` 是最近动静（Unix 秒，不在 tmux 里 ⇒ `null`），最多 16 格。读不了那个进程 / 那些客户端的环境（别的用户 · 权限）⇒ `why: "unreadable"`。
+只读写死的那几个键（`TMUX` · `TMUX_PANE` · `SSH_CONNECTION`），不回整份环境。零定时器：只在被问时答。
+码：`bad_args`（缺 `sid` / 形状不对）· `no_such_session`（这台没有在跑的这个会话）· `failed`（tmux 起不来 / 报错，带它的原话）。只上帧面（`STREAM_ONLY`）。
+
+#### `terminal-processes`：那台报来的终端连接是这台电脑上哪个进程开的（10-02；↗ 的本机一半）
+
+```text
+→ {"id":"tp1","cmd":"terminal-processes","args":{"terminals":[{"ssh":{"clientAddr":"10.0.0.5","clientPort":62414,"serverAddr":"10.0.0.9","serverPort":22},"activity":1790916735}]}}
+← {"kind":"reply","id":"tp1","ok":true,"data":{"chain":[{"pid":700,"name":"ssh.exe","start":133722000000000000},{"pid":600,"name":"powershell.exe","start":133721990000000000},{"pid":500,"name":"WindowsTerminal.exe","start":133721980000000000}]}}
+← {"kind":"reply","id":"tp2","ok":true,"data":{"chain":[],"why":"elsewhere","addr":"203.0.113.8"}}
+```
+
+入参：`terminals` —— 那台 `session-terminals` 回话里那一格原样（1–16 格；每格要有 `ssh`：四段或 `null`，别的格不看）。
+这台**只做一趟只读的系统查询**（`powershell.exe -NoProfile -NonInteractive`，固定脚本、不吃入参）：`Get-NetTCPConnection -State Established`
+（两端地址与端口 ＋ 拥有者进程号）＋ `Get-CimInstance Win32_Process` **只取四格**（进程号 · 父进程号 · 名字 · 启动时刻）。
+不读任何进程的命令行、不读别的进程的内存。然后按交来的顺序逐格试，第一个对上的就是它：
+- 四元组全等（本机地址 = `clientAddr`、本机端口 = `clientPort`、对面 = `serverAddr`:`serverPort`；IPv4 映射的 IPv6 认成 IPv4，作用域去掉）⇒
+  拥有那条连接的进程，往上数父进程，到桌面外壳（`explorer.exe`）之前为止；父进程不在表里 / 比子进程晚起（进程号被复用过）⇒ 链在那里断。
+- 对不上 ⇒ 原因只看这台的连接表：这台有 `clientAddr` 这个地址、或这台有 `ssh.exe` 连着 `clientAddr` ⇒ `mismatch`（经跳板机 / 端口转换，这台电脑对不上）；
+  都没有 ⇒ `elsewhere`（带 `addr` = 那台看到的对面地址）。`ssh: null` ⇒ `not-ssh`。都对不上 ⇒ 报第一格的原因。
+
+出：`chain` 每格 `{pid, name, start}`（开着那条连接的进程在前；`start` 是启动时刻 FILETIME，0 = 系统没给）；对不上 ⇒ `chain: []` ＋ `why`
+（`not-ssh` · `elsewhere`（＋ `addr`）· `mismatch` · `query-failed` —— 这台没有 PowerShell / 查询报错 / 两张表对不上，原话进日志）。
+窗口那一跳不在这里（归 monitor）。码：`bad_args`（缺 `terminals` / 空 / 超 16 格 / 某格缺 `ssh` / 地址端口认不出；验不过不去问系统）。只上帧面（`STREAM_ONLY`）。
 
 #### `terminal-ssh`：给一台远端开终端要跑的那一串（09-28；「待迁」最后一行：ssh 外壳与 PowerShell 窗口载荷由本机后端渲，monitor 只开终端）
 
@@ -3359,12 +3385,12 @@ marker = `ccm-rbind-token-<令牌>`；marker 前缀与目录名是共享契约�
 ```
 
 入参：那台机器的配置 `machine`（＋ `saved?` · `jump?` · `prefer?`，与 `remote-probe` / `pubkey-push` 同形，组请求走 `dial/machine.rs::resolve`）＋ 要在那台跑的
-`command` ＋ 可空 `rbindToken`（有值 ⇒ 成品前面接令牌握手前奏，同 `terminal-local`）。`command` 也可以换成意图 `cwd`（**恰给一格**）：
+`command`。`command` 也可以换成意图 `cwd`（**恰给一格**）：
 当前目录的线上形（字符串或 `{"b16": …}`，同 `files-*` 的路径），由后端拼成 `cd <目录> && exec ${SHELL:-bash} -l`（空 ⇒ 只有后半段；目录过 POSIX 自由文本路径那一关，
 不过 ⇒ `refused`）—— 文件窗口「在此打开终端」经 monitor 接下的通道那一问（`terminal-open`）走这一形，窗口不拼命令。出：一行 PowerShell `& ssh -t[ -J <跳板用户>@<跳板>[:口]] -p <口>[ -i '<钥匙>'] <用户>@<地址> -- '<bash -lic ''…''>'` —— 地址取竞速顺序第一条
 （交了 `prefer` 且仍在这台的地址里 ⇒ 上次赢的那条）；命令包成 `bash -lic '<命令>'` 再以 PowerShell 单引号字面量嵌入；钥匙尾 `\` 剥掉；没钥匙 ⇒ 不带 `-i`（走 agent）。
-**只算不起**：不拨号、不开窗（开窗是 monitor 的事）。码：`invalid_args`（缺 `machine` / `command` · `rbindToken` 不是串也不是 `null`）· `bad_jump`（跳板交不来 / 指自己）·
-`refused`（命令空 / 超长 / 含控制符 / 含双引号 —— PowerShell 5.1 传参畸变面；用户名 · 地址 · 跳板出了白名单；令牌形状不对）。只上帧面（`STREAM_ONLY`）。
+**只算不起**：不拨号、不开窗（开窗是 monitor 的事）。码：`invalid_args`（缺 `machine` / `command`）· `bad_jump`（跳板交不来 / 指自己）·
+`refused`（命令空 / 超长 / 含控制符 / 含双引号 —— PowerShell 5.1 传参畸变面；用户名 · 地址 · 跳板出了白名单）。只上帧面（`STREAM_ONLY`）。
 
 #### `tmux-name-mint`：起会话要的 tmux 名（09-28；「派生 ＋ 避让只留后端」）
 
@@ -3775,7 +3801,7 @@ monitor 的做法：链路的读者每读走半个窗口就还一次（`link_mux
 
 | 类 | 成员 | 语义 |
 |---|---|---|
-| **流模式 flag** | `--stream` · `--with-bg` · `--tail-only` · `--with-rbind-token` | 出现即剥离并置位，**不影响模式判定** |
+| **流模式 flag** | `--stream` · `--with-bg` · `--tail-only` · `--with-pid` | 出现即剥离并置位，**不影响模式判定** |
 | **一次性查询子命令** | 上面那张查询表的全部 | **只有 `args[0]` 是其中之一才进查询模式** |
 | **子命令选项** | `--after-ms` · `--include-tools` · `--limit` · `--scope` | 只在某条子命令之后才有意义，后端顶层不解释 |
 
@@ -4331,90 +4357,24 @@ CLI 面这两条的用处是**量一趟遍历** ／ **在一个常驻后端进�
 按单会话 30 条封顶回来 —— 慢，而且静默少条。新子命令在老后端上是 `unknown argument`、**stdout 0 字节、退出 2**，客户端认「首行不是 `session_find` 头」⇒ 诚实降级（说清原因）。
 ⇒ **它是新子命令**：进 `build_id_guard` 指纹，要 bump `BUILD_ID` 才会让已部署的远端判 stale 重装。路径守卫与 `--read-session` 同一套。
 
-## 11. 远端终端拉起（ccm-rbind，issue #18）——注册与拉起全链路
+## 11. 远端会话的 ↗：点那一刻现查「此刻谁在显示它」（issue #18）
 
-本地 `__ccm_bind`（§2/§3，文件 IPC + PowerShell 握手）的**远端对偶**：远端没有共享
-文件系统，注册信道改走**终端窗口标题**（OSC 转义经 tmux/ssh 透传到本地），monitor
-按标题扫窗口。全部代码：远端 **`shared/ccm`**（部署为 `~/.local/bin/ccm`，字节源是
-`sftp.rs` 的 `CCM_CLI_SCRIPT`）—— **不是** `remote-section.ts::CCM_WRAPPER_SNIPPET`，
-那个其实是 `src/shared/ccm-aliases.sh`，**3 行、一个别名都不定义**（只让 `ccm` 进 PATH 并接上别名文件），
-无任何 rbind / 标题 / poller 逻辑（`sftp.rs` 的守卫①明令该块不得含实现）+ 本地 `bind.rs::RemoteHwndCache` + `lib.rs::bring_remote_terminal_to_front`。
+不读也不设 tmux 标题、起会话时不注任何令牌、不改用户的 tmux / shell / PowerShell 配置、不轮询、不落盘。
+远端那台的别名块与此无关：那个其实是 `src/shared/ccm-aliases.sh`，**3 行、一个别名都不定义**（只让 `ccm` 进 PATH 并接上别名文件），（`KR58D2` 那条对账钉着这一句：判据住
+`src/frontend/shell/src/sftp.rs::tests::the_protocol_doc_sentence_about_the_alias_block_matches_the_file`）。
 
-> ⚠ **上面那句里的「N 行」与那份名单由机器对账**（`KR58D2`，判据住
-> `src/frontend/shell/src/sftp.rs::tests::the_protocol_doc_sentence_about_the_alias_block_matches_the_file`）：
-> 两样都现算自 `src/shared/ccm-aliases.sh` 自己，**改一半会当场红**。本区最高频的那条病
-> 就是「数与名单同句、只改一半」，09-11 现打逮到的活体正是这一句 ——
-> 它当时写着「29 行」而文件已经 35 行。
->
-> ⚠ **本节其余部分是 `K-R48` 第二拍之后的存量馊话，上面那条对账够不着**：
-> `shared/ccm` 这个文件已经删了，`sftp.rs` 的 `CCM_CLI_SCRIPT` 也已经没了
-> （那里现在是一块墓碑）。`K-R58` 不动它 —— 写在这里，免得被读成「这一节核过了」。
->
-> 远端那份入口（三行 shim，转给后端的 `ccm` 子命令）今天落在 **`~/.cc-monitor/bin/ccm`**
-> （部署后端按钮经本机常驻后端的 `files` 链路放，远端写只许 `~/.cc-monitor/{staging,bin}`）；更早放在 `~/.local/bin/ccm` 的那份不删、照旧能用。
-
-### 注册流程（远端 shell → 本地 HWND 缓存）
-
-> ⚠ **不存在名叫 `__ccm_rbind` 的函数。** 本节此前把它写成入口与对外契约
-> （`( __ccm_rbind; exec claude ... )`），全仓**没有任何定义** —— 实现早已搬进
-> `shared/ccm`（部署为 `~/.local/bin/ccm`），且 `sftp.rs` 有测试**明令**别名块不得含它。
-> 照旧文档写的外部集成方会调一个不存在的函数：bash 下只打一行 command-not-found、
-> **rc=0 继续跑** ⇒ 静默不注册、↗ 永远「未绑定窗口」。入口就是 `ccm` 本身。
-
-1. **启动**：用户经 `ccm` 起 claude。`ccm` 最后 `exec` 掉自己变身 claude
-   （pidfile `sessions/<PID>.json` 按 claude 自己的 PID 命名，这是支点）。
-   ⚠ **`U-NP④`（2026-08-14）**：这一步原文还有一句「`exec` 后 PID 不变，所以 ccm 记的 `$$`
-   就是 claude 的 PID；注意是 `$$` 不是 `$BASHPID`，poller 跑在 `( … ) &` 子 shell 里」——
-   **那条 poller 已整条删除**（见下面第 3 步），ccm 不再需要认识自己的 PID，那句注意事项也随之作废。
-2. **tmux 直通**：`$TMUX` 内先 `tmux set-option set-titles on`，再
-   `set-titles-string '#{?@ccm_sid,ccm-rbind-#{@ccm_sid},#T}'`
-   （**当前 session 级、运行时选项**，不写 tmux.conf）——否则 OSC 只落 pane title、
-   到不了外层终端窗口标题（Batch7 真机排查的主断链）。
-   **不是 `#T`**：`#T` 是 pane 标题，而 **claude 也在往 pane 标题写自己的状态**（转圈 + 在干什么），
-   两者抢同一个位置、claude 一忙就把 marker 冲掉。真机实测（2026-07-31）：四个空闲会话
-   marker 都在、唯独忙碌那个被冲成「⠐ 理解…」，点 ↗ 必弹「未绑定窗口」。
-   改成由 tmux 从 `@ccm_sid` **自己合成**之后 marker 常驻，两条路不再交叉。
-   `#{?@ccm_sid,…,#T}` 的 `#T` 只是 sid 尚未回填时的回退，避免产出一个空的 `ccm-rbind-`。
-3. **marker 刷新**：**由后端打 `@ccm_sid`，tmux 自己合成标题**〔`U-NP④`，2026-08-14〕。
-   ⚠ 本步原文是「后台 poller 每 1s 读 `sessions/<PID>.json` … 或每 20 次循环（≈20s）自愈重打，
-   发 `\033]0;ccm-rbind-<sid>\007`」。用户裁定「不要轮询」「ccm 做到必须走 daemon」之后，
-   **那条每会话一条、与会话同寿、跑在远端的每秒循环被整条删除，不留轮询退路**。
-   今天的链路：
-   后端（`control/identity_tag.rs`，触发源是它本来就有的 `sessions/` inotify）
-   → 读 `/proc/<pid>/environ` 的 `TMUX_PANE` 定位会话
-   → `tmux set-option -t <session_id> @ccm_sid <sid>`
-   → **tmux 按第 2 步那条 `set-titles-string` 现算标题**并推给 attach 着的 client
-   （`ESC ]0;ccm-rbind-<sid> BEL`）→ 直通外层终端 → 经 ssh 显示层透传 → **本地 WT 窗口标题**。
-   ⇒ 「自愈重打」不再需要（标题是 tmux 现算的，不是谁定期喷的）；
-   `/clear`、`/branch` 原地换 sid 时 pidfile 被重写 ⇒ inotify modify ⇒ 后端跟着重打。
-   契约与 `src/doc/INVARIANTS.md` §30 同源。
-   ⚠ **代价（如实登记）**：**不在 tmux 里**跑的 `ccm` 从此**没有** rbind marker ——
-   旧 poller 是直接 `printf` OSC 到终端的，而 `@ccm_sid` 是 tmux 会话级 option、
-   没有 tmux 就没有地方放身份。ccm 会为此往 stderr 说一句，不静默。
-4. **扫描绑定**（`lib.rs::session_side_effects`，跑在会话成品唯一出口线程 `session-book-emitter` 上；
-原先那条远端会话 emitter 线程已无，活 / 可重连 / 已结束的账住后端 `observe/session_ledger.rs`）：
-   那台后端的 `session_added` 成品到达、且该会话**没有启动令牌**（`wants_title_prescan`）时对该 sid
-   起独立线程 `remote-bind-scan`，**每 600ms 重试扫描一次、最多 15 次（≈9s）**（等远端 shell 起 + OSC 透传；`lib.rs` 里那句注释说明为什么比固定 4 次更稳健），
-   `EnumWindows` + `GetWindowTextW` 找**标题子串含** `ccm-rbind-<sid>` 的首个可见窗口，
-   命中即组 `SidHwndBinding{hwnd, owner_pid, owner_proc_start}` 存入 `RemoteHwndCache`。
-   **无持久化**——monitor 重启靠重连的 session_added 重扫重绑（对比本地 §4 持久化缓存）。
-
-### 拉起流程（backtick / ↗ → 窗口前置）
-
-1. 前端 IPC `bring_remote_terminal_to_front(session_id)` → `spawn_blocking`（Win32 同步，
-   INVARIANT §10）。
-2. 查缓存；未命中 → **点击时现扫一次**（兜住：eager 扫描 4 次全错过；`/resume` 换 sid
-   后 marker 已被 watcher 刷新）。
-3. `verify_binding` 安全网：HWND 的 owner_pid + 进程创建时间须与绑定时一致——**句柄被
-   OS 复用给无关进程时拒绝拉起**。
-4. `ShowWindow(SW_RESTORE)` + `SetForegroundWindow`；OS 拒绝抢焦点 → 返回明确错误。
+1. **那台**：`session-terminals {sid}`（§10）—— 此刻连着这个会话的终端：`SSH_CONNECTION` 四段 · 最近动静；
+   或一条原因（`detached` · `no-terminal` · `unreadable`）。有原因 ⇒ 界面照它说，不往下走。
+2. **本机**：`terminal-processes {terminals}`（§10）—— 界面把那台回话里的 `terminals` 原样交来；本机后端按 TCP 连接表四元组全等认出拥有连接的进程，
+   回它往上的进程链；或一条原因（`not-ssh` · `elsewhere` · `mismatch` · `query-failed`）。
+3. **monitor**：`bring_remote_terminal_to_front {chain}` —— 沿进程链从下往上，第一个拥有可见顶层窗口的进程：恰好一个窗口 ⇒
+   三重指纹校验（窗口还在 · 属主 pid · 属主起始时刻）后拉到前台（`bind::bring_found_window`）；整条链都没有窗口 / 那个进程有好几个窗口 ⇒ 照实说。
 
 ### 已知边界
 
-- 裸 `claude` 起的会话无 marker，拉起报"未绑定窗口"。
-- 多 ssh 会话共用一个 WT 窗口的多 tab：标题是窗口级的，只能拉起窗口、切不到 tab。
-- marker 与 claude 自设的动态标题（`⠂ 任务名`）在标题上交替——绑定一次命中即缓存，
-  不受影响；扫描窗口期与交替节奏理论上可能错开（低概率），点击现扫兜底。
+- Windows Terminal 只能拉到那个窗口，切不到具体标签页（没有按进程切标签的接口）；它开着好几个窗口时分不清是哪一个。
+- 经跳板机 / 改端口的路由连过去的：这台的连接表对不上（`mismatch`），拉不到。
+- mosh 这类不走 ssh 会话的：`SSH_CONNECTION` 是建立时那条，对不上。
 
 ---
 

@@ -227,6 +227,10 @@ const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
         "**字段下标**（`/proc/<pid>/stat` 里 `starttime` 在 `comm` 之后的第几个字段）。不是量。",
     ),
     (
+        "TTY_NR_IDX_AFTER_COMM",
+        "**字段下标**（`/proc/<pid>/stat` 里 `tty_nr` 在 `comm` 之后的第几个字段）。不是量。",
+    ),
+    (
         "CREATE_NEW_CONSOLE",
         "**Win32 进程创建标志位**（`CreateProcess` 的 flag）。是位掩码不是尺寸。",
     ),

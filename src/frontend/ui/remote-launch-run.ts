@@ -18,8 +18,6 @@ import {
   planAttach,
 } from "./launch-requests";
 import type { LaunchContext, LaunchModifiers } from "./launch-types";
-// 令牌的字母表与长度只有一份（共享 crate 那两个常量），这里读它现生成的那份、按它**造**。
-import { RBIND_TOKEN_ALPHABET, RBIND_TOKEN_LEN } from "./generated/judgment-rules";
 import type { CliRenderRequest } from "./launch-cli-wire.ts";
 import { renderCli } from "./launch-render";
 import { showActionFailureToast } from "./error-toast";
@@ -28,36 +26,6 @@ import { AGENT_PROFILE } from "./agent-profile";
 import { mintFreshTmuxName, refuseUnmintable } from "./tmux-name-mint";
 import { copyText } from "./copy-table";
 import { arrivedBody, awaitArrival, expectArrival, type ArrivalMatch, type LaunchWait } from "./launch-arrival";
-
-/**
- * 铸一个启动期令牌：**按生成物造**（字母表 `RBIND_TOKEN_ALPHABET` × 长度 `RBIND_TOKEN_LEN`），
- * 每一位从平台 CSPRNG 取一个字节、按拒绝采样落到字母表里（今天 16 个字符 × 32 位 = 128 位熵）。
- * 令牌会进远端的 `/proc/<pid>/environ`、`cmdline` 与 shell 历史 ⇒ 它只是一个不可猜的关联 id，不许承载任何权限语义。
- * **只有一个出口**：全仓所有「起 agent 进程」的拉起都从这里取令牌。
- *
- * @throws 拿不到 CSPRNG（`crypto.getRandomValues` 不在）—— **不回落** `Math.random()`（种子可反推，「不可猜」会静默失效）。
- */
-export function mintRbindToken(): string {
-  const c: Crypto | undefined = globalThis.crypto;
-  if (!c || typeof c.getRandomValues !== "function") {
-    throw new Error(copyText("remoteLaunchRun.token.noRandom"));
-  }
-  const n = RBIND_TOKEN_ALPHABET.length;
-  // 落在 [limit, 256) 的字节扔掉重取：否则 `b % n` 偏向前几个字符（n 不整除 256 时）。
-  const limit = 256 - (256 % n);
-  let token = "";
-  while (token.length < RBIND_TOKEN_LEN) {
-    const bytes = new Uint8Array(RBIND_TOKEN_LEN - token.length);
-    c.getRandomValues(bytes);
-    for (const b of bytes) if (b < limit) token += RBIND_TOKEN_ALPHABET[b % n];
-  }
-  return token;
-}
-
-/** 给一组修饰补上令牌。**已经有令牌就原样返回**（调用方显式传的优先）；`=== undefined` 不是 `??`：空串是坏数据，交给后端拒。 */
-function withMintedRbindToken(mods: LaunchModifiers): LaunchModifiers {
-  return mods.rbindToken === undefined ? { ...mods, rbindToken: mintRbindToken() } : mods;
-}
 
 /** 那台后端渲那一行；拒了 ⇒ 抛（带那台的原话，执行器那一格 catch 说出来），不换条路糊过去。 */
 async function renderLaunchCommand(origin: string, ctx: LaunchContext): Promise<string> {
@@ -94,7 +62,6 @@ export function buildCliRenderRequest(ctx: LaunchContext): CliRenderRequest {
     model: ctx.modelOverride ?? null,
     launcher: launcherOrDefault(ctx.launcherOverride ?? ""),
     defaultLauncher: AGENT_PROFILE.defaultLauncher,
-    rbindToken: ctx.action.kind === "attach" ? null : (ctx.rbindToken ?? null),
   };
 }
 
@@ -141,13 +108,10 @@ async function invokeLaunchOrCopyFallback(
   origin: string,
   cmd: string,
   toasts: LaunchToasts,
-  // 这次拉起的启动期令牌（交给 `ccm` 的那一个）；`attach` 那一格恒 `null`。
-  //   交给本机后端，让新开的窗口以它为 marker 登记进本地表（前奏由后端接：`dial/terminal.rs::with_bind_prelude`）。
-  rbindToken: string | null,
   after: AfterOpen,
 ): Promise<Opened> {
   try {
-    await openTerminal(origin, cmd, rbindToken);
+    await openTerminal(origin, cmd);
     if (after.kind === "expect") {
       expectArrival({
         origin,
@@ -198,7 +162,7 @@ export async function runRemoteResume(
   sid: string,
   cwd: string,
   launcher: string,
-  mods: LaunchModifiers = {}, // 正交修饰（configDir/accountName/modelOverride/rbindToken），见 launch-types.ts
+  mods: LaunchModifiers = {}, // 正交修饰（configDir/accountName/modelOverride），见 launch-types.ts
   // Phase G（branch-anywhere）：返回值从 `void` 改成 `boolean`，与 `runRemoteResumeTmux`
   // 对齐（那边的头注逐字记着为什么要有返回值：account-ux 那次把「走到了第⑤步」当成
   // 「已 resume」）。既有调用点忽略返回值 ⇒ 行为逐字不变。
@@ -227,11 +191,9 @@ async function resumeDirectCore(
   wait: "expect" | "await",
 ): Promise<Opened> {
   let cmd: string;
-  let token: string | null;
   try {
-    const ctx = planResumeDirect(sid, cwd, launcher, withMintedRbindToken(mods));
+    const ctx = planResumeDirect(sid, cwd, launcher, mods);
     cmd = await renderLaunchCommand(origin, ctx);
-    token = ctx.rbindToken ?? null;
   } catch (err) {
     showActionFailureToast(copyText("remoteLaunchRun.resume.buildFailed"), String(err));
     return "unsent";
@@ -240,7 +202,7 @@ async function resumeDirectCore(
     success: copyText("remoteLaunchRun.resume.started"),
     failureCopied: copyText("remoteLaunchRun.resume.failedCopied"),
     failureNotCopied: copyText("remoteLaunchRun.copyFallback.failedManual"),
-  }, token, { kind: wait, match: { sid }, tmuxName: null });
+  }, { kind: wait, match: { sid }, tmuxName: null });
 }
 
 /** 同 [`runRemoteResumeTmux`]，但等那台报出会话 ⇒ 交回「等到了没有」（换号重启 · 分叉据它才说成了、才记账）。 */
@@ -266,11 +228,9 @@ async function resumeTmuxCore(
   wait: "expect" | "await",
 ): Promise<Opened> {
   let cmd: string;
-  let token: string | null;
   try {
-    const ctx = planResumeTmux(sid, cwd, launcher, name, withMintedRbindToken(mods));
+    const ctx = planResumeTmux(sid, cwd, launcher, name, mods);
     cmd = await renderLaunchCommand(origin, ctx);
-    token = ctx.rbindToken ?? null;
   } catch (err) {
     showActionFailureToast(copyText("remoteLaunchRun.resumeTmux.buildFailed"), String(err));
     return "unsent";
@@ -279,7 +239,7 @@ async function resumeTmuxCore(
     success: copyText("remoteLaunchRun.resumeTmux.started"),
     failureCopied: copyText("remoteLaunchRun.resumeTmux.failedCopied"),
     failureNotCopied: copyText("remoteLaunchRun.copyFallback.failedManual"),
-  }, token, { kind: wait, match: { sid }, tmuxName: name });
+  }, { kind: wait, match: { sid }, tmuxName: name });
 }
 
 /**
@@ -293,7 +253,7 @@ export async function runNewSessionRemote(
   origin: string,
   cwd: string,
   command: string,
-  mods: LaunchModifiers = {}, // 正交修饰（configDir/accountName/modelOverride/rbindToken），见 launch-types.ts
+  mods: LaunchModifiers = {}, // 正交修饰（configDir/accountName/modelOverride），见 launch-types.ts
 ): Promise<void> {
   // ★★ **默认名必须过铸名口**（F13）：同一个 cwd 点两次「起新会话」派生出同一个名字 ⇒ 撞上远端
   // `create-or-attach` 的幂等闸 ⇒ **静默接进第一个会话，而用户以为开了新的**（issue #76 那一族）。
@@ -321,24 +281,22 @@ export async function runRemoteLauncher(
   cwd: string,
   tmuxName: string,
   command: string,
-  mods: LaunchModifiers = {}, // 正交修饰（configDir/accountName/modelOverride/rbindToken），见 launch-types.ts
+  mods: LaunchModifiers = {}, // 正交修饰（configDir/accountName/modelOverride），见 launch-types.ts
 ): Promise<void> {
   let cmd: string;
-  let token: string | null;
   try {
-    const ctx = planLauncher(cwd, tmuxName, command, withMintedRbindToken(mods));
+    const ctx = planLauncher(cwd, tmuxName, command, mods);
     cmd = await renderLaunchCommand(origin, ctx);
-    token = ctx.rbindToken ?? null;
   } catch (err) {
     showActionFailureToast(copyText("remoteLaunchRun.launcher.buildFailed"), String(err));
     return;
   }
-  // 新开的会话拉起那一刻没有 sid：认它靠这次铸进进程环境的启动期令牌（那台读回、随 `live` 报上来）。
+  // 新开的会话拉起那一刻没有 sid：认它按「预期之后第一次出现、工作目录相同的新 sid」。
   await invokeLaunchOrCopyFallback(origin, cmd, {
     success: copyText("remoteLaunchRun.launcher.started"),
     failureCopied: copyText("remoteLaunchRun.launcher.failedCopied"),
     failureNotCopied: copyText("remoteLaunchRun.copyFallback.failedManual"),
-  }, token, { kind: "expect", match: token ? { token } : { cwd }, tmuxName });
+  }, { kind: "expect", match: { cwd }, tmuxName });
 }
 
 /** F51：一键 attach 到远端 tmux 会话:拉起 `ssh -t … tmux attach -t <名>`;失败回退复制命令。
@@ -356,5 +314,5 @@ export async function runRemoteAttach(origin: string, name: string): Promise<voi
     successDetail: copyText("remoteLaunchRun.attach.startedBody", { machine: origin, name }),
     failureCopied: copyText("remoteLaunchRun.attach.failedCopied"),
     failureNotCopied: copyText("remoteLaunchRun.copyFallback.failedManual"),
-  }, null, { kind: "claim" }); // `attach` 不铸币（`planAttach` 不收 `mods`）⇒ 新窗口不做令牌握手
+  }, { kind: "claim" });
 }

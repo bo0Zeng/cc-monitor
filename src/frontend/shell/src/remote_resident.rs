@@ -205,17 +205,14 @@ async fn ask_verdict(mine: &str, theirs: &str, replaced: bool) -> Result<Verdict
 }
 
 /// attach 行：钥匙 ＋ 这条连接要的流模式旗标（远端 `listen::attach_flags` 的逆）。
-pub(crate) fn attach_line(token: &str, flags: (bool, bool, bool)) -> String {
-    let (with_bg, tail_only, with_rbind_token) = flags;
+pub(crate) fn attach_line(token: &str, flags: (bool, bool)) -> String {
+    let (with_bg, tail_only) = flags;
     let mut f: Vec<&str> = Vec::new();
     if with_bg {
         f.push("--with-bg");
     }
     if tail_only {
         f.push("--tail-only");
-    }
-    if with_rbind_token {
-        f.push("--with-rbind-token");
     }
     let mut line = serde_json::json!({ "attach": token, "flags": f }).to_string();
     line.push('\n');
@@ -342,10 +339,7 @@ where
 }
 
 /// **接上那台的常驻后端**（没有就起一个）：起 · 找 → 隧道 → hello（旧 ⇒ 换一次）→ attach。
-pub(crate) async fn attach(
-    cfg: &RemoteConfig,
-    flags: (bool, bool, bool),
-) -> Result<Replayed, AttachErr> {
+pub(crate) async fn attach(cfg: &RemoteConfig, flags: (bool, bool)) -> Result<Replayed, AttachErr> {
     let origin = cfg.origin_label();
     let mut replaced = false;
     let mut ensured = ensure(cfg, false).await?;

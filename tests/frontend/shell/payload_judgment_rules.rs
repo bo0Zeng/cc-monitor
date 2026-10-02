@@ -6,8 +6,8 @@
 //!   **不手抄规则**，读 monitor 从 `shell-quote-core` 那组常量现生成的 `src/frontend/ui/generated/judgment-rules.ts`（`DUP1.md §4 ①` 的甲）。
 //! - `INVARIANTS §47` ①「字符集白名单（闭集，默认拒）＋ 不许 `-` 开头（选项注入）＋ 有长度上界的就钉上界」。
 //!
-//! 同一份生成物又多三样：账号名（J18，`shell_quote_core::account_name_ok` 那组常量）·
-//! 账号种类取值集（J16，`acct_core::AUTH_KINDS`）· 启动期令牌的字母表与长度（J8，`shell_quote_core` 那两个常量）。
+//! 同一份生成物又多两样：账号名（J18，`shell_quote_core::account_name_ok` 那组常量）·
+//! 账号种类取值集（J16，`acct_core::AUTH_KINDS`）。
 //!
 //! 两件事：
 //! 1. [`export_bindings_judgment_rules`]：`npm run gen:types`（= `cargo test --lib export_bindings`）重写生成物；
@@ -30,7 +30,7 @@ const HEADER: &str = "\
 //
 // 判定只有一个家（住共享 crate，或 monitor 的渲染模块）；前端要在写入点先说一句、或要按规则造一个值的那几条，
 // 规则**数据**从那里现生成到这里（不手抄）。两侧由共用金样逐条对：标识符 `tests/__fixtures__/identifier-rules.golden.json` ·
-// 账号种类 `tests/__fixtures__/accounts.golden.json`；令牌由 `tests/frontend/ui/rbind-token-shape-parity.vitest.ts` 拿铸出来的值对 Rust 源码。
+// 账号种类 `tests/__fixtures__/accounts.golden.json`。
 ";
 
 /// 正则字符类里要转义的那几个（其余标点在字符类里就是字面量）。
@@ -96,20 +96,6 @@ fn render_judgment_rules() -> String {
     s.push_str(&format!("export const AUTH_KINDS = {kinds} as const;\n"));
     s.push_str("/** 见 [`AUTH_KINDS`]。 */\n");
     s.push_str("export type AuthKind = (typeof AUTH_KINDS)[number];\n");
-    // 启动期令牌：前端铸币口按字母表与长度**造**（构造上造不出坏形状），不再自己写一份形状再自检。
-    // 两个常量与形状判定住共享 crate（`shell_quote_core::rbind_token_ok`，两半同一份）。
-    let alphabet = serde_json::to_string(shell_quote_core::RBIND_TOKEN_ALPHABET)
-        .expect("字符串序列化不会失败");
-    s.push_str(
-        "\n/** 启动期令牌的字母表与长度 —— 形状住 `shell_quote_core::rbind_token_ok`（铸币口按它们造）。 */\n",
-    );
-    s.push_str(&format!(
-        "export const RBIND_TOKEN_ALPHABET = {alphabet};\n"
-    ));
-    s.push_str(&format!(
-        "export const RBIND_TOKEN_LEN = {};\n",
-        shell_quote_core::RBIND_TOKEN_LEN
-    ));
     // 上游 base URL：新建 API 号表单逐字那一句读它（`checkBaseUrl` 只剩「空 ⇒ 默认」与「按 code 说哪句」）。
     let table = base_url_issue_patterns();
     let pats: Vec<[&str; 2]> = table.iter().map(|(c, p)| [*c, p.as_str()]).collect();

@@ -47,8 +47,6 @@ pub enum IdentifierSlot {
     Account,
     /// `--ccm-tmux=<名>`：要**新建**的会话名（`crate::control::gate_rules::new_tmux_name_issue`）。
     TmuxName,
-    /// `--ccm-rbind-token <令牌>`（`shell_quote_core::rbind_token_ok`）。
-    RbindToken,
     /// `--ccm-launch-id <标识>`（`relay_route_core::segment_is_safe`）。
     LaunchId,
 }
@@ -109,9 +107,6 @@ impl Refusal {
                 }
                 IdentifierSlot::Account => {
                     copy_text("rsCcmInvocation.refusal.idAccount", &[("value", value)])
-                }
-                IdentifierSlot::RbindToken => {
-                    copy_text("rsCcmInvocation.refusal.idRbindToken", &[("value", value)])
                 }
                 IdentifierSlot::LaunchId => {
                     copy_text("rsCcmInvocation.refusal.idLaunchId", &[("value", value)])
@@ -179,8 +174,6 @@ pub struct CliSpec<'a> {
     pub launcher: &'a str,
     pub default_launcher: &'a str,
     pub args: &'a [&'a str],
-    /// 启动期令牌（`--ccm-rbind-token`）。
-    pub rbind_token: Option<&'a str>,
     /// 本机回填 sid 用的身份 token（`--ccm-launch-id`）。
     pub launch_id: Option<&'a str>,
     pub ccm_path: &'a str,
@@ -244,7 +237,7 @@ fn starts_agent(s: &CliSpec) -> bool {
     matches!(s.action, Action::New | Action::Resume { .. })
 }
 
-/// **顺序即契约**：`identity` < `account` < `model` < `rbind-token` < `launch-id`。
+/// **顺序即契约**：`identity` < `account` < `model` < `launch-id`。
 /// 由 `a_fully_loaded_invocation_emits_every_part_in_registry_order`（全触发、逐字节比整条命令）钉住。
 const DIMENSION_ORDER: &[Dim] = &[
     Dim {
@@ -286,18 +279,6 @@ const DIMENSION_ORDER: &[Dim] = &[
             ])
         },
         caps: &["model"],
-    },
-    Dim {
-        id: "rbind-token",
-        // 接回不起 agent ⇒ 令牌没有读者，不带。
-        applies: |s| s.rbind_token.is_some() && starts_agent(s),
-        cli_flags: |s| {
-            Some(vec![
-                "--ccm-rbind-token".into(),
-                s.rbind_token.unwrap_or_default().to_string(),
-            ])
-        },
-        caps: &[],
     },
     Dim {
         id: "launch-id",
@@ -494,12 +475,6 @@ fn identifiers_ok(spec: &CliSpec) -> Result<(), Refusal> {
     }
     if let Some(m) = spec.model.filter(|m| !shell_quote_core::model_name_ok(m)) {
         return bad(IdentifierSlot::Model, m);
-    }
-    if let Some(t) = spec
-        .rbind_token
-        .filter(|t| !shell_quote_core::rbind_token_ok(t))
-    {
-        return bad(IdentifierSlot::RbindToken, t);
     }
     if let Some(l) = spec
         .launch_id

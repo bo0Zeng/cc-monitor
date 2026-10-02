@@ -1,4 +1,4 @@
-//! 桌面窗口这一族的平台读法〔阶段 H：；原住 `bind.rs`〕：可见窗口枚举 · 句柄还在不在 · 属主 pid · 拉到前台。
+//! 桌面窗口这一族的平台读法〔阶段 H：；原住 `bind.rs`〕：可见窗口枚举（按标题 / 按属主进程）· 句柄还在不在 · 属主 pid · 拉到前台。
 //!
 //! 只有 Windows 有这一族（Win32 `HWND`）；别处每一问都答「没有」。
 //! 判定不在这里（「翻译官只翻译事实的读法」）：哪个标题算我们的窗口 · 一条绑定还作不作数 · 拉不动说哪句，都在 `bind.rs`。
@@ -92,6 +92,47 @@ pub fn first_visible_window(needle: &str, matches: fn(&str, &str) -> bool) -> Op
 #[cfg(not(windows))]
 pub fn first_visible_window(_needle: &str, _matches: fn(&str, &str) -> bool) -> Option<MarkerHit> {
     None
+}
+
+/// 同一个 EnumWindows，按**属主进程号**筛：属主是 `pid` 的可见、无主（`GW_OWNER` 为空）顶层窗口 —— 任务栏上那种应用窗口；
+/// 对话框 / 工具窗有主人，不算。别处恒空。
+#[cfg(windows)]
+pub fn visible_top_windows_of(pid: u32) -> Vec<isize> {
+    use std::cell::RefCell;
+    use windows::Win32::Foundation::{BOOL, HWND, LPARAM};
+    use windows::Win32::UI::WindowsAndMessaging::{
+        EnumWindows, GetWindow, GetWindowThreadProcessId, IsWindowVisible, GW_OWNER,
+    };
+
+    thread_local! {
+        static HITS: RefCell<Vec<isize>> = const { RefCell::new(Vec::new()) };
+    }
+
+    unsafe extern "system" fn cb(hwnd: HWND, lp: LPARAM) -> BOOL {
+        if !unsafe { IsWindowVisible(hwnd) }.as_bool() {
+            return BOOL(1);
+        }
+        if unsafe { GetWindow(hwnd, GW_OWNER) }.0 != 0 {
+            return BOOL(1);
+        }
+        let mut owner: u32 = 0;
+        let _ = unsafe { GetWindowThreadProcessId(hwnd, Some(&mut owner)) };
+        if owner as isize == lp.0 {
+            HITS.with(|h| h.borrow_mut().push(hwnd.0));
+        }
+        BOOL(1)
+    }
+
+    HITS.with(|h| h.borrow_mut().clear());
+    unsafe {
+        let _ = EnumWindows(Some(cb), LPARAM(pid as isize));
+    }
+    HITS.with(|h| std::mem::take(&mut *h.borrow_mut()))
+}
+
+#[cfg(not(windows))]
+pub fn visible_top_windows_of(_pid: u32) -> Vec<isize> {
+    Vec::new()
 }
 
 /// 这个句柄此刻还是不是一个窗口（`IsWindow`）。

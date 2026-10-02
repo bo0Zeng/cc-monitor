@@ -31,7 +31,8 @@ import { showActionFailureToast } from "./error-toast";
 import { runRemoteResume, runRemoteAttach } from "./remote-launch-run";
 // 本机 = `LOCAL_ORIGIN`（`"<local>"`，与 Rust `origin.rs::LOCAL` 跨语言对拍）；
 // 「是不是本机」只经 `ipc/origin.ts` 判。`accounts.ts` 那个同名的 `"__local__"` 已退役 —— 全仓只剩一个本机表示。
-import { isLocalOrigin, isRemoteOrigin } from "./ipc/origin";
+import { isLocalOrigin, isRemoteOrigin, type Origin } from "./ipc/origin";
+import { planRemoteFront, type RemoteFrontPlan } from "./remote-terminal-front";
 import { commands } from "./ipc/commands";
 import { probeSessionRecord, reasonOf, type RecordProbe } from "./session-reads";
 import { lastAccounts } from "./history-reads";
@@ -645,35 +646,47 @@ export function bringTerminalToFront(sessionId: string): Promise<void> {
 }
 
 /**
- * Feature ②：拉远端 Tab 对应的本地终端窗口到前台。
+ * 拉远端 Tab 对应的本机终端窗口到前台：点那一刻现查 —— 前两问（那台谁在显示它 · 本机哪串进程开着那条连接）住
+ * `remote-terminal-front.ts`，最后一跳 monitor 沿进程链找属主的窗口、校验、拉前。
  *
- * **分派与归因整条在后端**（`bind.rs::resolve_remote_front`）：
- * 先按启动令牌 `sid → token → HWND`，拉不到再走 `ccm-rbind-<sid>` 标题退路；
- * 失败时说的话只由「这个会话是不是 cc-monitor 启动的」一个布尔决定。
- *
- * ⇒ 这里原先那段 E73「失败之后再打一次 `list_remote_tmux` 分四档猜」**删了** ——
- *   它是 `§8.5 ②` 点名要收的四套判断之一，而且它把 tmux 放回了 ↗ 的前提链上
- *   （用户逐字「不能依赖 tmux」）。后端那句话原样给用户，不再在前端二次解释。
- *
- * 失败模式（后端原文）：带令牌但窗口已关 · 不是 cc-monitor 启动的 · 标题退路也没扫到 /
- * 扫到的窗口校验不过；另有 "切到终端窗口超时"（极端情况下 Win32 调用卡住）。
+ * 失败时说的话都来自查到的事实：没有终端连着（点提示在新终端里接回）· 没有终端 · 那台读不了 · 不是经 ssh 连的 ·
+ * 不在这台电脑上 · 经跳板机 / 端口转换对不上 · 这一次没查成 · 程序没有窗口 / 开着好几个窗口；
+ * 另有「切到终端窗口超时」（极端情况下 Win32 调用卡住）。
  */
-export function bringRemoteTerminalToFront(sessionId: string): Promise<void> {
-  // #41:后端现扫重试窗口抬到 4s(ON_DEMAND_BIND_*,覆盖首次 attach 的标题四跳传播),故前端超时须
-  // 抬到其上、留 Win32 activate 余量——5s→8s,否则前端超时会和后端重试撞车(刚要绑上就被判超时)。
-  const timeoutMs = 8000;
+export async function bringRemoteTerminalToFront(
+  origin: Origin,
+  sessionId: string,
+  reattach: () => void,
+): Promise<void> {
+  const failed = (e: unknown): void => {
+    console.warn(`bring_remote_terminal_to_front ${sessionId} failed:`, e);
+    showActionFailureToast(copyText("tabSessionActions.front.failed"), String((e as Error)?.message ?? e));
+  };
+  let plan: RemoteFrontPlan;
+  try {
+    plan = await planRemoteFront(origin, sessionId);
+  } catch (e) {
+    failed(e);
+    return;
+  }
+  if ("said" in plan) {
+    showActionFailureToast(
+      copyText("tabSessionActions.front.failed"),
+      plan.said,
+      plan.reattach ? { onClick: reattach, durationMs: 8000 } : {},
+    );
+    return;
+  }
+  const timeoutMs = 5000;
   return Promise.race([
-    commands.bring_remote_terminal_to_front({ sessionId }),
+    commands.bring_remote_terminal_to_front({ chain: plan.chain }),
     new Promise<never>((_, reject) =>
       window.setTimeout(
         () => reject(new Error(copyText("tabSessionActions.front.timeout"))),
         timeoutMs,
       ),
     ),
-  ]).catch((e) => {
-    console.warn(`bring_remote_terminal_to_front ${sessionId} failed:`, e);
-    showActionFailureToast(copyText("tabSessionActions.front.failed"), String(e?.message ?? e));
-  });
+  ]).catch(failed);
 }
 
 /** 关 tab 时让后端 event_replay 把这个 session 的历史也丢掉（失败只记日志）。 */

@@ -1985,7 +1985,6 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         lines: None,
         status: None,
         waiting_for: None,
-        rbind_token: None,
         container: None,
         pid: None,
     });
@@ -2002,7 +2001,6 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         lines: None,
         status: None,
         waiting_for: None,
-        rbind_token: None,
         container: None,
         pid: None,
     });
@@ -2025,7 +2023,6 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         lines: None,
         status: None,
         waiting_for: None,
-        rbind_token: None,
         container: None,
         pid: None,
     });
@@ -2042,7 +2039,6 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         lines: None,
         status: None,
         waiting_for: None,
-        rbind_token: None,
         container: None,
         pid: None,
     });
@@ -2059,7 +2055,6 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         lines: None,
         status: None,
         waiting_for: None,
-        rbind_token: None,
         container: None,
         pid: None,
     });
@@ -2099,7 +2094,6 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         lines: None,
         status: None,
         waiting_for: None,
-        rbind_token: None,
         container: None,
         pid: None,
     });
@@ -2625,102 +2619,6 @@ fn vis2_s3_the_watch_loop_goes_through_the_home_ears_exactly_once() {
     assert_eq!(count(&format!("{prod}\n\"{old}\""), old), 1);
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// **启动期令牌上 wire** —— `session_added.rbind_token`
-// ═══════════════════════════════════════════════════════════════════════════
-
-/// ★★ **本刀的正题（帧那一半）：一个带着 `CCM_RBIND_TOKEN` 的真进程，
-/// 它的令牌真的出现在 `session_added` 帧上。**
-///
-/// # 为什么这一条与 `identity_tag_tests` 那条不重复
-///
-/// 那边断的是「**读得出来**」（`rbind_token_of` 对一个真进程回对值）；
-/// 本条断的是「**接上了**」—— `process_session_added` 真的去调它、
-/// 真的把结果放进了那个字段。这两件事之间**有一整条接线**可以断掉而那边照常绿
-/// （本仓逐字「判据不在执行链上就等于不存在」）。
-///
-/// # 三组对照，缺任何一组读数都不可信
-///
-/// | 组 | 客户端索要了吗 | 进程环境里有吗 | 期望 |
-/// |---|---|---|---|
-/// | 正题 | ✅ `--with-rbind-token` | ✅ | 帧上是那个令牌 |
-/// | 阴性一（**默认路**） | ❌ | ✅ | 帧上**没有**（令牌默认不上 wire，`§8.6 ③`） |
-/// | 阴性二（**归因那一格**） | ✅ | ❌ | 帧上**没有** = 「这条会话真的没有令牌」（`§8.5 ②`） |
-///
-/// ★ 阴性一不是陪跑：它是「默认关」那条承诺的**唯一**判据。把 `state.with_rbind_token`
-/// 那个闸门删掉（改成无条件读），正题与阴性二都还绿，只有它红。
-#[cfg(target_os = "linux")]
-#[test]
-fn the_launch_token_rides_the_session_added_frame_only_when_the_client_asked() {
-    let _iso = crate::control::identity_tag::door::isolate(); // §48.3：打标只落假 tmux
-    /// 跑一趟：起子进程 → 配一份合成 pidfile → 喂 `process_session_added` → 取帧上那个字段。
-    ///
-    /// 回 `Ok(帧上的 rbind_token)`。**不是真 claude**（`C7`：夹具不许起真 agent），
-    /// 而这条路上「是不是 claude」由 procStart 逐位相等那条主证据放行，与 cmdline 无关。
-    fn probe(label: &str, asked: bool, token: Option<&str>) -> Option<String> {
-        let dir = std::env::temp_dir().join(format!("ccm-rbind-{}-{label}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
-        // 夹具与 `identity_tag_tests` 那条同一份：环境定型之后才交出来（为什么「非空」不够见 `spawn_settled_sleep`）。
-        let mut kid = crate::control::identity_tag::tests::spawn_token_sleeper(token);
-        let pid = kid.id();
-        let ticks = proc_starttime(pid).expect("子进程的 starttime 读不到 —— 夹具坏了");
-        let (tx, mut rx) = tokio::sync::mpsc::channel::<Frame>(64);
-        let mut sink = FrameSink::new(tx);
-        let mut state = ReaderState::new(dir.join("projects"), false, false);
-        state.with_rbind_token = asked;
-        let path = dir.join(format!("{pid}.json"));
-        std::fs::write(
-            &path,
-            format!(
-                r#"{{"pid":{pid},"sessionId":"rb-{label}","cwd":"/x","kind":"interactive","procStart":"{ticks}"}}"#
-            ),
-        )
-        .unwrap();
-        process_session_added(&path, &mut state, &mut sink);
-        let got = match rx.try_recv() {
-            Ok(Frame::SessionAdded {
-                sid, rbind_token, ..
-            }) => {
-                assert_eq!(sid, format!("rb-{label}"), "宣告的是另一条会话？");
-                rbind_token
-            }
-            other => panic!(
-                "[{label}] 没收到 `session_added` —— 本趟的读数一个字都不能信（实得 {other:?}）"
-            ),
-        };
-        let _ = kid.kill();
-        let _ = kid.wait();
-        std::fs::remove_dir_all(&dir).ok();
-        got
-    }
-
-    const GOOD: &str = "0123456789abcdef0123456789abcdef";
-
-    // ── 正题 ───────────────────────────────────────────────────────────────
-    assert_eq!(
-        probe("yes", true, Some(GOOD)).as_deref(),
-        Some(GOOD),
-        "索要了、环境里也有，帧上却没有那个令牌 —— \
-那条「后端从 `/proc/<pid>/environ` 读出来、经 wire 报回」**没接上**"
-    );
-
-    // ── 阴性一：没索要 ⇒ 默认不上 wire ────────────────────────────────────
-    assert_eq!(
-        probe("unasked", false, Some(GOOD)),
-        None,
-        "没发 `--with-rbind-token` 却把令牌放上了 wire —— \
-         令牌是敏感数据（`§8.6 ③`），默认关那条承诺没兑现"
-    );
-
-    // ── 阴性二：索要了，但这条会话压根没有令牌 ⇒ 缺席 = 归因那一格 ────────
-    assert_eq!(
-        probe("bare", true, None),
-        None,
-        "环境里没有那个变量，帧上却凭空多出一个令牌 —— \
-         那会让 `§8.5 ②` 那个布尔恒真（「有没有令牌」从此答不准）"
-    );
-}
-
 /// ★ A1 的判定那一半：一批文件事件里**有** manifest ⇒ 真；只有无关文件（同目录里的别的文件、
 /// 写 manifest 时的临时文件）⇒ 假。事件循环里每批只调一次它、真就发**恰好一帧**（结构判据见下一条）。
 /// 真进程读数（manifest 改一次 ⇒ 恰好一帧；同目录别的文件 ⇒ 零帧）见 `tests/evidence/SR1a-link-loopback.py` ⑪。
@@ -2848,7 +2746,7 @@ fn sessions_replayed_follows_every_initial_session_added_exactly_once() {
     assert_eq!(kinds(&mut rx), vec!["sessions_replayed"]);
 }
 
-/// `session_added.pid` 跟令牌**同一道闸**：索要了（`--with-rbind-token`）⇒ 帧上是那个进程的 pid；
+/// `session_added.pid` 有一道闸：索要了（`--with-pid`）⇒ 帧上是那个进程的 pid；
 /// 没索要 ⇒ 缺席（没索要的客户端 —— 包括仓外 aterm —— 收到的字节与本字段加进来之前一字不差）。
 ///
 /// 要求住址：`INVARIANTS §40` 逐字「我的目的就是把本地当成不走 ssh 的远端」—— 本机判活改由本机后端的帧来之后，
@@ -2856,7 +2754,7 @@ fn sessions_replayed_follows_every_initial_session_added_exactly_once() {
 /// 两组对照：闸开 ⇒ `Some(那个 pid)`（不是别的数）· 闸关 ⇒ `None`（把闸删掉只有这一组红）。
 #[cfg(target_os = "linux")]
 #[test]
-fn loc1b_the_pid_rides_the_session_added_frame_only_behind_the_same_gate_as_the_token() {
+fn loc1b_the_pid_rides_the_session_added_frame_only_when_the_client_asked() {
     let _iso = crate::control::identity_tag::door::isolate(); // §48.3：打标只落假 tmux
     fn probe(label: &str, asked: bool) -> (u32, Option<u32>) {
         let dir =
@@ -2874,7 +2772,7 @@ fn loc1b_the_pid_rides_the_session_added_frame_only_behind_the_same_gate_as_the_
         let (tx, mut rx) = tokio::sync::mpsc::channel::<Frame>(64);
         let mut sink = FrameSink::new(tx);
         let mut state = ReaderState::new(dir.join("projects"), false, false);
-        state.with_rbind_token = asked;
+        state.with_pid = asked;
         let path = dir.join(format!("{pid}.json"));
         std::fs::write(
             &path,

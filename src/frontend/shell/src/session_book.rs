@@ -82,8 +82,6 @@ pub struct LiveMeta {
     pub container: Option<Container>,
     /// 那个 claude 进程的 pid（本机 ↗ 绑窗口用；老后端 / 没索要 ⇒ `None`）。
     pub pid: Option<u32>,
-    /// 起会话时铸进进程环境的启动期令牌（那台后端从 environ 读回、形状核过）；前端拿它认「我刚起的那条」。
-    pub rbind_token: Option<String>,
 }
 
 /// 一条会话此刻的最新成品。
@@ -357,7 +355,6 @@ impl Out {
                         cwd: meta.cwd.clone(),
                         project_dir: meta.project_dir.clone(),
                         name: meta.name.clone(),
-                        rbind_token: meta.rbind_token.clone(),
                     }),
                     F::Activity(b::SessionActivityPayload {
                         session_id: sid.clone(),

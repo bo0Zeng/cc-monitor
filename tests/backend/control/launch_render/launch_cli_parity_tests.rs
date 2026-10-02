@@ -39,11 +39,11 @@ fn the_fixture_covers_both_ok_and_refusal() {
     let refused = f.cases.len() - ok;
     // 改成**相等**（原是 ≥9 / ≥7 的地板）：两类各自的条数是用例表写死的，
     // 地板只挡「少」、挡不住「某条 refusal 悄悄变成 ok」—— 而那一条恰恰让 ok 数变多。
-    // 实数：23 ok（9 ＋ 新三形 3 ＋ path 7 ＋ print-parity 4）＋ 6 refusal。
-    assert_eq!(ok, 23, "ok 类条数变了（实数 23）");
+    // 实数：22 ok（9 ＋ 新两形 2 ＋ path 7 ＋ print-parity 4）＋ 5 refusal（「启动期令牌」ok 与「坏令牌」拒随令牌删了）。
+    assert_eq!(ok, 22, "ok 类条数变了（实数 22）");
     assert_eq!(
-        refused, 6,
-        "refusal 类条数变了（实数 6）—— 要防的正是「该拒却渲染出来了」"
+        refused, 5,
+        "refusal 类条数变了（实数 5）—— 要防的正是「该拒却渲染出来了」"
     );
 }
 
@@ -148,8 +148,8 @@ fn every_rendered_ccm_line_is_accepted_by_the_ccm_argv() {
         checked += 1;
     }
     assert_eq!(
-        checked, 21,
-        "ok 用例条数不对（23 条 ok 去掉外层包了 tmux 的那两条）—— 上面那条在少数几行上成立不算数"
+        checked, 20,
+        "ok 用例条数不对（22 条 ok 去掉外层包了 tmux 的那两条）—— 上面那条在少数几行上成立不算数"
     );
     assert_eq!(
         shell_words("ccm -- new --cwd '/home/用户/带 空格'"),

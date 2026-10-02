@@ -154,32 +154,6 @@ fn an_account_name_is_what_the_account_tool_would_have_created() {
     }
 }
 
-/// 启动期令牌：恰好 32 个**小写**十六进制，fail closed（不 trim · 不认大写 · 不认长度相近）。
-/// 正反各一格（`INVARIANTS §47`「拒过头也算违反」—— 只断坏的被拒，把它焊成恒拒也能绿）。
-#[test]
-fn a_launch_token_is_exactly_thirty_two_lowercase_hex() {
-    for good in [
-        "0123456789abcdef0123456789abcdef",
-        &"f".repeat(RBIND_TOKEN_LEN),
-        &"0".repeat(RBIND_TOKEN_LEN),
-    ] {
-        assert!(rbind_token_ok(good), "合格的令牌被拒了：{good:?}");
-    }
-    for bad in [
-        "",
-        "0123456789abcdef0123456789abcde",
-        "0123456789abcdef0123456789abcdef0",
-        "0123456789ABCDEF0123456789abcdef",
-        "0123456789abcdefg123456789abcdef",
-        " 123456789abcdef0123456789abcdef",
-        "0123456789abcdef0123456789abcde ",
-        "0123456789abcdef0123456789abcd\n",
-        "0123456789abcdef-123456789abcdef",
-    ] {
-        assert!(!rbind_token_ok(bad), "坏令牌放行了：{bad:?}");
-    }
-}
-
 /// 〔`INVARIANTS §47` ③〕启动器（命令片段）：真实用法全过（带参数 · alias · 路径 · 家目录下），
 /// POSIX 与 PowerShell 两边的元字符一个都不进，`~` 只许打头紧跟 `/`；拒的时候回**那一个字符**。正反各一格。
 #[test]

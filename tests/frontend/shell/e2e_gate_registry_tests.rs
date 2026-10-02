@@ -3,20 +3,6 @@
 /// 默认拒绝：不在这里、又没有地板行、又没被直接跑的套，正题判据会点名。
 const EXEMPT: &[(&str, &str)] = &[
     (
-        "backend-rbind-token",
-        "**进的是本机门禁 `tests/scripts/gate.sh`**（`run_e2e backend-rbind-token 11`，\
-             `assert-pass-floor.sh … exact`，与 `ccm-*` 四套同形），不是没进门禁。\
-             它不在 `ci.yml` 的计数地板里，是因为那一行是落地时\
-             **报备待拍板**的另一件事（`ci.yml` 那段注释逐字「也没有加 `assert-pass-floor` 那一行 …… 待拍板」）；\
-             本条登记的是「这件事有人在管、管在哪」，不是替它拍板。拍了加进 `ci.yml` 的那一拍，本行删掉",
-    ),
-    (
-        "rbind-token-endtoend",
-        "同上一条：**进的是本机门禁 `tests/scripts/gate.sh`**\
-             （`run_e2e rbind-token-endtoend 10`，exact）。`ci.yml` 计数地板那一行是 `§8.7` 步 3 落地时\
-             报备待拍板的（`ci.yml` 同段注释逐字）。拍了加进 `ci.yml` 的那一拍，本行删掉",
-    ),
-    (
         "graylight",
         "全链级：断言源是 Xvfb 上**正在跑的 dev app**（`npx tauri dev`）写的 monitor 日志，\
              无头 CI 里没有那个 app；论证写在 `tests/e2e/README.md`「`graylight-suite`（全链级）不在上表那些套件里」",
