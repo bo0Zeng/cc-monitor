@@ -2316,6 +2316,33 @@ fn dead_names_on_disk(
     (in_code.len(), dead)
 }
 
+/// 墓碑冻结：删了或改了名的符号，把提到它的那句话改成现状，不挂墓碑、不登记（`src/doc/CONTRIBUTING.md` §3.4）。
+/// 下面四个数是两张墓碑表此刻的行数与处数之和，只许往下改：有人把一句挂着墓碑的话改成现状、
+/// 表里减了一格 ⇒ 同拍把这里改成新的实数。买不到：同一拍里减一块、在别处加一块，两个数都不动。
+const FROZEN_MARK_FILES: usize = 245;
+const FROZEN_MARK_TOTAL: usize = 858;
+const FROZEN_TOMBSTONED_ROWS: usize = 422;
+const FROZEN_TOMBSTONED_TOTAL: usize = 513;
+
+/// 一张墓碑表的 (行数, 处数之和) 必须等于冻结数：多了是又挂了墓碑，少了是冻结数没跟着往下改。
+fn assert_tombstone_table_frozen(
+    table: &str,
+    (rows, total): (usize, usize),
+    (frozen_rows, frozen_total): (usize, usize),
+) {
+    assert!(
+        rows <= frozen_rows && total <= frozen_total,
+        "`{table}` 涨了：{rows} 行 / {total} 处，冻结在 {frozen_rows} 行 / {frozen_total} 处。\n\
+         墓碑不许再挂：删了或改了名的符号，把提到它的那句话改成现状（说今天是什么、在哪儿），\
+         不挂标记、不登记（`src/doc/CONTRIBUTING.md` §3.4）。"
+    );
+    assert_eq!(
+        (rows, total),
+        (frozen_rows, frozen_total),
+        "`{table}` 少了（有人把挂着墓碑的话改成了现状）⇒ 把它的冻结数同拍往下改成这两个实数。"
+    );
+}
+
 /// ★★ **散文里点名的名字，要么在代码里，要么由写的人声明成历史。**
 ///
 /// # 它买的是什么
@@ -2595,9 +2622,8 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
 
     /// **墓碑登记**：`(仓根相对路径, 名字, 带 [`PROSE_NAME_TOMBSTONE`] 的处数)`。
     ///
-    /// 🔴 这张表就是 `PROSE_NAME_TOMBSTONE` 头注里承诺的那道拦逃生舱的闸：
-    /// **贴了墓碑不登记 ⇒ 红；登记了盘上没有 ⇒ 也红。**
-    /// ⇒ 贴一个墓碑是一次**会被看见的记账**，而 `K4` 逐字要求 PM 自己读 diff。
+    /// 🔴 **冻结**：只许减，不许加行、加数（行数与处数之和钉在 `FROZEN_TOMBSTONED_*`）。
+    /// 盘上与表逐格相等照旧：登记了盘上没有 ⇒ 红。
     ///
     /// 这 6 处全是 `K-R20` 本轮真的改过的**订正段** —— 订正段逐字引用旧名字，
     /// 那正是 `K-R19` 实测到「订正落盘之后尺子读数一动没动」的原因。
@@ -4660,6 +4686,15 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         ),
     ];
 
+    assert_tombstone_table_frozen(
+        "TOMBSTONED",
+        (
+            TOMBSTONED.len(),
+            TOMBSTONED.iter().map(|(_, _, c)| *c).sum(),
+        ),
+        (FROZEN_TOMBSTONED_ROWS, FROZEN_TOMBSTONED_TOTAL),
+    );
+
     let corpus = dead_name_corpus();
     let (code_names, disk) = dead_names_on_disk(&corpus, DEAD_NAME_MIN_UNDERSCORES);
 
@@ -4706,22 +4741,19 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
     assert!(
         newly.is_empty(),
         "这几处散文点名了一个**代码里根本不存在**的名字，而登记表对不上：\n{}\n\n\
-             ⇒ 三条出路，按优先级：\n\
-             ① **把话改对** —— 点今天真的那个符号（`文件·rs::函数名`），\
-             它的真伪由 `every_symbol_address_in_the_sources_still_resolves` 真的判得了；\n\
-             ② 那一句是**订正段 / 墓碑**（逐字引用一个旧名字来说明它已经不在了）⇒ \
-             在**同一行**加 `PROSE_NAME_TOMBSTONE` 那个标记，**并登记进 `TOMBSTONED`**；\n\
-             ③ 那个名字是**仓外**的（std / 第三方 / 内核 / 另一个仓）⇒ 加进 `INVENTORY`，\
-             并在提交信息里写清它住在哪儿。\n\
-             ⚠ **不许**为了让本条变绿就把那句话删掉了事：删掉的是线索，不是病。",
+             ⇒ 两条出路：\n\
+             ① **把话改成现状** —— 点今天真的那个符号（`文件·rs::函数名`），\
+             它的真伪由 `every_symbol_address_in_the_sources_still_resolves` 真的判得了；\
+             那句话若只是在说「这个东西不在了」，删掉它就是改成现状。不挂墓碑、不登记（墓碑表已冻结）；\n\
+             ② 那个名字是**仓外**的（std / 第三方 / 内核 / 另一个仓）⇒ 加进 `INVENTORY`，\
+             并在提交信息里写清它住在哪儿。",
         newly.join("\n")
     );
     assert!(
         tombs.is_empty(),
         "墓碑登记对不上盘面：\n{}\n\n\
-             ⇒ 贴墓碑是一次**记账**，不是一个免检章：贴了就登记，改回去了就把行删掉。\n\
-             这一条是 `PROSE_NAME_TOMBSTONE` 头注里承诺的那道拦逃生舱的闸 —— \
-             没有它，「红了就贴标签」当场成立。",
+             ⇒ 盘上多了 ⇒ 墓碑不许再挂：把那句话改成现状、去掉标记；\
+             盘上少了（有人把那句话改成了现状）⇒ 把表里那一格减掉，冻结数同拍往下改。",
         tombs.join("\n")
     );
 
@@ -4736,7 +4768,7 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
     assert!(
         gone.is_empty(),
         "这几条登记盘上已经没有了 —— **把它们从表里删掉**\
-             （多半是有人把那句话改对了，那是好事）：\n{}",
+             （多半是有人把那句话改对了，那是好事；墓碑表那几行删了，冻结数同拍往下改）：\n{}",
         gone.join("\n")
     );
 }
@@ -4888,9 +4920,8 @@ fn every_prose_tombstone_mark_is_registered() {
     /// 名字之一」—— 起了别的名字，`every_registry_guard_keeps_its_reverse_half`
     /// **看不见本条**，而「它看过了、过了」与「它压根没去看」在输出上一模一样。
     ///
-    /// ⚠ 加行/改数之前先问一遍：**这一处是一块真墓碑吗？** 是 ⇒ 挂标记、在这里记一笔；
-    /// 不是（量具脚本里的针、讲机制的散文）⇒ 同样记一笔，并在旁边写清它是哪一类。
-    /// **不许**为了让本条变绿就把标记删掉 —— 删掉的是账，不是病。
+    /// 🔴 **冻结**：只许减，不许加行、加数（行数与处数之和钉在 `FROZEN_MARK_*`）。
+    /// 一句挂着墓碑的话改成了现状、标记去掉了 ⇒ 这里减掉那一格，冻结数同拍往下改。
     const REGISTERED: &[(&str, usize)] = &[
         // 新行三条：gate-core 收成后端模块 `control/gate_rules.rs`（零调用方的 `needs_remote_sid` 原处一块）·
         //   后端 `exact_target` 的头注点 monitor 那份旧壳 · monitor 那条转调判据翻成「monitor 一道门都没有」。
@@ -5358,6 +5389,12 @@ fn every_prose_tombstone_mark_is_registered() {
         // `tests/scripts/gate.sh` 那一行走了：「立项理由已不成立」那段的标记去掉日期后成了标准形（上表 2 → 3）。
     ];
 
+    assert_tombstone_table_frozen(
+        "REGISTERED",
+        (REGISTERED.len(), REGISTERED.iter().map(|(_, n)| *n).sum()),
+        (FROZEN_MARK_FILES, FROZEN_MARK_TOTAL),
+    );
+
     // ★ 抽取器自检 0：内芯真的是从标记**拆**出来的。
     //   拆成空串 ⇒ 「挂歪」人群命中每一行；拆成整串 ⇒ 那个人群恒空。
     //   两个方向都会让下面第 ③ 条在一个假人群上成立，所以这一格放在最前面。
@@ -5420,12 +5457,9 @@ fn every_prose_tombstone_mark_is_registered() {
     assert!(
         drift.is_empty(),
         "标记普查对不上盘面：\n{}\n\n\
-         ⇒ 三条出路，按优先级：\n\
-         ① **新贴了一处标记** ⇒ 在 `REGISTERED` 里加一行（+1）。贴标记是一次\
-         **会被看见的记账**，这一行就是那笔账；\n\
-         ② **那一处不在了** ⇒ 先问「那块墓碑为什么被删掉」。墓碑留的是**线索**\
-         （某个东西为什么不在了），删掉它删的是账 ⇒ 多半该把它加回来，\
-         而不是把这一行减掉；真该没有（被守的那件事整轴退役）就减掉，并在旁边写清理由；\n\
+         ⇒ 三种情形：\n\
+         ① **新贴了一处标记** ⇒ 不许：墓碑表已冻结。把那句话改成现状（说今天是什么、在哪儿），去掉标记；\n\
+         ② **那一处不在了**（那句话改成了现状）⇒ 好事：这一行减掉，冻结数同拍往下改；\n\
          ③ **那份文件改名/搬家了** ⇒ 改这一行的住址。\n\
          ⚠ 本条与 `TOMBSTONED` **单位不同、不可互相替代**：那张表数的是\
          「落在死名人群上的标记」，本条数的是「标记」。两个数对不上是常态，不是缺陷。",
@@ -5457,13 +5491,11 @@ fn every_prose_tombstone_mark_is_registered() {
         near_drift.is_empty(),
         "「提了这件事却没把标记挂上」那一格对不上盘面：\n{}\n\n\
          ⇒ 先分清是哪一类（口径在 `prose_tombstone_near_misses` 头注里）：\n\
-         ㈠ **想挂标记却挂歪了**（定界符里塞了日期 / 只写了内芯）⇒ **把标记挂对**，\
-         并按上面第 ① 条在 `REGISTERED` 里 +1。\n\
-         🔴 这是本格最值钱的一格：挂歪的那一处**以为自己受保护，其实零判据** ——\
-         它既不进 `TOMBSTONED`，也不进本条的标记普查。\n\
+         ㈠ **想挂标记却挂歪了**（定界符里塞了日期 / 只写了内芯）⇒ 墓碑不许再挂：\
+         把那句话改成现状。\n\
          ㈡ **在谈这件机制本身**（量具里的针 / 记录里的叙述）⇒ 在 `SITES` 里记一行，\
          并写清它属哪一类。\n\
-         ⚠ **不许**靠删掉那句话变绿。",
+         ⚠ ㈡ 那一类**不许**靠删掉那句话变绿。",
         near_drift.join("\n")
     );
 }

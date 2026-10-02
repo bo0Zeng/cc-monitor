@@ -4,7 +4,7 @@
 |---|---|
 | [`run.ps1`](run.ps1) | 自动注入 MSVC dev shell 环境后跑 tauri 命令 |
 | [`gate.sh`](gate.sh) | 出货前的**唯一闸门**：cargo（monitor + backend）· npm · `pb check` 跑一遍，末尾只吐一行 `GATE: OK` / `GATE: FAIL …`。★ 它解决的是**过程**问题——门禁散成三条命令时，很容易写成「跑门禁 && git commit」一条龙，而长输出里那行 `1 failed` 会滚过去（08-13 实测发生过一次，红着出了货）。⇒ **先跑它、看见 OK，再单独敲 commit**；它**故意不提供 `--commit` 开关** |
-| [`verify-committed-state.sh`](verify-committed-state.sh) | 从**提交状态**（不是工作树）编一次。★ **本仓不 push ⇒ CI 见不到这些 commit，这道门只能在本机跑**；理由与那次「约二十轮编不过」的事故见它自己的头注 |
+| [`verify-committed-state.sh`](verify-committed-state.sh) | 从**提交状态**（不是工作树）编一次。★ **提交推上 `main` 之前 CI 看不见它们 ⇒ 推之前在本机跑**；理由与那次「约二十轮编不过」的事故见它自己的头注 |
 | [`hooks-are-runnable.sh`](hooks-are-runnable.sh) | 门禁第 13 格（`K-R82`）：`hooks/` 下**会被 git 执行**的每一个脚本，盘上有没有可执行位 · 库里记没记那个位 · 语法过不过它自己声明的解释器。★ 两句话分开判 —— 本仓 `core.filemode=false`，`chmod +x` 进不了 git，于是「这棵树里跑得起来」与「新 checkout 出来也跑得起来」是两个互不相干的事实（落地那趟就现打逮到 index 里是 `100644`）。自带 8 条阳性对照（三把尺子正反各一条）。跑法与射程见它自己的头注 |
 | [`assert-coverage-floors.mjs`](assert-coverage-floors.mjs) | 逐文件覆盖率地板 + 0% 文件递减棘轮（聚合阈值看不见单模块归零）。跑法与登记见它自己的头注 |
 | [`rust-coverage.sh`](rust-coverage.sh) | **Rust 覆盖率量具**（TQ1）：rustc 自带的 `-C instrument-coverage` ＋ 系统 `llvm-profdata` / `llvm-cov`，**不装任何东西**。两侧各跑一遍与门禁同一条 `cargo test`（插桩版、单独 target 目录），报生产源码被执行到的行数。★ 是**量具不是门禁**：不进 `gate.sh`、不进 CI、不给任何数定地板；读数进。射程与买不到的写在它自己的头注 |

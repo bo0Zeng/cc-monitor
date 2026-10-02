@@ -13,10 +13,10 @@
       > 版本号必须每版跟；测试数、CI job 数、代码行数那几处不写在 README 里，不用跟。
 - [ ] **README 的「平台」与功能列表**：本版新增了平台或用户看得见的大功能，抬头那行的「平台」与功能段要跟上。
 - [ ] 本地全绿：壳 workspace（`src/frontend/shell`）`cargo fmt --all --check` · `cargo clippy --workspace --all-targets` · `cargo test --workspace`；后端（`src/backend`）`cargo fmt --check` · `cargo test`——它不是 workspace 成员，是独立的一处；前端 `npm test`（node 纯函数 ＋ vitest）· `npm run coverage` · `npm run build`。fmt 不过 CI 会红。Linux 应用构建与那几个 e2e 是 CI 里各自独立的 job；CI 有哪些 job 以 `.github/workflows/ci.yml` 为准，引用前现数，别抄数。
-- [ ] **若本版动过滚动 / 渲染管线**（stream · tabs · 会话查看器 · 分支折叠 · render-*）：跑一遍 `npm run test:f40`（Linux Xvfb ＋ 一个正在跑的 `tauri dev`，前置见 `tests/e2e/README.md`），再在 Windows 真机按 `tests/e2e/README.md` 的「人工场景」复核 WebView2（WebKitGTK 没有 `overflow-anchor`，两端补批语义不同）。
+- [ ] **若本版动过滚动 / 渲染管线**（stream · tabs · 会话查看器 · 分支折叠 · render-*）：在 Windows 真机按 `tests/e2e/README.md` 的「人工场景」复核 WebView2（WebKitGTK 没有 `overflow-anchor`，两端补批语义不同）。
 - [ ] **若本版改过后端源码**：`src/backend/lib.rs` 的 `BUILD_ID` 已随改动 bump。走 tag 发版时 `release.yml` 的 `build-backends` job 从源码重编内嵌字节，官方渠道恒一致；**本地手工打包分发**则必须先重编并换掉 `src/frontend/shell/embedded-backends/` 里的字节（`bash tests/scripts/re-embed.sh`），否则装出去的是旧后端，连上后无限重装。
       > 身份住在字节自己里（`lib.rs::CC_MONITOR_BUILD_STAMP`，一段 `#[used] static`），`src/frontend/shell/build.rs` 编译时直接扫。三种情况直接让编译失败：抠不到源码的 `BUILD_ID`、内嵌字节里问不出身份戳、字节自报的身份与源码不符。出路二选一：① `bash tests/scripts/re-embed.sh` 重编重铺；② `bash tests/scripts/re-embed.sh --clean` 删掉落点，自动部署诚实关闭、编译立刻恢复（目录本就在 `.gitignore` 里）。三条都以「目录里真有字节」为前提；干净 clone 与 CI 里没有那个目录，走的是优雅降级，兜那一档的是 `ssh_source_stream_flag_gate_tests.rs::embedded_build_id_single_source_wired`。
-- [ ] **需要人手跑的 e2e 套件**：权威清单是 `shared_crate_registry_tests.rs::every_test_script_is_either_run_by_ci_or_registered_as_manual` 的 `MANUAL` 表，这里不抄第二份（`test:f40` · `test:graylight` 都在里面）。
+- [ ] **需要人手跑的 e2e 套件**：权威清单是 `shared_crate_registry_tests.rs::every_test_script_is_either_run_by_ci_or_registered_as_manual` 的 `MANUAL` 表，这里不抄第二份。表里的 `test:f40` 例外：它会往真的 `~/.claude/` 写 fixture，发版前不跑。
 - [ ] **关键入口手测**：
   - [ ] 启动 monitor，本机正在跑的会话自动出现 tab
   - [ ] 点 tab 上的 ↗、按 `` ` ``，对应终端到前台
@@ -77,21 +77,21 @@ git push origin vX.Y.Z                     # tag push 触发 release.yml
 ```markdown
 ## [X.Y.Z] — YYYY-MM-DD
 
+### 会改变已有行为的（如果有）
+- **<一句话>**：以前怎样、现在怎样；要用户动手的写清怎么做。
+
+### 新功能（如果有）
+- **<功能名>**：用户看见的界面 / 命令 / 行为。
+
 ### 修复（如果有）
-- **<一句话标题>**：根因 + 修法。如果是修了"前面版本带病的 bug"，写清"vX 起的回归"。
+- <用户之前看到什么坏了>，现在怎样。
 
-### 改进（如果有）
-- **<功能名>**：做了什么 + 用户感知变化。
-
-### 新增（如果有）
-- **<新功能>**：用户看见的 UI / 命令 / 行为。
-
-### 改动（如果是 breaking 或 UX 变化）
-- **<变更>**：跟之前不同的地方。
-
-### 项目管理（可选，体积小）
-- 删未用依赖 / 文档更新等
+### 已知限制（如果有）
+- <这一版还做不到的、没在哪种真机上跑过的>。
 ```
+
+- 只写用到的段，次序照上面；「会改变已有行为的」有就放第一个（`the_changelog_top_section_is_the_version_we_ship` 查它的位置）。
+- 只说用户看得到的变化，不写内部名字（文件 · 函数 · 错误码 · 字段名）与施工说法；根因与改了哪里写进提交说明。
 
 ### 3.2 写作要点
 
@@ -109,22 +109,13 @@ git push origin vX.Y.Z                     # tag push 触发 release.yml
 - **minor (X.Y+1.0)**：新增功能 / UI 改动，向下兼容
 - **major (X+1.0.0)**：breaking change（数据格式 / 跨进程协议不兼容 / 卸载需要清旧数据）
 
-### 3.4 关于修 bug 的 "如何写"
+### 3.4 修复那一段怎么写
 
-修 bug 的段必须说清：
+写用户看得到的：之前看到什么坏了、现在怎样；知道从哪一版开始坏的就写上。不写根因、不写动了哪个文件或接口。
 
-1. **症状**：用户看到什么坏了
-2. **根因**：技术上为什么坏（具体到代码 / API 行为）
-3. **修法**：动了哪个文件 / API / 算法
-4. **回归性**：从哪个版本开始坏的（如有）
+例（4.0.6）：
 
-例（v1.7.10 ACL 事故段的精简版）：
-
-> **profile_installer 可能写坏用户 profile**
->
-> 症状：装完 cc 集成后 PowerShell 启动报 `Access to the path … is denied`。
-> 根因：atomic_write 走 `write tmp → remove path → rename tmp path` 三步；tmp 文件 ACL（继承父目录）会替换掉 dst 上原有的 explicit ACE。Documents 重定向到非默认盘的用户原 explicit ACE 丢失。
-> 修法：atomic_write 改用 Win32 `ReplaceFileW` 保留 dst 的 ACL / ADS / 创建时间；加 backup + 写后校验。
+> 账号核对不再把每个号各自一份的文件（远端设置、限额记录、清理与更新记录、MCP 授权缓存、状态与反馈目录等）误报成「应当是共享链接」，修复也不再把它们链成共享。
 
 不要写成"我们这次修了 v1.7.9 的 bug" 这种自指叙事。
 
