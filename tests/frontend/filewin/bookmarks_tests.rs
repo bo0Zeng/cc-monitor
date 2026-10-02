@@ -278,7 +278,8 @@ async fn settle_listing(w: &FileWindow, who: &str) {
 /// 🔴 **真点一下**：☆ 加进去（盘上真有）→ 换目录 → 点那条书签跳回来 → × 删掉（盘上真没了）。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn the_bar_is_really_clickable_and_the_disk_follows() {
-    let root = scratch("ui");
+    // 根目录里垫一段很长的名字：路径长到盖过地址栏右端那颗星时，星照样点得到（Windows 的临时目录就这么长）。
+    let root = scratch("ui").join("x".repeat(160));
     let (a, b) = (root.join("a"), root.join("b"));
     std::fs::create_dir_all(&a).unwrap();
     std::fs::create_dir_all(&b).unwrap();
