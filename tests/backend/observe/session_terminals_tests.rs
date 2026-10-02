@@ -48,6 +48,8 @@ fn attach_client(sock: &std::path::Path, ssh: &str) -> Child {
     ])
     .env_remove("TMUX")
     .env_remove("TMUX_PANE")
+    // CI 的环境里没有 TERM，tmux 会拒绝接上（「terminal does not support clear」）。
+    .env("TERM", "xterm-256color")
     .env("SSH_CONNECTION", ssh)
     .stdin(Stdio::null())
     .stdout(Stdio::null())
