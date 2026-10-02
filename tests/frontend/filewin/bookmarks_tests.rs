@@ -278,9 +278,10 @@ async fn settle_listing(w: &FileWindow, who: &str) {
 /// 🔴 **真点一下**：☆ 加进去（盘上真有）→ 换目录 → 点那条书签跳回来 → × 删掉（盘上真没了）。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn the_bar_is_really_clickable_and_the_disk_follows() {
-    // 根目录里垫一段很长的名字：路径长到盖过地址栏右端那颗星时，星照样点得到（Windows 的临时目录就这么长）。
+    // 垫两段很长的名字（Windows 的临时目录就这么长）：路径长到盖过地址栏右端那颗星时星照样点得到；
+    // 收藏的目录名本身很长时，左栏那一条截断显示、它和 × 都还在左栏里点得到。
     let root = scratch("ui").join("x".repeat(160));
-    let (a, b) = (root.join("a"), root.join("b"));
+    let (a, b) = (root.join(format!("a{}", "y".repeat(120))), root.join("b"));
     std::fs::create_dir_all(&a).unwrap();
     std::fs::create_dir_all(&b).unwrap();
     let (a, b) = (

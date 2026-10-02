@@ -638,21 +638,10 @@ impl Workspace {
                     for d in list {
                         let tail = super::source::remote_basename(&d);
                         let tail = if tail.is_empty() { "/" } else { tail };
-                        ui.horizontal(|ui| {
-                            let w = ui.available_width() - 34.0;
-                            if ui
-                                .add(
-                                    flat((ph::STAR, tail, egui::Atom::grow()))
-                                        .selected(super::bookmarks::normalize_dir(&d) == cwd)
-                                        .frame_when_inactive(super::bookmarks::normalize_dir(&d) == cwd)
-                                        .min_size(egui::vec2(w, 26.0))
-                                        .wrap_mode(egui::TextWrapMode::Truncate),
-                                )
-                                .on_hover_text(&d)
-                                .clicked()
-                            {
-                                go = Some(d.clone());
-                            }
+                        let here = super::bookmarks::normalize_dir(&d) == cwd;
+                        // × 先贴右边，名字占剩下的宽度、太长就截断（缺省会截第一段字 —— 那是星的图标，名字就整串溢出去、点不到）。
+                        let row = egui::vec2(ui.available_width(), 26.0);
+                        ui.allocate_ui_with_layout(row, egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             if ui
                                 .add(flat(super::bookmarks::REMOVE_LABEL.as_str()).small())
                                 .on_hover_text(copy_text("rsFilewinBookmarks.bar.removeHint", &[]))
@@ -660,6 +649,22 @@ impl Workspace {
                             {
                                 drop = Some(d.clone());
                             }
+                            let w = ui.available_width();
+                            ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                                if ui
+                                    .add(
+                                        flat((ph::STAR, egui::AtomExt::atom_shrink(tail, true), egui::Atom::grow()))
+                                            .selected(here)
+                                            .frame_when_inactive(here)
+                                            .min_size(egui::vec2(w, 26.0))
+                                            .wrap_mode(egui::TextWrapMode::Truncate),
+                                    )
+                                    .on_hover_text(&d)
+                                    .clicked()
+                                {
+                                    go = Some(d.clone());
+                                }
+                            });
                         });
                     }
                     if let Some(n) = shelf.notice() {
