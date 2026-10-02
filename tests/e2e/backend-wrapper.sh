@@ -52,6 +52,10 @@ if [ ! -x "$CCM_E2E_BACKEND" ]; then
     if [ -x "$c" ]; then CCM_E2E_BACKEND="$c"; break; fi
   done
 fi
+# 家目录换成台架目录底下那一份：后端会读 / 写的 `~/.cc-monitor/` 那一族（账号库 · 中转钥匙 · 凭据表 …）都跟着家走，
+#   不许落到开发机的真家目录里（上面那段自愈只在真家目录里**找**二进制，只读，排在这一行之前）。
+HOME="$E2E_DIR/home"; export HOME
+mkdir -p "$HOME"
 # ★★★ **P0b（08-12）：backend 也要落在套件那个私有 tmux socket 上。**
 #
 # `P0d` 把套件的 tmux 隔离从 `TMUX_TMPDIR` 换成 `-L <名>` shim（C7i 红线），

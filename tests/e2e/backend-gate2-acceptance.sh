@@ -29,6 +29,12 @@ REPO="$(cd "$E2E_DIR/../.." && pwd)"
 BACKEND="${CCM_E2E_BACKEND:-$REPO/.build/backend/debug/cc-monitor-backend}"
 GOLDEN="$REPO/tests/__fixtures__/gate2-golden.tsv"
 WORK="$(mktemp -d /tmp/e2e-gate2.XXXXXX)"
+# 家目录换成本趟沙箱：后端会读 / 写的 `~/.cc-monitor/` 那一族（账号库 · 中转钥匙 · 凭据表 …）都跟着家走，
+#   不许落到开发机的真家目录里。工具链先钉住（只读，与被测数据无关）。
+export CARGO_HOME="${CARGO_HOME:-$HOME/.cargo}"
+export RUSTUP_HOME="${RUSTUP_HOME:-$HOME/.rustup}"
+export HOME="$WORK/home"
+mkdir -p "$HOME"
 IN="$WORK/in.fifo"; OUT="$WORK/out.jsonl"; ERR="$WORK/backend.stderr"
 
 [ -x "$BACKEND" ] || { echo "backend 二进制不存在/不可执行：$BACKEND（先 cd src/backend && cargo build）"; exit 1; }
