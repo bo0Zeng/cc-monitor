@@ -10,7 +10,13 @@
 //! 第二张网（施工说法）：开发过程的阶段名「第 N 波」与施工记录名 `4d-…`。同一个人群，命中集 == ∅；
 //! 测试声明行（`it(` · `test(` · `describe(` · `bench(` 打头）不扫 —— 测试名不改。
 //!
-//! 买不到：换了说法、不落在网眼上的指路（施工路代号、裁决编号都不在网眼上）。
+//! 第三张网（只报不拦）：仓里没有的那份 `.md` · 工单 / 裁决编号 · 指向已摘掉的代码全景目录。
+//! 今天存量太大，它只把命中清单与数打出来（`cargo test -p guard-core --lib unblocked -- --nocapture`），
+//! 不让门禁红；它自己的合成夹具照样判网眼有没有坏。
+//! 什么时候改成拦：产品代码（`src/`）与 `src/doc` 里这三形清到零的那个提交里，把三眼并进 `net()`，
+//! 本条改成命中集 == ∅（测试与 `tests/evidence/` 同拍清，或那时按目录分两步收）。
+//!
+//! 买不到：换了说法、不落在网眼上的指路（施工路代号不在网眼上；编号网只认几种常见写法）。
 
 use regex::Regex;
 use std::collections::BTreeSet;
@@ -55,6 +61,63 @@ fn net() -> Regex {
 fn process_net() -> Regex {
     Regex::new(&format!("第[一二三四五六七八九十]{}|4d-{}", "波", "lanes"))
         .expect("施工说法网拼不成正则")
+}
+
+/// 第三张网的三形，各一个名字（报告按它分组）。每个网眼拆两段、运行期拼。
+fn unblocked_eyes() -> [(&'static str, Regex); 3] {
+    let md = format!(
+        r"(?:^|[^A-Za-z0-9_./-])(?P<md>[A-Z][A-Z0-9_]*(?:-[A-Z0-9_]+)*)\.{}\b",
+        "md"
+    );
+    let ticket = [
+        (r"\bK-", r"R\d+"),
+        (r"\bKR\d+", r"D\d+\b"),
+        (r"\bKS", r"\d+\b"),
+        (r"\bK\d{1,3}", r"\b"),
+        (r"\bR\d{2,3}", r"\b"),
+        (r"\bF\d{2,3}", r"[a-z]?\b"),
+        (r"\b[A-Z]\d+[a-z]?", r"(?:-[A-Z]?\d+[a-z]?)+\b"),
+    ]
+    .map(|(a, b)| format!("{a}{b}"))
+    .join("|");
+    [
+        ("仓里没有的 .md", Regex::new(&md).expect("md 网眼")),
+        ("工单 / 裁决编号", Regex::new(&ticket).expect("编号网眼")),
+        (
+            "已摘掉的代码全景目录",
+            Regex::new(&format!("{}{}", "code-", "picture/")).expect("全景网眼"),
+        ),
+    ]
+}
+
+/// 别的程序的文件名与本仓生成的文件名：形状像「仓里没有的 `.md`」，但不是指路。
+const NOT_A_POINTER_MD: &[&str] = &[
+    "CLAUDE",       // Claude Code 读的项目说明
+    "AGENTS",       // Codex 读的项目说明
+    "RELEASE_BODY", // 发版流水线现生成的 Release 正文
+];
+
+/// 功能键名：形状像编号，是键。
+const FUNCTION_KEYS: &[&str] = &["F10", "F11", "F12"];
+
+/// 一行里第三张网第 `eye` 形的第一处命中（字节偏移）。
+fn first_unblocked_hit(
+    eye: usize,
+    rx: &Regex,
+    in_repo_docs: &BTreeSet<String>,
+    line: &str,
+) -> Option<usize> {
+    rx.captures_iter(line).find_map(|c| {
+        let all = c.get(0).expect("整段匹配");
+        let spared = match eye {
+            0 => c.name("md").is_some_and(|d| {
+                in_repo_docs.contains(d.as_str()) || NOT_A_POINTER_MD.contains(&d.as_str())
+            }),
+            1 => FUNCTION_KEYS.contains(&all.as_str()),
+            _ => false,
+        };
+        (!spared).then(|| all.start())
+    })
 }
 
 /// 测试声明行：测试名不改，第二张网不扫它。
@@ -245,4 +308,119 @@ fn the_process_net_catches_wave_names_and_spares_test_declarations() {
         BTreeSet::from([1, 2, 5]),
         "施工说法网在合成夹具上抓到的行 ≠ 标定（该抓 1、2、5；该放过 3、4）—— 网坏了，全仓那条零命中不作数"
     );
+}
+
+/// 第三张网：只报不拦。命中清单与数打到标准输出（`-- --nocapture` 看得见），门禁不因它红。
+#[test]
+fn unblocked_outside_pointers_are_reported_not_blocked() {
+    let texts = tracked_texts(&repo());
+    assert!(
+        texts.len() > 500,
+        "人群只有 {} 份 —— `git ls-files` 口径坏了，报出来的数不作数",
+        texts.len()
+    );
+    let docs = in_repo_docs(&texts);
+    let area = |rel: &str| -> &'static str {
+        if rel.starts_with("src/doc/") {
+            "src/doc"
+        } else if rel.starts_with("src/") {
+            "src（产品）"
+        } else if rel.starts_with("tests/evidence/") {
+            "tests/evidence"
+        } else if rel.starts_with("tests/") {
+            "tests"
+        } else {
+            "其余"
+        }
+    };
+    let mut summary = Vec::new();
+    for (i, (name, rx)) in unblocked_eyes().iter().enumerate() {
+        let mut lines = Vec::new();
+        let mut by_area: std::collections::BTreeMap<&str, usize> = Default::default();
+        let mut files = BTreeSet::new();
+        for (rel, text) in &texts {
+            for (n, line) in text.lines().enumerate() {
+                if let Some(at) = first_unblocked_hit(i, rx, &docs, line) {
+                    lines.push(format!("{rel}:{}: {}", n + 1, snippet(line, at)));
+                    *by_area.entry(area(rel)).or_default() += 1;
+                    files.insert(rel.as_str());
+                }
+            }
+        }
+        println!(
+            "== 第三张网 · {name}：{} 行 / {} 份文件",
+            lines.len(),
+            files.len()
+        );
+        for l in &lines {
+            println!("{l}");
+        }
+        summary.push(format!(
+            "{name}：{} 行 / {} 份（{}）",
+            lines.len(),
+            files.len(),
+            by_area
+                .iter()
+                .map(|(a, c)| format!("{a} {c}"))
+                .collect::<Vec<_>>()
+                .join(" · ")
+        ));
+    }
+    println!("== 第三张网合计（只报不拦）\n{}", summary.join("\n"));
+}
+
+/// 合成夹具：三形各该抓的抓到、该放过的放过（行号集相等）。只报不拦那条的数靠它才作数。
+#[test]
+fn the_unblocked_net_catches_its_three_shapes_and_spares_the_rest() {
+    let eyes = unblocked_eyes();
+    let docs: BTreeSet<String> = ["INVARIANTS", "README"].map(String::from).into();
+    let cases: [(usize, Vec<String>, BTreeSet<usize>); 3] = [
+        (
+            0,
+            vec![
+                format!("// 住址 `{}.md#R{}`", "DECISIONS", "28"), // 1 ✔ 仓里没有
+                format!("// 见 `src/doc/{}.md`", "INVARIANTS"),    // 2 ✘ 仓里有
+                format!("// 读数在 `{}.md`", "PR-S6"),             // 3 ✔ 带连字符，仓里没有
+                format!("// 项目说明 `{}.md`", "CLAUDE"),          // 4 ✘ 别的程序的文件
+                format!("// 小写的 `{}.md` 不算", "notes"),        // 5 ✘ 不是大写名
+            ],
+            BTreeSet::from([1, 3]),
+        ),
+        (
+            1,
+            vec![
+                format!("// 🔴 `K-R{}`：先让它自己说一遍", "70"), // 1 ✔
+                format!("// `KR{}D2` 那条", "120"),               // 2 ✔
+                format!("// 用户 `K{}` 逐字", "33"),              // 3 ✔
+                format!("// F{}（#39）：可打开文件窗口", "83"),   // 4 ✔
+                format!("// U8c-{} 只需改例子", "3"),             // 5 ✔
+                format!("| `F{}` | 全屏 |", "11"),                // 6 ✘ 功能键
+                format!("// {}-2023-0071 与 SHA256SUMS", "RUSTSEC"), // 7 ✘
+                format!("// x86_64 · K8s · {}x", "4K"),           // 8 ✘
+                format!("// {} 号的凭据", "KS"),                  // 9 ✘ 没有数字
+            ],
+            BTreeSet::from([1, 2, 3, 4, 5]),
+        ),
+        (
+            2,
+            vec![
+                format!("规格住 `{}-picture/doc/agents/claude-code.md`", "code"), // 1 ✔
+                "代码全景已经摘掉了".to_string(),                                 // 2 ✘
+            ],
+            BTreeSet::from([1]),
+        ),
+    ];
+    for (eye, lines, want) in cases {
+        let (name, rx) = &eyes[eye];
+        let got: BTreeSet<usize> = lines
+            .iter()
+            .enumerate()
+            .filter(|(_, l)| first_unblocked_hit(eye, rx, &docs, l).is_some())
+            .map(|(i, _)| i + 1)
+            .collect();
+        assert_eq!(
+            got, want,
+            "第三张网「{name}」在合成夹具上抓到的行 ≠ 标定 —— 网坏了，报出来的数不作数"
+        );
+    }
 }

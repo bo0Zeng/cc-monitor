@@ -55,7 +55,7 @@ cc-monitor only observes and launches: `claude` still runs in your own terminal,
 ![A machine's Footprint: every file cc-monitor wrote on that machine](docs/screenshots/footprint.png)
 
 ### File manager
-- A separate window, for local and remote machines
+- A separate window for files on a remote machine (a local session's working directory opens in your system's file manager)
 - Same colours and fonts as the main window; back / forward, an editable address bar, a sidebar (bookmarks · this machine · other machines), a details list (resizable columns, click a header to sort) and a status bar
 - Search as you type across the whole home folder, with the common Everything syntax (space = and · `|` or · `!` not · `*` `?` · `ext:` `path:` `file:` `folder:`)
 - Create, rename, delete, copy, change permissions, upload and download, bookmarks, search by content; "Properties" in the right-click menu; preview with syntax highlighting and images
@@ -100,7 +100,7 @@ flowchart LR
 
 - **One backend, two hosts.** Your computer and every remote machine each run one long-lived backend, built from the same code. It reads session records, owns the SSH connections, makes every decision and does all the writing.
 - **The UI only displays.** It talks to backends with just two verbs — call and subscribe — and never touches SSH itself.
-- **One home per machine.** Everything cc-monitor owns lives in `~/.cc-monitor/`. In Claude Code's `~/.claude` it only reads session records and only writes the assets you ask it to install.
+- **One home per machine.** Everything cc-monitor owns lives in `~/.cc-monitor/`. In Claude Code's `~/.claude` it normally only reads sessions; it writes there only when you fork or delete a session, install or remove a skill / MCP server, or enable multiple accounts.
 
 More detail in [`src/doc/ARCHITECTURE.md`](src/doc/ARCHITECTURE.md).
 
@@ -116,7 +116,7 @@ Install [Claude Code](https://github.com/anthropics/claude-code) first and run i
 |---|---|
 | **Windows** 10 (1809+) / 11 | [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/) (built into Windows 11) |
 | **Linux** x86_64 | WebKitGTK 4.1 (Debian / Ubuntu: `libwebkit2gtk-4.1-0`, pulled in by the `.deb`) |
-| **Remote machines** | Linux / Unix reachable over SSH; tmux if you want background sessions. Nothing to install by hand |
+| **Remote machines** | Linux (x86_64 / aarch64) reachable over SSH; tmux if you want background sessions. Nothing to install by hand |
 
 ### Download
 
@@ -185,7 +185,7 @@ Single keys, all changeable in Settings → Shortcuts.
 | Location | What |
 |---|---|
 | `~/.cc-monitor/` | Everything cc-monitor owns: settings, backend, logs, alias files, API keys (readable only by you), and the multi-account store `accounts/` (built and maintained by the backend: the account list, plus one set of login credentials per account) |
-| `~/.claude/` | Claude Code's own directory. cc-monitor only reads session records and only writes the skills / MCP servers you choose to install |
+| `~/.claude/` | Claude Code's own directory. cc-monitor reads session records; it writes only after you ask: forking creates a new session record, deleting a session removes it, installing / removing skills and MCP servers, and enabling multiple accounts moves this machine's login into the account store |
 
 The "Data locations" page in Settings shows the full path of every file.
 
@@ -194,8 +194,8 @@ The "Data locations" page in Settings shows the full path of every file.
 ## Known limitations
 
 - On Windows, sessions cannot yet be sent to the background, re-attached, previewed or typed into; the local backend exits together with the UI.
-- macOS and Linux arm64 are not supported as the local machine (they work as remote machines).
-- Multi-account currently works on Linux / Unix machines only; the account store cannot be set up on a local Windows machine.
+- macOS is not supported, neither as the local machine nor as a remote one; Linux arm64 works as a remote machine only.
+- Multi-account currently works on Linux machines only; the account store cannot be set up on a local Windows machine.
 - The Windows side of what 4.0.6 adds (finding the window for ↗, the new file window) has only been cross-compiled and tested automatically, not run on a real Windows machine — see the [CHANGELOG](CHANGELOG.md).
 - ↗ brings the window forward but cannot pick a tab inside Windows Terminal; terminals connected through a jump host or port translation cannot be matched.
 

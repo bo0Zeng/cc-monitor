@@ -928,7 +928,7 @@ fn every_test_script_is_either_run_by_ci_or_registered_as_manual() {
         (
             "test:f40",
             "需 Xvfb 上跑着 `npx tauri dev`（真 WebView）⇒ 结构上进不了 CI；\
-                 `src/doc/RELEASING.md § 1` 已把它列进发版手测清单。\
+                 发版清单不列它、今天没有人跑它（理由是下面那条）。\
                  ★ **08-06 实测补一条更硬的理由**：它 `PROJ_DIR=\"$HOME/.claude/projects/-tmp-e2e-fork\"`、\
                  `PIDFILE=\"$HOME/.claude/sessions/…\"` —— **固有地往 `~/.claude/` 写**，\
                  而本区红线是「`~/.claude/` 只读」⇒ **本机绝不能跑它，带不带 tmux 桩都不行**。\

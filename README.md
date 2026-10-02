@@ -53,7 +53,7 @@ cc-monitor 只是观察者和启动器：`claude` 仍然跑在你自己的终端
 ![机器页的「足迹」：cc-monitor 在这台机器上写过的每个文件](docs/screenshots/footprint.png)
 
 ### 文件管理器
-- 独立窗口，本机和远端都能开
+- 独立窗口，打开远端机器上的文件（本机会话的工作目录用系统自带的文件管理器打开）
 - 配色和字体跟主界面走；后退 / 前进、可手输的地址栏、左栏（书签 · 这台机器 · 其他机器）、详情列表（列宽可拖、点表头排序）、状态栏
 - 搜索一敲就出：默认搜整个家目录，支持 Everything 常用写法（空格 且 · `|` 或 · `!` 非 · `*` `?` · `ext:` `path:` `file:` `folder:`）
 - 新建、改名、删除、复制、改权限、上传下载、书签、按内容搜索；右键「属性」；预览支持代码高亮与图片
@@ -98,7 +98,7 @@ flowchart LR
 
 - **一份后端，两种宿主**。本机和每台远端各跑一个常驻后端，是同一份代码。它读会话记录、管 SSH 连接、做全部判断，也负责写文件。
 - **界面只负责显示**。界面对后端只有两个动作：问一次（call）和订阅（subscribe）。界面进程自己不碰 SSH。
-- **一台机器一个家**。cc-monitor 自己的东西都放在 `~/.cc-monitor/`；对 Claude Code 的 `~/.claude` 只读会话，只写你点名要装的资产。
+- **一台机器一个家**。cc-monitor 自己的东西都放在 `~/.cc-monitor/`；对 Claude Code 的 `~/.claude` 平时只读会话；你点了分叉、删会话、装 / 卸 skill 与 MCP、启用多账号，才写对应的那几处。
 
 更细的说明见 [`src/doc/ARCHITECTURE.md`](src/doc/ARCHITECTURE.md)。
 
@@ -114,7 +114,7 @@ flowchart LR
 |---|---|
 | **Windows** 10（1809+）/ 11 | [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/)（Windows 11 自带） |
 | **Linux** x86_64 | WebKitGTK 4.1（Debian / Ubuntu：`libwebkit2gtk-4.1-0`，`.deb` 会自动装） |
-| **远端机器** | Linux / Unix，能 SSH 登录；想在后台跑会话就装 tmux。不用手动装任何东西 |
+| **远端机器** | Linux（x86_64 / aarch64），能 SSH 登录；想在后台跑会话就装 tmux。不用手动装任何东西 |
 
 ### 下载
 
@@ -185,7 +185,7 @@ ccm -- --ccm-help                 # 全部选项
 | 位置 | 放什么 |
 |---|---|
 | `~/.cc-monitor/` | cc-monitor 的一切：配置、后端、日志、别名文件、API 号的 key（只给本人读写），以及多账号的账号库 `accounts/`（由后端建立和维护：账号清单，和每个号一份登录凭据） |
-| `~/.claude/` | Claude Code 自己的目录。cc-monitor 只读会话记录，只写你点名要装的 skill / MCP |
+| `~/.claude/` | Claude Code 自己的目录。cc-monitor 读会话记录；只在你点了之后才写：分叉新建一份会话记录、删会话删掉那一份、装 / 卸 skill 与 MCP、启用多账号时把这台的登录凭据搬进账号库 |
 
 设置里的「数据位置」页列出每个文件的完整路径。
 
@@ -194,8 +194,8 @@ ccm -- --ccm-help                 # 全部选项
 ## 已知限制
 
 - Windows 上会话暂不能放后台、接回、看画面、往里送字；本机后端在 Windows 上随界面一起退出。
-- macOS、本机 Linux arm64 不在支持范围内（可以把它们当远端机器连）。
-- 多账号目前只支持 Linux / Unix 机器，Windows 本机上不能建账号库。
+- macOS 不在支持范围内，当本机、当远端机器都不行；Linux arm64 只能当远端机器。
+- 多账号目前只支持 Linux 机器，Windows 本机上不能建账号库。
 - 4.0.6 新加的 Windows 那一侧（↗ 找窗口、文件窗口的新样子）只经过交叉编译和自动化测试，没在真实 Windows 上跑过，见 [CHANGELOG](CHANGELOG.md)。
 - ↗ 只能切到窗口，切不到 Windows Terminal 里的具体标签页；经跳板机或端口转换连过去的终端对不上。
 

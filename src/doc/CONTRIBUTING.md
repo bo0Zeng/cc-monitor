@@ -147,7 +147,8 @@ cargo test --workspace
 ### 3.4 删掉或改名一个符号，而散文还提着它
 
 - 散文（文档与注释）点符号写成 `文件.rs::函数名`，不写 `文件:行号`；`doc/` 与源码里的这种地址各有判据核它还在不在。
-- 删 / 改名之后把那句话改对。那句话确是在讲「这个东西为什么不在了」的，同一行挂墓碑标记（字面见 `structural_scan.rs` 的 `PROSE_NAME_TOMBSTONE`），并登记进 `tests/frontend/shell/structural_scan_tests.rs` 的 `TOMBSTONED` 与按文件计数的 `REGISTERED`。
+- 删 / 改名之后，把提到它的每一句话改成现状：说今天是什么、在哪儿。不写「它为什么不在了」，不挂墓碑标记，也不登记。
+- 已有的墓碑标记（字面见 `structural_scan.rs` 的 `PROSE_NAME_TOMBSTONE`）冻结，只许减：改到一句挂着墓碑的话，就把它改成现状、去掉标记，在 `tests/frontend/shell/structural_scan_tests.rs` 的 `REGISTERED`（按文件计数）与 `TOMBSTONED` 里减掉那一格，并把同一处的冻结数往下改。两张表加行或加数会红。
 
 ---
 

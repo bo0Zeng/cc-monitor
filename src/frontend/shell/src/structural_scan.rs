@@ -195,6 +195,10 @@ pub const LINE_ADDRESS_TOMBSTONE: &str = "〔行号墓碑〕";
 
 /// 显式标记：这一**行**里的那个符号名是**故意留着的历史名**（订正段 / 墓碑），不许判。
 ///
+/// 🔴 **冻结**：这枚标记不许再挂。删了或改了名的符号，把提到它的那句话改成现状（`src/doc/CONTRIBUTING.md` §3.4）；
+/// 已有的只许减，两张登记表的行数与处数钉在冻结数上（`tests::every_prose_tombstone_mark_is_registered`
+/// · `tests::every_dead_name_named_in_the_prose_is_declared_dead`）。下面讲的是它当初为什么这样造。
+///
 /// 它是 [`LINE_ADDRESS_TOMBSTONE`] 的兄弟，服务的是
 /// [`tests::every_dead_name_named_in_the_prose_is_declared_dead`]。**两个刻意不合成一个**：
 /// 合成一个 ⇒ 一处行号墓碑会顺手赦免同一行上的死名（反之亦然），
