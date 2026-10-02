@@ -280,7 +280,8 @@ async fn settle_listing(w: &FileWindow, who: &str) {
 async fn the_bar_is_really_clickable_and_the_disk_follows() {
     // 垫两段很长的名字（Windows 的临时目录就这么长）：路径长到盖过地址栏右端那颗星时星照样点得到；
     // 收藏的目录名本身很长时，左栏那一条截断显示、它和 × 都还在左栏里点得到。
-    let root = scratch("ui").join("x".repeat(160));
+    let base = scratch("ui");
+    let root = base.join("x".repeat(160));
     let (a, b) = (root.join(format!("a{}", "y".repeat(120))), root.join("b"));
     std::fs::create_dir_all(&a).unwrap();
     std::fs::create_dir_all(&b).unwrap();
@@ -288,7 +289,8 @@ async fn the_bar_is_really_clickable_and_the_disk_follows() {
         a.to_string_lossy().to_string(),
         b.to_string_lossy().to_string(),
     );
-    let file = file_in(&root);
+    // 书签文件放在短路径里：本条看的是长名字怎么画、怎么点，不是长路径怎么落盘。
+    let file = file_in(&base);
     let wired = wire_up(
         "fw34-bm-ui",
         FakeBackend::new(&["files-ls"], Declared::default()),
@@ -326,7 +328,7 @@ async fn the_bar_is_really_clickable_and_the_disk_follows() {
     // ③ × 删掉 ⇒ 盘上那台机器那一格整个没了。
     let _ = click_label(&ctx, &mut ws, REMOVE_LABEL.as_str());
     assert_eq!(read_book(&file).unwrap(), Book::new(), "点了 × 盘上还在");
-    let _ = std::fs::remove_dir_all(&root);
+    let _ = std::fs::remove_dir_all(&base);
 }
 
 /// 别的窗口（另一个进程）刚加的书签，本窗口**换一次目录**就看得见。
