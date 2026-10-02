@@ -2,7 +2,7 @@
 
 **All your Claude Code sessions, on every machine, in one window: watch them live, jump back in, and manage every machine from one place.**
 
-> English · [中文](./README.md) | License: MIT | Platform: Windows 10/11 · Linux (.deb) | Current: v4.0.4
+> English · [中文](./README.md) | License: MIT | Platform: Windows 10/11 · Linux (.deb) | Current: v4.0.5
 
 ![Main window: each tab on the left is a running Claude Code session; the right side shows the conversation and tool calls live](docs/screenshots/main.png)
 
@@ -203,7 +203,7 @@ The "Data locations" page in Settings shows the full path of every file.
 
 ## Status
 
-- current release **v4.0.4**: see the [CHANGELOG](CHANGELOG.md)
+- current release **v4.0.5**: see the [CHANGELOG](CHANGELOG.md)
 
 ## License
 
