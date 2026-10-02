@@ -2647,3 +2647,103 @@ fn the_empty_dir_form_takes_exactly_one_shape() {
     assert_eq!(e.0, "bad_args");
     assert!(root.join("d").is_dir(), "拒了却动了盘");
 }
+
+// ── 新建在这台机器自家目录（`~/.cc-monitor`）里的东西只给本人 ─────────────────
+
+#[cfg(unix)]
+const OWN_HOME_CHILD_MARK: &str = "CCM_FW_OWN_HOME_CHILD";
+
+/// 子进程入口（不是判据 ⇒ `#[ignore]`）：`HOME` 由父判据换成临时目录，经写面在 `~/.cc-monitor` 里外各新建一遍。
+#[cfg(unix)]
+#[test]
+#[ignore = "子进程入口：只在被父判据用 CCM_FW_OWN_HOME_CHILD 拉起时才跑"]
+fn own_home_child_entry_point() {
+    if std::env::var(OWN_HOME_CHILD_MARK).is_err() {
+        return;
+    }
+    let home = PathBuf::from(std::env::var("HOME").unwrap());
+    // 补父目录那一路会把 `~/.cc-monitor` 本身建出来（别名文件第一次写就是这一形）。
+    put_text(&home, ".cc-monitor/aliases.sh", b"a", None, false, true).unwrap();
+    make_dir(&home, ".cc-monitor/backups").unwrap();
+    create_new_file(&home, ".cc-monitor/backups/one.json", b"{}").unwrap();
+    put_text(&home, "elsewhere/rc", b"x", None, false, true).unwrap();
+    make_dir(&home, "elsewhere/sub").unwrap();
+    create_new_file(&home, "elsewhere/new.txt", b"y").unwrap();
+    // 已在的文件覆盖写沿用原权限位（不因为住在自家目录里就被改）。
+    let kept = home.join(".cc-monitor/kept.json");
+    std::fs::write(&kept, b"1").unwrap();
+    {
+        use std::os::unix::fs::PermissionsExt as _;
+        std::fs::set_permissions(&kept, std::fs::Permissions::from_mode(0o640)).unwrap();
+    }
+    put_text(
+        &home,
+        ".cc-monitor/kept.json",
+        b"2",
+        Some(b"1"),
+        false,
+        false,
+    )
+    .unwrap();
+}
+
+/// ★ 写面新建的东西：落在 `~/.cc-monitor` 里（含它本身）⇒ 文件 600 · 目录 700；落在别处 ⇒ 照 umask，不收紧；
+/// 已在的覆盖写沿用原权限位。真起一个 `HOME` 换成临时目录的子进程，走生产那一条家目录读法。
+#[cfg(unix)]
+#[test]
+fn what_the_file_face_creates_inside_the_own_home_is_only_for_the_owner() {
+    use std::os::unix::fs::PermissionsExt as _;
+    let home = temp_root("own-home");
+    let exe = std::env::current_exe().expect("测试二进制自己的路径");
+    let st = std::process::Command::new(exe)
+        .args([
+            "control::files_write::tests::own_home_child_entry_point",
+            "--exact",
+            "--ignored",
+            "--test-threads=1",
+        ])
+        .env(OWN_HOME_CHILD_MARK, "1")
+        .env("HOME", &home)
+        .env_remove("USERPROFILE")
+        .stdout(std::process::Stdio::null())
+        .status()
+        .expect("起子进程");
+    assert!(st.success(), "子进程没走完：{st}");
+    let mode = |rel: &str| {
+        std::fs::metadata(home.join(rel))
+            .unwrap_or_else(|e| panic!("{rel}: {e}"))
+            .permissions()
+            .mode()
+            & 0o777
+    };
+    let got: Vec<(&str, u32)> = [
+        ".cc-monitor",
+        ".cc-monitor/aliases.sh",
+        ".cc-monitor/backups",
+        ".cc-monitor/backups/one.json",
+        ".cc-monitor/kept.json",
+    ]
+    .into_iter()
+    .map(|r| (r, mode(r)))
+    .collect();
+    assert_eq!(
+        got,
+        vec![
+            (".cc-monitor", 0o700),
+            (".cc-monitor/aliases.sh", 0o600),
+            (".cc-monitor/backups", 0o700),
+            (".cc-monitor/backups/one.json", 0o600),
+            (".cc-monitor/kept.json", 0o640),
+        ]
+    );
+    // 阴性对照：家目录别处新建的不收紧（照 umask 给的那一档，组 / 别人至少能读）。
+    for r in [
+        "elsewhere",
+        "elsewhere/rc",
+        "elsewhere/sub",
+        "elsewhere/new.txt",
+    ] {
+        assert_ne!(mode(r) & 0o044, 0, "{r} 被收紧了：{:o}", mode(r));
+    }
+    std::fs::remove_dir_all(&home).ok();
+}

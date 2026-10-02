@@ -309,8 +309,9 @@ const HIDDEN_UNRESOLVED: Readonly<Record<string, string>> = {
     "`this.outline.panel` —— 大纲清单那块，由 `UserInputPanel` 建（类 `.user-inputs`；`styles.css` 里那条规则头注逐字「绝不许出现 display」）",
   // 扩展页的抽屉：`this.drawer` 在构造器里由本文件的 `el()` 小工具建（类 `ext-drawer`，经一层参数传进去 ⇒ 推不出；行号按文件现数）；
   //   `.ext-drawer` 在 `styles/settings.css` 里**没有 display 规则** ⇒ UA 的 `[hidden]` 不会被压过（人工核过）。
-  "src/frontend/ui/settings/ext-section.ts:228": "`this.drawer` —— 构造时收起",
-  "src/frontend/ui/settings/ext-section.ts:338": "`this.drawer` —— 点开一行才拉出来",
+  // 228/338 → 229/339：上方多一行 import（「在文件夹中显示」）。
+  "src/frontend/ui/settings/ext-section.ts:229": "`this.drawer` —— 构造时收起",
+  "src/frontend/ui/settings/ext-section.ts:339": "`this.drawer` —— 点开一行才拉出来",
   "src/frontend/ui/error-toast.ts:136": // +1：加了 copyText 的 import
     "`existing.countEl` —— `existing` 是从一张 Map 里取回来的旧 toast，它的 countEl 在别处建的",
   // ⚠ `606 → 614`：我在这份文件上方加了一段注释，**行号就漂了**。
@@ -363,9 +364,10 @@ const HIDDEN_UNRESOLVED: Readonly<Record<string, string>> = {
   // 440/447 → 436/443：`readFootprint` 去掉那一道 `as unknown as`（命令签名本来就收 `{ origin }`），上移 4 行。
   // 436/443 → 437/444：上方多一行 import（`$PROFILE` 备份改问本机后端），那一处本身没动。
   // 415/422 → 419/426：上方 `expected_absent` 那一档（缺口 · 语气）多四行，那一处本身没动。
-  "src/frontend/ui/settings/config-surface-section.ts:419": // 行号 −1：字面量进表后收行 ·+1：`answersFor` 回声那一行上面加了一行注释
+  // 419/426 → 450/457：上方多三行 import 与每一行「去看看它」那颗按钮（`showButton`），那一处本身没动。
+  "src/frontend/ui/settings/config-surface-section.ts:450":
     "那一整套的显隐包装（本机与远端都用），刻意不挂类名（没有类就不会有裸 display 压过 [hidden]）",
-  "src/frontend/ui/settings/config-surface-section.ts:426": // 同上 ·同上 +1
+  "src/frontend/ui/settings/config-surface-section.ts:457":
     "同一个包装，远端那台答不了时收起来（`showUnanswered`）",
   // 行号随上方历史清单那几段改走通道挪了（1635 → 1617），那一处本身没动。
   // `1612 → 1613`：`history.ts` 多一行 import（应用内对话框）；再 +5：`liveInTabs` 那一格；

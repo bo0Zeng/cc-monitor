@@ -113,6 +113,11 @@ const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
              不限任何字节总量、不截任何东西。",
     ),
     (
+        "OWN_FILE_MODE",
+        "**权限位**不是体量：后端文件管理面在 `~/.cc-monitor` 里新建文件时给的 unix 权限（0o600，只给本人），\
+             不限任何字节总量、不截任何东西。",
+    ),
+    (
         "PRIVATE_DIR_MODE",
         "**权限位**不是体量：后端 `control/files_commit·rs` 建 `~/.cc-monitor` 与暂存区那一下给的 unix 权限（0o700，只给本人），\
              不限任何字节总量、不截任何东西。",

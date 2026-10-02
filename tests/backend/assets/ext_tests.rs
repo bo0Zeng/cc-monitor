@@ -1027,6 +1027,8 @@ fn no_production_code_writes_the_agent_settings_file() {
         "door::rename",
     ];
     const READ_ONLY: &[&str] = &[
+        // 每号各一份的那张表里有 `remote-settings.json`（字样同针，不是那份设置文件）。
+        "src/backend/agents/claudecode/accounts.rs",
         "src/backend/agents/claudecode/footprint.rs",
         "src/backend/agents/claudecode/paths.rs",
         "src/backend/observe/cc_bus_hooks.rs",

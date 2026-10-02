@@ -4186,6 +4186,11 @@
       "zh": "文件窗口打开失败",
       "args": []
     },
+    "revealInFolder.reveal.failed": {
+      "kind": "error",
+      "zh": "在文件夹中显示失败",
+      "args": []
+    },
     "firstRunHint.mount.closeLabel": {
       "kind": "aria",
       "zh": "关掉这次的提示",
@@ -7461,6 +7466,21 @@
       "zh": "解析为 {pathResolved}",
       "args": ["pathResolved"]
     },
+    "configSurface.row.reveal": {
+      "kind": "action",
+      "zh": "在文件夹中显示",
+      "args": []
+    },
+    "configSurface.row.openFiles": {
+      "kind": "action",
+      "zh": "在文件窗口里打开",
+      "args": []
+    },
+    "configSurface.row.noHostConfig": {
+      "kind": "error",
+      "zh": "找不到{machine}的连接设置。到「机器」里看看这台还在不在。",
+      "args": ["machine"]
+    },
     "configSurface.report.noHook": {
       "kind": "body",
       "zh": "不含 cc-bus 钩子字样",
@@ -8022,6 +8042,11 @@
     "data.item.open": {
       "kind": "action",
       "zh": "打开",
+      "args": []
+    },
+    "data.item.reveal": {
+      "kind": "action",
+      "zh": "在文件夹中显示",
       "args": []
     },
     "data.item.inLogsPage": {
@@ -17455,6 +17480,11 @@
     "extPage.button.openFiles": {
       "kind": "action",
       "zh": "在文件窗口里打开",
+      "args": []
+    },
+    "extPage.button.reveal": {
+      "kind": "action",
+      "zh": "在文件夹中显示",
       "args": []
     },
     "extPage.card.slotEmpty": {

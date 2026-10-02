@@ -94,3 +94,28 @@ fn a_window_taller_than_the_work_area_is_shrunk_and_moved_inside_it() {
         Some(((784, 1001), (-800, 0)))
     );
 }
+
+/// ★ monitor 自己的东西只给本人：缺的父目录建成 700、文件 600（换名上位后就是临时件的权限）；已在的目录不动。
+#[cfg(unix)]
+#[test]
+fn atomic_write_json_creates_dirs_and_file_only_for_the_owner() {
+    use std::os::unix::fs::PermissionsExt as _;
+    let root = std::env::temp_dir().join(format!("ccm-utils-test-private-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).unwrap();
+    std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let dst = root.join("a").join("b").join("x.json");
+    atomic_write_json(&dst, &serde_json::json!({ "k": 1 })).unwrap();
+    atomic_write_json(&dst, &serde_json::json!({ "k": 2 })).unwrap();
+    let mode = |p: &std::path::Path| std::fs::metadata(p).unwrap().permissions().mode() & 0o777;
+    assert_eq!(
+        [
+            mode(&root),
+            mode(&root.join("a")),
+            mode(&root.join("a/b")),
+            mode(&dst)
+        ],
+        [0o755, 0o700, 0o700, 0o600]
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}

@@ -13,6 +13,9 @@
 
 use std::path::Path;
 
+/// 后端在每台机器上的家目录名（相对用户家目录）。
+pub const DIR_NAME: &str = ".cc-monitor";
+
 /// 后端自家目录**建的那一下**给的权限位：只给本人。
 pub const PRIVATE_DIR_MODE: u32 = 0o700;
 

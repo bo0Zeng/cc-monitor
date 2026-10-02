@@ -20,6 +20,17 @@ const backupsMock = vi.fn((): Promise<string[]> => Promise.resolve([]));
 vi.mock("../../../../src/frontend/ui/settings/profile-backups", () => ({
   findProfileBackupDirs: () => backupsMock(),
 }));
+// 远端那一台的连接设置（「在文件窗口里打开」要它）；只认 aya。
+const { AYA_CFG, revealed } = vi.hoisted(() => ({ AYA_CFG: { host: "aya", label: "aya" }, revealed: [] as unknown[] }));
+vi.mock("@tauri-apps/plugin-opener", () => ({
+  revealItemInDir: (p: unknown) => {
+    revealed.push(p);
+    return Promise.resolve();
+  },
+}));
+vi.mock("../../../../src/frontend/ui/remote-config", () => ({
+  resolveRemoteConfigByOrigin: (o: string) => Promise.resolve(o === "aya" ? AYA_CFG : null),
+}));
 const toastMock = vi.fn();
 vi.mock("../../../../src/frontend/ui/error-toast", () => ({
   showActionFailureToast: (...a: unknown[]) => toastMock(...a),
@@ -623,5 +634,62 @@ describe("〔ST2 · 用户 09-24 裁「远端也有真栏」 · MIG-3b 续〕足
       s.element.querySelectorAll(".config-surface-row").length,
       "晚到的本机答复盖掉了 aya 那一页",
     ).toBe(1);
+  });
+});
+
+describe("足迹那几行「去看看它」：本机在文件夹中显示、远端在文件窗口里打开（开到那台、高亮那一行）", () => {
+  afterEach(() => __resetMachineContextForTests());
+  const flush = async () => {
+    for (let i = 0; i < 6; i++) await new Promise((r) => setTimeout(r, 0));
+  };
+  const rows = () => [
+    row({ path_declared: "~/.cc-monitor/bin/ccm", path_resolved: "/h/.cc-monitor/bin/ccm" }),
+    row({ path_declared: "~/.bashrc", path_resolved: "/h/.bashrc", state: { kind: "absent" } }),
+    row({ path_declared: "<项目>/.mcp.json", path_resolved: null, state: { kind: "undetermined", why: "不猜项目目录" } }),
+    row({ path_declared: "~/.claude/settings.json", path_resolved: "/h/.claude/settings.json" }),
+  ];
+  /** 足迹照答；文件窗口与系统文件管理器那两条也收下（看交过去的是什么）。 */
+  function serveWithOpeners(): void {
+    const answer = footprintInvoke(report({ rows: rows() }));
+    invokeMock.mockImplementation(async (cmd: string, args?: unknown) => {
+      if (cmd === "open_file_window") return 1;
+      return answer(cmd, args);
+    });
+  }
+  const shown = (s: ConfigSurfaceSection, sel: string) =>
+    [...s.element.querySelectorAll<HTMLElement>(".config-surface-row")].filter((r) => r.querySelector(sel)).map((r) => r.dataset.path);
+  const clickAll = (s: ConfigSurfaceSection, sel: string) =>
+    s.element.querySelectorAll<HTMLButtonElement>(`.config-surface-row ${sel}`).forEach((b) => b.click());
+  const sent = (cmd: string) => invokeMock.mock.calls.filter((c) => c[0] === cmd).map((c) => c[1]);
+
+  it("★ 有按钮的行 == 在盘上且有真路径的行（两向）；本机给「在文件夹中显示」、远端给「在文件窗口里打开」，各自交过去的是那一行的真路径", async () => {
+    const present = ["~/.cc-monitor/bin/ccm", "~/.claude/settings.json"];
+    serveWithOpeners();
+    const local = new ConfigSurfaceSection();
+    local.loadNow();
+    await flush();
+    expect(shown(local, "button[data-reveal]")).toEqual(present);
+    expect(shown(local, "button[data-open-files]")).toEqual([]);
+    clickAll(local, "button[data-reveal]");
+    await flush();
+    expect(revealed).toEqual(["/h/.cc-monitor/bin/ccm", "/h/.claude/settings.json"]);
+    expect(sent("open_file_window")).toEqual([]);
+
+    invokeMock.mockReset();
+    revealed.length = 0;
+    serveWithOpeners();
+    setCurrentMachine("aya");
+    const remote = new ConfigSurfaceSection();
+    remote.loadNow();
+    await flush();
+    expect(shown(remote, "button[data-open-files]")).toEqual(present);
+    expect(shown(remote, "button[data-reveal]")).toEqual([]);
+    clickAll(remote, "button[data-open-files]");
+    await flush();
+    expect(sent("open_file_window")).toEqual([
+      { cfg: AYA_CFG, path: "", revealFile: "/h/.cc-monitor/bin/ccm" },
+      { cfg: AYA_CFG, path: "", revealFile: "/h/.claude/settings.json" },
+    ]);
+    expect(revealed).toEqual([]);
   });
 });

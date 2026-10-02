@@ -155,6 +155,22 @@ fn a_missing_file_starts_from_an_empty_object() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// 数据目录与 `config.json` 只给本人：缺的那层目录建成 700、写出来的文件 600（旧的 664 那份写一次也收成 600）。
+#[cfg(unix)]
+#[test]
+fn the_config_file_and_its_new_directory_are_only_for_the_owner() {
+    use std::os::unix::fs::PermissionsExt as _;
+    let dir = tmpdir("private");
+    let file = dir.join("data").join("config.json");
+    patch_config_at(&file, &[set(&["a"], json!(1))]).unwrap();
+    let mode = |p: &Path| std::fs::metadata(p).unwrap().permissions().mode() & 0o777;
+    assert_eq!((mode(&dir.join("data")), mode(&file)), (0o700, 0o600));
+    std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o664)).unwrap();
+    patch_config_at(&file, &[set(&["a"], json!(2))]).unwrap();
+    assert_eq!(mode(&file), 0o600);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 /// J3：空路径（= 整份替换换了个名字）⇒ 整批拒，同批里成形的那条也不落，盘上字节不变。
 #[test]
 fn an_empty_path_refuses_the_whole_batch() {

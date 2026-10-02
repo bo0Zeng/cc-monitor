@@ -727,8 +727,13 @@ body.settings-window-mode .settings-panel {
   color: var(--text-2);
 }
 
-.settings-data-item-open {
+.settings-data-item-actions {
   grid-area: open;
+  display: flex;
+  gap: 4px;
+}
+
+.settings-data-item-open {
   background: transparent;
   border: 1px solid var(--border-soft);
   border-radius: 3px;

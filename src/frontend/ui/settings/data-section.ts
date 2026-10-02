@@ -2,10 +2,11 @@
  * Issue #3 (A 透明化): 设置面板「数据」区。
  *
  * 列出 monitor 所有持久化数据的位置 + WebView2 用户数据目录 + localStorage keys，
- * 每项配 [打开] 按钮。**纯展示，不做删除 / 清空操作**——避免误点。
+ * 每项配 [打开]（默认程序打开它本身）与「在文件夹中显示」（系统文件管理器打开所在文件夹并选中它）。
+ * **纯展示，不做删除 / 清空操作**——避免误点。
  * 〔用户 09-24 裁，答〕「数据位置那一页要不要（删 / 清空），不要，给路径」
  * ⇒ 这条红线由 `tests/frontend/ui/settings/data-section.vitest.ts` 钉着：效应面两向相等（只读 `get_data_paths`、
- *   只会 `openPath`、`localStorage` 零写）＋ 每一条路径以纯文本上屏。
+ *   只会 `openPath` 与「在文件夹中显示」、`localStorage` 零写）＋ 每一条路径以纯文本上屏。
  *
  * 设计：
  * - 进入面板时 invoke `get_data_paths` 拉一次后端探测（async + spawn_blocking）
@@ -23,6 +24,7 @@ import { showActionFailureToast } from "../error-toast";
 import { enumeratePrefix } from "../local-storage";
 import { formatBytes } from "../format";
 import { holdSkeletonHeight, makeSkeleton } from "./skeleton";
+import { revealInFolder } from "../reveal-in-folder";
 
 // C01（rust-ts-boundary）：这两个类型**改成从生成物 import**，不再手写。
 // 生成源是 `src/frontend/shell/src/data_paths.rs` 的 `#[derive(ts_rs::TS)]`，产出 `src/frontend/ui/generated/`。
@@ -310,7 +312,13 @@ export class DataSection {
       see.textContent = copyText("data.item.inLogsPage");
       li.appendChild(see);
     } else {
-      li.appendChild(this.buildOpenButton(info));
+      // [打开] 与「在文件夹中显示」并排住同一格（这一格是网格里的一个区，两颗按钮装进一个盒子）。
+      const actions = document.createElement("span");
+      actions.className = "settings-data-item-actions";
+      actions.appendChild(this.buildOpenButton(info));
+      // 不在盘上的东西没有可选中的那一项 ⇒ 不给这颗按钮。
+      if (info.exists) actions.appendChild(buildRevealButton(info.path));
+      li.appendChild(actions);
     }
 
     // 完整路径单独一行（小字 + ellipsis）
@@ -383,6 +391,17 @@ export class DataSection {
 
     return block;
   }
+}
+
+/** 「在文件夹中显示」：系统文件管理器打开它所在的文件夹并选中它（[打开] 是用默认程序打开它本身）。 */
+function buildRevealButton(path: string): HTMLElement {
+  const b = document.createElement("button");
+  b.type = "button";
+  b.className = "settings-data-item-open";
+  b.dataset.reveal = "";
+  b.textContent = copyText("data.item.reveal");
+  b.addEventListener("click", () => void revealInFolder(path));
+  return b;
 }
 
 function collectMonitorLocalStorageKeys(): { key: string; value: string }[] {

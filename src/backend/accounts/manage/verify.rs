@@ -2,7 +2,7 @@
 //!
 //! 致命（`fail`）：身份没隔离开（身份文件是链接 · 两个号邮箱相同 · 共享库里留着原生根在家目录的那份身份）、
 //! 权限不对（号的目录不是 `0700` · 凭据不是 `0600`）、共享没接上（缺链接 · 链错地方 · 断链 · 共享项在号里是实体文件 · 一个共享项都没有）。
-//! 提示（`warn`）：还没登录 · 号里有意料之外的实体项 · 共享库本身的源头断了 · 身份表里的某项哪儿都找不到 ·
+//! 提示（`warn`）：还没登录 · 号里有意料之外的实体项 · 共享库本身的源头断了 · 身份本体哪儿都找不到 ·
 //! 共享库顶层有一份 `0600` 的文件却不在身份表里（它会被链给每个号）。
 
 use super::layout::{identity, is_excluded, is_identity, share_items};
@@ -373,7 +373,8 @@ pub(crate) fn verify(s: &Snapshot, names: &[String]) -> VerifyReport {
         }
     }
 
-    for (item, _, _) in identity() {
+    // 只问身份本体：本机状态那几项是 Claude Code 用到才建的，哪儿都没有是常态，说不明这张表过期了。
+    for (item, _, _) in identity().into_iter().filter(|(_, _, secret)| *secret) {
         let found = s.shared.get(item).exists()
             || s.home_items.get(item).is_some_and(Item::exists)
             || m.managed().any(|a| s.dir(&a.config_dir).get(item).exists());

@@ -12,6 +12,10 @@ pub(crate) const CONFIG_FILE_NAME: &str = ".claude.json";
 
 /// Claude Code 把「你是谁」与「你的本机状态」放在哪几份文件里。账号库里每个号各有一份的就是这几项，
 /// 其余顶层项都链回共享的配置根。Claude Code 换了文件名或位置 ⇒ 只改这张表。
+///
+/// 收哪些：Claude Code 在每个配置根里各写一份、共享会串号或互相覆盖的 —— 登录身份、按这个号从服务端取回的
+/// 设置与限额（连同记着「是给哪个身份取的」那份戳）、这个号的 MCP 授权缓存与用量、各自的清理 / 更新记录、
+/// 状态目录（同意记录之类）与反馈草稿。判据拿一份号目录的结构（名字与类型）与本表两向相等。
 pub(crate) const NATIVE_IDENTITY: &[(&str, IdentityRoot, IdentityClass)] = &[
     (
         acct_core::CREDENTIALS_NAME,
@@ -26,10 +30,37 @@ pub(crate) const NATIVE_IDENTITY: &[(&str, IdentityRoot, IdentityClass)] = &[
         IdentityClass::State,
     ),
     (
+        "policy-limits.json.stamp.json",
+        IdentityRoot::ConfigDir,
+        IdentityClass::Derived,
+    ),
+    (
+        "remote-settings.json",
+        IdentityRoot::ConfigDir,
+        IdentityClass::State,
+    ),
+    (
+        "mcp-needs-auth-cache.json",
+        IdentityRoot::ConfigDir,
+        IdentityClass::State,
+    ),
+    (
         "stats-cache.json",
         IdentityRoot::ConfigDir,
         IdentityClass::State,
     ),
+    (
+        ".last-cleanup",
+        IdentityRoot::ConfigDir,
+        IdentityClass::State,
+    ),
+    (
+        ".last-update-result.json",
+        IdentityRoot::ConfigDir,
+        IdentityClass::State,
+    ),
+    ("state", IdentityRoot::ConfigDir, IdentityClass::State),
+    ("feedback", IdentityRoot::ConfigDir, IdentityClass::State),
 ];
 
 /// 注册表里 Claude 那一行的账号库布局（`agents::Adapter::accounts`）。

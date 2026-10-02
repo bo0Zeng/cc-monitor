@@ -46,6 +46,9 @@ import { holdSkeletonHeight, makeSkeleton } from "./skeleton";
 import { withPending } from "./pending";
 import { copyText } from "../copy-table";
 import { findProfileBackupDirs } from "./profile-backups";
+import { revealInFolder } from "../reveal-in-folder";
+import { openFileWindow } from "../file-window";
+import { resolveRemoteConfigByOrigin } from "../remote-config";
 
 /**
  * 一态 → 它在「还差什么」那套口径里算哪一种缺口。`present` 不是缺口 ⇒ `null`。
@@ -233,6 +236,34 @@ export function formatReportText(r: ConfigSurfaceReport): string {
 //   回声校验 `answersFor`〔散文墓碑〕删了：它防的是旧 Tauri 命令静默丢掉 `origin` 参数，通道按 origin 路由、那一形不存在了
 //   （留着就是两侧同源的恒真）。远端那台答不了（后端太旧）⇒ 读者抛 `FootprintUnanswered`，这里说「这台还答不了」。
 export { readFootprint };
+
+/**
+ * 这一行「去看看它」的那颗按钮：在盘上、有解析后的真路径才给。
+ * 本机 ⇒「在文件夹中显示」（系统文件管理器选中它）；远端 ⇒「在文件窗口里打开」（文件窗口开到那台、高亮那一行）。
+ */
+function showButton(row: SurfaceRow, origin: Origin): HTMLElement | null {
+  const path = row.path_resolved;
+  if (path === null || row.state?.kind !== "present") return null;
+  const b = document.createElement("button");
+  b.type = "button";
+  b.className = "btn";
+  if (isLocalOrigin(origin)) {
+    b.dataset.reveal = "";
+    b.textContent = copyText("configSurface.row.reveal");
+    b.addEventListener("click", () => void revealInFolder(path));
+  } else {
+    b.dataset.openFiles = "";
+    b.textContent = copyText("configSurface.row.openFiles");
+    b.addEventListener("click", () => void openOnMachine(origin, path));
+  }
+  return b;
+}
+
+async function openOnMachine(origin: Origin, path: string): Promise<void> {
+  const cfg = await resolveRemoteConfigByOrigin(origin);
+  if (cfg) await openFileWindow(cfg, { revealFile: path });
+  else showActionFailureToast(copyText("fileWindow.openFileWindow.failed"), copyText("configSurface.row.noHostConfig", { machine: origin }));
+}
 
 /** 远端那一台答不了时那一句的 ⓘ —— 区分（答不出来 ≠ 没动过）只换位置（`§11.4` #4）。 */
 // 做成函数、用到时才取文（顶层不留取文口调用，同 remote-section）。
@@ -455,7 +486,7 @@ export class ConfigSurfaceSection {
       }
       this.last = r;
       this.copyBtn.disabled = false;
-      this.render(r);
+      this.render(r, origin);
       // `$PROFILE` 备份只在本机那一页（`data_paths.rs` 只答本机）。
       if (isLocalOrigin(origin)) await this.loadBackups();
       else this.backups.replaceChildren();
@@ -506,7 +537,7 @@ export class ConfigSurfaceSection {
     this.backups.append(title, note, list);
   }
 
-  private render(r: ConfigSurfaceReport): void {
+  private render(r: ConfigSurfaceReport, origin: Origin): void {
     this.meta.textContent = copyText("configSurface.render.home", { home: r.home, claudeConfigDir: r.claude_config_dir });
     // `KR65D2`：「app 该自带而还没有装口」那一格**在屏幕上数得出来**。
     // 〔`§11.3.1`〕一格状态 ＋ `[哪 N 项]` 展开看名单。
@@ -540,7 +571,7 @@ export class ConfigSurfaceSection {
         h.appendChild(src);
         this.body.appendChild(h);
       }
-      this.body.appendChild(this.renderRow(row));
+      this.body.appendChild(this.renderRow(row, origin));
     }
 
     this.scopesBox.textContent = "";
@@ -567,7 +598,7 @@ export class ConfigSurfaceSection {
     }
   }
 
-  private renderRow(row: SurfaceRow): HTMLElement {
+  private renderRow(row: SurfaceRow, origin: Origin): HTMLElement {
     const st = describeSurfaceState(row.state);
     const el = document.createElement("div");
     el.className = `config-surface-row tone-${st.tone}`;
@@ -627,6 +658,9 @@ export class ConfigSurfaceSection {
     undo.className = "config-surface-undo";
     undo.textContent = describeUndo(row);
     el.appendChild(undo);
+
+    const show = showButton(row, origin);
+    if (show) el.appendChild(show);
 
     return el;
   }
