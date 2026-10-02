@@ -141,11 +141,7 @@ fn a_file_created_after_the_walk_is_found_because_its_directory_is_being_watched
     let _serial = crate::files::index::testing::serial();
     crate::files::index::rebuild_once(&fx.root)
         .expect("本格独占跑，抢不到那个位就是并发保护写错了 —— 不许静默当成走过了");
-    let before = crate::files::index::find(&crate::files::index::FindArgs {
-        needle: b"born-after-the-walk".to_vec(),
-        ignore_ascii_case: false,
-        limit: 10,
-    });
+    let before = crate::files::index::tests::query("born-after-the-walk", 10);
     assert_eq!(
         before.total_hits, 0,
         "它还没被造出来就搜到了 —— 夹具或索引坏了，下面那一格在测别的东西"
@@ -161,11 +157,7 @@ fn a_file_created_after_the_walk_is_found_because_its_directory_is_being_watched
         "这个目录明明在名单上，`on_change` 却说它不在"
     );
 
-    let after = crate::files::index::find(&crate::files::index::FindArgs {
-        needle: b"born-after-the-walk".to_vec(),
-        ignore_ascii_case: false,
-        limit: 10,
-    });
+    let after = crate::files::index::tests::query("born-after-the-walk", 10);
     assert_eq!(
         after.total_hits,
         1,
@@ -196,33 +188,20 @@ fn an_entry_deleted_on_disk_stops_being_returned_once_its_directory_is_relisted(
     let _serial = crate::files::index::testing::serial();
     crate::files::index::rebuild_once(&fx.root)
         .expect("本格独占跑，抢不到那个位就是并发保护写错了 —— 不许静默当成走过了");
-    let needle = b"about-to-be-deleted".to_vec();
-    let before = crate::files::index::find(&crate::files::index::FindArgs {
-        needle: needle.clone(),
-        ignore_ascii_case: false,
-        limit: 10,
-    });
+    let before = crate::files::index::tests::query("about-to-be-deleted", 10);
     assert_eq!(before.total_hits, 1, "它本该在索引里 —— 夹具坏了");
 
     set_browsing(&[dir.clone()]);
     std::fs::remove_file(&doomed).expect("删掉它");
     assert!(on_change(crate::files::raw::path_bytes(&dir)));
 
-    let after = crate::files::index::find(&crate::files::index::FindArgs {
-        needle,
-        ignore_ascii_case: false,
-        limit: 10,
-    });
+    let after = crate::files::index::tests::query("about-to-be-deleted", 10);
     assert_eq!(
         after.total_hits, 0,
         "盘上已经没有的文件还在结果里 —— overlay 没有盖住大索引里的那一条"
     );
     // 同一趟里，那个目录的**其余**条目仍然在（遮盖的粒度是「直接子项」，不是整棵子树）。
-    let siblings = crate::files::index::find(&crate::files::index::FindArgs {
-        needle: b"f0000".to_vec(),
-        ignore_ascii_case: false,
-        limit: 10,
-    });
+    let siblings = crate::files::index::tests::query("f0000", 10);
     assert_eq!(
         siblings.total_hits, 2,
         "遮盖把不该盖的也盖了（或者少盖了）—— 两个目录各有一个 f0000"
@@ -297,11 +276,7 @@ fn the_real_watcher_arms_and_delivers() {
     // 有界等待：每 20 毫秒看一眼，最多 5 秒。
     let mut found = false;
     for _ in 0..250 {
-        let r = crate::files::index::find(&crate::files::index::FindArgs {
-            needle: b"pushed-by-the-kernel".to_vec(),
-            ignore_ascii_case: false,
-            limit: 10,
-        });
+        let r = crate::files::index::tests::query("pushed-by-the-kernel", 10);
         if r.total_hits == 1 {
             found = true;
             break;
@@ -342,7 +317,7 @@ fn files_browse_keeps_a_live_watcher_that_follows_the_list() {
     let want = crate::files::raw::path_bytes(&dir.join("seen-live")).to_vec();
     let mut found = false;
     for _ in 0..250 {
-        if overlay_snapshot().iter().any(|e| e == want.as_slice()) {
+        if overlay_snapshot().iter().any(|(e, _)| e == want.as_slice()) {
             found = true;
             break;
         }

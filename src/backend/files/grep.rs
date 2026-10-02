@@ -12,7 +12,7 @@
 //! - 挂在底下的**别的文件系统不进去**（`skipped_mounts`，设备号走 `platform::paths::device_of`，同 `files.size`）。
 //! - 只看普通文件；看着像二进制（前 [`BINARY_SNIFF_LEN`] 字节里有 NUL）⇒ 跳过记数（`skipped_binary`）；
 //!   比 [`FILE_MAX_BYTES`] 大 ⇒ 跳过记数（`skipped_large`）；读不了 ⇒ `unreadable`。都不中断。
-//! - 匹配：字节子串，可选只忽略 ASCII 大小写（与 `files.find` 同一个开关）；按行（`\n` 切）数命中行。
+//! - 匹配：字节子串，可选只忽略 ASCII 大小写；按行（`\n` 切）数命中行。
 //!
 //! # 上界（㉜「有字节与条数上界」）
 //!

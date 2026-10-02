@@ -142,6 +142,8 @@
 pub mod browse_watch;
 pub mod grep;
 pub mod index;
+// Everything 式搜索词：解析 ＋ 逐条匹配（`files.find` 的 `query` 只在这里被读懂）。
+pub mod query;
 pub mod raw;
 // `files.size`（算目录大小）。
 pub mod size;
@@ -236,20 +238,26 @@ pub const CAPABILITIES: &[Capability] = &[
     },
     Capability {
         name: "files.find",
-        purpose: "🔴 **在常驻索引里查** —— SFTP 给不了的那一条，整族的存在理由",
+        purpose: "🔴 **在常驻索引里查** —— SFTP 给不了的那一条，整族的存在理由（Everything 式搜索词 · 分页 · 同一个搜索框的旧号丢掉）",
         effect: Effect::ReadsOnly,
-        impl_files: &["browse_watch.rs", "index.rs", "mod.rs", "raw.rs"],
+        impl_files: &["browse_watch.rs", "index.rs", "mod.rs", "query.rs", "raw.rs"],
         targets: TARGETS,
-        args: &["ignore_ascii_case", "limit", "needle"],
+        args: &["limit", "offset", "query", "seq", "stream", "under"],
         fields: &[
+            "cover_root",
             "hits",
             "index_age_secs",
             "index_missing",
+            "index_root",
+            "offset",
+            "out_of_index",
             "scanned",
+            "seq",
+            "stale",
             "total_hits",
             "truncated",
         ],
-        codes: &["bad_args"],
+        codes: &["bad_args", "bad_path", "bad_query", "superseded"],
     },
     Capability {
         name: "files.index.status",
@@ -301,7 +309,8 @@ pub const CAPABILITIES: &[Capability] = &[
         ],
         // 🔴 `already_rebuilding`：非阻塞互斥抢不到那个位。
         //    它**刻意是一个码而不是回参里的一个布尔** —— 理由住 `answer_index_rebuild`。
-        codes: &["already_rebuilding", "bad_path", "unreadable"],
+        // `no_home`：没给 `path`（＝ 家目录）而这台机器说不出家目录。
+        codes: &["already_rebuilding", "bad_path", "no_home", "unreadable"],
     },
     Capability {
         name: "files.browse",
@@ -608,6 +617,9 @@ fn io_kind_said(e: &std::io::Error) -> String {
 /// 这一族认得的类型名 —— **闭集，唯一住址**。判据按它对拍 [`kind_name`] 的出口。
 pub const KINDS: &[&str] = &["dir", "file", "other", "symlink"];
 
+/// 索引里的类型字节（`query::KIND_*`）→ 线上那个词。
+const KINDS_BY_CODE: [&str; 4] = ["file", "dir", "symlink", "other"];
+
 /// `files.ls` —— 列一个目录的直接子项。
 fn answer_ls(args: &serde_json::Value) -> Answer {
     let dir = path_arg(args)?;
@@ -701,30 +713,82 @@ fn answer_stat(args: &serde_json::Value) -> Answer {
 }
 
 /// `files.find` —— 在常驻索引里查。**只回送命中。**
+///
+/// `query` 是窗口原样发来的搜索词（解析只在 [`query::parse`]）；`seq` ＋ `stream` 让同一个搜索框的旧那一趟收手；
+/// `under` 给了 ⇒ 只搜那个目录底下，不给 ⇒ 家目录；`offset` / `limit` 只回这一屏。
 fn answer_find(args: &serde_json::Value) -> Answer {
-    let v = args.get("needle").ok_or((
-        "bad_args",
-        crate::common::contract::malformed("missing `needle` (a string or {\"b16\": \"<hex>\"})"),
-    ))?;
-    let needle = raw::from_json(v).ok_or((
-        "bad_args",
-        crate::common::contract::malformed("`needle` must be a string or {\"b16\": \"<hex>\"}"),
-    ))?;
+    let q = args
+        .get("query")
+        .and_then(serde_json::Value::as_str)
+        .ok_or((
+            "bad_args",
+            crate::common::contract::malformed("missing `query` (a string)"),
+        ))?;
+    let matcher = query::parse(q).map_err(|e| ("bad_query", e.said()))?;
+    let under = match args.get("under") {
+        None | Some(serde_json::Value::Null) => None,
+        Some(v) => Some(raw::from_json(v).filter(|b| !b.is_empty()).ok_or((
+            "bad_path",
+            crate::common::contract::malformed(
+                "`under` must be a non-empty string or {\"b16\": \"<hex>\"}",
+            ),
+        ))?),
+    };
+    let seq = match args.get("seq") {
+        None | Some(serde_json::Value::Null) => None,
+        Some(v) => Some(v.as_u64().ok_or((
+            "bad_args",
+            crate::common::contract::malformed("`seq` must be a non-negative integer"),
+        ))?),
+    };
+    let stream = args
+        .get("stream")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("");
+    let offset = args
+        .get("offset")
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or(0) as usize;
+    let superseded = || {
+        (
+            "superseded",
+            copy_core::copy_text("beFilesRead.find.superseded", &[]),
+        )
+    };
+    let ticket = match seq {
+        Some(n) => Some(index::ticket(stream, n).map_err(|_| superseded())?),
+        None => None,
+    };
+    let home = home_var().map(std::path::PathBuf::from);
     let r = index::find(&index::FindArgs {
-        needle,
-        ignore_ascii_case: args
-            .get("ignore_ascii_case")
-            .and_then(serde_json::Value::as_bool)
-            .unwrap_or(false),
+        query: &matcher,
+        under: under.as_deref(),
+        home: home.as_deref().map(raw::path_bytes),
+        offset,
         limit: limit_of(args),
-    });
+        ticket: ticket.as_ref(),
+    })
+    .map_err(|_| superseded())?;
+    let path_or_null = |p: &Option<Vec<u8>>| match p {
+        Some(b) => raw::to_json(b),
+        None => serde_json::Value::Null,
+    };
     Ok(serde_json::json!({
-        "hits": r.hits.iter().map(|h| raw::to_json(h)).collect::<Vec<_>>(),
+        "hits": r.hits.iter().map(|(p, k)| serde_json::json!({
+            "path": raw::to_json(p),
+            "kind": KINDS_BY_CODE.get(*k as usize).copied().unwrap_or("other"),
+        })).collect::<Vec<_>>(),
         "total_hits": r.total_hits,
         "truncated": r.truncated,
         "scanned": r.scanned,
         "index_age_secs": r.index_age_secs,
         "index_missing": r.index_missing,
+        "stale": r.stale,
+        "index_root": path_or_null(&r.index_root),
+        "out_of_index": r.out_of_index,
+        "cover_root": path_or_null(&r.cover_root),
+        "seq": seq,
+        "offset": offset,
     }))
 }
 
@@ -767,7 +831,17 @@ fn answer_status() -> Answer {
 /// ⚠ 它**不判**根底下那些子目录：那些读不进去的照旧落在 `unreadable_dirs` 里
 ///（「不是 0 就说明这份索引有洞」）。
 fn answer_index_rebuild(args: &serde_json::Value) -> Answer {
-    let root = path_arg(args)?;
+    // 不给 `path` ⇒ 这台机器的家目录（默认的根）。
+    let root = match args.get("path") {
+        None | Some(serde_json::Value::Null) => home_var()
+            .map(std::path::PathBuf::from)
+            .filter(|p| p.is_absolute())
+            .ok_or((
+                "no_home",
+                copy_core::copy_text("beFilesRead.rebuild.noHome", &[]),
+            ))?,
+        Some(_) => path_arg(args)?,
+    };
     // 只要「打不打得开」这一个答案 —— 句柄拿到就丢，一条目录项都不读。
     std::fs::read_dir(&root).map_err(|e| {
         (

@@ -2537,6 +2537,7 @@ async fn a_lossy_directory_is_entered_and_everything_inside_is_addressed_by_its_
                 "files-index-status",
                 "files-browse",
                 "files-index-rebuild",
+                "files-find",
                 filewin_contract::TERMINAL_OPEN_OP,
             ],
             Declared::default(),
@@ -2630,9 +2631,11 @@ async fn a_lossy_directory_is_entered_and_everything_inside_is_addressed_by_its_
         serde_json::json!({ "root": b16(b"/srv/d\xff"), "rel": b16(b"f\xfe") })
     );
     // 有损目录里上传 / 搜索 / 开终端都按字节做（此前 W5-FILES 出声拒）。
-    // 搜索：浏览名单与重走的根按字节上线。
+    // 搜索（只搜当前目录）：范围、浏览名单与重走的根按字节上线。
+    w.set_search_here(true);
     assert!(w.fire_search(None, true), "有损目录里搜索没起来");
     wait_for(&wired, "files-index-rebuild", 1).await;
+    assert_eq!(last_args(&wired, "files-find")["under"], b16(b"/srv/d\xff"));
     assert_eq!(
         last_args(&wired, "files-browse")["dirs"],
         serde_json::json!([b16(b"/srv/d\xff")])

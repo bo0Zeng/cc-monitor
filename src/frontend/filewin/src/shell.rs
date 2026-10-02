@@ -378,6 +378,8 @@ pub struct FileWindow {
     /// 搜索框里那几个字。**UI 线程自己的**（同 [`Self::copy_prompt`] 的理由：
     /// 它是一个正在被编辑的草稿，不该出现在两条线程共享的那份状态里）。
     query: String,
+    /// 「只搜当前目录」那个开关（UI 线程自己的；关 ⇒ 搜这台机器的家目录）。
+    search_here: bool,
     /// 按内容搜那一趟的共享落点（UI 线程读，tokio 那条写；`super::grep`）。
     pub grep: GrepBoard,
     /// 按内容搜那个框里的字（UI 线程自己的草稿，同 [`Self::query`]）。
@@ -572,6 +574,7 @@ impl FileWindow {
             font: FontState::NotInstalled,
             search: SearchBoard::default(),
             query: String::new(),
+            search_here: false,
             grep: GrepBoard::default(),
             grep_query: String::new(),
             grep_tally: GrepTally::default(),
@@ -867,28 +870,19 @@ impl FileWindow {
 
     /// 🔴**发一趟搜索** —— 那一件在窗口上的落点。
     ///
-    /// 回值 = 真的发出去了一趟（子串是空的、或这个窗口没有 tokio 运行时 ⇒ `false`）。
+    /// 回值 = 真的发出去了一趟（框是空的又不是按按钮、或这个窗口没有 tokio 运行时 / 没接上通道 ⇒ `false`，后两种出声）。
+    /// 发的是**原样的搜索词**（语法这一侧不读）；「只搜当前目录」开着 ⇒ 带上当前目录，否则后端搜家目录。
+    /// 搜索**只有后端那一条路**（SFTP 给不了搜索），后端没起来就出声，不退回本地遍历。
     ///
-    /// # 本机与远端**同一条路**
-    ///
-    /// 走那条长连接上的 `files-find`（[`Source::origin`] 给的是登记表里的键）。
-    /// ⚠ 与列目录**刻意不同**：列目录**有一条退路**（后端问不到就退回 SFTP，
-    /// 见 [`Self::reload`] 与 `super::source::list_dir`），而搜索**只有后端那一条**
-    /// （SFTP 给不了搜索）。
-    /// ⇒ 后端没起来时这里拿到的是「没有可用的控制通道」那句话，而**不是**
-    /// 悄悄退回一趟 `walkdir` —— 那会是第二份搜索实现，而且它没有常驻索引。
-    ///
-    /// # `force_rebuild` 是那颗按钮，不是一个周期
-    ///
-    /// `true` 只由界面上那颗「重建索引」来（用户明说「现在就重走」）。
-    /// 平时是 `false`，要不要重走由**后端报的** `index_missing` / `stale` 决定
-    /// （周期那个数不在这一侧，见 [`super::find`] 头注 §四）。
+    /// `force_rebuild` 是那颗「重建索引」按钮；平时要不要重走由后端回的那三个判断决定（[`super::find`] 头注）。
     pub fn fire_search(&mut self, ctx: Option<egui::Context>, force_rebuild: bool) -> bool {
-        // 有损目录里也搜：索引的根与浏览名单按字节发（此前 W5-FILES 在这里出声拒）。
-        let needle = self.query.trim().to_string();
+        let asked = find::Asked {
+            query: self.query.clone(),
+            under: self.search_here.then(|| self.cwd_path()),
+        };
         self.search.attach(ctx);
-        self.search.invalidate(&needle);
-        if needle.is_empty() && !force_rebuild {
+        self.search.invalidate(&asked);
+        if asked.query.trim().is_empty() && !force_rebuild {
             return false;
         }
         let Some(h) = self.rt.clone() else {
@@ -903,10 +897,53 @@ impl FileWindow {
         let mine = self.search.start();
         let board = self.search.clone();
         let origin = self.source.origin();
-        let root = self.cwd_path();
+        // 有损目录里也搜：范围与浏览名单按字节发。
+        let cwd = self.cwd_path();
         h.spawn(async move {
-            find::run_search_at(board, line, origin, root, needle, mine, force_rebuild).await;
+            find::run_search_at(board, line, origin, cwd, asked, mine, force_rebuild).await;
         });
+        true
+    }
+
+    /// 命中那一摞滚到底了：后端说后面还有、没有一趟在飞 ⇒ 同号再要下一屏。回值 = 发出去了。
+    pub fn fire_more(&mut self, ctx: Option<egui::Context>) -> bool {
+        let (Some(h), Some(line)) = (self.rt.clone(), self.line.clone()) else {
+            return false;
+        };
+        let Some((mine, asked, offset)) = self.search.claim_more() else {
+            return false;
+        };
+        self.search.attach(ctx);
+        let board = self.search.clone();
+        let origin = self.source.origin();
+        h.spawn(async move {
+            find::fetch_more(board, line, origin, mine, asked, offset).await;
+        });
+        true
+    }
+
+    /// 「只搜当前目录」开关（判据用；界面上是搜索框旁那个勾）。
+    pub fn set_search_here(&mut self, on: bool) {
+        self.search_here = on;
+    }
+
+    /// 点了第 `i` 条文件名命中 ⇒ 进它所在的目录、高亮它；清掉搜索框（屏幕换回目录列表，那一行亮着）。
+    /// 回值 = 真的跳了（下标对得上这一摞）。
+    pub fn jump_to_find_hit(&mut self, i: usize) -> bool {
+        let Some(hit) = self
+            .search
+            .shown()
+            .outcome
+            .and_then(|o| o.hits.get(i).cloned())
+        else {
+            return false;
+        };
+        let at = super::source::RemotePath::from_bytes(&hit.path);
+        let name = hit.path.rsplit(|b| *b == b'/').next().unwrap_or(&hit.path);
+        let name = String::from_utf8_lossy(name).to_string();
+        self.navigate_to_at(at.parent());
+        self.set_reveal(&name);
+        self.query.clear();
         true
     }
 
@@ -3392,12 +3429,16 @@ impl FileWindow {
                 .search
                 .shown()
                 .outcome
-                .map(|o| o.hits.iter().map(|h| h.display()).collect())
+                .map(|o| o.hits.iter().map(|h| h.row_text()).collect())
                 .unwrap_or_default();
-            // 🔴收数口是 [`HitTally`]，**不是** `self.tally` ——
-            //    于是命中那一摞**在类型上**交不出任何一个下标，而下面那三条胶水
-            //    索引的是 `listing.rows`（另一摞东西）。逐条理由住那个类型的头注。
+            // 🔴收数口是 [`HitTally`]，**不是** `self.tally` —— 它交出的下标只指命中这一摞，
+            //    而下面那几条胶水索引的是 `listing.rows`（另一摞东西）。
             show_hit_rows(ui, &hits, &mut self.hits_tally);
+            // 滚到底（最后一行露出来了）⇒ 往下再要一屏（后端说还有才发）。
+            if !hits.is_empty() && self.hits_tally.last_row >= hits.len() {
+                let ctx = ui.ctx().clone();
+                self.fire_more(Some(ctx));
+            }
         } else if self.showing_grep() {
             // 按内容搜的命中：每行点得开（跳到那份文件），收数口是 [`GrepTally`]（它的下标只指这一摞）。
             let hits: Vec<String> = self
@@ -3444,6 +3485,10 @@ impl FileWindow {
         if let Some(i) = self.grep_tally.jump.take() {
             self.jump_to_grep_hit(i);
         }
+        // 文件名命中那一摞：点了第 i 条 ⇒ 跳过去。
+        if let Some(i) = self.hits_tally.jump.take() {
+            self.jump_to_find_hit(i);
+        }
         self.apply_click();
         self.apply_copy_click();
         self.apply_write_clicks(Some(ctx.clone()));
@@ -3460,13 +3505,11 @@ impl FileWindow {
         self.menu_ui(ui);
     }
 
-    /// 搜索那一行：输入框 ＋「重建索引」＋ 在飞指示，接着是新鲜度那一行。
+    /// 搜索那一行：输入框 ＋「只搜当前目录」＋「重建索引」＋ 在飞指示，接着是新鲜度那一行。
     ///
-    /// 🔴 **`changed()` 就发** —— 要的形状逐字是「打字即出结果，不等」。
-    /// ⚠ 代价如实记：**没有去抖** ⇒ 每敲一个字一趟往返。去抖要一个定时器，
-    ///   而 monitor 侧每一个定时器都要进 `rust_timer_registry` 并说清谁退役它
-    ///   ⇒ 那是一件独立的活。在飞的那几趟由 [`super::find::SearchBoard`] 的号作废掉，
-    ///   所以**结果不会错**，贵的是往返次数（64 万条量纲上没量过）。
+    /// 🔴 **`changed()` 就发** —— 一敲就出。没有去抖（去抖要定时器）⇒ 每敲一个字一趟往返；
+    /// 在飞的旧那几趟后端按号收手、这一侧按号丢掉，**结果不会错**。
+    /// 开关开着时换了目录 ⇒ 范围变了，自动再搜一趟。
     fn search_row(&mut self, ui: &mut egui::Ui) {
         let mut fire = false;
         let mut rebuild = false;
@@ -3481,6 +3524,15 @@ impl FileWindow {
                 fire = true;
             }
             if ui
+                .checkbox(
+                    &mut self.search_here,
+                    copy_text("rsFilewinShell.search.here", &[]),
+                )
+                .changed()
+            {
+                fire = true;
+            }
+            if ui
                 .button(&copy_text("rsFilewinShell.search.rebuild", &[]))
                 .clicked()
             {
@@ -3492,6 +3544,12 @@ impl FileWindow {
             }
         });
         self.search.ui(ui);
+        if self.search_here
+            && !self.query.trim().is_empty()
+            && self.search.shown().asked.under.as_ref() != Some(&self.cwd_path())
+        {
+            fire = true;
+        }
         if fire || rebuild {
             let ctx = ui.ctx().clone();
             self.fire_search(Some(ctx), rebuild);

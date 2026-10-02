@@ -147,7 +147,7 @@ async fn typing_into_the_box_puts_exactly_the_expected_hits_on_the_frame() {
     let root = tree.remote_root();
     let wired = testing::wire_up(
         "b1-find-e2e",
-        FakeBackend::new(COMMANDS, Declared::default()),
+        FakeBackend::new(COMMANDS, Declared::default()).homed(&tree.root),
     )
     .await;
     let ctx = ctx_ready();
@@ -163,10 +163,11 @@ async fn typing_into_the_box_puts_exactly_the_expected_hits_on_the_frame() {
     testing::settle(&w.search, before, "端到端那一趟").await;
 
     let painted = testing::frame_text(&ctx, &mut w, Vec::new());
+    // 目录那几行后面带 `/`（命中那一摞的画法）⇒ 比之前摘掉。
     let got: std::collections::BTreeSet<String> = painted
         .iter()
         .filter(|t| t.starts_with(&root))
-        .cloned()
+        .map(|t| t.trim_end_matches('/').to_string())
         .collect();
     let want = tree.expected(NEEDLE);
     assert!(
@@ -282,7 +283,7 @@ async fn the_window_sends_a_rebuild_when_the_backend_says_the_index_is_missing()
     let root = tree.remote_root();
     let wired = testing::wire_up(
         "b1-find-cadence",
-        FakeBackend::new(COMMANDS, Declared::default()),
+        FakeBackend::new(COMMANDS, Declared::default()).homed(&tree.root),
     )
     .await;
     let ctx = ctx_ready();
@@ -307,16 +308,28 @@ async fn the_window_sends_a_rebuild_when_the_backend_says_the_index_is_missing()
         1,
         "那块板子自己记的重走数与线上数不一致 —— 两个数有一个在撒谎"
     );
-    // 顺序：状态 → 重走 → 查。**先问再走**，否则「要不要走」这件事没有依据。
+    // 顺序：查（后端说要不要走、走哪个根）→ 重走 → 再查。少了后一趟查，用户看到的就是**重走之前**那份索引的答案。
     let cmds = wired.cmds();
-    let i_status = cmds.iter().position(|c| c == CMD_INDEX_STATUS);
+    let i_first = cmds.iter().position(|c| c == CMD_FIND);
     let i_rebuild = cmds.iter().position(|c| c == CMD_INDEX_REBUILD);
-    let i_find = cmds.iter().position(|c| c == CMD_FIND);
+    let i_last = cmds.iter().rposition(|c| c == CMD_FIND);
     assert!(
-        matches!((i_status, i_rebuild, i_find), (Some(a), Some(b), Some(c)) if a < b && b < c),
-        "顺序不对（状态 {i_status:?} / 重走 {i_rebuild:?} / 查 {i_find:?}）——\n\
-         先查后走的话，用户看到的永远是**上一趟**那份索引的答案：{cmds:?}"
+        matches!((i_first, i_rebuild, i_last), (Some(a), Some(b), Some(c)) if a < b && b < c),
+        "顺序不对（查 {i_first:?} / 重走 {i_rebuild:?} / 再查 {i_last:?}）：{cmds:?}"
     );
+    assert!(
+        cmds.iter().any(|c| c == CMD_INDEX_STATUS),
+        "这一趟没问状态：{cmds:?}"
+    );
+    // 重走的根是后端给的那个（这台合成后端的家目录），不是这一侧编的。
+    let rebuilt = wired
+        .log
+        .lock()
+        .unwrap()
+        .iter()
+        .find(|r| r["cmd"] == CMD_INDEX_REBUILD)
+        .map(|r| r["args"]["path"].clone());
+    assert_eq!(rebuilt, Some(serde_json::Value::String(root.clone())));
     // 而且这一趟真的建起来了 —— `files-find` 不再回 `index_missing`。
     let o = w.search.shown().outcome.expect("这一趟该有答案");
     assert!(
@@ -345,7 +358,9 @@ async fn a_fresh_index_is_never_rebuilt_behind_the_users_back() {
     };
     let wired = testing::wire_up(
         "b1-find-fresh",
-        FakeBackend::new(COMMANDS, declared).preindexed(&tree.root),
+        FakeBackend::new(COMMANDS, declared)
+            .homed(&tree.root)
+            .preindexed(&tree.root),
     )
     .await;
     let ctx = ctx_ready();
@@ -407,7 +422,9 @@ async fn a_stale_index_the_backend_flagged_gets_rebuilt() {
     };
     let wired = testing::wire_up(
         "b1-find-stale",
-        FakeBackend::new(COMMANDS, declared).preindexed(&tree.root),
+        FakeBackend::new(COMMANDS, declared)
+            .homed(&tree.root)
+            .preindexed(&tree.root),
     )
     .await;
     let ctx = ctx_ready();
@@ -437,7 +454,7 @@ async fn many_keystrokes_in_flight_still_only_trigger_one_rebuild() {
     let root = tree.remote_root();
     let wired = testing::wire_up(
         "b1-find-burst",
-        FakeBackend::new(COMMANDS, Declared::default()),
+        FakeBackend::new(COMMANDS, Declared::default()).homed(&tree.root),
     )
     .await;
     let w = testing::window_on(&wired, &root);
@@ -450,8 +467,13 @@ async fn many_keystrokes_in_flight_still_only_trigger_one_rebuild() {
             root.clone(),
         );
         let line = wired.line.clone();
+        let asked = Asked {
+            query: NEEDLE.to_string(),
+            under: None,
+        };
         tokio::spawn(async move {
-            run_search(b, line, o, r, NEEDLE.to_string(), mine, false).await;
+            let cwd = crate::source::RemotePath::plain(&r);
+            run_search_at(b, line, o, cwd, asked, mine, false).await;
         });
     }
     testing::settle(&w.search, 0, "连打那一趟").await;
@@ -471,6 +493,146 @@ async fn many_keystrokes_in_flight_still_only_trigger_one_rebuild() {
          ⚠ 0 条 = 那条抢占写反了（索引永远建不起来）；>1 条 = 客户端自己造雪崩。",
         wired.cmds()
     );
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// 只要一屏 · 滚到底再要 · 只搜当前目录 · 点一条跳过去
+// ═══════════════════════════════════════════════════════════════════
+
+/// 这一帧上命中那一摞的每一行（摘掉目录后面那个 `/`）。
+fn painted_hits(painted: &[String], root: &str) -> Vec<String> {
+    painted
+        .iter()
+        .filter(|t| t.starts_with(root))
+        .map(|t| t.trim_end_matches('/').to_string())
+        .collect()
+}
+
+/// 线上每一趟 `files-find` 的入参。
+fn find_calls(wired: &testing::Wired) -> Vec<serde_json::Value> {
+    wired
+        .log
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|r| r["cmd"] == CMD_FIND)
+        .map(|r| r["args"].clone())
+        .collect()
+}
+
+/// 最后一行露在帧上、后端说后面还有 ⇒ 同号、`offset` ＝ 手上的条数再要一屏，回来的接在后面；
+/// 后面没有了 ⇒ 一趟都不多发（阴性对照）。
+#[tokio::test]
+async fn the_last_row_on_screen_pulls_the_next_page_with_the_same_seq() {
+    let tree = testing::plant("pages", TREE_N, TREE_SEED).expect("造不出那棵树");
+    let root = tree.remote_root();
+    let wired = testing::wire_up(
+        "b1-find-pages",
+        FakeBackend::new(COMMANDS, Declared::default())
+            .homed(&tree.root)
+            .preindexed(&tree.root)
+            .paging_by(8),
+    )
+    .await;
+    let ctx = ctx_ready();
+    let mut w = testing::window_on(&wired, &root);
+    // 根那一段在每条路径里 ⇒ 全树都中，远多于一屏。
+    let q = root.rsplit('/').next().unwrap().to_string();
+    let want = tree.expected(&q);
+    assert!(want.len() > 16, "语料不够两屏，本条说明不了什么");
+    let before = w.search.rounds();
+    testing::type_into_search(&ctx, &mut w, &q);
+    testing::settle(&w.search, before, "第一屏").await;
+    assert_eq!(w.search.shown().outcome.unwrap().hits.len(), 8);
+
+    let before = w.search.rounds();
+    let first = painted_hits(&testing::frame_text(&ctx, &mut w, Vec::new()), &root);
+    assert_eq!(first.len(), 8, "第一屏该整屏画出来");
+    testing::settle(&w.search, before, "第二屏").await;
+    let o = w.search.shown().outcome.unwrap();
+    let got: Vec<String> = o.hits.iter().map(|h| h.display()).collect();
+    assert_eq!(got.len(), 16, "第二屏没接在后面");
+    assert_eq!(got[..8], first[..], "接上之后前一屏变了");
+    let distinct: std::collections::BTreeSet<&String> = got.iter().collect();
+    assert_eq!(distinct.len(), 16, "两屏有重的 —— 偏移没对上");
+    assert!(got.iter().all(|g| want.contains(g)));
+    let calls = find_calls(&wired);
+    assert_eq!(calls.len(), 2, "只该多发一趟：{calls:?}");
+    assert_eq!(calls[1]["offset"], 8, "下一屏该从第 8 条起");
+    assert_eq!(
+        calls[1]["seq"], calls[0]["seq"],
+        "翻页换了号 —— 后端会把它当成新的一问"
+    );
+    assert_eq!(calls[1]["query"], calls[0]["query"]);
+
+    // 阴性对照：全都在手上了（这一问只中几条）⇒ 画多少帧都不再要。
+    let wired2 = testing::wire_up(
+        "b1-find-pages-done",
+        FakeBackend::new(COMMANDS, Declared::default())
+            .homed(&tree.root)
+            .preindexed(&tree.root),
+    )
+    .await;
+    let mut w2 = testing::window_on(&wired2, &root);
+    let before = w2.search.rounds();
+    testing::type_into_search(&ctx, &mut w2, NEEDLE);
+    testing::settle(&w2.search, before, "一屏就完").await;
+    for _ in 0..3 {
+        testing::frame_text(&ctx, &mut w2, Vec::new());
+    }
+    assert_eq!(find_calls(&wired2).len(), 1, "后面没有了还在要下一屏");
+}
+
+/// 「只搜当前目录」开着 ⇒ 带上当前目录；换了目录 ⇒ 自动按新目录再搜；点一条命中 ⇒ 进它所在的目录。
+#[tokio::test]
+async fn search_here_follows_the_directory_and_a_hit_takes_you_there() {
+    let tree = testing::plant("here", TREE_N, TREE_SEED).expect("造不出那棵树");
+    let root = tree.remote_root();
+    let wired = testing::wire_up(
+        "b1-find-here",
+        FakeBackend::new(COMMANDS, Declared::default())
+            .homed(&tree.root)
+            .preindexed(&tree.root),
+    )
+    .await;
+    let ctx = ctx_ready();
+    let mut w = testing::window_on(&wired, &root);
+    let before = w.search.rounds();
+    testing::type_into_search(&ctx, &mut w, NEEDLE);
+    testing::settle(&w.search, before, "家目录那一趟").await;
+    assert!(
+        find_calls(&wired)[0].get("under").is_none(),
+        "开关关着却带了范围"
+    );
+
+    w.set_search_here(true);
+    let before = w.search.rounds();
+    testing::frame_text(&ctx, &mut w, Vec::new());
+    testing::settle(&w.search, before, "开了开关那一趟").await;
+    assert_eq!(find_calls(&wired).last().unwrap()["under"], root.as_str());
+
+    // 点第 0 条命中 ⇒ 进它所在的目录、高亮它、框清空。
+    let hit = w.search.shown().outcome.unwrap().hits[0].display();
+    let (dir, name) = hit.rsplit_once('/').unwrap();
+    assert!(w.jump_to_find_hit(0));
+    assert_eq!(w.cwd, dir, "点了命中没进它所在的目录");
+    assert_eq!(w.query(), "", "跳过去之后框该清空（屏幕换回目录列表）");
+    assert!(!name.is_empty());
+
+    // 框里重新打字、目录已经换了 ⇒ 范围跟着新目录。
+    let before = w.search.rounds();
+    testing::type_into_search(&ctx, &mut w, NEEDLE);
+    testing::settle(&w.search, before, "换了目录那一趟").await;
+    assert_eq!(find_calls(&wired).last().unwrap()["under"], dir);
+
+    // 框里有字时换目录（上一级）⇒ 下一帧自动按新目录再搜一趟。
+    w.navigate_up();
+    let up = w.cwd.clone();
+    assert_ne!(up, dir);
+    let before = w.search.rounds();
+    testing::frame_text(&ctx, &mut w, Vec::new());
+    testing::settle(&w.search, before, "上一级那一趟").await;
+    assert_eq!(find_calls(&wired).last().unwrap()["under"], up.as_str());
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -512,7 +674,9 @@ async fn the_freshness_numbers_the_backend_reports_really_reach_the_frame() {
         };
         let wired = testing::wire_up(
             tag,
-            FakeBackend::new(COMMANDS, declared).preindexed(&tree.root),
+            FakeBackend::new(COMMANDS, declared)
+                .homed(&tree.root)
+                .preindexed(&tree.root),
         )
         .await;
         let ctx = ctx_ready();
@@ -617,7 +781,9 @@ async fn the_cold_first_build_line_is_on_the_frame_while_it_runs_and_gone_after(
         };
         let wired = testing::wire_up(
             tag,
-            FakeBackend::new(COMMANDS, declared).holding_rebuild(gate.clone()),
+            FakeBackend::new(COMMANDS, declared)
+                .homed(&tree.root)
+                .holding_rebuild(gate.clone()),
         )
         .await;
         let ctx = ctx_ready();
@@ -698,6 +864,7 @@ async fn a_warm_rewalk_never_claims_to_be_the_cold_first_build() {
     let wired = testing::wire_up(
         "b1-find-warm",
         FakeBackend::new(COMMANDS, declared)
+            .homed(&tree.root)
             .preindexed(&tree.root)
             .holding_rebuild(gate.clone()),
     )
@@ -1036,11 +1203,17 @@ fn a_missing_field_is_a_loud_failure_not_a_silent_zero() {
 fn a_non_utf8_hit_keeps_its_bytes_and_says_it_is_lossy() {
     let bytes = vec![0x2fu8, 0x74, 0x6d, 0x70, 0x2f, 0xff, 0xfe, 0x2e, 0x72, 0x73];
     let hex: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
-    let data = serde_json::json!({
-        "hits": [{ "b16": hex }],
+    let tail = serde_json::json!({
         "total_hits": 1, "truncated": false, "scanned": 9,
-        "index_age_secs": 3, "index_missing": false,
+        "index_age_secs": 3, "index_missing": false, "stale": false,
+        "index_root": "/tmp", "out_of_index": false, "cover_root": "/tmp", "seq": 1, "offset": 0,
     });
+    let with_hits = |hits: serde_json::Value| {
+        let mut v = tail.clone();
+        v["hits"] = hits;
+        v
+    };
+    let data = with_hits(serde_json::json!([{ "path": { "b16": hex }, "kind": "file" }]));
     let o = decode_find(&data).expect("该解析得动");
     assert_eq!(o.hits.len(), 1);
     assert_eq!(
@@ -1053,27 +1226,18 @@ fn a_non_utf8_hit_keeps_its_bytes_and_says_it_is_lossy() {
         "画出来那一份该带替换字符（让用户看得见这个名字显示不全）"
     );
     // 而有效 UTF-8 那一形不许被当成有损。
-    let plain = serde_json::json!({
-        "hits": ["/tmp/a.rs"],
-        "total_hits": 1, "truncated": false, "scanned": 9,
-        "index_age_secs": 3, "index_missing": false,
-    });
+    let plain = with_hits(serde_json::json!([{ "path": "/tmp/a", "kind": "dir" }]));
     let p = decode_find(&plain).expect("该解析得动");
     assert!(!p.hits[0].lossy(), "普通路径被误判成有损");
-    assert_eq!(p.hits[0].display(), "/tmp/a.rs");
+    assert_eq!(p.hits[0].display(), "/tmp/a");
+    assert_eq!(p.hits[0].row_text(), "/tmp/a/", "目录那一行后面该带 `/`");
+    assert!(!o.hits[0].dir);
 }
 
 /// 命中那一行**一定**带着 `scanned`：「没命中」与「索引是空的」在屏幕上本来一样。
 #[test]
 fn the_hits_line_always_carries_the_scanned_count() {
-    let empty_index = FindOutcome {
-        hits: vec![],
-        total_hits: 0,
-        truncated: false,
-        scanned: 0,
-        index_age_secs: 0,
-        index_missing: false,
-    };
+    let empty_index = FindOutcome::default();
     let big_index = FindOutcome {
         scanned: 640_413,
         ..empty_index.clone()
@@ -1088,26 +1252,40 @@ fn the_hits_line_always_carries_the_scanned_count() {
     assert!(b.contains("640413"), "那一行里没有 `scanned` 那个数：{b:?}");
 }
 
-/// `files-index-rebuild` 的入参形状与那份契约一致（`path` 那一个键）。
+/// 入参形状与那份契约一致：搜索词原样发（这一侧不读语法）、号与搜索框名跟着走、范围只在开关开着时带。
 #[test]
 fn the_arg_builders_use_the_documented_keys() {
-    assert_eq!(find_args("a.rs"), serde_json::json!({ "needle": "a.rs" }));
+    let asked = Asked {
+        query: "  report ext:pdf|txt !old ".to_string(),
+        under: None,
+    };
     assert_eq!(
-        rebuild_args("/home/u"),
+        find_args(&asked, 7, "s-1", 0),
+        serde_json::json!({
+            "query": "  report ext:pdf|txt !old ",
+            "seq": 7,
+            "stream": "s-1",
+            "offset": 0,
+            "limit": PAGE,
+        }),
+        "搜索词该原样发（一个字都不动），不带范围 ⇒ 后端搜家目录"
+    );
+    let here = Asked {
+        query: "x".into(),
+        under: Some(crate::source::RemotePath::plain("/home/u/p")),
+    };
+    assert_eq!(find_args(&here, 8, "s-1", 100)["under"], "/home/u/p");
+    assert_eq!(
+        rebuild_args_at(Some(b"/home/u")),
         serde_json::json!({ "path": "/home/u" })
     );
+    assert_eq!(rebuild_args_at(None), serde_json::json!({}));
     assert_eq!(
-        browse_args(&["/a".to_string(), "/b".to_string()]),
+        browse_args_at(&[
+            crate::source::RemotePath::plain("/a"),
+            crate::source::RemotePath::plain("/b")
+        ]),
         serde_json::json!({ "dirs": ["/a", "/b"] })
-    );
-    // 🔴 `limit` / `ignore_ascii_case` **刻意不发** —— 默认值住后端那一侧
-    //    （诚实的默认 ＝ 沿用调用者已有状态）。
-    let a = find_args("x");
-    assert!(
-        a.get("limit").is_none() && a.get("ignore_ascii_case").is_none(),
-        "这一侧给 `limit` / `ignore_ascii_case` 编了一个值：{a} —— \n\
-         那两个默认值住 `src/doc/IPC-PROTOCOL.md §10`（1000 / false），\n\
-         在这里写一份就是给它们造第二个家。"
     );
 }
 

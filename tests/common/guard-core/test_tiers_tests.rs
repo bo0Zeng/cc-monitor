@@ -64,6 +64,7 @@ const UNIT: &[&str] = &[
     "tests/frontend/ui/startup-active.vitest.ts", // F19 启动时记住的那一格（按事件判的真值表）
     "tests/backend/dial_machine_tests.rs",        // 机器配置 → 拨号请求的规则
     "tests/backend/dial_probe_tests.rs",          // 测试连接三步的结局（链路替身）
+    "tests/backend/files/query_tests.rs", // Everything 式搜索词：手写语料上的解析与匹配（纯函数）
     // `tests/frontend/ui/remote-probe.vitest.ts` 挪进 SCAN：它多读一份 Rust 源码对拍进度流名（`event_replay.rs::PROBE_PROGRESS_KIND`）。
     "tests/frontend/ui/session-writes.vitest.ts", // 删会话 · 分叉经通道直说那台后端：解码器读金样 ＋ 替身数请求
     "tests/frontend/ui/pubkey-push.vitest.ts",    // 公钥推送走通道：解码器读金样 ＋ 替身数请求

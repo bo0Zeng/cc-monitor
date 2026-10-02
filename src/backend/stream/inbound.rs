@@ -2257,8 +2257,8 @@ pub const REGISTRY: &[CommandSpec] = &[
     CommandSpec {
         name: "files-index-rebuild",
         doc_anchor: Some("#### `files-index-rebuild`"),
-        // `already_rebuilding`：非阻塞互斥抢不到那个位。
-        codes: &["already_rebuilding", "bad_path", "unreadable"],
+        // `already_rebuilding`：非阻塞互斥抢不到那个位。`no_home`：没给根而家目录说不出。
+        codes: &["already_rebuilding", "bad_path", "no_home", "unreadable"],
         fields: &[
             "entries",
             "path",
@@ -2310,17 +2310,24 @@ pub const REGISTRY: &[CommandSpec] = &[
     CommandSpec {
         name: "files-find",
         doc_anchor: Some("#### `files-find`"),
-        codes: &["bad_args"],
+        codes: &["bad_args", "bad_path", "bad_query", "superseded"],
         fields: &[
+            "cover_root",
             "hits",
-            "ignore_ascii_case",
             "index_age_secs",
             "index_missing",
+            "index_root",
             "limit",
-            "needle",
+            "offset",
+            "out_of_index",
+            "query",
             "scanned",
+            "seq",
+            "stale",
+            "stream",
             "total_hits",
             "truncated",
+            "under",
         ],
         takes_input: true,
         run: Run::Blocking(|r| {
