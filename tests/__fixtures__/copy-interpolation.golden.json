@@ -73,8 +73,8 @@
     {
       "_": "接缝上两个以上空格是排版，照留。",
       "key": "rsProfileInstaller.hint.line",
-      "zh": "  第 {lineNo} 行  {text}{mark}\n",
-      "args": { "lineNo": "三", "text": "甲", "mark": "" },
+      "zh": "  第 {lineNo} 行  {text}\n",
+      "args": { "lineNo": "三", "text": "甲" },
       "want": "  第三行  甲\n"
     }
   ]

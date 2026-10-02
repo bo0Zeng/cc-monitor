@@ -196,10 +196,7 @@ fn damaged_fence_leaves_the_file_byte_identical() {
     let before = std::fs::read(&path).expect("读原文");
 
     for (what, r) in [
-        (
-            "install",
-            run(install_to_profile(&door_at(&path), &path, "cc", true)),
-        ),
+        ("install", run(install_to_profile(&door_at(&path), &path))),
         (
             "uninstall",
             run(uninstall_from_profile(&door_at(&path), &path)),
@@ -239,7 +236,7 @@ fn intact_fence_actually_writes() {
     let path = td.0.join("Microsoft.PowerShell_profile.ps1");
     std::fs::write(&path, "# mine\n").expect("写样本");
     let before = std::fs::read_to_string(&path).unwrap();
-    run(install_to_profile(&door_at(&path), &path, "cc", true)).expect("围栏完好时应写成");
+    run(install_to_profile(&door_at(&path), &path)).expect("围栏完好时应写成");
     let after = std::fs::read_to_string(&path).unwrap();
     assert_ne!(after, before, "围栏完好时必须真写进去");
     assert!(after.contains("# mine"), "块外内容要保留：{after}");
@@ -268,37 +265,17 @@ fn damaged_fence_aborts_instead_of_eating_user_content() {
 use super::*;
 use std::path::PathBuf;
 
+/// PowerShell 别名块只装拉前握手 `__ccm_bind` ＋ 接上别名文件那一行：`cc` 进了清单，块里一个 `function cc` 都没有。
 #[test]
-fn render_cc_code_with_function() {
-    let out = render_cc_code("ccm", true, std::path::Path::new("/_"));
-    assert!(out.contains("function ccm"));
+fn the_powershell_block_carries_only_the_handshake() {
+    let out = render_cc_code(std::path::Path::new("/_"));
     assert!(out.contains("__ccm_bind"));
-    assert!(!out.contains("{{CC_FUNCTION_BLOCK}}"));
-    // v2 → v3：块结尾多了接上别名文件那一行。v4 → v5：数据目录换住址。
-    assert!(out.contains("BEGIN v5"));
-    assert!(out.contains("cc-monitor END"));
-}
-
-#[test]
-fn render_cc_code_helper_only() {
-    // 用户已有自定义 function cc 时只装 __ccm_bind helper，不生成 function cc
-    let out = render_cc_code("cc", false, std::path::Path::new("/_"));
-    assert!(out.contains("__ccm_bind"));
-    // 按词，不按子串〔§5 2l〕：同族的 `strip_block_removes_only_block` 已实测过
-    // 这个陷阱 —— 语料里一出现 `function ccm`，`contains` 就假红。这里今天还碰不到，
-    // 但**同一种写法只该有一个答案**，不留一处等着下次踩。
+    // 按词，不按子串〔§5 2l〕：语料里一出现 `function ccm`，`contains` 就假红。
     assert!(!guard_core::contains_word(&out, "function cc"));
-    assert!(!out.contains("{{CC_FUNCTION_BLOCK}}"));
-    assert!(out.contains("BEGIN v5"));
-}
-
-#[test]
-fn sanitize_command_name_strips_specials() {
-    assert_eq!(sanitize_command_name("cc"), "cc");
-    assert_eq!(sanitize_command_name("my-cc"), "mycc");
-    assert_eq!(sanitize_command_name("cc; rm -rf /"), "ccrmrf");
-    assert_eq!(sanitize_command_name(""), "cc");
-    assert_eq!(sanitize_command_name("   "), "cc");
+    assert!(!out.contains("{{"), "模板里还有没填的占位：{out}");
+    // v5 → v6：`function cc` 挪进清单。
+    assert!(out.contains("BEGIN v6"));
+    assert!(out.contains("cc-monitor END"));
 }
 
 #[test]
@@ -307,8 +284,15 @@ fn find_conflict_in_user_function() {
 function Get-Stuff { Write-Host x }
 function cc { Write-Host my-cc }
 "#;
-    let conflicts = find_conflicting_functions(Shell::PowerShell, content, "cc");
-    assert_eq!(conflicts, vec!["cc".to_string()]);
+    // PowerShell 认同名不分大小写：清单里叫 `CC` 也算撞。
+    let conflicts = find_conflicting_functions(Shell::PowerShell, content, &["CC".to_string()]);
+    assert_eq!(
+        conflicts,
+        vec![NameClash {
+            name: "CC".to_string(),
+            line: 3
+        }]
+    );
 }
 
 #[test]
@@ -320,14 +304,14 @@ function Get-Stuff { Write-Host x }
 function cc { __ccm_bind; & claude $args }
 # === cc-monitor END ===
 "#;
-    let conflicts = find_conflicting_functions(Shell::PowerShell, content, "cc");
+    let conflicts = find_conflicting_functions(Shell::PowerShell, content, &["cc".to_string()]);
     assert!(conflicts.is_empty());
 }
 
 #[test]
 fn find_block_version_v1() {
     let content = "# === cc-monitor BEGIN v1 ===\nfunction cc {}\n# === cc-monitor END ===\n";
-    let (present, ver) = find_block_version(content);
+    let (present, ver) = find_block_version(content, BEGIN_MARKER);
     assert!(present);
     assert_eq!(ver, Some("v1".to_string()));
 }
@@ -341,29 +325,47 @@ fn an_older_powershell_block_is_flagged_and_a_fresh_one_is_not() {
     // v3 → v4：`__ccm_bind` 找 monitor 数据目录改走唯一出口（渲染时填，跟 `CCM_DATA_DIR`）——
     //   块内容变了就抬版本，装着 v3 的人在机器页看到「重装一次」。
     // v4 → v5：数据目录搬到 `~/.cc-monitor`，v4 块的 `$ccmDir` 是旧住址 ⇒ 装着 v4 的人也重装一次。
+    // v5 → v6：`function cc` 挪进清单，块只剩握手 ＋ 接上别名文件 ⇒ 装着 v5 的人重装一次。
     assert_eq!(
-        cur, "v5",
+        cur, "v6",
         "模板版本串变了就来改这里（并想清楚：旧块的人要不要重装）"
     );
     let ps = std::path::Path::new("/h/p.ps1");
-    for old_ver in ["v2", "v3", "v4"] {
+    for old_ver in ["v2", "v3", "v4", "v5"] {
         let old = format!(
             "# === cc-monitor BEGIN {old_ver} ===\nfunction __ccm_bind {{}}\n# === cc-monitor END ===\n"
         );
-        let b = block_state(ps, &old);
+        let b = block_state(ps, &old, &[]);
         assert!(b.present && b.outdated, "{old_ver}：{b:?}");
     }
-    let fresh = render_cc_code("cc", false, std::path::Path::new("/_"));
-    let b = block_state(ps, &fresh);
+    let fresh = render_cc_code(std::path::Path::new("/_"));
+    let b = block_state(ps, &fresh, &[]);
     assert!(b.present && !b.outdated, "刚渲染的那一份被判成旧的：{b:?}");
-    assert!(!block_state(ps, "# nothing\n").outdated, "块不在也报旧");
-    let rc = std::path::Path::new("/h/.bashrc");
-    let posix = plan_install(Shell::Posix, "", "cc", false, "t", "/h").expect("装");
-    let b = block_state(rc, &posix);
     assert!(
-        b.present && !b.outdated,
-        "POSIX 那一对没有版本串，不该报旧：{b:?}"
+        !block_state(ps, "# nothing\n", &[]).outdated,
+        "块不在也报旧"
     );
+    let rc = std::path::Path::new("/h/.bashrc");
+    let posix = plan_install(Shell::Posix, "", "t", "/h").expect("装");
+    let b = block_state(rc, &posix, &[]);
+    assert!(
+        b.present && !b.outdated && b.version.as_deref() == Some(super::POSIX_BLOCK_VERSION),
+        "刚装的 POSIX 块带这一版的版本串、不报旧：{b:?}"
+    );
+    // 从前的 POSIX 块：BEGIN 那一行不带版本串，块里还定义着 cc / cct / cca ⇒ 认得是块、判成旧版（界面给「重新接入」）。
+    let old_posix = "# mine\n# === cc-monitor remote ccm BEGIN ===\nif ! declare -f cc >/dev/null 2>&1; then\ncc()  { ccm \"$@\"; }\nfi\n# === cc-monitor remote ccm END ===\n";
+    let b = block_state(rc, old_posix, &[]);
+    assert!(
+        b.present && b.outdated && b.version.is_none(),
+        "不带版本串的旧 POSIX 块没被判成旧版：{b:?}"
+    );
+    // 重新接入 = 整块换成新版，块外一行不动。
+    let again = plan_install(Shell::Posix, old_posix, "t", "/h").expect("重装");
+    assert!(
+        again.starts_with("# mine\n") && !again.contains("cc()  {"),
+        "{again}"
+    );
+    assert!(!block_state(rc, &again, &[]).outdated);
 }
 
 /// V160 原话「**不写搬家代码、不认老路径**」＋ 题面「已装的块由既有的「版本不同 ⇒ 需要重装」那条认出来」：
@@ -373,22 +375,18 @@ fn an_older_powershell_block_is_flagged_and_a_fresh_one_is_not() {
 fn a_block_installed_with_the_old_data_dir_is_flagged_for_reinstall() {
     let ps = std::path::Path::new("/h/p.ps1");
     let installed = "# === cc-monitor BEGIN v4 ===\nfunction __ccm_bind {\n    $ccmDir = 'C:\\Users\\u\\.claude\\claudecode-frontend'\n}\n# === cc-monitor END ===\n";
-    let b = block_state(ps, installed);
+    let b = block_state(ps, installed, &[]);
     assert!(
         b.present && b.outdated,
         "装着旧住址的那一版没被认出来：{b:?}"
     );
-    let fresh = render_cc_code(
-        "cc",
-        false,
-        std::path::Path::new("C:\\Users\\u\\.cc-monitor"),
-    );
+    let fresh = render_cc_code(std::path::Path::new("C:\\Users\\u\\.cc-monitor"));
     assert!(
         fresh.contains("$ccmDir = 'C:\\Users\\u\\.cc-monitor'"),
         "{fresh}"
     );
     assert!(
-        !block_state(ps, &fresh).outdated,
+        !block_state(ps, &fresh, &[]).outdated,
         "重装的那一份仍被判成旧的"
     );
 }
@@ -530,7 +528,7 @@ fn install_preserves_existing_user_content() {
     std::fs::write(&p, user_content).unwrap();
 
     let door = door_at(&p);
-    run(install_to_profile(&door, &p, "cc", false)).unwrap();
+    run(install_to_profile(&door, &p)).unwrap();
 
     let after = std::fs::read_to_string(&p).unwrap();
     assert!(
@@ -575,17 +573,20 @@ fn install_to_nonexistent_path_creates_file() {
     let p = tmp_profile();
     // 不预先创建
     assert!(!p.exists());
-    run(install_to_profile(&door_at(&p), &p, "cc", true)).unwrap();
+    run(install_to_profile(&door_at(&p), &p)).unwrap();
     let content = std::fs::read_to_string(&p).unwrap();
     // ★ **带边界**〔audit-0805 F24 存量清账〕：`contains("function cc")` 是**正向事实钉**，
     // 而 `function ccm` 也含有它 —— 安装器若改成生成 `function ccm`（同文件 `:727` 就有
     // 那个形态），本条**照样绿**。这是「匹配单位比事实小」里最贵的那种：假绿。
+    // `cc` 住清单：块里只有握手。按词判，不按子串（`function ccm` 也含 `function cc`）。
     assert!(
-        guard_core::contains_word(&content, "function cc"),
-        "装出来的 profile 里没有 `function cc` 这个**完整的词** —— \
-             若是改成了 `function ccm` 之类，本条与它保护的行为都要一起重判"
+        !guard_core::contains_word(&content, "function cc"),
+        "{content}"
     );
-    assert!(content.contains("__ccm_bind"));
+    assert!(
+        guard_core::contains_word(&content, "function __ccm_bind"),
+        "{content}"
+    );
     let _ = std::fs::remove_file(&p);
 }
 
@@ -594,13 +595,13 @@ fn reinstall_replaces_block_keeps_user_content() {
     let p = tmp_profile();
     std::fs::write(&p, "Set-Alias g git\n").unwrap();
 
-    run(install_to_profile(&door_at(&p), &p, "cc", false)).unwrap();
+    run(install_to_profile(&door_at(&p), &p)).unwrap();
     // 第二次装：之前的块应该被原地替换，用户内容仍在
-    run(install_to_profile(&door_at(&p), &p, "cc", true)).unwrap();
+    run(install_to_profile(&door_at(&p), &p)).unwrap();
 
     let after = std::fs::read_to_string(&p).unwrap();
     assert!(after.contains("Set-Alias g git"));
-    assert!(after.contains("function cc"));
+    assert!(after.contains("function __ccm_bind"));
     // 只应该有一个 BEGIN 块
     assert_eq!(after.matches("# === cc-monitor BEGIN").count(), 1);
 
@@ -624,7 +625,7 @@ fn uninstall_strips_block_keeps_user_content() {
     let p = tmp_profile();
     let user = "# mine\nSet-Alias g git\n";
     std::fs::write(&p, user).unwrap();
-    run(install_to_profile(&door_at(&p), &p, "cc", true)).unwrap();
+    run(install_to_profile(&door_at(&p), &p)).unwrap();
     run(uninstall_from_profile(&door_at(&p), &p)).unwrap();
 
     let after = std::fs::read_to_string(&p).unwrap();
@@ -682,8 +683,7 @@ gs() { git status; }
 fn the_local_posix_port_is_byte_for_byte_the_remote_one() {
     let what = "/home/u/.bashrc";
     for existing in ["", "export A=1\n", BARE_RC] {
-        let got =
-            plan_install(Shell::Posix, existing, "cc", true, what, "/h").expect("本机 POSIX 装口");
+        let got = plan_install(Shell::Posix, existing, what, "/h").expect("本机 POSIX 装口");
         let want = super::merge_profile_block(existing, super::CCM_WRAPPER_SNIPPET, what)
             .expect("远端那个口");
         assert_eq!(
@@ -792,7 +792,7 @@ fn installing_into_a_posix_rc_keeps_every_user_line() {
     let td = tmpdir("posix-install");
     let p = td.0.join(".bashrc");
     std::fs::write(&p, BARE_RC).expect("写夹具");
-    run(install_to_profile(&door_at(&p), &p, "cc", true)).expect("装进 POSIX rc");
+    run(install_to_profile(&door_at(&p), &p)).expect("装进 POSIX rc");
     let after = std::fs::read_to_string(&p).expect("读回");
     for line in BARE_RC.lines() {
         assert!(
@@ -805,14 +805,14 @@ fn installing_into_a_posix_rc_keeps_every_user_line() {
         assert!(pinned(&after, line), "别名块少了一行：{line:?}");
     }
     // 幂等：再装一次一个字节都不变。
-    run(install_to_profile(&door_at(&p), &p, "cc", true)).expect("再装一次");
+    run(install_to_profile(&door_at(&p), &p)).expect("再装一次");
     assert_eq!(
         std::fs::read_to_string(&p).expect("读回"),
         after,
         "第二次安装改了文件 —— 不幂等的安装器会在 rc 里堆出两份块"
     );
     // 扫得出「已装」，而且这一格此前在 POSIX 上恒 false。
-    let scan = block_state(&p, &after);
+    let scan = block_state(&p, &after, &[]);
     assert!(
         scan.present,
         "装完却扫不出块 —— 界面会说「未安装」且藏起卸载按钮"
@@ -861,7 +861,7 @@ fn the_flavour_follows_the_file_not_the_machine() {
 fn bare_lines_with_no_fence_at_all_are_named_line_by_line() {
     // ① 反向尺子：围栏那条路在这份输入上**什么都看不见**。
     assert!(
-        !find_block_version(BARE_RC).0,
+        !find_block_version(BARE_RC, BEGIN_MARKER).0,
         "这份夹具里居然有围栏 —— 那它就证不了「够不着裸行」这件事"
     );
     assert_eq!(
@@ -927,8 +927,7 @@ fn bare_lines_with_no_fence_at_all_are_named_line_by_line() {
 #[test]
 fn our_own_fenced_block_is_never_reported_as_the_users_old_lines() {
     let what = "/home/u/.bashrc";
-    let installed =
-        plan_install(Shell::Posix, "export A=1\n", "cc", true, what, "/h").expect("装一次");
+    let installed = plan_install(Shell::Posix, "export A=1\n", what, "/h").expect("装一次");
     let hits = scan_legacy_rc_lines(&installed);
     assert!(
         hits.is_empty(),
@@ -974,17 +973,6 @@ fn the_hint_names_every_line_and_the_product_deletes_nothing() {
             "提示里那一行的原文被改写了 —— 用户要照着它去自己文件里认行"
         );
     }
-    // 「会盖过 cc-monitor 那一段」这一格现算自 `src/shared/ccm-aliases.sh`，不是抄的名单。
-    // 原措辞「会赢过我们那一块」照 CP1 台账改（去「我们」、去 declare -f 的实现说法）。
-    let builtin = super::builtin_alias_names();
-    assert!(
-        !builtin.is_empty(),
-        "自带别名名单是空的 —— 下面那一格会变成空真"
-    );
-    assert!(
-        hint.contains("会盖过"),
-        "夹具里有 `cc()` / `cct()` 两条与自带块同名，提示必须说清「不删就不生效」"
-    );
     // 措辞：**不许**是「请删除」。产品指名，不替人做决定。
     assert!(
         hint.contains("由你自己定"),
@@ -1014,11 +1002,13 @@ fn scanning_a_rc_changes_not_a_single_byte_on_disk() {
     //   把这份 rc 当「其它文件」递进去 —— 那正是界面上扫它的那条路。
     // 那一趟改走门（`rc_candidates_via`，读经那台后端的 `files-peek`）；这里的门是落在临时目录上的替身。
     let door = super::super::tests::HomeDoor(td.0.clone());
+    let names = ["cc".to_string(), "zz".to_string()];
     let cands = super::super::rc_candidates_via(
         &door,
         &td.0.display().to_string(),
         Shell::Posix,
         Some(&p.display().to_string()),
+        &names,
     )
     .expect("门读候选");
     let scan = &cands
@@ -1030,8 +1020,11 @@ fn scanning_a_rc_changes_not_a_single_byte_on_disk() {
     assert!(!scan.present, "这份夹具里没有块");
     assert_eq!(
         scan.conflicting_functions,
-        vec!["cc".to_string()],
-        "POSIX 那一形的同名函数（`cc() {{`）此前恒扫不出来 —— 那一格是空的"
+        vec![NameClash {
+            name: "cc".to_string(),
+            line: 5
+        }],
+        "清单里有 `cc`，rc 第 5 行自己定义了 `cc() {{` —— 只报这一个（`zz` 没有、`cct` 不在清单里）"
     );
 
     assert_eq!(std::fs::read(&p).expect("读回"), before, "扫描改了文件内容");
@@ -1095,8 +1088,8 @@ fn scanning_a_rc_changes_not_a_single_byte_on_disk() {
 #[test]
 fn the_powershell_block_never_touches_the_session_path_again() {
     let word = crate::control::ccm::SUBCOMMAND_WORD;
-    for include_cc in [true, false] {
-        let out = render_cc_code("cc", include_cc, std::path::Path::new("/_"));
+    {
+        let out = render_cc_code(std::path::Path::new("/_"));
         // ── 地板①：这份东西本身得是真的 ──────────────────────────────
         assert!(
             !out.trim().is_empty(),
@@ -1104,12 +1097,9 @@ fn the_powershell_block_never_touches_the_session_path_again() {
         );
         assert!(
             out.contains(BEGIN_MARKER) && out.contains(END_MARKER),
-            "围栏没了：这一块装进去就卸不掉（include_cc_function={include_cc}）"
+            "围栏没了：这一块装进去就卸不掉"
         );
-        assert!(
-            !out.contains("{{CC_FUNCTION_BLOCK}}"),
-            "placeholder 没被填掉（include_cc_function={include_cc}）"
-        );
+        assert!(!out.contains("{{"), "placeholder 没被填掉");
         // ── 地板②：正向那一道 —— 模板没被掏空 ────────────────────────
         assert!(
             guard_core::contains_word(&out, "__ccm_bind"),
@@ -1119,7 +1109,7 @@ fn the_powershell_block_never_touches_the_session_path_again() {
         let touches: Vec<&str> = out.lines().filter(|l| l.contains("$env:PATH")).collect();
         assert!(
             touches.is_empty(),
-            "这一块又在动会话级 `$env:PATH` 了（include_cc_function={include_cc}）。\n\
+            "这一块又在动会话级 `$env:PATH` 了。\n\
                  `R86` 逐字把这一段删了，理由是它造出「PowerShell 里能、`cmd` 里不能」\
                  那个半通状态 —— 要让 `{word}` 在**所有**终端里都找得到，\
                  走的是**用户级** PATH 那一条（`render_user_path_setup_command`，\
@@ -1137,93 +1127,40 @@ fn the_powershell_block_never_touches_the_session_path_again() {
     }
 }
 
-/// ★★ **`cc` 翻正了 —— 这一条是那处反向锚点翻过来的那一面。**
+/// ★★ **两臂的 `cc` 走同一条路**：`cc` 今天是清单里首建就带的一条（[`super::super::first_aliases`]），
+/// 两种方言都由同一个渲染器写出 —— POSIX `cc() { ccm "$@"; }`、PowerShell `& ccm $RemainingArgs`
+/// （`K33`「所有命令只许有一处」＋ `K28`「一切对外都经后端」）。PowerShell 的别名块里**一条调用行都没有**
+/// （`cc` 不再住块里）；没有 tmux 的那一臂首建不带 `cct` / `cca`（「名字在、行为不在」的壳比没有更坏，`K-R129`）。
 ///
-/// 上一轮那条判据（`K-R132` 立的，名字里逐字写着「仍然绕过后端、而这是登记过的、
-/// 不是忘了」）钉的是「今天这一行就是 `& claude`」这处**已登记的不一致**。
-/// testing.md 判据规则 12：反向锚点的合法出路只有「**重新裁定**」——
-/// `KR135D2` 就是那一次重新裁定，于是它连名字一起翻正。
-///
-/// # 现在钉的是什么：**两臂的 `cc` 走同一条路**
-///
-/// PowerShell 那一臂 `& ccm $RemainingArgs`、POSIX 那一臂 `cc() { ccm "$@"; }`
-/// —— `K33`「所有命令只许有一处」＋ `K26`「`ccm` 就是后端的原生命令行入口」＋
-/// `K28`「一切对外都经后端」。⚠ 两边都**现读**（一边读渲染产物、一边读
-/// `CCM_WRAPPER_SNIPPET`），一个名字都不抄第二份。
-///
-/// # 🔴 它同拍仍然钉住「别只改一边」
-///
-/// `launcher_identity_registry` 把这一行登记成 `T2` 的锚点。`K-R132` 上一轮现打验过：
-/// 动这一行会让**本条 ＋ 那条 `T2`** 同时红。本轮两处一起改了，
-/// 而这条性质**没变** —— 下一个人再动它，仍然是两条一起红。
-///
-/// # 🔴 诚实边界（别读大）
-///
-/// 它证的是「**生成的文本指向 `ccm`**」，**不是**「敲下去真起得来」。
-/// 后者要一台 Windows，而本门禁跑在 Linux 沙箱里（`GATE_BLIND` 的 `windows-runner`）。
-/// **本件没有在真机上把 `cc` 跑过一趟**，这一格如实记在 `§8`。
-///
-/// # `cct` 那一半（维持上一轮的棘轮）
-///
-/// POSIX 那一臂里 `cct() { ccm --ccm-tmux "$@"; }`，而 **Windows 上没有 tmux**
-/// ⇒ 这一臂**刻意不生成 `cct`**：给它一个「名字在、行为不在」的壳比没有更坏
-/// （`K-R129` 那位用户正是照文案敲了 `cct`）。**这半条是棘轮，不是发现。**
-///
-/// # 死值验（`KR135D2` 刀①）
-///
-/// 把那一行改回 `& claude $RemainingArgs` ⇒ 本条 ＋ `T2` 那条同时红。
+/// 🔴 诚实边界：证的是「生成的文本指向 `ccm`」，不是「敲下去真起得来」（要一台 Windows）。
 #[test]
 fn the_powershell_cc_goes_through_ccm_exactly_like_the_posix_one() {
+    use super::super::{first_aliases, render_line};
     let word = crate::control::ccm::SUBCOMMAND_WORD;
-    let out = render_cc_code("cc", true, std::path::Path::new("/_"));
-    assert!(
-        pinned(&out, "function cc {"),
-        "地板没了：这一支本来就该生成 `function cc`\n{out}"
-    );
-    // ── 正题：那一行走 `ccm` ─────────────────────────────────────────
-    assert!(
-        pinned(&out, &format!("    & {word} $RemainingArgs")),
-        "PowerShell 那一臂的 `cc` 不走 `{word}` 了。`K33`「所有命令只许有一处」＋ \
-             `K28`「一切对外都经后端」—— 改回直呼别的东西，等于让同一个名字\
-             在两个平台上是两件东西（账号 / 工作目录 / agent 选择这几维在 Windows 上\
-             整条够不着）。\n{out}"
-    );
-    // ── 反面：这一块里**只许有这一条**调用行 ─────────────────────────
-    //
-    // ⚠ 不写成 `!out.contains("claude")`：模板里本来就有 `claude`
-    //   （从前是数据目录的旧路径 ＋ 一句注释；路径改由渲染时填，
-    //   渲染产物里仍带着数据目录 ＋ 那句注释）⇒ 那样写第一天就是红的，
-    //   而「第一天就红的判据」的唯一出路是放宽它。⇒ 人群收成「调用行」这一形。
-    let invokes: Vec<String> = out
+    let cc_of = |sh: Shell| {
+        first_aliases(sh)
+            .into_iter()
+            .find(|a| a.name == "cc")
+            .map(|a| render_line(&a, sh))
+            .expect("首建那几条里该有 `cc`")
+    };
+    assert_eq!(cc_of(Shell::Posix), format!("cc() {{ {word} \"$@\"; }}"));
+    let ps = cc_of(Shell::PowerShell);
+    let invokes: Vec<&str> = ps
         .lines()
-        .map(|l| l.trim().to_string())
+        .map(str::trim)
         .filter(|l| l.starts_with("& "))
         .collect();
-    assert_eq!(
-        invokes,
-        vec![format!("& {word} $RemainingArgs")],
-        "这一块里的**调用行**应当恰好一条、而且走 `{word}`。\n\
-             多一条 = 旁边又加了一条别的路（后一条赢，而读的人看见前一条）；\n\
-             0 条 = `cc` 什么都不调了。\n逐字：\n{out}"
-    );
-    // ── POSIX 那一臂现读，不抄：抄一份就是第二个住址 ──────────────────
+    assert_eq!(invokes, vec![format!("& {word} $RemainingArgs")], "{ps}");
+    let block = render_cc_code(std::path::Path::new("/_"));
     assert!(
-        super::CCM_WRAPPER_SNIPPET
-            .lines()
-            .any(|l| l.trim_start().starts_with("cc()") && guard_core::contains_word(l, word)),
-        "POSIX 那一臂的 `cc` 不走 `{word}` 了 —— 本判据钉的是**两臂一致**，\
-             一致地错也是红"
+        !block.lines().any(|l| l.trim().starts_with("& ")),
+        "别名块里又有调用行了 —— `cc` 住清单\n{block}"
     );
-    // ── `cct`：这一臂不发明它 ────────────────────────────────────────
-    for rendered in [
-        render_cc_code("cc", true, std::path::Path::new("/_")),
-        render_cc_code("cc", false, std::path::Path::new("/_")),
-    ] {
-        assert!(
-            !guard_core::contains_word(&rendered, "function cct"),
-            "这一臂生成了 `cct`，而 Windows 上没有 tmux —— 见本判据头注"
-        );
-    }
+    let names =
+        |sh: Shell| -> Vec<String> { first_aliases(sh).into_iter().map(|a| a.name).collect() };
+    assert_eq!(names(Shell::Posix), ["cc", "cct", "cca"]);
+    assert_eq!(names(Shell::PowerShell), ["cc"]);
 }
 
 /// ★★ `KR132D2` 的第三半，**真机逮到的那一条**：
@@ -1255,7 +1192,7 @@ fn the_powershell_profile_lands_with_a_bom_and_the_posix_rc_never_does() {
     // ── PowerShell 那一支：有 BOM，而且装两趟只有一个 ────────────────
     let ps = td.0.join("Microsoft.PowerShell_profile.ps1");
     std::fs::write(&ps, "# 我自己的一行\nWrite-Host hi\n").expect("写夹具");
-    run(install_to_profile(&door_at(&ps), &ps, "cc", true)).expect("装第一趟");
+    run(install_to_profile(&door_at(&ps), &ps)).expect("装第一趟");
     let b1 = std::fs::read(&ps).expect("读回");
     assert_eq!(
         &b1[..3],
@@ -1263,7 +1200,7 @@ fn the_powershell_profile_lands_with_a_bom_and_the_posix_rc_never_does() {
         "PowerShell profile 落盘没有 BOM —— PS 5.1 会按 ANSI 代码页解它，\
              而那条路在真机上**吃掉过一整行可执行代码**（见本判据头注）"
     );
-    run(install_to_profile(&door_at(&ps), &ps, "cc", true)).expect("装第二趟");
+    run(install_to_profile(&door_at(&ps), &ps)).expect("装第二趟");
     let b2 = std::fs::read(&ps).expect("读回");
     assert_eq!(
         b2, b1,
@@ -1287,7 +1224,7 @@ fn the_powershell_profile_lands_with_a_bom_and_the_posix_rc_never_does() {
     // ── POSIX 那一支：一个 BOM 都不许有 ──────────────────────────────
     let rc = td.0.join(".bashrc");
     std::fs::write(&rc, BARE_RC).expect("写夹具");
-    run(install_to_profile(&door_at(&rc), &rc, "cc", true)).expect("装 rc");
+    run(install_to_profile(&door_at(&rc), &rc)).expect("装 rc");
     let rb = std::fs::read(&rc).expect("读回");
     assert_ne!(
         &rb[..3],
@@ -1309,23 +1246,17 @@ fn the_powershell_profile_lands_with_a_bom_and_the_posix_rc_never_does() {
 #[test]
 fn the_block_preview_is_byte_for_byte_what_an_install_writes() {
     for (shell, name) in [(Shell::Posix, ".bashrc"), (Shell::PowerShell, "p.ps1")] {
-        for with_cc in [false, true] {
+        {
             let td = tmpdir("block-preview");
             let p = td.0.join(name);
             // home 与装那一跳同一个（`__ccm_bind` 的数据目录按那台的 home 推）。
-            let preview = render_block(shell, with_cc, &td.0.display().to_string()).expect("渲染");
-            run(install_to_profile(
-                &door_at(&p),
-                &p,
-                CC_FUNCTION_NAME,
-                with_cc,
-            ))
-            .expect("装进空文件");
+            let preview = render_block(shell, &td.0.display().to_string()).expect("渲染");
+            run(install_to_profile(&door_at(&p), &p)).expect("装进空文件");
             let disk = std::fs::read_to_string(&p).expect("读回");
             assert_eq!(
                 strip_bom(&disk),
                 preview,
-                "{shell:?} with_cc={with_cc}：预览与写下的不是同一份"
+                "{shell:?}：预览与写下的不是同一份"
             );
             // 反空真：两边都是空串也「逐字相等」—— 预览必须真是一块围栏（首行就是那个方言的 BEGIN）。
             let fence = match shell {
@@ -1338,33 +1269,20 @@ fn the_block_preview_is_byte_for_byte_what_an_install_writes() {
             );
         }
     }
-    // POSIX 那一块不理 `with_cc`（`cc` 自带 `declare -f` 让着用户）；PowerShell 那一块理。
-    assert_eq!(
-        render_block(Shell::Posix, false, "/h"),
-        render_block(Shell::Posix, true, "/h")
-    );
-    assert_ne!(
-        render_block(Shell::PowerShell, false, "/h"),
-        render_block(Shell::PowerShell, true, "/h")
-    );
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 别名块的内容与合 / 剥 —— 这几条随被测对象从 `sftp_tests.rs` 搬来（逐字，只改住址）
 // ═══════════════════════════════════════════════════════════════════════════
 
-/// 单一来源漂移守卫①：写进远端 profile 的**别名块**。
-/// F02 起本块只剩组合层别名；`K-R48` 第二拍起实现住后端本体
-/// （远端那个 `~/.local/bin/ccm` 是 [`ccm_entry_shim`]，见下一条判据）。
+/// 单一来源漂移守卫①：写进 rc 的**别名块**只管接入 —— `ccm` 进 PATH ＋ 接上别名文件（`cc` / `cct` / `cca` 住清单）。
 #[test]
 fn ccm_aliases_snippet_has_required_elements() {
     for needle in [
-        // CLI 落点必须进 PATH，否则别名全指向不存在的命令。钉整条 export：原先钉的 `.local/bin` 只剩头注里一句旧话在喂它。
+        // CLI 落点必须进 PATH，否则别名全指向不存在的命令。
         "export PATH=\"$HOME/.cc-monitor/bin:$PATH\"",
-        "cc()",                     // 裸起（`K-R58` 起 = 就在当前目录，ccm 不再替用户挑）
-        "cct()",                    // tmux 版
-        "ccm \"$@\" -- --ccm-tmux", // 别名只做组合，不自己建容器；ccm 的选项在 `--` 右边
-        "declare -f",               // 防覆盖用户已有同名函数
+        // 接上别名文件（文件不在时什么都不做）。
+        "if [ -r \"$HOME/.cc-monitor/aliases.sh\" ]; then . \"$HOME/.cc-monitor/aliases.sh\"; fi",
     ] {
         assert!(
             CCM_WRAPPER_SNIPPET.contains(needle),
@@ -1372,7 +1290,13 @@ fn ccm_aliases_snippet_has_required_elements() {
         );
     }
     // 别名块**不得**再含实现（那是 CLI 的事；混回来就又变成两套实现）。
-    for forbidden in ["__ccm_rbind()", "exec claude", "tmux new-session"] {
+    for forbidden in [
+        "__ccm_rbind()",
+        "exec claude",
+        "tmux new-session",
+        "declare -f",
+        "cc()",
+    ] {
         assert!(
             !CCM_WRAPPER_SNIPPET.contains(forbidden),
             "别名块不该含实现细节 {forbidden}——实现属于 ~/.local/bin/ccm"
@@ -1393,11 +1317,10 @@ fn ccm_aliases_snippet_has_required_elements() {
 #[test]
 fn the_protocol_doc_sentence_about_the_alias_block_matches_the_file() {
     const IPC_DOC: &str = include_str!("../../../../src/doc/IPC-PROTOCOL.md");
-    let want_names = super::builtin_alias_names();
-    assert!(
-        !want_names.is_empty(),
-        "从 src/shared/ccm-aliases.sh 里一个别名都没解析出来 —— 判据够不着被测对象了，先修判据"
-    );
+    let defined: Vec<String> = CCM_WRAPPER_SNIPPET
+        .lines()
+        .filter_map(|l| Shell::Posix.dialect().declared_function(l.trim_start()))
+        .collect();
     let want_lines = CCM_WRAPPER_SNIPPET.lines().count();
 
     let sent = IPC_DOC
@@ -1416,17 +1339,11 @@ fn the_protocol_doc_sentence_about_the_alias_block_matches_the_file() {
         bold.contains(&format!("{want_lines} 行")),
         "行数对不上：src/shared/ccm-aliases.sh 现在 {want_lines} 行，而文档那句写的是「{bold}」"
     );
-    assert!(
-        bold.contains(&format!("这 {} 个", want_names.len())),
-        "别名个数对不上：现在 {} 个（{}），而文档那句写的是「{bold}」",
-        want_names.len(),
-        want_names.join(" / ")
-    );
-    let mut doc_names: Vec<&str> = bold.split('`').skip(1).step_by(2).collect();
-    doc_names.sort_unstable();
+    // 块今天一个别名都不定义（`cc` / `cct` / `cca` 住清单）—— 文档那句要照实说，块里长回函数就要改那句。
     assert_eq!(
-        doc_names, want_names,
-        "名单对不上：文档那句列的是 {doc_names:?}，盘上真有的是 {want_names:?}"
+        bold.contains("一个别名都不定义"),
+        defined.is_empty(),
+        "块里定义了 {defined:?}，而文档那句写的是「{bold}」"
     );
 }
 
@@ -1528,7 +1445,10 @@ fn remote_merge_boundary_semantics_after_migration() {
     let indented = format!("a\n  {CCM_PROFILE_BEGIN}\nold\n\t{CCM_PROFILE_END}\nb\n");
     let got = merge_profile_block(&indented, snip, "远端 ~/.bashrc").unwrap();
     assert!(
-        got.contains(&format!("\n{CCM_PROFILE_BEGIN}\n")),
+        got.contains(&format!(
+            "\n{CCM_PROFILE_BEGIN} {} ===\n",
+            super::POSIX_BLOCK_VERSION
+        )),
         "缩进应归一到列 0：{got}"
     );
     assert!(
@@ -1703,8 +1623,8 @@ fn the_alias_block_is_written_through_exactly_one_door() {
 #[test]
 fn hx2_the_bind_helper_finds_the_monitor_data_dir_through_the_one_exit() {
     let dir = std::path::Path::new("C:\\Users\\o'brien\\iso data");
-    for include_cc in [true, false] {
-        let out = render_cc_code("cc", include_cc, dir);
+    {
+        let out = render_cc_code(dir);
         let lines: Vec<&str> = out
             .lines()
             .map(str::trim)
@@ -1726,7 +1646,7 @@ fn hx2_the_bind_helper_finds_the_monitor_data_dir_through_the_one_exit() {
     assert_eq!(tpl.matches("{{MONITOR_DATA_DIR}}").count(), 1);
     let default_dir = std::path::Path::new("/home/u/.claude/claudecode-frontend");
     assert_eq!(
-        render_cc_code("cc", true, default_dir)
+        render_cc_code(default_dir)
             .matches("claudecode-frontend")
             .count(),
         1,

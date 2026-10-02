@@ -199,6 +199,26 @@
       "zh": "什么都不用改。",
       "args": []
     },
+    "accounts.change.aliasesAdded": {
+      "kind": "body",
+      "zh": "加了别名 {names}（{path}）",
+      "args": ["names", "path"]
+    },
+    "accounts.change.aliasesRemoved": {
+      "kind": "body",
+      "zh": "删了别名 {names}（{path}）",
+      "args": ["names", "path"]
+    },
+    "accounts.change.aliasesSkipped": {
+      "kind": "body",
+      "zh": "{names} 已经被别的别名占着，没加（{path}）",
+      "args": ["names", "path"]
+    },
+    "accounts.change.nameSep": {
+      "kind": "body",
+      "zh": "、",
+      "args": []
+    },
     "beAcctExec.key.noDoor": {
       "kind": "error",
       "zh": "这一步要动 key 表 {path}，可这一趟没拿到它的写口，没有动。",
@@ -313,16 +333,6 @@
       "kind": "body",
       "zh": "还原 {path}",
       "args": ["path"]
-    },
-    "beAcctFace.aliases.nameTaken": {
-      "kind": "body",
-      "zh": "别名 {alias} 已经被你自己的一条别名占着，没给账号 {account} 加。",
-      "args": ["alias", "account"]
-    },
-    "beAcctFace.aliases.readFailed": {
-      "kind": "error",
-      "zh": "读不了别名文件，账号别名这次没更新：{e}",
-      "args": ["e"]
     },
     "beAcctFace.aliases.unparsed": {
       "kind": "body",
@@ -4851,11 +4861,6 @@
       "zh": "活跃会话的 context 占用、agent 列表、改动文件、分叉来源都要不到：{reason}",
       "args": ["reason"]
     },
-    "machineAliases.preview.close": {
-      "kind": "action",
-      "zh": "关闭",
-      "args": []
-    },
     "machineAliases.ps.saveFailed": {
       "kind": "error",
       "zh": "保存失败",
@@ -5020,11 +5025,6 @@
       "zh": "预览失败",
       "args": []
     },
-    "machineAliases.preview.title": {
-      "kind": "title",
-      "zh": "将装进 {path} 的别名块",
-      "args": ["path"]
-    },
     "machineAliases.runRc.removeFailed": {
       "kind": "error",
       "zh": "卸失败：{e}",
@@ -5050,38 +5050,10 @@
       "zh": "别名块还装在这几份里：\n{others}\n同一台机器上装一份就够；多的那几份可以在下拉里选中后卸掉。",
       "args": ["others"]
     },
-    "machineAliases.rcStatus.conflict": {
-      "kind": "body",
-      "zh": "⚠ 这份文件里已有 function {names}。勾了「同时装 cc 函数」的话，装上之后 PowerShell 用的是别名块里那一个（它排在后面）。想留你自己的：取消勾选，在你那个函数开头加一行 __ccm_bind。",
-      "args": ["names"],
-      "waive": {
-        "C-T1": "__ccm_bind 是要用户亲手写进自己函数开头的那一行命令名，换个说法用户就没法照做"
-      }
-    },
-    "machineAliases.rc.install": {
-      "kind": "action",
-      "zh": "装别名块",
-      "args": []
-    },
-    "machineAliases.rc.reinstall": {
-      "kind": "action",
-      "zh": "重装别名块",
-      "args": []
-    },
-    "machineAliases.rcStatus.absent": {
-      "kind": "body",
-      "zh": "✗ {path}：还没有别名块（{blockWhat}）",
-      "args": ["path", "blockWhat"]
-    },
     "machineAliases.rcStatus.unreadable": {
       "kind": "error",
       "zh": "⚠ {path}：这台机器的后端读不了它（{why}）",
       "args": ["path", "why"]
-    },
-    "machineAliases.rcStatus.newFile": {
-      "kind": "body",
-      "zh": "○ {path} 还不存在（装的时候新建）",
-      "args": ["path"]
     },
     "machineAliases.other.failed": {
       "kind": "error",
@@ -5092,11 +5064,6 @@
       "kind": "error",
       "zh": "写入失败：{e}",
       "args": ["e"]
-    },
-    "machineAliases.write.done": {
-      "kind": "body",
-      "zh": "已写入 {path}。",
-      "args": ["path"]
     },
     "machineAliases.load.ccmFailed": {
       "kind": "error",
@@ -5130,17 +5097,12 @@
     },
     "machineAliases.rc.tagBlock": {
       "kind": "control",
-      "zh": "已装别名块",
+      "zh": "已接入",
       "args": []
     },
     "machineAliases.rc.tagSourced": {
       "kind": "control",
       "zh": "已经接上了",
-      "args": []
-    },
-    "machineAliases.rc.none": {
-      "kind": "control",
-      "zh": "不动我的 shell 配置",
       "args": []
     },
     "machineAliases.changed.failed": {
@@ -5165,12 +5127,7 @@
     },
     "machineAliases.form.save": {
       "kind": "action",
-      "zh": "加进清单",
-      "args": []
-    },
-    "machineAliases.form.update": {
-      "kind": "action",
-      "zh": "更新这一条",
+      "zh": "保存",
       "args": []
     },
     "machineAliases.form.accountNamed": {
@@ -5203,16 +5160,6 @@
       "zh": "打开这份文件",
       "args": []
     },
-    "machineAliases.rc.previewHint": {
-      "kind": "body",
-      "zh": "看一眼要装进去的那一块长什么样。",
-      "args": []
-    },
-    "machineAliases.rc.preview": {
-      "kind": "action",
-      "zh": "预览别名块",
-      "args": []
-    },
     "machineAliases.rc.uninstallHint": {
       "kind": "body",
       "zh": "只删 cc-monitor 那一小块，你写的任何一行都不动。",
@@ -5221,19 +5168,6 @@
     "machineAliases.rc.uninstall": {
       "kind": "action",
       "zh": "卸载 ccm",
-      "args": []
-    },
-    "machineAliases.rc.withCcHint": {
-      "kind": "body",
-      "zh": "不勾：只装 __ccm_bind，它登记终端窗口。你自己已有的 cc / claude 函数开头加一行 __ccm_bind，Tab ↗ 就能切对终端窗口。\n\n勾选：再装一个 function cc（走 ccm）。你 $PROFILE 里若已有 function cc，会被这一块盖掉，PowerShell 里后定义的同名函数赢。",
-      "args": [],
-      "waive": {
-        "C-T1": "__ccm_bind 是要用户亲手写进自己函数开头的那一行命令名，换个说法用户就没法照做"
-      }
-    },
-    "machineAliases.rc.withCc": {
-      "kind": "control",
-      "zh": "同时装 cc 函数",
       "args": []
     },
     "machineAliases.rc.useOther": {
@@ -5246,19 +5180,9 @@
       "zh": "其它文件：绝对路径，或 ~/ 开头",
       "args": []
     },
-    "machineAliases.invalid.fixFirst": {
-      "kind": "body",
-      "zh": "清单里有不合格的，先改好。",
-      "args": []
-    },
     "machineAliases.paste.mergeNote": {
       "kind": "body",
-      "zh": "整段贴到文件末尾；以后改了清单，再贴一次换掉上一次那段。",
-      "args": []
-    },
-    "machineAliases.form.clear": {
-      "kind": "action",
-      "zh": "清空表单",
+      "zh": "整段贴到文件末尾；这一段只让终端认得 ccm 并接上别名文件，清单以后怎么改都不用再贴。",
       "args": []
     },
     "machineAliases.form.passthru": {
@@ -5333,7 +5257,7 @@
     },
     "machineAliases.form.tmuxNone": {
       "kind": "control",
-      "zh": "不进 tmux",
+      "zh": "在当前终端起",
       "args": []
     },
     "machineAliases.form.accountBase": {
@@ -5348,7 +5272,7 @@
     },
     "machineAliases.form.cwd": {
       "kind": "control",
-      "zh": "工作目录，留空就是当前目录",
+      "zh": "完整路径，或 ~ 开头",
       "args": []
     },
     "machineAliases.form.nameHint": {
@@ -5359,6 +5283,206 @@
     "machineAliases.manager.intro": {
       "kind": "body",
       "zh": "一条别名是一个名字加一组 ccm 参数。在终端里敲这个名字，就等于敲 ccm 加上这组参数，后面还能再接别的参数。",
+      "args": []
+    },
+    "machineAliases.access.title": {
+      "kind": "title",
+      "zh": "终端接入",
+      "args": []
+    },
+    "machineAliases.access.connect": {
+      "kind": "action",
+      "zh": "接入",
+      "args": []
+    },
+    "machineAliases.access.connectTo": {
+      "kind": "action",
+      "zh": "接入 {path}",
+      "args": ["path"]
+    },
+    "machineAliases.access.on": {
+      "kind": "body",
+      "zh": "✓ {path} 已接入：新开的终端认得 ccm 和下面这些别名",
+      "args": ["path"]
+    },
+    "machineAliases.access.outdated": {
+      "kind": "body",
+      "zh": "⚠ {path} 接入的是旧版{version}，点「重新接入」换成新版",
+      "args": ["path", "version"]
+    },
+    "machineAliases.access.notLoaded": {
+      "kind": "body",
+      "zh": "⚠ {path} 已接入，但 {ps} 不会加载它",
+      "args": ["path", "ps"]
+    },
+    "machineAliases.access.reconnect": {
+      "kind": "action",
+      "zh": "重新接入",
+      "args": []
+    },
+    "machineAliases.access.off": {
+      "kind": "body",
+      "zh": "还没接入：新开的终端不认得 ccm 和下面这些别名",
+      "args": []
+    },
+    "machineAliases.access.clash": {
+      "kind": "body",
+      "zh": "⚠ {path} 第 {line} 行自己定义了 {name}，会和同名别名打架。排在后面的那个生效。",
+      "args": ["path", "line", "name"]
+    },
+    "machineAliases.access.notThisFile": {
+      "kind": "body",
+      "zh": "不是这份文件？",
+      "args": []
+    },
+    "machineAliases.access.choose": {
+      "kind": "action",
+      "zh": "换一份…",
+      "args": []
+    },
+    "machineAliases.access.selfPasteAsk": {
+      "kind": "body",
+      "zh": "不想让 cc-monitor 动它？",
+      "args": []
+    },
+    "machineAliases.access.selfPaste": {
+      "kind": "action",
+      "zh": "我自己贴",
+      "args": []
+    },
+    "machineAliases.aliasPreview.hint": {
+      "kind": "body",
+      "zh": "点这一行，看它会执行什么",
+      "args": []
+    },
+    "machineAliases.form.cancel": {
+      "kind": "action",
+      "zh": "取消",
+      "args": []
+    },
+    "machineAliases.form.cwdTitle": {
+      "kind": "body",
+      "zh": "工作目录",
+      "args": []
+    },
+    "machineAliases.form.cwdIn": {
+      "kind": "body",
+      "zh": "在",
+      "args": []
+    },
+    "machineAliases.form.cwdAt": {
+      "kind": "body",
+      "zh": "在哪个目录敲，如 ~",
+      "args": []
+    },
+    "machineAliases.form.cwdArrow": {
+      "kind": "body",
+      "zh": "敲 → 进",
+      "args": []
+    },
+    "machineAliases.form.cwdTo": {
+      "kind": "body",
+      "zh": "进哪个目录",
+      "args": []
+    },
+    "machineAliases.form.cwdDrop": {
+      "kind": "action",
+      "zh": "×",
+      "args": []
+    },
+    "machineAliases.form.cwdDropHint": {
+      "kind": "body",
+      "zh": "去掉这一种情况",
+      "args": []
+    },
+    "machineAliases.form.cwdAdd": {
+      "kind": "action",
+      "zh": "＋ 按所在目录分一种情况",
+      "args": []
+    },
+    "machineAliases.form.cwdElse": {
+      "kind": "body",
+      "zh": "其余情况 →",
+      "args": []
+    },
+    "machineAliases.form.cwdHere": {
+      "kind": "body",
+      "zh": "当前目录",
+      "args": []
+    },
+    "machineAliases.form.cwdDir": {
+      "kind": "body",
+      "zh": "进",
+      "args": []
+    },
+    "machineAliases.form.tmuxAttach": {
+      "kind": "body",
+      "zh": "接回一个 tmux 会话（敲的时候跟上会话名）",
+      "args": []
+    },
+    "machineAliases.list.title": {
+      "kind": "title",
+      "zh": "清单",
+      "args": []
+    },
+    "machineAliases.list.add": {
+      "kind": "action",
+      "zh": "＋ 新增别名",
+      "args": []
+    },
+    "machineAliases.list.groupAccounts": {
+      "kind": "title",
+      "zh": "账号",
+      "args": []
+    },
+    "machineAliases.list.groupAccountsHint": {
+      "kind": "body",
+      "zh": "加号时自动加这两条，删号时一起删。",
+      "args": []
+    },
+    "machineAliases.list.groupOther": {
+      "kind": "title",
+      "zh": "其他",
+      "args": []
+    },
+    "machineAliases.list.missing": {
+      "kind": "body",
+      "zh": "{account} 还没有 {name}（{what}）",
+      "args": ["account", "name", "what"]
+    },
+    "machineAliases.list.addMissing": {
+      "kind": "action",
+      "zh": "加上",
+      "args": []
+    },
+    "machineAliases.list.shapeHere": {
+      "kind": "body",
+      "zh": "在当前终端起",
+      "args": []
+    },
+    "machineAliases.list.shapeTmux": {
+      "kind": "body",
+      "zh": "在 tmux 里起",
+      "args": []
+    },
+    "machineAliases.list.noAccounts": {
+      "kind": "body",
+      "zh": "这台还没有账号。",
+      "args": []
+    },
+    "machineAliases.list.saveHint": {
+      "kind": "body",
+      "zh": "改了立刻存到这台机器；已经开着的终端里 source 一次别名文件生效。",
+      "args": []
+    },
+    "machineAliases.save.stale": {
+      "kind": "error",
+      "zh": "没存上：{why} 已经重新读了一遍，看一眼再存。",
+      "args": ["why"]
+    },
+    "machineAliases.tmuxNaming.attach": {
+      "kind": "body",
+      "zh": "接回一个已有的 tmux 会话：会话名在敲的时候跟上（如 cca 会话名）。",
       "args": []
     },
     "machineAliases.unknownOs.said": {
@@ -5378,11 +5502,8 @@
     },
     "machineAliases.powershell.blockAfterInstall": {
       "kind": "body",
-      "zh": "装好了。开一个新的 PowerShell 窗口生效；没勾「同时装 cc 函数」的话，在你自己的 cc / claude 函数开头加一行 __ccm_bind。",
-      "args": [],
-      "waive": {
-        "C-T1": "__ccm_bind 是要用户亲手写进自己函数开头的那一行命令名，换个说法用户就没法照做"
-      }
+      "zh": "装好了。开一个新的 PowerShell 窗口生效。",
+      "args": []
     },
     "machineAliases.policy.hostPowershell": {
       "kind": "body",
@@ -5393,11 +5514,6 @@
       "kind": "body",
       "zh": "PowerShell 7",
       "args": []
-    },
-    "machineAliases.rcStatus.installedNotLoaded": {
-      "kind": "body",
-      "zh": "{path}：别名块装了{version}，但 {ps} 不会加载它",
-      "args": ["path", "version", "ps"]
     },
     "machineAliases.policy.blocks": {
       "kind": "body",
@@ -5446,7 +5562,7 @@
     },
     "machineAliases.powershell.blockInstallTitle": {
       "kind": "body",
-      "zh": "把登记终端窗口的那一小段装进你选的那份 $PROFILE；勾了「同时装 cc 函数」再加一个 cc 函数。只动 cc-monitor 那一小块，写前先备份、写后回读比对、不对就恢复。",
+      "zh": "把登记终端窗口、接上别名文件的那一小段装进这份 $PROFILE。只动 cc-monitor 那一小块，写前先备份、写后回读比对、不对就恢复。",
       "args": []
     },
     "machineAliases.posix.blockAfterInstall": {
@@ -5456,7 +5572,7 @@
     },
     "machineAliases.posix.blockInstallTitle": {
       "kind": "body",
-      "zh": "把 cc / cct 与接上别名文件的那一行装进你选的那份配置。只动 cc-monitor 那一小块，写前先备份、写后回读比对、不对就恢复。",
+      "zh": "把「让终端认得 ccm、接上别名文件」那一小段装进这份配置。只动 cc-monitor 那一小块，写前先备份、写后回读比对、不对就恢复。",
       "args": []
     },
     "machineStatus.facet.failIcon": {
@@ -6161,8 +6277,8 @@
     },
     "accountNewForm.aliasHintFor.aliasHint": {
       "kind": "body",
-      "zh": "这个号的命令名会是 {alias}",
-      "args": ["alias"]
+      "zh": "这个号的命令会是 {names}",
+      "args": ["names"]
     },
     "accountNewForm.form.create": {
       "kind": "action",
@@ -11024,11 +11140,6 @@
       "zh": "这条记录不显示、不进搜索。多半是 Claude Code 加了新的记录类型",
       "args": []
     },
-    "rsAccountAliases.install.unchanged": {
-      "kind": "body",
-      "zh": "别名文件和盘上那份一模一样，没有重写。",
-      "args": []
-    },
     "rsAccountAliases.install.listSep": {
       "kind": "body",
       "zh": "；",
@@ -11038,6 +11149,11 @@
       "kind": "error",
       "zh": "有 {count} 条别名不合格，一条都没写：{list}",
       "args": ["count", "list"]
+    },
+    "rsAccountAliases.install.changedElsewhere": {
+      "kind": "error",
+      "zh": "{path} 在这一页读到它之后被别处改过，这次没写。",
+      "args": ["path"]
     },
     "rsAccountAliases.read.failed": {
       "kind": "error",
@@ -11091,8 +11207,18 @@
     },
     "rsAccountAliases.check.cwdNotAbsolute": {
       "kind": "error",
-      "zh": "--cwd 要写完整路径（不含 ..）：{value}",
+      "zh": "--cwd 要写完整路径或以 ~ 开头（不含 ..）：{value}",
       "args": ["value"]
+    },
+    "rsAccountAliases.check.cwdIfNotPinned": {
+      "kind": "error",
+      "zh": "--cwd-if 的目录要写完整路径或以 ~ 开头（不含 ..）：{value}",
+      "args": ["value"]
+    },
+    "rsAccountAliases.check.attachAlone": {
+      "kind": "error",
+      "zh": "接回 tmux 会话的那一条只能单放 --attach，会话名在敲的时候跟上",
+      "args": []
     },
     "rsAccountAliases.check.tmuxNoName": {
       "kind": "error",
@@ -11300,25 +11426,15 @@
       "zh": "\n动手的地方：用你自己的编辑器打开 {what}，删掉你决定不要的那几行，再开一个新终端。\n",
       "args": ["what"]
     },
-    "rsProfileInstaller.hint.shadowNote": {
-      "kind": "body",
-      "zh": "\n标了「会盖过」的 {shadowed} 行排在前面，不删掉它们，装上的那段不会生效。\n",
-      "args": ["shadowed"]
-    },
     "rsProfileInstaller.hint.head": {
       "kind": "body",
       "zh": "{what} 里有 {count} 行提到 ccm，不在 cc-monitor 管理的那段里，cc-monitor 一个字节都不会碰它们。\n要不要删、删哪几行，由你自己定：\n\n{body}",
       "args": ["what", "count", "body"]
     },
-    "rsProfileInstaller.hint.shadowMark": {
-      "kind": "body",
-      "zh": "     ← 会盖过 cc-monitor 那一段",
-      "args": []
-    },
     "rsProfileInstaller.hint.line": {
       "kind": "body",
-      "zh": "  第 {lineNo} 行  {text}{mark}\n",
-      "args": ["lineNo", "text", "mark"]
+      "zh": "  第 {lineNo} 行  {text}\n",
+      "args": ["lineNo", "text"]
     },
     "rsFencedBlock.pair.noEnd": {
       "kind": "error",
@@ -12394,41 +12510,6 @@
       "zh": "在新终端 resume",
       "args": []
     },
-    "machineAliases.rcStatus.installedOutdated": {
-      "kind": "body",
-      "zh": "✓ {path}：别名块已经装了{version}。这是旧版的别名块，点「重装别名块」换成新版（新版会自动接上你的别名）",
-      "args": ["path", "version"]
-    },
-    "machineAliases.rcStatus.installed": {
-      "kind": "body",
-      "zh": "✓ {path}：别名块已经装了{version}",
-      "args": ["path", "version"]
-    },
-    "machineAliases.rc.writeHint": {
-      "kind": "body",
-      "zh": "写到 cc-monitor 自己那份别名文件；选了 shell 配置的话，看它接没接上（不往里写）。",
-      "args": []
-    },
-    "machineAliases.rc.write": {
-      "kind": "action",
-      "zh": "写入",
-      "args": []
-    },
-    "machineAliases.powershell.blockWhat": {
-      "kind": "body",
-      "zh": "登记终端窗口的那一小段",
-      "args": []
-    },
-    "machineAliases.powershell.nameHint": {
-      "kind": "control",
-      "zh": "名字，如 zcc",
-      "args": []
-    },
-    "machineAliases.powershell.rcLabel": {
-      "kind": "control",
-      "zh": "这台机器的 PowerShell 配置，别名块装进哪份 $PROFILE：",
-      "args": []
-    },
     "machineAliases.powershell.pasteActivation": {
       "kind": "body",
       "zh": "开一个新的 PowerShell 窗口。",
@@ -12437,21 +12518,6 @@
     "machineAliases.powershell.pasteTarget": {
       "kind": "body",
       "zh": "$PROFILE（PowerShell 启动时读的那份脚本）",
-      "args": []
-    },
-    "machineAliases.posix.blockWhat": {
-      "kind": "body",
-      "zh": "cc / cct 这一族",
-      "args": []
-    },
-    "machineAliases.posix.nameHint": {
-      "kind": "control",
-      "zh": "名字，如 zcct",
-      "args": []
-    },
-    "machineAliases.posix.rcLabel": {
-      "kind": "control",
-      "zh": "这台机器的 shell 配置，别名块装进哪份：",
       "args": []
     },
     "machineAliases.posix.pasteActivation": {
@@ -12464,11 +12530,6 @@
       "zh": "~/.bashrc（或你实际用的 shell 配置文件）",
       "args": []
     },
-    "machineAliases.aliasPreview.button": {
-      "kind": "action",
-      "zh": "预览",
-      "args": []
-    },
     "machineAliases.aliasPreview.asking": {
       "kind": "body",
       "zh": "正在问这台机器的后端…",
@@ -12476,8 +12537,8 @@
     },
     "machineAliases.aliasPreview.line": {
       "kind": "body",
-      "zh": "从家目录的一个新终端里敲 {name} 时会执行：\n{line}",
-      "args": ["name", "line"]
+      "zh": "会执行：{line}（从家目录的一个新终端里敲）",
+      "args": ["line"]
     },
     "machineAliases.aliasPreview.failed": {
       "kind": "error",
@@ -12508,21 +12569,6 @@
       "kind": "body",
       "zh": "以某个名字为底：先试这个名，已经被占了就依次试 -2、-3 …",
       "args": []
-    },
-    "rsAccountAliases.install.nextStep": {
-      "kind": "body",
-      "zh": "新开一个终端就能用；当前终端要先执行一次 . {path}",
-      "args": ["path"]
-    },
-    "rsAccountAliases.install.sourceMissing": {
-      "kind": "body",
-      "zh": "{rc} 还没接上这份文件：在下面给它装上别名块就接上了。不想装别名块的话，自己把这一行加进去：{line}",
-      "args": ["rc", "line"]
-    },
-    "rsAccountAliases.install.sourceExists": {
-      "kind": "body",
-      "zh": "{rc} 已经接上了这份文件。",
-      "args": ["rc"]
     },
     "rsAssetSync.reach.internal": {
       "kind": "error",
@@ -14310,6 +14356,11 @@
       "zh": "--account 与 --base 互斥",
       "args": []
     },
+    "beArgv.validate.cwdIfNotPinned": {
+      "kind": "error",
+      "zh": "--cwd-if 的第一个目录要写完整路径或以 ~ 开头：{at}",
+      "args": ["at"]
+    },
     "beArgv.validate.accountDirAndAccount": {
       "kind": "error",
       "zh": "--account-dir 与 --account / --base 互斥",
@@ -14447,7 +14498,7 @@
     },
     "beCcm.usage.body": {
       "kind": "body",
-      "zh": "用法：ccm [交给 claude 的参数…] -- [new] [ccm 自己的选项…]\n\nccm 是 claude 的壳。没有 -- 时整行原样交给 claude（--ccm-agent codex 时交给 codex）；\n有 -- 时按最后一个 -- 切开：左边原样交给 claude，右边只放下面这些 ccm 自己的选项，认不得就报错。\n要给 claude 它自己的 -- 又没有 ccm 选项时，末尾补一个空的 --（如 ccm -p -- -x --）。\n\n选项\n  new                起新会话（缺省就是它；只许是 -- 右边第一个词。ccm new 没有 -- 时交给 claude）\n  --ccm-tmux[=<名>]  在一个 tmux 会话里跑；给名就用那个名\n  --tmux-base <基名> 以这个为底取名，撞了就换一个（与 --ccm-tmux=<名> 互斥）\n  --tmux-size <W>xH  新建 tmux 会话的宽高（要带 --ccm-tmux）\n  --detach           建完就返回，不接进去（要带 --ccm-tmux）\n  --bus-register     把新会话登记上 cc-bus（要带 --detach）\n  --bus-note <备注>  给上面那条登记带一行备注\n  --account <名>     用这个账号起（与 --base 互斥）\n  --account-dir <目录> 用这个账号配置目录起（说不出账号名时用；与 --account / --base 互斥）\n  --base             不用任何账号，按 agent 自己的默认配置起\n  --cwd <目录>       工作目录；不给就是当前目录，相对路径按当前目录补全\n  --ccm-agent <名>   claude | codex\n  --launcher <命令>  换掉默认的启动命令（可带参数，如 'ccr code'；开头的 ~/ 是家目录）\n  --attach <会话名>  不起 agent，直接接回一个 tmux 会话\n  --ccm-sid <会话ID> 给会话标上会话ID，cc-monitor 靠它找到终端窗口\n  --ccm-rbind-token <令牌> cc-monitor 起会话时带上，靠它认出这条会话的终端窗口\n  --ccm-launch-id <标识>   cc-monitor 起新会话时带上，靠它认出刚起的是哪条会话\n  --ccm-print        不跑，印出等价的一行 shell 命令\n  --ccm-probe        印出这台机器上 ccm 的身份信息（六行）\n  --ccm-version      印版本号\n  --ccm-help         这一段\n\n左边交给 claude 的参数里，ccm 只看一个（照样交给 claude）\n  --resume <会话ID>  这条会话已经在某个 tmux 会话里跑时，接上它、不另起（-r 同）\n\n中转\n  这台机器上 cc-monitor 的中转在听时，ccm 起 agent 前把 ANTHROPIC_BASE_URL 指向它（你自己设了就不动）；\n  环境变量 CCM_RELAY_ALL_SESSIONS=0 时只有要经中转换 key 的账号才指过去\n",
+      "zh": "用法：ccm [交给 claude 的参数…] -- [new] [ccm 自己的选项…]\n\nccm 是 claude 的壳。没有 -- 时整行原样交给 claude（--ccm-agent codex 时交给 codex）；\n有 -- 时按最后一个 -- 切开：左边原样交给 claude，右边只放下面这些 ccm 自己的选项，认不得就报错。\n要给 claude 它自己的 -- 又没有 ccm 选项时，末尾补一个空的 --（如 ccm -p -- -x --）。\n\n选项\n  new                起新会话（缺省就是它；只许是 -- 右边第一个词。ccm new 没有 -- 时交给 claude）\n  --ccm-tmux[=<名>]  在一个 tmux 会话里跑；给名就用那个名\n  --tmux-base <基名> 以这个为底取名，撞了就换一个（与 --ccm-tmux=<名> 互斥）\n  --tmux-size <W>xH  新建 tmux 会话的宽高（要带 --ccm-tmux）\n  --detach           建完就返回，不接进去（要带 --ccm-tmux）\n  --bus-register     把新会话登记上 cc-bus（要带 --detach）\n  --bus-note <备注>  给上面那条登记带一行备注\n  --account <名>     用这个账号起（与 --base 互斥）\n  --account-dir <目录> 用这个账号配置目录起（说不出账号名时用；与 --account / --base 互斥）\n  --base             不用任何账号，按 agent 自己的默认配置起\n  --cwd <目录>       工作目录；不给就是当前目录，开头的 ~ 是家目录，相对路径按当前目录补全\n  --cwd-if <在哪> <进哪> 正好在「在哪」这个目录里敲时进「进哪」（可写多次，按顺序第一条对上的算；\n                     两边都可用 ~，链接解开再比；都没对上才看 --cwd）\n  --ccm-agent <名>   claude | codex\n  --launcher <命令>  换掉默认的启动命令（可带参数，如 'ccr code'；开头的 ~/ 是家目录）\n  --attach <会话名>  不起 agent，直接接回一个 tmux 会话\n  --ccm-sid <会话ID> 给会话标上会话ID，cc-monitor 靠它找到终端窗口\n  --ccm-rbind-token <令牌> cc-monitor 起会话时带上，靠它认出这条会话的终端窗口\n  --ccm-launch-id <标识>   cc-monitor 起新会话时带上，靠它认出刚起的是哪条会话\n  --ccm-print        不跑，印出等价的一行 shell 命令\n  --ccm-probe        印出这台机器上 ccm 的身份信息（六行）\n  --ccm-version      印版本号\n  --ccm-help         这一段\n\n左边交给 claude 的参数里，ccm 只看一个（照样交给 claude）\n  --resume <会话ID>  这条会话已经在某个 tmux 会话里跑时，接上它、不另起（-r 同）\n\n中转\n  这台机器上 cc-monitor 的中转在听时，ccm 起 agent 前把 ANTHROPIC_BASE_URL 指向它（你自己设了就不动）；\n  环境变量 CCM_RELAY_ALL_SESSIONS=0 时只有要经中转换 key 的账号才指过去\n",
       "args": [],
       "waive": {
         "C-L3": "--help 正文是逐行的选项表，每行一处括号是那一行的补充",

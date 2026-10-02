@@ -35,6 +35,8 @@ pub(crate) mod flag {
     pub(crate) const ACCOUNT: &str = "--account";
     pub(crate) const BASE: &str = "--base";
     pub(crate) const CWD: &str = "--cwd";
+    /// `--cwd-if <在哪> <进哪>`：正好在「在哪」那个目录敲 ⇒ 进「进哪」（可写多次，按序第一条对上的算）。
+    pub(crate) const CWD_IF: &str = "--cwd-if";
     pub(crate) const AGENT: &str = "--ccm-agent";
     pub(crate) const LAUNCHER: &str = "--launcher";
     pub(crate) const BUS_REGISTER: &str = "--bus-register";
@@ -131,6 +133,8 @@ pub(crate) struct Opts {
     pub(crate) account: String,
     pub(crate) use_base: bool,
     pub(crate) cwd_spec: CwdSpec,
+    /// `--cwd-if` 那几条 `(在哪, 进哪)`，按写的顺序；都没对上 ⇒ [`Opts::cwd_spec`]。
+    pub(crate) cwd_if: Vec<(String, String)>,
     pub(crate) agent: String,
     pub(crate) launcher: String,
     pub(crate) ccm_sid: String,
@@ -217,6 +221,7 @@ pub(crate) fn parse(args: &[String]) -> Result<Parsed, Die> {
         account: String::new(),
         use_base: Defaults::USE_BASE,
         cwd_spec: Defaults::CWD,
+        cwd_if: Vec::new(),
         agent: Defaults::agent().to_string(),
         launcher: String::new(),
         ccm_sid: String::new(),
@@ -268,6 +273,12 @@ pub(crate) fn parse(args: &[String]) -> Result<Parsed, Die> {
             flag::ACCOUNT => o.account = val!(),
             flag::BASE => o.use_base = true,
             flag::CWD => o.cwd_spec = CwdSpec::Explicit(val!()),
+            flag::CWD_IF => {
+                let at = val!();
+                let to = need_val(key, args.get(i + 1))?;
+                i += 1;
+                o.cwd_if.push((at, to));
+            }
             // 写空（`--ccm-agent ""`）⇒ 默认那一家，不当成漏了参数（认法住 `agents::pick_kind`）。
             flag::AGENT if inline.is_none() && args.get(i + 1).is_some_and(|v| v.is_empty()) => {
                 o.agent = String::new();
@@ -396,6 +407,19 @@ fn validate(o: &Opts) -> Result<(), Die> {
             "beArgv.validate.badAccountDir",
             &[("dir", &format!("{:?}", o.account_dir))],
         ));
+    }
+    // 「在哪」要钉住一个目录：`~` 打头或绝对路径（相对的话「在哪敲」恒对上）。
+    for (at, _) in &o.cwd_if {
+        let pinned = at == "~"
+            || at.starts_with("~/")
+            || at.starts_with("~\\")
+            || std::path::Path::new(at).is_absolute();
+        if !pinned || !shell_quote_core::free_text_ok(at) {
+            return die(copy_text(
+                "beArgv.validate.cwdIfNotPinned",
+                &[("at", &format!("{at:?}"))],
+            ));
+        }
     }
     if !o.account.is_empty() && !shell_quote_core::account_name_ok(&o.account) {
         return die(copy_text(

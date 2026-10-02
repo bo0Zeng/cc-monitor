@@ -1614,7 +1614,7 @@ fn claims() -> Vec<Claim> {
         addr: "block.rs::install_to_profile",
         // 签名变了：落盘经「门」（生产 = 本机后端的文件管理那一面），本进程不写。
         // 门就是那台后端本进程的 `files-*`（同步）。
-        definition: "pub(crate) fn install_to_profile(\n    d: &dyn Door,\n    path: &Path,\n    command_name: &str,\n    include_cc_function: bool,\n) -> Result<(), String> {",
+        definition: "pub(crate) fn install_to_profile(d: &dyn Door, path: &Path) -> Result<(), String> {",
     }
     };
     let profile_uninstall = || {

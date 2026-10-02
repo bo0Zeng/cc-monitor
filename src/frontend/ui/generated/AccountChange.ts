@@ -27,9 +27,9 @@ account: AccountRef | null,
  */
 loginCmd: string | null, 
 /**
- * 这个号自动拿到的别名（预演时是将要写的那一条）。
+ * `accounts-init` / `accounts-add`：这个号会自动拿到的别名名字（预演时也给）。
  */
-alias: string | null, 
+aliasNames: Array<string>, 
 /**
  * `accounts-add` 的 API 号：key 写进 apikey 表之后的掩码。
  */
@@ -37,4 +37,8 @@ keyMasked: string | null,
 /**
  * 号建好了、key 却没写进去时那一句（界面据此让人在那一行上重填）。
  */
-keyProblem: string | null, aliases: AliasChange | null, };
+keyProblem: string | null, 
+/**
+ * 建号 / 删号那一刻改了的别名文件，一份一条；别的命令 ⇒ 空。
+ */
+aliases: Array<AliasChange>, };

@@ -1029,10 +1029,10 @@ fn the_alias_block_truth_no_longer_lives_in_sftp() {
         "pub(crate) const CCM_PROFILE_BEGIN: &str",
         "pub(crate) const CCM_PROFILE_END: &str",
         "pub(crate) const CCM_WRAPPER_SNIPPET: &str",
-        "pub(crate) fn builtin_alias_names(",
         "pub(crate) fn merge_profile_block(",
         "pub(crate) fn strip_profile_block(",
         // 远端装 / 卸那两条命令删了（并进 `aliases_block_*`），名单 8 → 6。
+        // 别名块不再定义别名（`cc` / `cct` / `cca` 进了清单）⇒ 「块里定义了哪几个名字」那个函数删了，6 → 5。
     ];
     let stayed: Vec<&str> = defs.iter().copied().filter(|d| sftp.contains(d)).collect();
     assert!(

@@ -5017,7 +5017,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("tests/evidence/C2-dial-loopback.py", 1),
         // +3：模块头注 ＋ 装 / 卸两条命令头注里各一块（`…_ccm_helper` 改名成 `…_alias_block`）。
         ("src/frontend/shell/src/sftp.rs", 11), // 8 → 11：标记读写 · 比标记 · 受管路径谓词三处随 cc-acct-iso 部署命令删了，各留一块 // // 7 → 8：`ccm` 入口那一段（`put_ccm_entry` · `CCM_CLI_REMOTE_PATH`）删了，原地一块（两个名同一块只算一处） // 〔删 `fenced_block::apply` 那一族〕8 → 7：`rollback_note` · `SftpFile` 两块随读取器 / 落点原语删了，`put_ccm_entry` 头注进一块 `fenced_block::apply` // 10 → 8：别名块两条命令的头注（两块墓碑）随命令搬去 `profile_installer.rs` // 9 → 10（进 3 出 2）：执行那一半（SFTP）搬进本机后端 —— 模块头注两块（开会话 · 原子上传）＋ `SftpFile` 改名一块进；原子上传那段头注的两块随函数搬去后端 `dial/sftp.rs`
-        ("src/backend/assets/aliases/block.rs", 11), // 13 → 11：远端装 / 卸别名块两条命令删了，头注两块墓碑随之走 // 11 → 13：从 `sftp.rs` 搬来别名块两条命令，头注里两块墓碑跟着来 // 5 → 11（`ProfileKind` / `ProfileScan` · `$PROFILE` 两份认法与遗留扫描 · 扫一份那两个 · 「终端集成」命令名 · 模块头表那一格，逐处挂墓碑） // +1：`AccountAliasReport` 那一句 · +3：本机原子写原语 `atomic_write_string` / `atomic_replace_path` 删了（原住址一块 ＋ BOM 那段两句）
+        ("src/backend/assets/aliases/block.rs", 10), // 11 → 10：PowerShell 别名块不再带 `function cc`（`cc` 进了清单），讲它怎么生成、`cct` 为什么不生成的那段散文整段退役，`AccountAliasReport` 那一句随之走 // 13 → 11：远端装 / 卸别名块两条命令删了，头注两块墓碑随之走 // 11 → 13：从 `sftp.rs` 搬来别名块两条命令，头注里两块墓碑跟着来 // 5 → 11（`ProfileKind` / `ProfileScan` · `$PROFILE` 两份认法与遗留扫描 · 扫一份那两个 · 「终端集成」命令名 · 模块头表那一格，逐处挂墓碑） // +1：`AccountAliasReport` 那一句 · +3：本机原子写原语 `atomic_write_string` / `atomic_replace_path` 删了（原住址一块 ＋ BOM 那段两句）
         // 〔删 `fenced_block::apply` 那一族〕`src/frontend/shell/src/verified_write.rs`（3）与 `tests/frontend/shell/verified_write_tests.rs`（1）两行摘掉：整份模块零调用方删了（整轴退役），
         //   它的墓碑说的那几件（`install_remote_ccm_helper` 两块 · `verify_and_rollback`）另有住址记着。
         // +2：传输台那三行摘掉时留的墓碑（暂存区上传 · 本机下载落地两个旧名）。

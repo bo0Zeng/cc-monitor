@@ -103,9 +103,9 @@ export const NEW_ACCOUNT_COPY = {
 
 let formSeq = 0;
 
-/** 命令名那一行：名字是那台后端预演时答的（`alias`），这里只套一句话。 */
-export function aliasHintFor(alias: string | null): string {
-  return alias ? copyText("accountNewForm.aliasHintFor.aliasHint", { alias }) : "";
+/** 命令名那一行：名字是那台后端预演时答的（`aliasNames`），这里只套一句话。 */
+export function aliasHintFor(names: readonly string[]): string {
+  return names.length ? copyText("accountNewForm.aliasHintFor.aliasHint", { names: names.join(copyText("accounts.change.nameSep")) }) : "";
 }
 
 /**
@@ -281,7 +281,7 @@ export function renderNewAccountForm(
       (plan) => {
         if (my !== asked) return; // 输入又变了：这一问作废
         preview.textContent = [C.previewHead, ...plan.steps, ...plan.notes].join("\n");
-        aliasHint.textContent = aliasHintFor(plan.alias);
+        aliasHint.textContent = aliasHintFor(plan.aliasNames);
         dryOk = true;
         create.disabled = !filled();
       },

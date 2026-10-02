@@ -1,14 +1,15 @@
 //! 帧面宿主：改账号库的那几条命令（`accounts-*`，本体 `accounts::manage::wire`）＋ 两步装配 ——
 //! ① 建 API 号 ⇒ key 写进这台的 apikey 表（`accounts::upstream_select::file_face`，与 `apikey-key-set` 同一个写口）；
 //!    删号 ⇒ 表里这个号那一行跟着清掉、回滚 ⇒ 放回去（那两步由执行器排进同一份备份，写的仍是表自己那一口）；
-//! ② 账号表变了 ⇒ 每个号那一条 `<名>cc` 并进这台的别名文件（`assets::aliases`，POSIX 那一份；用户自己的别名一条不动）；
+//! ② 建号 ⇒ 这台的别名文件加上 `<名>cc` ＋ `<名>cct`；删号 ⇒ 删掉参数指向它的全部（`accounts::manage::aliases`；
+//!    这台说哪几种 shell 就改哪几份，没有 tmux 的那一份只加 `<名>cc`）。只在这两个时刻动，平时不回补；
 //! ③ 账号库改过之后 ⇒ 各号共用的用户级 MCP 同步一趟（`accounts::manage::mcp_share_exec`），并让监听器的名单跟上。
 //! 各号共用的 MCP 那几条（`accounts-mcp-*`）也从这里进。
 //! 两块互不认识，接在这里（`accounts/mod.rs` 头注：账号库与上游选择零引用）。
 
 use crate::accounts::manage::{aliases as acct_aliases, mcp_share_exec, mcp_share_watch, wire};
 use crate::accounts::upstream_select::file_face;
-use crate::assets::aliases::{self, Alias};
+use crate::assets::aliases::{self, Alias, AmendErr};
 use crate::assets::door::Door;
 use crate::platform::shell::dialect::Shell;
 use acct_core::wire::{AccountChange, AccountKind, AliasChange};
@@ -95,8 +96,11 @@ pub(crate) fn answer(d: &dyn Door, cmd: &str, args: &Value, keys: &KeyDoor) -> A
             put_key(&mut change, keys.set, &acct.config_dir, &k, base.as_deref());
         }
     }
-    if let Some(names) = done.accounts_after {
-        change.aliases = Some(sync_aliases(d, &names));
+    if !done.alias_events.is_empty() {
+        change.aliases = alias_shells()
+            .into_iter()
+            .map(|shell| amend_aliases(d, shell, &done.alias_events))
+            .collect();
     }
     if change.applied {
         sync_mcp(d, &mut change);
@@ -152,73 +156,86 @@ fn put_key(
     }
 }
 
-/// 账号表 ⇒ 别名文件。文件里有认不出的行 ⇒ 不动它（重写会把那几行丢掉），说一句。
-fn sync_aliases(d: &dyn Door, accounts: &[String]) -> AliasChange {
-    let shell = Shell::Posix;
-    let listing = match aliases::read_via(d, shell, None) {
-        Ok(l) => l,
-        Err(e) => {
-            return AliasChange {
-                path: String::new(),
-                changed: false,
-                names: Vec::new(),
-                note: Some(copy_text("beAcctFace.aliases.readFailed", &[("e", &e)])),
-            }
+/// 这台说哪几种 shell（POSIX 恒有；Windows 上另有 PowerShell）⇒ 建号 / 删号改哪几份别名文件。
+fn alias_shells() -> Vec<Shell> {
+    let mut v = vec![Shell::Posix];
+    if crate::platform::shell::speaks_powershell() {
+        v.push(Shell::PowerShell);
+    }
+    v
+}
+
+/// 建号 / 删号那一刻改一份别名文件。文件里有认不出的行 ⇒ 不动它（重写会把那几行丢掉），说一句。
+fn amend_aliases(d: &dyn Door, shell: Shell, events: &[wire::AliasEvent]) -> AliasChange {
+    let tmux = aliases::Caps::of(shell).tmux;
+    let dia = shell.dialect();
+    let same = |a: &str, b: &str| dia.same_name(a, b);
+    let (mut added, mut removed, mut skipped) = (Vec::new(), Vec::new(), Vec::new());
+    let mut f = |list: Vec<Alias>| -> Vec<Alias> {
+        let mut cur: Vec<acct_aliases::Entry> = list
+            .into_iter()
+            .map(|a| (a.name, a.args, a.rest_to))
+            .collect();
+        (added, removed, skipped) = (Vec::new(), Vec::new(), Vec::new());
+        for ev in events {
+            cur = match ev {
+                wire::AliasEvent::Added(acc) => {
+                    let r = acct_aliases::on_add(&cur, acc, tmux, &same);
+                    added.extend(r.added);
+                    skipped.extend(r.skipped);
+                    r.list
+                }
+                wire::AliasEvent::Removed(acc) => {
+                    let (list, gone) = acct_aliases::on_remove(&cur, acc);
+                    removed.extend(gone);
+                    list
+                }
+            };
         }
+        cur.into_iter()
+            .map(|(name, args, rest_to)| Alias {
+                name,
+                args,
+                rest_to,
+            })
+            .collect()
     };
-    let current: Vec<acct_aliases::Entry> = listing
-        .aliases
-        .iter()
-        .map(|a| (a.name.clone(), a.args.clone()))
-        .collect();
-    let rec = acct_aliases::reconcile(&current, accounts);
-    let mut notes: Vec<String> = rec
-        .skipped
-        .iter()
-        .map(|(acc, name)| {
-            copy_text(
-                "beAcctFace.aliases.nameTaken",
-                &[("account", acc), ("alias", name)],
-            )
-        })
-        .collect();
-    if !listing.unparsed.is_empty() {
-        notes.push(copy_text(
-            "beAcctFace.aliases.unparsed",
-            &[
-                ("path", &listing.alias_path),
-                ("n", &listing.unparsed.len().to_string()),
-            ],
-        ));
-        return AliasChange {
-            path: listing.alias_path,
-            changed: false,
-            names: Vec::new(),
-            note: Some(notes.join("\n")),
-        };
-    }
-    let list: Vec<Alias> = rec
-        .list
-        .into_iter()
-        .map(|(name, args)| Alias { name, args })
-        .collect();
-    match aliases::install_in(d, &list, None, shell) {
+    match aliases::amend_via(d, shell, &mut f) {
         Ok(r) => AliasChange {
-            path: r.alias_path,
-            changed: r.wrote_alias_file,
-            names: rec.names,
-            note: (!notes.is_empty()).then(|| notes.join("\n")),
+            path: r.path,
+            changed: r.wrote,
+            added,
+            removed,
+            skipped,
+            note: None,
         },
-        Err(e) => {
-            notes.push(copy_text("beAcctFace.aliases.writeFailed", &[("e", &e)]));
-            AliasChange {
-                path: listing.alias_path,
-                changed: false,
-                names: Vec::new(),
-                note: Some(notes.join("\n")),
-            }
-        }
+        Err(AmendErr::Unparsed { path, n }) => AliasChange {
+            note: Some(copy_text(
+                "beAcctFace.aliases.unparsed",
+                &[("path", &path), ("n", &n.to_string())],
+            )),
+            path,
+            changed: false,
+            added: Vec::new(),
+            removed: Vec::new(),
+            skipped: Vec::new(),
+        },
+        Err(AmendErr::Failed(e)) => AliasChange {
+            path: aliases_path_hint(d, shell),
+            changed: false,
+            added: Vec::new(),
+            removed: Vec::new(),
+            skipped: Vec::new(),
+            note: Some(copy_text("beAcctFace.aliases.writeFailed", &[("e", &e)])),
+        },
     }
+}
+
+/// 写没成时说是哪一份（家目录都问不到 ⇒ 空串）。
+fn aliases_path_hint(d: &dyn Door, shell: Shell) -> String {
+    crate::assets::door::home(d)
+        .map(|h| aliases::alias_file_in(&h, shell))
+        .unwrap_or_default()
 }
 
 #[cfg(test)]

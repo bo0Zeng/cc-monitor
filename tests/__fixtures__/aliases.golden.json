@@ -1,7 +1,8 @@
 {
   "说明": [
     "别名六问的跨语言金样：后端对临时 home 现算 == reply；界面 `src/frontend/ui/alias-reads.ts` 的解码器读同一份。",
-    "只采结构（占位名字 / 占位参数）。`<HOME>` 由测试换成临时 home。"
+    "只采结构（占位名字 / 占位参数）。`<HOME>` 由测试换成临时 home。",
+    "`manifest` 是铺在临时 home 上的账号库清单（两个占位号），读回口据它答账号表、归组与缺的那几条。"
   ],
   "aliases": [
     {
@@ -10,14 +11,33 @@
         "--",
         "--account",
         "z"
-      ]
+      ],
+      "restTo": "agent"
     },
     {
       "name": "bad name",
-      "args": []
+      "args": [],
+      "restTo": "agent"
     }
   ],
   "rc": "# mine\n",
+  "manifest": {
+    "version": 1,
+    "accounts": [
+      {
+        "name": "z",
+        "email": "",
+        "configDir": "<HOME>/.cc-monitor/accounts/z",
+        "isDefault": true
+      },
+      {
+        "name": "b",
+        "email": "",
+        "configDir": "<HOME>/.cc-monitor/accounts/b",
+        "isDefault": false
+      }
+    ]
+  },
   "renderReply": {
     "fileText": "# === cc-monitor aliases BEGIN v2 ===\n# 这份文件由 cc-monitor 设置里「别名」那一块整份重写，别手改 —— 下一次写入会原样覆盖。\n# 每一行是一条别名：名字 ＋ 一组 ccm 参数，调用时再给的参数接在后面。\n# 写法是 POSIX sh 函数，bash / zsh 都 source 得了；fish 不行。\nzcc() { ccm \"$@\" -- --account z; }\n# === cc-monitor aliases END ===\n",
     "collisions": [],
@@ -33,13 +53,13 @@
   },
   "installReply": {
     "aliasPath": "<HOME>/.cc-monitor/aliases.sh",
-    "notes": [
-      "<HOME>/.bashrc 还没接上这份文件：在下面给它装上别名块就接上了。不想装别名块的话，自己把这一行加进去：if [ -r \"<HOME>/.cc-monitor/aliases.sh\" ]; then . \"<HOME>/.cc-monitor/aliases.sh\"; fi",
-      "新开一个终端就能用；当前终端要先执行一次 . <HOME>/.cc-monitor/aliases.sh"
-    ],
     "wroteAliasFile": true
   },
   "readReply": {
+    "accounts": [
+      "z",
+      "b"
+    ],
     "aliasPath": "<HOME>/.cc-monitor/aliases.sh",
     "aliases": [
       {
@@ -48,10 +68,61 @@
           "--account",
           "z"
         ],
-        "name": "zcc"
+        "name": "zcc",
+        "restTo": "agent"
       }
     ],
     "exists": true,
+    "fingerprint": "407-7248c8a8ed930688",
+    "groups": [
+      {
+        "account": "z",
+        "tmux": false
+      }
+    ],
+    "missing": [
+      {
+        "account": "z",
+        "alias": {
+          "args": [
+            "--",
+            "--account",
+            "z",
+            "--ccm-tmux"
+          ],
+          "name": "zcct",
+          "restTo": "agent"
+        },
+        "tmux": true
+      },
+      {
+        "account": "b",
+        "alias": {
+          "args": [
+            "--",
+            "--account",
+            "b"
+          ],
+          "name": "bcc",
+          "restTo": "agent"
+        },
+        "tmux": false
+      },
+      {
+        "account": "b",
+        "alias": {
+          "args": [
+            "--",
+            "--account",
+            "b",
+            "--ccm-tmux"
+          ],
+          "name": "bcct",
+          "restTo": "agent"
+        },
+        "tmux": true
+      }
+    ],
     "otherRc": null,
     "rcCandidates": [
       {
@@ -64,9 +135,9 @@
         },
         "exists": true,
         "path": "<HOME>/.bashrc",
+        "policy": null,
         "sourced": false,
-        "unreadable": null,
-        "policy": null
+        "unreadable": null
       }
     ],
     "unparsed": []
@@ -89,7 +160,8 @@
     ],
     "aliases-install": [
       "bad_args",
-      "refused"
+      "refused",
+      "stale"
     ],
     "aliases-read": [
       "bad_args",

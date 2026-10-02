@@ -125,12 +125,39 @@ fn lock(home: &str) -> Result<Option<crate::platform::lock::DirLock>, Refusal> {
     }
 }
 
-/// 一趟改动的结局（帧面宿主据 `accounts_after` 决定要不要并别名文件）。
+/// 账号表里一个号增 / 减那一刻要对别名清单做的事（清单只跟着它走）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum AliasEvent {
+    Added(String),
+    Removed(String),
+}
+
+/// 一趟改动的结局（帧面宿主据 `alias_events` 决定要不要改别名文件）。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Done {
     pub change: AccountChange,
-    /// 这一趟之后清单里的具名号；`None` = 没真改（预演 / 计划为空），别名文件不用动。
-    pub accounts_after: Option<Vec<String>>,
+    /// 真建了 / 删了号 ⇒ 那几件（回滚按前后账号表之差算）；预演 / 计划为空 / 别的命令 ⇒ 空。
+    pub alias_events: Vec<AliasEvent>,
+}
+
+fn names_of(m: Option<&super::model::Manifest>) -> Vec<String> {
+    m.map(|m| m.managed().map(|a| a.name.clone()).collect())
+        .unwrap_or_default()
+}
+
+/// 清单只跟着账号表里号的增减走：前后账号表之差 ⇒ 消失的号按删号、新出现的号按建号（建号 · 删号 · 回滚都是它的特例）。
+fn alias_events(before: &[String], after: &[String]) -> Vec<AliasEvent> {
+    before
+        .iter()
+        .filter(|n| !after.contains(n))
+        .map(|n| AliasEvent::Removed(n.clone()))
+        .chain(
+            after
+                .iter()
+                .filter(|n| !before.contains(n))
+                .map(|n| AliasEvent::Added(n.clone())),
+        )
+        .collect()
 }
 
 /// 导入凭据的那个路径：`~/…` 按家目录展开；只收家目录底下的绝对路径（无 `..` 段 · 无控制符）。
@@ -173,9 +200,12 @@ fn login_line(home: &str, name: &str) -> String {
     )
 }
 
-fn names_of(m: Option<&super::model::Manifest>) -> Vec<String> {
-    m.map(|m| m.managed().map(|a| a.name.clone()).collect())
-        .unwrap_or_default()
+/// 这个号会拿到的两条别名的名字。
+fn alias_names_for(account: &str) -> Vec<String> {
+    [false, true]
+        .into_iter()
+        .filter_map(|t| super::aliases::alias_name(account, t))
+        .collect()
 }
 
 /// 跑一条改动命令（`Verify` / `LoginCmd` 不走这里）。`keys` = 这台 key 表那两口（删号清它那一行、回滚放回去；门递进来）。
@@ -228,7 +258,7 @@ pub(crate) fn run_change(
             layout::plan_init(&snap, &a.name)?,
             a.dry_run == Some(true),
             AccountChange {
-                alias: super::aliases::alias_name(&a.name),
+                alias_names: alias_names_for(&a.name),
                 ..AccountChange::default()
             },
         ),
@@ -247,7 +277,7 @@ pub(crate) fn run_change(
                 }),
                 login_cmd: (a.kind == AccountKind::Subscription && want.cred_file.is_none())
                     .then(|| login_line(&home, &a.name)),
-                alias: super::aliases::alias_name(&a.name),
+                alias_names: alias_names_for(&a.name),
                 ..AccountChange::default()
             };
             (plan, a.dry_run == Some(true), extra)
@@ -290,7 +320,7 @@ pub(crate) fn run_change(
         change.steps = steps;
         return Ok(Done {
             change,
-            accounts_after: None,
+            alias_events: Vec::new(),
         });
     }
     let zero_email = snap.email_of(&home).unwrap_or_default().to_string();
@@ -301,15 +331,14 @@ pub(crate) fn run_change(
     change.applied = !plan.ops.is_empty();
     change.steps = steps;
     change.backup = backup;
-    // 别名要并的账号表：写了清单 ⇒ 新清单；修复那一趟清单可能没变，也要补齐（旧号可能从没有过别名）。
-    let after = match (&plan.manifest, req) {
-        (Some(m), _) => Some(names_of(Some(m))),
-        (None, Request::Repair(_)) => Some(names_of(snap.manifest())),
-        _ => None,
+    // 写了账号表 ⇒ 比前后（修复 · 设默认 · 隔离不改号的增减 ⇒ 没有事件）。
+    let alias_events = match &plan.manifest {
+        Some(m) if change.applied => alias_events(&names_of(snap.manifest()), &names_of(Some(m))),
+        _ => Vec::new(),
     };
     Ok(Done {
         change,
-        accounts_after: after,
+        alias_events,
     })
 }
 
@@ -363,7 +392,7 @@ fn rollback(
         change.steps = steps.iter().map(exec::describe_undo).collect();
         return Ok(Done {
             change,
-            accounts_after: None,
+            alias_events: Vec::new(),
         });
     }
     let (done, failed) = exec::rollback(d, snap.roots(), &b.path, &steps, keys);
@@ -382,10 +411,12 @@ fn rollback(
     }
     change.applied = true;
     change.steps = done;
+    // 回滚把号删了 / 加回了：同一条规则（前后账号表之差）。
     let after = scan::scan(&snap.roots().home, &[], &[]);
+    let alias_events = alias_events(&names_of(snap.manifest()), &names_of(after.manifest()));
     Ok(Done {
         change,
-        accounts_after: Some(names_of(after.manifest())),
+        alias_events,
     })
 }
 

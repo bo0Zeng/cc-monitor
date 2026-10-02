@@ -926,12 +926,11 @@ describe("S1 RemoteSection：保存走局部合并", () => {
         .map((b) => b.textContent ?? "");
     // 别名放「终端」栏：远端那一块与本机「终端 → 别名」同一个位置。
     expect(labels(got.components)).toEqual(["部署后端", "卸载后端"]);
-    // ② 别名是与本机同一个组件（`buildAliasManager`，`data-origin` = 这台）；装 / 卸在组件里，
-    //   卸那一颗按 V134 叫「卸载 ccm」（原裁）。组件是 `<details>`，栏上裸露的按钮一颗都不剩。
+    // ② 别名是与本机同一个组件（`buildAliasManager`，`data-origin` = 这台）；接入 / 卸载在组件里（卸那一颗叫「卸载 ccm」、
+    //   接入之后才出现 —— 由 `machine-aliases.vitest.ts` 的远端卡那一条钉）。组件是 `<details>`，栏上裸露的按钮一颗都不剩。
     expect(labels(got.terminal)).toEqual([]);
     const mgr = got.terminal.querySelector<HTMLElement>(".machine-aliases");
     expect(mgr?.dataset.origin).toBe("a");
-    expect([...mgr!.querySelectorAll("button")].map((b) => b.textContent)).toContain("卸载 ccm");
     expect(got.terminal.textContent).toContain("别名");
     expect(labels(got.connection).filter((t) => t !== "重置主机指纹")).toEqual([
       "测试连接",

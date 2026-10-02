@@ -55,20 +55,6 @@
   color: var(--accent, #c25b3b);
 }
 
-.settings-cc-badge-info {
-  background: rgba(150, 150, 150, 0.15);
-  color: var(--text-2, #bcb5a8);
-}
-
-.settings-cc-profile-warn {
-  background: rgba(200, 130, 80, 0.1);
-  border-left: 3px solid var(--accent, #c25b3b);
-  padding: 6px 10px;
-  margin: 8px 0;
-  font-size: 12px;
-  color: var(--text-2, #bcb5a8);
-}
-
 .settings-cc-profile-buttons {
   display: flex;
   gap: 8px;
@@ -147,17 +133,6 @@
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
 }
 
-/* v1.7.2 legacy profile (profile.ps1) 遗留警告 */
-.settings-cc-legacy-warn {
-  background: rgba(200, 130, 80, 0.1);
-  border-left: 3px solid var(--accent, #c25b3b);
-  padding: 10px 12px;
-  margin: 12px 0;
-  font-size: 12px;
-  color: var(--text-2, #bcb5a8);
-  border-radius: 4px;
-}
-
 /* === auto-launch toggle === */
 .settings-cc-autolaunch {
   margin-top: 14px;
@@ -191,55 +166,6 @@
 
 .settings-cc-autolaunch-path-value {
   color: var(--text-2, #bcb5a8);
-}
-
-/* === 设置面板：cc 集成预览 modal === */
-.settings-cc-modal-backdrop {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.6);
-  z-index: var(--z-modal);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.settings-cc-modal {
-  background: var(--bg, #1f1b16);
-  border: 1px solid var(--border-strong, #5a5046);
-  border-radius: 10px;
-  padding: 20px;
-  max-width: 760px;
-  max-height: 80vh;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.settings-cc-modal-title {
-  font-weight: 600;
-  color: var(--text, #d6cfc6);
-  font-size: 14px;
-}
-
-.settings-cc-modal-code {
-  background: var(--bg-2, #2a2520);
-  border: 1px solid var(--border, #3a342e);
-  border-radius: 6px;
-  padding: 10px;
-  font-family: var(--font-mono, monospace);
-  font-size: 11px;
-  white-space: pre-wrap;
-  word-break: break-all;
-  overflow-y: auto;
-  flex: 1;
-  color: var(--text-2, #bcb5a8);
-}
-
-.settings-cc-modal-buttons {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
 }
 
 /* === Settings Panel === */

@@ -17,7 +17,7 @@ use std::collections::{BTreeMap, BTreeSet};
 const NEEDLES: &[&str] = &[
     // PowerShell（`$env:` · `$null` 两根摘了，理由同下面那三根）
     "[char]",
-    "Test-Path",
+    // `Test-Path` 一根摘了：唯一用它的是「接上别名文件那一行」的渲染，那一行只住别名块模板里（给人贴的那一行随之删）。
     "Get-Alias",
     "Get-Command",
     // `Get-Content` · `Write-Host` · `Join-Path` 三根摘了：只有本机起会话那一行的 PowerShell 中转前缀用它们，
@@ -267,10 +267,10 @@ fn the_literal_census_sees_planted_syntax_and_ignores_comments() {
     assert_eq!(census_of(&planted), BTreeMap::from([("export ", 1)]));
     let real = include_str!("../../../src/backend/control/launch_render/local.rs");
     let planted_real =
-        format!("{real}\nfn planted() -> String {{ String::from(\"Test-Path x; [char]9\") }}\n");
+        format!("{real}\nfn planted() -> String {{ String::from(\"Get-Alias x; [char]9\") }}\n");
     assert_eq!(
         census_of(&planted_real),
-        BTreeMap::from([("Test-Path", 1), ("[char]", 1)]),
+        BTreeMap::from([("Get-Alias", 1), ("[char]", 1)]),
         "往真消费者的副本里塞一行 PowerShell 渲染，尺子该只数出塞进去的那两根"
     );
 }

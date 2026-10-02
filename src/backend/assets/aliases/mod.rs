@@ -60,7 +60,7 @@ pub(crate) mod fence;
 use crate::assets::door::{self, Door};
 use crate::control::ccm::argv::flag;
 // 方言住后端 OS 适配层（原住本目录）。
-use crate::platform::shell::dialect::{self, Listed, Shell};
+use crate::platform::shell::dialect::{self, Listed, RestTo, Shell};
 
 /// 交给方言的那条调用形状：`ccm` 那个词与 `--` 分界住 `control::ccm`，适配层不往上够 ⇒ 由这里交下去。
 pub(crate) const CALL: dialect::Call<'static> = dialect::Call {
@@ -146,10 +146,24 @@ pub(crate) fn render_file(shell: Shell, lines: &[String]) -> String {
 // 读回口：[`read_in`] 把盘上那份解析回清单（那张「没有的」表第一条）。
 
 /// 一条别名。`args` 是原样的 ccm argv（`["--ccm-tmux", "--account", "z"]`），渲染时由方言逐个按需加引号。
+/// `rest_to`：调用时跟的词交给谁（缺省 claude；交给 ccm 只许接回会话那一形，见 [`check_alias`]）。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct Alias {
     pub name: String,
     pub args: Vec<String>,
+    pub rest_to: RestTo,
+}
+
+impl Alias {
+    /// 调用时的词交给 claude 的那一形（绝大多数）。
+    pub(crate) fn new(name: &str, args: Vec<String>) -> Alias {
+        Alias {
+            name: name.to_string(),
+            args,
+            rest_to: RestTo::Agent,
+        }
+    }
 }
 
 /// 一条别名的问题（进不了代码的那一条为什么进不了）。
@@ -173,14 +187,39 @@ pub(crate) struct AliasRender {
     pub collisions: Vec<String>,
 }
 
+/// 读回清单里一条的归组：参数恰是「某号」或「某号 ＋ tmux」⇒ 账号那一组（`account` 是号名）。
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct AccountShape {
+    pub account: String,
+    pub tmux: bool,
+}
+
+/// 账号表里一个号缺的那一条：点一下就把 `alias` 加进清单。
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct MissingAlias {
+    pub account: String,
+    pub tmux: bool,
+    pub alias: Alias,
+}
+
 /// 读回口的产物。
 #[derive(Debug, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct AliasListing {
     pub alias_path: String,
-    /// 那份文件在不在。不在 ≠ 读失败（读失败是 `Err`）。
+    /// 那份文件在不在。不在 ≠ 读失败（读失败是 `Err`）。不在时 `aliases` 是首建时会带上的那几条。
     pub exists: bool,
     pub aliases: Vec<Alias>,
+    /// 与 `aliases` 逐条对应：账号那一形 ⇒ `{account, tmux}`，其余 ⇒ `null`。界面照这一格分组，不自己认。
+    pub groups: Vec<Option<AccountShape>>,
+    /// 这台的账号表（具名号，按账号库的顺序）。
+    pub accounts: Vec<String>,
+    /// 账号表里的号缺哪一条（没有 tmux 的目标只看 `<号>cc`）。
+    pub missing: Vec<MissingAlias>,
+    /// 盘上那份别名文件的指纹（不在 ⇒ `null`）。存的时候交回来：盘上被别处改过 ⇒ 不写。
+    pub fingerprint: Option<String>,
     /// 解析不回清单的那几行（原文 ＋ 原因）。**不静默丢**：写回去之前人得知道它们会没。
     pub unparsed: Vec<String>,
     /// 这台机器上这种 shell 的启动文件候选（「那一行 source 加进哪份」·「别名块装进哪份」，同一批）。
@@ -196,34 +235,141 @@ pub(crate) struct AliasListing {
 pub(crate) struct AliasInstallReport {
     pub alias_path: String,
     pub wrote_alias_file: bool,
-    /// 给人看的补充说明，一条一句。
-    pub notes: Vec<String>,
 }
 
-/// 能进别名的 ccm 壳层选项：`(旗标, 要不要跟一个值)`。第一、二档；
+/// 别名文件第一次被建出来时带上的那几条（之后和别的别名一样可改可删、删了不回补）：
+/// `cc`（当前目录起）· `cct`（tmux 里起）· `cca`（接回 tmux 会话，会话名敲的时候跟上）。没有 tmux 的目标只带 `cc`。
+pub(crate) fn first_aliases(shell: Shell) -> Vec<Alias> {
+    let mut v = vec![Alias::new("cc", Vec::new())];
+    if Caps::of(shell).tmux {
+        v.push(Alias::new(
+            "cct",
+            vec![flag::END.to_string(), flag::TMUX.to_string()],
+        ));
+        v.push(Alias {
+            name: "cca".to_string(),
+            args: vec![flag::END.to_string(), flag::ATTACH.to_string()],
+            rest_to: RestTo::Ccm,
+        });
+    }
+    v
+}
+
+/// 盘上那份（`None` = 不在）→ 清单的起点 ＋ 认不出的行。不在 ⇒ 首建那几条（[`first_aliases`]）。
+fn starting_list(shell: Shell, text: Option<&str>) -> (Vec<Alias>, Vec<String>) {
+    let Some(text) = text else {
+        return (first_aliases(shell), Vec::new());
+    };
+    let dia = shell.dialect();
+    let mut aliases = Vec::new();
+    let mut unparsed = Vec::new();
+    for got in dia.parse_file(CALL, dia.decode_from_disk(text)) {
+        match got {
+            Ok((name, args, rest_to)) => {
+                let a = Alias {
+                    name,
+                    args,
+                    rest_to,
+                };
+                match check_alias(&a, shell) {
+                    Ok(()) => aliases.push(a),
+                    Err(why) => unparsed.push(format!("{}（{why}）", render_line(&a, shell))),
+                }
+            }
+            Err(raw) => unparsed.push(raw),
+        }
+    }
+    (aliases, unparsed)
+}
+
+/// 别名文件的指纹（盘上原样的字节：长度 ＋ FNV-1a 64）。不在 ⇒ `None`。
+/// 只用来认「读回之后盘上那份变没变」（写那一跳另有 CAS），不是摘要形 —— 不借文件管理面那一份 SHA-256（那是它的内部）。
+fn fingerprint_of(text: Option<&str>) -> Option<String> {
+    text.map(|t| {
+        let h = t.bytes().fold(0xcbf2_9ce4_8422_2325_u64, |h, b| {
+            (h ^ u64::from(b)).wrapping_mul(0x0000_0100_0000_01b3)
+        });
+        format!("{}-{h:016x}", t.len())
+    })
+}
+
+/// 清单里每条的归组（账号那一形住 `accounts::manage::aliases::shape_of`）。
+fn groups_of(aliases: &[Alias]) -> Vec<Option<AccountShape>> {
+    aliases
+        .iter()
+        .map(|a| {
+            crate::accounts::manage::aliases::shape_of(&a.args, a.rest_to)
+                .map(|(account, tmux)| AccountShape { account, tmux })
+        })
+        .collect()
+}
+
+/// 账号表里每个号缺哪一条（同一形的不论名字都算有）。
+fn missing_of(aliases: &[Alias], accounts: &[String], shell: Shell) -> Vec<MissingAlias> {
+    use crate::accounts::manage::aliases as acct;
+    let have = groups_of(aliases);
+    let kinds: &[bool] = if Caps::of(shell).tmux {
+        &[false, true]
+    } else {
+        &[false]
+    };
+    let mut out = Vec::new();
+    for account in accounts {
+        for &tmux in kinds {
+            let present = have
+                .iter()
+                .flatten()
+                .any(|g| g.account == *account && g.tmux == tmux);
+            if present {
+                continue;
+            }
+            if let Some(name) = acct::alias_name(account, tmux) {
+                out.push(MissingAlias {
+                    account: account.clone(),
+                    tmux,
+                    alias: Alias::new(&name, acct::alias_args(account, tmux)),
+                });
+            }
+        }
+    }
+    out
+}
+
+/// 这台的账号表（具名号）。没有账号库 / 读不了 ⇒ 空（账号页自己会说读不了）。
+fn account_table(home: &str) -> Vec<String> {
+    crate::accounts::manage::mcp_share_exec::accounts_in(home)
+        .ok()
+        .flatten()
+        .map(|v| v.into_iter().map(|(name, _)| name).collect())
+        .unwrap_or_default()
+}
+
+/// 能进别名的 ccm 壳层选项：`(旗标, 跟几个值)`。第一、二档；
 /// 第三档（[`NOT_IN_ALIASES`]）每次取值都不同，做成固定别名没意义 ⇒ 不收。
 /// `--ccm-tmux=<名>` 是 `--ccm-tmux` 的内联形，另判。它们只许写在最后一个 `--` 右边；左边的词（`--model` · `--resume` · `-p` …）是交给 claude 的，原样放行。
 ///
 /// ⚠ 每一个旗标都得是后端 `ccm --help` 里真有的那个词 —— 判据
 /// `aliases_tests.rs::every_alias_flag_is_a_real_ccm_flag` 去用法文本里对（异源）。
 /// 搬进后端之后旗标**只引** `control/ccm/argv.rs::flag`（ccm 终端 argv 的字面量唯一住址），不再抄一份。
-pub(crate) const ALIAS_FLAGS: &[(&str, bool)] = &[
-    (flag::CWD, true),
-    (flag::ACCOUNT, true),
-    (flag::BASE, false),
-    (flag::TMUX, false),
-    (flag::TMUX_BASE, true),
-    (flag::AGENT, true),
-    (flag::LAUNCHER, true),
-    (flag::TMUX_SIZE, true),
-    (flag::DETACH, false),
-    (flag::BUS_REGISTER, false),
-    (flag::BUS_NOTE, true),
+/// `--attach` 的会话名在别名里不写、调用时现给（只许「调用时的词交给 ccm」那一形，[`check_alias`]）⇒ 记 0 个值。
+pub(crate) const ALIAS_FLAGS: &[(&str, usize)] = &[
+    (flag::CWD, 1),
+    (flag::CWD_IF, 2),
+    (flag::ACCOUNT, 1),
+    (flag::BASE, 0),
+    (flag::TMUX, 0),
+    (flag::TMUX_BASE, 1),
+    (flag::AGENT, 1),
+    (flag::LAUNCHER, 1),
+    (flag::TMUX_SIZE, 1),
+    (flag::DETACH, 0),
+    (flag::BUS_REGISTER, 0),
+    (flag::BUS_NOTE, 1),
+    (flag::ATTACH, 0),
 ];
 
-/// ccm 自己的、不进别名的那几个（第三档改名后的样子）：接回会话 ＋ `--ccm-*` 诊断口。
+/// ccm 自己的、不进别名的那几个（第三档）：`--ccm-*` 诊断口。
 pub(crate) const NOT_IN_ALIASES: &[&str] = &[
-    flag::ATTACH,
     flag::CCM_SID,
     flag::CCM_PRINT,
     flag::CCM_PROBE,
@@ -238,6 +384,7 @@ pub(crate) const NOT_IN_ALIASES: &[&str] = &[
 /// 判据 `aliases_tests.rs::the_tmux_gate_is_exactly_the_backends_tmux_carried_flags`
 /// 读那张表的原文、按「本表 == 那张表 ∩ [`ALIAS_FLAGS`]」两向相等钉着。
 pub(crate) const NEEDS_TMUX: &[&str] = &[
+    flag::ATTACH,
     flag::TMUX,
     flag::TMUX_BASE,
     flag::TMUX_SIZE,
@@ -297,6 +444,13 @@ pub(crate) fn check_alias(a: &Alias, shell: Shell) -> Result<(), String> {
         Some(k) => (&a.args[..k], &a.args[k + 1..]),
         None => (&a.args[..], &a.args[..0]),
     };
+    // 调用时的词交给 ccm 只有一形：接回会话 `-- --attach "$@"`（会话名现场给）；别的 ccm 选项与它同用会被 ccm 静默忽略 ⇒ 不许。
+    // 在逐词那一圈之后判：没有 tmux 的目标先由能力闸说「没有 tmux」。
+    let attach_only = left.is_empty() && right.len() == 1 && right[0] == flag::ATTACH;
+    let attach_bad = match a.rest_to {
+        RestTo::Ccm => !attach_only,
+        RestTo::Agent => right.iter().any(|w| w == flag::ATTACH),
+    };
     for w in left {
         if w.chars().any(char::is_control) {
             return Err(copy_text("rsAccountAliases.check.controlChar", &[]).into());
@@ -350,7 +504,7 @@ pub(crate) fn check_alias(a: &Alias, shell: Shell) -> Result<(), String> {
                 &[("word", &w.to_string())],
             ));
         };
-        if *takes {
+        for _ in 0..*takes {
             match it.next() {
                 // 哪一家：写空 ⇒ 默认那一家；注册表里没有 ⇒ 拒、说出认得的几家（与 ccm 运行时同一种认法）。
                 Some(v) if *known == flag::AGENT && !v.chars().any(char::is_control) => {
@@ -360,9 +514,16 @@ pub(crate) fn check_alias(a: &Alias, shell: Shell) -> Result<(), String> {
                 Some(v) if !v.is_empty() && !v.chars().any(char::is_control) => {
                     d.arg_is_passable(v)?;
                     // 相对 / 带 `..` 的 `--cwd` ccm 运行时会拒（`INVARIANTS §47`）⇒ 生成前就拦。
-                    if *known == flag::CWD && !cwd_form_ok(v, shell) {
+                    if *known == flag::CWD && !pinned_dir_ok(v, shell) {
                         return Err(copy_text(
                             "rsAccountAliases.check.cwdNotAbsolute",
+                            &[("value", &v.to_string())],
+                        ));
+                    }
+                    // `--cwd-if` 两边都许 `~` 打头（ccm 起会话时按那台的家目录展开），其余同 `--cwd`。
+                    if *known == flag::CWD_IF && !pinned_dir_ok(v, shell) {
+                        return Err(copy_text(
+                            "rsAccountAliases.check.cwdIfNotPinned",
                             &[("value", &v.to_string())],
                         ));
                     }
@@ -389,6 +550,9 @@ pub(crate) fn check_alias(a: &Alias, shell: Shell) -> Result<(), String> {
             flag::BUS_NOTE => note = true,
             _ => {}
         }
+    }
+    if attach_bad {
+        return Err(copy_text("rsAccountAliases.check.attachAlone", &[]));
     }
     // V1–V4（依据是 `ccm --help` 逐字）＋后端 `argv.rs` 那道「备注要有登记」的闸。
     if account && base {
@@ -427,9 +591,31 @@ fn cwd_form_ok(v: &str, shell: Shell) -> bool {
     }
 }
 
+/// `--cwd` 与 `--cwd-if` 的一个目录：`~` / `~/…` 打头（ccm 起会话时换成那台的家目录；剩下那段不许有 `..`），
+/// 或与 ccm 运行时同一条形式判定的绝对路径（[`cwd_form_ok`]）。别名要钉住一个目录 ⇒ 相对的不收。
+fn pinned_dir_ok(v: &str, shell: Shell) -> bool {
+    let rest = if v == "~" {
+        Some("")
+    } else {
+        v.strip_prefix("~/").or_else(|| {
+            (shell == Shell::PowerShell)
+                .then(|| v.strip_prefix("~\\"))
+                .flatten()
+        })
+    };
+    match rest {
+        Some(r) => {
+            !r.split(['/', '\\']).any(|seg| seg == "..") && shell_quote_core::free_text_ok(v)
+        }
+        None => cwd_form_ok(v, shell),
+    }
+}
+
 /// 一条（合格的）别名在这种 shell 里的写法（方言那一份的薄包装）。
 pub(crate) fn render_line(a: &Alias, shell: Shell) -> String {
-    shell.dialect().render_alias(CALL, &a.name, &a.args)
+    shell
+        .dialect()
+        .render_alias(CALL, &a.name, &a.args, a.rest_to)
 }
 
 /// ① **纯**：清单 → 代码。一个字节都不写、一个文件都不读（撞名检查读的是自带片段 / 模板与 `PATH`）。
@@ -497,27 +683,19 @@ pub(crate) fn read_via(
         }
     };
     let exists = text.is_some();
-    let mut aliases = Vec::new();
-    let mut unparsed = Vec::new();
-    let dia = shell.dialect();
-    for got in dia.parse_file(CALL, dia.decode_from_disk(text.as_deref().unwrap_or(""))) {
-        match got {
-            Ok((name, args)) => {
-                let a = Alias { name, args };
-                match check_alias(&a, shell) {
-                    Ok(()) => aliases.push(a),
-                    Err(why) => unparsed.push(format!("{}（{why}）", render_line(&a, shell))),
-                }
-            }
-            Err(raw) => unparsed.push(raw),
-        }
-    }
+    let (aliases, unparsed) = starting_list(shell, text.as_deref());
+    let accounts = account_table(&home);
+    let names: Vec<String> = aliases.iter().map(|a| a.name.clone()).collect();
     Ok(AliasListing {
         alias_path: path,
         exists,
+        groups: groups_of(&aliases),
+        missing: missing_of(&aliases, &accounts, shell),
+        accounts,
+        fingerprint: fingerprint_of(text.as_deref()),
         aliases,
         unparsed,
-        rc_candidates: rc_candidates_via(d, &home, shell, extra.as_deref())?,
+        rc_candidates: rc_candidates_via(d, &home, shell, extra.as_deref(), &names)?,
         other_rc: extra,
     })
 }
@@ -546,16 +724,24 @@ fn look(d: &dyn Door, home: &str, abs: &str) -> Result<Look, String> {
     }
 }
 
-/// ② **唯一的副作用**：把 [`render`] 的产物整份写进别名文件。给了 `rc` ⇒ **只查**它接没接上（不代装）。
+/// 写别名文件没成：盘上那份在读回之后被别处改过（`Stale`，界面重读再让人存），或别的原因（原话）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum InstallErr {
+    Stale(String),
+    Refused(String),
+}
+
+/// ② **唯一的副作用**：把 [`render`] 的产物整份写进别名文件。
 /// 有一条不合格 ⇒ **整批不写**（写一半的别名文件是最坏的结局：它 source 得进去，少了的没人发现）。
+/// `fingerprint` 是读回时那份的指纹（[`AliasListing::fingerprint`]）：盘上此刻不是那一份 ⇒ 一个字节不写、[`InstallErr::Stale`]。
 ///
-/// 写经这台的文件管理那一面（[`door`]）；home 也问它。`origin` 退役。
+/// 写经这台的文件管理那一面（[`door`]）；home 也问它。
 pub(crate) fn install_in(
     d: &dyn Door,
     aliases: &[Alias],
-    rc: Option<&str>,
     shell: Shell,
-) -> Result<AliasInstallReport, String> {
+    fingerprint: Option<&str>,
+) -> Result<AliasInstallReport, InstallErr> {
     let r = render(aliases, shell);
     if !r.problems.is_empty() {
         let why: Vec<String> = r
@@ -563,7 +749,7 @@ pub(crate) fn install_in(
             .iter()
             .map(|p| format!("{}：{}", p.name, p.message))
             .collect();
-        return Err(copy_text(
+        return Err(InstallErr::Refused(copy_text(
             "rsAccountAliases.install.invalid",
             &[
                 ("count", &(why.len()).to_string()),
@@ -572,40 +758,76 @@ pub(crate) fn install_in(
                     &(why.join(&copy_text("rsAccountAliases.install.listSep", &[]))).to_string(),
                 ),
             ],
-        ));
+        )));
     }
-    let home = door::home(d)?;
+    let home = door::home(d).map_err(InstallErr::Refused)?;
     let path = alias_file_in(&home, shell);
-    // 先查 rc（只读）再写：rc 路径过不了围栏 ⇒ 整趟停下、一个字节不写（同「有一条不合格整批不写」）。
-    let rc_note = match rc {
-        None => None,
-        Some(rc_raw) if rc_sources_our_file(d, &home, rc_raw)? => Some(copy_text(
-            "rsAccountAliases.install.sourceExists",
-            &[("rc", &rc_raw.to_string())],
-        )),
-        Some(rc_raw) => {
-            let line = shell.dialect().source_line(&path);
-            Some(copy_text(
-                "rsAccountAliases.install.sourceMissing",
-                &[("rc", &rc_raw.to_string()), ("line", &line.to_string())],
-            ))
+    let mut moved = false;
+    let wrote = write_alias_file(d, &home, shell, |now| {
+        if fingerprint_of(now).as_deref() != fingerprint {
+            moved = true;
+            return Err(copy_text(
+                "rsAccountAliases.install.changedElsewhere",
+                &[("path", &path)],
+            ));
         }
-    };
-    let wrote_alias_file = write_alias_file(d, &home, shell, &r.file_text)?;
-    let mut notes = Vec::new();
-    if !wrote_alias_file {
-        notes.push(copy_text("rsAccountAliases.install.unchanged", &[]));
+        Ok(Some(r.file_text.clone()))
+    });
+    match wrote {
+        Ok(wrote_alias_file) => Ok(AliasInstallReport {
+            alias_path: path,
+            wrote_alias_file,
+        }),
+        Err(e) if moved => Err(InstallErr::Stale(e)),
+        Err(e) => Err(InstallErr::Refused(e)),
     }
-    notes.extend(rc_note);
-    notes.push(copy_text(
-        "rsAccountAliases.install.nextStep",
-        &[("path", &path)],
-    ));
-    Ok(AliasInstallReport {
-        alias_path: path,
-        wrote_alias_file,
-        notes,
-    })
+}
+
+/// 建号 / 删号那一刻改清单没成。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum AmendErr {
+    /// 文件里有这么多行认不出来 ⇒ 不动它（重写会把那几行丢掉）。
+    Unparsed {
+        path: String,
+        n: usize,
+    },
+    Failed(String),
+}
+
+/// 改清单的结局。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Amended {
+    pub path: String,
+    pub wrote: bool,
+}
+
+/// 建号 / 删号那一刻：读盘上那份（不在 ⇒ 首建那几条）→ `f` 改 → 写回，一次读改写（`stale` 重读重算）。
+/// `f` 可能被叫不止一次（重读那一趟），它记的结果以最后一次为准。
+pub(crate) fn amend_via(
+    d: &dyn Door,
+    shell: Shell,
+    f: &mut dyn FnMut(Vec<Alias>) -> Vec<Alias>,
+) -> Result<Amended, AmendErr> {
+    let home = door::home(d).map_err(AmendErr::Failed)?;
+    let path = alias_file_in(&home, shell);
+    let mut unparsed = 0usize;
+    let wrote = write_alias_file(d, &home, shell, |now| {
+        let (list, bad) = starting_list(shell, now);
+        unparsed = bad.len();
+        if unparsed > 0 {
+            return Err(String::new());
+        }
+        let r = render(&f(list), shell);
+        if let Some(p) = r.problems.first() {
+            return Err(format!("{}：{}", p.name, p.message));
+        }
+        Ok(Some(r.file_text))
+    });
+    match wrote {
+        Ok(wrote) => Ok(Amended { path, wrote }),
+        Err(_) if unparsed > 0 => Err(AmendErr::Unparsed { path, n: unparsed }),
+        Err(e) => Err(AmendErr::Failed(e)),
+    }
 }
 
 /// 这个名字是不是已经被占了。**只出声、不拦** —— 见 `§0c 问三`。怎么查由方言答（POSIX 查自带片段与 `PATH`；
@@ -629,12 +851,14 @@ pub(crate) fn rc_candidates_via(
     home: &str,
     shell: Shell,
     extra: Option<&str>,
+    names: &[String],
 ) -> Result<Vec<StartupFile>, String> {
     rc_candidates_asking(
         d,
         home,
         shell,
         extra,
+        names,
         &crate::platform::shell::powershell::execution_policy,
     )
 }
@@ -645,6 +869,7 @@ pub(crate) fn rc_candidates_asking(
     home: &str,
     shell: Shell,
     extra: Option<&str>,
+    names: &[String],
     ask: &dyn Fn(crate::platform::shell::PsHost) -> crate::platform::shell::powershell::ExecPolicy,
 ) -> Result<Vec<StartupFile>, String> {
     let dia = shell.dialect();
@@ -677,7 +902,7 @@ pub(crate) fn rc_candidates_asking(
             exists,
             block: text
                 .as_deref()
-                .map(|t| block::block_state(Path::new(&c.path), t))
+                .map(|t| block::block_state(Path::new(&c.path), t, names))
                 .unwrap_or_default(),
             unreadable,
             policy: c
@@ -694,28 +919,18 @@ pub(crate) fn rc_candidates_asking(
 /// 经 `door`（本机后端）写：生成文件是**我们自己**的东西 ⇒ 不留备份文件；
 /// `~/.cc-monitor` 还不在就逐级补（`parents`）。回读 · 回滚那一份规则住后端。
 /// 落盘那一份按方言编码（PowerShell 加 BOM）。
-fn write_alias_file(d: &dyn Door, home: &str, shell: Shell, content: &str) -> Result<bool, String> {
+/// `plan` 拿到盘上此刻那一份（原样字节；`None` = 不在），回编码前的新全文。
+fn write_alias_file(
+    d: &dyn Door,
+    home: &str,
+    shell: Shell,
+    mut plan: impl FnMut(Option<&str>) -> Result<Option<String>, String>,
+) -> Result<bool, String> {
     let dia = shell.dialect();
-    let disk = dia.encode_for_disk(content);
-    let done = door::edit(d, home, dia.our_alias_file_rel(), false, true, |_| {
-        Ok(Some(disk.clone()))
+    let done = door::edit(d, home, dia.our_alias_file_rel(), false, true, |now| {
+        Ok(plan(now)?.map(|t| dia.encode_for_disk(&t)))
     })?;
     Ok(matches!(done, door::Edited::Written(_)))
-}
-
-/// 用户指定的那份启动文件**接没接上**我们那份别名文件。**只读**（从前这里是代装那一行的 `ensure_…` 一跳，退役）。
-///
-/// 路径过 [`block::fence`]（只许落在 home 之内 —— 同一道围栏，不另立一份）；读经这台的 `files-peek`。这份文件是哪种 shell 由**它自己**（扩展名）定；「接上了」由那种方言认
-/// （任何一种写法都认，别按整行比 —— POSIX 别名块那一行写的是 `$HOME/…`，没展开）。文件不在 ⇒ 没接上。
-fn rc_sources_our_file(d: &dyn Door, home: &str, rc_raw: &str) -> Result<bool, String> {
-    let path = block::fence(home, rc_raw)?;
-    let dia = Shell::of_target(Path::new(&path)).dialect();
-    // 不在（父目录不在也算）⇒ 没接上；在却读不了 ⇒ 原话（同读回口那一问，[`look`]）。
-    match look(d, home, &path)? {
-        Look::Text(raw) => Ok(dia.sources_our_file(dia.decode_from_disk(&raw))),
-        Look::Absent => Ok(false),
-        Look::Unreadable(e) => Err(e),
-    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -754,12 +969,6 @@ fn opt_str<'a>(args: &'a Value, k: &str) -> Result<Option<&'a str>, (&'static st
     }
 }
 
-fn with_cc(args: &Value) -> Result<bool, (&'static str, String)> {
-    args.get("withCc")
-        .and_then(Value::as_bool)
-        .ok_or_else(|| bad("missing `withCc` (bool)"))
-}
-
 fn refused(said: String) -> (&'static str, String) {
     ("refused", said)
 }
@@ -782,12 +991,23 @@ pub(crate) fn answer_read(d: &dyn Door, args: &Value) -> Answer {
     to_value(&read_via(d, shell, opt_str(args, "rcPath")?).map_err(refused)?)
 }
 
-/// `aliases-install {aliases, rcPath?, shell}` → [`AliasInstallReport`]。
+/// `aliases-install {aliases, shell, fingerprint}` → [`AliasInstallReport`]。盘上被别处改过 ⇒ `stale`。
 pub(crate) fn answer_install(d: &dyn Door, args: &Value) -> Answer {
     let shell = shell_arg(args)?;
     dialect_here(shell).map_err(refused)?;
     let list = aliases_arg(args)?;
-    to_value(&install_in(d, &list, opt_str(args, "rcPath")?, shell).map_err(refused)?)
+    if !args
+        .get("fingerprint")
+        .is_some_and(|v| v.is_null() || v.is_string())
+    {
+        return Err(bad("missing `fingerprint` (string or null)"));
+    }
+    let fp = opt_str(args, "fingerprint")?;
+    match install_in(d, &list, shell, fp) {
+        Ok(r) => to_value(&r),
+        Err(InstallErr::Stale(said)) => Err(("stale", said)),
+        Err(InstallErr::Refused(said)) => Err(refused(said)),
+    }
 }
 
 /// 别名块那三条：`rcPath` 那份文件过围栏、方言按它的扩展名定、再过方言闸。
@@ -799,21 +1019,20 @@ fn block_target(d: &dyn Door, args: &Value) -> Result<(String, String), (&'stati
     Ok((home, p))
 }
 
-/// `aliases-block-render {rcPath, withCc}` → `{text}`（纯：往一份空文件里装一次会写成什么；方言由 `rcPath` 的扩展名定）。
+/// `aliases-block-render {rcPath}` → `{text}`（纯：往一份空文件里装一次会写成什么；方言由 `rcPath` 的扩展名定）。
 pub(crate) fn answer_block_render(d: &dyn Door, args: &Value) -> Answer {
     let raw = str_arg(args, "rcPath")?;
     let shell = Shell::of_target(Path::new(raw));
     dialect_here(shell).map_err(refused)?;
     let home = door::home(d).map_err(refused)?;
-    let code = block::render_block(shell, with_cc(args)?, &home).map_err(refused)?;
+    let code = block::render_block(shell, &home).map_err(refused)?;
     Ok(json!({ "text": code }))
 }
 
-/// `aliases-block-install {rcPath, withCc}` → `{}`（幂等，整块替换；经这台的 `files-put`）。
+/// `aliases-block-install {rcPath}` → `{}`（幂等，整块替换；经这台的 `files-put`）。
 pub(crate) fn answer_block_install(d: &dyn Door, args: &Value) -> Answer {
-    let cc = with_cc(args)?;
     let (_, p) = block_target(d, args)?;
-    block::install_to_profile(d, Path::new(&p), block::CC_FUNCTION_NAME, cc).map_err(refused)?;
+    block::install_to_profile(d, Path::new(&p)).map_err(refused)?;
     Ok(json!({}))
 }
 
