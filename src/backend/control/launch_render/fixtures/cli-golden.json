@@ -67,7 +67,7 @@
         "account": {
           "kind": "account",
           "name": "z",
-          "configDir": "/home/u/.claude-accts/z"
+          "configDir": "/home/u/.cc-monitor/accounts/z"
         },
         "ccmSid": null,
         "model": null,
@@ -106,7 +106,7 @@
         "account": {
           "kind": "account",
           "name": null,
-          "configDir": "/home/u/.claude-accts/z"
+          "configDir": "/home/u/.cc-monitor/accounts/z"
         },
         "ccmSid": null,
         "model": null,
@@ -115,7 +115,7 @@
         "rbindToken": null
       },
       "ok": true,
-      "out": "ccm -- new --account-dir /home/u/.claude-accts/z"
+      "out": "ccm -- new --account-dir /home/u/.cc-monitor/accounts/z"
     },
     {
       "name": "resume + tmux + 具名账号",
@@ -148,7 +148,7 @@
         "account": {
           "kind": "account",
           "name": "z",
-          "configDir": "/home/u/.claude-accts/z"
+          "configDir": "/home/u/.cc-monitor/accounts/z"
         },
         "ccmSid": null,
         "model": null,
@@ -713,7 +713,7 @@
         "account": {
           "kind": "account",
           "name": "z",
-          "configDir": "/home/u/.claude-accts/z"
+          "configDir": "/home/u/.cc-monitor/accounts/z"
         },
         "ccmSid": null,
         "model": null,
@@ -755,7 +755,7 @@
         "account": {
           "kind": "account",
           "name": "z",
-          "configDir": "/home/u/.claude-accts/z"
+          "configDir": "/home/u/.cc-monitor/accounts/z"
         },
         "ccmSid": "s1",
         "model": null,
@@ -797,7 +797,7 @@
         "account": {
           "kind": "account",
           "name": null,
-          "configDir": "/home/u/.claude-accts/z"
+          "configDir": "/home/u/.cc-monitor/accounts/z"
         },
         "ccmSid": "s1",
         "model": null,
@@ -806,7 +806,7 @@
         "rbindToken": "0123456789abcdef0123456789abcdef"
       },
       "ok": true,
-      "out": "ccm --resume s1 -- --ccm-tmux=p-fork-cc --ccm-sid=s1 --account-dir /home/u/.claude-accts/z --ccm-rbind-token 0123456789abcdef0123456789abcdef --cwd /p"
+      "out": "ccm --resume s1 -- --ccm-tmux=p-fork-cc --ccm-sid=s1 --account-dir /home/u/.cc-monitor/accounts/z --ccm-rbind-token 0123456789abcdef0123456789abcdef --cwd /p"
     },
     {
       "name": "path:就地 resume 键进 pane 的那一行",

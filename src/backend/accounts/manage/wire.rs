@@ -115,7 +115,7 @@ fn home_of(d: &dyn Door) -> Result<String, Refusal> {
 
 /// 账号库在就拿它那把锁（读 → 改 → 写这一整趟里别的后端进程进不来）；还没建 ⇒ 没东西可锁（写清单那一下的比对兜底）。
 fn lock(home: &str) -> Result<Option<crate::platform::lock::DirLock>, Refusal> {
-    let accts = join(home, acct_core::ACCTS_DIR_NAME);
+    let accts = scan::accts_root(home);
     if scan::item_at(&accts).exists() {
         crate::platform::lock::hold(std::path::Path::new(&accts))
             .map(Some)
@@ -187,7 +187,7 @@ pub(crate) fn run_change(
     supported()?;
     let home = home_of(d)?;
     let _held = lock(&home)?;
-    let accts = join(&home, acct_core::ACCTS_DIR_NAME);
+    let accts = scan::accts_root(&home);
     let (dirs, files, cred) = match req {
         Request::Init(a) => (vec![join(&accts, &a.name)], vec![], None),
         Request::Add(a) => {
@@ -294,9 +294,8 @@ pub(crate) fn run_change(
         });
     }
     let zero_email = snap.email_of(&home).unwrap_or_default().to_string();
-    let render = |m: &super::model::Manifest| {
-        m.render(&r.accts, &r.shared, &zero_email, &exec::utc_stamp(true))
-    };
+    let render =
+        |m: &super::model::Manifest| m.render(&r.shared, &zero_email, &exec::utc_stamp(true));
     let Applied { backup, steps } =
         exec::apply(d, &r, &plan, snap.manifest_text.as_deref(), &render, keys)?;
     change.applied = !plan.ops.is_empty();

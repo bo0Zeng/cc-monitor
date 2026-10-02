@@ -18,6 +18,14 @@ pub(crate) const UNDO_NAME: &str = "undo.tsv";
 /// 还原过之后留的标记（最近一份的挑法跳过它）。
 pub(crate) const ROLLED_BACK_NAME: &str = ".rolled-back";
 
+/// 清单的文件名（账号库目录下；住址只在契约 crate）。
+pub(crate) const MANIFEST_FILE: &str = relay_route_core::ACCOUNTS_MANIFEST_NAME;
+
+/// 这台的账号库目录：`<家目录>/.cc-monitor/accounts`。位置只跟着家走（契约 crate 那一段），这一族都经它。
+pub(crate) fn accts_root(home: &str) -> String {
+    join(home, relay_route_core::ACCOUNTS_DIR_REL)
+}
+
 /// 三个根：家目录 · 共享库（各号链回去的那个配置根）· 账号库。都是绝对 POSIX 路径、不带尾部 `/`。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Roots {
@@ -28,7 +36,7 @@ pub(crate) struct Roots {
 
 impl Roots {
     pub(crate) fn manifest(&self) -> String {
-        join(&self.accts, acct_core::MANIFEST_NAME)
+        join(&self.accts, MANIFEST_FILE)
     }
 
     /// 能不能动它们：三个都要在家目录底下（写经家目录为根的文件管理面）、共享库与账号库互不包含。
@@ -152,8 +160,8 @@ impl Snapshot {
 /// 读一遍。`home` 是这台机器的家目录（判据给临时目录）；`extra_dirs` / `extra_files` 是这一趟另要看的。
 pub(crate) fn scan(home: &str, extra_dirs: &[String], extra_files: &[String]) -> Snapshot {
     let home = home.trim_end_matches('/').to_string();
-    let accts = join(&home, acct_core::ACCTS_DIR_NAME);
-    let mpath = join(&accts, acct_core::MANIFEST_NAME);
+    let accts = accts_root(&home);
+    let mpath = join(&accts, MANIFEST_FILE);
     let (manifest_text, manifest) = match acct_view::item(Path::new(&mpath)) {
         Item::Absent => (None, None),
         _ => match manifest_text_at(Path::new(&mpath)) {

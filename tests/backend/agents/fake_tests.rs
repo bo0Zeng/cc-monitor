@@ -384,19 +384,15 @@ fn the_general_layer_answers_a_non_claude_agent_silently_or_with_claudes_words()
              变了就该同轮改 `NEW_AGENT_BLOCKERS` 的失败形态那一列"
     );
 
-    // ③ 账号：**静默**（rc=0、零行）。
-    // ⚠ `--accts-dir` 显式指到夹具里一个不存在的目录：不指的话它会去读**用户真实的**
-    //   `~/.claude-accts`（用户 08-14 明令不碰生产）。
+    // ③ 账号：**静默**（零行）。
+    // ⚠ 直接喂夹具里一个不存在的账号库目录：走 CLI 那一臂的话账号库跟着这个进程的家走，
+    //   会去读**用户真实的**账号库（用户 08-14 明令不碰生产）。
     let no_accts = root.join("no-such-accts");
-    let rc = crate::observe::accounts_query::run(
-        &root,
-        &[
-            "--session-accounts".to_string(),
-            "--accts-dir".to_string(),
-            no_accts.to_string_lossy().into_owned(),
-        ],
+    assert_eq!(
+        crate::observe::accounts_query::session_accounts(&root, &no_accts),
+        Vec::<String>::new(),
+        "`--session-accounts` 的反应变了"
     );
-    assert_eq!(rc, 0, "`--session-accounts` 的反应变了");
 
     // ④ resume：生产注册表里没有这一家 ⇒ 报错，不落默认那一家。
     let spec = format!("{{\"agentKind\":\"{AGENT_KIND}\",\"sessionId\":\"{FIXTURE_SESSION_ID}\"}}");

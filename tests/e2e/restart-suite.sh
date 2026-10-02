@@ -57,11 +57,11 @@ mkdir -p "$OLD/sessions" "$OLD/projects" "$NEW/sessions" "$NEW/projects" "$CWD_D
 ACCTS='{"available":true,"error":null,"meta":null,"accounts":[{"name":"bold","email":"","configDir":"'"$OLD"'","isDefault":false,"mode":"isolated","exists":true,"loggedIn":true,"authKind":"subscription","authReady":true},{"name":"znew","email":"","configDir":"'"$NEW"'","isDefault":true,"mode":"isolated","exists":true,"loggedIn":true,"authKind":"subscription","authReady":true}]}'
 export CCM_ACCOUNTS_JSON="$ACCTS"
 # 同两个号给 ccm 自己的账号库（`--account znew` 由那台的 ccm 按它解析）。
-case "$CCM_ACCTS_MANIFEST" in
+case "$CCM_SHIM_ACCOUNTS" in
   "$CCM_SHIM_DIR"/*) ;;
-  *) echo "账号库 $CCM_ACCTS_MANIFEST 不在本趟沙箱里 —— 拒绝往里写" >&2; exit 9 ;;
+  *) echo "账号库 $CCM_SHIM_ACCOUNTS 不在本趟沙箱里 —— 拒绝往里写" >&2; exit 9 ;;
 esac
-printf '{"accounts":[{"name":"bold","configDir":"%s"},{"name":"znew","configDir":"%s","isDefault":true}]}\n' "$OLD" "$NEW" >"$CCM_ACCTS_MANIFEST"
+printf '{"accounts":[{"name":"bold","configDir":"%s"},{"name":"znew","configDir":"%s","isDefault":true}]}\n' "$OLD" "$NEW" >"$CCM_SHIM_ACCOUNTS/accounts.json"
 
 # 中转：本趟自己的「中转口」（只是一个在听的回环口）＋ 一把假钥匙，落在沙箱家目录里（ccm-shim.sh 已把 HOME 换成沙箱）。
 #   pane 里那一趟 ccm 在最终 exec 那一处判注入；私有 tmux server 带的 HOME 就是这一个。

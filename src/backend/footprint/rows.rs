@@ -275,7 +275,7 @@ fn resolve_by_destination(
         }
         // **占位符只对应"落点"那一条，别的 touches 照常解析。**
         // 第一版这条臂要求**每条** touches 都等于占位符，于是 cc-acct-iso 的
-        // `~/.claude-accts/`（账号库；**T04 查证：它在远端**，`accounts.rs` 全走 ssh exec，
+        // 账号库那一条（**T04 查证：它在远端**，`accounts.rs` 全走 ssh exec，
         // 我这句原先写的"本机账号库"是错的）被判违规——
         // 落点只是这个工具碰的文件之一，不是全部。测试当场红在这里。
         ToolDestination::UserConfiguredPath { token, what } => {

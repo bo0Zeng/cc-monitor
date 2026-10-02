@@ -514,7 +514,6 @@ type Entry = JudgmentId | typeof NONE;
  */
 const CORE_ITEMS: Record<string, Record<string, Entry>> = {
   "acct-core": {
-    ACCTS_DIR_NAME: NONE,
     // 账号配置目录的全表（从 monitor `payload.rs` 与后端 `accounts_query.rs` 收进来）。
     CONFIG_DIR_SHELL_META: NONE,
     config_dir_char_unsafe: "J2",
@@ -532,7 +531,6 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     auth_ready: "J1",
     CREDENTIALS_NAME: NONE,
     is_deceptive_char: "J2",
-    MANIFEST_NAME: NONE,
     SUPPORTED_SCHEMA: NONE,
   },
   // `agent-tools-core` 那一格删了：它收进后端适配层（`agents/claudecode/cards.rs`），不再是共享 crate。
@@ -624,6 +622,9 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     ASSET_CATALOG_REL: NONE,
     EXT_BACKUPS_DIR_REL: NONE,
     ACCOUNTS_MCP_REL: NONE,
+    // 账号库目录与它的清单名（后端账号管理 · 账号查询 · ccm 都经它；数据位置页按它列）。
+    ACCOUNTS_DIR_REL: NONE,
+    ACCOUNTS_MANIFEST_NAME: NONE,
     BACKEND_POLICY_REL: NONE,
     file_name_of: NONE,
     listen_pid_file_name: NONE,

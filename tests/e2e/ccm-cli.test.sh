@@ -39,18 +39,13 @@ ck() { # ck <描述> <期望> <实得>
   if [ "$2" = "$3" ]; then printf 'PASS | %s\n' "$1"; PASS=$((PASS+1))
   else printf 'FAIL | %s\n      期望: %s\n      实得: %s\n' "$1" "$2" "$3"; FAIL=$((FAIL+1)); fi
 }
-# **必须同时隔离 CCM_ACCTS_MANIFEST**：不隔离的话本机 manifest 的 isDefault 账号会被注入
-# 每条黄金串（"零修饰 = 今天的 ccm()" 是**基座**语义，不带账号）。默认号注入另有专测。
-# **全文件恒隔离 CLAUDE_CONFIG_DIR**：本机开发者本人就可能正跑在某个隔离账号下（这里真的
-# 踩过——CLAUDE_CONFIG_DIR=/home/zbl/.claude-accts/z 是本次开发时的真实环境）。account-reset
-# 修复后 ccm 会真的读这个变量，不隔离会让测试结果随"是谁在跑测试"而漂移。
-# ★★ **`CCM_BACKEND_BIN` 那一栏没了，`CCM_ACCTS_MANIFEST` 那一栏留着。**
-#   从前本套件要**自带一份后端**（`FAKED`）：账号解析没有本地退路，不给后端的话每一条判据
-#   都会死在 `exit 4` 上。今天敲的那个命令**就是**后端 ⇒ 那个变量在原生实现里现打 `grep -rn`
-#   **零命中**，留着它等于在夹具里摆一个谁也不读的旋钮。
-#   ⚠ `CCM_ACCTS_MANIFEST` 仍是 `<目录>/accounts.json` 这个形态（不是裸 `/nonexistent`）——
-#     那是**生产上那个值的形状**，与「后端是谁」无关。
-ccm() { env -u CLAUDE_CONFIG_DIR CCM_CONFIG=/nonexistent CCM_ACCTS_MANIFEST=/nonexistent/accounts.json "$CCM" "$@" 2>&1; }
+# **全文件恒隔离家目录与 CLAUDE_CONFIG_DIR**：账号库跟着家目录走（`<家>/.cc-monitor/accounts/`），
+# 每一次调用都把 `HOME` 换成本套件自己的临时目录 —— 不换的话本机账号库的默认号会被注入每条黄金串
+# （"零修饰 = 今天的 ccm()" 是**基座**语义，不带账号），写账号库的那一组更会写到真数据上。
+# 开发者本人也可能正跑在某个隔离账号下（`CLAUDE_CONFIG_DIR`），ccm 会真读它，不摘会让结果随「是谁在跑测试」漂移。
+# `CCM_BACKEND_BIN` 那一栏早没了：敲的那个命令**就是**后端。
+NOHOME="$CCMDIR/home"; mkdir -p "$NOHOME"
+ccm() { env -u CLAUDE_CONFIG_DIR HOME="$NOHOME" CCM_CONFIG=/nonexistent "$CCM" "$@" 2>&1; }
 
 UNSET="unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_SESSION_ID CLAUDE_CODE_CHILD_SESSION"
 
@@ -141,40 +136,27 @@ ck "--attach 接回（位置动作 attach 取消）" \
 
 echo
 echo "===== 账号三态（D 审计 B1/B2 回归）====="
-# ★★ `K-C1`（08-24）**本组的夹具改了两处，都是为了让它测的是生产形状**：
-#   ① `m.json` → `accounts.json`。backend 的 `--list-accounts` **只收目录**（`--accts-dir`），
-#      manifest 的文件名由它自己拼（`acct-core::MANIFEST_NAME`）⇒ 叫别的名字时 ccm 判得出
-#      「这个问题后端答不了」、降级读文件并**说一句**，于是这几条黄金串会多出一行 stderr。
-#      生产路径本来就是 `<目录>/accounts.json`（默认值与 cc-acct-iso 的 `ACCTS_DIR` 都是），
-#      夹具跟上去 = 测的是真形状，不是「顺手把判据改绿」。
-#   ② 〔原第②条：`CCM_BACKEND_BIN` 钉到一份假后端，免得查找次序摸到开发机上用户的真二进制〕
-#      **`K-R48` 第二拍 09-11 作废** —— 没有查找次序了，敲的那个命令就是后端。
-#      它治的那条病（同一条判据在开发机与 CI 上走两条不同的路）今天由文件顶上那道
-#      `[ -x "$CCM_NATIVE" ]` fail-closed 顶着：被测对象**只可能**是本工作树刚 build 出来的那一份。
-ACCTMP="$(mktemp -d)"; mkdir -p "$ACCTMP/z" "$ACCTMP/b" "$ACCTMP/bin"
-cat > "$ACCTMP/accounts.json" <<JSON
+# 夹具就是生产形状：临时家目录下的 `.cc-monitor/accounts/accounts.json` ＋ 每个号一个目录（账号库只跟着家走）。
+# 被测对象**只可能**是本工作树刚 build 出来的那一份（文件顶上那道 `[ -x "$CCM_NATIVE" ]` fail-closed）。
+ACCTMP="$(mktemp -d)"; AL="$ACCTMP/.cc-monitor/accounts"; mkdir -p "$AL/z" "$AL/b"
+cat > "$AL/accounts.json" <<JSON
 { "version": 1, "accounts": [
-  { "name": "z", "configDir": "$ACCTMP/z", "isDefault": true },
-  { "name": "b", "configDir": "$ACCTMP/b", "isDefault": false } ] }
+  { "name": "z", "configDir": "$AL/z", "isDefault": true },
+  { "name": "b", "configDir": "$AL/b", "isDefault": false } ] }
 JSON
-# ⚠ **这里原来有一份镜像式假后端（`mk_mirror_backend`），本轮删了。**
-#   它的活是「把夹具 manifest 原样翻成 `--list-accounts` 帧形状」，好让 bash 那侧跨进程问到账号表。
-#   今天后端**自己读**那份 manifest（`CCM_ACCTS_MANIFEST` 仍是唯一事实源），中间那一跳没有了。
-#   下面那几个 helper 里留着的 `CCM_BACKEND_BIN=` 也一并去掉：原生实现现打 `grep -rn` **零命中**，
-#   留着它等于在夹具里摆一个谁也不读的旋钮。
-acct() { env -u CLAUDE_CONFIG_DIR CCM_CONFIG=/nonexistent CCM_ACCTS_MANIFEST="$ACCTMP/accounts.json" "$CCM" "$@" 2>&1; }
+acct() { env -u CLAUDE_CONFIG_DIR HOME="$ACCTMP" CCM_CONFIG=/nonexistent "$CCM" "$@" 2>&1; }
 ck "显式 --account 注入其 configDir" \
-   "export CLAUDE_CONFIG_DIR='$ACCTMP/b'; $UNSET; cd '/p' && exec claude" \
+   "export CLAUDE_CONFIG_DIR='$AL/b'; $UNSET; cd '/p' && exec claude" \
    "$(acct -- --cwd /p --account b --ccm-print)"
 # B1：die 在 \$(...) 里只杀子 shell —— 曾"报错后照跑"，落到继承来的账号上且 rc=0
 ck "账号不存在 → 中止（rc≠0，且不得吐出 exec）" \
-   "ccm: 账号 'nope' 不可用（不在 $ACCTMP/accounts.json，或其目录不存在）。可用: z b" \
+   "ccm: 账号 'nope' 不可用（不在 $AL/accounts.json，或其目录不存在）。可用: z b" \
    "$(acct -- --cwd /p --account nope --ccm-print)"
 ck "账号不存在 → rc=2" "2" \
    "$(acct -- --cwd /p --account nope --ccm-print >/dev/null 2>&1; echo $?)"
 # B2：cc-acct-iso 搬走凭据后基座常已无 .credentials.json —— 不落默认号则 cc/cct 掉进未登录目录
 ck "不传 --account → 落 manifest 的 isDefault（复刻旧 _cc_acct_last 粘滞）" \
-   "export CLAUDE_CONFIG_DIR='$ACCTMP/z'; $UNSET; cd '/p' && exec claude" \
+   "export CLAUDE_CONFIG_DIR='$AL/z'; $UNSET; cd '/p' && exec claude" \
    "$(acct -- --cwd /p --ccm-print)"
 ck "--base → 显式不注入（#75 逃生口，压过默认号）" \
    "unset CLAUDE_CONFIG_DIR; $UNSET; cd '/p' && exec claude" \
@@ -183,7 +165,7 @@ ck "无账号库 → 退化为基座（不报错）" \
    "$UNSET; cd '/p' && exec claude" \
    "$(ccm -- --cwd /p --ccm-print)"
 ck "--account 与 --model 组合：账号目录照注入，--model 原样交给 claude" \
-   "export CLAUDE_CONFIG_DIR='$ACCTMP/b'; $UNSET; cd '/p' && exec claude --model sonnet" \
+   "export CLAUDE_CONFIG_DIR='$AL/b'; $UNSET; cd '/p' && exec claude --model sonnet" \
    "$(acct --model sonnet -- --cwd /p --account b --ccm-print)"
 rm -rf "$ACCTMP"
 
@@ -210,18 +192,18 @@ echo "===== 账号继承（F03 综合设计时发现的 bug 回归）====="
 # `--tmux` 会落进那条分支、根本不走容器路径，于是 4 条 R08 断言假红（CI 上无 TMUX 所以
 # 一直看不出来）。实测：同一份 HEAD，`TMUX` 有无决定 44/0 还是 40/4。
 # 测什么就要固定什么，不能让环境替测试选路径。
-# `K-C1`：夹具改名 + 钉假后端，理由同上一组（那段头注逐条写了，别在这儿重抄）。
-inherit_acct() { CLAUDE_CONFIG_DIR="$ACCTMP/b" env -u TMUX -u TMUX_PANE CCM_CONFIG=/nonexistent CCM_ACCTS_MANIFEST="$ACCTMP/accounts.json" "$CCM" "$@" 2>&1; }
-ACCTMP="$(mktemp -d)"; mkdir -p "$ACCTMP/z" "$ACCTMP/b" "$ACCTMP/bin"
-cat > "$ACCTMP/accounts.json" <<JSON
+# 夹具同上一组（临时家目录里的账号库）。
+inherit_acct() { CLAUDE_CONFIG_DIR="$AL/b" env -u TMUX -u TMUX_PANE HOME="$ACCTMP" CCM_CONFIG=/nonexistent "$CCM" "$@" 2>&1; }
+ACCTMP="$(mktemp -d)"; AL="$ACCTMP/.cc-monitor/accounts"; mkdir -p "$AL/z" "$AL/b"
+cat > "$AL/accounts.json" <<JSON
 { "version": 1, "accounts": [
-  { "name": "z", "configDir": "$ACCTMP/z", "isDefault": true },
-  { "name": "b", "configDir": "$ACCTMP/b", "isDefault": false } ] }
+  { "name": "z", "configDir": "$AL/z", "isDefault": true },
+  { "name": "b", "configDir": "$AL/b", "isDefault": false } ] }
 JSON
 ck "外层已继承账号 b（无 --account/--base）→ 保留 b，不被默认号 z 静默覆盖"    "$UNSET; cd '/p' && exec claude"    "$(inherit_acct -- --cwd /p --ccm-print)"
-ck "裸终端（无继承）仍落 manifest 默认号 z"    "export CLAUDE_CONFIG_DIR='$ACCTMP/z'; $UNSET; cd '/p' && exec claude"    "$(env -u CLAUDE_CONFIG_DIR CCM_CONFIG=/nonexistent CCM_ACCTS_MANIFEST="$ACCTMP/accounts.json" "$CCM" -- --cwd /p --ccm-print 2>&1)"
+ck "裸终端（无继承）仍落 manifest 默认号 z"    "export CLAUDE_CONFIG_DIR='$AL/z'; $UNSET; cd '/p' && exec claude"    "$(env -u CLAUDE_CONFIG_DIR HOME="$ACCTMP" CCM_CONFIG=/nonexistent "$CCM" -- --cwd /p --ccm-print 2>&1)"
 ck "--base 显式清空，不受继承影响"    "unset CLAUDE_CONFIG_DIR; $UNSET; cd '/p' && exec claude"    "$(inherit_acct -- --cwd /p --base --ccm-print)"
-ck "--account 显式指定，优先级最高（覆盖继承的 b）"    "export CLAUDE_CONFIG_DIR='$ACCTMP/z'; $UNSET; cd '/p' && exec claude"    "$(inherit_acct -- --cwd /p --account z --ccm-print)"
+ck "--account 显式指定，优先级最高（覆盖继承的 b）"    "export CLAUDE_CONFIG_DIR='$AL/z'; $UNSET; cd '/p' && exec claude"    "$(inherit_acct -- --cwd /p --account z --ccm-print)"
 
 # R08（2026-07-28 实测复现）：R11 的修法在**容器路径上留了个洞**。
 # 上面那条注释说"两个场景用同一条 if 天然区分"，**只对非容器路径成立**——
@@ -237,10 +219,10 @@ ck "--account 显式指定，优先级最高（覆盖继承的 b）"    "export 
 unesc() { sed "s/'\\\\''/'/g"; }
 ck "R08：容器路径 + 继承账号 b → 内层载荷必须显式带上 b（不能靠继承穿 tmux 边界）" \
    "yes" \
-   "$(inherit_acct -- --ccm-tmux --cwd /p --ccm-print | unesc | grep -qF "$ACCTMP/b" && echo yes || echo no)"
+   "$(inherit_acct -- --ccm-tmux --cwd /p --ccm-print | unesc | grep -qF "$AL/b" && echo yes || echo no)"
 ck "R08：容器路径 + 继承账号 b → 内层绝不能落到默认号 z" \
    "yes" \
-   "$(inherit_acct -- --ccm-tmux --cwd /p --ccm-print | unesc | grep -qF "$ACCTMP/z" && echo no || echo yes)"
+   "$(inherit_acct -- --ccm-tmux --cwd /p --ccm-print | unesc | grep -qF "$AL/z" && echo no || echo yes)"
 ck "R08：容器路径 + --base → 内层显式 --base（不受继承影响，issue #75 逃生口不被削弱）" \
    "yes" \
    "$(inherit_acct -- --ccm-tmux --cwd /p --base --ccm-print | unesc | grep -qF -- '--base' && echo yes || echo no)"
@@ -249,8 +231,42 @@ ck "R08：容器路径 + 显式 --account z → 内层带 --account z（优先�
    "$(inherit_acct -- --ccm-tmux --cwd /p --account z --ccm-print | unesc | grep -qF -- "'--account' 'z'" && echo yes || echo no)"
 ck "R08：容器路径 + 裸终端（无继承）→ 内层仍落默认号 z（粘滞体验不回退）" \
    "yes" \
-   "$(env -u CLAUDE_CONFIG_DIR -u TMUX -u TMUX_PANE CCM_CONFIG=/nonexistent CCM_ACCTS_MANIFEST="$ACCTMP/accounts.json" "$CCM" -- --ccm-tmux --cwd /p --ccm-print 2>&1 | unesc | grep -qF -- "'--account' 'z'" && echo yes || echo no)"
+   "$(env -u CLAUDE_CONFIG_DIR -u TMUX -u TMUX_PANE HOME="$ACCTMP" CCM_CONFIG=/nonexistent "$CCM" -- --ccm-tmux --cwd /p --ccm-print 2>&1 | unesc | grep -qF -- "'--account' 'z'" && echo yes || echo no)"
 rm -rf "$ACCTMP"
+
+echo
+echo "===== 账号库住后端的家里（临时 HOME 端到端：建库 → 起会话 → 列账号）====="
+# 用户「即后端去.cc-monitor读数据」：账号库只跟着家目录走 —— 清单 `<家>/.cc-monitor/accounts/accounts.json`，
+# 每个号 `<家>/.cc-monitor/accounts/<号>/`；家目录下旧位置那份清单不读、不写。
+# 全程 `env -i`：只给 PATH 与临时 HOME，开发机会话里的任何变量都带不进来。
+AH="$(mktemp -d)"; mkdir -p "$AH/.claude/skills"
+printf '{"fake":"c"}' > "$AH/.claude/.credentials.json"
+printf '{"oauthAccount":{"emailAddress":"d@example.test"}}' > "$AH/.claude.json"
+# 旧位置放一份**能用的**清单 ＋ 号目录：后端要是还读它，下面带 old 的那几格就会认出这个号。
+mkdir -p "$AH/.claude-accts/old"
+printf '{"version":1,"accounts":[{"name":"old","configDir":"%s","isDefault":true}]}\n' "$AH/.claude-accts/old" > "$AH/.claude-accts/accounts.json"
+OLD_SUM="$(cksum < "$AH/.claude-accts/accounts.json")"
+home_run() { env -i PATH=/usr/bin:/bin HOME="$AH" CCM_CONFIG=/nonexistent "$CCM" "$@" 2>&1; }
+names_of() { home_run -- --list-accounts | tail -n +2 | sed -n 's/.*"name":"\([^"]*\)".*/\1/p' | tr '\n' ' '; }
+ck "建库前：只有旧位置那份清单 ⇒ 没启用多账号" "false" \
+   "$(home_run -- --list-accounts | head -1 | sed -n 's/.*"enabled":\([a-z]*\).*/\1/p')"
+ck "建库前：裸起不落旧清单里的默认号" "$UNSET; cd '/p' && exec claude" "$(home_run -- --cwd /p --ccm-print)"
+INIT="$(printf '{"name":"d"}' | home_run -- --accounts-init)"
+ck "建库：应答说落了盘" "yes" "$(printf '%s' "$INIT" | grep -qF '"applied":true' && echo yes || echo no)"
+AM="$AH/.cc-monitor/accounts"
+ck "建库：清单在 <家>/.cc-monitor/accounts/accounts.json" "yes" "$([ -f "$AM/accounts.json" ] && echo yes || echo no)"
+ck "建库：号目录在 <家>/.cc-monitor/accounts/d，凭据搬了进去" "yes" "$([ -f "$AM/d/.credentials.json" ] && echo yes || echo no)"
+ck "建库：清单里那个号的 configDir 是新位置的绝对路径" "1" "$(grep -cF "\"configDir\": \"$AM/d\"" "$AM/accounts.json")"
+ck "建库：清单不记账号库在哪（由位置决定）" "0" "$(grep -c acctsDir "$AM/accounts.json")"
+ck "建库：号目录里的共享项照旧链回 ~/.claude" "$AH/.claude/skills" "$(readlink "$AM/d/skills")"
+ck "建库：旧位置那份清单一个字节没动" "$OLD_SUM" "$(cksum < "$AH/.claude-accts/accounts.json")"
+ck "ccm --account d：CLAUDE_CONFIG_DIR 指向新位置" \
+   "export CLAUDE_CONFIG_DIR='$AM/d'; $UNSET; cd '/p' && exec claude" \
+   "$(home_run -- --account d --cwd /p --ccm-print)"
+ck "ccm --account old（只在旧位置的清单里）⇒ rc=2" "2" \
+   "$(home_run -- --account old --cwd /p --ccm-print >/dev/null 2>&1; echo $?)"
+ck "列账号只列新库里的号（旧清单里的 old 不在）" "d 0 " "$(names_of)"
+rm -rf "$AH"
 
 echo
 echo "===== 不给 --cwd = 站在哪儿起在哪儿（5 种布局，一格都不许跳）====="
@@ -279,11 +295,10 @@ FAKEHOME="$TMPROOT/home"; mkdir -p "$FAKEHOME"
 # ⚠ `want` 取 `pwd -P`（物理路径）而不是 `$PWD`：`mktemp -d` 在有符号链接的 `/tmp` 上
 #   两者不同值，而 Rust 的 `current_dir()` 给的是物理路径 —— 那会是一次跟本题无关的假红。
 cmp_cwd() {
-  local desc="$1" dir="$2" home="${3:-$HOME}" got want
+  local desc="$1" dir="$2" home="${3:-$NOHOME}" got want
   want="$( cd "$dir" && pwd -P )"
   got="$( cd "$dir" && HOME="$home" CCM_CONFIG=/nonexistent \
-      CCM_WORKSPACE="$CC_WORKSPACE" \
-      CCM_ACCTS_MANIFEST=/nonexistent/accounts.json "$CCM" -- --ccm-print 2>&1 | sed -n "s/.*cd '\\([^']*\\)' && .*/\\1/p" )"
+      CCM_WORKSPACE="$CC_WORKSPACE" "$CCM" -- --ccm-print 2>&1 | sed -n "s/.*cd '\\([^']*\\)' && .*/\\1/p" )"
   ck "$desc" "$want" "$got"
 }
 cmp_cwd "布局1：在 \$HOME（设着 CCM_WORKSPACE）→ 仍是 \$HOME，不跳工作区" "$FAKEHOME" "$FAKEHOME"
@@ -304,7 +319,7 @@ echo "===== 会话名派生：真跑那条路铸出来的名字（前端那份�
 # 「响亮失败」时，把 `tmux new-session` 包进了 `{ … || { …; exit 3; }; }` ——
 # 于是这条 `sed` 的 `^tmux` 锚点**零命中**，下面 5 条**全部拿到空串、静默常红**。
 # 这正是「判据的匹配单位跟不上事实的形状」那一族：报的是「不一致」，真因是抽取器失灵。
-name_of() { env -u TMUX CCM_CONFIG=/nonexistent CCM_ACCTS_MANIFEST=/nonexistent/accounts.json "$CCM" -- --ccm-tmux --cwd "$1" --ccm-print 2>&1 \
+name_of() { env -u TMUX HOME="$NOHOME" CCM_CONFIG=/nonexistent "$CCM" -- --ccm-tmux --cwd "$1" --ccm-print 2>&1 \
             | sed -n "s/^[{ ]*tmux new-session -d -s \\('[^']*'\\|[^ ]*\\) .*/\\1/p" | tr -d "'"; }
 # tmux 名撞名时 CLI 会加 -2/-3；此处只比基名（测试环境不建会话，故恒等基名）
 for pair in "/home/pi/proj|proj-cc" "/home/pi/a  b|a-b-cc" "/home/pi/proj///|proj-cc" "/|session-cc" "/home/pi/.hidden.dir|hidden-dir-cc"; do
@@ -348,7 +363,7 @@ echo "===== CCM_SELF 删了：内层载荷只认「这个进程自己被怎么�
 # 「`CCM_SELF` 这个环境变量随之删掉」。
 # 两向：① 设了一个假值，容器路的内层载荷里**一处都不许出现它**（有人把那一格读回来 ⇒ 当场红）；
 #       ② 正控：内层载荷真的以本进程的入口（`$CCM` 这条软链）开头 —— 否则 ① 可以靠「内层根本没打出来」零命中地绿。
-SELF_OUT="$(env -u TMUX -u CLAUDE_CONFIG_DIR CCM_SELF=/bogus/old-ccm CCM_CONFIG=/nonexistent CCM_ACCTS_MANIFEST=/nonexistent/accounts.json "$CCM" -- --ccm-tmux --cwd /p --ccm-print 2>&1)"
+SELF_OUT="$(env -u TMUX -u CLAUDE_CONFIG_DIR CCM_SELF=/bogus/old-ccm HOME="$NOHOME" CCM_CONFIG=/nonexistent "$CCM" -- --ccm-tmux --cwd /p --ccm-print 2>&1)"
 ck "设了 CCM_SELF 也不被读（内层载荷里零命中）" "0" "$(printf '%s\n' "$SELF_OUT" | grep -c 'bogus/old-ccm')"
 ck "正控：内层载荷以本进程被叫的那个入口开头" "yes" "$(printf '%s\n' "$SELF_OUT" | unesc | grep -qF "'$CCM' '--' '--cwd'" && echo yes || echo no)"
 

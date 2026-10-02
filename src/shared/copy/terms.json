@@ -441,7 +441,7 @@
     {
       "word": "manifest",
       "tier": "禁",
-      "say": "账号清单（~/.claude-accts/accounts.json）；版本不对时说「账号清单格式版本」。",
+      "say": "账号清单（~/.cc-monitor/accounts/accounts.json）；版本不对时说「账号清单格式版本」。",
       "scan": { "re": "\\bmanifest\\b", "flags": "i" },
       "source": "内部行话"
     },
