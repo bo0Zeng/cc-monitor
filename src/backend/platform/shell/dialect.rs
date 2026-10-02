@@ -73,8 +73,18 @@ impl Shell {
     }
 }
 
-/// 解析回来的一条：`(名字, 参数)`，或者一行认不出的原文 ＋ 原因（**不静默丢**）。
-pub(crate) type Parsed = Result<(String, Vec<String>), String>;
+/// 解析回来的一条：`(名字, 参数, 调用时的词交给谁)`，或者一行认不出的原文 ＋ 原因（**不静默丢**）。
+pub(crate) type Parsed = Result<(String, Vec<String>, RestTo), String>;
+
+/// 调用时跟在别名后面的那些词交给谁：缺省交给 agent（接在 `--` 左边）；交给 ccm 时接在右边末尾。
+/// 许不许交给 ccm 是通用层的规则（只有接回会话那一形），方言只照着写与读。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum RestTo {
+    #[default]
+    Agent,
+    Ccm,
+}
 
 /// 一条别名调的是谁、argv 里哪个词把两半分开。**通用层给**（`control::ccm` 那两个常量），方言只照着写与读：
 /// 适配层不往上依赖。
@@ -137,18 +147,14 @@ pub(crate) trait ShellDialect: Sync {
     /// 我们自己那份别名文件在 home 下的相对路径（`/` 分隔，交给后端的 `rel` 就是它）。
     fn our_alias_file_rel(&self) -> &'static str;
 
-    /// 「执行我们那份文件」在这个 shell 里怎么写（**一行**）。文件不在时必须是空操作。
-    /// 今天只给人看（选的那份启动文件没接上时，报告里给出这一行、由人自己决定贴不贴）；自动接上那一行住别名块里。
-    fn source_line(&self, our_file: &str) -> String;
-
     /// 这份启动文件是不是已经接上了我们那份（任何一种写法都认，别按整行比 —— 见 POSIX 那一臂的注释）。
     fn sources_our_file(&self, text: &str) -> bool;
 
     /// 我们那份别名文件的头注（整段注释行，含结尾换行）。
     fn file_header(&self) -> String;
 
-    /// 一条（通用层判过合格的）别名在这个 shell 里的写法：名字 ＋ 预置参数 ＋ 把调用时的参数原样接在后面。
-    fn render_alias(&self, call: Call, name: &str, argv: &[String]) -> String;
+    /// 一条（通用层判过合格的）别名在这个 shell 里的写法：名字 ＋ 预置参数 ＋ 把调用时的参数原样接在 `rest` 那一边。
+    fn render_alias(&self, call: Call, name: &str, argv: &[String], rest: RestTo) -> String;
 
     /// 把我们那份文件的正文（BOM 已剥）读回成一条条。注释 / 空行跳过；认不出的原文带原因。
     fn parse_file(&self, call: Call, text: &str) -> Vec<Parsed>;
@@ -383,10 +389,14 @@ impl Posix {
                 &[("word", &word.to_string())],
             ));
         }
-        Ok((
-            name.to_string(),
-            join_last_end(call.end, words.collect(), right),
-        ))
+        let lead: Vec<String> = words.collect();
+        // `"$@"` 在最后、前面已有 `--` ⇒ 调用时的词交给 ccm（交给 claude 时 `"$@"` 恒在 `--` 左边，后面跟着 ` --`）。
+        let rest = if right.is_none() && lead.iter().any(|w| w == call.end) {
+            RestTo::Ccm
+        } else {
+            RestTo::Agent
+        };
+        Ok((name.to_string(), join_last_end(call.end, lead, right), rest))
     }
 }
 
@@ -431,19 +441,8 @@ impl ShellDialect for Posix {
         POSIX_ALIAS_FILE_REL
     }
 
-    /// `[ -r … ]` 那道是承重的：文件还没生成 / 被用户删掉时它是个 no-op，
-    /// 而不是让用户每开一个终端就看见一行 `No such file or directory`。
-    ///
-    /// ⚠ 写成 `if … then … fi` 而不是 `[ -r … ] && . …`，理由是**退出码**：
-    /// 后者在文件不存在时整行返回 1，而这一行在 `src/shared/ccm-aliases.sh` 里是**最后一行**
-    /// ⇒ `source` 那份片段会以非零收场。`if` 那一形恒返回 0。
-    fn source_line(&self, our_file: &str) -> String {
-        format!("if [ -r \"{our_file}\" ]; then . \"{our_file}\"; fi")
-    }
-
     /// 🔴 认的是**相对路径**，不是整行：`src/shared/ccm-aliases.sh` 里那一行写的是 `$HOME/.cc-monitor/…`
-    /// （**没展开**），而 [`Self::source_line`] 带的是展开后的绝对路径 ⇒ 按整行比，
-    /// 一个已经装了 ccm 别名块的人会被判成「还没 source 过」，于是又被追加一行（重复追加那条病）。
+    /// （**没展开**），人自己手写的那一行可能是展开后的绝对路径 ⇒ 按整行比会漏认。
     fn sources_our_file(&self, text: &str) -> bool {
         text.contains(POSIX_ALIAS_FILE_REL)
     }
@@ -454,7 +453,7 @@ impl ShellDialect for Posix {
 
     /// `名字() { ccm <参数…> "$@"; }`。`"$@"` 必须在最后 —— 那就是「参数附加器」的全部含义：
     /// 调用时再给的参数接在后面、后者胜。
-    fn render_alias(&self, call: Call, name: &str, argv: &[String]) -> String {
+    fn render_alias(&self, call: Call, name: &str, argv: &[String], rest: RestTo) -> String {
         let word = call.word;
         let (left, right) = split_last_end(call.end, argv);
         let mut out = format!("{name}{POSIX_FN_HEAD}{word}");
@@ -462,13 +461,18 @@ impl ShellDialect for Posix {
             out.push(' ');
             out.push_str(&Self::word(w));
         }
-        out.push_str(POSIX_ARGS);
+        if rest == RestTo::Agent {
+            out.push_str(POSIX_ARGS);
+        }
         if let Some(right) = right {
             out.push_str(" --");
             for w in right {
                 out.push(' ');
                 out.push_str(&Self::word(w));
             }
+        }
+        if rest == RestTo::Ccm {
+            out.push_str(POSIX_ARGS);
         }
         out.push_str(POSIX_FN_TAIL);
         out
@@ -567,14 +571,6 @@ const PS_TAIL: &str = " $RemainingArgs";
 /// 分隔 claude / ccm 两半的 `--`：写成单引号字面量（裸 `--` 是 PowerShell 自己的「参数到此为止」记号，会被它吃掉）。
 const PS_END: &str = " '--'";
 
-/// 别名块里那个 `function cc`（原 `assets/aliases/block.rs::render_cc_code` 里拼的那一段，逐字搬来；
-/// 握手 `__ccm_bind` 不带守卫 —— 它与 `__ccm_bind` 同块装）。`word` 是通用层交进来的那个词（`KR135D2`：翻正的落点）。
-pub(crate) fn ps_wrapper_function(name: &str, word: &str) -> String {
-    format!(
-        "\nfunction {name} {{\n    [CmdletBinding()] param(\n        [Parameter(ValueFromRemainingArguments = $true)] $RemainingArgs\n    )\n    __ccm_bind\n    & {word} $RemainingArgs\n}}\n"
-    )
-}
-
 /// 〔`WIN3.md §2` M/N〕**PowerShell 单引号字面量的唯一出口**：`'…'` 包裹，[`PS_QUOTES`] 里每个字符都双写。
 /// 后端生产段凡是把一个值放进 PowerShell 单引号里的都只调它（判据 `shell_home_guard.rs` 零命中）。
 ///
@@ -625,7 +621,7 @@ impl PowerShell {
     }
 
     /// `& ccm '…' $RemainingArgs['--' '…']` → 参数（`$RemainingArgs` 是分界：左边交 claude，右边 `'--'` 之后归 ccm）。
-    fn parse_call(call: Call, line: &str) -> Result<Vec<String>, String> {
+    fn parse_call(call: Call, line: &str) -> Result<(Vec<String>, RestTo), String> {
         let word = call.word;
         let head = format!("    & {word}");
         let bad = || copy_text("rsShellDialect.ps.badCall", &[("word", &word.to_string())]);
@@ -637,7 +633,14 @@ impl PowerShell {
             None => return Err(bad()),
             Some(r) => Some(Self::split_words(r)?),
         };
-        Ok(join_last_end(call.end, Self::split_words(lead)?, right))
+        let lead = Self::split_words(lead)?;
+        // 同 POSIX 那一臂：`$RemainingArgs` 在最后、前面已有 `'--'` ⇒ 交给 ccm。
+        let rest = if right.is_none() && lead.iter().any(|w| w == call.end) {
+            RestTo::Ccm
+        } else {
+            RestTo::Agent
+        };
+        Ok((join_last_end(call.end, lead, right), rest))
     }
 }
 
@@ -696,13 +699,6 @@ impl ShellDialect for PowerShell {
         PS_ALIAS_FILE_REL
     }
 
-    /// `if (Test-Path -LiteralPath '…') { . '…' }` —— `-LiteralPath` 让路径里的 `[` `]` 不被当通配符；
-    /// 文件不在时整行什么都不做。
-    fn source_line(&self, our_file: &str) -> String {
-        let p = ps_literal(our_file);
-        format!("if (Test-Path -LiteralPath {p}) {{ . {p} }}")
-    }
-
     /// 两种分隔符都认、大小写不敏感（Windows 路径）。
     fn sources_our_file(&self, text: &str) -> bool {
         let t = text.to_ascii_lowercase();
@@ -713,8 +709,8 @@ impl ShellDialect for PowerShell {
         copy_text("rsShellDialect.ps.header", &[])
     }
 
-    /// 与 `src/shared/cc.ps1.tpl` 里的 `function cc` 逐字同形（只多了预置参数，握手那一行带守卫）。
-    fn render_alias(&self, c: Call, name: &str, argv: &[String]) -> String {
+    /// `function 名字 { param…; <有守卫的 __ccm_bind>; & ccm <预置> $RemainingArgs['--' <ccm 选项>] }`（交给 ccm 时 `$RemainingArgs` 在最后）。
+    fn render_alias(&self, c: Call, name: &str, argv: &[String], rest: RestTo) -> String {
         let word = c.word;
         let (left, right) = split_last_end(c.end, argv);
         let mut call = format!("    & {word}");
@@ -722,13 +718,18 @@ impl ShellDialect for PowerShell {
             call.push(' ');
             call.push_str(&ps_literal(w));
         }
-        call.push_str(PS_TAIL);
+        if rest == RestTo::Agent {
+            call.push_str(PS_TAIL);
+        }
         if let Some(right) = right {
             call.push_str(PS_END);
             for w in right {
                 call.push(' ');
                 call.push_str(&ps_literal(w));
             }
+        }
+        if rest == RestTo::Ccm {
+            call.push_str(PS_TAIL);
         }
         [
             format!("function {name} {PS_BLOCK_OPEN}"),
@@ -784,15 +785,15 @@ impl ShellDialect for PowerShell {
                 .ok_or_else(|| copy_text("rsShellDialect.ps.noCcmCall", &[]))
                 .and_then(|line| Self::parse_call(call, line));
             match got {
-                Ok(argv) => {
-                    let again = self.render_alias(call, name, &argv);
+                Ok((argv, rest)) => {
+                    let again = self.render_alias(call, name, &argv, rest);
                     let seen = std::iter::once(raw.trim_end().to_string())
                         .chain(body.iter().map(|b| b.to_string()))
                         .chain(std::iter::once("}".to_string()))
                         .collect::<Vec<_>>()
                         .join("\n");
                     if again == seen {
-                        out.push(Ok((name.to_string(), argv)));
+                        out.push(Ok((name.to_string(), argv, rest)));
                     } else {
                         out.push(Err(copy_text(
                             "rsShellDialect.ps.handEdited",

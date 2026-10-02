@@ -158,10 +158,13 @@ export function accountsFakeInvoke(args: ChanCallArgs, over: Record<string, unkn
       backup: dry ? null : "20260101-000000",
       account: add ? { name, configDir: `/h/.claude-alt/${name}` } : null,
       loginCmd: add && !dry && a.kind === "subscription" && a.credFile === undefined ? fakeLoginCmd(name) : null,
-      alias: name ? `${name}cc` : null,
+      aliasNames: name ? [`${name}cc`, `${name}cct`] : [],
       keyMasked: add && !dry && typeof a.key === "string" ? "sk-…abcd" : null,
       keyProblem: null,
-      aliases: dry ? null : { path: "/h/.cc-monitor/aliases.sh", changed: true, names: name ? [`${name}cc`] : [], note: null },
+      aliases:
+        dry || !name
+          ? []
+          : [{ path: "/h/.cc-monitor/aliases.sh", changed: true, added: [`${name}cc`, `${name}cct`], removed: [], skipped: [], note: null }],
       ...over,
     }),
   );

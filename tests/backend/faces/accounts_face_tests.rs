@@ -289,13 +289,19 @@ fn init_moves_the_identity_links_the_rest_and_writes_the_manifest_and_alias() {
             .contains("cred-d"),
         "清单里漏了凭据"
     );
+    // 别名文件第一次建出来：首建那三条 ＋ 这个号的两条（只在建号那一刻加）。
     let alias = t.read(".cc-monitor/aliases.sh");
-    assert!(
-        alias.contains("zetacc() { ccm \"$@\" -- --account d; }"),
-        "{alias}"
-    );
-    assert_eq!(got["aliases"]["names"], json!(["zetacc"]));
-    assert_eq!(got["alias"], "zetacc");
+    for line in [
+        "cc() { ccm \"$@\"; }",
+        "cct() { ccm \"$@\" -- --ccm-tmux; }",
+        "cca() { ccm -- --attach \"$@\"; }",
+        "zetacc() { ccm \"$@\" -- --account d; }",
+        "zetacct() { ccm \"$@\" -- --account d --ccm-tmux; }",
+    ] {
+        assert!(alias.lines().any(|l| l == line), "少了 {line}：\n{alias}");
+    }
+    assert_eq!(got["aliases"][0]["added"], json!(["zetacc", "zetacct"]));
+    assert_eq!(got["aliasNames"], json!(["zetacc", "zetacct"]));
 }
 
 /// 拒绝：已建过 · 名字不合规（空格 · `../` · `/` · 保留名 `0`）· 身份文件是链接（旧的软链切号方案）。拒了一个字节都不写。
@@ -398,11 +404,12 @@ fn add_imports_credentials_links_shared_items_and_updates_manifest_and_aliases()
     for line in [
         "zetacc() { ccm \"$@\" -- --account d; }",
         "xcc() { ccm \"$@\" -- --account x; }",
+        "xcct() { ccm \"$@\" -- --account x --ccm-tmux; }",
         "mine() { ccm \"$@\" -- --ccm-tmux; }",
     ] {
         assert!(alias.contains(line), "少了 {line}：\n{alias}");
     }
-    assert_eq!(got["aliases"]["names"], json!(["zetacc", "xcc"]));
+    assert_eq!(got["aliases"][0]["added"], json!(["xcc", "xcct"]));
 
     // 两个号的身份互不覆盖：各写各的。
     t.write(
@@ -437,7 +444,7 @@ fn add_without_credentials_hands_back_the_login_line() {
         got["loginCmd"],
         format!("'{}' -- --account 'b-2'", t.s(".cc-monitor/bin/ccm"))
     );
-    assert_eq!(got["alias"], "b2cc");
+    assert_eq!(got["aliasNames"], json!(["b2cc", "b2cct"]));
     let m = t.manifest();
     assert_eq!(m["accounts"][0]["isDefault"], false);
     assert_eq!(m["accounts"][1]["isDefault"], true);
@@ -610,6 +617,7 @@ fn remove_deletes_only_the_account_dir_and_its_alias() {
     assert_eq!(tree(&t.p(".claude")), shared_before, "共享库被动了");
     assert!(!t.read(".cc-monitor/aliases.sh").contains("xcc"));
     assert!(t.read(".cc-monitor/aliases.sh").contains("zetacc"));
+    assert_eq!(got["aliases"][0]["removed"], json!(["xcc", "xcct"]));
     assert_eq!(
         code(&t, "accounts-remove", json!({ "name": "d" })),
         "refused"
@@ -859,7 +867,8 @@ fn verify_on_empty_shared_and_broken_sources() {
 
 // ───────────────────────────── 修复 ─────────────────────────────
 
-/// ★ 修复：补缺的链 · 改指错的链 · 清共享库里已删掉的残链 · 共享库新长的项补链 · 权限改回 0700 / 0600 · 邮箱按 `.claude.json` 刷新 · 补别名；
+/// ★ 修复：补缺的链 · 改指错的链 · 清共享库里已删掉的残链 · 共享库新长的项补链 · 权限改回 0700 / 0600 · 邮箱按 `.claude.json` 刷新；
+/// **别名不回补**（清单只跟着账号表里号的增减走，删掉的别名文件就是不在）；
 /// 再跑一次一个字节不写（幂等）。
 #[test]
 fn repair_restores_every_invariant_and_is_idempotent() {
@@ -902,9 +911,8 @@ fn repair_restores_every_invariant_and_is_idempotent() {
     assert_eq!(t.mode(".cc-monitor/accounts/x"), 0o700);
     assert_eq!(t.mode(".cc-monitor/accounts/x/.credentials.json"), 0o600);
     assert_eq!(t.manifest()["accounts"][1]["email"], "second@example.test");
-    assert!(t
-        .read(".cc-monitor/aliases.sh")
-        .contains("xcc() { ccm \"$@\" -- --account x; }"));
+    assert!(!t.exists(".cc-monitor/aliases.sh"), "修复回补了别名");
+    assert_eq!(got["aliases"], json!([]));
     assert_eq!(verify(&t)["pass"], true);
 
     let before = tree(&t.0);
@@ -1029,6 +1037,20 @@ fn rollback_of_init_puts_the_identity_back() {
     assert!(!t.read(".cc-monitor/aliases.sh").contains("zetacc"));
 }
 
+/// 回滚一次删号 ⇒ 号回来了，它的两条也按建号加回（清单只跟着账号表里号的增减走）；用户改过名的那条不重复加。
+#[test]
+fn rollback_of_a_removal_brings_the_accounts_aliases_back() {
+    let t = two_accounts("rb-rm");
+    let got = ok(&t, "accounts-remove", json!({ "name": "x" }));
+    let id = got["backup"].as_str().unwrap().to_string();
+    assert!(!t.read(".cc-monitor/aliases.sh").contains("xcc"));
+    let back = ok(&t, "accounts-rollback", json!({ "backup": id }));
+    assert_eq!(back["aliases"][0]["added"], json!(["xcc", "xcct"]));
+    assert!(t
+        .read(".cc-monitor/aliases.sh")
+        .contains("xcct() { ccm \"$@\" -- --account x --ccm-tmux; }"));
+}
+
 /// 回滚的安全：备份名只收时间戳字符集（`..` · `/` 一律拒）；撤销清单里指到三个根之外的还原条目跳过、其余照做、整趟报「部分没做成」。
 #[test]
 fn rollback_refuses_traversal_and_skips_out_of_bounds_entries() {
@@ -1073,12 +1095,12 @@ fn an_alias_file_with_unknown_lines_is_left_alone() {
     t.write(".cc-monitor/aliases.sh", "alias weird='echo hi'\n");
     let got = ok(&t, "accounts-init", json!({ "name": "d" }));
     assert_eq!(t.read(".cc-monitor/aliases.sh"), "alias weird='echo hi'\n");
-    assert_eq!(got["aliases"]["changed"], false);
-    assert!(got["aliases"]["note"].is_string());
+    assert_eq!(got["aliases"][0]["changed"], false);
+    assert!(got["aliases"][0]["note"].is_string());
     assert!(t.p(".cc-monitor/accounts/d").is_dir());
 }
 
-/// 名字被用户别的别名占着（参数不一样）⇒ 不盖它，说一句；账号那一形只增删账号那一形。
+/// 名字被用户别的别名占着（参数不一样）⇒ 不盖它、回执里说跳过了它；另一条照加。
 #[test]
 fn a_user_alias_with_the_same_name_is_not_overwritten() {
     let t = machine("alias-taken");
@@ -1090,8 +1112,11 @@ fn a_user_alias_with_the_same_name_is_not_overwritten() {
     assert!(t
         .read(".cc-monitor/aliases.sh")
         .contains("zetacc() { ccm \"$@\" -- --ccm-tmux; }"));
-    assert!(!t.read(".cc-monitor/aliases.sh").contains("--account d"));
-    assert!(got["aliases"]["note"].as_str().unwrap().contains("zetacc"));
+    assert!(!t
+        .read(".cc-monitor/aliases.sh")
+        .contains("zetacc() { ccm \"$@\" -- --account d; }"));
+    assert_eq!(got["aliases"][0]["skipped"], json!(["zetacc"]));
+    assert_eq!(got["aliases"][0]["added"], json!(["zetacct"]));
 }
 
 // ───────────────────────────── 现有账号库原样接着用 ─────────────────────────────

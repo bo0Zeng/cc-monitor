@@ -1033,13 +1033,20 @@ export class AccountsSection {
     }
   }
 
-  /** 一趟改动做完：说一句（改了几步 · 备份叫什么 · 别名那一步有话就带上）、清缓存、重读。 */
+  /** 一趟改动做完：说一句（改了几步 · 备份叫什么 · 别名加了 / 删了 / 跳过哪几条）、清缓存、重读。 */
   private changed(title: string, c: AccountChange): void {
     const lines = [
       c.backup ? copyText("accounts.change.backup", { n: String(c.steps.length), backup: c.backup }) : copyText("accounts.change.nothing"),
       ...c.notes,
     ];
-    if (c.aliases?.note) lines.push(c.aliases.note);
+    // 别名文件那一步：后端说加了 / 删了 / 跳过哪几条，这里只套一句话。
+    const sep = copyText("accounts.change.nameSep");
+    for (const a of c.aliases) {
+      if (a.added.length) lines.push(copyText("accounts.change.aliasesAdded", { names: a.added.join(sep), path: a.path }));
+      if (a.removed.length) lines.push(copyText("accounts.change.aliasesRemoved", { names: a.removed.join(sep), path: a.path }));
+      if (a.skipped.length) lines.push(copyText("accounts.change.aliasesSkipped", { names: a.skipped.join(sep), path: a.path }));
+      if (a.note) lines.push(a.note);
+    }
     showActionFailureToast(title, lines.join("\n"), { level: "info", durationMs: 6000 });
     invalidateAccountsCache(this.machineOrigin());
     void this.reload(true);

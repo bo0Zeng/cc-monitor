@@ -723,14 +723,53 @@ pub(crate) fn validate_tmux_name(n: &str) -> Result<(), Die> {
 ///
 /// 〔用户 09-26〕相对的 `--cwd`（`.` / `../x`）按调用方当前目录补成绝对、按字面折掉 `.` / `..`，之后再过 §47 形式判定；
 /// 已是绝对的原样交给判定（带 `..` 照旧拒）。
+///
+/// `--cwd` 与 `--cwd-if` 两边同一种写法：打头的 `~` 先换成家目录（[`expand_home`]），相对的再按当前目录补成绝对。
+/// `--cwd-if <在哪> <进哪>` 先比：按写的顺序，**正好**站在「在哪」（不含子目录）的第一条 ⇒ 进「进哪」；
+/// 两边先展开 `~`、解开链接再比（大小写按这台的文件系统，`platform::paths::path_key`）。都没对上才轮到 `--cwd` / 当前目录。
 pub(crate) fn resolve_cwd(o: &Opts, env: &Env) -> String {
+    let here = same_dir_key(&env.pwd);
+    let hit = o
+        .cwd_if
+        .iter()
+        .find(|(at, _)| !env.pwd.is_empty() && same_dir_key(&expand_home(at, &env.home)) == here);
+    if let Some((_, to)) = hit {
+        return absolute_from(&expand_home(to, &env.home), &env.pwd);
+    }
     match &o.cwd_spec {
-        CwdSpec::Explicit(d) if !std::path::Path::new(d).is_absolute() && !env.pwd.is_empty() => {
-            lexical_join(&env.pwd, d)
-        }
-        CwdSpec::Explicit(d) => d.clone(),
+        CwdSpec::Explicit(d) => absolute_from(&expand_home(d, &env.home), &env.pwd),
         CwdSpec::Auto => env.pwd.clone(),
     }
+}
+
+/// 相对的按 `pwd` 补成绝对（按字面折 `.` / `..`）；已是绝对的原样（带 `..` 由 §47 判定拒）。
+fn absolute_from(d: &str, pwd: &str) -> String {
+    if !std::path::Path::new(d).is_absolute() && !pwd.is_empty() {
+        lexical_join(pwd, d)
+    } else {
+        d.to_string()
+    }
+}
+
+/// 打头的 `~` / `~/…` 换成家目录（家目录说不出 ⇒ 原样）。
+fn expand_home(p: &str, home: &str) -> String {
+    if home.is_empty() {
+        return p.to_string();
+    }
+    if p == "~" {
+        return home.to_string();
+    }
+    match p.strip_prefix("~/").or_else(|| p.strip_prefix("~\\")) {
+        Some(rest) => crate::platform::paths::join_under(home, rest),
+        None => p.to_string(),
+    }
+}
+
+/// 比「是不是同一个目录」用的键：解开链接（解不开就按原样），再按这台的大小写规矩折。
+fn same_dir_key(p: &str) -> std::path::PathBuf {
+    let raw = std::path::Path::new(p);
+    let real = std::fs::canonicalize(raw).unwrap_or_else(|_| raw.to_path_buf());
+    crate::platform::paths::path_key(&real)
 }
 
 /// `base` ＋ 相对的 `rel`，按字面折掉 `.` / `..`（不碰盘、不解符号链接；`..` 到根为止）。

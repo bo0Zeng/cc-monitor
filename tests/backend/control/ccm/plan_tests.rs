@@ -1911,3 +1911,84 @@ fn a_stale_session_mark_alone_does_not_make_a_resume_rejoin() {
         Plan::Rejoin { .. }
     ));
 }
+
+/// `--cwd-if <在哪> <进哪>`：按写的顺序比、**正好**在那个目录才算（子目录不算，否则「在 ~ 敲」吃掉一切）、
+/// 两边先展开 `~` 解开链接再比；都没对上 ⇒ `--cwd` ⇒ 当前目录。「在哪」写成相对路径 ⇒ 解析期就拒。
+#[cfg(unix)]
+#[test]
+fn cwd_if_goes_where_the_first_exact_match_says() {
+    let d = tempdir();
+    std::fs::create_dir_all(format!("{d}/home/docs/sub")).expect("造夹具");
+    std::os::unix::fs::symlink(format!("{d}/home/docs"), format!("{d}/link")).expect("造链接");
+    let mut e = env();
+    e.home = format!("{d}/home");
+    let at = |right: &[&str], pwd: &str| -> String {
+        let mut e = e.clone();
+        e.pwd = pwd.to_string();
+        let mut a = vec!["--".to_string()];
+        a.extend(right.iter().map(|s| s.to_string()));
+        match crate::control::ccm::argv::parse(&a).unwrap_or_else(|x| panic!("{right:?}：{}", x.0))
+        {
+            Parsed::Opts(o) => resolve_cwd(&o, &e),
+            other => panic!("{other:?}"),
+        }
+    };
+    let home = format!("{d}/home");
+    let docs = format!("{d}/home/docs");
+    assert_eq!(at(&["--cwd-if", "~", "~/docs"], &home), docs);
+    // 子目录不算对上。
+    assert_eq!(
+        at(&["--cwd-if", "~/docs", "/x"], &format!("{docs}/sub")),
+        format!("{docs}/sub")
+    );
+    // 站在指向那个目录的链接里也算（解开链接再比）。
+    assert_eq!(
+        at(&["--cwd-if", "~/docs", "/x"], &format!("{d}/link")),
+        "/x"
+    );
+    // 按写的顺序，第一条对上的算。
+    assert_eq!(
+        at(&["--cwd-if", "~", "/a", "--cwd-if", "~", "/b"], &home),
+        "/a"
+    );
+    // 都没对上 ⇒ `--cwd` ⇒ 当前目录。
+    assert_eq!(
+        at(&["--cwd-if", "/nowhere", "/x", "--cwd", "/y"], &home),
+        "/y"
+    );
+    assert_eq!(at(&["--cwd-if", "/nowhere", "/x"], &home), home);
+    // 「进哪」相对 ⇒ 按当前目录补成绝对（与 `--cwd` 同一条）。
+    assert_eq!(at(&["--cwd-if", "~", "docs"], &home), docs);
+    let bad = ["--", "--cwd-if", "rel", "/x"].map(String::from);
+    assert!(
+        crate::control::ccm::argv::parse(&bad).is_err_and(|x| x.0.contains("--cwd-if")),
+        "相对的「在哪」该在解析期就拒"
+    );
+    let half = ["--", "--cwd-if", "~"].map(String::from);
+    assert!(
+        crate::control::ccm::argv::parse(&half).is_err(),
+        "只给了一个目录"
+    );
+}
+
+/// `--cwd` 与 `--cwd-if` 同一种写法：打头的 `~` 是家目录（「其余情况 → 进 […]」那一格与分情况那两格收一样的值）；
+/// 相对路径照旧按当前目录补成绝对。
+#[test]
+fn cwd_expands_a_leading_tilde_like_cwd_if() {
+    let mut e = env();
+    e.home = "/home/pi".into();
+    e.pwd = "/p".into();
+    let at = |right: &[&str]| -> String {
+        let mut a = vec!["--".to_string()];
+        a.extend(right.iter().map(|s| s.to_string()));
+        match crate::control::ccm::argv::parse(&a).unwrap_or_else(|x| panic!("{right:?}：{}", x.0))
+        {
+            Parsed::Opts(o) => resolve_cwd(&o, &e),
+            other => panic!("{other:?}"),
+        }
+    };
+    assert_eq!(at(&["--cwd", "~/w"]), "/home/pi/w");
+    assert_eq!(at(&["--cwd", "~"]), "/home/pi");
+    assert_eq!(at(&["--cwd", "rel"]), "/p/rel");
+    assert_eq!(at(&["--cwd", "/abs"]), "/abs");
+}

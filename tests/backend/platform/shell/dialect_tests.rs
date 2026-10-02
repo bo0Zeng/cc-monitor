@@ -18,10 +18,11 @@ fn sv(xs: &[&str]) -> Vec<String> {
     xs.iter().map(|s| s.to_string()).collect()
 }
 
-/// 同一份清单（带空格、单引号、弯引号、中文、`--ccm-tmux=`、`--` 透传），两个方言各钉逐字一份。
-fn sample() -> Vec<(&'static str, Vec<String>)> {
+/// 同一份清单（带空格、单引号、弯引号、中文、`--ccm-tmux=`、`--` 透传、调用时的词交给 ccm 的那一形），两个方言各钉逐字一份。
+fn sample() -> Vec<(&'static str, Vec<String>, RestTo)> {
+    let c = RestTo::Agent;
     vec![
-        ("alphacc", sv(&["--account", "z"])),
+        ("alphacc", sv(&["--account", "z"]), c),
         (
             "convz",
             sv(&[
@@ -31,10 +32,12 @@ fn sample() -> Vec<(&'static str, Vec<String>)> {
                 "--cwd",
                 "/home/u/文档/c c",
             ]),
+            c,
         ),
-        ("mo", sv(&["--model", "it's", "--", "--verbose"])),
-        ("curly", sv(&["--model", "a\u{2019}b"])),
-        ("bare", vec![]),
+        ("mo", sv(&["--model", "it's", "--", "--verbose"]), c),
+        ("curly", sv(&["--model", "a\u{2019}b"]), c),
+        ("bare", vec![], c),
+        ("cca", sv(&["--", "--attach"]), RestTo::Ccm),
     ]
 }
 
@@ -43,7 +46,7 @@ fn sample() -> Vec<(&'static str, Vec<String>)> {
 fn posix_golden() {
     let got: Vec<String> = sample()
         .iter()
-        .map(|(n, a)| Posix.render_alias(C, n, a))
+        .map(|(n, a, r)| Posix.render_alias(C, n, a, *r))
         .collect();
     assert_eq!(
         got,
@@ -54,21 +57,18 @@ fn posix_golden() {
             r#"mo() { ccm --model 'it'\''s' "$@" -- --verbose; }"#.to_string(),
             "curly() { ccm --model 'a\u{2019}b' \"$@\"; }".to_string(),
             r#"bare() { ccm "$@"; }"#.to_string(),
+            r#"cca() { ccm -- --attach "$@"; }"#.to_string(),
         ]
-    );
-    assert_eq!(
-        Posix.source_line("/h/.cc-monitor/aliases.sh"),
-        r#"if [ -r "/h/.cc-monitor/aliases.sh" ]; then . "/h/.cc-monitor/aliases.sh"; fi"#
     );
 }
 
-/// 黄金串 · PowerShell：函数体与 `src/shared/cc.ps1.tpl` 里的 `function cc` 逐字同形（那一形在 `K-R132` 真机上
-/// `parse-errors=0`），预置参数**每个都单引号**、四种引号字符都双写。
+/// 黄金串 · PowerShell：函数体是从前别名块里那个 `function cc` 的形状（那一形在 `K-R132` 真机上
+/// `parse-errors=0`；`cc` 今天就是清单里的一条），预置参数**每个都单引号**、四种引号字符都双写。
 #[test]
 fn powershell_golden() {
     let got: Vec<String> = sample()
         .iter()
-        .map(|(n, a)| PowerShell.render_alias(C, n, a))
+        .map(|(n, a, r)| PowerShell.render_alias(C, n, a, *r))
         .collect();
     let body = |call: &str, name: &str| {
         format!(
@@ -92,27 +92,9 @@ fn powershell_golden() {
             got[2].clone(),
             body(" '--model' 'a\u{2019}\u{2019}b'", "curly"),
             body("", "bare"),
+            // 交给 ccm：`$RemainingArgs` 接在 `'--'` 右边的最后。
+            body(" '--' '--attach'", "cca"),
         ]
-    );
-    assert_eq!(
-        PowerShell.source_line(r"C:\Users\u\.cc-monitor/aliases.ps1"),
-        r"if (Test-Path -LiteralPath 'C:\Users\u\.cc-monitor/aliases.ps1') { . 'C:\Users\u\.cc-monitor/aliases.ps1' }"
-    );
-    // 与自带 `cc` 同形这一句**不是**抄来的：从那份模板现渲染一个 `cc`，逐行比骨架。
-    let cc = crate::assets::aliases::block::render_cc_code("cc", true, std::path::Path::new("/_"));
-    for fixed in [
-        "    [CmdletBinding()] param(",
-        "        [Parameter(ValueFromRemainingArguments = $true)] $RemainingArgs",
-        "    )",
-    ] {
-        assert!(
-            cc.lines().any(|l| l == fixed),
-            "别名函数的骨架与模板里的 `cc` 不再同形了：模板里没有 `{fixed}`"
-        );
-    }
-    assert!(
-        cc.lines().any(|l| l == "    & ccm $RemainingArgs"),
-        "模板里 `cc` 的调用那一行变了 —— 别名那一行的尾巴得跟着看"
     );
 }
 
@@ -123,16 +105,16 @@ fn both_dialects_read_back_exactly_what_they_wrote() {
     for (sh, d) in [Shell::Posix, Shell::PowerShell].map(|x| (x, x.dialect())) {
         let text: String = sample()
             .iter()
-            .map(|(n, a)| d.render_alias(C, n, a) + "\n")
+            .map(|(n, a, r)| d.render_alias(C, n, a, *r) + "\n")
             .collect();
-        let back: Vec<(String, Vec<String>)> = d
+        let back: Vec<(String, Vec<String>, RestTo)> = d
             .parse_file(C, &text)
             .into_iter()
             .map(|r| r.unwrap_or_else(|e| panic!("{:?} 读不回自己写的：{e}", sh)))
             .collect();
-        let want: Vec<(String, Vec<String>)> = sample()
+        let want: Vec<(String, Vec<String>, RestTo)> = sample()
             .into_iter()
-            .map(|(n, a)| (n.to_string(), a))
+            .map(|(n, a, r)| (n.to_string(), a, r))
             .collect();
         assert_eq!(back, want, "{:?}", sh);
     }
@@ -142,7 +124,7 @@ fn both_dialects_read_back_exactly_what_they_wrote() {
 /// 块外的非注释行、没收尾的函数也都说出来，不静默丢。
 #[test]
 fn powershell_reader_names_what_it_cannot_take() {
-    let good = PowerShell.render_alias(C, "alphacc", &sv(&["--account", "z"]));
+    let good = PowerShell.render_alias(C, "alphacc", &sv(&["--account", "z"]), RestTo::Agent);
     let edited = good.replace("__ccm_bind }", "__ccm_bind; Write-Host hi }");
     let text = format!(
         "\u{feff}# 注释\nSet-Alias x ls\n{good}\n{}\nfunction open {{\n",
@@ -150,7 +132,10 @@ fn powershell_reader_names_what_it_cannot_take() {
     );
     let got = PowerShell.parse_file(C, PowerShell.decode_from_disk(&text));
     assert_eq!(got.len(), 4, "{got:?}");
-    assert_eq!(got[1], Ok(("alphacc".to_string(), sv(&["--account", "z"]))));
+    assert_eq!(
+        got[1],
+        Ok(("alphacc".to_string(), sv(&["--account", "z"]), RestTo::Agent))
+    );
     assert!(
         matches!(&got[0], Err(e) if e.starts_with("Set-Alias x ls（")),
         "{got:?}"
@@ -221,8 +206,10 @@ fn a_startup_file_that_already_sources_us_is_recognized() {
     ));
     assert!(!Posix.sources_our_file(". ~/.cc-monitor/account-aliases.sh"));
     assert!(PowerShell.sources_our_file(r". 'C:\Users\U\.CC-MONITOR\Aliases.ps1'"));
-    assert!(PowerShell.sources_our_file(&PowerShell.source_line("/h/.cc-monitor/aliases.ps1")));
-    assert!(!PowerShell.sources_our_file(&Posix.source_line("/h/.cc-monitor/aliases.sh")));
+    assert!(PowerShell.sources_our_file(
+        "if (Test-Path -LiteralPath '/h/.cc-monitor/aliases.ps1') { . '/h/.cc-monitor/aliases.ps1' }"
+    ));
+    assert!(!PowerShell.sources_our_file(". \"/h/.cc-monitor/aliases.sh\""));
 }
 
 /// 启动文件候选：POSIX 只列在的；PowerShell 的 5.1 两份恒列（不在也列），7 的两份只在它的目录在时列。
@@ -279,10 +266,14 @@ fn startup_files_follow_each_shells_own_convention() {
         .all(|c| !c.path.contains('\\')));
 }
 
-/// 撞名（只出声）：PowerShell 认终端集成模板里的函数（从模板现算，大小写不敏感）。
+/// 撞名（只出声）：PowerShell 认别名块模板里的函数（从模板现算，大小写不敏感）—— 今天只有握手 `__ccm_bind`
+/// （`cc` 住清单，块不再占它）。
 #[test]
 fn powershell_knows_the_names_its_own_block_defines() {
-    for n in ["__ccm_bind", "CC"] {
+    assert!(PowerShell
+        .name_taken("CC", &own(Shell::PowerShell))
+        .is_none_or(|n| !n.contains("终端集成块")));
+    for n in ["__ccm_bind", "__CCM_BIND"] {
         let note = PowerShell
             .name_taken(n, &own(Shell::PowerShell))
             .unwrap_or_else(|| panic!("`{n}` 在终端集成模板里就有，却一声不吭"));

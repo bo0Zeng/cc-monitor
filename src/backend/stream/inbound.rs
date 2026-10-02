@@ -2781,7 +2781,14 @@ pub const REGISTRY: &[CommandSpec] = &[
             "unsupported",
         ],
         fields: &[
-            "alias", "aliases", "applied", "backup", "dryRun", "name", "notes", "steps",
+            "aliasNames",
+            "aliases",
+            "applied",
+            "backup",
+            "dryRun",
+            "name",
+            "notes",
+            "steps",
         ],
         takes_input: true,
         run: Run::Blocking(|r| {
@@ -2802,7 +2809,7 @@ pub const REGISTRY: &[CommandSpec] = &[
         ],
         fields: &[
             "account",
-            "alias",
+            "aliasNames",
             "aliases",
             "applied",
             "backup",
@@ -3407,9 +3414,13 @@ pub const REGISTRY: &[CommandSpec] = &[
         doc_anchor: Some("#### `aliases-read`"),
         codes: &["bad_args", "refused"],
         fields: &[
+            "accounts",
             "aliasPath",
             "aliases",
             "exists",
+            "fingerprint",
+            "groups",
+            "missing",
             "otherRc",
             "rcCandidates",
             "rcPath",
@@ -3426,12 +3437,11 @@ pub const REGISTRY: &[CommandSpec] = &[
     CommandSpec {
         name: "aliases-install",
         doc_anchor: Some("#### `aliases-install`"),
-        codes: &["bad_args", "refused"],
+        codes: &["bad_args", "refused", "stale"],
         fields: &[
             "aliasPath",
             "aliases",
-            "notes",
-            "rcPath",
+            "fingerprint",
             "shell",
             "wroteAliasFile",
         ],
@@ -3446,7 +3456,7 @@ pub const REGISTRY: &[CommandSpec] = &[
         name: "aliases-block-render",
         doc_anchor: Some("#### `aliases-block-render`"),
         codes: &["bad_args", "refused"],
-        fields: &["rcPath", "text", "withCc"],
+        fields: &["rcPath", "text"],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::assets::aliases::answer_block_render(&LocalFiles, &r.args)
@@ -3458,7 +3468,7 @@ pub const REGISTRY: &[CommandSpec] = &[
         name: "aliases-block-install",
         doc_anchor: Some("#### `aliases-block-install`"),
         codes: &["bad_args", "refused"],
-        fields: &["rcPath", "withCc"],
+        fields: &["rcPath"],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::assets::aliases::answer_block_install(&LocalFiles, &r.args)

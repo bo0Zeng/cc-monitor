@@ -1,4 +1,4 @@
-# === cc-monitor BEGIN v5 ===
+# === cc-monitor BEGIN v6 ===
 # 自动生成 — 卸载请用 cc-monitor 设置面板 [卸载]，或手动删除 BEGIN/END 之间所有内容。
 # 文档: https://github.com/bo0Zeng/cc-monitor
 
@@ -86,7 +86,6 @@ function __ccm_bind {
         Write-Warning "cc-monitor: 绑定超时 (monitor 没在跑？)"
     }
 }
-{{CC_FUNCTION_BLOCK}}
 # 接上 cc-monitor「别名」那一块写的别名文件（没生成过就什么都不做）。
 if (Test-Path -LiteralPath "$HOME\.cc-monitor\aliases.ps1") { . "$HOME\.cc-monitor\aliases.ps1" }
 # === cc-monitor END ===

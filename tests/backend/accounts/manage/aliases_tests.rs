@@ -1,57 +1,118 @@
-//! 账号别名：名字怎么起 · 并进用户清单时只增删账号那一形。
+//! 账号的两条别名：名字怎么起 · 建号加两条（同一形已有就不加、名字被占就跳过）· 删号删掉指向它的全部 · 账号那一形怎么认。
 use super::*;
 
 fn e(name: &str, args: &[&str]) -> Entry {
     (
         name.to_string(),
         args.iter().map(|s| s.to_string()).collect(),
+        RestTo::Agent,
     )
+}
+
+fn exact(a: &str, b: &str) -> bool {
+    a == b
 }
 
 #[test]
 fn alias_names_follow_the_shell_function_rules() {
-    assert_eq!(alias_name("z").as_deref(), Some("alphacc"));
-    assert_eq!(alias_name("side-2").as_deref(), Some("side2cc"));
-    assert_eq!(alias_name("a_b").as_deref(), Some("a_bcc"));
-    assert_eq!(alias_name("2x").as_deref(), Some("_2xcc"));
-    assert_eq!(alias_name("---"), None);
-    assert_eq!(alias_args("z"), ["--", "--account", "z"]);
+    assert_eq!(alias_name("z", false).as_deref(), Some("alphacc"));
+    assert_eq!(alias_name("z", true).as_deref(), Some("alphacct"));
+    assert_eq!(alias_name("side-2", false).as_deref(), Some("side2cc"));
+    assert_eq!(alias_name("a_b", true).as_deref(), Some("a_bcct"));
+    assert_eq!(alias_name("2x", false).as_deref(), Some("_2xcc"));
+    assert_eq!(alias_name("---", true), None);
+    assert_eq!(alias_args("z", false), ["--", "--account", "z"]);
+    assert_eq!(
+        alias_args("z", true),
+        ["--", "--account", "z", "--ccm-tmux"]
+    );
 }
 
 #[test]
-fn reconcile_adds_missing_drops_gone_and_leaves_user_aliases() {
+fn adding_an_account_appends_its_two_and_leaves_everything_else() {
     let cur = vec![
         e("mine", &["--", "--ccm-tmux"]),
-        e("oldcc", &["--", "--account", "old"]),
         e("alphacc", &["--", "--account", "z"]),
     ];
-    let r = reconcile(&cur, &["z".into(), "b".into()]);
+    let r = on_add(&cur, "b", true, &exact);
     assert_eq!(
         r.list,
         vec![
             e("mine", &["--", "--ccm-tmux"]),
             e("alphacc", &["--", "--account", "z"]),
             e("betacc", &["--", "--account", "b"]),
+            e("betacct", &["--", "--account", "b", "--ccm-tmux"]),
         ]
     );
-    assert_eq!(r.names, ["alphacc", "betacc"]);
+    assert_eq!(r.added, ["betacc", "betacct"]);
     assert!(r.skipped.is_empty());
-    assert_eq!(
-        reconcile(&r.list, &["z".into(), "b".into()]).list,
-        r.list,
-        "不幂等"
-    );
+    // 没有 tmux 的目标只加 `<号>cc`。
+    let r = on_add(&[], "b", false, &exact);
+    assert_eq!(r.added, ["betacc"]);
+    // 同一形已在（用户改了名）⇒ 不再加，也不算跳过。
+    let renamed = vec![e("bee", &["--", "--ccm-tmux", "--account", "b"])];
+    let r = on_add(&renamed, "b", true, &exact);
+    assert_eq!(r.added, ["betacc"]);
+    assert!(r.skipped.is_empty());
 }
 
 #[test]
-fn a_name_held_by_a_user_alias_is_skipped_not_overwritten() {
-    let cur = vec![e("alphacc", &["--", "--ccm-tmux"])];
-    let r = reconcile(&cur, &["z".into()]);
-    assert_eq!(r.list, cur);
-    assert!(r.names.is_empty());
-    assert_eq!(r.skipped, vec![("z".to_string(), "alphacc".to_string())]);
-    // 两个号推出同一个名字：第二个跳过。
-    let r2 = reconcile(&[], &["ab".into(), "a-b".into()]);
-    assert_eq!(r2.names, ["abcc"]);
-    assert_eq!(r2.skipped, vec![("a-b".to_string(), "abcc".to_string())]);
+fn a_name_held_by_another_alias_is_skipped_not_overwritten() {
+    let cur = vec![e("alphacct", &["--", "--cwd", "/x"])];
+    let r = on_add(&cur, "z", true, &exact);
+    assert_eq!(r.added, ["alphacc"]);
+    assert_eq!(r.skipped, ["alphacct"]);
+    assert_eq!(r.list[0], cur[0]);
+    // PowerShell 认同名不分大小写：`ZCC` 占着 ⇒ `alphacc` 跳过。
+    let ps = vec![e("ZCC", &[])];
+    let r = on_add(&ps, "z", false, &|a: &str, b: &str| {
+        a.eq_ignore_ascii_case(b)
+    });
+    assert_eq!(r.skipped, ["alphacc"]);
+}
+
+#[test]
+fn removing_an_account_drops_every_alias_that_points_at_it_whatever_its_name() {
+    let cur = vec![
+        e("cc", &[]),
+        e("alphacc", &["--", "--account", "z"]),
+        e("work", &["-p", "--", "--cwd", "/w", "--account", "z"]),
+        e("zz", &["--", "--account", "zz"]),
+        e("betacc", &["--", "--account", "b"]),
+        // 交给 claude 的那一半里出现 `--account z` 不算指向。
+        e("odd", &["--account", "z"]),
+    ];
+    let (kept, gone) = on_remove(&cur, "z");
+    assert_eq!(gone, ["alphacc", "work"]);
+    let names: Vec<&str> = kept.iter().map(|x| x.0.as_str()).collect();
+    assert_eq!(names, ["cc", "zz", "betacc", "odd"]);
+}
+
+#[test]
+fn the_account_shape_is_exactly_one_account_with_or_without_tmux() {
+    let sv = |a: &[&str]| a.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+    let c = RestTo::Agent;
+    assert_eq!(
+        shape_of(&sv(&["--", "--account", "z"]), c),
+        Some(("z".into(), false))
+    );
+    assert_eq!(
+        shape_of(&sv(&["--", "--account", "z", "--ccm-tmux"]), c),
+        Some(("z".into(), true))
+    );
+    assert_eq!(
+        shape_of(&sv(&["--", "--ccm-tmux", "--account", "z"]), c),
+        Some(("z".into(), true))
+    );
+    for not in [
+        &["--", "--account", "z", "--cwd", "/x"][..],
+        &["-p", "--", "--account", "z"],
+        &["--", "--ccm-tmux"],
+        &["--account", "z"],
+        &["--", "--account"],
+        &[],
+    ] {
+        assert_eq!(shape_of(&sv(not), c), None, "{not:?}");
+    }
+    assert_eq!(shape_of(&sv(&["--", "--account", "z"]), RestTo::Ccm), None);
 }

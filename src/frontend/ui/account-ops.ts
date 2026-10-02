@@ -70,7 +70,7 @@ const CHANGE_KEYS = [
   "backup",
   "account",
   "loginCmd",
-  "alias",
+  "aliasNames",
   "keyMasked",
   "keyProblem",
   "aliases",
@@ -79,14 +79,15 @@ const CHANGE_KEYS = [
 const optStr = (v: unknown): v is string | null => v === null || typeof v === "string";
 const strList = (v: unknown): v is string[] => Array.isArray(v) && v.every((x) => typeof x === "string");
 
-function aliasChangeOk(v: unknown): v is AliasChange | null {
-  if (v === null) return true;
+function aliasChangeOk(v: unknown): v is AliasChange {
   return (
     isObj(v) &&
-    exactKeys(v, ["path", "changed", "names", "note"]) &&
+    exactKeys(v, ["path", "changed", "added", "removed", "skipped", "note"]) &&
     typeof v.path === "string" &&
     typeof v.changed === "boolean" &&
-    strList(v.names) &&
+    strList(v.added) &&
+    strList(v.removed) &&
+    strList(v.skipped) &&
     optStr(v.note)
   );
 }
@@ -105,10 +106,11 @@ export function decodeAccountChange(v: unknown): AccountChange | null {
     !optStr(v.backup) ||
     !acctOk ||
     !optStr(v.loginCmd) ||
-    !optStr(v.alias) ||
+    !strList(v.aliasNames) ||
     !optStr(v.keyMasked) ||
     !optStr(v.keyProblem) ||
-    !aliasChangeOk(v.aliases)
+    !Array.isArray(v.aliases) ||
+    !v.aliases.every(aliasChangeOk)
   )
     return null;
   return v as unknown as AccountChange;

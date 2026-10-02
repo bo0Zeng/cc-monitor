@@ -10,6 +10,7 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { copyText } from "../../../../src/frontend/ui/copy-table";
 
 const PLAN_RS = readFileSync(resolve(__dirname, "../../../../src/backend/control/ccm/plan.rs"), "utf8");
 
@@ -67,6 +68,8 @@ describe("D1 · tmux 四选的说明与后端退让规则同一张表", () => {
   it("表单上选哪一种，下面那句就是哪一种的说明；每个选项的 title 也是它", async () => {
     const { buildAliasManager, TMUX_NAMING } = await import("../../../../src/frontend/ui/settings/machine-aliases");
     const w = buildAliasManager({ platform: "posix", origin: () => "<local>" });
+    // 表单是「＋ 新增别名」就地展开的那一张。
+    [...w.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === copyText("machineAliases.list.add"))!.click();
     const sel = [...w.querySelectorAll("select")].find((s) =>
       [...s.options].some((o) => o.value === "base"),
     );

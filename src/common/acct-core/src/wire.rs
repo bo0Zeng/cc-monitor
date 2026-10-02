@@ -119,7 +119,7 @@ pub struct AccountRef {
     pub config_dir: String,
 }
 
-/// 账号别名文件（`~/.cc-monitor/aliases.sh`）这一趟怎么样了。
+/// 建号 / 删号那一刻，一份别名文件（`~/.cc-monitor/aliases.sh` · Windows 上另有 `aliases.ps1`）这一趟怎么样了。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(test, derive(ts_rs::TS))]
@@ -128,8 +128,12 @@ pub struct AliasChange {
     pub path: String,
     /// 这一趟真写了没有（内容没变 ⇒ 一个字节不写）。
     pub changed: bool,
-    /// 这一趟之后文件里每个号那一条别名的名字（如 `alphacc`）。
-    pub names: Vec<String>,
+    /// 建号：加进去的别名（如 `alphacc` `alphacct`）。
+    pub added: Vec<String>,
+    /// 删号：删掉的别名（参数指向这个号的全部）。
+    pub removed: Vec<String>,
+    /// 建号：名字被别的别名占着、没加的那几个。
+    pub skipped: Vec<String>,
     /// 没能自动改它时的那句话（比如文件里有认不出的行）；`None` = 一切照常。
     pub note: Option<String>,
 }
@@ -151,13 +155,14 @@ pub struct AccountChange {
     pub account: Option<AccountRef>,
     /// `accounts-add` 的订阅号没导入凭据：在终端里跑这一行登录（claude 自己的登录界面）。
     pub login_cmd: Option<String>,
-    /// 这个号自动拿到的别名（预演时是将要写的那一条）。
-    pub alias: Option<String>,
+    /// `accounts-init` / `accounts-add`：这个号会自动拿到的别名名字（预演时也给）。
+    pub alias_names: Vec<String>,
     /// `accounts-add` 的 API 号：key 写进 apikey 表之后的掩码。
     pub key_masked: Option<String>,
     /// 号建好了、key 却没写进去时那一句（界面据此让人在那一行上重填）。
     pub key_problem: Option<String>,
-    pub aliases: Option<AliasChange>,
+    /// 建号 / 删号那一刻改了的别名文件，一份一条；别的命令 ⇒ 空。
+    pub aliases: Vec<AliasChange>,
 }
 
 /// 核对里一条的档。

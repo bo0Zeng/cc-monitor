@@ -2566,11 +2566,16 @@ monitor（宿主，只交事实）在**每台**远端流握手成功那一刻交
 
 这台机器现在登录的那个身份收成名叫 `name` 的默认号：Claude 的身份文件（凭据 · `.claude.json` · 几份本机状态）搬进
 `~/.cc-monitor/accounts/<name>/`（`0700`，凭据 `0600`），共享库 `~/.claude` 顶层其余每一项在号的目录里链回共享库；写清单
-`~/.cc-monitor/accounts/accounts.json`（schema v1，账号 0 合成在数组末尾、没有 `configDir` 键）；然后把每个号一条 `<名>cc` 并进别名文件。
+`~/.cc-monitor/accounts/accounts.json`（schema v1，账号 0 合成在数组末尾、没有 `configDir` 键）；然后给这个号加上 `<名>cc` ＋ `<名>cct` 两条别名。
+
+**别名清单只跟着账号表里号的增减走**（建号 · 删号 · 回滚都是它的特例，实现只有一处：比前后账号表）：新出现的号加 `<名>cc`（`-- --account <号>`）
+与 `<名>cct`（再带 `--ccm-tmux`；没有 tmux 的那一份别名文件只加 `<名>cc`），名字被别的别名占着就跳过；消失的号删掉参数指向它的全部（不论名字）。
+修复 · 设默认 · 隔离不动清单；平时不回补（改了名、删掉其中一条都保持原样）。这台说哪几种 shell 就改哪几份别名文件（Windows 上 `aliases.sh` 与 `aliases.ps1` 两份）。
+别名文件还不在 ⇒ 先带上首建那几条（`cc` · `cct` · `cca`；PowerShell 那一份只有 `cc`）。
 
 ```text
 → {"id":"a1","cmd":"accounts-init","args":{"name":"z","dryRun":true}}
-← {"kind":"reply","id":"a1","ok":true,"data":{"applied":false,"steps":["建目录 /home/u/.cc-monitor/accounts", …],"notes":[],"backup":null,"account":null,"loginCmd":null,"alias":"alphacc","keyMasked":null,"keyProblem":null,"aliases":null}}
+← {"kind":"reply","id":"a1","ok":true,"data":{"applied":false,"steps":["建目录 /home/u/.cc-monitor/accounts", …],"notes":[],"backup":null,"account":null,"loginCmd":null,"aliasNames":["alphacc","alphacct"],"keyMasked":null,"keyProblem":null,"aliases":[]}}
 ```
 
 | 字段 | 向 | 说明 |
@@ -2581,8 +2586,8 @@ monitor（宿主，只交事实）在**每台**远端流握手成功那一刻交
 | `steps` | ← | 做了（预演时：将要做）的每一步，一句一行 |
 | `notes` | ← | 提示（不挡这一趟），比如共享库里还没有可共享的项 |
 | `backup` | ← | 这一趟留的备份（`~/.cc-monitor/accounts/.backup-<这一段>`，回滚用它）；没改动 ⇒ `null` |
-| `alias` | ← | 这个号拿到的别名名字 |
-| `aliases` | ← | 别名文件那一步：`{path, changed, names, note}`（`note` = 没能自动改它时那一句，比如文件里有认不出的行） |
+| `aliasNames` | ← | 这个号会拿到的别名名字（`accounts-init` / `accounts-add`，预演时也给；别的命令 ⇒ `[]`） |
+| `aliases` | ← | 改了的别名文件，一份一条 `{path, changed, added, removed, skipped, note}`：加了 / 删了 / 名字被占跳过的那几条；`note` = 没能自动改它时那一句（比如文件里有认不出的行 ⇒ 不动它）。账号表里没有号增减 ⇒ `[]` |
 
 先备份再改：每一步动一份既有的东西之前先原样拷进备份目录（`0700`），**做成之后**才往备份里的 `undo.tsv` 记一行。
 已经建过 · 名字不合规 · 身份文件是一条链接（以前的软链切号方式留下的）⇒ `refused`，一个字节不写。
@@ -2596,7 +2601,7 @@ monitor（宿主，只交事实）在**每台**远端流握手成功那一刻交
 
 ```text
 → {"id":"a2","cmd":"accounts-add","args":{"name":"b","kind":"subscription","credFile":"~/snap/b.json"}}
-← {"kind":"reply","id":"a2","ok":true,"data":{"applied":true,"steps":[…],"notes":[],"backup":"20260930-120000","account":{"name":"b","configDir":"/home/u/.cc-monitor/accounts/b"},"loginCmd":null,"alias":"betacc","keyMasked":null,"keyProblem":null,"aliases":{"path":"/home/u/.cc-monitor/aliases.sh","changed":true,"names":["alphacc","betacc"],"note":null}}}
+← {"kind":"reply","id":"a2","ok":true,"data":{"applied":true,"steps":[…],"notes":[],"backup":"20260930-120000","account":{"name":"b","configDir":"/home/u/.cc-monitor/accounts/b"},"loginCmd":null,"aliasNames":["betacc","betacct"],"keyMasked":null,"keyProblem":null,"aliases":[{"path":"/home/u/.cc-monitor/aliases.sh","changed":true,"added":["betacc","betacct"],"removed":[],"skipped":[],"note":null}]}}
 ```
 
 | 字段 | 向 | 说明 |
@@ -2611,7 +2616,7 @@ monitor（宿主，只交事实）在**每台**远端流握手成功那一刻交
 | `configDir` | ← | 那个号的配置目录（`account` 里） |
 | `loginCmd` | ← | 订阅号没导入凭据时：在终端里跑这一行登录（`'<家>/.cc-monitor/bin/ccm' -- --account '<名>'`，claude 自己的登录界面）；否则 `null` |
 | `keyMasked` · `keyProblem` | ← | API 号：写进 apikey 表之后的掩码；号建好了 key 却没写进去时那一句（界面据此让人在那一行重填） |
-| `applied` · `steps` · `notes` · `backup` · `alias` · `aliases` | ← | 同 `accounts-init` |
+| `applied` · `steps` · `notes` · `backup` · `aliasNames` · `aliases` | ← | 同 `accounts-init` |
 
 号的目录：链齐共享项；身份之外那几份本机状态从共享库复制成它自己的一份（共享库那份是模板）；身份本体绝不从别的号复制。
 
@@ -2627,7 +2632,7 @@ monitor（宿主，只交事实）在**每台**远端流握手成功那一刻交
 | `name` | → | 要删的号；`0` · 不认识的号 ⇒ `refused` |
 | `force` | → | 可缺席的布尔：删的是默认号时必须给真（剩下的第一个号接着当默认） |
 | `dryRun` | → | 同上 |
-| `applied` · `steps` · `notes` · `backup` · `aliases` | ← | 同 `accounts-init`；它那一条别名随之删掉 |
+| `applied` · `steps` · `notes` · `backup` · `aliases` | ← | 同 `accounts-init`；参数指向它的别名随之删掉（`removed`） |
 
 只删它自己的目录（只许在账号库里），共享库一个字节不动；目录整棵先拷进备份（凭据的副本留在备份里，回滚要用）。
 这台 key 表（`~/.cc-monitor/apikey-credentials.json`）里有这个号那一行（API 号）⇒ 第一步先清它：整份表先拷进同一份备份，只摘这一行、别的行不动；订阅号那一趟不碰这份表。表读不了 ⇒ 不清，`notes` 里说一句。
@@ -2651,7 +2656,7 @@ monitor（宿主，只交事实）在**每台**远端流握手成功那一刻交
 
 ```text
 → {"id":"a5","cmd":"accounts-repair","args":{}}
-← {"kind":"reply","id":"a5","ok":true,"data":{"applied":true,"steps":["建链接 …","改链接 …","改权限 … → 600"],"notes":[],"backup":"…",…,"aliases":{…}}}
+← {"kind":"reply","id":"a5","ok":true,"data":{"applied":true,"steps":["建链接 …","改链接 …","改权限 … → 600"],"notes":[],"backup":"…",…,"aliases":[]}}
 ```
 
 | 字段 | 向 | 说明 |
@@ -2674,7 +2679,7 @@ monitor（宿主，只交事实）在**每台**远端流握手成功那一刻交
 |---|---|---|
 | `item` | → | 共享库顶层的一个名字（含 `/` · `.` · `..` · 共享库里没有 ⇒ `refused`） |
 | `dryRun` | → | 同上 |
-| `applied` · `steps` · `notes` · `backup` · `aliases` | ← | 同 `accounts-init`（`aliases` 恒 `null`：这一条不动账号表）；它不在身份表里 ⇒ `notes` 提示之后「核对」会报它不是共享链接 |
+| `applied` · `steps` · `notes` · `backup` · `aliases` | ← | 同 `accounts-init`（`aliases` 恒 `[]`：这一条不动账号表）；它不在身份表里 ⇒ `notes` 提示之后「核对」会报它不是共享链接 |
 
 复制成私有的那一下：旁边先复制一份、核共享库那份复制期间没被改过、摘掉链接（绝不跟着链接写回共享库）、换名上位、再核一次；不对 ⇒ 还原成链接。
 
@@ -2689,7 +2694,7 @@ monitor（宿主，只交事实）在**每台**远端流握手成功那一刻交
 |---|---|---|
 | `backup` | → ← | 入：用哪一份（`.backup-` 后面那一段，只许 `[0-9A-Za-z._-]`、不含 `..`）；缺席 ⇒ 最近一份还没还原过的。出：用的那一份 |
 | `dryRun` | → | 同上 |
-| `applied` · `steps` · `notes` · `aliases` | ← | 同 `accounts-init`；`notes` 里是撤销清单里认不出、跳过了的行 |
+| `applied` · `steps` · `notes` · `aliases` | ← | 同 `accounts-init`；`notes` 里是撤销清单里认不出、跳过了的行；回滚前后账号表里消失 / 重新出现的号照删号 / 建号改别名 |
 
 按撤销清单倒着来：先还原（现场的那一份先挪进备份里的 `pre-rollback/`，不直接删）、再删这一趟新建的；每一条自己的错误不挡别的条。
 还原只落在账号库 · 共享库 · 家目录底下，删只删账号库里的；删号清掉的 key 表那一行从备份那一份里取回、只放回这一行（表里此后别人写进来的行不动）；做完留 `.rolled-back` 标记。有条没做成 ⇒ `io_failed`（话里说做了几条、哪几条没成、备份在哪）。
@@ -3177,13 +3182,13 @@ cc-monitor 装的：skill 按装记录逐文件删（带逐字节 `expect`），
 #### `aliases-render`：清单 → 代码（MIG-3a，09-28，**纯**）
 
 ```text
-→ {"id":"a1","cmd":"aliases-render","args":{"aliases":[{"name":"alphacc","args":["--","--account","z"]}],"shell":"posix"}}
+→ {"id":"a1","cmd":"aliases-render","args":{"aliases":[{"name":"alphacc","args":["--","--account","z"],"restTo":"agent"}],"shell":"posix"}}
 ← {"kind":"reply","id":"a1","ok":true,"data":{"fileText":"…","lines":["alphacc() { ccm \"$@\" -- --account z; }"],"problems":[],"collisions":[]}}
 ```
 
 | 字段 | 向 | 说明 |
 |---|---|---|
-| `aliases` | → | 清单：每条 `{name, args}`（`args` 是原样的 ccm argv） |
+| `aliases` | → | 清单：每条 `{name, args, restTo}`（`args` 是原样的 ccm argv；`restTo` = 调用时跟的词交给谁：`agent` 接在 `--` 左边（交给 agent），`ccm` 接在右边末尾 —— 只许单放 `--attach` 那一形，即 `cca`） |
 | `shell` | → | `posix` / `powershell`（这台后端不在 Windows ⇒ `powershell` 拒，主会话 09-27 裁） |
 | `fileText` · `lines` | ← | 整份文件 · 每条合格别名的写法 |
 | `problems` | ← | 不合格的那几条 `{name, message}`（非空时 `aliases-install` 一个字节都不写） |
@@ -3195,15 +3200,19 @@ cc-monitor 装的：skill 按装记录逐文件删（带逐字节 `expect`），
 
 ```text
 → {"id":"a2","cmd":"aliases-read","args":{"shell":"posix","rcPath":null}}
-← {"kind":"reply","id":"a2","ok":true,"data":{"aliasPath":"/home/u/.cc-monitor/aliases.sh","exists":true,"aliases":[…],"unparsed":[],"rcCandidates":[…],"otherRc":null}}
+← {"kind":"reply","id":"a2","ok":true,"data":{"aliasPath":"/home/u/.cc-monitor/aliases.sh","exists":true,"aliases":[…],"groups":[{"account":"z","tmux":false},null],"accounts":["z","b"],"missing":[{"account":"b","tmux":false,"alias":{…}}],"fingerprint":"41-5b6a…","unparsed":[],"rcCandidates":[…],"otherRc":null}}
 ```
 
 | 字段 | 向 | 说明 |
 |---|---|---|
 | `shell` | → | 同 `aliases-render` |
 | `rcPath` | → | 人另指的那一份（`null` = 不指）：过围栏（只许落在 home 之内 · 符号链接不许跑出去）后并进候选 |
-| `aliasPath` · `exists` · `aliases` · `unparsed` | ← | 这台上那份别名文件的路径 · 在不在 · 读回的清单 · 认不出的行（原文带原因） |
-| `rcCandidates` | ← | 启动文件候选（方言答列哪几份）：每份 `{path, sourced, exists, block, unreadable, policy}`，`block` = 别名块现状 `{present, version, outdated, conflictingFunctions, manualCleanupHint}`；`policy`（只有 `$PROFILE` 那几份有）= 加载它的那一代 PowerShell 的执行策略，现问 `{host, effective, loads, groupPolicy, error}`（`host` = `powershell` / `pwsh`；`loads` = 这一档下它会不会跑这份未签名的本地文件，说不清 ⇒ `null`；`groupPolicy` = 组策略钉着） |
+| `aliasPath` · `exists` · `aliases` · `unparsed` | ← | 这台上那份别名文件的路径 · 在不在 · 读回的清单（不在 ⇒ 首建会带上的 `cc` · `cct` · `cca`，PowerShell 只有 `cc`）· 认不出的行（原文带原因） |
+| `groups` | ← | 与 `aliases` 逐条对应：参数恰是「某号」或「某号 ＋ tmux」⇒ `{account, tmux}`，其余 ⇒ `null`（只看参数，不看名字；界面照这一格分组） |
+| `accounts` | ← | 这台的账号表（具名号，按账号库的顺序；没有账号库 ⇒ `[]`） |
+| `missing` | ← | 账号表里的号缺哪一条：`{account, tmux, alias}`（`alias` 就是点「加上」要加进清单的那一条；没有 tmux 的目标只看 `<号>cc`） |
+| `fingerprint` | ← | 盘上那份别名文件的指纹（不透明的串：长度 ＋ 一个 64 位散列；不在 ⇒ `null`），存的时候交回 `aliases-install` |
+| `rcCandidates` | ← | 启动文件候选（方言答列哪几份）：每份 `{path, sourced, exists, block, unreadable, policy}`，`block` = 别名块现状 `{present, version, outdated, conflictingFunctions, manualCleanupHint}`（`conflictingFunctions` = 块外自己定义的、与清单里某条同名的函数 `{name, line}`）；`policy`（只有 `$PROFILE` 那几份有）= 加载它的那一代 PowerShell 的执行策略，现问 `{host, effective, loads, groupPolicy, error}`（`host` = `powershell` / `pwsh`；`loads` = 这一档下它会不会跑这份未签名的本地文件，说不清 ⇒ `null`；`groupPolicy` = 组策略钉着） |
 | `otherRc` | ← | `rcPath` 过了围栏之后的绝对路径 |
 
 读经本进程文件管理面（`files-home` · `files-peek` · `files-stat`）。已握手的终端数不在这里（住 monitor 进程里）。错误码：`bad_args` · `refused`。⚠ **CLI 面也有它**（`--aliases-read`）。
@@ -3211,44 +3220,42 @@ cc-monitor 装的：skill 按装记录逐文件删（带逐字节 `expect`），
 #### `aliases-install`：写别名文件（MIG-3a，09-28，**写用户文件**）
 
 ```text
-→ {"id":"a3","cmd":"aliases-install","args":{"aliases":[…],"rcPath":"/home/u/.bashrc","shell":"posix"}}
-← {"kind":"reply","id":"a3","ok":true,"data":{"aliasPath":"/home/u/.cc-monitor/aliases.sh","wroteAliasFile":true,"notes":["…"]}}
+→ {"id":"a3","cmd":"aliases-install","args":{"aliases":[…],"shell":"posix","fingerprint":"41-5b6a…"}}
+← {"kind":"reply","id":"a3","ok":true,"data":{"aliasPath":"/home/u/.cc-monitor/aliases.sh","wroteAliasFile":true}}
 ```
 
 | 字段 | 向 | 说明 |
 |---|---|---|
 | `aliases` · `shell` | → | 同 `aliases-render`（有一条不合格 ⇒ 整批不写、`refused`） |
-| `rcPath` | → | 选了哪份启动文件：**只查**它接没接上，不往里写 |
-| `aliasPath` · `wroteAliasFile` · `notes` | ← | 写到哪 · 真写了没有（内容一致就一个字节不写）· 给人看的补充说明 |
+| `fingerprint` | → | 必给（字符串或 `null`）：读回时那份的指纹（`aliases-read` 的 `fingerprint`）。盘上此刻不是那一份（被别处改过 / 删了 / 新出现了）⇒ `stale`、一个字节不写 |
+| `aliasPath` · `wroteAliasFile` | ← | 写到哪 · 真写了没有（内容一致就一个字节不写） |
 
-写经本进程 `files-put`（逐级补目录、不备份：那是 cc-monitor 自己的文件）。错误码：`bad_args` · `refused`。⚠ **CLI 面也有它**（`--aliases-install`）。
+写经本进程 `files-put`（读改写一次、CAS，逐级补目录、不备份：那是 cc-monitor 自己的文件）。错误码：`bad_args` · `refused` · `stale`（界面重读再让人存）。⚠ **CLI 面也有它**（`--aliases-install`）。
 
 #### `aliases-block-render`：别名块预览（MIG-3a，09-28，**纯**）
 
 ```text
-→ {"id":"a4","cmd":"aliases-block-render","args":{"rcPath":"~/.bashrc","withCc":false}}
-← {"kind":"reply","id":"a4","ok":true,"data":{"text":"# === cc-monitor remote ccm BEGIN ===\n…"}}
+→ {"id":"a4","cmd":"aliases-block-render","args":{"rcPath":"~/.bashrc"}}
+← {"kind":"reply","id":"a4","ok":true,"data":{"text":"# === cc-monitor remote ccm BEGIN v2 ===\n…"}}
 ```
 
 | 字段 | 向 | 说明 |
 |---|---|---|
 | `rcPath` | → | 目标文件（方言由它的扩展名定：`.ps1` ⇒ PowerShell） |
-| `withCc` | → | 要不要连 `cc` 函数一起装（只对 PowerShell 有意义） |
-| `text` | ← | 往一份空文件里装一次会写成什么（与 `aliases-block-install` 调同一个 `plan_install`） |
+| `text` | ← | 往一份空文件里装一次会写成什么（与 `aliases-block-install` 调同一个 `plan_install`）。块只管接入：POSIX 让 `ccm` 进 PATH ＋ 接上别名文件；PowerShell 是拉前握手 `__ccm_bind` ＋ 接上别名文件 |
 
 错误码：`bad_args` · `refused`。⚠ **CLI 面也有它**（`--aliases-block-render`）。
 
 #### `aliases-block-install`：别名块装进人选的那份启动文件（MIG-3a，09-28，**写用户文件**）
 
 ```text
-→ {"id":"a5","cmd":"aliases-block-install","args":{"rcPath":"~/.bashrc","withCc":false}}
+→ {"id":"a5","cmd":"aliases-block-install","args":{"rcPath":"~/.bashrc"}}
 ← {"kind":"reply","id":"a5","ok":true,"data":{}}
 ```
 
 | 字段 | 向 | 说明 |
 |---|---|---|
 | `rcPath` | → | 人选的那份启动文件（过围栏；方言由扩展名定，再过方言那一道闸） |
-| `withCc` | → | 同 `aliases-block-render` |
 
 幂等、整块替换，块外一个字节不动；围栏损坏（有 BEGIN 没 END）⇒ 中止。写经本进程 `files-put`（带备份、逐级补目录）。
 错误码：`bad_args` · `refused`。⚠ **CLI 面也有它**（`--aliases-block-install`）。
@@ -4330,7 +4337,7 @@ CLI 面这两条的用处是**量一趟遍历** ／ **在一个常驻后端进�
 文件系统，注册信道改走**终端窗口标题**（OSC 转义经 tmux/ssh 透传到本地），monitor
 按标题扫窗口。全部代码：远端 **`shared/ccm`**（部署为 `~/.local/bin/ccm`，字节源是
 `sftp.rs` 的 `CCM_CLI_SCRIPT`）—— **不是** `remote-section.ts::CCM_WRAPPER_SNIPPET`，
-那个其实是 `src/shared/ccm-aliases.sh`，**28 行、别名只有 `cc`/`cct`/`cca` 这 3 个**，
+那个其实是 `src/shared/ccm-aliases.sh`，**3 行、一个别名都不定义**（只让 `ccm` 进 PATH 并接上别名文件），
 无任何 rbind / 标题 / poller 逻辑（`sftp.rs` 的守卫①明令该块不得含实现）+ 本地 `bind.rs::RemoteHwndCache` + `lib.rs::bring_remote_terminal_to_front`。
 
 > ⚠ **上面那句里的「N 行」与那份名单由机器对账**（`KR58D2`，判据住

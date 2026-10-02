@@ -53,15 +53,17 @@ use crate::platform::shell::dialect::{self, Shell};
 pub(crate) const BEGIN_MARKER: &str = "# === cc-monitor BEGIN";
 pub(crate) const END_MARKER: &str = "# === cc-monitor END";
 
-/// cc function 模板源码（含 `{{COMMAND_NAME}}` placeholder）
+/// PowerShell 别名块的模板源码（`__ccm_bind` ＋ 接上别名文件那一行）。
 const CC_TEMPLATE: &str = include_str!("../../../shared/cc.ps1.tpl");
 
-/// 别名块里那个 `cc` 函数的名字（PowerShell 那一臂由它渲染；POSIX 那一臂的名字住 `src/shared/ccm-aliases.sh`，
-/// 这里只拿它查「用户 rc 里有没有同名函数」）。
-///
-/// 从前是 `cc_integration_*` 三条命令的入参 `command_name`，而界面从来只传 `"cc"`
-/// （那张表：「界面写死 `CC_COMMAND_NAME = "cc"`」）⇒ 一个没人用的自由度，收成这一个常量。
-pub(crate) const CC_FUNCTION_NAME: &str = "cc";
+/// 启动文件里、我们的围栏之外，自己定义了一个与清单里某条同名的函数（会和那条别名打架：后定义的赢）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct NameClash {
+    pub name: String,
+    /// 1 起的行号。
+    pub line: usize,
+}
 
 /// 一份启动文件（rc / `$PROFILE`）里**别名块**的现状。
 ///
@@ -73,16 +75,16 @@ pub(crate) const CC_FUNCTION_NAME: &str = "cc";
 pub(crate) struct BlockState {
     /// 这份文件里有没有 cc-monitor 的别名块（**悬空的 BEGIN 也算在**，见 `block_presence`）。
     pub present: bool,
-    /// 块头上的版本串（PowerShell 那一对才有；POSIX 那一对恒 `None`）。
+    /// 块头上的版本串（`… BEGIN v2 ===` 那一段）；不带版本串的旧块 ⇒ `None`。
     pub version: Option<String>,
-    /// 块在、而版本串不是这一版模板的那个 ⇒ `true`（只有 PowerShell 那一对有版本串）。
+    /// 块在、而版本串不是这一版的那个 ⇒ `true`（两种方言都判；POSIX 那一块不带版本串的就是旧的）。
     /// v3 起模板结尾多一行接上别名文件—— 装着 v2 的人**重装一次**才带上那一行，界面据此提示。
     /// v4 起 `__ccm_bind` 找 monitor 数据目录走唯一出口（渲染时填）—— 装着 v3 的人同样重装一次。
     /// v5：数据目录搬到 `~/.cc-monitor`，v4 块里 `$ccmDir` 写的是旧住址 ⇒ 抬版本，装着 v4 的人重装一次（不认老路径）。
     /// 「这一版是哪个」只从模板本身读（[`current_block_version`]），不另写一份字面量。
     pub outdated: bool,
-    /// 块外已有的同名函数（与 [`CC_FUNCTION_NAME`] 同名）。
-    pub conflicting_functions: Vec<String>,
+    /// 块外自己定义的、与清单里某条同名的函数（只提醒，不替人改）。
+    pub conflicting_functions: Vec<NameClash>,
     /// 🔴 **「你 rc 里这几行是旧的」那段话。** 空串 = 没有要清的。
     ///
     /// 它是 [`render_manual_cleanup_hint`] 的产物：**逐行指名**（行号 + 原文）
@@ -96,19 +98,17 @@ pub(crate) struct BlockState {
 }
 
 /// **只读、纯函数**：一份启动文件的正文（盘上原样，BOM 在这里剥）→ 别名块的现状。
-/// 方言按**这份文件自己**的扩展名定（`Shell::of_target`），不按调用方在问哪种 shell。
-pub(crate) fn block_state(path: &Path, raw: &str) -> BlockState {
+/// 方言按**这份文件自己**的扩展名定（`Shell::of_target`），不按调用方在问哪种 shell。`names` 是清单里那几条的名字。
+pub(crate) fn block_state(path: &Path, raw: &str, names: &[String]) -> BlockState {
     let flavor = Shell::of_target(path);
     let content = strip_bom(raw);
     let (present, version) = block_presence(flavor, content);
-    let outdated = present
-        && flavor == Shell::PowerShell
-        && version.as_deref() != current_block_version().as_deref();
+    let outdated = present && version != current_version_of(flavor);
     BlockState {
         present,
         version,
         outdated,
-        conflicting_functions: find_conflicting_functions(flavor, content, CC_FUNCTION_NAME),
+        conflicting_functions: find_conflicting_functions(flavor, content, names),
         manual_cleanup_hint: match flavor {
             Shell::PowerShell => String::new(),
             Shell::Posix => {
@@ -122,10 +122,10 @@ pub(crate) fn block_state(path: &Path, raw: &str) -> BlockState {
 ///
 /// 从前的预览只会 PowerShell 那一块（`render_cc_code`），POSIX 那一块没有预览。
 /// 今天两种方言都答，而且答的是**装那一跳调的同一个** [`plan_install`] —— 「预览的就是写的那一份」
-/// 由同一个函数保证，不是两份拼法对拍。`with_cc` 只对 PowerShell 那一臂有意义（同 [`plan_install`]）。
-pub(crate) fn render_block(shell: Shell, with_cc: bool, home: &str) -> Result<String, String> {
+/// 由同一个函数保证，不是两份拼法对拍。
+pub(crate) fn render_block(shell: Shell, home: &str) -> Result<String, String> {
     let what = copy_text("rsProfileInstaller.preview.what", &[]);
-    plan_install(shell, "", CC_FUNCTION_NAME, with_cc, &what, home)
+    plan_install(shell, "", &what, home)
 }
 
 // 这里原来是 `ProfileKind`（PS 5.1 / PS 7 / 自定义 三个标签）与 `ProfileScan`〔散文墓碑〕
@@ -154,14 +154,11 @@ pub(crate) fn render_block(shell: Shell, with_cc: bool, home: &str) -> Result<St
 /// ⇒ 本机与远端装进 rc 的**是同一份东西**（`K15` / `K36`），
 /// 而不是「同一件事的第四个形状」（那三套）。
 ///
-/// `command_name` / `include_cc_function` **只对 PowerShell 那一臂有意义**：
-/// POSIX 那一块的名字（`cc` / `cct`）住在 `src/shared/ccm-aliases.sh` 里，
-/// 那份文件自己用 `declare -f` 让着用户已有的同名函数 —— 由它说了算，不由这里的参数说了算。
+/// 两种方言的块都只管接入：POSIX 让 `ccm` 进 PATH ＋ 接上别名文件；PowerShell 是拉前握手 `__ccm_bind` ＋ 接上别名文件
+/// （`cc` / `cct` / `cca` 都在清单里，块里不再带函数）。
 pub(crate) fn plan_install(
     flavor: Shell,
     existing: &str,
-    command_name: &str,
-    include_cc_function: bool,
     what: &str,
     home: &str,
 ) -> Result<String, String> {
@@ -172,7 +169,7 @@ pub(crate) fn plan_install(
             //   `$PROFILE` 在这台上，`__ccm_bind` 找的也是这台上 monitor 的那个目录。
             let dir = monitor_data_dir(home)
                 .ok_or_else(|| copy_text("rsProfileInstaller.ps.noDataDir", &[]))?;
-            let code = render_cc_code(command_name, include_cc_function, &dir);
+            let code = render_cc_code(&dir);
             replace_or_append_block(existing, &code, what)
         }
         Shell::Posix => merge_profile_block(existing, CCM_WRAPPER_SNIPPET, what),
@@ -200,18 +197,20 @@ pub(crate) fn plan_uninstall(flavor: Shell, existing: &str, what: &str) -> Resul
 ///
 /// 两种方言认的是**两对不同的围栏**，一对都不许混：混了就是「装一个把另一个整块替换掉」
 /// （`account_aliases` 那对刻意不同前缀，理由同源）。
+/// 两种方言同一口径：只看有没有一行以 BEGIN 打头（**悬空的 BEGIN 也算在**——否则界面会说「未安装」
+/// 且藏起卸载按钮，而点安装却报行号，那正是 T04 审计③ 治过的那一形），版本串是 BEGIN 后面那一段。
 fn block_presence(flavor: Shell, content: &str) -> (bool, Option<String>) {
     match flavor {
-        Shell::PowerShell => find_block_version(content),
-        // POSIX 那一对没有版本后缀 ⇒ 恒 `None`。判「在不在」与 PowerShell 同口径：
-        // 只看有没有一行以 BEGIN 打头（**悬空的 BEGIN 也算在**——否则界面会说「未安装」
-        // 且藏起卸载按钮，而点安装却报行号，那正是 T04 审计③ 治过的那一形）。
-        Shell::Posix => (
-            content
-                .lines()
-                .any(|l| l.trim_start().starts_with(CCM_PROFILE_BEGIN)),
-            None,
-        ),
+        Shell::PowerShell => find_block_version(content, BEGIN_MARKER),
+        Shell::Posix => find_block_version(content, CCM_PROFILE_BEGIN),
+    }
+}
+
+/// 这一版别名块的版本串：PowerShell 那一块从模板第一行现读，POSIX 那一块是 [`POSIX_BLOCK_VERSION`]。
+fn current_version_of(flavor: Shell) -> Option<String> {
+    match flavor {
+        Shell::PowerShell => current_block_version(),
+        Shell::Posix => Some(POSIX_BLOCK_VERSION.to_string()),
     }
 }
 
@@ -294,7 +293,7 @@ fn fence_marker(line: &str) -> Option<bool> {
 /// - 它认的是「**提到 ccm**」，不是「**这一行是旧的**」。一个在自己函数里调 `ccm` 的用户
 ///   （`src/shared/ccm-aliases.sh` 头注逐字鼓励这么做）也会被指名 —— 所以产物是
 ///   [`render_manual_cleanup_hint`] 那种「你自己定」的措辞，**不是** 「请删除」。
-/// - 形状按 `名字() {` 认函数（同 [`builtin_alias_names`] 那一形）。
+/// - 形状按 `名字() {` 认函数（方言的 `declared_function`）。
 ///   `function cc { … }` 这一写法会落进 [`LegacyRcKind::Other`] —— **漏的是分类，不是那一行**，
 ///   它仍然被指名。
 pub(crate) fn scan_legacy_rc_lines(content: &str) -> Vec<LegacyRcLine> {
@@ -327,43 +326,24 @@ pub(crate) fn scan_legacy_rc_lines(content: &str) -> Vec<LegacyRcLine> {
 }
 
 // 这里原来有 POSIX「`名字() {` ⇒ 名字」那一份认法 —— 定义函数的写法归方言，搬进
-//   （`platform/shell/dialect.rs` 的 `ShellDialect::declared_function`），[`builtin_alias_names`] 与本扫描共用那一份。
+//   （`platform/shell/dialect.rs` 的 `ShellDialect::declared_function`），本扫描与块外同名函数那一格共用那一份。
 
 /// 🔴 `KR62D2` 的产物：**一段让用户自己动手的提示。** 没有要清的就是空串。
 ///
 /// **产品一个字节都不删**（`K31` + 用户逐字「原本的配置要手动删除」）。
 /// 措辞刻意不是「请删除」：见 [`scan_legacy_rc_lines`] 的诚实边界那一节。
-///
-/// 「哪几行会把我们装的那块遮蔽掉」现算自 [`builtin_alias_names`]
-/// （= `src/shared/ccm-aliases.sh` 本身），**这里不抄一份名字清单**。
+/// 「哪一行会和清单里的同名别名打架」是另一格（[`BlockState::conflicting_functions`]）。
 pub(crate) fn render_manual_cleanup_hint(what: &str, hits: &[LegacyRcLine]) -> String {
     if hits.is_empty() {
         return String::new();
     }
-    let builtin = builtin_alias_names();
-    let mut shadowed = 0usize;
     let mut body = String::new();
     for h in hits {
-        let shadow = h
-            .name
-            .as_deref()
-            .is_some_and(|n| builtin.iter().any(|b| *b == n));
-        if shadow {
-            shadowed += 1;
-        }
         body.push_str(&copy_text(
             "rsProfileInstaller.hint.line",
             &[
                 ("lineNo", &h.line_no.to_string()),
                 ("text", &(h.text.trim_end()).to_string()),
-                (
-                    "mark",
-                    &(if shadow {
-                        copy_text("rsProfileInstaller.hint.shadowMark", &[])
-                    } else {
-                        String::new()
-                    }),
-                ),
             ],
         ));
     }
@@ -375,12 +355,6 @@ pub(crate) fn render_manual_cleanup_hint(what: &str, hits: &[LegacyRcLine]) -> S
             ("body", &body.to_string()),
         ],
     );
-    if shadowed > 0 {
-        out.push_str(&copy_text(
-            "rsProfileInstaller.hint.shadowNote",
-            &[("shadowed", &shadowed.to_string())],
-        ));
-    }
     out.push_str(&copy_text(
         "rsProfileInstaller.hint.whereToEdit",
         &[("what", &what.to_string())],
@@ -552,93 +526,29 @@ fn encode_for_disk(flavor: Shell, content: &str) -> String {
     flavor.dialect().encode_for_disk(content)
 }
 
-/// 生成将要写入的代码（替换 placeholder）。
+/// PowerShell 别名块的代码：拉前握手 `__ccm_bind` ＋ 接上别名文件那一行（`src/shared/cc.ps1.tpl`）。
 ///
-/// - `include_cc_function = true`：装 `__ccm_bind` helper **加上** `function {name}`
-///   （适合 profile 里没有自定义 cc 的新用户，一键 work）。
-/// - `include_cc_function = false`：只装 `__ccm_bind` helper（适合用户已有自定义
-///   `function cc`——避免覆盖用户原有 cd/代理/etc 逻辑，用户自己在 cc 开头加
-///   `__ccm_bind` 一行调用即可）。
-///
-/// 🔴 **PATH 那一段不在这里了** —— 生成它的那两个函数整个删了
-/// （理由住本文件上面那段横幅）⇒ 这一块现在**只装 `cc`**。
-/// 用户级 PATH 那件事换成**用户点一下**（`R85`），命令文本由
-/// monitor `profile_installer.rs` 的 `render_user_path_setup_command` / `render_user_path_removal_command` 生成（本机后端的引导那一格）。
-///
-/// 🔴 **`cc` 翻正了：它现在走 `ccm`，不再直呼 `claude`。**
-///
-/// 上一轮（`K-R132`）这一行是 `& claude $RemainingArgs`，并被登记成一处**反向锚点** ——
-/// 那不是遗忘，是刻意钉住的一处不一致。本轮把它翻正，它当初那三条暂缓理由逐条到期：
-///
-/// 1. `K33` 逐字「**所有命令只许有一处**，其他都是根据传参来调用」＋ `K28`
-///    「前端不许自己发明对外行为 —— 一切对外都经后端」⇒ 答案本来就没有悬念。
-/// 2. 翻正之前，同一个名字 `cc` 在 PowerShell 与 POSIX
-///    （`src/shared/ccm-aliases.sh` 的 `cc() { ccm "$@"; }`）上是**两个不同的东西**：
-///    账号 / 工作目录 / agent 选择这几维在 Windows 上整条够不着。
-/// 3. 它第一条暂缓理由是「`& ccm` 要 `ccm` 找得到，而那个前提刚修完没复验」——
-///    本件把那个前提从「profile 里一段只管本进程的 PATH」换成**用户级 PATH**
-///    （`R85` 那一下点击）⇒ 前提换了一个，不再压在会话级那一段上。
-///
-/// ⚠ **诚实边界，别读大**：本件**没有**在真机上把 `cc` 真跑过一趟。这一行今天证得住的
-/// 只有「**它生成的文本指向 `ccm`**」，证不了「敲下去真起得来」。
-///
-/// 🔴 〔`KR132D3` 另一半，本轮**复打后维持**〕**`cct` 这一臂刻意不生成。**
-/// POSIX 那边 `cct() { ccm --ccm-tmux "$@"; }`，而 **Windows 上没有 tmux** ⇒ 给它一个
-/// 「名字在、行为不在」的壳比没有更坏（`K-R129` 那位用户正是照文案敲了 `cct`）。
-///
-/// ⚠ **`K-R132` 把「把 `cct` 从 Windows 文案里摘掉」随动到 `src/frontend/ui/launcher-diagnostics.ts`
-/// 那一句上 —— 本轮现打，那个随动的前提是假的**：那一句只在 **POSIX rc** 那一臂印
-/// （它的下拉只遍历 `AccountAliasReport::rc_candidates`〔散文墓碑〕（今天是 `AliasListing::rc_candidates`），而那张表现算自
-/// 那时 `account_aliases` 里那张 POSIX 候选表（今天住 `shell_dialect.rs` 的 POSIX 那一臂），**一份 PowerShell profile 都没有**），
-/// 而那一臂的 `cct` 是**真有**的（`src/shared/ccm-aliases.sh` 里就定义着）。
-/// PowerShell 那一臂是另一份文件（那时的 `src/frontend/ui/settings/cc_integration.ts` 的 `renderScanResult`；今天并进了
-/// `src/frontend/ui/settings/machine-aliases.ts`，是 PowerShell 那一侧的别名块，生成的别名在 PowerShell 上照样不带 tmux 那一族），
-/// 现打 `cct` **零命中**。⇒ **Windows 文案里今天一个 `cct` 都没有，没有东西要摘。**
-/// 读数 · 量法 · 分母住 `tests/evidence/K-R135-摸底.md`。
+/// 块里只留它非留不可的：握手（本机 Windows 会话靠它把终端窗口登记给 cc-monitor）。`cc` 进了清单（清单渲染出来的
+/// PowerShell 别名本来就带一行有守卫的 `__ccm_bind` 调用，与从前块里那份同形）；没有 tmux 的目标没有 `cct` / `cca`。
+/// 用户级 PATH 那件事是另一格（用户点一下，命令文本由 monitor `profile_installer.rs` 生成）。
 ///
 /// `monitor_data_dir` 填进模板那一格 `{{MONITOR_DATA_DIR}}`（`__ccm_bind` 找 `ps-registry/` · `ps-await/` ·
 /// `auto-launch.json` 的那个目录），按 PowerShell 单引号字面量写。它只有一个出口 —— `paths::resolve_monitor_data_dir`
 /// （跟 `CCM_DATA_DIR`），由 [`plan_install`] 取了交进来。
-/// 〔墓碑 —— 从前模板里自己写死一份 `Join-Path $env:USERPROFILE '<数据目录的旧住址>'`：数据目录的第二个住址，
-///  `CCM_DATA_DIR` 隔离跑时每次 `cc` 白等 3 s ＋ 一句「绑定超时」。〕
-pub(crate) fn render_cc_code(
-    command_name: &str,
-    include_cc_function: bool,
-    monitor_data_dir: &Path,
-) -> String {
-    let safe_name = sanitize_command_name(command_name);
-    let cc_block = if include_cc_function {
-        // 🔴 `KR135D2`：**翻正的落点**在方言那一份（`platform/shell/dialect.rs::ps_wrapper_function`）；
-        // 那个词现算自 `SUBCOMMAND_WORD`（`13b`：那个词的唯一住址），不写第二份字面量。
-        dialect::ps_wrapper_function(&safe_name, crate::control::ccm::SUBCOMMAND_WORD)
-    } else {
-        String::new()
-    };
-    // 这里原先是一个三项拼装：会话级 PATH 那一段 ＋ 它的说明注释 ＋ `cc` 那一块。
-    // 前两项删了（理由住上面那段横幅），于是**装进 profile 的东西只剩 `cc` 那一块**。
-    CC_TEMPLATE
-        .replace("{{CC_FUNCTION_BLOCK}}", &cc_block)
-        .replace(
-            "{{MONITOR_DATA_DIR}}",
-            &dialect::ps_literal(&monitor_data_dir.to_string_lossy()),
-        )
+pub(crate) fn render_cc_code(monitor_data_dir: &Path) -> String {
+    CC_TEMPLATE.replace(
+        "{{MONITOR_DATA_DIR}}",
+        &dialect::ps_literal(&monitor_data_dir.to_string_lossy()),
+    )
 }
 
-/// idempotent 安装：把 cc function 块写到 profile，已有 ccm 块则原地替换。
-/// 用户在 BEGIN/END 块外的内容完全不动。
-///
-/// `include_cc_function = false` 时只装 `__ccm_bind` helper，不抢 cc function 名。
+/// idempotent 安装：把别名块写到 profile / rc，已有块则原地替换。用户在 BEGIN/END 块外的内容完全不动。
 ///
 /// v1.7.10 那四道安全加固（先备份 · 真原子替换 · 写后回读 · 盘上有字节却读到空就中止）
 /// **住后端**（`files-put` ／ `files-peek`，本机与远端同一份规则）——
 /// 本进程不再落盘。本函数只答方言那一半：[`plan_install`] ＋ [`encode_for_disk`]，读写经 `door`。
 /// ⚠ 内容与盘上逐字相同时**一个字节都不写**。
-pub(crate) fn install_to_profile(
-    d: &dyn Door,
-    path: &Path,
-    command_name: &str,
-    include_cc_function: bool,
-) -> Result<(), String> {
+pub(crate) fn install_to_profile(d: &dyn Door, path: &Path) -> Result<(), String> {
     let flavor = Shell::of_target(path);
     let what = path.display().to_string();
     let home = door::home(d)?;
@@ -647,14 +557,7 @@ pub(crate) fn install_to_profile(
         // BOM 剥在**最靠近读的那一跳**；落盘那一份按方言再编码回去 ——
         // 读回比对比的是落盘那一份（比计划出来的那一份会恒差三个字节，当场回滚）。
         let existing = strip_bom(raw.unwrap_or(""));
-        let updated = plan_install(
-            flavor,
-            existing,
-            command_name,
-            include_cc_function,
-            &what,
-            &home,
-        )?;
+        let updated = plan_install(flavor, existing, &what, &home)?;
         Ok(Some(encode_for_disk(flavor, &updated)))
     })
     .map(|_| ())
@@ -677,17 +580,17 @@ pub(crate) fn uninstall_from_profile(d: &dyn Door, path: &Path) -> Result<(), St
 
 /// 这一版模板的块头版本串（`src/shared/cc.ps1.tpl` 第一行 `BEGIN vN` 那个 `vN`）—— 版本号的唯一住址是模板本身。
 pub(crate) fn current_block_version() -> Option<String> {
-    find_block_version(CC_TEMPLATE).1
+    find_block_version(CC_TEMPLATE, BEGIN_MARKER).1
 }
 
 // === 内部 helpers ===
 
 /// 找文件中第一个 cc-monitor 块的版本字符串（"v1" 等）。
-fn find_block_version(content: &str) -> (bool, Option<String>) {
+fn find_block_version(content: &str, marker: &str) -> (bool, Option<String>) {
     for line in content.lines() {
         // T04 审计③：与 `find_pair` 同口径（`trim_start`）。不加的话缩进的悬空 BEGIN 会让
         // `has_ccm_block=false` → UI 说"未安装"**且隐藏卸载按钮**，而点安装却 Err 报行号。
-        if let Some(rest) = line.trim_start().strip_prefix(BEGIN_MARKER) {
+        if let Some(rest) = line.trim_start().strip_prefix(marker) {
             // rest 可能是 " v1 ===" 之类
             let trimmed = rest.trim().trim_end_matches('=').trim();
             // trimmed = "v1"
@@ -704,17 +607,13 @@ fn find_block_version(content: &str) -> (bool, Option<String>) {
     (false, None)
 }
 
-/// 扫描 profile 找跟 command_name 同名的 function 定义（在 BEGIN/END 块外的）。
-fn find_conflicting_functions(flavor: Shell, content: &str, command_name: &str) -> Vec<String> {
-    let safe = sanitize_command_name(command_name);
+/// 扫描 profile：我们的围栏之外、自己定义了与 `names`（清单里那几条）同名的函数 ⇒ 名字 ＋ 行号（同名按方言认，PowerShell 不分大小写）。
+fn find_conflicting_functions(flavor: Shell, content: &str, names: &[String]) -> Vec<NameClash> {
+    let dia = flavor.dialect();
     let mut inside_ccm_block = false;
     let mut hits = Vec::new();
-    // 简单 line-based regex 替代：检查 "function <name>" 模式
-    for line in content.lines() {
-        let l = line.trim_start();
-        // 三对围栏一起认（`fence_marker` 的共同前缀就包含 [`BEGIN_MARKER`]）——
-        // 只认 PowerShell 那一对的话，我们自己装进 rc 的 `cc() { ccm "$@"; }`
-        // 会被当成「用户已有的同名函数」报成冲突。
+    for (i, line) in content.lines().enumerate() {
+        // 每一对围栏都认（`fence_marker` 的共同前缀）：块里的不算用户自己的。
         if let Some(open) = fence_marker(line) {
             inside_ccm_block = open;
             continue;
@@ -722,14 +621,13 @@ fn find_conflicting_functions(flavor: Shell, content: &str, command_name: &str) 
         if inside_ccm_block {
             continue;
         }
-        // **两种方言的函数写法不同**：PowerShell 是 `function cc {`，
-        // POSIX sh 是 `cc() {`。此前只认前一形 ⇒ 在 rc 上恒空，
-        // 而「恒空」与「真的没冲突」在界面上一模一样。
-        // 两种写法的认法住方言（`ShellDialect::declared_function`）。
-        if let Some(name) = flavor.dialect().declared_function(l) {
-            if name.eq_ignore_ascii_case(&safe) {
-                hits.push(safe.clone());
-                break;
+        // 两种方言的函数写法不同（PowerShell `function cc {` · POSIX `cc() {`），认法住方言。
+        if let Some(name) = dia.declared_function(line.trim_start()) {
+            if let Some(n) = names.iter().find(|n| dia.same_name(n, &name)) {
+                hits.push(NameClash {
+                    name: n.clone(),
+                    line: i + 1,
+                });
             }
         }
     }
@@ -768,20 +666,6 @@ fn strip_block(existing: &str, what: &str) -> Result<String, String> {
     )
 }
 
-/// 命令名只允许字母数字下划线（防注入）。
-fn sanitize_command_name(name: &str) -> String {
-    let trimmed = name.trim();
-    let cleaned: String = trimmed
-        .chars()
-        .filter(|c| c.is_ascii_alphanumeric() || *c == '_')
-        .collect();
-    if cleaned.is_empty() {
-        "cc".to_string()
-    } else {
-        cleaned
-    }
-}
-
 // 这里原来是本机用户文件的原子写原语 `atomic_write_string`〔散文墓碑〕与它的
 // 两份平台副本 `atomic_replace_path`〔散文墓碑〕（Windows `ReplaceFileW` 保 ACL · POSIX `rename`）。
 // 用户裁「只允许后端的文件管理部分写文件」也管本机 ⇒ `$PROFILE` / rc / 别名文件 / 项目 `.mcp.json`
@@ -807,7 +691,11 @@ fn sanitize_command_name(name: &str) -> String {
 /// 在那边抄一对同样的字符串就是第二个住址 —— 而「同一件事有两个住址」正是
 /// `KR62D1` 那条「不许变成第四套」要挡的东西。名字里的 `remote` 是历史，
 /// 今天它的意思是「**POSIX rc 里那一对围栏**」，本机远端共用。
-pub(crate) const CCM_PROFILE_BEGIN: &str = "# === cc-monitor remote ccm BEGIN ===";
+/// 它是**前缀**（认块用 `starts_with`）：写下去的那一行是 `{BEGIN} {版本} ===`（与 PowerShell 那一对同一形），
+/// 不带版本串的那一行（从前的 `… BEGIN ===`，块里还定义着 cc / cct / cca）照样认得、判成旧版。
+pub(crate) const CCM_PROFILE_BEGIN: &str = "# === cc-monitor remote ccm BEGIN";
+/// POSIX 别名块这一版的版本串（唯一住址）。v2：块只让 `ccm` 进 PATH ＋ 接上别名文件，不再定义 cc / cct / cca。
+pub(crate) const POSIX_BLOCK_VERSION: &str = "v2";
 pub(crate) const CCM_PROFILE_END: &str = "# === cc-monitor remote ccm END ===";
 
 /// 远端 ↗ 拉前用的 `ccm` wrapper（**后端拥有**，install 写它而非前端传入——见审计 S-1：
@@ -828,40 +716,12 @@ pub(crate) const CCM_PROFILE_END: &str = "# === cc-monitor remote ccm END ===";
 /// 用户可以自己定义一个 `cch`。**多一格自由，不是回归。**〕
 pub(crate) const CCM_WRAPPER_SNIPPET: &str = include_str!("../../../shared/ccm-aliases.sh");
 
-/// 自带别名块里**今天定义了哪几个名字** —— 现算，不写死（`13b`：闭集只许有一个住址，
-/// 那个住址就是 `src/shared/ccm-aliases.sh` 自己）。
-///
-/// `account_aliases` 的撞名判据与本文件的文档对账判据都拿它当人群，
-/// 于是「删/加一个别名」这件事**不需要同时去改两份名单**（改漏一份正是 `KR58D1`
-/// 的失效方向）。
-///
-/// 🔴 **它从 `#[cfg(test)]` 转正了**，因为多了一个生产使用者：
-/// `profile_installer::render_manual_cleanup_hint` 要回答「你 rc 里那几行裸的
-/// `cc()` / `cct()`，会不会把我们装的那一块遮蔽掉」—— 那个答案**只有这份文件说了算**，
-/// 在提示文案里抄一份名字清单就是第二个住址。转正**没有放宽任何东西**：
-/// 它仍然现算自 [`CCM_WRAPPER_SNIPPET`]，一个字节的名单都没写死。
-///
-/// ⚠ **它认的形状写死在这里**：`<名>() {`（`()` 与 `{` 之间允许空白）。
-/// 注释行里那两条示例（`#   alphacc()  { … }`）靠「名字只许 `[A-Za-z0-9_]`」被剔掉 ——
-/// 换一种写法（`function cc {`）它会**漏**，而漏出来的形状是「人群变空」，
-/// 调用处一律先断 `!is_empty()`，不让它静默变成空真。
-pub(crate) fn builtin_alias_names() -> Vec<String> {
-    // 认法住方言（`ShellDialect::declared_function`，POSIX 那一臂）。
-    let mut v: Vec<String> = CCM_WRAPPER_SNIPPET
-        .lines()
-        .filter_map(|l| Shell::Posix.dialect().declared_function(l))
-        .collect();
-    v.sort_unstable();
-    v.dedup();
-    v
-}
-
 /// 我们自己那块别名块的正文 —— 撞名那一问交给方言认函数用（`ShellDialect::name_taken`）：
 /// POSIX 是 [`CCM_WRAPPER_SNIPPET`] 本身；PowerShell 是模板渲染出来的那一份（与数据目录无关 —— 喂一个占位目录）。
 pub(crate) fn own_block(shell: Shell) -> String {
     match shell {
         Shell::Posix => CCM_WRAPPER_SNIPPET.to_string(),
-        Shell::PowerShell => render_cc_code(CC_FUNCTION_NAME, true, Path::new("/_")),
+        Shell::PowerShell => render_cc_code(Path::new("/_")),
     }
 }
 
@@ -893,7 +753,7 @@ pub(crate) fn merge_profile_block(
     // 配对之后怎么拼，**也只剩一份**：`fenced_block::splice_in`。
     //   本函数只答「POSIX rc 里这一块长什么样」（方言的内容与围栏），不再自己切行拼接。
     let block = format!(
-        "{CCM_PROFILE_BEGIN}\n{}\n{CCM_PROFILE_END}\n",
+        "{CCM_PROFILE_BEGIN} {POSIX_BLOCK_VERSION} ===\n{}\n{CCM_PROFILE_END}\n",
         snippet.trim()
     );
     super::fence::splice_in(

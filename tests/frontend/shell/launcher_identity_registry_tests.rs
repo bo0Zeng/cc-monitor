@@ -108,7 +108,7 @@ const REGISTERED: &[Launcher] = &[
                   **归 `K-R48` 的下一拍**（先裁「一次性模式在 tmux 内由谁打 `@ccm_sid`」，再接线）。",
     },
     Launcher {
-        label: "T2 · Windows 终端里的那一下（`platform/shell/dialect.rs` 写的 `function cc`，别名块经 `assets/aliases/block.rs` 装）",
+        label: "T2 · Windows 终端里的那一下（`platform/shell/dialect.rs` 写的 PowerShell 别名函数，`cc` 是清单里首建就带的一条）",
         ledger_cmds: &[],
         // 🔴 **锚点跟着翻正了**：那一行从 `& claude $RemainingArgs`
         //    改成走 `ccm`（`K33`「所有命令只许有一处」＋ `K28`）。`K-R132` 上一轮现打
@@ -116,13 +116,12 @@ const REGISTERED: &[Launcher] = &[
         //    正是它当时要求的，不是绕过它。
         //    ⚠ 锚点钉的是**源码里那个 format 串**（`{word}` 现算自 `CCM_ENTRY_WORD`），
         //    不是渲染后的文本 —— 抄一份 `ccm` 进来就是那个词的第二个住址。
-        // 别名块进了那台后端：生成 `function cc` 的那一处住 `src/backend/assets/aliases/block.rs`
-        //   （`{word}` 现算自后端 `control::ccm::SUBCOMMAND_WORD`）。
-        // PowerShell 那个 `function cc` 的写法搬进后端 OS 适配层（`platform/shell/dialect.rs::ps_wrapper_function`），
+        // `cc` 不再住别名块：它是别名清单里首建就带的一条，由 PowerShell 方言的别名渲染写出
+        //   （`platform/shell/dialect.rs` 里 PowerShell 那一臂的 `render_alias`，调用行从这一句起）；
         //   `{word}` 仍由通用层交进来（`control::ccm::SUBCOMMAND_WORD`）。
         anchors: &[(
             "src/backend/platform/shell/dialect.rs",
-            "& {word} $RemainingArgs",
+            "let mut call = format!(\"    & {word}\");",
             1,
         )],
         plants: false,

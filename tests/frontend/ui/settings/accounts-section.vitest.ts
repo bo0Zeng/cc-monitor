@@ -609,7 +609,7 @@ describe("维护区：核对 / 修复 / 回滚都问那台后端，确认在界�
   });
 
   it("修复：预演说没事可做 ⇒ 不问、不做", async () => {
-    const calls = wire({ "accounts-repair": { steps: [], applied: false, backup: null, aliases: null } });
+    const calls = wire({ "accounts-repair": { steps: [], applied: false, backup: null, aliases: [] } });
     fetchAccountsMock.mockResolvedValue(ready());
     const el = await mount();
     button(el, copyText("accounts.maintenance.sync")).click();

@@ -160,14 +160,14 @@ describe("A2 新建账号表单", () => {
     expect(f.seen, "后端拒了还交出去了").toEqual([]);
   });
 
-  it("命令名那一行是那台后端预演时答的别名名字（`alias`），不在界面里推", async () => {
+  it("命令名那一行是那台后端预演时答的别名名字（`aliasNames`），不在界面里推", async () => {
     const f = form();
     await f.type(f.name, "b");
-    expect(f.el.textContent).toContain(aliasHintFor("betacc"));
+    expect(f.el.textContent).toContain(aliasHintFor(["betacc", "betacct"]));
     await f.type(f.name, "work");
-    expect(f.el.textContent).toContain(aliasHintFor("workcc"));
-    expect(f.el.textContent).not.toContain(aliasHintFor("betacc"));
-    expect(aliasHintFor(null)).toBe("");
+    expect(f.el.textContent).toContain(aliasHintFor(["workcc", "workcct"]));
+    expect(f.el.textContent).not.toContain(aliasHintFor(["betacc", "betacct"]));
+    expect(aliasHintFor([])).toBe("");
   });
 
   it("「设为默认」勾上 ⇒ 预演与交出去的那一发都带 isDefault", async () => {
