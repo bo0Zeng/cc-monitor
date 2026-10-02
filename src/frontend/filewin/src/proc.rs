@@ -156,6 +156,7 @@ pub fn child_main() -> i32 {
         req.bookmarks,
         req.machines,
         req.work_area,
+        Some(req.theme),
     );
     match h.join() {
         Ok(Ok(())) => 0,

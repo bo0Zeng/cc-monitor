@@ -63,6 +63,14 @@ pub struct Workspace {
     notice: Option<String>,
     /// 〔预览〕开着吗 ＋ 它自己的状态（`None` ＝ 关着）。逻辑住 [`super::preview`]。
     pub preview: Option<super::preview::Preview>,
+    /// 这扇窗的样子（开窗种子带来的；左栏开另一台时原样交给新窗口）。`None` ＝ 判据那一形。
+    pub theme: Option<filewin_contract::Theme>,
+    /// 左栏摊开着吗（命令栏最左那颗切）。窗口状态，关窗即没。
+    pub sidebar_open: bool,
+    /// 这台机器的家目录（左栏「家目录」那一格；问一次，整扇窗共用）。
+    pub(super) home: super::chrome::Home,
+    /// 左栏「其他机器」那一问的结局。
+    pub(super) other: super::chrome::OtherSlot,
 }
 
 /// 工具条上那几颗 —— **唯一住址**（判据按同一个常量去找它画出来的字）。
@@ -125,6 +133,10 @@ impl Workspace {
             next_id: 1,
             notice: None,
             preview: None,
+            theme: None,
+            sidebar_open: true,
+            home: Default::default(),
+            other: Default::default(),
         };
         w.sync_focus();
         w
@@ -170,6 +182,15 @@ impl Workspace {
     /// 上一件做不了时那句话。
     pub fn notice(&self) -> Option<&str> {
         self.notice.as_deref()
+    }
+
+    /// 在命令栏上说一句（下一次点工具条 / 标签栏就清）。
+    pub(super) fn set_notice(&mut self, n: String) {
+        self.notice = Some(n);
+    }
+
+    pub(super) fn set_notice_none(&mut self) {
+        self.notice = None;
     }
 
     /// 焦点只给焦点那一栏的那个标签，其余一律关掉（本模块头注 §二）。
@@ -423,49 +444,43 @@ impl Workspace {
         // ── 标签页快捷键：先于两栏的正文（那里才是列表接键盘的地方）──
         let ctx = ui.ctx().clone();
         self.apply_tab_keys(&ctx);
-        // ── 工具条：双栏 · 预览 · 复制到另一栏 ──
-        let mut split: Option<bool> = None;
-        let mut preview: Option<bool> = None;
-        let mut across = false;
-        ui.horizontal(|ui| {
-            let two = self.sides.len() == 2;
-            if ui.selectable_label(two, SPLIT_LABEL.as_str()).clicked() {
-                split = Some(!two);
-            }
-            let on = self.preview.is_some();
-            if ui.selectable_label(on, PREVIEW_LABEL.as_str()).clicked() {
-                preview = Some(!on);
-            }
-            if two && ui.button(COPY_ACROSS_LABEL.as_str()).clicked() {
-                across = true;
-            }
-            if let Some(n) = &self.notice {
-                ui.colored_label(egui::Color32::from_rgb(0xFF, 0xA5, 0x00), n);
-            }
-        });
-        if let Some(on) = split {
-            self.set_split(on);
-        }
-        if let Some(on) = preview {
-            self.set_preview(on);
-        }
-        if across {
-            let ctx = ui.ctx().clone();
-            self.copy_to_other(Some(ctx));
-        }
+        // ── 导航键（Alt+← / → · 鼠标侧键 · F5 · Ctrl+L · Ctrl+F）· 开另一台那一问落地 ──
+        self.apply_nav_keys(&ctx);
+        self.settle_other();
+        // ── 窗口的框：工具条 · 命令栏 · 状态栏 · 左栏（`chrome.rs`）──
+        self.chrome_ui(ui);
         // ── 预览（右侧一块，跟焦点那一栏）──
         if self.preview.is_some() {
             let ctx = ui.ctx().clone();
             let side = &self.sides[self.focus];
             let pane = &side.tabs[side.active].pane;
             if let Some(p) = self.preview.as_mut() {
-                p.follow(pane, Some(ctx));
+                p.follow(pane, Some(ctx.clone()));
                 egui::Panel::right("filewin-preview-panel")
-                    .default_size(360.0)
-                    .show(ui, |ui| p.ui(ui));
+                    .frame(super::theme::pane_frame(&ctx))
+                    .resizable(true)
+                    .default_size(380.0)
+                    .min_size(260.0)
+                    // 内容先铺满：不然面板会把「这一帧用了多宽」记成自己的宽，开出来就只剩一条窄缝。
+                    .show(ui, |ui| {
+                        ui.set_min_width(ui.available_width());
+                        p.ui(ui)
+                    });
             }
         }
-        // ── 一栏 / 两栏 ──
+        // ── 一栏 / 两栏：主底那一块（没有它，框之间露出来的是 egui 自带的灰黑底）──
+        let bg = super::theme::palette(ui.ctx()).bg;
+        egui::CentralPanel::default()
+            .frame(
+                egui::Frame::new()
+                    .fill(bg)
+                    .inner_margin(egui::Margin::symmetric(6, 4)),
+            )
+            .show(ui, |ui| self.sides_ui(ui));
+    }
+
+    /// 一栏 / 两栏并排摆（在主底那一块里）。
+    fn sides_ui(&mut self, ui: &mut egui::Ui) {
         let whole = ui.available_rect_before_wrap();
         let n = self.sides.len();
         let gap = ui.spacing().item_spacing.x;
@@ -669,6 +684,11 @@ pub async fn copy_across(
 impl eframe::App for Workspace {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         self.frame(ui);
+    }
+
+    /// 窗口底色就是主题的主底（不是 eframe 缺省那层半透明的灰黑）。
+    fn clear_color(&self, visuals: &egui::Visuals) -> [f32; 4] {
+        visuals.panel_fill.to_normalized_gamma_f32()
     }
 }
 

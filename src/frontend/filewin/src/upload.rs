@@ -184,7 +184,7 @@ impl UploadPrompt {
                 self.browse = true;
             }
             if let Some(why) = &refused {
-                ui.colored_label(egui::Color32::RED, why);
+                ui.colored_label(ui.visuals().error_fg_color, why);
             }
             ui.horizontal(|ui| {
                 if ui

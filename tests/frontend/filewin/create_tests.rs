@@ -27,7 +27,7 @@ async fn settle_writes(w: &FileWindow, want: u64, who: &str) {
     );
 }
 
-/// 一帧生产那个 `frame_body`，交回这一帧画出来的字 ＋ 位置。
+/// 一帧生产那个 `frame_body` 连同窗口的框（命令栏上那几颗在框里），交回这一帧画出来的字 ＋ 位置。
 fn frame_with_rects(
     ctx: &egui::Context,
     w: &mut FileWindow,
@@ -41,7 +41,7 @@ fn frame_with_rects(
         events,
         ..Default::default()
     };
-    let out = ctx.run_ui(input, |ui| w.frame_body(ui));
+    let out = ctx.run_ui(input, |ui| crate::chrome::testing::pane_with_chrome(ui, w));
     let painted = crate::copy::testing::text_in_frame(&out);
     out.drop_without_applying_deltas();
     painted

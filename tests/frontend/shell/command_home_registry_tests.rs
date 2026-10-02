@@ -246,6 +246,11 @@ const CHANNEL_OWN: &[(&str, Own, &str)] = &[
         Own::Window,
         "文件窗口「在此打开终端」只交意图 `{cwd}`：monitor 补机器事实 → 本机后端 `terminal-ssh` 渲那一行 → `open_terminal_window` 开窗（与主界面同一条路）",
     ),
+    (
+        "filewin-open",
+        Own::Window,
+        "文件窗口左栏「其他机器」点一台：窗口不起进程，monitor 按名字取那台的配置、照开窗入口同一条路另起一个窗口进程（一窗一机）",
+    ),
 ];
 
 /// `HOST_OPS`（代码那一侧）== [`CHANNEL_OWN`]（登记那一侧），两向；每一行都写了理由。

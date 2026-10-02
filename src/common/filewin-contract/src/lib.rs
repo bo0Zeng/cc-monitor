@@ -12,6 +12,9 @@
 
 use copy_core::copy_text;
 
+pub mod theme;
+pub use theme::{parse_css_color, Rgba, Theme, THEME_TOKENS};
+
 /// 覆盖「那份二进制在哪」的环境变量。
 ///
 /// 🔴 它存在的理由与 `local_backend::BACKEND_BIN_ENV` / `CCM_DIAL_PROXY` 逐字同形：
@@ -54,6 +57,8 @@ pub struct OpenRequest {
     /// 主窗所在显示器的工作区（monitor 问 Tauri 得来）：窗口开出来第一拍夹进它。`None` ＝ 问不到，不夹。
     #[serde(default)]
     pub work_area: Option<host_core::WorkArea>,
+    /// 窗口的样子：开窗那一刻主界面解析出来的那一套（含用户改过的）。窗口只照它画，不另有一份。
+    pub theme: Theme,
 }
 
 /// 种子 → 字节。**纯函数**（判据两向对拍）。
@@ -124,6 +129,20 @@ pub fn decode_ready(line: &str) -> Result<Ready, String> {
 /// 参数只带意图 `{cwd}`（当前目录的线上形：字符串或 `{"b16": …}`）—— 那一串命令由后端渲（`terminal-ssh`），窗口不拼命令；
 /// 机器事实由 monitor 从它自己的机器表取；开窗是 monitor 的事（`launch::open_terminal_window`，与主界面开终端同一条路）。
 pub const TERMINAL_OPEN_OP: &str = "terminal-open";
+
+/// 「开另一台的文件窗口」：窗口左栏「其他机器」点一台 ⇒ 在通道上 `call` 这一条（寻址 ＝ 要开的那台机器的名字，参数空），
+/// **monitor 自己接**、照开窗入口同一条路起一个新的窗口进程（一窗一机：不是在这个窗口里换机器）。
+pub const FILEWIN_OPEN_OP: &str = "filewin-open";
+
+/// [`FILEWIN_OPEN_OP`] 的参数：发起那扇窗正在用的样子（新窗口照它画）。
+pub fn filewin_open_args(theme: &Theme) -> serde_json::Value {
+    serde_json::json!({ "theme": theme })
+}
+
+/// [`FILEWIN_OPEN_OP`] 的参数 → 样子（缺了 / 形状不对 ⇒ `None`：调用方用错了）。
+pub fn filewin_open_theme(args: &serde_json::Value) -> Option<Theme> {
+    serde_json::from_value(args.get("theme")?.clone()).ok()
+}
 
 /// [`TERMINAL_OPEN_OP`] 的参数。`cwd` 是当前目录的线上形（窗口那一侧 `source::RemotePath::wire`），原样交给后端。
 pub fn terminal_open_args(cwd: serde_json::Value) -> serde_json::Value {

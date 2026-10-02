@@ -579,6 +579,17 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     remote_basename: NONE,
     terminal_open_args: NONE,
     terminal_open_cwd: NONE,
+    // 「开另一台的文件窗口」那一问（窗口 → monitor），TS 侧零孪生。
+    FILEWIN_OPEN_OP: NONE,
+    filewin_open_args: NONE,
+    filewin_open_theme: NONE,
+    // 窗口的样子：令牌解成数只在这里（主界面那一侧只按名单读计算值、原样交过来，不解析；
+    //   名单两边相等由 `theme_tests::the_token_list_is_the_same_on_both_sides` 钉）。
+    THEME_TOKENS: NONE,
+    from_tokens: NONE,
+    parse_css_color: NONE,
+    parse_font_families: NONE,
+    parse_px: NONE,
   },
   // 前端宿主原语（两个前端共用、后端不链）：自有状态文件的原子写 · 窗口夹进工作区；TS 侧零孪生。
   "host-core": {

@@ -25,6 +25,9 @@
 //! - **后端那条通道一格都没量。** 窗口进程里它够不着（逐条理由住 `proc` 头注 §四），
 //!   而「够不着之后窗口上那行橙字说得对不对」是 `source` / `find` 那两摞的活。
 
+#[path = "../../filewin/theme_testing.rs"]
+mod theme_testing;
+
 use super::*;
 
 /// 改环境变量那几条**必须串行**：`std::env` 是进程级的，而 `cargo test` 默认并行。
@@ -59,6 +62,7 @@ fn synthetic_request() -> OpenRequest {
             w: 1920,
             h: 1040,
         }),
+        theme: theme_testing::default_theme(),
     }
 }
 
@@ -105,6 +109,8 @@ fn a_seed_survives_the_trip_through_a_process_boundary() {
         want.work_area.is_some(),
         "夹具里这一格得是 `Some`，否则两侧都是 `None` 恒相等"
     );
+    // 样子：漂了 ⇒ 窗口画的不是主界面那一套。
+    assert_eq!(got.theme, want.theme, "样子漂了");
     // 🔴〔2026-09-23 本机侧退役〕**这里少了一次「判别式过得去吗」的比对。**
     //    从前 `Source` 是个两格枚举，这一段要先 `match` 出两侧都是 `Remote`
     //    （对不上就 `panic!("源的判别式没过得去")`），下面还单独喂一份
@@ -395,6 +401,7 @@ fn opening_a_window_three_times_really_starts_three_independent_processes() {
         bookmarks: None,
         machines: Vec::new(),
         work_area: None,
+        theme: theme_testing::default_theme(),
     };
     let mut pids: Vec<u32> = Vec::new();
     let mut codes: Vec<String> = Vec::new();
@@ -508,6 +515,7 @@ fn the_window_process_lists_first_and_the_parent_carries_its_words() {
         bookmarks: None,
         machines: Vec::new(),
         work_area: None,
+        theme: theme_testing::default_theme(),
     };
     let run = |tag: &str, say: &str, linger: u32| {
         std::env::set_var(BIN_ENV, scripted_stand_in(&dir, tag, say, linger));
@@ -565,6 +573,7 @@ fn a_window_that_dies_after_being_judged_open_is_still_reported() {
         bookmarks: None,
         machines: Vec::new(),
         work_area: None,
+        theme: theme_testing::default_theme(),
     };
     let listed = encode_ready(&Ready::Listed(3)).trim().to_string();
     let run = |code: u32| {
@@ -688,6 +697,7 @@ fn a_window_process_that_dies_at_once_comes_back_as_a_reason() {
             bookmarks: None,
             machines: Vec::new(),
             work_area: None,
+            theme: theme_testing::default_theme(),
         },
         Box::new(|_| {}),
     )

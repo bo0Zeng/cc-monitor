@@ -85,7 +85,7 @@ pub fn measure(rows: &[Listed], frames: usize) -> F1 {
     let first_paint_ms = t0.elapsed().as_secs_f64() * 1000.0;
 
     // ── 滚动帧时：偏移扫过全程
-    let total_h = rows.len() as f32 * (super::rows::ROW_HEIGHT + 4.0);
+    let total_h = rows.len() as f32 * super::rows::ROW_HEIGHT;
     let span = (total_h - SCREEN.1).max(1.0);
     let mut samples: Vec<f64> = Vec::with_capacity(frames);
     for i in 0..frames {

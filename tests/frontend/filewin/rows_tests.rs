@@ -4,7 +4,6 @@ use super::testing::{
 };
 use super::*;
 use crate::copy::testing::rects_of;
-use crate::copy::{is_copyable, COPY_LABEL};
 use crate::corpus;
 use crate::source::Row;
 
@@ -176,7 +175,7 @@ fn a_double_click_on_a_row_comes_back_as_that_rows_index() {
 
     // 第 2 行的中心：列表从 y≈0 起，行高 ROW_HEIGHT ＋ item spacing。
     let want = 2usize;
-    let y = (want as f32 + 0.5) * (ROW_HEIGHT + 4.0);
+    let y = (want as f32 + 0.5) * ROW_HEIGHT;
     let pos = egui::pos2(60.0, y);
 
     let _ = render_headless_with_events(
@@ -229,13 +228,12 @@ fn a_frame_with_no_input_reports_no_click() {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// 第三刀：行上那颗「复制」—— 点得到，而且**没被整行那块矩形吞掉**
+// 整行一块命中矩形（行上没有按钮）
 // ════════════════════════════════════════════════════════════════════════
 
 /// 四行，四档齐：目录 · 两个普通文件 · 一个有损名。
 ///
-/// ⚠ 走 `Listed::plain`（链接与时间两格都「没送」）—— 本族判的是那六颗按钮，
-/// 新那两列各有自己的判据（下面那两节）。
+/// ⚠ 走 `Listed::plain`（链接与时间两格都「没送」）。
 fn mixed_rows() -> Vec<Listed> {
     let mk = |name: &str, is_dir: bool, lossy: bool, size: u64| {
         crate::source::Listed::plain(Row {
@@ -254,95 +252,18 @@ fn mixed_rows() -> Vec<Listed> {
     ]
 }
 
-/// 🔴 **只有能复制的那几行才有那颗按钮** —— 相等断言，两侧都从同一个地方来：
-/// 画出来的「复制」几个 · `is_copyable` 说有几个。
-///
-/// ⚠ 判的是**画出来的东西**，不是「源码里有个 `if is_copyable`」。
+/// 🔴 **整行一块命中矩形**：在「修改时间」那一列上双击，照样回那一行（行上没有按钮，任何一段都不让开）。
 #[test]
-fn only_the_copyable_rows_get_a_copy_button_painted() {
-    let ctx = egui::Context::default();
-    let rows = mixed_rows();
-    let _ = render_headless_with_events_and_text(&ctx, &rows, screen(), 0.0, Vec::new());
-    let (tally, painted) =
-        render_headless_with_events_and_text(&ctx, &rows, screen(), 0.1, Vec::new());
-    assert_eq!(tally.rows_materialized, 4, "四行没画全，下面的数就没意义");
-    assert!(
-        !painted.is_empty(),
-        "这一帧一个字都没画出来 —— 量具塌了，下面那一比在空转"
-    );
-
-    let want = rows.iter().filter(|r| is_copyable(r)).count();
-    // 目录能复制了⇒ 2 → 3（目录那一行多一颗）。
-    assert_eq!(want, 3, "语料自己变了：能复制的行数应当是 3");
-    let got = rects_of(&painted, COPY_LABEL.as_str());
-    assert_eq!(
-        got.len(),
-        want,
-        "画出来 {} 颗「{COPY_LABEL}」，而 `is_copyable` 说有 {want} 行能复制 —— \
-         目录或有损名那两档上长出了一颗不该有的按钮（或者能复制的那几行少了一颗）",
-        got.len(),
-        COPY_LABEL = COPY_LABEL.as_str()
-    );
-    // 反空真：它们在三行不同的位置上（不是同一颗被数了几遍）。
-    assert!(got[0].center().y < got[1].center().y);
-    assert!(got[1].center().y < got[2].center().y);
-}
-
-/// 🔴 **这一刀的核心判据**：点那颗「复制」，回来的是**那一行**的下标。
-///
-/// 它同时是那条真缺陷的钉子：整行那块命中矩形要是拉满整行宽，
-/// egui 在平手时取**后登记**的那一个（`egui-0.36.2/src/hit_test.rs` 逐字
-/// 「In case of a tie, take the last one = the one on top」）⇒ 按钮恒 false，本条当场红。
-///
-/// ⚠ 买的是「egui 收到这样一串事件之后认出来的是哪一个控件」；
-/// **买不到**「真机上鼠标点得到」（本机 `XDG_SESSION_TYPE=tty`，没有真事件源）。
-#[test]
-fn clicking_the_copy_button_comes_back_as_that_rows_index() {
-    let ctx = egui::Context::default();
-    let rows = mixed_rows();
-    // 先跑两帧：建字体图集 ＋ 让上一帧的 widget 表有内容（命中测试按上一帧做）。
-    let _ = render_headless_with_events_and_text(&ctx, &rows, screen(), 0.0, Vec::new());
-    let (_, painted) = render_headless_with_events_and_text(&ctx, &rows, screen(), 0.1, Vec::new());
-
-    let buttons = rects_of(&painted, COPY_LABEL.as_str());
-    assert_eq!(buttons.len(), 3, "没找到那三颗按钮，下面按坐标点没意义");
-
-    // 第三颗 = 第 2 行（`two.bin`；第 0 行是目录、第 1 行是 `one.bin` —— 目录那一行也有一颗了）。
-    let pos = buttons[2].center();
-    let _ = render_headless_with_events(
-        &ctx,
-        &rows,
-        screen(),
-        0.2,
-        vec![egui::Event::PointerMoved(pos)],
-    );
-    let hit = render_headless_with_events(&ctx, &rows, screen(), 0.3, click_at(pos));
-
-    assert_eq!(
-        hit.copy_clicked,
-        Some(2),
-        "点在第 2 行那颗「{COPY_LABEL}」上，`copy_clicked` 却是 {:?} —— \
-         `None` 多半是整行那块命中矩形把按钮盖住了（它是后登记的，平手时它赢）",
-        hit.copy_clicked,
-        COPY_LABEL = COPY_LABEL.as_str()
-    );
-    // 点按钮**不许**同时被读成「双击进目录」。
-    assert_eq!(hit.clicked, None, "点一颗按钮竟然还顺手进了目录");
-}
-
-/// 🔴 **另一侧**：让开按钮之后，名字那一段**照旧**双击进目录。
-///
-/// 没有这一条，「让开」可以退化成「整行那块矩形干脆不要了」——
-/// 那样上面那条照样绿，而双击进目录悄悄没了。
-#[test]
-fn making_way_for_the_button_does_not_kill_the_rest_of_the_row() {
+fn a_double_click_anywhere_on_the_row_opens_that_row() {
     let ctx = egui::Context::default();
     let rows = mixed_rows();
     let _ = render_headless_with_events(&ctx, &rows, screen(), 0.0, Vec::new());
-
-    // 第 1 行（`one.bin`，有按钮）名字那一段：x=60 在图标/名字上，远在按钮左边。
-    let y = 1.5 * (ROW_HEIGHT + 4.0);
-    let pos = egui::pos2(60.0, y);
+    let cols = Columns::default();
+    let row1 = egui::Rect::from_min_size(
+        egui::pos2(0.0, ROW_HEIGHT),
+        egui::vec2(screen().x, ROW_HEIGHT),
+    );
+    let pos = cols.rects(row1)[1].center();
     let _ = render_headless_with_events(
         &ctx,
         &rows,
@@ -352,28 +273,20 @@ fn making_way_for_the_button_does_not_kill_the_rest_of_the_row() {
     );
     let _ = render_headless_with_events(&ctx, &rows, screen(), 0.2, click_at(pos));
     let second = render_headless_with_events(&ctx, &rows, screen(), 0.3, click_at(pos));
-
-    let got = second
-        .clicked
-        .expect("名字那一段双击不回任何行 —— 整行那块命中矩形被让没了");
-    assert!(
-        got.abs_diff(1) <= 1,
-        "点在第 1 行的名字上，认出来的是第 {got} 行"
-    );
-    assert_eq!(second.copy_clicked, None, "点名字竟然算成点了「复制」");
+    assert_eq!(second.clicked, Some(1), "在时间那一列上双击，没回那一行");
 }
 
 #[test]
 fn human_size_is_short_enough_for_a_column() {
     assert_eq!(human_size(0), "0 B");
     assert_eq!(human_size(512), "512 B");
-    assert_eq!(human_size(1024), "1.0 K");
-    assert_eq!(human_size(1024 * 1024), "1.0 M");
-    assert_eq!(human_size(3 * 1024 * 1024 * 1024), "3.0 G");
+    assert_eq!(human_size(1024), "1.0 KB");
+    assert_eq!(human_size(1024 * 1024), "1.0 MB");
+    assert_eq!(human_size(3 * 1024 * 1024 * 1024), "3.0 GB");
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// 🔴**真事件**：真 X 事件走完整条路，点得动那颗按钮
+// 🔴**真事件**：真 X 事件走完整条路，单击选得中那一行
 // ════════════════════════════════════════════════════════════════════════
 //
 // # 为什么这一格最要紧
@@ -413,7 +326,7 @@ fn human_size_is_short_enough_for_a_column() {
 //
 // - **真 GPU / 字体回落 / DPI / 合成器四样一个都买不到**（逐格住台架头注）。
 //   本段还**额外**要求缩放因子恰好是 1 —— 不是 1 就报「这一格判不了」，
-//   因为按钮的坐标是拿另一把尺子（合成台架）量的，两把尺子必须同轴。
+//   因为落点的坐标是拿另一把尺子（合成台架）量的，两把尺子必须同轴。
 // - **它不量帧时也不量内存**：那些数是另一个分母。
 // - **真物理鼠标买不到**：XTEST 注进去的是真 X 事件，但按下那一刻的
 //   抖动、加速曲线、触控板的手势合成，这里一样都没有。
@@ -433,8 +346,9 @@ struct RealEventProbe {
     screen_h: f32,
     ppp: f32,
     materialized: usize,
-    copy_clicks: u32,
-    last_copy: Option<usize>,
+    pick_clicks: u32,
+    /// 第一次单击认出来的是哪一行（之后的双击也会各算一次单击，所以只记第一次）。
+    first_pick: Option<usize>,
     row_clicks: u32,
     last_row: Option<usize>,
     /// egui **输入层**自己数出来的点击／双击次数，以及指针最后落在哪。
@@ -465,7 +379,15 @@ impl eframe::App for RowProbeApp {
         // 🔴 这一行与 `render_headless_with_events_and_text` 里那一行**逐字相同**，
         //    被测对象因此是同一个。
         let mut t = RenderTally::default();
-        show_file_rows(ui, &self.rows, &mut t, Some(0.0), None, None);
+        show_file_rows(
+            ui,
+            &self.rows,
+            &mut t,
+            Some(0.0),
+            None,
+            None,
+            &Columns::default(),
+        );
 
         let ctx = ui.ctx().clone();
         let mut p = self.shared.lock().unwrap();
@@ -474,9 +396,9 @@ impl eframe::App for RowProbeApp {
         p.screen_h = ctx.viewport_rect().height();
         p.ppp = ctx.pixels_per_point();
         p.materialized = t.rows_materialized;
-        if let Some(i) = t.copy_clicked {
-            p.copy_clicks += 1;
-            p.last_copy = Some(i);
+        if let Some((i, _)) = t.picked_click {
+            p.pick_clicks += 1;
+            p.first_pick.get_or_insert(i);
         }
         if let Some(i) = t.clicked {
             p.row_clicks += 1;
@@ -517,17 +439,17 @@ impl eframe::App for RowProbeApp {
 #[cfg(not(windows))]
 const REAL_EVENT_WINDOW_TITLE: &str = "ccm-filewin-real-event-probe";
 
-/// 点名字那一段要双击的那一行（`one.bin`，有按钮、名字在按钮左边）。
+/// 名字那一段要双击的那一行（`one.bin`）。
 #[cfg(not(windows))]
 const REAL_EVENT_ROW_FOR_DOUBLE_CLICK: usize = 1;
-/// 要点那颗「复制」的那一行（`two.bin`，`mixed_rows` 里第二颗按钮）。
+/// 要单击（选中）的那一行（`two.bin`）。
 #[cfg(not(windows))]
-const REAL_EVENT_ROW_FOR_COPY: usize = 2;
+const REAL_EVENT_ROW_FOR_PICK: usize = 2;
 
 /// **实景工作面**：真 X 事件打在生产那个行画函数上。
 #[cfg(not(windows))]
 #[test]
-#[ignore = "实景工作面：由 a_real_pointer_click_on_the_copy_button_comes_back_as_that_row 在它自己的进程里点起来"]
+#[ignore = "实景工作面：由 a_real_pointer_click_on_a_row_comes_back_as_that_row 在它自己的进程里点起来"]
 fn xvfb_worker_real_pointer_events_on_a_row() {
     use super::testing::xvfb;
     use std::sync::{Arc, Mutex};
@@ -543,21 +465,21 @@ fn xvfb_worker_real_pointer_events_on_a_row() {
     let _ = render_headless_with_events_and_text(&ctx, &rows, screen, 0.0, Vec::new());
     let (probe_tally, painted) =
         render_headless_with_events_and_text(&ctx, &rows, screen, 0.1, Vec::new());
-    let buttons = rects_of(&painted, COPY_LABEL.as_str());
+    let picks = rects_of(&painted, &rows[REAL_EVENT_ROW_FOR_PICK].name);
     let names = rects_of(&painted, &rows[REAL_EVENT_ROW_FOR_DOUBLE_CLICK].name);
-    xvfb::emit("b.buttons_found", buttons.len());
+    xvfb::emit("b.picks_found", picks.len());
     xvfb::emit("b.names_found", names.len());
     xvfb::emit("b.probe_materialized", probe_tally.rows_materialized);
     assert_eq!(
-        buttons.len(),
-        3,
-        "合成台架上没量到那三颗按钮 —— 落点算不出来，这一格判不了"
+        picks.len(),
+        1,
+        "合成台架上没量到要单击的那一行 —— 落点算不出来，这一格判不了"
     );
     assert_eq!(names.len(), 1, "合成台架上没量到那一行的名字 —— 同上");
-    // `mixed_rows` 里能复制的是第 0、1、2 行（目录也能复制）⇒ 第三颗按钮是第 2 行的。
-    let copy_at = buttons[2].center();
-    let name_at = names[0].center();
-    xvfb::emit("b.copy_at", format!("{:.1},{:.1}", copy_at.x, copy_at.y));
+    // 落点取整到整像素：真指针只能落在整像素上（缩放恰好 1 时逻辑点 == 像素）。
+    let copy_at = picks[0].center().round();
+    let name_at = names[0].center().round();
+    xvfb::emit("b.pick_at", format!("{:.1},{:.1}", copy_at.x, copy_at.y));
     xvfb::emit("b.name_at", format!("{:.1},{:.1}", name_at.x, name_at.y));
 
     // ── ② 真窗口 ───────────────────────────────────────────────────────
@@ -576,7 +498,7 @@ fn xvfb_worker_real_pointer_events_on_a_row() {
         // 生产那个 hook，一个字没换 —— 次线程上建事件循环走的是同一条路。
         event_loop_builder: Some(Box::new(crate::platform::any_thread_hook)),
         viewport: egui::ViewportBuilder::default()
-            // 🔴 与 ① 量按钮时用的那张屏**同尺寸** —— 两把尺子必须同轴。
+            // 🔴 与 ① 量落点时用的那张屏**同尺寸** —— 两把尺子必须同轴。
             .with_inner_size([screen.x, screen.y])
             .with_title(REAL_EVENT_WINDOW_TITLE),
         ..Default::default()
@@ -605,10 +527,9 @@ fn xvfb_worker_real_pointer_events_on_a_row() {
     xvfb::emit("b.screen", format!("{:.0}x{:.0}", p.screen_w, p.screen_h));
     xvfb::emit("b.ppp", format!("{:.3}", p.ppp));
     xvfb::emit("b.materialized", p.materialized);
-    xvfb::emit("b.copy_clicks", p.copy_clicks);
     xvfb::emit(
-        "b.copy_row",
-        p.last_copy
+        "b.pick_row",
+        p.first_pick
             .map(|i| i.to_string())
             .unwrap_or_else(|| "none".into()),
     );
@@ -679,13 +600,13 @@ fn drive_real_pointer(
     // 🔴 反空真：**点之前**那两个计数必须是 0（否则下面的「等于 1」是个摆设）。
     {
         let p = shared.lock().unwrap();
-        xvfb::emit("b.copy_clicks_before", p.copy_clicks);
+        xvfb::emit("b.pick_clicks_before", p.pick_clicks);
         xvfb::emit("b.row_clicks_before", p.row_clicks);
     }
 
-    // ── 单击那颗「复制」 ────────────────────────────────────────────────
+    // ── 单击那一行（选中）──────────────────────────────────────────────
     let (cx, cy) = at(copy_at);
-    log.push(format!("点「复制」→ 根坐标 {cx},{cy}"));
+    log.push(format!("单击那一行 → 根坐标 {cx},{cy}"));
     if let Err(e) = xvfb::xdotool_on(display, &["mousemove", "--sync", &cx, &cy]) {
         log.push(format!("移不过去：{e}"));
     }
@@ -694,11 +615,15 @@ fn drive_real_pointer(
         log.push(format!("点不下去：{e}"));
     }
     for _ in 0..60 {
-        if shared.lock().unwrap().copy_clicks > 0 {
+        if shared.lock().unwrap().pick_clicks > 0 {
             break;
         }
         sleep(50);
     }
+    xvfb::emit(
+        "b.pick_clicks_after_single",
+        shared.lock().unwrap().pick_clicks,
+    );
 
     // ── 双击名字那一段 ─────────────────────────────────────────────────
     let (nx, ny) = at(name_at);
@@ -716,7 +641,7 @@ fn drive_real_pointer(
     //    ⇒ 要的是「**跨帧**，但在双击窗以内」。这台机器上一帧约 1 毫秒
     //      （本趟 `b.frames` 自己印着），80 毫秒**两侧都有量级余量**。
     //    ⚠ 它是**这台机器上的**一个夹值，不是常量；歪了会以
-    //      「台架没造出双击 ⇒ 判不了」出声，**不会**冒充「按钮死了」。
+    //      「台架没造出双击 ⇒ 判不了」出声，**不会**冒充「那一行点不动」。
     for nth in 1..=2 {
         if let Err(e) = xvfb::xdotool_on(display, &["click", "1"]) {
             log.push(format!("第 {nth} 下点不下去：{e}"));
@@ -755,9 +680,9 @@ fn scenario_b() -> &'static super::testing::xvfb::ChildRun {
 
 /// 🔴 **两把尺子同轴** —— 这一条先判，否则下面两条点的是别的地方。
 ///
-/// 按钮的落点是拿**合成台架**量的（同一个进程、同一套字体、同一张屏尺寸），
+/// 单击那一行的落点是拿**合成台架**量的（同一个进程、同一套字体、同一张屏尺寸），
 /// 而实景那一趟点的是**根坐标**。中间那两步换算只有在
-/// 「真窗口的 `viewport_rect` == 量按钮时那张屏」且「缩放恰好 1」时才成立。
+/// 「真窗口的 `viewport_rect` == 量落点时那张屏」且「缩放恰好 1」时才成立。
 ///
 /// ⚠ 不成立就报「这一格判不了」，**不报「过了」** —— 同
 /// 那条口径（那把尺子在这台机器上量不了，就说出来）。
@@ -770,7 +695,7 @@ fn the_real_window_and_the_synthetic_ruler_share_one_coordinate_system() {
     assert_eq!(
         run.reading("b.screen"),
         want,
-        "真窗口的 `viewport_rect` 是 {} 而量按钮用的那张屏是 {want} —— \
+        "真窗口的 `viewport_rect` 是 {} 而量落点用的那张屏是 {want} —— \
          两把尺子不同轴，这一格**判不了**（不是过了）",
         run.reading("b.screen")
     );
@@ -803,40 +728,31 @@ fn the_real_window_and_the_synthetic_ruler_share_one_coordinate_system() {
     assert!(frames >= 5, "只画了 {frames} 帧 —— 这一趟窗口压根没跑起来");
 }
 
-/// 🔴 **一次真 X 鼠标点击打在那颗「复制」上，回来的是那一行的下标。**
+/// 🔴 **一次真 X 鼠标单击打在那一行上，回来的是那一行的下标**（真 X 事件 → winit → egui → 生产那个行画函数）。
 ///
-/// 这是第三刀那条真缺陷（整行那块命中矩形把按钮吃掉）的**实景**钉子：
-/// 此前它只被合成事件钉着，写着
-/// 「真机上鼠标点那颗『复制』会不会触发 —— **判不了**」。
-/// ⇒ 这一格从此有数：真 X 事件 → winit → egui → 生产那个行画函数。
-///
-/// ⚠ 计数按**相等**判（恰好 1 次），不是「至少 1 次」：
-/// 一次点击被认成两三次（按下/松开各算一次那一族失效）在只看下标时分不开。
+/// ⚠ 计数按**相等**判（单击之后恰好 1 次），不是「至少 1 次」：一次点击被认成两三次在只看下标时分不开。
 #[cfg(not(windows))]
 #[test]
-fn a_real_pointer_click_on_the_copy_button_comes_back_as_that_row() {
+fn a_real_pointer_click_on_a_row_comes_back_as_that_row() {
     let run = scenario_b();
-    run.must_have_passed("「真事件下点得动那颗按钮」");
+    run.must_have_passed("「真事件下单击选得中那一行」");
     assert_eq!(
-        run.reading("b.copy_clicks_before"),
+        run.reading("b.pick_clicks_before"),
         "0",
         "还没点的时候那个计数就已经是 {} —— 下面那条「恰好 1」是个摆设",
-        run.reading("b.copy_clicks_before")
+        run.reading("b.pick_clicks_before")
     );
     assert_eq!(
-        run.reading("b.copy_row"),
-        REAL_EVENT_ROW_FOR_COPY.to_string(),
-        "真鼠标点在第 {REAL_EVENT_ROW_FOR_COPY} 行那颗「{COPY_LABEL}」上，\
-         认出来的却是 {:?} —— `none` 多半是整行那块命中矩形把按钮盖住了\
-         （它是后登记的，平手时它赢）",
-        run.reading("b.copy_row"),
-        COPY_LABEL = COPY_LABEL.as_str()
+        run.reading("b.pick_row"),
+        REAL_EVENT_ROW_FOR_PICK.to_string(),
+        "真鼠标单击第 {REAL_EVENT_ROW_FOR_PICK} 行，认出来的却是 {:?}",
+        run.reading("b.pick_row")
     );
     assert_eq!(
-        run.reading("b.copy_clicks"),
+        run.reading("b.pick_clicks_after_single"),
         "1",
         "一次真点击被认成了 {} 次",
-        run.reading("b.copy_clicks")
+        run.reading("b.pick_clicks_after_single")
     );
 }
 
@@ -855,7 +771,7 @@ fn a_real_pointer_click_on_the_copy_button_comes_back_as_that_row() {
 ///   （所有交互判据喂的都是合成 `RawInput`）。
 /// - **坐标换算端到端对得上**：指针最后落在 egui 眼里的逻辑点，与判据
 ///   拿合成台架量出来的那个点**逐位相等**。⇒ 「物理像素 → 逻辑点」
-///   那一步没歪 —— 而按钮那一格的绿正是压在这一步上。
+///   那一步没歪 —— 而单击那一格的绿正是压在这一步上。
 ///
 /// ## 🔴 判不了的（缺什么证据，写死）
 ///
@@ -876,7 +792,7 @@ fn a_real_pointer_click_on_the_copy_button_comes_back_as_that_row() {
 /// 而本仓不许为一条判据加依赖 ⇒ **如实欠着，不假装覆盖了。**
 ///
 /// ⚠ **别把这一格读成「那一侧没人看着」**：合成事件那一层照旧钉着它
-/// （`making_way_for_the_button_does_not_kill_the_rest_of_the_row`）。
+/// （`a_double_click_anywhere_on_the_row_opens_that_row`）。
 /// 这里欠的只是**真事件**那一层的同一条。
 #[cfg(not(windows))]
 #[test]
@@ -895,7 +811,7 @@ fn real_pointer_events_reach_egui_and_the_double_click_side_is_still_unjudgeable
     assert_eq!(
         run.reading("b.last_pointer"),
         run.reading("b.name_at"),
-        "真指针最后落在 egui 眼里的逻辑点是 {}，而判据瞄的是 {} ——          「物理像素 → 逻辑点」那一步歪了（按钮那一格的绿也压在这一步上）",
+        "真指针最后落在 egui 眼里的逻辑点是 {}，而判据瞄的是 {} ——          「物理像素 → 逻辑点」那一步歪了（单击那一格的绿也压在这一步上）",
         run.reading("b.last_pointer"),
         run.reading("b.name_at")
     );
@@ -1000,177 +916,6 @@ fn the_rig_leaves_no_lock_behind_when_it_is_dropped() {
     );
 }
 
-// ════════════════════════════════════════════════════════════════════════
-// 🔴行上那三颗**写**按钮
-// ════════════════════════════════════════════════════════════════════════
-
-/// 🔴 **相等断言**：三颗写按钮各自的处数 == `is_writable` 说的行数。
-///
-/// ⚠ 与「复制」那一条**刻意分开**：两个判准不同（目录能写、不能复制），
-/// 合起来判会让「目录上少了删除」与「目录上多了复制」互相抵消。
-#[test]
-fn only_the_writable_rows_get_the_three_write_buttons_painted() {
-    use crate::writeops::{is_writable, CHMOD_LABEL, DELETE_LABEL, RENAME_LABEL};
-    let ctx = egui::Context::default();
-    let rows = mixed_rows();
-    let _ = render_headless_with_events_and_text(&ctx, &rows, screen(), 0.0, Vec::new());
-    let (tally, painted) =
-        render_headless_with_events_and_text(&ctx, &rows, screen(), 0.1, Vec::new());
-    assert_eq!(tally.rows_materialized, 4, "四行没画全，下面的数就没意义");
-    assert!(
-        !painted.is_empty(),
-        "这一帧一个字都没画出来 —— 量具塌了，下面那一比在空转"
-    );
-
-    let want = rows.iter().filter(|r| is_writable(r)).count();
-    assert_eq!(want, 3, "语料自己变了：能写的行数应当是 3（目录也能写）");
-    for label in [
-        RENAME_LABEL.as_str(),
-        DELETE_LABEL.as_str(),
-        CHMOD_LABEL.as_str(),
-    ] {
-        let got = rects_of(&painted, label);
-        assert_eq!(
-            got.len(),
-            want,
-            "画出来 {} 颗「{label}」，而 `is_writable` 说有 {want} 行能写 —— \
-             有损名那一档上长出了一颗不该有的按钮（或者能写的那几行少了一颗）",
-            got.len()
-        );
-        // 反空真：它们在三行不同的位置上（不是同一颗被数了三遍）。
-        assert!(got[0].center().y < got[1].center().y);
-        assert!(got[1].center().y < got[2].center().y);
-    }
-    // 目录那一行：三颗写按钮**有**，「复制」**也有**了（后端 `recursive: true`）。
-    //   在这份语料上两个判准重合（有损名那一行没带字节，两边都不给）；分得开的那一格住 `writeops_tests`（带字节的有损名能写、不能复制）。
-    let copies = rects_of(&painted, COPY_LABEL.as_str());
-    assert_eq!(copies.len(), 3, "能复制的行数应当是 3");
-    let renames = rects_of(&painted, RENAME_LABEL.as_str());
-    assert!(
-        (renames[0].center().y - copies[0].center().y).abs() < 1.0,
-        "第 0 行（目录）上「{}」与「{}」不在同一行 —— 目录那一行少了一颗",
-        RENAME_LABEL.as_str(),
-        COPY_LABEL.as_str()
-    );
-}
-
-/// 🔴 **这一刀最要紧的判据**：点那三颗写按钮，回来的各是**那一行**的下标。
-///
-/// # 它同时钉着第三刀那条真缺陷的第五刀版本
-///
-/// 整行那块命中矩形是**后**登记的，egui 在平手时逐字「take the last one」
-/// ⇒ 它盖住的按钮**永远点不到**。第三刀让开了「复制」那一颗；第五刀一行上有四颗，
-/// **只让开一颗的话另外三颗照旧是死的** —— 而它们是写操作。
-/// ⇒ `paint_one_row` 取的是那几颗里**最左**那个左边界（`RowButtons::leftmost_left`），
-/// 而本条逐颗点一遍。少了它，把那个 `min` 写成「让开复制那一颗」不会红。
-#[test]
-fn clicking_each_write_button_comes_back_as_that_rows_index() {
-    use crate::writeops::{CHMOD_LABEL, DELETE_LABEL, RENAME_LABEL};
-    let rows = mixed_rows();
-    // 🔴🔴 **两行都要点，而「目录那一行」是承重的那一行。**
-    //
-    // 〔死值验 `M7` 现打逼出来的〕第一版只点第 2 行（`two.bin`，一个**文件**）。
-    // 把 `RowButtons::leftmost_left` 改成「只看复制那一颗」⇒ **一条判据都没红**，
-    // 而那个改动是有后果的：文件行上「复制」按布局本来就是最左那一颗
-    // ⇒ 在**有复制**的那几行上，那个 `min` 取谁都一样，那一版是个恒真的判据。
-    // 真正会坏的是**目录那一行** —— 它没有「复制」（`copy-data` 吃文件句柄）
-    // ⇒ `leftmost_left` 回 `None` ⇒ 整行那块矩形拉满整行宽 ⇒ 它那三颗写按钮
-    // **全成了死的**：目录点得到「删除」这件事悄悄没了，而目录删除是不可撤销的。
-    // ⇒ 本条现在逐行点：第 0 行（目录，**没有**复制）＋ 第 2 行（文件，有复制）。
-    for (row_index, button_slot) in [(0usize, 0usize), (2usize, 2usize)] {
-        for (label, pick) in [
-            (
-                RENAME_LABEL.as_str(),
-                (|t: &RenderTally| t.rename_clicked) as fn(&RenderTally) -> Option<usize>,
-            ),
-            (DELETE_LABEL.as_str(), |t: &RenderTally| t.delete_clicked),
-            (CHMOD_LABEL.as_str(), |t: &RenderTally| t.chmod_clicked),
-        ] {
-            let ctx = egui::Context::default();
-            let _ = render_headless_with_events_and_text(&ctx, &rows, screen(), 0.0, Vec::new());
-            let (_, painted) =
-                render_headless_with_events_and_text(&ctx, &rows, screen(), 0.1, Vec::new());
-            let buttons = rects_of(&painted, label);
-            assert_eq!(
-                buttons.len(),
-                3,
-                "没找到那三颗「{label}」，下面按坐标点没意义"
-            );
-            // 那三颗按出现顺序对应第 0 / 1 / 2 行（第 3 行是有损名，不画）。
-            let pos = buttons[button_slot].center();
-            let _ = render_headless_with_events(
-                &ctx,
-                &rows,
-                screen(),
-                0.2,
-                vec![egui::Event::PointerMoved(pos)],
-            );
-            let hit = render_headless_with_events(&ctx, &rows, screen(), 0.3, click_at(pos));
-            assert_eq!(
-                pick(&hit),
-                Some(row_index),
-                "点在第 {row_index} 行那颗「{label}」上，回来的却是 {:?} —— \
-                 `None` 多半是整行那块命中矩形把它盖住了（它是后登记的，平手时它赢）；\
-                 这一颗是**写**操作，点不到就等于这条功能没接上。\
-                 ⚠ 第 0 行是**目录**（没有「复制」那一颗）—— 死值验 `M7` 证明\
-                 只让开「复制」时坏的正是这一行",
-                pick(&hit)
-            );
-            // 点一颗按钮不许同时被读成「双击进目录」，也不许串到别的那几颗上。
-            assert_eq!(hit.clicked, None, "点一颗按钮竟然还顺手进了目录");
-            let others: Vec<Option<usize>> = [
-                hit.copy_clicked,
-                hit.rename_clicked,
-                hit.delete_clicked,
-                hit.chmod_clicked,
-            ]
-            .into_iter()
-            .filter(|x| *x == Some(row_index))
-            .collect();
-            assert_eq!(
-                others.len(),
-                1,
-                "点一颗「{label}」，却有 {} 个格子同时报了第 {row_index} 行 —— 四颗按钮串了线",
-                others.len()
-            );
-        }
-    }
-}
-
-/// 🔴 **另一侧**：让开四颗之后，名字那一段**照旧**双击进目录。
-///
-/// 没有这一条，「让开」可以退化成「整行那块矩形干脆不要了」——
-/// 那样上面那几条照样绿，而双击进目录悄悄没了（同第三刀那条的形状）。
-#[test]
-fn making_way_for_four_buttons_does_not_kill_the_rest_of_the_row() {
-    let ctx = egui::Context::default();
-    let rows = mixed_rows();
-    let _ = render_headless_with_events(&ctx, &rows, screen(), 0.0, Vec::new());
-    // 第 1 行（`one.bin`，四颗按钮都有）名字那一段：x=60 远在最左那颗按钮左边。
-    let y = 1.5 * (ROW_HEIGHT + 4.0);
-    let pos = egui::pos2(60.0, y);
-    let _ = render_headless_with_events(
-        &ctx,
-        &rows,
-        screen(),
-        0.1,
-        vec![egui::Event::PointerMoved(pos)],
-    );
-    let _ = render_headless_with_events(&ctx, &rows, screen(), 0.2, click_at(pos));
-    let second = render_headless_with_events(&ctx, &rows, screen(), 0.3, click_at(pos));
-    let got = second
-        .clicked
-        .expect("名字那一段双击不回任何行 —— 整行那块命中矩形被让没了");
-    assert!(
-        got.abs_diff(1) <= 1,
-        "点在第 1 行的名字上，认出来的是第 {got} 行"
-    );
-    assert_eq!(second.copy_clicked, None, "点名字竟然算成点了「复制」");
-    assert_eq!(second.rename_clicked, None, "点名字竟然算成点了「改名」");
-    assert_eq!(second.delete_clicked, None, "点名字竟然算成点了「删除」");
-    assert_eq!(second.chmod_clicked, None, "点名字竟然算成点了「权限」");
-}
-
 /// 🔴**号被别人抢走时，台架不许拿着别人的屏回来。**
 ///
 /// # 这一条钉的是残余那条 flake 的病根
@@ -1266,11 +1011,10 @@ fn linked_rows() -> Vec<Listed> {
     ]
 }
 
-/// 🔴 **链接那一行有自己的字形，而且只有链接那几行有** —— 画出来的 `🔗` 个数 == 链接行数。
-///
-/// 反空真：目录与普通文件那两行的字形照旧各画一次（这把尺子认得出字形）。
+/// 🔴 **每一行的图标按种类画，链接那一行画链接** —— 画出来的链接图标个数 == 链接行数；目录 · 文本各画自己那一个。
 #[test]
 fn only_the_link_rows_get_the_link_mark_painted() {
+    use crate::kind::{icon, Kind};
     let ctx = egui::Context::default();
     let rows = linked_rows();
     let _ = render_headless_with_events_and_text(&ctx, &rows, screen(), 0.0, Vec::new());
@@ -1280,51 +1024,50 @@ fn only_the_link_rows_get_the_link_mark_painted() {
     let want = rows.iter().filter(|r| r.link).count();
     assert_eq!(want, 1, "语料自己变了");
     assert_eq!(
-        rects_of(&painted, "🔗").len(),
+        rects_of(&painted, icon(Kind::Link)).len(),
         want,
-        "链接标记的个数与链接行数不等"
+        "链接图标的个数与链接行数不等"
     );
-    assert_eq!(rects_of(&painted, "📁").len(), 1);
+    assert_eq!(rects_of(&painted, icon(Kind::Folder)).len(), 1);
     assert_eq!(
-        rects_of(&painted, "📄").len(),
+        rects_of(&painted, icon(Kind::Text)).len(),
         1,
         "链接那一行不该**同时**画成普通文件"
     );
 }
 
-/// 🔴 **修改时间那一列：送了就画、没送就一个字都不画** —— 画出来的时间串 == 送了的那几格。
+/// 🔴 **修改时间那一列：送了就画、没送就一个字都不画** —— 画出来的时间串 == 送了的那几格（本机时区的短写法）。
 ///
 /// ⚠ 判的是「没送 ⇒ 不画一个编出来的时间」：如果哪天有人把 `None` 兜底成 0，
-/// 屏幕上就会多一条 `1970-01-01 00:00Z`，本条当场红（那一格在阴性对照里点了名）。
+/// 屏幕上就会多一条纪元零点那一格，本条当场红（那一格在阴性对照里点了名）。
 #[test]
 fn the_time_column_shows_exactly_the_times_that_were_sent() {
     let ctx = egui::Context::default();
     let rows = linked_rows();
     let _ = render_headless_with_events_and_text(&ctx, &rows, screen(), 0.0, Vec::new());
     let (_, painted) = render_headless_with_events_and_text(&ctx, &rows, screen(), 0.1, Vec::new());
-    for r in &rows {
-        if let Some(t) = r.mtime_secs {
-            let s = crate::source::format_mtime(t);
-            assert_eq!(
-                rects_of(&painted, &s).len(),
-                1,
-                "`{}` 那一格时间 `{s}` 没画出来",
-                r.name
-            );
-        }
-    }
-    let times = painted
+    let want: Vec<String> = rows
         .iter()
-        .filter(|(t, _)| t.ends_with('Z') && t.len() == 17)
-        .count();
+        .filter_map(|r| r.mtime_secs.map(|t| crate::source::mtime_text(t).short))
+        .collect();
+    assert_eq!(want.len(), 2, "语料自己变了");
+    for s in &want {
+        assert_eq!(
+            rects_of(&painted, s).len(),
+            1,
+            "时间 `{s}` 没画出来（或画了不止一处）"
+        );
+    }
+    let zero = crate::source::mtime_text(0).short;
     assert_eq!(
-        times,
-        rows.iter().filter(|r| r.mtime_secs.is_some()).count(),
-        "画出来的时间条数与送了时间的行数不等"
-    );
-    assert_eq!(
-        rects_of(&painted, "1970-01-01 00:00Z").len(),
+        rects_of(&painted, &zero).len(),
         0,
-        "没送的那一格被兜底成了 1970"
+        "没送的那一格被兜底成了纪元零点"
+    );
+    assert!(
+        !painted
+            .iter()
+            .any(|(t, _)| t.ends_with('Z') && t.contains(':')),
+        "时间还带着 `Z`"
     );
 }

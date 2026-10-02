@@ -170,3 +170,35 @@ fn the_index_does_not_walk_into_another_filesystem() {
     );
     std::fs::remove_dir_all(&base).ok();
 }
+
+/// `files-stat` 的属主与链接指向：普通文件 ⇒ `link_target` 为 `null`；路径本身是链接 ⇒ 目标原文（不解）；
+/// 属主跟链接（链接与它指向的文件同一个属主），unix 上非空。
+#[cfg(unix)]
+#[test]
+fn stat_reports_the_owner_and_where_a_link_points() {
+    let base = temp_root("stat-owner");
+    std::fs::write(base.join("a.bin"), b"abc").expect("铺");
+    std::os::unix::fs::symlink("a.bin", base.join("ln")).expect("铺链接");
+    let stat = |name: &str| {
+        crate::files::answer_wire(
+            "files-stat",
+            &serde_json::json!({ "path": base.join(name).to_string_lossy() }),
+        )
+        .expect("该答得出来")
+    };
+    let (f, l) = (stat("a.bin"), stat("ln"));
+    assert_eq!(
+        f["link_target"],
+        serde_json::Value::Null,
+        "普通文件不是链接"
+    );
+    assert_eq!(
+        l["link_target"],
+        serde_json::json!("a.bin"),
+        "链接的目标要原文"
+    );
+    let owner = f["owner"].as_str().expect("unix 上属主该有");
+    assert!(!owner.is_empty());
+    assert_eq!(l["owner"], f["owner"], "属主跟链接，与它指向的那份同一个");
+    std::fs::remove_dir_all(&base).ok();
+}

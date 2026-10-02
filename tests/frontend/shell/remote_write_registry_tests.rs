@@ -520,7 +520,8 @@ fn the_file_window_uses_exactly_the_pool_commands_it_registers() {
         // 30 → 33：窗口独立成包，两棵合起来多三份 —— 窗口包的 `lib.rs`（原 `mod.rs` 的躯体；壳里那份 `mod.rs` 还在）·
         //   窗口那一半 `proc.rs`（拨回 · 第一屏；壳里那一半 `proc.rs` 还在）· `guard_support.rs`（判据住址）；一个池子符号都不碰。
         // 33 → 34，多的是窗口包的平台层 `platform.rs`（一个池子符号都不碰）。
-        34,
+        // 34 → 38：样子 `theme.rs` · 窗口的框 `chrome.rs` · 文件种类 `kind.rs` · 属性框 `props.rs`（属性经通道问 `files-stat`；一个池子符号都不碰）。
+        38,
         "`filewin/` 那棵树现扫到 {} 份 `.rs`（2026-09-22 现打 14：copy · corpus · **download** · **editor** · entry · \
          find · fonts · mod · rows · scale · shell · source · transfer · writeops）\
          〔第十三刀 09-23：14 → 16，多的是 **proc** 与 **win_main**（窗口改独立进程：\

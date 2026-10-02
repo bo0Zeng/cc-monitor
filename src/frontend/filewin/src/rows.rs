@@ -29,15 +29,10 @@
 use copy_core::copy_text;
 use egui::{ScrollArea, Ui};
 
-use super::copy::{copyable, COPY_LABEL};
-use super::download::{is_downloadable, DOWNLOAD_LABEL};
-use super::editor::{editable, EDIT_LABEL};
-use super::source::{format_mtime, Listed};
-use super::writeops::{is_writable, CHMOD_LABEL, DELETE_LABEL, RENAME_LABEL};
-
-/// 一行的高度（不含 item spacing）。与那趟原型同值，
-/// 那趟的「一屏约 44 行 @ 1280×800」就是按这个数算的。
-pub const ROW_HEIGHT: f32 = 18.0;
+use super::kind;
+use super::source::{mtime_text, Listed, Sort, SortBy};
+use super::theme::palette;
+pub use super::theme::ROW_HEIGHT;
 
 /// 这一趟画了什么 —— 判据靠它说话，生产也靠它做诊断。
 ///
@@ -49,66 +44,33 @@ pub struct RenderTally {
     pub first_row: usize,
     pub last_row: usize,
     pub total_rows: usize,
-    /// 🔴 这一帧被点开的那一行的**下标**（`None` = 没人点）。
+    /// 🔴 这一帧被**双击**的那一行的下标（`None` = 没人点）。
     ///
     /// **点击要从这里出来，不许在生产里另画一遍列表** —— [`show_file_rows`] 是
-    /// 唯一一条画列表的路（见它的头注），所以「谁被点了」也只能从它带出来。
-    /// 上一刀差点栽在同一形上：判据自己抄了一份 `ScrollArea`，于是它钉的是副本。
+    /// 唯一一条画列表的路，所以「谁被点了」也只能从它带出来。
     pub clicked: Option<usize>,
-    /// 🔴这一帧哪一行的**「复制」**被点了（`None` = 没人点）。
-    ///
-    /// 与 [`Self::clicked`] **刻意分开两个值**：一个装「双击这一行」，一个装
-    /// 「点这一行上那颗按钮」。合成一个就得再编一个「点的是什么」的枚举，
-    /// 而那个枚举的两支在窗口那侧走的是两条完全不同的路（换目录 / 摆命名框）。
-    pub copy_clicked: Option<usize>,
-    /// 🔴这一帧哪一行的**「改名」**被点了。
-    pub rename_clicked: Option<usize>,
-    /// 🔴这一帧哪一行的**「删除」**被点了。
-    pub delete_clicked: Option<usize>,
-    /// 🔴这一帧哪一行的**「权限」**被点了。
-    pub chmod_clicked: Option<usize>,
     /// 🔴这一帧哪一行被画成了**「就是这个文件」**（`None` = 没有）。
     ///
-    /// # 为什么高亮这件事要有一个收数口
-    ///
-    /// 高亮本身是一块背景色，而 `painted_text` 那套量具只收**文字** ⇒ 判据看不见颜色。
-    /// ⇒ 这一格是那件事的**可判读出**，而它与那块背景色在**同一处**写下
-    /// （`paint_one_row` 里同一个 `if`）⇒ 两者不可能漂开。
-    ///
-    /// ⚠ 它**买不到**「那一行在屏幕上真的看起来是高亮的」—— 那要人看。
+    /// 高亮本身是一块背景色，量具只收**文字** ⇒ 这一格是那件事的可判读出，
+    /// 与那块背景色在**同一处**写下（`paint_one_row` 里同一个 `if`）⇒ 两者不可能漂开。
     pub revealed_row: Option<usize>,
-    /// 🔴这一帧哪一行的**「编辑」**被点了。
-    pub edit_clicked: Option<usize>,
-    /// 🔴这一帧哪一行的**「下载」**被点了。
-    ///
-    /// ⚠ 它与那三颗写按钮**刻意不共用一个值**（同 [`Self::copy_clicked`] 的理由）：
-    /// 那三颗在窗口那侧走 `writeops::run_writes` 那条路（远端写），
-    /// 这一颗走 `download` 那两问（**本机**落点）。合成一个就得再编一个
-    /// 「点的是什么」的枚举，而两支的下一跳完全不同。
-    pub download_clicked: Option<usize>,
-    /// 🔴这一帧哪一行被**单击**了（整行那块，不是按钮），带着当时按着的修饰键。
+    /// 🔴这一帧哪一行被**单击**了，带着当时按着的修饰键。
     ///
     /// 与 [`Self::clicked`]（**双击** = 打开）刻意分开：单击改选中态，双击才动目录。
-    /// 双击的第一下照样落在这里 —— 那正是文件管理器的手感（先选中，再打开）。
     pub picked_click: Option<(usize, egui::Modifiers)>,
     /// 🔴这一帧哪一行被**右键**点了（`None` = 没有）。菜单摆在哪儿由窗口读指针位置。
     pub menu_clicked: Option<usize>,
     /// 这一帧哪一行被**拖起**了（带出「从哪一行拖起」）。
     pub drag_started: Option<usize>,
-    /// 🔴这一帧被画成「**选中**」的那几行（下标，按画的顺序）。
-    ///
-    /// 与 [`Self::revealed_row`] 同一条理由：背景色判据看不见 ⇒ 这一格是那件事的
-    /// **可判读出**，而且与那块背景色在**同一处**写下（`paint_one_row` 前面同一个 `if`）。
-    /// ⚠ 只含**真被画出来的**那几行（虚拟滚动）—— 它不是「选中了几项」，是「这一帧画了几块选中色」。
+    /// 🔴这一帧被画成「**选中**」的那几行（下标，按画的顺序；只含真画出来的那几行）。
     pub picked_rows: Vec<usize>,
     /// 🔴这一帧被画成「**键盘光标**」的那一行（`None` = 光标不在视野里 / 没有光标）。
     pub cursor_row: Option<usize>,
+    /// 这一帧被画成**淡一级**（隐藏文件）的那几行（下标，按画的顺序）。
+    pub faded_rows: Vec<usize>,
 }
 
 /// 一行在选中态里是什么样子 —— [`paint_one_row`] 要的那两格。
-///
-/// ⚠ 刻意不把 [`super::select::Selection`] 整个递进 `paint_one_row`：画一行的函数
-/// 只需要知道「我被选中了吗 · 我是光标吗」，不需要知道选中态怎么记。
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Mark {
     pub picked: bool,
@@ -133,47 +95,180 @@ pub struct HitTally {
     pub jump: Option<usize>,
 }
 
-/// [`paint_one_row`] 这一帧从一行上收到的东西。
-///
-/// 🔴 **回的是一个结构而不是 `bool`**：这一行现在有七处可点（整行 ＋ 六颗按钮），
-/// 而 `bool` 只装得下一处 —— 其余要么被挤掉，要么靠 out 参数偷偷带出去。
+/// 一行上的手势（整行一块命中矩形；行上没有按钮 —— 动作走右键菜单与键盘）。
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct RowHit {
-    /// 这一行被**双击**了（＝ 目录进去）。
     pub activated: bool,
-    /// 这一行的「复制」被**单击**了。
-    pub copy: bool,
-    /// 这一行的「改名」被**单击**了。
-    pub rename: bool,
-    /// 这一行的「删除」被**单击**了。
-    pub delete: bool,
-    /// 这一行的「权限」被**单击**了。
-    pub chmod: bool,
-    /// 这一行的「下载」被**单击**了。
-    pub download: bool,
-    /// 这一行的「编辑」被**单击**了。
-    pub edit: bool,
-    /// 整行那块被**单击**了（带修饰键）。
     pub picked: Option<egui::Modifiers>,
-    /// 整行那块被**右键**点了。
     pub menu: bool,
-    /// 〔「行拖到另一栏的手势」〕整行那块这一帧**被拖起**了。
     pub drag_started: bool,
 }
 
-/// 画一屏文件行。**这里是 `show_rows`，改成 `show` 会被判据当场逮住。**
+// ── 详情视图的列 ──────────────────────────────────────────────────────────
+
+/// 四列：名称（吃剩下的宽度）· 修改时间 · 类型 · 大小。宽度是窗口状态（关窗即没）。
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Columns {
+    pub mtime: f32,
+    pub kind: f32,
+    pub size: f32,
+}
+
+impl Default for Columns {
+    fn default() -> Self {
+        Self {
+            mtime: 150.0,
+            kind: 120.0,
+            size: 90.0,
+        }
+    }
+}
+
+/// 一列最窄多少（拖窄到这里就停）。
+pub const MIN_COL: f32 = 56.0;
+/// 名称那一列最窄多少（别的列拖宽时不许把它挤没）。
+pub const MIN_NAME: f32 = 140.0;
+/// 表头一行的高度。
+pub const HEADER_HEIGHT: f32 = 30.0;
+/// 列与列之间、行首的内边距。
+const PAD: f32 = 10.0;
+/// 列宽拖手的半宽。
+const GRIP: f32 = 4.0;
+
+/// 列的先后（表头与每一行都按它排）。
+pub const ORDER: [SortBy; 4] = [SortBy::Name, SortBy::Mtime, SortBy::Type, SortBy::Size];
+
+impl Columns {
+    /// 一行（或表头）的矩形 → 四列各自的矩形（按 [`ORDER`]）。名称列吃剩下的，至少 [`MIN_NAME`]。
+    /// 一行放不下（双栏 · 窗口窄）⇒ 另外三列按比例让，名称列留 [`MIN_NAME`]；四列的总宽恒等于那一行（不画出界）。
+    pub fn rects(&self, row: egui::Rect) -> [egui::Rect; 4] {
+        let fixed = self.mtime + self.kind + self.size;
+        let room = (row.width() - MIN_NAME).max(0.0);
+        let shrink = if fixed > room { room / fixed } else { 1.0 };
+        let (mtime, kind, size) = (self.mtime * shrink, self.kind * shrink, self.size * shrink);
+        let name = row.width() - mtime - kind - size;
+        let mut x = row.left();
+        let mut out = [row; 4];
+        for (k, w) in [name, mtime, kind, size].into_iter().enumerate() {
+            out[k] =
+                egui::Rect::from_min_max(egui::pos2(x, row.top()), egui::pos2(x + w, row.bottom()));
+            x += w;
+        }
+        out
+    }
+
+    /// 第 `k` 条分隔线（名称|时间 = 0 · 时间|类型 = 1 · 类型|大小 = 2）被拖了 `dx`：
+    /// 线右边那一列让出 / 吃进这么多，线左边那一列（名称列吃剩下的）跟着变。
+    pub fn drag(&mut self, k: usize, dx: f32) {
+        let clamp = |v: f32| v.max(MIN_COL);
+        match k {
+            0 => self.mtime = clamp(self.mtime - dx),
+            1 => {
+                let d = dx.clamp(MIN_COL - self.mtime, self.kind - MIN_COL);
+                self.mtime += d;
+                self.kind -= d;
+            }
+            2 => {
+                let d = dx.clamp(MIN_COL - self.kind, self.size - MIN_COL);
+                self.kind += d;
+                self.size -= d;
+            }
+            _ => {}
+        }
+    }
+}
+
+/// 列名。
+pub fn column_label(by: SortBy) -> String {
+    by.label()
+}
+
+/// 🔴 **表头**：点一列按它排（再点反向），拖两列之间那条线改列宽。回这一帧点了哪一列。
+pub fn show_header(ui: &mut Ui, cols: &mut Columns, sort: Sort) -> Option<SortBy> {
+    let p = palette(ui.ctx());
+    let (rect, _) = ui.allocate_exact_size(
+        egui::vec2(ui.available_width(), HEADER_HEIGHT),
+        egui::Sense::hover(),
+    );
+    ui.painter().line_segment(
+        [rect.left_bottom(), rect.right_bottom()],
+        egui::Stroke::new(1.0, p.border),
+    );
+    let mut picked = None;
+    let rects = cols.rects(rect);
+    for (k, by) in ORDER.into_iter().enumerate() {
+        let r = rects[k];
+        // 不进 Tab 顺序（`FOCUSABLE` 不要）：列表的键盘归窗口自己那一套，egui 的焦点落在这里会把方向键挡住。
+        let resp = ui.interact(r, ui.id().with(("filewin-col", k)), egui::Sense::CLICK);
+        if resp.hovered() {
+            ui.painter().rect_filled(r, 0.0, p.hover);
+        }
+        if resp.clicked() {
+            picked = Some(by);
+        }
+        let mut text = column_label(by);
+        let mine = sort.by == by;
+        if mine {
+            let caret = if sort.descending() {
+                egui_phosphor::regular::CARET_DOWN
+            } else {
+                egui_phosphor::regular::CARET_UP
+            };
+            text = format!("{text} {caret}");
+        }
+        let color = if mine { p.text } else { p.text2 };
+        let align = if by == SortBy::Size {
+            egui::Align2::RIGHT_CENTER
+        } else {
+            egui::Align2::LEFT_CENTER
+        };
+        let at = if by == SortBy::Size {
+            egui::pos2(r.right() - PAD, r.center().y)
+        } else {
+            egui::pos2(r.left() + PAD, r.center().y)
+        };
+        ui.painter().with_clip_rect(r).text(
+            at,
+            align,
+            text,
+            egui::TextStyle::Body.resolve(ui.style()),
+            color,
+        );
+    }
+    // 三条分隔线（拖手画在表头上，列宽只在这里改）。
+    for k in 0..3 {
+        let x = rects[k].right();
+        let grip = egui::Rect::from_min_max(
+            egui::pos2(x - GRIP, rect.top()),
+            egui::pos2(x + GRIP, rect.bottom()),
+        );
+        let resp = ui.interact(
+            grip,
+            ui.id().with(("filewin-col-grip", k)),
+            egui::Sense::drag(),
+        );
+        let hot = resp.hovered() || resp.dragged();
+        if hot {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
+        }
+        if resp.dragged() {
+            cols.drag(k, resp.drag_delta().x);
+        }
+        ui.painter().line_segment(
+            [
+                egui::pos2(x, rect.top() + 7.0),
+                egui::pos2(x, rect.bottom() - 7.0),
+            ],
+            egui::Stroke::new(1.0, if hot { p.accent } else { p.border }),
+        );
+    }
+    picked
+}
+
+/// 画一屏文件行（详情视图）。**虚拟滚动**：只物化看得见的那几行。
 ///
-/// 🔴 **这是画列表的唯一一条路** —— 生产（[`super::shell::FileWindow::ui`]）与
-/// 判据（[`render_headless`]）调的是同一个函数。
-/// ⚠ 这一条是**刻意的、承重的**：一开始 `render_headless` 自己抄了一份
-/// `ScrollArea` 调用，于是「虚拟滚动」那条判据钉的是**判据自己那份副本**，
-/// 生产那份改成 `show` 一条都不会红（死值验第 1 刀就是这么露出来的）。
-/// **别再为了省一个参数把它抄回去。**
-///
-/// `scroll_offset_y`：`None` = 由 egui 自己管（生产）；`Some(y)` = 钉死偏移（量帧时用）。
-///
-/// `picked`：选中态（`None` = 这一趟不画选中，判据那几条量虚拟滚动的就这么喂）。
-/// ⚠ 每一行只问两次集合查找（`is_picked` / `is_cursor`），**只对真被画出来的行问**。
+/// 🔴 这是**唯一**一条画文件列表的路。行与行之间不留缝（`item_spacing.y = 0`），
+/// 一行恰好 [`ROW_HEIGHT`] ⇒ 「滚到第 i 行」的偏移是 `i × ROW_HEIGHT`（[`row_pitch`]），算出来的，不是找出来的。
 pub fn show_file_rows(
     ui: &mut Ui,
     rows: &[Listed],
@@ -181,66 +276,53 @@ pub fn show_file_rows(
     scroll_offset_y: Option<f32>,
     reveal: Option<&str>,
     picked: Option<&super::select::Selection>,
+    cols: &Columns,
 ) {
     tally.total_rows = rows.len();
-    let mut area = ScrollArea::vertical().auto_shrink([false; 2]);
-    if let Some(y) = scroll_offset_y {
-        area = area.vertical_scroll_offset(y);
-    }
-    area.show_rows(ui, ROW_HEIGHT, rows.len(), |ui, range| {
-        tally.first_row = range.start;
-        tally.last_row = range.end;
-        for i in range {
-            let r = &rows[i];
-            tally.rows_materialized += 1;
-            // 🔴高亮判定按**名字**（同一个目录里名字唯一），
-            //    而不是按下标 —— 下标会随「刚好有人新建了一个文件」整摞移位。
-            let revealed = reveal.is_some_and(|want| want == r.name);
-            if revealed {
-                tally.revealed_row = Some(i);
-            }
-            let mark = picked.map_or(Mark::default(), |s| Mark {
-                picked: s.is_picked(&super::select::pick_key(r)),
-                cursor: s.is_cursor(&super::select::pick_key(r)),
-            });
-            if mark.picked {
-                tally.picked_rows.push(i);
-            }
-            if mark.cursor {
-                tally.cursor_row = Some(i);
-            }
-            let hit = paint_one_row(ui, i, r, revealed, mark);
-            if let Some(m) = hit.picked {
-                tally.picked_click = Some((i, m));
-            }
-            if hit.menu {
-                tally.menu_clicked = Some(i);
-            }
-            if hit.drag_started {
-                tally.drag_started = Some(i);
-            }
-            if hit.activated {
-                tally.clicked = Some(i);
-            }
-            if hit.copy {
-                tally.copy_clicked = Some(i);
-            }
-            if hit.rename {
-                tally.rename_clicked = Some(i);
-            }
-            if hit.delete {
-                tally.delete_clicked = Some(i);
-            }
-            if hit.chmod {
-                tally.chmod_clicked = Some(i);
-            }
-            if hit.download {
-                tally.download_clicked = Some(i);
-            }
-            if hit.edit {
-                tally.edit_clicked = Some(i);
-            }
+    ui.scope(|ui| {
+        ui.spacing_mut().item_spacing.y = 0.0;
+        let mut area = ScrollArea::vertical().auto_shrink([false; 2]);
+        if let Some(y) = scroll_offset_y {
+            area = area.vertical_scroll_offset(y);
         }
+        area.show_rows(ui, ROW_HEIGHT, rows.len(), |ui, range| {
+            tally.first_row = range.start;
+            tally.last_row = range.end;
+            for i in range {
+                let r = &rows[i];
+                tally.rows_materialized += 1;
+                let revealed = reveal.is_some_and(|want| want == r.name);
+                if revealed {
+                    tally.revealed_row = Some(i);
+                }
+                let mark = picked.map_or(Mark::default(), |s| Mark {
+                    picked: s.is_picked(&super::select::pick_key(r)),
+                    cursor: s.is_cursor(&super::select::pick_key(r)),
+                });
+                if mark.picked {
+                    tally.picked_rows.push(i);
+                }
+                if mark.cursor {
+                    tally.cursor_row = Some(i);
+                }
+                if kind::is_hidden(&r.name) {
+                    tally.faded_rows.push(i);
+                }
+                let hit = paint_one_row(ui, i, r, revealed, mark, cols);
+                if let Some(m) = hit.picked {
+                    tally.picked_click = Some((i, m));
+                }
+                if hit.menu {
+                    tally.menu_clicked = Some(i);
+                }
+                if hit.drag_started {
+                    tally.drag_started = Some(i);
+                }
+                if hit.activated {
+                    tally.clicked = Some(i);
+                }
+            }
+        });
     });
 }
 
@@ -278,280 +360,176 @@ pub fn show_hit_rows(ui: &mut Ui, hits: &[String], tally: &mut HitTally) {
         });
 }
 
-/// 一行的长相。**刻意抽出来**：虚拟与不虚拟两条路要画的是同一样东西，
-/// 否则对照组比的就不是「虚不虚拟」而是「画得多不多」。
-///
-/// 回值见 [`RowHit`]：整行被**双击**（同旧面板 `panel.ts` 的 `dblclick`，
-/// 别让两个面板两套手感）· 那颗「复制」被**单击**。
-///
-/// ⚠ **刻意不在这里做「点了之后干什么」** —— 那是窗口状态机的事
-/// （[`super::shell::FileWindow::activate`] / [`super::shell::FileWindow::begin_copy`]），
-/// 画一行的函数不许知道「换目录」「起一趟复制」这回事。
-///
-/// # 🔴那颗「复制」与整行那块命中矩形**会打架**，而且是按钮输
-///
-/// 直觉写法是「按钮照画，整行那块矩形照旧拉满整行宽」。**那样按钮是死的。**
-/// egui 的命中测试在距离平手（两块矩形都盖着指针）时逐字
-/// 「In case of a tie, take the last one = the one on top」
-/// （那句话住 `egui-0.36.2/src/hit_test.rs`，在它挑「最近那个可点控件」的私有
-/// 辅助函数里；⚠ 本仓刻意**不点那个函数的名字** —— 它是仓外符号，
-/// 而散文里的裸符号名由 `structural_scan` 那两条判据管着，点了就得进登记表），
-/// 而整行那块矩形是在 `ui.horizontal(…)` **之后**登记的 ⇒ 它永远赢。
-/// ⇒ 按钮编得过、画得出、`clicked()` **恒 false**。
-///
-/// ⇒ 整行那块矩形的右边界**停在按钮左侧**（让开一个 `item_spacing.x`）。
-/// 判据两侧都钉：点按钮要回按钮（[`RowHit::copy`]）、点名字那一段双击要回那一行
-/// （[`RowHit::activated`]）—— 只钉一侧的话，把矩形改回拉满整行不会红。
-///
-/// # 🔴 为什么是 `ui.interact(rect, 自己造的 Id, …)`，而不是 `响应.interact(…)`
-///
-/// 直觉写法是 `ui.horizontal(…).response.interact(Sense::click())`。
-/// **那一版在 headless 下现打是死的**：同一趟里、同一个位置上，
-/// `ui.button()` 拿得到 `hovered/clicked`，而 `ui.horizontal(…)` 那个**布局作用域
-/// 响应**上再 `interact` 出来的那一份 `hovered` 恒 `false`
-/// （逐帧读数见）——
-/// 命中测试在 `begin_pass` 时按上一帧的 widget 表做，而那条路上那个 id 没进到能被命中的那一档。
-///
-/// ⇒ 换成**给这一行自己造一个 `Id`、用 `ui.interact` 正经登记一个 widget**，
-/// 当场活（`hov=true` / `click=true` / 第三帧 `dbl=true`）。
-/// ⚠ 这不是「换个写法凑绿」：换之前那一版**在真窗口上也一样不接点击**，
-/// 判据逮住的是一条真缺陷 —— 只是它在本机只能以 headless 的形式被看见。
-///
-/// ⚠ 买不到的那一半照旧写在这儿：**真机上鼠标双击能不能触发，本机判不了**
-/// （`XDG_SESSION_TYPE=tty`，没有图形会话，也就没有真事件源）。
-/// 这里买到的是「**egui 收到这样一串事件之后，认出来的是哪一行**」。
-fn paint_one_row(ui: &mut Ui, index: usize, r: &Listed, revealed: bool, mark: Mark) -> RowHit {
-    let band_rect = egui::Rect::from_min_size(
-        ui.cursor().min,
-        egui::vec2(ui.available_width(), ROW_HEIGHT),
+/// 一段字排成一行、超出 `width` 就截成「…」。
+fn one_line(
+    ui: &Ui,
+    text: String,
+    width: f32,
+    color: egui::Color32,
+) -> std::sync::Arc<egui::Galley> {
+    let mut job = egui::text::LayoutJob::simple_singleline(
+        text,
+        egui::TextStyle::Body.resolve(ui.style()),
+        color,
     );
-    // 🔴**就是这个文件** —— 一块背景色。
-    //    与 `RenderTally::revealed_row` 在同一处写下（见那个字段的头注）。
-    // 🔴**选中**用同一块选中色（与 `RenderTally::picked_rows` 在调用方同一个 `if` 里记下）。
-    if revealed || mark.picked {
-        let vis = ui.visuals().selection.bg_fill;
-        ui.painter().rect_filled(band_rect, 2.0, vis);
-    }
-    // 🔴**键盘光标**：一圈描边（不是底色 —— Ctrl 取消选中之后光标还在那一行，
-    //    那时它没有底色，只剩这一圈；两件事在屏幕上分得开）。
-    if mark.cursor {
-        let stroke = ui.visuals().selection.stroke;
-        ui.painter()
-            .rect_stroke(band_rect, 2.0, stroke, egui::StrokeKind::Inside);
-    }
-    let inner = ui.horizontal(|ui| {
-        // 🔴〔补齐五项 2026-09-23〕**符号链接有自己的字形**：`🔗`。
-        //    ⚠ **不是**旧面板那个 `↳` —— 现打：`↳` 在比例字体那条链上**装了 Noto CJK 也画不出**
-        //    （只有等宽链上的 `Hack` 有它），而行名走比例字体 ⇒ 屏幕上会是一个豆腐块。
-        //    `🔗` 住 egui 自带的 emoji 字体，**不装任何系统字体也画得出**（与 `📁`/`📄` 同一处）。
-        //    判据：`fonts_tests::installing_a_system_font_makes_the_whole_probe_renderable`
-        //    （`↳` 在探针里时它当场红，缺的正是这一个字）。
-        //    在这之前这一行只问「是不是目录」，于是链接与普通文件在屏幕上**一模一样**
-        //    —— 而后端与 SFTP 两条路一直都在送那一格（`source::Listed::link`）。
-        // ⚠ 顺序是 `link` 先判：一条**指向目录**的链接在 `files-ls` 那侧 `kind` 是
-        //   `symlink`（后端拿的是 `file_type()`，它不跟链接）⇒ `is_dir` 是 false，
-        //   两格不会同时真；写成 `is_dir` 先判也对，但那会让「哪一格说话」依赖后端的实现。
-        ui.label(if r.link {
-            copy_text("rsFilewinRows.icon.symlink", &[])
-        } else if r.is_dir {
-            copy_text("rsFilewinRows.icon.dir", &[])
-        } else {
-            copy_text("rsFilewinRows.icon.file", &[])
-        });
-        ui.label(&r.name);
-        if !r.is_dir {
-            ui.label(human_size(r.size));
-        }
-        // 🔴〔补齐五项〕**什么时候改的。** `None` = 这条路没送这一格（SFTP 那条退路、
-        //    或者进程边界那一屏）⇒ **一个字都不画**，不画一个编出来的时间。
-        if let Some(t) = r.mtime_secs {
-            ui.label(format_mtime(t));
-        }
-        if r.lossy_name {
-            // 非 UTF-8 名：显示串寻址不到真字节。
-            // 带着原始字节（后端 `files-ls` 送的）⇒ 三颗写按钮照画（改名 · 删除 · 权限走 b16）；
-            //   复制 / 下载 / 编辑那几颗用的是整条路径字符串，照旧不画（`is_copyable` / `is_downloadable` / `is_editable`）。
-            ui.label(&copy_text("rsFilewinRows.icon.warn", &[]));
-        }
-        // 「复制」——**只对能复制的那一档画**。`is_copyable` 是唯一住址，
-        // 窗口状态机那一侧（`begin_copy`）问的是同一个函数。
-        // ⚠ `small_button`：普通 `Button` 的最小高度是 `interact_size.y`（默认 18），
-        //   一行只有 `ROW_HEIGHT` 高，撑高了行与行会叠在一起（下一行就点不准了）。
-        // 有损名带着字节也画（`copy::copyable`：线上走字节）。
-        let copy = if copyable(r) {
-            Some(ui.small_button(COPY_LABEL.as_str()))
-        } else {
-            None
-        };
-        // 🔴改名 · 删除 · 权限 —— **三颗都是写操作**。
-        //   判准是 `is_writable`（有损名一律不画），而它与 `is_copyable`
-        //   **刻意不是同一个函数**：目录能改名/删除/改权限，但不能零流量复制。
-        let (rename, delete, chmod) = if is_writable(r) {
-            (
-                Some(ui.small_button(RENAME_LABEL.as_str())),
-                Some(ui.small_button(DELETE_LABEL.as_str())),
-                Some(ui.small_button(CHMOD_LABEL.as_str())),
-            )
-        } else {
-            (None, None, None)
-        };
-        // 🔴「下载」—— 判准是 `is_downloadable`，它与 `is_copyable`
-        //   今天逐行相同但**刻意是两个函数**（理由住 `download::is_downloadable` 头注，
-        //   「它们今天一致」由 `download_tests` 那条相等断言钉着）。
-        let download = if is_downloadable(r) {
-            Some(ui.small_button(DOWNLOAD_LABEL.as_str()))
-        } else {
-            None
-        };
-        // 🔴「编辑」—— 判准是 `is_editable`，而它就是 `why_not_editable`
-        //   的 `is_none()`（**刻意不另写一套条件**：那正是「按钮画了但点了没反应」
-        //   那个静默态的来源）。⚠ 超上限那一档在这儿就不画了，
-        //   而**为什么**不画由那一行被点时的那句话给（`begin_edit` 会说）。
-        let edit = if editable(r) {
-            Some(ui.small_button(EDIT_LABEL.as_str()))
-        } else {
-            None
-        };
-        RowButtons {
-            copy,
-            rename,
-            delete,
-            chmod,
-            download,
-            edit,
-        }
-    });
-    let btns = inner.inner;
-    // 整行都可点（不是只有名字那几个像素）—— 文件管理器的常规手感。
-    // 🔴 **但右边界要停在那几颗按钮里**最左**那一颗**的左侧 —— 拉满整行宽的话，
-    //    egui 在平手时取「最后登记的那个」，而这块矩形是后登记的
-    //    ⇒ 按钮永远点不到（见上面头注）。
-    //    ⚠这里原先只让开「复制」那一颗。第五刀之后一行上有四颗，
-    //      只让开一颗 = 另外三颗**照旧点不到**，而它们是写操作
-    //      ⇒ 取的是**最小**的那个左边界，而不是某一颗的。
-    let band = inner.response.rect;
-    let left = ui.max_rect().left();
-    let right = match btns.leftmost_left() {
-        Some(x) => x - ui.spacing().item_spacing.x,
-        None => ui.max_rect().right().max(band.right()),
+    job.wrap = egui::text::TextWrapping {
+        max_width: width.max(0.0),
+        max_rows: 1,
+        break_anywhere: true,
+        overflow_character: Some('…'),
     };
-    let full = egui::Rect::from_min_max(
-        egui::pos2(left, band.top()),
-        egui::pos2(right.max(left), band.bottom()),
+    ui.painter().layout_job(job)
+}
+
+/// 画一行：一整块命中矩形（单击选中 · 双击打开 · 右键菜单 · 拖起），底下按列摆图标 ＋ 名字 · 时间 · 类型 · 大小。
+///
+/// 选中是强调色的淡底；悬停一层淡底；键盘光标一圈强调色细线；隐藏文件字色淡一级。
+fn paint_one_row(
+    ui: &mut Ui,
+    index: usize,
+    r: &Listed,
+    revealed: bool,
+    mark: Mark,
+    cols: &Columns,
+) -> RowHit {
+    let p = palette(ui.ctx());
+    let (rect, _) = ui.allocate_exact_size(
+        egui::vec2(ui.available_width(), ROW_HEIGHT),
+        egui::Sense::hover(),
     );
-    // ⚠ `Id` 按**行下标**造（不是按名字）：下标随滚动是绝对的、且同一行跨帧稳定，
-    //   而名字会重（同名文件在不同目录、或列表里刚好两行同名）。
-    // `Sense::click()` → `click_and_drag()`：行能被拖起（拖到另一栏 ＝ 复制过去）。
-    //   单击 / 双击 / 右键的手感不变（没挪过拖动阈值的一下照旧是点击）。
+    // 点 · 拖，但不进 Tab 顺序（同表头那一条理由）。
     let row = ui.interact(
-        full,
+        rect,
         ui.id().with(("filewin-row", index)),
-        egui::Sense::click_and_drag(),
+        egui::Sense::CLICK | egui::Sense::DRAG,
     );
+    let band = rect.shrink2(egui::vec2(2.0, 1.0));
+    if revealed || mark.picked {
+        ui.painter().rect_filled(band, 4.0, p.picked);
+    } else if row.hovered() {
+        ui.painter().rect_filled(band, 4.0, p.hover);
+    }
+    if mark.cursor {
+        ui.painter().rect_stroke(
+            band,
+            4.0,
+            egui::Stroke::new(1.0, p.accent),
+            egui::StrokeKind::Inside,
+        );
+    }
+    let faded = kind::is_hidden(&r.name);
+    let (main, minor) = if faded {
+        (p.faint, p.faint)
+    } else {
+        (p.text, p.text2)
+    };
+    let [name_c, mtime_c, kind_c, size_c] = cols.rects(rect);
+    let k = kind::kind_of(r);
+    // 名称列：图标 ＋ 名字（＋ 名字读不出来时那个记号）。
+    let icon_color = match k {
+        kind::Kind::Folder => p.accent,
+        _ if faded => p.faint,
+        _ => p.text2,
+    };
+    let painter = ui.painter().clone();
+    let icon = painter.layout_no_wrap(
+        kind::icon(k).to_string(),
+        egui::FontId::proportional(ROW_HEIGHT * 0.6),
+        icon_color,
+    );
+    let ix = name_c.left() + PAD;
+    painter.with_clip_rect(name_c).galley(
+        egui::pos2(ix, rect.center().y - icon.size().y / 2.0),
+        icon,
+        icon_color,
+    );
+    let nx = ix + ROW_HEIGHT * 0.6 + 8.0;
+    // 名字读不出来（不是 UTF-8）⇒ 名字后面跟一个提醒记号（单独一段，警示色）。
+    let warn = r.lossy_name.then(|| {
+        painter.layout_no_wrap(
+            copy_text("rsFilewinRows.icon.warn", &[]),
+            egui::TextStyle::Body.resolve(ui.style()),
+            p.warn,
+        )
+    });
+    let room = name_c.right() - nx - PAD - warn.as_ref().map_or(0.0, |w| w.size().x + 6.0);
+    let g = one_line(ui, r.name.clone(), room, main);
+    let gw = g.size().x;
+    painter.with_clip_rect(name_c).galley(
+        egui::pos2(nx, rect.center().y - g.size().y / 2.0),
+        g,
+        main,
+    );
+    if let Some(w) = warn {
+        painter.with_clip_rect(name_c).galley(
+            egui::pos2(nx + gw + 6.0, rect.center().y - w.size().y / 2.0),
+            w,
+            p.warn,
+        );
+    }
+    // 修改时间 · 类型（左齐）· 大小（右齐；目录不写）。
+    let cell = |c: egui::Rect, text: String, right: bool| {
+        if text.is_empty() {
+            return;
+        }
+        let g = one_line(ui, text, c.width() - 2.0 * PAD, minor);
+        let x = if right {
+            c.right() - PAD - g.size().x
+        } else {
+            c.left() + PAD
+        };
+        painter.with_clip_rect(c).galley(
+            egui::pos2(x, rect.center().y - g.size().y / 2.0),
+            g,
+            minor,
+        );
+    };
+    let when = r.mtime_secs.map(mtime_text);
+    cell(
+        mtime_c,
+        when.as_ref().map(|w| w.short.clone()).unwrap_or_default(),
+        false,
+    );
+    cell(kind_c, kind::type_text(r), false);
+    cell(
+        size_c,
+        if r.is_dir {
+            String::new()
+        } else {
+            human_size(r.size)
+        },
+        true,
+    );
+    // 悬停在修改时间那一格上 ⇒ 完整时间。
+    let in_time = ui
+        .input(|i| i.pointer.hover_pos())
+        .is_some_and(|p| mtime_c.contains(p));
+    let row = match when {
+        Some(w) if in_time && row.hovered() => row.on_hover_text(w.full),
+        _ => row,
+    };
     let mods = ui.input(|i| i.modifiers);
     RowHit {
         picked: row.clicked().then_some(mods),
         menu: row.secondary_clicked(),
         drag_started: row.drag_started_by(egui::PointerButton::Primary),
         activated: row.double_clicked(),
-        copy: btns.copy.is_some_and(|b| b.clicked()),
-        rename: btns.rename.is_some_and(|b| b.clicked()),
-        delete: btns.delete.is_some_and(|b| b.clicked()),
-        chmod: btns.chmod.is_some_and(|b| b.clicked()),
-        download: btns.download.is_some_and(|b| b.clicked()),
-        edit: btns.edit.is_some_and(|b| b.clicked()),
     }
 }
 
-/// 这一行上真的画出来的那几颗按钮的响应（`None` = 这一档不画那一颗）。
-///
-/// 🔴 抽成一个结构是为了让 [`RowButtons::leftmost_left`] 有一个**唯一**的落点 ——
-/// 「整行那块矩形让开到哪儿」这件事只许有一个算法。散着四个 `Option` 时，
-/// 那个 `min` 写在 `paint_one_row` 里，而漏掉一颗**不会红**（漏掉的那颗
-/// 只是点不到，它照样画得出来、编得过 —— 第三刀实测过这一形）。
-struct RowButtons {
-    copy: Option<egui::Response>,
-    rename: Option<egui::Response>,
-    delete: Option<egui::Response>,
-    chmod: Option<egui::Response>,
-    /// 「下载」。
-    download: Option<egui::Response>,
-    /// 「编辑」。
-    edit: Option<egui::Response>,
-}
-
-impl RowButtons {
-    /// 这几颗按钮里最靠左的那个左边界（`None` = 一颗都没画）。
-    ///
-    /// # 🔴〔第八刀现打〕把「下载」算进来，**今天是防御性的，明天才承重**
-    ///
-    /// 死值验：把 `&self.download` 从下面这个数组里摘掉 ⇒ **一条判据都不红**。
-    /// 原因不是判据软 —— 是那颗按钮**今天画在最右**，而本函数取的是 `min`
-    /// ⇒ 摘掉它不改变结果。
-    ///
-    /// 同一刀换个姿势就红了：把「下载」改成**最左**那一颗、再摘掉它
-    /// ⇒ `shell_tests::a_real_click_on_download_opens_the_destination_question`
-    /// 当场红（真合成一次点击，点不到）。
-    ///
-    /// ⇒ 如实登记：**本行的价值在于「下一颗按钮加在它左边那天」**。
-    /// 别把它读成「今天有判据守着」，也别因为「摘了不红」就删掉它 ——
-    /// 本模块头注那句「漏掉一颗**不会红**（第三刀实测过）」说的正是这一形。
-
-    fn leftmost_left(&self) -> Option<f32> {
-        [
-            &self.copy,
-            &self.rename,
-            &self.delete,
-            &self.chmod,
-            &self.download,
-            &self.edit,
-        ]
-        .into_iter()
-        .flatten()
-        .map(|b| b.rect.left())
-        .fold(None, |acc: Option<f32>, x| {
-            Some(acc.map_or(x, |a| a.min(x)))
-        })
-    }
-}
-
-/// 🔴`name` 那一行在这一摞里的**下标**（`None` = 不在）。
-///
-/// # 为什么回下标而不是回像素偏移
-///
-/// 第一版它回的是 `下标 × ROW_HEIGHT`，而**那个算式是错的** —— 判据当场量到：
-/// 要滚到第 17 777 行，实际落在第 **15 237** 行（差 14%，在 2 万行上是 2500 行远）。
-/// 病根是 `ScrollArea::show_rows` 的第二个参数是「**不含间距**的行高」，
-/// 它内部用的步距是 `行高 + item_spacing.y`（现打比值 `15237/17777 ≈ 18/21`）。
-///
-/// ⇒ 像素那一步交给 [`row_pitch`]（它要 `ui` 才拿得到间距），
-/// 本函数只答**下标** —— 那一半是纯的、零 UI 依赖、判得到。
-///
-/// ⚠ 找下标那一趟是 O(n)，但它**只在一次 reveal 里跑一遍，不是每帧** ——
-/// 谁把它挪进每帧就撞上那条纪律
-/// （「「egui 扛得住」的主语是 `show_rows`」，对照组 10 万行 83.6 ms/帧）。
+/// 开窗时要高亮的那一行在第几行（按名字找）。
 pub fn reveal_index(rows: &[Listed], name: &str) -> Option<usize> {
     rows.iter().position(|r| r.name == name)
 }
 
-/// 一行占多少像素 —— **`ScrollArea::show_rows` 内部用的那个步距，唯一住址**。
-///
-/// 🔴 它不是 `ROW_HEIGHT`：那个常量是喂给 `show_rows` 的「不含间距的行高」，
-/// 而 `show_rows` 把 `offset / (row_height + spacing)` 当下标。
-/// ⇒ 谁要把「第 N 行」换成像素，必须经这一个函数
-/// （第一版漏了间距，判据逮到的就是那一形）。
-///
-/// ⚠ 它**买不到**「这个公式与 egui 内部那一份永远一致」——
-/// 那一格由行为判据守：滚过去之后那一行必须落在这一帧的物化区间里
-/// （`shell_tests::revealing_a_deep_row_scrolls_by_arithmetic_without_materialising_everything`
-/// 的第 ③ 比）。egui 换算法那天，那一条会红。
-pub fn row_pitch(ui: &Ui) -> f32 {
-    ROW_HEIGHT + ui.spacing().item_spacing.y
+/// 一行占多高（行间不留缝 ⇒ 就是 [`ROW_HEIGHT`]）。「滚到第 i 行」用它算偏移。
+pub fn row_pitch(_ui: &Ui) -> f32 {
+    ROW_HEIGHT
 }
 
 /// 人读的大小。**不是** `format!("{size}")` —— 列表里一列宽度有限。
 pub fn human_size(n: u64) -> String {
-    const UNITS: [&str; 5] = ["B", "K", "M", "G", "T"];
+    const UNITS: [&str; 5] = ["B", "KB", "MB", "GB", "TB"];
     let mut v = n as f64;
     let mut u = 0;
     while v >= 1024.0 && u + 1 < UNITS.len() {
@@ -585,7 +563,15 @@ pub fn render_headless(
     let out = ctx.run_ui(input, |ui| {
         // 🔴 调的是**生产那个函数**，不是它的副本 —— 见 `show_file_rows` 的注释。
         let mut t = RenderTally::default();
-        show_file_rows(ui, rows, &mut t, Some(scroll_offset_y), None, None);
+        show_file_rows(
+            ui,
+            rows,
+            &mut t,
+            Some(scroll_offset_y),
+            None,
+            None,
+            &Columns::default(),
+        );
         tally = t;
     });
     out.drop_without_applying_deltas();

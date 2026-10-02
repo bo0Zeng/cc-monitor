@@ -247,40 +247,21 @@ fn a_writer_waits_while_another_holds_the_lock() {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// 窗口上那一半：书签栏真画得出、真点得到（跑生产那个 `frame_body`）
+// 窗口上那一半：左栏的书签那一段真画得出、真点得到（跑生产那个 `Workspace::frame`）
 // ═══════════════════════════════════════════════════════════════════
 
-use crate::copy::testing::{rects_of, text_in_frame, PaintedText};
+use crate::copy::testing::{rects_of, PaintedText};
 use crate::find::testing::{window_on, wire_up, Declared, FakeBackend};
 use crate::shell::FileWindow;
+use crate::workspace::Workspace;
 
-/// 一帧生产那个 `frame_body`，交回这一帧画出来的字 ＋ 位置。
-fn frame(ctx: &egui::Context, w: &mut FileWindow, events: Vec<egui::Event>) -> Vec<PaintedText> {
-    let input = egui::RawInput {
-        screen_rect: Some(egui::Rect::from_min_size(
-            egui::Pos2::ZERO,
-            egui::vec2(1600.0, 900.0),
-        )),
-        events,
-        ..Default::default()
-    };
-    let out = ctx.run_ui(input, |ui| w.frame_body(ui));
-    let painted = text_in_frame(&out);
-    out.drop_without_applying_deltas();
-    painted
+/// 一帧生产那个 `Workspace::frame`（左栏在它的框里），交回这一帧画出来的字 ＋ 位置。
+fn frame(ctx: &egui::Context, ws: &mut Workspace, events: Vec<egui::Event>) -> Vec<PaintedText> {
+    crate::chrome::testing::ws_frame(ctx, ws, events)
 }
 
-/// 点这一帧上内容**正好等于** `label` 的那一段（恰好一处，否则量具先红）。
-fn click_label(ctx: &egui::Context, w: &mut FileWindow, label: &str) -> Vec<PaintedText> {
-    let painted = frame(ctx, w, Vec::new());
-    let at = rects_of(&painted, label);
-    assert_eq!(
-        at.len(),
-        1,
-        "这一帧上「{label}」该恰好一处，现打 {}：{painted:?}",
-        at.len()
-    );
-    frame(ctx, w, crate::rows::testing::click_at(at[0].center()))
+fn click_label(ctx: &egui::Context, ws: &mut Workspace, label: &str) -> Vec<PaintedText> {
+    crate::chrome::testing::ws_click(ctx, ws, label)
 }
 
 /// 等列目录落地（带上限，绝不挂死）。
@@ -316,32 +297,32 @@ async fn the_bar_is_really_clickable_and_the_disk_follows() {
         Some(file.clone()),
         &Origin("fw34-bm-ui".into()),
     ));
+    let mut ws = Workspace::new(w);
     let ctx = egui::Context::default();
 
-    // ① ☆ 加书签 ⇒ 盘上那一格恰好是当前目录；按钮换成 ★。
-    let after = click_label(&ctx, &mut w, ADD_LABEL.as_str());
-    let _ = after;
+    // ① 地址栏那颗 ☆ ⇒ 盘上那一格恰好是当前目录；星换成 ★。
+    let _ = click_label(&ctx, &mut ws, STAR_OFF.as_str());
     assert_eq!(
         read_book(&file).unwrap(),
         book(&[("fw34-bm-ui", &[a.as_str()])])
     );
-    let painted = frame(&ctx, &mut w, Vec::new());
+    let painted = frame(&ctx, &mut ws, Vec::new());
     assert_eq!(
-        rects_of(&painted, DROP_LABEL.as_str()).len(),
+        rects_of(&painted, STAR_ON.as_str()).len(),
         1,
-        "加完之后按钮该写「{DROP_LABEL}」",
-        DROP_LABEL = DROP_LABEL.as_str()
+        "加完之后地址栏那颗星该是「{STAR_ON}」",
+        STAR_ON = STAR_ON.as_str()
     );
-    assert_eq!(rects_of(&painted, ADD_LABEL.as_str()).len(), 0);
+    assert_eq!(rects_of(&painted, STAR_OFF.as_str()).len(), 0);
 
-    // ② 换到 b，点那条书签 ⇒ 真的跳回 a（跳转收在帧尾：同一帧里就换了）。
-    w.navigate_to(b.clone());
-    settle_listing(&w, "换到 b").await;
-    let _ = click_label(&ctx, &mut w, &a);
-    assert_eq!(w.cwd, a, "点了书签却没跳过去");
+    // ② 换到 b，点左栏那条书签（写的是目录的尾段）⇒ 真的跳回 a。
+    ws.pane_on_mut(0).navigate_to(b.clone());
+    settle_listing(ws.pane_on(0), "换到 b").await;
+    let _ = click_label(&ctx, &mut ws, crate::source::remote_basename(&a));
+    assert_eq!(ws.pane_on(0).cwd, a, "点了书签却没跳过去");
 
     // ③ × 删掉 ⇒ 盘上那台机器那一格整个没了。
-    let _ = click_label(&ctx, &mut w, REMOVE_LABEL.as_str());
+    let _ = click_label(&ctx, &mut ws, REMOVE_LABEL.as_str());
     assert_eq!(read_book(&file).unwrap(), Book::new(), "点了 × 盘上还在");
     let _ = std::fs::remove_dir_all(&root);
 }
@@ -381,25 +362,26 @@ async fn another_windows_bookmark_shows_up_after_a_navigation() {
     let _ = std::fs::remove_dir_all(&root);
 }
 
-/// 数据目录解不出来 ⇒ 书签栏上**出声**（从这一帧的 galley 里读回来），按钮点了也不写任何地方。
+/// 数据目录解不出来 ⇒ 左栏书签那一段**出声**（从这一帧的 galley 里读回来），按钮点了也不写任何地方。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn no_data_dir_is_said_on_the_bar() {
     let wired = wire_up("fw34-bm-nodir", FakeBackend::new(&[], Declared::default())).await;
     let mut w = window_on(&wired, "/srv");
     w.shelf = Some(Shelf::open(None, &Origin("fw34-bm-nodir".into())));
+    let mut ws = Workspace::new(w);
     let ctx = egui::Context::default();
-    let painted = frame(&ctx, &mut w, Vec::new());
+    let painted = frame(&ctx, &mut ws, Vec::new());
     assert!(
         painted.iter().any(|(t, _)| t == NO_DATA_DIR.as_str()),
         "那句话没画出来：{painted:?}"
     );
-    let _ = click_label(&ctx, &mut w, ADD_LABEL.as_str());
-    assert!(w.shelf.as_ref().unwrap().list().is_empty());
-    // 阴性对照：没接书签（判据直接建的窗口）⇒ 整条书签栏不画。
-    let mut bare = window_on(&wired, "/srv");
+    let _ = click_label(&ctx, &mut ws, STAR_OFF.as_str());
+    assert!(ws.pane_on(0).shelf.as_ref().unwrap().list().is_empty());
+    // 阴性对照：没接书签（判据直接建的窗口）⇒ 加 / 去那颗与出声那句都不画。
+    let mut bare = Workspace::new(window_on(&wired, "/srv"));
     let painted = frame(&ctx, &mut bare, Vec::new());
     assert!(
-        rects_of(&painted, ADD_LABEL.as_str()).is_empty()
+        rects_of(&painted, STAR_OFF.as_str()).is_empty()
             && !painted.iter().any(|(t, _)| t == NO_DATA_DIR.as_str())
     );
 }

@@ -691,7 +691,7 @@ impl CopyBoard {
         if let Some(o) = &last {
             let n = outcome_notice(o);
             if n.loud {
-                ui.colored_label(egui::Color32::from_rgb(0xE0, 0x9A, 0x20), n.text);
+                ui.colored_label(ui.visuals().warn_fg_color, n.text);
             } else {
                 ui.label(n.text);
             }

@@ -359,6 +359,8 @@ export const commands = {
      * - 两个都空 ⇒ 问远端 `realpath('.')`（第七刀）。
      */
     revealFile?: string | null;
+    /** 文件窗口的样子：设计令牌名 → 此刻的计算值（`file-window.ts::fileWindowTheme`）。 */
+    theme: Record<string, string>;
   }) => invoke<number>("open_file_window", args),
 
   /** 开独立设置窗口（非浮层）。Rust 返回 `Result<(), String>` ⇒ **桶①**。 */

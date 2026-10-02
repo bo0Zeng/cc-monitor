@@ -323,9 +323,9 @@ use std::sync::Arc;
 // 🔴**＋2 −1：`得 词` 进、`送` 出**（文件名搜索换成 Everything 式）：`得 词` —— 搜索词写错时那一句「搜索词写得不对」；
 // `送` 随「只回送了 N 条」换成「已列出 N 条，往下滚动看更多」走了。
 pub const PROBE: &str = concat!(
-    "·—…→⚠⬆、。「」一上下不与东丢两个中串为主了些交亮代以件份会传位作你侧保做儿先全八关内再写几出列刚删别到制刷前剩动勾化原去参发取口只叫可台合同名后吗含命和哪器回围在坏型备复外多",
+    "·—…→⚠、。「」一上下不与东丢两个中串为主了些交亮代以件份会传位作你侧保做儿先全八关内再写几出列刚删别到制刷前剩动勾化原去参发取口只叫可台合同名后吗含命和哪器回围在坏型备复外多",
     "大太失如字存它完定容对小少尔就尾屏已布带帧并序建开引当录往径必态成或截打扫把拒拖拼拿按换据掉排接搜撤操改数敲整文断新旧时是更最有本机权条来样根框次正此段比没法洞消点版物状现",
-    "用的盖目相看着确秒称程空窗端符第答类索约级组终经结给绝编者能节范行表被西要覆见览认许话请读负败走起超趟路跳身载辑输过还这进远连那部都里重销错闭问限除非面须首高（），：；？📁📄🔗",
+    "用的盖目相看着确秒称程空窗端符第答类索约级组终经结给绝编者能节范行表被西要覆见览认许话请读负败走起超趟路跳身载辑输过还这进远连那部都里重销错闭问限除非面须首高（），：；？",
     "共向式幕横模滚长",
     "事任何头选项",
     "变收",
@@ -340,6 +340,9 @@ pub const PROBE: &str = concat!(
     "查替",
     "解压",
     "之半执批果校缺验所",
+    // 窗口换骨架：工具条提示 · 命令栏 · 左栏 · 状态栏 · 属性框 · 「类型」那一列 · 图片预览（−⬆📁📄🔗：图标换成图标字，不再是文字）。
+    "←↑也从修切图地址始子家展属左张性扇指淡片种色藏试跑退配隐他其包夹缩",
+    // 文件名搜索那几句新进的字。
     "得词",
 );
 
@@ -393,60 +396,140 @@ pub fn candidates() -> Vec<String> {
     out
 }
 
-/// 第一拍：读一份 CJK 字体交给 `ctx`。**在创建闭包里调。不复核**（§四）。
-pub fn install(ctx: &egui::Context) -> Attempt {
-    install_from(ctx, &candidates())
+/// 主界面那一套字族里**这台机器装着的第一个**（按名字找；`system-ui` / `sans-serif` 这类泛称不算名字，跳过）。
+/// 找不到 ⇒ `None`（照旧用 egui 自带的那一份，CJK 回退不变）。
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Face {
+    pub family: String,
+    pub bytes: Vec<u8>,
+    pub index: u32,
 }
 
-/// 同 [`install`]，但候选表由调用方给 —— 判据要能造出「一个都找不到」那一形。
+/// 主界面字族那一行里的泛称（CSS 的通用字族）—— 它们不是一份字体的名字。
+pub const GENERIC_FAMILIES: [&str; 8] = [
+    "serif",
+    "sans-serif",
+    "monospace",
+    "cursive",
+    "fantasy",
+    "system-ui",
+    "ui-sans-serif",
+    "ui-monospace",
+];
+
+/// 在 `db` 里按 `families` 的先后找第一个装着的。
+pub fn find_face(db: &fontdb::Database, families: &[String]) -> Option<Face> {
+    families
+        .iter()
+        .filter(|f| !GENERIC_FAMILIES.contains(&f.to_ascii_lowercase().as_str()))
+        .find_map(|f| {
+            let q = fontdb::Query {
+                families: &[fontdb::Family::Name(f)],
+                ..Default::default()
+            };
+            let id = db.query(&q)?;
+            db.with_face_data(id, |data, index| Face {
+                family: f.clone(),
+                bytes: data.to_vec(),
+                index,
+            })
+        })
+}
+
+/// 这扇窗要的另外两份字：正文（主界面 `--font-base`）· 等宽（`--font-mono`）。
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Faces {
+    pub ui: Option<Face>,
+    pub mono: Option<Face>,
+}
+
+/// 照主题的字族去这台机器的字体里找。
+pub fn faces_for(theme: &filewin_contract::Theme) -> Faces {
+    let mut db = fontdb::Database::new();
+    db.load_system_fonts();
+    Faces {
+        ui: find_face(&db, &theme.font_base),
+        mono: find_face(&db, &theme.font_mono),
+    }
+}
+
+/// 第一拍：主题字体（有就放链首）· 图标字 · 一份 CJK 字体（链尾兜底）交给 `ctx`。**在创建闭包里调。不复核**（§四）。
+pub fn install(ctx: &egui::Context, theme: Option<&filewin_contract::Theme>) -> Attempt {
+    let faces = theme.map(faces_for).unwrap_or_default();
+    install_with(ctx, &candidates(), &faces)
+}
+
+/// 同 [`install`]，只装 CJK 回退与图标字、候选表由调用方给（判据用）。
 pub fn install_from(ctx: &egui::Context, candidates: &[String]) -> Attempt {
+    install_with(ctx, candidates, &Faces::default())
+}
+
+/// 一份字体的数据。
+fn data(bytes: Vec<u8>, index: u32) -> Arc<egui::FontData> {
+    Arc::new(egui::FontData {
+        font: std::borrow::Cow::Owned(bytes),
+        index,
+        tweak: Default::default(),
+    })
+}
+
+/// 装字：主题字体放链首（拉丁字由它画，同主界面）；图标字跟在 egui 自带正文字后面；CJK 字体**追加在末尾当兜底**。
+pub fn install_with(ctx: &egui::Context, candidates: &[String], faces: &Faces) -> Attempt {
+    let mut defs = egui::FontDefinitions::default();
+    // 图标（工具条 · 文件种类）：Phosphor 那一份，只占私用区，挂在比例字链第二位（排在 egui 自带正文字之后）。
+    egui_phosphor::add_to_fonts(&mut defs, egui_phosphor::Variant::Regular);
+    for (name, face, fam) in [
+        ("cc-ui", &faces.ui, egui::FontFamily::Proportional),
+        ("cc-mono", &faces.mono, egui::FontFamily::Monospace),
+    ] {
+        if let Some(f) = face {
+            defs.font_data
+                .insert(name.to_owned(), data(f.bytes.clone(), f.index));
+            if let Some(chain) = defs.families.get_mut(&fam) {
+                chain.insert(0, name.to_owned());
+            }
+        }
+    }
     let mut tried = Vec::new();
+    let mut attempt = None;
     for path in candidates {
         tried.push(path.clone());
         if !std::path::Path::new(path).is_file() {
             continue;
         }
-        let bytes = match std::fs::read(path) {
-            Ok(b) => b,
+        match std::fs::read(path) {
+            Ok(bytes) => {
+                let n = bytes.len();
+                // `.ttc` 里选哪张 face：现打过 0..4 四张，**覆盖率一模一样** ⇒ 用 0。
+                defs.font_data.insert("cc-cjk".to_owned(), data(bytes, 0));
+                // 🔴 **追加在末尾当兜底**：等宽那条链要是被 CJK 字体抢走，等宽就不再等宽了。
+                for fam in [egui::FontFamily::Proportional, egui::FontFamily::Monospace] {
+                    if let Some(chain) = defs.families.get_mut(&fam) {
+                        chain.push("cc-cjk".to_owned());
+                    }
+                }
+                attempt = Some(Attempt::Loaded {
+                    path: path.clone(),
+                    bytes: n,
+                });
+            }
             Err(e) => {
-                return Attempt::ReadFailed {
+                attempt = Some(Attempt::ReadFailed {
                     path: path.clone(),
                     err: e.to_string(),
-                }
-            }
-        };
-        let n = bytes.len();
-        let mut defs = egui::FontDefinitions::default();
-        defs.font_data.insert(
-            "cc-cjk".to_owned(),
-            Arc::new(egui::FontData {
-                font: std::borrow::Cow::Owned(bytes),
-                // `.ttc` 里选哪张 face：现打过 0..4 四张，**覆盖率一模一样**
-                // ⇒ 这里不需要挑，用 0。
-                index: 0,
-                tweak: Default::default(),
-            }),
-        );
-        // 🔴 **追加在末尾当兜底**，不是插在最前：拉丁字仍旧由 Ubuntu-Light／Hack 画
-        // （等宽那条链要是被 CJK 字体抢走，等宽就不再等宽了）。
-        for fam in [egui::FontFamily::Proportional, egui::FontFamily::Monospace] {
-            if let Some(chain) = defs.families.get_mut(&fam) {
-                chain.push("cc-cjk".to_owned());
+                });
             }
         }
-        ctx.set_fonts(defs);
-        return Attempt::Loaded {
-            path: path.clone(),
-            bytes: n,
-        };
+        break;
     }
-    Attempt::NoneFound { tried }
+    ctx.set_fonts(defs);
+    attempt.unwrap_or(Attempt::NoneFound { tried })
 }
 
 /// 一个字符在字形图集里的格子。`None` = 这个字排不出字形（空串／空行）。
 fn cell(ctx: &egui::Context, fid: &egui::FontId, c: char) -> Option<([u16; 2], [u16; 2])> {
     ctx.fonts_mut(|f| {
-        let g = f.layout_no_wrap(c.to_string(), fid.clone(), egui::Color32::WHITE);
+        let g = f.layout_no_wrap(c.to_string(), fid.clone(), egui::Color32::PLACEHOLDER);
         let gl = g.rows.first()?.glyphs.first()?;
         Some((gl.uv_rect.min, gl.uv_rect.max))
     })

@@ -245,7 +245,7 @@ impl CrossBoard {
         if let Some(o) = &last {
             let text = outcome_text(o);
             if matches!(o, Outcome::Failed { .. }) {
-                ui.colored_label(egui::Color32::from_rgb(0xE0, 0x9A, 0x20), text);
+                ui.colored_label(ui.visuals().warn_fg_color, text);
             } else {
                 ui.label(text);
             }

@@ -1013,7 +1013,8 @@ SSH 握手，而当时的调用方（用量探针）两段轮询上限 12+20 轮
 ```text
 → {"id":"f2","cmd":"files-stat","args":{"path":"/home/u/p/a.rs"}}
 ← {"kind":"reply","id":"f2","ok":true,"data":{
-     "path":"/home/u/p/a.rs","kind":"file","size":1234,"readonly":false,"mode":420,"mtime_secs":1758300000}}
+     "path":"/home/u/p/a.rs","kind":"file","size":1234,"readonly":false,"mode":420,"mtime_secs":1758300000,
+     "owner":"u","link_target":null}}
 ```
 
 | 字段 | 向 | 说明 |
@@ -1023,10 +1024,11 @@ SSH 握手，而当时的调用方（用量探针）两段轮询上限 12+20 轮
 | `size` / `mtime_secs` | ← | 字节数 / Unix 纪元秒（`mtime_secs` 拿不到就不出这个键） |
 | `readonly` | ← | 这个路径此刻是不是只读 |
 | `mode` | ← | unix 权限位的低 12 位（十进制数；`420` = `0o644`）。**非 unix 平台不出这个键**（不是 `0`：`0` 是一个真能设的值）。文件窗口改权限那个框拿它显示现值 |
+| `owner` | ← | 属主（同上几格，跟链接）：用户名；查不到名字 ⇒ uid 的数字串；非 unix ⇒ `null`。文件窗口「属性」显示它 |
+| `link_target` | ← | 路径**本身**是符号链接 ⇒ 它的目标原文（`readlink`，不解不跟；原始字节形：字符串或 `{"b16":…}`）；不是链接 ⇒ `null`。文件窗口「属性」显示它 |
 
-⚠ **它跟 symlink**（拿的是链接指向的那个东西的元数据）。不跟的那个读法要给后端的
-只读动词白名单**加一个词**，那是**放宽一条红线**，所以没做 —— **这是一条真实的局限**。
-要区分链接本身：用 `files-ls` 看它父目录那一行的 `kind`（那一栏不跟链接）。
+⚠ **它跟 symlink**（拿的是链接指向的那个东西的元数据）；只有 `link_target` 那一格说的是路径本身（`readlink` 读得出 ⇒ 是链接）。
+要区分链接本身：看 `link_target` 是不是 `null`，或用 `files-ls` 看它父目录那一行的 `kind`（那一栏不跟链接）。
 
 **错误码**：`bad_path` · `unreadable`（这个路径读不到）。
 

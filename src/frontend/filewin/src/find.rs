@@ -930,18 +930,12 @@ impl SearchBoard {
         let s = self.shown();
         // 冷启动首建正在走 ⇒ 这一行顶替新鲜度那一行（那一行此刻只会说「还没建过」）。
         if let Some(secs) = self.first_build() {
-            ui.colored_label(
-                egui::Color32::from_rgb(0xE0, 0x9A, 0x20),
-                first_build_line(secs),
-            );
+            ui.colored_label(ui.visuals().warn_fg_color, first_build_line(secs));
         } else {
             match &s.status {
                 Some(st) => {
                     if st.index_missing || st.stale {
-                        ui.colored_label(
-                            egui::Color32::from_rgb(0xE0, 0x9A, 0x20),
-                            freshness_line(st),
-                        );
+                        ui.colored_label(ui.visuals().warn_fg_color, freshness_line(st));
                     } else {
                         ui.label(freshness_line(st));
                     }
@@ -958,7 +952,7 @@ impl SearchBoard {
             ));
         }
         if let Some(n) = s.notice.as_ref().filter(|n| !n.is_empty()) {
-            ui.colored_label(egui::Color32::RED, n);
+            ui.colored_label(ui.visuals().error_fg_color, n);
         }
         if let Some(o) = &s.outcome {
             ui.label(hits_line(o));

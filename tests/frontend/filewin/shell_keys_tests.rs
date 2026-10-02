@@ -50,7 +50,7 @@ fn window(rows: Vec<Row>) -> FileWindow {
     w
 }
 
-/// 驱动器：一帧一帧喂**生产那个** `frame_body`。时钟每帧走一秒 ——
+/// 驱动器：一帧一帧喂**生产那个** `frame_body`（连同窗口的框：工具条 · 命令栏 · 状态栏）。时钟每帧走一秒 ——
 /// 两帧里各点一下**永远**不会被 egui 认成双击（双击窗是 0.3 秒）。
 struct Drive {
     ctx: egui::Context,
@@ -83,7 +83,9 @@ impl Drive {
             events: all,
             ..Default::default()
         };
-        let out = self.ctx.run_ui(input, |ui| w.frame_body(ui));
+        let out = self
+            .ctx
+            .run_ui(input, |ui| crate::chrome::testing::pane_with_chrome(ui, w));
         let painted = text_in_frame(&out);
         out.drop_without_applying_deltas();
         painted
@@ -210,9 +212,11 @@ fn clicks_with_modifiers_pick_exactly_those_rows_and_paint_exactly_those() {
         Some(0),
         "光标那一圈没画在最后点的那一行"
     );
-    // 选中不止一项 ⇒ 工具栏上说几项。
+    // 选中不止一项 ⇒ 状态栏上说几项（与合计大小）。
     let painted = d.frame(&mut w, Vec::new());
-    assert_eq!(rects_of(&painted, "已选 3 项").len(), 1, "没说选中了几项");
+    let line = w.status_line();
+    assert!(line.contains("选中 3 项"), "{line}");
+    assert_eq!(rects_of(&painted, &line).len(), 1, "状态栏上没画出那一行");
 }
 
 /// 单击**不动目录**（双击才动）—— 选中是单击的事，别让它顺手把人带走。
@@ -681,6 +685,7 @@ fn the_menu_lists_exactly_what_the_selection_allows() {
                 "改名",
                 "权限",
                 "删除",
+                "属性",
             ],
         ),
         (
@@ -689,7 +694,7 @@ fn the_menu_lists_exactly_what_the_selection_allows() {
             vec![],
             "sub",
             // 目录能复制了。
-            vec!["打开", "复制", "算大小", "改名", "权限", "删除"],
+            vec!["打开", "复制", "算大小", "改名", "权限", "删除", "属性"],
         ),
         (
             "一个超编辑上限的文件",
@@ -705,6 +710,7 @@ fn the_menu_lists_exactly_what_the_selection_allows() {
                 "改名",
                 "权限",
                 "删除",
+                "属性",
             ],
         ),
         (
@@ -726,7 +732,7 @@ fn the_menu_lists_exactly_what_the_selection_allows() {
             vec![file("a.bin"), file("b.bin"), dir("c")],
             vec![("a.bin", NONE), ("b.bin", CTRL)],
             "c",
-            vec!["打开", "复制", "算大小", "改名", "权限", "删除"],
+            vec!["打开", "复制", "算大小", "改名", "权限", "删除", "属性"],
         ),
         (
             "两项混着有损名",

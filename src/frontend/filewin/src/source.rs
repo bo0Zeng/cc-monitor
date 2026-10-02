@@ -217,74 +217,97 @@ impl Source {
 //   monitor 开窗入口（`filewin/entry.rs::plan_target`：「跳到这个文件」切成目录 ＋ 名字）与窗口两边都切，切法只许一份。
 pub use filewin_contract::{parent_dir, remote_basename};
 
-/// 按什么排。**闭集三档，与旧面板那个下拉逐格同名**
-/// （`src/sftp/paths.ts::SortBy` 的 `"name" | "size" | "type"`）。
-///
-/// 🔴 **缺省是 [`SortBy::Name`]，而那一档就是本刀之前那个写死的纯函数** ——
-/// 逐字节相同这件事怎么证的，住本模块头注最后那一节。
-///
-/// ⚠ **刻意没有第四档「按时间」**，尽管这一刀刚把 `mtime_secs` 接进来：
-/// 用户裁的是「旧面板有、新窗口没有」那五项，而旧面板那个下拉只有三档
-/// ⇒ 加第四档是一次**谁都没要求的行为变更**。如实登记为**没做**，
-/// 接它只要在这里加一格 ＋ 在 [`sort_rows`] 里加一支（`mtime_secs` 已经在行上了）。
+/// 按哪一列排（详情视图的四列，闭集）。
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum SortBy {
     /// 名称（小写不敏感）。**缺省**。
     #[default]
     Name,
-    /// 大小，**大的在前**（同旧面板：`b.size - a.size`）。
-    Size,
-    /// 扩展名。
+    /// 修改时间，**新的在前**。
+    Mtime,
+    /// 「类型」那一列（种类，再扩展名）。
     Type,
+    /// 大小，**大的在前**。
+    Size,
 }
 
 impl SortBy {
-    /// 三档全体 —— **界面那个下拉的唯一人群**，别在 `shell.rs` 里另写一份名单。
-    pub const ALL: [SortBy; 3] = [SortBy::Name, SortBy::Size, SortBy::Type];
+    /// 四列全体（表头按它画）。
+    pub const ALL: [SortBy; 4] = [SortBy::Name, SortBy::Mtime, SortBy::Type, SortBy::Size];
 
-    /// 下拉里那一格写什么。
-    /// 字从文案表取 ⇒ 回 `String`（原先是 `&'static str` 的字面量）。
+    /// 表头那一格写什么。
     pub fn label(self) -> String {
         match self {
             SortBy::Name => copy_text("rsFilewinSource.sort.name", &[]),
+            SortBy::Mtime => copy_text("rsFilewinSource.sort.mtime", &[]),
             SortBy::Size => copy_text("rsFilewinSource.sort.size", &[]),
             SortBy::Type => copy_text("rsFilewinSource.sort.type", &[]),
         }
     }
-}
 
-/// 一个名字的**扩展名**（小写）。
-///
-/// ⚠ **逐字照旧面板那一份**（`paths.ts::sortEntries` 里那个 `ext`：
-/// `n.slice(n.lastIndexOf(".") + 1).toLowerCase()`）—— 包括它那个怪处：
-/// 名字里**没有点**的时候它回的是**整个名字**（`lastIndexOf` 回 `-1`，`slice(0)`）。
-/// 那不是我抄错了，那是「按类型排」在旧面板上今天的实况；
-/// 换掉它是一次行为变更，不在本刀射程里。判据 `sorting_by_type_matches_the_old_panel`
-/// 里那一档阴性对照钉的就是这个怪处。
-fn ext_of(name: &str) -> String {
-    match name.rfind('.') {
-        Some(i) => name[i + 1..].to_lowercase(),
-        None => name.to_lowercase(),
+    /// 这一列第一次点下去是不是从大到小（时间 · 大小：新的 / 大的在前；名称 · 类型：A 在前）。
+    pub fn starts_descending(self) -> bool {
+        matches!(self, SortBy::Mtime | SortBy::Size)
     }
 }
 
-/// 目录在前，再按 `by` 排。`by` 相持时**一律回落到名称小写**（同旧面板那个 `|| cmpName`）。
+/// 一屏怎么排：哪一列 ＋ 有没有被再点一次反过来。窗口状态，关窗即没。
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Sort {
+    pub by: SortBy,
+    /// 点过同一列第二次 ⇒ 反过来。
+    pub reversed: bool,
+}
+
+impl From<SortBy> for Sort {
+    fn from(by: SortBy) -> Self {
+        Self {
+            by,
+            reversed: false,
+        }
+    }
+}
+
+impl Sort {
+    /// 这一屏是不是从大到小。
+    pub fn descending(self) -> bool {
+        self.by.starts_descending() != self.reversed
+    }
+
+    /// 点了表头 `by` 那一列之后怎么排：同一列 ⇒ 反过来；换了一列 ⇒ 那一列的第一下。
+    pub fn after_click(self, by: SortBy) -> Self {
+        if self.by == by {
+            Self {
+                by,
+                reversed: !self.reversed,
+            }
+        } else {
+            by.into()
+        }
+    }
+}
+
+/// 目录在前，再按那一列排；相持一律回落到名称小写。反过来时只反那一列（目录照旧在前，同资源管理器）。
 ///
-/// 🔴 **这是「屏幕上那一屏是什么序」的唯一住址。** `Name` 那一支逐字节等于
-/// 本刀之前那个写死的版本（那时契约逐字是「目录在前，再按名称小写排，
-/// 与池子那一份同」，那一份已删）——多出来的只是一个在那一档返回 `Equal`
-/// 的 `then_with`，它对结果零影响。
-pub fn sort_rows(v: &mut [Listed], by: SortBy) {
+/// 🔴 **这是「屏幕上那一屏是什么序」的唯一住址。**「类型」那一列按 [`super::kind`] 判的种类，再扩展名（与那一列写的字同源）。
+pub fn sort_rows(v: &mut [Listed], sort: impl Into<Sort>) {
+    let sort: Sort = sort.into();
     v.sort_by(|a, b| {
-        b.is_dir
-            .cmp(&a.is_dir)
-            .then_with(|| match by {
-                // 🔴 这一支**必须**是 `Equal`：它就是「默认与从前逐字节相同」那句话的落点。
-                SortBy::Name => std::cmp::Ordering::Equal,
-                SortBy::Size => b.size.cmp(&a.size),
-                SortBy::Type => ext_of(&a.name).cmp(&ext_of(&b.name)),
-            })
-            .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
+        let by_name = || a.name.to_lowercase().cmp(&b.name.to_lowercase());
+        let key = match sort.by {
+            SortBy::Name => by_name(),
+            SortBy::Mtime => a.mtime_secs.unwrap_or(0).cmp(&b.mtime_secs.unwrap_or(0)),
+            SortBy::Size => a.size.cmp(&b.size),
+            SortBy::Type => super::kind::kind_of(a)
+                .cmp(&super::kind::kind_of(b))
+                .then_with(|| super::kind::ext_of(&a.name).cmp(&super::kind::ext_of(&b.name))),
+        };
+        let key = if sort.descending() {
+            key.reverse()
+        } else {
+            key
+        };
+        b.is_dir.cmp(&a.is_dir).then(key).then_with(by_name)
     });
 }
 
@@ -456,7 +479,7 @@ pub fn common_dir_bytes(a: &[u8], b: &[u8]) -> Vec<u8> {
 /// 拿正向那一份当对照，在一段稠密的日子上断**往返恒等**
 /// ⇒ 两份漂开（任一侧被改错）当场红，而且两侧**不同源**。
 ///
-/// ⚠ 本函数不带时区：它答的是 **UTC**。理由住 [`format_mtime`]。
+/// ⚠ 本函数不带时区：时区差由调用方先加进天数里（[`mtime_text_at`]）。
 pub fn civil_from_days(z: i64) -> (i64, i64, i64) {
     let z = z + 719_468;
     let era = if z >= 0 { z } else { z - 146_096 }.div_euclid(146_097);
@@ -470,27 +493,50 @@ pub fn civil_from_days(z: i64) -> (i64, i64, i64) {
     (if m <= 2 { y + 1 } else { y }, m, d)
 }
 
-/// 一格 `mtime_secs` → 列表里那一列写什么。
+/// 一格 `mtime_secs` 画出来是什么：列里那一格（短）与悬停 / 属性里的完整时间。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MtimeText {
+    /// 今年的省年份（`10-02 15:01`），往年的带年份（`2025-12-31 23:59`）。
+    pub short: String,
+    /// 完整时间（`2026-10-02 15:01:23`）。
+    pub full: String,
+}
+
+/// 纯函数：`offset` 是那一刻本机时区与 UTC 的差（秒，含夏令时），`this_year` 是本机此刻的年份。
+pub fn mtime_text_at(secs: u64, offset: i64, this_year: i64) -> MtimeText {
+    let t = secs as i64 + offset;
+    let (y, m, d) = civil_from_days(t.div_euclid(86_400));
+    let rem = t.rem_euclid(86_400);
+    let (hh, mm, ss) = (rem / 3600, (rem % 3600) / 60, rem % 60);
+    let short = if y == this_year {
+        format!("{m:02}-{d:02} {hh:02}:{mm:02}")
+    } else {
+        format!("{y:04}-{m:02}-{d:02} {hh:02}:{mm:02}")
+    };
+    MtimeText {
+        short,
+        full: format!("{y:04}-{m:02}-{d:02} {hh:02}:{mm:02}:{ss:02}"),
+    }
+}
+
+/// 那一刻本机时区与 UTC 的差（秒；夏令时按那一刻算）。问不到 ⇒ 0。
+pub fn local_offset_at(secs: i64) -> i64 {
+    use chrono::{Offset, TimeZone};
+    chrono::Local
+        .timestamp_opt(secs, 0)
+        .single()
+        .map_or(0, |t| i64::from(t.offset().fix().local_minus_utc()))
+}
+
+/// 按**本机**的本地时间画（换算只在画的那一刻做，后端送的是原值、排序用的也是原值）。
 ///
-/// # 🔴 为什么尾巴上有一个 `Z`（而不是「看起来干净」的裸时间）
-///
-/// 本进程手上**没有时区**：仓里一个 `chrono` / `time` 都没有
-/// （`src/frontend/shell/Cargo.toml` 的依赖表现打），`SystemTime` 只给 UTC。
-/// 而**画一个不说自己是哪个时区的时间，是一次静默的错**：用户会按本地时读它，
-/// 在东八区就是差 8 小时 —— 而「文件是什么时候改的」正是他要拿来做判断的东西。
-///
-/// ⚠ 还有一条比时区更硬的：这是**远端那台机器上**的文件时间，
-/// 而那台机器的时区与你面前这台**本来就可能不同** ⇒ 换成「本地时间」也不解决问题，
-/// 只是把错的方向换一个。⇒ 一律 UTC，并且**在每一行上说出来**（一个 `Z`，一个字符）。
-///
-/// ⚠ **买不到什么**：它不会去问那台远端的时区，也没有「几分钟前」这种相对说法。
-/// 如实登记为没做。
-pub fn format_mtime(secs: u64) -> String {
-    let days = (secs / 86_400) as i64;
-    let rem = secs % 86_400;
-    let (y, m, d) = civil_from_days(days);
-    let (hh, mm) = (rem / 3600, (rem % 3600) / 60);
-    format!("{y:04}-{m:02}-{d:02} {hh:02}:{mm:02}Z")
+/// ⚠ 这是远端那台机器上的文件时间按你面前这台的时区读 —— 与远端自己的时区无关。
+pub fn mtime_text(secs: u64) -> MtimeText {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs() as i64);
+    let this_year = civil_from_days((now + local_offset_at(now)).div_euclid(86_400)).0;
+    mtime_text_at(secs, local_offset_at(secs as i64), this_year)
 }
 
 /// 列一个**本机**目录。
@@ -736,7 +782,7 @@ pub async fn list_via_backend(
     origin: &Origin,
     dir: &str,
     limit: usize,
-    by: SortBy,
+    by: impl Into<Sort>,
 ) -> Result<(Vec<Listed>, bool), String> {
     list_via_backend_at(
         line,
@@ -754,7 +800,7 @@ pub async fn list_via_backend_at(
     origin: &Origin,
     dir: serde_json::Value,
     limit: usize,
-    by: SortBy,
+    by: impl Into<Sort>,
 ) -> Result<(Vec<Listed>, bool), String> {
     let args = serde_json::json!({ "path": dir, "limit": limit });
     let d = ask(
@@ -779,7 +825,10 @@ pub async fn list_via_backend_at(
 ///
 /// 悄悄跳过的后果：目录里少一个文件，屏幕上没有任何提示
 /// ⇒ 与「这个文件不存在」**分不开**。而用户会据此以为文件丢了。
-pub fn rows_from_ls_data(d: &serde_json::Value, by: SortBy) -> Result<(Vec<Listed>, bool), String> {
+pub fn rows_from_ls_data(
+    d: &serde_json::Value,
+    by: impl Into<Sort>,
+) -> Result<(Vec<Listed>, bool), String> {
     let arr = d
         .get("entries")
         .and_then(|v| v.as_array())
@@ -818,7 +867,7 @@ pub async fn list_dir(
     line: &Line,
     source: &Source,
     dir: &str,
-    by: SortBy,
+    by: impl Into<Sort>,
 ) -> Result<(Vec<Listed>, bool), String> {
     list_via_backend(line, &source.origin(), dir, LS_LIMIT, by).await
 }

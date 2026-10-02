@@ -129,6 +129,8 @@ const UNIT: &[&str] = &[
     "tests/frontend/filewin/create_tests.rs",
     "tests/frontend/filewin/editor_tests.rs",
     "tests/frontend/filewin/preview_tests.rs",
+    "tests/frontend/filewin/kind_tests.rs", // 文件种类：手写的名字 → 种类表 · 图标与词各不相同 · 按类型排
+    "tests/frontend/filewin/chrome_tests.rs", // 窗口的框：历史 · 地址栏 · 导航键 · 状态栏 · 隐藏文件 · 表头（合成事件）
     "tests/frontend/filewin/picker_tests.rs", // 原生选文件框（假选择框注入）
     "tests/frontend/filewin/rows_tests.rs",
     "tests/frontend/filewin/scale_tests.rs",
@@ -534,6 +536,7 @@ const SCAN: &[&str] = &[
     // `tests/backend/control/launch_render/local_tests.rs` 挪去 UNIT：重写成喂确定事实驱动纯函数 `plan`，不再读源码文本。
     // 基数 → 增量 +1：方言专属语法字面量只住 `platform/shell/`（扫后端生产树的字符串字面量）。
     "tests/backend/platform/shell_home_guard.rs",
+    "tests/frontend/filewin/theme_tests.rs", // 样子：名单两边对上 · 映射落到 egui · 窗口零色值（读源码）
 ];
 
 /// 集成层：碰 OS（起进程 · 套接字 · 真文件系统写 · 临时目录）。
@@ -695,6 +698,7 @@ const INTEGRATION: &[&str] = &[
     "tests/backend/control/ccm_tests.rs", // SCAN → INTEGRATION：多了一条隔离 socket 真 tmux 判据（`BUS_ID_RECIPE` 读会话名走 UTF-8 客户端）
     "tests/backend/agents/claudecode/mcp_tests.rs", // Claude 的 MCP 布局读法（临时目录夹具 ＋ 跨语言金样 mcp-read.golden.json）
     "tests/backend/observe/watcher_lines_tests.rs", // watcher D 块（jsonl 增量读）：临时目录假行
+    "tests/frontend/filewin/props_tests.rs", // 属性：应答解法 ＋ 菜单那一下真去问合成后端（临时目录）
 ];
 
 /// 支撑：测试树里**没有一条测试**的那几份（夹具 / helper）。不是一层，是让分区闭合的补集。
@@ -707,6 +711,8 @@ const SUPPORT: &[&str] = &[
     "tests/frontend/filewin/copy_testing.rs",
     "tests/frontend/filewin/find_testing.rs",
     "tests/frontend/filewin/rows_testing.rs",
+    "tests/frontend/filewin/theme_testing.rs", // 缺省主题：照 tokens.css 解
+    "tests/frontend/filewin/chrome_testing.rs", // 一个目录视图连同它的框跑一帧（同 `Workspace::chrome_ui` 那一套面板）
     "tests/frontend/shell/shared_crate_registry_ci_yaml.rs",
     "tests/frontend/shell/write_site_registry_writers.rs",
 ];

@@ -8970,11 +8970,6 @@
       "zh": "cc-monitor 文件 · {source}",
       "args": ["source"]
     },
-    "rsFilewinShell.search.running": {
-      "kind": "body",
-      "zh": "正在搜…",
-      "args": []
-    },
     "rsFilewinShell.search.rebuild": {
       "kind": "action",
       "zh": "重建索引",
@@ -8990,19 +8985,9 @@
       "zh": "文件名，可用 ext: | ! *",
       "args": []
     },
-    "rsFilewinShell.search.label": {
-      "kind": "control",
-      "zh": "搜索",
-      "args": []
-    },
     "rsFilewinShell.frame.truncated": {
       "kind": "body",
       "zh": "这个目录条目太多，只拿到了前 {n} 条。没看见的文件不代表它不在。",
-      "args": ["n"]
-    },
-    "rsFilewinShell.frame.selected": {
-      "kind": "body",
-      "zh": "已选 {n} 项",
       "args": ["n"]
     },
     "rsFilewinShell.frame.listing": {
@@ -9010,24 +8995,9 @@
       "zh": "正在列…",
       "args": []
     },
-    "rsFilewinShell.frame.sort": {
-      "kind": "control",
-      "zh": "排序：{by}",
-      "args": ["by"]
-    },
     "rsFilewinShell.frame.terminal": {
       "kind": "action",
       "zh": "在此打开终端",
-      "args": []
-    },
-    "rsFilewinShell.frame.refresh": {
-      "kind": "action",
-      "zh": "刷新",
-      "args": []
-    },
-    "rsFilewinShell.frame.up": {
-      "kind": "action",
-      "zh": "⬆ 上一级",
       "args": []
     },
     "rsFilewinShell.intent.noPrefix": {
@@ -9865,24 +9835,19 @@
       "zh": "移出书签",
       "args": []
     },
-    "rsFilewinBookmarks.bar.jumpHint": {
-      "kind": "body",
-      "zh": "跳到这个目录",
-      "args": []
-    },
     "rsFilewinBookmarks.label.remove": {
       "kind": "action",
       "zh": "×",
       "args": []
     },
     "rsFilewinBookmarks.label.drop": {
-      "kind": "action",
-      "zh": "★ 取消书签",
+      "kind": "body",
+      "zh": "把当前目录移出书签",
       "args": []
     },
     "rsFilewinBookmarks.label.add": {
-      "kind": "action",
-      "zh": "☆ 加书签",
+      "kind": "body",
+      "zh": "把当前目录加进书签",
       "args": []
     },
     "rsFilewinBookmarks.store.noDataDir": {
@@ -10638,21 +10603,6 @@
     "rsFilewinRows.icon.warn": {
       "kind": "body",
       "zh": "⚠",
-      "args": []
-    },
-    "rsFilewinRows.icon.file": {
-      "kind": "body",
-      "zh": "📄",
-      "args": []
-    },
-    "rsFilewinRows.icon.dir": {
-      "kind": "body",
-      "zh": "📁",
-      "args": []
-    },
-    "rsFilewinRows.icon.symlink": {
-      "kind": "body",
-      "zh": "🔗",
       "args": []
     },
     "rsFilewinFind.decodeFind.badHit": {
@@ -18438,6 +18388,306 @@
     "extPage.hooks.unsupported": {
       "kind": "body",
       "zh": "这台不支持自动收信：cc-bus 要 tmux。",
+      "args": []
+    },
+    "rsFilewinTheme.tokens.missing": {
+      "kind": "error",
+      "zh": "文件窗口没开：主界面交来的配色不全。重启本程序再试",
+      "args": []
+    },
+    "rsFilewinTheme.tokens.unknown": {
+      "kind": "error",
+      "zh": "文件窗口没开：主界面交来的配色有一项认不得。重启本程序再试",
+      "args": []
+    },
+    "rsFilewinTheme.tokens.unreadable": {
+      "kind": "error",
+      "zh": "文件窗口没开：配色里有一项读不懂（{value}）。可以在设置的外观里改掉它再试",
+      "args": ["value"]
+    },
+    "rsFilewinEntry.other.noConfig": {
+      "kind": "error",
+      "zh": "没有叫「{machine}」的远端配置，开不了它的文件窗口",
+      "args": ["machine"]
+    },
+    "rsFilewinEntry.other.badArgs": {
+      "kind": "error",
+      "zh": "开不了另一台的文件窗口：这扇窗交来的样子不全。重开这扇窗再试",
+      "args": []
+    },
+    "rsFilewinKind.label.folder": {
+      "kind": "body",
+      "zh": "文件夹",
+      "args": []
+    },
+    "rsFilewinKind.label.text": {
+      "kind": "body",
+      "zh": "文本",
+      "args": []
+    },
+    "rsFilewinKind.label.code": {
+      "kind": "body",
+      "zh": "代码",
+      "args": []
+    },
+    "rsFilewinKind.label.image": {
+      "kind": "body",
+      "zh": "图片",
+      "args": []
+    },
+    "rsFilewinKind.label.archive": {
+      "kind": "body",
+      "zh": "压缩包",
+      "args": []
+    },
+    "rsFilewinKind.label.pdf": {
+      "kind": "body",
+      "zh": "PDF",
+      "args": []
+    },
+    "rsFilewinKind.label.link": {
+      "kind": "body",
+      "zh": "链接",
+      "args": []
+    },
+    "rsFilewinKind.label.other": {
+      "kind": "body",
+      "zh": "文件",
+      "args": []
+    },
+    "rsFilewinKind.type.withExt": {
+      "kind": "body",
+      "zh": "{kind} · {ext}",
+      "args": ["kind", "ext"]
+    },
+    "rsFilewinSource.sort.mtime": {
+      "kind": "control",
+      "zh": "修改时间",
+      "args": []
+    },
+    "rsFilewinChrome.nav.back": {
+      "kind": "body",
+      "zh": "后退（Alt+←）",
+      "args": []
+    },
+    "rsFilewinChrome.nav.forward": {
+      "kind": "body",
+      "zh": "前进（Alt+→）",
+      "args": []
+    },
+    "rsFilewinChrome.nav.up": {
+      "kind": "body",
+      "zh": "上一级（Alt+↑）",
+      "args": []
+    },
+    "rsFilewinChrome.nav.refresh": {
+      "kind": "body",
+      "zh": "刷新",
+      "args": []
+    },
+    "rsFilewinChrome.address.notAbsolute": {
+      "kind": "error",
+      "zh": "地址要从 / 开始写",
+      "args": []
+    },
+    "rsFilewinChrome.hidden.hint": {
+      "kind": "body",
+      "zh": "名字以点开头的文件。显示时字色淡一级，也可以切成不显示",
+      "args": []
+    },
+    "rsFilewinChrome.status.count": {
+      "kind": "body",
+      "zh": "{n} 项",
+      "args": ["n"]
+    },
+    "rsFilewinChrome.status.countHidden": {
+      "kind": "body",
+      "zh": "{n} 项（另有 {hidden} 项隐藏文件没显示）",
+      "args": ["n", "hidden"]
+    },
+    "rsFilewinChrome.status.picked": {
+      "kind": "body",
+      "zh": " · 选中 {n} 项（{size}）",
+      "args": ["n", "size"]
+    },
+    "rsFilewinChrome.status.transfers": {
+      "kind": "action",
+      "zh": "传输：{n} 个在跑",
+      "args": ["n"]
+    },
+    "rsFilewinChrome.command.grep": {
+      "kind": "action",
+      "zh": "按内容搜",
+      "args": []
+    },
+    "rsFilewinChrome.command.hidden": {
+      "kind": "action",
+      "zh": "隐藏文件",
+      "args": []
+    },
+    "rsFilewinChrome.command.sidebar": {
+      "kind": "body",
+      "zh": "收起或展开左栏",
+      "args": []
+    },
+    "rsFilewinChrome.side.bookmarks": {
+      "kind": "title",
+      "zh": "书签",
+      "args": []
+    },
+    "rsFilewinChrome.side.noBookmarks": {
+      "kind": "body",
+      "zh": "还没有书签。点地址栏右端的 ☆ 把当前目录加进来",
+      "args": []
+    },
+    "rsFilewinChrome.side.thisMachine": {
+      "kind": "title",
+      "zh": "这台机器",
+      "args": []
+    },
+    "rsFilewinChrome.side.home": {
+      "kind": "action",
+      "zh": "家目录",
+      "args": []
+    },
+    "rsFilewinChrome.side.homeAsking": {
+      "kind": "body",
+      "zh": "正在问这台机器的家目录…",
+      "args": []
+    },
+    "rsFilewinChrome.side.root": {
+      "kind": "action",
+      "zh": "根目录",
+      "args": []
+    },
+    "rsFilewinChrome.side.otherMachines": {
+      "kind": "title",
+      "zh": "其他机器",
+      "args": []
+    },
+    "rsFilewinChrome.side.openOther": {
+      "kind": "body",
+      "zh": "在新窗口里打开 {machine} 的文件",
+      "args": ["machine"]
+    },
+    "rsFilewinChrome.other.noTheme": {
+      "kind": "error",
+      "zh": "开不了另一台的文件窗口，重开这扇窗再试",
+      "args": []
+    },
+    "rsFilewinChrome.other.opening": {
+      "kind": "body",
+      "zh": "正在打开 {machine} 的文件窗口…",
+      "args": ["machine"]
+    },
+    "rsFilewinSelect.label.properties": {
+      "kind": "action",
+      "zh": "属性",
+      "args": []
+    },
+    "rsFilewinProps.label.kind": {
+      "kind": "body",
+      "zh": "类型",
+      "args": []
+    },
+    "rsFilewinProps.label.path": {
+      "kind": "body",
+      "zh": "路径",
+      "args": []
+    },
+    "rsFilewinProps.label.size": {
+      "kind": "body",
+      "zh": "大小",
+      "args": []
+    },
+    "rsFilewinProps.label.mtime": {
+      "kind": "body",
+      "zh": "修改时间",
+      "args": []
+    },
+    "rsFilewinProps.label.mode": {
+      "kind": "body",
+      "zh": "权限",
+      "args": []
+    },
+    "rsFilewinProps.label.owner": {
+      "kind": "body",
+      "zh": "所有者",
+      "args": []
+    },
+    "rsFilewinProps.label.linkTarget": {
+      "kind": "body",
+      "zh": "链接指向",
+      "args": []
+    },
+    "rsFilewinProps.value.unknown": {
+      "kind": "body",
+      "zh": "读不到",
+      "args": []
+    },
+    "rsFilewinProps.value.loading": {
+      "kind": "body",
+      "zh": "正在问…",
+      "args": []
+    },
+    "rsFilewinProps.value.size": {
+      "kind": "body",
+      "zh": "{human}（{bytes} 字节）",
+      "args": ["human", "bytes"]
+    },
+    "rsFilewinPreview.decide.imageKind": {
+      "kind": "body",
+      "zh": "{name} 这种图片不预览",
+      "args": ["name"]
+    },
+    "rsFilewinPreview.decide.imageTooBig": {
+      "kind": "body",
+      "zh": "{name} 有 {size}，图片只预览 {limit} 以内的",
+      "args": ["name", "size", "limit"]
+    },
+    "rsFilewinPreview.decide.binaryKind": {
+      "kind": "body",
+      "zh": "{name} 不是文本，不预览（可以下载到本机再打开）",
+      "args": ["name"]
+    },
+    "rsFilewinPreview.ui.imageSize": {
+      "kind": "body",
+      "zh": "{w} × {h}",
+      "args": ["w", "h"]
+    },
+    "rsFilewinPreview.image.grew": {
+      "kind": "error",
+      "zh": "这张图读着读着超过了 {limit}，不预览",
+      "args": ["limit"]
+    },
+    "rsFilewinPreview.image.undecodable": {
+      "kind": "error",
+      "zh": "这张图解不开：{e}",
+      "args": ["e"]
+    },
+    "rsFilewinProps.box.title": {
+      "kind": "title",
+      "zh": "属性 · {name}",
+      "args": ["name"]
+    },
+    "rsFilewinProps.box.close": {
+      "kind": "action",
+      "zh": "关闭",
+      "args": []
+    },
+    "rsFilewinBookmarks.star.off": {
+      "kind": "action",
+      "zh": "☆",
+      "args": []
+    },
+    "rsFilewinBookmarks.star.on": {
+      "kind": "action",
+      "zh": "★",
+      "args": []
+    },
+    "rsFilewinEntry.other.localNone": {
+      "kind": "error",
+      "zh": "本机没有文件窗口",
       "args": []
     }
   }

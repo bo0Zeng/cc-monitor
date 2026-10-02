@@ -368,20 +368,20 @@ fn what_can_be_done_matches_a_hand_written_table() {
             // 算大小（`files-size`）一格：名字寻址得到就给。
             // 解压到这里（`files-extract`）一格：一份文件就给，认不认这种包由后端判。
             vec![
-                Edit, Copy, Download, Size, Extract, CrossCopy, Rename, Chmod, Delete,
+                Edit, Copy, Download, Size, Extract, CrossCopy, Rename, Chmod, Delete, Properties,
             ],
         ),
         // 目录能复制了（后端 `recursive: true`）⇒ 多一格「复制」。
         (
             "一个目录",
             vec![&dir],
-            vec![Open, Copy, Size, Rename, Chmod, Delete],
+            vec![Open, Copy, Size, Rename, Chmod, Delete, Properties],
         ),
         (
             "一个超编辑上限的文件",
             vec![&huge],
             vec![
-                Copy, Download, Size, Extract, CrossCopy, Rename, Chmod, Delete,
+                Copy, Download, Size, Extract, CrossCopy, Rename, Chmod, Delete, Properties,
             ],
         ),
         ("一个有损名文件（没有原始字节）", vec![&lossy], vec![]),
@@ -396,7 +396,7 @@ fn what_can_be_done_matches_a_hand_written_table() {
             // 〔有损名全寻址（）〕带着字节 ⇒ 编辑 / 复制 / 算大小也放开（线上走字节）；
             // 下载也放开（远端按字节就地拷进暂存区再下，`lossy_pull.rs`）。
             vec![
-                Edit, Copy, Download, Size, Extract, CrossCopy, Rename, Chmod, Delete,
+                Edit, Copy, Download, Size, Extract, CrossCopy, Rename, Chmod, Delete, Properties,
             ],
         ),
         ("两项全可写", vec![&file, &dir], vec![Size, Chmod, Delete]),

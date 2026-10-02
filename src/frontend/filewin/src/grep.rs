@@ -272,11 +272,11 @@ impl GrepBoard {
     pub fn ui(&self, ui: &mut egui::Ui) {
         let s = self.shown();
         if let Some(n) = &s.notice {
-            ui.colored_label(egui::Color32::RED, n);
+            ui.colored_label(ui.visuals().error_fg_color, n);
         }
         if let Some(o) = &s.outcome {
             if o.truncated {
-                ui.colored_label(egui::Color32::from_rgb(0xE0, 0x9A, 0x20), summary_line(o));
+                ui.colored_label(ui.visuals().warn_fg_color, summary_line(o));
             } else {
                 ui.label(summary_line(o));
             }

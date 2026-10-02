@@ -2390,8 +2390,17 @@ pub const REGISTRY: &[CommandSpec] = &[
         name: "files-stat",
         doc_anchor: Some("#### `files-stat`"),
         codes: &["bad_path", "unreadable"],
-        // +`mode`（能力 `files.stat` 同拍加的那一格；非 unix 缺席）。
-        fields: &["kind", "mode", "mtime_secs", "path", "readonly", "size"],
+        // +`mode`（能力 `files.stat` 同拍加的那一格；非 unix 缺席）· `owner` · `link_target`（文件窗口「属性」）。
+        fields: &[
+            "kind",
+            "link_target",
+            "mode",
+            "mtime_secs",
+            "owner",
+            "path",
+            "readonly",
+            "size",
+        ],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::files::answer_wire(&r.cmd, &r.args)

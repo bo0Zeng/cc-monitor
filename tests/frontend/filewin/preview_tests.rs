@@ -248,3 +248,107 @@ fn line_starts_cut_where_the_newlines_are() {
     assert_eq!(line_starts("a\nbc\n"), vec![0, 2, 5]);
     assert_eq!(line_starts("\n\n"), vec![0, 1, 2]);
 }
+
+/// 代码高亮：认得的语言按行切好的上色结果，行数 == 文本行数；`fn` 那一行不止一种颜色（真上了色，不是一整段同色）；
+/// 认不得的扩展名不上色（照纯文本画）。
+#[test]
+fn code_is_highlighted_line_by_line_and_unknown_kinds_stay_plain() {
+    let ctx = egui::Context::default();
+    let text = "/// doc\nfn main() {\n    let s = \"hi\"; // c\n}\n";
+    let lines = highlight_lines(&ctx, text, "rs");
+    assert_eq!(lines.len(), line_starts(text).len());
+    let colors: std::collections::BTreeSet<[u8; 4]> = lines[1]
+        .sections
+        .iter()
+        .map(|s| s.format.color.to_array())
+        .collect();
+    assert!(
+        colors.len() >= 2,
+        "`fn main` 那一行只有一种颜色：{colors:?}"
+    );
+    assert_eq!(lines[1].text, "fn main() {");
+    assert_eq!(code_lang("/a/main.rs").as_deref(), Some("rs"));
+    assert_eq!(code_lang("/a/notes.txt"), None, "纯文本不上色");
+    assert_eq!(code_lang("/a/blob.weird"), None);
+}
+
+/// 图片：窗口自己解码；过大的先缩到最长边上限；不是图就是错（原话），不猜。
+#[test]
+fn images_decode_and_big_ones_are_scaled_down() {
+    let png = |w: u32, h: u32| {
+        let mut buf = std::io::Cursor::new(Vec::new());
+        image::RgbaImage::from_pixel(w, h, image::Rgba([10, 20, 30, 255]))
+            .write_to(&mut buf, image::ImageFormat::Png)
+            .unwrap();
+        buf.into_inner()
+    };
+    let small = decode_image(&png(3, 2)).unwrap();
+    assert_eq!(small.size, [3, 2]);
+    let big = decode_image(&png(IMAGE_MAX_SIDE * 2, 10)).unwrap();
+    assert_eq!(big.size[0], IMAGE_MAX_SIDE as usize);
+    assert!(decode_image(b"not an image").is_err());
+}
+
+fn paint_narrow(ctx: &egui::Context, p: &Preview) -> Vec<(String, egui::Rect)> {
+    let input = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(300.0, 600.0),
+        )),
+        ..Default::default()
+    };
+    let out = ctx.run_ui(input, |ui| p.ui(ui));
+    let painted = text_in_frame(&out);
+    out.drop_without_applying_deltas();
+    painted
+}
+
+/// 长行按窗格宽度折行：那一行整段都画了（不截断），画出来的宽度不超过窗格、高度不止一行。
+#[test]
+fn a_long_line_wraps_to_the_pane_instead_of_being_cut() {
+    let long = "word ".repeat(80);
+    let text = format!("short\n{long}\nend");
+    let mut p = Preview::default();
+    p.view = View::Text {
+        path: "/srv/a.txt".into(),
+        starts: line_starts(&text),
+        text: text.clone(),
+        lang: None,
+    };
+    let ctx = egui::Context::default();
+    let _ = paint_narrow(&ctx, &p);
+    let painted = paint_narrow(&ctx, &p);
+    let row_h = ctx.global_style().text_styles[&egui::TextStyle::Monospace].size;
+    let (_, r) = painted
+        .iter()
+        .find(|(t, _)| *t == long)
+        .unwrap_or_else(|| panic!("那一长行没整段画出来：{painted:?}"));
+    assert!(r.width() <= 300.0, "那一行画出了窗格：宽 {}", r.width());
+    assert!(r.height() > row_h * 2.0, "那一行没折：高 {}", r.height());
+    assert!(
+        painted.iter().any(|(t, _)| t == "end"),
+        "折行之后后面那一行没排上"
+    );
+    // 上了色的文本里，空行照样占一行高（不塌掉）。
+    let code = "fn a() {}\n\nfn b() {}";
+    p.painted = highlight_lines(&ctx, code, "rs");
+    p.view = View::Text {
+        path: "/srv/a.rs".into(),
+        starts: line_starts(code),
+        text: code.into(),
+        lang: Some("rs".into()),
+    };
+    let _ = paint_narrow(&ctx, &p);
+    let painted = paint_narrow(&ctx, &p);
+    let y = |want: &str| {
+        painted
+            .iter()
+            .find(|(t, _)| t == want)
+            .map(|(_, r)| r.top())
+            .unwrap()
+    };
+    assert!(
+        y("fn b() {}") - y("fn a() {}") > row_h * 1.5,
+        "空行塌掉了：{painted:?}"
+    );
+}

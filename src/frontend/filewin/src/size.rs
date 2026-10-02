@@ -195,7 +195,7 @@ impl SizeBoard {
         if let Some(r) = &last {
             let text = outcome_text(r);
             if r.iter().any(Result::is_err) {
-                ui.colored_label(egui::Color32::from_rgb(0xE0, 0x9A, 0x20), text);
+                ui.colored_label(ui.visuals().warn_fg_color, text);
             } else {
                 ui.label(text);
             }
