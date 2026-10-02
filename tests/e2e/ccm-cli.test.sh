@@ -21,6 +21,11 @@ CCM_NATIVE="${CARGO_TARGET_DIR:-$REPO/.build/backend}/debug/cc-monitor-backend"
 CCMDIR="$(mktemp -d)"; trap 'rm -rf "$CCMDIR"' EXIT
 ln -s "$CCM_NATIVE" "$CCMDIR/ccm"
 CCM="$CCMDIR/ccm"
+# 中转那一格由 ccm 在最终 exec 那一处自己判（这台家目录下的钥匙 ＋ 回环口连得上）⇒ 不隔离的话，开发机上真跑着的
+#   常驻后端会让每条黄金串多出一句注入（结果随「是谁在跑测试」漂移）。家目录一律换成沙箱（没有钥匙 ⇒ 当中转不在），
+#   中转那几个变量一律不继承。注入那一形另有专测（`plan_tests.rs` · `tests/e2e/restart-suite.sh`）。
+export HOME="$CCMDIR/home"; mkdir -p "$HOME"
+unset CCM_RELAY_PORT CCM_RELAY_ALL_SESSIONS ANTHROPIC_BASE_URL
 
 # ⚠ **这里原来有两道 `jq` 的 fail-closed 硬依赖闸，本轮删了。**
 #   它们守的是本文件那几份**假 backend**（`mk_mirror_backend` 用 `jq` 把夹具 manifest 翻成
