@@ -8,7 +8,7 @@
 //! | 锚 | 相等的两侧 |
 //! |---|---|
 //! | 条目数 | 索引里的条数 == 夹具**按构造**造了多少条 |
-//! | 常驻字节 | [`Snapshot::resident_bytes`] == 路径总长（算出来的）＋ 4×条数 |
+//! | 常驻字节 | [`Snapshot::resident_bytes`] == 路径总长（算出来的）＋ 5×条数（界桩 4 ＋ 类型 1）|
 //!
 //! 时延那一类量不出确切值 ⇒ 它们**不在这里**，在 `秤 F2`（`scale_f2.rs`），
 //! 而那边的主锚同样是上面这两个相等，墙钟只作为**读数**报出去。
@@ -39,6 +39,20 @@ pub(crate) fn resident_lock() -> std::sync::MutexGuard<'static, ()> {
     forget_resident();
     super::super::browse_watch::forget_all();
     g
+}
+
+/// 在常驻索引里按一条搜索词查（不带号、不限范围、从头起）。
+pub(crate) fn query(q: &str, limit: usize) -> FindResult {
+    let m = super::super::query::parse(q).expect("判据里的搜索词本该解析得了");
+    find(&FindArgs {
+        query: &m,
+        under: None,
+        home: None,
+        offset: 0,
+        limit,
+        ticket: None,
+    })
+    .expect("没带号的一趟不会被顶掉")
 }
 
 /// 一棵**按构造知道自己有多少条**的合成树。
@@ -110,14 +124,14 @@ fn a_walk_indexes_exactly_the_entries_the_fixture_built() {
 
 /// 🔴 `秤 F2 ②` 的**判据那一半**：常驻字节是算得出的量。
 #[test]
-fn resident_bytes_equals_the_paths_plus_four_bytes_of_bookkeeping_per_entry() {
+fn resident_bytes_equals_the_paths_plus_five_bytes_of_bookkeeping_per_entry() {
     let _lock = resident_lock();
     let fx = make_tree("bytes", 5, 9, 17);
     let snap = build(&fx.root);
     assert_eq!(
         snap.resident_bytes(),
-        fx.path_bytes_total + 4 * fx.entries,
-        "常驻字节不等于「路径总长 ＋ 4×条数」——\n\
+        fx.path_bytes_total + 5 * fx.entries,
+        "常驻字节不等于「路径总长 ＋ 5×条数」——\n\
          要么遍历少收了条目，要么这个量的口径变了（变了就回来改这条断言，别调松它）"
     );
 }
@@ -246,15 +260,11 @@ fn a_query_hands_back_the_hits_and_nothing_else() {
     rebuild_once(&fx.root)
         .expect("本格独占跑，抢不到那个位就是并发保护写错了 —— 不许静默当成走过了");
 
-    let r = find(&FindArgs {
-        needle: b"needle-here-and-nowhere-else".to_vec(),
-        ignore_ascii_case: false,
-        limit: 100,
-    });
+    let r = query("needle-here-and-nowhere-else", 100);
     assert_eq!(r.total_hits, 1, "命中数不对");
     assert_eq!(r.hits.len(), 1, "回送的条数不对");
     assert_eq!(
-        r.hits[0],
+        r.hits[0].0,
         super::super::raw::path_bytes(&one),
         "回送的那一条不是逐字节相等的原路径"
     );
@@ -268,13 +278,9 @@ fn a_query_hands_back_the_hits_and_nothing_else() {
     assert!(!r.index_missing);
 
     // 反向那半：不命中的那一趟**一条都不回**，而且 `scanned` 仍然说得出它扫了多少。
-    let miss = find(&FindArgs {
-        needle: b"this-string-is-in-no-path".to_vec(),
-        ignore_ascii_case: false,
-        limit: 100,
-    });
+    let miss = query("this-string-is-in-no-path", 100);
     assert_eq!(miss.total_hits, 0);
-    assert_eq!(miss.hits, Vec::<Vec<u8>>::new(), "没命中却回送了东西");
+    assert_eq!(miss.hits, Vec::<Hit>::new(), "没命中却回送了东西");
     assert_eq!(miss.scanned, fx.entries + 1, "没命中那一趟把扫描面报丢了");
 }
 
@@ -286,11 +292,7 @@ fn the_limit_truncates_the_payload_but_never_the_count() {
     let _serial = crate::files::index::testing::serial();
     rebuild_once(&fx.root)
         .expect("本格独占跑，抢不到那个位就是并发保护写错了 —— 不许静默当成走过了");
-    let all = find(&FindArgs {
-        needle: b"f000".to_vec(),
-        ignore_ascii_case: false,
-        limit: 10_000,
-    });
+    let all = query("f000", 10_000);
     assert_eq!(
         all.total_hits,
         3 * 10,
@@ -298,11 +300,7 @@ fn the_limit_truncates_the_payload_but_never_the_count() {
     );
     assert!(!all.truncated);
 
-    let capped = find(&FindArgs {
-        needle: b"f000".to_vec(),
-        ignore_ascii_case: false,
-        limit: 4,
-    });
+    let capped = query("f000", 4);
     assert_eq!(capped.hits.len(), 4, "上限没生效");
     assert_eq!(
         capped.total_hits, all.total_hits,
@@ -315,11 +313,7 @@ fn the_limit_truncates_the_payload_but_never_the_count() {
 fn a_query_against_a_missing_index_says_so_instead_of_saying_no_hits() {
     let _lock = resident_lock();
     forget_resident();
-    let r = find(&FindArgs {
-        needle: b"anything".to_vec(),
-        ignore_ascii_case: false,
-        limit: 10,
-    });
+    let r = query("anything", 10);
     assert!(
         r.index_missing,
         "🔴 索引还没建过时回了一个「没命中」—— 那两件事在界面上一模一样，\n\
@@ -349,21 +343,17 @@ fn a_non_utf8_filename_is_indexed_searchable_and_returned_byte_for_byte() {
         let _serial = crate::files::index::testing::serial();
         rebuild_once(&fx.root)
             .expect("本格独占跑，抢不到那个位就是并发保护写错了 —— 不许静默当成走过了");
-        let r = find(&FindArgs {
-            needle: name.clone(),
-            ignore_ascii_case: false,
-            limit: 10,
-        });
+        let r = query("weird-*-name", 10);
         assert_eq!(
             r.total_hits, 1,
             "非 UTF-8 的名字搜不到 —— 那正是 `档②` 说的「寻址不到」"
         );
         assert_eq!(
-            r.hits[0], full,
+            r.hits[0].0, full,
             "回送的字节与盘上那个名字不是逐字节相等 —— 有损解码溜进来了"
         );
         assert!(
-            std::str::from_utf8(&r.hits[0]).is_err(),
+            std::str::from_utf8(&r.hits[0].0).is_err(),
             "这份夹具本该**不是**有效 UTF-8 —— 夹具坏了，本条在测别的东西"
         );
     }
@@ -446,4 +436,146 @@ fn a_second_rebuild_is_refused_while_one_is_running_and_says_so() {
         rebuild_once(&fx.root).is_some(),
         "上一趟走完了，那个位却没还回去 ⇒ 这条能力从此永久被拒。"
     );
+}
+
+// ══════════════════════ 分页 · 范围 · 丢旧号 · 类型 ══════════════════════
+
+/// 只回这一屏：`offset`/`limit` 切出来的 == 全量那一摞的同一段，总数照旧是全量。
+#[test]
+fn a_page_is_exactly_that_slice_of_the_full_answer_and_the_count_stays_whole() {
+    let _lock = resident_lock();
+    let fx = make_tree("page", 3, 10, 0);
+    let _serial = crate::files::index::testing::serial();
+    rebuild_once(&fx.root).expect("本格独占跑");
+    let m = super::super::query::parse("f000").unwrap();
+    let page = |offset: usize, limit: usize| {
+        find(&FindArgs {
+            query: &m,
+            under: None,
+            home: None,
+            offset,
+            limit,
+            ticket: None,
+        })
+        .unwrap()
+    };
+    let all = page(0, 1000);
+    assert_eq!(all.total_hits, 30);
+    let mid = page(7, 5);
+    assert_eq!(
+        mid.hits,
+        all.hits[7..12].to_vec(),
+        "中间那一屏不是全量的那一段"
+    );
+    assert_eq!(mid.total_hits, 30, "翻页把总数也切了");
+    assert!(mid.truncated, "后面还有却没说");
+    let tail = page(28, 5);
+    assert_eq!(tail.hits, all.hits[28..30].to_vec());
+    assert!(!tail.truncated, "到底了还说有更多");
+}
+
+/// `under` 只留那个目录底下的；范围不在索引里 ⇒ 说出来，并给出该走的根（家目录里 ⇒ 家目录，否则 ⇒ 它自己）。
+#[test]
+fn under_keeps_only_that_subtree_and_says_which_root_would_cover_it() {
+    let _lock = resident_lock();
+    let fx = make_tree("under", 3, 4, 0);
+    let _serial = crate::files::index::testing::serial();
+    rebuild_once(&fx.root).expect("本格独占跑");
+    let root = super::super::raw::path_bytes(&fx.root).to_vec();
+    let d1 = super::super::raw::path_bytes(&fx.root.join("d0001")).to_vec();
+    let all = super::super::query::parse("").unwrap();
+    let run = |under: Option<&[u8]>, home: Option<&[u8]>| {
+        find(&FindArgs {
+            query: &all,
+            under,
+            home,
+            offset: 0,
+            limit: 1000,
+            ticket: None,
+        })
+        .unwrap()
+    };
+    let inside = run(Some(&d1), None);
+    let want: std::collections::BTreeSet<Vec<u8>> = (0..4)
+        .map(|f| {
+            super::super::raw::path_bytes(&fx.root.join("d0001").join(format!("f{f:04}"))).to_vec()
+        })
+        .collect();
+    let got: std::collections::BTreeSet<Vec<u8>> =
+        inside.hits.iter().map(|h| h.0.clone()).collect();
+    assert_eq!(
+        got, want,
+        "只搜那个目录：挑出来的不是它底下那几条（它自己也不该在）"
+    );
+    assert!(!inside.out_of_index);
+    assert_eq!(inside.cover_root.as_deref(), Some(root.as_slice()));
+    // 家目录就是索引的根 ⇒ 不给 `under` 就是整份。
+    assert_eq!(run(None, Some(&root)).total_hits, fx.entries);
+
+    let outside = b"/ccm-no-such-dir-outside".to_vec();
+    let away = run(Some(&outside), None);
+    assert!(away.out_of_index, "范围不在索引里却没说");
+    assert_eq!(away.total_hits, 0);
+    assert_eq!(
+        away.cover_root.as_deref(),
+        Some(outside.as_slice()),
+        "家目录外 ⇒ 该走它自己"
+    );
+    let in_home = run(Some(&d1), Some(b"/"));
+    assert!(!in_home.out_of_index);
+    let home_cover = run(Some(&outside), Some(b"/"));
+    assert_eq!(
+        home_cover.cover_root.as_deref(),
+        Some(b"/".as_slice()),
+        "在家目录里 ⇒ 该走家目录"
+    );
+}
+
+/// 同一个搜索框来了更大的号 ⇒ 旧那一趟被顶掉、晚到的旧号当场丢；同号（翻页）照常；别的搜索框不受牵连。
+#[test]
+fn a_newer_seq_supersedes_only_its_own_stream() {
+    let _lock = resident_lock();
+    let fx = make_tree("seq", 1, 3, 0);
+    let _serial = crate::files::index::testing::serial();
+    rebuild_once(&fx.root).expect("本格独占跑");
+    let m = super::super::query::parse("f").unwrap();
+    let with = |t: &Ticket| {
+        find(&FindArgs {
+            query: &m,
+            under: None,
+            home: None,
+            offset: 0,
+            limit: 10,
+            ticket: Some(t),
+        })
+    };
+    let t5 = ticket("idx-seq-a", 5).expect("第一个号");
+    assert!(with(&t5).is_ok());
+    assert!(ticket("idx-seq-a", 3).is_err(), "晚到的旧号没被丢");
+    let again = ticket("idx-seq-a", 5).expect("同号再来（翻页）该放行");
+    let other = ticket("idx-seq-b", 1).expect("别的搜索框");
+    let _t6 = ticket("idx-seq-a", 6).expect("新号");
+    assert_eq!(
+        with(&t5).unwrap_err(),
+        Superseded,
+        "来了新号，旧那一趟没收手"
+    );
+    assert!(with(&again).is_err());
+    assert!(with(&other).is_ok(), "别的搜索框被牵连撤了");
+}
+
+/// 索引记住每条的类型：`folder:` 挑中的 == 夹具造的目录，`file:` == 夹具造的文件。
+#[test]
+fn the_index_keeps_each_entry_kind() {
+    let _lock = resident_lock();
+    let fx = make_tree("kinds", 4, 5, 0);
+    let _serial = crate::files::index::testing::serial();
+    rebuild_once(&fx.root).expect("本格独占跑");
+    let dirs = query("folder:", 1000);
+    assert_eq!(dirs.total_hits, 4);
+    assert!(dirs
+        .hits
+        .iter()
+        .all(|h| h.1 == super::super::query::KIND_DIR));
+    assert_eq!(query("file:", 1000).total_hits, 4 * 5);
 }

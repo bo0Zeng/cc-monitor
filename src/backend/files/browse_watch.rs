@@ -58,10 +58,10 @@ use std::path::{Path, PathBuf};
 /// 而 `max_user_watches` 是个可以被管理员随手改成 8192 的整数。
 pub const MAX_BROWSE_WATCHES: usize = 64;
 
-/// 一个被盯着的目录，以及它**最近一次重列**出来的直接子项（全路径原始字节）。
+/// 一个被盯着的目录，以及它**最近一次重列**出来的直接子项（全路径原始字节 ＋ 类型字节）。
 struct Watched {
     dir: Vec<u8>,
-    children: Vec<Vec<u8>>,
+    children: Vec<(Vec<u8>, u8)>,
 }
 
 /// 眼下盯着的那几个目录。**进程里只有这一份。**
@@ -70,7 +70,7 @@ static WATCHED: std::sync::RwLock<Vec<Watched>> = std::sync::RwLock::new(Vec::ne
 /// 查询时拿的那一份 overlay（只读快照）。
 pub struct Overlay {
     dirs: Vec<Vec<u8>>,
-    children: Vec<Vec<u8>>,
+    children: Vec<(Vec<u8>, u8)>,
 }
 
 impl Overlay {
@@ -81,9 +81,9 @@ impl Overlay {
             .any(|d| super::raw::is_direct_child(entry, d))
     }
 
-    /// overlay 自己那些条目。
-    pub fn iter(&self) -> impl Iterator<Item = &[u8]> + '_ {
-        self.children.iter().map(|c| c.as_slice())
+    /// overlay 自己那些条目（路径 ＋ 类型字节）。
+    pub fn iter(&self) -> impl Iterator<Item = (&[u8], u8)> + '_ {
+        self.children.iter().map(|(c, k)| (c.as_slice(), *k))
     }
 
     pub fn dirs(&self) -> usize {
@@ -97,7 +97,11 @@ impl Overlay {
     /// overlay 自己的常驻字节 —— `秤 F2 ②` 要把它算进总数。
     pub fn resident_bytes(&self) -> usize {
         self.dirs.iter().map(Vec::len).sum::<usize>()
-            + self.children.iter().map(Vec::len).sum::<usize>()
+            + self
+                .children
+                .iter()
+                .map(|(c, _)| c.len() + 1)
+                .sum::<usize>()
     }
 }
 
@@ -119,15 +123,19 @@ pub fn watched_count() -> usize {
     WATCHED.read().map(|g| g.len()).unwrap_or(0)
 }
 
-/// 列一个目录的直接子项（全路径原始字节）。`None` = 打不开。
+/// 列一个目录的直接子项（全路径原始字节 ＋ 类型字节）。`None` = 打不开。
 ///
-/// ⚠ 它**不递归**、不跟 symlink、不 `stat` —— 只要名字。
-fn list_dir(dir: &Path) -> Option<Vec<Vec<u8>>> {
+/// ⚠ 它**不递归**、不跟 symlink、不 `stat` —— 只要名字与目录项自带的类型。
+fn list_dir(dir: &Path) -> Option<Vec<(Vec<u8>, u8)>> {
     let rd = std::fs::read_dir(dir).ok()?;
     let mut out = Vec::new();
     for e in rd {
         let Ok(e) = e else { continue };
-        out.push(super::raw::path_bytes(&e.path()).to_vec());
+        let kind = e
+            .file_type()
+            .map(|t| super::query::kind_of(t.is_dir(), t.is_symlink(), t.is_file()))
+            .unwrap_or(super::query::KIND_OTHER);
+        out.push((super::raw::path_bytes(&e.path()).to_vec(), kind));
     }
     out.sort();
     Some(out)

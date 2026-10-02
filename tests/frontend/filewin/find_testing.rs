@@ -241,8 +241,12 @@ pub type WireLog = std::sync::Arc<std::sync::Mutex<Vec<serde_json::Value>>>;
 
 /// 一台按 `src/doc/IPC-PROTOCOL.md §10` 答话的合成后端。
 pub struct FakeBackend {
-    /// 它手上那份索引（`None` = **还没建过** ⇒ `index_missing: true`）。
-    index: Option<Vec<Vec<u8>>>,
+    /// 它手上那份索引：根 ＋ 每条（路径, 是不是目录）（`None` = **还没建过** ⇒ `index_missing: true`）。
+    index: Option<(String, Vec<(Vec<u8>, bool)>)>,
+    /// 它当自己家目录的那一处（`files-find` 不给 `under` 时的范围、`files-index-rebuild` 不给 `path` 时的根）。
+    home: Option<String>,
+    /// 给了 ⇒ 一屏最多回这么多条（不管窗口要多少）—— 判据要一屏小到最后一行露在帧上。
+    page_cap: Option<usize>,
     declared: Declared,
     /// 它声明自己认得哪几条命令（`hello.commands`）。
     pub offered: Vec<String>,
@@ -270,6 +274,8 @@ impl FakeBackend {
     pub fn new(offered: &[&str], declared: Declared) -> Self {
         Self {
             index: None,
+            home: None,
+            page_cap: None,
             declared,
             offered: offered.iter().map(|s| s.to_string()).collect(),
             log: std::sync::Arc::new(std::sync::Mutex::new(Vec::new())),
@@ -339,7 +345,19 @@ impl FakeBackend {
 
     /// 让它开局就**已经**有一份索引（`files-index-rebuild` 那条阴性对照要它）。
     pub fn preindexed(mut self, root: &std::path::Path) -> Self {
-        self.index = Some(walk(root));
+        self.index = Some((remote_form(&root.to_string_lossy()), walk(root)));
+        self
+    }
+
+    /// 一屏最多回 `n` 条。
+    pub fn paging_by(mut self, n: usize) -> Self {
+        self.page_cap = Some(n);
+        self
+    }
+
+    /// 给它一个家目录（窗口不开「只搜当前目录」时，搜的与重走的都是这一处）。
+    pub fn homed(mut self, home: &std::path::Path) -> Self {
+        self.home = Some(remote_form(&home.to_string_lossy()));
         self
     }
 
@@ -368,14 +386,20 @@ impl FakeBackend {
             },
             "files-index-status" => (true, None, None, Some(self.status_json())),
             "files-index-rebuild" => {
-                let Some(root) = args.get("path").and_then(|v| v.as_str()) else {
+                // 不给 `path` ⇒ 家目录（同后端）。
+                let root = match args.get("path") {
+                    None => self.home.clone(),
+                    Some(v) => v.as_str().map(str::to_string),
+                };
+                let Some(root) = root else {
                     return (
                         false,
                         Some("bad_path".into()),
-                        Some("少了 `path`".into()),
+                        Some("这个根不认".into()),
                         None,
                     );
                 };
+                let root = root.as_str();
                 // 🔴 照后端那一层的语义：**根读不进去是「拒」，不是走出一棵空树**
                 //    （`src/doc/IPC-PROTOCOL.md §10` 逐字，常驻那一份一个字节不动）。
                 if crate::source::list_local(std::path::Path::new(root)).is_err() {
@@ -388,9 +412,9 @@ impl FakeBackend {
                 }
                 let paths = walk(std::path::Path::new(root));
                 let resident: usize =
-                    paths.iter().map(|p| p.len()).sum::<usize>() + 4 * paths.len();
+                    paths.iter().map(|(p, _)| p.len()).sum::<usize>() + 5 * paths.len();
                 let entries = paths.len();
-                self.index = Some(paths);
+                self.index = Some((root.to_string(), paths));
                 (
                     true,
                     None,
@@ -423,16 +447,29 @@ impl FakeBackend {
                     })),
                 )
             }
+            // 文件名搜索：**这台合成后端只认字面子串**（对全路径），语法不在它这里 ——
+            //   窗口侧只判「发原样的词与号 · 画 · 翻页 · 照后端说的重走」，语法的正确性判在后端那棵树。
             "files-find" => {
-                let Some(needle) = args.get("needle").and_then(|v| v.as_str()) else {
+                let Some(q) = args.get("query").and_then(|v| v.as_str()) else {
                     return (
                         false,
                         Some("bad_args".into()),
-                        Some("少了 `needle`".into()),
+                        Some("少了 `query`".into()),
                         None,
                     );
                 };
-                let Some(idx) = self.index.as_ref() else {
+                let under = args.get("under").cloned().filter(|v| !v.is_null());
+                let offset = args.get("offset").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
+                let limit = args
+                    .get("limit")
+                    .and_then(|v| v.as_u64())
+                    .filter(|n| *n > 0)
+                    .unwrap_or(1000) as usize;
+                let limit = self.page_cap.map_or(limit, |c| c.min(limit));
+                let seq = args.get("seq").cloned().unwrap_or(serde_json::Value::Null);
+                let home = self.home.clone().map(serde_json::Value::String);
+                let fresh_root = under.clone().or(home).unwrap_or(serde_json::Value::Null);
+                let Some((root, idx)) = self.index.as_ref() else {
                     // **索引还没建过** —— 几个数全 0，而那不是「没搜到」。
                     return (
                         true,
@@ -445,23 +482,55 @@ impl FakeBackend {
                             "scanned": 0,
                             "index_age_secs": 0,
                             "index_missing": true,
+                            "stale": false,
+                            "index_root": null,
+                            "out_of_index": false,
+                            "cover_root": fresh_root,
+                            "seq": seq,
+                            "offset": offset,
                         })),
                     );
                 };
-                let n = needle.as_bytes();
-                let hits: Vec<&Vec<u8>> = idx.iter().filter(|p| contains(p, n)).collect();
-                let wire: Vec<serde_json::Value> = hits.iter().map(|p| to_json(p)).collect();
+                // 范围只认字符串形（字节形一律当「不在索引里」）。
+                let scope = under.as_ref().map(|v| v.as_str().map(str::to_string));
+                let covered = match &scope {
+                    None => true,
+                    Some(Some(u)) => u == root || u.starts_with(&format!("{root}/")),
+                    Some(None) => false,
+                };
+                let inside = |p: &[u8]| match &scope {
+                    Some(Some(u)) => p.starts_with(format!("{u}/").as_bytes()),
+                    Some(None) => false,
+                    None => true,
+                };
+                let all: Vec<&(Vec<u8>, bool)> = idx
+                    .iter()
+                    .filter(|(p, _)| inside(p) && contains(p, q.as_bytes()))
+                    .collect();
+                let page: Vec<serde_json::Value> = all
+                    .iter()
+                    .skip(offset)
+                    .take(limit)
+                    .map(|(p, d)| serde_json::json!({ "path": to_json(p), "kind": if *d { "dir" } else { "file" } }))
+                    .collect();
+                let d = &self.declared;
                 (
                     true,
                     None,
                     None,
                     Some(serde_json::json!({
-                        "hits": wire,
-                        "total_hits": hits.len(),
-                        "truncated": false,
+                        "truncated": all.len() > offset + page.len(),
+                        "hits": page,
+                        "total_hits": all.len(),
                         "scanned": idx.len(),
-                        "index_age_secs": self.declared.age_secs,
+                        "index_age_secs": d.age_secs,
                         "index_missing": false,
+                        "stale": d.stale.unwrap_or(d.age_secs > d.rewalk_interval_secs),
+                        "index_root": root,
+                        "out_of_index": !covered,
+                        "cover_root": if covered { serde_json::Value::String(root.clone()) } else { fresh_root },
+                        "seq": seq,
+                        "offset": offset,
                     })),
                 )
             }
@@ -806,10 +875,10 @@ impl FakeBackend {
         let d = &self.declared;
         let (missing, entries, resident) = match self.index.as_ref() {
             None => (true, 0usize, 0usize),
-            Some(idx) => (
+            Some((_, idx)) => (
                 false,
                 idx.len(),
-                idx.iter().map(|p| p.len()).sum::<usize>() + 4 * idx.len(),
+                idx.iter().map(|(p, _)| p.len()).sum::<usize>() + 5 * idx.len(),
             ),
         };
         let stale = d
@@ -875,7 +944,7 @@ fn to_json(bytes: &[u8]) -> serde_json::Value {
 /// ⇒ 这棵合成树刻意**全 ASCII**，非 UTF-8 那一形由
 /// `super::tests::a_non_utf8_hit_keeps_its_bytes_and_says_it_is_lossy`
 /// 单独喂一份十六进制夹具去判，不靠这棵树。
-fn walk(root: &std::path::Path) -> Vec<Vec<u8>> {
+fn walk(root: &std::path::Path) -> Vec<(Vec<u8>, bool)> {
     let mut out = Vec::new();
     let mut stack = vec![root.to_path_buf()];
     while let Some(dir) = stack.pop() {
@@ -883,7 +952,7 @@ fn walk(root: &std::path::Path) -> Vec<Vec<u8>> {
             continue;
         };
         for r in rows {
-            out.push(remote_form(&r.path).into_bytes());
+            out.push((remote_form(&r.path).into_bytes(), r.is_dir));
             if r.is_dir {
                 stack.push(std::path::PathBuf::from(&r.path));
             }

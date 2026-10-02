@@ -485,7 +485,7 @@ fn the_find_fields_match_what_the_call_really_returns() {
     let _lock = resident_lock();
     let v = answer(
         "files.find",
-        &serde_json::json!({"needle": "nothing-matches-this"}),
+        &serde_json::json!({"query": "nothing-matches-this"}),
     )
     .expect("find 不该失败");
     let got: std::collections::BTreeSet<String> = v
@@ -664,7 +664,11 @@ fn the_new_two_capabilities_declared_codes_are_not_ghosts() {
     let _lock = resident_lock();
     for (cap, args, want) in [
         // `path` 那一族与同族其余两条逐字同一条路（`path_arg`）。
-        ("files.index.rebuild", serde_json::json!({}), "bad_path"),
+        (
+            "files.index.rebuild",
+            serde_json::json!({"path": ""}),
+            "bad_path",
+        ),
         (
             "files.index.rebuild",
             serde_json::json!({"path": 7}),
@@ -768,6 +772,10 @@ fn every_declared_arg_is_really_read_by_the_parser() {
     std::fs::write(&text_a, b"alpha\n").expect("铺 a");
     std::fs::write(&text_b, b"beta\n").expect("铺 b");
 
+    // `seq` / `stream` 那两条要一个先来过更大号的搜索框。
+    for st in ["probe-seq", "probe-stream-a"] {
+        crate::files::index::ticket(st, 9).expect("登记一个先来的号");
+    }
     // 🔴 探针表：`(能力, 被测参数, 甲, 乙)` —— 甲乙只差那一个键，答案必须不同。
     //   ⚠ 顺序承重：`files.browse` 会往 overlay 里加东西、`files.index.rebuild` 会把
     //   常驻那一份整份换掉 ⇒ 两者都排在 `files.find` 之后，免得前一条把后一条的地基抽了。
@@ -797,24 +805,44 @@ fn every_declared_arg_is_really_read_by_the_parser() {
             serde_json::json!({ "path": p(&fx.root) }),
             serde_json::json!({ "path": p(&sub) }),
         ),
+        // `files.find`：两侧都给 `under`（不给 ⇒ 家目录，而夹具不在家目录里）。
         (
             "files.find",
-            "needle",
-            serde_json::json!({ "needle": "f0000" }),
-            serde_json::json!({ "needle": "d0000" }),
+            "query",
+            serde_json::json!({ "under": p(&fx.root), "query": "f0000" }),
+            serde_json::json!({ "under": p(&fx.root), "query": "d0000" }),
         ),
         (
-            // 当年那个鬼影的**正主**：这一条上它是真被读的。
             "files.find",
-            "ignore_ascii_case",
-            serde_json::json!({ "needle": "F0000", "ignore_ascii_case": true }),
-            serde_json::json!({ "needle": "F0000", "ignore_ascii_case": false }),
+            "under",
+            serde_json::json!({ "under": p(&fx.root), "query": "f0000" }),
+            serde_json::json!({ "under": p(&sub), "query": "f0000" }),
         ),
         (
             "files.find",
             "limit",
-            serde_json::json!({ "needle": "f0000", "limit": 1000 }),
-            serde_json::json!({ "needle": "f0000", "limit": 1 }),
+            serde_json::json!({ "under": p(&fx.root), "query": "f0000", "limit": 1000 }),
+            serde_json::json!({ "under": p(&fx.root), "query": "f0000", "limit": 1 }),
+        ),
+        (
+            "files.find",
+            "offset",
+            serde_json::json!({ "under": p(&fx.root), "query": "f0000", "offset": 0 }),
+            serde_json::json!({ "under": p(&fx.root), "query": "f0000", "offset": 1 }),
+        ),
+        // 号：这个搜索框先来过 9 ⇒ 1 被丢、10 照常。
+        (
+            "files.find",
+            "seq",
+            serde_json::json!({ "under": p(&fx.root), "query": "f0000", "stream": "probe-seq", "seq": 1 }),
+            serde_json::json!({ "under": p(&fx.root), "query": "f0000", "stream": "probe-seq", "seq": 10 }),
+        ),
+        // 搜索框：甲那个先来过 9 ⇒ 号 1 被丢；乙那个是新的 ⇒ 照常。
+        (
+            "files.find",
+            "stream",
+            serde_json::json!({ "under": p(&fx.root), "query": "f0000", "stream": "probe-stream-a", "seq": 1 }),
+            serde_json::json!({ "under": p(&fx.root), "query": "f0000", "stream": "probe-stream-b", "seq": 1 }),
         ),
         (
             "files.browse",
@@ -938,8 +966,9 @@ fn every_declared_arg_is_really_read_by_the_parser() {
     // 10 → 11（`files.size` 的 `path` 一对）。
     // 11 → 14（`files.read.chunk` 的 `path` · `offset` · `len` 三对）。
     // 14 → 18（`files.grep` 的 `path` · `needle` · `ignore_ascii_case` · `limit` 四对）。
+    // 18 → 21（`files.find`：`needle` · `ignore_ascii_case` 两对走了；`query` · `under` · `offset` · `seq` · `stream` 五对来了）。
     assert_eq!(
-        checked, 18,
+        checked, 21,
         "行使的探针对数变了 —— 本条的射程跟着变了，先查探针表"
     );
     std::fs::remove_dir_all(&text_dir).ok();
@@ -1221,10 +1250,10 @@ pub fn answer(name: &str, args: &serde_json::Value) -> u32 {
         got, want,
         "经 helper 递下去的 `depth` 与直接下标的 `path` 要收到；别的值上的 `.get(\"ghost\")` 不许收（字符串 / 字符里的大括号不许把函数体配歪）"
     );
-    // 活样本锚：`files.find` 真读 `ignore_ascii_case`，`files.ls` 不读（当年那个鬼影的两面）。
+    // 活样本锚：`files.grep` 真读 `ignore_ascii_case`，`files.ls` 不读（当年那个鬼影的两面）。
     let live = fn_bodies(&files_mod_prod());
     let arms = answer_arms(&live);
-    assert!(keys_read_from(&arms["files.find"], &live).contains("ignore_ascii_case"));
+    assert!(keys_read_from(&arms["files.grep"], &live).contains("ignore_ascii_case"));
     assert!(!keys_read_from(&arms["files.ls"], &live).contains("ignore_ascii_case"));
 }
 

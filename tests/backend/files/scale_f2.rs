@@ -16,7 +16,7 @@
 //! | 锚 | 相等的两侧 |
 //! |---|---|
 //! | 语料 | 索引条目数 == 语料**按构造**造了多少条 |
-//! | ② 常驻字节 | [`Snapshot::resident_bytes`] == 路径字节总长（算出来的）＋ 4×条数 |
+//! | ② 常驻字节 | [`Snapshot::resident_bytes`] == 路径字节总长（算出来的）＋ 5×条数（界桩 4 ＋ 类型 1）|
 //! | ③ 分桶 | 每个桶的**命中数**是算出来的确切值，不是量出来的 |
 //!
 //! 唯一一条挂在墙钟上的**闸**是那条落点（周期 ≥ 建索引耗时），而它带着
@@ -56,7 +56,7 @@
 //! 单次查询 **0.62–1.57 毫秒** ⇒ 线性外推到 64 万条量纲是 **约 20–50 毫秒**。
 //! ⇒ 与那个代理指标（10 毫秒）差 **2–5 倍**，**不是**一个数量级。
 //! 差在哪里：`grep -F` 走 SIMD ＋ Boyer-Moore 一族，
-//! 而本族是首字节筛 ＋ 整块比（`files::raw::contains_exact` 的头注记着前后两版）。
+//! 而本族是逐条名字上的首字节筛 ＋ 逐字节折（`files::query` 那一份）。
 //!
 //! 🔴🔴 **这段读数自己腐过一次，教训比读数值钱，逐字留着：**
 //! 本节第一版写的是「约 3–9 毫秒 ⇒ 约 90–280 毫秒 ⇒ **慢一到两个数量级**」。
@@ -123,8 +123,8 @@ struct Corpus {
     path_bytes_total: usize,
     /// 根前缀的字节长 —— 语料自检要把它扣掉（它逐机不同，而量纲是**相对**路径长）。
     root_len: usize,
-    /// 名字里含这个串的条目恰好有多少条 —— `③` 那几个桶的确切命中数。
-    bucket_needles: Vec<(Vec<u8>, usize)>,
+    /// 这条搜索词恰好挑中多少条 —— `③` 那几个桶的确切命中数。
+    bucket_needles: Vec<(String, usize)>,
 }
 
 impl Drop for Corpus {
@@ -191,12 +191,13 @@ fn build_corpus() -> Corpus {
 
     // 「一个二级目录那一棵」这个桶的针：**从真路径取字节**，不手拼分隔符
     // （分隔符逐平台不同，手拼会让这一格在换平台时安静地变成 0 命中）。
-    let one_subtree = crate::files::raw::path_bytes(
-        &root
-            .join(format!("l1-{:08}", 0))
-            .join(format!("l2-{:08}", 0)),
-    )
-    .to_vec();
+    // 带分隔符 ⇒ 对全路径；加引号 ⇒ 临时目录里的符号照原样。
+    let one_subtree = format!(
+        "\"{}\"",
+        root.join(format!("l1-{:08}", 0))
+            .join(format!("l2-{:08}", 0))
+            .to_string_lossy()
+    );
 
     Corpus {
         root,
@@ -204,12 +205,14 @@ fn build_corpus() -> Corpus {
         path_bytes_total: total,
         root_len,
         bucket_needles: vec![
-            (b"this-substring-is-in-no-path".to_vec(), 0),
+            ("this-substring-is-in-no-path".to_string(), 0),
             // 那个二级目录**自己** ＋ 它底下的全部叶子。
             (one_subtree, 1 + FILES_EACH),
-            (b"onepct-".to_vec(), hits_1pct),
-            (b"-tenpct-".to_vec(), hits_10pct),
-            (b"".to_vec(), entries), // 空针 = 全命中
+            ("onepct-".to_string(), hits_1pct),
+            ("-tenpct-".to_string(), hits_10pct),
+            // 带通配的那一档（整个名字要对上）。
+            ("*-tenpct-*".to_string(), hits_10pct),
+            (String::new(), entries), // 空的搜索词 = 全命中
         ],
     }
 }
@@ -285,8 +288,8 @@ fn f2_the_three_costs_of_the_search_family() {
     // ── ② 索引常驻字节 ──────────────────────────────────────────────────
     assert_eq!(
         stats.resident_bytes,
-        corpus.path_bytes_total + 4 * corpus.entries,
-        "常驻字节不等于「路径总长 ＋ 4×条数」—— 这个量的口径变了（变了就回来改算式，别调松）"
+        corpus.path_bytes_total + 5 * corpus.entries,
+        "常驻字节不等于「路径总长 ＋ 5×条数」—— 这个量的口径变了（变了就回来改算式，别调松）"
     );
     let bytes_per_entry = stats.resident_bytes as f64 / stats.entries as f64;
     let ref_resident_mib = bytes_per_entry * REFERENCE_ENTRIES as f64 / (1024.0 * 1024.0);
@@ -295,18 +298,13 @@ fn f2_the_three_costs_of_the_search_family() {
     let mut buckets: Vec<(String, usize, u128)> = Vec::new();
     for (needle, want) in &corpus.bucket_needles {
         let t = std::time::Instant::now();
-        let r = crate::files::index::find(&crate::files::index::FindArgs {
-            needle: needle.clone(),
-            ignore_ascii_case: false,
-            limit: usize::MAX,
-        });
+        let r = super::tests::query(needle, 100);
         let us = t.elapsed().as_micros();
         assert_eq!(
-            r.total_hits,
-            *want,
+            r.total_hits, *want,
             "桶 `{}` 的命中数不对 —— **这一格是主锚**，它红了说明查询的判词变了，\n\
              而时延读数在一个判词变了的实现上没有意义",
-            String::from_utf8_lossy(needle)
+            needle
         );
         assert_eq!(
             r.scanned, corpus.entries,
@@ -315,7 +313,7 @@ fn f2_the_three_costs_of_the_search_family() {
         let label = if needle.is_empty() {
             "<空针·全命中>".to_string()
         } else {
-            String::from_utf8_lossy(needle).to_string()
+            needle.to_string()
         };
         buckets.push((label, r.total_hits, us));
     }

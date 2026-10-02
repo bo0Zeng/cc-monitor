@@ -33,12 +33,13 @@
 //! 而「调用方到底发不发」这件事**本 crate 的判据钉不住**（它在另一棵树上）。
 //! 这是一条真实的边界，不是纸面上的。
 //!
-//! # 索引的形状：一块字节 ＋ 一排界桩
+//! # 索引的形状：一块字节 ＋ 一排界桩 ＋ 一排类型
 //!
 //! 64 万条、平均路径长 126 字节（现打）⇒ 每条一个 `Vec<u8>`
 //! 就是 64 万次分配 ＋ 每条三个机器字的簿记。这里存成**一块连续字节**
-//!（[`Snapshot::blob`]）加**一排结束偏移**（[`Snapshot::ends`]，每条 4 字节）：
-//! 常驻字节 ＝ 路径总长 ＋ 4×条数，**算得出、量得准**，所以 `秤 F2 ②` 那一格
+//!（[`Snapshot::blob`]）加**一排结束偏移**（[`Snapshot::ends`]，每条 4 字节）
+//! 加**一排类型字节**（[`Snapshot::kinds`]，每条 1 字节，`file:` / `folder:` / `ext:` 与命中的 `kind` 要它）：
+//! 常驻字节 ＝ 路径总长 ＋ 5×条数，**算得出、量得准**，所以 `秤 F2 ②` 那一格
 //! 能写成一条**相等**断言而不是一个范围。
 //!
 //! ⚠ `u32` 的界桩把索引总字节钉在 4 GiB 以内。撞上限时 [`build`] **停下并说出来**
@@ -115,7 +116,7 @@ pub const COLD_FIRST_BUILD_SECS: u64 = 10;
 pub struct Stats {
     /// 条目数（目录 ＋ 文件 ＋ 符号链接，根自己不算）。
     pub entries: usize,
-    /// 索引的**常驻字节**：路径总长 ＋ 4×条数。`秤 F2 ②`。
+    /// 索引的**常驻字节**：路径总长 ＋ 5×条数。`秤 F2 ②`。
     pub resident_bytes: usize,
     /// 打不开的目录数。**不静默吞** —— 权限不足 / 遍历途中被删都落这里。
     pub unreadable_dirs: usize,
@@ -131,6 +132,8 @@ pub struct Snapshot {
     blob: Vec<u8>,
     /// 第 i 条在 [`Snapshot::blob`] 里的**结束**偏移；起点 = 上一条的结束（第 0 条从 0 起）。
     ends: Vec<u32>,
+    /// 第 i 条的类型字节（`query::KIND_*`，不跟链接）。
+    kinds: Vec<u8>,
     /// 这一趟走的根（原始字节）。
     root: Vec<u8>,
     /// 走完的那一刻。
@@ -151,7 +154,7 @@ impl Snapshot {
 
     /// `秤 F2 ②`。**算得出的量**，所以判据写成相等而不是范围。
     pub fn resident_bytes(&self) -> usize {
-        self.blob.len() + self.ends.len() * core::mem::size_of::<u32>()
+        self.blob.len() + self.ends.len() * core::mem::size_of::<u32>() + self.kinds.len()
     }
 
     pub fn built_at(&self) -> SystemTime {
@@ -182,6 +185,11 @@ impl Snapshot {
     /// 逐条走一遍。
     pub fn iter(&self) -> impl Iterator<Item = &[u8]> + '_ {
         (0..self.entries()).filter_map(|i| self.get(i))
+    }
+
+    /// 逐条走一遍，连类型字节。
+    pub fn iter_kinds(&self) -> impl Iterator<Item = (&[u8], u8)> + '_ {
+        (0..self.entries()).filter_map(|i| Some((self.get(i)?, *self.kinds.get(i)?)))
     }
 
     /// 距 `now` 过了多少秒。时钟倒退（NTP 校时）时给 `0` —— **不给负数、不 panic**。
@@ -223,6 +231,7 @@ pub fn build(root: &Path) -> Snapshot {
 pub fn build_with(root: &Path, device_of: impl Fn(&Path) -> Option<u64>) -> Snapshot {
     let mut blob: Vec<u8> = Vec::new();
     let mut ends: Vec<u32> = Vec::new();
+    let mut kinds: Vec<u8> = Vec::new();
     let mut unreadable_dirs = 0usize;
     let mut truncated = false;
     let mut skipped_mounts = 0usize;
@@ -250,7 +259,12 @@ pub fn build_with(root: &Path, device_of: impl Fn(&Path) -> Option<u64>) -> Snap
             }
             blob.extend_from_slice(bytes);
             ends.push(blob.len() as u32);
-            if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+            let kind = entry
+                .file_type()
+                .map(|t| super::query::kind_of(t.is_dir(), t.is_symlink(), t.is_file()))
+                .unwrap_or(super::query::KIND_OTHER);
+            kinds.push(kind);
+            if kind == super::query::KIND_DIR {
                 if root_dev.is_some() && device_of(&path) != root_dev {
                     skipped_mounts += 1;
                     continue;
@@ -262,9 +276,11 @@ pub fn build_with(root: &Path, device_of: impl Fn(&Path) -> Option<u64>) -> Snap
 
     blob.shrink_to_fit();
     ends.shrink_to_fit();
+    kinds.shrink_to_fit();
     Snapshot {
         blob,
         ends,
+        kinds,
         root: super::raw::path_bytes(root).to_vec(),
         built_at: SystemTime::now(),
         unreadable_dirs,
@@ -386,15 +402,23 @@ pub fn forget_resident() {
 // ══════════════════════ 查询 ══════════════════════
 
 /// 一次查询要什么。
-#[derive(Debug, Clone)]
-pub struct FindArgs {
-    /// 要找的**字节**子串。空串 = 匹配一切（用来数总条目）。
-    pub needle: Vec<u8>,
-    /// ASCII 段大小写不敏感。
-    pub ignore_ascii_case: bool,
-    /// 最多回送几条。
+pub struct FindArgs<'a> {
+    /// 解析好的搜索词（[`super::query::parse`]）。
+    pub query: &'a super::query::Matcher,
+    /// 这一趟只看这个目录底下（不含它自己）；`None` ⇒ [`FindArgs::home`]。
+    pub under: Option<&'a [u8]>,
+    /// 这台机器的家目录（`under` 没给时的范围；拿不到 ⇒ 整份索引）。
+    pub home: Option<&'a [u8]>,
+    /// 从第几条命中起回（前面的只数不回）。
+    pub offset: usize,
+    /// 这一屏最多回几条。
     pub limit: usize,
+    /// 带号的那一趟：同一个搜索框来了更新的号 ⇒ 收手（[`ticket`]）。
+    pub ticket: Option<&'a Ticket>,
 }
+
+/// 一条命中：全路径原始字节 ＋ 类型字节。
+pub type Hit = (Vec<u8>, u8);
 
 /// 一次查询的答案。
 ///
@@ -403,11 +427,11 @@ pub struct FindArgs {
 /// **一个字节都没有离开那台机器**。
 #[derive(Debug, Clone)]
 pub struct FindResult {
-    /// 命中的原始字节，最多 [`FindArgs::limit`] 条。
-    pub hits: Vec<Vec<u8>>,
-    /// 一共命中几条（**不受 `limit` 影响**）。
+    /// 这一屏的命中（`offset` 起、最多 `limit` 条）。
+    pub hits: Vec<Hit>,
+    /// 一共命中几条（**不受分页影响**）。
     pub total_hits: usize,
-    /// 因为 `limit` 而没回送全部。
+    /// 这一屏之后还有。
     pub truncated: bool,
     /// 这一趟扫了几条（＝索引条目数）。反空真用：扫到 0 条的「没命中」与
     /// 「索引是空的」在界面上一模一样，所以这个数必须跟着回去。
@@ -416,59 +440,186 @@ pub struct FindResult {
     pub index_age_secs: u64,
     /// 索引还没建过 ⇒ 上面几个数全是 0，而那**不是**「没搜到」。
     pub index_missing: bool,
+    /// 该重走了（[`is_stale`]）。
+    pub stale: bool,
+    /// 手上那份索引的根（没建过 ⇒ `None`）。
+    pub index_root: Option<Vec<u8>>,
+    /// 这一趟的范围不在手上那份索引里（换了根之后才搜得全）。
+    pub out_of_index: bool,
+    /// 要搜全这一趟、重走该走哪个根：手上那份盖得住 ⇒ 它的根；否则范围在家目录里 ⇒ 家目录；否则 ⇒ 范围本身。
+    pub cover_root: Option<Vec<u8>>,
+}
+
+/// 这一趟被同一个搜索框更新的一趟顶掉了。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Superseded;
+
+// ── 丢弃旧查询：每个搜索框一个「最新的号」，靠号不靠计时 ─────────────────────
+
+/// 记几个搜索框的最新号。窗口关了不会来说一声 ⇒ 有上限，满了丢最久没来的那个
+/// （丢掉的那个下次来照样登记；它在飞的那一趟只是不能被提前撤，答案照旧会被窗口按号丢掉）。
+pub const MAX_STREAMS: usize = 64;
+
+/// 扫多少条看一次号。
+const CHECK_EVERY: usize = 8192;
+
+static STREAMS: std::sync::Mutex<Vec<(String, std::sync::Arc<std::sync::atomic::AtomicU64>)>> =
+    std::sync::Mutex::new(Vec::new());
+
+/// 一趟带号查询的凭据。
+pub struct Ticket {
+    latest: std::sync::Arc<std::sync::atomic::AtomicU64>,
+    seq: u64,
+}
+
+impl Ticket {
+    /// 还是这个搜索框最新的那一趟。
+    pub fn current(&self) -> bool {
+        self.latest.load(std::sync::atomic::Ordering::Acquire) == self.seq
+    }
+}
+
+/// 登记「搜索框 `stream` 发来了第 `seq` 趟」。已经来过更大的号 ⇒ [`Superseded`]（晚到的旧号当场丢）。
+/// 同号再来（往下翻页）照常放行。
+pub fn ticket(stream: &str, seq: u64) -> Result<Ticket, Superseded> {
+    let latest = {
+        let mut g = STREAMS.lock().unwrap_or_else(|e| e.into_inner());
+        let latest = match g.iter().position(|(s, _)| s == stream) {
+            Some(i) => {
+                let e = g.remove(i);
+                let a = e.1.clone();
+                g.push(e);
+                a
+            }
+            None => {
+                if g.len() >= MAX_STREAMS {
+                    g.remove(0);
+                }
+                let a = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
+                g.push((stream.to_string(), a.clone()));
+                a
+            }
+        };
+        latest
+    };
+    let prev = latest.fetch_max(seq, std::sync::atomic::Ordering::AcqRel);
+    if prev > seq {
+        return Err(Superseded);
+    }
+    Ok(Ticket { latest, seq })
+}
+
+fn is_sep(b: u8) -> bool {
+    b == b'/' || (cfg!(windows) && b == b'\\')
+}
+
+/// 去掉末尾的分隔符（根 `/` 自己留着）。
+fn trim_sep(p: &[u8]) -> &[u8] {
+    let mut n = p.len();
+    while n > 1 && is_sep(p[n - 1]) {
+        n -= 1;
+    }
+    &p[..n]
+}
+
+/// `a` 就是 `b`，或在 `b` 底下。
+pub fn within(a: &[u8], b: &[u8]) -> bool {
+    let (a, b) = (trim_sep(a), trim_sep(b));
+    if b.last().is_some_and(|&c| is_sep(c)) {
+        return a.starts_with(b);
+    }
+    a == b || (a.len() > b.len() && a.starts_with(b) && is_sep(a[b.len()]))
+}
+
+/// `a` 在 `b` 底下（不含 `b` 自己）。
+fn strictly_under(a: &[u8], b: &[u8]) -> bool {
+    within(a, b) && trim_sep(a) != trim_sep(b)
 }
 
 /// 在常驻索引里查。
 ///
-/// ⚠ **它不重走、不阻塞**：拿的是手上这一份，并把它的年龄一起交回去
-///（「那个延迟要显示在界面上」）。
+/// ⚠ **它不重走、不阻塞**：拿的是手上这一份，并把它的年龄与「该不该重走、走哪个根」一起交回去。
 /// 要更新的一方自己发重走那条命令 —— 见本文件头注那个 🔴。
-pub fn find(args: &FindArgs) -> FindResult {
+pub fn find(args: &FindArgs<'_>) -> Result<FindResult, Superseded> {
     let now = SystemTime::now();
+    let domain = args.under.or(args.home);
+    let in_home = |d: &[u8]| args.home.is_some_and(|h| within(d, h));
+    let fresh_root = |d: Option<&[u8]>| -> Option<Vec<u8>> {
+        match d {
+            Some(d) if !in_home(d) => Some(trim_sep(d).to_vec()),
+            _ => args.home.map(|h| trim_sep(h).to_vec()),
+        }
+    };
     with_resident(|snap| {
         let Some(snap) = snap else {
-            return FindResult {
+            return Ok(FindResult {
                 hits: Vec::new(),
                 total_hits: 0,
                 truncated: false,
                 scanned: 0,
                 index_age_secs: 0,
                 index_missing: true,
-            };
+                stale: false,
+                index_root: None,
+                out_of_index: false,
+                cover_root: fresh_root(domain),
+            });
         };
+        let root = snap.root();
+        let covered = domain.is_none_or(|d| within(d, root));
+        // 范围就是根 ⇒ 不用逐条比前缀。
+        let scope = domain.filter(|d| trim_sep(d) != trim_sep(root));
         let overlay = super::browse_watch::overlay_snapshot();
-        let mut hits: Vec<Vec<u8>> = Vec::new();
+        let mut hits: Vec<Hit> = Vec::new();
         let mut total = 0usize;
         let mut scanned = 0usize;
-        let take = |bytes: &[u8], hits: &mut Vec<Vec<u8>>, total: &mut usize| {
-            if super::raw::contains(bytes, &args.needle, args.ignore_ascii_case) {
-                *total += 1;
-                if hits.len() < args.limit {
-                    hits.push(bytes.to_vec());
+        let mut take = |bytes: &[u8], kind: u8| {
+            if scope.is_some_and(|d| !strictly_under(bytes, d)) {
+                return;
+            }
+            if args.query.matches(bytes, kind) {
+                if total >= args.offset && hits.len() < args.limit {
+                    hits.push((bytes.to_vec(), kind));
                 }
+                total += 1;
             }
         };
-        for bytes in snap.iter() {
+        for (bytes, kind) in snap.iter_kinds() {
             scanned += 1;
+            if scanned % CHECK_EVERY == 0 && args.ticket.is_some_and(|t| !t.current()) {
+                return Err(Superseded);
+            }
             // 被 watch 盖住的那几个目录：它们的直接子项由 overlay 那一份说话
             //（那一份是事件驱动的、比这一趟遍历新）。
             if overlay.supersedes(bytes) {
                 continue;
             }
-            take(bytes, &mut hits, &mut total);
+            take(bytes, kind);
         }
-        for bytes in overlay.iter() {
+        for (bytes, kind) in overlay.iter() {
             scanned += 1;
-            take(bytes, &mut hits, &mut total);
+            take(bytes, kind);
         }
-        FindResult {
-            truncated: total > hits.len(),
+        if args.ticket.is_some_and(|t| !t.current()) {
+            return Err(Superseded);
+        }
+        let age = snap.age_secs(now);
+        Ok(FindResult {
+            truncated: total > args.offset.saturating_add(hits.len()),
             hits,
             total_hits: total,
             scanned,
-            index_age_secs: snap.age_secs(now),
+            index_age_secs: age,
             index_missing: false,
-        }
+            stale: is_stale(age),
+            index_root: Some(root.to_vec()),
+            out_of_index: !covered,
+            cover_root: if covered {
+                Some(root.to_vec())
+            } else {
+                fresh_root(domain)
+            },
+        })
     })
 }
 

@@ -8679,9 +8679,14 @@
       "zh": "重建索引",
       "args": []
     },
+    "rsFilewinShell.search.here": {
+      "kind": "control",
+      "zh": "只搜当前目录",
+      "args": []
+    },
     "rsFilewinShell.search.hint": {
       "kind": "control",
-      "zh": "文件名里的一段",
+      "zh": "文件名，可用 ext: | ! *",
       "args": []
     },
     "rsFilewinShell.search.label": {
@@ -9374,11 +9379,6 @@
       "zh": "搜索失败：{e}",
       "args": ["e"]
     },
-    "rsFilewinFind.round.rebuildFailed": {
-      "kind": "error",
-      "zh": "重建索引失败：{e}",
-      "args": ["e"]
-    },
     "rsFilewinFind.round.statusFailed": {
       "kind": "error",
       "zh": "读不到索引状态：{e}",
@@ -9411,7 +9411,7 @@
     },
     "rsFilewinFind.hits.more": {
       "kind": "body",
-      "zh": " · 只回送了 {hitsCount} 条，还有更多",
+      "zh": " · 已列出 {hitsCount} 条，往下滚动看更多",
       "args": ["hitsCount"]
     },
     "rsFilewinFind.hits.line": {
@@ -9459,9 +9459,14 @@
       "zh": "索引：还没问过这台机器",
       "args": []
     },
-    "rsFilewinFind.rebuilt.badPath": {
+    "rsFilewinFind.reply.badPath": {
       "kind": "error",
-      "zh": "path 字段的格式不对",
+      "zh": "{k} 字段的路径格式不对",
+      "args": ["k"]
+    },
+    "rsFilewinFind.refusal.badQuery": {
+      "kind": "error",
+      "zh": "搜索词写得不对",
       "args": []
     },
     "rsFilewinFind.hits.notArray": {
@@ -16478,6 +16483,26 @@
       "kind": "error",
       "zh": "上一次重新扫描还没完，这次没扫（已跳过 {n} 次）",
       "args": ["n"]
+    },
+    "beFilesRead.rebuild.noHome": {
+      "kind": "error",
+      "zh": "找不到这台机器的家目录，不知道该给哪里建索引",
+      "args": []
+    },
+    "beFilesRead.find.superseded": {
+      "kind": "error",
+      "zh": "已经有更新的一次搜索，这一次不再查了",
+      "args": []
+    },
+    "beFilesRead.find.strayCloser": {
+      "kind": "error",
+      "zh": "第 {at} 个字符「{ch}」前面没有和它配对的左括号",
+      "args": ["ch", "at"]
+    },
+    "beFilesRead.find.unsupported": {
+      "kind": "error",
+      "zh": "这里不支持「{name}:」，能用的是 ext: path: file: folder:",
+      "args": ["name"]
     },
     "beFilesRead.text.notRegular": {
       "kind": "error",

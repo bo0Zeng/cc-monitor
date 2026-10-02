@@ -104,20 +104,6 @@ fn a_malformed_path_value_is_refused_instead_of_guessed() {
 }
 
 #[test]
-fn the_substring_predicate_has_both_sides() {
-    assert!(contains(b"/a/origin.rs", b"origin", false));
-    assert!(!contains(b"/a/origin.rs", b"Origin", false));
-    assert!(contains(b"/a/origin.rs", b"Origin", true));
-    assert!(!contains(b"/a/origin.rs", b"vitest", true));
-    // 空针匹配一切（用来数总条目），针比草垛长一律不中。
-    assert!(contains(b"abc", b"", false));
-    assert!(!contains(b"ab", b"abc", false));
-    // 非 ASCII **一律按字节比** —— 这不是「大小写不敏感的搜索」。
-    let cjk = "中文".as_bytes();
-    assert!(contains(cjk, cjk, true));
-}
-
-#[test]
 fn direct_child_means_direct_child_and_nothing_else() {
     assert!(is_direct_child(b"/a/b/c", b"/a/b"));
     assert!(is_direct_child(b"C:\\a\\b\\c", b"C:\\a\\b"));
