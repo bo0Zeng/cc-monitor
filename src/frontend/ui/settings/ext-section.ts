@@ -16,10 +16,11 @@
  * - 做完之后重读那张表（远端那台先让本机后端对它同步一趟），点自己变；不轮询。
  */
 import { copyText } from "../copy-table";
-import { LOCAL_ORIGIN, type Origin } from "../ipc/origin";
+import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "../ipc/origin";
 import { commands } from "../ipc/commands";
 import { syncAssets } from "../assets-sync-reads";
 import { openFileWindow } from "../file-window";
+import { revealInFolder } from "../reveal-in-folder";
 import { resolveRemoteConfigByOrigin } from "../remote-config";
 import { buildPasteBlock } from "../paste-block";
 import { describeState, fetchHooksReport, type HooksReport } from "../cc-bus-hooks-reads";
@@ -489,7 +490,7 @@ export class ExtSection {
     return line;
   }
 
-  /** 那台上的一处：在哪 · 态 · 「卸载」（有才给）· skill 在远端有目录的 ⇒「在文件窗口里打开」。 */
+  /** 那台上的一处：在哪 · 态 · 「卸载」（有才给）· skill 有目录的 ⇒ 本机「在文件夹中显示」、远端「在文件窗口里打开」。 */
   private placeRow(r: ExtRow, m: ExtMachine, p: ExtPlace, slot: Slot): HTMLElement {
     const row = el("div", "ext-place");
     row.appendChild(el("span", "ext-place-at", locText(p.at)));
@@ -499,7 +500,12 @@ export class ExtSection {
       b.disabled = slot.busy === true || slot.card !== undefined;
       row.appendChild(b);
     }
-    if (r.kind === "skill" && p.dir !== null && !m.here && m.key !== null) {
+    if (r.kind === "skill" && p.dir !== null && isLocalOrigin(originOf(m))) {
+      const dir = p.dir;
+      const b = button(copyText("extPage.button.reveal"), () => void revealInFolder(dir));
+      b.dataset.reveal = "";
+      row.appendChild(b);
+    } else if (r.kind === "skill" && p.dir !== null && m.key !== null) {
       const dir = p.dir;
       const host = m.key;
       row.appendChild(

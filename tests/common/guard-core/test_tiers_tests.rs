@@ -810,6 +810,11 @@ const REAL_MACHINE: &[(&str, &str, Trigger)] = &[
         Trigger::Filter { by: "tests/backend/control/overwrite_atomic_tests.rs", needle: "control::files_write::overwrite_atomic_tests::w1_child" },
     ),
     (
+        "tests/backend/control/files_write_tests.rs",
+        "own_home_child_entry_point",
+        Trigger::Filter { by: "tests/backend/control/files_write_tests.rs", needle: "control::files_write::tests::own_home_child_entry_point" },
+    ),
+    (
         "tests/backend/stream/drain_tests.rs",
         "d2_child_harness",
         Trigger::Filter { by: "tests/backend/stream/drain_tests.rs", needle: "stream::inbound::drain_tests::d2_child_harness" },

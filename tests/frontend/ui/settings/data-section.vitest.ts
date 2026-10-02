@@ -6,7 +6,7 @@
  * 本文件立两条：
  *
  * ① **效应面两向相等**：这一块源码里调到的后端命令 == {`get_data_paths`}；
- *    从外面拿进来的「会动东西」的函数 == {`openPath`}（打开到文件管理器，不改盘）；
+ *    从外面拿进来的「会动东西」的函数 == {`openPath`, `revealInFolder`}（打开 / 在文件管理器里选中，都不改盘）；
  *    `localStorage` 上一个写 / 删的调用都没有。量具是 TS 语法树，注释不算。
  * ② **路径真的上屏**：后端给的每一条（持久化 / WebView2 / profile 备份）的 `path`
  *    都以纯文本出现在那一行里；按钮上没有「删 / 清」。
@@ -21,7 +21,14 @@ const { paths } = vi.hoisted(() => ({ paths: { value: null as unknown } }));
 vi.mock("../../../../src/frontend/ui/ipc/commands", () => ({
   commands: { get_data_paths: () => Promise.resolve(paths.value) },
 }));
-vi.mock("@tauri-apps/plugin-opener", () => ({ openPath: vi.fn() }));
+const { revealed } = vi.hoisted(() => ({ revealed: [] as unknown[] }));
+vi.mock("@tauri-apps/plugin-opener", () => ({
+  openPath: vi.fn(),
+  revealItemInDir: (p: unknown) => {
+    revealed.push(p);
+    return Promise.resolve();
+  },
+}));
 vi.mock("../../../../src/frontend/ui/error-toast", () => ({ showActionFailureToast: vi.fn() }));
 
 import { DataSection, LOGS_DIR_LABEL, describeDataClass } from "../../../../src/frontend/ui/settings/data-section";
@@ -79,6 +86,7 @@ describe("数据位置：给路径，不给删 / 清空", () => {
     expect(face.imports).toEqual({
       "../ipc/commands": ["commands"],
       "@tauri-apps/plugin-opener": ["openPath"],
+      "../reveal-in-folder": ["revealInFolder"],
       "../error-toast": ["showActionFailureToast"],
       "../local-storage": ["enumeratePrefix"],
       "../format": ["formatBytes"],
@@ -223,3 +231,45 @@ describe("〔ST2 · 步 15〕logs/ 那一行指向「日志」、不再自带 [�
   });
 });
 
+
+describe("「在文件夹中显示」：每一条在盘上的路径都有，点了交给系统文件管理器选中它", () => {
+  beforeEach(() => {
+    document.body.replaceChildren();
+    revealed.length = 0;
+  });
+
+  it("★ 有这颗按钮的行 == 在盘上、且不是 logs/ 的行（两向）；点了选中的正是那一行的路径", async () => {
+    const mk = (label: string, exists: boolean, kind = "file") => ({
+      label,
+      class: "truth" as const,
+      path: `/h/.cc-monitor/${label}`,
+      kind,
+      description: `${label} 是什么`,
+      exists,
+      sizeBytes: exists ? 1 : undefined,
+    });
+    paths.value = {
+      monitorDataDir: "/h/.cc-monitor",
+      entries: [mk("config.json", true), mk("history-metadata.json", false), mk(LOGS_DIR_LABEL, true, "dir")],
+      backendHome: "/h/.cc-monitor",
+      backendEntries: [mk("backend.json", true), mk("staging/", true, "dir")],
+      webviewUserDataDir: mk("EBWebView", true, "dir"),
+    };
+    const sec = new DataSection({ headless: true });
+    document.body.appendChild(sec.element);
+    sec.loadNow();
+    await new Promise((r) => setTimeout(r, 0));
+    const rows = [...sec.element.querySelectorAll<HTMLElement>(".settings-data-item[data-class]")];
+    const label = (r: HTMLElement) => r.querySelector(".settings-data-item-label")!.textContent;
+    const withReveal = rows.filter((r) => r.querySelector("button[data-reveal]")).map(label);
+    expect(withReveal).toEqual(["config.json", "backend.json", "staging/", "EBWebView"]);
+    for (const r of rows) {
+      const b = r.querySelector<HTMLButtonElement>("button[data-reveal]");
+      if (!b) continue;
+      expect(b.textContent).toBe("在文件夹中显示");
+      b.click();
+    }
+    await new Promise((r) => setTimeout(r, 0));
+    expect(revealed).toEqual(["config.json", "backend.json", "staging/", "EBWebView"].map((l) => `/h/.cc-monitor/${l}`));
+  });
+});

@@ -1284,7 +1284,8 @@ rebuild 回 `entries:4`，下一个 exec 的 `--files-index-status` 回 `index_m
 🔴 **它做什么、以及它刻意不做什么**（别读宽）：
 
 - 它只会**新建一份此前不存在的文件**（`O_EXCL`）。目标已经在了（哪怕它只是一条
-  symlink）就直接失败，**绝不跟随、绝不覆盖**。
+  symlink）就直接失败，**绝不跟随、绝不覆盖**。新文件的权限位是后端进程的缺省（受 umask）；
+  落在这台机器 `~/.cc-monitor` 里的 ⇒ `0600`（unix，写进内容之前就定）。
 - 它**不**删、**不**改名、**不**建目录、**不**改权限、**不**以截断或追加的方式
   开一个既有文件。这几条不是自律：`readonly_guard` 的白名单层**逐条扫源码**扫着，
   换一种写法那一层当场红。
@@ -1341,6 +1342,8 @@ rebuild 回 `entries:4`，下一个 exec 的 `--files-index-status` 回 `index_m
 |---|---|---|
 | `root` / `rel` | → | 目标根 ＋ 相对段。**只建最后那一段**：父目录不在 ⇒ `refused`（不顺手补中间几层） |
 | `path` | ← | 建出来的那个目录（父目录解完 symlink 的） |
+
+权限位是后端进程的缺省（受 umask）；建在这台机器 `~/.cc-monitor` 里的 ⇒ `0700`（unix）。
 
 #### `files-rename`：改名 / 同根内移动
 
@@ -1622,7 +1625,8 @@ CAS → 相同不写 → 备份 → 同目录 `O_EXCL` 暂存旁名写满、换�
 | `created` | ← | 这份文件是这一次新建的 |
 | `backup` | ← | 备份落在哪；没备份 ⇒ `null` |
 
-- 替换沿用原文件的权限位；新建的文件是后端进程的缺省（受 umask）。
+- 替换沿用原文件的权限位；新建的文件是后端进程的缺省（受 umask）—— 落在这台机器 `~/.cc-monitor` 里的除外：
+  那里新建的文件 `0600`、补出来的目录（含 `~/.cc-monitor` 本身）`0700`（unix；`files-create` · `files-mkdir` 同一条）。
 - 回读不符 ⇒ 回滚（原来在 ⇒ 原文换回去；原来不在 ⇒ 删掉刚建的），`io_failed` 的话里说清恢复成没成。
 - ⚠ CAS 之后、换名之前那一个窗（TOCTOU）：`expect: null` 那一形已闭合（不覆盖上位，窗里冒出来的那一份不盖、回 `stale`）；`expect` 有值那一形没闭合 —— 窗里被别人改了，那次改动会被盖掉。CAS 缩小的是「monitor 读 → 后端写」那一整趟往返的窗。
 - **CLI 面同样有它们**（从命令注册那一处派生）：`--files-peek` · `--files-put` · `--files-delete-session`，载荷走 stdin。
@@ -2645,7 +2649,9 @@ monitor（宿主，只交事实）在**每台**远端流握手成功那一刻交
 
 致命：身份没隔离开（身份文件是链接 · 两个号邮箱相同 · 共享库里留着原生根在家目录的那份身份）· 权限不对（号的目录不是 `0700` · 凭据不是 `0600`）·
 共享没接上（缺链接 · 链错地方 · 断链 · 共享项在号里是实体文件 · 一个共享项都没有）。提示：还没登录（API 号不提示）· 号里有意料之外的实体项 ·
-共享库本身的源头断了 · 身份表里的某项哪儿都找不到 · 共享库顶层有一份 `0600` 的文件却不在身份表里。
+共享库本身的源头断了 · 身份本体（凭据 · `.claude.json`）哪儿都找不到 · 共享库顶层有一份 `0600` 的文件却不在身份表里。
+每个号各一份（不链）的是 Claude 那一家的身份表：凭据 · `.claude.json` · `backups/` · `policy-limits.json`（连同 `.stamp.json`）·
+`remote-settings.json` · `mcp-needs-auth-cache.json` · `stats-cache.json` · `.last-cleanup` · `.last-update-result.json` · `state/` · `feedback/`。
 **错误码**：`io_failed`（问不出家目录）· `unsupported`。⚠ **CLI 面也有它**（`--accounts-verify`，不读 stdin）。
 
 #### `accounts-login-cmd`：在终端里登录一个号的那一行（**只算不做**，阻塞档）

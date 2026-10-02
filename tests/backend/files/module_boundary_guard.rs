@@ -315,6 +315,16 @@ const OUTWARD: &[(&str, Kind, &str)] = &[
         "〔HX1 拍板项 4 · MOD 挪进 common〕暂存区那两层按后端自家目录建（0700、已在的不动）",
     ),
     (
+        "common::own_dir::DIR_NAME",
+        Kind::Common,
+        "新建落在这台机器自家目录（`~/.cc-monitor`）里的东西只给本人：认那个目录要它的名字",
+    ),
+    (
+        "common::own_dir::PRIVATE_DIR_MODE",
+        Kind::Common,
+        "同上一格：自家目录里新建的目录给的那个权限位（与 `ensure_private_dir` 同一个值）",
+    ),
+    (
         "TARGETS",
         Kind::Infra,
         "能力声明表（`files::CAPABILITIES`）逐条声明「在哪几个 target 上做得到」，那个轴住汇总层 `lib.rs`\

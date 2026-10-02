@@ -39,8 +39,8 @@
 use copy_core::copy_text;
 use std::path::{Path, PathBuf};
 
-/// 后端在每台机器上的家目录名（相对用户家目录）。
-pub const DIR_NAME: &str = ".cc-monitor";
+/// 后端在每台机器上的家目录名（相对用户家目录；值住 `common::own_dir`）。
+pub const DIR_NAME: &str = crate::common::own_dir::DIR_NAME;
 
 /// 那个值住的文件名。字面量只住契约 crate（`relay_route_core::BACKEND_POLICY_REL`：monitor 的数据位置页按它列出、只看在不在），
 /// 写者仍只有本模块（E1 的判据按字面量找家、按写口找写者）。

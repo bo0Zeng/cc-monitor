@@ -239,8 +239,8 @@ pub(crate) fn patch_config_at(
     let dir = path
         .parent()
         .ok_or_else(|| ConfigWriteError::Io(format!("no parent dir for {}", path.display())))?;
-    std::fs::create_dir_all(dir)
-        .map_err(|e| ConfigWriteError::Io(format!("mkdir {}: {e}", dir.display())))?;
+    // 数据目录只给本人（缺的几层建成 0700，已在的不动）；下面那份临时件出生即 0600，换名上位后 `config.json` 就是它的权限。
+    crate::platform::fs::ensure_private_dir(dir).map_err(ConfigWriteError::Io)?;
     let _cross = crate::platform::fs::hold_dir_lock(dir).map_err(ConfigWriteError::Io)?;
 
     // ③ 锁内现读。不存在 ⇒ 空对象；读不懂 / 根不是对象 ⇒ 不写。
@@ -288,7 +288,11 @@ pub(crate) fn patch_config_at(
     let pretty = serde_json::to_string_pretty(&Value::Object(root))
         .map_err(|e| ConfigWriteError::Io(e.to_string()))?;
     let tmp = path.with_extension(format!("json.{}.tmp", std::process::id()));
-    std::fs::write(&tmp, pretty)
+    let mut opts = std::fs::OpenOptions::new();
+    opts.write(true).create(true).truncate(true);
+    crate::platform::fs::only_me_on_create(&mut opts);
+    opts.open(&tmp)
+        .and_then(|mut f| std::io::Write::write_all(&mut f, pretty.as_bytes()))
         .map_err(|e| ConfigWriteError::Io(format!("write {}: {e}", tmp.display())))?;
     crate::platform::fs::atomic_replace(&tmp, path).map_err(|e| {
         let _ = std::fs::remove_file(&tmp);

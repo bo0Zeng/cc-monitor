@@ -10,6 +10,13 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
+const { revealed } = vi.hoisted(() => ({ revealed: [] as unknown[] }));
+vi.mock("@tauri-apps/plugin-opener", () => ({
+  revealItemInDir: (p: unknown) => {
+    revealed.push(p);
+    return Promise.resolve();
+  },
+}));
 
 import { invoke } from "@tauri-apps/api/core";
 import { ExtSection } from "../../../../src/frontend/ui/settings/ext-section";
@@ -150,14 +157,20 @@ describe("扩展页：表 · 抽屉 · 确认卡", () => {
     ]);
   });
 
-  it("skill 在一台远端上某一处有目录 ⇒ 那一处多一颗「在文件窗口里打开」（本机那一处不给：这一版文件窗口只开远端）", async () => {
+  it("skill 某一处有目录 ⇒ 本机那一处多一颗「在文件夹中显示」（系统文件管理器选中那个目录）、远端那一处多一颗「在文件窗口里打开」", async () => {
     const there = cell("same", [place(user, "same", true, null, "/g/.claude/skills/demo")]);
     const list = listWith(there);
     list.rows[0].cells[0] = cell("same", [place(user, "same", true, null, "/h/.claude/skills/demo")]);
     const s = await page([list]);
     open(s, "skill/demo");
     const per = machineLines(s).map((l) => [...l.querySelectorAll(".ext-place button")].map((b) => b.textContent));
-    expect(per).toEqual([[copyText("extPage.button.uninstall")], [copyText("extPage.button.uninstall"), copyText("extPage.button.openFiles")]]);
+    expect(per).toEqual([
+      [copyText("extPage.button.uninstall"), copyText("extPage.button.reveal")],
+      [copyText("extPage.button.uninstall"), copyText("extPage.button.openFiles")],
+    ]);
+    (machineLines(s)[0].querySelector(".ext-place button[data-reveal]") as HTMLButtonElement).click();
+    await settle();
+    expect(revealed).toEqual(["/h/.claude/skills/demo"]);
   });
 
   it("装到哪由用户选：卡上列后端给的各处（建议的那一处选中）；改选项目 ⇒ 按那一处重看一张卡；确认 ⇒ 交回卡上的记号与选的那一处 ⇒ 那台同步一趟、重读，点变 ◎", async () => {

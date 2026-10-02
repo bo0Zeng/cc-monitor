@@ -338,6 +338,17 @@ pub fn create_new_file(
                 ],
             ))
         })?;
+    if let Some(p) = own_mode(&target, false) {
+        f.set_permissions(p).map_err(|e| {
+            WriteRefusal::Io(copy_text(
+                "beFilesWrite.chmod.failed",
+                &[
+                    ("path", &target.display().to_string()),
+                    ("e", &e.to_string()),
+                ],
+            ))
+        })?;
+    }
     // 写失败（盘满等）也要把原因带回去 —— 静默的半截文件比报错糟得多。
     f.write_all(bytes).map_err(|e| {
         WriteRefusal::Io(copy_text(
@@ -476,7 +487,48 @@ pub fn make_dir(root: &Path, rel: impl AsRef<Path>) -> Result<PathBuf, WriteRefu
             ],
         ))
     })?;
+    if let Some(p) = own_mode(&target, true) {
+        std::fs::set_permissions(&target, p).map_err(|e| {
+            WriteRefusal::Io(copy_text(
+                "beFilesWrite.chmod.failed",
+                &[
+                    ("path", &target.display().to_string()),
+                    ("e", &e.to_string()),
+                ],
+            ))
+        })?;
+    }
     Ok(target)
+}
+
+/// 这台机器上后端自家目录的权限位：新建在 `~/.cc-monitor` 里的文件只给本人读写。
+const OWN_FILE_MODE: u32 = 0o600;
+
+/// **新建**在这台机器自家目录（`$HOME/.cc-monitor`，含它本身）里的东西只给本人：文件 [`OWN_FILE_MODE`] · 目录
+/// `own_dir::PRIVATE_DIR_MODE`（unix；别的平台照常建，那边按父目录继承 ACL）。只管新建：覆盖写沿用原权限位、复制照抄源的。
+/// `at` 是过了路径解析的那一条（父目录已解开）。
+/// 答不出家在哪 ⇒ 不收紧。
+fn own_mode(at: &Path, dir: bool) -> Option<std::fs::Permissions> {
+    let home = crate::platform::paths::home_dir()?;
+    let home = std::fs::canonicalize(&home).unwrap_or(home);
+    if !at.starts_with(home.join(crate::common::own_dir::DIR_NAME)) {
+        return None;
+    }
+    let mode = if dir {
+        crate::common::own_dir::PRIVATE_DIR_MODE
+    } else {
+        OWN_FILE_MODE
+    };
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt as _;
+        Some(std::fs::Permissions::from_mode(mode))
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = mode;
+        None
+    }
 }
 
 /// 改名 / 同根内移动。
@@ -2041,6 +2093,14 @@ fn make_parents(root: &Path, rel: &Path) -> Result<(), WriteRefusal> {
                         &[("path", &at.display().to_string()), ("e", &e.to_string())],
                     ))
                 })?;
+                if let Some(p) = own_mode(&at, true) {
+                    std::fs::set_permissions(&at, p).map_err(|e| {
+                        WriteRefusal::Io(copy_text(
+                            "beFilesWrite.chmod.failed",
+                            &[("path", &at.display().to_string()), ("e", &e.to_string())],
+                        ))
+                    })?;
+                }
             }
             Err(e) => {
                 return Err(WriteRefusal::Io(copy_text(
@@ -2116,6 +2176,16 @@ fn swap_in(
                 &[("path", &side.display().to_string()), ("e", &e.to_string())],
             ))
         })?;
+    // 权限位在写进内容之前就定（新建在自家目录里的那一份出生就只给本人，旁名上也不留一刻宽的）。
+    let perms = perms.or_else(|| own_mode(&dst, false));
+    if let Err(e) = perms.map_or(Ok(()), |p| f.set_permissions(p)) {
+        drop(f);
+        std::fs::remove_file(&side).ok();
+        return Err(WriteRefusal::Io(copy_text(
+            "beFilesWrite.swap.sideModeFailed",
+            &[("path", &side.display().to_string()), ("e", &e.to_string())],
+        )));
+    }
     if let Err(e) = f.write_all(bytes) {
         drop(f);
         std::fs::remove_file(&side).ok();
@@ -2124,15 +2194,7 @@ fn swap_in(
             &[("path", &side.display().to_string()), ("e", &e.to_string())],
         )));
     }
-    let moded = perms.map_or(Ok(()), |p| f.set_permissions(p));
     drop(f);
-    if let Err(e) = moded {
-        std::fs::remove_file(&side).ok();
-        return Err(WriteRefusal::Io(copy_text(
-            "beFilesWrite.swap.sideModeFailed",
-            &[("path", &side.display().to_string()), ("e", &e.to_string())],
-        )));
-    }
     if create {
         let why =
             match rename_no_clobber(root, &rel.with_file_name(&side_name), rel, between, false) {
