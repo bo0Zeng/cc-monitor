@@ -30,6 +30,12 @@ D="${CCM_E2E_BACKEND_BIN:-${CARGO_TARGET_DIR:-$REPO/.build/backend}/debug/cc-mon
 [ -x "$D" ] || { echo "需要后端二进制：$D（先 cargo build -p cc-monitor-backend）"; exit 1; }
 
 W="$(mktemp -d /tmp/e2e-rewatch.XXXXXX)"
+# 家目录换成本趟沙箱：后端会读 / 写的 `~/.cc-monitor/` 那一族（账号库 · 中转钥匙 · 凭据表 …）都跟着家走，
+#   不许落到开发机的真家目录里。工具链先钉住（只读，与被测数据无关）。
+export CARGO_HOME="${CARGO_HOME:-$HOME/.cargo}"
+export RUSTUP_HOME="${RUSTUP_HOME:-$HOME/.rustup}"
+export HOME="$W/home"
+mkdir -p "$HOME"
 cleanup() { rm -rf -- "$W"; }
 trap cleanup EXIT
 
