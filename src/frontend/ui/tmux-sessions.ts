@@ -1,91 +1,75 @@
 /**
- * tmux 会话 ↔ 会话 sid 的**判据**（F51/F74/F03/A5+，逐字从 `tabs.ts` 搬出）。
+ * **这个会话此刻在那台哪个 tmux 会话里** —— 问那台后端（`sessions-tmux`），界面不判。
  *
- * # 为什么搬
- *
- * G6 起第三个模块要用它：`fork-flow.ts` 得知道「源会话此刻在不在 tmux 里、在哪个名字下」
- * 才能给分叉出来的新会话取一个**不撞车**的名字。而 `tabs.ts` 会 import `fork-flow.ts`
- * （分叉成功后起会话），反过来 import 就成环了。
- *
- * 搬的是**判据**，不是缓存策略 —— `TMUX_CACHE_TTL_MS` 与 `tmuxCache` 仍住在 `TabManager` 里，
- * 它们是那个类的取数策略，不是「哪个 tmux 跑着哪个会话」这个问题的答案。
- *
- * 契约见 src/doc/INVARIANTS.md §30（靠 `@ccm_sid` 精确匹配，不靠名字/目录反推）。
- * `tabs.ts` 原样 re-export 这几个符号，既有 import 面（含 `tabs.vitest.ts`）零改动。
+ * 判定只在后端一处（带着它的 `@ccm_sid`、前台是不是 agent；没打上标记的不按目录猜）：单个菜单亮哪几项、
+ * 批量停 / 起、换号重启找旧会话、分叉找源会话都读这一份答案。本文件只做调用方那一侧：发 · 按形状收 · 失败说成一句。
+ * 从前这里是界面拿 tmux 名单自己筛的那几个过滤（`findClaudeTmux` · `findClaudeTmuxMatches` · `findIdleTmux` · `isCwdFallbackMatch`〔散文墓碑〕），连同按目录猜那一支一起删了。
  */
-
-
-// 类型住读口 `tmux-reads.ts`（那台后端的成品形状，跨语言金样钉着；原先是 monitor `tmux.rs` 的 ts-rs 生成物）。
-export type { TmuxSession } from "./tmux-reads";
 import type { TmuxSession } from "./tmux-reads";
-// `isClaudeTmuxCommand`〔散文墓碑〕删：「这个 tmux 前台命令算不算 agent 的会话」（claude / node）由那台后端判，
-//   随 `tmux-list` 每一行的 `agent` 带来（`observe/tmux_list.rs` 经注册表 `Adapter.processes`）。界面只读那一格。
+import { chan } from "../../comms/inward/chan";
+import { budgetWithin, jsonBody } from "./ipc/chan-caller";
+import { exactKeys, isObj, machineName, settle, unreadable, type Refusals } from "./control-said";
+import type { Origin } from "./ipc/origin";
+import { copyText } from "./copy-table";
+
+export type { TmuxSession };
 
 /**
- * F74：在 tmux 会话列表里定位「正跑目标 sid 的活 claude」。**优先 `@ccm_sid` 精确匹配**——
- * 同目录多个 claude tmux（原会话 + `/branch` 出来的分支…）只有 `@ccm_sid` 能分清哪个是目标
- * 会话，且不被漂移骗（`__ccm_rbind` 随 /branch 实时更新它）。
- *
- * 精确没命中时：**只有当整张列表没有任何会话带 `@ccm_sid`**（老 wrapper / 未装）才回退按
- * `path===cwd` 猜（向后兼容）。只要有会话带了 sid、却没一个等于目标 sid，就说明目标会话不在
- * 任何 tmux 里（已结束 / 已漂移到别的 sid）——此时**绝不**按 cwd 抓一个同目录的别的 claude
- * （那正是撞错会话的老 bug），宁可返 undefined（SS-5/SS-9：找不到就报「不在」，不静默换一个）。
- * 契约与铁律见 src/doc/INVARIANTS.md §30。
+ * 一个会话的样子：`running` 恰好一个在跑（`names[0]`）· `ambiguous` 在跑的不止一个（按名单顺序）·
+ * `idle` 没有在跑的、有带着它的空 tmux（`names[0]`）· `none` 没有哪个会话带着它 · `no_tmux` 那台没装 tmux。
  */
-/**
- * F04（R10 根治）：`@ccm_sid` 精确命中该 sid 的**全部**活 claude 会话（不折叠成第一个）。
- * `findClaudeTmux` 用它重实现——`.filter(pred)[0]` 与旧版 `.find(pred)` 同一遍历顺序、同一
- * 结果，故 `findClaudeTmux` 的既有调用点/断言零改动。多数调用方仍只关心"有没有、是哪一个"，
- * 三处真正需要"是否命中 ≥2 个"的调用点（resume-attach 警告 / restart 拒绝 / 菜单 kill 项禁用）
- * 才用本函数，见各自调用点注释。
- */
-export function findClaudeTmuxMatches(
-  sessions: TmuxSession[] | null | undefined,
-  sid: string,
-): TmuxSession[] {
-  return sessions?.filter((s) => s.sid === sid && s.agent) ?? [];
+export interface Standing {
+  kind: "running" | "ambiguous" | "idle" | "none" | "no_tmux";
+  names: string[];
 }
 
-export function findClaudeTmux(
-  sessions: TmuxSession[] | null | undefined,
-  sid: string,
-  cwd: string,
-): TmuxSession | undefined {
-  const matches = findClaudeTmuxMatches(sessions, sid);
-  if (matches.length > 0) return matches[0];
-  const anySidKnown = sessions?.some((s) => s.sid != null);
-  if (anySidKnown) return undefined;
-  return cwd
-    ? sessions?.find((s) => s.path === cwd && s.agent)
-    : undefined;
+const KINDS = new Set(["running", "ambiguous", "idle", "none", "no_tmux"]);
+
+/** 期限：那台问一次 tmux 名单就答（同 `tmux-list`）。 */
+const STANDING_BUDGET_MS = 10_000;
+
+function refusals(origin: Origin): Refusals {
+  return {
+    byCode: (_code, detail) => copyText("tabBatch.why.batchRefused", { machine: machineName(origin), detail }),
+    noReason: () => copyText("tabBatch.why.batchRefused", { machine: machineName(origin), detail: "" }),
+  };
 }
 
-/**
- * audit-fixes F03（idle-tmux）：找目标 sid 的**空 tmux**——`@ccm_sid` 精确命中该 sid、但当前
- * 前台命令**不是** claude（交互 shell，claude 已退出）。即三态里的 idle-tmux：会话还在、可 attach/
- * 就地 resume，但没在跑 claude。**只按 @ccm_sid 精确命中**（绝不按 cwd 猜，免撞同目录别的会话）。
- * F03.1 的就地复用 resume 与 F03.3 的 attach-into-idle 共用此判据（与 `findClaudeTmux` 互斥：
- * 后者要 command=claude，本函数要 command≠claude）。纯函数（node/jsdom 可测）。
- */
-export function findIdleTmux(
-  sessions: TmuxSession[] | null | undefined,
-  sid: string,
-): TmuxSession | undefined {
-  return sessions?.find((s) => s.sid === sid && !s.agent);
+/** 应答 ⇒ 逐个样子；形状不对（多一格缺一格 · 个数 / 次序不符）⇒ 抛。 */
+export function decodeStandings(origin: Origin, sids: readonly string[], v: unknown): Standing[] {
+  const bad = (): never => {
+    throw unreadable(origin, "sessions-tmux", "is not exactly {results: [{sid, standing, names}]} in request order");
+  };
+  if (!isObj(v) || !exactKeys(v, ["results"]) || !Array.isArray(v.results) || v.results.length !== sids.length) bad();
+  return (v as { results: unknown[] }).results.map((r, i) => {
+    if (
+      !isObj(r) ||
+      !exactKeys(r, ["sid", "standing", "names"]) ||
+      r.sid !== sids[i] ||
+      typeof r.standing !== "string" ||
+      !KINDS.has(r.standing) ||
+      !Array.isArray(r.names) ||
+      !r.names.every((n) => typeof n === "string")
+    ) {
+      return bad();
+    }
+    return { kind: r.standing as Standing["kind"], names: r.names as string[] };
+  });
 }
 
-/**
- * F74c(#60-B)：`findClaudeTmux` 对给定 sid 是否会走 **cwd 回退**（= 无精确 `@ccm_sid` 命中
- * **且**整张列表都无任何会话带 sid）。回退命中的会话是「同目录里的某个 claude」，可能不是目标
- * 会话——未装 / 老 `ccm` wrapper 的向后兼容路径。用户 2026-07-17 拍板：保留回退但**命中时显式提示**
- * （attach 那一刻 toast，别静默串味）。纯函数（node/jsdom 可测），判据与 `findClaudeTmux` 回退分支对齐。
- */
-export function isCwdFallbackMatch(
-  sessions: TmuxSession[] | null | undefined,
-  sid: string,
-): boolean {
-  const exact = sessions?.some((s) => s.sid === sid && s.agent);
-  if (exact) return false;
-  const anySidKnown = sessions?.some((s) => s.sid != null);
-  return !anySidKnown; // 无精确命中 + 无任一 sid → findClaudeTmux 会走 cwd 回退
+/** 那台上这几个会话各自的样子（与 `sids` 同序）。问不到 / 形状不对 ⇒ 抛 `ControlError`（那一句已经说好）。 */
+export async function standingsOf(origin: Origin, sids: readonly string[]): Promise<Standing[]> {
+  const body = jsonBody({ sids });
+  const budget = budgetWithin(STANDING_BUDGET_MS);
+  const v = await settle(origin, "sessions-tmux", chan.call(origin, "sessions-tmux", body, budget), refusals(origin));
+  return decodeStandings(origin, sids, v);
+}
+
+/** 一个会话的样子；问不到 ⇒ `undefined`（不知道，不是「不在」）。 */
+export async function standingOf(origin: Origin, sid: string): Promise<Standing | undefined> {
+  try {
+    return (await standingsOf(origin, [sid]))[0];
+  } catch {
+    return undefined;
+  }
 }

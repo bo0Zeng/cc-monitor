@@ -2,7 +2,9 @@
 //!
 //! 渲不出来是拒（码 `refused` ＋ 理由）：起会话只有这一条路，没有别的路可换。
 
-use super::ccm_invocation::{render_ccm_invocation, Action, CliAccount, CliSpec, Container};
+use super::ccm_invocation::{
+    ccm_argv, render_ccm_invocation, Action, CliAccount, CliSpec, Container,
+};
 use serde::Deserialize;
 use std::collections::BTreeSet;
 
@@ -64,6 +66,24 @@ pub(crate) fn render_ccm_launch_with(
     req: &CliRenderRequest,
     caps: &BTreeSet<String>,
 ) -> Result<String, String> {
+    with_spec(req, false, |spec| render_ccm_invocation(spec, caps)).map_err(|r| r.reason())
+}
+
+/// 同一行的 argv 形；`detach` ⇒ 建进 tmux 之后不接进去（这台后端替人在 tmux 里起会话时用 —— 与界面那一行同一份映射、同一个渲染器）。
+pub(crate) fn ccm_launch_argv(
+    req: &CliRenderRequest,
+    caps: &BTreeSet<String>,
+    detach: bool,
+) -> Result<Vec<String>, String> {
+    with_spec(req, detach, |spec| ccm_argv(spec, caps)).map_err(|r| r.reason())
+}
+
+/// 上线入参 ⇒ 渲染器那份 spec（唯一的映射）。
+fn with_spec<T>(
+    req: &CliRenderRequest,
+    detach: bool,
+    f: impl FnOnce(&CliSpec) -> Result<T, super::ccm_invocation::Refusal>,
+) -> Result<T, super::ccm_invocation::Refusal> {
     let action = match &req.action {
         WireAction::New => Action::New,
         WireAction::Resume { sid } => Action::Resume { sid },
@@ -96,8 +116,9 @@ pub(crate) fn render_ccm_launch_with(
         rbind_token: req.rbind_token.as_deref(),
         launch_id: None,
         ccm_path: "ccm",
+        detach,
     };
-    render_ccm_invocation(&spec, caps).map_err(|r| r.reason())
+    f(&spec)
 }
 
 // `K-R95`：本机拉起载荷里「哪个号」那一格的键名由后端那一份生成给前端（生成物 ＋ 它的判据）。

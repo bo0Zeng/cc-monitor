@@ -1,0 +1,161 @@
+/**
+ * **多选之后右键的那个菜单**（批量）：每一项写「动作（能做的个数）」，能做的照做、不能做的跳过，做完一条结果提示
+ * （做了几个 · 跳过几个、各为什么 · 失败几个、各为什么）。
+ *
+ * 每一项在一个 tab 上的语义就是单个菜单里那一项：杀死会话 · Resume（tmux 后台 / 各开一个终端）· 固定 / 取消固定 ·
+ * 加入集合 / 新建集合 / 移出集合 · 关闭（同 ×）。「能做的个数」按单个菜单亮那一项用的同一个谓词数
+ * （杀 = 有终端可去 `hasTerminal`；Resume / 关闭 = 已结束 `isResumeOnly`）；那台能不能做、怎么做由那台后端判（`tab-batch-run.ts`）。
+ * 固定 · 集合 · 关闭是 monitor 自己的界面状态，不经后端。
+ */
+import type { Tab } from "./tab-model";
+import { hasTerminal, isResumeOnly } from "./tab-session-state";
+import { copyText } from "./copy-table";
+import { showTabContextMenu, type TabMenuItem } from "./tab-context-menu";
+import { createRefusal, newCollectionId, type CollectionRefusal, type TabCollection } from "./tab-collections";
+import { sayCollectionRefusal } from "./tab-bar-prefs";
+import { askConfirm, askText, type ConfirmFn } from "./ask-dialog";
+import { showActionFailureToast } from "./error-toast";
+import { machineName } from "./control-said";
+import { startMany, stopMany, type BatchOutcome } from "./tab-batch-run";
+
+/** 批量菜单要宿主给的：按 sid 取 tab · 集合 · 固定 · 关闭（都一次改完、落盘一次）。 */
+export interface TabBatchHost {
+  tab(sid: string): Tab | undefined;
+  collectionsLoaded(): boolean;
+  collections(): TabCollection[];
+  pinnedLoaded(): boolean;
+  setPinned(sids: readonly string[], on: boolean): void;
+  joinGroup(sids: readonly string[], gid: string): void;
+  foundGroup(sids: readonly string[], name: string, id: string): CollectionRefusal | null;
+  leaveGroup(sids: readonly string[]): void;
+  closeTabs(sids: readonly string[]): void;
+}
+
+/** 后端那两件（判据换替身）。 */
+export interface TabBatchRun {
+  stop(tabs: readonly Tab[]): Promise<BatchOutcome[]>;
+  start(tabs: readonly Tab[], mode: "tmux" | "window"): Promise<BatchOutcome[]>;
+  confirm: ConfirmFn;
+}
+
+export const PRODUCTION_RUN: TabBatchRun = { stop: stopMany, start: startMany, confirm: askConfirm };
+
+/** 把一批 tab 按一个谓词分成「能做的」与「跳过的（同一个原因）」。 */
+function split(tabs: readonly Tab[], ok: (t: Tab) => boolean, why: string): [Tab[], BatchOutcome[]] {
+  const yes: Tab[] = [];
+  const no: BatchOutcome[] = [];
+  for (const t of tabs) {
+    if (ok(t)) yes.push(t);
+    else no.push({ sid: t.sessionId, outcome: "skipped", why });
+  }
+  return [yes, no];
+}
+
+/** 结果提示：标题说做的是什么，正文第一行三个数，下面逐个列跳过与失败的（各为什么）。 */
+export function sayBatch(action: string, tabs: readonly Tab[], outcomes: readonly BatchOutcome[]): void {
+  const title = (sid: string) => tabs.find((t) => t.sessionId === sid)?.title ?? sid;
+  const n = (k: BatchOutcome["outcome"]) => outcomes.filter((o) => o.outcome === k).length;
+  const lines = [copyText("tabBatch.result.counts", { done: n("done"), skipped: n("skipped"), failed: n("failed") })];
+  for (const o of outcomes) {
+    if (o.outcome === "skipped") lines.push(copyText("tabBatch.result.skippedLine", { title: title(o.sid), why: o.why }));
+  }
+  for (const o of outcomes) {
+    if (o.outcome === "failed") lines.push(copyText("tabBatch.result.failedLine", { title: title(o.sid), why: o.why }));
+  }
+  showActionFailureToast(copyText("tabBatch.result.title", { action }), lines.join("\n"), {
+    level: n("failed") > 0 ? "error" : "info",
+    durationMs: 10000,
+  });
+}
+
+/** 只经 monitor 的那几项：同步改完 ⇒ 每一个都做成了，跳过的照原因列。 */
+function local(action: string, tabs: readonly Tab[], doable: Tab[], skipped: BatchOutcome[], run: (sids: string[]) => void): void {
+  if (doable.length > 0) run(doable.map((t) => t.sessionId));
+  sayBatch(action, tabs, [...doable.map((t): BatchOutcome => ({ sid: t.sessionId, outcome: "done", why: "" })), ...skipped]);
+}
+
+/** 右键一个选中的 tab（多选 ≥ 2）⇒ 开批量菜单。`sids` 按条上的顺序。`done` = 做完一项之后（宿主清多选）。 */
+export function openBatchMenu(
+  e: MouseEvent,
+  sids: readonly string[],
+  host: TabBatchHost,
+  run: TabBatchRun = PRODUCTION_RUN,
+  done: () => void = () => {},
+): void {
+  const tabs = sids.map((s) => host.tab(s)).filter((t): t is Tab => t !== undefined);
+  const item = (label: string, n: number, onClick: () => void | Promise<void>, danger = false): TabMenuItem => ({
+    label,
+    danger,
+    enabled: n > 0,
+    onClick: () => {
+      void (async () => {
+        await onClick();
+        done();
+      })();
+    },
+  });
+  const [stoppable, notStoppable] = split(tabs, (t) => hasTerminal(t.state), copyText("tabBatch.why.ended"));
+  const [startable, notStartable] = split(tabs, (t) => isResumeOnly(t.state), copyText("tabBatch.why.live"));
+  const items: TabMenuItem[] = [
+    { label: copyText("tabBatch.menu.head", { n: tabs.length }), enabled: false, onClick: () => {} },
+    item(copyText("tabBatch.menu.stop", { n: stoppable.length }), stoppable.length, async () => {
+      const list = stoppable
+        .map((t) => copyText("tabBatch.stop.line", { title: t.title, machine: machineName(t.origin) }))
+        .join("\n");
+      if (!(await run.confirm(copyText("tabBatch.stop.confirm", { n: stoppable.length, list })))) return;
+      sayBatch(copyText("tabBatch.action.stop"), tabs, [...(await run.stop(stoppable)), ...notStoppable]);
+    }, true),
+    item(copyText("tabBatch.menu.startTmux", { n: startable.length }), startable.length, async () => {
+      sayBatch(copyText("tabBatch.action.startTmux"), tabs, [...(await run.start(startable, "tmux")), ...notStartable]);
+    }),
+    item(copyText("tabBatch.menu.startWindow", { n: startable.length }), startable.length, async () => {
+      sayBatch(copyText("tabBatch.action.startWindow"), tabs, [...(await run.start(startable, "window")), ...notStartable]);
+    }),
+  ];
+  if (host.pinnedLoaded()) {
+    const [pinnable, pinnedAlready] = split(tabs, (t) => !t.pinned, copyText("tabBatch.why.pinned"));
+    const [unpinnable, notPinned] = split(tabs, (t) => t.pinned, copyText("tabBatch.why.notPinned"));
+    items.push(
+      item(copyText("tabBatch.menu.pin", { n: pinnable.length }), pinnable.length, () =>
+        local(copyText("tabBatch.action.pin"), tabs, pinnable, pinnedAlready, (s) => host.setPinned(s, true)),
+      ),
+      item(copyText("tabBatch.menu.unpin", { n: unpinnable.length }), unpinnable.length, () =>
+        local(copyText("tabBatch.action.unpin"), tabs, unpinnable, notPinned, (s) => host.setPinned(s, false)),
+      ),
+    );
+  }
+  if (host.collectionsLoaded()) {
+    const join: TabMenuItem[] = host.collections().map((col) => {
+      const [movable, already] = split(tabs, (t) => t.group !== col.id, copyText("tabBatch.why.inThatGroup"));
+      return item(copyText("tabBatch.menu.joinOne", { name: col.name, n: movable.length }), movable.length, () =>
+        local(copyText("tabBatch.action.join", { name: col.name }), tabs, movable, already, (s) => host.joinGroup(s, col.id)),
+      );
+    });
+    join.push(
+      item(copyText("tabBatch.menu.found", { n: tabs.length }), tabs.length, async () => {
+        // 同单个菜单「新建集合…」：到上界先说，再问名字；整批进同一个新组。
+        const full = createRefusal(host.collections());
+        if (full) return sayCollectionRefusal(full);
+        const name = await askText(copyText("tabMenu.collection.namePrompt"));
+        if (!name?.trim()) return;
+        const why = host.foundGroup(tabs.map((t) => t.sessionId), name, newCollectionId());
+        if (why) return sayCollectionRefusal(why);
+        sayBatch(copyText("tabBatch.action.found", { name: name.trim() }), tabs, tabs.map((t) => ({ sid: t.sessionId, outcome: "done", why: "" })));
+      }),
+    );
+    items.push({ label: copyText("tabMenu.collection.add"), submenu: join });
+    const [grouped, loose] = split(tabs, (t) => t.group !== null, copyText("tabBatch.why.notInGroup"));
+    items.push(
+      item(copyText("tabBatch.menu.leave", { n: grouped.length }), grouped.length, () =>
+        local(copyText("tabBatch.action.leave"), tabs, grouped, loose, (s) => host.leaveGroup(s)),
+      ),
+    );
+  }
+  const [closable, notClosable] = split(tabs, (t) => isResumeOnly(t.state), copyText("tabBatch.why.live"));
+  items.push(
+    item(copyText("tabBatch.menu.close", { n: closable.length }), closable.length, () =>
+      local(copyText("tabBatch.action.close"), tabs, closable, notClosable, (s) => host.closeTabs(s)),
+    ),
+  );
+  showTabContextMenu(e.clientX, e.clientY, items);
+}

@@ -104,10 +104,12 @@ const DEPS: Record<string, readonly string[]> = {
     "src/frontend/ui/tab-bar-drag.ts",
     "src/frontend/ui/tab-bar-prefs.ts",
     "src/frontend/ui/tab-bar-view.ts",
+    "src/frontend/ui/tab-batch-menu.ts", // 多选之后右键：批量菜单
     "src/frontend/ui/tab-drop.ts", // re-export
     "src/frontend/ui/tab-menu.ts",
     "src/frontend/ui/tab-model.ts", // computeTitleFor
     "src/frontend/ui/tab-router.ts",
+    "src/frontend/ui/tab-selection.ts", // 多选的选中集合 ＋ 锚点
     "src/frontend/ui/tab-session-actions.ts",
     "src/frontend/ui/tab-session-facts.ts",
     "src/frontend/ui/tab-session-state.ts", // 会话状态只经 `nextState` 改（转移表）＋ 关 / 拉前两道谓词
@@ -115,7 +117,6 @@ const DEPS: Record<string, readonly string[]> = {
     "src/frontend/ui/tab-stream-view.ts",
     "src/frontend/ui/tasks-panel.ts", // ensureTab：初始 task 快照
     "src/frontend/ui/terminal-front.ts", // bringActiveTerminalToFront 的 OS 门
-    "src/frontend/ui/tmux-sessions.ts", // re-export
     "src/frontend/ui/turn-notify.ts", // onLine：轮次结束通知
     "src/frontend/ui/views/context-limit.ts", // snapshotSessions 的 context%
     "src/frontend/ui/views/facts-source.ts", // ensureTab：每个 tab 一份会话事实的数据源（问后端 `history-facts`）
@@ -196,9 +197,7 @@ const DEPS: Record<string, readonly string[]> = {
   ],
   // ⑤ 菜单放哪几项：账号 flyout · tmux 判据 · attach / 预览 · 菜单控件 · 会话动作。
   "src/frontend/ui/tab-menu.ts": [
-    "src/frontend/ui/agent-profile.ts",
     "src/frontend/ui/ask-dialog.ts", // 「新建集合…」问名字（原 `window.prompt`）
-    "src/frontend/ui/behavior.ts",
     "src/frontend/ui/control-said.ts", // 那台握手时说过做不到的几项置灰：`unavailableSaid`（事实住 monitor 那份 Offer）
     "src/frontend/ui/copy-table.ts", // 固定那一项的两句提示（说到会话状态）住文案表
     "src/frontend/ui/error-toast.ts",
@@ -208,9 +207,8 @@ const DEPS: Record<string, readonly string[]> = {
     "src/frontend/ui/tab-bar-prefs.ts", // 「加入集合 / 新建集合」到上界 ⇒ `sayCollectionRefusal`
     "src/frontend/ui/tab-collections.ts",
     "src/frontend/ui/tab-context-menu.ts",
-    "src/frontend/ui/tab-session-actions.ts",
     "src/frontend/ui/tab-session-state.ts", // 给 Resume 还是给换号重启 · 本机「杀死会话」占位
-    "src/frontend/ui/tmux-sessions.ts",
+    "src/frontend/ui/tmux-sessions.ts", // 在 tmux 里那几项亮不亮、写哪个名字：问那台（`sessions-tmux`）
     "src/frontend/ui/views/pane-preview.ts",
   ],
   // ⑤ 菜单控件：零依赖（纯 DOM）。
@@ -221,6 +219,7 @@ const DEPS: Record<string, readonly string[]> = {
     "npm:@tauri-apps/plugin-opener",
     "src/frontend/ui/account-reads.ts", // 标记录没了的固定条：先解出 resume 会查的那棵账号树（同 `withAccount` 跟随）
     "src/frontend/ui/account-restart.ts",
+    "src/frontend/ui/agent-profile.ts", // 起会话项的默认启动器
     "src/frontend/ui/accounts.ts", // 同上（`resolveAccount`）
     "src/frontend/ui/ask-dialog.ts", // 杀会话的确认（原 `window.confirm`：真 app 里恒真值，等于没问）
     "src/frontend/ui/behavior.ts",
@@ -239,10 +238,9 @@ const DEPS: Record<string, readonly string[]> = {
     "src/frontend/ui/remote-launch-run.ts",
     "src/frontend/ui/resync.ts", // 关卡 2 拒了结束会话 ⇒ 提示带「对齐后重试」（认拒绝码 ＋ 对齐 ＋ 再做一次，都在那一个口）
     "src/frontend/ui/session-reads.ts", // resume 之前问记录还在不在（经通道问 `history-record`）
-    "src/frontend/ui/tmux-control.ts", // 杀会话经通道直接说后端的 `kill`（原 Tauri 命令 `kill_remote_tmux` 退役）
-    "src/frontend/ui/tmux-name-mint.ts", // tmux 全新 resume 的铸名只经这一个家（名单没问到 ⇒ 不起、说清）
-    "src/frontend/ui/tmux-reads.ts", // tmux 名单那唯一的取数点经通道问那台后端 `tmux-list`（原 Tauri 命令 `list_*_tmux` 退役）
-    "src/frontend/ui/tmux-sessions.ts",
+    "src/frontend/ui/tab-batch-run.ts", // 杀 / 在 tmux 里 Resume 交那台（`sessions-stop` / `sessions-start`，与批量同一条）
+    "src/frontend/ui/tmux-control.ts", // 杀成之后 cc-bus 注销那一句（`decodeKilled` 那一份说法）
+    "src/frontend/ui/tmux-sessions.ts", // 换号重启找旧会话：问那台它在哪个 tmux 会话里
   ],
 };
 
@@ -381,12 +379,7 @@ describe("〔U2〕tabs.ts 只剩组装根", () => {
         "DWELL_MOVE_PX",
         "DropTarget",
         "TabRect",
-        // tmux-sessions.ts（G6 起就是 re-export）
-        "findClaudeTmuxMatches",
-        "findClaudeTmux",
-        "findIdleTmux",
-        "isCwdFallbackMatch",
-        "TmuxSession",
+        // tmux-sessions.ts 那几个过滤〔散文墓碑〕的 re-export 删了：「在哪个 tmux 会话里」问那台后端。
       ].sort(),
     );
   });

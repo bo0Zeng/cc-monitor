@@ -766,6 +766,47 @@ F04b 先把它从**主路**降为一次性回落，本件把它整块拿掉 ⇒ 
 
 ⚠ ~~本命令存在 ≠ monitor 已经改走它~~ **F04b 2026-08-04：monitor 已经改走它了**（当年是 monitor 的 `kill_remote_tmux` 主路调它自己那个发送端）。🔴 **`K-R72` 2026-09-12：那条一次性 SSH 已删** —— `C7` 说的过渡到此结束，**盘上没有第二条路**。定框 C6 的顺序（先搬门、再切路由）到 **F04c** 走完。🔴 **monitor 那一跳也拿掉了**：界面经通道直接说本命令（`src/frontend/ui/tmux-control.ts::killSession`），成品 `{session, killed}` 由跨语言金样 `tests/__fixtures__/tmux-control.golden.json` 钉；回潮闸今天钉的是「monitor 生产段里一处 `kill-session` 都没有」＋「界面只经那一处说它」（`tmux_backend_gate_guard`）。
 
+#### `sessions-tmux` / `sessions-stop` / `sessions-start`：一批会话一次问（tab 栏的单个菜单与批量菜单）
+
+同一台机器上的那几个**一次**交过来，这台**逐个**答；一个不成不挡下一个。单个菜单就是一个 sid 的一批 —— 两条路是同一条。
+「这个 sid 此刻在这台哪个 tmux 会话里」只在这台判一次（带着它的 `@ccm_sid`、前台是不是 agent），三条命令共用；没打上标记的不按目录猜。
+
+```text
+→ {"id":"S0","cmd":"sessions-tmux","args":{"sids":["<sid>"]}}
+← {"kind":"reply","id":"S0","ok":true,"data":{"results":[{"sid":"<sid>","standing":"running","names":["proj-cc"]}]}}
+```
+
+`standing`：`running`（恰好一个在跑的，`names` 是它）· `ambiguous`（在跑的不止一个，`names` 按名单顺序）· `idle`（没有在跑的、有带着它的空 tmux，`names` 是第一个）·
+`none`（没有哪个会话带着它）· `no_tmux`（这台没装 tmux）。菜单就绪时问它：亮哪几项、写哪个名字。
+
+```text
+→ {"id":"S1","cmd":"sessions-stop","args":{"sids":["<sid>","<sid>"]}}
+→ {"id":"S2","cmd":"sessions-start","args":{
+     "mode":"tmux" | "window",
+     "local":true,                      // 这台是不是 monitor 所在那台（开终端那一形按它选本机 / 远端那一行）
+     "items":[{"sid":"<sid>","cwd":"/x",
+               "account":{"kind":"inherit"} | {"kind":"base"} | {"kind":"named","name":"work","configDir":"/h/.cc/work"},
+               "model":null,"launcher":"claude","defaultLauncher":"claude"}]}}
+← {"kind":"reply","id":"S1","ok":true,"data":{"results":[
+     {"sid":"<sid>","outcome":"done" | "skipped" | "failed","why":null,"detail":"",
+      "session":"proj-cc","bus":{"removed":[],"failed":[],"unread":null},"cmd":null}]}}
+```
+
+`results` 与入参逐个同序。`outcome`：`done` 做成了 · `skipped` 这一个不用做 / 做不了（`why` 说为什么）· `failed` 做了没成（`why` ＋ `detail` 是单个那一条的码与原话）。
+`session` = 落在哪个 tmux 会话上；`bus` 只有停那一条有（同 `kill`）；`cmd` 只有开终端那一形有（monitor 拿它开窗）。
+
+- **停**：`running` / `idle` ⇒ 杀那一个，同 `kill`（三道门、杀句柄、顺手注销 cc-bus），门里另核句柄上此刻的 `@ccm_sid` 就是它（认完名字换了人 ⇒ `wrong_owner`）。
+  `none` ⇒ `skipped`/`not_in_tmux`；`ambiguous` ⇒ `skipped`/`ambiguous`（`detail` 列名字，不杀）。
+- **起**：先问记录还在不在（同 `history-record`，查 `account.configDir` 那棵树）—— 不在 ⇒ `skipped`/`record_gone`（`detail` = 查的那棵树）。
+  - `mode:"tmux"`（不接进去）：`running` ⇒ `skipped`/`running`；`ambiguous` ⇒ `skipped`/`ambiguous`（`session` 是第一个）；`idle` ⇒ 同 `launch` 的 `send-into` 键入直路那一行；
+    `none` ⇒ 这台铸名（同 `tmux-name-mint`），交**界面「在 tmux 里 Resume」那一行**（远端同 `launch-render-cli`、本机同 `launch-local`，同一份映射、同一个渲染器）只多 `--detach`，
+    由这台后端自己当 ccm 跑（环境、中转地址、身份标记、自检、信任框兜底都由 ccm 那一趟做）；退出码 3（名字有人了）⇒ `failed`/`name_taken`，别的非零 ⇒ `failed`/`start_failed`（`detail` 是 ccm 的原话）。
+  - `mode:"window"`：只渲那一行交回（本机同 `launch-local`：POSIX 上铸名建进 tmux；远端同 `launch-render-cli` 直连），窗口由 monitor 开。渲不出来 ⇒ `failed`/`refused`。
+- 这台没装 tmux ⇒ 停与 `mode:"tmux"` 逐个 `skipped`/`no_tmux`。
+
+命令级码只有两个：`invalid_args`（`sids` / `items` 空、超过 64 个、有重复、sid 形状不对、字段认不出）· `unobservable`（这台的 tmux 名单看不见 —— 不是零会话）。
+只给界面用：命令行那一侧没有这两条（逐个 `--kill` / 直接敲 `ccm` 就是它们）。
+
 #### `launch`：平面 ②（远端执行面）——真的建 tmux 会话（U8a-2b）
 
 ```text

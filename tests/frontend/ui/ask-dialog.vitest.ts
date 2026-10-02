@@ -142,6 +142,7 @@ const ASK_CALLERS = [
   "src/frontend/ui/settings/cc-bus-section.ts",
   "src/frontend/ui/settings/machine-card.ts",
   "src/frontend/ui/settings/panel.ts",
+  "src/frontend/ui/tab-batch-menu.ts",
   "src/frontend/ui/tab-menu.ts",
   "src/frontend/ui/views/history.ts",
 ];

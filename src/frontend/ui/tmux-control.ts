@@ -106,7 +106,7 @@ export async function capturePane(origin: Origin, target: string): Promise<strin
 // ─── 结束会话 ───
 
 /** 结束会话的拒绝码 ⇒ 一句话。身份门 / 窗口门两档说清拦下的原因（它们的下一步与「会话不在」完全不同）。 */
-function killRefusals(target: string): Refusals {
+export function killRefusals(target: string): Refusals {
   return {
     byCode(code, detail) {
       switch (code) {

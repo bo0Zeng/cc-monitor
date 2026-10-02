@@ -797,6 +797,10 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "mcp-sync-source",
         "mcp-sync-preview",
         "mcp-sync-apply",
+        // 批量停 / 起：逐个起 tmux 子进程（同 `kill` / `launch`），阻塞档。
+        "sessions-stop",
+        "sessions-start",
+        "sessions-tmux",
         // 传输四条：硬臂，就地记账（起跑那一下只 `spawn`、不 await）⇒ 不阻塞。
         "transfer-upload",
         "transfer-download",

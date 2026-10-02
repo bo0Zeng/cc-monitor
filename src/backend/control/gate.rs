@@ -265,7 +265,13 @@ pub(crate) fn admit(name: &str, target: &str) -> Result<String, CmdErr> {
 /// ⚠ **Gate 3 只给破坏性动作**：`send-keys` 不删除任何东西，窗口数与它无关 ——
 /// 给它加 Gate 3 会让「往一个多窗口会话里打字」被误拒（monitor 侧 F04 Phase D
 /// 审计专门修过这个错法）。所以本函数与 [`admit`] **是两个入口，不是一个带 flag 的**。
-pub(crate) fn admit_destructive(name: &str, target: &str) -> Result<String, CmdErr> {
+///
+/// 给了 `sid` ⇒ 另要求探到的那个会话此刻的 `@ccm_sid` 就是它（批量停按 sid 认出的名字，认完换了人 ⇒ `wrong_owner`）。
+pub(crate) fn admit_destructive(
+    name: &str,
+    target: &str,
+    sid: Option<&str>,
+) -> Result<String, CmdErr> {
     let Some(p) = probe(target)? else {
         return Err((
             "no_such_session",
@@ -280,6 +286,15 @@ pub(crate) fn admit_destructive(name: &str, target: &str) -> Result<String, CmdE
             "wrong_owner",
             copy_text(
                 "beGate.admitDestructive.notOurs",
+                &[("name", &format!("{name:?}"))],
+            ),
+        ));
+    }
+    if sid.is_some_and(|s| s != p.ccm_sid) {
+        return Err((
+            "wrong_owner",
+            copy_text(
+                "beGate.admitDestructive.otherSession",
                 &[("name", &format!("{name:?}"))],
             ),
         ));

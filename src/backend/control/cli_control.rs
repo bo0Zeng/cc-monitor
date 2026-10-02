@@ -175,6 +175,10 @@ pub(crate) const STREAM_ONLY: &[&str] = &[
     "ext-list",
     "ext-hub-preview",
     "ext-hub-apply",
+    // tab 栏多选的批量停 / 起：一批会话一次问，只给界面用（命令行那一侧逐个 `--kill` / 直接敲 `ccm` 就是它们）。
+    "sessions-stop",
+    "sessions-start",
+    "sessions-tmux",
 ];
 
 /// 命令名 → CLI 子命令（`launch` → `--launch`）。

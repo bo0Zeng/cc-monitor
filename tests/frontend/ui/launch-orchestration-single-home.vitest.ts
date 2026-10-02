@@ -15,7 +15,7 @@
  * |---|---|---|
  * | K1 | 铸名只有一个家 | 生产段发 `tmux-name-mint`（问那台后端铸名）的文件集合 == `{tmux-name-mint.ts}`；问 tmux 名单的文件集合 == 手写集合（两向） |
  * | K2 | 本机 resume 编排只有一个家 | 生产段以 resume 动作问本机后端起会话（`launchLocal(` / `planLocalLaunch(` ＋ `kind: "resume"`）的文件集合 == `{local-resume.ts}`（两向） |
- * | K3 | 问不到 ⇒ 不铸名 | `readTmuxListing` 三态逐格 == 手写表；`mintFreshTmuxName` 问不到 / 形状不认 ⇒ `ok:false`；本机 resume 问不到 ⇒ 交 `tmuxName: null` |
+ * | K3 | 问不到 ⇒ 不铸名 | `mintFreshTmuxName` 问不到 / 形状不认 ⇒ `ok:false`；本机 resume 问不到 ⇒ 交 `tmuxName: null` |
  *
  * | K4 | D-h：本机跟随时 pin 那个号选不了 ⇒ 不起、说清、给「用当前账号」的显式选择 | 零次本机 resume（`launch-local`）＋ 一条可点提示；点了 ⇒ 以当前号起；正控：pin 可选 ⇒ 带 pin 起 |
  *
@@ -45,7 +45,7 @@ import { launchRenderShim, localLaunchCalls } from "../../test-support/chan-fake
 import { productionTsFiles, SCAN_TIMEOUT_MS } from "../../test-support/production-sources.ts";
 import { stripComments } from "../../test-support/strip-comments.ts";
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
-import { readTmuxListing, mintFreshTmuxName } from "../../../src/frontend/ui/tmux-name-mint";
+import { mintFreshTmuxName } from "../../../src/frontend/ui/tmux-name-mint";
 import { resumeLocalSession } from "../../../src/frontend/ui/local-resume";
 import { showActionFailureToast } from "../../../src/frontend/ui/error-toast";
 import type { Account, AccountsState } from "../../../src/frontend/ui/accounts";
@@ -72,16 +72,14 @@ describe("K1 · 铸名只有一个家", () => {
     ).toEqual(["src/frontend/ui/tmux-name-mint.ts"]);
   }, SCAN_TIMEOUT_MS);
 
-  it("★ 问 tmux 名单的生产文件 == 手写集合（两向）", () => {
-    // 手写期望，不从实现生成。每一格为什么在（取法换成读口 `listTmux(`；读口的定义处 `tmux-reads.ts` 除外）：
-    // - `tmux-name-mint.ts`：`readTmuxListing`（分叉那条要知道源会话此刻在哪个 tmux 里）。
-    // - `tab-session-actions.ts`：`fetchTmuxFresh`，TabManager 唯一取数点（attach / kill / 就地 resume 要**活的**那一份；
-    //   全新那一支要名字 ⇒ 问后端铸，不拿这份名单自己铸）。
-    const want = ["src/frontend/ui/tab-session-actions.ts", "src/frontend/ui/tmux-name-mint.ts"];
+  it("★ 「这个会话在哪个 tmux 会话里」只问那台、只有一个问口（两向）；界面零处拿 tmux 名单自己判", () => {
+    // 手写期望，不从实现生成：发 `sessions-tmux` 的只有 `tmux-sessions.ts`（菜单就绪 · 换号重启 · 分叉都经它）。
+    expect(filesMatching(/["']sessions-tmux["']/), "有别的地方自己去问那台了").toEqual(["src/frontend/ui/tmux-sessions.ts"]);
+    // 界面拿 tmux 名单自己判（按 sid / 按目录筛）那一族删了：读口定义处之外零处调它。
     expect(
       filesMatching(/\b(?:listTmux|list_(?:local|remote)_tmux)\s*\(/, ["src/frontend/ui/tmux-reads.ts"]),
-      "问 tmux 名单的地方变了。新长的那一处是不是本该走 `tmux-name-mint.ts::readTmuxListing`？",
-    ).toEqual(want);
+      "又长出一处拿 tmux 名单自己判的 —— 判定只在那台后端（`sessions-tmux`）",
+    ).toEqual([]);
   }, SCAN_TIMEOUT_MS);
 });
 
@@ -100,32 +98,6 @@ describe("K3 · 列不出 ⇒ 不铸名（三态不许压成两态）", () => {
   beforeEach(() => {
     invokeMock.mockReset();
     vi.mocked(showActionFailureToast).mockReset();
-  });
-
-  const reply = (local: unknown, remote: unknown): void => {
-    invokeMock.mockImplementation(launchRenderShim((cmd: string) => {
-      const r = cmd === "list_local_tmux" ? local : cmd === "list_remote_tmux" ? remote : undefined;
-      return r instanceof Error ? Promise.reject(r) : Promise.resolve(r);
-    }));
-  };
-  const S = (name: string) => ({ name, path: "/p", command: "claude", attached: false, windows: 1, sid: null, agent: true });
-
-  it("★ readTmuxListing 逐格 == 手写表", async () => {
-    // 期望是手写的（`tmux.rs::list_remote_tmux` 头注那三档 ＋ `list_local_tmux` 的 None = 不知道）。
-    const table: Array<[string, unknown, unknown, "known" | "unknown"]> = [
-      ["本机 · 列表", [S("a")], undefined, "known"],
-      ["本机 · null（后端还没报过）", null, undefined, "unknown"],
-      ["本机 · 抛", new Error("x"), undefined, "unknown"],
-      ["远端 · 列表", undefined, [S("a")], "known"],
-      ["远端 · 空表（零会话）", undefined, [], "known"],
-      ["远端 · null（没装 tmux）", undefined, null, "known"],
-      ["远端 · 抛（没问到）", undefined, new Error("ssh 抖动"), "unknown"],
-    ];
-    for (const [what, local, remote, want] of table) {
-      reply(local, remote);
-      const origin = what.startsWith("本机") ? LOCAL_ORIGIN : "devbox";
-      expect((await readTmuxListing(origin)).kind, what).toBe(want);
-    }
   });
 
   /** 那台后端铸名那一问：名字 ⇒ 成品；`null` ⇒ 问不到；`"bad"` ⇒ 回了认不得的形状。记下被问的入参。 */

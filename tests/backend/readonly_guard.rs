@@ -2967,6 +2967,15 @@ mod spawn_registry {
         ),
         // `relay/machine.rs` 那一行（远端起一个脱离的 `--relay`）摘了：中转只住常驻后端进程里，那一处起法随之删。
         (
+            "control/session_batch.rs",
+            "<非字面量>",
+            "tab 栏在 tmux 里后台起会话：**本后端这个二进制自己**（`current_exe`）当 ccm 跑界面那一行（同一个渲染器、只多 `--detach`），\
+             argv 不过 shell、stdin 空、等它退出收话。被起的是 ccm 那一趟，它自己的起法（建 tmux 会话、键入、收尾）由本护栏照样管；\
+             **不是**后端进程自身写用户既有数据。只从帧命令 `sessions-start`（tmux 那一形、那台没有带着这个 sid 的会话）进来。",
+            "缩性质",
+            "起会话改由别的入口在后端起的那天摘掉。⚠ 不许往这一处底下加第二种用途 —— 它起的永远是本二进制的 ccm 那一趟。",
+        ),
+        (
             "control/resident.rs",
             "<非字面量>",
             "远端那台的常驻后端由那台的 `--resident-ensure` 起：**本后端这个二进制自己**（`current_exe`）\
@@ -3095,7 +3104,8 @@ mod spawn_registry {
         // 基数 14 − DEL 1 ＋ MIG-1 1 ⇒ 14。
         // 主线 14（含 MIG-3a 的 `powershell.exe`）＋ MIG-1 1（`dial/ssh_config.rs`）⇒ 15（现打核过）。
         // **15 → 16**：`platform/shell/mod.rs` 按代起 PowerShell，程序名写成两个字面量（`powershell.exe` · `pwsh.exe`，后者是新面）。
-        const SPAWN_SITES_TODAY: usize = 16;
+        // 16 → 17：`control/session_batch.rs` 当 ccm 起自己（tab 栏在 tmux 里后台起，`ALLOWED` 里写明）。
+        const SPAWN_SITES_TODAY: usize = 17;
         assert_eq!(
             found.len(),
             SPAWN_SITES_TODAY,

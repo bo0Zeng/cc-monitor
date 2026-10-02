@@ -285,6 +285,10 @@ fn every_registered_command_declares_its_run_kind() {
                 | "launch-local"
                 // 本机那一份放不放：读一遍落点那个文件（约 10 MB，同步文件 I/O）。
                 | "place-verdict"
+                // 批量停 / 起：逐个起 tmux 子进程（同 `kill` / `launch`）。
+                | "sessions-stop"
+                | "sessions-start"
+                | "sessions-tmux"
         );
         let is_blocking = matches!(spec.run, Run::Blocking(_));
         assert_eq!(
@@ -483,6 +487,10 @@ fn every_registered_command_declares_its_run_kind() {
         "mcp-sync-source",
         "mcp-sync-preview",
         "mcp-sync-apply",
+        // 批量停 / 起：阻塞。
+        "sessions-stop",
+        "sessions-start",
+        "sessions-tmux",
         // 传输四条：内建（硬臂）。
         "transfer-upload",
         "transfer-download",

@@ -810,6 +810,18 @@ fn handler_files(
 /// 够得着 tmux、却**不**声明 `no_tmux` 的命令 —— 逐条写理由（tmux 在它那里是可选的：问不到就降级，命令本身照做）。
 const REACHES_TMUX_WITHOUT_NO_TMUX: &[(&str, &str)] = &[
     (
+        "sessions-start",
+        "批量起：tmux 那一形没 tmux ⇒ 逐个答「这台没 tmux」跳过、命令照答；开终端那一形本来用不着 tmux（Windows 本机照做）",
+    ),
+    (
+        "sessions-tmux",
+        "问这几个会话在哪个 tmux 会话里：没 tmux ⇒ 逐个答「这台没 tmux」、命令照答",
+    ),
+    (
+        "sessions-stop",
+        "批量停：没 tmux ⇒ 逐个答「这台没 tmux」跳过、命令照答（停的对象本来就只在 tmux 里）",
+    ),
+    (
         "aliases-block-install",
         "别名那一族（`assets/aliases/`）只从 `control/ccm/mod.rs` 取 `SUBCOMMAND_WORD` 那一个词（命令名 `ccm`）——\
          按文件画的引用图因此连到了 tmux；本族不问 tmux、不起 tmux（tmux 那几格是能力闸，按方言判，`Caps::of`）",

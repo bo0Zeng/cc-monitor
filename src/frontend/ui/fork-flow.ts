@@ -13,7 +13,7 @@
  * # 为什么本模块不 import `tabs.ts`
  *
  * `tabs.ts` 挂 `⑂`（→ `branch-button.ts`）→ 分叉成功 → 调本模块。本模块再回头 import
- * `tabs.ts` 就成环了。而「源会话在哪个 tmux 里」的判据（`findClaudeTmuxMatches`）
+ * `tabs.ts` 就成环了。而「源会话在哪个 tmux 里」那一问（今天问那台后端 `sessions-tmux`）
  * 原本正住在 `tabs.ts` 里 —— 所以 G6 把那一族判据搬进了叶子模块 `tmux-sessions.ts`，
  * 两边都从那里取。`tabs.ts` 原样 re-export，既有 import 面零改动。
  */
@@ -24,9 +24,9 @@ import { getBehavior } from "./behavior";
 import { resolveResumeCommand } from "./remote-config";
 import { isSelectable, type Account, type SessionAccount } from "./accounts";
 import { fetchAccounts, fetchLocalAccounts, fetchSessionAccounts } from "./account-reads";
-import { findClaudeTmuxMatches, type TmuxSession } from "./tmux-sessions";
+import { standingOf, type Standing } from "./tmux-sessions";
 import { resumeLocalSessionAndWait } from "./local-resume";
-import { mintForkTmuxName, readTmuxListing } from "./tmux-name-mint";
+import { mintForkTmuxName } from "./tmux-name-mint";
 import { askForkLaunch, type ForkAccountOption } from "./fork-ask";
 import { startForkedSession, type ForkStartDeps, type ForkStartOutcome } from "./fork-start";
 import type { ForkLaunchInput } from "./fork-launch";
@@ -69,14 +69,15 @@ export interface ForkSourceFacts {
  */
 export function deriveForkSource(
   rows: readonly SessionAccount[] | null | undefined,
-  sessions: TmuxSession[] | null | undefined,
+  standing: Standing | null | undefined,
   sid: string,
   cwd: string | null,
 ): ForkSourceFacts {
   const row = rows?.find((r) => r.sessionId === sid && r.alive);
-  const matches = findClaudeTmuxMatches(sessions, sid);
-  const tmuxName = matches[0]?.name ?? null;
-  const live = Boolean(row) || matches.length > 0;
+  // 「在哪个 tmux 会话里跑」那台后端判（`sessions-tmux`）：在跑的取第一个（命中多个也取第一个）。
+  const running = standing?.kind === "running" || standing?.kind === "ambiguous";
+  const tmuxName = running ? (standing.names[0] ?? null) : null;
+  const live = Boolean(row) || running;
   return {
     source: {
       sourceIsLive: live,
@@ -118,18 +119,12 @@ export async function collectForkSource(
       sourceTmuxName: null,
     };
   }
-  // tmux 名单只经 `tmux-name-mint.ts::readTmuxListing` 取（本机远端同一个家）：
-  //   没问到 ⇒ `unknown` ⇒ 这里交 `null`；远端没装 tmux ⇒ 一张确定的空表。
-  const [rows, listing] = await Promise.all([
+  // 源会话在哪个 tmux 会话里：问那台（问不到 ⇒ `undefined` ⇒ 不知道）。
+  const [rows, standing] = await Promise.all([
     fetchSessionAccounts(origin).catch(() => [] as SessionAccount[]),
-    readTmuxListing(origin),
+    standingOf(origin, sid),
   ]);
-  return deriveForkSource(
-    rows,
-    listing.kind === "known" ? [...listing.sessions] : null,
-    sid,
-    cwd,
-  );
+  return deriveForkSource(rows, standing, sid, cwd);
 }
 
 /**

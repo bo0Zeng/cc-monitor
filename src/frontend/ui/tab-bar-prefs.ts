@@ -195,6 +195,37 @@ export class TabBarPrefs {
     return this.writeGroups([groupOfEdit(sid, gid), ...this.dropIfEmpty(old)]);
   }
 
+  /** 批量「加入集合 › X」：每一个同 [`joinGroup`]，补丁一次写。 */
+  joinGroupMany(sids: readonly string[], gid: string): Promise<void> {
+    if (!this.collections.some((c) => c.id === gid)) return Promise.resolve();
+    const left = new Set<string | null>();
+    const edits: ConfigEdit[] = [];
+    for (const sid of sids) {
+      const t = this.store.tabs.get(sid);
+      if (!t || t.group === gid) continue;
+      left.add(t.group);
+      t.group = gid;
+      edits.push(groupOfEdit(sid, gid));
+    }
+    for (const old of left) edits.push(...this.dropIfEmpty(old));
+    return this.writeGroups(edits);
+  }
+
+  /** 批量「移出集合」：每一个同 [`leaveGroup`]，补丁一次写。 */
+  leaveGroupMany(sids: readonly string[]): Promise<void> {
+    const left = new Set<string>();
+    const edits: ConfigEdit[] = [];
+    for (const sid of sids) {
+      const t = this.store.tabs.get(sid);
+      if (!t || t.group === null) continue;
+      left.add(t.group);
+      t.group = null;
+      edits.push(groupOfEdit(sid, null));
+    }
+    for (const old of left) edits.push(...this.dropIfEmpty(old));
+    return this.writeGroups(edits);
+  }
+
   /** 右键「移出」/ 拖出组：`sid` 回到散 tab；组里因此一个在栏里的都不剩 ⇒ 组没（主会话裁 Q1，与 × 同一判定）。 */
   leaveGroup(sid: string): Promise<void> {
     const t = this.store.tabs.get(sid);
@@ -443,6 +474,21 @@ export class TabBarPrefs {
     const tab = this.store.tabs.get(sid);
     if (!tab || !this.pinnedLoaded) return;
     tab.pinned = !tab.pinned;
+    this.host.refreshTabBar();
+    void this.persistPinned();
+  }
+
+  /** 批量「固定 / 取消固定」：每一个同 [`togglePin`] 翻到 `on`，落盘一次。 */
+  setPinnedMany(sids: readonly string[], on: boolean): void {
+    if (!this.pinnedLoaded) return;
+    let changed = false;
+    for (const sid of sids) {
+      const tab = this.store.tabs.get(sid);
+      if (!tab || tab.pinned === on) continue;
+      tab.pinned = on;
+      changed = true;
+    }
+    if (!changed) return;
     this.host.refreshTabBar();
     void this.persistPinned();
   }

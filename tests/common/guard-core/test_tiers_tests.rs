@@ -184,7 +184,6 @@ const UNIT: &[&str] = &[
     "tests/frontend/ui/render-window.vitest.ts",
     "tests/frontend/ui/resume-presets.vitest.ts",
     "tests/frontend/ui/route-parity.vitest.ts",
-    "tests/frontend/ui/send-into-backend.vitest.ts",
     "tests/frontend/ui/session-accounts-poll.vitest.ts",
     "tests/frontend/ui/session-status.vitest.ts",
     "tests/frontend/ui/settings/account-new-form.vitest.ts",
@@ -254,6 +253,9 @@ const UNIT: &[&str] = &[
     "tests/frontend/ui/settings/profile-backups.vitest.ts",
     // 从 SCAN 挪来：本机起会话那一行（`control/launch_render/local.rs::plan` 纯函数，喂确定的事实）。
     "tests/backend/control/launch_render/local_tests.rs",
+    "tests/backend/control/session_batch_tests.rs", // 批量停 / 起：替身记下被调了什么，tmux 一个都不起
+    "tests/frontend/ui/tab-batch-menu.vitest.ts",   // 批量菜单：后端那两件与宿主都是替身
+    "tests/frontend/ui/tab-batch-run.vitest.ts", // 批量停 / 起交给那几台：`chan_call` 那一跳是替身
 ];
 
 /// 源码扫描层：读仓内文本（`include_str!` · `repo_root()` 一族 · `readFileSync` 一族）、不碰 OS。
@@ -517,7 +519,6 @@ const SCAN: &[&str] = &[
     "tests/frontend/ui/terminal-front-command.vitest.ts",
     "tests/frontend/ui/terminal-open.vitest.ts", // 开终端三步 ＋「开窗只有一个家」（扫生产段）
     "tests/test-support/strip-comments.vitest.ts",
-    "tests/frontend/ui/tmux-cache-single-writer.vitest.ts",
     "tests/frontend/ui/topbar-icons.vitest.ts",
     "tests/frontend/ui/topbar-list-parity.vitest.ts",
     "tests/frontend/ui/turn-notify.vitest.ts",

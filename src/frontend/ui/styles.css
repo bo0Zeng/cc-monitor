@@ -284,6 +284,12 @@
   background: var(--overlay-hover);
 }
 
+/* 多选里的 tab：一圈内描边（不动盒模型；与「当前 tab」的左边条分得开，与拖放成组的 outline 也不撞） */
+.tab.selected {
+  color: var(--text);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
 /* 已结束（原名 .archived；会话状态的两轴与呈现住 tab-session-state.ts） */
 .tab.ended {
   opacity: 0.55;
