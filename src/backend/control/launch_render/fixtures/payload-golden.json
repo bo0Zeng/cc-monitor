@@ -58,7 +58,7 @@
       "env": [
         {
           "kind": "export-config-dir",
-          "value": "/home/u/.claude-accts/z"
+          "value": "/home/u/.cc-monitor/accounts/z"
         },
         {
           "kind": "unset-nested-env"
@@ -72,7 +72,7 @@
         "env": [
           {
             "kind": "export-config-dir",
-            "value": "/home/u/.claude-accts/z"
+            "value": "/home/u/.cc-monitor/accounts/z"
           },
           {
             "kind": "unset-nested-env"
@@ -90,7 +90,7 @@
         "wrap": [],
         "resumeSid": null
       },
-      "payload": "export CLAUDE_CONFIG_DIR='/home/u/.claude-accts/z'; unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_SESSION_ID CLAUDE_CODE_CHILD_SESSION; cd '/w' && claude"
+      "payload": "export CLAUDE_CONFIG_DIR='/home/u/.cc-monitor/accounts/z'; unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_SESSION_ID CLAUDE_CODE_CHILD_SESSION; cd '/w' && claude"
     },
     {
       "name": "账号 0（显式 unset）+ 嵌套 env 清理",
@@ -229,7 +229,7 @@
       "env": [
         {
           "kind": "export-config-dir",
-          "value": "/home/u/.claude-accts/z"
+          "value": "/home/u/.cc-monitor/accounts/z"
         },
         {
           "kind": "export-model",
@@ -254,7 +254,7 @@
         "env": [
           {
             "kind": "export-config-dir",
-            "value": "/home/u/.claude-accts/z"
+            "value": "/home/u/.cc-monitor/accounts/z"
           },
           {
             "kind": "export-model",
@@ -283,7 +283,7 @@
         "wrap": [],
         "resumeSid": null
       },
-      "payload": "export CLAUDE_CONFIG_DIR='/home/u/.claude-accts/z'; export ANTHROPIC_MODEL='sonnet'; unset CLAUDE_CONFIG_DIR; unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_SESSION_ID CLAUDE_CODE_CHILD_SESSION; export CCM_RBIND_TOKEN='0f1e2d3c4b5a69788796a5b4c3d2e1f0'; cd '/w' && claude"
+      "payload": "export CLAUDE_CONFIG_DIR='/home/u/.cc-monitor/accounts/z'; export ANTHROPIC_MODEL='sonnet'; unset CLAUDE_CONFIG_DIR; unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_SESSION_ID CLAUDE_CODE_CHILD_SESSION; export CCM_RBIND_TOKEN='0f1e2d3c4b5a69788796a5b4c3d2e1f0'; cd '/w' && claude"
     },
     {
       "name": "带空格与中文的 cwd（单引号包裹）",

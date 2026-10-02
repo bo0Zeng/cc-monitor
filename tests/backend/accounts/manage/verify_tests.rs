@@ -4,10 +4,10 @@ use crate::accounts::manage::scan::{DirState, Roots};
 use std::collections::BTreeMap;
 
 fn snap(z: BTreeMap<String, Item>) -> Snapshot {
-    let text = r#"{"version":1,"sharedStore":"/h/.claude","accounts":[{"name":"z","email":"","configDir":"/h/.claude-accts/z","isDefault":true}]}"#;
+    let text = r#"{"version":1,"sharedStore":"/h/.claude","accounts":[{"name":"z","email":"","configDir":"/h/.cc-monitor/accounts/z","isDefault":true}]}"#;
     let mut dirs = BTreeMap::new();
     dirs.insert(
-        "/h/.claude-accts/z".to_string(),
+        "/h/.cc-monitor/accounts/z".to_string(),
         DirState {
             me: Some(Item::Dir { mode: Some(0o700) }),
             entries: z,
@@ -19,7 +19,7 @@ fn snap(z: BTreeMap<String, Item>) -> Snapshot {
         roots: Some(Roots {
             home: "/h".into(),
             shared: "/h/.claude".into(),
-            accts: "/h/.claude-accts".into(),
+            accts: "/h/.cc-monitor/accounts".into(),
         }),
         manifest: Some(super::super::model::Manifest::parse(text)),
         shared: DirState {
@@ -71,7 +71,7 @@ fn no_manifest_is_one_fail_that_says_where() {
     s.manifest = None;
     let r = verify(&s, &[]);
     assert_eq!(r.fails, 1);
-    assert!(fails(&r)[0].contains("/h/.claude-accts/accounts.json"));
+    assert!(fails(&r)[0].contains("/h/.cc-monitor/accounts/accounts.json"));
 }
 
 #[test]

@@ -1,10 +1,10 @@
 //! A2：多账号（账号库：每个号一个配置目录，共享项链回同一个配置根）的**只读**消费侧（写侧是 `accounts/manage/`）。
 //!
-//! - `--list-accounts [--accts-dir <p>]`
+//! - `--list-accounts`
 //!   → 第 1 行 `{"kind":"accounts-meta",…}`，其后每账号一行 JSON。
-//! - `--session-accounts [--accts-dir <p>]`
+//! - `--session-accounts`
 //!   → 每条运行中会话一行：它的 `CLAUDE_CONFIG_DIR` 属于哪个账号。
-//! - `--account-trust <configDir> <cwd> [--accts-dir <p>]`
+//! - `--account-trust <configDir> <cwd>`
 //!   → 单行 `{"trusted":bool,"known":bool}`：目标账号是否已信任该目录
 //!   （换号 resume 前的预检——首次用某账号进某目录，CC 会弹信任确认，会卡住编排）。
 //! - `--account-trust-zero <cwd>`
@@ -66,10 +66,11 @@
 //!   （路径是 `$HOME/.claude.json`，写死在代码里），所以它连这个面都没有。
 
 use acct_core::{
-    auth_kind_from_manifest, auth_kind_with_apikey_table, auth_ready, ACCTS_DIR_NAME,
-    CREDENTIALS_NAME, MANIFEST_NAME, SUPPORTED_SCHEMA,
+    auth_kind_from_manifest, auth_kind_with_apikey_table, auth_ready, CREDENTIALS_NAME,
+    SUPPORTED_SCHEMA,
 };
 use copy_core::copy_text;
+use relay_route_core::{ACCOUNTS_DIR_REL, ACCOUNTS_MANIFEST_NAME};
 use std::path::{Path, PathBuf};
 
 /// manifest 读取上限。账号数有限，几 MB 足矣，此处宽松给 8MB 兜底。
@@ -140,29 +141,22 @@ fn home_dir() -> Option<PathBuf> {
     crate::platform::paths::home_dir()
 }
 
-/// 账号库目录：`--accts-dir <p>` > `$HOME/.claude-accts`。
-fn resolve_accts_dir(args: &[String]) -> PathBuf {
-    if let Some(i) = args.iter().position(|a| a == "--accts-dir") {
-        if let Some(p) = args.get(i + 1) {
-            if !p.is_empty() {
-                return PathBuf::from(p);
-            }
-        }
-    }
+/// 账号库目录：`$HOME/.cc-monitor/accounts`。位置只跟着家走 —— 没有另指位置的变量或选项
+/// （测试换掉家目录就碰不到真数据）。
+fn resolve_accts_dir() -> PathBuf {
     match home_dir() {
-        Some(h) => h.join(ACCTS_DIR_NAME),
-        None => PathBuf::from(ACCTS_DIR_NAME),
+        Some(h) => h.join(ACCOUNTS_DIR_REL),
+        None => PathBuf::from(ACCOUNTS_DIR_REL),
     }
 }
 
 fn manifest_path(accts_dir: &Path) -> PathBuf {
-    accts_dir.join(MANIFEST_NAME)
+    accts_dir.join(ACCOUNTS_MANIFEST_NAME)
 }
 
-/// **这台机器上**那份账号 manifest 在哪（没有 `--accts-dir` 时的那条解析，
-/// 与 `--list-accounts` 读的是同一份）。watcher 盯着它、变了发 `accounts_changed`。
+/// **这台机器上**那份账号 manifest 在哪（与 `--list-accounts` 读的是同一份）。watcher 盯着它、变了发 `accounts_changed`。
 pub(crate) fn default_manifest_path() -> PathBuf {
-    manifest_path(&resolve_accts_dir(&[]))
+    manifest_path(&resolve_accts_dir())
 }
 
 /// 读 + 解析 manifest。缺文件/坏 JSON/不支持的 schema 都是 `Err(人话原因)`——
@@ -541,7 +535,7 @@ fn scan_accounts(
 /// 措辞不说「远端」：本机远端同一条路（此前那句写着「远端」，本机那条路因此刻意不出它）。
 /// 〔旧那一句「后端太旧、不认账号 0」删了：出成品的后端按构造认得账号 0；老后端回的是旧形状，界面当场认出。〕
 pub(crate) fn list_product(rows: &[String], agent: &str, table_agent: &str) -> serde_json::Value {
-    list_product_at(&resolve_accts_dir(&[]), rows, agent, table_agent)
+    list_product_at(&resolve_accts_dir(), rows, agent, table_agent)
 }
 
 /// [`list_product`] 的本体，账号库目录是参数（判据拿夹具喂它，不碰真家目录）。
@@ -637,7 +631,7 @@ pub(crate) fn live_session_ids(agent_home: &Path) -> std::collections::BTreeSet<
 }
 
 /// `--session-accounts`：扫 `<claude_dir>/sessions/<PID>.json`，每条一行。
-fn session_accounts(agent_home: &Path, accts_dir: &Path) -> Vec<String> {
+pub(crate) fn session_accounts(agent_home: &Path, accts_dir: &Path) -> Vec<String> {
     // 向适配层要「会话进程环境里该读哪两个键」只问这一次（账号 · 上游地址）。
     let env_keys = crate::agents::claudecode::paths::SESSION_ENV_KEYS;
     // Z01：`None` 这个 key 是账号 0（configDir 缺席）。裸起会话过去归属不到任何账号
@@ -841,9 +835,9 @@ fn account_trust_zero(cwd: &str) -> Result<String, (String, String)> {
 /// 帧面那两条（`accounts-list` / `accounts-sessions`）的入口。
 ///
 /// 跑的是 CLI 那两臂**同一个函数**（[`list_accounts`] / [`session_accounts`]），账号库目录
-/// 走同一个解析（帧面不收 `--accts-dir` 覆盖 —— monitor 从不发它，那是给人手调的旋钮）。
+/// 走同一个解析（只跟着家走）。
 pub(crate) fn lines_for_frame(agent_home: &Path, which: FrameAccounts) -> Vec<String> {
-    let accts_dir = resolve_accts_dir(&[]);
+    let accts_dir = resolve_accts_dir();
     match which {
         FrameAccounts::List => list_accounts(&accts_dir),
         FrameAccounts::BySession => session_accounts(agent_home, &accts_dir),
@@ -860,7 +854,7 @@ pub(crate) fn trust_product(
     config_dir: Option<&str>,
     cwd: &str,
 ) -> Result<serde_json::Value, (String, String)> {
-    trust_product_at(&resolve_accts_dir(&[]), config_dir, cwd)
+    trust_product_at(&resolve_accts_dir(), config_dir, cwd)
 }
 
 /// [`trust_product`] 的本体，账号库目录是参数（判据拿夹具喂它）。账号 0 那一形仍读真 `$HOME`（它不收路径）。
@@ -905,7 +899,7 @@ pub(crate) enum FrameAccounts {
 
 /// 查询模式入口。返回进程退出码（0 ok / 2 err），同 `history_query::run` 约定。
 pub fn run(agent_home: &Path, args: &[String]) -> i32 {
-    let accts_dir = resolve_accts_dir(args);
+    let accts_dir = resolve_accts_dir();
     match args.first().map(String::as_str) {
         Some("--list-accounts") => {
             for l in list_accounts(&accts_dir) {

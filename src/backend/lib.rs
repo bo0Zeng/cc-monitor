@@ -715,7 +715,9 @@ pub const PROTO_VERSION: u32 = 1;
 /// p6m-project-dir：tab 标题取会话启动时的项目目录；报错不再露出内部错误码。
 ///
 /// p6n-relay-optin：机器页「终端」栏给出让用户自己贴进 settings.json 的 env 片段，cc-monitor 只读这份文件。
-pub const BUILD_ID: &str = "p6n-relay-optin";
+///
+/// p6o-accounts-home：账号库住进 ~/.cc-monitor/accounts/，后端只在这里读写；去掉另指账号库位置的环境变量与 --accts-dir。
+pub const BUILD_ID: &str = "p6o-accounts-home";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src/frontend/shell/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），
@@ -1945,7 +1947,6 @@ pub fn cli_flag(name: &str) -> String {
 
 /// ③ 子命令自己的选项：只在某条 [`SUBCOMMANDS`] 之后才有意义，backend 顶层不解释它们。
 pub const SUBCOMMAND_OPTIONS: &[&str] = &[
-    "--accts-dir",
     "--after-ms",
     // `--list-user-inputs` 的增量起点（字节偏移，传上次尾行的 `end`）。
     "--from",

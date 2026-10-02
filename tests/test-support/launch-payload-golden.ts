@@ -54,7 +54,7 @@ export interface GoldenCase {
   payload: string;
 }
 
-const ACCT = "/home/u/.claude-accts/z";
+const ACCT = "/home/u/.cc-monitor/accounts/z";
 /** 一个形状合法的启动期令牌（`[0-9a-f]{32}`）。
  *  ⚠ 夹具里的令牌是**常量**，不是现场铸的 —— 逐字节金标准里不许有随机值。 */
 const RBIND = "0f1e2d3c4b5a69788796a5b4c3d2e1f0";
@@ -79,7 +79,7 @@ export const GOLDEN_CASES: readonly GoldenCase[] = [
   },
   {
     name: "具名账号 + 嵌套 env 清理 + cwd",
-    payload: "export CLAUDE_CONFIG_DIR='/home/u/.claude-accts/z'; unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_SESSION_ID CLAUDE_CODE_CHILD_SESSION; cd '/w' && claude",
+    payload: "export CLAUDE_CONFIG_DIR='/home/u/.cc-monitor/accounts/z'; unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_SESSION_ID CLAUDE_CODE_CHILD_SESSION; cd '/w' && claude",
     env: [{ kind: "export-config-dir", value: ACCT }, { kind: "unset-nested-env" }],
     cwd: "/w",
     launcher: "claude",
@@ -133,7 +133,7 @@ export const GOLDEN_CASES: readonly GoldenCase[] = [
     //   （`buildLaunchPlan` 五种 EnvOp 数组相等 ＋ 模块加载即崩的顺序不变式）与
     //   `tests/frontend/ui/launch-requests.vitest.ts`（整条载荷逐字节相等）钉 —— M7b 实测那两处共红 5 条。
     name: "五种 EnvOp 同时出现（顺序即契约）",
-    payload: "export CLAUDE_CONFIG_DIR='/home/u/.claude-accts/z'; export ANTHROPIC_MODEL='sonnet'; unset CLAUDE_CONFIG_DIR; unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_SESSION_ID CLAUDE_CODE_CHILD_SESSION; export CCM_RBIND_TOKEN='0f1e2d3c4b5a69788796a5b4c3d2e1f0'; cd '/w' && claude",
+    payload: "export CLAUDE_CONFIG_DIR='/home/u/.cc-monitor/accounts/z'; export ANTHROPIC_MODEL='sonnet'; unset CLAUDE_CONFIG_DIR; unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_SESSION_ID CLAUDE_CODE_CHILD_SESSION; export CCM_RBIND_TOKEN='0f1e2d3c4b5a69788796a5b4c3d2e1f0'; cd '/w' && claude",
     env: [
       { kind: "export-config-dir", value: ACCT },
       { kind: "export-model", value: "sonnet" },

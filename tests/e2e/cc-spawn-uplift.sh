@@ -48,18 +48,17 @@ export CCM_CODEXTOML="$SANDBOX/codex-config.toml"
 # ⇒ 与 `tmux` shim / 假 launcher 同一条既有纪律：**要测的变量之外的东西，套件自己钉住**。
 # ⚠ `tests/e2e/fake-backend.sh` 里的 `tmux` 走 **PATH** ⇒ 落在上面那个 `-L $SOCK` 的 shim 上，
 #   隔离面一格没变（它碰不到用户的 tmux server）。
-# ⚠ `CCM_ACCTS_MANIFEST` 指向一个**不存在的**隔离路径（形态仍是 `<目录>/accounts.json`）：
-#   后端对它答「meta ＋ 零个账号」= 空表 ⇒ ccm 退化为基座启动器、不注入账号，
-#   本套件要测的那一面因此干净；同时**绝不摸**开发者真实的 `~/.claude-accts`。
+# ⚠ `HOME` 换成沙箱里一个空目录：账号库跟着家目录走（`<家>/.cc-monitor/accounts/`），空家目录 = 没有账号库
+#   ⇒ ccm 退化为基座启动器、不注入账号，本套件要测的那一面因此干净；同时**绝不摸**开发者真实的账号库。
 # `FAKE_BACKEND_TMUX_SOCK` 与本套件的 `-L $SOCK` **给同一个名字**（理由同上：那份假后端
 # 自带选择器且 fail-closed；shim 会再插一个，tmux 取最后一个）。
 export FAKE_BACKEND_TMUX_SOCK="$SOCK"
-export CCM_ACCTS_MANIFEST="$SANDBOX/no-accts/accounts.json"
+REAL_HOME="$HOME"; export HOME="$SANDBOX/home"; mkdir -p "$HOME"
 
 # ★★ 🔴 `K-R48` 第二拍（09-11）：**`ccm` 就是后端二进制本体，`shared/ccm` 那个脚本删了。**
 #   〔用@09-11 `K33`〕逐字「后端**只有一个**…**不要有什么 bash 脚本**，**不要有什么单独的 ccm**」。
 #   ⇒ 上一行原来的 `export CCM_BACKEND_BIN="$REPO/tests/e2e/fake-backend.sh"`（给 bash `ccm` 一个
-#   跨进程问得到的后端）**整条删了**：今天没有那一跳，账号表由 `CCM_ACCTS_MANIFEST` 直接读。
+#   跨进程问得到的后端）**整条删了**：今天没有那一跳，账号表由后端在家目录下直接读。
 #   ⇒ `cc-spawn` 的查找次序刻意**不认** `$CCM_BACKEND_BIN`（它在仓里指的是假后端），
 #   所以这里用 `CCM_BIN` 显式钉住本工作树刚 build 出来的那一份。
 # 🔴 **fail-closed**：没 build 就响亮退出，不许静默回落到 PATH 上碰巧有的那一份。
@@ -115,7 +114,7 @@ preflight() {
   echo "[自检] canary 双向断言通过：隔离生效（-L $SOCK）"
 }
 preflight
-case "$CC_BUS_HOME" in "$HOME"/.cc-bus*) echo "FATAL CC_BUS_HOME 指向真实总线"; exit 9 ;; esac
+case "$CC_BUS_HOME" in "$REAL_HOME"/.cc-bus*) echo "FATAL CC_BUS_HOME 指向真实总线"; exit 9 ;; esac
 echo "[自检] CC_BUS_HOME=$CC_BUS_HOME  CCM_CLAUDEJSON=$CCM_CLAUDEJSON"
 
 fail=0

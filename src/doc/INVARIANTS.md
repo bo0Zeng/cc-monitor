@@ -65,7 +65,7 @@ monitor 进程**一个字节都不直接写用户文件**。rc / `$PROFILE` / �
 
 **A2 多账号只读查询是本约的「读」面延伸（澄清，非例外/非松动）**：`src/backend/observe/accounts_query.rs`（monitor 那一侧已无文件：界面经通道问、后端出成品）为「按会话切账号」新增三条**纯只读**远端查询（`--list-accounts` / `--session-accounts` / `--account-trust`），**零写入**、**不 shell out**。它把后端的读面从 `<claude_dir>` 扩到三处新位置，各自有硬边界:
 
-1. **`$ACCTS_DIR/accounts.json`**（账号库的 manifest，契约 v1；写它的是后端 `accounts/manage/`，本节这条查询只读）—— 只读整份 JSON;`configDir` 视为**不可信字符串**，逐条过 shell-safe 白名单（与建账号库时判配置目录的 `acct-core::config_dir_posix_ok` 同一套字符集），不合格的账号直接丢弃。
+1. **`~/.cc-monitor/accounts/accounts.json`**（账号库的 manifest，契约 v1，位置只跟着家走；写它的是后端 `accounts/manage/`，本节这条查询只读）—— 只读整份 JSON;`configDir` 视为**不可信字符串**，逐条过 shell-safe 白名单（与建账号库时判配置目录的 `acct-core::config_dir_posix_ok` 同一套字符集），不合格的账号直接丢弃。
 2. **`/proc/<pid>/environ`** —— **只抠三个写死的键**（`CLAUDE_CONFIG_DIR` · `CCM_LAUNCH_ID` ·`ANTHROPIC_BASE_URL` —— 最后那个的值带中转钥匙，只折成「走不走本机中转」一个布尔、值本身不出参），绝不回传整个环境快照（那里面有用户全部的密钥类环境变量）。pid 来自 `<claude_dir>/sessions/<PID>.json` 的文件名。⚠ **第二个键是 `K-P5f` 加的**（会话身份 token，写侧住`local.rs::LAUNCH_ID_VAR`，本机后端 `control/launch_render/local.rs`）；**变的只是那个计数词，这条铁律一格都没松**：键名**不是参数**（后端侧两个常量），所以这条查询仍然不是「任意环境变量读」原语，也仍然绝不回传整个快照。⚠ 这句话在盘上**散着好几份副本**（`src/doc/IPC-PROTOCOL.md` 的 `--session-accounts` 那一行、后端侧 `accounts_query.rs` 头注、monitor 侧 `local_accounts.rs`）——`K-P5f` 改了其中三处、**漏了本处**，`K-P5g` 补上并把这一族副本登记进 `doc_claim_registry.rs`（那张表的判据从生产代码里数出今天真读几个键，再与每一份副本的计数词对拍）。
 3. **`<configDir>/.claude.json`** —— **只取 `projects[<cwd>].hasTrustDialogAccepted` 一个布尔**，绝不回传文件内容（内含 `mcpServers` 的环境变量，可能有 API key）。且 `configDir` **必须逐字等于 manifest 里某个账号的 configDir**，否则拒绝——否则 `--account-trust` 就退化成任意文件读原语。
 
@@ -201,7 +201,7 @@ data dir 里两类东西**语义上一刀两断**，别搅混到「迁移/重建
 | `ps-registry/` `ps-await/` | **缓存/IPC** | `bind.rs` | 跨进程握手，启动重扫 |
 | `logs/` | **缓存/派生** | `logging.rs` · 本机常驻后端 | 诊断日志：`monitor/` 是本进程按天滚动、保留 3 天（§15）；`backend/` 是脱离运行的本机后端 stderr |
 | `bin/` `staging/` `logs/backend/` `assets-catalog.json` | **缓存** | 本机后端（`bin/` 里的后端由宿主放） | 〔V160 一台机器一个家〕后端住在同一个家里、能重建的：程序（缺了重放）· 上传暂存区 · 错误输出 · 资产目录（重新扫出来、各台之间再对上） |
-| `relay-key` `listen-token` `listen-<口>.pid` `backend.json` `aliases.sh` `aliases.ps1` `skill-installs.json` `backups/` `accounts-mcp.json` `apikey-credentials.json` | **真相** | 本机后端（`listen-token` · 进程记录由宿主铸 / 写） | 删了会丢的：后端跑着时要用的两把钥匙与进程记录（删了要重起后端）· 退出行为设置 · 你建的别名 · skill / MCP 装记录 · 从「扩展」卸掉不是 cc-monitor 装的东西之前放的那一份 · 你填的 API key。名字各取契约常量（`relay_route_core` · `creds_core::store`）与宿主那一处（`logging::backend_stderr_log_path`），`data_paths.rs::backend_entries` 列它们 |
+| `relay-key` `listen-token` `listen-<口>.pid` `backend.json` `aliases.sh` `aliases.ps1` `skill-installs.json` `backups/` `accounts/` `accounts-mcp.json` `apikey-credentials.json` | **真相** | 本机后端（`listen-token` · 进程记录由宿主铸 / 写） | 删了会丢的：后端跑着时要用的两把钥匙与进程记录（删了要重起后端）· 退出行为设置 · 你建的别名 · skill / MCP 装记录 · 从「扩展」卸掉不是 cc-monitor 装的东西之前放的那一份 · 账号库（清单与每个号的登录凭据）· 你填的 API key。名字各取契约常量（`relay_route_core` · `creds_core::store`）与宿主那一处（`logging::backend_stderr_log_path`），`data_paths.rs::backend_entries` 列它们 |
 
 - **真相** = 用户手写/意图，**删了丢东西、要备份、要迁移友好**。
 - **缓存/派生** = 能从别处重建，**随便删**。
