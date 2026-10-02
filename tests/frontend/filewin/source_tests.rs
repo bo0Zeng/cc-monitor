@@ -666,7 +666,7 @@ fn the_default_order_is_byte_for_byte_what_it_was_before() {
     // 反空真 ②：「大小」那一档真的给出**不同**的序（`by` 这一格不是被忽略掉的）。
     // ⚠ 「类型」那一档在这份语料上**恰好**与名称同序（现打）：合成名字里没有点，
     //   而旧面板那个怪处让「没有点」的扩展名就是整个名字 ⇒ 按扩展名排 ＝ 按名字排。
-    //   那一档的区分力由 `sorting_by_type_matches_the_old_panel` 单独喂。
+    //   那一档的区分力由 `sorting_by_type_follows_the_type_column` 单独喂。
     let mut w = v.clone();
     sort_rows(&mut w, SortBy::Size);
     assert_ne!(
@@ -726,11 +726,9 @@ fn sorting_by_size_matches_the_old_panel() {
     );
 }
 
-/// 「类型」那一档：按扩展名 · 相持按名称 —— **连旧面板那个怪处一起照抄**：
-/// 名字里没有点时，`lastIndexOf` 回 `-1`、`slice(0)` 回**整个名字**，于是
-/// `README` 的「扩展名」是 `readme`，排在 `md` 后面、`rs` 前面。
+/// 「类型」那一列：按种类（与那一列写的字同源）、再扩展名、相持按名称；没有扩展名的照「文件」那一类排。
 #[test]
-fn sorting_by_type_matches_the_old_panel() {
+fn sorting_by_type_follows_the_type_column() {
     let mut v = vec![
         named("b.rs", false, 0),
         named("README", false, 0),
@@ -742,18 +740,24 @@ fn sorting_by_type_matches_the_old_panel() {
     sort_rows(&mut v, SortBy::Type);
     assert_eq!(
         order_of(&v),
-        ["src", "a.md", "z.MD", "README", "a.rs", "b.rs"],
-        "注意 `README` 的位置：它就是那个怪处的阴性对照 —— \
-         把「没有点就回空串」写对了的版本会把它排到文件那一段的最前面"
+        ["src", "a.md", "z.MD", "a.rs", "b.rs", "README"],
+        "文本（md）在代码（rs）前，没有扩展名的 `README` 是「文件」那一类、排最后"
     );
 }
 
-/// 下拉里那三档是**闭集**，名字与旧面板那三档一一对应，而且缺省是名称。
+/// 表头那四列是**闭集**，缺省按名称；时间与大小第一下从大到小，再点一下反过来，换一列从那一列的第一下起。
 #[test]
-fn the_sort_menu_is_the_three_old_panel_choices_and_defaults_to_name() {
+fn the_four_columns_and_how_a_click_turns_the_order() {
     assert_eq!(SortBy::default(), SortBy::Name);
     let labels: Vec<String> = SortBy::ALL.iter().map(|b| b.label()).collect();
-    assert_eq!(labels, ["名称", "大小", "类型"]);
+    assert_eq!(labels, ["名称", "修改时间", "类型", "大小"]);
+    let s = Sort::default();
+    assert!(!s.descending());
+    let t = s.after_click(SortBy::Mtime);
+    assert!(t.descending() && !t.reversed);
+    let t2 = t.after_click(SortBy::Mtime);
+    assert!(!t2.descending() && t2.reversed);
+    assert_eq!(t2.after_click(SortBy::Name), Sort::default());
 }
 
 /// 面包屑：根在最前，每一段各是一个可点的前缀；`//` 与尾巴上的 `/` 不生出空段。
@@ -795,14 +799,25 @@ fn breadcrumbs_are_every_prefix_with_the_root_first() {
 
 // 「逆向日历算法与正向那一份互为逆」要 monitor `utils::days_from_civil` 当异源正向 ⇒ 挪到 `tests/frontend/shell/filewin/cross_half_tests.rs`。
 
-/// 修改时间那一列写什么：UTC，尾巴上一个 `Z`。
+/// 修改时间按本机时区画：今年的省年份、往年的带年份、不带 `Z`；完整时间到秒；时区差跨日也对（期望手写）。
 #[test]
-fn a_modification_time_is_printed_in_utc_and_says_so() {
-    assert_eq!(format_mtime(0), "1970-01-01 00:00Z");
+fn a_modification_time_is_printed_in_local_time_short_this_year() {
     // 2023-11-14T22:13:20Z（`date -u -d @1700000000` 现打）。
-    assert_eq!(format_mtime(1_700_000_000), "2023-11-14 22:13Z");
+    let t = mtime_text_at(1_700_000_000, 0, 2026);
+    assert_eq!(
+        (t.short.as_str(), t.full.as_str()),
+        ("2023-11-14 22:13", "2023-11-14 22:13:20")
+    );
+    // 东八区：跨过午夜进了第二天；同一年 ⇒ 省年份。
+    let t = mtime_text_at(1_700_000_000, 8 * 3600, 2023);
+    assert_eq!(
+        (t.short.as_str(), t.full.as_str()),
+        ("11-15 06:13", "2023-11-15 06:13:20")
+    );
+    // 西五区：纪元零点往回退进 1969 年。
+    assert_eq!(mtime_text_at(0, -5 * 3600, 2026).short, "1969-12-31 19:00");
     // 闰日。
-    assert_eq!(format_mtime(951_782_400), "2000-02-29 00:00Z");
+    assert_eq!(mtime_text_at(951_782_400, 0, 2000).short, "02-29 00:00");
 }
 
 /// `files-ls` 那份声明里的字段名 —— **现读后端源码**（`files.ls` 那条 `Capability` 的 `fields`）。

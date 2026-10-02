@@ -233,7 +233,8 @@ pub const CAPABILITIES: &[Capability] = &[
         targets: TARGETS,
         args: &["path"],
         // +`mode`（unix 权限位低 12 位；非 unix 缺席）—— 文件窗口改权限那个框要显示现值。
-        fields: &["kind", "mode", "mtime_secs", "path", "readonly", "size"],
+        // +`owner` · `link_target`：文件窗口「属性」要列属主与链接指向（取不到 / 不是链接 ⇒ `null`）。
+        fields: &["kind", "link_target", "mode", "mtime_secs", "owner", "path", "readonly", "size"],
         codes: &["bad_path", "unreadable"],
     },
     Capability {
@@ -709,6 +710,18 @@ fn answer_stat(args: &serde_json::Value) -> Answer {
     if let Some(ms) = epoch_secs(md.modified()) {
         out.insert("mtime_secs".to_string(), serde_json::json!(ms));
     }
+    // 属主（跟链接，同上几格）：用户名，查不到名字给 uid 数字串；非 unix 给 `null`。
+    out.insert(
+        "owner".to_string(),
+        serde_json::json!(crate::platform::paths::owner_of(&path)),
+    );
+    // 路径**本身**是不是链接（`readlink` 读得出 ⇒ 是）：是 ⇒ 目标原文（原始字节形）；否 ⇒ `null`。
+    out.insert(
+        "link_target".to_string(),
+        crate::platform::paths::link_target_of(&path).map_or(serde_json::Value::Null, |t| {
+            raw::to_json(raw::path_bytes(&t))
+        }),
+    );
     Ok(serde_json::Value::Object(out))
 }
 

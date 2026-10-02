@@ -115,7 +115,7 @@ async fn clicking_upload_then_ok_runs_the_drop_path_over_the_channel() {
             events: ev,
             ..Default::default()
         };
-        let out = ctx.run_ui(input, |ui| w.frame_body(ui));
+        let out = ctx.run_ui(input, |ui| crate::chrome::testing::pane_with_chrome(ui, w));
         let p = crate::copy::testing::text_in_frame(&out);
         out.drop_without_applying_deltas();
         p

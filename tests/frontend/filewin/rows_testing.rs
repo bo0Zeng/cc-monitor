@@ -16,13 +16,14 @@ pub fn render_headless_nonvirtual(
     };
     let out = ctx.run_ui(input, |ui| {
         let mut t = RenderTally::default();
+        ui.spacing_mut().item_spacing.y = 0.0;
         ScrollArea::vertical()
             .auto_shrink([false; 2])
             .show(ui, |ui| {
                 for (i, r) in rows.iter().enumerate() {
                     t.rows_materialized += 1;
                     t.last_row = i + 1;
-                    paint_one_row(ui, i, r, false, Mark::default());
+                    paint_one_row(ui, i, r, false, Mark::default(), &Columns::default());
                 }
             });
         t.total_rows = rows.len();
@@ -53,9 +54,8 @@ pub fn render_headless_with_events(
 
 /// 同 [`render_headless_with_events`]，**另外**把这一帧真的画出来的文字带回来。
 ///
-/// 🔴它存在的理由只有一个：行上那颗「复制」按钮在屏幕上的位置，
-/// 判据自己算不出来（由字体宽度与布局决定）。⇒ 从**画出来的东西**里找它 ——
-/// 内容正好是 `copy::COPY_LABEL` 的那一段文字，它的矩形就是那颗按钮的位置。
+/// 🔴它存在的理由：一段字（名字 · 时间 · 图标）在屏幕上的位置判据自己算不出来（由字体宽度与布局决定）
+/// ⇒ 从**画出来的东西**里找它。
 ///
 /// ⚠ 这样判据就**不需要**在生产里开一个「把按钮矩形吐出来」的测试专用出口
 /// （那正是「把测试形状写进生产签名」那一形）。
@@ -75,7 +75,7 @@ pub fn render_headless_with_events_and_text(
     };
     let out = ctx.run_ui(input, |ui| {
         let mut t = RenderTally::default();
-        show_file_rows(ui, rows, &mut t, Some(0.0), None, None);
+        show_file_rows(ui, rows, &mut t, Some(0.0), None, None, &Columns::default());
         tally = t;
     });
     let painted = crate::copy::testing::text_in_frame(&out);

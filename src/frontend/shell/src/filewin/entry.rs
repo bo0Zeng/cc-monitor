@@ -172,8 +172,11 @@ pub async fn open_file_window(
     cfg: RemoteConfig,
     path: String,
     reveal_file: Option<String>,
+    theme: std::collections::BTreeMap<String, String>,
 ) -> Result<usize, String> {
     use tauri::{Emitter, Manager};
+    // 窗口的样子：主界面此刻 `:root` 上的那一套（含用户改过的）解成数。解不出来就不开（不替它补一套）。
+    let theme = filewin_contract::Theme::from_tokens(&theme)?;
     // 主窗所在那台显示器的工作区（窗口进程开出来第一拍夹进它）。
     let work_area = app
         .get_webview_window(crate::MAIN_WINDOW_LABEL)
@@ -191,7 +194,7 @@ pub async fn open_file_window(
             tracing::warn!("文件窗口没了那一条没有发出去：{e}");
         }
     });
-    open_with(cfg, path, reveal_file, work_area, late).await
+    open_with(cfg, path, reveal_file, work_area, theme, late).await
 }
 
 /// 文件窗口开出来之后又退了那一形在 `remote-health` 上的 `kind`（界面 `remote-health.ts` 按它选标题）。
@@ -203,6 +206,7 @@ pub(crate) async fn open_with(
     path: String,
     reveal_file: Option<String>,
     work_area: Option<host_core::WorkArea>,
+    theme: filewin_contract::Theme,
     late: super::proc::LateExit,
 ) -> Result<usize, String> {
     // 窗口进程只拿那台的名字（寻址用，`origin_label` 口径）；它不认识 monitor 的配置类型。
@@ -228,6 +232,7 @@ pub(crate) async fn open_with(
         bookmarks,
         machines: machine_names(),
         work_area,
+        theme,
     };
     // 🔴**起一个独立进程**；〔09-28 裁 3〕它先列第一屏、说一行，再开窗。
     //
@@ -245,6 +250,39 @@ pub(crate) async fn open_with(
     let (pid, n) = opened.map_err(unopened_said)?;
     tracing::info!("文件窗口起在进程 {pid} 上（第一屏 {n} 行，它自己列的）");
     Ok(n)
+}
+
+/// 文件窗口左栏「其他机器」点了一台 ⇒ 窗口经通道 `call` 那一条（`filewin_contract::FILEWIN_OPEN_OP`，寻址 ＝ 要开的那台），
+/// monitor 在这里接：按名字取那台的配置，照开窗入口同一条路（[`open_with`]）起一个新的窗口进程，开在那台的 home。
+/// 样子沿用发起那扇窗开窗时的那一套（参数里带来）；工作区不夹（这一跳手上没有主窗）。
+pub(crate) async fn open_from_window(
+    machine: &str,
+    args: &serde_json::Value,
+) -> Result<(), (&'static str, String)> {
+    // 本机没有文件窗口（窗口只开在远端上）⇒ 说真实原因，不让下面那句「没有叫 <local> 的远端配置」出声。
+    if machine == crate::inbound_client::LOCAL_ORIGIN {
+        return Err((
+            "local_has_no_file_window",
+            copy_text("rsFilewinEntry.other.localNone", &[]),
+        ));
+    }
+    let Some(theme) = filewin_contract::filewin_open_theme(args) else {
+        return Err(("bad_args", copy_text("rsFilewinEntry.other.badArgs", &[])));
+    };
+    let Some(cfg) = crate::load_remote_config_by_label(machine) else {
+        return Err((
+            "no_such_origin",
+            copy_text(
+                "rsFilewinEntry.other.noConfig",
+                &[("machine", &machine.to_string())],
+            ),
+        ));
+    };
+    let late: super::proc::LateExit = Box::new(|said| tracing::warn!("另开的文件窗口退了：{said}"));
+    open_with(cfg, String::new(), None, None, theme, late)
+        .await
+        .map(|_| ())
+        .map_err(|why| ("open_failed", why))
 }
 
 /// 开窗没成 ⇒ 给 webview 的那一句。窗口进程列不出来时说的那句**原话原样**交出去（与上一版 monitor 自己列不出来时回的是同一句）；

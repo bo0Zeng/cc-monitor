@@ -22,7 +22,7 @@ vi.mock("@tauri-apps/api/core", () => ({
 const toastMock = vi.fn();
 vi.mock("../../../src/frontend/ui/error-toast", () => ({ showActionFailureToast: (...a: unknown[]) => toastMock(...a) }));
 
-import { openFileWindow } from "../../../src/frontend/ui/file-window";
+import { openFileWindow, fileWindowTheme, FILE_WINDOW_THEME_TOKENS } from "../../../src/frontend/ui/file-window";
 import type { RemoteHostConfig } from "../../../src/frontend/ui/remote-config";
 import { productionTsFiles, SCAN_TIMEOUT_MS } from "../../test-support/production-sources";
 import { stripComments } from "../../test-support/strip-comments";
@@ -52,13 +52,23 @@ describe("F7b 开口：三种落点 → open_file_window 的实参", () => {
     expect(await openFileWindow(CFG)).toBe(true);
     expect(invokeMock.mock.calls).toEqual([
       // `path` 非空 ⇒ Rust 侧 `Target::Dir`
-      ["open_file_window", { cfg: CFG, path: "/srv/data", revealFile: null }],
+      ["open_file_window", { cfg: CFG, path: "/srv/data", revealFile: null, theme: fileWindowTheme() }],
       // `path` 空 ＋ `revealFile` ⇒ `Target::Reveal`（父目录与尾段由 Rust 侧切，这里原样交）
-      ["open_file_window", { cfg: CFG, path: "", revealFile: "/srv/data/a.md" }],
+      ["open_file_window", { cfg: CFG, path: "", revealFile: "/srv/data/a.md", theme: fileWindowTheme() }],
       // 两个都空 ⇒ `Target::Home`
-      ["open_file_window", { cfg: CFG, path: "", revealFile: null }],
+      ["open_file_window", { cfg: CFG, path: "", revealFile: null, theme: fileWindowTheme() }],
     ]);
     expect(toastMock, "成功那一支不该出声（窗口自己出现就是回应）").not.toHaveBeenCalled();
+  });
+
+  it("样子那一格：名单上每个令牌都带上，值取的是 `:root` 此刻的计算值（含用户改过的）", async () => {
+    invokeMock.mockResolvedValue(1);
+    document.documentElement.style.setProperty("--accent", "#123456");
+    await openFileWindow(CFG);
+    document.documentElement.style.removeProperty("--accent");
+    const theme = (invokeMock.mock.calls[0][1] as { theme: Record<string, string> }).theme;
+    expect(Object.keys(theme).sort()).toEqual([...FILE_WINDOW_THEME_TOKENS].sort());
+    expect(theme["--accent"]).toBe("#123456");
   });
 
   it("开不起来 ⇒ 带着 Rust 侧原文出声，回 false", async () => {

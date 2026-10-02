@@ -931,7 +931,7 @@ impl WriteBoard {
                     &[("n", &(asking.len()).to_string())],
                 ));
                 ui.colored_label(
-                    egui::Color32::from_rgb(0xE0, 0x9A, 0x20),
+                    ui.visuals().warn_fg_color,
                     &copy_text("rsFilewinWriteops.confirm.warn", &[]),
                 );
                 for (i, o) in asking.iter().enumerate() {
@@ -966,7 +966,7 @@ impl WriteBoard {
         if let Some(o) = &last {
             if !o.failed.is_empty() {
                 ui.colored_label(
-                    egui::Color32::RED,
+                    ui.visuals().error_fg_color,
                     copy_text(
                         "rsFilewinWriteops.result.failed",
                         &[

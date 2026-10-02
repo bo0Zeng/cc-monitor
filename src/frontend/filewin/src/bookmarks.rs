@@ -178,6 +178,11 @@ pub static ADD_LABEL: std::sync::LazyLock<String> =
 pub static DROP_LABEL: std::sync::LazyLock<String> =
     std::sync::LazyLock::new(|| copy_text("rsFilewinBookmarks.label.drop", &[]));
 /// 每条书签后面那颗「删掉」。
+/// 地址栏右端那颗星：不在书签里 ☆ · 在 ★（悬停说 [`ADD_LABEL`] / [`DROP_LABEL`]）。
+pub static STAR_OFF: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| copy_text("rsFilewinBookmarks.star.off", &[]));
+pub static STAR_ON: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| copy_text("rsFilewinBookmarks.star.on", &[]));
 pub static REMOVE_LABEL: std::sync::LazyLock<String> =
     std::sync::LazyLock::new(|| copy_text("rsFilewinBookmarks.label.remove", &[]));
 
@@ -267,55 +272,6 @@ impl Shelf {
     pub fn remove(&self, dir: &str) -> bool {
         let d = dir.to_string();
         self.write(move |list| remove_in(list, &d))
-    }
-
-    /// 画书签栏：切换按钮 ＋ 一排书签。回值 ＝ 用户点了哪一条（要跳过去的目录）。
-    ///
-    /// ⚠ 跳转**不在这里做**：这一行画在 `FileWindow::frame_body` 借着 `&mut self` 的那段里，
-    ///   跳转收在帧尾（同面包屑那一格的理由）。
-    pub fn bar_ui(&self, ui: &mut egui::Ui, cwd: &str) -> Option<String> {
-        let mut go = None;
-        let mut toggle = false;
-        let mut drop: Option<String> = None;
-        let here = self.contains(cwd);
-        ui.horizontal_wrapped(|ui| {
-            if ui
-                .small_button(if here {
-                    DROP_LABEL.as_str()
-                } else {
-                    ADD_LABEL.as_str()
-                })
-                .clicked()
-            {
-                toggle = true;
-            }
-            for d in self.list() {
-                if ui
-                    .small_button(&d)
-                    .on_hover_text(&copy_text("rsFilewinBookmarks.bar.jumpHint", &[]))
-                    .clicked()
-                {
-                    go = Some(d.clone());
-                }
-                if ui
-                    .small_button(REMOVE_LABEL.as_str())
-                    .on_hover_text(&copy_text("rsFilewinBookmarks.bar.removeHint", &[]))
-                    .clicked()
-                {
-                    drop = Some(d);
-                }
-            }
-        });
-        if let Some(n) = self.notice() {
-            ui.colored_label(egui::Color32::from_rgb(0xFF, 0xA5, 0x00), n);
-        }
-        if toggle {
-            self.toggle(cwd);
-        }
-        if let Some(d) = drop {
-            self.remove(&d);
-        }
-        go
     }
 }
 

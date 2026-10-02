@@ -366,6 +366,8 @@ const MONITOR_SIDE: &[(&str, Kind)] = &[
     ("ssh_source::RemoteConfig", Kind::Config),
     // 开窗种子带上机器名单（「复制到另一台」那一问的下拉）：已有的配置读口，不新建数据源。
     ("load_remote_configs", Kind::Config),
+    // 左栏「其他机器」点一台：按名字取那台的配置（与「在此打开终端」同一个读口）。
+    ("load_remote_config_by_label", Kind::Config),
     // 名单里本机那一项的名字：从前借窗口那一侧 `cross_copy::LOCAL_ORIGIN`，窗口独立成包之后引 monitor 自己那一份哨兵值。
     ("inbound_client::LOCAL_ORIGIN", Kind::Config),
     ("config::resolve_monitor_data_dir", Kind::DataDir), // 原 `paths::`（`paths.rs` 并进 `config.rs`）
@@ -428,10 +430,10 @@ fn edges_by_process() -> (
     let window_files = guard_core::scan_tree_excluding(&window_crate_dir(), &["rs"], &[]);
     // 🔴 两侧人群都现数（恒等，不是地板）：塌成空集时下面那两条相等**照样成立**。
     // 壳里 `filewin/` 现打 4 份（mod · entry · proc · win_main）；窗口包现打 29 份（搬家前那 31 份里 27 份整份搬来 ＋ 新 `proc.rs`（窗口进程那一半）＋ `guard_support.rs`）。
-    // 29 → 30：窗口包的平台层 `platform.rs`。
+    // 29 → 30：窗口包的平台层 `platform.rs`。30 → 34：样子 `theme.rs` · 窗口的框 `chrome.rs` · 文件种类 `kind.rs` · 属性框 `props.rs`。
     assert_eq!(
         (inside.len(), window_files.len()),
-        (4, 30),
+        (4, 34),
         "两侧扫到的 `.rs` 份数变了 —— 遍历器坏了，或者两侧有人加 / 删了文件（先回答那份住哪一侧，再改这个数）"
     );
     let root = repo_root();
@@ -597,8 +599,13 @@ fn every_declared_edge_falls_in_a_live_category() {
 // ② 反向：app 侧只许有**一条门** —— 零命中守卫
 // ═══════════════════════════════════════════════════════════════════
 
-/// ★ 那条门逐字。**一条，恰好一条。**
-const SITES: &[&str] = &["filewin::entry::open_file_window"];
+/// ★ 那几条门逐字（两向相等）。
+/// 第二条：通道上 monitor 自己接的「开另一台的文件窗口」（`chan/host.rs` 分派过来）—— 窗口不起进程，
+/// 左栏点另一台只能请 monitor 照开窗入口同一条路另起一个；它与那条 Tauri 命令共用 `entry::open_with`。
+const SITES: &[&str] = &[
+    "filewin::entry::open_file_window",
+    "filewin::entry::open_from_window",
+];
 
 /// ★★ **app 侧够到文件管理器的，除了那条 Tauri 命令之外一处都没有。**
 ///

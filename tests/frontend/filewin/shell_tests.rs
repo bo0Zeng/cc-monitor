@@ -298,19 +298,74 @@ fn file_row(name: &str) -> Row {
     }
 }
 
-/// 🔴 **胶水那一跳有判据了**：列表说「第 i 行的复制被点了」→ 窗口摆出「复制为」框。
-///
-/// ⚠ 它判的正是 `show_file_rows` 与 `begin_copy` **中间**那一跳 ——
-/// 两头各自都有判据，而这一跳写在 `ui()` 里的话谁都没在看
-/// （第一刀栽过的那一形：判据钉的是副本，生产那一份没人管）。
+/// 只选中第 `i` 行（键盘那一路：Home 到第 0 行，再往下走 `i` 步）。
+fn pick_row(w: &mut FileWindow, i: usize) {
+    w.apply_intent(
+        crate::select::Intent::Edge {
+            end: false,
+            extend: false,
+        },
+        0.0,
+        None,
+    );
+    for _ in 0..i {
+        w.apply_intent(
+            crate::select::Intent::Step {
+                by: 1,
+                extend: false,
+            },
+            0.0,
+            None,
+        );
+    }
+}
+
+/// 真走一趟右键菜单：右键名字是 `row_name` 的那一行 ⇒ 菜单摆出来 ⇒ 真点菜单上写着 `label` 的那一项。
+fn menu_pick(ctx: &egui::Context, w: &mut FileWindow, row_name: &str, label: &str) {
+    let mut t = 0.0;
+    let mut paint = |w: &mut FileWindow, ev: Vec<egui::Event>| {
+        t += 0.1;
+        crate::copy::testing::painted_text(ctx, egui::vec2(1280.0, 800.0), t, ev, |ui| {
+            w.frame_body(ui)
+        })
+    };
+    let _ = paint(w, Vec::new());
+    let painted = paint(w, Vec::new());
+    let at = crate::copy::testing::rects_of(&painted, row_name);
+    assert_eq!(at.len(), 1, "这一帧上没有那一行「{row_name}」：{painted:?}");
+    let pos = at[0].center();
+    let _ = paint(w, vec![egui::Event::PointerMoved(pos)]);
+    let right = |pressed| egui::Event::PointerButton {
+        pos,
+        button: egui::PointerButton::Secondary,
+        pressed,
+        modifiers: egui::Modifiers::default(),
+    };
+    let _ = paint(w, vec![right(true), right(false)]);
+    assert!(w.menu().is_some(), "右键那一行没摆出菜单");
+    let painted = paint(w, Vec::new());
+    let items = crate::copy::testing::rects_of(&painted, label);
+    assert_eq!(items.len(), 1, "菜单上没有「{label}」：{painted:?}");
+    let at = items[0].center();
+    let _ = paint(w, vec![egui::Event::PointerMoved(at)]);
+    let _ = paint(w, crate::rows::testing::click_at(at));
+}
+
+/// 🔴 菜单 / 键盘那一下「复制」→ 窗口摆出「复制为」框，摆的是选中的那一行。
 #[test]
-fn a_copy_click_from_the_list_puts_up_the_rename_box_for_that_row() {
+fn a_copy_from_the_menu_puts_up_the_rename_box_for_that_row() {
     let mut w = remote_window_with_rows("/srv/data", vec![file_row("a.bin"), file_row("b.bin")]);
     assert!(w.copy_prompt().is_none(), "什么都没点就摆出了框");
-    assert!(!w.apply_copy_click(), "没人点却说摆出来了");
+    assert!(
+        !w.perform(crate::select::Action::Copy, None),
+        "没选中却说摆出来了"
+    );
 
-    w.tally.copy_clicked = Some(1);
-    assert!(w.apply_copy_click(), "第 1 行的复制被点了，框却没摆出来");
+    pick_row(&mut w, 1);
+    assert!(
+        w.perform(crate::select::Action::Copy, None),
+        "第 1 行的复制点了，框却没摆出来"
+    );
     let p = w.copy_prompt().expect("框不见了");
     // 相等断言，逐项：摆的是**那一行**、目标落在**当前目录**、缺省名同旧面板。
     assert_eq!(p.from, "/srv/data/b.bin");
@@ -369,8 +424,8 @@ fn a_copy_with_no_runtime_says_so_instead_of_doing_nothing() {
 #[test]
 fn an_impossible_new_name_keeps_the_box_up_and_says_why() {
     let mut w = remote_window_with_rows("/srv/data", vec![file_row("a.bin")]);
-    w.tally.copy_clicked = Some(0);
-    assert!(w.apply_copy_click());
+    pick_row(&mut w, 0);
+    assert!(w.perform(crate::select::Action::Copy, None));
 
     for bad in ["", "   ", "sub/a.bin", "a.bin"] {
         *w.listing.error.lock().unwrap() = None;
@@ -514,6 +569,7 @@ fn xvfb_worker_opens_a_real_window() {
         None,
         Vec::new(),
         None,
+        Some(crate::theme::testing::default_theme()),
     );
 
     let ids = xvfb::wait_for_windows(&display, WINDOW_NEEDLE, 20_000);
@@ -637,6 +693,7 @@ fn xvfb_worker_opens_with_no_x_server_at_all() {
         None,
         Vec::new(),
         None,
+        None,
     );
     let (verdict, why) = join_verdict(h, 30_000);
     xvfb::emit("n.run_native", verdict);
@@ -725,7 +782,7 @@ fn scenario_a() -> &'static crate::rows::testing::xvfb::ChildRun {
 /// - **窗口里面的交互这一格买不到**：生产那个窗口没有可观测出口（判据读不到它的
 ///   `tally`），而生产那棵树不许改。那一维由 `rows` 那一格买 ——
 ///   同一条 `run_native` 路、同一个生产行画函数，见
-///   `a_real_pointer_click_on_the_copy_button_comes_back_as_that_row`。
+///   `a_real_pointer_click_on_a_row_comes_back_as_that_row`。
 #[cfg(not(windows))]
 #[test]
 fn the_native_window_really_comes_up_on_a_real_graphics_session() {
@@ -1123,21 +1180,29 @@ fn lossy_row() -> Row {
     }
 }
 
-/// 🔴 **胶水三跳有判据了**：列表说「第 i 行的改名 / 权限 / 删除被点了」→ 窗口接上去。
-///
-/// 与 `a_copy_click_from_the_list_puts_up_the_rename_box_for_that_row` 逐字同一个理由：
-/// 两头各自都有判据，而这三跳写在 `frame_body` 里的话**谁都没在看**。
+/// 🔴 菜单 / 键盘那一下「改名」「权限」→ 窗口接到选中的那一行上。
 #[test]
-fn a_write_click_from_the_list_reaches_the_right_row() {
+fn a_write_from_the_menu_reaches_the_right_row() {
     let mut w = remote_window_with_rows("/srv/data", vec![file_row("a.bin"), dir_row("sub")]);
     assert!(w.write_prompt().is_none(), "什么都没点就摆出了框");
-    assert!(!w.apply_write_clicks(None), "没人点却说接上了一跳");
-
-    // 改名：点第 1 行（那是个**目录** —— 目录也能改名）。
-    w.tally.rename_clicked = Some(1);
     assert!(
-        w.apply_write_clicks(None),
-        "第 1 行的改名被点了，框却没摆出来"
+        !w.perform(crate::select::Action::Rename, None),
+        "没选中却说接上了一跳"
+    );
+
+    // 改名：第 1 行（那是个**目录** —— 目录也能改名；排序目录在前 ⇒ 它在第 0 行）。
+    let i = w
+        .listing
+        .rows
+        .lock()
+        .unwrap()
+        .iter()
+        .position(|r| r.name == "sub")
+        .unwrap();
+    pick_row(&mut w, i);
+    assert!(
+        w.perform(crate::select::Action::Rename, None),
+        "目录那一行的改名点了，框却没摆出来"
     );
     let p = w.write_prompt().expect("框不见了").clone();
     assert_eq!(p.src_name, "sub");
@@ -1149,11 +1214,18 @@ fn a_write_click_from_the_list_reaches_the_right_row() {
         "预填原名之后直接确定应当被拒（没有要改的东西）"
     );
 
-    // 权限：点第 0 行。
-    w.tally = crate::rows::RenderTally::default();
+    // 权限：文件那一行。
     w.cancel_write();
-    w.tally.chmod_clicked = Some(0);
-    assert!(w.apply_write_clicks(None));
+    let j = w
+        .listing
+        .rows
+        .lock()
+        .unwrap()
+        .iter()
+        .position(|r| r.name == "a.bin")
+        .unwrap();
+    pick_row(&mut w, j);
+    assert!(w.perform(crate::select::Action::Chmod, None));
     let p = w.write_prompt().expect("框不见了").clone();
     assert_eq!(p.src_name, "a.bin");
     assert_eq!(p.text, "", "权限那个框预填了东西 —— 那必然是猜的");
@@ -1165,8 +1237,11 @@ fn a_write_click_from_the_list_reaches_the_right_row() {
 #[test]
 fn a_delete_click_goes_straight_to_the_batch_and_says_so_when_it_cannot_run() {
     let mut w = remote_window_with_rows("/srv/data", vec![file_row("a.bin")]);
-    w.tally.delete_clicked = Some(0);
-    assert!(!w.apply_write_clicks(None), "没有运行时却说起得来");
+    pick_row(&mut w, 0);
+    assert!(
+        !w.perform(crate::select::Action::Delete, None),
+        "没有运行时却说起得来"
+    );
     assert!(
         w.write_prompt().is_none(),
         "删除竟然摆出了一个「叫什么名字」的框"
@@ -1284,7 +1359,17 @@ fn the_hit_list_can_never_hand_the_window_a_row_index() {
             )),
             ..Default::default()
         },
-        |ui| crate::rows::show_file_rows(ui, &rows, &mut rt, Some(0.0), None, None),
+        |ui| {
+            crate::rows::show_file_rows(
+                ui,
+                &rows,
+                &mut rt,
+                Some(0.0),
+                None,
+                None,
+                &crate::rows::Columns::default(),
+            )
+        },
     );
     out.drop_without_applying_deltas();
     assert_eq!(rt.rows_materialized, 1);
@@ -1348,8 +1433,8 @@ fn the_window_starts_a_batch_through_the_shared_three_step_function() {
 /// 被剥出来之前，这个窗口每一帧真正画的那段代码一条判据都没有）。
 ///
 /// 本条走的是生产那一条：
-/// `frame_body` → `show_file_rows`（真合成事件）→ `RenderTally::delete_clicked`
-/// → `apply_write_clicks` → `begin_delete` → `start_writes` → `run_writes`
+/// `frame_body` → `show_file_rows`（真合成右键）→ `RenderTally::menu_clicked`
+/// → `apply_menu_click` → 菜单（真点「删除」那一项）→ `perform` → `start_writes` → `run_writes`
 /// → 一次问完 → `apply_remote` → `WriteBoard::finish`。
 ///
 /// # 为什么它不需要一条真连接（而仍然是真读数）
@@ -1397,31 +1482,39 @@ async fn a_real_click_on_delete_walks_the_whole_chain_even_on_a_session_file() {
         Vec::new(),
         |ui| w.frame_body(ui),
     );
-    let buttons = crate::copy::testing::rects_of(&painted, DELETE_LABEL.as_str());
+    let names = crate::copy::testing::rects_of(&painted, "abc-123.jsonl");
     assert_eq!(
-        buttons.len(),
+        names.len(),
         1,
-        "这一帧上没有那颗「{}」—— 行上那三颗写按钮没画出来，\
-         或者 `frame_body` 走的是命中那一支",
+        "这一帧上没有那一行 —— `frame_body` 走的是命中那一支？"
+    );
+    let pos = names[0].center();
+    // 第二帧：移到那一行上；第三帧：真右键 ⇒ 菜单摆出来。
+    let paint = |w: &mut FileWindow, t: f64, ev: Vec<egui::Event>| {
+        crate::copy::testing::painted_text(&ctx, egui::vec2(1280.0, 800.0), t, ev, |ui| {
+            w.frame_body(ui)
+        })
+    };
+    let _ = paint(&mut w, 0.2, vec![egui::Event::PointerMoved(pos)]);
+    let right = |pressed| egui::Event::PointerButton {
+        pos,
+        button: egui::PointerButton::Secondary,
+        pressed,
+        modifiers: egui::Modifiers::default(),
+    };
+    let _ = paint(&mut w, 0.3, vec![right(true), right(false)]);
+    assert!(w.menu().is_some(), "右键那一行没摆出菜单");
+    let painted = paint(&mut w, 0.4, Vec::new());
+    let items = crate::copy::testing::rects_of(&painted, DELETE_LABEL.as_str());
+    assert_eq!(
+        items.len(),
+        1,
+        "菜单上没有「{}」：{painted:?}",
         DELETE_LABEL.as_str()
     );
-    let pos = buttons[0].center();
-
-    // 第二帧：移到按钮上；第三帧：真点下去 ⇒ 整条链在这一帧里跑完前半。
-    let _ = crate::copy::testing::painted_text(
-        &ctx,
-        egui::vec2(1280.0, 800.0),
-        0.2,
-        vec![egui::Event::PointerMoved(pos)],
-        |ui| w.frame_body(ui),
-    );
-    let _ = crate::copy::testing::painted_text(
-        &ctx,
-        egui::vec2(1280.0, 800.0),
-        0.3,
-        crate::rows::testing::click_at(pos),
-        |ui| w.frame_body(ui),
-    );
+    let at = items[0].center();
+    let _ = paint(&mut w, 0.5, vec![egui::Event::PointerMoved(at)]);
+    let _ = paint(&mut w, 0.6, crate::rows::testing::click_at(at));
 
     // 那一摞是异步跑的 ⇒ 先等那一问摆出来（**不靠睡一个猜出来的时长**：等那个可观测的状态）。
     for _ in 0..200 {
@@ -1433,7 +1526,7 @@ async fn a_real_click_on_delete_walks_the_whole_chain_even_on_a_session_file() {
     assert!(
         w.write_board.is_asking(),
         "点了会话文件那一行的「删除」，那一问没摆出来 —— 有东西在问答之前把它拦了，\
-         或者胶水那一跳断了（`apply_write_clicks` 没接上 / `frame_body` 没调它）"
+         或者菜单那一跳断了（`apply_menu_click` / `perform` 没接上）"
     );
     assert_eq!(
         w.write_board
@@ -1489,16 +1582,16 @@ async fn a_real_click_on_delete_walks_the_whole_chain_even_on_a_session_file() {
 // **它的靶子还在不在** —— 两个问题不一样，混起来就会把真判据当兼容债删掉。
 //
 // ════════════════════════════════════════════════════════════════════════
-// 🔴往外拖 —— 行上那颗「下载」到窗口那两问
+// 🔴往外拖 —— 菜单上「下载」到窗口那两问
 // ════════════════════════════════════════════════════════════════════════
 
-/// 🔴🔴 **整条链一趟走完**：真点一下行上那颗「下载」→ 第一问摆出来了。
+/// 🔴🔴 **整条链一趟走完**：右键那一行、真点菜单上「下载」→ 第一问摆出来了。
 ///
 /// # 它与 `download_tests` 那 11 条各买什么（别读重）
 ///
 /// 那 11 条判的是 `download.rs` 里的**纯逻辑**（落点怎么算、三支裁决、那一格状态）。
 /// 本条判的是**它们真的被接上了**：`frame_body` → `show_file_rows` →
-/// `RenderTally::download_clicked` → `apply_pull_click` → `begin_pull`，五跳一跳不跳。
+/// `RenderTally::menu_clicked` → `apply_menu_click` → 菜单 → `perform` → `begin_pull`，一跳不跳。
 /// 本仓那条「判据不在执行链上就等于不存在」在本会话里已经抓到过两次同一形。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_real_click_on_download_opens_the_destination_question() {
@@ -1519,54 +1612,7 @@ async fn a_real_click_on_download_opens_the_destination_question() {
     let ctx = egui::Context::default();
 
     // 第一帧：建字体图集 ＋ 让上一帧的 widget 表有内容（命中测试按上一帧做）。
-    let _ = crate::find::testing::frame_text(&ctx, &mut w, Vec::new());
-    let painted = crate::copy::testing::painted_text(
-        &ctx,
-        egui::vec2(1280.0, 800.0),
-        0.1,
-        Vec::new(),
-        |ui| w.frame_body(ui),
-    );
-    let buttons = crate::copy::testing::rects_of(&painted, DOWNLOAD_LABEL.as_str());
-    assert_eq!(
-        buttons.len(),
-        1,
-        "这一帧上没有那颗「{DOWNLOAD_LABEL}」（实得 {} 处）—— \
-         行上那颗按钮没画出来，或者 `frame_body` 走的是命中那一支",
-        buttons.len(),
-        DOWNLOAD_LABEL = DOWNLOAD_LABEL.as_str()
-    );
-    let pos = buttons[0].center();
-
-    // 第二帧：移上去；第三帧：真按下去。
-    let _ = crate::copy::testing::painted_text(
-        &ctx,
-        egui::vec2(1280.0, 800.0),
-        0.2,
-        vec![egui::Event::PointerMoved(pos)],
-        |ui| w.frame_body(ui),
-    );
-    let _ = crate::copy::testing::painted_text(
-        &ctx,
-        egui::vec2(1280.0, 800.0),
-        0.3,
-        vec![
-            egui::Event::PointerMoved(pos),
-            egui::Event::PointerButton {
-                pos,
-                button: egui::PointerButton::Primary,
-                pressed: true,
-                modifiers: egui::Modifiers::default(),
-            },
-            egui::Event::PointerButton {
-                pos,
-                button: egui::PointerButton::Primary,
-                pressed: false,
-                modifiers: egui::Modifiers::default(),
-            },
-        ],
-        |ui| w.frame_body(ui),
-    );
+    menu_pick(&ctx, &mut w, "报表.csv", DOWNLOAD_LABEL.as_str());
 
     match w.pull_ask() {
         Some(Ask::Dest {
@@ -1639,101 +1685,14 @@ async fn confirming_onto_an_existing_file_switches_to_the_overwrite_question() {
     let _ = std::fs::remove_dir_all(&root);
 }
 
-/// 🔴 目录与有损名那两行上**一颗「下载」都不画**。
-///
-/// # 它补的洞是量出来的（刀③）
-///
-/// 死值验：把 `rows.rs` 里那道 `is_downloadable` 闸拆掉（对每一行都画）
-/// ⇒ **一条判据都不红**。而后果是一颗**死按钮**：点它 `begin_pull` 会再判一次
-/// 然后什么都不做 ⇒ 屏幕上「点了没反应」，与「这个功能坏了」同形。
-///
-/// ⚠ `download_tests::only_a_plain_addressable_file_can_be_pulled` 判的是**那个谓词**，
-/// 买不到「画不画」—— 两件事差着一跳，而那一跳正是这条要钉的。
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn no_download_button_is_painted_on_rows_that_cannot_be_pulled() {
-    use crate::download::DOWNLOAD_LABEL;
-    let mut w = FileWindow::seeded(
-        Source::remote(synth_cfg("pull-gate")),
-        "/srv/data".to_string(),
-        tokio::runtime::Handle::try_current().ok(),
-        vec![
-            Row {
-                name: "sub".into(),
-                path: "/srv/data/sub".into(),
-                is_dir: true,
-                size: 0,
-                lossy_name: false,
-            },
-            Row {
-                name: "bad\u{FFFD}name".into(),
-                path: "/srv/data/bad\u{FFFD}name".into(),
-                is_dir: false,
-                size: 10,
-                lossy_name: true,
-            },
-        ],
-    );
-    let ctx = egui::Context::default();
-    let _ = crate::find::testing::frame_text(&ctx, &mut w, Vec::new());
-    let painted = crate::copy::testing::painted_text(
-        &ctx,
-        egui::vec2(1280.0, 800.0),
-        0.1,
-        Vec::new(),
-        |ui| w.frame_body(ui),
-    );
-    // 反空真：这一帧**真的**画了那两行（否则下面那一比是空真的）。
-    assert!(
-        crate::copy::testing::painted_contains(&painted, "sub"),
-        "这一帧连那两行都没画出来 —— 本条此刻是空真的"
-    );
-    assert_eq!(
-        crate::copy::testing::rects_of(&painted, DOWNLOAD_LABEL.as_str()).len(),
-        0,
-        "目录 / 有损名那两行上画出了「{DOWNLOAD_LABEL}」—— 那是一颗死按钮：\
-         点它 `begin_pull` 会再判一次然后什么都不做，屏幕上「点了没反应」",
-        DOWNLOAD_LABEL = DOWNLOAD_LABEL.as_str()
-    );
-
-    // 🔴 阴性对照：**能拉的那一行上它必须画出来** ——
-    //    少了这一半，上面那一比可以靠「哪一行都不画」全绿（那时这个功能根本不存在）。
-    let mut w2 = FileWindow::seeded(
-        Source::remote(synth_cfg("pull-gate-ok")),
-        "/srv/data".to_string(),
-        tokio::runtime::Handle::try_current().ok(),
-        vec![Row {
-            name: "ok.txt".into(),
-            path: "/srv/data/ok.txt".into(),
-            is_dir: false,
-            size: 10,
-            lossy_name: false,
-        }],
-    );
-    let ctx2 = egui::Context::default();
-    let _ = crate::find::testing::frame_text(&ctx2, &mut w2, Vec::new());
-    let p2 = crate::copy::testing::painted_text(
-        &ctx2,
-        egui::vec2(1280.0, 800.0),
-        0.1,
-        Vec::new(),
-        |ui| w2.frame_body(ui),
-    );
-    assert_eq!(
-        crate::copy::testing::rects_of(&p2, DOWNLOAD_LABEL.as_str()).len(),
-        1,
-        "能拉的那一行上没画「{DOWNLOAD_LABEL}」",
-        DOWNLOAD_LABEL = DOWNLOAD_LABEL.as_str()
-    );
-}
-
 // ════════════════════════════════════════════════════════════════════════
 // 🔴改一份远端文本 —— 行上那颗「编辑」到编辑面
 // ════════════════════════════════════════════════════════════════════════
 
 /// 🔴🔴 **整条链一趟走完**：真点一下行上那颗「编辑」→ 那趟读真的发出去了。
 ///
-/// 五跳：`frame_body` → `show_file_rows` → `RenderTally::edit_clicked` →
-/// `apply_edit_click` → `begin_edit`。
+/// 一路：`frame_body` → `show_file_rows` → `RenderTally::menu_clicked` →
+/// `apply_menu_click` → 菜单「编辑」→ `perform` → `begin_edit`。
 ///
 /// 🔴**本条从「发出去了」升级成「读到了」**：读那一问换成经通道问后端
 /// （`files-read-text`）之后，合成后端（真回环口、真钥匙、真 `dial`）答得了它 ⇒ 链子一直走到
@@ -1766,51 +1725,7 @@ async fn a_real_click_on_edit_fires_the_read() {
     assert!(w.editing().is_none(), "什么都没点就有编辑面了");
     assert_eq!(w.edits.opens(), 0);
     let ctx = egui::Context::default();
-    let _ = crate::find::testing::frame_text(&ctx, &mut w, Vec::new());
-    let painted = crate::copy::testing::painted_text(
-        &ctx,
-        egui::vec2(1600.0, 800.0),
-        0.1,
-        Vec::new(),
-        |ui| w.frame_body(ui),
-    );
-    let buttons = crate::copy::testing::rects_of(&painted, EDIT_LABEL.as_str());
-    assert_eq!(
-        buttons.len(),
-        1,
-        "这一帧上没有那颗「{EDIT_LABEL}」（实得 {} 处）",
-        buttons.len(),
-        EDIT_LABEL = EDIT_LABEL.as_str()
-    );
-    let pos = buttons[0].center();
-    let _ = crate::copy::testing::painted_text(
-        &ctx,
-        egui::vec2(1600.0, 800.0),
-        0.2,
-        vec![egui::Event::PointerMoved(pos)],
-        |ui| w.frame_body(ui),
-    );
-    let _ = crate::copy::testing::painted_text(
-        &ctx,
-        egui::vec2(1600.0, 800.0),
-        0.3,
-        vec![
-            egui::Event::PointerMoved(pos),
-            egui::Event::PointerButton {
-                pos,
-                button: egui::PointerButton::Primary,
-                pressed: true,
-                modifiers: egui::Modifiers::default(),
-            },
-            egui::Event::PointerButton {
-                pos,
-                button: egui::PointerButton::Primary,
-                pressed: false,
-                modifiers: egui::Modifiers::default(),
-            },
-        ],
-        |ui| w.frame_body(ui),
-    );
+    menu_pick(&ctx, &mut w, "app.conf", EDIT_LABEL.as_str());
     // 那一趟**发出去了** —— 要么还在飞，要么已经到货（`.invalid` 解析很快就失败）。
     for _ in 0..200 {
         if w.edits.opens() > 0 || w.edits.opening().is_some() {
@@ -2239,33 +2154,52 @@ fn picking_a_sort_reorders_the_rows_already_on_screen() {
         vec![sized_row("a", 1), sized_row("b", 300), sized_row("c", 20)],
     );
     assert_eq!(names(&w), ["a", "b", "c"]);
-    assert!(w.set_sort(SortBy::Size), "换到另一档该回 true");
+    assert!(
+        w.set_sort(crate::source::SortBy::Size),
+        "换到另一档该回 true"
+    );
     assert_eq!(names(&w), ["b", "c", "a"], "换档之后屏幕上那一摞没重排");
-    assert!(!w.set_sort(SortBy::Size), "同一档再点一次不该算「换了」");
-    assert!(w.set_sort(SortBy::Name));
+    assert!(
+        !w.set_sort(crate::source::SortBy::Size),
+        "同一档再点一次不该算「换了」"
+    );
+    assert!(w.set_sort(crate::source::SortBy::Name));
     assert_eq!(names(&w), ["a", "b", "c"]);
 }
 
-/// 工具栏上真画出了那三样：排序下拉（带当前那一档）· 「在此打开终端」· 面包屑每一段。
+/// 窗口的框上真画出了那几样：「在此打开终端」· 面包屑每一段 · 表头带当前那一列的箭头。
 ///
-/// ⚠ 判的是**这一帧画出来的文字**（生产那个 `frame_body`），不是源码里有没有那几个字面量。
+/// ⚠ 判的是**这一帧画出来的文字**（生产那个工具条 ＋ 正文），不是源码里有没有那几个字面量。
 #[test]
-fn the_toolbar_really_paints_sort_breadcrumbs_and_the_terminal_button() {
+fn the_chrome_really_paints_breadcrumbs_the_terminal_button_and_the_sorted_header() {
     let mut w = remote_window_with_rows("/srv/data/子目录", vec![file_row("x")]);
     let ctx = egui::Context::default();
-    let _ = crate::find::testing::frame_text(&ctx, &mut w, Vec::new());
-    let painted = crate::find::testing::frame_text(&ctx, &mut w, Vec::new());
-    for want in ["在此打开终端", "排序：名称", "/", "srv", "data", "子目录"] {
+    let _ = crate::chrome::testing::frame(&ctx, &mut w, Vec::new());
+    let painted: Vec<String> = crate::chrome::testing::frame(&ctx, &mut w, Vec::new())
+        .into_iter()
+        .map(|(t, _)| t)
+        .collect();
+    let name = crate::source::SortBy::Name.label();
+    let up = format!("{name} {}", egui_phosphor::regular::CARET_UP);
+    for want in ["在此打开终端", "srv", "data", "子目录", up.as_str()] {
         assert!(
             painted.iter().any(|t| t == want),
             "这一帧上没有「{want}」。画出来的是：{painted:?}"
         );
     }
-    // 换档之后下拉那一格跟着变（它读的是同一个状态，不是一个写死的串）。
-    w.set_sort(SortBy::Type);
-    let painted = crate::find::testing::frame_text(&ctx, &mut w, Vec::new());
-    assert!(painted.iter().any(|t| t == "排序：类型"));
-    assert!(!painted.iter().any(|t| t == "排序：名称"), "旧那一档还画着");
+    // 换一列之后箭头跟着走（它读的是同一个状态，不是一个写死的串）。
+    w.set_sort(crate::source::SortBy::Type);
+    let painted: Vec<String> = crate::chrome::testing::frame(&ctx, &mut w, Vec::new())
+        .into_iter()
+        .map(|(t, _)| t)
+        .collect();
+    let ty = format!(
+        "{} {}",
+        crate::source::SortBy::Type.label(),
+        egui_phosphor::regular::CARET_UP
+    );
+    assert!(painted.iter().any(|t| *t == ty));
+    assert!(!painted.iter().any(|t| *t == up), "旧那一列的箭头还画着");
 }
 
 /// 🔴 **没有运行时的窗口点「在此打开终端」：出声，而且那句话画在窗口上**（不是静默什么都不发生）。

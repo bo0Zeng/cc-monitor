@@ -115,9 +115,9 @@ use super::fonts::{self, FontState};
 use super::grep::{self, GrepBoard, GrepTally};
 use super::rows::{show_file_rows, show_hit_rows, HitTally, RenderTally};
 use super::select::{self, Action, Intent, Selection, TypeAhead};
-use super::source::{breadcrumbs, Line, Listed, SortBy, Source};
+use super::source::{Line, Listed, Sort, Source};
 use super::transfer::{DropBoard, Pending};
-use super::writeops::{is_writable, WriteBoard, WriteOp, WritePrompt, MKDIR_LABEL};
+use super::writeops::{is_writable, WriteBoard, WriteOp, WritePrompt};
 
 /// 接上通道时问那台能力事实的期限（一问一答，同读侧那几问的量级）。
 const OFFER_WITHIN: std::time::Duration = std::time::Duration::from_secs(10);
@@ -214,6 +214,10 @@ pub struct Listing {
     /// 它必须画出来：「这个目录里就这么多」与「后端只给了前 N 条」
     /// 在屏幕上长得一样，而用户会据此以为某个文件不存在。
     pub truncated: Arc<std::sync::atomic::AtomicBool>,
+    /// 隐藏文件切成不显示时，收起来的那几行（不在 [`Self::rows`] 里，下标不受它们影响）。
+    pub hidden: Arc<Mutex<Vec<Listed>>>,
+    /// 隐藏文件显示着吗（缺省 `true`）。一屏落地时按它分。
+    pub show_hidden: Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl Default for Listing {
@@ -224,6 +228,8 @@ impl Default for Listing {
             epoch: Arc::new(AtomicU64::new(0)),
             inflight: Arc::new(AtomicU64::new(0)),
             truncated: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            hidden: Arc::new(Mutex::new(Vec::new())),
+            show_hidden: Arc::new(std::sync::atomic::AtomicBool::new(true)),
         }
     }
 }
@@ -263,11 +269,19 @@ pub fn store_if_current(l: &Listing, mine: u64, r: Result<Vec<Listed>, String>) 
     }
     match r {
         Ok(v) => {
-            *l.rows.lock().unwrap() = v;
+            let (shown, hidden) = if l.show_hidden.load(Ordering::SeqCst) {
+                (v, Vec::new())
+            } else {
+                v.into_iter()
+                    .partition(|r| !super::kind::is_hidden(&r.name))
+            };
+            *l.rows.lock().unwrap() = shown;
+            *l.hidden.lock().unwrap() = hidden;
             *l.error.lock().unwrap() = None;
         }
         Err(e) => {
             *l.rows.lock().unwrap() = Vec::new();
+            l.hidden.lock().unwrap().clear();
             *l.error.lock().unwrap() = Some(e);
         }
     }
@@ -288,7 +302,25 @@ impl Listing {
     pub fn invalidate(&self) {
         self.epoch.fetch_add(1, Ordering::SeqCst);
         self.rows.lock().unwrap().clear();
+        self.hidden.lock().unwrap().clear();
         *self.error.lock().unwrap() = None;
+    }
+
+    /// 切隐藏文件显不显示：显示 ⇒ 收起来的那几行并回来、按 `sort` 重排；不显示 ⇒ 挪到一边。
+    pub fn set_show_hidden(&self, on: bool, sort: Sort) {
+        self.show_hidden.store(on, Ordering::SeqCst);
+        let mut rows = self.rows.lock().unwrap();
+        let mut hidden = self.hidden.lock().unwrap();
+        if on {
+            rows.append(&mut hidden);
+            super::source::sort_rows(&mut rows, sort);
+        } else {
+            let (shown, gone): (Vec<Listed>, Vec<Listed>) = std::mem::take(&mut *rows)
+                .into_iter()
+                .partition(|r| !super::kind::is_hidden(&r.name));
+            *rows = shown;
+            *hidden = gone;
+        }
     }
 
     pub fn is_loading(&self) -> bool {
@@ -410,11 +442,23 @@ pub struct FileWindow {
     editing: Option<super::editor::Pane>,
     /// 关窗那一问正摆着吗（改了没存）。
     asking_discard: bool,
-    /// 🔴〔补齐五项 2026-09-23〕**按什么排**（工具栏那个下拉的状态）。
-    ///
-    /// 缺省是 [`SortBy::Name`]，也就是本刀之前那个写死的序（逐字节相同，
-    /// 判据住 `source_tests::the_default_order_is_byte_for_byte_what_it_was_before`）。
-    pub sort_by: SortBy,
+    /// **按哪一列排、正着还是反着**（点表头改）。缺省按名称。
+    pub sort: Sort,
+    /// 详情视图的列宽（拖表头上的分隔线改）。
+    pub cols: super::rows::Columns,
+    /// 后退 · 前进两摞（每个标签页自己一份；最近的在末尾）。
+    pub(super) back: Vec<super::source::RemotePath>,
+    pub(super) ahead: Vec<super::source::RemotePath>,
+    /// 地址栏正在手输吗（`Some` ＝ 输入框里那一串）。
+    pub(super) addr_edit: Option<String>,
+    /// 「按内容搜」那一行摆出来了吗（命令栏上那颗切）。
+    pub(super) grep_open: bool,
+    /// 传输那一摞摊开着吗（状态栏上那一格切；有一问摆着时照样画）。
+    pub(super) transfers_open: bool,
+    /// 用户按过「重建索引」（换目录就清）：新鲜度那一行这时也摆出来，答他刚问的那一下。
+    pub(super) status_wanted: bool,
+    /// 「属性」那一问（`None` ＝ 没摆）。逻辑住 [`super::props`]。
+    pub(super) props: Option<super::props::Props>,
     /// 🔴〔补齐五项〕「在此打开终端」那一下**说了什么**（`None` = 没点过 / 上一下没话说）。
     ///
     /// # 为什么这一格非有不可
@@ -541,7 +585,7 @@ impl FileWindow {
         // ⚠ **这一屏刻意不再排一次**：第一屏列的时候（〔09-28 裁 3〕窗口进程的 `proc::first_screen` → `source::list_dir`）已经按缺省那一档排过
         //   （`source::rows_from_ls_data`），再排一遍是恒等。
         //   在这儿插一次 `sort_rows` 试过一趟，读数如实记：
-        //   `shell_tests::a_write_click_from_the_list_reaches_the_right_row` 当场红 ——
+        //   `shell_tests::a_write_from_the_menu_reaches_the_right_row` 当场红 ——
         //   它喂的夹具是乱序的，于是「第 1 行是哪一行」被改掉了。
         //   ⇒ 那是一次**谁都没要求的行为变更**（生产上零收益，判据上真伤），撤掉。
         //   用户换档那一下由 [`FileWindow::set_sort`] 就地重排，不经这里。
@@ -589,7 +633,15 @@ impl FileWindow {
             edits: super::editor::EditBoard::default(),
             editing: None,
             asking_discard: false,
-            sort_by: SortBy::default(),
+            sort: Sort::default(),
+            cols: super::rows::Columns::default(),
+            back: Vec::new(),
+            ahead: Vec::new(),
+            addr_edit: None,
+            grep_open: false,
+            transfers_open: true,
+            props: None,
+            status_wanted: false,
             term_notice: Arc::new(Mutex::new(None)),
             reveal: None,
             selection: Selection::default(),
@@ -625,7 +677,7 @@ impl FileWindow {
                 let origin = self.source.origin();
                 // ⚠ 带**这一刻**选的那一档走。用户在飞行途中换了档 ⇒ [`Self::set_sort`]
                 //   会把落地的那一摞就地重排，所以两种顺序都不会错。
-                let by = self.sort_by;
+                let by = self.sort;
                 h.spawn(async move {
                     let r = super::source::list_via_backend_at(
                         &line,
@@ -675,9 +727,50 @@ impl FileWindow {
 
     /// 〔有损名全寻址〕进一个目录（显示串 ＋ 可能有的字节）。与 [`Self::navigate_to`] 同一套收摊。
     pub fn navigate_to_at(&mut self, at: super::source::RemotePath) {
-        if at == self.cwd_path() {
-            return;
+        self.go_at(at, Hist::Push);
+    }
+
+    /// 后退一步（回值 ＝ 真的换了目录）。
+    pub fn go_back(&mut self) -> bool {
+        match self.back.pop() {
+            Some(p) => self.go_at(p, Hist::Back),
+            None => false,
         }
+    }
+
+    /// 前进一步（回值 ＝ 真的换了目录）。
+    pub fn go_forward(&mut self) -> bool {
+        match self.ahead.pop() {
+            Some(p) => self.go_at(p, Hist::Forward),
+            None => false,
+        }
+    }
+
+    /// 后退 / 前进还有没有可走的（工具条那两颗灰不灰）。
+    pub fn can_go_back(&self) -> bool {
+        !self.back.is_empty()
+    }
+    pub fn can_go_forward(&self) -> bool {
+        !self.ahead.is_empty()
+    }
+
+    /// 换目录的唯一一处：记历史（新走一步 ⇒ 前进那一摞清掉）、收摊、重列。
+    fn go_at(&mut self, at: super::source::RemotePath, hist: Hist) -> bool {
+        if at == self.cwd_path() {
+            return false;
+        }
+        let here = self.cwd_path();
+        match hist {
+            Hist::Push => {
+                self.back.push(here);
+                self.ahead.clear();
+            }
+            Hist::Back => self.ahead.push(here),
+            Hist::Forward => self.back.push(here),
+        }
+        self.addr_edit = None;
+        self.props = None;
+        self.status_wanted = false;
         let path = at.shown.clone();
         // 🔴换了目录，那一行就不在这儿了 ⇒ 高亮清掉。
         //    留着的话，新目录里**恰好同名**的另一个文件会被高亮 ——
@@ -698,6 +791,7 @@ impl FileWindow {
         if let Some(s) = &self.shelf {
             s.refresh();
         }
+        true
     }
 
     /// 上一级。已经在顶上就什么都不做（[`parent_dir`] 到顶回原值）。
@@ -719,12 +813,42 @@ impl FileWindow {
     /// 那条纪律：64 万行那一档每帧一次 `sort` 直接把帧时打穿
     /// （虚拟滚动省的是**画**，不是遍历）。⇒ 排序只在两个时刻发生：
     /// **一屏落地**（[`super::source::list_dir`]）与**用户换档**（这里）。
-    pub fn set_sort(&mut self, by: SortBy) -> bool {
-        if self.sort_by == by {
+    pub fn set_sort(&mut self, sort: impl Into<Sort>) -> bool {
+        let sort = sort.into();
+        if self.sort == sort {
             return false;
         }
-        self.sort_by = by;
-        super::source::sort_rows(&mut self.listing.rows.lock().unwrap(), by);
+        self.sort = sort;
+        super::source::sort_rows(&mut self.listing.rows.lock().unwrap(), sort);
+        super::source::sort_rows(&mut self.listing.hidden.lock().unwrap(), sort);
+        true
+    }
+
+    /// 点了表头那一列（同一列再点 ⇒ 反过来）。
+    pub fn click_header(&mut self, by: super::source::SortBy) -> bool {
+        let next = self.sort.after_click(by);
+        self.set_sort(next)
+    }
+
+    /// 隐藏文件显示着吗（缺省显示，淡一级）。
+    pub fn shows_hidden(&self) -> bool {
+        self.listing.show_hidden.load(Ordering::SeqCst)
+    }
+
+    /// 切隐藏文件显不显示：收起来的那几行挪到一边（不是删），选中里它们那几项一并去掉。
+    pub fn set_show_hidden(&mut self, on: bool) -> bool {
+        if self.shows_hidden() == on {
+            return false;
+        }
+        self.listing.set_show_hidden(on, self.sort);
+        if !on {
+            let rows = self.listing.rows.lock().unwrap();
+            let keep: std::collections::BTreeSet<String> = rows
+                .iter()
+                .map(|r| select::pick_key(r).into_owned())
+                .collect();
+            self.selection.retain(&keep);
+        }
         true
     }
 
@@ -876,6 +1000,9 @@ impl FileWindow {
     ///
     /// `force_rebuild` 是那颗「重建索引」按钮；平时要不要重走由后端回的那三个判断决定（[`super::find`] 头注）。
     pub fn fire_search(&mut self, ctx: Option<egui::Context>, force_rebuild: bool) -> bool {
+        if force_rebuild {
+            self.status_wanted = true;
+        }
         let asked = find::Asked {
             query: self.query.clone(),
             under: self.search_here.then(|| self.cwd_path()),
@@ -1179,21 +1306,6 @@ impl FileWindow {
     /// 正摆着的那个「复制为」框（判据与 [`Self::copy_ui`] 用）。
     pub fn copy_prompt(&self) -> Option<&CopyPrompt> {
         self.copy_prompt.as_ref()
-    }
-
-    /// 🔴 **胶水**：列表说「第 `i` 行的复制被点了」→ 窗口摆出「复制为」那个框。
-    ///
-    /// 抽成一个函数的理由与 [`Self::apply_click`] 逐字相同：它只有两行，
-    /// 而那两行正是「列表带出来的那个下标」与「窗口状态机」之间的**唯一**连接。
-    /// 写在 `ui()` 里的话，`show_file_rows` 有判据、`begin_copy` 有判据，
-    /// **中间这一跳谁都没在看** —— 那正是第一刀栽过的那一形。
-    ///
-    /// 回值 = 真的摆出来了。
-    pub fn apply_copy_click(&mut self) -> bool {
-        match self.tally.copy_clicked {
-            Some(i) => self.begin_copy(i),
-            None => false,
-        }
     }
 
     /// 摆出「把第 `i` 行复制成什么名字」那个框。回值 = 真的摆出来了。
@@ -2235,45 +2347,6 @@ impl FileWindow {
         self.asking_discard = false;
     }
 
-    /// 🔴 **胶水一条**：列表说「第 `i` 行的编辑被点了」→ 窗口接上去。
-    pub fn apply_edit_click(&mut self, ctx: Option<egui::Context>) -> bool {
-        match self.tally.edit_clicked {
-            Some(i) => self.begin_edit(i, ctx),
-            None => false,
-        }
-    }
-
-    /// 🔴 **胶水一条**：列表说「第 `i` 行的下载被点了」→ 窗口接上去。
-    ///
-    /// 抽成函数的理由与 [`Self::apply_click`] 逐字相同：两头各自都有判据，
-    /// 而**中间这一跳写在 `frame_body` 里的话谁都没在看**。
-    pub fn apply_pull_click(&mut self) -> bool {
-        match self.tally.download_clicked {
-            Some(i) => self.begin_pull(i),
-            None => false,
-        }
-    }
-
-    /// 🔴 **胶水三条**：列表说「第 `i` 行的改名 / 删除 / 权限被点了」→ 窗口接上去。
-    ///
-    /// 抽成函数的理由与 [`Self::apply_click`] / [`Self::apply_copy_click`] 逐字相同：
-    /// 两头各自都有判据，而**中间这一跳写在 `frame_body` 里的话谁都没在看**
-    /// （第一刀栽过的那一形）。
-    ///
-    /// 回值 = 这一帧真的接上了一跳。
-    pub fn apply_write_clicks(&mut self, ctx: Option<egui::Context>) -> bool {
-        if let Some(i) = self.tally.rename_clicked {
-            return self.begin_rename(i);
-        }
-        if let Some(i) = self.tally.chmod_clicked {
-            return self.begin_chmod(i);
-        }
-        if let Some(i) = self.tally.delete_clicked {
-            return self.begin_delete(i, ctx);
-        }
-        false
-    }
-
     /// 🔴画**编辑面**：在飞指示 ＋ 那一份文本 ＋ 存的结局 ＋ 关窗那一问。
     ///
     /// ⚠ 它是模态的（同别的几摞）：一份文本改着的时候不该同时去改目录结构。
@@ -2398,7 +2471,7 @@ impl FileWindow {
                     &[("name", &pane.name.to_string())],
                 ));
                 ui.colored_label(
-                    egui::Color32::from_rgb(0xFF, 0xA5, 0x00),
+                    ui.visuals().warn_fg_color,
                     &copy_text("rsFilewinShell.editor.unsavedWarn", &[]),
                 );
                 ui.horizontal(|ui| {
@@ -2440,7 +2513,7 @@ impl FileWindow {
             // 🔴 敲超上限 ⇒ 这一行**一直**摆着（它是一个到你改掉为止都成立的状态）。
             if pane.over_cap() {
                 ui.colored_label(
-                    egui::Color32::RED,
+                    ui.visuals().error_fg_color,
                     copy_text(
                         "rsFilewinShell.editor.overLimit",
                         &[
@@ -2457,12 +2530,12 @@ impl FileWindow {
             if let Some(r) = pane.last_save.clone() {
                 match r {
                     Ok(()) => ui.colored_label(
-                        egui::Color32::from_rgb(0x3C, 0xB3, 0x71),
+                        crate::theme::palette(ui.ctx()).success,
                         &copy_text("rsFilewinShell.editor.saved", &[]),
                     ),
                     // 原话原样画出去（围栏那句 / 连接失败那句 …）。
                     Err(why) => ui.colored_label(
-                        egui::Color32::RED,
+                        ui.visuals().error_fg_color,
                         copy_text(
                             "rsFilewinShell.editor.saveFailed",
                             &[("why", &why.to_string())],
@@ -2567,7 +2640,7 @@ impl FileWindow {
             }
             match o {
                 Outcome::Done { dest, bytes } => ui.colored_label(
-                    egui::Color32::from_rgb(0x3C, 0xB3, 0x71),
+                    crate::theme::palette(ui.ctx()).success,
                     copy_text(
                         "rsFilewinShell.pull.done",
                         &[
@@ -2579,7 +2652,7 @@ impl FileWindow {
                 // 🔴 原话原样画出去（围栏那句、连接失败那句 …）——
                 //    改写它就等于让用户看不到下层到底说了什么。
                 Outcome::Failed { dest, why } => ui.colored_label(
-                    egui::Color32::RED,
+                    ui.visuals().error_fg_color,
                     copy_text(
                         "rsFilewinShell.pull.failed",
                         &[("dest", &dest.to_string()), ("why", &why.to_string())],
@@ -2612,7 +2685,7 @@ impl FileWindow {
                     browse = true;
                 }
                 if let Some(n) = &pick_notice {
-                    ui.colored_label(egui::Color32::from_rgb(0xFF, 0xA5, 0x00), n);
+                    ui.colored_label(ui.visuals().warn_fg_color, n);
                 }
                 ui.horizontal(|ui| {
                     if ui
@@ -2635,7 +2708,7 @@ impl FileWindow {
                 // 🔴 说清代价：`download_inner` 是 `.part` → `rename` 上位，
                 //    原处那个文件没有备份、盖了就回不来。
                 ui.colored_label(
-                    egui::Color32::from_rgb(0xFF, 0xA5, 0x00),
+                    ui.visuals().warn_fg_color,
                     &copy_text("rsFilewinShell.pull.overwriteWarn", &[]),
                 );
                 ui.horizontal(|ui| {
@@ -2854,6 +2927,7 @@ impl FileWindow {
             // 工具栏「上传」那一问（框开着时键盘不许动列表）。
             || self.upload.is_open()
             || self.editing.is_some()
+            || self.props.is_some()
     }
 
     /// 键盘这一帧该不该归列表。**五道闸**，任一成立就不接：
@@ -2865,6 +2939,17 @@ impl FileWindow {
     ///    按 Delete 删的会是**另一摞**里同一个下标的文件；
     /// 4. 有控件拿着键盘焦点（搜索框里正在打字、一颗按钮刚被 Tab 到）—— 字是给它的。
     ///    ⚠ 点一下列表里的行，焦点就交出去了（egui 点别处即交；行不可聚焦），键盘回到列表。
+    /// 导航键（后退前进 · 刷新 · 地址栏 · 搜索框）那道闸：模态框 · 菜单 · 文字框拿着键盘时不接；
+    /// 与列表那道不同，画着搜索命中那一摞时照样接（导航不碰任何一摞的下标）。
+    pub fn nav_keys_blocked(&self, ctx: &egui::Context) -> bool {
+        !self.focused || self.modal_up() || self.menu.is_some() || ctx.egui_wants_keyboard_input()
+    }
+
+    /// 在列表上方说一句（键盘那一路同一个出口：下一次按键就清）。
+    pub fn set_key_notice(&mut self, n: String) {
+        self.key_notice = Some(n);
+    }
+
     pub fn keys_blocked(&self, ctx: &egui::Context) -> bool {
         !self.focused
             || self.modal_up()
@@ -3014,6 +3099,7 @@ impl FileWindow {
             (Action::Rename, [i]) => self.begin_rename(*i),
             // 一项或多项：同一个框（多项时框上说件数）。
             (Action::Chmod, _) => self.begin_chmod_rows(&idx),
+            (Action::Properties, [i]) => self.begin_props(*i, ctx),
             // `actions_for` 只对恰好一项给出单项动作 ⇒ 这一支走不到；
             // 真走到了也**出声**，不静默。
             _ => {
@@ -3213,135 +3299,10 @@ impl FileWindow {
         // 它是一个「到你改掉为止都成立的状态」，不是一次性事件
         // （同 `INVARIANTS §12` 对「设置没生效」那条的判法）。
         if let Some(note) = self.font.notice() {
-            ui.colored_label(egui::Color32::from_rgb(0xFF, 0xA5, 0x00), note);
+            ui.colored_label(ui.visuals().warn_fg_color, note);
         }
-        // 🔴〔2026-09-23 本机侧退役〕**这条工具栏上少了一对按钮，逐条记清。**
-        //
-        // 从前这里有一颗「本机」（远端态下画）与一颗「回 <机器名>」（本机态下画），
-        // 以及两个收在帧尾的 `go_local` / `go_remote` 标志（按钮在 `ui.horizontal`
-        // 的闭包里借着 `&mut self` 的一部分 ⇒ 跳转不能在闭包里做）。
-        // 两颗按钮连同那一对函数都不在了 —— 用户裁决与那条白名单原文住
-        // `super::source` 头注那块墓碑。
-        // ⚠ **帧尾消化 `mkdir` 这一格照旧留着**：它与那两颗按钮是同一个借用理由，
-        //   而「新建目录」那条功能一个字没动。别顺手把它也内联回闭包里。
-        // 🔴〔补齐五项 2026-09-23〕**这个闭包里一个跳转都不做，三件事全收在帧尾。**
-        //    理由与 `mkdir` 那一格逐字相同（上面那一节）：闭包借着 `&mut self` 的一部分
-        //    ⇒ 在里面调 `self.navigate_to` / `self.set_sort` / `self.open_terminal_here`
-        //    编不过。`⬆ 上一级` 与 `刷新` 两颗**例外**：它们调的那两个方法
-        //    在这个闭包里借得出来（现状如此，别读成「跳转可以在闭包里做」）。
-        let mut mkdir = false;
-        let mut new_file = false; // 同 `mkdir` 的借用理由，收在帧尾
-        let mut go: Option<String> = None;
-        let mut pick: Option<SortBy> = None;
-        let mut term = false;
-        ui.horizontal(|ui| {
-            if ui
-                .button(&copy_text("rsFilewinShell.frame.up", &[]))
-                .clicked()
-            {
-                self.navigate_up();
-            }
-            if ui
-                .button(&copy_text("rsFilewinShell.frame.refresh", &[]))
-                .clicked()
-            {
-                self.reload();
-            }
-            // 🔴「新建目录」—— 它是四条写操作里**唯一**不针对某一行的那条
-            //    （另外三条在行上），所以它的落点是工具栏。
-            if ui.button(MKDIR_LABEL.as_str()).clicked() {
-                mkdir = true;
-            }
-            // 「新建空文件」—— 同样不针对某一行，所以同样在工具栏（逻辑住 `create.rs`）。
-            if ui.button(super::create::NEW_FILE_LABEL.as_str()).clicked() {
-                new_file = true;
-            }
-            // 「上传」—— 选完走拖入那一条（`upload.rs` 头注）。
-            if ui.button(super::upload::UPLOAD_LABEL.as_str()).clicked() {
-                self.upload.open();
-            }
-            // 🔴〔补齐五项〕「在此打开终端」—— 旧面板表头上那颗。
-            //    它在 POSIX 上恒定「失败」，而那是既定设计（逐条住 `open_terminal_here`）。
-            if ui
-                .button(&copy_text("rsFilewinShell.frame.terminal", &[]))
-                .clicked()
-            {
-                term = true;
-            }
-            // 🔴〔补齐五项〕**排序那个下拉** —— 旧面板表头上那个 `<select>` 的对应物。
-            //    ⚠ 人群走 `SortBy::ALL`，**不在这儿另写一份名单**：写第二份的症状是
-            //      「加了一档但下拉里没有」，而那是编译器看不见的。
-            egui::ComboBox::from_id_salt("filewin-sort")
-                .selected_text(copy_text(
-                    "rsFilewinShell.frame.sort",
-                    &[("by", &self.sort_by.label())],
-                ))
-                .show_ui(ui, |ui| {
-                    for by in SortBy::ALL {
-                        // ⚠ 不直接 `&mut self.sort_by`：换档要**连手上这一摞一起重排**
-                        //   （`set_sort`），而那件事在这个闭包里做不了 ⇒ 收在帧尾。
-                        if ui
-                            .selectable_label(self.sort_by == by, by.label())
-                            .clicked()
-                        {
-                            pick = Some(by);
-                        }
-                    }
-                });
-            if self.listing.is_loading() {
-                ui.spinner();
-                ui.label(&copy_text("rsFilewinShell.frame.listing", &[]));
-            }
-            // 选中了不止一项 ⇒ 说一声几项（一项时那块选中色自己就说清了）。
-            //   ⚠ 摆在工具栏上而不是另起一行：另起一行会在选中第二项的那一下把整张列表往下推。
-            let n = self.selection.len();
-            if n > 1 {
-                ui.label(copy_text(
-                    "rsFilewinShell.frame.selected",
-                    &[("n", &n.to_string())],
-                ));
-            }
-        });
-        // 🔴〔补齐五项〕**面包屑** —— 从 `/a/b/c/d` 回 `/a` 只要一下，不用点四次「上一级」。
-        //    ⚠ 路径切分走 `source::breadcrumbs`（与 `parent_dir` / `remote_basename`
-        //      同住一处，逐条理由住那个函数的头注）—— 这一行**不许自己切**。
-        ui.horizontal_wrapped(|ui| {
-            ui.label(format!("{} :", self.source.label()));
-            // 有损目录里面包屑只画不点：那一摞前缀是有损串，点上去寻址不到（「上一级」照样按字节走）。
-            let lossy = self.cwd_raw.is_some();
-            for (seg, full) in breadcrumbs(&self.cwd) {
-                // 当前这一级**不画成按钮**：点它什么都不会发生（`navigate_to` 同路径直接返回）
-                // ⇒ 画成按钮就是一颗点了没反应的按钮。
-                if full == self.cwd || lossy {
-                    ui.strong(seg);
-                } else if ui.small_button(seg).clicked() {
-                    go = Some(full);
-                }
-            }
-        });
-        // 书签栏（★ 切换当前目录 ＋ 一排书签）。点了哪一条也收在帧尾跳（同面包屑）。
-        // 有损目录里不画书签栏：书签落盘是字符串，收进去的会是一条寻址不到的书签。
-        if let Some(shelf) = self.shelf.clone().filter(|_| self.cwd_raw.is_none()) {
-            if let Some(d) = shelf.bar_ui(ui, &self.cwd) {
-                go = Some(d);
-            }
-        }
-        if mkdir {
-            self.begin_mkdir();
-        }
-        if new_file {
-            self.begin_new_file();
-        }
-        if let Some(by) = pick {
-            self.set_sort(by);
-        }
-        if let Some(path) = go {
-            self.navigate_to(path);
-        }
-        if term {
-            let ctx = ui.ctx().clone();
-            self.open_terminal_here(Some(ctx));
-        }
+        // 工具条（后退 · 前进 · 上一级 · 刷新 · 地址栏 · 搜索格）与命令栏（新建 · 上传 · 终端 · 开关）不在这里画：
+        //   它们作用于焦点那一栏，由最外一层画在窗口顶上（[`Self::toolbar_ui`] · [`Self::command_ui`]，住 `chrome.rs`）。
         // 🔴**键盘** —— 在画列表之前接：这一帧按的键，这一帧的列表就要画出结果
         //    （光标那一圈、滚进视野）。能不能接由 `keys_blocked` 那四道闸说了算。
         //    ⚠ 滚进视野要**上一帧**真物化的那一段 ⇒ 在 `tally` 被清零之前取。
@@ -3351,39 +3312,62 @@ impl FileWindow {
             self.apply_keys(&ctx);
         }
         if let Some(said) = self.key_notice.clone() {
-            ui.colored_label(egui::Color32::from_rgb(0xFF, 0xA5, 0x00), said);
+            ui.colored_label(ui.visuals().warn_fg_color, said);
         }
         // 🔴〔补齐五项〕开终端那一下说的话 —— **摆着不走**（同字体那条：
         //    它是一个「到你换台机器 / 换个系统为止都成立的状态」，不是一次性事件）。
         if let Some(said) = self.term_notice() {
-            ui.colored_label(egui::Color32::from_rgb(0xFF, 0xA5, 0x00), said);
+            ui.colored_label(ui.visuals().warn_fg_color, said);
         }
         if let Some(e) = self.listing.error.lock().unwrap().clone() {
-            ui.colored_label(egui::Color32::RED, e);
+            ui.colored_label(ui.visuals().error_fg_color, e);
         }
         // 这里原先画「这一屏没走后端：…」（退路那一句）。退路没了，那一句也没了。
         // 🔴 截断也要出声 —— 「这个目录里就这么多」与「后端只给了前 N 条」
         //    在屏幕上长得一样，而用户会据此以为某个文件不存在。
         if self.listing.truncated.load(Ordering::SeqCst) {
             ui.colored_label(
-                egui::Color32::from_rgb(0xFF, 0xA5, 0x00),
+                ui.visuals().warn_fg_color,
                 copy_text(
                     "rsFilewinShell.frame.truncated",
                     &[("n", &(super::source::LS_LIMIT).to_string())],
                 ),
             );
         }
-        // 🔴搜索那一行 ＋ **新鲜度那一行**（那条 ⬜）。
-        self.search_row(ui);
-        // 按内容搜那一行（回车 / 按钮才发，「停」撤掉在飞那一趟）。
-        self.grep_row(ui);
+        // 「只搜当前目录」开着、框里有字、而目录换了 ⇒ 范围变了，按新目录再搜一趟。
+        if self.search_here
+            && !self.query.trim().is_empty()
+            && self.search.shown().asked.under.as_ref() != Some(&self.cwd_path())
+        {
+            let ctx = ui.ctx().clone();
+            self.fire_search(Some(ctx), false);
+        }
+        // 搜索的新鲜度那一行：只在搜索时摆（贴着命中那一摞的上方；搜索框本身在工具条上那一格），平时不占列表上方。
+        if self.showing_hits() || self.search.is_running() || self.status_wanted {
+            self.search.ui(ui);
+        }
+        // 按内容搜那一行（命令栏上那颗摆出来；回车 / 按钮才发，「停」撤掉在飞那一趟）。
+        if self.grep_open || self.grep.is_running() || self.showing_grep() {
+            self.grep_row(ui);
+        }
+        // 「属性」那一问。
+        self.props_ui(ui);
+        // 传输那一摞（上传 · 下载 · 跨机复制）：状态栏上那一格可以把进度收起来；有一问摆着时照样画（它是模态的）。
+        let transfers = self.transfers_open
+            || self.board.is_asking()
+            || self.cross_board.is_asking()
+            || self.pull_ask.is_some();
         // `§5.4d` 那一摞：确认框 ／ 进度。**画在列表之前** —— 它是模态的。
-        self.board.ui(ui);
+        if transfers {
+            self.board.ui(ui);
+        }
         // `§5` 第二段那一摞：覆盖确认 ／ 进度 ／ **上一趟走的是哪条路**。同样模态、同样在前。
         self.copy_board.ui(ui);
         self.size_board.ui(ui);
         self.extract_board.ui(ui);
-        self.cross_board.ui(ui);
+        if transfers {
+            self.cross_board.ui(ui);
+        }
         self.cross_ui(ui);
         self.copy_ui(ui);
         // 🔴`§4.6.4` 那一摞：一次问完的确认框 ／ 结果（「被围栏挡住那几句话」那一段删了）。
@@ -3393,7 +3377,9 @@ impl FileWindow {
         // 新建空文件那个框（同样模态、同样在前）。
         self.new_file_ui(ui);
         // 🔴往外拖那一摞：两问 ／ 进度 ／ 结局。同样模态、同样在前。
-        self.pull_ui(ui);
+        if transfers {
+            self.pull_ui(ui);
+        }
         // 「上传」那一问：确定之后走拖入那一条（先一次问完覆盖，再并行传）。
         let up_dir = self.cwd.clone();
         if let Some(items) = self.upload.ui(ui, &up_dir) {
@@ -3468,6 +3454,10 @@ impl FileWindow {
                 .and_then(|i| select::scroll_for(i, prev_first, prev_last, pitch));
             let jump = jump.or(key_jump);
             let want = self.reveal.as_ref().map(|r| r.name.clone());
+            // 表头：点一列排序（再点反向），拖分隔线改列宽。
+            if let Some(by) = super::rows::show_header(ui, &mut self.cols, self.sort) {
+                self.click_header(by);
+            }
             let rows = self.listing.rows.lock().unwrap();
             show_file_rows(
                 ui,
@@ -3476,6 +3466,7 @@ impl FileWindow {
                 jump,
                 want.as_deref(),
                 Some(&self.selection),
+                &self.cols,
             );
         }
         // ⚠ 这三条只对**目录列表**那一摞有意义（下标索引的是 `listing.rows`）。
@@ -3490,13 +3481,7 @@ impl FileWindow {
             self.jump_to_find_hit(i);
         }
         self.apply_click();
-        self.apply_copy_click();
-        self.apply_write_clicks(Some(ctx.clone()));
-        // 🔴第四条胶水。**不许写在这行之外** —— 理由住 `apply_pull_click`。
-        self.apply_pull_click();
-        // 🔴第五条胶水。
-        self.apply_edit_click(Some(ctx.clone()));
-        // 🔴第六、七条胶水：单击改选中 · 右键摆菜单。然后画菜单（它在最上层）。
+        // 🔴单击改选中 · 右键摆菜单。然后画菜单（它在最上层）。行上没有按钮：动作全走菜单与键盘（同一个 `perform`）。
         self.apply_pick_click();
         // 第八条胶水：拖起一行。
         self.apply_drag_start();
@@ -3505,50 +3490,46 @@ impl FileWindow {
         self.menu_ui(ui);
     }
 
-    /// 搜索那一行：输入框 ＋「只搜当前目录」＋「重建索引」＋ 在飞指示，接着是新鲜度那一行。
+    /// 工具条上搜索那一格：输入框（Ctrl+F 把焦点给它）＋「只搜当前目录」＋「重建索引」＋ 在飞指示。
+    /// 新鲜度那一行只在搜索时画在命中那一摞上方（`frame_body`）。
     ///
-    /// 🔴 **`changed()` 就发** —— 一敲就出。没有去抖（去抖要定时器）⇒ 每敲一个字一趟往返；
-    /// 在飞的旧那几趟后端按号收手、这一侧按号丢掉，**结果不会错**。
-    /// 开关开着时换了目录 ⇒ 范围变了，自动再搜一趟。
-    fn search_row(&mut self, ui: &mut egui::Ui) {
+    /// 这一格的位置归工具条，里面的控件与行为归搜索那一族：🔴 **`changed()` 就发** —— 一敲就出。
+    /// 没有去抖（去抖要定时器）⇒ 每敲一个字一趟往返；在飞的旧那几趟后端按号收手、这一侧按号丢掉，**结果不会错**。
+    /// 开关开着时换了目录 ⇒ 范围变了，自动再搜一趟（那一判在 `frame_body`：画不画工具条都成立）。
+    pub(super) fn search_box(&mut self, ui: &mut egui::Ui) {
         let mut fire = false;
         let mut rebuild = false;
-        ui.horizontal(|ui| {
-            ui.label(&copy_text("rsFilewinShell.search.label", &[]));
-            let r = ui.add(
-                egui::TextEdit::singleline(&mut self.query)
-                    .desired_width(220.0)
-                    .hint_text(&copy_text("rsFilewinShell.search.hint", &[])),
-            );
-            if r.changed() {
-                fire = true;
-            }
-            if ui
-                .checkbox(
-                    &mut self.search_here,
-                    copy_text("rsFilewinShell.search.here", &[]),
-                )
-                .changed()
-            {
-                fire = true;
-            }
-            if ui
-                .button(&copy_text("rsFilewinShell.search.rebuild", &[]))
-                .clicked()
-            {
-                rebuild = true;
-            }
-            if self.search.is_running() {
-                ui.spinner();
-                ui.label(&copy_text("rsFilewinShell.search.running", &[]));
-            }
-        });
-        self.search.ui(ui);
-        if self.search_here
-            && !self.query.trim().is_empty()
-            && self.search.shown().asked.under.as_ref() != Some(&self.cwd_path())
+        let r = ui.add(
+            egui::TextEdit::singleline(&mut self.query)
+                .id(egui::Id::new(SEARCH_BOX_ID))
+                .desired_width(200.0)
+                .hint_text(format!(
+                    "{}  {}",
+                    egui_phosphor::regular::MAGNIFYING_GLASS,
+                    copy_text("rsFilewinShell.search.hint", &[])
+                )),
+        );
+        if r.changed() {
+            fire = true;
+        }
+        if ui
+            .checkbox(
+                &mut self.search_here,
+                copy_text("rsFilewinShell.search.here", &[]),
+            )
+            .changed()
         {
             fire = true;
+        }
+        if ui
+            .button(egui_phosphor::regular::ARROWS_CLOCKWISE)
+            .on_hover_text(copy_text("rsFilewinShell.search.rebuild", &[]))
+            .clicked()
+        {
+            rebuild = true;
+        }
+        if self.search.is_running() {
+            ui.spinner();
         }
         if fire || rebuild {
             let ctx = ui.ctx().clone();
@@ -3603,6 +3584,18 @@ impl FileWindow {
 
 // `early_failure` · `EARLY_FAILURE_BUDGET`（开窗之后看它是不是当场就退了）随「起进程那一侧」留在 monitor：壳里 `filewin/proc.rs`。
 
+/// 工具条上那个搜索框的 egui id（Ctrl+F 把焦点给它）。
+pub const SEARCH_BOX_ID: &str = "filewin-search-box";
+
+/// 换目录时历史怎么记。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Hist {
+    /// 新走一步（地址栏 · 面包屑 · 双击 · 上一级 · 书签）。
+    Push,
+    Back,
+    Forward,
+}
+
 /// 在**次线程**上开一个文件管理窗口。立刻返回，不阻塞调用方。
 ///
 /// ⚠ `eframe::run_native` 在它自己那条线程上是**阻塞到窗口关闭**的；
@@ -3625,6 +3618,7 @@ pub fn open_detached(
         None,
         None,
         Vec::new(),
+        None,
         None,
     )
 }
@@ -3658,6 +3652,8 @@ pub fn open_detached_seeded(
     machines: Vec<String>,
     // 开出来第一拍夹进这块工作区（`None` ＝ 不夹）。
     work_area: Option<host_core::WorkArea>,
+    // 窗口的样子（开窗种子带来的那一套；`None` ＝ 判据那一形，照 egui 当下的样子画）。
+    theme: Option<filewin_contract::Theme>,
 ) -> std::thread::JoinHandle<Result<(), String>> {
     OPEN_REQUESTED.fetch_add(1, Ordering::SeqCst);
     std::thread::spawn(move || {
@@ -3686,11 +3682,17 @@ pub fn open_detached_seeded(
                 // 书签：按这台机器的 origin 读一次。
                 w.shelf = Some(super::bookmarks::Shelf::open(bookmarks, &w.source.origin()));
                 w.machines = machines;
+                // 样子：主界面那一套配色 · 字号 · 间距。
+                if let Some(t) = &theme {
+                    super::theme::install(&cc.egui_ctx, t);
+                }
                 // 第一拍：读文件 ＋ `set_fonts`。**这里复核不了**（`fonts.rs §四`）。
-                w.font = FontState::Pending(fonts::install(&cc.egui_ctx));
+                w.font = FontState::Pending(fonts::install(&cc.egui_ctx, theme.as_ref()));
                 // 最外一层是 `Workspace`（标签页 ＋ 双栏 ＋ 预览），开窗那一个目录视图是它的第一个标签页。
+                let mut ws = super::workspace::Workspace::new(w);
+                ws.theme = theme;
                 Ok(Box::new(FitOnce {
-                    inner: super::workspace::Workspace::new(w),
+                    inner: ws,
                     work: work_area,
                 }) as Box<dyn eframe::App>)
             }),

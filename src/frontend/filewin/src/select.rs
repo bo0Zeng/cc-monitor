@@ -130,6 +130,17 @@ impl Selection {
         self.anchor = None;
     }
 
+    /// 只留下 `keep` 里还在的那几项（光标 / 锚点不在了就一并去掉）—— 一摞行被收起一部分时用。
+    pub fn retain(&mut self, keep: &BTreeSet<String>) {
+        self.picked.retain(|k| keep.contains(k));
+        if self.cursor.as_ref().is_some_and(|c| !keep.contains(c)) {
+            self.cursor = None;
+        }
+        if self.anchor.as_ref().is_some_and(|a| !keep.contains(a)) {
+            self.anchor = None;
+        }
+    }
+
     /// 光标在这一摞里的下标（O(n)，只在按键那一刻调）。
     pub fn cursor_index(&self, rows: &[Listed]) -> Option<usize> {
         let c = self.cursor.as_deref()?;
@@ -469,12 +480,17 @@ pub enum Action {
     Chmod,
     /// 删除 —— 对一项或多项（头注 §三）。
     Delete,
+    /// 属性（路径 · 大小 · 修改时间 · 权限 · 所有者 · 链接指向）。
+    Properties,
 }
 
 /// 「打开」那一项的字。另外六项**复用**行上那几颗按钮的字（各自的唯一住址），
 /// 不在这儿另写一份 —— 两份字漂开的症状是「菜单上叫一个名字，行上叫另一个」。
 pub static OPEN_LABEL: std::sync::LazyLock<String> =
     std::sync::LazyLock::new(|| copy_text("rsFilewinSelect.label.open", &[]));
+/// 右键菜单最后那一格。
+pub static PROPS_LABEL: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| copy_text("rsFilewinSelect.label.properties", &[]));
 
 impl Action {
     /// 菜单上那一项的字。`n` = 选中了几项（只有「删除」对多项说话时要它）。
@@ -492,6 +508,7 @@ impl Action {
                 copy_text("rsFilewinSelect.label.chmodMany", &[("n", &n.to_string())])
             }
             Action::Chmod => super::writeops::CHMOD_LABEL.to_string(),
+            Action::Properties => PROPS_LABEL.to_string(),
             Action::Delete if n > 1 => {
                 copy_text("rsFilewinSelect.label.deleteMany", &[("n", &n.to_string())])
             }
@@ -538,6 +555,10 @@ pub fn actions_for(picked: &[&Listed]) -> Vec<Action> {
                 out.push(Action::Rename);
                 out.push(Action::Chmod);
                 out.push(Action::Delete);
+            }
+            // 属性：只读，名字读不出来也能按字节问。
+            if !r.lossy_name || r.raw_name.is_some() {
+                out.push(Action::Properties);
             }
         }
         many => {

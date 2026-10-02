@@ -246,6 +246,8 @@ pub mod bigfile;
 pub mod bookmarks;
 // **上传的块形**：SFTP 起始目录不是后端 home 时经后端链路分块写。
 pub mod chunk_upload;
+// 窗口的框：工具条 · 命令栏 · 左栏 · 状态栏（作用于焦点那一栏）。
+pub mod chrome;
 pub mod copy;
 pub mod corpus;
 // **复制到另一台机器**（§7 第 9 条 Q2）：A 下到本机暂存 → 传到 B → B 提交，一条进度、可撤、半路清暂存。
@@ -270,10 +272,14 @@ pub mod find;
 pub mod fonts;
 // 按内容搜（`files-grep`）在窗口上的命令面与消费面。
 pub mod grep;
+// 文件种类：图标与「类型」那一列的字、按类型怎么排（怎么画的事，只在这里判）。
+pub mod kind;
 // **有损名下载**：远端按字节就地拷进暂存区再走传输，本机按原始字节 / 有损形落名。
 pub mod lossy_pull;
 // **预览**：右侧一块只读面板（已有的 `files-read-text`，自己的上限，最多一趟在飞）。
 pub mod preview;
+// 右键「属性」：问那台 `files-stat`，摆一个框。
+pub mod props;
 // **原生选文件框**：上传 / 存到哪儿那两问的「浏览…」。
 pub mod picker;
 // 本包的平台层（平台 cfg 只许住这里）。
@@ -288,6 +294,8 @@ pub mod shell;
 // **算大小**：后端 `files-size` 的窗口那一侧（发 · 解 · 摆一句话）。
 pub mod size;
 pub mod source;
+// 窗口的样子：开窗种子里那一套主题 → egui 的配色 · 字号 · 间距（色值只住这一处换算）。
+pub mod theme;
 pub mod transfer;
 // 工具栏「上传」那一问：选完走拖入那一条。
 pub mod upload;

@@ -110,10 +110,11 @@ const HOP: u8 = 1;
 /// 通道上**由 monitor 自己接**、不按 `origin` 转给那台后端的 op：传输台开单两条（本机常驻后端的传输台，经中继 `sftp_pool.rs`）·
 /// 文件窗口「在此打开终端」（[`terminal_open`]）。其余一切照旧按 `origin` 去 `inbound_client`。
 /// 传输那两条从传输台那一份名单取（`sftp_pool::TRANSFER_OPS`，一份名单一个家）。
-pub(crate) const HOST_OPS: [&str; 3] = [
+pub(crate) const HOST_OPS: [&str; 4] = [
     crate::sftp_pool::TRANSFER_OPS[0],
     crate::sftp_pool::TRANSFER_OPS[1],
     filewin_contract::TERMINAL_OPEN_OP,
+    filewin_contract::FILEWIN_OPEN_OP,
 ];
 
 /// 开终端那一行由本机后端渲（`src/backend/dial/terminal.rs`，与主界面 `terminal-open.ts` 问的同一条）。
@@ -135,6 +136,9 @@ impl Backends for InboundBackends {
         if HOST_OPS.contains(&op.0.as_str()) {
             if crate::sftp_pool::is_transfer_op(&op.0) {
                 return Box::pin(transfer_open(origin, op, payload));
+            }
+            if op.0 == filewin_contract::FILEWIN_OPEN_OP {
+                return Box::pin(filewin_open(origin, payload));
             }
             return Box::pin(terminal_open(origin, payload, left));
         }
@@ -288,6 +292,17 @@ async fn terminal_open(origin: Origin, payload: Body, left: Duration) -> Result<
     match crate::launch::open_terminal_window(line.to_string(), true).await {
         Ok(()) => Ok(Body(b"{}".to_vec())),
         Err(why) => Err(refused("terminal_failed", why)),
+    }
+}
+
+/// 「开另一台的文件窗口」：载荷当 JSON 读，交给开窗入口（`filewin::entry::open_from_window`），它的拒绝原样回给窗口。
+async fn filewin_open(origin: Origin, payload: Body) -> Result<Body, CallError> {
+    let Ok(args) = serde_json::from_slice::<serde_json::Value>(&payload.0) else {
+        return Err(OursFault::Misuse.into());
+    };
+    match crate::filewin::entry::open_from_window(origin.as_wire_str(), &args).await {
+        Ok(()) => Ok(Body(b"{}".to_vec())),
+        Err((code, why)) => Err(refused(code, why)),
     }
 }
 

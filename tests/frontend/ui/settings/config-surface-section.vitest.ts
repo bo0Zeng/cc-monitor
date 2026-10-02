@@ -687,8 +687,8 @@ describe("足迹那几行「去看看它」：本机在文件夹中显示、远�
     clickAll(remote, "button[data-open-files]");
     await flush();
     expect(sent("open_file_window")).toEqual([
-      { cfg: AYA_CFG, path: "", revealFile: "/h/.cc-monitor/bin/ccm" },
-      { cfg: AYA_CFG, path: "", revealFile: "/h/.claude/settings.json" },
+      { cfg: AYA_CFG, path: "", revealFile: "/h/.cc-monitor/bin/ccm", theme: expect.any(Object) },
+      { cfg: AYA_CFG, path: "", revealFile: "/h/.claude/settings.json", theme: expect.any(Object) },
     ]);
     expect(revealed).toEqual([]);
   });

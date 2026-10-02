@@ -1159,34 +1159,15 @@ pub fn frame_text(
     painted.into_iter().map(|(t, _)| t).collect()
 }
 
-/// 在搜索框里打一段字（合成事件：先点一下让它拿到焦点，再送文字）。
+/// 在搜索框里打一段字（合成事件：先把焦点交给它，再送文字）。
 ///
-/// ⚠ 焦点要靠**真点一下**拿到 —— egui 的 `Event::Text` 只送给有焦点的控件。
-/// 两帧：第一帧点下去，第二帧才送字（命中测试按上一帧的 widget 表做，
-/// 同 `super::super::rows` 的 `paint_one_row` 头注那条现打）。
+/// ⚠ egui 的 `Event::Text` 只送给有焦点的控件 ⇒ 先给焦点（与 Ctrl+F 同一个口），下一帧才送字。
 pub fn type_into_search(ctx: &egui::Context, w: &mut crate::shell::FileWindow, text: &str) {
-    // 第一帧：找到那个输入框（它左边紧挨着「搜索」那两个字）。
-    let input = egui::RawInput {
-        screen_rect: Some(egui::Rect::from_min_size(
-            egui::Pos2::ZERO,
-            egui::vec2(1280.0, 800.0),
-        )),
-        ..Default::default()
-    };
-    let out = ctx.run_ui(input, |ui| w.frame_body(ui));
-    let painted = crate::copy::testing::text_in_frame(&out);
-    out.drop_without_applying_deltas();
-    let label = crate::copy::testing::rects_of(&painted, "搜索");
-    let anchor = label
-        .first()
-        .copied()
-        .expect("这一帧上没有「搜索」那两个字 —— 搜索那一行被谁摘了");
-    // 输入框在标签右边；点它的左段（离标签一点点，别点到「重建索引」那颗按钮上）。
-    let pos = egui::pos2(anchor.right() + 20.0, anchor.center().y);
-    let events = crate::rows::testing::click_at(pos);
-    let _ = frame_text(ctx, w, events);
-    // 第二帧：送字。
-    let _ = frame_text(ctx, w, vec![egui::Event::Text(text.to_string())]);
+    // 搜索框住工具条上那一格（`toolbar_ui`）：画一帧带框的，把焦点交给它（同 Ctrl+F 那一下），再送字。
+    let _ = crate::chrome::testing::frame(ctx, w, Vec::new());
+    ctx.memory_mut(|m| m.request_focus(egui::Id::new(crate::shell::SEARCH_BOX_ID)));
+    let _ = crate::chrome::testing::frame(ctx, w, Vec::new());
+    let _ = crate::chrome::testing::frame(ctx, w, vec![egui::Event::Text(text.to_string())]);
     // 🔴 **量具自检**：字真的落进那个框了吗。
     //    没落进去（框没拿到焦点 / 那一行被谁摘了）时，后面每一条断言都会以
     //    「搜出来是空的」的形式红 —— 而那与「搜索坏了」在输出上一模一样。

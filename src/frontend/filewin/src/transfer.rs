@@ -842,7 +842,7 @@ impl DropBoard {
         // 改走后端链路那一句（一窗一次；之后的上传都走那条，不再逐件说）。
         if let Some(why) = via {
             ui.colored_label(
-                egui::Color32::from_rgb(0xE0, 0x9A, 0x20),
+                ui.visuals().warn_fg_color,
                 copy_text("rsFilewinChunkUpload.route.switched", &[("why", &why)]),
             );
         }
@@ -908,7 +908,7 @@ impl DropBoard {
             // 从头重传过的那几件：成没成都要说（一次坏块 = 那一趟的续传本钱白花了，而且可能是网络 / 盘在出错）。
             if !o.redone.is_empty() {
                 ui.colored_label(
-                    egui::Color32::from_rgb(0xD0, 0x8A, 0x20),
+                    ui.visuals().warn_fg_color,
                     copy_text(
                         "rsFilewinTransfer.ui.redone",
                         &[(
@@ -921,7 +921,7 @@ impl DropBoard {
             }
             if !o.failed.is_empty() {
                 ui.colored_label(
-                    egui::Color32::RED,
+                    ui.visuals().error_fg_color,
                     copy_text(
                         "rsFilewinTransfer.ui.failed",
                         &[

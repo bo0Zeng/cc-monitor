@@ -109,5 +109,16 @@ eframe = { version = "0.36", default-features = false, features = [
 #   `eframe::EventLoopBuilder` 上 ⇒ `filewin::shell` 的 hook 编不过。
 winit = "0.30"
 
+# 窗口的图标（工具条 · 文件种类）：Phosphor 图标字（`MIT OR Apache-2.0`），只占私用区码位。
+egui-phosphor = "0.14"
+# 预览的代码高亮：egui 官方扩展包里的 syntect 那一支（`MIT OR Apache-2.0`；syntect 本身 MIT）。
+egui_extras = { version = "0.36", default-features = false, features = ["syntect"] }
+# 预览的图片：窗口自己解码（后端只按上限给字节）。已在锁文件里（别的依赖带进来的），这里多开几种格式。
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp", "bmp"] }
+# 修改时间按本机本地时间画（`MIT OR Apache-2.0`）。已在锁文件里（别的依赖带进来的，`clock` 一支已开），零新包。
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+# 主界面字族里的名字 → 这台机器上的那份字体文件（MIT）。
+fontdb = { version = "0.23", default-features = false, features = ["std", "fs"] }
+
 [dev-dependencies]
 guard-core = { path = "../../common/guard-core" }

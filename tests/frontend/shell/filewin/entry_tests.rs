@@ -4,6 +4,9 @@
 //! 列不出来就带原文报错」（〔主会话 09-28 裁 3〕「谁去问」改成窗口进程自己，那句待设计侧改写）；「三种落点与 `filewin/entry.rs::plan_target` 三支一一对应」·
 //! 「判据：入口人群两向相等、`open_file_window` 在包装层外恰好一处」—— 本族判的正是先问后开、三支落点、命令真接到前端。
 
+#[path = "../../filewin/theme_testing.rs"]
+mod theme_testing;
+
 use super::*;
 
 fn synth_cfg() -> RemoteConfig {
@@ -43,6 +46,7 @@ async fn without_a_channel_no_window_process_is_started() {
             path.into(),
             reveal.map(str::to_string),
             None,
+            theme_testing::default_theme(),
             Box::new(|_| {}),
         )
         .await

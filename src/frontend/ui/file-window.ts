@@ -25,6 +25,42 @@ import { showActionFailureToast } from "./error-toast";
 import type { RemoteHostConfig } from "./remote-config";
 import { copyText } from "./copy-table";
 
+/**
+ * 文件窗口要的那几格设计令牌：开窗那一刻 `:root` 上的计算值（含用户在设置里改过的）原样交给 Rust 侧，
+ * 由它解成数放进开窗种子 —— 窗口照着画，自己不另有一份色值。名单与 Rust 侧那一份两向相等（判据钉）。
+ */
+export const FILE_WINDOW_THEME_TOKENS = [
+  "--bg",
+  "--bg-2",
+  "--card",
+  "--text",
+  "--text-2",
+  "--text-faint",
+  "--accent",
+  "--border-strong",
+  "--border-medium",
+  "--border-soft",
+  "--border-faint",
+  "--state-hover",
+  "--state-active",
+  "--field-bg",
+  "--success",
+  "--warn",
+  "--error",
+  "--color-link",
+  "--font-base",
+  "--font-mono",
+  "--font-size-base",
+  "--font-size-mono",
+  "--font-size-small",
+] as const;
+
+/** 此刻 `:root` 上那几格的计算值。 */
+export function fileWindowTheme(): Record<string, string> {
+  const css = getComputedStyle(document.documentElement);
+  return Object.fromEntries(FILE_WINDOW_THEME_TOKENS.map((t) => [t, css.getPropertyValue(t).trim()]));
+}
+
 /** 窗口开在哪（不给 ＝ 那台机器的 home）。 */
 export type FileWindowTarget = { readonly dir: string } | { readonly revealFile: string };
 
@@ -37,7 +73,7 @@ export async function openFileWindow(cfg: RemoteHostConfig, at?: FileWindowTarge
   const path = at && "dir" in at ? at.dir : "";
   const revealFile = at && "revealFile" in at ? at.revealFile : null;
   try {
-    await commands.open_file_window({ cfg, path, revealFile });
+    await commands.open_file_window({ cfg, path, revealFile, theme: fileWindowTheme() });
     return true;
   } catch (e) {
     showActionFailureToast(copyText("fileWindow.openFileWindow.failed"), String(e));

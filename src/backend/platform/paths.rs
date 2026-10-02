@@ -85,6 +85,41 @@ pub(crate) fn device_of(_p: &Path) -> Option<u64> {
     None
 }
 
+/// 一个路径（**跟链接**，与 `files-stat` 其余几格同源）的属主：用户名；查不到名字 ⇒ uid 的数字串。
+/// 非 unix ⇒ `None`（那边的属主是另一套东西，不编一个）。
+#[cfg(unix)]
+pub(crate) fn owner_of(p: &Path) -> Option<String> {
+    use std::os::unix::fs::MetadataExt as _;
+    let uid = std::fs::metadata(p).ok()?.uid();
+    Some(user_name(uid).unwrap_or_else(|| uid.to_string()))
+}
+
+#[cfg(not(unix))]
+pub(crate) fn owner_of(_p: &Path) -> Option<String> {
+    None
+}
+
+/// uid → 用户名（`getpwuid_r`，可重入；查不到 / 名字不是 UTF-8 ⇒ `None`）。
+#[cfg(unix)]
+fn user_name(uid: u32) -> Option<String> {
+    let mut buf = vec![0 as libc::c_char; 4096];
+    // SAFETY: `pwd` 由 libc 填；`buf` 活过本函数、长度如实交出；`out` 只在回 0 且非空时读。
+    let mut pwd: libc::passwd = unsafe { std::mem::zeroed() };
+    let mut out: *mut libc::passwd = std::ptr::null_mut();
+    let rc = unsafe { libc::getpwuid_r(uid, &mut pwd, buf.as_mut_ptr(), buf.len(), &mut out) };
+    if rc != 0 || out.is_null() || pwd.pw_name.is_null() {
+        return None;
+    }
+    // SAFETY: 上面判过非空；`pw_name` 指进 `buf`，以 NUL 收尾。
+    let name = unsafe { std::ffi::CStr::from_ptr(pwd.pw_name) };
+    name.to_str().ok().map(str::to_string)
+}
+
+/// 路径**本身**是符号链接 ⇒ 它的目标原文（`readlink`，不解、不跟）；不是链接 / 读不到 ⇒ `None`。
+pub(crate) fn link_target_of(p: &Path) -> Option<std::path::PathBuf> {
+    std::fs::read_link(p).ok()
+}
+
 /// 这台机器的**「文档」目录**（Windows 上 OneDrive 会把它挪走 ⇒ 问系统 `SHGetKnownFolderPath`）。
 /// 从前是 monitor 进程问（`dirs::document_dir`）；别名方言进了后端之后，`$PROFILE` 在哪由**那台后端**问它自己的系统。
 /// 非 Windows ⇒ `None`（那里没有 `$PROFILE` 要找，调用方退回 `home/Documents`，不编一个答案）。

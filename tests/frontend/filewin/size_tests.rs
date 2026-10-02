@@ -42,7 +42,7 @@ fn the_outcome_line_says_the_numbers_as_reported() {
     let s = sized_from_reply("proj", &full()).unwrap();
     assert_eq!(
         size_line(&s),
-        "proj：2.0 K（2048 字节），3 个文件、2 个目录，1 条链接没算进去，4 个目录在另一个盘上，没进去，5 个目录读不进去"
+        "proj：2.0 KB（2048 字节），3 个文件、2 个目录，1 条链接没算进去，4 个目录在另一个盘上，没进去，5 个目录读不进去"
     );
     let quiet = Sized {
         links: 0,
@@ -52,11 +52,11 @@ fn the_outcome_line_says_the_numbers_as_reported() {
     };
     assert_eq!(
         size_line(&quiet),
-        "proj：2.0 K（2048 字节），3 个文件、2 个目录"
+        "proj：2.0 KB（2048 字节），3 个文件、2 个目录"
     );
     assert_eq!(
         outcome_text(&[Ok(quiet), Err(("x".into(), "原话".into()))]),
-        "proj：2.0 K（2048 字节），3 个文件、2 个目录；x 算不出来：原话"
+        "proj：2.0 KB（2048 字节），3 个文件、2 个目录；x 算不出来：原话"
     );
 }
 
@@ -110,7 +110,7 @@ async fn size_on_the_menu_walks_to_the_wire_for_each_picked_item() {
     );
     let said = outcome_text(&w.size_board.last().expect("没有结局"));
     assert!(
-        said.starts_with("data：2.0 K（2048 字节），3 个文件、2 个目录，1 条链接没算进去"),
+        said.starts_with("data：2.0 KB（2048 字节），3 个文件、2 个目录，1 条链接没算进去"),
         "{said}"
     );
     assert!(

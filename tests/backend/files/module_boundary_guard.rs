@@ -264,6 +264,16 @@ const OUTWARD: &[(&str, Kind, &str)] = &[
         "〔HX1 拍板项 2〕覆盖写「属主不是后端这个用户 ⇒ 退回就地写」要问这台进程的 uid",
     ),
     (
+        "platform::paths::owner_of",
+        Kind::Platform,
+        "`files-stat` 的属主：uid → 用户名要问系统的用户库，只在平台层问",
+    ),
+    (
+        "platform::paths::link_target_of",
+        Kind::Platform,
+        "`files-stat` 的链接指向：路径本身是不是链接、指向哪（`readlink`），读系统的口住平台层",
+    ),
+    (
         "platform::paths::home_dir",
         Kind::Platform,
         "这台后端的家目录只在平台层答（`HOME` → `USERPROFILE`）：`files-home` 与暂存区都拼在它底下",
