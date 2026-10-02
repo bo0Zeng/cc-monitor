@@ -488,7 +488,7 @@ export class MachineCard {
     ): HTMLButtonElement => {
       const b = document.createElement("button");
       b.type = "button";
-      // 〔AR1 拍板 3〕`variant` 空串 = 默认那一种（原先的 `settings-btn-secondary` 从没有过规则，已摘）。
+      // `variant` 空串 = 默认那一种（原先的 `settings-btn-secondary` 从没有过规则，已摘）。
       b.className = variant ? `settings-btn ${variant}` : "settings-btn";
       b.textContent = label;
       b.title = title;

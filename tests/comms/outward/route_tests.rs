@@ -95,7 +95,7 @@ fn rejects_everything_that_is_not_the_shape() {
     );
 
     // 分母 = 我列出的这 9 形；不是「所有不合法输入」。
-    // 〔加了 `/t/` 少一段照样不认 ＋ **第三个前缀一律不认**；V141 路由剩两段。〕
+    // 〔加了 `/t/` 少一段照样不认 ＋ **第三个前缀一律不认**；路由只有两段。〕
     for bad in [
         "/v1/messages",
         "/s/agentA",
@@ -116,7 +116,7 @@ fn rejects_everything_that_is_not_the_shape() {
 ///
 /// 升级之前起的会话手里是 `/s|t/<agent>/<账号>/<会话段>` 那一形（env 起会话那一刻就定死了）。新解析器眼里
 /// 它是 `seg1 · seg2 · rest=/<会话段>/v1/messages` —— 两段都过白名单 ⇒ **解析器拦不住它**，上游收到的
-/// 真路径多了一截 ⇒ 上游自己 404。照「不为旧状态留兼容」不在这里认旧形；那几条会话要重起（报备主会话）。
+/// 真路径多了一截 ⇒ 上游自己 404。照「不为旧状态留兼容」不在这里认旧形；那几条会话要重起。
 #[test]
 fn the_retired_session_segment_is_not_rejected_here_it_becomes_part_of_the_real_path() {
     let r = parse("/s/agentA/acctA/sid-AAA/v1/messages").expect("老形状在**本层**照样解析得了");

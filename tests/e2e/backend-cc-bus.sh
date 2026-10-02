@@ -404,7 +404,7 @@ def calls(d):
 def split(cs):
     outer = [c for c in cs if b'--detach' in c]
     rest = [c for c in cs if b'--ccm-probe' not in c and b'--detach' not in c]
-    return outer, [c for c in rest if b'--ccm-print' not in c]  # V138：自检那一趟带的是 --ccm-print
+    return outer, [c for c in rest if b'--ccm-print' not in c]  # 自检那一趟带的是 --ccm-print
 (o1, p1), (o2, p2) = split(calls(sys.argv[1])), split(calls(sys.argv[2]))
 if len(o1) != 1 or len(o2) != 1:
     print(f"建会话那趟不是恰好各一次：{len(o1)}/{len(o2)}"); sys.exit()
@@ -520,7 +520,7 @@ chk "★ cc-whoami（按 \$TMUX 反查会话 id 那一条）认出的身份" "$(
 chk "★ cc-whoami（沿进程树找 pane 那一条）认出的身份" "$(cat "$_u8d/who3" 2>/dev/null)" "$_u8want"
 tmux kill-session -t "=$_u8name" 2>/dev/null || true
 
-echo "[SH1-b] ★ V136：驾驶舱读面 —— 后端转调 cc-bus 的机器可读读命令（登记时间 · 派生时间 · 坏行数 · 收件箱只看尾巴）"
+echo "[SH1-b] ★ 驾驶舱读面 —— 后端转调 cc-bus 的机器可读读命令（登记时间 · 派生时间 · 坏行数 · 收件箱只看尾巴）"
 # 台架写一份**脏**的名册与台账（只采结构：`--help` 行 · 缺字段行 · 真空行 · 只有 TAB 的行 · 任务里带 TAB），
 # 坏行数期望由这份夹具手算，不从被测输出里取。
 printf 'alpha_cc\talpha_cc:0.0\t2026-01-01T00:00:00+00:00\t111\n--help\tx:0.0\tts\t1\nshort\tonly\n\n\t\t\t\nbeta_cc\tbeta_cc:0.0\tts2\t\n' > "$BUS/agents.tsv"

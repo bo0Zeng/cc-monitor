@@ -118,7 +118,7 @@ jobs:
 
   # ──：**monitor 这棵树在 Linux 上的行为，云端一次都没有被执行过** ──────
   #
-  # ## 题面（漏洞 3 逐字）
+  # ## 问题（漏洞 3 逐字）
   #
   # 上面 `rust` job 是**唯一**跑 `cargo test --workspace` 的地方，而它 `runs-on: windows-latest`；
   # Linux 侧对 `src/frontend/shell` 今天只有 `linux-app-build` 那一条 `cargo build` ——
@@ -492,7 +492,7 @@ jobs:
           # ⚠ 两个 `.ps1` 仍**零 lint**（全仓无 PowerShell linter）：`tests/scripts/run.ps1` 与
           #    `tests/e2e/tier2/run-in-session1.ps1` ⇒ 记为诚实边界。
           #    〔09-25 MG1 合 RT1〕长到**四个**：`tests/evidence/RT1-lib.ps1` · `RT1-winwatch.ps1`（Win11 虚拟机真机台架，
-          #    只在台架里跑、不进产品）同样零 lint；「要不要引 PSScriptAnalyzer」交主会话重问（`shell_lint_registry` 那张表同拍）。
+          #    只在台架里跑、不进产品）同样零 lint；「要不要引 PSScriptAnalyzer」待定（`shell_lint_registry` 那张表同拍）。
           # **2026-08-11 P3t-Y5 棘到 46**：新增 `tests/e2e/p3t-local-tmux.sh`（本机拉起真的建出 tmux 会话）。
           # ★ 这次**不是事后补**——改成等号之后它当场就红了，加脚本的同一拍就回来棘。
           #   那正是把「≥」改成等号买到的东西：前三次落后（37→39→41）全是「≥ 不响，没人回来」。
@@ -646,7 +646,7 @@ jobs:
           # ★ 与前几次同形：**不是地板落后**，是同一拍加文件、同一拍棘 ——
           #   `shell_lint_registry` 那条**恒等**判据当场红并直接给出「该写几」。
           # ⚠ 本拍**只动了这一个数**：那套 e2e 故意**没有**登记成 `package.json` 的 `test:*`，
-          #   也没有加 `assert-pass-floor` 那一行（那是另一条计数地板，待拍板）。
+          #   也没有加 `assert-pass-floor` 那一行（那是另一条计数地板，待定）。
           # 今天实测构成（逐组现打，不倒推）：
           # **78 = tests/e2e/*.sh 31 + cc-bus/scripts/* 20 + weak-net 4 + local-backend-container 3
           #        + tests/evidence/*.sh 9 + tests/scripts/*.sh 4 + vendored 4 + fake-claude 1 + tests/hooks/* 2**。
@@ -655,7 +655,7 @@ jobs:
           # ★ 同步 2 那一拍同形：**不是地板落后**，是同一拍加文件、同一拍棘，`shell_lint_registry`
           #   那条**恒等**判据当场红并直接给出「该写几」。
           # ⚠ 本拍**只动了这一个数**：那套 e2e 与步 2 那套一样**没有**登记成 `package.json` 的 `test:*`、
-          #   也没有加 `assert-pass-floor` 那一行 —— 两条都是计数地板，**待拍板**，已报备。
+          #   也没有加 `assert-pass-floor` 那一行 —— 两条都是计数地板，**待定**。
           # 今天实测构成（逐组现打，不倒推）：
           # **79 = tests/e2e/*.sh 32 + cc-bus/scripts/* 20 + weak-net 4 + local-backend-container 3
           #        + tests/evidence/*.sh 9 + tests/scripts/*.sh 4 + vendored 4 + fake-claude 1 + tests/hooks/* 2**。
@@ -668,7 +668,7 @@ jobs:
           # **2026-09-25 LR2 棘到 82** —— 新增 `tests/e2e/launch-render-emit.sh`（生产 Rust 渲染器给 e2e 的出口，
           #   `launch-render-driver.ts` 调它）；`tests/e2e/*.sh` 那组 +1。同拍加文件、同拍棘。
           # **82 = 上面 81 ＋ tests/e2e/launch-render-emit.sh 1**。
-          # **2026-09-26 SH1 棘到 83** —— 新增 `src/shared/cc-bus/scripts/cc-log`（V136 只读看收件箱尾巴）；cc-bus/scripts 那组 +1。
+          # **2026-09-26 SH1 棘到 83** —— 新增 `src/shared/cc-bus/scripts/cc-log`（只读看收件箱尾巴）；cc-bus/scripts 那组 +1。
           # **83 → 79**：账号库管理收进后端，vendored 的那 4 份 bash（主脚本 · 库 · 安装脚本 · 自测）整棵删了 ——
           #   人群没漏，是文件真的不在了。今天实测构成 = 上面 83 减去那 4 份。
           # **79 → 80**：新增 `tests/e2e/ccm-shim.sh`（把后端以 `ccm` 之名放上 PATH、沙箱一律无条件给的那份助手）；`tests/e2e/*.sh` 那组 +1。
@@ -957,7 +957,7 @@ jobs:
       # 那等于把 `CI-J1` 立下的那条拆法（按「要不要 Rust 工具链」拆两个 job）拆掉，
       # 而那条拆法正是为了同一族缺陷立的。⇒ **搬步骤，不搬工具链。**
       #
-      # ⚠ **也不是「删掉」** —— 删之前现打问过「题面是不是已经被别的门覆盖了」，答案是**没有**：
+      # ⚠ **也不是「删掉」** —— 删之前现打问过「这个问题是不是已经被别的门覆盖了」，答案是**没有**：
       #   · 本地出货门禁 `tests/scripts/gate.sh` 今天对本文件里每一套带 `assert-pass-floor.sh` 地板的 e2e 都有一行
       #     `run_e2e`（四套全在，含 `cc-spawn-uplift`；两向由 `shared_crate_registry` 那条映射判据钉着）——
       #     但那是本机门禁，不是 CI：本地全绿 ≠ CI 会绿。
@@ -1257,7 +1257,7 @@ jobs:
   #    落地读数全部量于开发机（09-05：`PASS=26 FAIL=0`，连跑两趟同值）。
   # ── `local-gate`：**本地那道门在云端零调用**这件事，到此为止（`G4` 空洞③，09-20）──
   #
-  # ## 题面（本拍非截断复打）
+  # ## 问题（非截断复打）
   #
   #     grep -c 'bash tests/scripts/'"gate.sh" .github/workflows/*.yml   →  两份都是 0
   #     （⚠ 上面那条命令**刻意把串拆开写**：原样抄一遍，`C8d` 那条 count()==1 就会把这行

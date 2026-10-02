@@ -13,7 +13,7 @@
 //! 它防的不是写盘，是「第二条出路」（同一件事两处起法，参数拼装 / 环境擦洗 /
 //! 错误归因一定会漂）与「没人认领的子进程」。
 //!
-//! ⚠ 条 44 是 2026-09-22 才有的（`P20` 现打之后用户拍板升格）；
+//! ⚠ 条 44 是 2026-09-22 才有的（`P20` 现打之后升格）；
 //! 在那之前本表点不到任何要求。逐条依据住。
 //!
 use std::path::{Path, PathBuf};
@@ -68,7 +68,7 @@ const EXEC_SITES: &[(&str, &str, Origin, &str)] = &[
     //    （改走长连接的 `history-read` / `history-tail`，`frame_query`）
     //    ⇒ 它们不再是「远端执行点」。
     // 🔴 **逐次拨号那一行也出去了**（`remote_history.rs` 的 `run_list_query`〔散文墓碑〕）：
-    //    它的放行表 C4c 起是空的，主会话 09-25 裁删 —— 同上面几笔的形状（那条一次性 SSH exec 整条没了）。
+    //    它的放行表 C4c 起是空的，已删 —— 同上面几笔的形状（那条一次性 SSH exec 整条没了）。
     // `ssh_source.rs` 起远端流模式那一处出去了：那一形删了（远端只剩常驻，`remote_resident::attach`）。
     // `tmux.rs / list_remote_tmux` 出去了：列会话改问那台后端 `tmux-list`。
     // ── 只转发，不构造（命令来自调用方）
@@ -320,7 +320,7 @@ fn every_remote_exec_declares_where_its_command_came_from() {
 // ═════════════════════════════════════════════════════════════════════════════
 //
 // 要求：「所有 SSH 由本机常驻后端持有」· 「其余一次性 exec 点……**逐处仍要核**」·
-// 题面（4D LOC1a）「9 处 shell 能换后端具名命令的逐处换，换不了的写理由并登记」。
+// 要求「9 处 shell 能换后端具名命令的逐处换，换不了的写理由并登记」。
 //
 // 上面那张 `EXEC_SITES` 管「命令串从哪来」（注入面）；本表管另一件事：**这一处为什么还没换成那台后端的具名命令**。
 // 人群 = monitor 生产段里 `connect_and_exec_cmd(` ∪ `connect_and_exec_capture(` 的调用点（「文件::外层函数」，
@@ -329,7 +329,7 @@ fn every_remote_exec_declares_where_its_command_came_from() {
 //
 // 类别：`Bootstrap` —— 这一跳发生在那台的后端**还不存在 / 正在被装**的时候，问不了它；
 //       `Deploy` —— 装的是后端之外的工具（「部署 …… 不迁」）；
-//       `Pending(归谁)` —— **能换**，本路没换，写清卡在哪、归谁（列给主会话）。
+//       `Pending(归谁)` —— **能换**，本路没换，写清卡在哪、归谁。
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum StillShell {

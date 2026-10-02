@@ -41,7 +41,7 @@
 use std::collections::BTreeMap;
 use std::path::Path;
 
-/// 〔主会话 D-b「tmux hook 槽位按实例区分、起时清死 pid 的槽」〕hook 槽位**段**：`[HOOK_SLOT_BASE, HOOK_SLOT_BASE + HOOK_SLOT_COUNT)`。
+/// 〔tmux hook 槽位按实例区分、起时清死 pid 的槽〕hook 槽位**段**：`[HOOK_SLOT_BASE, HOOK_SLOT_BASE + HOOK_SLOT_COUNT)`。
 ///
 /// 每个后端实例占其中**一格**（三个事件同一个下标）。调研实测全局 `[50]` 空着；仍用下标（而不是追加到一串未知 hook 后面）
 /// 是为了**可撤销**（`tmux set-hook -gu 'session-closed[<下标>]'`）。

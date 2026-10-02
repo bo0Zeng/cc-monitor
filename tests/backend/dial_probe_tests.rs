@@ -82,7 +82,7 @@ async fn ssh_up_but_no_hello_is_its_own_verdict() {
     assert_eq!(r["message"], copy_text("beProbe.test.noHello", &[]));
 }
 
-/// 认形状 ＋ 主会话 09-28 裁：机器页「测试连接」那一行不露 `v=… build=… caps=[…]` 日志行，
+/// 认形状 ＋ 机器页「测试连接」那一行不露 `v=… build=… caps=[…]` 日志行，
 /// 露三格（版本 · 能用几项 / 做不到几项 · 往返毫秒），做不到的那几类按码分类交给界面；键值对那一形只进日志。
 fn is_not_a_log_line(s: &str) -> bool {
     !s.contains('=') && !s.contains('[')

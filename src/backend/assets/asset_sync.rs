@@ -50,7 +50,7 @@ use crate::stream::remote_ask::{lock, Reach, Remote, Table, REACH};
 
 /// 一块推的载荷（JSON 本身）的上限。
 /// 原理由是「`sh -c` 那一个参数 128 KiB，留出引号转义的余量」—— 载荷改走 stdin 之后那条上限不在了，
-/// 今天管它的是远端 CLI 面 stdin 的上限（1 MiB，判据钉「本值不超过它」）。值**没动**（放不放大交主会话，见 `W5-AUX.md §7`）。
+/// 今天管它的是远端 CLI 面 stdin 的上限（1 MiB，判据钉「本值不超过它」）。值**没动**。
 pub const PUSH_MAX_BYTES: usize = 96 * 1024;
 
 /// 远端后端的两条一次性子命令（与 `lib.rs::SUBCOMMANDS` 同名，判据钉）。

@@ -20,7 +20,7 @@
   ④ 上传：只写 `~/.cc-monitor/staging/<key>.part`，逐字节等于本机那份；帧序 got 单调、最后一帧 done
   ⑤ 续传：暂存件先放前 N 字节 ⇒ sftp-server 记下的这一趟写入字节数 == 总长 − N
   ⑥ 撤：上传撤 ⇒ 暂存件删；下载撤 ⇒ `.part` 留
-  ⑦ 下载：落地逐字节对、`.part` 不留；远端不存在 ⇒ failed、`.part` 不留；本机落点是会话文件 ⇒ 照样开单（V119 之后没有数据围栏）
+  ⑦ 下载：落地逐字节对、`.part` 不留；远端不存在 ⇒ failed、`.part` 不留；本机落点是会话文件 ⇒ 照样开单（没有数据围栏）
   ⑧ 长流 ＋ files 链路一条、全部传输分道一条：sshd **恰好两次**鉴权、**恰好两条** TCP
   ⑨ 子系统留口仍不开：use=subsystem ⇒ unsupported_use
 

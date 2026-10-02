@@ -5,7 +5,7 @@
  *
  * 此前这一族是 monitor 的五条 Tauri 命令：本机项目清单（exec 一次性本机后端 `--list-projects`、monitor 并注解 ＋ `SessionMap` 判活）·
  * 远端项目清单（monitor 逐台 fan-out、按行拿回再并注解）· 展开一个项目（本机 monitor 自己扫目录、远端按行拿回 —— 两套口径）·
- * 改注解（monitor 读改写 `history-metadata.json`）· 上次账号表。主会话 09-25 裁（「主会话裁」第 2 条）：
+ * 改注解（monitor 读改写 `history-metadata.json`）· 上次账号表。
  * 注解的**读写者**换成本机常驻后端（文件原地不动），它经 `remote_ask` 问远端那台、并上注解、**出成品**；前端经 `chan.call`。
  * ⇒ 五条命令与 monitor 那一份 join / 注解读写一起删了；这里经通道问 `<local>` 那一台，按形状收。
  *

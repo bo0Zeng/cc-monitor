@@ -16,7 +16,7 @@
  * 读到自己会恒绿；排掉 `src/frontend/ui/generated/` —— ts-rs 生成的线上类型，不是人写的，它们只有类型没有字面量）。
  * 共享遍历 `test-support/production-sources.ts` 按构造做这两件事。
  * 两份夹具用例表（`launch-payload-golden.ts` · `launch-tmux-outer-golden.ts`）的手写期望逐字就是整条命令，
- * 原来住 `src/`；它们不是前端，挪进了 `tests/test-support/`（主会话 09-25 裁：射程取全集、不开例外表）。
+ * 原来住 `src/`；它们不是前端，挪进了 `tests/test-support/`（射程取全集、不开例外表）。
 
  * # 命中的口径
  *

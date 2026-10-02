@@ -188,7 +188,7 @@ fn bus_state_answers_both_halves_from_one_call() {
 }
 
 /// **跨语言金样**：驾驶舱读面两份成品，两侧读同一份 `tests/__fixtures__/cc-bus-read.golden.json`。
-/// 要求：「成品的两侧对拍 … 后端测试产出 == 金样 · TS 解码器读同一份」· V136（登记时间 · 派生时间 · 坏行数 · 收件箱只看尾巴）。
+/// 要求：「成品的两侧对拍 … 后端测试产出 == 金样 · TS 解码器读同一份」· 读面：登记时间 · 派生时间 · 坏行数 · 收件箱只看尾巴。
 /// 异源：输入样例经**生产**解析器（`parse_roster_tsv` / `parse_spawned_tsv` / `parse_inbox` / `inbox_reply`）现算，reply 是手写期望；码集合 == `inbound::REGISTRY`。
 #[test]
 fn the_cockpit_read_products_match_the_cross_language_golden() {
@@ -251,7 +251,7 @@ fn the_cockpit_read_products_match_the_cross_language_golden() {
     }
 }
 
-/// 杀会话顺手注销：只认名册第 4 列 pane pid 落在那个会话 pane 上的 id（主会话裁 TL2 A：不按会话名猜）。
+/// 杀会话顺手注销：只认名册第 4 列 pane pid 落在那个会话 pane 上的 id（不按会话名猜）。
 /// 要求：「认人核 `agents.tsv` 第 4 列的 pane pid（不按会话名猜）」。
 #[test]
 fn only_ids_registered_on_the_killed_panes_are_unregistered() {

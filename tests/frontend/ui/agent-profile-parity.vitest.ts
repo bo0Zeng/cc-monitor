@@ -188,7 +188,7 @@ describe("agent 适配表的三写点对拍（plugin-split E4c / EL6）", () => 
   it("★ resume 的形状（flag 还是子命令）：golden ↔ backend 一致，命令模板用的就是那个字面量", () => {
     const g = golden();
     // ccm 成了 claude 的壳、只看不吃 `--resume` ⇒ 它那张 `resume_flag` 表删了。
-    expect(/^\s*pub\(crate\) fn resume_flag\(/m.test(read(CCM)), `${CCM} 又长出了 resume 表 —— V138 之后 ccm 不做 resume 决定`).toBe(false);
+    expect(/^\s*pub\(crate\) fn resume_flag\(/m.test(read(CCM)), `${CCM} 又长出了 resume 表 —— ccm 不做 resume 决定`).toBe(false);
     for (const a of AGENTS) {
       const token = backendResumeToken(a) ?? "";
       expect(token, `backend 的 RESUME_TOKEN 与 golden 不一致（agent=${a}）`).toBe(g[a]?.resume_token);

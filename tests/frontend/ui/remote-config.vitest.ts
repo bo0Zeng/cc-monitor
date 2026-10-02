@@ -170,7 +170,7 @@ describe("S1：整表覆盖那条路必须**不可达**", () => {
  * 一台都不给（不猜那是哪台）、并带上那一句。对照：`hosts: []` 是合法的零台、没有 `remote` 段是「没配」，两者都不带那一句。
  * Rust 那一侧同一个判准：`tests/frontend/shell/lib_remote_config_tests.rs::a_remote_section_without_a_hosts_array_is_refused_not_emptied`。
  */
-describe("〔S5 · V41〕remote 段认不出", () => {
+describe("remote 段认不出", () => {
   beforeEach(() => vi.resetAllMocks());
 
   it("★ 没有 hosts 列表 ⇒ 一台都不给，并说认不出", async () => {

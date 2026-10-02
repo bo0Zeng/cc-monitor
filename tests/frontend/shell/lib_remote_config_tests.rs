@@ -3,8 +3,8 @@
 //! 核原文：`INVARIANTS §28` 逐字「`RemoteConfig.label`（`ssh_source.rs`，空则回退 `host`）是唯一
 //! 「持久（config.json）+ 上 wire（每条远端行带 `origin`）+ 名字派生」的 key」—— 本族判
 //! `lib.rs::parse_remote_hosts` 缺 label 回退 host、重复 label 加后缀保住唯一。缺必填跳过 / `jump` 空串 / 空数组三条没有逐字住址。
-//! 🔴 `legacy_single_object_one_host` 钉的是旧单对象配置的兼容支，与「不为任何盘上旧状态留兼容层」相抵 —— 待主会话裁（断言本路不动）。〔JA1 点址 2026-09-24〕〔散文墓碑〕
-//! 已裁、已删：那一支与那条测试删了，旧形状今天是「认不出」（`a_remote_section_without_a_hosts_array_is_refused_not_emptied`，要求住址 V41 ＋ D4）。
+//! 🔴 `legacy_single_object_one_host` 钉的是旧单对象配置的兼容支，与「不为任何盘上旧状态留兼容层」相抵 —— 待定（断言不动）。〔散文墓碑〕
+//! 已删：那一支与那条测试删了，旧形状今天是「认不出」（`a_remote_section_without_a_hosts_array_is_refused_not_emptied`；不为旧形状留兼容）。
 
 use super::parse_remote_hosts;
 use serde_json::json;

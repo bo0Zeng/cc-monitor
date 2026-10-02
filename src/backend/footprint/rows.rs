@@ -1,6 +1,6 @@
 //! T02：**配置面审计视图**的判定——「cc-monitor 到底动过你哪些文件」。
 //!
-//! 〔主会话 09-28 裁①（用户 09-27「一处后端」压过 「tool_registry 只住 monitor」）〕从 monitor
+//! 〔一处后端〕从 monitor
 //! `config_surface.rs` 搬进后端：那台后端对它自己那台出整份成品（帧命令 `footprint-report`，face 在 [`super`]）；
 //! `HostScope::Client` 那一族（monitor 自己那台的东西）的**事实**仍由 monitor 答，判定只在这里。
 //! Claude 布局（`~/.claude/…` 以哪个 agent 家为基准 · settings 两个作用域）住 `agents/claudecode/footprint.rs`。

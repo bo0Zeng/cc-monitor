@@ -53,8 +53,8 @@ pub(crate) mod flag {
     pub(crate) const ACCOUNT_DIR: &str = "--account-dir";
     /// 分隔符：最后一个 `--` 左边交 agent、右边归 ccm。
     pub(crate) const END: &str = "--";
-    /// 〔用户 09-27〕位置动作「起新会话」：ccm 自己的词，只许是 `--` 右边的第一个词（`ccm [claude 的] -- new [ccm 选项]`）。
-    /// 起新会话本来就是缺省，写出来是给想说清楚的人与渲染器用的；`ccm new`（没有 `--`）照 V151 整行交 claude。
+    /// 位置动作「起新会话」：ccm 自己的词，只许是 `--` 右边的第一个词（`ccm [claude 的] -- new [ccm 选项]`）。
+    /// 起新会话本来就是缺省，写出来是给想说清楚的人与渲染器用的；`ccm new`（没有 `--`）整行交 claude。
     pub(crate) const NEW: &str = "new";
 }
 
@@ -201,7 +201,7 @@ pub(crate) fn last_end(args: &[String]) -> Option<usize> {
 /// 〔用户 09-27〕格式 `ccm [交给 claude 的…] -- [ccm 自己的…]`：没有 `--` ⇒ 整行原样交 agent（[`Opts::passthru`]，
 /// 一个词都不拦）；有 ⇒ 按**最后一个** `--` 切（[`last_end`]），左边原样交 agent（claude 自己的 `--` 照写，
 /// 没有 ccm 部分时末尾补一个空 `--`），右边逐词只认 ccm 表（壳层选项 ＋ `--ccm-*` 诊断口），认不得就报错、不猜。
-/// 〔墓碑 —— V138 那一版：壳层选项在任何位置都认、首词 `new` 是 ccm 的位置动作、`--` 之后一律透传。〕
+/// 〔墓碑 —— 上一版：壳层选项在任何位置都认、首词 `new` 是 ccm 的位置动作、`--` 之后一律透传。〕
 pub(crate) fn parse(args: &[String]) -> Result<Parsed, Die> {
     let (left, right): (&[String], &[String]) = match last_end(args) {
         Some(k) => (&args[..k], &args[k + 1..]),
@@ -432,7 +432,7 @@ pub(crate) fn parse_size(s: &str) -> Option<(String, String)> {
 
 #[cfg(test)]
 #[path = "../../../../tests/backend/control/ccm/argv_tests.rs"]
-pub(crate) mod tests; // `pub(crate)`：旧写法夹具的换排列 `tests::v138_to_v151` 给同族几份单测共用
+pub(crate) mod tests; // `pub(crate)`：旧写法夹具的换排列 `tests::mixed_to_split` 给同族几份单测共用
 
 #[cfg(test)]
 #[path = "../../../../tests/backend/control/ccm/claude_flags_tests.rs"]

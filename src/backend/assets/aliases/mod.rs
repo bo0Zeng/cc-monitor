@@ -28,8 +28,8 @@
 //!
 //! ⇒ 落点是 [`alias_file_in`]（`~/.cc-monitor/aliases.sh`，**monitor 自己的目录**），
 //! **整份重写**：幂等、删一条当场消失、删掉整份文件也只是少几个命令，shell 照常起得来。
-//! 文件名从 `account-aliases.sh` 改成 `aliases.sh`（那道迁移题按主会话裁结案：
-//! **不留兼容** —— 不留转发件、不读旧名）；旧文件留在盘上，本模块不读、不写、不删。
+//! 文件名从 `account-aliases.sh` 改成 `aliases.sh`，
+//! **不留兼容** —— 不留转发件、不读旧名；旧文件留在盘上，本模块不读、不写、不删。
 //!
 //! # 🔴 接上这份文件的那一行 source **只住别名块里**（「source 那一行只许一处装」）
 //!
@@ -46,7 +46,7 @@
 //! # 本模块是**通用层**：只持有结构与规则，不持有任何一种 shell 的文本
 //!
 //! 「这个 shell 怎么写 / 文件落在哪 / 名字怎么认」全在 `shell_dialect.rs`（POSIX 与 PowerShell
-//! 各一份实现）；这里留的是**判定的规则**（V1–V5 · 能力闸 · 重名 · 有一条不合格整批不写）。
+//! 各一份实现）；这里留的是**判定的规则**（组合规则 · 能力闸 · 重名 · 有一条不合格整批不写）。
 //! 三条命令各带一个 `shell`：同一份清单，POSIX 落 `~/.cc-monitor/aliases.sh`、PowerShell 落
 //! `~/.cc-monitor/aliases.ps1`，各自由那个 shell 的别名块里那一行 source 接上。
 
@@ -414,7 +414,7 @@ impl Caps {
 ///
 /// 事实只有一个：**PowerShell ⇔ Windows**（与 [`Caps::of`] 同一条）；POSIX 在三种 OS 上都有人说（Windows 上是 Git Bash）。
 /// ⇒ 这台后端不在 Windows 上 ⇒ PowerShell 形拒。从前（住 monitor）按 `origin` 判「远端 × PowerShell 拒」；
-/// 规则进了那台后端之后它不知道自己是不是「远端」，主会话 09-27 裁取甲：按这台自己的平台判
+/// 规则进了那台后端之后它不知道自己是不是「远端」，按这台自己的平台判
 /// （本机＝不走 ssh 的远端，原意即远端只承诺 Linux）⇒ **本机 Linux 选 `.ps1` 那一形由收变拒**。
 /// 平台那一格住 `platform::shell::speaks_powershell`。
 pub(crate) fn dialect_here(shell: Shell) -> Result<(), String> {
@@ -554,7 +554,7 @@ pub(crate) fn check_alias(a: &Alias, shell: Shell) -> Result<(), String> {
     if attach_bad {
         return Err(copy_text("rsAccountAliases.check.attachAlone", &[]));
     }
-    // V1–V4（依据是 `ccm --help` 逐字）＋后端 `argv.rs` 那道「备注要有登记」的闸。
+    // 组合规则（依据是 `ccm --help` 逐字）＋后端 `argv.rs` 那道「备注要有登记」的闸。
     if account && base {
         return Err(copy_text("rsAccountAliases.check.accountXorBase", &[]).into());
     }

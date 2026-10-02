@@ -111,7 +111,7 @@ pub(crate) use win32::watch_pid_until_exit;
 //    item 或块」。写成 `const X: bool = cfg!(target_os = "linux");` 看着更干净，
 //    但那一行**不带 `#[cfg]` 属性 ⇒ 整个掉出那道护栏的人群**，牙就没了。
 //
-// ⚠ **如实登记一条今天的读数**（`KP3D` 题面里那句「`fallback_guard` 不许返回乐观值」
+// ⚠ **如实登记一条今天的读数**（那句「`fallback_guard` 不许返回乐观值」
 //    对 `pidwatch/fallback.rs` 本身**并不成立**）：`fallback_guard::platform_sources` 收
 //    `platform/` 递归全部 `.rs`，但它只在**每份文件自己的文本里**找平台 cfg 属性，
 //    而 `fallback.rs` 内部**一个 `#[cfg]` 都没有**（它整份文件是被 mod.rs 这一行

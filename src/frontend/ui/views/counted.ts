@@ -1,7 +1,7 @@
 /**
  * `K-R92`：**一个数「算过了」还是「不知道」** —— 前端这一端的读法。
  *
- * # 题面
+ * # 问题
  *
  * 后端 `remote_history.rs` 的 `Counted<T>{ Known(T), Unknown(WhyUnknown) }` 分得开
  * 「查过了是 0」与「压根不知道」。`K-R83` 落地时线上那一格（`HistoryProject`）还是

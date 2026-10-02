@@ -60,7 +60,7 @@ mod tests {
             format!("cc-bus{}inbox", "/"),
             format!("lastread{}", "-"),
         ];
-        // 〔要主会话拍板〕足迹申报表随「一处后端」（主会话 09-28 裁①）进了后端：cc-bus 那一行申报「这个目录会因为你在
+        // 〔待定〕足迹申报表随「一处后端」进了后端：cc-bus 那一行申报「这个目录会因为你在
         //   cc-monitor 里点了一下而被 cc-bus 的命令写」（`IndirectWrite`）。它只 stat 那个目录、数一层名字，一个数据文件都不读 ——
         //   是**告知**，不是绕到 cc-bus 背后读数据。在 monitor 那一半时这一格本来就在（它不在本判据射程里）。
         const DECLARED_NOT_READ: &[(&str, &str)] = &[("agents/claudecode/footprint.rs", ".cc-bus")];

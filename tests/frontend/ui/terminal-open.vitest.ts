@@ -1,6 +1,6 @@
 /**
  * 要求：「待迁」最后一行 ——「远端拉起那串的 ssh 外壳（`ssh -t -J … host '<串>'` · PowerShell 窗口载荷）
- * 由本机后端渲（组请求用 `dial/machine.rs::resolve`），monitor 只开终端」（FIX4 题面第 1 条）。
+ * 由本机后端渲（组请求用 `dial/machine.rs::resolve`），monitor 只开终端」。
  *
  * | 性质 | 判据 |
  * |---|---|

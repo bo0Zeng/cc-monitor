@@ -2,7 +2,7 @@
 
 use super::*;
 
-/// 题面那八条 —— 那一串逐字（`--accounts` 在盘上叫 `--list-accounts`）。
+/// 那八条 —— 那一串逐字（`--accounts` 在盘上叫 `--list-accounts`）。
 /// **异源**：这张表手写，不从 [`MOVED`] 派生。
 const DESIGN_EIGHT: &[&str] = &[
     "--list-projects",
@@ -13,17 +13,17 @@ const DESIGN_EIGHT: &[&str] = &[
     "--list-accounts",
     "--search",
     // `--list-subagents` 摘了：按目录列子 agent 候选那一条随「按运行读」（`history-run`）删了，没有被替掉的拨号子命令。
-    // 题面逐字「`--list-user-inputs` 与骨架 `--read-session-from-offset --index` 上帧面」。
+    // 要求「`--list-user-inputs` 与骨架 `--read-session-from-offset --index` 上帧面」。
     "--list-user-inputs",
     "--read-session-from-offset",
     // 协调方加的：`--find-in-session` 一起搬。
     "--find-in-session",
-    // 「仍在拨号的 `--account-trust` / `--account-trust-zero`」随账号域上帧面（异源：题面那一句）。
+    // 「仍在拨号的 `--account-trust` / `--account-trust-zero`」随账号域上帧面（异源：手抄的要求）。
     "--account-trust",
     "--account-trust-zero",
 ];
 
-// 这里原先还有一张「仍拨号」的题面表（C4c 起零条）—— 逐次拨号那条路删了，表随之摘掉。
+// 这里原先还有一张「仍拨号」的表（C4c 起零条）—— 逐次拨号那条路删了，表随之摘掉。
 
 fn sorted(v: impl IntoIterator<Item = String>) -> Vec<String> {
     let mut v: Vec<String> = v.into_iter().collect();
@@ -70,7 +70,7 @@ fn the_moved_table_matches_the_design_list_and_the_backend_registry() {
     assert_eq!(
         sorted(MOVED.iter().map(|(f, _)| f.to_string())),
         sorted(DESIGN_EIGHT.iter().map(|s| s.to_string())),
-        "搬上帧面的子命令与题面那几条不相等"
+        "搬上帧面的子命令与要求点名的那几条不相等"
     );
     // 右边还要并上「生在帧面上」的那几条（没有被替掉的拨号子命令，见 `BORN_ON_FRAME`）。
     // 右列按**集合**比：信任预检两形合进一条帧命令（`accounts-trust` 在右列出现两次）。
@@ -90,7 +90,7 @@ fn the_moved_table_matches_the_design_list_and_the_backend_registry() {
 
 /// ★**逐次拨号那条路不存在了**（零命中 ＋ 正控）。
 ///
-/// 守的要求：主会话 09-25 裁（「主会话裁」第 4 条，逐字）「`run_list_query`〔散文墓碑〕（逐次拨号那条路，
+/// 守的要求：「`run_list_query`〔散文墓碑〕（逐次拨号那条路，
 /// 今天零放行）删，同拍动 `subagent.rs` 的回落」。原先这里两条判据钉「那条路只放行登记表 ＋ 先问后拨」——
 /// 那张表 C4c 起是空的，路本身删了 ⇒ 改钉「它在 monitor 生产段里一个标识符都不剩」：
 /// 函数名 · 闸门名 · 放行表名，按**整词**、剥注释之后数（散文里的墓碑不算）。
@@ -159,7 +159,7 @@ const CHANNELED: &[(&str, &str)] = &[
         "history-find",
         "后端出成品 `{total, hits}`；命中口径只住后端（`search_query` ＋ `search_rules` · 适配层记录文本），monitor 那份核头尾删了",
     ),
-    // 账号域那两条（主会话裁：账号域读自己那台的 apikey 表、规则搬进 `acct-core`、agent 随请求带）。
+    // 账号域那两条（账号域读自己那台的 apikey 表、规则搬进 `acct-core`、agent 随请求带）。
     (
         "accounts-list",
         "后端出成品 `{meta, accounts, notice}`，并上**那台机器自己**那份 apikey 表（`acct_core::apikey_routed_subset`）；\
@@ -170,7 +170,7 @@ const CHANNELED: &[(&str, &str)] = &[
         "后端出成品 `{trusted, known}`（CLI 那一臂同一个函数）；替掉最后两条逐次拨号的 `--account-trust*`，\
          界面经 `src/frontend/ui/account-reads.ts::checkTrust` 问",
     ),
-    // 历史跨机 join 那两条（主会话 09-25 裁：注解读写者换成本机常驻后端，它经 `remote_ask` 问远端那台、
+    // 历史跨机 join 那两条（注解读写者换成本机常驻后端，它经 `remote_ask` 问远端那台、
     //   并上注解、出成品）—— 从 [`HELD_BACK`] 挪过来：「远端那台的后端出不了成品」那条理由由「问**本机**后端、带 `origin`」解开了。
     (
         "history-projects",
@@ -628,7 +628,7 @@ const ASKED_BY_MONITOR_ITSELF: &[(&str, usize, &str)] = &[
         1,
         "文件窗口列目录（`filewin/source.rs::CMD_LS`）：窗口进程自己问那台后端，不是替主界面转",
     ),
-    // 文件窗口「在此打开终端」。〔主会话 09-29 拍板 Q2〕窗口只交意图（经通道 `terminal-open`），
+    // 文件窗口「在此打开终端」。窗口只交意图（经通道 `terminal-open`），
     //   monitor 接下来补机器事实、问本机后端渲那一行、开窗（`chan/host.rs::TERMINAL_SSH`）—— 与主界面开终端同一条路。
     (
         "terminal-ssh",
@@ -650,14 +650,14 @@ fn backend_registered_commands() -> std::collections::BTreeSet<String> {
 ///
 /// 逐行重裁过：判准照旧是「业务解释只有一个家」，
 /// 正路是「解释挪进后端、直接出成品」。九行里三行做到了（挪进了 [`CHANNELED`]）；下面六行**逐条写清卡在哪**。
-/// 主会话裁六行的去向：`accounts-list` 做了（挪进 [`CHANNELED`]）；`history-projects` /
+/// 六行的去向：`accounts-list` 做了（挪进 [`CHANNELED`]）；`history-projects` /
 /// `history-sessions` 的设计写在（「本机后端问远端后端」那一跳今天不存在，报备中）；
 /// `history-read` / `history-subagents` 等后端二次拆包；`history-tail` 归 CF2。⇒ 今天五行。
 /// `history-projects` / `history-sessions` 做了（「本机后端问远端后端」那一跳由 `remote_ask` 造出来）⇒ 今天三行。
 const HELD_BACK: &[(&str, &str)] = &[
     // `accounts-list` 那一行挪进了 [`CHANNELED`]（账号域搬家做了：后端出成品、并它自己那份表）。
     // `history-projects` / `history-sessions` 两行挪进了 [`CHANNELED`]（跨机 join 进了本机常驻后端）。
-    // 下面三行按主会话裁决重写：`history-read` / `history-subagents` **等后端二次拆包**，
+    // 下面三行：`history-read` / `history-subagents` **等后端二次拆包**，
     //   `history-tail` 归 CF2（`subscribe`）。三行都仍有 monitor 侧发送点（判据照旧要求它们真有）。
     // `history-subagents` 那一行摘了（命令换成出成品的 `history-subagent`，进了 [`CHANNELED`]）。
     (

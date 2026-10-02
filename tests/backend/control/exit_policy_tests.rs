@@ -126,7 +126,7 @@ fn the_wire_shape_carries_the_three_states() {
     assert!(v["reason"].is_null());
 }
 
-/// 〔V105 清账〕线上形状**恰好**是登记的那几格 —— 两侧异源、按集合相等：
+/// 线上形状**恰好**是登记的那几格 —— 两侧异源、按集合相等：
 ///
 /// - 一侧是**真跑出来的** JSON（三态 × 常驻 / 被监护各跑一遍 `wire_as`，取键的并集）；
 /// - 另一侧是 `inbound.rs::REGISTRY` 里两条命令手写的 `fields`（也是 `protocol_doc_guard` 拿去钉文档的那一份）。

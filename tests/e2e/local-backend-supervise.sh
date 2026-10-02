@@ -197,7 +197,7 @@ EMB_TESTS=(
   local_backend_host::tests::the_local_backend_host_can_be_stopped_and_started_again
 )
 # 三条 → 两条：`the_local_tmux_frames_really_land_in_the_ledger`〔散文墓碑〕删了 —— 它钉的是「本机 tmux 快照帧真落进
-#   monitor 那本 tmux 原文账」，而那本账随会话 / tmux 账本进后端删了、快照帧随 V41 删了（后端那本账的真 tmux 实测是
+#   monitor 那本 tmux 原文账」，而那本账随会话 / tmux 账本进后端删了、快照帧删了（后端那本账的真 tmux 实测是
 #   `graylight-backend-frames.sh`）。它打 2 条标记 ⇒ 11 → 9。
 # 那两条合起来打的断言标记数（09-28 在铺了落点的非 ASCII 路径树上现打：24 − 15）。
 EMB_MARKS=9

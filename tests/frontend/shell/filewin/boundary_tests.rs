@@ -236,7 +236,7 @@ fn rel(root: &Path, p: &Path) -> String {
 // 🔴从前这里是**一张**表（整棵 `filewin/` 够到 app 侧的 30 条边）。
 // 窗口成了独立进程、只经通道说 `call` 之后，「整棵树」这个人群不再对应任何一个进程：
 // 同一棵树编进两个二进制，一部分代码只在 monitor 里跑（入口那条 Tauri 命令、起窗口进程、
-// 开窗前解 home），其余只在窗口进程里跑。题面那句判据逐字是「**窗口进程的依赖面** ==
+// 开窗前解 home），其余只在窗口进程里跑。那句判据逐字是「**窗口进程的依赖面** ==
 // {通道客户端, 线上类型, 界面库…}，两向相等」⇒ 人群按**进程**切：
 //
 // - monitor 那一侧 ＝ `entry.rs` 整份 ＋ 点名的那几个函数；
@@ -254,9 +254,9 @@ fn rel(root: &Path, p: &Path) -> String {
 /// `Channel` / `Wire` 两类之外的每一类都是一笔**有住址的欠账**，各自写清卡在谁手里。
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Kind {
-    /// 通道客户端那一侧（`chan::client` / `chan::dial` / 交接件那个类型）。**题面要的就是它。**
+    /// 通道客户端那一侧（`chan::client` / `chan::dial` / 交接件那个类型）。**要的就是它。**
     Channel,
-    /// 线上类型（`chan::wire::*`，那一套）。**题面要的就是它。**
+    /// 线上类型（`chan::wire::*`，那一套）。**要的就是它。**
     Wire,
     // 「跨机传输那一族够到的 app 侧类型」（`Transfer`，末一条是开窗配置的类型 `ssh_source::RemoteConfig`）清零删了：种子只带那台的名字。
     // 这里原来还有一类「后端今天没有这条命令」（同机复制：池子那条复制命令 ＋
@@ -298,7 +298,7 @@ enum Kind {
 
 /// ★ **窗口进程**够得到的 app 侧符号，逐条。
 ///
-/// 🔴 题面判据的可判形态：`Channel` ＋ `Wire` 两类是「只说 call/subscribe」本身；
+/// 🔴 那句判据的可判形态：`Channel` ＋ `Wire` 两类是「只说 call/subscribe」本身；
 /// 其余三类每一条都是一笔带住址的欠账（见 [`Kind`]；「后端缺命令」那一类清零删了）。
 /// 路径带共享 crate 前缀（[`WINDOW_REACH`]）：从前的 `crate::chan::…` → `chan_core::chan::…`，`crate::copy_table::copy_text` → `copy_core::copy_text`；
 ///   交接件那个类型随交接件住 `chan_core::chan::handoff`（从前挂在壳 `chan::host` 上）。
@@ -347,7 +347,7 @@ const WINDOW_SIDE: &[(&str, Kind)] = &[
 
 /// ★ **monitor 那一侧**（壳里 `filewin/` 整棵）够得到的 app 侧符号，逐条。
 const MONITOR_SIDE: &[(&str, Kind)] = &[
-    // 〔主会话 09-28 裁 3〕开窗前那两问（`files-home` / `files-ls`）进了窗口进程 ⇒ monitor 这一侧问后端的五样
+    // 开窗前那两问（`files-home` / `files-ls`）进了窗口进程 ⇒ monitor 这一侧问后端的五样
     //   （宿主句柄 `InboundBackends` · `router::Backends` · `wire::Body` / `CancelToken` / `Op`）退役，只剩交接件那一样。
     ("chan::host::handoff", Kind::Host),
     ("spawn_managed::ConsolePolicy", Kind::Spawn),
@@ -496,7 +496,7 @@ fn every_edge_from_the_file_manager_into_the_app_is_declared() {
     assert_side_equals("monitor 那一侧", &monitor, MONITOR_SIDE);
 }
 
-/// 🔴 **题面那句判据本身：窗口进程够后端只经通道 —— 池子与登记表那几条「够后端」的路零处。**
+/// 🔴 **那句判据本身：窗口进程够后端只经通道 —— 池子与登记表那几条「够后端」的路零处。**
 ///
 /// 上一条判的是「表 == 盘」（表里写什么都行，只要两边一样）；这一条判的是**表里不许写什么**：
 /// 窗口那一侧不许有 `backend::*`（直连进程级登记表 / 分流器）、不许有池子那几条**读侧 / 写面**
@@ -533,7 +533,7 @@ fn the_window_process_reaches_the_backend_only_through_the_channel() {
         "窗口进程里又长出了不经通道够后端的边：{hits:?}\n住址：{:?}",
         hits.iter().map(|h| (h, window.get(*h))).collect::<Vec<_>>()
     );
-    // 两类「题面要的」确实在（否则上面那条零命中可能只是因为窗口什么都不够了）。
+    // 两类「要的」确实在（否则上面那条零命中可能只是因为窗口什么都不够了）。
     for must in [
         "chan_core::chan::client::Client",
         "chan_core::chan::dial::dial",
@@ -580,7 +580,7 @@ fn every_declared_edge_falls_in_a_live_category() {
             "`Kind::{k:?}` 跑到了另一侧的表里 —— 类别是按进程分的"
         );
     }
-    // 🔴欠账清零：窗口进程够到壳的只剩「题面要的」两类（通道客户端 · 线上类型）＋ 文案取文口 —— 恒等，不是地板。
+    // 🔴欠账清零：窗口进程够到壳的只剩「要的」两类（通道客户端 · 线上类型）＋ 文案取文口 —— 恒等，不是地板。
     //   变多 ＝ 窗口又长出一条不经通道的路。历史：传输 7 → 5 → 1 → 0（F7a · F7c · P4：开窗配置类型换成名字）·
     //   本地围栏 1 → 0（FN1）· 本机动作 1 → 2 → 0（FIX4 · P4：开终端交 monitor）· 自己的状态 2 → 0（P4：原子写进 `host_core`、书签名回 monitor）。
     let kinds: std::collections::BTreeSet<String> =

@@ -261,7 +261,7 @@ const OUTWARD: &[(&str, Kind, &str)] = &[
     (
         "platform::paths::current_uid",
         Kind::Platform,
-        "〔HX1 拍板项 2〕覆盖写「属主不是后端这个用户 ⇒ 退回就地写」要问这台进程的 uid",
+        "覆盖写「属主不是后端这个用户 ⇒ 退回就地写」要问这台进程的 uid",
     ),
     (
         "platform::paths::owner_of",
@@ -322,7 +322,7 @@ const OUTWARD: &[(&str, Kind, &str)] = &[
     (
         "common::own_dir::ensure_private_dir",
         Kind::Common,
-        "〔HX1 拍板项 4 · MOD 挪进 common〕暂存区那两层按后端自家目录建（0700、已在的不动）",
+        "〔MOD 挪进 common〕暂存区那两层按后端自家目录建（0700、已在的不动）",
     ),
     (
         "common::own_dir::DIR_NAME",
@@ -494,7 +494,7 @@ fn the_native_backend_reaches_the_file_backend_only_through_its_doors() {
     );
 }
 
-/// 〔＋ 主会话裁〕**文件模块与原生那一块的业务零依赖**：往外只够到下面那几层。
+/// **文件模块与原生那一块的业务零依赖**：往外只够到下面那几层。
 ///
 /// - 每一格的类别与路径首段对得上（没有这一条，`OUTWARD` 可以把一条 `observe::…` 登记成 `Kind::Common` 让上一条变绿）；
 /// - 基础设施那一类只许 [`INFRA_PREFIXES`] 与 target 轴，每一格都写得出理由，条数**相等**；

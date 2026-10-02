@@ -14,7 +14,7 @@ const PROSE_FILES: &[&str] = &[
     "src/doc/CONTRIBUTING.md",
     "src/doc/DEVELOPMENT.md",
     "src/doc/ARCHITECTURE.md",
-    // F18 下半新纳入的四份 —— 上半只覆盖了 V6 十六行里前五行涉及的文件，
+    // F18 下半新纳入的四份 —— 上半只覆盖了 核实表十六行里前五行涉及的文件，
     // 而剩下十一行的副本大半住在这四份里（`doc_claim_registry` 的文件集
     // 只有 `doc/` **直接子层**，`tests/e2e/README.md` 连它都够不着）。
     "src/doc/INVARIANTS.md",
@@ -81,7 +81,7 @@ const POINTER_ONLY: &[(&str, &[&str], &str, &str)] = &[
 
 /// 已按 **E12 第一条路**处置（有一条会红的判据读它）的事实 —— 判据名必须真的还在。
 ///
-/// V6 逐条对上的那批。这里不重复它们的值，只钉「**那条判据还活着**」。
+/// 核实表逐条对上的那批。这里不重复它们的值，只钉「**那条判据还活着**」。
 const HAS_A_GUARD: &[(&str, &str)] = &[
     // 「`backend/` 下 `.rs` 清单」那一格换靶：目录没了，那一组逐个点名、点名的都在（`every_guarded_file_exists`）。
     ("从前 `backend/` 那一组的清单", "every_guarded_file_exists"),
@@ -103,10 +103,10 @@ const HAS_A_GUARD: &[(&str, &str)] = &[
     ("设置面板逐页清单", "pageTitles"),
 ];
 
-/// V6 那张表的总行数（台账标题写「十八行」，实际列出 **16**）。
+/// 核实表的总行数（台账标题写「十八行」，实际列出 **16**）。
 const TOTAL_ROWS: usize = 16;
 
-/// V6 十六行里**刻意不做**的，连理由一起登记。
+/// 核实表十六行里**刻意不做**的，连理由一起登记。
 ///
 /// ⚠ 这张表存在的意义是：**「没处置」与「决定不处置」是两回事**。
 /// 少了它，棘轮就得靠「已处置数 == 全表数」收尾，而那会逼人去改不该改的东西。
@@ -127,7 +127,7 @@ const NOT_DOING: &[(&str, &str)] = &[(
 /// ⇒ 改成从**表**导出：`DONE_ROWS` 的真实条数与这个地板比，加一行才降得下未处置数。
 const DONE_FLOOR: usize = 15;
 
-/// V6 十六行里已处置的。未处置数 = `TOTAL_ROWS` − 本表条数 − `NOT_DOING` 条数。
+/// 核实表十六行里已处置的。未处置数 = `TOTAL_ROWS` − 本表条数 − `NOT_DOING` 条数。
 const DONE_ROWS: &[&str] = &[
     "#1 门禁怎么跑（`--all` 缺 vendor 排除 → 已订正为 `--workspace --exclude`）",
     "#2 workspace 测试总数（删副本留指针）",
@@ -487,7 +487,7 @@ fn the_guards_that_keep_the_accurate_numbers_accurate_still_exist() {
         assert!(
             all.contains(symbol),
             "「{fact}」靠 `{symbol}` 看着，而它已经不在源码里了。\n\
-                 ★ V6 逐条对上过：**准确的读数背后都有一条会红的判据，已假的 13 处背后一条都没有**。\n\
+                 ★ 逐条对上过：**准确的读数背后都有一条会红的判据，已假的 13 处背后一条都没有**。\n\
                  判据一没，那个准确读数就是下一处会腐的散文 —— 要么补一条新的，要么把它挪进\n\
                  `POINTER_ONLY`（删副本只留指针）。"
         );

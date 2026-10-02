@@ -1,20 +1,19 @@
 //! # （ccm argv 的组合规则一条都不许静默忽略）＋ / `D2`
 //!
-//! 核原文：「后端的纪律是「一条都不许静默忽略」（`control/ccm/argv.rs`）」，同节 V1–V3 三种互斥 / 依赖组合
+//! 后端的纪律是「一条都不许静默忽略」（`control/ccm/argv.rs`）；三种互斥 / 依赖组合
 //! 就是 `the_combination_rules_all_fail_loudly` 逐条断言的那几种。`the_ccm_argv_is_parsed_in_exactly_one_place` 对 `D1`「一个判定只有一个家」；
-//! `every_default_lives_only_in_the_defaults_block` 对 `D2`「一个数只有一个住址」。〔JA1 点址 2026-09-24〕
+//! `every_default_lives_only_in_the_defaults_block` 对 `D2`「一个数只有一个住址」。
 
 use super::*;
 
-/// 本文件的夹具沿用 V138 写法（ccm 选项在前）⇒ 喂解析器之前换成 V151 排列（意图逐词不变）；
-/// V151 自己的切法由 `v151_*` 那几条直接喂原文判。
+/// 本文件的夹具把 ccm 选项写在前 ⇒ 喂解析器之前换成 `<交给 agent 的…> -- <ccm 的…>` 排列（意图逐词不变）。
 fn parse(a: &[String]) -> Result<Parsed, Die> {
-    super::parse(&v138_to_v151(a))
+    super::parse(&mixed_to_split(a))
 }
 
-/// 〔只给测试〕把 V138 那一形（ccm 选项与交给 agent 的词混写、`--` 之后全交 agent）改写成 V151 那一形
-/// （`<交给 agent 的…> -- <ccm 的…>`）。给沿用旧写法写夹具的那几份单测用 —— 意图逐词不变，只换排列。
-pub(crate) fn v138_to_v151(old: &[String]) -> Vec<String> {
+/// 〔只给测试〕把旧写法（ccm 选项与交给 agent 的词混写、`--` 之后全交 agent）改写成
+/// `<交给 agent 的…> -- <ccm 的…>`。给沿用旧写法写夹具的那几份单测用 —— 意图逐词不变，只换排列。
+pub(crate) fn mixed_to_split(old: &[String]) -> Vec<String> {
     const WITH_VALUE: [&str; 10] = [
         flag::TMUX_BASE,
         flag::TMUX_SIZE,
@@ -149,7 +148,7 @@ fn the_combination_rules_all_fail_loudly() {
     );
     assert!(err(&["--ccm-tmux", "--bus-register"]).starts_with("--bus-register 需要配合 --detach"));
     assert!(err(&["--bus-note", "x"]).starts_with("--bus-note 需要配合 --bus-register"));
-    // V138：从前报「未知选项 / 多余的位置参数」的这几形，今天原样交给 agent。
+    // 这几形不报「未知选项 / 多余的位置参数」，原样交给 agent。
     assert_eq!(ok(&["--nope", "foo"]).passthru, v(&["--nope", "foo"]));
     assert_eq!(
         ok(&["--ccm-agent", "codex", "resume", "s"]).passthru,
@@ -278,8 +277,8 @@ fn an_account_name_is_judged_before_it_goes_anywhere() {
     }
 }
 
-/// 〔用户 09-27〕要求：「`new` 是 ccm 自己的词，写在 `--` 右边 —— `ccm [claude 的] -- new [ccm 选项]`；
-/// `ccm new` 照 V151 整行交 claude，不开例外」。直接喂 V151 原文（不经本文件的换排列）。
+/// 要求：「`new` 是 ccm 自己的词，写在 `--` 右边 —— `ccm [claude 的] -- new [ccm 选项]`；
+/// `ccm new` 整行交 claude，不开例外」。直接喂原排列（不经本文件的换排列）。
 #[test]
 fn new_is_ccms_word_only_as_the_first_word_right_of_the_end() {
     let raw = |a: &[&str]| super::parse(&v(a));

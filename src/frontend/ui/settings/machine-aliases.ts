@@ -278,7 +278,7 @@ function el<K extends keyof HTMLElementTagNameMap>(
   return e;
 }
 
-// 〔AR1 拍板 3〕`variant` 空串 = 默认那一种按钮。
+// `variant` 空串 = 默认那一种按钮。
 function button(label: string, variant: string, onClick: () => void): HTMLButtonElement {
   const b = el("button", variant ? `settings-btn ${variant}` : "settings-btn", label);
   b.type = "button";
@@ -1349,7 +1349,7 @@ function buildPsExtras(): PsExtras {
 /**
  * **本机 `ccm` 那一格的唯一写点**（K-R117 S2 本机半钉在本文件）。问一次本机那一格（判定与那句话在 monitor
  * `ccm_probe::local_ccm_cell`），`ok` 说得清就记账（两件都成 ⇒ ok；有一件不成 ⇒ fail 并照记那句话；说不清 ⇒ 不写）。
- * 调用方：别名管理器读回 · 设置页机器列表（打开时一次）· 本机那一行「重新对齐」（`fresh`：先作废 PATH 探针那份 5 分钟缓存，V149 手动兜底）。
+ * 调用方：别名管理器读回 · 设置页机器列表（打开时一次）· 本机那一行「重新对齐」（`fresh`：先作废 PATH 探针那份 5 分钟缓存，手动兜底）。
  * Windows 本机同样问（新开的 PowerShell 里敲 `ccm` 走到哪）。
  */
 export async function noteLocalCcm(fresh = false): Promise<LocalCcmEntry> {

@@ -6,7 +6,7 @@
  * 「context 上限」这一件事，`pricing` 这个名字是名不副实的历史残留。消费者两处：
  * `tabs.ts`（会话行 ctx%）与 `usage-hud.ts`（状态栏 ctx% chip）。
  *
- * 只做「上限」（给 context 占用% 用）；**不做费用/$**（用户 2026-07-17 拍板只显 token，F88c 砍掉）。
+ * 只做「上限」（给 context 占用% 用）；**不做费用/$**（只显 token）。
  *
  * 上限现实：Claude 标准 context = **200k**；**`[1m]` 后缀变体 = 1M**（本项目自己的模型就是
  * `claude-opus-4-8[1m]`）。故两档：含 `[1m]` → 1M；其余已知 Claude 家族 → 200k；**未知 → null → UI 显 `?`**

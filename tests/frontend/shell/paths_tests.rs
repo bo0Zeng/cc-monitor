@@ -1,4 +1,4 @@
-//! # 要求住址：`INVARIANTS §2`（含「唯一的明文例外：`CCM_DATA_DIR`」那一段）· V160（一台机器一个家 `~/.cc-monitor/`）
+//! # 要求：`INVARIANTS §2`（含「唯一的明文例外：`CCM_DATA_DIR`」那一段）· 一台机器一个家 `~/.cc-monitor/`
 //!
 //! `with_nothing_set_it_is_the_documented_default` 点的是 `§2` 正文，逐字「monitor 自己的 data dir 永远是 `~/.cc-monitor/`」。
 //! 其余几条判的是那句「永远」的**出口**（`config.rs::monitor_data_dir_from`），逐字点 `§2` 例外段的四条规矩：

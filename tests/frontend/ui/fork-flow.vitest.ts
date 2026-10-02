@@ -285,7 +285,7 @@ describe("K-R46：分叉本机起会话的 tmux 名（行为）", () => {
     expect(resumePayload().account).toEqual({ kind: "base" });
   });
 
-  /** 主会话 09-28 裁 FIX4 ④：「分叉也走真成功：调用方等到才说『已分叉』」。 */
+  /** 要求：「分叉也走真成功：调用方等到才说『已分叉』」。 */
   it("FIX4 ④：发出去了但没看到分叉出来的会话起来 ⇒ 不是 started、不说「已分叉」", async () => {
     serveLocal("p-cc");
     vi.mocked(awaitArrival).mockResolvedValueOnce(false);

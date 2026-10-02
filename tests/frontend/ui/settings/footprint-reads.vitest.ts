@@ -1,4 +1,4 @@
-// 要求住址：主会话 09-28 裁 MIG-3b ①（`tool_registry` ＋ `build_rows` 进后端）· 「成品的两侧对拍：界面按形状严格收 · 跨语言金样」。
+// 要求：`tool_registry` ＋ `build_rows` 进后端 · 「成品的两侧对拍：界面按形状严格收 · 跨语言金样」。
 //
 // 后端 `footprint-report` 的应答 == `tests/__fixtures__/footprint-report.golden.json`（后端判据产出的那一份）；
 // 界面解码器读同一份：逐格收下来与原文相等（一格不丢、一格不改），多一格 / 少一格 / 档不在闭集 ⇒ 抛「形状不对」。

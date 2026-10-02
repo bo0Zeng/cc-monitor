@@ -247,7 +247,6 @@ webpki-roots = "1"
 #    · **升到 `crypto-bigint 0.7.5`**：它是跟着 `russh` 走的，而两侧的版本与 feature 集
 #      **必须同版同 feature**（理由见上面那段：一侧多开一个 feature 就是「界面拨得通、
 #      代理拨不通」）⇒ **本 crate 单方面决定不了**，是**一件同时动 monitor 与后端两侧的活**。
-#      **谁来决定：PM 立件、用户拍板。**
 #    · **砍掉 `rsa` feature**（`crypto-bigint` 就是它拉进来的）：要**先量**
 #      「有没有只认 RSA host key 的远端」—— 那是一次对**真实远端**的摸底，**今天没人量过**。
 #      **谁来决定：用户**（只有他知道要连哪些机器）。
@@ -261,7 +260,7 @@ russh = { version = "0.61.1", default-features = false, features = ["ring", "fla
 #
 # 🔴 **它只服务 `src/dial/sftp.rs` 那一份**：`readonly_guard::remote_write_layer` 把「持 SFTP 会话 /
 # 开子系统 / 协议改动动词」钉在那**一份文件**上，而那份文件的写根 == `{~/.cc-monitor/staging, ~/.cc-monitor/bin}`
-# （`INVARIANTS §41.6` 的 V89 订正）。签字行住 `readonly_guard::g6_dependency_signoff`。
+# （`INVARIANTS §41.6`）。签字行住 `readonly_guard::g6_dependency_signoff`。
 # 版本照抄当年 `../frontend/shell/Cargo.toml` 那一行（`3`，lock 里 `3.0.0`，Apache-2.0；现打核过 5 个候选、
 # 用户「不要 GPL」核过）。monitor 那一行同拍删了（界面进程零 SFTP）⇒ 本 crate 是唯一一份。
 # ⚠ 3.0.0 **仍然无** posix-rename@openssh 扩展 ⇒ `dial/sftp.rs::put_atomic` 的近似原子写照旧成立，不许当成已解决。
@@ -272,7 +271,7 @@ notify = "6.1"
 notify-debouncer-mini = "0.4"
 walkdir = "2.5"
 # ── 解压（`control/files_extract.rs`）──
-# 主会话按通行做法裁：「由那台后端用 Rust 库（`tar` · `flate2` · `zip`，不调外部命令）解」。三条都纯 Rust、MIT / Apache-2.0：
+# 由那台后端用 Rust 库（`tar` · `flate2` · `zip`，不调外部命令）解。三条都纯 Rust、MIT / Apache-2.0：
 # `flate2` 锁里早就有（russh 那棵，`miniz_oxide` 后端）⇒ 这里只把它从间接变直接；`tar` 关掉缺省的 `xattr`（不还原扩展属性）；
 # `zip` 关掉全部缺省（aes / bzip2 / lzma / xz / zstd / zopfli 那几支会拖 C 或大依赖），只开读 deflate 那一支（`deflate-flate2` ＋ 它要的 `flate2`）。
 # 签字行住 `readonly_guard::g6_dependency_signoff`。只读包、写盘一个字节都不经它们（逐条目自己过路径解析再落）。
@@ -297,7 +296,7 @@ sha2 = "0.11"
 # 版本就是 monitor 那份 lock 里早已解析的 12.0.1（离线可用、本机缓存里有）。
 ts-rs = "12.0.1"
 
-# ── **打补丁版 russh**（用户 V118〔选〕「打补丁版 russh，现在就开」）─────────────
+# ── **打补丁版 russh** ─────────────
 #
 # 上面那一行依赖声明**一个字不动**（`russh = { version = "0.61.1", … }`）；这里把 crates.io 那份换成仓内副本。
 # 副本 = 本机缓存里那份 `russh-0.61.1.crate` 原样解开（其 sha256 == 本 lock 原先锁的 checksum）＋ 只改

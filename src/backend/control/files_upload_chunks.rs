@@ -1,6 +1,6 @@
 //! **上传的块形**：把 `files-stage-chunk` 送进暂存区的块拼成一份暂存件 `<key>.part`，交给原来那条提交。
 //!
-//! 要求住址：第 9 条 Q5；主会话 09-27 按通行做法裁：「非标准 SFTP 起始目录（chroot / `internal-sftp -d`）：
+//! 要求：「非标准 SFTP 起始目录（chroot / `internal-sftp -d`）：
 //! 连上时比 SFTP `realpath(".")` 与那台后端的 `$HOME`；不一致 ⇒ 这台的上传改走后端链路分块写（`files-stage-chunk` 那一族，已有），
 //! 不走 SFTP 暂存」。块的形状与存盘分块同一个（`files_commit::chunk_name`，`O_EXCL` 一块一份）；拼出来之后与 SFTP 那条路
 //! **同一条提交**（整份摘要核 · 改名上位 · 不覆盖时先占位）⇒ 两条路落进用户目录的那一下只有一份。

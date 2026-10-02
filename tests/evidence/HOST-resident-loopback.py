@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # ruff: noqa: E501
-"""HOST · V139：**远端常驻后端**（起 · 找 · 只升不降 · 停 · 多客户 · 经 SSH 隧道接监听口）对着一台真回环 sshd 的现打。
+"""HOST：**远端常驻后端**（起 · 找 · 只升不降 · 停 · 多客户 · 经 SSH 隧道接监听口）对着一台真回环 sshd 的现打。
 
 跑法（仓根下，先 `cd src/backend && cargo build`）：
     python3 tests/evidence/HOST-resident-loopback.py [后端二进制路径]

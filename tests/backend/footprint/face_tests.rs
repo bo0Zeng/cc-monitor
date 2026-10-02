@@ -1,4 +1,4 @@
-//! # 要求住址：主会话 09-28 裁 MIG-3b ①「`tool_registry` ＋ `build_rows` 进后端，`HostScope::Client` 那几行照旧由 monitor 答」
+//! # 要求：「`tool_registry` ＋ `build_rows` 进后端，`HostScope::Client` 那几行照旧由 monitor 答」
 //!
 //! 核原文：同一裁逐字「用户 09-27「一处后端」压过「tool_registry 只住 monitor」」；红线「查不了的显示成
 //! 「未确定 ＋ 为什么」，绝不显示成「缺失」」·「远端也有真栏」。本族在临时目录上真 stat 真读，判帧面 `footprint-report` 的

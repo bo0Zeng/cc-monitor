@@ -20,7 +20,7 @@ use std::path::PathBuf;
 
 // === 历史清单与注解搬进了本机常驻后端 ===
 //
-// 主会话 09-25 裁（「主会话裁」第 2 条）：注解（`history-metadata.json`：星标 / 改名 / 隐藏 / 上次账号）的
+// 注解（`history-metadata.json`：星标 / 改名 / 隐藏 / 上次账号）的
 // **读写者**换成本机常驻后端（文件原地不动：路径由本文件 [`metadata_path`] 算、起本机后端时交过去），它经 `remote_ask` 问远端那台、
 // 并上注解、出成品；前端经 `chan.call`（`src/frontend/ui/history-reads.ts`）。这里原先那一族随之删了〔散文墓碑〕：
 // 两个线上形状（`HistoryProject` / `HistorySessionEntry`）· 注解三件（`HistoryMetadata` / `EntryMetadata` / `MetadataPatch`）·
@@ -33,8 +33,8 @@ use std::path::PathBuf;
 
 // === metadata 那份文件在哪（读写者是本机常驻后端；路径仍由这里算）===
 
-/// 历史注解那份文件的路径 —— **全仓只此一处算它**。读写者换成了本机常驻后端（主会话 09-25 裁：
-/// 文件留在原处、同一路径）：monitor 起本机后端时用 `CCM_HISTORY_METADATA` 把**本函数算出来的这一个**交过去
+/// 历史注解那份文件的路径 —— **全仓只此一处算它**。读写者换成了本机常驻后端
+/// （文件留在原处、同一路径）：monitor 起本机后端时用 `CCM_HISTORY_METADATA` 把**本函数算出来的这一个**交过去
 /// （`local_backend_host::relay_host_envs`），同一路径因此是构造出来的，不是两侧算法对齐出来的。
 pub(crate) fn metadata_path() -> Option<PathBuf> {
     Some(crate::config::resolve_monitor_data_dir()?.join(creds_core::store::HISTORY_METADATA_FILE))

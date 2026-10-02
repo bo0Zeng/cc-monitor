@@ -178,7 +178,7 @@ fn list_sessions_rejects_symlink_escape() {
 // 会话清单那一行从此是本机与远端共用的唯一口径 —— 补上的三格 ＋ 摘录清洗
 // ════════════════════════════════════════════════════════════════════════════════════════
 //
-// 要求住址：主会话 09-25 裁（「主会话裁」第 2 条）「本机后端 … 出成品 …（join 只一个家）」——
+// 要求：「本机后端 … 出成品 …（join 只一个家）」——
 // 本机会话清单从 monitor 那份（经记录解析器）换到这一行，monitor 那份有的三格这里要有，否则本机用户换读者那一刻丢 fork 树与改名后的标题。
 
 /// ★ fork 关系（首条带 `forkedFrom` 的 user / assistant）· `custom-title` 取最新 · 开始时刻取首条时间戳。
@@ -329,7 +329,7 @@ fn loc1b_the_extra_roots_take_absolute_jsonl_paths_that_stay_inside() {
 }
 
 /// 要求：「本机没有 projects 目录 ⇒ 整页加载失败，原话 read_dir … (os error 3)」·
-/// 题面 WF2 第 4 条。记录树根不在 ⇒ 零个项目、`Ok`（不是失败）；根在但读不了 ⇒ 说人话（期望取自文案表那一条，不含 `read_dir` / `os error`）。
+/// 记录树根不在 ⇒ 零个项目、`Ok`（不是失败）；根在但读不了 ⇒ 说人话（期望取自文案表那一条，不含 `read_dir` / `os error`）。
 #[test]
 fn a_machine_without_a_projects_dir_lists_nothing_and_an_unreadable_one_says_so_plainly() {
     let tmp = std::env::temp_dir().join(format!("ccm-hq-noproj-{}", std::process::id()));

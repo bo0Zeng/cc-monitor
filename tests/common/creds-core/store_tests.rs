@@ -5,7 +5,7 @@
 //! `accounts/upstream_select/file_face.rs`（本机也是；monitor 那侧的写口删了）—— 它用本模块的纯逻辑兑现这几句 —— 本族判的就是那份共用逻辑。手编 JSON 原样即用、模板自带字段名那几条守
 //! 逐字「只放一个凭据文件、一次界面都不开，中转就能用那把 key」。
 //! ⚠ 落盘键序（按名 · 递归 · 数组保序）与 `auth_style` 往返那几条今天没有逐字原文。
-//! ⚠ `INVARIANTS §42` 的机检只核字段名落节、不核行为；契约里行为句不漂靠的是本族（射程待主会话确认，见 `JA1.md`）。〔JA1 点址 2026-09-24〕
+//! ⚠ `INVARIANTS §42` 的机检只核字段名落节、不核行为；契约里行为句不漂靠的是本族。
 
 use super::*;
 
@@ -668,7 +668,7 @@ fn arrays_keep_their_order_because_that_order_is_data() {
     );
 }
 
-/// ★ 〔FIX · COPY ④ · 主会话按 CP1 `[对外]` 裁〕模板的三句说明住文案表、骨架住源码：拼出来的那份键序与今天逐字同
+/// ★ 模板的三句说明住文案表、骨架住源码：拼出来的那份键序与今天逐字同
 /// （三句 note 在前、`accounts` · `api_key` 在后）、每句 == 文案表那一条；读坏那一句只说「顶层要是对象」＋ 路径，不再贴整份模板。
 #[test]
 fn the_template_notes_come_from_the_copy_table_and_the_error_names_the_file() {
@@ -721,7 +721,7 @@ fn env_of(
     }
 }
 
-/// ★ 住址：主会话 09-29 裁 P5 报备 ③ 逐字「规则按平台惯例 —— **Windows：`USERPROFILE` → `HOME`；其余：`HOME` → `USERPROFILE`**…
+/// ★ 要求：「规则按平台惯例 —— **Windows：`USERPROFILE` → `HOME`；其余：`HOME` → `USERPROFILE`**…
 /// 都空 ⇒ `None`、调用方明说」。两臂各喂同一组注入环境，期望手写；空串当没设。
 #[test]
 fn the_home_is_picked_by_the_platform_convention() {
@@ -769,7 +769,7 @@ fn dirs_home_calls(src: &str) -> usize {
         .count()
 }
 
-/// ★ 住址：主会话 09-29 裁 P5 报备 ③ 逐字「「哪个环境变量算家」是两侧必须对上的**契约** ⇒ 收成 `creds-core` 里唯一一个函数」·
+/// ★ 要求：「「哪个环境变量算家」是两侧必须对上的**契约** ⇒ 收成 `creds-core` 里唯一一个函数」·
 /// 「monitor 生产段为数据目录 / 家目录用 `dirs::home_dir` 零命中（有别的正当用途就登记理由）」。
 /// 调用点现扫（异源：读两棵树的源码，不信任何一侧自报）：① monitor 那份数据目录（`config.rs::resolve_monitor_data_dir`）与
 /// 后端那一处家目录（`platform/paths.rs` 的 `home_dir` · `home_dir_from`）都调本模块这一个函数；② 两棵生产树里 `dirs::home_dir(` ==

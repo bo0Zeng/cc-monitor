@@ -7,7 +7,7 @@
 //
 // 「分组不应该单独存会话记录」⇒ 组只存 `{id, name}`；组员关系改住 tab 自己身上
 //（`Tab.group` ＋ `tabBar.groupOf.<sid>`）。测成员名单 / 成员上界 / 「组员满了」的格随被测的东西一起删了，
-// 组员那一半的判据住 `tests/tab-group-v140.vitest.ts`。
+// 组员那一半的判据住 `tabs.vitest.ts`「组员关系是 tab 自己的属性」那一组。
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const store = vi.hoisted(() => ({ cfg: {} as Record<string, unknown>, saves: 0 }));
@@ -72,7 +72,7 @@ describe("P7a-3 集合：纯操作", () => {
     );
   });
 
-  it("🔴 〔GRP1 · V140〕旧形状的 `members` 不读、不带出去（`no-legacy-compat`：不迁移不兼容）—— 每一项的键恰好是 {id, name}", () => {
+  it("🔴 旧形状的 `members` 不读、不带出去（`no-legacy-compat`：不迁移不兼容）—— 每一项的键恰好是 {id, name}", () => {
     const got = sanitizeCollections([
       { id: "a", name: "A", members: ["s1", "s2"] },
       { id: "b", name: "B", extra: 1 },

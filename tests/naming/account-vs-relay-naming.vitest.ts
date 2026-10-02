@@ -1,5 +1,5 @@
 /**
- * R3 · **账号 / 中转命名全量清账**的判据（用户裁「要, 所有东西都要准确, 清晰, 解耦清楚.
+ * R3 · **账号 / 中转命名全量清账**的判据（用户原话「要, 所有东西都要准确, 清晰, 解耦清楚.
  * 不要把账号和中转混为一谈」；更早「中转层不要有账号, 账号就账号中转就中转」）。
  *
  * # 口径（本文件不另立）
@@ -336,15 +336,14 @@ export const RELAY_NAMES: { name: string; re: RegExp; why: string }[] = [
 ];
 
 /**
- * **V114 · 「上游选择」改名**的判据。
+ * **「上游选择」改名**的判据。
  *
- * 要求住址：用户裁决 **V114**。用户原话逐字：「中转（面 B）＋ 账号层是什么东西 / 怎么还有账号层? /
- * 账号应该包括订阅+api(即自选url和api)」＋〔选〕「上游选择」。裁决逐字：「原『层 2（账号）/ 账号层』改名『上游选择』
- * —— 账号域里按号决定这一发的上游与凭据的那个口」「纯命名清理，行为不变」。
+ * 用户原话：「中转（面 B）＋ 账号层是什么东西 / 怎么还有账号层? / 账号应该包括订阅+api(即自选url和api)」。
+ * 原「层 2（账号）/ 账号层」改名「上游选择」—— 账号域里按号决定这一发的上游与凭据的那个口；纯命名清理，行为不变。
  *
  * 与上面那张 [`ACCOUNT_NAMES`] 同一套机制（`done` ⇒ 旧名在扫描面零命中、新名非零；同一个扫描面），
  * 多一格：**讲旧叫法来历的那几行**挂 `structural_scan.rs::PROSE_NAME_TOMBSTONE` 那块标记，本表放行它们 ——
- * 而放行的住址集合与 [`V114_TOMBSTONED_FILES`] **两向相等**（新挂一块墓碑想逃过本表 ⇒ 红）。
+ * 而放行的住址集合与 [`RENAME_TOMBSTONED_FILES`] **两向相等**（新挂一块墓碑想逃过本表 ⇒ 红）。
  * 标记串不在本文件里写第二份字面量：运行期从 Rust 那一份常量的声明行里抠（一个标记一处真相）。
  *
  * 人群：同波别的路新写一句「账号层」/「层 2」/`accounts::apikey`/`account_layer…` ⇒ 本表当场红（合并时对上）。
@@ -359,7 +358,7 @@ export const UPSTREAM_SELECTION_NAMES: AccountName[] = [
     fresh: "上游选择（指账号域整体的那几处改成「账号域」）",
     freshRe: /上游选择/,
     kind: "散文词组",
-    why: "V114：原「账号层」改名「上游选择」",
+    why: "原「账号层」改名「上游选择」",
     state: "done",
   },
   {
@@ -368,7 +367,7 @@ export const UPSTREAM_SELECTION_NAMES: AccountName[] = [
     fresh: "上游选择",
     freshRe: null,
     kind: "散文词组",
-    why: "V114：原「层 2（账号）」改名「上游选择」",
+    why: "原「层 2（账号）」改名「上游选择」",
     state: "done",
   },
   {
@@ -377,7 +376,7 @@ export const UPSTREAM_SELECTION_NAMES: AccountName[] = [
     fresh: "中转",
     freshRe: null,
     kind: "散文词组",
-    why: "V114：中转只有一层 ⇒ 「层 1」是悬空编号",
+    why: "中转只有一层 ⇒ 「层 1」是悬空编号",
     state: "done",
   },
   {
@@ -386,7 +385,7 @@ export const UPSTREAM_SELECTION_NAMES: AccountName[] = [
     fresh: "accounts::upstream_select",
     freshRe: ident("accounts::upstream_select"),
     kind: "过期住址",
-    why: "V114 落地列：代码 `accounts/apikey/` → `accounts/upstream_select/`",
+    why: "代码 `accounts/apikey/` → `accounts/upstream_select/`",
     state: "done",
   },
   {
@@ -409,8 +408,8 @@ export const UPSTREAM_SELECTION_NAMES: AccountName[] = [
   },
 ];
 
-/** V114 那几条旧叫法**只许**活在这几份文件挂了墓碑标记的行里（讲来历）。两向相等。 */
-export const V114_TOMBSTONED_FILES = ["src/backend/accounts/upstream_select/mod.rs", "src/comms/outward/mod.rs"];
+/** 改名前那几条旧叫法**只许**活在这几份文件挂了墓碑标记的行里（讲来历）。两向相等。 */
+export const RENAME_TOMBSTONED_FILES = ["src/backend/accounts/upstream_select/mod.rs", "src/comms/outward/mod.rs"];
 
 /** 墓碑标记：从 `structural_scan.rs` 那一份常量声明里现抠（不在本文件写第二份字面量）。 */
 export function proseTombstoneMark(): string {
@@ -442,7 +441,7 @@ export function hitsSplitByTombstone(texts: Map<string, string>, re: RegExp, mar
  * - `tests/evidence/` 里的**历史读数与一次性量具** —— 它们记的是**当时**盘上的样子（改了就是改史）。
  *   ⚠ 例外两份**活的**：`K-R117-ruler.py`（门禁 `installface` 那一格的判据本体，它逐条列着能力 id）·
  *   `CP1-copy-verdicts.tsv`（界面文字台账，`CP1-copy-verdicts.py` 现读）—— 这两份照扫。
- * - `CHANGELOG.md` —— 已发版的发版记录（当时界面上的字就是那几个字）；改不改由主会话裁。
+ * - `CHANGELOG.md` —— 已发版的发版记录（当时界面上的字就是那几个字）；不改。
  * - 本文件 —— 旧名是这张表的左列。
  */
 const LIVE_EVIDENCE = new Set(["tests/evidence/K-R117-ruler.py", "tests/evidence/CP1-copy-verdicts.tsv"]);
@@ -546,7 +545,7 @@ describe("R3 · 账号 / 中转命名清账（术语归属）", () => {
   }, 60_000);
 });
 
-describe("V114 · 「上游选择」改名（RN1）", () => {
+describe("「上游选择」改名", () => {
   const corpus = loadCorpus();
   const mark = proseTombstoneMark();
 
@@ -590,7 +589,7 @@ describe("V114 · 「上游选择」改名（RN1）", () => {
     expect(mark.length).toBeGreaterThan(2);
   });
 
-  it("每条旧名：未挂墓碑的行零命中且新名在；挂了墓碑的住址 == V114_TOMBSTONED_FILES（两向）", () => {
+  it("每条旧名：未挂墓碑的行零命中且新名在；挂了墓碑的住址 == RENAME_TOMBSTONED_FILES（两向）", () => {
     const wrong: string[] = [];
     const tombAll = new Set<string>();
     for (const row of UPSTREAM_SELECTION_NAMES) {
@@ -604,8 +603,8 @@ describe("V114 · 「上游选择」改名（RN1）", () => {
       }
     }
     expect(wrong, wrong.join("\n")).toEqual([]);
-    expect([...tombAll].sort(), "讲 V114 旧叫法来历、挂了墓碑的住址对不上登记（新挂一块要来这里登记并说清为什么）").toEqual(
-      [...V114_TOMBSTONED_FILES].sort(),
+    expect([...tombAll].sort(), "讲旧叫法来历、挂了墓碑的住址对不上登记（新挂一块要来这里登记并说清为什么）").toEqual(
+      [...RENAME_TOMBSTONED_FILES].sort(),
     );
   }, 60_000);
 });

@@ -52,7 +52,7 @@ const LEDGER: &[(&str, &str, Side)] = &[
     ("bring_monitor_to_front", "app.window.self", Side::Both),
     // devbench F03：skill 接入面（列出 skill / 读写那个「人手写的注入文件」）。
     // 三条共用一个能力键 —— 它们是同一件事的三个动作（先例：`app.window.session` 也是两条共键）。
-    // 用户裁「远端（和本机，同一条路）的 `INBOX.txt` 能编辑」⇒ 三条都吃 origin、两侧都经那台机器的后端。
+    // 远端（和本机，同一条路）的 `INBOX.txt` 能编辑 ⇒ 三条都吃 origin、两侧都经那台机器的后端。
     // 这三条（`skill.inbox`）退役：收件箱那一面进了那台后端（`skill-host-*`），界面经通道直问；对称 ⇒ 不对称数不动。
     ("cc_get_auto_launch", "app.auto-launch", Side::Both),
     ("cc_set_auto_launch", "app.auto-launch", Side::Both),
@@ -105,7 +105,7 @@ const LEDGER: &[(&str, &str, Side)] = &[
     ),
     // 钩子诊断本机 / 远端那一对退役：本机远端合成一条帧命令 `hooks-diag`，界面经通道直问那台。
     // `list_history_projects`（Local）/ `list_remote_history_projects`（Remote）那一对退役 ——
-    //   步 12·C 在这里判「不合」的那道设计题（「项目列表的 fan-out 住哪一层」）由主会话 09-25 裁掉了：join 进本机常驻后端
+    //   步 12·C 在这里判「不合」的那道设计题（「项目列表的 fan-out 住哪一层」）已定：join 进本机常驻后端
     //   （`history-projects {origin?}`，一台一问），fan-out 搬到前端（`src/frontend/ui/history-reads.ts::fetchRemoteProjects`，
     //   `failedHosts` / TTL 缓存的语义原样）。两条 Tauri 命令都没了 ⇒ 能力 `history.list-projects` 在本表里不再有行。
     // 🔴 **下面这五行是「一条命令自己办两侧」，不是「两条命令各办一侧」。**
@@ -152,7 +152,7 @@ const LEDGER: &[(&str, &str, Side)] = &[
     //   `ccm.status` 从此只剩本机那一条 ⇒ 进 `ASYMMETRY_REASONS`（天然不对称：远端那台的 `ccm` 就是那台后端本身）。
     // 别名块那三格能力 id 按改名改归（别名块是「② 别名」，不是装后端）：
     //   `ccm.install` → `alias.block-install` · `ccm.uninstall` → `alias.block-remove` · `ccm.install-ui` → `alias.block-preview`
-    //   （「ccm 助手」年代的遗名，`AL1d.md §5` 第 2 条交主会话、题面指给本路）。`K-R117` 的归档表同拍从 ① 挪到 ②。
+    //   （「ccm 助手」年代的遗名）。`K-R117` 的归档表同拍从 ① 挪到 ②。
     // 远端装 / 卸别名块那两条 `Remote` 命令并进 `aliases_block_install` / `_remove`（`Both`），两行删。
     // 🔴 `K-R135`（`R85`/`R87`）：用户级 PATH 那一格。只有本机一侧，理由见
     //    `ASYMMETRY_REASONS` 里 `ccm.user-path` 那一条。
@@ -165,9 +165,9 @@ const LEDGER: &[(&str, &str, Side)] = &[
     //   （远端 `install_remote_alias_block` / `uninstall_remote_alias_block`）⇒ 并过去会让 `alias.manage`
     //   变成「两侧都有」、那行 `ParityDebt` 被表自动抹掉，而清单在远端的写与读回一分没还 —— 正是
     //   `KR53D4` 禁的「靠删掉记录兑现」。⇒ 命令面一族、账本两格，各归各的平价。
-    //   〔墓碑 —— 原话「`ccm.*` 这几个 id 是『ccm 助手』年代的遗名，MC1 改了命令名没改 id；改 id 要动 `K-R117` 的归档表，交主会话」。
+    //   〔墓碑 —— 原话「`ccm.*` 这几个 id 是『ccm 助手』年代的遗名，MC1 改了命令名没改 id；改 id 要动 `K-R117` 的归档表」。
     // 改了：`alias.block-*`，归档表同拍挪到 ②。〕
-    // 三条 `Local` → `Both`（带 `origin`）；远端卡接上块预览（题面裁「一并做」）。
+    // 三条 `Local` → `Both`（带 `origin`）；远端卡接上块预览（一并做）。
     // `aliases_block_*`〔散文墓碑〕三行删：同上（`aliases-block-*`）。
     // G6：远端分叉落地 ⇒ `history.branch` 从 ParityDebt 变成两侧都有（该行的
     // 不对称理由已从 `ASYMMETRY_REASONS` 删除——留着就是宣称一条已经补上的欠账）。
@@ -308,11 +308,11 @@ const ASYMMETRY_REASONS: &[(&str, Asym, &str)] = &[
     // `tmux.local-census` · `tmux.manage` 两行随那两条命令出表删：tmux 这一族（列 · 抓屏 · 杀 · 送键）今天全是帧命令、本机远端同一条路，
     //   不再有 Tauri 命令可记账（`tmux.manage` 那一行三次订正的来历，看 git 历史）。
     // 这里原来是 `skill.inbox` 那一行（`Undecided`：「远端项目的收件箱要不要能在这里编辑，没人裁定过」）。
-    //   用户 09-24 裁了：**要**，远端与本机同一条路（经那台机器后端的文件管理那一面读写）⇒ 三条命令 `Both`，这一行摘掉。
+    //   **要**：远端与本机同一条路（经那台机器后端的文件管理那一面读写）⇒ 三条命令 `Both`，这一行摘掉。
     // `cc-bus.install-state` 那一行摘了：三态进了本机后端（`cc-bus-install-state`，界面经通道问），没有 Tauri 命令了。
     ("cc-bus.deploy", Asym::ParityDebt, "`PS1`〔`U10b` 用@08-13 裁「开」后落地〕：把内嵌的 cc-bus 装到 **本机** `<claude_dir>/skills/cc-bus/`。⚠ 欠的是什么要写准：**不是**「远端不需要」——远端同样有 `~/.claude/skills/`，而且本仓**已经有**一条同族的远端部署路（`acct-iso.deploy` 走 SFTP 推 vendored 脚本）。欠的是**把这条本机路复制到远端**：SFTP 推 17 个文件 + 远端侧的围栏（`canonicalize` 在远端不成立，要换成后端侧校验）。⇒ 如实记欠，**不假装两侧都有**。★ 顺带记一条口径：本条的落点是**用户数据目录**，与 `acct-iso.deploy` 那条「只写 cc-monitor 自己的 bin 目录」**性质不同** —— 后者不需要豁免，本条需要（`INVARIANTS` 第 7 条）。"),
     // `audit.config-surface` 那一行（`ParityDebt`：「本地能答、远端答不出，本页明写不连 SSH」）**结清、删掉**：
-    //   远端那一栏由那台机器的后端答路径事实（`footprint-probe`），用户裁「补后端读口，远端也有真栏」。
+    //   远端那一栏由那台机器的后端答路径事实（`footprint-probe`）：补后端读口，远端也有真栏。
     // `cc-bus.cockpit` 那一行（`ParityDebt`，三次订正过的「写面欠本机那一侧」）**结清、删掉**：
     //   写面五条都改由界面经通道直接说那台机器的后端（本机与远端同一条路，`src/frontend/ui/cc-bus-control.ts`），monitor 那几条命令退役；
     //   这项能力在 `LEDGER` 里只剩读面两条，都是 `Both` ⇒ 不再不对称。
@@ -320,7 +320,7 @@ const ASYMMETRY_REASONS: &[(&str, Asym, &str)] = &[
     ("backend.deploy", Asym::NaturallyAsymmetric, "★★ **P3b 结清（08-12）：理由整个换掉 —— 原来那句是假的。** 原文写「§40 天然不对称白名单第 3 条：本地会话由 `watcher.rs` 直接读 jsonl，**根本不需要 backend**」，被 P2z + P2 + P2s 三件直接证伪：本机**需要** backend（入方向通道、每台机开关、tmux 帧都靠它），而且**已经会自部署** —— `local_backend.rs::extract_embedded_to`（exe 旁没有本机后端就把内嵌那份释放到 `~/.cc-monitor/bin`）。真正的不对称只剩一格：**本机那次释放不经一条 IPC 命令**，是宿主启动时自己做的（`lib.rs` 的启动段），所以命令面上没有本机对侧。⇒ 记 `natural` 记的是「不需要一条命令」，不是「不需要后端」。"),
     ("mcp.list-origins", Asym::NaturallyAsymmetric, "`list_remote_mcp_origins` 答的是「哪几台远端有 MCP 配置」——「有哪些 origin」这个问题在本机侧退化成一台，没有可列的集合。⚠ 注意它与 `backend_machines` 不同：那条**包含**本机（`LOCAL_ORIGIN`），因为它答的是「哪几台有后端」而本机也有。"),
     // `panorama.code-graph` 那一行（`Undecided`，「远端 repo 的代码图谱既没做、也没在任何计划里登记过」）**摘了**：
-    //   用户 09-24 裁「要」并选 B，`panorama_call`（`Side::Remote`）按 origin 问那台后端 ⇒ 两侧都有。
+    //   要，`panorama_call`（`Side::Remote`）按 origin 问那台后端 ⇒ 两侧都有。
     // `panorama.annotate` 那一行（`ParityDebt`：「远端仓的批注写等后端写面」）**结清、删掉**：
     //   用户 09-24「引擎只算、文件管理来写」，`panorama_edit`（`Side::Both`）本机远端同一条。
     // `creds.apikey` 那一行（`ParityDebt`：「把 key 送到远端的路」）**结清、删掉**：
@@ -803,7 +803,7 @@ fn ledger_shape_is_pinned() {
     let sides = capability_sides();
     assert_eq!(sides.len(), 24, "能力总数变了"); // −1（`relay.launch-endpoint`：唯一那条命令退役，中转地址交给 ccm 自己定）// −1（`panorama.code-graph`：代码全景整条摘掉）// +1（`terminal.window`：开窗，本机远端同一条，`Both`）// −2（`history.read-session` · `subagent.load`：那几条 Tauri 命令退役，界面经通道直问那台后端；两项都对称 ⇒ 不对称数不动）// −1（`panorama.annotate`：唯一那条 `panorama_edit` 出表，写进了那台后端 `panorama-edit`）// −1（`ssh.host-config`：最后那条公钥推送出表）// 30 − 1（`acct-iso.deploy`）// 主线 35 ＋ MIG-1 −5（`session.activity` · `session.list-active` · `port-forward` · `tmux.manage` · `tmux.local-census`）⇒ 30 // 43 − 2（`tmux.manage` · `tmux.local-census`）// 主线 46 ＋ MIG-1 −3 ⇒ 43 // 49 − 3（`launch.render-cli` · `launch.render-payload` · `launch.render-attach`：渲染进了那台后端，不再是 Tauri 命令） // 47 − 1（`port-forward`）// 49 − 2（`session.activity` · `session.list-active`：会话流的成品替掉）// 51 − 2（`assets.catalog` · `skill.install`）// 56 − 5（MCP 那五项）// −1（`cc-bus.cockpit`：驾驶舱读面两条命令改走通道 ⇒ 账本上这条能力没有 Tauri 命令了；原本对称 ⇒ 不对称数不动）// 主线 ＋ HX2 −1（`creds.apikey`） ⇒ 57 // 主线 60 ＋ LOC1b −2（`search.history` · `search.index`）⇒ 58 // 主线 61 ＋ LOC1a −1（`session.tasks` 唯一的命令退役）⇒ 60 // 主线 62 ＋ US1 −1（`apikey.routing`）⇒ 61 // −1（`launch.send-into`：它唯一的命令 `backend_send_into` 迁到界面经通道说） // 主线 67 ＋ 本路 -4 ⇒ 63 // **−4（`history.list-projects` · `history.list-sessions` · `history.metadata` · `accounts.last-used`：全部命令改走通道 ⇒ 账本上这四条能力没有 Tauri 命令了；四条原本都对称 ⇒ 不对称数不动）** // **主线 66 ＋ 本路 +1（`comm.face-a.subscribe`，`{Both}`）⇒ 67** // **主线 64 ＋ AS2 +2（`assets.catalog` · `skill.install`，都 Both ⇒ 不对称数不动）** // **−1（`app.backend-policy`：两条命令都改走通道）** // 主线 67 ＋ 本路 −2 ⇒ 65（跑出来核过） // **−2（`accounts.list` / `accounts.trust`：全部命令改走通道 ⇒ 账本上这两条能力没有 Tauri 命令了）** // **〔合并 AS1（第二次）〕主线 66 ＋ 本路 1（`mcp.sync`，Both）—— git 自动合并这一行时取了主线那一边、丢了本路的 +1，跑出来核过** // **−1（`plugins.marketplaces`：唯一那条命令改走通道 ⇒ 账本上这条能力没有 Tauri 命令了；它原本是 `{Both}` ⇒ 不对称数不动）** // **+1（`panorama.annotate`：六条写命令从 `panorama.code-graph` 拆出来，Local-only）** // **+1（relay.machine，Remote-only）** // **−1（alias.account-commands 并进 alias.manage）** // **+1（alias.manage）** // ** −2（`usage.aggregate` 与 `usage.per-account` 两条能力整条退役 —— 两条**原本都对称**，所以不对称数不动）** // **K-R109 +1（launch.render-attach，Local-only；⚠ 派工单猜的是「能力数 65 不动」，实打不成立 —— 两个「归已有能力」的归法各被一条判据顶回来了，逐条见 `LEDGER` 里那一行旁边）** // **K-R49 +1（alias.account-commands，Local-only）** // **K-H2a +1（creds.apikey，Local-only：远端那侧的欠账理由见 ASYMMETRY_REASONS 那一行）** // devbench F03 +1（skill.inbox，Local-only） // U8a-2c-1 +1（launch.send-into，Remote-only）； U-CC1 +1（audit.drift-ledger）；U8c-2c-2 +1（launch.render-cli，Remote-only：**只是没有本机那条 IPC 命令** —— P3t-Y4 起理由不再是 §36「本机不经 IR」那条，§36 只绑 Windows，详见 ASYMMETRY_REASONS 里那行）；U8a-2c-pre +1（launch.render-payload，同 Remote-only）；**P2s +3（app.backend-policy / backend.status / backend.lifecycle，都是 Both）**；P3t-Y2b +1（tmux.local-census，Local-only：把远端本来就有的那一格在本机补上）；**P8a +1（plugins.marketplaces，Local-only）**；**PS1 +1（cc-bus.deploy）**；**PS2 +1（cc-bus.install-state）**；**K-H2b +1（apikey.routing，Local-only）**；**`K-R135` +1（ccm.user-path，Local-only：`R85` 那一格「加/撤/现在状态」；远端那一侧同一件事由 rc 围栏块办，而「用户级 PATH」这一档是 Windows 独有的 ⇒ `NaturallyAsymmetric`）**
     let asym = asymmetric_capabilities();
-    assert_eq!(asym.len(), 7, "不对称能力数变了"); // +1（`audit.monitor-own`：monitor 自己那台那几行的事实，天然只有本机）// −1（`ssh.host-config` 随最后一条命令出表）// 8 − 1（`acct-iso.deploy`）// 主线 11 ＋ MIG-1 −3 ⇒ 8 // 11 − 2（`tmux.manage` · `tmux.local-census` 没有 Tauri 命令了）// 主线 12 ＋ MIG-1 −1 ⇒ 11 // 14 − 3（`launch.render-*` 三项结清）＋ 1（`ccm.status` 只剩本机那一条，天然不对称） // 14 − 1（`port-forward` 没有 Tauri 命令了）// 基数 16 − 2（`alias.manage` 欠账还掉 · `alias.block-preview` 两侧都有了）⇒ 14 // 主线 17 ＋ LOC1b −1（`search.index` 整项没了）⇒ 16 // **−1（`cc-bus.cockpit`：写面迁走后只剩读面两条 `Both`）** // **−1（`panorama.annotate` 两侧都有了）** // **净 0：`panorama.code-graph` −1（远端那一半有了）· `panorama.annotate` +1（写那一半远端还没有）** // **−1（`relay.machine` 随 `relay_ensure` 退役；接替它的 `relay.launch-endpoint` 是 `Both`）** // **−1（`skill.inbox` 结清：用户裁远端也能编辑，两侧经后端 ⇒ Both）** // **−2：`creds.apikey` −1（读 / 写两条收 origin ⇒ `Both`）· `audit.config-surface` −1（远端那一栏由那台的后端答）· `apikey.routing` −1 与 `relay.machine` +1 净 0** // **−1（`plugins.marketplaces` 结清：`list_plugin_marketplaces`〔散文墓碑〕 按 origin 问那台后端 ⇒ `Both`）** // **−1（`session.tasks` 结清：`get_session_tasks` 按 origin 问那台后端 ⇒ `Both`）** // **−2（`acct-iso.check` / `acct-iso.shellinit` 结清：本机对侧问本机后端）** // **−1（`accounts.trust` 结清：`check_account_trust` 按 origin 分流到本机后端 ⇒ `Both`）** // **K-R109 +1（launch.render-attach，NaturallyAsymmetric）** // **K-R49 +1（alias.account-commands，ParityDebt）** // **K-H2b +1（apikey.routing，NaturallyAsymmetric）** // **K-H2a +1（creds.apikey，Local-only：远端那侧的欠账理由见 ASYMMETRY_REASONS 那一行）** // devbench F03 +1（skill.inbox） // F08 -1（usage.per-account 补平） // U8a-2c-1 +1（launch.send-into）； G6 -1；E79 accounts.session-accounts 补平 -1；U8c-2c-2 +1（launch.render-cli）；U8a-2c-pre +1（launch.render-payload）
+    assert_eq!(asym.len(), 7, "不对称能力数变了"); // +1（`audit.monitor-own`：monitor 自己那台那几行的事实，天然只有本机）// −1（`ssh.host-config` 随最后一条命令出表）// 8 − 1（`acct-iso.deploy`）// 主线 11 ＋ MIG-1 −3 ⇒ 8 // 11 − 2（`tmux.manage` · `tmux.local-census` 没有 Tauri 命令了）// 主线 12 ＋ MIG-1 −1 ⇒ 11 // 14 − 3（`launch.render-*` 三项结清）＋ 1（`ccm.status` 只剩本机那一条，天然不对称） // 14 − 1（`port-forward` 没有 Tauri 命令了）// 基数 16 − 2（`alias.manage` 欠账还掉 · `alias.block-preview` 两侧都有了）⇒ 14 // 主线 17 ＋ LOC1b −1（`search.index` 整项没了）⇒ 16 // **−1（`cc-bus.cockpit`：写面迁走后只剩读面两条 `Both`）** // **−1（`panorama.annotate` 两侧都有了）** // **净 0：`panorama.code-graph` −1（远端那一半有了）· `panorama.annotate` +1（写那一半远端还没有）** // **−1（`relay.machine` 随 `relay_ensure` 退役；接替它的 `relay.launch-endpoint` 是 `Both`）** // **−1（`skill.inbox` 结清：远端也能编辑，两侧经后端 ⇒ Both）** // **−2：`creds.apikey` −1（读 / 写两条收 origin ⇒ `Both`）· `audit.config-surface` −1（远端那一栏由那台的后端答）· `apikey.routing` −1 与 `relay.machine` +1 净 0** // **−1（`plugins.marketplaces` 结清：`list_plugin_marketplaces`〔散文墓碑〕 按 origin 问那台后端 ⇒ `Both`）** // **−1（`session.tasks` 结清：`get_session_tasks` 按 origin 问那台后端 ⇒ `Both`）** // **−2（`acct-iso.check` / `acct-iso.shellinit` 结清：本机对侧问本机后端）** // **−1（`accounts.trust` 结清：`check_account_trust` 按 origin 分流到本机后端 ⇒ `Both`）** // **K-R109 +1（launch.render-attach，NaturallyAsymmetric）** // **K-R49 +1（alias.account-commands，ParityDebt）** // **K-H2b +1（apikey.routing，NaturallyAsymmetric）** // **K-H2a +1（creds.apikey，Local-only：远端那侧的欠账理由见 ASYMMETRY_REASONS 那一行）** // devbench F03 +1（skill.inbox） // F08 -1（usage.per-account 补平） // U8a-2c-1 +1（launch.send-into）； G6 -1；E79 accounts.session-accounts 补平 -1；U8c-2c-2 +1（launch.render-cli）；U8a-2c-pre +1（launch.render-payload）
                                                    // P3t-Y2b +1（tmux.local-census）；**P3b -1（launch.send-into 结清：P3 刀 3 让本机真的在用它 ⇒ Both，不再不对称）**
                                                    // **P7c-1 -1（subagent.load 结清：远端展开做出来了 ⇒ Both）** —— backend 只列候选，挑选留本侧（C1）
                                                    // **`K-R135` +1（ccm.user-path，`NaturallyAsymmetric`）** —— 见 ASYMMETRY_REASONS 里那一行：
@@ -820,8 +820,8 @@ fn ledger_shape_is_pinned() {
             .or_default() += 1;
     }
     assert_eq!(kinds.get("natural"), Some(&6), "天然不对称条数变了"); // +1（`audit.monitor-own`）// −1（`ssh.host-config`） // 7 − 1（`acct-iso.deploy`）// 主线 9 ＋ MIG-1 −2（`port-forward` · `tmux.local-census`）⇒ 7 // 8 − 1（`tmux.local-census`）⇒ 7 // 主线 9 ＋ MIG-1 −1 ⇒ 8 // 11 − 3（`launch.render-cli` · `-payload` · `-attach` 三行随命令退役删了）＋ 1（`ccm.status`：远端探测命令删了，只剩本机那一条）⇒ 9 // 11 − 1（`port-forward`）⇒ 10 // 主线 12 ＋ LOC1b −1（`search.index`）⇒ 11 // **−1（`relay.machine` 那一行随命令退役删了）** // **净 0：`apikey.routing` −1（远端那台的后端自己答）· `relay.machine` +1（本机那一侧不该存在）** // **`K-R135` +1（ccm.user-path：远端同一件事由 rc 围栏块办 ＋ 那一档只有 Windows 有 ⇒ 天然，不是欠账；哪天远端是 Windows 就回来改成 `debt`）** // **K-R109 +1（launch.render-attach —— 记 `natural` 记的是「远端由 `render_ccm_launch` 一并产、不需要单独命令名」，不是「远端还没做」）** // U8c-2c-2 +1（launch.render-cli）；U8a-2c-pre +1（launch.render-payload）。★ P3t-Y4：这两条的**理由**换过（原来引 §36 说「本地不经 IR」——§36 只绑 Windows，且那个理由已被本机探针实测证伪），但 `natural` 的**条数没变**。P3t-Y2b +1（tmux.name-census）。**K-H2b +1（apikey.routing）—— 记 `natural` 记的是「回环自指 ⇒ 这个问题问错了机器」，不是「远端还没做」；把 key 送到远端那笔账在 `creds.apikey` 那行（`debt`），两者别混。**
-    assert_eq!(kinds.get("debt"), Some(&1), "平价欠账条数变了"); // 主线 2 ＋ MIG-1 −1（`tmux.manage`）⇒ 1 // 3 − 1（`tmux.manage`：那一族全上了帧面、本机远端同一条路）⇒ 2 // 基数 4 − 1（`alias.manage`）⇒ 3 // **−1（`cc-bus.cockpit` 结清：写面迁到界面经通道说，本机远端同一条路）** // **−1（`panorama.annotate` 结清：V110 本机远端同一条写）** // **+1（`panorama.annotate`：远端仓的批注写等后端写面）** // **−2（`creds.apikey`：把 key 送到远端的路有了 · `audit.config-surface`：远端足迹有了后端读口）** // **−1（`plugins.marketplaces`：远端那半补上了、本机同拍改走后端 —— 一件事清两笔账）** // **−1（`session.tasks`：远端那半补上了，理由表那一行删掉）** // **−2（`acct-iso.check` / `acct-iso.shellinit`）** // **−1（`accounts.trust`：本机那一侧补上了，理由表那一行删掉）** // **K-R49 +1（alias.account-commands：远端那半只有「吐待贴文本」那半条路，落盘没有主人）** // **K-H2a +1（creds.apikey：本机能配、远端那侧还没有路 —— 而且不能照抄 SFTP 上传，理由见那一行）** // F08 -1（usage.per-account 补平） // G6 -1；E79 -1；**P7c-1 -1（subagent.load 结清：远端展开做出来了）**；**P8a +1（plugins.marketplaces：新开的本机口，远端那半要等后端的 `--list-marketplaces`）**
-    assert_eq!(kinds.get("undecided"), None, "未裁定条数变了"); // 基数 1 − 1（`alias.block-preview`：题面裁「一并做」）⇒ 0 // **−1（`panorama.code-graph`：用户 09-24 裁「要」、V108 选 B，远端那一半做了）** // **−1（skill.inbox：用户 09-24 裁了「要」）** // devbench F03 +1（skill.inbox：远端项目的收件箱要不要能编辑，没人裁定过） // U8a-2c-1 +1（launch.send-into：本机该不该有后端进程未裁定）
+    assert_eq!(kinds.get("debt"), Some(&1), "平价欠账条数变了"); // 主线 2 ＋ MIG-1 −1（`tmux.manage`）⇒ 1 // 3 − 1（`tmux.manage`：那一族全上了帧面、本机远端同一条路）⇒ 2 // 基数 4 − 1（`alias.manage`）⇒ 3 // **−1（`cc-bus.cockpit` 结清：写面迁到界面经通道说，本机远端同一条路）** // **−1（`panorama.annotate` 结清：本机远端同一条写）** // **+1（`panorama.annotate`：远端仓的批注写等后端写面）** // **−2（`creds.apikey`：把 key 送到远端的路有了 · `audit.config-surface`：远端足迹有了后端读口）** // **−1（`plugins.marketplaces`：远端那半补上了、本机同拍改走后端 —— 一件事清两笔账）** // **−1（`session.tasks`：远端那半补上了，理由表那一行删掉）** // **−2（`acct-iso.check` / `acct-iso.shellinit`）** // **−1（`accounts.trust`：本机那一侧补上了，理由表那一行删掉）** // **K-R49 +1（alias.account-commands：远端那半只有「吐待贴文本」那半条路，落盘没有主人）** // **K-H2a +1（creds.apikey：本机能配、远端那侧还没有路 —— 而且不能照抄 SFTP 上传，理由见那一行）** // F08 -1（usage.per-account 补平） // G6 -1；E79 -1；**P7c-1 -1（subagent.load 结清：远端展开做出来了）**；**P8a +1（plugins.marketplaces：新开的本机口，远端那半要等后端的 `--list-marketplaces`）**
+    assert_eq!(kinds.get("undecided"), None, "未裁定条数变了"); // 基数 1 − 1（`alias.block-preview`：一并做）⇒ 0 // **−1（`panorama.code-graph`：远端那一半做了）** // **−1（skill.inbox：要做）** // devbench F03 +1（skill.inbox：远端项目的收件箱要不要能编辑，没人裁定过） // U8a-2c-1 +1（launch.send-into：本机该不该有后端进程未裁定）
                                                                 // P3b -1（launch.send-into：它的「还没裁定」被 C1/C8 + P2 + P3 刀 3 三重证伪）
 }
 
@@ -829,7 +829,7 @@ fn ledger_shape_is_pinned() {
 // 🔴 `K-R115` `KR115D4`：**`Side` 这一栏靠人签字，而签字的触发是派生出来的**
 // ════════════════════════════════════════════════════════════════════════
 //
-// # 题面（`K-R112` 09-13 撞见、一个字没动、PM 判「开件不在本件补」）
+// # 问题（`K-R112` 撞见、一个字没动）
 //
 // `LEDGER` 的 `Side` 栏**没有任何机检**。一条命令的派发跳改走了「origin 无关」的
 // 帧面（`inbound_client::client_for(origin)` / `backend_route`）之后，它对

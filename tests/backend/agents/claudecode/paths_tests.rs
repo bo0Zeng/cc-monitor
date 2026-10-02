@@ -1,13 +1,13 @@
-//! # 要求住址：用户裁决
+//! # 要求
 //!
-//! 核原文：「`settings.json` 那一形照旧被 claude 压过我们（`viaRelay` 那一格不许再说假话）」。
+//! 「`settings.json` 那一形照旧被 claude 压过我们（`viaRelay` 那一格不许再说假话）」。
 //! 异源：夹具是本判据现造的设置文件（家目录 / 项目 / 项目本地三处）；被测是适配层那一问 `settings_may_set_base_url`，
 //! 它的答案经 `SESSION_ENV_KEYS` 交给 `--session-accounts`（`observe/accounts_query.rs` 的 `viaRelay` 那一格）。
 
 use super::*;
 
 fn tmp(tag: &str) -> PathBuf {
-    let d = std::env::temp_dir().join(format!("ccm-e2-v146-{tag}-{}", std::process::id()));
+    let d = std::env::temp_dir().join(format!("ccm-e2-base-url-{tag}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&d);
     std::fs::create_dir_all(d.join("root")).unwrap();
     std::fs::create_dir_all(d.join("proj/.claude")).unwrap();

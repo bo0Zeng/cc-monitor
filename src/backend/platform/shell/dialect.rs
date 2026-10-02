@@ -15,7 +15,7 @@
 //!
 //! 通用层持有的是**结构**（名字 ＋ 一组 ccm 参数），不持有任何一种 shell 的文本 —— 一旦持有一段 POSIX 脚本，
 //! 这里就翻译不了它（`src/backend/platform/shell.rs` 头注那条「交给 PowerShell 不是另一种写法，是另一种语言」）。
-//! ⇒ 本模块里**零规则**：V1–V5、控制字符、重名、能力闸都不在这里；这里只答「这个 shell 里怎么写 / 怎么读」。
+//! ⇒ 本模块里**零规则**：组合规则、控制字符、重名、能力闸都不在这里；这里只答「这个 shell 里怎么写 / 怎么读」。
 //!
 //! # 方言由**目标**决定，不由宿主平台决定（末段）
 //!
@@ -667,7 +667,7 @@ impl ShellDialect for PowerShell {
     ///
     /// PS 7 那两份「目录在才列」从前在这里 `is_dir()`，今天交给调用方问那台后端（[`Listed::IfDirExists`]）。
     /// 「文档目录在哪」是这台后端问自己的系统（`platform::paths::documents_dir`）—— 这一臂只在说 PowerShell 的
-    /// 那台上走得到（不在 Windows 的后端在命令口显式拒，[`super::dialect_here`] · 主会话 09-27 裁），路径按这台的写法拼（`Path::join`）。
+    /// 那台上走得到（不在 Windows 的后端在命令口显式拒，[`super::dialect_here`]），路径按这台的写法拼（`Path::join`）。
     fn startup_candidates(&self, home: &str) -> Vec<StartupCandidate> {
         let home = Path::new(home);
         let docs = crate::platform::paths::documents_dir()

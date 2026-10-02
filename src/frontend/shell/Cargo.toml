@@ -22,9 +22,9 @@ members = [
     "../../common/deploy-contract",
     # 通道（通信层面 A）的线上词汇 · 客户端 · 路由器 · 拨号与交接件：monitor 与文件窗口进程链同一份。
     "../../common/chan-core",
-    # 〔主会话 09-29 拍板 Q2〕前端宿主原语（两个前端共用、后端不链）：自有状态文件的原子写 · 窗口夹进工作区。
+    # 前端宿主原语（两个前端共用、后端不链）：自有状态文件的原子写 · 窗口夹进工作区。
     "../../common/host-core",
-    # 〔主会话 09-29 拍板 Q1〕monitor 与文件窗口进程之间的契约（开窗种子 · 就绪那一行 · 「在此打开终端」那一问）。
+    # monitor 与文件窗口进程之间的契约（开窗种子 · 就绪那一行 · 「在此打开终端」那一问）。
     "../../common/filewin-contract",
     # 文件窗口（又一个前端）：独立成包，monitor 包里的 `[[bin]] cc-monitor-filewin` 转调它。
     "../filewin",
@@ -181,7 +181,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 # v2.0.0 issue #4：滚动 log 文件 + non_blocking writer，给 GUI app（无 stderr）一个用户可见的诊断通道
 tracing-appender = "0.2"
 
-# 〔主会话 09-29 拍板 Q1〕文件窗口独立成包 `src/frontend/filewin/`：界面库那几条（egui · eframe（glow）·
+# 文件窗口独立成包 `src/frontend/filewin/`：界面库那几条（egui · eframe（glow）·
 #   winit · rfd）与块形上传的 sha2 随窗口搬进那一包的清单（来历与「为什么是 glow」那几段注释逐字跟过去了）。
 #   monitor 链它**只为**本包第二个 `[[bin]] cc-monitor-filewin`（`src/filewin/win_main.rs` 一行转调 `cc_monitor_filewin::run`；
 #   bin 不能有自己的依赖，只能挂在包上）—— monitor 生产段一行都不引它（`contract_crate_guard` 的「前端包」那一类钉住）。

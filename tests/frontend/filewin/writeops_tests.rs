@@ -74,7 +74,7 @@ impl Applied {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// 🔴 正题一〔V119 翻面〕：会话文件那一行与别的行**同一条路**
+// 🔴 正题一：会话文件那一行与别的行**同一条路**
 // ════════════════════════════════════════════════════════════════════════
 //
 // 这里原来是「围栏 —— 两个方向都有判据」三条：受保护路径不问不做而且出声 · 改名两条路径各过一遍 ·
@@ -85,7 +85,7 @@ impl Applied {
 /// 该问的（删除 · 改权限）**照问一次**，答「做」就**原样交到 `apply`**；不问的（改名）直接交。
 ///
 /// 反空真：`asked` 必须恰是那两件要问的（不是 0 —— 0 就是有东西在问答之前把它们拦了）。
-/// 住址：用户裁决 V119原话「文件管理器全部都可以改. 不需要任何围栏」。
+/// 用户原话「文件管理器全部都可以改. 不需要任何围栏」。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_session_file_path_is_asked_and_done_like_any_other() {
     let asked = AtomicUsize::new(0);
@@ -132,7 +132,7 @@ async fn a_session_file_path_is_asked_and_done_like_any_other() {
     assert_eq!(
         applied.seen(),
         ops,
-        "🔴 V119：会话文件那几件没有原样交到 `apply` 手上"
+        "🔴 会话文件那几件没有原样交到 `apply` 手上"
     );
     assert_eq!((out.asked, out.ok, out.skipped), (3, 4, 0), "{out:?}");
     assert!(out.failed.is_empty(), "{out:?}");

@@ -524,7 +524,7 @@ fn old_entry_by_backend(ours: &std::path::Path, head: &str) -> bool {
 // `K-R62` 已经买到「你 rc 里那几行是旧的」（`profile_installer::scan_legacy_rc_lines`）；
 // 这里是**它的兄弟**：**PATH 上那个 `ccm` 是不是我们装的那一份**。
 //
-// 🔴 **不许只比路径字符串**。比路径认不出「同名不同物」，而本件的题面恰恰就是
+// 🔴 **不许只比路径字符串**。比路径认不出「同名不同物」，而要防的恰恰就是
 //    「本机上另有一个也叫 `ccm` 的东西」（用户 `~/.local/bin/ccm` 那份旧 bash）。
 //    ⇒ 比的是**两边自报的身份**：`--ccm-probe` 那条握手现成的，`version=` 与
 //    `capabilities=` 就是它交出来的名片。
@@ -711,7 +711,7 @@ pub fn render_path_ccm_hint(
     let at = on_path.at.clone().unwrap_or_else(|| "ccm".to_string());
     match verdict {
         PathCcmVerdict::Ours => String::new(),
-        // 认得出是我们早先放的旧入口 ⇒ 说清怎么清（不代清，V157 ③）。
+        // 认得出是我们早先放的旧入口 ⇒ 说清怎么清（不代清）。
         PathCcmVerdict::NotOurs if old_entry => copy_text(
             "rsCcmProbe.hint.oldEntry",
             &[("at", &at), ("where", &where_ours.to_string())],
@@ -787,7 +787,7 @@ pub(crate) fn ours_by_bytes(p: &std::path::Path) -> bool {
 /// 起进程面：两次 `--ccm-probe`（`write_site_registry::SPAWNS` 里登记着）。
 /// **一个字节都不写。**
 ///
-/// 〔V149 手动兜底〕`fresh` = 先作废 PATH 探针那份 5 分钟缓存再问（「重新对齐」那一下交；缺席 = 照缓存）。
+/// 手动兜底：`fresh` = 先作废 PATH 探针那份 5 分钟缓存再问（「重新对齐」那一下交；缺席 = 照缓存）。
 #[tauri::command]
 pub fn local_ccm_entry_status(fresh: Option<bool>) -> LocalCcmEntry {
     if fresh == Some(true) {

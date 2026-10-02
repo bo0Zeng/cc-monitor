@@ -368,7 +368,7 @@ fn an_older_powershell_block_is_flagged_and_a_fresh_one_is_not() {
     assert!(!block_state(rc, &again, &[]).outdated);
 }
 
-/// V160 原话「**不写搬家代码、不认老路径**」＋ 题面「已装的块由既有的「版本不同 ⇒ 需要重装」那条认出来」：
+/// 用户原话「**不写搬家代码、不认老路径**」；已装的块由既有的「版本不同 ⇒ 需要重装」那条认出来：
 /// 装在用户 `$PROFILE` 里的上一版块（v4）把数据目录的**旧住址**写死在 `$ccmDir` 里 ⇒ 它必须被判成旧的（界面说「重装一次」），
 /// 重装那一份指到新住址。旧块手写（异源），「新住址」手写。
 #[test]
@@ -617,7 +617,7 @@ fn reinstall_replaces_block_keeps_user_content() {
 }
 
 // 这里原来是 `install_preserves_explicit_acl_entries`〔散文墓碑〕（Windows：v1.7.10
-// `ReplaceFileW` 保住 explicit ACE）。写从本进程搬到了后端（用户裁「只允许后端的文件管理部分写文件」也管本机），
+// `ReplaceFileW` 保住 explicit ACE）。写从本进程搬到了后端（只有后端的文件管理部分写文件，本机也算），
 // 那条性质跟着搬：`tests/backend/control/files_write_tests.rs::put_keeps_explicit_acl_entries_on_windows`。
 
 #[test]
@@ -1478,7 +1478,7 @@ fn strip_aborts_on_malformed_begin_without_end() {
 /// 🔴 **别名块只有一个写口**：`user_files::edit`（→ 那台机器后端的 `files-put`）。
 ///
 /// 要求：「写入 —— **那台机器后端的文件管理那一面**（带围栏，本机和远端同一条路）」·
-/// `§4.5`「围栏管理 · 备份 · 原子写 · 写后校验 · 回滚 —— 这些是『判定的规则』，只许一份」· 用户裁。
+/// `§4.5`「围栏管理 · 备份 · 原子写 · 写后校验 · 回滚 —— 这些是『判定的规则』，只许一份」。
 ///
 /// 人群（从源码现打，monitor 生产段全树）：函数体里碰「别名块内容」的函数 —— 调合 / 剥 / 计划装卸 / 装卸入口
 /// （`merge_profile_block(` · `strip_profile_block(` · `plan_install(` · `plan_uninstall(` · `install_to_profile(` ·

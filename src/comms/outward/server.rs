@@ -1,7 +1,7 @@
 //! 中转 · **交换面**：一条请求从读头到收尾的全程 —— 读头 → 问上游选择（`resolve`）
 //! → 连上游 → 逐块透传 + tee。
 //!
-//! # 🔴 通信层成员 `COMM-LAYER-MEMBER`〔，2026-09-22 用户裁〕
+//! # 🔴 通信层成员 `COMM-LAYER-MEMBER`
 //!
 //! 登记那一侧在 `tests/frontend/shell/comm_boundary_registry_tests.rs::REGISTERED`（两向集合相等）。
 //! 盖上它 = **上锁**：本文件从此被 `C1`–`C5` ＋ `X1`–`X6` 十一条一起管着。

@@ -121,7 +121,7 @@ const FIELDS = (): ReadonlyArray<FieldSpec> => [
   { key: "card", label: copyText("settingsPanel.field.card"), type: "color", group: "color" },
   { key: "text", label: copyText("settingsPanel.field.text"), type: "color", group: "color" },
   { key: "text-2", label: copyText("settingsPanel.field.text2"), type: "color", group: "color" },
-  // 🔴 〔2026-09-19 用户裁定：撤掉〕这里原先有「用户色」「Claude 色」两个取色器。
+  // 🔴 这里原先有「用户色」「Claude 色」两个取色器。
   //    它们**拖了界面不会有任何变化** —— 链子是通的（一路走到 `theme.ts` 真的把值
   //    写进 DOM 的那一步），但**全仓没有一条 CSS 读这两个变量**
   //    ⚠ 这句话**刻意不写出那个调用的字面形状**：`css-conventions` 的扫描器
@@ -185,7 +185,7 @@ const APP_PAGE_INFO_TEXT = (): string =>
 // S2：机器页的文案 = 怎么连上远端 + 这台机上的启动器集成。
 const MACHINES_PAGE_INFO_TEXT = (): string =>
   copyText("settingsPanel.info.machinesPage", { remote: REMOTE_INFO_TEXT(), aliases: TERMINAL_INTEGRATION_INFO_TEXT() });
-// S2 删除：原 `REMOTE_GROUP_INFO_TEXT` 描述的是那个「留空占位」的空组（F82b 拍板的 4 组之一，
+// S2 删除：原 `REMOTE_GROUP_INFO_TEXT` 描述的是那个「留空占位」的空组（4 组之一，
 // 后被 A3 借去放账号）。它逐字写着「当前尚无独立项…留空占位」「在上面的『连接』组」——
 // 那个组和那个「上面」都不存在了，留着就是一句会误导人的话。
 
@@ -1144,7 +1144,7 @@ export class SettingsPanel {
       //    「面」「审计」是**我们这侧**的词；且它要和顶层页
       //    「改动足迹」同一个口径，而不是页叫足迹、块叫审计。
       //
-      // 〔用户 09-24 裁「远端也有真栏」〕`appliesTo: "both"`：远端那一页上它**按那台机器去问**
+      // 远端也有真栏：`appliesTo: "both"`：远端那一页上它**按那台机器去问**
       //   （读口归 RM1a）；答复的 `origin` 与所问对不上 ⇒ 说这台还答不了，不拿本机的答案冒充
       //   （`ConfigSurfaceSection.readFootprint` / `answersFor` 头注）。
       {
@@ -1228,7 +1228,7 @@ export class SettingsPanel {
       if (id === EXT_PAGE_ID) this.extSection?.loadNow();
     });
 
-    // 🔴 〔用户 09-24 裁「并进机器页，删掉顶层页」〕**顶层「改动足迹」页没了。**
+    // 🔴 **顶层「改动足迹」页没了。**
     //   它剩下的那一块（漂移记账）在**每台机器子页的「足迹」栏**里（per-machine 那一批，见上面
     //   `perMachineBlocks` 最后一格）。按机器分那一半的设计在（写区外）。
 
@@ -1792,7 +1792,7 @@ export class SettingsPanel {
   ): HTMLElement {
     const btn = document.createElement("button");
     btn.type = "button";
-    // 〔AR1 拍板 3〕`secondary` 就是默认那一种：原先拼出来的 `settings-btn-secondary` 从没有过规则，已摘。
+    // `secondary` 就是默认那一种：原先拼出来的 `settings-btn-secondary` 从没有过规则，已摘。
     btn.className = variant === "primary" ? "settings-btn settings-btn-primary" : "settings-btn";
     btn.textContent = label;
     btn.addEventListener("click", onClick);

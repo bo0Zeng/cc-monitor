@@ -4,7 +4,7 @@
 
 ## 它治的是什么
 
-`K-R80` 的题面是：`fmt` 那一格的分母里逐字写着「`remote-daemon-proto` 是另一个
+`K-R80` 要修的是：`fmt` 那一格的分母里逐字写着「`remote-daemon-proto` 是另一个
 workspace，本行盖不到」——**一格「我盖不到那儿」的诚实注释，被当成了处置**。
 盲区自己写在注释里，而没有任何东西在数它们。
 ⇒ 本尺子把「哪一格盖到哪几棵树」变成一份**逐格点名、机器对得上**的登记。
@@ -83,7 +83,7 @@ GATE = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else ROOT / "tests" / "s
 #
 #   ⚠ **不能照着新的顶层目录原样抄。** 重构后 `git ls-files` 的顶层只剩 4 个
 #   （`src/` `tests/` `.github/` `.cargo/`）——照抄就是把这张表压成 4 棵，
-#   而这张表存在的全部意义是**那张盲区转置表**（`K-R80` 的题面就是「`fmt` 盖不到
+#   而这张表存在的全部意义是**那张盲区转置表**（`K-R80` 要修的就是「`fmt` 盖不到
 #   另一个 workspace」这一条）。4 棵粗到每一格都同时盖 `src/` 与 `tests/` ⇒ 一句话都说不出。
 #
 #   ⇒ 改判据的**单位**，不改它买的东西：树按**前缀**登记、**首匹配**归属（长前缀写在前），
@@ -324,7 +324,7 @@ cell(
                              "`tauri.conf.json` / `Cargo.toml` 那些非 Rust 文件一概不在"),
         VENDOR: blind("`[workspace] exclude` 把它排掉了 —— 而 `C7` 逐字「vendor 不动」，"
                       "把它拉进出货门禁就是一道我们满足不了的闸"),
-        "src/backend/": blind("另一个 workspace —— **这就是 `K-R80` 的题面**，"
+        "src/backend/": blind("另一个 workspace —— **这就是 `K-R80` 要修的**，"
                                       "今天由 `fmt-daemon` 那一格盖"),
     },
 )
@@ -359,7 +359,7 @@ cell(
 )
 
 # ── WIN1：第 30 格 `winlink` ───────────────────────────────────
-# 守的要求：用户裁决 V115 那一趟 RT1 的 F1（`RT1.md §8`）—— `winchk` 只 `check`、不链接，
+# 守的要求：`winchk` 只 `check`、不链接，
 # 而 `-gnu` 交叉链接 `monitor_lib.dll` 当场 `export ordinal too large`。本格真链两个二进制。
 cell(
     "winlink",
@@ -506,7 +506,7 @@ cell(
     #   ⇒ 本尺子在**本件动它之前**就红着一条 `C2`（现打读数住
     #   `evidence/K-R115-deathvalue.md#§E`）。这不是本件弄红的，是本件顺手量到的。
     # 新共享 crate `copy-core` 进 workspace ⇒ 成员 9 → 10，`gate.sh` 那行同拍改成 `cargo 10`；
-    #   本锚点当时没人跟 ⇒ 合并列车那次门禁 `gate-selfdesc` C2 红，主会话在这里跟上。
+    #   本锚点当时没人跟 ⇒ 合并列车那次门禁 `gate-selfdesc` C2 红，在这里跟上。
     # 新共享 crate `relay-route-core` ⇒ 成员 10 → 11，`gate.sh` 同拍改 `cargo 11`，本锚点同拍跟上。
     # 新共享 crate `agent-tools-core`（J19）⇒ 成员 11 → 12，`gate.sh` 同拍改 `cargo 12`，本锚点同拍跟上。
     # 新共享 crate `upstream-url-core`（J9）⇒ 成员 12 → 13（本路增量 ＋1），`gate.sh` 同拍改 `cargo 13`，本锚点同拍跟上。
@@ -805,7 +805,7 @@ cell(
 )
 
 # 🔴 〔墓碑 09-19〕**`pb check` 那一格的登记整块删掉。**
-#   那一格 09-18 已按用户拍板**从 `gate.sh` 整格删除**（`PB_WS` / `planned-build` 在
+#   那一格**已从 `gate.sh` 整格删除**（`PB_WS` / `planned-build` 在
 #   `gate.sh` 非注释处现打零命中）。本文件的 `C1` 本该当场红「登记里有格盘上没有」——
 #   **它没红，因为没人跑它**（不在执行链上 ＋ 默认住址还指着重构前的 `scripts/gate.sh`）。
 #   ⇒ 那一格从裁决行上消失用了一天，而**本文件就是那个该响没响的东西**。
@@ -871,7 +871,7 @@ cell(
     **{
         "tests/scripts/": (PART, "`P1`/`P2` 读 `gate.sh` **这一份**的文本（格名 ＋ 逐字锚点）；"
                                  "这棵树里另外 6 份 `.sh` 本格一个字不看"),
-        # 〔V105 清账〕这里原来判「部」：`P4`（「壳-折」那一维有对象）读这棵树的三样现物。
+        # 这里原来判「部」：`P4`（「壳-折」那一维有对象）读这棵树的三样现物。
         #   那一档放弃、`P4` 删了之后本格一个字都不读这棵树 ⇒ 缺省的「无」（`all_blind`）就是实情。
         "tests/evidence/": (NONE, "🔴 判据本体住这棵树，但本格不读这棵树的任何文件 —— "
                                   "**判据自己住哪不算覆盖**（同 `gate-selfdesc` 那一条）"),
@@ -1163,7 +1163,7 @@ def found_cells(text):
 
 # ── `C5b`（`K-R91` `KR91D1`）：门禁**自述射程**那几句话，腐了有人说话 ────────────
 #
-# 🔴 题面（`DECISIONS.md#R46` 裁定三，PM 现打于 `cba446b`）—— `gate.sh` 头注里两处自述已腐：
+# 🔴 问题（现打于 `cba446b`）—— `gate.sh` 头注里两处自述已腐：
 #   · `:19–20` 逐字「三道门 + 一道生成物漂移检查 + `pb check` + 四套 `ccm` e2e」
 #     ⇒ 3+1+1+4 = **9**，而当天盘上是 **13** 格。
 #     🔴 **那个算式与 `R42 裁定零` 里被 PM 传播了 46 次的错数是同一个算式、同一份文件。**
@@ -1234,7 +1234,7 @@ def suite_on_disk(tok):
 
 # ── `C5c`（`K-R122` `KR122D3` 的兄弟条，09-14）：**裁决行上那句射程，有人守** ────────
 #
-# 🔴 题面（`K-R119` 09-14 的读数）：同一棵树本门禁 **16 格全绿**，云端 8 个 job 里 **5 个红**。
+# 🔴 问题（`K-R119` 的读数）：同一棵树本门禁 **16 格全绿**，云端 8 个 job 里 **5 个红**。
 #   `KR122D2` 二选一里的**乙**要求「在裁决行上明写射程，逐字说出本门禁不看什么」——
 #   而一句没有判据在守的散文，下一轮就是一句**没人守的散文**（`brief` 第 17 条那一族）。
 #
@@ -1319,7 +1319,7 @@ def check_blind_scope(text, cells):
 
 # ── `C5d`（`G4` 空洞③，09-20）：**裁决行那串点名有人守** ＋ 格数不许有第三份住址 ──
 #
-# 🔴 题面（本拍现打，**非截断** grep，两条都逐字）：
+# 🔴 问题（**非截断** grep，两条都逐字）：
 #   · `gate.sh` 的裁决行逐字 `echo "GATE: OK —— 26 格全绿（worktree-clean · hooks · …）"`
 #     ⇒ 那个数是**字面量**。而且它必须是字面量：`C5` 的 `ROLLCALL` 正则就是靠抠这个
 #     字面量去跟**现打格数**对拍的 —— 改成「门禁自己算」，那条对拍的两侧当场同源、恒真。
@@ -1394,7 +1394,7 @@ def check_verdict_rollcall(text, cells):
 
 # ── `C8`（`G4` 空洞③，09-20）：**这道门到底被谁调用** ────────────────────────────
 #
-# 🔴 题面（本拍非截断复打）：
+# 🔴 问题（非截断复打）：
 #   `grep -c 'bash tests/scripts/gate.sh' .github/workflows/*.yml` ⇒ 落地前**两份都是 0**；
 #   `.git/hooks/` 下零个非 sample 钩子；`tests/hooks/` 下只有一份 `pre-commit`，而它
 #   **默认是死的**（要人手 `git config core.hooksPath` 才活）。
@@ -1630,7 +1630,7 @@ def check_invocation(text, cells):
     n_gate = ci.count(GATE_CALL)
     if n_gate != 1:
         out.append(f"C8d `ci.yml` 里 `{GATE_CALL}` 命中 {n_gate} 处（应当恰好 1 处）—— "
-                   f"这道门在云端零调用，正是 `G4` 空洞③ 的题面；多于 1 处则两个 job "
+                   f"这道门在云端零调用，正是 `G4` 空洞③；多于 1 处则两个 job "
                    f"各跑一趟，收据会互相盖掉")
     else:
         i_gate = ci.index(GATE_CALL)
@@ -1784,7 +1784,7 @@ def check_no_gate_needed(orphans):
     out = []
     rootfiles = {p for p in ls_files() if "/" not in p}
     # 🔴 `C6b` 的人群从「孤儿树」扩成「孤儿树 ∪ 明标 `partial` 的树」。
-    #   题面：`<仓根文件>` 今天被 `release-gate` 盖到 **1 格**（它读 `package.json` 的 `version`）
+    #   问题：`<仓根文件>` 今天被 `release-gate` 盖到 **1 格**（它读 `package.json` 的 `version`）
     #   ⇒ 按上一版那条两向对拍，它**不再是孤儿**，于是「登记说它不需要门」当场红，
     #   而正确的动作不是删掉那条说明 —— 14 份仓根文件里真正进了那一格的**只有 1 份**，
     #   另外 13 份的处境一个字没变。**一条 `部` 裁词把整棵树的逐份普查关掉了，这才是病。**

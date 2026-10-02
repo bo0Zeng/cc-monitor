@@ -1,5 +1,5 @@
 //! 要求：「待迁」最后一行 ——「远端拉起那串的 ssh 外壳（`ssh -t -J … host '<串>'` · PowerShell 窗口载荷）
-//! 由本机后端渲，monitor 只开终端」（FIX4 题面第 1 条）。
+//! 由本机后端渲，monitor 只开终端」。
 //!
 //! 期望原样搬自 monitor `tests/frontend/shell/launch_tests.rs` 钉 ssh 外壳的那六条（基本形态 · 钥匙与口 · IPv6 · 跳板参数 · 坏输入 ·
 //! 单引号过两层）＋「拒双引号只拦 PowerShell 那条送法」的远端那一半 ＋「同一个载荷只多两层包装」的远端那一半 —— 被测对象搬了家、期望一个字没改；
@@ -292,7 +292,7 @@ fn the_open_terminal_command_keeps_its_three_shapes() {
 }
 
 /// 〔`INVARIANTS §47` ②〕「在此打开终端」的当前目录：自由文本路径，形式 ＋ 拒绝集（只收 NUL / CR / LF），**正反各一格**。
-/// 要求住址：`INVARIANTS §47` ②；主会话 09-26 按 V131 裁「自由文本路径……拒绝集只收控制字符（NUL / CR / LF）……不拒 shell 元字符」。
+/// 要求：`INVARIANTS §47` ②（自由文本路径的拒绝集只收控制字符，不拒 shell 元字符）。
 #[test]
 fn the_open_terminal_cwd_passes_real_names_and_refuses_what_quote_cannot_hold() {
     for good in ["/home/u/Bob's notes", "/data/照片 (2019)", "/srv/a&b;c"] {
@@ -324,7 +324,7 @@ fn the_open_terminal_cwd_passes_real_names_and_refuses_what_quote_cannot_hold() 
     );
 }
 
-/// 〔主会话 09-29 拍板 Q2〕`terminal-ssh` 收意图 `cwd`：渲出来的那一行与「先拼好命令再交 `command`」**逐字相同**
+/// `terminal-ssh` 收意图 `cwd`：渲出来的那一行与「先拼好命令再交 `command`」**逐字相同**
 /// （文件窗口与主界面开终端同一条路、同一处渲）；`command` 与 `cwd` 恰好给一个，两个都给 / 都不给 ⇒ `invalid_args`。
 #[test]
 fn a_cwd_intent_renders_exactly_like_the_command_it_stands_for() {

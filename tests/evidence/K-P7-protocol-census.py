@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""K-P7 摸底量具 —— 把 `§0a` 那四个读数与用户裁定那三格**逐条重打**。
+"""K-P7 摸底量具 —— 把 `§0a` 那四个读数与裁定那三格**逐条重打**。
 
 住址（`brief` 12 要求量具的住址唯一）：
     <工作树>/evidence/K-P7-protocol-census.py
@@ -394,7 +394,7 @@ def main() -> int:
     R = {"root": root, "head": head}
     P = print
     P("=" * 78)
-    P("K-P7 协议面普查 —— `§0a` 四个读数 + 用户裁定三格，逐条重打")
+    P("K-P7 协议面普查 —— `§0a` 四个读数 + 裁定三格，逐条重打")
     P("量具住址: <工作树>/evidence/K-P7-protocol-census.py")
     P(f"被测工作树: {root}")
     P(f"被测树 HEAD: {head}")

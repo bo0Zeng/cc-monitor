@@ -103,7 +103,7 @@ ck "-- 左边原样交给 claude，按原顺序" \
 ck "claude 自己的 --tmux / --agent 原样交出去（用户 09-26：ccm 的改名 --ccm-tmux / --ccm-agent）" \
    "$UNSET; cd '/p' && exec claude --tmux --agent x" \
    "$(ccm --tmux --agent x -- --cwd /p --ccm-print)"
-ck "ccm new（-- 左边）照 V151 整个交给 claude，不开例外" \
+ck "ccm new（-- 左边）整个交给 claude，不开例外" \
    "$UNSET; cd '/p' && exec claude new" \
    "$(ccm new -- --cwd /p --ccm-print)"
 ck "new 是 ccm 自己的词：写在 -- 右边第一个 = 起新会话（与不写同）" \

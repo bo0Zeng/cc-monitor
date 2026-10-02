@@ -384,7 +384,7 @@ struct InFlight {
 // **退出之前先排空停不下来的那一档**（§1）
 // ══════════════════════════════════════════════════════════════════════════
 //
-// 🔴 出处：E §E2 ＋ 主会话 D-a「后端收 SIGTERM 先排空在飞写（有上限）再退」。
+// 🔴 后端收 SIGTERM 先排空在飞写（有上限）再退。
 //   此前三个退出口（stdio 写者断 / 收信号 / 最后一个客户走了且退出行为是「结束」）都是当场 `exit(0)`，
 //   把 `spawn_blocking` 里正在写的那一条连线程一起带走 ⇒ 存盘剩半份、递归删删一半、tmux 键入一半。
 //
@@ -392,7 +392,7 @@ struct InFlight {
 //   （[`Disposition::SpawnBlocking`] 头注）——正是它会被做成半截；`Run::Async` 那一档本来就随时可能被 `cancel`
 //   打断，每个 await 点上都得是安全的。⇒ 不另立「哪条算写」的分类表（那是一张会漂的第二份真相）。
 //
-// 🔴 **「有上限」**〔主会话 4D 裁 HX1 拍板项 1，按 `INVARIANTS §48.2`「脱离后不留僵尸」〕：后端**自己**兜一个
+// 🔴 **「有上限」**〔`INVARIANTS §48.2`「脱离后不留僵尸」〕：后端**自己**兜一个
 //   退出排空期限 [`DRAIN_DEADLINE`]（30 秒）—— 到点仍没排空 ⇒ 记一行说哪几条没做完，然后退。
 //   这是后端零定时器（`no_timer_guard`）**唯一**让位的地方，登记在那张表的 `REGISTERED_EXIT_DEADLINE`（恰好一行）。
 //   为什么非它不可：远端后端在 SSH 断开那一刻没人叫它退、也没人给上限 —— 阻塞在一个挂死的文件系统上的那一条
@@ -2077,7 +2077,7 @@ pub const REGISTRY: &[CommandSpec] = &[
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
-    // 解压（主会话按通行做法裁）：处理器住
+    // 解压：处理器住
     //   `control/files_extract.rs`（第三层第四个登记的模块），本文件照旧是那一层唯一的门。阻塞档（同步读包 ＋ 落盘）。
     CommandSpec {
         name: "files-extract",
@@ -2130,7 +2130,7 @@ pub const REGISTRY: &[CommandSpec] = &[
     },
     // ── 用户文件的读改写 ＋ 删历史会话 ─────────────────────────
     //
-    // 🔴 用户裁「只允许后端的文件管理部分写文件」**只管用户的文件、本机也管** ⇒ monitor 进程
+    // 🔴 只有后端的文件管理部分写**用户的文件**，本机也算 ⇒ monitor 进程
     //   不再直接写用户文件；本机与远端都经这三条（`call(origin, …)`，同一条路）。处理器同住
     //   `control/files_write.rs`（第三层），本文件照旧是那一层唯一的门。阻塞档（同步文件 I/O）。
     //   `files-delete-session` 只收 sid（理由住那个模块的 `delete_session`）。
@@ -3820,7 +3820,7 @@ pub const REGISTRY: &[CommandSpec] = &[
         takes_input: true,
         run: Run::Blocking(|r| crate::control::launch::launch_for_inbound(&r.args).map(Some)),
     },
-    // **链路四条** —— 用户裁「改成单一常驻后端」：本机只常驻一个后端，
+    // **链路四条** —— 本机只常驻一个后端，
     // 到各远端的 SSH 连接由它持有、按拨号身份复用（`dial/pool.rs`）；monitor 经这条流开「链路」，
     // 链路上的字节与 C2 那个 `--dial` 子进程的 stdout 逐字节同形（`dial/mod.rs` 头注）。
     // 四条都是 `Run::Builtin`：要碰本连接的链路表 ⇒ **只在帧面**，CLI 面不派生（一次性进程没有「连接」可言）。

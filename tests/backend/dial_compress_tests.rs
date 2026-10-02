@@ -1,11 +1,9 @@
 //!
-//! 核原文：V23 逐字「今天每台机器只有一条连接可以看情况多开. 智能一点. 这是属于 ssh 优化的部分. 智能多开链接\压缩等等」；
-//! 那张表「SSH 传输层 | 没显式开；russh `client::Config` 零处设 `preferred`」；
-//! `§5.5`「默认已经压上 ⇒ 别重复投资；没有 ⇒ 一行 `preferred` 覆盖全部 SSH 跳」。
-//! NT1 题面：「跨互联网那一跳按需开 SSH 压缩 …… 什么时候开（本机回环 / 局域网不开）写清判准，判准只有一处」。
-//! V118 逐字〔选〕「打补丁版 russh，现在就开」：vendor 一份修好 zlib 解压的 russh（`[patch.crates-io]`），SSH 压缩按已写好的判准开。
+//! 用户要求：「今天每台机器只有一条连接可以看情况多开. 智能一点. 这是属于 ssh 优化的部分. 智能多开链接\压缩等等」。
+//! 跨互联网那一跳按需开 SSH 压缩（本机回环 / 局域网不开），判准只有一处；一行 `preferred` 覆盖全部 SSH 跳。
+//! russh 用仓内打补丁版（修好 zlib 解压，`[patch.crates-io]`）。
 //!
-//! 闸开了（Z5 翻面 ＋ 多包一格）；补丁那一族两条：V1 副本只改了登记的那一份 · V2 补丁真接上了。
+//! 闸开了（Z5 翻面 ＋ 多包一格）；补丁那一族两条：VR1 副本只改了登记的那一份 · VR2 补丁真接上了。
 //!
 //! `dial/connect.rs` 的压缩判准（[`compression_for`]）与它的接法。四件：
 //! Z1 真值表 · Z2 两张偏好序 · Z3 判准只有一处、只有一个调用点 · Z4 回环上内核真量得到往返时间、判准答「不压」。
@@ -298,11 +296,11 @@ fn the_gate_matches_what_russh_really_does() {
     );
 }
 
-/// vendored russh 副本的住址（仓根相对）。与后端清单 `[patch.crates-io]` 那一行指的是同一处（V2 对拍）。
+/// vendored russh 副本的住址（仓根相对）。与后端清单 `[patch.crates-io]` 那一行指的是同一处（VR2 对拍）。
 const VENDORED_RUSSH: &str = "src/vendor/russh";
 
 /// 副本目录的绝对住址。住址写成字面量（`test_tiers` 扫描层按 `repo_root().join("…")` 字面量核它在盘上），
-/// 与 [`VENDORED_RUSSH`] 同一处由这里的断言钉住（V2 拿常量去比 `[patch.crates-io]` 那一行）。
+/// 与 [`VENDORED_RUSSH`] 同一处由这里的断言钉住（VR2 拿常量去比 `[patch.crates-io]` 那一行）。
 fn vendored_russh_dir() -> std::path::PathBuf {
     let dir = crate::guard_support::repo_root().join("src/vendor/russh");
     assert_eq!(dir, crate::guard_support::repo_root().join(VENDORED_RUSSH));
@@ -361,7 +359,7 @@ fn files_under(dir: &std::path::Path) -> BTreeMap<String, String> {
         .collect()
 }
 
-/// ★ V1：**副本只改了登记的那几份**（「副本是上游的镜子，不是分身」—— 改了哪几行要一眼可见、上游修好之后撤得干净）。
+/// ★ VR1：**副本只改了登记的那几份**（「副本是上游的镜子，不是分身」—— 改了哪几行要一眼可见、上游修好之后撤得干净）。
 ///
 /// `VENDOR.md` 三张表：原样清单（`sha256  路径`，逐份取自 `russh-0.61.1.crate`，那份 `.crate` 的 sha256 == 后端 lock 原先锁的 checksum）·
 /// 改过的文件（`路径  原样 sha256  补后 sha256`）· 副本特有的（`sha256  路径`）。判：
@@ -462,7 +460,7 @@ fn the_vendored_russh_differs_from_the_crate_only_where_registered() {
     );
 }
 
-/// ★ V2：**补丁真接上了**（三份文本对拍）。
+/// ★ VR2：**补丁真接上了**（三份文本对拍）。
 ///
 /// ① 后端清单 `[patch.crates-io]` 段里恰好一条、就是 `russh`、指向 `../vendor/russh`（== [`VENDORED_RUSSH`]）；
 /// ② 依赖声明那一行的版本 == 副本 `Cargo.toml` 的 `version` == lock 里 `russh` 那一块的 `version`；

@@ -1002,7 +1002,7 @@ fn place() -> Result<serde_json::Value, crate::ccm_probe::OnceErr> {
 }
 
 /// 要求：「落点 `~/.cc-monitor/bin/ccm` —— 本机与远端同一个」
-/// （主会话 09-29 拍板形状 A：放不放问手上那份字节自己，判定只住后端 `deploy_plan::place_verdict`；那张真值表住后端 `deploy_plan_tests`）。
+/// （形状 A：放不放问手上那份字节自己，判定只住后端 `deploy_plan::place_verdict`；那张真值表住后端 `deploy_plan_tests`）。
 ///
 /// 真跑 [`extract_embedded_to`]、替身答话，逐格比盘上那份字节与目录（不读源码）：缺 ⇒ 问（问时暂存件里恰是手上那份、入参是落点与「本机」）⇒
 /// 答放 ⇒ 放；逐字节相同 ⇒ 不问、不动；答不动 ⇒ 用盘上那份；它说「不」⇒ 那句话原样、不动；问不成 · 答话不成形 ⇒ 说清、不动。
@@ -1832,7 +1832,7 @@ fn every_bundle_job_stages_the_local_backend_before_building() {
 
 /// ★★ 🔴 `KR70D3`（09-12）：**载体①与载体③是同一次构建 —— 这件事从此有人守。**
 ///
-/// # 题面（`K-R68` 现打，`DECISIONS.md#R26` 裁定一）
+/// # 问题（`K-R68` 现打）
 ///
 /// 发版流水线里同一个文件被拷了两次：
 /// `.build/backend/release/cc-monitor-backend.exe`
@@ -1842,7 +1842,7 @@ fn every_bundle_job_stages_the_local_backend_before_building() {
 /// 🔴 **而这件事此前没有任何断言守着**：中间插一条 `cargo build`（换个 feature、
 /// 换个 profile、甚至只是重编一次）就不再是同一份字节，**没人会红**。
 /// 而两份字节不同、身份戳却相同（同一个 `BUILD_ID`）时，产品**分不出它们** ——
-/// 那正是 `K-R70` 这一件的题面本身。
+/// 那正是 `K-R70` 这一件要修的。
 ///
 /// # ⚠ 本条**不主张**「载体②也要同字节」
 ///

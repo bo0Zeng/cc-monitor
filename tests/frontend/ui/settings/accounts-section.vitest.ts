@@ -192,7 +192,7 @@ function expectNoReadyChrome(el: HTMLElement): void {
 
 describe("account-ux U7 设置账号组：降级分支不被 IA 重排改掉", () => {
   /**
-   * ⚠⚠ `N-F1b` `NF1bD3`：**这一条的题面被 `N-F1b` 正面推翻，逐字换过。**
+   * ⚠⚠ `N-F1b` `NF1bD3`：**这一条的要求被 `N-F1b` 正面推翻，逐字换过。**
    *
    * 旧题（逐字）：`没有已配置的远端 → 只给一句说明，不渲染表/横幅/维护区`
    * 旧断言里被推翻的那一句（逐字）：
@@ -1174,7 +1174,7 @@ describe("N-F1b 没有远端时：设置面板列得出这台机器的账号", (
   // ---- `NF1bD3`：远端那条路一个字节没动 ----
 
   it("★ NF1bD3：站在 devbox 那一页上照旧走远端那条读口，本机那一支一格不长", async () => {
-    // 题面原为「配了远端时照旧走远端那条读口」—— 那是「store 为空就兜底读主远端」
+    // 要求原为「配了远端时照旧走远端那条读口」—— 那是「store 为空就兜底读主远端」
     // 那一形的口径；兜底删了之后，「走不走远端」由**你站在哪一页**决定，不由「配没配远端」决定。
     // 反方向（本机页 + 配了远端 ⇒ 本机那一支）见下一条。
     readRemoteConfigMock.mockResolvedValue({ enabled: true, hosts: [host()] });
@@ -1447,7 +1447,7 @@ describe("N-F2 本机那两格真的被写进账本", () => {
     });
     expect(
       before.map((g) => `${g.facet}:${g.kind}`),
-      "本机的适用格不是恰好这三格 —— 下面几条的题面就得重写",
+      "本机的适用格不是恰好这三格 —— 下面几条的要求就得重写",
     ).toEqual(["backend:unknown", "ccm:unknown", "accounts:unknown"]);
   });
 

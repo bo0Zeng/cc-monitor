@@ -7,7 +7,7 @@ export type DataPathInfo = {
  */
 label: string, 
 /**
- * 〔用户 09-24 裁「提前做」· `INVARIANTS §2.1` 末条〕**真相还是缓存**。
+ * 〔`INVARIANTS §2.1` 末条〕**真相还是缓存**。
  *
  * **非可选**：[`probe_file`] / [`probe_dir`] 不收它就编不过 ⇒ 「新文件必须选类」由类型系统兜住，
  * 不再只靠 `INVARIANTS §2.1` 那张散文表。设置面板「数据位置」每一行照它说「删了会丢 / 可随手删」。

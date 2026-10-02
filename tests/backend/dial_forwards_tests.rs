@@ -211,7 +211,7 @@ async fn a_link_that_ends_on_its_own_reads_as_error() {
     assert_eq!(list_with(&ledger)["forwards"][0]["state"], json!("error"));
 }
 
-/// 〔主会话裁：流没起的远端不许拒〕可达表里没有那台、界面一并交来了它的配置 ⇒ 按配置自己组请求去拨（`dial/machine.rs`），
+/// 〔流没起的远端不许拒〕可达表里没有那台、界面一并交来了它的配置 ⇒ 按配置自己组请求去拨（`dial/machine.rs`），
 /// 交给链路那一侧的是 `use: forward` ＋ 这条规格 ＋ 配置里的那台；配置也没交 ⇒ 才是 `unreachable`。
 #[tokio::test]
 async fn a_machine_that_never_streamed_is_dialled_from_its_config() {

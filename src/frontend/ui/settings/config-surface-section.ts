@@ -189,7 +189,7 @@ export function owedInstallerNames(rows: SurfaceRow[]): string[] {
 /** 生成一段可复制的纯文本诊断，便于用户贴给我或存档。 */
 export function formatReportText(r: ConfigSurfaceReport): string {
   const lines: string[] = [];
-  // 〔用户 09-24 裁「一起改」〕跟块名统一：「配置面审计」→「足迹」。
+  // 跟块名统一：「配置面审计」→「足迹」。
   lines.push(copyText("configSurface.report.head"));
   lines.push(`HOME=${r.home}`);
   lines.push(copyText("configSurface.report.claudeDir", { claudeConfigDir: r.claude_config_dir }));

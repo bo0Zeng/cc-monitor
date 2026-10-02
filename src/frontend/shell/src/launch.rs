@@ -84,7 +84,7 @@ pub fn build_local_posix_argv(cmd: &str) -> Result<Vec<String>, String> {
 /// `ssh = true` ⇒ Windows 上先查本机有没有 ssh.exe（缺 OpenSSH 客户端时窗口只会报 "not recognized"，而 spawn 本身成功 ⇒ 前端误报成功）。
 ///
 /// ★ POSIX：[`launch_powershell_window`](crate::platform::terminal::launch_powershell_window) 的非 Windows 臂回 [`POSIX_NO_TERMINAL_WINDOW`](crate::platform::terminal::POSIX_NO_TERMINAL_WINDOW)，前端据此把命令交给用户在自己的
-/// bash 里执行（〔用户裁定 08-12〕「attach 暂时就用纯 linux bash 以及 windows 的 PowerShell + Windows Terminal」）。**这不是失败**。
+/// bash 里执行（「attach 暂时就用纯 linux bash 以及 windows 的 PowerShell + Windows Terminal」）。**这不是失败**。
 #[tauri::command]
 pub async fn open_terminal_window(command: String, ssh: bool) -> Result<(), String> {
     // §10（Phase G 对齐）：`where.exe` 预检（阻塞）＋ 进程 spawn 挪到阻塞线程池，不堵 IPC 派发线程。

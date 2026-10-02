@@ -1,14 +1,14 @@
 //! **SFTP 住本机常驻后端**：在池里那条 SSH 连接上开 sftp 子系统 ·
 //! **远端写围栏（只许两处）** · 远端写原语 · 部署那条链路（`use:"files"`）的一问一答。
 //!
-//! # 用户裁决
+//! # 要求
 //!
 //! 「SFTP 怎么进单一常驻后端」一题选「**进本机常驻后端，只写暂存区**」：SFTP 连接由本机常驻后端管、
 //! 与其它 SSH 复用；只往远端暂存区写，落进用户目录仍只经远端后端文件管理提交（`files-commit-upload`）；
 //! 界面进程零 SSH。F08（自部署后端）**按构造搬不进远端后端**（那时它还不在），搬进**本机**后端没这个问题
 //! ⇒ 第二个写根是部署目录 `~/.cc-monitor/bin/`。
 //!
-//! # 🔴 本文件是后端里**唯一**一份能改远端文件系统的代码（红线 `I7`，`INVARIANTS §41.6` 的 V89 订正）
+//! # 🔴 本文件是后端里**唯一**一份能改远端文件系统的代码（红线 `I7`，`INVARIANTS §41.6`）
 //!
 //! `readonly_guard::remote_write_layer` 钉三件：① 生产段里命中远端写能力网 / 动词网的文件 == `{dial/sftp.rs}`；
 //! ② 本文件声明的写根（[`REMOTE_WRITE_ROOTS`]）== `{~/.cc-monitor/staging, ~/.cc-monitor/bin}`；
@@ -439,7 +439,7 @@ pub(crate) async fn put_atomic(
     mode: u32,
 ) -> Result<(), Refusal> {
     let rel = fenced_remote(s, path, Intent::File).await?;
-    // 〔主会话 D-b「临时件名唯一」〕临时件与备份件都带**这一趟独有**的后缀：两个部署者（两台 monitor 各自的常驻后端）
+    // 〔临时件名唯一〕临时件与备份件都带**这一趟独有**的后缀：两个部署者（两台 monitor 各自的常驻后端）
     //   同时往同一个落点放字节时，谁也不删谁的那一份（从前是固定的 `<rel>.tmp` / `<rel>.bak` ＋「先删残留」—— 那一删删的可能是
     //   别人正在写的那一份，审计 E3 子形 2）。仍 `EXCLUDE` 新建：真撞了名 ⇒ 当场失败，不会写进别人的那一份。
     //   〔墓碑 —— 「先删残留」那一步没了：固定名时它清上一趟崩掉留下的那一份；唯一名之后崩掉的那一趟留下的临时件
@@ -593,7 +593,7 @@ pub(crate) async fn remove(s: &Session, path: &str) -> Result<bool, Refusal> {
 
 /// 建**一层**目录（已在 ⇒ 什么都不做）。
 ///
-/// 〔主会话裁 HX1 拍板项 4〕**这一趟建出来的**那一层当场收成只给本人（`own_dir::PRIVATE_DIR_MODE`，0700）——
+/// **这一趟建出来的**那一层当场收成只给本人（`own_dir::PRIVATE_DIR_MODE`，0700）——
 /// 远端第一个建 `~/.cc-monitor`（以及 `bin` / `staging`）的就是这里（部署），此前按服务端 umask 建（常见 0755）。
 /// 本机那一份是 `own_dir::ensure_private_dir`（它在本机文件系统上、这里调不到它）；两边共用同一个权限位常量。
 /// ⚠ 用 `set_metadata`（SETSTAT）只对**目录**、只带 `permissions` 一格 —— `put_atomic` 头注那条「改名之后绝不 setstat」

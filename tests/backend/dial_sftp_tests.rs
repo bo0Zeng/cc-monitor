@@ -91,7 +91,7 @@ fn the_lexical_fence_admits_exactly_the_two_roots_and_nothing_else() {
     .is_err());
 }
 
-/// 🔴 写根**恰好两处**、就是题面那两处（异源：期望取自 V89 题面，不取自本文件的常量）。
+/// 🔴 写根**恰好两处**：暂存区与部署目录（异源：期望手写，不取自本文件的常量）。
 #[test]
 fn the_declared_write_roots_are_exactly_staging_and_bin() {
     let want: std::collections::BTreeSet<&str> = [".cc-monitor/staging", ".cc-monitor/bin"]
@@ -528,9 +528,9 @@ fn the_sftp_dependency_is_really_on_russh_sftp_three() {
     );
 }
 
-// ═══ 〔主会话 D-b「临时件名唯一」〕两个部署者同一个落点 ═══════════════════════════════
+// ═══ 〔临时件名唯一〕两个部署者同一个落点 ═══════════════════════════════
 //
-// 要求住址：主会话 4D 裁 D-b 逐字「多个 monitor 连同一远端：部署只在「我的比盘上的新」时才换（BUILD_ID 可比序），临时件名唯一」；
+// 要求：「多个 monitor 连同一远端：部署只在「我的比盘上的新」时才换（BUILD_ID 可比序），临时件名唯一」；
 // 审计 `E-compat.md §2.7` 冲突场景 2（「B 删掉 A 正在写的 `.tmp`」）。
 
 /// 🔴 B3a：落点旁边已经躺着**别人的**固定名 `.tmp` / `.bak`（另一个部署者正在写的那一份）⇒ 这一趟一个都不碰：
@@ -643,7 +643,7 @@ async fn hx2_two_interleaved_deploys_leave_one_whole_copy_and_no_litter() {
     assert!(litter.is_empty(), "留下了临时件 / 备份件：{litter:?}");
 }
 
-/// 〔主会话裁 HX1 拍板项 4〕**部署这一趟建出来的远端目录收成只给本人**（`own_dir::PRIVATE_DIR_MODE`）；
+/// **部署这一趟建出来的远端目录收成只给本人**（`own_dir::PRIVATE_DIR_MODE`）；
 /// **已在的那一层一个字节不碰**（不对它发 SETSTAT）。守的要求：「建自家目录 …… 远端 SFTP 部署建目录 …… 0700、已存在不动」。
 /// 形状：合成 SFTP 服务端逐条记改动（台架 `sftp_rig`），判服务端看到的，不信被测侧的自述。
 #[tokio::test]

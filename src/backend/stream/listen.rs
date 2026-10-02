@@ -166,7 +166,7 @@ where
 
 /// 拒绝的三种理由。**是闭集**：`refusal_line` 只拼这几个常量，没有任何一段外来字节
 /// 会进到那行 JSON 里（由 `refusal_reasons_are_a_closed_set` 钉住）。
-/// 多客户之后**不再发**（[`admit`]）；常量留着只因 monitor 本机宿主还认它（那一臂成死路，列报主会话）。
+/// 多客户之后**不再发**（[`admit`]）；常量留着只因 monitor 本机宿主还认它（那一臂成死路）。
 pub const REFUSE_BUSY: &str = "stream-busy";
 pub const REFUSE_AUTH: &str = "bad-token";
 pub const REFUSE_MALFORMED: &str = "malformed-attach";

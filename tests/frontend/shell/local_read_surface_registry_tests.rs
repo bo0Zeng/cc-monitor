@@ -510,7 +510,7 @@ fn every_reader_names_its_retirement_owner() {
              按它自己写下的退役条件退掉 —— 后端补了 `plugins-marketplaces`，本机改走后端，\
              `parity_ledger` `plugins.marketplaces` 同拍结清。本文件处数 5 → 0，整行摘掉。\n\
              → **5****退役，但不是按它自己写的解锁条件**：`search.rs` 那条（本机全文索引）——\
-             主会话 09-25 按目标形裁（本机远端同一条代码路径），本机搜索改问本机后端 `history-search`、\
+             按目标形（本机远端同一条代码路径），本机搜索改问本机后端 `history-search`、\
              每次现扫（「backend 侧也有索引」那个条件没兑现，代价读数在）。本文件处数 4 → 0，整行摘掉。\n\
              → **4****真退役**：`adapter.rs` 那条（记录目录 / 活性目录的路径解析）—— 那几个门面零调用方、删了。"
     );

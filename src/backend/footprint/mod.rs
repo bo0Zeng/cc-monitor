@@ -9,7 +9,7 @@
 //! - **远端那一栏**（`{}`）：视角 [`rows::Vantage::Remote`]：住 monitor 那台的那一族（`HostScope::Client`）不进人群。
 //! - **本机那一栏**（`{client: {home, agentHome, path?}}`）：视角 [`rows::Vantage::Monitor`]。本机后端与 monitor 同一台、同一用户 ⇒
 //!   `HostScope::Client` 那一族也由这里 stat；monitor 只交它**独有**的那几条事实（它自己进程的家目录 · agent 家 · `PATH`，
-//! 「足迹里 monitor 自己那几行」），那一族按它们解。〔主会话 09-28 裁：四拍收成两拍，纪律 22 ③〕
+//! 「足迹里 monitor 自己那几行」），那一族按它们解。
 //!
 //! # 上限
 //!

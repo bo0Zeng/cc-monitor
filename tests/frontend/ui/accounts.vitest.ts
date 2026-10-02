@@ -83,7 +83,7 @@ describe("deriveUi 降级矩阵（DESIGN §7）", () => {
   // 🔴 `K-R59`：这里此前有一条「daemonless → hidden」。定框 `K35` 之后
   //    `accounts.rs::cfg_for` 不再产出那条错误串 ⇒ `AccountsUi` 的 `hidden` 那一档
   //    **再也到不了**，连档带测一起下岗。
-  // 要求：「后端需更新在任何查询失败时都显示」· 题面 WF2 第 5 条「只在真的版本不够时显示；查询失败按码说查询失败」。
+  // 要求：「后端需更新在任何查询失败时都显示」⇒「只在真的版本不够时显示；查询失败按码说查询失败」。
   it("🔴 K-R59 · WF2：`available:false` 按失败种类分 —— 对端不认 ⇒ needs-update；其余 ⇒ query-failed（原因原样）；不再有「安静隐藏」那一档", () => {
     const failed = deriveUi(state({ available: false, error: "现在够不着那台机器的后端，连接不在或断了" }));
     expect(failed).toEqual({ kind: "query-failed", reason: "现在够不着那台机器的后端，连接不在或断了" });
@@ -396,7 +396,7 @@ describe("modelByAccount config 读写（F07）", () => {
     await expect(setModelForAccount("z", "Claude Opus 4.5")).rejects.toThrow(/模型名不合法/); // 空格非法
     expect(saveCfg).not.toHaveBeenCalled();
   });
-  // 规则换成共享那一份（生成物）之后，真实模型名都放行（主会话 09-26「真实模型名都放行」）：
+  // 规则换成共享那一份（生成物）之后，真实模型名都放行：
   // 原先 TS 那份会拒这几条。正例的全集在共用金样 `identifier-rules.golden.json`（`identifier-rules-parity.vitest.ts`）。
   it("真实模型名（`sonnet[1m]` · Bedrock · Vertex）写得进去", async () => {
     loadCfg.mockResolvedValue({ accounts: {} });

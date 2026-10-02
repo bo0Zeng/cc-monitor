@@ -217,7 +217,7 @@ impl chan_core::chan::router::Backends for ScreenHost {
     }
 }
 
-/// 🔴〔主会话 09-28 裁 3〕**窗口进程自己问第一屏**（真通道口 ＋ 替身后端）：
+/// 🔴**窗口进程自己问第一屏**（真通道口 ＋ 替身后端）：
 /// ① 没给目录 ⇒ 先问 home、再列 home（恰好这两问，按这个顺序）；② 给了目录 ⇒ 只列它、**不问 home**；
 /// ③ 列不出来 ⇒ 带那台的原话回错（窗口那侧据此说 `Failed` 并不开窗）；④ home 问不到 ⇒ 同样带原话、不去列。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

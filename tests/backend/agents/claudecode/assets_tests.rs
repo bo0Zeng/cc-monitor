@@ -1,7 +1,7 @@
 //! `agents/claudecode/assets.rs` 的判据：Claude 的资产布局认得对。
 //!
-//! 守的要求（住址）：用户裁决 **V113** 逐字「本机后端在本机看见一个skill并记录下来」「mcp保持项目级别」
-//! ＋ 题面「skill（`~/.claude/skills/*`）与 MCP 定义（项目 `.mcp.json` 里的条目）」。
+//! 守的要求：用户原话「本机后端在本机看见一个skill并记录下来」「mcp保持项目级别」；
+//! 资产 = skill（`~/.claude/skills/*`）与 MCP 定义（项目 `.mcp.json` 里的条目）。
 //!
 //! 买到：临时目录上真读 —— skill 逐个目录（链接跟到底、文件与点开头的跳过）· `description:` 从 front matter 取 ·
 //! MCP 用户级（`.claude.json` 顶层）与交进来的每个项目的 `.mcp.json` 逐条 · 坏的那一份**说出来**而不是当空表。

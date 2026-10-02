@@ -178,7 +178,7 @@ panicked at src/sftp.rs:1699:13:
 | # | 格 | 报文逐字 | 住址 | 为什么判它是抖动 |
 |---|---|---|---|---|
 | 甲 | `daemon` | `assertion `left == right` failed: 起来的中转必须**只有一个**（`listening on` 恰好一行）：""` / `left: 0` / `right: 1` | `remote-daemon-proto/src/relay/server.rs:2633`（测试 `relay::server::tests::one_relay_process_serves_both_keys_and_shares_its_tee_sequence`） | 只在刀2 那一趟红。`remote-daemon-proto/` 这个包在绿趟与刀2 趟**逐字节相同**（本件一个字节都没改它）⇒ 同一份字节两趟不同答。判定行 `541 passed; 1 failed`（绿趟 `542 passed`） |
-| 乙 | `npm` | `Error: Test timed out in 120000ms.` —— 格 `src/eslint-baseline.vitest.ts > V7-3：eslint 基线与作用面 > ① 全仓错误数就是基线那个数（散文声称的那个）` | `src/eslint-baseline.vitest.ts:96` | 只在刀4 那一趟红，且**是超时不是断言失败**（它整仓跑一遍 eslint）。那一趟 vitest 总数仍是 `1540 passed \| 1 failed (1541)`，与绿趟 `1541` 同分母。当时机器上有 13 路并发 + PM 预热 |
+| 乙 | `npm` | `Error: Test timed out in 120000ms.` —— 格 `src/eslint-baseline.vitest.ts > eslint 基线与作用面 > ① 全仓错误数就是基线那个数（散文声称的那个）` | `src/eslint-baseline.vitest.ts:96` | 只在刀4 那一趟红，且**是超时不是断言失败**（它整仓跑一遍 eslint）。那一趟 vitest 总数仍是 `1540 passed \| 1 failed (1541)`，与绿趟 `1541` 同分母。当时机器上有 13 路并发 + PM 预热 |
 
 ⚠ 甲**不是** `COMMON-PM` 登记的那条已知 flaky（那条是 `launch::tests::the_terminal_we_hand_the_command_to_really_gets_the_relay_prefix`，报文 `Text file busy`）。**这是第二条，报文与住址都不同。**
 

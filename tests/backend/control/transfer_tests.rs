@@ -480,21 +480,20 @@ async fn a_resumed_download_asks_for_every_byte_from_the_probe_on_exactly_once()
     assert_eq!(std::fs::read(&local).unwrap(), body, "落地不是源的字节");
 }
 
-/// 🔴 **B6**〔V119 翻面〕：本机落点是一份 Claude 会话记录的形状 ⇒ **照样开得出单**。
+/// 🔴 **B6**：本机落点是一份 Claude 会话记录的形状 ⇒ **照样开得出单**。
 ///
 /// 从前这一格叫「落点是会话数据 ⇒ 围栏拒」。用户「文件管理器全部都可以改. 不需要任何围栏」⇒
 /// 下载落点只过路径解析（绝对路径 · 有文件名 · 父目录在盘上、解开之后落点仍在它底下）。
 #[test]
 fn a_download_onto_a_session_file_is_let_through() {
-    let tmp = Tmp::dir("fence-v119");
+    let tmp = Tmp::dir("fence-session");
     std::fs::create_dir_all(tmp.path("projects/-x")).expect("铺会话目录");
     let session = tmp.path("projects/-x/abc-123.jsonl");
     assert!(
         crate::agents::claudecode::paths::is_session_record_path(&session),
         "夹具那条路径不是会话记录的形状 —— 本条此刻在量别的东西"
     );
-    land_check(session.to_string_lossy().as_ref())
-        .expect("🔴 V119：往会话文件那个位置上落地被拒了");
+    land_check(session.to_string_lossy().as_ref()).expect("🔴 往会话文件那个位置上落地被拒了");
     // 阴性对照：父目录不在盘上 ⇒ 拒（路径解析那一关）。
     assert!(land_check(tmp.path("nope/x.txt").to_string_lossy().as_ref()).is_err());
     // 相对路径不认。
@@ -729,7 +728,7 @@ fn sha2_hex(bytes: &[u8]) -> String {
         .collect()
 }
 
-/// **「前缀 ＋ 洞 ＋ 尾巴」尾块对拍看不见，提交那一下看得见**（主会话裁 09-25）。
+/// **「前缀 ＋ 洞 ＋ 尾巴」尾块对拍看不见，提交那一下看得见**。
 ///
 /// 要求：「只看长度会缝出一个坏文件」＋ §7 第 8 条「续传的尾块对拍看不见中间的洞 …… 要堵得换对拍方式」。
 /// 形状（逐步，台架与真盘各半）：① 上传到半路坏了、暂存件留着；② 在暂存件**中间**改坏一截（演「失败后晚到的写留下的洞」，

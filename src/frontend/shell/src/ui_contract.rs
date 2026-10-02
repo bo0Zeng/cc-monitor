@@ -124,7 +124,7 @@ pub enum SessionStreamFrame {
     Batch(BatchEdge),
     /// 这个会话的记录文件不见了 / 被改过已从头重读（后端 `session_file_gone` /
     /// `session_file_reread`）。与行同一条流、同序（行先冲出去再交它）⇒ 前端落到那个 tab 上说一句话。
-    /// ⚠ 不进留存：F5 之后那句话没了（已知缺口，主会话 09-25 认）。
+    /// ⚠ 不进留存：F5 之后那句话没了（已知缺口）。
     FileNotice(SessionFileNoticePayload),
     /// **会话起停 / 状态的成品**（那台后端裁、`session_book` 原样转）—— 与行同一条流、同一个顺序
     /// （行与起停的先后就是流的先后，那条「ended 抢在行前面 ⇒ 僵尸」由构造排除）。

@@ -436,7 +436,7 @@ fn the_shared_stripper_keeps_the_entry_body_this_guard_must_scan() {
 /// →**界面 crate 里点名 `russh` / `russh_sftp` 的文件：零**（带正控）。
 ///
 /// C2 那一版钉的是「== {SFTP 那一家}」（`inproc_dial.rs` · `sftp.rs`），逐字写着「SFTP 换走了 ⇒ 把 `inproc_dial.rs` 整份删掉、
-/// `Cargo.toml` 的 `russh` 一起删，本条改成零命中」—— 这一拍就是那一刀（用户 V89：SFTP 进本机常驻后端，界面进程零 SSH）。
+/// `Cargo.toml` 的 `russh` 一起删，本条改成零命中」—— 今天就是那样（SFTP 进本机常驻后端，界面进程零 SSH）。
 /// 〔墓碑 —— 旧名 `russh_lives_only_where_sftp_still_needs_it`〔散文墓碑〕：名字说的是「只剩 SFTP 还要它」，今天没有谁要它了。〕
 /// ⚠ 数的是**代码里点名**（`russh::` / `use russh` / `russh_sftp`）；买不到：经宏或别名间接用到它。
 /// 清单那一面（manifest 里没有这几条依赖）同条钉；「依赖树里有没有它」那面旗归 `dial_home_registry::russh_deps_in`。

@@ -52,7 +52,7 @@ export function parseAddressLines(text: string): string[] {
 //    这里原先住着 `LEGACY_NO_BACKEND_KEY = "daemonless"` —— 用户盘上那个已退役开关的键名，
 //    连同 `legacyNoBackendHosts()`、`RemoteConfig.legacyNoBackend` 字段与
 //    `settings/readiness.ts` 上那条指名告知。它**不驱动任何行为**，唯一作用是在
-//    「还差什么」清单上多说一句；用户裁了「不要管旧配置」⇒ 它没有存在的理由了。
+//    「还差什么」清单上多说一句；不管旧配置 ⇒ 它没有存在的理由了。
 //    ⚠ 同拍收掉了**只为它存在的 8 条判据**（全是负向断言，词一删就永远满足 ⇒ 8 条恒绿）：
 //      `launch_wire_f07_main_path_tests.rs` 三条 `!contains` ·
 //      `doc_claim_registry_tests.rs` 三格 `carriers` ·
@@ -197,7 +197,7 @@ export async function resolveRemoteConfigByOrigin(
  * - `daemonless`（F59，**已于 `K-R59` 整格退役**）：补的时候注释里写着
  *   「同 D-B1 教训：枚举字段必逐个写全」。今天这个键**不在清单里**是有意的 ——
  *   一次保存就把用户盘上那份旧值写没。〔条 80〕那句「写没之前先指名告知一次」
- *   随那块墓碑一起删了：用户裁了「不要管旧配置」。
+ *   随那块墓碑一起删了：不管旧配置。
  *
  * 两次都是**事后**补的。下面那个 `MissingField` 检查把它变成**编译期**问题：
  * 加字段而漏改这里，`tsc` 直接红，且错误信息里点名缺的是哪个字段。

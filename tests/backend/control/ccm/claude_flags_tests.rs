@@ -1,4 +1,4 @@
-//! # 要求住址：用户裁决（取代 V138 那条「壳层选项 ∩ claude 旗标 = ∅」）
+//! # 撞名：`--` 右边只认 ccm 表
 //!
 //! 核原文：「撞名判据改为『右边只认 ccm 表』」。异源：一侧是真解析器 `argv::parse` ＋ 真分流 `route` 的行为，另一侧是 claude 自己的 `--help` ——
 //! 固定快照 `tests/__fixtures__/claude-help.snapshot.txt`（首行记版本）；PATH 上有 `claude` 时再加读真的一份（只许跑 `--help`）。

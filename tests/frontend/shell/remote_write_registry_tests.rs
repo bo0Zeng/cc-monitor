@@ -397,7 +397,7 @@ fn the_remote_write_capability_is_still_confined_to_three_files() {
         holders,
         Vec::<String>::new(),
         "monitor 里又有文件拿到了 SFTP 会话：{holders:?}\n\n\
-         ★ 用户 V89：SFTP 住本机常驻后端、界面进程零 SSH。远端写只许住后端 `dial/sftp.rs`（只许两处）；\
+         ★ SFTP 住本机常驻后端、界面进程零 SSH。远端写只许住后端 `dial/sftp.rs`（只许两处）；\
          monitor 要远端文件就走 `dial_host::RemoteFs`（部署）或 `transfer-*`（传输）。"
     );
     // 正控：同一把针（会话类型名 · crate 路径 · 两个取会话的出处）喂合成语料，每一根都亮 —— 零命中不是瞎了。
@@ -832,7 +832,7 @@ fn every_pool_command_is_either_a_registered_write_or_a_registered_read() {
 // 🔴 **monitor 进程不经 SFTP 直写用户文件** —— 远端那一半的分类闭集
 // ══════════════════════════════════════════════════════════════════════════
 //
-// 用户裁远端三处（F10 别名块 · F11 删会话 · F89a `.mcp.json`）「按推荐改」经远端后端写，F08 部署后端留在 SFTP。
+// 远端三处（F10 别名块 · F11 删会话 · F89a `.mcp.json`）「按推荐改」经远端后端写，F08 部署后端留在 SFTP。
 // ⇒ 本表剩下的每一处 SFTP 写，都必须落在**不是用户文件**的那几类里（同本机那一半
 //   `write_site_registry_tests::every_monitor_write_site_lands_outside_the_users_files`）：
 //   闭集**没有「用户文件」这一档**；真是用户文件又一时搬不走的，记待收并指名谁来收。两向相等。
@@ -841,7 +841,7 @@ fn every_pool_command_is_either_a_registered_write_or_a_registered_read() {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[allow(dead_code)] // 今天零成员（上面那张表空了）；闭集的形状留着，不是豁免。
 enum RemoteLands {
-    /// F08：我们的部署物（后端二进制 · 标记 · 入口 shim · 我们的脚本目录）—— 用户裁「留在 SFTP」。
+    /// F08：我们的部署物（后端二进制 · 标记 · 入口 shim · 我们的脚本目录）—— 留在 SFTP。
     OwnDeployment,
     /// 我们自己的暂存区（`~/.cc-monitor/staging/`），落进用户目标的那一下在后端提交。
     /// 今天零成员（暂存区的写搬进了本机后端）；留着这一档是闭集的形状，不是豁免。
@@ -879,7 +879,7 @@ fn every_remaining_sftp_write_lands_outside_the_users_files() {
         "远端写与「它写的是什么」那张分类表对不上。\n  \
          没分类的（🔴 新的一处 SFTP 写先回答它是不是用户文件）：{unclassified:?}\n  \
          分类表里的幽灵（那一处没了，同轮摘行）：{ghosts:?}\n\n\
-         用户裁远端三处（别名块 · 删会话 · `.mcp.json`）经远端后端写；F08 部署留在 SFTP。\n\
+         远端三处（别名块 · 删会话 · `.mcp.json`）经远端后端写；F08 部署留在 SFTP。\n\
          ⇒ 分类是闭集，**没有「用户文件」这一档**：用户文件经那台远端的后端写（`user_files`）。"
     );
     for (f, n, c) in REMOTE_CLASS {
@@ -900,7 +900,7 @@ fn every_remaining_sftp_write_lands_outside_the_users_files() {
     ] {
         assert!(
             !write_sites().iter().any(|(_, n)| n == gone),
-            "`{gone}` 又经 SFTP 写了 —— 用户裁它经远端后端写"
+            "`{gone}` 又经 SFTP 写了 —— 它该经远端后端写"
         );
     }
 }

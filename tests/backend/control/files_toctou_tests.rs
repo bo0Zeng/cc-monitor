@@ -121,7 +121,7 @@ fn a_put_that_expects_absence_does_not_clobber_a_file_that_appears_after_the_che
     std::fs::remove_dir_all(&base).ok();
 }
 
-/// ＋ 主会话 09-28 裁：盘不认 `RENAME_NOREPLACE` ⇒ 不退回先看后改 —— 普通文件 `link ＋ unlink`，目录拒并出声。
+/// ＋ 盘不认 `RENAME_NOREPLACE` ⇒ 不退回先看后改 —— 普通文件 `link ＋ unlink`，目录拒并出声。
 /// `force_link` 模拟那块盘（`EINVAL`）。
 #[cfg(unix)]
 #[test]

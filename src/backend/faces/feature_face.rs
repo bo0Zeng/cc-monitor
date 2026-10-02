@@ -11,7 +11,7 @@
 //!
 //! `read_face` 是 `C1` 那八条的宿主，而 monitor 侧有一条两向相等判据
 //! （`frame_query_tests::the_moved_table_matches_the_design_list_and_the_backend_registry`）
-//! 数的正是「把活交给 `read_face::answer` 的帧命令」== 题面那八条。
+//! 数的正是「把活交给 `read_face::answer` 的帧命令」== 那八条。
 //! 本族不在那八条里 —— 并进去就是让那条判据替两件事作证。
 //!
 //! # 形状与纪律（与 `read_face` 同）

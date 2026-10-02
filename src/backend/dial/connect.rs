@@ -134,8 +134,8 @@ fn label(ep: &Endpoint) -> String {
 
 // ═══ **压缩：开不开，判准只此一处** ═══════════════════════════════════════════
 //
-// 用户 V23：「智能多开链接\压缩等等」「这是属于 ssh 优化的部分」。：SSH 传输层零压缩，
-// 而会话数据 gzip 3.1–4.1×。`§5.5` 那个「russh 默认压不压 —— 读不到，不猜」今天读到了：0.61.1 的默认偏好序是
+// 用户要求：「智能多开链接\压缩等等」「这是属于 ssh 优化的部分」。SSH 传输层零压缩，
+// 而会话数据 gzip 3.1–4.1×。russh 0.61.1 的默认偏好序是
 // `[none, zlib, zlib@openssh.com]`，客户端按**自己的**偏好序挑双方都有的第一个 ⇒ **永远 `none`**。
 //
 // 判准看的是**这一跳真实的往返时间**（内核 `TCP_INFO`，`platform::tcp_rtt`），不是地址长什么样：
@@ -156,7 +156,7 @@ pub(crate) const COMPRESS_ON: &[russh::compression::Name] = &[
 /// 压缩偏好序：**不压**。
 pub(crate) const COMPRESS_OFF: &[russh::compression::Name] = &[russh::compression::NONE];
 
-/// 🔴 **闸：russh 自己的 zlib 解压对不对**。**开了**（用户 V118〔选〕「打补丁版 russh，现在就开」）。
+/// 🔴 **闸：russh 自己的 zlib 解压对不对**。**开了**（仓内打补丁版 russh 修好了解压）。
 ///
 /// 来历（NT1 现打）：上游 `russh 0.61.1` / `0.61.2` 的 `Decompress::decompress` 收尾判断用的是**本轮调用之前**的进度
 /// （`n_in_` / `n_out_`）⇒ 解出来的字节比输入多一倍以上时，它在输出缓冲第二次撑满的那一刻提前收工：一包只交出 ≈ 2 × 包长，

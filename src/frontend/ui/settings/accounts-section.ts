@@ -209,7 +209,7 @@ export class AccountsSection {
     // 而且它能指向与页头**不同**的那台，写动作又按分节自己的 `this.origin` 定目标
     // ⇒ **在标着 A 的页面上把东西写进 B**，`router.activeId` 仍是 A、界面上看不出来。
     //
-    // 选「删」而不是「藏」是用户 2026-08-01 拍板的：这次重做的整条论证就是
+    // 选「删」而不是「藏」：这次重做的整条论证就是
     // 「机器是中心对象、上下文由页面给」，留一个能绕过页面上下文的入口，
     // 等于把地基判据降级成约定。⇒ `origin` **只能**来自共用 store。
     const refresh = document.createElement("button");

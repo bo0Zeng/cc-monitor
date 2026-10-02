@@ -216,7 +216,7 @@ fn w4_the_only_in_place_write_left_is_the_windows_arm_of_swap_in() {
             );
         }
     }
-    // 〔拍板项 2〕两处：`swap_in` 的 Windows 臂 ＋ `overwrite_text` 的「硬链接 / 别人的属主」那一支
+    // 两处：`swap_in` 的 Windows 臂 ＋ `overwrite_text` 的「硬链接 / 别人的属主」那一支
     // （后者从 `fs::write` 换成不跟链接的截断开，处数不变）。
     assert_eq!(
         files,
@@ -266,7 +266,7 @@ fn w4_the_only_in_place_write_left_is_the_windows_arm_of_swap_in() {
     );
 }
 
-/// 〔主会话裁拍板项 2〕**有硬链接的目标退回就地写**：两个名字都看得见新内容、inode 不换、链接数不变。
+/// **有硬链接的目标退回就地写**：两个名字都看得见新内容、inode 不换、链接数不变。
 /// 守的要求：「目标 `nlink > 1` 或属主不是后端用户 ⇒ 退回就地写（保住硬链接与属主）」。
 /// 对照：同一目录里没有硬链接的那一份照旧原子换（inode 换了 —— W2 那一形）。
 #[test]
@@ -299,7 +299,7 @@ fn h1_a_hardlinked_target_is_written_in_place_so_both_names_see_it() {
     std::fs::remove_dir_all(&root).ok();
 }
 
-/// 〔拍板项 2〕「该不该原子换」那一问逐格（属主那一格要 root 才造得出真文件，只在纯函数上量 —— 如实登记）；
+/// 「该不该原子换」那一问逐格（属主那一格要 root 才造得出真文件，只在纯函数上量 —— 如实登记）；
 /// 接线：`overwrite_text` 问它时交的恰是 `links_and_owner` 与 `current_uid`。
 #[test]
 fn h2_the_in_place_reasons_are_exactly_links_and_owner() {

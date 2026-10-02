@@ -4,7 +4,7 @@
 //!     rustc -O --edition 2021 --target x86_64-pc-windows-gnu -o claude.exe tests/evidence/RT1-fake-claude.rs
 //!
 //! 守的要求：「能，用虚拟机」（虚拟机当真机测试资源）；
-//! V120 逐字「真机测试量一次并发再开」（中转全量注入先在真机上量）。
+//! 用户原话「真机测试量一次并发再开」（中转全量注入先在真机上量）。
 //!
 //! 它只模仿 monitor / 后端**看得见的那几样**（后端 `observe/watcher.rs` 读的那几格），
 //! 形状取自真 pidfile 的**键与类型**（值全是本程序现编的，不含任何真会话正文）：
@@ -37,7 +37,7 @@ fn claude_dir() -> PathBuf {
         }
     }
     // ⚠ 与真 claude 刻意不同：没给 `CLAUDE_CONFIG_DIR` 时**不**落到 `~\.claude`（那是用户真 profile，
-    // V115 只许动临时目录），而落到台架的临时目录 —— 日志里 `CLAUDE_CONFIG_DIR=None` 那一行照实记下
+    // 只许动临时目录），而落到台架的临时目录 —— 日志里 `CLAUDE_CONFIG_DIR=None` 那一行照实记下
     // 「这一层环境没传到」（Windows Terminal 新标签会从注册表重载环境，是要量的那件事）。
     let local = std::env::var("LOCALAPPDATA").unwrap_or_else(|_| ".".into());
     PathBuf::from(local).join("Temp").join("rt1").join("claude")

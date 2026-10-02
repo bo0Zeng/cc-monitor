@@ -73,7 +73,7 @@ export interface Gap {
 
 // 🔴 〔条 80 「不要管旧配置」〕`NO_BACKEND_GAP_CODE` / `NO_BACKEND_CONSEQUENCE`
 //    与它们背后那条 `legacyNoBackend` 指名告知**整块删了**。它们只为「认出盘上那个
-//    已退役的 `daemonless: true`」而存在，而用户裁了不再管旧配置。
+//    已退役的 `daemonless: true`」而存在，而旧配置不再管。
 //    ⇒ `Gap.code` 这一格今天**没有任何生产者**，但字段留着：它本来就是给「需要用户
 //      认得出、说得出的迁移告知」预留的口，下一条这种告知照这个形状加。
 

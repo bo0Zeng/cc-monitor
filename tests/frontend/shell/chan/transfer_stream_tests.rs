@@ -329,7 +329,7 @@ async fn a_coded_failure_reaches_the_window_with_its_code() {
     );
 }
 
-/// 〔主会话 09-29 拍板 Q2 A〕文件窗口「在此打开终端」那一问由生产句柄**自己接**（不转给那台后端）：
+/// 文件窗口「在此打开终端」那一问由生产句柄**自己接**（不转给那台后端）：
 /// 本机寻址 ⇒ `local_has_no_file_window`（文件窗口只开在远端上）· 没有这台的配置 ⇒ `no_such_origin`，都不碰后端、不开窗。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn the_terminal_ask_is_taken_by_the_monitor_and_refused_out_loud_when_it_cannot_be_done() {

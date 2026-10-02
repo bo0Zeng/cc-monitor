@@ -144,7 +144,7 @@ fn command_arg(args: &Value) -> Result<&str, CmdErr> {
 }
 
 /// 「在此打开终端」要在那台跑的那一串（原住文件窗口那一侧的 `build_open_terminal_cmd`〔散文墓碑〕 · `_at`，逐字搬来：
-/// 窗口只交意图 `{cwd}`，命令由这里拼， · 主会话 09-29 拍板 Q2）。
+/// 窗口只交意图 `{cwd}`，命令由这里拼）。
 ///
 /// 逐字：`cd <quoted> && exec ${SHELL:-bash} -l`（`cwd` 为空 ⇒ 只有后半段）。当前目录是那台列出来的**自由文本路径** ⇒
 /// 拼进 `cd` 之前先过形式 ＋ 拒绝集（`shell_quote_core::posix_free_path_ok`：POSIX 绝对 · 无 `..` 段 · 不含 NUL / CR / LF；

@@ -112,7 +112,7 @@ describe("G5：off-main 的判据与呈现", () => {
     const b = btnOf(el)!;
     b.dispatchEvent(new Event("mouseenter"));
     expect(b.title).toContain("ESC 回退");
-    // 入口**保留**——用户拍板「要给路口」，区分的是呈现不是能力
+    // 入口**保留**——「要给路口」，区分的是呈现不是能力
     expect(b.disabled).toBe(false);
   });
 

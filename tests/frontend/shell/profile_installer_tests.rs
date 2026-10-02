@@ -402,7 +402,7 @@ fn p2_the_path_probe_writes_nothing_but_its_utf8_bytes() {
     );
 }
 
-/// 住址：主会话 09-29 裁「加 / 撤两条失败时 stderr 的解码 —— Windows 臂按那台控制台的 OEM 代码页解」。
+/// 要求：「加 / 撤两条失败时 stderr 的解码 —— Windows 臂按那台控制台的 OEM 代码页解」。
 /// 两路按各自怎么写出来的解：stderr（PowerShell 按控制台代码页写）只经 `platform::console_text`；stdout（探针自己写 UTF-8 字节）只按 UTF-8。
 /// 解码本身的判据在 `platform/console_text_tests.rs`。
 #[test]
@@ -469,7 +469,7 @@ fn p2_the_path_probe_reads_back_a_non_ascii_home_under_an_oem_console() {
 
 /// ★★ 〔`KR135D3` 09-15 · 改裁〕**那份共用的 POSIX 别名 snippet，真的把 `ccm` 落点放上了 PATH，而且只放它。**
 ///
-/// 要求：「落点 `~/.cc-monitor/bin/ccm` —— 本机与远端同一个」「清掉旧的 `~/.local/bin/ccm`」· V41（不为旧状态留兼容）。
+/// 要求：「落点 `~/.cc-monitor/bin/ccm` —— 本机与远端同一个」「清掉旧的 `~/.local/bin/ccm`」· 不为旧状态留兼容。
 /// 从前这一行把 `~/.local/bin` 也加进来（「更早的版本放在那儿，不删、照旧能用」）—— 旧入口今天部署时认出来就删（GP1），
 /// `ccm` 就是后端本身、只住 `~/.cc-monitor/bin` ⇒ 那一格退役。两边落点同一个常量（共享 crate）；足迹申报表那两条与它相等由后端判据钉住。
 ///

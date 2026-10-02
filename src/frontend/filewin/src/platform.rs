@@ -1,4 +1,4 @@
-//! 文件窗口包的平台层〔阶段 H：；主会话 09-30 认：窗口包链不到壳的 `platform/`，自开这一份〕：本包平台 cfg 的唯一住址。
+//! 文件窗口包的平台层〔窗口包链不到壳的 `platform/`，自开这一份〕：本包平台 cfg 的唯一住址。
 //! 都原住别处、逐字搬来：[`any_thread_hook`]（`shell.rs`）· [`local_dest_kept`] · [`path_from_bytes`]（`lossy_pull.rs`）·
 //! [`SYSTEM_CJK_FONTS`]（`fonts.rs`）· [`rss_kib`]（`scale.rs`）· [`BACKSLASH_IS_SEP`]（`download.rs` · `lossy_pull.rs` 各一处 `cfg!(windows)`）。
 

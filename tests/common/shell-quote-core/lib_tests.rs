@@ -8,7 +8,7 @@ fn posix_quote_breaks_single_quotes_the_posix_way() {
 }
 
 /// 〔`INVARIANTS §47` ②〕自由文本的拒绝集：恰好 NUL / CR / LF（正反各一格 —— §47「拒过头也算违反」）。
-/// 要求住址：`INVARIANTS §47` ②「走唯一的 quote ＋ 形式判定 ＋ 拒绝集」；主会话 09-26 按 V131 裁「自由文本路径的拒绝集只收控制字符（NUL / CR / LF）……不拒 shell 元字符」。
+/// 要求：`INVARIANTS §47` ②「走唯一的 quote ＋ 形式判定 ＋ 拒绝集」；自由文本路径的拒绝集只收控制字符（NUL / CR / LF），不拒 shell 元字符。
 #[test]
 fn free_text_refuses_exactly_nul_cr_lf_and_lets_real_names_through() {
     for good in [
@@ -93,7 +93,7 @@ fn a_session_id_is_a_short_plain_token_that_never_starts_with_a_dash() {
     }
 }
 
-/// 〔`INVARIANTS §47` ①〕模型名：真实模型名全过（主会话 09-26「真实模型名都放行」），**正反各一格**。
+/// 〔`INVARIANTS §47` ①〕模型名：真实模型名全过，**正反各一格**。
 #[test]
 fn real_model_names_pass_and_option_or_shell_shapes_do_not() {
     for good in [

@@ -1,5 +1,5 @@
 /**
- * V7-3〔2026-08-09 `/full-audit`〕：**eslint 的基线数与它的作用面必须有人数着**。
+ * **eslint 的基线数与它的作用面必须有人数着**。
  *
  * ## 这条为什么存在（病史，别当背景故事读）
  *
@@ -57,7 +57,7 @@ import { REPO_ROOT } from "../../test-support/repo-root.ts";
  * 这个数字的意义不是「零告警」，是「**它变了必须有人知道**」。
  *
  * ⚠ 改这个数之前先问：是修好了一条（往下调，欢迎），还是**又有一批没被 globals 认领的文件
- * 溜进了作用面**（那是 V7-3 的复发，去看第二条判据说了什么）。
+ * 溜进了作用面**（那是老病复发，去看第二条判据说了什么）。
  */
 const ESLINT_ERROR_BASELINE = 0; // 〔发版后〕1 → 0：`render.ts` 那处 `no-control-regex`（代码 stub 的 `\u0000` 哨兵）换成非字符 `\uFDD0` // 基数 3 ＋ DUP1 −1 ＋ STC −1 ⇒ 1：`tests/frontend/ui/panorama/session-files.test.ts` 随被测对象（写类工具口径搬进后端）整份删了，它那一处未用变量跟着没了；剩 `render.ts` 一处（eslint 现打核过） // 3 → 2：`shell-quote.ts` 那处 `no-control-regex` 随 `isValidConfigDir` 删了；剩 `render.ts` 一处与 `session-files.test.ts` 一处 // 7 → 3：`src/frontend/ui/settings/machine-aliases.ts` 那四处 `no-empty`（原「终端集成」记住上次选择的 localStorage 写，四个空 catch）随那段代码删了；剩下三处是 `render.ts` / `shell-quote.ts` 的 `no-control-regex` 与 `tests/frontend/ui/panorama/session-files.test.ts` 的一个未用变量
 
@@ -154,7 +154,7 @@ function read(file: string): string {
   return readFileSync(resolve(REPO_ROOT, file), "utf8");
 }
 
-describe("V7-3：eslint 基线与作用面", () => {
+describe("eslint 基线与作用面", () => {
   it("① 全仓错误数就是基线那个数（散文声称的那个）", () => {
     const results = runEslintCached();
 
@@ -174,7 +174,7 @@ describe("V7-3：eslint 基线与作用面", () => {
       errors,
       `eslint 全仓错误数变了：实测 ${errors}，基线 ${ESLINT_ERROR_BASELINE}。\n` +
         `逐文件：\n  ${offenders.join("\n  ")}\n` +
-        `⚠ 变大时先看第二条判据 —— V7-3 那次就是新目录的 .mjs 没被任何 globals 块认领，\n` +
+        `⚠ 变大时先看第二条判据 —— 上次就是新目录的 .mjs 没被任何 globals 块认领，\n` +
         `  7 条 no-undef 一次性涌进来，而两处散文写着 7 一直没人改。`,
     ).toBe(ESLINT_ERROR_BASELINE);
   }, TIMEOUT_MS);
@@ -187,7 +187,7 @@ describe("V7-3：eslint 基线与作用面", () => {
       expect(
         claims.length,
         `${file} 里找不到「全仓 N 个/项」那句散文 —— 措辞改了？改了就把本条的正则一起改，\n` +
-          `别让它零命中地绿（这正是 V7-3 那次腐坏能活六天的机制）`,
+          `别让它零命中地绿（这正是上次那处腐坏能活六天的机制）`,
       ).toBeGreaterThan(0);
       for (const n of claims) {
         expect(
@@ -248,7 +248,7 @@ describe("V7-3：eslint 基线与作用面", () => {
       unclaimed,
       `这些 .mjs 在 eslint 的作用面里，但 eslint.config.js 没有任何 files: 块给它们配 globals：\n` +
         `  ${unclaimed.join("\n  ")}\n` +
-        `⇒ 它们会整批报 no-undef（console/process），把基线数顶上去 —— V7-3 的复发形态。\n` +
+        `⇒ 它们会整批报 no-undef（console/process），把基线数顶上去 —— 老病的复发形态。\n` +
         `修法：照 tests/e2e/ 与 scripts/ 那两块的样子加一段 { files: ["<目录>/**/*.mjs"], languageOptions: { globals } }。`,
     ).toEqual([]);
   }, TIMEOUT_MS);

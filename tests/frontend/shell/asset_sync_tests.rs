@@ -1,7 +1,7 @@
 //! monitor 侧 `asset_sync.rs` 的判据：交出去的是什么、答回来的认不认得、判定没长第二个家。
 //!
-//! 守的要求（住址）：用户裁决 **V113** 逐字「本机后端在本机看见一个skill并记录下来, 就会和远端后端同步」·
-//! （一切判定都在后端）· `§3.5`（观测方沿它本来就拥有的那条连接去拉 —— 拉的是本机常驻后端，不是 monitor）。
+//! 守的要求：用户原话「本机后端在本机看见一个skill并记录下来, 就会和远端后端同步」·
+//! （一切判定都在后端）· 观测方沿它本来就拥有的那条连接去拉（拉的是本机常驻后端，不是 monitor）。
 //!
 //! 买到：握手那一刻交的是「拨号请求（`capture`）＋ origin」；发的字段 ⊆ 后端登记的那一条（跨半边，读后端源码）；monitor 这一侧零合并规则。
 //! 买不到：🔴 真远端 / 真本机后端（本机后端那一跳是替身）；连上那一刻的钩子只验「不认就不碰」这一半。
@@ -162,7 +162,7 @@ fn this_module_holds_no_sync_rule() {
 /// 跨半边：可达表登记那一条 —— 本侧发的三格 ＋ 读回的那一格 == 后端 `REGISTRY` 里 `remote-reach` 声明的 `fields`（两向），
 /// 且那条命令真在后端命令镜子里；发的入参就是 `assets-sync` 那一份（同一个 `args_for`，逐键相等）。
 ///
-/// 守的要求：主会话 09-25 裁（「主会话裁」第 1 条）「可达表 origin → {dial, backend_path, 对面 id} 由 monitor 在（`backend_path` 那一格随 `backendPath` 删了，落点是固定常量）
+/// 守的要求：「可达表 origin → {dial, backend_path, 对面 id} 由 monitor 在（`backend_path` 那一格随 `backendPath` 删了，落点是固定常量）
 /// 远端流握手成功那一刻交给本机后端」—— C4d 让它对每台远端都成立（不只认资产目录的那几台）。
 #[test]
 fn the_reach_registration_sends_what_the_backend_registers() {

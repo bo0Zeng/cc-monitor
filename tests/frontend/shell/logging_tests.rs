@@ -134,7 +134,7 @@ fn find_latest_log_picks_newest_mtime() {
 }
 
 /// 要求住址：D4（不许把「读不出」静默当成空）· D7（失败要说清原因）——
-/// 主会话转来的 JA1 读数逐字「遇坏 config.json 会退成 `{}` 再整份写回，用户手填的内容被覆盖、没有判据守」。
+/// JA1 读数逐字「遇坏 config.json 会退成 `{}` 再整份写回，用户手填的内容被覆盖、没有判据守」。
 ///
 /// 一份读不懂的 config.json（少一个逗号）⇒ `Err`、**盘上字节一个不动**、话里点名那份文件并说为什么没存。
 /// 对照：合法的那份照常写（上面 `write_diagnostics_preserves_other_fields`）。
@@ -171,7 +171,7 @@ fn a_config_we_cannot_parse_is_left_alone_not_overwritten() {
 // ═══ 本机后端（脱离那条载体）的 stderr 诊断文件 ═══════════════════════════════════════
 //
 // 守的要求（住址，纪律 19）：（逐字）「**本机 · 脱离常驻载体**（Linux 缺省；全部 SSH 与中转都在它里面）|
-// null（`StderrSink::Null`）| **仍开**」· 主会话 4C 第二批裁（逐字）「脱离载体的常驻后端 stderr 落本机日志文件（有上限、滚动），
+// null（`StderrSink::Null`）| **仍开**」·「脱离载体的常驻后端 stderr 落本机日志文件（有上限、滚动），
 // 设置页『日志』里看得到」。
 
 /// L4 ★ 设置页读到的那一族：后端那个子目录里的普通文件，新在前；目录不在 ⇒ 空（不报错）。
@@ -215,7 +215,7 @@ fn the_backend_stderr_files_are_listed_newest_first_and_kept_apart_from_ours() {
     let _ = std::fs::remove_dir_all(&root);
 }
 
-/// V160 逐字「日志分 `logs/backend/` · `logs/monitor/`」：monitor 的滚动日志与本机后端那份各住一层、不撞名（期望手写）。
+/// 用户原话「日志分 `logs/backend/` · `logs/monitor/`」：monitor 的滚动日志与本机后端那份各住一层、不撞名（期望手写）。
 #[test]
 fn monitor_and_backend_logs_live_side_by_side_under_logs() {
     let root = std::path::Path::new("/d");

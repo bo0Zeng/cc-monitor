@@ -60,7 +60,7 @@ pub(crate) const TOOLS: &[ToolSpec] = &[
         // 那是**裁定**，不是实现工作。要开的话，配套应照既有 6 条的形状：
         // 用户**显式**动作 + 独立 realpath 白名单 + 幂等 + 可撤销。
         //
-        // ★★ **08-13 用户裁：开**（`U10b`）。⇒ `installable` 从 `false` 翻成 `true`，
+        // ★★ **开**。⇒ `installable` 从 `false` 翻成 `true`，
         // 实现在 `cc_bus_deploy.rs`，那四个配套**逐条落地**（模块头注里四个 `★` 一一对应），
         // 例外本身写成 `src/doc/INVARIANTS.md` 的第 7 条。
         // ⚠ `uninstallable` **仍是 `false`** —— 卸载没做，如实声明（不因为「装做了」就顺手标 true）。
@@ -186,7 +186,7 @@ pub(crate) const TOOLS: &[ToolSpec] = &[
     // **skill「装到这台」**：资产目录里别的机器有的 skill，用户点了才装到这台 ——
     //   文件原样从来源那台拷来，判、写、记都在这台后端（`skill_flow.rs::answer_install`）。
     // 每个写点都要在足迹里可见。落点由用户点的那一条决定（这台 skills 下以那个名字为名的目录）⇒ 占位符，不猜。
-    // `uninstallable: true`：用户裁「要，只删装时写进去的文件」—— 装的时候那台后端记下写了哪几个
+    // `uninstallable: true`：只删装时写进去的文件 —— 装的时候那台后端记下写了哪几个
     //   （第二条 touch：那台后端自己的装记录），卸口 `skill_flow.rs::answer_uninstall` 只删记着的那几个（装完改过的先问）。
     //   〔墓碑 —— AS2 那一版这里是 `uninstallable: false`（「没有卸掉装来的 skill 这条口，如实声明」）。〕
     ToolSpec {

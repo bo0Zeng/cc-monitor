@@ -467,7 +467,7 @@ mod tests {
                 relay_side.is_empty(),
                 "中转（`relay/` 里 `accounts/` 之外）出现了 `{needle}`：{relay_side:?}\n\
                  ⚠ 有那个值，「查不到就回落到它」就又写得出来了，而最坏的失效形态是\n\
-                 **codex 的请求被发给 Anthropic**（拍板 (b) 甲逐字点名）。",
+                 **codex 的请求被发给 Anthropic**（要求里逐字点名）。",
             );
         }
     }

@@ -275,7 +275,7 @@ fn the_golden_cases_hold() {
 
 // ═══ 两个 monitor 进程同写：跨进程锁 ═══════════════════════════════════════
 //
-// 要求住址：主会话 4D 追加逐字「CFG1 把 config.json 收成单一写口 `config.rs::patch_config_at`（进程内锁、锁内现读、按路径补丁），
+// 要求：「CFG1 把 config.json 收成单一写口 `config.rs::patch_config_at`（进程内锁、锁内现读、按路径补丁），
 // 但**两个 monitor 进程同写**没有跨进程锁 —— 用你那一族同一套 `flock`（Windows 对应）把它也包上」；「各自只写自己那个键」。
 // ⚠ 用两个线程各开一次描述量（`flock` 锁在打开文件描述上，与两个进程同一种互斥）；限期只在判据里。
 
@@ -379,7 +379,7 @@ fn hx2_the_monitor_and_backend_dir_locks_are_the_same_kind_of_lock() {
 
 // ── 〔第一问〕按键认数组元素 ──────────────────────────────────────────
 // 守的要求：「固化那一写与设置页同写 `remote.hosts` 有毫秒级丢更新窗口（要不要给补丁口加「按键认数组元素」）」。
-// 主会话裁：加，且带 CAS（已有值不动）。
+// 加，且带 CAS（已有值不动）。
 
 fn set_in(where_: &[(&[&str], &str)], field: &str, value: Value, if_empty: bool) -> ConfigEdit {
     ConfigEdit::SetIn {

@@ -32,7 +32,7 @@
 //!    **且盘上不许再有第二条路**」。⚠ 两次翻面的方向是相反的，别读成同一格改了措辞：
 //!    先前那半逐字要求 `connect_and_exec_cmd` **在**，今天逐字要求它**不在**。
 //!    ⚠ F04c 当年给 backend 补过一个裸键 mode `send-keys-raw`（打断当前回合的 `Escape`）；
-//! V154 换号重启不再发 `Escape` ⇒ 无调用者，mode 已删。
+//! 换号重启不再发 `Escape` ⇒ 无调用者，mode 已删。
 //! 3. ~~Gate 3 的前提触发器~~ **已在 F04a 触发并改写**：backend 现在**有** Gate 3
 //!    （`control/gate.rs::admit_destructive` + `control/kill.rs`）。那条触发器
 //!    「backend 一出现 `session_windows`/`kill-session` 就红」**如设计般红了一次**

@@ -296,8 +296,8 @@ fn w5vis_an_unreadable_session_is_counted_and_said_not_silently_dropped() {
     std::fs::remove_dir_all(&tmp).ok();
 }
 
-/// 要求：「多机合并排序收进 `search-core::sort_by_recency`，前端 `mergeSearchResults` 删」（主会话 09-28 裁 B：
-/// 界面照旧逐台扇出、合并排序问本机后端 `history-search-merge`）。期望原样搬自 `tests/frontend/ui/views/history-search.vitest.ts` 那几条合并用例。
+/// 要求：「多机合并排序收进 `search-core::sort_by_recency`，前端 `mergeSearchResults` 删」：
+/// 界面照旧逐台扇出、合并排序问本机后端 `history-search-merge`。期望原样搬自 `tests/frontend/ui/views/history-search.vitest.ts` 那几条合并用例。
 #[test]
 fn the_merge_frame_sorts_newest_first_stably_and_sums_what_each_machine_said() {
     use serde_json::json;

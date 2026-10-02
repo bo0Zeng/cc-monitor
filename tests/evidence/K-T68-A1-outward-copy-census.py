@@ -136,7 +136,7 @@ RS_CHAR_LIT = re.compile(r"'(?:[^'\\\n]|\\(?:x[0-9a-fA-F]{2}|u\{[0-9a-fA-F]{1,6}
 
 CJK = re.compile(r"[㐀-䶿一-鿿豈-﫿]")
 
-# 〔用户 09-24 裁「符号也进表」（）〕**纯符号串**也是文案：
+# 〔符号也进表〕**纯符号串**也是文案：
 # 剥掉空白后非空、无插值、每个字符都是「非 ASCII · 非汉字 · 非字母（Unicode L*）」的字面量
 # （「✕」「↗」「▶」「✓」「—」「×」「、」「…」）。只有标点与插值的模板（`{…}：{…}`）**不算** ——
 # 那是排版不是一句话，换语言时才要进表，而多语言先不做（登记的缺口）。
@@ -362,7 +362,7 @@ R1_WORDS = [
 #   （指代不明：到底是「已结束」还是「可重连」）。第一版把它一起吞了，读数因此是 0。
 HUI_COLOR_RE = re.compile(r"灰色|灰度|灰阶")
 
-# R1 候选增补（**不在 §4 词表里**，单列给规范作者拍板，不混进 R1 读数）
+# R1 候选增补（**不在 §4 词表里**，单列，不混进 R1 读数）
 R1_CANDIDATES = [
     ("tmux", re.compile(r"\btmux\b", re.I)),
     ("ccm", re.compile(r"(?<![\w-])ccm(?![\w-])", re.I)),
@@ -1338,7 +1338,7 @@ def main_report(args) -> int:
     r1r = word_hits(reserve, R1_WORDS, skip_hui_color=True)
     P(f"{len({id(e) for lst in r1r.values() for e in lst})} 条 / {len(reserve)}")
 
-    P("\n  【面④附】R1 候选增补（**不在 §4 词表里**，列出来给规范作者拍板）")
+    P("\n  【面④附】R1 候选增补（**不在 §4 词表里**，单列）")
     for name, rx in R1_CANDIDATES:
         lst = [e for e in main if rx.search(e["text"])]
         addr = "  ".join(f"{e['file']}:{e['line']}" for e in lst[:2])
