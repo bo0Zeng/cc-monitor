@@ -2,7 +2,7 @@
 
 **All your Claude Code sessions, on every machine, in one window: watch them live, jump back in, and manage every machine from one place.**
 
-> English · [中文](./README.md) | License: MIT | Platform: Windows 10/11 · Linux (.deb) | Current: v4.0.5
+> English · [中文](./README.md) | License: MIT | Platform: Windows 10/11 · Linux (.deb) | Current: v4.0.6
 
 ![Main window: each tab on the left is a running Claude Code session; the right side shows the conversation and tool calls live](docs/screenshots/main.png)
 
@@ -32,6 +32,8 @@ cc-monitor only observes and launches: `claude` still runs in your own terminal,
 - Long sessions stay fast: only what is on screen is rendered
 - Find in session, outline navigation, task panel
 - Tabs can be grouped, pinned, or popped out into their own window
+- Select several tabs (Ctrl-click, Shift-click for a range) and stop, start, pin, group or close them together from the right-click menu
+- ↗ on a tab brings the terminal window that is showing that session to the front; for remote sessions it finds whichever terminal is attached right now, no matter who opened it
 - "Reload" on the tab bar re-syncs every tab with the records on disk
 
 ### History
@@ -46,6 +48,7 @@ cc-monitor only observes and launches: `claude` still runs in your own terminal,
 - On first connect the backend is installed to `~/.cc-monitor/bin/ccm` on that machine and kept at the right version
 - Start remote sessions (optionally inside tmux), open a terminal, forward ports
 - "Diagnostics" lists what each machine is missing; "Footprint" lists everything cc-monitor wrote on that machine and whether it can be undone
+- Local paths listed in Settings can be shown in your file manager; a remote machine's footprint opens straight in the file window
 
 ![Settings → Machines](docs/screenshots/machines.png)
 
@@ -53,7 +56,9 @@ cc-monitor only observes and launches: `claude` still runs in your own terminal,
 
 ### File manager
 - A separate window, for local and remote machines
-- Sort, create, rename, delete, copy, change permissions, upload and download, bookmarks, search by content
+- Same colours and fonts as the main window; back / forward, an editable address bar, a sidebar (bookmarks · this machine · other machines), a details list (resizable columns, click a header to sort) and a status bar
+- Search as you type across the whole home folder, with the common Everything syntax (space = and · `|` or · `!` not · `*` `?` · `ext:` `path:` `file:` `folder:`)
+- Create, rename, delete, copy, change permissions, upload and download, bookmarks, search by content; "Properties" in the right-click menu; preview with syntax highlighting and images
 - On remote machines it can do everything SSH can do to files
 
 ### Accounts and relay
@@ -65,7 +70,9 @@ cc-monitor only observes and launches: `claude` still runs in your own terminal,
 - Push and pull skills and MCP servers between machines; review the differences first, and uninstall what you installed
 
 ### Aliases and `ccm`
-- Install an alias block from the machine page (bash, zsh, fish, PowerShell); sessions started with `cc` can jump back to their terminal from ↗
+- The machine page's Terminal tab first shows whether this machine's shell is hooked up; aliases are listed in two groups (accounts, others), added in place and saved in one step (bash, zsh, PowerShell)
+- Every new account gets two aliases: `<name>cc` starts in the current terminal, `<name>cct` inside tmux; removing the account removes them
+- The working directory can depend on where you type the command (`--cwd-if`)
 - `ccm` wraps `claude`, see below
 
 ---
@@ -189,7 +196,8 @@ The "Data locations" page in Settings shows the full path of every file.
 - On Windows, sessions cannot yet be sent to the background, re-attached, previewed or typed into; the local backend exits together with the UI.
 - macOS and Linux arm64 are not supported as the local machine (they work as remote machines).
 - Multi-account currently works on Linux / Unix machines only; the account store cannot be set up on a local Windows machine.
-- Several Windows fixes in 4.0.0 were verified by automated tests only, not on a real Windows machine — see the [CHANGELOG](CHANGELOG.md).
+- The Windows side of what 4.0.6 adds (finding the window for ↗, the new file window) has only been cross-compiled and tested automatically, not run on a real Windows machine — see the [CHANGELOG](CHANGELOG.md).
+- ↗ brings the window forward but cannot pick a tab inside Windows Terminal; terminals connected through a jump host or port translation cannot be matched.
 
 ---
 
@@ -203,7 +211,7 @@ The "Data locations" page in Settings shows the full path of every file.
 
 ## Status
 
-- current release **v4.0.5**: see the [CHANGELOG](CHANGELOG.md)
+- current release **v4.0.6**: see the [CHANGELOG](CHANGELOG.md)
 
 ## License
 

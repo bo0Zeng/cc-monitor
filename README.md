@@ -2,7 +2,7 @@
 
 **把你在各台机器上跑的 Claude Code 会话收进一个窗口：实时看、随时接着用、一处管好所有机器。**
 
-> [English](./README.en.md) · 中文 | License: MIT | 平台: Windows 10/11 · Linux（.deb） | 当前版本: v4.0.5
+> [English](./README.en.md) · 中文 | License: MIT | 平台: Windows 10/11 · Linux（.deb） | 当前版本: v4.0.6
 
 ![主界面：左边每个 tab 是一个正在跑的 Claude Code 会话，右边实时显示对话与工具调用](docs/screenshots/main.png)
 
@@ -30,6 +30,8 @@ cc-monitor 只是观察者和启动器：`claude` 仍然跑在你自己的终端
 - 长会话不卡：只渲染看得见的部分
 - 会话内查找、大纲跳转、Task 面板
 - tab 可以分组、固定、拖出成独立窗口
+- tab 能多选：Ctrl 点选、Shift 连选，右键对选中的一批一起停、起、固定、进组、关掉
+- tab 上的 ↗ 把正在显示这个会话的终端窗口切到前面；远端会话按此刻连着它的终端找，谁开的终端都行
 - tab 栏上的「重新读取」一键让所有 tab 与磁盘上的记录重新对齐
 
 ### 历史
@@ -44,6 +46,7 @@ cc-monitor 只是观察者和启动器：`claude` 仍然跑在你自己的终端
 - 第一次连上时自动把后端装到那台的 `~/.cc-monitor/bin/ccm`，版本不对会自动换
 - 在远端开新会话（可放进 tmux）、打开终端、端口转发
 - 「诊断」列出每台机器还差什么；「足迹」列出 cc-monitor 在这台机器上写过什么、能不能撤
+- 设置里列出的本机路径都能「在文件夹中显示」；远端机器的足迹能直接在文件窗口里打开
 
 ![设置 → 机器](docs/screenshots/machines.png)
 
@@ -51,7 +54,9 @@ cc-monitor 只是观察者和启动器：`claude` 仍然跑在你自己的终端
 
 ### 文件管理器
 - 独立窗口，本机和远端都能开
-- 排序、新建、改名、删除、复制、改权限、上传下载、书签、按内容搜索
+- 配色和字体跟主界面走；后退 / 前进、可手输的地址栏、左栏（书签 · 这台机器 · 其他机器）、详情列表（列宽可拖、点表头排序）、状态栏
+- 搜索一敲就出：默认搜整个家目录，支持 Everything 常用写法（空格 且 · `|` 或 · `!` 非 · `*` `?` · `ext:` `path:` `file:` `folder:`）
+- 新建、改名、删除、复制、改权限、上传下载、书签、按内容搜索；右键「属性」；预览支持代码高亮与图片
 - 远端能做 SSH 上能对文件做的全部操作
 
 ### 账号与中转
@@ -63,7 +68,9 @@ cc-monitor 只是观察者和启动器：`claude` 仍然跑在你自己的终端
 - skill 和 MCP 可以在机器之间推拉；装之前先看差异，装上的可以卸
 
 ### 别名与 `ccm`
-- 机器页一键装别名块（bash、zsh、fish、PowerShell），用 `cc` 起的会话能从 tab ↗ 跳回终端
+- 机器页「终端」栏：先看这台的 shell 接没接上；别名清单分「账号」「其他」两组，就地新增、一步保存（bash、zsh、PowerShell）
+- 每加一个账号自动带两条别名：`<号>cc` 在当前终端起，`<号>cct` 在 tmux 里起；删号时一起删
+- 工作目录可以按在哪敲分情况：在 `~` 敲就进某个目录，其余照旧（`--cwd-if`）
 - `ccm` 是 `claude` 的壳，见下文
 
 ---
@@ -146,6 +153,8 @@ ccm -p "解释一下这个仓"            # 参数原样交给 claude
 ccm -- new --ccm-tmux             # 在一个新的 tmux 会话里起
 ccm --resume <会话ID> -- --ccm-tmux  # 接着上次的会话；已经在 tmux 里跑着就直接接上
 ccm -- --account work             # 用 work 这个账号起
+ccm -- --cwd-if ~ ~/work          # 在 ~ 里敲就进 ~/work，别处照旧在当前目录起
+ccm -- --attach <会话名>           # 接回一个 tmux 会话
 ccm -- --ccm-help                 # 全部选项
 ```
 
@@ -187,7 +196,8 @@ ccm -- --ccm-help                 # 全部选项
 - Windows 上会话暂不能放后台、接回、看画面、往里送字；本机后端在 Windows 上随界面一起退出。
 - macOS、本机 Linux arm64 不在支持范围内（可以把它们当远端机器连）。
 - 多账号目前只支持 Linux / Unix 机器，Windows 本机上不能建账号库。
-- 4.0.0 里几条 Windows 修复只经过自动化测试，没在真实 Windows 上复验，见 [CHANGELOG](CHANGELOG.md)。
+- 4.0.6 新加的 Windows 那一侧（↗ 找窗口、文件窗口的新样子）只经过交叉编译和自动化测试，没在真实 Windows 上跑过，见 [CHANGELOG](CHANGELOG.md)。
+- ↗ 只能切到窗口，切不到 Windows Terminal 里的具体标签页；经跳板机或端口转换连过去的终端对不上。
 
 ---
 
@@ -201,8 +211,8 @@ ccm -- --ccm-help                 # 全部选项
 
 ## 项目当前状态
 
-- **版本**：v4.0.5（Released）
-- 当前发布 **v4.0.5**：详见 [CHANGELOG](CHANGELOG.md)
+- **版本**：v4.0.6（Released）
+- 当前发布 **v4.0.6**：详见 [CHANGELOG](CHANGELOG.md)
 
 ## License
 

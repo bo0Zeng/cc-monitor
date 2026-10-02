@@ -719,7 +719,9 @@ pub const PROTO_VERSION: u32 = 1;
 /// p6o-accounts-home：账号库住进 ~/.cc-monitor/accounts/，后端只在这里读写；去掉另指账号库位置的环境变量与 --accts-dir。
 ///
 /// p6p-launch-one：monitor 的每条起会话路径只交一行 ccm；环境、中转地址、身份标记由那台的 ccm 在启动那一刻定。
-pub const BUILD_ID: &str = "p6p-launch-one";
+///
+/// ★★★ **p6q-terminals-tabs**（4.0.6）：行为 / 协议 —— 「这个会话由哪个 tmux 会话在跑」只在后端判（sessions-tmux），单个与批量的停 / 起走 sessions-stop / sessions-start；远端 ↗ 改成问那台此刻连着会话的终端（session-terminals）、本机认连接的进程链（terminal-processes），删掉窗口标题与起会话令牌两套（含 terminal-local、session_added.rbind_token、能力 rbind-token）；别名读回带归组 / 账号表 / 指纹、写入要指纹、别名多 restTo、ccm 多 --cwd-if；files-find 收原样搜索词与序号、files-stat 多回 owner / link_target；开文件窗口带主题。
+pub const BUILD_ID: &str = "p6q-terminals-tabs";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src/frontend/shell/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），
