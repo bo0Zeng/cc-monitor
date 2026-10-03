@@ -146,6 +146,10 @@ fn every_registered_command_declares_its_run_kind() {
                 // 分叉（读整份 jsonl ＋ `O_EXCL` 写）。
                 | "session-fork"
                 | "capture-pane"
+                // 终端管理 L1 三条：起 tmux（列会话 · 抓屏 · 探身份 · 送字送键）并等它退出。
+                | "terminals-list"
+                | "terminal-preview"
+                | "terminal-input"
                 | "files-browse"
                 | "files-create"
                 | "files-commit-upload"
@@ -498,6 +502,10 @@ fn every_registered_command_declares_its_run_kind() {
         "sessions-stop",
         "sessions-start",
         "sessions-tmux",
+        // 终端管理 L1 三条：阻塞（起 tmux）。
+        "terminals-list",
+        "terminal-preview",
+        "terminal-input",
         // 传输四条：内建（硬臂）。
         "transfer-upload",
         "transfer-download",
@@ -540,6 +548,10 @@ fn launch_fields_match_its_parser_and_output() {
         let end = src[at..].find('"').map(|k| at + k).unwrap_or(at);
         found.push(src[at..end].to_string());
         from = end;
+    }
+    // 请求自报的前端经 `gate::requester_of`（与 `kill` · `sessions-*` 同一个取法）读 `client`。
+    if src.contains("requester_of(args)") {
+        found.push("client".to_string());
     }
     let args_n = found.len();
     assert!(

@@ -2,11 +2,10 @@
 //!
 //! 🔴 **它为什么存在**（前置 1、2）：目标形态是
 //! 「`backend-core` 一份，两个宿主 link 同一份」—— 本机 GUI **进程内**直接跑它，
-//! 远端仍走那个薄 `main` 壳。今天这个 crate 只有 `main.rs`，模块全是 bin 私有的
-//! ⇒ **没有任何东西能 link 它**，in-process 那条路在编译期就不存在。
+//! 远端仍走那个薄 `main` 壳。今天 link 它的只有那个壳（`main.rs`，`Cargo.toml` 的 `[lib]`）；
+//! 本机 GUI 进程内 link 它那一步还没做（monitor 经子进程 / 监听口说话）。
 //!
-//! ⚠ **本拍是纯机械搬家，不改行为**：模块声明、`PROTO_VERSION`、身份那一块
-//! （`BUILD_ID` ＋ 戳）、`SUBCOMMANDS` 搬进来；**分派留在 `main.rs`**（规格逐字）。
+//! 模块声明、`PROTO_VERSION`、身份那一块（`BUILD_ID` ＋ 戳）、`SUBCOMMANDS` 住这里；**分派留在 `main.rs`**。
 //!
 //! 🔴 **`BUILD_ID` 必须住这里，不能留在 `main.rs`** —— in-process 那条路**没有
 //! 那个 `main.rs`**，身份会跟着消失。它的三处盘上消费者已同拍改到本文件：
@@ -70,7 +69,7 @@ pub mod relay; // K-H1：HTTP 中转（搬字节那半）——只听回环、�
 mod runs_guard; // 子运行：通用层只认「运行」（扫描 ＋ 假适配层与 Claude Code 两套形状跑同一批判据）
 #[cfg(test)]
 #[path = "../../tests/backend/single_stream_guard.rs"]
-mod single_stream_guard; // K-P1 KPY8：「多客户端的流」明确不做 —— 三处「恰好一个客户端」的触发器（整体 #[cfg(test)]）
+mod single_stream_guard; // K-P1 KPY8：多客户按连接各一份 —— 「源码里恰好一份、按连接实例化」那几处的触发器（整体 #[cfg(test)]）
 pub mod stderr_log; // 脱离常驻那条载体的 stderr 落进一份有上限、滚动的文件（宿主交 `CCM_BACKEND_STDERR_LOG` 才接；第四层自有状态，写口只从 main.rs 进）
 pub mod stream; // 进后端的口 ① 帧面 ＋ 跨机问答原语：wire · inbound · listen · remote_ask · tap
 
@@ -1049,6 +1048,10 @@ pub const SUBCOMMANDS: &[&str] = &[
     // 登记理由同 `C1` 那一段：不在表里 ⇒ `is_query_mode` 当未知 flag ⇒ 静默进流模式。
     // ⚠ 新子命令 ⇒ `build_id_guard` 红是预期的，BUILD_ID 由合并那一拍统一 bump（本路不 bump）。
     "--tasks-list",
+    // 终端管理 L1 三条帧命令自动派生的 CLI 面（stdin 一段 JSON 当 `args`）。⚠ 新子命令 ⇒ `BUILD_ID` 合并那一拍统一 bump。
+    "--terminal-input",
+    "--terminal-preview",
+    "--terminals-list",
     // 帧面 `tmux-list` 自动派生的 CLI 面。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
     "--tmux-list",
     "--tmux-notify",
@@ -1516,6 +1519,36 @@ pub const TARGET_GAPS: &[TargetGap] = &[
               未定，**暂时不做**。",
     },
     TargetGap {
+        family: "wire-commands",
+        capability: "terminal-preview",
+        target: Target::Windows,
+        kind: GapKind::Owed,
+        rationale: "终端管理 L1 的抓一屏：这一版宿主只有 tmux（起 `tmux capture-pane`，声明了 `no_tmux`）。\
+              形状与宿主无关，Windows 后台机制选定（未定）时换实现、不换形状，**暂时不做**。",
+    },
+    TargetGap {
+        family: "wire-commands",
+        capability: "terminal-input",
+        target: Target::Windows,
+        kind: GapKind::Owed,
+        rationale: "终端管理 L1 的送字送键：这一版宿主只有 tmux（`send-keys`，声明了 `no_tmux`）。\
+              同 `terminal-preview`：Windows 后台机制选定（未定）时换实现、不换形状，**暂时不做**。",
+    },
+    TargetGap {
+        family: "cli-subcommands",
+        capability: "--terminal-preview",
+        target: Target::Windows,
+        kind: GapKind::Owed,
+        rationale: "与帧面 `terminal-preview` 那一行是同一条实现（CLI 面派生）⇒ 同一个理由（Windows 后台机制未定），同拍还，**暂时不做**。",
+    },
+    TargetGap {
+        family: "cli-subcommands",
+        capability: "--terminal-input",
+        target: Target::Windows,
+        kind: GapKind::Owed,
+        rationale: "与帧面 `terminal-input` 那一行是同一条实现（CLI 面派生）⇒ 同一个理由（Windows 后台机制未定），同拍还，**暂时不做**。",
+    },
+    TargetGap {
         family: "cli-subcommands",
         capability: "--capture-pane",
         target: Target::Windows,
@@ -1891,12 +1924,28 @@ pub const STREAM_FLAG_EXPLICIT: &str = "--stream";
 ///
 /// `--with-pid`：客户端显式索要 `session_added` 上的 `pid`（本机 ↗ 按它找父 PowerShell）。
 /// 只有本机那条流发它（本机后端与 monitor 同一份构建），不对应能力 token；默认关 ⇒ 别的客户端收到的字节不变。
+/// `--with-raw`：客户端显式索要 `line` 上的 `raw`（那一行记录的原文）。第二个前端自己解析记录、要它；
+/// 同 `--with-pid` 不对应能力 token（老后端把它当未知旗标忽略、照常起流）；默认关 ⇒ 没索要的客户端字节不变。
 pub const STREAM_FLAGS: &[&str] = &[
     STREAM_FLAG_EXPLICIT,
     "--with-bg",
     "--tail-only",
     "--with-pid",
+    "--with-raw",
 ];
+
+/// 一条流的客户端索要了什么（流模式旗标剥出来的那几位）。全关 ＝ 默认：没索要的客户端收到的字节不变。
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct StreamWants {
+    /// `--with-bg`：放行 bg 会话。
+    pub with_bg: bool,
+    /// `--tail-only`：不重放历史。
+    pub tail_only: bool,
+    /// `--with-pid`：`session_added` 带 `pid`。
+    pub with_pid: bool,
+    /// `--with-raw`：`line` 带 `raw`。
+    pub with_raw: bool,
+}
 
 /// **「只读一行 stdin」的入口**：跟在子命令后面（`--assets-catalog-merge --stdin-line`）。
 ///
@@ -1940,20 +1989,19 @@ pub const SUBCOMMAND_OPTIONS: &[&str] = &[
     "--until",
 ];
 
-/// 从 argv 剥离流模式 flag，返回（剩余参数, with_bg, tail_only, with_pid）。
+/// 从 argv 剥离流模式 flag，返回（剩余参数, 这条流索要了什么）。
 ///
 /// **必须在一次性查询模式判定之前调用**（INVARIANT §26）。
-///
-/// ⚠ 返回值已经是**三个并列的裸布尔**〔加的第三个〕。
-/// 再加第四个之前先把它们收成一个结构体 —— 位置型布尔到四个就开始靠记性调用了。
-/// **本轮刻意没有顺手收**：那是一次会波及 `main.rs` 与 11 处夹具的形状变更，
-/// 与「把身份从 tmux 上解绑」不是同一件活，硬塞进来只会让这一刀读不清。
-pub fn split_stream_flags(mut args: Vec<String>) -> (Vec<String>, bool, bool, bool) {
-    let with_bg = args.iter().any(|a| a == "--with-bg");
-    let tail_only = args.iter().any(|a| a == "--tail-only");
-    let with_pid = args.iter().any(|a| a == "--with-pid");
+pub fn split_stream_flags(mut args: Vec<String>) -> (Vec<String>, StreamWants) {
+    let has = |f: &str| args.iter().any(|a| a == f);
+    let wants = StreamWants {
+        with_bg: has("--with-bg"),
+        tail_only: has("--tail-only"),
+        with_pid: has("--with-pid"),
+        with_raw: has("--with-raw"),
+    };
     args.retain(|a| !STREAM_FLAGS.contains(&a.as_str()));
-    (args, with_bg, tail_only, with_pid)
+    (args, wants)
 }
 
 /// 剥完流 flag 之后：这些参数该进查询模式，还是该进流模式？

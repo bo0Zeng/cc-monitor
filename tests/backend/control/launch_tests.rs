@@ -991,3 +991,42 @@ fn the_create_arm_refuses_a_name_the_new_session_rule_refuses_unless_it_already_
     run_with(&create_req(), &|a| f.call(a)).expect("合法名照旧建");
     assert_eq!(f.verbs()[0], "new-session");
 }
+
+/// `create-or-attach` 带了 `client` ⇒ 新建成之后、键入之前，把它写成那个会话的 `@ccm_client`（谁起的）；没带 ⇒ 不写。
+/// ccm 自己的容器路交的是 `ccm`（`ccm_tests::the_container_launch_goes_through_the_one_door_with_every_field_intact`）。
+#[test]
+fn a_created_session_is_declared_by_whoever_created_it() {
+    for (client, want) in [(Some("ccm"), true), (None, false)] {
+        let mut args = serde_json::json!({
+            "mode": "create-or-attach",
+            "name": "cc-decl",
+            "payload": "claude",
+        });
+        if let Some(c) = client {
+            args["client"] = c.into();
+        }
+        let req = parse_request(&args).expect("请求应当解析成功");
+        let seen = std::cell::RefCell::new(Vec::<String>::new());
+        let fake = |a: &[&str]| -> Result<Ran, CmdErr> {
+            seen.borrow_mut().push(a.join(" "));
+            Ok(Ran {
+                ok: true,
+                said: String::new(),
+            })
+        };
+        run_with(&req, &fake).expect("该建成");
+        let seen = seen.into_inner();
+        let tag = seen
+            .iter()
+            .position(|l| l.starts_with("set-option -t =cc-decl: @ccm_client "));
+        let typed = seen
+            .iter()
+            .position(|l| l.starts_with("send-keys"))
+            .expect("键入了");
+        assert_eq!(tag.is_some(), want, "{seen:?}");
+        if let Some(t) = tag {
+            assert!(t < typed, "声明要在键入之前：{seen:?}");
+            assert_eq!(seen[t], "set-option -t =cc-decl: @ccm_client ccm");
+        }
+    }
+}

@@ -24,7 +24,8 @@
 //!
 //! # 两档连接，而 hello 写在分档**之前**
 //!
-//! - **一条流**：认证通过、且此刻没有别的流挂着 ⇒ 这条连接接管出/入两个方向。
+//! - **流**：认证通过 ⇒ 这条连接接管出/入两个方向。多客户：钥匙对上就交流，不看「有没有别人挂着」（[`admit`]）；
+//!   每条连接各一份 watcher / inbound / writer（`main.rs::serve_listening`），桌面端与第二个前端可以同时挂着。
 //! - **不限次的「只读 hello 就走」**：连上就有 hello，读完即关。
 //!
 //! ★ hello 必须写在分档之前，否则「这台机上有没有一个长驻后端」这一问
@@ -32,13 +33,8 @@
 //! 那又是一个「一直说是」的假信号（`P2d §0a` 那一形）。
 //! ⇒ 有了 hello 这一档，那一问的答案是**读一行**，协议一个字节都不用加。
 //!
-//! ⚠ **代价如实记**：多客户端的**流**（fan-out + `Overflow.lost` 丢帧账重定义）
-//! **本件明确不做**，由 `single_stream_guard.rs` 那条触发器看着。
-//! 〔`D1` `重-1` 08-27：这里原先指的是一个**不存在的文件**（`frozen_single_client_guard`，
-//! 全仓命中 1 处，就是那一行自己）。**指了住址而住址是假的，比不指更坏** ——
-//! 读者会以为那一格有人守着，去找的时候什么都没有。
-//! ⇒ 同轮补了 `every_file_this_head_note_points_at_really_exists` 钉住整段头注，
-//! 不是只改那一个词。〕
+//! 多客户的做法是「每条连接各一份」，**不是**把一条观测通道扇出给 N 个 ⇒ `Overflow.lost` 的丢帧账仍按那条连接自己的通道记；
+//! 「源码里恰好一份、按连接实例化」由 `single_stream_guard.rs` 钉着。
 //!
 //! # 诚实边界（三条，都不是措辞）
 //!
@@ -275,8 +271,8 @@ pub fn attach_verdict(line: &str, expected: &str) -> Verdict {
 
 /// attach 行里这条连接要的流模式旗标（`{"attach":…,"flags":["--tail-only",…]}`）。
 /// 缺 ⇒ `Ok(None)`（用进程起参那一份）；有但不是串数组、或含 `lib::STREAM_FLAGS` 以外的 ⇒ `Err`（当 malformed 拒）。
-/// 回 `(with_bg, tail_only, with_pid)`：每个客户各按自己的能力协商（monitor `decide_stream_flags`）。
-pub fn attach_flags(line: &str) -> Result<Option<(bool, bool, bool)>, ()> {
+/// 回这条连接索要了什么：每个客户各按自己的能力协商（monitor `decide_stream_flags`）。
+pub fn attach_flags(line: &str) -> Result<Option<crate::StreamWants>, ()> {
     let v: serde_json::Value = serde_json::from_str(line.trim()).map_err(|_| ())?;
     let Some(raw) = v.get("flags") else {
         return Ok(None);
@@ -290,8 +286,7 @@ pub fn attach_flags(line: &str) -> Result<Option<(bool, bool, bool)>, ()> {
         }
         words.push(w.to_string());
     }
-    let (_, with_bg, tail_only, with_pid) = crate::split_stream_flags(words);
-    Ok(Some((with_bg, tail_only, with_pid)))
+    Ok(Some(crate::split_stream_flags(words).1))
 }
 
 /// 定长时间的字节比对：**跑完全部**，不提前返回。

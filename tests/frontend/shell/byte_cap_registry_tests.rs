@@ -597,6 +597,13 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
         "拒收+回错",
     ),
     (
+        "src/backend/control/terminals.rs",
+        "MAX_SCROLLBACK",
+        2000,
+        "终端预览往回多要的行数（行，不是字节）",
+        "截断+说清",
+    ),
+    (
         "src/backend/control/resolve_query.rs",
         "MAX_RESOLVE_STDIN",
         1 << 20,

@@ -13,8 +13,10 @@ src/backend/control/identity_tag.rs:192	会话身份标没打上（pid {pid} · 
 src/backend/control/identity_tag.rs:416	tmux set-option 退出码 {}：{}	保留	[不对外] Outcome::Failed 的载荷（带 tmux 原话），经 failure_note 只进后端 tracing 日志
 src/backend/control/launch.rs:432	agent 标没打上，这个会话在列表里认不出是哪个 agent	保留	[不对外] S5：次要动作没做成时那一行 tracing::warn! 的后果半句，只进后端日志
 src/backend/control/launch.rs:434	身份意图没写上：之后对这个会话的 kill / 送键可能被身份门拒（wrong_owner）	保留	[不对外] 同上，只进后端日志
+src/backend/control/launch.rs:448	谁起的没写上：这个会话按名字规则判身份	保留	[不对外] 同上，只进后端日志
 src/backend/control/launch.rs:443	打 agent 标	保留	[不对外] 同上（哪一步），只进后端日志
 src/backend/control/launch.rs:444	写身份意图	保留	[不对外] 同上（哪一步），只进后端日志
+src/backend/control/launch.rs:455	写谁起的	保留	[不对外] 同上（哪一步），只进后端日志
 src/backend/control/launch.rs:466	会话 {session:?} 建好了，但{}没做成：{why} —— {}	保留	[不对外] S5：secondary_note 拼出的那一行，只经 tracing::warn! 进后端日志
 src/backend/files/mod.rs:344	定期重走（周期由调用方出节拍）＋ 浏览目录挂 inotify，一个 watch 一个目录	保留	[不对外] FRESHNESS 登记表的 how/gap 字段，生产段无读者（全仓只在声明处出现），是给判据与文档看的论证；若将来要上界面须整段重写（满纸 §2.2 与 markdown）
 src/backend/files/mod.rs:347	**不是实时**。要全文件系统监听就得 root：`man 2 fanotify_init` 一手逐字 —— \n              非特权不许 `FAN_MARK_MOUNT` / `FAN_MARK_FILESYSTEM`。\n              而 watch 上限本机现打 262144、home 下 640413 条目⇒ 全挂挂不住。\n              另：**冷缓存下走一遍要多久没量过**（`drop_caches` 要 root）。	保留	[不对外] FRESHNESS 登记表的 how/gap 字段，生产段无读者（全仓只在声明处出现），是给判据与文档看的论证；若将来要上界面须整段重写（满纸 §2.2 与 markdown）
@@ -124,6 +126,10 @@ src/backend/lib.rs:1423	**硬链在 tmux 上，不是自己做不到**：`argv.r
 src/backend/lib.rs:1435	`--ccm-sid` 写的是 tmux 会话上的意图标（`@ccm_sid_expect`，kill / 送键的身份门据它确认事实）。\n              Windows 上没有 tmux ⇒ 没有可写的地方；直路上它不起作用，拉前终端也不靠它（点 ↗ 时现查连着的终端）。\n              等 Windows 后台机制选定（未定）时一并回答，**暂时不做**。	保留	[不对外] 设计登记表 TARGET_GAPS 的理由散文：只给判据读，不上界面
 src/backend/lib.rs:1475	把中转地址跨 tmux 会话传下去。载体没了这一条就没了；\n              将来 Windows 后台机制选定时要自己回答「地址怎么传给它起的会话」，**暂时不做**。	保留	[不对外] 设计登记表 TARGET_GAPS 的理由散文（字段已由 why 改名 rationale）：只给判据读，不上界面
 src/backend/lib.rs:1490	抓一屏今天就是起一次 `tmux capture-pane`（命令自己声明了 `no_tmux` 码）。\n              Windows 上没有 tmux ⇒ 平台默认做不到。将来 Windows 后台机制选定（未定）时给出\n              「看一眼会话画面」的等价物，**暂时不做**。	保留	[不对外] 设计登记表 TARGET_GAPS 的理由散文（字段已由 why 改名 rationale）：只给判据读，不上界面
+src/backend/lib.rs:1522	终端管理 L1 的抓一屏：这一版宿主只有 tmux（起 `tmux capture-pane`，声明了 `no_tmux`）。\n              形状与宿主无关，Windows 后台机制选定（未定）时换实现、不换形状，**暂时不做**。	保留	[不对外] 设计登记表 TARGET_GAPS 的理由散文（字段已由 why 改名 rationale）：只给判据读，不上界面
+src/backend/lib.rs:1530	终端管理 L1 的送字送键：这一版宿主只有 tmux（`send-keys`，声明了 `no_tmux`）。\n              同 `terminal-preview`：Windows 后台机制选定（未定）时换实现、不换形状，**暂时不做**。	保留	[不对外] 设计登记表 TARGET_GAPS 的理由散文（字段已由 why 改名 rationale）：只给判据读，不上界面
+src/backend/lib.rs:1538	与帧面 `terminal-preview` 那一行是同一条实现（CLI 面派生）⇒ 同一个理由（Windows 后台机制未定），同拍还，**暂时不做**。	保留	[不对外] 设计登记表 TARGET_GAPS 的理由散文（字段已由 why 改名 rationale）：只给判据读，不上界面
+src/backend/lib.rs:1545	与帧面 `terminal-input` 那一行是同一条实现（CLI 面派生）⇒ 同一个理由（Windows 后台机制未定），同拍还，**暂时不做**。	保留	[不对外] 设计登记表 TARGET_GAPS 的理由散文（字段已由 why 改名 rationale）：只给判据读，不上界面
 src/backend/lib.rs:1499	结束会话今天是起一次 `tmux kill-session`（命令自己声明了 `no_tmux` 码）。\n              Windows 上没有 tmux ⇒ 平台默认做不到。将来 Windows 后台机制选定（未定）时\n              一并管会话的生死，**暂时不做**。	保留	[不对外] 设计登记表 TARGET_GAPS 的理由散文（字段已由 why 改名 rationale）：只给判据读，不上界面
 src/backend/lib.rs:1508	起会话今天是在 tmux 里开一个新会话（命令自己声明了 `no_tmux` 码）。\n              Windows 上没有 tmux ⇒ 平台默认做不到。「会话活在前端之外」用的 Windows 后台机制\n              未定，**暂时不做**。	保留	[不对外] 设计登记表 TARGET_GAPS 的理由散文（字段已由 why 改名 rationale）：只给判据读，不上界面
 src/backend/lib.rs:1517	与帧面 `capture-pane` 那一行是**同一条实现**（CLI 面经 `cli_control::spec_for` \n              派生到同一条登记）⇒ 同一个理由（Windows 后台机制未定），将来与帧面那一行同拍还，**暂时不做**。	保留	[不对外] 设计登记表 TARGET_GAPS 的理由散文（字段已由 why 改名 rationale）：只给判据读，不上界面

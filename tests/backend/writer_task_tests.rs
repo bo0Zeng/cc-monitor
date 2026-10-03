@@ -23,6 +23,7 @@ fn line(seq: u64) -> Frame {
         cwd: None,
         byte_offset: 0,
         rid: None,
+        raw: None,
     }
 }
 

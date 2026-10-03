@@ -84,6 +84,49 @@ pub(crate) fn is_ccm_tmux_name(name: &str) -> bool {
     charset_ok && (old_prefix || new_suffix)
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// **「哪个前端的会话」那一维**（两个前端吃同一个后端）。
+//
+// 会话由起它的那一方声明：tmux 会话选项 `@ccm_client=<名>`。用户在终端里敲的 ccm / 别名起的写 [`CLIENT_TERMINAL`]
+// （用户自己的终端，不归任何一个前端，谁都能动）；某个前端为自己内部的管道起的写那个前端的名字，别的前端对它只读。
+// 送字 / 结束 / 批量的请求带上自己是哪个前端（`args.client`），对上才放。没声明的照名字规则（[`gate2`]）。
+// 这只是 tmux 过渡期的最小口子：防的是一个前端误动另一个前端的会话，不是安全边界（对端本来就能在这台机上跑任意命令）。
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// `@ccm_client` 里「用户在终端里起的」那个值（ccm / 别名）：不归任何一个前端。
+pub(crate) const CLIENT_TERMINAL: &str = "ccm";
+
+/// `@ccm_client` 与请求里 `client` 的形状：1–32 个 `[a-z0-9-]`，不以 `-` 开头（会被写进 tmux 会话选项）。
+pub(crate) fn client_name_ok(n: &str) -> bool {
+    (1..=32).contains(&n.len())
+        && !n.starts_with('-')
+        && n.chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+}
+
+/// 「哪个前端的会话」那一维的判定。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ClientVerdict {
+    /// 没声明，或声明成用户的终端 ⇒ 这一维不拦，照名字规则判。
+    Open,
+    /// 声明的就是这次请求自报的前端 ⇒ 放行（它自己起的会话名字不必像我们铸的）。
+    Own,
+    /// 声明了别的前端 ⇒ 只读：不许送字、结束、批量。
+    NotYours,
+}
+
+/// `declared` ＝ 会话上 `@ccm_client` 的值（没设 ⇒ 空串）；`requester` ＝ 请求自报的前端（没报 ⇒ `None`）。
+pub(crate) fn gate_client(declared: &str, requester: Option<&str>) -> ClientVerdict {
+    if declared.is_empty() || declared == CLIENT_TERMINAL {
+        return ClientVerdict::Open;
+    }
+    if requester == Some(declared) {
+        ClientVerdict::Own
+    } else {
+        ClientVerdict::NotYours
+    }
+}
+
 // `needs_remote_sid`〔散文墓碑〕删：它是给「两侧同一个取反」立的名字，monitor 那一侧没了之后零调用方。
 
 /// Gate 2 union：名字命中 **或** 远端 `@ccm_sid` 已设。

@@ -88,13 +88,18 @@ fn both_present_gives_listen_mode() {
 fn attach_flags_are_optional_closed_and_per_connection() {
     assert_eq!(attach_flags(r#"{"attach":"t"}"#), Ok(None));
     assert_eq!(
-        attach_flags(r#"{"attach":"t","flags":["--tail-only","--with-pid"]}"#),
-        Ok(Some((false, true, true)))
+        attach_flags(r#"{"attach":"t","flags":["--tail-only","--with-pid","--with-raw"]}"#),
+        Ok(Some(crate::StreamWants {
+            with_bg: false,
+            tail_only: true,
+            with_pid: true,
+            with_raw: true,
+        }))
     );
     assert_eq!(
         attach_flags(r#"{"attach":"t","flags":[]}"#),
-        Ok(Some((false, false, false))),
-        "空表 = 三个都不要（老后端那一形），不是「用默认」"
+        Ok(Some(crate::StreamWants::default())),
+        "空表 = 一个都不要（老后端那一形），不是「用默认」"
     );
     assert_eq!(
         attach_flags(r#"{"attach":"t","flags":["--search"]}"#),

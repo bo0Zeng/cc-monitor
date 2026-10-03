@@ -9,7 +9,10 @@ use serde_json::Value;
 
 type Answer = Result<Value, (&'static str, String)>;
 
-fn with_deps(f: impl FnOnce(&Deps) -> Answer) -> Answer {
+/// `client` ＝ 请求自报的前端（`args.client`，「哪个前端的会话」那一维）：杀与就地键入都带它过门。
+fn with_deps(args: &Value, f: impl FnOnce(&Deps) -> Answer) -> Answer {
+    let client = crate::control::gate::requester_of(args)?;
+    let client = client.as_deref();
     let list = || -> Result<Option<Vec<TmuxEntry>>, String> {
         let (installed, lines) = crate::observe::tmux_observe::list_for_query()?;
         Ok(installed.then(|| {
@@ -31,11 +34,15 @@ fn with_deps(f: impl FnOnce(&Deps) -> Answer) -> Answer {
         )
         .map(|p| (p.present, p.root))
     };
-    let kill = |name: &str, sid: &str| crate::control::kill::run_as(name, sid).map(|b| b.to_json());
+    let kill = |name: &str, sid: &str| {
+        crate::control::kill::run_as(name, sid, client).map(|b| b.to_json())
+    };
     let send_into = |name: &str, line: &str| {
-        let req = crate::control::launch::parse_request(&serde_json::json!({
-            "mode": "send-into", "name": name, "payload": line,
-        }))?;
+        let mut req = serde_json::json!({ "mode": "send-into", "name": name, "payload": line });
+        if let Some(c) = client {
+            req["client"] = c.into();
+        }
+        let req = crate::control::launch::parse_request(&req)?;
         crate::control::launch::run(&req).map(|_| ())
     };
     let run_ccm = |argv: &[String]| crate::control::session_batch::run_self_as_ccm(argv);
@@ -64,15 +71,15 @@ fn with_deps(f: impl FnOnce(&Deps) -> Answer) -> Answer {
 
 /// `sessions-tmux`：`{sids}` ⇒ 每个的样子（菜单就绪时问）。
 pub(crate) fn where_(args: &Value) -> Answer {
-    with_deps(|d| batch::where_(args, d))
+    with_deps(args, |d| batch::where_(args, d))
 }
 
 /// `sessions-stop`：`{sids}` ⇒ `{results}`。
 pub(crate) fn stop(args: &Value) -> Answer {
-    with_deps(|d| batch::stop(args, d))
+    with_deps(args, |d| batch::stop(args, d))
 }
 
 /// `sessions-start`：`{mode, local, items}` ⇒ `{results}`。
 pub(crate) fn start(args: &Value) -> Answer {
-    with_deps(|d| batch::start(args, d))
+    with_deps(args, |d| batch::start(args, d))
 }

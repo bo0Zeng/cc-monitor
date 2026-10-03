@@ -86,6 +86,8 @@ pub mod launch_render;
 pub mod resident;
 pub mod resolve_query;
 pub(crate) mod session_batch;
+// 终端管理 L1：名单 · 抓一屏 · 送字送键（两个前端共用，形状与宿主无关；这一版宿主是 tmux）。
+pub(crate) mod terminals;
 pub mod tmux_hook;
 // 传输台住本机常驻后端（第三层成员：本机下载落点的写 · 票表 · 进度帧）。
 pub mod transfer;

@@ -2318,6 +2318,7 @@ fn dropping_an_unrecoverable_frame_puts_its_identity_in_the_overflow() {
         cwd: None,
         byte_offset: 0,
         rid: None,
+        raw: None,
     });
     // 丢一条内容帧（可恢复 ⇒ 只计数、不留身份）与一条状态增量帧（不可恢复 ⇒ 留身份）。
     sink.send(Frame::Line {
@@ -2328,6 +2329,7 @@ fn dropping_an_unrecoverable_frame_puts_its_identity_in_the_overflow() {
         cwd: None,
         byte_offset: 1,
         rid: None,
+        raw: None,
     });
     sink.send(Frame::SessionRemoved {
         sid: "sid-gone".into(),
@@ -2377,6 +2379,7 @@ fn the_identity_list_is_bounded_and_says_so_when_it_truncates() {
         cwd: None,
         byte_offset: 0,
         rid: None,
+        raw: None,
     });
     let over = LOST_IDENTITY_CAP + 5;
     for i in 0..over {
@@ -3033,7 +3036,7 @@ fn fake_tmux_world(dir: &Path) -> (PathBuf, PathBuf) {
     std::fs::write(
         &script,
         format!(
-            "#!/bin/sh\nst='{}'\ncase \"$*\" in\n  *display-message*) printf '$7\\t%s\\t1\\n' \"$(cat \"$st\" 2>/dev/null)\";;\n  *set-option*) eval \"v=\\${{$#}}\"; printf '%s' \"$v\" > \"$st\";;\nesac\n",
+            "#!/bin/sh\nst='{}'\ncase \"$*\" in\n  *display-message*) printf '$7\\t%s\\t1\\t\\n' \"$(cat \"$st\" 2>/dev/null)\";;\n  *set-option*) eval \"v=\\${{$#}}\"; printf '%s' \"$v\" > \"$st\";;\nesac\n",
             label.display()
         ),
     )
@@ -3501,7 +3504,7 @@ fn a_sub_runs_turn_end_is_not_the_main_runs() {
             raw: raw.to_string(),
             byte_offset: 0,
         };
-        send_line("s", "/p/s.jsonl", line, &state.runs, &mut sink);
+        send_line("s", "/p/s.jsonl", line, &state, &mut sink);
     }
     let mut got = Vec::new();
     while let Ok(f) = rx.try_recv() {
@@ -3512,4 +3515,35 @@ fn a_sub_runs_turn_end_is_not_the_main_runs() {
         });
     }
     assert_eq!(got, vec!["line m1", "turn_end u-main", "line m2"]);
+}
+
+/// `--with-raw`：这条流索要了 ⇒ 每一行 `line` 带那一行原文（解析不出的行也带）；没索要 ⇒ 一格都不带。
+#[test]
+fn line_frames_carry_the_raw_text_only_when_the_stream_asked() {
+    let rows = [
+        r#"{"type":"user","uuid":"u1","message":{"role":"user","content":"x"}}"#,
+        "not json at all",
+    ];
+    for asked in [false, true] {
+        let (tx, mut rx) = mpsc::channel::<Frame>(16);
+        let mut sink = FrameSink::new(tx);
+        let mut state = ReaderState::new(PathBuf::from("/nonexistent-projects"), false, false);
+        state.with_raw = asked;
+        for (i, raw) in rows.iter().enumerate() {
+            let line = ReadLine {
+                seq: i as u64,
+                raw: raw.to_string(),
+                byte_offset: 0,
+            };
+            send_line("s", "/p/s.jsonl", line, &state, &mut sink);
+        }
+        let mut got = Vec::new();
+        while let Ok(f) = rx.try_recv() {
+            if let Frame::Line { raw, .. } = f {
+                got.push(raw);
+            }
+        }
+        let want: Vec<Option<String>> = rows.iter().map(|r| asked.then(|| r.to_string())).collect();
+        assert_eq!(got, want, "索要了 raw = {asked}");
+    }
 }

@@ -695,9 +695,7 @@ impl WatcherPoke {
 
 pub fn spawn(
     agent_home: PathBuf,
-    with_bg: bool,
-    tail_only: bool,
-    with_pid: bool,
+    wants: crate::StreamWants,
     book: std::sync::Arc<crate::observe::runs::RunBook>,
 ) -> (mpsc::Receiver<Frame>, WatcherPoke) {
     let (tx, rx) = mpsc::channel::<Frame>(CHANNEL_CAPACITY);
@@ -711,14 +709,7 @@ pub fn spawn(
     std::thread::Builder::new()
         .name("jsonl-watcher".into())
         .spawn(move || {
-            watch_loop(
-                agent_home,
-                tx,
-                (with_bg, tail_only, with_pid),
-                book,
-                events_tx,
-                events_rx,
-            );
+            watch_loop(agent_home, tx, wants, book, events_tx, events_rx);
             live_leave(me);
         })
         .expect("spawn jsonl-watcher thread");
@@ -824,8 +815,8 @@ fn arm_ears(
 fn watch_loop(
     agent_home: PathBuf,
     tx: mpsc::Sender<Frame>,
-    // （带 bg 会话, 只跟尾巴, 索要 pid）—— 三个开关收成一格，与 `spawn` 收到的同一组。
-    (with_bg, tail_only, with_pid): (bool, bool, bool),
+    // 这条流索要了什么，与 `spawn` 收到的同一组。
+    wants: crate::StreamWants,
     book: std::sync::Arc<crate::observe::runs::RunBook>,
     events_tx: std::sync::mpsc::Sender<WatchEvent>,
     events_rx: std::sync::mpsc::Receiver<WatchEvent>,
@@ -838,9 +829,10 @@ fn watch_loop(
     // 账号 manifest（「账号清单变了」一帧）。
     let accounts_manifest = crate::observe::accounts_query::default_manifest_path();
 
-    let mut state = ReaderState::new(projects.clone(), with_bg, tail_only);
-    // 注入「客户端索要了 pid」这一位（不进 `new` 的签名，理由在那个字段的头注里）。
-    state.with_pid = with_pid;
+    let mut state = ReaderState::new(projects.clone(), wants.with_bg, wants.tail_only);
+    // 注入「客户端索要了 pid / 原文」这两位（不进 `new` 的签名，理由在那两个字段的头注里）。
+    state.with_pid = wants.with_pid;
+    state.with_raw = wants.with_raw;
     // 运行簿：与这条连接的流归位共用一本（流按它定归哪个运行）。
     state.runs.book = book;
     // All frames go out through a FrameSink: a bounded-channel sender that counts
@@ -1224,6 +1216,8 @@ struct ReaderState {
     /// `--with-pid`：客户端显式索要 `session_added` 上的 `pid`（本机 ↗ 按它找窗口）。
     /// 默认 false、不进 [`ReaderState::new`] 的签名（与 `events_tx` 同一条纪律）；生产路由 [`watch_loop`] 注入，夹具直接置字段。
     with_pid: bool,
+    /// `--with-raw`：客户端显式索要 `line` 上的 `raw`（那一行原文）。默认 false，注入方式同 `with_pid`。
+    with_raw: bool,
     /// 子运行：运行面 ＋ 这条连接的运行簿（[`watch_loop`] 换成 `spawn` 交进来的那一本；夹具用自带的一本）＋ 子运行记录的游标。
     runs: crate::observe::runs::RunTrack,
 }
@@ -1243,6 +1237,7 @@ impl ReaderState {
             with_bg,
             tail_only,
             with_pid: false,
+            with_raw: false,
             runs: crate::observe::runs::RunTrack::new(
                 crate::agents::stream_run_faces(),
                 std::sync::Arc::default(),
@@ -1690,7 +1685,7 @@ fn process_jsonl(path: &Path, state: &mut ReaderState, sink: &mut FrameSink) -> 
     let n = lines.len();
     let mut runs_changed = state.runs.adopt(&session_id, path);
     for line in lines {
-        runs_changed |= send_line(&session_id, &path_str, line, &state.runs, sink);
+        runs_changed |= send_line(&session_id, &path_str, line, state, sink);
     }
     if runs_changed {
         sink.send(state.runs.frame(&session_id));
@@ -1706,9 +1701,10 @@ fn send_line(
     session_id: &str,
     path_str: &str,
     line: ReadLine,
-    runs: &crate::observe::runs::RunTrack,
+    state: &ReaderState,
     sink: &mut FrameSink,
 ) -> bool {
+    let runs = &state.runs;
     let face = crate::agents::stream_record_face();
     let parsed = face.and_then(|f| match (f.parse)(&line.raw) {
         Ok(Some(p)) if p.displayable => Some(p),
@@ -1734,6 +1730,7 @@ fn send_line(
         cwd,
         byte_offset: line.byte_offset, // backend-01 gap#2：累计原始字节（对齐 aterm LineFramer）
         rid: rec.rid,
+        raw: state.with_raw.then(|| line.raw.clone()),
     });
     // **先 Line 后 TurnEnd**：对齐 aterm β 的按行序处理——TurnEnd 结算时 currentOffset 已含本行。
     // TurnEnd 不带 byte_offset（只 Line 带）。
@@ -1804,7 +1801,7 @@ fn flush_final_line(path: &Path, sid: &str, state: &mut ReaderState, sink: &mut 
         raw: raw.to_string(),
         byte_offset: cursor.consumed + rest.len() as u64,
     };
-    if send_line(sid, &path.to_string_lossy(), line, &state.runs, sink) {
+    if send_line(sid, &path.to_string_lossy(), line, state, sink) {
         sink.send(state.runs.frame(sid));
     }
 }

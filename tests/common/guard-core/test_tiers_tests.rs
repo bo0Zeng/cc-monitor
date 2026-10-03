@@ -590,6 +590,7 @@ const INTEGRATION: &[&str] = &[
     "tests/backend/control/fork_write_tests.rs",
     "tests/backend/control/identity_tag_tests.rs",
     "tests/backend/control/launch_tests.rs", // 由扫描层挪来：S4 那条判据真起一个假 tmux 子进程（`ran` 收 stderr）
+    "tests/backend/control/terminals_tests.rs", // 终端管理 L1：隔离 socket 上起真 tmux，真列 · 真抓 · 真送
     "tests/backend/control/resident_tests.rs", // 临时目录上真铸钥匙、读钥匙文件 ·真 sh 子进程 ＋ 真信号：graceful / killed / not_running
     "tests/backend/control/transfer_tests.rs",
     "tests/backend/dial_compress_tests.rs",

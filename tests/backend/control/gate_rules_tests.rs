@@ -139,3 +139,31 @@ fn an_existing_session_name_is_refused_only_for_what_quote_and_exact_match_canno
         Some(TmuxNameIssue::Deceptive('\u{200b}'))
     );
 }
+
+/// 「哪个前端的会话」那一维：没声明 / 用户终端起的（`ccm`）不拦；声明了的只认同名的请求方。
+#[test]
+fn the_client_dimension_only_opens_to_the_declarer() {
+    use ClientVerdict::*;
+    for (declared, requester, want) in [
+        ("", None, Open),
+        ("", Some("mobile"), Open),
+        (CLIENT_TERMINAL, None, Open),
+        (CLIENT_TERMINAL, Some("desktop"), Open),
+        ("mobile", Some("mobile"), Own),
+        ("mobile", None, NotYours),
+        ("mobile", Some("desktop"), NotYours),
+        ("mobile", Some(CLIENT_TERMINAL), NotYours),
+    ] {
+        assert_eq!(
+            gate_client(declared, requester),
+            want,
+            "{declared:?} × {requester:?}"
+        );
+    }
+    for ok in ["ccm", "mobile", "desktop", "a-1"] {
+        assert!(client_name_ok(ok), "{ok}");
+    }
+    for bad in ["", "-x", "Mobile", "a b", "a\tb", "a:b", &"x".repeat(33)] {
+        assert!(!client_name_ok(bad), "{bad:?}");
+    }
+}

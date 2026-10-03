@@ -97,6 +97,64 @@ fn routing_reads_the_argv_only_never_the_binary_name() {
     }
 }
 
+/// 没有 `--` 又没有终端 ⇒ 不起 claude；有 `--` 的、或 stdin / stdout 有一边是终端的照旧。
+/// 容器路在 pane 里把自己再叫一次那一行恒带 `--`（`plan::build` 的 `inner`），所以它不看终端。
+#[test]
+fn a_bare_call_without_any_terminal_does_not_start_an_agent() {
+    let v = |xs: &[&str]| xs.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+    for bare in [
+        v(&[]),
+        v(&["--list-projects"]),
+        v(&["--stream"]),
+        v(&["--resume", "x"]),
+    ] {
+        assert!(refuses_without_terminal(&bare, false, false), "{bare:?}");
+        assert!(
+            !refuses_without_terminal(&bare, true, false),
+            "{bare:?}：stdin 是终端"
+        );
+        assert!(
+            !refuses_without_terminal(&bare, false, true),
+            "{bare:?}：stdout 是终端"
+        );
+        assert!(!refuses_without_terminal(&bare, true, true), "{bare:?}");
+    }
+    for with_end in [
+        v(&["--", "--ccm-print"]),
+        v(&["--", "--ccm-version"]),
+        v(&["--", "--ccm-tmux", "--detach"]),
+        v(&["--resume", "x", "--", "--cwd", "/p"]),
+        v(&["-p", "--", "-x", "--"]),
+    ] {
+        assert!(
+            !refuses_without_terminal(&with_end, false, false),
+            "{with_end:?}"
+        );
+    }
+    let o = match argv::parse(&v(&[
+        "--resume",
+        "x",
+        "--",
+        "--ccm-tmux",
+        "--detach",
+        "--cwd",
+        "/p",
+    ])) {
+        Ok(argv::Parsed::Opts(o)) => o,
+        other => panic!("{other:?}"),
+    };
+    let Ok(Plan::Container(c)) =
+        plan::build(&o, &Env::for_preview(), &AccountTable::default(), None)
+    else {
+        panic!("不是容器路")
+    };
+    assert!(
+        c.payload.contains(" '--' "),
+        "pane 里那一行没带 --：{}",
+        c.payload
+    );
+}
+
 /// 〔搬自 `ccm-contract-parity` 的 `--ccm-probe` 那 5 条〕
 ///
 /// 这份输出是**外部契约**：`ccm_probe.rs::parse_probe_output` 按行解析
@@ -318,6 +376,11 @@ fn the_container_launch_goes_through_the_one_door_with_every_field_intact() {
     );
     assert_eq!(req.width.as_deref(), Some("220"));
     assert_eq!(req.height.as_deref(), Some("50"));
+    assert_eq!(
+        req.client.as_deref(),
+        Some(crate::control::gate_rules::CLIENT_TERMINAL),
+        "ccm 起的会话要声明成用户终端起的（不归任何一个前端）"
+    );
     assert!(matches!(
         req.mode,
         crate::control::launch::Mode::CreateOrAttach

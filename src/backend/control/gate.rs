@@ -78,6 +78,8 @@ pub(crate) struct Probed {
     /// `#{session_windows}`。**Gate 3 只给破坏性动作用**（见 [`admit_destructive`]）。
     /// 解析不出来 ⇒ `0`，而 Gate 3 要求恰好 `1` ⇒ **fail closed**（不会误杀）。
     pub(crate) windows: u32,
+    /// `@ccm_client`：起这个会话的那一方声明的名字（没设 ⇒ 空串）。「哪个前端的会话」那一维（`gate_rules::gate_client`）。
+    pub(crate) client: String,
 }
 
 /// 列出本机所有 tmux 会话的**身份二元组**：`(会话名, @ccm_sid)`。
@@ -133,7 +135,7 @@ fn list_sessions_from(snap: &SessionSnapshot) -> Result<Vec<(String, String)>, C
 /// 非破坏性动作（`admit`）**不看**这个字段，但照样取回来 —— 与 monitor 侧同一条纪律
 /// （`K-R72`（09-12）之前，monitor 侧那条 SSH 回落的 `build_guarded_tmux_cmd` 头注写着
 /// 同一条纪律；那条路删了之后，这条纪律在本仓只剩这一个家）。
-const PROBE_FMT: &str = "#{session_id}\t#{@ccm_sid}\t#{session_windows}";
+const PROBE_FMT: &str = "#{session_id}\t#{@ccm_sid}\t#{session_windows}\t#{@ccm_client}";
 
 /// `PROBE_FMT` 的列数 —— [`tab_underflow`] 的 N。
 ///
@@ -145,7 +147,7 @@ const PROBE_FMT: &str = "#{session_id}\t#{@ccm_sid}\t#{session_windows}";
 /// ⇒ 本处的**过溢只可能来自「有人手工把 `@ccm_sid` 设成含 TAB 的值」或格式串被改**，
 /// 那两种都该拒 ⇒ 既有的 fail-closed 处置是对的，**本拍不动它**。
 /// 那条误伤是真的、但只在 `tmux-list` 的解析那一处（今天住 `observe/tmux_list.rs::rows`，见该处头注）。
-const PROBE_FMT_FIELDS: usize = 3;
+const PROBE_FMT_FIELDS: usize = 4;
 
 /// 跑一次 `tmux display-message -p -t <target> '<fmt>'` 并把 stdout 取回来。
 ///
@@ -214,6 +216,7 @@ pub(crate) fn probe_with(mut tmux: Command, target: &str) -> Result<Option<Probe
         .trim()
         .parse::<u32>()
         .unwrap_or(0);
+    let client = it.next().unwrap_or_default().to_string();
     if session_id.is_empty() || it.next().is_some() {
         return Ok(None);
     }
@@ -221,7 +224,50 @@ pub(crate) fn probe_with(mut tmux: Command, target: &str) -> Result<Option<Probe
         session_id,
         ccm_sid,
         windows,
+        client,
     }))
+}
+
+/// 请求里自报的前端（`args.client`）：没给 ⇒ `None`；给了就得是一个合形状的名字（`gate_rules::client_name_ok`）。
+pub(crate) fn requester_of(args: &serde_json::Value) -> Result<Option<String>, CmdErr> {
+    match args.get("client") {
+        None => Ok(None),
+        Some(serde_json::Value::String(c)) if crate::control::gate_rules::client_name_ok(c) => {
+            Ok(Some(c.clone()))
+        }
+        Some(other) => Err((
+            "invalid_args",
+            crate::common::contract::malformed(&format!(
+                "`client` must be 1-32 chars of [a-z0-9-]: {other}"
+            )),
+        )),
+    }
+}
+
+/// 身份那一道（Gate 2 ＋「哪个前端的会话」那一维）的结局。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Who {
+    /// 放行。
+    Pass,
+    /// 名字规则没过（没声明哪个前端、名字不像我们铸的、`@ccm_sid` 也没设）。
+    NotOurs,
+    /// 声明了别的前端：只读。
+    OtherClient,
+}
+
+/// 声明了别的前端 ⇒ 只读；声明归这次请求自报的前端 ⇒ 放；没声明 / 用户终端起的 ⇒ 照名字规则（`gate2`）。
+pub(crate) fn identity(name: &str, p: &Probed, requester: Option<&str>) -> Who {
+    use crate::control::gate_rules::{gate_client, ClientVerdict};
+    match gate_client(&p.client, requester) {
+        ClientVerdict::Own => Who::Pass,
+        ClientVerdict::NotYours => Who::OtherClient,
+        ClientVerdict::Open
+            if crate::control::gate_rules::gate2(name, Some(&p.ccm_sid)).allowed() =>
+        {
+            Who::Pass
+        }
+        ClientVerdict::Open => Who::NotOurs,
+    }
 }
 
 /// **过门。** 通过则返回后续该用的目标句柄（`#{session_id}`）。
@@ -233,21 +279,27 @@ pub(crate) fn probe_with(mut tmux: Command, target: &str) -> Result<Option<Probe
 /// - 目标不存在 ⇒ `no_such_session`（**语义不变** —— 新门不许把这一档吞掉）；
 /// - Gate 2 不通过 ⇒ `wrong_owner`，消息里带 monitor 同族的 `CCM_GUARD_REJECTED`；
 /// - 通过 ⇒ `Ok(session_id)`。
-pub(crate) fn admit(name: &str, target: &str) -> Result<String, CmdErr> {
+///
+/// `requester` ＝ 请求自报的前端（「哪个前端的会话」那一维，见 [`identity`]）；声明了别的前端 ⇒ 也是 `wrong_owner`，话不同。
+pub(crate) fn admit(name: &str, target: &str, requester: Option<&str>) -> Result<String, CmdErr> {
     let Some(p) = probe(target)? else {
         return Err((
             "no_such_session",
             copy_text("beGate.admit.noSession", &[("name", &format!("{name:?}"))]),
         ));
     };
-    let verdict = crate::control::gate_rules::gate2(name, Some(&p.ccm_sid));
-    if !verdict.allowed() {
-        return Err((
+    let shown = format!("{name:?}");
+    match identity(name, &p, requester) {
+        Who::Pass => Ok(p.session_id),
+        Who::NotOurs => Err((
             "wrong_owner",
-            copy_text("beGate.admit.notOurs", &[("name", &format!("{name:?}"))]),
-        ));
+            copy_text("beGate.admit.notOurs", &[("name", &shown)]),
+        )),
+        Who::OtherClient => Err((
+            "wrong_owner",
+            copy_text("beGate.admit.otherClient", &[("name", &shown)]),
+        )),
     }
-    Ok(p.session_id)
 }
 
 /// **破坏性动作的门**：Gate 2（身份）**再加** Gate 3（`windows == 1`）。
@@ -272,6 +324,7 @@ pub(crate) fn admit_destructive(
     name: &str,
     target: &str,
     sid: Option<&str>,
+    requester: Option<&str>,
 ) -> Result<String, CmdErr> {
     let Some(p) = probe(target)? else {
         return Err((
@@ -282,14 +335,26 @@ pub(crate) fn admit_destructive(
             ),
         ));
     };
-    if !crate::control::gate_rules::gate2(name, Some(&p.ccm_sid)).allowed() {
-        return Err((
-            "wrong_owner",
-            copy_text(
-                "beGate.admitDestructive.notOurs",
-                &[("name", &format!("{name:?}"))],
-            ),
-        ));
+    match identity(name, &p, requester) {
+        Who::Pass => {}
+        Who::NotOurs => {
+            return Err((
+                "wrong_owner",
+                copy_text(
+                    "beGate.admitDestructive.notOurs",
+                    &[("name", &format!("{name:?}"))],
+                ),
+            ))
+        }
+        Who::OtherClient => {
+            return Err((
+                "wrong_owner",
+                copy_text(
+                    "beGate.admitDestructive.otherClient",
+                    &[("name", &format!("{name:?}"))],
+                ),
+            ))
+        }
     }
     if sid.is_some_and(|s| s != p.ccm_sid) {
         return Err((

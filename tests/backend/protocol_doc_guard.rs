@@ -104,6 +104,12 @@ const DISPATCH_FILES: &[(&str, &str)] = &[
         "control/cc_bus.rs",
         include_str!("../../src/backend/control/cc_bus.rs"),
     ),
+    // `control/launch.rs`：终端管理送字那一段里有 `"--"` 字面量（`send-keys -l -- <字>` · `set-buffer -- <字>`：
+    // 显式结束旗标，免得以 `--` 开头的字被 tmux 当成选项）。同上一条 cc_bus.rs 的处置：登记，不改判据。
+    (
+        "control/launch.rs",
+        include_str!("../../src/backend/control/launch.rs"),
+    ),
     // P4d：控制面的 CLI 入口。它**不做 match 分派**（认哪些 flag 由
     // `cli_control::spec_for` 从 `inbound::REGISTRY` 派生），但它持有
     // `PROBE_FLAG = "--backend-probe"` 这个字面量 —— 派生的文件集因此把它扫了进来。

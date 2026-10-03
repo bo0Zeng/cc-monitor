@@ -377,5 +377,32 @@ ck "-- 右边认不得的词直接报错（不猜）" \
 ck "后端子命令只能紧跟打头的 --" \
    "ccm: --list-sessions 是后端的子命令，只能紧跟打头的 --（ccm -- --list-sessions …），前面不许有交给 claude 的参数" \
    "$(ccm -p -- --list-sessions)"
+
+echo "===== 没有 -- 又没有终端：不起 claude（被别的程序经管道驱动的裸调用）====="
+# 假 claude 只记下自己被叫了（argv 写进标记文件）就退出；PATH 最前面是它，碰不到真的。
+FAKEBIN="$CCMDIR/fakebin"; mkdir -p "$FAKEBIN"
+MARK="$CCMDIR/claude-ran"
+printf '#!/bin/sh\nprintf "%%s\\n" "$*" >> "%s"\n' "$MARK" > "$FAKEBIN/claude"; chmod +x "$FAKEBIN/claude"
+bare() { env -u CLAUDE_CONFIG_DIR -u TMUX PATH="$FAKEBIN:$PATH" HOME="$NOHOME" CCM_CONFIG=/nonexistent "$CCM" "$@"; }
+rm -f "$MARK"; bare </dev/null >"$CCMDIR/out" 2>"$CCMDIR/err"; rc=$?
+ck "零参数、管道驱动：退出码 5" "5" "$rc"
+ck "零参数、管道驱动：claude 没被起" "no" "$([ -e "$MARK" ] && echo yes || echo no)"
+ck "零参数、管道驱动：stderr 说清怎么叫后端" "yes" "$(grep -qF 'ccm -- --stream' "$CCMDIR/err" && grep -qF 'ccm -- <子命令>' "$CCMDIR/err" && echo yes || echo no)"
+ck "零参数、管道驱动：stdout 一个字都没有" "" "$(cat "$CCMDIR/out")"
+rm -f "$MARK"; bare --list-projects </dev/null >/dev/null 2>&1; rc=$?
+ck "漏了 -- 的一次性叫法（--list-projects）：退出码 5、claude 没被起" "5 no" "$rc $([ -e "$MARK" ] && echo yes || echo no)"
+ck "有 -- 的不看终端：-- --ccm-print 照样印出那一行" \
+   "$UNSET; cd '/p' && exec claude" \
+   "$(bare -- --cwd /p --ccm-print </dev/null 2>&1)"
+ck "有 -- 的不看终端：-- --ccm-version 照答" "ccm 6" "$(bare -- --ccm-version </dev/null 2>&1)"
+# 有终端的正常起法不误伤：script 给一个伪终端（同 tmux 窗格、用户自己的终端、别名展开后的那一行）。
+ptyrun() { script -qec "$1" /dev/null >/dev/null 2>&1; }
+Q="env -u CLAUDE_CONFIG_DIR -u TMUX PATH='$FAKEBIN:$PATH' HOME='$NOHOME' CCM_CONFIG=/nonexistent '$CCM'"
+rm -f "$MARK"; ptyrun "$Q --resume abc"
+ck "伪终端里裸调用照起：claude 收到原样参数" "--resume abc" "$(cat "$MARK" 2>/dev/null)"
+rm -f "$MARK"; ptyrun "$Q -r s1 | cat"
+ck "stdin 是终端、stdout 进管道（ccm … | tee 那一形）：照起" "-r s1" "$(cat "$MARK" 2>/dev/null)"
+rm -f "$MARK"; ptyrun "echo | $Q --model x"
+ck "stdout 是终端、stdin 来自管道：照起" "--model x" "$(cat "$MARK" 2>/dev/null)"
 echo "===== 合计 PASS=$PASS FAIL=$FAIL ====="
 [ "$FAIL" -eq 0 ]

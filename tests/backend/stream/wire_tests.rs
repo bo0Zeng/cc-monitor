@@ -260,6 +260,7 @@ fn each_variant_serializes_to_single_line_with_expected_kind() {
                 cwd: None,
                 byte_offset: 0,
                 rid: None,
+                raw: None,
             },
             "line",
         ),
@@ -798,6 +799,7 @@ fn line_with_quotes_backslashes_and_newline_roundtrips() {
         cwd: None,
         byte_offset: 99,
         rid: None,
+        raw: None,
     };
 
     let line = to_line(&frame).expect("serialize");
@@ -1400,4 +1402,312 @@ fn net2_uncancellable_is_additive_and_last() {
         hello(vec!["kill".into()]),
         "{\"kind\":\"hello\",\"v\":1,\"build_id\":\"b\",\"host_arch\":\"x86_64\",\"claude_dir\":\"/c\",\"uncancellable\":[\"kill\"]}\n"
     );
+}
+
+// ═══ 第二个前端在读的形状：冻结（只许加字段）═══════════════════════════════
+//
+// 两个前端吃同一个后端：桌面端（monitor）与第二个前端（手机端）。后者按下表逐字段读帧，缺一格就把整帧当坏帧丢
+// （症状是「会话列表有、点进去永远空白」，零报错）。⇒ 表里登记的每一格不许改名、删、换类型；加新字段照旧（additive）。
+
+/// （帧 kind 或 `request`, 字段, JSON 类型）。`request` 是入方向请求信封。
+const SECOND_FRONTEND_READS: &[(&str, &str, &str)] = &[
+    ("hello", "v", "number"),
+    ("hello", "build_id", "string"),
+    ("hello", "host_arch", "string"),
+    ("hello", "claude_dir", "string"),
+    ("hello", "capabilities", "array"),
+    ("hello", "emits", "array"),
+    ("line", "session_id", "string"),
+    ("line", "path", "string"),
+    ("line", "seq", "number"),
+    ("line", "byte_offset", "number"),
+    ("line", "raw", "string"),
+    ("session_added", "sid", "string"),
+    ("session_added", "path", "string"),
+    ("session_added", "session_kind", "string"),
+    ("session_added", "cwd", "string"),
+    ("session_added", "name", "string"),
+    ("session_added", "lines", "number"),
+    ("session_added", "status", "string"),
+    ("session_added", "waiting_for", "string"),
+    ("session_added", "agent_kind", "string"),
+    ("session_added", "liveness_confidence", "string"),
+    ("session_added", "attachable", "bool"),
+    ("session_status", "sid", "string"),
+    ("session_status", "status", "string"),
+    ("session_status", "waiting_for", "string"),
+    ("session_status", "liveness_confidence", "string"),
+    ("session_removed", "sid", "string"),
+    ("session_removed", "cause", "string"),
+    ("overflow", "dropped", "number"),
+    ("overflow", "lost", "array"),
+    ("overflow", "lost_truncated", "bool"),
+    ("turn_end", "session_id", "string"),
+    ("turn_end", "uuid", "string"),
+    ("request", "id", "string"),
+    ("request", "cmd", "string"),
+    ("request", "args", "object"),
+];
+
+/// 每一种帧都填满（可选格全给值），这样「这一格还在不在、是什么类型」才看得见。
+fn every_frame_the_second_frontend_reads() -> Vec<Value> {
+    let s = Some("x".to_string());
+    let frames = vec![
+        hello_with(vec!["bg".into()], vec!["turn_end".into()]),
+        Frame::Line {
+            session_id: "s".into(),
+            path: "/p".into(),
+            seq: 1,
+            message: None,
+            cwd: None,
+            byte_offset: 9,
+            rid: None,
+            raw: Some("{}".into()),
+        },
+        Frame::SessionAdded {
+            sid: "s".into(),
+            agent_kind: s.clone(),
+            liveness_confidence: s.clone(),
+            session_kind: s.clone(),
+            attachable: Some(false),
+            cwd: s.clone(),
+            project_dir: None,
+            name: s.clone(),
+            path: s.clone(),
+            lines: Some(3),
+            status: s.clone(),
+            waiting_for: s.clone(),
+            container: None,
+            pid: None,
+        },
+        Frame::SessionStatus {
+            sid: "s".into(),
+            status: s.clone(),
+            waiting_for: s.clone(),
+            liveness_confidence: s.clone(),
+        },
+        Frame::SessionRemoved {
+            sid: "s".into(),
+            cause: RemovalCause::Superseded,
+        },
+        Frame::Overflow {
+            dropped: 2,
+            lost: vec![LostFrame {
+                kind: "session_status",
+                subject: s.clone(),
+            }],
+            lost_truncated: true,
+        },
+        Frame::TurnEnd {
+            session_id: "s".into(),
+            uuid: "u".into(),
+        },
+    ];
+    frames
+        .iter()
+        .map(|f| serde_json::from_str(to_line(f).unwrap().trim_end()).unwrap())
+        .collect()
+}
+
+fn json_type(v: &Value) -> &'static str {
+    match v {
+        Value::Number(_) => "number",
+        Value::String(_) => "string",
+        Value::Bool(_) => "bool",
+        Value::Array(_) => "array",
+        Value::Object(_) => "object",
+        Value::Null => "null",
+    }
+}
+
+/// 冻结表里的每一格，在真序列化出来的帧里都在、类型对；请求信封三键由真解析器认得、缺 `id` / `cmd` 就不认。
+#[test]
+fn the_shapes_the_second_frontend_reads_stay_put() {
+    let frames = every_frame_the_second_frontend_reads();
+    let mut kinds_seen = std::collections::BTreeSet::new();
+    for (kind, field, ty) in SECOND_FRONTEND_READS {
+        if *kind == "request" {
+            continue;
+        }
+        let f = frames
+            .iter()
+            .find(|f| f["kind"] == *kind)
+            .unwrap_or_else(|| panic!("冻结表里的帧 {kind} 不在样本里"));
+        kinds_seen.insert(*kind);
+        let got = f
+            .get(*field)
+            .unwrap_or_else(|| panic!("{kind}.{field} 没了（第二个前端在读它）：{f}"));
+        assert_eq!(json_type(got), *ty, "{kind}.{field} 换了类型：{f}");
+    }
+    assert_eq!(kinds_seen.len(), frames.len(), "样本里有冻结表没登记的帧");
+
+    let req: Request =
+        serde_json::from_str(r#"{"id":"1","cmd":"ping","args":{"a":1}}"#).expect("三键信封不认了");
+    let v = serde_json::json!({"id": req.id, "cmd": req.cmd, "args": req.args});
+    let keys: Vec<&str> = SECOND_FRONTEND_READS
+        .iter()
+        .filter(|(k, _, _)| *k == "request")
+        .map(|(_, f, ty)| {
+            assert_eq!(json_type(&v[*f]), *ty, "请求信封 {f} 换了类型");
+            *f
+        })
+        .collect();
+    assert_eq!(keys, ["id", "cmd", "args"]);
+    for missing in [r#"{"cmd":"ping","args":{}}"#, r#"{"id":"1","args":{}}"#] {
+        assert!(
+            serde_json::from_str::<Request>(missing).is_err(),
+            "缺键的信封也认了：{missing}"
+        );
+    }
+}
+
+/// `line.raw`：没索要的客户端字节一个不变（不带这一格）；索要了才带、是那一行原文。
+#[test]
+fn line_raw_is_only_there_when_asked() {
+    let line = |raw: Option<String>| {
+        to_line(&Frame::Line {
+            session_id: "s".into(),
+            path: "/p".into(),
+            seq: 0,
+            message: None,
+            cwd: None,
+            byte_offset: 5,
+            rid: None,
+            raw,
+        })
+        .unwrap()
+    };
+    assert_eq!(
+        line(None),
+        "{\"kind\":\"line\",\"session_id\":\"s\",\"path\":\"/p\",\"seq\":0,\"byte_offset\":5}\n"
+    );
+    assert_eq!(
+        line(Some("{\"a\":1}".into())),
+        "{\"kind\":\"line\",\"session_id\":\"s\",\"path\":\"/p\",\"seq\":0,\"byte_offset\":5,\"raw\":\"{\\\"a\\\":1}\"}\n"
+    );
+}
+
+// ═══ 第二个前端调的一次性子命令：冻结（叫法 · 位置参数 · 输出里它读的那几格）══════════════
+//
+// `--resolve` 的入出形状另有冻结金样（`tests/__fixtures__/resolve-contract.golden.json`）；会话 id 的校验规则钉在
+// `resolve_query_tests::the_session_id_rule_the_second_frontend_relies_on_stays_put`。
+
+/// （子命令, 位置参数个数）。叫法与位置参数一改，第二个前端那一侧就叫不通了。
+const SECOND_FRONTEND_SUBCOMMANDS: &[(&str, usize)] = &[
+    ("--list-projects", 0),
+    ("--list-sessions", 1),
+    ("--read-session", 1),
+    ("--read-session-tail", 2),
+    ("--read-session-from-offset", 2),
+    ("--resolve", 0),
+    ("--search", 1),
+    ("--fork-session", 2),
+];
+
+/// （子命令, 输出一行里第二个前端读的字段, JSON 类型）。
+const SECOND_FRONTEND_SUBCOMMAND_FIELDS: &[(&str, &str, &str)] = &[
+    ("--list-projects", "dirName", "string"),
+    ("--list-projects", "projectPath", "string"),
+    ("--list-projects", "sessionCount", "number"),
+    ("--list-projects", "lastActivityMs", "number"),
+    ("--list-sessions", "sessionId", "string"),
+    ("--list-sessions", "aiTitle", "string"),
+    ("--list-sessions", "cwd", "string"),
+    ("--list-sessions", "jsonlPath", "string"),
+    ("--list-sessions", "messageCountApprox", "number"),
+    ("--list-sessions", "startedAtMs", "number"),
+    ("--list-sessions", "updatedAtMs", "number"),
+    ("--list-sessions", "isBg", "bool"),
+];
+
+/// 结构夹具：一个项目、一个会话（三行中性记录），住临时家目录。
+fn second_frontend_home(tag: &str) -> (std::path::PathBuf, String, std::path::PathBuf) {
+    let home = std::env::temp_dir().join(format!("ccm-mif-{}-{tag}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&home);
+    let dir = home.join("projects").join("-p");
+    std::fs::create_dir_all(&dir).unwrap();
+    let sid = "11111111-2222-3333-4444-555555555555".to_string();
+    let path = dir.join(format!("{sid}.jsonl"));
+    let rows = [
+        format!(
+            r#"{{"type":"user","uuid":"aaaaaaaa-0000-0000-0000-000000000001","sessionId":"{sid}","timestamp":"2026-01-01T00:00:00Z","cwd":"/p","message":{{"role":"user","content":"x"}}}}"#
+        ),
+        r#"{"type":"ai-title","aiTitle":"t"}"#.to_string(),
+        format!(
+            r#"{{"type":"assistant","uuid":"aaaaaaaa-0000-0000-0000-000000000002","parentUuid":"aaaaaaaa-0000-0000-0000-000000000001","sessionId":"{sid}","timestamp":"2026-01-01T00:00:01Z","cwd":"/p","message":{{"id":"m1","role":"assistant","content":[{{"type":"text","text":"y"}}]}}}}"#
+        ),
+    ];
+    std::fs::write(&path, rows.join("\n") + "\n").unwrap();
+    (home, sid, path)
+}
+
+/// 每一条都还在子命令表里、照原来的叫法与位置参数真跑得通；列项目 / 列会话输出里它读的那几格还在、类型没变。
+#[test]
+fn the_subcommands_the_second_frontend_calls_stay_put() {
+    for (flag, _) in SECOND_FRONTEND_SUBCOMMANDS {
+        assert!(crate::SUBCOMMANDS.contains(flag), "{flag} 不在子命令表里了");
+    }
+    let (home, sid, path) = second_frontend_home("sub");
+    let p = path.to_string_lossy().to_string();
+    let argv = |xs: &[&str]| xs.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+    let runs: Vec<(&str, Vec<String>)> = vec![
+        ("--list-projects", argv(&["--list-projects"])),
+        ("--list-sessions", argv(&["--list-sessions", "-p"])),
+        ("--read-session", argv(&["--read-session", &p])),
+        (
+            "--read-session-tail",
+            argv(&["--read-session-tail", &p, "1"]),
+        ),
+        (
+            "--read-session-from-offset",
+            argv(&["--read-session-from-offset", &p, "0"]),
+        ),
+        ("--search", argv(&["--search", "x"])),
+        (
+            "--fork-session",
+            argv(&[
+                "--fork-session",
+                &sid,
+                "aaaaaaaa-0000-0000-0000-000000000002",
+            ]),
+        ),
+    ];
+    for (flag, args) in &runs {
+        let want = SECOND_FRONTEND_SUBCOMMANDS
+            .iter()
+            .find(|(f, _)| f == flag)
+            .unwrap()
+            .1;
+        assert_eq!(args.len() - 1, want, "{flag} 的位置参数个数");
+        assert!(crate::is_query_mode(args), "{flag} 不进一次性查询了");
+        let code = match *flag {
+            "--search" => crate::observe::search_query::run(&home, args),
+            "--fork-session" => crate::control::fork_write::run(&home, args),
+            _ => crate::observe::history_query::run(&home, args),
+        };
+        assert_eq!(code, 0, "{flag} 照原来的叫法跑不通了：{args:?}");
+    }
+    let mut buf = Vec::new();
+    crate::observe::history_query::list_projects_to(&home, &mut buf).expect("列项目");
+    let projects: Value =
+        serde_json::from_str(String::from_utf8_lossy(&buf).lines().next().unwrap()).unwrap();
+    let mut buf = Vec::new();
+    crate::observe::history_query::list_sessions_into(&home, "-p", &mut buf).expect("列会话");
+    let sessions: Value = String::from_utf8_lossy(&buf)
+        .lines()
+        .filter_map(|l| serde_json::from_str::<Value>(l).ok())
+        .find(|v| v["sessionId"] == sid.as_str())
+        .expect("列会话里没有夹具那条");
+    for (flag, field, ty) in SECOND_FRONTEND_SUBCOMMAND_FIELDS {
+        let row = if *flag == "--list-projects" {
+            &projects
+        } else {
+            &sessions
+        };
+        let got = row
+            .get(*field)
+            .unwrap_or_else(|| panic!("{flag} 的输出里没了 {field}：{row}"));
+        assert_eq!(json_type(got), *ty, "{flag}.{field} 换了类型：{row}");
+    }
+    let _ = std::fs::remove_dir_all(&home);
 }

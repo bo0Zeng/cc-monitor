@@ -1,0 +1,201 @@
+{
+  "说明": [
+    "终端管理 L1 三条帧命令（terminals-list · terminal-preview · terminal-input）：请求样例 · 原料 · 成品 · 码集合。两个前端共用。",
+    "后端侧（tests/backend/control/terminals_tests.rs）：请求过各自的解析 · 原料喂纯构造器 == 成品 · 码集合 == inbound::REGISTRY 那一块的 codes。",
+    "内容是结构占位（会话名 demo-cc / pipe-x，屏幕两行中性字），不含真会话正文。"
+  ],
+  "terminals-list": {
+    "request": {
+      "client": "mobile"
+    },
+    "sessions": "$1\tdemo-cc\t1\t100\tsid-a\tclaude\tccm\tclaude\t/p\tdemo title\n$2\tpipe-x\t1\t200\tsid-b\tclaude\tmobile\tbash\t/q\tq\n$3\tother\t2\t300\t\t\tdesktop\tvim\t/r\tr\n",
+    "clients": "$1\t50\t90\n",
+    "reply": {
+      "complete": true,
+      "terminals": [
+        {
+          "can": {
+            "end": true,
+            "input": true,
+            "preview": true
+          },
+          "clients": [
+            {
+              "kind": "terminal-window",
+              "last_activity": 90,
+              "since": 50
+            }
+          ],
+          "cwd": "/p",
+          "host": "tmux",
+          "input": "shared",
+          "last_activity": 100,
+          "program": "claude",
+          "purpose": "normal",
+          "session": {
+            "agent": "claude",
+            "sid": "sid-a"
+          },
+          "started_by": {
+            "client": "ccm",
+            "mine": true
+          },
+          "state": "running",
+          "terminal": "tmux-1",
+          "title": "demo title",
+          "tmux_name": "demo-cc"
+        },
+        {
+          "can": {
+            "end": {
+              "no": "not-yours"
+            },
+            "input": {
+              "no": "not-yours"
+            },
+            "preview": true
+          },
+          "clients": [],
+          "cwd": "/r",
+          "host": "tmux",
+          "input": "shared",
+          "last_activity": 300,
+          "program": "vim",
+          "purpose": "normal",
+          "started_by": {
+            "client": "desktop",
+            "mine": false
+          },
+          "state": "running",
+          "terminal": "tmux-3",
+          "title": "vim",
+          "tmux_name": "other"
+        },
+        {
+          "can": {
+            "end": true,
+            "input": true,
+            "preview": true
+          },
+          "clients": [],
+          "cwd": "/q",
+          "host": "tmux",
+          "input": "shared",
+          "last_activity": 200,
+          "program": "bash",
+          "purpose": "normal",
+          "session": {
+            "agent": "claude",
+            "sid": "sid-b"
+          },
+          "started_by": {
+            "client": "mobile",
+            "mine": true
+          },
+          "state": "program-exited",
+          "terminal": "tmux-2",
+          "title": "bash",
+          "tmux_name": "pipe-x"
+        }
+      ]
+    },
+    "codes": [
+      "invalid_args",
+      "unobservable"
+    ]
+  },
+  "terminal-preview": {
+    "request": {
+      "terminal": "tmux-1",
+      "color": true,
+      "scrollback": 0
+    },
+    "capture": "\u001b[1m\u001b[31mline\u001b[0m one\nline two\n",
+    "geometry": {
+      "cols": 80,
+      "rows": 2,
+      "x": 3,
+      "y": 1,
+      "visible": true
+    },
+    "captured_at": 1700000000,
+    "reply": {
+      "capped": false,
+      "captured_at": 1700000000,
+      "cols": 80,
+      "cursor": {
+        "visible": true,
+        "x": 3,
+        "y": 1
+      },
+      "lines": [
+        {
+          "spans": [
+            {
+              "bold": true,
+              "fg": "red",
+              "from": 0,
+              "to": 4
+            }
+          ],
+          "text": "line one"
+        },
+        {
+          "spans": [],
+          "text": "line two"
+        }
+      ],
+      "rows": 2,
+      "screen": "5e267175b16e944f",
+      "scrollback_lines": 0
+    },
+    "codes": [
+      "bad_target",
+      "invalid_args",
+      "not_known",
+      "ambiguous",
+      "no_tmux",
+      "no_server",
+      "no_such_session",
+      "capture_failed",
+      "unobservable"
+    ]
+  },
+  "terminal-input": {
+    "requests": [
+      {
+        "terminal": "tmux-1",
+        "text": "/usage",
+        "enter": true,
+        "seen_screen": "0000000000000000",
+        "client": "mobile"
+      },
+      {
+        "sid": "sid-a",
+        "key": "esc"
+      }
+    ],
+    "replies": [
+      {
+        "result": "delivered"
+      },
+      {
+        "result": "refused",
+        "why": "screen-changed",
+        "screen": "0000000000000000"
+      },
+      {
+        "result": "unsure"
+      }
+    ],
+    "codes": [
+      "bad_target",
+      "invalid_args",
+      "no_tmux",
+      "no_server",
+      "no_such_session",
+      "capture_failed",
+      "unobservable"
+    ]
+  }
+}

@@ -236,13 +236,32 @@ pub(crate) fn self_invocation(argv: &[String]) -> Vec<String> {
     argv.first().cloned().into_iter().collect()
 }
 
+/// 没有终端可交互、又没有 `--` ⇒ 不起 claude 时的退出码（与下面 [`run`] 那四档分开）。
+pub const EXIT_NO_TERMINAL: i32 = 5;
+
+/// [`route`] 落进「起一个 claude」那一支之后的第一道判断（纯函数）：没有 `--`（整行要交给 claude）、
+/// stdin 与 stdout 都不是终端 ⇒ 不起。被别的程序经管道驱动的裸调用多半是要叫后端却漏了 `--`，
+/// 起一个没人能交互的 claude 只会白花钱。有 `--` 的（`--ccm-print` · `--ccm-tmux --detach` · 诊断口）不看终端。
+pub(crate) fn refuses_without_terminal(args: &[String], stdin_tty: bool, stdout_tty: bool) -> bool {
+    argv::last_end(args).is_none() && !stdin_tty && !stdout_tty
+}
+
 /// 一次性模式的入口。返回**退出码**。
 ///
-/// 退出码的四档（与旧实现逐字同义，消费者按码分支）：
-/// `0` 正常 · `2` 用法错（`die`）· `3` 会话名被占 · `4` 起不来。
+/// 退出码的五档（前四档与旧实现逐字同义，消费者按码分支）：
+/// `0` 正常 · `2` 用法错（`die`）· `3` 会话名被占 · `4` 起不来 · `5` 没有终端又没有 `--`（[`EXIT_NO_TERMINAL`]）。
 /// `process_argv` ＝ 这个进程的整条 argv，由调用方（`main.rs`，argv 只在那里取一次）交；
 /// 本模块不自己读 `std::env::args`。
 pub fn run(args: &[String], process_argv: &[String], running: RunningScan) -> i32 {
+    use std::io::IsTerminal;
+    if refuses_without_terminal(
+        args,
+        std::io::stdin().is_terminal(),
+        std::io::stdout().is_terminal(),
+    ) {
+        eprintln!("{}", copy_text("beCcm.noTerminal.say", &[]));
+        return EXIT_NO_TERMINAL;
+    }
     let parsed = match argv::parse(args) {
         Ok(p) => p,
         Err(Die(msg)) => return die(&msg),
@@ -595,6 +614,11 @@ fn launch_args(c: &plan::Container) -> serde_json::Value {
         m.insert("width".into(), w.clone().into());
         m.insert("height".into(), h.clone().into());
     }
+    // ccm 起的会话是用户在终端里起的：不归任何一个前端（「哪个前端的会话」那一维，`gate_rules::CLIENT_TERMINAL`）。
+    m.insert(
+        "client".into(),
+        crate::control::gate_rules::CLIENT_TERMINAL.into(),
+    );
     serde_json::Value::Object(m)
 }
 

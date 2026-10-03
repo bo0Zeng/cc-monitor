@@ -107,6 +107,9 @@ pub(crate) struct LaunchRequest {
     /// 那是「写了个修饰、看起来生效了、其实只生效了一半」——直接 `invalid_args`。
     pub(crate) width: Option<String>,
     pub(crate) height: Option<String>,
+    /// 这次请求自报是哪个前端（`gate::requester_of`）。`send-into` 拿它过「哪个前端的会话」那一维；
+    /// `create-or-attach` 新建成了就把它写成那个会话的 `@ccm_client`（ccm 自己起的写 `ccm`）。
+    pub(crate) client: Option<String>,
 }
 
 /// 一次 `launch` 的结局。三个字段就是「没起成 / 起了但没确认 / 起成了」的载体。
@@ -262,6 +265,8 @@ pub(crate) fn parse_request(args: &serde_json::Value) -> Result<LaunchRequest, C
         }
     }
 
+    let client = super::gate::requester_of(args)?;
+
     Ok(LaunchRequest {
         mode,
         name,
@@ -271,6 +276,7 @@ pub(crate) fn parse_request(args: &serde_json::Value) -> Result<LaunchRequest, C
         agent,
         width,
         height,
+        client,
     })
 }
 
@@ -402,7 +408,7 @@ fn tmux(args: &[&str]) -> Result<Ran, CmdErr> {
 
 /// [`tmux`] 的本体：`cmd` 由调用方造（生产 = `Command::new("tmux")`；判据换一个假 tmux 的绝对路径，
 /// 不碰进程级 `PATH`）。stdout 照旧不要（这几条子命令本来就不往 stdout 写）。
-fn ran(mut cmd: Command, args: &[&str]) -> Result<Ran, CmdErr> {
+pub(crate) fn ran(mut cmd: Command, args: &[&str]) -> Result<Ran, CmdErr> {
     match cmd
         .args(args)
         .stdin(Stdio::null())
@@ -428,6 +434,8 @@ pub(crate) enum Secondary {
     AgentTag,
     /// 身份**意图**键（建会话的人声明「打算跑这个 sid」）。
     IntentTag,
+    /// 谁起的（`@ccm_client`）。
+    ClientTag,
 }
 
 impl Secondary {
@@ -438,12 +446,14 @@ impl Secondary {
             Secondary::IntentTag => {
                 "身份意图没写上：之后对这个会话的 kill / 送键可能被身份门拒（wrong_owner）"
             }
+            Secondary::ClientTag => "谁起的没写上：这个会话按名字规则判身份",
         }
     }
     fn what(self) -> &'static str {
         match self {
             Secondary::AgentTag => "打 agent 标",
             Secondary::IntentTag => "写身份意图",
+            Secondary::ClientTag => "写谁起的",
         }
     }
 }
@@ -528,7 +538,7 @@ fn run_with(
             //
             // ⚠ 顺序不可反：`admit` 必须在 `type_payload` **之前**。
             // 由 `the_send_into_arm_admits_before_it_types` 钉住。
-            let handle = super::gate::admit(&req.name, &t)?;
+            let handle = super::gate::admit(&req.name, &t, req.client.as_deref())?;
             type_payload(&handle, &req.payload, tmux)?;
             Ok(LaunchOutcome {
                 created: false,
@@ -634,6 +644,15 @@ fn run_with(
                     &["set-option", "-t", &t, "@ccm_sid_expect", sid],
                 );
             }
+            // 谁起的（「哪个前端的会话」那一维）：建会话的人自己声明，写在 `send-keys` 之前。
+            if let Some(client) = &req.client {
+                secondary(
+                    tmux,
+                    &req.name,
+                    Secondary::ClientTag,
+                    &["set-option", "-t", &t, "@ccm_client", client],
+                );
+            }
             type_payload(&t, &req.payload, tmux)?;
             Ok(LaunchOutcome {
                 created: true,
@@ -663,6 +682,50 @@ fn type_payload(
             &[("target", &format!("{target:?}")), ("said", &r.said)],
         ),
     ))
+}
+
+/// 终端管理送字的那一段字面字过不过形状：非空、不超长、除 `\n` / `\t` 外没有控制字符（按键走 [`press_key`]）。
+pub(crate) fn check_input_text(text: &str) -> Result<(), CmdErr> {
+    check_typed_payload(text)
+}
+
+/// 送一段**字面字**（终端管理 L1 送字那一半）：单行 `send-keys -l`（不解释成键名）；多行按粘贴送
+/// （`paste-buffer -p`：程序开了括号粘贴就带上，用完即删那个缓冲）。`enter` ⇒ 之后再补一个回车键。
+/// `target` 由调用方过完门交来（句柄，不是名字）；`tmux` 同 [`run_with`] 那一口（测试交隔离 socket 上的）。
+pub(crate) fn type_literal(
+    target: &str,
+    text: &str,
+    enter: bool,
+    tmux: &dyn Fn(&[&str]) -> Result<Ran, CmdErr>,
+) -> Result<Ran, CmdErr> {
+    let sent = if text.contains('\n') {
+        static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let buf = format!(
+            "ccm-input-{}-{}",
+            std::process::id(),
+            SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        );
+        let set = tmux(&["set-buffer", "-b", &buf, "--", text])?;
+        if !set.ok {
+            return Ok(set);
+        }
+        tmux(&["paste-buffer", "-p", "-d", "-b", &buf, "-t", target])?
+    } else {
+        tmux(&["send-keys", "-t", target, "-l", "--", text])?
+    };
+    if !sent.ok || !enter {
+        return Ok(sent);
+    }
+    tmux(&["send-keys", "-t", target, "Enter"])
+}
+
+/// 送一个键（`key` 是 tmux 的键名，来自终端管理那张有限键表；不收任意串）。
+pub(crate) fn press_key(
+    target: &str,
+    key: &str,
+    tmux: &dyn Fn(&[&str]) -> Result<Ran, CmdErr>,
+) -> Result<Ran, CmdErr> {
+    tmux(&["send-keys", "-t", target, key])
 }
 
 /// 入方向命令的入口：`args` → 结局 JSON。
