@@ -496,24 +496,32 @@ let h = windows::Win32::Foundation::HWND(hwnd_value);      // 0.56 HWND
 
 ---
 
-## 20. 用户 input 检测必须分辨"真用户输入" vs "CLI 注入 noise"
+## 20. 用户角色的记录要先分「谁说的」
 
-任何"用户在终端输入"的行为感知（如 v2.4 issue #2 的自动切 Tab）**不能**只看 `JsonlRecord::User`——Claude Code 把多种非用户行为也写成 `type=user`：
+Claude Code 把很多不是人说的东西也写成 `type=user`（排队消息 `queue-operation` 同理）。**判定只有一份**：适配层
+（Claude：`agents/claudecode/text.rs::user_text`；Codex：`agents/codex/record.rs`）给每条定来源，随记录成品带出
+`userText.speaker`（＋ 要显示的 `userText.text`、粘贴块边界、通知 / 来话的几格）；渲染 · 排队消息建卡 · 自动切 Tab ·
+大纲 · 搜索 · 历史摘录 · 骨架估高 · 子运行收场都读它，界面不再看正文认标记。
 
-| 形态 | content 长啥样 | 是不是真用户输入 |
+| 来源 | 怎么认（先字段、后具名框 / 固定句） | 算人说的 |
 |---|---|:---:|
-| 真用户敲键 | `[{type:"text", text:"..."}]` 或纯字符串 | ✓ |
-| Slash 命令 / compact summary | 用户主动行为 | ✓ |
-| CLI 内部 prompt 包装 | 被 `stripInternalNoise` 剥光 | ✗ |
-| **ESC 中断标记** | `[Request interrupted by user]` / `[Request interrupted by user for tool use]` | ✗ |
-| 工具结果回灌 | `[{type:"tool_result", ...}]` Anthropic API schema | ✗ |
-| `<synthetic>` 包裹 | claude 内部应答 | ✗ |
+| 人打的（含粘贴、采纳的建议、排队时打的） | `origin.kind = human`；没有字段时认不出的都归这里 | ✓ |
+| 斜杠命令 · `!` 输入 | `<command-name>` 三标签 · `<bash-input>` | ✓ |
+| `!` 输出 · 本地命令输出 | `<bash-stdout>`/`<bash-stderr>` · `<local-command-stdout>` | ✗ |
+| 后台任务通知 | `origin.kind = task-notification` · `<task-notification>` 框（前面的固定说明句跟着框走） | ✗ |
+| 子 agent 来话 / 交回 · 另一个实例来话 | `origin.kind = peer`（`handback`）· `<agent-message>` / `<cross-session-message>` 框 | ✗ |
+| （子 agent 侧）主会话派的活 · 后来发的话 | 子 agent 记录首条 · `origin.kind = coordinator` | ✗ |
+| 系统注入（提醒 · 技能展开 · 续跑样板 · 定时触发 · 额度恢复续跑） | `isMeta` · `origin.kind = auto-continuation` · 五种包装剥空 | ✗ |
+| 压缩摘要 | `isCompactSummary` | ✗ |
+| ESC 中断标记 | 整条恰是 `[Request interrupted by user…]` | ✗ |
+| 工具结果回灌 | 全是 `tool_result` 块 | ✗ |
 
-**判别标准**：复用前端 `cards/index.ts::renderMessage` 的 `result.kind === "card"`，它已经把以上所有非真输入路径过滤到 `kind: "skip"` 或 `kind: "tool-group"`。判 user-active 时**只看 card 且 type === "user"**。
+**不许松动的三条**：① 认不出的归人（宁可漏判，不许吃掉人话）；② 只认具名框（要有收尾）与固定句，**不拿「以 `<` 开头」当判据**（人真会这么打字）；
+③ 字段比正文优先（人粘贴了一段 agent 的框，`origin.kind = human` 说了算）。
 
-**为什么不能松动**：v2.4 issue #2 v2.4.0 没考虑 ESC 中断的 `[Request interrupted by user]` 也是 `type=user`，导致用户按 ESC 时 monitor 错误抢前台。v2.4.2 把它加进 `stripInternalNoise` 让走 skip 修复。
-
-**未来加新的"用户行为感知"特性**（如：跨 Tab 跳焦提示、统计用户敲键次数等）必须先确认信号来源是否经过 `renderMessage` 过滤；如果走 raw `JsonlRecord::User` 必须独立维护一份等价过滤。
+**为什么**：v2.4 issue #2 没考虑 ESC 中断标记也是 `type=user`，按 ESC 时错误抢前台；后来 Claude Code 又把子 agent 交回、
+后台通知、另一实例的消息都写成 `type=user`，黑名单没跟上 ⇒ agent 说的话被画成用户气泡、进了「你说过的话」。
+**未来加新的「用户行为感知」**一律读 `userText.speaker`，不自己再判。
 
 ---
 

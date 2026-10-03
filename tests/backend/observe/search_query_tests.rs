@@ -1,6 +1,6 @@
 use super::*;
 
-// ⚠ `extract_*` / `clean_user_text` / `find_ci` / `make_snippet` 那 4 条单元测试
+// ⚠ `extract_*` / `user_text` / `find_ci` / `make_snippet` 那 4 条单元测试
 // **随实现住在口径的家里**（`K-R100`；通用那几条在 `search_rules_tests.rs`，记录文本那几条在 `agents/claudecode/text_tests.rs`）。
 // 在这里再抄一份 = 又在本文件养出一个「口径的家」，正是本件要治的形状。
 

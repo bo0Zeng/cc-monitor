@@ -26,6 +26,7 @@
  *   0.0.8→0.0.9 那一跳的对照仍然缺(没有 0.0.8 的读数),那一格今天仍然判不了。
  */
 import type { JsonlRecord } from "./generated/JsonlRecord";
+import { drawsCard } from "./speaker";
 
 // 镜像 styles.css 的字体 token(canvas font 接受完整 fallback 栈——必须逐字同栈,
 // 否则"装了 Source Serif Pro 没装 4"的机器上 DOM 与 canvas 各走各的字体,度量漂移)
@@ -416,7 +417,8 @@ export interface SkeletonFacts {
   t?: string;
   u?: string;
   sc?: boolean;
-  mt?: boolean;
+  /** user 记录是谁说的（后端判好的来源；人说的与工具结果省略） */
+  sp?: string;
   /** 正文字符数（代码块外） */
   ch?: number;
   /** 其中 CJK */
@@ -477,7 +479,7 @@ function factCode(f: SkeletonFacts): number {
 /** 一条记录属于哪一类（不看邻居）。 */
 export function skeletonKind(f: SkeletonFacts): SkeletonKind {
   if (f.t !== "user" && f.t !== "assistant" && f.t !== "system") return "none";
-  if (f.mt) return "none";
+  if (f.sp && !drawsCard(f.sp)) return "none";
   if (f.t === "system") return "card";
   const hasBody = (f.ch ?? 0) > 0 || (f.cb ?? 0) > 0;
   if (!hasBody) return (f.fd ?? 0) > 0 ? "tool" : "none";
@@ -587,7 +589,7 @@ function splitFences(md: string): { prose: string; codeLines: number; codeBlocks
  */
 export function refineItemOf(rec: JsonlRecord, colW: number = COL_W): RefineItem | null {
   if (rec.type !== "user" && rec.type !== "assistant") return null;
-  if (rec.type === "user" && rec.isMeta) return null;
+  if (rec.type === "user" && !drawsCard(rec.userText.speaker.kind)) return null;
   const c: unknown = (rec.message as { content?: unknown } | undefined)?.content;
   let md = "";
   let folded = 0;

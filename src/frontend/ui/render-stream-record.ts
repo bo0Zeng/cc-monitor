@@ -34,6 +34,7 @@ import { renderMessage, buildToolGroup, addToToolGroup, type JsonlRecord, type R
 import { extractBranchRecord, type BranchRecord } from "./branching";
 import { observeForEnhance } from "./render";
 import { applyIntrinsicSize } from "./height-estimate";
+import { saidByHuman } from "./speaker";
 import type { RecordTimeline } from "./record-timeline";
 import type { JsonlLinePayload } from "./events";
 
@@ -126,19 +127,6 @@ function queuedAtOf(content: string): string | null {
   return QUEUED_AT.get(content) ?? null;
 }
 
-/** P0c：一条 `remove` 的 content 算不算「用户说的话」。
- *
- *  ⚠ **这是白名单式排除，不是黑名单** —— 今天只排掉一种已知的系统注入。
- *  实测本会话 38 条 `remove` 里 **25 条是 `<task-notification>`**（后台任务完成通知），
- *  只有 16 条是用户真实输入。把前者当成「用户说的话」渲染出来是错的。
- *
- *  ⚠ **刻意不拿「以 `<` 开头」当判据** —— 用户真可能以 `<` 开头打字。钉具名标签，
- *  新的注入类型出现时**回来加一条**，别把它放宽成前缀匹配（那会开始吃掉用户的话）。 */
-function isQueuedUserSpeech(content: string | null): content is string {
-  if (!content || !content.trim()) return false;
-  return !content.trimStart().startsWith("<task-notification>");
-}
-
 export function routeMetaAndBranch(
   payload: JsonlLinePayload,
   sink: MetaSink,
@@ -185,7 +173,8 @@ export function routeMetaAndBranch(
       rememberQueuedAt(message.content, message.timestamp);
       return "consumed";
     }
-    if (message.operation === "remove" && isQueuedUserSpeech(message.content)) {
+    // 只有人说的那一支建卡：后台通知 · agent 来话这些也会排队、也会被插进正在跑的那一轮，谁说的由后端判好（`userText`）。
+    if (message.operation === "remove" && message.content && message.userText?.speaker.kind === "human" && message.userText.text) {
       // 把打字时刻贴回记录上 —— 下游 `renderMessage` 只认 `timestamp` 这一个字段。
       // 取不到（enqueue 那条没到 / 已被挤出）⇒ 原样用 `remove` 的时刻，**不空着**：
       // 一个晚 25 秒的时间仍然比没有时间有用，而卡上「排队时发出」那句已经在提示读者。
@@ -323,12 +312,12 @@ function pushCostSample(ring: RenderCostSample[], s: RenderCostSample): void {
 }
 
 /**
- * 记录字节数（口径 = 原始 jsonl 行：monitor 解析时多填的 `userText` 成品不算）。
+ * 记录字节数（口径 = 原始 jsonl 行：后端解析时多填的 `userText` 成品不算）。
  * ⚠ 调用点必须在**总时刻取完之后**，否则它自己的 O(len) 会进读数。
  */
 function recordBytes(message: JsonlRecord): number {
   try {
-    const raw = message.type === "user" ? { ...message, userText: undefined } : message;
+    const raw = message.type === "user" || message.type === "queue-operation" ? { ...message, userText: undefined } : message;
     return new TextEncoder().encode(JSON.stringify(raw)).length;
   } catch {
     // 循环引用之类 —— 不让仪表把渲染搞崩，记 0 让它落进最小桶并在报表里显形
@@ -414,7 +403,7 @@ export function renderContentRecord(
       // 不会把 tab 切过来 —— 而那恰恰是**最需要切过去**的时刻（用户刚插了话，
       // 多半正等着看回应）。
       // `userActive` 自带三道闸（设置开关 / 5s 手动保护 / batch 期守卫），不会乱切。
-      if (message.type === "user" || message.type === "queue-operation") {
+      if ((message.type === "user" || message.type === "queue-operation") && saidByHuman(message.userText?.speaker.kind ?? "")) {
         sink.onRealUserInput?.(payload.session_id);
       }
       if (probe) {

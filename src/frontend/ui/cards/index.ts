@@ -10,21 +10,17 @@
  * - 按 record.type + content 形态分发：user 气泡 / assistant 卡 / 纯工具 → tool-group /
  *   tool_result 注入到对应 tool_use 折叠条；slash / compact / agent / diff / interactive /
  *   api-error 子卡委派给 cards/ 同级模块。
- * - CLI 注入的非真用户输入（含 ESC 中断标记，INVARIANT § 20）：规则只在 `agents/claudecode/text.rs::user_text`，
- *   monitor 解析时填进记录（`userText.clean`），这里只读成品。
+ * - user 记录是谁说的（人 · 斜杠命令 · `!` 输入/输出 · 压缩摘要 · 派给子 agent 的活 · 系统注入 · agent 来话 · 后台通知……，
+ *   INVARIANT § 20）：判定只在后端，随记录成品带来（`userText.speaker` ＋ 要显示的 `userText.text`），这里只按它画。
  * - `pendingToolResults`：tool_result 先于 tool_use 到达时先 fallback 渲染，batch 末
  *   `reconcilePendingToolResults` 重新匹配注入。
  */
 import { makeYieldToMain } from "../yield-to-main";
 import { renderMarkdown, renderPlainText } from "../render";
-import { parseSlashCommand, buildSlashCommandCard } from "./slash";
-import {
-  parseBashInput,
-  parseBashOutput,
-  buildBashInputCard,
-  buildBashOutputCard,
-} from "./bash";
-import { isCompactSummary, buildCompactSummaryCard } from "./compact";
+import { buildSlashCommandCard } from "./slash";
+import { buildBashInputCard, buildBashOutputCard } from "./bash";
+import { buildCompactSummaryCard } from "./compact";
+import { drawsCard } from "../speaker";
 import { buildAgentCard } from "./subagent";
 import { buildDiffBody } from "./diff";
 import { buildInteractiveCard, markInteractiveAnswer } from "./interactive";
@@ -174,52 +170,33 @@ export type RenderResult =
 export function renderMessage(rec: JsonlRecord, ctx: RenderContext): RenderResult {
   switch (rec.type) {
     case "user": {
-      // Claude Code 注入的 meta 消息（skill/command 展开 prompt、system-reminder、
-      // caveat…）带 isMeta —— 不是用户真正输入，别当 user 气泡渲染。记录仍在 timeline
-      // 里保 parent 链（同 attachment），只是不建卡。
-      if (rec.isMeta) return { kind: "skip" };
-      const rawText = extractText(rec.message.content);
-      if (rawText.trim()) {
-        // CLI 注入的 prompt 包装已由 monitor 按那一条规则剥过（`userText.clean`，J10）；剩余文本喂给下游识别 +
-        // 渲染。剥干净就 skip 整条。
-        const text = rec.userText.clean;
-        if (text.length === 0) {
-          return { kind: "skip" };
-        }
-        if (isCompactSummary(text)) {
+      // 谁说的由后端判好（`userText.speaker`）；不建卡的那几种（系统注入 · agent 来话 · 后台通知 · 中断标记……）
+      // 仍在 timeline 里占链节点（同 attachment），只是不建卡。
+      const said = rec.userText;
+      const speaker = said.speaker;
+      if (!drawsCard(speaker.kind)) return { kind: "skip" };
+      switch (speaker.kind) {
+        case "slashCommand":
+          return { kind: "card", element: buildSlashCommandCard(speaker, rec.timestamp, formatTimestampShort) };
+        case "bashInput":
+          return { kind: "card", element: buildBashInputCard(speaker, rec.timestamp, formatTimestampShort) };
+        case "bashOutput":
+          return { kind: "card", element: buildBashOutputCard(speaker, rec.timestamp, formatTimestampShort) };
+        case "compactSummary":
+          if (!said.text) return { kind: "skip" };
           return {
             kind: "card",
-            element: buildCompactSummaryCard(text, rec.timestamp, formatTimestampShort),
+            element: buildCompactSummaryCard(said.text, rec.timestamp, formatTimestampShort),
           };
-        }
-        const slash = parseSlashCommand(text);
-        if (slash) {
-          return {
-            kind: "card",
-            element: buildSlashCommandCard(slash, rec.timestamp, formatTimestampShort),
-          };
-        }
-        // Batch4-F16：`!` bash 模式的输入/输出各渲染成终端风格卡；
-        // 识别不了一律 fall through 到 user 气泡原样展示（faithful 底线）。
-        const bashIn = parseBashInput(text);
-        if (bashIn) {
-          return {
-            kind: "card",
-            element: buildBashInputCard(bashIn, rec.timestamp, formatTimestampShort),
-          };
-        }
-        const bashOut = parseBashOutput(text);
-        if (bashOut) {
-          return {
-            kind: "card",
-            element: buildBashOutputCard(bashOut, rec.timestamp, formatTimestampShort),
-          };
-        }
-        return { kind: "card", element: buildUserCard(rec, text) };
+        case "toolResult":
+          break;
+        default:
+          // 人说的话 · 派给子 agent 的活：用户气泡；没有正文（只有图片之类）不建卡。
+          if (!said.text) return { kind: "skip" };
+          return { kind: "card", element: buildUserCard(rec, said.text) };
       }
 
-      // text 为空 → 多半是工具结果回灌（content 全是 tool_result 块）。
-      // tool_result 渲染会注入到对应 tool_use 折叠条内部，返回 null；
+      // 工具结果回灌：注入到对应 tool_use 折叠条内部，返回 null；
       // 只有找不到匹配 tool_use 的 fallback 才产生独立 element。
       const blocks = normalizeBlocks(rec.message.content).filter(
         (b) => b.type === "tool_result",
@@ -309,11 +286,10 @@ export function renderMessage(rec: JsonlRecord, ctx: RenderContext): RenderResul
     // 它没有 `user` 记录、没有 `uuid`、没有 `parentUuid` —— 只有这条 `queue-operation`。
     // 不在这里建卡，用户说的话就整条消失（本会话实测丢了 16 条，全是打断时说的）。
     //
-    // ⚠ 走到这里的**只有** `remove` 且非系统注入那一格（`routeMetaAndBranch` 把
-    // `enqueue`/`dequeue` 都判 `"consumed"` 了）—— 那个判定连同它的实测读数写在那边，
-    // 本处不抄第二份。
+    // ⚠ 走到这里的**只有** `remove` 且后端判为人说的那一格（`routeMetaAndBranch` 把
+    // `enqueue`/`dequeue` 与别的来源都判 `"consumed"` 了）。
     case "queue-operation": {
-      const text = (rec.content ?? "").trim();
+      const text = rec.userText?.speaker.kind === "human" ? rec.userText.text : "";
       if (!text) return { kind: "skip" };
       return { kind: "card", element: buildQueuedUserCard(text, rec.timestamp) };
     }
@@ -1202,12 +1178,9 @@ function extractExitCode(text: string): number | null {
   return m ? Number(m[1]) : null;
 }
 
-/**
- * A5：判定一条 jsonl 记录是否是 `/compact` 后的续接摘要（user 记录、剥过注入噪声的正文以 compact 前缀开头）。
- * 与卡片渲染同一套判定（`userText.clean` → isCompactSummary），供换号重启的 compact 完成检测复用（tabs.onLine）。
- */
+/** A5：这条是 `/compact` 后的续接摘要（后端判好的来源）—— 换号重启的 compact 完成检测（tabs.onLine）认它。 */
 export function isCompactRecord(rec: JsonlRecord): boolean {
-  return rec.type === "user" && isCompactSummary(rec.userText.clean);
+  return rec.type === "user" && rec.userText.speaker.kind === "compactSummary";
 }
 
 /**

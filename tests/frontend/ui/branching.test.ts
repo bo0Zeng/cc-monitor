@@ -405,16 +405,16 @@ test("Phase G 反向：非白名单类型逐个被拒", () => {
   }
 });
 
-// 「是不是 ESC 中断标记」只读 monitor 填的成品（`userText.interrupt`，规则住后端 `agents/claudecode/text.rs`），不看正文前缀：
+// 「是不是 ESC 中断标记」只读后端判好的来源（`userText.speaker`，规则住后端 `agents/claudecode/text.rs`），不看正文前缀：
 // 正文是标记而成品说不是 ⇒ 不算；成品说是 ⇒ 算。
-test("J10 extractBranchRecord 的 isInterrupt 只读 userText.interrupt", () => {
+test("J10 extractBranchRecord 的 isInterrupt 只读成品的来源", () => {
   const mk = (text: string, interrupt: boolean) =>
     extractBranchRecord({
       type: "user",
       uuid: "u",
       timestamp: "T",
       message: { content: text },
-      userText: { interrupt },
+      userText: { speaker: { kind: interrupt ? "interrupt" : "human" } },
     })!.isInterrupt;
   const got = JSON.stringify([mk("[Request interrupted by user]", false), mk("随便什么", true)]);
   if (got !== "[false,true]") throw new Error(`isInterrupt 没按成品判：${got}`);

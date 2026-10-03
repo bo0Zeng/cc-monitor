@@ -738,7 +738,7 @@ fn session_hits_in(
 /// 一条 user / assistant 记录拿去搜的两段文本（从 `session_hits_in` 里拆出来）。
 pub(crate) struct RecordText {
     pub(crate) is_assistant: bool,
-    /// 正文：文本块；user 那侧先剥 CLI 注入的包装（`clean_user_text`），再按 `MAIN_CAP` 截断。
+    /// 正文：assistant 是文本块；user 那侧只有人说的话（`agents::human_speech`）。按 `MAIN_CAP` 截断。
     pub(crate) main: String,
     /// 工具内容（tool_use 入参 / tool_result 输出 / thinking），按 `TOOL_CAP` 截断；不搜工具时空串。
     pub(crate) tool: String,
@@ -747,7 +747,7 @@ pub(crate) struct RecordText {
 /// 一条已解析的记录 → 拿去搜的文本；不是 user / assistant ⇒ `None`。
 ///
 /// 🔴 **全局搜索（`--search`）与会话内查找（`--find-in-session`）的口径只有这一个住址**；
-/// 抽取 / 剥注入住适配层（经注册表 `agents::main_text` · `tool_text` · `clean_user_text`），截断住 `search_rules`（原 `search-core`）。
+/// 抽取 / 「谁说的」住适配层（经注册表 `agents::main_text` · `tool_text` · `human_speech`），截断住 `search_rules`（原 `search-core`）。
 pub(crate) fn record_text(v: &Value, include_tools: bool) -> Option<RecordText> {
     let is_assistant = match v.get("type").and_then(Value::as_str) {
         Some("assistant") => true,
@@ -755,12 +755,13 @@ pub(crate) fn record_text(v: &Value, include_tools: bool) -> Option<RecordText> 
         _ => return None,
     };
     let content_v = v.get("message").and_then(|m| m.get("content"));
-    let raw_main = content_v.map(crate::agents::main_text).unwrap_or_default();
-    let main = if is_assistant {
-        search_rules::truncate_plain(&raw_main, MAIN_CAP)
+    // user 那侧只搜人说的话（agent 发来的 · 后台通知 · 系统注入都不算 user 命中）。
+    let raw_main = if is_assistant {
+        content_v.map(crate::agents::main_text).unwrap_or_default()
     } else {
-        search_rules::truncate_plain(&crate::agents::clean_user_text(&raw_main), MAIN_CAP)
+        crate::agents::human_speech(v).unwrap_or_default()
     };
+    let main = search_rules::truncate_plain(&raw_main, MAIN_CAP);
     let tool = if include_tools {
         content_v
             .map(|c| {
@@ -885,7 +886,7 @@ pub(crate) fn scan_session_find<R: std::io::BufRead>(
 // === 文本抽取 / snippet / 截断：**一份都不在这里**（`K-R100`） ===
 //
 // 🔴 那 12 个助手（`extract_text_blocks` · `extract_tool_text` · `stringify_json` ·
-// `clean_user_text` · `make_snippet` · `find_ci` · `tail_chars` · `head_chars` ·
+// `user_text` · `make_snippet` · `find_ci` · `tail_chars` · `head_chars` ·
 // `collapse_ws` · `collapse_ws_keep_ellipsis` · `truncate_plain` · `truncate_excerpt`）
 // 与它们的单元测试只有一个家：通用的住 `search_rules.rs`，Claude 记录文本那三个住 `agents/claudecode/text.rs`
 // —— **同一份**。别在这里「顺手再写一个小的」：那就是收口前的形状（两份、逐字同、零判据）。

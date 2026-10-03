@@ -157,7 +157,6 @@ const UNIT: &[&str] = &[
     "tests/frontend/shell/footprint_client_tests.rs", // monitor 自己进程那几条事实（纯函数；两拍之后它不再 stat）
     "tests/frontend/ui/cards/api-error.test.ts",
     "tests/frontend/ui/cards/bash-collapse.vitest.ts",
-    "tests/frontend/ui/cards/bash.test.ts",
     "tests/frontend/ui/cards/compact.vitest.ts",
     "tests/frontend/ui/cards/diff.test.ts",
     "tests/frontend/ui/cards/file-input.vitest.ts",

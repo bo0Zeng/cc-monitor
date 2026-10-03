@@ -1,20 +1,20 @@
-// A5：isCompactRecord —— 换号重启 compact 完成检测的判定（与卡片渲染同一套：`userText.clean` → isCompactSummary）。
-// 剥注入噪声那一步在 monitor（`agents/claudecode/text.rs::user_text`，判据住 `tests/backend/agents/claudecode/text_tests.rs`）；这里只锁「读成品」。
+// A5：isCompactRecord —— 换号重启 compact 完成检测：只读后端判好的来源（`userText.speaker`）。
+// 认压缩摘要那一步在后端（`agents/claudecode/text.rs::user_text`，判据住 `tests/backend/agents/claudecode/text_tests.rs`）；这里只锁「读成品」。
 import { describe, it, expect } from "vitest";
 import { isCompactRecord } from "../../../../src/frontend/ui/cards/index";
 import type { JsonlRecord } from "../../../../src/frontend/ui/generated/JsonlRecord";
 
 const PREFIX = "This session is being continued from a previous conversation";
-const user = (clean: string, content = ""): JsonlRecord =>
-  ({ type: "user", uuid: "u1", message: { role: "user", content }, userText: { clean, interrupt: false } }) as never;
+const user = (kind: string, text: string, content = ""): JsonlRecord =>
+  ({ type: "user", uuid: "u1", message: { role: "user", content }, userText: { speaker: { kind }, text } }) as never;
 
 describe("isCompactRecord（A5 compact 检测）", () => {
-  it("user 记录、剥过噪声的正文以 compact 前缀开头 → true（正文原文有包装也不看）", () => {
-    expect(isCompactRecord(user(`${PREFIX}. 摘要…`, `<system-reminder>x</system-reminder>${PREFIX}`))).toBe(true);
+  it("后端判为压缩摘要 → true（正文长什么样都不看）", () => {
+    expect(isCompactRecord(user("compactSummary", "甲乙摘要", "甲乙摘要"))).toBe(true);
   });
-  it("user 但成品是普通文本 / 剥空了 → false（原文以前缀开头也不看）", () => {
-    expect(isCompactRecord(user("帮我改个 bug", `${PREFIX}…`))).toBe(false);
-    expect(isCompactRecord(user(""))).toBe(false);
+  it("后端判为别的来源 → false（正文以前缀开头也不看）", () => {
+    expect(isCompactRecord(user("human", `${PREFIX}…`, `${PREFIX}…`))).toBe(false);
+    expect(isCompactRecord(user("system", ""))).toBe(false);
   });
   it("非 user → false（正文里有前缀也不算）", () => {
     const asst = { type: "assistant", uuid: "a1", message: { role: "assistant", content: `${PREFIX}…` } } as never;

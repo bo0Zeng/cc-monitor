@@ -14,19 +14,13 @@
 //! monitor 那条命令也退役了：界面经通道直接说帧命令 `history-user-inputs`，
 //!   本文件的扫描直接出成品（`read_face.rs`），本机与远端同一条路。
 //!
-//! # 口径（四条，逐字从被删掉的 `user-input-index.ts::collectUserInputs` 搬过来）
+//! # 口径
 //!
-//! 「一条用户输入」= 同时满足四条的 jsonl 记录：
-//! 1. `type == "user"`；
-//! 2. `isMeta != true` —— Claude Code 注入的 skill/command 展开、system-reminder、caveat 都带 `isMeta`；
-//! 3. 不属于任何子运行（适配层 `RecordFace::run_of` 答不出）—— 子运行里的用户消息**不算**（选出来的口径，不是漏的：
-//!    这份清单回答「**人**在这个会话里说过什么」，子 agent 的 prompt 是主线派下去的活）；
-//! 4. 抽出来的**纯文本** trim 之后非空 —— 工具结果回灌（`content` 全是 `tool_result` 块）靠这条排除。
-//!
-//! 另：**没有 uuid 的不要**（跳不过去，列出来就是一条点了没反应的项）。
-//!
-//! 第 4 条的「纯文本」先过注入噪声那一条规则（`agents/claudecode/text.rs::user_text`，渲染同一份；经注册表 `agents::clean_user_text` 够）再判空 ——
-//! 原先「渲染还会再剥一层、清单多出没有卡的项」那条不等价在后端这一侧销了；前端渲染那一份何时改读后端成品见 J10 登记。
+//! 「一条用户输入」＝ 同时满足的 jsonl 记录：
+//! 1. 是 user 记录，且**人在这里说了话**（适配层判「谁说的」，经注册表 `agents::user_text_of` 够；人打的 · 粘贴的 ·
+//!    斜杠命令 · `!` 输入算，agent 发来的 · 后台通知 · 系统注入 · 压缩摘要 · 中断标记 · 工具结果 · 输出回显都不算）；
+//! 2. 不属于任何子运行（适配层 `RecordFace::run_of` 答不出）—— 子运行里的话是主线派下去的活，不是人在这个会话里说的；
+//! 3. 有 uuid（列出来要跳得过去）。
 //!
 //! # 出什么（逐行 JSON，形状登记在 `IPC-PROTOCOL.md §10.4`）
 //!
@@ -61,18 +55,20 @@ pub(crate) fn user_input_row(line: &[u8]) -> Option<UserInputRow> {
     user_input_of(&v)
 }
 
-/// 一条**已解析**的记录 → 是用户输入就给一条 [`UserInputRow`]。**四条口径的唯一住址**（见头注）。
+/// 一条**已解析**的记录 → 是用户输入就给一条 [`UserInputRow`]。**口径的唯一住址**（见头注）。
 ///
 /// 从 [`user_input_row`] 里拆出来：骨架索引（`history_query::index_row`）已经解析过这一行，
 /// 顺带问一句「是不是用户输入」就不用再解析一遍 —— 首屏的「索引」与「大纲清单」由此合成一趟读
 /// （那条欠账）。**判定没有第二份**：两个出口都调这里。
 pub(crate) fn user_input_of(v: &Value) -> Option<UserInputRow> {
-    if v.get("type").and_then(Value::as_str) != Some("user") {
-        return None;
-    }
-    if v.get("isMeta").and_then(Value::as_bool) == Some(true) {
-        return None;
-    }
+    user_input_given(v, crate::agents::user_text_of(v).as_ref())
+}
+
+/// 同 [`user_input_of`]，「谁说的」已经判过（骨架索引那一行顺手也要它，不判两遍）。
+pub(crate) fn user_input_given(
+    v: &Value,
+    said: Option<&crate::agents::UserText>,
+) -> Option<UserInputRow> {
     if crate::agents::run_of_record(v).is_some() {
         return None;
     }
@@ -80,12 +76,7 @@ pub(crate) fn user_input_of(v: &Value) -> Option<UserInputRow> {
         .get("uuid")
         .and_then(Value::as_str)
         .filter(|u| !u.is_empty())?;
-    let body = plain_text(v.get("message").and_then(|m| m.get("content")));
-    // 与渲染同一条规则剥注入噪声：剥空的（ESC 中断标记 · 纯包装）不列。
-    let body = crate::agents::clean_user_text(&body);
-    if body.is_empty() {
-        return None;
-    }
+    let body = said?.speech()?;
     let body = body.as_str();
     Some(UserInputRow {
         uuid: uuid.to_string(),
@@ -96,22 +87,6 @@ pub(crate) fn user_input_of(v: &Value) -> Option<UserInputRow> {
             .to_string(),
         excerpt: excerpt(body),
     })
-}
-
-/// 抽纯文本：`content` 是字符串就是它本身；是数组就把 `type:"text"` 的块用 `\n` 拼起来
-/// （空块不算）。别的形状 ⇒ 空串。
-fn plain_text(content: Option<&Value>) -> String {
-    match content {
-        Some(Value::String(s)) => s.clone(),
-        Some(Value::Array(blocks)) => blocks
-            .iter()
-            .filter(|b| b.get("type").and_then(Value::as_str) == Some("text"))
-            .filter_map(|b| b.get("text").and_then(Value::as_str))
-            .filter(|t| !t.is_empty())
-            .collect::<Vec<_>>()
-            .join("\n"),
-        _ => String::new(),
-    }
 }
 
 /// 把空白串压成一个空格，再 trim。

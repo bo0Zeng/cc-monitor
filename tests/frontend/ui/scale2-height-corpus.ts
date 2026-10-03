@@ -118,14 +118,18 @@ function cardClassOf(el: HTMLElement): string {
 
 // ── 手工构造的那几条（真语料里 0 条，见头注）────────────────────────────────
 
-function userText(text: string, timestamp: string, uuid: string): JsonlRecord {
+const lines = (n: number): string => Array.from({ length: n }, (_, i) => `line ${i}`).join("\n");
+
+/** 一条手工 user 记录；`speaker` 是后端会判出的来源（夹具显式写，前端不判）。人与压缩摘要的正文就是原文 trim。 */
+function userText(text: string, timestamp: string, uuid: string, speaker: Record<string, unknown> = { kind: "human" }): JsonlRecord {
+  const shown = speaker.kind === "human" || speaker.kind === "compactSummary";
   return {
     type: "user",
     uuid,
     parentUuid: null,
     timestamp,
     message: { role: "user", content: text },
-    userText: { clean: text.trim(), interrupt: false },
+    userText: { speaker, text: shown ? text.trim() : "" },
   } as unknown as JsonlRecord;
 }
 
@@ -199,6 +203,7 @@ const SYNTHETIC: { rec: JsonlRecord; note: string }[] = [
       `<bash-input>${cmd}</bash-input>`,
       "2026-09-18T12:34:56.000Z",
       `syn-bashin-${i}`,
+      { kind: "bashInput", command: cmd },
     ),
     note: `bash-input/${cmd.length}字`,
   })),
@@ -208,22 +213,25 @@ const SYNTHETIC: { rec: JsonlRecord; note: string }[] = [
       "<bash-stdout></bash-stdout>",
       "2026-09-18T12:34:56.000Z",
       "syn-bashout-empty",
+      { kind: "bashOutput", stdout: "", stderr: "" },
     ),
     note: "bash-output/空",
   },
   {
     rec: userText(
-      `<bash-stdout>${Array.from({ length: 5 }, (_, i) => `line ${i}`).join("\n")}</bash-stdout>`,
+      `<bash-stdout>${lines(5)}</bash-stdout>`,
       "2026-09-18T12:34:56.000Z",
       "syn-bashout-5",
+      { kind: "bashOutput", stdout: lines(5), stderr: "" },
     ),
     note: "bash-output/5 行",
   },
   {
     rec: userText(
-      `<bash-stdout>${Array.from({ length: 20 }, (_, i) => `line ${i}`).join("\n")}</bash-stdout>`,
+      `<bash-stdout>${lines(20)}</bash-stdout>`,
       "2026-09-18T12:34:56.000Z",
       "syn-bashout-20",
+      { kind: "bashOutput", stdout: lines(20), stderr: "" },
     ),
     note: "bash-output/20 行",
   },
@@ -234,17 +242,19 @@ const SYNTHETIC: { rec: JsonlRecord; note: string }[] = [
   // 但 min(25,20) 会把它压到 20），常数这才真的被量到。
   {
     rec: userText(
-      `<bash-stdout>${Array.from({ length: 25 }, (_, i) => `line ${i}`).join("\n")}</bash-stdout>`,
+      `<bash-stdout>${lines(25)}</bash-stdout>`,
       "2026-09-18T12:34:56.000Z",
       "syn-bashout-25",
+      { kind: "bashOutput", stdout: lines(25), stderr: "" },
     ),
     note: "bash-output/25 行（DOM 不截，但 min(行数,20) 会压 ⇒ 让那个常数可达）",
   },
   {
     rec: userText(
-      `<bash-stdout>${Array.from({ length: 80 }, (_, i) => `line ${i}`).join("\n")}</bash-stdout>`,
+      `<bash-stdout>${lines(80)}</bash-stdout>`,
       "2026-09-18T12:34:56.000Z",
       "syn-bashout-80",
+      { kind: "bashOutput", stdout: lines(80), stderr: "" },
     ),
     note: "bash-output/80 行（超 30 ⇒ 截头 20 + 展开按钮）",
   },
@@ -253,6 +263,7 @@ const SYNTHETIC: { rec: JsonlRecord; note: string }[] = [
       "<bash-stdout>ok\nok2</bash-stdout><bash-stderr>warning: deprecated\nwarning: again</bash-stderr>",
       "2026-09-18T12:34:56.000Z",
       "syn-bashout-stderr",
+      { kind: "bashOutput", stdout: "ok\nok2", stderr: "warning: deprecated\nwarning: again" },
     ),
     note: "bash-output/stdout+stderr",
   },
@@ -266,6 +277,7 @@ const SYNTHETIC: { rec: JsonlRecord; note: string }[] = [
       `<command-message>${name.slice(1)}</command-message><command-name>${name}</command-name><command-args>${args}</command-args>`,
       "2026-09-18T12:34:56.000Z",
       `syn-slash-${i}`,
+      { kind: "slashCommand", name, args },
     ),
     note: `slash/${name}`,
   })),
@@ -278,6 +290,7 @@ const SYNTHETIC: { rec: JsonlRecord; note: string }[] = [
         ),
       "2026-09-18T12:34:56.000Z",
       "syn-compact-0",
+      { kind: "compactSummary" },
     ),
     note: "compact/折叠摘要",
   },

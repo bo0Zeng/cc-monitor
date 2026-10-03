@@ -360,7 +360,7 @@ describe("〔RENDER2〕第二级与第一级同一套外框常数", () => {
     };
     const cases: Array<[unknown, SkeletonFacts]> = [
       [
-        { type: "user", uuid: "a", isMeta: false, message: { role: "user", content: "第一行abc\nsecond line" } },
+        { type: "user", uuid: "a", userText: { speaker: { kind: "human" }, text: "第一行abc\nsecond line" }, message: { role: "user", content: "第一行abc\nsecond line" } },
         { o: 0, n: 1, t: "user", u: "a", ch: "第一行abc".length + "second line".length, cj: 3, pl: 2 },
       ],
       [

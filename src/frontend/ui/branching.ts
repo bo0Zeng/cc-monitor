@@ -279,8 +279,8 @@ export function extractBranchRecord(rec: {
   parentUuid?: string | null;
   timestamp?: string | null;
   message?: { content?: unknown };
-  /** user 记录的注入噪声成品（monitor 填，`agents/claudecode/text.rs::user_text`）；只读 `interrupt`。 */
-  userText?: { interrupt: boolean };
+  /** user 记录是谁说的（后端判好的成品）；只读「是不是中断标记」。 */
+  userText?: { speaker: { kind: string } };
 }): BranchRecord | null {
   if (
     rec.type !== "user" &&
@@ -302,7 +302,7 @@ export function extractBranchRecord(rec: {
     type: rec.type,
     // issue #22：只有 user 记录可能是回撤打断叶子；其他类型恒 false。
     // 「是不是 ESC 中断标记」只读成品（整条恰是它才算，标记后面跟着真话的不算）。
-    isInterrupt: rec.type === "user" && rec.userText?.interrupt === true,
+    isInterrupt: rec.type === "user" && rec.userText?.speaker.kind === "interrupt",
     // issue #36：队列消息豁免匹配用
     text: rec.type === "user" && userText ? userText.trim() : undefined,
   };

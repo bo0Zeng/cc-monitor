@@ -762,7 +762,7 @@ describe("秤 1 · 环形缓冲（设计逐字 cap 5000）", () => {
     const timeline = new RecordTimeline(stream);
     const ctx = freshCtx();
     const sink: StreamSink = { timeline, onBranchRecord: () => {} };
-    // `isMeta` 的 user 记录 → `renderMessage` 第一行就 skip，最便宜的一条真路径
+    // 系统注入的 user 记录 → `renderMessage` 第一行就 skip，最便宜的一条真路径
     const n = RENDER_COST_RING_CAP + 17;
     for (let i = 0; i < n; i++) {
       renderContentRecord(
@@ -773,7 +773,7 @@ describe("秤 1 · 环形缓冲（设计逐字 cap 5000）", () => {
           seq: i,
           message: {
             type: "user",
-            isMeta: true,
+            userText: { speaker: { kind: "system" }, text: "" },
             uuid: `ring-${i}`,
             parentUuid: null,
             timestamp: "2026-09-18T00:00:00.000Z",

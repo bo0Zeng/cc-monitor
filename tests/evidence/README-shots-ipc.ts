@@ -146,7 +146,7 @@ const OPS: Record<string, (origin: string, body: Json) => unknown> = {
     from: 0,
     end: 4096,
     entries: (sessionAt(body.path)?.records ?? []).flatMap((r) =>
-      r.type === "user" && r.userText.clean ? [{ uuid: r.uuid, excerpt: r.userText.clean.slice(0, 80), timestamp: r.timestamp }] : [],
+      r.type === "user" && r.userText.speaker.kind === "human" && r.userText.text ? [{ uuid: r.uuid, excerpt: r.userText.text.slice(0, 80), timestamp: r.timestamp }] : [],
     ),
   }),
   "history-projects": (_o, body) => ({

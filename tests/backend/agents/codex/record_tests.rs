@@ -1,6 +1,7 @@
 use super::super::parse::{session_meta_cwd, turn_id};
 use super::CodexRecordKind as K;
 use super::*;
+use crate::agents::Speaker;
 use serde_json::json;
 
 fn env(top: &str, payload: Value) -> Value {
@@ -246,13 +247,13 @@ fn maps_message_to_user_assistant() {
     assert!(matches!(&r, JsonlRecord::Assistant { uuid, .. } if uuid == "m1"));
     assert_eq!(content_of(&r), json!([{"type": "text", "text": "回复"}]));
 
-    // developer → User isMeta=true、无 id → uuid ""。
+    // developer → 系统注入、无 id → uuid ""。
     let dev = env(
         "response_item",
         json!({"type": "message", "role": "developer", "content": [{"type": "input_text", "text": "sys"}]}),
     );
     assert!(
-        matches!(to_jsonl_record(&dev, "r"), JsonlRecord::User { is_meta: true, uuid, .. } if uuid.is_empty())
+        matches!(to_jsonl_record(&dev, "r"), JsonlRecord::User { user_text, uuid, .. } if uuid.is_empty() && user_text.speaker == Speaker::System)
     );
 
     // user 空 content → User，content []（免空气泡）。
@@ -261,12 +262,14 @@ fn maps_message_to_user_assistant() {
         json!({"type": "message", "role": "user", "content": []}),
     );
     let r = to_jsonl_record(&u, "r");
-    assert!(matches!(&r, JsonlRecord::User { is_meta: false, .. }));
+    assert!(
+        matches!(&r, JsonlRecord::User { user_text, .. } if user_text.speaker == Speaker::Human && user_text.text.is_empty())
+    );
     assert_eq!(content_of(&r), json!([]));
 }
 
-/// F7 去噪：role=user 但正文是 CLI 注入的上下文块（3 标记，aterm 2C/doc §63 对齐）→ User
-/// isMeta=true（渲染隐藏）；真用户输入（含裸 # 标题/提及标签名）→ isMeta=false（正常气泡）。真机核 0 误判。
+/// F7 去噪：role=user 但正文是 CLI 注入的上下文块（3 标记）→ 系统注入（界面不画）；
+/// 真用户输入（含裸 # 标题/提及标签名）→ 人（正常气泡，正文 trim 过）。
 #[test]
 fn denoise_injected_context_user_messages() {
     let mk = |text: &str| {
@@ -275,7 +278,7 @@ fn denoise_injected_context_user_messages() {
             json!({"type": "message", "role": "user", "content": [{"type": "input_text", "text": text}]}),
         )
     };
-    // 注入块（含前导空白）→ isMeta=true。3 标记与 aterm 2C / doc §63 对齐。
+    // 注入块（含前导空白）→ 系统注入。
     for inj in [
         "<environment_context>\n  <cwd>/home/zbl</cwd>\n</environment_context>",
         "  <recommended_plugins>\nHere is a list of plugins…",
@@ -284,12 +287,12 @@ fn denoise_injected_context_user_messages() {
         assert!(
             matches!(
                 to_jsonl_record(&mk(inj), "r"),
-                JsonlRecord::User { is_meta: true, .. }
+                JsonlRecord::User { user_text, .. } if user_text.speaker == Speaker::System
             ),
-            "注入块应去噪当 meta: {inj:?}"
+            "注入块应去噪当系统注入: {inj:?}"
         );
     }
-    // 真用户输入 → isMeta=false（碰巧提及标签名但非以之起头的、及裸 markdown 标题 → 不误伤）。
+    // 真用户输入 → 人（碰巧提及标签名但非以之起头的、及裸 markdown 标题 → 不误伤）。
     for real in [
         "codex怎么换行",
         "帮我看看 <environment_context> 是什么",
@@ -299,7 +302,7 @@ fn denoise_injected_context_user_messages() {
         assert!(
             matches!(
                 to_jsonl_record(&mk(real), "r"),
-                JsonlRecord::User { is_meta: false, .. }
+                JsonlRecord::User { user_text, .. } if user_text.speaker == Speaker::Human && user_text.text == real.trim()
             ),
             "真用户输入不应被去噪: {real:?}"
         );

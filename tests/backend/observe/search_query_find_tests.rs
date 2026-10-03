@@ -16,7 +16,7 @@ fn fixture() -> Vec<String> {
         r#"{"type":"user","uuid":"hit-user-str","message":{"content":"find the needle here"}}"#.into(),
         r#"{"type":"assistant","uuid":"miss-plain","message":{"content":[{"type":"text","text":"nothing to see"}]}}"#.into(),
         r#"{"type":"assistant","uuid":"hit-asst-upper","message":{"content":[{"type":"text","text":"a NEEDLE in caps"}]}}"#.into(),
-        // 注入的包装在 user 正文里被剥掉（`clean_user_text`）⇒ 只在包装里出现的不算
+        // 注入的包装在 user 正文里被剥掉（只搜人说的话）⇒ 只在包装里出现的不算
         r#"{"type":"user","uuid":"miss-wrapped","message":{"content":"<system-reminder>needle</system-reminder>real words"}}"#.into(),
         r#"{"type":"assistant","uuid":"tool-use-input","message":{"content":[{"type":"tool_use","name":"Grep","input":{"pattern":"needle"}}]}}"#.into(),
         r#"{"type":"user","uuid":"tool-result","message":{"content":[{"type":"tool_result","tool_use_id":"t","content":"line with needle"}]}}"#.into(),
@@ -30,7 +30,11 @@ fn fixture() -> Vec<String> {
         r#"{"type":"user","uuid":"miss-broken","message":{"content":"needle"#.into(),
         "".into(),
         "\u{feff}{\"type\":\"user\",\"uuid\":\"hit-bom\",\"message\":{\"content\":[{\"type\":\"text\",\"text\":\"x needle y\"}]}}".into(),
-        r#"{"type":"user","uuid":"hit-sidechain","isSidechain":true,"message":{"content":"sub needle"}}"#.into(),
+        // 子 agent 记录的首条是主会话派给它的活，不是人说的 ⇒ 不算 user 命中
+        r#"{"type":"user","uuid":"miss-sidechain-task","isSidechain":true,"message":{"content":"sub needle"}}"#.into(),
+        // agent 发来的话、后台通知不是人说的 ⇒ 不算 user 命中
+        r#"{"type":"user","uuid":"miss-agent","isMeta":true,"origin":{"kind":"peer","from":"a1"},"message":{"content":"<agent-message from=\"a1\">needle</agent-message>"}}"#.into(),
+        r#"{"type":"user","uuid":"miss-notice","origin":{"kind":"task-notification"},"message":{"content":"<task-notification><summary>needle</summary></task-notification>"}}"#.into(),
     ]
 }
 
@@ -91,8 +95,8 @@ fn the_hits_are_exactly_the_named_ones_in_file_order() {
     let data = bytes_of(&lines);
     let plain = named(&lines, &["hit-"]);
     let with_tools = named(&lines, &["hit-", "tool-"]);
-    assert_eq!(plain.len(), 4, "夹具里 hit-* 的条数变了：{plain:?}");
-    assert_eq!(with_tools.len(), 6);
+    assert_eq!(plain.len(), 3, "夹具里 hit-* 的条数变了：{plain:?}");
+    assert_eq!(with_tools.len(), 5);
     assert!(named(&lines, &["miss-"]).len() >= 5, "miss-* 一类塌了");
     let v = find(&data, Q, false, FIND_DEFAULT_LIMIT);
     assert_eq!(uuids(&v), plain);
@@ -106,7 +110,7 @@ fn the_hits_are_exactly_the_named_ones_in_file_order() {
         .collect();
     assert_eq!(
         kinds,
-        ["user", "assistant", "tool", "tool", "user", "user"],
+        ["user", "assistant", "tool", "tool", "user"],
         "{kinds:?}"
     );
 }

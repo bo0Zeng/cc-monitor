@@ -17,6 +17,7 @@ fn queue_operation_parses_and_is_displayable() {
             operation,
             content,
             timestamp,
+            ..
         } => {
             assert_eq!(operation.as_deref(), Some("enqueue"));
             assert_eq!(content.as_deref(), Some("这是登录门户"));
@@ -421,30 +422,35 @@ fn displayable_classes_equal_the_table_with_a_reader_for_each() {
     assert_eq!(got, want);
 }
 
-/// 〔J10 乙〕要求：「判定全仓一个住址」＋ 裁定原话「monitor 解析记录时调同一个
-/// `search-core::user_text` 填进记录」（那条规则今天住 `agents/claudecode/text.rs`）。经生产出口 `parse_line`：user 记录过线时带 `userText`（= 规则的输出），别的类型不带。
+/// 「谁说的」只有一份判定（`text.rs::user_text`）：经生产出口 `parse_line`，user 记录与排队消息过线时带 `userText`（＝ 它的输出），
+/// 喂判定的几格记录级字段（`isMeta` · `isCompactSummary` · `origin`）不上线 —— 界面只读成品。别的类型不带。
 #[test]
-fn a_parsed_user_record_carries_the_one_noise_rule_product() {
+fn a_parsed_user_record_carries_the_one_speaker_product() {
     let cases = [
         (
             r#"{"type":"user","uuid":"a","timestamp":"t","message":{"role":"user","content":"<system-reminder>x</system-reminder>真话"}}"#,
-            "真话",
-            false,
+            serde_json::json!({"speaker": {"kind": "human"}, "text": "真话"}),
         ),
         (
             r#"{"type":"user","uuid":"b","timestamp":"t","message":{"role":"user","content":[{"type":"text","text":"[Request interrupted by user]"}]}}"#,
-            "",
-            true,
+            serde_json::json!({"speaker": {"kind": "interrupt"}, "text": ""}),
+        ),
+        (
+            r#"{"type":"user","uuid":"c","timestamp":"t","isMeta":true,"origin":{"kind":"peer","from":"a1","handback":true},"message":{"role":"user","content":"<agent-message from=\"a1\">甲</agent-message>"}}"#,
+            serde_json::json!({"speaker": {"kind": "agentMessage", "from": "a1", "handback": true}, "text": ""}),
+        ),
+        (
+            r#"{"type":"queue-operation","operation":"remove","timestamp":"t","content":"<task-notification><task-id>x</task-id></task-notification>"}"#,
+            serde_json::json!({"speaker": {"kind": "taskNotification", "taskId": "x"}, "text": ""}),
         ),
     ];
-    for (line, clean, interrupt) in cases {
+    for (line, want) in cases {
         let rec = super::super::parse::parse_line(line).unwrap().unwrap();
         let v = serde_json::to_value(&rec).unwrap();
-        assert_eq!(
-            v["userText"],
-            serde_json::json!({ "clean": clean, "interrupt": interrupt }),
-            "{line}"
-        );
+        assert_eq!(v["userText"], want, "{line}");
+        for k in ["isMeta", "isCompactSummary", "origin"] {
+            assert!(v.get(k).is_none(), "`{k}` 上了线：{line}");
+        }
     }
     let asst = super::super::parse::parse_line(
         r#"{"type":"assistant","uuid":"c","timestamp":"t","message":{"role":"assistant","content":"hi"}}"#,
@@ -455,10 +461,20 @@ fn a_parsed_user_record_carries_the_one_noise_rule_product() {
         .unwrap()
         .get("userText")
         .is_none());
+    let dequeue = super::super::parse::parse_line(
+        r#"{"type":"queue-operation","operation":"dequeue","timestamp":"t"}"#,
+    )
+    .unwrap()
+    .unwrap();
+    assert!(serde_json::to_value(&dequeue)
+        .unwrap()
+        .get("userText")
+        .is_none());
 }
 
-/// TS 夹具助手 `tests/test-support/user-text.ts::withUserText` 只给「不含注入噪声」的 user 记录补成品
-/// （正文抽出来 trim）。这里用真规则把那份语料里的每条 user 记录过一遍：成品必须恰好就是那样（否则助手在替规则说假话）。
+/// TS 夹具助手 `tests/test-support/user-text.ts::withUserText` 只给三种 user 记录补成品
+/// （全是工具结果 ⇒ 工具结果；带 `isCompactSummary` ⇒ 压缩摘要；否则人，正文抽出来 trim）。这里用真规则把那份语料里的每条 user 记录过一遍：
+/// 成品必须恰好就是那样（否则助手在替规则说假话）。
 #[test]
 fn the_ts_fixture_user_records_carry_no_injected_noise() {
     let root = crate::guard_support::repo_root();
@@ -467,7 +483,10 @@ fn the_ts_fixture_user_records_carry_no_injected_noise() {
         let text = std::fs::read_to_string(root.join(rel)).unwrap_or_else(|e| panic!("{rel}: {e}"));
         for line in text.lines().filter(|l| !l.trim().is_empty()) {
             let Ok(Some(JsonlRecord::User {
-                message, user_text, ..
+                message,
+                user_text,
+                is_compact_summary,
+                ..
             })) = super::super::parse::parse_line(line)
             else {
                 continue;
@@ -476,11 +495,26 @@ fn the_ts_fixture_user_records_carry_no_injected_noise() {
             let plain = super::super::text::extract_text_blocks(&message.content)
                 .trim()
                 .to_string();
-            assert_eq!(
-                (user_text.clean.as_str(), user_text.interrupt),
-                (plain.as_str(), false),
-                "{rel}: {line}"
-            );
+            let all_results = message.content.as_array().is_some_and(|a| {
+                !a.is_empty()
+                    && a.iter().all(|b| {
+                        b.get("type").and_then(serde_json::Value::as_str) == Some("tool_result")
+                    })
+            });
+            let want = if all_results {
+                crate::agents::UserText::of(crate::agents::Speaker::ToolResult)
+            } else {
+                crate::agents::UserText {
+                    speaker: if is_compact_summary {
+                        crate::agents::Speaker::CompactSummary
+                    } else {
+                        crate::agents::Speaker::Human
+                    },
+                    text: plain,
+                    pasted: Vec::new(),
+                }
+            };
+            assert_eq!(user_text, want, "{rel}: {line}");
         }
     }
     assert!(users > 0, "语料里一条 user 记录都没有 —— 本条空转");

@@ -8,7 +8,6 @@
         "message": {
           "cwd": "/w",
           "forkedFrom": null,
-          "isMeta": false,
           "message": {
             "content": "q",
             "model": null,
@@ -20,8 +19,10 @@
           "timestamp": "t1",
           "type": "user",
           "userText": {
-            "clean": "q",
-            "interrupt": false
+            "speaker": {
+              "kind": "human"
+            },
+            "text": "q"
           },
           "uuid": "r-1"
         },
@@ -69,7 +70,6 @@
         "message": {
           "cwd": "/w",
           "forkedFrom": null,
-          "isMeta": false,
           "message": {
             "content": "q",
             "model": null,
@@ -81,8 +81,10 @@
           "timestamp": "t1",
           "type": "user",
           "userText": {
-            "clean": "q",
-            "interrupt": false
+            "speaker": {
+              "kind": "human"
+            },
+            "text": "q"
           },
           "uuid": "r-1"
         },
@@ -138,7 +140,6 @@
         "message": {
           "cwd": "/w",
           "forkedFrom": null,
-          "isMeta": false,
           "message": {
             "content": "q",
             "model": null,
@@ -150,8 +151,10 @@
           "timestamp": "t1",
           "type": "user",
           "userText": {
-            "clean": "q",
-            "interrupt": false
+            "speaker": {
+              "kind": "human"
+            },
+            "text": "q"
           },
           "uuid": "r-1"
         }
@@ -194,7 +197,6 @@
         "message": {
           "cwd": null,
           "forkedFrom": null,
-          "isMeta": false,
           "message": {
             "content": "go",
             "model": null,
@@ -206,8 +208,10 @@
           "timestamp": "t3",
           "type": "user",
           "userText": {
-            "clean": "go",
-            "interrupt": false
+            "speaker": {
+              "kind": "agentTask"
+            },
+            "text": "go"
           },
           "uuid": "s-1"
         }

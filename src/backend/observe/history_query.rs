@@ -876,7 +876,7 @@ pub(crate) fn scan_session_index<R: std::io::BufRead>(
 /// **不是**高度：高度依赖列宽，后端不知道列宽（`§2.5b` 那条「决定性的理由」）。
 ///
 /// ⚠ **口径是近似的，而且近似得有方向**：它不知道前端哪些记录最终不建卡（`stripInternalNoise`、
-/// ESC 折叠、slash/compact 细条…），只按记录的**原料**数。前端据 `t` / `mt` / `fd` 分档，
+/// ESC 折叠、slash/compact 细条…），只按记录的**原料**数。前端据 `t` / `sp` / `fd` 分档，
 /// 分不准的那几档落到偏保守的常数（`§2.5b`：「粗估用偏保守的常数，精算后往下修」）。
 #[derive(Debug, Default, serde::Serialize, PartialEq, Eq)]
 pub(crate) struct IndexRow {
@@ -893,9 +893,10 @@ pub(crate) struct IndexRow {
     /// 这条记录属于某个子运行（适配层 `RecordFace::run_of` 答得出）。
     #[serde(skip_serializing_if = "is_false")]
     pub(crate) sc: bool,
-    /// `isMeta == true`（skill 注入 / 命令回显 —— 前端不建用户卡）。
-    #[serde(skip_serializing_if = "is_false")]
-    pub(crate) mt: bool,
+    /// user 记录是谁说的（`Speaker` 的 `kind`），人说的与工具结果省略（那两种按正文 / 折叠单元就分得清）。
+    /// 界面据它决定这一行建不建卡（判定在适配层，画不画在界面）。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) sp: Option<&'static str>,
     /// 正文字符数（**代码块之外**；Unicode 标量计，不含换行）。
     #[serde(skip_serializing_if = "is_zero")]
     pub(crate) ch: u32,
@@ -953,9 +954,13 @@ pub(crate) fn index_row(line: &[u8], offset: u64, len: u64) -> IndexRow {
     row.t = v.get("type").and_then(|t| t.as_str()).map(str::to_string);
     row.u = v.get("uuid").and_then(|u| u.as_str()).map(str::to_string);
     row.sc = crate::agents::run_of_record(&v).is_some();
-    row.mt = v.get("isMeta").and_then(|b| b.as_bool()) == Some(true);
+    let said = crate::agents::user_text_of(&v);
+    row.sp = said
+        .as_ref()
+        .map(|u| u.speaker.kind())
+        .filter(|k| !matches!(*k, "human" | "toolResult"));
     // 大纲那一项（判定只住 `user_inputs`；这里只搬字段）
-    if let Some(ui) = crate::observe::user_inputs::user_input_of(&v) {
+    if let Some(ui) = crate::observe::user_inputs::user_input_given(&v, said.as_ref()) {
         row.x = Some(ui.excerpt);
         row.ts = Some(ui.timestamp).filter(|t| !t.is_empty());
     }
@@ -1509,7 +1514,7 @@ fn created_ms_or_mtime(p: &Path) -> i64 {
 
 /// 单个会话的元数据提取（整文件扫描，跑在那台机器的 CPU 上）：
 /// - messageCountApprox = 非空行数
-/// - firstUserExcerpt = 首条"真用户输入"（跳过 isMeta / 工具结果 / 纯中断标记，剥 CLI 注入的包装）的前 120 字符
+/// - firstUserExcerpt = 首条人说的话（适配层判「谁说的」，经注册表 `agents::human_speech`）的前 120 字符
 ///   （换行折成空格、超了加 `…`）
 /// - aiTitle = 最后一条标题记录（`ai-title` 的 `aiTitle` 与 CC v2.1.x 起的 `custom-title` 的 `customTitle`，取最新）
 /// - cwd = 会话的项目目录（适配层 `RecordFace.project_dir`：只读开头，与活 tab 的标题同一个函数）
@@ -1519,7 +1524,7 @@ fn created_ms_or_mtime(p: &Path) -> i64 {
 /// **这一行从此是本机与远端共用的唯一口径**：本机的历史会话清单此前由 monitor 进程内自己扫
 /// （`history·rs::analyze_jsonl`〔散文墓碑〕，经记录解析器），与这里的「精简版」各算各的 —— 开始时刻 / 摘录 / 标题 / fork 关系
 /// 四格两边不一样。历史跨机 join 进了本机后端之后本机也读这一行 ⇒ 把 monitor 那份有、这里没有的三格（fork 关系 ·
-/// `custom-title` · 首条时间戳）补进来，摘录的清洗与截断改用与全文搜索同一个家那一份（清洗经注册表 `agents::clean_user_text` · 截断 `observe/search_rules.rs`）。条数仍是「非空行数」。
+/// `custom-title` · 首条时间戳）补进来，摘录取人说的话（经注册表 `agents::human_speech`，与全文搜索同一个家）、截断用 `observe/search_rules.rs`。条数仍是「非空行数」。
 fn analyze_session(p: &Path) -> serde_json::Value {
     let session_id = p
         .file_stem()
@@ -1578,15 +1583,9 @@ fn analyze_session(p: &Path) -> serde_json::Value {
                         ai_title = Some(t.to_string());
                     }
                 }
-                Some("user")
-                    if excerpt.is_empty()
-                        && v.get("isMeta").and_then(|m| m.as_bool()) != Some(true) =>
-                {
-                    if let Some(text) = user_text(&v) {
-                        let cleaned = crate::agents::clean_user_text(&text);
-                        if !cleaned.is_empty() {
-                            excerpt = super::search_rules::truncate_excerpt(&cleaned, 120);
-                        }
+                Some("user") if excerpt.is_empty() => {
+                    if let Some(said) = crate::agents::human_speech(&v) {
+                        excerpt = super::search_rules::truncate_excerpt(&said, 120);
                     }
                 }
                 _ => {}
@@ -1632,25 +1631,6 @@ fn forked_from(v: &serde_json::Value) -> Option<(String, String)> {
         f.get("sessionId")?.as_str()?.to_string(),
         f.get("messageUuid")?.as_str()?.to_string(),
     ))
-}
-
-/// user 记录的纯文本内容：message.content 为字符串直接用；为数组取首个 text 块。
-/// 工具结果（tool_result 块）返回 None——它不是用户敲的。
-fn user_text(v: &serde_json::Value) -> Option<String> {
-    let content = v.get("message")?.get("content")?;
-    if let Some(s) = content.as_str() {
-        return Some(s.to_string());
-    }
-    if let Some(arr) = content.as_array() {
-        for block in arr {
-            if block.get("type").and_then(|t| t.as_str()) == Some("text") {
-                if let Some(s) = block.get("text").and_then(|t| t.as_str()) {
-                    return Some(s.to_string());
-                }
-            }
-        }
-    }
-    None
 }
 
 // 按字符截断的那一份（`truncate_chars`〔散文墓碑〕）没了读者：摘录改用 `search_rules::truncate_excerpt`（同样不劈码点，
