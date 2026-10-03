@@ -881,6 +881,11 @@ const REAL_MACHINE: &[(&str, &str, Trigger)] = &[
         Trigger::Manual("读数不是判据：大文件模式两个门槛的来源，只在 release 档上有意义；跑法住它自己的头注"),
     ),
     (
+        "tests/frontend/filewin/workspace_tests.rs",
+        "screenshot_for_the_shots_tool",
+        Trigger::Filter { by: "tests/shots/filewin.mjs", needle: "workspace::tests::screenshot_for_the_shots_tool" },
+    ),
+    (
         "tests/frontend/filewin/rows_tests.rs",
         "xvfb_worker_real_pointer_events_on_a_row",
         Trigger::Filter { by: "tests/frontend/filewin/rows_tests.rs", needle: "rows::tests::xvfb_worker_real_pointer_events_on_a_row" },

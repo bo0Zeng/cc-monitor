@@ -137,4 +137,11 @@ export default tseslint.config(
       globals: { ...globals.node },
     },
   },
+  {
+    // 截图工具（`npm run shots`）的 Node 那一半：起 vite / 浏览器 / Xvfb、出图集。
+    files: ["tests/shots/**/*.mjs"],
+    languageOptions: {
+      globals: { ...globals.node },
+    },
+  },
 );
