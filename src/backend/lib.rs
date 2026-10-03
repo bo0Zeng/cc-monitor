@@ -722,7 +722,9 @@ pub const PROTO_VERSION: u32 = 1;
 /// ★★★ **p6q-terminals-tabs**（4.0.6）：行为 / 协议 —— 「这个会话由哪个 tmux 会话在跑」只在后端判（sessions-tmux），单个与批量的停 / 起走 sessions-stop / sessions-start；远端 ↗ 改成问那台此刻连着会话的终端（session-terminals）、本机认连接的进程链（terminal-processes），删掉窗口标题与起会话令牌两套（含 terminal-local、session_added.rbind_token、能力 rbind-token）；别名读回带归组 / 账号表 / 指纹、写入要指纹、别名多 restTo、ccm 多 --cwd-if；files-find 收原样搜索词与序号、files-stat 多回 owner / link_target；开文件窗口带主题。
 ///
 /// p6r：4.1.0 —— 信任框不再自动答、中转按目标账号；别名表单互转交后端；谁说的一处判；本机那一份按家定门牌、钥匙只交文件；运行表不挂僵尸；活卡不挤正在流的主运行；↗ 精确到窗口；文件窗口不撑破 / 不截断 / 缩放；第二个前端的契约与终端 L1 三条命令。
-pub const BUILD_ID: &str = "p6r-fixes-second-frontend";
+///
+/// p6s：4.1.1 —— 起法请求、历史成品与搜索行带 agent，恢复按会话那一家；会话事实多上下文上限三项；--resident-ensure 刚起的常驻回空钥匙（每次起换新钥匙）；按 sid 找窗格（送字 · 抓屏 · 结束落在挂着它的窗格）。
+pub const BUILD_ID: &str = "p6s-resume-by-agent";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src/frontend/shell/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），
