@@ -35,6 +35,8 @@ export interface SessionSpec {
   ended: boolean;
   /** claude 退出、tmux 还在（灰灯）。 */
   idle: boolean;
+  /** 那台的中转看见过这个会话的请求：带过扩展上下文那一项（`wide`）/ 没带过（`std`）；缺 ＝ 中转没看见过。 */
+  relay?: "wide" | "std";
 }
 
 /** 一条帧命令怎么答：给值 ⇒ 当 JSON 答；抛 `Refuse` ⇒ 对端说不行；不在表里 ⇒ 对端说不认。 */

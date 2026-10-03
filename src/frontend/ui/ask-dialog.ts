@@ -21,10 +21,7 @@
  * - **同一时刻只有一个**：新开之前把旧的**按取消结算**（`fork-ask.ts` 那条教训：只摘 DOM 会留一个永挂的 Promise）。
  *   取消是安全方向：破坏性动作不做。
  *
- * # 买不到
- *
- * 模态期间 Esc 以外的全局快捷键照旧会被 `dispatcher` 接住（它在 window 捕获阶段、先于这里的任何监听；
- * 焦点在文本框时单键由 `isEditableTarget` 挡住，按钮上不挡）。原生 `confirm` 是阻塞的，没有这个问题。
+ * - **模态**：开着时快捷键只放行 Esc（`OverlayHandle.modal`），焦点在按钮上按 `W` / `1` 不会动底下的 tab。
  */
 import { copyText } from "./copy-table";
 import { dispatcher, type OverlayHandle } from "./keybindings/registry";
@@ -33,6 +30,8 @@ import s from "./ask-dialog.module.css";
 export interface AskConfirmOptions {
   /** 「确定」那颗按钮的字（默认取表）。 */
   okLabel?: string;
+  /** 撤不回的动作（杀会话 · 删记录 …）：默认焦点落在「取消」，一下 Enter / 空格不会就做了。 */
+  danger?: boolean;
 }
 
 export interface AskTextOptions {
@@ -46,7 +45,7 @@ export interface AskTextOptions {
  * 「问一句要不要做」的注入缝形状（`account-restart.ts` · `tab-session-actions.ts::killRemoteTmux` 用）。
  * 允许同步答（测试 / e2e 注入 `() => true`），调用方一律 `await`。
  */
-export type ConfirmFn = (message: string) => boolean | Promise<boolean>;
+export type ConfirmFn = (message: string, opts?: AskConfirmOptions) => boolean | Promise<boolean>;
 
 /** 还没结算的那一个：新开之前按取消结算它。 */
 let pendingCancel: (() => void) | null = null;
@@ -57,6 +56,7 @@ function open<T>(
   okLabel: string | undefined,
   onOk: (input: HTMLInputElement | null) => T,
   cancelled: T,
+  danger = false,
 ): Promise<T> {
   pendingCancel?.();
 
@@ -98,6 +98,7 @@ function open<T>(
   return new Promise<T>((resolve) => {
     let settled = false;
     const overlay: OverlayHandle = {
+      modal: true,
       handleEsc: () => {
         finish(cancelled);
         return true;
@@ -132,6 +133,8 @@ function open<T>(
     if (input) {
       input.focus();
       input.select();
+    } else if (danger) {
+      cancel.focus();
     } else {
       ok.focus();
     }
@@ -140,7 +143,7 @@ function open<T>(
 
 /** 问一句「要不要做」。确定 ⇒ `true`；取消 · 点遮罩 · Esc · 被下一个对话框顶掉 ⇒ `false`。 */
 export function askConfirm(message: string, opts: AskConfirmOptions = {}): Promise<boolean> {
-  return open(message, null, opts.okLabel, () => true, false);
+  return open(message, null, opts.okLabel, () => true, false, opts.danger === true);
 }
 
 /** 问一个名字 / 一行字。确定（或文本框里 Enter）⇒ 文本框的值（原样）；取消一类 ⇒ `null`。 */

@@ -15,7 +15,7 @@ fn jsonl(records: &[Value]) -> String {
 }
 
 fn scan_all(text: &str) -> SessionFacts {
-    scan_facts(text.as_bytes(), SessionFacts::default()).unwrap()
+    scan_facts(text.as_bytes(), SessionFacts::default(), &Vec::new(), None).unwrap()
 }
 
 fn tool_use(id: &str, name: &str, input: Value) -> Value {
@@ -71,7 +71,10 @@ fn the_three_facts_follow_the_moved_rules() {
         f.usage,
         Some(UsageFact {
             prompt_tokens: 12,
-            model: Some("m-x".into())
+            model: Some("m-x".into()),
+            peak_prompt_tokens: 12,
+            limit: CONTEXT_EXTENDED,
+            limit_from: LimitFrom::Assumed,
         }),
         "全 0 的那条不算；model 缺 ⇒ null 的那条没出现在最后"
     );
@@ -130,7 +133,7 @@ fn resuming_from_any_line_boundary_equals_one_pass() {
         assert_eq!(head.end as usize, cut);
         let wire = serde_json::to_value(&head).unwrap();
         let prior = prior_from(&wire).expect("自己出的成品必须能原样回传");
-        let resumed = scan_facts(&text.as_bytes()[cut..], prior).unwrap();
+        let resumed = scan_facts(&text.as_bytes()[cut..], prior, &Vec::new(), None).unwrap();
         assert_eq!(resumed, whole, "在字节 {cut} 处接力，结果与一次扫完不同");
     }
 }
@@ -264,5 +267,127 @@ fn edit_tools_rules_moved_from_the_frontend_suite() {
     assert_eq!(
         one("Write", json!({"file_path": "C:\\proj\\a.ts"})),
         vec!["C:\\proj\\a.ts"]
+    );
+}
+
+fn usage_rec(model: &str, prompt: u64) -> Value {
+    json!({"type": "assistant", "message": {"model": model, "usage": {"input_tokens": prompt}, "content": []}})
+}
+
+/// ★ 上下文上限：记录里的模型名不带 `[1m]` ⇒ 中转没看见过时多数判不出（占位 1M、`Assumed`，界面不算百分比）；见过超过 200k 的一轮 ⇒ 必是 1M；
+/// 设置里的上限表最长匹配胜，但给的数小于见过的最大一轮 ⇒ 那一档不对；任何情形上限都不小于见过的最大一轮。
+#[test]
+fn the_context_limit_is_decided_here_and_never_below_what_was_seen() {
+    let none: ContextLimits = Vec::new();
+    assert_eq!(
+        context_limit(Some("claude-opus-5-5"), 350_000, &none, None),
+        (CONTEXT_EXTENDED, LimitFrom::Observed)
+    );
+    assert_eq!(
+        context_limit(Some("claude-opus-5-5"), 90_000, &none, None),
+        (CONTEXT_EXTENDED, LimitFrom::Assumed)
+    );
+    assert_eq!(
+        context_limit(Some("claude-opus-4-8[1m]"), 90_000, &none, None),
+        (CONTEXT_EXTENDED, LimitFrom::Model)
+    );
+    assert_eq!(
+        context_limit(None, 10, &none, None),
+        (CONTEXT_EXTENDED, LimitFrom::Assumed)
+    );
+    let set: ContextLimits = vec![
+        ("haiku".into(), 200_000),
+        ("claude-haiku-9".into(), 150_000),
+    ];
+    assert_eq!(
+        context_limit(Some("Claude-Haiku-9-x"), 90_000, &set, None),
+        (150_000, LimitFrom::Setting),
+        "最长匹配胜、不分大小写"
+    );
+    assert_eq!(
+        context_limit(Some("claude-haiku-4"), 90_000, &set, None),
+        (200_000, LimitFrom::Setting)
+    );
+    assert_eq!(
+        context_limit(Some("claude-haiku-4"), 250_000, &set, None),
+        (CONTEXT_EXTENDED, LimitFrom::Observed),
+        "设置给小了"
+    );
+    assert_eq!(
+        context_limit(Some("m"), 1_200_000, &none, None),
+        (1_200_000, LimitFrom::Observed)
+    );
+}
+
+/// ★ 一份会话：最新一轮掉下来了（压缩过），见过的最大一轮照样记着 ⇒ 上限仍是 1M；续传接力也一样（peak 跟着 prior 走）。
+/// 设置表随每一次问交来：同一份 `prior` 换一张表再问 ⇒ 上限跟着变。
+#[test]
+fn the_peak_survives_a_compaction_and_a_resume_and_the_setting_applies_each_time() {
+    let text = jsonl(&[
+        usage_rec("claude-opus-5-5", 350_000),
+        usage_rec("claude-opus-5-5", 40_000),
+    ]);
+    let f = scan_all(&text);
+    let u = f.usage.clone().unwrap();
+    assert_eq!(
+        (u.prompt_tokens, u.peak_prompt_tokens, u.limit, u.limit_from),
+        (40_000, 350_000, CONTEXT_EXTENDED, LimitFrom::Observed)
+    );
+    let cut = text.find('\n').unwrap() + 1;
+    let head = prior_from(&serde_json::to_value(scan_all(&text[..cut])).unwrap()).unwrap();
+    assert_eq!(
+        scan_facts(&text.as_bytes()[cut..], head, &Vec::new(), None).unwrap(),
+        f
+    );
+
+    let small = jsonl(&[usage_rec("claude-haiku-4", 90_000)]);
+    let prior = prior_from(&serde_json::to_value(scan_all(&small)).unwrap()).unwrap();
+    let again = scan_facts(&b""[..], prior, &vec![("haiku".into(), 200_000)], None).unwrap();
+    let u = again.usage.unwrap();
+    assert_eq!((u.limit, u.limit_from), (200_000, LimitFrom::Setting));
+}
+
+/// `limits` 入参：缺席 / null ⇒ 空表；不是「串 → 正整数」⇒ 拒。
+#[test]
+fn the_limits_argument_is_strict() {
+    assert_eq!(limits_from(None).unwrap(), Vec::new());
+    assert_eq!(limits_from(Some(&Value::Null)).unwrap(), Vec::new());
+    assert_eq!(
+        limits_from(Some(&json!({" Haiku ": 200000}))).unwrap(),
+        vec![("haiku".to_string(), 200_000)]
+    );
+    for bad in [
+        json!([1]),
+        json!({"x": 0}),
+        json!({"x": "1"}),
+        json!({"x": -5}),
+        json!({" ": 5}),
+    ] {
+        assert!(limits_from(Some(&bad)).is_err(), "{bad} 被收下了");
+    }
+}
+
+/// ★ 真来源是中转：看见过这个会话的请求 ⇒ 带过扩展上下文那一项是 1M、没带过是默认 200k（压过设置表与模型名）；
+/// 没看见过 ⇒ 照设置表 > `[1m]` > 见过超过 200k > 判不出。上限仍不低于见过的最大一轮。
+#[test]
+fn the_relay_tells_the_context_window_when_it_saw_the_session() {
+    let none: ContextLimits = Vec::new();
+    let set: ContextLimits = vec![("opus".into(), 500_000)];
+    assert_eq!(
+        context_limit(Some("claude-opus-5-5"), 90_000, &set, Some(true)),
+        (CONTEXT_EXTENDED, LimitFrom::Relay)
+    );
+    assert_eq!(
+        context_limit(Some("claude-opus-5-5[1m]"), 90_000, &none, Some(false)),
+        (CONTEXT_STANDARD, LimitFrom::Relay)
+    );
+    assert_eq!(
+        context_limit(Some("claude-opus-5-5"), 90_000, &set, None),
+        (500_000, LimitFrom::Setting)
+    );
+    assert_eq!(
+        context_limit(Some("claude-opus-5-5"), 350_000, &none, Some(false)),
+        (CONTEXT_EXTENDED, LimitFrom::Observed),
+        "中转说默认、却见过超过 200k 的一轮（中转起来之前的那几轮）⇒ 不可能是 200k"
     );
 }

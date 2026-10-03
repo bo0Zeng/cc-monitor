@@ -138,10 +138,17 @@ export function defaultOps(): Record<string, OpHandler> {
           if (b.type === "tool_use" && (b.name === "Edit" || b.name === "Write") && b.input?.file_path) touched.add(b.input.file_path);
         }
       }
-      let usage: { promptTokens: number; model: string | null } | null = null;
+      let usage: { promptTokens: number; model: string | null; peakPromptTokens: number; limit: number; limitFrom: string } | null = null;
       if (last && last.type === "assistant" && last.message.usage) {
-        const u = last.message.usage;
-        usage = { promptTokens: u.input_tokens + u.cache_creation_input_tokens + u.cache_read_input_tokens, model: last.message.model };
+        const sum = (u: { input_tokens: number; cache_creation_input_tokens: number; cache_read_input_tokens: number }) =>
+          u.input_tokens + u.cache_creation_input_tokens + u.cache_read_input_tokens;
+        let peak = 0;
+        for (const r of recs) if (r.type === "assistant" && r.message.usage) peak = Math.max(peak, sum(r.message.usage));
+        // 上限照后端那一条判：中转看见过 ⇒ 带没带扩展上下文那一项；没看见过 ⇒ 带 [1m] / 见过超过 200k ⇒ 1M；判不出 ⇒ assumed
+        const relay = s?.relay;
+        const from = relay ? "relay" : (last.message.model ?? "").includes("[1m]") ? "model" : peak > 200_000 ? "observed" : "assumed";
+        const limit = relay === "std" && peak <= 200_000 ? 200_000 : 1_000_000;
+        usage = { promptTokens: sum(last.message.usage), model: last.message.model, peakPromptTokens: peak, limit, limitFrom: from };
       }
       return { end: layout(recs).end, forkedFrom: null, projectDir: s?.cwd ?? null, touchedFiles: [...touched], usage };
     },

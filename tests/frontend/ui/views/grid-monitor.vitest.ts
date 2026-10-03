@@ -31,6 +31,7 @@ const snap = (over: Partial<GridSessionSnapshot>): GridSessionSnapshot => ({
   runningAgents: 0,
   totalAgents: 0,
   contextPct: null,
+  contextTokens: null,
   unread: 0,
   kind: null,
   account: null,
@@ -216,6 +217,16 @@ describe("F91 GridMonitorView", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("上限判不出（contextPct 为空、有用量）⇒ 格子上只写用了多少，不标红", () => {
+    document.body.replaceChildren();
+    const view = new GridMonitorView(mkSource([snap({ sessionId: "l1", contextPct: null, contextTokens: 350_000 })]));
+    view.open();
+    const b = document.querySelector(".badge-ctx");
+    expect(b?.textContent).toBe("ctx 350k");
+    expect(b?.classList.contains("is-high")).toBe(false);
+    view.close();
   });
 
   it("F91b peekSession 缺省（旧桩）→ peek 仍显 snapshot 字段、不报错", () => {

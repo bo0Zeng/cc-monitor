@@ -1,4 +1,4 @@
-//! **会话事实**：分叉血缘 · 改动文件集 · 最新 usage · 项目目录。
+//! **会话事实**：分叉血缘 · 改动文件集 · 最新 usage（连同上下文上限）· 项目目录。
 //! 子 agent 的列表与状态不在这里：它们是运行表（`observe::runs`，经 `session_runs` 帧），判定只有那一处。
 //!
 //! # 它顶掉了什么
@@ -22,7 +22,7 @@
 //! |---|---|
 //! | `forkedFrom` | `history_query::fork_origin`（与历史会话行同一个函数）；首条命中即锁定 |
 //! | `touchedFiles` | `assistant` 记录里写类工具（[`EDIT_TOOL_PATH_KEYS`]）的路径，去重、**近因序**（再碰一次移到末尾），至多 [`TOUCHED_FILES_KEEP`] 条 |
-//! | `usage` | `assistant` 记录的 `message.usage` 三项 prompt token 之和 > 0 ⇒ `{promptTokens, model}`，文件序最后一条胜 |
+//! | `usage` | `assistant` 记录的 `message.usage` 三项 prompt token 之和 > 0 ⇒ `{promptTokens, model}`，文件序最后一条胜；`peakPromptTokens` 取全会话最大；上限见 [`context_limit`] |
 //! | `projectDir` | 适配层 `RecordFace.project_dir`（只读记录开头）；读到即锁定，不在本文件的逐行扫描里 |
 //!
 //! # 快路
@@ -84,20 +84,108 @@ pub(crate) struct SessionFacts {
     pub(crate) project_dir: Option<String>,
 }
 
-/// 最新 usage：context 占用的原料（上限表与百分比在前端 `views/context-limit.ts`，那是排版）。
+/// 最新 usage ＋ 这份会话的上下文上限（状态栏与监控板读同一个数；百分比是排版，在前端）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct UsageFact {
     /// `input_tokens + cache_creation_input_tokens + cache_read_input_tokens`。
     pub(crate) prompt_tokens: u64,
     pub(crate) model: Option<String>,
+    /// 全会话最大的一轮（见过超过标准上限的 ⇒ 上限不可能是标准那一档）。
+    pub(crate) peak_prompt_tokens: u64,
+    /// 上下文上限（tokens），恒 ≥ `peak_prompt_tokens` ⇒ 百分比不会超过 100。
+    pub(crate) limit: u64,
+    pub(crate) limit_from: LimitFrom,
+}
+
+/// 上限从哪来。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) enum LimitFrom {
+    /// 中转看见了这个会话的请求：带了扩展上下文那一项 ⇒ 1M，没带过 ⇒ 这个模型的默认（`observe::relay_marks`）。
+    Relay,
+    /// 设置里的上限表（按模型名子串）。
+    Setting,
+    /// 模型名自己带着 `[1m]`。
+    Model,
+    /// 这份会话见过超过标准上限的一轮。
+    Observed,
+    /// 判不出（`limit` 只是占位的 1M）：界面不算百分比，只写用了多少。
+    Assumed,
+}
+
+/// 标准上下文（200k，模型的默认）与扩展那一档（1M）。记录里的模型名是接口回的名字、不带 `[1m]`，
+/// 真来源是中转看见的请求（扩展上下文的请求带那一项）。
+pub(crate) const CONTEXT_STANDARD: u64 = 200_000;
+pub(crate) const CONTEXT_EXTENDED: u64 = 1_000_000;
+
+/// 设置里的上限表：模型名子串（小写）→ 上限。调用方随请求交来（`history-facts` 的 `limits`）。
+pub(crate) type ContextLimits = Vec<(String, u64)>;
+
+/// `limits` 入参 ⇒ [`ContextLimits`]。缺席 / `null` ⇒ 空表；不是「串 → 正整数」的对象 ⇒ 拒。
+pub(crate) fn limits_from(v: Option<&Value>) -> Result<ContextLimits, String> {
+    let Some(v) = v.filter(|v| !v.is_null()) else {
+        return Ok(Vec::new());
+    };
+    let obj = v
+        .as_object()
+        .ok_or_else(|| "`limits` must be an object".to_string())?;
+    obj.iter()
+        .map(|(k, n)| match n.as_u64() {
+            Some(n) if n > 0 && !k.trim().is_empty() => Ok((k.trim().to_lowercase(), n)),
+            _ => Err(format!("`limits.{k}` must be a positive integer")),
+        })
+        .collect()
+}
+
+/// **上下文上限的唯一判定**：中转看见过这个会话的请求（`relay`）⇒ 带过扩展上下文那一项是 1M、没带过是默认 200k；
+/// 中转没看见过 ⇒ 设置里的上限表（最长匹配的子串胜）> 模型名带 `[1m]` > 见过超过 200k 的一轮 > 判不出（占位 1M，`Assumed`）。
+/// 任何一档给出的数小于见过的最大一轮 ⇒ 那一档不对，按「见过」那一档（上限至少是 1M，再大就是见过的那么大）。
+pub(crate) fn context_limit(
+    model: Option<&str>,
+    peak: u64,
+    limits: &ContextLimits,
+    relay: Option<bool>,
+) -> (u64, LimitFrom) {
+    let m = model.unwrap_or("").to_lowercase();
+    let from_relay = relay.map(|wide| {
+        let n = if wide {
+            CONTEXT_EXTENDED
+        } else {
+            CONTEXT_STANDARD
+        };
+        (n, LimitFrom::Relay)
+    });
+    let setting = limits
+        .iter()
+        .filter(|(sub, _)| m.contains(sub.as_str()))
+        .max_by_key(|(sub, _)| sub.len())
+        .map(|(_, n)| (*n, LimitFrom::Setting));
+    let chosen = from_relay.or(setting).unwrap_or(if m.contains("[1m]") {
+        (CONTEXT_EXTENDED, LimitFrom::Model)
+    } else if peak > CONTEXT_STANDARD {
+        (CONTEXT_EXTENDED, LimitFrom::Observed)
+    } else {
+        (CONTEXT_EXTENDED, LimitFrom::Assumed)
+    });
+    if chosen.0 < peak {
+        (peak.max(CONTEXT_EXTENDED), LimitFrom::Observed)
+    } else {
+        chosen
+    }
 }
 
 /// 调用方交回来的 `prior` ⇒ [`SessionFacts`]。**形状必须恰好是本文件出的那一形**：缺格 / 多格 / 类型不对 ⇒ 拒
 /// （serde 对 `Option` 缺格默认读成 `None`，所以键集合先逐层核一遍 —— 不猜）。
 pub(crate) fn prior_from(v: &Value) -> Result<SessionFacts, String> {
     const TOP: &[&str] = &["end", "forkedFrom", "projectDir", "touchedFiles", "usage"];
-    const USAGE: &[&str] = &["model", "promptTokens"];
+    const USAGE: &[&str] = &[
+        "limit",
+        "limitFrom",
+        "model",
+        "peakPromptTokens",
+        "promptTokens",
+    ];
     exact_keys(v, TOP, "prior")?;
     if !v["usage"].is_null() {
         exact_keys(&v["usage"], USAGE, "prior.usage")?;
@@ -119,9 +207,12 @@ fn exact_keys(v: &Value, want: &[&str], what: &str) -> Result<(), String> {
 
 /// 读 `r`（已定位在 `facts.end`）逐行累加到 `facts` 上，回累加后的那一份（`end` 推进到最后一个完整行的末字节）。
 /// **纯 I/O 泛型**，单测直接喂字节。只看完整行（`\n` 收尾）；torn 残尾不看、不计进 `end`。
+/// 上限每次按此刻的 `limits` 与中转看见的（`relay`）重判（设置改过 / 中转看见了 ⇒ 带着上一份成品再问一次就是新的数）。
 pub(crate) fn scan_facts<R: std::io::BufRead>(
     mut r: R,
     mut facts: SessionFacts,
+    limits: &ContextLimits,
+    relay: Option<bool>,
 ) -> std::io::Result<SessionFacts> {
     let mut buf: Vec<u8> = Vec::new();
     loop {
@@ -138,6 +229,10 @@ pub(crate) fn scan_facts<R: std::io::BufRead>(
         if let Some(v) = parse_line(line) {
             note_record(&mut facts, &v);
         }
+    }
+    if let Some(u) = facts.usage.as_mut() {
+        (u.limit, u.limit_from) =
+            context_limit(u.model.as_deref(), u.peak_prompt_tokens, limits, relay);
     }
     Ok(facts)
 }
@@ -220,12 +315,22 @@ fn note_usage(f: &mut SessionFacts, v: &Value) {
     if prompt == 0 {
         return;
     }
+    let peak = f
+        .usage
+        .as_ref()
+        .map_or(0, |u| u.peak_prompt_tokens)
+        .max(prompt);
+    let model = msg
+        .and_then(|m| m.get("model"))
+        .and_then(Value::as_str)
+        .map(str::to_string);
+    let (limit, limit_from) = context_limit(model.as_deref(), peak, &Vec::new(), None);
     f.usage = Some(UsageFact {
         prompt_tokens: prompt,
-        model: msg
-            .and_then(|m| m.get("model"))
-            .and_then(Value::as_str)
-            .map(str::to_string),
+        model,
+        peak_prompt_tokens: peak,
+        limit,
+        limit_from,
     });
 }
 

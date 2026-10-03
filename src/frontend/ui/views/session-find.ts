@@ -34,6 +34,7 @@
 import { UserInputPanel, OUTLINE_LABEL, markJump, type JumpResult } from "./user-input-panel";
 import type { FindHit, FindResult } from "../session-reads";
 import { dispatcher, type OverlayHandle } from "../keybindings/registry";
+import { imeComposing } from "../keybindings/ime";
 import { copyText } from "../copy-table";
 
 /** 两个模式。 */
@@ -210,6 +211,7 @@ export class SessionFindPanel {
    * Ctrl/⌘+F 在输入框里 ⇒ 全选（快捷键在可编辑元素里不派发，不接住它就落到 webview 自带的查找条上）。
    */
   private onKey(e: KeyboardEvent): void {
+    if (imeComposing(e)) return; // 组字中的 Enter 归输入法，不拿半截拼音去查
     if (e.key === "Enter") {
       e.preventDefault();
       void this.runSearch();

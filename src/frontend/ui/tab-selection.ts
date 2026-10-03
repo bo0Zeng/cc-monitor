@@ -14,6 +14,7 @@ export class TabSelection {
   private readonly picked = new Set<string>();
   private anchor: string | null = null;
   private readonly overlay: OverlayHandle = {
+    passes: "all", // 多选不盖住 tab：数字键 / ] [ 照常
     handleEsc: () => {
       // 菜单开着 ⇒ 这一下 Esc 是关菜单的（菜单自己听着），多选留着。
       if (tabContextMenuOpen()) return false;

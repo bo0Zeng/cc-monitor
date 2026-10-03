@@ -69,7 +69,7 @@ function behaviorPanel(): { onBehaviorToggle(): Promise<void> } {
 const toast = vi.mocked(showActionFailureToast);
 
 function prefs(): TabBarPrefs {
-  const store = { orderedIds: [], tabs: new Map(), savedOrder: [] };
+  const store = { orderedIds: [], tabs: new Map(), savedOrder: [], mergedOrder: () => [] };
   const host = { refreshTabBar: () => {} };
   return new TabBarPrefs(store as never, host as never);
 }

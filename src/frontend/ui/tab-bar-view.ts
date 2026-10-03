@@ -207,14 +207,9 @@ export class TabBarView {
     this.host.switchTo(sid);
   }
 
-  /** 条上看得到的顺序：tab 按钮在 DOM 里的先后（整刷摆出来的就是它 —— 组在前、组内按条上位置、散 tab 在后）。 */
+  /** 条上看得到的顺序（组在前、组内按条上位置、散 tab 在后；整刷就按它摆）。 */
   visibleOrder(): string[] {
-    const out: string[] = [];
-    for (const el of Array.from(this.barEl.querySelectorAll(".tab"))) {
-      const sid = this.sidOf.get(el);
-      if (sid !== undefined) out.push(sid);
-    }
-    return out;
+    return this.store.visibleOrder(this.prefs.collections.map((c) => c.id));
   }
 
   private onBarMouseDown(e: MouseEvent): void {
@@ -593,8 +588,9 @@ export class TabBarView {
     // audit-fixes F03.2：可重连（claude 退但 tmux 会话仍在）。灯不被 `.ended` 隐藏，
     // `.reconnectable` 把 .live-dot 覆写成暗色、压过红绿黄。
     const reconnectable = view.reconnectable;
-    const titleParts: string[] = [];
-    // 第一行说状态（活着不说）。
+    // 第一行恒是标题全名（远端带机器名）：窄窗收成点、宽栏长标题被截时，悬停才认得出是谁。
+    const titleParts: string[] = [tab.title];
+    // 下一行说状态（活着不说）。
     if (view.tooltip !== null) titleParts.push(view.tooltip);
     // 「等待操作」只对活着的会话说：可重连的会话 claude 已经没了，留着的活动信号是陈旧的
     // （改两轴之前灯被 CSS 盖住了，tooltip 却还挂着这一句）。

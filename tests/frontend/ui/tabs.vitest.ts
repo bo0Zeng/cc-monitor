@@ -258,6 +258,15 @@ import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
 import { appStore } from "../../../src/frontend/ui/app-store";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import { recordFileWiring } from "../../../src/frontend/ui/record-file-notice";
+
+/** 会话事实里的一格 usage（上限由后端定：这里按「判不出 ⇒ 1M」那一形造）。 */
+const usageOf = (promptTokens: number, model: string | null) => ({
+  promptTokens,
+  model,
+  peakPromptTokens: promptTokens,
+  limit: 1_000_000,
+  limitFrom: "assumed" as const,
+});
 import { applyConfigEdits, type Edit } from "./config-patch-fake";
 import { dispatcher } from "../../../src/frontend/ui/keybindings/registry";
 
@@ -542,15 +551,21 @@ describe("TabManager 生命周期", () => {
     expect(btn().classList.contains("ended")).toBe(false);
   });
 
-  it("〔U4〕tab 的 tooltip 第一行说状态（只从两轴派生）；死了的会话不再挂陈旧的「等待操作」", () => {
-    tm.ensureTab("tt1", "/x", "p", "pi");
+  it("〔U4〕tab 的 tooltip 标题之后那一行说状态（只从两轴派生）；死了的会话不再挂陈旧的「等待操作」", () => {
+    const t = tm.ensureTab("tt1", "/x", "p", "pi");
     const btn = () => document.querySelector<HTMLElement>(".tab")!;
+    // 第一行恒是标题；下面几行说状态
+    const said = () => {
+      const [head, ...rest] = btn().title.split("\n");
+      expect(head).toBe(t.title);
+      return rest.join("\n");
+    };
     tm.updateActivity("tt1", "waiting", "permission prompt");
-    expect(btn().title, "活着：不说状态，只说在等什么").toBe("等待操作：permission prompt");
+    expect(said(), "活着：不说状态，只说在等什么").toBe("等待操作：permission prompt");
     tm.markTmuxIdle("tt1"); // 活动信号还留着（可重连不清它），但 claude 已经没了
-    expect(btn().title).toBe("程序退了，终端还在 —— 可以接回去");
+    expect(said()).toBe("程序退了，终端还在 —— 可以接回去");
     tm.archiveTab("tt1");
-    expect(btn().title).toBe("这个会话已结束");
+    expect(said()).toBe("这个会话已结束");
     expect([btn().classList.contains("ended"), btn().classList.contains("reconnectable")]).toEqual([true, false]);
   });
 
@@ -4698,10 +4713,10 @@ describe("〔U4b〕容器 · 说不清 · 记录没了 —— TabManager 真走"
     tm.noteContainer("c1", "tmux"); // 早于建 tab
     const t = tm.ensureTab("c1", "/x", "p", "pi");
     expect(t.state).toEqual(LIVE_ATTACHABLE);
-    expect(btn().title).toBe("在 tmux 会话里运行：程序退了也能接回去");
+    expect(btn().title).toBe(`${t.title}\n在 tmux 会话里运行：程序退了也能接回去`);
     tm.noteContainer("c1", "none");
     expect(t.state).toEqual(LIVE_RESUMABLE);
-    expect(btn().title).toBe("不在 tmux 会话里：程序退了只能 resume");
+    expect(btn().title).toBe(`${t.title}\n不在 tmux 会话里：程序退了只能 resume`);
     tm.noteContainer("c1", "screen"); // 不认识的取值 ⇒ 当没报，不动
     expect(t.state).toEqual(LIVE_RESUMABLE);
     tm.archiveTab("c1");
@@ -4763,7 +4778,7 @@ describe("〔U4b〕容器 · 说不清 · 记录没了 —— TabManager 真走"
       "本机的 /h/.claude/projects 里找不到会话 g1 的记录，resume 接不上它，所以没有打开终端。", // C-L5：值是汉字 ⇒ 不隔
     );
     expect(tabOf("g1").state).toEqual(GONE);
-    expect(btn().title).toBe("这个会话已结束，它的记录也不在了，没法 resume");
+    expect(btn().title).toBe(`${tabOf("g1").title}\n这个会话已结束，它的记录也不在了，没法 resume`);
     probe = { present: true, root: "/h/.claude/projects" };
     await home(tm).actions.resumeTab("g1");
     expect(tabOf("g1").state).toEqual(ENDED);
@@ -5544,7 +5559,7 @@ describe("〔STC〕会话事实：后端给了什么 ⇒ tab 上是什么", () =
     const seen: [string | null, number | null][] = [];
     tm.active.subscribe((a) => seen.push([a.model, a.promptTokens])); // 订阅 store（原先是回调）
     answerFacts((path) =>
-      facts({ usage: path.includes("u1") ? { promptTokens: 42, model: "m-a" } : { promptTokens: 7, model: null } }),
+      facts({ usage: path.includes("u1") ? usageOf(42, "m-a") : usageOf(7, null) }),
     );
     tm.onLine(line("u1", 0)); // 第一个 tab 自动成为 active
     tm.onLine(line("u2", 0));
@@ -5560,7 +5575,7 @@ describe("〔STC〕会话事实：后端给了什么 ⇒ tab 上是什么", () =
 
   // 「当前 tab 变了」改订阅 store 之后的时机差：同值不通知（原先两个回调同值也照调）。
   it("★ 〔GAP1〕当前 tab 那一格同值不通知：可用性重报一次同样的值 ⇒ 零通知；切到别的 tab ⇒ 恰一次", async () => {
-    answerFacts((path) => facts({ usage: path.includes("v1") ? { promptTokens: 5, model: "m" } : null }));
+    answerFacts((path) => facts({ usage: path.includes("v1") ? usageOf(5, "m") : null }));
     tm.onLine(line("v1", 0));
     tm.onLine(line("v2", 0));
     await settle();
@@ -5571,7 +5586,7 @@ describe("〔STC〕会话事实：后端给了什么 ⇒ tab 上是什么", () =
     expect(seen, "值没变却通知了").toEqual([]);
     tm.switchTo("v2");
     await vi.waitFor(() => expect(seen.length).toBe(1));
-    expect(seen).toEqual([{ sid: "v2", model: null, promptTokens: null, unavailable: null, projectDir: null }]);
+    expect(seen).toEqual([{ sid: "v2", model: null, promptTokens: null, contextLimit: null, unavailable: null, projectDir: null }]);
   });
 
   it("要不到（老后端不认这条命令）⇒ active 的 HUD 出声（原因非空）、此后不再问；可用 ⇒ 说 null", async () => {

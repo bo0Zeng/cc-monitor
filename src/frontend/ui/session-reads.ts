@@ -104,11 +104,19 @@ export interface SessionIndexResult {
   failure?: OutlineFailure;
 }
 
-/** 最新 usage（后端 `facts_query::UsageFact`）：context 占用的原料，上限与百分比是排版（`views/context-limit.ts`）。 */
+/** 最新 usage ＋ 上下文上限（后端 `facts_query::UsageFact`，上限的唯一判定在后端；百分比是排版，`views/context-limit.ts`）。 */
 export interface UsageFact {
   promptTokens: number;
   model: string | null;
+  /** 全会话最大的一轮。 */
+  peakPromptTokens: number;
+  /** 上下文上限（恒 ≥ `peakPromptTokens`）。 */
+  limit: number;
+  /** 上限从哪来：中转看见的请求 · 设置 · 模型名 · 见过超过 200k 的一轮 · 判不出（`limit` 只是占位，界面不算百分比）。 */
+  limitFrom: "relay" | "setting" | "model" | "observed" | "assumed";
 }
+
+const LIMIT_FROM: ReadonlySet<string> = new Set(["relay", "setting", "model", "observed", "assumed"]);
 
 /**
  * 一份会话的事实（后端 `facts_query::SessionFacts`，**帧面成品的形状**；跨语言金样
@@ -214,10 +222,24 @@ export function decodeFacts(v: unknown): SessionFacts {
   let usage: UsageFact | null = null;
   if (v.usage !== null) {
     const u = v.usage;
-    if (!isObj(u) || !exactKeys(u, ["promptTokens", "model"]) || !isNum(u.promptTokens) || !(u.model === null || isStr(u.model))) {
+    if (
+      !isObj(u) ||
+      !exactKeys(u, ["limit", "limitFrom", "model", "peakPromptTokens", "promptTokens"]) ||
+      !isNum(u.promptTokens) ||
+      !(u.model === null || isStr(u.model)) ||
+      !isNum(u.peakPromptTokens) ||
+      !isNum(u.limit) ||
+      !(isStr(u.limitFrom) && LIMIT_FROM.has(u.limitFrom))
+    ) {
       return bad();
     }
-    usage = { promptTokens: u.promptTokens, model: u.model as string | null };
+    usage = {
+      promptTokens: u.promptTokens,
+      model: u.model as string | null,
+      peakPromptTokens: u.peakPromptTokens,
+      limit: u.limit,
+      limitFrom: u.limitFrom as UsageFact["limitFrom"],
+    };
   }
   return {
     end: v.end,
@@ -310,9 +332,13 @@ export async function readSessionFacts(
   origin: Origin,
   jsonlPath: string,
   prior: SessionFacts | null,
+  limits: Readonly<Record<string, number>> = {},
 ): Promise<FactsResult> {
   try {
-    const body = jsonBody(prior ? { path: jsonlPath, prior } : { path: jsonlPath });
+    const args: Record<string, unknown> = { path: jsonlPath };
+    if (prior) args.prior = prior;
+    if (Object.keys(limits).length > 0) args.limits = limits; // 设置里的上限表：上限在那台后端定
+    const body = jsonBody(args);
     const budget = budgetWithin(READ_BUDGET_MS);
     const reply = await chan.call(origin, "history-facts", body, budget);
     return { available: true, facts: decodeFacts(readJson(reply)) };

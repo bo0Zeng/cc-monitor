@@ -2,17 +2,16 @@
  * F88b（#52）：用量 HUD chip——挂 status-bar，显**活跃会话 context 占用%**（近似：最新一轮
  * assistant 记录的 input+cache token ÷ 模型上限）。逼近上限（≥80%）高亮预警——最可行动的实时信号。
  *
- * 数据来自后端的会话事实（`history-facts` 的 `usage`：文件序最后一条带有效 usage 的 assistant 记录），
- * 经 `TabManager.onActiveUsageChanged` 喂进来；上限表与百分比仍在前端（`views/context-limit.ts`，那是排版）。
- * 从前它由 `onLine` 旁路一条一条攒（那格写的「纯前端、零后端」指的是那时候），F5 之后只看得见重放那一截。
+ * 数据来自后端的会话事实（`history-facts` 的 `usage`：文件序最后一条带有效 usage 的 assistant 记录 ＋ 后端定的上限），
+ * 经当前 tab 那一格（`TabManager.active`）喂进来；监控板读同一个上限。百分比是排版（`views/context-limit.ts`），永远不超过 100；
+ * 上限判不出 ⇒ 只写用了多少（`ctx 350k`），不预警。
  * 事实要不到 ⇒ `setUnavailable(原因)`：chip 显示 `ctx —`、提示里说原因（「不可用，不是空表」）。
- * **只 token 不 $**。模型上限表在 `views/context-limit.ts`（未知模型显 `?`，不显错%）。
+ * **只 token 不 $**。
  *
  * 「今日 token」= 后续项（需跨会话聚合，非纯前端；本刀先聚焦 context% 这个最高价值信号）。
  */
 
-import { contextPercent, normalizeModel, readContextLimits, type ContextLimitOverrides } from "./views/context-limit";
-import { loadConfig } from "./config";
+import { contextPercentOf, contextTokensText, normalizeModel } from "./views/context-limit";
 import s from "./usage-hud.module.css";
 import { copyText } from "./copy-table";
 
@@ -21,13 +20,12 @@ export class UsageHud {
   readonly summaryElement: HTMLButtonElement;
   private model: string | null = null;
   private promptTokens: number | null = null;
-  /** 活跃会话的会话事实要不到的原因（`null` = 可用）。非空时压过上面两格（那两格可能是旧的）。 */
+  /** 上下文上限（后端定的，与监控板同一个数）。 */
+  private limit: number | null = null;
+  /** 活跃会话的会话事实要不到的原因（`null` = 可用）。非空时压过上面几格（那几格可能是旧的）。 */
   private unavailable: string | null = null;
-  /** 模型上限用户覆盖表（config.json `contextLimits`）——纠正标准 1M 模型串被当 200k 的 ctx% 误报。 */
-  private limitOverrides: ContextLimitOverrides = {};
 
   constructor() {
-    void this.loadLimitOverrides();
     const btn = document.createElement("button");
     btn.type = "button";
     // 复用 status-bar chip 基类（同 agents-panel 的 "status-tasks status-agents" 范式），
@@ -41,25 +39,14 @@ export class UsageHud {
     this.summaryElement = btn;
   }
 
-  /** 读 config.json `contextLimits`（模型子串→上限 tokens）覆盖表，纠正 1M 模型 ctx% 误报。失败静默用默认表。 */
-  /** 设置页改了覆盖表（`SETTINGS_APPLIED_EVENT`）⇒ 主窗口重读一次。 */
-  async loadLimitOverrides(): Promise<void> {
-    try {
-      const cfg = (await loadConfig()) as Record<string, unknown>;
-      this.limitOverrides = readContextLimits(cfg["contextLimits"]);
-      this.render(); // 覆盖表迟到 / 改过 → 重算已显的 chip
-    } catch {
-      /* 用内置默认上限表 */
-    }
-  }
-
   /**
    * 更新活跃会话的最新 prompt token + model（→ 重算 context%）。
    * `promptTokens` = null（无活跃会话 / 活跃会话尚无带 usage 的 assistant 记录）→ 隐藏 chip。
    */
-  setActive(model: string | null, promptTokens: number | null): void {
+  setActive(model: string | null, promptTokens: number | null, limit: number | null): void {
     this.model = model;
     this.promptTokens = promptTokens;
+    this.limit = limit;
     this.render();
   }
 
@@ -84,11 +71,12 @@ export class UsageHud {
       return;
     }
     btn.style.display = "";
-    const pct = contextPercent(this.model, this.promptTokens, this.limitOverrides);
     const tok = this.promptTokens.toLocaleString("en-US");
+    const pct = contextPercentOf(this.promptTokens, this.limit);
     if (pct == null) {
-      btn.textContent = "ctx ?";
-      btn.title = copyText("usageHud.render.unknownLimit", { model: normalizeModel(this.model), tok });
+      // 上限判不出：只写用了多少，不算百分比、不预警。
+      btn.textContent = `ctx ${contextTokensText(this.promptTokens)}`;
+      btn.title = copyText("usageHud.render.noLimit", { model: normalizeModel(this.model), tok });
       btn.classList.remove(s.high);
       return;
     }

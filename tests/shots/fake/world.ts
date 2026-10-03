@@ -161,6 +161,7 @@ export function defaultWorld(): World {
   const rich = richConvo(sidOf(1), "/home/user/work/orders");
   const s1 = session(1, LOCAL, "/home/user/work/orders", rich.convo, {
     status: "busy",
+    relay: "std", // 本机中转看见了它的请求、没带扩展上下文那一项 ⇒ 默认 200k
     runs: [
       { run: "agent-a1", label: "补重试的单元测试", kind: "general-purpose", tool: rich.agentTool, state: "done", last: { t: "say" } },
       { run: "agent-a2", label: "检查其他服务有没有同类调用", kind: "Explore", tool: rich.agentTool2, state: "running", last: { t: "tool", name: "Grep" } },
@@ -177,7 +178,7 @@ export function defaultWorld(): World {
     s1,
     session(2, LOCAL, "/home/user/work/web-console", smallConvo(sidOf(2), "/home/user/work/web-console", "表格分页改成虚拟滚动", "表格超过一万行就卡，改成虚拟滚动。", "好的，先量一下现在的渲染耗时，再换成按可见区渲染。"), { status: "waiting", waitingFor: "permission prompt" }),
     session(3, LOCAL, "/home/user/work/notes", smallConvo(sidOf(3), "/home/user/work/notes", "周报草稿", "把这周的提交整理成周报。", "整理好了，按模块分了三段。"), { status: "idle", ended: true }),
-    session(4, "devbox", "/srv/app/billing", smallConvo(sidOf(4), "/srv/app/billing", "账单导出改成流式", "导出大账单时内存会涨到 4G，改成流式写。", "改成边查边写 CSV，峰值内存降到 120M。", 140_000), { status: "busy" }),
+    session(4, "devbox", "/srv/app/billing", smallConvo(sidOf(4), "/srv/app/billing", "账单导出改成流式", "导出大账单时内存会涨到 4G，改成流式写。", "改成边查边写 CSV，峰值内存降到 120M。", 140_000), { status: "busy", relay: "wide" }),
     session(5, "devbox", "/srv/app/gateway", smallConvo(sidOf(5), "/srv/app/gateway", "网关限流配置", "给 /api/search 加每用户限流。", "已加：每用户每秒 5 次，突发 10。"), { status: "idle", kind: "bg" }),
     session(6, "gpu-01", "/data/train/ranker", smallConvo(sidOf(6), "/data/train/ranker", "排序模型训练脚本", "训练脚本加断点续训。", "加好了：每 500 步存一次，启动时自动找最新的检查点。", 96_000), { status: "idle", idle: true }),
     session(7, "win-laptop", "C:\\Users\\user\\work\\desktop-app", smallConvo(sidOf(7), "C:\\Users\\user\\work\\desktop-app", "安装包签名", "安装包要加代码签名。", "签名步骤加进打包脚本了，证书从环境变量读。"), { status: "shell" }),

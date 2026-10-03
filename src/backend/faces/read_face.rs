@@ -347,7 +347,8 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answ
             let (_, total) = hits.finish(scanned)?;
             Ok(json!({ "total": total, "hits": hits.rows }))
         }
-        // 会话事实出成品（分叉血缘 · 改动文件集 · 最新 usage · 项目目录）。
+        // 会话事实出成品（分叉血缘 · 改动文件集 · 最新 usage 与上下文上限 · 项目目录）。
+        //   `limits` = 设置里的上限表（模型名子串 → 上限），可缺；上限每次按它重判。
         //   `prior` = 调用方上一次拿到的应答**原样**（续传令牌，后端零状态）：缺席 / `null` ⇒ 从字节 0 扫；
         //   给了 ⇒ 形状必须恰好是本命令出的那一形（`facts_query::prior_from`），从它的 `end` 接着扫、累加在它上面。
         //   续点越过文件尾 / 不在行边界 ⇒ `failed`（调用方从 0 重要一份，同大纲清单）。
@@ -359,9 +360,19 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answ
                 Some(v) => facts_query::prior_from(v)
                     .map_err(|e| ("bad_args", crate::common::contract::malformed(&e)))?,
             };
+            let limits = facts_query::limits_from(args.get("limits"))
+                .map_err(|e| ("bad_args", crate::common::contract::malformed(&e)))?;
             let r =
                 history_query::open_facts_at(home, path, prior.end).map_err(|e| ("failed", e))?;
-            let mut facts = facts_query::scan_facts(r, prior)
+            // 中转看见过这个会话的请求 ⇒ 它带没带扩展上下文那一项（会话 id ＝ 记录文件名，中转的流标签就是它）。
+            let sid = std::path::Path::new(path)
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("");
+            let relay = crate::agents::context_marks()
+                .into_iter()
+                .find_map(|m| crate::observe::relay_marks::seen(sid, m));
+            let mut facts = facts_query::scan_facts(r, prior, &limits, relay)
                 .map_err(|e| ("failed", format!("stream failed: {e}")))?;
             if facts.project_dir.is_none() {
                 facts.project_dir = history_query::facts_project_dir(home, path);

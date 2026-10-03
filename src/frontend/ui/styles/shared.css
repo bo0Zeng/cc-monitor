@@ -70,6 +70,18 @@
   color: var(--text, #d6cfc6);
 }
 
+/* 一条 toast 至多一颗动作（「撤销」） */
+.ccm-toast-action {
+  margin-top: 6px;
+  padding: 2px 10px;
+  font: inherit;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid var(--border, #3a342e);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
 /* A3：状态栏「当前账号」chip（照 .status-cmdk 形态）+ 账号选单浮层 */
 .status-account {
   display: inline-flex;

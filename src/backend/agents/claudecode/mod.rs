@@ -82,6 +82,8 @@ pub(crate) const UPSTREAM: super::DefaultUpstream = super::DefaultUpstream {
     owns_credentials_file: true,
     // 直接敲的 claude 读 `~/.claude/settings.json` 的 `env` 块（各号的那一份都链回它）。
     settings_env: Some(paths::SETTINGS_ENV),
+    // 1M 上下文的请求在 `anthropic-beta` 里带 `context-1m-<日期>` 那一项；不带 ⇒ 这个模型的默认上下文。
+    context_mark: Some(("anthropic-beta", "context-1m")),
 };
 
 /// 本家的**起会话事实**（注册表 `Adapter.launch` 那一格）：`ccm` 按它起、界面按生成物 `agent-profile-table.ts` 读，同一份。

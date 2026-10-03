@@ -7,7 +7,10 @@
       "/w/a.ts"
     ],
     "usage": {
+      "limit": 1000000,
+      "limitFrom": "assumed",
       "model": "m-g",
+      "peakPromptTokens": 6,
       "promptTokens": 6
     }
   },

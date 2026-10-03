@@ -12,7 +12,7 @@ import { openBatchMenu, type TabBatchHost, type TabBatchRun } from "../../../src
 import { showActionFailureToast } from "../../../src/frontend/ui/error-toast";
 import { askText } from "../../../src/frontend/ui/ask-dialog";
 import { copyText } from "../../../src/frontend/ui/copy-table";
-import { LIVE, ENDED } from "../../../src/frontend/ui/tab-session-state";
+import { LIVE, ENDED, UNSEEN } from "../../../src/frontend/ui/tab-session-state";
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
 import type { Tab } from "../../../src/frontend/ui/tab-model";
 
@@ -75,6 +75,16 @@ describe("批量菜单", () => {
     expect(close?.disabled, "一个都关不了 ⇒ 置灰").toBe(true);
   });
 
+  it("说不清（那台暂时看不见）的不算可起、也不说「已经结束了」：理由说看不见", async () => {
+    tabs = [tab("a", false), tab("u", false, { state: UNSEEN })];
+    run.start.mockResolvedValue([{ sid: "a", outcome: "done", why: "" }]);
+    open();
+    await press(copyText("tabBatch.menu.startTmux", { n: 1 }));
+    expect(run.start.mock.calls[0][0].map((t: Tab) => t.sessionId)).toEqual(["a"]);
+    const unseen = copyText("tabBatch.result.skippedLine", { title: "T-u", why: copyText("sessionState.unseen.tooltip") });
+    expect(toastBody().split("\n")).toContain(unseen);
+  });
+
   it("B2 · 杀：确认框列出这一批，只交还在跑的；结果一条：做了 · 跳过（为什么）· 失败（为什么）", async () => {
     run.stop.mockResolvedValue([
       { sid: "a", outcome: "done", why: "" },
@@ -86,6 +96,7 @@ describe("批量菜单", () => {
     expect(asked).toContain(copyText("tabBatch.stop.line", { title: "T-a", machine: "本机" }));
     expect(asked).toContain(copyText("tabBatch.stop.line", { title: "T-c", machine: "本机" }));
     expect(asked).not.toContain("T-b");
+    expect(run.confirm.mock.calls[0][1], "批量杀是撤不回的：确认框默认焦点要在「取消」").toEqual({ danger: true });
     expect(run.stop.mock.calls[0][0].map((t: Tab) => t.sessionId)).toEqual(["a", "c"]);
     expect(toastBody().split("\n")).toEqual([
       copyText("tabBatch.result.counts", { done: 1, skipped: 1, failed: 1 }),

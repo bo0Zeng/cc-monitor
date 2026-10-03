@@ -305,14 +305,15 @@ describe("S30 ⑥ transition 只许动白名单里那几个属性（件 9）", (
  */
 const HIDDEN_UNRESOLVED: Readonly<Record<string, string>> = {
   // 查找面板按模式切大纲清单的开合（大纲那一半的 `hidden` 从 `UserInputPanel` 自己手里交给了面板）。
-  "src/frontend/ui/views/session-find.ts:237": // 行号 −1：两条类型 import 并成一条（`../session-reads`）·+1：加了 copyText 的 import
+  "src/frontend/ui/views/session-find.ts:239": // 行号 −1：两条类型 import 并成一条（`../session-reads`）·+1：加了 copyText 的 import ·+2：组字判定的 import 与那一行守卫
     "`this.outline.panel` —— 大纲清单那块，由 `UserInputPanel` 建（类 `.user-inputs`；`styles.css` 里那条规则头注逐字「绝不许出现 display」）",
   // 扩展页的抽屉：`this.drawer` 在构造器里由本文件的 `el()` 小工具建（类 `ext-drawer`，经一层参数传进去 ⇒ 推不出；行号按文件现数）；
   //   `.ext-drawer` 在 `styles/settings.css` 里**没有 display 规则** ⇒ UA 的 `[hidden]` 不会被压过（人工核过）。
   // 228/338 → 229/339：上方多一行 import（「在文件夹中显示」）。
+  // 229/339 → 230/340：「装到…」那张卡多记一格填的值。
   "src/frontend/ui/settings/ext-section.ts:230": "`this.drawer` —— 构造时收起",
   "src/frontend/ui/settings/ext-section.ts:340": "`this.drawer` —— 点开一行才拉出来",
-  "src/frontend/ui/error-toast.ts:136": // +1：加了 copyText 的 import
+  "src/frontend/ui/error-toast.ts:153": // +1：加了 copyText 的 import ·+17：toast 可带一颗动作按钮（撤销）与到点收尾
     "`existing.countEl` —— `existing` 是从一张 Map 里取回来的旧 toast，它的 countEl 在别处建的",
   // ⚠ `606 → 614`：我在这份文件上方加了一段注释，**行号就漂了**。
   //    这条登记按**裸行号**做键 —— 那是它的固有脆弱：住址没变、内容没变，只因为
@@ -375,8 +376,8 @@ const HIDDEN_UNRESOLVED: Readonly<Record<string, string>> = {
   // 主线 1504 → 1506：上游搜索命中那一格改走 `data-kind`（多一行注释、一句拆两句），这一处本身没动。
   // 1515 → 1516：`history.ts` 多一行 import（`launch-arrival`），这一处本身没动。
   // 1516 → 1517：全文搜索那一处多一行注释（条数上限不在前端写），这一处本身没动。
-  // 1548 → 1551：`history.ts` 多两行 import（按会话的那一家恢复）＋ 搜索卡片多一格 `agent`，这一处本身没动。
-  "src/frontend/ui/views/history.ts:1551":
+  // 1548 → 1554：删历史会话的三处确认带上「撤不回」（默认焦点在取消）＋ 多两行 import（按会话的那一家恢复）＋ 搜索卡片多一格 `agent`，这一处本身没动。
+  "src/frontend/ui/views/history.ts:1554":
     "`e.hidden = updated.hidden` —— 这一处根本不是「切某个组件的显隐」，是在把一条会话记录的 `hidden` 字段往回写",
 } as const;
 

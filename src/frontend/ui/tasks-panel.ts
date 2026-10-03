@@ -131,6 +131,9 @@ export class TasksPanel {
     // setSession 之后用户 toggle 折叠时再由 setCollapsed 路径推入。
   }
 
+  /** 跟着当前 tab 走、不盖住 tab 栏 ⇒ 不拦快捷键（切 tab 时它照开、换成新会话那一份）。 */
+  readonly passes = "all" as const;
+
   /** dispatcher overlay 接口 */
   handleEsc(): void {
     if (!this.collapsed && this.popoverElement.style.display !== "none") {

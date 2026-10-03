@@ -61,6 +61,8 @@ export class KeybindingsEditor implements OverlayHandle {
     document.body.appendChild(this.overlay);
   }
 
+  readonly modal = true;
+
   /** OverlayHandle 接口：Esc 关闭。但不能"覆盖自己（overlay.close）改成 Esc 时绕过" */
   handleEsc(): void {
     if (this.recordingCell) {

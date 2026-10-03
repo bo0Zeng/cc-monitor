@@ -99,6 +99,8 @@ export interface Tab {
    *  null=尚无带 usage 的 assistant 记录（或事实还没到）。 */
   latestPromptTokens: number | null;
   latestModel: string | null;
+  /** 这份会话的上下文上限（后端定的，见 `session-reads.ts::UsageFact`）；判不出 ⇒ `null`（只写用了多少）。与上两格同一份成品。 */
+  latestContextLimit: number | null;
   /**
    * 这份会话的事实从哪来：问后端要（`views/facts-source.ts`）。
    * 上面四样（分叉血缘 · agent 列表 · 改动文件集 · 最新 usage）只经它落下来 —— `onLine` 上不再有旁路记账员。

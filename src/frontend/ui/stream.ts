@@ -133,7 +133,12 @@ export class MessageStream {
     if (this.stickToBottom) this.snap();
   }
 
-  /** 强制贴底（Tab 切换时调用） */
+  /** 此刻是不是贴着底（用户往上翻过 ⇒ `false`）。切回一个 tab 时据它决定要不要贴底。 */
+  get stuckToBottom(): boolean {
+    return this.stickToBottom;
+  }
+
+  /** 强制贴底（切回一个本来贴着底的 tab · 点「回到底部」） */
   scrollToBottom(): void {
     this.stickToBottom = true;
     this.snap();

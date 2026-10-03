@@ -24,10 +24,18 @@
 
 import { ACTIONS, findAction, type ActionId } from "./actions";
 import { copyText } from "../copy-table";
+import { imeComposing } from "./ime";
 
 export interface OverlayHandle {
   /** 栈顶时按 Esc 调用。返回 true 表示"已处理"，false 表示让 dispatcher 继续 pop */
   handleEsc(): boolean | void;
+  /** 模态（确认框 · 命令面板）：开着时只放行 Esc（与 `passes`）。 */
+  readonly modal?: boolean;
+  /**
+   * 这一层开着时仍放行的动作。缺省 ⇒ 单键（不带 Ctrl / Alt / Meta 的）一律不放行、带修饰键的照常；
+   * `"all"` ⇒ 这一层不拦任何键（多选、跟着 tab 走的任务面板：它们不盖住底下的 tab）。
+   */
+  readonly passes?: readonly ActionId[] | "all";
 }
 
 type Callback = () => void;
@@ -197,6 +205,17 @@ export class KeybindingDispatcher {
 
   // === 私有 ===
 
+  /** 栈上每一层都放行 `id` 才算放行（见 `OverlayHandle.modal` / `passes`）。 */
+  private layersPass(id: ActionId, chord: string): boolean {
+    const bare = !chord.split("+").some((p) => p === "Ctrl" || p === "Alt" || p === "Meta");
+    for (const h of this.overlayStack) {
+      const p = h.passes;
+      if (p === "all" || (p !== undefined && p.includes(id))) continue;
+      if (h.modal || bare) return false;
+    }
+    return true;
+  }
+
   private rebuildChordTable(): void {
     this.chordToAction.clear();
     for (const a of ACTIONS) {
@@ -230,6 +249,7 @@ export class KeybindingDispatcher {
       return;
     }
 
+    if (imeComposing(e)) return; // 组字中的键归输入法（含 Esc：先给输入法收候选）
     const chord = KeybindingDispatcher.normalizeChord(e);
     if (!chord) return;
 
@@ -252,6 +272,9 @@ export class KeybindingDispatcher {
       if (handled === false) return;
       return;
     }
+
+    // 上面有浮层 / 对话框 / 全屏视图：单键不落到底下看不见的 tab 上（模态连带修饰键的也挡）。
+    if (!this.layersPass(id, chord)) return;
 
     // 未上线 action 即使 chord 命中也不触发
     const action = findAction(id);

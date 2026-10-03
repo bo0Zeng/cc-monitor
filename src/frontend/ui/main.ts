@@ -32,6 +32,8 @@ import { HistoryView } from "./views/history";
 import { CcBusView } from "./views/cc-bus-view";
 import { GridMonitorView } from "./views/grid-monitor";
 import { CommandBarView, type Command } from "./views/command-bar";
+import { readContextLimits } from "./views/context-limit";
+import { loadConfig } from "./config";
 import { UsageHud } from "./usage-hud";
 import { recordFileWiring } from "./record-file-notice";
 import { bindErrorToast, showActionFailureToast } from "./error-toast";
@@ -289,8 +291,17 @@ window.addEventListener("DOMContentLoaded", async () => {
   };
   // F88b：当前 tab 那一格变了 → 刷新 HUD context% chip（后端的会话事实到了 / switchTo 切会话 / 要不到 ⇒ chip 说原因）。
   // 订阅 store（原先是两个点对点回调）。
+  // 设置里的上下文上限表：随会话事实交给各台后端（上限在那里定，状态栏与监控板读同一个数）。读不到 ⇒ 空表。
+  const loadContextLimits = async (): Promise<void> => {
+    try {
+      tabs.setContextLimits(readContextLimits((await loadConfig())["contextLimits"]));
+    } catch {
+      /* 读不到设置 ⇒ 后端只按它自己看得到的定 */
+    }
+  };
+  void loadContextLimits();
   tabs.active.subscribe((a) => {
-    usageHud.setActive(a.model, a.promptTokens);
+    usageHud.setActive(a.model, a.promptTokens, a.contextLimit);
     usageHud.setUnavailable(a.unavailable);
   });
 
@@ -321,7 +332,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     });
     void accountChip.refresh(true); // A3：远端配置/默认账号可能变了，刷新账号 chip
     refreshFirstRunHint(); // N-F3：账本/远端列表可能变了 → 「还差什么」现算一遍
-    void usageHud.loadLimitOverrides(); // 上下文上限覆盖表可能在设置页改过
+    void loadContextLimits(); // 上下文上限表可能在设置页改过
   });
   // Batch11-F33：竖直 tab 栏——右缘拖拽调宽。整段搬进 tab 栏自己的模块（`tab-bar-width.ts`），
   // 宽度经 `LS_KEYS` ＋ `safeGet/safeSet` 记忆（D §D5：原先住这里、直调 localStorage、键不在登记里）。
@@ -609,6 +620,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   } catch (e) {
     console.warn("[events] backend_machines 失败，只订本机的会话流：", e);
   }
+  tabs.expectMachines(machines); // 各台都报完了活会话清单 ⇒ 没回来的组员收掉、空组头不留
   // await：保证 listener 注册完成、会话流订阅在 monitor 那一侧登记好，再 emit frontend-ready
   // （它就是这些订阅的就绪点：后端先重发宣告、再按 credit 交留存、再对账 —— 顺序见 `event_replay·rs::ready_point`）。
   await bindEvents({

@@ -24,6 +24,7 @@
  * 而 `P6d` 的件文件当时**根本不存在**，那句指令在账本里悬了一天没人执行。
  */
 import { dispatcher } from "../keybindings/registry";
+import { imeComposing } from "../keybindings/ime";
 import { copyText } from "../copy-table";
 
 export interface Command {
@@ -107,6 +108,9 @@ export class CommandBarView {
     return this.isOpen;
   }
 
+  /** 模态：开着时快捷键只放行 Esc（再按 Ctrl+K 关它由输入框自己接）。 */
+  readonly modal = true;
+
   handleEsc(): void {
     this.close();
   }
@@ -183,6 +187,7 @@ export class CommandBarView {
   }
 
   private onInputKeydown(e: KeyboardEvent): void {
+    if (imeComposing(e)) return; // 组字中的 Enter / 方向键归输入法
     // Ctrl+K 再按关闭：dispatcher 的 app.open-command-bar 在输入框聚焦时被可编辑目标守卫拦掉
     // （registry.ts 只放行 overlay.close），故 toggle 的关分支键盘不可达——在此本地兜住。
     if (e.ctrlKey && e.code === "KeyK") {

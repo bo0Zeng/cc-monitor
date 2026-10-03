@@ -23,6 +23,7 @@ import {
 } from "../session-status";
 import { isLive, isResumeOnly, stateView } from "../tab-session-state";
 import { copyText } from "../copy-table";
+import { contextTokensText } from "./context-limit";
 
 /** grid 数据源（TabManager 的只读子集——便于测试注入桩）。 */
 export interface GridSource {
@@ -159,6 +160,7 @@ function badgesInputs(s: GridSessionSnapshot): string {
     s.runningAgents,
     s.totalAgents,
     s.contextPct == null ? "" : Math.round(s.contextPct),
+    s.contextPct == null && s.contextTokens != null ? contextTokensText(s.contextTokens) : "",
     s.unread,
     s.activityStatus === "waiting" && s.waitingFor ? s.waitingFor : "",
   ].join("\u0000");
@@ -180,6 +182,13 @@ function renderBadges(s: GridSessionSnapshot, badges: HTMLElement): void {
     if (rounded >= 80) b.classList.add("is-high");
     b.textContent = `ctx ${rounded}%`;
     b.title = copyText("gridMonitor.renderBadges.ctxHint");
+    badges.appendChild(b);
+  } else if (s.contextTokens != null) {
+    // 上限判不出：只写用了多少（与状态栏同一个说法），不预警。
+    const b = document.createElement("span");
+    b.className = "grid-monitor-badge badge-ctx";
+    b.textContent = `ctx ${contextTokensText(s.contextTokens)}`;
+    b.title = copyText("gridMonitor.renderBadges.ctxTokensHint");
     badges.appendChild(b);
   }
   if (s.unread > 0) {

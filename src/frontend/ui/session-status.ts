@@ -55,6 +55,8 @@ export interface GridSessionSnapshot {
   totalAgents: number;
   /** context 占用近似%（最新一轮 prompt token ÷ 模型上限）；上限未知 / 无 usage → null。 */
   contextPct: number | null;
+  /** 最新一轮用了多少 token（上限判不出、`contextPct` 为空时只写它）。 */
+  contextTokens: number | null;
   /** 未读消息数（非活跃 tab 累积）。 */
   unread: number;
   /** 会话类型（"bg" → ⚙）；null / "interactive" = 交互。 */

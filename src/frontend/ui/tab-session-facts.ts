@@ -30,9 +30,12 @@ export function applyFacts(tab: Tab, f: SessionFacts): FactsChange {
 
   const tokens = f.usage?.promptTokens ?? null;
   const model = f.usage?.model ?? null;
-  const usage = tab.latestPromptTokens !== tokens || tab.latestModel !== model;
+  // 上限判不出（后端说 `assumed`）⇒ 没有上限：界面只写用了多少，不算百分比、不预警。
+  const limit = f.usage && f.usage.limitFrom !== "assumed" ? f.usage.limit : null;
+  const usage = tab.latestPromptTokens !== tokens || tab.latestModel !== model || tab.latestContextLimit !== limit;
   tab.latestPromptTokens = tokens;
   tab.latestModel = model;
+  tab.latestContextLimit = limit;
 
   const projectDir = f.projectDir !== null && f.projectDir !== tab.projectDir;
   if (projectDir) tab.projectDir = f.projectDir;

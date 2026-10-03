@@ -97,7 +97,10 @@ const NODE_SUITES: readonly (readonly [string, string, number])[] = [
   // §5 步 12：`views/pricing.ts` → `views/context-limit.ts`（只剩 context 上限那半，
   // 名字名不副实），套件与脚本名同拍改。条数 6 → 5：`equivalentInputTokens` 那一例随 ② 轴
   // 退役（`RELATIVE_COST` 的唯一消费者是用量视图）。
-  ["test:context-limit", "tests/frontend/ui/views/context-limit.test.ts", 5],
+  // 条数 5 → 3：上下文上限的判定搬进后端（`observe/facts_query.rs::context_limit`，逐格归 `facts_query_tests.rs`），
+  // `contextLimit` 三条与 `contextPercent` 一条随函数删；前端只剩排版（`contextPercentOf`）与读设置表（`readContextLimits`）各一条。
+  // 3 → 4：上限判不出时只写用了多少（`contextTokensText`）。
+  ["test:context-limit", "tests/frontend/ui/views/context-limit.test.ts", 4],
   // 🔴 原先这里有 `["test:session-backend", "tests/session-backend.test.ts", 10]`。TS 座
   // `session-backend.ts` 零生产调用、删了 ⇒ 套件整删（**被测对象没了**，8 条测座本身）；外层 tmux 三格的字节由
   // 入库夹具 `tmux-outer-golden.json` ＋ Rust `payload_tests.rs` 接着（对照见）；
@@ -149,7 +152,9 @@ const NODE_SUITES: readonly (readonly [string, string, number])[] = [
 // `remote-launch.test.ts` 28 → 10（载荷 / 外层 / 嵌套 env 那几格随载荷渲染删了，每条路径的请求留一条）。删后现打 132 ⇒ 棘到现打值。
 // **132 → 112**（**被测对象没了**）：`cards/bash.test.ts` 整份删除（20 条：斜杠命令与 `!` 输入 / 输出的解析随「谁说的」进了后端，
 // 逐条搬进 `tests/backend/agents/claudecode/text_tests.rs::slash_and_bash_forms`）。删后现打 112 ⇒ 棘到现打值。
-const TOTAL_FLOOR = 112;
+// **112 → 110**（**被测对象没了**）：`context-limit.test.ts` 5 → 3（上下文上限的判定搬进后端，见登记表那一行）。删后现打 110 ⇒ 棘到现打值。
+// **110 → 111**：`context-limit.test.ts` +1（`contextTokensText`）。往上棘到现打值。
+const TOTAL_FLOOR = 111;
 
 /** 判定一条 npm 命令是不是「用 tsx 跑某个 `.test.ts`」。`tsx …` 与 `npx tsx …` 都算。 */
 const TSX_SUITE_CMD = /(^|\s)(npx\s+)?tsx\s+(--\S+\s+)*(\S+\.test\.ts)\s*$/;

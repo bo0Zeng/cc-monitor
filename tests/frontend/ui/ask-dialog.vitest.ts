@@ -205,6 +205,13 @@ describe("D2 · askConfirm / askText 的结算语义", () => {
     await expect(p).resolves.toBe(true);
   });
 
+  it("撤不回的确认（danger）：默认焦点在「取消」，不在确认键上", async () => {
+    const p = askConfirm("杀死这 30 个会话？\n" + "· x\n".repeat(30), { danger: true });
+    expect(document.activeElement, "危险确认打开时焦点该在「取消」").toBe(cancelBtn());
+    cancelBtn().click();
+    await expect(p).resolves.toBe(false);
+  });
+
   it("取消按钮 · 点遮罩 · Esc ⇒ false", async () => {
     const a = askConfirm("a");
     cancelBtn().click();

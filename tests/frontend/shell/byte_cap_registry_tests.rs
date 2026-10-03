@@ -59,6 +59,18 @@ const ALLOWED_SEMANTICS: &[&str] = &[
 /// 否则它就是一条永远不匹配的死规则，而死规则会在下次有人往这个名字上写真上限时悄悄放行。
 const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
     (
+        "MARKED_SESSIONS_KEEP",
+        "**会话个数**不是字节：中转看见的请求标记至多记多少个会话（`observe/relay_marks.rs`）；超了丢最早记下的那个，它再发请求就重新记。",
+    ),
+    (
+        "CONTEXT_STANDARD",
+        "**模型的上下文窗口**（tokens），不是字节：会话事实判上下文上限时的标准那一档（`observe/facts_query.rs::context_limit`）；不限任何读写的体量。",
+    ),
+    (
+        "CONTEXT_EXTENDED",
+        "**模型的上下文窗口**（tokens），不是字节：扩展那一档（1M），判不出时按它算；不限任何读写的体量。",
+    ),
+    (
         "PRIME_BLOCK",
         "**一次读多少**不是上界：冷接宣告会话时主记录按这么大一块一块读（一行比它长就接着读完那一行），只为不把整份读进内存；什么都不因它被截掉。",
     ),

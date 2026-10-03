@@ -54,9 +54,9 @@ export const CONFIG_KEY_OWNERS = {
   tabBar: "src/frontend/ui/tab-bar-state.ts",
   // src/frontend/ui/tab-collections.ts
   tabCollections: "src/frontend/ui/tab-collections.ts",
-  // src/frontend/ui/usage-hud.ts 读（经 `views/context-limit.ts::readContextLimits`）；设置页「外观 → 高级」写
+  // src/frontend/ui/main.ts 读（经 `views/context-limit.ts::readContextLimits`）、随会话事实交给各台后端；设置页「外观 → 高级」写
   //   （`settings/context-limits-section.ts`），不再只能手改 config.json。
-  contextLimits: "src/frontend/ui/usage-hud.ts",
+  contextLimits: "src/frontend/ui/main.ts",
   // ── src/frontend/ui/behavior.ts 那一族 ─────────────────────────────────────────────
   autoFollowUserActive: "src/frontend/ui/behavior.ts",
   bringMonitorToFrontOnUserActive: "src/frontend/ui/behavior.ts",

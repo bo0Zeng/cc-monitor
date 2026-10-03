@@ -99,7 +99,7 @@ export async function restartWithAccount(opts: RestartWithAccountOpts): Promise<
     copyText("accountRestart.confirm.body", { name: accountName, tmuxName, compact: (opts.compactFirst
       ? copyText("accountRestart.confirm.compactNote")
       : ""), trust: trustWarn });
-  if (!(await confirmFn(msg))) return false;
+  if (!(await confirmFn(msg, { danger: true }))) return false;
 
   // ③ [可选] 在【旧账号】上 compact（换号前，命中旧缓存——§5.1）。失败/超时不阻断（§5.2）。
   if (opts.compactFirst) {
