@@ -1138,6 +1138,11 @@ fn every_ignored_test_still_has_someone_who_triggers_it() {
              门禁那一格不先编后端二进制 ⇒ 进不了门禁。谁什么时候跑：改本机内容那条路（`local_lines` · 两条本机读循环 · \
              `ssh_source::consume_local` / `LineIntake` · 后端 `observe/watcher.rs` 的 tail-only）的那一拍，交付前跑一趟、把输出贴进报告。",
         ),
+        (
+            "screenshot_for_the_shots_tool",
+            "不是判据，是截图工具的一格：`npm run shots`（`tests/shots/filewin.mjs`）起私有 Xvfb、按全名逐场景拉起它截文件窗口。\
+             谁什么时候跑：要文件窗口的底图、或动了文件窗口的样子要附截图时跑。",
+        ),
     ];
 
     // ── 🔴 第三档触发器：**由同一个 crate 里的判据 spawn 子进程去跑**〔2026-09-21 加〕

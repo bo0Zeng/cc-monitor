@@ -686,3 +686,196 @@ fn across_args_cut_lossy_paths_by_their_bytes() {
         serde_json::json!({ "root": "/srv", "from": { "b16": "61ff2f78" }, "to": "b/x", "overwrite": false })
     );
 }
+
+/// 截图工具（`npm run shots`）那一格：不是判据。在私有 Xvfb 上开真窗口、画几帧、窗口内截屏存 PNG。
+/// 一个进程只许建一个事件循环 ⇒ 每张图一个进程，场景走环境变量：
+/// `CCM_SHOTS_FILEWIN_SCENE`（main · split · empty · missing · search）· `CCM_SHOTS_FILEWIN_OUT`（PNG）· `CCM_SHOTS_FILEWIN_DIR`（合成的家目录）·
+/// `CCM_SHOTS_FILEWIN_PREVIEW`（预览里那份 main.rs 的正文）。
+/// 目录与文件是截图工具事先铺好的占位；后端是合成后端（`find::testing::FakeBackend`），不连任何机器。
+#[cfg(not(windows))]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore]
+async fn screenshot_for_the_shots_tool() {
+    let need = |k: &str| {
+        std::env::var(k).unwrap_or_else(|_| panic!("这一格只给截图工具跑：缺环境变量 {k}"))
+    };
+    let scene = need("CCM_SHOTS_FILEWIN_SCENE");
+    let out = need("CCM_SHOTS_FILEWIN_OUT");
+    let base = std::path::PathBuf::from(need("CCM_SHOTS_FILEWIN_DIR"));
+    // 合成目录由截图工具事先铺好（这一格只读盘，不写）。
+    let dir = base.join("work").join("orders-service");
+    // 预览那一栏的正文：合成后端按路径从内存里答（不读盘），工具把 main.rs 那一份一并给过来。
+    let code = need("CCM_SHOTS_FILEWIN_PREVIEW");
+    let d = dir.to_string_lossy().to_string();
+    let mut offered = vec!["files-ls", "files-read-text", "files-stat", "files-home"];
+    offered.extend_from_slice(crate::find::COMMANDS);
+    let be = FakeBackend::new(&offered, Declared::default())
+        .homed(&base)
+        .preindexed(&base);
+    be.disk
+        .lock()
+        .unwrap()
+        .insert(dir.join("main.rs").to_string_lossy().to_string(), code);
+    let wired = wire_up("devbox", be).await;
+    let mut w = window_on(&wired, &d);
+    w.machines = vec![
+        "<local>".into(),
+        "devbox".into(),
+        "gpu-01".into(),
+        "win-laptop".into(),
+    ];
+    let shelf = crate::bookmarks::Shelf::open(
+        Some(base.join("bm.json")),
+        &crate::source::Origin("devbox".into()),
+    );
+    shelf.toggle(&d);
+    shelf.toggle(&dir.join("src").to_string_lossy());
+    shelf.toggle("/etc");
+    w.shelf = Some(shelf);
+    let target = match scene.as_str() {
+        "empty" => dir.join("empty-dir").to_string_lossy().to_string(),
+        "missing" => dir.join("gone").to_string_lossy().to_string(),
+        _ => d.clone(),
+    };
+    // 窗口开在 d 上：先走开一步再回来，列表才真去问一趟（导航到当前目录是空操作）。
+    w.navigate_to(dir.join("src").to_string_lossy().to_string());
+    while w.listing.is_loading() {
+        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+    }
+    if target == d {
+        w.go_back();
+    } else {
+        w.navigate_to(target.clone());
+    }
+    while w.listing.is_loading() {
+        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+    }
+    // 合成后端的 files-ls 不送修改时间（真后端送）：照盘上补上。
+    for r in w.listing.rows.lock().unwrap().iter_mut() {
+        r.mtime_secs = std::fs::metadata(&r.path)
+            .ok()
+            .and_then(|m| m.modified().ok())
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|t| t.as_secs());
+    }
+    if target == d {
+        let i = w
+            .listing
+            .rows
+            .lock()
+            .unwrap()
+            .iter()
+            .position(|r| r.name == "main.rs")
+            .unwrap();
+        w.apply_intent(
+            crate::select::Intent::Edge {
+                end: false,
+                extend: false,
+            },
+            0.0,
+            None,
+        );
+        for _ in 0..i {
+            w.apply_intent(
+                crate::select::Intent::Step {
+                    by: 1,
+                    extend: false,
+                },
+                0.0,
+                None,
+            );
+        }
+    }
+    if scene == "search" {
+        // 在工具条的搜索框里打字（合成事件，同 Ctrl+F 那个口），等那块板子落下一份答案。
+        let ctx = egui::Context::default();
+        ctx.run_ui(egui::RawInput::default(), |_| {})
+            .drop_without_applying_deltas();
+        let before = w.search.rounds();
+        crate::find::testing::type_into_search(&ctx, &mut w, "retry");
+        crate::find::testing::settle(&w.search, before, "截图的搜索那一张").await;
+    }
+    let theme = crate::theme::testing::default_theme();
+    let preview = scene == "main";
+    let split = scene == "split";
+    let h = std::thread::spawn(move || {
+        struct Shot {
+            ws: Workspace,
+            n: u32,
+            out: String,
+            preview: bool,
+        }
+        impl eframe::App for Shot {
+            fn ui(&mut self, ui: &mut egui::Ui, _f: &mut eframe::Frame) {
+                self.n += 1;
+                if self.n == 5 && self.preview {
+                    self.ws.set_preview(true);
+                }
+                if self.n == 20 && self.ws.sides() == 2 && !self.ws.pane_on(1).listing.is_loading()
+                {
+                    let rows = self.ws.pane_on(0).listing.rows.lock().unwrap().clone();
+                    *self.ws.pane_on(1).listing.rows.lock().unwrap() = rows;
+                }
+                self.ws.frame(ui);
+                let ctx = ui.ctx().clone();
+                if self.n == 40 {
+                    ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(Default::default()));
+                }
+                let shot = ctx.input(|i| {
+                    i.raw.events.iter().find_map(|e| match e {
+                        egui::Event::Screenshot { image, .. } => Some(image.clone()),
+                        _ => None,
+                    })
+                });
+                if let Some(img) = shot {
+                    let [w, h] = img.size;
+                    let raw: Vec<u8> = img.pixels.iter().flat_map(|c| c.to_array()).collect();
+                    image::save_buffer(
+                        &self.out,
+                        &raw,
+                        w as u32,
+                        h as u32,
+                        image::ExtendedColorType::Rgba8,
+                    )
+                    .unwrap();
+                    ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                }
+                ctx.request_repaint();
+            }
+        }
+        let opts = eframe::NativeOptions {
+            event_loop_builder: Some(Box::new(crate::platform::any_thread_hook)),
+            viewport: egui::ViewportBuilder::default()
+                .with_inner_size([1280.0, 800.0])
+                .with_title("filewin-shot"),
+            ..Default::default()
+        };
+        eframe::run_native(
+            "filewin-shot",
+            opts,
+            Box::new(move |cc| {
+                crate::theme::install(&cc.egui_ctx, &theme);
+                w.font = crate::fonts::FontState::Pending(crate::fonts::install(
+                    &cc.egui_ctx,
+                    Some(&theme),
+                ));
+                let mut ws = Workspace::new(w);
+                ws.theme = Some(theme);
+                ws.ask_home(Some(cc.egui_ctx.clone()));
+                if split {
+                    ws.set_split(true);
+                }
+                Ok(Box::new(Shot {
+                    ws,
+                    n: 0,
+                    out,
+                    preview,
+                }))
+            }),
+        )
+        .unwrap();
+    });
+    tokio::task::spawn_blocking(move || h.join().unwrap())
+        .await
+        .unwrap();
+}

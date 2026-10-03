@@ -58,7 +58,8 @@
     "test:resume": "bash tests/e2e/resume-suite.sh",
     "test:resume-frames": "bash tests/e2e/resume-backend-frames.sh",
     "test:exec-bits": "bash tests/e2e/exec-bit-guard.sh",
-    "test:f40": "bash tests/e2e/f40-suite.sh"
+    "test:f40": "bash tests/e2e/f40-suite.sh",
+    "shots": "node tests/shots/run.mjs"
   },
   "dependencies": {
     "@chenglou/pretext": "0.0.9",
