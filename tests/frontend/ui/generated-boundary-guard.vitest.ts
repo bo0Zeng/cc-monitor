@@ -228,6 +228,7 @@ describe("C01 边界生成物", () => {
       "RemoteHealthPayload.ts", //    C02
       "RestartHint.ts", // C04d 批4（只有 unit variant 的外部标记枚举 → 字面量联合）
       "RunDid.ts", //                 子运行：它最近做的那件事（运行表那一格）
+      "RunEnded.ts", //               子运行：被挤出运行表的已收场那一项（`session_runs` 的 `ended`）
       "RunInfo.ts", //                子运行：运行表里的一项（`session_runs`）
       "RunState.ts", //               子运行：在跑 / 完成 / 失败
       // "SessionAccount.ts" / "SessionAccountsResult.ts" 走了：它们的 Rust 源（`accounts.rs` 那两个类型）

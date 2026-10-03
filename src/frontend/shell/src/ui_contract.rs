@@ -199,7 +199,7 @@ impl SessionStreamFrame {
     }
 }
 
-/// [`SessionStreamFrame::Runs`] 的体：那台后端 `session_runs` 帧的 `runs`（原样，不解释）。
+/// [`SessionStreamFrame::Runs`] 的体：那台后端 `session_runs` 帧的 `runs` 与 `ended`（原样，不解释）。
 #[derive(Debug, Serialize, Clone, PartialEq, Eq)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
@@ -207,6 +207,8 @@ pub struct SessionRunsPayload {
     pub session_id: String,
     #[cfg_attr(test, ts(type = "Array<import(\"./RunInfo\").RunInfo>"))]
     pub runs: RecordBody,
+    #[cfg_attr(test, ts(type = "Array<import(\"./RunEnded\").RunEnded>"))]
+    pub ended: RecordBody,
 }
 
 /// [`SessionStreamFrame::SnapshotInflight`] 的体。

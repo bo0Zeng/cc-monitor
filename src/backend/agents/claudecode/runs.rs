@@ -9,7 +9,8 @@
 //!   ① 前台派出：那次调用拿到结果 ⇒ 完成（`is_error` ⇒ 失败）；后台派出当场回的那次（`toolUseResult.status` ＝ `async_launched`）不算。
 //!   ② 后台派出：父记录里关于它的通知 —— `<task-notification>` 打头的一段，住 `queue-operation` 的 `content` · `attachment` 的
 //!      `prompt` · user 记录的字符串正文；只读 `<task-id>`（＝ agentId）与 `<status>`（completed · failed · killed / stopped）两格，不读正文。
-//!   ③ 子记录自己那一轮以 `end_turn` 收尾（API 报错收尾 ⇒ 失败）；最后一条是打断标记 ⇒ 被叫停。
+//!   ③ 子记录自己那一轮以 `end_turn` 收尾；API 报错的那条（`isApiErrorMessage`，`stop_reason` 不定）本身就是失败收场；
+//!      最后一条是打断标记 ⇒ 被叫停。
 //! - 请求：子 agent 发的每条请求带 `x-claude-code-agent-id`（值 ＝ 它的 `agentId`）；主运行的请求不带。
 
 use serde_json::Value;
@@ -61,13 +62,12 @@ pub(crate) fn run_of(v: &Value) -> Option<super::super::RunMark> {
         .get("message")
         .and_then(|m| s(m, "stop_reason"))
         .unwrap_or("");
-    let end = (assistant && stop == "end_turn").then(|| {
-        if v.get("isApiErrorMessage").and_then(Value::as_bool) == Some(true) {
-            RunEnd::Failed
-        } else {
-            RunEnd::Done
-        }
-    });
+    let api_error = v.get("isApiErrorMessage").and_then(Value::as_bool) == Some(true);
+    let end = if assistant && api_error {
+        Some(RunEnd::Failed)
+    } else {
+        (assistant && stop == "end_turn").then_some(RunEnd::Done)
+    };
     // 子 agent 被打断（用户按了 Esc / 主运行被打断）：它最后写的是一条打断标记 ⇒ 不会再有终局，按被叫停收。
     let interrupted = s(v, "type") == Some("user")
         && v.get("message")

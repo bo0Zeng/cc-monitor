@@ -198,7 +198,7 @@ const FRAMES: &[(&str, &str)] = &[
     // 一个会话的运行表 —— 会话成品，与起停同一条有序通道。
     (
         "session_runs",
-        r#"{"kind":"session_runs","sid":"s1","runs":[]}"#,
+        r#"{"kind":"session_runs","sid":"s1","runs":[],"ended":[]}"#,
     ),
 ];
 

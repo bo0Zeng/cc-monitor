@@ -2345,6 +2345,7 @@ describe("F91b TabManager.peekSession（监控板内容 peek 纯读派生）", (
         { run: "3", label: "stop1", state: "stopped" },
         { run: "4", label: "run2", state: "running" },
       ],
+      ended: [],
     });
 
     const p = tm.peekSession("s1");

@@ -114,11 +114,12 @@ pub enum In {
     Listed { origin: String },
     /// 到那台的连接断了。
     LinkLost { origin: String },
-    /// `session_runs`：那台后端给的一个会话的运行表（JSON 数组原文，不解释）。
+    /// `session_runs`：那台后端给的一个会话的运行表 ＋ 被挤出表的已收场那几个（JSON 数组原文，不解释）。
     Runs {
         origin: String,
         sid: String,
         runs: crate::ui_contract::RecordBody,
+        ended: crate::ui_contract::RecordBody,
     },
 }
 
@@ -155,6 +156,7 @@ pub enum Out {
         origin: String,
         sid: String,
         runs: crate::ui_contract::RecordBody,
+        ended: crate::ui_contract::RecordBody,
     },
 }
 
@@ -163,7 +165,13 @@ struct OriginBook {
     sessions: BTreeMap<String, Product>,
     listed: bool,
     /// 活会话的最新运行表（F5 重放跟在它的宣告后面再说一次）；会话离开 ⇒ 摘。
-    runs: BTreeMap<String, crate::ui_contract::RecordBody>,
+    runs: BTreeMap<
+        String,
+        (
+            crate::ui_contract::RecordBody,
+            crate::ui_contract::RecordBody,
+        ),
+    >,
 }
 
 /// F5 重放那一趟要发的东西：骨架先（`before`，在留存行之前），终局后（`after`，在留存行之后 —— 否则远端行会把刚归档的 tab 翻活）。
@@ -218,13 +226,23 @@ impl Book {
                 b.runs.remove(&sid);
                 vec![Out::Left { origin, sid, fate }]
             }
-            In::Runs { origin, sid, runs } => {
+            In::Runs {
+                origin,
+                sid,
+                runs,
+                ended,
+            } => {
                 self.origins
                     .entry(origin.clone())
                     .or_default()
                     .runs
-                    .insert(sid.clone(), runs.clone());
-                vec![Out::Runs { origin, sid, runs }]
+                    .insert(sid.clone(), (runs.clone(), ended.clone()));
+                vec![Out::Runs {
+                    origin,
+                    sid,
+                    runs,
+                    ended,
+                }]
             }
             In::Listed { origin } => {
                 self.origins.entry(origin.clone()).or_default().listed = true;
@@ -275,11 +293,12 @@ impl Book {
                             sid: sid.clone(),
                             meta: m.clone(),
                         });
-                        if let Some(runs) = b.runs.get(sid) {
+                        if let Some((runs, ended)) = b.runs.get(sid) {
                             r.before.push(Out::Runs {
                                 origin: (*o).clone(),
                                 sid: sid.clone(),
                                 runs: runs.clone(),
+                                ended: ended.clone(),
                             });
                         }
                     }
@@ -394,9 +413,12 @@ impl Out {
             Out::Unseen { origin, .. } => vec![F::Unseen(b::SessionUnseenPayload {
                 origin: crate::origin::Origin(origin.clone()),
             })],
-            Out::Runs { sid, runs, .. } => vec![F::Runs(b::SessionRunsPayload {
+            Out::Runs {
+                sid, runs, ended, ..
+            } => vec![F::Runs(b::SessionRunsPayload {
                 session_id: sid.clone(),
                 runs: runs.clone(),
+                ended: ended.clone(),
             })],
         }
     }

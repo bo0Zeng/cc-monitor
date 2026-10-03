@@ -707,25 +707,32 @@ fn tap_frames_parse_into_their_shapes_and_bad_ones_are_none() {
     }
 }
 
-/// 运行表那一帧（字面量与后端 `wire_tests::session_runs_frames_have_exactly_these_bytes` 同形）：`runs` 原样收下（不解释）；不是数组 ⇒ 坏帧。
+/// 运行表那一帧（字面量与后端 `wire_tests::session_runs_frames_have_exactly_these_bytes` 同形）：`runs` · `ended` 原样收下（不解释）；
+/// 不是数组 / 缺了 ⇒ 坏帧。
 #[test]
 fn session_runs_frames_carry_the_runs_verbatim() {
-    let line = r#"{"kind":"session_runs","sid":"s1","runs":[{"run":"a2","state":"done","last":{"t":"say"}}]}"#;
+    let line = r#"{"kind":"session_runs","sid":"s1","runs":[{"run":"a2","state":"done","last":{"t":"say"}}],"ended":[{"run":"a0","tool":"t0","state":"failed"}]}"#;
     match parse_frame(line) {
-        Some(InboundFrame::SessionRuns { sid, runs }) => {
+        Some(InboundFrame::SessionRuns { sid, runs, ended }) => {
             assert_eq!(sid, "s1");
             assert_eq!(
                 runs.0.get(),
                 r#"[{"run":"a2","state":"done","last":{"t":"say"}}]"#
             );
+            assert_eq!(
+                ended.0.get(),
+                r#"[{"run":"a0","tool":"t0","state":"failed"}]"#
+            );
         }
         other => panic!("运行表没解出来：{other:?}"),
     }
-    assert_eq!(
-        parse_frame(r#"{"kind":"session_runs","sid":"s1","runs":{}}"#),
-        None,
-        "runs 不是数组却被收下了"
-    );
+    for bad in [
+        r#"{"kind":"session_runs","sid":"s1","runs":{},"ended":[]}"#,
+        r#"{"kind":"session_runs","sid":"s1","runs":[],"ended":{}}"#,
+        r#"{"kind":"session_runs","sid":"s1","runs":[]}"#,
+    ] {
+        assert_eq!(parse_frame(bad), None, "坏的运行表帧被收下了：{bad}");
+    }
 }
 
 /// 转交是纯照搬：帧 → `session-tap` 的 payload（origin 由调用方给；`end` 用线上那个字）。

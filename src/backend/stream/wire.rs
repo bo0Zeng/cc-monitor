@@ -598,8 +598,23 @@ pub enum Frame {
         end: Option<TapEnd>,
     },
     /// 一个会话的运行表（主运行之外的那几个子运行：标签 · 状态 · 最近一件事 · 派出它的那次工具调用）。表变了就整份发一次；
-    /// 按最近一次动静排（最早动过的在前）。
-    SessionRuns { sid: String, runs: Vec<RunInfo> },
+    /// 按最近一次动静排（最早动过的在前）。`ended`：被挤出运行表的已收场子运行（对上了派出调用的那些，先挤出的在前）——
+    /// 派出它们的那几张卡照样标得上终态。
+    SessionRuns {
+        sid: String,
+        runs: Vec<RunInfo>,
+        ended: Vec<RunEnded>,
+    },
+}
+
+/// 被挤出运行表的一个已收场子运行（[`Frame::SessionRuns`] 的 `ended` 一项）：是哪个 · 派出它的那次工具调用 · 终态。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub struct RunEnded {
+    pub run: String,
+    pub tool: String,
+    pub state: RunState,
 }
 
 /// 一个子运行此刻的样子（[`Frame::SessionRuns`] 的一项）。
