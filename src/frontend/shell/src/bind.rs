@@ -49,8 +49,8 @@ pub struct AwaitRequest {
     pub ps_pid: u32,
     pub marker: String,
     /// Win32 FILETIME 字符串（PS 端 `[Process].StartTime.ToFileTime()` 输出）。
-    /// **跟 `SessionInfo.proc_start` (NetTicks) 不同单位**——前者自 1601-01-01 UTC，
-    /// 后者自 0001-01-01 Local。详 `utils::FileTime` / `utils::NetTicks`。
+    /// **跟 Claude Code 写的 `procStart`（.NET 本地 ticks）不同单位**——前者自 1601-01-01 UTC，
+    /// 后者自 0001-01-01 Local。详 `utils::FileTime`。
     pub proc_start: String,
 }
 

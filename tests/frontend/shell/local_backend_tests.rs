@@ -1,7 +1,7 @@
 /// 本模块的**全部启动入口**。两条判据共用这一份人群
 /// （`the_startup_path_really_calls_this_module` 与 `the_production_entry_hands_the_stdio_consumer_down`）
 /// —— 各存一份迟早分叉：新增入口时只想得起改一处。
-const ENTRIES: &[&str] = &["start_if_present", "start_or_extract"];
+const ENTRIES: &[&str] = &["start_or_extract"];
 
 // ── `K-R28`：起后端那一跳的两件事，各自一条判据 ────────────────────────
 // 下面四条按「哪一半」分：①判别 ②重试 ③上限 ④两句话。
@@ -1990,7 +1990,7 @@ fn candidates_never_point_into_a_build_tree() {
 /// 而上面那些单测**全都照样绿**。
 ///
 /// ⚠ **P2z 改过一次口径，记下为什么不是「改弱」**：原来钉的是字面量
-/// `local_backend::start_if_present`。P2z 把接线换成了 `start_or_extract`
+/// 当时那个只看 exe 旁边的入口（后来删了，零调用方）。P2z 把接线换成了 `start_or_extract`
 /// （exe 旁边没有就释放内嵌那份），那条字面量当场红 —— **它在做它的岗位**。
 /// 改法不是把它删掉、也不是换成两个名字任选其一（那会让「一个都没接」漏网），
 /// 而是钉「**至少接了一个已知生产入口，且那个入口确实存在于本模块**」。
@@ -2026,8 +2026,7 @@ fn the_startup_path_really_calls_this_module() {
     // 完备性怎么判：本模块里**每一个调了 `supervise`（含 `_with_stdio`）的 `pub fn`**
     // 都必须在清单里。`supervise` / `supervise_with_stdio` 自己除外（它们是被调的那一方）。
     {
-        let mut missing: Vec<String> = Vec::new();
-        let mut seen = 0usize;
+        let mut found: Vec<String> = Vec::new();
         for (i, l) in me.lines().enumerate() {
             let t = l.trim_start();
             if !t.starts_with("pub fn ") {
@@ -2049,20 +2048,17 @@ fn the_startup_path_really_calls_this_module() {
             if !body.contains("supervise") {
                 continue;
             }
-            seen += 1;
-            if !ENTRIES.contains(&name.as_str()) {
-                missing.push(name);
-            }
+            found.push(name);
         }
-        assert!(
-            seen >= 2,
-            "只扫到 {seen} 个「会起进程的 pub fn」—— 抽取面坏了，完备性自检在空转"
-        );
-        assert!(
-            missing.is_empty(),
-            "这些 `pub fn` 会起被监护的进程，却**不在 `ENTRIES` 清单里**：{missing:?}\n\
-                 ⇒ 手写白名单漏了它 ⇒ `the_production_entry_hands_the_stdio_consumer_down`\n\
-                 只遍历清单，**逮不到这条新入口没接消费者**。清单要跟着实际入口走。"
+        // 两向相等：抽取面塌了（一个都没认出）与清单漏了一条新入口，都在这里红。
+        found.sort();
+        let mut listed: Vec<String> = ENTRIES.iter().map(|s| s.to_string()).collect();
+        listed.sort();
+        assert_eq!(
+            found, listed,
+            "「会起被监护进程的 `pub fn`」与 `ENTRIES` 清单对不上（左：盘上认出的 · 右：清单）。\n\
+                 ⇒ 清单漏了一条新入口 ⇒ `the_production_entry_hands_the_stdio_consumer_down`\n\
+                 只遍历清单，**逮不到这条新入口没接消费者**；左边为空则是抽取面坏了。"
         );
     }
     for e in ENTRIES {

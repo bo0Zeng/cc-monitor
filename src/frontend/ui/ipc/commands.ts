@@ -22,8 +22,8 @@
  * ## 本文件今天覆盖多少
  *
  * ~~**89 个命令**（C04a 样板 1 + C04d 批 1-6c 的 88）。其余 10 个仍走各模块里的裸 `invoke`。~~〔那是 C04d 时的读数〕
- * ★★**全部**：Rust 侧每一条命令在本表里都有且只有一个条目（今天 142/142，
- * 数由 `commands.vitest.ts` 的包装层计数与 `RUST_COMMAND_COUNT` 两处钉着），
+ * ★★**全部**：Rust 侧每一条命令在本表里都有且只有一个条目
+ *（`commands.vitest.ts` 判「包装层的键 == Rust 声明的命令集」两向相等，不钉条数），
  * 全仓 TS **只有本文件**直呼 `invoke`（判据：`commands.vitest.ts` 末尾「裸 invoke 只在包装层」那一节
  * ＋ `generated-boundary-guard.vitest.ts` 的「直接 import invoke 的生产文件恰好 1 个」）。
  *

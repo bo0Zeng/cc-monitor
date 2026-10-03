@@ -311,23 +311,6 @@ fn nested_env_markers() -> Vec<&'static str> {
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
-/// Batch7-F23A：nudge skip 判定的纯函数对（单测钦定，见）。
-///
-/// `pack_nudge_state`：终态物理尺寸 + fullscreen 位打包成一个可比较状态值。
-/// fullscreen 占 bit 63（F11 borderless 全屏与 maximize 在"自动隐藏任务栏"下
-/// inner 尺寸可能相同——状态位保证这类 #4095 高危过渡不被 skip）；宽度截 31 位
-/// （物理像素远小于 2^31，不损失信息）。
-pub(crate) fn pack_nudge_state(w: u32, h: u32, fullscreen: bool) -> u64 {
-    ((fullscreen as u64) << 63) | (((w as u64) & 0x7FFF_FFFF) << 32) | h as u64
-}
-
-/// skip 当且仅当：曾经 nudge 过（last != 0）且 (尺寸+全屏态) 与上次执行完的
-/// nudge 完全一致——典型即"最小化→恢复"。0 是安全哨兵：真实窗口尺寸非零，
-/// pack 结果不可能为 0（0×0 在事件入口与 settle 双重滤除）。
-pub(crate) fn nudge_should_skip(last_nudged: u64, packed: u64) -> bool {
-    last_nudged != 0 && last_nudged == packed
-}
-
 /// 会话成品到达时 monitor **自己的事**（拉前终端的绑定）—— 不是裁决，是这台界面进程要记的窗口账。
 ///
 /// - 本机活会话：按 pid 找父 PowerShell 绑窗口（Windows 本机 ↗；老后端不带 pid 就不绑）；
@@ -1605,10 +1588,6 @@ fn open_with_os(path_or_dir: &str) -> Result<(), String> {
 #[cfg(test)]
 #[path = "../../../../tests/frontend/shell/search_kou_jing_guard.rs"]
 mod search_kou_jing_guard;
-
-#[cfg(test)]
-#[path = "../../../../tests/frontend/shell/lib_nudge_skip_tests.rs"]
-mod nudge_skip_tests;
 
 #[cfg(test)]
 #[path = "../../../../tests/frontend/shell/lib_env_scrub_tests.rs"]

@@ -72,8 +72,8 @@ path = "src/main.rs"
 # 🔴**文件管理窗口的独立进程**（作废重写 · `§8.5`）。
 #
 # 为什么它是**本包的第二个 bin** 而不是一个新 crate：与 `filewin` 当初落成模块
-# 同一条理由 —— 门禁 `cargo` 那一格把 workspace 包数**恒等**钉在 9
-# （`tests/scripts/gate.sh` 里那句 `run_gate_sum cargo 9`），而那个 `9` 不在本刀写区。
+# 同一条理由 —— 当时门禁 `cargo` 那一格把 workspace 包数恒等钉成一个手抄的数，改它不在本刀写区
+# （今天那一格的成员集合从 `cargo metadata` 现取，这条理由已不成立）。
 # 第二个 `[[bin]]` 不动包数，而且它要的每一样（egui/eframe/winit/tokio/sftp 那条池）
 # 本包已经全有 ⇒ **零新增依赖**。
 #

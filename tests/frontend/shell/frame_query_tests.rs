@@ -990,7 +990,6 @@ fn local_queries_reach_the_running_resident_backend_not_a_file_beside_the_exe() 
         [
             // 起本机常驻后端 / 自释放内嵌那份之前先看旁边有没有（起它，不是问它）。
             "local_backend.rs::resolve_or_extract",
-            "local_backend.rs::start_if_present",
         ]
         .iter()
         .map(|s| s.to_string())

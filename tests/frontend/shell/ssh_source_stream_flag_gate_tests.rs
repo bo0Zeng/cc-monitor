@@ -364,8 +364,8 @@ fn both_carriers_start_the_backend_with_the_same_stream_flags_the_backend_strips
     ));
     assert_eq!(
         stdio.matches("LOCAL_STREAM_ARGS.iter()").count(),
-        2,
-        "stdio 载体的两个起法（`start_if_present` · `start_or_extract`）都要用 LOCAL_STREAM_ARGS"
+        1,
+        "stdio 载体的起法（`start_or_extract`）要用 LOCAL_STREAM_ARGS"
     );
     guard_core::find_pinned(&host, "cmd.args(local_backend::LOCAL_STREAM_ARGS)")
         .unwrap_or_else(|e| panic!("常驻载体没用 LOCAL_STREAM_ARGS：{e}"));

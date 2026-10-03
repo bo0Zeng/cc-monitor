@@ -190,7 +190,6 @@ pub(crate) async fn call(
 fn said(r: Routed) -> String {
     match r {
         Routed::NoChannel(s) | Routed::Refused(s) => s,
-        Routed::Done => copy_text("rsFrameQuery.said.internal", &[]),
     }
 }
 

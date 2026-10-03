@@ -12,6 +12,7 @@
 # （`observe/session_ledger.rs`），快照帧删了 ⇒ 本套件改看成品帧 `session_state`；「标签挂着谁」直接问 tmux（经 shim）。
 # 前端 emitter→灰灯半场由单测(tabs.vitest.ts)+ 全链 GUI 跑覆盖;本脚本钉住后端边沿。
 # 红线:backend 零改动(只跑它) / 不碰真 ~/.claude(CLAUDE_CONFIG_DIR 隔离) / 不改 TMUX_LS_FMT。
+. "$(cd "$(dirname "$0")" && pwd)/sandbox-env.sh"  # 无条件清掉继承来的 CCM_* / CLAUDE* / ANTHROPIC_* / TMUX* / CC_BUS_*
 set -euo pipefail
 
 # ── G-C（解 BACKLOG E41）：把整套件钉在**自己的 tmux server** 上 ──────────────────

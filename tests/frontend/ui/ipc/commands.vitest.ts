@@ -170,52 +170,8 @@ const DYNAMIC_ONLY: string[] = [];
 
 const WRAPPER_FILE = "src/frontend/ui/ipc/commands.ts";
 
-/**
- * 两个「期望的计数」——**报文（`it` 标题 + `expect` 的诊断）与断言共用同一个值**。
- *
- * ## 为什么要立成常量，而不是各写各的字面量
- *
- * 本文件此前是这条病的活体：`it` 标题写「计数恰好 **142**」而断言是 `.toBe(144)`；
- * 另一条标题写「唯一名数 == **137**」而断言同样是 `.toBe(144)`。
- * 判据红了，人照标题去查 142 / 137 —— **查的是一个不存在的事实**。
- * 根因是「一个值装了两件事」：标题里那个数是**写的时候手抄的**，
- * 断言里那个数是**跟着代码走的**，两者之间没有任何东西钉住它们相等。
- * ⇒ 把两份拷贝合成一个值：改了断言，标题与诊断**结构上不可能不跟着变**。
- *
- * ## 为什么是两个常量而不是一个
- *
- * 今天两个数都是 144，而且本文件的两条子集断言（`bogus` 空 + `rustOnly == DYNAMIC_ONLY`）
- * 合起来钉的正是「两个集合相等」⇒ 它们**structurally** 同值。
- * 但它们量的是**两件事**（Rust 侧声明的命令集 · TS 侧静态可见的字面量命令名集），
- * 合成一个常量就是反过来再犯一次「一个值装了两件事」。
- *
- * ⚠ 改这两个数之前先读上面那句：加/删命令时**两个都要动**，
- *   只动一个会被那两条子集断言当场逮住。
- */
-/** Rust 侧 `#[tauri::command]` 声明（= `invoke_handler` 注册）的唯一命令名个数。 */
-// 🔴 〔删用量 09-18〕**151 → 147**：`aggregate_usage_all` /  〔散文墓碑〕
-// `aggregate_remote_usage_all` / `account_usage` / `account_usage_local` 四条同拍退役  〔散文墓碑〕
-//（用量 ②③ 两轴整轴不做了）。**这是本常量第一次往下走** —— 命令数变小要跟着改三个数：
-// 本常量 · `TS_LITERAL_COMMAND_COUNT` · 下面包装层覆盖数（141 → 137）。
-const RUST_COMMAND_COUNT = 42; // −1（`relay_all_sessions_switch`：中转地址与开关交给 ccm 自己定；在包装层里，三个数一起 −1） // −1（`panorama_place`：代码全景整条摘掉） // +1（`launch_remote_terminal` 退役 −1；`open_terminal_window` · `terminal_dial` 进 +2：ssh 外壳由本机后端 `terminal-ssh` 渲，monitor 只开窗 ＋ 交机器事实；都在包装层里，三个数一起 +1） // −4（会话正文四条 `stream_read_session_jsonl` · `load_subagent` · `read_session_range` · `read_session_lines`：那台后端出成品、界面经通道直问 `src/frontend/ui/record-reads.ts`；都在包装层里，三个数一起 −4）// −3 ＋2（全景 `panorama_call` / `panorama_edit` / `panorama_cancel` 改走通道；新 `panorama_place` · `chan_cancel`；三个数一起 −1）// −1（公钥推送改走通道 `pubkey-push`；三个数一起 −1）// 50 → 49：`deploy_remote_acct_iso` 退役（界面经通道问那台 `acct-iso-install`） // 主线 61 ＋ MIG-1 −11（ssh 配置 3 · 活会话 2 · 端口转发 3 · 列 tmux 2 · 测试连接 1）⇒ 50 // −1（`test_remote_connection`：测试连接改问本机后端 `remote-probe`）// −2（`list_local_tmux` / `list_remote_tmux`：`tmux-list` 出成品，界面经通道直问）// 主线 76 ＋ MIG-1 −8 ⇒ 68 // 81 → −7 ＋2（render_launch_payload · render_ccm_launch · relay_endpoint_for_launch · resume_history_session · new_local_session · render_local_attach · probe_ccm_cli 改走通道 / 删；新 open_local_terminal · relay_all_sessions_switch；都在包装层里，三个数一起 −5） // −3（start_forward / stop_forward / list_forwards：转发账进本机常驻后端，界面经通道问 `forward-*`）// −2（list_active_sessions / list_session_activity：本机骨架与初始灯改由会话流的 `live` / `activity` 成品给，两条命令删了；都在包装层里，三个数一起 −2）// 主线 81 − MIG-1 3（`~/.ssh/config` 导入那三条：改问本机后端 `ssh-config-*`，都在包装层里，三个数一起 −3）⇒ 78 // 85 → −4（assets_sync · skill_install_preview / apply · skill_uninstall_apply 改走通道）// 93 → −8（MCP 读写六条 ＋ 推拉两条改走通道、Rust 命令删了；都在包装层里，所以本文件那**三个**数一起 −8）// 基数 92 → +1（chan_offer：主界面问那台的能力事实；在包装层里，三个数一起 +1）// 94 − AL2 2 ⇒ 92 // −2（acct-iso 本机 / 远端各两条合成两条带 origin 的：4 → 2；都在包装层里，三个数一起 −2）// −2（read_cc_bus_state / read_cc_bus_inbox：驾驶舱读面改走通道 `bus-state` / `bus-inbox`、Rust 命令删了；都在包装层里，所以本文件那三个数一起 −2）// 主线 99 ＋ HX2 −1（写 key 那条包装退役）⇒ 98 // 主线 102 ＋ LOC1b −3（全文搜索 · 查索引状态 · 重建索引三条：本机全文搜索改问本机后端 `history-search`，monitor 内存索引与三条命令删了）⇒ 99 // 主线 103 ＋ LOC1a −1（get_session_tasks 包装退役：任务快照改走通道 `tasks-list`）⇒ 102 // 主线 105 ＋ US1 −2 ⇒ 103 // 基数 113 ＋ SU1 +1 ＋ C4e −9 ⇒ 105（跑出来核过） // +1（skill_uninstall_apply：skill 卸；落进了包装层，所以本文件那**三个**数一起 +1） // **−5（check_cc_bus_agent_online / cc_bus_send / cc_bus_kill / cc_bus_spawn / cc_bus_broadcast：cc-bus 驾驶舱查在线与写面改走通道 `bus-list` / `bus-send` / `bus-kill` / `bus-spawn` / `bus-broadcast`、Rust 命令删了；都在包装层里，所以本文件那**三个**数一起 −5）** // **−3（kill_remote_tmux / tmux_send_keys / backend_send_into：杀会话 · 送键 · 就地 resume 改走通道 `kill` / `launch`、Rust 命令删了；都在包装层里，所以本文件那**三个**数一起 −3）** // **−1（capture_remote_pane：预览窗抓一屏改走通道 `capture-pane`、Rust 命令删了；它在包装层里，所以本文件那**三个**数一起 −1）** // 主线 118 ＋ 本路 -5 ⇒ 113 // **−5（list_history_projects / list_remote_history_projects / stream_history_sessions_in_project / update_history_metadata / list_last_accounts：历史清单与注解改走通道问本机常驻后端、Rust 命令删了；都在包装层里，所以本文件那**三个**数一起 −5）** // **主线 116 ＋ 本路 +2 ⇒ 118（跑出来核过）** // 主线 129 ＋ AS2 +3 ＋ RM1f −16 ⇒ 116（跑出来核过） // **主线 129 ＋ AS2 +3（assets_sync · skill_install_preview / apply，都落进包装层，本文件那三个数一起 +3）** // **−2（backend_exit_policy / set_backend_exit_policy：「退出行为」问 / 交写改走通道、Rust 命令删了；都在包装层里，所以本文件那**三个**数一起 −2）** // 主线 135（AL1d −2 ＋ AS1 ＋2）＋ 本路 −4 ⇒ 131（跑出来核过） // **−1（probe_session_record：resume 之前问记录还在不在改走通道 `history-record`、Rust 命令删了；它在包装层里，所以本文件那**三个**数一起 −1）** // **−3（list_remote_accounts / list_local_accounts / check_account_trust：账号清单与信任预检改走通道、Rust 命令删了；都在包装层里，所以本文件那**三个**数一起 −3）** // 主线 135 ＋ AL1d -2 ＋ AS1 +2 ⇒ 135（跑出来核过；AS1：mcp_sync_preview / mcp_sync_apply，Both，新能力 `mcp.sync`） // **−2（aliases_block_* 三条进，「终端集成」五条 cc_integration_* 退役；都在包装层里，所以本文件那**三个**数一起 −2；合并主线 636cc1a0 按两边增量相加 135 − 2）** // **两边各 −4 ⇒ 143 − 8 = 135（跑出来核过）** // **−1（list_plugin_marketplaces：插件市场改走通道、Rust 命令删了；它在包装层里，所以本文件那**三个**数一起 −1）** // **−3（read_session_index / list_user_inputs / find_in_session：会话读面三条改走通道、Rust 命令删了；都在包装层里，所以本文件那**三个**数一起 −3）** // **−5（本机六条全景写命令退役 −6 · `panorama_edit` ＋1；落进了包装层，所以本文件那**三个**数一起 −5）**（合并主线按两边增量相加） // **+1（probe_session_record：resume 之前问记录还在不在；落进了包装层，所以本文件那**三个**数一起 +1；合并 RM1c 按两边增量相加）** // **+1（panorama_call：代码全景经那台机器的后端走；落进了包装层，所以本文件那**三个**数一起 +1）** // **+1（relay_ensure：让远端那台上有一个中转在跑）** // **−1（「某会话属哪个账号」两条退役 −2、`chan_call` ＋1；与 SE2 ＋1 / S4 −1 按两边增量相加 ⇒ 141，跑出来核过）** // **+1（find_in_session：会话内查找，后端 `--find-in-session`；落进了包装层，所以本文件那**三个**数一起 +1）** // **−1（sftp_copy：零流量复制随门禁 `f3-copy` 那一格退役；它在包装层里，所以本文件那**三个**数一起 −1）** // **−12（池子那十二条 sftp_* 命令随老面板与窗口改走通道删了；都在包装层里，所以本文件那**三个**数一起 −12）** // **〔条 66〕+1（推生效值那一条命令退役 −1，`backend_exit_policy` / `set_backend_exit_policy` 进 +2：「退出行为」那个值搬到后端那台机器上，前端改走问 / 交写两条；都落进了包装层，所以本文件那**三个**数一起 +1）** // **+2（aliases_render / aliases_read / aliases_install 进，write_account_aliases 退役；都在包装层里 ⇒ 三个数一起 +2）** // **〔PN1b 选图〕+2（panorama_diagram_kinds / panorama_diagram，都 Local；归已有能力 `panorama.code-graph`）** // **+2（check_local_acct_iso / local_acct_iso_shellinit；与 SE1/U3b 合并时按两边增量相加）** // **+1（list_user_inputs：大纲的数据源，后端 `--list-user-inputs`；落进了包装层）** // **+1（replay_keep_tail_only：接上骨架的会话重放缓冲只留尾巴；落进了包装层，所以本文件那**三个**数一起 +1）** // **〔骨架〕+2（read_session_index / read_session_range：`--read-session-from-offset` 在 monitor 侧的两个调用点；都落进了包装层，所以本文件那**三个**数一起 +2）** // **+1（open_file_window：原生文件管理窗口那条入口；它落进了包装层，所以本文件那**三个**数一起 +1）** // **−2（`origin` 归一的最后两对：退役 `write_remote_mcp_server` / `remove_remote_mcp_server`。两条退役的**都在包装层里**，所以本文件那**三个**数一起 −2）** // **+1（sftp_chmod：`SETSTAT` 改权限那一条；它落进了包装层，所以本文件那**三个**数一起 +1）** // **−5（`origin` 归一：5 对同义双份合成一条带 origin 的 ⇒ 退役 `create_remote_branch_session` / `delete_remote_history_session` / `stream_remote_history_sessions` / `stream_read_remote_session` / `list_remote_mcp_project_dirs`。五条退役的**都在包装层里**，所以本文件那**三个**数一起 −5）** // **+1（sftp_copy：零流量复制那一条；它落进了包装层，所以本文件那**三个**数一起 +1）**  〔散文墓碑〕
-// **K-R109 +1**（render_local_attach：本机后端产 `ccm attach <名>` 那一句，`R61` 裁定三；
-// 它与 `generate_handler!` 那一行、`parity_ledger::LEDGER` 那一行**必须同一拍**）。
-// **K-R49 +1**（write_account_aliases〔散文墓碑〕：加了账号就把 `alphacc` / `betacc` 那条命令落盘；已退役）。
-// 增量账（谁把这个数推上去的）：**K-H2a +2**（read_apikey_credentials_status /
-// write_apikey_credentials_key）；U8c-2c-2 +1（render_ccm_launch）；
-// U8a-2c-pre +1（render_launch_payload）；P3t-Y2b +1（local_tmux_names）；
-// **P4c +2**（cc_bus_broadcast / cc_bus_kill，#77/#78）；**P8a +1**（list_plugin_marketplaces，#70）；
-// **PS1 +1**（deploy_local_cc_bus）；**PS2 +1**（cc_bus_install_state）；
-// **K-H2b +1**（apikey_routing_for：界面问「这几个**本机**账号走不走 apikey 端点改写」）。
-
-/** TS 侧**字面量** `invoke("…")` 里出现过的唯一命令名个数。 */
-const TS_LITERAL_COMMAND_COUNT = 42; // −1（同上：`relay_all_sessions_switch`） // −1（同上） // +1（同上） // −4（同上）// −1（同上）// −1（同上）// 50 → 49：`deploy_remote_acct_iso` 退役（界面经通道问那台 `acct-iso-install`） // 同上 ⇒ 50 // −1（测试连接，同上）// −2（列 tmux 两条，同上）// 主线 76 ＋ MIG-1 −8 ⇒ 68 // 81 → 76（同上） // −3（端口转发三条，同上）// −2（同上）// 81 − 3（同上）// −4 · −8（同上）// 92 → +1（chan_offer）// 同上 // −2（同上）// −2（同上）// 主线 99 ＋ HX2 −1（写 key 那条包装退役）⇒ 98 // 主线 102 ＋ LOC1b −3（全文搜索 · 查索引状态 · 重建索引三条：本机全文搜索改问本机后端 `history-search`，monitor 内存索引与三条命令删了）⇒ 99 // 主线 103 ＋ LOC1a −1（get_session_tasks 包装退役：任务快照改走通道 `tasks-list`）⇒ 102 // 主线 105 ＋ US1 −2 ⇒ 103 // 基数 113 ＋ SU1 +1 ＋ C4e −9 ⇒ 105（跑出来核过） // +1（skill_uninstall_apply） // **−5（同上）** // **−3（同上）** // **−1（capture_remote_pane，同上）** // 主线 118 ＋ 本路 -5 ⇒ 113 // **−5（list_history_projects / list_remote_history_projects / stream_history_sessions_in_project / update_history_metadata / list_last_accounts：历史清单与注解改走通道问本机常驻后端、Rust 命令删了；都在包装层里，所以本文件那**三个**数一起 −5）** // **主线 116 ＋ 本路 +2 ⇒ 118（跑出来核过）** // 主线 129 ＋ AS2 +3 ＋ RM1f −16 ⇒ 116（跑出来核过） // **+3（assets_sync · skill_install_preview / apply）** // **−2（backend_exit_policy / set_backend_exit_policy：「退出行为」问 / 交写改走通道、Rust 命令删了；都在包装层里，所以本文件那**三个**数一起 −2）** // 主线 135（AL1d −2 ＋ AS1 ＋2）＋ 本路 −4 ⇒ 131（跑出来核过） // **−1（probe_session_record：resume 之前问记录还在不在改走通道 `history-record`、Rust 命令删了；它在包装层里，所以本文件那**三个**数一起 −1）** // **−3（list_remote_accounts / list_local_accounts / check_account_trust：账号清单与信任预检改走通道、Rust 命令删了；都在包装层里，所以本文件那**三个**数一起 −3）** // 主线 135 ＋ AL1d -2 ＋ AS1 +2 ⇒ 135（跑出来核过；AS1：mcp_sync_preview / mcp_sync_apply，Both，新能力 `mcp.sync`） // **−2（同上）** // **两边各 −4 ⇒ 143 − 8 = 135（跑出来核过）** // **−1（list_plugin_marketplaces：插件市场改走通道、Rust 命令删了；它在包装层里，所以本文件那**三个**数一起 −1）** // **−3（read_session_index / list_user_inputs / find_in_session：会话读面三条改走通道、Rust 命令删了；都在包装层里，所以本文件那**三个**数一起 −3）** // **−5（同上）**（合并主线按两边增量相加） // **+1（probe_session_record 落进包装层）** // **+1（panorama_call 落进包装层）** // **+1（relay_ensure 落进包装层）** // **−1（同上）** // **+1（find_in_session：会话内查找，后端 `--find-in-session`；落进了包装层，所以本文件那**三个**数一起 +1）** // **−1（sftp_copy：零流量复制随门禁 `f3-copy` 那一格退役；它在包装层里，所以本文件那**三个**数一起 −1）** // **−12（池子那十二条 sftp_* 命令随老面板与窗口改走通道删了；都在包装层里，所以本文件那**三个**数一起 −12）** // **〔条 66〕+1（推生效值那一条命令退役 −1，`backend_exit_policy` / `set_backend_exit_policy` 进 +2：「退出行为」那个值搬到后端那台机器上，前端改走问 / 交写两条；都落进了包装层，所以本文件那**三个**数一起 +1）** // **+2（同上）** // **〔PN1b 选图〕+2（panorama_diagram_kinds / panorama_diagram，都 Local；归已有能力 `panorama.code-graph`）** // **+2（check_local_acct_iso / local_acct_iso_shellinit；与 SE1/U3b 合并时按两边增量相加）** // **+1（list_user_inputs：大纲的数据源，后端 `--list-user-inputs`；落进了包装层）** // **+1（replay_keep_tail_only：接上骨架的会话重放缓冲只留尾巴；落进了包装层，所以本文件那**三个**数一起 +1）** // **〔骨架〕+2（read_session_index / read_session_range：`--read-session-from-offset` 在 monitor 侧的两个调用点；都落进了包装层，所以本文件那**三个**数一起 +2）** // **+1（open_file_window：原生文件管理窗口那条入口；它落进了包装层，所以本文件那**三个**数一起 +1）** // **−2（`origin` 归一的最后两对：退役 `write_remote_mcp_server` / `remove_remote_mcp_server`。两条退役的**都在包装层里**，所以本文件那**三个**数一起 −2）** // **+1（sftp_chmod：`SETSTAT` 改权限那一条；它落进了包装层，所以本文件那**三个**数一起 +1）** // **−5（`origin` 归一：5 对同义双份合成一条带 origin 的 ⇒ 退役 `create_remote_branch_session` / `delete_remote_history_session` / `stream_remote_history_sessions` / `stream_read_remote_session` / `list_remote_mcp_project_dirs`。五条退役的**都在包装层里**，所以本文件那**三个**数一起 −5）** // −4，见 `RUST_COMMAND_COUNT` 上面那段 // **+1（sftp_copy：零流量复制那一条；它落进了包装层，所以本文件那**三个**数一起 +1）**  〔散文墓碑〕
-// **K-R109 +1**（render_local_attach —— 它落进了包装层，所以这个数也 +1）。
-// **K-R49 +1**（write_account_aliases〔散文墓碑〕，同上 —— 它落进了包装层，所以 `keys.length` 那个数也 +1）。
-// 增量账：**K-H2a +2**（同上）；devbench F03 +3（skill 接入面三条）；U8c-2c-2 +1；
-// U8a-2c-pre +1；P3t-Y2b +1（local_tmux_names）；**P4c +2**；
-// **P8a +1**（list_plugin_marketplaces）；**PS1 +1**（deploy_local_cc_bus）；**PS2 +1**（cc_bus_install_state）；
-// **K-H2b +1**（apikey_routing_for，同上 —— 它落进了包装层，所以 `keys.length` 那个数也 +1）。
+// 命令名不再钉条数：Rust 侧「声明 == 注册」、包装层「键 == Rust 集」、TS 字面量「== Rust 集」都是两向集合相等，
+// 加/删一条命令时三处跟着现打，不用回来改数（原先三个手抄的数，每路合并都要对一次）。
 
 /**
  * `K-R122`（09-14）：**吐出来的路径一律用 `/` 分隔，跟这台机器的 `path.sep` 无关。**
@@ -341,9 +297,7 @@ function wrapperEntries(): Map<string, string> {
 }
 
 describe("C04a 命令名钉死", () => {
-  // ★ 标题里的数从 `RUST_COMMAND_COUNT` 渲染，不再手抄——
-  //   `it` 标题是 vitest 失败输出的第一行，**它就是报文**。
-  it(`Rust 侧「声明 = 注册」，且计数恰好 ${RUST_COMMAND_COUNT}`, () => {
+  it("Rust 侧「声明 = 注册」（两向集合相等）", () => {
     const declared = rustCommands();
     const registered = registeredCommands();
 
@@ -356,17 +310,6 @@ describe("C04a 命令名钉死", () => {
     const onlyRegistered = [...registered].filter((c) => !declared.has(c)).sort();
     expect(onlyDeclared, "这些命令声明了却没注册 ⇒ 前端调不到").toEqual([]);
     expect(onlyRegistered, "这些注册了却找不到声明 ⇒ 注册表里有死名字").toEqual([]);
-
-    // 计数自检用等号：加/删命令必须红一次，逼人来更新这个数与包装层
-    expect(declared.size, `期望恰好 ${RUST_COMMAND_COUNT} 个命令，实得 ${declared.size}`).toBe(
-      RUST_COMMAND_COUNT,
-    );
-    // ⚠ 这句提示曾两次与断言值对不上（写「131」而断言 136；标题写「142」而断言 144）——
-    //   **两次都是手抄**。`K-R4` 把它换成从 `RUST_COMMAND_COUNT` 渲染：
-    //   改断言那个值，标题与这句提示**必须**跟着变，没有第二份拷贝可以馊。
-    // ⚠ 合并 `K-H2b` 时这里撞了一次：分支那侧还是「写死 145 + 一长串手抄增量账」的老形状。
-    //   **取的是主干这一侧的形状，只把常量从 144 抬到 145**（增量账挪去常量定义旁边）——
-    //   反过来（保住分支那侧）等于把 `K-R4` 刚拆掉的那份拷贝又装回来。
   });
 
   it("包装层：键名 ⊆ Rust 集，**且每个条目的键名 == 它传给 invoke 的字面量**", () => {
@@ -395,15 +338,12 @@ describe("C04a 命令名钉死", () => {
       expect(literals, `包装层条目 ${key} 应当恰好调一个字面量命令名`).toEqual([key]);
     }
 
-    // 计数自检：C04d 每迁一个模块进来，这个数要跟着涨（红一次提醒更新）
-    expect(keys.length, `包装层今天覆盖 ${keys.length} 个`).toBe(42) // −1（`relay_all_sessions_switch`） // −1（同上） // +1（同上） // −4（会话正文四条，同上）// −1（全景三条改走通道、`panorama_place` · `chan_cancel` 进） // −1（同上） // 50 → 49：`deploy_remote_acct_iso` 退役（界面经通道问那台 `acct-iso-install`） // 同上 ⇒ 50 // −1（测试连接，同上）// −2（列 tmux 两条，同上）// 主线 76 ＋ MIG-1 −8 ⇒ 68 // 81 → 76（同上） // −3（端口转发三条，同上）// −2（同上）// 81 − 3（同上）// −4 · −8（同上）// 92 → +1（chan_offer）// 同上 // −2（acct-iso 合一，同上）// −2（read_cc_bus_state / read_cc_bus_inbox，同上）// 主线 99 ＋ HX2 −1（写 key 那条包装退役）⇒ 98 // 主线 102 ＋ LOC1b −3（全文搜索 · 查索引状态 · 重建索引三条：本机全文搜索改问本机后端 `history-search`，monitor 内存索引与三条命令删了）⇒ 99 // 主线 103 ＋ LOC1a −1（get_session_tasks 包装退役：任务快照改走通道 `tasks-list`）⇒ 102 // 主线 105 ＋ US1 −2 ⇒ 103 // 基数 113 ＋ SU1 +1 ＋ C4e −9 ⇒ 105（跑出来核过） // +1（skill_uninstall_apply） // **−5（同上）** // **−3（同上）** // **−1（capture_remote_pane，同上）** // 主线 118 ＋ 本路 -5 ⇒ 113 // **−5（list_history_projects / list_remote_history_projects / stream_history_sessions_in_project / update_history_metadata / list_last_accounts：历史清单与注解改走通道问本机常驻后端、Rust 命令删了；都在包装层里，所以本文件那**三个**数一起 −5）** // **主线 116 ＋ 本路 +2 ⇒ 118（跑出来核过）** // 主线 129 ＋ AS2 +3 ＋ RM1f −16 ⇒ 116（跑出来核过） // **+3** // **−2（backend_exit_policy / set_backend_exit_policy：「退出行为」问 / 交写改走通道、Rust 命令删了；都在包装层里，所以本文件那**三个**数一起 −2）** // 主线 135（AL1d −2 ＋ AS1 ＋2）＋ 本路 −4 ⇒ 131（跑出来核过） // **−1（probe_session_record：resume 之前问记录还在不在改走通道 `history-record`、Rust 命令删了；它在包装层里，所以本文件那**三个**数一起 −1）** // **−3（list_remote_accounts / list_local_accounts / check_account_trust：账号清单与信任预检改走通道、Rust 命令删了；都在包装层里，所以本文件那**三个**数一起 −3）** // 主线 135 ＋ AL1d -2 ＋ AS1 +2 ⇒ 135（跑出来核过；AS1：mcp_sync_preview / mcp_sync_apply，Both，新能力 `mcp.sync`） // **−2（同上）** // **两边各 −4 ⇒ 143 − 8 = 135（跑出来核过）** // **−1（list_plugin_marketplaces：插件市场改走通道、Rust 命令删了；它在包装层里，所以本文件那**三个**数一起 −1）** // **−3（read_session_index / list_user_inputs / find_in_session：会话读面三条改走通道、Rust 命令删了；都在包装层里，所以本文件那**三个**数一起 −3）** // **−5（同上）**（合并主线按两边增量相加） // **+1（probe_session_record）** // **+1（panorama_call 落进包装层，所以本文件那**三个**数一起 +1）** // **+1（relay_ensure 落进包装层，所以本文件那**三个**数一起 +1）** // **子步 2 ＋10（裸 invoke 那十条补进包装层）、子步 3 −1（同 `RUST_COMMAND_COUNT`）⇒ 与 SE2 ＋1 / S4 −1 相加 = 141 == Rust 命令数** // **+1（find_in_session：会话内查找，后端 `--find-in-session`；落进了包装层，所以本文件那**三个**数一起 +1）** // **−1（sftp_copy：零流量复制随门禁 `f3-copy` 那一格退役；它在包装层里，所以本文件那**三个**数一起 −1）** // **−12（池子那十二条 sftp_* 命令随老面板与窗口改走通道删了；都在包装层里，所以本文件那**三个**数一起 −12）** // **〔条 66〕+1（推生效值那一条命令退役 −1，`backend_exit_policy` / `set_backend_exit_policy` 进 +2：「退出行为」那个值搬到后端那台机器上，前端改走问 / 交写两条；都落进了包装层，所以本文件那**三个**数一起 +1）** // **+2（同上）** // **〔PN1b 选图〕+2（panorama_diagram_kinds / panorama_diagram，都 Local；归已有能力 `panorama.code-graph`）** // **+2（check_local_acct_iso / local_acct_iso_shellinit；与 SE1/U3b 合并时按两边增量相加）** // **+1（list_user_inputs：大纲的数据源，后端 `--list-user-inputs`；落进了包装层）** // **+1（replay_keep_tail_only：接上骨架的会话重放缓冲只留尾巴；落进了包装层，所以本文件那**三个**数一起 +1）** // **〔骨架〕+2（read_session_index / read_session_range：`--read-session-from-offset` 在 monitor 侧的两个调用点；都落进了包装层，所以本文件那**三个**数一起 +2）** // **+1（open_file_window：原生文件管理窗口那条入口；它落进了包装层，所以本文件那**三个**数一起 +1）** // **−2（`origin` 归一的最后两对：退役 `write_remote_mcp_server` / `remove_remote_mcp_server`。两条退役的**都在包装层里**，所以本文件那**三个**数一起 −2）** // **+1（sftp_chmod：`SETSTAT` 改权限那一条；它落进了包装层，所以本文件那**三个**数一起 +1）** // **−5（`origin` 归一：5 对同义双份合成一条带 origin 的 ⇒ 退役 `create_remote_branch_session` / `delete_remote_history_session` / `stream_remote_history_sessions` / `stream_read_remote_session` / `list_remote_mcp_project_dirs`。五条退役的**都在包装层里**，所以本文件那**三个**数一起 −5）** // ／／ **+1（sftp_copy：零流量复制那一条；它落进了包装层，所以本文件那**三个**数一起 +1）** //；** −4（那四条用量命令的声明整块删了）** //；**K-R109 +1（render_local_attach）—— ⚠ 本文件里跟着新命令走的是**三个**数，不是两个：`RUST_COMMAND_COUNT` · `TS_LITERAL_COMMAND_COUNT` · 这一个。派工单只点了前两个** //；**K-R69 +1（local_ccm_entry_status）**//；**K-R49 +1（write_account_aliases）**//；**K-H2b +1（apikey_routing_for：本件把它落进包装层而不是散在 `accounts.ts` —— 落哪儿会不会红是两个不同的数：散在别处只动上面那两个，进包装层**多动这一个**）** //；**K-H2a +2（read_apikey_credentials_status / write_apikey_credentials_key）** // P4c +2（cc_bus_broadcast / cc_bus_kill）; // devbench F03 +3（list_skills/read_skill_file/write_skill_file）；U8a-2c-1 +1（backend_send_into）； Z05 +1；G6 远端分叉 +1、list_remote_tmux 进包装层 +1；U8c-2c-2 +1（render_ccm_launch）；**P2s +5（set_backend_kill_on_exit / backend_status / backend_start / backend_stop / backend_machines：每台机一个后端开关，C8）** P3t-Y2b +1（local_tmux_names）；**P8a +1（list_plugin_marketplaces）**；**PS1 +1（deploy_local_cc_bus）**；**PS2 +1（cc_bus_install_state）**；**`K-R135` +3（ccm_user_path_status / ccm_user_path_add / ccm_user_path_remove：用户级 PATH 那一格，`R85`/`R87`/`R88`）**  〔散文墓碑〕
+    // 反向：每一条 Rust 命令都有包装层条目（迁移已收口；新加的命令不进包装层 ⇒ 红）。
+    const unwrapped = [...rust].filter((c) => !keys.includes(c)).sort();
+    expect(unwrapped, "这些 Rust 命令在包装层里没有条目 ⇒ 界面只能裸 invoke 它们").toEqual([]);
   });
 
-  // 标题里的数原先写着 112，而断言早就是 119 了（Z05 起 120；local-as-remote L3a 起 121）——**标题也是记录**，
-  // 一并订正，免得下一个人拿标题当依据。
-  // ⚠ **那次订正只改了拷贝，没拆掉「两份拷贝」这个结构** ⇒ 它又馊了一次：
-  //   09-01 现打，标题写 137 而断言是 144。`K-R4` 改成从 `TS_LITERAL_COMMAND_COUNT` 渲染。
-  it(`TS 侧字面量命令名 ⊆ Rust 集，唯一名数 == ${TS_LITERAL_COMMAND_COUNT}，动态名盲区逐字钉死`, () => {
+  it("TS 侧字面量命令名 ⊆ Rust 集，动态名盲区逐字钉死（合起来就是两向相等）", () => {
     const rust = rustCommands();
     const used = tsLiteralCommands();
 
@@ -412,21 +352,9 @@ describe("C04a 命令名钉死", () => {
       .map(([c, files]) => `${c} @ ${files.join(", ")}`);
     expect(bogus, "这些命令名 Rust 侧不存在 ⇒ invoke 会被 reject").toEqual([]);
 
-    // **等号，不是下界**：Phase D 审计变异 M6 实测，`toBeGreaterThan(50)` 只要 29 个含调用点的
-    // 文件里最大的 4 个被扫到就能喂饱——把 walk 缩到 3 个子目录（可见名 112 → 81）时守卫仍全绿。
-    // **C04d 批 6a：112 → 114。** 那两个 `stream_read_*` 此前藏在一个
-    // `origin ? "A" : "B"` 三元里（C04a 把它记成「7 个命令 TS 静态看不见」的盲区之一），
-    // 改成两次静态调用后**它们成了字面量** ⇒ 这个数会随盲区收缩而涨，最终应到 **全部**。
-    // ★★ **C04d 批 6c 到 119 —— 这是里程碑：命令全部静态可见。**（Z05 +1 ⇒ 120；L3a +1 ⇒ 121；G6 远端分叉 +1 ⇒ 122；E79 本机会话账号 +1 ⇒ 123）
-    // C04a 立本文件时记了「7 个命令 TS 静态看不见」这个已知盲区，并据此**刻意只做单向断言**。
-    // 批 6a/6b/6c 逐个查实后发现那 7 个**从来不是任意字符串**：
-    // 两处是 `origin ? "A" : "B"` 的两字面量三元（`session-viewer.ts` / `views/history.ts`）、
-    // 一处是 `doWrite(cmd, args)` 转发 helper 而调用方传的全是字面量（`sftp/panel.ts`）。
-    // 改成静态调用 / thunk 后**盲区归零** ⇒ 下面 `DYNAMIC_ONLY` 现在是空集。
-    expect(
-      used.size,
-      `期望恰好 ${TS_LITERAL_COMMAND_COUNT} 个字面量命令名，实得 ${used.size}`,
-    ).toBe(TS_LITERAL_COMMAND_COUNT);
+    // 命令全部静态可见（`DYNAMIC_ONLY` 为空）⇒ 上面「⊆ Rust」与下面「Rust 里看不见的 == DYNAMIC_ONLY」合起来就是两向相等；
+    // 扫描面缩了（walk 少扫几个目录）⇒ 下面那条当场红。
+    expect(used.size, "一个字面量命令名都没扫到 —— 扫描器瞎了，下面那条会拿空集比出绿").toBeGreaterThan(0);
 
     // **不断言反向**（Rust ⊆ TS），但把盲区本身钉死：动态名集变了必须红一次。
     const rustOnly = [...rust].filter((c) => !used.has(c)).sort();
@@ -967,8 +895,6 @@ describe("K-H2b D5 阻-2：tab 栏那条本机 resume 也是**行为**判据（�
 //   不在步 2 的写区里，逐份读数在交回件里。**别把这一节读成「全仓没有 `null` 了」。**
 // ══════════════════════════════════════════════════════════════════════════
 
-/** `origin` 参数现打的处数。**恒等**，不是地板 —— 地板在「变少」方向是瞎的。 */
-const ORIGIN_PARAM_COUNT = 9; // −1（`panorama_place` 的 origin 随命令删） // −4（会话正文四条的 origin 随命令删：界面经通道直问，origin 是 `chan.call` 的第一个参数）// −1（`config_surface_report` 的 origin 随命令删：足迹经通道问那台后端）// −2 ＋1（`panorama_call` / `panorama_edit` 的 origin 随命令删；`panorama_place` 带 origin）// 主线 18 ＋ MIG-1 本路 −2 ⇒ 16（现打核过） // 31 → 30：`list_remote_tmux` 那条包装的 origin 随命令删了 // 主线 32 ＋ MIG-1 −1 ⇒ 31 // 34 → 32：`relay_endpoint_for_launch` · `probe_ccm_cli` 两条包装的 origin 随命令删了 // 34 → 33：`start_forward` 那条包装的 `spec.origin` 随命令删了 // 35 → 34：`assets_sync` 那条包装的 origin 随命令删了（skill 那三条收的是 `from` / `to`，不在这个数里）// 40 → 35：包装层 MCP 那五条带 origin 的包装（`read_remote_mcp_servers` / `read_remote_project_mcp` / `list_mcp_project_dirs` / `write_project_mcp_server` / `remove_project_mcp_server`）随命令删了 // 39 → +1（`chan_offer` 的 `{ origin: Origin }`）// 33 ＋ AL2 6（六条 aliases_* 收 origin）⇒ 39 // +2（acct_iso_status / acct_iso_shellinit 各一处 `origin`；原来那四条吃 `cfg` 或无参）// −2（那两条包装各一处 `origin`）// 两路各 −1 ⇒ 35 − 2 = 33 // 主线 35 ＋ LOC1a −1（get_session_tasks 包装退役：任务快照改走通道 `tasks-list`）⇒ 34 // 主线 37 ＋ US1 −2 ⇒ 35 // −5（cc-bus 那五条包装退役，各带一个 `origin: string`） // −2（kill_remote_tmux / tmux_send_keys 包装退役，各带一个 `origin: string`；backend_send_into 的 origin 在 `req` 里、不在这一人群） // −1（capture_remote_pane 包装退役，带一个 `origin: string`） // 主线 46 ＋ 本路 -1 ⇒ 45 // −1（stream_history_sessions_in_project 包装退役，带一个 `origin: Origin`）； // 主线 43 ＋ 本路 +3 ⇒ 46； // 主线 42 ＋ AS2 +1（assets_sync 带一个 `origin: Origin`）； // −2（backend_exit_policy / set_backend_exit_policy 两条包装退役，各带一个 `origin`）； // −1（probe_session_record 包装退役，带一个 `origin: Origin`）； // −2（list_remote_accounts / check_account_trust 两条包装退役，各带一个 `origin: Origin`；list_local_accounts 不带）； // 49 − 4 ＋ 2 = 47（跑出来核过）； // −1（list_plugin_marketplaces 包装退役）； // −3（read_session_index / list_user_inputs / find_in_session 三条包装退役，各带一个 `origin: Origin`）； +1（`panorama_edit` 带一个 `origin: Origin`：批注写本机远端同一条）；（合并主线按两边增量相加） // +1（probe_session_record 带一个 `origin: Origin`：resume 之前问那台后端记录还在不在）； // +1（drift_ledger_report 带一个 `origin: Origin`：「未识别的数据」按机器分，问哪台答哪台）； // +1（panorama_call 带一个 `origin: Origin`：全景按 origin 问那台后端）；// +3（list_skills / read_skill_file / write_skill_file 各带一个 `origin: Origin`：远端项目的收件箱也能编辑，读写经那台机器的后端）； // +5（`read_apikey_credentials_status` / `write_apikey_credentials_key` / `apikey_routing_for` / `relay_ensure` / `config_surface_report` 各带一个 `origin: Origin`：上游选择那份文件 · 中转 · 足迹都按机器）；// +3（子步 2：list_remote_accounts · list_remote_session_accounts · check_account_trust ＋3；子步 3：远端会话账号那条退役 −1、`chan_call` ＋1）；与 RM1b ＋2 / SE2 ＋1 相加，跑出来核过；// +1（list_plugin_marketplaces 带一个 `origin: Origin`：插件市场按 origin 问那台后端）；// +1（get_session_tasks 带一个 `origin: Origin`：任务列表按 origin 问那台后端）；// +1（find_in_session 带一个 `origin: Origin`）；// 〔条 66〕+1（推生效值那一条退役 −1，`backend_exit_policy` / `set_backend_exit_policy` 各带一个 `origin` +2）； +1（list_user_inputs 带一个 `origin: Origin`）； 〔骨架〕+2（read_session_index / read_session_range 各带一个 `origin: Origin`） 〔散文墓碑〕
 
 /**
  * 从一段包装层文本里摘出每一处 `origin` 参数：`{ optional, type }`。
@@ -991,20 +917,18 @@ function admitsNothingSaid(p: { optional: boolean; type: string }): boolean {
 }
 
 describe("：origin 去 null 化（入方向）", () => {
-  it(`★★ ① 参数面：${ORIGIN_PARAM_COUNT} 处 origin 参数，**零处**装得下「没说」`, () => {
+  it("★★ ① 参数面：包装层里的 origin 参数**零处**装得下「没说」", () => {
     const entries = wrapperEntries();
     const found: Array<{ cmd: string; optional: boolean; type: string }> = [];
     for (const [cmd, chunk] of entries) {
       for (const p of originParamsIn(chunk)) found.push({ cmd, ...p });
     }
-    // 反空真①：人群**恒等**。塌成 0（切分器坏了 / 包装层搬家）与「全都合规」
-    // 在终端上一模一样；涨了而没人看见，则是一条新命令悄悄进来了。
+    // 反空真①：正控 —— 已知带 origin 的那条命令必须被认出来。塌成 0（切分器坏了 / 包装层搬家）
+    // 与「全都合规」在终端上一模一样；条数不钉（原先钉的那个数每加一条带 origin 的命令就要回来改）。
     expect(
-      found.length,
-      `origin 参数现打 ${found.length} 处，钉的是 ${ORIGIN_PARAM_COUNT} 处。\n` +
-        "真加/删了一条带 origin 的命令就来改这个数（连着改，别攒着）；\n" +
-        "★ 掉到 0 多半是 `wrapperEntries()` 的切分口径变了 —— 那时下面那条会拿空集比出绿。",
-    ).toBe(ORIGIN_PARAM_COUNT);
+      found.some((f) => f.cmd === "backend_status"),
+      `\`backend_status\` 的 origin 参数没被认出来（现打 ${found.length} 处）—— \`wrapperEntries()\` 的切分口径变了，下面那条会拿空集比出绿`,
+    ).toBe(true);
     // ★ 有牙的那条。
     const offenders = found.filter(admitsNothingSaid);
     expect(
@@ -1093,12 +1017,11 @@ describe("：origin 去 null 化（入方向）", () => {
  * 人群 = 名字里带 `origin`（大小写不敏感，`original…` 除外）、**带类型标注**的声明；
  * 违例 = 那段类型里出现 `null` 字面量类型。
  *
- * # 判据（零命中带正控；人群恒等）
+ * # 判据（零命中带正控）
  *
  * 1. 违例集合 == [`PENDING`]（两向）—— 待办表今天为空（生成物那一处已改 `string`）；
- * 2. 人群条数**恒等**（不是地板）—— 塌成 0 与「全都合规」在终端上一模一样；
- * 3. 识别器阳性对照五形 ＋ 阴性对照三形（`originalType` 不算、值不算、干净类型不算）；
- * 4. 真语料锚点：`Tab.origin`（`tab-model.ts`）与 `pickPrimaryOrigin` 的返回（`account-chip.ts`）
+ * 2. 识别器阳性对照五形 ＋ 阴性对照三形（`originalType` 不算、值不算、干净类型不算）；
+ * 3. 真语料锚点：`Tab.origin`（`tab-model.ts`）与 `pickPrimaryOrigin` 的返回（`account-chip.ts`）
  *    必须在人群里 —— 证明扫的是真树。
  *
  * # 买不到（写死，别读宽）
@@ -1120,8 +1043,6 @@ const PENDING: Record<string, string> = {
   //   生成物随之是 `origin: string`。本表从此是空表 —— 判据照旧两向相等：新长一处装得下 null 的 origin ⇒ 红。
 };
 
-/** 基线之后现打的人群条数（带类型标注、名字带 origin 的声明）。 */
-const POPULATION = 322; // +2：别名表单与参数互转交那台后端（`alias-reads.ts` 的 `aliasToForm` · `aliasFromForm`）// 合并：307 基线，这边 ＋2（远端 ↗ 现查：`remote-terminal-front.ts::planRemoteFront` ＋ `tab-session-actions.ts::bringRemoteTerminalToFront`），主线 ＋11 ⇒ 320 // +4：足迹那几行「去看看它」的按钮按机器分（`config-surface-section.ts` 的 `render` · `renderRow` · `showButton` · `openOnMachine`）// −4（`withRelayEndpoint` · `launchEndpoint` · `renderPayload` · `renderCliViaBackend`：中转地址交给 ccm 自己定、载荷那条删了，起会话只问那一行）// +1：读口 `relay-optin-reads.ts::fetchRelayOptin`（「终端」栏直接敲的也走中转）· 三路增量相加：钩子诊断那一块删 −7 ＋ 读口 +1（`cc-bus-hooks-reads.ts::fetchHooksReport`）；代码全景那几份 TS 整删 −19；账号之间共用的 MCP 那几处 +5（`account-ops.ts` 四处 ＋ `settings/accounts-mcp-block.ts::renderSharedMcp` 一处）；+7：单个与批量收成一条 —— `tmux-sessions.ts` 四处（refusals · decodeStandings · standingsOf · standingOf）＋ `tab-batch-run.ts` 两处（callStop · callStart）＋ `tab-session-actions.ts::killInTmux` · `tab-menu.ts::resolveRemoteTmuxItems`；删 `killRemoteTmux` · `fetchTmuxFresh` · `resolveAttachMenuItem` · `readTmuxListing` · `remote-launch-run.ts` 三处（`runRemoteResumeTmux` · `sendIntoViaBackend` · `runRemoteResumeIntoExistingTmux`）// +6：tab 栏批量停 / 起 `tab-batch-run.ts` 六处（decodeBatch · batchRefusals · sayReply · offered · planStarts · openWindow）// −4（`withRelayEndpoint` · `launchEndpoint` · `renderPayload` · `renderCliViaBackend`：中转地址交给 ccm 自己定、载荷那条删了，起会话只问那一行）// +1：读口 `relay-optin-reads.ts::fetchRelayOptin`（「终端」栏直接敲的也走中转）· 三路增量相加：钩子诊断那一块删 −7 ＋ 读口 +1（`cc-bus-hooks-reads.ts::fetchHooksReport`）；代码全景那几份 TS 整删 −19；账号之间共用的 MCP 那几处 +5（`account-ops.ts` 四处 ＋ `settings/accounts-mcp-block.ts::renderSharedMcp` 一处）
 
 interface Decl {
   /** `文件::宿主.名字`（宿主 = 外层接口 / 类 / 类型别名 / 函数名；顶层是 `<top>`）。 */
@@ -1241,15 +1162,6 @@ describe("〔C4a〕TS 侧 origin 去 null（全 TS ＋ 生成物）", { timeout:
         "Rust 出方向的「缺省 = 本机」只在 `originFromWire` 那一处收成一个表示。\n" +
         "⇒ 出路是把那一处改成 `Origin`，**不是**把它登记进 PENDING。",
     ).toEqual(Object.keys(PENDING).sort());
-  });
-
-  it("★ 人群恒等（不是地板）：名字带 origin、带类型标注的声明现打条数", () => {
-    const n = originCorpus().length;
-    expect(
-      n,
-      `人群现打 ${n} 条，钉的是 ${POPULATION} 条。真加/删了一处带类型的 origin 声明就来改这个数（写清多了/少了哪几处）；\n` +
-        "★ 掉到 0 多半是 `walk` / 解析口径坏了 —— 那时上一条会拿空集比出绿。",
-    ).toBe(POPULATION);
   });
 
   it("★ 真语料锚点：两处已知声明在人群里，而且都不装 null", () => {

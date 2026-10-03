@@ -104,7 +104,6 @@ async fn exit_policy_call(
 fn said(r: Routed) -> String {
     match r {
         Routed::NoChannel(s) | Routed::Refused(s) => s,
-        Routed::Done => copy_text("rsBackendPolicy.call.internal", &[]),
     }
 }
 
@@ -183,7 +182,7 @@ pub fn kill_on_exit_now(origin: &Origin) -> bool {
 // `local_backend.rs::supervise_with_stdio`（读到 EOF 那一拍）。
 // 两处**都不在本件写区** ⇒ 交回里逐字点名，由 PM 落。
 // ⇒ **本段今天证的是「判据分得开、账写得下、写不进去会出声」，证不了「它已经被调用过」。**
-// 上面那两处后来接上了（`DEATH_RECORD_SITES` 逐处点名）；读数经 `backend_status` 上界面，
+// 上面那两处后来接上了（判据 `backend_policy_tests.rs` 的 `DEATH_RECORD_SITES` 逐处点名）；读数经 `backend_status` 上界面，
 // 那一格的成品由 [`health_face`] 出。
 // ══════════════════════════════════════════════════════════════════════════
 
@@ -464,18 +463,6 @@ pub struct Recorded {
     pub sink_error: Option<String>,
 }
 
-/// ★ **今天这本账不跨 monitor 进程。**
-///
-/// 这个常量就是 `§0-1` 那一格变成的读数：
-/// - `~/.cc-monitor/bin/wrap.log` 现打 **2 行**、末行 mtime **07-08**、两行都 `rc=0`；
-/// - 而**仓里没有任何一处写它**（现打 `grep -rn "wrap\.log"` 全仓 **0 命中**）
-///   ⇒ 它是一本**没有写者的孤账**。
-///
-/// ⇒ 「上次崩没崩」这句话今天答得出来的射程只有**这一个 monitor 进程活着的这段时间**，
-/// 而「答不出来」与「没崩过」不是一句话（`§0-1` 逐字：「这两句话差得很远，不许混用」）。
-/// 这就是 [`health_face`] 「无记录」那一档存在的全部理由，也是 `exit: 待摸底` 第一问要的那个读数的边界。
-pub const LEDGER_IS_PROCESS_LOCAL: bool = true;
-
 /// 一台机的死亡账读数。**四个计数分开装** —— 「读坏了」不许被加进「崩了」。
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Health {
@@ -500,44 +487,6 @@ fn ledger() -> &'static Mutex<HashMap<String, Health>> {
     static L: OnceLock<Mutex<HashMap<String, Health>>> = OnceLock::new();
     L.get_or_init(|| Mutex::new(HashMap::new()))
 }
-
-/// ★★ `K-P3b KP3W3`：[`record_death`] 的**生产调用点逐处点名**。
-///
-/// 形状照 `src/backend/readonly_guard.rs::ALLOWED` 那种
-/// 「**逐处点名 + 相等**」，不是地板 —— 地板在变大方向上是瞎的
-/// （那张表的报错文案逐字：「不许改回地板」）。
-///
-/// # 它守的是什么
-///
-/// `K-P3` 第一档交付时这个数是 **0**：判据、账、文案全买了，**一个消费者都没有**
-/// （`K-P3` `§3-5` 第一行如实登记）。本件把它接成 3 处；
-/// [`tests::the_death_ledger_is_wired_at_exactly_these_sites`] 让「接了几处就是几处」
-/// 变成一条相等断言 —— 摘掉任何一处**都会点名是哪一处少了**。
-///
-/// `(文件, 那一处的宿主函数头, 它记的是哪条路)`
-///
-/// ⚠ 第二列是**函数头整行的前缀**，用来把那一处的函数体切出来单独数 ——
-/// 只数全局总数的话，「某一处塌了、另一处多了一次」会互相抵消（本仓 `backend_control.rs`
-/// 那条「逐口切体，不数全局」的头注为同一形栽过一次）。
-pub const DEATH_RECORD_SITES: &[(&str, &str, &str)] = &[
-    (
-        "local_backend_host.rs",
-        "fn note_detached_death(",
-        "脱离路：`attach_stream` 的流断了 ⇒ `reap_detached` 那条收尸线程 `wait()` 回来那一拍",
-    ),
-    (
-        "local_backend_host.rs",
-        "fn backend_supervise_events(",
-        "监护路：backend 那个 `on_event` **闭包**收到 `Exited` 那一拍。\
-         它抽成一个返回闭包的函数，只为让 `KP3W3` 那三只假后端能跑**同一个闭包**\
-         —— 内联的闭包测试够不着，那条行为判据就只能退回读源码",
-    ),
-    (
-        "local_backend_host.rs",
-        "fn note_never_started(",
-        "起不来：`start_local_backend` 返回 `StartOutcome::Failed` 那一个出口",
-    ),
-];
 
 /// 记一笔。`None` = 那不是一次死亡（正常收工），不上账。
 ///

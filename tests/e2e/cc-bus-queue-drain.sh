@@ -33,6 +33,7 @@
 #（下面有一道硬门：脚本眼里的 bus 不在沙箱内就直接 exit 9，且每建一个 bus 重验一次）。**本套件不用 tmux** —— 收发都走文件，
 # 于是 `C7i` 那条红线在这里天然不成立（没有任何 tmux 命令可写错）。
 # 起的进程只有 `cc-busd` 自己（一个 bash 循环），退出时按 pid 精确 kill，不用 pkill。
+. "$(cd "$(dirname "$0")" && pwd)/sandbox-env.sh"  # 无条件清掉继承来的 CCM_* / CLAUDE* / ANTHROPIC_* / TMUX* / CC_BUS_*
 set -o pipefail
 
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"

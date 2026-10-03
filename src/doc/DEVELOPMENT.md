@@ -72,13 +72,14 @@ cargo clippy --all-targets
 
 ### e2e
 
-- CI 跑的那几套在 `.github/workflows/ci.yml` 里，每套一行 `bash tests/e2e/assert-pass-floor.sh <套件> <断言数地板>`；本机门禁 `tests/scripts/gate.sh` 的 `run_e2e` 每一套都跑（两向由 `shared_crate_registry_tests.rs::every_ci_step_the_local_gate_claims_is_a_real_gate_cell` 钉着）；单跑（例：`npm run test:ccm-cli`，要先在 `src/backend` 里 `cargo build --bin cc-monitor-backend`）。
+- 真机 e2e 每一套在门禁 `tests/scripts/gate.sh` 里一行 `run_e2e <套件>`（CI 的 e2e job 调门禁 `GATE_ONLY=e2e`，名单不另抄）；判法是 `tests/e2e/assert-pass-floor.sh <套件>`：退出码 0、收尾 `合计 PASS=<n> FAIL=0`、`n > 0`，断言几条只住在套件自己的输出里。单跑（例：`npm run test:ccm-cli`，要先在 `src/backend` 里 `cargo build --bin cc-monitor-backend`）。
 - 要 GUI 的两套：`npm run test:f40`（滚动 / 渲染管线）与 `npm run test:graylight`，前置是 Xvfb 上跑着一个 `npx tauri dev`，见 [`tests/e2e/README.md`](../../tests/e2e/README.md)。⚠ `test:f40` 会往真的 `~/.claude/` 写 fixture，有真会话的机器上别跑。
 - WebView2（生产）的滚动行为没有自动化覆盖：动过滚动锚定的改动，发版前在 Windows 真机按 `tests/e2e/README.md` 的「人工场景」复核。
 
 ### 门禁
 
 - `npm run gate`（＝ `bash tests/scripts/gate.sh`）：出货前的唯一闸门，逐格跑 cargo（三处）· npm · 各类判据，末尾只吐一行 `GATE: OK` / `GATE: FAIL …`。先跑它、看见 OK，再单独提交。
+  每一趟落一张收据（位置由 `GATE_RECEIPT` 定，默认在构建目录里）：真跑过哪几格、每格毫秒数（`ms`）、e2e 前置编译与整趟墙钟。`GATE_ONLY="<格> …"` 只跑点名的几格（e2e 可写组名 `e2e`），裁决行是 `GATE: PARTIAL`；CI 的 Linux job 就是这么调它的。
 - `bash tests/scripts/verify-committed-state.sh`：从提交状态（不是工作树）编一次，逮「工作树里有、提交里漏了」的改动。提交推上 `main` 之前 CI 看不见它们，所以推之前在本机跑。
 
 ### 这些数不抄在文档里

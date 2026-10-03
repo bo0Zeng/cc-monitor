@@ -28,15 +28,14 @@ job 里那一步 `if:` 求值成 false · 前一步 `continue-on-error` 把红�
     python3 tests/evidence/K-G4C-gate-receipt.py [--receipt 路径] [--gate 路径]
                                                  [--require "格名 格名 …"]
 
-不给 `--require` 就**从 `K-R80-gate-cell-coverage.py` 的 `INVOCATION` 现取**那张
-「进云端子集」的名单 —— 🔴 **刻意不抄第二份**：两份名单必漂，而漂了之后
-「云端少跑了一格」与「云端跑全了」在这份判据的输出上一模一样。
+`--require` 与 `--require-all` 必须给一个（出货那一趟 `tests/hooks/pre-push` 用 `--require-all`，
+格名从 `gate.sh` 现算）；两个都不给 ⇒ 红（「一格都不要求」与「要求的都跑了」分不开）。
 
 # 🔴 反空真锚：`R6` 那**两向集合相等**
 
 `ran ∪ skipped` 与 `gate.sh` 里**现打**的格名，两侧互为子集。
 · 收据被写空 / 被换成 `{}` ⇒ 左边空，右边 26 ⇒ 分叉。
-· `gate.sh` 被读成空串、或 `found_cells()` 的三条正则被改瞎 ⇒ 右边空 ⇒ 分叉。
+· `gate.sh` 被读成空串、或 `found_cells()` 的几条正则被改瞎 ⇒ 右边空 ⇒ 分叉。
 · 门禁里有一格**静默没跑**（`gate_wants` 漏接、手写格忘了 `GATE_RAN+=`）⇒ 左边少一个 ⇒ 分叉。
 **单向包含（「跑过的都在盘上」）在收据被清空时恒真** —— 那正是不能用它当锚的理由。
 
@@ -44,18 +43,15 @@ job 里那一步 `if:` 求值成 false · 前一步 `continue-on-error` 把红�
 
 1. **它不说那一趟绿不绿之外的任何事。** 收据只记「哪几格判过」，
    一格判过而它的判据本身是空真，本文件一个字都问不出来。
-2. **它挡不住有人不跑它。** 一条判据挡不住「没人调用这条判据」——
-   那一层由 `K-R80` 的 `C8d` 买（`ci.yml` 里收据判据必须排在门禁**之后**）,
-   而 `C8d` 买的又只是「盘上那份 yml 这么写着」。**这条链到 yml 为止，进不了 runner。**
-3. 🔴 **本拍写它的时候，云端一趟都没跑过。** 沙箱断网，`gh run view` 做不到。
-   ⇒ 本文件与 `C8` 一样，买到的只有「**盘上这几份文本满足这几条**」。
-4. **`--require` 只判「这几格在 `ran` 里」**，不判那几格够不够 —— 够不够是 `C8` 那张登记的活。
+2. **它挡不住有人不跑它。** 一条判据挡不住「没人调用这条判据」—— 今天调它的只有 `tests/hooks/pre-push`。
+   CI 的 job 直接调门禁，判的是门禁的退出码，不另跑本文件。
+3. **`--require` 只判「这几格在 `ran` 里」**，不判那几格够不够。
 """
 
 import argparse
 import hashlib
-import importlib.util
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -65,13 +61,19 @@ ROOT = HERE.parent.parent
 DEFAULT_RECEIPT = ROOT / ".build/gate-receipt.json"
 DEFAULT_GATE = ROOT / "tests/scripts/gate.sh"
 
-# ── 格名从哪来：**`K-R80` 那一份，不抄第二份** ────────────────────────────────
-# ⚠ 两件事都从那儿取：① `found_cells()`（`gate.sh` 现打有几格）② `INVOCATION`（谁进云端）。
-#   本仓已有先例（`release-gate` 那把尺子 import `K-G4-platform-ledger.py` 取条 63 的承诺面）：
-#   **全仓唯一一份，不许抄第二份。**
-_spec = importlib.util.spec_from_file_location("kr80", HERE / "K-R80-gate-cell-coverage.py")
-_kr80 = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(_kr80)
+# ── `gate.sh` 现打的格名：行首 `run_gate <名> ` · `run_gate_sum <名> ` · `run_e2e <名>` · `if gate_wants <名>;` ──
+# 缩进着的是门禁自己的自检探针，不是格 ⇒ 只认行首。e2e 那批在收据里的规范名带前缀。
+E2E_PREFIX = "ccm tests/e2e/"
+CELL_PATTERNS = [
+    (re.compile(r"^run_gate_sum (\S+) ", re.M), lambda m: m.group(1)),
+    (re.compile(r"^run_gate (\S+) ", re.M), lambda m: m.group(1)),
+    (re.compile(r"^run_e2e (\S+)[ \t]*$", re.M), lambda m: E2E_PREFIX + m.group(1)),
+    (re.compile(r"^if gate_wants (\S+);", re.M), lambda m: m.group(1)),
+]
+
+
+def found_cells(text):
+    return [name_of(m) for pat, name_of in CELL_PATTERNS for m in pat.finditer(text)]
 
 REQUIRED_KEYS = ("verdict", "gate_sha256", "tree", "head", "dirty", "when", "ran", "skipped")
 
@@ -84,11 +86,6 @@ def head_tree():
     out = subprocess.run(["git", "-C", str(ROOT), "rev-parse", "HEAD^{tree}"],
                          capture_output=True, text=True)
     return out.stdout.strip() if out.returncode == 0 else ""
-
-
-def cloud_subset():
-    """`INVOCATION` 里标了「进云端子集」的那几格（规范名）。"""
-    return {n for n, e in _kr80.INVOCATION.items() if e["where"] == _kr80.CLOUD}
 
 
 # ── 判一张收据。**真判据与阳性对照走同一个函数** —— 两份必漂 ────────────────────
@@ -163,11 +160,11 @@ def judge(receipt_path, gate_path, require):
 
     # R6 🔴 反空真锚：`ran ∪ skipped` ↔ `gate.sh` 现打的格名，**两向集合相等**
     text = gp.read_text(encoding="utf-8")
-    on_disk = set(_kr80.found_cells(text))
+    on_disk = set(found_cells(text))
     ran = set(data["ran"]) if isinstance(data["ran"], list) else set()
     skipped_raw = set(data["skipped"]) if isinstance(data["skipped"], list) else set()
     # `skipped` 记的是**短名**（`GATE_ONLY` 的记号），归一到规范名 —— 与 `C5d`/`C8d` 同一跳
-    skipped = {t if t in on_disk else _kr80.E2E_PREFIX + t for t in skipped_raw}
+    skipped = {t if t in on_disk else E2E_PREFIX + t for t in skipped_raw}
     covered = ran | skipped
     if covered != on_disk:
         fails.append(f"R6 收据里 `ran ∪ skipped` 与 `{gp}` 现打的格名**对不上**："
@@ -190,8 +187,7 @@ def judge(receipt_path, gate_path, require):
     require = set(require)
     if not require:
         fails.append("R8 `--require` 解出来是**空集** —— 「一格都不要求」与「要求的都跑了」"
-                     "在本条上一模一样（空真）。要么给名单，要么让 `INVOCATION` 里真有"
-                     "标着「进云端子集」的格")
+                     "在本条上一模一样（空真）。给 `--require` 名单或 `--require-all`")
     else:
         missing = sorted(require - ran)
         if missing:
@@ -234,7 +230,7 @@ def selftest():
     if not gp.is_file():
         return [f"S0 `{gp}` 不在盘上 —— 阳性对照跑不了，本文件判不了（不许当成绿）"], 0
     text = gp.read_text(encoding="utf-8")
-    cells = sorted(set(_kr80.found_cells(text)))
+    cells = sorted(set(found_cells(text)))
     good = {
         "verdict": "OK",
         "gate_sha256": sha256_of(gp),
@@ -324,10 +320,8 @@ def main(argv=None):
     ap.add_argument("--receipt", default=str(DEFAULT_RECEIPT))
     ap.add_argument("--gate", default=str(DEFAULT_GATE))
     ap.add_argument("--require", default=None,
-                    help="空格分隔的格名；不给就从 K-R80 的 INVOCATION 现取「进云端子集」那几格")
-    # 🔴 `--require-all` **刻意不接受一个数字、也不接受一份名单** —— 它从 `gate.sh` **现算**。
-    #   出货那一趟要求「盘上每一格都跑过」，而把 26 个名字抄进调用方就是又一份会腐的住址
-    #   （本仓刚在裁决行那串点名上治过同一形，见 `K-R80` 的 `C5d`）。
+                    help="空格分隔的格名（e2e 用套件短名）")
+    # `--require-all` 刻意不接受一个数字、也不接受一份名单 —— 它从 `gate.sh` **现算**。
     ap.add_argument("--require-all", action="store_true",
                     help="要求**盘上每一格**都真跑过（格名从 gate.sh 现算）。出货那一趟用它")
     args = ap.parse_args(argv)
@@ -342,15 +336,16 @@ def main(argv=None):
             print("KG4C: FAIL=1")
             print(f"  ✗ `--require-all` 要从 `{gp}` 现算格名，而它盘上不存在")
             return 1
-        require = set(_kr80.found_cells(gp.read_text(encoding="utf-8")))
+        require = set(found_cells(gp.read_text(encoding="utf-8")))
         src = f"`{gp}` 现算的**全部**格（--require-all）"
     elif args.require is None:
-        require = cloud_subset()
-        src = "K-R80 的 INVOCATION（进云端子集）"
+        print("KG4C: FAIL=1")
+        print("  ✗ `--require` 与 `--require-all` 一个都没给 —— 「一格都不要求」与「要求的都跑了」分不开")
+        return 1
     else:
-        on_disk = set(_kr80.found_cells(Path(args.gate).read_text(encoding="utf-8"))) \
+        on_disk = set(found_cells(Path(args.gate).read_text(encoding="utf-8"))) \
             if Path(args.gate).is_file() else set()
-        require = {t if t in on_disk else _kr80.E2E_PREFIX + t
+        require = {t if t in on_disk else E2E_PREFIX + t
                    for t in args.require.split() if t}
         src = "--require"
 

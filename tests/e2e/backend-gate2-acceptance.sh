@@ -13,6 +13,7 @@
 #
 # 红线：**绝不碰用户真实的 tmux server**（unset TMUX + 私有 TMUX_TMPDIR）；不碰真 ~/.claude。
 # 跑法：bash tests/e2e/backend-gate2-acceptance.sh   （需要 tmux + 已编译的后端；npm run test:backend-gate2）
+. "$(cd "$(dirname "$0")" && pwd)/sandbox-env.sh"  # 无条件清掉继承来的 CCM_* / CLAUDE* / ANTHROPIC_* / TMUX* / CC_BUS_*
 set -euo pipefail
 
 # ── 隔离（同 inbound-backend-frames.sh 的两件事，缺一不可）──────────────────────
@@ -63,15 +64,9 @@ pass=0; fail=0; skip=0; waived=0
 #   前两轨照常验它 —— 那两轨不依赖 tmux 怎么给会话命名。本轨欠的只是「真会话」这一层。
 # ⚠ 只豁免**登记在册**的：没登记的 skip 仍然让整套 RC=1（原纪律一个字没松）。
 #
-# 🔴🔴 **在这里加/删一条 = 同一拍要改 CI 的地板**。
-#   豁免走的是下面 `skipped()` 里 `waived=$((waived+1))` 那一支 —— **既不进 `pass` 也不进 `skip`**
-#   ⇒ 每登记一条，本套件的**可达 PASS 上限就少一格**。08-13 加第一条（`meta_colon`）时
-#   没人动 CI 那个数，于是那条地板从此**够不到**：它不会以「地板红」的形式被看见，
-#   只会以「排在它后面的每一步整片 skipped」的形式被看见 —— 一直挡到 09-09 才有人发现。
-#   ⇒ 现在这条耦合有判据看着了：`src/backend/control/gate.rs` 的
-#   `the_gate2_floor_still_makes_a_skip_hurt` **现数**本函数里的登记条数，
-#   要求 CI 地板 == 判定表行数 + 表外固定场景数 − 登记条数，**低了高了各红一件不同的事**。
-#   ⇒ 你在这里加一条，那条判据会当场告诉你地板该改成几；**别绕过它去改数**。
+# 登记一条豁免：它走 `skipped()` 里 `waived=$((waived+1))` 那一支 —— 既不进 `pass` 也不进 `skip`。
+#   门禁不钉本套件的断言条数，只判退出码 ＋ `FAIL=0` ＋ `PASS > 0`；兜底那一行 `*) echo "" ;;` 由
+#   `tests/backend/control/gate_tests.rs::an_unregistered_skip_still_fails_the_gate2_suite` 钉着（兜底一回非空串，未登记的 skip 就成了豁免）。
 #
 # 〔墓碑〕第二条登记 `meta_dollar`（`CI-J3` 09-09）〔散文墓碑〕：它是「环境相关」的豁免（只在 tmux ≤3.4 上成立），
 #   在更新的 tmux 上静悄悄用不到、PASS 数随机器变。换成下面的**版本门**（`min_tmux_for`）。
@@ -93,8 +88,8 @@ waiver_reason() {
 #   · 版本够（≥ 门槛）⇒ 照常跑；建不出来就是**未登记的 skip** ⇒ 整套 RC=1（不许悄悄跳过）；
 #   · 版本不够 ⇒ 这一格记 **SKIP** 并说原因 —— **但先真建一次**：建得出来 ⇒ 版本门过时 ⇒ **FAIL**
 #     （SKIP 只许出现在「版本真的不够」时，不是「版本号比门槛小」时）。
-#   ⇒ 两向：`PASS + SKIP` 恒等于总格数（门禁按这个和判 exact，与 tmux 版本无关），`SKIP` 只在版本不够时非零。
-# ⚠ 每一条 = 一行 `<case_id>) echo "<最低版本> <原因>" ;;`；`gate.rs` 那条地板判据现数这里的条数。
+#   ⇒ 两向：`PASS + SKIP` 恒等于总格数（与 tmux 版本无关），`SKIP` 只在版本不够时非零。
+# ⚠ 每一条 = 一行 `<case_id>) echo "<最低版本> <原因>" ;;`。
 min_tmux_for() {
   case "$1" in
     meta_dollar) echo "3.5 tmux<=3.4 把会话名里的 \$ 存成反斜杠\$（utf8_stravis 无 VIS_DQ 门），=cc-a\$x: 找不到；3.5 起修了（上游 692ce59bcef5）" ;;
@@ -342,11 +337,8 @@ echo
 echo "===== 合计 PASS=$pass FAIL=$fail SKIP=$((skip_ver + skip)) WAIVED=$waived ====="
 # 本轮跑在哪个 tmux 上、用掉几条豁免、版本门跳过几条，收尾打出来（换机器时 PASS/SKIP 怎么分的，一眼看得出）。
 echo "（本轮 tmux：$("$TMUX_BIN" -V 2>/dev/null || echo 未知)；用掉登记豁免 $waived 条；版本不够跳过 $skip_ver 条）"
-# ⚠ **这里刻意不写数字地板。** 定框 §4：「e2e 各套通过数（CI 两处 + 本地脚本），
-#   **同一个数不许两侧各写一份**」—— 本套件初版在这里硬写了 `-ge 28`，而 CI 的
-#   `assert-pass-floor.sh backend-gate2 28` 已经有同一个数。那正是账本记着的那个病
-#   （实测两侧都写 6/5 而真值 9/7，两侧都没棘过）。F+ 回看抓到，这里改成**导出式自检**：
-#   判定表有几行、就必须尝试过几行。加一行用例不用改这里，而它照样挡得住「静默跳过」。
+# ⚠ **这里刻意不写数字地板**，门禁与 CI 也都不钉本套件的断言条数（只判退出码 ＋ `FAIL=0` ＋ `PASS > 0`）。
+#   这里是**导出式自检**：判定表有几行、就必须尝试过几行。加一行用例不用改这里，而它照样挡得住「静默跳过」。
 [ "$skip" -eq 0 ] || { echo "有 $skip 条被跳过 —— 本套件不接受**未登记**的 skip（造不出的名字要进 waiver_reason 并写明纯函数轨怎么覆盖它）"; exit 1; }
 [ "$n" -eq "$ROWS" ] || { echo "判定表 $ROWS 行，只尝试了 $n 行 —— 循环被提前中断了"; exit 1; }
 [ "$fail" -eq 0 ]

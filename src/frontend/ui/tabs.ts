@@ -440,8 +440,8 @@ export class TabManager {
 
   /**
    * E73：attach / 「杀死空 tmux」这几个动作对这个会话有没有意义。
-   * `↗` 不再看它：把「有没有终端」的四套判断收成一句
-   * 「这个 sid 有没有启动令牌」，那一句住后端（`bind.rs::resolve_remote_front`）。
+   * `↗` 不再看它：点的那一刻现查 —— 那台后端答「此刻连着这个会话的终端」、本机后端答进程链
+   *（`remote-terminal-front.ts`），沿链找窗口拉前的那一跳归 monitor（`lib.rs::bring_remote_terminal_to_front`）。
    *
    * **默认 true**：没说就是可以。判据只认后端明说的 `attachable:false`
    *（源头是 pidfile 的同名布尔，契约见 `src/doc/IPC-PROTOCOL.md` §9.3）。

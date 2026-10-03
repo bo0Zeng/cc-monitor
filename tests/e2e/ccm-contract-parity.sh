@@ -49,6 +49,7 @@
 # （「它必须在」），差分只负责「两份副本不许分家」。
 #
 # 跑法：bash tests/e2e/ccm-contract-parity.sh   （npm run test:ccm-contract-parity）
+. "$(cd "$(dirname "$0")" && pwd)/sandbox-env.sh"  # 无条件清掉继承来的 CCM_* / CLAUDE* / ANTHROPIC_* / TMUX* / CC_BUS_*
 set -o pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(cd "$HERE/../.." && pwd)"

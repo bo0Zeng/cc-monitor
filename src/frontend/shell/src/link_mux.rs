@@ -52,7 +52,6 @@ fn said(e: &CallError) -> String {
         )
     }) {
         Routed::NoChannel(s) | Routed::Refused(s) => s,
-        Routed::Done => copy_text("rsLinkMux.said.internal", &[]),
     }
 }
 

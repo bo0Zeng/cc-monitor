@@ -4,19 +4,10 @@
 //!
 //! ## procStart newtype（P1.1）
 //!
-//! 项目里 "procStart" 这一概念有**两种独立的时间表示**散落在不同来源，
-//! 之前 String / u64 不分让"哪种语义"全靠注释和约定俗成。任何把
-//! `SessionInfo.proc_start` (NetTicks) 当 `HwndEntry.owner_proc_start`
-//! (FileTime) 比较的代码都是 silent bug。引入 `NetTicks` / `FileTime`
-//! newtype 后这类混用编译期就 catch。
-//!
-//! - `FileTime(u64)` = Win32 FILETIME（自 1601-01-01 UTC，100ns 单位）
-//!     来源：Rust 端 `GetProcessTimes`、PS 端 `[Process].StartTime.ToFileTime()`
-//! - `NetTicks(u64)` = .NET DateTime.Ticks（自 0001-01-01 Local，100ns 单位）
-//!     来源：Claude Code 写到 `sessions/<PID>.json` 的 `procStart` 字段
-//!
-//! 两者数值差 504_911_232_000_000_000（NET 从 0001-01-01 起到 1601-01-01
-//! 的 ticks 数）+ 当地时区偏移。`FileTime::to_net_local_ticks()` 做这步转换。
+//! `FileTime(u64)` = Win32 FILETIME（自 1601-01-01 UTC，100ns 单位）；
+//! 来源：Rust 端 `GetProcessTimes`、PS 端 `[Process].StartTime.ToFileTime()`。
+//! Claude Code 在 `sessions/<PID>.json` 里写的 `procStart` 是另一种单位（.NET 本地 ticks，自 0001-01-01）；
+//! monitor 今天不读那个字段，原先为它立的那个 newtype 与换算一个调用方都没有，删了。
 
 /// Howard Hinnant 的 days_from_civil：把公历 (y, m, d) 转换为相对 1970-01-01 的天数。
 /// 跨月 / 跨年 / 闰年都单调。
@@ -41,13 +32,8 @@ pub fn days_from_civil(y: i64, m: i64, d: i64) -> i64 {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct FileTime(pub u64);
 
-/// .NET DateTime.Ticks (自 0001-01-01 Local, 100ns 单位)。
-/// Claude Code 写到 sessions/<PID>.json 的 procStart 字段是这个形式。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub struct NetTicks(pub u64);
-
 impl FileTime {
-    // Win32 那两件（`from_win32` · `to_net_local_ticks`，都是 `cfg(windows)`）搬进 `platform/filetime.rs`（同一个类型的第二个 impl 块）。
+    // Win32 那一件（`from_win32`，`cfg(windows)`）住 `platform/filetime.rs`（同一个类型的第二个 impl 块）。
     /// 从字符串解析（PS 端 ToFileTime() 输出形式）。失败返 None。
     /// 保留未用：将来若给 `verify_binding` 加 ps_proc_start 校验 / 合并
     /// `HwndEntry` 跟 `SidHwndBinding` 时即用。
@@ -57,17 +43,6 @@ impl FileTime {
     }
 
     #[allow(dead_code)]
-    pub fn abs_diff(self, other: Self) -> u64 {
-        self.0.abs_diff(other.0)
-    }
-}
-
-impl NetTicks {
-    /// 从字符串解析（Claude Code procStart 字段形式）。失败返 None。
-    pub fn parse_str(s: &str) -> Option<Self> {
-        s.parse::<u64>().ok().map(Self)
-    }
-
     pub fn abs_diff(self, other: Self) -> u64 {
         self.0.abs_diff(other.0)
     }
@@ -115,44 +90,6 @@ where
                 }
             }
         }
-    }
-    out
-}
-
-/// 把命令字符串编码成 PowerShell `-EncodedCommand` 接受的格式：
-/// **UTF-16LE 字节序列的标准 base64**（PowerShell 文档里所谓的 "Unicode" 编码）。
-///
-/// 用途：安全地把含空格 / 括号 / 引号 / `;` 的 PowerShell 命令透过 `wt.exe` →
-/// `powershell.exe` 多层 shell 传递。base64 token 只含 `[A-Za-z0-9+/=]`，**不含**
-/// 任何一层 shell 的引号 / 分隔符（wt 用 `;` 分隔多 tab、cmd 用引号配对），因此
-/// 不会被任何一层误解析——彻底绕开"多层引号转义地狱"。
-pub fn powershell_encoded_command(cmd: &str) -> String {
-    let utf16le: Vec<u8> = cmd.encode_utf16().flat_map(|u| u.to_le_bytes()).collect();
-    base64_encode(&utf16le)
-}
-
-/// 标准 RFC 4648 base64（含 `=` 填充）。仅 `powershell_encoded_command` 使用，
-/// 故不引第三方 crate（实现 ~15 行，且 RFC 测试向量守护）。
-fn base64_encode(bytes: &[u8]) -> String {
-    const TBL: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
-    for chunk in bytes.chunks(3) {
-        let b0 = chunk[0] as u32;
-        let b1 = *chunk.get(1).unwrap_or(&0) as u32;
-        let b2 = *chunk.get(2).unwrap_or(&0) as u32;
-        let n = (b0 << 16) | (b1 << 8) | b2;
-        out.push(TBL[((n >> 18) & 63) as usize] as char);
-        out.push(TBL[((n >> 12) & 63) as usize] as char);
-        out.push(if chunk.len() > 1 {
-            TBL[((n >> 6) & 63) as usize] as char
-        } else {
-            '='
-        });
-        out.push(if chunk.len() > 2 {
-            TBL[(n & 63) as usize] as char
-        } else {
-            '='
-        });
     }
     out
 }

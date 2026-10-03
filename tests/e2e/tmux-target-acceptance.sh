@@ -7,6 +7,7 @@
 # 输入 = 生产渲染链产出的那一行 `ccm …`（tests/e2e/tmux-target-emit.mts → launch-render-driver.ts → Rust render_ccm_launch），真跑它。
 # 隔离 -L socket + tmux shim，不碰用户任何真实会话。
 # 跑法：bash tests/e2e/tmux-target-acceptance.sh   （需要 tmux；npm run test:tmux-target）
+. "$(cd "$(dirname "$0")" && pwd)/sandbox-env.sh"  # 无条件清掉继承来的 CCM_* / CLAUDE* / ANTHROPIC_* / TMUX* / CC_BUS_*
 set -o pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(cd "$HERE/../.." && pwd)"

@@ -43,7 +43,7 @@
 //! |---|---|---|---|
 //! | 1 | `src/frontend/shell/Cargo.toml` 的 `[workspace] members` | **静默少跑**（`--workspace` 覆不到非成员，那个 crate 的测试从门禁里消失，不是失败是不存在） | `every_shared_crate_is_a_workspace_member` |
 //! | 2 | `git add` 那个 crate 的 `Cargo.toml` | 别人（和 CI）检出会直接编不过，而你的工作树一切正常 | `every_path_dependency_is_actually_committed` |
-//! | 3 | **`tests/scripts/gate.sh` 的 `run_gate_sum cargo <N>`** | `gate` 当场红，但报文说「有包掉出了 `--workspace`」—— **指错方向** | `the_gate_package_count_tracks_the_number_of_shared_crates`（本轮新加） |
+//! | 3 | ~~`tests/scripts/gate.sh` 里手抄的包数~~ | ~~加了 crate 没回来改那个数 ⇒ 门禁红在错误的方向上~~ | **已消掉**：门禁 `cargo` 那一格从 `cargo metadata` 现取成员集合，与真跑到的包两向相等 |
 //! | 4 | ~~两条自检的地板~~ | ~~余量被撑大，「少认一个 crate」不会红~~ | **已消掉**：两条自检改成**两个独立来源对拍**，自动跟上 |
 //!
 //! ★ 第 4 行**划掉**是本轮最要紧的一格：它原来是「要记得回来 +1」，

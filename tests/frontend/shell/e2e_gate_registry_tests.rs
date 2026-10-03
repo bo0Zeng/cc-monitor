@@ -1,6 +1,6 @@
-/// **刻意不进 CI 门禁的 e2e 套**（`test:` 后缀, 为什么）。
+/// **刻意不进门禁的 e2e 套**（`test:` 后缀, 为什么）。
 ///
-/// 默认拒绝：不在这里、又没有地板行、又没被直接跑的套，正题判据会点名。
+/// 默认拒绝：不在这里、门禁里又没有 `run_e2e`、又没被直接跑的套，正题判据会点名。
 const EXEMPT: &[(&str, &str)] = &[
     (
         "graylight",
@@ -10,7 +10,7 @@ const EXEMPT: &[(&str, &str)] = &[
     (
         "f40",
         "渲染/滚动管线级：同 `graylight-suite` 的规格（要跑着的 dev app + Xvfb），\
-             且它**不打印「合计 PASS=」**、断言数随环境分支变 ⇒ 连 `assert-pass-floor` 的度量口径都不成立；\
+             且它**不打印「合计 PASS=」**、断言数随环境分支变 ⇒ 连 `assert-pass-floor` 的判法都用不上；\
              论证写在 `tests/e2e/README.md`（U0 2026-08-01 补写那两段）",
     ),
 ];
@@ -52,33 +52,22 @@ fn e2e_suites() -> Vec<(String, String)> {
     out
 }
 
-/// `ci.yml` 里带断言数地板的套名（从 `assert-pass-floor.sh <名> <数>` 的**调用行**取）。
-///
-/// ⚠ 只认 `run:` 那种真调用行 —— `ci.yml` 自己那段反向自检里也写着这个脚本名
-/// （`grep -q "assert-pass-floor.sh $pair\b"`），把它算进来会数出一个假的更大的数。
-/// 这一点 `ci.yml` 的注释里逐字警告过（「用宽模式会把它们算进来」），照它办。
-fn floored() -> Vec<String> {
-    // ⚠ 剔注释走 `ci_yaml::live_lines`，**不自己再写一遍**：
-    // 第一版在这里内联了一个 `starts_with('#')` 过滤，被 `structural_scan` 的
-    // 「剥注释转换器必须登记」当场逮住（默认拒绝该有的样子）。按它问的那句
-    // 「共享原语为什么不够」查下去 —— `guard_core::strip_comment_lines` 认的是
-    // `//` / `/*`，接不住 YAML 的 `#` ⇒ 正确答案不是登记第二份，是把
-    // 原本住在 `shared_crate_registry::mod tests` 里的那份**搬出来共用**。
-    let live = crate::shared_crate_registry::ci_yaml::live_lines();
-    let mut out = Vec::new();
-    for line in live.lines() {
-        let t = line.trim();
-        let Some(rest) = t.split_once("run: bash tests/e2e/assert-pass-floor.sh ") else {
-            continue;
-        };
-        let mut it = rest.1.split_whitespace();
-        let (Some(name), Some(floor)) = (it.next(), it.next()) else {
-            continue;
-        };
-        if floor.chars().all(|c| c.is_ascii_digit()) {
-            out.push(name.to_string());
-        }
-    }
+fn gate_sh() -> String {
+    let p = crate::guard_support::repo_root().join("tests/scripts/gate.sh");
+    std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("读不到 {p:?}: {e}"))
+}
+
+/// 门禁里每一套 e2e 的套名（行首 `run_e2e <名>` 那一行；CI 的 e2e job 就是调门禁，不另记一份）。
+pub(crate) fn gated() -> Vec<String> {
+    let mut out: Vec<String> = gate_sh()
+        .lines()
+        .filter_map(|l| l.strip_prefix("run_e2e "))
+        .filter_map(|r| {
+            let mut it = r.split_whitespace();
+            let name = it.next()?;
+            it.next().is_none().then(|| name.to_string())
+        })
+        .collect();
     out.sort();
     out
 }
@@ -87,105 +76,32 @@ fn floored() -> Vec<String> {
 #[test]
 fn every_e2e_suite_is_either_gated_or_registered_as_exempt() {
     let suites = e2e_suites();
-    let floored = floored();
-    let yml = crate::shared_crate_registry::ci_yaml::yml();
-    // 抽取器自检：哪一头空了，下面那条对拍都会零命中地绿。
+    let gated = gated();
+    let gate = gate_sh();
+    // 正控：已知在门禁里的一套必须被认出来，否则下面会把**所有**套判成没进门禁。
     assert!(
-        suites.len() >= 15,
-        "从 `package.json` 只抠到 {} 套跑 e2e 的 `test:*`（08-08 实测 22）—— \
-             写法变了，本条会零命中地绿",
+        gated.iter().any(|n| n == "ccm-cli") && suites.iter().any(|(n, _)| n == "ccm-cli"),
+        "`ccm-cli` 没从 `gate.sh`（{} 套）或 `package.json`（{} 套）里认出来 —— 抽取器坏了",
+        gated.len(),
         suites.len()
-    );
-    assert!(
-        floored.len() >= 15,
-        "从 `ci.yml` 只抠到 {} 条 `assert-pass-floor` 调用行（08-08 实测 19）—— \
-             抽取器坏了，本条会把**所有**套判成没进门禁",
-        floored.len()
     );
 
     let ungated: Vec<String> = suites
         .iter()
-        .filter(|(n, _)| !floored.contains(n))
-        // 第二条出路：`ci.yml` 里有步骤直接跑那个脚本路径。
-        .filter(|(_, path)| !yml.contains(&format!("run: bash {path}")))
+        .filter(|(n, _)| !gated.contains(n))
+        // 第二条出路：门禁的某一格直接跑那个脚本路径（`exec-bits` 是个 guard，不打印「合计 PASS=」）。
+        .filter(|(_, path)| !gate.contains(&format!("bash {path}")))
         .filter(|(n, _)| !EXEMPT.iter().any(|(e, _)| e == n))
         .map(|(n, p)| format!("  test:{n}  ({p})"))
         .collect();
     assert!(
         ungated.is_empty(),
-        "这些 e2e 套**没进任何门禁**，也没登记为什么不进：\n{}\n\n\
-             ★ 这正是 `ci.yml` 自己记下的那个形状：「只有 npm 脚本、没进任何门禁 …… \n\
-             只是当时忘了接线 …… 那正是『新东西入网漏一拍』的形状」。上一次是**人**发现的。\n\
-             ⚠ 那条 `[ \"$N\" -ge 19 ]` 计数地板挡不住这件事：第 20 套没登记时 `N` 还是 19。\n\
-             三条出路：① 在 `ci.yml` 加一行 `assert-pass-floor.sh <套名> <地板>`（记得同步那个数）；\n\
-             ② 让某个步骤直接跑它（它若不打印「合计 PASS=」就走这条）；\n\
+        "这些 e2e 套**没进门禁**，也没登记为什么不进：\n{}\n\n\
+             三条出路：① 在 `tests/scripts/gate.sh` 加一行 `run_e2e <套名>`（CI 的 e2e job 调的就是它）；\n\
+             ② 让门禁的某一格直接跑它（它若不打印「合计 PASS=」就走这条）；\n\
              ③ 登记进本文件的 `EXEMPT` **并写清结构性理由** —— \n\
-             「暂时没接」不是理由，`graylight`/`f40` 那两条写的是「无头 CI 里没有那个 dev app」。",
+             「暂时没接」不是理由，`graylight`/`f40` 那两条写的是「无头环境里没有那个 dev app」。",
         ungated.join("\n")
-    );
-}
-
-/// ★ **那个「19」的四份副本都要等于派生出来的真值**。
-///
-/// 副本消不掉（一份是给人读的散文、一份是步骤名、一份是真判定、一份是收尾回显），
-/// 那就让它们**对拍**。这四份漂过 —— 那段注释自己记着「原写『8』…漏跟的两处」。
-#[test]
-fn the_suite_count_is_the_same_number_in_all_four_places() {
-    let n = floored().len();
-    let yml = crate::shared_crate_registry::ci_yaml::yml();
-    // `(定位这一行的措辞, 这份副本是什么, 这行里必须出现的东西)`。
-    //
-    // ⚠ **两步走**：先按**不含数字**的措辞找到那一行（找不到 = 措辞变了，该修锚点），
-    // 再看那行里有没有带着真值的那段字面。08-08 第一版图省事，直接找「含 `-ge` 的行」
-    // —— 当场抓到的是**上一轮刚加的 shellcheck 覆盖面地板**（同一份文件里的另一条 `-ge`），
-    // 报「写着 45」。**匹配单位比事实大**，F24 那一族，这次犯在四份副本的对拍上。
-    type Expect = fn(usize) -> Vec<String>;
-    let places: &[(&str, &str, Expect)] = &[
-        (
-            "套真机套件必须",
-            "注释里的散文（给人读的那份）",
-            |n| vec![format!("{n} 套真机套件必须")],
-        ),
-        (
-            "覆盖面地板（",
-            "步骤名（CI 日志里显示的那份）",
-            |n| vec![format!("（{n} 套")],
-        ),
-        (
-            "套带地板",
-            "真正做判定的那一行（连同它自己的报错文案）",
-            |n| vec![format!("-ge {n} "), format!(">= {n}）")],
-        ),
-        (
-            "套逐个对上",
-            "收尾回显（跑绿时打印的那份）",
-            |n| vec![format!("\"{n} 套逐个对上")],
-        ),
-    ];
-    let mut seen = 0usize;
-    for (anchor, what, expect) in places {
-        let line = yml
-            .lines()
-            .map(str::trim)
-            .find(|l| l.contains(anchor))
-            .unwrap_or_else(|| {
-                panic!("`ci.yml` 里找不到「{what}」那一行（措辞锚点 `{anchor}`）—— 措辞变了，本条会零命中地绿")
-            });
-        for want in expect(n) {
-            assert!(
-                line.contains(&want),
-                "「{what}」里找不到 `{want}`，而 `ci.yml` 真实带地板的套是 {n} 个。\n\
-                     那一行现在是：{line}\n\
-                     ⇒ 同一个数在 `ci.yml` 里存了四份，加一套就得**四处一起改**。\n\
-                     ⚠ 别只改报错的那一处：这四份漂过一次，那段注释自己记着\n\
-                     「本行原写『8』，是订正下方散文时漏跟的两处」。"
-            );
-        }
-        seen += 1;
-    }
-    assert_eq!(
-        seen, 4,
-        "只核到 {seen} 处副本（应 4 处）—— 抽取器漏了，本条在空转"
     );
 }
 
@@ -193,15 +109,15 @@ fn the_suite_count_is_the_same_number_in_all_four_places() {
 #[test]
 fn every_exemption_still_points_at_a_real_ungated_suite() {
     let suites = e2e_suites();
-    let floored = floored();
+    let gated = gated();
     for (name, why) in EXEMPT {
         assert!(
             suites.iter().any(|(n, _)| n == name),
             "`EXEMPT` 里登记着 `test:{name}`，而 `package.json` 里已经没有这套了 ⇒ 删掉这一行"
         );
         assert!(
-            !floored.contains(&name.to_string()),
-            "`test:{name}` 登记着豁免，可 `ci.yml` 里**已经有它的地板行了** ⇒ 删掉这条豁免。\n\
+            !gated.contains(&name.to_string()),
+            "`test:{name}` 登记着豁免，可 `gate.sh` 里**已经有它的 `run_e2e` 了** ⇒ 删掉这条豁免。\n\
                  留着的害处很具体：下一个人会以为这套没人跑，从而不敢依赖它的结论。"
         );
         assert!(
@@ -210,47 +126,6 @@ fn every_exemption_still_points_at_a_real_ungated_suite() {
                  「暂时没接」这种可克服的话不算理由。"
         );
     }
-}
-
-/// **自称「进的是本机门禁」的豁免，本机门禁里真得跑它** —— 两向集合相等。
-///
-/// 左 = `EXEMPT` 里理由写着 `本机门禁 \`tests/scripts/gate.sh\`` 的那几套；
-/// 右 = `package.json` 里跑 e2e 的套中，`ci.yml` 没有地板行、而 `tests/scripts/gate.sh` 里
-/// `run_e2e <套名> ` **恰好一处**的那几套。
-/// 两侧**异源**：左边是本文件的登记，右边是门禁脚本的现物。
-///
-/// 它逮两形：① 有人把 `gate.sh` 那一行删了/改了名，豁免还挂着「进了本机门禁」⇒ 左多右少；
-/// ② 有人往 `gate.sh` 里挂了一套 `ci.yml` 没地板的新 e2e，本文件没登记 ⇒ 右多左少
-/// （那一形正题判据 `every_e2e_suite_is_either_gated_or_registered_as_exempt` 也会红，
-/// 但它说的是「没进任何门禁」，而事实是「进了本机门禁、没说」）。
-/// ⚠ 反空真：右边读不到 `gate.sh` ⇒ 右空、左 2 ⇒ 当场分叉；左边的两条是手写的，不从右边派生。
-#[test]
-fn an_exemption_that_claims_the_local_gate_is_really_run_there() {
-    let gate =
-        std::fs::read_to_string(crate::guard_support::repo_root().join("tests/scripts/gate.sh"))
-            .expect("读不到 tests/scripts/gate.sh");
-    let floored = floored();
-    // 人群 = `package.json` 里跑 e2e 的套（`assert-pass-floor.sh` 只认 npm 脚本，
-    // `gate.sh` 跑得动的一定在这里面）；判据 = `gate.sh` 里 `run_e2e <套名> ` 那一句**恰好一处**
-    // （`find_pinned`：零处 / 两处都不算「在跑」）。
-    let mut right: Vec<String> = e2e_suites()
-        .into_iter()
-        .map(|(n, _)| n)
-        .filter(|n| !floored.contains(n))
-        .filter(|n| guard_core::find_pinned(&gate, &format!("run_e2e {n} ")).is_ok())
-        .collect();
-    right.sort();
-    let mut left: Vec<String> = EXEMPT
-        .iter()
-        .filter(|(_, why)| why.contains("本机门禁 `tests/scripts/gate.sh`"))
-        .map(|(n, _)| n.to_string())
-        .collect();
-    left.sort();
-    assert_eq!(
-        left, right,
-        "「自称进了本机门禁的豁免」与「`gate.sh` 真在跑、`ci.yml` 没地板的套」对不上。\n\
-             左（本文件登记）：{left:?}\n右（`gate.sh` 现物）：{right:?}"
-    );
 }
 
 /// `P0b`：全链台架的「没有孤儿后端」那一格，**人群要覆盖两族**。

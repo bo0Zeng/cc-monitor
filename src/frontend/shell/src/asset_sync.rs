@@ -67,7 +67,6 @@ impl LocalBackend for ResidentBackend {
                 )
             }) {
                 Routed::NoChannel(s) | Routed::Refused(s) => s,
-                Routed::Done => copy_text("rsAssetSync.call.internal", &[]),
             }
         })?;
         data.ok_or_else(|| copy_text("rsAssetSync.call.emptyReply", &[]))
@@ -108,7 +107,6 @@ async fn register_reach(cfg: &crate::ssh_source::RemoteConfig) -> Result<(), Str
                 )
             }) {
                 Routed::NoChannel(s) | Routed::Refused(s) => s,
-                Routed::Done => copy_text("rsAssetSync.reach.internal", &[]),
             }
         })
 }

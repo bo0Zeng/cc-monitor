@@ -17,6 +17,7 @@
 # ## 本机安全
 #
 # 全程 `-L <私有名>`（`C7i`），绝不碰用户的 default socket；假会话是 `sleep`，不起真 claude（`C7`）。
+. "$(cd "$(dirname "$0")" && pwd)/sandbox-env.sh"  # 无条件清掉继承来的 CCM_* / CLAUDE* / ANTHROPIC_* / TMUX* / CC_BUS_*
 set -o pipefail
 
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"

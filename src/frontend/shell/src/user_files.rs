@@ -102,7 +102,6 @@ impl BackendDoor {
         let Some(client) = client_for(wire) else {
             let why = match no_channel(wire) {
                 Routed::NoChannel(s) | Routed::Refused(s) => s,
-                Routed::Done => String::new(),
             };
             return Err(Refused::Other(copy_text(
                 "rsUserFiles.ask.backendDown",
@@ -142,7 +141,6 @@ impl BackendDoor {
                     format!("{who}：{message}")
                 }) {
                     Routed::NoChannel(s) | Routed::Refused(s) => s,
-                    Routed::Done => String::new(),
                 };
                 Err(match peer_code.into_inner() {
                     Some(c) if c == "stale" => Refused::Stale(said),

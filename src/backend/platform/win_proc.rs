@@ -25,7 +25,7 @@
 //! # 这里刻意不用 `windows` / `windows-sys` crate
 //!
 //! 本 crate 今天一条 Windows 专属依赖都没有；为四个 `kernel32` 函数加一条依赖（还要动 lock）
-//! 不如照 `src/frontend/shell/src/platform/filetime.rs::to_net_local_ticks` 那处先例手写 `extern "system"`。
+//! 不如手写 `extern "system"`（monitor 那一侧原先换 FILETIME 时区的那一处也是这么写的，那段随它唯一的用途删了）。
 //! 签名逐个对着 Win32 文档写：`HANDLE` = 指针宽度（与 `std::os::windows::io::RawHandle` 同形）、
 //! `BOOL` = `i32`、`DWORD` = `u32`。
 //!

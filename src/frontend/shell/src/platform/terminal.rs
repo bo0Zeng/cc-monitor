@@ -321,7 +321,7 @@ pub fn launch_local_posix(_cmd: &str, _cwd: Option<&str>) -> Result<(), String> 
 /// **标「平台判不了」要给得出 `cfg`；给不出 `cfg` = 它在本平台编译 = 不是判不了。**
 ///
 /// **实打（刀 `R10M2`，`D8P35` 同形，第九轮 `R9M9` 的复打，09-02）**：在
-/// `let encoded = crate::utils::powershell_encoded_command(ps_command);`
+/// `let encoded = powershell_encoded_command(ps_command);`
 /// 之前把当时交进来那一行前面的中转前缀剥掉（锚点是那一行，**全文命中 1**）
 /// ⇒ 🔴 **`1245 passed; 0 failed`**，与同树干净分母逐字相同 —— **零感知**。
 /// 今天交进这个窗口的只是一行 `ccm …`（中转地址由 `ccm` 在最终 exec 那一处定），那段前缀不在了；
@@ -344,8 +344,8 @@ pub fn launch_local_posix(_cmd: &str, _cwd: Option<&str>) -> Result<(), String> 
 ///
 /// ## ⚠ 别把这一条读宽（两处邻居，都不属于本族）
 ///
-/// - 同一条腿上的 [`crate::utils::powershell_encoded_command`] **没有 `cfg`、在 Linux 上真编译**
-///   ⇒ 不属于本族（`D8 阻-2`）；第九轮已给它配了
+/// - 同一条腿上的 [`powershell_encoded_command`]（本文件末尾）是 `cfg(any(windows, test))`：
+///   Linux 上 test 档真编译、单测在那儿跑 ⇒ 不属于本族（`D8 阻-2`）；第九轮已给它配了
 ///   `utils_tests.rs::the_relay_prefix_survives_the_powershell_encoding_byte_for_byte`。
 /// - 原 `history.rs` 的 `PRODUCTION_LAUNCH_SINK`〔散文墓碑〕（今天是 `launch.rs::open_local_terminal`） 的 `#[cfg(windows)]` 那一支（`D8` 表里的 `F3`，
 ///   `D8` **没打**、标着「推的」）第九轮打了、**是红的**；`C` 第十轮刀 `R10M8` 复打，
@@ -361,8 +361,8 @@ pub fn launch_powershell_window(ps_command: &str, local_cwd: Option<&str>) -> Re
 
     // -EncodedCommand（base64 of UTF-16LE）：命令含空格 / 括号 / `;`，直接当字符串穿
     // wt.exe（用 `;` 分隔多 tab）会被切碎。编码后只含 [A-Za-z0-9+/=]，任何一层 shell
-    // 都不会误解析。详 utils::powershell_encoded_command。
-    let encoded = crate::utils::powershell_encoded_command(ps_command);
+    // 都不会误解析。详本文件末尾的 powershell_encoded_command。
+    let encoded = powershell_encoded_command(ps_command);
     // 不带 `-NoProfile`：必须加载用户 PowerShell profile（cc / __ccm_bind / 代理 env）。
     // -NoExit：命令退出后窗口保留（可读错误、可继续敲）。用系统自带 powershell.exe。
     let ps_args = ["-NoExit", "-EncodedCommand", encoded.as_str()];
@@ -521,5 +521,47 @@ pub fn open_local(cmd: &str, cwd: Option<&str>) -> Result<(), String> {
     let out = launch_local_posix(cmd, cwd);
     #[cfg(windows)]
     let out = launch_powershell_window(cmd, cwd);
+    out
+}
+
+// ── PowerShell `-EncodedCommand` 的编码：只有本文件 Windows 那一臂（`launch_powershell_window`）用；
+//    `test` 也编，单测（`utils_tests.rs`）在 Linux 上跑。
+/// 把命令字符串编码成 PowerShell `-EncodedCommand` 接受的格式：
+/// **UTF-16LE 字节序列的标准 base64**（PowerShell 文档里所谓的 "Unicode" 编码）。
+///
+/// 用途：安全地把含空格 / 括号 / 引号 / `;` 的 PowerShell 命令透过 `wt.exe` →
+/// `powershell.exe` 多层 shell 传递。base64 token 只含 `[A-Za-z0-9+/=]`，**不含**
+/// 任何一层 shell 的引号 / 分隔符（wt 用 `;` 分隔多 tab、cmd 用引号配对），因此
+/// 不会被任何一层误解析——彻底绕开"多层引号转义地狱"。
+#[cfg(any(windows, test))]
+pub(crate) fn powershell_encoded_command(cmd: &str) -> String {
+    let utf16le: Vec<u8> = cmd.encode_utf16().flat_map(|u| u.to_le_bytes()).collect();
+    base64_encode(&utf16le)
+}
+
+/// 标准 RFC 4648 base64（含 `=` 填充）。仅 `powershell_encoded_command` 使用，
+/// 故不引第三方 crate（实现 ~15 行，且 RFC 测试向量守护）。
+#[cfg(any(windows, test))]
+pub(crate) fn base64_encode(bytes: &[u8]) -> String {
+    const TBL: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
+    for chunk in bytes.chunks(3) {
+        let b0 = chunk[0] as u32;
+        let b1 = *chunk.get(1).unwrap_or(&0) as u32;
+        let b2 = *chunk.get(2).unwrap_or(&0) as u32;
+        let n = (b0 << 16) | (b1 << 8) | b2;
+        out.push(TBL[((n >> 18) & 63) as usize] as char);
+        out.push(TBL[((n >> 12) & 63) as usize] as char);
+        out.push(if chunk.len() > 1 {
+            TBL[((n >> 6) & 63) as usize] as char
+        } else {
+            '='
+        });
+        out.push(if chunk.len() > 2 {
+            TBL[(n & 63) as usize] as char
+        } else {
+            '='
+        });
+    }
     out
 }

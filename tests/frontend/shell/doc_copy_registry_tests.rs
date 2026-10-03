@@ -1,4 +1,3 @@
-use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
 fn repo_root() -> PathBuf {
@@ -49,7 +48,7 @@ const POINTER_ONLY: &[(&str, &[&str], &str, &str)] = &[
             "code-picture-core ",
         ],
         "条数以实跑为准",
-        "实跑 + `src/doc/DEVELOPMENT.md` 那张表给命令；CI 侧的地板行在 `ci.yml`（那些有判据看着）",
+        "实跑 + `src/doc/DEVELOPMENT.md` 那张表给命令；e2e 各套断言几条只住在套件自己的输出里",
     ),
     (
         "CI job 数",
@@ -74,7 +73,7 @@ const POINTER_ONLY: &[(&str, &[&str], &str, &str)] = &[
             "graylight-frames ",
         ],
         "套数与地板值一律不抄在这里",
-        "`ci.yml` 里 `run: bash tests/e2e/assert-pass-floor.sh <套件> <地板>` 那 19 行",
+        "哪里都不钉：每套断言几条只住在套件自己的输出里（门禁判 `PASS > 0` 且 `FAIL = 0`）",
     ),
     // 「`backend/` 下 `.rs` 的个数」那一行摘了：monitor 侧 `backend` 目录没了（那一组回了壳根，`GUARDED` 逐个点名）。
 ];
@@ -96,9 +95,6 @@ const HAS_A_GUARD: &[(&str, &str)] = &[
         "wire 帧 kind 清单",
         "every_wire_frame_kind_has_a_row_in_the_frame_table",
     ),
-    // ⚠ 「e2e 套件名单」那条判据 **住在本文件里**，而本文件在扫描时被摘除
-    // （否则表里写着的符号名会让每一条都在自己身上找到自己 —— F23 那一族）。
-    // ⇒ 它不进这张表：住在本文件里的判据由**编译**保证还在，不需要再查一遍。
     ("backend 生产段起进程的处数", "SPAWN_SITES_TODAY"),
     ("设置面板逐页清单", "pageTitles"),
 ];
@@ -134,7 +130,7 @@ const DONE_ROWS: &[&str] = &[
     "#3 node 套件组数（★ F18 上半顺手做掉但没登记 —— 下半复核时才发现，台账是筛子不是免检章）",
     "#4 vitest DOM 数（删副本留指针）",
     "#5 CI job 数（删副本留指针）",
-    "#6 e2e 套数与逐套地板（删副本留指针 + 新增套件名单机检）",
+    "#6 e2e 套数与逐套地板（删副本留指针；名单副本连同对拍它的机检一起删 —— 唯一住址是门禁的 `run_e2e` 行）",
     "#7 reader 文件数（`local_read_surface_registry` 头注 11 vs 同文件机检 7 —— 一个文件内部自相矛盾；已删副本留指针）",
     "#8 backend 生产 `Command::new` 处数（散文删副本；★ 判据从地板 `>= 4` 收紧为相等 —— 地板在变大方向上是瞎的）",
     "#9 `backend/` 下 `.rs` 数（删副本留指针）",
@@ -388,7 +384,7 @@ const POINTER_ONLY_SUFFIX: &[(&str, &[&str], &str, &str)] = &[
         "进 CI 的 e2e 套数",
         &[" 套带断言", " 套真机套件"],
         "套数与地板值一律不抄在这里",
-        "`ci.yml` 里的 `assert-pass-floor.sh` 调用行；名单一致性由 `the_e2e_readme_suite_list_matches_ci` 机检",
+        "`tests/scripts/gate.sh` 里的 `run_e2e <套件>` 行；套件名单不另抄一份",
     ),
 ];
 
@@ -521,65 +517,6 @@ fn the_treated_prose_rows_only_go_up() {
             why.len()
         );
     }
-}
-
-/// ★ 把 `tests/e2e/README.md` 那句「**只能靠这条提醒**」变成一条会红的判据。
-///
-/// 那份表原先连**套数**带**逐套地板**一起抄，并在旁边逐字写着
-/// 「副本漂了不会让任何东西变红，所以只能靠这条提醒」—— 然后它漂了三次
-/// （套数 15→19 · `ccm-cli` 44→53 · `usage-probe` 9→11），
-/// 而且上一轮 E82 订正时**也是这么写的**。**散文纪律等于没有纪律**（定框 E12）。
-///
-/// 地板值走 **E12 第二条路**（删副本、只留指针，由上面那张表看着不许回来）；
-/// **套件名单**走第一条路 —— 就是本条：与 `ci.yml` 的调用行**集合相等**。
-#[test]
-fn the_e2e_readme_suite_list_matches_ci() {
-    let ci = read(".github/workflows/ci.yml");
-    let mark = "run: bash tests/e2e/assert-pass-floor.sh ";
-    let in_ci: BTreeSet<String> = ci
-        .lines()
-        .filter_map(|l| l.trim().strip_prefix(mark))
-        .filter_map(|rest| rest.split_whitespace().next())
-        .map(str::to_string)
-        .collect();
-    // 抽取器自检：抓不到调用行时两边都会是空集，本条就成了一句废话。
-    assert!(
-        in_ci.len() >= 15,
-        "只从 `ci.yml` 抓到 {} 条 `assert-pass-floor` 调用行（08-06 实测 19）—— \
-             抽取器坏了，本条此刻是空转的：{in_ci:?}",
-        in_ci.len()
-    );
-
-    let readme = read("tests/e2e/README.md");
-    let in_doc: BTreeSet<String> = readme
-        .lines()
-        .filter(|l| l.starts_with("| `e2e-tmux"))
-        .flat_map(|l| {
-            l.split('|')
-                .nth(2)
-                .unwrap_or("")
-                .split('·')
-                .map(|c| c.trim().trim_matches('`').trim().to_string())
-                .collect::<Vec<_>>()
-        })
-        .filter(|c| !c.is_empty())
-        .collect();
-    assert!(
-        in_doc.len() >= 15,
-        "从 `tests/e2e/README.md` 的表里只解析出 {} 个套件名 —— 表的形状变了就把本条一起改：{in_doc:?}",
-        in_doc.len()
-    );
-
-    let missing: Vec<&String> = in_ci.difference(&in_doc).collect();
-    let extra: Vec<&String> = in_doc.difference(&in_ci).collect();
-    assert!(
-        missing.is_empty() && extra.is_empty(),
-        "`tests/e2e/README.md` 的套件表与 `ci.yml` 的调用行对不上。\n\
-             CI 有而文档没有：{missing:?}\n\
-             文档有而 CI 没有：{extra:?}\n\
-             ★ 地板值**不在**本条管辖内 —— 那些已按 E12 第二条路删掉副本，\
-             单一事实源就是 `ci.yml` 的调用行。本条只钉**名单**。"
-    );
 }
 
 fn collect(dir: &Path, out: &mut String) {

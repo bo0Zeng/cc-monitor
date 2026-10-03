@@ -104,7 +104,6 @@ fn said(e: &crate::inbound_client::CallError) -> (String, String) {
         *code.borrow_mut() = c.to_string();
         m.to_string()
     }) {
-        Routed::Done => String::new(),
         Routed::NoChannel(s) | Routed::Refused(s) => s,
     };
     (code.into_inner(), text)

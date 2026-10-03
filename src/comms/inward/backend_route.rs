@@ -57,11 +57,9 @@ use crate::chan::wire as w;
 use crate::copy_table::copy_text;
 use crate::inbound_client::CallError;
 
-/// 一条走后端的控制命令的结局。**三态**，分界线见模块头注。
+/// 一条走后端的控制命令**失败时**的结局，分界线见模块头注（成功那一态由调用方的 `Ok` 自己装，这里不另设）。
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum Routed {
-    /// backend 确认做完了。
-    Done,
     /// **证明**这条命令没发出去 ⇒ 调用方可以回落到过渡期的 SSH 路径（C7）。
     /// 带上原因只为诊断，**不参与分流判断**。
     NoChannel(String),

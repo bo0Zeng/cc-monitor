@@ -23,6 +23,7 @@
 #
 # 全程**不碰 tmux**（本套件不建任何会话），`claude_dir` 一律在 `/tmp` 下的临时目录，
 # 假会话的 pid 用一个自己起的 `sleep`（不是真 claude，`C7`）。
+. "$(cd "$(dirname "$0")" && pwd)/sandbox-env.sh"  # 无条件清掉继承来的 CCM_* / CLAUDE* / ANTHROPIC_* / TMUX* / CC_BUS_*
 set -o pipefail
 
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"

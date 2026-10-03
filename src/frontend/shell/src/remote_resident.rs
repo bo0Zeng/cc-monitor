@@ -195,10 +195,6 @@ async fn ask_verdict(mine: &str, theirs: &str, replaced: bool) -> Result<Verdict
         .map_err(
             |e| match route_call_error(&e, |_code, message| message.to_string()) {
                 Routed::NoChannel(s) | Routed::Refused(s) => s,
-                Routed::Done => copy_text(
-                    "rsRemoteResident.verdict.unreadable",
-                    &[("e", &"no answer".to_string())],
-                ),
             },
         )?;
     decode_verdict(&data.unwrap_or_default())

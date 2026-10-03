@@ -1,4 +1,6 @@
 use super::*;
+// PowerShell 编码那两个住 `platform/terminal.rs`（只有 Windows 那一臂用；`test` 也编）。
+use crate::platform::terminal::{base64_encode, powershell_encoded_command};
 
 #[test]
 fn epoch_is_zero() {
@@ -124,8 +126,8 @@ fn powershell_encoded_command_is_shell_safe() {
 ///
 /// # 它为什么活到第九轮才有人量 —— **一次平台归属的连坐误分类**
 ///
-/// `powershell_encoded_command` **没有 `cfg`，在 Linux 上是真编译的**
-///（本文件没有任何 `#[cfg(windows)]`，`cargo test -p monitor --lib` 里它被跑到）。
+/// `powershell_encoded_command` 是 `cfg(any(windows, test))`：**Linux 上 test 档是真编译的**
+///（本文件没有任何 `#[cfg(windows)]`，`cargo test -p monitor --lib` 里它被跑到；生产段只在 Windows 上编）。
 /// 但它**长在 Windows 那条腿上**（`launch::launch_powershell_window` 是它唯一的生产调用方），
 /// 于是被连坐地当成了「Windows ⇒ 判不了」那一族。
 /// `D8` 的刀 `D8P36`（体首行把 `$env:ANTHROPIC_BASE_URL=…; ` 那一段剥掉再编码）实测：

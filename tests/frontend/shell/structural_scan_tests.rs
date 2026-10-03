@@ -2035,8 +2035,12 @@ fn dead_name_corpus() -> Vec<(String, String)> {
         //    收进来就等于宣布「这些名字都还活着」，人群当场塌成空集。
         //    ⚠ 只对 `"tests"` 那一棵给名单：本文件不在 `"src"` 下面，而
         //    `scan_tree_excluding` **摘不到就红** —— 给错根会当场说话，不会安静地空转。
+        //    同一条理由排掉冻结点快照 `tests/__fixtures__/tombstone-freeze.tsv`：它逐行写着那些死名。
         let excluded: &[&str] = match sub {
-            "tests" => &["tests/frontend/shell/structural_scan_tests.rs"],
+            "tests" => &[
+                "tests/frontend/shell/structural_scan_tests.rs",
+                "tests/__fixtures__/tombstone-freeze.tsv",
+            ],
             _ => &[],
         };
         for (p, src) in guard_core::scan_tree_excluding(&root.join(sub), &[] as &[&str], excluded) {
@@ -2317,30 +2321,61 @@ fn dead_names_on_disk(
 }
 
 /// 墓碑冻结：删了或改了名的符号，把提到它的那句话改成现状，不挂墓碑、不登记（`src/doc/CONTRIBUTING.md` §3.4）。
-/// 下面四个数是两张墓碑表此刻的行数与处数之和，只许往下改：有人把一句挂着墓碑的话改成现状、
-/// 表里减了一格 ⇒ 同拍把这里改成新的实数。买不到：同一拍里减一块、在别处加一块，两个数都不动。
-const FROZEN_MARK_FILES: usize = 245;
-const FROZEN_MARK_TOTAL: usize = 858;
-const FROZEN_TOMBSTONED_ROWS: usize = 422;
-const FROZEN_TOMBSTONED_TOTAL: usize = 513;
+/// 冻结点那两张表的快照住 `tests/__fixtures__/tombstone-freeze.tsv`：此刻两张表的每一格都必须在快照里、
+/// 处数不超过那时（逐格 ⊆）。不手抄行数与处数 —— 删墓碑的那一路不用回来改任何东西，几路同时删也不撞。
+/// 买不到：快照里有、后来删掉的一格，又被原样挂回来。
+const TOMBSTONE_FREEZE: &str = include_str!("../../__fixtures__/tombstone-freeze.tsv");
 
-/// 一张墓碑表的 (行数, 处数之和) 必须等于冻结数：多了是又挂了墓碑，少了是冻结数没跟着往下改。
+/// 一张墓碑表此刻的每一格（键 → 处数）都必须住在冻结点那份快照里、处数不超过那时。
 fn assert_tombstone_table_frozen(
     table: &str,
-    (rows, total): (usize, usize),
-    (frozen_rows, frozen_total): (usize, usize),
+    now: &[(String, usize)],
+    frozen: &std::collections::BTreeMap<String, usize>,
 ) {
     assert!(
-        rows <= frozen_rows && total <= frozen_total,
-        "`{table}` 涨了：{rows} 行 / {total} 处，冻结在 {frozen_rows} 行 / {frozen_total} 处。\n\
+        !frozen.is_empty(),
+        "冻结点快照里 `{table}` 一格都没解析出来 —— 解析坏了，本条在空转"
+    );
+    let grown: Vec<String> = now
+        .iter()
+        .filter(|(k, n)| frozen.get(k).is_none_or(|f| n > f))
+        .map(|(k, n)| {
+            format!(
+                "  {k}  此刻 {n} 处，冻结点 {}",
+                frozen.get(k).map_or("没有这一格".into(), |f| f.to_string())
+            )
+        })
+        .collect();
+    assert!(
+        grown.is_empty(),
+        "`{table}` 比冻结点多出了墓碑：\n{}\n\
          墓碑不许再挂：删了或改了名的符号，把提到它的那句话改成现状（说今天是什么、在哪儿），\
-         不挂标记、不登记（`src/doc/CONTRIBUTING.md` §3.4）。"
+         不挂标记、不登记（`src/doc/CONTRIBUTING.md` §3.4）。",
+        grown.join("\n")
     );
-    assert_eq!(
-        (rows, total),
-        (frozen_rows, frozen_total),
-        "`{table}` 少了（有人把挂着墓碑的话改成了现状）⇒ 把它的冻结数同拍往下改成这两个实数。"
-    );
+}
+
+/// 冻结点快照里 `table` 那张表：`键 → 处数`（`TOMBSTONED` 的键是「路径 · 名字」，`REGISTERED` 的是路径）。
+fn frozen_table(table: &str) -> std::collections::BTreeMap<String, usize> {
+    TOMBSTONE_FREEZE
+        .lines()
+        .filter(|row| !row.starts_with('#') && !row.trim().is_empty())
+        .filter_map(|row| {
+            let cols: Vec<&str> = row.split('\t').collect();
+            assert_eq!(cols.len(), 4, "冻结点快照有一行不是四列：{row:?}");
+            (cols[0] == table).then(|| {
+                let key = if cols[2].is_empty() {
+                    cols[1].to_string()
+                } else {
+                    format!("{} · {}", cols[1], cols[2])
+                };
+                let n: usize = cols[3]
+                    .parse()
+                    .unwrap_or_else(|_| panic!("冻结点快照的处数不是数：{row:?}"));
+                (key, n)
+            })
+        })
+        .collect()
 }
 
 /// ★★ **散文里点名的名字，要么在代码里，要么由写的人声明成历史。**
@@ -2617,7 +2652,7 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
 
     /// **墓碑登记**：`(仓根相对路径, 名字, 带 [`PROSE_NAME_TOMBSTONE`] 的处数)`。
     ///
-    /// 🔴 **冻结**：只许减，不许加行、加数（行数与处数之和钉在 `FROZEN_TOMBSTONED_*`）。
+    /// 🔴 **冻结**：只许减，不许加行、加数（逐格不超过冻结点快照 `tests/__fixtures__/tombstone-freeze.tsv`）。
     /// 盘上与表逐格相等照旧：登记了盘上没有 ⇒ 红。
     ///
     /// 这 6 处全是 `K-R20` 本轮真的改过的**订正段** —— 订正段逐字引用旧名字，
@@ -2730,11 +2765,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             "config_surface_report",
             2,
         ),
-        (
-            "tests/frontend/ui/ipc/commands.vitest.ts",
-            "config_surface_report",
-            2,
-        ), // 那几行增量账里的旧命令名（同一行带墓碑标记）
         (
             "src/frontend/ui/settings/footprint-reads.ts",
             "config_surface_report",
@@ -3007,16 +3037,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             2,
         ),
         (
-            "tests/frontend/ui/ipc/commands.vitest.ts",
-            "create_remote_branch_session",
-            3,
-        ),
-        (
-            "tests/frontend/ui/ipc/commands.vitest.ts",
-            "delete_remote_history_session",
-            3,
-        ),
-        (
             "tests/frontend/ui/views/history-actions.vitest.ts",
             "delete_remote_history_session",
             1,
@@ -3078,11 +3098,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             "tests/frontend/shell/parity_ledger_tests.rs",
             "stream_read_remote_session",
             1,
-        ),
-        (
-            "tests/frontend/ui/ipc/commands.vitest.ts",
-            "stream_read_remote_session",
-            3,
         ),
         // 写 key 改走通道 `apikey-key-set`：monitor 那一半（Tauri 命令 ＋ `apikey_remote` 写臂）与钉它们的判据退役。
         // `apikey_remote.rs` 与它的 `_tests.rs` 整删（发送口零调用方）⇒ 住在那两份里的墓碑（本表与 `REGISTERED` 共 16 行）随文件退役：
@@ -3468,11 +3483,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             "tests/frontend/shell/parity_ledger_tests.rs",
             "deploy_remote_acct_iso",
             6,
-        ),
-        (
-            "tests/frontend/ui/ipc/commands.vitest.ts",
-            "deploy_remote_acct_iso",
-            3,
         ),
         (
             "tests/frontend/shell/sftp_tests.rs",
@@ -3878,11 +3888,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             1,
         ),
         // 同一刀带走的 e2e 夹具产出者，与它那套跑不起来的真机验收脚本。
-        (
-            "tests/frontend/shell/shared_crate_registry_tests.rs",
-            "emit_guarded_commands_for_e2e",
-            1,
-        ),
         // 两条 `the_refusal_wording_matches_the_ssh_path` 改名成
         // `…_matches_the_sibling_command`（对照面从「那条 SSH 回落」换成兄弟命令）。
         // `the_refusal_wording_matches_the_ssh_path` 那两行（`backend_kill_tests.rs` · `backend_send_keys_tests.rs`）摘了：
@@ -3949,21 +3954,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             1,
         ),
         (
-            "tests/frontend/ui/ipc/commands.vitest.ts",
-            "account_usage_local",
-            1,
-        ),
-        (
-            "tests/frontend/ui/ipc/commands.vitest.ts",
-            "aggregate_remote_usage_all",
-            1,
-        ),
-        (
-            "tests/frontend/ui/ipc/commands.vitest.ts",
-            "aggregate_usage_all",
-            1,
-        ),
-        (
             "tests/frontend/shell/parity_ledger_tests.rs",
             "account_usage_local",
             4,
@@ -4007,11 +3997,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             "tests/frontend/shell/parity_ledger_tests.rs",
             "list_remote_mcp_project_dirs",
             1,
-        ),
-        (
-            "tests/frontend/ui/ipc/commands.vitest.ts",
-            "list_remote_mcp_project_dirs",
-            3,
         ),
         (
             "src/frontend/shell/src/local_origin_registry.rs",
@@ -4315,11 +4300,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             "tests/frontend/shell/parity_ledger_tests.rs",
             "stream_remote_history_sessions",
             1,
-        ), // 远端会话清单那个函数随历史清单搬进本机后端删了，点它的散文挂墓碑
-        (
-            "tests/frontend/ui/ipc/commands.vitest.ts",
-            "stream_remote_history_sessions",
-            3,
         ), // 远端会话清单那个函数随历史清单搬进本机后端删了，点它的散文挂墓碑
         // acct-iso 本机 / 远端两对 Tauri 命令合成带 origin 的两条，点四个旧名的散文挂墓碑。
         // `backend/mod.rs` · `check_local_acct_iso` 那一行摘了：那份文件随 `backend` 目录删了。
@@ -4669,25 +4649,15 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             "relay_env_prefix_ps",
             1,
         ),
-        (
-            "tests/frontend/ui/ipc/commands.vitest.ts",
-            "probe_ccm_cli",
-            1,
-        ),
-        (
-            "tests/frontend/ui/ipc/commands.vitest.ts",
-            "relay_all_sessions_switch",
-            3,
-        ),
     ];
 
     assert_tombstone_table_frozen(
         "TOMBSTONED",
-        (
-            TOMBSTONED.len(),
-            TOMBSTONED.iter().map(|(_, _, c)| *c).sum(),
-        ),
-        (FROZEN_TOMBSTONED_ROWS, FROZEN_TOMBSTONED_TOTAL),
+        &TOMBSTONED
+            .iter()
+            .map(|(p, n, c)| (format!("{p} · {n}"), *c))
+            .collect::<Vec<_>>(),
+        &frozen_table("TOMBSTONED"),
     );
 
     let corpus = dead_name_corpus();
@@ -4915,8 +4885,8 @@ fn every_prose_tombstone_mark_is_registered() {
     /// 名字之一」—— 起了别的名字，`every_registry_guard_keeps_its_reverse_half`
     /// **看不见本条**，而「它看过了、过了」与「它压根没去看」在输出上一模一样。
     ///
-    /// 🔴 **冻结**：只许减，不许加行、加数（行数与处数之和钉在 `FROZEN_MARK_*`）。
-    /// 一句挂着墓碑的话改成了现状、标记去掉了 ⇒ 这里减掉那一格，冻结数同拍往下改。
+    /// 🔴 **冻结**：只许减，不许加行、加数（逐格不超过冻结点快照 `tests/__fixtures__/tombstone-freeze.tsv`）。
+    /// 一句挂着墓碑的话改成了现状、标记去掉了 ⇒ 这里减掉那一格，别的数不用动。
     const REGISTERED: &[(&str, usize)] = &[
         // 新行三条：gate-core 收成后端模块 `control/gate_rules.rs`（零调用方的 `needs_remote_sid` 原处一块）·
         //   后端 `exact_target` 的头注点 monitor 那份旧壳 · monitor 那条转调判据翻成「monitor 一道门都没有」。
@@ -5136,8 +5106,8 @@ fn every_prose_tombstone_mark_is_registered() {
         ("tests/frontend/shell/polling_registry_tests.rs", 1),
         // +1：`rollback_note_matches_what_actually_happened` 搬走的那块墓碑。
         ("tests/frontend/shell/sftp_tests.rs", 16), // 14 → 16：点 `deploy_remote_acct_iso` 旧名那几处挂墓碑 // // 12 → 14：比标记真值表 · 受管路径谓词两条判据随函数删了 // // 10 → 12：点两条删掉的判据（围栏 · 远端入口） // 〔删 `fenced_block::apply` 那一族〕5 → 8：读取器四条判据的墓碑（四块）＋ 回报换型那一句（一块）进；随判据删掉的两块出 // +1：`SftpFile` 改名 `RemoteFile`
-        ("tests/frontend/shell/shared_crate_registry_tests.rs", 1),
-        // 快照那一格的墓碑（`parse_snapshot_meta` 随改走长连接删了）。
+        // `shared_crate_registry_tests.rs` 那一行摘了：唯一那块墓碑住在 e2e 静态断言条数棘轮里，
+        //   棘轮整张删了（e2e 断言几条只住在套件自己的输出里，门禁不钉数）。
         ("tests/frontend/shell/ssh_source_snapshot_tail_tests.rs", 1),
         ("tests/frontend/shell/structural_scan_tests.rs", 1),
         // `tests/frontend/shell/subagent_tests.rs` 出表：那份文件随记录解释进后端删了（或墓碑随被守的东西整轴退役）
@@ -5146,7 +5116,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("tests/backend/footprint/registry_environment_tests.rs", 1),
         ("tests/evidence/K-R20-C-deadname-census.py", 1),
         ("tests/evidence/S29-legacy-compat-census.py", 11),
-        ("tests/frontend/ui/ipc/commands.vitest.ts", 10), // 11 → 10：origin 人群那一行合并时收成了只记这一拍的增量，旧的长注释（带墓碑那几处）随之没了 // +2：计数行里点收件箱两条旧名的那两行挂墓碑 // // +1：头注计数那段点的远端 shellinit 旧名 // +2：K-R49 增量账里 `write_account_aliases` 那两行 // +1：「刻意不同」那条判据合并后改名，本机只有一个表示那一节点它旧名 ·远端会话清单那个函数随历史清单搬进本机后端删了，点它的散文挂墓碑
+        ("tests/frontend/ui/ipc/commands.vitest.ts", 2), // 10 → 2：命令条数的三个手抄常量删了（改判两向集合相等），挂在它们增减账注释里的八块墓碑随之没了 // 11 → 10：origin 人群那一行合并时收成了只记这一拍的增量，旧的长注释（带墓碑那几处）随之没了 // +2：计数行里点收件箱两条旧名的那两行挂墓碑 // // +1：头注计数那段点的远端 shellinit 旧名 // +2：K-R49 增量账里 `write_account_aliases` 那两行 // +1：「刻意不同」那条判据合并后改名，本机只有一个表示那一节点它旧名 ·远端会话清单那个函数随历史清单搬进本机后端删了，点它的散文挂墓碑
         // `"__local__"` 合进 `LOCAL_ORIGIN`，「两个同名常量刻意不同」那条判据改成钉合了之后的形状，旧名挂一块。
         ("tests/frontend/shell/backend_policy_tests.rs", 2), // +1：「空 origin 必须拒」那条随命令退役，原处一块
         // 会话读面三条 Tauri 命令（骨架索引 · 大纲清单 · 会话内查找）退役、改走通道：
@@ -5341,7 +5311,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/frontend/ui/settings/config-surface-section.ts", 2), // 新行：`answersFor` 回声校验删了那一句 ＋ 构造期那句点旧命令名
         ("src/frontend/ui/settings/footprint-reads.ts", 1),        // 新行：头注点旧 Tauri 命令名
         ("tests/e2e/local-backend-supervise.sh", 2), // e2e 起真后端那条删掉的判据名挂墓碑（gate · local-backend 套件）
-        ("tests/scripts/gate.sh", 3), // e2e 起真后端那条删掉的判据名挂墓碑（gate · local-backend 套件）；2 → 3：「立项理由已不成立」那段的标记去掉日期后成了标准形
+        ("tests/scripts/gate.sh", 1), // 2 → 1：shellcheck 那一格「立项理由已不成立、原话照留」那段随人群搬进门禁一起删了（那段讲的是 CI 独有、人群住 ci.yml）· 3 → 2：e2e 那段逐套条数的沿革注释删了，local-backend 那块墓碑随之没了
         // 公钥推送进本机后端：新文件头注点旧命令名挂墓碑。
         ("src/backend/assets/pubkey.rs", 1),
         ("src/frontend/ui/pubkey-push.ts", 1),
@@ -5373,7 +5343,7 @@ fn every_prose_tombstone_mark_is_registered() {
     ///   🔴 **本拍刻意不改它们**：那三份文件都在本拍写区之外，而「哪儿红就往哪儿改」
     ///   与本仓「存量走棘轮、新写的一律红」那条纪律相反。⇒ 登记，让**新增**的红。
     /// · ㈡ **在谈机制本身（两处，合法）** —— 一份死值验记录的叙述，
-    ///   与 `tests/scripts/gate.sh` 里那段「立项理由已不成立、原话照留」的头注。
+    ///   与当时门禁 shellcheck 那一格「立项理由已不成立、原话照留」的头注（那段后来随那一格改写删了）。
     const SITES: &[(&str, usize)] = &[
         ("src/backend/control/ccm/plan.rs", 1),
         ("tests/frontend/filewin/source_tests.rs", 1),
@@ -5386,8 +5356,11 @@ fn every_prose_tombstone_mark_is_registered() {
 
     assert_tombstone_table_frozen(
         "REGISTERED",
-        (REGISTERED.len(), REGISTERED.iter().map(|(_, n)| *n).sum()),
-        (FROZEN_MARK_FILES, FROZEN_MARK_TOTAL),
+        &REGISTERED
+            .iter()
+            .map(|(p, n)| (p.to_string(), *n))
+            .collect::<Vec<_>>(),
+        &frozen_table("REGISTERED"),
     );
 
     // ★ 抽取器自检 0：内芯真的是从标记**拆**出来的。

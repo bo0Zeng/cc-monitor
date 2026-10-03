@@ -173,7 +173,7 @@ fn the_two_lockfiles_have_no_real_version_conflict() {
 ///
 /// ★ 两刀确实各有别的判据红了 —— 但读它们的诊断：说的是
 /// 「切出来的块里没有 `working-directory: src/backend` —— **切错 job 了，本条会零命中地绿**」，
-/// 那是 `ci_actually_runs_the_backend_four_steps` 的**抽取器自检**在说话。
+/// 那是当时另一条判据（钉 backend job 四步的那条，后来随四步改调门禁删了）的**抽取器自检**在说话。
 /// 照它去修，人会去查切块逻辑，而真实事件是 **backend job 换了工作目录**。
 /// ⇒ **「有别的判据接住」不等于「有人把这件事讲对了」** —— 本条才是该讲这句话的那条。
 ///

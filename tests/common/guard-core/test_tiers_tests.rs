@@ -547,7 +547,7 @@ const INTEGRATION: &[&str] = &[
     "tests/backend/agents/claudecode/runs_tests.rs", // Claude Code 的子运行形状（子运行记录住址那一条碰临时目录）
     // SCAN → INTEGRATION：部署计划的编排（替身对面）＋ 读金样与后端历史表之外，`place-verdict` 帧面那一条真读写临时目录里的落点文件。
     "tests/backend/control/deploy_plan_tests.rs",
-    // 扫描层 → 集成层：多了「门禁那一行的判法与 CI 那一行的数由判据现算」—— 读 gate.sh ＋ ci.yml 两份外部件。
+    // 扫描层 → 集成层：读 gate.sh ＋ package.json 两份外部件（套件名单的唯一住址是门禁的 `run_e2e` 行）。
     "tests/frontend/shell/e2e_gate_registry_tests.rs",
     "tests/backend/observe/cc_bus_hooks_tests.rs", // 钩子诊断进后端：造一台假机器（临时目录里的 settings ＋ 程序）读回成品
     "tests/backend/control/tmux_hook_tests.rs", // 读真 `/proc` 的那一条进来之后判别器判集成（SCAN → INTEGRATION）
@@ -740,7 +740,7 @@ const E2E: &[&str] = &[
     "tests/e2e/graylight-suite.sh",
     "tests/e2e/inbound-backend-frames.sh",
     "tests/e2e/local-backend-supervise.sh",
-    "tests/e2e/p3t-local-tmux.sh", // 接回执行链（`package.json` ＋ `ci.yml` 地板）
+    "tests/e2e/p3t-local-tmux.sh", // 接回执行链（`package.json` ＋ 门禁 `run_e2e`）
     "tests/e2e/restart-backend-frames.sh",
     "tests/e2e/restart-suite.sh",
     "tests/e2e/resume-backend-frames.sh",
@@ -748,7 +748,7 @@ const E2E: &[&str] = &[
     "tests/e2e/tmux-target-acceptance.sh",
 ];
 
-/// e2e 的辅助件：`tests/e2e/` 下其余的 shell（桩 · 台架 · 地板断言）。每一份都得有人引用它。
+/// e2e 的辅助件：`tests/e2e/` 下其余的 shell（桩 · 台架 · 判法）。每一份都得有人引用它。
 const E2E_SUPPORT: &[&str] = &[
     "tests/e2e/assert-pass-floor.sh",
     "tests/e2e/backend-wrapper.sh",
@@ -761,6 +761,7 @@ const E2E_SUPPORT: &[&str] = &[
     "tests/e2e/local-backend-container/guard-run-netns.sh",
     "tests/e2e/local-backend-container/rig.sh",
     "tests/e2e/reap-orphan-backends.sh",
+    "tests/e2e/sandbox-env.sh", // 各套最前面 source：无条件清掉继承来的 CCM_* / CLAUDE* / ANTHROPIC_* / TMUX* / CC_BUS_*
     "tests/e2e/tier2-rig.sh",
     "tests/e2e/tmux-shim.sh",
     "tests/e2e/weak-net/assert-floor.sh",

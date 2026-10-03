@@ -68,8 +68,12 @@ pub enum ConsolePolicy {
     ///
     /// 今天只有一个用户：`platform/terminal.rs::launch_powershell_window` —— 那是本产品的主用途，
     /// 给用户的 claude 会话开一个能敲字的窗口。**别把 `Hidden` 铺到它头上。**
+    /// 落点只在 Windows 上（`platform/terminal.rs` 的 Windows 臂）⇒ 别的平台上没人构造它。
+    /// 平台 `cfg` 只许住 `platform/`，所以这里不收 `cfg`，只把那一侧的「从未构造」免掉。
+    #[allow(dead_code)]
     NewVisible,
-    /// **不表态**：继承宿主今天有什么（Windows 上不设任何 creation flag）。
+    /// **不表态**：继承宿主今天有什么（Windows 上不设任何 creation flag）。落点同样只在 Windows 上（理由同上）。
+    #[allow(dead_code)]
     Inherit,
 }
 

@@ -25,6 +25,7 @@
 #   **建到了用户的默认 socket 上**（事后按名字精确收掉了，两个里面都只有本套件的 sleep）。
 #   ⇒ 修法不是「下次记得加前缀」，是让它**写不出来**：shim 全程在 PATH 上 + 起飞前双向自检。
 # · 起的进程只有后端自己（一次性 exec，`</dev/null` + `timeout`）。
+. "$(cd "$(dirname "$0")" && pwd)/sandbox-env.sh"  # 无条件清掉继承来的 CCM_* / CLAUDE* / ANTHROPIC_* / TMUX* / CC_BUS_*
 set -o pipefail
 
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
