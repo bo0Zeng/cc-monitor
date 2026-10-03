@@ -8,7 +8,7 @@
  * 固定 · 集合 · 关闭是 monitor 自己的界面状态，不经后端。
  */
 import type { Tab } from "./tab-model";
-import { hasTerminal, isResumeOnly } from "./tab-session-state";
+import { canResume, hasTerminal, isResumeOnly } from "./tab-session-state";
 import { copyText } from "./copy-table";
 import { showTabContextMenu, type TabMenuItem } from "./tab-context-menu";
 import { createRefusal, newCollectionId, type CollectionRefusal, type TabCollection } from "./tab-collections";
@@ -40,15 +40,20 @@ export interface TabBatchRun {
 
 export const PRODUCTION_RUN: TabBatchRun = { stop: stopMany, start: startMany, confirm: askConfirm };
 
-/** 把一批 tab 按一个谓词分成「能做的」与「跳过的（同一个原因）」。 */
-function split(tabs: readonly Tab[], ok: (t: Tab) => boolean, why: string): [Tab[], BatchOutcome[]] {
+/** 把一批 tab 按一个谓词分成「能做的」与「跳过的（原因：一句，或按 tab 说）」。 */
+function split(tabs: readonly Tab[], ok: (t: Tab) => boolean, why: string | ((t: Tab) => string)): [Tab[], BatchOutcome[]] {
   const yes: Tab[] = [];
   const no: BatchOutcome[] = [];
   for (const t of tabs) {
     if (ok(t)) yes.push(t);
-    else no.push({ sid: t.sessionId, outcome: "skipped", why });
+    else no.push({ sid: t.sessionId, outcome: "skipped", why: typeof why === "string" ? why : why(t) });
   }
   return [yes, no];
+}
+
+/** 说不清（那台暂时看不见）的那几个说「看不见」，不说「已经结束了 / 还在运行」。 */
+function unseenOr(why: string): (t: Tab) => string {
+  return (t) => (t.state.liveness === "unseen" ? copyText("sessionState.unseen.tooltip") : why);
 }
 
 /** 结果提示：标题说做的是什么，正文第一行三个数，下面逐个列跳过与失败的（各为什么）。 */
@@ -94,15 +99,15 @@ export function openBatchMenu(
       })();
     },
   });
-  const [stoppable, notStoppable] = split(tabs, (t) => hasTerminal(t.state), copyText("tabBatch.why.ended"));
-  const [startable, notStartable] = split(tabs, (t) => isResumeOnly(t.state), copyText("tabBatch.why.live"));
+  const [stoppable, notStoppable] = split(tabs, (t) => hasTerminal(t.state), unseenOr(copyText("tabBatch.why.ended")));
+  const [startable, notStartable] = split(tabs, (t) => canResume(t.state), unseenOr(copyText("tabBatch.why.live")));
   const items: TabMenuItem[] = [
     { label: copyText("tabBatch.menu.head", { n: tabs.length }), enabled: false, onClick: () => {} },
     item(copyText("tabBatch.menu.stop", { n: stoppable.length }), stoppable.length, async () => {
       const list = stoppable
         .map((t) => copyText("tabBatch.stop.line", { title: t.title, machine: machineName(t.origin) }))
         .join("\n");
-      if (!(await run.confirm(copyText("tabBatch.stop.confirm", { n: stoppable.length, list })))) return;
+      if (!(await run.confirm(copyText("tabBatch.stop.confirm", { n: stoppable.length, list }), { danger: true }))) return;
       sayBatch(copyText("tabBatch.action.stop"), tabs, [...(await run.stop(stoppable)), ...notStoppable]);
     }, true),
     item(copyText("tabBatch.menu.startTmux", { n: startable.length }), startable.length, async () => {

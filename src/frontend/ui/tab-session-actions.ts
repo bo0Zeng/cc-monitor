@@ -261,9 +261,18 @@ export class TabSessionActions {
    * 远端 → F41 一键拉起 wt.exe/PowerShell 跑 `ssh -t …`，失败回退复制命令。
    * resume 成功后 CC 续写同一 jsonl，既有「会话复活」路径会自动把灰 Tab 点亮。
    */
+  /** 说不清（那台暂时看不见）⇒ 不恢复、说一句：会话也许还在跑，再起一份就是同一会话两个 claude。 */
+  private refuseUnseen(tab: Tab): boolean {
+    if (tab.state.liveness !== "unseen") return false;
+    showActionFailureToast(copyText("sessionState.unseen.noResume"), copyText("sessionState.unseen.tooltip"), {
+      level: "info",
+    });
+    return true;
+  }
+
   async resumeTab(sid: string, accountName?: string, useBase = false): Promise<void> {
     const tab = this.host.tab(sid);
-    if (!tab) return;
+    if (!tab || this.refuseUnseen(tab)) return;
     // 先问记录还在不在；不在 ⇒ 已经说过了，不开终端。
     // 问的是**这次要用的那个账号根**：远端在 `withAccount` 解析之后问（下面 `run` 里），本机拿本机那一份。
     const behavior = await getBehavior();
@@ -345,7 +354,7 @@ export class TabSessionActions {
     useBase: boolean,
   ): Promise<void> {
     const tab = this.host.tab(sid);
-    if (!tab || isLocalOrigin(tab.origin)) return;
+    if (!tab || isLocalOrigin(tab.origin) || this.refuseUnseen(tab)) return;
     const behavior = await getBehavior();
     const origin = tab.origin;
     const launcher = (await resolveResumeCommand(origin, behavior.resumeCommandRemote)).trim() || defaultLauncherOf(ACTIVE_AGENT);
@@ -587,7 +596,7 @@ export class TabSessionActions {
       });
     };
     void (async () => {
-      if (!(await confirmFn(message))) return;
+      if (!(await confirmFn(message, { danger: true }))) return;
       await kill();
     })();
   }

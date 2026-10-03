@@ -948,6 +948,9 @@ pub(crate) struct DefaultUpstream {
     /// 直接敲的这一家也走中转（可选，用户自己贴、后端只读）：它的用户级设置文件里写进程环境的那一块。
     /// `None` ＝ 这一家没有这一形，只能经起会话注入。
     pub(crate) settings_env: Option<SettingsEnvFace>,
+    /// 请求里说明「这一轮用的是扩展上下文」的那一项：（头名, 列表里那一项的前缀）。中转只记它在不在，会话事实据此定上限。
+    /// `None` ＝ 这一家的请求说不出。
+    pub(crate) context_mark: Option<(&'static str, &'static str)>,
 }
 
 /// 一家的用户级设置文件里「上游地址」那一格：住哪 · 怎么读出来 · 要贴的那一段长什么样（格式知识与那一次只读都在这一家）。
@@ -1019,6 +1022,20 @@ pub(crate) fn session_headers() -> Vec<&'static str> {
     {
         if !v.contains(&h) {
             v.push(h);
+        }
+    }
+    v
+}
+
+/// 各家登记的「请求说明用的是扩展上下文」的那一项（注册序、去重）：中转按它记每个会话的请求带没带。
+pub(crate) fn context_marks() -> Vec<(&'static str, &'static str)> {
+    let mut v: Vec<(&'static str, &'static str)> = Vec::new();
+    for m in REGISTRY
+        .iter()
+        .filter_map(|a| a.upstream.as_ref()?.context_mark)
+    {
+        if !v.contains(&m) {
+            v.push(m);
         }
     }
     v

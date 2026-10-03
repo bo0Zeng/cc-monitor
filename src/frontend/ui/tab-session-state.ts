@@ -158,6 +158,14 @@ export function isResumeOnly(s: SessionState): boolean {
   return s.liveness !== "live" && s.recoverability !== "attachable";
 }
 
+/**
+ * 能恢复（Resume / 在 tmux 里起）：**死了**、只能 resume（已结束 · 记录没了）。
+ * 说不清的不算 —— 那台暂时看不见，会话也许还在跑；本机那一形再起一份就是同一个会话两个 claude。
+ */
+export function canResume(s: SessionState): boolean {
+  return s.liveness === "dead" && s.recoverability !== "attachable";
+}
+
 /** 还有一个终端可去：活着，或者容器还在。↗ 拉前 · 本机「杀死会话」那几格用它。 */
 export function hasTerminal(s: SessionState): boolean {
   return !isResumeOnly(s);

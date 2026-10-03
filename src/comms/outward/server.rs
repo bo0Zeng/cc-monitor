@@ -40,7 +40,7 @@
 use super::door;
 use super::http1::{self, BodyView, RequestHead};
 use super::route;
-use super::tee::{SseSplitter, TeeSink};
+use super::tee::{RequestMark, SseSplitter, TeeSink};
 use super::upstream::{self, Base, Conn};
 use super::{AuthSwap, Destination, Destinations, StreamId};
 use std::io::{BufReader, Read, Write};
@@ -215,6 +215,8 @@ pub(crate) struct Relay {
     stream_headers: Vec<&'static str>,
     /// 给流打第二个标签的请求头名单（[`Destinations::stream_owner_headers`]）。
     owner_headers: Vec<&'static str>,
+    /// 每发请求要记下「在不在」的那几项（[`Destinations::request_marks`]）。
+    marks: Vec<(&'static str, &'static str)>,
     /// 下游那条 socket 的读写期限。**由后端交下来**（`C4`：值归后端 · 执行归本层）。
     ///
     /// ⚠ 它是**一个字段**而不是两处各写一次 —— [`apply_downstream_deadline`] 有两个
@@ -255,6 +257,7 @@ impl Relay {
         Self {
             stream_headers: dest.stream_label_headers(),
             owner_headers: dest.stream_owner_headers(),
+            marks: dest.request_marks(),
             dest,
             door,
             tee,
@@ -787,6 +790,10 @@ pub(super) fn handle(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
         stream: stream_label(&head, &relay.stream_headers),
         owner: stream_label(&head, &relay.owner_headers),
     };
+    // 这一发请求里名单上那几项在不在（只交布尔，头的值不出去）。
+    relay
+        .tee
+        .mark(id.stream, &request_marks(&head, &relay.marks));
     // `open` 发一个这一响应自己的游标（位置号 `n` 从 0 起），`event` / `note_dropped_bytes` / `close` 都拿它。
     let mut at = relay.tee.open();
     // ★ 返回值**必须落地**：它是 `DoD-2㈡`「块数对账」的唯一量点。
@@ -806,6 +813,25 @@ pub(super) fn handle(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
     relay.tee.close(id, at, outcome.is_err());
     outcome?;
     Ok(())
+}
+
+/// 名单上每一项在这一发里在不在：那个头（可能出现几次）的逗号列表里有一项以它开头（大小写不论）。
+fn request_marks(head: &RequestHead, marks: &[(&'static str, &'static str)]) -> Vec<RequestMark> {
+    marks
+        .iter()
+        .map(|&(name, item)| {
+            let want = item.to_ascii_lowercase();
+            let present = head
+                .headers
+                .iter()
+                .filter(|(k, _)| k.eq_ignore_ascii_case(name))
+                .any(|(_, v)| {
+                    v.split(',')
+                        .any(|t| t.trim().to_ascii_lowercase().starts_with(&want))
+                });
+            ((name, item), present)
+        })
+        .collect()
 }
 
 /// 这条流的标签：名单里第一个出现在请求里、值过段闸的头的值；没有 ⇒ 空串（前端当匿名流）。

@@ -61,7 +61,15 @@ function showErrorToast(p: MonitorErrorPayload): void {
 export function showActionFailureToast(
   headline: string,
   body: string,
-  opts: { level?: "error" | "info"; durationMs?: number; onClick?: () => void } = {},
+  opts: {
+    level?: "error" | "info";
+    durationMs?: number;
+    onClick?: () => void;
+    /** 一颗动作按钮（「撤销」）：点了做它、收起这条，不再走 `onExpire`。带动作的这条不与别的合流。 */
+    action?: { label: string; run: () => void };
+    /** 到点自己收起（或被 × 掉）之后：撤销期过了，做那一步剩下的事。 */
+    onExpire?: () => void;
+  } = {},
 ): void {
   const level = opts.level ?? "error";
   appendToast({
@@ -71,6 +79,8 @@ export function showActionFailureToast(
     durationMs: opts.durationMs ?? 5000,
     onClick: opts.onClick,
     title: opts.onClick ? copyText("errorToast.showActionFailureToast.clickHint") : undefined,
+    action: opts.action,
+    onExpire: opts.onExpire,
   });
 }
 
@@ -81,6 +91,8 @@ interface ToastSpec {
   durationMs: number;
   onClick?: () => void;
   title?: string;
+  action?: { label: string; run: () => void };
+  onExpire?: () => void;
 }
 
 /** 一条**还活着**的 toast，用于同标题合流。 */
@@ -90,6 +102,7 @@ interface LiveToast {
   countEl: HTMLElement;
   count: number;
   timer: ReturnType<typeof setTimeout> | null;
+  onExpire?: () => void;
 }
 
 /**
@@ -123,11 +136,15 @@ function armDismiss(key: string, t: LiveToast, durationMs: number): void {
   t.timer = setTimeout(() => {
     t.el.remove();
     liveToasts.delete(key);
+    t.onExpire?.();
   }, durationMs);
 }
 
+let actionSeq = 0;
+
 function appendToast(spec: ToastSpec): void {
-  const key = toastKey(spec.level, spec.headline);
+  // 带动作的（撤销）各自一条：合流会把前一条的撤销与到点收尾一起丢掉。
+  const key = spec.action ? `action\u0000${++actionSeq}` : toastKey(spec.level, spec.headline);
   const existing = liveToasts.get(key);
   if (existing) {
     existing.count += 1;
@@ -158,7 +175,23 @@ function appendToast(spec: ToastSpec): void {
   body.textContent = spec.body;
   toast.appendChild(body);
 
-  const live: LiveToast = { el: toast, bodyEl: body, countEl, count: 1, timer: null };
+  const live: LiveToast = { el: toast, bodyEl: body, countEl, count: 1, timer: null, onExpire: spec.onExpire };
+
+  if (spec.action) {
+    const act = spec.action;
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "ccm-toast-action";
+    btn.textContent = act.label;
+    btn.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      if (live.timer !== null) clearTimeout(live.timer);
+      liveToasts.delete(key);
+      toast.remove();
+      act.run();
+    });
+    toast.appendChild(btn);
+  }
 
   if (spec.onClick) {
     const cb = spec.onClick;

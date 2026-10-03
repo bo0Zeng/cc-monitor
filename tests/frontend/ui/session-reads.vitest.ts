@@ -195,7 +195,7 @@ describe("〔STC〕第五问：会话事实", () => {
       end: 765,
       forkedFrom: "src-0",
       touchedFiles: ["/w/a.ts"],
-      usage: { promptTokens: 6, model: "m-g" },
+      usage: { promptTokens: 6, model: "m-g", peakPromptTokens: 6, limit: 1_000_000, limitFrom: "assumed" },
       projectDir: "/g/proj",
     });
   });
@@ -208,6 +208,10 @@ describe("〔STC〕第五问：会话事实", () => {
     expect(() => decodeFacts({ ...good, end: "729" })).toThrow(/读不懂/);
     expect(() => decodeFacts({ ...good, touchedFiles: [1] })).toThrow(/读不懂/);
     expect(() => decodeFacts({ ...good, usage: { promptTokens: 1 } })).toThrow(/读不懂/);
+    const u = good.usage as Record<string, unknown>;
+    expect(() => decodeFacts({ ...good, usage: { ...u, limitFrom: "guess" } }), "上限来路只认那五种").toThrow(/读不懂/);
+    expect(decodeFacts({ ...good, usage: { ...u, limitFrom: "relay" } }).usage?.limitFrom).toBe("relay");
+    expect(() => decodeFacts({ ...good, usage: { ...u, limit: "1M" } })).toThrow(/读不懂/);
     expect(() => decodeFacts({ ...good, projectDir: 1 })).toThrow(/读不懂/);
     expect(decodeFacts({ ...good, usage: null, forkedFrom: null, projectDir: null }).usage).toBeNull(); // null 是合法的「没有」
   });

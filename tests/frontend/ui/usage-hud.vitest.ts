@@ -1,69 +1,63 @@
-// F88b（#52）用量 HUD chip 的 jsdom 测试：setActive 算 context% / 未知模型显 ?/
-// 无 usage 隐藏 / ≥80% 高亮 / 点击回调。
+// 用量 HUD chip 的 jsdom 测试：百分比按后端给的上限算、永远不超过 100 / 无 usage 隐藏 / ≥80% 高亮 / 纯只读。
 
 import { describe, it, expect } from "vitest";
 import { UsageHud } from "../../../src/frontend/ui/usage-hud";
 // 高位预警的类名来自组件自己的 CSS Module（构建时哈希）—— 断言也经同一个导入取名，不写字面量。
 import s from "../../../src/frontend/ui/usage-hud.module.css";
 
-describe("UsageHud (F88b #52)", () => {
-  it("已知模型 → ctx N%，可见", () => {
+describe("UsageHud", () => {
+  it("按后端给的上限算 → ctx N%，可见", () => {
     const hud = new UsageHud();
-    // 100k / 200k = 50%
-    hud.setActive("claude-opus-4-8", 100_000);
-    expect(hud.summaryElement.textContent).toBe("ctx 50%");
+    hud.setActive("claude-opus-5-5", 350_000, 1_000_000);
+    expect(hud.summaryElement.textContent).toBe("ctx 35%");
     expect(hud.summaryElement.style.display).toBe("");
     expect(hud.summaryElement.classList.contains(s.high)).toBe(false);
   });
 
-  it("[1m] 变体上限 1M → 正确 %", () => {
+  it("模型名不带 [1m] 的 1M 会话不再按 200k 算：用的是后端的上限，不是模型名", () => {
     const hud = new UsageHud();
-    // 500k / 1M = 50%
-    hud.setActive("claude-opus-4-8[1m]", 500_000);
-    expect(hud.summaryElement.textContent).toBe("ctx 50%");
+    hud.setActive("claude-opus-5-5", 350_000, 1_000_000);
+    expect(hud.summaryElement.textContent).not.toBe("ctx 175%");
   });
 
-  it("未知模型 → ctx ?（不显错 %），仍可见", () => {
+  it("上限判不出（后端说 assumed ⇒ 没有上限）：只写用了多少，不算百分比、不预警", () => {
     const hud = new UsageHud();
-    hud.setActive("gpt-4", 100_000);
-    expect(hud.summaryElement.textContent).toBe("ctx ?");
+    hud.setActive("claude-opus-5-5", 350_000, null);
+    expect(hud.summaryElement.textContent).toBe("ctx 350k");
     expect(hud.summaryElement.style.display).toBe("");
     expect(hud.summaryElement.classList.contains(s.high)).toBe(false);
+    hud.setActive("m", 1_250_000, null);
+    expect(hud.summaryElement.textContent).toBe("ctx 1.3M");
+  });
+
+  it("永远不显示超过 100%", () => {
+    const hud = new UsageHud();
+    hud.setActive("m", 250_000, 200_000);
+    expect(hud.summaryElement.textContent).toBe("ctx 100%");
   });
 
   it("promptTokens=null（无带 usage 记录）→ 隐藏，且清 is-high", () => {
     const hud = new UsageHud();
-    hud.setActive("claude-sonnet-5", 170_000); // 先 85% → is-high
+    hud.setActive("claude-sonnet-5", 170_000, 200_000); // 先 85% → is-high
     expect(hud.summaryElement.classList.contains(s.high)).toBe(true);
-    hud.setActive(null, null); // 再切到无 usage 会话
+    hud.setActive(null, null, null); // 再切到无 usage 会话
     expect(hud.summaryElement.style.display).toBe("none");
     expect(hud.summaryElement.classList.contains(s.high)).toBe(false); // 隐藏时清干净
   });
 
   it("≥80% → is-high 高亮（逼近上限预警）", () => {
     const hud = new UsageHud();
-    // 170k / 200k = 85%
-    hud.setActive("claude-sonnet-5", 170_000);
+    hud.setActive("claude-haiku-4", 170_000, 200_000);
     expect(hud.summaryElement.textContent).toBe("ctx 85%");
     expect(hud.summaryElement.classList.contains(s.high)).toBe(true);
   });
 
-  it("model=null 但有 token → ctx ?（上限未知）", () => {
-    const hud = new UsageHud();
-    hud.setActive(null, 50_000);
-    expect(hud.summaryElement.textContent).toBe("ctx ?");
-  });
-
-  // 〔删用量〕原先这里是「`onClick` 注册的 handler 点击时触发」——
-  // chip 点下去打开的那个跨会话聚合视图（`views/usage-view.ts`）整轴退役了，
-  // `onClick` 随之从 `UsageHud` 上删掉。**这一条翻面**：钉住 chip 今天是**纯只读**的。
-  // ⚠ 翻面不是放宽：它挡的是「有人顺手把点击行为加回来却没有对面」。
+  // chip 点下去打开的那个跨会话聚合视图整轴退役了：钉住 chip 今天是**纯只读**的。
   it("chip 是纯只读：没有挂任何点击监听，也不长成可点的样子", () => {
     const hud = new UsageHud();
-    hud.setActive("claude-opus-4-8", 10_000);
+    hud.setActive("claude-opus-4-8", 10_000, 1_000_000);
     expect(hud.summaryElement.style.cursor).toBe("default");
     expect((hud as unknown as { onClick?: unknown }).onClick).toBeUndefined();
-    // 点它不许抛，也不许有任何副作用可观察 —— 文本在点击前后逐字不变。
     const before = hud.summaryElement.textContent;
     hud.summaryElement.click();
     expect(hud.summaryElement.textContent).toBe(before);

@@ -20,17 +20,20 @@ export interface ActiveView {
   sid: string | null;
   model: string | null;
   promptTokens: number | null;
+  /** 上下文上限（后端定的）。 */
+  contextLimit: number | null;
   /** 会话事实要不到的原因（`null` = 可用）。 */
   unavailable: string | null;
   /** 当前 tab 的项目目录（`Tab.projectDir`，后端给的那一格；独立窗口的顶栏标题读它）。 */
   projectDir: string | null;
 }
 
-const NO_ACTIVE: ActiveView = { sid: null, model: null, promptTokens: null, unavailable: null, projectDir: null };
+const NO_ACTIVE: ActiveView = { sid: null, model: null, promptTokens: null, contextLimit: null, unavailable: null, projectDir: null };
 const sameActive = (a: ActiveView, b: ActiveView): boolean =>
   a.sid === b.sid &&
   a.model === b.model &&
   a.promptTokens === b.promptTokens &&
+  a.contextLimit === b.contextLimit &&
   a.unavailable === b.unavailable &&
   a.projectDir === b.projectDir;
 const sameSummary = (a: TabsSummary, b: TabsSummary): boolean =>
@@ -161,6 +164,22 @@ export class TabStore {
   }
 
   /**
+   * **条上看到的顺序**：分组按 `groupIds` 的先后排在前、组内按 `orderedIds`；不在任何（现存）组里的排在后面。
+   * 数字键 · `]` `[` · 关掉当前 tab 后落到哪 · Shift 连选都读这一个顺序（`orderedIds` 是到达 / 拖动的底序）。
+   */
+  visibleOrder(groupIds: readonly string[]): string[] {
+    const known = new Set(groupIds);
+    const byGroup = new Map<string, string[]>(groupIds.map((g) => [g, []]));
+    const loose: string[] = [];
+    for (const sid of this.orderedIds) {
+      const g = this.tabs.get(sid)?.group ?? null;
+      if (g !== null && known.has(g)) byGroup.get(g)!.push(sid);
+      else loose.push(sid);
+    }
+    return [...[...byGroup.values()].flat(), ...loose];
+  }
+
+  /**
    * 新 tab 落位 = **追加到末尾，再按盘上那份顺序摆**。
    *
    * 🔴 **后一半是那个 no-op 的第二半修法**：tab 是陆续到的，而 `loadOrder` 只跑一次
@@ -175,6 +194,32 @@ export class TabStore {
   placeInOrder(tab: Tab): void {
     this.orderedIds.push(tab.sessionId);
     this.applySavedOrder();
+  }
+
+  /**
+   * 用户拖完之后要落盘的那一张：此刻栏里的顺序，**再把还没到的那些按它们在 `savedOrder` 里的相对位置并回去**
+   * （各跟在它原来前面那个此刻在栏里的 sid 之后；前面一个都没有 ⇒ 排在最前）。摘掉还没到的，晚到的远端 tab 就永远落到末尾了。
+   * 超过 `cap` ⇒ 先保住栏里的，还没到的按原序留到满为止。
+   */
+  mergedOrder(cap: number): string[] {
+    const here = new Set(this.orderedIds);
+    const after = new Map<string | null, string[]>();
+    let anchor: string | null = null;
+    let budget = Math.max(0, cap - this.orderedIds.length);
+    for (const sid of this.savedOrder) {
+      if (here.has(sid)) {
+        anchor = sid;
+        continue;
+      }
+      if (budget === 0) continue;
+      budget--;
+      const run = after.get(anchor) ?? [];
+      run.push(sid);
+      after.set(anchor, run);
+    }
+    const out = [...(after.get(null) ?? [])];
+    for (const sid of this.orderedIds) out.push(sid, ...(after.get(sid) ?? []));
+    return out;
   }
 
   /**

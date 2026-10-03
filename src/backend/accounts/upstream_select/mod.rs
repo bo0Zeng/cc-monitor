@@ -308,6 +308,10 @@ impl Destinations for Accounts {
     fn stream_owner_headers(&self) -> Vec<&'static str> {
         crate::agents::owner_headers()
     }
+
+    fn request_marks(&self) -> Vec<(&'static str, &'static str)> {
+        crate::agents::context_marks()
+    }
 }
 
 /// 上游选择 `Refuse` 的码 —— **只有这一处**。

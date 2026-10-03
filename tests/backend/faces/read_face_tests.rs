@@ -540,6 +540,63 @@ fn the_three_products_match_the_cross_language_golden() {
     );
 }
 
+/// `history-facts` 的 `limits`：设置里的上限表随请求交来、上限在这里定；形状不对 ⇒ `bad_args`。
+#[test]
+fn history_facts_applies_the_limits_it_is_given() {
+    let home = scratch("facts-limits");
+    let path = golden_facts_session(&home);
+    let ask = |args: serde_json::Value| answer_at(&home, "history-facts", &args);
+    let v = ask(serde_json::json!({ "path": path, "limits": {"M-G": 100} })).unwrap();
+    assert_eq!(
+        (v["usage"]["limit"].clone(), v["usage"]["limitFrom"].clone()),
+        (serde_json::json!(100), serde_json::json!("setting"))
+    );
+    assert_eq!(
+        ask(serde_json::json!({ "path": path, "limits": {"m": "x"} }))
+            .unwrap_err()
+            .0,
+        "bad_args"
+    );
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+/// ★ 上限的真来源是中转：中转看见过这个会话（会话 id ＝ 记录文件名）的请求带了扩展上下文那一项 ⇒ 1M（`relay`），
+/// 看见过但没带 ⇒ 默认 200k（`relay`）；没看见过 ⇒ 照原来的次序（这里判不出 ⇒ `assumed`）。
+#[test]
+fn history_facts_takes_the_context_window_from_what_the_relay_saw() {
+    let home = scratch("facts-relay");
+    let dir = home.join("projects").join("-relay");
+    std::fs::create_dir_all(&dir).unwrap();
+    let rec = r#"{"type":"assistant","uuid":"r-1","message":{"model":"claude-x","usage":{"input_tokens":90000},"content":[]}}"#;
+    let mut paths = Vec::new();
+    for sid in ["rf-wide", "rf-std", "rf-direct"] {
+        let p = dir.join(format!("{sid}.jsonl"));
+        std::fs::write(&p, format!("{rec}\n")).unwrap();
+        paths.push(p.to_string_lossy().to_string());
+    }
+    let item = ("anthropic-beta", "context-1m");
+    crate::observe::relay_marks::note("rf-wide", &[(item, true)]);
+    crate::observe::relay_marks::note("rf-std", &[(item, false)]);
+    let ask =
+        |p: &str| answer_at(&home, "history-facts", &serde_json::json!({ "path": p })).unwrap();
+    let got: Vec<(serde_json::Value, serde_json::Value)> = paths
+        .iter()
+        .map(|p| {
+            let v = ask(p);
+            (v["usage"]["limit"].clone(), v["usage"]["limitFrom"].clone())
+        })
+        .collect();
+    let _ = std::fs::remove_dir_all(&home);
+    assert_eq!(
+        got,
+        vec![
+            (serde_json::json!(1_000_000), serde_json::json!("relay")),
+            (serde_json::json!(200_000), serde_json::json!("relay")),
+            (serde_json::json!(1_000_000), serde_json::json!("assumed")),
+        ]
+    );
+}
+
 /// ★`history-facts` 经帧面续传：把上一次的应答**原样**当 `prior` 交回（与线上同形：过一遍 JSON 文本），
 /// 文件长了一截之后接着问 == 对长了之后的整份从 0 问（两向：整个值相等）。续点的两道校验：
 /// 截断（续点越过文件尾）⇒ `failed`；改写到续点不在行边界上 ⇒ `failed`；`prior` 形状不对 / 缺 `path` ⇒ `bad_args`。

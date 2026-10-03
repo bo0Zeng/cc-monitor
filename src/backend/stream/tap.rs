@@ -65,6 +65,11 @@ fn bump(c: &std::sync::atomic::AtomicU64) -> u64 {
 }
 
 impl TapPort for TapHub {
+    /// 中转看见的这一发请求里名单上那几项在不在 ⇒ 记进会话的请求标记（会话事实定上下文上限时读）。
+    fn note_marks(&self, stream: &str, marks: &[((&'static str, &'static str), bool)]) {
+        crate::observe::relay_marks::note(stream, marks);
+    }
+
     /// 立刻答收没收（`try_send`）：每条连接各交一份，至少一条收下 ⇒ `true`。没人连着 / 都满 ⇒ `false`
     /// （号已由 tee 占掉，缺口在各自接收侧可算）。已走的连接当场摘掉。
     fn offer(&self, ev: TapEvent) -> bool {

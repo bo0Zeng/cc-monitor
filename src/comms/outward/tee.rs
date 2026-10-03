@@ -1,4 +1,5 @@
-//! tee：把响应体里的 SSE 事件抄一份出去。**只抄响应体，永不抄请求头。**
+//! tee：把响应体里的 SSE 事件抄一份出去。**只抄响应体，永不抄请求头**
+//! （请求那一侧只出一样：名单上那几项在不在，布尔，见 [`TapPort::note_marks`]）。
 //!
 //! # 🔴 通信层成员 `COMM-LAYER-MEMBER`
 //!
@@ -111,7 +112,14 @@ pub(crate) enum TapBody {
 /// 阻塞 = 让「有它更好」变成「非它不可」。答 `false` 的那一件号已占，接收侧看得见缺口。
 pub(crate) trait TapPort: Send + Sync {
     fn offer(&self, ev: TapEvent) -> bool;
+
+    /// 一条流（`stream`）的一发请求里，名单上那几项各在不在（[`super::Destinations::request_marks`]）。
+    /// 只交布尔，不交头的值。缺省 ⇒ 不收。
+    fn note_marks(&self, _stream: &str, _marks: &[RequestMark]) {}
 }
+
+/// 一项的「在不在」：（头名, 那一项的前缀）＋ 这一发带没带。
+pub(crate) type RequestMark = ((&'static str, &'static str), bool);
 
 /// 单个事件原文的字节上限。超了**不交**、号照占（缺口可见）。
 ///
@@ -163,6 +171,13 @@ impl TeeSink {
     pub(crate) fn open(&self) -> TeeStream {
         let seq = self.seq.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         TeeStream { resp: seq, n: 0 }
+    }
+
+    /// 这条流的这一发请求里名单上那几项在不在（没有流标签 / 名单是空的 ⇒ 不交）。
+    pub(crate) fn mark(&self, stream: &str, marks: &[RequestMark]) {
+        if !stream.is_empty() && !marks.is_empty() {
+            self.port.note_marks(stream, marks);
+        }
     }
 
     /// 一个 SSE 事件：先占号，再投递（投不进 / 超界 ⇒ 号照占，缺口在接收侧可算）。

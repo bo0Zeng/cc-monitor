@@ -51,7 +51,11 @@ export class TabRouter {
    *  防迟到的远端宣告补切抢走用户已选的焦点。 */
   onManualSwitch: (() => void) | null = null;
 
-  constructor(private readonly store: TabStore) {}
+  /** `order` = 条上看到的顺序（数字键 / `]` `[` 按它走）；缺省 = 底序 `orderedIds`。 */
+  constructor(
+    private readonly store: TabStore,
+    private readonly order: () => readonly string[] = () => store.orderedIds,
+  ) {}
 
   /**
    * v2.4 issue #2：把 behavior config 应用到路由。
@@ -67,7 +71,7 @@ export class TabRouter {
    * 快捷键 Ctrl+Tab / Ctrl+Shift+Tab 用。
    */
   cycleTarget(delta: 1 | -1): string | null {
-    const ids = this.store.orderedIds;
+    const ids = this.order();
     if (ids.length === 0) return null;
     const idx = this.store.activeId ? ids.indexOf(this.store.activeId) : -1;
     const nextIdx = ((idx + delta) % ids.length + ids.length) % ids.length;
@@ -81,7 +85,7 @@ export class TabRouter {
    * N 大于现有 Tab 数 / N 对应 Tab 已经 active ⇒ `null`。
    */
   indexTarget(oneBasedIdx: number): string | null {
-    const ids = this.store.orderedIds;
+    const ids = this.order();
     if (oneBasedIdx < 1 || oneBasedIdx > ids.length) return null;
     const targetId = ids[oneBasedIdx - 1];
     if (targetId && targetId !== this.store.activeId) return targetId;

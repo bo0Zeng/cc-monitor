@@ -1,6 +1,7 @@
 /**
  * **一个子运行的时间线**：按运行读那台后端的记录（通用命令 `history-run`），用与主运行同一套渲染器画；尾巴上是这个子运行此刻的活卡。
- * 主 tab 上那一行点开就是它；那张工具卡展开也是它。运行表一变（`refresh`）就从上次读到的地方续读，不整份重读。
+ * 主 tab 上那一行点开就是它；那张工具卡展开也是它。运行表一变（`refresh`）就从上次读到的地方续读，不整份重读；
+ * 读失败只在尾巴上挂一句，已画出来的不擦。
  */
 import type { JsonlRecord } from "./generated/JsonlRecord";
 import type { Origin } from "./ipc/origin";
@@ -35,7 +36,8 @@ export class RunTimeline {
   private end = 0;
   private loading: Promise<void> | null = null;
   private again = false;
-  private failed = false;
+  /** 上一次读失败挂在尾巴上的那一行（下次读成了就摘；已经画出来的记录不动）。 */
+  private errorEl: HTMLElement | null = null;
   /** 读到过的那份记录（查看器整份打开用）。 */
   path: string | null = null;
 
@@ -69,10 +71,9 @@ export class RunTimeline {
     try {
       for (let i = 0; i < RUN_PAGES_PER_REFRESH; i++) {
         const page = await load(this.end);
-        if (this.end === 0 || this.failed) {
-          this.body.replaceChildren();
-          this.failed = false;
-        }
+        this.errorEl?.remove();
+        this.errorEl = null;
+        if (this.end === 0) this.body.replaceChildren(); // 第一页到了：摘掉「正在读」
         this.path = page.path;
         this.end = page.end;
         for (const row of page.rows) {
@@ -89,12 +90,14 @@ export class RunTimeline {
         if (!page.more) return;
       }
     } catch (e) {
-      this.failed = true;
-      this.body.replaceChildren();
+      // 读失败只在尾巴上说一句：之前画出来的留着，下次从读到的地方接着读（运行表再到 / 再展开都会再读）。
+      if (this.end === 0) this.body.replaceChildren();
+      this.errorEl?.remove();
       const err = document.createElement("div");
       err.className = "block-agent-error";
       err.textContent = copyText("runs.timeline.failed", { e: String(e) });
       this.body.appendChild(err);
+      this.errorEl = err;
     }
   }
 }

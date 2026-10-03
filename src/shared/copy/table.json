@@ -1732,6 +1732,11 @@
       "zh": "说不清",
       "args": []
     },
+    "sessionState.unseen.noResume": {
+      "kind": "body",
+      "zh": "现在不恢复这个会话",
+      "args": []
+    },
     "sessionState.unseen.tooltip": {
       "kind": "body",
       "zh": "现在看不见那台机器，说不清这个会话还在不在",
@@ -2566,6 +2571,11 @@
       "kind": "body",
       "zh": "{unread} 条未读",
       "args": ["unread"]
+    },
+    "gridMonitor.renderBadges.ctxTokensHint": {
+      "kind": "body",
+      "zh": "最新一轮用了这么多 token；看不出这个会话的上限，所以不算百分比",
+      "args": []
     },
     "gridMonitor.renderBadges.ctxHint": {
       "kind": "body",
@@ -4901,15 +4911,15 @@
       "zh": "Claude 完成一轮 · {tab}",
       "args": ["tab"]
     },
+    "usageHud.render.noLimit": {
+      "kind": "body",
+      "zh": "看不出这个会话的上限，所以不算百分比。上下文用了 {tok} tokens（{model}）",
+      "args": ["tok", "model"]
+    },
     "usageHud.render.approx": {
       "kind": "body",
       "zh": "活跃会话 context 占用 ≈ {rounded}%（{model}，最新一轮 {tok} tokens ÷ 模型上限）。近似值。",
       "args": ["rounded", "model", "tok"]
-    },
-    "usageHud.render.unknownLimit": {
-      "kind": "body",
-      "zh": "活跃会话 context 占用：模型「{model}」上限未知（{tok} tokens）",
-      "args": ["model", "tok"]
     },
     "usageHud.render.factsUnavailable": {
       "kind": "body",
@@ -12836,7 +12846,7 @@
     },
     "contextLimits.editor.intro": {
       "kind": "body",
-      "zh": "状态栏的上下文占用按模型的上限算。某个模型实际开了更大的上下文、占用被算高了，在这里改它的上限。一行一条，写「模型名片段 = 上限 tokens」，例如 claude-sonnet-4-5 = 1000000。空着就用内置的上限。离开这一格就存。",
+      "zh": "上下文占用按会话的上限算。中转看见过这个会话的请求，就照请求里开没开扩展上下文定；没看见过的先看这张表，再看模型名和用过最多的一轮；都看不出就只写用了多少，不算百分比。一行一条，写「模型名片段 = 上限 tokens」，例如 claude-haiku-4-5 = 200000。离开这一格就存。",
       "args": []
     },
     "contextLimits.editor.field": {
@@ -12846,12 +12856,12 @@
     },
     "contextLimits.editor.saved": {
       "kind": "body",
-      "zh": "已保存，状态栏按新上限算。",
+      "zh": "已保存，状态栏和监控板按新上限算。",
       "args": []
     },
     "contextLimits.editor.cleared": {
       "kind": "body",
-      "zh": "已清空，状态栏回到内置的上限。",
+      "zh": "已清空，回到按会话本身看得出的上限算。",
       "args": []
     },
     "contextLimits.editor.badLine": {
@@ -15630,6 +15640,21 @@
       "kind": "error",
       "zh": "读不到这项设置：{e}",
       "args": ["e"]
+    },
+    "tabBar.close.done": {
+      "kind": "body",
+      "zh": "已关闭「{title}」",
+      "args": ["title"]
+    },
+    "tabBar.close.doneUnpinned": {
+      "kind": "body",
+      "zh": "已关闭「{title}」，也取消了固定",
+      "args": ["title"]
+    },
+    "tabBar.close.undo": {
+      "kind": "action",
+      "zh": "撤销",
+      "args": []
     },
     "tabBar.persist.collectionsFailed": {
       "kind": "error",

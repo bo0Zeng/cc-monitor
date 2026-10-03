@@ -1,12 +1,13 @@
 /**
- * context-limit.ts 纯函数断言：contextLimit / normalizeModel / contextPercent。
+ * context-limit.ts 纯函数断言：normalizeModel / contextPercentOf / readContextLimits（上限本身由后端定）。
  * 跑法：`node tests/frontend/ui/views/context-limit.test.ts` 或 `npm run test:context-limit`。
  */
 
 import {
-  contextLimit,
+  contextPercentOf,
+  contextTokensText,
   normalizeModel,
-  contextPercent,
+  readContextLimits,
 } from "../../../../src/frontend/ui/views/context-limit.ts";
 
 let failed = 0;
@@ -20,27 +21,10 @@ function test(name: string, fn: () => void): void {
   }
 }
 function eq(a: unknown, b: unknown, msg?: string): void {
-  if (a !== b) throw new Error(`${msg ?? "eq"}: expected ${JSON.stringify(b)}, got ${JSON.stringify(a)}`);
+  if (JSON.stringify(a) !== JSON.stringify(b)) throw new Error(`${msg ?? "eq"}: expected ${JSON.stringify(b)}, got ${JSON.stringify(a)}`);
 }
 
 console.log("context-limit.test.ts");
-
-test("contextLimit: [1m] 变体 → 1M（本项目模型）", () => {
-  eq(contextLimit("claude-opus-4-8[1m]"), 1_000_000);
-  eq(contextLimit("claude-sonnet-5[1M]"), 1_000_000); // 大小写不敏感
-});
-test("contextLimit: 标准 Claude 家族 → 200k", () => {
-  eq(contextLimit("claude-opus-4-8"), 200_000);
-  eq(contextLimit("claude-sonnet-5"), 200_000);
-  eq(contextLimit("claude-haiku-4-5"), 200_000);
-  eq(contextLimit("claude-3-5-sonnet-20241022"), 200_000);
-});
-test("contextLimit: 未知/空 → null（UI 显 ?）", () => {
-  eq(contextLimit("gpt-4"), null);
-  eq(contextLimit(""), null);
-  eq(contextLimit(null), null);
-  eq(contextLimit(undefined), null);
-});
 
 test("normalizeModel: 剥 [1m]/-fast/日期后缀", () => {
   eq(normalizeModel("claude-opus-4-8[1m]"), "claude-opus-4-8");
@@ -50,14 +34,25 @@ test("normalizeModel: 剥 [1m]/-fast/日期后缀", () => {
   eq(normalizeModel(""), "unknown");
 });
 
-test("contextPercent: input+cache ÷ 上限", () => {
-  // 100k prompt / 200k = 50%
-  eq(contextPercent("claude-opus-4-8", 100_000), 50);
-  // 500k / 1M = 50%（[1m] 变体）
-  eq(contextPercent("claude-opus-4-8[1m]", 500_000), 50);
-  // 未知模型 → null
-  eq(contextPercent("gpt-4", 100_000), null);
-  eq(contextPercent(null, 100_000), null);
+test("contextPercentOf: 用了多少 ÷ 后端给的上限，永远不超过 100；没有上限 ⇒ null", () => {
+  eq(contextPercentOf(350_000, 1_000_000), 35);
+  eq(contextPercentOf(100_000, 200_000), 50);
+  eq(contextPercentOf(350_000, 200_000), 100);
+  eq(contextPercentOf(1, null), null);
+  eq(contextPercentOf(1, 0), null);
+});
+
+test("contextTokensText: 上限判不出时只写用了多少（350k · 1.3M · 800）", () => {
+  eq(contextTokensText(350_000), "350k");
+  eq(contextTokensText(1_250_000), "1.3M");
+  eq(contextTokensText(1_000_000), "1M");
+  eq(contextTokensText(800), "800");
+});
+
+test("readContextLimits: 只收正整数的那几行", () => {
+  eq(readContextLimits({ haiku: 200000, bad: -1, x: "2", "": 5, y: 1.5 }), { haiku: 200000 });
+  eq(readContextLimits([1]), {});
+  eq(readContextLimits(null), {});
 });
 
 if (failed > 0) {

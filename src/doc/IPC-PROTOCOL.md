@@ -3724,18 +3724,19 @@ CLI 面随之自动多一条 `--history-find`。
 
 ```text
 → {"id":"q12","cmd":"history-facts","args":{"path":"/home/u/.claude/projects/-p/s.jsonl"}}
-← {"kind":"reply","id":"q12","ok":true,"data":{"end":5120088,"forkedFrom":null,"projectDir":"/p","touchedFiles":["/p/a.ts"],"usage":{"promptTokens":41250,"model":…}}}
-→ {"id":"q13","cmd":"history-facts","args":{"path":"…/s.jsonl","prior":{上一次的 data 原样}}}
+← {"kind":"reply","id":"q12","ok":true,"data":{"end":5120088,"forkedFrom":null,"projectDir":"/p","touchedFiles":["/p/a.ts"],"usage":{"promptTokens":41250,"model":…,"peakPromptTokens":352000,"limit":1000000,"limitFrom":"observed"}}}
+→ {"id":"q13","cmd":"history-facts","args":{"path":"…/s.jsonl","prior":{上一次的 data 原样},"limits":{"haiku":200000}}}
 ```
 
 | 字段 | 向 | 说明 |
 |---|---|---|
 | `path` | → | jsonl 路径（围栏同 `history-read`） |
+| `limits` | → | 可选：设置里的上下文上限表（模型名子串 → 上限 tokens，正整数；缺席 / `null` ⇒ 空表；别的形状 ⇒ `bad_args`）。上限每次按它重判 ⇒ 设置改了，带着上一份 `prior` 再问一次就是新的数（文件不重扫） |
 | `prior` | → | 可选：**上一次应答的 `data` 原样**（续传令牌）。缺席 / `null` ⇒ 从字节 0 扫；给了 ⇒ 从它的 `end` 接着扫、把新的一截累加在它上面（后端零状态）。形状必须恰好是本命令出的那一形（缺格 / 多格 / 类型不对 ⇒ `bad_args`）。它的 `end` 越过文件尾、或不在行边界上（文件第 `end-1` 字节不是换行）⇒ `failed`（文件被截断或重写过；调用方从 0 重要一份） |
 | `end` | ← | 最后一个完整行的末字节 |
 | `forkedFrom` | ← | 源会话 sid：首条带 `forkedFrom`（`sessionId` 与 `messageUuid` 都是串）的 user / assistant 记录；不是分叉来的 ⇒ `null`。判定与 `history-sessions` 行的 `forkedFromSessionId` 是同一个函数 |
 | `touchedFiles` | ← | 写类工具（Edit / Write / MultiEdit → `file_path`，NotebookEdit → `notebook_path`）碰过的文件，原样、去重、近因序（最近碰的在末尾），至多 1000 条（超 ⇒ 丢最久没碰的） |
-| `usage` | ← | 文件序最后一条 `input_tokens + cache_creation_input_tokens + cache_read_input_tokens > 0` 的 assistant 记录 ⇒ `{promptTokens, model}`（`model` 缺 ⇒ `null`）；一条都没有 ⇒ `null` |
+| `usage` | ← | 文件序最后一条 `input_tokens + cache_creation_input_tokens + cache_read_input_tokens > 0` 的 assistant 记录 ⇒ `{promptTokens, model, peakPromptTokens, limit, limitFrom}`（`model` 缺 ⇒ `null`）；一条都没有 ⇒ `null`。`peakPromptTokens` = 全会话最大的一轮。**上下文上限的唯一判定**（`facts_query::context_limit`）：本进程里的中转看见过这个会话（会话 id ＝ 记录文件名 ＝ 中转的流标签）的请求 ⇒ 带过 `anthropic-beta` 里 `context-1m…` 那一项是 1M、没带过是默认 200k，`relay`（中转只记那一项在不在，`observe/relay_marks.rs`，随进程）；中转没看见过 ⇒ `limits` 里最长匹配的子串 ⇒ `setting` · 模型名带 `[1m]` ⇒ 1M `model` · 见过超过 200k 的一轮 ⇒ 1M `observed` · 判不出 ⇒ `assumed`（`limit` 只是占位的 1M，界面不算百分比、只写用了多少）；任何一档小于 `peakPromptTokens` ⇒ 按 `observed`（至少 1M）⇒ `limit` 恒 ≥ `peakPromptTokens`，百分比不会超过 100。状态栏与监控板读同一个 `limit` |
 | `projectDir` | ← | 会话的项目目录：适配层读记录开头给（与 `session_added.project_dir` 同一个函数），读到即锁定；开头里还没有 ⇒ `null`（下一次再读） |
 
 - 本体 `observe/facts_query.rs`（claude 的写类工具表也住那里：进适配层会让「加一个 agent 通用层要改几处」那只许降的棘轮涨一格）。子 agent 的列表与状态不在这里：那是运行表（`session_runs`），判定只有那一处。

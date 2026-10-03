@@ -26,11 +26,12 @@ import type { JsonlLinePayload } from "./events";
 import { detectAccountMismatch, type SessionAccount } from "./accounts";
 import type { BehaviorConfig } from "./behavior";
 import { showActionFailureToast } from "./error-toast";
+import { copyText } from "./copy-table";
 import { SeqSet, TailWindow } from "./live-window";
 import type { AgentsPanel } from "./agents-panel";
 import { turnEndNotifier } from "./turn-notify";
 import type { GridSessionSnapshot, SessionPeek } from "./session-status";
-import { contextPercent } from "./views/context-limit";
+import { contextPercentOf, type ContextLimitOverrides } from "./views/context-limit";
 import {
   terminalFrontAvailable,
   TERMINAL_FRONT_UNAVAILABLE_TITLE,
@@ -87,7 +88,7 @@ export class TabManager {
    * **路由住 `tab-router.ts`**：下一个 / 第 N 个是谁、自动跟随放不放行、
    * 切完之后记住上次的 tab 与 5s 手动保护。切换本身的编排（可见性 · 物化 · 面板 · 贴底）仍在 `switchTo`。
    */
-  private readonly router = new TabRouter(this.store);
+  private readonly router = new TabRouter(this.store, () => this.bar.visibleOrder());
 
   /**
    * 实时流视图住 `tab-stream-view.ts`。**在构造体里建，不写成字段初始化**：
@@ -179,7 +180,7 @@ export class TabManager {
 
   /** P7a-3：从 `config.json` 拉一次集合并重画。宿主启动时调一次。 */
   loadCollections(): Promise<void> {
-    return this.prefs.loadCollections();
+    return this.prefs.loadCollections().then(() => this.settleUnarrivedOnce());
   }
   /** 启动时把固定的 tab 复活出来（流程见 `tab-bar-prefs.ts` 那一份的头注）。 */
   loadPinned(): Promise<void> {
@@ -458,7 +459,7 @@ export class TabManager {
   /**
    * F91（#27）：跨会话监控快照——`GridMonitorView` 消费的**只读派生 DTO 列表**（本地 + 所有远端会话）。
    * 纯派生：不外泄任何内部 DOM / Map 引用（防外部改到 TabManager 内部状态）。插入序（同 tab-bar）。
-   * context% 复用 pricing.ts `contextPercent`（上限未知 / 无 usage → null）。
+   * context% 的上限与状态栏同一个数（后端定的 `latestContextLimit`）。
    */
   /**
    * A3：喂入远端 live 探测的会话账号归属（来自 backend `--session-accounts`）+ 账号邮箱表。喂完刷新所有 tab 的账号徽章。
@@ -498,8 +499,9 @@ export class TabManager {
         totalAgents: runs.length,
         contextPct:
           tab.latestPromptTokens != null
-            ? contextPercent(tab.latestModel, tab.latestPromptTokens)
+            ? contextPercentOf(tab.latestPromptTokens, tab.latestContextLimit)
             : null,
+        contextTokens: tab.latestPromptTokens,
         unread: tab.unread,
         kind: tab.kind,
         account: this.store.sessionAccountsByS.get(tab.sessionId)?.account ?? null,
@@ -581,6 +583,7 @@ export class TabManager {
       sid: t ? sid : null,
       model: t?.latestModel ?? null,
       promptTokens: t?.latestPromptTokens ?? null,
+      contextLimit: t?.latestContextLimit ?? null,
       unavailable: t?.facts.unavailableReason ?? null,
       projectDir: t?.projectDir ?? null,
     });
@@ -598,6 +601,7 @@ export class TabManager {
     kind: string | null = null,
     bgName: string | null = null,
   ): Tab {
+    this.settleClose(sessionId); // 撤销期里关掉的那个又来了 ⇒ 先把旧的收干净，再按新的建
     let tab = this.store.tabs.get(sessionId);
     if (tab) {
       // 机器以后端宣告 / 行为准：tab 可能是按盘上存的旧标签建的（固定的 tab 复活），不改过来活卡永远对不上。
@@ -715,11 +719,12 @@ export class TabManager {
       touchedFiles: new Set(), // 会话改动集
       latestPromptTokens: null, // F88b：HUD context% 数据
       latestModel: null,
+      latestContextLimit: null,
       facts: new FactsSource(
         () => {
           // 问的是**当前**那一份 tab 的路径与机器（`parentPath` 由首条行回填；没有 ⇒ 这一趟不要）。
           const t = this.store.tabs.get(sessionId);
-          return t && t.parentPath ? { origin: t.origin, jsonlPath: t.parentPath } : null;
+          return t && t.parentPath ? { origin: t.origin, jsonlPath: t.parentPath, limits: this.contextLimits } : null;
         },
         {
           facts: (f) => this.onSessionFacts(sessionId, f),
@@ -1006,6 +1011,7 @@ export class TabManager {
    */
   markOriginSeen(origin: Origin, liveSids?: ReadonlySet<string>): void {
     this.store.seenOrigins.add(origin);
+    this.settleUnarrivedOnce();
     let changed = false;
     for (const tab of this.store.tabs.values()) {
       if (tab.origin !== origin || tab.state.liveness !== "unseen") continue;
@@ -1017,6 +1023,39 @@ export class TabManager {
       }
     }
     if (changed) this.refreshTabBar();
+  }
+
+  /** 设置里的上下文上限表（随会话事实交给那台后端，上限在那里定）。 */
+  private contextLimits: ContextLimitOverrides = {};
+
+  /** 设置里的上限表换了 ⇒ 每个 tab 带着上一份成品再问一次（只有上限会变，文件不重扫）。 */
+  setContextLimits(limits: ContextLimitOverrides): void {
+    if (JSON.stringify(limits) === JSON.stringify(this.contextLimits)) return;
+    this.contextLimits = limits;
+    for (const t of this.store.tabs.values()) {
+      if (!t.facts.everArrived) continue;
+      t.facts.markStale();
+      void t.facts.refresh();
+    }
+  }
+
+  /** 订了会话流的那几台（起步时后端注册表说的；`null` = 还不知道，不判「各台都报完了」）。 */
+  private machines: readonly string[] | null = null;
+  private unarrivedSettled = false;
+
+  /** 宿主告诉这一份：订了哪几台的会话流（「各台都报完了」按它判）。 */
+  expectMachines(machines: readonly string[]): void {
+    this.machines = machines;
+    this.settleUnarrivedOnce();
+  }
+
+  /** 各台都报完了活会话清单 ⇒ 盘上记着、却一个都没回来的组员不会再来了：收掉，空了的组随之消失（只做一次）。 */
+  private settleUnarrivedOnce(): void {
+    if (this.unarrivedSettled || this.machines === null || !this.prefs.collectionsLoaded) return;
+    if (!this.machines.every((m) => this.store.seenOrigins.has(m))) return;
+    this.unarrivedSettled = true;
+    void this.prefs.forgetUnarrived();
+    this.refreshTabBar();
   }
 
   /**
@@ -1133,39 +1172,76 @@ export class TabManager {
    * forget 后该 session 不会在下次 F5 刷新时被 event_replay 重放复活。
    */
   closeTab(sessionId: string): void {
-    const tab = this.store.tabs.get(sessionId);
+    const tab = this.detachTab(sessionId);
+    if (tab) this.finishClose(tab);
+  }
+
+  /** 关掉还在撤销期里的那几个（sid ⇒ 摘下来的 tab 与它原来在顺序里的位置）。 */
+  private readonly pendingCloses = new Map<string, { tab: Tab; index: number }>();
+
+  /**
+   * 快捷键 `W`：当前 tab 已结束才关；先只从栏上摘下来，给一条 8 秒「撤销」——
+   * 撤销 ⇒ 原位、原分组、原固定放回（内容也还在）；到点 ⇒ 做完关闭剩下的事（取消固定 · 出组 · 让后端忘掉）。
+   */
+  closeActiveIfArchived(): void {
+    const sid = this.store.activeId;
+    if (!sid) return;
+    const index = this.store.orderedIds.indexOf(sid);
+    const tab = this.detachTab(sid);
     if (!tab) return;
-    if (!isResumeOnly(tab.state)) return;
+    tab.streamEl.classList.remove("active");
+    tab.inputsEl.classList.remove("active");
+    this.pendingCloses.set(sid, { tab, index });
+    const headline = tab.pinned
+      ? copyText("tabBar.close.doneUnpinned", { title: tab.title })
+      : copyText("tabBar.close.done", { title: tab.title });
+    showActionFailureToast(headline, "", {
+      level: "info",
+      durationMs: 8000,
+      action: { label: copyText("tabBar.close.undo"), run: () => this.undoClose(sid) },
+      onExpire: () => this.settleClose(sid),
+    });
+  }
+
+  /** 撤销期里的那一个放回去：原位（顺序里原来那一格）· 原分组 · 原固定，并切回它。 */
+  private undoClose(sid: string): void {
+    const p = this.pendingCloses.get(sid);
+    if (!p) return;
+    this.pendingCloses.delete(sid);
+    const { tab, index } = p;
+    this.store.tabs.set(sid, tab);
+    this.store.orderedIds.splice(Math.min(index, this.store.orderedIds.length), 0, sid);
+    if (tab.group !== null && !this.prefs.collections.some((c) => c.id === tab.group)) tab.group = null;
+    if (tab.pinned) void this.prefs.persistPinned(); // 期间别处落过一次固定表就没有它了
+    this.switchTo(sid);
+    this.refreshTabBar();
+  }
+
+  /** 撤销期过了（或这个会话又来了，得先把旧的收干净）⇒ 做完关闭剩下的事。 */
+  private settleClose(sid: string): void {
+    const p = this.pendingCloses.get(sid);
+    if (!p) return;
+    this.pendingCloses.delete(sid);
+    this.finishClose(p.tab);
+  }
+
+  /**
+   * 关闭的前一半：从栏上摘下来（只认已结束的），是当前 tab 就落到条上看到的邻居。回摘下来的 tab；关不了 ⇒ `null`。
+   */
+  private detachTab(sessionId: string): Tab | null {
+    const tab = this.store.tabs.get(sessionId);
+    if (!tab) return null;
+    if (!isResumeOnly(tab.state)) return null;
 
     const wasActive = this.store.activeId === sessionId;
     const idx = this.store.orderedIds.indexOf(sessionId);
-    // 优先切到后一个 Tab，否则前一个
-    const fallbackId =
-      this.store.orderedIds[idx + 1] ?? this.store.orderedIds[idx - 1] ?? null;
+    // 落到条上看到的顺序里的后一个，没有就前一个（落点在别的组里也照这个顺序）
+    const seen = this.bar.visibleOrder();
+    const at = seen.indexOf(sessionId);
+    const fallbackId = seen[at + 1] ?? seen[at - 1] ?? null;
 
-    this.live.dropTab(sessionId); // 先撤活卡（它的 DOM 随流容器一起走）
-    this.view.disposeTab(tab);
-    this.store.tasksBySid.delete(sessionId);
     this.store.tabs.delete(sessionId);
     if (idx >= 0) this.store.orderedIds.splice(idx, 1);
-    // **关掉 = 取消固定。**
-    //
-    // pin 的语义是「别丢」（`§B.3b`），而 `×` 是用户**明确说要丢**。两者撞上时以后者为准 ——
-    // 不摘的话下次开 app 它又回来了，那正是「能操作但没反应」的一种（点了 ×，第二天还在）。
-    // ⚠ 只有真被固定过才写盘：没固定的 tab 关一下不该顺手改 `config.json`。
-    if (tab.pinned) {
-      tab.pinned = false;
-      this.prefs.pinnedRecords.delete(sessionId);
-      void this.prefs.persistPinned();
-    }
-    this.prefs.clearPinHint(sessionId);
-    // 🔴 〔「x就是没了, 不存在还要移出分组」〕**关掉 = 组关系随它一起没。**
-    //   摘盘上它那一键 `tabBar.groupOf.<sid>`；它是组里最后一个在栏里的 ⇒ 组也没（`TabBarPrefs.forgetTab`）。
-    //   必须在上面 `store.tabs.delete` 之后：「组里还剩谁」只数真在栏里的。没分组的 tab ⇒ 零写。
-    void this.prefs.forgetTab(tab);
-
-    // 让后端 event_replay 把这个 session 的历史也丢掉
-    forgetSession(sessionId);
 
     if (wasActive) {
       if (fallbackId !== null) {
@@ -1182,6 +1258,36 @@ export class TabManager {
     } else {
       this.refreshTabBar();
     }
+    return tab;
+  }
+
+  /** 关闭的后一半：撤活卡 · 拆流 · 取消固定 · 出组 · 让后端忘掉。`tab` 已不在 `store.tabs` 里。 */
+  private finishClose(tab: Tab): void {
+    const sessionId = tab.sessionId;
+    this.live.dropTab(sessionId); // 先撤活卡（它的 DOM 随流容器一起走）
+    this.view.disposeTab(tab);
+    this.store.tasksBySid.delete(sessionId);
+    // **关掉 = 取消固定。**
+    //
+    // pin 的语义是「别丢」（`§B.3b`），而 `×` 是用户**明确说要丢**。两者撞上时以后者为准 ——
+    // 不摘的话下次开 app 它又回来了，那正是「能操作但没反应」的一种（点了 ×，第二天还在）。
+    // ⚠ 只有真被固定过才写盘：没固定的 tab 关一下不该顺手改 `config.json`。
+    if (tab.pinned) {
+      tab.pinned = false;
+      this.prefs.pinnedRecords.delete(sessionId);
+      void this.prefs.persistPinned();
+    }
+    this.prefs.clearPinHint(sessionId);
+    // 🔴 〔「x就是没了, 不存在还要移出分组」〕**关掉 = 组关系随它一起没。**
+    //   摘盘上它那一键 `tabBar.groupOf.<sid>`；它是组里最后一个在栏里的 ⇒ 组也没（`TabBarPrefs.forgetTab`）。
+    //   必须在上面 `store.tabs.delete` 之后：「组里还剩谁」只数真在栏里的。没分组的 tab ⇒ 零写。
+    void this.prefs.forgetTab(tab);
+
+    // 盘上顺序里的那一格只在这里摘（还没到的那些在落盘时并回去，见 `TabStore.mergedOrder`）
+    this.store.savedOrder = this.store.savedOrder.filter((s) => s !== sessionId);
+    // 让后端 event_replay 把这个 session 的历史也丢掉
+    forgetSession(sessionId);
+    this.refreshTabBar(); // 出组可能让组没了
   }
 
   /**
@@ -1259,15 +1365,6 @@ export class TabManager {
     if (this.router.bringMonitorToFront) bringMonitorToFront();
   }
 
-  /** 快捷键 Ctrl+W：当前活跃 Tab 已结束才关，活着 / 可重连的不动（同 `closeTab`） */
-  closeActiveIfArchived(): void {
-    if (!this.store.activeId) return;
-    const tab = this.store.tabs.get(this.store.activeId);
-    if (tab && isResumeOnly(tab.state)) {
-      this.closeTab(this.store.activeId);
-    }
-  }
-
   /** 快捷键 Ctrl+` ：把当前活跃 Tab 对应的终端窗口拉到前台（live 本地 / 远端均可） */
   bringActiveTerminalToFront(): void {
     // 非 Windows 上 ↗ 的最后一跳是桩（每点必败）⇒ 按钮不渲；
@@ -1343,26 +1440,20 @@ export class TabManager {
     this.router.noteSwitched(sessionId, source);
     this.refreshTabBar(); // active 高亮 + badge 立即更新（廉价，不阻塞）
 
-    // 切 Tab 卡顿优化：把会**强制同步 reflow** 的 scrollToBottom（读 scrollHeight）+
-    // 面板整表 re-render 推到下一帧——让 .active 的 visibility 切换先绘制出来（切 Tab 即时
-    // 跟手），重活下一帧再做。期间又切走则跳过（不把面板/滚动落到已非 active 的会话上）。
+    // 回到离开时的位置：切走时贴着底的才贴底（往上翻着看的不拽到底 —— 后台 tab 只是 `visibility:hidden`，滚动位置一直在）。
+    // 贴底（读 scrollHeight，强制同步 reflow）与面板整表 re-render 推到下一帧：让 `.active` 的切换先画出来；期间又切走则跳过。
+    const stuck = next?.stream.stuckToBottom ?? true;
     requestAnimationFrame(() => {
       if (this.store.activeId !== sessionId) return;
-      next?.stream.scrollToBottom();
-      // ★ 步 3：**第二帧再贴一次**（对齐 `session-viewer.ts:82` 已有的同一修法）。
-      //
-      // 第一帧贴底时，刚从 `visibility:hidden` 翻出来的那些卡还带着
-      // `content-visibility: auto` 的**估值**几何 —— 按估值算出来的 `scrollHeight`
-      // 不是真的，贴完仍可能差半屏。下一帧周边已材料化成真实尺寸，再发一次落点才准。
-      // ⚠ 诚实边界：`scrollToBottom()` 会把 `stickToBottom` **重新置真** ——
-      // 所以这不是一次「只读的校正」，它和第一次一样是强制贴底。
-      // 可接受的理由只有一条：两次之间只隔**一帧（~16ms）**，人不可能在这中间滚出意图；
-      // 切走了则上面那道 `activeId` 守卫已经挡住。真要更细，得让 `MessageStream` 出一个
-      // 「只重贴、不改粘底态」的入口 —— 那是另一件事，别在这一步顺手扩。
-      requestAnimationFrame(() => {
-        if (this.store.activeId !== sessionId) return;
-        this.store.tabs.get(sessionId)?.stream.scrollToBottom();
-      });
+      if (stuck) next?.stream.scrollToBottom();
+      // 第二帧再贴一次（只对贴底的）：刚从 `visibility:hidden` 翻出来的卡还带着 `content-visibility: auto`
+      // 的估值几何，第一帧算出来的 `scrollHeight` 不准；下一帧材料化成真实尺寸再落一次才准。
+      if (stuck) {
+        requestAnimationFrame(() => {
+          if (this.store.activeId !== sessionId) return;
+          this.store.tabs.get(sessionId)?.stream.scrollToBottom();
+        });
+      }
       // issue #11: 切换 task panel 数据源到新 active Tab 的 sid
       this.tasksPanel?.setSession(sessionId, this.store.tasksBySid.get(sessionId) ?? []);
       // issue #23: agents 面板同步切到新 active Tab

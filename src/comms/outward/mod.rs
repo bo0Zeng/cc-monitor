@@ -422,6 +422,12 @@ pub(crate) trait Destinations: Send + Sync {
 
     /// 哪几个请求头给流打第二个标签（同上一条的取法；中转同样不知道它们是谁的什么头）。
     fn stream_owner_headers(&self) -> Vec<&'static str>;
+
+    /// 每个请求要记下「在不在」的那几项：（头名, 逗号列表里某一项的前缀）。中转不知道它们是什么意思，
+    /// 只把「这条流的这一发带没带」交给 tap 口（[`tee::TapPort::note_marks`]），值本身不出去。缺省 ⇒ 不记。
+    fn request_marks(&self) -> Vec<(&'static str, &'static str)> {
+        Vec::new()
+    }
 }
 
 /// 中转起来那一刻，上游选择交给中转的**另一只手**（`host` 的启动路径）。

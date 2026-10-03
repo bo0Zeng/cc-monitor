@@ -11,7 +11,7 @@
  */
 import { showActionFailureToast } from "./error-toast";
 import type { Tab } from "./tab-model";
-import { hasTerminal, isResumeOnly, type SessionState } from "./tab-session-state";
+import { canResume, hasTerminal, isResumeOnly, type SessionState } from "./tab-session-state";
 import { copyText } from "./copy-table";
 import {
   createRefusal,
@@ -136,7 +136,12 @@ export class TabMenu {
     // 行为逐字节保持）；账号项（基座/具名账号，各自再嵌一层容器子选择）由 showTabContextMenu
     // 后**异步追加**（appendAccountMenuItems→updateTabContextMenuItem，复用 F51 代次守卫），
     // 消除同步 peek 的冷缓存分裂。本地归档仍单「Resume」（无容器/账号轴）。
-    if (t && isResumeOnly(t.state)) {
+    if (t && t.state.liveness === "unseen") {
+      // 说不清（那台暂时看不见）：会话也许还在跑 ⇒ 不给恢复，说为什么。
+      const label = copyText("tabMenu.item.resume");
+      const why = copyText("sessionState.unseen.tooltip");
+      items.push({ label: copyText("tabMenu.item.greyed", { label, why }), enabled: false, title: why, onClick: () => {} });
+    } else if (t && canResume(t.state)) {
       if (isRemoteOrigin(t.origin)) {
         items.push({
           id: "resume",
@@ -333,6 +338,8 @@ export class TabMenu {
     state: SessionState,
   ): Promise<void> {
     // 「给 Resume 还是给换号重启」按 `isResumeOnly` 分，与菜单主体那一格同一个谓词（原先是 `status === "archived"`）。
+    // 说不清的两样都不给（会话也许还在跑）。
+    if (state.liveness === "unseen") return;
     const resumeOnly = isResumeOnly(state);
     // 本机已结束的 tab 不带账号选择（本机 Resume 走那条会话上次的号，
     // 见 `launch-account.ts::localLaunchAccountSync`）⇒ 本机只进下面「换号重启」那一支。

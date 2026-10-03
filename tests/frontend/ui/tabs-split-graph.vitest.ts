@@ -94,6 +94,7 @@ const DEPS: Record<string, readonly string[]> = {
     "src/frontend/ui/app-store.ts", // 「账号快照变了」改订阅 store（`appStore.sessionAccounts`）
     "src/frontend/ui/cards/index.ts", // onLine：这一行是不是 compact 摘要（换号重启的等待者）；子运行时间线用同一套渲染器
     "src/frontend/ui/cards/subagent.ts", // 运行表到了：派出子运行的那张卡标上是哪个、什么状态
+    "src/frontend/ui/copy-table.ts", // W 关掉之后那条「已关闭 · 撤销」
     "src/frontend/ui/error-toast.ts", // bringActiveTerminalToFront：非 Windows 说一句实话
     "src/frontend/ui/fork-flow.ts", // startForkedSession（E78：fork-flow.vitest 钉「tabs.ts 调 runForkFlow」）
     "src/frontend/ui/ipc/origin.ts", // 本机 / 远端只经这一处判（线上缺省 = 本机的那一下表示法转换也在这里）

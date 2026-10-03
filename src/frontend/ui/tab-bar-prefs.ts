@@ -29,6 +29,7 @@ import {
   getPinned,
   getTabOrder,
   groupOfEdit,
+  ORDER_CAP,
   isDegradedPin,
   setPinned,
   setTabOrder,
@@ -248,6 +249,19 @@ export class TabBarPrefs {
     if (gid === null) return Promise.resolve();
     tab.group = null;
     return this.writeGroups([groupOfEdit(tab.sessionId, null), ...this.dropIfEmpty(gid)]);
+  }
+
+  /**
+   * 各台都报完了活会话清单：意图里还没到的组员不会再来了 ⇒ 按「× 掉了」处理（摘盘上那一键），
+   * 组里一个在栏里的都不剩 ⇒ 组没（「组里最后一个 tab 没了组自己消失」，重启后不留空组头）。
+   */
+  forgetUnarrived(): Promise<void> {
+    if (!this.collectionsLoaded) return Promise.resolve();
+    const edits: ConfigEdit[] = [];
+    for (const sid of this.savedGroupOf.keys()) edits.push(groupOfEdit(sid, null));
+    this.savedGroupOf.clear();
+    for (const col of [...this.collections]) edits.push(...this.dropIfEmpty(col.id));
+    return this.writeGroups(edits);
   }
 
   /** 组头 ×：解散。**只去掉分组，一个 tab 都不动**（集合是个视图，不是容器）。 */
@@ -513,9 +527,9 @@ export class TabBarPrefs {
     //   不同步的话，`savedOrder` 还是启动时读到的那份**旧**顺序，而它每来一个新 tab
     //   就会被再应用一次（`placeInOrder`）⇒ **后到的一个 tab 能把用户刚拖的一下整张撤销**。
     //   放在 `await` 之前：落盘失败也照样同步 —— 内存里那张已经是用户看见的事实了。
-    this.store.savedOrder = [...this.store.orderedIds];
+    this.store.savedOrder = this.store.mergedOrder(ORDER_CAP);
     try {
-      await setTabOrder(this.store.orderedIds);
+      await setTabOrder(this.store.savedOrder);
     } catch (e) {
       console.warn("[tab-bar] 顺序落盘失败:", e);
       showActionFailureToast(copyText("tabBar.persist.orderFailed"), String(e)); // 同 `persistCollections`

@@ -383,6 +383,9 @@ export class HistoryView {
     }
   }
 
+  /** 全屏视图：单键不落到底下的 tab 上，只放行它自己的开关键（H 再按一次关）。 */
+  readonly passes = ["app.toggle-history"] as const;
+
   /** issue #5 OverlayHandle 接口：跟 handleEscape 同一行为 */
   handleEsc(): void {
     this.handleEscape();
@@ -1684,16 +1687,18 @@ export class HistoryView {
     //   说不清（这条路答不出，`isLive === null`）⇒ 也多问一句（09-25 裁）。确定不活 ⇒ 照原来那一问 / 两问。
     const liveness = deleteLiveness(e.isLive, this.liveInTabs(e.sessionId));
     //   〔W5-UI 之后〕问一律走应用内对话框（`askConfirm`；原生 `confirm` 在真 app 里恒真、从来不拦）。
-    if (liveness === "live" && !(await askConfirm(copyText("sessionState.deleteLive.confirm", { label })))) return;
-    if (liveness === "unknown" && !(await askConfirm(copyText("sessionState.deleteUnknown.confirm", { label })))) return;
+    if (liveness === "live" && !(await askConfirm(copyText("sessionState.deleteLive.confirm", { label }), { danger: true }))) return;
+    if (liveness === "unknown" && !(await askConfirm(copyText("sessionState.deleteUnknown.confirm", { label }), { danger: true }))) return;
     if (e.origin) {
       // 远端删除更危险（删的是别人机器上的文件）→ 二次确认。删那一下由那台机器的后端做。
       const ok1 = await askConfirm(
         copyText("history.delete.confirmRemote", { label, origin: e.origin }),
+        { danger: true },
       );
       if (!ok1) return;
       const ok2 = await askConfirm(
         copyText("history.delete.confirmRemoteAgain", { origin: e.origin, label }),
+        { danger: true },
       );
       if (!ok2) return;
       try {
@@ -1706,6 +1711,7 @@ export class HistoryView {
     } else {
       const ok = await askConfirm(
         copyText("history.delete.confirmLocal", { label }),
+        { danger: true },
       );
       if (!ok) return;
       try {

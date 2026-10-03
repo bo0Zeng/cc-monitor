@@ -2,7 +2,7 @@
  * config.json 的 `contextLimits`（状态栏 ctx% 用的模型上限覆盖表）在设置页露出来，可读可改 ——
  * 「每个配置键要么有入口要么删」。住「应用 → 外观」下面「高级」那一折（它改的是状态栏那一格怎么算）。
  *
- * 一行一条「模型名片段 = 上限 tokens」；空 ⇒ 删掉那一键（用内置表）。读回走 `views/context-limit.ts::readContextLimits`（与状态栏同一份），
+ * 一行一条「模型名片段 = 上限 tokens」；空 ⇒ 删掉那一键（不覆盖）。读回走 `views/context-limit.ts::readContextLimits`（与状态栏同一份），
  * 写只经 `config.ts::patchConfig`；存好之后广播 `SETTINGS_APPLIED_EVENT`，主窗口的 chip 重读。
  */
 import { emit } from "@tauri-apps/api/event";

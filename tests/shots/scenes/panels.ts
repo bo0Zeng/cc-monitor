@@ -32,6 +32,18 @@ function forkAskWorld(): World {
   return w;
 }
 
+/** gpu-01 连不上，而它那个会话是固定着的 ⇒ 复活出来「说不清」。 */
+function unseenPinnedWorld(): World {
+  const w = defaultWorld();
+  w.unseenMachines = ["gpu-01"];
+  const s = w.sessions[5];
+  w.config = {
+    ...w.config,
+    tabBar: { pinned: [{ sid: s.sid, origin: "gpu-01", cwd: s.cwd, jsonlPath: `/home/user/.claude/projects/x/${s.sid}.jsonl`, title: "排序模型训练脚本" }] },
+  };
+  return w;
+}
+
 function closedWorld(): World {
   const w = defaultWorld();
   w.closedMachines = ["devbox"];
@@ -84,6 +96,37 @@ export const PANEL_SCENES: Scene[] = [
     await waitFor("[role='dialog']");
     await sleep(400);
   }),
+  panel("panel-close-undo", "W 关掉已结束的 tab 之后", "切到已结束的「周报草稿」按 W：tab 先摘下来，右下角给 8 秒「撤销」", async () => {
+    await mainReady(ALL_TABS);
+    await openTab(2);
+    document.querySelector<HTMLElement>("#message-stream")?.focus();
+    (document.activeElement as HTMLElement | null)?.blur();
+    await key("w");
+    await sleep(600);
+  }),
+  panel("panel-unseen-menu", "说不清的 tab 的右键菜单", "gpu-01 连不上、它那个固定着的会话说不清：右键菜单里恢复置灰、说为什么", async () => {
+    await mainReady(ALL_TABS);
+    const t = [...document.querySelectorAll<HTMLElement>("#tab-bar .tab")].find((x) => (x.textContent ?? "").includes("排序模型"));
+    await rightClick(t ?? "#tab-bar .tab");
+    await sleep(900);
+  }, unseenPinnedWorld),
+  {
+    ...panel("panel-batch-kill-short", "批量杀会话的确认框 · 矮窗口", "全选之后右键「杀死会话」，窗口只有 220 高：清单在框里滚、按钮够得着，焦点在「取消」", async () => {
+      await mainReady(ALL_TABS);
+      const tabs = [...document.querySelectorAll<HTMLElement>("#tab-bar .tab")];
+      for (const t of tabs) {
+        const r = t.getBoundingClientRect();
+        t.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, ctrlKey: true, clientX: r.left + 10, clientY: r.top + 5 }));
+        await sleep(60);
+      }
+      await rightClick(tabs[0]);
+      await sleep(600);
+      await click(await byText(".tab-context-menu-item", "杀死会话"));
+      await waitFor("[role='dialog']");
+      await sleep(400);
+    }),
+    height: 220,
+  },
   panel("panel-pane-preview", "预览终端画面", "远端会话的 tab 右键「预览画面」：那个 tmux 窗口此刻的样子", async () => {
     await mainReady(ALL_TABS);
     await rightClick(document.querySelectorAll("#tab-bar .tab")[3]);

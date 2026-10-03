@@ -1,52 +1,23 @@
 /**
- * F88b（#52）：模型 context 上限表 + 模型串归一化。**纯模块**（零 import，node 可测）。
+ * 上下文占用的排版那一半。**纯模块**（零 import，node 可测）。
  *
- * 🔴 〔§5 步 12〕**原名 `views/pricing.ts`**。费用/$ 那半早被 F88c 砍掉，
- * 用量 ② 轴退役后 `RELATIVE_COST` / `equivalentInputTokens` 也一起走了 ⇒ 这份文件只剩
- * 「context 上限」这一件事，`pricing` 这个名字是名不副实的历史残留。消费者两处：
- * `tabs.ts`（会话行 ctx%）与 `usage-hud.ts`（状态栏 ctx% chip）。
- *
- * 只做「上限」（给 context 占用% 用）；**不做费用/$**（只显 token）。
- *
- * 上限现实：Claude 标准 context = **200k**；**`[1m]` 后缀变体 = 1M**（本项目自己的模型就是
- * `claude-opus-4-8[1m]`）。故两档：含 `[1m]` → 1M；其余已知 Claude 家族 → 200k；**未知 → null → UI 显 `?`**
- * （宁标未知，不显错的 %）。硬编码默认；用户可覆盖表 = 后续项（先内置默认够用）。
+ * 上限由后端定（`history-facts` 的 `usage.limit`：中转看见的请求 ＞ 设置里的上限表 ＞ 模型名带 `[1m]` ＞ 见过超过 200k 的一轮；
+ * 判不出时 `limitFrom` 是 `assumed`，界面不算百分比），状态栏与监控板读同一个数；这里只把「用了多少 ÷ 上限」排成百分比，并读设置里那张上限表交给后端。
  */
 
-/** 模型上限用户覆盖表：模型串**子串**（大小写不敏感）→ 上限 tokens。让用户为**标准模型串**
- *  （无本项目 `[1m]` 标记、但实际开了 1M beta context 的模型，如别的机器上的 `claude-sonnet-4-5-…`）
- *  纠正上限，避免被默认 200k 除出**误报 ctx≥80%**。存 config.json `contextLimits` 字段。纯模块——由调用方注入。 */
+/** 模型上限用户覆盖表：模型串**子串**（大小写不敏感）→ 上限 tokens。存 config.json `contextLimits`，随 `history-facts` 交给后端应用。 */
 export type ContextLimitOverrides = Record<string, number>;
 
-/** config.json `contextLimits` 那一格 ⇒ 覆盖表（读的唯一一份：状态栏 chip 与设置页都走它）。
+/** config.json `contextLimits` 那一格 ⇒ 覆盖表（读的唯一一份：交后端的那张与设置页都走它）。
  *  不是对象 ⇒ 空表；非正数 / 非数字的那几行丢掉（手改坏了的盘不许把表整个带歪）。 */
 export function readContextLimits(raw: unknown): ContextLimitOverrides {
   const out: ContextLimitOverrides = {};
   if (raw && typeof raw === "object" && !Array.isArray(raw)) {
     for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
-      if (k.trim() !== "" && typeof v === "number" && Number.isFinite(v) && v > 0) out[k] = v;
+      if (k.trim() !== "" && typeof v === "number" && Number.isInteger(v) && v > 0) out[k] = v;
     }
   }
   return out;
-}
-
-/** context 占用%用的模型上限（tokens）。未知返 null → 调用方显 `?` 不显错 %。`overrides` 优先（子串匹配）。 */
-export function contextLimit(
-  model: string | null | undefined,
-  overrides?: ContextLimitOverrides,
-): number | null {
-  if (!model) return null;
-  const m = model.toLowerCase();
-  // 业务二审 gap#2：用户覆盖优先——纠正「标准 1M 模型串在默认表里被当 200k → 误报预警」。
-  if (overrides) {
-    for (const [sub, lim] of Object.entries(overrides)) {
-      if (sub && lim > 0 && m.includes(sub.toLowerCase())) return lim;
-    }
-  }
-  if (m.includes("[1m]")) return 1_000_000;
-  // 已知 Claude 家族（opus/sonnet/haiku/fable/3.x/4.x）标准上限 200k。
-  if (/claude-(opus|sonnet|haiku|fable|\d)/.test(m)) return 200_000;
-  return null;
 }
 
 /** 展示用归一化：剥 `[1m]` / `-fast` / 尾部 8 位日期快照，留干净 model 名。 */
@@ -61,13 +32,15 @@ export function normalizeModel(id: string | null | undefined): string {
   );
 }
 
-/** 某会话最新一轮 prompt 的 context 占用近似（input+cache ÷ 上限）。上限未知 → null。`overrides` 见 contextLimit。 */
-export function contextPercent(
-  model: string | null | undefined,
-  latestPromptTokens: number,
-  overrides?: ContextLimitOverrides,
-): number | null {
-  const lim = contextLimit(model, overrides);
-  if (lim == null || lim <= 0) return null;
-  return (latestPromptTokens / lim) * 100;
+/** 用了多少 token 的短写（上限判不出时只写它）：`350k` · `1.2M` · `800`。 */
+export function contextTokensText(tokens: number): string {
+  if (tokens >= 1_000_000) return `${(tokens / 1_000_000).toFixed(1).replace(/\.0$/, "")}M`;
+  if (tokens >= 1_000) return `${Math.round(tokens / 1_000)}k`;
+  return String(tokens);
+}
+
+/** 最新一轮 prompt 占上限的百分比（上限是后端给的）。没有上限 ⇒ `null`；永远不超过 100。 */
+export function contextPercentOf(promptTokens: number, limit: number | null): number | null {
+  if (limit === null || limit <= 0) return null;
+  return Math.min(100, (promptTokens / limit) * 100);
 }

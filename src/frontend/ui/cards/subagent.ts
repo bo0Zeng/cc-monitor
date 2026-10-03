@@ -35,7 +35,7 @@ export function buildAgentCard(
   const d = document.createElement("details");
   d.className = "block-collapsible block-agent";
   const title = titleOf(tag, toolName);
-  const state: CardState = { title, run: null };
+  const state: CardState = { title, run: null, timeline: null };
   cardState.set(d, state);
 
   const s = document.createElement("summary");
@@ -43,9 +43,13 @@ export function buildAgentCard(
   s.textContent = title;
   d.appendChild(s);
 
-  let timeline: RunTimeline | null = null;
   d.addEventListener("toggle", () => {
-    if (!d.open || timeline) return;
+    if (!d.open) return;
+    // 建过 ⇒ 再展开时续读一次（收起期间子运行可能又做了事；上次读失败的也在这里重试）。
+    if (state.timeline) {
+      void state.timeline.refresh();
+      return;
+    }
     const run = state.run;
     const nested: RenderContext = {
       parentPath: ctx.parentPath,
@@ -54,29 +58,35 @@ export function buildAgentCard(
       toolUseElements: new Map(),
       pendingToolResults: new Map(),
     };
-    timeline = new RunTimeline({
+    const timeline = new RunTimeline({
       origin: ctx.origin,
       parent: ctx.parentPath,
       which: run ? { run, tool: toolId } : { tool: toolId },
       render: (rec) => renderChild(rec, nested),
     });
+    state.timeline = timeline;
     d.appendChild(timeline.element);
     void timeline.refresh();
   });
   return d;
 }
 
-/** 卡上记着的两样：标题（收场后在它后面接状态）· 运行表说的是哪个子运行（展开时按它读；还没对上 ⇒ 按工具调用 id 读）。 */
+/** 卡上记着的：标题（收场后在它后面接状态）· 运行表说的是哪个子运行（展开时按它读；还没对上 ⇒ 按工具调用 id 读）· 展开过的时间线。 */
 interface CardState {
   title: string;
   run: string | null;
+  timeline: RunTimeline | null;
 }
 const cardState = new WeakMap<HTMLElement, CardState>();
 
 /** 子运行的状态收到它那张卡上（运行表给的成品：哪个子运行 · 状态）。 */
 export function markRunCard(card: HTMLElement, run: string, state: RunState): void {
   const st = cardState.get(card);
-  if (!st || (st.run === run && card.dataset.runState === state)) return;
+  if (!st) return;
+  const changed = st.run !== run || card.dataset.runState !== state;
+  // 展开着的时间线跟着长：在跑 ⇒ 运行表每来一帧续读一次；刚收场 ⇒ 最后读一次收尾巴。
+  if (st.timeline && (card as HTMLDetailsElement).open && (state === "running" || changed)) void st.timeline.refresh();
+  if (!changed) return;
   st.run = run;
   card.dataset.runState = state;
   const s = card.querySelector(":scope > summary");
