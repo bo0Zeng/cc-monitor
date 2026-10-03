@@ -368,7 +368,9 @@ const SCAN: &[&str] = &[
     "tests/frontend/shell/byte_table_tests.rs",
     "tests/frontend/shell/ccm_cli_contract_tests.rs",
     "tests/frontend/shell/chan/webview_tests.rs",
-    "tests/frontend/ui/alias-reads.vitest.ts", // 别名六问走通道：解码器读跨语言金样 aliases.golden.json ＋ 问对那台
+    "tests/frontend/ui/alias-reads.vitest.ts", // 别名八问走通道：解码器读跨语言金样 aliases.golden.json ＋ 问对那台
+    "tests/frontend/ui/settings/machine-aliases-no-ccm-grammar.vitest.ts", // 别名页零处自己解析 ccm 参数（读后端 argv.rs 的旗标表 ＋ 扫界面源码）
+    "tests/backend/assets/aliases/form_tests.rs", // 别名表单两向：往返逐字相等（造的语料）＋ 规范写法交 ccm 解析器 ＋ 读金样 aliases.golden.json
     "tests/backend/platform/shell/dialect_tests.rs", // 随方言搬进 `platform/shell/` // 方言进了那台后端（读法 ＋ `$PROFILE` 一个家的全树普查）
     "tests/backend/assets/aliases/fence_tests.rs",   // 围栏块配对 ＋ 形状账（源码扫描）
     "tests/frontend/shell/cc_bus_deploy_tests.rs", // 装 / 三态进了后端，只剩装前 `ccm` 预检（纯函数 ＋ 读源码）⇒ INTEGRATION → SCAN

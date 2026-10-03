@@ -897,6 +897,10 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--aliases-block-render",
     "--aliases-block-install",
     "--aliases-block-remove",
+    // 别名表单两向（`inbound::REGISTRY` 的 `aliases-to-form` / `aliases-from-form`，纯）派生的 CLI 面，入参从 stdin 读。
+    // ⚠ 加这两行会逼出一次 `BUILD_ID` bump（`build_id_guard`）—— 本路**不 bump**，合并那一拍统一做。
+    "--aliases-to-form",
+    "--aliases-from-form",
     // 帧面 `powershell-policy-set` 派生的 CLI 面。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
     "--powershell-policy-set",
     // 资产目录那两条（`inbound::REGISTRY` 的 `assets-catalog` / `assets-catalog-merge`）派生的 CLI 面。

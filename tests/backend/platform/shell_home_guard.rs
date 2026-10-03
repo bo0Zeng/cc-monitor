@@ -280,6 +280,8 @@ const SQ_NEEDLES: &[&str] = &["'{", "''"];
 
 /// 唯一出口 `dialect::ps_literal` 之外允许的命中（都不是 PowerShell 字面量，逐条说清）。
 const SQ_ELSEWHERE: &[(&str, &str, usize)] = &[
+    // 别名表单那一格文本的写法（界面输入框里给人看、再由它自己切回去），不进任何 shell。
+    ("assets/aliases/form.rs", "'{", 1),
     // 报错句里「起不来的是哪个程序」那个主语，不进 shell。
     ("control/ccm/mod.rs", "'{", 1),
     // POSIX：tmux 的 `-F` 格式串是常量。

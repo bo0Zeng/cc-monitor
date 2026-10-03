@@ -3277,6 +3277,39 @@ cc-monitor 装的：skill 按装记录逐文件删（带逐字节 `expect`），
 整块删，块外一个字节不动；没有块 ⇒ 原样；围栏损坏 ⇒ 中止。写经本进程 `files-put`（带备份）。
 错误码：`bad_args` · `refused`。⚠ **CLI 面也有它**（`--aliases-block-remove`）。
 
+#### `aliases-to-form`：一条别名摊成表单那几格（10-02，**纯**）
+
+```text
+→ {"id":"a8","cmd":"aliases-to-form","args":{"alias":{"name":"mine","args":["--append-system-prompt","be brief","--","--account-dir","/srv/acc","--cwd","/w"],"restTo":"agent"}}}
+← {"kind":"reply","id":"a8","ok":true,"data":{"form":{"name":"mine","cwdIf":[],"cwd":"/w","account":"","base":false,"tmux":"none","tmuxName":"","agent":"","model":"","launcher":"","tmuxSize":"","detach":false,"busRegister":false,"busNote":"","passthru":"--append-system-prompt 'be brief'","ccmOther":"--account-dir /srv/acc"}}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `alias` | → | 一条别名 `{name, args, restTo}`（同 `aliases-render` 清单里的一条） |
+| `form` | ← | 表单那几格：`name` · `cwdIf`（`[{at, to}]`，按序）· `cwd`（空 = 当前目录）· `account`（空 = 不指定）· `base`（显式不带账号）· `tmux`（`none` / `auto` / `named` / `base` / `attach`）· `tmuxName` · `agent` · `model` · `launcher` · `tmuxSize` · `detach` · `busRegister` · `busNote` · `passthru`（交给 agent 的其余参数，一串）· `ccmOther`（表单没有格子的 ccm 参数，一串） |
+
+不会失败：参数按 ccm 自己的解析器切（最后一个 `--` 分两边 · 一组几个词 · 什么意思）；认不得的词原样进它原来那一边的那一串（左边进 `passthru`、右边进 `ccmOther`），不挪边、不丢。
+`passthru` / `ccmOther` 的写法：空白分词；`'…'` 里原样；`"…"` 里 `\"` 与 `\\` 是转义；引号外 `\` 只转义空白、引号与它自己（别的照原样，`C:\work` 不用改写）。
+恰是 `-- --attach`、`restTo` 为 `ccm` ⇒ `tmux` 为 `attach`、别的格都空。错误码：`bad_args`。⚠ **CLI 面也有它**（`--aliases-to-form`）。
+
+#### `aliases-from-form`：表单拼回一条别名（10-02，**纯**）
+
+```text
+→ {"id":"a9","cmd":"aliases-from-form","args":{"form":{…},"orig":{"name":"mine","args":[…],"restTo":"agent"}}}
+← {"kind":"reply","id":"a9","ok":true,"data":{"alias":{"name":"work","args":["--append-system-prompt","be brief","--","--account-dir","/srv/acc","--cwd","/w"],"restTo":"agent"}}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `form` | → | 表单那几格（同 `aliases-to-form` 的 `form`） |
+| `orig` | → | 必给：正在改的那一条（`aliases-to-form` 收的那一条），新增 ⇒ `null` |
+| `alias` | ← | 拼出来的那一条 `{name, args, restTo}` |
+
+按组比 `orig`：没动过的那一组原样留在原位（写法 · 顺序 · 重复都不改）；动了的换成规范写法、放在它原来第一次出现的位置；原来没有的追加（ccm 那一侧接在末尾，`--model` 放最前）。
+⇒ `aliases-from-form(aliases-to-form(a), a)` 与 `a` 逐字相等，只改名字参数一个字都不变。控件上关掉的组合照样不拼（不进 tmux ⇒ 容器那几格不出现；不 `--detach` ⇒ 不登记 cc-bus；只有半边的情况不拼）。
+合不合格不在这里判（那是 `aliases-render`）。`passthru` / `ccmOther` 引号没配对 ⇒ `refused`（一句人话）。错误码：`bad_args` · `refused`。⚠ **CLI 面也有它**（`--aliases-from-form`）。
+
 #### `powershell-policy-set`：那一代 PowerShell 的执行策略设成当前用户 `RemoteSigned`（WF1，09-29，**写用户设置**）
 
 ```text
@@ -3988,6 +4021,8 @@ CLI 面这两条的用处是**量一趟遍历** ／ **在一个常驻后端进�
 **FILES3 追加一条（2026-09-28）**：`--files-grep` —— 同族第十一条（按内容搜，逐条见上面 `files-grep` 那一小节）。
 
 **WF1 追加一条（09-29）**：`--powershell-policy-set` —— 见上面它自己那一小节。与帧面同一个 `run`；**读 stdin**（`{host}`）。
+
+**别名表单追加两条（10-02）**：`--aliases-to-form` · `--aliases-from-form` —— 表单与参数互转（见上面各自那一小节）。与帧面同一个 `run`；**读 stdin**。
 读 stdin（那段 JSON 就是它的 `args`）；一次性进程里没有要撤的在飞那一趟，上界照旧。只读。
 
 **`K-H1` 那一条：HTTP 中转**（搬字节那半）。独立进程那一形（子命令 `--relay`）删了：

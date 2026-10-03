@@ -237,6 +237,10 @@ fn starts_agent(s: &CliSpec) -> bool {
     matches!(s.action, Action::New | Action::Resume { .. })
 }
 
+/// 模型偏好在命令行上的说法：交给 agent 的那一侧 `--model <名>`（不是 ccm 的选项，ccm 原样透传）。
+/// 别名表单的「模型」那一格（`assets/aliases/form.rs`）用同一个。
+pub(crate) const MODEL_FLAG: &str = "--model";
+
 /// **顺序即契约**：`identity` < `account` < `model` < `launch-id`。
 /// 由 `a_fully_loaded_invocation_emits_every_part_in_registry_order`（全触发、逐字节比整条命令）钉住。
 const DIMENSION_ORDER: &[Dim] = &[
@@ -274,7 +278,7 @@ const DIMENSION_ORDER: &[Dim] = &[
         applies: |s| s.model.is_some(),
         cli_flags: |s| {
             Some(vec![
-                "--model".into(),
+                MODEL_FLAG.into(),
                 s.model.unwrap_or_default().to_string(),
             ])
         },

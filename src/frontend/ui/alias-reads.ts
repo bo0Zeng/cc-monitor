@@ -1,5 +1,5 @@
 /**
- * 别名一族六问**走通道，那台后端出成品**：
+ * 别名一族八问**走通道，那台后端出成品**：
  *
  * | 做什么 | 帧命令 | 成品 |
  * |---|---|---|
@@ -9,6 +9,8 @@
  * | 别名块预览（纯） | `aliases-block-render` | `{text}` |
  * | 别名块装 / 卸 | `aliases-block-install` / `-remove` | `{}` |
  * | 执行策略设成当前用户 `RemoteSigned`（用户确认后） | `powershell-policy-set` | [`PolicySet`] |
+ * | 一条别名 → 表单那几格（纯） | `aliases-to-form` | [`AliasForm`] |
+ * | 表单 → 一条别名（纯；带上正在改的那一条，没动的照原样留） | `aliases-from-form` | [`Alias`] |
  *
  * 从前是 monitor 的六条 Tauri 命令（`aliases_*`，规则与方言在 monitor 一份、事实问那台后端）；规则 · 方言 · 围栏整族进了
  * 那台后端（`src/backend/assets/aliases/`），这里只按形状严格收。**前端不做安全判断**。
@@ -135,6 +137,44 @@ export interface AliasListing {
 export interface AliasInstallReport {
   aliasPath: string;
   wroteAliasFile: boolean;
+}
+
+/** 「在哪起」那一格（线上名与后端 `form::TmuxMode` 逐字）：当前终端 · tmux 三种取名 · 接回一个 tmux 会话。 */
+export type TmuxMode = "none" | "auto" | "named" | "base" | "attach";
+
+/** 工作目录的一种情况：在 `at` 敲 → 进 `to`。 */
+export interface CwdCase {
+  at: string;
+  to: string;
+}
+
+/**
+ * 表单那几格（线上形状与后端 `assets/aliases/form.rs::AliasForm` 逐字）。**只是编辑界面** —— 合不合格由那台后端判；
+ * 与参数怎么互转也只在那台后端（`aliases-to-form` / `aliases-from-form`），这里一个 ccm 参数都不认。
+ */
+export interface AliasForm {
+  name: string;
+  /** 按所在目录分的那几种情况，按序（第一条对上的算）。 */
+  cwdIf: CwdCase[];
+  /** 其余情况进哪；`""` = 当前目录。 */
+  cwd: string;
+  /** 账号名；`""` = 不指定。 */
+  account: string;
+  /** 显式不带账号。 */
+  base: boolean;
+  tmux: TmuxMode;
+  tmuxName: string;
+  agent: string;
+  model: string;
+  launcher: string;
+  tmuxSize: string;
+  detach: boolean;
+  busRegister: boolean;
+  busNote: string;
+  /** 交给 agent 的其余参数（一串，写法由后端切）。 */
+  passthru: string;
+  /** 表单没有格子的 ccm 参数（一串）：原样带着走。 */
+  ccmOther: string;
 }
 
 /** 存的那一刻盘上那份不是读回时那一份（被别处改过）⇒ 什么都没写；界面重读再让人存。 */
@@ -302,6 +342,81 @@ export function decodeAliasListing(v: unknown): AliasListing {
   };
 }
 
+const FORM_KEYS = [
+  "name",
+  "cwdIf",
+  "cwd",
+  "account",
+  "base",
+  "tmux",
+  "tmuxName",
+  "agent",
+  "model",
+  "launcher",
+  "tmuxSize",
+  "detach",
+  "busRegister",
+  "busNote",
+  "passthru",
+  "ccmOther",
+] as const;
+const TMUX_MODES: readonly string[] = ["none", "auto", "named", "base", "attach"];
+
+/** `aliases-to-form` 的成品里那张表单。严格收。 */
+export function decodeAliasForm(v: unknown): AliasForm {
+  if (!isObj(v) || !sameKeys(v, FORM_KEYS) || !Array.isArray(v.cwdIf) || typeof v.tmux !== "string" || !TMUX_MODES.includes(v.tmux))
+    throw bad();
+  const texts = ["name", "cwd", "account", "tmuxName", "agent", "model", "launcher", "tmuxSize", "busNote", "passthru", "ccmOther"] as const;
+  const flags = ["base", "detach", "busRegister"] as const;
+  if (!texts.every((k) => typeof v[k] === "string") || !flags.every((k) => typeof v[k] === "boolean")) throw bad();
+  const cwdIf = v.cwdIf.map((c) => {
+    if (!isObj(c) || !sameKeys(c, ["at", "to"]) || typeof c.at !== "string" || typeof c.to !== "string") throw bad();
+    return { at: c.at, to: c.to };
+  });
+  const t = (k: (typeof texts)[number]): string => v[k] as string;
+  const b = (k: (typeof flags)[number]): boolean => v[k] as boolean;
+  return {
+    name: t("name"),
+    cwdIf,
+    cwd: t("cwd"),
+    account: t("account"),
+    base: b("base"),
+    tmux: v.tmux as TmuxMode,
+    tmuxName: t("tmuxName"),
+    agent: t("agent"),
+    model: t("model"),
+    launcher: t("launcher"),
+    tmuxSize: t("tmuxSize"),
+    detach: b("detach"),
+    busRegister: b("busRegister"),
+    busNote: t("busNote"),
+    passthru: t("passthru"),
+    ccmOther: t("ccmOther"),
+  };
+}
+
+/** 「＋ 新增别名」那张空表单（与 `aliases-to-form` 收一条空白别名答的那一张逐格相等，金样钉着）。 */
+export function emptyForm(): AliasForm {
+  return {
+    name: "",
+    cwdIf: [],
+    cwd: "",
+    account: "",
+    base: false,
+    tmux: "none",
+    tmuxName: "",
+    agent: "",
+    model: "",
+    launcher: "",
+    tmuxSize: "",
+    detach: false,
+    busRegister: false,
+    busNote: "",
+    passthru: "",
+    ccmOther: "",
+  };
+}
+
 /** `aliases-install` 的成品。严格收。 */
 export function decodeAliasInstallReport(v: unknown): AliasInstallReport {
   if (
@@ -356,6 +471,35 @@ export async function installAliases(
     if (err && err.layer === "peer" && err.why === "refused" && refusalOf(err.body)?.code === "stale") {
       throw new AliasesStale(saidOf(e, copyText("mcpReads.backend.tooOld")));
     }
+    throw said(e);
+  }
+}
+
+/** 一条别名 → 表单那几格（「改」那一下）：怎么切、认不得的词放哪，全在那台后端。 */
+export async function aliasToForm(origin: Origin, alias: Alias): Promise<AliasForm> {
+  try {
+    const body = jsonBody({ alias });
+    const budget = budgetWithin(ALIAS_BUDGET_MS);
+    const v = readJson(await chan.call(origin, "aliases-to-form", body, budget));
+    if (!isObj(v) || !sameKeys(v, ["form"])) throw bad();
+    return decodeAliasForm(v.form);
+  } catch (e) {
+    throw said(e);
+  }
+}
+
+/**
+ * 表单 → 一条别名。`orig` = 正在改的那一条（新增 ⇒ `null`）：那台后端按它把没动过的那几组原样留下。
+ * 一格文本的引号没配对 ⇒ 抛那台后端那句话。
+ */
+export async function aliasFromForm(origin: Origin, form: AliasForm, orig: Alias | null): Promise<Alias> {
+  try {
+    const body = jsonBody({ form, orig });
+    const budget = budgetWithin(ALIAS_BUDGET_MS);
+    const v = readJson(await chan.call(origin, "aliases-from-form", body, budget));
+    if (!isObj(v) || !sameKeys(v, ["alias"])) throw bad();
+    return decodeAlias(v.alias);
+  } catch (e) {
     throw said(e);
   }
 }

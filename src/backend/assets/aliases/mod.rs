@@ -3,7 +3,7 @@
 //! # 住进**那台机器的后端**
 //!
 //! 从前是 monitor 的 `account_aliases.rs`：规则与方言在 monitor 一份、事实经那台后端问。今天整族（本文件 ·
-//! [`dialect`] · [`block`] · [`fence`]）在那台后端里：读、算、经它自己的文件管理面写，界面经通道直问（`aliases-*` 六条帧命令，
+//! [`dialect`] · [`block`] · [`fence`] · [`form`]）在那台后端里：读、算、经它自己的文件管理面写，界面经通道直问（`aliases-*` 八条帧命令，
 //! 下面 `answer_*`）。「本机」与「远端」对后端没有区别（本机＝不走 ssh 的远端），`origin` 这一维随之退役：
 //! 方言那道闸改问这台自己（[`dialect_here`]）、`PATH` 撞名查这台自己的 `PATH`、围栏的符号链接那一步量这台自己的盘。
 //! 已握手的终端数（`boundTerminals`）不是这台盘上的事实，住 monitor 进程里 ⇒ 不在这里的成品里（界面另问 monitor）。
@@ -56,6 +56,7 @@ use std::path::Path;
 
 pub(crate) mod block;
 pub(crate) mod fence;
+pub(crate) mod form;
 
 use crate::assets::door::{self, Door};
 use crate::control::ccm::argv::flag;
@@ -934,7 +935,8 @@ fn write_alias_file(
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// 线上那六条：`aliases-render` · `-read` · `-install` · `-block-render` · `-block-install` · `-block-remove`
+// 线上那八条：`aliases-render` · `-read` · `-install` · `-block-render` · `-block-install` · `-block-remove`
+// ＋ 表单两向 `aliases-to-form` · `aliases-from-form`
 // ═══════════════════════════════════════════════════════════════════════════
 
 type Answer = Result<Value, (&'static str, String)>;
@@ -1008,6 +1010,28 @@ pub(crate) fn answer_install(d: &dyn Door, args: &Value) -> Answer {
         Err(InstallErr::Stale(said)) => Err(("stale", said)),
         Err(InstallErr::Refused(said)) => Err(refused(said)),
     }
+}
+
+/// `aliases-to-form {alias}` → `{form}`（纯）：一条别名摊成表单那几格（[`form::to_form`]）。
+pub(crate) fn answer_to_form(args: &Value) -> Answer {
+    let a: Alias = serde_json::from_value(args.get("alias").cloned().unwrap_or(Value::Null))
+        .map_err(|_| bad("`alias` must be {name, args[], restTo}"))?;
+    Ok(json!({ "form": form::to_form(&a) }))
+}
+
+/// `aliases-from-form {form, orig}` → `{alias}`（纯）：表单拼回一条别名；`orig` 必给（正在改的那一条，新增 ⇒ `null`），
+/// 没动过的那几组照它原样留（[`form::from_form`]）。一格文本的引号没配对 ⇒ `refused`。
+pub(crate) fn answer_from_form(args: &Value) -> Answer {
+    let f: form::AliasForm =
+        serde_json::from_value(args.get("form").cloned().unwrap_or(Value::Null))
+            .map_err(|_| bad("`form` must be the alias form"))?;
+    let orig: Option<Alias> = match args.get("orig") {
+        None => return Err(bad("missing `orig` (alias or null)")),
+        Some(v) => serde_json::from_value(v.clone())
+            .map_err(|_| bad("`orig` must be {name, args[], restTo} or null"))?,
+    };
+    let a = form::from_form(&f, orig.as_ref()).map_err(refused)?;
+    Ok(json!({ "alias": a }))
 }
 
 /// 别名块那三条：`rcPath` 那份文件过围栏、方言按它的扩展名定、再过方言闸。
