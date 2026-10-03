@@ -5,7 +5,7 @@
 //! - H2 没交端口 ⇒ `NotAsked`、零监听；交了但起不来（端口被占 / 端口认不出 / 上游配置认不出）⇒ `Failed`，不退出；
 //! - H3 生产接线（`accounts::upstream_select::host_relay`，`main.rs` 调的就是它）在**真子进程**里：
 //!   转发一整段 SSE 之后，子进程 stdout 上**一行 tee 都没有**（stdio 载体上 stdout 就是 wire）；
-//! - `main.rs` 那一处：流模式里恰好一处、排在一次性分派之后、选载体之前。
+//! - `main.rs` 那一处：流模式里恰好一处、排在一次性分派之后、起载体之前。
 //!
 //! ⚠ 走得到 `serve()` 的判据一律带读期限（风险 `5x`：把挂住换成红，同 `server_tests::send_request`）。
 
@@ -386,7 +386,7 @@ fn the_production_wiring_hosts_the_relay_and_never_writes_tee_lines_to_stdout() 
 }
 
 /// `main.rs` 那一处：生产段里 `accounts::upstream_select::host_relay(` **恰好一处**，
-/// 排在一次性分派（`is_query_mode`）之后、选载体（`listen::mode_from`）之前 ——
+/// 排在一次性分派（`is_query_mode`）之后、起载体（`run_over_stdio` / `serve_listening` 那一处分派）之前 ——
 /// 前者保证一次性子命令不会多开一个中转，后者保证两条载体都有它。
 #[test]
 fn main_hosts_the_relay_exactly_once_between_the_one_shot_dispatch_and_the_carrier_choice() {
@@ -397,11 +397,11 @@ fn main_hosts_the_relay_exactly_once_between_the_one_shot_dispatch_and_the_carri
         .unwrap_or_else(|e| panic!("main.rs 生产段里那一处接线：{e}"));
     let dispatch = guard_core::find_pinned(&prod, "if is_query_mode(&args) {")
         .unwrap_or_else(|e| panic!("一次性分派那一行：{e}"));
-    let carrier = guard_core::find_pinned(&prod, "listen::mode_from(")
-        .unwrap_or_else(|e| panic!("选载体那一行：{e}"));
+    let carrier = guard_core::find_pinned(&prod, "None => run_over_stdio(")
+        .unwrap_or_else(|e| panic!("起载体那一行：{e}"));
     assert!(
         dispatch < call && call < carrier,
-        "顺序应是 一次性分派({dispatch}) < 起中转({call}) < 选载体({carrier})"
+        "顺序应是 一次性分派({dispatch}) < 起中转({call}) < 起载体({carrier})"
     );
 }
 

@@ -163,6 +163,7 @@ export class TabManager {
       return t && t.origin === origin ? t.sessionId : null;
     },
     (sid) => this.store.tabs.get(sid)?.stream.trailerElement ?? null,
+    (sid, run) => this.runTimelines.has(`${sid}\u0000${run}`),
   );
 
 
@@ -587,7 +588,7 @@ export class TabManager {
 
   /**
    * 有就取、没有就建。`projectDir` 只认后端给的那一格（会话宣告 / 固定 tab 存下来的；会话事实那一路在 `onSessionFacts`）；行进来时传 `null` —— 不从行里猜。
-   * 给了、且与 tab 上的不同 ⇒ 改过来、重算标题（后端重宣告时对齐它）。
+   * 给了、且与 tab 上的不同 ⇒ 改过来、重算标题（后端重宣告时对齐它）；机器同理（已有 tab 只有宣告与行会再走到这里）。
    */
   ensureTab(
     sessionId: string,
@@ -599,6 +600,14 @@ export class TabManager {
   ): Tab {
     let tab = this.store.tabs.get(sessionId);
     if (tab) {
+      // 机器以后端宣告 / 行为准：tab 可能是按盘上存的旧标签建的（固定的 tab 复活），不改过来活卡永远对不上。
+      if (origin !== tab.origin) {
+        tab.origin = origin;
+        tab.title = this.computeTitle(tab);
+        this.refreshTabBar();
+        if (sessionId === this.store.activeId) this.publishActive();
+        if (tab.pinned) void this.prefs.persistPinned(); // 盘上那份同拍改写：等不到宣告的已结束会话下次起来也是对的
+      }
       // SSH 重连：远端会话掉线时被 flush 归档过，现在又收到它的行 = backend 在重放 = 会话仍
       // 活着 → 复活成 live。必须放在 ensureTab 里（在 onLine 的 seq 去重 return 之前），否则整段
       // 重放全被去重时连第一条行都走不到翻转。**仅远端**：本地归档由 PID 判活驱动，不靠「收到行」
@@ -933,6 +942,7 @@ export class TabManager {
   /** 面板那一行收起了：它的时间线不再留。 */
   closeRunTimeline(sid: string, run: string): void {
     this.runTimelines.delete(`${sid}\u0000${run}`);
+    this.live.unwatched(sid, run);
   }
 
   /** 装活卡的画法（主窗口入口装；独立查看器不装 ⇒ 只记账不画，见 `live-card.ts::LivePainter`）。 */

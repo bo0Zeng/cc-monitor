@@ -3620,6 +3620,15 @@ describe("步 17·B 固定：落盘 · 复活 · 正交", () => {
     expect(tabOf("s1").parentPath, "活着那条的真路径不许被盘上的旧值覆盖").toBe("/real.jsonl");
   });
 
+  it("盘上存的机器标签旧了：后端宣告在另一台 ⇒ tab 改过来，盘上那条同拍改写（下次起来就是对的标签）", async () => {
+    disk = { tabBar: { pinned: [{ sid: "s1", origin: "old-host", title: "T", jsonlPath: "/p/s1.jsonl" }] } };
+    await tm.loadPinned();
+    tm.ensureTab("s1", "/home/u/proj", "", "new-host");
+    await flushDisk();
+    expect(tabOf("s1").origin).toBe("new-host");
+    expect((pinnedOnDisk() as { sid: string; origin: string }[]).map((p) => [p.sid, p.origin])).toEqual([["s1", "new-host"]]);
+  });
+
   it("`togglePin` ⇒ 内存翻转 ＋ **盘上真的出现/消失那一条**", async () => {
     await tm.loadPinned(); // 先取得资格
     tm.ensureTab("s1", "/home/u/proj", "/p/s1.jsonl", LOCAL_ORIGIN);

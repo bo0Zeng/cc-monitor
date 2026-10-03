@@ -32,9 +32,14 @@ pub(crate) const TAP_CAPACITY: usize = 256;
 
 /// 进程级 hub：此刻每条流连接的 tap 发送端。
 /// 多客户：每条连接一条，扇出；那条连接走了（接收端没了）下一次交的时候摘掉。
+/// 丢了的件按原因数（没人连着 · 某条连接的通道满了），每种第 1、2、4、8… 次说一行。
 #[derive(Default)]
 pub(crate) struct TapHub {
     current: std::sync::Mutex<Vec<tokio::sync::mpsc::Sender<TapEvent>>>,
+    /// 没人连着时丢的件数。
+    unheard: std::sync::atomic::AtomicU64,
+    /// 某条连接的通道满了丢的件数（每条连接各算一件）。
+    full: std::sync::atomic::AtomicU64,
 }
 
 impl TapHub {
@@ -54,15 +59,39 @@ impl TapHub {
     }
 }
 
+/// 数一件，回这一种累计到几（第 1、2、4、8… 次时调用方说一行）。
+fn bump(c: &std::sync::atomic::AtomicU64) -> u64 {
+    c.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1
+}
+
 impl TapPort for TapHub {
     /// 立刻答收没收（`try_send`）：每条连接各交一份，至少一条收下 ⇒ `true`。没人连着 / 都满 ⇒ `false`
     /// （号已由 tee 占掉，缺口在各自接收侧可算）。已走的连接当场摘掉。
     fn offer(&self, ev: TapEvent) -> bool {
         let mut g = self.current.lock().unwrap_or_else(|e| e.into_inner());
         g.retain(|tx| !tx.is_closed());
+        if g.is_empty() {
+            let n = bump(&self.unheard);
+            if n.is_power_of_two() {
+                tracing::info!("[tap] 没有流连接，抄出来的事件丢了（累计 {n} 件）");
+            }
+            return false;
+        }
         let mut took = false;
         for tx in g.iter() {
-            took |= tx.try_send(ev.clone()).is_ok();
+            match tx.try_send(ev.clone()) {
+                Ok(()) => took = true,
+                Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => {
+                    let n = bump(&self.full);
+                    if n.is_power_of_two() {
+                        tracing::warn!(
+                            "[tap] 一条流连接的 tap 通道满了（容量 {} 件），事件丢了（累计 {n} 件）；那一段在界面上会断",
+                            tx.max_capacity()
+                        );
+                    }
+                }
+                Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => {}
+            }
         }
         took
     }

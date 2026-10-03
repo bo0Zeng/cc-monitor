@@ -31,7 +31,10 @@ export interface TapPayload {
 export const LIVE_PER_TAB = 2;
 /** 单张活卡正文最多留几个字符（只留尾巴）。 */
 export const LIVE_TEXT_KEEP = 32_768;
-/** 全部 tab 合起来，同时在攒的响应最多几个。 */
+/**
+ * 全部 tab 合起来，同时在攒的响应最多几个。满了先挤说完的、再挤子运行的；正在流的主运行不挤
+ * （它们每个运行本来就 ≤ `LIVE_PER_TAB`）⇒ 全是它们时照收主运行、不收子运行。
+ */
 export const LIVE_STREAMS_KEEP = 16;
 /** 每个 tab 记住几个已定稿的 `message.id`（先进先出）。 */
 export const TOMB_KEEP = 64;
@@ -78,6 +81,15 @@ interface Resp {
 /** 一件事改了哪几个 tab 的活卡（视图只重画这几个）。 */
 export type Touched = Set<string>;
 
+/**
+ * 一段流为什么没上屏 / 半路没了（正常撤卡 —— 定稿、收场、tab 结束 —— 不算）：
+ * 头一件不是 0 号 · 匿名（对不上 tab）· 断号 · 断在半路 · 上游报错收尾 · 满了被挤掉 · 满了不收。
+ */
+export type LostWhy = "head" | "anon" | "gap" | "broken" | "error" | "evicted" | "refused";
+
+/** 丢了一段时说一句：哪一种 · 这一种第几次 · 各种累计。 */
+export type SayLost = (why: LostWhy, n: number, all: Readonly<Partial<Record<LostWhy, number>>>) => void;
+
 const keyOf = (p: { origin: string; stream: string; resp: number }): string =>
   `${p.origin}\u0000${p.stream}\u0000${p.resp}`;
 
@@ -111,8 +123,16 @@ export class LiveCore {
   private readonly dead = new BoundedSet(DEAD_KEEP);
   private readonly tombs = new Map<string, BoundedSet>();
   private born = 0;
+  /** 每种丢了几段（判据与日志读）。 */
+  readonly lost: Partial<Record<LostWhy, number>> = {};
 
-  constructor(private readonly route: (origin: string, stream: string) => string | null) {}
+  constructor(
+    private readonly route: (origin: string, stream: string) => string | null,
+    /** 这个子运行的时间线开着吗（开着才留它说完的段等记录）。 */
+    private readonly watching: (sid: string, run: string) => boolean = () => false,
+    /** 丢了一段时说一句（同一种第 1、2、4、8… 次）。 */
+    private readonly say: SayLost = () => {},
+  ) {}
 
   /** 一个 tap 事件。回：哪几个 tab 的活卡变了。 */
   tap(p: TapPayload): Touched {
@@ -124,12 +144,14 @@ export class LiveCore {
       // 头一件就不是 0 号 ⇒ 开头丢了（对账键在里面），这个响应认不全 ⇒ 不收。
       if (p.n !== 0) {
         this.dead.add(key);
+        this.note("head");
         return touched;
       }
       const sid = this.route(p.origin, p.stream);
       if (sid === null) {
         // 对不上 tab ⇒ 匿名流：不显示、不留。
         this.dead.add(key);
+        this.note("anon");
         return touched;
       }
       r = {
@@ -144,11 +166,11 @@ export class LiveCore {
         clipped: false,
         born: this.born++,
       };
-      this.admit(r, touched);
+      if (!this.admit(r, touched)) return touched;
     }
     // 缺口：号连不上 ⇒ 这个响应断了。不补（补是 jsonl 的事），撤卡。
     if (p.n !== r.next) {
-      this.kill(r, touched);
+      this.kill(r, touched, "gap");
       return touched;
     }
     r.next += 1;
@@ -156,10 +178,9 @@ export class LiveCore {
       // 上游说完了（或转发断了但 message_stop 已经见过 —— 内容是全的）⇒ 等落盘；
       // 转发断在半路（claude 被 Esc 打断 / 上游断了）⇒ 撤（jsonl 到了自然补上）。
       if (p.end === "done" || r.stopped) {
-        r.stopped = true;
-        touched.add(r.sid);
+        this.settle(r, touched);
       } else {
-        this.kill(r, touched);
+        this.kill(r, touched, "broken");
       }
       return touched;
     }
@@ -183,6 +204,13 @@ export class LiveCore {
         this.kill(r, touched);
       }
     }
+    return touched;
+  }
+
+  /** 这个子运行的时间线收起了 ⇒ 它说完的那几段撤（只为等记录才留着的）。 */
+  unwatched(sid: string, run: string): Touched {
+    const touched: Touched = new Set();
+    for (const r of [...this.resps.values()]) if (r.sid === sid && r.run === run && r.stopped) this.kill(r, touched);
     return touched;
   }
 
@@ -227,26 +255,50 @@ export class LiveCore {
     return this.resps.size;
   }
 
-  private admit(r: Resp, touched: Touched): void {
-    // 同一个运行满了 ⇒ 先挤最老的已收尾那个，没有就挤最老的；全局满了 ⇒ 挤全局最老的。
+  /**
+   * 收一段新的。同一个运行满了 ⇒ 先挤最老的已收尾那个，没有就挤最老的。全局满了 ⇒ 先挤最老的说完的、
+   * 再挤最老的子运行的；只剩正在流的主运行 ⇒ 不挤，新来的是主运行照收、是子运行不收（回 `false`）。
+   */
+  private admit(r: Resp, touched: Touched): boolean {
     const mine = [...this.resps.values()]
       .filter((x) => x.sid === r.sid && x.run === r.run)
       .sort((a, b) => a.born - b.born);
     if (mine.length >= LIVE_PER_TAB) {
       const victim = mine.find((x) => x.stopped) ?? mine[0];
-      if (victim) this.kill(victim, touched);
+      if (victim) this.kill(victim, touched, "evicted");
     }
     if (this.resps.size >= LIVE_STREAMS_KEEP) {
-      const oldest = [...this.resps.values()].sort((a, b) => a.born - b.born)[0];
-      if (oldest) this.kill(oldest, touched);
+      const byAge = [...this.resps.values()].sort((a, b) => a.born - b.born);
+      const victim = byAge.find((x) => x.stopped) ?? byAge.find((x) => x.run !== null);
+      if (victim) this.kill(victim, touched, "evicted");
+      else if (r.run !== null) {
+        this.dead.add(r.key);
+        this.note("refused");
+        return false;
+      }
     }
     this.resps.set(r.key, r);
+    return true;
   }
 
-  private kill(r: Resp, touched: Touched): void {
+  /** 说完了：等记录。子运行的时间线没开着 ⇒ 没人等它的记录，当场撤。 */
+  private settle(r: Resp, touched: Touched): void {
+    r.stopped = true;
+    touched.add(r.sid);
+    if (r.run !== null && !this.watching(r.sid, r.run)) this.kill(r, touched);
+  }
+
+  private kill(r: Resp, touched: Touched, why?: LostWhy): void {
     this.resps.delete(r.key);
     this.dead.add(r.key);
     touched.add(r.sid);
+    if (why) this.note(why);
+  }
+
+  private note(why: LostWhy): void {
+    const n = (this.lost[why] ?? 0) + 1;
+    this.lost[why] = n;
+    if ((n & (n - 1)) === 0) this.say(why, n, { ...this.lost });
   }
 
   private tombOf(sid: string): BoundedSet {
@@ -286,11 +338,10 @@ export class LiveCore {
       }
       case "stop":
         if (!ev.ok) {
-          this.kill(r, touched);
+          this.kill(r, touched, "error");
           return;
         }
-        r.stopped = true;
-        touched.add(r.sid);
+        this.settle(r, touched);
         return;
       default:
         return;
@@ -365,8 +416,12 @@ export class LiveCards {
   constructor(
     route: (origin: string, stream: string) => string | null,
     private readonly trailerOf: TrailerOf,
+    /** 这个子运行的时间线开着吗（见 `LiveCore`）。 */
+    watching: (sid: string, run: string) => boolean = () => false,
   ) {
-    this.core = new LiveCore(route);
+    this.core = new LiveCore(route, watching, (why, n, all) =>
+      console.warn(`[live] 一段流没上屏 / 半路撤了：${why}（这一种第 ${n} 次；累计 ${JSON.stringify(all)}）`),
+    );
   }
 
   setPainter(p: LivePainter): void {
@@ -400,6 +455,11 @@ export class LiveCards {
 
   dropRun(sid: string, run: string): void {
     this.paint(this.core.dropRun(sid, run));
+  }
+
+  /** 这个子运行的时间线收起了。 */
+  unwatched(sid: string, run: string): void {
+    this.paint(this.core.unwatched(sid, run));
   }
 
   dropTab(sid: string): void {

@@ -190,10 +190,15 @@ async fn main() {
     // 「错误 exit2 + stderr 纯 {code,message} JSON」，客户端可整段 JSON-parse stderr）。
     tracing::info!("agent_home = {}", agent_home.display());
 
-    // **脱离常驻那条载体的 stderr 落盘**：宿主交了路径才接（monitor 只在起脱离那条时交）。
-    //   放在一次性子命令全部 `exit` 之后：它们的 stderr 是给人 / 给 JSON 解析看的，不动。放在选载体之前：接上之后这一行起的
+    // **脱离常驻那条载体的 stderr 落盘**：宿主交了路径才接（monitor 只在起脱离那条时交），先抢口、抢到了才接（[`claim_then_log`]）。
+    //   放在一次性子命令全部 `exit` 之后：它们的 stderr 是给人 / 给 JSON 解析看的，不动。放在起中转之前：接上之后这一行起的
     //   每一句（中转那两句、host key 警告、panic）都落进那份文件。
-    let installed = stderr_log::install_from_env(&|k| std::env::var(k).ok());
+    let env = |k: &str| std::env::var(k).ok();
+    let (listening, installed) =
+        match claim_then_log(&env, || stderr_log::install_from_env(&env)).await {
+            Ok(got) => got,
+            Err(code) => std::process::exit(code),
+        };
     tracing::info!("{}", installed.said());
     // 装上了 ⇒ 告诉只读面那份文件在哪（`backend-log`，机器页「日志」经它取回来看）。
     if let stderr_log::Installed::Logging(p) = &installed {
@@ -202,7 +207,7 @@ async fn main() {
 
     // **中转 ＋ 上游选择住常驻后端这个进程**：宿主交了端口才开
     //   （monitor 起本机后端时交；远端由 `--resident-ensure` 起常驻子进程时交；测试连接探针那一趟没人交 ⇒ 不开）。
-    //   放在选载体之前：两条载体（stdio / 常驻监听口）一样要。起不来只出声、不拖垮后端
+    //   放在起载体之前：两条载体（stdio / 常驻监听口）一样要。起不来只出声、不拖垮后端
     //   —— 理由与形状住 `relay::listen::host` 的头注。中转线程随本进程生、随本进程死。
     tracing::info!("{}", accounts::upstream_select::host_relay());
     // 全文搜索的常驻索引起来就后台建（两条载体都要；一次性线程，建完就退）。
@@ -219,23 +224,14 @@ async fn main() {
     // ⚠ **由环境决定，不由 argv 决定**：`SUBCOMMANDS` 那张表一动就要 bump `BUILD_ID`
     // 并进 `IPC-PROTOCOL.md` 的对拍面（`build_id_guard` / `protocol_doc_guard` 各钉一半），
     // 而本件**一条子命令都没加** —— 它换的是同一个流模式的载体。
-    // 判定住 [`listen::mode_from`]（**纯函数**，所以「只写了一半」那两条错误支都测得到）。
-    // `listen::resolve`：钥匙在文件里那一形（远端 `--resident-ensure` 起的）读出来再照常起。
-    let mode = match listen::mode_from(&|k| std::env::var(k).ok()).and_then(listen::resolve) {
-        Ok(m) => m,
-        Err(e) => {
-            // **fail closed**：宁可不起，也不要起一个不设防的口 —— 回环 TCP 没有权限位。
-            tracing::error!("监听口配置不成立 ⇒ 拒绝起：{e}");
-            std::process::exit(listen::EXIT_BAD_LISTEN_CONFIG);
-        }
-    };
+    // 判定住 [`listen::mode_from`]（**纯函数**，所以「只写了一半」那两条错误支都测得到），在 [`claim_then_log`] 里定、抢口。
 
     // (b) Emit the Hello handshake FIRST, flushed, before anything else.
     let hello = build_hello(&agent_home);
 
-    match mode {
+    match listening {
         None => run_over_stdio(hello, agent_home, with_bg, tail_only, with_pid).await,
-        Some((port, token)) => {
+        Some((listener, port, token)) => {
             // 这台账号库里各号共用的用户级 MCP：常驻那条载体上盯各号的配置文件，一有动静同步一趟（一次性的 stdio 那条不起）。
             inbound::watch_account_mcp();
             // 停机信号只挂**一次**（不在 accept 循环里每轮重装一个 SIGTERM 处理器）。
@@ -243,18 +239,14 @@ async fn main() {
             //   排空期间照常写应答，新来的阻塞命令回 `shutting_down`（`inbound::exit_after_drain`）。
             let stop = inbound::shutdown_listener();
             tokio::select! {
-                served = serve_listening(
+                () = serve_listening(
+                    listener,
                     port,
                     token,
                     hello,
                     agent_home,
                     (with_bg, tail_only, with_pid),
-                ) => {
-                    // 绑不上口 ⇒ 那一步交回退出码，在这里退（退出口只有 `main` 与 `exit_after_drain`）。
-                    if let Err(code) = served {
-                        std::process::exit(code);
-                    }
-                }
+                ) => {}
                 _ = stop => {
                     tracing::info!("shutdown signal received; exiting");
                 }
@@ -571,6 +563,56 @@ async fn handshake_one(
     }
 }
 
+/// 选载体、抢口；抢到了（或这条载体不用抢）才接 stderr 落盘（`install`）。
+///
+/// 那两份日志属于在听的那一个：口上已有常驻后端时，后起的这一个若先接，就把在跑那一个的日志滚走（再来一个就删掉）。
+/// ⇒ 配置不成立 / 抢不到口都不接，话只落自己原来的 stderr，退出码交回 `main` 退（一条命令都还没收，没有可排空的）。
+async fn claim_then_log(
+    env: &dyn Fn(&str) -> Option<String>,
+    install: impl FnOnce() -> stderr_log::Installed,
+) -> Result<
+    (
+        Option<(tokio::net::TcpListener, u16, String)>,
+        stderr_log::Installed,
+    ),
+    i32,
+> {
+    // `listen::resolve`：钥匙在文件里那一形（远端 `--resident-ensure` 起的）读出来再照常起。
+    let mode = match listen::mode_from(env).and_then(listen::resolve) {
+        Ok(m) => m,
+        Err(e) => {
+            // **fail closed**：宁可不起，也不要起一个不设防的口 —— 回环 TCP 没有权限位。
+            tracing::error!("监听口配置不成立 ⇒ 拒绝起：{e}");
+            return Err(listen::EXIT_BAD_LISTEN_CONFIG);
+        }
+    };
+    let Some((port, token)) = mode else {
+        return Ok((None, install()));
+    };
+    let addr = std::net::SocketAddr::new(listen::LOOPBACK, port);
+    let listener = match tokio::net::TcpListener::bind(addr).await {
+        Ok(l) => l,
+        Err(e) => {
+            let in_use = e.kind() == std::io::ErrorKind::AddrInUse;
+            // ★★ **绑不上就退出，绝不自己换端口。**
+            // 换端口 = 每台机 N 个后端（中转口与全部 SSH 各 N 份）⇒ 比今天更糟。
+            // 从前这里还写着「各自往 tmux server 装 `[50]` 槽位的全局 hook 互相盖」—— 今天 hook 按实例一格
+            // （`control/tmux_hook.rs::install_hooks`），那一条不成立了。
+            tracing::error!(
+                "绑不上 {addr}（{e}）⇒ 退出。\n\
+                 这个口上已经有东西了：宿主该**连上去读一行 hello 比对**，\n\
+                 对不上就出声并拒绝，**不许静默复用**，更不许换个口再起一个。"
+            );
+            return Err(if in_use {
+                listen::EXIT_ADDR_IN_USE
+            } else {
+                listen::EXIT_BAD_LISTEN_CONFIG
+            });
+        }
+    };
+    Ok((Some((listener, port, token)), install()))
+}
+
 /// `K-P1`：**常驻形态的接受循环** —— 一条流 + 不限次的「只读 hello 就走」。
 ///
 /// # 空转期为什么还留着一个 watcher
@@ -597,34 +639,14 @@ async fn handshake_one(
 /// **不重起自己**（`K14` 裁定：第一档，自愈单独立成 `K-P3`）。宿主不在时**没有监护**，
 /// 这是**如实登记的降级**，而且那句话要在 UI 上说出来（`KPY4` 钉它），不许只写在这条注释里。
 async fn serve_listening(
+    listener: tokio::net::TcpListener,
     port: u16,
     token: String,
     hello: Frame,
     agent_home: PathBuf,
     defaults: (bool, bool, bool),
-) -> Result<(), i32> {
+) {
     let addr = std::net::SocketAddr::new(listen::LOOPBACK, port);
-    let listener = match tokio::net::TcpListener::bind(addr).await {
-        Ok(l) => l,
-        Err(e) => {
-            let in_use = e.kind() == std::io::ErrorKind::AddrInUse;
-            // ★★ **绑不上就退出，绝不自己换端口。**
-            // 换端口 = 每台机 N 个后端（中转口与全部 SSH 各 N 份）⇒ 比今天更糟。
-            // 从前这里还写着「各自往 tmux server 装 `[50]` 槽位的全局 hook 互相盖」—— 今天 hook 按实例一格
-            // （`control/tmux_hook.rs::install_hooks`），那一条不成立了。
-            tracing::error!(
-                "绑不上 {addr}（{e}）⇒ 退出。\n\
-                 这个口上已经有东西了：宿主该**连上去读一行 hello 比对**，\n\
-                 对不上就出声并拒绝，**不许静默复用**，更不许换个口再起一个。"
-            );
-            // 退出码交回 `main` 退（一条命令都还没收，没有可排空的）。
-            return Err(if in_use {
-                listen::EXIT_ADDR_IN_USE
-            } else {
-                listen::EXIT_BAD_LISTEN_CONFIG
-            });
-        }
-    };
     tracing::info!("常驻监听口已就位：{addr}（多条流 + 不限次「只读 hello 就走」）");
 
     // 「谁在听」由常驻后端自己记（本机远端同一个写者；起它的那一方不写）。
@@ -865,6 +887,10 @@ fn agent_home(config_dir: Option<&std::path::Path>, from_env: bool) -> PathBuf {
 
 // 🪦这里原有 `shutdown_signal`（等一次 SIGTERM / SIGINT，别处 Ctrl-C）—— 下沉到 `platform/signal.rs::shutdown_listener`〔散文墓碑〕：
 //   平台 cfg 只许住那一层，而流模式的收场（`inbound::exit_after_drain`）也要它（排空时再来一次 ⇒ 不等了）。
+
+#[cfg(test)]
+#[path = "../../tests/backend/main_claim_tests.rs"]
+mod claim_tests;
 
 #[cfg(test)]
 #[path = "../../tests/backend/writer_task_tests.rs"]
