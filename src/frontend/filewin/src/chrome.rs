@@ -471,7 +471,10 @@ impl FileWindow {
             Cmd::NewFile => {
                 self.begin_new_file();
             }
-            Cmd::Upload => self.upload.open(),
+            Cmd::Upload => match self.one_at_a_time(super::shell::Trip::Upload) {
+                Some(why) => self.set_key_notice(why),
+                None => self.upload.open(),
+            },
             Cmd::Term => {
                 self.open_terminal_here(ctx);
             }
@@ -533,7 +536,7 @@ impl FileWindow {
                 );
             }
             let n = self.transfers_running();
-            if n > 0 {
+            if n > 0 || self.transfers_unseen() {
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     let caret = if self.transfers_open {
                         ph::CARET_DOWN
@@ -772,6 +775,7 @@ impl Workspace {
                     .wrap_mode(egui::TextWrapMode::Truncate),
             )
             .on_hover_text(tip)
+            .on_disabled_hover_text(tip)
             .clicked()
         };
         egui::ScrollArea::vertical()
@@ -836,25 +840,35 @@ impl Workspace {
                 ui.add_space(8.0);
                 section(ui, copy_text("rsFilewinChrome.side.thisMachine", &[]));
                 let home = self.home.0.lock().unwrap().clone();
-                let (home_ok, home_tip) = match &home {
-                    HomeState::Known(h) => (true, h.clone()),
-                    HomeState::Failed(why) => (false, why.clone()),
-                    _ => (false, copy_text("rsFilewinChrome.side.homeAsking", &[])),
+                // 问不到：悬停看得见原因，点一下再问；还在问：点了就记着，问到了就去。
+                let home_tip = match &home {
+                    HomeState::Known(h) => h.clone(),
+                    HomeState::Failed(why) => why.clone(),
+                    _ => copy_text("rsFilewinChrome.side.homeAsking", &[]),
                 };
                 if item(
                     ui,
                     ph::HOUSE,
                     &copy_text("rsFilewinChrome.side.home", &[]),
                     &home_tip,
-                    home_ok,
+                    true,
                     matches!(&home, HomeState::Known(h) if super::bookmarks::normalize_dir(h) == here_dir),
                 ) {
-                    if let HomeState::Known(h) = &home {
-                        go = Some(h.clone());
+                    match &home {
+                        HomeState::Known(h) => go = Some(h.clone()),
+                        HomeState::Failed(_) => {
+                            want_home = true;
+                            self.home_go = true;
+                        }
+                        _ => self.home_go = true,
                     }
                 }
                 if matches!(home, HomeState::NotAsked) {
                     want_home = true;
+                }
+                if let (true, HomeState::Known(h)) = (self.home_go, &home) {
+                    self.home_go = false;
+                    go = Some(h.clone());
                 }
                 if item(
                     ui,

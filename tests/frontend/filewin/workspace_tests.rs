@@ -797,6 +797,16 @@ async fn screenshot_for_the_shots_tool() {
         crate::find::testing::type_into_search(&ctx, &mut w, "retry");
         crate::find::testing::settle(&w.search, before, "截图的搜索那一张").await;
     }
+    // 一趟下载在路上（进度那一行）。
+    if scene == "pull" {
+        w.pull.begin("release.tar.gz");
+        w.pull.progress(1_200_000, 3_400_000);
+    }
+    // 新建目录那个框里名字是空的就点了确定：原因落在哪。
+    if scene == "mkdir-error" {
+        w.begin_mkdir();
+        w.confirm_write(None);
+    }
     let theme = crate::theme::testing::default_theme();
     let preview = scene == "main";
     let split = scene == "split";
@@ -1087,4 +1097,63 @@ fn a_narrow_window_cuts_nothing_off() {
             "{screen:?}：列表那一行不见了"
         );
     }
+}
+
+/// 当前目录的名字不是合法 UTF-8：新标签页 / 双栏照样落在那个目录（带着原始字节），不报「目录不存在」。
+#[test]
+fn a_new_tab_or_side_keeps_a_non_utf8_directory_by_its_bytes() {
+    let raw = b"/srv/caf\xe9".to_vec();
+    let mut first = pane("/srv/caf\u{FFFD}", &["a.txt"]);
+    first.cwd_raw = Some(raw.clone());
+    let mut ws = Workspace::new(first);
+    assert!(ws.open_tab(0));
+    assert_eq!(
+        ws.pane_on(0).cwd_raw.as_deref(),
+        Some(raw.as_slice()),
+        "新标签页丢了目录的字节"
+    );
+    assert!(ws.set_split(true));
+    assert_eq!(
+        ws.pane_on(1).cwd_raw.as_deref(),
+        Some(raw.as_slice()),
+        "右栏丢了目录的字节"
+    );
+}
+
+/// 双栏时同一时刻只有一个编辑面：左边开着一份文本 ⇒ 右边不接键盘 · 菜单 · 拖入、也不开第二份（两个会共用一套 egui id 互相抢输入）。
+#[test]
+fn only_one_editor_is_open_across_the_two_sides() {
+    let mut left = pane("/srv/a", &["a.txt"]);
+    left.edits.deliver(crate::editor::Arrived::Text {
+        path: "/srv/a/a.txt".into(),
+        name: "a.txt".into(),
+        text: "x".into(),
+        sha256: crate::find::testing::fake_sha256(""),
+    });
+    assert!(left.settle_opened_edits());
+    let right = pane("/srv/b", &["b.txt"]);
+    let mut ws = two_sides(left, right);
+    ws.focus_side(1);
+    let mut d = Drive::new();
+    d.frame(&mut ws, Vec::new());
+    let ctx = egui::Context::default();
+    assert!(
+        ws.pane_on(1).keys_blocked(&ctx),
+        "左边开着编辑面，右边照样接键盘"
+    );
+    assert!(!ws.pane_on_mut(1).begin_edit(0, None));
+    assert_eq!(
+        ws.pane_on(1).key_notice(),
+        Some(copy_text("rsFilewinShell.edit.elsewhere", &[]).as_str())
+    );
+    // 左边关掉之后右边就开得了（这里没有运行时 ⇒ 卡在下一道，说的是另一句）。
+    ws.pane_on_mut(0).discard_edit();
+    d.frame(&mut ws, Vec::new());
+    assert!(!ws.pane_on(1).keys_blocked(&ctx), "左边关了，右边还被挡着");
+    ws.pane_on_mut(1).begin_edit(0, None);
+    assert_eq!(
+        ws.pane_on(1).listing.error.lock().unwrap().clone(),
+        Some(copy_text("rsFilewinShell.edit.noRuntime", &[])),
+        "左边关了，右边开一份还是被挡在「别处开着」那一道"
+    );
 }

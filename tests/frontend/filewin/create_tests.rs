@@ -175,13 +175,12 @@ async fn an_impossible_name_keeps_the_box_up_and_sends_nothing() {
     let mut w = window_on(&wired, "/srv/data");
     w.begin_new_file();
     for bad in ["", "   ", "sub/x.md", ".", ".."] {
-        *w.listing.error.lock().unwrap() = None;
         *w.new_file_text_mut().unwrap() = bad.to_string();
         assert!(!w.confirm_new_file(None), "「{bad}」竟然发得出去");
         assert!(w.new_file_prompt().is_some(), "「{bad}」被拒了，框却收掉了");
         assert!(
-            w.listing.error.lock().unwrap().is_some(),
-            "「{bad}」被拒了却一句话都没说"
+            w.prompt_error().is_some() && w.listing.error.lock().unwrap().is_none(),
+            "「{bad}」被拒了，原因没说在框里"
         );
     }
     // 给它点时间：真有请求在飞的话，这时候已经落账了。
@@ -214,7 +213,7 @@ fn no_line_says_so_instead_of_doing_nothing() {
     *w.new_file_text_mut().unwrap() = "a.md".to_string();
     assert!(!w.confirm_new_file(None), "没连上后端却说发出去了");
     assert_eq!(
-        w.listing.error.lock().unwrap().as_deref(),
+        w.prompt_error().as_deref(),
         Some(NO_LINE.as_str()),
         "没连上后端，说的不是那一句"
     );

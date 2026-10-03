@@ -358,6 +358,8 @@ pub async fn apply_remote_in(
             });
             if *is_dir {
                 a["recursive"] = serde_json::Value::Bool(true);
+                // 一趟只删一段：删够了后端停在两条之间、回还剩几条，这里接着发（见下）。
+                a["limit"] = serde_json::json!(TREE_SLICE);
             }
             ("files-delete", a)
         }
@@ -390,9 +392,21 @@ pub async fn apply_remote_in(
     if let Some(r) = root_raw {
         args["root"] = super::source::wire_bytes(r);
     }
-    super::source::ask(line, origin, cmd, &args, budget_for(op))
-        .await
-        .map(|_| ())
+    // 删一整棵树：一趟一段，`remaining` 不是 0 就接着发同一个请求，直到删完 / 出错
+    // （此前一趟删到底，窗口 120 秒等不到就说失败，而后端照删）。别的写操作一趟就完。
+    loop {
+        let d = super::source::ask(line, origin, cmd, &args, budget_for(op)).await?;
+        if remaining_of(&d) == 0 {
+            return Ok(());
+        }
+    }
+}
+
+/// 递归删那一趟回的「还剩几条」（缺 ⇒ 0：一趟删完了）。
+pub fn remaining_of(d: &serde_json::Value) -> u64 {
+    d.get("remaining")
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or(0)
 }
 
 /// 这一件的往返上限：删目录（整棵树）放宽到 [`TREE_BUDGET`]，其余照旧 [`WRITE_BUDGET`]。
@@ -406,6 +420,10 @@ pub fn budget_for(op: &WriteOp) -> std::time::Duration {
 /// 删一整棵树的往返上限。后端那一趟在阻塞档（开跑之后打不断），上限十万条、
 /// 每条两次路径解析 ⇒ 给它比单件写宽一档的等待；**这个数只管「窗口等多久」**，不管后端跑多久。
 pub const TREE_BUDGET: std::time::Duration = std::time::Duration::from_secs(120);
+
+/// 删一整棵树时一趟让后端删几条（删够了停在两条之间、回还剩几条）：列一遍剩下的树 ＋ 删这一段
+/// 要落在一趟的等待（[`TREE_BUDGET`]）里；后端不看钟，一趟多大由这一侧定。
+pub const TREE_SLICE: u64 = 10_000;
 
 /// 删这一行的那一件（有损名带着原始字节）。窗口上「删除」那一跳（单删 · 批量删）只经这一处拼。
 pub fn delete_op(r: &Listed) -> WriteOp {

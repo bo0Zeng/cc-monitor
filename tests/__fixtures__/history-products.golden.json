@@ -61,6 +61,7 @@
         "sessionId": "0000aaaa-0000-4000-8000-000000000001",
         "starred": true,
         "startedAt": 10,
+        "title": "占位标题",
         "updatedAt": 20
       },
       {
@@ -79,6 +80,7 @@
         "sessionId": "0000aaaa-0000-4000-8000-000000000004",
         "starred": true,
         "startedAt": 30,
+        "title": "0000aaaa",
         "updatedAt": 40
       }
     ]
@@ -101,6 +103,7 @@
         "sessionId": "019a0000-0000-7000-8000-00000000c0de",
         "starred": true,
         "startedAt": 777,
+        "title": "占位摘录",
         "updatedAt": 777
       }
     ]

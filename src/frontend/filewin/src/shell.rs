@@ -218,6 +218,10 @@ pub struct Listing {
     pub hidden: Arc<Mutex<Vec<Listed>>>,
     /// 隐藏文件显示着吗（缺省 `true`）。一屏落地时按它分。
     pub show_hidden: Arc<std::sync::atomic::AtomicBool>,
+    /// 此刻选的那一档排序（[`FileWindow::set_sort`] 先改它再重排）：一屏落地时出发那一档与它不同 ⇒ 按它重排。
+    pub sort: Arc<Mutex<Sort>>,
+    /// 上一趟有几项读不出来（后端照数，没列出）。
+    pub unreadable: Arc<AtomicU64>,
 }
 
 impl Default for Listing {
@@ -230,6 +234,8 @@ impl Default for Listing {
             truncated: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             hidden: Arc::new(Mutex::new(Vec::new())),
             show_hidden: Arc::new(std::sync::atomic::AtomicBool::new(true)),
+            sort: Arc::new(Mutex::new(Sort::default())),
+            unreadable: Arc::new(AtomicU64::new(0)),
         }
     }
 }
@@ -238,18 +244,27 @@ impl Default for Listing {
 ///
 /// 🔴 与它**刻意是两个函数**：没问成的那几形（无运行时 / 无通道）交不出这一格，
 /// 而给它编一个「不知道」的第三态，只会让「没问过」与「问了没被截断」混在一起。
+/// `by` ＝ 出发时那一档排序：落地时用户已经换了档 ⇒ 按现在那一档重排（表头指着哪一列，行就按哪一列）。
 pub fn store_listed_if_current(
     l: &Listing,
     mine: u64,
-    r: Result<(Vec<Listed>, bool), String>,
+    r: Result<(Vec<Listed>, super::source::Cut), String>,
+    by: Sort,
 ) -> bool {
     match r {
-        Ok((rows, truncated)) => {
+        Ok((rows, cut)) => {
             // ⚠ 落行那一步会判号并可能整份丢掉，而截断那一格描述的是**同一趟**，
             //   不许一半落一半不落 ⇒ 只在真落了之后写它。
             let kept = store_if_current(l, mine, Ok(rows));
             if kept {
-                l.truncated.store(truncated, Ordering::SeqCst);
+                l.truncated.store(cut.truncated, Ordering::SeqCst);
+                l.unreadable.store(cut.unreadable, Ordering::SeqCst);
+                // 落地之后才读那一档：在这之前换的档由这里补排，在这之后换的由 `set_sort` 就地排。
+                let now = *l.sort.lock().unwrap();
+                if now != by {
+                    super::source::sort_rows(&mut l.rows.lock().unwrap(), now);
+                    super::source::sort_rows(&mut l.hidden.lock().unwrap(), now);
+                }
             }
             kept
         }
@@ -289,10 +304,11 @@ pub fn store_if_current(l: &Listing, mine: u64, r: Result<Vec<Listed>, String>) 
 }
 
 impl Listing {
-    /// 开一趟。回的是这一趟的号（调用方不需要它，但判据要）。
+    /// 开一趟。回的是这一趟的号：每趟一个新号，只收**最后发出的那一趟**
+    /// （同一个目录两趟在飞，后发的先回、先发的后回 ⇒ 先发的那份丢掉，不把刚删的文件又摆回来）。
     pub fn start(&self) -> u64 {
         self.inflight.fetch_add(1, Ordering::SeqCst);
-        self.epoch.load(Ordering::SeqCst)
+        self.epoch.fetch_add(1, Ordering::SeqCst) + 1
     }
 
     /// 换目录：号 +1（在飞的那些从此全部作废）、内容清空。
@@ -509,6 +525,18 @@ pub struct FileWindow {
     pub dragging: bool,
     /// 起过几摞写操作（与 `write_board.rounds()` 比 ⇒ 有没有还没回话的；关标签那一问用）。
     writes_started: u64,
+    /// 起过几摞上传 / 复制 / 跨机复制（与各自看板的 `rounds()` 比 ⇒ 那一类还有一趟没完）。
+    drops_started: u64,
+    copies_started: u64,
+    crosses_started: u64,
+    /// 框里那一问做不成的原因（画在框里；框外列表上方那一行被暗底盖着）。框收掉就清。
+    pub(super) prompt_error: Arc<Mutex<Option<String>>>,
+    /// 上传 · 下载 · 跨机三块看板，上一次看过的是第几趟结局（收起时有新结局 ⇒ 状态栏那颗开关留着）。
+    transfers_seen: [u64; 3],
+    /// 搜索命中那一摞画好的行（按那一问的号与落地趟数缓存：没变就不重建）。
+    hit_rows: (u64, u64, Arc<Vec<String>>),
+    /// 别的栏 / 标签页开着编辑面（或正在读一份来开）：这一栏不再开第二个（同一时刻只有一个编辑面）。
+    pub(super) editor_elsewhere: bool,
 }
 
 /// 一个摆着的右键菜单：**在哪儿 · 列哪几项 · 对几项说话**。
@@ -654,6 +682,13 @@ impl FileWindow {
             focused: true,
             dragging: false,
             writes_started: 0,
+            drops_started: 0,
+            copies_started: 0,
+            crosses_started: 0,
+            prompt_error: Arc::new(Mutex::new(None)),
+            transfers_seen: [0; 3],
+            hit_rows: (u64::MAX, u64::MAX, Arc::new(Vec::new())),
+            editor_elsewhere: false,
         }
     }
 
@@ -675,8 +710,7 @@ impl FileWindow {
                     return;
                 };
                 let origin = self.source.origin();
-                // ⚠ 带**这一刻**选的那一档走。用户在飞行途中换了档 ⇒ [`Self::set_sort`]
-                //   会把落地的那一摞就地重排，所以两种顺序都不会错。
+                // ⚠ 带**这一刻**选的那一档走；落地时用户已换了档 ⇒ [`store_listed_if_current`] 按现在那一档重排。
                 let by = self.sort;
                 h.spawn(async move {
                     let r = super::source::list_via_backend_at(
@@ -687,7 +721,7 @@ impl FileWindow {
                         by,
                     )
                     .await;
-                    store_listed_if_current(&l, mine, r);
+                    store_listed_if_current(&l, mine, r, by);
                 });
             }
             // ── 没有运行时 ⇒ 问不了后端，也走不了 SFTP 那条退路 ⇒ **出声**。
@@ -819,6 +853,8 @@ impl FileWindow {
             return false;
         }
         self.sort = sort;
+        // 先记下这一档，再排手上这一摞（在路上的那一趟落地时比这一档，见 `store_listed_if_current`）。
+        *self.listing.sort.lock().unwrap() = sort;
         super::source::sort_rows(&mut self.listing.rows.lock().unwrap(), sort);
         super::source::sort_rows(&mut self.listing.hidden.lock().unwrap(), sort);
         true
@@ -964,15 +1000,27 @@ impl FileWindow {
             _ => return None,
         };
         // ② 握锁扫一遍（**只扫一遍，只在这一次 reveal 里**，不是每帧）。
-        let found = {
+        let (mut found, hidden) = {
             let rows = self.listing.rows.lock().unwrap();
+            let hidden = self.listing.hidden.lock().unwrap();
             // ⚠ 列表还没到货 ⇒ **这一帧不算「滚过了」**，下一帧再来
             //   （不然会在空列表上判成「那一行不在」）。
-            if rows.is_empty() {
+            if rows.is_empty() && hidden.is_empty() {
                 return None;
             }
-            super::rows::reveal_index(&rows, &want)
+            let found = super::rows::reveal_index(&rows, &want);
+            let hidden = found.is_none() && super::rows::reveal_index(&hidden, &want).is_some();
+            (found, hidden)
         };
+        // 它是一个隐藏文件、而隐藏文件关着 ⇒ 打开显示隐藏文件、照样跳过去，说一句（不说「可能被删了」）。
+        if hidden {
+            self.set_show_hidden(true);
+            found = super::rows::reveal_index(&self.listing.rows.lock().unwrap(), &want);
+            self.key_notice = Some(copy_text(
+                "rsFilewinShell.reveal.hiddenShown",
+                &[("want", &want)],
+            ));
+        }
         // ③ 锁放掉了，这里才改自己。
         if let Some(r) = self.reveal.as_mut() {
             r.scrolled = true;
@@ -1049,6 +1097,16 @@ impl FileWindow {
         true
     }
 
+    /// 命中那一摞画成的行：那一问的号与落地趟数都没变 ⇒ 用上一帧那一份（几千条命中不每帧整份克隆、重拼）。
+    pub fn hit_rows(&mut self) -> Arc<Vec<String>> {
+        let key = (self.search.current(), self.search.rounds());
+        if (self.hit_rows.0, self.hit_rows.1) != key {
+            let rows = self.search.hit_texts();
+            self.hit_rows = (key.0, key.1, Arc::new(rows));
+        }
+        self.hit_rows.2.clone()
+    }
+
     /// 「只搜当前目录」开关（判据用；界面上是搜索框旁那个勾）。
     pub fn set_search_here(&mut self, on: bool) {
         self.search_here = on;
@@ -1057,12 +1115,7 @@ impl FileWindow {
     /// 点了第 `i` 条文件名命中 ⇒ 进它所在的目录、高亮它；清掉搜索框（屏幕换回目录列表，那一行亮着）。
     /// 回值 = 真的跳了（下标对得上这一摞）。
     pub fn jump_to_find_hit(&mut self, i: usize) -> bool {
-        let Some(hit) = self
-            .search
-            .shown()
-            .outcome
-            .and_then(|o| o.hits.get(i).cloned())
-        else {
+        let Some(hit) = self.search.hit(i) else {
             return false;
         };
         let at = super::source::RemotePath::from_bytes(&hit.path);
@@ -1165,6 +1218,10 @@ impl FileWindow {
         if items.is_empty() {
             return false;
         }
+        if let Some(why) = self.one_at_a_time(Trip::Upload) {
+            self.key_notice = Some(why);
+            return false;
+        }
         // 有损目录里也传：暂存区那一段与目录无关，探在不在与提交按目录的字节寻址（此前 W5-FILES 在这里出声拒）。
         let items: Vec<Pending> = items
             .into_iter()
@@ -1174,12 +1231,11 @@ impl FileWindow {
             })
             .collect();
         let Some(h) = self.rt.clone() else {
-            *self.listing.error.lock().unwrap() =
-                Some(copy_text("rsFilewinShell.upload.noRuntime", &[]).into());
+            *self.say_slot() = Some(copy_text("rsFilewinShell.upload.noRuntime", &[]).into());
             return false;
         };
         let Some(line) = self.line.clone() else {
-            *self.listing.error.lock().unwrap() = Some(NO_LINE.to_string());
+            *self.say_slot() = Some(NO_LINE.to_string());
             return false;
         };
         let origin = self.source.origin();
@@ -1189,7 +1245,9 @@ impl FileWindow {
         board.attach(ctx);
         // 🔴新的一摞 ⇒ 取消台复位。不复位的后果是具体的：
         //    上一摞按过取消 ⇒ 这一摞一件都起不来，而屏幕上看起来是「拖进去没反应」。
+        //    （上一摞还在飞时不会走到这里：`one_at_a_time` 先挡下了。）
         board.cancels().reset();
+        self.drops_started += 1;
         h.spawn(async move {
             // 上传那一腿也经通道（开单 → 起跑并看 → 提交），拿同一条线 ＋ 同一个地址。
             let (up_line, up_origin) = (line.clone(), origin.clone());
@@ -1318,6 +1376,11 @@ impl FileWindow {
     /// SFTP 协议的扩展，本机复制压根不经 SFTP ⇒ 从前本机源上要出声拒。
     /// 今天窗口**只可能**看着一台远端（`Source` 是 newtype）⇒ 那句话说不出口了。
     pub fn begin_copy(&mut self, i: usize) -> bool {
+        if let Some(why) = self.one_at_a_time(Trip::Copy) {
+            self.key_notice = Some(why);
+            return false;
+        }
+        *self.prompt_error.lock().unwrap() = None;
         let row = {
             let rows = self.listing.rows.lock().unwrap();
             match rows.get(i) {
@@ -1336,6 +1399,7 @@ impl FileWindow {
     /// 收掉那个框，什么都不做。
     pub fn cancel_copy(&mut self) {
         self.copy_prompt = None;
+        *self.prompt_error.lock().unwrap() = None;
     }
 
     /// 框里那个名字 → 一趟真复制。回值 = 真的起来了。
@@ -1347,7 +1411,7 @@ impl FileWindow {
             return false;
         };
         let Some(job) = p.to_job() else {
-            *self.listing.error.lock().unwrap() = Some(copy_text(
+            *self.say_slot() = Some(copy_text(
                 "rsFilewinShell.copy.badName",
                 &[("name", &p.new_name.to_string())],
             ));
@@ -1357,6 +1421,7 @@ impl FileWindow {
             return false;
         }
         self.copy_prompt = None;
+        *self.prompt_error.lock().unwrap() = None;
         true
     }
 
@@ -1366,17 +1431,21 @@ impl FileWindow {
     /// 这里只负责把「问谁 · 怎么问 · 怎么起」三个口接上去（同 [`Self::start_drop`]）。
     /// 而本函数接不上（**没运行时**）要**出声**，判据见 `shell_tests`。
     pub fn start_copy(&mut self, job: CopyJob, ctx: Option<egui::Context>) -> bool {
+        if let Some(why) = self.one_at_a_time(Trip::Copy) {
+            *self.say_slot() = Some(why);
+            return false;
+        }
         let Some(h) = self.rt.clone() else {
-            *self.listing.error.lock().unwrap() =
-                Some(copy_text("rsFilewinShell.copy.noRuntime", &[]).into());
+            *self.say_slot() = Some(copy_text("rsFilewinShell.copy.noRuntime", &[]).into());
             return false;
         };
         let Some(line) = self.line.clone() else {
-            *self.listing.error.lock().unwrap() = Some(NO_LINE.to_string());
+            *self.say_slot() = Some(NO_LINE.to_string());
             return false;
         };
         let origin = self.source.origin();
         let board = self.copy_board.clone();
+        self.copies_started += 1;
         // 🔴 把窗口交给看板（同 `start_drop`）：「在跑」与结局都是从 tokio 那条线程写进来的，
         //    不敲一下，屏幕要等用户下次动鼠标才更新。
         board.attach(ctx);
@@ -1412,18 +1481,22 @@ impl FileWindow {
     /// 这里只接「问谁 · 怎么问 · 怎么起」三个口。参数是跨目录那一形（[`super::workspace::across_args`]）。
     /// 〔FW34 那一版〕只收一件、只收文件；今天一件就是一摞里只有一件。
     pub fn start_copy_batch(&mut self, jobs: Vec<CopyJob>, ctx: Option<egui::Context>) -> bool {
+        if let Some(why) = self.one_at_a_time(Trip::Copy) {
+            *self.say_slot() = Some(why);
+            return false;
+        }
         let Some(h) = self.rt.clone() else {
-            *self.listing.error.lock().unwrap() =
-                Some(copy_text("rsFilewinShell.copy.noRuntime", &[]));
+            *self.say_slot() = Some(copy_text("rsFilewinShell.copy.noRuntime", &[]));
             return false;
         };
         let Some(line) = self.line.clone() else {
-            *self.listing.error.lock().unwrap() = Some(NO_LINE.to_string());
+            *self.say_slot() = Some(NO_LINE.to_string());
             return false;
         };
         let origin = self.source.origin();
         let board = self.copy_board.clone();
         board.attach(ctx);
+        self.copies_started += 1;
         let total = jobs.len();
         h.spawn(async move {
             let (probe_line, probe_origin) = (line.clone(), origin.clone());
@@ -1507,6 +1580,11 @@ impl FileWindow {
 
     /// 摆出「复制到另一台」那一问（机器名 ＋ 目标目录，空 ＝ 那台的 home）。回值 ＝ 真的摆出来了。
     pub fn begin_cross(&mut self, i: usize) -> bool {
+        if let Some(why) = self.one_at_a_time(Trip::Cross) {
+            self.key_notice = Some(why);
+            return false;
+        }
+        *self.prompt_error.lock().unwrap() = None;
         let Some((name, src)) = self
             .listing
             .rows
@@ -1538,21 +1616,29 @@ impl FileWindow {
             return false;
         };
         if p.machine.trim().is_empty() {
-            *self.listing.error.lock().unwrap() =
-                Some(copy_text("rsFilewinCrossCopy.prompt.noMachine", &[]));
+            *self.say_slot() = Some(copy_text("rsFilewinCrossCopy.prompt.noMachine", &[]));
+            return false;
+        }
+        if let Some(why) = self.one_at_a_time(Trip::Cross) {
+            *self.say_slot() = Some(why);
             return false;
         }
         let Some(h) = self.rt.clone() else {
-            *self.listing.error.lock().unwrap() =
-                Some(copy_text("rsFilewinShell.size.noRuntime", &[]));
+            *self.say_slot() = Some(copy_text("rsFilewinShell.size.noRuntime", &[]));
             return false;
         };
         let Some(line) = self.line.clone() else {
-            *self.listing.error.lock().unwrap() = Some(NO_LINE.to_string());
+            *self.say_slot() = Some(NO_LINE.to_string());
             return false;
         };
         self.cross_prompt = None;
+        *self.prompt_error.lock().unwrap() = None;
         self.cross_board.attach(ctx);
+        self.crosses_started += 1;
+        let p = super::cross_copy::CrossPrompt {
+            machine: super::cross_copy::origin_of(&p.machine),
+            ..p
+        };
         super::cross_copy::spawn(&h, line, self.source.origin(), p, self.cross_board.clone());
         true
     }
@@ -1570,21 +1656,24 @@ impl FileWindow {
             ));
             ui.label(copy_text("rsFilewinCrossCopy.prompt.machine", &[]));
             // 下拉选（本机 ＋ 已配远端，除开这一台），下面那一格照旧可以手填。
+            // 框里写的是给人看的名字（本机写「本机」），发出去时才换回机器的地址（`cross_copy::origin_of`）。
             let here = self.source.origin().0;
             egui::ComboBox::from_id_salt("filewin-cross-machine")
                 .selected_text(p.machine.clone())
                 .show_ui(ui, |ui| {
                     for m in self.machines.iter().filter(|m| **m != here) {
-                        ui.selectable_value(&mut p.machine, m.clone(), m.as_str());
+                        let shown = super::cross_copy::shown_machine(m);
+                        ui.selectable_value(&mut p.machine, shown.clone(), shown);
                     }
                 });
             go |= prompt_field(ui, &mut p.machine);
+            self.prompt_error_ui(ui);
             ui.label(copy_text("rsFilewinCrossCopy.prompt.dir", &[]));
             let r = ui.text_edit_singleline(&mut p.dir);
             go |= r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
             ui.label(copy_text("rsFilewinCrossCopy.prompt.hint", &[]));
             ui.horizontal(|ui| {
-                go = ui.button(super::cross_copy::CROSS_LABEL.as_str()).clicked();
+                go |= ui.button(super::cross_copy::CROSS_LABEL.as_str()).clicked();
                 cancel = ui
                     .button(copy_text("rsFilewinShell.copyUi.cancel", &[]))
                     .clicked();
@@ -1593,6 +1682,7 @@ impl FileWindow {
         self.cross_prompt = Some(p);
         if cancel || esc {
             self.cross_prompt = None;
+            *self.prompt_error.lock().unwrap() = None;
         } else if go {
             let ctx = ui.ctx().clone();
             self.confirm_cross(Some(ctx));
@@ -1625,6 +1715,7 @@ impl FileWindow {
                 &[("name", &p.src_name.to_string())],
             ));
             go |= prompt_field(ui, &mut p.new_name);
+            self.prompt_error_ui(ui);
             ui.label(&copy_text("rsFilewinShell.copyUi.sameDirOnly", &[]));
             ui.horizontal(|ui| {
                 if ui.button(super::copy::COPY_LABEL.as_str()).clicked() {
@@ -1665,6 +1756,7 @@ impl FileWindow {
     /// `if !self.remote_only() { return false; }`，那不是四道闸被删掉了，
     /// 是它们要守的那个状态整条不在了（逐条理由住 `super::source::Source` 头注）。
     pub fn begin_mkdir(&mut self) -> bool {
+        *self.prompt_error.lock().unwrap() = None;
         self.write_prompt = Some(WritePrompt::for_mkdir(&self.cwd));
         true
     }
@@ -1678,6 +1770,7 @@ impl FileWindow {
         let Some(row) = self.writable_row(i) else {
             return false;
         };
+        *self.prompt_error.lock().unwrap() = None;
         self.write_prompt = Some(WritePrompt::for_rename(&self.cwd, &row));
         true
     }
@@ -1698,6 +1791,7 @@ impl FileWindow {
             return false;
         };
         let refs: Vec<&super::source::Listed> = rows.iter().collect();
+        *self.prompt_error.lock().unwrap() = None;
         self.write_prompt = Some(WritePrompt::for_chmod_many(&self.cwd, &refs));
         // 框一摆出来就逐项问现值（`files-stat` 的 `mode`）；答回来之后框上说、只预填一次。
         let paths: Vec<String> = rows.iter().map(|r| r.path.clone()).collect();
@@ -1748,6 +1842,7 @@ impl FileWindow {
     /// 收掉那个框，什么都不做。
     pub fn cancel_write(&mut self) {
         self.write_prompt = None;
+        *self.prompt_error.lock().unwrap() = None;
     }
 
     /// 框里那几个字 → 一摞真操作。回值 = 真的起来了。
@@ -1762,7 +1857,7 @@ impl FileWindow {
         let ops = match p.to_ops() {
             Ok(ops) => ops,
             Err(why) => {
-                *self.listing.error.lock().unwrap() = Some(why);
+                *self.say_slot() = Some(why);
                 return false;
             }
         };
@@ -1770,6 +1865,7 @@ impl FileWindow {
             return false;
         }
         self.write_prompt = None;
+        *self.prompt_error.lock().unwrap() = None;
         true
     }
 
@@ -1783,12 +1879,11 @@ impl FileWindow {
             return false;
         }
         let Some(h) = self.rt.clone() else {
-            *self.listing.error.lock().unwrap() =
-                Some(copy_text("rsFilewinShell.writes.noRuntime", &[]).into());
+            *self.say_slot() = Some(copy_text("rsFilewinShell.writes.noRuntime", &[]).into());
             return false;
         };
         let Some(line) = self.line.clone() else {
-            *self.listing.error.lock().unwrap() = Some(NO_LINE.to_string());
+            *self.say_slot() = Some(NO_LINE.to_string());
             return false;
         };
         let origin = self.source.origin();
@@ -1920,6 +2015,11 @@ impl FileWindow {
     /// 往外拖就是往本机盘上写一份，落点当然在本机。要求的是「本地不需要**文件管理器**」。
     /// 🔴〔2026-09-23 本机侧退役〕开头那道「本机源出声拒」的闸删了 —— 同 [`Self::begin_copy`]。
     pub fn begin_pull(&mut self, i: usize) -> bool {
+        if let Some(why) = self.one_at_a_time(Trip::Download) {
+            self.key_notice = Some(why);
+            return false;
+        }
+        *self.prompt_error.lock().unwrap() = None;
         let (row, full) = {
             let rows = self.listing.rows.lock().unwrap();
             match rows.get(i) {
@@ -1941,6 +2041,7 @@ impl FileWindow {
     pub fn cancel_pull(&mut self) {
         self.pull_ask = None;
         self.pull_raw = None;
+        *self.prompt_error.lock().unwrap() = None;
     }
 
     /// 框里那一串 → 线上的本机落点（有损名那一行按平台换成原始字节 / 有损形），外加结局旁那一句。
@@ -1968,6 +2069,7 @@ impl FileWindow {
                     return false;
                 }
                 self.pull_ask = None;
+                *self.prompt_error.lock().unwrap() = None;
                 true
             }
             Ask::Dest { .. } => {
@@ -1978,11 +2080,12 @@ impl FileWindow {
                 };
                 match super::download::judge_dest(&ask, exists) {
                     DestVerdict::Rejected(why) => {
-                        *self.listing.error.lock().unwrap() = Some(why);
+                        *self.say_slot() = Some(why);
                         false
                     }
                     DestVerdict::NeedsOverwrite(next) => {
                         self.pull_ask = Some(next);
+                        *self.prompt_error.lock().unwrap() = None;
                         true
                     }
                     DestVerdict::Go { src_path, dest } => {
@@ -1990,6 +2093,7 @@ impl FileWindow {
                             return false;
                         }
                         self.pull_ask = None;
+                        *self.prompt_error.lock().unwrap() = None;
                         true
                     }
                 }
@@ -2010,14 +2114,17 @@ impl FileWindow {
         overwrite: bool,
         ctx: Option<egui::Context>,
     ) -> bool {
+        if let Some(why) = self.one_at_a_time(Trip::Download) {
+            *self.say_slot() = Some(why);
+            return false;
+        }
         let Some(h) = self.rt.clone() else {
-            *self.listing.error.lock().unwrap() =
-                Some(copy_text("rsFilewinShell.pull.noRuntime", &[]).into());
+            *self.say_slot() = Some(copy_text("rsFilewinShell.pull.noRuntime", &[]).into());
             return false;
         };
         // 下载经通道开单、订阅进度 —— 要那条线 ＋ 那台机器的地址。
         let Some(line) = self.line.clone() else {
-            *self.listing.error.lock().unwrap() = Some(NO_LINE.to_string());
+            *self.say_slot() = Some(NO_LINE.to_string());
             return false;
         };
         let origin = self.source.origin();
@@ -2101,6 +2208,11 @@ impl FileWindow {
     /// **连那趟往返都不发** —— 而且把**为什么**说出来。
     /// 逐条理由住 `editor.rs` 头注「超了怎么办」那一节。
     pub fn begin_edit(&mut self, i: usize, ctx: Option<egui::Context>) -> bool {
+        // 另一栏 / 另一页开着编辑面：同一时刻只开一个（两个会共用一套 egui id、互相抢输入）。
+        if self.editor_elsewhere {
+            self.key_notice = Some(copy_text("rsFilewinShell.edit.elsewhere", &[]));
+            return false;
+        }
         // 读着一份时不起第二趟：后到的那一份会把正在改的那一份换掉。
         if let Some(p) = self.edits.open_pending() {
             *self.listing.error.lock().unwrap() = Some(copy_text(
@@ -2678,8 +2790,11 @@ impl FileWindow {
         // ── 进度：在飞的时候一直画着（`DownloadBoard` 会敲窗口，所以它会动）──
         if let Some(name) = self.pull.in_flight() {
             let (got, total) = self.pull.seen();
+            let desk = self.pull.cancels();
             ui.horizontal(|ui| {
                 ui.spinner();
+                // 取消那一颗与上传那一颗同一个样子（停订 ⇒ 传输台撤掉这一趟，`.part` 留着续传）。
+                let reserve = 120.0;
                 fit_label(
                     ui,
                     copy_text(
@@ -2690,8 +2805,14 @@ impl FileWindow {
                             ("total", &(super::rows::human_size(total)).to_string()),
                         ],
                     ),
-                    0.0,
+                    reserve,
                 );
+                if ui.button(super::transfer::CANCEL_LABEL.as_str()).clicked() {
+                    desk.request();
+                }
+                if desk.is_cancelled() {
+                    ui.label(copy_text("rsFilewinTransfer.ui.cancelling", &[]));
+                }
             });
         }
         // ── 上一趟的结局：**成功也出声** ──
@@ -2733,6 +2854,11 @@ impl FileWindow {
         };
         let (mut go, mut cancel, mut browse) = (false, false, false);
         let pick_notice = self.pick_notice.clone();
+        let pull_error = self.prompt_error();
+        let pull_rename = match &ask {
+            Ask::Dest { src_name, .. } => super::download::rename_note(src_name),
+            Ask::Overwrite { .. } => None,
+        };
         let (_, esc) = modal(ui.ctx(), "filewin-pull-prompt", |ui| match ask {
             Ask::Dest { .. } => {
                 ui.heading(copy_text(
@@ -2743,6 +2869,12 @@ impl FileWindow {
                     return;
                 };
                 go |= prompt_field(ui, text);
+                if let Some(e) = &pull_error {
+                    ui.colored_label(ui.visuals().error_fg_color, e);
+                }
+                if let Some(n) = &pull_rename {
+                    ui.label(n);
+                }
                 ui.label(&copy_text("rsFilewinShell.pull.dirHint", &[]));
                 // 原生选择框：选到的保存位置填进上面那个框，确定照旧走这一问的判定。
                 if ui
@@ -2778,6 +2910,9 @@ impl FileWindow {
                     ui.visuals().warn_fg_color,
                     &copy_text("rsFilewinShell.pull.overwriteWarn", &[]),
                 );
+                if let Some(e) = &pull_error {
+                    ui.colored_label(ui.visuals().error_fg_color, e);
+                }
                 ui.horizontal(|ui| {
                     if ui
                         .button(&copy_text("rsFilewinShell.pull.overwrite", &[]))
@@ -2836,6 +2971,7 @@ impl FileWindow {
                 None => {}
             }
             go |= prompt_field(ui, &mut p.text);
+            self.prompt_error_ui(ui);
             ui.label(&copy_text("rsFilewinShell.write.sameDirOnly", &[]));
             ui.horizontal(|ui| {
                 if ui
@@ -2904,6 +3040,68 @@ impl FileWindow {
             .iter()
             .find(|r| r.name == name)
             .cloned()
+    }
+
+    /// 上传 · 下载 · 跨机三块看板各落过几趟结局。
+    fn transfer_rounds(&self) -> [u64; 3] {
+        [
+            self.board.rounds(),
+            self.pull.rounds(),
+            self.cross_board.rounds(),
+        ]
+    }
+
+    /// 传输那一摞收着、而有一趟结局还没看过 ⇒ 状态栏那颗开关留着（判据与界面看同一个值）。
+    pub fn transfers_unseen(&self) -> bool {
+        self.transfer_rounds() != self.transfers_seen
+    }
+
+    /// 新落地的结局：有失败 ⇒ 摊开那一摞（失败不许看不到）；摊开着 ⇒ 记为看过。每帧一次。
+    pub fn settle_transfer_outcomes(&mut self) {
+        let now = self.transfer_rounds();
+        if now == self.transfers_seen {
+            return;
+        }
+        let new = |k: usize| now[k] != self.transfers_seen[k];
+        let failed = (new(0) && self.board.last().is_some_and(|o| !o.failed.is_empty()))
+            || (new(1)
+                && matches!(
+                    self.pull.last(),
+                    Some(super::download::Outcome::Failed { .. })
+                ))
+            || (new(2)
+                && matches!(
+                    self.cross_board.last(),
+                    Some(super::cross_copy::Outcome::Failed { .. })
+                ));
+        if failed {
+            self.transfers_open = true;
+        }
+        if self.transfers_open {
+            self.transfers_seen = now;
+        }
+    }
+
+    /// 这一类还有一趟没完 ⇒ 那句话；没有 ⇒ `None`。
+    ///
+    /// 同一栏里同一类一次只跑一趟：每一类只有一块看板、一张取消台，第二趟起来会把第一趟的取消、进度与结局一起清掉
+    /// （已经按了取消、还排着的那几件甚至会接着传）⇒ 在飞时新的一趟先说一句、不起。
+    pub fn one_at_a_time(&self, t: Trip) -> Option<String> {
+        let busy = match t {
+            Trip::Upload => self.drops_started > self.board.rounds(),
+            Trip::Download => self.pull.in_flight().is_some(),
+            Trip::Copy => self.copies_started > self.copy_board.rounds(),
+            Trip::Cross => {
+                self.crosses_started > self.cross_board.rounds()
+                    || self.cross_board.running().is_some()
+            }
+        };
+        busy.then(|| match t {
+            Trip::Upload => copy_text("rsFilewinShell.oneAtATime.upload", &[]),
+            Trip::Download => copy_text("rsFilewinShell.oneAtATime.download", &[]),
+            Trip::Copy => copy_text("rsFilewinShell.oneAtATime.copy", &[]),
+            Trip::Cross => copy_text("rsFilewinShell.oneAtATime.cross", &[]),
+        })
     }
 
     /// 这个目录视图**手上有没有活**（`None` ＝ 没有）—— 关标签页 / 收右栏之前问它。
@@ -2980,12 +3178,42 @@ impl FileWindow {
         self.menu.as_ref()
     }
 
+    /// 要人填字的那几个框（改名 · 新建 · 改权限 · 复制为 · 复制到另一台 · 存到哪儿 · 新建空文件）有一个摆着吗。
+    fn prompt_up(&self) -> bool {
+        self.write_prompt.is_some()
+            || self.copy_prompt.is_some()
+            || self.cross_prompt.is_some()
+            || self.pull_ask.is_some()
+            || self.new_file.is_some()
+    }
+
+    /// 做不成的那一下说的话落在哪：有框摆着 ⇒ 框里（[`Self::prompt_error`]）；否则 ⇒ 列表上方那一行。
+    pub(super) fn say_slot(&self) -> std::sync::MutexGuard<'_, Option<String>> {
+        if self.prompt_up() {
+            self.prompt_error.lock().unwrap()
+        } else {
+            self.listing.error.lock().unwrap()
+        }
+    }
+
+    /// 摆着的框里那一句「为什么没做成」（判据与界面看同一个值）。
+    pub fn prompt_error(&self) -> Option<String> {
+        self.prompt_error.lock().unwrap().clone()
+    }
+
+    /// 框里那一句（红字，紧跟在输入框下面）。
+    fn prompt_error_ui(&self, ui: &mut egui::Ui) {
+        if let Some(e) = self.prompt_error() {
+            ui.colored_label(ui.visuals().error_fg_color, e);
+        }
+    }
+
     /// 有一个模态框摆着吗（上传那一问 · 复制那两问 · 写操作那两问 · 新建空文件那个框 · 往外拖那两问 · 编辑面）。
     ///
     /// 🔴 **一处**：拖入那一口（[`Self::take_drops`]）与键盘那一口（[`Self::apply_keys`]）
     /// 问的是同一个函数 —— 分成两份的症状是「编辑面开着，按 Delete 删掉了列表里的文件」。
     fn modal_up(&self) -> bool {
-        self.asking_up() || self.editing.is_some()
+        self.asking_up() || self.editing.is_some() || self.editor_elsewhere
     }
 
     /// 编辑面以外的那几个框有没有一个摆着。
@@ -3411,10 +3639,21 @@ impl FileWindow {
                 ),
             );
         }
+        // 有几项读不出来、没列出：同截断那一句，不让「没看见」与「不在」长成一样。
+        let unreadable = self.listing.unreadable.load(Ordering::SeqCst);
+        if unreadable > 0 {
+            ui.colored_label(
+                ui.visuals().warn_fg_color,
+                copy_text(
+                    "rsFilewinShell.frame.unreadable",
+                    &[("n", &unreadable.to_string())],
+                ),
+            );
+        }
         // 「只搜当前目录」开着、框里有字、而目录换了 ⇒ 范围变了，按新目录再搜一趟。
         if self.search_here
             && !self.query.trim().is_empty()
-            && self.search.shown().asked.under.as_ref() != Some(&self.cwd_path())
+            && self.search.asked_under().as_ref() != Some(&self.cwd_path())
         {
             let ctx = ui.ctx().clone();
             self.fire_search(Some(ctx), false);
@@ -3430,6 +3669,7 @@ impl FileWindow {
         // 「属性」那一问。
         self.props_ui(ui);
         // 传输那一摞（上传 · 下载 · 跨机复制）：状态栏上那一格可以把进度收起来；有一问摆着时照样画（它是模态的）。
+        self.settle_transfer_outcomes();
         let transfers = self.transfers_open
             || self.board.is_asking()
             || self.cross_board.is_asking()
@@ -3488,12 +3728,7 @@ impl FileWindow {
         // 🔴搜索框里有字 ⇒ 画命中，否则画当前目录。**二选一，不并排** ——
         //    并排会让「你现在看的是哪一摞」变成一个要靠标题猜的问题。
         if self.showing_hits() {
-            let hits: Vec<String> = self
-                .search
-                .shown()
-                .outcome
-                .map(|o| o.hits.iter().map(|h| h.row_text()).collect())
-                .unwrap_or_default();
+            let hits = self.hit_rows();
             // 🔴收数口是 [`HitTally`]，**不是** `self.tally` —— 它交出的下标只指命中这一摞，
             //    而下面那几条胶水索引的是 `listing.rows`（另一摞东西）。
             show_hit_rows(ui, &hits, &mut self.hits_tally);
@@ -3680,6 +3915,15 @@ pub const SEARCH_BOX_ID: &str = "filewin-search-box";
 pub const MIN_WINDOW: [f32; 2] = [480.0, 360.0];
 /// 搜索框平时多宽（窗口窄时收窄，见 `chrome.rs` 工具条）。
 pub const SEARCH_BOX_WIDTH: f32 = 200.0;
+
+/// 同一栏里各自只有一块看板的那几类后台活（[`FileWindow::one_at_a_time`]）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Trip {
+    Upload,
+    Download,
+    Copy,
+    Cross,
+}
 
 /// 换目录时历史怎么记。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

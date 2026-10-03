@@ -1945,3 +1945,24 @@ fn ls_says_which_symlinks_point_at_directories() {
     );
     std::fs::remove_dir_all(&d).ok();
 }
+
+/// 列目录时读不出的那几项照数、不静默跳过：`files-ls` 回 `unreadable`（窗口照截断那样说一句）。
+#[test]
+fn a_directory_entry_that_cannot_be_read_is_counted_not_skipped() {
+    let mut n = 0usize;
+    let items: Vec<std::io::Result<u8>> = vec![
+        Ok(1),
+        Err(std::io::Error::other("坏的一项")),
+        Ok(2),
+        Err(std::io::Error::other("又一项")),
+    ];
+    let got: Vec<u8> = readable(items, &mut n).collect();
+    assert_eq!((got, n), (vec![1, 2], 2));
+    // 帧面那一条带着这一格（读得全时是 0，不是缺席）。
+    let dir = std::env::temp_dir().join(format!("ccm-ls-unreadable-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("a"), b"").unwrap();
+    let v = answer_ls(&serde_json::json!({ "path": dir.to_string_lossy() })).unwrap();
+    assert_eq!(v["unreadable"], serde_json::json!(0));
+    std::fs::remove_dir_all(&dir).ok();
+}

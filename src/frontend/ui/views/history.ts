@@ -73,8 +73,26 @@ import {
 
 /** issue #16：项目缓存/展开态的 key。本地 = projectDir；远端用 origin 命名空间隔离
  *  （本地与远端可能有相同的编码目录名，裸 projectDir 会撞 key）。 */
-function projectKey(p: { origin?: string; projectDir: string }): string {
+function projectKey(p: { origin?: string; projectDir: string; projectPath?: string }): string {
+  // 同一个记录目录名下可能是两个真实目录（后端按目录分成了两行）⇒ 键里带上目录。
+  const dir = dirKey(p);
+  return p.projectPath ? `${dir}\u0000${p.projectPath}` : dir;
+}
+
+/** 记录目录那一级的键（机器 ＋ 目录名）：按标题搜回来的会话只认得到这一级。 */
+function dirKey(p: { origin?: string; projectDir: string }): string {
   return p.origin ? `${p.origin}\u0000${p.projectDir}` : p.projectDir;
+}
+
+/** 一份会话记录所在的记录目录名（路径的上一级那一段）。 */
+function recordDirOf(jsonlPath: string): string {
+  const parts = jsonlPath.split(/[\\/]/);
+  return parts.length >= 2 ? parts[parts.length - 2] : "";
+}
+
+/** 显示的标题：用户改过的 ＞ 后端给的（标题 ＞ 第一句 ＞ 会话 ID 前 8 位，规则在后端一处）。 */
+function titleOf(e: HistorySessionEntry): string {
+  return e.customTitle || e.title;
 }
 
 /** 会话级详情，从本机后端 `history-sessions` 拿（`../history-reads::fetchSessions`，一次交全）。 */
@@ -164,6 +182,12 @@ export class HistoryView {
   private sessionCache = new Map<string, HistorySessionEntry[]>();
   /** project_dir → 当前正在加载中的 Promise，防重复触发 */
   private loadingProjects = new Map<string, Promise<void>>();
+  /** 会话没加载上的那几个项目（展开处说「没加载上」；再展开 / 刷新才重试，搜索不自动重试）。 */
+  private failedProjects = new Set<string>();
+  /** 「按项目」搜索时，标题 / 第一句里有这几个字的会话所在的记录目录（后端搜全部会话，不用先展开）。 */
+  private titleHitDirs = new Set<string>();
+  /** 按标题搜的代际号（旧的答案晚到就丢）。 */
+  private titleSeq = 0;
 
   private filter = "";
   private sort: SortMode = "updated_desc";
@@ -284,12 +308,15 @@ export class HistoryView {
     // `refresh(true)` 才强制失效。session 详情层仍每次清（#46 只讲来源列表，非会话详情）。
     this.sessionCache.clear();
     this.loadingProjects.clear();
+    this.failedProjects.clear();
+    this.titleHitDirs = new Set();
     this.loadedAll = false;
     this.updateSearchPlaceholder();
     // issue #5: 注册到 dispatcher 弹层栈，Esc 由 dispatcher 派给我
     dispatcher.pushOverlay(this);
-    await this.refresh(); // F76：默认 force=false → TTL 内复用远端缓存
+    // 开页就给焦点（不等远端答完；远端陆续补进来时不动焦点 —— 那时用户可能已经点进了别处）。
     this.searchInput.focus();
+    await this.refresh(); // F76：默认 force=false → TTL 内复用远端缓存
   }
 
   /** 根据当前模式 / 是否已全量加载更新搜索框 placeholder，告知用户搜索覆盖范围 */
@@ -322,11 +349,7 @@ export class HistoryView {
 
   /** 打开只读查看器，列表 UI 临时隐藏 */
   private openViewer(entry: HistorySessionEntry): void {
-    const displayTitle =
-      entry.customTitle ??
-      entry.aiTitle ??
-      entry.firstUserExcerpt ??
-      entry.sessionId.slice(0, 8);
+    const displayTitle = titleOf(entry);
     const proj = entry.projectName || entry.projectPath || copyText("history.project.unknown");
     const subtitle =
       entry.projectPath && entry.projectPath !== proj
@@ -409,6 +432,10 @@ export class HistoryView {
     this.listEl.replaceChildren();
     this.sessionCache.clear();
     this.loadingProjects.clear();
+    this.failedProjects.clear();
+    // 会话缓存清了 ⇒「已全量加载」不再成立（搜索范围跟着回到「项目名 ＋ 已展开的」，提示与按钮跟着变）。
+    this.loadedAll = false;
+    this.updateSearchPlaceholder();
     // 本地批：每次重扫。本机读不了 ≠ 整页失败：说一声，本机那一段空着，远端照常加载。
     let local: HistoryProject[] = [];
     let localFailed: string | null = null;
@@ -480,6 +507,7 @@ export class HistoryView {
 
     const entries: HistorySessionEntry[] = [];
     this.sessionCache.set(key, entries);
+    this.failedProjects.delete(key);
 
     // 本机与远端同一条路：问本机常驻后端 `history-sessions`（远端那台由它沿 SSH 去问、并上本机的注解）。
     //   从前本机那条是 Tauri Channel **逐条流式**（monitor 自己边扫边发）—— 今天一次交全（后端扫完整个项目才回），
@@ -492,6 +520,9 @@ export class HistoryView {
         if (this.isOpen) this.renderList();
       } catch (e) {
         console.warn(`sessions in ${key} failed:`, e);
+        // 没加载上 ≠ 没有会话：不留那份空缓存（不然展开永远写「没有会话」、也不再问），记一笔「没加载上」。
+        this.sessionCache.delete(key);
+        this.failedProjects.add(key);
         showActionFailureToast(proj.origin ? copyText("history.sessions.remoteFailed") : copyText("history.sessions.failed"), historyReasonOf(e));
       } finally {
         this.loadingProjects.delete(key);
@@ -551,6 +582,7 @@ export class HistoryView {
         if (this.searchMode === "tree") {
           this.filter = this.searchInput.value.trim().toLowerCase();
           this.renderList();
+          void this.runTitleSearch();
         } else if (this.searchInput.value.trim() === "") {
           // 全文模式清空 → 清结果
           this.runFullTextSearch();
@@ -732,6 +764,7 @@ export class HistoryView {
       // 回树模式：用当前输入作过滤词重画
       this.filter = this.searchInput.value.trim().toLowerCase();
       this.renderList();
+      void this.runTitleSearch();
     } else {
       // 进全文模式：有词就立刻搜，否则显示索引状态提示
       if (this.searchInput.value.trim() !== "") {
@@ -789,7 +822,38 @@ export class HistoryView {
       this.renderSearchResults(resp, query);
     } catch (e) {
       if (seq !== this.ftSeq) return;
+      // 上一个词的结果不留着（留着像是这一次的结果）。
+      this.resultsEl.replaceChildren();
       this.statusEl.textContent = copyText("history.search.failed", { e: String(e) });
+    }
+  }
+
+  /**
+   * 「按项目」那一路：标题 / 第一句里有这几个字的会话在哪几个记录目录（本机 ＋ 各台远端的后端搜全部会话）。
+   * 回来之后那几个项目算命中、照搜索时的老规矩展开并加载，会话按标题过滤 —— 不用先展开、不用先「全量加载」。
+   */
+  private async runTitleSearch(): Promise<void> {
+    const query = this.filter;
+    const seq = ++this.titleSeq;
+    this.titleHitDirs = new Set();
+    if (query === "") return;
+    try {
+      const resp = await searchAllMachines({
+        query,
+        includeTools: false,
+        scope: null,
+        afterMs: null,
+        limit: null,
+        titles: true,
+      });
+      if (seq !== this.titleSeq || !this.isOpen) return;
+      this.titleHitDirs = new Set(
+        resp.sessions.map((s) => dirKey({ origin: s.origin, projectDir: recordDirOf(s.jsonlPath) })),
+      );
+      if (this.titleHitDirs.size > 0) this.renderList();
+    } catch (e) {
+      // 没搜到标题只少了「按标题命中」那一半，项目名照旧过滤 ⇒ 只进日志。
+      console.warn("按标题搜没成（只按项目名过滤）:", e);
     }
   }
 
@@ -803,11 +867,19 @@ export class HistoryView {
     // 不是命中 —— `totalHits` 一直报的是全量。
     const starved = resp.sessions.filter((x) => x.hitsTruncated).length;
     const { totalHits, sessionCount } = resp;
-    this.statusEl.textContent = !resp.truncated
+    const summary = !resp.truncated
       ? copyText("history.search.summary", { query, totalHits, sessionCount })
       : starved > 0
         ? copyText("history.search.summaryStarved", { query, totalHits, sessionCount, starved })
         : copyText("history.search.summaryTruncated", { query, totalHits, sessionCount });
+    // 搜得不全要说出来：没答上的台 · 读不动的会话记录 · 内容搜索不覆盖的那几家。
+    const sep = copyText("history.refresh.hostSep");
+    const notes: string[] = [];
+    if (resp.failedHosts.length > 0)
+      notes.push(copyText("history.search.partialHosts", { hosts: resp.failedHosts.join(sep) }));
+    if (resp.unreadable > 0) notes.push(copyText("history.search.unreadable", { n: resp.unreadable }));
+    if (resp.skipped.length > 0) notes.push(copyText("history.search.skipped", { agents: resp.skipped.join(sep) }));
+    this.statusEl.textContent = [summary, ...notes].join(" ");
     if (resp.sessions.length === 0) {
       this.resultsEl.appendChild(makeStatusRow(copyText("history.search.noMatch")));
       return;
@@ -896,7 +968,7 @@ export class HistoryView {
         more.textContent = copyText("history.searchSession.moreCapped", { rest, shown: s.hits.length });
       }
       // 🔴 无论哪一种，这一行自己就能打开会话：`hits: []` 时它是**唯一**的入口。
-      more.addEventListener("click", () => {
+      const openMore = () => {
         this.openViewerWith({
           jsonlPath: s.jsonlPath,
           displayTitle: s.title || s.sessionId.slice(0, 8),
@@ -906,7 +978,9 @@ export class HistoryView {
           origin: originFromWire(s.origin),
           cwd: s.projectPath,
         });
-      });
+      };
+      more.addEventListener("click", openMore);
+      rowKeys(more, SEARCH_ROWS, { open: openMore });
       group.appendChild(more);
     }
     return group;
@@ -935,7 +1009,7 @@ export class HistoryView {
     snip.append(document.createTextNode(hit.after));
     row.appendChild(snip);
 
-    row.addEventListener("click", () => {
+    const open = () => {
       this.openViewerWith({
         jsonlPath: s.jsonlPath,
         displayTitle: s.title || s.sessionId.slice(0, 8),
@@ -947,7 +1021,9 @@ export class HistoryView {
         origin: originFromWire(s.origin),
         cwd: s.projectPath, // F62：本地命中建分支后 resume 用
       });
-    });
+    };
+    row.addEventListener("click", open);
+    rowKeys(row, SEARCH_ROWS, { open });
     return row;
   }
 
@@ -1032,7 +1108,13 @@ export class HistoryView {
   ): void {
     const expanded = searchActive || this.expandedProjects.has(projectKey(proj));
     parent.appendChild(this.buildProjectGroup(proj, expanded));
-    if (searchActive && expanded && !this.sessionCache.has(projectKey(proj))) {
+    // 没加载上的那几个不在搜索里自动重试（不然每画一次就失败一次、再画一次）—— 再展开 / 刷新才重试。
+    if (
+      searchActive &&
+      expanded &&
+      !this.sessionCache.has(projectKey(proj)) &&
+      !this.failedProjects.has(projectKey(proj))
+    ) {
       // F07：原来是 `.then(() => this.renderList())` —— **P 个项目各触发一次全树重建**，
       // 而每次重建又会再走一遍本循环。改成入队：去重 + 有上限 + 批末合并重画一次。
       this.enqueueLazyLoad(proj);
@@ -1272,13 +1354,21 @@ export class HistoryView {
       const cached = this.sessionCache.get(projectKey(proj));
       const isLoading = this.loadingProjects.has(projectKey(proj));
       if (cached === undefined) {
-        // 还没开始加载（用户没展开过）
-        body.appendChild(makeStatusRow(isLoading ? copyText("history.body.loading") : copyText("history.body.clickToLoad")));
+        // 还没开始加载（用户没展开过）/ 上一趟没加载上（不说成「没有会话」）
+        body.appendChild(
+          makeStatusRow(
+            isLoading
+              ? copyText("history.body.loading")
+              : this.failedProjects.has(projectKey(proj))
+                ? copyText("history.body.loadFailed")
+                : copyText("history.body.clickToLoad"),
+          ),
+        );
         return;
       }
-      const visible = cached
-        .filter((e) => (this.showHidden ? true : !e.hidden))
-        .filter((e) => this.matchSession(e));
+      const shows = (e: HistorySessionEntry): boolean =>
+        (this.showHidden || !e.hidden) && this.matchSession(e);
+      const visible = cached.filter(shows);
       if (visible.length === 0) {
         // 流式加载初期 cache 可能是 [] —— 此时显示 "加载中" 而非 "无会话"
         if (isLoading) {
@@ -1294,22 +1384,27 @@ export class HistoryView {
         }
         return;
       }
-      // issue #12: 项目内建 fork 树（child 缩进显示在 parent 下，可折叠）
-      const roots = buildSessionTree(visible);
+      // issue #12: 项目内建 fork 树（child 缩进显示在 parent 下，可折叠）。
+      // 树建在**整份**缓存上：父会话被隐藏 / 被搜索筛掉时，子会话照样挂在它名下（父会话作为上下文画出来、展开着），
+      // 不再当成「原会话已不在本项目」；只有缓存里真没有那个父会话才算孤儿。
+      const roots = buildSessionTree(cached);
       this.sortTree(roots);
+      const kept = keptNodes(roots, (n) => shows(n.entry));
       // 迭代 DFS pre-order 输出（INVARIANT § 17: 不递归遍历用户数据）
       const stack: Array<{ node: SessionTreeNode; depth: number }> = [];
       for (let i = roots.length - 1; i >= 0; i--) {
-        stack.push({ node: roots[i], depth: 0 });
+        if (kept.has(roots[i])) stack.push({ node: roots[i], depth: 0 });
       }
       while (stack.length > 0) {
         const { node, depth } = stack.pop()!;
-        body.appendChild(
-          this.buildEntryRow(node.entry, proj, depth, node.children.length, node.orphan),
-        );
-        if (node.children.length > 0 && this.expandedForks.has(node.entry.sessionId)) {
-          for (let i = node.children.length - 1; i >= 0; i--) {
-            stack.push({ node: node.children[i], depth: depth + 1 });
+        const children = node.children.filter((c) => kept.has(c));
+        const context = !shows(node.entry);
+        const row = this.buildEntryRow(node.entry, proj, depth, children.length, node.orphan);
+        if (context) row.classList.add("is-context-entry");
+        body.appendChild(row);
+        if (children.length > 0 && (context || this.expandedForks.has(node.entry.sessionId))) {
+          for (let i = children.length - 1; i >= 0; i--) {
+            stack.push({ node: children[i], depth: depth + 1 });
           }
         }
       }
@@ -1319,11 +1414,17 @@ export class HistoryView {
       }
     };
 
+    // 没加载上的那一组：用户自己收起再展开才重试（画出来时就是展开着的那一下不算 —— 不然每画一次就重试一次、失败一次）。
+    let userExpand = !expanded;
     // 跟踪展开状态 + 触发懒加载
     details.addEventListener("toggle", () => {
       if (details.open) {
         this.expandedProjects.add(projectKey(proj));
-        if (!this.sessionCache.has(projectKey(proj))) {
+        const retry = userExpand;
+        userExpand = true;
+        if (this.failedProjects.has(projectKey(proj)) && !retry) {
+          renderBody();
+        } else if (!this.sessionCache.has(projectKey(proj))) {
           renderBody(); // 显示 "加载中…"
           // F07（★ 判据实测抓到的第五个放大器，核实台账没点到）：这里原来是裸
           // `loadProjectSessions(...)`。平时用户一次只展开一个，看不出问题；**「全展开」会把
@@ -1386,7 +1487,8 @@ export class HistoryView {
         });
       }
       await this.lazyDrained();
-      this.loadedAll = true;
+      // 有没加载上的就不算「已全量加载」（搜索范围照实说；再点一次会重试那几个）。
+      this.loadedAll = this.projects.every((p) => this.sessionCache.has(projectKey(p)));
       this.updateSearchPlaceholder();
       // 重画一次以应用搜索匹配（如果用户已经在搜索框输入）
       this.renderList();
@@ -1428,6 +1530,8 @@ export class HistoryView {
     if (!this.filter) return true;
     const hay = `${p.projectName}\n${p.projectPath}\n${p.projectDir}`.toLowerCase();
     if (hay.includes(this.filter)) return true;
+    // 后端按标题 / 第一句搜全部会话命中的记录目录（没展开、没加载的项目也算）。
+    if (this.titleHitDirs.has(dirKey(p))) return true;
     // project 元数据不命中时，看看缓存里的 sessions 是否有命中（仅对已加载项目）
     const cached = this.sessionCache.get(projectKey(p));
     if (!cached) return false;
@@ -1440,6 +1544,7 @@ export class HistoryView {
     const hay = [
       e.aiTitle ?? "",
       e.customTitle ?? "",
+      e.title,
       e.firstUserExcerpt,
       e.sessionId,
     ]
@@ -1879,6 +1984,11 @@ export class HistoryView {
       ev.preventDefault();
       this.showEntryMenu(ev.clientX, ev.clientY, rowCtx);
     });
+    // 键盘也到得了：行可聚焦；回车打开 · 菜单键 / Shift+F10 开菜单 · ↑↓ 在行间走。
+    rowKeys(row, ".history-entry", {
+      open: () => this.openViewer(e),
+      menu: (x, y) => this.showEntryMenu(x, y, rowCtx),
+    });
 
     // issue #12: fork 树展开 / 折叠按钮（只在有 children 时出现）
     if (childCount > 0) {
@@ -1944,11 +2054,7 @@ export class HistoryView {
 
     const title = document.createElement("div");
     title.className = "history-title";
-    const displayTitle =
-      e.customTitle ??
-      e.aiTitle ??
-      e.firstUserExcerpt ??
-      e.sessionId.slice(0, 8);
+    const displayTitle = titleOf(e);
     title.textContent = displayTitle;
     main.appendChild(title);
 
@@ -2038,6 +2144,66 @@ export class HistoryView {
 
     return row;
   }
+}
+
+/** 搜索结果里能用键盘走到、打开的那几种行。 */
+const SEARCH_ROWS = ".search-hit, .search-hit-more";
+
+/**
+ * 一行接键盘：可聚焦；回车（输入法组字时不算）打开 · 菜单键 / Shift+F10 开菜单（摆在行的左上）·
+ * ↑ / ↓ 焦点挪到同一张表里（`selector` 认的那几行）上一行 / 下一行。只认焦点在行自己身上的按键（行尾按钮各有各的）。
+ */
+function rowKeys(
+  row: HTMLElement,
+  selector: string,
+  act: { open: () => void; menu?: (x: number, y: number) => void },
+): void {
+  row.tabIndex = 0;
+  row.addEventListener("keydown", (ev) => {
+    if (ev.target !== row || ev.isComposing) return;
+    if (ev.key === "Enter") {
+      ev.preventDefault();
+      act.open();
+    } else if (act.menu && (ev.key === "ContextMenu" || (ev.key === "F10" && ev.shiftKey))) {
+      ev.preventDefault();
+      const r = row.getBoundingClientRect();
+      act.menu(r.left, r.top);
+    } else if (ev.key === "ArrowDown" || ev.key === "ArrowUp") {
+      const scope = row.closest(".history-list, .history-search-results") ?? row.parentElement;
+      const rows = Array.from(scope?.querySelectorAll<HTMLElement>(selector) ?? []);
+      const next = rows[rows.indexOf(row) + (ev.key === "ArrowDown" ? 1 : -1)];
+      if (next) {
+        ev.preventDefault();
+        next.focus();
+      }
+    } else {
+      return;
+    }
+    ev.stopPropagation();
+  });
+}
+
+/**
+ * 树里哪几个节点要画：它自己可见，或它底下有可见的（那样它作为上下文画出来）。
+ * 迭代（INVARIANT § 17）：先序收一遍，倒着走就是孩子先于父亲。
+ */
+function keptNodes(
+  roots: SessionTreeNode[],
+  visible: (n: SessionTreeNode) => boolean,
+): Set<SessionTreeNode> {
+  const order: SessionTreeNode[] = [];
+  const stack = roots.slice();
+  while (stack.length > 0) {
+    const n = stack.pop()!;
+    order.push(n);
+    for (const c of n.children) stack.push(c);
+  }
+  const kept = new Set<SessionTreeNode>();
+  for (let i = order.length - 1; i >= 0; i--) {
+    const n = order[i];
+    if (visible(n) || n.children.some((c) => kept.has(c))) kept.add(n);
+  }
+  return kept;
 }
 
 function makeChip(text: string, extraClass = ""): HTMLElement {

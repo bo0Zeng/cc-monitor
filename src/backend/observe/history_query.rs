@@ -161,12 +161,29 @@ pub(crate) fn list_projects_into(agent_home: &Path, out: &mut dyn Write) -> Resu
             continue;
         }
         let dir_name = entry.file_name().to_string_lossy().into_owned();
-        let Some(line) = project_row(&dir, dir_name) else {
-            continue; // 空目录（全删过/只剩本机后端）不展示
-        };
-        writeln!(out, "{line}").map_err(|e| format!("stdout write failed: {e}"))?;
+        // 空目录（全删过/只剩本机后端）不展示；一个记录目录里会话的真实目录不止一个 ⇒ 一组一行。
+        for line in project_rows(&dir, &dir_name) {
+            writeln!(out, "{line}").map_err(|e| format!("stdout write failed: {e}"))?;
+        }
     }
     Ok(true)
+}
+
+/// 一个记录目录里的会话按**真实目录**分组 —— 记录目录名把非 ASCII 字符、`.`、`/` 都折成 `-`，
+/// 不同的目录会撞成同一个名字。输入每个会话的 `(读出的目录, 修改时刻)`，回每个会话归哪一组（目录）。
+/// 读不出目录的归最近修改的那个读得出目录的会话那一组；一个都读不出 ⇒ 空串一组。
+/// 项目清单（[`project_rows`]）与会话清单按组过滤（`history_join`）用的是这同一个函数。
+pub(crate) fn group_by_cwd(items: &[(Option<String>, i64)]) -> Vec<String> {
+    let fallback = items
+        .iter()
+        .filter_map(|(c, m)| c.as_ref().map(|c| (*m, c)))
+        .max_by_key(|(m, _)| *m)
+        .map(|(_, c)| c.clone())
+        .unwrap_or_default();
+    items
+        .iter()
+        .map(|(c, _)| c.clone().unwrap_or_else(|| fallback.clone()))
+        .collect()
 }
 
 /// 会话记录目录读不了 ⇒ 给人看的那一句（按错误的**种类**说；系统原话只进日志 —— 不露实现词）。
@@ -180,60 +197,57 @@ fn unreadable_dir(dir: &Path, e: &std::io::Error) -> String {
     }
 }
 
-/// 一个项目目录 → `--list-projects` 的那一行；目录下没有会话记录 ⇒ `None`（不展示）。
+/// 一个项目目录 → `--list-projects` 的那几行（按会话的真实目录分组，一组一行，[`group_by_cwd`]）；
+/// 目录下没有会话记录 ⇒ 一行都没有（不展示）。
 ///
 /// # 为什么它是**一个函数**而不是 `list_projects` 里的一段
 ///
 /// `list_projects` 的出口是 `stdout`，红线内测不了；而 `K-R83` 的三条判据要判的是
 /// **这一行带了什么**，不是「stdout 上出现了什么」。同样的分法在本文件里已有先例：
 /// `analyze_session` 也是把「算出那一行」与「把它印出去」分开的。
-fn project_row(dir: &Path, dir_name: String) -> Option<serde_json::Value> {
-    let mut session_count = 0u32;
-    let mut last_activity_ms = 0i64;
-    let mut newest_jsonl: Option<(i64, PathBuf)> = None;
+fn project_rows(dir: &Path, dir_name: &str) -> Vec<serde_json::Value> {
     // `K-R83`：sid 的取法与 `--list-sessions` 那条逐字同源（`analyze_session` 也是
     // `file_stem`）—— 两条路给同一个会话的 id 必须是同一个字符串，否则下游按 sid
     // 去查 metadata 会**查不着而看起来像「没有星标」**，又是一次「不知道」装成 0。
-    let mut session_ids: Vec<String> = Vec::new();
+    // 目录与修改时刻也与那一条同源（`project_dir_of` · `mtime_ms`），两边分出来的组才一样。
+    let mut sessions: Vec<(String, Option<String>, i64)> = Vec::new();
     if let Ok(files) = std::fs::read_dir(dir) {
         for f in files.flatten() {
             let p = f.path();
             if !p.is_file() || !crate::agents::claudecode::records::is_session_file(&p) {
                 continue;
             }
-            // ⚠ 计数与 sid **共用同一个守卫**：不是「先数了再看取不取得到 sid」。
-            // 分开写的话，取不到 stem 的那一格会让 `sessionCount` 与清单长度错开，
-            // 而下游正是拿这两者对拍来分辨「真的没有」与「这一行坏了」。
+            // ⚠ 计数与 sid **共用同一个守卫**：取不到 stem 的那一格不进任何一组，
+            //   `sessionCount` 与清单长度才恒等（下游拿两者对拍分辨「真的没有」与「这一行坏了」）。
             let Some(sid) = p.file_stem().map(|s| s.to_string_lossy().into_owned()) else {
                 continue;
             };
-            session_count += 1;
-            session_ids.push(sid);
-            let mtime = mtime_ms(&p);
-            if mtime > last_activity_ms {
-                last_activity_ms = mtime;
-            }
-            if newest_jsonl.as_ref().is_none_or(|(m, _)| mtime > *m) {
-                newest_jsonl = Some((mtime, p));
-            }
+            sessions.push((sid, crate::agents::project_dir_of(&p), mtime_ms(&p)));
         }
     }
-    if session_count == 0 {
-        return None; // 空目录（全删过/只剩本机后端）不展示
+    let keys: Vec<(Option<String>, i64)> =
+        sessions.iter().map(|(_, c, m)| (c.clone(), *m)).collect();
+    let mut groups: std::collections::BTreeMap<String, (Vec<String>, i64)> = Default::default();
+    for ((sid, _, mtime), path) in sessions.into_iter().zip(group_by_cwd(&keys)) {
+        let g = groups.entry(path).or_default();
+        g.0.push(sid);
+        g.1 = g.1.max(mtime);
     }
-    let project_path = newest_jsonl
-        .and_then(|(_, p)| crate::agents::project_dir_of(&p))
-        .unwrap_or_default();
-    // 排序**不是**为了好看：`read_dir` 的顺序是文件系统给的，两趟未必一样，
-    // 而下游要拿这份清单做对拍与缓存 key —— 不稳定的顺序会让「同一份数据」看起来变了。
-    session_ids.sort_unstable();
-    Some(serde_json::json!({
-            "dirName": dir_name,
-            "projectPath": project_path,
-            "sessionCount": session_count,
-            "lastActivityMs": last_activity_ms,
-            "sessionIds": session_ids,
-    }))
+    groups
+        .into_iter()
+        .map(|(project_path, (mut session_ids, last_activity_ms))| {
+            // 排序**不是**为了好看：`read_dir` 的顺序是文件系统给的，两趟未必一样，
+            // 而下游要拿这份清单做对拍与缓存 key —— 不稳定的顺序会让「同一份数据」看起来变了。
+            session_ids.sort_unstable();
+            serde_json::json!({
+                "dirName": dir_name,
+                "projectPath": project_path,
+                "sessionCount": session_ids.len() as u32,
+                "lastActivityMs": last_activity_ms,
+                "sessionIds": session_ids,
+            })
+        })
+        .collect()
 }
 
 /// `--list-sessions <project_dir>`：该项目每个 jsonl 一行 JSON：

@@ -107,6 +107,8 @@ pub struct Preview {
     key: Option<(String, Result<String, usize>)>,
     /// 要显示的那一份（`None` ＝ 这一项不读）。
     want: Option<String>,
+    /// 那一份发出去的线上路径（当前目录有损时按字节寻址，[`FileWindow::row_path`]）。
+    wire: serde_json::Value,
     /// 那一份按文本读还是按图读。
     how: Want,
     /// 上色那一套缓存：每一份文本到货时按行切好的上色结果（行号 → 那一行的排版）。
@@ -126,6 +128,7 @@ impl Default for Preview {
         Self {
             key: None,
             want: None,
+            wire: serde_json::Value::Null,
             how: Want::Text,
             painted: Vec::new(),
             wrapped: Default::default(),
@@ -276,6 +279,7 @@ impl Preview {
                     return;
                 }
                 self.how = Want::Image;
+                self.wire = pane.row_path(&r).wire();
                 self.want = Some(r.path.clone());
                 self.view = View::Loading(r.path.clone());
                 return;
@@ -306,6 +310,7 @@ impl Preview {
             return;
         }
         self.how = Want::Text;
+        self.wire = pane.row_path(&r).wire();
         self.want = Some(r.path.clone());
         self.view = View::Loading(r.path.clone());
     }
@@ -322,10 +327,11 @@ impl Preview {
         self.inflight = true;
         self.fired += 1;
         let how = self.how;
+        let wire = self.wire.clone();
         h.spawn(async move {
             let r = match how {
                 Want::Text => {
-                    let args = serde_json::json!({ "path": path, "max_bytes": PREVIEW_MAX_BYTES });
+                    let args = serde_json::json!({ "path": wire, "max_bytes": PREVIEW_MAX_BYTES });
                     super::editor::text_from_reply(
                         super::source::ask_coded(
                             &line,
@@ -338,7 +344,7 @@ impl Preview {
                     )
                     .map(Got::Text)
                 }
-                Want::Image => read_image(&line, &origin, &path).await.map(Got::Image),
+                Want::Image => read_image(&line, &origin, &wire).await.map(Got::Image),
             };
             *slot.lock().unwrap() = Some((path, r));
             if let Some(c) = ctx {
@@ -529,7 +535,7 @@ pub fn highlight_lines(ctx: &egui::Context, text: &str, lang: &str) -> Vec<egui:
 async fn read_image(
     line: &super::source::Line,
     origin: &super::source::Origin,
-    path: &str,
+    path: &serde_json::Value,
 ) -> Result<egui::ColorImage, String> {
     let mut bytes: Vec<u8> = Vec::new();
     loop {

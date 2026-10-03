@@ -126,7 +126,61 @@ pub fn plan_dest(typed: &str, src_name: &str) -> Result<String, String> {
 /// `home_dir()` 归属，本模块再调一次就会在那张表上多出一格，
 /// 而那一格说的是同一件事（同 `shell.rs::local_home` 头注那条登记要求）。
 pub fn default_dest(src_name: &str) -> String {
-    format!("{}/{}", super::shell::local_home(), src_name)
+    let sep = if crate::platform::BACKSLASH_IS_SEP {
+        '\\'
+    } else {
+        '/'
+    };
+    let name = local_name(src_name, crate::platform::WINDOWS_NAMES);
+    format!("{}{sep}{name}", super::shell::local_home())
+}
+
+/// 远端的名字在本机能不能原样用：`windows` ＝ 本机是 Windows ⇒ 那几个不认的字（`< > : " / \ | ? *` 与控制字符）换成 `_`、
+/// 结尾的点与空格去掉、保留的设备名（`CON` `PRN` `AUX` `NUL` `COM1`…`COM9` `LPT1`…`LPT9`，带不带扩展名都算）前面加 `_`；
+/// 别的平台原样（`/` 不会出现在一段名字里）。
+pub fn local_name(name: &str, windows: bool) -> String {
+    if !windows {
+        return name.to_string();
+    }
+    let mut out: String = name
+        .chars()
+        .map(|c| {
+            if c.is_control()
+                || matches!(c, '<' | '>' | ':' | '\u{22}' | '/' | '\\' | '|' | '?' | '*')
+            {
+                '_'
+            } else {
+                c
+            }
+        })
+        .collect();
+    while out.ends_with(['.', ' ']) {
+        out.pop();
+    }
+    if out.is_empty() {
+        out.push('_');
+    }
+    let stem = out
+        .split('.')
+        .next()
+        .unwrap_or("")
+        .trim_end()
+        .to_ascii_uppercase();
+    let reserved = matches!(stem.as_str(), "CON" | "PRN" | "AUX" | "NUL")
+        || ((stem.starts_with("COM") || stem.starts_with("LPT"))
+            && stem.len() == 4
+            && stem.as_bytes()[3].is_ascii_digit()
+            && stem.as_bytes()[3] != b'0');
+    if reserved {
+        out.insert(0, '_');
+    }
+    out
+}
+
+/// 缺省落点的名字与远端的不一样（本机不认原名）⇒ 存盘那一问上说的那一句；一样 ⇒ `None`。
+pub fn rename_note(src_name: &str) -> Option<String> {
+    let local = local_name(src_name, crate::platform::WINDOWS_NAMES);
+    (local != src_name).then(|| copy_text("rsFilewinDownload.dest.renamed", &[("local", &local)]))
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -308,6 +362,8 @@ impl DownloadBoard {
     }
 
     pub fn begin(&self, name: &str) {
+        // 新的一趟 ⇒ 取消台复位（上一趟按过的取消不许拦下这一趟）。
+        self.desk.reset();
         let mut b = self.lock();
         b.in_flight = Some(name.to_string());
         b.got = 0;

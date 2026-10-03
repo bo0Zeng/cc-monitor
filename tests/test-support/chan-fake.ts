@@ -447,7 +447,7 @@ export function historyReadOf(
       const body = chanArgsJson(a) as Record<string, unknown>;
       return [
         "stream_history_sessions_in_project",
-        { origin: body.origin ?? "<local>", projectDir: body.project_dir },
+        { origin: body.origin ?? "<local>", projectDir: body.project_dir, projectPath: body.project_path },
       ];
     }
     case "history-annotate": {
@@ -513,6 +513,14 @@ function productSession(e: Record<string, unknown>): Record<string, unknown> {
     projectName: e.projectName ?? "",
     aiTitle: nul(e.aiTitle),
     firstUserExcerpt: e.firstUserExcerpt ?? "",
+    // 后端给的显示标题（规则住后端 `search_rules::session_title`：标题 ＞ 第一句 ＞ 会话 ID 前 8 位）；旧回包里缺 ⇒ 照那条规则补。
+    title:
+      e.title ??
+      (typeof e.aiTitle === "string" && e.aiTitle.trim() !== ""
+        ? e.aiTitle
+        : typeof e.firstUserExcerpt === "string" && e.firstUserExcerpt !== ""
+          ? e.firstUserExcerpt
+          : String(e.sessionId ?? "").slice(0, 8)),
     startedAt: e.startedAt ?? 0,
     updatedAt: e.updatedAt ?? 0,
     jsonlPath: e.jsonlPath ?? "",
@@ -631,6 +639,7 @@ export function withHistoryReads(
           answer("stream_history_sessions_in_project", {
             origin: body.origin ?? "<local>",
             projectDir: body.project_dir,
+            projectPath: body.project_path,
             onEntry,
           }),
         );

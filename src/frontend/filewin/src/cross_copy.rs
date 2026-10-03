@@ -27,6 +27,25 @@ pub static CROSS_LABEL: std::sync::LazyLock<String> =
 /// 判据 `cross_copy_tests::the_local_origin_is_the_app_one` 读两侧源码钉相等）。
 pub const LOCAL_ORIGIN: &str = "<local>";
 
+/// 机器下拉里给人看的名字：本机写「本机」，别的照名字。
+pub fn shown_machine(origin: &str) -> String {
+    if origin == LOCAL_ORIGIN {
+        copy_text("rsFilewinCrossCopy.prompt.localMachine", &[])
+    } else {
+        origin.to_string()
+    }
+}
+
+/// 框里那一格（给人看的名字，或手填的名字）→ 发出去的机器地址：「本机」⇒ 本机后端的地址。
+pub fn origin_of(shown: &str) -> String {
+    let t = shown.trim();
+    if t == copy_text("rsFilewinCrossCopy.prompt.localMachine", &[]) {
+        LOCAL_ORIGIN.to_string()
+    } else {
+        t.to_string()
+    }
+}
+
 /// 暂存区（相对 home）。引契约那一份（`relay_route_core::STAGING_DIR_REL`，后端 `control/files_commit.rs::STAGING_DIR`
 /// 与数据位置页引的同一个）；判据 `cross_copy_tests::the_staging_dir_is_the_backend_one` 钉两侧都引它。
 pub const STAGING_DIR: &str = relay_route_core::STAGING_DIR_REL;

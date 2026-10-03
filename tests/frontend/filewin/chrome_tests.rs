@@ -259,3 +259,18 @@ fn other_machines_exclude_this_one_and_the_local_one() {
     assert!(!ws.open_other("laptop", None), "没通道不该发");
     assert_eq!(ws.notice(), Some(crate::shell::NO_LINE.as_str()));
 }
+
+/// 左栏「家目录」问不到：悬停看得见原因、点一下再问一次（此前灰着、提示看不见、再也不问）。
+#[test]
+fn a_home_that_could_not_be_asked_says_why_and_asks_again_on_click() {
+    let ctx = egui::Context::default();
+    let mut ws = Workspace::new(window("/a", Vec::new()));
+    let _ = ws_frame(&ctx, &mut ws, Vec::new());
+    *ws.home.0.lock().unwrap() = HomeState::Failed("原因甲".into());
+    let _ = ws_click(&ctx, &mut ws, &copy_text("rsFilewinChrome.side.home", &[]));
+    assert_eq!(
+        ws.home_known(),
+        Some(Err(crate::shell::NO_LINE.to_string())),
+        "点了问不到的家目录，没有再问一次"
+    );
+}

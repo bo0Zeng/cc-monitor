@@ -1107,6 +1107,18 @@ pub(crate) fn history_faces() -> Vec<(&'static str, HistoryFace)> {
         .collect()
 }
 
+/// 内容搜索（只扫记录树）不覆盖、而这台上又有它的会话记录的那几家：它们对用户的叫法（注册序）。
+pub(crate) fn content_search_skips() -> Vec<&'static str> {
+    REGISTRY
+        .iter()
+        .filter(|a| {
+            a.history
+                .is_some_and(|h| (h.root)().is_some_and(|r| r.is_dir()))
+        })
+        .map(|a| a.launch.map_or(a.kind, |l| l.display_name))
+        .collect()
+}
+
 /// 注册表里每一家合成历史面给的记录根（注册序；说不出的跳过）。按路径读会话的围栏在 Claude 的
 /// `projects/` 之外还认这几个（`observe/history_query.rs::validate_session_path`）。
 pub(crate) fn history_roots() -> Vec<PathBuf> {

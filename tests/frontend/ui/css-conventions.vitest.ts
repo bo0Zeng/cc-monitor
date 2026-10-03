@@ -377,7 +377,8 @@ const HIDDEN_UNRESOLVED: Readonly<Record<string, string>> = {
   // 1515 → 1516：`history.ts` 多一行 import（`launch-arrival`），这一处本身没动。
   // 1516 → 1517：全文搜索那一处多一行注释（条数上限不在前端写），这一处本身没动。
   // 1548 → 1554：删历史会话的三处确认带上「撤不回」（默认焦点在取消）＋ 多两行 import（按会话的那一家恢复）＋ 搜索卡片多一格 `agent`，这一处本身没动。
-  "src/frontend/ui/views/history.ts:1554":
+  // 1554 → 1659：历史页上面那几段多了「没加载上」「按标题搜」「搜得不全说出来」的几十行，这一处本身没动。
+  "src/frontend/ui/views/history.ts:1659":
     "`e.hidden = updated.hidden` —— 这一处根本不是「切某个组件的显隐」，是在把一条会话记录的 `hidden` 字段往回写",
 } as const;
 

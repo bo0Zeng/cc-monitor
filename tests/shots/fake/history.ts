@@ -89,6 +89,7 @@ export function historyOps(): Record<string, OpHandler> {
           projectName: baseName(p.path),
           aiTitle: s.title,
           firstUserExcerpt: s.excerpt,
+          title: s.title || s.excerpt || s.sid.slice(0, 8),
           startedAt: ago(s.agoMin + 40),
           updatedAt: ago(s.agoMin),
           jsonlPath: historyPath(p, s.sid),
@@ -103,10 +104,17 @@ export function historyOps(): Record<string, OpHandler> {
         notice: null,
       };
     },
-    "history-search": (origin) => ({
+    // `titles: true` ⇒ 只比标题与第一句（「按项目」那一路）；否则按内容命中。本机还有 Codex 的会话（不在内容搜索里）。
+    "history-search": (origin, req) => ({
+      unreadable: 0,
+      skipped: origin === "<local>" && req.titles !== true ? ["Codex"] : [],
       lines: HISTORY.filter((p) => p.origin === origin).flatMap((p) =>
         p.sessions
-          .filter((s) => s.hits)
+          .filter((s) =>
+            req.titles === true
+              ? `${s.title}\n${s.excerpt}`.includes(String(req.query))
+              : s.hits,
+          )
           .map((s) =>
             JSON.stringify({
               agent: "claude",
@@ -116,8 +124,8 @@ export function historyOps(): Record<string, OpHandler> {
               jsonlPath: historyPath(p, s.sid),
               title: s.title,
               updatedAt: ago(s.agoMin),
-              hitCount: s.hits!.length,
-              hits: s.hits!.map((h, i) => ({ uuid: `${s.sid}-h${i}`, tsMs: ago(s.agoMin + 3 - i), kind: h.kind, before: h.before, matched: SEARCH_WORD, after: h.after })),
+              hitCount: req.titles === true ? 0 : s.hits!.length,
+              hits: (req.titles === true ? [] : s.hits!).map((h, i) => ({ uuid: `${s.sid}-h${i}`, tsMs: ago(s.agoMin + 3 - i), kind: h.kind, before: h.before, matched: SEARCH_WORD, after: h.after })),
               hitsTruncated: false,
             }),
           ),

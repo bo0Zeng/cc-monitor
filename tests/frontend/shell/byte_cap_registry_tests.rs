@@ -59,6 +59,10 @@ const ALLOWED_SEMANTICS: &[&str] = &[
 /// 否则它就是一条永远不匹配的死规则，而死规则会在下次有人往这个名字上写真上限时悄悄放行。
 const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
     (
+        "TREE_SLICE",
+        "**条数**不是字节：文件窗口删一整棵树时一趟让后端至多删几条（`filewin/writeops.rs`）；删够了后端停在两条之间、回还剩几条，窗口接着发下一趟，不限任何读写的体量。",
+    ),
+    (
         "MARKED_SESSIONS_KEEP",
         "**会话个数**不是字节：中转看见的请求标记至多记多少个会话（`observe/relay_marks.rs`）；超了丢最早记下的那个，它再发请求就重新记。",
     ),

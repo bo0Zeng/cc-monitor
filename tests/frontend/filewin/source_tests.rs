@@ -482,7 +482,7 @@ fn a_screenful_comes_back_already_sorted() {
         vec!["Apple", "yak", "beta.txt", "zebra.txt"],
         "序不对 —— 契约是「目录在前，再按名称**小写**排」（`Apple` 要排在 `yak` 前）"
     );
-    assert!(!truncated);
+    assert!(!truncated.truncated);
     // 反空真：喂进去的就是乱序的（否则「出来有序」可能只是原样）。
     assert_ne!(
         names,
@@ -524,12 +524,18 @@ fn one_unreadable_entry_fails_the_whole_screen_instead_of_vanishing() {
 fn truncation_is_carried_back_not_dropped() {
     let d = serde_json::json!({ "entries": [], "truncated": true });
     assert!(
-        rows_from_ls_data(&d, SortBy::default()).unwrap().1,
+        rows_from_ls_data(&d, SortBy::default())
+            .unwrap()
+            .1
+            .truncated,
         "截断那一格被丢了"
     );
     let d2 = serde_json::json!({ "entries": [] });
     assert!(
-        !rows_from_ls_data(&d2, SortBy::default()).unwrap().1,
+        !rows_from_ls_data(&d2, SortBy::default())
+            .unwrap()
+            .1
+            .truncated,
         "缺了就该当没截断"
     );
 }
@@ -569,7 +575,7 @@ async fn listing_has_no_second_road_when_the_backend_refuses() {
         "经通道回来的那一屏与后端那一侧看见的不等"
     );
     assert!(!rows.is_empty(), "合成树是空的 —— 上面那条相等在空集上成立");
-    assert!(!cut);
+    assert_eq!(cut, crate::source::Cut::default());
     // ② 后端拒 ⇒ 失败，带那台的原话（码不上屏）。
     let e = list_dir(&wired.line, &src, "/definitely/not/here", SortBy::default())
         .await
@@ -831,13 +837,20 @@ fn backend_ls_fields() -> std::collections::BTreeSet<String> {
             .expect("读不到后端那份 `files/mod.rs`");
     let prod = guard_core::production_code(&raw);
     let at = guard_core::pin_line(&prod, CAP_LINE).expect("后端那条 `files.ls` 能力声明不见了");
-    let line = prod
-        .lines()
-        .skip(at)
-        .take(20)
-        .map(str::trim)
+    // `fields: &[` 起、到收口的 `]` 止（rustfmt 把长的一摞折成一行一个）。
+    let mut lines = prod.lines().skip(at).take(30).map(str::trim);
+    let head = lines
         .find_map(|l| l.strip_prefix(FIELDS_HEAD))
-        .expect("`files.ls` 那条声明后面 20 行里没有 `fields`");
+        .expect("`files.ls` 那条声明后面 30 行里没有 `fields`");
+    let mut line = head.to_string();
+    if !head.contains(']') {
+        for l in lines.by_ref() {
+            line.push_str(l);
+            if l.contains(']') {
+                break;
+            }
+        }
+    }
     line.split('"')
         .skip(1)
         .step_by(2)
@@ -860,6 +873,7 @@ fn the_field_by_field_table_between_backend_and_window_is_a_judge() {
         ("path", "path · name · lossy_name"),
         ("size", "size（缺 ＝ 0）"),
         ("truncated", "界面上那句「只拿到了前 N 条」"),
+        ("unreadable", "界面上那句「有 n 项读不出来」（缺 ＝ 0）"),
     ];
     let declared: std::collections::BTreeSet<String> =
         TABLE.iter().map(|(k, _)| (*k).to_string()).collect();
@@ -890,17 +904,37 @@ fn the_field_by_field_table_between_backend_and_window_is_a_judge() {
     // size：缺 ⇒ 0。
     let s = one(serde_json::json!({ "path": "/a/s", "kind": "file", "size": 42 }));
     assert_eq!((s.size, file.size), (42, 0));
-    // path：字节 → 名字，有损那一格跟着字节走。
+    // path：字节 → 名字，有损那一格跟着**名字那一段**的字节走（目录有损、名字干净 ⇒ 名字照样能用）。
     let lossy = one(serde_json::json!({ "path": { "b16": "2f612f66ff" }, "kind": "file" }));
     assert!(lossy.lossy_name && lossy.name.ends_with('\u{FFFD}'));
+    let in_lossy_dir =
+        one(serde_json::json!({ "path": { "b16": "2fff2f72656164" }, "kind": "file" }));
+    assert_eq!(
+        (
+            in_lossy_dir.name.as_str(),
+            in_lossy_dir.lossy_name,
+            &in_lossy_dir.raw_name
+        ),
+        ("read", false, &None),
+        "目录不是合法 UTF-8、名字是 —— 这一行被当成了名字有损"
+    );
     assert_eq!(file.name, "f");
     // entries / truncated：由 `rows_from_ls_data` 摊开。
     let (rows, cut) = rows_from_ls_data(
-        &serde_json::json!({ "entries": [ { "path": "/a/x", "kind": "file" } ], "truncated": true }),
+        &serde_json::json!({ "entries": [ { "path": "/a/x", "kind": "file" } ], "truncated": true, "unreadable": 3 }),
         SortBy::default(),
     )
     .unwrap();
-    assert_eq!((rows.len(), cut), (1, true));
+    assert_eq!(
+        (rows.len(), cut),
+        (
+            1,
+            crate::source::Cut {
+                truncated: true,
+                unreadable: 3
+            }
+        )
+    );
 }
 
 /// 🔴 **盘上每一处按 `/` 切远端路径的地方都在这张表里，表里也没有死行。**

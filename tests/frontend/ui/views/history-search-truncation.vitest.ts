@@ -74,6 +74,9 @@ function response(over: AnySession = {}): AnySession {
     indexedSessions: 1,
     indexedMessages: 1,
     sessions: [session()],
+    failedHosts: [],
+    unreadable: 0,
+    skipped: [],
     ...over,
   };
 }
@@ -184,5 +187,20 @@ describe("K-R100 KR100D3：截断说得出话，且与「真的没有结果」�
     expect(entry!.textContent).not.toContain("点任意条");
     entry!.click();
     expect((vc as unknown as { viewer: unknown }).viewer).not.toBeNull();
+  });
+});
+
+describe("搜得不全时状态行说出来", () => {
+  it("没答上的台 · 读不动几份 · 不覆盖的那几家各说一句（与「共 N 条」并排，不是像全的）", () => {
+    const view = new HistoryView();
+    const { status } = render(view, response({ failedHosts: ["down", "gpu"], unreadable: 3, skipped: ["Codex"] }));
+    const sep = copyText("history.refresh.hostSep");
+    for (const said of [
+      copyText("history.search.partialHosts", { hosts: ["down", "gpu"].join(sep) }),
+      copyText("history.search.unreadable", { n: 3 }),
+      copyText("history.search.skipped", { agents: "Codex" }),
+    ]) {
+      expect(status, "状态行没说").toContain(said);
+    }
   });
 });

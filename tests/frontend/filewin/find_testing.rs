@@ -268,6 +268,8 @@ pub struct FakeBackend {
     pub grep_reply: Option<serde_json::Value>,
     /// 给了 ⇒ `files-grep` 的应答扣住，等用例放行才回（「停」那条判据要在它还在飞那一刻撤）。
     hold_grep: Option<std::sync::Arc<tokio::sync::Notify>>,
+    /// `files-delete` 一趟一趟回的「还剩几条」（取一个用一个；用完 ⇒ 不带这一格，即删完了）。
+    pub delete_left: std::sync::Arc<std::sync::Mutex<std::collections::VecDeque<u64>>>,
 }
 
 impl FakeBackend {
@@ -286,6 +288,7 @@ impl FakeBackend {
             hold_rebuild: None,
             grep_reply: None,
             hold_grep: None,
+            delete_left: Default::default(),
         }
     }
 
@@ -749,7 +752,13 @@ impl FakeBackend {
                         None,
                     );
                 }
-                (true, None, None, Some(serde_json::json!({ "path": root })))
+                let mut reply = serde_json::json!({ "path": root });
+                if cmd == "files-delete" {
+                    if let Some(n) = self.delete_left.lock().unwrap().pop_front() {
+                        reply["remaining"] = serde_json::json!(n);
+                    }
+                }
+                (true, None, None, Some(reply))
             }
             // 新建空文件：同写面五条「只记下来、不落盘」；`root` 带 `refuse` ⇒ 围栏那一档，
             //   `rel` 带 `exists` ⇒ 「目标已经在了」那一档（后端 `O_EXCL` 失败走的是 `io_failed`）。

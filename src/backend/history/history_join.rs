@@ -261,6 +261,15 @@ pub(crate) fn session_from_row(
         "firstUserExcerpt".into(),
         json!(v["firstUserExcerpt"].as_str().unwrap_or_default()),
     );
+    // 列表与查看器的标题（用户改过的标题另在 `customTitle`，界面先看它）：与全文搜索同一条规则。
+    o.insert(
+        "title".into(),
+        json!(crate::observe::search_rules::session_title(
+            v["aiTitle"].as_str(),
+            v["firstUserExcerpt"].as_str().unwrap_or_default(),
+            &sid,
+        )),
+    );
     o.insert(
         "startedAt".into(),
         json!(v["startedAtMs"].as_i64().unwrap_or(0)),
@@ -334,6 +343,7 @@ pub(crate) fn synth_session(
 ) -> Value {
     let meta = ann.and_then(|t| t.get(&s.sid)).cloned().unwrap_or_default();
     let name = last_segment(&s.cwd).map_or_else(|| format!("({kind})"), str::to_string);
+    let title = crate::observe::search_rules::session_title(None, &excerpt, &s.sid);
     json!({
         "agent": kind,
         "sessionId": s.sid,
@@ -341,6 +351,7 @@ pub(crate) fn synth_session(
         "projectName": name,
         "aiTitle": null,
         "firstUserExcerpt": excerpt,
+        "title": title,
         "startedAt": s.mtime_ms,
         "updatedAt": s.mtime_ms,
         "jsonlPath": s.path.to_string_lossy(),
@@ -582,6 +593,35 @@ pub(crate) fn remote_sessions_from(
     capped(json!({ "rows": sessions, "notice": ann.err() }))
 }
 
+/// 一个记录目录里会话的真实目录不止一个时，项目清单按目录分成了几组（`history_query::group_by_cwd`）；
+/// 给了 `project_path` ⇒ 只留归这一组的会话（同一个分组函数、同一份目录与修改时刻）。
+pub(crate) fn only_group(mut v: Value, project_path: Option<&str>) -> Value {
+    let Some(want) = project_path else {
+        return v;
+    };
+    let Some(rows) = v.get_mut("rows").and_then(Value::as_array_mut) else {
+        return v;
+    };
+    let keys: Vec<(Option<String>, i64)> = rows
+        .iter()
+        .map(|r| {
+            let cwd = r["projectPath"].as_str().filter(|c| !c.is_empty());
+            (
+                cwd.map(str::to_string),
+                r["updatedAt"].as_i64().unwrap_or(0),
+            )
+        })
+        .collect();
+    let groups = crate::observe::history_query::group_by_cwd(&keys);
+    let mut i = 0;
+    rows.retain(|_| {
+        let keep = groups[i] == want;
+        i += 1;
+        keep
+    });
+    v
+}
+
 /// 入参里的 `origin`：缺席 / `null` = 这台；空串拒；其余 = 可达表的键。
 fn origin_arg(args: &Value) -> Result<Option<&str>, (&'static str, String)> {
     match args.get("origin") {
@@ -709,6 +749,12 @@ pub async fn answer_sessions_with(
             crate::common::contract::malformed("missing `project_dir`"),
         ))?
         .to_string();
+    // 项目清单按真实目录分过组 ⇒ 带回那一组的目录，只回那一组的会话。
+    let group = args
+        .get("project_path")
+        .and_then(Value::as_str)
+        .map(str::to_string);
+    let only = move |v: Value| only_group(v, group.as_deref());
     match origin_arg(&args)? {
         None => {
             blocking(move || {
@@ -721,6 +767,7 @@ pub async fn answer_sessions_with(
                     &crate::history::history_annotations::load(),
                     &live,
                 )
+                .map(only)
             })
             .await
         }
@@ -745,6 +792,7 @@ pub async fn answer_sessions_with(
                     Some(l) => remote_sessions_from(&o, &dir, &out, &ann, l),
                     None => remote_sessions_from(&o, &dir, &out, &ann, &NoLiveness),
                 }
+                .map(only)
             })
             .await
         }

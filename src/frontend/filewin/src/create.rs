@@ -134,6 +134,7 @@ impl FileWindow {
 
     /// 摆出「新建空文件」那个框。回值 ＝ 真的摆出来了。
     pub fn begin_new_file(&mut self) -> bool {
+        *self.prompt_error.lock().unwrap() = None;
         self.new_file = Some(NewFilePrompt::new(&self.cwd));
         true
     }
@@ -141,6 +142,7 @@ impl FileWindow {
     /// 收掉那个框，什么都不做。
     pub fn cancel_new_file(&mut self) {
         self.new_file = None;
+        *self.prompt_error.lock().unwrap() = None;
     }
 
     /// 框里那几个字 → 一次 `files-create`。回值 ＝ 真的发出去了。
@@ -156,17 +158,16 @@ impl FileWindow {
         let path = match p.to_path() {
             Ok(path) => path,
             Err(why) => {
-                *self.listing.error.lock().unwrap() = Some(why);
+                *self.say_slot() = Some(why);
                 return false;
             }
         };
         let Some(h) = self.rt.clone() else {
-            *self.listing.error.lock().unwrap() =
-                Some(copy_text("rsFilewinCreate.confirm.noRuntime", &[]).into());
+            *self.say_slot() = Some(copy_text("rsFilewinCreate.confirm.noRuntime", &[]).into());
             return false;
         };
         let Some(line) = self.line.clone() else {
-            *self.listing.error.lock().unwrap() = Some(NO_LINE.to_string());
+            *self.say_slot() = Some(NO_LINE.to_string());
             return false;
         };
         let origin = self.source.origin();
@@ -191,6 +192,7 @@ impl FileWindow {
             board.finish(out);
         });
         self.new_file = None;
+        *self.prompt_error.lock().unwrap() = None;
         true
     }
 
@@ -204,6 +206,9 @@ impl FileWindow {
             ui.heading(NewFilePrompt::heading());
             if let Some(text) = self.new_file_text_mut() {
                 go |= super::shell::prompt_field(ui, text);
+            }
+            if let Some(e) = self.prompt_error() {
+                ui.colored_label(ui.visuals().error_fg_color, e);
             }
             ui.label(&copy_text("rsFilewinCreate.ui.sameDirOnly", &[]));
             ui.horizontal(|ui| {

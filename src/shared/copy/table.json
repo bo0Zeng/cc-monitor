@@ -18728,6 +18728,71 @@
       "kind": "error",
       "zh": "本机没有文件窗口",
       "args": []
+    },
+    "rsFilewinShell.frame.unreadable": {
+      "kind": "body",
+      "zh": "这个目录里有 {n} 项读不出来，没有列出。",
+      "args": ["n"]
+    },
+    "rsFilewinShell.reveal.hiddenShown": {
+      "kind": "body",
+      "zh": "{want} 是隐藏文件，已显示隐藏文件",
+      "args": ["want"]
+    },
+    "rsFilewinShell.oneAtATime.upload": {
+      "kind": "error",
+      "zh": "上一批还在上传，传完了再传这一批",
+      "args": []
+    },
+    "rsFilewinShell.oneAtATime.download": {
+      "kind": "error",
+      "zh": "上一个还在下载，下完了再下这一个",
+      "args": []
+    },
+    "rsFilewinShell.oneAtATime.copy": {
+      "kind": "error",
+      "zh": "上一趟还在复制，复制完了再复制",
+      "args": []
+    },
+    "rsFilewinShell.oneAtATime.cross": {
+      "kind": "error",
+      "zh": "上一趟复制到另一台还没完，完了再复制",
+      "args": []
+    },
+    "rsFilewinShell.edit.elsewhere": {
+      "kind": "error",
+      "zh": "另一栏开着一份文本，先把它关掉再开这一份",
+      "args": []
+    },
+    "rsFilewinCrossCopy.prompt.localMachine": {
+      "kind": "control",
+      "zh": "本机",
+      "args": []
+    },
+    "rsFilewinDownload.dest.renamed": {
+      "kind": "body",
+      "zh": "名字里有 Windows 不认的字，存成了 {local}",
+      "args": ["local"]
+    },
+    "history.body.loadFailed": {
+      "kind": "error",
+      "zh": "这个项目的会话没加载上，收起再展开会再试一次。",
+      "args": []
+    },
+    "history.search.partialHosts": {
+      "kind": "body",
+      "zh": "连不上 {hosts}，它们的会话没搜到。",
+      "args": ["hosts"]
+    },
+    "history.search.unreadable": {
+      "kind": "body",
+      "zh": "有 {n} 份会话记录读不动，没搜到。",
+      "args": ["n"]
+    },
+    "history.search.skipped": {
+      "kind": "body",
+      "zh": "{agents} 的会话不在内容搜索里。",
+      "args": ["agents"]
     }
   }
 }

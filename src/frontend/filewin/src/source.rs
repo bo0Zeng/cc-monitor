@@ -728,6 +728,7 @@ pub const CMD_LS: &str = "files-ls";
 /// | `mtime_secs`（可能缺） | `mtime_secs` | 原样带上来；缺就是 `None`（＝**没送**，不是 1970） |
 /// | `entries` | 那一屏有几行 | 由 [`rows_from_ls_data`] 摊开 |
 /// | `truncated` | 界面上那句「只拿到了前 N 条」 | 同上 |
+/// | `unreadable` | 界面上那句「有 n 项读不出来」 | 同上；缺 ⇒ 0 |
 ///
 /// 🔴〔补齐五项 2026-09-23〕**这张表此前是散文，而它自陈的两格正是两条真缺口。**
 /// 上一版逐字写着「`kind`（四值）⇒ `is_dir`：只有 `dir` 算目录」与
@@ -748,14 +749,14 @@ pub fn row_from_ls_entry(v: &serde_json::Value) -> Result<Listed, String> {
         .ok_or_else(|| copy_text("rsFilewinSource.path.badShape", &[]))?;
     // 🔴 有损与否看**字节**，不看转出来的那个串里有没有 U+FFFD。
     //    后者是一个猜：真叫 `\u{FFFD}` 的文件会被误判成有损。
-    let lossy_name = std::str::from_utf8(&bytes).is_err();
+    // 只看**名字那一段**（最后一个 `/` 之后；远端路径恒用 `/`）：目录有损而名字干净的那一行
+    //   名字照样能用（整条路径的字节由窗口按当前目录的字节拼，`FileWindow::row_path`）。
+    let cut = bytes.iter().rposition(|b| *b == b'/').map_or(0, |k| k + 1);
+    let lossy_name = std::str::from_utf8(&bytes[cut..]).is_err();
     let path = String::from_utf8_lossy(&bytes).to_string();
     let name = remote_basename(&path).to_string();
-    // 有损名留住**名字那一段**的原始字节（最后一个 `/` 之后；远端路径恒用 `/`）。
-    let raw_name = lossy_name.then(|| {
-        let cut = bytes.iter().rposition(|b| *b == b'/').map_or(0, |k| k + 1);
-        bytes[cut..].to_vec()
-    });
+    // 有损名留住名字那一段的原始字节。
+    let raw_name = lossy_name.then(|| bytes[cut..].to_vec());
     // 🔴 `kind` 落**两格**，不是一格：压成一个布尔就是「看不出哪个是符号链接」。
     let kind = v.get("kind").and_then(|k| k.as_str());
     let is_dir = kind == Some("dir");
@@ -782,9 +783,16 @@ pub fn row_from_ls_entry(v: &serde_json::Value) -> Result<Listed, String> {
     })
 }
 
+/// 一屏之外的那两格：被截断了吗 · 有几项读不出来（后端照数、没列出）。
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Cut {
+    pub truncated: bool,
+    pub unreadable: u64,
+}
+
 /// 问**那台机器上的后端**要一个目录。
 ///
-/// 回 `(行, 被截断了吗)`。⚠ 截断要**画出来** —— 「目录里就这么多」与
+/// 回 `(行, 被截断了吗 · 有几项读不出来)`。⚠ 截断要**画出来** —— 「目录里就这么多」与
 /// 「后端截断了」在屏幕上长得一样，而那正是本仓的头号病形。
 ///
 /// ⚠ 本函数**自己没有逻辑**，判的那一段住 [`row_from_ls_entry`]。
@@ -794,7 +802,7 @@ pub async fn list_via_backend(
     dir: &str,
     limit: usize,
     by: impl Into<Sort>,
-) -> Result<(Vec<Listed>, bool), String> {
+) -> Result<(Vec<Listed>, Cut), String> {
     list_via_backend_at(
         line,
         origin,
@@ -812,7 +820,7 @@ pub async fn list_via_backend_at(
     dir: serde_json::Value,
     limit: usize,
     by: impl Into<Sort>,
-) -> Result<(Vec<Listed>, bool), String> {
+) -> Result<(Vec<Listed>, Cut), String> {
     let args = serde_json::json!({ "path": dir, "limit": limit });
     let d = ask(
         line,
@@ -839,7 +847,7 @@ pub async fn list_via_backend_at(
 pub fn rows_from_ls_data(
     d: &serde_json::Value,
     by: impl Into<Sort>,
-) -> Result<(Vec<Listed>, bool), String> {
+) -> Result<(Vec<Listed>, Cut), String> {
     let arr = d
         .get("entries")
         .and_then(|v| v.as_array())
@@ -860,7 +868,17 @@ pub fn rows_from_ls_data(
         .get("truncated")
         .and_then(serde_json::Value::as_bool)
         .unwrap_or(false);
-    Ok((out, truncated))
+    let unreadable = d
+        .get("unreadable")
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or(0);
+    Ok((
+        out,
+        Cut {
+            truncated,
+            unreadable,
+        },
+    ))
 }
 
 /// 一屏最多要多少行。
@@ -879,7 +897,7 @@ pub async fn list_dir(
     source: &Source,
     dir: &str,
     by: impl Into<Sort>,
-) -> Result<(Vec<Listed>, bool), String> {
+) -> Result<(Vec<Listed>, Cut), String> {
     list_via_backend(line, &source.origin(), dir, LS_LIMIT, by).await
 }
 

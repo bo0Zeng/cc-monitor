@@ -1072,7 +1072,7 @@ SSH 握手，而当时的调用方（用量探针）两段轮询上限 12+20 轮
 → {"id":"f1","cmd":"files-ls","args":{"path":"/home/u/p","limit":1000}}
 ← {"kind":"reply","id":"f1","ok":true,"data":{
      "entries":[{"path":"/home/u/p/a.rs","kind":"file","size":1234,"mtime_secs":1758300000}],
-     "truncated":false}}
+     "truncated":false,"unreadable":0}}
 ```
 
 | 字段 | 向 | 说明 |
@@ -1085,6 +1085,7 @@ SSH 握手，而当时的调用方（用量探针）两段轮询上限 12+20 轮
 | `size` | ← | 字节数 |
 | `mtime_secs` | ← | Unix 纪元秒 |
 | `truncated` | ← | 目录里的项数多于回送的条数（被 `limit` 截了） |
+| `unreadable` | ← | 目录打开了、其中几项读不出来（没有回送、不算进 `truncated`）。不静默少一项：窗口照这个数说一句 |
 
 **错误码**：`bad_path`（`path` 缺了 / 形状不对 / 空）· `unreadable`（这个目录打不开）。
 
@@ -1154,10 +1155,11 @@ SSH 握手，而当时的调用方（用量探针）两段轮询上限 12+20 轮
 - `file:` / `folder:`：只要文件（不是目录的都算）/ 只要目录；后面可以跟一个词（`folder:src`）。
 - 打到一半的引号 / 分组在末尾自动收口；`ext:` / `path:` 后面还没写东西 ⇒ 先不缩。
 - 认不出的 `xx:`（如 `12:30`）当普通字；Everything 认得、这里不支持的（`size:` `dm:` `regex:` `case:` `type:` `parent:` …）⇒ `bad_query`。
-- 命中按索引里的顺序给（**没排序**）；翻页之间索引若换了一份，后面几页会错位。
+- 命中按**相关度**排：名字与某个词一样 ＞ 名字以它开头 ＞ 名字里有它 ＞ 别的（带通配的词、`ext:`、`path:` 不分档）；同一档里路径浅的在前，再按路径字节序。
+  每一屏都按这一个全序切那一段 ⇒ 翻到哪都是同一个顺序；翻页之间索引若换了一份，后面几页会错位。
 
 ⚠ **它不重走、不阻塞**：拿的是手上那一份，并把年龄与「该不该重走、走哪个根」一起交回去。
-⚠ 按内容搜是另一条 `files-grep`（见下）。模糊匹配 · 排序 —— 没做。
+⚠ 按内容搜是另一条 `files-grep`（见下）。模糊匹配 · 按名称 / 时间 / 大小排 —— 没做。
 ⚠ 丢旧号靠号不靠计时：旧那一趟每扫 8192 条看一次号，扫完再看一次。
 
 **错误码**：`bad_args`（`query` 缺了 / 不是字符串 · `seq` 不是非负整数）· `bad_path`（`under` 形状不对 / 空）·
@@ -1512,7 +1514,9 @@ rebuild 回 `entries:4`，下一个 exec 的 `--files-index-status` 回 `index_m
 → {"id":"w4","cmd":"files-delete","args":{"root":"/home/u/docs","rel":"old.md"}}
 ← {"kind":"reply","id":"w4","ok":true,"data":{"path":"/home/u/docs/old.md","removed":1}}
 → {"id":"w4b","cmd":"files-delete","args":{"root":"/home/u/docs","rel":"build","recursive":true}}
-← {"kind":"reply","id":"w4b","ok":true,"data":{"path":"/home/u/docs/build","removed":37}}
+← {"kind":"reply","id":"w4b","ok":true,"data":{"path":"/home/u/docs/build","removed":37,"remaining":0}}
+→ {"id":"w4c","cmd":"files-delete","args":{"root":"/home/u/docs","rel":"node_modules","recursive":true,"limit":10000}}
+← {"kind":"reply","id":"w4c","ok":true,"data":{"path":"/home/u/docs/node_modules","removed":10000,"remaining":8800}}
 ```
 
 | 字段 | 向 | 说明 |
@@ -1521,8 +1525,10 @@ rebuild 回 `entries:4`，下一个 exec 的 `--files-index-status` 回 `index_m
 | `recursive` | → | 布尔，**缺省 `false`**。不给 ⇒ 射程与此前一个字节不差（非空目录 ⇒ `io_failed`）；给了不是布尔 ⇒ `bad_args`（不猜） |
 | `expect` | → | 可选，字符串或 `{"b16": …}`：「我读到的是这一份」。给了 ⇒ 目标必须是一份**普通文件**（目录 / 链接 ⇒ `refused`），盘上逐字节等于它才删；不等或已经不在 ⇒ `stale`，一个字节不动。`null` ⇒ `bad_args`；与 `recursive: true` 同给 ⇒ `bad_args`。不给 ⇒ 行为不变 |
 | `expect`（空目录形） | → | 〔SU1 问 2〕恰好 `{"empty_dir": true}`：「我看到的是一个空目录，删它」。目标（不跟链接地看）必须是**真目录**（文件 / 链接 ⇒ `refused`）；不空 ⇒ `stale`（`remove_dir` 自己拒非空，没有先看后删的窗）；不在 ⇒ `stale`。`{"empty_dir": false}` / 多一个键 ⇒ `bad_args`（按逐字节形取、取不出）；与 `recursive: true` 同给 ⇒ `bad_args`。卸 skill 删完装时写的文件之后用它收掉空目录 |
+| `limit` | → | 可选，只对 `recursive: true`：这一趟至多删几条。删够了停在两条之间（叶子先删，剩下的仍是一棵连着的树），`remaining` 说还剩几条；给 `0` 也删一条 ⇒ 一趟接一趟总删得完。一趟多大由调用方定（后端不看钟）。不给 ⇒ 删到底 |
 | `path` | ← | 删掉的那一项 |
 | `removed` | ← | 这一趟真删掉了几条（含目标自己；不递归那一支恒 `1`） |
+| `remaining` | ← | 还剩几条没删（只有带 `limit` 删够了停下时不是 `0`）：调用方再发一趟同样的请求接着删 |
 
 🔴 **不带 `recursive` 就不递归，刻意的**：路径解析的射程是一条路径，递归删动的是整棵子树。
 （此前这里的理由是「底下藏着的一份会话文件照样被一起删掉」；那道拦截用户拿掉了，会话文件照删。）
@@ -2540,7 +2546,7 @@ monitor（宿主，只交事实）在**每台**远端流握手成功那一刻交
 | 字段 | 向 | 说明 |
 |---|---|---|
 | `origin` | → | 可缺席：那台的名字（可达表的键）。缺席 = 这台 |
-| `rows` | ← | 每项目一行：`agent`（同 `history-sessions`）· `projectPath` · `projectName` · `projectDir`（懒加载的键，原样交回 `history-sessions`）· `sessionCount` · `starredCount` / `hiddenCount`（`null` = 不知道，**不是 0**）· `lastActivity`（毫秒）· `hasLive`（`null` = 这条路上答不了）· `origin`（远端那台才有） |
+| `rows` | ← | 每项目一行（一个记录目录里会话的真实目录不止一个 ⇒ 一个目录一行，`projectDir` 相同、`projectPath` 不同：记录目录名把非 ASCII 字符折成 `-`，不同目录会撞名；读不出目录的会话归最近修改的那一组）：`agent`（同 `history-sessions`）· `projectPath` · `projectName` · `projectDir`（懒加载的键，原样交回 `history-sessions`，连同 `projectPath`）· `sessionCount` · `starredCount` / `hiddenCount`（`null` = 不知道，**不是 0**）· `lastActivity`（毫秒）· `hasLive`（`null` = 这条路上答不了）· `origin`（远端那台才有） |
 | `notice` | ← | 注解没并上的那句话；`null` = 并上了 |
 
 **错误码**：`bad_args`（`origin` 空串 / 不是串）· `failed`（这台的记录树读不动）· `unreachable`（可达表里没有那一台 / 那台问不出来 —— 带那台的名字与原因）· `too_large`。
@@ -2556,8 +2562,9 @@ monitor（宿主，只交事实）在**每台**远端流握手成功那一刻交
 | 字段 | 向 | 说明 |
 |---|---|---|
 | `project_dir` | → | `history-projects` 给的那个项目键：记录树的项目目录名（不是路径；含分隔符 / `..` ⇒ `bad_args`），或合成历史的 `<kind>:<cwd>`（只在这台） |
+| `project_path` | → | 可缺席：`history-projects` 那一行的 `projectPath`。给了 ⇒ 只回归这一组的会话（同一个分组规则）；缺席 ⇒ 这个记录目录里的全部 |
 | `origin` | → | 同 `history-projects` |
-| `rows` | ← | 每会话一行：`agent`（哪一家：记录树那一支是记录树那一家，合成历史是那一家）· `sessionId` · `projectPath` · `projectName` · `aiTitle` · `firstUserExcerpt` · `startedAt` / `updatedAt`（毫秒）· `jsonlPath` · `isLive`（`null` = 答不了）· `messageCountApprox` · `isBg` · `starred` / `customTitle` / `hidden`（这台的注解）· `forkedFromSessionId` / `forkedFromMessageUuid`（`/branch` 分叉来的才有）· `origin`（远端那台才有） |
+| `rows` | ← | 每会话一行：`agent`（哪一家：记录树那一支是记录树那一家，合成历史是那一家）· `sessionId` · `projectPath` · `projectName` · `aiTitle` · `firstUserExcerpt` · `title`（显示的标题：标题 ＞ 第一句 ＞ 会话 ID 前 8 位，与全文搜索同一条规则；用户改过的标题另在 `customTitle`，界面先看它）· `startedAt` / `updatedAt`（毫秒）· `jsonlPath` · `isLive`（`null` = 答不了）· `messageCountApprox` · `isBg` · `starred` / `customTitle` / `hidden`（这台的注解）· `forkedFromSessionId` / `forkedFromMessageUuid`（`/branch` 分叉来的才有）· `origin`（远端那台才有） |
 | `notice` | ← | 同 `history-projects` |
 
 **错误码**：`bad_args` · `failed` · `unreachable` · `too_large`。⚠ 远端那一支在那台跑 `--list-sessions <project_dir>`。
@@ -2566,7 +2573,7 @@ monitor（宿主，只交事实）在**每台**远端流握手成功那一刻交
 
 ```text
 → {"id":"q3","cmd":"history-search","args":{"query":"deploy","limit":50}}
-← {"kind":"reply","id":"q3","ok":true,"data":{"lines":["{\"sessionId\":…,\"hitCount\":3,…}", …]}}
+← {"kind":"reply","id":"q3","ok":true,"data":{"lines":["{\"sessionId\":…,\"hitCount\":3,…}", …],"unreadable":0,"skipped":["Codex"]}}
 ```
 
 | 字段 | 向 | 说明 |
@@ -2576,7 +2583,10 @@ monitor（宿主，只交事实）在**每台**远端流握手成功那一刻交
 | `scope` | → | 可选，`user` / `assistant`，= `--scope` |
 | `after_ms` | → | 可选，= `--after-ms` |
 | `limit` | → | 可选，= `--limit` |
+| `titles` | → | 可选布尔：只比会话标题与第一句（不搜内容）；命中的会话照样一行，`hitCount` 为 `0`、`hits` 空。帧面才有（CLI 面 `--search` 没有这个选项） |
 | `lines` | ← | 每命中会话一行 `SessionHits`（带 `agent`：只扫记录树 ⇒ 记录树那一家），形状与行序同 `--search` |
+| `unreadable` | ← | 这一趟有几份会话记录读不动、没搜到（权限 / IO 错 / 不是合法 UTF-8）。不是 `0` ⇒ 结果不全，界面说出来 |
+| `skipped` | ← | 内容搜索不覆盖、这台上又有它的会话记录的那几家（对用户的叫法，如 `Codex`）：它们的会话不在结果里 |
 
 ⚠ 选项**不在帧面另写一份语义**：这几个字段被摊回 `--include-tools` / `--scope` / `--after-ms` / `--limit`，交给 CLI 那一臂同一个解析。
 

@@ -28,7 +28,7 @@ export const HISTORY_SCENES: Scene[] = [
     await click(".history-group-header");
     await sleep(900);
   }),
-  hist("history-filter", "历史 · 按名字过滤（没命中）", "「项目」模式下输入「订单」：这个词只出现在会话标题里、不在项目名里，结果是 0 个项目", async () => {
+  hist("history-filter", "历史 · 只在会话标题里的词", "「项目」模式下输入「订单」：这个词只出现在会话标题里、不在项目名里 —— 后端按标题搜全部会话，那几个项目照样列出来", async () => {
     await openHistory();
     await type(".history-search", "订单");
     await sleep(700);

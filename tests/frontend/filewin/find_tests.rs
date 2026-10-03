@@ -1320,3 +1320,40 @@ fn this_module_never_touches_the_disk() {
         );
     }
 }
+
+/// 往下翻那一问失败（通道断了 / 回包解不出）⇒ 这一问不再自动往下翻（此前命中滚在底部时每帧再发一趟、每趟失败又敲一次重画）；
+/// 换一问（再敲字 / 重建）才放开。
+#[test]
+fn a_failed_next_page_is_not_retried_every_frame() {
+    let b = SearchBoard::default();
+    let asked = Asked {
+        query: "x".into(),
+        under: None,
+    };
+    b.invalidate(&asked);
+    let mine = b.start();
+    store_if_current(
+        &b,
+        mine,
+        &asked,
+        Round {
+            outcome: Some(FindOutcome {
+                hits: vec![Hit {
+                    path: b"/h/x".to_vec(),
+                    dir: false,
+                }],
+                total_hits: 5,
+                truncated: true,
+                ..Default::default()
+            }),
+            ..Default::default()
+        },
+    );
+    let (m, _, offset) = b.claim_more().expect("后面还有，却不往下翻");
+    assert_eq!(offset, 1);
+    assert!(append_if_current(&b, m, Err("通道断了".into())));
+    assert_eq!(b.claim_more(), None, "翻页失败之后每帧又发一趟");
+    assert_eq!(b.shown().notice.as_deref(), Some("通道断了"));
+    b.invalidate(&asked);
+    assert!(!b.page_failed(), "换一问之后还闩着");
+}

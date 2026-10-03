@@ -2030,7 +2030,17 @@ pub const REGISTRY: &[CommandSpec] = &[
         codes: &["bad_args", "bad_path", "io_failed", "refused", "stale"],
         // `recursive`（入）· `removed`（出）：显式才删整棵树，逐条目过围栏。
         // `expect`（入）：给了 ⇒ 盘上逐字节等于它才删一份普通文件，否则 `stale`。
-        fields: &["expect", "path", "recursive", "rel", "removed", "root"],
+        // `limit`（入）· `remaining`（出）：递归删一趟至多删几条、还剩几条（调用方接着发）。
+        fields: &[
+            "expect",
+            "limit",
+            "path",
+            "recursive",
+            "rel",
+            "remaining",
+            "removed",
+            "root",
+        ],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::control::files_write::answer_wire(&r.cmd, &r.args, &SESSION_PORT)
@@ -2386,6 +2396,7 @@ pub const REGISTRY: &[CommandSpec] = &[
             "path",
             "size",
             "truncated",
+            "unreadable",
         ],
         takes_input: true,
         run: Run::Blocking(|r| {
@@ -2527,7 +2538,7 @@ pub const REGISTRY: &[CommandSpec] = &[
         name: "history-sessions",
         doc_anchor: Some("#### `history-sessions`"),
         codes: &["bad_args", "failed", "too_large", "unreachable"],
-        fields: &["notice", "origin", "project_dir", "rows"],
+        fields: &["notice", "origin", "project_dir", "project_path", "rows"],
         takes_input: true,
         run: Run::Async(|r| {
             Box::pin(async move {
@@ -2549,6 +2560,9 @@ pub const REGISTRY: &[CommandSpec] = &[
             "lines",
             "query",
             "scope",
+            "skipped",
+            "titles",
+            "unreadable",
         ],
         takes_input: true,
         run: Run::Blocking(|r| {

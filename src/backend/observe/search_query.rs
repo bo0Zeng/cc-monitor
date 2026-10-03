@@ -45,6 +45,8 @@ struct SearchOpts {
     after_ms: i64,
     /// 全局返回 snippet 上限（hitCount 仍报全量）。
     limit: usize,
+    /// 只比会话标题与第一句（不搜内容）：命中的会话照样一行，`hitCount` 为 0、`hits` 空。
+    titles: bool,
 }
 
 /// `--search <query> [--include-tools] [--scope user|assistant] [--after-ms N] [--limit N]`。
@@ -72,14 +74,24 @@ pub fn run(agent_home: &Path, args: &[String]) -> i32 {
 
 /// 帧面那条（`history-search`）的入口：`rest` 是 `--search <query>` **之后**那一截，
 /// 解析走**同一个** [`parse_opts`] —— 选项的口径只有一份，不在帧面另写一套 JSON 解析。
+/// 回「读不动、没搜到」的会话数（帧面那条把它交给界面说出来）。
+/// `titles` ＝ 只比标题与第一句（帧面那一格；CLI 面没有这个选项）。
 pub(crate) fn search_into(
     agent_home: &Path,
     query: &str,
     rest: &[String],
+    titles: bool,
     out: &mut impl Write,
-) -> Result<(), String> {
-    let opts = parse_opts(rest);
-    search(agent_home, query, &opts, out)
+) -> Result<usize, String> {
+    let opts = SearchOpts {
+        titles,
+        ..parse_opts(rest)
+    };
+    let unreadable = search_counting(agent_home, query, &opts, out)?;
+    if let Some(note) = unreadable_note(unreadable) {
+        tracing::warn!("{note}");
+    }
+    Ok(unreadable)
 }
 
 /// 从 `--search <query>` 之后的参数解析选项（未知/缺值的容错忽略）。
@@ -89,6 +101,7 @@ fn parse_opts(rest: &[String]) -> SearchOpts {
         scope: None,
         after_ms: 0,
         limit: search_rules::DEFAULT_LIMIT,
+        titles: false,
     };
     let mut i = 0;
     while i < rest.len() {
@@ -621,6 +634,7 @@ impl SearchIndex {
                 Err(why) => (None, Some(why)),
             };
             let session = match (&entry, &bad) {
+                (Some(e), None) if opts.titles => session_title_row(&path, e, q, updated_at),
                 (Some(e), None) => session_hits_in(&path, e, q, opts, &mut budget, updated_at),
                 _ => None,
             };
@@ -697,6 +711,41 @@ fn session_hits_in(
     if hit_count == 0 {
         return None;
     }
+    Some(session_row(
+        path,
+        entry,
+        session_id,
+        updated_at,
+        hit_count,
+        hits,
+        session_starved,
+    ))
+}
+
+/// 只比标题与第一句（帧面的 `titles`）：标题 ／ 第一句里有这几个字 ⇒ 一行（`hitCount` 0、`hits` 空）。
+fn session_title_row(path: &Path, entry: &FileEntry, q_lc: &str, updated_at: i64) -> Option<Value> {
+    let session_id = path.file_stem()?.to_str()?.to_string();
+    let title = entry.tail.title.as_ref().or(entry.done.title.as_ref());
+    let excerpt = if entry.done.excerpt.is_empty() {
+        &entry.tail.excerpt
+    } else {
+        &entry.done.excerpt
+    };
+    let found = title.is_some_and(|t| t.to_lowercase().contains(q_lc))
+        || excerpt.to_lowercase().contains(q_lc);
+    found.then(|| session_row(path, entry, session_id, updated_at, 0, Vec::new(), false))
+}
+
+/// 一个会话的那一行（命中那几格由调用方给）。
+fn session_row(
+    path: &Path,
+    entry: &FileEntry,
+    session_id: String,
+    updated_at: i64,
+    hit_count: u32,
+    hits: Vec<Value>,
+    session_starved: bool,
+) -> Value {
     let project_path = entry
         .done
         .cwd
@@ -719,7 +768,7 @@ fn session_hits_in(
         first_user_excerpt,
         &session_id,
     );
-    Some(serde_json::json!({
+    serde_json::json!({
         // 全文搜索只扫记录树（`projects/`）⇒ 命中的会话都是记录树那一家的。
         "agent": crate::agents::record_tree_kind().unwrap_or_default(),
         "sessionId": session_id,
@@ -734,7 +783,7 @@ fn session_hits_in(
         // `hitCount: 12, hits: []` 与「这个会话没什么可看的」在 monitor 与前端眼里同形，
         // 而 `merge_search_results`〔散文墓碑〕逐字 `truncated: local.truncated` 把远端那一半整个丢掉。
         "hitsTruncated": session_starved,
-    }))
+    })
 }
 
 /// 一条 user / assistant 记录拿去搜的两段文本（从 `session_hits_in` 里拆出来）。

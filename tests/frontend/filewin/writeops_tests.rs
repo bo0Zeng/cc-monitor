@@ -820,7 +820,7 @@ async fn a_directory_delete_recurses_and_a_lossy_name_is_addressed_by_its_bytes(
     let got: Vec<serde_json::Value> = wired.log.lock().unwrap().clone();
     let b16 = serde_json::json!({ "b16": "636166e92e747874" });
     let want = vec![
-        serde_json::json!({ "cmd": "files-delete", "args": { "root": "/srv/data", "rel": "build", "recursive": true } }),
+        serde_json::json!({ "cmd": "files-delete", "args": { "root": "/srv/data", "rel": "build", "recursive": true, "limit": crate::writeops::TREE_SLICE } }),
         serde_json::json!({ "cmd": "files-delete", "args": { "root": "/srv/data", "rel": b16 } }),
         serde_json::json!({ "cmd": "files-rename", "args": { "root": "/srv/data", "from": b16, "to": "cafe.txt" } }),
         serde_json::json!({ "cmd": "files-chmod", "args": { "root": "/srv/data", "rel": b16, "mode": 0o600 } }),
@@ -1001,3 +1001,27 @@ fn gp1_a_late_answer_for_an_old_box_never_lands_on_the_new_one() {
 
 // P2⁗（现值那一趟真上线、按盘上真文件答）住 `shell_tests.rs::gp1_the_mode_probe_asks_files_stat_per_target_over_the_wire`：
 // 它要在临时目录里铺真文件、设真权限位，本文件留在单元层（`test_tiers` 分区）。
+
+/// 删一个大目录：后端一趟只删一段、回「还剩几条」⇒ 窗口接着发同一个请求，直到删完才算成（此前一趟删到底，
+/// 窗口 120 秒等不到就报失败，而后端照删）。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_big_directory_is_deleted_slice_by_slice_until_nothing_is_left() {
+    use crate::find::testing::{wire_up, Declared, FakeBackend};
+    let be = FakeBackend::new(&["files-delete"], Declared::default());
+    be.delete_left.lock().unwrap().extend([8_800, 120]);
+    let wired = wire_up("writeops-slices", be).await;
+    let origin = chan_core::origin::Origin(wired.origin.clone());
+    let op = WriteOp::Delete {
+        path: "/srv/data/node_modules".into(),
+        is_dir: true,
+        raw: None,
+    };
+    super::apply_remote(&wired.line, &origin, &op)
+        .await
+        .expect("一段一段删完了却说没成");
+    assert_eq!(
+        wired.count("files-delete"),
+        3,
+        "还剩着就停了 / 删完了还在发"
+    );
+}

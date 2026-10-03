@@ -70,6 +70,8 @@ pub struct Workspace {
     pub sidebar_open: bool,
     /// 这台机器的家目录（左栏「家目录」那一格；问一次，整扇窗共用）。
     pub(super) home: super::chrome::Home,
+    /// 左栏「家目录」在问的时候被点了：问到了就去。
+    pub(super) home_go: bool,
     /// 左栏「其他机器」那一问的结局。
     pub(super) other: super::chrome::OtherSlot,
     /// 点了关窗、正等编辑面「改了没存」那一问的回答（答「丢掉」⇒ 接着关）。
@@ -188,6 +190,7 @@ impl Workspace {
             theme: None,
             sidebar_open: true,
             home: Default::default(),
+            home_go: false,
             other: Default::default(),
             closing: false,
             zoom: Zoom::default(),
@@ -266,13 +269,15 @@ impl Workspace {
 
     /// 照 `like` 那个目录视图的样子起一个新的，落在 `cwd`：同一台机器、同一条通道、同一份书签、
     /// 同一个字体结论（字体装在整个窗口上，不是装在某一个标签上）。**建完就列一趟目录。**
-    fn spawn_pane(like: &FileWindow, cwd: String) -> FileWindow {
+    /// 名字不是合法 UTF-8 的目录照样落得下（带着 `like` 当前目录的原始字节）。
+    fn spawn_pane(like: &FileWindow) -> FileWindow {
         let mut p = FileWindow::seeded(
             like.source.clone(),
-            cwd,
+            like.cwd.clone(),
             like.rt.clone(),
             Vec::<Listed>::new(),
         );
+        p.cwd_raw = like.cwd_raw.clone();
         if let Some(line) = like.line.clone() {
             p.attach_line(line);
         }
@@ -294,8 +299,7 @@ impl Workspace {
         if side >= self.sides.len() {
             return false;
         }
-        let cwd = self.pane_on(side).cwd.clone();
-        let pane = Self::spawn_pane(self.pane_on(side), cwd);
+        let pane = Self::spawn_pane(self.pane_on(side));
         self.add_tab(side, pane)
     }
 
@@ -374,8 +378,7 @@ impl Workspace {
     pub fn set_split(&mut self, on: bool) -> bool {
         match (on, self.sides.len()) {
             (true, 1) => {
-                let cwd = self.pane_on(self.focus).cwd.clone();
-                let pane = Self::spawn_pane(self.pane_on(self.focus), cwd);
+                let pane = Self::spawn_pane(self.pane_on(self.focus));
                 return self.add_side(pane);
             }
             (false, 2) => {
@@ -568,6 +571,23 @@ impl Workspace {
         z
     }
 
+    /// 摆在屏幕上的那几页（每一栏当前那个标签页）里有一页开着编辑面（或正在读一份来开）⇒ 别的栏当前那一页记下
+    /// 「别处开着」（[`FileWindow::editor_elsewhere`]）：两个编辑面同时画会共用一套 egui id、互相抢输入。
+    /// 后台标签页的编辑面不画，碰不到别的编辑面，也不挡别人。
+    pub fn sync_editors(&mut self) {
+        let owner = (0..self.sides.len()).find(|&k| {
+            let s = &self.sides[k];
+            let p = &s.tabs[s.active].pane;
+            p.editing().is_some() || p.edits.opening().is_some()
+        });
+        for (k, s) in self.sides.iter_mut().enumerate() {
+            let active = s.active;
+            for (i, t) in s.tabs.iter_mut().enumerate() {
+                t.pane.editor_elsewhere = i == active && owner.is_some_and(|o| o != k);
+            }
+        }
+    }
+
     /// 每一栏的每一个标签页。
     fn panes(&self) -> impl Iterator<Item = &FileWindow> {
         self.sides
@@ -577,6 +597,8 @@ impl Workspace {
 
     /// 🔴 **每一帧的正文**（`eframe::App::ui` 只剩一句委派，判据直接喂它 —— 同 `FileWindow::frame_body`）。
     pub fn frame(&mut self, ui: &mut egui::Ui) {
+        // ── 同一时刻只有一个编辑面：一处开着（或正在读一份来开），别处都当有框摆着（不接键盘 · 菜单 · 拖入，不开第二个）──
+        self.sync_editors();
         // ── 整窗缩放：Ctrl + = / - / 0 · Ctrl + 滚轮 ──
         let ctx = ui.ctx().clone();
         self.apply_zoom(&ctx);

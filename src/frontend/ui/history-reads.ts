@@ -59,6 +59,8 @@ export interface HistorySessionEntry {
   projectName: string;
   aiTitle: string | null;
   firstUserExcerpt: string;
+  /** 显示的标题（标题 ＞ 第一句 ＞ 会话 ID 前 8 位，后端一处定；用户改过的标题另在 `customTitle`）。 */
+  title: string;
   startedAt: number;
   updatedAt: number;
   jsonlPath: string;
@@ -150,6 +152,7 @@ const SESSION_KEYS = [
   "projectName",
   "aiTitle",
   "firstUserExcerpt",
+  "title",
   "startedAt",
   "updatedAt",
   "jsonlPath",
@@ -233,6 +236,7 @@ export function decodeSessions(v: unknown): {
       isStr(r.projectName) &&
       orNull(isStr)(r.aiTitle) &&
       isStr(r.firstUserExcerpt) &&
+      isStr(r.title) &&
       isNum(r.startedAt) &&
       isNum(r.updatedAt) &&
       isStr(r.jsonlPath) &&
@@ -349,12 +353,17 @@ export async function fetchRemoteProjects(): Promise<RemoteProjectsResult> {
   };
 }
 
-/** 一个项目下的会话（`origin` 缺席 = 本机那一行）。 */
+/**
+ * 一个项目下的会话（`origin` 缺席 = 本机那一行）。一个记录目录里会话的真实目录不止一个时，后端把它分成了几个项目
+ * （`projectDir` 相同、`projectPath` 不同）⇒ 带上 `projectPath`，只要这一组的。
+ */
 export async function fetchSessions(proj: {
   projectDir: string;
+  projectPath?: string;
   origin?: string;
 }): Promise<{ sessions: HistorySessionEntry[]; notice: string | null }> {
   const args: Record<string, unknown> = { project_dir: proj.projectDir };
+  if (proj.projectPath !== undefined) args.project_path = proj.projectPath;
   if (proj.origin) args.origin = proj.origin;
   const body = jsonBody(args);
   const budget = budgetWithin(SESSIONS_BUDGET_MS);

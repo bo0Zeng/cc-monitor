@@ -2745,3 +2745,31 @@ fn what_the_file_face_creates_inside_the_own_home_is_only_for_the_owner() {
     }
     std::fs::remove_dir_all(&home).ok();
 }
+
+/// 删一棵大树不再一口气删到底：给了一趟删几条 ⇒ 删够了停在两条之间、说还剩几条；再发一趟接着删，删完为止。
+/// （此前窗口 120 秒等不到就报失败，而后端照删 —— 窗口说的与盘上的对不上。）
+#[test]
+#[cfg(unix)]
+fn a_recursive_delete_in_slices_stops_between_entries_and_says_how_many_are_left() {
+    let base = temp_root("rmtree-until");
+    let root = base.join("cfg");
+    std::fs::create_dir_all(&root).expect("建根");
+    let planted = plant_tree(&root);
+    let total = planted.len();
+    // 一趟只许删 0 条：照样删一条再停（一趟接一趟才删得完）。
+    let (_, removed, left) = delete_tree_upto(&root, "t", Some(0)).expect("删够了不是失败");
+    assert_eq!((removed, left), (1, total - 1), "删够了没停在两条之间");
+    assert_eq!(
+        still_there(&root, &planted).len(),
+        total - 1,
+        "说删了一条，盘上少的不是一条"
+    );
+    // 帧面那一条：带 `limit` ⇒ 回 `remaining`；接着删到 0。
+    let args = |n: u64| serde_json::json!({ "root": root.to_string_lossy(), "rel": "t", "recursive": true, "limit": n });
+    let v = answer_delete(&args(2)).expect("第二趟");
+    assert_eq!(v["remaining"], serde_json::json!(total - 3));
+    let v = answer_delete(&args(1_000)).expect("第三趟");
+    assert_eq!(v["remaining"], serde_json::json!(0));
+    assert!(still_there(&root, &planted).is_empty(), "说删完了，树还在");
+    std::fs::remove_dir_all(&base).ok();
+}

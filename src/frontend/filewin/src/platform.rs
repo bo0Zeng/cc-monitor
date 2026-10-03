@@ -67,6 +67,9 @@ pub(crate) fn local_dest_kept(
 /// 本机路径的分隔符里有没有 `\`（Windows 有，别处只有 `/`）。原是 `download.rs::plan_dest` · `lossy_pull.rs::split_local` 里各一处 `cfg!(windows)`。
 pub const BACKSLASH_IS_SEP: bool = cfg!(windows);
 
+/// 本机文件名按 Windows 的规矩判（非法字符 · 保留的设备名 · 结尾的点与空格）—— 下载落点的缺省名用它（`download.rs`）。
+pub const WINDOWS_NAMES: bool = cfg!(windows);
+
 /// 线上那一形解出来的字节 → 本机路径：unix 按字节原样；别处按 UTF-8 有损转。原住 `lossy_pull.rs::local_path_of`。
 pub fn path_from_bytes(b: &[u8]) -> std::path::PathBuf {
     #[cfg(unix)]

@@ -149,12 +149,21 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answ
         }
         // 各台 `history-search` 的会话行合一份（纯计算，不看家目录）。
         "history-search-merge" => search_query::answer_merge(args),
+        // 读不动几份（`unreadable`）· 内容搜索不覆盖、这台上又有会话的那几家（`skipped`，对用户的叫法）一并回给界面说。
         "history-search" => {
             let query = str_arg(args, "query")?;
             let rest = search_rest(args)?;
-            lines(|out| {
-                search_query::search_into(home, query, &rest, out).map_err(|e| ("failed", e))
-            })
+            // 只比标题与第一句：帧面才有的一格（CLI 面没有这个选项）。
+            let titles = args.get("titles").and_then(Value::as_bool) == Some(true);
+            let mut unreadable = 0usize;
+            let mut v = lines(|out| {
+                unreadable = search_query::search_into(home, query, &rest, titles, out)
+                    .map_err(|e| ("failed", e))?;
+                Ok(())
+            })?;
+            v["unreadable"] = json!(unreadable);
+            v["skipped"] = json!(crate::agents::content_search_skips());
+            Ok(v)
         }
         "accounts-sessions" => {
             let rows =

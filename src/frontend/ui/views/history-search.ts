@@ -71,6 +71,19 @@ export interface SearchResult {
   /** 整份结果被 `limit` 砍过（任一台、任一会话 `hitsTruncated`）。 */
   truncated: boolean;
   sessions: SessionHits[];
+  /** 没答上的那几台远端（它们的会话没搜到）。 */
+  failedHosts: string[];
+  /** 各台读不动、没搜到的会话记录份数之和。 */
+  unreadable: number;
+  /** 内容搜索不覆盖的那几家（各台后端说的，对用户的叫法，去重）。 */
+  skipped: string[];
+}
+
+/** 一台答回来的：会话行 ＋ 读不动几份 ＋ 不覆盖的那几家。 */
+interface OneMachine {
+  sessions: SessionHits[];
+  unreadable: number;
+  skipped: string[];
 }
 
 /** 全文搜索的一组入参。 */
@@ -80,6 +93,8 @@ export interface FullTextQuery {
   scope: string | null;
   afterMs: number | null;
   limit: number | null;
+  /** 只比会话标题与第一句（「按项目」那一路的搜索，后端搜全部会话）。 */
+  titles?: boolean;
 }
 
 /**
@@ -95,10 +110,16 @@ const MERGE_BUDGET_MS = 10_000;
 export async function searchAllMachines(q: FullTextQuery): Promise<SearchResult> {
   const payload = jsonBody(searchArgs(q));
   const [local, remote] = await Promise.all([askOne(LOCAL_ORIGIN, payload), searchRemotes(payload)]);
-  const body = jsonBody({ sessions: [...local, ...remote] });
+  const answered = [local, ...remote.answered];
+  const body = jsonBody({ sessions: answered.flatMap((m) => m.sessions) });
   const budget = budgetWithin(MERGE_BUDGET_MS);
   const reply = await chan.call(LOCAL_ORIGIN, "history-search-merge", body, budget);
-  return decodeMerged(readJson(reply));
+  return {
+    ...decodeMerged(readJson(reply)),
+    failedHosts: remote.failed,
+    unreadable: answered.reduce((n, m) => n + m.unreadable, 0),
+    skipped: [...new Set(answered.flatMap((m) => m.skipped))],
+  };
 }
 
 /** 那一问的请求体（只下发后端认的那几格）。本机远端同一份。 */
@@ -108,36 +129,46 @@ export function searchArgs(q: FullTextQuery): Record<string, unknown> {
   if (q.includeTools) args.include_tools = true;
   if (q.scope === "user" || q.scope === "assistant") args.scope = q.scope;
   if (q.afterMs !== null && q.afterMs > 0) args.after_ms = q.afterMs;
+  if (q.titles) args.titles = true;
   return args;
 }
 
 /** 问一台。本机的行不补 `origin`（界面按「缺 ＝ 本机」画）。失败原样抛给调用方定怎么办。 */
-async function askOne(origin: string, payload: Uint8Array): Promise<SessionHits[]> {
+async function askOne(origin: string, payload: Uint8Array): Promise<OneMachine> {
   const budget = budgetWithin(SEARCH_BUDGET_MS);
   const reply = await chan.call(origin, "history-search", payload, budget);
   // 〔🔴-5〕「是不是本机」经 origin.ts 判（合并主线时 `tests/frontend/ui/origin-single-home.vitest.ts` 逮到的直比）。
-  return parseSessionHitsLines(linesOf(reply), isLocalOrigin(origin) ? undefined : origin);
+  const sessions = parseSessionHitsLines(linesOf(reply), isLocalOrigin(origin) ? undefined : origin);
+  // 读不动几份 · 不覆盖的那几家（老后端不带 ⇒ 0 / 空）。
+  const v = readJson(reply) as { unreadable?: unknown; skipped?: unknown } | null;
+  const unreadable = typeof v?.unreadable === "number" && v.unreadable > 0 ? v.unreadable : 0;
+  const skipped = Array.isArray(v?.skipped) ? v.skipped.filter(isStr) : [];
+  return { sessions, unreadable, skipped };
 }
 
-async function searchRemotes(payload: Uint8Array): Promise<SessionHits[]> {
+/** 各台远端：答上的那几份 ＋ 没答上的那几台（界面说「连不上 X，它的会话没搜到」）。 */
+async function searchRemotes(payload: Uint8Array): Promise<{ answered: OneMachine[]; failed: string[] }> {
   let origins: string[];
   try {
     origins = await commands.list_remote_mcp_origins();
   } catch (e) {
     console.warn("远端全文搜索：拿不到远端清单（只搜本机）:", e);
-    return [];
+    return { answered: [], failed: [] };
   }
   const per = await Promise.all(
     origins.map(async (origin) => {
       try {
-        return await askOne(origin, payload);
+        return { origin, got: await askOne(origin, payload) };
       } catch (e) {
         console.warn(`远端 [${origin}] 全文搜索失败（跳过该台）:`, e);
-        return [];
+        return { origin, got: null };
       }
     }),
   );
-  return per.flat();
+  return {
+    answered: per.flatMap((p) => (p.got === null ? [] : [p.got])),
+    failed: per.filter((p) => p.got === null).map((p) => p.origin),
+  };
 }
 
 const isStr = (v: unknown): v is string => typeof v === "string";
@@ -214,7 +245,7 @@ function sessionHitsOf(v: unknown): SessionHits | null {
  * 本机后端 `history-search-merge` 的成品 ⇒ `SearchResult`。严格收：恰好四个键、类型对；会话行逐条过同一个解码器，
  * `origin` 缺 ＝ 本机、有就得是串。不对 ⇒ 抛（整次搜索失败，与本机那一台失败同形 —— 本机是必答的那一台）。
  */
-export function decodeMerged(v: unknown): SearchResult {
+export function decodeMerged(v: unknown): Omit<SearchResult, "failedHosts" | "unreadable" | "skipped"> {
   const bad = (): never => {
     throw new Error(copyText("history.search.mergeBadShape"));
   };

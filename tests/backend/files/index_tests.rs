@@ -579,3 +579,72 @@ fn the_index_keeps_each_entry_kind() {
         .all(|h| h.1 == super::super::query::KIND_DIR));
     assert_eq!(query("file:", 1000).total_hits, 4 * 5);
 }
+
+/// 文件名搜索按相关度排：名字就是它 ＞ 以它开头 ＞ 名字里有它；同一档里路径浅的在前、再按路径字节序。
+/// 翻页也是这一个序（每一屏都是全序里的那一段）。此前按索引走到的顺序给，`report` 埋在一堆 `old-report-2.txt` 后面。
+#[test]
+fn name_hits_come_back_most_relevant_first_and_pages_keep_that_order() {
+    let _lock = resident_lock();
+    let root = std::env::temp_dir().join(format!("ccm-24f-rank-{}", std::process::id()));
+    std::fs::remove_dir_all(&root).ok();
+    // 名字故意让「走到的先后」与相关度反着来。
+    let made = [
+        "a/b/report",
+        "a/my-report.txt",
+        "a/report.txt",
+        "report",
+        "z/xreport",
+        "z/zz/report",
+    ];
+    for p in made {
+        let at = root.join(p);
+        std::fs::create_dir_all(at.parent().unwrap()).unwrap();
+        std::fs::write(&at, b"").unwrap();
+    }
+    let _serial = crate::files::index::testing::serial();
+    rebuild_once(&root).expect("本格独占跑");
+    let m = super::super::query::parse("REPORT").unwrap();
+    let page = |offset: usize, limit: usize| {
+        find(&FindArgs {
+            query: &m,
+            under: None,
+            home: None,
+            offset,
+            limit,
+            ticket: None,
+        })
+        .unwrap()
+    };
+    let rel = |hits: &[Hit]| -> Vec<String> {
+        hits.iter()
+            .map(|(p, _)| {
+                let s = String::from_utf8_lossy(p).to_string();
+                s[root.to_string_lossy().len() + 1..].to_string()
+            })
+            .collect()
+    };
+    let all = page(0, 100);
+    assert_eq!(
+        rel(&all.hits),
+        vec![
+            "report",
+            "a/b/report",
+            "z/zz/report",
+            "a/report.txt",
+            "a/my-report.txt",
+            "z/xreport",
+        ],
+        "命中不是按相关度排的"
+    );
+    assert_eq!(all.total_hits, 6);
+    for (offset, limit) in [(0, 2), (2, 2), (4, 5)] {
+        let p = page(offset, limit);
+        let end = (offset + limit).min(6);
+        assert_eq!(
+            p.hits,
+            all.hits[offset..end].to_vec(),
+            "第 {offset} 条起那一屏与全序里那一段不一样"
+        );
+    }
+    std::fs::remove_dir_all(&root).ok();
+}

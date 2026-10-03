@@ -222,7 +222,16 @@ pub const CAPABILITIES: &[Capability] = &[
         //    不然 `src/doc/IPC-PROTOCOL.md §10` 那份**冻结的线上契约**里就会多出一个
         //    「写了也不起作用」的参数，而那份文档的读者在仓外。
         args: &["limit", "path"],
-        fields: &["entries", "kind", "link_dir", "mtime_secs", "path", "size", "truncated"],
+        fields: &[
+            "entries",
+            "kind",
+            "link_dir",
+            "mtime_secs",
+            "path",
+            "size",
+            "truncated",
+            "unreadable",
+        ],
         codes: &["bad_path", "unreadable"],
     },
     Capability {
@@ -633,8 +642,9 @@ fn answer_ls(args: &serde_json::Value) -> Answer {
     })?;
     let mut entries: Vec<serde_json::Value> = Vec::new();
     let mut seen = 0usize;
-    for e in rd {
-        let Ok(e) = e else { continue };
+    // 读不出的项照数（不静默少一项）：窗口按 `unreadable` 说一句。
+    let mut unreadable = 0usize;
+    for e in readable(rd, &mut unreadable) {
         seen += 1;
         if entries.len() >= limit {
             continue;
@@ -666,7 +676,23 @@ fn answer_ls(args: &serde_json::Value) -> Answer {
     Ok(serde_json::json!({
         "entries": entries,
         "truncated": seen > entries.len(),
+        "unreadable": unreadable,
     }))
+}
+
+/// 目录项里读得出的那几条；读不出的数进 `unreadable`（不静默跳过）。
+fn readable<'a, E, I>(items: I, unreadable: &'a mut usize) -> impl Iterator<Item = E> + 'a
+where
+    I: IntoIterator<Item = std::io::Result<E>>,
+    I::IntoIter: 'a,
+{
+    items.into_iter().filter_map(move |e| match e {
+        Ok(e) => Some(e),
+        Err(_) => {
+            *unreadable += 1;
+            None
+        }
+    })
 }
 
 /// `files.stat` —— 一个路径的元数据。

@@ -44,6 +44,7 @@ fn search_end_to_end_and_rejects_traversal() {
         scope: None,
         after_ms: 0,
         limit: 300,
+        titles: false,
     };
     // 会话那一格来自索引：整份读进一格 `FileEntry`，查询对它跑。
     let mut entry = FileEntry::empty(None, true);
@@ -80,6 +81,7 @@ fn search_end_to_end_and_rejects_traversal() {
         scope: Some("user".into()),
         after_ms: 0,
         limit: 300,
+        titles: false,
     };
     let mut budget2 = SnippetBudget::new(opts_u.limit);
     let hu =
@@ -149,6 +151,7 @@ fn run_search(home: &Path, q: &str, limit: usize) -> Vec<Value> {
         scope: None,
         after_ms: 0,
         limit,
+        titles: false,
     };
     let mut buf: Vec<u8> = Vec::new();
     search(home, q, &opts, &mut buf).expect("search ok");

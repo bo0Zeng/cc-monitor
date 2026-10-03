@@ -15,6 +15,8 @@ export const FILEWIN_SCENES = [
   { id: "filewin-split", scene: "split", title: "文件窗口 · 双栏", desc: "开了双栏：两栏同一个目录" },
   { id: "filewin-empty", scene: "empty", title: "文件窗口 · 空目录", desc: "进到一个空目录" },
   { id: "filewin-missing", scene: "missing", title: "文件窗口 · 目录不存在", desc: "进到一个不存在的目录：列表那里报错" },
+  { id: "filewin-pull", scene: "pull", title: "文件窗口 · 下载在路上", desc: "一趟下载在路上：进度那一行（转圈 · 已收 / 共 · 取消）" },
+  { id: "filewin-mkdir-error", scene: "mkdir-error", title: "文件窗口 · 新建目录名字填错", desc: "新建目录那个框里名字是空的就点了确定：为什么没做成" },
   { id: "filewin-search", scene: "search", title: "文件窗口 · 按名字搜", desc: "工具条搜索框里输「retry」：全家目录里名字带它的文件。索引那一行的「扫描间隔 4242 秒」是合成后端故意给的怪数、命中路径是沙箱里的长路径" },
 ].map((s) => ({ ...s, dir: "文件窗口", width: 1280, height: 800 }));
 

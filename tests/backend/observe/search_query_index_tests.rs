@@ -228,7 +228,7 @@ fn sx1_the_frame_arm_reads_only_what_changed() {
     let key = projects_root(&home).canonicalize().expect("规范化");
     let ask = || {
         let mut out = Vec::new();
-        search_into(&home, "docker", &[], &mut out).expect("search ok");
+        search_into(&home, "docker", &[], false, &mut out).expect("search ok");
     };
     let last = || {
         RESIDENT
@@ -300,7 +300,7 @@ fn fix_after_the_warm_up_the_first_question_reads_nothing() {
     let n = 9; // 与 J3 同一份人群（build_corpus 的会话文件数）
     assert_eq!((read, kept > 0), (n, true), "预热没把整棵读进来");
     let mut got = Vec::new();
-    search_into(&home, "docker", &[], &mut got).expect("search ok");
+    search_into(&home, "docker", &[], false, &mut got).expect("search ok");
     let last = RESIDENT.lock().expect("锁").get(&key).map(|i| i.last);
     assert_eq!(
         last,

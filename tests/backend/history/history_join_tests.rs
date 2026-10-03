@@ -589,3 +589,34 @@ async fn remote_liveness_comes_from_that_machines_session_accounts() {
         "判活那一问失败 ⇒「不知道」，不是死"
     );
 }
+
+/// 会话行带标题（与全文搜索同一条规则：标题 ＞ 第一句 ＞ 会话 ID 前 8 位）—— 没标题、没说过话的那一份不再是空白。
+#[test]
+fn every_session_row_carries_a_title_even_with_no_title_and_no_words() {
+    let v =
+        remote_sessions_from("dev", "-w-alpha", &sessions_stdout(), &ann(), &NoLiveness).unwrap();
+    let rows = v["rows"].as_array().unwrap();
+    assert_eq!(rows[0]["title"], "占位标题");
+    assert_eq!(rows[1]["title"], &S4[..8], "没标题没说过话的会话标题是空的");
+}
+
+/// 一个记录目录分成几组时，会话清单只回问的那一组（读不出目录的跟着最近修改的那一组走 —— 与项目清单同一个分组函数）。
+#[test]
+fn a_session_listing_for_one_group_keeps_only_that_group() {
+    let row = |sid: &str, cwd: Option<&str>, at: i64| json!({ "sessionId": sid, "projectPath": cwd.unwrap_or(""), "updatedAt": at });
+    let v = json!({ "rows": [row("a", Some("/w/文档/x"), 30), row("b", Some("/w/桌面/x"), 10), row("c", None, 5)], "notice": null });
+    let sids = |v: &Value| -> Vec<String> {
+        v["rows"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|r| r["sessionId"].as_str().unwrap().to_string())
+            .collect()
+    };
+    assert_eq!(
+        sids(&only_group(v.clone(), Some("/w/文档/x"))),
+        vec!["a", "c"]
+    );
+    assert_eq!(sids(&only_group(v.clone(), Some("/w/桌面/x"))), vec!["b"]);
+    assert_eq!(sids(&only_group(v, None)), vec!["a", "b", "c"]);
+}

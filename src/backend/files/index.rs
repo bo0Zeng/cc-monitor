@@ -450,6 +450,27 @@ pub struct FindResult {
     pub cover_root: Option<Vec<u8>>,
 }
 
+/// 一条命中排在哪：相关度档（[`super::query::Matcher::rank`]）→ 路径浅的在前 → 路径字节序。
+/// 翻到哪一屏都是这一个序（每一屏都按它从头排、再切那一段）。
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+struct Ranked {
+    rank: u8,
+    depth: usize,
+    path: Vec<u8>,
+    kind: u8,
+}
+
+impl Ranked {
+    fn new(rank: u8, depth: usize, path: &[u8], kind: u8) -> Self {
+        Self {
+            rank,
+            depth,
+            path: path.to_vec(),
+            kind,
+        }
+    }
+}
+
 /// 这一趟被同一个搜索框更新的一趟顶掉了。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Superseded;
@@ -570,7 +591,9 @@ pub fn find(args: &FindArgs<'_>) -> Result<FindResult, Superseded> {
         // 范围就是根 ⇒ 不用逐条比前缀。
         let scope = domain.filter(|d| trim_sep(d) != trim_sep(root));
         let overlay = super::browse_watch::overlay_snapshot();
-        let mut hits: Vec<Hit> = Vec::new();
+        // 按相关度排（[`Ranked`]），只留到这一屏的末尾那么多条（大顶堆，堆顶是留下的里面最靠后的那条）。
+        let keep = args.offset.saturating_add(args.limit);
+        let mut best: std::collections::BinaryHeap<Ranked> = std::collections::BinaryHeap::new();
         let mut total = 0usize;
         let mut scanned = 0usize;
         let mut take = |bytes: &[u8], kind: u8| {
@@ -578,10 +601,20 @@ pub fn find(args: &FindArgs<'_>) -> Result<FindResult, Superseded> {
                 return;
             }
             if args.query.matches(bytes, kind) {
-                if total >= args.offset && hits.len() < args.limit {
-                    hits.push((bytes.to_vec(), kind));
-                }
                 total += 1;
+                if keep == 0 {
+                    return;
+                }
+                let rank = args.query.rank(bytes);
+                let depth = bytes.iter().filter(|&&b| is_sep(b)).count();
+                if best.len() < keep {
+                    best.push(Ranked::new(rank, depth, bytes, kind));
+                } else if let Some(mut worst) = best.peek_mut() {
+                    // 比留下的最靠后那条靠前 ⇒ 顶替它（放手时堆自己重排）。
+                    if (rank, depth, bytes) < (worst.rank, worst.depth, worst.path.as_slice()) {
+                        *worst = Ranked::new(rank, depth, bytes, kind);
+                    }
+                }
             }
         };
         for (bytes, kind) in snap.iter_kinds() {
@@ -603,6 +636,12 @@ pub fn find(args: &FindArgs<'_>) -> Result<FindResult, Superseded> {
         if args.ticket.is_some_and(|t| !t.current()) {
             return Err(Superseded);
         }
+        let hits: Vec<Hit> = best
+            .into_sorted_vec()
+            .into_iter()
+            .skip(args.offset)
+            .map(|r| (r.path, r.kind))
+            .collect();
         let age = snap.age_secs(now);
         Ok(FindResult {
             truncated: total > args.offset.saturating_add(hits.len()),

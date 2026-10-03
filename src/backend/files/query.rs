@@ -85,14 +85,26 @@ impl QueryError {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Matcher {
     root: Node,
+    /// 排相关度用的那几个词：不在「非」底下、对名字比、不带通配的。
+    terms: Vec<Text>,
 }
 
 /// 解析一条搜索词。空白 ⇒ 匹配一切。
 pub fn parse(input: &str) -> Result<Matcher, QueryError> {
     let expr = Parser::new(input).parse()?;
-    Ok(Matcher {
-        root: compile(&expr)?,
-    })
+    let root = compile(&expr)?;
+    let mut terms = Vec::new();
+    name_terms(&root, &mut terms);
+    Ok(Matcher { root, terms })
+}
+
+/// 收那几个排相关度的词（「非」底下的不算：名字里没有它才中）。
+fn name_terms(n: &Node, out: &mut Vec<Text>) {
+    match n {
+        Node::And(parts) | Node::Or(parts) => parts.iter().for_each(|p| name_terms(p, out)),
+        Node::Text(t) if !t.on_path && !t.glob => out.push(t.clone()),
+        _ => {}
+    }
 }
 
 impl Matcher {
@@ -111,6 +123,32 @@ impl Matcher {
             low_path: OnceCell::new(),
         };
         c.eval(&self.root)
+    }
+
+    /// 相关度档（小的在前）：名字与某个词一样 0 ＞ 名字以它开头 1 ＞ 名字里有它 2 ＞ 别的 3。
+    pub fn rank(&self, path: &[u8]) -> u8 {
+        let name = name_of(path);
+        let mut low: Option<Vec<u8>> = None;
+        let mut best = 3u8;
+        for t in &self.terms {
+            let hay: &[u8] = if t.unicode {
+                low.get_or_insert_with(|| lower(name))
+            } else {
+                name
+            };
+            let pat = t.pat.as_slice();
+            let r = if hay.eq_ignore_ascii_case(pat) {
+                0
+            } else if hay.len() >= pat.len() && hay[..pat.len()].eq_ignore_ascii_case(pat) {
+                1
+            } else if contains_ci(hay, pat) {
+                2
+            } else {
+                3
+            };
+            best = best.min(r);
+        }
+        best
     }
 }
 

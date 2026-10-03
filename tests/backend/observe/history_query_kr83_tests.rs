@@ -54,7 +54,10 @@ fn string_leaves(v: &serde_json::Value) -> Vec<String> {
 fn every_project_row_carries_the_session_ids_the_three_numbers_are_indexed_by() {
     let root = tmp_root("d1");
     let dir = project_with(&root, "-home-u-proj", &["sid-aaa", "sid-bbb", "sid-ccc"]);
-    let row = project_row(&dir, "-home-u-proj".into()).expect("有会话的项目必须出一行");
+    let row = project_rows(&dir, "-home-u-proj")
+        .into_iter()
+        .next()
+        .expect("有会话的项目必须出一行");
 
     let leaves = string_leaves(&row);
     for sid in ["sid-aaa", "sid-bbb", "sid-ccc"] {
@@ -69,7 +72,7 @@ fn every_project_row_carries_the_session_ids_the_three_numbers_are_indexed_by() 
 
     // 第 ② 刀的正向那一半：清单**不许**是空的，而项目下确实有会话。
     // 「空清单」与「这个项目下没有会话」在下游是两件事 —— 后者根本不会有这一行
-    //（`project_row` 返回 `None`），所以出了行还空 = 这一行坏了。
+    //（`project_rows` 一行都不出），所以出了行还空 = 这一行坏了。
     assert_eq!(
         row["sessionCount"].as_u64(),
         Some(3),
@@ -87,7 +90,7 @@ fn every_project_row_carries_the_session_ids_the_three_numbers_are_indexed_by() 
 /// ★ **`sessionCount` 与 sid 清单恒等长** —— 这是契约里下游用来分辨
 /// 「真的没有」与「这一行坏了」的那把尺子（monitor 侧 `remote_history.rs` 逐字对拍它）。
 ///
-/// 两侧由**同一个守卫**产出（见 `project_row` 里那段注释），所以这条钉的是
+/// 两侧由**同一个守卫**产出（见 `project_rows` 里那段注释），所以这条钉的是
 /// 「别把它们拆成两个守卫」。
 ///
 /// ⚠ 同 [`every_project_row_carries_the_session_ids_the_three_numbers_are_indexed_by`]：
@@ -101,7 +104,10 @@ fn the_session_id_list_and_the_count_are_produced_by_the_same_guard() {
     std::fs::write(dir.join("notes.txt"), b"x").unwrap();
     std::fs::create_dir_all(dir.join("subagents")).unwrap();
 
-    let row = project_row(&dir, "p".into()).expect("有会话的项目必须出一行");
+    let row = project_rows(&dir, "p")
+        .into_iter()
+        .next()
+        .expect("有会话的项目必须出一行");
     let ids = string_leaves(&row)
         .into_iter()
         .filter(|s| s.starts_with("kr83-"))
@@ -123,7 +129,7 @@ fn a_project_with_no_sessions_has_no_row_at_all() {
     std::fs::create_dir_all(&dir).unwrap();
     std::fs::write(dir.join("README.md"), b"x").unwrap();
     assert!(
-        project_row(&dir, "empty".into()).is_none(),
+        project_rows(&dir, "empty").into_iter().next().is_none(),
         "★ 没有会话的项目出了一行 —— 那一行的空清单会与「坏行」同形"
     );
 }
@@ -135,7 +141,7 @@ fn a_project_with_no_sessions_has_no_row_at_all() {
 fn the_two_query_paths_spell_a_session_id_the_same_way() {
     let root = tmp_root("d1d");
     let dir = project_with(&root, "p", &["019f75dd-875c-7c81-9eda-32f866b2c60f"]);
-    let row = project_row(&dir, "p".into()).expect("row");
+    let row = project_rows(&dir, "p").into_iter().next().expect("row");
     let from_list_sessions =
         analyze_session(&dir.join("019f75dd-875c-7c81-9eda-32f866b2c60f.jsonl"))["sessionId"]
             .as_str()
@@ -149,4 +155,72 @@ fn the_two_query_paths_spell_a_session_id_the_same_way() {
              查不着在界面上长得和「没有星标」一模一样（又一次「不知道」装成 0）。\n\
              这一行现打：{row}"
     );
+}
+
+/// 两个真实目录撞成同一个记录目录名（`/home/u/文档/x` 与 `/home/u/桌面/x` 都记在 `-home-u----x`）⇒ 两行，各带各的会话；
+/// 读不出目录的会话归最近修改的那一组。此前按记录目录名并成一个项目，项目路径取最新那份的目录。
+#[test]
+fn two_real_directories_behind_one_record_folder_name_are_two_projects() {
+    let root = tmp_root("h09");
+    let dir = root.join("projects").join("-home-u----x");
+    std::fs::create_dir_all(&dir).unwrap();
+    let put = |sid: &str, line: &str, secs: u64| {
+        let p = dir.join(format!("{sid}.jsonl"));
+        std::fs::write(&p, format!("{line}\n")).unwrap();
+        let f = std::fs::File::options().write(true).open(&p).unwrap();
+        f.set_modified(std::time::UNIX_EPOCH + std::time::Duration::from_secs(secs))
+            .unwrap();
+    };
+    put("doc-1", r#"{"cwd":"/home/u/文档/x"}"#, 1_000);
+    put("doc-2", r#"{"cwd":"/home/u/文档/x"}"#, 3_000);
+    put("desk-1", r#"{"cwd":"/home/u/桌面/x"}"#, 2_000);
+    put("nocwd", "{}", 500);
+    let rows = project_rows(&dir, "-home-u----x");
+    let got: Vec<(String, Vec<String>, u64)> = rows
+        .iter()
+        .map(|r| {
+            (
+                r["projectPath"].as_str().unwrap().to_string(),
+                r["sessionIds"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|s| s.as_str().unwrap().to_string())
+                    .collect(),
+                r["sessionCount"].as_u64().unwrap(),
+            )
+        })
+        .collect();
+    let s = |v: &[&str]| v.iter().map(|x| x.to_string()).collect::<Vec<_>>();
+    assert_eq!(
+        got,
+        vec![
+            (
+                "/home/u/文档/x".to_string(),
+                s(&["doc-1", "doc-2", "nocwd"]),
+                3
+            ),
+            ("/home/u/桌面/x".to_string(), s(&["desk-1"]), 1),
+        ],
+        "两个目录被并成了一个项目"
+    );
+    assert!(rows.iter().all(|r| r["dirName"] == "-home-u----x"));
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// 分组那一个函数：读得出目录的按目录；读不出的归最近修改的那个读得出目录的会话；一个都读不出 ⇒ 空串一组。
+#[test]
+fn sessions_without_a_directory_join_the_most_recent_group() {
+    let g = |items: &[(Option<&str>, i64)]| {
+        let v: Vec<(Option<String>, i64)> = items
+            .iter()
+            .map(|(c, m)| (c.map(str::to_string), *m))
+            .collect();
+        group_by_cwd(&v)
+    };
+    assert_eq!(
+        g(&[(Some("/a"), 1), (None, 9), (Some("/b"), 5)]),
+        vec!["/a", "/b", "/b"]
+    );
+    assert_eq!(g(&[(None, 1), (None, 2)]), vec!["", ""]);
 }

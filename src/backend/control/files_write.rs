@@ -1134,11 +1134,24 @@ pub fn remove_planned(root: &Path, p: &Planned) -> Result<PathBuf, WriteRefusal>
 ///
 /// 🔴 本函数自己**不含任何改动动词**：删那一下住 [`remove_planned`]，列那一下住 [`plan_tree`]。
 pub fn delete_tree(root: &Path, rel: impl AsRef<Path>) -> Result<(PathBuf, usize), WriteRefusal> {
+    delete_tree_upto(root, rel, None).map(|(top, removed, _)| (top, removed))
+}
+
+/// 同 [`delete_tree`]，这一趟至多删 `limit` 条就停在两条之间（叶子先删，剩下的仍是一棵连着的树）：
+/// 回 `(目标的落点, 这一趟删了几条, 还剩几条)`。一趟删多少由调用方定（后端不看钟）；`limit` 为 0 也删一条，一趟接一趟总能删完。
+pub fn delete_tree_upto(
+    root: &Path,
+    rel: impl AsRef<Path>,
+    limit: Option<usize>,
+) -> Result<(PathBuf, usize, usize), WriteRefusal> {
     let rel = rel.as_ref();
     let top = resolve_in_root(root, rel).map_err(WriteRefusal::Refused)?;
     let plan = plan_tree(root, rel)?;
     let mut removed = 0usize;
     for p in plan.iter().rev() {
+        if removed > 0 && limit.is_some_and(|n| removed >= n) {
+            return Ok((top, removed, plan.len() - removed));
+        }
         remove_planned(root, p).map_err(|e| {
             let said = copy_text(
                 "beFilesWrite.deleteTree.stopped",
@@ -1157,7 +1170,7 @@ pub fn delete_tree(root: &Path, rel: impl AsRef<Path>) -> Result<(PathBuf, usize
         })?;
         removed += 1;
     }
-    Ok((top, removed))
+    Ok((top, removed, 0))
 }
 
 /// 复制时暂存旁名的序号（同一进程里两趟复制不撞名）。
@@ -2453,9 +2466,10 @@ pub const MANAGE_COMMANDS: &[ManageCommand] = &[
             "删一个文件或一个**空**目录（删的是链接本身，不跟过去）；显式 `recursive: true` \
                才删整棵树 —— 逐条目过路径解析，任一条被拒整趟不动（`delete_tree`）；给了 `expect` \
                ⇒ 只删一份普通文件、且盘上逐字节等于它才删（否则 `stale`，一个字节不动）；`expect: {\"empty_dir\": true}` \
-               ⇒ 只删一个空目录（不空 / 不在 ⇒ `stale`；不是目录 ⇒ `refused`）",
-        args: &["expect", "recursive", "rel", "root"],
-        fields: &["path", "removed"],
+               ⇒ 只删一个空目录（不空 / 不在 ⇒ `stale`；不是目录 ⇒ `refused`）；递归删可带 `limit`：\
+               这一趟至多删几条、停在两条之间，`remaining` 回还剩几条（再发一趟接着删）",
+        args: &["expect", "limit", "recursive", "rel", "root"],
+        fields: &["path", "remaining", "removed"],
         codes: &["bad_args", "bad_path", "io_failed", "refused", "stale"],
     },
     ManageCommand {
@@ -2651,18 +2665,26 @@ fn answer_delete(args: &serde_json::Value) -> Answer {
             crate::common::contract::malformed("`expect` and `recursive` are mutually exclusive"),
         ));
     }
-    let (done, removed) = if recursive {
-        delete_tree(&root, &rel).map_err(refusal)?
+    // 递归删可带 `limit`：这一趟至多删几条，停在两条之间、回 `remaining`（还剩几条），调用方再发一趟接着删。
+    let limit = match args.get("limit") {
+        None => None,
+        Some(v) => Some(v.as_u64().map(|n| n as usize).ok_or((
+            "bad_args",
+            crate::common::contract::malformed("`limit` must be a non-negative integer"),
+        ))?),
+    };
+    let (done, removed, remaining) = if recursive {
+        delete_tree_upto(&root, &rel, limit).map_err(refusal)?
     } else if let Some(want) = expect {
         let done = match want {
             DeleteExpect::Bytes(b) => delete_file_expecting(&root, &rel, &b),
             DeleteExpect::EmptyDir => delete_empty_dir(&root, &rel),
         };
-        (done.map_err(refusal)?, 1)
+        (done.map_err(refusal)?, 1, 0)
     } else {
-        (delete_entry(&root, &rel).map_err(refusal)?, 1)
+        (delete_entry(&root, &rel).map_err(refusal)?, 1, 0)
     };
-    Ok(serde_json::json!({ "path": path_json(&done), "removed": removed }))
+    Ok(serde_json::json!({ "path": path_json(&done), "removed": removed, "remaining": remaining }))
 }
 
 fn answer_chmod(args: &serde_json::Value) -> Answer {

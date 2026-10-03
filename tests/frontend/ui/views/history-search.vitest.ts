@@ -235,3 +235,23 @@ describe("本机 ＋ 各台远端（都经通道）", () => {
     expect(asked).toEqual([LOCAL_ORIGIN]);
   });
 });
+
+describe("搜得不全要说出来（没答上的台 · 读不动的会话记录 · 内容搜索不覆盖的那几家）", () => {
+  it("★ 这三样都交回给界面（此前远端没答只进日志、读不动只进后端日志、Codex 搜不到也不说）", async () => {
+    invokeMock.mockImplementation((cmd: string, args: unknown) => {
+      if (cmd === "list_remote_mcp_origins") return Promise.resolve(["pi", "down"]);
+      if (isChanCall(cmd, args, "history-search")) {
+        if (args.origin === LOCAL_ORIGIN)
+          return Promise.resolve(chanReply({ lines: [row("loc", 1, 1)], unreadable: 2, skipped: ["Codex"] }));
+        return args.origin === "pi"
+          ? Promise.resolve(chanReply({ lines: [row("r", 2, 1)], unreadable: 1, skipped: ["Codex"] }))
+          : Promise.reject(NO_CHANNEL);
+      }
+      if (isChanCall(cmd, args, "history-search-merge")) return Promise.resolve(passMerge(args));
+      return Promise.resolve(undefined);
+    });
+    const got = await searchAllMachines(Q);
+    expect([got.failedHosts, got.unreadable, got.skipped]).toEqual([["down"], 3, ["Codex"]]);
+    expect(searchArgs({ ...Q, titles: true })).toEqual({ query: "kw", limit: 300, titles: true });
+  });
+});

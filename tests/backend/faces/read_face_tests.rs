@@ -1100,3 +1100,36 @@ fn the_record_products_match_the_cross_language_golden() {
         serde_json::to_string_pretty(&got).unwrap()
     );
 }
+
+/// 全文搜索的应答把「读不动几份」与「内容搜索不覆盖的那几家」一起交回（此前只进日志，界面只能说「共 N 条」像是全的）；
+/// `titles: true` 只比标题与第一句：只在标题里出现的词也搜得到那一个会话。
+#[test]
+fn the_search_answer_says_what_it_could_not_search_and_titles_mode_finds_title_only_words() {
+    let home = scratch("search-said");
+    let dir = home.join("projects").join("-w-x");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join("0000aaaa-0000-4000-8000-0000000000aa.jsonl"),
+        concat!(
+            r#"{"type":"user","uuid":"u1","timestamp":"2026-01-01T00:00:00Z","cwd":"/w/x","message":{"role":"user","content":"占位正文"}}"#,
+            "\n",
+            r#"{"type":"ai-title","aiTitle":"订单重试"}"#,
+            "\n"
+        ),
+    )
+    .unwrap();
+    let ask = |args: Value| answer_at(&home, "history-search", &args).expect("搜索");
+    let v = ask(json!({ "query": "订单" }));
+    assert_eq!(v["unreadable"], json!(0), "读不动几份没交回：{v}");
+    assert!(v["skipped"].is_array(), "内容搜索不覆盖的那几家没交回：{v}");
+    assert_eq!(v["lines"], json!([]), "只在标题里的词被当成了内容命中：{v}");
+    let v = ask(json!({ "query": "订单", "titles": true }));
+    let lines = v["lines"].as_array().unwrap();
+    assert_eq!(lines.len(), 1, "按标题搜没搜到那一个会话：{v}");
+    let row: Value = serde_json::from_str(lines[0].as_str().unwrap()).unwrap();
+    assert_eq!(
+        (row["title"].as_str(), row["hitCount"].as_u64()),
+        (Some("订单重试"), Some(0))
+    );
+    std::fs::remove_dir_all(&home).ok();
+}

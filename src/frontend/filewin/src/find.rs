@@ -28,7 +28,7 @@
 //! - 判据喂的是一台按 `src/doc/IPC-PROTOCOL.md §10` 答话的合成后端（[`testing::FakeBackend`]），
 //!   买到的是客户端这条链（发什么 · 解析 · 画到帧上）；后端真索引与语法的正确性判在 `tests/backend/files/`。
 //! - 不看这个窗口时索引不会变新（要一个与用户动作无关的节拍，刻意不做）。
-//! - 命中没有排序（后端按索引顺序给）。
+//! - 命中的顺序是后端排的（按相关度，翻页同一个序）；这一侧按到货的顺序画，不重排。
 
 use copy_core::copy_text;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -495,6 +495,10 @@ pub struct SearchBoard {
     rounds: Arc<AtomicU64>,
     /// 往下翻那一趟在飞。
     paging: Arc<AtomicBool>,
+    /// 往下翻那一趟失败了：这一问不再自动往下翻（不然滚到底每帧重发一趟）；换一问才放开。
+    page_failed: Arc<AtomicBool>,
+    /// 整份 [`Shown`] 被克隆过几次（判据数它：画命中那一摞不许每帧整份克隆）。
+    full_clones: Arc<AtomicU64>,
     /// 上一次告诉后端「用户在看哪个目录」时的那个目录（换了才再发）。
     browsed: Arc<Mutex<Option<super::source::RemotePath>>>,
     /// **冷启动首建正在走**：`Some(后端声明的秒数)`。
@@ -521,6 +525,8 @@ impl Default for SearchBoard {
             rebuilds: Default::default(),
             rounds: Default::default(),
             paging: Default::default(),
+            page_failed: Default::default(),
+            full_clones: Default::default(),
             browsed: Default::default(),
             first_build: Default::default(),
             ctx: Default::default(),
@@ -562,6 +568,7 @@ impl SearchBoard {
     /// ⚠ **不清 `status`**：新鲜度那一行讲的是这台机器的索引，与问什么无关。清的是**命中**那一半。
     pub fn invalidate(&self, asked: &Asked) {
         self.epoch.fetch_add(1, Ordering::SeqCst);
+        self.page_failed.store(false, Ordering::SeqCst);
         let mut s = self.inner.lock().unwrap();
         s.asked = asked.clone();
         s.outcome = None;
@@ -588,7 +595,44 @@ impl SearchBoard {
     }
 
     pub fn shown(&self) -> Shown {
+        self.full_clones.fetch_add(1, Ordering::Relaxed);
         self.inner.lock().unwrap().clone()
+    }
+
+    /// [`Self::shown`] 被调过几次（每次一份整克隆）。
+    pub fn full_clones(&self) -> u64 {
+        self.full_clones.load(Ordering::Relaxed)
+    }
+
+    /// 眼下这一问的范围（只克隆这一格）。
+    pub fn asked_under(&self) -> Option<super::source::RemotePath> {
+        self.inner.lock().unwrap().asked.under.clone()
+    }
+
+    /// 第 `i` 条命中（只克隆这一条）。
+    pub fn hit(&self, i: usize) -> Option<Hit> {
+        self.inner
+            .lock()
+            .unwrap()
+            .outcome
+            .as_ref()
+            .and_then(|o| o.hits.get(i).cloned())
+    }
+
+    /// 命中那一摞上每一行的字（目录后面带 `/`）。
+    pub fn hit_texts(&self) -> Vec<String> {
+        self.inner
+            .lock()
+            .unwrap()
+            .outcome
+            .as_ref()
+            .map(|o| o.hits.iter().map(Hit::row_text).collect())
+            .unwrap_or_default()
+    }
+
+    /// 往下翻失败过（这一问不再自动往下翻）。
+    pub fn page_failed(&self) -> bool {
+        self.page_failed.load(Ordering::SeqCst)
     }
 
     /// 摆一句话上去（不经网络的那几档失败走这条）。
@@ -634,7 +678,7 @@ impl SearchBoard {
     pub fn claim_more(&self) -> Option<(u64, Asked, usize)> {
         let s = self.inner.lock().unwrap();
         let o = s.outcome.as_ref()?;
-        if !o.truncated {
+        if !o.truncated || self.page_failed.load(Ordering::SeqCst) {
             return None;
         }
         if self
@@ -692,7 +736,9 @@ pub fn append_if_current(b: &SearchBoard, mine: u64, page: Result<FindOutcome, S
             }
             _ => false,
         },
+        // 翻页失败：说一句，并闩住（这一问不再自动往下翻，换一问才放开）。
         Err(e) => {
+            b.page_failed.store(true, Ordering::SeqCst);
             s.notice = Some(e);
             true
         }
@@ -927,7 +973,18 @@ pub async fn fetch_more(
 impl SearchBoard {
     /// 新鲜度那一行 ＋ 搜的是哪个根 ＋ 出了事那句话 ＋ 命中那一行。
     pub fn ui(&self, ui: &mut egui::Ui) {
-        let s = self.shown();
+        // 只取这一行要的那几格（命中那一摞可能有几千条，不整份克隆）。
+        let s = {
+            let g = self.inner.lock().unwrap();
+            Shown {
+                asked: Asked::default(),
+                outcome: None,
+                status: g.status.clone(),
+                indexed_root: g.indexed_root.clone(),
+                notice: g.notice.clone(),
+            }
+        };
+        let hits = self.inner.lock().unwrap().outcome.as_ref().map(hits_line);
         // 冷启动首建正在走 ⇒ 这一行顶替新鲜度那一行（那一行此刻只会说「还没建过」）。
         if let Some(secs) = self.first_build() {
             ui.colored_label(ui.visuals().warn_fg_color, first_build_line(secs));
@@ -954,8 +1011,8 @@ impl SearchBoard {
         if let Some(n) = s.notice.as_ref().filter(|n| !n.is_empty()) {
             ui.colored_label(ui.visuals().error_fg_color, n);
         }
-        if let Some(o) = &s.outcome {
-            ui.label(hits_line(o));
+        if let Some(line) = hits {
+            ui.label(line);
         }
     }
 }

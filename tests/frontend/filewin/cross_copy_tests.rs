@@ -287,3 +287,20 @@ async fn copying_to_this_machine_is_just_a_download_to_the_target() {
         "目标是本机却走了第二腿：{s:?}"
     );
 }
+
+/// 「复制到另一台」的机器下拉里本机写「本机」，不是字面 `<local>`；发出去时换回本机后端的地址（手填「本机」也认）。
+#[test]
+fn the_local_machine_is_shown_as_a_word_and_sent_as_its_address() {
+    let shown = shown_machine(LOCAL_ORIGIN);
+    assert_eq!(
+        shown,
+        copy_text("rsFilewinCrossCopy.prompt.localMachine", &[])
+    );
+    assert!(!shown.contains('<'), "下拉里出现了字面的本机地址");
+    assert_eq!(origin_of(&shown), LOCAL_ORIGIN);
+    assert_eq!(origin_of(&format!(" {shown} ")), LOCAL_ORIGIN);
+    assert_eq!(
+        (shown_machine("gpu-01"), origin_of(" gpu-01 ")),
+        ("gpu-01".to_string(), "gpu-01".to_string())
+    );
+}

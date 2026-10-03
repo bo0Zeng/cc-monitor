@@ -263,3 +263,29 @@ fn a_failure_carries_the_reason_it_was_given() {
     }
     assert_eq!(b.rounds(), 1, "失败也算跑完一趟（否则界面会一直等）");
 }
+
+/// 下载到 Windows：远端名字里 Windows 不认的字换成 `_`、结尾的点去掉、保留的设备名前面加 `_`（不然落点照抄、下载失败，
+/// `con.txt` 这类名字还会被当成「已经在了」）；别的平台原样。
+#[test]
+fn a_remote_name_windows_cannot_take_gets_a_legal_default_name() {
+    for (remote, local) in [
+        ("a:b.txt", "a_b.txt"),
+        ("x?", "x_"),
+        ("name.", "name"),
+        ("a<b>|c*\"d\"", "a_b__c__d_"),
+        ("con.txt", "_con.txt"),
+        ("COM1", "_COM1"),
+        ("lpt9.log", "_lpt9.log"),
+        ("com0.txt", "com0.txt"),
+        ("console.txt", "console.txt"),
+        ("ok.txt", "ok.txt"),
+        ("...", "_"),
+    ] {
+        assert_eq!(super::local_name(remote, true), local, "「{remote}」");
+        assert_eq!(
+            super::local_name(remote, false),
+            remote,
+            "非 Windows 上「{remote}」被改了"
+        );
+    }
+}

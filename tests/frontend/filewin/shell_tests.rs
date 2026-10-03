@@ -475,16 +475,15 @@ fn an_impossible_new_name_keeps_the_box_up_and_says_why() {
             "「{bad}」被拒了，框却收掉了 —— 用户会以为复制开始了"
         );
         assert!(
-            w.listing.error.lock().unwrap().is_some(),
-            "「{bad}」被拒了却一句话都没说"
+            w.prompt_error().is_some() && w.listing.error.lock().unwrap().is_none(),
+            "「{bad}」被拒了，原因没说在框里"
         );
     }
     // 反空真：换一个能用的名字，它就不再卡在「名字不合法」这一支上
     //（这个窗口没有运行时 ⇒ 它会卡在下一支，而那一支说的是另一件事）。
-    *w.listing.error.lock().unwrap() = None;
     w.copy_prompt.as_mut().unwrap().new_name = "a.bin.copy".to_string();
     assert!(!w.confirm_copy(None), "没有运行时却说起得来");
-    let e = w.listing.error.lock().unwrap().clone().unwrap();
+    let e = w.prompt_error().unwrap();
     assert!(
         e.contains("启动不了"),
         "合法名字被当成不合法挡了：{e} —— 那上面那几条买的就不是「名字」这一维"
@@ -1322,23 +1321,24 @@ fn an_impossible_input_keeps_the_write_box_up_and_says_why() {
             w.write_prompt().is_some(),
             "「{bad}」被拒了，框却收掉了 —— 用户会以为它做了"
         );
+        // 原因说在框里；列表上方那一行被框的暗底盖着，不往那儿写。
         assert!(
-            w.listing.error.lock().unwrap().is_some(),
-            "「{bad}」被拒了却一句话都没说"
+            w.prompt_error().is_some() && w.listing.error.lock().unwrap().is_none(),
+            "「{bad}」被拒了，原因没说在框里"
         );
     }
     // 反空真：换一个能用的名字，它就不再卡在「名字不合法」这一支上
     //（这个窗口没有运行时 ⇒ 它卡在下一支，而那一支说的是另一件事）。
-    *w.listing.error.lock().unwrap() = None;
     w.write_prompt.as_mut().unwrap().text = "newdir".to_string();
     assert!(!w.confirm_write(None), "没有运行时却说起得来");
-    let e = w.listing.error.lock().unwrap().clone().unwrap();
+    let e = w.prompt_error().unwrap();
     assert!(
         e.contains("启动不了"),
         "合法名字被当成不合法挡了：{e} —— 那上面那几条买的就不是「输入」这一维"
     );
     w.cancel_write();
     assert!(w.write_prompt().is_none());
+    assert!(w.prompt_error().is_none(), "框收掉了，框里那句还留着");
 }
 
 /// 一摞写操作跑完要重列目录（新目录要出现、删掉的要消失），而且**只重列一次**。
@@ -2174,7 +2174,7 @@ fn prompts_take_enter_to_confirm_and_escape_to_cancel() {
     );
     step(&ctx, &mut w, vec![key_ev(egui::Key::Enter)]);
     assert_eq!(
-        w.listing.error.lock().unwrap().clone(),
+        w.prompt_error(),
         Some(copy_text("rsFilewinShell.writes.noRuntime", &[])),
         "回车没走到「确定」"
     );
@@ -3036,4 +3036,290 @@ fn zoom_keys_and_wheel_change_the_zoom_and_it_survives_a_reopen() {
         "重开之后不是上次的缩放"
     );
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// 文件窗口的行为缺陷（同类后台活一次一趟 · 下载可停 · 列表落地 · 框里说原因 · 结局看得到 · 隐藏文件 · 命中不每帧克隆）
+// ════════════════════════════════════════════════════════════════════════
+
+/// 一摞上传还在飞（上一摞按过取消、还有几件排着）时再拖一摞进来：不起，说一句；**上一摞的取消不被清掉**
+/// （此前第二摞无条件复位取消台 ⇒ 第一摞取消不掉、排着的那几件接着传）。下载同理：在下的时候再要下载，不摆那一问。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_second_trip_of_the_same_kind_waits_and_leaves_the_first_ones_cancel_alone() {
+    let wired = crate::find::testing::wire_up(
+        "one-at-a-time",
+        crate::find::testing::FakeBackend::new(
+            &["files-ls"],
+            crate::find::testing::Declared::default(),
+        ),
+    )
+    .await;
+    let mut w = crate::find::testing::window_on(&wired, "/srv/data");
+    // 第一摞：起了还没收场（看板还没落那一趟的结局），人按了取消。
+    w.drops_started = 1;
+    w.board.cancels().request();
+    let items = w.pending_for(&["/tmp/x/late.bin".to_string()]);
+    assert_eq!(items.len(), 1);
+    assert!(!w.start_drop(items, None), "上一摞还在飞，第二摞起来了");
+    assert!(
+        w.board.cancels().is_cancelled(),
+        "第二摞把第一摞的取消清掉了 —— 排着的那几件会接着传"
+    );
+    assert_eq!(
+        w.key_notice(),
+        Some(copy_text("rsFilewinShell.oneAtATime.upload", &[]).as_str())
+    );
+    // 下载：一趟在下 ⇒ 菜单 / 键盘再要下载不摆那一问。
+    let mut w = remote_window_with_rows("/srv/data", vec![file_row("a.bin")]);
+    w.pull.begin("big.iso");
+    pick_row(&mut w, 0);
+    assert!(!w.perform(crate::select::Action::Download, None));
+    assert!(w.pull_ask().is_none(), "在下的时候又摆出了「存到哪儿」");
+    assert_eq!(
+        w.key_notice(),
+        Some(copy_text("rsFilewinShell.oneAtATime.download", &[]).as_str())
+    );
+}
+
+/// 下载那一行有「取消」：点了 ⇒ 这一趟的取消台按下（订阅停掉，`.part` 留着续传）；下一趟开头复位，不被上一趟的取消拦下。
+#[test]
+fn a_download_in_flight_can_be_cancelled_from_its_row() {
+    let ctx = egui::Context::default();
+    let mut w = remote_window_with_rows("/srv/data", vec![file_row("a.bin")]);
+    w.pull.begin("big.iso");
+    let mut t = 0.0;
+    let mut paint = |w: &mut FileWindow, ev: Vec<egui::Event>| {
+        t += 0.5;
+        crate::copy::testing::painted_text(&ctx, egui::vec2(1280.0, 800.0), t, ev, |ui| {
+            w.frame_body(ui)
+        })
+    };
+    let _ = paint(&mut w, Vec::new());
+    let painted = paint(&mut w, Vec::new());
+    let at = crate::copy::testing::rects_of(&painted, crate::transfer::CANCEL_LABEL.as_str());
+    assert_eq!(at.len(), 1, "在下的那一行上没有取消：{painted:?}");
+    let pos = at[0].center();
+    let _ = paint(&mut w, vec![egui::Event::PointerMoved(pos)]);
+    let _ = paint(&mut w, crate::rows::testing::click_at(pos));
+    assert!(w.pull.cancels().is_cancelled(), "点了取消，这一趟没被撤");
+    w.pull.begin("next.iso");
+    assert!(!w.pull.cancels().is_cancelled(), "上一趟的取消拦下了下一趟");
+}
+
+/// 列表还在路上时换了排序：落地那一屏按**现在**那一档排（表头指着「大小」，行就按大小）。
+#[test]
+fn a_listing_that_lands_after_the_sort_changed_comes_back_in_the_new_order() {
+    let mut w = remote_window_with_rows("/srv/data", Vec::new());
+    let mine = w.listing.start();
+    let by_size = w.sort.after_click(crate::source::SortBy::Size);
+    assert!(w.set_sort(by_size));
+    let sized = |n: &str, size: u64| {
+        Listed::plain(Row {
+            size,
+            ..file_row(n)
+        })
+    };
+    // 出发时按名称排好的那一屏。
+    let landed = vec![sized("a", 30), sized("b", 10), sized("c", 20)];
+    assert!(store_listed_if_current(
+        &w.listing,
+        mine,
+        Ok((landed, crate::source::Cut::default())),
+        Sort::default(),
+    ));
+    let mut want = vec![sized("a", 30), sized("b", 10), sized("c", 20)];
+    crate::source::sort_rows(&mut want, by_size);
+    assert_ne!(
+        names_of(&want),
+        vec!["a", "b", "c"],
+        "夹具按大小排和按名字排一样，判不出来"
+    );
+    assert_eq!(names(&w), names_of(&want), "落地那一屏还是出发时那一档的序");
+}
+
+fn names_of(rows: &[Listed]) -> Vec<String> {
+    rows.iter().map(|r| r.name.clone()).collect()
+}
+
+/// 同一个目录两趟列表在飞（F5 之后紧接着删了一个文件、删完又列一趟）：后发的先回、先发的后回 ⇒ 先发的那份丢掉，
+/// 刚删的文件不被摆回来。
+#[test]
+fn of_two_listings_of_the_same_directory_only_the_last_one_sent_lands() {
+    let l = Listing::default();
+    let row = |n: &str| Listed::plain(file_row(n));
+    let f5 = l.start();
+    let after_delete = l.start();
+    assert!(store_if_current(&l, after_delete, Ok(vec![row("kept")])));
+    assert!(
+        !store_if_current(&l, f5, Ok(vec![row("kept"), row("deleted")])),
+        "先发的那一趟后到，把刚删的文件又摆了回来"
+    );
+    assert_eq!(names_of(&l.rows.lock().unwrap()), vec!["kept"]);
+    assert!(!l.is_loading());
+}
+
+/// 改名框里填错：原因画在**框里**（输入框下面、按钮上面），不画到框后面那一行（那一行被暗底盖着）。
+#[test]
+fn a_bad_name_is_explained_inside_the_box() {
+    let ctx = egui::Context::default();
+    let mut w = remote_window_with_rows("/srv/data", vec![file_row("a.txt")]);
+    assert!(w.begin_rename(0));
+    w.write_prompt.as_mut().unwrap().text = "sub/b.txt".into();
+    assert!(!w.confirm_write(None));
+    let why = w.prompt_error().expect("填错了却没说");
+    let mut t = 0.0;
+    let mut paint = |w: &mut FileWindow| {
+        t += 0.5;
+        crate::copy::testing::painted_text(&ctx, egui::vec2(1280.0, 800.0), t, Vec::new(), |ui| {
+            w.frame_body(ui)
+        })
+    };
+    let _ = paint(&mut w);
+    let painted = paint(&mut w);
+    let said = crate::copy::testing::rects_of(&painted, &why);
+    let heading = crate::copy::testing::rects_of(&painted, &w.write_prompt().unwrap().heading());
+    let ok = crate::copy::testing::rects_of(&painted, &copy_text("rsFilewinShell.write.ok", &[]));
+    assert_eq!(
+        (said.len(), heading.len(), ok.len()),
+        (1, 1, 1),
+        "{painted:?}"
+    );
+    assert!(
+        said[0].top() > heading[0].bottom() && said[0].bottom() < ok[0].top(),
+        "原因没画在框里：原因 {:?} · 框头 {:?} · 确定 {:?}",
+        said[0],
+        heading[0],
+        ok[0]
+    );
+    assert!(w.listing.error.lock().unwrap().is_none());
+}
+
+/// 传输那一摞收起着：传完了（成功）⇒ 状态栏那颗开关留着（还没看过）；有失败 ⇒ 自己摊开。
+#[test]
+fn a_transfer_outcome_is_not_lost_behind_a_collapsed_panel() {
+    let mut w = remote_window_with_rows("/srv/data", Vec::new());
+    w.transfers_open = false;
+    w.pull.begin("ok.bin");
+    w.pull.finish(crate::download::Outcome::Done {
+        dest: "/tmp/ok.bin".into(),
+        bytes: 1,
+    });
+    w.settle_transfer_outcomes();
+    assert!(
+        w.transfers_unseen(),
+        "传完了，收着的那一摞上没有任何东西提示"
+    );
+    assert!(!w.transfers_open, "成功也自己摊开了");
+    w.board.finish(crate::transfer::DropOutcome {
+        failed: vec![("x.bin".into(), "盘满了".into())],
+        ..Default::default()
+    });
+    w.settle_transfer_outcomes();
+    assert!(w.transfers_open, "有失败，那一摞却还收着");
+    assert!(!w.transfers_unseen(), "摊开着就算看过了");
+}
+
+/// 隐藏文件关着时跳到一个隐藏文件：打开显示隐藏文件、照样跳过去、说一句（此前说「它可能刚被删掉或改了名」）。
+#[test]
+fn revealing_a_hidden_file_shows_hidden_files_instead_of_calling_it_gone() {
+    let mut w = remote_window_with_rows("/srv/data", vec![file_row("a.txt"), file_row(".env")]);
+    assert!(w.set_show_hidden(false));
+    assert!(names(&w).iter().all(|n| n != ".env"));
+    w.set_reveal(".env");
+    let got = w.take_reveal_offset(20.0);
+    assert!(
+        matches!(got, Some(Ok(_))),
+        "跳到隐藏文件被说成不在：{got:?}"
+    );
+    assert!(w.shows_hidden(), "没有打开显示隐藏文件");
+    assert_eq!(w.reveal_name(), Some(".env"));
+    assert_eq!(
+        w.key_notice(),
+        Some(copy_text("rsFilewinShell.reveal.hiddenShown", &[("want", ".env")]).as_str())
+    );
+}
+
+/// 命中几千条：画命中那一摞不再每帧整份克隆（落地一趟才重建一次行）。
+#[test]
+fn thousands_of_hits_are_not_cloned_every_frame() {
+    let ctx = egui::Context::default();
+    let mut w = remote_window_with_rows("/srv/data", Vec::new());
+    w.query = "x".into();
+    // 「只搜当前目录」开着：每帧都要比一次范围（那一比也不许克隆整份）。
+    w.search_here = true;
+    let hits: Vec<crate::find::Hit> = (0..3000)
+        .map(|i| crate::find::Hit {
+            path: format!("/srv/data/x{i}").into_bytes(),
+            dir: false,
+        })
+        .collect();
+    let mine = w.search.start();
+    crate::find::store_if_current(
+        &w.search,
+        mine,
+        &crate::find::Asked {
+            query: "x".into(),
+            under: Some(w.cwd_path()),
+        },
+        crate::find::Round {
+            outcome: Some(crate::find::FindOutcome {
+                total_hits: hits.len(),
+                hits,
+                ..Default::default()
+            }),
+            ..Default::default()
+        },
+    );
+    let mut t = 0.0;
+    let mut paint = |w: &mut FileWindow| {
+        t += 0.5;
+        crate::copy::testing::painted_text(&ctx, egui::vec2(1280.0, 800.0), t, Vec::new(), |ui| {
+            w.frame_body(ui)
+        })
+    };
+    let _ = paint(&mut w);
+    let before = w.search.full_clones();
+    let rows = w.hit_rows();
+    for _ in 0..5 {
+        let _ = paint(&mut w);
+    }
+    assert_eq!(w.search.full_clones() - before, 0, "每帧还在整份克隆命中");
+    assert!(
+        std::sync::Arc::ptr_eq(&rows, &w.hit_rows()),
+        "没有新的一趟落地，命中那几千行每帧重拼"
+    );
+    assert_eq!(rows.len(), 3000);
+}
+
+/// 目录里有几项读不出来（后端照数、没列出）：列表上方说一句，与截断那一句同一个位置。
+#[test]
+fn entries_that_could_not_be_read_are_said() {
+    let ctx = egui::Context::default();
+    let mut w = remote_window_with_rows("/srv/data", vec![file_row("a.txt")]);
+    let mine = w.listing.start();
+    assert!(store_listed_if_current(
+        &w.listing,
+        mine,
+        Ok((
+            vec![Listed::plain(file_row("a.txt"))],
+            crate::source::Cut {
+                truncated: false,
+                unreadable: 3,
+            },
+        )),
+        Sort::default(),
+    ));
+    let painted = crate::copy::testing::painted_text(
+        &ctx,
+        egui::vec2(1280.0, 800.0),
+        0.5,
+        Vec::new(),
+        |ui| w.frame_body(ui),
+    );
+    let line = copy_text("rsFilewinShell.frame.unreadable", &[("n", "3")]);
+    assert_eq!(
+        crate::copy::testing::rects_of(&painted, &line).len(),
+        1,
+        "{painted:?}"
+    );
 }
